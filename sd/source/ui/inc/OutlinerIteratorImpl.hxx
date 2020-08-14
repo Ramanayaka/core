@@ -20,8 +20,7 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_OUTLINERITERATORIMPL_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_OUTLINERITERATORIMPL_HXX
 
-#include <svx/svdobj.hxx>
-#include "OutlinerIterator.hxx"
+#include <OutlinerIterator.hxx>
 #include <memory>
 
 class SdDrawDocument;
@@ -33,8 +32,6 @@ namespace sd {
 class ViewShell;
 
 namespace outliner {
-
-class IteratorImplBase;
 
 /** Base class for the polymorphic implementation class of the
     <type>Iterator</type> class.  The iterators based on this class are
@@ -122,7 +119,7 @@ protected:
     while an iterator is alive.  It is therefore the responsibility of an
     iterator's owner to handle the case of a changed mark list.
 
-    <p>For documentation of the methods please refere to the base class
+    <p>For documentation of the methods please refer to the base class
     <type>IteratorImplBase</type>.</p>
 */
 class SelectionIteratorImpl
@@ -130,7 +127,7 @@ class SelectionIteratorImpl
 {
 public:
     SelectionIteratorImpl (
-        const ::std::vector< SdrObjectWeakRef >& rObjectList,
+        const ::std::vector< ::tools::WeakReference<SdrObject> >& rObjectList,
         sal_Int32 nObjectIndex,
         SdDrawDocument* pDocument,
         const std::weak_ptr<ViewShell>& rpViewShellWeak,
@@ -144,7 +141,7 @@ public:
     virtual bool operator== (const IteratorImplBase& rIterator) const override;
 
 private:
-    const ::std::vector<SdrObjectWeakRef>& mrObjectList;
+    const ::std::vector<::tools::WeakReference<SdrObject>>& mrObjectList;
     sal_Int32 mnObjectIndex;
 
     /** Compare the given iterator with this object.  This method handles
@@ -164,7 +161,7 @@ private:
     the view is *not* switched.  Further calls to the
     <member>GotoNextObject()</member> method will be ignored.
 
-    <p>For documentation of the methods please refere to the base class
+    <p>For documentation of the methods please refer to the base class
     <type>IteratorImplBase</type>.</p>
 */
 class ViewIteratorImpl : public IteratorImplBase
@@ -203,16 +200,16 @@ private:
     /// Pointer to the page associated with the current page index. May be NULL.
     SdPage* mpPage;
     /// Iterator of all objects on the current page.
-    SdrObjListIter* mpObjectIterator;
+    std::unique_ptr<SdrObjListIter> mpObjectIterator;
 
     // Don't use this operator.
-    ViewIteratorImpl& operator= (const ViewIteratorImpl&){return *this;};
+    ViewIteratorImpl& operator= (const ViewIteratorImpl&) = delete;
 };
 
 /** Iterator for iteration over all objects in all views.  It automatically
     switches views when reaching the end/beginning of a view.
 
-    <p>For documentation of the methods please refere to the base class
+    <p>For documentation of the methods please refer to the base class
     <type>IteratorImplBase</type>.</p>
 */
 class DocumentIteratorImpl : public ViewIteratorImpl
@@ -235,7 +232,7 @@ private:
     sal_Int32 mnPageCount;
 
     // Don't use this operator.
-    DocumentIteratorImpl& operator= (const DocumentIteratorImpl& ){return *this;};
+    DocumentIteratorImpl& operator= (const DocumentIteratorImpl& ) = delete;
 };
 
 } } // end of namespace ::sd::outliner

@@ -18,9 +18,10 @@
  */
 
 
-#include <sot/stg.hxx>
 #include <sot/storinfo.hxx>
 #include <sot/exchange.hxx>
+#include <tools/stream.hxx>
+#include <vcl/errcode.hxx>
 #include <memory>
 
 /************** class SvStorageInfo **************************************
@@ -30,12 +31,12 @@ SotClipboardFormatId ReadClipboardFormat( SvStream & rStm )
     SotClipboardFormatId nFormat = SotClipboardFormatId::NONE;
     sal_Int32 nLen = 0;
     rStm.ReadInt32( nLen );
-    if( rStm.IsEof() )
+    if( rStm.eof() )
         rStm.SetError( SVSTREAM_GENERALERROR );
     if( nLen > 0 )
     {
         // get a string name
-        std::unique_ptr<sal_Char[]> p(new( ::std::nothrow ) sal_Char[ nLen ]);
+        std::unique_ptr<char[]> p(new( ::std::nothrow ) char[ nLen ]);
         if (p && rStm.ReadBytes(p.get(), nLen) == static_cast<std::size_t>(nLen))
         {
             nFormat = SotExchange::RegisterFormatName(OUString(p.get(), nLen-1, RTL_TEXTENCODING_ASCII_US));
@@ -46,7 +47,7 @@ SotClipboardFormatId ReadClipboardFormat( SvStream & rStm )
     else if( nLen == -1 )
     {
         // Windows clipboard format
-        // SV und Win stimmen ueberein (bis einschl. SotClipboardFormatId::GDIMETAFILE)
+        // SV and Win match (up to and including SotClipboardFormatId::GDIMETAFILE)
         sal_uInt32 nTmp;
         rStm.ReadUInt32( nTmp );
         nFormat = static_cast<SotClipboardFormatId>(nTmp);
@@ -79,7 +80,7 @@ void WriteClipboardFormat( SvStream & rStm, SotClipboardFormatId nFormat )
         OString aAsciiCbFmt(OUStringToOString(aCbFmt,
                                               RTL_TEXTENCODING_ASCII_US));
         rStm.WriteInt32( aAsciiCbFmt.getLength() + 1 );
-        rStm.WriteCharPtr( aAsciiCbFmt.getStr() );
+        rStm.WriteOString( aAsciiCbFmt );
         rStm.WriteUChar( 0 );
     }
     else if( nFormat != SotClipboardFormatId::NONE )

@@ -17,20 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "tablecolumnsbuffer.hxx"
+#include <tablecolumnsbuffer.hxx>
 
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <oox/helper/attributelist.hxx>
-#include <oox/helper/containerhelper.hxx>
-#include <oox/helper/propertyset.hxx>
-#include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include "addressconverter.hxx"
-#include "defnamesbuffer.hxx"
-#include "dbdata.hxx"
+#include <dbdata.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 TableColumn::TableColumn( const WorkbookHelper& rHelper ) :
     WorkbookHelper( rHelper ),
@@ -76,7 +70,7 @@ void TableColumns::importTableColumns( SequenceInputStream& /*rStrm*/ )
 
 TableColumn& TableColumns::createTableColumn()
 {
-    TableColumnVector::value_type xTableColumn( new TableColumn( *this ) );
+    TableColumnVector::value_type xTableColumn = std::make_shared<TableColumn>( *this );
     maTableColumnVector.push_back( xTableColumn );
     return *xTableColumn;
 }
@@ -90,10 +84,10 @@ bool TableColumns::finalizeImport( ScDBData* pDBData )
         /* TODO: use svl::SharedString for names */
         ::std::vector< OUString > aNames( maTableColumnVector.size());
         size_t i = 0;
-        for (TableColumnVector::const_iterator aIt = maTableColumnVector.begin(), aEnd = maTableColumnVector.end();
-                aIt != aEnd; ++aIt, ++i)
+        for (const auto& rxTableColumn : maTableColumnVector)
         {
-            aNames[i] = (*aIt)->getName();
+            aNames[i] = rxTableColumn->getName();
+            ++i;
         }
         pDBData->SetTableColumnNames( aNames);
         return true;
@@ -108,7 +102,7 @@ TableColumnsBuffer::TableColumnsBuffer( const WorkbookHelper& rHelper ) :
 
 TableColumns& TableColumnsBuffer::createTableColumns()
 {
-    TableColumnsVector::value_type xTableColumns( new TableColumns( *this ) );
+    TableColumnsVector::value_type xTableColumns = std::make_shared<TableColumns>( *this );
     maTableColumnsVector.push_back( xTableColumns );
     return *xTableColumns;
 }
@@ -129,7 +123,6 @@ TableColumns* TableColumnsBuffer::getActiveTableColumns()
     return maTableColumnsVector.empty() ? nullptr : maTableColumnsVector.back().get();
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

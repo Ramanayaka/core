@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "objectnameapproval.hxx"
+#include <objectnameapproval.hxx>
 
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/sdb/tools/XConnectionTools.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 
 #include <cppuhelper/weakref.hxx>
-#include <cppuhelper/exc_hlp.hxx>
 
 namespace dbaccess
 {
@@ -59,14 +58,14 @@ namespace dbaccess
     {
     }
 
-    void SAL_CALL ObjectNameApproval::approveElement( const OUString& _rName, const Reference< XInterface >& /*_rxElement*/ )
+    void ObjectNameApproval::approveElement( const OUString& _rName )
     {
         Reference< XConnection > xConnection( m_pImpl->aConnection );
         if ( !xConnection.is() )
             throw DisposedException();
 
         Reference< XConnectionTools > xConnectionTools( xConnection, UNO_QUERY_THROW );
-        Reference< XObjectNames > xObjectNames( xConnectionTools->getObjectNames(), UNO_QUERY_THROW );
+        Reference< XObjectNames > xObjectNames( xConnectionTools->getObjectNames(), css::uno::UNO_SET_THROW );
         xObjectNames->checkNameForCreate( m_pImpl->nCommandType, _rName );
     }
 

@@ -20,13 +20,12 @@
 #ifndef INCLUDED_CONNECTIVITY_PARAMWRAPPER_HXX
 #define INCLUDED_CONNECTIVITY_PARAMWRAPPER_HXX
 
+#include <config_options.h>
 #include <connectivity/dbtoolsdllapi.hxx>
 #include <connectivity/FValue.hxx>
 
-#include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/sdb/XSingleSelectQueryAnalyzer.hpp>
 
 #include <comphelper/uno3.hxx>
 #include <comphelper/broadcasthelper.hxx>
@@ -37,10 +36,11 @@
 #include <memory>
 #include <vector>
 
+namespace com::sun::star::sdbc { class XParameters; }
+namespace com::sun::star::sdb { class XSingleSelectQueryAnalyzer; }
 
-namespace dbtools
-{
-namespace param
+
+namespace dbtools::param
 {
 
 
@@ -49,7 +49,7 @@ namespace param
     /** wraps a parameter column as got from an SQLQueryComposer, so that it has an additional
         property "Value", which is forwarded to an XParameters interface
     */
-    class OOO_DLLPUBLIC_DBTOOLS ParameterWrapper  :public ::cppu::OWeakObject
+    class UNLESS_MERGELIBS(OOO_DLLPUBLIC_DBTOOLS) ParameterWrapper final : public ::cppu::OWeakObject
                             ,public css::lang::XTypeProvider
                             ,public ::comphelper::OMutexAndBroadcastHelper
                             ,public ::cppu::OPropertySetHelper
@@ -104,15 +104,14 @@ namespace param
         virtual void SAL_CALL getFastPropertyValue( css::uno::Any& rValue, sal_Int32 nHandle ) const override;
 
         // pseudo-XComponent
-        void SAL_CALL dispose();
+        void dispose();
 
-    protected:
+    private:
         virtual ~ParameterWrapper() override;
 
         // disambiguations
         using ::cppu::OPropertySetHelper::getFastPropertyValue;
 
-    private:
         OUString impl_getPseudoAggregatePropertyName( sal_Int32 _nHandle ) const;
     };
 
@@ -129,14 +128,13 @@ namespace param
                                                >   ParameterWrapperContainer_Base;
 
     /// class for the parameter event @see approveParameter
-    class OOO_DLLPUBLIC_DBTOOLS ParameterWrapperContainer :
+    class OOO_DLLPUBLIC_DBTOOLS ParameterWrapperContainer final :
         public ParameterWrapperContainer_Base
     {
     private:
         ::osl::Mutex    m_aMutex;
         Parameters      m_aParameters;
 
-    protected:
         virtual ~ParameterWrapperContainer() override;
 
     public:
@@ -163,12 +161,12 @@ namespace param
         virtual css::uno::Any SAL_CALL getByIndex(sal_Int32 _rIndex) override;
 
     public:
-        const Parameters& getParameters() { return m_aParameters; }
+        const Parameters& getParameters() const { return m_aParameters; }
 
         const ::connectivity::ORowSetValue& operator[]( size_t _index ) const { return m_aParameters[ _index ]->Value(); }
               ::connectivity::ORowSetValue& operator[]( size_t _index )       { return m_aParameters[ _index ]->Value(); }
 
-        /** adds an ParameterWrapper to the end of the array
+        /** adds a ParameterWrapper to the end of the array
         */
         void    push_back( ParameterWrapper* _pParameter )
         {
@@ -177,11 +175,10 @@ namespace param
 
         size_t  size() const { return m_aParameters.size(); }
 
-    protected:
+    private:
         // XComponent
         virtual void SAL_CALL disposing() override;
 
-    private:
         void    impl_checkDisposed_throw();
     };
 
@@ -191,7 +188,7 @@ namespace param
     typedef ::rtl::Reference< ParameterWrapperContainer >   ParametersContainerRef;
 
 
-} } // namespace dbtools::param
+} // namespace dbtools::param
 
 
 #endif // INCLUDED_CONNECTIVITY_PARAMWRAPPER_HXX

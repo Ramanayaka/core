@@ -8,7 +8,6 @@
  */
 
 #include "Blob.hxx"
-#include "Connection.hxx"
 #include "Util.hxx"
 
 #include <com/sun/star/io/BufferSizeExceededException.hpp>
@@ -16,8 +15,11 @@
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
+#include <connectivity/CommonTools.hxx>
 #include <connectivity/dbexception.hxx>
 #include <cppuhelper/exc_hlp.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::connectivity::firebird;
 
@@ -31,7 +33,7 @@ using namespace ::com::sun::star::uno;
 
 Blob::Blob(isc_db_handle* pDatabaseHandle,
            isc_tr_handle* pTransactionHandle,
-           ISC_QUAD& aBlobID):
+           ISC_QUAD const & aBlobID):
     Blob_BASE(m_aMutex),
     m_pDatabaseHandle(pDatabaseHandle),
     m_pTransactionHandle(pTransactionHandle),
@@ -43,6 +45,7 @@ Blob::Blob(isc_db_handle* pDatabaseHandle,
 #endif
     m_bBlobOpened(false),
     m_nBlobLength(0),
+    m_nMaxSegmentSize(0),
     m_nBlobPosition(0)
 {
 }
@@ -70,11 +73,16 @@ void Blob::ensureBlobIsOpened()
     m_nBlobPosition = 0;
 
     char aBlobItems[] = {
-        isc_info_blob_total_length
+        isc_info_blob_total_length,
+        isc_info_blob_max_segment
     };
-    char aResultBuffer[20];
 
-    isc_blob_info(m_statusVector,
+    // Assuming a data (e.g. length of blob) is maximum 64 bit.
+    // That means we need 8 bytes for data + 2 for length of data + 1 for item
+    // identifier for each item.
+    char aResultBuffer[11 + 11];
+
+    aErr = isc_blob_info(m_statusVector,
                   &m_blobHandle,
                   sizeof(aBlobItems),
                   aBlobItems,
@@ -84,36 +92,82 @@ void Blob::ensureBlobIsOpened()
     if (aErr)
         evaluateStatusVector(m_statusVector, "isc_blob_info", *this);
 
-    if (*aResultBuffer == isc_info_blob_total_length)
+    char* pIt = aResultBuffer;
+    while( *pIt != isc_info_end ) // info is in clusters
     {
-        short aResultLength = (short) isc_vax_integer(aResultBuffer+1, 2);
-        m_nBlobLength =  isc_vax_integer(aResultBuffer+3, aResultLength);
-    }
-    else
-    {
-        assert(false);
+        char item = *pIt++;
+        short aResultLength = static_cast<short>(isc_vax_integer(pIt, 2));
+
+        pIt += 2;
+        switch(item)
+        {
+            case isc_info_blob_total_length:
+                m_nBlobLength = isc_vax_integer(pIt, aResultLength);
+                break;
+            case isc_info_blob_max_segment:
+                m_nMaxSegmentSize = isc_vax_integer(pIt, aResultLength);
+                break;
+            default:
+                assert(false);
+                break;
+        }
+        pIt += aResultLength;
     }
 }
+
+sal_uInt16 Blob::getMaximumSegmentSize()
+{
+    ensureBlobIsOpened();
+
+    return m_nMaxSegmentSize;
+}
+
+bool Blob::readOneSegment(uno::Sequence< sal_Int8 >& rDataOut)
+{
+    checkDisposed(Blob_BASE::rBHelper.bDisposed);
+    ensureBlobIsOpened();
+
+    sal_uInt16 nMaxSize = getMaximumSegmentSize();
+
+    if(rDataOut.getLength() < nMaxSize)
+        rDataOut.realloc(nMaxSize);
+
+    sal_uInt16 nActualSize = 0;
+    ISC_STATUS aRet = isc_get_segment(m_statusVector,
+            &m_blobHandle,
+            &nActualSize,
+            nMaxSize,
+            reinterpret_cast<char*>(rDataOut.getArray()) );
+
+    if (aRet && aRet != isc_segstr_eof && IndicatesError(m_statusVector))
+    {
+        OUString sError(StatusVectorToString(m_statusVector, "isc_get_segment"));
+        throw IOException(sError, *this);
+    }
+    m_nBlobPosition += nActualSize;
+    return aRet == isc_segstr_eof;  // last segment read
+}
+
 
 void Blob::closeBlob()
 {
     MutexGuard aGuard(m_aMutex);
 
-    if (m_bBlobOpened)
-    {
-        ISC_STATUS aErr;
-        aErr = isc_close_blob(m_statusVector,
-                              &m_blobHandle);
-        if (aErr)
-            evaluateStatusVector(m_statusVector, "isc_close_blob", *this);
+    if (!m_bBlobOpened)
+        return;
 
-        m_bBlobOpened = false;
+    ISC_STATUS aErr;
+    aErr = isc_close_blob(m_statusVector,
+                          &m_blobHandle);
+    if (aErr)
+        evaluateStatusVector(m_statusVector, "isc_close_blob", *this);
+
+    m_bBlobOpened = false;
 #if SAL_TYPES_SIZEOFPOINTER == 8
-        m_blobHandle = 0;
+    m_blobHandle = 0;
 #else
-        m_blobHandle = nullptr;
+    m_blobHandle = nullptr;
 #endif
-    }
 }
 
 void SAL_CALL Blob::disposing()
@@ -122,10 +176,10 @@ void SAL_CALL Blob::disposing()
     {
          closeBlob();
     }
-    catch (SQLException &e)
+    catch (const SQLException &)
     {
         // we cannot throw any exceptions here...
-        SAL_WARN("connectivity.firebird", "isc_close_blob failed " << e.Message);
+        TOOLS_WARN_EXCEPTION("connectivity.firebird", "isc_close_blob failed");
         assert(false);
     }
     Blob_BASE::disposing();
@@ -226,7 +280,7 @@ sal_Int32 SAL_CALL Blob::readBytes(uno::Sequence< sal_Int8 >& rDataOut,
 
     // Ensure we have enough space for the amount of data we can actually read.
     const sal_Int64 nBytesAvailable = m_nBlobLength - m_nBlobPosition;
-    const sal_Int32 nBytesToRead = nBytes < nBytesAvailable ? nBytes : nBytesAvailable;
+    const sal_Int32 nBytesToRead = std::min<sal_Int64>(nBytes, nBytesAvailable);
 
     if (rDataOut.getLength() < nBytesToRead)
         rDataOut.realloc(nBytesToRead);
@@ -237,7 +291,7 @@ sal_Int32 SAL_CALL Blob::readBytes(uno::Sequence< sal_Int8 >& rDataOut,
     {
         sal_uInt16 nBytesRead = 0;
         sal_uInt64 nDataRemaining = nBytesToRead - nTotalBytesRead;
-        sal_uInt16 nReadSize = (nDataRemaining > SAL_MAX_UINT16) ? SAL_MAX_UINT16 : nDataRemaining;
+        sal_uInt16 nReadSize = std::min<sal_uInt64>(nDataRemaining, SAL_MAX_UINT16);
         aErr = isc_get_segment(m_statusVector,
                                &m_blobHandle,
                                &nBytesRead,

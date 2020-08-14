@@ -21,7 +21,6 @@
 #define INCLUDED_SVL_SOURCE_NUMBERS_NUMFMUNO_HXX
 
 #include <com/sun/star/util/XNumberFormatter2.hpp>
-#include <com/sun/star/util/XNumberFormatPreviewer.hpp>
 #include <com/sun/star/util/XNumberFormats.hpp>
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -57,22 +56,22 @@ public:
     virtual sal_Int32 SAL_CALL detectNumberFormat( sal_Int32 nKey, const OUString& aString ) override;
     virtual double SAL_CALL convertStringToNumber( sal_Int32 nKey, const OUString& aString ) override;
     virtual OUString SAL_CALL convertNumberToString( sal_Int32 nKey, double fValue ) override;
-    virtual css::util::Color SAL_CALL queryColorForNumber( sal_Int32 nKey,
-                            double fValue, css::util::Color aDefaultColor ) override;
+    virtual sal_Int32 SAL_CALL queryColorForNumber( sal_Int32 nKey,
+                            double fValue, sal_Int32 aDefaultColor ) override;
     virtual OUString SAL_CALL formatString( sal_Int32 nKey, const OUString& aString ) override;
-    virtual css::util::Color SAL_CALL queryColorForString( sal_Int32 nKey,
-                            const OUString& aString,
-                                css::util::Color aDefaultColor ) override;
+    virtual sal_Int32 SAL_CALL queryColorForString( sal_Int32 nKey,
+                                const OUString& aString,
+                                sal_Int32 aDefaultColor ) override;
     virtual OUString SAL_CALL getInputString( sal_Int32 nKey, double fValue ) override;
 
     // XNumberFormatPreviewer
     virtual OUString SAL_CALL convertNumberToPreviewString(
                             const OUString& aFormat, double fValue,
                             const css::lang::Locale& nLocale, sal_Bool bAllowEnglish ) override;
-    virtual css::util::Color SAL_CALL queryPreviewColorForNumber(
+    virtual sal_Int32 SAL_CALL queryPreviewColorForNumber(
                             const OUString& aFormat, double fValue,
                             const css::lang::Locale& nLocale, sal_Bool bAllowEnglish,
-                            css::util::Color aDefaultColor ) override;
+                            sal_Int32 aDefaultColor ) override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName(  ) override;
@@ -87,11 +86,11 @@ class SvNumberFormatsObj : public cppu::WeakImplHelper<
                                         css::lang::XServiceInfo>
 {
 private:
-    SvNumberFormatsSupplierObj&         rSupplier;
-    mutable ::comphelper::SharedMutex   m_aMutex;
+    rtl::Reference<SvNumberFormatsSupplierObj> m_xSupplier;
+    mutable ::comphelper::SharedMutex          m_aMutex;
 
 public:
-                    SvNumberFormatsObj(SvNumberFormatsSupplierObj& pParent, ::comphelper::SharedMutex& _rMutex);
+                    SvNumberFormatsObj(SvNumberFormatsSupplierObj& pParent, ::comphelper::SharedMutex const & _rMutex);
     virtual         ~SvNumberFormatsObj() override;
 
 
@@ -135,8 +134,9 @@ class SvNumberFormatObj : public cppu::WeakImplHelper<
                                         css::lang::XServiceInfo>
 {
 private:
-    SvNumberFormatsSupplierObj&         rSupplier;
-    sal_uLong                               nKey;
+    rtl::Reference<SvNumberFormatsSupplierObj>
+                                        m_xSupplier;
+    sal_uLong                           nKey;
     mutable ::comphelper::SharedMutex   m_aMutex;
 
 public:
@@ -181,7 +181,8 @@ class SvNumberFormatSettingsObj : public cppu::WeakImplHelper<
                                         css::lang::XServiceInfo>
 {
 private:
-    SvNumberFormatsSupplierObj&         rSupplier;
+    rtl::Reference<SvNumberFormatsSupplierObj>
+                                        m_xSupplier;
     mutable ::comphelper::SharedMutex   m_aMutex;
 
 public:

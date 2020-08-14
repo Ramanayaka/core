@@ -21,7 +21,9 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_XISTREAM_HXX
 
 #include <comphelper/docpasswordhelper.hxx>
+#include <com/sun/star/beans/NamedValue.hpp>
 #include <filter/msfilter/mscodec.hxx>
+#include <tools/stream.hxx>
 #include <memory>
 #include "xlstream.hxx"
 #include "xlconst.hxx"
@@ -47,7 +49,7 @@ public:
     virtual             ~XclImpDecrypter() override;
 
     /** Returns the current error code of the decrypter. */
-    ErrCode      GetError() const { return mnError; }
+    const ErrCode&      GetError() const { return mnError; }
     /** Returns true, if the decoder has been initialized correctly. */
     bool         IsValid() const { return mnError == ERRCODE_NONE; }
 
@@ -59,7 +61,7 @@ public:
     virtual ::comphelper::DocPasswordVerifierResult verifyEncryptionData( const css::uno::Sequence< css::beans::NamedValue >& rEncryptionData ) override;
 
     /** Updates the decrypter on start of a new record or after seeking stream. */
-    void                Update( SvStream& rStrm, sal_uInt16 nRecSize );
+    void                Update( const SvStream& rStrm, sal_uInt16 nRecSize );
     /** Reads and decrypts nBytes bytes and stores data into the existing(!) buffer pData.
         @return  Count of bytes really read. */
     sal_uInt16          Read( SvStream& rStrm, void* pData, sal_uInt16 nBytes );
@@ -259,7 +261,7 @@ private:
     initially enables it. DisableDecryption() may be used to stop the usage of
     the decryption temporarily (sometimes record contents are never encrypted,
     i.e. all BOF records or the stream position in BOUNDSHEET). Decryption will
-    be reenabled automatically, if a new record is started with the function
+    be re-enabled automatically, if a new record is started with the function
     StartNextRecord().
 
     It is possible to store several stream positions inside a record (including
@@ -361,17 +363,17 @@ public:
 
     sal_uInt16          PeekRecId( std::size_t nPos );
 
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_uInt8           ReaduInt8();
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_Int16           ReadInt16();
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_uInt16          ReaduInt16();
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_Int32           ReadInt32();
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_uInt32          ReaduInt32();
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     double              ReadDouble();
 
     /** Reads nBytes bytes to the existing(!) buffer pData.
@@ -464,6 +466,10 @@ public:
     /** Restores stream position contained in rPos. */
     void                RestorePosition( const XclImpStreamPos& rPos );
 
+    /** Set an SVSTREAM_..._ERROR. */
+    void                SetSvStreamError( const ErrCode& rErrCode )
+                            { mrStrm.SetError( rErrCode ); }
+
 private:
     /** Seeks to next raw record header and reads record ID and size.
         @descr  This is a "raw" function, means that stream members are
@@ -509,15 +515,14 @@ private:
     sal_uInt16          ReadRawData( void* pData, sal_uInt16 nBytes );
 
 private:
-    typedef ::std::vector< XclImpStreamPos > XclImpStreamPosStack;
-
     SvStream&           mrStrm;         /// Reference to the system input stream.
     const XclImpRoot&   mrRoot;         /// Filter root data.
 
     XclImpDecrypterRef  mxDecrypter;    /// Provides methods to decrypt data.
 
     XclImpStreamPos     maFirstRec;     /// Start position of current record.
-    XclImpStreamPosStack maPosStack;    /// Stack for record positions.
+    std::vector< XclImpStreamPos >
+                        maPosStack;    /// Stack for record positions.
 
     XclImpStreamPos     maGlobPos;      /// User defined position elsewhere in stream.
     sal_uInt16          mnGlobRecId;    /// Record ID for user defined position.

@@ -26,7 +26,7 @@
 #define GRFCROP_VERSION_SWDEFAULT       0
 #define GRFCROP_VERSION_MOVETOSVX       1
 
-class SVX_DLLPUBLIC SvxGrfCrop : public SfxPoolItem
+class SVXCORE_DLLPUBLIC SvxGrfCrop : public SfxPoolItem
 {
     sal_Int32   nLeft, nRight, nTop, nBottom;
 public:
@@ -36,15 +36,18 @@ public:
                 sal_uInt16  );
     virtual ~SvxGrfCrop() override;
 
+    SvxGrfCrop(SvxGrfCrop const &) = default;
+    SvxGrfCrop(SvxGrfCrop &&) = default;
+    SvxGrfCrop & operator =(SvxGrfCrop const &) = delete; // due to SfxPoolItem
+    SvxGrfCrop & operator =(SvxGrfCrop &&) = delete; // due to SfxPoolItem
+
     // "pure virtual methods" from SfxPoolItem
     virtual bool                operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*        Create(SvStream &, sal_uInt16 nVer) const override;
-    virtual SvStream&           Store(SvStream &, sal_uInt16 nIVer) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
     virtual bool QueryValue( css::uno::Any& rVal,
                              sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal,
@@ -59,13 +62,6 @@ public:
     sal_Int32 GetRight() const          { return nRight; }
     sal_Int32 GetTop() const            { return nTop; }
     sal_Int32 GetBottom() const         { return nBottom; }
-
-    SvxGrfCrop& operator=( const SvxGrfCrop& rCrop )
-        {
-            nLeft = rCrop.GetLeft();        nTop = rCrop.GetTop();
-            nRight = rCrop.GetRight();      nBottom = rCrop.GetBottom();
-            return *this;
-        }
 };
 
 #endif  // INCLUDED_SVX_GRFCROP_HXX

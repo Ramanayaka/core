@@ -19,15 +19,14 @@
 
 #include <svx/sdr/animation/scheduler.hxx>
 
+#include <algorithm>
 #include <vector>
 
 
 // event class
 
-namespace sdr
+namespace sdr::animation
 {
-    namespace animation
-    {
         Event::Event() : mnTime(0)
         {
         }
@@ -45,17 +44,12 @@ namespace sdr
             }
         }
 
-        bool CompareEvent::operator()(Event* const& lhs, Event* const& rhs) const
-        {
-            return lhs->GetTime() < rhs->GetTime();
-        }
-
-
         Scheduler::Scheduler()
-        :   mnTime(0L),
-            mnDeltaTime(0L),
+        :   mnTime(0),
+            mnDeltaTime(0),
             mbIsPaused(false)
         {
+            SetPriority(TaskPriority::POST_PAINT);
         }
 
         Scheduler::~Scheduler()
@@ -78,38 +72,36 @@ namespace sdr
 
         void Scheduler::triggerEvents()
         {
-            if (maList.empty())
+            if (mvEvents.empty())
                 return;
 
             // copy events which need to be executed to a vector. Remove them from
             // the scheduler
             ::std::vector< Event* > aToBeExecutedList;
 
-            while(!maList.empty() && maList[0]->GetTime() <= mnTime)
+            while(!mvEvents.empty() && mvEvents.front()->GetTime() <= mnTime)
             {
-                Event* pNextEvent = maList.front();
-                maList.erase(maList.begin());
+                Event* pNextEvent = mvEvents.front();
+                mvEvents.erase(mvEvents.begin());
                 aToBeExecutedList.push_back(pNextEvent);
             }
 
             // execute events from the vector
-            ::std::vector< Event* >::const_iterator aEnd = aToBeExecutedList.end();
-            for(::std::vector< Event* >::iterator aCandidate = aToBeExecutedList.begin();
-                aCandidate != aEnd; ++aCandidate)
+            for(auto& rpCandidate : aToBeExecutedList)
             {
                 // trigger event. This may re-insert the event to the scheduler again
-                (*aCandidate)->Trigger(mnTime);
+                rpCandidate->Trigger(mnTime);
             }
         }
 
         void Scheduler::checkTimeout()
         {
             // re-start or stop timer according to event list
-            if(!IsPaused() && !maList.empty())
+            if(!IsPaused() && !mvEvents.empty())
             {
-                mnDeltaTime = maList.front()->GetTime() - mnTime;
+                mnDeltaTime = mvEvents.front()->GetTime() - mnTime;
 
-                if(0L != mnDeltaTime)
+                if(0 != mnDeltaTime)
                 {
                     SetTimeout(mnDeltaTime);
                     Start();
@@ -129,11 +121,11 @@ namespace sdr
             Stop();
             mnTime = nTime;
 
-            if (maList.empty())
+            if (mvEvents.empty())
                 return;
 
             // reset event time points
-            for (auto & rEvent : maList)
+            for (auto & rEvent : mvEvents)
             {
                 rEvent->SetTime(nTime);
             }
@@ -142,25 +134,26 @@ namespace sdr
             {
                 // without delta time, init events by triggering them. This will invalidate
                 // painted objects and add them to the scheduler again
-                mnDeltaTime = 0L;
+                mnDeltaTime = 0;
                 triggerEvents();
                 checkTimeout();
              }
         }
 
-        void Scheduler::InsertEvent(Event* pNew)
+        void Scheduler::InsertEvent(Event& rNew)
         {
-            maList.insert(pNew);
+            // insert maintaining time ordering
+            auto it = std::find_if(mvEvents.begin(), mvEvents.end(),
+                [&rNew](const Event* pEvent) { return rNew.GetTime() < pEvent->GetTime(); });
+            mvEvents.insert(it, &rNew);
             checkTimeout();
         }
 
         void Scheduler::RemoveEvent(Event* pOld)
         {
-            if(!maList.empty())
+            if(!mvEvents.empty())
             {
-                auto it = maList.find(pOld);
-                if (it != maList.end())
-                    maList.erase(it);
+                mvEvents.erase(std::remove(mvEvents.begin(), mvEvents.end(), pOld), mvEvents.end());
                 checkTimeout();
             }
         }
@@ -173,7 +166,7 @@ namespace sdr
                 checkTimeout();
             }
         }
-    } // end of namespace animation
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

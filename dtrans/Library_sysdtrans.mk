@@ -23,11 +23,6 @@ $(eval $(call gb_Library_set_componentfile,sysdtrans,dtrans/util/sysdtrans))
 
 $(eval $(call gb_Library_use_sdk_api,sysdtrans))
 
-$(eval $(call gb_Library_add_defs,sysdtrans,\
-	-D_UNICODE \
-	-DUNICODE \
-))
-
 $(eval $(call gb_Library_use_libraries,sysdtrans,\
 	comphelper \
 	cppu \
@@ -51,7 +46,6 @@ $(eval $(call gb_Library_use_static_libraries,sysdtrans,\
 $(eval $(call gb_Library_add_exception_objects,sysdtrans,\
 	dtrans/source/win32/clipb/WinClipbImpl \
 	dtrans/source/win32/clipb/WinClipboard \
-	dtrans/source/win32/clipb/wcbentry \
 	dtrans/source/win32/clipb/MtaOleClipb \
 ))
 

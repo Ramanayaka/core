@@ -17,12 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/log.hxx>
+#include <tools/stream.hxx>
 #include "decode.hxx"
 #include "gifread.hxx"
 #include <memory>
-#include <o3tl/make_unique.hxx>
+#include <bitmapwriteaccess.hxx>
+#include <graphic/GraphicReader.hxx>
 
 #define NO_PENDING( rStm ) ( ( rStm ).GetError() != ERRCODE_IO_PENDING )
+
+namespace {
 
 enum GIFAction
 {
@@ -43,13 +48,19 @@ enum ReadState
     GIFREAD_NEED_MORE
 };
 
+}
+
 class GIFLZWDecompressor;
 
 class SvStream;
 
+namespace {
+
 class GIFReader : public GraphicReader
 {
     Animation           aAnimation;
+    sal_uInt64          nAnimationByteSize;
+    sal_uInt64          nAnimationMinFileData;
     Bitmap              aBmp8;
     Bitmap              aBmp1;
     BitmapPalette       aGPalette;
@@ -57,8 +68,8 @@ class GIFReader : public GraphicReader
     SvStream&           rIStm;
     std::vector<sal_uInt8> aSrcBuf;
     std::unique_ptr<GIFLZWDecompressor> pDecomp;
-    Bitmap::ScopedWriteAccess pAcc8;
-    Bitmap::ScopedWriteAccess pAcc1;
+    BitmapScopedWriteAccess pAcc8;
+    BitmapScopedWriteAccess pAcc1;
     long                nYAcc;
     long                nLastPos;
     sal_uInt64          nMaxStreamData;
@@ -84,7 +95,7 @@ class GIFReader : public GraphicReader
     bool                bImGraphicReady;
     bool                bGlobalPalette;
     sal_uInt8           nBackgroundColor;       // backgroundcolour
-    sal_uInt8           nGCTransparentIndex;    // pixels of this index are transparant
+    sal_uInt8           nGCTransparentIndex;    // pixels of this index are transparent
     sal_uInt8           nGCDisposalMethod;      // 'Disposal Method' (see GIF docs)
     sal_uInt8           cTransIndex1;
     sal_uInt8           cNonTransIndex1;
@@ -103,20 +114,25 @@ class GIFReader : public GraphicReader
 public:
 
     ReadState           ReadGIF( Graphic& rGraphic );
+    bool                ReadIsAnimated();
     Graphic             GetIntermediateGraphic();
 
     explicit            GIFReader( SvStream& rStm );
 };
 
+}
+
 GIFReader::GIFReader( SvStream& rStm )
-    : aGPalette ( 256 )
+    : nAnimationByteSize(0)
+    , nAnimationMinFileData(0)
+    , aGPalette ( 256 )
     , aLPalette ( 256 )
     , rIStm ( rStm )
     , nYAcc ( 0 )
     , nLastPos ( rStm.Tell() )
     , nMaxStreamData( rStm.remainingSize() )
-    , nLogWidth100 ( 0UL )
-    , nLogHeight100 ( 0UL )
+    , nLogWidth100 ( 0 )
+    , nLogHeight100 ( 0 )
     , nGlobalWidth ( 0 )
     , nGlobalHeight ( 0 )
     , nImageWidth ( 0 )
@@ -152,70 +168,85 @@ void GIFReader::ClearImageExtensions()
     nTimer = 0;
 }
 
-void GIFReader::CreateBitmaps( long nWidth, long nHeight, BitmapPalette* pPal,
-                               bool bWatchForBackgroundColor )
+void GIFReader::CreateBitmaps(long nWidth, long nHeight, BitmapPalette* pPal,
+                              bool bWatchForBackgroundColor)
 {
-    const Size aSize( nWidth, nHeight );
+    const Size aSize(nWidth, nHeight);
 
-#if SAL_TYPES_SIZEOFPOINTER == 8
-    // Don't bother allocating a bitmap of a size that would fail on a
-    // 32-bit system. We have at least one unit tests that is expected
-    // to fail (loading a 65535*65535 size GIF
-    // svtools/qa/cppunit/data/gif/fail/CVE-2008-5937-1.gif), but
-    // which doesn't fail on 64-bit Mac OS X at least. Why the loading
-    // fails on 64-bit Linux, no idea.
-    if (nWidth >= 64000 && nHeight >= 64000)
-    {
-        bStatus = false;
-        return;
-    }
-#endif
+    sal_uInt64 nCombinedPixSize = nWidth * nHeight;
+    if (bGCTransparent)
+        nCombinedPixSize += (nCombinedPixSize/8);
 
     // "Overall data compression asymptotically approaches 3839 × 8 / 12 = 2559 1/3"
     // so assume compression of 1:2560 is possible
     // (http://cloudinary.com/blog/a_one_color_image_is_worth_two_thousand_words suggests
     // 1:1472.88 [184.11 x 8] is more realistic)
-    const sal_uInt64 nMinFileData = nWidth * nHeight / 2560;
+
+    sal_uInt64 nMinFileData = nWidth * nHeight / 2560;
+
+    nMinFileData += nAnimationMinFileData;
+    nCombinedPixSize += nAnimationByteSize;
+
     if (nMaxStreamData < nMinFileData)
     {
         //there is nowhere near enough data in this stream to fill the claimed dimensions
-        SAL_WARN("vcl.filter", "gif claims dimensions " << nWidth << " x " << nHeight <<
-                               " but filesize of " << nMaxStreamData << " is surely insufficiently large to fill it");
+        SAL_WARN("vcl.filter", "in gif frame index " << aAnimation.Count() << " gif claims dimensions " << nWidth << " x " << nHeight <<
+                               " but filesize of " << nMaxStreamData << " is surely insufficiently large to fill all frame images");
         bStatus = false;
         return;
     }
 
-    if( bGCTransparent )
+    // Don't bother allocating a bitmap of a size that would fail on a
+    // 32-bit system. We have at least one unit tests that is expected
+    // to fail (loading a 65535*65535 size GIF
+    // svtools/qa/cppunit/data/gif/fail/CVE-2008-5937-1.gif), but
+    // which doesn't fail on 64-bit macOS at least. Why the loading
+    // fails on 64-bit Linux, no idea.
+    if (nCombinedPixSize >= SAL_MAX_INT32/3*2)
     {
-        const Color aWhite( COL_WHITE );
+        bStatus = false;
+        return;
+    }
 
-        aBmp1 = Bitmap( aSize, 1 );
+    if (!aSize.Width() || !aSize.Height())
+    {
+        bStatus = false;
+        return;
+    }
 
-        if( !aAnimation.Count() )
-            aBmp1.Erase( aWhite );
+    if (bGCTransparent)
+    {
+        const Color aWhite(COL_WHITE);
 
-        pAcc1 = Bitmap::ScopedWriteAccess(aBmp1);
+        aBmp1 = Bitmap(aSize, 1);
 
-        if( pAcc1 )
+        if (!aAnimation.Count())
+            aBmp1.Erase(aWhite);
+
+        pAcc1 = BitmapScopedWriteAccess(aBmp1);
+
+        if (pAcc1)
         {
-            cTransIndex1 = (sal_uInt8) pAcc1->GetBestPaletteIndex( aWhite );
+            cTransIndex1 = static_cast<sal_uInt8>(pAcc1->GetBestPaletteIndex(aWhite));
             cNonTransIndex1 = cTransIndex1 ? 0 : 1;
         }
         else
+        {
             bStatus = false;
+        }
     }
 
-    if( bStatus )
+    if (bStatus)
     {
-        aBmp8 = Bitmap( aSize, 8, pPal );
+        aBmp8 = Bitmap(aSize, 8, pPal);
 
-        if( !!aBmp8 && bWatchForBackgroundColor && aAnimation.Count() )
-            aBmp8.Erase( (*pPal)[ nBackgroundColor ] );
+        if (!!aBmp8 && bWatchForBackgroundColor && aAnimation.Count())
+            aBmp8.Erase((*pPal)[nBackgroundColor]);
         else
-          aBmp8.Erase( Color( COL_WHITE ) );
+            aBmp8.Erase(COL_WHITE);
 
-        pAcc8 = Bitmap::ScopedWriteAccess(aBmp8);
-        bStatus = ( pAcc8 != nullptr );
+        pAcc8 = BitmapScopedWriteAccess(aBmp8);
+        bStatus = bool(pAcc8);
     }
 }
 
@@ -264,34 +295,34 @@ bool GIFReader::ReadGlobalHeader()
 
 void GIFReader::ReadPaletteEntries( BitmapPalette* pPal, sal_uLong nCount )
 {
-    sal_uLong nLen = 3UL * nCount;
+    sal_uLong nLen = 3 * nCount;
     const sal_uInt64 nMaxPossible = rIStm.remainingSize();
     if (nLen > nMaxPossible)
         nLen = nMaxPossible;
     std::unique_ptr<sal_uInt8[]> pBuf(new sal_uInt8[ nLen ]);
     std::size_t nRead = rIStm.ReadBytes(pBuf.get(), nLen);
     nCount = nRead/3UL;
-    if( NO_PENDING( rIStm ) )
+    if( !(NO_PENDING( rIStm )) )
+        return;
+
+    sal_uInt8* pTmp = pBuf.get();
+
+    for (sal_uLong i = 0; i < nCount; ++i)
     {
-        sal_uInt8* pTmp = pBuf.get();
+        BitmapColor& rColor = (*pPal)[i];
 
-        for (sal_uLong i = 0UL; i < nCount; ++i)
-        {
-            BitmapColor& rColor = (*pPal)[i];
+        rColor.SetRed( *pTmp++ );
+        rColor.SetGreen( *pTmp++ );
+        rColor.SetBlue( *pTmp++ );
+    }
 
-            rColor.SetRed( *pTmp++ );
-            rColor.SetGreen( *pTmp++ );
-            rColor.SetBlue( *pTmp++ );
-        }
+    // if possible accommodate some standard colours
+    if( nCount < 256 )
+    {
+        (*pPal)[ 255UL ] = COL_WHITE;
 
-        // if possible accommodate some standard colours
-        if( nCount < 256UL )
-        {
-            (*pPal)[ 255UL ] = Color( COL_WHITE );
-
-            if( nCount < 255UL )
-                (*pPal)[ 254UL ] = Color( COL_BLACK );
-        }
+        if( nCount < 255 )
+            (*pPal)[ 254UL ] = COL_BLACK;
     }
 }
 
@@ -357,7 +388,7 @@ bool GIFReader::ReadExtension()
                                 rIStm.ReadUChar( cByte );
                                 nLoops = cByte;
                                 rIStm.ReadUChar( cByte );
-                                nLoops |= ( (sal_uInt16) cByte << 8 );
+                                nLoops |= ( static_cast<sal_uInt16>(cByte) << 8 );
                                 rIStm.ReadUChar( cByte );
 
                                 bStatus = ( cByte == 0 );
@@ -406,9 +437,9 @@ bool GIFReader::ReadExtension()
         if ( bOverreadDataBlocks )
         {
             bRet = true;
-            while( cSize && bStatus && !rIStm.IsEof() )
+            while( cSize && bStatus && !rIStm.eof() )
             {
-                sal_uInt16 nCount = (sal_uInt16) cSize + 1;
+                sal_uInt16 nCount = static_cast<sal_uInt16>(cSize) + 1;
                 const sal_uInt64 nMaxPossible = rIStm.remainingSize();
                 if (nCount > nMaxPossible)
                     nCount = nMaxPossible;
@@ -478,18 +509,18 @@ bool GIFReader::ReadLocalHeader()
 
 sal_uLong GIFReader::ReadNextBlock()
 {
-    sal_uLong   nRet = 0UL;
+    sal_uLong   nRet = 0;
     sal_uLong   nRead;
     sal_uInt8   cBlockSize;
 
     rIStm.ReadUChar( cBlockSize );
 
-    if ( rIStm.IsEof() )
-        nRet = 4UL;
+    if ( rIStm.eof() )
+        nRet = 4;
     else if ( NO_PENDING( rIStm ) )
     {
         if ( cBlockSize == 0 )
-            nRet = 2UL;
+            nRet = 2;
         else
         {
             rIStm.ReadBytes( aSrcBuf.data(), cBlockSize );
@@ -497,7 +528,7 @@ sal_uLong GIFReader::ReadNextBlock()
             if( NO_PENDING( rIStm ) )
             {
                 if( bOverreadBlock )
-                    nRet = 3UL;
+                    nRet = 3;
                 else
                 {
                     bool       bEOI;
@@ -508,7 +539,7 @@ sal_uLong GIFReader::ReadNextBlock()
                     if( nRead && !bOverreadBlock )
                         FillImages( pTarget, nRead );
 
-                    rtl_freeMemory( pTarget );
+                    std::free( pTarget );
                 }
             }
         }
@@ -519,7 +550,7 @@ sal_uLong GIFReader::ReadNextBlock()
 
 void GIFReader::FillImages( const sal_uInt8* pBytes, sal_uLong nCount )
 {
-    for( sal_uLong i = 0UL; i < nCount; i++ )
+    for( sal_uLong i = 0; i < nCount; i++ )
     {
         if( nImageX >= nImageWidth )
         {
@@ -530,17 +561,17 @@ void GIFReader::FillImages( const sal_uInt8* pBytes, sal_uLong nCount )
                 // lines will be copied if interlaced
                 if( nLastInterCount )
                 {
-                    long nMinY = std::min( (long) nLastImageY + 1, (long) nImageHeight - 1 );
-                    long nMaxY = std::min( (long) nLastImageY + nLastInterCount, (long) nImageHeight - 1 );
+                    long nMinY = std::min( static_cast<long>(nLastImageY) + 1, static_cast<long>(nImageHeight) - 1 );
+                    long nMaxY = std::min( static_cast<long>(nLastImageY) + nLastInterCount, static_cast<long>(nImageHeight) - 1 );
 
                     // copy last line read, if lines do not coincide
                     // ( happens at the end of the image )
                     if( ( nMinY > nLastImageY ) && ( nLastImageY < ( nImageHeight - 1 ) ) )
                     {
                         sal_uInt8*  pScanline8 = pAcc8->GetScanline( nYAcc );
-                        sal_uLong   nSize8 = pAcc8->GetScanlineSize();
+                        sal_uInt32  nSize8 = pAcc8->GetScanlineSize();
                         sal_uInt8*  pScanline1 = nullptr;
-                        sal_uLong   nSize1 = 0;
+                        sal_uInt32  nSize1 = 0;
 
                         if( bGCTransparent )
                         {
@@ -582,7 +613,7 @@ void GIFReader::FillImages( const sal_uInt8* pBytes, sal_uLong nCount )
                     }
                 }
 
-                nLastImageY = (sal_uInt16) nT1;
+                nLastImageY = static_cast<sal_uInt16>(nT1);
                 nYAcc = nT1;
             }
             else
@@ -622,36 +653,38 @@ void GIFReader::FillImages( const sal_uInt8* pBytes, sal_uLong nCount )
 
 void GIFReader::CreateNewBitmaps()
 {
-    AnimationBitmap aAnimBmp;
+    AnimationBitmap aAnimationBitmap;
 
     pAcc8.reset();
 
     if( bGCTransparent )
     {
         pAcc1.reset();
-        aAnimBmp.aBmpEx = BitmapEx( aBmp8, aBmp1 );
+        aAnimationBitmap.maBitmapEx = BitmapEx( aBmp8, aBmp1 );
     }
     else
-        aAnimBmp.aBmpEx = BitmapEx( aBmp8 );
+        aAnimationBitmap.maBitmapEx = BitmapEx( aBmp8 );
 
-    aAnimBmp.aPosPix = Point( nImagePosX, nImagePosY );
-    aAnimBmp.aSizePix = Size( nImageWidth, nImageHeight );
-    aAnimBmp.nWait = ( nTimer != 65535 ) ? nTimer : ANIMATION_TIMEOUT_ON_CLICK;
-    aAnimBmp.bUserInput = false;
+    aAnimationBitmap.maPositionPixel = Point( nImagePosX, nImagePosY );
+    aAnimationBitmap.maSizePixel = Size( nImageWidth, nImageHeight );
+    aAnimationBitmap.mnWait = ( nTimer != 65535 ) ? nTimer : ANIMATION_TIMEOUT_ON_CLICK;
+    aAnimationBitmap.mbUserInput = false;
 
     // tdf#104121 . Internet Explorer, Firefox, Chrome and Safari all set a minimum default playback speed.
     // IE10 Consumer Preview sets default of 100ms for rates less that 20ms. We do the same
-    if (aAnimBmp.nWait < 2) // 20ms, specified in 100's of a second
-        aAnimBmp.nWait = 10;
+    if (aAnimationBitmap.mnWait < 2) // 20ms, specified in 100's of a second
+        aAnimationBitmap.mnWait = 10;
 
     if( nGCDisposalMethod == 2 )
-        aAnimBmp.eDisposal = Disposal::Back;
+        aAnimationBitmap.meDisposal = Disposal::Back;
     else if( nGCDisposalMethod == 3 )
-        aAnimBmp.eDisposal = Disposal::Previous;
+        aAnimationBitmap.meDisposal = Disposal::Previous;
     else
-        aAnimBmp.eDisposal = Disposal::Not;
+        aAnimationBitmap.meDisposal = Disposal::Not;
 
-    aAnimation.Insert( aAnimBmp );
+    nAnimationByteSize += aAnimationBitmap.maBitmapEx.GetSizeBytes();
+    nAnimationMinFileData += static_cast<sal_uInt64>(nImageWidth) * nImageHeight / 2560;
+    aAnimation.Insert(aAnimationBitmap);
 
     if( aAnimation.Count() == 1 )
     {
@@ -668,8 +701,6 @@ Graphic GIFReader::GetIntermediateGraphic()
     // but graphic still not completely read
     if ( bImGraphicReady && !aAnimation.Count() )
     {
-        Bitmap  aBmp;
-
         pAcc8.reset();
 
         if ( bGCTransparent )
@@ -677,14 +708,14 @@ Graphic GIFReader::GetIntermediateGraphic()
             pAcc1.reset();
             aImGraphic = BitmapEx( aBmp8, aBmp1 );
 
-            pAcc1 = Bitmap::ScopedWriteAccess(aBmp1);
-            bStatus = bStatus && ( pAcc1 != nullptr );
+            pAcc1 = BitmapScopedWriteAccess(aBmp1);
+            bStatus = bStatus && pAcc1;
         }
         else
             aImGraphic = aBmp8;
 
-        pAcc8 = Bitmap::ScopedWriteAccess(aBmp8);
-        bStatus = bStatus && ( pAcc8 != nullptr );
+        pAcc8 = BitmapScopedWriteAccess(aBmp8);
+        bStatus = bStatus && pAcc8;
     }
 
     return aImGraphic;
@@ -710,7 +741,7 @@ bool GIFReader::ProcessGIF()
 
             rIStm.ReadUChar( cByte );
 
-            if( rIStm.IsEof() )
+            if( rIStm.eof() )
                 eActAction = END_READING;
             else if( NO_PENDING( rIStm ) )
             {
@@ -768,14 +799,14 @@ bool GIFReader::ProcessGIF()
 
             rIStm.ReadUChar( cDataSize );
 
-            if( rIStm.IsEof() )
+            if( rIStm.eof() )
                 eActAction = ABORT_READING;
             else if( cDataSize > 12 )
                 bStatus = false;
             else if( NO_PENDING( rIStm ) )
             {
                 bRead = true;
-                pDecomp = o3tl::make_unique<GIFLZWDecompressor>( cDataSize );
+                pDecomp = std::make_unique<GIFLZWDecompressor>( cDataSize );
                 eActAction = NEXT_BLOCK_READING;
                 bOverreadBlock = false;
             }
@@ -796,7 +827,7 @@ bool GIFReader::ProcessGIF()
             {
                 bRead = true;
 
-                if ( nRet == 1UL )
+                if ( nRet == 1 )
                 {
                     bImGraphicReady = true;
                     eActAction = NEXT_BLOCK_READING;
@@ -804,14 +835,14 @@ bool GIFReader::ProcessGIF()
                 }
                 else
                 {
-                    if( nRet == 2UL )
+                    if( nRet == 2 )
                     {
                         pDecomp.reset();
                         CreateNewBitmaps();
                         eActAction = MARKER_READING;
                         ClearImageExtensions();
                     }
-                    else if( nRet == 3UL )
+                    else if( nRet == 3 )
                     {
                         eActAction = NEXT_BLOCK_READING;
                         bOverreadBlock = true;
@@ -846,12 +877,37 @@ bool GIFReader::ProcessGIF()
     }
 
     // set stream to right position,
-    // if data could be read put it a the old
+    // if data could be read put it at the old
     // position otherwise at the actual one
     if( bRead || bEnd )
         nLastPos = rIStm.Tell();
 
     return bRead;
+}
+
+bool GIFReader::ReadIsAnimated()
+{
+    ReadState eReadState;
+
+    bStatus = true;
+
+    while( ProcessGIF() && ( eActAction != END_READING ) ) {}
+
+    if( !bStatus )
+        eReadState = GIFREAD_ERROR;
+    else if( eActAction == END_READING )
+        eReadState = GIFREAD_OK;
+    else
+    {
+        if ( rIStm.GetError() == ERRCODE_IO_PENDING )
+            rIStm.ResetError();
+
+        eReadState = GIFREAD_NEED_MORE;
+    }
+
+    if (eReadState == GIFREAD_OK)
+        return aAnimation.Count() > 1;
+    return false;
 }
 
 ReadState GIFReader::ReadGIF( Graphic& rGraphic )
@@ -876,12 +932,12 @@ ReadState GIFReader::ReadGIF( Graphic& rGraphic )
 
     if( aAnimation.Count() == 1 )
     {
-        rGraphic = aAnimation.Get( 0 ).aBmpEx;
+        rGraphic = aAnimation.Get(0).maBitmapEx;
 
         if( nLogWidth100 && nLogHeight100 )
         {
             rGraphic.SetPrefSize( Size( nLogWidth100, nLogHeight100 ) );
-            rGraphic.SetPrefMapMode( MapUnit::Map100thMM );
+            rGraphic.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
         }
     }
     else
@@ -890,10 +946,22 @@ ReadState GIFReader::ReadGIF( Graphic& rGraphic )
     return eReadState;
 }
 
+bool IsGIFAnimated(SvStream & rStm)
+{
+    GIFReader aReader(rStm);
+
+    SvStreamEndian nOldFormat = rStm.GetEndian();
+    rStm.SetEndian(SvStreamEndian::LITTLE);
+    bool bResult = aReader.ReadIsAnimated();
+    rStm.SetEndian(nOldFormat);
+
+    return bResult;
+}
+
 VCL_DLLPUBLIC bool ImportGIF( SvStream & rStm, Graphic& rGraphic )
 {
-    std::shared_ptr<GraphicReader> pContext = rGraphic.GetContext();
-    rGraphic.SetContext(nullptr);
+    std::shared_ptr<GraphicReader> pContext = rGraphic.GetReaderContext();
+    rGraphic.SetReaderContext(nullptr);
     GIFReader* pGIFReader = dynamic_cast<GIFReader*>( pContext.get() );
     if (!pGIFReader)
     {
@@ -915,7 +983,7 @@ VCL_DLLPUBLIC bool ImportGIF( SvStream & rStm, Graphic& rGraphic )
     else if (eReadState == GIFREAD_NEED_MORE)
     {
         rGraphic = pGIFReader->GetIntermediateGraphic();
-        rGraphic.SetContext(pContext);
+        rGraphic.SetReaderContext(pContext);
     }
 
     rStm.SetEndian(nOldFormat);

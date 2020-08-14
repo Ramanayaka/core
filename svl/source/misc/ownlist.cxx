@@ -17,7 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/beans/PropertyValues.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/beans/PropertyState.hpp>
 
 #include <svl/ownlist.hxx>
 
@@ -34,25 +36,24 @@ void SvCommandList::Append
  const OUString & rArg         /* The command's argument */
 )
 {
-    aCommandList.push_back( SvCommand( rCommand, rArg ) );
+    aCommandList.emplace_back( rCommand, rArg );
 }
 
 void SvCommandList::FillFromSequence( const css::uno::Sequence < css::beans::PropertyValue >& aCommandSequence )
 {
-    const sal_Int32 nCount = aCommandSequence.getLength();
     OUString aCommand, aArg;
     OUString aApiArg;
-    for( sal_Int32 nIndex=0; nIndex<nCount; nIndex++ )
+    for( const auto& rCommand : aCommandSequence )
     {
-        aCommand = aCommandSequence[nIndex].Name;
-        if( !( aCommandSequence[nIndex].Value >>= aApiArg ) )
+        aCommand = rCommand.Name;
+        if( !( rCommand.Value >>= aApiArg ) )
             return;
         aArg = aApiArg;
         Append( aCommand, aArg );
     }
 }
 
-void SvCommandList::FillSequence( css::uno::Sequence < css::beans::PropertyValue >& aCommandSequence )
+void SvCommandList::FillSequence( css::uno::Sequence < css::beans::PropertyValue >& aCommandSequence ) const
 {
     const sal_Int32 nCount = aCommandList.size();
     aCommandSequence.realloc( nCount );

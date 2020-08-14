@@ -35,18 +35,16 @@ ScVbaDialogs::Item( const uno::Any &aItem )
 OUString
 ScVbaDialogs::getServiceImplName()
 {
-    return OUString("ScVbaDialogs");
+    return "ScVbaDialogs";
 }
 
 uno::Sequence< OUString >
 ScVbaDialogs::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Dialogs";
-    }
+        "ooo.vba.excel.Dialogs"
+    };
     return aServiceNames;
 }
 

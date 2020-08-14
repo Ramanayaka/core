@@ -29,7 +29,10 @@ public:
     /// This one doesn't.
     OString makeStringAndClear();
     bool isGraphic() const;
+    OStringBuffer& getBuffer() { return m_aBuffer; }
+    const OStringBuffer& getBuffer() const { return m_aBuffer; }
 
+private:
     OStringBuffer m_aBuffer;
     const SwFlyFrameFormat* m_pFlyFrameFormat = nullptr;
     const SwGrfNode* m_pGrfNode = nullptr;
@@ -55,6 +58,7 @@ public:
     void append(const SwFlyFrameFormat* pFlyFrameFormat, const SwGrfNode* pGrfNode);
     /// Append all contained buffers and clear the argument.
     void appendAndClear(RtfStringBuffer& rBuf);
+
 private:
     using Values_t = std::vector<RtfStringBufferValue>;
     Values_t m_aValues;

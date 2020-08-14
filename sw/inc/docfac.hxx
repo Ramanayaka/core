@@ -19,10 +19,9 @@
 #ifndef INCLUDED_SW_INC_DOCFAC_HXX
 #define INCLUDED_SW_INC_DOCFAC_HXX
 
-#include <tools/solar.h>
 #include <rtl/ref.hxx>
-
-#include <doc.hxx>
+#include "swdllapi.h"
+#include "doc.hxx"
 
 class SW_DLLPUBLIC SwDocFac
 {
@@ -31,7 +30,7 @@ protected:
 
 public:
     SwDocFac( SwDoc *pDoc = nullptr );
-    ~SwDocFac();
+    ~SwDocFac() COVERITY_NOEXCEPT_FALSE;
 
     /// Document is created after calling Read(...).
     SwDoc*  GetDoc();

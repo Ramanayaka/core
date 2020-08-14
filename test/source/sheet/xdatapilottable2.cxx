@@ -9,7 +9,6 @@
 
 #include <test/sheet/xdatapilottable2.hxx>
 #include <com/sun/star/sheet/XDataPilotTable2.hpp>
-#include <com/sun/star/sheet/XDataPilotTable.hpp>
 #include <com/sun/star/sheet/DataPilotTableResultData.hpp>
 #include <com/sun/star/sheet/XDataPilotDescriptor.hpp>
 #include <com/sun/star/sheet/DataPilotFieldOrientation.hpp>
@@ -21,7 +20,8 @@
 #include <com/sun/star/sheet/XCellRangeData.hpp>
 #include <com/sun/star/sheet/DataResult.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include "cppunit/extensions/HelperMacros.h"
+#include <cppunit/TestAssert.h>
+#include <numeric>
 
 using namespace css;
 using namespace css::uno;
@@ -63,10 +63,9 @@ void XDataPilotTable2::testGetDrillDownData()
     buildDataFields(xDPTable);
     buildResultCells(xDPTable);
 
-    for (std::vector<table::CellAddress>::iterator itr = maResultCells.begin();
-             itr != maResultCells.end(); ++itr)
+    for (const auto& rResultCell : maResultCells)
     {
-        sheet::DataPilotTablePositionData aPosData = xDPTable->getPositionData(*itr);
+        sheet::DataPilotTablePositionData aPosData = xDPTable->getPositionData(rResultCell);
         Any aTempAny = aPosData.PositionData;
         sheet::DataPilotTableResultData aResData;
         CPPUNIT_ASSERT(aTempAny >>= aResData);
@@ -74,18 +73,18 @@ void XDataPilotTable2::testGetDrillDownData()
         sheet::DataResult aRes = aResData.Result;
         double nVal = aRes.Value;
 
-        Sequence< Sequence<Any> > aData = xDPTable->getDrillDownData(*itr);
+        Sequence< Sequence<Any> > aData = xDPTable->getDrillDownData(rResultCell);
         double sum = 0;
 
         if( aData.getLength() > 1 )
         {
-            for ( sal_Int32 row = 1; row < aData.getLength(); ++row)
-            {
-                Any aAny = aData[row][nDim];
-                double nValue = 0;
-                if (aAny >>= nValue)
-                    sum += nValue;
-            }
+            sum = std::accumulate(std::next(aData.begin()), aData.end(), double(0),
+                [nDim](double res, const Sequence<Any>& rSeq) {
+                    double nValue = 0;
+                    if (rSeq[nDim] >>= nValue)
+                        return res + nValue;
+                    return res;
+                });
         }
 
         CPPUNIT_ASSERT_DOUBLES_EQUAL(nVal, sum, 1E-12);
@@ -161,7 +160,6 @@ void XDataPilotTable2::testInsertDrillDownSheet()
         {
             CPPUNIT_ASSERT(aData.getLength() >= 2);
             uno::Reference< sheet::XSpreadsheet > xSheet(xIA->getByIndex(aAddr.Sheet),UNO_QUERY_THROW);
-            CPPUNIT_ASSERT(xSheet.is());
 
             checkDrillDownSheetContent(xSheet, aData);
 
@@ -217,7 +215,7 @@ void XDataPilotTable2::getOutputRanges( uno::Reference< sheet::XDataPilotTable2 
 void XDataPilotTable2::buildDataFields( uno::Reference< sheet::XDataPilotTable2 > const & xDPTable )
 {
     uno::Reference< sheet::XDataPilotDescriptor > xDesc(xDPTable, UNO_QUERY_THROW);
-    uno::Reference< container::XIndexAccess > xIndex(xDesc->getDataPilotFields(), UNO_QUERY_THROW);
+    uno::Reference< container::XIndexAccess > xIndex(xDesc->getDataPilotFields(), UNO_SET_THROW);
 
     sal_Int32 nFieldCount = xIndex->getCount();
     for( sal_Int32 i = 0; i < nFieldCount; ++i)
@@ -249,10 +247,10 @@ table::CellAddress getLastUsedCellAddress( uno::Reference< sheet::XSpreadsheet >
 
 }
 
-bool XDataPilotTable2::checkDrillDownSheetContent(uno::Reference< sheet::XSpreadsheet > const & xSheet, const uno::Sequence< uno::Sequence< Any > >& aData)
+void XDataPilotTable2::checkDrillDownSheetContent(uno::Reference< sheet::XSpreadsheet > const & xSheet, const uno::Sequence< uno::Sequence< Any > >& aData)
 {
     table::CellAddress aLastCell = getLastUsedCellAddress(xSheet, 0, 0);
-    CPPUNIT_ASSERT(aData.getLength() > 0);
+    CPPUNIT_ASSERT(aData.hasElements());
     CPPUNIT_ASSERT(aLastCell.Row);
     CPPUNIT_ASSERT(aLastCell.Column);
 
@@ -272,7 +270,6 @@ bool XDataPilotTable2::checkDrillDownSheetContent(uno::Reference< sheet::XSpread
             CPPUNIT_ASSERT_EQUAL(aCell2, aCell1);
         }
     }
-    return true;
 }
 
 }

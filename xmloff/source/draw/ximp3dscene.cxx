@@ -19,12 +19,14 @@
 
 #include <sax/tools/converter.hxx>
 #include <rtl/math.hxx>
+#include <sal/log.hxx>
 
 #include "ximp3dscene.hxx"
 #include <xmloff/xmluconv.hxx>
-#include "xexptran.hxx"
+#include <xexptran.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/drawing/Direction3D.hpp>
 #include <com/sun/star/drawing/CameraGeometry.hpp>
 #include "eventimp.hxx"
@@ -67,7 +69,7 @@ SdXML3DLightContext::SdXML3DLightContext(
             {
                 ::basegfx::B3DVector aVal;
                 SvXMLUnitConverter::convertB3DVector(aVal, sValue);
-                if (!rtl::math::isNan(aVal.getX()) && !rtl::math::isNan(aVal.getY()) && !rtl::math::isNan(aVal.getZ()))
+                if (!std::isnan(aVal.getX()) && !std::isnan(aVal.getY()) && !std::isnan(aVal.getZ()))
                 {
                     maDirection = aVal;
                 }
@@ -101,7 +103,7 @@ SdXML3DSceneShapeContext::SdXML3DSceneShapeContext(
     sal_uInt16 nPrfx,
     const OUString& rLocalName,
     const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
-    uno::Reference< drawing::XShapes >& rShapes,
+    uno::Reference< drawing::XShapes > const & rShapes,
     bool bTemporaryShapes)
 :   SdXMLShapeContext( rImport, nPrfx, rLocalName, xAttrList, rShapes, bTemporaryShapes ), SdXML3DSceneAttributesHelper( rImport )
 {
@@ -122,7 +124,7 @@ void SdXML3DSceneShapeContext::StartElement(const uno::Reference< xml::sax::XAtt
 
         mxChildren.set( mxShape, uno::UNO_QUERY );
         if( mxChildren.is() )
-            GetImport().GetShapeImport()->pushGroupForSorting( mxChildren );
+            GetImport().GetShapeImport()->pushGroupForPostProcessing( mxChildren );
 
         SetLayer();
 
@@ -151,60 +153,53 @@ void SdXML3DSceneShapeContext::StartElement(const uno::Reference< xml::sax::XAtt
 
 void SdXML3DSceneShapeContext::EndElement()
 {
-    if(mxShape.is())
+    if(!mxShape.is())
+        return;
+
+    uno::Reference< beans::XPropertySet > xPropSet(mxShape, uno::UNO_QUERY);
+    if(xPropSet.is())
     {
-        uno::Reference< beans::XPropertySet > xPropSet(mxShape, uno::UNO_QUERY);
-        if(xPropSet.is())
-        {
-            setSceneAttributes( xPropSet );
-        }
-
-        if( mxChildren.is() )
-            GetImport().GetShapeImport()->popGroupAndSort();
-
-        // call parent
-        SdXMLShapeContext::EndElement();
+        setSceneAttributes( xPropSet );
     }
+
+    if( mxChildren.is() )
+        GetImport().GetShapeImport()->popGroupAndPostProcess();
+
+    // call parent
+    SdXMLShapeContext::EndElement();
 }
 
-SvXMLImportContext* SdXML3DSceneShapeContext::CreateChildContext( sal_uInt16 nPrefix,
+SvXMLImportContextRef SdXML3DSceneShapeContext::CreateChildContext( sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList>& xAttrList )
 {
-    SvXMLImportContext* pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     // #i68101#
     if( nPrefix == XML_NAMESPACE_SVG &&
         (IsXMLToken( rLocalName, XML_TITLE ) || IsXMLToken( rLocalName, XML_DESC ) ) )
     {
-        pContext = new SdXMLDescriptionContext( GetImport(), nPrefix, rLocalName, xAttrList, mxShape );
+        xContext = new SdXMLDescriptionContext( GetImport(), nPrefix, rLocalName, xAttrList, mxShape );
     }
     else if( nPrefix == XML_NAMESPACE_OFFICE && IsXMLToken( rLocalName, XML_EVENT_LISTENERS ) )
     {
-        pContext = new SdXMLEventsContext( GetImport(), nPrefix, rLocalName, xAttrList, mxShape );
+        xContext = new SdXMLEventsContext( GetImport(), nPrefix, rLocalName, xAttrList, mxShape );
     }
     // look for local light context first
     else if(nPrefix == XML_NAMESPACE_DR3D && IsXMLToken( rLocalName, XML_LIGHT ) )
     {
         // dr3d:light inside dr3d:scene context
-        pContext = create3DLightContext( nPrefix, rLocalName, xAttrList );
+        xContext = create3DLightContext( nPrefix, rLocalName, xAttrList );
     }
 
     // call GroupChildContext function at common ShapeImport
-    if(!pContext)
+    if (!xContext)
     {
-        pContext = GetImport().GetShapeImport()->Create3DSceneChildContext(
+        xContext = GetImport().GetShapeImport()->Create3DSceneChildContext(
             GetImport(), nPrefix, rLocalName, xAttrList, mxChildren);
-        }
-
-    // call parent when no own context was created
-    if(!pContext)
-    {
-        pContext = SvXMLImportContext::CreateChildContext(
-        nPrefix, rLocalName, xAttrList);
     }
 
-    return pContext;
+    return xContext;
 }
 
 SdXML3DSceneAttributesHelper::SdXML3DSceneAttributesHelper( SvXMLImport& rImporter )
@@ -240,98 +235,98 @@ SvXMLImportContext * SdXML3DSceneAttributesHelper::create3DLightContext( sal_uIn
 /** this should be called for each scene attribute */
 void SdXML3DSceneAttributesHelper::processSceneAttribute( sal_uInt16 nPrefix, const OUString& rLocalName, const OUString& rValue )
 {
-    if( XML_NAMESPACE_DR3D == nPrefix )
+    if( XML_NAMESPACE_DR3D != nPrefix )
+        return;
+
+    if( IsXMLToken( rLocalName, XML_TRANSFORM ) )
     {
-        if( IsXMLToken( rLocalName, XML_TRANSFORM ) )
-        {
-            SdXMLImExTransform3D aTransform(rValue, mrImport.GetMM100UnitConverter());
-            if(aTransform.NeedsAction())
-                mbSetTransform = aTransform.GetFullHomogenTransform(mxHomMat);
-            return;
-        }
-        else if( IsXMLToken( rLocalName, XML_VRP ) )
-        {
-            ::basegfx::B3DVector aNewVec;
-            SvXMLUnitConverter::convertB3DVector(aNewVec, rValue);
+        SdXMLImExTransform3D aTransform(rValue, mrImport.GetMM100UnitConverter());
+        if(aTransform.NeedsAction())
+            mbSetTransform = aTransform.GetFullHomogenTransform(mxHomMat);
+        return;
+    }
+    else if( IsXMLToken( rLocalName, XML_VRP ) )
+    {
+        ::basegfx::B3DVector aNewVec;
+        SvXMLUnitConverter::convertB3DVector(aNewVec, rValue);
 
-            if(aNewVec != maVRP)
-            {
-                maVRP = aNewVec;
-                mbVRPUsed = true;
-            }
-            return;
-        }
-        else if( IsXMLToken( rLocalName, XML_VPN ) )
+        if(aNewVec != maVRP)
         {
-            ::basegfx::B3DVector aNewVec;
-            SvXMLUnitConverter::convertB3DVector(aNewVec, rValue);
+            maVRP = aNewVec;
+            mbVRPUsed = true;
+        }
+        return;
+    }
+    else if( IsXMLToken( rLocalName, XML_VPN ) )
+    {
+        ::basegfx::B3DVector aNewVec;
+        SvXMLUnitConverter::convertB3DVector(aNewVec, rValue);
 
-            if(aNewVec != maVPN)
-            {
-                maVPN = aNewVec;
-                mbVPNUsed = true;
-            }
-            return;
-        }
-        else if( IsXMLToken( rLocalName, XML_VUP ) )
+        if(aNewVec != maVPN)
         {
-            ::basegfx::B3DVector aNewVec;
-            SvXMLUnitConverter::convertB3DVector(aNewVec, rValue);
+            maVPN = aNewVec;
+            mbVPNUsed = true;
+        }
+        return;
+    }
+    else if( IsXMLToken( rLocalName, XML_VUP ) )
+    {
+        ::basegfx::B3DVector aNewVec;
+        SvXMLUnitConverter::convertB3DVector(aNewVec, rValue);
 
-            if(aNewVec != maVUP)
-            {
-                maVUP = aNewVec;
-                mbVUPUsed = true;
-            }
-            return;
-        }
-        else if( IsXMLToken( rLocalName, XML_PROJECTION ) )
+        if(aNewVec != maVUP)
         {
-            if( IsXMLToken( rValue, XML_PARALLEL ) )
-                mxPrjMode = drawing::ProjectionMode_PARALLEL;
-            else
-                mxPrjMode = drawing::ProjectionMode_PERSPECTIVE;
-            return;
+            maVUP = aNewVec;
+            mbVUPUsed = true;
         }
-        else if( IsXMLToken( rLocalName, XML_DISTANCE ) )
-        {
-            mrImport.GetMM100UnitConverter().convertMeasureToCore(mnDistance,
-                    rValue);
-            return;
-        }
-        else if( IsXMLToken( rLocalName, XML_FOCAL_LENGTH ) )
-        {
-            mrImport.GetMM100UnitConverter().convertMeasureToCore(mnFocalLength,
-                    rValue);
-            return;
-        }
-        else if( IsXMLToken( rLocalName, XML_SHADOW_SLANT ) )
-        {
-            ::sax::Converter::convertNumber(mnShadowSlant, rValue);
-            return;
-        }
-        else if( IsXMLToken( rLocalName, XML_SHADE_MODE ) )
-        {
-            if( IsXMLToken( rValue, XML_FLAT ) )
-                mxShadeMode = drawing::ShadeMode_FLAT;
-            else if( IsXMLToken( rValue, XML_PHONG ) )
-                mxShadeMode = drawing::ShadeMode_PHONG;
-            else if( IsXMLToken( rValue, XML_GOURAUD ) )
-                mxShadeMode = drawing::ShadeMode_SMOOTH;
-            else
-                mxShadeMode = drawing::ShadeMode_DRAFT;
-            return;
-        }
-        else if( IsXMLToken( rLocalName, XML_AMBIENT_COLOR ) )
-        {
-            ::sax::Converter::convertColor(maAmbientColor, rValue);
-            return;
-        }
-        else if( IsXMLToken( rLocalName, XML_LIGHTING_MODE ) )
-        {
-            (void)::sax::Converter::convertBool(mbLightingMode, rValue);
-            return;
-        }
+        return;
+    }
+    else if( IsXMLToken( rLocalName, XML_PROJECTION ) )
+    {
+        if( IsXMLToken( rValue, XML_PARALLEL ) )
+            mxPrjMode = drawing::ProjectionMode_PARALLEL;
+        else
+            mxPrjMode = drawing::ProjectionMode_PERSPECTIVE;
+        return;
+    }
+    else if( IsXMLToken( rLocalName, XML_DISTANCE ) )
+    {
+        mrImport.GetMM100UnitConverter().convertMeasureToCore(mnDistance,
+                rValue);
+        return;
+    }
+    else if( IsXMLToken( rLocalName, XML_FOCAL_LENGTH ) )
+    {
+        mrImport.GetMM100UnitConverter().convertMeasureToCore(mnFocalLength,
+                rValue);
+        return;
+    }
+    else if( IsXMLToken( rLocalName, XML_SHADOW_SLANT ) )
+    {
+        ::sax::Converter::convertNumber(mnShadowSlant, rValue);
+        return;
+    }
+    else if( IsXMLToken( rLocalName, XML_SHADE_MODE ) )
+    {
+        if( IsXMLToken( rValue, XML_FLAT ) )
+            mxShadeMode = drawing::ShadeMode_FLAT;
+        else if( IsXMLToken( rValue, XML_PHONG ) )
+            mxShadeMode = drawing::ShadeMode_PHONG;
+        else if( IsXMLToken( rValue, XML_GOURAUD ) )
+            mxShadeMode = drawing::ShadeMode_SMOOTH;
+        else
+            mxShadeMode = drawing::ShadeMode_DRAFT;
+        return;
+    }
+    else if( IsXMLToken( rLocalName, XML_AMBIENT_COLOR ) )
+    {
+        ::sax::Converter::convertColor(maAmbientColor, rValue);
+        return;
+    }
+    else if( IsXMLToken( rLocalName, XML_LIGHTING_MODE ) )
+    {
+        (void)::sax::Converter::convertBool(mbLightingMode, rValue);
+        return;
     }
 }
 
@@ -351,7 +346,7 @@ void SdXML3DSceneAttributesHelper::setSceneAttributes( const css::uno::Reference
     // focalLength
     xPropSet->setPropertyValue("D3DSceneFocalLength", uno::Any(mnFocalLength));
     // shadowSlant
-    xPropSet->setPropertyValue("D3DSceneShadowSlant", uno::Any((sal_Int16)mnShadowSlant));
+    xPropSet->setPropertyValue("D3DSceneShadowSlant", uno::Any(static_cast<sal_Int16>(mnShadowSlant)));
     // shadeMode
     xPropSet->setPropertyValue("D3DSceneShadeMode", uno::Any(mxShadeMode));
     // ambientColor

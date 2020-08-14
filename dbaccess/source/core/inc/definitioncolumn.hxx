@@ -19,15 +19,16 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_INC_DEFINITIONCOLUMN_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_INC_DEFINITIONCOLUMN_HXX
 
-#include "apitools.hxx"
 #include "column.hxx"
 #include "columnsettings.hxx"
 
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
+#include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/container/XChild.hpp>
 
 #include <comphelper/IdPropArrayHelper.hxx>
+#include <comphelper/proparrhlp.hxx>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase1.hxx>
 

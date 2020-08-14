@@ -36,9 +36,10 @@
 
 #include <rtl/ustrbuf.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdbcx/Privilege.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 
 #include "pq_xusers.hxx"
 #include "pq_xuser.hxx"
@@ -52,7 +53,6 @@ using com::sun::star::beans::XPropertySet;
 using com::sun::star::uno::makeAny;
 using com::sun::star::uno::UNO_QUERY;
 using com::sun::star::uno::Reference;
-using com::sun::star::uno::RuntimeException;
 
 using com::sun::star::container::NoSuchElementException;
 
@@ -109,7 +109,9 @@ void Users::refresh()
     }
     catch ( css::sdbc::SQLException & e )
     {
-        throw RuntimeException( e.Message , e.Context );
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException( e.Message,
+                        e.Context, anyEx );
     }
 
     fire( RefreshedBroadcaster( *this ) );
@@ -148,7 +150,7 @@ void Users::dropByIndex( sal_Int32 index )
 {
 
     osl::MutexGuard guard( m_xMutex->GetMutex() );
-    if( index < 0 ||  index >= (sal_Int32)m_values.size() )
+    if( index < 0 ||  index >= static_cast<sal_Int32>(m_values.size()) )
     {
         throw css::lang::IndexOutOfBoundsException(
             "USERS: Index out of range (allowed 0 to "

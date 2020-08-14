@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "WrappedProperty.hxx"
-#include "macros.hxx"
-#include <com/sun/star/drawing/LineStyle.hpp>
+#include <WrappedProperty.hxx>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/XPropertyState.hpp>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Any;
@@ -54,7 +55,7 @@ Any WrappedProperty::convertOuterToInnerValue( const Any& rOuterValue ) const
 void WrappedProperty::setPropertyValue( const Any& rOuterValue, const Reference< beans::XPropertySet >& xInnerPropertySet ) const
 {
     if(xInnerPropertySet.is())
-        xInnerPropertySet->setPropertyValue( this->getInnerName(), this->convertOuterToInnerValue( rOuterValue ) );
+        xInnerPropertySet->setPropertyValue( getInnerName(), convertOuterToInnerValue( rOuterValue ) );
 }
 
 Any WrappedProperty::getPropertyValue( const Reference< beans::XPropertySet >& xInnerPropertySet ) const
@@ -62,16 +63,16 @@ Any WrappedProperty::getPropertyValue( const Reference< beans::XPropertySet >& x
     Any aRet;
     if( xInnerPropertySet.is() )
     {
-        aRet = xInnerPropertySet->getPropertyValue( this->getInnerName() );
-        aRet = this->convertInnerToOuterValue( aRet );
+        aRet = xInnerPropertySet->getPropertyValue( getInnerName() );
+        aRet = convertInnerToOuterValue( aRet );
     }
     return aRet;
 }
 
 void WrappedProperty::setPropertyToDefault( const Reference< beans::XPropertyState >& xInnerPropertyState ) const
 {
-    if( xInnerPropertyState.is() && !this->getInnerName().isEmpty() )
-        xInnerPropertyState->setPropertyToDefault(this->getInnerName());
+    if( xInnerPropertyState.is() && !getInnerName().isEmpty() )
+        xInnerPropertyState->setPropertyToDefault(getInnerName());
     else
     {
         Reference< beans::XPropertySet > xInnerProp( xInnerPropertyState, uno::UNO_QUERY );
@@ -84,8 +85,8 @@ Any WrappedProperty::getPropertyDefault( const Reference< beans::XPropertyState 
     Any aRet;
     if( xInnerPropertyState.is() )
     {
-        aRet = xInnerPropertyState->getPropertyDefault( this->getInnerName() );
-        aRet = this->convertInnerToOuterValue( aRet );
+        aRet = xInnerPropertyState->getPropertyDefault( getInnerName() );
+        aRet = convertInnerToOuterValue( aRet );
     }
     return aRet;
 }
@@ -93,7 +94,7 @@ Any WrappedProperty::getPropertyDefault( const Reference< beans::XPropertyState 
 beans::PropertyState WrappedProperty::getPropertyState( const Reference< beans::XPropertyState >& xInnerPropertyState ) const
 {
     beans::PropertyState aState = beans::PropertyState_DIRECT_VALUE;
-    OUString aInnerName( this->getInnerName() );
+    OUString aInnerName( getInnerName() );
     if( xInnerPropertyState.is() && !aInnerName.isEmpty() )
         aState = xInnerPropertyState->getPropertyState( aInnerName );
     else
@@ -101,19 +102,19 @@ beans::PropertyState WrappedProperty::getPropertyState( const Reference< beans::
         try
         {
             Reference< beans::XPropertySet > xInnerProp( xInnerPropertyState, uno::UNO_QUERY );
-            uno::Any aValue = this->getPropertyValue( xInnerProp );
+            uno::Any aValue = getPropertyValue( xInnerProp );
             if( !aValue.hasValue() )
                 aState = beans::PropertyState_DEFAULT_VALUE;
             else
             {
-                uno::Any aDefault = this->getPropertyDefault( xInnerPropertyState );
+                uno::Any aDefault = getPropertyDefault( xInnerPropertyState );
                 if( aValue == aDefault )
                     aState = beans::PropertyState_DEFAULT_VALUE;
             }
         }
-        catch( const beans::UnknownPropertyException& ex )
+        catch( const beans::UnknownPropertyException& )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
     return aState;

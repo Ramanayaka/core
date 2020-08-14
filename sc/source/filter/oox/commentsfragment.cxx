@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "commentsfragment.hxx"
+#include <commentsfragment.hxx>
 
-#include "richstringcontext.hxx"
+#include <biffhelper.hxx>
+#include <richstringcontext.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::oox::core;
 
@@ -62,7 +61,7 @@ ContextHandlerRef CommentsFragment::onCreateContext( sal_Int32 nElement, const A
         case XDR_TOKEN( to ):
             return this;
         case XLS_TOKEN( comment ):
-            if( (nElement == XLS_TOKEN( text )) && mxComment.get() )
+            if( (nElement == XLS_TOKEN( text )) && mxComment )
                 return new RichStringContext( *this, mxComment->createText() );
             if( nElement == XLS_TOKEN( commentPr ) ) { mxComment->importCommentPr( rAttribs ); return this; }
         break;
@@ -100,7 +99,7 @@ ContextHandlerRef CommentsFragment::onCreateRecordContext( sal_Int32 nRecId, Seq
             if( nRecId == BIFF12_ID_COMMENT ) { importComment( rStrm ); return this; }
         break;
         case BIFF12_ID_COMMENT:
-            if( (nRecId == BIFF12_ID_COMMENTTEXT) && mxComment.get() )
+            if( (nRecId == BIFF12_ID_COMMENTTEXT) && mxComment )
                 mxComment->createText()->importString( rStrm, true );
         break;
     }
@@ -140,7 +139,6 @@ void CommentsFragment::importComment( SequenceInputStream& rStrm )
     mxComment->importComment( rStrm );
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

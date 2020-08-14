@@ -19,62 +19,54 @@
 #ifndef INCLUDED_SW_SOURCE_UI_FLDUI_FLDDB_HXX
 #define INCLUDED_SW_SOURCE_UI_FLDUI_FLDDB_HXX
 
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
-#include <vcl/group.hxx>
-
-#include "condedit.hxx"
-#include "dbtree.hxx"
-#include "numfmtlb.hxx"
+#include <condedit.hxx>
+#include <dbtree.hxx>
+#include <numfmtlb.hxx>
 
 #include "fldpage.hxx"
 
 class SwFieldDBPage : public SwFieldPage
 {
-    VclPtr<ListBox>            m_pTypeLB;
-    VclPtr<SwDBTreeList>       m_pDatabaseTLB;
-
-    VclPtr<PushButton>         m_pAddDBPB;
-
-    VclPtr<VclContainer>       m_pCondition;
-    VclPtr<ConditionEdit>      m_pConditionED;
-    VclPtr<VclContainer>       m_pValue;
-    VclPtr<Edit>               m_pValueED;
-    VclPtr<RadioButton>        m_pDBFormatRB;
-    VclPtr<RadioButton>        m_pNewFormatRB;
-    VclPtr<NumFormatListBox>   m_pNumFormatLB;
-    VclPtr<ListBox>            m_pFormatLB;
-    VclPtr<VclContainer>       m_pFormat;
-
     OUString            m_sOldDBName;
     OUString            m_sOldTableName;
     OUString            m_sOldColumnName;
     sal_uLong           m_nOldFormat;
     sal_uInt16          m_nOldSubType;
-    Link<ListBox&,void> m_aOldNumSelectHdl;
 
-    DECL_LINK( TypeListBoxHdl, ListBox&, void );
-    DECL_LINK( NumSelectHdl, ListBox&, void );
-    DECL_LINK( TreeSelectHdl, SvTreeListBox*, void );
-    DECL_LINK( ModifyHdl, Edit&, void );
-    DECL_LINK( AddDBHdl, Button*, void );
-    void TypeHdl(ListBox*);
+    std::unique_ptr<weld::TreeView> m_xTypeLB;
+    std::unique_ptr<SwDBTreeList> m_xDatabaseTLB;
+    std::unique_ptr<weld::Button> m_xAddDBPB;
+    std::unique_ptr<weld::Widget> m_xCondition;
+    std::unique_ptr<ConditionEdit> m_xConditionED;
+    std::unique_ptr<weld::Widget> m_xValue;
+    std::unique_ptr<weld::Entry> m_xValueED;
+    std::unique_ptr<weld::RadioButton> m_xDBFormatRB;
+    std::unique_ptr<weld::RadioButton> m_xNewFormatRB;
+    std::unique_ptr<NumFormatListBox> m_xNumFormatLB;
+    std::unique_ptr<weld::ComboBox> m_xFormatLB;
+    std::unique_ptr<weld::Widget> m_xFormat;
+
+    DECL_LINK( TypeListBoxHdl, weld::TreeView&, void );
+    DECL_LINK( NumSelectHdl, weld::ComboBox&, void );
+    DECL_LINK( TreeSelectHdl, weld::TreeView&, void );
+    DECL_LINK( ModifyHdl, weld::Entry&, void );
+    DECL_LINK( AddDBHdl, weld::Button&, void );
+    void TypeHdl(const weld::TreeView*);
 
     void                CheckInsert();
 
     using SwFieldPage::SetWrtShell;
+    SwWrtShell* CheckAndGetWrtShell();
 
 protected:
     virtual sal_uInt16      GetGroup() override;
 
 public:
-                        SwFieldDBPage(vcl::Window* pParent, const SfxItemSet* rSet);
+    SwFieldDBPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet);
 
-                        virtual ~SwFieldDBPage() override;
-    virtual void        dispose() override;
+    virtual ~SwFieldDBPage() override;
 
-    static VclPtr<SfxTabPage>  Create(vcl::Window* pParent, const SfxItemSet* rAttrSet);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet);
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;

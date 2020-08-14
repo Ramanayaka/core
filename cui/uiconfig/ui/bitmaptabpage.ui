@@ -1,39 +1,59 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.16.1 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
-  <!-- interface-requires LibreOffice 1.0 -->
+<!-- Generated with glade 3.22.1 -->
+<interface domain="cui">
+  <requires lib="gtk+" version="3.18"/>
+  <object class="GtkAdjustment" id="adjustment1">
+    <property name="upper">100</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
   <object class="GtkBox" id="BitmapTabPage">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
+    <property name="hexpand">True</property>
+    <property name="vexpand">True</property>
     <property name="border_width">6</property>
     <property name="spacing">6</property>
     <child>
       <object class="GtkFrame" id="Fill Frame">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="halign">start</property>
         <property name="label_xalign">0</property>
         <property name="shadow_type">none</property>
         <child>
           <object class="GtkAlignment" id="alignment1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="halign">start</property>
             <property name="top_padding">6</property>
             <property name="left_padding">12</property>
             <child>
-              <object class="GtkVBox" id="box1">
+              <object class="GtkBox" id="box1">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="halign">start</property>
+                <property name="orientation">vertical</property>
                 <property name="spacing">6</property>
                 <child>
-                  <object class="svxcorelo-SvxPresetListBox" id="BITMAP">
+                  <object class="GtkScrolledWindow" id="bitmapwin">
                     <property name="visible">True</property>
-                    <property name="can_focus">False</property>
-                    <property name="hexpand">True</property>
+                    <property name="can_focus">True</property>
                     <property name="vexpand">True</property>
+                    <property name="hscrollbar_policy">never</property>
+                    <property name="vscrollbar_policy">never</property>
+                    <property name="shadow_type">in</property>
+                    <child>
+                      <object class="GtkViewport">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <child>
+                          <object class="GtkDrawingArea" id="BITMAP">
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="events">GDK_BUTTON_MOTION_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_STRUCTURE_MASK</property>
+                            <property name="vexpand">True</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="expand">False</property>
@@ -43,7 +63,7 @@
                 </child>
                 <child>
                   <object class="GtkButton" id="BTN_IMPORT">
-                    <property name="label" translatable="yes">Add / Import</property>
+                    <property name="label" translatable="yes" context="bitmaptabpage|BTN_IMPORT">Add / Import</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
@@ -62,8 +82,8 @@
           <object class="GtkLabel" id="label1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
+            <property name="label" translatable="yes" context="bitmaptabpage|label1">Bitmap</property>
             <property name="xalign">0</property>
-            <property name="label" translatable="yes">Bitmap</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -80,6 +100,8 @@
       <object class="GtkFrame" id="frame1">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
+        <property name="hexpand">True</property>
+        <property name="vexpand">True</property>
         <property name="label_xalign">0</property>
         <property name="shadow_type">none</property>
         <child>
@@ -87,6 +109,7 @@
             <property name="visible">True</property>
             <property name="can_focus">False</property>
             <property name="hexpand">True</property>
+            <property name="vexpand">True</property>
             <property name="top_padding">6</property>
             <property name="left_padding">12</property>
             <child>
@@ -107,8 +130,10 @@
                       <object class="GtkLabel" id="label3">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
+                        <property name="label" translatable="yes" context="bitmaptabpage|label3">Style:</property>
+                        <property name="use_underline">True</property>
+                        <property name="mnemonic_widget">bitmapstyle</property>
                         <property name="xalign">0</property>
-                        <property name="label" translatable="yes">Style:</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -121,12 +146,9 @@
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
                         <items>
-                          <item translatable="yes">Original</item>
-                          <item translatable="yes">Filled</item>
-                          <item translatable="yes">Stretched</item>
-                          <item translatable="yes">Zoomed</item>
-                          <item translatable="yes">Custom</item>
-                          <item translatable="yes">Tiled</item>
+                          <item translatable="yes" context="bitmaptabpage|bitmapstyle">Custom position/size</item>
+                          <item translatable="yes" context="bitmaptabpage|bitmapstyle">Tiled</item>
+                          <item translatable="yes" context="bitmaptabpage|bitmapstyle">Stretched</item>
                         </items>
                       </object>
                       <packing>
@@ -152,8 +174,8 @@
                       <object class="GtkLabel" id="label4">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
+                        <property name="label" translatable="yes" context="bitmaptabpage|label4">Size:</property>
                         <property name="xalign">0</property>
-                        <property name="label" translatable="yes">Size:</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -170,7 +192,9 @@
                           <object class="GtkLabel" id="label5">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">W:</property>
+                            <property name="label" translatable="yes" context="bitmaptabpage|label5">Width:</property>
+                            <property name="use_underline">True</property>
+                            <property name="mnemonic_widget">width</property>
                           </object>
                           <packing>
                             <property name="expand">False</property>
@@ -179,7 +203,7 @@
                           </packing>
                         </child>
                         <child>
-                          <object class="GtkSpinButton" id="width:0%">
+                          <object class="GtkSpinButton" id="width">
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="hexpand">True</property>
@@ -190,30 +214,6 @@
                             <property name="position">1</property>
                           </packing>
                         </child>
-                        <child>
-                          <object class="GtkLabel" id="label6">
-                            <property name="visible">True</property>
-                            <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">H:</property>
-                          </object>
-                          <packing>
-                            <property name="expand">False</property>
-                            <property name="fill">True</property>
-                            <property name="position">2</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkSpinButton" id="height:0%">
-                            <property name="visible">True</property>
-                            <property name="can_focus">True</property>
-                            <property name="hexpand">True</property>
-                          </object>
-                          <packing>
-                            <property name="expand">False</property>
-                            <property name="fill">True</property>
-                            <property name="position">3</property>
-                          </packing>
-                        </child>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -222,18 +222,57 @@
                       </packing>
                     </child>
                     <child>
+                      <object class="GtkBox" id="box5">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="spacing">6</property>
+                        <child>
+                          <object class="GtkLabel" id="label6">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="label" translatable="yes" context="bitmaptabpage|label6">Height:</property>
+                            <property name="use_underline">True</property>
+                            <property name="mnemonic_widget">height</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkSpinButton" id="height">
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="hexpand">True</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">2</property>
+                      </packing>
+                    </child>
+                    <child>
                       <object class="GtkCheckButton" id="scaletsb">
-                        <property name="label" translatable="yes">Scale</property>
+                        <property name="label" translatable="yes" context="bitmaptabpage|scaletsb">Scale</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
+                        <property name="use_underline">True</property>
                         <property name="xalign">0</property>
                         <property name="draw_indicator">True</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
-                        <property name="position">2</property>
+                        <property name="position">3</property>
                       </packing>
                     </child>
                   </object>
@@ -253,8 +292,10 @@
                       <object class="GtkLabel" id="label7">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
+                        <property name="label" translatable="yes" context="bitmaptabpage|label7">Position:</property>
+                        <property name="use_underline">True</property>
+                        <property name="mnemonic_widget">positionlb</property>
                         <property name="xalign">0</property>
-                        <property name="label" translatable="yes">Position:</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -267,15 +308,15 @@
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
                         <items>
-                          <item translatable="yes">Top Left</item>
-                          <item translatable="yes">Top Center</item>
-                          <item translatable="yes">Top Right</item>
-                          <item translatable="yes">Center Left</item>
-                          <item translatable="yes">Center</item>
-                          <item translatable="yes">Center Right</item>
-                          <item translatable="yes">Bottom Left</item>
-                          <item translatable="yes">Bottom Center</item>
-                          <item translatable="yes">Bottom Right</item>
+                          <item translatable="yes" context="bitmaptabpage|positionlb">Top Left</item>
+                          <item translatable="yes" context="bitmaptabpage|positionlb">Top Center</item>
+                          <item translatable="yes" context="bitmaptabpage|positionlb">Top Right</item>
+                          <item translatable="yes" context="bitmaptabpage|positionlb">Center Left</item>
+                          <item translatable="yes" context="bitmaptabpage|positionlb">Center</item>
+                          <item translatable="yes" context="bitmaptabpage|positionlb">Center Right</item>
+                          <item translatable="yes" context="bitmaptabpage|positionlb">Bottom Left</item>
+                          <item translatable="yes" context="bitmaptabpage|positionlb">Bottom Center</item>
+                          <item translatable="yes" context="bitmaptabpage|positionlb">Bottom Right</item>
                         </items>
                       </object>
                       <packing>
@@ -301,8 +342,8 @@
                       <object class="GtkLabel" id="label9">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
+                        <property name="label" translatable="yes" context="bitmaptabpage|label9">Tiling Position:</property>
                         <property name="xalign">0</property>
-                        <property name="label" translatable="yes">Tiling Position:</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -320,7 +361,9 @@
                           <object class="GtkLabel" id="label10">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">X:</property>
+                            <property name="label" translatable="yes" context="bitmaptabpage|label10">X-Offset:</property>
+                            <property name="use_underline">True</property>
+                            <property name="mnemonic_widget">posoffx</property>
                           </object>
                           <packing>
                             <property name="expand">False</property>
@@ -329,7 +372,7 @@
                           </packing>
                         </child>
                         <child>
-                          <object class="GtkSpinButton" id="posoffx:0%">
+                          <object class="GtkSpinButton" id="posoffx">
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                           </object>
@@ -339,34 +382,49 @@
                             <property name="position">1</property>
                           </packing>
                         </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkBox" id="box7">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="hexpand">True</property>
+                        <property name="spacing">6</property>
                         <child>
                           <object class="GtkLabel" id="label11">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">Y:</property>
+                            <property name="label" translatable="yes" context="bitmaptabpage|label11">Y-Offset:</property>
+                            <property name="use_underline">True</property>
+                            <property name="mnemonic_widget">posoffy</property>
                           </object>
                           <packing>
                             <property name="expand">False</property>
                             <property name="fill">True</property>
-                            <property name="position">2</property>
+                            <property name="position">0</property>
                           </packing>
                         </child>
                         <child>
-                          <object class="GtkSpinButton" id="posoffy:0%">
+                          <object class="GtkSpinButton" id="posoffy">
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                           </object>
                           <packing>
                             <property name="expand">True</property>
                             <property name="fill">True</property>
-                            <property name="position">3</property>
+                            <property name="position">1</property>
                           </packing>
                         </child>
                       </object>
                       <packing>
                         <property name="expand">False</property>
                         <property name="fill">True</property>
-                        <property name="position">1</property>
+                        <property name="position">2</property>
                       </packing>
                     </child>
                   </object>
@@ -386,8 +444,10 @@
                       <object class="GtkLabel" id="label15">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
+                        <property name="label" translatable="yes" context="bitmaptabpage|label15">Tiling Offset:</property>
+                        <property name="use_underline">True</property>
+                        <property name="mnemonic_widget">tileofflb</property>
                         <property name="xalign">0</property>
-                        <property name="label" translatable="yes">Tiling Offset:</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -405,9 +465,10 @@
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
                             <property name="hexpand">True</property>
+                            <property name="active">0</property>
                             <items>
-                              <item translatable="yes">Row</item>
-                              <item translatable="yes">Column</item>
+                              <item translatable="yes" context="bitmaptabpage|tileofflb">Row</item>
+                              <item translatable="yes" context="bitmaptabpage|tileofflb">Column</item>
                             </items>
                           </object>
                           <packing>
@@ -417,10 +478,11 @@
                           </packing>
                         </child>
                         <child>
-                          <object class="GtkSpinButton" id="tileoffmtr:0%">
+                          <object class="GtkSpinButton" id="tileoffmtr">
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="hexpand">True</property>
+                            <property name="adjustment">adjustment1</property>
                           </object>
                           <packing>
                             <property name="expand">False</property>
@@ -450,7 +512,7 @@
           <object class="GtkLabel" id="label2">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Options</property>
+            <property name="label" translatable="yes" context="bitmaptabpage|label2">Options</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -475,28 +537,38 @@
           <object class="GtkAlignment" id="alignment8">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="halign">end</property>
             <property name="top_padding">6</property>
             <property name="left_padding">12</property>
             <child>
               <object class="GtkBox" id="box4">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="halign">end</property>
-                <property name="valign">start</property>
                 <property name="orientation">vertical</property>
                 <child>
-                  <object class="svxlo-SvxXRectPreview" id="CTL_BITMAP_PREVIEW">
+                  <object class="GtkScrolledWindow">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="hscrollbar_policy">never</property>
+                    <property name="vscrollbar_policy">never</property>
+                    <property name="shadow_type">in</property>
+                    <child>
+                      <object class="GtkViewport">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="hexpand">True</property>
-                        <property name="vexpand">True</property>
-                        <child internal-child="accessible">
-                          <object class="AtkObject" id="CTL_BITMAP_PREVIEW-atkobject">
-                            <property name="AtkObject::accessible-name" translatable="yes">Example</property>
+                        <child>
+                          <object class="GtkDrawingArea" id="CTL_BITMAP_PREVIEW">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <child internal-child="accessible">
+                              <object class="AtkObject" id="CTL_BITMAP_PREVIEW-atkobject">
+                                <property name="AtkObject::accessible-name" translatable="yes" context="bitmaptabpage|CTL_BITMAP_PREVIEW-atkobject">Example</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                       </object>
+                    </child>
+                  </object>
                   <packing>
                     <property name="expand">True</property>
                     <property name="fill">True</property>
@@ -511,7 +583,7 @@
           <object class="GtkLabel" id="label8">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Preview</property>
+            <property name="label" translatable="yes" context="bitmaptabpage|label8">Preview</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -525,5 +597,17 @@
         <property name="position">2</property>
       </packing>
     </child>
+  </object>
+  <object class="GtkSizeGroup">
+    <widgets>
+      <widget name="label10"/>
+      <widget name="label11"/>
+    </widgets>
+  </object>
+  <object class="GtkSizeGroup">
+    <widgets>
+      <widget name="label5"/>
+      <widget name="label6"/>
+    </widgets>
   </object>
 </interface>

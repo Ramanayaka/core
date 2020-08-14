@@ -22,11 +22,13 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <comphelper/PropertyInfoHash.hxx>
 #include <comphelper/comphelperdllapi.h>
-#include <comphelper/solarmutex.hxx>
+#include <comphelper/ChainablePropertySet.hxx>
 #include <rtl/ref.hxx>
 #include <map>
+
+namespace comphelper { class SolarMutex; }
+namespace comphelper { struct PropertyInfo; }
 
 namespace comphelper
 {
@@ -34,12 +36,11 @@ namespace comphelper
     class ChainablePropertySet;
     struct SlaveData
     {
-        ChainablePropertySet *                           mpSlave;
-        css::uno::Reference < css::beans::XPropertySet > mxSlave;
-        bool                                             mbInit;
+        rtl::Reference < ChainablePropertySet > mxSlave;
+        bool                                    mbInit;
 
         SlaveData ( ChainablePropertySet *pSlave);
-        bool IsInit () { return mbInit;}
+        bool IsInit () const { return mbInit;}
         void SetInit ( bool bInit) { mbInit = bInit; }
     };
 }
@@ -61,7 +62,7 @@ namespace comphelper
                               public css::beans::XMultiPropertySet
     {
     protected:
-        SolarMutex* mpMutex;
+        SolarMutex* const mpMutex;
         sal_uInt8 mnLastId;
         std::map< sal_uInt8, comphelper::SlaveData* >  maSlaveMap;
         rtl::Reference< MasterPropertySetInfo >        mxInfo;
@@ -99,7 +100,7 @@ namespace comphelper
         virtual void _postGetValues () = 0;
 
     public:
-        MasterPropertySet( comphelper::MasterPropertySetInfo* pInfo, SolarMutex* pMutex = nullptr )
+        MasterPropertySet( comphelper::MasterPropertySetInfo* pInfo, SolarMutex* pMutex )
             throw();
         virtual ~MasterPropertySet()
             throw();

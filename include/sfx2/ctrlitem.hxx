@@ -23,13 +23,9 @@
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
 #include <svl/poolitem.hxx>
-#if defined( DBG_UTIL )
-#include <sfx2/msg.hxx>
-#endif
+#include <tools/debug.hxx>
 
-class SfxPoolItem;
 class SfxBindings;
-class SvStream;
 
 class SFX2_DLLPUBLIC SfxControllerItem
 {
@@ -68,6 +64,8 @@ public:
     virtual void        StateChanged( sal_uInt16 nSID, SfxItemState eState,
                                       const SfxPoolItem* pState );
 
+    virtual void        GetControlState( sal_uInt16 nSID, boost::property_tree::ptree& );
+
     MapUnit             GetCoreMetric() const;
 
     static SfxItemState GetItemState( const SfxPoolItem* pState );
@@ -76,11 +74,10 @@ public:
 };
 
 
-class SFX2_DLLPUBLIC SfxStatusForwarder: public SfxControllerItem
+class SFX2_DLLPUBLIC SfxStatusForwarder final : public SfxControllerItem
 {
     SfxControllerItem*      pMaster;
 
-protected:
     virtual void        StateChanged( sal_uInt16 nSID, SfxItemState eState,
                                       const SfxPoolItem* pState ) override;
 

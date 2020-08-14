@@ -20,40 +20,30 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_FRMDLG_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_FRMDLG_HXX
 
-#include "globals.hrc"
 #include <sfx2/tabdlg.hxx>
+#include <sfx2/viewfrm.hxx>
+
 class SwWrtShell;
 
 // frame dialog
-class SwFrameDlg : public SfxTabDialog
+class SwFrameDlg : public SfxTabDialogController
 {
     bool m_bFormat;
     bool m_bNew;
-    bool m_bHTMLMode;
     const SfxItemSet&   m_rSet;
     OUString m_sDlgType;
     SwWrtShell* m_pWrtShell;
 
-    sal_uInt16 m_nStdId;
-    sal_uInt16 m_nAddId;
-    sal_uInt16 m_nWrapId;
-    sal_uInt16 m_nColumnId;
-    //sal_uInt16 m_nBackgroundId;
-    sal_uInt16 m_nAreaId;
-    sal_uInt16 m_nTransparenceId;
-    sal_uInt16 m_nMacroId;
-    sal_uInt16 m_nBorderId;
-
-    virtual void PageCreated( sal_uInt16 nId, SfxTabPage &rPage ) override;
+    virtual void PageCreated(const OString& rId, SfxTabPage &rPage) override;
 
 public:
-    SwFrameDlg(   SfxViewFrame *pFrame, vcl::Window *pParent,
-                const SfxItemSet& rCoreSet,
-                bool bNewFrame,
-                const OUString& sResType = OUString("FrameDialog"),
-                bool bFormat     = false,
-                const OString& sDefPage = OString(),
-                const OUString* pFormatStr  = nullptr);
+    SwFrameDlg(SfxViewFrame const *pFrame, weld::Window* pParent,
+               const SfxItemSet& rCoreSet,
+               bool bNewFrame,
+               const OUString& sResType,
+               bool bFormat,
+               const OString& sDefPage = OString(),
+               const OUString* pFormatStr  = nullptr);
 
     virtual ~SwFrameDlg() override;
 

@@ -22,7 +22,7 @@
 
 #include <tools/gen.hxx>
 #include <svx/svdtypes.hxx>
-#include <accfrmobj.hxx>
+#include "accfrmobj.hxx"
 #include <map>
 
 class SwAccessibleMap;
@@ -36,34 +36,34 @@ public:
     enum LayerId { INVALID, HELL, TEXT, HEAVEN, CONTROLS, XWINDOW };
 
     SwAccessibleChildMapKey()
-        : eLayerId( INVALID )
-        , nOrdNum( 0 )
-        , nPosNum( 0, 0 )
+        : m_eLayerId( INVALID )
+        , m_nOrdNum( 0 )
+        , m_nPosNum( 0, 0 )
     {}
 
     SwAccessibleChildMapKey( LayerId eId, sal_uInt32 nOrd )
-        : eLayerId( eId )
-        , nOrdNum( nOrd )
-        , nPosNum( 0, 0 )
+        : m_eLayerId( eId )
+        , m_nOrdNum( nOrd )
+        , m_nPosNum( 0, 0 )
     {}
 
     bool operator()( const SwAccessibleChildMapKey& r1,
                             const SwAccessibleChildMapKey& r2 ) const
     {
-        if(r1.eLayerId == r2.eLayerId)
+        if(r1.m_eLayerId == r2.m_eLayerId)
         {
-            if(r1.nPosNum == r2.nPosNum)
-                return r1.nOrdNum < r2.nOrdNum;
+            if(r1.m_nPosNum == r2.m_nPosNum)
+                return r1.m_nOrdNum < r2.m_nOrdNum;
             else
             {
-                if(r1.nPosNum.getY() == r2.nPosNum.getY())
-                    return r1.nPosNum.getX() < r2.nPosNum.getX();
+                if(r1.m_nPosNum.getY() == r2.m_nPosNum.getY())
+                    return r1.m_nPosNum.getX() < r2.m_nPosNum.getX();
                 else
-                    return r1.nPosNum.getY() < r2.nPosNum.getY();
+                    return r1.m_nPosNum.getY() < r2.m_nPosNum.getY();
             }
         }
         else
-            return r1.eLayerId < r2.eLayerId;
+            return r1.m_eLayerId < r2.m_eLayerId;
     }
 
     /* MT: Need to get this position parameter stuff in dev300 somehow...
@@ -77,9 +77,9 @@ public:
     */
 
 private:
-    LayerId eLayerId;
-    sal_uInt32 nOrdNum;
-    Point nPosNum;
+    LayerId m_eLayerId;
+    sal_uInt32 m_nOrdNum;
+    Point m_nPosNum;
 };
 
 
@@ -95,8 +95,8 @@ public:
     typedef std::map<key_type,mapped_type,key_compare>::const_reverse_iterator  const_reverse_iterator;
 
 private:
-    const SdrLayerID nHellId;
-    const SdrLayerID nControlsId;
+    const SdrLayerID mnHellId;
+    const SdrLayerID mnControlsId;
     std::map<key_type,mapped_type,key_compare> maMap;
 
     std::pair< iterator, bool > insert( const sal_uInt32 nPos,
@@ -117,7 +117,8 @@ public:
     const_reverse_iterator crbegin() const { return maMap.crbegin(); }
     const_reverse_iterator crend() const { return maMap.crend(); }
 
-    std::pair<iterator,bool> insert(const value_type& value) { return maMap.insert(value); }
+    template<class... Args>
+    std::pair<iterator,bool> emplace(Args&&... args) { return maMap.emplace(std::forward<Args>(args)...); }
 };
 
 #endif

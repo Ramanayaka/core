@@ -23,6 +23,7 @@
 #include "enumeration.hxx"
 
 #include <cppuhelper/implbase.hxx>
+#include <osl/diagnose.h>
 #include <com/sun/star/container/ElementExistException.hpp>
 #include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
@@ -32,13 +33,10 @@
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/WrappedTargetException.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Type.hxx>
 #include <vector>
-#include <algorithm>
 
 
 typedef cppu::WeakImplHelper<
@@ -162,10 +160,9 @@ public:
 
     virtual css::uno::Any SAL_CALL getByIndex( sal_Int32 nIndex ) override
     {
-        if( isValidIndex( nIndex ) )
-            return css::uno::makeAny( getItem( nIndex ) );
-        else
+        if( !isValidIndex( nIndex ) )
             throw css::lang::IndexOutOfBoundsException();
+        return css::uno::makeAny( getItem( nIndex ) );
     }
 
     // XIndexReplace : XIndexAccess
@@ -173,13 +170,11 @@ public:
                                           const css::uno::Any& aElement ) override
     {
         T t;
-        if( isValidIndex( nIndex) )
-            if( ( aElement >>= t )  &&  isValid( t ) )
-                setItem( nIndex, t );
-            else
-                throw css::lang::IllegalArgumentException();
-        else
+        if( !isValidIndex( nIndex) )
             throw css::lang::IndexOutOfBoundsException();
+        if( !( aElement >>= t ) || !isValid( t ) )
+            throw css::lang::IllegalArgumentException();
+        setItem( nIndex, t );
     }
 
     // XEnumerationAccess : XElementAccess
@@ -199,25 +194,21 @@ public:
     virtual void SAL_CALL insert( const css::uno::Any& aElement ) override
     {
         T t;
-        if( ( aElement >>= t )  &&  isValid( t ) )
-            if( ! hasItem( t ) )
-                addItem( t );
-            else
-                throw css::container::ElementExistException();
-        else
+        if( !( aElement >>= t )  || !isValid( t ) )
             throw css::lang::IllegalArgumentException();
+        if( hasItem( t ) )
+            throw css::container::ElementExistException();
+        addItem( t );
     }
 
     virtual void SAL_CALL remove( const css::uno::Any& aElement ) override
     {
         T t;
-        if( aElement >>= t )
-            if( hasItem( t ) )
-                removeItem( t );
-            else
-                throw css::container::NoSuchElementException();
-        else
+        if( !(aElement >>= t) )
             throw css::lang::IllegalArgumentException();
+        if( !hasItem( t ) )
+            throw css::container::NoSuchElementException();
+        removeItem( t );
     }
 
 
@@ -252,11 +243,9 @@ protected:
             css::uno::makeAny( nPos ),
             css::uno::makeAny( getItem( nPos ) ),
             css::uno::Any() );
-        for( Listeners_t::iterator aIter = maListeners.begin();
-             aIter != maListeners.end();
-             ++aIter )
+        for (auto const& listener : maListeners)
         {
-            (*aIter)->elementInserted( aEvent );
+            listener->elementInserted( aEvent );
         }
     }
 
@@ -267,11 +256,9 @@ protected:
             css::uno::Any(),
             css::uno::makeAny( aOld ),
             css::uno::Any() );
-        for( Listeners_t::iterator aIter = maListeners.begin();
-             aIter != maListeners.end();
-             ++aIter )
+        for (auto const& listener : maListeners)
         {
-            (*aIter)->elementRemoved( aEvent );
+            listener->elementRemoved( aEvent );
         }
     }
 
@@ -283,11 +270,9 @@ protected:
             css::uno::makeAny( nPos ),
             css::uno::makeAny( getItem( nPos ) ),
             css::uno::makeAny( aNew ) );
-        for( Listeners_t::iterator aIter = maListeners.begin();
-             aIter != maListeners.end();
-             ++aIter )
+        for (auto const& listener : maListeners)
         {
-            (*aIter)->elementReplaced( aEvent );
+            listener->elementReplaced( aEvent );
         }
     }
 

@@ -19,10 +19,8 @@
 
 #include <standard/vclxaccessiblelistitem.hxx>
 #include <toolkit/helper/convert.hxx>
-#include <helper/listboxhelper.hxx>
-#include <com/sun/star/awt/Point.hpp>
+#include <helper/IComboListBoxHelper.hxx>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/awt/Size.hpp>
 
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
@@ -32,15 +30,13 @@
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/controllayout.hxx>
+#include <vcl/toolkit/lstbox.hxx>
 #include <vcl/unohelp2.hxx>
 #include <vcl/settings.hxx>
-#include <toolkit/awt/vclxwindow.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
 #include <comphelper/accessibleeventnotifier.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 namespace
 {
@@ -72,14 +68,9 @@ VCLXAccessibleListItem::VCLXAccessibleListItem(sal_Int32 _nIndexInParent, const 
     , m_xParent(_xParent)
 {
     assert(m_xParent.is());
-    m_xParentContext = m_xParent->getAccessibleContext();
     ::accessibility::IComboListBoxHelper* pListBoxHelper = m_xParent->getListBoxHelper();
     if (pListBoxHelper)
-        m_sEntryText = pListBoxHelper->GetEntry((sal_uInt16)_nIndexInParent);
-}
-
-VCLXAccessibleListItem::~VCLXAccessibleListItem()
-{
+        m_sEntryText = pListBoxHelper->GetEntry(static_cast<sal_uInt16>(_nIndexInParent));
 }
 
 void VCLXAccessibleListItem::SetSelected( bool _bSelected )
@@ -161,7 +152,6 @@ void SAL_CALL VCLXAccessibleListItem::disposing()
         VCLXAccessibleListItem_BASE::disposing();
         m_sEntryText.clear();
         m_xParent           = nullptr;
-        m_xParentContext    = nullptr;
 
         nId = m_nClientId;
         m_nClientId =  0;
@@ -178,7 +168,7 @@ void SAL_CALL VCLXAccessibleListItem::disposing()
 
 OUString VCLXAccessibleListItem::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleListItem" );
+    return "com.sun.star.comp.toolkit.AccessibleListItem";
 }
 
 sal_Bool VCLXAccessibleListItem::supportsService( const OUString& rServiceName )
@@ -242,7 +232,7 @@ OUString SAL_CALL VCLXAccessibleListItem::getAccessibleName(  )
     ::osl::MutexGuard aGuard( m_aMutex );
 
     // entry text == accessible name
-    return implGetText();
+    return m_sEntryText;
 }
 
 Reference< XAccessibleRelationSet > SAL_CALL VCLXAccessibleListItem::getAccessibleRelationSet(  )
@@ -304,7 +294,7 @@ sal_Bool SAL_CALL VCLXAccessibleListItem::containsPoint( const awt::Point& _aPoi
     ::accessibility::IComboListBoxHelper* pListBoxHelper = m_xParent.is() ? m_xParent->getListBoxHelper() : nullptr;
     if (pListBoxHelper)
     {
-        tools::Rectangle aRect(pListBoxHelper->GetBoundingRectangle((sal_uInt16)m_nIndexInParent));
+        tools::Rectangle aRect(pListBoxHelper->GetBoundingRectangle(static_cast<sal_uInt16>(m_nIndexInParent)));
         aRect.Move(-aRect.TopLeft().X(),-aRect.TopLeft().Y());
         bInside = aRect.IsInside( VCLPoint( _aPoint ) );
     }
@@ -324,7 +314,7 @@ awt::Rectangle SAL_CALL VCLXAccessibleListItem::getBounds(  )
     awt::Rectangle aRect;
     ::accessibility::IComboListBoxHelper* pListBoxHelper = m_xParent.is() ? m_xParent->getListBoxHelper() : nullptr;
     if (pListBoxHelper)
-        aRect = AWTRectangle(pListBoxHelper->GetBoundingRectangle((sal_uInt16)m_nIndexInParent));
+        aRect = AWTRectangle(pListBoxHelper->GetBoundingRectangle(static_cast<sal_uInt16>(m_nIndexInParent)));
 
     return aRect;
 }
@@ -338,7 +328,7 @@ awt::Point SAL_CALL VCLXAccessibleListItem::getLocation(  )
     ::accessibility::IComboListBoxHelper* pListBoxHelper = m_xParent.is() ? m_xParent->getListBoxHelper() : nullptr;
     if (pListBoxHelper)
     {
-        tools::Rectangle aRect = pListBoxHelper->GetBoundingRectangle( (sal_uInt16)m_nIndexInParent );
+        tools::Rectangle aRect = pListBoxHelper->GetBoundingRectangle( static_cast<sal_uInt16>(m_nIndexInParent) );
         aPoint = aRect.TopLeft();
     }
     return AWTPoint( aPoint );
@@ -353,7 +343,7 @@ awt::Point SAL_CALL VCLXAccessibleListItem::getLocationOnScreen(  )
     ::accessibility::IComboListBoxHelper* pListBoxHelper = m_xParent.is() ? m_xParent->getListBoxHelper() : nullptr;
     if (pListBoxHelper)
     {
-        tools::Rectangle aRect = pListBoxHelper->GetBoundingRectangle((sal_uInt16)m_nIndexInParent);
+        tools::Rectangle aRect = pListBoxHelper->GetBoundingRectangle(static_cast<sal_uInt16>(m_nIndexInParent));
         aPoint = aRect.TopLeft();
         aPoint += pListBoxHelper->GetWindowExtentsRelative().TopLeft();
     }
@@ -368,7 +358,7 @@ awt::Size SAL_CALL VCLXAccessibleListItem::getSize(  )
     Size aSize;
     ::accessibility::IComboListBoxHelper* pListBoxHelper = m_xParent.is() ? m_xParent->getListBoxHelper() : nullptr;
     if (pListBoxHelper)
-        aSize = pListBoxHelper->GetBoundingRectangle( (sal_uInt16)m_nIndexInParent ).GetSize();
+        aSize = pListBoxHelper->GetBoundingRectangle( static_cast<sal_uInt16>(m_nIndexInParent) ).GetSize();
 
     return AWTSize( aSize );
 }
@@ -390,7 +380,7 @@ sal_Bool SAL_CALL VCLXAccessibleListItem::setCaretPosition( sal_Int32 nIndex )
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    if ( !implIsValidRange( nIndex, nIndex, implGetText().getLength() ) )
+    if ( !implIsValidRange( nIndex, nIndex, m_sEntryText.getLength() ) )
         throw IndexOutOfBoundsException();
 
     return false;
@@ -401,7 +391,7 @@ sal_Unicode SAL_CALL VCLXAccessibleListItem::getCharacter( sal_Int32 nIndex )
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    return OCommonAccessibleText::getCharacter( nIndex );
+    return OCommonAccessibleText::implGetCharacter( m_sEntryText, nIndex );
 }
 
 Sequence< PropertyValue > SAL_CALL VCLXAccessibleListItem::getCharacterAttributes( sal_Int32 nIndex, const Sequence< OUString >& )
@@ -409,8 +399,7 @@ Sequence< PropertyValue > SAL_CALL VCLXAccessibleListItem::getCharacterAttribute
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    OUString sText( implGetText() );
-    if ( !implIsValidIndex( nIndex, sText.getLength() ) )
+    if ( !implIsValidIndex( nIndex, m_sEntryText.getLength() ) )
         throw IndexOutOfBoundsException();
 
     return Sequence< PropertyValue >();
@@ -421,8 +410,7 @@ awt::Rectangle SAL_CALL VCLXAccessibleListItem::getCharacterBounds( sal_Int32 nI
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    OUString sText( implGetText() );
-    if ( !implIsValidIndex( nIndex, sText.getLength() ) )
+    if ( !implIsValidIndex( nIndex, m_sEntryText.getLength() ) )
         throw IndexOutOfBoundsException();
 
     awt::Rectangle aBounds( 0, 0, 0, 0 );
@@ -430,7 +418,7 @@ awt::Rectangle SAL_CALL VCLXAccessibleListItem::getCharacterBounds( sal_Int32 nI
     if (pListBoxHelper)
     {
         tools::Rectangle aCharRect = pListBoxHelper->GetEntryCharacterBounds( m_nIndexInParent, nIndex );
-        tools::Rectangle aItemRect = pListBoxHelper->GetBoundingRectangle( (sal_uInt16)m_nIndexInParent );
+        tools::Rectangle aItemRect = pListBoxHelper->GetBoundingRectangle( static_cast<sal_uInt16>(m_nIndexInParent) );
         aCharRect.Move( -aItemRect.Left(), -aItemRect.Top() );
         aBounds = AWTRectangle( aCharRect );
     }
@@ -443,7 +431,7 @@ sal_Int32 SAL_CALL VCLXAccessibleListItem::getCharacterCount()
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    return OCommonAccessibleText::getCharacterCount();
+    return m_sEntryText.getLength();
 }
 
 sal_Int32 SAL_CALL VCLXAccessibleListItem::getIndexAtPoint( const awt::Point& aPoint )
@@ -456,7 +444,7 @@ sal_Int32 SAL_CALL VCLXAccessibleListItem::getIndexAtPoint( const awt::Point& aP
     if (pListBoxHelper)
     {
         sal_Int32 nPos = LISTBOX_ENTRY_NOTFOUND;
-        tools::Rectangle aItemRect = pListBoxHelper->GetBoundingRectangle( (sal_uInt16)m_nIndexInParent );
+        tools::Rectangle aItemRect = pListBoxHelper->GetBoundingRectangle( static_cast<sal_uInt16>(m_nIndexInParent) );
         Point aPnt( VCLPoint( aPoint ) );
         aPnt += aItemRect.TopLeft();
         sal_Int32 nI = pListBoxHelper->GetIndexForPoint( aPnt, nPos );
@@ -471,7 +459,7 @@ OUString SAL_CALL VCLXAccessibleListItem::getSelectedText()
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    return OCommonAccessibleText::getSelectedText();
+    return OUString();
 }
 
 sal_Int32 SAL_CALL VCLXAccessibleListItem::getSelectionStart()
@@ -479,7 +467,7 @@ sal_Int32 SAL_CALL VCLXAccessibleListItem::getSelectionStart()
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    return OCommonAccessibleText::getSelectionStart();
+    return 0;
 }
 
 sal_Int32 SAL_CALL VCLXAccessibleListItem::getSelectionEnd()
@@ -487,7 +475,7 @@ sal_Int32 SAL_CALL VCLXAccessibleListItem::getSelectionEnd()
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    return OCommonAccessibleText::getSelectionEnd();
+    return 0;
 }
 
 sal_Bool SAL_CALL VCLXAccessibleListItem::setSelection( sal_Int32 nStartIndex, sal_Int32 nEndIndex )
@@ -495,7 +483,7 @@ sal_Bool SAL_CALL VCLXAccessibleListItem::setSelection( sal_Int32 nStartIndex, s
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    if ( !implIsValidRange( nStartIndex, nEndIndex, implGetText().getLength() ) )
+    if ( !implIsValidRange( nStartIndex, nEndIndex, m_sEntryText.getLength() ) )
         throw IndexOutOfBoundsException();
 
     return false;
@@ -506,7 +494,7 @@ OUString SAL_CALL VCLXAccessibleListItem::getText()
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    return OCommonAccessibleText::getText();
+    return m_sEntryText;
 }
 
 OUString SAL_CALL VCLXAccessibleListItem::getTextRange( sal_Int32 nStartIndex, sal_Int32 nEndIndex )
@@ -514,7 +502,7 @@ OUString SAL_CALL VCLXAccessibleListItem::getTextRange( sal_Int32 nStartIndex, s
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    return OCommonAccessibleText::getTextRange( nStartIndex, nEndIndex );
+    return OCommonAccessibleText::implGetTextRange( m_sEntryText, nStartIndex, nEndIndex );
 }
 
 css::accessibility::TextSegment SAL_CALL VCLXAccessibleListItem::getTextAtIndex( sal_Int32 nIndex, sal_Int16 aTextType )
@@ -572,6 +560,11 @@ sal_Bool SAL_CALL VCLXAccessibleListItem::copyText( sal_Int32 nStartIndex, sal_I
     return bRet;
 }
 
+sal_Bool VCLXAccessibleListItem::scrollSubstringTo( sal_Int32, sal_Int32, AccessibleScrollType )
+{
+    return false;
+}
+
 // XAccessibleEventBroadcaster
 
 void SAL_CALL VCLXAccessibleListItem::addAccessibleEventListener( const Reference< XAccessibleEventListener >& xListener )
@@ -586,22 +579,22 @@ void SAL_CALL VCLXAccessibleListItem::addAccessibleEventListener( const Referenc
 
 void SAL_CALL VCLXAccessibleListItem::removeAccessibleEventListener( const Reference< XAccessibleEventListener >& xListener )
 {
-    if ( xListener.is() && m_nClientId )
+    if ( !(xListener.is() && m_nClientId) )
+        return;
+
+    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( m_nClientId, xListener );
+    if ( nListenerCount )
+        return;
+
+    // no listeners anymore
+    // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+    // and at least to us not firing any events anymore, in case somebody calls
+    // NotifyAccessibleEvent, again
+    if ( m_nClientId )
     {
-        sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( m_nClientId, xListener );
-        if ( !nListenerCount )
-        {
-            // no listeners anymore
-            // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-            // and at least to us not firing any events anymore, in case somebody calls
-            // NotifyAccessibleEvent, again
-            if ( m_nClientId )
-            {
-                comphelper::AccessibleEventNotifier::TClientId nId( m_nClientId );
-                m_nClientId = 0;
-                comphelper::AccessibleEventNotifier::revokeClient( nId );
-            }
-        }
+        comphelper::AccessibleEventNotifier::TClientId nId( m_nClientId );
+        m_nClientId = 0;
+        comphelper::AccessibleEventNotifier::revokeClient( nId );
     }
 }
 
@@ -611,7 +604,7 @@ void SAL_CALL VCLXAccessibleListItem::removeAccessibleEventListener( const Refer
 // the color that is actually used.
 sal_Int32 SAL_CALL VCLXAccessibleListItem::getForeground()
 {
-    return COL_BLACK;
+    return sal_Int32(COL_BLACK);
 }
 
 // AF (Oct. 29 2002): Return white as constant background color.  This is an
@@ -619,7 +612,7 @@ sal_Int32 SAL_CALL VCLXAccessibleListItem::getForeground()
 // the color that is actually used.
 sal_Int32 SAL_CALL VCLXAccessibleListItem::getBackground()
 {
-    return COL_WHITE;
+    return sal_Int32(COL_WHITE);
 }
 
 

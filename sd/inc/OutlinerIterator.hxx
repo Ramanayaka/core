@@ -23,7 +23,7 @@
 #include <svx/svdobj.hxx>
 
 #include "pres.hxx"
-#include "sal/types.h"
+#include <sal/types.h>
 #include <memory>
 #include <vector>
 
@@ -81,14 +81,14 @@ public:
         implementation object.
     */
     Iterator (const Iterator& rIterator);
-    Iterator (Iterator&& rIterator);
+    Iterator(Iterator&& rIterator) noexcept;
 
     /** Create a new iterator with the implementation object being the
         provided one.
         @param pObject
             A copy of this object will become the implementation object.
     */
-    explicit Iterator (IteratorImplBase* pObject);
+    explicit Iterator (std::unique_ptr<IteratorImplBase> pObject);
 
     ~Iterator();
 
@@ -98,7 +98,7 @@ public:
             The iterator which to assign from.
     */
     Iterator& operator= (const Iterator& rIterator);
-    Iterator& operator= (Iterator&& rIterator);
+    Iterator& operator=(Iterator&& rIterator) noexcept;
 
     /** Return the current position of the iterator.
         @return
@@ -122,7 +122,7 @@ public:
         @return
             Returns <TRUE/> when both iterators point to the same object.
     */
-    bool operator== (const Iterator& rIterator);
+    bool operator== (const Iterator& rIterator) const;
     /** Test whether two iterators point to different objects.  This is just
         the negation of the result of the equality operator.
         @param rIterator
@@ -130,7 +130,7 @@ public:
         @return
             Returns <TRUE/> when both iterators point to the different objects.
     */
-    bool operator!= (const Iterator& rIterator);
+    bool operator!= (const Iterator& rIterator) const;
     /** Reverse the direction of iteration.  The position of the iterator is
         not changed.  Thus calling this method twice returns to the old state.
     */
@@ -224,7 +224,7 @@ private:
             This specifies at which object the iterator points initially.
     */
     static Iterator CreateSelectionIterator (
-        const ::std::vector<SdrObjectWeakRef>& rObjectList,
+        const ::std::vector<::tools::WeakReference<SdrObject>>& rObjectList,
         SdDrawDocument* pDocument,
         const std::shared_ptr<ViewShell>& rpViewShell,
         bool bDirectionIsForward,
@@ -265,7 +265,7 @@ private:
             This specifies at which object the iterator points initially.
     */
     static sal_Int32 GetPageIndex (
-        SdDrawDocument* pDocument,
+        SdDrawDocument const * pDocument,
         const std::shared_ptr<ViewShell>& rpViewShell,
         PageKind ePageKind,
         EditMode eEditMode,
@@ -274,7 +274,7 @@ private:
 
     // Do not allow default constructor and copying of outliner containers.
     OutlinerContainer (const OutlinerContainer&) = delete;
-    OutlinerContainer& operator= (const OutlinerContainer&) {return *this;};
+    OutlinerContainer& operator= (const OutlinerContainer&) = delete;
 };
 
 /** Data collection specifying a <type>SdrObject</type> and its position in
@@ -288,13 +288,6 @@ public:
         it is as a marker in comparisons.
     */
     IteratorPosition();
-    /** Create a new object with all data members set from the given
-        position.
-        @param aPosition
-            The position object from which to take the values that are
-            assigned to the data members of this object.
-    */
-    IteratorPosition (const IteratorPosition& aPosition);
 
     /** Compare two positions for equality.
         @return
@@ -304,7 +297,7 @@ public:
     bool operator== (const IteratorPosition& aPosition) const;
 
     /// Pointer to the actual <type>SdrObject</type> object.
-    SdrObjectWeakRef mxObject;
+    ::tools::WeakReference<SdrObject> mxObject;
 
     /// Number of the actual SdrText from the current <type>SdrObject</type>
     sal_Int32 mnText;

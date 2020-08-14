@@ -16,16 +16,10 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_XMLSCRIPT_SOURCE_INC_XML_IMPORT_HXX
-#define INCLUDED_XMLSCRIPT_SOURCE_INC_XML_IMPORT_HXX
-
-#include <osl/diagnose.h>
-#include <rtl/ustrbuf.hxx>
-#include <tools/diagnose_ex.h>
-#include <comphelper/processfactory.hxx>
+#pragma once
 
 #include <com/sun/star/xml/input/XRoot.hpp>
-#include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
+#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 
 namespace xmlscript
 {
@@ -46,12 +40,11 @@ namespace xmlscript
             document handler for parser
 */
 css::uno::Reference< css::xml::sax::XDocumentHandler >
-SAL_CALL createDocumentHandler(
+createDocumentHandler(
     css::uno::Reference<
     css::xml::input::XRoot > const & xRoot );
 
 }
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

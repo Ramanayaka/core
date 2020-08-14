@@ -19,9 +19,6 @@
 #ifndef INCLUDED_SW_SOURCE_FILTER_XML_XMLIMPIT_HXX
 #define INCLUDED_SW_SOURCE_FILTER_XML_XMLIMPIT_HXX
 
-#include <limits.h>
-#include <tools/solar.h>
-
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include "xmlitmap.hxx"
 
@@ -52,8 +49,7 @@ public:
                                     SfxPoolItem& rItem,
                                     SfxItemSet& rSet,
                                     const OUString& rValue,
-                                    const SvXMLUnitConverter& rUnitConverter,
-                                    const SvXMLNamespaceMap& rNamespaceMap );
+                                    const SvXMLUnitConverter& rUnitConverter );
 
     /** this method is called for every item that has the
         MID_SW_FLAG_NO_ITEM_IMPORT flag set */

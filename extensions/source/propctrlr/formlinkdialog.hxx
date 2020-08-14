@@ -20,12 +20,8 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_FORMLINKDIALOG_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_FORMLINKDIALOG_HXX
 
-#include <vcl/dialog.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
+#include <vcl/weld.hxx>
 
-#include <com/sun/star/form/XForm.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -35,25 +31,13 @@
 
 namespace pcr
 {
-
-
     class FieldLinkRow;
 
     //= FormLinkDialog
 
-    class FormLinkDialog : public ModalDialog
+    class FormLinkDialog : public weld::GenericDialogController
     {
     private:
-        VclPtr<FixedText>                      m_pExplanation;
-        VclPtr<FixedText>                      m_pDetailLabel;
-        VclPtr<FixedText>                      m_pMasterLabel;
-        VclPtr<FieldLinkRow>                   m_aRow1;
-        VclPtr<FieldLinkRow>                   m_aRow2;
-        VclPtr<FieldLinkRow>                   m_aRow3;
-        VclPtr<FieldLinkRow>                   m_aRow4;
-        VclPtr<OKButton>                       m_pOK;
-        VclPtr<PushButton>                     m_pSuggest;
-
         css::uno::Reference< css::uno::XComponentContext >
                                         m_xContext;
         css::uno::Reference< css::beans::XPropertySet >
@@ -67,9 +51,19 @@ namespace pcr
         OUString                 m_sDetailLabel;
         OUString                 m_sMasterLabel;
 
+        std::unique_ptr<weld::Label> m_xExplanation;
+        std::unique_ptr<weld::Label> m_xDetailLabel;
+        std::unique_ptr<weld::Label> m_xMasterLabel;
+        std::unique_ptr<FieldLinkRow> m_xRow1;
+        std::unique_ptr<FieldLinkRow> m_xRow2;
+        std::unique_ptr<FieldLinkRow> m_xRow3;
+        std::unique_ptr<FieldLinkRow> m_xRow4;
+        std::unique_ptr<weld::Button> m_xOK;
+        std::unique_ptr<weld::Button> m_xSuggest;
+
     public:
         FormLinkDialog(
-            vcl::Window* _pParent,
+            weld::Window* _pParent,
             const css::uno::Reference< css::beans::XPropertySet >& _rxDetailForm,
             const css::uno::Reference< css::beans::XPropertySet >& _rxMasterForm,
             const css::uno::Reference< css::uno::XComponentContext >& _rxContext,
@@ -77,14 +71,14 @@ namespace pcr
             const OUString& _sDetailLabel = OUString(),
             const OUString& _sMasterLabel = OUString()
         );
-        virtual ~FormLinkDialog( ) override;
-        virtual void dispose() override;
+
+        virtual ~FormLinkDialog() override;
 
         // Dialog overridables
-        virtual short   Execute() override;
+        virtual short run() override;
 
     private:
-        DECL_LINK( OnSuggest,    Button*, void );
+        DECL_LINK( OnSuggest,    weld::Button&, void );
         DECL_LINK( OnFieldChanged, FieldLinkRow&, void );
         DECL_LINK( OnInitialize, void*, void);
 
@@ -129,9 +123,7 @@ namespace pcr
                     );
     };
 
-
 }   // namespace pcr
-
 
 #endif // INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_FORMLINKDIALOG_HXX
 

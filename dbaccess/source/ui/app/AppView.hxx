@@ -20,19 +20,21 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_APP_APPVIEW_HXX
 
 #include <dbaccess/dataview.hxx>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 #include <com/sun/star/ucb/XContent.hpp>
 #include <com/sun/star/sdb/application/NamedDatabaseObject.hpp>
-#include <vcl/fixed.hxx>
+#include <com/sun/star/sdbc/XConnection.hpp>
 #include <unotools/eventlisteneradapter.hxx>
-#include "IClipBoardTest.hxx"
-#include "AppElementType.hxx"
+#include <IClipBoardTest.hxx>
+#include <AppElementType.hxx>
 
-namespace com{ namespace sun { namespace star { namespace beans    { class XPropertySet; } } } }
+namespace com::sun::star::beans    { class XPropertySet; }
 
 class Control;
-class SvTreeListEntry;
+namespace weld
+{
+    class TreeIter;
+    class TreeView;
+}
 class MnemonicGenerator;
 
 namespace dbaui
@@ -78,7 +80,6 @@ namespace dbaui
             NONE
         };
     private:
-        css::lang::Locale                   m_aLocale;
         css::uno::Reference< css::lang::XComponent >
                                             m_xObject;
         VclPtr<OAppBorderWindow>            m_pWin;
@@ -111,7 +112,7 @@ namespace dbaui
         void    createIconAutoMnemonics( MnemonicGenerator& _rMnemonics );
 
         /// automatically creates mnemonics for the texts in our task pane
-        void    setTaskExternalMnemonics( MnemonicGenerator& _rMnemonics );
+        void    setTaskExternalMnemonics( MnemonicGenerator const & _rMnemonics );
 
         // Window overrides
         virtual bool PreNotify( NotifyEvent& rNEvt ) override;
@@ -139,15 +140,17 @@ namespace dbaui
             @return
                 the qualified name
         */
-        OUString getQualifiedName( SvTreeListEntry* _pEntry ) const;
+        OUString getQualifiedName(weld::TreeIter* _pEntry) const;
 
         /** returns if an entry is a leaf
-            @param _pEntry
+            @param rTreeView
+                The TreeView rEntry belongs to
+            @param rEntry
                 The entry to check
             @return
                 <TRUE/> if the entry is a leaf, otherwise <FALSE/>
         */
-        bool isLeaf(SvTreeListEntry* _pEntry) const;
+        bool isLeaf(const weld::TreeView& rTreeView, const weld::TreeIter& rEntry) const;
 
         /** returns if one of the selected entries is a leaf
             @return
@@ -175,10 +178,10 @@ namespace dbaui
         ElementType getElementType() const;
 
         /// returns the count of entries
-        sal_Int32 getElementCount();
+        sal_Int32 getElementCount() const;
 
         /// returns the count of selected entries
-        sal_Int32 getSelectionCount();
+        sal_Int32 getSelectionCount() const;
 
         /** clears the detail page and the selection on the left side.
             The task window will also be cleared.
@@ -213,7 +216,7 @@ namespace dbaui
 
         /** adds a new object to the detail page.
             @param  _eType
-                The type where the entry shold be appended.
+                The type where the entry should be appended.
             @param  _rName
                 The name of the object to be inserted
             @param  _rObject
@@ -221,13 +224,13 @@ namespace dbaui
             @param  _rxConn
                 If we insert a table, the connection must be set.
         */
-        SvTreeListEntry* elementAdded(ElementType _eType
-                        ,const OUString& _rName
-                        ,const css::uno::Any& _rObject );
+        std::unique_ptr<weld::TreeIter> elementAdded(ElementType eType,
+                                                     const OUString& rName,
+                                                     const css::uno::Any& rObject);
 
-        /** replaces a objects name with a new one
+        /** replaces an objects name with a new one
             @param  _eType
-                The type where the entry shold be appended.
+                The type where the entry should be appended.
             @param  _rOldName
                 The old name of the object to be replaced
             @param  _rNewName
@@ -243,7 +246,7 @@ namespace dbaui
 
         /** removes an element from the detail page.
             @param  _eType
-                The type where the entry shold be appended.
+                The type where the entry should be appended.
             @param  _rName
                 The name of the element to be removed.
             @param  _rxConn
@@ -259,10 +262,10 @@ namespace dbaui
         void selectContainer(ElementType _eType);
 
         /// returns the preview mode
-        PreviewMode getPreviewMode();
+        PreviewMode getPreviewMode() const;
 
         /// <TRUE/> if the preview is enabled
-        bool isPreviewEnabled();
+        bool isPreviewEnabled() const;
 
         /** switches to the given preview mode
             @param  _eMode
@@ -292,7 +295,7 @@ namespace dbaui
                             const OUString& _sName,
                             bool _bTable);
 
-        SvTreeListEntry* getEntry( const Point& _aPosPixel ) const;
+        std::unique_ptr<weld::TreeIter> getEntry(const Point& rPosPixel) const;
     };
 }
 #endif // INCLUDED_DBACCESS_SOURCE_UI_APP_APPVIEW_HXX

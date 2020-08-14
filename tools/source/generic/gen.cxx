@@ -18,27 +18,32 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
+#include <algorithm>
+#include <cassert>
 #include <sstream>
-
+#include <o3tl/safeint.hxx>
 #include <tools/gen.hxx>
 #include <tools/stream.hxx>
 
-SvStream& ReadPair( SvStream& rIStream, Pair& rPair )
+OString Pair::toString() const
 {
-    sal_Int32 nTmpA(0), nTmpB(0);
-    rIStream.ReadInt32( nTmpA ).ReadInt32( nTmpB );
-    rPair.nA = nTmpA;
-    rPair.nB = nTmpB;
-
-    return rIStream;
+    std::stringstream ss;
+    // Note that this is not just used for debugging output but the
+    // format is parsed by external code (passed in callbacks to
+    // LibreOfficeKit clients). So don't change.
+    ss << A() << ", " << B();
+    return ss.str().c_str();
 }
 
-SvStream& WritePair( SvStream& rOStream, const Pair& rPair )
+tools::Rectangle tools::Rectangle::Justify( const Point& rLT, const Point& rRB )
 {
-    rOStream.WriteInt32( rPair.nA ).WriteInt32( rPair.nB );
-
-    return rOStream;
+    long nLeft   = std::min(rLT.X(), rRB.X());
+    long nTop    = std::min(rLT.Y(), rRB.Y());
+    long nRight  = std::max(rLT.X(), rRB.X());
+    long nBottom = std::max(rLT.Y(), rRB.Y());
+    return Rectangle( nLeft, nTop, nRight, nBottom );
 }
 
 void tools::Rectangle::SetSize( const Size& rSize )
@@ -56,6 +61,37 @@ void tools::Rectangle::SetSize( const Size& rSize )
         nBottom  = nTop + rSize.Height() -1;
     else
         nBottom = RECT_EMPTY;
+}
+
+void tools::Rectangle::SaturatingSetSize(const Size& rSize)
+{
+    if (rSize.Width() < 0)
+        nRight = o3tl::saturating_add(nLeft, (rSize.Width() + 1));
+    else if ( rSize.Width() > 0 )
+        nRight = o3tl::saturating_add(nLeft, (rSize.Width() - 1));
+    else
+        nRight = RECT_EMPTY;
+
+    if ( rSize.Height() < 0 )
+        nBottom = o3tl::saturating_add(nTop, (rSize.Height() + 1));
+    else if ( rSize.Height() > 0 )
+        nBottom = o3tl::saturating_add(nTop, (rSize.Height() - 1));
+    else
+        nBottom = RECT_EMPTY;
+}
+
+void tools::Rectangle::SaturatingSetX(long x)
+{
+    if (nRight != RECT_EMPTY)
+        nRight = o3tl::saturating_add(nRight, x - nLeft);
+    nLeft = x;
+}
+
+void tools::Rectangle::SaturatingSetY(long y)
+{
+    if (nBottom != RECT_EMPTY)
+        nBottom = o3tl::saturating_add(nBottom, y - nTop);
+    nTop = y;
 }
 
 tools::Rectangle& tools::Rectangle::Union( const tools::Rectangle& rRect )
@@ -106,20 +142,14 @@ tools::Rectangle& tools::Rectangle::Intersection( const tools::Rectangle& rRect 
 
 void tools::Rectangle::Justify()
 {
-    long nHelp;
-
     if ( (nRight < nLeft) && (nRight != RECT_EMPTY) )
     {
-        nHelp = nLeft;
-        nLeft = nRight;
-        nRight = nHelp;
+        std::swap(nLeft, nRight);
     }
 
     if ( (nBottom < nTop) && (nBottom != RECT_EMPTY) )
     {
-        nHelp = nBottom;
-        nBottom = nTop;
-        nTop = nHelp;
+        std::swap(nBottom, nTop);
     }
 }
 
@@ -153,43 +183,13 @@ bool tools::Rectangle::IsInside( const Point& rPoint ) const
 
 bool tools::Rectangle::IsInside( const tools::Rectangle& rRect ) const
 {
-    if ( IsInside( rRect.TopLeft() ) && IsInside( rRect.BottomRight() ) )
-        return true;
-    else
-        return false;
+    return IsInside( rRect.TopLeft() ) && IsInside( rRect.BottomRight() );
 }
 
 bool tools::Rectangle::IsOver( const tools::Rectangle& rRect ) const
 {
     // If there's no intersection, they don't overlap
     return !GetIntersection( rRect ).IsEmpty();
-}
-
-namespace tools
-{
-SvStream& ReadRectangle( SvStream& rIStream, tools::Rectangle& rRect )
-{
-    sal_Int32 nTmpL(0), nTmpT(0), nTmpR(0), nTmpB(0);
-
-    rIStream.ReadInt32( nTmpL ).ReadInt32( nTmpT ).ReadInt32( nTmpR ).ReadInt32( nTmpB );
-
-    rRect.nLeft = nTmpL;
-    rRect.nTop = nTmpT;
-    rRect.nRight = nTmpR;
-    rRect.nBottom = nTmpB;
-
-    return rIStream;
-}
-
-SvStream& WriteRectangle( SvStream& rOStream, const tools::Rectangle& rRect )
-{
-    rOStream.WriteInt32( rRect.nLeft )
-            .WriteInt32( rRect.nTop )
-            .WriteInt32( rRect.nRight )
-            .WriteInt32( rRect.nBottom );
-
-    return rOStream;
-}
 }
 
 OString tools::Rectangle::toString() const
@@ -200,6 +200,84 @@ OString tools::Rectangle::toString() const
     // LibreOfficeKit clients). So don't change.
     ss << getX() << ", " << getY() << ", " << getWidth() << ", " << getHeight();
     return ss.str().c_str();
+}
+
+void tools::Rectangle::expand(long nExpandBy)
+{
+    nLeft   -= nExpandBy;
+    nTop    -= nExpandBy;
+    if (nRight == RECT_EMPTY)
+        nRight = nLeft + nExpandBy - 1;
+    else
+        nRight += nExpandBy;
+    if (nBottom == RECT_EMPTY)
+        nBottom = nTop + nExpandBy - 1;
+    else
+        nBottom += nExpandBy;
+}
+
+void tools::Rectangle::shrink(long nShrinkBy)
+{
+    nLeft   += nShrinkBy;
+    nTop    += nShrinkBy;
+    if (nRight != RECT_EMPTY)
+        nRight -= nShrinkBy;
+    if (nBottom != RECT_EMPTY)
+        nBottom -= nShrinkBy;
+}
+
+long tools::Rectangle::AdjustRight(long nHorzMoveDelta)
+{
+    if (nRight == RECT_EMPTY)
+        nRight = nLeft + nHorzMoveDelta - 1;
+    else
+        nRight += nHorzMoveDelta;
+    return nRight;
+}
+
+long tools::Rectangle::AdjustBottom( long nVertMoveDelta )
+{
+    if (nBottom == RECT_EMPTY)
+        nBottom = nTop + nVertMoveDelta - 1;
+    else
+        nBottom += nVertMoveDelta;
+    return nBottom;
+}
+
+void tools::Rectangle::setX( long x )
+{
+    if (nRight != RECT_EMPTY)
+        nRight += x - nLeft;
+    nLeft = x;
+}
+
+void tools::Rectangle::setY( long y )
+{
+    if (nBottom != RECT_EMPTY)
+        nBottom += y - nTop;
+    nTop  = y;
+}
+
+long tools::Rectangle::Right() const
+{
+    return nRight == RECT_EMPTY ? nLeft : nRight;
+}
+
+long tools::Rectangle::Bottom() const
+{
+    return nBottom == RECT_EMPTY ? nTop : nBottom;
+}
+
+/// Returns the difference between right and left, assuming the range includes one end, but not the other.
+long tools::Rectangle::getWidth() const
+{
+    return nRight == RECT_EMPTY ? 0 : nRight - nLeft;
+}
+
+/// Returns the difference between bottom and top, assuming the range includes one end, but not the other.
+long tools::Rectangle::getHeight() const
+{
+    return nBottom == RECT_EMPTY ? 0 : nBottom - nTop;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

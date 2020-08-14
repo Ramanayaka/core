@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <stdio.h>
 #ifdef _WIN32
 #include <prewin.h>
 #include <postwin.h>
@@ -38,92 +37,100 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
+#include <com/sun/star/beans/XPropertyChangeListener.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/datatransfer/clipboard/SystemClipboard.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/awt/XToolkitExperimental.hpp>
 #include <com/sun/star/awt/XToolkitRobot.hpp>
-#include <com/sun/star/awt/XMessageBoxFactory.hpp>
 
 #include <cppuhelper/bootstrap.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <osl/conditn.hxx>
 #include <osl/module.h>
-#include <osl/thread.h>
+#include <osl/thread.hxx>
 #include <osl/mutex.hxx>
-#include <rtl/uuid.h>
 #include <rtl/process.h>
+#include <sal/log.hxx>
 #include <tools/link.hxx>
-#include <tools/fract.hxx>
 #include <tools/wintypes.hxx>
 
 #ifdef MACOSX
-#include "premac.h"
+#include <premac.h>
 #include <Cocoa/Cocoa.h>
-#include "postmac.h"
+#include <postmac.h>
 #endif
 
 #include <vcl/sysdata.hxx>
+#include <vcl/textrectinfo.hxx>
+#include <vcl/vclmedit.hxx>
 
 #include <toolkit/awt/vclxwindows.hxx>
-#include <toolkit/awt/vclxsystemdependentwindow.hxx>
-#include <toolkit/awt/vclxregion.hxx>
-#include <toolkit/awt/vclxtabpagecontainer.hxx>
+#include <awt/vclxsystemdependentwindow.hxx>
+#include <awt/vclxregion.hxx>
+#include <awt/vclxtabpagecontainer.hxx>
 
-#include <toolkit/awt/animatedimagespeer.hxx>
+#include <awt/animatedimagespeer.hxx>
 #include <toolkit/awt/vclxtopwindow.hxx>
 #include <toolkit/awt/vclxwindow.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <toolkit/helper/servicenames.hxx>
+#include <toolkit/helper/property.hxx>
 
-#include <toolkit/helper/macros.hxx>
 #include <toolkit/helper/convert.hxx>
-#include <vcl/unohelp.hxx>
-#include <vcl/button.hxx>
-#include <vcl/combobox.hxx>
+#include <controls/filectrl.hxx>
+#include <controls/treecontrolpeer.hxx>
+#include <vcl/toolkit/button.hxx>
+#include <vcl/toolkit/calendar.hxx>
+#include <vcl/toolkit/combobox.hxx>
 #include <vcl/ctrl.hxx>
-#include <vcl/dialog.hxx>
+#include <vcl/toolkit/dialog.hxx>
 #include <vcl/dockingarea.hxx>
 #include <vcl/dockwin.hxx>
 #include <vcl/edit.hxx>
-#include <vcl/field.hxx>
-#include <vcl/fixed.hxx>
+#include <vcl/event.hxx>
+#include <vcl/toolkit/field.hxx>
+#include <vcl/toolkit/fixed.hxx>
+#include <vcl/toolkit/fixedhyper.hxx>
 #include <vcl/floatwin.hxx>
-#include <vcl/group.hxx>
+#include <vcl/toolkit/fmtfield.hxx>
+#include <vcl/toolkit/prgsbar.hxx>
 #include <vcl/scheduler.hxx>
-#include <vcl/imgctrl.hxx>
-#include <vcl/longcurr.hxx>
-#include <vcl/lstbox.hxx>
+#include <vcl/toolkit/lstbox.hxx>
+#include <vcl/toolkit/longcurr.hxx>
 #include <vcl/menubtn.hxx>
-#include <vcl/morebtn.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/stdtext.hxx>
 #include <vcl/scrbar.hxx>
-#include <vcl/spin.hxx>
 #include <vcl/split.hxx>
 #include <vcl/splitwin.hxx>
 #include <vcl/status.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/syschild.hxx>
 #include <vcl/tabctrl.hxx>
-#include <vcl/tabdlg.hxx>
 #include <vcl/tabpage.hxx>
 #include <vcl/toolbox.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/window.hxx>
 #include <vcl/wrkwin.hxx>
-#include <vcl/throbber.hxx>
+#include <vcl/toolkit/group.hxx>
+#include <vcl/toolkit/imgctrl.hxx>
+#include <vcl/toolkit/morebtn.hxx>
+#include <vcl/toolkit/roadmap.hxx>
+#include <vcl/toolkit/spin.hxx>
+#include <vcl/toolkit/tabdlg.hxx>
+#include <vcl/toolkit/throbber.hxx>
 #if HAVE_FEATURE_OPENGL
 #include <vcl/opengl/OpenGLWrapper.hxx>
 #endif
-#include "toolkit/awt/vclxspinbutton.hxx"
+#include <awt/vclxspinbutton.hxx>
 #include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
 #include <comphelper/processfactory.hxx>
-#include <toolkit/awt/scrollabledialog.hxx>
 #include <comphelper/profilezone.hxx>
 
-#include "helper/unowrapper.hxx"
+#include <helper/msgbox.hxx>
+#include <helper/scrollabledialog.hxx>
+#include <helper/unowrapper.hxx>
 
 #if defined(_WIN32)
 #define SYSTEM_DEPENDENT_TYPE css::lang::SystemDependent::SYSTEM_WIN32
@@ -133,9 +140,258 @@
 #define SYSTEM_DEPENDENT_TYPE css::lang::SystemDependent::SYSTEM_XWINDOW
 #endif
 
+void MessBox::ImplInitButtons()
+{
+    ButtonDialogFlags nOKFlags = ButtonDialogFlags::OK;
+    ButtonDialogFlags nCancelFlags = ButtonDialogFlags::Cancel;
+    ButtonDialogFlags nRetryFlags = ButtonDialogFlags::NONE;
+    ButtonDialogFlags nYesFlags = ButtonDialogFlags::NONE;
+    ButtonDialogFlags nNoFlags = ButtonDialogFlags::NONE;
+
+    if ( mnMessBoxStyle & MessBoxStyle::OkCancel )
+    {
+        if ( mnMessBoxStyle & MessBoxStyle::DefaultCancel )
+            nCancelFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+        else // MessBoxStyle::DefaultOk
+            nOKFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+
+        AddButton( StandardButtonType::OK, RET_OK, nOKFlags );
+        AddButton( StandardButtonType::Cancel, RET_CANCEL, nCancelFlags );
+    }
+    else if ( mnMessBoxStyle & MessBoxStyle::YesNo )
+    {
+        if ( mnMessBoxStyle & MessBoxStyle::DefaultYes )
+            nYesFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+        else // MessBoxStyle::DefaultNo
+            nNoFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+        nNoFlags |= ButtonDialogFlags::Cancel;
+
+        AddButton( StandardButtonType::Yes, RET_YES, nYesFlags );
+        AddButton( StandardButtonType::No, RET_NO, nNoFlags );
+    }
+    else if ( mnMessBoxStyle & MessBoxStyle::YesNoCancel )
+    {
+        if ( mnMessBoxStyle & MessBoxStyle::DefaultYes )
+            nYesFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+        else if ( mnMessBoxStyle & MessBoxStyle::DefaultNo )
+            nNoFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+        else
+            nCancelFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+
+        AddButton( StandardButtonType::Yes, RET_YES, nYesFlags );
+        AddButton( StandardButtonType::No, RET_NO, nNoFlags );
+        AddButton( StandardButtonType::Cancel, RET_CANCEL, nCancelFlags );
+    }
+    else if ( mnMessBoxStyle & MessBoxStyle::RetryCancel )
+    {
+        if ( mnMessBoxStyle & MessBoxStyle::DefaultCancel )
+            nCancelFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+        else // MessBoxStyle::DefaultRetry
+            nRetryFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+
+        AddButton( StandardButtonType::Retry, RET_RETRY, nRetryFlags );
+        AddButton( StandardButtonType::Cancel, RET_CANCEL, nCancelFlags );
+    }
+    else if ( mnMessBoxStyle & MessBoxStyle::AbortRetryIgnore )
+    {
+        ButtonDialogFlags nAbortFlags = ButtonDialogFlags::NONE;
+        ButtonDialogFlags nIgnoreFlags = ButtonDialogFlags::NONE;
+
+        if ( mnMessBoxStyle & MessBoxStyle::DefaultCancel )
+            nAbortFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+        else if ( mnMessBoxStyle & MessBoxStyle::DefaultRetry )
+            nRetryFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+        else if ( mnMessBoxStyle & MessBoxStyle::DefaultIgnore )
+            nIgnoreFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+
+        AddButton( StandardButtonType::Abort, RET_CANCEL, nAbortFlags );
+        AddButton( StandardButtonType::Retry, RET_RETRY, nRetryFlags );
+        AddButton( StandardButtonType::Ignore, RET_IGNORE, nIgnoreFlags );
+    }
+    else if ( mnMessBoxStyle & MessBoxStyle::Ok )
+    {
+        nOKFlags |= ButtonDialogFlags::Default | ButtonDialogFlags::Focus;
+
+        AddButton( StandardButtonType::OK, RET_OK, nOKFlags );
+    }
+}
+
+MessBox::MessBox(vcl::Window* pParent, MessBoxStyle nMessBoxStyle, WinBits nWinBits,
+                 const OUString& rTitle, const OUString& rMessage) :
+    ButtonDialog( WindowType::MESSBOX ),
+    mbHelpBtn( false ),
+    mnMessBoxStyle( nMessBoxStyle ),
+    maMessText( rMessage )
+{
+    ImplLOKNotifier(pParent);
+    ImplInitDialog(pParent, nWinBits | WB_MOVEABLE | WB_HORZ | WB_CENTER);
+    ImplInitButtons();
+
+    if ( !rTitle.isEmpty() )
+        SetText( rTitle );
+}
+
+MessBox::~MessBox()
+{
+    disposeOnce();
+}
+
+void MessBox::dispose()
+{
+    mpVCLMultiLineEdit.disposeAndClear();
+    mpFixedImage.disposeAndClear();
+    ButtonDialog::dispose();
+}
+
+void MessBox::ImplPosControls()
+{
+    if ( !GetHelpId().isEmpty() )
+    {
+        if ( !mbHelpBtn )
+        {
+            AddButton( StandardButtonType::Help, RET_HELP, ButtonDialogFlags::Help, 3 );
+            mbHelpBtn = true;
+        }
+    }
+    else
+    {
+        if ( mbHelpBtn )
+        {
+            RemoveButton( RET_HELP );
+            mbHelpBtn = false;
+        }
+    }
+
+    TextRectInfo    aTextInfo;
+    tools::Rectangle       aRect( 0, 0, 30000, 30000 );
+    tools::Rectangle       aFormatRect;
+    Point           aTextPos( IMPL_DIALOG_OFFSET, IMPL_DIALOG_OFFSET+IMPL_MSGBOX_OFFSET_EXTRA_Y );
+    Size            aImageSize;
+    Size            aPageSize;
+    Size            aMEditSize;
+    long            nTitleWidth;
+    long            nButtonSize = ImplGetButtonSize();
+    long            nMaxLineWidth;
+    long            nWidth;
+    WinBits         nWinStyle = WB_LEFT | WB_NOLABEL;
+    DrawTextFlags   nTextStyle = DrawTextFlags::MultiLine | DrawTextFlags::Top | DrawTextFlags::Left;
+
+    mpVCLMultiLineEdit.disposeAndClear();
+    mpFixedImage.disposeAndClear();
+
+    // Clean up message text with tabs
+    OUString aMessText(maMessText.replaceAll("\t", "    "));
+
+    //If window too small, we make dialog box be wider
+    long nMaxWidth = 630 * GetDPIScaleFactor();
+
+    // MessagBox should be at least as wide as to see the title
+    // Extra-Width for Close button, because Close button is set after this call
+    nTitleWidth = CalcTitleWidth();
+
+    nMaxWidth -= (IMPL_DIALOG_OFFSET*2)+(IMPL_MSGBOX_OFFSET_EXTRA_X*2);
+
+    // for an image, get its size, create a suitable control and position it
+    aImageSize = maImage.GetSizePixel();
+    if ( aImageSize.Width() )
+    {
+        aImageSize.AdjustWidth(4 );
+        aImageSize.AdjustHeight(4 );
+        aTextPos.AdjustX(aImageSize.Width()+IMPL_SEP_MSGBOX_IMAGE );
+        mpFixedImage = VclPtr<FixedImage>::Create( this );
+        mpFixedImage->SetPosSizePixel( Point( IMPL_DIALOG_OFFSET-2+IMPL_MSGBOX_OFFSET_EXTRA_X,
+                                              IMPL_DIALOG_OFFSET-2+IMPL_MSGBOX_OFFSET_EXTRA_Y ),
+                                       aImageSize );
+        mpFixedImage->SetImage( maImage );
+        mpFixedImage->Show();
+        nMaxWidth -= aImageSize.Width()+IMPL_SEP_MSGBOX_IMAGE;
+    }
+    else
+        aTextPos.AdjustX(IMPL_MSGBOX_OFFSET_EXTRA_X );
+
+    // Determine maximum line length without wordbreak
+    aFormatRect = GetTextRect( aRect, aMessText, nTextStyle, &aTextInfo );
+    nMaxLineWidth = aFormatRect.GetWidth();
+    nTextStyle |= DrawTextFlags::WordBreak;
+
+    // Determine the width for text formatting
+    if ( nMaxLineWidth > 450 )
+        nWidth = 450;
+    else if ( nMaxLineWidth > 300 )
+        nWidth = nMaxLineWidth+5;
+    else
+        nWidth = 300;
+
+    nWidth *= GetDPIScaleFactor();
+
+    if ( nButtonSize > nWidth )
+        nWidth = nButtonSize-(aTextPos.X()-IMPL_DIALOG_OFFSET);
+    if ( nWidth > nMaxWidth )
+        nWidth = nMaxWidth;
+
+    aRect.SetRight( nWidth );
+    aFormatRect = GetTextRect( aRect, aMessText, nTextStyle, &aTextInfo );
+    if ( aTextInfo.GetMaxLineWidth() > nWidth )
+    {
+        nWidth = aTextInfo.GetMaxLineWidth()+8;
+        aRect.SetRight( nWidth );
+        aFormatRect = GetTextRect( aRect, aMessText, nTextStyle, &aTextInfo );
+    }
+
+    // get Style for VCLMultiLineEdit
+    aMEditSize.setWidth( aTextInfo.GetMaxLineWidth()+1 );
+    aMEditSize.setHeight( aFormatRect.GetHeight() );
+    aPageSize.setWidth( aImageSize.Width() );
+    if ( aMEditSize.Height() < aImageSize.Height() )
+    {
+        nWinStyle |= WB_VCENTER;
+        aPageSize.setHeight( aImageSize.Height() );
+        aMEditSize.setHeight( aImageSize.Height() );
+    }
+    else
+    {
+        nWinStyle |= WB_TOP;
+        aPageSize.setHeight( aMEditSize.Height() );
+    }
+    if ( aImageSize.Width() )
+        aPageSize.AdjustWidth(IMPL_SEP_MSGBOX_IMAGE );
+    aPageSize.AdjustWidth((IMPL_DIALOG_OFFSET*2)+(IMPL_MSGBOX_OFFSET_EXTRA_X*2) );
+    aPageSize.AdjustWidth(aMEditSize.Width()+1 );
+    aPageSize.AdjustHeight((IMPL_DIALOG_OFFSET*2)+(IMPL_MSGBOX_OFFSET_EXTRA_Y*2) );
+
+    if ( aPageSize.Width() < IMPL_MINSIZE_MSGBOX_WIDTH )
+        aPageSize.setWidth( IMPL_MINSIZE_MSGBOX_WIDTH );
+    if ( aPageSize.Width() < nTitleWidth )
+        aPageSize.setWidth( nTitleWidth );
+
+    mpVCLMultiLineEdit = VclPtr<VclMultiLineEdit>::Create( this, nWinStyle );
+    mpVCLMultiLineEdit->SetText( aMessText );
+    mpVCLMultiLineEdit->SetPosSizePixel( aTextPos, aMEditSize );
+    mpVCLMultiLineEdit->Show();
+    mpVCLMultiLineEdit->SetPaintTransparent(true);
+    mpVCLMultiLineEdit->EnableCursor(false);
+    SetPageSizePixel( aPageSize );
+}
+
+void MessBox::StateChanged( StateChangedType nType )
+{
+    if ( nType == StateChangedType::InitShow )
+    {
+        ImplPosControls();
+    }
+    ButtonDialog::StateChanged( nType );
+}
+
+Size MessBox::GetOptimalSize() const
+{
+    // FIXME: base me on the font size ?
+    return Size( 250, 100 );
+}
+
+
 namespace {
 
-extern "C" typedef vcl::Window* (SAL_CALL *FN_SvtCreateWindow)(
+extern "C" typedef vcl::Window* (*FN_SvtCreateWindow)(
         VCLXWindow** ppNewComp,
         const css::awt::WindowDescriptor* pDescriptor,
         vcl::Window* pParent,
@@ -207,8 +463,10 @@ protected:
 
     virtual void SAL_CALL disposing() override;
 
-    static vcl::Window* ImplCreateWindow( VCLXWindow** ppNewComp, const css::awt::WindowDescriptor& rDescriptor, vcl::Window* pParent, WinBits nWinBits );
-    css::uno::Reference< css::awt::XWindowPeer > ImplCreateWindow( const css::awt::WindowDescriptor& Descriptor, WinBits nWinBits );
+    static vcl::Window* ImplCreateWindow( VCLXWindow** ppNewComp, const css::awt::WindowDescriptor& rDescriptor, vcl::Window* pParent,
+                             WinBits nWinBits, MessBoxStyle nMessBoxStyle );
+    css::uno::Reference< css::awt::XWindowPeer > ImplCreateWindow( const css::awt::WindowDescriptor& Descriptor,
+                             MessBoxStyle nForceMessBoxStyle );
 
 public:
 
@@ -312,9 +570,10 @@ public:
 
 };
 
-WinBits ImplGetWinBits( sal_uInt32 nComponentAttribs, WindowType nCompType )
+std::pair<WinBits,MessBoxStyle> ImplGetWinBits( sal_uInt32 nComponentAttribs, WindowType nCompType )
 {
     WinBits nWinBits = 0;
+    MessBoxStyle nStyle = MessBoxStyle::NONE;
 
     bool bMessBox = false;
     if ( ( nCompType == WindowType::INFOBOX ) ||
@@ -330,7 +589,6 @@ WinBits ImplGetWinBits( sal_uInt32 nComponentAttribs, WindowType nCompType )
     if  (   bMessBox
         ||  ( nCompType == WindowType::DIALOG )
         ||  ( nCompType == WindowType::MODELESSDIALOG )
-        ||  ( nCompType == WindowType::MODALDIALOG )
         ||  ( nCompType == WindowType::DOCKINGWINDOW )
         ||  ( nCompType == WindowType::TABDIALOG )
         ||  ( nCompType == WindowType::BUTTONDIALOG )
@@ -377,29 +635,29 @@ WinBits ImplGetWinBits( sal_uInt32 nComponentAttribs, WindowType nCompType )
     if( nComponentAttribs & css::awt::VclWindowPeerAttribute::NOLABEL ) //added for issue79712
         nWinBits |= WB_NOLABEL;
 
-    // These bits are not uniqe
+    // These bits are not unique
     if ( bMessBox )
     {
         if( nComponentAttribs & css::awt::VclWindowPeerAttribute::OK )
-            nWinBits |= WB_OK;
+            nStyle |= MessBoxStyle::Ok;
         if( nComponentAttribs & css::awt::VclWindowPeerAttribute::OK_CANCEL )
-            nWinBits |= WB_OK_CANCEL;
+            nStyle |= MessBoxStyle::OkCancel;
         if( nComponentAttribs & css::awt::VclWindowPeerAttribute::YES_NO )
-            nWinBits |= WB_YES_NO;
+            nStyle |= MessBoxStyle::YesNo;
         if( nComponentAttribs & css::awt::VclWindowPeerAttribute::YES_NO_CANCEL )
-            nWinBits |= WB_YES_NO_CANCEL;
+            nStyle |= MessBoxStyle::YesNoCancel;
         if( nComponentAttribs & css::awt::VclWindowPeerAttribute::RETRY_CANCEL )
-            nWinBits |= WB_RETRY_CANCEL;
+            nStyle |= MessBoxStyle::RetryCancel;
         if( nComponentAttribs & css::awt::VclWindowPeerAttribute::DEF_OK )
-            nWinBits |= WB_DEF_OK;
+            nStyle |= MessBoxStyle::DefaultOk;
         if( nComponentAttribs & css::awt::VclWindowPeerAttribute::DEF_CANCEL )
-            nWinBits |= WB_DEF_CANCEL;
+            nStyle |= MessBoxStyle::DefaultCancel;
         if( nComponentAttribs & css::awt::VclWindowPeerAttribute::DEF_RETRY )
-            nWinBits |= WB_DEF_RETRY;
+            nStyle |= MessBoxStyle::DefaultRetry;
         if( nComponentAttribs & css::awt::VclWindowPeerAttribute::DEF_YES )
-            nWinBits |= WB_DEF_YES;
+            nStyle |= MessBoxStyle::DefaultYes;
         if( nComponentAttribs & css::awt::VclWindowPeerAttribute::DEF_NO )
-            nWinBits |= WB_DEF_NO;
+            nStyle |= MessBoxStyle::DefaultNo;
     }
     if ( nCompType == WindowType::MULTILINEEDIT || nCompType == WindowType::DIALOG || nCompType == WindowType::GROUPBOX )
     {
@@ -424,92 +682,94 @@ WinBits ImplGetWinBits( sal_uInt32 nComponentAttribs, WindowType nCompType )
         }
     }
 
-    return nWinBits;
+    return { nWinBits, nStyle };
 }
 
 struct ComponentInfo
 {
-    const char*     pName;
+    OUStringLiteral sName;
     WindowType      nWinType;
 };
 
-static ComponentInfo aComponentInfos [] =
+ComponentInfo const aComponentInfos [] =
 {
-    { "buttondialog",       WindowType::BUTTONDIALOG },
-    { "cancelbutton",       WindowType::CANCELBUTTON },
-    { "checkbox",           WindowType::CHECKBOX },
-    { "combobox",           WindowType::COMBOBOX },
-    { "control",            WindowType::CONTROL },
-    { "currencybox",        WindowType::CURRENCYBOX },
-    { "currencyfield",      WindowType::CURRENCYFIELD },
-    { "datebox",            WindowType::DATEBOX },
-    { "datefield",          WindowType::DATEFIELD },
-    { "dialog",             WindowType::DIALOG },
-    { "dockingarea",        WindowType::DOCKINGAREA },
-    { "dockingwindow",      WindowType::DOCKINGWINDOW },
-    { "edit",               WindowType::EDIT },
-    { "errorbox",           WindowType::ERRORBOX },
-    { "fixedbitmap",        WindowType::FIXEDBITMAP },
-    { "fixedimage",         WindowType::FIXEDIMAGE },
-    { "fixedline",          WindowType::FIXEDLINE },
-    { "fixedtext",          WindowType::FIXEDTEXT },
-    { "floatingwindow",     WindowType::FLOATINGWINDOW },
-    { "framewindow",        WindowType::TOOLKIT_FRAMEWINDOW },
-    { "groupbox",           WindowType::GROUPBOX },
-    { "frame",              WindowType::GROUPBOX },
-    { "helpbutton",         WindowType::HELPBUTTON },
-    { "imagebutton",        WindowType::IMAGEBUTTON },
-    { "infobox",            WindowType::INFOBOX },
-    { "listbox",            WindowType::LISTBOX },
-    { "longcurrencybox",    WindowType::LONGCURRENCYBOX },
-    { "longcurrencyfield",  WindowType::LONGCURRENCYFIELD },
-    { "menubutton",         WindowType::MENUBUTTON },
-    { "messbox",            WindowType::MESSBOX },
-    { "metricbox",          WindowType::METRICBOX },
-    { "metricfield",        WindowType::METRICFIELD },
-    { "modaldialog",        WindowType::MODALDIALOG },
-    { "modelessdialog",     WindowType::MODELESSDIALOG },
-    { "morebutton",         WindowType::MOREBUTTON },
-    { "multilineedit",      WindowType::MULTILINEEDIT },
-    { "multilistbox",       WindowType::MULTILISTBOX },
-    { "numericbox",         WindowType::NUMERICBOX },
-    { "numericfield",       WindowType::NUMERICFIELD },
-    { "okbutton",           WindowType::OKBUTTON },
-    { "patternbox",         WindowType::PATTERNBOX },
-    { "patternfield",       WindowType::PATTERNFIELD },
-    { "pushbutton",         WindowType::PUSHBUTTON },
-    { "querybox",           WindowType::QUERYBOX },
-    { "radiobutton",        WindowType::RADIOBUTTON },
-    { "scrollbar",          WindowType::SCROLLBAR },
-    { "scrollbarbox",       WindowType::SCROLLBARBOX },
-    { "animatedimages",     WindowType::CONTROL },
-    { "spinbutton",         WindowType::SPINBUTTON },
-    { "spinfield",          WindowType::SPINFIELD },
-    { "splitter",           WindowType::SPLITTER },
-    { "splitwindow",        WindowType::SPLITWINDOW },
-    { "statusbar",          WindowType::STATUSBAR },
-    { "systemchildwindow",  WindowType::TOOLKIT_SYSTEMCHILDWINDOW },
-    { "tabcontrol",         WindowType::TABCONTROL },
-    { "tabdialog",          WindowType::TABDIALOG },
-    { "tabpage",            WindowType::TABPAGE },
-    { "timebox",            WindowType::TIMEBOX },
-    { "timefield",          WindowType::TIMEFIELD },
-    { "toolbox",            WindowType::TOOLBOX },
-    { "tristatebox",        WindowType::TRISTATEBOX },
-    { "warningbox",         WindowType::WARNINGBOX },
-    { "window",             WindowType::WINDOW },
-    { "workwindow",         WindowType::WORKWINDOW },
-    { "tabpagecontainer",   WindowType::CONTROL },
-    { "tabpagemodel",       WindowType::TABPAGE }
+    { OUStringLiteral("animatedimages"),     WindowType::CONTROL },
+    { OUStringLiteral("buttondialog"),       WindowType::BUTTONDIALOG },
+    { OUStringLiteral("cancelbutton"),       WindowType::CANCELBUTTON },
+    { OUStringLiteral("checkbox"),           WindowType::CHECKBOX },
+    { OUStringLiteral("combobox"),           WindowType::COMBOBOX },
+    { OUStringLiteral("control"),            WindowType::CONTROL },
+    { OUStringLiteral("currencybox"),        WindowType::CURRENCYBOX },
+    { OUStringLiteral("currencyfield"),      WindowType::CURRENCYFIELD },
+    { OUStringLiteral("datebox"),            WindowType::DATEBOX },
+    { OUStringLiteral("datefield"),          WindowType::CONTROL },
+    { OUStringLiteral("dialog"),             WindowType::DIALOG },
+    { OUStringLiteral("dockingarea"),        WindowType::DOCKINGAREA },
+    { OUStringLiteral("dockingwindow"),      WindowType::DOCKINGWINDOW },
+    { OUStringLiteral("edit"),               WindowType::EDIT },
+    { OUStringLiteral("errorbox"),           WindowType::ERRORBOX },
+    { OUStringLiteral("filecontrol"),        WindowType::CONTROL },
+    { OUStringLiteral("fixedbitmap"),        WindowType::FIXEDBITMAP },
+    { OUStringLiteral("fixedhyperlink"),     WindowType::CONTROL },
+    { OUStringLiteral("fixedimage"),         WindowType::FIXEDIMAGE },
+    { OUStringLiteral("fixedline"),          WindowType::FIXEDLINE },
+    { OUStringLiteral("fixedtext"),          WindowType::FIXEDTEXT },
+    { OUStringLiteral("floatingwindow"),     WindowType::FLOATINGWINDOW },
+    { OUStringLiteral("formattedfield"),     WindowType::CONTROL },
+    { OUStringLiteral("frame"),              WindowType::GROUPBOX },
+    { OUStringLiteral("framewindow"),        WindowType::TOOLKIT_FRAMEWINDOW },
+    { OUStringLiteral("groupbox"),           WindowType::GROUPBOX },
+    { OUStringLiteral("helpbutton"),         WindowType::HELPBUTTON },
+    { OUStringLiteral("imagebutton"),        WindowType::IMAGEBUTTON },
+    { OUStringLiteral("infobox"),            WindowType::INFOBOX },
+    { OUStringLiteral("listbox"),            WindowType::LISTBOX },
+    { OUStringLiteral("longcurrencybox"),    WindowType::LONGCURRENCYBOX },
+    { OUStringLiteral("longcurrencyfield"),  WindowType::CONTROL },
+    { OUStringLiteral("menubutton"),         WindowType::MENUBUTTON },
+    { OUStringLiteral("messbox"),            WindowType::MESSBOX },
+    { OUStringLiteral("metricbox"),          WindowType::METRICBOX },
+    { OUStringLiteral("metricfield"),        WindowType::METRICFIELD },
+    { OUStringLiteral("modelessdialog"),     WindowType::MODELESSDIALOG },
+    { OUStringLiteral("morebutton"),         WindowType::MOREBUTTON },
+    { OUStringLiteral("multilineedit"),      WindowType::MULTILINEEDIT },
+    { OUStringLiteral("multilistbox"),       WindowType::MULTILISTBOX },
+    { OUStringLiteral("numericbox"),         WindowType::NUMERICBOX },
+    { OUStringLiteral("numericfield"),       WindowType::CONTROL },
+    { OUStringLiteral("okbutton"),           WindowType::OKBUTTON },
+    { OUStringLiteral("patternbox"),         WindowType::PATTERNBOX },
+    { OUStringLiteral("patternfield"),       WindowType::PATTERNFIELD },
+    { OUStringLiteral("progressbar"),        WindowType::CONTROL },
+    { OUStringLiteral("pushbutton"),         WindowType::PUSHBUTTON },
+    { OUStringLiteral("querybox"),           WindowType::QUERYBOX },
+    { OUStringLiteral("radiobutton"),        WindowType::RADIOBUTTON },
+    { OUStringLiteral("roadmap"),            WindowType::CONTROL },
+    { OUStringLiteral("scrollbar"),          WindowType::SCROLLBAR },
+    { OUStringLiteral("scrollbarbox"),       WindowType::SCROLLBARBOX },
+    { OUStringLiteral("spinbutton"),         WindowType::SPINBUTTON },
+    { OUStringLiteral("spinfield"),          WindowType::SPINFIELD },
+    { OUStringLiteral("splitter"),           WindowType::SPLITTER },
+    { OUStringLiteral("splitwindow"),        WindowType::SPLITWINDOW },
+    { OUStringLiteral("statusbar"),          WindowType::STATUSBAR },
+    { OUStringLiteral("systemchildwindow"),  WindowType::TOOLKIT_SYSTEMCHILDWINDOW },
+    { OUStringLiteral("tabcontrol"),         WindowType::TABCONTROL },
+    { OUStringLiteral("tabdialog"),          WindowType::TABDIALOG },
+    { OUStringLiteral("tabpage"),            WindowType::TABPAGE },
+    { OUStringLiteral("tabpagecontainer"),   WindowType::CONTROL },
+    { OUStringLiteral("tabpagemodel"),       WindowType::TABPAGE },
+    { OUStringLiteral("timebox"),            WindowType::TIMEBOX },
+    { OUStringLiteral("timefield"),          WindowType::TIMEFIELD },
+    { OUStringLiteral("toolbox"),            WindowType::TOOLBOX },
+    { OUStringLiteral("tree"),               WindowType::CONTROL },
+    { OUStringLiteral("tristatebox"),        WindowType::TRISTATEBOX },
+    { OUStringLiteral("warningbox"),         WindowType::WARNINGBOX },
+    { OUStringLiteral("window"),             WindowType::WINDOW },
+    { OUStringLiteral("workwindow"),         WindowType::WORKWINDOW }
 };
 
-extern "C"
+bool ComponentInfoFindCompare( const ComponentInfo & lhs, const OUString & s)
 {
-static int SAL_CALL ComponentInfoCompare( const void* pFirst, const void* pSecond)
-{
-    return( strcmp( static_cast<ComponentInfo const *>(pFirst)->pName,
-                    static_cast<ComponentInfo const *>(pSecond)->pName ) );
-}
+    return rtl_ustr_ascii_compareIgnoreAsciiCase_WithLengths(s.pData->buffer, s.pData->length,
+                lhs.sName.data, lhs.sName.size) > 0;
 }
 
 WindowType ImplGetComponentType( const OUString& rServiceName )
@@ -517,108 +777,88 @@ WindowType ImplGetComponentType( const OUString& rServiceName )
     static bool bSorted = false;
     if( !bSorted )
     {
-        qsort(  static_cast<void*>(aComponentInfos),
-                SAL_N_ELEMENTS( aComponentInfos ),
-                sizeof( ComponentInfo ),
-                ComponentInfoCompare );
+        assert( std::is_sorted( std::begin(aComponentInfos), std::end(aComponentInfos),
+                    [](const ComponentInfo & lhs, const ComponentInfo & rhs) {
+                        return
+                            rtl_str_compare_WithLength(
+                                lhs.sName.data, lhs.sName.size, rhs.sName.data, rhs.sName.size)
+                            < 0;
+                    } ) );
         bSorted = true;
     }
 
-
-    ComponentInfo aSearch;
-    OString aServiceName(OUStringToOString(rServiceName, osl_getThreadTextEncoding()).toAsciiLowerCase());
-    if ( !aServiceName.isEmpty() )
-        aSearch.pName = aServiceName.getStr();
+    OUString sSearch;
+    if ( !rServiceName.isEmpty() )
+        sSearch = rServiceName;
     else
-        aSearch.pName = "window";
+        sSearch = "window";
 
-    ComponentInfo* pInf = static_cast<ComponentInfo*>(bsearch( &aSearch,
-                        static_cast<void*>(aComponentInfos),
-                        SAL_N_ELEMENTS( aComponentInfos ),
-                        sizeof( ComponentInfo ),
-                        ComponentInfoCompare ));
-
-    return pInf ? pInf->nWinType : WindowType::NONE;
+    auto it = std::lower_bound( std::begin(aComponentInfos), std::end(aComponentInfos), sSearch,
+                                ComponentInfoFindCompare );
+    if (it != std::end(aComponentInfos) &&
+        rtl_ustr_ascii_compareIgnoreAsciiCase_WithLengths(sSearch.pData->buffer, sSearch.pData->length, it->sName.data, it->sName.size) == 0)
+        return it->nWinType;
+    return WindowType::NONE;
 }
 
-
-namespace
+struct MessageBoxTypeInfo
 {
-    struct MessageBoxTypeInfo
-    {
-        css::awt::MessageBoxType eType;
-        const sal_Char          *pName;
-        sal_Int32                nLen;
-    };
+    css::awt::MessageBoxType eType;
+    const char              *pName;
+    sal_Int32                nLen;
+};
 
-    static const MessageBoxTypeInfo aMessageBoxTypeInfo[] =
-    {
-        { css::awt::MessageBoxType_MESSAGEBOX,      RTL_CONSTASCII_STRINGPARAM("messbox") },
-        { css::awt::MessageBoxType_INFOBOX,         RTL_CONSTASCII_STRINGPARAM("infobox") },
-        { css::awt::MessageBoxType_WARNINGBOX,      RTL_CONSTASCII_STRINGPARAM("warningbox") },
-        { css::awt::MessageBoxType_ERRORBOX,        RTL_CONSTASCII_STRINGPARAM("errorbox") },
-        { css::awt::MessageBoxType_QUERYBOX,        RTL_CONSTASCII_STRINGPARAM("querybox") },
-        { css::awt::MessageBoxType::MessageBoxType_MAKE_FIXED_SIZE, nullptr, 0 }
-    };
+const MessageBoxTypeInfo aMessageBoxTypeInfo[] =
+{
+    { css::awt::MessageBoxType_MESSAGEBOX,      RTL_CONSTASCII_STRINGPARAM("messbox") },
+    { css::awt::MessageBoxType_INFOBOX,         RTL_CONSTASCII_STRINGPARAM("infobox") },
+    { css::awt::MessageBoxType_WARNINGBOX,      RTL_CONSTASCII_STRINGPARAM("warningbox") },
+    { css::awt::MessageBoxType_ERRORBOX,        RTL_CONSTASCII_STRINGPARAM("errorbox") },
+    { css::awt::MessageBoxType_QUERYBOX,        RTL_CONSTASCII_STRINGPARAM("querybox") },
+    { css::awt::MessageBoxType::MessageBoxType_MAKE_FIXED_SIZE, nullptr, 0 }
+};
 
-    bool lcl_convertMessageBoxType(
-        rtl::OUString &sType,
-        css::awt::MessageBoxType eType )
-    {
-        const MessageBoxTypeInfo *pMap = aMessageBoxTypeInfo;
-        css::awt::MessageBoxType eVal = css::awt::MessageBoxType::MessageBoxType_MAKE_FIXED_SIZE;
+bool lcl_convertMessageBoxType(
+    OUString &sType,
+    css::awt::MessageBoxType eType )
+{
+    const MessageBoxTypeInfo *pMap = aMessageBoxTypeInfo;
+    css::awt::MessageBoxType eVal = css::awt::MessageBoxType::MessageBoxType_MAKE_FIXED_SIZE;
 
-        while ( pMap->pName )
+    while ( pMap->pName )
+    {
+        if ( pMap->eType == eType )
         {
-            if ( pMap->eType == eType )
-            {
-                eVal = eType;
-                sType = rtl::OUString( pMap->pName, pMap->nLen, RTL_TEXTENCODING_ASCII_US );
-                break;
-            }
-            pMap++;
+            eVal = eType;
+            sType = OUString( pMap->pName, pMap->nLen, RTL_TEXTENCODING_ASCII_US );
+            break;
         }
-
-        return ( eVal != css::awt::MessageBoxType::MessageBoxType_MAKE_FIXED_SIZE );
+        pMap++;
     }
+
+    return ( eVal != css::awt::MessageBoxType::MessageBoxType_MAKE_FIXED_SIZE );
 }
 
-static sal_Int32                            nVCLToolkitInstanceCount = 0;
-static bool                                 bInitedByVCLToolkit = false;
+#ifndef IOS
+
+sal_Int32                            nVCLToolkitInstanceCount = 0;
+bool                                 bInitedByVCLToolkit = false;
 
 osl::Mutex & getInitMutex()
 {
-    static osl::Mutex * pM;
-    if( !pM )
-    {
-        osl::Guard< osl::Mutex > aGuard( osl::Mutex::getGlobalMutex() );
-        if( !pM )
-        {
-            static osl::Mutex aMutex;
-            pM = &aMutex;
-        }
-    }
-    return *pM;
+    static osl::Mutex aMutex;
+    return aMutex;
 }
 
 osl::Condition & getInitCondition()
 {
-    static osl::Condition * pC = nullptr;
-    if( !pC )
-    {
-        osl::Guard< osl::Mutex > aGuard( osl::Mutex::getGlobalMutex() );
-        if( !pC )
-        {
-            static osl::Condition aCondition;
-            pC = &aCondition;
-        }
-    }
-    return *pC;
+    static osl::Condition aCondition;
+    return aCondition;
 }
 
 extern "C"
 {
-static void SAL_CALL ToolkitWorkerFunction( void* pArgs )
+static void ToolkitWorkerFunction( void* pArgs )
 {
     osl_setThreadName("VCLXToolkit VCL main thread");
 
@@ -641,11 +881,11 @@ static void SAL_CALL ToolkitWorkerFunction( void* pArgs )
     }
 
     VCLXToolkit * pTk = static_cast<VCLXToolkit *>(pArgs);
-    bInitedByVCLToolkit = InitVCL();
+    bInitedByVCLToolkit = !IsVCLInit() && InitVCL();
     if( bInitedByVCLToolkit )
     {
         UnoWrapper* pUnoWrapper = new UnoWrapper( pTk );
-        Application::SetUnoWrapper( pUnoWrapper );
+        UnoWrapperBase::SetUnoWrapper( pUnoWrapper );
     }
     getInitCondition().set();
     if( bInitedByVCLToolkit )
@@ -671,6 +911,8 @@ static void SAL_CALL ToolkitWorkerFunction( void* pArgs )
 }
 }
 
+#endif
+
 // constructor, which might initialize VCL
 VCLXToolkit::VCLXToolkit():
     cppu::WeakComponentImplHelper<
@@ -688,6 +930,7 @@ VCLXToolkit::VCLXToolkit():
     hSvToolsLib = nullptr;
     fnSvtCreateWindow = nullptr;
 
+#ifndef IOS
     osl::Guard< osl::Mutex > aGuard( getInitMutex() );
     nVCLToolkitInstanceCount++;
     if( ( nVCLToolkitInstanceCount == 1 ) && ( !Application::IsInMain() ) )
@@ -696,6 +939,7 @@ VCLXToolkit::VCLXToolkit():
         CreateMainLoopThread( ToolkitWorkerFunction, this );
         getInitCondition().wait();
     }
+#endif
 }
 
 void SAL_CALL VCLXToolkit::disposing()
@@ -709,6 +953,7 @@ void SAL_CALL VCLXToolkit::disposing()
     }
 #endif
 
+#ifndef IOS
     {
         osl::Guard< osl::Mutex > aGuard( getInitMutex() );
         if( --nVCLToolkitInstanceCount == 0 )
@@ -721,7 +966,7 @@ void SAL_CALL VCLXToolkit::disposing()
             }
         }
     }
-
+#endif
     if (m_bEventListener)
     {
         ::Application::RemoveEventListener(m_aEventListenerLink);
@@ -761,7 +1006,7 @@ css::awt::Rectangle VCLXToolkit::getWorkArea(  )
 
 css::uno::Reference< css::awt::XWindowPeer > VCLXToolkit::createWindow( const css::awt::WindowDescriptor& rDescriptor )
 {
-    return ImplCreateWindow( rDescriptor, WinBits(0) );
+    return ImplCreateWindow( rDescriptor, MessBoxStyle::NONE );
 }
 
 css::uno::Reference< css::awt::XDevice > VCLXToolkit::createScreenCompatibleDevice( sal_Int32 Width, sal_Int32 Height )
@@ -789,12 +1034,363 @@ css::uno::Reference< css::awt::XRegion > VCLXToolkit::createRegion(  )
     return xRef;
 }
 
+class InfoBox : public MessBox
+{
+public:
+    InfoBox(vcl::Window* pParent, const OUString& rMessage)
+        : MessBox(pParent, MessBoxStyle::Ok | MessBoxStyle::DefaultOk, 0, OUString(), rMessage)
+    {
+        // Default Text is the display title from the application
+        if (GetText().isEmpty())
+            SetText(GetStandardInfoBoxText());
+        SetImage(GetStandardInfoBoxImage());
+    }
+};
+
+class ErrorBox : public MessBox
+{
+public:
+    ErrorBox(vcl::Window* pParent, MessBoxStyle nStyle, WinBits nWinBits, const OUString& rMessage)
+        : MessBox(pParent, nStyle, nWinBits, OUString(), rMessage)
+    {
+        // Default Text is the display title from the application
+        if (GetText().isEmpty())
+            SetText(GetStandardErrorBoxText());
+        SetImage(GetStandardErrorBoxImage());
+    }
+};
+
+class QueryBox : public MessBox
+{
+public:
+    QueryBox(vcl::Window* pParent, MessBoxStyle nStyle, WinBits nWinBits, const OUString& rMessage)
+        : MessBox(pParent, nStyle, nWinBits, OUString(), rMessage)
+    {
+        // Default Text is the display title from the application
+        if (GetText().isEmpty())
+            SetText(GetStandardQueryBoxText());
+        SetImage(GetStandardQueryBoxImage());
+    }
+};
+
+class WarningBox : public MessBox
+{
+public:
+    WarningBox(vcl::Window* pParent, MessBoxStyle nStyle, WinBits nWinBits, const OUString& rMessage)
+        : MessBox(pParent, nStyle, nWinBits, OUString(), rMessage)
+    {
+        // Default Text is the display title from the application
+        if (GetText().isEmpty())
+            SetText(GetStandardWarningBoxText());
+        SetImage(GetStandardWarningBoxImage());
+    }
+};
+
+
+struct RMItemData
+{
+    bool            b_Enabled;
+    sal_Int32           n_ID;
+    OUString     Label;
+};
+
+typedef ::cppu::ImplInheritanceHelper  <   VCLXGraphicControl
+                                        ,   css::container::XContainerListener
+                                        ,   css::beans::XPropertyChangeListener
+                                        ,   css::awt::XItemEventBroadcaster
+                                        >   SVTXRoadmap_Base;
+class SVTXRoadmap final : public SVTXRoadmap_Base
+{
+public:
+    SVTXRoadmap();
+
+    void SAL_CALL disposing( const css::lang::EventObject& Source ) override { VCLXWindow::disposing( Source ); }
+
+    // css::awt::XVclWindowPeer
+    void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
+
+    css::uno::Any SAL_CALL getProperty( const OUString& PropertyName ) override;
+
+    // XContainerListener
+    void SAL_CALL elementInserted( const css::container::ContainerEvent& rEvent ) override;
+    void SAL_CALL elementRemoved( const css::container::ContainerEvent& rEvent ) override;
+    void SAL_CALL elementReplaced( const css::container::ContainerEvent& rEvent ) override;
+
+    // XItemEventBroadcaster
+    virtual void SAL_CALL addItemListener( const css::uno::Reference< css::awt::XItemListener >& l ) override;
+    virtual void SAL_CALL removeItemListener( const css::uno::Reference< css::awt::XItemListener >& l ) override;
+
+    // XPropertyChangeListener
+    virtual void SAL_CALL propertyChange( const css::beans::PropertyChangeEvent& evt ) override;
+
+private:
+
+    // VCLXGraphicControl overridables
+    virtual void    ImplSetNewImage() override;
+
+    static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
+    virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
+
+    static RMItemData GetRMItemData( const css::container::ContainerEvent& _rEvent );
+
+    virtual void ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
+
+    virtual ~SVTXRoadmap() override;
+
+    ItemListenerMultiplexer     maItemListeners;
+};
+
+
+
+
+SVTXRoadmap::SVTXRoadmap() : maItemListeners( *this )
+{
+}
+
+SVTXRoadmap::~SVTXRoadmap()
+{
+}
+
+void SVTXRoadmap::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
+{
+    switch ( rVclWindowEvent.GetId() )
+    {
+        case VclEventId::RoadmapItemSelected:
+        {
+            SolarMutexGuard aGuard;
+            VclPtr<::vcl::ORoadmap> pField = GetAs< vcl::ORoadmap >();
+            if ( pField )
+            {
+                sal_Int16 CurItemID = pField->GetCurrentRoadmapItemID();
+                css::awt::ItemEvent aEvent;
+                aEvent.Selected = CurItemID;
+                aEvent.Highlighted = CurItemID;
+                aEvent.ItemId = CurItemID;
+                maItemListeners.itemStateChanged( aEvent );
+            }
+        }
+        break;
+        default:
+            SVTXRoadmap_Base::ProcessWindowEvent( rVclWindowEvent );
+            break;
+    }
+}
+
+void SVTXRoadmap::propertyChange( const css::beans::PropertyChangeEvent& evt )
+{
+    SolarMutexGuard aGuard;
+    VclPtr<::vcl::ORoadmap> pField = GetAs< vcl::ORoadmap >();
+    if ( !pField )
+        return;
+
+    css::uno::Reference< css::uno::XInterface > xRoadmapItem = evt.Source;
+    sal_Int32 nID = 0;
+    css::uno::Reference< css::beans::XPropertySet > xPropertySet( xRoadmapItem, css::uno::UNO_QUERY );
+    css::uno::Any aValue = xPropertySet->getPropertyValue("ID");
+    aValue >>= nID;
+
+    OUString sPropertyName = evt.PropertyName;
+    if ( sPropertyName == "Enabled" )
+    {
+        bool bEnable = false;
+        evt.NewValue >>= bEnable;
+        pField->EnableRoadmapItem( static_cast<vcl::RoadmapTypes::ItemId>(nID) , bEnable );
+    }
+    else if ( sPropertyName == "Label" )
+    {
+        OUString sLabel;
+        evt.NewValue >>= sLabel;
+        pField->ChangeRoadmapItemLabel( static_cast<vcl::RoadmapTypes::ItemId>(nID) , sLabel );
+    }
+    else if  ( sPropertyName == "ID" )
+    {
+        sal_Int32 nNewID = 0;
+        evt.NewValue >>= nNewID;
+        evt.OldValue >>= nID;
+        pField->ChangeRoadmapItemID( static_cast<vcl::RoadmapTypes::ItemId>(nID), static_cast<vcl::RoadmapTypes::ItemId>(nNewID) );
+    }
+//    else
+        // TODO handle Interactive appropriately
+}
+
+void SVTXRoadmap::addItemListener( const css::uno::Reference< css::awt::XItemListener >& l )
+{
+    maItemListeners.addInterface( l );
+}
+
+void SVTXRoadmap::removeItemListener( const css::uno::Reference< css::awt::XItemListener >& l )
+{
+    maItemListeners.removeInterface( l );
+}
+
+RMItemData SVTXRoadmap::GetRMItemData( const css::container::ContainerEvent& _rEvent )
+{
+    RMItemData aCurRMItemData;
+    css::uno::Reference< css::uno::XInterface > xRoadmapItem;
+    _rEvent.Element >>= xRoadmapItem;
+    css::uno::Reference< css::beans::XPropertySet > xPropertySet( xRoadmapItem, css::uno::UNO_QUERY );
+    if ( xPropertySet.is() )
+    {
+        css::uno::Any aValue = xPropertySet->getPropertyValue("Label");
+        aValue >>= aCurRMItemData.Label;
+        aValue = xPropertySet->getPropertyValue("ID");
+        aValue >>= aCurRMItemData.n_ID;
+        aValue = xPropertySet->getPropertyValue("Enabled");
+        aValue >>= aCurRMItemData.b_Enabled;
+    }
+    else
+    {
+        aCurRMItemData.b_Enabled = false;
+        aCurRMItemData.n_ID = 0;
+    }
+    return aCurRMItemData;
+}
+
+void SVTXRoadmap::elementInserted( const css::container::ContainerEvent& _rEvent )
+{
+    SolarMutexGuard aGuard;
+    VclPtr<::vcl::ORoadmap> pField = GetAs< vcl::ORoadmap >();
+    if ( pField )
+    {
+        RMItemData CurItemData = GetRMItemData(  _rEvent );
+        sal_Int32 InsertIndex = 0;
+        _rEvent.Accessor >>= InsertIndex;
+        pField->InsertRoadmapItem( InsertIndex, CurItemData.Label, static_cast<vcl::RoadmapTypes::ItemId>(CurItemData.n_ID), CurItemData.b_Enabled );
+    }
+}
+
+void SVTXRoadmap::elementRemoved( const css::container::ContainerEvent& _rEvent )
+{
+    SolarMutexGuard aGuard;
+    VclPtr<::vcl::ORoadmap> pField = GetAs< vcl::ORoadmap >();
+    if ( pField )
+    {
+        sal_Int32 DelIndex = 0;
+        _rEvent.Accessor >>= DelIndex;
+        pField->DeleteRoadmapItem(DelIndex);
+    }
+}
+
+void SVTXRoadmap::elementReplaced( const css::container::ContainerEvent& _rEvent )
+{
+    SolarMutexGuard aGuard;
+    VclPtr<::vcl::ORoadmap> pField = GetAs< vcl::ORoadmap >();
+    if ( pField )
+    {
+        RMItemData CurItemData = GetRMItemData(  _rEvent );
+        sal_Int32 ReplaceIndex = 0;
+        _rEvent.Accessor >>= ReplaceIndex;
+        pField->ReplaceRoadmapItem( ReplaceIndex, CurItemData.Label, static_cast<vcl::RoadmapTypes::ItemId>(CurItemData.n_ID), CurItemData.b_Enabled );
+    }
+}
+
+void SVTXRoadmap::setProperty( const OUString& PropertyName, const css::uno::Any& Value)
+{
+    SolarMutexGuard aGuard;
+
+    VclPtr<::vcl::ORoadmap> pField = GetAs< vcl::ORoadmap >();
+    if ( pField )
+    {
+        sal_uInt16 nPropType = GetPropertyId( PropertyName );
+        switch (nPropType)
+        {
+            case BASEPROPERTY_COMPLETE:
+            {
+                bool b = false;
+                Value >>= b;
+                pField->SetRoadmapComplete( b);
+            }
+            break;
+
+            case BASEPROPERTY_ACTIVATED:
+            {
+                bool b = false;
+                Value >>= b;
+                pField->SetRoadmapInteractive( b);
+            }
+            break;
+
+            case BASEPROPERTY_CURRENTITEMID:
+            {
+                sal_Int32 nId = 0;
+                Value >>= nId;
+                pField->SelectRoadmapItemByID( static_cast<vcl::RoadmapTypes::ItemId>(nId) );
+            }
+            break;
+
+            case BASEPROPERTY_TEXT:
+            {
+                OUString aStr;
+                Value >>= aStr;
+                pField->SetText( aStr );
+                pField->Invalidate();
+            }
+            break;
+
+            default:
+                SVTXRoadmap_Base::setProperty( PropertyName, Value );
+                break;
+        }
+
+    }
+    else
+        SVTXRoadmap_Base::setProperty( PropertyName, Value );
+}
+
+
+css::uno::Any SVTXRoadmap::getProperty( const OUString& PropertyName )
+{
+    SolarMutexGuard aGuard;
+
+    css::uno::Any aReturn;
+
+    VclPtr<::vcl::ORoadmap> pField = GetAs< vcl::ORoadmap >();
+    if ( pField )
+    {
+        sal_uInt16 nPropType = GetPropertyId( PropertyName );
+        switch (nPropType)
+        {
+            case BASEPROPERTY_COMPLETE:
+                aReturn <<= pField->IsRoadmapComplete();
+                break;
+            case BASEPROPERTY_ACTIVATED:
+                aReturn <<= pField->IsRoadmapInteractive();
+                break;
+            case BASEPROPERTY_CURRENTITEMID:
+                aReturn <<= pField->GetCurrentRoadmapItemID();
+                break;
+            default:
+                aReturn = SVTXRoadmap_Base::getProperty(PropertyName);
+                break;
+        }
+    }
+    return aReturn;
+}
+
+void SVTXRoadmap::ImplSetNewImage()
+{
+    OSL_PRECOND( GetWindow(), "SVTXRoadmap::ImplSetNewImage: window is required to be not-NULL!" );
+    VclPtr< ::vcl::ORoadmap > pButton = GetAs< ::vcl::ORoadmap >();
+    pButton->SetRoadmapBitmap( GetImage().GetBitmapEx() );
+}
+
+void SVTXRoadmap::ImplGetPropertyIds( std::vector< sal_uInt16 > &rIds )
+{
+    PushPropertyIds( rIds,
+                     BASEPROPERTY_COMPLETE,
+                     BASEPROPERTY_ACTIVATED,
+                     BASEPROPERTY_CURRENTITEMID,
+                     BASEPROPERTY_TEXT,
+                     0);
+    VCLXWindow::ImplGetPropertyIds( rIds, true );
+    VCLXGraphicControl::ImplGetPropertyIds( rIds );
+}
+
 vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
     const css::awt::WindowDescriptor& rDescriptor,
-    vcl::Window* pParent, WinBits nWinBits )
+    vcl::Window* pParent, WinBits nWinBits, MessBoxStyle nMessBoxStyle )
 {
-    OUString aServiceName( rDescriptor.WindowServiceName );
-    aServiceName = aServiceName.toAsciiLowerCase();
+    OUString aServiceName = rDescriptor.WindowServiceName.toAsciiLowerCase();
 
     VclPtr<vcl::Window> pNewWindow;
     WindowType nType = ImplGetComponentType( aServiceName );
@@ -808,11 +1404,10 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
     }
     if ( !pParent )
     {
-        // Wenn die Component einen Parent braucht, dann NULL zurueckgeben,
-        // spaeter mal css::uno::Exception...
+        // If the component needs a parent, then return NULL,
+        // some time later css::uno::Exception...
         bool bException = true;
         if  (   ( nType == WindowType::DIALOG )
-            ||  ( nType == WindowType::MODALDIALOG )
             ||  ( nType == WindowType::MODELESSDIALOG )
             ||  ( nType == WindowType::MESSBOX )
             ||  ( nType == WindowType::INFOBOX )
@@ -866,12 +1461,6 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
             case WindowType::DATEBOX:
                 pNewWindow = VclPtr<DateBox>::Create( pParent, nWinBits );
             break;
-            case WindowType::DATEFIELD:
-                pNewWindow = VclPtr<DateField>::Create( pParent, nWinBits );
-                static_cast<DateField*>(pNewWindow.get())->EnableEmptyFieldValue( true );
-                *ppNewComp = new VCLXDateField;
-                static_cast<VCLXFormattedSpinField*>(*ppNewComp)->SetFormatter( static_cast<FormatterBase*>(static_cast<DateField*>(pNewWindow.get())) );
-            break;
             case WindowType::DOCKINGAREA:
                 pNewWindow = VclPtr<DockingAreaWindow>::Create( pParent );
             break;
@@ -881,7 +1470,7 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
                 *ppNewComp = new VCLXEdit;
             break;
             case WindowType::ERRORBOX:
-                pNewWindow = VclPtr<ErrorBox>::Create( pParent, nWinBits, OUString() );
+                pNewWindow = VclPtr<ErrorBox>::Create( pParent, nMessBoxStyle, nWinBits, OUString() );
                 *ppNewComp = new VCLXMessageBox;
             break;
             case WindowType::FIXEDBITMAP:
@@ -909,7 +1498,7 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
                     *ppNewComp = new VCLXFrame;
                     // Frame control needs to receive
                     // Mouse events
-                pGroupBox->SetMouseTransparent( false );
+                    pGroupBox->SetMouseTransparent( false );
                 }
             break;
             case WindowType::HELPBUTTON:
@@ -932,17 +1521,12 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
             case WindowType::LONGCURRENCYBOX:
                 pNewWindow = VclPtr<LongCurrencyBox>::Create( pParent, nWinBits );
             break;
-            case WindowType::LONGCURRENCYFIELD:
-                pNewWindow = VclPtr<LongCurrencyField>::Create( pParent, nWinBits );
-                *ppNewComp = new VCLXCurrencyField;
-                static_cast<VCLXFormattedSpinField*>(*ppNewComp)->SetFormatter( static_cast<FormatterBase*>(static_cast<LongCurrencyField*>(pNewWindow.get())) );
-            break;
             case WindowType::MENUBUTTON:
                 pNewWindow = VclPtr<MenuButton>::Create( pParent, nWinBits );
                 *ppNewComp = new VCLXButton;
             break;
             case WindowType::MESSBOX:
-                pNewWindow = VclPtr<MessBox>::Create( pParent, nWinBits, OUString(), OUString() );
+                pNewWindow = VclPtr<MessBox>::Create( pParent, nMessBoxStyle, nWinBits, OUString(), OUString() );
                 *ppNewComp = new VCLXMessageBox;
             break;
             case WindowType::METRICBOX:
@@ -954,7 +1538,6 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
                 static_cast<VCLXFormattedSpinField*>(*ppNewComp)->SetFormatter( static_cast<FormatterBase*>(static_cast<MetricField*>(pNewWindow.get())) );
             break;
             case WindowType::DIALOG:
-            case WindowType::MODALDIALOG:
             case WindowType::MODELESSDIALOG:
             {
                 // Modal/Modeless only via Show/Execute
@@ -983,12 +1566,6 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
             case WindowType::NUMERICBOX:
                 pNewWindow = VclPtr<NumericBox>::Create( pParent, nWinBits );
             break;
-            case WindowType::NUMERICFIELD:
-                pNewWindow = VclPtr<NumericField>::Create( pParent, nWinBits );
-                static_cast<NumericField*>(pNewWindow.get())->EnableEmptyFieldValue( true );
-                *ppNewComp = new VCLXNumericField;
-                static_cast<VCLXFormattedSpinField*>(*ppNewComp)->SetFormatter( static_cast<FormatterBase*>(static_cast<NumericField*>(pNewWindow.get())) );
-            break;
             case WindowType::OKBUTTON:
                 pNewWindow = VclPtr<OKButton>::Create( pParent, nWinBits );
                 *ppNewComp = new VCLXButton;
@@ -1006,11 +1583,11 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
                 *ppNewComp = new VCLXButton;
             break;
             case WindowType::QUERYBOX:
-                pNewWindow = VclPtr<QueryBox>::Create( pParent, nWinBits, OUString() );
+                pNewWindow = VclPtr<QueryBox>::Create( pParent, nMessBoxStyle, nWinBits, OUString() );
                 *ppNewComp = new VCLXMessageBox;
             break;
             case WindowType::RADIOBUTTON:
-                pNewWindow = VclPtr<RadioButton>::Create( pParent, nWinBits );
+                pNewWindow = VclPtr<RadioButton>::Create(pParent, false, nWinBits);
                 *ppNewComp = new VCLXRadioButton;
 
                 // by default, disable RadioCheck
@@ -1079,10 +1656,11 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
                 *ppNewComp = new VCLXToolBox;
             break;
             case WindowType::TRISTATEBOX:
-                pNewWindow = VclPtr<TriStateBox>::Create( pParent, nWinBits );
+                pNewWindow = VclPtr<CheckBox>::Create( pParent, nWinBits );
+                static_cast<CheckBox*>(pNewWindow.get())->EnableTriState(true);
             break;
             case WindowType::WARNINGBOX:
-                pNewWindow = VclPtr<WarningBox>::Create( pParent, nWinBits, OUString() );
+                pNewWindow = VclPtr<WarningBox>::Create( pParent, nMessBoxStyle, nWinBits, OUString() );
                 *ppNewComp = new VCLXMessageBox;
             break;
             case WindowType::WORKWINDOW:
@@ -1106,6 +1684,7 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
 
                                 rtl_getGlobalProcessId( reinterpret_cast<sal_uInt8*>(processID) );
 
+                                // coverity[overrun-buffer-arg : FALSE] - coverity has difficulty with css::uno::Sequence
                                 css::uno::Sequence<sal_Int8> processIdSeq(processID, 16);
 
                                 css::uno::Any anyHandle = xSystemDepParent->getWindowHandle(processIdSeq, SYSTEM_DEPENDENT_TYPE);
@@ -1121,14 +1700,12 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
                                     css::uno::Sequence< css::beans::NamedValue > aProps;
                                     if( anyHandle >>= aProps )
                                     {
-                                        const int nProps = aProps.getLength();
-                                        const css::beans::NamedValue* pProps = aProps.getConstArray();
-                                        for( int i = 0; i < nProps; i++ )
+                                        for( const css::beans::NamedValue& rProp : std::as_const(aProps) )
                                         {
-                                            if ( pProps[i].Name == "WINDOW" )
-                                                pProps[i].Value >>= nWindowHandle;
-                                            else if ( pProps[i].Name == "XEMBED" )
-                                                pProps[i].Value >>= bXEmbed;
+                                            if ( rProp.Name == "WINDOW" )
+                                                rProp.Value >>= nWindowHandle;
+                                            else if ( rProp.Name == "XEMBED" )
+                                                rProp.Value >>= bXEmbed;
                                         }
                                     }
                                     else
@@ -1148,7 +1725,7 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
                                     #elif defined UNX
                                     aParentData.aWindow = nWindowHandle;
                                     aParentData.bXEmbedSupport = bXEmbed;
-                                    #elif defined WNT
+                                    #elif defined _WIN32
                                     aParentData.hWnd = reinterpret_cast<HWND>(nWindowHandle);
                                     #endif
                                     pNewWindow = VclPtr<WorkWindow>::Create( &aParentData );
@@ -1160,7 +1737,7 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
                             pNewWindow = VclPtr<WorkWindow>::Create( pParent, nWinBits );
                     }
 
-                    *ppNewComp = new VCLXTopWindow( pNewWindow->GetType() == WindowType::WORKWINDOW );
+                    *ppNewComp = new VCLXTopWindow();
                 }
                 else if ( rDescriptor.Type == css::awt::WindowClass_CONTAINER )
                 {
@@ -1180,16 +1757,69 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
                 }
             break;
             case WindowType::CONTROL:
-                if ( rDescriptor.WindowServiceName.equalsIgnoreAsciiCase(
-                        "tabpagecontainer" ) )
+                if ( aServiceName == "tabpagecontainer" )
                 {
-                    pNewWindow = VclPtr<TabControl>::Create( pParent, nWinBits );
+                    // TabControl has a special case for tabs without border: they are displayed
+                    // in a different way, so we need to ensure that this style is not set, so
+                    // we can guarantee normal tab behavior
+                    pNewWindow = VclPtr<TabControl>::Create( pParent, nWinBits & (~WB_NOBORDER));
                     *ppNewComp = new VCLXTabPageContainer;
                 }
                 else if ( aServiceName == "animatedimages" )
                 {
                     pNewWindow = VclPtr<Throbber>::Create( pParent, nWinBits );
                     *ppNewComp = new ::toolkit::AnimatedImagesPeer;
+                }
+                else if (aServiceName == "roadmap")
+                {
+                    pNewWindow = VclPtr<::vcl::ORoadmap>::Create( pParent, WB_TABSTOP );
+                    *ppNewComp = new SVTXRoadmap;
+                }
+                else if (aServiceName == "fixedhyperlink")
+                {
+                    pNewWindow = VclPtr<FixedHyperlink>::Create( pParent, nWinBits );
+                    *ppNewComp = new VCLXFixedHyperlink;
+                }
+                else if (aServiceName == "progressbar")
+                {
+                    pNewWindow = VclPtr<ProgressBar>::Create( pParent, nWinBits );
+                    *ppNewComp = new VCLXProgressBar;
+                }
+                else if (aServiceName == "filecontrol")
+                {
+                    pNewWindow = VclPtr<FileControl>::Create( pParent, nWinBits );
+                    *ppNewComp = new VCLXFileControl;
+                }
+                else if (aServiceName == "tree")
+                {
+                    TreeControlPeer* pPeer = new TreeControlPeer;
+                    *ppNewComp = pPeer;
+                    pNewWindow = pPeer->createVclControl( pParent, nWinBits );
+                }
+                else if (aServiceName == "formattedfield")
+                {
+                    pNewWindow = VclPtr<FormattedField>::Create( pParent, nWinBits );
+                    *ppNewComp = new SVTXFormattedField;
+                }
+                else if (aServiceName == "numericfield")
+                {
+                    pNewWindow = VclPtr<DoubleNumericField>::Create( pParent, nWinBits );
+                    *ppNewComp = new SVTXNumericField;
+                }
+                else if (aServiceName == "longcurrencyfield")
+                {
+                    pNewWindow = VclPtr<DoubleCurrencyField>::Create( pParent, nWinBits );
+                    *ppNewComp = new SVTXCurrencyField;
+                }
+                else if (aServiceName == "datefield")
+                {
+                    pNewWindow = VclPtr<CalendarField>::Create(pParent, nWinBits);
+                    static_cast<CalendarField*>(pNewWindow.get())->EnableToday();
+                    static_cast<CalendarField*>(pNewWindow.get())->EnableNone();
+                    static_cast<CalendarField*>(pNewWindow.get())->EnableEmptyFieldValue( true );
+                    SVTXDateField * newComp = new SVTXDateField;
+                    *ppNewComp = newComp;
+                    newComp->SetFormatter( static_cast<FormatterBase*>(static_cast<DateField*>(pNewWindow.get())) );
                 }
             break;
             default:
@@ -1198,12 +1828,15 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( VCLXWindow** ppNewComp,
         }
     }
 
+    // tdf#126717 default that formcontrols show accelerators
+    if (Control* pControl = dynamic_cast<Control*>(pNewWindow.get()))
+        pControl->SetShowAccelerator(true);
     return pNewWindow;
 }
 
 #ifndef DISABLE_DYNLOADING
 
-extern "C" { static void SAL_CALL thisModule() {} }
+extern "C" { static void thisModule() {} }
 
 #else
 
@@ -1213,7 +1846,7 @@ extern "C" vcl::Window* SAL_CALL CreateWindow( VCLXWindow** ppNewComp, const css
 
 css::uno::Reference< css::awt::XWindowPeer > VCLXToolkit::ImplCreateWindow(
     const css::awt::WindowDescriptor& rDescriptor,
-    WinBits nForceWinBits )
+    MessBoxStyle nForceMessBoxStyle )
 {
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
 
@@ -1224,7 +1857,7 @@ css::uno::Reference< css::awt::XWindowPeer > VCLXToolkit::ImplCreateWindow(
     VclPtr<vcl::Window> pParent;
     if ( rDescriptor.Parent.is() )
     {
-        VCLXWindow* pParentComponent = VCLXWindow::GetImplementation( rDescriptor.Parent );
+        VCLXWindow* pParentComponent = comphelper::getUnoTunnelImplementation<VCLXWindow>( rDescriptor.Parent );
 
         // #103939# Don't throw assertion, may be it's a system dependent window, used in ImplCreateWindow.
         // DBG_ASSERT( pParentComponent, "ParentComponent not valid" );
@@ -1232,9 +1865,10 @@ css::uno::Reference< css::awt::XWindowPeer > VCLXToolkit::ImplCreateWindow(
         if ( pParentComponent )
             pParent = pParentComponent->GetWindow();
     }
-    WinBits nWinBits = ImplGetWinBits( rDescriptor.WindowAttributes,
+    std::pair<WinBits, MessBoxStyle> aPair = ImplGetWinBits( rDescriptor.WindowAttributes,
         ImplGetComponentType( rDescriptor.WindowServiceName ) );
-    nWinBits |= nForceWinBits;
+    WinBits nWinBits = aPair.first;
+    aPair.second |= nForceMessBoxStyle;
 
     VCLXWindow* pNewComp = nullptr;
 
@@ -1268,7 +1902,7 @@ css::uno::Reference< css::awt::XWindowPeer > VCLXToolkit::ImplCreateWindow(
 
     // if SvTools could not provide a window, create it ourself
     if ( !pNewWindow )
-        pNewWindow = ImplCreateWindow( &pNewComp, rDescriptor, pParent, nWinBits );
+        pNewWindow = ImplCreateWindow( &pNewComp, rDescriptor, pParent, nWinBits, aPair.second );
 
     DBG_ASSERT( pNewWindow, "createWindow: Unknown Component!" );
     SAL_INFO_IF( !pNewComp, "toolkit", "createWindow: No special Interface!" );
@@ -1323,9 +1957,9 @@ css::uno::Sequence< css::uno::Reference< css::awt::XWindowPeer > > VCLXToolkit::
     {
         css::awt::WindowDescriptor aDescr = rDescriptors.getConstArray()[n];
 
-        if ( aDescr.ParentIndex == (-1) )
+        if ( aDescr.ParentIndex == -1 )
             aDescr.Parent = nullptr;
-        else if ( ( aDescr.ParentIndex >= 0 ) && ( aDescr.ParentIndex < (short)n ) )
+        else if ( ( aDescr.ParentIndex >= 0 ) && ( aDescr.ParentIndex < static_cast<short>(n) ) )
             aDescr.Parent = aSeq.getConstArray()[aDescr.ParentIndex];
         aSeq.getArray()[n] = createWindow( aDescr );
     }
@@ -1349,14 +1983,12 @@ css::uno::Reference< css::awt::XWindowPeer > VCLXToolkit::createSystemChild( con
             css::uno::Sequence< css::beans::NamedValue > aProps;
             if( Parent >>= aProps )
             {
-                const int nProps = aProps.getLength();
-                const css::beans::NamedValue* pProps = aProps.getConstArray();
-                for( int i = 0; i < nProps; i++ )
+                for( const css::beans::NamedValue& rProp : std::as_const(aProps) )
                 {
-                    if ( pProps[i].Name == "WINDOW" )
-                        pProps[i].Value >>= nWindowHandle;
-                    else if ( pProps[i].Name == "XEMBED" )
-                        pProps[i].Value >>= bXEmbed;
+                    if ( rProp.Name == "WINDOW" )
+                        rProp.Value >>= nWindowHandle;
+                    else if ( rProp.Name == "XEMBED" )
+                        rProp.Value >>= bXEmbed;
                 }
             }
             else
@@ -1376,7 +2008,7 @@ css::uno::Reference< css::awt::XWindowPeer > VCLXToolkit::createSystemChild( con
             #elif defined UNX
             aParentData.aWindow = nWindowHandle;
             aParentData.bXEmbedSupport = bXEmbed;
-            #elif defined WNT
+            #elif defined _WIN32
             aParentData.hWnd = reinterpret_cast<HWND>(nWindowHandle);
             #endif
             SolarMutexGuard aGuard;
@@ -1384,10 +2016,10 @@ css::uno::Reference< css::awt::XWindowPeer > VCLXToolkit::createSystemChild( con
             {
                 pChildWindow.reset( VclPtr<WorkWindow>::Create( &aParentData ) );
             }
-            catch ( const css::uno::RuntimeException & rEx )
+            catch ( const css::uno::RuntimeException & )
             {
                 // system child window could not be created
-                SAL_WARN("toolkit", "caught " << rEx.Message);
+                DBG_UNHANDLED_EXCEPTION("toolkit");
                 pChildWindow.clear();
             }
         }
@@ -1401,7 +2033,7 @@ css::uno::Reference< css::awt::XWindowPeer > VCLXToolkit::createSystemChild( con
     css::uno::Reference< css::awt::XWindowPeer > xPeer;
     if ( pChildWindow )
     {
-        VCLXTopWindow* pPeer = new VCLXTopWindow(true);
+        VCLXTopWindow* pPeer = new VCLXTopWindow;
         SolarMutexGuard aGuard;
         pPeer->SetWindow( pChildWindow );
         xPeer = pPeer;
@@ -1448,13 +2080,13 @@ css::uno::Reference< css::awt::XMessageBox > SAL_CALL VCLXToolkit::createMessage
 
     // No more bits for VclWindowPeerAttribute possible. Mapping must be
     // done explicitly using VCL methods
-    WinBits nAddWinBits( 0 );
+    MessBoxStyle nAddWinBits = MessBoxStyle::NONE;
     if (( aButtons & 0x0000ffffL ) == css::awt::MessageBoxButtons::BUTTONS_ABORT_IGNORE_RETRY )
-        nAddWinBits |= WB_ABORT_RETRY_IGNORE;
+        nAddWinBits |= MessBoxStyle::AbortRetryIgnore;
     if ( sal_Int32( aButtons & 0xffff0000L ) == css::awt::MessageBoxButtons::DEFAULT_BUTTON_IGNORE )
-        nAddWinBits |= WB_DEF_IGNORE;
+        nAddWinBits |= MessBoxStyle::DefaultIgnore;
 
-    rtl::OUString aType;
+    OUString aType;
     lcl_convertMessageBoxType( aType, eType );
 
     aDescriptor.Type              = css::awt::WindowClass_MODALTOP;
@@ -1540,7 +2172,7 @@ css::uno::Reference< css::datatransfer::clipboard::XClipboard > SAL_CALL VCLXToo
 // XServiceInfo
 OUString VCLXToolkit::getImplementationName()
 {
-    return OUString("stardiv.Toolkit.VCLXToolkit");
+    return "stardiv.Toolkit.VCLXToolkit";
 }
 
 sal_Bool VCLXToolkit::supportsService( const OUString& rServiceName )
@@ -1764,27 +2396,27 @@ void VCLXToolkit::callTopWindowListeners(
 {
     vcl::Window * pWindow
           = static_cast< ::VclWindowEvent const * >(pEvent)->GetWindow();
-    if (pWindow->IsTopWindow())
+    if (!pWindow->IsTopWindow())
+        return;
+
+    std::vector< css::uno::Reference< css::uno::XInterface > >
+          aListeners(m_aTopWindowListeners.getElements());
+    if (aListeners.empty())
+        return;
+
+    css::lang::EventObject aAwtEvent(
+        static_cast< css::awt::XWindow * >(pWindow->GetWindowPeer()));
+    for (const css::uno::Reference<XInterface> & i : aListeners)
     {
-        std::vector< css::uno::Reference< css::uno::XInterface > >
-              aListeners(m_aTopWindowListeners.getElements());
-        if (!aListeners.empty())
+        css::uno::Reference< css::awt::XTopWindowListener >
+              xListener(i, css::uno::UNO_QUERY);
+        try
         {
-            css::lang::EventObject aAwtEvent(
-                static_cast< css::awt::XWindow * >(pWindow->GetWindowPeer()));
-            for (css::uno::Reference<XInterface> & i : aListeners)
-            {
-                css::uno::Reference< css::awt::XTopWindowListener >
-                      xListener(i, css::uno::UNO_QUERY);
-                try
-                {
-                    (xListener.get()->*pFn)(aAwtEvent);
-                }
-                catch (const css::uno::RuntimeException & rEx)
-                {
-                    SAL_WARN("toolkit", "caught " << rEx.Message);
-                }
-            }
+            (xListener.get()->*pFn)(aAwtEvent);
+        }
+        catch (const css::uno::RuntimeException &)
+        {
+            DBG_UNHANDLED_EXCEPTION("toolkit");
         }
     }
 }
@@ -1815,19 +2447,19 @@ bool VCLXToolkit::callKeyHandlers(::VclSimpleEvent const * pEvent,
             pKeyEvent->GetKeyCode().GetCode(), pKeyEvent->GetCharCode(),
             sal::static_int_cast< sal_Int16 >(
                 pKeyEvent->GetKeyCode().GetFunction()));
-        for (css::uno::Reference<XInterface> & i : aHandlers)
+        for (const css::uno::Reference<XInterface> & i : aHandlers)
         {
             css::uno::Reference< css::awt::XKeyHandler > xHandler(
                 i, css::uno::UNO_QUERY);
             try
             {
-                if ((bPressed ? xHandler->keyPressed(aAwtEvent)
-                      : xHandler->keyReleased(aAwtEvent)))
+                if (bPressed ? xHandler->keyPressed(aAwtEvent)
+                             : xHandler->keyReleased(aAwtEvent))
                     return true;
             }
-            catch (const css::uno::RuntimeException & rEx)
+            catch (const css::uno::RuntimeException &)
             {
-                SAL_WARN("toolkit", "caught " << rEx.Message);
+                DBG_UNHANDLED_EXCEPTION("toolkit");
             }
         }
     }
@@ -1839,43 +2471,43 @@ void VCLXToolkit::callFocusListeners(::VclSimpleEvent const * pEvent,
 {
     vcl::Window * pWindow
           = static_cast< ::VclWindowEvent const * >(pEvent)->GetWindow();
-    if (pWindow->IsTopWindow())
-    {
-        std::vector< css::uno::Reference< css::uno::XInterface > >
-              aListeners(m_aFocusListeners.getElements());
-        if (!aListeners.empty())
+    if (!pWindow->IsTopWindow())
+        return;
+
+    std::vector< css::uno::Reference< css::uno::XInterface > >
+          aListeners(m_aFocusListeners.getElements());
+    if (aListeners.empty())
+        return;
+
+    // Ignore the interior of compound controls when determining the
+    // window that gets the focus next (see implementation in
+    // vclxwindow.cxx for mapping between VCL and UNO AWT event):
+    css::uno::Reference< css::uno::XInterface > xNext;
+    vcl::Window * pFocus = ::Application::GetFocusWindow();
+    for (vcl::Window * p = pFocus; p != nullptr; p = p->GetParent())
+        if (!p->IsCompoundControl())
         {
-            // Ignore the interior of compound controls when determining the
-            // window that gets the focus next (see implementation in
-            // vclxwindow.cxx for mapping between VCL and UNO AWT event):
-            css::uno::Reference< css::uno::XInterface > xNext;
-            vcl::Window * pFocus = ::Application::GetFocusWindow();
-            for (vcl::Window * p = pFocus; p != nullptr; p = p->GetParent())
-                if (!p->IsCompoundControl())
-                {
-                    pFocus = p;
-                    break;
-                }
-            if (pFocus != nullptr)
-                xNext = pFocus->GetComponentInterface();
-            css::awt::FocusEvent aAwtEvent(
-                static_cast< css::awt::XWindow * >(pWindow->GetWindowPeer()),
-                static_cast<sal_Int16>(pWindow->GetGetFocusFlags()),
-                xNext, false);
-            for (css::uno::Reference<XInterface> & i : aListeners)
-            {
-                css::uno::Reference< css::awt::XFocusListener > xListener(
-                    i, css::uno::UNO_QUERY);
-                try
-                {
-                    bGained ? xListener->focusGained(aAwtEvent)
-                        : xListener->focusLost(aAwtEvent);
-                }
-                catch (const css::uno::RuntimeException & rEx)
-                {
-                    SAL_WARN("toolkit", "caught " << rEx.Message);
-                }
-            }
+            pFocus = p;
+            break;
+        }
+    if (pFocus != nullptr)
+        xNext = pFocus->GetComponentInterface();
+    css::awt::FocusEvent aAwtEvent(
+        static_cast< css::awt::XWindow * >(pWindow->GetWindowPeer()),
+        static_cast<sal_Int16>(pWindow->GetGetFocusFlags()),
+        xNext, false);
+    for (const css::uno::Reference<XInterface> & i : aListeners)
+    {
+        css::uno::Reference< css::awt::XFocusListener > xListener(
+            i, css::uno::UNO_QUERY);
+        try
+        {
+            bGained ? xListener->focusGained(aAwtEvent)
+                : xListener->focusLost(aAwtEvent);
+        }
+        catch (const css::uno::RuntimeException &)
+        {
+            DBG_UNHANDLED_EXCEPTION("toolkit");
         }
     }
 }
@@ -1893,7 +2525,7 @@ void SAL_CALL VCLXToolkit::reschedule()
 void SAL_CALL VCLXToolkit::processEventsToIdle()
 {
     SolarMutexGuard aSolarGuard;
-    ::comphelper::ProfileZone aZone("processEvents");
+    comphelper::ProfileZone aZone("processEvents");
     Scheduler::ProcessEventsToIdle();
 }
 
@@ -1919,7 +2551,7 @@ void SAL_CALL VCLXToolkit::pause(sal_Int32 nMilliseconds)
 
 void SAL_CALL VCLXToolkit::startRecording()
 {
-    ::comphelper::ProfileRecording::startRecording();
+    ::comphelper::ProfileRecording::startRecording(true);
 }
 
 void SAL_CALL VCLXToolkit::stopRecording()
@@ -1993,7 +2625,7 @@ void SAL_CALL VCLXToolkit::mouseMove( const css::awt::MouseEvent & aMouseEvent )
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_VCLXToolkit_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

@@ -88,7 +88,8 @@ endef
 #
 # gb_Helper_make_userfriendly_targets target class build-target? clean-target?
 define gb_Helper_make_userfriendly_targets
-.PHONY: $(2)_$(1) $(2)_$(1).clean
+.PHONY: $(2) $(2)_$(1) $(2)_$(1).clean
+$(2): $(2)_$(1)
 $(2)_$(1) : $(if $(3),$(3),$(call gb_$(2)_get_target,$(1)))
 $(2)_$(1).clean : $(if $(4),$(4),$(call gb_$(2)_get_clean_target,$(1)))
 
@@ -257,9 +258,8 @@ gb_Package_MODULE_$(1) += $(2)
 
 endef
 
-# TODO: this should be extended to handle auto-installation.
-define gb_Helper_register_resources
-gb_AllLangResTarget_REGISTERED += $(1)
+define gb_Helper_register_mos
+gb_AllLangMoTarget_REGISTERED += $(1)
 
 endef
 

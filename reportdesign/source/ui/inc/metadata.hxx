@@ -19,13 +19,12 @@
 #ifndef INCLUDED_REPORTDESIGN_SOURCE_UI_INC_METADATA_HXX
 #define INCLUDED_REPORTDESIGN_SOURCE_UI_INC_METADATA_HXX
 
-#include "ModuleHelper.hxx"
-
 #include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/inspection/XPropertyHandler.hpp>
 #include <o3tl/typed_flags_set.hxx>
+#include <vector>
 
-    //= UI flags (for all browseable properties)
+    //= UI flags (for all browsable properties)
 enum class PropUIFlags {
     NONE          = 0x0001,  // no special flag
     Composeable   = 0x0002,  // the property is "composeable", i.e. an intersection of property
@@ -46,17 +45,8 @@ namespace rptui
 
     //= OPropertyInfoService
 
-    class OPropertyInfoService
-        :public OModuleClient
+    class OPropertyInfoService final
     {
-        OPropertyInfoService(const OPropertyInfoService&) = delete;
-        void operator =(const OPropertyInfoService&) = delete;
-        OPropertyInfoService() = delete;
-    protected:
-        static sal_uInt16               s_nCount;
-        static OPropertyInfoImpl*       s_pPropertyInfos;
-        // TODO: a real structure which allows quick access by name as well as by id
-
     public:
         // IPropertyInfoService
         static sal_Int32                    getPropertyId(const OUString& _rName);
@@ -70,11 +60,19 @@ namespace rptui
                                                 const css::uno::Reference< css::inspection::XPropertyHandler >& _xFormComponentHandler
                                             );
 
-    protected:
+    private:
         static const OPropertyInfoImpl* getPropertyInfo();
 
         static const OPropertyInfoImpl* getPropertyInfo(const OUString& _rName);
         static const OPropertyInfoImpl* getPropertyInfo(sal_Int32 _nId);
+
+        OPropertyInfoService(const OPropertyInfoService&) = delete;
+        void operator =(const OPropertyInfoService&) = delete;
+        OPropertyInfoService() = delete;
+
+        static sal_uInt16               s_nCount;
+        static OPropertyInfoImpl*       s_pPropertyInfos;
+        // TODO: a real structure which allows quick access by name as well as by id
     };
 
 
@@ -88,7 +86,7 @@ namespace rptui
     };
 
 
-    //= property ids (for all browseable properties)
+    //= property ids (for all browsable properties)
     //= The ID is used for the view order in the property browser.
 
 
@@ -107,36 +105,37 @@ namespace rptui
     #define PROPERTY_ID_POSITIONY                       13
     #define PROPERTY_ID_WIDTH                           14
     #define PROPERTY_ID_HEIGHT                          15
-    #define PROPERTY_ID_FORMULA                         16
-    #define PROPERTY_ID_CONDITIONALPRINTEXPRESSION      17
-    #define PROPERTY_ID_PRINTREPEATEDVALUES             18
-    #define PROPERTY_ID_PRINTWHENGROUPCHANGE            19
-    #define PROPERTY_ID_INITIALFORMULA                  20
-    #define PROPERTY_ID_STARTNEWCOLUMN                  21
-    #define PROPERTY_ID_TYPE                            22
-    #define PROPERTY_ID_DATAFIELD                       23
-    #define PROPERTY_ID_CHARFONTNAME                    24
-    #define PROPERTY_ID_DEEPTRAVERSING                  25
-    #define PROPERTY_ID_PREEVALUATED                    26
+    #define PROPERTY_ID_AUTOGROW                        16
+    #define PROPERTY_ID_FORMULA                         17
+    #define PROPERTY_ID_CONDITIONALPRINTEXPRESSION      18
+    #define PROPERTY_ID_PRINTREPEATEDVALUES             19
+    #define PROPERTY_ID_PRINTWHENGROUPCHANGE            20
+    #define PROPERTY_ID_INITIALFORMULA                  21
+    #define PROPERTY_ID_STARTNEWCOLUMN                  22
+    #define PROPERTY_ID_TYPE                            23
+    #define PROPERTY_ID_DATAFIELD                       24
+    #define PROPERTY_ID_CHARFONTNAME                    25
+    #define PROPERTY_ID_DEEPTRAVERSING                  26
+    #define PROPERTY_ID_PREEVALUATED                    27
 
-    #define PROPERTY_ID_BACKTRANSPARENT                 27
-    #define PROPERTY_ID_CONTROLBACKGROUNDTRANSPARENT    28
-    #define PROPERTY_ID_BACKCOLOR                       29
-    #define PROPERTY_ID_CONTROLBACKGROUND               30
+    #define PROPERTY_ID_BACKTRANSPARENT                 28
+    #define PROPERTY_ID_CONTROLBACKGROUNDTRANSPARENT    29
+    #define PROPERTY_ID_BACKCOLOR                       30
+    #define PROPERTY_ID_CONTROLBACKGROUND               31
 
-    #define PROPERTY_ID_FORMULALIST                     31
-    #define PROPERTY_ID_SCOPE                           32
-    #define PROPERTY_ID_RESETPAGENUMBER                 33
-    #define PROPERTY_ID_CHARTTYPE                       34
-    #define PROPERTY_ID_MASTERFIELDS                    35
-    #define PROPERTY_ID_DETAILFIELDS                    36
-    #define PROPERTY_ID_PREVIEW_COUNT                   37
-    #define PROPERTY_ID_AREA                            38
-    #define PROPERTY_ID_MIMETYPE                        39
+    #define PROPERTY_ID_FORMULALIST                     32
+    #define PROPERTY_ID_SCOPE                           33
+    #define PROPERTY_ID_RESETPAGENUMBER                 34
+    #define PROPERTY_ID_CHARTTYPE                       35
+    #define PROPERTY_ID_MASTERFIELDS                    36
+    #define PROPERTY_ID_DETAILFIELDS                    37
+    #define PROPERTY_ID_PREVIEW_COUNT                   38
+    #define PROPERTY_ID_AREA                            39
+    #define PROPERTY_ID_MIMETYPE                        40
 
-    #define PROPERTY_ID_FONT                            40
-    #define PROPERTY_ID_PARAADJUST                      41
-    #define PROPERTY_ID_VERTICALALIGN                   42
+    #define PROPERTY_ID_FONT                            41
+    #define PROPERTY_ID_PARAADJUST                      42
+    #define PROPERTY_ID_VERTICALALIGN                   43
 
 
 } // namespace rptui

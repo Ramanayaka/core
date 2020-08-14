@@ -18,27 +18,79 @@
  */
 
 #include <SwXMLSectionList.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlictxt.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <vector>
 
 using namespace ::com::sun::star;
 using namespace ::xmloff::token;
 
-SwXMLSectionList::SwXMLSectionList(
-    const uno::Reference< uno::XComponentContext >& rContext,
-    std::vector<OUString*> &rNewSectionList)
-:   SvXMLImport( rContext, "" ),
-    rSectionList ( rNewSectionList )
+namespace {
+
+class SvXMLSectionListContext : public SvXMLImportContext
 {
-    // TODO: verify if these should match the same-name constants
-    //       in xmloff/source/core/xmlimp.cxx ("_office" and "_office")
-    GetNamespaceMap().Add( "_ooffice",
-                            GetXMLToken(XML_N_OFFICE_OOO),
-                            XML_NAMESPACE_OFFICE );
-    GetNamespaceMap().Add( "_otext",
-                            GetXMLToken(XML_N_TEXT_OOO),
-                            XML_NAMESPACE_TEXT );
+private:
+    SwXMLSectionList & GetImport() { return static_cast<SwXMLSectionList&>(SvXMLImportContext::GetImport()); }
+
+public:
+    SvXMLSectionListContext(SwXMLSectionList& rImport);
+
+    virtual void SAL_CALL startFastElement( sal_Int32 /*nElement*/,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override {}
+
+    virtual css::uno::Reference<css::xml::sax::XFastContextHandler> SAL_CALL createFastChildContext(
+        sal_Int32 Element,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList ) override;
+};
+
+class SwXMLParentContext : public SvXMLImportContext
+{
+private:
+    SwXMLSectionList & GetImport() { return static_cast<SwXMLSectionList&>(SvXMLImportContext::GetImport()); }
+
+public:
+    SwXMLParentContext(SwXMLSectionList& rImport)
+        : SvXMLImportContext(rImport)
+    {
+    }
+
+    virtual void SAL_CALL startFastElement( sal_Int32 /*nElement*/,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override {}
+
+    virtual css::uno::Reference<XFastContextHandler> SAL_CALL createFastChildContext(
+        sal_Int32 Element, const css::uno::Reference< css::xml::sax::XFastAttributeList > & /*xAttrList*/ ) override
+    {
+        if (Element == XML_ELEMENT(OFFICE, XML_BODY) ||
+            Element == XML_ELEMENT(OFFICE_OOO, XML_BODY))
+        {
+            return new SvXMLSectionListContext(GetImport());
+        }
+        if (IsTokenInNamespace(Element, XML_NAMESPACE_TEXT) ||
+            IsTokenInNamespace(Element, XML_NAMESPACE_TEXT_OOO))
+        {
+            auto nToken = Element & TOKEN_MASK;
+            if (nToken == XML_P ||
+                nToken == XML_H ||
+                nToken == XML_A ||
+                nToken == XML_SPAN ||
+                nToken == XML_SECTION ||
+                nToken == XML_INDEX_BODY ||
+                nToken == XML_INDEX_TITLE ||
+                nToken == XML_INSERTION ||
+                nToken == XML_DELETION)
+                return new SvXMLSectionListContext(GetImport());
+        }
+        return new SwXMLParentContext(GetImport());
+    }
+};
+
+}
+
+SwXMLSectionList::SwXMLSectionList(const css::uno::Reference< css::uno::XComponentContext >& rContext, std::vector<OUString> &rNewSectionList)
+: SvXMLImport(rContext, "")
+, m_rSectionList(rNewSectionList)
+{
 }
 
 SwXMLSectionList::~SwXMLSectionList()
@@ -46,74 +98,40 @@ SwXMLSectionList::~SwXMLSectionList()
 {
 }
 
-SvXMLImportContext *SwXMLSectionList::CreateContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const uno::Reference< xml::sax::XAttributeList > & xAttrList )
+SvXMLImportContext * SwXMLSectionList::CreateFastContext(
+        sal_Int32 /*Element*/,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList > & /*xAttrList*/ )
 {
-    SvXMLImportContext *pContext = nullptr;
-
-    if(( nPrefix == XML_NAMESPACE_OFFICE && IsXMLToken ( rLocalName, XML_BODY )) ||
-        ( nPrefix == XML_NAMESPACE_TEXT &&
-            (IsXMLToken ( rLocalName, XML_P ) ||
-            IsXMLToken ( rLocalName, XML_H ) ||
-            IsXMLToken ( rLocalName, XML_A ) ||
-            IsXMLToken ( rLocalName, XML_SPAN ) ||
-            IsXMLToken ( rLocalName, XML_SECTION ) ||
-            IsXMLToken ( rLocalName, XML_INDEX_BODY ) ||
-            IsXMLToken ( rLocalName, XML_INDEX_TITLE )||
-            IsXMLToken ( rLocalName, XML_INSERTION ) ||
-            IsXMLToken ( rLocalName, XML_DELETION ) )
-        )
-      )
-    {
-        pContext = new SvXMLSectionListContext (*this, nPrefix, rLocalName, xAttrList);
-    }
-    else
-        pContext = SvXMLImport::CreateContext( nPrefix, rLocalName, xAttrList );
-    return pContext;
+    return new SwXMLParentContext(*this);
 }
 
-SvXMLSectionListContext::SvXMLSectionListContext(
-   SwXMLSectionList& rImport,
-   sal_uInt16 nPrefix,
-   const OUString& rLocalName,
-   const uno::Reference<   xml::sax::XAttributeList > & ) :
-   SvXMLImportContext ( rImport, nPrefix, rLocalName ),
-   rLocalRef(rImport)
+SvXMLSectionListContext::SvXMLSectionListContext( SwXMLSectionList& rImport )
+    : SvXMLImportContext ( rImport )
 {
 }
 
-SvXMLImportContext *SvXMLSectionListContext::CreateChildContext(
-    sal_uInt16 nPrefix,
-    const OUString& rLocalName,
-    const uno::Reference< xml::sax::XAttributeList > & xAttrList )
+css::uno::Reference<css::xml::sax::XFastContextHandler> SvXMLSectionListContext::createFastChildContext(
+        sal_Int32 Element,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList )
 {
     SvXMLImportContext *pContext = nullptr;
 
-    if (nPrefix == XML_NAMESPACE_TEXT && ( IsXMLToken ( rLocalName, XML_SECTION ) ||
-                                           IsXMLToken ( rLocalName, XML_BOOKMARK) ) )
+    if (Element == XML_ELEMENT(TEXT, XML_SECTION ) ||
+        Element == XML_ELEMENT(TEXT, XML_BOOKMARK) ||
+        Element == XML_ELEMENT(TEXT_OOO, XML_SECTION ) ||
+        Element == XML_ELEMENT(TEXT_OOO, XML_BOOKMARK) )
     {
         OUString sName;
-        sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
-
-        for (sal_Int16 i=0; i < nAttrCount; i++)
-        {
-            const OUString& rAttrName = xAttrList->getNameByIndex( i );
-            OUString aLocalName;
-            sal_uInt16 nPrefx = rLocalRef.GetNamespaceMap().GetKeyByAttrName( rAttrName, &aLocalName);
-            if (XML_NAMESPACE_TEXT == nPrefx && IsXMLToken ( aLocalName, XML_NAME ) )
-                sName = xAttrList->getValueByIndex( i );
-        }
+        for (auto &aIter : sax_fastparser::castToFastAttributeList( xAttrList ))
+            if (aIter.getToken() == XML_ELEMENT(TEXT, XML_NAME) ||
+                aIter.getToken() == XML_ELEMENT(TEXT_OOO, XML_NAME))
+                sName = aIter.toString();
         if ( !sName.isEmpty() )
-            rLocalRef.rSectionList.push_back( new OUString(sName) );
+            GetImport().m_rSectionList.push_back(sName);
     }
 
-    pContext = new SvXMLSectionListContext (rLocalRef, nPrefix, rLocalName, xAttrList);
+    pContext = new SvXMLSectionListContext(GetImport());
     return pContext;
-}
-SvXMLSectionListContext::~SvXMLSectionListContext()
-{
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

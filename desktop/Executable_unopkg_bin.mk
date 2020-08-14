@@ -9,7 +9,7 @@
 
 $(eval $(call gb_Executable_Executable,unopkg_bin))
 
-$(eval $(call gb_Executable_set_targettype_gui,unopkg_bin,YES))
+$(eval $(call gb_Executable_set_targettype_gui,unopkg_bin,NO))
 
 $(eval $(call gb_Executable_set_include,unopkg_bin,\
     $$(INCLUDE) \
@@ -26,5 +26,7 @@ $(eval $(call gb_Executable_use_libraries,unopkg_bin,\
 $(eval $(call gb_Executable_add_cobjects,unopkg_bin,\
     desktop/source/pkgchk/unopkg/unopkg_main \
 ))
+
+$(eval $(call gb_Executable_add_default_nativeres,unopkg_bin))
 
 # vim: set ts=4 sw=4 et:

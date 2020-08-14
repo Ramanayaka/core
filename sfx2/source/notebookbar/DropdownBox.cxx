@@ -18,93 +18,11 @@
  */
 
 #include <vcl/builderfactory.hxx>
+#include <vcl/button.hxx>
 #include <vcl/layout.hxx>
-#include <sfx2/dllapi.h>
-#include <sfx2/viewfrm.hxx>
 #include "DropdownBox.hxx"
 
 #define NOTEBOOK_HEADER_HEIGHT 30
-
-/*
- * Popup - shows hidden content, controls are moved to this popup
- * and after close moved to the original parent
- */
-
-class Popup : public FloatingWindow
-{
-private:
-    VclPtr<VclHBox> m_pBox;
-    ScopedVclPtr<DropdownBox> m_pParent;
-
-public:
-    explicit Popup(const VclPtr<DropdownBox>& pParent)
-    : FloatingWindow(pParent, "Popup", "sfx/ui/notebookbarpopup.ui")
-    , m_pParent(pParent)
-    {
-        get(m_pBox, "box");
-        m_pBox->SetSizePixel(Size(100, 75));
-    }
-
-    virtual ~Popup() override
-    {
-        disposeOnce();
-    }
-
-    VclHBox* getBox()
-    {
-        return m_pBox.get();
-    }
-
-    virtual void PopupModeEnd() override
-    {
-        hideSeparators(false);
-        for (int i = 0; i < m_pBox->GetChildCount(); i++)
-        {
-            m_pBox->GetChild(i)->Hide();
-            m_pBox->GetChild(i)->SetParent(m_pParent);
-        }
-        FloatingWindow::PopupModeEnd();
-    }
-
-    void hideSeparators(bool bHide = true)
-    {
-        // separator on the beginning
-        Window* pWindow = m_pBox->GetChild(0);
-        while (pWindow && pWindow->GetType() == WindowType::CONTAINER)
-        {
-            pWindow = pWindow->GetChild(0);
-        }
-        if (pWindow && pWindow->GetType() == WindowType::FIXEDLINE)
-        {
-            if (bHide)
-                pWindow->Hide();
-            else
-                pWindow->Show();
-        }
-
-        // separator on the end
-        pWindow = m_pBox->GetChild(m_pBox->GetChildCount() - 1);
-        while (pWindow && pWindow->GetType() == WindowType::CONTAINER)
-        {
-            pWindow = pWindow->GetChild(pWindow->GetChildCount() - 1);
-        }
-        if (pWindow && pWindow->GetType() == WindowType::FIXEDLINE)
-        {
-            if (bHide)
-                pWindow->Hide();
-            else
-                pWindow->Show();
-        }
-    }
-
-    void dispose() override
-    {
-        m_pBox.disposeAndClear();
-        m_pParent.clear();
-
-        FloatingWindow::dispose();
-    }
-};
 
 /*
  * DropdownBox - shows content or moves it to the popup
@@ -152,6 +70,11 @@ void DropdownBox::HideContent()
     }
 }
 
+bool DropdownBox::IsHidden()
+{
+    return !m_bInFullView;
+}
+
 void DropdownBox::ShowContent()
 {
     if (!m_bInFullView)
@@ -170,7 +93,7 @@ IMPL_LINK(DropdownBox, PBClickHdl, Button*, /*pButton*/, void)
     if (m_pPopup)
         m_pPopup.disposeAndClear();
 
-    m_pPopup = VclPtr<Popup>::Create(this);
+    m_pPopup = VclPtr<NotebookbarPopup>::Create(this);
 
     for (int i = 0; i < GetChildCount(); i++)
     {
@@ -180,6 +103,8 @@ IMPL_LINK(DropdownBox, PBClickHdl, Button*, /*pButton*/, void)
             pChild->Show();
 
             pChild->SetParent(m_pPopup->getBox());
+            // count is decreased because we moved child
+            i--;
         }
     }
 

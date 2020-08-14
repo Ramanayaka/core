@@ -25,7 +25,6 @@
 #include <unotools/streamwrap.hxx>
 
 #include <svx/fmmodel.hxx>
-#include <svx/svdetc.hxx>
 #include <svx/svditer.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdogrp.hxx>
@@ -34,38 +33,41 @@
 #include <svx/svdpage.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/docfile.hxx>
+#include <sfx2/lokhelper.hxx>
 #include <comphelper/classids.hxx>
 #include <sot/formats.hxx>
 #include <sot/filelist.hxx>
 #include <sot/storage.hxx>
-#include <unotools/pathoptions.hxx>
-#include <svl/ptitem.hxx>
 #include <svl/stritem.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <vcl/graph.hxx>
+#include <osl/thread.h>
 
+#include <comphelper/automationinvokedzone.hxx>
+#include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <comphelper/string.hxx>
 
-#include "viewfunc.hxx"
-#include "docsh.hxx"
-#include "drawview.hxx"
-#include "impex.hxx"
-#include "dbfunc.hxx"
-#include "dbdata.hxx"
-#include "sc.hrc"
-#include "filter.hxx"
-#include "scextopt.hxx"
-#include "tabvwsh.hxx"
-#include "compiler.hxx"
+#include <viewfunc.hxx>
+#include <docsh.hxx>
+#include <drawview.hxx>
+#include <impex.hxx>
+#include <dbdata.hxx>
+#include <sc.hrc>
+#include <filter.hxx>
+#include <globstr.hrc>
+#include <global.hxx>
+#include <scextopt.hxx>
+#include <tabvwsh.hxx>
+#include <compiler.hxx>
+#include <scmod.hxx>
 
-#include "asciiopt.hxx"
-#include "scabstdlg.hxx"
-#include "clipparam.hxx"
-#include "markdata.hxx"
-#include <vcl/msgbox.hxx>
-#include <sfx2/viewfrm.hxx>
+#include <asciiopt.hxx>
+#include <scabstdlg.hxx>
+#include <clipparam.hxx>
+#include <markdata.hxx>
+#include <sfx2/frame.hxx>
 #include <svx/dbaexchange.hxx>
 #include <memory>
 
@@ -73,7 +75,7 @@ using namespace com::sun::star;
 
 bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
                     const uno::Reference<datatransfer::XTransferable>& rxTransferable,
-                    SCCOL nPosX, SCROW nPosY, Point* pLogicPos, bool bLink, bool bAllowDialogs )
+                    SCCOL nPosX, SCROW nPosY, const Point* pLogicPos, bool bLink, bool bAllowDialogs )
 {
     ScDocument* pDoc = GetViewData().GetDocument();
     pDoc->SetPastingDrawFromOtherDoc( true );
@@ -97,7 +99,7 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
             if (pDoc->IsNegativePage(nTab))
                 nXT = -nXT;
             sal_uLong nYT = pDoc->GetRowHeight( 0, nPosY-1, nTab);
-            aPos = Point( (long)(nXT * HMM_PER_TWIPS), (long)(nYT * HMM_PER_TWIPS) );
+            aPos = Point( static_cast<long>(nXT * HMM_PER_TWIPS), static_cast<long>(nYT * HMM_PER_TWIPS) );
         }
     }
 
@@ -138,9 +140,9 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
                     if (!rSrcDoc.HasTable(nSrcTab))
                         nSrcTab = 0;
 
-                    ScMarkData aSrcMark;
+                    ScMarkData aSrcMark(rSrcDoc.GetSheetLimits());
                     aSrcMark.SelectOneTable( nSrcTab );         // for CopyToClip
-                    std::unique_ptr<ScDocument> pClipDoc(new ScDocument( SCDOCMODE_CLIP ));
+                    ScDocumentUniquePtr pClipDoc(new ScDocument( SCDOCMODE_CLIP ));
 
                     SCCOL nFirstCol, nLastCol;
                     SCROW nFirstRow, nLastRow;
@@ -285,8 +287,7 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
     else if ( ScImportExport::IsFormatSupported( nFormatId ) || nFormatId == SotClipboardFormatId::RTF ||
                 nFormatId == SotClipboardFormatId::EDITENGINE_ODF_TEXT_FLAT )
     {
-        if ( nFormatId == SotClipboardFormatId::RTF && ( aDataHelper.HasFormat( SotClipboardFormatId::EDITENGINE ) ||
-                aDataHelper.HasFormat( SotClipboardFormatId::EDITENGINE_ODF_TEXT_FLAT ) ) )
+        if ( nFormatId == SotClipboardFormatId::RTF && ( aDataHelper.HasFormat( SotClipboardFormatId::EDITENGINE_ODF_TEXT_FLAT ) ) )
         {
             //  use EditView's PasteSpecial / Drop
             PasteRTF( nPosX, nPosY, rxTransferable );
@@ -295,28 +296,31 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
         else
         {
             ScAddress aCellPos( nPosX, nPosY, GetViewData().GetTabNo() );
-            ScImportExport aObj( GetViewData().GetDocument(), aCellPos );
-            aObj.SetOverwriting( true );
+            auto pObj = std::make_shared<ScImportExport>(GetViewData().GetDocument(), aCellPos);
+            pObj->SetOverwriting( true );
 
-            OUString aStr;
+
+            auto pStrBuffer = std::make_shared<OUString>();
             tools::SvRef<SotStorageStream> xStream;
             if ( aDataHelper.GetSotStorageStream( nFormatId, xStream ) && xStream.is() )
             {
-                if (nFormatId == SotClipboardFormatId::HTML)
+                if (nFormatId == SotClipboardFormatId::HTML &&
+                    !comphelper::LibreOfficeKit::isActive())
                 {
                     // Launch the text import options dialog.  For now, we do
                     // this for html pasting only, but in the future it may
                     // make sense to do it for other data types too.
                     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
+                    vcl::Window* pParent = GetActiveWin();
                     ScopedVclPtr<AbstractScTextImportOptionsDlg> pDlg(
-                        pFact->CreateScTextImportOptionsDlg());
+                        pFact->CreateScTextImportOptionsDlg(pParent ? pParent->GetFrameWeld() : nullptr));
 
                     if (pDlg->Execute() == RET_OK)
                     {
                         ScAsciiOptions aOptions;
                         aOptions.SetLanguage(pDlg->GetLanguageType());
                         aOptions.SetDetectSpecialNumber(pDlg->IsDateConversionSet());
-                        aObj.SetExtOptions(aOptions);
+                        pObj->SetExtOptions(aOptions);
                     }
                     else
                     {
@@ -325,46 +329,67 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
                     }
                 }
                 if(!bRet)
-                    bRet = aObj.ImportStream( *xStream, OUString(), nFormatId );
+                    bRet = pObj->ImportStream( *xStream, OUString(), nFormatId );
                 // mba: clipboard always must contain absolute URLs (could be from alien source)
             }
-            else if (nFormatId == SotClipboardFormatId::STRING && aDataHelper.GetString( nFormatId, aStr ))
+            else if ((nFormatId == SotClipboardFormatId::STRING || nFormatId == SotClipboardFormatId::STRING_TSVC)
+                    && aDataHelper.GetString( nFormatId, *pStrBuffer ))
             {
-                // Do CSV dialog if more than one line.
-                sal_Int32 nDelim = aStr.indexOf('\n');
-                if (nDelim >= 0 && nDelim != aStr.getLength () - 1)
+                // Do CSV dialog if more than one line. But not if invoked from Automation.
+                const SfxViewShell* pViewShell = SfxViewShell::Current();
+                sal_Int32 nDelim = pStrBuffer->indexOf('\n');
+                if (!(pViewShell && pViewShell->isLOKMobilePhone()) && !comphelper::Automation::AutomationInvokedZone::isActive()
+                    && nDelim >= 0 && nDelim != pStrBuffer->getLength () - 1)
                 {
-                    ScImportStringStream aStrm( aStr);
-                    ScAbstractDialogFactory* pFact =
-                        ScAbstractDialogFactory::Create();
-                    ScopedVclPtr<AbstractScImportAsciiDlg> pDlg(
-                        pFact->CreateScImportAsciiDlg( OUString(), &aStrm, SC_PASTETEXT));
+                    vcl::Window* pParent = GetActiveWin();
 
-                    if (pDlg->Execute() == RET_OK)
-                    {
-                        ScAsciiOptions aOptions;
-                        pDlg->GetOptions( aOptions );
-                        pDlg->SaveParameters();
-                        aObj.SetExtOptions( aOptions );
+                    auto pStrm = std::make_shared<ScImportStringStream>(*pStrBuffer);
 
-                        bRet = aObj.ImportString( aStr, nFormatId );
+                    ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
+                    VclPtr<AbstractScImportAsciiDlg> pDlg(
+                        pFact->CreateScImportAsciiDlg(pParent ? pParent->GetFrameWeld() : nullptr, OUString(), pStrm.get(), SC_PASTETEXT));
 
-                        // TODO: what if (aObj.IsOverflow())
-                        // Content was partially pasted, which can be undone by
-                        // the user though.
-                        if (aObj.IsOverflow())
-                            bRet = false;
-                    }
-                    else
-                        bRet = true;
-                        // Yes, no failure, don't raise a "couldn't paste"
-                        // dialog if user cancelled.
+                    bAllowDialogs = bAllowDialogs && !SC_MOD()->IsInExecuteDrop();
+
+                    pDlg->StartExecuteAsync([this, pDlg, pDoc, pStrm, nFormatId, pStrBuffer, pObj, bAllowDialogs](sal_Int32 nResult){
+                        bool bShowErrorDialog = bAllowDialogs;
+                        if (RET_OK == nResult)
+                        {
+                            ScAsciiOptions aOptions;
+                            pDlg->GetOptions( aOptions );
+                            pDlg->SaveParameters();
+                            pObj->SetExtOptions( aOptions );
+                            pObj->ImportString( *pStrBuffer, nFormatId );
+
+                            // TODO: what if (aObj.IsOverflow())
+                            // Content was partially pasted, which can be undone by
+                            // the user though.
+                            bShowErrorDialog = bShowErrorDialog && pObj->IsOverflow();
+                        }
+                        else
+                        {
+                            bShowErrorDialog = false;
+                            // Yes, no failure, don't raise a "couldn't paste"
+                            // dialog if user cancelled.
+                        }
+
+                        InvalidateAttribs();
+                        GetViewData().UpdateInputHandler();
+
+                        pDoc->SetPastingDrawFromOtherDoc( false );
+
+                        if (bShowErrorDialog)
+                            ErrorMessage(STR_PASTE_ERROR);
+                        pDlg->disposeOnce();
+                    });
+                    return true;
                 }
                 else
-                    bRet = aObj.ImportString( aStr, nFormatId );
+                    bRet = pObj->ImportString( *pStrBuffer, nFormatId );
             }
-            else if (nFormatId != SotClipboardFormatId::STRING && aDataHelper.GetString( nFormatId, aStr ))
-                bRet = aObj.ImportString( aStr, nFormatId );
+            else if ((nFormatId != SotClipboardFormatId::STRING && nFormatId != SotClipboardFormatId::STRING_TSVC)
+                    && aDataHelper.GetString( nFormatId, *pStrBuffer ))
+                bRet = pObj->ImportString( *pStrBuffer, nFormatId );
 
             InvalidateAttribs();
             GetViewData().UpdateInputHandler();
@@ -382,7 +407,7 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
             uno::Any aDescAny;
             uno::Sequence<beans::PropertyValue> aProperties = aDesc.createPropertyValueSequence();
             aDescAny <<= aProperties;
-            SfxUsrAnyItem aDataDesc(SID_SBA_IMPORT, aDescAny);
+            SfxUnoAnyItem aDataDesc(SID_SBA_IMPORT, aDescAny);
 
             ScDocShell* pDocSh = GetViewData().GetDocShell();
             SCTAB nTab = GetViewData().GetTabNo();
@@ -422,23 +447,23 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
         {
             MakeDrawLayer();
             ScDrawView* pScDrawView = GetScDrawView();
-            SdrObject* pObj = pScDrawView->CreateFieldControl( svx::OColumnTransferable::extractColumnDescriptor( aDataHelper ) );
+            SdrObjectUniquePtr pObj = pScDrawView->CreateFieldControl( svx::OColumnTransferable::extractColumnDescriptor( aDataHelper ) );
             if (pObj)
             {
                 Point aInsPos = aPos;
                 tools::Rectangle aRect(pObj->GetLogicRect());
-                aInsPos.X() -= aRect.GetSize().Width()  / 2;
-                aInsPos.Y() -= aRect.GetSize().Height() / 2;
-                if ( aInsPos.X() < 0 ) aInsPos.X() = 0;
-                if ( aInsPos.Y() < 0 ) aInsPos.Y() = 0;
+                aInsPos.AdjustX( -(aRect.GetSize().Width()  / 2) );
+                aInsPos.AdjustY( -(aRect.GetSize().Height() / 2) );
+                if ( aInsPos.X() < 0 ) aInsPos.setX( 0 );
+                if ( aInsPos.Y() < 0 ) aInsPos.setY( 0 );
                 aRect.SetPos(aInsPos);
                 pObj->SetLogicRect(aRect);
 
-                if ( dynamic_cast<const SdrUnoObj*>( pObj) !=  nullptr )
+                if ( dynamic_cast<const SdrUnoObj*>( pObj.get() ) !=  nullptr )
                     pObj->NbcSetLayer(SC_LAYER_CONTROLS);
                 else
                     pObj->NbcSetLayer(SC_LAYER_FRONT);
-                if (dynamic_cast<const SdrObjGroup*>( pObj) !=  nullptr)
+                if (dynamic_cast<const SdrObjGroup*>( pObj.get() ) !=  nullptr)
                 {
                     SdrObjListIter aIter( *pObj, SdrIterMode::DeepWithGroups );
                     SdrObject* pSubObj = aIter.Next();
@@ -452,14 +477,14 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
                     }
                 }
 
-                pScDrawView->InsertObjectSafe(pObj, *pScDrawView->GetSdrPageView());
+                pScDrawView->InsertObjectSafe(pObj.release(), *pScDrawView->GetSdrPageView());
 
                 GetViewData().GetViewShell()->SetDrawShell( true );
                 bRet = true;
             }
         }
     }
-    else if (nFormatId == SotClipboardFormatId::BITMAP || nFormatId == SotClipboardFormatId::PNG)
+    else if (nFormatId == SotClipboardFormatId::BITMAP || nFormatId == SotClipboardFormatId::PNG || nFormatId == SotClipboardFormatId::JPEG)
     {
         BitmapEx aBmpEx;
         if( aDataHelper.GetBitmapEx( SotClipboardFormatId::BITMAP, aBmpEx ) )
@@ -488,12 +513,13 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
         {
             MakeDrawLayer();    // before loading model, so 3D factory has been created
 
-            SvtPathOptions aPathOpt;
-            OUString aPath = aPathOpt.GetPalettePath();
-
             ScDocShellRef aDragShellRef( new ScDocShell );
             aDragShellRef->DoInitNew();
-            std::unique_ptr<FmFormModel> pModel(new FmFormModel( aPath, nullptr, aDragShellRef.get() ));
+
+            std::unique_ptr<FmFormModel> pModel(
+                new FmFormModel(
+                    nullptr,
+                    aDragShellRef.get()));
 
             pModel->GetItemPool().FreezeIdRanges();
             xStm->Seek(0);
@@ -507,7 +533,7 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
             for (sal_uInt16 i=0; i<nPages; i++)
             {
                 SdrPage* pPage = pModel->GetPage(i);
-                SdrObjListIter aIter( *pPage, SdrIterMode::DeepWithGroups );
+                SdrObjListIter aIter( pPage, SdrIterMode::DeepWithGroups );
                 SdrObject* pObject = aIter.Next();
                 while (pObject)
                 {
@@ -534,13 +560,13 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
         uno::Reference <io::XInputStream> xStm = aDataHelper.GetInputStream(nFormatId, OUString());
         if (xStm.is())
         {
-            ScDocument* pInsDoc = new ScDocument( SCDOCMODE_CLIP );
+            std::unique_ptr<ScDocument> pInsDoc(new ScDocument( SCDOCMODE_CLIP ));
             SCTAB nSrcTab = 0;      // Biff5 in clipboard: always sheet 0
             pInsDoc->ResetClip( pDoc, nSrcTab );
 
             SfxMedium aMed;
-            aMed.GetItemSet()->Put( SfxUsrAnyItem( SID_INPUTSTREAM, uno::makeAny( xStm ) ) );
-            ErrCode eErr = ScFormatFilter::Get().ScImportExcel( aMed, pInsDoc, EIF_AUTO );
+            aMed.GetItemSet()->Put( SfxUnoAnyItem( SID_INPUTSTREAM, uno::makeAny( xStm ) ) );
+            ErrCode eErr = ScFormatFilter::Get().ScImportExcel( aMed, pInsDoc.get(), EIF_AUTO );
             if ( eErr == ERRCODE_NONE )
             {
                 ScRange aSource;
@@ -579,11 +605,9 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
                 }
 
                 pInsDoc->SetClipArea( aSource );
-                PasteFromClip( InsertDeleteFlags::ALL, pInsDoc,
+                PasteFromClip( InsertDeleteFlags::ALL, pInsDoc.get(),
                                 ScPasteFunc::NONE, false, false, false, INS_NONE, InsertDeleteFlags::NONE,
                                 bAllowDialogs );
-                delete pInsDoc;
-
                 bRet = true;
             }
         }
@@ -606,8 +630,8 @@ bool ScViewFunc::PasteDataFormat( SotClipboardFormatId nFormatId,
 
                 PasteFile( aPos, aFile, bLink );
 
-                aPos.X() += 400;
-                aPos.Y() += 400;
+                aPos.AdjustX(400 );
+                aPos.AdjustY(400 );
             }
             bRet = true;
         }
@@ -633,7 +657,7 @@ bool ScViewFunc::PasteLink( const uno::Reference<datatransfer::XTransferable>& r
     //  so the source knows it will be used for a link
 
     uno::Sequence<sal_Int8> aSequence = aDataHelper.GetSequence(SotClipboardFormatId::LINK, OUString());
-    if (!aSequence.getLength())
+    if (!aSequence.hasElements())
     {
         OSL_FAIL("DDE Data not found.");
         return false;
@@ -682,7 +706,7 @@ bool ScViewFunc::PasteLink( const uno::Reference<datatransfer::XTransferable>& r
         if (*p == '\0')
         {
             sal_Int32 nLen = i - nStart;
-            aStrs.push_back(OUString(pStart, nLen, eSysEnc));
+            aStrs.emplace_back(pStart, nLen, eSysEnc);
             nStart = ++i;
             pStart = ++p;
         }
@@ -691,9 +715,9 @@ bool ScViewFunc::PasteLink( const uno::Reference<datatransfer::XTransferable>& r
     if (aStrs.size() < 3)
         return false;
 
-    const OUString* pApp   = &aStrs[0];
-    const OUString* pTopic = &aStrs[1];
-    const OUString* pItem  = &aStrs[2];
+    const OUString& pApp   = aStrs[0];
+    const OUString& pTopic = aStrs[1];
+    const OUString& pItem  = aStrs[2];
     const OUString* pExtra = nullptr;
     if (aStrs.size() > 3)
         pExtra = &aStrs[3];
@@ -704,8 +728,8 @@ bool ScViewFunc::PasteLink( const uno::Reference<datatransfer::XTransferable>& r
         // uses Calc A1 syntax even when another formula syntax is specified
         // in the UI.
         EnterMatrix("='"
-            + ScGlobal::GetAbsDocName(*pTopic, GetViewData().GetDocument()->GetDocumentShell())
-            + "'#" + *pItem
+            + ScGlobal::GetAbsDocName(pTopic, GetViewData().GetDocument()->GetDocumentShell())
+            + "'#" + pItem
                 , ::formula::FormulaGrammar::GRAM_NATIVE);
         return true;
     }
@@ -716,11 +740,11 @@ bool ScViewFunc::PasteLink( const uno::Reference<datatransfer::XTransferable>& r
         // TODO: we could define ocQuote for "
         EnterMatrix("=" + ScCompiler::GetNativeSymbol(ocDde)
             + ScCompiler::GetNativeSymbol(ocOpen)
-            + "\"" + *pApp + "\""
+            + "\"" + pApp + "\""
             + ScCompiler::GetNativeSymbol(ocSep)
-            + "\"" + *pTopic + "\""
+            + "\"" + pTopic + "\""
             + ScCompiler::GetNativeSymbol(ocSep)
-            + "\"" + *pItem + "\""
+            + "\"" + pItem + "\""
             + ScCompiler::GetNativeSymbol(ocClose)
                 , ::formula::FormulaGrammar::GRAM_NATIVE);
     }

@@ -20,12 +20,10 @@
 #ifndef INCLUDED_SVX_SOURCE_TABLE_TABLEHANDLES_HXX
 #define INCLUDED_SVX_SOURCE_TABLE_TABLEHANDLES_HXX
 
-#include <svx/sdr/overlay/overlayobject.hxx>
-
 #include <svx/svdhdl.hxx>
 
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 enum TableEdgeState { Empty, Invisible, Visible };
 
@@ -38,8 +36,6 @@ struct TableEdge
     TableEdge() : mnStart(0), mnEnd(0), meState(Empty) {}
 };
 
-typedef std::vector< TableEdge > TableEdgeVector;
-
 class TableEdgeHdl : public SdrHdl
 {
 public:
@@ -47,7 +43,7 @@ public:
 
     sal_Int32 GetValidDragOffset( const SdrDragStat& rDrag ) const;
 
-    virtual Pointer GetPointer() const override;
+    virtual PointerStyle GetPointer() const override;
 
     void SetEdge( sal_Int32 nEdge, sal_Int32 nStart, sal_Int32 nEnd, TableEdgeState nState );
 
@@ -63,7 +59,7 @@ protected:
 private:
     bool mbHorizontal;
     sal_Int32 mnMin, mnMax;
-    TableEdgeVector maEdges;
+    std::vector< TableEdge > maEdges;
 };
 
 class TableBorderHdl : public SdrHdl
@@ -73,8 +69,7 @@ public:
         const tools::Rectangle& rRect,
         bool bAnimate);
 
-    virtual Pointer GetPointer() const override;
-    bool getAnimate() const { return mbAnimate; }
+    virtual PointerStyle GetPointer() const override;
 
 protected:
     // create marker for this kind
@@ -86,8 +81,8 @@ private:
     bool            mbAnimate : 1;
 };
 
-} // end of namespace table
-} // end of namespace sdr
+} // end of namespace sdr::table
+
 
 #endif
 

@@ -28,6 +28,7 @@
 #include "resourcehelper.hxx"
 #include "xmlhelper.hxx"
 #include "xformsevent.hxx"
+#include <strings.hrc>
 
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
@@ -47,13 +48,11 @@
 #include <com/sun/star/xml/dom/NodeType.hpp>
 #include <com/sun/star/xml/dom/events/XEventTarget.hpp>
 #include <com/sun/star/xml/dom/events/XEventListener.hpp>
-#include <com/sun/star/xml/dom/events/XDocumentEvent.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 
-#include <comphelper/propertysetinfo.hxx>
-#include <unotools/textsearch.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/typeprovider.hxx>
 
 using namespace com::sun::star::xml::xpath;
@@ -214,7 +213,7 @@ void Binding::deferNotifications( bool bDefer )
                 "deferred modifications not delivered?" );
 }
 
-bool Binding::isValid()
+bool Binding::isValid() const
 {
     // TODO: determine whether node is suitable, not just whether it exists
     return maBindingExpression.getNode().is() &&
@@ -225,7 +224,7 @@ bool Binding::isValid()
                !maBindingExpression.getString().isEmpty() ) );
 }
 
-bool Binding::isUseful()
+bool Binding::isUseful() const
 {
     // we are useful, if
     // 0) we don't have a model
@@ -305,18 +304,10 @@ EvaluationContext Binding::getEvaluationContext() const
 }
 
 
-css::uno::Sequence<sal_Int8> Binding::getUnoTunnelID()
+css::uno::Sequence<sal_Int8> Binding::getUnoTunnelId()
 {
     static cppu::OImplementationId aImplementationId;
     return aImplementationId.getImplementationId();
-}
-
-Binding* SAL_CALL Binding::getBinding( const Reference<XPropertySet>& xPropertySet )
-{
-    Reference<XUnoTunnel> xTunnel( xPropertySet, UNO_QUERY );
-    return xTunnel.is()
-        ? reinterpret_cast<Binding*>( xTunnel->getSomething(getUnoTunnelID()))
-        : nullptr;
 }
 
 
@@ -443,7 +434,7 @@ bool Binding::getExternalData() const
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.xforms");
     }
     return bExternalData;
 }
@@ -463,57 +454,47 @@ bool Binding::isLive() const
 
 Model* Binding::getModelImpl() const
 {
-    return getModelImpl( mxModel );
-}
-
-Model* Binding::getModelImpl( const css::uno::Reference<css::xforms::XModel>& xModel )
-{
-    Reference<XUnoTunnel> xTunnel( xModel, UNO_QUERY );
-    Model* pModel = xTunnel.is()
-        ? reinterpret_cast<Model*>(
-            xTunnel->getSomething( Model::getUnoTunnelID() ) )
-        : nullptr;
-    return pModel;
+    return comphelper::getUnoTunnelImplementation<Model>( mxModel );
 }
 
 static void lcl_addListenerToNode( const Reference<XNode>& xNode,
                                    const Reference<XEventListener>& xListener )
 {
     Reference<XEventTarget> xTarget( xNode, UNO_QUERY );
-    if( xTarget.is() )
-    {
-        xTarget->addEventListener( "DOMCharacterDataModified",
-                                   xListener, false );
-        xTarget->addEventListener( "DOMCharacterDataModified",
-                                   xListener, true );
-        xTarget->addEventListener( "DOMAttrModified",
-                                   xListener, false );
-        xTarget->addEventListener( "DOMAttrModified",
-                                   xListener, true );
-        xTarget->addEventListener( "DOMAttrModified",
-                                   xListener, true );
-        xTarget->addEventListener( "xforms-generic",
-                                   xListener, true );
-    }
+    if( !xTarget.is() )
+        return;
+
+    xTarget->addEventListener( "DOMCharacterDataModified",
+                               xListener, false );
+    xTarget->addEventListener( "DOMCharacterDataModified",
+                               xListener, true );
+    xTarget->addEventListener( "DOMAttrModified",
+                               xListener, false );
+    xTarget->addEventListener( "DOMAttrModified",
+                               xListener, true );
+    xTarget->addEventListener( "DOMAttrModified",
+                               xListener, true );
+    xTarget->addEventListener( "xforms-generic",
+                               xListener, true );
 }
 
 static void lcl_removeListenerFromNode( const Reference<XNode>& xNode,
                                         const Reference<XEventListener>& xListener )
 {
     Reference<XEventTarget> xTarget( xNode, UNO_QUERY );
-    if( xTarget.is() )
-    {
-        xTarget->removeEventListener( "DOMCharacterDataModified",
-                                      xListener, false );
-        xTarget->removeEventListener( "DOMCharacterDataModified",
-                                      xListener, true );
-        xTarget->removeEventListener( "DOMAttrModified",
-                                      xListener, false );
-        xTarget->removeEventListener( "DOMAttrModified",
-                                      xListener, true );
-        xTarget->removeEventListener( "xforms-generic",
-                                      xListener, true );
-    }
+    if( !xTarget.is() )
+        return;
+
+    xTarget->removeEventListener( "DOMCharacterDataModified",
+                                  xListener, false );
+    xTarget->removeEventListener( "DOMCharacterDataModified",
+                                  xListener, true );
+    xTarget->removeEventListener( "DOMAttrModified",
+                                  xListener, false );
+    xTarget->removeEventListener( "DOMAttrModified",
+                                  xListener, true );
+    xTarget->removeEventListener( "xforms-generic",
+                                  xListener, true );
 }
 
 ::std::vector<EvaluationContext> Binding::_getMIPEvaluationContexts() const
@@ -524,16 +505,12 @@ static void lcl_removeListenerFromNode( const Reference<XNode>& xNode,
     // EvaluationContext for each
     PathExpression::NodeVector_t aNodes = maBindingExpression.getNodeList();
     ::std::vector<EvaluationContext> aVector;
-    sal_Int32 nCount = 0; // count nodes for context position
-    for( PathExpression::NodeVector_t::iterator aIter = aNodes.begin();
-         aIter != aNodes.end();
-         ++aIter, ++nCount )
+    for (auto const& node : aNodes)
     {
-        OSL_ENSURE( aIter->is(), "no node?" );
+        OSL_ENSURE( node.is(), "no node?" );
 
         // create proper evaluation context for this MIP
-        aVector.push_back( EvaluationContext( *aIter, getModel(),
-                                              getBindingNamespaces() ) );
+        aVector.emplace_back( node, getModel(), getBindingNamespaces() );
     }
     return aVector;
 }
@@ -565,10 +542,8 @@ void Binding::bind( bool bForceRebind )
                           aContext.mxNamespaces ) )
         {
             aContext.mxContextNode->appendChild(
-                Reference<XNode>(
                     aContext.mxContextNode->getOwnerDocument()->createElement(
-                        maBindingExpression.getExpression() ),
-                    UNO_QUERY ) );
+                        maBindingExpression.getExpression() ) );
             maBindingExpression.evaluate( aContext );
             OSL_ENSURE( maBindingExpression.getNode().is(),
                         "we should bind to the newly inserted node!" );
@@ -579,24 +554,17 @@ void Binding::bind( bool bForceRebind )
     // 2) register suitable listeners on the instance (and remove old ones)
     if( maEventNodes.empty() || bForceRebind )
     {
-        for( auto aIter = maEventNodes.begin();
-             aIter != maEventNodes.end();
-             ++aIter )
-            lcl_removeListenerFromNode( *aIter, this );
+        for (auto const& eventNode : maEventNodes)
+            lcl_removeListenerFromNode( eventNode, this );
         maEventNodes.clear();
         if( isSimpleBinding() )
-            for( PathExpression::NodeVector_t::iterator aIter = aNodes.begin();
-                 aIter != aNodes.end();
-                 ++aIter )
-                maEventNodes.push_back( *aIter );
+            for (auto const& node : aNodes)
+                maEventNodes.push_back(node);
         else
-            maEventNodes.push_back(
-                Reference<XNode>( aContext.mxContextNode->getOwnerDocument(),
-                                  UNO_QUERY_THROW ) );
-        for( PathExpression::NodeVector_t::iterator aIter2 = maEventNodes.begin();
-             aIter2 != maEventNodes.end();
-             ++aIter2 )
-            lcl_addListenerToNode( *aIter2, this );
+            maEventNodes.emplace_back( aContext.mxContextNode->getOwnerDocument(),
+                                  UNO_QUERY_THROW );
+        for (auto const& eventNode : maEventNodes)
+            lcl_addListenerToNode( eventNode, this );
     }
 
     // 3) remove old MIPs defined by this binding
@@ -606,11 +574,9 @@ void Binding::bind( bool bForceRebind )
 
     // 4) calculate all MIPs
     ::std::vector<EvaluationContext> aMIPContexts = _getMIPEvaluationContexts();
-    for( ::std::vector<EvaluationContext>::iterator aIter = aMIPContexts.begin();
-         aIter != aMIPContexts.end();
-         ++aIter )
+    for (auto & context : aMIPContexts)
     {
-        EvaluationContext& rContext = *aIter;
+        EvaluationContext& rContext = context;
 
         // evaluate calculate expression (and push value into instance)
         // (prevent recursion using mbInCalculate
@@ -777,13 +743,13 @@ MIP Binding::getLocalMIP() const
     return aMIP;
 }
 
-css::uno::Reference<css::xsd::XDataType> Binding::getDataType()
+css::uno::Reference<css::xsd::XDataType> Binding::getDataType() const
 {
     OSL_ENSURE( getModel().is(), "need model" );
     OSL_ENSURE( getModel()->getDataTypeRepository().is(), "need types" );
 
-    Reference<XDataTypeRepository> xRepository(
-        getModel()->getDataTypeRepository(), UNO_QUERY );
+    Reference<XDataTypeRepository> xRepository =
+        getModel()->getDataTypeRepository();
     OUString sTypeName = maMIP.getTypeName();
 
     return ( xRepository.is() && xRepository->hasByName( sTypeName ) )
@@ -791,7 +757,7 @@ css::uno::Reference<css::xsd::XDataType> Binding::getDataType()
         : Reference<XDataType>( nullptr );
 }
 
-bool Binding::isValid_DataType()
+bool Binding::isValid_DataType() const
 {
     Reference<XDataType> xDataType = getDataType();
     return !xDataType.is()
@@ -814,10 +780,8 @@ void Binding::clear()
         pModel->removeMIPs( this );
 
     // remove all references
-    for( auto aIter = maEventNodes.begin();
-         aIter != maEventNodes.end();
-         ++aIter )
-        lcl_removeListenerFromNode( *aIter, this );
+    for (auto const& eventNode : maEventNodes)
+        lcl_removeListenerFromNode( eventNode, this );
     maEventNodes.clear();
 
     // clear expressions
@@ -833,7 +797,7 @@ void Binding::clear()
 
 
 static void lcl_removeOtherNamespaces( const css::uno::Reference<css::container::XNameContainer>& xFrom,
-                                css::uno::Reference<css::container::XNameContainer>& xTo )
+                                css::uno::Reference<css::container::XNameContainer> const & xTo )
 {
     OSL_ENSURE( xFrom.is(), "no source" );
     OSL_ENSURE( xTo.is(), "no target" );
@@ -860,7 +824,7 @@ static void lcl_removeOtherNamespaces( const css::uno::Reference<css::container:
  *                    false: use only elements from target
  */
 static void lcl_copyNamespaces( const css::uno::Reference<css::container::XNameContainer>& xFrom,
-                         css::uno::Reference<css::container::XNameContainer>& xTo,
+                         css::uno::Reference<css::container::XNameContainer> const & xTo,
                          bool bOverwrite )
 {
     OSL_ENSURE( xFrom.is(), "no source" );
@@ -967,24 +931,24 @@ void Binding::_setNamespaces( const css::uno::Reference<css::container::XNameCon
 
 void Binding::_checkBindingID()
 {
-    if( getModel().is() )
+    if( !getModel().is() )
+        return;
+
+    Reference<XNameAccess> xBindings( getModel()->getBindings(), UNO_QUERY_THROW );
+    if( !msBindingID.isEmpty() )
+        return;
+
+    // no binding ID? then make one up!
+    OUString sIDPrefix = getResource( RID_STR_XFORMS_BINDING_UI_NAME ) + " ";
+    sal_Int32 nNumber = 0;
+    OUString sName;
+    do
     {
-        Reference<XNameAccess> xBindings( getModel()->getBindings(), UNO_QUERY_THROW );
-        if( msBindingID.isEmpty() )
-        {
-            // no binding ID? then make one up!
-            OUString sIDPrefix = getResource( RID_STR_XFORMS_BINDING_UI_NAME ) + " ";
-            sal_Int32 nNumber = 0;
-            OUString sName;
-            do
-            {
-                nNumber++;
-                sName = sIDPrefix + OUString::number( nNumber );
-            }
-            while( xBindings->hasByName( sName ) );
-            setBindingID( sName );
-        }
+        nNumber++;
+        sName = sIDPrefix + OUString::number( nNumber );
     }
+    while( xBindings->hasByName( sName ) );
+    setBindingID( sName );
 }
 
 
@@ -1030,21 +994,19 @@ void Binding::setValue( const css::uno::Any& aValue )
     if( ! supportsType( aValue.getValueType() ) )
         throw IncompatibleTypesException( EXCEPT( "type unsupported" ) );
 
-    if( maBindingExpression.hasValue() )
-    {
-        css::uno::Reference<css::xml::dom::XNode> xNode = maBindingExpression.getNode();
-        if( xNode.is() )
-        {
-            OUString sValue = Convert::get().toXSD( aValue );
-            bool bSuccess = getModelImpl()->setSimpleContent( xNode, sValue );
-            if( ! bSuccess )
-                throw InvalidBindingStateException( EXCEPT( "can't set value" ) );
-        }
-        else
-            throw InvalidBindingStateException( EXCEPT( "no suitable node found" ) );
-    }
-    else
+    if( !maBindingExpression.hasValue() )
         throw InvalidBindingStateException( EXCEPT( "no suitable node found" ) );
+
+    css::uno::Reference<css::xml::dom::XNode> xNode = maBindingExpression.getNode();
+    if( !xNode.is() )
+        throw InvalidBindingStateException( EXCEPT( "no suitable node found" ) );
+
+    OUString sValue = Convert::get().toXSD( aValue );
+    bool bSuccess = getModelImpl()->setSimpleContent( xNode, sValue );
+    if( ! bSuccess )
+        throw InvalidBindingStateException( EXCEPT( "can't set value" ) );
+
+
 }
 
 
@@ -1212,7 +1174,7 @@ void Binding::handleEvent( const css::uno::Reference<css::xml::dom::events::XEve
 
 sal_Int64 Binding::getSomething( const css::uno::Sequence<sal_Int8>& xId )
 {
-    return reinterpret_cast<sal_Int64>( ( xId == getUnoTunnelID() ) ? this : nullptr );
+    return reinterpret_cast<sal_Int64>( ( xId == getUnoTunnelId() ) ? this : nullptr );
 }
 
 

@@ -27,13 +27,10 @@
 #include <com/sun/star/datatransfer/clipboard/XClipboardOwner.hpp>
 #include "MtaOleClipb.hxx"
 
-#if defined _MSC_VER
-#pragma warning(push,1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 
 class CWinClipboard;
 class CXNotifyingDataObject;
@@ -50,46 +47,47 @@ protected:
     CWinClipbImpl( const OUString& aClipboardName, CWinClipboard* theWinClipboard );
 
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::datatransfer::XTransferable > SAL_CALL getContents(  );
+    css::uno::Reference< css::datatransfer::XTransferable > getContents(  );
 
     /// @throws css::uno::RuntimeException
-    void SAL_CALL setContents(
+    void setContents(
         const css::uno::Reference< css::datatransfer::XTransferable >& xTransferable,
         const css::uno::Reference< css::datatransfer::clipboard::XClipboardOwner >& xClipboardOwner );
 
     /// @throws css::uno::RuntimeException
-    OUString SAL_CALL getName(  );
+    OUString getName(  );
 
     // XClipboardEx
 
     /// @throws css::uno::RuntimeException
-    static sal_Int8 SAL_CALL getRenderingCapabilities(  );
+    static sal_Int8 getRenderingCapabilities(  );
 
     // XFlushableClipboard
 
     /// @throws css::uno::RuntimeException
-    void SAL_CALL flushClipboard( );
+    void flushClipboard( );
 
     // XComponent
 
     /// @throws css::uno::RuntimeException
-    void SAL_CALL dispose( );
+    void dispose( );
 
     // member functions
 
-    void SAL_CALL registerClipboardViewer( );
-    void SAL_CALL unregisterClipboardViewer( );
+    void registerClipboardViewer( );
+    void unregisterClipboardViewer( );
 
     static void WINAPI onClipboardContentChanged();
 
 private:
-    void SAL_CALL onReleaseDataObject( CXNotifyingDataObject* theCaller );
+    void onReleaseDataObject( CXNotifyingDataObject* theCaller );
 
 private:
     OUString                m_itsName;
     CMtaOleClipboard        m_MtaOleClipboard;
     CWinClipboard*          m_pWinClipboard;
     CXNotifyingDataObject*  m_pCurrentClipContent;
+    com::sun::star::uno::Reference< com::sun::star::datatransfer::XTransferable > m_foreignContent;
     osl::Mutex              m_ClipContentMutex;
 
     static osl::Mutex       s_aMutex;

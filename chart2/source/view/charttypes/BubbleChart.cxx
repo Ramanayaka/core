@@ -18,24 +18,17 @@
  */
 
 #include "BubbleChart.hxx"
-#include "PlottingPositionHelper.hxx"
-#include "AbstractShapeFactory.hxx"
-#include "CommonConverters.hxx"
-#include "macros.hxx"
-#include "ViewDefines.hxx"
-#include "ObjectIdentifier.hxx"
-#include "Splines.hxx"
-#include "LabelPositionHelper.hxx"
-#include "Clipping.hxx"
-#include "Stripe.hxx"
+#include <PlottingPositionHelper.hxx>
+#include <ShapeFactory.hxx>
+#include <ObjectIdentifier.hxx>
+#include <LabelPositionHelper.hxx>
 
-#include <com/sun/star/chart2/Symbol.hpp>
 #include <com/sun/star/chart/DataLabelPlacement.hpp>
-#include <editeng/unoprnms.hxx>
 #include <rtl/math.hxx>
-#include <com/sun/star/drawing/DoubleSequence.hpp>
-#include <com/sun/star/drawing/NormalsKind.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+#include <com/sun/star/drawing/XShapes.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 
 namespace chart
 {
@@ -46,8 +39,6 @@ using namespace ::com::sun::star::chart2;
 BubbleChart::BubbleChart( const uno::Reference<XChartType>& xChartTypeModel
                      , sal_Int32 nDimensionCount )
         : VSeriesPlotter( xChartTypeModel, nDimensionCount, false )
-        , m_bShowNegativeValues(false)
-        , m_fBubbleSizeScaling(1.0)
         , m_fMaxLogicBubbleSize( 0.0 )
         , m_fBubbleSizeFactorToScreen( 1.0 )
 {
@@ -71,26 +62,16 @@ void BubbleChart::calculateMaximumLogicBubbleSize()
     sal_Int32 nEndIndex = VSeriesPlotter::getPointCount();
     for( sal_Int32 nIndex = 0; nIndex < nEndIndex; nIndex++ )
     {
-        std::vector< std::vector< VDataSeriesGroup > >::iterator             aZSlotIter = m_aZSlots.begin();
-        const std::vector< std::vector< VDataSeriesGroup > >::const_iterator  aZSlotEnd = m_aZSlots.end();
-        for( ; aZSlotIter != aZSlotEnd; ++aZSlotIter )
+        for( auto const& rZSlot : m_aZSlots )
         {
-            std::vector< VDataSeriesGroup >::iterator             aXSlotIter = aZSlotIter->begin();
-            const std::vector< VDataSeriesGroup >::const_iterator aXSlotEnd = aZSlotIter->end();
-            for( ; aXSlotIter != aXSlotEnd; ++aXSlotIter )
+            for( auto const& rXSlot : rZSlot )
             {
-                std::vector< VDataSeries* >* pSeriesList = &(aXSlotIter->m_aSeriesVector);
-                std::vector< VDataSeries* >::const_iterator       aSeriesIter = pSeriesList->begin();
-                const std::vector< VDataSeries* >::const_iterator aSeriesEnd  = pSeriesList->end();
-                for( ; aSeriesIter != aSeriesEnd; ++aSeriesIter )
+                for( std::unique_ptr<VDataSeries> const & pSeries : rXSlot.m_aSeriesVector )
                 {
-                    VDataSeries* pSeries( *aSeriesIter );
                     if(!pSeries)
                         continue;
 
                     double fSize = pSeries->getBubble_Size( nIndex );
-                    if( m_bShowNegativeValues )
-                        fSize = fabs(fSize);
                     if( fSize > fMaxSize )
                         fMaxSize = fSize;
                 }
@@ -121,18 +102,15 @@ drawing::Direction3D BubbleChart::transformToScreenBubbleSize( double fLogicSize
 {
     drawing::Direction3D aRet(0,0,0);
 
-    if( ::rtl::math::isNan(fLogicSize) || ::rtl::math::isInf(fLogicSize) )
+    if( std::isnan(fLogicSize) || std::isinf(fLogicSize) )
         return aRet;
-
-    if( m_bShowNegativeValues )
-        fLogicSize = fabs(fLogicSize);
 
     double fMaxSize = m_fMaxLogicBubbleSize;
 
     double fMaxRadius = sqrt( fMaxSize / F_PI );
-    double fRaduis = sqrt( fLogicSize / F_PI );
+    double fRadius = sqrt( fLogicSize / F_PI );
 
-    aRet.DirectionX = m_fBubbleSizeScaling * m_fBubbleSizeFactorToScreen * fRaduis / fMaxRadius;
+    aRet.DirectionX = m_fBubbleSizeFactorToScreen * fRadius / fMaxRadius;
     aRet.DirectionY = aRet.DirectionX;
 
     return aRet;
@@ -150,13 +128,15 @@ bool BubbleChart::isSeparateStackingForDifferentSigns( sal_Int32 /*nDimensionInd
 
 LegendSymbolStyle BubbleChart::getLegendSymbolStyle()
 {
-    return LegendSymbolStyle_CIRCLE;
+    return LegendSymbolStyle::Circle;
 }
 
 drawing::Direction3D BubbleChart::getPreferredDiagramAspectRatio() const
 {
     return drawing::Direction3D(-1,-1,-1);
 }
+
+namespace {
 
 //better performance for big data
 struct FormerPoint
@@ -175,6 +155,8 @@ struct FormerPoint
     double m_fY;
     double m_fZ;
 };
+
+}
 
 void BubbleChart::createShapes()
 {
@@ -214,75 +196,65 @@ void BubbleChart::createShapes()
     //iterate through all x values per indices
     for( sal_Int32 nIndex = nStartIndex; nIndex < nEndIndex; nIndex++ )
     {
-        std::vector< std::vector< VDataSeriesGroup > >::iterator aZSlotIter = m_aZSlots.begin();
-        const std::vector< std::vector< VDataSeriesGroup > >::const_iterator aZSlotEnd = m_aZSlots.end();
-
-        for( sal_Int32 nZ=1; aZSlotIter != aZSlotEnd; ++aZSlotIter, nZ++ )
+        for( auto const& rZSlot : m_aZSlots )
         {
-            std::vector< VDataSeriesGroup >::iterator             aXSlotIter = aZSlotIter->begin();
-            const std::vector< VDataSeriesGroup >::const_iterator aXSlotEnd = aZSlotIter->end();
-
-            for( sal_Int32 nX=0; aXSlotIter != aXSlotEnd; ++aXSlotIter, ++nX )
+            for( auto const& rXSlot : rZSlot )
             {
-                std::vector< VDataSeries* >* pSeriesList = &(aXSlotIter->m_aSeriesVector);
-                std::vector< VDataSeries* >::const_iterator       aSeriesIter = pSeriesList->begin();
-                const std::vector< VDataSeries* >::const_iterator aSeriesEnd  = pSeriesList->end();
-
                 //iterate through all series
-                for( sal_Int32 nSeriesIndex = 0; aSeriesIter != aSeriesEnd; ++aSeriesIter, ++nSeriesIndex )
+                for( std::unique_ptr<VDataSeries> const & pSeries : rXSlot.m_aSeriesVector )
                 {
-                    VDataSeries* pSeries( *aSeriesIter );
                     if(!pSeries)
                         continue;
 
                     bool bHasFillColorMapping = pSeries->hasPropertyMapping("FillColor");
                     bool bHasBorderColorMapping = pSeries->hasPropertyMapping("LineColor");
 
-                    uno::Reference< drawing::XShapes > xSeriesGroupShape_Shapes = getSeriesGroupShape(*aSeriesIter, xSeriesTarget);
+                    uno::Reference< drawing::XShapes > xSeriesGroupShape_Shapes = getSeriesGroupShape(pSeries.get(), xSeriesTarget);
 
                     sal_Int32 nAttachedAxisIndex = pSeries->getAttachedAxisIndex();
-                    PlottingPositionHelper* pPosHelper = &(this->getPlottingPositionHelper( nAttachedAxisIndex ));
-                    if(!pPosHelper)
-                        pPosHelper = m_pMainPosHelper;
-                    PlotterBase::m_pPosHelper = pPosHelper;
+                    PlottingPositionHelper& rPosHelper
+                        = getPlottingPositionHelper(nAttachedAxisIndex);
+                    m_pPosHelper = &rPosHelper;
 
                     //collect data point information (logic coordinates, style ):
                     double fLogicX = pSeries->getXValue(nIndex);
                     double fLogicY = pSeries->getYValue(nIndex);
                     double fBubbleSize = pSeries->getBubble_Size( nIndex );
 
-                    if( !m_bShowNegativeValues && fBubbleSize<0.0 )
+                    if( fBubbleSize<0.0 )
                         continue;
 
-                    if( fBubbleSize == 0.0 || ::rtl::math::isNan(fBubbleSize) )
+                    if( fBubbleSize == 0.0 || std::isnan(fBubbleSize) )
                         continue;
 
-                    if(    ::rtl::math::isNan(fLogicX) || ::rtl::math::isInf(fLogicX)
-                        || ::rtl::math::isNan(fLogicY) || ::rtl::math::isInf(fLogicY) )
+                    if(    std::isnan(fLogicX) || std::isinf(fLogicX)
+                        || std::isnan(fLogicY) || std::isinf(fLogicY) )
                         continue;
 
-                    bool bIsVisible = pPosHelper->isLogicVisible( fLogicX, fLogicY, fLogicZ );
+                    bool bIsVisible = rPosHelper.isLogicVisible(fLogicX, fLogicY, fLogicZ);
 
                     drawing::Position3D aUnscaledLogicPosition( fLogicX, fLogicY, fLogicZ );
                     drawing::Position3D aScaledLogicPosition(aUnscaledLogicPosition);
-                    pPosHelper->doLogicScaling( aScaledLogicPosition );
+                    rPosHelper.doLogicScaling(aScaledLogicPosition);
 
                     //transformation 3) -> 4)
-                    drawing::Position3D aScenePosition( pPosHelper->transformLogicToScene( fLogicX,fLogicY,fLogicZ, false ) );
+                    drawing::Position3D aScenePosition(
+                        rPosHelper.transformLogicToScene(fLogicX, fLogicY, fLogicZ, false));
 
                     //better performance for big data
-                    FormerPoint aFormerPoint( aSeriesFormerPointMap[pSeries] );
-                    pPosHelper->setCoordinateSystemResolution( m_aCoordinateSystemResolution );
-                    if( !pSeries->isAttributedDataPoint(nIndex)
-                            &&
-                        pPosHelper->isSameForGivenResolution( aFormerPoint.m_fX, aFormerPoint.m_fY, aFormerPoint.m_fZ
-                                                            , aScaledLogicPosition.PositionX, aScaledLogicPosition.PositionY, aScaledLogicPosition.PositionZ ) )
+                    FormerPoint aFormerPoint( aSeriesFormerPointMap[pSeries.get()] );
+                    rPosHelper.setCoordinateSystemResolution(m_aCoordinateSystemResolution);
+                    if (!pSeries->isAttributedDataPoint(nIndex)
+                        && rPosHelper.isSameForGivenResolution(
+                               aFormerPoint.m_fX, aFormerPoint.m_fY, aFormerPoint.m_fZ,
+                               aScaledLogicPosition.PositionX, aScaledLogicPosition.PositionY,
+                               aScaledLogicPosition.PositionZ))
                     {
                         nSkippedPoints++;
                         m_bPointsWereSkipped = true;
                         continue;
                     }
-                    aSeriesFormerPointMap[pSeries] = FormerPoint(aScaledLogicPosition.PositionX, aScaledLogicPosition.PositionY, aScaledLogicPosition.PositionZ);
+                    aSeriesFormerPointMap[pSeries.get()] = FormerPoint(aScaledLogicPosition.PositionX, aScaledLogicPosition.PositionY, aScaledLogicPosition.PositionZ);
 
                     //create a single datapoint if point is visible
                     if( !bIsVisible )
@@ -293,16 +265,14 @@ void BubbleChart::createShapes()
                         pSeries->getPointCID_Stub(), nIndex );
                     uno::Reference< drawing::XShapes > xPointGroupShape_Shapes(
                         createGroupShape(xSeriesGroupShape_Shapes,aPointCID) );
-                    uno::Reference<drawing::XShape> xPointGroupShape_Shape =
-                            uno::Reference<drawing::XShape>( xPointGroupShape_Shapes, uno::UNO_QUERY );
+                    uno::Reference<drawing::XShape> xPointGroupShape_Shape( xPointGroupShape_Shapes, uno::UNO_QUERY );
 
                     {
                         nCreatedPoints++;
 
                         //create data point
                         drawing::Direction3D aSymbolSize = transformToScreenBubbleSize( fBubbleSize );
-                        uno::Reference<drawing::XShape> xShape;
-                        xShape = m_pShapeFactory->createCircle2D( xPointGroupShape_Shapes
+                        uno::Reference<drawing::XShape> xShape = m_pShapeFactory->createCircle2D( xPointGroupShape_Shapes
                                 , aScenePosition, aSymbolSize );
 
                         setMappedProperties( xShape
@@ -312,7 +282,7 @@ void BubbleChart::createShapes()
                         if(bHasFillColorMapping)
                         {
                             double nPropVal = pSeries->getValueByProperty(nIndex, "FillColor");
-                            if(!rtl::math::isNan(nPropVal))
+                            if(!std::isnan(nPropVal))
                             {
                                 uno::Reference< beans::XPropertySet > xProps( xShape, uno::UNO_QUERY_THROW );
                                 xProps->setPropertyValue("FillColor", uno::Any(static_cast<sal_Int32>(nPropVal)));
@@ -321,24 +291,25 @@ void BubbleChart::createShapes()
                         if(bHasBorderColorMapping)
                         {
                             double nPropVal = pSeries->getValueByProperty(nIndex, "LineColor");
-                            if(!rtl::math::isNan(nPropVal))
+                            if(!std::isnan(nPropVal))
                             {
                                 uno::Reference< beans::XPropertySet > xProps( xShape, uno::UNO_QUERY_THROW );
                                 xProps->setPropertyValue("LineColor", uno::Any(static_cast<sal_Int32>(nPropVal)));
                             }
                         }
 
-                        ::chart::AbstractShapeFactory::setShapeName( xShape, "MarkHandles" );
+                        ::chart::ShapeFactory::setShapeName( xShape, "MarkHandles" );
 
                         //create data point label
-                        if( (**aSeriesIter).getDataPointLabelIfLabel(nIndex) )
+                        if( pSeries->getDataPointLabelIfLabel(nIndex) )
                         {
                             LabelAlignment eAlignment = LABEL_ALIGN_TOP;
                             drawing::Position3D aScenePosition3D( aScenePosition.PositionX
                                         , aScenePosition.PositionY
-                                        , aScenePosition.PositionZ+this->getTransformedDepth() );
+                                        , aScenePosition.PositionZ+getTransformedDepth() );
 
-                            sal_Int32 nLabelPlacement = pSeries->getLabelPlacement( nIndex, m_xChartTypeModel, pPosHelper->isSwapXAndY() );
+                            sal_Int32 nLabelPlacement = pSeries->getLabelPlacement(
+                                nIndex, m_xChartTypeModel, rPosHelper.isSwapXAndY());
 
                             switch(nLabelPlacement)
                             {
@@ -373,7 +344,7 @@ void BubbleChart::createShapes()
                             sal_Int32 nOffset = 0;
                             if(eAlignment!=LABEL_ALIGN_CENTER)
                                 nOffset = 100;//add some spacing //@todo maybe get more intelligent values
-                            createDataLabel( xTextTarget, **aSeriesIter, nIndex
+                            createDataLabel( xTextTarget, *pSeries, nIndex
                                             , fBubbleSize, fBubbleSize, aScreenPosition2D, eAlignment, nOffset );
                         }
                     }

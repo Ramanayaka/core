@@ -22,12 +22,14 @@
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleStateSet.hpp>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <osl/mutex.hxx>
+#include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
 #include <viewsh.hxx>
@@ -40,14 +42,12 @@
 #include <flyfrm.hxx>
 #include <dflyobj.hxx>
 #include <pam.hxx>
-#include <viewimp.hxx>
 #include <accmap.hxx>
-#include <accfrmobjslist.hxx>
-#include <acccontext.hxx>
+#include "accfrmobjslist.hxx"
+#include "acccontext.hxx"
 #include <svx/AccessibleShape.hxx>
 #include <comphelper/accessibleeventnotifier.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "accpara.hxx"
 #include <PostItMgr.hxx>
 
 using namespace sw::access;
@@ -100,33 +100,25 @@ vcl::Window *SwAccessibleContext::GetWindow()
 // get SwViewShell from accessibility map, and cast to cursor shell
 SwCursorShell* SwAccessibleContext::GetCursorShell()
 {
-    SwCursorShell* pCursorShell;
     SwViewShell* pViewShell = GetMap() ? GetMap()->GetShell() : nullptr;
     OSL_ENSURE( pViewShell, "no view shell" );
-    if( pViewShell && dynamic_cast<const SwCursorShell*>( pViewShell) !=  nullptr )
-        pCursorShell = static_cast<SwCursorShell*>( pViewShell );
-    else
-        pCursorShell = nullptr;
-
-    return pCursorShell;
+    return dynamic_cast<SwCursorShell*>( pViewShell);
 }
 
 const SwCursorShell* SwAccessibleContext::GetCursorShell() const
 {
     // just like non-const GetCursorShell
-    const SwCursorShell* pCursorShell;
     const SwViewShell* pViewShell = GetMap() ? GetMap()->GetShell() : nullptr;
     OSL_ENSURE( pViewShell, "no view shell" );
-    if( pViewShell && dynamic_cast<const SwCursorShell*>( pViewShell) !=  nullptr )
-        pCursorShell = static_cast<const SwCursorShell*>( pViewShell );
-    else
-        pCursorShell = nullptr;
-
-    return pCursorShell;
+    return dynamic_cast<const SwCursorShell*>( pViewShell);
 }
+
+namespace {
 
 enum class Action { NONE, SCROLLED, SCROLLED_WITHIN,
                           SCROLLED_IN, SCROLLED_OUT };
+
+}
 
 void SwAccessibleContext::ChildrenScrolled( const SwFrame *pFrame,
                                             const SwRect& rOldVisArea )
@@ -310,25 +302,24 @@ void SwAccessibleContext::ScrolledIn()
     ::rtl::Reference< SwAccessibleContext > xParentImpl(
          GetMap()->GetContextImpl( pParent, false ) );
     uno::Reference < XAccessibleContext > xThis( this );
-    if( xParentImpl.is() )
+    if( !xParentImpl.is() )
+        return;
+
+    SetParent( xParentImpl.get() );
+
+    AccessibleEventObject aEvent;
+    aEvent.EventId = AccessibleEventId::CHILD;
+    aEvent.NewValue <<= xThis;
+
+    xParentImpl->FireAccessibleEvent( aEvent );
+
+    if( HasCursor() )
     {
-        SetParent( xParentImpl.get() );
-
-        AccessibleEventObject aEvent;
-        aEvent.EventId = AccessibleEventId::CHILD;
-        aEvent.NewValue <<= xThis;
-
-        xParentImpl->FireAccessibleEvent( aEvent );
-
-        if( HasCursor() )
+        vcl::Window *pWin = GetWindow();
+        if( pWin && pWin->HasFocus() )
         {
-            vcl::Window *pWin = GetWindow();
-            if( pWin && pWin->HasFocus() )
-            {
-                FireStateChangedEvent( AccessibleStateType::FOCUSED, true );
-            }
+            FireStateChangedEvent( AccessibleStateType::FOCUSED, true );
         }
-
     }
 }
 
@@ -401,9 +392,8 @@ void SwAccessibleContext::DisposeChildren(const SwFrame *pFrame,
         const SwFrame* pLower = rLower.GetSwFrame();
         if( pLower )
         {
-            ::rtl::Reference< SwAccessibleContext > xAccImpl;
-            if( rLower.IsAccessible( GetShell()->IsPreview() ) )
-                xAccImpl = GetMap()->GetContextImpl( pLower, false );
+            // tdf#117601 dispose the darn thing if it ever was accessible
+            ::rtl::Reference<SwAccessibleContext> xAccImpl = GetMap()->GetContextImpl(pLower, false);
             if( xAccImpl.is() )
                 xAccImpl->Dispose( bRecursive );
             else
@@ -629,7 +619,49 @@ uno::Reference< XAccessible> SAL_CALL
     return xChild;
 }
 
-uno::Reference< XAccessible> SAL_CALL SwAccessibleContext::getAccessibleParentImpl()
+css::uno::Sequence<uno::Reference<XAccessible>> SAL_CALL
+    SwAccessibleContext::getAccessibleChildren()
+{
+    SolarMutexGuard aGuard;
+
+    ThrowIfDisposed();
+
+    std::list< sw::access::SwAccessibleChild > aChildren;
+    GetChildren( *GetMap(), aChildren );
+
+    std::vector<uno::Reference<XAccessible>> aRet;
+    aRet.reserve(aChildren.size());
+    for (const auto & rSwChild : aChildren)
+    {
+        uno::Reference< XAccessible > xChild;
+        if( rSwChild.GetSwFrame() )
+        {
+            ::rtl::Reference < SwAccessibleContext > xChildImpl(
+                    GetMap()->GetContextImpl( rSwChild.GetSwFrame(), !m_isDisposing )  );
+            if( xChildImpl.is() )
+            {
+                xChildImpl->SetParent( this );
+                xChild = xChildImpl.get();
+            }
+        }
+        else if ( rSwChild.GetDrawObject() )
+        {
+            ::rtl::Reference < ::accessibility::AccessibleShape > xChildImpl(
+                    GetMap()->GetContextImpl( rSwChild.GetDrawObject(),
+                                              this, !m_isDisposing) );
+            if( xChildImpl.is() )
+                xChild = xChildImpl.get();
+        }
+        else if ( rSwChild.GetWindow() )
+        {
+            xChild = rSwChild.GetWindow()->GetAccessible();
+        }
+        aRet.push_back(xChild);
+    }
+    return comphelper::containerToSequence(aRet);
+}
+
+uno::Reference< XAccessible> SwAccessibleContext::getAccessibleParentImpl()
 {
     SolarMutexGuard aGuard;
 
@@ -742,19 +774,19 @@ void SAL_CALL SwAccessibleContext::addAccessibleEventListener(
 void SAL_CALL SwAccessibleContext::removeAccessibleEventListener(
             const uno::Reference< XAccessibleEventListener >& xListener )
 {
-    if (xListener.is() && m_nClientId)
+    if (!(xListener.is() && m_nClientId))
+        return;
+
+    SolarMutexGuard aGuard;
+    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( m_nClientId, xListener );
+    if ( !nListenerCount )
     {
-        SolarMutexGuard aGuard;
-        sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( m_nClientId, xListener );
-        if ( !nListenerCount )
-        {
-            // no listeners anymore
-            // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-            // and at least to us not firing any events anymore, in case somebody calls
-            // NotifyAccessibleEvent, again
-            comphelper::AccessibleEventNotifier::revokeClient( m_nClientId );
-            m_nClientId = 0;
-        }
+        // no listeners anymore
+        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+        // and at least to us not firing any events anymore, in case somebody calls
+        // NotifyAccessibleEvent, again
+        comphelper::AccessibleEventNotifier::revokeClient( m_nClientId );
+        m_nClientId = 0;
     }
 }
 
@@ -839,7 +871,7 @@ uno::Reference< XAccessible > SAL_CALL SwAccessibleContext::getAccessibleAtPoint
    true: Use relative mode.
    false: Use absolute mode.
 */
-awt::Rectangle SAL_CALL SwAccessibleContext::getBoundsImpl(bool bRelative)
+awt::Rectangle SwAccessibleContext::getBoundsImpl(bool bRelative)
 {
     SolarMutexGuard aGuard;
 
@@ -932,7 +964,7 @@ void SAL_CALL SwAccessibleContext::grabFocus()
 {
     SolarMutexGuard aGuard;
 
-    ThrowIfDisposed();;
+    ThrowIfDisposed();
 
     if( GetFrame()->IsFlyFrame() )
     {
@@ -952,13 +984,12 @@ void SAL_CALL SwAccessibleContext::grabFocus()
         if( pCFrame && pCFrame->IsTextFrame() )
         {
             const SwTextFrame *pTextFrame = static_cast< const SwTextFrame * >( pCFrame );
-            const SwTextNode *pTextNd = pTextFrame->GetTextNode();
+            const SwTextNode *pTextNd = pTextFrame->GetTextNodeFirst();
+            assert(pTextNd); // can it actually be null? probably not=>simplify
             if( pTextNd )
             {
                 // create pam for selection
-                SwIndex aIndex( const_cast< SwTextNode * >( pTextNd ),
-                                pTextFrame->GetOfst() );
-                SwPosition aStartPos( *pTextNd, aIndex );
+                SwPosition const aStartPos(pTextFrame->MapViewToModelPos(pTextFrame->GetOffset()));
                 SwPaM aPaM( aStartPos );
 
                 // set PaM at cursor shell
@@ -970,12 +1001,12 @@ void SAL_CALL SwAccessibleContext::grabFocus()
 
 sal_Int32 SAL_CALL SwAccessibleContext::getForeground()
 {
-    return COL_BLACK;
+    return sal_Int32(COL_BLACK);
 }
 
 sal_Int32 SAL_CALL SwAccessibleContext::getBackground()
 {
-    return COL_WHITE;
+    return sal_Int32(COL_WHITE);
 }
 
 sal_Bool SAL_CALL SwAccessibleContext::supportsService (const OUString& ServiceName)
@@ -1012,18 +1043,18 @@ void SwAccessibleContext::ScrolledInShape( ::accessibility::AccessibleShape *pAc
     aEvent.NewValue <<= xAcc;
     FireAccessibleEvent( aEvent );
 
-    if( pAccImpl->GetState( AccessibleStateType::FOCUSED ) )
-    {
-        vcl::Window *pWin = GetWindow();
-        if( pWin && pWin->HasFocus() )
-        {
-            AccessibleEventObject aStateChangedEvent;
-            aStateChangedEvent.EventId = AccessibleEventId::STATE_CHANGED;
-            aStateChangedEvent.NewValue <<= AccessibleStateType::FOCUSED;
-            aStateChangedEvent.Source = xAcc;
+    if( !pAccImpl->GetState( AccessibleStateType::FOCUSED ) )
+        return;
 
-            FireAccessibleEvent( aStateChangedEvent );
-        }
+    vcl::Window *pWin = GetWindow();
+    if( pWin && pWin->HasFocus() )
+    {
+        AccessibleEventObject aStateChangedEvent;
+        aStateChangedEvent.EventId = AccessibleEventId::STATE_CHANGED;
+        aStateChangedEvent.NewValue <<= AccessibleStateType::FOCUSED;
+        aStateChangedEvent.Source = xAcc;
+
+        FireAccessibleEvent( aStateChangedEvent );
     }
 }
 
@@ -1088,22 +1119,24 @@ void SwAccessibleContext::DisposeChild( const SwAccessibleChild& rChildFrameOrOb
          IsShowing( *(GetMap()), rChildFrameOrObj ) ||
          !SwAccessibleChild( GetFrame() ).IsVisibleChildrenOnly() )
     {
-        // If the object could have existed before, than there is nothing to do,
+        // If the object could have existed before, then there is nothing to do,
         // because no wrapper exists now and therefore no one is interested to
         // get notified of the movement.
         if( rChildFrameOrObj.GetSwFrame() )
         {
             ::rtl::Reference< SwAccessibleContext > xAccImpl =
-                    GetMap()->GetContextImpl( rChildFrameOrObj.GetSwFrame() );
-            xAccImpl->Dispose( bRecursive );
+                    GetMap()->GetContextImpl( rChildFrameOrObj.GetSwFrame(), false );
+            if (xAccImpl)
+                xAccImpl->Dispose( bRecursive );
         }
         else if ( rChildFrameOrObj.GetDrawObject() )
         {
             ::rtl::Reference< ::accessibility::AccessibleShape > xAccImpl =
                     GetMap()->GetContextImpl( rChildFrameOrObj.GetDrawObject(),
-                                              this );
-            DisposeShape( rChildFrameOrObj.GetDrawObject(),
-                          xAccImpl.get() );
+                                              this, false );
+            if (xAccImpl)
+                DisposeShape( rChildFrameOrObj.GetDrawObject(),
+                              xAccImpl.get() );
         }
         else if ( rChildFrameOrObj.GetWindow() )
         {
@@ -1123,7 +1156,7 @@ void SwAccessibleContext::InvalidatePosOrSize( const SwRect& )
 {
     SolarMutexGuard aGuard;
 
-    OSL_ENSURE( GetFrame() && !GetFrame()->Frame().IsEmpty(), "context should have a size" );
+    OSL_ENSURE( GetFrame() && !GetFrame()->getFrameArea().IsEmpty(), "context should have a size" );
 
     bool bIsOldShowingState;
     bool bIsNewShowingState = IsShowing( *(GetMap()) );
@@ -1170,7 +1203,7 @@ void SwAccessibleContext::InvalidateChildPosOrSize(
     // this happens during layout, e.g. when a page is deleted and next page's
     // header/footer moves backward such an event is generated
     SAL_INFO_IF(rChildFrameOrObj.GetSwFrame() &&
-            rChildFrameOrObj.GetSwFrame()->Frame().IsEmpty(),
+            rChildFrameOrObj.GetSwFrame()->getFrameArea().IsEmpty(),
             "sw.a11y", "child context should have a size");
 
     if ( rChildFrameOrObj.AlwaysIncludeAsChild() )
@@ -1184,7 +1217,7 @@ void SwAccessibleContext::InvalidateChildPosOrSize(
                      ( rOldFrame.Left() == 0 && rOldFrame.Top() == 0 );
     if( IsShowing( *(GetMap()), rChildFrameOrObj ) )
     {
-        // If the object could have existed before, than there is nothing to do,
+        // If the object could have existed before, then there is nothing to do,
         // because no wrapper exists now and therefore no one is interested to
         // get notified of the movement.
         if( bNew || (bVisibleChildrenOnly && !IsShowing( rOldFrame )) )
@@ -1215,14 +1248,14 @@ void SwAccessibleContext::InvalidateChildPosOrSize(
             {
                 AccessibleEventObject aEvent;
                 aEvent.EventId = AccessibleEventId::CHILD;
-                aEvent.NewValue <<= (rChildFrameOrObj.GetWindow()->GetAccessible());
+                aEvent.NewValue <<= rChildFrameOrObj.GetWindow()->GetAccessible();
                 FireAccessibleEvent( aEvent );
             }
         }
     }
     else
     {
-        // If the frame was visible before, than a child event for the parent
+        // If the frame was visible before, then a child event for the parent
         // needs to be send. However, there is no wrapper existing, and so
         // no notifications for grandchildren are required. If the are
         // grandgrandchildren, they would be notified by the layout.
@@ -1276,43 +1309,43 @@ void SwAccessibleContext::InvalidateFocus()
 // #i27301# - use new type definition for <_nStates>
 void SwAccessibleContext::InvalidateStates( AccessibleStates _nStates )
 {
-    if( GetMap() )
+    if( !GetMap() )
+        return;
+
+    SwViewShell *pVSh = GetMap()->GetShell();
+    if( pVSh )
     {
-        SwViewShell *pVSh = GetMap()->GetShell();
-        if( pVSh )
+        if( _nStates & AccessibleStates::EDITABLE )
         {
-            if( _nStates & AccessibleStates::EDITABLE )
+            bool bIsOldEditableState;
+            bool bIsNewEditableState = IsEditable( pVSh );
             {
-                bool bIsOldEditableState;
-                bool bIsNewEditableState = IsEditable( pVSh );
-                {
-                    osl::MutexGuard aGuard( m_Mutex );
-                    bIsOldEditableState = m_isEditableState;
-                    m_isEditableState = bIsNewEditableState;
-                }
-
-                if( bIsOldEditableState != bIsNewEditableState )
-                    FireStateChangedEvent( AccessibleStateType::EDITABLE,
-                                           bIsNewEditableState  );
+                osl::MutexGuard aGuard( m_Mutex );
+                bIsOldEditableState = m_isEditableState;
+                m_isEditableState = bIsNewEditableState;
             }
-            if( _nStates & AccessibleStates::OPAQUE )
-            {
-                bool bIsOldOpaqueState;
-                bool bIsNewOpaqueState = IsOpaque( pVSh );
-                {
-                    osl::MutexGuard aGuard( m_Mutex );
-                    bIsOldOpaqueState = m_isOpaqueState;
-                    m_isOpaqueState = bIsNewOpaqueState;
-                }
 
-                if( bIsOldOpaqueState != bIsNewOpaqueState )
-                    FireStateChangedEvent( AccessibleStateType::OPAQUE,
-                                           bIsNewOpaqueState  );
-            }
+            if( bIsOldEditableState != bIsNewEditableState )
+                FireStateChangedEvent( AccessibleStateType::EDITABLE,
+                                       bIsNewEditableState  );
         }
+        if( _nStates & AccessibleStates::OPAQUE )
+        {
+            bool bIsOldOpaqueState;
+            bool bIsNewOpaqueState = IsOpaque( pVSh );
+            {
+                osl::MutexGuard aGuard( m_Mutex );
+                bIsOldOpaqueState = m_isOpaqueState;
+                m_isOpaqueState = bIsNewOpaqueState;
+            }
 
-        InvalidateChildrenStates( GetFrame(), _nStates );
+            if( bIsOldOpaqueState != bIsNewOpaqueState )
+                FireStateChangedEvent( AccessibleStateType::OPAQUE,
+                                       bIsNewOpaqueState  );
+        }
     }
+
+    InvalidateChildrenStates( GetFrame(), _nStates );
 }
 
 void SwAccessibleContext::InvalidateRelation( sal_uInt16 nType )
@@ -1369,9 +1402,8 @@ bool SwAccessibleContext::Select( SwPaM *pPaM, SdrObject *pObj,
     {
         if( pFEShell )
         {
-            Point aDummy;
             sal_uInt8 nFlags = bAdd ? SW_ADD_SELECT : 0;
-            pFEShell->SelectObj( aDummy, nFlags, pObj );
+            pFEShell->SelectObj( Point(), nFlags, pObj );
             bRet = true;
         }
     }
@@ -1407,16 +1439,11 @@ bool SwAccessibleContext::Select( SwPaM *pPaM, SdrObject *pObj,
     return bRet;
 }
 
-OUString SwAccessibleContext::GetResource( sal_uInt16 nResId,
-                                           const OUString *pArg1,
-                                           const OUString *pArg2 )
+OUString SwAccessibleContext::GetResource(const char* pResId,
+                                          const OUString *pArg1,
+                                          const OUString *pArg2)
 {
-    OUString sStr;
-    {
-        SolarMutexGuard aGuard;
-
-        sStr = SwResId( nResId );
-    }
+    OUString sStr = SwResId(pResId);
 
     if( pArg1 )
     {

@@ -17,12 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sheetevents.hxx"
+#include <sheetevents.hxx>
 #include <com/sun/star/script/vba/VBAEventId.hpp>
+#include <optional>
 
 OUString ScSheetEvents::GetEventName(ScSheetEventId nEvent)
 {
-    static const sal_Char* aEventNames[] =
+    static const char* aEventNames[] =
     {
         "OnFocus",                  // SC_SHEETEVENT_FOCUS
         "OnUnfocus",                // SC_SHEETEVENT_UNFOCUS
@@ -52,7 +53,7 @@ sal_Int32 ScSheetEvents::GetVbaSheetEventId(ScSheetEventId nEvent)
     return nVbaEventIds[static_cast<int>(nEvent)];
 }
 
-static const int COUNT = static_cast<int>(ScSheetEventId::COUNT);
+const int COUNT = static_cast<int>(ScSheetEventId::COUNT);
 
 sal_Int32 ScSheetEvents::GetVbaDocumentEventId(ScSheetEventId nEvent)
 {
@@ -61,8 +62,7 @@ sal_Int32 ScSheetEvents::GetVbaDocumentEventId(ScSheetEventId nEvent)
     return (nSheetEventId != NO_EVENT) ? (nSheetEventId + USERDEFINED_START) : NO_EVENT;
 }
 
-ScSheetEvents::ScSheetEvents() :
-    mpScriptNames(nullptr)
+ScSheetEvents::ScSheetEvents()
 {
 }
 
@@ -73,32 +73,25 @@ ScSheetEvents::~ScSheetEvents()
 
 void ScSheetEvents::Clear()
 {
-    if (mpScriptNames)
-    {
-        for (sal_Int32 nEvent=0; nEvent<COUNT; ++nEvent)
-            delete mpScriptNames[nEvent];
-        delete[] mpScriptNames;
-        mpScriptNames = nullptr;
-    }
+    mpScriptNames.reset();
 }
 
-ScSheetEvents::ScSheetEvents(const ScSheetEvents& rOther) :
-    mpScriptNames(nullptr)
+ScSheetEvents::ScSheetEvents(const ScSheetEvents& rOther)
 {
     *this = rOther;
 }
 
 ScSheetEvents& ScSheetEvents::operator=(const ScSheetEvents& rOther)
 {
-    Clear();
-    if (rOther.mpScriptNames)
+    if (this != &rOther)
     {
-        mpScriptNames = new OUString*[COUNT];
-        for (sal_Int32 nEvent=0; nEvent<COUNT; ++nEvent)
-            if (rOther.mpScriptNames[nEvent])
-                mpScriptNames[nEvent] = new OUString(*rOther.mpScriptNames[nEvent]);
-            else
-                mpScriptNames[nEvent] = nullptr;
+        Clear();
+        if (rOther.mpScriptNames)
+        {
+            mpScriptNames.reset( new std::optional<OUString>[COUNT] );
+            for (sal_Int32 nEvent=0; nEvent<COUNT; ++nEvent)
+                mpScriptNames[nEvent] = rOther.mpScriptNames[nEvent];
+        }
     }
     return *this;
 }
@@ -106,7 +99,11 @@ ScSheetEvents& ScSheetEvents::operator=(const ScSheetEvents& rOther)
 const OUString* ScSheetEvents::GetScript(ScSheetEventId nEvent) const
 {
     if (mpScriptNames)
-        return mpScriptNames[static_cast<int>(nEvent)];
+    {
+        std::optional<OUString> const & r = mpScriptNames[static_cast<int>(nEvent)];
+        if (r)
+            return &*r;
+    }
     return nullptr;
 }
 
@@ -115,15 +112,12 @@ void ScSheetEvents::SetScript(ScSheetEventId eEvent, const OUString* pNew)
     int nEvent = static_cast<int>(eEvent);
     if (!mpScriptNames)
     {
-        mpScriptNames = new OUString*[COUNT];
-        for (sal_Int32 nEventIdx=0; nEventIdx<COUNT; ++nEventIdx)
-            mpScriptNames[nEventIdx] = nullptr;
+        mpScriptNames.reset( new std::optional<OUString>[COUNT] );
     }
-    delete mpScriptNames[nEvent];
     if (pNew)
-        mpScriptNames[nEvent] = new OUString(*pNew);
+        mpScriptNames[nEvent] = *pNew;
     else
-        mpScriptNames[nEvent] = nullptr;
+        mpScriptNames[nEvent].reset();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

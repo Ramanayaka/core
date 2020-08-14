@@ -17,7 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <editeng/svxenum.hxx>
+#include <osl/diagnose.h>
+#include <svl/stritem.hxx>
 #include <numrule.hxx>
 #include <SwNodeNum.hxx>
 #include <ndtxt.hxx>
@@ -25,17 +26,17 @@
 #include <IDocumentListItems.hxx>
 #include <doc.hxx>
 
-SwNodeNum::SwNodeNum( SwTextNode* pTextNode )
-    : SwNumberTreeNode(),
-      mpTextNode( pTextNode ),
-      mpNumRule( nullptr )
+SwNodeNum::SwNodeNum(SwTextNode* pTextNode, bool const isHiddenRedlines)
+    : mpTextNode( pTextNode )
+    , mpNumRule( nullptr )
+    , m_isHiddenRedlines(isHiddenRedlines)
 {
 }
 
 SwNodeNum::SwNodeNum( SwNumRule* pNumRule )
-    : SwNumberTreeNode(),
-      mpTextNode( nullptr ),
-      mpNumRule( pNumRule )
+    : mpTextNode( nullptr )
+    , mpNumRule( pNumRule )
+    , m_isHiddenRedlines(false)
 {
 }
 
@@ -47,7 +48,7 @@ SwNodeNum::~SwNodeNum()
 void SwNodeNum::ChangeNumRule( SwNumRule& rNumRule )
 {
     OSL_ENSURE( GetNumRule() && GetTextNode(),
-            "<SwNodeNum::ChangeNumRule(..)> - missing list style and/or text node. Serious defect -> please informm OD." );
+            "<SwNodeNum::ChangeNumRule(..)> - missing list style and/or text node. Serious defect -> please inform OD." );
     if ( GetNumRule() && GetTextNode() )
     {
         GetNumRule()->RemoveTextNode( *(GetTextNode()) );
@@ -85,11 +86,12 @@ void SwNodeNum::PreAdd()
     }
     OSL_ENSURE( GetNumRule(),
             "<SwNodeNum::PreAdd()> - no list style set at <SwNodeNum> instance" );
-    if ( GetNumRule() && GetTextNode() )
+    if (!m_isHiddenRedlines && GetNumRule() && GetTextNode())
     {
         GetNumRule()->AddTextNode( *(GetTextNode()) );
     }
 
+    if (!m_isHiddenRedlines)
     {
         if ( GetTextNode() &&
              GetTextNode()->GetNodes().IsDocNodes() )
@@ -106,14 +108,14 @@ void SwNodeNum::PostRemove()
     OSL_ENSURE( GetNumRule(),
             "<SwNodeNum::PostRemove()> - no list style set at <SwNodeNum> instance" );
 
-    if ( GetTextNode() )
+    if (!m_isHiddenRedlines && GetTextNode())
     {
         GetTextNode()->getIDocumentListItems().removeListItem( *this );
     }
 
     if ( GetNumRule() )
     {
-        if ( GetTextNode() )
+        if (!m_isHiddenRedlines && GetTextNode())
         {
             GetNumRule()->RemoveTextNode( *(GetTextNode()) );
         }
@@ -181,26 +183,12 @@ bool SwNodeNum::IsCounted() const
 // #i64010#
 bool SwNodeNum::HasCountedChildren() const
 {
-    bool bResult = false;
-
-    tSwNumberTreeChildren::const_iterator aIt;
-
-    for (aIt = mChildren.begin(); aIt != mChildren.end(); ++aIt)
-    {
-        SwNodeNum* pChild( dynamic_cast<SwNodeNum*>(*aIt) );
-        OSL_ENSURE( pChild,
-                "<SwNodeNum::HasCountedChildren()> - unexpected type of child" );
-        if ( pChild &&
-             ( pChild->IsCountedForNumbering() ||
-               pChild->HasCountedChildren() ) )
-        {
-            bResult = true;
-
-            break;
-        }
-    }
-
-    return bResult;
+    return std::any_of(mChildren.begin(), mChildren.end(),
+        [](SwNumberTreeNode* pNode) {
+            SwNodeNum* pChild( dynamic_cast<SwNodeNum*>(pNode) );
+            OSL_ENSURE( pChild, "<SwNodeNum::HasCountedChildren()> - unexpected type of child" );
+            return pChild && (pChild->IsCountedForNumbering() || pChild->HasCountedChildren());
+        });
 }
 // #i64010#
 bool SwNodeNum::IsCountedForNumbering() const
@@ -340,26 +328,26 @@ void SwNodeNum::UnregisterMeAndChildrenDueToRootDelete( SwNodeNum& rNodeNum )
         UnregisterMeAndChildrenDueToRootDelete( *pChildNode );
     }
 
-    if ( !bIsPhantom )
-    {
-        SwTextNode* pTextNode( rNodeNum.GetTextNode() );
-        if ( pTextNode )
-        {
-            pTextNode->RemoveFromList();
-            // --> clear all list attributes and the list style
-            std::set<sal_uInt16> aResetAttrsArray;
-            aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_LIST_ID );
-            aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_LIST_LEVEL );
-            aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_LIST_ISRESTART );
-            aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_LIST_RESTARTVALUE );
-            aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_LIST_ISCOUNTED );
-            aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_NUMRULE );
-            SwPaM aPam( *pTextNode );
-            pTextNode->GetDoc()->ResetAttrs( aPam, false,
-                                            aResetAttrsArray,
-                                            false );
-        }
-    }
+    if ( bIsPhantom )
+        return;
+
+    SwTextNode* pTextNode( rNodeNum.GetTextNode() );
+    if ( !pTextNode )
+        return;
+
+    pTextNode->RemoveFromList();
+    // --> clear all list attributes and the list style
+    std::set<sal_uInt16> aResetAttrsArray;
+    aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_LIST_ID );
+    aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_LIST_LEVEL );
+    aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_LIST_ISRESTART );
+    aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_LIST_RESTARTVALUE );
+    aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_LIST_ISCOUNTED );
+    aResetAttrsArray.insert( aResetAttrsArray.end(), RES_PARATR_NUMRULE );
+    SwPaM aPam( *pTextNode );
+    pTextNode->GetDoc()->ResetAttrs( aPam, false,
+                                    aResetAttrsArray,
+                                    false );
 }
 
 // #i81002#
@@ -368,7 +356,7 @@ const SwNodeNum* SwNodeNum::GetPrecedingNodeNumOf( const SwTextNode& rTextNode )
     const SwNodeNum* pPrecedingNodeNum( nullptr );
 
     // #i83479#
-    SwNodeNum aNodeNumForTextNode( const_cast<SwTextNode*>(&rTextNode) );
+    SwNodeNum aNodeNumForTextNode( const_cast<SwTextNode*>(&rTextNode), false/*doesn't matter*/ );
 
     pPrecedingNodeNum = dynamic_cast<const SwNodeNum*>(
                             GetRoot()

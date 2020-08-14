@@ -8,12 +8,8 @@
  */
 
 #include "XMLSecurityContext.hxx"
-#include "SecurityEnvironment.hxx"
 
 #include <cppuhelper/supportsservice.hxx>
-
-#include "xmlsec/xmlstreamio.hxx"
-#include "xmlsec-wrapper.h"
 
 using namespace css::uno;
 using namespace css::lang;
@@ -46,7 +42,7 @@ sal_Int32 SAL_CALL XMLSecurityContextGpg::getSecurityEnvironmentNumber()
 
 Reference< XSecurityEnvironment > SAL_CALL XMLSecurityContextGpg::getSecurityEnvironmentByIndex(sal_Int32 index)
 {
-    if (index < 0 || index >= ( sal_Int32 )m_vSecurityEnvironments.size())
+    if (index < 0 || index >= static_cast<sal_Int32>(m_vSecurityEnvironments.size()))
         throw RuntimeException("Invalid index");
 
     return m_vSecurityEnvironments[index];
@@ -54,7 +50,7 @@ Reference< XSecurityEnvironment > SAL_CALL XMLSecurityContextGpg::getSecurityEnv
 
 Reference< XSecurityEnvironment > SAL_CALL XMLSecurityContextGpg::getSecurityEnvironment()
 {
-    if (m_nDefaultEnvIndex < 0 || m_nDefaultEnvIndex >= (sal_Int32) m_vSecurityEnvironments.size())
+    if (m_nDefaultEnvIndex < 0 || m_nDefaultEnvIndex >= static_cast<sal_Int32>(m_vSecurityEnvironments.size()))
         throw RuntimeException("Invalid index");
 
     return getSecurityEnvironmentByIndex(m_nDefaultEnvIndex);
@@ -72,7 +68,7 @@ void SAL_CALL XMLSecurityContextGpg::setDefaultSecurityEnvironmentIndex(sal_Int3
 
 /* XServiceInfo */
 OUString SAL_CALL XMLSecurityContextGpg::getImplementationName() {
-    return OUString("com.sun.star.xml.security.gpg.XMLSecurityContext_GpgImpl");
+    return "com.sun.star.xml.security.gpg.XMLSecurityContext_GpgImpl";
 }
 
 /* XServiceInfo */

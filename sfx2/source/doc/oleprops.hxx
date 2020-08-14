@@ -25,7 +25,6 @@
 #include <osl/thread.h>
 #include <rtl/ustring.hxx>
 #include <sot/storage.hxx>
-#include <vcl/bitmapex.hxx>
 
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/Date.hpp>
@@ -101,9 +100,9 @@ class SfxOleTextEncoding
 {
 public:
     explicit     SfxOleTextEncoding() :
-                            mxTextEnc( new rtl_TextEncoding( osl_getThreadTextEncoding() ) ) {}
+                            mxTextEnc( std::make_shared<rtl_TextEncoding>( osl_getThreadTextEncoding() ) ) {}
     explicit     SfxOleTextEncoding( rtl_TextEncoding eTextEnc ) :
-                            mxTextEnc( new rtl_TextEncoding( eTextEnc ) ) {}
+                            mxTextEnc( std::make_shared<rtl_TextEncoding>( eTextEnc ) ) {}
 
     /** Returns the current text encoding identifier. */
     rtl_TextEncoding GetTextEncoding() const { return *mxTextEnc; }
@@ -121,8 +120,7 @@ public:
     void                SetCodePage( sal_uInt16 nCodePage );
 
 private:
-    typedef std::shared_ptr< rtl_TextEncoding > TextEncRef;
-    TextEncRef          mxTextEnc;
+    std::shared_ptr< rtl_TextEncoding > mxTextEnc;
 };
 
 
@@ -171,12 +169,12 @@ public:
     virtual             ~SfxOleObjectBase();
 
     /** Returns the current error code. */
-    ErrCode      GetError() const { return mnErrCode; }
+    ErrCode const &     GetError() const { return mnErrCode; }
 
     /** Loads this object from the passed stream. Calls virtual ImplLoad(). */
-    ErrCode             Load( SvStream& rStrm );
+    ErrCode const &     Load( SvStream& rStrm );
     /** Saves this object to the passed stream. Calls virtual ImplSave(). */
-    ErrCode             Save( SvStream& rStrm );
+    ErrCode const &     Save( SvStream& rStrm );
 
 protected:
     /** Sets the passed error code. Will be returned by Load() and Save() functions.
@@ -360,9 +358,9 @@ public:
     explicit     SfxOlePropertySet() {}
 
     /** Loads this object from the passed storage. */
-    ErrCode             LoadPropertySet( SotStorage* pStrg, const OUString& rStrmName );
+    ErrCode const &     LoadPropertySet( SotStorage* pStrg, const OUString& rStrmName );
     /** Saves this object to the passed storage. */
-    ErrCode             SavePropertySet( SotStorage* pStrg, const OUString& rStrmName );
+    ErrCode const &     SavePropertySet( SotStorage* pStrg, const OUString& rStrmName );
 
     /** Returns the specified section, or an empty reference, if nothing found. */
     SfxOleSectionRef    GetSection( SfxOleSectionType eSection ) const;

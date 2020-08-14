@@ -22,19 +22,17 @@
 
 #include <com/sun/star/linguistic2/XDictionary.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/interfacecontainer2.hxx>
-#include <tools/solar.h>
+#include <i18nlangtag/lang.h>
 #include <vcl/errcode.hxx>
 
 #include "defs.hxx"
-#include "linguistic/misc.hxx"
 
 #define DIC_MAX_ENTRIES     30000
 
-sal_Int16 ReadDicVersion( SvStreamPtr &rpStream, LanguageType &nLng, bool &bNeg );
+sal_Int16 ReadDicVersion( SvStream& rStream, LanguageType &nLng, bool &bNeg, OUString &aDicName );
 
 class DictionaryNeo :
     public ::cppu::WeakImplHelper

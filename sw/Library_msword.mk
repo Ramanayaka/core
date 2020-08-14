@@ -25,7 +25,7 @@ $(eval $(call gb_Library_use_custom_headers,msword,\
 	oox/generated \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,msword,$(SRCDIR)/sw/inc/pch/precompiled_msword))
+$(eval $(call gb_Library_set_precompiled_header,msword,sw/inc/pch/precompiled_msword))
 
 $(eval $(call gb_Library_set_include,msword,\
     -I$(SRCDIR)/sw/source/filter/inc \
@@ -33,7 +33,11 @@ $(eval $(call gb_Library_set_include,msword,\
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_Library_use_sdk_api,msword))
+$(eval $(call gb_Library_use_api,msword,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_Library_use_libraries,msword,\
     basegfx \
@@ -64,6 +68,7 @@ $(eval $(call gb_Library_use_libraries,msword,\
 
 $(eval $(call gb_Library_use_externals,msword,\
 	boost_headers \
+	icui18n \
 	icuuc \
 	icu_headers \
 	libxml2 \

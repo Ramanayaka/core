@@ -17,26 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RelationControl.hxx"
+#include <RelationControl.hxx>
 
 #include <svtools/editbrowsebox.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <tools/diagnose_ex.h>
-#include <vcl/builderfactory.hxx>
-#include "TableConnectionData.hxx"
-#include "TableConnection.hxx"
-#include "TableWindow.hxx"
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include "UITools.hxx"
-#include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
+#include <toolkit/helper/vclunohelper.hxx>
+#include <TableConnectionData.hxx>
+#include <TableConnection.hxx>
+#include <TableWindow.hxx>
+#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include "RelControliFace.hxx"
-#include "dbu_control.hrc"
-#include "dbaccess_helpid.hrc"
+#include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
+#include <RelControliFace.hxx>
+#include <helpids.h>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
 
-#include <list>
-using std::list;
+#include <vector>
 #include <utility>
 using std::pair;
 using std::make_pair;
@@ -65,7 +63,7 @@ namespace dbaui
         Reference< XPropertySet>                m_xSourceDef;
         Reference< XPropertySet>                m_xDestDef;
         enum opcode { DELETE, INSERT, MODIFY };
-        typedef list< pair < opcode, pair < OConnectionLineDataVec::size_type, OConnectionLineDataVec::size_type> > > ops_type;
+        typedef std::vector< pair < opcode, pair < OConnectionLineDataVec::size_type, OConnectionLineDataVec::size_type> > > ops_type;
         ops_type                                m_ops;
 
         void fillListBox(const Reference< XPropertySet>& _xDest);
@@ -77,7 +75,7 @@ namespace dbaui
         */
         sal_uInt16 getColumnIdent( sal_uInt16 _nColId ) const;
     public:
-        explicit ORelationControl(vcl::Window *pParent);
+        explicit ORelationControl(const css::uno::Reference<css::awt::XWindow>& rParent);
         void SetController(OTableListBoxControl* pController)
         {
             m_pBoxControl = pController;
@@ -126,20 +124,15 @@ namespace dbaui
 
     };
 
-    // class ORelationControl
-    ORelationControl::ORelationControl(vcl::Window *pParent)
-        : EditBrowseBox(pParent,
+    ORelationControl::ORelationControl(const css::uno::Reference<css::awt::XWindow>& rParent)
+        : EditBrowseBox(VCLUnoHelper::GetWindow(rParent),
             EditBrowseBoxFlags::SMART_TAB_TRAVEL | EditBrowseBoxFlags::NO_HANDLE_COLUMN_CONTENT,
             WB_TABSTOP | WB_BORDER,
             BrowserMode::AUTOSIZE_LASTCOL)
         , m_pBoxControl(nullptr)
         , m_nDataPos(0)
-        , m_xSourceDef(nullptr)
-        , m_xDestDef(nullptr)
     {
     }
-
-    VCL_BUILDER_FACTORY(ORelationControl)
 
     void ORelationControl::Init(const TTableConnectionData::value_type& _pConnData)
     {
@@ -152,7 +145,7 @@ namespace dbaui
 
     void ORelationControl::lateInit()
     {
-        if ( !m_pConnData.get() )
+        if ( !m_pConnData )
             return;
         m_xSourceDef = m_pConnData->getReferencingTable()->getTable();
         m_xDestDef = m_pConnData->getReferencedTable()->getTable();
@@ -214,7 +207,7 @@ namespace dbaui
         long nRow = GetCurRow();
         sal_uInt16 nCol = GetCurColumnId();
 
-        bool bRet = !((     ( bForward && (nCol == DEST_COLUMN)     && (nRow == GetRowCount() - 1)))
+        bool bRet = !(      ( bForward && (nCol == DEST_COLUMN)     && (nRow == GetRowCount() - 1))
                         ||  (!bForward && (nCol == SOURCE_COLUMN)   && (nRow == 0)));
 
         return bRet && EditBrowseBox::IsTabAllowed(bForward);
@@ -225,14 +218,15 @@ namespace dbaui
         long nRow = GetCurRow();
         if ( nRow != BROWSER_ENDOFSELECTION )
         {
-            OUString sFieldName(m_pListCell->GetSelectEntry());
+            weld::ComboBox& rListBox = m_pListCell->get_widget();
+            OUString sFieldName(rListBox.get_active_text());
             OConnectionLineDataVec& rLines = m_pConnData->GetConnLineDataList();
-            if ( rLines.size() <= static_cast<OConnectionLineDataVec::size_type>(nRow) )
+            if ( rLines.size() <= o3tl::make_unsigned(nRow) )
             {
                 rLines.push_back(new OConnectionLineData());
                 nRow = rLines.size() - 1;
                 // add new past-rLines row
-                m_ops.push_back(make_pair(INSERT, make_pair(nRow+1, nRow+2)));
+                m_ops.emplace_back(INSERT, make_pair(nRow+1, nRow+2));
             }
 
             OConnectionLineDataRef pConnLineData = rLines[nRow];
@@ -255,8 +249,8 @@ namespace dbaui
         OConnectionLineDataVec::size_type line = m_pConnData->normalizeLines();
         const OConnectionLineDataVec::size_type newSize = m_pConnData->GetConnLineDataList().size();
         assert(newSize <= oldSize);
-        m_ops.push_back(make_pair(MODIFY, make_pair(line, newSize)));
-        m_ops.push_back(make_pair(DELETE, make_pair(newSize, oldSize)));
+        m_ops.emplace_back(MODIFY, make_pair(line, newSize));
+        m_ops.emplace_back(DELETE, make_pair(newSize, oldSize));
 
         return true;
     }
@@ -272,7 +266,7 @@ namespace dbaui
     OUString ORelationControl::GetCellText( long nRow, sal_uInt16 nColId ) const
     {
         OUString sText;
-        if ( m_pConnData->GetConnLineDataList().size() > static_cast<size_t>(nRow) )
+        if ( m_pConnData->GetConnLineDataList().size() > o3tl::make_unsigned(nRow) )
         {
             OConnectionLineDataRef pConnLineData = m_pConnData->GetConnLineDataList()[nRow];
             switch( getColumnIdent( nColId ) )
@@ -309,19 +303,20 @@ namespace dbaui
                 break;
         }
 
-        if ( xDef.is() )
-        {
-            fillListBox(xDef);
-            OUString sName = GetCellText( nRow, nColumnId );
-            m_pListCell->SelectEntry( sName );
-            if ( m_pListCell->GetSelectEntry() != sName )
-            {
-                m_pListCell->InsertEntry( sName );
-                m_pListCell->SelectEntry( sName );
-            }
+        if ( !xDef.is() )
+            return;
 
-            m_pListCell->SetHelpId(sHelpId);
+        fillListBox(xDef);
+        OUString sName = GetCellText( nRow, nColumnId );
+        weld::ComboBox& rList = m_pListCell->get_widget();
+        rList.set_active_text(sName);
+        if (rList.get_active_text() != sName)
+        {
+            rList.append_text(sName);
+            rList.set_active_text(sName);
         }
+
+        rList.set_help_id(sHelpId);
     }
 
     CellController* ORelationControl::GetController( long /*nRow*/, sal_uInt16 /*nColumnId*/ )
@@ -355,7 +350,8 @@ namespace dbaui
     }
     void ORelationControl::fillListBox(const Reference< XPropertySet>& _xDest)
     {
-        m_pListCell->Clear();
+        weld::ComboBox& rList = m_pListCell->get_widget();
+        rList.clear();
         try
         {
             if ( _xDest.is() )
@@ -368,14 +364,14 @@ namespace dbaui
                 const OUString* pEnd = pIter + aNames.getLength();
                 for(;pIter != pEnd;++pIter)
                 {
-                    m_pListCell->InsertEntry( *pIter );
+                    rList.append_text(*pIter);
                 }
-                m_pListCell->InsertEntry(OUString(), 0);
+                rList.insert_text(0, OUString());
             }
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
     void ORelationControl::setWindowTables(const OTableWindow* _pSource,const OTableWindow* _pDest)
@@ -406,7 +402,7 @@ namespace dbaui
                 OConnectionLineDataVec& rLines = m_pConnData->GetConnLineDataList();
                 for( const auto& rLine : rLines )
                 {
-                    rLine.get()->Reset();
+                    rLine->Reset();
                 }
 
                 m_pConnData->setReferencingTable(_pSource->GetData());
@@ -435,32 +431,38 @@ namespace dbaui
 
     Size ORelationControl::GetOptimalSize() const
     {
-        return LogicToPixel(Size(140, 80), MapUnit::MapAppFont);
+        return LogicToPixel(Size(140, 80), MapMode(MapUnit::MapAppFont));
     }
 
-    // class OTableListBoxControl
-    OTableListBoxControl::OTableListBoxControl(VclBuilderContainer* _pParent,
+    OTableListBoxControl::OTableListBoxControl(weld::Builder* _pParent,
         const OJoinTableView::OTableWindowMap* _pTableMap,
         IRelationControlInterface* _pParentDialog)
-        : m_pTableMap(_pTableMap)
+        : m_xLeftTable(_pParent->weld_combo_box("table1"))
+        , m_xRightTable(_pParent->weld_combo_box("table2"))
+        , m_xTable(_pParent->weld_container("relations"))
+        , m_xTableCtrlParent(m_xTable->CreateChildFrame())
+        , m_xRC_Tables(VclPtr<ORelationControl>::Create(m_xTableCtrlParent))
+        , m_pTableMap(_pTableMap)
         , m_pParentDialog(_pParentDialog)
     {
-        _pParent->get(m_pLeftTable, "table1");
-        _pParent->get(m_pRightTable, "table2");
+        Size aPrefSize = m_xRC_Tables->GetOptimalSize();
+        m_xTable->set_size_request(aPrefSize.Width(), aPrefSize.Height());
 
-        _pParent->get(m_pRC_Tables, "relations");
-        m_pRC_Tables->SetController(this);
-        m_pRC_Tables->Init();
+        m_xRC_Tables->SetController(this);
+        m_xRC_Tables->Init();
 
         lateUIInit();
 
-        Link<ListBox&,void> aLink(LINK(this, OTableListBoxControl, OnTableChanged));
-        m_pLeftTable->SetSelectHdl(aLink);
-        m_pRightTable->SetSelectHdl(aLink);
+        Link<weld::ComboBox&,void> aLink(LINK(this, OTableListBoxControl, OnTableChanged));
+        m_xLeftTable->connect_changed(aLink);
+        m_xRightTable->connect_changed(aLink);
     }
 
     OTableListBoxControl::~OTableListBoxControl()
     {
+        m_xRC_Tables.disposeAndClear();
+        m_xTableCtrlParent->dispose();
+        m_xTableCtrlParent.clear();
     }
 
     void OTableListBoxControl::fillListBoxes()
@@ -470,22 +472,20 @@ namespace dbaui
         OTableWindow* pInitialRight = nullptr;
 
         // Collect the names of all TabWins
-        OJoinTableView::OTableWindowMap::const_iterator aIter = m_pTableMap->begin();
-        OJoinTableView::OTableWindowMap::const_iterator aEnd = m_pTableMap->end();
-        for(;aIter != aEnd;++aIter)
+        for (auto const& elem : *m_pTableMap)
         {
-            m_pLeftTable->InsertEntry(aIter->first);
-            m_pRightTable->InsertEntry(aIter->first);
+            m_xLeftTable->append_text(elem.first);
+            m_xRightTable->append_text(elem.first);
 
             if (!pInitialLeft)
             {
-                pInitialLeft = aIter->second;
-                m_strCurrentLeft = aIter->first;
+                pInitialLeft = elem.second;
+                m_strCurrentLeft = elem.first;
             }
             else if (!pInitialRight)
             {
-                pInitialRight = aIter->second;
-                m_strCurrentRight = aIter->first;
+                pInitialRight = elem.second;
+                m_strCurrentRight = elem.first;
             }
         }
 
@@ -496,46 +496,46 @@ namespace dbaui
         }
 
         // The corresponding Defs for my Controls
-        m_pRC_Tables->setWindowTables(pInitialLeft,pInitialRight);
+        m_xRC_Tables->setWindowTables(pInitialLeft,pInitialRight);
 
         // The table selected in a ComboBox must not be available in the other
 
         if ( m_pTableMap->size() > 2 )
         {
-            m_pLeftTable->RemoveEntry(m_strCurrentRight);
-            m_pRightTable->RemoveEntry(m_strCurrentLeft);
+            m_xLeftTable->remove_text(m_strCurrentRight);
+            m_xRightTable->remove_text(m_strCurrentLeft);
         }
 
         // Select the first one on the left side and on the right side,
         // select the second one
-        m_pLeftTable->SelectEntry(m_strCurrentLeft);
-        m_pRightTable->SelectEntry(m_strCurrentRight);
+        m_xLeftTable->set_active_text(m_strCurrentLeft);
+        m_xRightTable->set_active_text(m_strCurrentRight);
 
-        m_pLeftTable->GrabFocus();
+        m_xLeftTable->grab_focus();
     }
 
-    IMPL_LINK( OTableListBoxControl, OnTableChanged, ListBox&, rListBox, void )
+    IMPL_LINK(OTableListBoxControl, OnTableChanged, weld::ComboBox&, rListBox, void)
     {
-        OUString strSelected(rListBox.GetSelectEntry());
+        OUString strSelected(rListBox.get_active_text());
         OTableWindow* pLeft     = nullptr;
         OTableWindow* pRight    = nullptr;
 
         // Special treatment: If there are only two tables, we need to switch the other one too when changing in a LB
         if ( m_pTableMap->size() == 2 )
         {
-            ListBox* pOther;
-            if (&rListBox == m_pLeftTable)
-                pOther = m_pRightTable;
+            weld::ComboBox* pOther;
+            if (&rListBox == m_xLeftTable.get())
+                pOther = m_xRightTable.get();
             else
-                pOther = m_pLeftTable;
-            pOther->SelectEntryPos(1 - pOther->GetSelectEntryPos());
+                pOther = m_xLeftTable.get();
+            pOther->set_active(1 - pOther->get_active());
 
             OJoinTableView::OTableWindowMap::const_iterator aIter = m_pTableMap->begin();
             OTableWindow* pFirst = aIter->second;
             ++aIter;
             OTableWindow* pSecond = aIter->second;
 
-            if ( m_pLeftTable->GetSelectEntry() == pFirst->GetName() )
+            if (m_xLeftTable->get_active_text() == pFirst->GetName())
             {
                 pLeft   = pFirst;
                 pRight  = pSecond;
@@ -555,42 +555,42 @@ namespace dbaui
                 pLoop = aFind->second;
             OSL_ENSURE(pLoop != nullptr, "ORelationDialog::OnTableChanged: invalid ListBox entry!");
                 // We need to find strSelect, because we filled the ListBoxes with the table names with which we compare now
-            if (&rListBox == m_pLeftTable)
+            if (&rListBox == m_xLeftTable.get())
             {
                 // Insert the previously selected Entry on the left side on the right side
-                m_pRightTable->InsertEntry(m_strCurrentLeft);
+                m_xRightTable->append_text(m_strCurrentLeft);
                 // Remove the currently selected Entry
-                m_pRightTable->RemoveEntry(strSelected);
+                m_xRightTable->remove_text(strSelected);
                 m_strCurrentLeft    = strSelected;
 
                 pLeft = pLoop;
 
-                OJoinTableView::OTableWindowMap::const_iterator aIter = m_pTableMap->find(m_pRightTable->GetSelectEntry());
+                OJoinTableView::OTableWindowMap::const_iterator aIter = m_pTableMap->find(m_xRightTable->get_active_text());
                 OSL_ENSURE( aIter != m_pTableMap->end(), "Invalid name");
                 if ( aIter != m_pTableMap->end() )
                     pRight = aIter->second;
 
-                m_pLeftTable->GrabFocus();
+                m_xLeftTable->grab_focus();
             }
             else
             {
                 // Insert the previously selected Entry on the right side on the left side
-                m_pLeftTable->InsertEntry(m_strCurrentRight);
+                m_xLeftTable->append_text(m_strCurrentRight);
                 // Remove the currently selected Entry
-                m_pLeftTable->RemoveEntry(strSelected);
+                m_xLeftTable->remove_text(strSelected);
                 m_strCurrentRight = strSelected;
 
                 pRight = pLoop;
-                OJoinTableView::OTableWindowMap::const_iterator aIter = m_pTableMap->find(m_pLeftTable->GetSelectEntry());
+                OJoinTableView::OTableWindowMap::const_iterator aIter = m_pTableMap->find(m_xLeftTable->get_active_text());
                 OSL_ENSURE( aIter != m_pTableMap->end(), "Invalid name");
                 if ( aIter != m_pTableMap->end() )
                     pLeft = aIter->second;
             }
         }
 
-        rListBox.GrabFocus();
+        rListBox.grab_focus();
 
-        m_pRC_Tables->setWindowTables(pLeft,pRight);
+        m_xRC_Tables->setWindowTables(pLeft,pRight);
 
         NotifyCellChange();
     }
@@ -598,102 +598,97 @@ namespace dbaui
     void OTableListBoxControl::NotifyCellChange()
     {
         // Enable/disable the OK button, depending on having a valid situation
-        TTableConnectionData::value_type pConnData = m_pRC_Tables->getData();
+        TTableConnectionData::value_type pConnData = m_xRC_Tables->getData();
         const OConnectionLineDataVec& rLines = pConnData->GetConnLineDataList();
         bool bValid = !rLines.empty();
         if (bValid)
         {
-            OConnectionLineDataVec::const_iterator l(rLines.begin());
-            const OConnectionLineDataVec::const_iterator le(rLines.end());
-            for (; bValid && l!=le; ++l)
+            for (auto const& line : rLines)
             {
-                bValid = ! ((*l)->GetSourceFieldName().isEmpty() || (*l)->GetDestFieldName().isEmpty());
+                bValid = ! (line->GetSourceFieldName().isEmpty() || line->GetDestFieldName().isEmpty());
+                if (!bValid)
+                    break;
             }
         }
         m_pParentDialog->setValid(bValid);
 
-        ORelationControl::ops_type::const_iterator i (m_pRC_Tables->m_ops.begin());
-        const ORelationControl::ops_type::const_iterator e (m_pRC_Tables->m_ops.end());
-        m_pRC_Tables->DeactivateCell();
-        for(; i != e; ++i)
+        m_xRC_Tables->DeactivateCell();
+        for (auto const& elem : m_xRC_Tables->m_ops)
         {
-            switch(i->first)
+            switch(elem.first)
             {
             case ORelationControl::DELETE:
-                m_pRC_Tables->RowRemoved(i->second.first, i->second.second - i->second.first);
+                m_xRC_Tables->RowRemoved(elem.second.first, elem.second.second - elem.second.first);
                 break;
             case ORelationControl::INSERT:
-                m_pRC_Tables->RowInserted(i->second.first, i->second.second - i->second.first);
+                m_xRC_Tables->RowInserted(elem.second.first, elem.second.second - elem.second.first);
                 break;
             case ORelationControl::MODIFY:
-                for(OConnectionLineDataVec::size_type j = i->second.first; j < i->second.second; ++j)
-                    m_pRC_Tables->RowModified(j);
+                for(OConnectionLineDataVec::size_type j = elem.second.first; j < elem.second.second; ++j)
+                    m_xRC_Tables->RowModified(j);
                 break;
             }
         }
-        m_pRC_Tables->ActivateCell();
-        m_pRC_Tables->m_ops.clear();
+        m_xRC_Tables->ActivateCell();
+        m_xRC_Tables->m_ops.clear();
     }
 
-    void fillEntryAndDisable(ListBox& _rListBox,const OUString& _sEntry)
+    static void fillEntryAndDisable(weld::ComboBox& _rListBox,const OUString& _sEntry)
     {
-        _rListBox.InsertEntry(_sEntry);
-        _rListBox.SelectEntryPos(0);
-        _rListBox.Disable();
+        _rListBox.append_text(_sEntry);
+        _rListBox.set_active(0);
+        _rListBox.set_sensitive(false);
     }
 
     void OTableListBoxControl::fillAndDisable(const TTableConnectionData::value_type& _pConnectionData)
     {
-        fillEntryAndDisable(*m_pLeftTable, _pConnectionData->getReferencingTable()->GetWinName());
-        fillEntryAndDisable(*m_pRightTable, _pConnectionData->getReferencedTable()->GetWinName());
+        fillEntryAndDisable(*m_xLeftTable, _pConnectionData->getReferencingTable()->GetWinName());
+        fillEntryAndDisable(*m_xRightTable, _pConnectionData->getReferencedTable()->GetWinName());
     }
 
     void OTableListBoxControl::Init(const TTableConnectionData::value_type& _pConnData)
     {
-        m_pRC_Tables->Init(_pConnData);
+        m_xRC_Tables->Init(_pConnData);
     }
 
     void OTableListBoxControl::lateUIInit()
     {
-        m_pRC_Tables->Show();
+        m_xRC_Tables->Show();
         lateInit();
     }
 
     void OTableListBoxControl::lateInit()
     {
-        m_pRC_Tables->lateInit();
+        m_xRC_Tables->lateInit();
     }
 
     void OTableListBoxControl::Disable()
     {
-        m_pLeftTable->Disable();
-        m_pRightTable->Disable();
-        m_pRC_Tables->Disable();
+        m_xLeftTable->set_sensitive(false);
+        m_xRightTable->set_sensitive(false);
+        m_xRC_Tables->Disable();
     }
 
     void OTableListBoxControl::Invalidate()
     {
-        m_pLeftTable->Invalidate();
-        m_pRightTable->Invalidate();
-        m_pRC_Tables->Invalidate();
+        m_xRC_Tables->Invalidate();
     }
 
     void OTableListBoxControl::SaveModified()
     {
-        m_pRC_Tables->SaveModified();
+        m_xRC_Tables->SaveModified();
     }
 
-    TTableWindowData::value_type OTableListBoxControl::getReferencingTable()    const
+    TTableWindowData::value_type const & OTableListBoxControl::getReferencingTable()    const
     {
-        return m_pRC_Tables->getData()->getReferencingTable();
+        return m_xRC_Tables->getData()->getReferencingTable();
     }
 
     void OTableListBoxControl::enableRelation(bool _bEnable)
     {
         if ( !_bEnable )
-            m_pRC_Tables->PostUserEvent(LINK(m_pRC_Tables, ORelationControl, AsynchDeactivate));
-        m_pRC_Tables->Enable(_bEnable);
-
+            m_xRC_Tables->PostUserEvent(LINK(m_xRC_Tables, ORelationControl, AsynchDeactivate));
+        m_xRC_Tables->Enable(_bEnable);
     }
 }
 

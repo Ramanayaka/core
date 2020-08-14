@@ -23,34 +23,30 @@
 #include <svl/intitem.hxx>
 #include <svx/svxdllapi.h>
 
-class SVX_DLLPUBLIC XFillBmpTileOffsetXItem : public SfxUInt16Item
+class SVXCORE_DLLPUBLIC XFillBmpTileOffsetXItem final : public SfxUInt16Item
 {
 public:
                             XFillBmpTileOffsetXItem( sal_uInt16 nOffX = 0 );
-                            SVX_DLLPRIVATE XFillBmpTileOffsetXItem( SvStream& rIn );
 
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    SVX_DLLPRIVATE virtual XFillBmpTileOffsetXItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     SVX_DLLPRIVATE virtual bool GetPresentation( SfxItemPresentation ePres,
                                                  MapUnit eCoreMetric,
                                                  MapUnit ePresMetric,
-                                                 OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                                 OUString &rText, const IntlWrapper& ) const override;
 };
 
-class SVX_DLLPUBLIC XFillBmpTileOffsetYItem : public SfxUInt16Item
+class SVXCORE_DLLPUBLIC XFillBmpTileOffsetYItem final : public SfxUInt16Item
 {
 public:
                             XFillBmpTileOffsetYItem( sal_uInt16 nOffX = 0 );
-                            SVX_DLLPRIVATE XFillBmpTileOffsetYItem( SvStream& rIn );
 
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    SVX_DLLPRIVATE virtual XFillBmpTileOffsetYItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     SVX_DLLPRIVATE virtual bool GetPresentation( SfxItemPresentation ePres,
                                                  MapUnit eCoreMetric,
                                                  MapUnit ePresMetric,
-                                                 OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                                 OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

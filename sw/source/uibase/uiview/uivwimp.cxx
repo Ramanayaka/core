@@ -20,30 +20,26 @@
 #include <config_features.h>
 
 #include <cmdid.h>
-#include "globals.hrc"
 
 #include <com/sun/star/scanner/XScannerManager2.hpp>
 #include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
-#include <comphelper/processfactory.hxx>
-#include <vcl/layout.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <comphelper/servicehelper.hxx>
+#include <vcl/weld.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
-#include <vcl/msgbox.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/bindings.hxx>
+#include <sfx2/docfile.hxx>
 
 #include <sfx2/docinsert.hxx>
 #include <sfx2/request.hxx>
 #include <uivwimp.hxx>
-#include <wview.hxx>
 #include <unotxvw.hxx>
 #include <unodispatch.hxx>
 #include <swmodule.hxx>
 #include <swdtflvr.hxx>
-#include <edtwin.hxx>
-#include <mmconfigitem.hxx>
 
-#include <view.hrc>
+#include <strings.hrc>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -55,8 +51,6 @@ SwView_Impl::SwView_Impl(SwView* pShell)
     : mxXTextView()
     , pView(pShell)
     , eShellMode(ShellMode::Text)
-    , m_pDocInserter(nullptr)
-    , m_pRequest(nullptr)
     , m_nParam(0)
     , m_bSelectObject(false)
     , m_bEditingPositionSet(false)
@@ -67,15 +61,9 @@ SwView_Impl::SwView_Impl(SwView* pShell)
 
 SwView_Impl::~SwView_Impl()
 {
-    Reference<XUnoTunnel> xDispTunnel(xDisProvInterceptor, UNO_QUERY);
-    SwXDispatchProviderInterceptor* pInterceptor = nullptr;
-    if(xDispTunnel.is() &&
-        nullptr != (pInterceptor = reinterpret_cast< SwXDispatchProviderInterceptor * >(
-                    sal::static_int_cast< sal_IntPtr >(
-                    xDispTunnel->getSomething(SwXDispatchProviderInterceptor::getUnoTunnelId())))))
-    {
+    auto pInterceptor = comphelper::getUnoTunnelImplementation<SwXDispatchProviderInterceptor>(xDisProvInterceptor);
+    if(pInterceptor)
         pInterceptor->Invalidate();
-    }
     view::XSelectionSupplier* pTextView = mxXTextView.get();
     static_cast<SwXTextView*>(pTextView)->Invalidate();
     mxXTextView.clear();
@@ -89,8 +77,8 @@ SwView_Impl::~SwView_Impl()
 #if HAVE_FEATURE_DBCONNECTIVITY
     xConfigItem.reset();
 #endif
-    delete m_pDocInserter;
-    delete m_pRequest;
+    m_pDocInserter.reset();
+    m_pRequest.reset();
 }
 
 void SwView_Impl::SetShellMode(ShellMode eSet)
@@ -126,10 +114,23 @@ void SwView_Impl::ExecuteScan( SfxRequest& rReq )
                     const Sequence< ScannerContext >
                         aContexts( xScanMgr->getAvailableScanners() );
 
-                    if( aContexts.getLength() )
+                    if( aContexts.hasElements() )
                     {
                         Reference< XEventListener > xLstner = &rListener;
                         ScannerContext aContext( aContexts.getConstArray()[ 0 ] );
+
+                        Reference<lang::XInitialization> xInit(xScanMgr, UNO_QUERY);
+                        if (xInit.is())
+                        {
+                            //  initialize dialog
+                            weld::Window* pWindow = rReq.GetFrameWeld();
+                            uno::Sequence<uno::Any> aSeq(comphelper::InitAnyPropertySequence(
+                            {
+                                {"ParentWindow", pWindow ? uno::Any(pWindow->GetXWindow()) : uno::Any(Reference<awt::XWindow>())}
+                            }));
+                            xInit->initialize( aSeq );
+                        }
+
                         bDone = xScanMgr->configureScannerAndScan( aContext, xLstner );
                     }
                 }
@@ -158,7 +159,7 @@ void SwView_Impl::ExecuteScan( SfxRequest& rReq )
                 try
                 {
                     const Sequence< scanner::ScannerContext >aContexts( xScanMgr->getAvailableScanners() );
-                    if( aContexts.getLength() )
+                    if( aContexts.hasElements() )
                     {
                         Reference< XEventListener > xLstner = &rListener;
                         xScanMgr->startScan( aContexts.getConstArray()[ 0 ], xLstner );
@@ -172,7 +173,10 @@ void SwView_Impl::ExecuteScan( SfxRequest& rReq )
 
             if( !bDone )
             {
-                ScopedVclPtrInstance<MessageDialog>(nullptr, SwResId(STR_SCAN_NOSOURCE), VclMessageType::Info)->Execute();
+                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(rReq.GetFrameWeld(),
+                                                          VclMessageType::Info, VclButtonsType::Ok,
+                                                          SwResId(STR_SCAN_NOSOURCE)));
+                xBox->run();
                 rReq.Ignore();
             }
             else
@@ -208,27 +212,27 @@ void SwView_Impl::Invalidate()
     GetUNOObject_Impl()->Invalidate();
     for (const auto& xTransferable: mxTransferables)
     {
-        Reference< XUnoTunnel > xTunnel(xTransferable.get(), UNO_QUERY);
-        if(xTunnel.is())
-
-        {
-            SwTransferable* pTransferable = reinterpret_cast< SwTransferable * >(
-                    sal::static_int_cast< sal_IntPtr >(
-                    xTunnel->getSomething(SwTransferable::getUnoTunnelId())));
-            if(pTransferable)
-                pTransferable->Invalidate();
-        }
+        auto pTransferable = comphelper::getUnoTunnelImplementation<SwTransferable>(xTransferable.get());
+        if(pTransferable)
+            pTransferable->Invalidate();
     }
 }
 
 void SwView_Impl::AddTransferable(SwTransferable& rTransferable)
 {
     //prevent removing of the non-referenced SwTransferable
-    rTransferable.m_refCount++;
+    osl_atomic_increment(&rTransferable.m_refCount);
     {
-        mxTransferables.push_back(uno::WeakReference<lang::XUnoTunnel>(uno::Reference<lang::XUnoTunnel>(&rTransferable)));
+        // Remove previously added, but no longer existing weak references.
+        mxTransferables.erase(std::remove_if(mxTransferables.begin(), mxTransferables.end(),
+            [](const css::uno::WeakReference<css::lang::XUnoTunnel>& rTunnel) {
+                uno::Reference<lang::XUnoTunnel> xTunnel(rTunnel.get(), uno::UNO_QUERY);
+                return !xTunnel.is();
+            }), mxTransferables.end());
+
+        mxTransferables.emplace_back(uno::Reference<lang::XUnoTunnel>(&rTransferable));
     }
-    rTransferable.m_refCount--;
+    osl_atomic_decrement(&rTransferable.m_refCount);
 }
 
 void SwView_Impl::StartDocumentInserter(
@@ -250,20 +254,18 @@ void SwView_Impl::StartDocumentInserter(
             break;
     }
 
-    delete m_pDocInserter;
-    m_pDocInserter = new ::sfx2::DocumentInserter( rFactory, mode );
+    m_pDocInserter.reset(new ::sfx2::DocumentInserter(pView->GetFrameWeld(), rFactory, mode));
     m_pDocInserter->StartExecuteModal( rEndDialogHdl );
 }
 
-SfxMedium* SwView_Impl::CreateMedium()
+std::unique_ptr<SfxMedium> SwView_Impl::CreateMedium()
 {
     return m_pDocInserter->CreateMedium();
 }
 
 void SwView_Impl::InitRequest( const SfxRequest& rRequest )
 {
-    delete m_pRequest;
-    m_pRequest = new SfxRequest( rRequest );
+    m_pRequest.reset(new SfxRequest( rRequest ));
 }
 
 SwScannerEventListener::~SwScannerEventListener()
@@ -291,25 +293,25 @@ void SAL_CALL SwClipboardChangeListener::changedContents( const css::datatransfe
 
 {
     const SolarMutexGuard aGuard;
-    if( pView )
+    if( !pView )
+        return;
+
     {
-        {
-            TransferableDataHelper aDataHelper( rEventObject.Contents );
-            SwWrtShell& rSh = pView->GetWrtShell();
+        TransferableDataHelper aDataHelper( rEventObject.Contents );
+        SwWrtShell& rSh = pView->GetWrtShell();
 
-            pView->m_nLastPasteDestination = SwTransferable::GetSotDestination( rSh );
-            pView->m_bPasteState = aDataHelper.GetXTransferable().is() &&
-                            SwTransferable::IsPaste( rSh, aDataHelper );
+        pView->m_nLastPasteDestination = SwTransferable::GetSotDestination( rSh );
+        pView->m_bPasteState = aDataHelper.GetXTransferable().is() &&
+                        SwTransferable::IsPaste( rSh, aDataHelper );
 
-            pView->m_bPasteSpecialState = aDataHelper.GetXTransferable().is() &&
-                        SwTransferable::IsPasteSpecial( rSh, aDataHelper );
-        }
-
-        SfxBindings& rBind = pView->GetViewFrame()->GetBindings();
-        rBind.Invalidate( SID_PASTE );
-        rBind.Invalidate( SID_PASTE_SPECIAL );
-        rBind.Invalidate( SID_CLIPBOARD_FORMAT_ITEMS );
+        pView->m_bPasteSpecialState = aDataHelper.GetXTransferable().is() &&
+                    SwTransferable::IsPasteSpecial( rSh, aDataHelper );
     }
+
+    SfxBindings& rBind = pView->GetViewFrame()->GetBindings();
+    rBind.Invalidate( SID_PASTE );
+    rBind.Invalidate( SID_PASTE_SPECIAL );
+    rBind.Invalidate( SID_CLIPBOARD_FORMAT_ITEMS );
 }
 
 void SwClipboardChangeListener::AddRemoveListener( bool bAdd )

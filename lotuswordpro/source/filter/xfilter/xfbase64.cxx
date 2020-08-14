@@ -58,9 +58,10 @@
  * Base64 tool.
  ************************************************************************/
 #include <string.h>
+#include <memory>
 #include "xfbase64.hxx"
 
-const  sal_Char aBase64EncodeTable[] =
+const  char aBase64EncodeTable[] =
 { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
@@ -71,7 +72,7 @@ const  sal_Char aBase64EncodeTable[] =
  * @descr   Encode 3 byte to 4 byte.
  *          Please refer to RFC to get the base64 algorithm.
  */
-inline void Encode_(const sal_uInt8 *src, sal_Char* dest)
+static void Encode_(const sal_uInt8 *src, char* dest)
 {
     sal_Int32 nBinaer = (src[ 0] << 16) +
         (src[1] <<  8) +
@@ -93,9 +94,9 @@ inline void Encode_(const sal_uInt8 *src, sal_Char* dest)
 /**
  * @descr   Base64 encode.
  */
-OUString XFBase64::Encode(sal_uInt8 *buf, sal_Int32 len)
+OUString XFBase64::Encode(sal_uInt8 const *buf, sal_Int32 len)
 {
-    sal_Char    *buffer;
+    std::unique_ptr<char[]> buffer;
     sal_Int32   nNeeded;
     sal_Int32   cycles = len/3;
     sal_Int32   remain = len%3;
@@ -104,31 +105,29 @@ OUString XFBase64::Encode(sal_uInt8 *buf, sal_Int32 len)
         nNeeded = cycles*4;
     else
         nNeeded = (cycles+1)*4;
-    buffer = new sal_Char[nNeeded+1];
+    buffer.reset(new char[nNeeded+1]);
 
-    memset(buffer, 0, nNeeded+1);
+    memset(buffer.get(), 0, nNeeded+1);
 
     for( sal_Int32 i=0; i<cycles; i++ )
-        Encode_(buf+i*3,buffer+i*4);
+        Encode_(buf+i*3,buffer.get()+i*4);
 
     sal_uInt8 last[3];
     if( remain == 1 )
     {
         last[0] = buf[len-1];
         last[1] = last[2] = 0;
-        Encode_(last,buffer+nNeeded+1-5);
+        Encode_(last,buffer.get()+nNeeded+1-5);
     }
     else if( remain == 2 )
     {
         last[0] = buf[len-2];
         last[1] = buf[len-1];
         last[2] = 0;
-        Encode_(last,buffer+nNeeded+1-5);
+        Encode_(last,buffer.get()+nNeeded+1-5);
     }
 
-    OUString str = OUString::createFromAscii(buffer);
-    delete[] buffer;
-
+    OUString str = OUString::createFromAscii(buffer.get());
     return str;
 }
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

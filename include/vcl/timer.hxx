@@ -21,7 +21,7 @@
 #define INCLUDED_VCL_TIMER_HXX
 
 #include <tools/link.hxx>
-#include <vcl/scheduler.hxx>
+#include <vcl/task.hxx>
 
 class VCL_DLLPUBLIC Timer : public Task
 {
@@ -31,14 +31,12 @@ class VCL_DLLPUBLIC Timer : public Task
 
 protected:
     virtual void SetDeletionFlags() override;
-    virtual bool ReadyForSchedule( bool bIdle, sal_uInt64 nTimeNow ) const override;
-    virtual bool IsIdle() const override;
-    virtual sal_uInt64 UpdateMinPeriod( sal_uInt64 nMinPeriod, sal_uInt64 nTimeNow ) const override;
+    virtual sal_uInt64 UpdateMinPeriod( sal_uInt64 nTimeNow ) const override;
 
-    Timer( bool bAuto, const sal_Char *pDebugName = nullptr );
+    Timer( bool bAuto, const char *pDebugName );
 
 public:
-    Timer( const sal_Char *pDebugName = nullptr );
+    Timer( const char *pDebugName = nullptr );
     Timer( const Timer& rTimer );
     virtual ~Timer() override;
     Timer& operator=( const Timer& rTimer );
@@ -60,16 +58,25 @@ public:
 
     void            SetTimeout( sal_uInt64 nTimeoutMs );
     sal_uInt64      GetTimeout() const { return mnTimeout; }
+    /**
+     * Activates the timer task
+     *
+     * If the timer is already active, it's reset!
+     * Check with Task::IsActive() to prevent reset.
+     */
     virtual void    Start() override;
 };
 
 /// An auto-timer is a multi-shot timer re-emitting itself at
-/// interval until destroyed.
+/// interval until destroyed or stopped.
 class VCL_DLLPUBLIC AutoTimer : public Timer
 {
 public:
-    AutoTimer( const sal_Char *pDebugName = nullptr );
+    AutoTimer( const char *pDebugName = nullptr );
 };
+
+/// Value suitable as a timeout user input into an EditBox to an expensive update
+#define EDIT_UPDATEDATA_TIMEOUT     350
 
 #endif // INCLUDED_VCL_TIMER_HXX
 

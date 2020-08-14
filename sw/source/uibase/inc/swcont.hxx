@@ -21,7 +21,7 @@
 #define INCLUDED_SW_SOURCE_UIBASE_INC_SWCONT_HXX
 
 #include <rtl/ustring.hxx>
-#include <vcl/lstbox.hxx>
+#include <vcl/naturalsort.hxx>
 
 class SwContentType;
 
@@ -44,7 +44,7 @@ enum class ContentTypeId
 };
 
 // strings for context menus
-#define CONTEXT_COUNT   12
+#define CONTEXT_COUNT   17
 #define GLOBAL_CONTEXT_COUNT 14
 
 // modes for Drag 'n Drop
@@ -72,10 +72,9 @@ class SwContent : public SwTypeNumber
     const SwContentType*    pParent;
     OUString                sContentName;
     long                    nYPosition;
-        // most subclasses appear to use this for a tools/gen.hxx-style
-        // geometric Y position, while SwOutlineContent wants to store a
-        // SwOutlineNodes::size_type value (where all such values used in
-        // practice hopefully fit into 'long')
+        // some subclasses appear to use this for a tools/gen.hxx-style
+        // geometric Y position, while e.g. SwOutlineContent wants to store
+        // the index in its subtree
     bool                    bInvisible;
 public:
         SwContent(const SwContentType* pCnt, const OUString& rName, long nYPos );
@@ -93,10 +92,8 @@ public:
         // at first sort by position and then by name
         if (nYPosition != rCont.nYPosition)
             return nYPosition < rCont.nYPosition;
-        return ListBox::NaturalSortCompare(sContentName, rCont.sContentName) < 0;
+        return vcl::NaturalSortCompare(sContentName, rCont.sContentName) < 0;
     }
-
-    long        GetYPos() const {return nYPosition;}
 
     bool        IsInvisible() const {return bInvisible;}
     void        SetInvisible(){ bInvisible = true;}

@@ -22,14 +22,13 @@
 
 #include "types.hxx"
 #include "token.hxx"
-#include "error.hxx"
 #include "rect.hxx"
 #include "format.hxx"
 
 #include <o3tl/typed_flags_set.hxx>
+#include <rtl/ustrbuf.hxx>
 
 #include <cassert>
-#include <memory>
 #include <vector>
 
 enum class FontAttribute {
@@ -60,13 +59,12 @@ enum class FontChangeMask {
     Bold     = 0x0004,
     Italic   = 0x0008,
     Color    = 0x0010,
-    Phantom  = 0x0020,
-    HorAlign = 0x0040
+    Phantom  = 0x0020
 };
 
 namespace o3tl
 {
-    template<> struct typed_flags<FontChangeMask> : is_typed_flags<FontChangeMask, 0x007f> {};
+    template<> struct typed_flags<FontChangeMask> : is_typed_flags<FontChangeMask, 0x003f> {};
 }
 
 
@@ -120,13 +118,13 @@ public:
     virtual             ~SmNode();
 
     /**
-     * Returns true if this is a instance of SmVisibleNode's subclass, false otherwise.
+     * Returns true if this is an instance of SmVisibleNode's subclass, false otherwise.
      */
     virtual bool        IsVisible() const = 0;
 
-    virtual sal_uInt16      GetNumSubNodes() const = 0;
-    virtual SmNode *    GetSubNode(sal_uInt16 nIndex) = 0;
-            const SmNode * GetSubNode(sal_uInt16 nIndex) const
+    virtual size_t      GetNumSubNodes() const = 0;
+    virtual SmNode *    GetSubNode(size_t nIndex) = 0;
+            const SmNode * GetSubNode(size_t nIndex) const
             {
                 return const_cast<SmNode *>(this)->GetSubNode(nIndex);
             }
@@ -153,7 +151,7 @@ public:
     /** Prepare preliminary settings about font and text
      *  (e.g. maFace, meRectHorAlign, mnFlags, mnAttributes, etc.)
      */
-    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell);
+    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell, int nDepth);
     void PrepareAttributes();
 
     void         SetRectHorAlign(RectHorAlign eHorAlign, bool bApplyToSubTree = true );
@@ -164,7 +162,7 @@ public:
     void Move(const Point &rPosition);
     void MoveTo(const Point &rPosition) { Move(rPosition - GetTopLeft()); }
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) = 0;
-    virtual void CreateTextFromNode(OUString &rText);
+    virtual void CreateTextFromNode(OUStringBuffer &rText);
 
     virtual void    GetAccessibleText( OUStringBuffer &rText ) const = 0;
     sal_Int32       GetAccessibleIndex() const { return mnAccIndex; }
@@ -204,7 +202,7 @@ public:
     }
 
     /** Set the token for this node */
-    void SetToken(SmToken& token){
+    void SetToken(SmToken const & token){
         maNodeToken = token;
     }
 
@@ -233,12 +231,13 @@ public:
 
     virtual bool        IsVisible() const override;
 
-    virtual sal_uInt16      GetNumSubNodes() const override;
+    virtual size_t      GetNumSubNodes() const override;
 
     using   SmNode::GetSubNode;
-    virtual SmNode *    GetSubNode(sal_uInt16 nIndex) override;
-            void SetSubNodes(SmNode *pFirst, SmNode *pSecond, SmNode *pThird = nullptr);
-            void SetSubNodes(const SmNodeArray &rNodeArray);
+    virtual SmNode *    GetSubNode(size_t nIndex) override;
+    void ClearSubNodes();
+            void SetSubNodes(std::unique_ptr<SmNode> pFirst, std::unique_ptr<SmNode> pSecond, std::unique_ptr<SmNode> pThird = nullptr);
+            void SetSubNodes(SmNodeArray&& rNodeArray);
 
     virtual void  GetAccessibleText( OUStringBuffer &rText ) const override;
 
@@ -251,11 +250,11 @@ public:
      *
      * Returns -1, if pSubNode isn't a subnode of this.
      */
-    int IndexOfSubNode(SmNode* pSubNode)
+    int IndexOfSubNode(SmNode const * pSubNode)
     {
-        sal_uInt16 nSize = GetNumSubNodes();
-        for(sal_uInt16 i = 0; i < nSize; i++)
-            if(pSubNode == GetSubNode(i))
+        size_t nSize = GetNumSubNodes();
+        for (size_t i = 0; i < nSize; i++)
+            if (pSubNode == GetSubNode(i))
                 return i;
         return -1;
     }
@@ -267,12 +266,13 @@ public:
         {
             //Resize subnodes array
             maSubNodes.resize(nIndex + 1);
-            //Set new slots to NULL
-            for (size_t i = size; i < nIndex+1; i++)
+            //Set new slots to NULL except at nIndex
+            for (size_t i = size; i < nIndex; i++)
                 maSubNodes[i] = nullptr;
         }
         maSubNodes[nIndex] = pNode;
-        ClaimPaternity();
+        if (pNode)
+            pNode->SetParent(this);
     }
 
 private:
@@ -296,9 +296,9 @@ protected:
 public:
 
     virtual bool        IsVisible() const override;
-    virtual sal_uInt16      GetNumSubNodes() const override;
+    virtual size_t      GetNumSubNodes() const override;
     using   SmNode::GetSubNode;
-    virtual SmNode *    GetSubNode(sal_uInt16 nIndex) override;
+    virtual SmNode *    GetSubNode(size_t nIndex) override;
 };
 
 
@@ -319,7 +319,7 @@ public:
  *
  * Used for drawing the line in the OVER and OVERSTRIKE commands.
  */
-class SmRectangleNode : public SmGraphicNode
+class SmRectangleNode final : public SmGraphicNode
 {
     Size maToSize;
 
@@ -333,7 +333,7 @@ public:
 
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
 
-    void CreateTextFromNode(OUString &rText) override;
+    void CreateTextFromNode(OUStringBuffer &rText) override;
     void Accept(SmVisitor* pVisitor) override;
 };
 
@@ -342,7 +342,7 @@ public:
  *
  * Used to draw the slash of the WIDESLASH command by SmBinDiagonalNode.
  */
-class SmPolyLineNode : public SmGraphicNode
+class SmPolyLineNode final : public SmGraphicNode
 {
     tools::Polygon maPoly;
     Size maToSize;
@@ -412,9 +412,9 @@ public:
     /** Set the index within GetText() where the selection end */
     void                SetSelectionEnd(sal_Int32 index) {mnSelectionEnd = index;}
 
-    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell) override;
+    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell, int nDepth) override;
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
-    virtual void CreateTextFromNode(OUString &rText) override;
+    virtual void CreateTextFromNode(OUStringBuffer &rText) override;
 
     virtual void  GetAccessibleText( OUStringBuffer &rText ) const override;
     void Accept(SmVisitor* pVisitor) override;
@@ -443,7 +443,7 @@ protected:
 public:
     explicit SmSpecialNode(const SmToken &rNodeToken);
 
-    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell) override;
+    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell, int nDepth) override;
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
 
     void Accept(SmVisitor* pVisitor) override;
@@ -454,12 +454,12 @@ public:
  *
  * This node is used with commands: oper, uoper and boper.
  * E.g. in "A boper op B", "op" will be an instance of SmGlyphSpecialNode.
- * "boper" simply interprets "op", the following token, as an binary operator.
+ * "boper" simply interprets "op", the following token, as a binary operator.
  * The command "uoper" interprets the following token as unary operator.
  * For these commands an instance of SmGlyphSpecialNode is used for the
  * operator token, following the command.
  */
-class SmGlyphSpecialNode : public SmSpecialNode
+class SmGlyphSpecialNode final : public SmSpecialNode
 {
 public:
     explicit SmGlyphSpecialNode(const SmToken &rNodeToken)
@@ -492,9 +492,9 @@ public:
     virtual void AdaptToX(OutputDevice &rDev, sal_uLong nWidth) override;
     virtual void AdaptToY(OutputDevice &rDev, sal_uLong nHeight) override;
 
-    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell) override;
+    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell, int nDepth) override;
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
-    void CreateTextFromNode(OUString &rText) override;
+    void CreateTextFromNode(OUStringBuffer &rText) override;
     void Accept(SmVisitor* pVisitor) override;
 };
 
@@ -505,7 +505,7 @@ public:
  * represent math symbols that should be exported as <mi> elements rather than
  * <mo> elements.
  */
-class SmMathIdentifierNode : public SmMathSymbolNode
+class SmMathIdentifierNode final : public SmMathSymbolNode
 {
 public:
     explicit SmMathIdentifierNode(const SmToken &rNodeToken)
@@ -519,7 +519,7 @@ public:
  * the line with the line above. I don't think this node should be used for
  * anything else.
  */
-class SmRootSymbolNode : public SmMathSymbolNode
+class SmRootSymbolNode final : public SmMathSymbolNode
 {
     sal_uLong mnBodyWidth;  // width of body (argument) of root sign
 
@@ -544,7 +544,7 @@ public:
  * written.
  * It is drawn as a square with a shadow.
  */
-class SmPlaceNode : public SmMathSymbolNode
+class SmPlaceNode final : public SmMathSymbolNode
 {
 public:
     explicit SmPlaceNode(const SmToken &rNodeToken)
@@ -553,7 +553,7 @@ public:
     }
     SmPlaceNode() : SmMathSymbolNode(SmNodeType::Place, SmToken(TPLACE, MS_PLACE, "<?>")) {};
 
-    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell) override;
+    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell, int nDepth) override;
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
     void Accept(SmVisitor* pVisitor) override;
 };
@@ -561,10 +561,10 @@ public:
 
 /** Error node, for parsing errors
  *
- * This node is used for parsing errors and draws an questionmark turned upside
+ * This node is used for parsing errors and draws a questionmark turned upside
  * down (inverted question mark).
  */
-class SmErrorNode : public SmMathSymbolNode
+class SmErrorNode final : public SmMathSymbolNode
 {
 public:
     explicit SmErrorNode(const SmToken &rNodeToken)
@@ -573,7 +573,7 @@ public:
         SetText(OUString(MS_ERROR));
     }
 
-    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell) override;
+    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell, int nDepth) override;
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
     void Accept(SmVisitor* pVisitor) override;
 };
@@ -583,10 +583,10 @@ public:
  *
  * This is the root node for the formula tree. This node is also used for the
  * STACK and BINOM commands. When used for root node, its
- * children are instances of SmLineNode, and in some obscure cases the a child
+ * children are instances of SmLineNode, and in some obscure cases the child
  * can be an instance of SmExpressionNode, mainly when errors occur.
  */
-class SmTableNode : public SmStructureNode
+class SmTableNode final : public SmStructureNode
 {
     long mnFormulaBaseline;
 public:
@@ -631,7 +631,7 @@ public:
     void  SetUseExtraSpaces(bool bVal) { mbUseExtraSpaces = bVal; }
     bool  IsUseExtraSpaces() const { return mbUseExtraSpaces; };
 
-    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell) override;
+    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell, int nDepth) override;
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
     void Accept(SmVisitor* pVisitor) override;
 };
@@ -643,7 +643,7 @@ public:
  * an expression node that allows "B + C" to be the denominator of the
  * SmBinVerNode, that the OVER command creates.
  */
-class SmExpressionNode : public SmLineNode
+class SmExpressionNode final : public SmLineNode
 {
 public:
     explicit SmExpressionNode(const SmToken &rNodeToken)
@@ -651,7 +651,7 @@ public:
     {}
 
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
-    void CreateTextFromNode(OUString &rText) override;
+    void CreateTextFromNode(OUStringBuffer &rText) override;
     void Accept(SmVisitor* pVisitor) override;
 };
 
@@ -660,7 +660,7 @@ public:
  *
  * The same as SmBinHorNode except this is for unary operators.
  */
-class SmUnHorNode : public SmStructureNode
+class SmUnHorNode final : public SmStructureNode
 {
 public:
     explicit SmUnHorNode(const SmToken &rNodeToken)
@@ -684,7 +684,7 @@ public:
  * 2: Body<BR>
  * Where argument is optional and may be NULL.
  */
-class SmRootNode : public SmStructureNode
+class SmRootNode final : public SmStructureNode
 {
 public:
     explicit SmRootNode(const SmToken &rNodeToken)
@@ -693,7 +693,7 @@ public:
     }
 
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
-    void CreateTextFromNode(OUString &rText) override;
+    void CreateTextFromNode(OUStringBuffer &rText) override;
     void Accept(SmVisitor* pVisitor) override;
 
     SmNode* Argument();
@@ -716,7 +716,7 @@ public:
  *
  * None of the children may be NULL.
  */
-class SmBinHorNode : public SmStructureNode
+class SmBinHorNode final : public SmStructureNode
 {
 public:
     explicit SmBinHorNode(const SmToken &rNodeToken)
@@ -748,7 +748,7 @@ public:
  * 2: Denominator<BR>
  * None of the children may be NULL.
  */
-class SmBinVerNode : public SmStructureNode
+class SmBinVerNode final : public SmStructureNode
 {
 public:
     explicit SmBinVerNode(const SmToken &rNodeToken)
@@ -759,7 +759,7 @@ public:
     virtual const SmNode * GetLeftMost() const override;
 
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
-    void CreateTextFromNode(OUString &rText) override;
+    void CreateTextFromNode(OUStringBuffer &rText) override;
     void Accept(SmVisitor* pVisitor) override;
 };
 
@@ -774,7 +774,7 @@ public:
  * 2: Line (instance of SmPolyLineNode).<BR>
  * None of the children may be NULL.
  */
-class SmBinDiagonalNode : public SmStructureNode
+class SmBinDiagonalNode final : public SmStructureNode
 {
     bool mbAscending;
 
@@ -836,7 +836,7 @@ enum SmSubSup
  * It is recommended that you access children using GetBody() and
  * GetSubSup().
  */
-class SmSubSupNode : public SmStructureNode
+class SmSubSupNode final : public SmStructureNode
 {
     bool mbUseLimits;
 
@@ -861,7 +861,7 @@ public:
     /** Get super- or subscript
      * @remarks this method may return NULL.
      */
-    SmNode * GetSubSup(SmSubSup eSubSup) { return GetSubNode( sal::static_int_cast< sal_uInt16 >(1 + eSubSup) ); };
+    SmNode * GetSubSup(SmSubSup eSubSup) { return GetSubNode(1 + eSubSup); };
     const SmNode * GetSubSup(SmSubSup eSubSup) const { return const_cast< SmSubSupNode* >( this )->GetSubSup( eSubSup ); }
 
     /** Set the body */
@@ -869,7 +869,7 @@ public:
     void SetSubSup(SmSubSup eSubSup, SmNode* pScript) { SetSubNode( 1 + eSubSup, pScript); }
 
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
-    void CreateTextFromNode(OUString &rText) override;
+    void CreateTextFromNode(OUStringBuffer &rText) override;
     void Accept(SmVisitor* pVisitor) override;
 
 };
@@ -888,7 +888,7 @@ public:
  *
  * Note that child 1 (Body) is usually SmBracebodyNode, but it can also be e.g. SmExpressionNode.
  */
-class SmBraceNode : public SmStructureNode
+class SmBraceNode final : public SmStructureNode
 {
 public:
     explicit SmBraceNode(const SmToken &rNodeToken)
@@ -904,7 +904,7 @@ public:
     const SmMathSymbolNode* ClosingBrace() const;
 
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
-    void CreateTextFromNode(OUString &rText) override;
+    void CreateTextFromNode(OUStringBuffer &rText) override;
     void Accept(SmVisitor* pVisitor) override;
 };
 
@@ -918,7 +918,7 @@ public:
  * In this case SmBracebodyNode will have three children, "[body1]", "|" and
  * [body2].
  */
-class SmBracebodyNode : public SmStructureNode
+class SmBracebodyNode final : public SmStructureNode
 {
     long mnBodyHeight;
 
@@ -947,7 +947,7 @@ public:
  * 2: script<BR>
  * (None of these children are optional, e.g. they must all be not NULL).
  */
-class SmVerticalBraceNode : public SmStructureNode
+class SmVerticalBraceNode final : public SmStructureNode
 {
 public:
     explicit inline SmVerticalBraceNode(const SmToken &rNodeToken);
@@ -980,7 +980,7 @@ inline SmVerticalBraceNode::SmVerticalBraceNode(const SmToken &rNodeToken)
  * None of the children may be NULL.
  *
  */
-class SmOperNode : public SmStructureNode
+class SmOperNode final : public SmStructureNode
 {
 public:
     explicit SmOperNode(const SmToken &rNodeToken)
@@ -1005,7 +1005,7 @@ public:
  *
  * This node has exactly one child at index 0.
  */
-class SmAlignNode : public SmStructureNode
+class SmAlignNode final : public SmStructureNode
 {
 public:
     explicit SmAlignNode(const SmToken &rNodeToken)
@@ -1020,14 +1020,14 @@ public:
 /** Attribute node
  *
  * Used to give an attribute to another node. Used for commands such as:
- * UNDERLINE, OVERLINE, OVERSTRIKE, WIDEVEC, WIDEHAT and WIDETILDE.
+ * UNDERLINE, OVERLINE, OVERSTRIKE, WIDEVEC, WIDEHARPOON, WIDEHAT and WIDETILDE.
  *
  * Children:<BR>
  * 0: Attribute<BR>
  * 1: Body<BR>
  * None of these may be NULL.
  */
-class SmAttributNode : public SmStructureNode
+class SmAttributNode final : public SmStructureNode
 {
 public:
     explicit SmAttributNode(const SmToken &rNodeToken)
@@ -1035,7 +1035,7 @@ public:
     {}
 
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
-    void CreateTextFromNode(OUString &rText) override;
+    void CreateTextFromNode(OUStringBuffer &rText) override;
     void Accept(SmVisitor* pVisitor) override;
 
     SmNode* Attribute();
@@ -1049,7 +1049,7 @@ public:
  *
  * Used to change the font of its children.
  */
-class SmFontNode : public SmStructureNode
+class SmFontNode final : public SmStructureNode
 {
     FontSizeType meSizeType;
     Fraction     maFontSize;
@@ -1066,9 +1066,9 @@ public:
     const Fraction & GetSizeParameter() const {return maFontSize;}
     FontSizeType GetSizeType() const {return meSizeType;}
 
-    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell) override;
+    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell, int nDepth) override;
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
-    void CreateTextFromNode(OUString &rText) override;
+    void CreateTextFromNode(OUStringBuffer &rText) override;
     void Accept(SmVisitor* pVisitor) override;
 };
 
@@ -1078,7 +1078,7 @@ public:
  * Used to implement the MATRIX command, example:
  * "matrix{ 1 # 2 ## 3 # 4}".
  */
-class SmMatrixNode : public SmStructureNode
+class SmMatrixNode final : public SmStructureNode
 {
     sal_uInt16 mnNumRows,
                mnNumCols;
@@ -1098,7 +1098,7 @@ public:
     virtual const SmNode * GetLeftMost() const override;
 
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
-    void CreateTextFromNode(OUString &rText) override;
+    void CreateTextFromNode(OUStringBuffer &rText) override;
     void Accept(SmVisitor* pVisitor) override;
 };
 
@@ -1107,7 +1107,7 @@ public:
  *
  * Used to implement the commands "~" and "`". This node is just a blank space.
  */
-class SmBlankNode : public SmGraphicNode
+class SmBlankNode final : public SmGraphicNode
 {
     sal_uInt16 mnNum;
 
@@ -1118,15 +1118,15 @@ public:
     {
     }
 
-    void         IncreaseBy(const SmToken &rToken);
+    void         IncreaseBy(const SmToken &rToken, sal_uInt32 nMultiplyBy = 1);
     void         Clear() { mnNum = 0; }
     sal_uInt16   GetBlankNum() const { return mnNum; }
     void         SetBlankNum(sal_uInt16 nNumber) { mnNum = nNumber; }
 
-    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell) override;
+    virtual void Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell, int nDepth) override;
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
     void Accept(SmVisitor* pVisitor) override;
-    virtual void CreateTextFromNode(OUString &rText) override;
+    virtual void CreateTextFromNode(OUStringBuffer &rText) override;
 };
 
 

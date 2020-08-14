@@ -17,16 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
-
 #include <uielement/constitemcontainer.hxx>
-#include <uielement/rootitemcontainer.hxx>
 #include <uielement/itemcontainer.hxx>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
-#include <cppuhelper/implbase.hxx>
 #include <comphelper/propertysetinfo.hxx>
 #include <comphelper/servicehelper.hxx>
 
@@ -37,7 +33,6 @@ using namespace com::sun::star::beans;
 using namespace com::sun::star::container;
 
 const int PROPHANDLE_UINAME     = 1;
-const int PROPCOUNT             = 1;
 const char PROPNAME_UINAME[]    = "UIName";
 
 namespace framework
@@ -68,51 +63,51 @@ ConstItemContainer::ConstItemContainer( const Reference< XIndexAccess >& rSource
     {
     }
 
-    if ( rSourceContainer.is() )
+    if ( !rSourceContainer.is() )
+        return;
+
+    try
     {
-        try
+        sal_Int32 nCount = rSourceContainer->getCount();
+        m_aItemVector.reserve(nCount);
+        if ( bFastCopy )
         {
-            sal_Int32 nCount = rSourceContainer->getCount();
-            m_aItemVector.reserve(nCount);
-            if ( bFastCopy )
+            for ( sal_Int32 i = 0; i < nCount; i++ )
             {
-                for ( sal_Int32 i = 0; i < nCount; i++ )
-                {
-                    Sequence< PropertyValue > aPropSeq;
-                    if ( rSourceContainer->getByIndex( i ) >>= aPropSeq )
-                        m_aItemVector.push_back( aPropSeq );
-                }
+                Sequence< PropertyValue > aPropSeq;
+                if ( rSourceContainer->getByIndex( i ) >>= aPropSeq )
+                    m_aItemVector.push_back( aPropSeq );
             }
-            else
+        }
+        else
+        {
+            for ( sal_Int32 i = 0; i < nCount; i++ )
             {
-                for ( sal_Int32 i = 0; i < nCount; i++ )
+                Sequence< PropertyValue > aPropSeq;
+                if ( rSourceContainer->getByIndex( i ) >>= aPropSeq )
                 {
-                    Sequence< PropertyValue > aPropSeq;
-                    if ( rSourceContainer->getByIndex( i ) >>= aPropSeq )
+                    sal_Int32 nContainerIndex = -1;
+                    Reference< XIndexAccess > xIndexAccess;
+                    for ( sal_Int32 j = 0; j < aPropSeq.getLength(); j++ )
                     {
-                        sal_Int32 nContainerIndex = -1;
-                        Reference< XIndexAccess > xIndexAccess;
-                        for ( sal_Int32 j = 0; j < aPropSeq.getLength(); j++ )
+                        if ( aPropSeq[j].Name == "ItemDescriptorContainer" )
                         {
-                            if ( aPropSeq[j].Name == "ItemDescriptorContainer" )
-                            {
-                                aPropSeq[j].Value >>= xIndexAccess;
-                                nContainerIndex = j;
-                                break;
-                            }
+                            aPropSeq[j].Value >>= xIndexAccess;
+                            nContainerIndex = j;
+                            break;
                         }
-
-                        if ( xIndexAccess.is() && nContainerIndex >= 0 )
-                            aPropSeq[nContainerIndex].Value <<= deepCopyContainer( xIndexAccess );
-
-                        m_aItemVector.push_back( aPropSeq );
                     }
+
+                    if ( xIndexAccess.is() && nContainerIndex >= 0 )
+                        aPropSeq[nContainerIndex].Value <<= deepCopyContainer( xIndexAccess );
+
+                    m_aItemVector.push_back( aPropSeq );
                 }
             }
         }
-        catch ( const IndexOutOfBoundsException& )
-        {
-        }
+    }
+    catch ( const IndexOutOfBoundsException& )
+    {
     }
 }
 
@@ -151,7 +146,7 @@ Reference< XIndexAccess > ConstItemContainer::deepCopyContainer( const Reference
     Reference< XIndexAccess > xReturn;
     if ( rSubContainer.is() )
     {
-        ItemContainer*      pSource = ItemContainer::GetImplementation( rSubContainer );
+        ItemContainer*      pSource = comphelper::getUnoTunnelImplementation<ItemContainer>( rSubContainer );
         ConstItemContainer* pSubContainer( nullptr );
         if ( pSource )
             pSubContainer = new ConstItemContainer( *pSource );
@@ -166,7 +161,7 @@ Reference< XIndexAccess > ConstItemContainer::deepCopyContainer( const Reference
 // XUnoTunnel
 sal_Int64 ConstItemContainer::getSomething( const css::uno::Sequence< sal_Int8 >& rIdentifier )
 {
-    if( ( rIdentifier.getLength() == 16 ) && ( 0 == memcmp( ConstItemContainer::GetUnoTunnelId().getConstArray(), rIdentifier.getConstArray(), 16 ) ) )
+    if( isUnoTunnelId<ConstItemContainer>(rIdentifier) )
     {
         return reinterpret_cast< sal_Int64 >( this );
     }
@@ -178,16 +173,9 @@ namespace
     class theConstItemContainerUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theConstItemContainerUnoTunnelId > {};
 }
 
-const Sequence< sal_Int8 >& ConstItemContainer::GetUnoTunnelId() throw()
+const Sequence< sal_Int8 >& ConstItemContainer::getUnoTunnelId() throw()
 {
     return theConstItemContainerUnoTunnelId::get().getSeq();
-}
-
-ConstItemContainer* ConstItemContainer::GetImplementation( const css::uno::Reference< css::uno::XInterface >& rxIFace ) throw()
-{
-    css::uno::Reference< css::lang::XUnoTunnel > xUT( rxIFace, css::uno::UNO_QUERY );
-    return xUT.is() ? reinterpret_cast< ConstItemContainer* >(sal::static_int_cast< sal_IntPtr >(
-                          xUT->getSomething( ConstItemContainer::GetUnoTunnelId() ))) : nullptr;
 }
 
 // XElementAccess
@@ -204,10 +192,9 @@ sal_Int32 SAL_CALL ConstItemContainer::getCount()
 
 Any SAL_CALL ConstItemContainer::getByIndex( sal_Int32 Index )
 {
-    if ( sal_Int32( m_aItemVector.size()) > Index )
-        return makeAny( m_aItemVector[Index] );
-    else
+    if ( sal_Int32( m_aItemVector.size()) <= Index )
         throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
+    return makeAny( m_aItemVector[Index] );
 }
 
 // XPropertySet
@@ -229,7 +216,7 @@ Any SAL_CALL ConstItemContainer::getPropertyValue( const OUString& PropertyName 
     if ( PropertyName == PROPNAME_UINAME )
         return makeAny( m_aUIName );
 
-    throw UnknownPropertyException();
+    throw UnknownPropertyException(PropertyName);
 }
 
 void SAL_CALL ConstItemContainer::addPropertyChangeListener( const OUString&, const css::uno::Reference< css::beans::XPropertyChangeListener >& )
@@ -261,10 +248,10 @@ Any SAL_CALL ConstItemContainer::getFastPropertyValue( sal_Int32 nHandle )
     if ( nHandle == PROPHANDLE_UINAME )
         return makeAny( m_aUIName );
 
-    throw UnknownPropertyException();
+    throw UnknownPropertyException(OUString::number(nHandle));
 }
 
-::cppu::IPropertyArrayHelper& SAL_CALL ConstItemContainer::getInfoHelper()
+::cppu::IPropertyArrayHelper& ConstItemContainer::getInfoHelper()
 {
     // Define static member to give structure of properties to baseclass "OPropertySetHelper".
     // "impl_getStaticPropertyDescriptor" is a non exported and static function, who will define a static propertytable.
@@ -274,25 +261,21 @@ Any SAL_CALL ConstItemContainer::getFastPropertyValue( sal_Int32 nHandle )
     return ourInfoHelper;
 }
 
-const css::uno::Sequence< css::beans::Property > ConstItemContainer::impl_getStaticPropertyDescriptor()
+css::uno::Sequence< css::beans::Property > ConstItemContainer::impl_getStaticPropertyDescriptor()
 {
     // Create a property array to initialize sequence!
-    // Table of all predefined properties of this class. Its used from OPropertySetHelper-class!
+    // Table of all predefined properties of this class. It's used from OPropertySetHelper-class!
     // Don't forget to change the defines (see begin of this file), if you add, change or delete a property in this list!!!
     // It's necessary for methods of OPropertySetHelper.
     // ATTENTION:
     //      YOU MUST SORT FOLLOW TABLE BY NAME ALPHABETICAL !!!
 
-    const css::beans::Property pProperties[] =
+    return
     {
         css::beans::Property( PROPNAME_UINAME, PROPHANDLE_UINAME ,
                               cppu::UnoType<OUString>::get(),
                               css::beans::PropertyAttribute::TRANSIENT | css::beans::PropertyAttribute::READONLY  )
     };
-    // Use it to initialize sequence!
-    const css::uno::Sequence< css::beans::Property > lPropertyDescriptor( pProperties, PROPCOUNT );
-    // Return "PropertyDescriptor"
-    return lPropertyDescriptor;
 }
 
 } // namespace framework

@@ -17,10 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fmtextcontrolfeature.hxx"
-#include "fmtextcontrolshell.hxx"
+#include <fmtextcontrolfeature.hxx>
+#include <fmtextcontrolshell.hxx>
 
 #include <osl/diagnose.h>
+#include <tools/diagnose_ex.h>
 
 namespace svx
 {
@@ -50,7 +51,7 @@ namespace svx
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "FmTextControlFeature::FmTextControlFeature: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "svx", "FmTextControlFeature::FmTextControlFeature" );
         }
         osl_atomic_decrement( &m_refCount );
     }
@@ -76,7 +77,7 @@ namespace svx
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "FmTextControlFeature::dispatch: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "svx", "FmTextControlFeature::dispatch" );
         }
     }
 
@@ -106,7 +107,7 @@ namespace svx
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "FmTextControlFeature::dispose: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "svx", "FmTextControlFeature::dispose" );
         }
     }
 

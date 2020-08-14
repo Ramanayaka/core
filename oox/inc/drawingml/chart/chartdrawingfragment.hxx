@@ -23,9 +23,7 @@
 #include <oox/core/fragmenthandler2.hxx>
 #include <oox/drawingml/shape.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 
 /** Relative shape position in a chart object. */
@@ -57,7 +55,7 @@ public:
 
     /** Imports the absolute anchor size from the cdr:ext element. */
     void                importExt( const AttributeList& rAttribs );
-    /** Sets an the relative anchor position from the cdr:from or cdr:to element. */
+    /** Sets the relative anchor position from the cdr:from or cdr:to element. */
     void                setPos( sal_Int32 nElement, sal_Int32 nParentContext, const OUString& rValue );
 
     /** Calculates the resulting shape anchor in EMUs. */
@@ -72,7 +70,7 @@ private:
 
 /** Handler for a chart drawing fragment (c:userShapes root element).
  */
-class ChartDrawingFragment : public ::oox::core::FragmentHandler2
+class ChartDrawingFragment final : public ::oox::core::FragmentHandler2
 {
 public:
     explicit            ChartDrawingFragment(
@@ -98,9 +96,7 @@ private:
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

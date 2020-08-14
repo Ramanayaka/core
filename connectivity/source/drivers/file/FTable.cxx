@@ -18,13 +18,12 @@
  */
 
 
-#include "file/FTable.hxx"
-#include "file/FColumns.hxx"
+#include <file/FTable.hxx>
+#include <file/FColumns.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <unotools/ucbstreamhelper.hxx>
 
 using namespace connectivity;
@@ -38,9 +37,7 @@ using namespace ::com::sun::star::container;
 OFileTable::OFileTable(sdbcx::OCollection* _pTables,OConnection* _pConnection)
 : OTable_TYPEDEF(_pTables,_pConnection->getMetaData()->supportsMixedCaseQuotedIdentifiers())
                 ,m_pConnection(_pConnection)
-                ,m_pFileStream(nullptr)
                 ,m_nFilePos(0)
-                ,m_pBuffer(nullptr)
                 ,m_nBufferSize(0)
                 ,m_bWriteable(false)
 {
@@ -61,9 +58,7 @@ OFileTable::OFileTable( sdbcx::OCollection* _pTables,OConnection* _pConnection,
                      SchemaName,
                      CatalogName)
     , m_pConnection(_pConnection)
-    , m_pFileStream(nullptr)
     , m_nFilePos(0)
-    , m_pBuffer(nullptr)
     , m_nBufferSize(0)
     , m_bWriteable(false)
 {
@@ -78,7 +73,7 @@ OFileTable::~OFileTable( )
 
 void OFileTable::refreshColumns()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
     Reference< XResultSet > xResult = m_pConnection->getMetaData()->getColumns(Any(),
                                                                                m_SchemaName,m_Name, "%");
 
@@ -89,10 +84,10 @@ void OFileTable::refreshColumns()
             aVector.push_back(xRow->getString(4));
     }
 
-    if(m_pColumns)
-        m_pColumns->reFill(aVector);
+    if(m_xColumns)
+        m_xColumns->reFill(aVector);
     else
-        m_pColumns  = new OColumns(this,m_aMutex,aVector);
+        m_xColumns = new OColumns(this,m_aMutex,aVector);
 }
 
 void OFileTable::refreshKeys()
@@ -124,26 +119,18 @@ void SAL_CALL OFileTable::disposing()
     FileClose();
 }
 
-Sequence< sal_Int8 > OFileTable::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OFileTable::getUnoTunnelId()
 {
-    static ::cppu::OImplementationId * pId = nullptr;
-    if (! pId)
-    {
-        ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-        if (! pId)
-        {
-            static ::cppu::OImplementationId aId;
-            pId = &aId;
-        }
-    }
-    return pId->getImplementationId();
+    static ::cppu::OImplementationId s_Id;
+
+    return s_Id.getImplementationId();
 }
 
 // css::lang::XUnoTunnel
 
 sal_Int64 OFileTable::getSomething( const Sequence< sal_Int8 > & rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return isUnoTunnelId<OFileTable>(rId)
                 ? reinterpret_cast< sal_Int64 >( this )
                 : OTable_TYPEDEF::getSomething(rId);
 }
@@ -155,14 +142,8 @@ void OFileTable::FileClose()
     if (m_pFileStream && m_pFileStream->IsWritable())
         m_pFileStream->Flush();
 
-    delete m_pFileStream;
-    m_pFileStream = nullptr;
-
-    if (m_pBuffer)
-    {
-        delete[] m_pBuffer;
-        m_pBuffer = nullptr;
-    }
+    m_pFileStream.reset();
+    m_pBuffer.reset();
 }
 
 bool OFileTable::InsertRow(OValueRefVector& /*rRow*/, const css::uno::Reference< css::container::XIndexAccess>& /*_xCols*/)
@@ -191,13 +172,12 @@ void OFileTable::dropColumn(sal_Int32 /*_nPos*/)
 }
 
 
-SvStream* OFileTable::createStream_simpleError( const OUString& _rFileName, StreamMode _eOpenMode)
+std::unique_ptr<SvStream> OFileTable::createStream_simpleError( const OUString& _rFileName, StreamMode _eOpenMode)
 {
-    SvStream* pReturn = ::utl::UcbStreamHelper::CreateStream( _rFileName, _eOpenMode, bool(_eOpenMode & StreamMode::NOCREATE));
+    std::unique_ptr<SvStream> pReturn(::utl::UcbStreamHelper::CreateStream( _rFileName, _eOpenMode, bool(_eOpenMode & StreamMode::NOCREATE)));
     if (pReturn && (ERRCODE_NONE != pReturn->GetErrorCode()))
     {
-        delete pReturn;
-        pReturn = nullptr;
+        pReturn.reset();
     }
     return pReturn;
 }

@@ -25,6 +25,8 @@
 #include <com/sun/star/frame/FeatureStateEvent.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <cppuhelper/implbase.hxx>
+#include <tools/debug.hxx>
+#include <rtl/ref.hxx>
 
 #include <sfx2/bindings.hxx>
 
@@ -47,18 +49,19 @@ public:
                                 const css::util::URL& rURL,
                                 SfxStateCache* pStateCache, const SfxSlot* pSlot );
 
-    virtual void SAL_CALL           statusChanged( const css::frame::FeatureStateEvent& Event ) override;
-    virtual void SAL_CALL           disposing( const css::lang::EventObject& Source ) override;
+    virtual void SAL_CALL   statusChanged( const css::frame::FeatureStateEvent& Event ) override;
+    virtual void SAL_CALL   disposing( const css::lang::EventObject& Source ) override;
 
-    void                    Release();
     const css::frame::FeatureStateEvent& GetStatus() const { return aStatus;}
     sal_Int16               Dispatch( const css::uno::Sequence < css::beans::PropertyValue >& aProps, bool bForceSynchron );
+    void                    Release();
 };
 
 class SfxStateCache
 {
 friend class BindDispatch_Impl;
-    BindDispatch_Impl*      pDispatch;
+    rtl::Reference<BindDispatch_Impl>
+                            mxDispatch;
     sal_uInt16              nId;           // Slot-Id
     SfxControllerItem*      pInternalController;
     css::uno::Reference < css::frame::XDispatch > xMyDispatch;
@@ -94,6 +97,7 @@ public:
     void                    SetCachedState(bool bAlways);
     void                    Invalidate( bool bWithSlot );
     void                    SetVisibleState( bool bShow );
+    void                    GetState( boost::property_tree::ptree& );
 
     SfxControllerItem*      ChangeItemLink( SfxControllerItem* pNewBinding );
     SfxControllerItem*      GetItemLink() const;
@@ -117,7 +121,7 @@ inline void SfxStateCache::ClearCache()
 }
 
 
-// registeres a item representing this function
+// registers an item representing this function
 
 inline SfxControllerItem* SfxStateCache::ChangeItemLink( SfxControllerItem* pNewBinding )
 {

@@ -22,10 +22,8 @@
 
 #include <xmloff/xmlexp.hxx>
 
-#include <set>
 
-
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XNameAccess; }
     namespace frame { class XModel; }
     namespace lang { class XMultiServiceFactory; }
@@ -33,8 +31,8 @@ namespace com { namespace sun { namespace star {
     namespace uno { template<class X> class Sequence; }
     namespace uno { class XInterface; }
     namespace uno { class Exception; }
-    namespace xml { namespace sax { class XDocumentHandler; } }
-} } }
+    namespace xml::sax { class XDocumentHandler; }
+}
 
 
 /**
@@ -60,14 +58,14 @@ public:
     virtual void SAL_CALL initialize(
         const css::uno::Sequence<css::uno::Any> & rArguments ) override;
 
-protected:
+private:
 
     /// export the events off all autotexts
     virtual ErrCode exportDoc(
         enum ::xmloff::token::XMLTokenEnum eClass = xmloff::token::XML_TOKEN_INVALID ) override;
 
     /// does the document have any events ?
-    bool hasEvents();
+    bool hasEvents() const;
 
     /// export the events element
     void exportEvents();

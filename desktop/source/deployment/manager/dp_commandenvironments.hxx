@@ -21,7 +21,11 @@
 #define INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_MANAGER_DP_COMMANDENVIRONMENTS_HXX
 
 #include <cppuhelper/implbase.hxx>
-#include <ucbhelper/content.hxx>
+#include <com/sun/star/task/XInteractionHandler.hpp>
+#include <com/sun/star/task/XInteractionRequest.hpp>
+#include <com/sun/star/ucb/XProgressHandler.hpp>
+#include <com/sun/star/ucb/XCommandEnvironment.hpp>
+
 
 namespace dp_manager {
 
@@ -34,10 +38,9 @@ class BaseCommandEnv
                                       css::task::XInteractionHandler,
                                       css::ucb::XProgressHandler >
 {
-protected:
     css::uno::Reference< css::task::XInteractionHandler> m_forwardHandler;
-
-    void handle_(bool approve, bool abort,
+protected:
+    void handle_(bool approve,
                  css::uno::Reference< css::task::XInteractionRequest> const & xRequest );
 public:
     virtual ~BaseCommandEnv() override;

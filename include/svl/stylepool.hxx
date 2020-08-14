@@ -31,7 +31,7 @@ class SVL_DLLPUBLIC StylePool final
 private:
     std::unique_ptr<StylePoolImpl> pImpl;
 public:
-    explicit StylePool( SfxItemSet* pIgnorableItems = nullptr );
+    explicit StylePool( SfxItemSet const * pIgnorableItems = nullptr );
 
     /** Insert a SfxItemSet into the style pool.
 
@@ -40,9 +40,13 @@ public:
         @param SfxItemSet
         the SfxItemSet to insert
 
+        @param pParentName
+        Name of the parent of rSet. If set, createIterator() can be more deterministic by iterating
+        over item sets ordered by parent names.
+
         @return a shared pointer to the SfxItemSet
     */
-    std::shared_ptr<SfxItemSet> insertItemSet( const SfxItemSet& rSet );
+    std::shared_ptr<SfxItemSet> insertItemSet( const SfxItemSet& rSet, const OUString* pParentName = nullptr );
 
     /** Create an iterator
 
@@ -62,7 +66,7 @@ public:
         @postcond the iterator "points before the first" SfxItemSet of the pool.
         The first StylePoolIterator::getNext() call will deliver the first SfxItemSet.
     */
-    IStylePoolIteratorAccess* createIterator( const bool bSkipUnusedItemSets = false,
+    std::unique_ptr<IStylePoolIteratorAccess> createIterator( const bool bSkipUnusedItemSets = false,
                                                       const bool bSkipIgnorableItems = false );
 
     ~StylePool();

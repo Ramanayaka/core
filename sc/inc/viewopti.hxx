@@ -22,7 +22,6 @@
 
 #include <svx/optgrid.hxx>
 
-#include <svx/svxids.hrc>
 #include "scdllapi.h"
 #include "optutil.hxx"
 #include "global.hxx"
@@ -45,7 +44,8 @@ enum ScViewOption
     VOPT_HELPLINES,
     VOPT_ANCHOR,
     VOPT_PAGEBREAKS,
-    VOPT_CLIPMARKS
+    VOPT_SUMMARY,
+    VOPT_CLIPMARKS,
 };
 
 enum ScVObjType
@@ -55,8 +55,8 @@ enum ScVObjType
     VOBJ_TYPE_DRAW
 };
 
-#define MAX_OPT             (sal_uInt16)VOPT_CLIPMARKS+1
-#define MAX_TYPE            (sal_uInt16)VOBJ_TYPE_DRAW+1
+#define MAX_OPT             sal_uInt16(VOPT_CLIPMARKS)+1
+#define MAX_TYPE            sal_uInt16(VOBJ_TYPE_DRAW)+1
 
 #define SC_STD_GRIDCOLOR    COL_LIGHTGRAY
 
@@ -69,7 +69,6 @@ public:
                 ScGridOptions( const SvxOptionsGrid& rOpt ) : SvxOptionsGrid( rOpt ) {}
 
     void                    SetDefaults();
-    ScGridOptions&          operator=  ( const ScGridOptions& rCpy );
     bool                    operator== ( const ScGridOptions& rOpt ) const;
     bool                    operator!= ( const ScGridOptions& rOpt ) const { return !(operator==(rOpt)); }
 };
@@ -85,8 +84,8 @@ public:
 
     void                    SetDefaults();
 
-    void                    SetOption( ScViewOption eOpt, bool bNew = true )    { aOptArr[eOpt] = bNew; }
-    bool                    GetOption( ScViewOption eOpt ) const                { return aOptArr[eOpt]; }
+    void                    SetOption( ScViewOption eOpt, bool bNew )    { aOptArr[eOpt] = bNew; }
+    bool                    GetOption( ScViewOption eOpt ) const         { return aOptArr[eOpt]; }
 
     void                    SetObjMode( ScVObjType eObj, ScVObjMode eMode ) { aModeArr[eObj] = eMode; }
     ScVObjMode              GetObjMode( ScVObjType eObj ) const             { return aModeArr[eObj]; }
@@ -96,7 +95,7 @@ public:
 
     const ScGridOptions&    GetGridOptions() const                      { return aGridOpt; }
     void                    SetGridOptions( const ScGridOptions& rNew ) { aGridOpt = rNew; }
-    SvxGridItem*            CreateGridItem() const;
+    std::unique_ptr<SvxGridItem> CreateGridItem() const;
 
     ScViewOptions&          operator=  ( const ScViewOptions& rCpy );
     bool                    operator== ( const ScViewOptions& rOpt ) const;
@@ -112,15 +111,19 @@ private:
 
 // Item for the options dialog - View
 
-class SC_DLLPUBLIC ScTpViewItem : public SfxPoolItem
+class SC_DLLPUBLIC ScTpViewItem final : public SfxPoolItem
 {
 public:
                 ScTpViewItem( const ScViewOptions& rOpt );
-                ScTpViewItem( const ScTpViewItem&  rItem );
                 virtual ~ScTpViewItem() override;
 
+    ScTpViewItem(ScTpViewItem const &) = default;
+    ScTpViewItem(ScTpViewItem &&) = default;
+    ScTpViewItem & operator =(ScTpViewItem const &) = delete; // due to SfxPoolItem
+    ScTpViewItem & operator =(ScTpViewItem &&) = delete; // due to SfxPoolItem
+
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScTpViewItem*   Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const ScViewOptions&    GetViewOptions() const { return theOptions; }
 

@@ -29,13 +29,13 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.Dimension;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
 import java.net.URL;
-import java.net.URLClassLoader;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -49,7 +49,7 @@ import javax.swing.JPanel;
 import javax.swing.JToolBar;
 import javax.swing.BorderFactory;
 
-public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
+public class ScriptEditorForBeanShell extends ScriptEditor implements ActionListener {
 
     private JFrame frame;
     private String filename;
@@ -57,9 +57,9 @@ public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
     private ScriptSourceModel model;
     private ScriptSourceView view;
 
-    private XScriptContext context;
     private URL scriptURL = null;
     private ClassLoader  cl = null;
+    private JButton saveBtn;
 
     // global ScriptEditorForBeanShell returned for getEditor() calls
     private static ScriptEditorForBeanShell theScriptEditorForBeanShell;
@@ -170,6 +170,11 @@ public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
      *
      */
     public Object execute() throws Exception {
+        if (!isMacroExectionEnabled()) {
+            showErrorMessage("Macro Execution has been disabled.");
+            return null;
+        }
+
         frame.toFront();
         return model.execute(context, cl);
     }
@@ -185,14 +190,14 @@ public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
     public void edit(final XScriptContext context, ScriptMetaData entry) {
         if (entry != null) {
             try {
-                URLClassLoader cl = null;
+                ClassLoader cl = null;
 
                 try {
                     cl = ClassLoaderFactory.getURLClassLoader(entry);
                 } catch (Exception ignore) { // TODO re-examine error handling
                 }
 
-                final URLClassLoader theCl = cl;
+                final ClassLoader theCl = cl;
                 final URL url = entry.getSourceURL();
                 SwingInvocation.invoke(
                 new Runnable() {
@@ -223,10 +228,10 @@ public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
 
     private ScriptEditorForBeanShell(XScriptContext context, ClassLoader cl,
                                      URL url) {
-        this.context   = context;
+        setContext(context);
         this.scriptURL = url;
         this.model     = new ScriptSourceModel(url);
-        this.filename  = url.getFile();
+        this.filename  = ScriptMetaData.getFileName(url);
         this.cl = cl;
 
         try {
@@ -252,12 +257,16 @@ public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
 
         this.model.setView(this.view);
         initUI();
+        this.view.addListener(new UnsavedChangesListener() {
+            @Override
+            public void onUnsavedChanges(boolean isUnsaved) {
+                if(filename != null) {
+                    // enable or disable save button depending on unsaved changes
+                    saveBtn.setEnabled(isUnsaved);
+                }
+            }
+        });
         frame.setVisible(true);
-    }
-
-    private void showErrorMessage(String message) {
-        JOptionPane.showMessageDialog(frame, message,
-                                      "Error", JOptionPane.ERROR_MESSAGE);
     }
 
     private void initUI() {
@@ -273,7 +282,7 @@ public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
         }
         );
 
-        String[] labels = {"Run", "Clear", "Save", "Close","Undo","Redo"};
+        String[] labels = {"Run", "Clear", "Save","Undo","Redo"};
         JToolBar toolbar = new JToolBar();
         toolbar.setRollover(true);
         for (String label : labels) {
@@ -282,8 +291,11 @@ public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
             b.addActionListener(this);
             toolbar.add(b);
             toolbar.addSeparator();
-            if (label.equals("Save") && filename == null) {
+
+            // disable save button on start
+            if (label.equals("Save")) {
                 b.setEnabled(false);
+                saveBtn = b;
             }
         }
 
@@ -292,6 +304,7 @@ public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
         frame.pack();
         frame.setSize(590, 480);
         frame.setLocation(300, 200);
+        frame.setMinimumSize(new Dimension(500, 300));
     }
 
     private void doClose() {
@@ -372,10 +385,8 @@ public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
             try {
                 execute();
             } catch (Exception invokeException) {
-                showErrorMessage(invokeException.getMessage());
+                showErrorMessage(invokeException.toString());
             }
-        } else if (actionCommand.equals("Close")) {
-            doClose();
         } else if (actionCommand.equals("Save")) {
             saveTextArea();
         } else if (actionCommand.equals("Clear")) {

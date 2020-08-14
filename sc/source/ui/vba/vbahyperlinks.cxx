@@ -22,7 +22,7 @@
 #include <vector>
 #include <cppuhelper/implbase.hxx>
 #include <ooo/vba/office/MsoHyperlinkType.hpp>
-#include "rangelst.hxx"
+#include <rangelst.hxx>
 #include "vbahyperlink.hxx"
 #include "vbarange.hxx"
 
@@ -42,7 +42,7 @@ bool lclContains( const ScRangeList& rScOuter, const uno::Reference< excel::XRan
         throw uno::RuntimeException("Empty range objects" );
 
     for( size_t nIndex = 0, nCount = rScInner.size(); nIndex < nCount; ++nIndex )
-        if( !rScOuter.In( *rScInner[ nIndex ] ) )
+        if( !rScOuter.In( rScInner[ nIndex ] ) )
             return false;
     return true;
 }
@@ -65,11 +65,11 @@ EqualAnchorFunctor::EqualAnchorFunctor( const uno::Reference< excel::XHyperlink 
     switch( mnType )
     {
         case office::MsoHyperlinkType::msoHyperlinkRange:
-            mxAnchorRange.set( rxHlink->getRange(), uno::UNO_QUERY_THROW );
+            mxAnchorRange.set( rxHlink->getRange(), uno::UNO_SET_THROW );
         break;
         case office::MsoHyperlinkType::msoHyperlinkShape:
         case office::MsoHyperlinkType::msoHyperlinkInlineShape:
-            mxAnchorShape.set( rxHlink->getShape(), uno::UNO_QUERY_THROW );
+            mxAnchorShape.set( rxHlink->getShape(), uno::UNO_SET_THROW );
         break;
         default:
             throw uno::RuntimeException();
@@ -86,15 +86,15 @@ bool EqualAnchorFunctor::operator()( const uno::Reference< excel::XHyperlink >& 
     {
         case office::MsoHyperlinkType::msoHyperlinkRange:
         {
-            uno::Reference< excel::XRange > xAnchorRange( rxHlink->getRange(), uno::UNO_QUERY_THROW );
+            uno::Reference< excel::XRange > xAnchorRange( rxHlink->getRange(), uno::UNO_SET_THROW );
             const ScRangeList& rScRanges1 = ScVbaRange::getScRangeList( xAnchorRange );
             const ScRangeList& rScRanges2 = ScVbaRange::getScRangeList( mxAnchorRange );
-            return (rScRanges1.size() == 1) && (rScRanges2.size() == 1) && (*rScRanges1[ 0 ] == *rScRanges2[ 0 ]);
+            return (rScRanges1.size() == 1) && (rScRanges2.size() == 1) && (rScRanges1[ 0 ] == rScRanges2[ 0 ]);
         }
         case office::MsoHyperlinkType::msoHyperlinkShape:
         case office::MsoHyperlinkType::msoHyperlinkInlineShape:
         {
-            uno::Reference< msforms::XShape > xAnchorShape( rxHlink->getShape(), uno::UNO_QUERY_THROW );
+            uno::Reference< msforms::XShape > xAnchorShape( rxHlink->getShape(), uno::UNO_SET_THROW );
             return xAnchorShape.get() == mxAnchorShape.get();
         }
         default:
@@ -145,7 +145,7 @@ ScVbaHlinkContainer::ScVbaHlinkContainer( const ScVbaHlinkContainerRef& rxSheetC
     for( sal_Int32 nIndex = 0, nCount = rxSheetContainer->getCount(); nIndex < nCount; ++nIndex )
     {
         uno::Reference< excel::XHyperlink > xHlink( rxSheetContainer->getByIndex( nIndex ), uno::UNO_QUERY_THROW );
-        uno::Reference< excel::XRange > xHlinkRange( xHlink->getRange(), uno::UNO_QUERY_THROW );
+        uno::Reference< excel::XRange > xHlinkRange( xHlink->getRange(), uno::UNO_SET_THROW );
         if( lclContains( rScRanges, xHlinkRange ) )
             maHlinks.push_back( xHlink );
     }

@@ -21,29 +21,27 @@
 #include <com/sun/star/io/XStream.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/embed/XTransactedObject.hpp>
-#include <com/sun/star/embed/XEmbedObjectCreator.hpp>
-#include <com/sun/star/embed/XEmbedObjectFactory.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/embed/XEmbedPersist.hpp>
-#include <com/sun/star/embed/EntryInitModes.hpp>
 #include <com/sun/star/embed/EmbedStates.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <sot/storage.hxx>
 #include <tools/debug.hxx>
+#include <sal/log.hxx>
 #include <unotools/streamwrap.hxx>
 #include <unotools/tempfile.hxx>
 
 #include <svtools/embedhlp.hxx>
 #include <unotools/ucbstreamhelper.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <comphelper/embeddedobjectcontainer.hxx>
 
-#include <comphelper/classids.hxx>
+#include <comphelper/fileformat.h>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
-#include "svx/xmleohlp.hxx"
+#include <svx/xmleohlp.hxx>
 #include <map>
 #include <memory>
 
@@ -60,7 +58,7 @@ using namespace ::com::sun::star::lang;
 #define XML_CONTAINERSTORAGE_NAME_60        "Pictures"
 #define XML_CONTAINERSTORAGE_NAME       "ObjectReplacements"
 #define XML_EMBEDDEDOBJECT_URL_BASE     "vnd.sun.star.EmbeddedObject:"
-#define XML_EMBEDDEDOBJECTGRAPHIC_URL_BASE      "vnd.sun.star.GraphicObject:"
+#define XML_EMBEDDEDOBJECTGRAPHIC_URL_BASE "vnd.sun.star.GraphicObject:"
 
 
 class OutputStorageWrapper_Impl : public ::cppu::WeakImplHelper<XOutputStream>
@@ -118,51 +116,33 @@ void SAL_CALL OutputStorageWrapper_Impl::closeOutput()
     bStreamClosed = true;
 }
 
+const OUStringLiteral gaReplacementGraphicsContainerStorageName( XML_CONTAINERSTORAGE_NAME );
+const OUStringLiteral gaReplacementGraphicsContainerStorageName60( XML_CONTAINERSTORAGE_NAME_60 );
+
 SvXMLEmbeddedObjectHelper::SvXMLEmbeddedObjectHelper() :
     WeakComponentImplHelper< XEmbeddedObjectResolver, XNameAccess >( maMutex ),
-    maReplacementGraphicsContainerStorageName( XML_CONTAINERSTORAGE_NAME ),
-    maReplacementGraphicsContainerStorageName60( XML_CONTAINERSTORAGE_NAME_60 ),
     mpDocPersist( nullptr ),
-    meCreateMode( SvXMLEmbeddedObjectHelperMode::Read ),
-    mpStreamMap( nullptr )
+    meCreateMode( SvXMLEmbeddedObjectHelperMode::Read )
 {
 }
 
 SvXMLEmbeddedObjectHelper::SvXMLEmbeddedObjectHelper( ::comphelper::IEmbeddedHelper& rDocPersist, SvXMLEmbeddedObjectHelperMode eCreateMode ) :
     WeakComponentImplHelper< XEmbeddedObjectResolver, XNameAccess >( maMutex ),
-    maReplacementGraphicsContainerStorageName( XML_CONTAINERSTORAGE_NAME ),
-    maReplacementGraphicsContainerStorageName60( XML_CONTAINERSTORAGE_NAME_60 ),
     mpDocPersist( nullptr ),
-    meCreateMode( SvXMLEmbeddedObjectHelperMode::Read ),
-    mpStreamMap( nullptr )
+    meCreateMode( SvXMLEmbeddedObjectHelperMode::Read )
 {
     Init( nullptr, rDocPersist, eCreateMode );
 }
 
 SvXMLEmbeddedObjectHelper::~SvXMLEmbeddedObjectHelper()
 {
-    if( mpStreamMap )
-    {
-        SvXMLEmbeddedObjectHelper_Impl::iterator aIter = mpStreamMap->begin();
-        SvXMLEmbeddedObjectHelper_Impl::iterator aEnd = mpStreamMap->end();
-        for( ; aIter != aEnd; ++aIter )
-        {
-            if( aIter->second )
-            {
-                aIter->second->release();
-                aIter->second = nullptr;
-            }
-        }
-        delete mpStreamMap;
-    }
 }
 
 void SAL_CALL SvXMLEmbeddedObjectHelper::disposing()
 {
     if( mxTempStorage.is() )
     {
-        Reference < XComponent > xComp( mxTempStorage, UNO_QUERY );
-        xComp->dispose();
+        mxTempStorage->dispose();
     }
 }
 
@@ -294,8 +274,8 @@ bool SvXMLEmbeddedObjectHelper::ImplGetStorageNames(
             bool bOASIS = mxRootStorage.is() &&
                 ( SotStorage::GetVersion( mxRootStorage ) > SOFFICE_FILEFORMAT_60 );
             rContainerStorageName = bOASIS
-                    ? maReplacementGraphicsContainerStorageName
-                    : maReplacementGraphicsContainerStorageName60;
+                    ? gaReplacementGraphicsContainerStorageName
+                    : gaReplacementGraphicsContainerStorageName60;
 
             if( pGraphicRepl )
                 *pGraphicRepl = true;
@@ -447,13 +427,13 @@ OUString SvXMLEmbeddedObjectHelper::ImplInsertEmbeddedObjectURL(
     if( SvXMLEmbeddedObjectHelperMode::Read == meCreateMode )
     {
         OutputStorageWrapper_Impl *pOut = nullptr;
-        SvXMLEmbeddedObjectHelper_Impl::iterator aIter;
+        std::map< OUString, rtl::Reference<OutputStorageWrapper_Impl> >::iterator aIter;
 
         if( mpStreamMap )
         {
             aIter = mpStreamMap->find( rURLStr );
-            if( aIter != mpStreamMap->end() && aIter->second )
-                pOut = aIter->second;
+            if( aIter != mpStreamMap->end() && aIter->second.is() )
+                pOut = aIter->second.get();
         }
 
         SvGlobalName aClassId, *pClassId = nullptr;
@@ -465,13 +445,11 @@ OUString SvXMLEmbeddedObjectHelper::ImplInsertEmbeddedObjectURL(
         }
 
         ImplReadObject( aContainerStorageName, aObjectStorageName, pClassId, pOut ? pOut->GetStream() : nullptr );
-        sRetURL = XML_EMBEDDEDOBJECT_URL_BASE;
-        sRetURL += aObjectStorageName;
+        sRetURL = XML_EMBEDDEDOBJECT_URL_BASE + aObjectStorageName;
 
         if( pOut )
         {
             mpStreamMap->erase( aIter );
-            pOut->release();
         }
     }
     else
@@ -480,8 +458,7 @@ OUString SvXMLEmbeddedObjectHelper::ImplInsertEmbeddedObjectURL(
         sRetURL = "./";
         if( !aContainerStorageName.isEmpty() )
         {
-            sRetURL += aContainerStorageName;
-            sRetURL +=  "/";
+            sRetURL += aContainerStorageName + "/";
         }
         sRetURL += aObjectStorageName;
     }
@@ -543,42 +520,29 @@ void SvXMLEmbeddedObjectHelper::Init(
     meCreateMode = eCreateMode;
 }
 
-SvXMLEmbeddedObjectHelper* SvXMLEmbeddedObjectHelper::Create(
+rtl::Reference<SvXMLEmbeddedObjectHelper> SvXMLEmbeddedObjectHelper::Create(
         const uno::Reference < embed::XStorage >& rRootStorage,
         ::comphelper::IEmbeddedHelper& rDocPersist,
         SvXMLEmbeddedObjectHelperMode eCreateMode )
 {
-    SvXMLEmbeddedObjectHelper* pThis = new SvXMLEmbeddedObjectHelper;
+    rtl::Reference<SvXMLEmbeddedObjectHelper> pThis(new SvXMLEmbeddedObjectHelper);
 
-    pThis->acquire();
     pThis->Init( rRootStorage, rDocPersist, eCreateMode );
 
     return pThis;
 }
 
-SvXMLEmbeddedObjectHelper* SvXMLEmbeddedObjectHelper::Create(
+rtl::Reference<SvXMLEmbeddedObjectHelper> SvXMLEmbeddedObjectHelper::Create(
         ::comphelper::IEmbeddedHelper& rDocPersist,
         SvXMLEmbeddedObjectHelperMode eCreateMode )
 {
-    SvXMLEmbeddedObjectHelper* pThis = new SvXMLEmbeddedObjectHelper;
+    rtl::Reference<SvXMLEmbeddedObjectHelper> pThis(new SvXMLEmbeddedObjectHelper);
 
-    pThis->acquire();
     pThis->Init( nullptr, rDocPersist, eCreateMode );
 
     return pThis;
 }
 
-void SvXMLEmbeddedObjectHelper::Destroy(
-        SvXMLEmbeddedObjectHelper* pSvXMLEmbeddedObjectHelper )
-{
-    if( pSvXMLEmbeddedObjectHelper )
-    {
-        pSvXMLEmbeddedObjectHelper->dispose();
-        pSvXMLEmbeddedObjectHelper->release();
-    }
-}
-
-// XGraphicObjectResolver: alien objects!
 OUString SAL_CALL SvXMLEmbeddedObjectHelper::resolveEmbeddedObjectURL(const OUString& rURL)
 {
     MutexGuard          aGuard( maMutex );
@@ -592,11 +556,12 @@ OUString SAL_CALL SvXMLEmbeddedObjectHelper::resolveEmbeddedObjectURL(const OUSt
     {
         throw;
     }
-    catch (const Exception& e)
+    catch (const Exception&)
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw WrappedTargetRuntimeException(
             "SvXMLEmbeddedObjectHelper::resolveEmbeddedObjectURL non-RuntimeException",
-            static_cast<uno::XWeak*>(this), uno::makeAny(e));
+            static_cast<uno::XWeak*>(this), anyEx);
     }
     return sRet;
 }
@@ -612,19 +577,17 @@ Any SAL_CALL SvXMLEmbeddedObjectHelper::getByName(
         Reference < XOutputStream > xStrm;
         if( mpStreamMap )
         {
-            SvXMLEmbeddedObjectHelper_Impl::iterator aIter =
-                mpStreamMap->find( rURLStr );
-            if( aIter != mpStreamMap->end() && aIter->second )
-                xStrm = aIter->second;
+            auto aIter = mpStreamMap->find( rURLStr );
+            if( aIter != mpStreamMap->end() && aIter->second.is() )
+                xStrm = aIter->second.get();
         }
         if( !xStrm.is() )
         {
-            OutputStorageWrapper_Impl *pOut = new OutputStorageWrapper_Impl;
-            pOut->acquire();
+            rtl::Reference<OutputStorageWrapper_Impl> xOut = new OutputStorageWrapper_Impl;
             if( !mpStreamMap )
-                mpStreamMap = new SvXMLEmbeddedObjectHelper_Impl;
-            (*mpStreamMap)[rURLStr] = pOut;
-            xStrm = pOut;
+                mpStreamMap.reset( new std::map< OUString, rtl::Reference<OutputStorageWrapper_Impl> > );
+            (*mpStreamMap)[rURLStr] = xOut;
+            xStrm = xOut.get();
         }
 
         aRet <<= xStrm;

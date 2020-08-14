@@ -17,14 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_CALC_CTABLES_HXX
-#define INCLUDED_CONNECTIVITY_SOURCE_INC_CALC_CTABLES_HXX
+#pragma once
 
-#include "file/FTables.hxx"
+#include <file/FTables.hxx>
 
-namespace connectivity
-{
-    namespace calc
+namespace connectivity::calc
     {
         typedef file::OTables OCalcTables_BASE;
 
@@ -34,12 +31,10 @@ namespace connectivity
             virtual sdbcx::ObjectType createObject(const OUString& _rName) override;
         public:
             OCalcTables(const css::uno::Reference< css::sdbc::XDatabaseMetaData >& _rMetaData,::cppu::OWeakObject& _rParent, ::osl::Mutex& _rMutex,
-                const TStringVector &_rVector) : OCalcTables_BASE(_rMetaData,_rParent,_rMutex,_rVector)
+                const ::std::vector< OUString> &_rVector) : OCalcTables_BASE(_rMetaData,_rParent,_rMutex,_rVector)
             {}
         };
-    }
-}
 
-#endif // INCLUDED_CONNECTIVITY_SOURCE_INC_CALC_CTABLES_HXX
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

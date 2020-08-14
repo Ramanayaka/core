@@ -16,7 +16,7 @@ $(eval $(call gb_Library_use_external,flat,boost_headers))
 
 $(eval $(call gb_Library_use_sdk_api,flat))
 
-$(eval $(call gb_Library_set_precompiled_header,flat,$(SRCDIR)/connectivity/inc/pch/precompiled_flat))
+$(eval $(call gb_Library_set_precompiled_header,flat,connectivity/inc/pch/precompiled_flat))
 
 $(eval $(call gb_Library_set_include,flat,\
 	$$(INCLUDE) \
@@ -49,7 +49,6 @@ $(eval $(call gb_Library_add_exception_objects,flat,\
 	connectivity/source/drivers/flat/EColumns \
 	connectivity/source/drivers/flat/ETables \
 	connectivity/source/drivers/flat/EConnection \
-	connectivity/source/drivers/flat/Eservices \
 	connectivity/source/drivers/flat/EDriver \
 ))
 

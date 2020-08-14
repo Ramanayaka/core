@@ -20,8 +20,6 @@
 #define INCLUDED_DBACCESS_SOURCE_FILTER_XML_XMLCONNECTIONRESOURCE_HXX
 
 #include <xmloff/xmlictxt.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <vector>
 
 namespace dbaxml
 {
@@ -30,9 +28,10 @@ namespace dbaxml
     {
     public:
 
-        OXMLConnectionResource( ODBFilter& rImport, sal_uInt16 nPrfx,
-                    const OUString& rLName,
-                    const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList);
+        OXMLConnectionResource( ODBFilter& rImport,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList );
+        virtual void SAL_CALL startFastElement( sal_Int32 /*nElement*/,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override {}
         virtual ~OXMLConnectionResource() override;
     };
 } // namespace dbaxml

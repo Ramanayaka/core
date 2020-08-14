@@ -22,8 +22,6 @@
 #include <com/sun/star/embed/XEmbedObjectFactory.hpp>
 #include <com/sun/star/embed/OOoEmbeddedObjectFactory.hpp>
 #include <com/sun/star/embed/OLEEmbeddedObjectFactory.hpp>
-#include <com/sun/star/embed/XLinkFactory.hpp>
-#include <com/sun/star/document/XTypeDetection.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
@@ -32,35 +30,14 @@
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/documentconstants.hxx>
+#include <officecfg/Office/Common.hxx>
+#include <rtl/ref.hxx>
 
 #include <xcreator.hxx>
 #include <dummyobject.hxx>
 
 
 using namespace ::com::sun::star;
-
-
-uno::Sequence< OUString > SAL_CALL UNOEmbeddedObjectCreator::impl_staticGetSupportedServiceNames()
-{
-    uno::Sequence< OUString > aRet(2);
-    aRet[0] = "com.sun.star.embed.EmbeddedObjectCreator";
-    aRet[1] = "com.sun.star.comp.embed.EmbeddedObjectCreator";
-    return aRet;
-}
-
-
-OUString SAL_CALL UNOEmbeddedObjectCreator::impl_staticGetImplementationName()
-{
-    return OUString("com.sun.star.comp.embed.EmbeddedObjectCreator");
-}
-
-
-uno::Reference< uno::XInterface > SAL_CALL UNOEmbeddedObjectCreator::impl_staticCreateSelfInstance(
-            const uno::Reference< lang::XMultiServiceFactory >& xServiceManager )
-{
-    return uno::Reference< uno::XInterface >( *new UNOEmbeddedObjectCreator( comphelper::getComponentContext(xServiceManager) ) );
-}
-
 
 uno::Reference< uno::XInterface > SAL_CALL UNOEmbeddedObjectCreator::createInstanceInitNew(
                                             const uno::Sequence< sal_Int8 >& aClassID,
@@ -138,9 +115,8 @@ uno::Reference< uno::XInterface > SAL_CALL UNOEmbeddedObjectCreator::createInsta
         }
 
         try {
-            uno::Reference< lang::XComponent > xComp( xSubStorage, uno::UNO_QUERY );
-            if ( xComp.is() )
-                xComp->dispose();
+            if ( xSubStorage.is() )
+                xSubStorage->dispose();
         }
         catch ( const uno::Exception& )
         {
@@ -209,6 +185,56 @@ uno::Reference< uno::XInterface > SAL_CALL UNOEmbeddedObjectCreator::createInsta
     return xResult;
 }
 
+/**
+ * Decides if rFilter should be used to load data into a doc model or real OLE embedding should
+ * happen. Empty return value means the later.
+ */
+static OUString HandleFilter(const uno::Reference<uno::XComponentContext>& xComponentContext,
+                             const OUString& rFilter)
+{
+    OUString aRet = rFilter;
+
+    if (!officecfg::Office::Common::Filter::Microsoft::Import::WinWordToWriter::get(
+            xComponentContext))
+    {
+        if (rFilter == "MS Word 97" || rFilter == "MS Word 2007 XML")
+        {
+            aRet.clear();
+        }
+    }
+
+    if (!officecfg::Office::Common::Filter::Microsoft::Import::ExcelToCalc::get(xComponentContext))
+    {
+        if (rFilter == "MS Excel 97" || rFilter == "Calc MS Excel 2007 XML")
+        {
+            aRet.clear();
+        }
+    }
+    if (!officecfg::Office::Common::Filter::Microsoft::Import::PowerPointToImpress::get(
+            xComponentContext))
+    {
+        if (rFilter == "MS PowerPoint 97" || rFilter == "Impress MS PowerPoint 2007 XML")
+        {
+            aRet.clear();
+        }
+    }
+    if (!officecfg::Office::Common::Filter::Microsoft::Import::VisioToDraw::get(xComponentContext))
+    {
+        if (rFilter == "Visio Document")
+        {
+            aRet.clear();
+        }
+    }
+    if (!officecfg::Office::Common::Filter::Adobe::Import::PDFToDraw::get(xComponentContext))
+    {
+        if (rFilter == "draw_pdf_import")
+        {
+            aRet.clear();
+        }
+    }
+
+    return aRet;
+}
 
 uno::Reference< uno::XInterface > SAL_CALL UNOEmbeddedObjectCreator::createInstanceInitFromMediaDescriptor(
         const uno::Reference< embed::XStorage >& xStorage,
@@ -233,6 +259,8 @@ uno::Reference< uno::XInterface > SAL_CALL UNOEmbeddedObjectCreator::createInsta
 
     // check if there is FilterName
     OUString aFilterName = m_aConfigHelper.UpdateMediaDescriptorWithFilterName( aTempMedDescr, false );
+
+    aFilterName = HandleFilter(m_xContext, aFilterName);
 
     if ( !aFilterName.isEmpty() )
     {
@@ -312,9 +340,9 @@ uno::Reference< uno::XInterface > SAL_CALL UNOEmbeddedObjectCreator::createInsta
 
     // check if there is URL, URL must exist
     OUString aURL;
-    for ( sal_Int32 nInd = 0; nInd < aTempMedDescr.getLength(); nInd++ )
-        if ( aTempMedDescr[nInd].Name == "URL" )
-            aTempMedDescr[nInd].Value >>= aURL;
+    for ( beans::PropertyValue const & prop : std::as_const(aTempMedDescr) )
+        if ( prop.Name == "URL" )
+            prop.Value >>= aURL;
 
     if ( aURL.isEmpty() )
         throw lang::IllegalArgumentException( "No URL for the link is provided!",
@@ -366,7 +394,7 @@ uno::Reference< uno::XInterface > SAL_CALL UNOEmbeddedObjectCreator::createInsta
 
 OUString SAL_CALL UNOEmbeddedObjectCreator::getImplementationName()
 {
-    return impl_staticGetImplementationName();
+    return "com.sun.star.comp.embed.EmbeddedObjectCreator";
 }
 
 sal_Bool SAL_CALL UNOEmbeddedObjectCreator::supportsService( const OUString& ServiceName )
@@ -376,7 +404,16 @@ sal_Bool SAL_CALL UNOEmbeddedObjectCreator::supportsService( const OUString& Ser
 
 uno::Sequence< OUString > SAL_CALL UNOEmbeddedObjectCreator::getSupportedServiceNames()
 {
-    return impl_staticGetSupportedServiceNames();
+    return { "com.sun.star.embed.EmbeddedObjectCreator", "com.sun.star.comp.embed.EmbeddedObjectCreator" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+embeddedobj_UNOEmbeddedObjectCreator_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    static rtl::Reference<UNOEmbeddedObjectCreator> g_Instance(new UNOEmbeddedObjectCreator(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

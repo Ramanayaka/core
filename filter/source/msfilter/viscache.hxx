@@ -22,7 +22,6 @@
 #include <memory>
 #include <sfx2/objsh.hxx>
 #include <vcl/gdimtf.hxx>
-#include <vcl/bitmap.hxx>
 
 class SvStream;
 
@@ -39,7 +38,6 @@ public:
     explicit Impl_OlePres()
         : nFormat( SotClipboardFormatId::GDIMETAFILE )
         , nAspect( ASPECT_CONTENT )
-        , pMtf( nullptr )
         , nAdvFlags( 0x2 )  // found in document
     {}
     void    SetMtf( const GDIMetaFile & rMtf )

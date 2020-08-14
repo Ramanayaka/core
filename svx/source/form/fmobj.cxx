@@ -17,31 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fmobj.hxx"
-#include "fmprop.hrc"
-#include "fmvwimp.hxx"
-#include "fmpgeimp.hxx"
-#include "svx/fmresids.hrc"
-#include "svx/fmview.hxx"
-#include "svx/fmglob.hxx"
-#include "svx/fmpage.hxx"
-#include "editeng/editeng.hxx"
-#include "svx/svdovirt.hxx"
-#include "svx/fmmodel.hxx"
-#include "svx/dialmgr.hxx"
+#include <fmobj.hxx>
+#include <fmprop.hxx>
+#include <fmvwimp.hxx>
+#include <fmpgeimp.hxx>
+#include <svx/fmview.hxx>
+#include <svx/fmpage.hxx>
+#include <svx/svdovirt.hxx>
+#include <svx/fmmodel.hxx>
 
 #include <com/sun/star/awt/XDevice.hpp>
-#include <com/sun/star/awt/XControlContainer.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/form/Forms.hpp>
-#include <com/sun/star/io/XPersistObject.hpp>
 #include <com/sun/star/script/XEventAttacherManager.hpp>
-#include <com/sun/star/util/XCloneable.hpp>
-#include "svx/fmtools.hxx"
+#include <svx/fmtools.hxx>
 
 #include <comphelper/property.hxx>
 #include <comphelper/processfactory.hxx>
 #include <toolkit/awt/vclxdevice.hxx>
-#include <vcl/svapp.hxx>
+#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star::io;
@@ -56,25 +50,26 @@ using namespace ::com::sun::star::container;
 using namespace ::svxform;
 
 
-FmFormObj::FmFormObj(const OUString& rModelName)
-          :SdrUnoObj                ( rModelName    )
-          ,m_nPos                   ( -1            )
-          ,m_pLastKnownRefDevice    ( nullptr          )
+FmFormObj::FmFormObj(
+    SdrModel& rSdrModel,
+    const OUString& rModelName)
+:   SdrUnoObj(rSdrModel, rModelName)
+    ,m_nPos(-1)
+    ,m_pLastKnownRefDevice(nullptr)
 {
-
     // normally, this is done in SetUnoControlModel, but if the call happened in the base class ctor,
     // then our incarnation of it was not called (since we were not constructed at this time).
     impl_checkRefDevice_nothrow( true );
 }
 
-
-FmFormObj::FmFormObj()
-          :SdrUnoObj                ( ""  )
-          ,m_nPos                   ( -1        )
-          ,m_pLastKnownRefDevice    ( nullptr      )
+FmFormObj::FmFormObj(SdrModel& rSdrModel)
+:   SdrUnoObj(rSdrModel, "")
+    ,m_nPos(-1)
+    ,m_pLastKnownRefDevice(nullptr)
 {
+    // Stuff that old SetModel also did:
+    impl_checkRefDevice_nothrow();
 }
-
 
 FmFormObj::~FmFormObj()
 {
@@ -106,11 +101,11 @@ void FmFormObj::ClearObjEnv()
 
 void FmFormObj::impl_checkRefDevice_nothrow( bool _force )
 {
-    const FmFormModel* pFormModel = dynamic_cast<FmFormModel*>( GetModel()  );
+    const FmFormModel* pFormModel = dynamic_cast<FmFormModel*>(&getSdrModelFromSdrObject());
     if ( !pFormModel || !pFormModel->ControlsUseRefDevice() )
         return;
 
-    OutputDevice* pCurrentRefDevice = pFormModel ? pFormModel->GetRefDevice() : nullptr;
+    OutputDevice* pCurrentRefDevice = pFormModel->GetRefDevice();
     if ( ( m_pLastKnownRefDevice.get() == pCurrentRefDevice ) && !_force )
         return;
 
@@ -138,7 +133,7 @@ void FmFormObj::impl_checkRefDevice_nothrow( bool _force )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 }
 
@@ -160,31 +155,26 @@ void FmFormObj::impl_isolateControlModel_nothrow()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 }
 
 
-void FmFormObj::SetPage(SdrPage* _pNewPage)
+void FmFormObj::handlePageChange(SdrPage* pOldPage, SdrPage* pNewPage)
 {
-    if ( GetPage() == _pNewPage )
-    {
-        SdrUnoObj::SetPage(_pNewPage);
-        return;
-    }
-
-    FmFormPage* pOldFormPage = dynamic_cast<FmFormPage*>( GetPage()  );
+    FmFormPage* pOldFormPage(dynamic_cast< FmFormPage* >(getSdrPageFromSdrObject()));
     if ( pOldFormPage )
         pOldFormPage->GetImpl().formObjectRemoved( *this );
 
-    FmFormPage* pNewFormPage = dynamic_cast<FmFormPage*>( _pNewPage  );
+    FmFormPage* pNewFormPage = dynamic_cast<FmFormPage*>( pNewPage  );
     if ( !pNewFormPage )
-    {   // Maybe it makes sense to create an environment history here : if somebody set's our page to NULL, and we have a valid page before,
+    {
+        // Maybe it makes sense to create an environment history here : if somebody set's our page to NULL, and we have a valid page before,
         // me may want to remember our place within the old page. For this we could create a new m_xEnvironmentHistory to store it.
         // So the next SetPage with a valid new page would restore that environment within the new page.
         // But for the original Bug (#57300#) we don't need that, so I omit it here. Maybe this will be implemented later.
         impl_isolateControlModel_nothrow();
-        SdrUnoObj::SetPage(_pNewPage);
+        SdrUnoObj::handlePageChange(pOldPage, pNewPage);
         return;
     }
 
@@ -196,7 +186,7 @@ void FmFormObj::SetPage(SdrPage* _pNewPage)
     // do we have a history ? (from :Clone)
     if ( m_xEnvironmentHistory.is() )
     {
-        // the element in m_xEnvironmentHistory which is equivalent to my new parent (which (perhaps) has to be created within _pNewPage->GetForms)
+        // the element in m_xEnvironmentHistory which is equivalent to my new parent (which (perhaps) has to be created within pNewPage->GetForms)
         // is the right-most element in the tree.
         Reference< XIndexContainer > xRightMostLeaf( m_xEnvironmentHistory, UNO_QUERY_THROW );
         try
@@ -217,7 +207,7 @@ void FmFormObj::SetPage(SdrPage* _pNewPage)
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
@@ -261,7 +251,7 @@ void FmFormObj::SetPage(SdrPage* _pNewPage)
                     }
                     catch( const Exception& )
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("svx");
                     }
                 }
             }
@@ -269,7 +259,7 @@ void FmFormObj::SetPage(SdrPage* _pNewPage)
     }
 
     // now set the page
-    SdrUnoObj::SetPage(_pNewPage);
+    SdrUnoObj::handlePageChange(pOldPage, pNewPage);
 
     // place my model within the new parent container
     if (xNewParent.is())
@@ -285,11 +275,12 @@ void FmFormObj::SetPage(SdrPage* _pNewPage)
                 if (nPos > -1)
                     xOldParent->removeByIndex(nPos);
             }
+
             // and insert into the new container
             xNewParent->insertByIndex(xNewParent->getCount(), makeAny(xMeAsFormComp));
 
             // transfer the events
-            if (aNewEvents.getLength())
+            if (aNewEvents.hasElements())
             {
                 try
                 {
@@ -304,7 +295,7 @@ void FmFormObj::SetPage(SdrPage* _pNewPage)
                 }
                 catch( const Exception& )
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("svx");
                 }
 
             }
@@ -318,8 +309,7 @@ void FmFormObj::SetPage(SdrPage* _pNewPage)
     m_xEnvironmentHistory = nullptr;
     m_aEventsHistory.realloc(0);
 
-    if ( pNewFormPage )
-        pNewFormPage->GetImpl().formObjectInserted( *this );
+    pNewFormPage->GetImpl().formObjectInserted( *this );
 }
 
 
@@ -358,21 +348,14 @@ void FmFormObj::clonedFrom(const FmFormObj* _pSource)
 }
 
 
-FmFormObj* FmFormObj::Clone() const
+FmFormObj* FmFormObj::CloneSdrObject(SdrModel& rTargetModel) const
 {
-    FmFormObj* pFormObject = CloneHelper< FmFormObj >();
+    FmFormObj* pFormObject = CloneHelper< FmFormObj >(rTargetModel);
     DBG_ASSERT(pFormObject != nullptr, "FmFormObj::Clone : invalid clone !");
     if (pFormObject)
         pFormObject->clonedFrom(this);
 
     return pFormObject;
-}
-
-
-void FmFormObj::NbcReformatText()
-{
-    impl_checkRefDevice_nothrow();
-    SdrUnoObj::NbcReformatText();
 }
 
 
@@ -402,6 +385,13 @@ FmFormObj& FmFormObj::operator= (const FmFormObj& rObj)
 }
 
 
+void FmFormObj::NbcReformatText()
+{
+    impl_checkRefDevice_nothrow();
+    SdrUnoObj::NbcReformatText();
+}
+
+
 namespace
 {
     OUString lcl_getFormComponentAccessPath(const Reference< XInterface >& _xElement, Reference< XInterface >& _rTopLevelElement)
@@ -413,18 +403,16 @@ namespace
 
         // while the current content is a form
         OUString sReturn;
-        OUString sCurrentIndex;
         while (xChild.is())
         {
             // get the content's relative pos within its parent container
             sal_Int32 nPos = getElementPos(xParent, xChild);
 
             // prepend this current relative pos
-            sCurrentIndex = OUString::number(nPos);
+            OUString sCurrentIndex = OUString::number(nPos);
             if (!sReturn.isEmpty())
             {
-                sCurrentIndex += "\\";
-                sCurrentIndex += sReturn;
+                sCurrentIndex += "\\" + sReturn;
             }
 
             sReturn = sCurrentIndex;
@@ -457,7 +445,7 @@ Reference< XInterface >  FmFormObj::ensureModelEnv(const Reference< XInterface >
     do
     {
         OUString aToken = sAccessPath.getToken( 0, '\\', nTokIndex );
-        sal_uInt16 nIndex = (sal_uInt16)aToken.toInt32();
+        sal_uInt16 nIndex = static_cast<sal_uInt16>(aToken.toInt32());
 
         // get the DSS of the source form (we have to find an equivalent for)
         DBG_ASSERT(nIndex<xSourceContainer->getCount(), "FmFormObj::ensureModelEnv : invalid access path !");
@@ -585,14 +573,6 @@ Reference< XInterface >  FmFormObj::ensureModelEnv(const Reference< XInterface >
     return Reference<XInterface>( xDestContainer, UNO_QUERY );
 }
 
-
-void FmFormObj::SetModel( SdrModel* _pNewModel )
-{
-    SdrUnoObj::SetModel( _pNewModel );
-    impl_checkRefDevice_nothrow();
-}
-
-
 FmFormObj* FmFormObj::GetFormObject( SdrObject* _pSdrObject )
 {
     FmFormObj* pFormObject = dynamic_cast< FmFormObj* >( _pSdrObject );
@@ -623,7 +603,7 @@ void FmFormObj::SetUnoControlModel( const Reference< css::awt::XControlModel >& 
 {
     SdrUnoObj::SetUnoControlModel( _rxModel );
 
-    FmFormPage* pFormPage = dynamic_cast<FmFormPage*>( GetPage()  );
+    FmFormPage* pFormPage(dynamic_cast< FmFormPage* >(getSdrPageFromSdrObject()));
     if ( pFormPage )
         pFormPage->GetImpl().formModelAssigned( *this );
 
@@ -636,10 +616,10 @@ bool FmFormObj::EndCreate( SdrDragStat& rStat, SdrCreateCmd eCmd )
     bool bResult = SdrUnoObj::EndCreate(rStat, eCmd);
     if ( bResult && SdrCreateCmd::ForceEnd == eCmd && rStat.GetView() )
     {
-        if ( pPage )
-        {
-            FmFormPage& rPage = dynamic_cast< FmFormPage& >( *pPage );
+        FmFormPage* pFormPage(dynamic_cast< FmFormPage* >(getSdrPageFromSdrObject()));
 
+        if (nullptr != pFormPage)
+        {
             try
             {
                 Reference< XFormComponent >  xContent( xUnoControlModel, UNO_QUERY_THROW );
@@ -649,7 +629,7 @@ bool FmFormObj::EndCreate( SdrDragStat& rStat, SdrCreateCmd eCmd )
 
                 if ( !xParentForm.is() )
                 {   // model is not yet part of a form component hierarchy
-                    xParentForm.set( rPage.GetImpl().findPlaceInFormComponentHierarchy( xContent ), UNO_SET_THROW );
+                    xParentForm.set( pFormPage->GetImpl().findPlaceInFormComponentHierarchy( xContent ), UNO_SET_THROW );
                     xFormToInsertInto.set( xParentForm, UNO_QUERY_THROW );
                 }
 
@@ -660,7 +640,7 @@ bool FmFormObj::EndCreate( SdrDragStat& rStat, SdrCreateCmd eCmd )
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("svx");
             }
         }
 

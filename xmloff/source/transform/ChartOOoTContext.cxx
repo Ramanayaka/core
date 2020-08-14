@@ -19,7 +19,7 @@
 
 #include "ChartOOoTContext.hxx"
 #include "MutableAttrList.hxx"
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include "ActionMapTypesOOo.hxx"
 #include "AttrTransformerAction.hxx"
 #include "TransformerActions.hxx"
@@ -63,7 +63,7 @@ void XMLChartOOoTransformerContext::StartElement(
         XMLTransformerActions::key_type aKey( nPrefix, aLocalName );
         XMLTransformerActions::const_iterator aIter =
             pActions->find( aKey );
-        if( !(aIter == pActions->end() ) )
+        if( aIter != pActions->end() )
         {
             if( !pMutableAttrList )
             {
@@ -101,9 +101,9 @@ void XMLChartOOoTransformerContext::StartElement(
                     OUString aAttrValue( rAttrValue );
                     sal_uInt16 nValPrefix =
                         static_cast<sal_uInt16>((*aIter).second.m_nParam1);
-                    if( GetTransformer().AddNamespacePrefix( aAttrValue,
-                                                             nValPrefix ) )
-                        pMutableAttrList->SetValueByIndex( i, aAttrValue );
+                    GetTransformer().AddNamespacePrefix( aAttrValue,
+                                                             nValPrefix );
+                    pMutableAttrList->SetValueByIndex( i, aAttrValue );
                 }
                 break;
             case XML_ATACTION_REMOVE:

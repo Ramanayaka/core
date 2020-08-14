@@ -21,11 +21,12 @@
 
 #include "doceventnotifier.hxx"
 #include "sbxitem.hxx"
-#include "objdlg.hxx"
+#include "ObjectCatalog.hxx"
 
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <sfx2/viewsh.hxx>
 #include <svx/ifaceids.hxx>
+#include <svl/srchitem.hxx>
 #include <vcl/scrbar.hxx>
 #include <map>
 #include <memory>
@@ -54,37 +55,40 @@ class Shell :
 {
 public:
     typedef std::map<sal_uInt16, VclPtr<BaseWindow> > WindowTable;
-    typedef WindowTable::const_iterator WindowTableIt;
 
 private:
     friend class JavaDebuggingListenerImpl;
     friend class LocalizationMgr;
-    friend bool implImportDialog( vcl::Window* pWin, const OUString& rCurPath, const ScriptDocument& rDocument, const OUString& aLibName ); // defined in baside3.cxx
+    friend bool implImportDialog(weld::Window* pWin, const OUString& rCurPath, const ScriptDocument& rDocument, const OUString& rLibName); // defined in baside3.cxx
 
-    WindowTable        aWindowTable;
+    WindowTable         aWindowTable;
     sal_uInt16          nCurKey;
-    VclPtr<BaseWindow>         pCurWin;
+    VclPtr<BaseWindow>  pCurWin;
     ScriptDocument      m_aCurDocument;
     OUString            m_aCurLibName;
     std::shared_ptr<LocalizationMgr> m_pCurLocalizationMgr;
 
-    VclPtr<ScrollBar>         aHScrollBar;
-    VclPtr<ScrollBar>         aVScrollBar;
-    VclPtr<ScrollBarBox>      aScrollBarBox;
-    VclPtr<TabBar> pTabBar; // basctl::TabBar
-    bool                bCreatingWindow;
-    // layout windows
-    VclPtr<ModulWindowLayout> pModulLayout;
-    VclPtr<DialogWindowLayout> pDialogLayout;
-    // the active layout window
-    VclPtr<Layout> pLayout;
-    // common object catalog window
-    VclPtr<ObjectCatalog> aObjectCatalog;
+    VclPtr<ScrollBar>    aHScrollBar;
+    VclPtr<ScrollBar>    aVScrollBar;
+    VclPtr<ScrollBarBox> aScrollBarBox;
+    VclPtr<TabBar>       pTabBar;           // basctl::TabBar
+    bool                 bCreatingWindow;
 
-    bool                m_bAppBasicModified;
+    // layout windows
+    VclPtr<ModulWindowLayout>   pModulLayout;
+    VclPtr<DialogWindowLayout>  pDialogLayout;
+    VclPtr<Layout>              pLayout;    // the active layout window
+    // common object catalog window
+    VclPtr<ObjectCatalog>       aObjectCatalog;
+
+    bool    m_bAppBasicModified;
+    bool    mbJustOpened = false;
+
     DocumentEventNotifier m_aNotifier;
+
     friend class ContainerListenerImpl;
     css::uno::Reference< css::container::XContainerListener > m_xLibListener;
+    std::unique_ptr<SvxSearchItem> mpSearchItem;
 
     void                Init();
     void                InitTabBar();
@@ -104,7 +108,7 @@ private:
     static unsigned nShellCount;
 
 private:
-    virtual void        AdjustPosSizePixel( const Point &rPos, const Size &rSize ) override;
+    void                AdjustPosSizePixel( const Point &rPos, const Size &rSize );
     virtual void        OuterResizePixel( const Point &rPos, const Size &rSize ) override;
     sal_uInt16          InsertWindowInTable (BaseWindow* pNewWin);
     virtual bool        PrepareClose( bool bUI = true ) override;
@@ -115,7 +119,7 @@ private:
     VclPtr<ModulWindow>  CreateBasWin( const ScriptDocument& rDocument, const OUString& rLibName, const OUString& rModName );
     VclPtr<DialogWindow> CreateDlgWin( const ScriptDocument& rDocument, const OUString& rLibName, const OUString& rDlgName );
 
-    VclPtr<ModulWindow>  ShowActiveModuleWindow( StarBASIC* pBasic );
+    VclPtr<ModulWindow>  ShowActiveModuleWindow( StarBASIC const * pBasic );
 
     virtual void        Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
@@ -158,7 +162,7 @@ public:
 
     SdrView*            GetCurDlgView() const;
 
-    svl::IUndoManager*  GetUndoManager() override;
+    SfxUndoManager*     GetUndoManager() override;
 
     virtual css::uno::Reference< css::view::XRenderable > GetRenderable() override;
 
@@ -170,14 +174,15 @@ public:
 
     void                GetState( SfxItemSet& );
     void                ExecuteGlobal( SfxRequest& rReq );
+    void                ExecuteSearch( SfxRequest& rReq );
     void                ExecuteCurrent( SfxRequest& rReq );
     void                ExecuteBasic( SfxRequest& rReq );
     void                ExecuteDialog( SfxRequest& rReq );
 
     virtual bool        HasUIFeature(SfxShellFeature nFeature) const override;
 
-    bool                CallBasicErrorHdl( StarBASIC* pBasic );
-    BasicDebugFlags     CallBasicBreakHdl( StarBASIC* pBasic );
+    bool                CallBasicErrorHdl( StarBASIC const * pBasic );
+    BasicDebugFlags     CallBasicBreakHdl( StarBASIC const * pBasic );
 
     VclPtr<BaseWindow>   FindWindow( const ScriptDocument& rDocument, const OUString& rLibName, const OUString& rName, ItemType nType, bool bFindSuspended = false );
     VclPtr<DialogWindow> FindDlgWin( const ScriptDocument& rDocument, const OUString& rLibName, const OUString& rName, bool bCreateIfNotExist = false, bool bFindSuspended = false );

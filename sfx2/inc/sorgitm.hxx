@@ -23,7 +23,7 @@
 
 // class SfxScriptOrganizerItem ---------------------------------------------
 
-class SfxScriptOrganizerItem : public SfxStringItem
+class SfxScriptOrganizerItem final : public SfxStringItem
 {
 private:
     OUString aLanguage;
@@ -31,10 +31,8 @@ private:
 public:
     static SfxPoolItem* CreateDefault();
     SfxScriptOrganizerItem();
-    SfxScriptOrganizerItem( const SfxScriptOrganizerItem& );
-    virtual ~SfxScriptOrganizerItem() override;
 
-    virtual SfxPoolItem*  Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SfxScriptOrganizerItem* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool          operator==( const SfxPoolItem& ) const override;
     virtual bool          QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool          PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;

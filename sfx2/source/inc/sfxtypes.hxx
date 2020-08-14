@@ -20,26 +20,7 @@
 #define INCLUDED_SFX2_SOURCE_INC_SFXTYPES_HXX
 
 #include <sal/config.h>
-
 #include <sal/log.hxx>
-#include <tools/rcid.h>
-#include <tools/resid.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
-
-#ifndef DELETEZ
-#define DELETEZ(pPtr) ( delete pPtr, pPtr = 0 )
-#endif
-
-#ifndef DELETEX
-#ifdef DBG_UTIL
-#define DELETEX(T, pPtr) \
-    ( delete pPtr, pPtr = reinterpret_cast<T *>(sal_IntPtr(-1)) )
-#else
-#define DELETEX(T, pPtr) delete pPtr
-#endif
-#endif
-
 
 #if defined(DBG_UTIL)
 

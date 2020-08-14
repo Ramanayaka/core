@@ -17,33 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <tools/stream.hxx>
-#include <vcl/splitwin.hxx>
 #include <svl/itemset.hxx>
 
 #include <sfx2/frmdescr.hxx>
 #include <sfx2/app.hxx>
-
-struct SfxFrameDescriptor_Impl
-{
-    Wallpaper*  pWallpaper;
-    SfxItemSet* pArgs;
-
-    SfxFrameDescriptor_Impl() : pWallpaper( nullptr ), pArgs( nullptr ) {}
-    ~SfxFrameDescriptor_Impl()
-    {
-        delete pWallpaper;
-        delete pArgs;
-    }
-};
+#include <memory>
 
 SfxFrameDescriptor::SfxFrameDescriptor() :
     aMargin( -1, -1 ),
     eScroll( ScrollingMode::Auto ),
     bHasBorder( true ),
-    bHasBorderSet( false ),
-    bResizeVertical( true ),
-    pImpl( new SfxFrameDescriptor_Impl )
+    bHasBorderSet( false )
 {
 }
 
@@ -53,9 +37,9 @@ SfxFrameDescriptor::~SfxFrameDescriptor()
 
 SfxItemSet* SfxFrameDescriptor::GetArgs()
 {
-    if( !pImpl->pArgs )
-        pImpl->pArgs = new SfxAllItemSet( SfxGetpApp()->GetPool() );
-    return pImpl->pArgs;
+    if( !m_pArgs )
+        m_pArgs.reset( new SfxAllItemSet( SfxGetpApp()->GetPool() ) );
+    return m_pArgs.get();
 }
 
 void SfxFrameDescriptor::SetURL( const OUString& rURL )
@@ -64,19 +48,10 @@ void SfxFrameDescriptor::SetURL( const OUString& rURL )
     SetActualURL(aURL.GetMainURL( INetURLObject::DecodeMechanism::ToIUri ));
 }
 
-void SfxFrameDescriptor::SetActualURL( const OUString& rURL )
+void SfxFrameDescriptor::SetActualURL( const OUString& )
 {
-    aActualURL = INetURLObject(rURL);
-    if ( pImpl->pArgs )
-        pImpl->pArgs->ClearItem();
-}
-
-void SfxFrameDescriptor::SetWallpaper( const Wallpaper& rWallpaper )
-{
-    DELETEZ( pImpl->pWallpaper );
-
-    if ( rWallpaper.GetStyle() != WallpaperStyle::NONE )
-        pImpl->pWallpaper = new Wallpaper( rWallpaper );
+    if ( m_pArgs )
+        m_pArgs->ClearItem();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

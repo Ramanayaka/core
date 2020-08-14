@@ -20,14 +20,12 @@
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_GRAPHICPROPERTYITEMCONVERTER_HXX
 
 #include "ItemConverter.hxx"
-#include <com/sun/star/beans/PropertyState.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+
+namespace com::sun::star::lang { class XMultiServiceFactory; }
 
 class SdrModel;
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 enum class GraphicObjectType
@@ -46,7 +44,7 @@ public:
         SfxItemPool& rItemPool,
         SdrModel& rDrawModel,
         const css::uno::Reference< css::lang::XMultiServiceFactory > & xNamedPropertyContainerFactory,
-        GraphicObjectType eObjectType = GraphicObjectType::FilledDataPoint );
+        GraphicObjectType eObjectType );
     virtual ~GraphicPropertyItemConverter() override;
 
 protected:
@@ -62,8 +60,7 @@ private:
     css::uno::Reference< css::lang::XMultiServiceFactory >  m_xNamedPropertyTableFactory;
 };
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_INC_GRAPHICPROPERTYITEMCONVERTER_HXX
 #endif

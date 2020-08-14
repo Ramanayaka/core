@@ -18,6 +18,7 @@
  */
 
 #include <com/sun/star/embed/Aspects.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/chart2/data/XDataReceiver.hpp>
@@ -26,28 +27,27 @@
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/table/CellRangeAddress.hpp>
 
+#include <osl/diagnose.h>
 #include <svx/svditer.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/svdundo.hxx>
-#include <sfx2/app.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <comphelper/classids.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/globname.hxx>
-#include <svx/charthelper.hxx>
 #include <svtools/embedhlp.hxx>
+#include <vcl/svapp.hxx>
 
-#include "ChartTools.hxx"
-#include "chartuno.hxx"
-#include "miscuno.hxx"
-#include "docsh.hxx"
-#include "drwlayer.hxx"
-#include "undodat.hxx"
-#include "chartarr.hxx"
-#include "chartlis.hxx"
-#include "chart2uno.hxx"
-#include "convuno.hxx"
+#include <ChartTools.hxx>
+#include <chartuno.hxx>
+#include <miscuno.hxx>
+#include <docsh.hxx>
+#include <drwlayer.hxx>
+#include <undodat.hxx>
+#include <chartlis.hxx>
+#include <chart2uno.hxx>
+#include <convuno.hxx>
 
 using namespace css;
 
@@ -95,7 +95,7 @@ ScChartObj* ScChartsObj::GetObjectByIndex_Impl(long nIndex) const
             if (pPage)
             {
                 long nPos = 0;
-                SdrObjListIter aIter( *pPage, SdrIterMode::DeepNoGroups );
+                SdrObjListIter aIter( pPage, SdrIterMode::DeepNoGroups );
                 SdrObject* pObject = aIter.Next();
                 while (pObject)
                 {
@@ -158,107 +158,105 @@ void SAL_CALL ScChartsObj::addNewByName( const OUString& rName,
     }
 
     ScRangeList* pList = new ScRangeList;
-    sal_Int32 nRangeCount = aRanges.getLength();
-    if (nRangeCount)
+    for (const table::CellRangeAddress& rRange : aRanges)
     {
-        const table::CellRangeAddress* pAry = aRanges.getConstArray();
-        for (sal_Int32 i=0; i<nRangeCount; i++)
-        {
-            ScRange aRange( static_cast<SCCOL>(pAry[i].StartColumn), pAry[i].StartRow, pAry[i].Sheet,
-                            static_cast<SCCOL>(pAry[i].EndColumn),   pAry[i].EndRow,   pAry[i].Sheet );
-            pList->Append( aRange );
-        }
+        ScRange aRange( static_cast<SCCOL>(rRange.StartColumn), rRange.StartRow, rRange.Sheet,
+                        static_cast<SCCOL>(rRange.EndColumn),   rRange.EndRow,   rRange.Sheet );
+        pList->push_back( aRange );
     }
     ScRangeListRef xNewRanges( pList );
 
     uno::Reference < embed::XEmbeddedObject > xObj;
     if ( SvtModuleOptions().IsChart() )
         xObj = pDocShell->GetEmbeddedObjectContainer().CreateEmbeddedObject( SvGlobalName( SO3_SCH_CLASSID ).GetByteSequence(), aName );
-    if ( xObj.is() )
+    if ( !xObj.is() )
+            return;
+
+    //  adjust rectangle
+    //! error/exception, if empty/invalid ???
+    Point aRectPos( aRect.X, aRect.Y );
+    bool bLayoutRTL = rDoc.IsLayoutRTL( nTab );
+    if ( ( aRectPos.X() < 0 && !bLayoutRTL ) || ( aRectPos.X() > 0 && bLayoutRTL ) )
+        aRectPos.setX( 0 );
+
+    if (aRectPos.Y() < 0)
+        aRectPos.setY( 0 );
+
+    Size aRectSize( aRect.Width, aRect.Height );
+    if (aRectSize.Width() <= 0)
+        aRectSize.setWidth( 5000 );   // default size
+
+    if (aRectSize.Height() <= 0)
+        aRectSize.setHeight( 5000 );
+    tools::Rectangle aInsRect( aRectPos, aRectSize );
+
+    sal_Int64 nAspect(embed::Aspects::MSOLE_CONTENT);
+    MapUnit aMapUnit(VCLUnoHelper::UnoEmbed2VCLMapUnit( xObj->getMapUnit( nAspect ) ));
+    Size aSize(aInsRect.GetSize());
+    aSize = OutputDevice::LogicToLogic( aSize, MapMode( MapUnit::Map100thMM ), MapMode( aMapUnit ) );
+    awt::Size aSz;
+    aSz.Width = aSize.Width();
+    aSz.Height = aSize.Height();
+
+    // Calc -> DataProvider
+    uno::Reference< chart2::data::XDataProvider > xDataProvider = new
+            ScChart2DataProvider( &rDoc );
+    // Chart -> DataReceiver
+    uno::Reference< chart2::data::XDataReceiver > xReceiver;
+    if( xObj.is())
+        xReceiver.set( xObj->getComponent(), uno::UNO_QUERY );
+    if( xReceiver.is())
     {
-            //  adjust rectangle
-            //! error/exception, if empty/invalid ???
-            Point aRectPos( aRect.X, aRect.Y );
-            bool bLayoutRTL = rDoc.IsLayoutRTL( nTab );
-            if ( ( aRectPos.X() < 0 && !bLayoutRTL ) || ( aRectPos.X() > 0 && bLayoutRTL ) )
-                aRectPos.X() = 0;
+        OUString sRangeStr;
+        xNewRanges->Format(sRangeStr, ScRefFlags::RANGE_ABS_3D, rDoc);
 
-            if (aRectPos.Y() < 0)
-                aRectPos.Y() = 0;
+        // connect
+        if( !sRangeStr.isEmpty() )
+            xReceiver->attachDataProvider( xDataProvider );
+        else
+            sRangeStr = "all";
 
-            Size aRectSize( aRect.Width, aRect.Height );
-            if (aRectSize.Width() <= 0)
-                aRectSize.Width() = 5000;   // Default-Groesse
+        uno::Reference< util::XNumberFormatsSupplier > xNumberFormatsSupplier( pDocShell->GetModel(), uno::UNO_QUERY );
+        xReceiver->attachNumberFormatsSupplier( xNumberFormatsSupplier );
 
-            if (aRectSize.Height() <= 0)
-                aRectSize.Height() = 5000;
-            tools::Rectangle aInsRect( aRectPos, aRectSize );
-
-            sal_Int64 nAspect(embed::Aspects::MSOLE_CONTENT);
-            MapUnit aMapUnit(VCLUnoHelper::UnoEmbed2VCLMapUnit( xObj->getMapUnit( nAspect ) ));
-            Size aSize(aInsRect.GetSize());
-            aSize = vcl::Window::LogicToLogic( aSize, MapMode( MapUnit::Map100thMM ), MapMode( aMapUnit ) );
-            awt::Size aSz;
-            aSz.Width = aSize.Width();
-            aSz.Height = aSize.Height();
-
-            // Calc -> DataProvider
-            uno::Reference< chart2::data::XDataProvider > xDataProvider = new
-                ScChart2DataProvider( &rDoc );
-            // Chart -> DataReceiver
-            uno::Reference< chart2::data::XDataReceiver > xReceiver;
-            uno::Reference< embed::XComponentSupplier > xCompSupp( xObj, uno::UNO_QUERY );
-            if( xCompSupp.is())
-                xReceiver.set( xCompSupp->getComponent(), uno::UNO_QUERY );
-            if( xReceiver.is())
-            {
-                OUString sRangeStr;
-                xNewRanges->Format(sRangeStr, ScRefFlags::RANGE_ABS_3D, &rDoc);
-
-                // connect
-                if( !sRangeStr.isEmpty() )
-                    xReceiver->attachDataProvider( xDataProvider );
-                else
-                    sRangeStr = "all";
-
-                uno::Reference< util::XNumberFormatsSupplier > xNumberFormatsSupplier( pDocShell->GetModel(), uno::UNO_QUERY );
-                xReceiver->attachNumberFormatsSupplier( xNumberFormatsSupplier );
-
-                // set arguments
-                uno::Sequence< beans::PropertyValue > aArgs( 4 );
-                aArgs[0] = beans::PropertyValue(
-                    "CellRangeRepresentation", -1,
-                    uno::makeAny( sRangeStr ), beans::PropertyState_DIRECT_VALUE );
-                aArgs[1] = beans::PropertyValue(
-                    "HasCategories", -1,
-                    uno::makeAny( bRowHeaders ), beans::PropertyState_DIRECT_VALUE );
-                aArgs[2] = beans::PropertyValue(
-                    "FirstCellAsLabel", -1,
-                    uno::makeAny( bColumnHeaders ), beans::PropertyState_DIRECT_VALUE );
-                aArgs[3] = beans::PropertyValue(
-                    "DataRowSource", -1,
-                    uno::makeAny( chart::ChartDataRowSource_COLUMNS ), beans::PropertyState_DIRECT_VALUE );
-                xReceiver->setArguments( aArgs );
-            }
-
-            ScChartListener* pChartListener =
-                new ScChartListener( aName, &rDoc, xNewRanges );
-            rDoc.GetChartListenerCollection()->insert( pChartListener );
-            pChartListener->StartListeningTo();
-
-            SdrOle2Obj* pObj = new SdrOle2Obj( ::svt::EmbeddedObjectRef( xObj, embed::Aspects::MSOLE_CONTENT ), aName, aInsRect );
-
-            // set VisArea
-            if( xObj.is())
-                xObj->setVisualAreaSize( nAspect, aSz );
-
-            // #i121334# This call will change the chart's default background fill from white to transparent.
-            // Add here again if this is wanted (see task description for details)
-            // ChartHelper::AdaptDefaultsForChart( xObj );
-
-            pPage->InsertObject( pObj );
-            pModel->AddUndo( new SdrUndoInsertObj( *pObj ) );
+        // set arguments
+        uno::Sequence< beans::PropertyValue > aArgs( 4 );
+        aArgs[0] = beans::PropertyValue(
+                "CellRangeRepresentation", -1,
+                uno::makeAny( sRangeStr ), beans::PropertyState_DIRECT_VALUE );
+        aArgs[1] = beans::PropertyValue(
+                "HasCategories", -1,
+                uno::makeAny( bRowHeaders ), beans::PropertyState_DIRECT_VALUE );
+        aArgs[2] = beans::PropertyValue(
+                "FirstCellAsLabel", -1,
+                uno::makeAny( bColumnHeaders ), beans::PropertyState_DIRECT_VALUE );
+        aArgs[3] = beans::PropertyValue(
+                "DataRowSource", -1,
+                uno::makeAny( chart::ChartDataRowSource_COLUMNS ), beans::PropertyState_DIRECT_VALUE );
+        xReceiver->setArguments( aArgs );
     }
+
+    ScChartListener* pChartListener =
+            new ScChartListener( aName, &rDoc, xNewRanges );
+    rDoc.GetChartListenerCollection()->insert( pChartListener );
+    pChartListener->StartListeningTo();
+
+    SdrOle2Obj* pObj = new SdrOle2Obj(
+            *pModel,
+            ::svt::EmbeddedObjectRef(xObj, embed::Aspects::MSOLE_CONTENT),
+            aName,
+            aInsRect);
+
+    // set VisArea
+    if( xObj.is())
+        xObj->setVisualAreaSize( nAspect, aSz );
+
+    // #i121334# This call will change the chart's default background fill from white to transparent.
+    // Add here again if this is wanted (see task description for details)
+    // ChartHelper::AdaptDefaultsForChart( xObj );
+
+    pPage->InsertObject( pObj );
+    pModel->AddUndo( std::make_unique<SdrUndoInsertObj>( *pObj ) );
 }
 
 void SAL_CALL ScChartsObj::removeByName( const OUString& aName )
@@ -272,7 +270,7 @@ void SAL_CALL ScChartsObj::removeByName( const OUString& aName )
         ScDrawLayer* pModel = rDoc.GetDrawLayer();     // is not zero
         SdrPage* pPage = pModel->GetPage(static_cast<sal_uInt16>(nTab));    // is not zero
 
-        pModel->AddUndo( new SdrUndoDelObj( *pObj ) );
+        pModel->AddUndo( std::make_unique<SdrUndoDelObj>( *pObj ) );
         pPage->RemoveObject( pObj->GetOrdNum() );
 
         //! Notify etc.???
@@ -303,7 +301,7 @@ sal_Int32 SAL_CALL ScChartsObj::getCount()
             OSL_ENSURE(pPage, "Page not found");
             if (pPage)
             {
-                SdrObjListIter aIter( *pPage, SdrIterMode::DeepNoGroups );
+                SdrObjListIter aIter( pPage, SdrIterMode::DeepNoGroups );
                 SdrObject* pObject = aIter.Next();
                 while (pObject)
                 {
@@ -321,10 +319,10 @@ uno::Any SAL_CALL ScChartsObj::getByIndex( sal_Int32 nIndex )
 {
     SolarMutexGuard aGuard;
     uno::Reference<table::XTableChart> xChart(GetObjectByIndex_Impl(nIndex));
-    if (xChart.is())
-        return uno::makeAny(xChart);
-    else
+    if (!xChart.is())
         throw lang::IndexOutOfBoundsException();
+
+    return uno::makeAny(xChart);
 }
 
 uno::Type SAL_CALL ScChartsObj::getElementType()
@@ -343,10 +341,10 @@ uno::Any SAL_CALL ScChartsObj::getByName( const OUString& aName )
 {
     SolarMutexGuard aGuard;
     uno::Reference<table::XTableChart> xChart(GetObjectByName_Impl(aName));
-    if (xChart.is())
-        return uno::makeAny(xChart);
-    else
+    if (!xChart.is())
         throw container::NoSuchElementException();
+
+    return uno::makeAny(xChart);
 }
 
 uno::Sequence<OUString> SAL_CALL ScChartsObj::getElementNames()
@@ -368,7 +366,7 @@ uno::Sequence<OUString> SAL_CALL ScChartsObj::getElementNames()
             OSL_ENSURE(pPage, "Page not found");
             if (pPage)
             {
-                SdrObjListIter aIter( *pPage, SdrIterMode::DeepNoGroups );
+                SdrObjListIter aIter( pPage, SdrIterMode::DeepNoGroups );
                 SdrObject* pObject = aIter.Next();
                 while (pObject)
                 {
@@ -379,14 +377,14 @@ uno::Sequence<OUString> SAL_CALL ScChartsObj::getElementNames()
                         if ( xObj.is() )
                             aName = pDocShell->GetEmbeddedObjectContainer().GetEmbeddedObjectName( xObj );
 
-                        OSL_ENSURE(nPos<nCount, "huch, verzaehlt?");
+                        OSL_ENSURE(nPos<nCount, "oops, miscounted?");
                         pAry[nPos++] = aName;
                     }
                     pObject = aIter.Next();
                 }
             }
         }
-        OSL_ENSURE(nPos==nCount, "nanu, verzaehlt?");
+        OSL_ENSURE(nPos==nCount, "hey, miscounted?");
 
         return aSeq;
     }
@@ -448,23 +446,20 @@ void ScChartObj::GetData_Impl( ScRangeListRef& rRanges, bool& rColHeaders, bool&
             uno::Reference< chart2::data::XDataProvider > xProvider = xChartDoc->getDataProvider();
             if( xReceiver.is() && xProvider.is() )
             {
-                uno::Sequence< beans::PropertyValue > aArgs( xProvider->detectArguments( xReceiver->getUsedData() ) );
+                const uno::Sequence< beans::PropertyValue > aArgs( xProvider->detectArguments( xReceiver->getUsedData() ) );
 
                 OUString aRanges;
                 chart::ChartDataRowSource eDataRowSource = chart::ChartDataRowSource_COLUMNS;
                 bool bHasCategories=false;
                 bool bFirstCellAsLabel=false;
-                const beans::PropertyValue* pPropArray = aArgs.getConstArray();
-                long nPropCount = aArgs.getLength();
-                for (long i = 0; i < nPropCount; i++)
+                for (const beans::PropertyValue& rProp : aArgs)
                 {
-                    const beans::PropertyValue& rProp = pPropArray[i];
                     OUString aPropName(rProp.Name);
 
                     if (aPropName == "CellRangeRepresentation")
                         rProp.Value >>= aRanges;
                     else if (aPropName == "DataRowSource")
-                        eDataRowSource = (chart::ChartDataRowSource)ScUnoHelpFunctions::GetEnumFromAny( rProp.Value );
+                        eDataRowSource = static_cast<chart::ChartDataRowSource>(ScUnoHelpFunctions::GetEnumFromAny( rProp.Value ));
                     else if (aPropName == "HasCategories")
                         bHasCategories = ScUnoHelpFunctions::GetBoolFromAny( rProp.Value );
                     else if (aPropName == "FirstCellAsLabel")
@@ -504,7 +499,7 @@ void ScChartObj::Update_Impl( const ScRangeListRef& rRanges, bool bColHeaders, b
         if (bUndo)
         {
             pDocShell->GetUndoManager()->AddUndoAction(
-                new ScUndoChartData( pDocShell, aChartName, rRanges, bColHeaders, bRowHeaders, false ) );
+                std::make_unique<ScUndoChartData>( pDocShell, aChartName, rRanges, bColHeaders, bRowHeaders, false ) );
         }
         rDoc.UpdateChartArea( aChartName, rRanges, bColHeaders, bRowHeaders, false );
     }
@@ -527,14 +522,11 @@ void ScChartObj::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const uno:
                 if ( rValue >>= aCellRanges )
                 {
                     ScRangeListRef rRangeList = new ScRangeList();
-                    const table::CellRangeAddress* pCellRanges = aCellRanges.getArray();
-                    sal_Int32 nCount = aCellRanges.getLength();
-                    for ( sal_Int32 i = 0; i < nCount; ++i )
+                    for ( table::CellRangeAddress const & aCellRange : std::as_const(aCellRanges) )
                     {
-                        table::CellRangeAddress aCellRange = pCellRanges[ i ];
                         ScRange aRange;
                         ScUnoConversion::FillScRange( aRange, aCellRange );
-                        rRangeList->Append( aRange );
+                        rRangeList->push_back( aRange );
                     }
                     if ( pDocShell )
                     {
@@ -579,9 +571,9 @@ void ScChartObj::getFastPropertyValue( uno::Any& rValue, sal_Int32 nHandle ) con
             table::CellRangeAddress* pCellRanges = aCellRanges.getArray();
             for (size_t i = 0; i < nCount; ++i)
             {
-                ScRange aRange(*(*rRangeList)[i]);
+                ScRange const & rRange = (*rRangeList)[i];
                 table::CellRangeAddress aCellRange;
-                ScUnoConversion::FillApiRange(aCellRange, aRange);
+                ScUnoConversion::FillApiRange(aCellRange, rRange);
                 pCellRanges[i] = aCellRange;
             }
             rValue <<= aCellRanges;
@@ -664,13 +656,13 @@ uno::Sequence<table::CellRangeAddress> SAL_CALL ScChartObj::getRanges()
         table::CellRangeAddress* pAry = aSeq.getArray();
         for (size_t i = 0; i < nCount; i++)
         {
-            ScRange aRange( *(*xRanges)[i] );
+            ScRange const & rRange = (*xRanges)[i];
 
-            aRangeAddress.Sheet       = aRange.aStart.Tab();
-            aRangeAddress.StartColumn = aRange.aStart.Col();
-            aRangeAddress.StartRow    = aRange.aStart.Row();
-            aRangeAddress.EndColumn   = aRange.aEnd.Col();
-            aRangeAddress.EndRow      = aRange.aEnd.Row();
+            aRangeAddress.Sheet       = rRange.aStart.Tab();
+            aRangeAddress.StartColumn = rRange.aStart.Col();
+            aRangeAddress.StartRow    = rRange.aStart.Row();
+            aRangeAddress.EndColumn   = rRange.aEnd.Col();
+            aRangeAddress.EndRow      = rRange.aEnd.Row();
 
             pAry[i] = aRangeAddress;
         }
@@ -689,16 +681,11 @@ void SAL_CALL ScChartObj::setRanges( const uno::Sequence<table::CellRangeAddress
     GetData_Impl( xOldRanges, bColHeaders, bRowHeaders );
 
     ScRangeList* pList = new ScRangeList;
-    sal_uInt16 nRangeCount = (sal_uInt16)aRanges.getLength();
-    if (nRangeCount)
+    for (const table::CellRangeAddress& rRange : aRanges)
     {
-        const table::CellRangeAddress* pAry = aRanges.getConstArray();
-        for (sal_uInt16 i=0; i<nRangeCount; i++)
-        {
-            ScRange aRange( static_cast<SCCOL>(pAry[i].StartColumn), pAry[i].StartRow, pAry[i].Sheet,
-                            static_cast<SCCOL>(pAry[i].EndColumn),   pAry[i].EndRow,   pAry[i].Sheet );
-            pList->Append( aRange );
-        }
+        ScRange aRange( static_cast<SCCOL>(rRange.StartColumn), rRange.StartRow, rRange.Sheet,
+                        static_cast<SCCOL>(rRange.EndColumn),   rRange.EndRow,   rRange.Sheet );
+        pList->push_back( aRange );
     }
     ScRangeListRef xNewRanges( pList );
 

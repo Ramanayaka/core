@@ -19,7 +19,7 @@
 #ifndef INCLUDED_SW_INC_FLDDROPDOWN_HXX
 #define INCLUDED_SW_INC_FLDDROPDOWN_HXX
 
-#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/Sequence.h>
 #include "swdllapi.h"
 #include "fldbas.hxx"
 
@@ -28,7 +28,7 @@
 /**
     Field type for dropdown boxes.
 */
-class SwDropDownFieldType : public SwFieldType
+class SAL_DLLPUBLIC_RTTI SwDropDownFieldType final : public SwFieldType
 {
 public:
     /**
@@ -46,7 +46,7 @@ public:
 
        @return a copy of this type
     */
-    virtual SwFieldType * Copy () const override;
+    virtual std::unique_ptr<SwFieldType> Copy () const override;
 };
 
 /**
@@ -55,32 +55,32 @@ public:
    The dropdown field contains a list of strings. At most one of them
    can be selected.
 */
-class SW_DLLPUBLIC SwDropDownField : public SwField
+class SW_DLLPUBLIC SwDropDownField final : public SwField
 {
     /**
        the possible values (aka items) of the dropdown box
     */
-    std::vector<OUString> aValues;
+    std::vector<OUString> m_aValues;
 
     /**
       the selected item
     */
-    OUString aSelectedItem;
+    OUString m_aSelectedItem;
 
     /**
       the name of the field
     */
-    OUString aName;
+    OUString m_aName;
 
     /**
        help text
      */
-    OUString aHelp;
+    OUString m_aHelp;
 
     /**
        tool tip string
      */
-    OUString aToolTip;
+    OUString m_aToolTip;
 
     /**
        Expands the field.
@@ -90,14 +90,14 @@ class SW_DLLPUBLIC SwDropDownField : public SwField
 
        @return the expanded value of the field
     */
-    virtual OUString Expand() const override;
+    virtual OUString ExpandImpl(SwRootFrame const* pLayout) const override;
 
     /**
        Creates a copy of this field.
 
        @return the copy of this field
     */
-    virtual SwField * Copy() const override;
+    virtual std::unique_ptr<SwField> Copy() const override;
 
 public:
     /**
@@ -181,28 +181,28 @@ public:
 
        @return the selected item
     */
-    const OUString& GetSelectedItem() const { return aSelectedItem;}
+    const OUString& GetSelectedItem() const { return m_aSelectedItem;}
 
     /**
        Returns the name of the field.
 
        @return the name of the field
     */
-    const OUString& GetName() const { return aName;}
+    const OUString& GetName() const { return m_aName;}
 
     /**
        Returns the help text of the field.
 
        @return the help text of the field
     */
-    const OUString& GetHelp() const { return aHelp;}
+    const OUString& GetHelp() const { return m_aHelp;}
 
     /**
        Returns the tool tip of the field.
 
        @return the tool tip of the field
      */
-    const OUString& GetToolTip() const { return aToolTip;}
+    const OUString& GetToolTip() const { return m_aToolTip;}
 
     /**
        Sets the selected item.
@@ -211,11 +211,8 @@ public:
        rItem is not found the selection will be empty.
 
        @param rItem the item to be set
-
-       @retval true the selected item was successfully set
-       @retval false failure (empty selection)
     */
-    bool SetSelectedItem(const OUString & rItem);
+    void SetSelectedItem(const OUString & rItem);
 
     /**
        Sets the name of the field.

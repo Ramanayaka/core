@@ -20,15 +20,14 @@
 #ifndef INCLUDED_SVGIO_INC_SVGTOOLS_HXX
 #define INCLUDED_SVGIO_INC_SVGTOOLS_HXX
 
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <basegfx/color/bcolor.hxx>
-#include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <svgpaint.hxx>
+#include <basegfx/range/b2drange.hxx>
+#include <basegfx/vector/b2ivector.hxx>
+#include <rtl/ustrbuf.hxx>
+#include "svgpaint.hxx"
 #include <vector>
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
 
 // recommended value for this device dependent unit, see CSS2 section 4.3.2 Lengths
@@ -37,10 +36,10 @@ namespace svgio
         // common non-token strings
         struct commonStrings
         {
-            static const OUString aStrUserSpaceOnUse;
-            static const OUString aStrObjectBoundingBox;
-            static const OUString aStrNonzero;
-            static const OUString aStrEvenOdd;
+            static const OUStringLiteral aStrUserSpaceOnUse;
+            static const OUStringLiteral aStrObjectBoundingBox;
+            static const OUStringLiteral aStrNonzero;
+            static const OUStringLiteral aStrEvenOdd;
         };
 
         enum SvgUnits
@@ -60,7 +59,7 @@ namespace svgio
         {
         public:
             virtual ~InfoProvider() {}
-            virtual const basegfx::B2DRange getCurrentViewPort() const = 0;
+            virtual basegfx::B2DRange getCurrentViewPort() const = 0;
             /// return font size of node inherited from parents
             virtual double getCurrentFontSizeInherited() const = 0;
             /// return xheight of node inherited from parents
@@ -194,8 +193,8 @@ namespace svgio
         sal_Int32 read_hex(sal_Unicode aChar);
         bool match_colorKeyword(basegfx::BColor& rColor, const OUString& rName, bool bCaseIndependent);
         bool read_color(const OUString& rCandidate, basegfx::BColor& rColor, bool bCaseIndependent, SvgNumber& rOpacity);
-        basegfx::B2DRange readViewBox(const OUString& rCandidate, InfoProvider& rInfoProvider);
-        basegfx::B2DHomMatrix readTransform(const OUString& rCandidate, InfoProvider& rInfoProvider);
+        basegfx::B2DRange readViewBox(const OUString& rCandidate, InfoProvider const & rInfoProvider);
+        basegfx::B2DHomMatrix readTransform(const OUString& rCandidate, InfoProvider const & rInfoProvider);
         bool readSingleNumber(const OUString& rCandidate, SvgNumber& aNum);
         bool readLocalUrl(const OUString& rCandidate, OUString& rURL);
         bool readSvgPaint(const OUString& rCandidate, SvgPaint& rSvgPaint, OUString& rURL, bool bCaseIndependent, SvgNumber& rOpacity);
@@ -219,8 +218,7 @@ namespace svgio
         // an adapted string or the original if no comments included
         OUString removeBlockComments(const OUString& rCandidate);
 
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGTOOLS_HXX
 

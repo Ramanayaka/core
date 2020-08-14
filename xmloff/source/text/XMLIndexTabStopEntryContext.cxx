@@ -23,14 +23,13 @@
 #include <sax/tools/converter.hxx>
 
 #include "XMLIndexTemplateContext.hxx"
-#include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/txtimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 using namespace ::xmloff::token;
 
@@ -110,7 +109,7 @@ void XMLIndexTabStopEntryContext::StartElement(
     }
 
     // how many entries? #i21237#
-    nValues += 2 + (bTabPositionOK ? 1 : 0) + (bLeaderCharOK ? 1 : 0);
+    m_nValues += 2 + (bTabPositionOK ? 1 : 0) + (bLeaderCharOK ? 1 : 0);
 
     // now try parent class (for character style)
     XMLIndexSimpleEntryContext::StartElement( xAttrList );
@@ -123,7 +122,7 @@ void XMLIndexTabStopEntryContext::FillPropertyValues(
     XMLIndexSimpleEntryContext::FillPropertyValues(rValues);
 
     // get values array and next entry to be written;
-    sal_Int32 nNextEntry = bCharStyleNameOK ? 2 : 1;
+    sal_Int32 nNextEntry = m_bCharStyleNameOK ? 2 : 1;
     PropertyValue* pValues = rValues.getArray();
 
     // right aligned?
@@ -148,7 +147,7 @@ void XMLIndexTabStopEntryContext::FillPropertyValues(
     }
 
     // tab character #i21237#
-     pValues[nNextEntry].Name = "WithTab";
+    pValues[nNextEntry].Name = "WithTab";
     pValues[nNextEntry].Value <<= bWithTab;
     nNextEntry++;
 

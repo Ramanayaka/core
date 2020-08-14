@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <xpathobject.hxx>
+#include "xpathobject.hxx"
 
 #include <string.h>
 
 #include "../dom/document.hxx"
-#include <nodelist.hxx>
+#include "nodelist.hxx"
 
 using namespace css::uno;
 using namespace css::xml::dom;
@@ -108,7 +108,7 @@ namespace XPath
     {
         ::osl::MutexGuard const g(m_rMutex);
 
-        return (sal_Int8) xmlXPathCastToNumber(m_pXPathObj.get());
+        return static_cast<sal_Int8>(xmlXPathCastToNumber(m_pXPathObj.get()));
     }
 
     /**
@@ -118,7 +118,7 @@ namespace XPath
     {
         ::osl::MutexGuard const g(m_rMutex);
 
-        return (sal_Int16) xmlXPathCastToNumber(m_pXPathObj.get());
+        return static_cast<sal_Int16>(xmlXPathCastToNumber(m_pXPathObj.get()));
     }
 
     /**
@@ -128,7 +128,7 @@ namespace XPath
     {
         ::osl::MutexGuard const g(m_rMutex);
 
-        return (sal_Int32) xmlXPathCastToNumber(m_pXPathObj.get());
+        return static_cast<sal_Int32>(xmlXPathCastToNumber(m_pXPathObj.get()));
     }
 
     /**
@@ -138,7 +138,7 @@ namespace XPath
     {
         ::osl::MutexGuard const g(m_rMutex);
 
-        return (sal_Int64) xmlXPathCastToNumber(m_pXPathObj.get());
+        return static_cast<sal_Int64>(xmlXPathCastToNumber(m_pXPathObj.get()));
     }
 
     /**
@@ -148,7 +148,7 @@ namespace XPath
     {
         ::osl::MutexGuard const g(m_rMutex);
 
-        return (float) xmlXPathCastToNumber(m_pXPathObj.get());
+        return static_cast<float>(xmlXPathCastToNumber(m_pXPathObj.get()));
     }
 
     /**
@@ -170,7 +170,7 @@ namespace XPath
 
         std::shared_ptr<xmlChar const> str(
             xmlXPathCastToString(m_pXPathObj.get()), xmlFree);
-        sal_Char const*const pS(reinterpret_cast<sal_Char const*>(str.get()));
+        char const*const pS(reinterpret_cast<char const*>(str.get()));
         return OUString(pS, strlen(pS), RTL_TEXTENCODING_UTF8);
     }
 

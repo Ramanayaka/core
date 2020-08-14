@@ -13,55 +13,76 @@
  manual changes will be rewritten by the next run of update_pch.sh (which presumably
  also fixes all possible problems, so it's usually better to use it).
 
- Generated on 2015-11-14 14:16:33 using:
+ Generated on 2019-10-17 15:14:55 using:
  ./bin/update_pch hwpfilter hwp --cutoff=3 --exclude:system --include:module --include:local
 
  If after updating build fails, use the following command to locate conflicting headers:
- ./bin/update_pch_bisect ./hwpfilter/inc/pch/precompiled_hwp.hxx "/opt/lo/bin/make hwpfilter.build" --find-conflicts
+ ./bin/update_pch_bisect ./hwpfilter/inc/pch/precompiled_hwp.hxx "make hwpfilter.build" --find-conflicts
 */
 
+#if PCH_LEVEL >= 1
+#include <algorithm>
+#include <assert.h>
 #include <cassert>
-#include <config_global.h>
 #include <cstddef>
-#include <cstdlib>
-#include <cstring>
-#include <ctype.h>
 #include <errno.h>
-#include <list>
+#include <iomanip>
+#include <limits>
 #include <math.h>
+#include <memory>
 #include <new>
 #include <ostream>
-#include <sstream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string>
+#include <string_view>
 #include <type_traits>
+#include <utility>
+#endif // PCH_LEVEL >= 1
+#if PCH_LEVEL >= 2
 #include <osl/diagnose.h>
-#include <osl/file.h>
 #include <osl/interlck.h>
-#include <osl/pipe.h>
-#include <osl/process.h>
-#include <osl/security.h>
-#include <osl/socket.h>
-#include <osl/time.h>
 #include <rtl/alloc.h>
-#include <rtl/byteseq.h>
-#include <rtl/locale.h>
+#include <rtl/character.hxx>
 #include <rtl/string.h>
 #include <rtl/string.hxx>
+#include <rtl/stringconcat.hxx>
 #include <rtl/stringutils.hxx>
-#include <rtl/tencinfo.h>
 #include <rtl/textcvt.h>
 #include <rtl/textenc.h>
+#include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/config.h>
-#include <sal/detail/log.h>
-#include <sal/log.hxx>
 #include <sal/macros.h>
 #include <sal/saldllapi.h>
 #include <sal/types.h>
+#include <vcl/dllapi.h>
+#endif // PCH_LEVEL >= 2
+#if PCH_LEVEL >= 3
+#include <com/sun/star/uno/Any.h>
+#include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/uno/Type.h>
+#include <com/sun/star/uno/Type.hxx>
+#include <com/sun/star/uno/TypeClass.hdl>
+#include <com/sun/star/uno/XInterface.hpp>
+#include <com/sun/star/uno/genfunc.h>
+#include <com/sun/star/uno/genfunc.hxx>
 #include <comphelper/newarray.hxx>
+#include <cppu/cppudllapi.h>
+#include <cppu/unotype.hxx>
+#include <o3tl/underlyingenumvalue.hxx>
 #include <tools/toolsdllapi.h>
+#include <typelib/typeclass.h>
+#include <typelib/typedescription.h>
+#include <typelib/uik.h>
+#include <uno/any2.h>
+#include <uno/data.h>
+#include <uno/sequence2.h>
+#endif // PCH_LEVEL >= 3
+#if PCH_LEVEL >= 4
+#endif // PCH_LEVEL >= 4
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

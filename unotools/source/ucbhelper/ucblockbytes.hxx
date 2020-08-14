@@ -20,18 +20,11 @@
 #define INCLUDED_UNOTOOLS_UCBLOCKBYTES_HXX
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/ucb/XContent.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 
-#include <osl/thread.hxx>
 #include <osl/conditn.hxx>
 #include <osl/mutex.hxx>
-#include <rtl/ustring.hxx>
 #include <tools/stream.hxx>
-#include <tools/link.hxx>
 #include <vcl/errcode.hxx>
-#include <tools/datetime.hxx>
 
 namespace com
 {
@@ -73,10 +66,6 @@ class UcbLockBytes : public virtual SvLockBytes
     osl::Condition          m_aTerminated;
     osl::Mutex              m_aMutex;
 
-    OUString                m_aContentType;
-    OUString                m_aRealURL;
-    DateTime                m_aExpireDate;
-
     css::uno::Reference < css::io::XInputStream >  m_xInputStream;
     css::uno::Reference < css::io::XOutputStream > m_xOutputStream;
     css::uno::Reference < css::io::XSeekable >     m_xSeekable;
@@ -106,12 +95,12 @@ public:
     virtual ErrCode         WriteAt(sal_uInt64, const void*, std::size_t, std::size_t *pWritten) override;
     virtual ErrCode         Flush() const override;
     virtual ErrCode         SetSize(sal_uInt64) override;
-    virtual ErrCode         Stat ( SvLockBytesStat *pStat, SvLockBytesStatFlag) const override;
+    virtual ErrCode         Stat ( SvLockBytesStat *pStat ) const override;
 
     void                    SetError( ErrCode nError )
                             { m_nError = nError; }
 
-    ErrCode                 GetError() const
+    ErrCode const &         GetError() const
                             { return m_nError; }
 
     // calling this method delegates the responsibility to call closeinput to the caller!
@@ -124,28 +113,25 @@ public:
 
     css::uno::Reference < css::io::XInputStream > getInputStream_Impl() const
                             {
-                                osl::MutexGuard aGuard( (const_cast< UcbLockBytes* >(this))->m_aMutex );
+                                osl::MutexGuard aGuard( const_cast< UcbLockBytes* >(this)->m_aMutex );
                                 return m_xInputStream;
                             }
 
     css::uno::Reference < css::io::XOutputStream > getOutputStream_Impl() const
                             {
-                                osl::MutexGuard aGuard( (const_cast< UcbLockBytes* >(this))->m_aMutex );
+                                osl::MutexGuard aGuard( const_cast< UcbLockBytes* >(this)->m_aMutex );
                                 return m_xOutputStream;
                             }
 
     css::uno::Reference < css::io::XSeekable > getSeekable_Impl() const
                             {
-                                osl::MutexGuard aGuard( (const_cast< UcbLockBytes* >(this))->m_aMutex );
+                                osl::MutexGuard aGuard( const_cast< UcbLockBytes* >(this)->m_aMutex );
                                 return m_xSeekable;
                             }
 
     void                    setDontClose_Impl()
                             { m_bDontClose = true; }
 
-    void                    SetContentType_Impl( const OUString& rType ) { m_aContentType = rType; }
-    void                    SetRealURL_Impl( const OUString& rURL )  { m_aRealURL = rURL; }
-    void                    SetExpireDate_Impl( const DateTime& rDateTime )  { m_aExpireDate = rDateTime; }
     void                    SetStreamValid_Impl();
 };
 

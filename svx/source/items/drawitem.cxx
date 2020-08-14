@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svxids.hrc>
 #include <svx/drawitem.hxx>
 #include <svx/xtable.hxx>
 
@@ -55,7 +54,7 @@ bool SvxColorListItem::GetPresentation
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     rText.clear();
@@ -68,11 +67,10 @@ bool SvxColorListItem::operator==( const SfxPoolItem& rItem ) const
     return static_cast<const SvxColorListItem&>(rItem).pColorList == pColorList;
 }
 
-SfxPoolItem* SvxColorListItem::Clone( SfxItemPool * ) const
+SvxColorListItem* SvxColorListItem::Clone( SfxItemPool * ) const
 {
     return new SvxColorListItem( *this );
 }
-
 
 // Should be a template class but ...
 #define QUERY_PUT_IMPL(svtype, xtype) \
@@ -117,7 +115,7 @@ bool SvxGradientListItem::GetPresentation
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     rText.clear();
@@ -131,12 +129,10 @@ bool SvxGradientListItem::operator==( const SfxPoolItem& rItem ) const
     return static_cast<const SvxGradientListItem&>(rItem).pGradientList == pGradientList;
 }
 
-
-SfxPoolItem* SvxGradientListItem::Clone( SfxItemPool * ) const
+SvxGradientListItem* SvxGradientListItem::Clone( SfxItemPool * ) const
 {
     return new SvxGradientListItem( *this );
 }
-
 
 QUERY_PUT_IMPL( SvxGradientListItem, GradientList )
 
@@ -164,7 +160,7 @@ bool SvxHatchListItem::GetPresentation
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     rText.clear();
@@ -178,8 +174,7 @@ bool SvxHatchListItem::operator==( const SfxPoolItem& rItem ) const
     return static_cast<const SvxHatchListItem&>(rItem).pHatchList == pHatchList;
 }
 
-
-SfxPoolItem* SvxHatchListItem::Clone( SfxItemPool * ) const
+SvxHatchListItem* SvxHatchListItem::Clone( SfxItemPool * ) const
 {
     return new SvxHatchListItem( *this );
 }
@@ -207,7 +202,7 @@ bool SvxBitmapListItem::GetPresentation
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     rText.clear();
@@ -220,7 +215,7 @@ bool SvxBitmapListItem::operator==( const SfxPoolItem& rItem ) const
     return static_cast<const SvxBitmapListItem&>(rItem).pBitmapList == pBitmapList;
 }
 
-SfxPoolItem* SvxBitmapListItem::Clone( SfxItemPool * ) const
+SvxBitmapListItem* SvxBitmapListItem::Clone( SfxItemPool * ) const
 {
     return new SvxBitmapListItem( *this );
 }
@@ -248,7 +243,7 @@ bool SvxPatternListItem::GetPresentation
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     rText.clear();
@@ -261,15 +256,14 @@ bool SvxPatternListItem::operator==( const SfxPoolItem& rItem ) const
     return static_cast<const SvxPatternListItem&>(rItem).pPatternList == pPatternList;
 }
 
-SfxPoolItem* SvxPatternListItem::Clone( SfxItemPool * ) const
+SvxPatternListItem* SvxPatternListItem::Clone( SfxItemPool * ) const
 {
     return new SvxPatternListItem( *this );
 }
 
 QUERY_PUT_IMPL( SvxPatternListItem, PatternList )
 
-SvxDashListItem::SvxDashListItem() :
-    pDashList( nullptr )
+SvxDashListItem::SvxDashListItem()
 {
 }
 
@@ -290,7 +284,7 @@ bool SvxDashListItem::GetPresentation
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     rText.clear();
@@ -303,7 +297,7 @@ bool SvxDashListItem::operator==( const SfxPoolItem& rItem ) const
     return static_cast<const SvxDashListItem&>(rItem).pDashList == pDashList;
 }
 
-SfxPoolItem* SvxDashListItem::Clone( SfxItemPool * ) const
+SvxDashListItem* SvxDashListItem::Clone( SfxItemPool * ) const
 {
     return new SvxDashListItem( *this );
 }
@@ -331,7 +325,7 @@ bool SvxLineEndListItem::GetPresentation
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     rText.clear();
@@ -344,7 +338,7 @@ bool SvxLineEndListItem::operator==( const SfxPoolItem& rItem ) const
     return static_cast<const SvxLineEndListItem&>(rItem).pLineEndList == pLineEndList;
 }
 
-SfxPoolItem* SvxLineEndListItem::Clone( SfxItemPool * ) const
+SvxLineEndListItem* SvxLineEndListItem::Clone( SfxItemPool * ) const
 {
     return new SvxLineEndListItem( *this );
 }

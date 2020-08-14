@@ -20,8 +20,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "javaoptions.hxx"
-#include "osl/process.h"
-#include "osl/thread.h"
+#include <osl/process.h>
+#include <osl/thread.h>
 
 
 #ifdef SAL_UNX
@@ -41,7 +41,7 @@ bool JavaOptions::initOptions(int ac, char* av[], bool bCmdFile)
 
         OString name(av[0]);
         sal_Int32 index = name.lastIndexOf(SEPARATOR);
-        m_program = name.copy((index > 0 ? index+1 : 0));
+        m_program = name.copy(index > 0 ? index+1 : 0);
 
         if (ac < 2)
         {
@@ -71,7 +71,7 @@ bool JavaOptions::initOptions(int ac, char* av[], bool bCmdFile)
                             OString tmp("'-O', please check");
                             if (i <= ac - 1)
                             {
-                                tmp += " your input '" + OString(av[i+1]) + "'";
+                                tmp += OStringLiteral(" your input '") + av[i+1] + "'";
                             }
 
                             throw IllegalArgument(tmp);
@@ -86,8 +86,7 @@ bool JavaOptions::initOptions(int ac, char* av[], bool bCmdFile)
                 case 'n':
                     if (av[i][2] != 'D' || av[i][3] != '\0')
                     {
-                        OString tmp("'-nD', please check");
-                            tmp += " your input '" + OString(av[i]) + "'";
+                        OString tmp(OStringLiteral("'-nD', please check your input '") + av[i] + "'");
                         throw IllegalArgument(tmp);
                     }
 
@@ -105,7 +104,7 @@ bool JavaOptions::initOptions(int ac, char* av[], bool bCmdFile)
                             OString tmp("'-T', please check");
                             if (i <= ac - 1)
                             {
-                                tmp += " your input '" + OString(av[i+1]) + "'";
+                                tmp += OStringLiteral(" your input '") + av[i+1] + "'";
                             }
 
                             throw IllegalArgument(tmp);
@@ -117,8 +116,7 @@ bool JavaOptions::initOptions(int ac, char* av[], bool bCmdFile)
 
                     if (m_options.count("-T") > 0)
                     {
-                        OString tmp(m_options["-T"]);
-                        tmp = tmp + ";" + s;
+                        OString tmp = m_options["-T"] + ";" + s;
                         m_options["-T"] = tmp;
                     } else
                     {
@@ -133,7 +131,7 @@ bool JavaOptions::initOptions(int ac, char* av[], bool bCmdFile)
                             OString tmp("'-Gc', please check");
                             if (i <= ac - 1)
                             {
-                                tmp += " your input '" + OString(av[i]) + "'";
+                                tmp += OStringLiteral(" your input '") + av[i] + "'";
                             }
 
                             throw IllegalArgument(tmp);
@@ -146,7 +144,7 @@ bool JavaOptions::initOptions(int ac, char* av[], bool bCmdFile)
                         OString tmp("'-G', please check");
                         if (i <= ac - 1)
                         {
-                            tmp += " your input '" + OString(av[i]) + "'";
+                            tmp += OStringLiteral(" your input '") + av[i] + "'";
                         }
 
                         throw IllegalArgument(tmp);
@@ -167,7 +165,7 @@ bool JavaOptions::initOptions(int ac, char* av[], bool bCmdFile)
                             OString tmp("'-X', please check");
                             if (i <= ac - 1)
                             {
-                                tmp += " your input '" + OString(av[i+1]) + "'";
+                                tmp += OStringLiteral(" your input '") + av[i+1] + "'";
                             }
 
                             throw IllegalArgument(tmp);
@@ -177,20 +175,20 @@ bool JavaOptions::initOptions(int ac, char* av[], bool bCmdFile)
                         s = av[i] + 2;
                     }
 
-                    m_extra_input_files.push_back( s );
+                    m_extra_input_files.emplace_back(s );
                     break;
                 }
 
                 default:
-                    throw IllegalArgument("the option is unknown" + OString(av[i]));
+                    throw IllegalArgument(OStringLiteral("the option is unknown") + av[i]);
             }
         } else
         {
             if (av[i][0] == '@')
             {
                 FILE* cmdFile = fopen(av[i]+1, "r");
-                  if( cmdFile == nullptr )
-                  {
+                if( cmdFile == nullptr )
+                {
                     fprintf(stderr, "%s", prepareHelp().getStr());
                     ret = false;
                 } else
@@ -208,14 +206,14 @@ bool JavaOptions::initOptions(int ac, char* av[], bool bCmdFile)
 
                     ret = initOptions(rargc, rargv, bCmdFile);
 
-                    for (long j=0; j < rargc; j++)
+                    for (int j=0; j < rargc; j++)
                     {
                         free(rargv[j]);
                     }
                 }
             } else
             {
-                m_inputFiles.push_back(av[i]);
+                m_inputFiles.emplace_back(av[i]);
             }
         }
     }
@@ -225,28 +223,26 @@ bool JavaOptions::initOptions(int ac, char* av[], bool bCmdFile)
 
 OString JavaOptions::prepareHelp()
 {
-    OString help("\nusing: ");
-    help += m_program + " [-options] file_1 ... file_n -Xfile_n+1 -Xfile_n+2\nOptions:\n"
-          "    -O<path>   = path describes the root directory for the generated output.\n"
-          "                 The output directory tree is generated under this directory.\n"
-          "    -T<name>   = name specifies a type or a list of types. The output for this\n"
-          "      [t1;...]   type and all dependent types are generated. If no '-T' option is\n"
-          "                 specified, then output for all types is generated.\n"
-          "                 Example: 'com.sun.star.uno.XInterface' is a valid type.\n"
-          "    -nD        = no dependent types are generated.\n"
-          "    -G         = generate only target files which does not exists.\n"
-          "    -Gc        = generate only target files which content will be changed.\n"
-          "    -X<file>   = extra types which will not be taken into account for generation.\n\n";
-    help += prepareVersion();
+    OString help = "\nusing: " +
+        m_program + " [-options] file_1 ... file_n -Xfile_n+1 -Xfile_n+2\nOptions:\n"
+        "    -O<path>   = path describes the root directory for the generated output.\n"
+        "                 The output directory tree is generated under this directory.\n"
+        "    -T<name>   = name specifies a type or a list of types. The output for this\n"
+        "      [t1;...]   type and all dependent types are generated. If no '-T' option is\n"
+        "                 specified, then output for all types is generated.\n"
+        "                 Example: 'com.sun.star.uno.XInterface' is a valid type.\n"
+        "    -nD        = no dependent types are generated.\n"
+        "    -G         = generate only target files which does not exists.\n"
+        "    -Gc        = generate only target files which content will be changed.\n"
+        "    -X<file>   = extra types which will not be taken into account for generation.\n\n" +
+        prepareVersion();
 
     return help;
 }
 
-OString JavaOptions::prepareVersion()
+OString JavaOptions::prepareVersion() const
 {
-    OString version(m_program);
-    version += " Version 2.0\n\n";
-    return version;
+    return m_program + " Version 2.0\n\n";
 }
 
 

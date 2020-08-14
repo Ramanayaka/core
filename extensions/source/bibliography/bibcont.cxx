@@ -18,17 +18,11 @@
  */
 
 
-#include <cppuhelper/weak.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/XWindowPeer.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
+#include <vcl/event.hxx>
 #include "bibconfig.hxx"
 
 
-#include "datman.hxx"
 #include "bibcont.hxx"
-#include "bibview.hxx"
 
 
 BibShortCutHandler::~BibShortCutHandler()
@@ -126,11 +120,6 @@ BibBookContainer::~BibBookContainer()
 
 void BibBookContainer::dispose()
 {
-    if( xTopFrameRef.is() )
-        xTopFrameRef->dispose();
-    if( xBottomFrameRef.is() )
-        xBottomFrameRef->dispose();
-
     if( pTopWin )
     {
         VclPtr<vcl::Window> pDel = pTopWin;
@@ -166,8 +155,6 @@ IMPL_LINK_NOARG( BibBookContainer, SplitHdl, Timer*, void)
 
 void BibBookContainer::createTopFrame( BibShortCutHandler* pWin )
 {
-    if ( xTopFrameRef.is() ) xTopFrameRef->dispose();
-
     if(pTopWin)
     {
         RemoveItem(TOP_WINDOW);
@@ -183,8 +170,6 @@ void BibBookContainer::createTopFrame( BibShortCutHandler* pWin )
 
 void BibBookContainer::createBottomFrame( BibShortCutHandler* pWin )
 {
-    if ( xBottomFrameRef.is() ) xBottomFrameRef->dispose();
-
     if(pBottomWin)
     {
         RemoveItem(BOTTOM_WINDOW);

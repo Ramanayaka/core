@@ -23,8 +23,7 @@
 #include "AccessibleContextBase.hxx"
 #include <com/sun/star/accessibility/XAccessibleValue.hpp>
 #include <tools/gen.hxx>
-#include "global.hxx"
-#include "address.hxx"
+#include <address.hxx>
 #include <cppuhelper/implbase1.hxx>
 
 class ScPreviewShell;
@@ -100,26 +99,26 @@ public:
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL
         getTypes() override;
 
-    /** Returns a implementation id.
+    /** Returns an implementation id.
     */
     virtual css::uno::Sequence<sal_Int8> SAL_CALL
         getImplementationId() override;
 
 protected:
-    virtual OUString SAL_CALL createAccessibleDescription() override;
-    virtual OUString SAL_CALL createAccessibleName() override;
+    virtual OUString createAccessibleDescription() override;
+    virtual OUString createAccessibleName() override;
 
     virtual tools::Rectangle GetBoundingBoxOnScreen() const override;
     virtual tools::Rectangle GetBoundingBox() const override;
 
 private:
     ScPreviewShell*     mpViewShell;
-    accessibility::AccessibleTextHelper* mpTextHelper;
+    std::unique_ptr<accessibility::AccessibleTextHelper> mxTextHelper;
     sal_Int32           mnIndex;
     ScAddress           maCellPos;
     bool                mbColumnHeader;
     bool                mbRowHeader;
-    mutable ScPreviewTableInfo* mpTableInfo;
+    mutable std::unique_ptr<ScPreviewTableInfo> mpTableInfo;
 
     bool IsDefunc(
         const css::uno::Reference<css::accessibility::XAccessibleStateSet>& rxParentStates);

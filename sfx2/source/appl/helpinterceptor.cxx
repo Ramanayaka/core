@@ -21,12 +21,8 @@
 #include "helpinterceptor.hxx"
 #include "helpdispatch.hxx"
 #include "newhelp.hxx"
-#include <sfx2/sfxuno.hxx>
 #include <tools/urlobj.hxx>
 #include <tools/debug.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <cppuhelper/interfacecontainer.h>
-#include <vcl/window.hxx>
 #include <limits.h>
 
 using namespace ::com::sun::star::beans;
@@ -37,7 +33,6 @@ using namespace ::com::sun::star::lang;
 
 HelpInterceptor_Impl::HelpInterceptor_Impl() :
 
-    m_pHistory  ( nullptr ),
     m_pWindow  ( nullptr ),
     m_nCurPos   ( 0 )
 
@@ -47,44 +42,27 @@ HelpInterceptor_Impl::HelpInterceptor_Impl() :
 
 HelpInterceptor_Impl::~HelpInterceptor_Impl()
 {
-    if ( m_pHistory )
-    {
-        for (HelpHistoryEntry_Impl* p : *m_pHistory)
-            delete p;
-        delete m_pHistory;
-    }
 }
 
 
 void HelpInterceptor_Impl::addURL( const OUString& rURL )
 {
-  if ( !m_pHistory )
-        m_pHistory = new HelpHistoryList_Impl;
-
-    size_t nCount = m_pHistory->size();
+    size_t nCount = m_vHistoryUrls.size();
     if ( nCount && m_nCurPos < ( nCount - 1 ) )
     {
         for ( size_t i = nCount - 1; i > m_nCurPos; i-- )
         {
-            delete m_pHistory->at( i );
-            HelpHistoryList_Impl::iterator it = m_pHistory->begin();
-            ::std::advance( it, i );
-            m_pHistory->erase( it );
+            m_vHistoryUrls.erase( m_vHistoryUrls.begin() + i );
         }
     }
     Reference<XFrame> xFrame(m_xIntercepted, UNO_QUERY);
     Reference<XController> xController;
     if(xFrame.is())
         xController = xFrame->getController();
-    if(xController.is() && !m_pHistory->empty())
-    {
-        m_pHistory->at( m_nCurPos )->aViewData = xController->getViewData();
-    }
 
     m_aCurrentURL = rURL;
-    Any aEmptyViewData;
-    m_pHistory->push_back( new HelpHistoryEntry_Impl( rURL, aEmptyViewData ) );
-    m_nCurPos = m_pHistory->size() - 1;
+    m_vHistoryUrls.emplace_back( rURL );
+    m_nCurPos = m_vHistoryUrls.size() - 1;
 // TODO ?
     if ( m_xListener.is() )
     {
@@ -111,12 +89,12 @@ void HelpInterceptor_Impl::setInterception( const Reference< XFrame >& xFrame )
 
 bool HelpInterceptor_Impl::HasHistoryPred() const
 {
-    return m_pHistory && ( m_nCurPos > 0 );
+    return m_nCurPos > 0;
 }
 
 bool HelpInterceptor_Impl::HasHistorySucc() const
 {
-    return m_pHistory && ( m_nCurPos < ( m_pHistory->size() - 1 ) );
+    return m_nCurPos < ( m_vHistoryUrls.size() - 1 );
 }
 
 
@@ -150,12 +128,9 @@ Sequence < Reference < XDispatch > > SAL_CALL HelpInterceptor_Impl::queryDispatc
 
 {
     Sequence< Reference< XDispatch > > aReturn( aDescripts.getLength() );
-    Reference< XDispatch >* pReturn = aReturn.getArray();
-    const DispatchDescriptor* pDescripts = aDescripts.getConstArray();
-    for ( sal_Int32 i = 0; i < aDescripts.getLength(); ++i, ++pReturn, ++pDescripts )
-    {
-        *pReturn = queryDispatch( pDescripts->FeatureURL, pDescripts->FrameName, pDescripts->SearchFlags );
-    }
+    std::transform(aDescripts.begin(), aDescripts.end(), aReturn.begin(),
+        [this](const DispatchDescriptor& rDescr) -> Reference<XDispatch> {
+            return queryDispatch(rDescr.FeatureURL, rDescr.FrameName, rDescr.SearchFlags); });
     return aReturn;
 }
 
@@ -206,37 +181,23 @@ void SAL_CALL HelpInterceptor_Impl::dispatch(
     const URL& aURL, const Sequence< css::beans::PropertyValue >& )
 {
     bool bBack = aURL.Complete == ".uno:Backward";
-    if ( bBack || aURL.Complete == ".uno:Forward" )
+    if ( !bBack && aURL.Complete != ".uno:Forward" )
+        return;
+
+    if ( m_vHistoryUrls.empty() )
+        return;
+
+    sal_uIntPtr nPos = ( bBack && m_nCurPos > 0 ) ? --m_nCurPos
+                                            : ( !bBack && m_nCurPos < m_vHistoryUrls.size() - 1 )
+                                            ? ++m_nCurPos
+                                            : ULONG_MAX;
+
+    if ( nPos < ULONG_MAX )
     {
-        if ( m_pHistory )
-        {
-            if(m_pHistory->size() > m_nCurPos)
-            {
-                Reference<XFrame> xFrame(m_xIntercepted, UNO_QUERY);
-                Reference<XController> xController;
-                if(xFrame.is())
-                    xController = xFrame->getController();
-                if(xController.is())
-                {
-                    m_pHistory->at( m_nCurPos )->aViewData = xController->getViewData();
-                }
-            }
-
-            sal_uIntPtr nPos = ( bBack && m_nCurPos > 0 ) ? --m_nCurPos
-                                                    : ( !bBack && m_nCurPos < m_pHistory->size() - 1 )
-                                                    ? ++m_nCurPos
-                                                    : ULONG_MAX;
-
-            if ( nPos < ULONG_MAX )
-            {
-                HelpHistoryEntry_Impl* pEntry = m_pHistory->at( nPos );
-                if ( pEntry )
-                    m_pWindow->loadHelpContent(pEntry->aURL, false); // false => don't add item to history again!
-            }
-
-            m_pWindow->UpdateToolbox();
-        }
+        m_pWindow->loadHelpContent(m_vHistoryUrls[nPos], false); // false => don't add item to history again!
     }
+
+    m_pWindow->UpdateToolbox();
 }
 
 
@@ -278,7 +239,7 @@ void SAL_CALL HelpListener_Impl::disposing( const css::lang::EventObject& )
 }
 
 HelpStatusListener_Impl::HelpStatusListener_Impl(
-        Reference < XDispatch > const & aDispatch, URL& rURL)
+        Reference < XDispatch > const & aDispatch, URL const & rURL)
 {
     aDispatch->addStatusListener(this, rURL);
 }

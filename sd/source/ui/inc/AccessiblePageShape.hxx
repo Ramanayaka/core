@@ -21,15 +21,10 @@
 #define INCLUDED_SD_SOURCE_UI_INC_ACCESSIBLEPAGESHAPE_HXX
 
 #include <svx/AccessibleShape.hxx>
-#include <svx/AccessibleShapeTreeInfo.hxx>
-#include <svx/IAccessibleViewForwarderListener.hxx>
-#include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/accessibility/XAccessibleExtendedComponent.hpp>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/drawing/XDrawPage.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 
-#include <svx/AccessibleTextHelper.hxx>
+namespace com::sun::star::accessibility { class XAccessible; }
+namespace com::sun::star::drawing { class XDrawPage; }
+namespace accessibility { class AccessibleShapeTreeInfo; }
 
 namespace accessibility {
 
@@ -46,7 +41,7 @@ public:
             The accessible parent object.  It will be used, for example when
             the <member>getIndexInParent</member> method is called.
         @param rShapeTreeInfo
-            Bundel of information passed to this shape and all of its desendants.
+            Bundle of information passed to this shape and all of its descendants.
         @attention
             Always call the <member>init</member> method after creating a
             new accessible shape.  This is one way to overcome the potential
@@ -100,11 +95,6 @@ public:
     virtual css::uno::Sequence< OUString> SAL_CALL
         getSupportedServiceNames() override;
 
-    //=====  lang::XEventListener  ============================================
-
-    virtual void SAL_CALL
-        disposing (const css::lang::EventObject& Source) override;
-
     using AccessibleShape::disposing;
 
 protected:
@@ -115,10 +105,6 @@ protected:
 
     virtual OUString
         CreateAccessibleName() override;
-
-    /// Create a description string that contains the accessible description.
-    virtual OUString
-        CreateAccessibleDescription() override;
 
 private:
     css::uno::Reference<css::drawing::XDrawPage> mxPage;

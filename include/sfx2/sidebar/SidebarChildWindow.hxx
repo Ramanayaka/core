@@ -22,7 +22,7 @@
 #include <sfx2/childwin.hxx>
 
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 /** Outer container of the sidebar window.
 
@@ -30,7 +30,7 @@ namespace sfx2 { namespace sidebar {
     RegisterChildWindow() method from the RegisterControllers() method
     of the applications DLL.
 */
-class SFX2_DLLPUBLIC SidebarChildWindow : public SfxChildWindow
+class SFX2_DLLPUBLIC SidebarChildWindow final : public SfxChildWindow
 {
 public:
     SidebarChildWindow(vcl::Window* pParent, sal_uInt16 nId,
@@ -38,11 +38,11 @@ public:
 
     SFX_DECL_CHILDWINDOW_WITHID(SidebarChildWindow);
 
-    static sal_Int32 GetDefaultWidth(vcl::Window* pWindow);
+    static sal_Int32 GetDefaultWidth(vcl::Window const * pWindow);
 };
 
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

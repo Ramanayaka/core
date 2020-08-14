@@ -16,10 +16,12 @@ $(eval $(call gb_ExternalProject_register_targets,libwpd,\
 ))
 
 $(eval $(call gb_ExternalProject_use_externals,libwpd,\
+	boost_headers \
 	revenge \
 ))
 
 $(call gb_ExternalProject_get_state_target,libwpd,build) :
+	$(call gb_Trace_StartRange,libwpd,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		export PKG_CONFIG="" \
 		&& MAKE=$(MAKE) ./configure \
@@ -30,11 +32,12 @@ $(call gb_ExternalProject_get_state_target,libwpd,build) :
 			--without-docs \
 			--disable-tools \
 			--disable-debug \
+			--disable-werror \
 			$(if $(filter MACOSX,$(OS)), \
-				--disable-werror \
 				--prefix=/@.__________________________________________________OOO) \
 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
-			$(if $(filter TRUE,$(DISABLE_DYNLOADING)),CFLAGS="$(CFLAGS) $(gb_VISIBILITY_FLAGS) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))" CXXFLAGS="$(CXXFLAGS) $(gb_VISIBILITY_FLAGS) $(gb_VISIBILITY_FLAGS_CXX) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))") \
+			CXXFLAGS="$(gb_CXXFLAGS) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))" \
+			CPPFLAGS="$(CPPFLAGS) $(BOOST_CPPFLAGS)" \
 			$(if $(filter LINUX,$(OS)),$(if $(SYSTEM_REVENGE),, \
 				'LDFLAGS=-Wl$(COMMA)-z$(COMMA)origin \
 					-Wl$(COMMA)-rpath$(COMMA)\$$$$ORIGIN')) \
@@ -42,8 +45,9 @@ $(call gb_ExternalProject_get_state_target,libwpd,build) :
 		&& $(MAKE) \
 		$(if $(filter MACOSX,$(OS)),\
 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
-				$(gb_Package_SOURCEDIR_libwpd)/src/lib/.libs/libwpd-0.10.10.dylib \
+				$(EXTERNAL_WORKDIR)/src/lib/.libs/libwpd-0.10.10.dylib \
 		) \
 	)
+	$(call gb_Trace_EndRange,libwpd,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

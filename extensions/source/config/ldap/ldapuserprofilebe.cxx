@@ -20,21 +20,19 @@
 
 #include "ldapaccess.hxx"
 #include "ldapuserprofilebe.hxx"
-#include <osl/file.hxx>
-#include <osl/module.hxx>
-#include <osl/process.h>
-#include <rtl/ustrbuf.hxx>
-#include <rtl/byteseq.h>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <rtl/instance.hxx>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/Optional.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
+#include <comphelper/scopeguard.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/security.hxx>
 
 
-namespace extensions { namespace config { namespace ldap {
+namespace extensions::config::ldap {
 
 LdapUserProfileBe::LdapUserProfileBe( const uno::Reference<uno::XComponentContext>& xContext)
 : LdapProfileMutexHolder(),
@@ -42,6 +40,8 @@ LdapUserProfileBe::LdapUserProfileBe( const uno::Reference<uno::XComponentContex
 {
     LdapDefinition aDefinition;
     OUString loggedOnUser;
+    // true initially to handle reentrant call; will become false if readLdapConfiguration fails
+    bool bHaveLdapConfiguration = true;
 
     // This whole rigmarole is to prevent an infinite recursion where reading
     // the configuration for the backend would create another instance of the
@@ -55,30 +55,26 @@ LdapUserProfileBe::LdapUserProfileBe( const uno::Reference<uno::XComponentContex
 
         if (!bReentrantCall)
         {
-            try
-            {
-                bReentrantCall = true ;
-                if (!readLdapConfiguration(
-                        xContext, &aDefinition, &loggedOnUser))
-                {
-                    throw css::uno::RuntimeException(
-                        "LdapUserProfileBe- LDAP not configured",
-                        nullptr);
-                }
-
-                bReentrantCall = false ;
-            }
-            catch (...)
-            {
-                bReentrantCall = false;
-                throw;
-            }
+            bReentrantCall = true ;
+            comphelper::ScopeGuard aReentrantCallGuard([]() { bReentrantCall = false; });
+            // Don't throw on fail: this will crash if LDAP is misconfigured, and user opens
+            // Expert Configuration dialog. Instead, just don't fill data_, which will make the
+            // backend return empty values. This happens in SvtUserOptions::Impl::GetValue_Impl
+            // anyway even in throwing scenario, but doing it here also improves performance
+            // because of avoiding repeated attempts to create the backend.
+            bHaveLdapConfiguration = readLdapConfiguration(
+                xContext, &aDefinition, &loggedOnUser);
+            if (!bHaveLdapConfiguration)
+                SAL_WARN("extensions.config", "LdapUserProfileBackend: LDAP not configured");
         }
     }
 
-    LdapConnection connection;
-    connection.connectSimple(aDefinition);
-    connection.getUserProfile(loggedOnUser, &data_);
+    if (bHaveLdapConfiguration)
+    {
+        LdapConnection connection;
+        connection.connectSimple(aDefinition);
+        connection.getUserProfile(loggedOnUser, &data_);
+    }
 }
 
 LdapUserProfileBe::~LdapUserProfileBe()
@@ -91,16 +87,6 @@ bool LdapUserProfileBe::readLdapConfiguration(
     LdapDefinition * definition, OUString * loggedOnUser)
 {
     OSL_ASSERT(context.is() && definition != nullptr && loggedOnUser != nullptr);
-    const OUString kReadOnlyViewService("com.sun.star.configuration.ConfigurationAccess") ;
-    const OUString kComponent("org.openoffice.LDAP/UserDirectory");
-    const OUString kServerDefiniton("ServerDefinition");
-    const OUString kServer("Server");
-    const OUString kPort("Port");
-    const OUString kBaseDN("BaseDN");
-    const OUString kUser("SearchUser");
-    const OUString kPassword("SearchPassword");
-    const OUString kUserObjectClass("UserObjectClass");
-    const OUString kUserUniqueAttr("UserUniqueAttribute");
 
     uno::Reference< XInterface > xIface;
     try
@@ -108,39 +94,39 @@ bool LdapUserProfileBe::readLdapConfiguration(
         uno::Reference< lang::XMultiServiceFactory > xCfgProvider(
             css::configuration::theDefaultProvider::get(context));
 
-        css::beans::NamedValue aPath("nodepath", uno::makeAny(kComponent) );
+        css::beans::NamedValue aPath("nodepath", uno::makeAny(OUString("org.openoffice.LDAP/UserDirectory")) );
 
         uno::Sequence< uno::Any > aArgs(1);
         aArgs[0] <<=  aPath;
 
-        xIface = xCfgProvider->createInstanceWithArguments(kReadOnlyViewService, aArgs);
+        xIface = xCfgProvider->createInstanceWithArguments("com.sun.star.configuration.ConfigurationAccess", aArgs);
 
         uno::Reference<container::XNameAccess > xAccess(xIface, uno::UNO_QUERY_THROW);
-        xAccess->getByName(kServerDefiniton) >>= xIface;
+        xAccess->getByName("ServerDefinition") >>= xIface;
 
         uno::Reference<container::XNameAccess > xChildAccess(xIface, uno::UNO_QUERY_THROW);
 
-        if (!getLdapStringParam(xChildAccess, kServer, definition->mServer))
+        if (!getLdapStringParam(xChildAccess, "Server", definition->mServer))
             return false;
-        if (!getLdapStringParam(xChildAccess, kBaseDN, definition->mBaseDN))
+        if (!getLdapStringParam(xChildAccess, "BaseDN", definition->mBaseDN))
             return false;
 
         definition->mPort=0;
-        xChildAccess->getByName(kPort) >>= definition->mPort ;
+        xChildAccess->getByName("Port") >>= definition->mPort ;
         if (definition->mPort == 0)
             return false;
 
-        if (!getLdapStringParam(xAccess, kUserObjectClass, definition->mUserObjectClass))
+        if (!getLdapStringParam(xAccess, "UserObjectClass", definition->mUserObjectClass))
             return false;
-        if (!getLdapStringParam(xAccess, kUserUniqueAttr, definition->mUserUniqueAttr))
+        if (!getLdapStringParam(xAccess, "UserUniqueAttribute", definition->mUserUniqueAttr))
             return false;
 
-        getLdapStringParam(xAccess, kUser, definition->mAnonUser);
-        getLdapStringParam(xAccess, kPassword, definition->mAnonCredentials);
+        getLdapStringParam(xAccess, "SearchUser", definition->mAnonUser);
+        getLdapStringParam(xAccess, "SearchPassword", definition->mAnonCredentials);
     }
-    catch (const uno::Exception & e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN("extensions.config", "LdapUserProfileBackend: access to configuration data failed: " << e.Message);
+        TOOLS_WARN_EXCEPTION("extensions.config", "LdapUserProfileBackend: access to configuration data failed");
         return false;
     }
 
@@ -157,7 +143,7 @@ bool LdapUserProfileBe::readLdapConfiguration(
 
 
 bool LdapUserProfileBe::getLdapStringParam(
-    uno::Reference<container::XNameAccess>& xAccess,
+    uno::Reference<container::XNameAccess> const & xAccess,
     const OUString& aLdapSetting,
     OUString& aServerParameter)
 {
@@ -201,21 +187,9 @@ css::uno::Any LdapUserProfileBe::getPropertyValue(
 }
 
 
-OUString SAL_CALL LdapUserProfileBe::getLdapUserProfileBeName() {
-    return OUString("com.sun.star.comp.configuration.backend.LdapUserProfileBe");
-}
-
-
 OUString SAL_CALL LdapUserProfileBe::getImplementationName()
 {
-    return getLdapUserProfileBeName() ;
-}
-
-
-uno::Sequence<OUString> SAL_CALL LdapUserProfileBe::getLdapUserProfileBeServiceNames()
-{
-    uno::Sequence<OUString> aServices { "com.sun.star.configuration.backend.LdapUserProfileBe" };
-    return aServices ;
+    return "com.sun.star.comp.configuration.backend.LdapUserProfileBe";
 }
 
 sal_Bool SAL_CALL LdapUserProfileBe::supportsService(const OUString& aServiceName)
@@ -226,10 +200,17 @@ sal_Bool SAL_CALL LdapUserProfileBe::supportsService(const OUString& aServiceNam
 uno::Sequence<OUString>
 SAL_CALL LdapUserProfileBe::getSupportedServiceNames()
 {
-    return getLdapUserProfileBeServiceNames() ;
+    return { "com.sun.star.configuration.backend.LdapUserProfileBe" };
 }
 
-}}}
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_ldp_LdapUserProfileBe_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new extensions::config::ldap::LdapUserProfileBe(context));
+}
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,22 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/xml/sax/FastToken.hpp>
-#include <com/sun/star/drawing/LineStyle.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/container/XNamed.hpp>
-
-#include "oox/ppt/pptshape.hxx"
-#include "oox/ppt/pptgraphicshapecontext.hxx"
-#include "oox/ppt/pptshapepropertiescontext.hxx"
-#include "oox/ppt/slidepersist.hxx"
-#include "drawingml/shapestylecontext.hxx"
-#include "drawingml/misccontexts.hxx"
-#include "drawingml/lineproperties.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
-#include "drawingml/customshapegeometry.hxx"
-#include "drawingml/textbodycontext.hxx"
+#include <oox/ppt/pptshape.hxx>
+#include <oox/ppt/pptgraphicshapecontext.hxx>
+#include <oox/ppt/pptshapepropertiescontext.hxx>
+#include <oox/ppt/slidepersist.hxx>
+#include <drawingml/shapestylecontext.hxx>
+#include <oox/drawingml/drawingmltypes.hxx>
+#include <drawingml/textbodycontext.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
@@ -40,15 +31,12 @@
 using namespace oox::core;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::text;
-using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
 // CT_Shape
-PPTGraphicShapeContext::PPTGraphicShapeContext( ContextHandler2Helper& rParent, const SlidePersistPtr& rSlidePersistPtr, const oox::drawingml::ShapePtr& pMasterShapePtr, const oox::drawingml::ShapePtr& pShapePtr )
+PPTGraphicShapeContext::PPTGraphicShapeContext( ContextHandler2Helper const & rParent, const SlidePersistPtr& rSlidePersistPtr, const oox::drawingml::ShapePtr& pMasterShapePtr, const oox::drawingml::ShapePtr& pShapePtr )
 : oox::drawingml::GraphicShapeContext( rParent, pMasterShapePtr, pShapePtr )
 , mpSlidePersistPtr( rSlidePersistPtr )
 {
@@ -87,10 +75,10 @@ ContextHandlerRef PPTGraphicShapeContext::onCreateContext( sal_Int32 aElementTok
                 {
                     // TODO: use id to shape map
                     SlidePersistPtr pMasterPersist( mpSlidePersistPtr->getMasterPersist() );
-                    if ( pMasterPersist.get() && rAttribs.hasAttribute( XML_idx ) )
+                    if ( pMasterPersist && rAttribs.hasAttribute( XML_idx ) )
                         pPlaceholder = PPTShape::findPlaceholderByIndex( nIdx, pMasterPersist->getShapes()->getChildren() );
                 }
-                if ( !pPlaceholder.get() && ( ( eShapeLocation == Slide ) || ( eShapeLocation == Layout ) ) )
+                if ( !pPlaceholder && ( ( eShapeLocation == Slide ) || ( eShapeLocation == Layout ) ) )
                 {
                     // inheriting properties from placeholder objects by cloning shape
 
@@ -135,13 +123,13 @@ ContextHandlerRef PPTGraphicShapeContext::onCreateContext( sal_Int32 aElementTok
                         else if ( eShapeLocation == Slide ) // normal slide shapes have to search within the corresponding master tree for referenced objects
                         {
                             SlidePersistPtr pMasterPersist( mpSlidePersistPtr->getMasterPersist() );
-                            if ( pMasterPersist.get() )
+                            if ( pMasterPersist )
                                 pPlaceholder = PPTShape::findPlaceholder( nFirstPlaceholder, nSecondPlaceholder,
                                         pPPTShapePtr->getSubTypeIndex(), pMasterPersist->getShapes()->getChildren() );
                         }
                     }
                 }
-                if ( pPlaceholder.get() )
+                if ( pPlaceholder )
                 {
                     bool bUseText = true;
                     switch( pPlaceholder->getSubType() )
@@ -164,7 +152,7 @@ ContextHandlerRef PPTGraphicShapeContext::onCreateContext( sal_Int32 aElementTok
                         case XML_pic :
                             bUseText = false;
                     }
-                    mpShapePtr->applyShapeReference( *pPlaceholder.get(), bUseText );
+                    mpShapePtr->applyShapeReference( *pPlaceholder, bUseText );
                     PPTShape* pPPTShape = dynamic_cast< PPTShape* >( pPlaceholder.get() );
                     if ( pPPTShape )
                         pPPTShape->setReferenced( true );
@@ -184,7 +172,7 @@ ContextHandlerRef PPTGraphicShapeContext::onCreateContext( sal_Int32 aElementTok
 
     case PPT_TOKEN(txBody):
     {
-        oox::drawingml::TextBodyPtr xTextBody( new oox::drawingml::TextBody );
+        oox::drawingml::TextBodyPtr xTextBody = std::make_shared<oox::drawingml::TextBody>();
         mpShapePtr->setTextBody( xTextBody );
         return new oox::drawingml::TextBodyContext( *this, *xTextBody );
     }
@@ -193,6 +181,6 @@ ContextHandlerRef PPTGraphicShapeContext::onCreateContext( sal_Int32 aElementTok
     return GraphicShapeContext::onCreateContext( aElementToken, rAttribs );
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

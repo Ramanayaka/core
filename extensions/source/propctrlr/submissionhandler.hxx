@@ -24,7 +24,6 @@
 #include "propertyhandler.hxx"
 #include "eformshelper.hxx"
 
-#include <com/sun/star/xforms/XSubmission.hpp>
 #include <comphelper/propmultiplex.hxx>
 #include <rtl/ref.hxx>
 
@@ -63,11 +62,9 @@ namespace pcr
 
     //= SubmissionPropertyHandler
 
-    class SubmissionPropertyHandler;
-    typedef HandlerComponentBase< SubmissionPropertyHandler > EditPropertyHandler_Base;
     /** a property handler for any virtual string properties
     */
-    class SubmissionPropertyHandler : public EditPropertyHandler_Base, public ::comphelper::OPropertyChangeListener
+    class SubmissionPropertyHandler : public PropertyHandlerComponent, public ::comphelper::OPropertyChangeListener
     {
     private:
         std::unique_ptr< SubmissionHelper >                    m_pHelper;
@@ -78,14 +75,12 @@ namespace pcr
             const css::uno::Reference< css::uno::XComponentContext >& _rxContext
         );
 
-        /// @throws css::uno::RuntimeException
-        static OUString SAL_CALL getImplementationName_static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_static(  );
-
         virtual ~SubmissionPropertyHandler() override;
-
     protected:
+        // XServiceInfo
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames () override;
+
         // XPropertyHandler overriables
         virtual css::uno::Any               SAL_CALL getPropertyValue( const OUString& _rPropertyName ) override;
         virtual void                        SAL_CALL setPropertyValue( const OUString& _rPropertyName, const css::uno::Any& _rValue ) override;
@@ -101,7 +96,7 @@ namespace pcr
 
         // PropertyHandler overridables
         virtual css::uno::Sequence< css::beans::Property >
-                                            SAL_CALL doDescribeSupportedProperties() const override;
+                                            doDescribeSupportedProperties() const override;
         virtual void onNewComponent() override;
 
     private:

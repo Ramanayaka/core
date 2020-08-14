@@ -18,7 +18,13 @@ $(eval $(call gb_Library_set_include,scd,\
 
 $(eval $(call gb_Library_use_external,scd,boost_headers))
 
-$(eval $(call gb_Library_use_sdk_api,scd))
+$(eval $(call gb_Library_use_common_precompiled_header,scd))
+
+$(eval $(call gb_Library_use_api,scd,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_Library_use_libraries,scd,\
 	comphelper \

@@ -20,23 +20,26 @@
 #ifndef INCLUDED_RTL_USTRING_HXX
 #define INCLUDED_RTL_USTRING_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cassert>
 #include <cstddef>
+#include <limits>
 #include <new>
 #include <ostream>
-#include <string.h>
+#include <utility>
 
-#include <rtl/ustring.h>
-#include <rtl/string.hxx>
-#include <rtl/stringutils.hxx>
-#include <rtl/textenc.h>
-#include <sal/log.hxx>
+#if defined LIBO_INTERNAL_ONLY
+#include <string_view>
+#endif
+
+#include "rtl/ustring.h"
+#include "rtl/string.hxx"
+#include "rtl/stringutils.hxx"
+#include "rtl/textenc.h"
 
 #ifdef LIBO_INTERNAL_ONLY // "RTL_FAST_STRING"
-#include <config_global.h>
-#include <rtl/stringconcat.hxx>
+#include "rtl/stringconcat.hxx"
 #endif
 
 #ifdef RTL_STRING_UNITTEST
@@ -54,6 +57,8 @@ extern bool rtl_string_unittest_invalid_conversion;
 
 namespace rtl
 {
+
+class OUStringBuffer;
 
 #ifdef RTL_STRING_UNITTEST
 #undef rtl
@@ -79,14 +84,15 @@ struct SAL_WARN_UNUSED OUStringLiteral
         data(
             libreoffice_internal::ConstCharArrayDetector<T>::toPointer(literal))
     {
-#if HAVE_CXX14_CONSTEXPR
         assert(
             libreoffice_internal::ConstCharArrayDetector<T>::isValid(literal));
-#endif
     }
 
     int size;
     const char* data;
+
+    // So we can use this struct in some places interchangeably with OUString
+    constexpr sal_Int32 getLength() const { return size; }
 };
 
 /// @endcond
@@ -136,7 +142,7 @@ public:
     /**
       New string from OUString.
 
-      @param    str         a OUString.
+      @param    str         an OUString.
     */
     OUString( const OUString & str )
     {
@@ -144,27 +150,25 @@ public:
         rtl_uString_acquire( pData );
     }
 
-#ifndef _MSC_VER // TODO?
 #if defined LIBO_INTERNAL_ONLY
     /**
       Move constructor.
 
-      @param    str         a OUString.
+      @param    str         an OUString.
       @since LibreOffice 5.2
     */
-    OUString( OUString && str )
+    OUString( OUString && str ) noexcept
     {
         pData = str.pData;
         str.pData = nullptr;
         rtl_uString_new( &str.pData );
     }
 #endif
-#endif
 
     /**
       New string from OUString data.
 
-      @param    str         a OUString data.
+      @param    str         an OUString data.
     */
     OUString( rtl_uString * str )
     {
@@ -391,7 +395,7 @@ public:
      @internal
     */
     template< typename T1, typename T2 >
-    OUString( const OUStringConcat< T1, T2 >& c )
+    OUString( OUStringConcat< T1, T2 >&& c )
     {
         const sal_Int32 l = c.length();
         pData = rtl_uString_alloc( l );
@@ -402,6 +406,25 @@ public:
             *end = '\0';
             // TODO realloc in case pData->length is noticeably smaller than l?
         }
+    }
+
+    /**
+     @overload
+     @internal
+    */
+    template< typename T >
+    OUString( OUStringNumber< T >&& n )
+        : OUString( n.buf, n.length )
+    {}
+#endif
+
+#if defined LIBO_INTERNAL_ONLY
+    OUString(std::u16string_view sv) {
+        if (sv.size() > sal_uInt32(std::numeric_limits<sal_Int32>::max())) {
+            throw std::bad_alloc();
+        }
+        pData = nullptr;
+        rtl_uString_newFromStr_WithLength(&pData, sv.data(), sv.size());
     }
 #endif
 
@@ -430,7 +453,7 @@ public:
     /**
       Assign a new string.
 
-      @param    str         a OUString.
+      @param    str         an OUString.
     */
     OUString & operator=( const OUString & str )
     {
@@ -438,15 +461,14 @@ public:
         return *this;
     }
 
-#ifndef _MSC_VER // TODO?
 #if defined LIBO_INTERNAL_ONLY
     /**
       Move assign a new string.
 
-      @param    str         a OString.
+      @param    str         an OUString.
       @since LibreOffice 5.2
     */
-    OUString & operator=( OUString && str )
+    OUString & operator=( OUString && str ) noexcept
     {
         rtl_uString_release( pData );
         pData = str.pData;
@@ -454,7 +476,6 @@ public:
         rtl_uString_new( &str.pData );
         return *this;
     }
-#endif
 #endif
 
     /**
@@ -515,10 +536,22 @@ public:
     }
 #endif
 
+#if defined LIBO_INTERNAL_ONLY
+    /**
+      Append the contents of an OUStringBuffer to this string.
+
+      @param    str         an OUStringBuffer.
+
+      @exception std::bad_alloc is thrown if an out-of-memory condition occurs
+      @since LibreOffice 6.2
+    */
+    inline OUString & operator+=( const OUStringBuffer & str ) &;
+#endif
+
     /**
       Append a string to this string.
 
-      @param    str         a OUString.
+      @param    str         an OUString.
 
       @exception std::bad_alloc is thrown if an out-of-memory condition occurs
     */
@@ -527,14 +560,7 @@ public:
         &
 #endif
     {
-        rtl_uString* pNewData = NULL;
-        rtl_uString_newConcat( &pNewData, pData, str.pData );
-        if (pNewData == NULL) {
-            throw std::bad_alloc();
-        }
-        rtl_uString_assign(&pData, pNewData);
-        rtl_uString_release(pNewData);
-        return *this;
+        return internalAppend(str.pData);
     }
 #if defined LIBO_INTERNAL_ONLY
     void operator+=(OUString const &) && = delete;
@@ -598,7 +624,7 @@ public:
      @internal
     */
     template< typename T1, typename T2 >
-    OUString& operator+=( const OUStringConcat< T1, T2 >& c ) & {
+    OUString& operator+=( OUStringConcat< T1, T2 >&& c ) & {
         sal_Int32 l = c.length();
         if( l == 0 )
             return *this;
@@ -610,7 +636,26 @@ public:
         return *this;
     }
     template<typename T1, typename T2> void operator +=(
-        OUStringConcat<T1, T2> const &) && = delete;
+        OUStringConcat<T1, T2> &&) && = delete;
+
+    /**
+     @overload
+     @internal
+    */
+    template< typename T >
+    OUString& operator+=( OUStringNumber< T >&& n ) & {
+        sal_Int32 l = n.length;
+        if( l == 0 )
+            return *this;
+        l += pData->length;
+        rtl_uString_ensureCapacity( &pData, l );
+        sal_Unicode* end = addDataHelper( pData->buffer + pData->length, n.buf, n.length );
+        *end = '\0';
+        pData->length = l;
+        return *this;
+    }
+    template<typename T> void operator +=(
+        OUStringNumber<T> &&) && = delete;
 #endif
 
     /**
@@ -783,7 +828,7 @@ public:
     }
 
     /**
-      Perform a ASCII lowercase comparison of two strings.
+      Perform an ASCII lowercase comparison of two strings.
 
       The result is true if and only if second string
       represents the same sequence of characters as the first string,
@@ -807,7 +852,7 @@ public:
     }
 
     /**
-      Perform a ASCII lowercase comparison of two strings.
+      Perform an ASCII lowercase comparison of two strings.
 
       Compare the two strings with uppercase ASCII
       character values between 65 and 90 (ASCII A-Z) interpreted as
@@ -879,7 +924,7 @@ public:
       This function can't be used for language specific comparison.
 
       @param    str         the object (substring) to be compared.
-      @param    fromIndex   the index to start the comparion from.
+      @param    fromIndex   the index to start the comparison from.
                             The index must be greater than or equal to 0
                             and less or equal as the string length.
       @return   true if str match with the characters in the string
@@ -948,7 +993,7 @@ public:
       This function can't be used for language specific comparison.
 
       @param    str         the object (substring) to be compared.
-      @param    fromIndex   the index to start the comparion from.
+      @param    fromIndex   the index to start the comparison from.
                             The index must be greater than or equal to 0
                             and less than or equal to the string length.
       @return   true if str match with the characters in the string
@@ -1016,8 +1061,8 @@ public:
       the strings and return a value indicating their relationship.
       Since this method is optimized for performance, the ASCII character
       values are not converted in any way. The caller has to make sure that
-      all ASCII characters are in the allowed range between 0 and
-      127. The ASCII string must be NULL-terminated.
+      all ASCII characters are in the allowed range between 0 and 127.
+      The ASCII string must be NULL-terminated.
       This function can't be used for language specific sorting.
 
       @param  asciiStr      the 8-Bit ASCII character string to be compared.
@@ -1037,8 +1082,8 @@ public:
       the strings and return a value indicating their relationship.
       Since this method is optimized for performance, the ASCII character
       values are not converted in any way. The caller has to make sure that
-      all ASCII characters are in the allowed range between 0 and
-      127. The ASCII string must be NULL-terminated.
+      all ASCII characters are in the allowed range between 0 and 127.
+      The ASCII string must be NULL-terminated.
       This function can't be used for language specific sorting.
 
       @deprecated  This is a confusing overload with unexpectedly different
@@ -1092,8 +1137,8 @@ public:
       represents the same sequence of characters as the first string.
       Since this method is optimized for performance, the ASCII character
       values are not converted in any way. The caller has to make sure that
-      all ASCII characters are in the allowed range between 0 and
-      127. The ASCII string must be NULL-terminated.
+      all ASCII characters are in the allowed range between 0 and 127.
+      The ASCII string must be NULL-terminated.
       This function can't be used for language specific comparison.
 
       @param    asciiStr        the 8-Bit ASCII character string to be compared.
@@ -1113,8 +1158,8 @@ public:
       represents the same sequence of characters as the first string.
       Since this method is optimized for performance, the ASCII character
       values are not converted in any way. The caller has to make sure that
-      all ASCII characters are in the allowed range between 0 and
-      127. The ASCII string must be NULL-terminated and must be greater than
+      all ASCII characters are in the allowed range between 0 and 127.
+      The ASCII string must be NULL-terminated and must be greater than
       or equal to asciiStrLength.
       This function can't be used for language specific comparison.
 
@@ -1133,7 +1178,7 @@ public:
     }
 
     /**
-      Perform a ASCII lowercase comparison of two strings.
+      Perform an ASCII lowercase comparison of two strings.
 
       The result is true if and only if second string
       represents the same sequence of characters as the first string,
@@ -1142,8 +1187,8 @@ public:
       values between 97 and 122 (ASCII a-z).
       Since this method is optimized for performance, the ASCII character
       values are not converted in any way. The caller has to make sure that
-      all ASCII characters are in the allowed range between 0 and
-      127. The ASCII string must be NULL-terminated.
+      all ASCII characters are in the allowed range between 0 and 127.
+      The ASCII string must be NULL-terminated.
       This function can't be used for language specific comparison.
 
       @param    asciiStr        the 8-Bit ASCII character string to be compared.
@@ -1162,8 +1207,8 @@ public:
       the strings and return a value indicating their relationship.
       Since this method is optimized for performance, the ASCII character
       values are not converted in any way. The caller has to make sure that
-      all ASCII characters are in the allowed range between 0 and
-      127. The ASCII string must be NULL-terminated.
+      all ASCII characters are in the allowed range between 0 and 127.
+      The ASCII string must be NULL-terminated.
       This function can't be used for language specific sorting.
 
       @param  asciiStr      the 8-Bit ASCII character string to be compared.
@@ -1213,14 +1258,14 @@ public:
       of this string, at the given position.
       Since this method is optimized for performance, the ASCII character
       values are not converted in any way. The caller has to make sure that
-      all ASCII characters are in the allowed range between 0 and
-      127. The ASCII string must be NULL-terminated and must be greater than or
+      all ASCII characters are in the allowed range between 0 and 127.
+      The ASCII string must be NULL-terminated and must be greater than or
       equal to asciiStrLength.
       This function can't be used for language specific comparison.
 
       @param    asciiStr    the object (substring) to be compared.
       @param    asciiStrLength the length of asciiStr.
-      @param    fromIndex   the index to start the comparion from.
+      @param    fromIndex   the index to start the comparison from.
                             The index must be greater than or equal to 0
                             and less than or equal to the string length.
       @return   true if str match with the characters in the string
@@ -1251,14 +1296,14 @@ public:
       values between 97 and 122 (ASCII a-z).
       Since this method is optimized for performance, the ASCII character
       values are not converted in any way. The caller has to make sure that
-      all ASCII characters are in the allowed range between 0 and
-      127. The ASCII string must be NULL-terminated and must be greater than or
+      all ASCII characters are in the allowed range between 0 and 127.
+      The ASCII string must be NULL-terminated and must be greater than or
       equal to asciiStrLength.
       This function can't be used for language specific comparison.
 
       @param    asciiStr        the 8-Bit ASCII character string to be compared.
       @param    asciiStrLength  the length of the ascii string
-      @param    fromIndex       the index to start the comparion from.
+      @param    fromIndex       the index to start the comparison from.
                                 The index must be greater than or equal to 0
                                 and less than or equal to the string length.
       @return   true if str match with the characters in the string
@@ -2190,9 +2235,7 @@ public:
     */
     SAL_WARN_UNUSED_RESULT OUString copy( sal_Int32 beginIndex ) const
     {
-        rtl_uString *pNew = NULL;
-        rtl_uString_newFromSubString( &pNew, pData, beginIndex, getLength() - beginIndex );
-        return OUString( pNew, SAL_NO_ACQUIRE );
+        return copy(beginIndex, getLength() - beginIndex);
     }
 
     /**
@@ -2408,7 +2451,7 @@ public:
 
 #if defined LIBO_INTERNAL_ONLY
     /** @overload @since LibreOffice 5.3 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<T, OUString>::TypeUtf16
     replaceFirst(T & from, OUString const & to, sal_Int32 * index = nullptr)
@@ -2428,7 +2471,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.3 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<T, OUString>::TypeUtf16
     replaceFirst(OUString const & from, T & to, sal_Int32 * index = nullptr)
@@ -2448,7 +2491,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.3 */
-    template<typename T1, typename T2> SAL_WARN_UNUSED_RESULT
+    template<typename T1, typename T2> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<
             T1,
@@ -2472,7 +2515,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.3 */
-    template<typename T1, typename T2> SAL_WARN_UNUSED_RESULT
+    template<typename T1, typename T2> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<
             T1,
@@ -2496,7 +2539,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.3 */
-    template<typename T1, typename T2> SAL_WARN_UNUSED_RESULT
+    template<typename T1, typename T2> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<
             T1,
@@ -2521,7 +2564,7 @@ public:
     }
 
     /** @overload @since LibreOffice 5.4 */
-    SAL_WARN_UNUSED_RESULT OUString replaceFirst(
+    [[nodiscard]] OUString replaceFirst(
         OUStringLiteral const & from, OUString const & to,
         sal_Int32 * index = nullptr) const
     {
@@ -2533,7 +2576,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    SAL_WARN_UNUSED_RESULT OUString replaceFirst(
+    [[nodiscard]] OUString replaceFirst(
         OUString const & from, OUStringLiteral const & to,
         sal_Int32 * index = nullptr) const
     {
@@ -2545,7 +2588,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    SAL_WARN_UNUSED_RESULT OUString replaceFirst(
+    [[nodiscard]] OUString replaceFirst(
         OUStringLiteral const & from, OUStringLiteral const & to,
         sal_Int32 * index = nullptr) const
     {
@@ -2557,7 +2600,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename libreoffice_internal::ConstCharArrayDetector<T, OUString >::Type
     replaceFirst(
         OUStringLiteral const & from, T & to, sal_Int32 * index = nullptr) const
@@ -2573,7 +2616,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename libreoffice_internal::ConstCharArrayDetector<T, OUString >::Type
     replaceFirst(
         T & from, OUStringLiteral const & to, sal_Int32 * index = nullptr) const
@@ -2589,7 +2632,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<T, OUString >::TypeUtf16
     replaceFirst(
@@ -2606,7 +2649,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<T, OUString >::TypeUtf16
     replaceFirst(
@@ -2728,7 +2771,7 @@ public:
 
 #if defined LIBO_INTERNAL_ONLY
     /** @overload @since LibreOffice 5.3 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<T, OUString>::TypeUtf16
     replaceAll(T & from, OUString const & to) const {
@@ -2745,7 +2788,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.3 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<T, OUString>::TypeUtf16
     replaceAll(OUString const & from, T & to) const {
@@ -2761,7 +2804,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.3 */
-    template<typename T1, typename T2> SAL_WARN_UNUSED_RESULT
+    template<typename T1, typename T2> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<
             T1,
@@ -2783,7 +2826,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.3 */
-    template<typename T1, typename T2> SAL_WARN_UNUSED_RESULT
+    template<typename T1, typename T2> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<
             T1,
@@ -2805,7 +2848,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.3 */
-    template<typename T1, typename T2> SAL_WARN_UNUSED_RESULT
+    template<typename T1, typename T2> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<
             T1,
@@ -2828,7 +2871,7 @@ public:
     }
 
     /** @overload @since LibreOffice 5.4 */
-    SAL_WARN_UNUSED_RESULT OUString replaceAll(
+    [[nodiscard]] OUString replaceAll(
         OUStringLiteral const & from, OUString const & to) const
     {
         rtl_uString * s = nullptr;
@@ -2837,7 +2880,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    SAL_WARN_UNUSED_RESULT OUString replaceAll(
+    [[nodiscard]] OUString replaceAll(
         OUString const & from, OUStringLiteral const & to) const
     {
         rtl_uString * s = nullptr;
@@ -2846,7 +2889,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    SAL_WARN_UNUSED_RESULT OUString replaceAll(
+    [[nodiscard]] OUString replaceAll(
         OUStringLiteral const & from, OUStringLiteral const & to) const
     {
         rtl_uString * s = nullptr;
@@ -2855,7 +2898,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename libreoffice_internal::ConstCharArrayDetector<T, OUString >::Type
     replaceAll(OUStringLiteral const & from, T & to) const {
         assert(libreoffice_internal::ConstCharArrayDetector<T>::isValid(to));
@@ -2867,7 +2910,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename libreoffice_internal::ConstCharArrayDetector<T, OUString >::Type
     replaceAll(T & from, OUStringLiteral const & to) const {
         assert(libreoffice_internal::ConstCharArrayDetector<T>::isValid(from));
@@ -2880,7 +2923,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<T, OUString >::TypeUtf16
     replaceAll(OUStringLiteral const & from, T & to) const {
@@ -2893,7 +2936,7 @@ public:
         return OUString(s, SAL_NO_ACQUIRE);
     }
     /** @overload @since LibreOffice 5.4 */
-    template<typename T> SAL_WARN_UNUSED_RESULT
+    template<typename T> [[nodiscard]]
     typename
         libreoffice_internal::ConstCharArrayDetector<T, OUString >::TypeUtf16
     replaceAll(T & from, OUStringLiteral const & to) const {
@@ -2947,7 +2990,9 @@ public:
       of the string.
 
       All characters that have codes less than or equal to
-      32 (the space character) are considered to be white space.
+      32 (the space character), and Unicode General Punctuation area Space
+      and some Control characters are considered to be white space (see
+      rtl_ImplIsWhitespace).
       If the string doesn't contain white spaces at both ends,
       then the new string is assigned with str.
 
@@ -3322,6 +3367,41 @@ public:
         return aTarget;
     }
 
+#ifdef LIBO_INTERNAL_ONLY // "RTL_FAST_STRING"
+
+    static OUStringNumber< int > number( int i, sal_Int16 radix = 10 )
+    {
+        return OUStringNumber< int >( i, radix );
+    }
+    static OUStringNumber< long long > number( long long ll, sal_Int16 radix = 10 )
+    {
+        return OUStringNumber< long long >( ll, radix );
+    }
+    static OUStringNumber< unsigned long long > number( unsigned long long ll, sal_Int16 radix = 10 )
+    {
+        return OUStringNumber< unsigned long long >( ll, radix );
+    }
+    static OUStringNumber< unsigned long long > number( unsigned int i, sal_Int16 radix = 10 )
+    {
+        return number( static_cast< unsigned long long >( i ), radix );
+    }
+    static OUStringNumber< long long > number( long i, sal_Int16 radix = 10)
+    {
+        return number( static_cast< long long >( i ), radix );
+    }
+    static OUStringNumber< unsigned long long > number( unsigned long i, sal_Int16 radix = 10 )
+    {
+        return number( static_cast< unsigned long long >( i ), radix );
+    }
+    static OUStringNumber< float > number( float f )
+    {
+        return OUStringNumber< float >( f );
+    }
+    static OUStringNumber< double > number( double d )
+    {
+        return OUStringNumber< double >( d );
+    }
+#else
     /**
       Returns the string representation of the integer argument.
 
@@ -3335,9 +3415,7 @@ public:
     static OUString number( int i, sal_Int16 radix = 10 )
     {
         sal_Unicode aBuf[RTL_USTR_MAX_VALUEOFINT32];
-        rtl_uString* pNewData = NULL;
-        rtl_uString_newFromStr_WithLength( &pNewData, aBuf, rtl_ustr_valueOfInt32( aBuf, i, radix ) );
-        return OUString( pNewData, SAL_NO_ACQUIRE );
+        return OUString(aBuf, rtl_ustr_valueOfInt32(aBuf, i, radix));
     }
     /// @overload
     /// @since LibreOffice 4.1
@@ -3361,19 +3439,15 @@ public:
     /// @since LibreOffice 4.1
     static OUString number( long long ll, sal_Int16 radix = 10 )
     {
-        sal_Unicode aBuf[RTL_STR_MAX_VALUEOFINT64];
-        rtl_uString* pNewData = NULL;
-        rtl_uString_newFromStr_WithLength( &pNewData, aBuf, rtl_ustr_valueOfInt64( aBuf, ll, radix ) );
-        return OUString( pNewData, SAL_NO_ACQUIRE );
+        sal_Unicode aBuf[RTL_USTR_MAX_VALUEOFINT64];
+        return OUString(aBuf, rtl_ustr_valueOfInt64(aBuf, ll, radix));
     }
     /// @overload
     /// @since LibreOffice 4.1
     static OUString number( unsigned long long ll, sal_Int16 radix = 10 )
     {
-        sal_Unicode aBuf[RTL_STR_MAX_VALUEOFUINT64];
-        rtl_uString* pNewData = NULL;
-        rtl_uString_newFromStr_WithLength( &pNewData, aBuf, rtl_ustr_valueOfUInt64( aBuf, ll, radix ) );
-        return OUString( pNewData, SAL_NO_ACQUIRE );
+        sal_Unicode aBuf[RTL_USTR_MAX_VALUEOFUINT64];
+        return OUString(aBuf, rtl_ustr_valueOfUInt64(aBuf, ll, radix));
     }
 
     /**
@@ -3382,15 +3456,13 @@ public:
       This function can't be used for language specific conversion.
 
       @param    f           a float.
-      @return   a string with the string representation of the argument.
+      @return   a string with the decimal representation of the argument.
       @since LibreOffice 4.1
     */
     static OUString number( float f )
     {
         sal_Unicode aBuf[RTL_USTR_MAX_VALUEOFFLOAT];
-        rtl_uString* pNewData = NULL;
-        rtl_uString_newFromStr_WithLength( &pNewData, aBuf, rtl_ustr_valueOfFloat( aBuf, f ) );
-        return OUString( pNewData, SAL_NO_ACQUIRE );
+        return OUString(aBuf, rtl_ustr_valueOfFloat(aBuf, f));
     }
 
     /**
@@ -3399,16 +3471,15 @@ public:
       This function can't be used for language specific conversion.
 
       @param    d           a double.
-      @return   a string with the string representation of the argument.
+      @return   a string with the decimal representation of the argument.
       @since LibreOffice 4.1
     */
     static OUString number( double d )
     {
         sal_Unicode aBuf[RTL_USTR_MAX_VALUEOFDOUBLE];
-        rtl_uString* pNewData = NULL;
-        rtl_uString_newFromStr_WithLength( &pNewData, aBuf, rtl_ustr_valueOfDouble( aBuf, d ) );
-        return OUString( pNewData, SAL_NO_ACQUIRE );
+        return OUString(aBuf, rtl_ustr_valueOfDouble(aBuf, d));
     }
+#endif
 
     /**
       Returns the string representation of the sal_Bool argument.
@@ -3440,9 +3511,7 @@ public:
     static OUString boolean( bool b )
     {
         sal_Unicode aBuf[RTL_USTR_MAX_VALUEOFBOOLEAN];
-        rtl_uString* pNewData = NULL;
-        rtl_uString_newFromStr_WithLength( &pNewData, aBuf, rtl_ustr_valueOfBoolean( aBuf, b ) );
-        return OUString( pNewData, SAL_NO_ACQUIRE );
+        return OUString(aBuf, rtl_ustr_valueOfBoolean(aBuf, b));
     }
 
     /**
@@ -3516,13 +3585,13 @@ public:
     }
 
     /**
-      Returns a OUString copied without conversion from an ASCII
+      Returns an OUString copied without conversion from an ASCII
       character string.
 
       Since this method is optimized for performance, the ASCII character
       values are not converted in any way. The caller has to make sure that
-      all ASCII characters are in the allowed range between 0 and
-      127. The ASCII string must be NULL-terminated.
+      all ASCII characters are in the allowed range between 0 and 127.
+      The ASCII string must be NULL-terminated.
 
       Note that for string literals it is simpler and more efficient
       to directly use the OUString constructor.
@@ -3536,6 +3605,24 @@ public:
         rtl_uString_newFromAscii( &pNew, value );
         return OUString( pNew, SAL_NO_ACQUIRE );
     }
+
+#if defined LIBO_INTERNAL_ONLY
+    operator std::u16string_view() const { return {getStr(), sal_uInt32(getLength())}; }
+#endif
+
+private:
+    OUString & internalAppend( rtl_uString* pOtherData )
+    {
+        rtl_uString* pNewData = NULL;
+        rtl_uString_newConcat( &pNewData, pData, pOtherData );
+        if (pNewData == NULL) {
+            throw std::bad_alloc();
+        }
+        rtl_uString_assign(&pData, pNewData);
+        rtl_uString_release(pNewData);
+        return *this;
+    }
+
 };
 
 #if defined LIBO_INTERNAL_ONLY
@@ -3559,7 +3646,7 @@ void operator !=(std::nullptr_t, OUString const &) = delete;
 template<>
 struct ToStringHelper< OUString >
     {
-    static int length( const OUString& s ) { return s.getLength(); }
+    static std::size_t length( const OUString& s ) { return s.getLength(); }
     static sal_Unicode* addData( sal_Unicode* buffer, const OUString& s ) { return addDataHelper( buffer, s.getStr(), s.getLength()); }
     static const bool allowOStringConcat = false;
     static const bool allowOUStringConcat = true;
@@ -3571,7 +3658,7 @@ struct ToStringHelper< OUString >
 template<>
 struct ToStringHelper< OUStringLiteral >
     {
-    static int length( const OUStringLiteral& str ) { return str.size; }
+    static std::size_t length( const OUStringLiteral& str ) { return str.size; }
     static sal_Unicode* addData( sal_Unicode* buffer, const OUStringLiteral& str ) { return addDataLiteral( buffer, str.data, str.size ); }
     static const bool allowOStringConcat = false;
     static const bool allowOUStringConcat = true;
@@ -3582,9 +3669,9 @@ struct ToStringHelper< OUStringLiteral >
 */
 template< typename charT, typename traits, typename T1, typename T2 >
 inline std::basic_ostream<charT, traits> & operator <<(
-    std::basic_ostream<charT, traits> & stream, const OUStringConcat< T1, T2 >& concat)
+    std::basic_ostream<charT, traits> & stream, OUStringConcat< T1, T2 >&& concat)
 {
-    return stream << OUString( concat );
+    return stream << OUString( std::move(concat) );
 }
 
 /// @endcond
@@ -3607,7 +3694,7 @@ struct OUStringHash
         persistently, as its computation may change in later revisions.
      */
     size_t operator()(const OUString& rString) const
-        { return (size_t)rString.hashCode(); }
+        { return static_cast<size_t>(rString.hashCode()); }
 };
 
 /* ======================================================================= */
@@ -3675,7 +3762,7 @@ inline std::basic_ostream<charT, traits> & operator <<(
     std::basic_ostream<charT, traits> & stream, OUString const & rString)
 {
     return stream <<
-        OUStringToOString(rString, RTL_TEXTENCODING_UTF8).getStr();
+        OUStringToOString(rString, RTL_TEXTENCODING_UTF8);
         // best effort; potentially loses data due to conversion failures
         // (stray surrogate halves) and embedded null characters
 }
@@ -3698,8 +3785,29 @@ using ::rtl::OUStringHash;
 using ::rtl::OStringToOUString;
 using ::rtl::OUStringToOString;
 using ::rtl::OUStringLiteral;
-using ::rtl::OUStringLiteral1;
+using ::rtl::OUStringChar;
 #endif
+
+/// @cond INTERNAL
+/**
+  Make OUString hashable by default for use in STL containers.
+
+  @since LibreOffice 6.0
+*/
+#if defined LIBO_INTERNAL_ONLY
+namespace std {
+
+template<>
+struct hash<::rtl::OUString>
+{
+    std::size_t operator()(::rtl::OUString const & s) const
+    { return std::size_t(s.hashCode()); }
+};
+
+}
+
+#endif
+/// @endcond
 
 #endif /* _RTL_USTRING_HXX */
 

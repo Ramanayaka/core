@@ -20,34 +20,34 @@
 #ifndef INCLUDED_XMLOFF_XMLEXPPR_HXX
 #define INCLUDED_XMLOFF_XMLEXPPR_HXX
 
-#include <rtl/ref.hxx>
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
-#include <xmloff/xmlprmap.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <rtl/ustring.hxx>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <memory>
+#include <vector>
+
+namespace com::sun::star::uno { template <typename > class Reference; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace rtl { template <class reference_type> class Reference; }
+
+class XMLPropertySetMapper;
+struct XMLPropertyState;
 
 enum class SvXmlExportFlags {
     NONE        = 0x0000,
-    DEFAULTS    = 0x0001,  // export also default items
-    DEEP        = 0x0002,  // export also items from
-                           // parent item sets
-    EMPTY       = 0x0004,  // export attribs element
-                           // even if its empty
     IGN_WS      = 0x0008
 };
 namespace o3tl
 {
-    template<> struct typed_flags<SvXmlExportFlags> : is_typed_flags<SvXmlExportFlags, 0xf> {};
+    template<> struct typed_flags<SvXmlExportFlags> : is_typed_flags<SvXmlExportFlags, 0x08> {};
 }
 
 class SvXMLUnitConverter;
 class SvXMLAttributeList;
 class SvXMLNamespaceMap;
-class FilterPropertiesInfos_Impl;
 class SvXMLExport;
 
 class XMLOFF_DLLPUBLIC SvXMLExportPropertyMapper : public salhelper::SimpleReferenceObject
@@ -124,10 +124,14 @@ public:
     std::vector<XMLPropertyState> FilterDefaults(
         const css::uno::Reference<css::beans::XPropertySet>& rPropSet ) const;
 
-    /** Compare to arrays of XMLPropertyState */
-    bool Equals( const ::std::vector< XMLPropertyState >& aProperties1,
+    /** Provides a partial ordering over two arrays of XMLPropertyState,
+       Partial because implementing a full order requires quite a lot of code. */
+    bool LessPartial( const ::std::vector< XMLPropertyState >& aProperties1,
                      const ::std::vector< XMLPropertyState >& aProperties2 ) const;
 
+    /** Compare two arrays of XMLPropertyState */
+    bool Equals( const ::std::vector< XMLPropertyState >& aProperties1,
+                     const ::std::vector< XMLPropertyState >& aProperties2 ) const;
     void exportXML(
             SvXMLExport& rExport,
             const ::std::vector< XMLPropertyState >& rProperties,

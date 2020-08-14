@@ -29,30 +29,30 @@
 #include <com/sun/star/lang/DisposedException.hpp>
 
 #include <cppuhelper/interfacecontainer.h>
+#include <comphelper/sequenceashashmap.hxx>
 
 #include <oleembobj.hxx>
-#include <olepersist.hxx>
+#include "olepersist.hxx"
 
 #include "ownview.hxx"
 
 #if defined(_WIN32)
-#include <olecomponent.hxx>
+#include "olecomponent.hxx"
 #endif
 
 using namespace ::com::sun::star;
 
 
-OleEmbeddedObject::OleEmbeddedObject( const uno::Reference< lang::XMultiServiceFactory >& xFactory,
+OleEmbeddedObject::OleEmbeddedObject( const uno::Reference< uno::XComponentContext >& xContext,
                                       const uno::Sequence< sal_Int8 >& aClassID,
                                       const OUString& aClassName )
 : m_pOleComponent( nullptr )
-, m_pInterfaceContainer( nullptr )
 , m_bReadOnly( false )
 , m_bDisposed( false )
 , m_nObjectState( -1 )
 , m_nTargetState( -1 )
 , m_nUpdateMode ( embed::EmbedUpdateModes::ALWAYS_UPDATE )
-, m_xFactory( xFactory )
+, m_xContext( xContext )
 , m_aClassID( aClassID )
 , m_aClassName( aClassName )
 , m_bWaitSaveCompleted( false )
@@ -77,15 +77,14 @@ OleEmbeddedObject::OleEmbeddedObject( const uno::Reference< lang::XMultiServiceF
 
 // In case of loading from persistent entry the classID of the object
 // will be retrieved from the entry, during construction it is unknown
-OleEmbeddedObject::OleEmbeddedObject( const uno::Reference< lang::XMultiServiceFactory >& xFactory, bool bLink )
+OleEmbeddedObject::OleEmbeddedObject( const uno::Reference< uno::XComponentContext >& xContext, bool bLink )
 : m_pOleComponent( nullptr )
-, m_pInterfaceContainer( nullptr )
 , m_bReadOnly( false )
 , m_bDisposed( false )
 , m_nObjectState( -1 )
 , m_nTargetState( -1 )
 , m_nUpdateMode( embed::EmbedUpdateModes::ALWAYS_UPDATE )
-, m_xFactory( xFactory )
+, m_xContext( xContext )
 , m_bWaitSaveCompleted( false )
 , m_bNewVisReplInStream( true )
 , m_bStoreLoaded( false )
@@ -107,15 +106,14 @@ OleEmbeddedObject::OleEmbeddedObject( const uno::Reference< lang::XMultiServiceF
 #ifdef _WIN32
 
 // this constructor let object be initialized from clipboard
-OleEmbeddedObject::OleEmbeddedObject( const uno::Reference< lang::XMultiServiceFactory >& xFactory )
+OleEmbeddedObject::OleEmbeddedObject( const uno::Reference< uno::XComponentContext >& xContext )
 : m_pOleComponent( nullptr )
-, m_pInterfaceContainer( nullptr )
 , m_bReadOnly( false )
 , m_bDisposed( false )
 , m_nObjectState( -1 )
 , m_nTargetState( -1 )
 , m_nUpdateMode( embed::EmbedUpdateModes::ALWAYS_UPDATE )
-, m_xFactory( xFactory )
+, m_xContext( xContext )
 , m_bWaitSaveCompleted( false )
 , m_bNewVisReplInStream( true )
 , m_bStoreLoaded( false )
@@ -144,41 +142,41 @@ OleEmbeddedObject::~OleEmbeddedObject()
     if ( m_pOleComponent || m_pInterfaceContainer || m_xObjectStream.is() )
     {
         // the component must be cleaned during closing
-        m_refCount++; // to avoid crash
+        osl_atomic_increment(&m_refCount); // to avoid crash
         try {
             Dispose();
         } catch( const uno::Exception& ) {}
     }
 
     if ( !m_aTempURL.isEmpty() )
-           KillFile_Impl( m_aTempURL, m_xFactory );
+           KillFile_Impl( m_aTempURL, m_xContext );
 
     if ( !m_aTempDumpURL.isEmpty() )
-           KillFile_Impl( m_aTempDumpURL, m_xFactory );
+           KillFile_Impl( m_aTempDumpURL, m_xContext );
 }
 
 
 void OleEmbeddedObject::MakeEventListenerNotification_Impl( const OUString& aEventName )
 {
-    if ( m_pInterfaceContainer )
+    if ( !m_pInterfaceContainer )
+        return;
+
+    ::cppu::OInterfaceContainerHelper* pContainer =
+    m_pInterfaceContainer->getContainer(
+                                cppu::UnoType<document::XEventListener>::get());
+    if ( pContainer == nullptr )
+        return;
+
+    document::EventObject aEvent( static_cast< ::cppu::OWeakObject* >( this ), aEventName );
+    ::cppu::OInterfaceIteratorHelper pIterator(*pContainer);
+    while (pIterator.hasMoreElements())
     {
-           ::cppu::OInterfaceContainerHelper* pContainer =
-            m_pInterfaceContainer->getContainer(
-                                    cppu::UnoType<document::XEventListener>::get());
-        if ( pContainer != nullptr )
+        try
         {
-            document::EventObject aEvent( static_cast< ::cppu::OWeakObject* >( this ), aEventName );
-            ::cppu::OInterfaceIteratorHelper pIterator(*pContainer);
-            while (pIterator.hasMoreElements())
-            {
-                try
-                {
-                    static_cast<document::XEventListener*>(pIterator.next())->notifyEvent( aEvent );
-                }
-                catch( const uno::RuntimeException& )
-                {
-                }
-            }
+            static_cast<document::XEventListener*>(pIterator.next())->notifyEvent( aEvent );
+        }
+        catch( const uno::RuntimeException& )
+        {
         }
     }
 }
@@ -260,8 +258,7 @@ void OleEmbeddedObject::Dispose()
     {
         lang::EventObject aSource( static_cast< ::cppu::OWeakObject* >( this ) );
         m_pInterfaceContainer->disposeAndClear( aSource );
-        delete m_pInterfaceContainer;
-        m_pInterfaceContainer = nullptr;
+        m_pInterfaceContainer.reset();
     }
 
     if ( m_xOwnView.is() )
@@ -395,11 +392,10 @@ uno::Reference< util::XCloseable > SAL_CALL OleEmbeddedObject::getComponent()
 void SAL_CALL OleEmbeddedObject::addStateChangeListener( const uno::Reference< embed::XStateChangeListener >& xListener )
 {
     // begin wrapping related part ====================
-    uno::Reference< embed::XStateChangeBroadcaster > xWrappedObject( m_xWrappedObject, uno::UNO_QUERY );
-    if ( xWrappedObject.is() )
+    if ( m_xWrappedObject.is() )
     {
         // the object was converted to OOo embedded object, the current implementation is now only a wrapper
-        xWrappedObject->addStateChangeListener( xListener );
+        m_xWrappedObject->addStateChangeListener( xListener );
         return;
     }
     // end wrapping related part ====================
@@ -409,7 +405,7 @@ void SAL_CALL OleEmbeddedObject::addStateChangeListener( const uno::Reference< e
         throw lang::DisposedException(); // TODO
 
     if ( !m_pInterfaceContainer )
-        m_pInterfaceContainer = new ::cppu::OMultiTypeInterfaceContainerHelper( m_aMutex );
+        m_pInterfaceContainer.reset(new ::cppu::OMultiTypeInterfaceContainerHelper( m_aMutex ));
 
     m_pInterfaceContainer->addInterface( cppu::UnoType<embed::XStateChangeListener>::get(),
                                                         xListener );
@@ -420,11 +416,10 @@ void SAL_CALL OleEmbeddedObject::removeStateChangeListener(
                     const uno::Reference< embed::XStateChangeListener >& xListener )
 {
     // begin wrapping related part ====================
-    uno::Reference< embed::XStateChangeBroadcaster > xWrappedObject( m_xWrappedObject, uno::UNO_QUERY );
-    if ( xWrappedObject.is() )
+    if ( m_xWrappedObject.is() )
     {
         // the object was converted to OOo embedded object, the current implementation is now only a wrapper
-        xWrappedObject->removeStateChangeListener( xListener );
+        m_xWrappedObject->removeStateChangeListener( xListener );
         return;
     }
     // end wrapping related part ====================
@@ -515,7 +510,7 @@ void SAL_CALL OleEmbeddedObject::addCloseListener( const uno::Reference< util::X
         throw lang::DisposedException(); // TODO
 
     if ( !m_pInterfaceContainer )
-        m_pInterfaceContainer = new ::cppu::OMultiTypeInterfaceContainerHelper( m_aMutex );
+        m_pInterfaceContainer.reset(new ::cppu::OMultiTypeInterfaceContainerHelper( m_aMutex ));
 
     m_pInterfaceContainer->addInterface( cppu::UnoType<util::XCloseListener>::get(), xListener );
 }
@@ -560,7 +555,7 @@ void SAL_CALL OleEmbeddedObject::addEventListener( const uno::Reference< documen
         throw lang::DisposedException(); // TODO
 
     if ( !m_pInterfaceContainer )
-        m_pInterfaceContainer = new ::cppu::OMultiTypeInterfaceContainerHelper( m_aMutex );
+        m_pInterfaceContainer.reset(new ::cppu::OMultiTypeInterfaceContainerHelper( m_aMutex ));
 
     m_pInterfaceContainer->addInterface( cppu::UnoType<document::XEventListener>::get(), xListener );
 }
@@ -668,6 +663,29 @@ void SAL_CALL OleEmbeddedObject::setParent( const css::uno::Reference< css::uno:
     // end wrapping related part ====================
 
     m_xParent = xParent;
+}
+
+void OleEmbeddedObject::setStream(const css::uno::Reference<css::io::XStream>& xStream)
+{
+    m_xObjectStream = xStream;
+}
+
+css::uno::Reference<css::io::XStream> OleEmbeddedObject::getStream()
+{
+    return m_xObjectStream;
+}
+
+void OleEmbeddedObject::initialize(const uno::Sequence<uno::Any>& rArguments)
+{
+    if (!rArguments.hasElements())
+        return;
+
+    comphelper::SequenceAsHashMap aValues(rArguments[0]);
+    for (const auto& rValue : aValues)
+    {
+        if (rValue.first == "StreamReadOnly")
+            rValue.second >>= m_bStreamReadOnly;
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

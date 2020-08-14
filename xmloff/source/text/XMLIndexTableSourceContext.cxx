@@ -21,21 +21,17 @@
 #include "XMLIndexTableSourceContext.hxx"
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XIndexReplace.hpp>
 #include <com/sun/star/text/ReferenceFieldPart.hpp>
 
 #include <sax/tools/converter.hxx>
 
 #include "XMLIndexTemplateContext.hxx"
-#include "XMLIndexTitleTemplateContext.hxx"
-#include "XMLIndexTOCStylesContext.hxx"
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/txtimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
+#include <xmloff/xmlement.hxx>
 #include <rtl/ustring.hxx>
 
 
@@ -63,7 +59,7 @@ XMLIndexTableSourceContext::~XMLIndexTableSourceContext()
 {
 }
 
-static SvXMLEnumMapEntry<sal_uInt16> const lcl_aReferenceTypeTokenMap[] =
+SvXMLEnumMapEntry<sal_uInt16> const lcl_aReferenceTypeTokenMap[] =
 {
 
     { XML_TEXT,                 ReferenceFieldPart::TEXT },
@@ -102,11 +98,11 @@ void XMLIndexTableSourceContext::ProcessAttribute(
              sal_uInt16 nTmp;
              if (SvXMLUnitConverter::convertEnum(nTmp, rValue,
                                                  lcl_aReferenceTypeTokenMap))
-            {
+             {
                  nDisplayFormat = nTmp;
                  bDisplayFormatOK = true;
              }
-            break;
+             break;
         }
 
         default:
@@ -114,7 +110,6 @@ void XMLIndexTableSourceContext::ProcessAttribute(
             break;
     }
 }
-
 
 void XMLIndexTableSourceContext::EndElement()
 {
@@ -133,8 +128,7 @@ void XMLIndexTableSourceContext::EndElement()
     XMLIndexSourceBaseContext::EndElement();
 }
 
-
-SvXMLImportContext* XMLIndexTableSourceContext::CreateChildContext(
+SvXMLImportContextRef XMLIndexTableSourceContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList> & xAttrList )

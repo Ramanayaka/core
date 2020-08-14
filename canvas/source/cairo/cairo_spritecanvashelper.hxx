@@ -20,10 +20,11 @@
 #ifndef INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_SPRITECANVASHELPER_HXX
 #define INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_SPRITECANVASHELPER_HXX
 
-#include <com/sun/star/rendering/XSpriteCanvas.hpp>
-#include <com/sun/star/rendering/XIntegerBitmap.hpp>
+#include <com/sun/star/rendering/XAnimatedSprite.hpp>
+#include <com/sun/star/rendering/XAnimation.hpp>
+#include <com/sun/star/rendering/XCustomSprite.hpp>
 
-#include <canvas/spriteredrawmanager.hxx>
+#include <spriteredrawmanager.hxx>
 
 #include <vcl/cairo.hxx>
 #include "cairo_canvashelper.hxx"

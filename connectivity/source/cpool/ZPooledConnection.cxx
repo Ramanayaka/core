@@ -19,11 +19,7 @@
 
 #include "ZPooledConnection.hxx"
 #include "ZConnectionWrapper.hxx"
-#include <connectivity/ConnectionWrapper.hxx>
-#include <com/sun/star/sdbc/XCloseable.hpp>
 #include <comphelper/types.hxx>
-#include <comphelper/uno3.hxx>
-#include <cppuhelper/component.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
@@ -48,7 +44,7 @@ void SAL_CALL OPooledConnection::disposing()
     MutexGuard aGuard(m_aMutex);
     if (m_xComponent.is())
         m_xComponent->removeEventListener(this);
-m_xComponent.clear();
+    m_xComponent.clear();
     ::comphelper::disposeComponent(m_xRealConnection);
 }
 

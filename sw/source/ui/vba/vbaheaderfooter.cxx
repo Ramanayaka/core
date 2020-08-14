@@ -18,8 +18,8 @@
  */
 #include "vbaheaderfooter.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include <ooo/vba/word/WdHeaderFooterIndex.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XTextDocument.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
@@ -62,7 +62,7 @@ uno::Reference< word::XRange > SAL_CALL SwVbaHeaderFooter::getRange()
     }
     if( mnIndex == word::WdHeaderFooterIndex::wdHeaderFooterEvenPages )
     {
-        sPropsNameText = sPropsNameText.concat( "Left" );
+        sPropsNameText += "Left";
     }
 
     uno::Reference< text::XText > xText( mxPageStyleProps->getPropertyValue( sPropsNameText ), uno::UNO_QUERY_THROW );
@@ -86,18 +86,16 @@ SwVbaHeaderFooter::Shapes( const uno::Any& index )
 OUString
 SwVbaHeaderFooter::getServiceImplName()
 {
-    return OUString("SwVbaHeaderFooter");
+    return "SwVbaHeaderFooter";
 }
 
 uno::Sequence< OUString >
 SwVbaHeaderFooter::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Pane";
-    }
+        "ooo.vba.word.Pane"
+    };
     return aServiceNames;
 }
 

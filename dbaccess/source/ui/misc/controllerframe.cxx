@@ -64,6 +64,9 @@ namespace dbaui
     // FrameWindowActivationListener
     typedef ::cppu::WeakImplHelper<   XTopWindowListener
                                   >   FrameWindowActivationListener_Base;
+
+    namespace {
+
     class FrameWindowActivationListener : public FrameWindowActivationListener_Base
     {
     public:
@@ -94,6 +97,8 @@ namespace dbaui
         ControllerFrame_Data*   m_pData;
     };
 
+    }
+
     // ControllerFrame_Data
     struct ControllerFrame_Data
     {
@@ -119,7 +124,7 @@ namespace dbaui
     static void lcl_setFrame_nothrow( ControllerFrame_Data& _rData, const Reference< XFrame >& _rxFrame )
     {
         // release old listener
-        if ( _rData.m_pListener.get() )
+        if (_rData.m_pListener)
         {
             _rData.m_pListener->dispose();
             _rData.m_pListener = nullptr;
@@ -142,7 +147,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 
@@ -160,7 +165,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
         return bIsActive;
     }
@@ -195,7 +200,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 
@@ -214,7 +219,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 
@@ -261,7 +266,7 @@ namespace dbaui
                 const vcl::Window* pContainerWindow = VCLUnoHelper::GetWindow( xContainerWindow );
                 ENSURE_OR_THROW( pContainerWindow, "no Window implementation for the frame's container window!" );
 
-                m_pData->m_bIsTopLevelDocumentWindow = ( pContainerWindow->GetExtendedStyle() & WB_EXT_DOCUMENT ) != 0;
+                m_pData->m_bIsTopLevelDocumentWindow = bool( pContainerWindow->GetExtendedStyle() & WindowExtendedStyle::Document );
             }
 
             const Reference< XTopWindow > xFrameContainer( xContainerWindow, UNO_QUERY );
@@ -270,7 +275,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 

@@ -20,12 +20,10 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_MYSQL_YUSER_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_MYSQL_YUSER_HXX
 
-#include <connectivity/sdbcx/VUser.hxx>
+#include <sdbcx/VUser.hxx>
 #include <com/sun/star/sdbc/XConnection.hpp>
 
-namespace connectivity
-{
-    namespace mysql
+namespace connectivity::mysql
     {
         typedef connectivity::sdbcx::OUser OUser_TYPEDEF;
 
@@ -59,8 +57,8 @@ namespace connectivity
         class OUserExtend : public OMySQLUser,
                             public OUserExtend_PROP
         {
-        protected:
             OUString m_Password;
+        protected:
             // OPropertyArrayUsageHelper
             virtual ::cppu::IPropertyArrayHelper* createArrayHelper() const override;
             // OPropertySetHelper
@@ -70,7 +68,7 @@ namespace connectivity
 
             virtual void construct() override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_MYSQL_YUSER_HXX
 

@@ -19,6 +19,7 @@
 #ifndef INCLUDED_COMPHELPER_SEQSTREAM_HXX
 #define INCLUDED_COMPHELPER_SEQSTREAM_HXX
 
+#include <config_options.h>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
@@ -35,11 +36,11 @@ namespace comphelper
 // stream for reading data from a sequence of bytes
 
 
-class COMPHELPER_DLLPUBLIC SequenceInputStream
-: public ::cppu::WeakImplHelper< css::io::XInputStream, css::io::XSeekable >
+class COMPHELPER_DLLPUBLIC SequenceInputStream final
+    : public ::cppu::WeakImplHelper< css::io::XInputStream, css::io::XSeekable >
 {
     ::osl::Mutex    m_aMutex;
-    css::uno::Sequence<sal_Int8> m_aData;
+    css::uno::Sequence<sal_Int8> const m_aData;
     sal_Int32       m_nPos;
 
 public:
@@ -69,14 +70,13 @@ class SAL_DLLPUBLIC_TEMPLATE OSequenceOutputStream_Base
     : public ::cppu::WeakImplHelper< css::io::XOutputStream >
 {};
 
-class COMPHELPER_DLLPUBLIC OSequenceOutputStream : public OSequenceOutputStream_Base
+class UNLESS_MERGELIBS(COMPHELPER_DLLPUBLIC) OSequenceOutputStream final : public OSequenceOutputStream_Base
 {
 private:
     void finalizeOutput();
-protected:
     css::uno::Sequence< sal_Int8 >&                 m_rSequence;
     double                                          m_nResizeFactor;
-    sal_Int32                                       m_nMinimumResize;
+    sal_Int32 const                                 m_nMinimumResize;
     sal_Int32                                       m_nSize;
         // the size of the virtual stream. This is not the size of the sequence, but the number of bytes written
         // into the stream at a given moment.
@@ -86,7 +86,6 @@ protected:
 
     ::osl::Mutex                                    m_aMutex;
 
-protected:
     virtual ~OSequenceOutputStream() override { if (m_bConnected) finalizeOutput(); }
 
 public:

@@ -22,18 +22,16 @@
 
 #include <drawingml/chart/converterbase.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace drawing { class XShapes; }
-} } }
+}
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 
 struct ChartSpaceModel;
 
-class ChartSpaceConverter : public ConverterBase< ChartSpaceModel >
+class ChartSpaceConverter final : public ConverterBase< ChartSpaceModel >
 {
 public:
     explicit            ChartSpaceConverter( const ConverterRoot& rParent, ChartSpaceModel& rModel );
@@ -46,9 +44,7 @@ public:
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

@@ -51,6 +51,9 @@ public:
 
     // for UpdateRef:
     void                SetPos(const ScAddress& rNew)   { aPos=rNew; }
+
+    bool operator==     ( const ScDetOpData& r ) const
+                        { return eOperation == r.eOperation && aPos == r.aPos; }
 };
 
 //  list of operators
@@ -67,8 +70,8 @@ public:
         ScDetOpList(const ScDetOpList& rList);
 
     void    DeleteOnTab( SCTAB nTab );
-    void    UpdateReference( ScDocument* pDoc, UpdateRefMode eUpdateRefMode,
-                                const ScRange& rRange, SCCOL nDx, SCROW nDy, SCTAB nDz );
+    void    UpdateReference( const ScDocument* pDoc, UpdateRefMode eUpdateRefMode,
+                             const ScRange& rRange, SCCOL nDx, SCROW nDy, SCTAB nDz );
 
     bool        operator==( const ScDetOpList& r ) const;       // for ref-undo
 

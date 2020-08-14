@@ -20,6 +20,8 @@
 #ifndef INCLUDED_VCL_INC_UNX_SALOBJ_H
 #define INCLUDED_VCL_INC_UNX_SALOBJ_H
 
+#include <X11/Xlib.h>
+
 #include <salobj.hxx>
 #include <vcl/sysdata.hxx>
 #include <vclpluginapi.h>
@@ -33,14 +35,14 @@ public:
                 SalClipRegion();
                ~SalClipRegion();
 
-    void        BeginSetClipRegion( sal_uIntPtr nRects );
+    void        BeginSetClipRegion( sal_uInt32 nRects );
     void        UnionClipRegion( long nX, long nY, long nWidth, long nHeight );
 
     XRectangle *EndSetClipRegion()  {
         return ClipRectangleList.get(); }
     void        ResetClipRegion()   {
         numClipRectangles = 0;      }
-    int         GetRectangleCount() {
+    int         GetRectangleCount() const {
         return numClipRectangles;   }
 
 private:
@@ -51,11 +53,12 @@ private:
     int         maxClipRectangles;
 };
 
-class VCLPLUG_GEN_PUBLIC X11SalObject : public SalObject
+class X11SalObject final : public SalObject
 {
 public:
     SystemEnvData maSystemChildData;
     SalFrame*       mpParent;
+    ::Window        maParentWin;
     ::Window        maPrimary;
     ::Window        maSecondary;
     Colormap        maColormap;
@@ -70,7 +73,7 @@ public:
 
     // override all pure virtual methods
     virtual void                    ResetClipRegion() override;
-    virtual void                    BeginSetClipRegion( sal_uIntPtr nRects ) override;
+    virtual void                    BeginSetClipRegion( sal_uInt32 nRects ) override;
     virtual void                    UnionClipRegion( long nX, long nY, long nWidth, long nHeight ) override;
     virtual void                    EndSetClipRegion() override;
 

@@ -23,38 +23,39 @@
 #include <svx/svdpage.hxx>
 #include <svx/svdotext.hxx>
 #include <svx/svdmodel.hxx>
-#include <svx/textchain.hxx>
-#include <svx/textchainflow.hxx>
+#include <textchain.hxx>
+#include <textchainflow.hxx>
+#include <svx/sdtacitm.hxx>
+#include <svx/sdtayitm.hxx>
+#include <svx/sdtaiitm.hxx>
+#include <svx/sdtaaitm.hxx>
+#include <svx/xfillit0.hxx>
 #include <basegfx/vector/b2dvector.hxx>
 #include <sdr/primitive2d/sdrtextprimitive2d.hxx>
 #include <drawinglayer/primitive2d/textprimitive2d.hxx>
 #include <drawinglayer/primitive2d/textdecoratedprimitive2d.hxx>
 #include <basegfx/range/b2drange.hxx>
+#include <editeng/eeitem.hxx>
 #include <editeng/editstat.hxx>
 #include <tools/helpers.hxx>
-#include <svx/sdtfchim.hxx>
 #include <svl/itemset.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
 #include <drawinglayer/animation/animationtiming.hxx>
 #include <basegfx/color/bcolor.hxx>
 #include <vcl/svapp.hxx>
-#include <editeng/eeitemid.hxx>
 #include <editeng/escapementitem.hxx>
 #include <editeng/svxenum.hxx>
 #include <editeng/flditem.hxx>
 #include <editeng/adjustitem.hxx>
 #include <drawinglayer/primitive2d/texthierarchyprimitive2d.hxx>
-#include <vcl/metaact.hxx>
 #include <drawinglayer/primitive2d/wrongspellprimitive2d.hxx>
 #include <drawinglayer/primitive2d/graphicprimitive2d.hxx>
 #include <drawinglayer/primitive2d/textlayoutdevice.hxx>
+#include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
 #include <svx/unoapi.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <editeng/outlobj.hxx>
-#include <editeng/editobj.hxx>
-#include <editeng/overflowingtxt.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <sal/log.hxx>
 
 using namespace com::sun::star;
 
@@ -62,25 +63,12 @@ using namespace com::sun::star;
 
 namespace
 {
-    drawinglayer::primitive2d::Primitive2DContainer impConvertVectorToPrimitive2DSequence(const std::vector< drawinglayer::primitive2d::BasePrimitive2D* >& rPrimitiveVector)
-    {
-        const sal_Int32 nCount(rPrimitiveVector.size());
-        drawinglayer::primitive2d::Primitive2DContainer aRetval(nCount);
-
-        for(sal_Int32 a(0L); a < nCount; a++)
-        {
-            aRetval[a] = drawinglayer::primitive2d::Primitive2DReference(rPrimitiveVector[a]);
-        }
-
-        return aRetval;
-    }
-
     class impTextBreakupHandler
     {
     private:
-        std::vector< drawinglayer::primitive2d::BasePrimitive2D* >  maTextPortionPrimitives;
-        std::vector< drawinglayer::primitive2d::BasePrimitive2D* >  maLinePrimitives;
-        std::vector< drawinglayer::primitive2d::BasePrimitive2D* >  maParagraphPrimitives;
+        drawinglayer::primitive2d::Primitive2DContainer             maTextPortionPrimitives;
+        drawinglayer::primitive2d::Primitive2DContainer             maLinePrimitives;
+        drawinglayer::primitive2d::Primitive2DContainer             maParagraphPrimitives;
 
         SdrOutliner&                                                mrOutliner;
         basegfx::B2DHomMatrix                                       maNewTransformA;
@@ -103,11 +91,10 @@ namespace
         DECL_LINK(decomposeBlockBulletPrimitive, DrawBulletInfo*, void);
         DECL_LINK(decomposeStretchBulletPrimitive, DrawBulletInfo*, void);
 
-        static bool impIsUnderlineAbove(const vcl::Font& rFont);
         void impCreateTextPortionPrimitive(const DrawPortionInfo& rInfo);
         static drawinglayer::primitive2d::BasePrimitive2D* impCheckFieldPrimitive(drawinglayer::primitive2d::BasePrimitive2D* pPrimitive, const DrawPortionInfo& rInfo);
         void impFlushTextPortionPrimitivesToLinePrimitives();
-        void impFlushLinePrimitivesToParagraphPrimitives();
+        void impFlushLinePrimitivesToParagraphPrimitives(sal_Int32 nPara);
         void impHandleDrawPortionInfo(const DrawPortionInfo& rInfo);
         void impHandleDrawBulletInfo(const DrawBulletInfo& rInfo);
 
@@ -162,298 +149,294 @@ namespace
             mrOutliner.SetDrawBulletHdl(Link<DrawBulletInfo*,void>());
         }
 
-        drawinglayer::primitive2d::Primitive2DContainer getPrimitive2DSequence();
+        drawinglayer::primitive2d::Primitive2DContainer const & getPrimitive2DSequence();
     };
-
-    bool impTextBreakupHandler::impIsUnderlineAbove(const vcl::Font& rFont)
-    {
-        if(!rFont.IsVertical())
-        {
-            return false;
-        }
-
-        if((LANGUAGE_JAPANESE == rFont.GetLanguage()) || (LANGUAGE_JAPANESE == rFont.GetCJKContextLanguage()))
-        {
-            // the underline is right for Japanese only
-            return true;
-        }
-
-        return false;
-    }
 
     void impTextBreakupHandler::impCreateTextPortionPrimitive(const DrawPortionInfo& rInfo)
     {
-        if(!rInfo.maText.isEmpty() && rInfo.mnTextLen)
+        if(rInfo.maText.isEmpty() || !rInfo.mnTextLen)
+            return;
+
+        OUString caseMappedText = rInfo.mrFont.CalcCaseMap( rInfo.maText );
+        basegfx::B2DVector aFontScaling;
+        drawinglayer::attribute::FontAttribute aFontAttribute(
+            drawinglayer::primitive2d::getFontAttributeFromVclFont(
+                aFontScaling,
+                rInfo.mrFont,
+                rInfo.IsRTL(),
+                false));
+        basegfx::B2DHomMatrix aNewTransform;
+
+        // add font scale to new transform
+        aNewTransform.scale(aFontScaling.getX(), aFontScaling.getY());
+
+        // look for proportional font scaling, if necessary, scale accordingly
+        sal_Int8 nPropr(rInfo.mrFont.GetPropr());
+        if(100 != nPropr)
         {
-            OUString caseMappedText = rInfo.mrFont.CalcCaseMap( rInfo.maText );
-            basegfx::B2DVector aFontScaling;
-            drawinglayer::attribute::FontAttribute aFontAttribute(
-                drawinglayer::primitive2d::getFontAttributeFromVclFont(
-                    aFontScaling,
-                    rInfo.mrFont,
-                    rInfo.IsRTL(),
-                    false));
-            basegfx::B2DHomMatrix aNewTransform;
+            const double fFactor(rInfo.mrFont.GetPropr() / 100.0);
+            aNewTransform.scale(fFactor, fFactor);
+        }
 
-            // add font scale to new transform
-            aNewTransform.scale(aFontScaling.getX(), aFontScaling.getY());
+        // apply font rotate
+        if(rInfo.mrFont.GetOrientation())
+        {
+            aNewTransform.rotate(-rInfo.mrFont.GetOrientation() * F_PI1800);
+        }
 
-            // look for proportional font scaling, if necessary, scale accordingly
-            if(100 != rInfo.mrFont.GetPropr())
+        // look for escapement, if necessary, translate accordingly
+        if(rInfo.mrFont.GetEscapement())
+        {
+            sal_Int16 nEsc(rInfo.mrFont.GetEscapement());
+
+            if(DFLT_ESC_AUTO_SUPER == nEsc)
             {
-                const double fFactor(rInfo.mrFont.GetPropr() / 100.0);
-                aNewTransform.scale(fFactor, fFactor);
+                nEsc = .8 * (100 - nPropr);
+                assert (nEsc == DFLT_ESC_SUPER && "I'm sure this formula needs to be changed, but how to confirm that???");
+                nEsc = DFLT_ESC_SUPER;
+            }
+            else if(DFLT_ESC_AUTO_SUB == nEsc)
+            {
+                nEsc = .2 * -(100 - nPropr);
+                assert (nEsc == -20 && "I'm sure this formula needs to be changed, but how to confirm that???");
+                nEsc = -20;
             }
 
-            // apply font rotate
-            if(rInfo.mrFont.GetOrientation())
+            if(nEsc > MAX_ESC_POS)
             {
-                aNewTransform.rotate(-rInfo.mrFont.GetOrientation() * F_PI1800);
+                nEsc = MAX_ESC_POS;
+            }
+            else if(nEsc < -MAX_ESC_POS)
+            {
+                nEsc = -MAX_ESC_POS;
             }
 
-            // look for escapement, if necessary, translate accordingly
-            if(rInfo.mrFont.GetEscapement())
-            {
-                sal_Int16 nEsc(rInfo.mrFont.GetEscapement());
+            const double fEscapement(nEsc / -100.0);
+            aNewTransform.translate(0.0, fEscapement * aFontScaling.getY());
+        }
 
-                if(DFLT_ESC_AUTO_SUPER == nEsc)
+        // apply transformA
+        aNewTransform *= maNewTransformA;
+
+        // apply local offset
+        aNewTransform.translate(rInfo.mrStartPos.X(), rInfo.mrStartPos.Y());
+
+        // also apply embedding object's transform
+        aNewTransform *= maNewTransformB;
+
+        // prepare DXArray content. To make it independent from font size (and such from
+        // the text transformation), scale it to unit coordinates
+        ::std::vector< double > aDXArray;
+
+        if(rInfo.mpDXArray && rInfo.mnTextLen)
+        {
+            aDXArray.reserve(rInfo.mnTextLen);
+
+            for(sal_Int32 a=0; a < rInfo.mnTextLen; a++)
+            {
+                aDXArray.push_back(static_cast<double>(rInfo.mpDXArray[a]));
+            }
+        }
+
+        // create complex text primitive and append
+        const Color aFontColor(rInfo.mrFont.GetColor());
+        const basegfx::BColor aBFontColor(aFontColor.getBColor());
+
+        const Color aTextFillColor(rInfo.mrFont.GetFillColor());
+
+        // prepare wordLineMode (for underline and strikeout)
+        // NOT for bullet texts. It is set (this may be an error by itself), but needs to be suppressed to hinder e.g. '1)'
+        // to be split which would not look like the original
+        const bool bWordLineMode(rInfo.mrFont.IsWordLineMode() && !rInfo.mbEndOfBullet);
+
+        // prepare new primitive
+        drawinglayer::primitive2d::BasePrimitive2D* pNewPrimitive = nullptr;
+        const bool bDecoratedIsNeeded(
+               LINESTYLE_NONE != rInfo.mrFont.GetOverline()
+            || LINESTYLE_NONE != rInfo.mrFont.GetUnderline()
+            || STRIKEOUT_NONE != rInfo.mrFont.GetStrikeout()
+            || FontEmphasisMark::NONE != (rInfo.mrFont.GetEmphasisMark() & FontEmphasisMark::Style)
+            || FontRelief::NONE != rInfo.mrFont.GetRelief()
+            || rInfo.mrFont.IsShadow()
+            || bWordLineMode);
+
+        if(bDecoratedIsNeeded)
+        {
+            // TextDecoratedPortionPrimitive2D needed, prepare some more data
+            // get overline and underline color. If it's on automatic (0xffffffff) use FontColor instead
+            const Color aUnderlineColor(rInfo.maTextLineColor);
+            const basegfx::BColor aBUnderlineColor((Color(0xffffffff) == aUnderlineColor) ? aBFontColor : aUnderlineColor.getBColor());
+            const Color aOverlineColor(rInfo.maOverlineColor);
+            const basegfx::BColor aBOverlineColor((Color(0xffffffff) == aOverlineColor) ? aBFontColor : aOverlineColor.getBColor());
+
+            // prepare overline and underline data
+            const drawinglayer::primitive2d::TextLine eFontOverline(
+                drawinglayer::primitive2d::mapFontLineStyleToTextLine(rInfo.mrFont.GetOverline()));
+            const drawinglayer::primitive2d::TextLine eFontLineStyle(
+                drawinglayer::primitive2d::mapFontLineStyleToTextLine(rInfo.mrFont.GetUnderline()));
+
+            // check UnderlineAbove
+            const bool bUnderlineAbove(
+                drawinglayer::primitive2d::TEXT_LINE_NONE != eFontLineStyle && rInfo.mrFont.IsUnderlineAbove());
+
+            // prepare strikeout data
+            const drawinglayer::primitive2d::TextStrikeout eTextStrikeout(
+                drawinglayer::primitive2d::mapFontStrikeoutToTextStrikeout(rInfo.mrFont.GetStrikeout()));
+
+            // prepare emphasis mark data
+            drawinglayer::primitive2d::TextEmphasisMark eTextEmphasisMark(drawinglayer::primitive2d::TEXT_FONT_EMPHASIS_MARK_NONE);
+
+            switch(rInfo.mrFont.GetEmphasisMark() & FontEmphasisMark::Style)
+            {
+                case FontEmphasisMark::Dot : eTextEmphasisMark = drawinglayer::primitive2d::TEXT_FONT_EMPHASIS_MARK_DOT; break;
+                case FontEmphasisMark::Circle : eTextEmphasisMark = drawinglayer::primitive2d::TEXT_FONT_EMPHASIS_MARK_CIRCLE; break;
+                case FontEmphasisMark::Disc : eTextEmphasisMark = drawinglayer::primitive2d::TEXT_FONT_EMPHASIS_MARK_DISC; break;
+                case FontEmphasisMark::Accent : eTextEmphasisMark = drawinglayer::primitive2d::TEXT_FONT_EMPHASIS_MARK_ACCENT; break;
+                default: break;
+            }
+
+            const bool bEmphasisMarkAbove(rInfo.mrFont.GetEmphasisMark() & FontEmphasisMark::PosAbove);
+            const bool bEmphasisMarkBelow(rInfo.mrFont.GetEmphasisMark() & FontEmphasisMark::PosBelow);
+
+            // prepare font relief data
+            drawinglayer::primitive2d::TextRelief eTextRelief(drawinglayer::primitive2d::TEXT_RELIEF_NONE);
+
+            switch(rInfo.mrFont.GetRelief())
+            {
+                case FontRelief::Embossed : eTextRelief = drawinglayer::primitive2d::TEXT_RELIEF_EMBOSSED; break;
+                case FontRelief::Engraved : eTextRelief = drawinglayer::primitive2d::TEXT_RELIEF_ENGRAVED; break;
+                default : break; // RELIEF_NONE, FontRelief_FORCE_EQUAL_SIZE
+            }
+
+            // prepare shadow/outline data
+            const bool bShadow(rInfo.mrFont.IsShadow());
+
+            // TextDecoratedPortionPrimitive2D is needed, create one
+            pNewPrimitive = new drawinglayer::primitive2d::TextDecoratedPortionPrimitive2D(
+
+                // attributes for TextSimplePortionPrimitive2D
+                aNewTransform,
+                caseMappedText,
+                rInfo.mnTextStart,
+                rInfo.mnTextLen,
+                aDXArray,
+                aFontAttribute,
+                rInfo.mpLocale ? *rInfo.mpLocale : css::lang::Locale(),
+                aBFontColor,
+                aTextFillColor,
+
+                // attributes for TextDecoratedPortionPrimitive2D
+                aBOverlineColor,
+                aBUnderlineColor,
+                eFontOverline,
+                eFontLineStyle,
+                bUnderlineAbove,
+                eTextStrikeout,
+                bWordLineMode,
+                eTextEmphasisMark,
+                bEmphasisMarkAbove,
+                bEmphasisMarkBelow,
+                eTextRelief,
+                bShadow);
+        }
+        else
+        {
+            // TextSimplePortionPrimitive2D is enough
+            pNewPrimitive = new drawinglayer::primitive2d::TextSimplePortionPrimitive2D(
+                aNewTransform,
+                caseMappedText,
+                rInfo.mnTextStart,
+                rInfo.mnTextLen,
+                aDXArray,
+                aFontAttribute,
+                rInfo.mpLocale ? *rInfo.mpLocale : css::lang::Locale(),
+                aBFontColor,
+                rInfo.mbFilled,
+                rInfo.mnWidthToFill,
+                aTextFillColor);
+        }
+
+        if (aFontColor.GetTransparency() != 0)
+        {
+            // Handle semi-transparent text for both the decorated and simple case here.
+            pNewPrimitive = new drawinglayer::primitive2d::UnifiedTransparencePrimitive2D(
+                drawinglayer::primitive2d::Primitive2DContainer{ pNewPrimitive },
+                aFontColor.GetTransparency() / 255.0);
+        }
+
+        if(rInfo.mbEndOfBullet)
+        {
+            // embed in TextHierarchyBulletPrimitive2D
+            const drawinglayer::primitive2d::Primitive2DReference aNewReference(pNewPrimitive);
+            const drawinglayer::primitive2d::Primitive2DContainer aNewSequence { aNewReference } ;
+            pNewPrimitive = new drawinglayer::primitive2d::TextHierarchyBulletPrimitive2D(aNewSequence);
+        }
+
+        if(rInfo.mpFieldData)
+        {
+            pNewPrimitive = impCheckFieldPrimitive(pNewPrimitive, rInfo);
+        }
+
+        maTextPortionPrimitives.push_back(pNewPrimitive);
+
+        // support for WrongSpellVector. Create WrongSpellPrimitives as needed
+        if(!rInfo.mpWrongSpellVector || aDXArray.empty())
+            return;
+
+        const sal_Int32 nSize(rInfo.mpWrongSpellVector->size());
+        const sal_Int32 nDXCount(aDXArray.size());
+        const basegfx::BColor aSpellColor(1.0, 0.0, 0.0); // red, hard coded
+
+        for(sal_Int32 a(0); a < nSize; a++)
+        {
+            const EEngineData::WrongSpellClass& rCandidate = (*rInfo.mpWrongSpellVector)[a];
+
+            if(rCandidate.nStart >= rInfo.mnTextStart && rCandidate.nEnd >= rInfo.mnTextStart && rCandidate.nEnd > rCandidate.nStart)
+            {
+                const sal_Int32 nStart(rCandidate.nStart - rInfo.mnTextStart);
+                const sal_Int32 nEnd(rCandidate.nEnd - rInfo.mnTextStart);
+                double fStart(0.0);
+                double fEnd(0.0);
+
+                if(nStart > 0 && nStart - 1 < nDXCount)
                 {
-                    nEsc = 33;
+                    fStart = aDXArray[nStart - 1];
                 }
-                else if(DFLT_ESC_AUTO_SUB == nEsc)
+
+                if(nEnd > 0 && nEnd - 1 < nDXCount)
                 {
-                    nEsc = -20;
+                    fEnd = aDXArray[nEnd - 1];
                 }
 
-                if(nEsc > 100)
+                if(!basegfx::fTools::equal(fStart, fEnd))
                 {
-                    nEsc = 100;
-                }
-                else if(nEsc < -100)
-                {
-                    nEsc = -100;
-                }
-
-                const double fEscapement(nEsc / -100.0);
-                aNewTransform.translate(0.0, fEscapement * aFontScaling.getY());
-            }
-
-            // apply transformA
-            aNewTransform *= maNewTransformA;
-
-            // apply local offset
-            aNewTransform.translate(rInfo.mrStartPos.X(), rInfo.mrStartPos.Y());
-
-            // also apply embedding object's transform
-            aNewTransform *= maNewTransformB;
-
-            // prepare DXArray content. To make it independent from font size (and such from
-            // the text transformation), scale it to unit coordinates
-            ::std::vector< double > aDXArray;
-            static bool bDisableTextArray(false);
-
-            if(!bDisableTextArray && rInfo.mpDXArray && rInfo.mnTextLen)
-            {
-                aDXArray.reserve(rInfo.mnTextLen);
-
-                for(sal_Int32 a=0; a < rInfo.mnTextLen; a++)
-                {
-                    aDXArray.push_back((double)rInfo.mpDXArray[a]);
-                }
-            }
-
-            // create complex text primitive and append
-            const Color aFontColor(rInfo.mrFont.GetColor());
-            const basegfx::BColor aBFontColor(aFontColor.getBColor());
-
-            const Color aTextFillColor(rInfo.mrFont.GetFillColor());
-
-            // prepare wordLineMode (for underline and strikeout)
-            // NOT for bullet texts. It is set (this may be an error by itself), but needs to be suppressed to hinder e.g. '1)'
-            // to be split which would not look like the original
-            const bool bWordLineMode(rInfo.mrFont.IsWordLineMode() && !rInfo.mbEndOfBullet);
-
-            // prepare new primitive
-            drawinglayer::primitive2d::BasePrimitive2D* pNewPrimitive = nullptr;
-            const bool bDecoratedIsNeeded(
-                   LINESTYLE_NONE != rInfo.mrFont.GetOverline()
-                || LINESTYLE_NONE != rInfo.mrFont.GetUnderline()
-                || STRIKEOUT_NONE != rInfo.mrFont.GetStrikeout()
-                || FontEmphasisMark::NONE != (rInfo.mrFont.GetEmphasisMark() & FontEmphasisMark::Style)
-                || FontRelief::NONE != rInfo.mrFont.GetRelief()
-                || rInfo.mrFont.IsShadow()
-                || bWordLineMode);
-
-            if(bDecoratedIsNeeded)
-            {
-                // TextDecoratedPortionPrimitive2D needed, prepare some more data
-                // get overline and underline color. If it's on automatic (0xffffffff) use FontColor instead
-                const Color aUnderlineColor(rInfo.maTextLineColor);
-                const basegfx::BColor aBUnderlineColor((0xffffffff == aUnderlineColor.GetColor()) ? aBFontColor : aUnderlineColor.getBColor());
-                const Color aOverlineColor(rInfo.maOverlineColor);
-                const basegfx::BColor aBOverlineColor((0xffffffff == aOverlineColor.GetColor()) ? aBFontColor : aOverlineColor.getBColor());
-
-                // prepare overline and underline data
-                const drawinglayer::primitive2d::TextLine eFontOverline(
-                    drawinglayer::primitive2d::mapFontLineStyleToTextLine(rInfo.mrFont.GetOverline()));
-                const drawinglayer::primitive2d::TextLine eFontLineStyle(
-                    drawinglayer::primitive2d::mapFontLineStyleToTextLine(rInfo.mrFont.GetUnderline()));
-
-                // check UnderlineAbove
-                const bool bUnderlineAbove(
-                    drawinglayer::primitive2d::TEXT_LINE_NONE != eFontLineStyle && impIsUnderlineAbove(rInfo.mrFont));
-
-                // prepare strikeout data
-                const drawinglayer::primitive2d::TextStrikeout eTextStrikeout(
-                    drawinglayer::primitive2d::mapFontStrikeoutToTextStrikeout(rInfo.mrFont.GetStrikeout()));
-
-                // prepare emphasis mark data
-                drawinglayer::primitive2d::TextEmphasisMark eTextEmphasisMark(drawinglayer::primitive2d::TEXT_FONT_EMPHASIS_MARK_NONE);
-
-                switch(rInfo.mrFont.GetEmphasisMark() & FontEmphasisMark::Style)
-                {
-                    case FontEmphasisMark::Dot : eTextEmphasisMark = drawinglayer::primitive2d::TEXT_FONT_EMPHASIS_MARK_DOT; break;
-                    case FontEmphasisMark::Circle : eTextEmphasisMark = drawinglayer::primitive2d::TEXT_FONT_EMPHASIS_MARK_CIRCLE; break;
-                    case FontEmphasisMark::Disc : eTextEmphasisMark = drawinglayer::primitive2d::TEXT_FONT_EMPHASIS_MARK_DISC; break;
-                    case FontEmphasisMark::Accent : eTextEmphasisMark = drawinglayer::primitive2d::TEXT_FONT_EMPHASIS_MARK_ACCENT; break;
-                    default: break;
-                }
-
-                const bool bEmphasisMarkAbove(rInfo.mrFont.GetEmphasisMark() & FontEmphasisMark::PosAbove);
-                const bool bEmphasisMarkBelow(rInfo.mrFont.GetEmphasisMark() & FontEmphasisMark::PosBelow);
-
-                // prepare font relief data
-                drawinglayer::primitive2d::TextRelief eTextRelief(drawinglayer::primitive2d::TEXT_RELIEF_NONE);
-
-                switch(rInfo.mrFont.GetRelief())
-                {
-                    case FontRelief::Embossed : eTextRelief = drawinglayer::primitive2d::TEXT_RELIEF_EMBOSSED; break;
-                    case FontRelief::Engraved : eTextRelief = drawinglayer::primitive2d::TEXT_RELIEF_ENGRAVED; break;
-                    default : break; // RELIEF_NONE, FontRelief_FORCE_EQUAL_SIZE
-                }
-
-                // prepare shadow/outline data
-                const bool bShadow(rInfo.mrFont.IsShadow());
-
-                // TextDecoratedPortionPrimitive2D is needed, create one
-                pNewPrimitive = new drawinglayer::primitive2d::TextDecoratedPortionPrimitive2D(
-
-                    // attributes for TextSimplePortionPrimitive2D
-                    aNewTransform,
-                    caseMappedText,
-                    rInfo.mnTextStart,
-                    rInfo.mnTextLen,
-                    aDXArray,
-                    aFontAttribute,
-                    rInfo.mpLocale ? *rInfo.mpLocale : css::lang::Locale(),
-                    aBFontColor,
-                    aTextFillColor,
-
-                    // attributes for TextDecoratedPortionPrimitive2D
-                    aBOverlineColor,
-                    aBUnderlineColor,
-                    eFontOverline,
-                    eFontLineStyle,
-                    bUnderlineAbove,
-                    eTextStrikeout,
-                    bWordLineMode,
-                    eTextEmphasisMark,
-                    bEmphasisMarkAbove,
-                    bEmphasisMarkBelow,
-                    eTextRelief,
-                    bShadow);
-            }
-            else
-            {
-                // TextSimplePortionPrimitive2D is enough
-                pNewPrimitive = new drawinglayer::primitive2d::TextSimplePortionPrimitive2D(
-                    aNewTransform,
-                    caseMappedText,
-                    rInfo.mnTextStart,
-                    rInfo.mnTextLen,
-                    aDXArray,
-                    aFontAttribute,
-                    rInfo.mpLocale ? *rInfo.mpLocale : css::lang::Locale(),
-                    aBFontColor,
-                    rInfo.mbFilled,
-                    rInfo.mnWidthToFill,
-                    aTextFillColor);
-            }
-
-            if(rInfo.mbEndOfBullet)
-            {
-                // embed in TextHierarchyBulletPrimitive2D
-                const drawinglayer::primitive2d::Primitive2DReference aNewReference(pNewPrimitive);
-                const drawinglayer::primitive2d::Primitive2DContainer aNewSequence { aNewReference } ;
-                pNewPrimitive = new drawinglayer::primitive2d::TextHierarchyBulletPrimitive2D(aNewSequence);
-            }
-
-            if(rInfo.mpFieldData)
-            {
-                pNewPrimitive = impCheckFieldPrimitive(pNewPrimitive, rInfo);
-            }
-
-            maTextPortionPrimitives.push_back(pNewPrimitive);
-
-            // support for WrongSpellVector. Create WrongSpellPrimitives as needed
-            if(rInfo.mpWrongSpellVector && !aDXArray.empty())
-            {
-                const sal_Int32 nSize(rInfo.mpWrongSpellVector->size());
-                const sal_Int32 nDXCount(aDXArray.size());
-                const basegfx::BColor aSpellColor(1.0, 0.0, 0.0); // red, hard coded
-
-                for(sal_Int32 a(0); a < nSize; a++)
-                {
-                    const EEngineData::WrongSpellClass& rCandidate = (*rInfo.mpWrongSpellVector)[a];
-
-                    if(rCandidate.nStart >= rInfo.mnTextStart && rCandidate.nEnd >= rInfo.mnTextStart && rCandidate.nEnd > rCandidate.nStart)
+                    if(rInfo.IsRTL())
                     {
-                        const sal_Int32 nStart(rCandidate.nStart - rInfo.mnTextStart);
-                        const sal_Int32 nEnd(rCandidate.nEnd - rInfo.mnTextStart);
-                        double fStart(0.0);
-                        double fEnd(0.0);
+                        // #i98523#
+                        // When the portion is RTL, mirror the redlining using the
+                        // full portion width
+                        const double fTextWidth(aDXArray[aDXArray.size() - 1]);
 
-                        if(nStart > 0 && nStart - 1 < nDXCount)
-                        {
-                            fStart = aDXArray[nStart - 1];
-                        }
-
-                        if(nEnd > 0 && nEnd - 1 < nDXCount)
-                        {
-                            fEnd = aDXArray[nEnd - 1];
-                        }
-
-                        if(!basegfx::fTools::equal(fStart, fEnd))
-                        {
-                            if(rInfo.IsRTL())
-                            {
-                                // #i98523#
-                                // When the portion is RTL, mirror the redlining using the
-                                // full portion width
-                                const double fTextWidth(aDXArray[aDXArray.size() - 1]);
-
-                                fStart = fTextWidth - fStart;
-                                fEnd = fTextWidth - fEnd;
-                            }
-
-                            // need to take FontScaling out of values; it's already part of
-                            // aNewTransform and would be double applied
-                            const double fFontScaleX(aFontScaling.getX());
-
-                            if(!basegfx::fTools::equal(fFontScaleX, 1.0)
-                                && !basegfx::fTools::equalZero(fFontScaleX))
-                            {
-                                fStart /= fFontScaleX;
-                                fEnd /= fFontScaleX;
-                            }
-
-                            maTextPortionPrimitives.push_back(new drawinglayer::primitive2d::WrongSpellPrimitive2D(
-                                aNewTransform,
-                                fStart,
-                                fEnd,
-                                aSpellColor));
-                        }
+                        fStart = fTextWidth - fStart;
+                        fEnd = fTextWidth - fEnd;
                     }
+
+                    // need to take FontScaling out of values; it's already part of
+                    // aNewTransform and would be double applied
+                    const double fFontScaleX(aFontScaling.getX());
+
+                    if(!basegfx::fTools::equal(fFontScaleX, 1.0)
+                        && !basegfx::fTools::equalZero(fFontScaleX))
+                    {
+                        fStart /= fFontScaleX;
+                        fEnd /= fFontScaleX;
+                    }
+
+                    maTextPortionPrimitives.push_back(new drawinglayer::primitive2d::WrongSpellPrimitive2D(
+                        aNewTransform,
+                        fStart,
+                        fEnd,
+                        aSpellColor));
                 }
             }
         }
@@ -479,15 +462,22 @@ namespace
 
             if(pURLField)
             {
-                pPrimitive = new drawinglayer::primitive2d::TextHierarchyFieldPrimitive2D(aSequence, drawinglayer::primitive2d::FIELD_TYPE_URL, pURLField->GetURL());
+                // extended this to hold more of the contents of the original
+                // SvxURLField since that stuff is still used in HitTest and e.g. Calc
+                std::vector< std::pair< OUString, OUString>> meValues;
+                meValues.emplace_back("URL", pURLField->GetURL());
+                meValues.emplace_back("Representation", pURLField->GetRepresentation());
+                meValues.emplace_back("TargetFrame", pURLField->GetTargetFrame());
+                meValues.emplace_back("SvxURLFormat", OUString::number(static_cast<sal_uInt16>(pURLField->GetFormat())));
+                pPrimitive = new drawinglayer::primitive2d::TextHierarchyFieldPrimitive2D(aSequence, drawinglayer::primitive2d::FIELD_TYPE_URL, &meValues);
             }
             else if(pPageField)
             {
-                pPrimitive = new drawinglayer::primitive2d::TextHierarchyFieldPrimitive2D(aSequence, drawinglayer::primitive2d::FIELD_TYPE_PAGE, "");
+                pPrimitive = new drawinglayer::primitive2d::TextHierarchyFieldPrimitive2D(aSequence, drawinglayer::primitive2d::FIELD_TYPE_PAGE);
             }
             else
             {
-                pPrimitive = new drawinglayer::primitive2d::TextHierarchyFieldPrimitive2D(aSequence, drawinglayer::primitive2d::FIELD_TYPE_COMMON, "");
+                pPrimitive = new drawinglayer::primitive2d::TextHierarchyFieldPrimitive2D(aSequence, drawinglayer::primitive2d::FIELD_TYPE_COMMON);
             }
         }
 
@@ -500,20 +490,27 @@ namespace
         // empty line primitives (contrary to paragraphs, see below).
         if(!maTextPortionPrimitives.empty())
         {
-            drawinglayer::primitive2d::Primitive2DContainer aLineSequence(impConvertVectorToPrimitive2DSequence(maTextPortionPrimitives));
+            maLinePrimitives.push_back(new drawinglayer::primitive2d::TextHierarchyLinePrimitive2D(maTextPortionPrimitives));
             maTextPortionPrimitives.clear();
-            maLinePrimitives.push_back(new drawinglayer::primitive2d::TextHierarchyLinePrimitive2D(aLineSequence));
         }
     }
 
-    void impTextBreakupHandler::impFlushLinePrimitivesToParagraphPrimitives()
+    void impTextBreakupHandler::impFlushLinePrimitivesToParagraphPrimitives(sal_Int32 nPara)
     {
+        sal_Int16 nDepth = mrOutliner.GetDepth(nPara);
+        EBulletInfo eInfo = mrOutliner.GetBulletInfo(nPara);
+        // Pass -1 to signal VclMetafileProcessor2D that there is no active
+        // bullets/numbering in this paragraph (i.e. this is normal text)
+        const sal_Int16 nOutlineLevel( eInfo.bVisible ?  nDepth : -1);
+
         // ALWAYS create a paragraph primitive, even when no content was added. This is done to
         // have the correct paragraph count even with empty paragraphs. Those paragraphs will
         // have an empty sub-PrimitiveSequence.
-        drawinglayer::primitive2d::Primitive2DContainer aParagraphSequence(impConvertVectorToPrimitive2DSequence(maLinePrimitives));
+        maParagraphPrimitives.push_back(
+            new drawinglayer::primitive2d::TextHierarchyParagraphPrimitive2D(
+                maLinePrimitives,
+                nOutlineLevel));
         maLinePrimitives.clear();
-        maParagraphPrimitives.push_back(new drawinglayer::primitive2d::TextHierarchyParagraphPrimitive2D(aParagraphSequence));
     }
 
     void impTextBreakupHandler::impHandleDrawPortionInfo(const DrawPortionInfo& rInfo)
@@ -527,7 +524,7 @@ namespace
 
         if(rInfo.mbEndOfParagraph)
         {
-            impFlushLinePrimitivesToParagraphPrimitives();
+            impFlushLinePrimitivesToParagraphPrimitives(rInfo.mnPara);
         }
     }
 
@@ -568,7 +565,7 @@ namespace
     {
         // for contour text, ignore (clip away) all portions which are below
         // the visible area given by maScale
-        if(pInfo && (double)pInfo->mrStartPos.Y() < maScale.getY())
+        if(pInfo && static_cast<double>(pInfo->mrStartPos.Y()) < maScale.getY())
         {
             impHandleDrawPortionInfo(*pInfo);
         }
@@ -576,47 +573,47 @@ namespace
 
     IMPL_LINK(impTextBreakupHandler, decomposeBlockTextPrimitive, DrawPortionInfo*, pInfo, void)
     {
-        if(pInfo)
+        if(!pInfo)
+            return;
+
+        // Is clipping wanted? This is text clipping; only accept a portion
+        // if it's completely in the range
+        if(!maClipRange.isEmpty())
         {
-            // Is clipping wanted? This is text clipping; only accept a portion
-            // if it's completely in the range
-            if(!maClipRange.isEmpty())
+            // Test start position first; this allows to not get the text range at
+            // all if text is far outside
+            const basegfx::B2DPoint aStartPosition(pInfo->mrStartPos.X(), pInfo->mrStartPos.Y());
+
+            if(!maClipRange.isInside(aStartPosition))
             {
-                // Test start position first; this allows to not get the text range at
-                // all if text is far outside
-                const basegfx::B2DPoint aStartPosition(pInfo->mrStartPos.X(), pInfo->mrStartPos.Y());
-
-                if(!maClipRange.isInside(aStartPosition))
-                {
-                    return;
-                }
-
-                // Start position is inside. Get TextBoundRect and TopLeft next
-                drawinglayer::primitive2d::TextLayouterDevice aTextLayouterDevice;
-                aTextLayouterDevice.setFont(pInfo->mrFont);
-
-                const basegfx::B2DRange aTextBoundRect(
-                    aTextLayouterDevice.getTextBoundRect(
-                        pInfo->maText, pInfo->mnTextStart, pInfo->mnTextLen));
-                const basegfx::B2DPoint aTopLeft(aTextBoundRect.getMinimum() + aStartPosition);
-
-                if(!maClipRange.isInside(aTopLeft))
-                {
-                    return;
-                }
-
-                // TopLeft is inside. Get BottomRight and check
-                const basegfx::B2DPoint aBottomRight(aTextBoundRect.getMaximum() + aStartPosition);
-
-                if(!maClipRange.isInside(aBottomRight))
-                {
-                    return;
-                }
-
-                // all inside, clip was successful
+                return;
             }
-            impHandleDrawPortionInfo(*pInfo);
+
+            // Start position is inside. Get TextBoundRect and TopLeft next
+            drawinglayer::primitive2d::TextLayouterDevice aTextLayouterDevice;
+            aTextLayouterDevice.setFont(pInfo->mrFont);
+
+            const basegfx::B2DRange aTextBoundRect(
+                aTextLayouterDevice.getTextBoundRect(
+                    pInfo->maText, pInfo->mnTextStart, pInfo->mnTextLen));
+            const basegfx::B2DPoint aTopLeft(aTextBoundRect.getMinimum() + aStartPosition);
+
+            if(!maClipRange.isInside(aTopLeft))
+            {
+                return;
+            }
+
+            // TopLeft is inside. Get BottomRight and check
+            const basegfx::B2DPoint aBottomRight(aTextBoundRect.getMaximum() + aStartPosition);
+
+            if(!maClipRange.isInside(aBottomRight))
+            {
+                return;
+            }
+
+            // all inside, clip was successful
         }
+        impHandleDrawPortionInfo(*pInfo);
     }
 
     IMPL_LINK(impTextBreakupHandler, decomposeStretchTextPrimitive, DrawPortionInfo*, pInfo, void)
@@ -651,7 +648,7 @@ namespace
         }
     }
 
-    drawinglayer::primitive2d::Primitive2DContainer impTextBreakupHandler::getPrimitive2DSequence()
+    drawinglayer::primitive2d::Primitive2DContainer const & impTextBreakupHandler::getPrimitive2DSequence()
     {
         if(!maTextPortionPrimitives.empty())
         {
@@ -662,10 +659,10 @@ namespace
         if(!maLinePrimitives.empty())
         {
             // collect non-closed paragraphs
-            impFlushLinePrimitivesToParagraphPrimitives();
+            impFlushLinePrimitivesToParagraphPrimitives(mrOutliner.GetParagraphCount() - 1);
         }
 
-        return impConvertVectorToPrimitive2DSequence(maParagraphPrimitives);
+        return maParagraphPrimitives;
     }
 } // end of anonymous namespace
 
@@ -684,7 +681,7 @@ void SdrTextObj::impDecomposeContourTextPrimitive(
 
     // prepare contour polygon, force to non-mirrored for laying out
     basegfx::B2DPolyPolygon aPolyPolygon(rSdrContourTextPrimitive.getUnitPolyPolygon());
-    aPolyPolygon.transform(basegfx::tools::createScaleB2DHomMatrix(fabs(aScale.getX()), fabs(aScale.getY())));
+    aPolyPolygon.transform(basegfx::utils::createScaleB2DHomMatrix(fabs(aScale.getX()), fabs(aScale.getY())));
 
     // prepare outliner
     SolarMutexGuard aSolarGuard;
@@ -708,7 +705,7 @@ void SdrTextObj::impDecomposeContourTextPrimitive(
 
     // in-between the translations of the single primitives will take place. Afterwards,
     // the object's transformations need to be applied
-    const basegfx::B2DHomMatrix aNewTransformB(basegfx::tools::createScaleShearXRotateTranslateB2DHomMatrix(
+    const basegfx::B2DHomMatrix aNewTransformB(basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
         bMirrorX ? -1.0 : 1.0, bMirrorY ? -1.0 : 1.0,
         fShearX, fRotate, aTranslate.getX(), aTranslate.getY()));
 
@@ -754,15 +751,15 @@ void SdrTextObj::impDecomposeAutoFitTextPrimitive(
     rOutliner.SetMaxAutoPaperSize(Size(1000000,1000000));
 
     // add one to rage sizes to get back to the old Rectangle and outliner measurements
-    const sal_uInt32 nAnchorTextWidth(FRound(aAnchorTextRange.getWidth() + 1L));
-    const sal_uInt32 nAnchorTextHeight(FRound(aAnchorTextRange.getHeight() + 1L));
+    const sal_uInt32 nAnchorTextWidth(FRound(aAnchorTextRange.getWidth() + 1));
+    const sal_uInt32 nAnchorTextHeight(FRound(aAnchorTextRange.getHeight() + 1));
     const OutlinerParaObject* pOutlinerParaObject = rSdrAutofitTextPrimitive.getSdrText()->GetOutlinerParaObject();
     OSL_ENSURE(pOutlinerParaObject, "impDecomposeBlockTextPrimitive used with no OutlinerParaObject (!)");
     const bool bVerticalWriting(pOutlinerParaObject->IsVertical());
     const bool bTopToBottom(pOutlinerParaObject->IsTopToBottom());
     const Size aAnchorTextSize(Size(nAnchorTextWidth, nAnchorTextHeight));
 
-    if((rSdrAutofitTextPrimitive.getWordWrap() || IsTextFrame()))
+    if(rSdrAutofitTextPrimitive.getWordWrap() || IsTextFrame())
     {
         rOutliner.SetMaxAutoPaperSize(aAnchorTextSize);
     }
@@ -860,6 +857,37 @@ void SdrTextObj::impDecomposeAutoFitTextPrimitive(
     rTarget = aConverter.getPrimitive2DSequence();
 }
 
+// Resolves: fdo#35779 set background color of this shape as the editeng background if there
+// is one. Check the shape itself, then the host page, then that page's master page.
+void SdrObject::setSuitableOutlinerBg(::Outliner& rOutliner) const
+{
+    const SfxItemSet* pBackgroundFillSet = &GetObjectItemSet();
+
+    if (drawing::FillStyle_NONE == pBackgroundFillSet->Get(XATTR_FILLSTYLE).GetValue())
+    {
+        SdrPage* pOwnerPage(getSdrPageFromSdrObject());
+        if (pOwnerPage)
+        {
+            pBackgroundFillSet = &pOwnerPage->getSdrPageProperties().GetItemSet();
+
+            if (drawing::FillStyle_NONE == pBackgroundFillSet->Get(XATTR_FILLSTYLE).GetValue())
+            {
+                if (!pOwnerPage->IsMasterPage() && pOwnerPage->TRG_HasMasterPage())
+                {
+                    pBackgroundFillSet = &pOwnerPage->TRG_GetMasterPage().getSdrPageProperties().GetItemSet();
+                }
+            }
+        }
+    }
+
+    if (drawing::FillStyle_NONE != pBackgroundFillSet->Get(XATTR_FILLSTYLE).GetValue())
+    {
+        Color aColor(rOutliner.GetBackgroundColor());
+        GetDraftFillColor(*pBackgroundFillSet, aColor);
+        rOutliner.SetBackgroundColor(aColor);
+    }
+}
+
 void SdrTextObj::impDecomposeBlockTextPrimitive(
     drawinglayer::primitive2d::Primitive2DContainer& rTarget,
     const drawinglayer::primitive2d::SdrBlockTextPrimitive2D& rSdrBlockTextPrimitive,
@@ -890,46 +918,20 @@ void SdrTextObj::impDecomposeBlockTextPrimitive(
     rOutliner.SetMinAutoPaperSize(aNullSize);
     rOutliner.SetMaxAutoPaperSize(Size(1000000,1000000));
 
-    // Resolves: fdo#35779 set background color of this shape as the editeng background if there
-    // is one. Check the shape itself, then the host page, then that page's master page.
     // That color needs to be restored on leaving this method
     Color aOriginalBackColor(rOutliner.GetBackgroundColor());
-    const SfxItemSet* pBackgroundFillSet = &GetObjectItemSet();
-
-    if (drawing::FillStyle_NONE == static_cast<const XFillStyleItem&>(pBackgroundFillSet->Get(XATTR_FILLSTYLE)).GetValue())
-    {
-        SdrPage *pOwnerPage = GetPage();
-        if (pOwnerPage)
-        {
-            pBackgroundFillSet = &pOwnerPage->getSdrPageProperties().GetItemSet();
-
-            if (drawing::FillStyle_NONE == static_cast<const XFillStyleItem&>(pBackgroundFillSet->Get(XATTR_FILLSTYLE)).GetValue())
-            {
-                if (!pOwnerPage->IsMasterPage() && pOwnerPage->TRG_HasMasterPage())
-                {
-                    pBackgroundFillSet = &pOwnerPage->TRG_GetMasterPage().getSdrPageProperties().GetItemSet();
-                }
-            }
-        }
-    }
-
-    if (drawing::FillStyle_NONE != static_cast<const XFillStyleItem&>(pBackgroundFillSet->Get(XATTR_FILLSTYLE)).GetValue())
-    {
-        Color aColor(rOutliner.GetBackgroundColor());
-        GetDraftFillColor(*pBackgroundFillSet, aColor);
-        rOutliner.SetBackgroundColor(aColor);
-    }
+    setSuitableOutlinerBg(rOutliner);
 
     // add one to rage sizes to get back to the old Rectangle and outliner measurements
-    const sal_uInt32 nAnchorTextWidth(FRound(aAnchorTextRange.getWidth() + 1L));
-    const sal_uInt32 nAnchorTextHeight(FRound(aAnchorTextRange.getHeight() + 1L));
+    const sal_uInt32 nAnchorTextWidth(FRound(aAnchorTextRange.getWidth() + 1));
+    const sal_uInt32 nAnchorTextHeight(FRound(aAnchorTextRange.getHeight() + 1));
     const bool bVerticalWriting(rSdrBlockTextPrimitive.getOutlinerParaObject().IsVertical());
     const bool bTopToBottom(rSdrBlockTextPrimitive.getOutlinerParaObject().IsTopToBottom());
     const Size aAnchorTextSize(Size(nAnchorTextWidth, nAnchorTextHeight));
 
     if(bIsCell)
     {
-        // cell text is formatted neither like a text object nor like a object
+        // cell text is formatted neither like a text object nor like an object
         // text, so use a special setup here
         rOutliner.SetMaxAutoPaperSize(aAnchorTextSize);
 
@@ -982,8 +984,9 @@ void SdrTextObj::impDecomposeBlockTextPrimitive(
             // Usual processing - always grow in one of directions
             bool bAllowGrowVertical = !bVerticalWriting;
             bool bAllowGrowHorizontal = bVerticalWriting;
+
             // Compatibility mode for tdf#99729
-            if (this->pModel->IsAnchoredTextOverflowLegacy())
+            if (getSdrModelFromSdrObject().IsAnchoredTextOverflowLegacy())
             {
                 bAllowGrowVertical = bHorizontalIsBlock;
                 bAllowGrowHorizontal = bVerticalIsBlock;
@@ -1026,7 +1029,7 @@ void SdrTextObj::impDecomposeBlockTextPrimitive(
             // else the alignment is wanted.
             if(SDRTEXTHORZADJUST_BLOCK == eHAdj)
             {
-                SvxAdjust eAdjust = static_cast<const SvxAdjustItem&>(GetObjectItemSet().Get(EE_PARA_JUST)).GetAdjust();
+                SvxAdjust eAdjust = GetObjectItemSet().Get(EE_PARA_JUST).GetAdjust();
                 switch(eAdjust)
                 {
                     case SvxAdjust::Left:   eHAdj = SDRTEXTHORZADJUST_LEFT; break;
@@ -1088,7 +1091,7 @@ void SdrTextObj::impDecomposeBlockTextPrimitive(
     const double fStartInX(bVerticalWriting && bTopToBottom ? aAdjustTranslate.getX() + aOutlinerScale.getX() : aAdjustTranslate.getX());
     const double fStartInY(bVerticalWriting && !bTopToBottom ? aAdjustTranslate.getY() + aOutlinerScale.getY() : aAdjustTranslate.getY());
     const basegfx::B2DTuple aAdjOffset(fStartInX, fStartInY);
-    basegfx::B2DHomMatrix aNewTransformA(basegfx::tools::createTranslateB2DHomMatrix(aAdjOffset.getX(), aAdjOffset.getY()));
+    basegfx::B2DHomMatrix aNewTransformA(basegfx::utils::createTranslateB2DHomMatrix(aAdjOffset.getX(), aAdjOffset.getY()));
 
     // mirroring. We are now in aAnchorTextRange sizes. When mirroring in X and Y,
     // move the null point which was top left to bottom right.
@@ -1097,18 +1100,12 @@ void SdrTextObj::impDecomposeBlockTextPrimitive(
 
     // in-between the translations of the single primitives will take place. Afterwards,
     // the object's transformations need to be applied
-    const basegfx::B2DHomMatrix aNewTransformB(basegfx::tools::createScaleShearXRotateTranslateB2DHomMatrix(
+    const basegfx::B2DHomMatrix aNewTransformB(basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
         bMirrorX ? -1.0 : 1.0, bMirrorY ? -1.0 : 1.0,
         fShearX, fRotate, aTranslate.getX(), aTranslate.getY()));
 
     // create ClipRange (if needed)
     basegfx::B2DRange aClipRange;
-
-    if(rSdrBlockTextPrimitive.getClipOnBounds())
-    {
-        aClipRange.expand(-aAdjOffset);
-        aClipRange.expand(basegfx::B2DTuple(aAnchorTextSize.Width(), aAnchorTextSize.Height()) - aAdjOffset);
-    }
 
     // now break up text primitives.
     impTextBreakupHandler aConverter(rOutliner);
@@ -1131,10 +1128,6 @@ void SdrTextObj::impDecomposeStretchTextPrimitive(
     basegfx::B2DVector aScale, aTranslate;
     double fRotate, fShearX;
     rSdrStretchTextPrimitive.getTextRangeTransform().decompose(aScale, aTranslate, fRotate, fShearX);
-
-    // use non-mirrored B2DRange aAnchorTextRange for calculations
-    basegfx::B2DRange aAnchorTextRange(aTranslate);
-    aAnchorTextRange.expand(aTranslate + aScale);
 
     // prepare outliner
     SolarMutexGuard aSolarGuard;
@@ -1180,16 +1173,16 @@ void SdrTextObj::impDecomposeStretchTextPrimitive(
     // to layout without mirroring
     const double fScaleX(fabs(aScale.getX()) / aOutlinerScale.getX());
     const double fScaleY(fabs(aScale.getY()) / aOutlinerScale.getY());
-    rOutliner.SetGlobalCharStretching((sal_Int16)FRound(fScaleX * 100.0), (sal_Int16)FRound(fScaleY * 100.0));
+    rOutliner.SetGlobalCharStretching(static_cast<sal_Int16>(FRound(fScaleX * 100.0)), static_cast<sal_Int16>(FRound(fScaleY * 100.0)));
 
-    // mirroring. We are now in aAnchorTextRange sizes. When mirroring in X and Y,
+    // When mirroring in X and Y,
     // move the null point which was top left to bottom right.
     const bool bMirrorX(basegfx::fTools::less(aScale.getX(), 0.0));
     const bool bMirrorY(basegfx::fTools::less(aScale.getY(), 0.0));
 
     // in-between the translations of the single primitives will take place. Afterwards,
     // the object's transformations need to be applied
-    const basegfx::B2DHomMatrix aNewTransformB(basegfx::tools::createScaleShearXRotateTranslateB2DHomMatrix(
+    const basegfx::B2DHomMatrix aNewTransformB(basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
         bMirrorX ? -1.0 : 1.0, bMirrorY ? -1.0 : 1.0,
         fShearX, fRotate, aTranslate.getX(), aTranslate.getY()));
 
@@ -1208,47 +1201,47 @@ void SdrTextObj::impDecomposeStretchTextPrimitive(
 
 // timing generators
 #define ENDLESS_LOOP    (0xffffffff)
-#define ENDLESS_TIME    ((double)0xffffffff)
+#define ENDLESS_TIME    (double(0xffffffff))
 #define PIXEL_DPI       (96.0)
 
 void SdrTextObj::impGetBlinkTextTiming(drawinglayer::animation::AnimationEntryList& rAnimList) const
 {
-    if(SdrTextAniKind::Blink == GetTextAniKind())
+    if(SdrTextAniKind::Blink != GetTextAniKind())
+        return;
+
+    // get values
+    const SfxItemSet& rSet = GetObjectItemSet();
+    const sal_uInt32 nRepeat(static_cast<sal_uInt32>(rSet.Get(SDRATTR_TEXT_ANICOUNT).GetValue()));
+    double fDelay(static_cast<double>(rSet.Get(SDRATTR_TEXT_ANIDELAY).GetValue()));
+
+    if(0.0 == fDelay)
     {
-        // get values
-        const SfxItemSet& rSet = GetObjectItemSet();
-        const sal_uInt32 nRepeat((sal_uInt32)static_cast<const SdrTextAniCountItem&>(rSet.Get(SDRATTR_TEXT_ANICOUNT)).GetValue());
-        double fDelay((double)static_cast<const SdrTextAniDelayItem&>(rSet.Get(SDRATTR_TEXT_ANIDELAY)).GetValue());
+        // use default
+        fDelay = 250.0;
+    }
 
-        if(0.0 == fDelay)
-        {
-            // use default
-            fDelay = 250.0;
-        }
+    // prepare loop and add
+    drawinglayer::animation::AnimationEntryLoop  aLoop(nRepeat ? nRepeat : ENDLESS_LOOP);
+    drawinglayer::animation::AnimationEntryFixed aStart(fDelay, 0.0);
+    aLoop.append(aStart);
+    drawinglayer::animation::AnimationEntryFixed aEnd(fDelay, 1.0);
+    aLoop.append(aEnd);
+    rAnimList.append(aLoop);
 
-        // prepare loop and add
-        drawinglayer::animation::AnimationEntryLoop  aLoop(nRepeat ? nRepeat : ENDLESS_LOOP);
-        drawinglayer::animation::AnimationEntryFixed aStart(fDelay, 0.0);
-        aLoop.append(aStart);
-        drawinglayer::animation::AnimationEntryFixed aEnd(fDelay, 1.0);
-        aLoop.append(aEnd);
-        rAnimList.append(aLoop);
-
-        // add stopped state if loop is not endless
-        if(0L != nRepeat)
-        {
-            bool bVisibleWhenStopped(static_cast<const SdrTextAniStopInsideItem&>(rSet.Get(SDRATTR_TEXT_ANISTOPINSIDE)).GetValue());
-            drawinglayer::animation::AnimationEntryFixed aStop(ENDLESS_TIME, bVisibleWhenStopped ? 0.0 : 1.0);
-            rAnimList.append(aStop);
-        }
+    // add stopped state if loop is not endless
+    if(0 != nRepeat)
+    {
+        bool bVisibleWhenStopped(rSet.Get(SDRATTR_TEXT_ANISTOPINSIDE).GetValue());
+        drawinglayer::animation::AnimationEntryFixed aStop(ENDLESS_TIME, bVisibleWhenStopped ? 0.0 : 1.0);
+        rAnimList.append(aStop);
     }
 }
 
-void impCreateScrollTiming(const SfxItemSet& rSet, drawinglayer::animation::AnimationEntryList& rAnimList, bool bForward, double fTimeFullPath, double fFrequency)
+static void impCreateScrollTiming(const SfxItemSet& rSet, drawinglayer::animation::AnimationEntryList& rAnimList, bool bForward, double fTimeFullPath, double fFrequency)
 {
-    bool bVisibleWhenStopped(static_cast<const SdrTextAniStopInsideItem&>(rSet.Get(SDRATTR_TEXT_ANISTOPINSIDE)).GetValue());
-    bool bVisibleWhenStarted(static_cast<const SdrTextAniStartInsideItem&>(rSet.Get(SDRATTR_TEXT_ANISTARTINSIDE)).GetValue());
-    const sal_uInt32 nRepeat(static_cast<const SdrTextAniCountItem&>(rSet.Get(SDRATTR_TEXT_ANICOUNT)).GetValue());
+    bool bVisibleWhenStopped(rSet.Get(SDRATTR_TEXT_ANISTOPINSIDE).GetValue());
+    bool bVisibleWhenStarted(rSet.Get(SDRATTR_TEXT_ANISTARTINSIDE).GetValue());
+    const sal_uInt32 nRepeat(rSet.Get(SDRATTR_TEXT_ANICOUNT).GetValue());
 
     if(bVisibleWhenStarted)
     {
@@ -1263,7 +1256,7 @@ void impCreateScrollTiming(const SfxItemSet& rSet, drawinglayer::animation::Anim
     aLoop.append(aThrough);
     rAnimList.append(aLoop);
 
-    if(0L != nRepeat && bVisibleWhenStopped)
+    if(0 != nRepeat && bVisibleWhenStopped)
     {
         // move from outside to center
         drawinglayer::animation::AnimationEntryLinear aOutIn(fTimeFullPath * 0.5, fFrequency, bForward ? 0.0 : 1.0, 0.5);
@@ -1275,7 +1268,7 @@ void impCreateScrollTiming(const SfxItemSet& rSet, drawinglayer::animation::Anim
     }
 }
 
-void impCreateAlternateTiming(const SfxItemSet& rSet, drawinglayer::animation::AnimationEntryList& rAnimList, double fRelativeTextLength, bool bForward, double fTimeFullPath, double fFrequency)
+static void impCreateAlternateTiming(const SfxItemSet& rSet, drawinglayer::animation::AnimationEntryList& rAnimList, double fRelativeTextLength, bool bForward, double fTimeFullPath, double fFrequency)
 {
     if(basegfx::fTools::more(fRelativeTextLength, 0.5))
     {
@@ -1286,8 +1279,8 @@ void impCreateAlternateTiming(const SfxItemSet& rSet, drawinglayer::animation::A
 
     const double fStartPosition(bForward ? fRelativeTextLength : 1.0 - fRelativeTextLength);
     const double fEndPosition(bForward ? 1.0 - fRelativeTextLength : fRelativeTextLength);
-    bool bVisibleWhenStarted(static_cast<const SdrTextAniStartInsideItem&>(rSet.Get(SDRATTR_TEXT_ANISTARTINSIDE)).GetValue());
-    const sal_uInt32 nRepeat(static_cast<const SdrTextAniCountItem&>(rSet.Get(SDRATTR_TEXT_ANICOUNT)).GetValue());
+    bool bVisibleWhenStarted(rSet.Get(SDRATTR_TEXT_ANISTARTINSIDE).GetValue());
+    const sal_uInt32 nRepeat(rSet.Get(SDRATTR_TEXT_ANICOUNT).GetValue());
 
     if(!bVisibleWhenStarted)
     {
@@ -1303,7 +1296,7 @@ void impCreateAlternateTiming(const SfxItemSet& rSet, drawinglayer::animation::A
     const double fHalfInnerPath(fTimeForInnerPath * 0.5);
     const sal_uInt32 nDoubleRepeat(nRepeat / 2L);
 
-    if(nDoubleRepeat || 0L == nRepeat)
+    if(nDoubleRepeat || 0 == nRepeat)
     {
         // double forth and back loop
         drawinglayer::animation::AnimationEntryLoop aLoop(nDoubleRepeat ? nDoubleRepeat : ENDLESS_LOOP);
@@ -1325,38 +1318,38 @@ void impCreateAlternateTiming(const SfxItemSet& rSet, drawinglayer::animation::A
         rAnimList.append(aTime1);
     }
 
-    if(0L != nRepeat)
+    if(0 == nRepeat)
+        return;
+
+    bool bVisibleWhenStopped(rSet.Get(SDRATTR_TEXT_ANISTOPINSIDE).GetValue());
+    if(bVisibleWhenStopped)
     {
-        bool bVisibleWhenStopped(static_cast<const SdrTextAniStopInsideItem&>(rSet.Get(SDRATTR_TEXT_ANISTOPINSIDE)).GetValue());
-        if(bVisibleWhenStopped)
-        {
-            // add timing for staying at the end
-            drawinglayer::animation::AnimationEntryFixed aEnd(ENDLESS_TIME, 0.5);
-            rAnimList.append(aEnd);
-        }
-        else
-        {
-            // move from center to outside
-            drawinglayer::animation::AnimationEntryLinear aInOut(fTimeFullPath * 0.5, fFrequency, 0.5, bForward ? 1.0 : 0.0);
-            rAnimList.append(aInOut);
-        }
+        // add timing for staying at the end
+        drawinglayer::animation::AnimationEntryFixed aEnd(ENDLESS_TIME, 0.5);
+        rAnimList.append(aEnd);
+    }
+    else
+    {
+        // move from center to outside
+        drawinglayer::animation::AnimationEntryLinear aInOut(fTimeFullPath * 0.5, fFrequency, 0.5, bForward ? 1.0 : 0.0);
+        rAnimList.append(aInOut);
     }
 }
 
-void impCreateSlideTiming(const SfxItemSet& rSet, drawinglayer::animation::AnimationEntryList& rAnimList, bool bForward, double fTimeFullPath, double fFrequency)
+static void impCreateSlideTiming(const SfxItemSet& rSet, drawinglayer::animation::AnimationEntryList& rAnimList, bool bForward, double fTimeFullPath, double fFrequency)
 {
     // move in from outside, start outside
     const double fStartPosition(bForward ? 0.0 : 1.0);
-    const sal_uInt32 nRepeat(static_cast<const SdrTextAniCountItem&>(rSet.Get(SDRATTR_TEXT_ANICOUNT)).GetValue());
+    const sal_uInt32 nRepeat(rSet.Get(SDRATTR_TEXT_ANICOUNT).GetValue());
 
     // move from outside to center
     drawinglayer::animation::AnimationEntryLinear aOutIn(fTimeFullPath * 0.5, fFrequency, fStartPosition, 0.5);
     rAnimList.append(aOutIn);
 
     // loop. In loop, move out and in again
-    if(nRepeat > 1L || 0L == nRepeat)
+    if(nRepeat > 1 || 0 == nRepeat)
     {
-        drawinglayer::animation::AnimationEntryLoop aLoop(nRepeat ? nRepeat - 1L : ENDLESS_LOOP);
+        drawinglayer::animation::AnimationEntryLoop aLoop(nRepeat ? nRepeat - 1 : ENDLESS_LOOP);
         drawinglayer::animation::AnimationEntryLinear aTime0(fTimeFullPath * 0.5, fFrequency, 0.5, fStartPosition);
         aLoop.append(aTime0);
         drawinglayer::animation::AnimationEntryLinear aTime1(fTimeFullPath * 0.5, fFrequency, fStartPosition, 0.5);
@@ -1365,7 +1358,7 @@ void impCreateSlideTiming(const SfxItemSet& rSet, drawinglayer::animation::Anima
     }
 
     // always visible when stopped, so add timing for staying at the end when not endless
-    if(0L != nRepeat)
+    if(0 != nRepeat)
     {
         drawinglayer::animation::AnimationEntryFixed aEnd(ENDLESS_TIME, 0.5);
         rAnimList.append(aEnd);
@@ -1376,67 +1369,67 @@ void SdrTextObj::impGetScrollTextTiming(drawinglayer::animation::AnimationEntryL
 {
     const SdrTextAniKind eAniKind(GetTextAniKind());
 
-    if(SdrTextAniKind::Scroll == eAniKind || SdrTextAniKind::Alternate == eAniKind || SdrTextAniKind::Slide == eAniKind)
+    if(SdrTextAniKind::Scroll != eAniKind && SdrTextAniKind::Alternate != eAniKind && SdrTextAniKind::Slide != eAniKind)
+        return;
+
+    // get data. Goal is to calculate fTimeFullPath which is the time needed to
+    // move animation from (0.0) to (1.0) state
+    const SfxItemSet& rSet = GetObjectItemSet();
+    double fAnimationDelay(static_cast<double>(rSet.Get(SDRATTR_TEXT_ANIDELAY).GetValue()));
+    double fSingleStepWidth(static_cast<double>(rSet.Get(SDRATTR_TEXT_ANIAMOUNT).GetValue()));
+    const SdrTextAniDirection eDirection(GetTextAniDirection());
+    const bool bForward(SdrTextAniDirection::Right == eDirection || SdrTextAniDirection::Down == eDirection);
+
+    if(basegfx::fTools::equalZero(fAnimationDelay))
     {
-        // get data. Goal is to calculate fTimeFullPath which is the time needed to
-        // move animation from (0.0) to (1.0) state
-        const SfxItemSet& rSet = GetObjectItemSet();
-        double fAnimationDelay((double)static_cast<const SdrTextAniDelayItem&>(rSet.Get(SDRATTR_TEXT_ANIDELAY)).GetValue());
-        double fSingleStepWidth((double)static_cast<const SdrTextAniAmountItem&>(rSet.Get(SDRATTR_TEXT_ANIAMOUNT)).GetValue());
-        const SdrTextAniDirection eDirection(GetTextAniDirection());
-        const bool bForward(SdrTextAniDirection::Right == eDirection || SdrTextAniDirection::Down == eDirection);
+        // default to 1/20 second
+        fAnimationDelay = 50.0;
+    }
 
-        if(basegfx::fTools::equalZero(fAnimationDelay))
+    if(basegfx::fTools::less(fSingleStepWidth, 0.0))
+    {
+        // data is in pixels, convert to logic. Imply PIXEL_DPI dpi.
+        // It makes no sense to keep the view-transformation centered
+        // definitions, so get rid of them here.
+        fSingleStepWidth = (-fSingleStepWidth * (2540.0 / PIXEL_DPI));
+    }
+
+    if(basegfx::fTools::equalZero(fSingleStepWidth))
+    {
+        // default to 1 millimeter
+        fSingleStepWidth = 100.0;
+    }
+
+    // use the length of the full animation path and the number of steps
+    // to get the full path time
+    const double fFullPathLength(fFrameLength + fTextLength);
+    const double fNumberOfSteps(fFullPathLength / fSingleStepWidth);
+    double fTimeFullPath(fNumberOfSteps * fAnimationDelay);
+
+    if(fTimeFullPath < fAnimationDelay)
+    {
+        fTimeFullPath = fAnimationDelay;
+    }
+
+    switch(eAniKind)
+    {
+        case SdrTextAniKind::Scroll :
         {
-            // default to 1/20 second
-            fAnimationDelay = 50.0;
+            impCreateScrollTiming(rSet, rAnimList, bForward, fTimeFullPath, fAnimationDelay);
+            break;
         }
-
-        if(basegfx::fTools::less(fSingleStepWidth, 0.0))
+        case SdrTextAniKind::Alternate :
         {
-            // data is in pixels, convert to logic. Imply PIXEL_DPI dpi.
-            // It makes no sense to keep the view-transformation centered
-            // definitions, so get rid of them here.
-            fSingleStepWidth = (-fSingleStepWidth * (2540.0 / PIXEL_DPI));
+            double fRelativeTextLength(fTextLength / (fFrameLength + fTextLength));
+            impCreateAlternateTiming(rSet, rAnimList, fRelativeTextLength, bForward, fTimeFullPath, fAnimationDelay);
+            break;
         }
-
-        if(basegfx::fTools::equalZero(fSingleStepWidth))
+        case SdrTextAniKind::Slide :
         {
-            // default to 1 millimeter
-            fSingleStepWidth = 100.0;
+            impCreateSlideTiming(rSet, rAnimList, bForward, fTimeFullPath, fAnimationDelay);
+            break;
         }
-
-        // use the length of the full animation path and the number of steps
-        // to get the full path time
-        const double fFullPathLength(fFrameLength + fTextLength);
-        const double fNumberOfSteps(fFullPathLength / fSingleStepWidth);
-        double fTimeFullPath(fNumberOfSteps * fAnimationDelay);
-
-        if(fTimeFullPath < fAnimationDelay)
-        {
-            fTimeFullPath = fAnimationDelay;
-        }
-
-        switch(eAniKind)
-        {
-            case SdrTextAniKind::Scroll :
-            {
-                impCreateScrollTiming(rSet, rAnimList, bForward, fTimeFullPath, fAnimationDelay);
-                break;
-            }
-            case SdrTextAniKind::Alternate :
-            {
-                double fRelativeTextLength(fTextLength / (fFrameLength + fTextLength));
-                impCreateAlternateTiming(rSet, rAnimList, fRelativeTextLength, bForward, fTimeFullPath, fAnimationDelay);
-                break;
-            }
-            case SdrTextAniKind::Slide :
-            {
-                impCreateSlideTiming(rSet, rAnimList, bForward, fTimeFullPath, fAnimationDelay);
-                break;
-            }
-            default : break; // SdrTextAniKind::NONE, SdrTextAniKind::Blink
-        }
+        default : break; // SdrTextAniKind::NONE, SdrTextAniKind::Blink
     }
 }
 
@@ -1450,16 +1443,19 @@ void SdrTextObj::impHandleChainingEventsDuringDecomposition(SdrOutliner &rOutlin
     TextChainFlow aTxtChainFlow(const_cast<SdrTextObj*>(this));
     bool bIsOverflow;
 
+#ifdef DBG_UTIL
     // Some debug output
-    size_t nObjCount = pPage->GetObjCount();
-    for (size_t i = 0; i < nObjCount; i++) {
-        SdrTextObj *pCurObj = static_cast<SdrTextObj *>(pPage->GetObj(i));
-
-        if (pCurObj == this) {
+    size_t nObjCount(getSdrPageFromSdrObject()->GetObjCount());
+    for (size_t i = 0; i < nObjCount; i++)
+    {
+        SdrTextObj* pCurObj(dynamic_cast< SdrTextObj* >(getSdrPageFromSdrObject()->GetObj(i)));
+        if(pCurObj == this)
+        {
             SAL_INFO("svx.chaining", "Working on TextBox " << i);
             break;
         }
     }
+#endif
 
     aTxtChainFlow.CheckForFlowEvents(&rOutliner);
 
@@ -1475,7 +1471,7 @@ void SdrTextObj::impHandleChainingEventsDuringDecomposition(SdrOutliner &rOutlin
 
     if (bIsOverflow && !IsInEditMode()) {
         // Initialize Chaining Outliner
-        SdrOutliner &rChainingOutl = pModel->GetChainingOutliner(this);
+        SdrOutliner &rChainingOutl(getSdrModelFromSdrObject().GetChainingOutliner(this));
         ImpInitDrawOutliner( rChainingOutl );
         rChainingOutl.SetUpdateMode(true);
         // We must pass the chaining outliner otherwise we would mess up decomposition
@@ -1517,8 +1513,8 @@ void SdrTextObj::impDecomposeChainedTextPrimitive(
     rOutliner.SetMaxAutoPaperSize(Size(1000000,1000000));
 
     // add one to rage sizes to get back to the old Rectangle and outliner measurements
-    const sal_uInt32 nAnchorTextWidth(FRound(aAnchorTextRange.getWidth() + 1L));
-    const sal_uInt32 nAnchorTextHeight(FRound(aAnchorTextRange.getHeight() + 1L));
+    const sal_uInt32 nAnchorTextWidth(FRound(aAnchorTextRange.getWidth() + 1));
+    const sal_uInt32 nAnchorTextHeight(FRound(aAnchorTextRange.getHeight() + 1));
 
     // Text
     const OutlinerParaObject* pOutlinerParaObject = rSdrChainedTextPrimitive.getSdrText()->GetOutlinerParaObject();
@@ -1632,5 +1628,18 @@ void SdrTextObj::impDecomposeChainedTextPrimitive(
     rTarget = aConverter.getPrimitive2DSequence();
 }
 
+// Direct decomposer for text visualization when you already have a prepared
+// Outliner containing all the needed information
+void SdrTextObj::impDecomposeBlockTextPrimitiveDirect(
+    drawinglayer::primitive2d::Primitive2DContainer& rTarget,
+    SdrOutliner& rOutliner,
+    const basegfx::B2DHomMatrix& rNewTransformA,
+    const basegfx::B2DHomMatrix& rNewTransformB,
+    const basegfx::B2DRange& rClipRange)
+{
+    impTextBreakupHandler aConverter(rOutliner);
+    aConverter.decomposeBlockTextPrimitive(rNewTransformA, rNewTransformB, rClipRange);
+    rTarget.append(aConverter.getPrimitive2DSequence());
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

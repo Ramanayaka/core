@@ -51,7 +51,7 @@ published interface XInterface
         The queryInterface() method is the entry point to obtain other interfaces which
         are exported by the object. The caller asks the implementation of the object,
         if it supports the interface specified by the type argument. The call may either
-        return with a interface reference of the requested type or with a void any.
+        return with an interface reference of the requested type or with a void any.
 
         <p>
         There are certain specifications, a queryInterface() implementation must not violate.
@@ -91,7 +91,7 @@ published interface XInterface
         to the object.
 
         <p>
-        It is only allowed to invoke a method on an UNO object, when you keep
+        It is only allowed to invoke a method on a UNO object, when you keep
         a hard reference to it.
 
         <p> Every call to acquire must be followed by a corresponding call to release

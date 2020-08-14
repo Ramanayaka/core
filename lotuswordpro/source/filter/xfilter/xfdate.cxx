@@ -57,8 +57,8 @@
  * @file
  * Date field with date style.
  ************************************************************************/
-#include <string.h>
-#include "xfdate.hxx"
+#include <xfilter/xfdate.hxx>
+#include <xfilter/ixfattrlist.hxx>
 
 XFDate::XFDate()
 {

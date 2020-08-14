@@ -19,6 +19,8 @@
 
 #include <sal/config.h>
 
+#include <com/sun/star/beans/NamedValue.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <comphelper/sequenceashashmap.hxx>
 
@@ -26,7 +28,6 @@
 namespace comphelper{
 
 SequenceAsHashMap::SequenceAsHashMap()
-    : SequenceAsHashMapBase()
 {
 }
 
@@ -127,7 +128,7 @@ void SequenceAsHashMap::operator<<(const css::uno::Sequence< css::beans::Propert
 {
     clear();
 
-          sal_Int32                  c       = lSource.getLength();
+    sal_Int32                        c       = lSource.getLength();
     const css::beans::PropertyValue* pSource = lSource.getConstArray();
 
     for (sal_Int32 i=0; i<c; ++i)
@@ -138,7 +139,7 @@ void SequenceAsHashMap::operator<<(const css::uno::Sequence< css::beans::NamedVa
 {
     clear();
 
-          sal_Int32               c       = lSource.getLength();
+    sal_Int32                     c       = lSource.getLength();
     const css::beans::NamedValue* pSource = lSource.getConstArray();
 
     for (sal_Int32 i=0; i<c; ++i)
@@ -147,7 +148,7 @@ void SequenceAsHashMap::operator<<(const css::uno::Sequence< css::beans::NamedVa
 
 void SequenceAsHashMap::operator>>(css::uno::Sequence< css::beans::PropertyValue >& lDestination) const
 {
-    sal_Int32 c = (sal_Int32)size();
+    sal_Int32 c = static_cast<sal_Int32>(size());
     lDestination.realloc(c);
     css::beans::PropertyValue* pDestination = lDestination.getArray();
 
@@ -164,7 +165,7 @@ void SequenceAsHashMap::operator>>(css::uno::Sequence< css::beans::PropertyValue
 
 void SequenceAsHashMap::operator>>(css::uno::Sequence< css::beans::NamedValue >& lDestination) const
 {
-    sal_Int32 c = (sal_Int32)size();
+    sal_Int32 c = static_cast<sal_Int32>(size());
     lDestination.realloc(c);
     css::beans::NamedValue* pDestination = lDestination.getArray();
 
@@ -179,7 +180,7 @@ void SequenceAsHashMap::operator>>(css::uno::Sequence< css::beans::NamedValue >&
     }
 }
 
-const css::uno::Any SequenceAsHashMap::getAsConstAny(bool bAsPropertyValueList) const
+css::uno::Any SequenceAsHashMap::getAsConstAny(bool bAsPropertyValueList) const
 {
     css::uno::Any aDestination;
     if (bAsPropertyValueList)
@@ -189,14 +190,14 @@ const css::uno::Any SequenceAsHashMap::getAsConstAny(bool bAsPropertyValueList) 
     return aDestination;
 }
 
-const css::uno::Sequence< css::beans::NamedValue > SequenceAsHashMap::getAsConstNamedValueList() const
+css::uno::Sequence< css::beans::NamedValue > SequenceAsHashMap::getAsConstNamedValueList() const
 {
     css::uno::Sequence< css::beans::NamedValue > lReturn;
     (*this) >> lReturn;
     return lReturn;
 }
 
-const css::uno::Sequence< css::beans::PropertyValue > SequenceAsHashMap::getAsConstPropertyValueList() const
+css::uno::Sequence< css::beans::PropertyValue > SequenceAsHashMap::getAsConstPropertyValueList() const
 {
     css::uno::Sequence< css::beans::PropertyValue > lReturn;
     (*this) >> lReturn;
@@ -205,14 +206,11 @@ const css::uno::Sequence< css::beans::PropertyValue > SequenceAsHashMap::getAsCo
 
 bool SequenceAsHashMap::match(const SequenceAsHashMap& rCheck) const
 {
-    const_iterator pCheck;
-    for (  pCheck  = rCheck.begin();
-           pCheck != rCheck.end()  ;
-         ++pCheck                  )
+    for (auto const& elem : rCheck)
     {
-        const OUString& sCheckName  = pCheck->first;
-        const css::uno::Any&   aCheckValue = pCheck->second;
-              const_iterator   pFound      = find(sCheckName);
+        const OUString& sCheckName  = elem.first;
+        const css::uno::Any&   aCheckValue = elem.second;
+        const_iterator         pFound      = find(sCheckName);
 
         if (pFound == end())
             return false;
@@ -227,13 +225,10 @@ bool SequenceAsHashMap::match(const SequenceAsHashMap& rCheck) const
 
 void SequenceAsHashMap::update(const SequenceAsHashMap& rUpdate)
 {
-    const_iterator pUpdate;
-    for (  pUpdate  = rUpdate.begin();
-           pUpdate != rUpdate.end()  ;
-         ++pUpdate                   )
+    for (auto const& elem : rUpdate)
     {
-        const OUString& sName  = pUpdate->first;
-        const css::uno::Any&   aValue = pUpdate->second;
+        const OUString& sName  = elem.first;
+        const css::uno::Any&   aValue = elem.second;
 
         (*this)[sName] = aValue;
     }

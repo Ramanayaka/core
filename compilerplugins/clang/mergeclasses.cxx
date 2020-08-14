@@ -47,10 +47,11 @@ static std::set<std::pair<std::string,std::string> > childToParentClassSet; // c
 static std::map<std::string,std::string> definitionMap;  // className -> filename
 
 class MergeClasses:
-    public RecursiveASTVisitor<MergeClasses>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<MergeClasses>
 {
 public:
-    explicit MergeClasses(InstantiationData const & data): Plugin(data) {}
+    explicit MergeClasses(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     virtual void run() override
     {
@@ -63,10 +64,10 @@ public:
             output += "instantiated:\t" + s + "\n";
         for (const std::pair<std::string,std::string> & s : childToParentClassSet)
             output += "has-subclass:\t" + s.first + "\t" + s.second + "\n";
-        for (const std::pair<std::string,std::string> & s : definitionMap)
+        for (const auto & s : definitionMap)
             output += "definition:\t" + s.first + "\t" + s.second + "\n";
         std::ofstream myfile;
-        myfile.open( SRCDIR "/loplugin.mergeclasses.log", std::ios::app | std::ios::out);
+        myfile.open( WORKDIR "/loplugin.mergeclasses.log", std::ios::app | std::ios::out);
         myfile << output;
         myfile.close();
     }
@@ -79,15 +80,11 @@ public:
     bool VisitCXXRecordDecl( const CXXRecordDecl* decl);
 };
 
-bool startsWith(const std::string& rStr, const char* pSubStr) {
-    return rStr.compare(0, strlen(pSubStr), pSubStr) == 0;
-}
-
 bool ignoreClass(StringRef s)
 {
     // ignore stuff in the standard library, and UNO stuff we can't touch.
-    if (startsWith(s, "rtl::") || startsWith(s, "sal::") || startsWith(s, "com::sun::")
-        || startsWith(s, "std::") || startsWith(s, "boost::")
+    if (s.startswith("rtl::") || s.startswith("sal::") || s.startswith("com::sun::")
+        || s.startswith("std::") || s.startswith("boost::")
         || s == "OString" || s == "OUString" || s == "bad_alloc")
     {
         return true;
@@ -147,13 +144,13 @@ bool MergeClasses::VisitCXXRecordDecl(const CXXRecordDecl* decl)
     }
     if (decl->isThisDeclarationADefinition())
     {
-        SourceLocation spellingLocation = compiler.getSourceManager().getSpellingLoc(decl->getCanonicalDecl()->getLocStart());
-        std::string filename = compiler.getSourceManager().getFilename(spellingLocation);
+        SourceLocation spellingLocation = compiler.getSourceManager().getSpellingLoc(compat::getBeginLoc(decl));
+        auto filename = getFilenameOfLocation(spellingLocation);
         filename = filename.substr(strlen(SRCDIR));
         std::string s = decl->getQualifiedNameAsString();
         if (ignoreClass(s))
             return true;
-        definitionMap.insert( std::pair<std::string,std::string>(s, filename) );
+        definitionMap.insert( std::pair<std::string,std::string>(s, filename.str()) );
         for (auto it = decl->bases_begin(); it != decl->bases_end(); ++it)
         {
             const CXXBaseSpecifier spec = *it;

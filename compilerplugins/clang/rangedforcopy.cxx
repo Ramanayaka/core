@@ -7,6 +7,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
+#ifndef LO_CLANG_SHARED_PLUGINS
 
 #include <string>
 #include <iostream>
@@ -22,13 +23,15 @@ namespace
 {
 
 class RangedForCopy:
-    public RecursiveASTVisitor<RangedForCopy>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<RangedForCopy>
 {
 public:
-    explicit RangedForCopy(InstantiationData const & data): Plugin(data) {}
+    explicit RangedForCopy(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     virtual void run() override {
-        TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
+        if (preRun())
+            TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
     }
 
     bool VisitCXXForRangeStmt( const CXXForRangeStmt* stmt );
@@ -50,7 +53,7 @@ bool RangedForCopy::VisitCXXForRangeStmt( const CXXForRangeStmt* stmt )
         report(
                DiagnosticsEngine::Warning,
                "Loop variable passed by value, pass by reference instead, e.g. 'const %0&'",
-               varDecl->getLocStart())
+               compat::getBeginLoc(varDecl))
                << name << varDecl->getSourceRange();
     }
 
@@ -58,8 +61,10 @@ bool RangedForCopy::VisitCXXForRangeStmt( const CXXForRangeStmt* stmt )
 }
 
 
-loplugin::Plugin::Registration< RangedForCopy > X("rangedforcopy");
+loplugin::Plugin::Registration< RangedForCopy > rangedforcopy("rangedforcopy");
 
-}
+} // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

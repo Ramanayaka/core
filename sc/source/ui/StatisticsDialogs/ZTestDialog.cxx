@@ -9,50 +9,41 @@
  */
 
 #include <memory>
-#include <sfx2/dispatch.hxx>
-#include <svl/zforlist.hxx>
-#include <svl/undo.hxx>
 
-#include "formulacell.hxx"
-#include "rangelst.hxx"
-#include "scitems.hxx"
-#include "docsh.hxx"
-#include "document.hxx"
-#include "uiitems.hxx"
-#include "reffact.hxx"
-#include "docfunc.hxx"
-#include "TableFillingAndNavigationTools.hxx"
-
-#include "ZTestDialog.hxx"
+#include <reffact.hxx>
+#include <TableFillingAndNavigationTools.hxx>
+#include <ZTestDialog.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
 
 ScZTestDialog::ScZTestDialog(
                     SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
-                    vcl::Window* pParent, ScViewData* pViewData ) :
+                    weld::Window* pParent, ScViewData* pViewData ) :
     ScStatisticsTwoVariableDialog(
             pSfxBindings, pChildWindow, pParent, pViewData,
-            "ZTestDialog", "modules/scalc/ui/ztestdialog.ui" )
+            "modules/scalc/ui/ztestdialog.ui", "ZTestDialog")
 {
-    SetText(ScResId(STR_ZTEST));
+    m_xDialog->set_title(ScResId(STR_ZTEST));
 }
 
 ScZTestDialog::~ScZTestDialog()
 {}
 
-bool ScZTestDialog::Close()
+void ScZTestDialog::Close()
 {
-    return DoClose( ScZTestDialogWrapper::GetChildWindowId() );
+    DoClose( ScZTestDialogWrapper::GetChildWindowId() );
 }
 
-sal_Int16 ScZTestDialog::GetUndoNameId()
+const char* ScZTestDialog::GetUndoNameId()
 {
     return STR_ZTEST_UNDO_NAME;
 }
 
 ScRange ScZTestDialog::ApplyOutput(ScDocShell* pDocShell)
 {
-    AddressWalkerWriter aOutput(mOutputAddress, pDocShell, mDocument,
+    AddressWalkerWriter aOutput(mOutputAddress, pDocShell, &mDocument,
             formula::FormulaGrammar::mergeToGrammar( formula::FormulaGrammar::GRAM_ENGLISH, mAddressDetails.eConv));
-    FormulaTemplate aTemplate(mDocument);
+    FormulaTemplate aTemplate(&mDocument);
 
     std::unique_ptr<DataRangeIterator> pVariable1Iterator;
     if (mGroupedBy == BY_COLUMN)

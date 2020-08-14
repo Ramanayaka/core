@@ -62,7 +62,7 @@ public:
         These need to correspond to the ExtraLanguages.ScriptType template
         property in officecfg/registry/schema/org/openoffice/VCL.xcs
      */
-    enum ScriptType
+    enum class ScriptType
     {
         UNKNOWN = 0,
         WESTERN = 1,      // Copies css::i18n::ScriptType for strong types
@@ -107,9 +107,12 @@ public:
      */
     explicit LanguageTag( const rtl_Locale & rLocale );
 
-    LanguageTag( const LanguageTag & rLanguageTag );
     ~LanguageTag();
-    LanguageTag& operator=( const LanguageTag & rLanguageTag );
+
+    LanguageTag(LanguageTag const &) = default;
+    LanguageTag(LanguageTag &&) = default;
+    LanguageTag & operator =(LanguageTag const &) = default;
+    LanguageTag & operator =(LanguageTag &&) = default;
 
     /** Obtain BCP 47 language tag.
 
@@ -119,6 +122,14 @@ public:
                If FALSE, return an empty OUString for such a tag.
      */
     const OUString &                getBcp47( bool bResolveSystem = true ) const;
+
+    /** Obtain BCP 47 language tag, but with MS malformed exceptions.
+
+        To be used *only* in OOXML filter context.
+        For example, es-ES-u-co-trad is stored as es-ES_tradnl which is not a
+        valid BCP 47 language tag.
+     */
+    OUString                        getBcp47MS() const;
 
     /** Obtain language tag as Locale.
 
@@ -151,7 +162,7 @@ public:
         other code.
 
         ATTENTION! May return empty strings if the language tag is not
-        expressable in valid ISO codes!
+        expressible in valid ISO codes!
 
         @see isIsoODF()
 
@@ -185,7 +196,7 @@ public:
     OUString                        getLanguageAndScript() const;
 
     /** Get ISO 3166 country alpha code. Empty if the BCP 47 tags denote a
-        region not expressable as 2 character country code.
+        region not expressible as 2 character country code.
 
         Always resolves an empty tag to the system locale.
      */
@@ -249,7 +260,7 @@ public:
      */
     bool                            isValidBcp47() const;
 
-    /** If this tag was contructed as an empty tag denoting the system locale.
+    /** If this tag was constructed as an empty tag denoting the system locale.
       */
     bool                            isSystemLocale() const { return mbSystemLocale;}
 
@@ -522,6 +533,9 @@ public:
     /** @ATTENTION: _ONLY_ to be called by the application's configuration! */
     static void setConfiguredSystemLanguage( LanguageType nLang );
 
+    /** @ATTENTION: _ONLY_ to be called by fuzzing setup */
+    static void disable_lt_tag_parse();
+
     typedef std::shared_ptr< LanguageTagImpl > ImplPtr;
 
 private:
@@ -536,7 +550,8 @@ private:
     mutable bool                            mbInitializedLangID : 1;
             bool                            mbIsFallback        : 1;
 
-    ImplPtr const &     getImpl() const;
+    LanguageTagImpl*    getImpl();
+    LanguageTagImpl const* getImpl() const;
     ImplPtr             registerImpl() const;
     void                syncFromImpl();
     void                syncVarsFromRawImpl() const;

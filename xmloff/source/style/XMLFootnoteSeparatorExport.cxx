@@ -23,12 +23,13 @@
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/xmlexp.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlprmap.hxx>
+#include <xmloff/xmlement.hxx>
 
-#include <xmloff/PageMasterStyleMap.hxx>
+#include <PageMasterStyleMap.hxx>
 #include <com/sun/star/text/HorizontalAdjust.hpp>
 #include <rtl/ustrbuf.hxx>
 
@@ -75,8 +76,12 @@ void XMLFootnoteSeparatorExport::exportXML(
         switch (rMapper->GetEntryContextId(rState.mnIndex))
         {
         case CTF_PM_FTN_LINE_ADJUST:
-            rState.maValue >>= eLineAdjust;
+        {
+            sal_Int16 nTmp;
+            if (rState.maValue >>= nTmp)
+                eLineAdjust = static_cast<text::HorizontalAdjust>(nTmp);
             break;
+        }
         case CTF_PM_FTN_LINE_COLOR:
             rState.maValue >>= nLineColor;
             break;
@@ -150,7 +155,7 @@ void XMLFootnoteSeparatorExport::exportXML(
         { XML_LEFT,     text::HorizontalAdjust_LEFT },
         { XML_CENTER,   text::HorizontalAdjust_CENTER },
         { XML_RIGHT,    text::HorizontalAdjust_RIGHT },
-        { XML_TOKEN_INVALID, (text::HorizontalAdjust)0 }
+        { XML_TOKEN_INVALID, text::HorizontalAdjust(0) }
     };
 
     if (SvXMLUnitConverter::convertEnum(

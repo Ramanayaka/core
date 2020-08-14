@@ -21,44 +21,41 @@
 
 #include <memory>
 #include <sal/config.h>
-#include <sfx2/app.hxx>
 #include <sfx2/dllapi.h>
 #include <sfx2/shell.hxx>
 #include <sfx2/styfitem.hxx>
-#include <svtools/imgdef.hxx>
 #include <sal/types.h>
 #include <tools/fldunit.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 
-class SfxBindings;
 class SfxObjectFactory;
-class ModalDialog;
-class SfxObjectFactory;
-class SfxModule;
 class SfxModule_Impl;
 class SfxSlotPool;
-struct SfxChildWinContextFactory;
 struct SfxChildWinFactory;
 struct SfxStbCtrlFactory;
 struct SfxTbxCtrlFactory;
 class SfxTabPage;
-namespace vcl { class Window; }
+class SfxTbxCtrlFactArr_Impl;
+class SfxStbCtrlFactArr_Impl;
+class SfxChildWinFactArr_Impl;
 
-namespace com { namespace sun { namespace star { namespace frame {
+namespace com::sun::star::frame {
     class XFrame;
-} } } }
+}
 
+namespace weld {
+    class Container;
+    class DialogController;
+}
 
 class SFX2_DLLPUBLIC SfxModule : public SfxShell
 {
 private:
-    ResMgr*                     pResMgr;
-
     // Warning this cannot be turned into a unique_ptr.
     // SfxInterface destruction in the SfxSlotPool refers again to pImpl after deletion of pImpl has commenced. See tdf#100270
     SfxModule_Impl*             pImpl;
 
-    SAL_DLLPRIVATE void Construct_Impl();
+    SAL_DLLPRIVATE void Construct_Impl(const OString& rResName);
 
 public:
                                 SFX_DECL_INTERFACE(SFX_INTERFACE_SFXMODULE)
@@ -69,22 +66,22 @@ private:
 
 public:
 
-                                SfxModule( ResMgr* pMgrP, std::initializer_list<SfxObjectFactory*> pFactoryList);
-                                virtual ~SfxModule() override;
+    SfxModule(const OString& rResName, std::initializer_list<SfxObjectFactory*> pFactoryList);
+    virtual ~SfxModule() override;
 
-    ResMgr*                     GetResMgr();
+    std::locale                 GetResLocale() const;
     SfxSlotPool*                GetSlotPool() const;
 
     void                        RegisterToolBoxControl(const SfxTbxCtrlFactory&);
-    void                        RegisterChildWindow(SfxChildWinFactory*);
+    void                        RegisterChildWindow(std::unique_ptr<SfxChildWinFactory>);
     void                        RegisterStatusBarControl(const SfxStbCtrlFactory&);
 
-    virtual VclPtr<SfxTabPage>  CreateTabPage( sal_uInt16 nId,
-                                               vcl::Window* pParent,
+    virtual std::unique_ptr<SfxTabPage>  CreateTabPage( sal_uInt16 nId,
+                                               weld::Container* pPage, weld::DialogController* pController,
                                                const SfxItemSet& rSet );
     virtual void                Invalidate(sal_uInt16 nId = 0) override;
 
-    virtual SfxStyleFamilies*   CreateStyleFamilies() { return nullptr; }
+    virtual std::unique_ptr<SfxStyleFamilies> CreateStyleFamilies() { return nullptr; }
 
     static SfxModule*           GetActiveModule( SfxViewFrame* pFrame=nullptr );
     static FieldUnit            GetCurrentFieldUnit();
@@ -93,7 +90,7 @@ public:
         Effectively, this method looks up the SfxViewFrame belonging to the given XFrame, then the SfxModule belonging to
         the document in this frame, then this module's field unit.
 
-        Failures in any of those steps are reported as assertion in non-product builds, and then FUNIT_100TH_MM is returned.
+        Failures in any of those steps are reported as assertion in non-product builds, and then FieldUnit::MM_100TH is returned.
      */
     static FieldUnit            GetModuleFieldUnit( css::uno::Reference< css::frame::XFrame > const & i_frame );
     FieldUnit                   GetFieldUnit() const;

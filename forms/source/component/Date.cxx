@@ -18,11 +18,12 @@
  */
 
 #include "Date.hxx"
-#include "services.hxx"
-#include <tools/date.hxx>
+#include <property.hxx>
+#include <services.hxx>
+#include <tools/diagnose_ex.h>
 #include <connectivity/dbconversion.hxx>
 #include <com/sun/star/sdbc/DataType.hpp>
-#include <comphelper/processfactory.hxx>
+#include <com/sun/star/form/FormComponentType.hpp>
 
 using namespace dbtools;
 
@@ -34,7 +35,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::container;
@@ -55,16 +55,10 @@ Sequence<Type> ODateControl::_getTypes()
     return OBoundControl::_getTypes();
 }
 
-
 css::uno::Sequence<OUString> SAL_CALL ODateControl::getSupportedServiceNames()
 {
-    css::uno::Sequence<OUString> aSupported = OBoundControl::getSupportedServiceNames();
-    aSupported.realloc(aSupported.getLength() + 2);
-
-    OUString*pArray = aSupported.getArray();
-    pArray[aSupported.getLength()-1] = FRM_SUN_CONTROL_DATEFIELD;
-    pArray[aSupported.getLength()-2] = STARDIV_ONE_FORM_CONTROL_DATEFIELD;
-    return aSupported;
+    const css::uno::Sequence<OUString> vals { FRM_SUN_CONTROL_DATEFIELD, STARDIV_ONE_FORM_CONTROL_DATEFIELD };
+    return comphelper::concatSequences(OBoundControl::getSupportedServiceNames(), vals);
 }
 
 
@@ -94,7 +88,7 @@ ODateModel::ODateModel(const Reference<XComponentContext>& _rxFactory)
     }
     catch( const Exception& )
     {
-        OSL_FAIL( "ODateModel::ODateModel: caught an exception!" );
+        TOOLS_WARN_EXCEPTION( "forms.component", "ODateModel::ODateModel" );
     }
     osl_atomic_decrement( &m_refCount );
 }
@@ -122,32 +116,25 @@ IMPLEMENT_DEFAULT_CLONING( ODateModel )
 
 css::uno::Sequence<OUString> SAL_CALL ODateModel::getSupportedServiceNames()
 {
-    css::uno::Sequence<OUString> aSupported = OBoundControlModel::getSupportedServiceNames();
+    const css::uno::Sequence<OUString> vals {
+       BINDABLE_CONTROL_MODEL,
+       DATA_AWARE_CONTROL_MODEL,
+       VALIDATABLE_CONTROL_MODEL,
+       BINDABLE_DATA_AWARE_CONTROL_MODEL,
+       VALIDATABLE_BINDABLE_CONTROL_MODEL,
+       FRM_SUN_COMPONENT_DATEFIELD,
+       FRM_SUN_COMPONENT_DATABASE_DATEFIELD,
+       BINDABLE_DATABASE_DATE_FIELD,
+       FRM_COMPONENT_DATEFIELD
+    };
 
-    sal_Int32 nOldLen = aSupported.getLength();
-    aSupported.realloc( nOldLen + 9 );
-    OUString* pStoreTo = aSupported.getArray() + nOldLen;
-
-    *pStoreTo++ = BINDABLE_CONTROL_MODEL;
-    *pStoreTo++ = DATA_AWARE_CONTROL_MODEL;
-    *pStoreTo++ = VALIDATABLE_CONTROL_MODEL;
-
-    *pStoreTo++ = BINDABLE_DATA_AWARE_CONTROL_MODEL;
-    *pStoreTo++ = VALIDATABLE_BINDABLE_CONTROL_MODEL;
-
-    *pStoreTo++ = FRM_SUN_COMPONENT_DATEFIELD;
-    *pStoreTo++ = FRM_SUN_COMPONENT_DATABASE_DATEFIELD;
-    *pStoreTo++ = BINDABLE_DATABASE_DATE_FIELD;
-
-    *pStoreTo++ = FRM_COMPONENT_DATEFIELD;
-
-    return aSupported;
+    return comphelper::concatSequences(OBoundControlModel::getSupportedServiceNames(), vals);
 }
 
 
 OUString SAL_CALL ODateModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_DATEFIELD); // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_DATEFIELD; // old (non-sun) name for compatibility !
 }
 
 // XPropertySet
@@ -204,18 +191,18 @@ void ODateModel::onConnectedDbColumn( const Reference< XInterface >& _rxForm )
 {
     OBoundControlModel::onConnectedDbColumn( _rxForm );
     Reference<XPropertySet> xField = getField();
-    if (xField.is())
+    if (!xField.is())
+        return;
+
+    m_bDateTimeField = false;
+    try
     {
-        m_bDateTimeField = false;
-        try
-        {
-            sal_Int32 nFieldType = 0;
-            xField->getPropertyValue(PROPERTY_FIELDTYPE) >>= nFieldType;
-            m_bDateTimeField = (nFieldType == DataType::TIMESTAMP);
-        }
-        catch(const Exception&)
-        {
-        }
+        sal_Int32 nFieldType = 0;
+        xField->getPropertyValue(PROPERTY_FIELDTYPE) >>= nFieldType;
+        m_bDateTimeField = (nFieldType == DataType::TIMESTAMP);
+    }
+    catch(const Exception&)
+    {
     }
 }
 
@@ -311,14 +298,14 @@ Sequence< Type > ODateModel::getSupportedBindingTypes()
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_ODateModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::ODateModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_ODateControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

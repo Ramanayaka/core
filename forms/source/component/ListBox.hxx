@@ -20,28 +20,26 @@
 #ifndef INCLUDED_FORMS_SOURCE_COMPONENT_LISTBOX_HXX
 #define INCLUDED_FORMS_SOURCE_COMPONENT_LISTBOX_HXX
 
-#include "FormComponent.hxx"
+#include <FormComponent.hxx>
 #include "cachedrowset.hxx"
 #include "errorbroadcaster.hxx"
 #include "entrylisthelper.hxx"
 
-#include <com/sun/star/util/XNumberFormatter.hpp>
-#include <com/sun/star/sdb/XSQLErrorBroadcaster.hpp>
 #include <com/sun/star/form/ListSourceType.hpp>
 #include <com/sun/star/awt/XItemListener.hpp>
 #include <com/sun/star/awt/XFocusListener.hpp>
 #include <com/sun/star/awt/XListBox.hpp>
 #include <com/sun/star/form/XChangeBroadcaster.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
 
 #include <comphelper/asyncnotification.hxx>
 #include <connectivity/FValue.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/implbase4.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
 
 #include <vector>
+
+using namespace comphelper;
 
 /** ListBox is a bit confusing / different from other form components,
     so here are a few notes:
@@ -97,7 +95,7 @@ namespace frm
 
 typedef ::std::vector< ::connectivity::ORowSetValue >   ValueList;
 
-class OListBoxModel :public OBoundControlModel
+class OListBoxModel final :public OBoundControlModel
                     ,public OEntryListHelper
                     ,public OErrorBroadcaster
 {
@@ -128,7 +126,7 @@ public:
 
 // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OListBoxModel"); }
+    { return "com.sun.star.form.OListBoxModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -145,7 +143,7 @@ public:
     virtual sal_Bool SAL_CALL convertFastPropertyValue(
                 css::uno::Any& _rConvertedValue, css::uno::Any& _rOldValue, sal_Int32 _nHandle, const css::uno::Any& _rValue ) override;
 
-protected:
+private:
     static const ::connectivity::ORowSetValue s_aEmptyValue;
     static const ::connectivity::ORowSetValue s_aEmptyStringValue;
 
@@ -177,7 +175,6 @@ protected:
     using OBoundControlModel::getFastPropertyValue;
     using OBoundControlModel::setPropertyValues;
 
-protected:
     // OBoundControlModel overridables
     virtual css::uno::Any   translateDbColumnToControlValue( ) override;
     virtual css::uno::Sequence< css::uno::Type >
@@ -197,11 +194,8 @@ protected:
 
     // OEntryListHelper overridables
     virtual void    stringItemListChanged( ControlModelLock& _rInstanceLock ) override;
-    virtual void    connectedExternalListSource( ) override;
-    virtual void    disconnectedExternalListSource( ) override;
     virtual void    refreshInternalEntryList() override;
 
-protected:
     virtual css::uno::Reference< css::util::XCloneable > SAL_CALL createClone(  ) override;
 
     void init();
@@ -214,8 +208,6 @@ protected:
         const ::connectivity::ORowSetValue &aValue)
         const;
 
-
-private:
     void        loadData( bool _bForce );
 
     /** refreshes the list boxes list data
@@ -273,7 +265,7 @@ public:
 
 // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OListBoxControl"); }
+    { return "com.sun.star.form.OListBoxControl"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 

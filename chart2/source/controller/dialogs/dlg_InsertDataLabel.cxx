@@ -17,21 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dlg_InsertDataLabel.hxx"
+#include <dlg_InsertDataLabel.hxx>
 #include "res_DataLabel.hxx"
 
 namespace chart
 {
 
-DataLabelsDialog::DataLabelsDialog(vcl::Window* pWindow, const SfxItemSet& rInAttrs, SvNumberFormatter* pFormatter) :
-    ModalDialog(pWindow
-                ,"dlg_DataLabels"
-                ,"modules/schart/ui/dlg_DataLabel.ui"),
-    m_apDataLabelResources( new DataLabelResources(this, this, rInAttrs) ),
-    m_rInAttrs(rInAttrs)
+DataLabelsDialog::DataLabelsDialog(weld::Window* pWindow, const SfxItemSet& rInAttrs, SvNumberFormatter* pFormatter)
+    : GenericDialogController(pWindow, "modules/schart/ui/dlg_DataLabel.ui", "dlg_DataLabels")
+    , m_apDataLabelResources(new DataLabelResources(m_xBuilder.get(), pWindow, rInAttrs))
 {
     m_apDataLabelResources->SetNumberFormatter( pFormatter );
-    m_apDataLabelResources->Reset(m_rInAttrs);
+    m_apDataLabelResources->Reset(rInAttrs);
 }
 
 DataLabelsDialog::~DataLabelsDialog() = default;

@@ -20,7 +20,8 @@
 #ifndef INCLUDED_VCL_SOURCE_GDI_IMPANMVW_HXX
 #define INCLUDED_VCL_SOURCE_GDI_IMPANMVW_HXX
 
-#include <vcl/animate.hxx>
+#include <vcl/animate/Animation.hxx>
+#include <vcl/vclptr.hxx>
 
 class Animation;
 class OutputDevice;
@@ -47,7 +48,7 @@ private:
     friend class Animation;
 
     Animation*      mpParent;
-    VclPtr<OutputDevice>   mpOut;
+    VclPtr<OutputDevice>  mpRenderContext;
     long            mnExtraData;
     Point           maPt;
     Point           maDispPt;
@@ -61,18 +62,19 @@ private:
     VclPtr<VirtualDevice>  mpRestore;
     sal_uLong       mnActPos;
     Disposal        meLastDisposal;
-    bool            mbPause;
-    bool            mbMarked;
-    bool            mbHMirr;
-    bool            mbVMirr;
+    bool            mbIsPaused;
+    bool            mbIsMarked;
+    bool            mbIsMirroredHorizontally;
+    bool            mbIsMirroredVertically;
 
+public:
+                    ~ImplAnimView();
 private:
                     ImplAnimView( Animation* pParent, OutputDevice* pOut,
                                   const Point& rPt, const Size& rSz, sal_uLong nExtraData,
                                   OutputDevice* pFirstFrameOutDev = nullptr );
-                    ~ImplAnimView();
 
-    bool            matches( OutputDevice* pOut, long nExtraData ) const;
+    bool            matches(const OutputDevice* pOut, long nExtraData) const;
     void            drawToPos( sal_uLong nPos );
     void            draw( sal_uLong nPos, VirtualDevice* pVDev=nullptr );
     void            repaint();
@@ -84,11 +86,11 @@ private:
 
     const Size&     getOutSizePix() const { return maSzPix; }
 
-    void            pause( bool bPause ) { mbPause = bPause; }
-    bool            isPause() const { return mbPause; }
+    void            pause( bool bIsPaused ) { mbIsPaused = bIsPaused; }
+    bool            isPause() const { return mbIsPaused; }
 
-    void            setMarked( bool bMarked ) { mbMarked = bMarked; }
-    bool            isMarked() const { return mbMarked; }
+    void            setMarked( bool bIsMarked ) { mbIsMarked = bIsMarked; }
+    bool            isMarked() const { return mbIsMarked; }
 };
 
 #endif

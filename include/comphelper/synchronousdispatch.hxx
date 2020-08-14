@@ -22,17 +22,18 @@
 
 #include <comphelper/comphelperdllapi.h>
 
-#include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/Reference.h>
+#include <rtl/ustring.hxx>
 
-#include <com/sun/star/beans/PropertyValue.hpp>
-
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno {
         class XInterface; }
     namespace lang {
         class XComponent; }
-} } }
+}
+
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::uno { template <class E> class Sequence; }
 
 
 namespace comphelper
@@ -51,7 +52,6 @@ namespace comphelper
             const css::uno::Reference< css::uno::XInterface > &xStartPoint,
             const OUString &sURL,
             const OUString &sTarget,
-            const sal_Int32 nFlags,
             const css::uno::Sequence< css::beans::PropertyValue > &lArguments );
     };
 

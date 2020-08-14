@@ -19,14 +19,17 @@
 
 
 #include <indexentrysupplier_ja_phonetic.hxx>
-#include <data/indexdata_alphanumeric.h>
-#include <data/indexdata_ja_phonetic.h>
+#include <collatorImpl.hxx>
+#include "data/indexdata_alphanumeric.h"
+#include "data/indexdata_ja_phonetic.h"
 #include <string.h>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+using namespace ::com::sun::star::i18n;
+
+namespace i18npool {
 
 OUString SAL_CALL IndexEntrySupplier_ja_phonetic::getIndexCharacter( const OUString& rIndexEntry,
-    const lang::Locale& /*rLocale*/, const OUString& /*rSortAlgorithm*/ )
+    const css::lang::Locale& /*rLocale*/, const OUString& /*rSortAlgorithm*/ )
 {
     sal_Unicode ch=rIndexEntry.toChar();
     sal_uInt16 first = idx[ ch >> 8 ];
@@ -40,14 +43,14 @@ OUString SAL_CALL IndexEntrySupplier_ja_phonetic::getIndexCharacter( const OUStr
 }
 
 OUString SAL_CALL IndexEntrySupplier_ja_phonetic::getIndexKey( const OUString& IndexEntry,
-    const OUString& PhoneticEntry, const lang::Locale& rLocale )
+    const OUString& PhoneticEntry, const css::lang::Locale& rLocale )
 {
     return getIndexCharacter( PhoneticEntry.isEmpty() ? IndexEntry : PhoneticEntry , rLocale, OUString());
 }
 
 sal_Int16 SAL_CALL IndexEntrySupplier_ja_phonetic::compareIndexEntry(
-    const OUString& IndexEntry1, const OUString& PhoneticEntry1, const lang::Locale& rLocale1,
-    const OUString& IndexEntry2, const OUString& PhoneticEntry2, const lang::Locale& rLocale2 )
+    const OUString& IndexEntry1, const OUString& PhoneticEntry1, const css::lang::Locale& rLocale1,
+    const OUString& IndexEntry2, const OUString& PhoneticEntry2, const css::lang::Locale& rLocale2 )
 {
     sal_Int16 result = sal::static_int_cast<sal_Int16>( collator->compareString(
         IndexEntrySupplier_ja_phonetic::getIndexKey(IndexEntry1, PhoneticEntry1, rLocale1),
@@ -60,7 +63,7 @@ sal_Int16 SAL_CALL IndexEntrySupplier_ja_phonetic::compareIndexEntry(
     return result;
 }
 
-static const sal_Char first[] = "ja_phonetic (alphanumeric first)";
+const char first[] = "phonetic (alphanumeric first)";
 sal_Bool SAL_CALL IndexEntrySupplier_ja_phonetic_alphanumeric_first_by_syllable::loadAlgorithm(
     const css::lang::Locale& rLocale, const OUString& /*SortAlgorithm*/,
     sal_Int32 collatorOptions )
@@ -74,7 +77,7 @@ sal_Bool SAL_CALL IndexEntrySupplier_ja_phonetic_alphanumeric_first_by_consonant
     return collator->loadCollatorAlgorithm(first, rLocale, collatorOptions) == 0;
 }
 
-static const sal_Char last[] = "ja_phonetic (alphanumeric last)";
+const char last[] = "phonetic (alphanumeric last)";
 sal_Bool SAL_CALL IndexEntrySupplier_ja_phonetic_alphanumeric_last_by_syllable::loadAlgorithm(
     const css::lang::Locale& rLocale, const OUString& /*SortAlgorithm*/,
     sal_Int32 collatorOptions )
@@ -88,6 +91,6 @@ sal_Bool SAL_CALL IndexEntrySupplier_ja_phonetic_alphanumeric_last_by_consonant:
     return collator->loadCollatorAlgorithm(last, rLocale, collatorOptions) == 0;
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

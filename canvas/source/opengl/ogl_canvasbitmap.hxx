@@ -15,9 +15,9 @@
 #include <com/sun/star/rendering/XBitmapCanvas.hpp>
 #include <com/sun/star/rendering/XIntegerBitmap.hpp>
 
-#include <canvas/base/integerbitmapbase.hxx>
-#include <canvas/base/basemutexhelper.hxx>
-#include <basegfx/vector/b2isize.hxx>
+#include <base/integerbitmapbase.hxx>
+#include <base/basemutexhelper.hxx>
+#include <base/bitmapcanvasbase.hxx>
 
 #include "ogl_bitmapcanvashelper.hxx"
 #include "ogl_spritecanvas.hxx"
@@ -49,8 +49,7 @@ namespace oglcanvas
          */
         CanvasBitmap( const css::geometry::IntegerSize2D&              rSize,
                       const SpriteCanvasRef&                           rDevice,
-                      SpriteDeviceHelper&                              rDeviceHelper,
-                      bool                                             bHasAlpha );
+                      SpriteDeviceHelper&                              rDeviceHelper );
 
         /** Create verbatim copy (including all recorded actions)
          */
@@ -68,7 +67,6 @@ namespace oglcanvas
             raw pointer (without refcounting)
         */
         SpriteCanvasRef mpDevice;
-        bool            mbHasAlpha;
     };
 }
 

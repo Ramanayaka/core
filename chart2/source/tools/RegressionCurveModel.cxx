@@ -18,17 +18,17 @@
  */
 
 #include "RegressionCurveModel.hxx"
-#include "macros.hxx"
-#include "LinePropertiesHelper.hxx"
-#include "RegressionCurveHelper.hxx"
-#include "RegressionCalculationHelper.hxx"
+#include <LinePropertiesHelper.hxx>
+#include <RegressionCurveHelper.hxx>
 #include "RegressionEquation.hxx"
-#include "CloneHelper.hxx"
-#include "PropertyHelper.hxx"
+#include <CloneHelper.hxx>
+#include <PropertyHelper.hxx>
+#include <ModifyListenerHelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <rtl/math.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <tools/diagnose_ex.h>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
@@ -36,24 +36,6 @@ using ::com::sun::star::beans::Property;
 
 namespace
 {
-static const OUString lcl_aImplementationName_MeanValue(
-    "com.sun.star.comp.chart2.MeanValueRegressionCurve" );
-static const OUString lcl_aImplementationName_Linear(
-    "com.sun.star.comp.chart2.LinearRegressionCurve" );
-static const OUString lcl_aImplementationName_Logarithmic(
-    "com.sun.star.comp.chart2.LogarithmicRegressionCurve" );
-static const OUString lcl_aImplementationName_Exponential(
-    "com.sun.star.comp.chart2.ExponentialRegressionCurve" );
-static const OUString lcl_aImplementationName_Potential(
-    "com.sun.star.comp.chart2.PotentialRegressionCurve" );
-static const OUString lcl_aImplementationName_Polynomial(
-    "com.sun.star.comp.chart2.PolynomialRegressionCurve" );
-static const OUString lcl_aImplementationName_MovingAverage(
-    "com.sun.star.comp.chart2.MovingAverageRegressionCurve" );
-
-static const OUString lcl_aServiceName(
-    "com.sun.star.chart2.RegressionCurve" );
-
 enum
 {
     PROPERTY_DEGREE,
@@ -68,53 +50,46 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "PolynomialDegree",
+    rOutProperties.emplace_back( "PolynomialDegree",
                 PROPERTY_DEGREE,
                 cppu::UnoType<sal_Int32>::get(),
                 beans::PropertyAttribute::BOUND |
-                beans::PropertyAttribute::MAYBEDEFAULT ));
+                beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "MovingAveragePeriod",
+    rOutProperties.emplace_back( "MovingAveragePeriod",
                 PROPERTY_PERIOD,
                 cppu::UnoType<sal_Int32>::get(),
                 beans::PropertyAttribute::BOUND |
-                beans::PropertyAttribute::MAYBEDEFAULT ));
+                beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "ExtrapolateForward",
+    rOutProperties.emplace_back( "ExtrapolateForward",
                 PROPERTY_EXTRAPOLATE_FORWARD,
                 cppu::UnoType<double>::get(),
                 beans::PropertyAttribute::BOUND |
-                beans::PropertyAttribute::MAYBEDEFAULT ));
+                beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "ExtrapolateBackward",
+    rOutProperties.emplace_back( "ExtrapolateBackward",
                 PROPERTY_EXTRAPOLATE_BACKWARD,
                 cppu::UnoType<double>::get(),
                 beans::PropertyAttribute::BOUND |
-                beans::PropertyAttribute::MAYBEDEFAULT ));
+                beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "ForceIntercept",
+    rOutProperties.emplace_back( "ForceIntercept",
                   PROPERTY_FORCE_INTERCEPT,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "InterceptValue",
+    rOutProperties.emplace_back( "InterceptValue",
                 PROPERTY_INTERCEPT_VALUE,
                 cppu::UnoType<double>::get(),
                 beans::PropertyAttribute::BOUND |
-                beans::PropertyAttribute::MAYBEDEFAULT ));
+                beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "CurveName",
+    rOutProperties.emplace_back( "CurveName",
                 PROPERTY_CURVE_NAME,
                 cppu::UnoType<OUString>::get(),
-                beans::PropertyAttribute::BOUND ));
+                beans::PropertyAttribute::BOUND );
 }
 
 struct StaticXXXDefaults_Initializer
@@ -190,8 +165,7 @@ RegressionCurveModel::RegressionCurveModel( tCurveType eCurveType ) :
 }
 
 RegressionCurveModel::RegressionCurveModel( const RegressionCurveModel & rOther ) :
-    MutexContainer(),
-    impl::RegressionCurveModel_Base(),
+    impl::RegressionCurveModel_Base(rOther),
     ::property::OPropertySet( rOther, m_aMutex ),
     m_eRegressionCurveType( rOther.m_eRegressionCurveType ),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
@@ -234,19 +208,19 @@ OUString SAL_CALL RegressionCurveModel::getServiceName()
     switch( m_eRegressionCurveType )
     {
         case CURVE_TYPE_MEAN_VALUE:
-            return OUString("com.sun.star.chart2.MeanValueRegressionCurve");
+            return "com.sun.star.chart2.MeanValueRegressionCurve";
         case CURVE_TYPE_LINEAR:
-            return OUString("com.sun.star.chart2.LinearRegressionCurve");
+            return "com.sun.star.chart2.LinearRegressionCurve";
         case CURVE_TYPE_LOGARITHM:
-            return OUString("com.sun.star.chart2.LogarithmicRegressionCurve");
+            return "com.sun.star.chart2.LogarithmicRegressionCurve";
         case CURVE_TYPE_EXPONENTIAL:
-            return OUString("com.sun.star.chart2.ExponentialRegressionCurve");
+            return "com.sun.star.chart2.ExponentialRegressionCurve";
         case CURVE_TYPE_POWER:
-            return OUString("com.sun.star.chart2.PotentialRegressionCurve");
+            return "com.sun.star.chart2.PotentialRegressionCurve";
         case CURVE_TYPE_POLYNOMIAL:
-            return OUString("com.sun.star.chart2.PolynomialRegressionCurve");
+            return "com.sun.star.chart2.PolynomialRegressionCurve";
         case CURVE_TYPE_MOVING_AVERAGE:
-            return OUString("com.sun.star.chart2.MovingAverageRegressionCurve");
+            return "com.sun.star.chart2.MovingAverageRegressionCurve";
     }
 
     return OUString();
@@ -260,9 +234,9 @@ void SAL_CALL RegressionCurveModel::addModifyListener( const uno::Reference< uti
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -273,9 +247,9 @@ void SAL_CALL RegressionCurveModel::removeModifyListener( const uno::Reference< 
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -343,7 +317,7 @@ MeanValueRegressionCurve::~MeanValueRegressionCurve()
 
 OUString SAL_CALL MeanValueRegressionCurve::getImplementationName()
 {
-    return lcl_aImplementationName_MeanValue;
+    return "com.sun.star.comp.chart2.MeanValueRegressionCurve";
 }
 
 sal_Bool SAL_CALL MeanValueRegressionCurve::supportsService( const OUString& rServiceName )
@@ -353,7 +327,7 @@ sal_Bool SAL_CALL MeanValueRegressionCurve::supportsService( const OUString& rSe
 
 css::uno::Sequence< OUString > SAL_CALL MeanValueRegressionCurve::getSupportedServiceNames()
 {
-    return { lcl_aServiceName, "com.sun.star.chart2.MeanValueRegressionCurve" };
+    return { "com.sun.star.chart2.RegressionCurve", "com.sun.star.chart2.MeanValueRegressionCurve" };
 }
 
 uno::Reference< util::XCloneable > SAL_CALL MeanValueRegressionCurve::createClone()
@@ -373,7 +347,7 @@ LinearRegressionCurve::~LinearRegressionCurve()
 
 OUString SAL_CALL LinearRegressionCurve::getImplementationName()
 {
-    return lcl_aImplementationName_Linear;
+    return "com.sun.star.comp.chart2.LinearRegressionCurve";
 }
 
 sal_Bool SAL_CALL LinearRegressionCurve::supportsService( const OUString& rServiceName )
@@ -383,7 +357,7 @@ sal_Bool SAL_CALL LinearRegressionCurve::supportsService( const OUString& rServi
 
 css::uno::Sequence< OUString > SAL_CALL LinearRegressionCurve::getSupportedServiceNames()
 {
-    return { lcl_aServiceName, "com.sun.star.chart2.LinearRegressionCurve" };
+    return { "com.sun.star.chart2.RegressionCurve", "com.sun.star.chart2.LinearRegressionCurve" };
 }
 
 uno::Reference< util::XCloneable > SAL_CALL LinearRegressionCurve::createClone()
@@ -403,7 +377,7 @@ LogarithmicRegressionCurve::~LogarithmicRegressionCurve()
 
 OUString SAL_CALL LogarithmicRegressionCurve::getImplementationName()
 {
-    return lcl_aImplementationName_Logarithmic;
+    return "com.sun.star.comp.chart2.LogarithmicRegressionCurve";
 }
 
 sal_Bool SAL_CALL LogarithmicRegressionCurve::supportsService( const OUString& rServiceName )
@@ -413,7 +387,7 @@ sal_Bool SAL_CALL LogarithmicRegressionCurve::supportsService( const OUString& r
 
 css::uno::Sequence< OUString > SAL_CALL LogarithmicRegressionCurve::getSupportedServiceNames()
 {
-    return { lcl_aServiceName, "com.sun.star.chart2.LogarithmicRegressionCurve" };
+    return { "com.sun.star.chart2.RegressionCurve", "com.sun.star.chart2.LogarithmicRegressionCurve" };
 }
 
 uno::Reference< util::XCloneable > SAL_CALL LogarithmicRegressionCurve::createClone()
@@ -433,7 +407,7 @@ ExponentialRegressionCurve::~ExponentialRegressionCurve()
 
 OUString SAL_CALL ExponentialRegressionCurve::getImplementationName()
 {
-    return lcl_aImplementationName_Exponential;
+    return "com.sun.star.comp.chart2.ExponentialRegressionCurve";
 }
 
 sal_Bool SAL_CALL ExponentialRegressionCurve::supportsService( const OUString& rServiceName )
@@ -443,7 +417,7 @@ sal_Bool SAL_CALL ExponentialRegressionCurve::supportsService( const OUString& r
 
 css::uno::Sequence< OUString > SAL_CALL ExponentialRegressionCurve::getSupportedServiceNames()
 {
-    return { lcl_aServiceName, "com.sun.star.chart2.ExponentialRegressionCurve" };
+    return { "com.sun.star.chart2.RegressionCurve", "com.sun.star.chart2.ExponentialRegressionCurve" };
 }
 
 uno::Reference< util::XCloneable > SAL_CALL ExponentialRegressionCurve::createClone()
@@ -463,7 +437,7 @@ PotentialRegressionCurve::~PotentialRegressionCurve()
 
 OUString SAL_CALL PotentialRegressionCurve::getImplementationName()
 {
-    return lcl_aImplementationName_Potential;
+    return "com.sun.star.comp.chart2.PotentialRegressionCurve";
 }
 
 sal_Bool SAL_CALL PotentialRegressionCurve::supportsService( const OUString& rServiceName )
@@ -473,7 +447,7 @@ sal_Bool SAL_CALL PotentialRegressionCurve::supportsService( const OUString& rSe
 
 css::uno::Sequence< OUString > SAL_CALL PotentialRegressionCurve::getSupportedServiceNames()
 {
-    return { lcl_aServiceName, "com.sun.star.chart2.PotentialRegressionCurve" };
+    return { "com.sun.star.chart2.RegressionCurve", "com.sun.star.chart2.PotentialRegressionCurve" };
 }
 
 uno::Reference< util::XCloneable > SAL_CALL PotentialRegressionCurve::createClone()
@@ -493,7 +467,7 @@ PolynomialRegressionCurve::~PolynomialRegressionCurve()
 
 OUString SAL_CALL PolynomialRegressionCurve::getImplementationName()
 {
-    return lcl_aImplementationName_Polynomial;
+    return "com.sun.star.comp.chart2.PolynomialRegressionCurve";
 }
 
 sal_Bool SAL_CALL PolynomialRegressionCurve::supportsService( const OUString& rServiceName )
@@ -503,7 +477,7 @@ sal_Bool SAL_CALL PolynomialRegressionCurve::supportsService( const OUString& rS
 
 css::uno::Sequence< OUString > SAL_CALL PolynomialRegressionCurve::getSupportedServiceNames()
 {
-    return { lcl_aServiceName, "com.sun.star.chart2.PolynomialRegressionCurve" };
+    return { "com.sun.star.chart2.RegressionCurve", "com.sun.star.chart2.PolynomialRegressionCurve" };
 }
 
 uno::Reference< util::XCloneable > SAL_CALL PolynomialRegressionCurve::createClone()
@@ -523,7 +497,7 @@ MovingAverageRegressionCurve::~MovingAverageRegressionCurve()
 
 OUString SAL_CALL MovingAverageRegressionCurve::getImplementationName()
 {
-    return lcl_aImplementationName_MovingAverage;
+    return "com.sun.star.comp.chart2.MovingAverageRegressionCurve";
 }
 
 sal_Bool SAL_CALL MovingAverageRegressionCurve::supportsService( const OUString& rServiceName )
@@ -533,7 +507,7 @@ sal_Bool SAL_CALL MovingAverageRegressionCurve::supportsService( const OUString&
 
 css::uno::Sequence< OUString > SAL_CALL MovingAverageRegressionCurve::getSupportedServiceNames()
 {
-    return { lcl_aServiceName, "com.sun.star.chart2.MovingAverageRegressionCurve" };
+    return { "com.sun.star.chart2.RegressionCurve", "com.sun.star.chart2.MovingAverageRegressionCurve" };
 }
 
 uno::Reference< util::XCloneable > SAL_CALL MovingAverageRegressionCurve::createClone()
@@ -543,49 +517,49 @@ uno::Reference< util::XCloneable > SAL_CALL MovingAverageRegressionCurve::create
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_ExponentialRegressionCurve_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new ::chart::ExponentialRegressionCurve );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_LinearRegressionCurve_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new ::chart::LinearRegressionCurve );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_LogarithmicRegressionCurve_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new ::chart::LogarithmicRegressionCurve );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_MeanValueRegressionCurve_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new ::chart::MeanValueRegressionCurve );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_PotentialRegressionCurve_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new ::chart::PotentialRegressionCurve );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_PolynomialRegressionCurve_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new ::chart::PolynomialRegressionCurve );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_MovingAverageRegressionCurve_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {

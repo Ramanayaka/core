@@ -33,14 +33,12 @@ namespace basegfx {
     class BColor;
 }
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpSdrLineAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC SdrLineAttribute
         {
@@ -61,10 +59,10 @@ namespace drawinglayer
                 const ::std::vector< double >& rDotDashArray,
                 double fFullDotDashLen);
             SdrLineAttribute();
-            SdrLineAttribute(const SdrLineAttribute& rCandidate);
-            SdrLineAttribute(SdrLineAttribute&& rCandidate);
-            SdrLineAttribute& operator=(const SdrLineAttribute& rCandidate);
-            SdrLineAttribute& operator=(SdrLineAttribute&& rCandidate);
+            SdrLineAttribute(const SdrLineAttribute&);
+            SdrLineAttribute(SdrLineAttribute&&);
+            SdrLineAttribute& operator=(const SdrLineAttribute&);
+            SdrLineAttribute& operator=(SdrLineAttribute&&);
             ~SdrLineAttribute();
 
             // checks if the incarnation is default constructed
@@ -82,8 +80,8 @@ namespace drawinglayer
             double getFullDotDashLen() const;
             css::drawing::LineCap getCap() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_SDRLINEATTRIBUTE_HXX

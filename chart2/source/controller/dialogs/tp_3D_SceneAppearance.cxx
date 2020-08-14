@@ -18,11 +18,15 @@
  */
 
 #include "tp_3D_SceneAppearance.hxx"
-#include "ChartModelHelper.hxx"
-#include "ThreeDHelper.hxx"
-#include "macros.hxx"
-#include <rtl/math.hxx>
+#include <ChartModelHelper.hxx>
+#include <ThreeDHelper.hxx>
+#include <ControllerLockGuard.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/chart2/XDiagram.hpp>
+#include <com/sun/star/drawing/ShadeMode.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <tools/diagnose_ex.h>
+#include <vcl/svapp.hxx>
 
 using namespace ::com::sun::star;
 
@@ -44,7 +48,7 @@ struct lcl_ModelProperties
     {}
 };
 
-lcl_ModelProperties lcl_getPropertiesFromModel( uno::Reference< frame::XModel > & xModel )
+lcl_ModelProperties lcl_getPropertiesFromModel( uno::Reference< frame::XModel > const & xModel )
 {
     lcl_ModelProperties aProps;
     try
@@ -55,14 +59,14 @@ lcl_ModelProperties lcl_getPropertiesFromModel( uno::Reference< frame::XModel > 
         ::chart::ThreeDHelper::getRoundedEdgesAndObjectLines( xDiagram, aProps.m_nRoundedEdges, aProps.m_nObjectLines );
         aProps.m_eScheme = ::chart::ThreeDHelper::detectScheme( xDiagram );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
     return aProps;
 }
 
-void lcl_setShadeModeAtModel( uno::Reference< frame::XModel > & xModel, drawing::ShadeMode aShadeMode )
+void lcl_setShadeModeAtModel( uno::Reference< frame::XModel > const & xModel, drawing::ShadeMode aShadeMode )
 {
     try
     {
@@ -70,9 +74,9 @@ void lcl_setShadeModeAtModel( uno::Reference< frame::XModel > & xModel, drawing:
             ::chart::ChartModelHelper::findDiagram( xModel ), uno::UNO_QUERY_THROW );
         xDiaProp->setPropertyValue( "D3DSceneShadeMode" , uno::Any( aShadeMode ));
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -85,53 +89,34 @@ namespace chart
 #define POS_3DSCHEME_REALISTIC 1
 #define POS_3DSCHEME_CUSTOM 2
 
-ThreeD_SceneAppearance_TabPage::ThreeD_SceneAppearance_TabPage(
-      vcl::Window* pWindow
-    , const uno::Reference< frame::XModel > & xChartModel
-    , ControllerLockHelper & rControllerLockHelper )
-                : TabPage ( pWindow
-                           , "tp_3D_SceneAppearance"
-                           , "modules/schart/ui/tp_3D_SceneAppearance.ui")
-                , m_xChartModel     ( xChartModel )
-                , m_bUpdateOtherControls( true )
-                , m_bCommitToModel( true )
-                , m_rControllerLockHelper( rControllerLockHelper )
+ThreeD_SceneAppearance_TabPage::ThreeD_SceneAppearance_TabPage(weld::Container* pParent,
+        const uno::Reference<frame::XModel>& xChartModel,
+        ControllerLockHelper& rControllerLockHelper)
+    : m_xChartModel(xChartModel)
+    , m_bUpdateOtherControls(true)
+    , m_bCommitToModel(true)
+    , m_rControllerLockHelper(rControllerLockHelper)
+    , m_xBuilder(Application::CreateBuilder(pParent, "modules/schart/ui/tp_3D_SceneAppearance.ui"))
+    , m_xContainer(m_xBuilder->weld_container("tp_3D_SceneAppearance"))
+    , m_xLB_Scheme(m_xBuilder->weld_combo_box("LB_SCHEME"))
+    , m_xCB_Shading(m_xBuilder->weld_check_button("CB_SHADING"))
+    , m_xCB_ObjectLines(m_xBuilder->weld_check_button("CB_OBJECTLINES"))
+    , m_xCB_RoundedEdge(m_xBuilder->weld_check_button("CB_ROUNDEDEDGE"))
 {
+    m_aCustom = m_xLB_Scheme->get_text(POS_3DSCHEME_CUSTOM);
+    m_xLB_Scheme->remove(POS_3DSCHEME_CUSTOM);
 
-    get(m_pLB_Scheme, "LB_SCHEME");
-    get(m_pCB_Shading, "CB_SHADING");
-    get(m_pCB_ObjectLines, "CB_OBJECTLINES");
-    get(m_pCB_RoundedEdge, "CB_ROUNDEDEDGE");
+    m_xLB_Scheme->connect_changed( LINK( this, ThreeD_SceneAppearance_TabPage, SelectSchemeHdl ) );
 
-    m_aCustom = m_pLB_Scheme->GetEntry(POS_3DSCHEME_CUSTOM);
-    m_pLB_Scheme->RemoveEntry(POS_3DSCHEME_CUSTOM);
-    m_pLB_Scheme->SetDropDownLineCount(2);
-
-    m_pLB_Scheme->SetSelectHdl( LINK( this, ThreeD_SceneAppearance_TabPage, SelectSchemeHdl ) );
-
-    m_pCB_RoundedEdge->SetToggleHdl( LINK( this, ThreeD_SceneAppearance_TabPage, SelectRoundedEdgeOrObjectLines ) );
-    m_pCB_Shading->SetToggleHdl( LINK( this, ThreeD_SceneAppearance_TabPage, SelectShading ) );
-    m_pCB_ObjectLines->SetToggleHdl( LINK( this, ThreeD_SceneAppearance_TabPage, SelectRoundedEdgeOrObjectLines ) );
-
-    m_pCB_RoundedEdge->EnableTriState();
-    m_pCB_Shading->EnableTriState();
-    m_pCB_ObjectLines->EnableTriState();
+    m_xCB_RoundedEdge->connect_toggled( LINK( this, ThreeD_SceneAppearance_TabPage, SelectRoundedEdgeOrObjectLines ) );
+    m_xCB_Shading->connect_toggled( LINK( this, ThreeD_SceneAppearance_TabPage, SelectShading ) );
+    m_xCB_ObjectLines->connect_toggled( LINK( this, ThreeD_SceneAppearance_TabPage, SelectRoundedEdgeOrObjectLines ) );
 
     initControlsFromModel();
 }
 
 ThreeD_SceneAppearance_TabPage::~ThreeD_SceneAppearance_TabPage()
 {
-    disposeOnce();
-}
-
-void ThreeD_SceneAppearance_TabPage::dispose()
-{
-    m_pLB_Scheme.clear();
-    m_pCB_Shading.clear();
-    m_pCB_ObjectLines.clear();
-    m_pCB_RoundedEdge.clear();
-    TabPage::dispose();
 }
 
 void ThreeD_SceneAppearance_TabPage::ActivatePage()
@@ -146,7 +131,7 @@ void ThreeD_SceneAppearance_TabPage::applyRoundedEdgeAndObjectLinesToModel()
 
     sal_Int32 nObjectLines = -1;
 
-    switch( m_pCB_ObjectLines->GetState())
+    switch( m_xCB_ObjectLines->get_state())
     {
         case TRISTATE_FALSE:
             nObjectLines = 0;
@@ -160,7 +145,7 @@ void ThreeD_SceneAppearance_TabPage::applyRoundedEdgeAndObjectLinesToModel()
     }
 
     sal_Int32 nCurrentRoundedEdges = -1;
-    switch( m_pCB_RoundedEdge->GetState() )
+    switch( m_xCB_RoundedEdge->get_state() )
     {
         case TRISTATE_FALSE:
             nCurrentRoundedEdges = 0;
@@ -186,7 +171,7 @@ void ThreeD_SceneAppearance_TabPage::applyShadeModeToModel()
 
     drawing::ShadeMode aShadeMode = drawing::ShadeMode_PHONG;
 
-    switch( m_pCB_Shading->GetState())
+    switch( m_xCB_Shading->get_state())
     {
         case TRISTATE_FALSE:
             aShadeMode = drawing::ShadeMode_FLAT;
@@ -211,52 +196,43 @@ void ThreeD_SceneAppearance_TabPage::initControlsFromModel()
 
     if(aProps.m_aShadeMode == drawing::ShadeMode_FLAT)
     {
-        m_pCB_Shading->EnableTriState( false );
-        m_pCB_Shading->Check(false);
+        m_xCB_Shading->set_active(false);
     }
     else if(aProps.m_aShadeMode == drawing::ShadeMode_SMOOTH)
     {
-        m_pCB_Shading->EnableTriState( false );
-        m_pCB_Shading->Check();
+        m_xCB_Shading->set_active(true);
     }
     else
     {
-        m_pCB_Shading->EnableTriState();
-        m_pCB_Shading->SetState( TRISTATE_INDET );
+        m_xCB_Shading->set_state(TRISTATE_INDET);
     }
 
     if(aProps.m_nObjectLines == 0)
     {
-        m_pCB_ObjectLines->EnableTriState( false );
-        m_pCB_ObjectLines->Check(false);
+        m_xCB_ObjectLines->set_active(false);
     }
     else if(aProps.m_nObjectLines==1)
     {
-        m_pCB_ObjectLines->EnableTriState( false );
-        m_pCB_ObjectLines->Check();
+        m_xCB_ObjectLines->set_active(true);
     }
     else
     {
-        m_pCB_ObjectLines->EnableTriState();
-        m_pCB_ObjectLines->SetState( TRISTATE_INDET );
+        m_xCB_ObjectLines->set_state(TRISTATE_INDET);
     }
 
     if(aProps.m_nRoundedEdges >= 5)
     {
-        m_pCB_RoundedEdge->EnableTriState( false );
-        m_pCB_RoundedEdge->Check();
+        m_xCB_RoundedEdge->set_active(true);
     }
     else if(aProps.m_nRoundedEdges<0)
     {
-        m_pCB_RoundedEdge->EnableTriState( false );
-        m_pCB_RoundedEdge->SetState( TRISTATE_INDET );
+        m_xCB_RoundedEdge->set_state(TRISTATE_INDET);
     }
     else
     {
-        m_pCB_RoundedEdge->EnableTriState();
-        m_pCB_RoundedEdge->Check(false);
+        m_xCB_RoundedEdge->set_active(false);
     }
-    m_pCB_RoundedEdge->Enable( !m_pCB_ObjectLines->IsChecked() );
+    m_xCB_RoundedEdge->set_sensitive( !m_xCB_ObjectLines->get_active() );
 
     updateScheme();
 
@@ -268,30 +244,26 @@ void ThreeD_SceneAppearance_TabPage::updateScheme()
 {
     lcl_ModelProperties aProps( lcl_getPropertiesFromModel( m_xChartModel ));
 
-    if( m_pLB_Scheme->GetEntryCount() == (POS_3DSCHEME_CUSTOM+1) )
-    {
-        m_pLB_Scheme->RemoveEntry(POS_3DSCHEME_CUSTOM);
-        m_pLB_Scheme->SetDropDownLineCount(2);
-    }
+    if (m_xLB_Scheme->get_count() == (POS_3DSCHEME_CUSTOM+1))
+        m_xLB_Scheme->remove(POS_3DSCHEME_CUSTOM);
     switch( aProps.m_eScheme )
     {
         case ThreeDLookScheme_Simple:
-            m_pLB_Scheme->SelectEntryPos( POS_3DSCHEME_SIMPLE );
+            m_xLB_Scheme->set_active( POS_3DSCHEME_SIMPLE );
             break;
         case ThreeDLookScheme_Realistic:
-            m_pLB_Scheme->SelectEntryPos( POS_3DSCHEME_REALISTIC );
+            m_xLB_Scheme->set_active( POS_3DSCHEME_REALISTIC );
             break;
         case ThreeDLookScheme_Unknown:
             {
-                m_pLB_Scheme->InsertEntry(m_aCustom,POS_3DSCHEME_CUSTOM);
-                m_pLB_Scheme->SelectEntryPos( POS_3DSCHEME_CUSTOM );
-                m_pLB_Scheme->SetDropDownLineCount(3);
+                m_xLB_Scheme->insert_text(POS_3DSCHEME_CUSTOM, m_aCustom);
+                m_xLB_Scheme->set_active(POS_3DSCHEME_CUSTOM);
             }
             break;
     }
 }
 
-IMPL_LINK_NOARG(ThreeD_SceneAppearance_TabPage, SelectSchemeHdl, ListBox&, void)
+IMPL_LINK_NOARG(ThreeD_SceneAppearance_TabPage, SelectSchemeHdl, weld::ComboBox&, void)
 {
     if( !m_bUpdateOtherControls )
         return;
@@ -302,9 +274,9 @@ IMPL_LINK_NOARG(ThreeD_SceneAppearance_TabPage, SelectSchemeHdl, ListBox&, void)
 
         uno::Reference< chart2::XDiagram > xDiagram( ::chart::ChartModelHelper::findDiagram( m_xChartModel ) );
 
-        if( m_pLB_Scheme->GetSelectEntryPos() == POS_3DSCHEME_REALISTIC )
+        if( m_xLB_Scheme->get_active() == POS_3DSCHEME_REALISTIC )
             ThreeDHelper::setScheme( xDiagram, ThreeDLookScheme_Realistic );
-        else if( m_pLB_Scheme->GetSelectEntryPos() == POS_3DSCHEME_SIMPLE )
+        else if( m_xLB_Scheme->get_active() == POS_3DSCHEME_SIMPLE )
             ThreeDHelper::setScheme( xDiagram, ThreeDLookScheme_Simple );
         else
         {
@@ -316,31 +288,29 @@ IMPL_LINK_NOARG(ThreeD_SceneAppearance_TabPage, SelectSchemeHdl, ListBox&, void)
     initControlsFromModel();
 }
 
-IMPL_LINK_NOARG(ThreeD_SceneAppearance_TabPage, SelectShading, CheckBox&, void)
+IMPL_LINK_NOARG(ThreeD_SceneAppearance_TabPage, SelectShading, weld::ToggleButton&, void)
 {
     if( !m_bUpdateOtherControls )
         return;
 
-    m_pCB_Shading->EnableTriState( false );
     applyShadeModeToModel();
     updateScheme();
 }
-IMPL_LINK( ThreeD_SceneAppearance_TabPage, SelectRoundedEdgeOrObjectLines, CheckBox&, rCheckBox, void )
+
+IMPL_LINK(ThreeD_SceneAppearance_TabPage, SelectRoundedEdgeOrObjectLines, weld::ToggleButton&, rCheckBox, void)
 {
     if( !m_bUpdateOtherControls )
         return;
 
-    if( &rCheckBox == m_pCB_ObjectLines )
+    if (&rCheckBox == m_xCB_ObjectLines.get())
     {
-        m_pCB_ObjectLines->EnableTriState( false );
         m_bUpdateOtherControls = false;
-        m_pCB_RoundedEdge->Enable( !m_pCB_ObjectLines->IsChecked() );
-        if(!m_pCB_RoundedEdge->IsEnabled())
-            m_pCB_RoundedEdge->Check(false);
+        m_xCB_RoundedEdge->set_sensitive( !m_xCB_ObjectLines->get_active() );
+        if(!m_xCB_RoundedEdge->get_sensitive())
+            m_xCB_RoundedEdge->set_active(false);
         m_bUpdateOtherControls = true;
     }
-    else
-        m_pCB_RoundedEdge->EnableTriState( false );
+
     applyRoundedEdgeAndObjectLinesToModel();
     updateScheme();
 }

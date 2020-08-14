@@ -24,9 +24,10 @@
 
 #include <com/sun/star/task/XInteractionHandler.hpp>
 
-#include <com/sun/star/task/XInteractionRequest.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <ucbhelper/ucbhelperdllapi.h>
+
+namespace com::sun::star::task { class XInteractionRequest; }
 
 
 namespace ucbhelper{
@@ -64,7 +65,7 @@ class UCBHELPER_DLLPUBLIC InterceptedInteraction : public ::cppu::WeakImplHelper
             css::uno::Type Continuation;
 
 
-            /** @short  it's an unique identifier, which must be managed by the outside code.
+            /** @short  it's a unique identifier, which must be managed by the outside code.
 
                 @descr  If there is a derived class, which overwrites the InterceptedInteraction::intercepted()
                         method, it will be called with a reference to an InterceptedRequest struct.
@@ -76,8 +77,8 @@ class UCBHELPER_DLLPUBLIC InterceptedInteraction : public ::cppu::WeakImplHelper
             /** @short  default ctor.
 
                 @descr  Such constructed object can't be used really.
-                        Might it will crash if its used!
-                        Don't forget to initialize all(!) members ...
+                        Might it will crash if it's used!
+                        Don't forget to initialize all(!) members...
              */
             InterceptedRequest()
             {
@@ -97,7 +98,7 @@ class UCBHELPER_DLLPUBLIC InterceptedInteraction : public ::cppu::WeakImplHelper
             /** none of the specified interceptions match the incoming request */
             E_NOT_INTERCEPTED,
             /** the request could be intercepted - but the specified continuation could not be located.
-                Thats normally an error of the programmer. May be the interaction request does not use
+                That's normally an error of the programmer. May be the interaction request does not use
                 the right set of continuations ... or the interception list contains the wrong continuation. */
             E_NO_CONTINUATION_FOUND,
             /** the request could be intercepted and the specified continuation could be selected successfully. */
@@ -176,7 +177,7 @@ class UCBHELPER_DLLPUBLIC InterceptedInteraction : public ::cppu::WeakImplHelper
                     const css::uno::Type&                                                                                             aType         );
 
 
-    // useable for derived classes
+    // usable for derived classes
     protected:
 
 
@@ -260,8 +261,8 @@ class UCBHELPER_DLLPUBLIC InterceptedInteraction : public ::cppu::WeakImplHelper
             @param  xRequest
                     the interaction request, which should be intercepted.
 
-            @return A identifier, which inidicates if the request was intercepted,
-                    the continuation was found and selected ... or not.
+            @return A identifier, which indicates if the request was intercepted,
+                    the continuation was found and selected... or not.
          */
         UCBHELPER_DLLPRIVATE EInterceptionState impl_interceptRequest(const css::uno::Reference< css::task::XInteractionRequest >& xRequest);
 };

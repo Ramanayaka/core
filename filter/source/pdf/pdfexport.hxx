@@ -20,10 +20,15 @@
 #ifndef INCLUDED_FILTER_SOURCE_PDF_PDFEXPORT_HXX
 #define INCLUDED_FILTER_SOURCE_PDF_PDFEXPORT_HXX
 
-#include "pdffilter.hxx"
 #include <tools/multisel.hxx>
 #include <vcl/pdfwriter.hxx>
 #include <vcl/pdfextoutdevdata.hxx>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/task/XInteractionHandler.hpp>
+#include <com/sun/star/task/XStatusIndicator.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/view/XRenderable.hpp>
 
 class GDIMetaFile;
@@ -31,6 +36,10 @@ class Size;
 
 namespace vcl { class PDFWriter; }
 
+using namespace ::com::sun::star;
+using namespace ::com::sun::star::beans;
+using namespace ::com::sun::star::lang;
+using namespace ::com::sun::star::uno;
 
 class PDFExport
 {
@@ -43,6 +52,7 @@ private:
 
     bool                mbUseTaggedPDF;
     sal_Int32           mnPDFTypeSelection;
+    bool                mbPDFUACompliance;
     bool                mbExportNotes;
     bool                mbExportPlaceholders;
     bool                mbUseReferenceXObject;
@@ -51,6 +61,7 @@ private:
     bool                mbUseTransitionEffects;
     bool                mbExportBookmarks;
     bool                mbExportHiddenSlides;
+    bool                mbSinglePageSheets;
     sal_Int32           mnOpenBookmarkLevels;
 
     bool                mbUseLosslessCompression;
@@ -65,7 +76,10 @@ private:
     sal_Int32           mnProgressValue;
     bool                mbRemoveTransparencies;
 
+    bool                mbIsRedactMode;
+
     OUString            msWatermark;
+    OUString            msTiledWatermark;
 
     // these variable are here only to have a location in filter/pdf to set the default
     // to be used by the macro (when the FilterData are set by the macro itself)
@@ -94,7 +108,7 @@ private:
     sal_Int32           mnDefaultLinkAction;
     bool                mbConvertOOoTargetToPDFTarget;
     bool                mbExportBmkToDest;
-    bool                ImplExportPage( vcl::PDFWriter& rWriter, vcl::PDFExtOutDevData& rPDFExtOutDevData,
+    void                ImplExportPage( vcl::PDFWriter& rWriter, vcl::PDFExtOutDevData& rPDFExtOutDevData,
                                         const GDIMetaFile& rMtf );
 
     bool                mbSignPDF;
@@ -106,6 +120,8 @@ private:
     OUString            msSignTSA;
 
     void                ImplWriteWatermark( vcl::PDFWriter& rWriter, const Size& rPageSize );
+    void                ImplWriteTiledWatermark( vcl::PDFWriter& rWriter, const Size& rPageSize );
+
 
 public:
 
@@ -116,7 +132,7 @@ public:
                         ~PDFExport();
 
     bool                ExportSelection( vcl::PDFWriter& rPDFWriter,
-                                    Reference< css::view::XRenderable >& rRenderable,
+                                    Reference< css::view::XRenderable > const & rRenderable,
                                     const Any& rSelection,
                                     const StringRangeEnumerator& rRangeEnum,
                                     Sequence< PropertyValue >& rRenderOptions,

@@ -8,22 +8,22 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
+#include <osl/module.h>
 
 #include <config_cairo_canvas.h>
 
-#include <basegfx/range/b2ibox.hxx>
 #include <unx/gtk/gtkframe.hxx>
 #include <unx/gtk/gtkdata.hxx>
 #include <unx/gtk/gtkinst.hxx>
 #include <unx/gtk/gtkgdi.hxx>
+#include <unx/gtk/gtkbackend.hxx>
 #include <vcl/decoview.hxx>
 #include <vcl/settings.hxx>
-#include "unx/fontmanager.hxx"
+#include <unx/fontmanager.hxx>
+
 #include "cairo_gtk3_cairo.hxx"
-#if defined(GDK_WINDOWING_WAYLAND)
-#   include <gdk/gdkwayland.h>
-#endif
-#include <boost/optional.hpp>
+#include <optional>
 
 GtkStyleContext* GtkSalGraphics::mpWindowStyle = nullptr;
 GtkStyleContext* GtkSalGraphics::mpButtonStyle = nullptr;
@@ -107,31 +107,33 @@ static GtkStateFlags NWConvertVCLStateToGTKState(ControlState nVCLState)
 
     if ( nVCLState & ControlState::PRESSED )
     {
-        nGTKState = (GtkStateFlags) (nGTKState | GTK_STATE_FLAG_ACTIVE);
+        nGTKState = static_cast<GtkStateFlags>(nGTKState | GTK_STATE_FLAG_ACTIVE);
     }
 
     if ( nVCLState & ControlState::ROLLOVER )
     {
-        nGTKState = (GtkStateFlags) (nGTKState | GTK_STATE_FLAG_PRELIGHT);
+        nGTKState = static_cast<GtkStateFlags>(nGTKState | GTK_STATE_FLAG_PRELIGHT);
     }
 
     if ( nVCLState & ControlState::SELECTED )
-        nGTKState = (GtkStateFlags) (nGTKState | GTK_STATE_FLAG_SELECTED);
+        nGTKState = static_cast<GtkStateFlags>(nGTKState | GTK_STATE_FLAG_SELECTED);
 
     if ( nVCLState & ControlState::FOCUSED )
-        nGTKState = (GtkStateFlags) (nGTKState | GTK_STATE_FLAG_FOCUSED);
+        nGTKState = static_cast<GtkStateFlags>(nGTKState | GTK_STATE_FLAG_FOCUSED);
 
     if (AllSettings::GetLayoutRTL())
     {
-        nGTKState = (GtkStateFlags) (nGTKState | GTK_STATE_FLAG_DIR_RTL);
+        nGTKState = static_cast<GtkStateFlags>(nGTKState | GTK_STATE_FLAG_DIR_RTL);
     }
     else
     {
-        nGTKState = (GtkStateFlags) (nGTKState | GTK_STATE_FLAG_DIR_LTR);
+        nGTKState = static_cast<GtkStateFlags>(nGTKState | GTK_STATE_FLAG_DIR_LTR);
     }
 
     return nGTKState;
 }
+
+namespace {
 
 enum class RenderType {
     BackgroundAndFrame = 1,
@@ -151,6 +153,8 @@ enum class RenderType {
     TabItem,
     Focus
 };
+
+}
 
 static void NWCalcArrowRect( const tools::Rectangle& rButton, tools::Rectangle& rArrow )
 {
@@ -183,7 +187,7 @@ tools::Rectangle GtkSalGraphics::NWGetSpinButtonRect( ControlPart nPart, tools::
     tools::Rectangle buttonRect;
     buttonRect.SetSize(Size(buttonWidth, buttonHeight));
     buttonRect.setY(aAreaRect.Top());
-    buttonRect.Bottom() = buttonRect.Top() + aAreaRect.GetHeight();
+    buttonRect.SetBottom( buttonRect.Top() + aAreaRect.GetHeight() );
     tools::Rectangle partRect(buttonRect);
     if ( nPart == ControlPart::ButtonUp )
     {
@@ -203,16 +207,16 @@ tools::Rectangle GtkSalGraphics::NWGetSpinButtonRect( ControlPart nPart, tools::
     {
         if (AllSettings::GetLayoutRTL())
         {
-            partRect.Right() = aAreaRect.Left() + aAreaRect.GetWidth();
-            partRect.Left()  = aAreaRect.Left() + (2 * buttonRect.GetWidth()) - 1;
+            partRect.SetRight( aAreaRect.Left() + aAreaRect.GetWidth() );
+            partRect.SetLeft( aAreaRect.Left() + (2 * buttonRect.GetWidth()) - 1 );
         }
         else
         {
-            partRect.Right() = (aAreaRect.Left() + (aAreaRect.GetWidth() - 2 * buttonRect.GetWidth())) - 1;
-            partRect.Left()  = aAreaRect.Left();
+            partRect.SetRight( (aAreaRect.Left() + (aAreaRect.GetWidth() - 2 * buttonRect.GetWidth())) - 1 );
+            partRect.SetLeft( aAreaRect.Left() );
         }
-        partRect.Top()    = aAreaRect.Top();
-        partRect.Bottom() = aAreaRect.Bottom();
+        partRect.SetTop( aAreaRect.Top() );
+        partRect.SetBottom( aAreaRect.Bottom() );
     }
 
     return partRect;
@@ -223,13 +227,14 @@ namespace
     void QuerySize(GtkStyleContext *pContext, Size &rSize)
     {
         GtkBorder margin, border, padding;
+        GtkStateFlags stateflags = gtk_style_context_get_state (pContext);
 
-        gtk_style_context_get_margin(pContext, gtk_style_context_get_state(pContext), &margin);
-        gtk_style_context_get_border(pContext, gtk_style_context_get_state(pContext), &border);
-        gtk_style_context_get_padding(pContext, gtk_style_context_get_state(pContext), &padding);
+        gtk_style_context_get_margin(pContext, stateflags, &margin);
+        gtk_style_context_get_border(pContext, stateflags, &border);
+        gtk_style_context_get_padding(pContext, stateflags, &padding);
 
         int nMinWidth, nMinHeight;
-        gtk_style_context_get(pContext, gtk_style_context_get_state(pContext),
+        gtk_style_context_get(pContext, stateflags,
                 "min-width", &nMinWidth, "min-height", &nMinHeight, nullptr);
 
         nMinWidth += margin.left + margin.right + border.left + border.right + padding.left + padding.right;
@@ -288,25 +293,25 @@ tools::Rectangle GtkSalGraphics::NWGetScrollButtonRect( ControlPart nPart, tools
 
         if (nPart == ControlPart::ButtonUp)
         {
-            aSize.Height() *= nFirst;
+            aSize.setHeight( aSize.Height() * nFirst );
             buttonRect.setX(aAreaRect.Left());
             buttonRect.setY(aAreaRect.Top());
         }
         else if (nPart == ControlPart::ButtonLeft)
         {
-            aSize.Width() *= nFirst;
+            aSize.setWidth( aSize.Width() * nFirst );
             buttonRect.setX(aAreaRect.Left());
             buttonRect.setY(aAreaRect.Top());
         }
         else if (nPart == ControlPart::ButtonDown)
         {
-            aSize.Height() *= nSecond;
+            aSize.setHeight( aSize.Height() * nSecond );
             buttonRect.setX(aAreaRect.Left());
             buttonRect.setY(aAreaRect.Top() + aAreaRect.GetHeight() - aSize.Height());
         }
         else if (nPart == ControlPart::ButtonRight)
         {
-            aSize.Width() *= nSecond;
+            aSize.setWidth( aSize.Width() * nSecond );
             buttonRect.setX(aAreaRect.Left() + aAreaRect.GetWidth() - aSize.Width());
             buttonRect.setY(aAreaRect.Top());
         }
@@ -384,19 +389,37 @@ static GtkWidget* gTreeViewWidget;
 
 namespace
 {
-    void parent_styles_context_set_state(GtkStyleContext* context, GtkStateFlags flags)
+    void style_context_set_state(GtkStyleContext* context, GtkStateFlags flags)
     {
-        while ((context = gtk_style_context_get_parent(context)))
+        do
         {
             gtk_style_context_set_state(context, flags);
         }
+        while ((context = gtk_style_context_get_parent(context)));
     }
 
-    void style_context_set_state(GtkStyleContext* context, GtkStateFlags flags)
+    class StyleContextSave
     {
-        gtk_style_context_set_state(context, flags);
-        parent_styles_context_set_state(context, flags);
-    }
+    private:
+        std::vector<std::pair<GtkStyleContext*, GtkStateFlags>> m_aStates;
+    public:
+        void save(GtkStyleContext* context)
+        {
+            do
+            {
+                m_aStates.emplace_back(context, gtk_style_context_get_state(context));
+            }
+            while ((context = gtk_style_context_get_parent(context)));
+        }
+        void restore()
+        {
+            for (auto a = m_aStates.rbegin(); a != m_aStates.rend(); ++a)
+            {
+                gtk_style_context_set_state(a->first, a->second);
+            }
+            m_aStates.clear();
+        }
+    };
 
     tools::Rectangle render_common(GtkStyleContext *pContext, cairo_t *cr, const tools::Rectangle &rIn, GtkStateFlags flags)
     {
@@ -409,10 +432,10 @@ namespace
         GtkBorder margin;
         gtk_style_context_get_margin(pContext, gtk_style_context_get_state(pContext), &margin);
 
-        aRect.Left() += margin.left;
-        aRect.Top() += margin.top;
-        aRect.Right() -= margin.right;
-        aRect.Bottom() -= margin.bottom;
+        aRect.AdjustLeft(margin.left );
+        aRect.AdjustTop(margin.top );
+        aRect.AdjustRight( -(margin.right) );
+        aRect.AdjustBottom( -(margin.bottom) );
 
         gtk_render_background(pContext, cr, aRect.Left(), aRect.Top(),
                                             aRect.GetWidth(), aRect.GetHeight());
@@ -423,10 +446,10 @@ namespace
         gtk_style_context_get_border(pContext, gtk_style_context_get_state(pContext), &border);
         gtk_style_context_get_padding(pContext, gtk_style_context_get_state(pContext), &padding);
 
-        aRect.Left() += border.left + padding.left;
-        aRect.Top() += border.top + padding.top;
-        aRect.Right() -= border.right + padding.right;
-        aRect.Bottom() -= border.bottom + padding.bottom;
+        aRect.AdjustLeft(border.left + padding.left );
+        aRect.AdjustTop(border.top + padding.top );
+        aRect.AdjustRight( -(border.right + padding.right) );
+        aRect.AdjustBottom( -(border.bottom + padding.bottom) );
 
         return aRect;
     }
@@ -465,7 +488,7 @@ void GtkSalGraphics::PaintScrollbar(GtkStyleContext *context,
 
         // Find the overall bounding rect of the control
         scrollbarRect = rControlRectangle;
-        if (scrollbarRect.GetWidth() <= 0 || scrollbarRect.GetHeight() <= 0)
+        if (scrollbarRect.IsEmpty())
             return;
 
         gint slider_side;
@@ -576,7 +599,7 @@ void GtkSalGraphics::PaintScrollbar(GtkStyleContext *context,
             button22BoundRect.SetSize( Size( slider_width, stepper_size ) );
         }
 
-        bool has_slider = ( thumbRect.GetWidth() > 0 && thumbRect.GetHeight() > 0 );
+        bool has_slider = !thumbRect.IsEmpty();
 
         // ----------------- CONTENTS
         GtkStyleContext* pScrollbarContentsStyle = scrollbarOrientation == GTK_ORIENTATION_VERTICAL ?
@@ -712,15 +735,19 @@ void GtkSalGraphics::PaintScrollbar(GtkStyleContext *context,
         {
             tools::Rectangle aBtn1Rect = NWGetScrollButtonRect(ControlPart::ButtonLeft, aTrackRect);
             tools::Rectangle aBtn2Rect = NWGetScrollButtonRect(ControlPart::ButtonRight, aTrackRect);
-            aTrackRect.Left() = aBtn1Rect.Right();
-            aTrackRect.Right() = aBtn2Rect.Left();
+            if (!aBtn1Rect.IsWidthEmpty())
+                aTrackRect.SetLeft( aBtn1Rect.Right() );
+            if (!aBtn2Rect.IsWidthEmpty())
+                aTrackRect.SetRight( aBtn2Rect.Left() );
         }
         else
         {
             tools::Rectangle aBtn1Rect = NWGetScrollButtonRect(ControlPart::ButtonUp, aTrackRect);
             tools::Rectangle aBtn2Rect = NWGetScrollButtonRect(ControlPart::ButtonDown, aTrackRect);
-            aTrackRect.Top() = aBtn1Rect.Bottom() + 1;
-            aTrackRect.Bottom() = aBtn2Rect.Top();
+            if (!aBtn1Rect.IsHeightEmpty())
+                aTrackRect.SetTop( aBtn1Rect.Bottom() + 1 );
+            if (!aBtn2Rect.IsHeightEmpty())
+                aTrackRect.SetBottom( aBtn2Rect.Top() );
         }
 
         GtkStyleContext* pScrollbarTroughStyle = scrollbarOrientation == GTK_ORIENTATION_VERTICAL ?
@@ -735,7 +762,7 @@ void GtkSalGraphics::PaintScrollbar(GtkStyleContext *context,
         {
             stateFlags = NWConvertVCLStateToGTKState(rScrollbarVal.mnThumbState);
             if ( rScrollbarVal.mnThumbState & ControlState::PRESSED )
-                stateFlags = (GtkStateFlags) (stateFlags | GTK_STATE_PRELIGHT);
+                stateFlags = static_cast<GtkStateFlags>(stateFlags | GTK_STATE_FLAG_PRELIGHT);
 
             GtkStyleContext* pScrollbarSliderStyle = scrollbarOrientation == GTK_ORIENTATION_VERTICAL ?
                                                       mpVScrollbarSliderStyle : mpHScrollbarSliderStyle;
@@ -841,11 +868,11 @@ void GtkSalGraphics::PaintScrollbar(GtkStyleContext *context,
         button21BoundRect.SetSize( Size( stepper_size, slider_width ) );
         button22BoundRect.SetSize( Size( stepper_size, slider_width ) );
 
-        thumbRect.Bottom() = thumbRect.Top() + slider_width - 1;
+        thumbRect.SetBottom( thumbRect.Top() + slider_width - 1 );
         // Make sure the thumb is at least the default width (so we don't get tiny thumbs),
         // but if the VCL gives us a size smaller than the theme's default thumb size,
         // honor the VCL size
-        thumbRect.Right() += magic;
+        thumbRect.AdjustRight(magic );
         // Center vertically in the track
         thumbRect.Move( 0, (scrollbarRect.GetHeight() - slider_width) / 2 );
     }
@@ -880,14 +907,14 @@ void GtkSalGraphics::PaintScrollbar(GtkStyleContext *context,
         button21BoundRect.SetSize( Size( slider_width, stepper_size ) );
         button22BoundRect.SetSize( Size( slider_width, stepper_size ) );
 
-        thumbRect.Right() = thumbRect.Left() + slider_width - 1;
+        thumbRect.SetRight( thumbRect.Left() + slider_width - 1 );
 
-        thumbRect.Bottom() += magic;
+        thumbRect.AdjustBottom(magic );
         // Center horizontally in the track
         thumbRect.Move( (scrollbarRect.GetWidth() - slider_width) / 2, 0 );
     }
 
-    bool has_slider = ( thumbRect.GetWidth() > 0 && thumbRect.GetHeight() > 0 );
+    bool has_slider = !thumbRect.IsEmpty();
 
     // ----------------- CONTENTS
     GtkStyleContext* pScrollbarContentsStyle = scrollbarOrientation == GTK_ORIENTATION_VERTICAL ?
@@ -919,7 +946,7 @@ void GtkSalGraphics::PaintScrollbar(GtkStyleContext *context,
     {
         stateFlags = NWConvertVCLStateToGTKState(rScrollbarVal.mnThumbState);
         if ( rScrollbarVal.mnThumbState & ControlState::PRESSED )
-            stateFlags = (GtkStateFlags) (stateFlags | GTK_STATE_PRELIGHT);
+            stateFlags = static_cast<GtkStateFlags>(stateFlags | GTK_STATE_FLAG_PRELIGHT);
 
         GtkStyleContext* pScrollbarSliderStyle = scrollbarOrientation == GTK_ORIENTATION_VERTICAL ?
                                                   mpVScrollbarSliderStyle : mpHScrollbarSliderStyle;
@@ -1022,31 +1049,31 @@ void GtkSalGraphics::PaintScrollbar(GtkStyleContext *context,
                          arrowRect.Left(), arrowRect.Top(),
                          MIN(arrowRect.GetWidth(), arrowRect.GetHeight()) );
     }
-    if ( has_forward )
-    {
-        stateFlags = NWConvertVCLStateToGTKState(rScrollbarVal.mnButton2State);
-        if ( forwardButtonInsensitive )
-            stateFlags = GTK_STATE_FLAG_INSENSITIVE;
+    if ( !has_forward )
+        return;
 
-        GtkStyleContext* pScrollbarButtonStyle = scrollbarOrientation == GTK_ORIENTATION_VERTICAL ?
-                                                 mpVScrollbarButtonStyle : mpHScrollbarButtonStyle;
+    stateFlags = NWConvertVCLStateToGTKState(rScrollbarVal.mnButton2State);
+    if ( forwardButtonInsensitive )
+        stateFlags = GTK_STATE_FLAG_INSENSITIVE;
 
-        gtk_style_context_set_state(pScrollbarButtonStyle, stateFlags);
+    GtkStyleContext* pScrollbarButtonStyle = scrollbarOrientation == GTK_ORIENTATION_VERTICAL ?
+                                             mpVScrollbarButtonStyle : mpHScrollbarButtonStyle;
 
-        gtk_render_background(pScrollbarButtonStyle, cr,
-                       button22BoundRect.Left(), button22BoundRect.Top(),
-                       button22BoundRect.GetWidth(), button22BoundRect.GetHeight() );
-        gtk_render_frame(pScrollbarButtonStyle, cr,
-                       button22BoundRect.Left(), button22BoundRect.Top(),
-                       button22BoundRect.GetWidth(), button22BoundRect.GetHeight() );
+    gtk_style_context_set_state(pScrollbarButtonStyle, stateFlags);
 
-        // ----------------- ARROW 2
-        NWCalcArrowRect( button22BoundRect, arrowRect );
-        gtk_render_arrow(pScrollbarButtonStyle, cr,
-                         arrow2Angle,
-                         arrowRect.Left(), arrowRect.Top(),
-                         MIN(arrowRect.GetWidth(), arrowRect.GetHeight()) );
-    }
+    gtk_render_background(pScrollbarButtonStyle, cr,
+                   button22BoundRect.Left(), button22BoundRect.Top(),
+                   button22BoundRect.GetWidth(), button22BoundRect.GetHeight() );
+    gtk_render_frame(pScrollbarButtonStyle, cr,
+                   button22BoundRect.Left(), button22BoundRect.Top(),
+                   button22BoundRect.GetWidth(), button22BoundRect.GetHeight() );
+
+    // ----------------- ARROW 2
+    NWCalcArrowRect( button22BoundRect, arrowRect );
+    gtk_render_arrow(pScrollbarButtonStyle, cr,
+                     arrow2Angle,
+                     arrowRect.Left(), arrowRect.Top(),
+                     MIN(arrowRect.GetWidth(), arrowRect.GetHeight()) );
 }
 
 void GtkSalGraphics::PaintOneSpinButton( GtkStyleContext *context,
@@ -1061,34 +1088,39 @@ void GtkSalGraphics::PaintOneSpinButton( GtkStyleContext *context,
     tools::Rectangle buttonRect = NWGetSpinButtonRect( nPart, aAreaRect );
 
     gtk_style_context_set_state(context, stateFlags);
+    stateFlags = gtk_style_context_get_state(context);
 
-    gtk_style_context_get_padding(context, gtk_style_context_get_state(context), &padding);
-    gtk_style_context_get_border(context, gtk_style_context_get_state(context), &border);
+    gtk_style_context_get_padding(context, stateFlags, &padding);
+    gtk_style_context_get_border(context, stateFlags, &border);
 
     gtk_render_background(context, cr,
                           buttonRect.Left(), buttonRect.Top(),
                           buttonRect.GetWidth(), buttonRect.GetHeight() );
 
-    gint iconWidth = (buttonRect.GetWidth() - padding.left - padding.right - border.left - border.right);
-    gint iconHeight = (buttonRect.GetHeight() - padding.top - padding.bottom - border.top - border.bottom);
+    gint iconWidth = buttonRect.GetWidth() - padding.left - padding.right - border.left - border.right;
+    gint iconHeight = buttonRect.GetHeight() - padding.top - padding.bottom - border.top - border.bottom;
 
     const char* icon = (nPart == ControlPart::ButtonUp) ? "list-add-symbolic" : "list-remove-symbolic";
     GtkIconTheme *pIconTheme = gtk_icon_theme_get_for_screen(gtk_widget_get_screen(mpWindow));
 
-    GtkIconInfo *info = gtk_icon_theme_lookup_icon(pIconTheme, icon, std::min(iconWidth, iconHeight),
+    gint scale = gtk_style_context_get_scale (context);
+    GtkIconInfo *info = gtk_icon_theme_lookup_icon_for_scale(pIconTheme, icon, std::min(iconWidth, iconHeight), scale,
                                                    static_cast<GtkIconLookupFlags>(0));
 
     GdkPixbuf *pixbuf = gtk_icon_info_load_symbolic_for_context(info, context, nullptr, nullptr);
     g_object_unref(info);
 
-    iconWidth = gdk_pixbuf_get_width(pixbuf);
-    iconHeight = gdk_pixbuf_get_height(pixbuf);
+    iconWidth = gdk_pixbuf_get_width(pixbuf)/scale;
+    iconHeight = gdk_pixbuf_get_height(pixbuf)/scale;
     tools::Rectangle arrowRect;
     arrowRect.SetSize(Size(iconWidth, iconHeight));
     arrowRect.setX( buttonRect.Left() + (buttonRect.GetWidth() - arrowRect.GetWidth()) / 2 );
     arrowRect.setY( buttonRect.Top() + (buttonRect.GetHeight() - arrowRect.GetHeight()) / 2 );
 
+    gtk_style_context_save (context);
+    gtk_style_context_set_scale (context, 1);
     gtk_render_icon(context, cr, pixbuf, arrowRect.Left(), arrowRect.Top());
+    gtk_style_context_restore (context);
     g_object_unref(pixbuf);
 
     gtk_render_frame(context, cr,
@@ -1145,16 +1177,19 @@ void GtkSalGraphics::PaintSpinButton(GtkStateFlags flags,
     }
 }
 
-#define FALLBACK_ARROW_SIZE 11 * 0.85
+#define FALLBACK_ARROW_SIZE gint(11 * 0.85)
 
-tools::Rectangle GtkSalGraphics::NWGetComboBoxButtonRect(
+tools::Rectangle GtkSalGraphics::NWGetComboBoxButtonRect(ControlType nType,
                                                    ControlPart nPart,
                                                    tools::Rectangle aAreaRect )
 {
     tools::Rectangle    aButtonRect;
 
     GtkBorder padding;
-    gtk_style_context_get_padding( mpButtonStyle, gtk_style_context_get_state(mpButtonStyle), &padding);
+    if (nType == ControlType::Listbox)
+        gtk_style_context_get_padding(mpListboxButtonStyle, gtk_style_context_get_state(mpListboxButtonStyle), &padding);
+    else
+        gtk_style_context_get_padding(mpButtonStyle, gtk_style_context_get_state(mpButtonStyle), &padding);
 
     gint nArrowWidth = FALLBACK_ARROW_SIZE;
     if (gtk_check_version(3, 20, 0) == nullptr)
@@ -1163,13 +1198,17 @@ tools::Rectangle GtkSalGraphics::NWGetComboBoxButtonRect(
             gtk_style_context_get_state(mpComboboxButtonArrowStyle),
             "min-width", &nArrowWidth, nullptr);
     }
+    else
+    {
+        nArrowWidth = nArrowWidth * gtk_style_context_get_scale (mpComboboxButtonArrowStyle);
+    }
 
     gint nButtonWidth = nArrowWidth + padding.left + padding.right;
     if( nPart == ControlPart::ButtonDown )
     {
-        Point aPos = Point(aAreaRect.Left() + aAreaRect.GetWidth() - nButtonWidth, aAreaRect.Top());
+        Point aPos(aAreaRect.Left() + aAreaRect.GetWidth() - nButtonWidth, aAreaRect.Top());
         if (AllSettings::GetLayoutRTL())
-            aPos.X() = aAreaRect.Left();
+            aPos.setX( aAreaRect.Left() );
         aButtonRect.SetSize( Size( nButtonWidth, aAreaRect.GetHeight() ) );
         aButtonRect.SetPos(aPos);
     }
@@ -1184,10 +1223,10 @@ tools::Rectangle GtkSalGraphics::NWGetComboBoxButtonRect(
                                    aAreaRect.GetHeight() - (adjust_top + adjust_bottom)) );
         Point aEditPos = aAreaRect.TopLeft();
         if (AllSettings::GetLayoutRTL())
-            aEditPos.X() += nButtonWidth;
+            aEditPos.AdjustX(nButtonWidth );
         else
-            aEditPos.X() += adjust_left;
-        aEditPos.Y() += adjust_top;
+            aEditPos.AdjustX(adjust_left );
+        aEditPos.AdjustY(adjust_top );
         aButtonRect.SetPos( aEditPos );
     }
 
@@ -1197,8 +1236,7 @@ tools::Rectangle GtkSalGraphics::NWGetComboBoxButtonRect(
 void GtkSalGraphics::PaintCombobox( GtkStateFlags flags, cairo_t *cr,
                                     const tools::Rectangle& rControlRectangle,
                                     ControlType nType,
-                                    ControlPart nPart,
-                                    const ImplControlValue& /*rValue*/ )
+                                    ControlPart nPart )
 {
     tools::Rectangle        areaRect;
     tools::Rectangle        buttonRect;
@@ -1208,7 +1246,7 @@ void GtkSalGraphics::PaintCombobox( GtkStateFlags flags, cairo_t *cr,
     // plus its actual draw rect excluding adornment
     areaRect = rControlRectangle;
 
-    buttonRect = NWGetComboBoxButtonRect( ControlPart::ButtonDown, areaRect );
+    buttonRect = NWGetComboBoxButtonRect(ControlType::Combobox, ControlPart::ButtonDown, areaRect);
 
     tools::Rectangle        aEditBoxRect( areaRect );
     aEditBoxRect.SetSize( Size( areaRect.GetWidth() - buttonRect.GetWidth(), aEditBoxRect.GetHeight() ) );
@@ -1231,10 +1269,23 @@ void GtkSalGraphics::PaintCombobox( GtkStateFlags flags, cairo_t *cr,
                 "min-width", &arrow_width, "min-height", &arrow_height, nullptr);
         }
     }
+    else
+    {
+        if (nType == ControlType::Combobox)
+        {
+            arrow_width = arrow_width * gtk_style_context_get_scale (mpComboboxButtonArrowStyle);
+            arrow_height = arrow_height * gtk_style_context_get_scale (mpComboboxButtonArrowStyle);
+        }
+        else if (nType == ControlType::Listbox)
+        {
+            arrow_width = arrow_width * gtk_style_context_get_scale (mpListboxButtonArrowStyle);
+            arrow_height = arrow_height * gtk_style_context_get_scale (mpListboxButtonArrowStyle);
+        }
+    }
 
     arrowRect.SetSize(Size(arrow_width, arrow_height));
-    arrowRect.SetPos( Point( buttonRect.Left() + (gint)((buttonRect.GetWidth() - arrowRect.GetWidth()) / 2),
-                             buttonRect.Top() + (gint)((buttonRect.GetHeight() - arrowRect.GetHeight()) / 2) ) );
+    arrowRect.SetPos( Point( buttonRect.Left() + static_cast<gint>((buttonRect.GetWidth() - arrowRect.GetWidth()) / 2),
+                             buttonRect.Top() + static_cast<gint>((buttonRect.GetHeight() - arrowRect.GetHeight()) / 2) ) );
 
 
     tools::Rectangle aRect(Point(0, 0), Size(areaRect.GetWidth(), areaRect.GetHeight()));
@@ -1334,9 +1385,20 @@ static GtkWidgetPath* buildRTLComboSiblingsPath(gtk_widget_path_iter_set_object_
 GtkStyleContext* GtkSalGraphics::makeContext(GtkWidgetPath *pPath, GtkStyleContext *pParent)
 {
     GtkStyleContext* context = gtk_style_context_new();
-    gtk_style_context_set_screen(context, gtk_window_get_screen(GTK_WINDOW(mpWindow)));
+    gtk_style_context_set_screen(context, gtk_widget_get_screen(mpWindow));
     gtk_style_context_set_path(context, pPath);
-    gtk_style_context_set_parent(context, pParent);
+    if (pParent == nullptr)
+    {
+        GtkWidget* pTopLevel = gtk_widget_get_toplevel(mpWindow);
+        GtkStyleContext* pStyle = gtk_widget_get_style_context(pTopLevel);
+        gtk_style_context_set_parent(context, pStyle);
+        gtk_style_context_set_scale (context, gtk_style_context_get_scale (pStyle));
+    }
+    else
+    {
+        gtk_style_context_set_parent(context, pParent);
+        gtk_style_context_set_scale (context, gtk_style_context_get_scale (pParent));
+    }
     gtk_widget_path_unref(pPath);
     return context;
 }
@@ -1588,6 +1650,13 @@ GtkStyleContext* GtkSalGraphics::createNewContext(GtkControlPart ePart, gtk_widg
             set_object_name(path, -1, "progressbar");
             gtk_widget_path_iter_add_class(path, -1, GTK_STYLE_CLASS_HORIZONTAL);
             return makeContext(path, nullptr);
+        }
+        case GtkControlPart::ProgressBarTrough:
+        {
+            GtkWidgetPath *path = gtk_widget_path_copy(gtk_style_context_get_path(mpProgressBarStyle));
+            gtk_widget_path_append_type(path, GTK_TYPE_PROGRESS_BAR);
+            set_object_name(path, -1, "trough");
+            return makeContext(path, mpProgressBarStyle);
         }
         case GtkControlPart::ProgressBarProgress:
         {
@@ -1922,6 +1991,13 @@ GtkStyleContext* GtkSalGraphics::createOldContext(GtkControlPart ePart)
             gtk_widget_path_iter_add_class(path, -1, GTK_STYLE_CLASS_HORIZONTAL);
             return makeContext(path, nullptr);
         }
+        case GtkControlPart::ProgressBarTrough:
+        {
+            GtkWidgetPath *path = gtk_widget_path_copy(gtk_style_context_get_path(mpProgressBarStyle));
+            gtk_widget_path_append_type(path, GTK_TYPE_PROGRESS_BAR);
+            gtk_widget_path_iter_add_class(path, -1, GTK_STYLE_CLASS_TROUGH);
+            return makeContext(path, mpProgressBarStyle);
+        }
         case GtkControlPart::ProgressBarProgress:
         {
             GtkWidgetPath *path = gtk_widget_path_copy(gtk_style_context_get_path(mpProgressBarTroughStyle));
@@ -2100,15 +2176,6 @@ GtkStyleContext* GtkSalGraphics::createStyleContext(gtk_widget_path_iter_set_obj
 
 namespace
 {
-    GtkStateFlags CHECKED()
-    {
-#if GTK_CHECK_VERSION(3,14,0)
-        if (gtk_check_version(3, 14, 0) == nullptr)
-            return GTK_STATE_FLAG_CHECKED;
-#endif
-        return GTK_STATE_FLAG_ACTIVE;
-    }
-
     GtkStateFlags ACTIVE_TAB()
     {
 #if GTK_CHECK_VERSION(3,20,0)
@@ -2153,15 +2220,104 @@ void GtkSalGraphics::PaintRadio(cairo_t *cr, GtkStyleContext *context,
 
 static gfloat getArrowSize(GtkStyleContext* context)
 {
-    gfloat arrow_scaling = 1.0;
-    gtk_style_context_get_style(context, "arrow-scaling", &arrow_scaling, nullptr);
-    gfloat arrow_size = 11 * arrow_scaling;
-    return arrow_size;
+    if (gtk_check_version(3, 20, 0) == nullptr)
+    {
+        gint min_width, min_weight;
+        gtk_style_context_get_style(context, "min-width", &min_width, nullptr);
+        gtk_style_context_get_style(context, "min-height", &min_weight, nullptr);
+        gfloat arrow_size = 11 * MAX (min_width, min_weight);
+        return arrow_size;
+    }
+    else
+    {
+        gfloat arrow_scaling = 1.0;
+        gtk_style_context_get_style(context, "arrow-scaling", &arrow_scaling, nullptr);
+        gfloat arrow_size = 11 * arrow_scaling;
+        return arrow_size;
+    }
+}
+
+namespace
+{
+    void draw_vertical_separator(GtkStyleContext *context, cairo_t *cr, const tools::Rectangle& rControlRegion)
+    {
+        long nX = 0;
+        long nY = 0;
+
+        const bool bNewStyle = gtk_check_version(3, 20, 0) == nullptr;
+
+        gint nSeparatorWidth = 1;
+
+        if (bNewStyle)
+        {
+            gtk_style_context_get(context,
+                gtk_style_context_get_state(context),
+                "min-width", &nSeparatorWidth, nullptr);
+        }
+
+        gint nHalfSeparatorWidth = nSeparatorWidth / 2;
+        gint nHalfRegionWidth = rControlRegion.GetWidth() / 2;
+
+        nX = nX + nHalfRegionWidth - nHalfSeparatorWidth;
+        nY = rControlRegion.GetHeight() > 5 ? 1 : 0;
+        int nHeight = rControlRegion.GetHeight() - (2 * nY);
+
+        if (bNewStyle)
+        {
+            gtk_render_background(context, cr, nX, nY, nSeparatorWidth, nHeight);
+            gtk_render_frame(context, cr, nX, nY, nSeparatorWidth, nHeight);
+        }
+        else
+        {
+            gtk_render_line(context, cr, nX, nY, nX, nY + nHeight);
+        }
+    }
+
+    void draw_horizontal_separator(GtkStyleContext *context, cairo_t *cr, const tools::Rectangle& rControlRegion)
+    {
+        long nX = 0;
+        long nY = 0;
+
+        const bool bNewStyle = gtk_check_version(3, 20, 0) == nullptr;
+
+        gint nSeparatorHeight = 1;
+
+        if (bNewStyle)
+        {
+            gtk_style_context_get(context,
+                gtk_style_context_get_state(context),
+                "min-height", &nSeparatorHeight, nullptr);
+        }
+
+        gint nHalfSeparatorHeight = nSeparatorHeight / 2;
+        gint nHalfRegionHeight = rControlRegion.GetHeight() / 2;
+
+        nY = nY + nHalfRegionHeight - nHalfSeparatorHeight;
+        nX = rControlRegion.GetWidth() > 5 ? 1 : 0;
+        int nWidth = rControlRegion.GetWidth() - (2 * nX);
+
+        if (bNewStyle)
+        {
+            gtk_render_background(context, cr, nX, nY, nWidth, nSeparatorHeight);
+            gtk_render_frame(context, cr, nX, nY, nWidth, nSeparatorHeight);
+        }
+        else
+        {
+            gtk_render_line(context, cr, nX, nY, nX + nWidth, nY);
+        }
+    }
+}
+
+void GtkSalGraphics::handleDamage(const tools::Rectangle& rDamagedRegion)
+{
+    assert(m_pWidgetDraw);
+    assert(!rDamagedRegion.IsEmpty());
+    mpFrame->damaged(rDamagedRegion.Left(), rDamagedRegion.Top(), rDamagedRegion.GetWidth(), rDamagedRegion.GetHeight());
 }
 
 bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, const tools::Rectangle& rControlRegion,
                                             ControlState nState, const ImplControlValue& rValue,
-                                            const OUString& )
+                                            const OUString&)
 {
     RenderType renderType = nPart == ControlPart::Focus ? RenderType::Focus : RenderType::BackgroundAndFrame;
     GtkStyleContext *context = nullptr;
@@ -2205,8 +2361,8 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
 
         // map selected menu entries in vcl parlance to gtk prelight
         if (nPart >= ControlPart::MenuItem && nPart <= ControlPart::SubmenuArrow && (nState & ControlState::SELECTED))
-            flags = (GtkStateFlags) (flags | GTK_STATE_FLAG_PRELIGHT);
-        flags = (GtkStateFlags)(flags & ~GTK_STATE_FLAG_ACTIVE);
+            flags = static_cast<GtkStateFlags>(flags | GTK_STATE_FLAG_PRELIGHT);
+        flags = static_cast<GtkStateFlags>(flags & ~GTK_STATE_FLAG_ACTIVE);
         switch(nPart)
         {
         case ControlPart::MenuItem:
@@ -2225,7 +2381,7 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
             nType = ControlType::Checkbox;
             if (nState & ControlState::PRESSED)
             {
-                flags = (GtkStateFlags)(flags | CHECKED());
+                flags = static_cast<GtkStateFlags>(flags | GTK_STATE_FLAG_CHECKED);
             }
             break;
         case ControlPart::MenuItemRadioMark:
@@ -2240,12 +2396,12 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
             nType = ControlType::Radiobutton;
             if (nState & ControlState::PRESSED)
             {
-                flags = (GtkStateFlags)(flags | CHECKED());
+                flags = static_cast<GtkStateFlags>(flags | GTK_STATE_FLAG_CHECKED);
             }
             break;
         case ControlPart::Separator:
             context = mpSeparatorMenuItemSeparatorStyle;
-            flags = (GtkStateFlags)(GTK_STATE_FLAG_BACKDROP | GTK_STATE_FLAG_INSENSITIVE); //GTK_STATE_FLAG_BACKDROP hack ?
+            flags = GtkStateFlags(GTK_STATE_FLAG_BACKDROP | GTK_STATE_FLAG_INSENSITIVE); //GTK_STATE_FLAG_BACKDROP hack ?
             renderType = RenderType::MenuSeparator;
             break;
         case ControlPart::SubmenuArrow:
@@ -2274,8 +2430,8 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
             break;
         case ControlPart::Button:
             /* For all checkbuttons in the toolbars */
-            flags = (GtkStateFlags)(flags |
-                    ( (rValue.getTristateVal() == ButtonValue::On) ? GTK_STATE_FLAG_ACTIVE : GTK_STATE_FLAG_NORMAL));
+            flags = static_cast<GtkStateFlags>(flags |
+                    ( (rValue.getTristateVal() == ButtonValue::On) ? GTK_STATE_FLAG_CHECKED : GTK_STATE_FLAG_NORMAL));
             context = mpToolButtonStyle;
             break;
         case ControlPart::SeparatorVert:
@@ -2287,14 +2443,14 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
         }
         break;
     case ControlType::Radiobutton:
-        flags = (GtkStateFlags)(flags |
-                ( (rValue.getTristateVal() == ButtonValue::On) ? CHECKED() : GTK_STATE_FLAG_NORMAL));
+        flags = static_cast<GtkStateFlags>(flags |
+                ( (rValue.getTristateVal() == ButtonValue::On) ? GTK_STATE_FLAG_CHECKED : GTK_STATE_FLAG_NORMAL));
         context = mpRadioButtonRadioStyle;
         renderType = nPart == ControlPart::Focus ? RenderType::Focus : RenderType::Radio;
         break;
     case ControlType::Checkbox:
-        flags = (GtkStateFlags)(flags |
-                ( (rValue.getTristateVal() == ButtonValue::On) ? CHECKED() :
+        flags = static_cast<GtkStateFlags>(flags |
+                ( (rValue.getTristateVal() == ButtonValue::On) ? GTK_STATE_FLAG_CHECKED :
                   (rValue.getTristateVal() == ButtonValue::Mixed) ? GTK_STATE_FLAG_INCONSISTENT :
                   GTK_STATE_FLAG_NORMAL));
         context = mpCheckButtonCheckStyle;
@@ -2330,11 +2486,11 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
     case ControlType::TabItem:
         context = mpNotebookHeaderTabsTabStyle;
         if (nState & ControlState::SELECTED)
-            flags = (GtkStateFlags) (flags | ACTIVE_TAB());
+            flags = static_cast<GtkStateFlags>(flags | ACTIVE_TAB());
         renderType = RenderType::TabItem;
         break;
     case ControlType::WindowBackground:
-        context = gtk_widget_get_style_context(mpWindow);
+        context = gtk_widget_get_style_context(gtk_widget_get_toplevel(mpWindow));
         break;
     case ControlType::Frame:
     {
@@ -2352,12 +2508,11 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
 
             flags = (!(nState & ControlState::ENABLED)) ? GTK_STATE_FLAG_INSENSITIVE : GTK_STATE_FLAG_NORMAL;
             if (nState & ControlState::SELECTED)
-                flags = (GtkStateFlags) (flags | GTK_STATE_FLAG_PRELIGHT);
+                flags = static_cast<GtkStateFlags>(flags | GTK_STATE_FLAG_PRELIGHT);
         }
         else
         {
-            // context = mpMenuBarStyle; why does this not work
-            context = gtk_widget_get_style_context(mpWindow);
+            context = mpMenuBarStyle;
         }
         break;
     case ControlType::Fixedline:
@@ -2369,7 +2524,7 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
         context = mpTreeHeaderButtonStyle;
         ButtonValue aButtonValue = rValue.getTristateVal();
         if (aButtonValue == ButtonValue::On)
-            flags = (GtkStateFlags) (flags | CHECKED());
+            flags = static_cast<GtkStateFlags>(flags | GTK_STATE_FLAG_CHECKED);
         renderType = RenderType::Expander;
         break;
     }
@@ -2379,9 +2534,10 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
         {
             const char* icon = (rValue.getNumericVal() & 1) ? "pan-down-symbolic" : "pan-up-symbolic";
             GtkIconTheme *pIconTheme = gtk_icon_theme_get_for_screen(gtk_widget_get_screen(mpWindow));
-            pixbuf = gtk_icon_theme_load_icon(pIconTheme, icon,
-                                              std::max(rControlRegion.GetWidth(), rControlRegion.GetHeight()),
-                                              static_cast<GtkIconLookupFlags>(0), nullptr);
+            pixbuf = gtk_icon_theme_load_icon_for_scale(pIconTheme, icon,
+                                                        std::max(rControlRegion.GetWidth(), rControlRegion.GetHeight()),
+                                                        gtk_style_context_get_scale (context),
+                                                        static_cast<GtkIconLookupFlags>(0), nullptr);
             flags = GTK_STATE_FLAG_SELECTED;
             renderType = RenderType::Icon;
         }
@@ -2403,6 +2559,8 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
     long nWidth = rControlRegion.GetWidth();
     long nHeight = rControlRegion.GetHeight();
 
+    StyleContextSave aContextState;
+    aContextState.save(context);
     style_context_set_state(context, flags);
 
     if (styleClass)
@@ -2437,41 +2595,14 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
         break;
     case RenderType::ToolbarSeparator:
     {
-        const bool bNewStyle = gtk_check_version(3, 20, 0) == nullptr;
-
-        gint nSeparatorWidth = 1;
-
-        if (bNewStyle)
-        {
-            gtk_style_context_get(context,
-                gtk_style_context_get_state(context),
-                "min-width", &nSeparatorWidth, nullptr);
-        }
-
-        gint nHalfSeparatorWidth = nSeparatorWidth / 2;
-        gint nHalfRegionWidth = rControlRegion.GetWidth() / 2;
-
-        nX = nX + nHalfRegionWidth - nHalfSeparatorWidth;
-        nWidth = nSeparatorWidth;
-        nY = rControlRegion.GetHeight() * 0.1;
-        nHeight = rControlRegion.GetHeight() - (2 * nY);
-
-        if (bNewStyle)
-        {
-            gtk_render_background(context, cr, nX, nY, nSeparatorWidth, nHeight);
-            gtk_render_frame(context, cr, nX, nY, nSeparatorWidth, nHeight);
-        }
-        else
-        {
-            gtk_render_line(context, cr, nX, nY, nX, nY + nHeight);
-        }
+        draw_vertical_separator(context, cr, rControlRegion);
         break;
     }
     case RenderType::Separator:
         if (nPart == ControlPart::SeparatorHorz)
-            gtk_render_line(context, cr, 0, nHeight / 2, nWidth - 1, nHeight / 2);
+            draw_horizontal_separator(context, cr, rControlRegion);
         else
-            gtk_render_line(context, cr, nWidth / 2, 0, nWidth / 2, nHeight - 1);
+            draw_vertical_separator(context, cr, rControlRegion);
         break;
     case RenderType::Arrow:
         gtk_render_arrow(context, cr,
@@ -2488,15 +2619,24 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
         PaintSpinButton(flags, cr, rControlRegion, nPart, rValue);
         break;
     case RenderType::Combobox:
-        PaintCombobox(flags, cr, rControlRegion, nType, nPart, rValue);
+        PaintCombobox(flags, cr, rControlRegion, nType, nPart);
         break;
     case RenderType::Icon:
+        gtk_style_context_save (context);
+        gtk_style_context_set_scale (context, 1);
         gtk_render_icon(context, cr, pixbuf, nX, nY);
+        gtk_style_context_restore (context);
         g_object_unref(pixbuf);
         break;
     case RenderType::Focus:
     {
-        if (nType != ControlType::Checkbox)
+        if (nType == ControlType::Checkbox ||
+            nType == ControlType::Radiobutton)
+        {
+            nX -= 2; nY -=2;
+            nHeight += 4; nWidth += 4;
+        }
+        else
         {
             GtkBorder border;
 
@@ -2558,6 +2698,7 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
     {
         gtk_style_context_remove_class(context, styleClass);
     }
+    aContextState.restore();
 
     cairo_destroy(cr); // unref
 
@@ -2567,15 +2708,15 @@ bool GtkSalGraphics::drawNativeControl( ControlType nType, ControlPart nPart, co
     return true;
 }
 
-tools::Rectangle GetWidgetSize(const tools::Rectangle& rControlRegion, GtkWidget* widget)
+static tools::Rectangle GetWidgetSize(const tools::Rectangle& rControlRegion, GtkWidget* widget)
 {
     GtkRequisition aReq;
     gtk_widget_get_preferred_size(widget, nullptr, &aReq);
-    long nHeight = (rControlRegion.GetHeight() > aReq.height) ? rControlRegion.GetHeight() : aReq.height;
+    long nHeight = std::max<long>(rControlRegion.GetHeight(), aReq.height);
     return tools::Rectangle(rControlRegion.TopLeft(), Size(rControlRegion.GetWidth(), nHeight));
 }
 
-tools::Rectangle AdjustRectForTextBordersPadding(GtkStyleContext* pStyle, long nContentWidth, long nContentHeight, const tools::Rectangle& rControlRegion)
+static tools::Rectangle AdjustRectForTextBordersPadding(GtkStyleContext* pStyle, long nContentWidth, long nContentHeight, const tools::Rectangle& rControlRegion)
 {
     GtkBorder border;
     gtk_style_context_get_border(pStyle, gtk_style_context_get_state(pStyle), &border);
@@ -2632,8 +2773,8 @@ bool GtkSalGraphics::getNativeControlRegion( ControlType nType, ControlPart nPar
     }
     else if( nType == ControlType::MenuPopup)
     {
-        if (((nPart == ControlPart::MenuItemCheckMark) ||
-              (nPart == ControlPart::MenuItemRadioMark) ))
+        if ((nPart == ControlPart::MenuItemCheckMark) ||
+            (nPart == ControlPart::MenuItemRadioMark) )
         {
             indicator_size = 0;
 
@@ -2676,9 +2817,9 @@ bool GtkSalGraphics::getNativeControlRegion( ControlType nType, ControlPart nPar
         rNativeContentRegion = rNativeBoundingRegion;
 
         if (!rNativeContentRegion.GetWidth())
-            rNativeContentRegion.Right() = rNativeContentRegion.Left() + 1;
+            rNativeContentRegion.SetRight( rNativeContentRegion.Left() + 1 );
         if (!rNativeContentRegion.GetHeight())
-            rNativeContentRegion.Bottom() = rNativeContentRegion.Top() + 1;
+            rNativeContentRegion.SetBottom( rNativeContentRegion.Top() + 1 );
 
         return true;
     }
@@ -2692,12 +2833,12 @@ bool GtkSalGraphics::getNativeControlRegion( ControlType nType, ControlPart nPar
     else if ( (nType==ControlType::Combobox) &&
               ((nPart==ControlPart::ButtonDown) || (nPart==ControlPart::SubEdit)) )
     {
-        aEditRect = NWGetComboBoxButtonRect( nPart, rControlRegion );
+        aEditRect = NWGetComboBoxButtonRect(nType, nPart, rControlRegion);
     }
     else if ( (nType==ControlType::Listbox) &&
               ((nPart==ControlPart::ButtonDown) || (nPart==ControlPart::SubEdit)) )
     {
-        aEditRect = NWGetComboBoxButtonRect( nPart, rControlRegion );
+        aEditRect = NWGetComboBoxButtonRect(nType, nPart, rControlRegion);
     }
     else if (nType == ControlType::Editbox && nPart == ControlPart::Entire)
     {
@@ -2764,14 +2905,19 @@ bool GtkSalGraphics::getNativeControlRegion( ControlType nType, ControlPart nPar
 /************************************************************************
  * helper for GtkSalFrame
  ************************************************************************/
-static inline ::Color getColor( const GdkRGBA& rCol )
+static ::Color getColor( const GdkRGBA& rCol )
 {
-    return ::Color( (int)(rCol.red * 0xFFFF) >> 8, (int)(rCol.green * 0xFFFF) >> 8, (int)(rCol.blue * 0xFFFF) >> 8 );
+    return ::Color( static_cast<int>(rCol.red * 0xFFFF) >> 8, static_cast<int>(rCol.green * 0xFFFF) >> 8, static_cast<int>(rCol.blue * 0xFFFF) >> 8 );
 }
 
 static vcl::Font getFont(GtkStyleContext* pStyle, const css::lang::Locale& rLocale)
 {
     const PangoFontDescription* font = gtk_style_context_get_font(pStyle, gtk_style_context_get_state(pStyle));
+    return pango_to_vcl(font, rLocale);
+}
+
+vcl::Font pango_to_vcl(const PangoFontDescription* font, const css::lang::Locale& rLocale)
+{
     OString    aFamily        = pango_font_description_get_family( font );
     int nPangoHeight    = pango_font_description_get_size( font );
     PangoStyle    eStyle    = pango_font_description_get_style( font );
@@ -2814,20 +2960,22 @@ static vcl::Font getFont(GtkStyleContext* pStyle, const css::lang::Locale& rLoca
     }
 
 #if OSL_DEBUG_LEVEL > 1
-    fprintf( stderr, "font name BEFORE system match: \"%s\"\n", aFamily.getStr() );
+    SAL_INFO("vcl.gtk3", "font name BEFORE system match: \""
+            << aFamily << "\".");
 #endif
 
     // match font to e.g. resolve "Sans"
     psp::PrintFontManager::get().matchFont(aInfo, rLocale);
 
 #if OSL_DEBUG_LEVEL > 1
-    fprintf( stderr, "font match %s, name AFTER: \"%s\"\n",
-                  aInfo.m_nID != 0 ? "succeeded" : "failed",
-                  OUStringToOString( aInfo.m_aFamilyName, RTL_TEXTENCODING_ISO_8859_1 ).getStr() );
+    SAL_INFO("vcl.gtk3", "font match "
+            << (aInfo.m_nID != 0 ? "succeeded" : "failed")
+            << ", name AFTER: \""
+            << aInfo.m_aFamilyName
+            << "\".");
 #endif
 
-    int nPointHeight = 0;
-        nPointHeight = nPangoHeight/PANGO_SCALE;
+    int nPointHeight = nPangoHeight/PANGO_SCALE;
 
     vcl::Font aFont( aInfo.m_aFamilyName, Size( 0, nPointHeight ) );
     if( aInfo.m_eWeight != WEIGHT_DONTKNOW )
@@ -2841,10 +2989,13 @@ static vcl::Font getFont(GtkStyleContext* pStyle, const css::lang::Locale& rLoca
     return aFont;
 }
 
-void GtkSalGraphics::updateSettings( AllSettings& rSettings )
+bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
 {
-    GtkStyleContext* pStyle = gtk_widget_get_style_context( mpWindow );
-    GtkSettings* pSettings = gtk_widget_get_settings( mpWindow );
+    GtkWidget* pTopLevel = gtk_widget_get_toplevel(mpWindow);
+    GtkStyleContext* pStyle = gtk_widget_get_style_context(pTopLevel);
+    StyleContextSave aContextState;
+    aContextState.save(pStyle);
+    GtkSettings* pSettings = gtk_widget_get_settings(pTopLevel);
     StyleSettings aStyleSet = rSettings.GetStyleSettings();
     GdkRGBA color;
 
@@ -2855,6 +3006,8 @@ void GtkSalGraphics::updateSettings( AllSettings& rSettings )
     ::Color aTextColor = getColor( text_color );
     aStyleSet.SetDialogTextColor( aTextColor );
     aStyleSet.SetButtonTextColor( aTextColor );
+    aStyleSet.SetDefaultActionButtonTextColor(aTextColor);
+    aStyleSet.SetActionButtonTextColor(aTextColor);
     aStyleSet.SetRadioCheckTextColor( aTextColor );
     aStyleSet.SetGroupTextColor( aTextColor );
     aStyleSet.SetLabelTextColor( aTextColor );
@@ -2866,24 +3019,12 @@ void GtkSalGraphics::updateSettings( AllSettings& rSettings )
     gtk_style_context_get_background_color(pStyle, gtk_style_context_get_state(pStyle), &background_color);
 
     ::Color aBackColor = getColor( background_color );
-    aStyleSet.Set3DColors( aBackColor );
-    aStyleSet.SetFaceColor( aBackColor );
-    aStyleSet.SetDialogColor( aBackColor );
-    aStyleSet.SetWorkspaceColor( aBackColor );
-    aStyleSet.SetCheckedColorSpecialCase( );
+    aStyleSet.BatchSetBackgrounds( aBackColor );
 
     // UI font
     vcl::Font aFont(getFont(pStyle, rSettings.GetUILanguageTag().getLocale()));
 
-    aStyleSet.SetAppFont( aFont );
-    aStyleSet.SetHelpFont( aFont );
-    aStyleSet.SetMenuFont( aFont );
-    aStyleSet.SetLabelFont( aFont );
-    aStyleSet.SetRadioCheckFont( aFont );
-    aStyleSet.SetPushButtonFont( aFont );
-    aStyleSet.SetFieldFont( aFont );
-    aStyleSet.SetIconFont( aFont );
-    aStyleSet.SetGroupFont( aFont );
+    aStyleSet.BatchSetFonts( aFont, aFont);
 
     aFont.SetWeight( WEIGHT_BOLD );
     aStyleSet.SetTitleFont( aFont );
@@ -2892,27 +3033,48 @@ void GtkSalGraphics::updateSettings( AllSettings& rSettings )
     // mouse over text colors
     style_context_set_state(pStyle, GTK_STATE_FLAG_PRELIGHT);
     gtk_style_context_get_color(pStyle, gtk_style_context_get_state(pStyle), &text_color);
-    aTextColor = getColor( text_color );
-    aStyleSet.SetButtonRolloverTextColor( aTextColor );
-    aStyleSet.SetFieldRolloverTextColor( aTextColor );
+    aTextColor = getColor(text_color);
+    aStyleSet.SetDefaultButtonRolloverTextColor(aTextColor);
+    aStyleSet.SetButtonRolloverTextColor(aTextColor);
+    aStyleSet.SetDefaultActionButtonRolloverTextColor(aTextColor);
+    aStyleSet.SetActionButtonRolloverTextColor(aTextColor);
+    aStyleSet.SetFlatButtonRolloverTextColor(aTextColor);
+    aStyleSet.SetFieldRolloverTextColor(aTextColor);
+
+    aContextState.restore();
+
+    // button mouse over colors
+    {
+        GdkRGBA normal_button_rollover_text_color, pressed_button_rollover_text_color;
+        aContextState.save(mpButtonStyle);
+        style_context_set_state(mpButtonStyle, GTK_STATE_FLAG_PRELIGHT);
+        gtk_style_context_get_color(mpButtonStyle, gtk_style_context_get_state(mpButtonStyle), &normal_button_rollover_text_color);
+        aTextColor = getColor(normal_button_rollover_text_color);
+        aStyleSet.SetButtonRolloverTextColor( aTextColor );
+        style_context_set_state(mpButtonStyle, static_cast<GtkStateFlags>(GTK_STATE_FLAG_PRELIGHT | GTK_STATE_FLAG_ACTIVE));
+        gtk_style_context_get_color(mpButtonStyle, gtk_style_context_get_state(mpButtonStyle), &pressed_button_rollover_text_color);
+        aTextColor = getColor(pressed_button_rollover_text_color);
+        style_context_set_state(mpButtonStyle, GTK_STATE_FLAG_NORMAL);
+        aStyleSet.SetButtonPressedRolloverTextColor( aTextColor );
+        aContextState.restore();
+    }
 
     // tooltip colors
     {
-        GtkStyleContext *pCStyle = gtk_style_context_new();
-        gtk_style_context_set_screen( pCStyle, gtk_window_get_screen( GTK_WINDOW( mpWindow ) ) );
         GtkWidgetPath *pCPath = gtk_widget_path_new();
         guint pos = gtk_widget_path_append_type(pCPath, GTK_TYPE_WINDOW);
         gtk_widget_path_iter_add_class(pCPath, pos, GTK_STYLE_CLASS_TOOLTIP);
         pos = gtk_widget_path_append_type (pCPath, GTK_TYPE_LABEL);
         gtk_widget_path_iter_add_class(pCPath, pos, GTK_STYLE_CLASS_LABEL);
-        pCStyle = gtk_style_context_new();
-        gtk_style_context_set_path(pCStyle, pCPath);
-        gtk_widget_path_free(pCPath);
+        GtkStyleContext *pCStyle = makeContext (pCPath, nullptr);
+        aContextState.save(pCStyle);
 
         GdkRGBA tooltip_bg_color, tooltip_fg_color;
         style_context_set_state(pCStyle, GTK_STATE_FLAG_NORMAL);
         gtk_style_context_get_color(pCStyle, gtk_style_context_get_state(pCStyle), &tooltip_fg_color);
         gtk_style_context_get_background_color(pCStyle, gtk_style_context_get_state(pCStyle), &tooltip_bg_color);
+
+        aContextState.restore();
         g_object_unref( pCStyle );
 
         aStyleSet.SetHelpColor( getColor( tooltip_bg_color ));
@@ -2921,13 +3083,11 @@ void GtkSalGraphics::updateSettings( AllSettings& rSettings )
 
     {
         // construct style context for text view
-        GtkStyleContext *pCStyle = gtk_style_context_new();
-        gtk_style_context_set_screen( pCStyle, gtk_window_get_screen( GTK_WINDOW( mpWindow ) ) );
         GtkWidgetPath *pCPath = gtk_widget_path_new();
         gtk_widget_path_append_type( pCPath, GTK_TYPE_TEXT_VIEW );
         gtk_widget_path_iter_add_class( pCPath, -1, GTK_STYLE_CLASS_VIEW );
-        gtk_style_context_set_path( pCStyle, pCPath );
-        gtk_widget_path_free( pCPath );
+        GtkStyleContext *pCStyle = makeContext( pCPath, nullptr );
+        aContextState.save(pCStyle);
 
         // highlighting colors
         style_context_set_state(pCStyle, GTK_STATE_FLAG_SELECTED);
@@ -2967,6 +3127,7 @@ void GtkSalGraphics::updateSettings( AllSettings& rSettings )
             aShadowColor.DecreaseLuminance(64);
         aStyleSet.SetShadowColor(aShadowColor);
 
+        aContextState.restore();
         g_object_unref( pCStyle );
 
         // Tab colors
@@ -2977,6 +3138,8 @@ void GtkSalGraphics::updateSettings( AllSettings& rSettings )
     // menu disabled entries handling
     aStyleSet.SetSkipDisabledInMenus( true );
     aStyleSet.SetPreferredContextMenuShortcuts( false );
+
+    aContextState.save(mpMenuItemLabelStyle);
 
     // menu colors
     style_context_set_state(mpMenuStyle, GTK_STATE_FLAG_NORMAL);
@@ -2993,13 +3156,13 @@ void GtkSalGraphics::updateSettings( AllSettings& rSettings )
 
     style_context_set_state(mpMenuBarItemStyle, GTK_STATE_FLAG_NORMAL);
     gtk_style_context_get_color( mpMenuBarItemStyle, gtk_style_context_get_state(mpMenuBarItemStyle), &text_color );
-    aTextColor = aStyleSet.GetPersonaMenuBarTextColor().get_value_or( getColor( text_color ) );
+    aTextColor = aStyleSet.GetPersonaMenuBarTextColor().value_or( getColor( text_color ) );
     aStyleSet.SetMenuBarTextColor( aTextColor );
     aStyleSet.SetMenuBarRolloverTextColor( aTextColor );
 
     style_context_set_state(mpMenuBarItemStyle, GTK_STATE_FLAG_PRELIGHT);
     gtk_style_context_get_color( mpMenuBarItemStyle, gtk_style_context_get_state(mpMenuBarItemStyle), &text_color );
-    aTextColor = aStyleSet.GetPersonaMenuBarTextColor().get_value_or( getColor( text_color ) );
+    aTextColor = aStyleSet.GetPersonaMenuBarTextColor().value_or( getColor( text_color ) );
     aStyleSet.SetMenuBarHighlightTextColor( aTextColor );
 
     // menu items
@@ -3017,49 +3180,59 @@ void GtkSalGraphics::updateSettings( AllSettings& rSettings )
     ::Color aHighlightTextColor = getColor( color );
     aStyleSet.SetMenuHighlightTextColor( aHighlightTextColor );
 
-#if GTK_CHECK_VERSION(3, 12, 0)
+    aContextState.restore();
+
     // hyperlink colors
+    aContextState.save(mpLinkButtonStyle);
     style_context_set_state(mpLinkButtonStyle, GTK_STATE_FLAG_LINK);
     gtk_style_context_get_color(mpLinkButtonStyle, gtk_style_context_get_state(mpLinkButtonStyle), &text_color);
     aStyleSet.SetLinkColor(getColor(text_color));
     style_context_set_state(mpLinkButtonStyle, GTK_STATE_FLAG_VISITED);
     gtk_style_context_get_color(mpLinkButtonStyle, gtk_style_context_get_state(mpLinkButtonStyle), &text_color);
     aStyleSet.SetVisitedLinkColor(getColor(text_color));
-#endif
+    aContextState.restore();
 
     {
         GtkStyleContext *pCStyle = mpNotebookHeaderTabsTabLabelStyle;
+        aContextState.save(pCStyle);
         style_context_set_state(pCStyle, GTK_STATE_FLAG_NORMAL);
         gtk_style_context_get_color(pCStyle, gtk_style_context_get_state(pCStyle), &text_color);
         aTextColor = getColor( text_color );
         aStyleSet.SetTabTextColor(aTextColor);
         aStyleSet.SetTabFont(getFont(mpNotebookHeaderTabsTabLabelStyle, rSettings.GetUILanguageTag().getLocale()));
+        aContextState.restore();
     }
 
     {
         GtkStyleContext *pCStyle = mpToolButtonStyle;
+        aContextState.save(pCStyle);
         style_context_set_state(pCStyle, GTK_STATE_FLAG_NORMAL);
         gtk_style_context_get_color(pCStyle, gtk_style_context_get_state(pCStyle), &text_color);
         aTextColor = getColor( text_color );
         aStyleSet.SetToolTextColor(aTextColor);
         aStyleSet.SetToolFont(getFont(mpToolButtonStyle, rSettings.GetUILanguageTag().getLocale()));
+        aContextState.restore();
     }
 
     // mouse over text colors
     {
         GtkStyleContext *pCStyle = mpNotebookHeaderTabsTabHoverLabelStyle;
+        aContextState.save(pCStyle);
         style_context_set_state(pCStyle, GTK_STATE_FLAG_PRELIGHT);
         gtk_style_context_get_color(pCStyle, gtk_style_context_get_state(pCStyle), &text_color);
         aTextColor = getColor( text_color );
         aStyleSet.SetTabRolloverTextColor(aTextColor);
+        aContextState.restore();
     }
 
     {
         GtkStyleContext *pCStyle = mpNotebookHeaderTabsTabActiveLabelStyle;
+        aContextState.save(pCStyle);
         style_context_set_state(pCStyle, ACTIVE_TAB());
         gtk_style_context_get_color(pCStyle, gtk_style_context_get_state(pCStyle), &text_color);
         aTextColor = getColor( text_color );
         aStyleSet.SetTabHighlightTextColor(aTextColor);
+        aContextState.restore();
     }
 
     // get cursor blink time
@@ -3072,7 +3245,7 @@ void GtkSalGraphics::updateSettings( AllSettings& rSettings )
         g_object_get( pSettings, "gtk-cursor-blink-time", &blink_time, nullptr );
         // set the blink_time if there is a setting and it is reasonable
         // else leave the default value
-        if( blink_time > 100 && blink_time != gint(STYLE_CURSOR_NOBLINKTIME) )
+        if( blink_time > 100 )
             aStyleSet.SetCursorBlinkTime( blink_time/2 );
     }
     else
@@ -3161,12 +3334,16 @@ void GtkSalGraphics::updateSettings( AllSettings& rSettings )
 #if OSL_DEBUG_LEVEL > 1
     gchar* pThemeName = NULL;
     g_object_get( pSettings, "gtk-theme-name", &pThemeName, nullptr );
-    fprintf( stderr, "Theme name is \"%s\"\n", pThemeName );
+    SAL_INFO("vcl.gtk3", "Theme name is \""
+            << pThemeName
+            << "\".");
     g_free(pThemeName);
 #endif
+
+    return true;
 }
 
-bool GtkSalGraphics::IsNativeControlSupported( ControlType nType, ControlPart nPart )
+bool GtkSalGraphics::isNativeControlSupported( ControlType nType, ControlPart nPart )
 {
     switch(nType)
     {
@@ -3270,7 +3447,7 @@ bool GtkSalGraphics::IsNativeControlSupported( ControlType nType, ControlPart nP
         default: break;
     }
 
-    SAL_INFO("vcl.gtk", "Unhandled is native supported for Type:" << (int)nType << ", Part" << (int)nPart);
+    SAL_INFO("vcl.gtk", "Unhandled is native supported for Type:" << static_cast<int>(nType) << ", Part" << static_cast<int>(nPart));
 
     return false;
 }
@@ -3284,12 +3461,12 @@ bool GtkSalGraphics::SupportsCairo() const
 
 cairo::SurfaceSharedPtr GtkSalGraphics::CreateSurface(const cairo::CairoSurfaceSharedPtr& rSurface) const
 {
-    return cairo::SurfaceSharedPtr(new cairo::Gtk3Surface(rSurface));
+    return std::make_shared<cairo::Gtk3Surface>(rSurface);
 }
 
 cairo::SurfaceSharedPtr GtkSalGraphics::CreateSurface(const OutputDevice& /*rRefDevice*/, int x, int y, int width, int height) const
 {
-    return cairo::SurfaceSharedPtr(new cairo::Gtk3Surface(this, x, y, width, height));
+    return std::make_shared<cairo::Gtk3Surface>(this, x, y, width, height);
 }
 
 #endif
@@ -3297,7 +3474,8 @@ cairo::SurfaceSharedPtr GtkSalGraphics::CreateSurface(const OutputDevice& /*rRef
 void GtkSalGraphics::WidgetQueueDraw() const
 {
     //request gtk to sync the entire contents
-    gtk_widget_queue_draw(mpWindow);
+    GtkWidget *pWidget = GTK_WIDGET(mpFrame->getFixedContainer());
+    gtk_widget_queue_draw(pWidget);
 }
 
 namespace {
@@ -3311,7 +3489,7 @@ void getStyleContext(GtkStyleContext** style, GtkWidget* widget)
 
 }
 
-void GtkData::initNWF()
+void GtkSalData::initNWF()
 {
     ImplSVData* pSVData = ImplGetSVData();
     pSVData->maNWFData.mbFlatMenu = true;
@@ -3321,18 +3499,17 @@ void GtkData::initNWF()
     pSVData->maNWFData.mbNoFocusRects = true;
     pSVData->maNWFData.mbNoFocusRectsForFlatButtons = true;
     pSVData->maNWFData.mbAutoAccel = true;
-    pSVData->maNWFData.mbEnableAccel = true;
 
 #if defined(GDK_WINDOWING_WAYLAND)
     //gnome#768128 for the car crash that is wayland
     //and floating dockable toolbars
     GdkDisplay *pDisplay = gdk_display_get_default();
-    if (GDK_IS_WAYLAND_DISPLAY(pDisplay))
+    if (DLSYM_GDK_IS_WAYLAND_DISPLAY(pDisplay))
         pSVData->maNWFData.mbCanDetermineWindowPosition = false;
 #endif
 }
 
-void GtkData::deInitNWF()
+void GtkSalData::deInitNWF()
 {
     if (gCacheWindow)
         gtk_widget_destroy(gCacheWindow);
@@ -3498,7 +3675,7 @@ GtkSalGraphics::GtkSalGraphics( GtkSalFrame *pFrame, GtkWidget *pWindow )
 
     /* Progress Bar */
     mpProgressBarStyle = createStyleContext(set_object_name, GtkControlPart::ProgressBar);
-    mpProgressBarTroughStyle = createStyleContext(set_object_name, GtkControlPart::ProgressBar);
+    mpProgressBarTroughStyle = createStyleContext(set_object_name, GtkControlPart::ProgressBarTrough);
     mpProgressBarProgressStyle = createStyleContext(set_object_name, GtkControlPart::ProgressBarProgress);
 
     gtk_widget_show_all(gDumbContainer);

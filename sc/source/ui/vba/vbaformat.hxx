@@ -18,20 +18,21 @@
  */
 #ifndef INCLUDED_SC_SOURCE_UI_VBA_VBAFORMAT_HXX
 #define INCLUDED_SC_SOURCE_UI_VBA_VBAFORMAT_HXX
-#include <ooo/vba/excel/XFormat.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
-#include <com/sun/star/util/XNumberFormats.hpp>
-#include <com/sun/star/util/XNumberFormatTypes.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+
 #include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include <svl/itemset.hxx>
 #include <vbahelper/vbahelperinterface.hxx>
 
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::beans { class XPropertyState; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::util { class XNumberFormats; }
+namespace com::sun::star::util { class XNumberFormatsSupplier; }
+namespace com::sun::star::util { class XNumberFormatTypes; }
+namespace ooo::vba::excel { class XFont; }
+namespace ooo::vba::excel { class XInterior; }
+
 class ScCellRangesBase;
+class SfxItemSet;
 
 template< typename... Ifc >
 class ScVbaFormat : public InheritedHelperInterfaceWeakImpl< Ifc... >

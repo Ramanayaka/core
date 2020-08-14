@@ -19,8 +19,7 @@
 #include "OOXMLBinaryObjectReference.hxx"
 #include <string.h>
 
-namespace writerfilter {
-namespace ooxml
+namespace writerfilter::ooxml
 {
 
 using namespace ::com::sun::star;
@@ -52,7 +51,7 @@ void OOXMLBinaryObjectReference::read()
         nSize += nBytesRead;
         mSequence.resize(nSize);
 
-        memcpy(&mSequence.data()[nOldSize], aSeq.getArray(), nBytesRead);
+        memcpy(&mSequence[nOldSize], aSeq.getArray(), nBytesRead);
     }
 
     mbRead = true;
@@ -63,13 +62,10 @@ void OOXMLBinaryObjectReference::resolve(BinaryObj & rHandler)
     if (! mbRead)
         read();
 
-    writerfilter::Reference<Properties>::Pointer_t pRef =
-        writerfilter::Reference<Properties>::Pointer_t();
-
     rHandler.data(reinterpret_cast<sal_uInt8 *>(mSequence.data()),
-                  mSequence.size(), pRef);
+                  mSequence.size());
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

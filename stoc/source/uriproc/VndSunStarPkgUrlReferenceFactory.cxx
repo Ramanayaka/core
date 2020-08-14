@@ -18,26 +18,24 @@
  */
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <com/sun/star/uri/XUriReference.hpp>
 #include <com/sun/star/uri/XVndSunStarPkgUrlReferenceFactory.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/weak.hxx>
-#include <rtl/string.h>
 #include <rtl/textenc.h>
 #include <rtl/uri.h>
 #include <rtl/uri.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
-#include <osl/diagnose.h>
 #include <sal/types.h>
+
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { class XInterface; }
 
 namespace {
 
@@ -72,7 +70,7 @@ private:
 
 OUString Factory::getImplementationName()
 {
-    return OUString("com.sun.star.comp.uri.VndSunStarPkgUrlReferenceFactory");
+    return "com.sun.star.comp.uri.VndSunStarPkgUrlReferenceFactory";
 }
 
 sal_Bool Factory::supportsService(OUString const & serviceName)
@@ -90,9 +88,13 @@ css::uno::Reference< css::uri::XUriReference >
 Factory::createVndSunStarPkgUrlReference(
     css::uno::Reference< css::uri::XUriReference > const & authority)
 {
-    OSL_ASSERT(authority.is());
+    if (!authority.is()) {
+        throw css::uno::RuntimeException(
+            "null authority passed to"
+            " XVndSunStarPkgUrlReferenceFactory.createVndSunStarPkgUrlReference");
+    }
     if (authority->isAbsolute() && !authority->hasFragment()) {
-        OUStringBuffer buf;
+        OUStringBuffer buf(128);
         buf.append("vnd.sun.star.pkg://");
         buf.append(
             rtl::Uri::encode(
@@ -101,7 +103,6 @@ Factory::createVndSunStarPkgUrlReference(
         css::uno::Reference< css::uri::XUriReference > uriRef(
             css::uri::UriReferenceFactory::create(m_context)->parse(
                 buf.makeStringAndClear()));
-        OSL_ASSERT(uriRef.is());
         return uriRef;
     } else {
         return css::uno::Reference< css::uri::XUriReference >();
@@ -110,7 +111,7 @@ Factory::createVndSunStarPkgUrlReference(
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_uri_VndSunStarPkgUrlReferenceFactory_get_implementation(css::uno::XComponentContext* rxContext,
         css::uno::Sequence<css::uno::Any> const &)
 {

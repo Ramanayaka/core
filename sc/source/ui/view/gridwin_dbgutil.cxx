@@ -9,14 +9,13 @@
 
 #include <iostream>
 
-#include "gridwin.hxx"
+#include <gridwin.hxx>
 #include <svx/svdpage.hxx>
 #include <libxml/xmlwriter.h>
 #include <viewdata.hxx>
-#include "document.hxx"
-#include "patattr.hxx"
-#include <svl/poolitem.hxx>
-#include "userdat.hxx"
+#include <document.hxx>
+#include <patattr.hxx>
+#include <userdat.hxx>
 #include <dpobject.hxx>
 
 namespace {
@@ -27,7 +26,7 @@ std::ostream& operator<<(std::ostream& rStrm, const ScAddress& rAddr)
     return rStrm;
 }
 
-void dumpScDrawObjData(ScGridWindow& rWindow, ScDrawObjData& rData, MapUnit eMapUnit)
+void dumpScDrawObjData(const ScGridWindow& rWindow, const ScDrawObjData& rData, MapUnit eMapUnit)
 {
     const Point& rStartOffset = rData.maStartOffset;
     Point aStartOffsetPixel = rWindow.LogicToPixel(rStartOffset, MapMode(eMapUnit));
@@ -59,7 +58,7 @@ void ScGridWindow::dumpColumnInformationHmm()
     for (SCCOL nCol = 0; nCol <= 20; ++nCol)
     {
         sal_uInt16 nWidth = pDoc->GetColWidth(nCol, nTab);
-        long nPixel = LogicToLogic(Point(nWidth, 0), MapUnit::MapTwip, MapUnit::Map100thMM).getX();
+        long nPixel = LogicToLogic(Point(nWidth, 0), MapMode(MapUnit::MapTwip), MapMode(MapUnit::Map100thMM)).getX();
         std::cout << "Column: " << nCol << ", Width: " << nPixel << "hmm" << std::endl;
     }
 }
@@ -100,13 +99,11 @@ void ScGridWindow::dumpCellProperties()
 
     for (size_t i = 0, n = aList.size(); i < n; ++i)
     {
-        ScRange* pRange = aList[i];
-        if (!pRange)
-            continue;
+        ScRange const & rRange = aList[i];
 
-        for (SCCOL nCol = pRange->aStart.Col(); nCol <= pRange->aEnd.Col(); ++nCol)
+        for (SCCOL nCol = rRange.aStart.Col(); nCol <= rRange.aEnd.Col(); ++nCol)
         {
-            for (SCROW nRow = pRange->aStart.Row(); nRow <= pRange->aEnd.Row(); ++nRow)
+            for (SCROW nRow = rRange.aStart.Row(); nRow <= rRange.aEnd.Row(); ++nRow)
             {
                 const ScPatternAttr* pPatternAttr = pDoc->GetPattern(nCol, nRow, nTab);
                 xmlTextWriterStartElement(writer, BAD_CAST("cell"));
@@ -131,25 +128,25 @@ void ScGridWindow::dumpGraphicInformation()
 {
     ScDocument* pDoc = pViewData->GetDocument();
     ScDrawLayer* pDrawLayer = pDoc->GetDrawLayer();
-    if (pDrawLayer)
-    {
-        sal_uInt16 nPageCount = pDrawLayer->GetPageCount();
-        for (sal_uInt16 nPage = 0; nPage < nPageCount; ++nPage)
-        {
-            SdrPage* pPage = pDrawLayer->GetPage(nPage);
-            size_t nObjCount = pPage->GetObjCount();
-            for (size_t nObj = 0; nObj < nObjCount; ++nObj)
-            {
-                SdrObject* pObj = pPage->GetObj(nObj);
-                std::cout << "Graphic Object" << std::endl;
-                ScDrawObjData* pObjData = ScDrawLayer::GetObjData(pObj);
-                if (pObjData)
-                    dumpScDrawObjData(*this, *pObjData, pDrawLayer->GetScaleUnit());
+    if (!pDrawLayer)
+        return;
 
-                const tools::Rectangle& rRect = pObj->GetSnapRect();
-                tools::Rectangle aRect = LogicToPixel(rRect, MapMode(pDrawLayer->GetScaleUnit()));
-                std::cout << "Snap Rectangle (in pixel): " << aRect << std::endl;
-            }
+    sal_uInt16 nPageCount = pDrawLayer->GetPageCount();
+    for (sal_uInt16 nPage = 0; nPage < nPageCount; ++nPage)
+    {
+        SdrPage* pPage = pDrawLayer->GetPage(nPage);
+        size_t nObjCount = pPage->GetObjCount();
+        for (size_t nObj = 0; nObj < nObjCount; ++nObj)
+        {
+            SdrObject* pObj = pPage->GetObj(nObj);
+            std::cout << "Graphic Object" << std::endl;
+            ScDrawObjData* pObjData = ScDrawLayer::GetObjData(pObj);
+            if (pObjData)
+                dumpScDrawObjData(*this, *pObjData, pDrawLayer->GetScaleUnit());
+
+            const tools::Rectangle& rRect = pObj->GetSnapRect();
+            tools::Rectangle aRect = LogicToPixel(rRect, MapMode(pDrawLayer->GetScaleUnit()));
+            std::cout << "Snap Rectangle (in pixel): " << aRect << std::endl;
         }
     }
 }

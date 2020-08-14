@@ -20,17 +20,15 @@
 #ifndef INCLUDED_BASIC_CODECOMPLETECACHE_HXX
 #define INCLUDED_BASIC_CODECOMPLETECACHE_HXX
 
-#include <basic/sbdef.hxx>
-#include <basic/sbxobj.hxx>
-#include <basic/sbxdef.hxx>
+#include <config_options.h>
+#include <basic/basicdllapi.h>
 #include <rtl/ustring.hxx>
 #include <svtools/miscopt.hxx>
 #include <unordered_map>
-#include <vector>
 
-typedef std::unordered_map< OUString, OUString, OUStringHash > CodeCompleteVarTypes;
+typedef std::unordered_map< OUString, OUString > CodeCompleteVarTypes;
 /* variable name, type */
-typedef std::unordered_map< OUString, CodeCompleteVarTypes, OUStringHash > CodeCompleteVarScopes;
+typedef std::unordered_map< OUString, CodeCompleteVarTypes > CodeCompleteVarScopes;
 /* procedure, CodeCompleteVarTypes */
 
 class BASIC_DLLPUBLIC CodeCompleteOptions
@@ -70,7 +68,7 @@ public:
     static void SetAutoCorrectOn( bool b );
 };
 
-class BASIC_DLLPUBLIC CodeCompleteDataCache final
+class UNLESS_MERGELIBS(BASIC_DLLPUBLIC) CodeCompleteDataCache final
 {
 /*
  * cache to store data for

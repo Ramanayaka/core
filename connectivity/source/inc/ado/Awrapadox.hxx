@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AWRAPADOX_HXX
-#define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AWRAPADOX_HXX
+#pragma once
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
@@ -53,26 +52,22 @@ typedef struct _ADOTable Table;
 #endif
 
 
-#include "ado_pre_sys_include.h"
 #include <adoint.h>
 #include <adoctint.h>
-#include "ado_post_sys_include.h"
 
 
-#include "ado/Aolewrap.hxx"
-#include "ado/Aolevariant.hxx"
-#include "ado/adoimp.hxx"
-#include "ado/Awrapado.hxx"
-#include "ado/WrapColumn.hxx"
-#include "ado/WrapIndex.hxx"
-#include "ado/WrapKey.hxx"
-#include "ado/WrapTable.hxx"
-#include "ado/WrapCatalog.hxx"
+#include <ado/Aolewrap.hxx>
+#include <ado/Aolevariant.hxx>
+#include <ado/adoimp.hxx>
+#include <ado/Awrapado.hxx>
+#include <ado/WrapColumn.hxx>
+#include <ado/WrapIndex.hxx>
+#include <ado/WrapKey.hxx>
+#include <ado/WrapTable.hxx>
+#include <ado/WrapCatalog.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class WpADOView : public WpOLEBase<ADOView>
         {
         public:
@@ -84,7 +79,7 @@ namespace connectivity
 
             OUString get_Name() const;
             void get_Command(OLEVariant& _rVar) const;
-            void put_Command(OLEVariant& _rVar);
+            void put_Command(OLEVariant const & _rVar);
         };
 
         class WpADOGroup : public WpOLEBase<ADOGroup>
@@ -135,8 +130,6 @@ namespace connectivity
                 /* [in] */ ActionEnum Action,
                 /* [in] */ RightsEnum Rights);
         };
-    }
 }
-#endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AWRAPADOX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

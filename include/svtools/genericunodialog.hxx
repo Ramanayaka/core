@@ -24,24 +24,17 @@
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/lang/NotInitializedException.hpp>
 
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/propshlp.hxx>
-#include <comphelper/proparrhlp.hxx>
 #include <comphelper/uno3.hxx>
 #include <comphelper/propertycontainer.hxx>
 #include <comphelper/broadcasthelper.hxx>
-#include <tools/link.hxx>
-#include <vcl/vclptr.hxx>
+#include <vcl/weld.hxx>
 
-class Dialog;
-namespace vcl { class Window; }
+namespace com :: sun :: star :: awt { class XWindow; }
+namespace com :: sun :: star :: uno { class XComponentContext; }
+
 class VclWindowEvent;
 
 
@@ -55,7 +48,6 @@ namespace svt
 #define     UNODIALOG_PROPERTY_TITLE        "Title"
 #define     UNODIALOG_PROPERTY_PARENT       "ParentWindow"
 
-
     typedef cppu::WeakImplHelper< css::ui::dialogs::XExecutableDialog,
                                   css::lang::XServiceInfo,
                                   css::lang::XInitialization > OGenericUnoDialogBase;
@@ -68,11 +60,10 @@ namespace svt
             ,public ::comphelper::OPropertyContainer
     {
     protected:
-        VclPtr<Dialog>              m_pDialog;                  /// the dialog to execute
+        std::unique_ptr<weld::DialogController> m_xDialog;      /// the dialog to execute
         bool                        m_bExecuting : 1;           /// we're currently executing the dialog
         bool                        m_bTitleAmbiguous : 1;      /// m_sTitle has not been set yet
         bool                        m_bInitialized : 1;         /// has "initialize" been called?
-        bool                        m_bNeedInitialization : 1;  /// do we need to be initialized before any other API call is allowed?
 
         // <properties>
         OUString                                         m_sTitle;   /// title of the dialog
@@ -80,9 +71,6 @@ namespace svt
         // </properties>
 
         css::uno::Reference<css::uno::XComponentContext> m_aContext;
-
-    public:
-        bool needInitialization() const { return m_bNeedInitialization && !m_bInitialized; }
 
     protected:
         OGenericUnoDialog(const css::uno::Reference< css::uno::XComponentContext >& _rxContext);
@@ -114,11 +102,11 @@ namespace svt
         virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
 
     protected:
-        /** create the concrete dialog instance. note that m_aMutex is not locked when this method get's called,
+        /** create the concrete dialog instance. Note that m_aMutex is not locked when this method get called,
             but the application-wide solar mutex is (to guard the not thread-safe ctor of the dialog).
             @param      pParent     the parent window for the new dialog
         */
-        virtual VclPtr<Dialog> createDialog(vcl::Window* _pParent) = 0;
+        virtual std::unique_ptr<weld::DialogController> createDialog(const css::uno::Reference<css::awt::XWindow>& rParent) = 0;
 
         /// called to destroy the dialog used. deletes m_pDialog and resets it to NULL
         void destroyDialog();
@@ -131,13 +119,12 @@ namespace svt
         /** smaller form of <method>initialize</method>.<p/>
             The <method>initialize</method> method is called with a sequence of com.sun.star.uno::Any's,
             which is split up into the single elements, which are passed to implInitialize. The default implementation
-            tries to extract an com.sun.star.beans::PropertyValue from the value an pass it to the
+            tries to extract a com.sun.star.beans::PropertyValue from the value a pass it to the
             com.sun.star.beans::XPropertySet interface of the object.
         */
         virtual void implInitialize(const css::uno::Any& _rValue);
 
     private:
-        DECL_LINK( OnDialogDying, VclWindowEvent&, void );
 
         /** ensures that m_pDialog is not <NULL/>
 
@@ -155,15 +142,13 @@ namespace svt
         bool    impl_ensureDialog_lck();
     };
 
-    /// helper class for guarding access to methods of a OGenericUnoDialog
+    /// helper class for guarding access to methods of an OGenericUnoDialog
     class UnoDialogEntryGuard
     {
     public:
         UnoDialogEntryGuard( OGenericUnoDialog& _rDialog )
             :m_aGuard( _rDialog.GetMutex() )
         {
-            if ( _rDialog.needInitialization() )
-                throw css::lang::NotInitializedException();
         }
 
     private:

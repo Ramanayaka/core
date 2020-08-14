@@ -19,10 +19,10 @@
 
 #include <comphelper/numbers.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <com/sun/star/util/NumberFormat.hpp>
-#include <com/sun/star/util/XNumberFormatTypes.hpp>
+#include <com/sun/star/util/XNumberFormatter.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 
 
 namespace comphelper
@@ -75,7 +75,7 @@ css::uno::Any getNumberFormatDecimals(const css::uno::Reference<css::util::XNumb
             SAL_WARN("comphelper", "getNumberFormatDecimals : invalid key! (may be created with another formatter ?)");
         }
     }
-    return css::uno::Any((sal_Int16)0);
+    return css::uno::Any(sal_Int16(0));
 }
 
 

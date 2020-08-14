@@ -17,27 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RDFaImportHelper.hxx"
+#include <RDFaImportHelper.hxx>
 
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 
 #include <comphelper/sequence.hxx>
 
 #include <com/sun/star/rdf/URI.hpp>
-#include <com/sun/star/rdf/XDocumentMetadataAccess.hpp>
 #include <com/sun/star/rdf/XDocumentRepository.hpp>
+#include <com/sun/star/rdf/XRepositorySupplier.hpp>
 
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 #include <map>
-#include <iterator>
-#include <functional>
-#include <algorithm>
 
 using namespace ::com::sun::star;
 
 namespace xmloff {
+
+namespace {
 
 /** a bit of context for parsing RDFa attributes */
 class RDFaReader
@@ -104,6 +104,8 @@ public:
     void InsertRDFaEntry(struct RDFaEntry const & i_rEntry);
 };
 
+}
+
 /** store parsed RDFa attributes */
 struct ParsedRDFaAttributes
 {
@@ -137,7 +139,7 @@ struct RDFaEntry
     { }
 };
 
-static inline bool isWS(const sal_Unicode i_Char)
+static bool isWS(const sal_Unicode i_Char)
 {
     return ('\t' == i_Char) || ('\n' == i_Char) || ('\r' == i_Char)
         || (' ' == i_Char);
@@ -167,8 +169,9 @@ RDFaReader::ReadCURIE(OUString const & i_rCURIE) const
         OUString Prefix;
         OUString LocalName;
         OUString Namespace;
-        sal_uInt16 nKey( GetImport().GetNamespaceMap().GetKeyByAttrName_(
-            i_rCURIE, &Prefix, &LocalName, &Namespace) );
+        // LocalName may contain ':', see "ipchar" in RFC 3987
+        sal_uInt16 nKey( GetImport().GetNamespaceMap().GetKeyByQName(
+            i_rCURIE, &Prefix, &LocalName, &Namespace, SvXMLNamespaceMap::QNameMode::AttrValue) );
         if ( Prefix == "_" )
         {
             // eeek, it's a bnode!
@@ -294,12 +297,11 @@ RDFaInserter::MakeResource( OUString const & i_rResource)
         OUString name( i_rResource.copy(2) );
         const uno::Reference< rdf::XBlankNode > xBNode( LookupBlankNode(name) );
         SAL_WARN_IF(!xBNode.is(), "xmloff.core", "no blank node?");
-        return uno::Reference<rdf::XResource>( xBNode, uno::UNO_QUERY);
+        return xBNode;
     }
     else
     {
-        return uno::Reference<rdf::XResource>( MakeURI( i_rResource ),
-            uno::UNO_QUERY);
+        return MakeURI( i_rResource );
     }
 }
 
@@ -397,19 +399,19 @@ RDFaImportHelper::ParseRDFa(
 void
 RDFaImportHelper::AddRDFa(
     uno::Reference<rdf::XMetadatable> const & i_xObject,
-    std::shared_ptr<ParsedRDFaAttributes> & i_pRDFaAttributes)
+    std::shared_ptr<ParsedRDFaAttributes> const & i_pRDFaAttributes)
 {
     if (!i_xObject.is())
     {
         SAL_WARN("xmloff.core", "AddRDFa: invalid arg: null textcontent");
         return;
     }
-    if (!i_pRDFaAttributes.get())
+    if (!i_pRDFaAttributes)
     {
         SAL_WARN("xmloff.core", "AddRDFa: invalid arg: null RDFa attributes");
         return;
     }
-    m_RDFaEntries.push_back(RDFaEntry(i_xObject, i_pRDFaAttributes));
+    m_RDFaEntries.emplace_back(i_xObject, i_pRDFaAttributes);
 }
 
 void
@@ -422,7 +424,7 @@ RDFaImportHelper::ParseAndAddRDFa(
 {
     std::shared_ptr<ParsedRDFaAttributes> pAttributes(
         ParseRDFa(i_rAbout, i_rProperty, i_rContent, i_rDatatype) );
-    if (pAttributes.get())
+    if (pAttributes)
     {
         AddRDFa(i_xObject, pAttributes);
     }

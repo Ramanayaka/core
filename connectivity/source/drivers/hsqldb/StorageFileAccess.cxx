@@ -21,12 +21,11 @@
 #if defined(HAVE_CONFIG_H) && HAVE_CONFIG_H
 #include <config.h>
 #endif
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include "hsqldb/HStorageMap.hxx"
+#include <hsqldb/HStorageMap.hxx>
 #include <osl/diagnose.h>
-
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::uno;
@@ -75,12 +74,11 @@ extern "C" SAL_JNI_EXPORT jboolean JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_S
         catch(const NoSuchElementException&)
         {
         }
-        catch(const Exception& e)
+        catch(const Exception&)
         {
-            OSL_FAIL("Exception caught! : Java_com_sun_star_sdbcx_comp_hsqldb_StorageFileAccess_isStreamElement");
+            TOOLS_WARN_EXCEPTION("connectivity.hsqldb", "forwarding");
             if (env->ExceptionCheck())
                 env->ExceptionClear();
-            SAL_WARN("connectivity.hsqldb", "forwarding Exception: " << e.Message);
         }
     }
     return JNI_FALSE;
@@ -103,22 +101,22 @@ extern "C" SAL_JNI_EXPORT void JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
 #endif
     TStorages::mapped_type aStoragePair = StorageContainer::getRegisteredStorage(StorageContainer::jstring2ustring(env,key));
     auto storage = aStoragePair.mapStorage();
-    if ( storage.is() )
+    if ( !storage.is() )
+        return;
+
+    try
     {
-        try
-        {
-            storage->removeElement(StorageContainer::removeURLPrefix(StorageContainer::jstring2ustring(env,name),aStoragePair.url));
-        }
-        catch(const NoSuchElementException&)
-        {
-            if (env->ExceptionCheck())
-                env->ExceptionClear();
-        }
-        catch(const Exception& e)
-        {
-            SAL_WARN("connectivity.hsqldb", "Exception caught! : Java_com_sun_star_sdbcx_comp_hsqldb_StorageFileAccess_removeElement " << e.Message);
-            StorageContainer::throwJavaException(e,env);
-        }
+        storage->removeElement(StorageContainer::removeURLPrefix(StorageContainer::jstring2ustring(env,name),aStoragePair.url));
+    }
+    catch(const NoSuchElementException&)
+    {
+        if (env->ExceptionCheck())
+            env->ExceptionClear();
+    }
+    catch(const Exception& e)
+    {
+        TOOLS_WARN_EXCEPTION("connectivity.hsqldb", "");
+        StorageContainer::throwJavaException(e,env);
     }
 }
 
@@ -140,29 +138,29 @@ extern "C" SAL_JNI_EXPORT void JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
 #endif
     TStorages::mapped_type aStoragePair = StorageContainer::getRegisteredStorage(StorageContainer::jstring2ustring(env,key));
     auto storage = aStoragePair.mapStorage();
-    if ( storage.is() )
+    if ( !storage.is() )
+        return;
+
+    try
     {
-        try
-        {
-            storage->renameElement(
-                StorageContainer::removeURLPrefix(StorageContainer::jstring2ustring(env,oldname),aStoragePair.url),
-                StorageContainer::removeURLPrefix(StorageContainer::jstring2ustring(env,newname),aStoragePair.url)
-            );
+        storage->renameElement(
+            StorageContainer::removeURLPrefix(StorageContainer::jstring2ustring(env,oldname),aStoragePair.url),
+            StorageContainer::removeURLPrefix(StorageContainer::jstring2ustring(env,newname),aStoragePair.url)
+        );
 #ifdef HSQLDB_DBG
-            {
-                OUString sNewName = StorageContainer::removeURLPrefix(StorageContainer::jstring2ustring(env,newname),aStoragePair.first.second);
-                OSL_ENSURE(aStoragePair.first.first->isStreamElement(sNewName),"Stream could not be renamed");
-            }
+        {
+            OUString sNewName = StorageContainer::removeURLPrefix(StorageContainer::jstring2ustring(env,newname),aStoragePair.first.second);
+            OSL_ENSURE(aStoragePair.first.first->isStreamElement(sNewName),"Stream could not be renamed");
+        }
 #endif
-        }
-        catch(const NoSuchElementException&)
-        {
-        }
-        catch(const Exception& e)
-        {
-            OSL_FAIL("Exception caught! : Java_com_sun_star_sdbcx_comp_hsqldb_StorageFileAccess_renameElement");
-            StorageContainer::throwJavaException(e,env);
-        }
+    }
+    catch(const NoSuchElementException&)
+    {
+    }
+    catch(const Exception& e)
+    {
+        OSL_FAIL("Exception caught! : Java_com_sun_star_sdbcx_comp_hsqldb_StorageFileAccess_renameElement");
+        StorageContainer::throwJavaException(e,env);
     }
 }
 

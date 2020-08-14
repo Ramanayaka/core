@@ -10,7 +10,7 @@
 #ifndef INCLUDED_SC_INC_REFHINT_HXX
 #define INCLUDED_SC_INC_REFHINT_HXX
 
-#include "address.hxx"
+#include "types.hxx"
 #include <svl/hint.hxx>
 
 namespace sc {
@@ -22,7 +22,6 @@ class RefHint : public SfxHint
 {
 public:
     enum Type {
-        Moved,
         ColumnReordered,
         RowReordered,
         StartListening,
@@ -39,34 +38,15 @@ public:
     RefHint() = delete;
     virtual ~RefHint() override = 0;
 
+    RefHint(RefHint const &) = default;
+    RefHint(RefHint &&) = default;
+    RefHint & operator =(RefHint const &) = delete;
+    RefHint & operator =(RefHint &&) = delete;
+
     Type getType() const;
 };
 
-class RefMovedHint : public RefHint
-{
-    ScRange maRange;
-    ScAddress maMoveDelta;
-    const sc::RefUpdateContext& mrCxt;
-
-public:
-
-    RefMovedHint( const ScRange& rRange, const ScAddress& rMove, const sc::RefUpdateContext& rCxt );
-    virtual ~RefMovedHint() override;
-
-    /**
-     * Get the source range from which the references have moved.
-     */
-    const ScRange& getRange() const;
-
-    /**
-     * Get the movement vector.
-     */
-    const ScAddress& getDelta() const;
-
-    const sc::RefUpdateContext& getContext() const;
-};
-
-class RefColReorderHint : public RefHint
+class RefColReorderHint final : public RefHint
 {
     const sc::ColRowReorderMapType& mrColMap;
     SCTAB mnTab;
@@ -77,6 +57,11 @@ public:
     RefColReorderHint( const sc::ColRowReorderMapType& rColMap, SCTAB nTab, SCROW nRow1, SCROW nRow2 );
     virtual ~RefColReorderHint() override;
 
+    RefColReorderHint(RefColReorderHint const &) = default;
+    RefColReorderHint(RefColReorderHint &&) = default;
+    RefColReorderHint & operator =(RefColReorderHint const &) = delete; // due to mrColMap
+    RefColReorderHint & operator =(RefColReorderHint &&) = delete; // due to mrColMap
+
     const sc::ColRowReorderMapType& getColMap() const;
 
     SCTAB getTab() const;
@@ -84,7 +69,7 @@ public:
     SCROW getEndRow() const;
 };
 
-class RefRowReorderHint : public RefHint
+class RefRowReorderHint final : public RefHint
 {
     const sc::ColRowReorderMapType& mrRowMap;
     SCTAB mnTab;
@@ -95,6 +80,11 @@ public:
     RefRowReorderHint( const sc::ColRowReorderMapType& rRowMap, SCTAB nTab, SCCOL nCol1, SCCOL nCol2 );
     virtual ~RefRowReorderHint() override;
 
+    RefRowReorderHint(RefRowReorderHint const &) = default;
+    RefRowReorderHint(RefRowReorderHint &&) = default;
+    RefRowReorderHint & operator =(RefRowReorderHint const &) = delete; // due to mrRowMap
+    RefRowReorderHint & operator =(RefRowReorderHint &&) = delete; // due to mrRowMap
+
     const sc::ColRowReorderMapType& getRowMap() const;
 
     SCTAB getTab() const;
@@ -102,14 +92,14 @@ public:
     SCCOL getEndColumn() const;
 };
 
-class RefStartListeningHint : public RefHint
+class RefStartListeningHint final : public RefHint
 {
 public:
     RefStartListeningHint();
     virtual ~RefStartListeningHint() override;
 };
 
-class RefStopListeningHint : public RefHint
+class RefStopListeningHint final : public RefHint
 {
 public:
     RefStopListeningHint();

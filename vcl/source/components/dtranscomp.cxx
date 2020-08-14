@@ -17,28 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "osl/mutex.hxx"
+#include <sal/config.h>
 
+#include <comphelper/lok.hxx>
+#include <osl/mutex.hxx>
+#include <tools/debug.hxx>
 #include <vcl/svapp.hxx>
 
-#include "factory.hxx"
-#include "svdata.hxx"
-#include "salinst.hxx"
+#include <factory.hxx>
+#include <svdata.hxx>
+#include <salinst.hxx>
 
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include "com/sun/star/lang/XServiceInfo.hpp"
-#include "com/sun/star/lang/XSingleServiceFactory.hpp"
-#include "com/sun/star/lang/XInitialization.hpp"
-#include "com/sun/star/lang/DisposedException.hpp"
-#include "com/sun/star/datatransfer/XTransferable.hpp"
-#include "com/sun/star/datatransfer/clipboard/XClipboard.hpp"
-#include "com/sun/star/datatransfer/clipboard/XClipboardEx.hpp"
-#include "com/sun/star/datatransfer/clipboard/XClipboardNotifier.hpp"
-#include "com/sun/star/datatransfer/clipboard/XClipboardListener.hpp"
-#include "com/sun/star/datatransfer/clipboard/XSystemClipboard.hpp"
-#include "com/sun/star/datatransfer/dnd/XDragSource.hpp"
-#include "com/sun/star/datatransfer/dnd/XDropTarget.hpp"
-#include "com/sun/star/datatransfer/dnd/DNDConstants.hpp"
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
+#include <com/sun/star/datatransfer/XTransferable.hpp>
+#include <com/sun/star/datatransfer/clipboard/XClipboardListener.hpp>
+#include <com/sun/star/datatransfer/clipboard/XSystemClipboard.hpp>
+#include <com/sun/star/datatransfer/dnd/XDragSource.hpp>
+#include <com/sun/star/datatransfer/dnd/XDropTarget.hpp>
+#include <com/sun/star/datatransfer/dnd/DNDConstants.hpp>
 
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -49,6 +49,8 @@ using namespace com::sun::star::lang;
 
 namespace vcl
 {
+namespace {
+
 // generic implementation to satisfy SalInstance
 class GenericClipboard :
         public cppu::WeakComponentImplHelper<
@@ -59,7 +61,7 @@ class GenericClipboard :
     osl::Mutex                                                              m_aMutex;
     Reference< css::datatransfer::XTransferable >                           m_aContents;
     Reference< css::datatransfer::clipboard::XClipboardOwner >              m_aOwner;
-    std::list< Reference< css::datatransfer::clipboard::XClipboardListener > > m_aListeners;
+    std::vector< Reference< css::datatransfer::clipboard::XClipboardListener > > m_aListeners;
 
 public:
 
@@ -107,6 +109,8 @@ public:
         const Reference< css::datatransfer::clipboard::XClipboardListener >& listener ) override;
 };
 
+}
+
 Sequence< OUString > GenericClipboard::getSupportedServiceNames_static()
 {
     Sequence< OUString > aRet { "com.sun.star.datatransfer.clipboard.SystemClipboard" };
@@ -115,7 +119,7 @@ Sequence< OUString > GenericClipboard::getSupportedServiceNames_static()
 
 OUString GenericClipboard::getImplementationName()
 {
-    return OUString("com.sun.star.datatransfer.VCLGenericClipboard");
+    return "com.sun.star.datatransfer.VCLGenericClipboard";
 }
 
 Sequence< OUString > GenericClipboard::getSupportedServiceNames()
@@ -143,7 +147,7 @@ void GenericClipboard::setContents(
     m_aContents = xTrans;
     m_aOwner = xClipboardOwner;
 
-    std::list< Reference< datatransfer::clipboard::XClipboardListener > > aListeners( m_aListeners );
+    std::vector< Reference< datatransfer::clipboard::XClipboardListener > > aListeners( m_aListeners );
     datatransfer::clipboard::ClipboardEvent aEv;
     aEv.Contents = m_aContents;
 
@@ -151,16 +155,15 @@ void GenericClipboard::setContents(
 
     if( xOldOwner.is() && xOldOwner != xClipboardOwner )
         xOldOwner->lostOwnership( this, xOldContents );
-    for( std::list< Reference< datatransfer::clipboard::XClipboardListener > >::iterator it =
-         aListeners.begin(); it != aListeners.end() ; ++it )
+    for (auto const& listener : aListeners)
     {
-        (*it)->changedContents( aEv );
+        listener->changedContents( aEv );
     }
 }
 
 OUString GenericClipboard::getName()
 {
-    return OUString( "CLIPBOARD"  );
+    return "CLIPBOARD";
 }
 
 sal_Int8 GenericClipboard::getRenderingCapabilities()
@@ -170,71 +173,32 @@ sal_Int8 GenericClipboard::getRenderingCapabilities()
 
 void GenericClipboard::addClipboardListener( const Reference< datatransfer::clipboard::XClipboardListener >& listener )
 {
-    osl::ClearableMutexGuard aGuard( m_aMutex );
+    osl::MutexGuard aGuard(m_aMutex);
 
     m_aListeners.push_back( listener );
 }
 
 void GenericClipboard::removeClipboardListener( const Reference< datatransfer::clipboard::XClipboardListener >& listener )
 {
-    osl::ClearableMutexGuard aGuard( m_aMutex );
+    osl::MutexGuard aGuard(m_aMutex);
 
-    m_aListeners.remove( listener );
+    m_aListeners.erase(std::remove(m_aListeners.begin(), m_aListeners.end(), listener), m_aListeners.end());
 }
 
-class ClipboardFactory : public ::cppu::WeakComponentImplHelper<
-    css::lang::XSingleServiceFactory
->
-{
-    osl::Mutex m_aMutex;
-public:
-    ClipboardFactory();
 
-    /*
-     *  XSingleServiceFactory
-     */
-    virtual Reference< XInterface > SAL_CALL createInstance() override;
-    virtual Reference< XInterface > SAL_CALL createInstanceWithArguments( const Sequence< Any >& rArgs ) override;
-};
 
-ClipboardFactory::ClipboardFactory() :
-        cppu::WeakComponentImplHelper<
-    css::lang::XSingleServiceFactory
->( m_aMutex )
-{
-}
-
-Reference< XInterface > ClipboardFactory::createInstance()
-{
-    return createInstanceWithArguments( Sequence< Any >() );
-}
-
-Reference< XInterface > ClipboardFactory::createInstanceWithArguments( const Sequence< Any >& arguments )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+vcl_SystemClipboard_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const& args)
 {
     SolarMutexGuard aGuard;
-    Reference< XInterface > xResult = ImplGetSVData()->mpDefInst->CreateClipboard( arguments );
-    return xResult;
+    auto xClipboard = ImplGetSVData()->mpDefInst->CreateClipboard( args );
+    if (xClipboard.is())
+        xClipboard->acquire();
+    return xClipboard.get();
 }
 
-OUString SAL_CALL Clipboard_getImplementationName()
-{
-    return OUString(
-    #if defined MACOSX
-    "com.sun.star.datatransfer.clipboard.AquaClipboard"
-    #elif defined ANDROID
-    "com.sun.star.datatransfer.VCLGenericClipboard"
-    #elif defined UNX
-    "com.sun.star.datatransfer.X11ClipboardSupport"
-    #else
-    "com.sun.star.datatransfer.VCLGenericClipboard"
-    #endif
-     );
-}
-
-Reference< XSingleServiceFactory > SAL_CALL Clipboard_createFactory( const Reference< XMultiServiceFactory > &  )
-{
-    return Reference< XSingleServiceFactory >( new ClipboardFactory() );
-}
+namespace {
 
 /*
 *   generic DragSource dummy
@@ -263,7 +227,7 @@ public:
     virtual void        SAL_CALL initialize( const Sequence< Any >& arguments ) override;
 
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.datatransfer.dnd.VclGenericDragSource"); }
+    { return "com.sun.star.datatransfer.dnd.VclGenericDragSource"; }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
@@ -273,10 +237,11 @@ public:
 
     static Sequence< OUString > getSupportedServiceNames_static()
     {
-        Sequence<OUString> aRet { "com.sun.star.datatransfer.dnd.GenericDragSource" };
-        return aRet;
+       return { "com.sun.star.datatransfer.dnd.GenericDragSource" };
     }
 };
+
+}
 
 sal_Bool GenericDragSource::isDragImageSupported()
 {
@@ -304,7 +269,7 @@ void GenericDragSource::initialize( const Sequence< Any >& )
 {
 }
 
-Sequence< OUString > SAL_CALL DragSource_getSupportedServiceNames()
+Sequence< OUString > DragSource_getSupportedServiceNames()
 {
 #if defined MACOSX
     return { "com.sun.star.datatransfer.dnd.OleDragSource" };
@@ -315,18 +280,18 @@ Sequence< OUString > SAL_CALL DragSource_getSupportedServiceNames()
 #endif
 }
 
-OUString SAL_CALL DragSource_getImplementationName()
+OUString DragSource_getImplementationName()
 {
 #if defined MACOSX
-    return OUString("com.sun.star.comp.datatransfer.dnd.OleDragSource_V1");
+    return "com.sun.star.comp.datatransfer.dnd.OleDragSource_V1";
 #elif defined UNX
-    return OUString("com.sun.star.datatransfer.dnd.XdndSupport");
+    return "com.sun.star.datatransfer.dnd.XdndSupport";
 #else
-    return OUString("com.sun.star.datatransfer.dnd.VclGenericDragSource");
+    return "com.sun.star.datatransfer.dnd.VclGenericDragSource";
 #endif
 }
 
-Reference< XInterface > SAL_CALL DragSource_createInstance( const Reference< XMultiServiceFactory >&  )
+Reference< XInterface > DragSource_createInstance( const Reference< XMultiServiceFactory >&  )
 {
     SolarMutexGuard aGuard;
     Reference< XInterface > xResult = ImplGetSVData()->mpDefInst->CreateDragSource();
@@ -336,6 +301,8 @@ Reference< XInterface > SAL_CALL DragSource_createInstance( const Reference< XMu
 /*
 *   generic DragSource dummy
 */
+
+namespace {
 
 class GenericDropTarget : public cppu::WeakComponentImplHelper<
                                            datatransfer::dnd::XDropTarget,
@@ -360,7 +327,7 @@ public:
     virtual void        SAL_CALL setDefaultActions( sal_Int8 actions ) override;
 
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.datatransfer.dnd.VclGenericDropTarget"); }
+    { return "com.sun.star.datatransfer.dnd.VclGenericDropTarget"; }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
@@ -370,10 +337,11 @@ public:
 
     static Sequence< OUString > getSupportedServiceNames_static()
     {
-        Sequence<OUString> aRet { "com.sun.star.datatransfer.dnd.GenericDropTarget" };
-        return aRet;
+      return { "com.sun.star.datatransfer.dnd.GenericDropTarget" };
     }
 };
+
+}
 
 void GenericDropTarget::initialize( const Sequence< Any >& )
 {
@@ -405,20 +373,20 @@ void GenericDropTarget::setDefaultActions( sal_Int8)
 {
 }
 
-Sequence< OUString > SAL_CALL DropTarget_getSupportedServiceNames()
+Sequence< OUString > DropTarget_getSupportedServiceNames()
 {
 #if defined MACOSX
-    return Sequence< OUString > {  "com.sun.star.datatransfer.dnd.OleDropTarget" };
+    return {  "com.sun.star.datatransfer.dnd.OleDropTarget" };
 #elif defined UNX
-    return Sequence< OUString > { "com.sun.star.datatransfer.dnd.X11DropTarget" };
+    return { "com.sun.star.datatransfer.dnd.X11DropTarget" };
 #else
     return GenericDropTarget::getSupportedServiceNames_static();
 #endif
 }
 
-OUString SAL_CALL DropTarget_getImplementationName()
+OUString DropTarget_getImplementationName()
 {
-    return OUString(
+    return
     #if defined MACOSX
     "com.sun.star.comp.datatransfer.dnd.OleDropTarget_V1"
     #elif defined UNX
@@ -426,10 +394,10 @@ OUString SAL_CALL DropTarget_getImplementationName()
     #else
     "com.sun.star.datatransfer.dnd.VclGenericDropTarget"
     #endif
-                   );
+                   ;
 }
 
-Reference< XInterface > SAL_CALL DropTarget_createInstance( const Reference< XMultiServiceFactory >&  )
+Reference< XInterface > DropTarget_createInstance( const Reference< XMultiServiceFactory >&  )
 {
     SolarMutexGuard aGuard;
     Reference< XInterface > xResult = ImplGetSVData()->mpDefInst->CreateDropTarget();
@@ -441,9 +409,26 @@ Reference< XInterface > SAL_CALL DropTarget_createInstance( const Reference< XMu
 /*
 *   SalInstance generic
 */
-Reference< XInterface > SalInstance::CreateClipboard( const Sequence< Any >& )
+Reference< XInterface > SalInstance::CreateClipboard( const Sequence< Any >& arguments )
 {
-    return Reference< XInterface >( static_cast<cppu::OWeakObject *>(new vcl::GenericClipboard()) );
+    if (arguments.hasElements()) {
+        throw css::lang::IllegalArgumentException(
+            "non-empty SalInstance::CreateClipboard arguments", {}, -1);
+    }
+    if (comphelper::LibreOfficeKit::isActive()) {
+        // In LOK, each document view shall have its own clipboard instance, and the way that
+        // (happens to?) work is that apparently this function is called at most once for each such
+        // document view, so it is OK if we hand out a fresh instance on each call in LOK (whereas
+        // in non-LOK below we keep handing out one single instance; see also
+        // <https://lists.freedesktop.org/archives/libreoffice/2020-April/084824.html> "Re: Linux
+        // SAL_USE_VCLPLUGIN=svp and the clipboard"):
+        return Reference< XInterface >( static_cast<cppu::OWeakObject *>(new vcl::GenericClipboard()) );
+    }
+    DBG_TESTSOLARMUTEX();
+    if (!m_clipboard.is()) {
+        m_clipboard = static_cast<cppu::OWeakObject *>(new vcl::GenericClipboard());
+    }
+    return m_clipboard;
 }
 
 Reference< XInterface > SalInstance::CreateDragSource()

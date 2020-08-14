@@ -20,23 +20,24 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDAUTOMATICPOSITIONPROPERTIES_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDAUTOMATICPOSITIONPROPERTIES_HXX
 
-#include "WrappedProperty.hxx"
+#include <sal/types.h>
+#include <memory>
 #include <vector>
 
-namespace chart
-{
-namespace wrapper
+namespace chart { class WrappedProperty; }
+namespace com::sun::star::beans { struct Property; }
+
+namespace chart::wrapper
 {
 
 class WrappedAutomaticPositionProperties
 {
 public:
     static void addProperties( std::vector< css::beans::Property >& rOutProperties );
-    static void addWrappedProperties( std::vector< WrappedProperty* >& rList );
+    static void addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList );
 };
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

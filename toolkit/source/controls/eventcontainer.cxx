@@ -17,12 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cppuhelper/queryinterface.hxx>
-#include <cppuhelper/weak.hxx>
 #include <cppuhelper/factory.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 
-#include "toolkit/controls/eventcontainer.hxx"
+#include <controls/eventcontainer.hxx>
 #include <com/sun/star/script/ScriptEventDescriptor.hpp>
 
 
@@ -46,8 +43,7 @@ Type ScriptEventContainer::getElementType()
 
 sal_Bool ScriptEventContainer::hasElements()
 {
-    bool bRet = (mnElementCount > 0);
-    return bRet;
+    return !mHashMap.empty();
 }
 
 // Methods XNameAccess
@@ -174,8 +170,7 @@ void ScriptEventContainer::removeContainerListener( const css::uno::Reference< c
 
 
 ScriptEventContainer::ScriptEventContainer()
-    : mnElementCount( 0 ),
-      mType( cppu::UnoType<ScriptEventDescriptor>::get() ),
+    : mType( cppu::UnoType<ScriptEventDescriptor>::get() ),
       maContainerListeners( *this )
 {
 }

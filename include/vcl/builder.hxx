@@ -11,9 +11,8 @@
 #define INCLUDED_VCL_BUILDER_HXX
 
 #include <typeinfo>
-#include <osl/module.hxx>
 #include <sal/log.hxx>
-#include <tools/resmgr.hxx>
+#include <unotools/resmgr.hxx>
 #include <tools/fldunit.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/window.hxx>
@@ -23,81 +22,76 @@
 
 #include <memory>
 #include <map>
-#include <set>
-#include <stack>
 #include <vector>
 #ifdef check
 #  //some problem with MacOSX and a check define
 #  undef check
 #endif
 
-#include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-
+class Button;
+class ComboBox;
+class FormattedField;
 class ListBox;
+class Menu;
+class MessageDialog;
 class NumericFormatter;
 class PopupMenu;
+class SalInstanceBuilder;
+class ScreenshotTest;
 class ScrollBar;
+class SvTabListBox;
 class Slider;
 class DateField;
 class TimeField;
 class VclExpander;
 class VclMultiLineEdit;
+struct NotebookBarAddonsItem;
 namespace xmlreader { class XmlReader; }
+namespace com::sun::star::frame { class XFrame; }
 
+struct ComboBoxTextItem
+{
+    OUString m_sItem;
+    OString m_sId;
+    ComboBoxTextItem(const OUString& rItem, const OString& rId)
+        : m_sItem(rItem)
+        , m_sId(rId)
+    {
+    }
+};
+
+/// Creates a hierarchy of vcl::Windows (widgets) from a .ui file for dialogs, sidebar, etc.
 class VCL_DLLPUBLIC VclBuilder
 {
 public:
     typedef std::map<OString, OUString> stringmap;
     typedef std::map<OString, std::pair<OString, OString>> accelmap;
     /// These functions create a new widget with parent pParent and return it in rRet
-    typedef void (*customMakeWidget)(VclPtr<vcl::Window> &rRet, VclPtr<vcl::Window> &pParent, stringmap &rVec);
+    typedef void (*customMakeWidget)(VclPtr<vcl::Window> &rRet, const VclPtr<vcl::Window> &pParent, stringmap &rVec);
 
 public:
-    VclBuilder(
-            vcl::Window *pParent,
-            const OUString& sUIRootDir,
-            const OUString& sUIFile,
-            const OString& sID = OString(),
-            const css::uno::Reference<css::frame::XFrame> &rFrame = css::uno::Reference<css::frame::XFrame>());
+    VclBuilder(vcl::Window* pParent, const OUString& sUIRootDir, const OUString& sUIFile,
+               const OString& sID = OString(),
+               const css::uno::Reference<css::frame::XFrame>& rFrame
+               = css::uno::Reference<css::frame::XFrame>(),
+               bool bLegacy = true,
+               const NotebookBarAddonsItem* pNotebookBarAddonsItem = nullptr);
     ~VclBuilder();
-
     ///releases references and disposes all children.
     void disposeBuilder();
-
     //sID must exist and be of type T
     template <typename T> T* get(VclPtr<T>& ret, const OString& sID);
 
     //sID may not exist, but must be of type T if it does
-    template <typename T /*= vcl::Window if we had c++11*/> T* get(const OString& sID);
+    template <typename T = vcl::Window> T* get(const OString& sID);
 
     vcl::Window*    get_widget_root();
 
     //sID may not exist
     PopupMenu*      get_menu(const OString& sID);
 
-    //given an sID return the response value for that widget
-    short           get_response(const vcl::Window *pWindow) const;
-
-    OString         get_by_window(const vcl::Window *pWindow) const;
-    void            delete_by_window(vcl::Window *pWindow);
-
     //release ownership of pWindow, i.e. don't delete it
     void            drop_ownership(const vcl::Window *pWindow);
-
-    //apply the properties of rProps to pWindow
-    static void     set_properties(vcl::Window *pWindow, const stringmap &rProps);
-
-    //Convert _ gtk markup to ~ vcl markup
-    static          OUString convertMnemonicMarkup(const OUString &rIn);
-
-    static OUString extractCustomProperty(stringmap &rMap);
-    static FieldUnit detectUnit(OUString const&);
-
-    static bool     extractDropdown(stringmap &rMap);
-
-    //add a default value of 25 width-chars to a map if width-chars not set
-    static void     ensureDefaultWidthChars(VclBuilder::stringmap &rMap);
 
     //see m_aDeferredProperties, you need this for toplevel dialogs
     //which build themselves from their ctor. The properties on
@@ -105,26 +99,21 @@ public:
     //to be applied post ctor
     void            setDeferredProperties();
 
-    //Helpers to retrofit all the existing code to the builder
-    static void     reorderWithinParent(std::vector< vcl::Window*>& rChilds, bool bIsButtonBox);
-    static void     reorderWithinParent(vcl::Window &rWindow, sal_uInt16 nNewPosition);
-
     /// return UI-File name (without '.ui')
     const OString& getUIFile() const
     {
         return m_sHelpRoot;
     }
 
+    /// Pre-loads all modules containing UI information
+    static void preload();
+
 private:
     VclBuilder(const VclBuilder&) = delete;
     VclBuilder& operator=(const VclBuilder&) = delete;
 
-    typedef std::map<OUString, std::unique_ptr<osl::Module>> ModuleMap;
-
-    //We store these until the builder is deleted, that way we can use the
-    //ui-previewer on custom widgets and guarantee the modules they are from
-    //exist for the duration of the dialog
-    ModuleMap       m_aModuleMap;
+    // owner for ListBox/ComboBox UserData
+    std::vector<std::unique_ptr<OUString>> m_aUserData;
 
     //If the toplevel window has any properties which need to be set on it,
     //but the toplevel is the owner of the builder, then its ctor
@@ -132,6 +121,8 @@ private:
     //are collected here and need to be set afterwards, e.g. during
     //Show or Execute
     stringmap      m_aDeferredProperties;
+
+    std::unique_ptr<NotebookBarAddonsItem> m_pNotebookBarAddonsItem;
 
     struct PackingData
     {
@@ -148,12 +139,10 @@ private:
     {
         OString m_sID;
         VclPtr<vcl::Window> m_pWindow;
-        short m_nResponseId;
         PackingData m_aPackingData;
         WinAndId(const OString &rId, vcl::Window *pWindow, bool bVertical)
             : m_sID(rId)
             , m_pWindow(pWindow)
-            , m_nResponseId(RET_CANCEL)
             , m_aPackingData(bVertical)
         {
         }
@@ -163,9 +152,8 @@ private:
     struct MenuAndId
     {
         OString m_sID;
-        VclPtr<PopupMenu> m_pMenu;
-        MenuAndId(const OString &rId, PopupMenu *pMenu);
-        ~MenuAndId();
+        VclPtr<Menu> m_pMenu;
+        MenuAndId(const OString &rId, Menu *pMenu);
     };
     std::vector<MenuAndId> m_aMenus;
 
@@ -231,7 +219,9 @@ private:
     };
 
     const ListStore* get_model_by_name(const OString& sID) const;
-    static void     mungeModel(ListBox &rTarget, const ListStore &rStore, sal_uInt16 nActiveId);
+    void     mungeModel(ListBox &rTarget, const ListStore &rStore, sal_uInt16 nActiveId);
+    void     mungeModel(ComboBox &rTarget, const ListStore &rStore, sal_uInt16 nActiveId);
+    void     mungeModel(SvTabListBox &rTarget, const ListStore &rStore, sal_uInt16 nActiveId);
 
     typedef stringmap TextBuffer;
     const TextBuffer* get_buffer_by_name(const OString& sID) const;
@@ -242,13 +232,9 @@ private:
     const Adjustment* get_adjustment_by_name(const OString& sID) const;
 
     static void     mungeAdjustment(NumericFormatter &rTarget, const Adjustment &rAdjustment);
-    static void     mungeAdjustment(DateField &rTarget, const Adjustment &rAdjustment);
-    static void     mungeAdjustment(TimeField &rTarget, const Adjustment &rAdjustment);
+    static void     mungeAdjustment(FormattedField &rTarget, const Adjustment &rAdjustment);
     static void     mungeAdjustment(ScrollBar &rTarget, const Adjustment &rAdjustment);
     static void     mungeAdjustment(Slider &rTarget, const Adjustment &rAdjustment);
-
-    typedef std::map<OString, OString> WidgetTranslations;
-    typedef std::map<OString, WidgetTranslations> Translations;
 
     struct stockinfo
     {
@@ -266,10 +252,11 @@ private:
         SizeGroup() {}
     };
 
-    typedef std::map<VclPtr<vcl::Window>, stringmap> AtkMap;
 
     struct ParserState
     {
+        std::locale m_aResLocale;
+
         std::vector<RadioButtonGroupMap> m_aGroupMaps;
 
         std::vector<ComboBoxModelMap> m_aModelMaps;
@@ -279,8 +266,7 @@ private:
         std::map<OString, TextBuffer> m_aTextBuffers;
 
         std::vector<WidgetAdjustmentMap> m_aNumericFormatterAdjustmentMaps;
-        std::vector<WidgetAdjustmentMap> m_aTimeFormatterAdjustmentMaps;
-        std::vector<WidgetAdjustmentMap> m_aDateFormatterAdjustmentMaps;
+        std::vector<WidgetAdjustmentMap> m_aFormattedFormatterAdjustmentMaps;
         std::vector<WidgetAdjustmentMap> m_aScrollAdjustmentMaps;
         std::vector<WidgetAdjustmentMap> m_aSliderAdjustmentMaps;
 
@@ -291,17 +277,17 @@ private:
 
         std::vector<ButtonMenuMap> m_aButtonMenuMaps;
 
-        Translations m_aTranslations;
-
         std::map<VclPtr<vcl::Window>, VclPtr<vcl::Window>> m_aRedundantParentWidgets;
 
         std::vector<SizeGroup> m_aSizeGroups;
 
-        AtkMap m_aAtkInfo;
+        std::map<VclPtr<vcl::Window>, stringmap> m_aAtkInfo;
 
         std::vector<MnemonicWidgetMap> m_aMnemonicWidgetMaps;
 
         std::vector< VclPtr<VclExpander> > m_aExpanderWidgets;
+
+        std::vector< VclPtr<MessageDialog> > m_aMessageDialogs;
 
         sal_uInt16 m_nLastToolbarId;
 
@@ -310,9 +296,6 @@ private:
         ParserState();
     };
 
-    void        loadTranslations(const LanguageTag &rLanguageTag, const OUString &rUri);
-    OString     getTranslation(const OString &rId, const OString &rProperty) const;
-
     OString     m_sID;
     OString     m_sHelpRoot;
     ResHookProc m_pStringReplace;
@@ -320,13 +303,13 @@ private:
     bool        m_bToplevelHasDeferredInit;
     bool        m_bToplevelHasDeferredProperties;
     bool        m_bToplevelParentFound;
+    bool        m_bLegacy;
     std::unique_ptr<ParserState> m_pParserState;
 
     vcl::Window *get_by_name(const OString& sID);
     void        delete_by_name(const OString& sID);
 
     class sortIntoBestTabTraversalOrder
-        : public std::binary_function<const vcl::Window*, const vcl::Window*, bool>
     {
     public:
                 sortIntoBestTabTraversalOrder(VclBuilder *pBuilder)
@@ -352,18 +335,15 @@ private:
                     stringmap &rVec);
 
     void        connectNumericFormatterAdjustment(const OString &id, const OUString &rAdjustment);
-    void        connectTimeFormatterAdjustment(const OString &id, const OUString &rAdjustment);
-    void        connectDateFormatterAdjustment(const OString &id, const OUString &rAdjustment);
+    void        connectFormattedFormatterAdjustment(const OString &id, const OUString &rAdjustment);
 
-    bool        extractGroup(const OString &id, stringmap &rVec);
-    bool        extractModel(const OString &id, stringmap &rVec);
-    bool        extractBuffer(const OString &id, stringmap &rVec);
+    void        extractGroup(const OString &id, stringmap &rVec);
+    void        extractModel(const OString &id, stringmap &rVec);
+    void        extractBuffer(const OString &id, stringmap &rVec);
     static bool extractAdjustmentToMap(const OString &id, stringmap &rVec, std::vector<WidgetAdjustmentMap>& rAdjustmentMap);
-    bool        extractButtonImage(const OString &id, stringmap &rMap, bool bRadio);
-    bool        extractStock(const OString &id, stringmap &rMap);
+    void        extractButtonImage(const OString &id, stringmap &rMap, bool bRadio);
+    void        extractStock(const OString &id, stringmap &rMap);
     void        extractMnemonicWidget(const OString &id, stringmap &rMap);
-
-    void        handleTranslations(xmlreader::XmlReader &reader);
 
     void        handleChild(vcl::Window *pParent, xmlreader::XmlReader &reader);
     VclPtr<vcl::Window> handleObject(vcl::Window *pParent, xmlreader::XmlReader &reader);
@@ -371,31 +351,32 @@ private:
     static std::vector<vcl::EnumContext::Context> handleStyle(xmlreader::XmlReader &reader, int &nPriority);
     static OString getStyleClass(xmlreader::XmlReader &reader);
     void        applyPackingProperty(vcl::Window *pCurrent, vcl::Window *pParent, xmlreader::XmlReader &reader);
-    void        collectProperty(xmlreader::XmlReader &reader, const OString &rID, stringmap &rVec);
+    void        collectProperty(xmlreader::XmlReader &reader, stringmap &rVec) const;
     static void collectPangoAttribute(xmlreader::XmlReader &reader, stringmap &rMap);
-    static void collectAtkAttribute(xmlreader::XmlReader &reader, stringmap &rMap);
+    static void collectAtkRelationAttribute(xmlreader::XmlReader &reader, stringmap &rMap);
+    static void collectAtkRoleAttribute(xmlreader::XmlReader &reader, stringmap &rMap);
     static void collectAccelerator(xmlreader::XmlReader &reader, accelmap &rMap);
 
     void        insertMenuObject(
-                   PopupMenu *pParent,
+                   Menu *pParent,
                    PopupMenu *pSubMenu,
                    const OString &rClass,
                    const OString &rID,
                    stringmap &rProps,
                    accelmap &rAccels);
 
-    void        handleMenuChild(PopupMenu *pParent, xmlreader::XmlReader &reader);
-    void        handleMenuObject(PopupMenu *pParent, xmlreader::XmlReader &reader);
+    void        handleMenuChild(Menu *pParent, xmlreader::XmlReader &reader);
+    void        handleMenuObject(Menu *pParent, xmlreader::XmlReader &reader);
 
-    void        handleListStore(xmlreader::XmlReader &reader, const OString &rID);
-    void        handleRow(xmlreader::XmlReader &reader, const OString &rID, sal_Int32 nRowIndex);
+    void        handleListStore(xmlreader::XmlReader &reader, const OString &rID, const OString &rClass);
+    void        handleRow(xmlreader::XmlReader &reader, const OString &rID);
     void        handleTabChild(vcl::Window *pParent, xmlreader::XmlReader &reader);
-    void        handleMenu(xmlreader::XmlReader &reader, const OString &rID);
-    std::vector<OUString> handleItems(xmlreader::XmlReader &reader, const OString &rID);
+    VclPtr<Menu> handleMenu(xmlreader::XmlReader &reader, const OString &rID, bool bMenuBar);
+    std::vector<ComboBoxTextItem> handleItems(xmlreader::XmlReader &reader) const;
 
-    void        handleSizeGroup(xmlreader::XmlReader &reader, const OString &rID);
+    void        handleSizeGroup(xmlreader::XmlReader &reader);
 
-    void        handleAtkObject(xmlreader::XmlReader &reader, const OString &rID, vcl::Window *pWindow);
+    void        handleAtkObject(xmlreader::XmlReader &reader, vcl::Window *pWindow);
 
     void        handleActionWidget(xmlreader::XmlReader &reader);
 
@@ -406,7 +387,33 @@ private:
     void        cleanupWidgetOwnScrolling(vcl::Window *pScrollParent, vcl::Window *pWindow, stringmap &rMap);
 
     void        set_response(const OString& sID, short nResponse);
+
+    OString         get_by_window(const vcl::Window *pWindow) const;
+    void            delete_by_window(vcl::Window *pWindow);
 };
+
+namespace BuilderUtils
+{
+    //apply the properties of rProps to pWindow
+    VCL_DLLPUBLIC void set_properties(vcl::Window *pWindow, const VclBuilder::stringmap &rProps);
+
+    //Convert _ gtk markup to ~ vcl markup
+    VCL_DLLPUBLIC OUString convertMnemonicMarkup(const OUString &rIn);
+
+    VCL_DLLPUBLIC OUString extractCustomProperty(VclBuilder::stringmap &rMap);
+
+    VCL_DLLPUBLIC bool extractDropdown(VclBuilder::stringmap &rMap);
+
+    //add a default value of 25 width-chars to a map if width-chars not set
+    VCL_DLLPUBLIC void ensureDefaultWidthChars(VclBuilder::stringmap &rMap);
+
+    //Helpers to retrofit all the existing code to the builder
+    VCL_DLLPUBLIC void reorderWithinParent(std::vector< vcl::Window*>& rChilds, bool bIsButtonBox);
+    VCL_DLLPUBLIC void reorderWithinParent(vcl::Window &rWindow, sal_uInt16 nNewPosition);
+
+    //Convert an accessibility role name to accessibility role number
+    VCL_DLLPUBLIC sal_Int16 getRoleFromName(const OString& roleName);
+}
 
 template <typename T>
 inline T* VclBuilder::get(VclPtr<T>& ret, const OString& sID)
@@ -422,7 +429,7 @@ inline T* VclBuilder::get(VclPtr<T>& ret, const OString& sID)
 }
 
 //sID may not exist, but must be of type T if it does
-template <typename T /*= vcl::Window if we had c++11*/>
+template <typename T>
 inline T* VclBuilder::get(const OString& sID)
 {
     vcl::Window *w = get_by_name(sID);
@@ -455,20 +462,13 @@ public:
     virtual         ~VclBuilderContainer();
     void            disposeBuilder();
 
-    static OUString getUIRootDir();
-    bool            hasBuilder() const { return m_pUIBuilder != nullptr; }
-
     template <typename T> T* get(VclPtr<T>& ret, const OString& sID)
     {
         return m_pUIBuilder->get<T>(ret, sID);
     }
-    template <typename T /*= vcl::Window if we had c++11*/> T* get(const OString & sID)
+    template <typename T = vcl::Window> T* get(const OString & sID)
     {
         return m_pUIBuilder->get<T>(sID);
-    }
-    PopupMenu* get_menu(const OString & sID)
-    {
-        return m_pUIBuilder->get_menu(sID);
     }
     void setDeferredProperties()
     {
@@ -488,12 +488,15 @@ public:
 
 protected:
     std::unique_ptr<VclBuilder> m_pUIBuilder;
+
+    friend class ::SalInstanceBuilder;
+    friend class ::ScreenshotTest;
 };
 
 /*
  * @return true if rValue is "True", "true", "1", etc.
  */
-bool VCL_DLLPUBLIC toBool(const OUString &rValue);
+bool toBool(const OUString &rValue);
 
 #endif
 

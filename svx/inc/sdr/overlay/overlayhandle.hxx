@@ -14,12 +14,11 @@
 #include <svx/sdr/overlay/overlayobject.hxx>
 #include <basegfx/vector/b2dsize.hxx>
 
-namespace sdr { namespace overlay {
+namespace sdr::overlay {
 
 
-class SVX_DLLPUBLIC OverlayHandle : public OverlayObjectWithBasePosition
+class OverlayHandle final : public OverlayObjectWithBasePosition
 {
-protected:
     basegfx::B2DSize maSize;
     Color maStrokeColor;
 
@@ -29,13 +28,13 @@ protected:
 public:
     OverlayHandle(const basegfx::B2DPoint& rBasePos,
                   const basegfx::B2DSize& rSize,
-                  Color& rStrokeColor,
-                  Color& rFillColor);
+                  Color const & rStrokeColor,
+                  Color const & rFillColor);
 
     virtual ~OverlayHandle() override;
 };
 
-}} // end of namespace sdr::overlay
+} // end of namespace sdr::overlay
 
 #endif // INCLUDED_SVX_SDR_OVERLAY_OVERLAYHANDLE_HXX
 

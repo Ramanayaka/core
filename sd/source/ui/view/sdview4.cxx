@@ -17,53 +17,50 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "View.hxx"
+#include <config_features.h>
+
+#include <View.hxx>
 #include <osl/file.hxx>
+#include <editeng/outlobj.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/docfilt.hxx>
 #include <sfx2/fcontnr.hxx>
 #include <sfx2/docfile.hxx>
-#include <vcl/msgbox.hxx>
-#include <svl/urlbmk.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <svx/svdpagv.hxx>
-#include <svx/xfillit.hxx>
+#include <svx/xbtmpit.hxx>
 #include <svx/svdundo.hxx>
-#include <svx/xoutbmp.hxx>
+#include <svx/xfillit0.hxx>
 #include <svx/svdograf.hxx>
 #include <svx/svdomedia.hxx>
 #include <svx/svdoole2.hxx>
-#include <sot/storage.hxx>
+#include <svx/ImageMapInfo.hxx>
 #include <sfx2/app.hxx>
 #include <avmedia/mediawindow.hxx>
-#include <avmedia/modeltools.hxx>
 #include <svtools/ehdl.hxx>
 #include <svtools/sfxecode.hxx>
 #include <svtools/embedhlp.hxx>
 #include <vcl/graphicfilter.hxx>
-#include "app.hrc"
-#include "Window.hxx"
-#include "DrawDocShell.hxx"
-#include "DrawViewShell.hxx"
-#include "fuinsfil.hxx"
-#include "drawdoc.hxx"
-#include "sdresid.hxx"
-#include "strings.hrc"
-#include "imapinfo.hxx"
-#include "sdpage.hxx"
-#include "view/SlideSorterView.hxx"
-#include "undo/undoobjects.hxx"
-#include <comphelper/processfactory.hxx>
-#include <com/sun/star/embed/ElementModes.hpp>
+#include <app.hrc>
+#include <Window.hxx>
+#include <DrawDocShell.hxx>
+#include <DrawViewShell.hxx>
+#include <fuinsfil.hxx>
+#include <drawdoc.hxx>
+#include <sdresid.hxx>
+#include <strings.hrc>
+#include <sdpage.hxx>
+#include <view/SlideSorterView.hxx>
 #include <com/sun/star/embed/XEmbedPersist.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/embed/NoVisualAreaSizeException.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <svtools/soerr.hxx>
 #include <sfx2/ipclient.hxx>
-#include <svx/svdoashp.hxx>
-#include "glob.hrc"
-
-#include <config_features.h>
+#include <tools/debug.hxx>
 
 using namespace com::sun::star;
 
@@ -75,12 +72,12 @@ namespace sd {
  * position, we create a new object and return a pointer to it.
  */
 SdrGrafObj* View::InsertGraphic( const Graphic& rGraphic, sal_Int8& rAction,
-                                   const Point& rPos, SdrObject* pObj, ImageMap* pImageMap )
+                                   const Point& rPos, SdrObject* pObj, ImageMap const * pImageMap )
 {
     SdrEndTextEdit();
     mnAction = rAction;
 
-    // Is there a object at the position rPos?
+    // Is there an object at the position rPos?
     SdrGrafObj*     pNewGrafObj = nullptr;
     SdrPageView*    pPV = GetSdrPageView();
     SdrObject*      pPickObj = pObj;
@@ -109,17 +106,20 @@ SdrGrafObj* View::InsertGraphic( const Graphic& rGraphic, sal_Int8& rAction,
         if( IsUndoEnabled() )
             BegUndo(SdResId(STR_INSERTGRAPHIC));
 
-        SdPage* pPage = static_cast<SdPage*>( pPickObj->GetPage() );
+        SdPage* pPage = static_cast<SdPage*>( pPickObj->getSdrPageFromSdrObject() );
 
         if( bIsGraphic )
         {
             // We fill the object with the Bitmap
-            pNewGrafObj = static_cast<SdrGrafObj*>( pPickObj->Clone() );
+            pNewGrafObj = static_cast<SdrGrafObj*>( pPickObj->CloneSdrObject(pPickObj->getSdrModelFromSdrObject()) );
             pNewGrafObj->SetGraphic(rGraphic);
         }
         else
         {
-            pNewGrafObj = new SdrGrafObj( rGraphic, pPickObj->GetLogicRect() );
+            pNewGrafObj = new SdrGrafObj(
+                getSdrModelFromSdrView(),
+                rGraphic,
+                pPickObj->GetLogicRect());
             pNewGrafObj->SetEmptyPresObj(true);
         }
 
@@ -134,12 +134,12 @@ SdrGrafObj* View::InsertGraphic( const Graphic& rGraphic, sal_Int8& rAction,
         if (pPage && pPage->IsPresObj(pPickObj))
         {
             // Insert new PresObj into the list
-            pPage->InsertPresObj( pNewGrafObj, PRESOBJ_GRAPHIC );
+            pPage->InsertPresObj( pNewGrafObj, PresObjKind::Graphic );
             pNewGrafObj->SetUserCall(pPickObj->GetUserCall());
         }
 
         if (pImageMap)
-            pNewGrafObj->AppendUserData(new SdIMapInfo(*pImageMap));
+            pNewGrafObj->AppendUserData(std::unique_ptr<SdrObjUserData>(new SvxIMapInfo(*pImageMap)));
 
         ReplaceObjectAtView(pPickObj, *pPV, pNewGrafObj); // maybe ReplaceObjectAtView
 
@@ -183,7 +183,7 @@ SdrGrafObj* View::InsertGraphic( const Graphic& rGraphic, sal_Int8& rAction,
                 pOutDev = Application::GetDefaultDevice();
 
             if( pOutDev )
-                aSize = pOutDev->PixelToLogic( rGraphic.GetPrefSize(), MapUnit::Map100thMM );
+                aSize = pOutDev->PixelToLogic(rGraphic.GetPrefSize(), MapMode(MapUnit::Map100thMM));
         }
         else
         {
@@ -192,11 +192,14 @@ SdrGrafObj* View::InsertGraphic( const Graphic& rGraphic, sal_Int8& rAction,
                                                 MapMode( MapUnit::Map100thMM ) );
         }
 
-        pNewGrafObj = new SdrGrafObj( rGraphic, ::tools::Rectangle( rPos, aSize ) );
+        pNewGrafObj = new SdrGrafObj(
+            getSdrModelFromSdrView(),
+            rGraphic,
+            ::tools::Rectangle(rPos, aSize));
         SdrPage* pPage = pPV->GetPage();
         Size aPageSize( pPage->GetSize() );
-        aPageSize.Width()  -= pPage->GetLftBorder() + pPage->GetRgtBorder();
-        aPageSize.Height() -= pPage->GetUppBorder() + pPage->GetLwrBorder();
+        aPageSize.AdjustWidth( -(pPage->GetLeftBorder() + pPage->GetRightBorder()) );
+        aPageSize.AdjustHeight( -(pPage->GetUpperBorder() + pPage->GetLowerBorder()) );
         pNewGrafObj->AdjustToMaxRect( ::tools::Rectangle( Point(), aPageSize ), true );
 
         SdrInsertFlags nOptions = SdrInsertFlags::SETDEFLAYER;
@@ -211,7 +214,7 @@ SdrGrafObj* View::InsertGraphic( const Graphic& rGraphic, sal_Int8& rAction,
 
         if( ( mnAction & DND_ACTION_MOVE ) && pPickObj && (pPickObj->IsEmptyPresObj() || pPickObj->GetUserCall()) )
         {
-            SdPage* pP = static_cast< SdPage* >( pPickObj->GetPage() );
+            SdPage* pP = static_cast< SdPage* >( pPickObj->getSdrPageFromSdrObject() );
 
             if ( pP && pP->IsMasterPage() )
                 bIsPresTarget = pP->IsPresObj(pPickObj);
@@ -221,7 +224,7 @@ SdrGrafObj* View::InsertGraphic( const Graphic& rGraphic, sal_Int8& rAction,
         {
             // replace object
             if (pImageMap)
-                pNewGrafObj->AppendUserData(new SdIMapInfo(*pImageMap));
+                pNewGrafObj->AppendUserData(std::unique_ptr<SdrObjUserData>(new SvxIMapInfo(*pImageMap)));
 
             ::tools::Rectangle aPickObjRect(pPickObj->GetCurrentBoundRect());
             Size aPickObjSize(aPickObjRect.GetSize());
@@ -261,10 +264,11 @@ SdrGrafObj* View::InsertGraphic( const Graphic& rGraphic, sal_Int8& rAction,
         }
         else
         {
-            InsertObjectAtView(pNewGrafObj, *pPV, nOptions);
-
-            if( pImageMap )
-                pNewGrafObj->AppendUserData(new SdIMapInfo(*pImageMap));
+            bool bSuccess = InsertObjectAtView(pNewGrafObj, *pPV, nOptions);
+            if (!bSuccess)
+                pNewGrafObj = nullptr;
+            else if (pImageMap)
+                pNewGrafObj->AppendUserData(std::unique_ptr<SdrObjUserData>(new SvxIMapInfo(*pImageMap)));
         }
     }
 
@@ -286,32 +290,16 @@ void View::InsertMediaURL( const OUString& rMediaURL, sal_Int8& rAction,
     {
         uno::Reference<frame::XModel> const xModel(
                 GetDoc().GetObjectShell()->GetModel());
+#if HAVE_FEATURE_AVMEDIA
         bool const bRet = ::avmedia::EmbedMedia(xModel, rMediaURL, realURL);
         if (!bRet) { return; }
+#else
+        return;
+#endif
     }
 
     InsertMediaObj( realURL, "application/vnd.sun.star.media", rAction, rPos, rSize );
 }
-#if HAVE_FEATURE_OPENGL
-#if HAVE_FEATURE_GLTF
-void View::Insert3DModelURL(
-    const OUString& rModelURL, sal_Int8& rAction,
-    const Point& rPos, const Size& rSize )
-{
-    OUString sRealURL;
-    uno::Reference<frame::XModel> const xModel(
-                GetDoc().GetObjectShell()->GetModel());
-    bool const bRet = ::avmedia::Embed3DModel(xModel, rModelURL, sRealURL);
-    if (!bRet)
-        return;
-
-    SdrMediaObj* pRetObject = InsertMediaObj( sRealURL, "model/vnd.gltf+json", rAction, rPos, rSize );
-    avmedia::MediaItem aItem = pRetObject->getMediaProperties();
-    aItem.setLoop(true);
-    pRetObject->setMediaProperties(aItem);
-}
-#endif
-#endif
 
 SdrMediaObj* View::InsertMediaObj( const OUString& rMediaURL, const OUString& rMimeType, sal_Int8& rAction,
                                    const Point& rPos, const Size& rSize )
@@ -321,7 +309,7 @@ SdrMediaObj* View::InsertMediaObj( const OUString& rMediaURL, const OUString& rM
 
     SdrMediaObj*    pNewMediaObj = nullptr;
     SdrPageView*    pPV = GetSdrPageView();
-    SdrObject*      pPickObj = GetEmptyPresentationObject( PRESOBJ_MEDIA );
+    SdrObject*      pPickObj = GetEmptyPresentationObject( PresObjKind::Media );
 
     if(pPV && dynamic_cast<const ::sd::slidesorter::view::SlideSorterView* >(this) )
     {
@@ -329,9 +317,9 @@ SdrMediaObj* View::InsertMediaObj( const OUString& rMediaURL, const OUString& rM
             pPV = nullptr;
     }
 
-    if( mnAction == DND_ACTION_LINK && pPickObj && pPV && dynamic_cast< SdrMediaObj *>( pPickObj ) !=  nullptr )
+    if( mnAction == DND_ACTION_LINK && pPV && dynamic_cast< SdrMediaObj *>( pPickObj ) )
     {
-        pNewMediaObj = static_cast< SdrMediaObj* >( pPickObj->Clone() );
+        pNewMediaObj = static_cast< SdrMediaObj* >( pPickObj->CloneSdrObject(pPickObj->getSdrModelFromSdrObject()) );
         pNewMediaObj->setURL( rMediaURL, ""/*TODO?*/, rMimeType );
 
         BegUndo(SdResId(STR_UNDO_DRAGDROP));
@@ -341,39 +329,52 @@ SdrMediaObj* View::InsertMediaObj( const OUString& rMediaURL, const OUString& rM
     else if( pPV )
     {
         ::tools::Rectangle aRect( rPos, rSize );
+        SdrObjUserCall* pUserCall = nullptr;
         if( pPickObj )
+        {
             aRect = pPickObj->GetLogicRect();
+            pUserCall = pPickObj->GetUserCall(); // ReplaceObjectAtView can free pPickObj
+        }
 
-        pNewMediaObj = new SdrMediaObj( aRect );
+        pNewMediaObj = new SdrMediaObj(
+            getSdrModelFromSdrView(),
+            aRect);
 
         bool bIsPres = false;
         if( pPickObj )
         {
-            SdPage* pPage = static_cast< SdPage* >(pPickObj->GetPage());
+            SdPage* pPage = static_cast< SdPage* >(pPickObj->getSdrPageFromSdrObject());
             bIsPres = pPage && pPage->IsPresObj(pPickObj);
             if( bIsPres )
             {
-                pPage->InsertPresObj( pNewMediaObj, PRESOBJ_MEDIA );
+                pPage->InsertPresObj( pNewMediaObj, PresObjKind::Media );
             }
         }
 
         if( pPickObj )
             ReplaceObjectAtView(pPickObj, *pPV, pNewMediaObj);
         else
-            InsertObjectAtView( pNewMediaObj, *pPV, SdrInsertFlags::SETDEFLAYER );
+        {
+            if (!InsertObjectAtView(pNewMediaObj, *pPV, SdrInsertFlags::SETDEFLAYER))
+                pNewMediaObj = nullptr;
+        }
 
         OUString referer;
         DrawDocShell * sh = GetDocSh();
         if (sh != nullptr && sh->HasName()) {
             referer = sh->GetMedium()->GetName();
         }
-        pNewMediaObj->setURL( rMediaURL, referer, rMimeType );
 
-        if( pPickObj )
+        if (pNewMediaObj)
         {
-            pNewMediaObj->AdjustToMaxRect( pPickObj->GetLogicRect() );
-            if( bIsPres )
-                pNewMediaObj->SetUserCall(pPickObj->GetUserCall());
+            pNewMediaObj->setURL( rMediaURL, referer, rMimeType );
+
+            if( pPickObj )
+            {
+                pNewMediaObj->AdjustToMaxRect( aRect );
+                if( bIsPres )
+                    pNewMediaObj->SetUserCall( pUserCall );
+            }
         }
     }
 
@@ -391,7 +392,7 @@ IMPL_LINK_NOARG(View, DropInsertFileHdl, Timer *, void)
     if( !mpViewSh )
         return;
 
-    SfxErrorContext aEc( ERRCTX_ERROR, mpViewSh->GetActiveWindow(), RID_SO_ERRCTX );
+    SfxErrorContext aEc( ERRCTX_ERROR, mpViewSh->GetFrameWeld(), RID_SO_ERRCTX );
     ErrCode nError = ERRCODE_NONE;
 
     ::std::vector< OUString >::const_iterator aIter( maDropFileVector.begin() );
@@ -414,7 +415,10 @@ IMPL_LINK_NOARG(View, DropInsertFileHdl, Timer *, void)
 
         aCurrentDropFile = aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
 
+#if HAVE_FEATURE_AVMEDIA
         if( !::avmedia::MediaWindow::isMediaURL( aCurrentDropFile, ""/*TODO?*/ ) )
+#else
+#endif
         {
             if( !rGraphicFilter.ImportGraphic( aGraphic, aURL ) )
             {
@@ -473,6 +477,7 @@ IMPL_LINK_NOARG(View, DropInsertFileHdl, Timer *, void)
 
         if( !bOK )
         {
+#if HAVE_FEATURE_AVMEDIA
             Size aPrefSize;
 
             if( ::avmedia::MediaWindow::isMediaURL( aCurrentDropFile, ""/*TODO?*/ ) &&
@@ -483,16 +488,18 @@ IMPL_LINK_NOARG(View, DropInsertFileHdl, Timer *, void)
                     ::sd::Window* pWin = mpViewSh->GetActiveWindow();
 
                     if( pWin )
-                        aPrefSize = pWin->PixelToLogic( aPrefSize, MapUnit::Map100thMM );
+                        aPrefSize = pWin->PixelToLogic(aPrefSize, MapMode(MapUnit::Map100thMM));
                     else
-                        aPrefSize = Application::GetDefaultDevice()->PixelToLogic( aPrefSize, MapUnit::Map100thMM );
+                        aPrefSize = Application::GetDefaultDevice()->PixelToLogic(aPrefSize, MapMode(MapUnit::Map100thMM));
                 }
                 else
                     aPrefSize  = Size( 5000, 5000 );
 
                 InsertMediaURL( aCurrentDropFile, mnAction, maDropPos, aPrefSize, true ) ;
             }
-            else if( mnAction & DND_ACTION_LINK )
+            else
+#endif
+            if( mnAction & DND_ACTION_LINK )
                 static_cast< DrawViewShell* >( mpViewSh )->InsertURLButton( aCurrentDropFile, aCurrentDropFile, OUString(), &maDropPos );
             else
             {
@@ -532,13 +539,17 @@ IMPL_LINK_NOARG(View, DropInsertFileHdl, Timer *, void)
 
                             if (!aSize.Width() || !aSize.Height())
                             {
-                                aSize.Width()   = 1410;
-                                aSize.Height()  = 1000;
+                                aSize.setWidth( 1410 );
+                                aSize.setHeight( 1000 );
                             }
 
                             aRect = ::tools::Rectangle( maDropPos, aSize );
 
-                            SdrOle2Obj* pOleObj = new SdrOle2Obj( svt::EmbeddedObjectRef( xObj, nAspect ), aName, aRect );
+                            SdrOle2Obj* pOleObj = new SdrOle2Obj(
+                                getSdrModelFromSdrView(),
+                                svt::EmbeddedObjectRef(xObj, nAspect),
+                                aName,
+                                aRect);
                             SdrInsertFlags nOptions = SdrInsertFlags::SETDEFLAYER;
 
                             if (mpViewSh != nullptr)
@@ -550,8 +561,8 @@ IMPL_LINK_NOARG(View, DropInsertFileHdl, Timer *, void)
                                     nOptions |= SdrInsertFlags::DONTMARK;
                             }
 
-                            InsertObjectAtView( pOleObj, *GetSdrPageView(), nOptions );
-                            pOleObj->SetLogicRect( aRect );
+                            if (InsertObjectAtView( pOleObj, *GetSdrPageView(), nOptions ))
+                                pOleObj->SetLogicRect( aRect );
                             aSz.Width = aRect.GetWidth();
                             aSz.Height = aRect.GetHeight();
                             xObj->setVisualAreaSize( nAspect,aSz );
@@ -578,7 +589,11 @@ IMPL_LINK_NOARG(View, DropInsertFileHdl, Timer *, void)
  */
 IMPL_LINK_NOARG(View, DropErrorHdl, Timer *, void)
 {
-    ScopedVclPtrInstance<InfoBox>( mpViewSh ? mpViewSh->GetActiveWindow() : nullptr, SdResId(STR_ACTION_NOTPOSSIBLE) )->Execute();
+    vcl::Window* pWin = mpViewSh ? mpViewSh->GetActiveWindow() : nullptr;
+    std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(pWin ? pWin->GetFrameWeld() : nullptr,
+                                                  VclMessageType::Info, VclButtonsType::Ok,
+                                                  SdResId(STR_ACTION_NOTPOSSIBLE)));
+    xInfoBox->run();
 }
 
 /**

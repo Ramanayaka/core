@@ -17,21 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
+#include <config_java.h>
 
-#include "hintids.hxx"
+#include <hintids.hxx>
 #include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 #include <svl/urihelper.hxx>
 #include <vcl/svapp.hxx>
 #include <sfx2/frmhtml.hxx>
 #include <sfx2/frmhtmlw.hxx>
-#include <vcl/wrkwin.hxx>
+#include <sfx2/frmdescr.hxx>
 #include <sot/storage.hxx>
 #include <svx/xoutbmp.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/lrspitem.hxx>
+#include <svtools/htmlout.hxx>
 #include <svtools/htmlkywd.hxx>
 #include <svtools/htmltokn.h>
+#include <tools/diagnose_ex.h>
+#include <IDocumentContentOperations.hxx>
 #include <SwAppletImpl.hxx>
 #include <fmtornt.hxx>
 #include <fmtfsize.hxx>
@@ -43,24 +47,38 @@
 #include <svl/ownlist.hxx>
 #include <unotools/mediadescriptor.hxx>
 #include <unotools/streamwrap.hxx>
-#include "pam.hxx"
-#include "doc.hxx"
-#include "ndtxt.hxx"
-#include "swerror.h"
-#include "ndole.hxx"
-#include "swtable.hxx"
+#include <pam.hxx>
+#include <doc.hxx>
+#include <swerror.h>
+#include <ndole.hxx>
+#include <docsh.hxx>
 #include "swhtml.hxx"
 #include "wrthtml.hxx"
 #include "htmlfly.hxx"
 #include "swcss1.hxx"
-#include "unoframe.hxx"
+#include "htmlreqifreader.hxx"
+#include <unoframe.hxx>
 #include <com/sun/star/embed/XClassifiedObject.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
+#include <com/sun/star/embed/ElementModes.hpp>
+#include <com/sun/star/io/XActiveDataStreamer.hpp>
+#include <com/sun/star/embed/XEmbedPersist2.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
 
 #include <comphelper/embeddedobjectcontainer.hxx>
 #include <comphelper/classids.hxx>
+#include <rtl/uri.hxx>
+#include <comphelper/storagehelper.hxx>
+#include <vcl/graphicfilter.hxx>
+#include <unotools/ucbstreamhelper.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <filter/msfilter/msoleexp.hxx>
+#include <comphelper/fileurl.hxx>
+#include <o3tl/safeint.hxx>
+#include <osl/file.hxx>
+#include <comphelper/propertyvalue.hxx>
 
 using namespace com::sun::star;
 
@@ -117,17 +135,41 @@ const HtmlFrmOpts HTML_FRMOPTS_OLE_CSS1       =
     HtmlFrmOpts::SAlign |
     HtmlFrmOpts::SSpace;
 
+namespace
+{
+/**
+ * Calculates a filename for an image, provided the HTML file name, the image
+ * itself and a wanted extension.
+ */
+OUString lcl_CalculateFileName(const OUString* pOrigFileName, const Graphic& rGraphic,
+                               const OUString& rExtension)
+{
+    OUString aFileName;
+
+    if (pOrigFileName)
+        aFileName = *pOrigFileName;
+    INetURLObject aURL(aFileName);
+    OUString aName = aURL.getBase() + "_" +
+        aURL.getExtension() + "_" +
+        OUString::number(rGraphic.GetChecksum(), 16);
+    aURL.setBase(aName);
+    aURL.setExtension(rExtension);
+    aFileName = aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE);
+
+    return aFileName;
+}
+}
+
 void SwHTMLParser::SetFixSize( const Size& rPixSize,
                                const Size& rTwipDfltSize,
-                               bool bPrcWidth, bool bPrcHeight,
-                               SfxItemSet& /*rCSS1ItemSet*/,
-                               SvxCSS1PropertyInfo& rCSS1PropInfo,
+                               bool bPercentWidth, bool bPercentHeight,
+                               SvxCSS1PropertyInfo const & rCSS1PropInfo,
                                SfxItemSet& rFlyItemSet )
 {
     // convert absolute size values into Twip
-    sal_uInt8 nPrcWidth = 0, nPrcHeight = 0;
-    Size aTwipSz( bPrcWidth || USHRT_MAX==rPixSize.Width() ? 0 : rPixSize.Width(),
-                  bPrcHeight || USHRT_MAX==rPixSize.Height() ? 0 : rPixSize.Height() );
+    sal_uInt8 nPercentWidth = 0, nPercentHeight = 0;
+    Size aTwipSz( bPercentWidth || USHRT_MAX==rPixSize.Width() ? 0 : rPixSize.Width(),
+                  bPercentHeight || USHRT_MAX==rPixSize.Height() ? 0 : rPixSize.Height() );
     if( (aTwipSz.Width() || aTwipSz.Height()) && Application::GetDefaultDevice() )
     {
         aTwipSz =
@@ -138,61 +180,61 @@ void SwHTMLParser::SetFixSize( const Size& rPixSize,
     // process width
     if( SVX_CSS1_LTYPE_PERCENTAGE == rCSS1PropInfo.m_eWidthType )
     {
-        nPrcWidth = (sal_uInt8)rCSS1PropInfo.m_nWidth;
-        aTwipSz.Width() = rTwipDfltSize.Width();
+        nPercentWidth = static_cast<sal_uInt8>(rCSS1PropInfo.m_nWidth);
+        aTwipSz.setWidth( rTwipDfltSize.Width() );
     }
     else if( SVX_CSS1_LTYPE_TWIP== rCSS1PropInfo.m_eWidthType )
     {
-        aTwipSz.Width() = rCSS1PropInfo.m_nWidth;
+        aTwipSz.setWidth( rCSS1PropInfo.m_nWidth );
     }
-    else if( bPrcWidth && rPixSize.Width() )
+    else if( bPercentWidth && rPixSize.Width() )
     {
-        nPrcWidth = (sal_uInt8)rPixSize.Width();
-        if( nPrcWidth > 100 )
-            nPrcWidth = 100;
+        nPercentWidth = static_cast<sal_uInt8>(rPixSize.Width());
+        if( nPercentWidth > 100 )
+            nPercentWidth = 100;
 
-        aTwipSz.Width() = rTwipDfltSize.Width();
+        aTwipSz.setWidth( rTwipDfltSize.Width() );
     }
     else if( USHRT_MAX==rPixSize.Width() )
     {
-        aTwipSz.Width() = rTwipDfltSize.Width();
+        aTwipSz.setWidth( rTwipDfltSize.Width() );
     }
     if( aTwipSz.Width() < MINFLY )
     {
-        aTwipSz.Width() = MINFLY;
+        aTwipSz.setWidth( MINFLY );
     }
 
     // process height
     if( SVX_CSS1_LTYPE_PERCENTAGE == rCSS1PropInfo.m_eHeightType )
     {
-        nPrcHeight = (sal_uInt8)rCSS1PropInfo.m_nHeight;
-        aTwipSz.Height() = rTwipDfltSize.Height();
+        nPercentHeight = static_cast<sal_uInt8>(rCSS1PropInfo.m_nHeight);
+        aTwipSz.setHeight( rTwipDfltSize.Height() );
     }
     else if( SVX_CSS1_LTYPE_TWIP== rCSS1PropInfo.m_eHeightType )
     {
-        aTwipSz.Height() = rCSS1PropInfo.m_nHeight;
+        aTwipSz.setHeight( rCSS1PropInfo.m_nHeight );
     }
-    else if( bPrcHeight && rPixSize.Height() )
+    else if( bPercentHeight && rPixSize.Height() )
     {
-        nPrcHeight = (sal_uInt8)rPixSize.Height();
-        if( nPrcHeight > 100 )
-            nPrcHeight = 100;
+        nPercentHeight = static_cast<sal_uInt8>(rPixSize.Height());
+        if( nPercentHeight > 100 )
+            nPercentHeight = 100;
 
-        aTwipSz.Height() = rTwipDfltSize.Height();
+        aTwipSz.setHeight( rTwipDfltSize.Height() );
     }
     else if( USHRT_MAX==rPixSize.Height() )
     {
-        aTwipSz.Height() = rTwipDfltSize.Height();
+        aTwipSz.setHeight( rTwipDfltSize.Height() );
     }
     if( aTwipSz.Height() < MINFLY )
     {
-        aTwipSz.Height() = MINFLY;
+        aTwipSz.setHeight( MINFLY );
     }
 
     // set size
-    SwFormatFrameSize aFrameSize( ATT_FIX_SIZE, aTwipSz.Width(), aTwipSz.Height() );
-    aFrameSize.SetWidthPercent( nPrcWidth );
-    aFrameSize.SetHeightPercent( nPrcHeight );
+    SwFormatFrameSize aFrameSize( SwFrameSize::Fixed, aTwipSz.Width(), aTwipSz.Height() );
+    aFrameSize.SetWidthPercent( nPercentWidth );
+    aFrameSize.SetHeightPercent( nPercentHeight );
     rFlyItemSet.Put( aFrameSize );
 }
 
@@ -210,7 +252,7 @@ void SwHTMLParser::SetSpace( const Size& rPixSpace,
             Application::GetDefaultDevice()->PixelToLogic( aTwipSpc,
                                                 MapMode(MapUnit::MapTwip) );
         nLeftSpace = nRightSpace = aTwipSpc.Width();
-        nUpperSpace = nLowerSpace = (sal_uInt16)aTwipSpc.Height();
+        nUpperSpace = nLowerSpace = static_cast<sal_uInt16>(aTwipSpc.Height());
     }
 
     // set left/right margin
@@ -220,7 +262,7 @@ void SwHTMLParser::SetSpace( const Size& rPixSpace,
         // if applicable remove the first line indent
         const SvxLRSpaceItem *pLRItem = static_cast<const SvxLRSpaceItem *>(pItem);
         SvxLRSpaceItem aLRItem( *pLRItem );
-        aLRItem.SetTextFirstLineOfst( 0 );
+        aLRItem.SetTextFirstLineOffset( 0 );
         if( rCSS1PropInfo.m_bLeftMargin )
         {
             nLeftSpace = aLRItem.GetLeft();
@@ -236,13 +278,13 @@ void SwHTMLParser::SetSpace( const Size& rPixSpace,
     if( nLeftSpace > 0 || nRightSpace > 0 )
     {
         SvxLRSpaceItem aLRItem( RES_LR_SPACE );
-        aLRItem.SetLeft( nLeftSpace > 0 ? nLeftSpace : 0 );
-        aLRItem.SetRight( nRightSpace > 0 ? nRightSpace : 0 );
+        aLRItem.SetLeft( std::max<sal_Int32>(nLeftSpace, 0) );
+        aLRItem.SetRight( std::max<sal_Int32>(nRightSpace, 0) );
         rFlyItemSet.Put( aLRItem );
         if( nLeftSpace )
         {
             const SwFormatHoriOrient& rHoriOri =
-                static_cast<const SwFormatHoriOrient&>(rFlyItemSet.Get( RES_HORI_ORIENT ));
+                rFlyItemSet.Get( RES_HORI_ORIENT );
             if( text::HoriOrientation::NONE == rHoriOri.GetHoriOrient() )
             {
                 SwFormatHoriOrient aHoriOri( rHoriOri );
@@ -269,32 +311,46 @@ void SwHTMLParser::SetSpace( const Size& rPixSpace,
         }
         rCSS1ItemSet.ClearItem( RES_UL_SPACE );
     }
-    if( nUpperSpace || nLowerSpace )
+    if( !(nUpperSpace || nLowerSpace) )
+        return;
+
+    SvxULSpaceItem aULItem( RES_UL_SPACE );
+    aULItem.SetUpper( nUpperSpace );
+    aULItem.SetLower( nLowerSpace );
+    rFlyItemSet.Put( aULItem );
+    if( nUpperSpace )
     {
-        SvxULSpaceItem aULItem( RES_UL_SPACE );
-        aULItem.SetUpper( nUpperSpace );
-        aULItem.SetLower( nLowerSpace );
-        rFlyItemSet.Put( aULItem );
-        if( nUpperSpace )
+        const SwFormatVertOrient& rVertOri =
+            rFlyItemSet.Get( RES_VERT_ORIENT );
+        if( text::VertOrientation::NONE == rVertOri.GetVertOrient() )
         {
-            const SwFormatVertOrient& rVertOri =
-                static_cast<const SwFormatVertOrient&>(rFlyItemSet.Get( RES_VERT_ORIENT ));
-            if( text::VertOrientation::NONE == rVertOri.GetVertOrient() )
-            {
-                SwFormatVertOrient aVertOri( rVertOri );
-                aVertOri.SetPos( aVertOri.GetPos() + nUpperSpace );
-                rFlyItemSet.Put( aVertOri );
-            }
+            SwFormatVertOrient aVertOri( rVertOri );
+            aVertOri.SetPos( aVertOri.GetPos() + nUpperSpace );
+            rFlyItemSet.Put( aVertOri );
         }
     }
 }
 
-void SwHTMLParser::InsertEmbed()
+OUString SwHTMLParser::StripQueryFromPath(const OUString& rBase, const OUString& rPath)
+{
+    if (!comphelper::isFileUrl(rBase))
+        return rPath;
+
+    sal_Int32 nIndex = rPath.indexOf('?');
+
+    if (nIndex != -1)
+        return rPath.copy(0, nIndex);
+
+    return rPath;
+}
+
+bool SwHTMLParser::InsertEmbed()
 {
     OUString aURL, aType, aName, aAlt, aId, aStyle, aClass;
+    OUString aData;
     Size aSize( USHRT_MAX, USHRT_MAX );
     Size aSpace( USHRT_MAX, USHRT_MAX );
-    bool bPrcWidth = false, bPrcHeight = false, bHidden = false;
+    bool bPercentWidth = false, bPercentHeight = false, bHidden = false;
     sal_Int16 eVertOri = text::VertOrientation::NONE;
     sal_Int16 eHoriOri = text::HoriOrientation::NONE;
     SvCommandList aCmdLst;
@@ -339,24 +395,28 @@ void SwHTMLParser::InsertEmbed()
         case HtmlOptionId::WIDTH:
             if( USHRT_MAX==aSize.Width() )
             {
-                bPrcWidth = (rOption.GetString().indexOf('%') != -1);
-                aSize.Width() = (long)rOption.GetNumber();
+                bPercentWidth = (rOption.GetString().indexOf('%') != -1);
+                aSize.setWidth( static_cast<long>(rOption.GetNumber()) );
             }
             break;
         case HtmlOptionId::HEIGHT:
             if( USHRT_MAX==aSize.Height() )
             {
-                bPrcHeight = (rOption.GetString().indexOf('%') != -1);
-                aSize.Height() = (long)rOption.GetNumber();
+                bPercentHeight = (rOption.GetString().indexOf('%') != -1);
+                aSize.setHeight( static_cast<long>(rOption.GetNumber()) );
             }
             break;
         case HtmlOptionId::HSPACE:
             if( USHRT_MAX==aSpace.Width() )
-                aSpace.Width() = (long)rOption.GetNumber();
+                aSpace.setWidth( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::VSPACE:
             if( USHRT_MAX==aSpace.Height() )
-                aSpace.Height() = (long)rOption.GetNumber();
+                aSpace.setHeight( static_cast<long>(rOption.GetNumber()) );
+            break;
+        case HtmlOptionId::DATA:
+            if (m_bXHTML && aURL.isEmpty())
+                aData = rOption.GetString();
             break;
         case HtmlOptionId::UNKNOWN:
             if (rOption.GetTokenString().equalsIgnoreAsciiCase(
@@ -373,6 +433,10 @@ void SwHTMLParser::InsertEmbed()
         aCmdLst.Append( rOption.GetTokenString(), rOption.GetString() );
     }
 
+    if (aType == "image/png" && m_aEmbeds.empty())
+        // Toplevel <object> for PNG -> that's an image, not an OLE object.
+        return false;
+
     SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
     SvxCSS1PropertyInfo aPropInfo;
     if( HasStyleOptions( aStyle, aId, aClass ) )
@@ -382,15 +446,15 @@ void SwHTMLParser::InsertEmbed()
     if( eVertOri==text::VertOrientation::NONE && eHoriOri==text::HoriOrientation::NONE )
         eVertOri = text::VertOrientation::TOP;
     if( USHRT_MAX==aSpace.Width() )
-        aSpace.Width() = 0;
+        aSpace.setWidth( 0 );
     if( USHRT_MAX==aSpace.Height() )
-        aSpace.Height() = 0;
+        aSpace.setHeight( 0 );
     if( bHidden )
     {
         // Size (0,0) will be changed to (MINFLY, MINFLY) in SetFrameSize()
-        aSize.Width() = 0; aSize.Height() = 0;
-        aSpace.Width() = 0; aSpace.Height() = 0;
-        bPrcWidth = bPrcHeight = false;
+        aSize.setWidth( 0 ); aSize.setHeight( 0 );
+        aSpace.setWidth( 0 ); aSpace.setHeight( 0 );
+        bPercentWidth = bPercentHeight = false;
     }
 
     // prepare the URL
@@ -400,30 +464,150 @@ void SwHTMLParser::InsertEmbed()
                        URIHelper::SmartRel2Abs(
                            INetURLObject(m_sBaseURL), aURL,
                            URIHelper::GetMaybeFileHdl()) );
+    bool bHasData = !aData.isEmpty();
+
+    try
+    {
+        // Strip query and everything after that for file:// URLs, browsers do
+        // the same.
+        aURLObj.SetURL(rtl::Uri::convertRelToAbs(
+            m_sBaseURL, SwHTMLParser::StripQueryFromPath(m_sBaseURL, aData)));
+    }
+    catch (const rtl::MalformedUriException& /*rException*/)
+    {
+        bHasData = false;
+    }
 
     // do not insert plugin if it has neither URL nor type
     bool bHasType = !aType.isEmpty();
-    if( !bHasURL && !bHasType )
-        return;
+    if( !bHasURL && !bHasType && !bHasData )
+        return true;
+
+    if (!m_aEmbeds.empty())
+    {
+        // Nested XHTML <object> element: points to replacement graphic.
+        SwOLENode* pOLENode = m_aEmbeds.top();
+        svt::EmbeddedObjectRef& rObj = pOLENode->GetOLEObj().GetObject();
+        Graphic aGraphic;
+        if (GraphicFilter::GetGraphicFilter().ImportGraphic(aGraphic, aURLObj) != ERRCODE_NONE)
+            return true;
+
+        rObj.SetGraphic(aGraphic, aType);
+
+        // Set the size of the OLE frame to the size of the graphic.
+        OutputDevice* pDevice = Application::GetDefaultDevice();
+        if (aSize.getHeight() == USHRT_MAX || aSize.getWidth() == USHRT_MAX)
+        {
+            Size aPixelSize = aGraphic.GetSizePixel(pDevice);
+            if (aSize.getWidth() == USHRT_MAX)
+                aSize.setWidth(aPixelSize.getWidth());
+            if (aSize.getHeight() == USHRT_MAX)
+                aSize.setHeight(aPixelSize.getHeight());
+        }
+
+        SwFrameFormat* pFormat = pOLENode->GetFlyFormat();
+        if (!pFormat)
+            return true;
+
+        SwAttrSet aAttrSet(pFormat->GetAttrSet());
+        aAttrSet.ClearItem(RES_CNTNT);
+        Size aTwipSize(pDevice->PixelToLogic(aSize, MapMode(MapUnit::MapTwip)));
+        SwFormatFrameSize aFrameSize(SwFrameSize::Fixed, aTwipSize.Width(), aTwipSize.Height());
+        aAttrSet.Put(aFrameSize);
+        pOLENode->GetDoc()->SetFlyFrameAttr(*pFormat, aAttrSet);
+        return true;
+    }
 
     // create the plug-in
     comphelper::EmbeddedObjectContainer aCnt;
     OUString aObjName;
-    uno::Reference < embed::XEmbeddedObject > xObj = aCnt.CreateEmbeddedObject( SvGlobalName( SO3_PLUGIN_CLASSID ).GetByteSequence(), aObjName );
-    if ( svt::EmbeddedObjectRef::TryRunningState( xObj ) )
+    uno::Reference < embed::XEmbeddedObject > xObj;
+    if (!bHasData)
     {
-        uno::Reference < beans::XPropertySet > xSet( xObj->getComponent(), uno::UNO_QUERY );
-        if ( xSet.is() )
+        xObj = aCnt.CreateEmbeddedObject( SvGlobalName( SO3_PLUGIN_CLASSID ).GetByteSequence(), aObjName );
+        if ( svt::EmbeddedObjectRef::TryRunningState( xObj ) )
         {
-            if( bHasURL )
-                xSet->setPropertyValue("PluginURL", uno::makeAny( aURL ) );
-            if( bHasType )
-                xSet->setPropertyValue("PluginMimeType", uno::makeAny( aType ) );
+            uno::Reference < beans::XPropertySet > xSet( xObj->getComponent(), uno::UNO_QUERY );
+            if ( xSet.is() )
+            {
+                if( bHasURL )
+                    xSet->setPropertyValue("PluginURL", uno::makeAny( aURL ) );
+                if( bHasType )
+                    xSet->setPropertyValue("PluginMimeType", uno::makeAny( aType ) );
 
-            uno::Sequence < beans::PropertyValue > aProps;
-            aCmdLst.FillSequence( aProps );
-            xSet->setPropertyValue("PluginCommands", uno::makeAny( aProps ) );
+                uno::Sequence < beans::PropertyValue > aProps;
+                aCmdLst.FillSequence( aProps );
+                xSet->setPropertyValue("PluginCommands", uno::makeAny( aProps ) );
 
+            }
+        }
+    }
+    else if (SwDocShell* pDocSh = m_xDoc->GetDocShell())
+    {
+        // Has non-empty data attribute in XHTML: map that to an OLE object.
+        uno::Reference<embed::XStorage> xStorage = pDocSh->GetStorage();
+        aCnt.SwitchPersistence(xStorage);
+        aObjName = aCnt.CreateUniqueObjectName();
+        {
+            SvFileStream aFileStream(aURLObj.GetMainURL(INetURLObject::DecodeMechanism::NONE),
+                                     StreamMode::READ);
+            uno::Reference<io::XInputStream> xInStream;
+            SvMemoryStream aMemoryStream;
+
+            // Allow any MIME type that starts with magic, unless a set of allowed types are
+            // specified.
+            auto it = m_aAllowedRTFOLEMimeTypes.find(aType);
+            if (m_aAllowedRTFOLEMimeTypes.empty() || it != m_aAllowedRTFOLEMimeTypes.end())
+            {
+                OString aMagic("{\\object");
+                OString aHeader(read_uInt8s_ToOString(aFileStream, aMagic.getLength()));
+                aFileStream.Seek(0);
+                if (aHeader == aMagic)
+                {
+                    // OLE2 wrapped in RTF: either own format or real OLE2 embedding.
+                    bool bOwnFormat = false;
+                    if (SwReqIfReader::ExtractOleFromRtf(aFileStream, aMemoryStream, bOwnFormat))
+                    {
+                        xInStream.set(new utl::OStreamWrapper(aMemoryStream));
+                    }
+
+                    if (bOwnFormat)
+                    {
+                        uno::Sequence<beans::PropertyValue> aMedium = comphelper::InitPropertySequence(
+                            { { "InputStream", uno::makeAny(xInStream) },
+                              { "URL", uno::makeAny(OUString("private:stream")) },
+                              { "DocumentBaseURL", uno::makeAny(m_sBaseURL) } });
+                        xObj = aCnt.InsertEmbeddedObject(aMedium, aName, &m_sBaseURL);
+                    }
+                    else
+                    {
+                        // The type is now an OLE2 container, not the original XHTML type.
+                        aType = "application/vnd.sun.star.oleobject";
+                    }
+                }
+            }
+
+            if (!xInStream.is())
+                // Non-RTF case.
+                xInStream.set(new utl::OStreamWrapper(aFileStream));
+
+            if (!xObj.is())
+            {
+                uno::Reference<io::XStream> xOutStream
+                    = xStorage->openStreamElement(aObjName, embed::ElementModes::READWRITE);
+                if (aFileStream.IsOpen())
+                    comphelper::OStorageHelper::CopyInputToOutput(xInStream,
+                                                                  xOutStream->getOutputStream());
+
+                if (!aType.isEmpty())
+                {
+                    // Set media type of the native data.
+                    uno::Reference<beans::XPropertySet> xOutStreamProps(xOutStream, uno::UNO_QUERY);
+                    if (xOutStreamProps.is())
+                        xOutStreamProps->setPropertyValue("MediaType", uno::makeAny(aType));
+                }
+            }
+            xObj = aCnt.GetEmbeddedObject(aObjName);
         }
     }
 
@@ -449,15 +633,31 @@ void SwHTMLParser::InsertEmbed()
 
     // and the size of the frame
     Size aDfltSz( HTML_DFLT_EMBED_WIDTH, HTML_DFLT_EMBED_HEIGHT );
-    SetFixSize( aSize, aDfltSz, bPrcWidth, bPrcHeight, aItemSet, aPropInfo,
-                aFrameSet );
+    SetFixSize( aSize, aDfltSz, bPercentWidth, bPercentHeight, aPropInfo, aFrameSet );
     SetSpace( aSpace, aItemSet, aPropInfo, aFrameSet );
 
     // and insert into the document
+    uno::Reference<lang::XInitialization> xObjInitialization(xObj, uno::UNO_QUERY);
+    if (xObjInitialization.is())
+    {
+        // Request that the native data of the embedded object is not modified
+        // during parsing.
+        uno::Sequence<beans::PropertyValue> aValues{ comphelper::makePropertyValue("StreamReadOnly",
+                                                                                   true) };
+        uno::Sequence<uno::Any> aArguments{ uno::makeAny(aValues) };
+        xObjInitialization->initialize(aArguments);
+    }
     SwFrameFormat* pFlyFormat =
         m_xDoc->getIDocumentContentOperations().InsertEmbObject(*m_pPam,
                 ::svt::EmbeddedObjectRef(xObj, embed::Aspects::MSOLE_CONTENT),
                 &aFrameSet);
+    if (xObjInitialization.is())
+    {
+        uno::Sequence<beans::PropertyValue> aValues{ comphelper::makePropertyValue("StreamReadOnly",
+                                                                                   false) };
+        uno::Sequence<uno::Any> aArguments{ uno::makeAny(aValues) };
+        xObjInitialization->initialize(aArguments);
+    }
 
     // set name at FrameFormat
     if( !aName.isEmpty() )
@@ -477,23 +677,33 @@ void SwHTMLParser::InsertEmbed()
         // character-bound frame, here we must create the frames by hand.
         RegisterFlyFrame( pFlyFormat );
     }
+
+    if (!bHasData)
+        return true;
+
+    SwOLENode* pOLENode = pNoTextNd->GetOLENode();
+    if (!pOLENode)
+        return true;
+
+    m_aEmbeds.push(pOLENode);
+
+    return true;
 }
 
 #if HAVE_FEATURE_JAVA
 void SwHTMLParser::NewObject()
 {
     OUString aClassID;
-    OUString aName, aStandBy, aId, aStyle, aClass;
+    OUString aStandBy, aId, aStyle, aClass;
     Size aSize( USHRT_MAX, USHRT_MAX );
     Size aSpace( 0, 0 );
     sal_Int16 eVertOri = text::VertOrientation::TOP;
     sal_Int16 eHoriOri = text::HoriOrientation::NONE;
 
-    bool bPrcWidth = false, bPrcHeight = false,
+    bool bPercentWidth = false, bPercentHeight = false,
              bDeclare = false;
     // create a new Command list
-    delete m_pAppletImpl;
-    m_pAppletImpl = new SwApplet_Impl( m_xDoc->GetAttrPool() );
+    m_pAppletImpl.reset(new SwApplet_Impl( m_xDoc->GetAttrPool() ));
 
     const HTMLOptions& rHTMLOptions = GetOptions();
     for (size_t i = rHTMLOptions.size(); i; )
@@ -531,12 +741,12 @@ void SwHTMLParser::NewObject()
             aStandBy = rOption.GetString();
             break;
         case HtmlOptionId::WIDTH:
-            bPrcWidth = (rOption.GetString().indexOf('%') != -1);
-            aSize.Width() = (long)rOption.GetNumber();
+            bPercentWidth = (rOption.GetString().indexOf('%') != -1);
+            aSize.setWidth( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::HEIGHT:
-            bPrcHeight = (rOption.GetString().indexOf('%') != -1);
-            aSize.Height() = (long)rOption.GetNumber();
+            bPercentHeight = (rOption.GetString().indexOf('%') != -1);
+            aSize.setHeight( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::ALIGN:
             eVertOri = rOption.GetEnum( aHTMLImgVAlignTable, eVertOri );
@@ -545,13 +755,12 @@ void SwHTMLParser::NewObject()
         case HtmlOptionId::USEMAP:
             break;
         case HtmlOptionId::NAME:
-            aName = rOption.GetString();
             break;
         case HtmlOptionId::HSPACE:
-            aSpace.Width() = (long)rOption.GetNumber();
+            aSpace.setWidth( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::VSPACE:
-            aSpace.Height() = (long)rOption.GetNumber();
+            aSpace.setHeight( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::BORDER:
             break;
@@ -591,8 +800,7 @@ void SwHTMLParser::NewObject()
 
     if( !bIsApplet )
     {
-        delete m_pAppletImpl;
-        m_pAppletImpl = nullptr;
+        m_pAppletImpl.reset();
         return;
     }
 
@@ -612,8 +820,7 @@ void SwHTMLParser::NewObject()
 
     // and still the size of the frame
     Size aDfltSz( HTML_DFLT_APPLET_WIDTH, HTML_DFLT_APPLET_HEIGHT );
-    SetFixSize( aSize, aDfltSz, bPrcWidth, bPrcHeight, aItemSet, aPropInfo,
-                rFrameSet );
+    SetFixSize( aSize, aDfltSz, bPercentWidth, bPercentHeight, aPropInfo, rFrameSet );
     SetSpace( aSpace, aItemSet, aPropInfo, rFrameSet );
 }
 #endif
@@ -623,28 +830,27 @@ void SwHTMLParser::EndObject()
 #if HAVE_FEATURE_JAVA
     if( !m_pAppletImpl )
         return;
-    if( m_pAppletImpl->CreateApplet( m_sBaseURL ) )
-    {
-        m_pAppletImpl->FinishApplet();
+    if( !m_pAppletImpl->CreateApplet( m_sBaseURL ) )
+        return;
 
-        // and insert into the document
-        SwFrameFormat* pFlyFormat =
-            m_xDoc->getIDocumentContentOperations().InsertEmbObject(*m_pPam,
-                    ::svt::EmbeddedObjectRef( m_pAppletImpl->GetApplet(), embed::Aspects::MSOLE_CONTENT ),
-                    &m_pAppletImpl->GetItemSet() );
+    m_pAppletImpl->FinishApplet();
 
-        // set the alternative name
-        SwNoTextNode *pNoTextNd =
-            m_xDoc->GetNodes()[ pFlyFormat->GetContent().GetContentIdx()
-                              ->GetIndex()+1 ]->GetNoTextNode();
-        pNoTextNd->SetTitle( m_pAppletImpl->GetAltText() );
+    // and insert into the document
+    SwFrameFormat* pFlyFormat =
+        m_xDoc->getIDocumentContentOperations().InsertEmbObject(*m_pPam,
+                ::svt::EmbeddedObjectRef( m_pAppletImpl->GetApplet(), embed::Aspects::MSOLE_CONTENT ),
+                &m_pAppletImpl->GetItemSet() );
 
-        // if applicable create frames and register auto-bound frames
-        RegisterFlyFrame( pFlyFormat );
+    // set the alternative name
+    SwNoTextNode *pNoTextNd =
+        m_xDoc->GetNodes()[ pFlyFormat->GetContent().GetContentIdx()
+                          ->GetIndex()+1 ]->GetNoTextNode();
+    pNoTextNd->SetTitle( m_pAppletImpl->GetAltText() );
 
-        delete m_pAppletImpl;
-        m_pAppletImpl = nullptr;
-    }
+    // if applicable create frames and register auto-bound frames
+    RegisterFlyFrame( pFlyFormat );
+
+    m_pAppletImpl.reset();
 #else
     (void) this;                // Silence loplugin:staticmethods
 #endif
@@ -656,13 +862,12 @@ void SwHTMLParser::InsertApplet()
     OUString aCodeBase, aCode, aName, aAlt, aId, aStyle, aClass;
     Size aSize( USHRT_MAX, USHRT_MAX );
     Size aSpace( 0, 0 );
-    bool bPrcWidth = false, bPrcHeight = false, bMayScript = false;
+    bool bPercentWidth = false, bPercentHeight = false, bMayScript = false;
     sal_Int16 eVertOri = text::VertOrientation::TOP;
     sal_Int16 eHoriOri = text::HoriOrientation::NONE;
 
     // create a new Command list
-    delete m_pAppletImpl;
-    m_pAppletImpl = new SwApplet_Impl( m_xDoc->GetAttrPool() );
+    m_pAppletImpl.reset(new SwApplet_Impl( m_xDoc->GetAttrPool() ));
 
     const HTMLOptions& rHTMLOptions = GetOptions();
     for (size_t i = rHTMLOptions.size(); i; )
@@ -696,18 +901,18 @@ void SwHTMLParser::InsertApplet()
             eHoriOri = rOption.GetEnum( aHTMLImgHAlignTable, eHoriOri );
             break;
         case HtmlOptionId::WIDTH:
-            bPrcWidth = (rOption.GetString().indexOf('%') != -1);
-            aSize.Width() = (long)rOption.GetNumber();
+            bPercentWidth = (rOption.GetString().indexOf('%') != -1);
+            aSize.setWidth( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::HEIGHT:
-            bPrcHeight = (rOption.GetString().indexOf('%') != -1);
-            aSize.Height() = (long)rOption.GetNumber();
+            bPercentHeight = (rOption.GetString().indexOf('%') != -1);
+            aSize.setHeight( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::HSPACE:
-            aSpace.Width() = (long)rOption.GetNumber();
+            aSpace.setWidth( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::VSPACE:
-            aSpace.Height() = (long)rOption.GetNumber();
+            aSpace.setHeight( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::MAYSCRIPT:
             bMayScript = true;
@@ -722,8 +927,7 @@ void SwHTMLParser::InsertApplet()
 
     if( aCode.isEmpty() )
     {
-        delete m_pAppletImpl;
-        m_pAppletImpl = nullptr;
+        m_pAppletImpl.reset();
         return;
     }
 
@@ -746,8 +950,7 @@ void SwHTMLParser::InsertApplet()
 
     // and still the size or the frame
     Size aDfltSz( HTML_DFLT_APPLET_WIDTH, HTML_DFLT_APPLET_HEIGHT );
-    SetFixSize( aSize, aDfltSz, bPrcWidth, bPrcHeight, aItemSet, aPropInfo,
-                rFrameSet );
+    SetFixSize( aSize, aDfltSz, bPercentWidth, bPercentHeight, aPropInfo, rFrameSet );
     SetSpace( aSpace, aItemSet, aPropInfo, rFrameSet );
 }
 #endif
@@ -775,8 +978,7 @@ void SwHTMLParser::EndApplet()
     // if applicable create frames and register auto-bound frames
     RegisterFlyFrame( pFlyFormat );
 
-    delete m_pAppletImpl;
-    m_pAppletImpl = nullptr;
+    m_pAppletImpl.reset();
 #else
     (void) this;
 #endif
@@ -820,7 +1022,7 @@ void SwHTMLParser::InsertFloatingFrame()
     OUString aAlt, aId, aStyle, aClass;
     Size aSize( USHRT_MAX, USHRT_MAX );
     Size aSpace( 0, 0 );
-    bool bPrcWidth = false, bPrcHeight = false;
+    bool bPercentWidth = false, bPercentHeight = false;
     sal_Int16 eVertOri = text::VertOrientation::TOP;
     sal_Int16 eHoriOri = text::HoriOrientation::NONE;
 
@@ -848,18 +1050,18 @@ void SwHTMLParser::InsertFloatingFrame()
             eHoriOri = rOption.GetEnum( aHTMLImgHAlignTable, eHoriOri );
             break;
         case HtmlOptionId::WIDTH:
-            bPrcWidth = (rOption.GetString().indexOf('%') != -1);
-            aSize.Width() = (long)rOption.GetNumber();
+            bPercentWidth = (rOption.GetString().indexOf('%') != -1);
+            aSize.setWidth( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::HEIGHT:
-            bPrcHeight = (rOption.GetString().indexOf('%') != -1);
-            aSize.Height() = (long)rOption.GetNumber();
+            bPercentHeight = (rOption.GetString().indexOf('%') != -1);
+            aSize.setHeight( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::HSPACE:
-            aSpace.Width() = (long)rOption.GetNumber();
+            aSpace.setWidth( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::VSPACE:
-            aSpace.Height() = (long)rOption.GetNumber();
+            aSpace.setHeight( static_cast<long>(rOption.GetNumber()) );
             break;
         default: break;
         }
@@ -883,7 +1085,7 @@ void SwHTMLParser::InsertFloatingFrame()
             uno::Reference < beans::XPropertySet > xSet( xObj->getComponent(), uno::UNO_QUERY );
             if ( xSet.is() )
             {
-                OUString aName = aFrameDesc.GetName();
+                const OUString& aName = aFrameDesc.GetName();
                 ScrollingMode eScroll = aFrameDesc.GetScrollingMode();
                 bool bHasBorder = aFrameDesc.HasFrameBorder();
                 Size aMargin = aFrameDesc.GetMargin();
@@ -929,8 +1131,7 @@ void SwHTMLParser::InsertFloatingFrame()
 
     // and still the size of the frame
     Size aDfltSz( HTML_DFLT_APPLET_WIDTH, HTML_DFLT_APPLET_HEIGHT );
-    SetFixSize( aSize, aDfltSz, bPrcWidth, bPrcHeight, aItemSet, aPropInfo,
-                aFrameSet );
+    SetFixSize( aSize, aDfltSz, bPercentWidth, bPercentHeight, aPropInfo, aFrameSet );
     SetSpace( aSpace, aItemSet, aPropInfo, aFrameSet );
 
     // and insert into the document
@@ -957,7 +1158,7 @@ sal_uInt16 SwHTMLWriter::GuessOLENodeFrameType( const SwNode& rNode )
 
     SwHTMLFrameType eType = HTML_FRMTYPE_OLE;
 
-    uno::Reference < embed::XClassifiedObject > xClass ( rObj.GetOleRef(), uno::UNO_QUERY );
+    uno::Reference < embed::XClassifiedObject > xClass = rObj.GetOleRef();
     SvGlobalName aClass( xClass->getClassID() );
     if( aClass == SvGlobalName( SO3_PLUGIN_CLASSID ) )
     {
@@ -984,7 +1185,7 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
 
     const SwFormatContent& rFlyContent = rFrameFormat.GetContent();
     sal_uLong nStt = rFlyContent.GetContentIdx()->GetIndex()+1;
-    SwOLENode *pOLENd = rHTMLWrt.pDoc->GetNodes()[ nStt ]->GetOLENode();
+    SwOLENode *pOLENd = rHTMLWrt.m_pDoc->GetNodes()[ nStt ]->GetOLENode();
 
     OSL_ENSURE( pOLENd, "OLE-Node expected" );
     if( !pOLENd )
@@ -1021,7 +1222,7 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
     if( aGlobName == SvGlobalName( SO3_PLUGIN_CLASSID ) )
     {
         // first the plug-in specifics
-        sOut.append(OOO_STRING_SVTOOLS_HTML_embed);
+        sOut.append(rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_embed);
 
         OUString aStr;
         OUString aURL;
@@ -1036,7 +1237,7 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
         {
             sOut.append(' ').append(OOO_STRING_SVTOOLS_HTML_O_src)
                 .append("=\"");
-            rWrt.Strm().WriteCharPtr( sOut.makeStringAndClear().getStr() );
+            rWrt.Strm().WriteOString( sOut.makeStringAndClear() );
             HTMLOutFuncs::Out_String( rWrt.Strm(), aURL, rHTMLWrt.m_eDestEnc, &rHTMLWrt.m_aNonConvertableCharacters );
             sOut.append('\"');
         }
@@ -1047,7 +1248,7 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
         {
             sOut.append(' ').append(OOO_STRING_SVTOOLS_HTML_O_type)
                 .append("=\"");
-            rWrt.Strm().WriteCharPtr( sOut.makeStringAndClear().getStr() );
+            rWrt.Strm().WriteOString( sOut.makeStringAndClear() );
             HTMLOutFuncs::Out_String( rWrt.Strm(), aType, rHTMLWrt.m_eDestEnc, &rHTMLWrt.m_aNonConvertableCharacters );
             sOut.append('\"');
         }
@@ -1070,7 +1271,7 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
     {
         // or the applet specifics
 
-        sOut.append(OOO_STRING_SVTOOLS_HTML_applet);
+        sOut.append(rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_applet);
 
         // CODEBASE
         OUString aCd;
@@ -1082,7 +1283,7 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
             {
                 sOut.append(' ').append(OOO_STRING_SVTOOLS_HTML_O_codebase)
                     .append("=\"");
-                rWrt.Strm().WriteCharPtr( sOut.makeStringAndClear().getStr() );
+                rWrt.Strm().WriteOString( sOut.makeStringAndClear() );
                 HTMLOutFuncs::Out_String( rWrt.Strm(), sCodeBase, rHTMLWrt.m_eDestEnc, &rHTMLWrt.m_aNonConvertableCharacters );
                 sOut.append('\"');
             }
@@ -1094,7 +1295,7 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
         aAny >>= aClass;
         sOut.append(' ').append(OOO_STRING_SVTOOLS_HTML_O_code)
             .append("=\"");
-        rWrt.Strm().WriteCharPtr( sOut.makeStringAndClear().getStr() );
+        rWrt.Strm().WriteOString( sOut.makeStringAndClear() );
         HTMLOutFuncs::Out_String( rWrt.Strm(), aClass, rHTMLWrt.m_eDestEnc, &rHTMLWrt.m_aNonConvertableCharacters );
         sOut.append('\"');
 
@@ -1106,7 +1307,7 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
         {
             sOut.append(' ').append(OOO_STRING_SVTOOLS_HTML_O_name)
                 .append("=\"");
-            rWrt.Strm().WriteCharPtr( sOut.makeStringAndClear().getStr() );
+            rWrt.Strm().WriteOString( sOut.makeStringAndClear() );
             HTMLOutFuncs::Out_String( rWrt.Strm(), aAppletName, rHTMLWrt.m_eDestEnc, &rHTMLWrt.m_aNonConvertableCharacters );
             sOut.append('\"');
         }
@@ -1124,8 +1325,8 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
     {
         // or the Floating-Frame specifics
 
-        sOut.append(OOO_STRING_SVTOOLS_HTML_iframe);
-        rWrt.Strm().WriteCharPtr( sOut.makeStringAndClear().getStr() );
+        sOut.append(rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_iframe);
+        rWrt.Strm().WriteOString( sOut.makeStringAndClear() );
 
         SfxFrameHTMLWriter::Out_FrameDescriptor( rWrt.Strm(), rWrt.GetBaseURL(),
                                         xSet,
@@ -1136,7 +1337,7 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
                             : HTML_FRMOPTS_IFRAME;
     }
 
-    rWrt.Strm().WriteCharPtr( sOut.makeStringAndClear().getStr() );
+    rWrt.Strm().WriteOString( sOut.makeStringAndClear() );
 
     // ALT, WIDTH, HEIGHT, HSPACE, VSPACE, ALIGN
     if( rHTMLWrt.IsHTMLMode( HTMLMODE_ABS_POS_FLY ) && !bHiddenEmbed )
@@ -1189,21 +1390,21 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
             const OUString& rValue = rCommand.GetArgument();
             rHTMLWrt.OutNewLine();
             OStringBuffer sBuf;
-            sBuf.append('<').append(OOO_STRING_SVTOOLS_HTML_param)
+            sBuf.append('<').append(rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_param)
                 .append(' ').append(OOO_STRING_SVTOOLS_HTML_O_name)
                 .append("=\"");
-            rWrt.Strm().WriteCharPtr( sBuf.makeStringAndClear().getStr() );
+            rWrt.Strm().WriteOString( sBuf.makeStringAndClear() );
             HTMLOutFuncs::Out_String( rWrt.Strm(), rName, rHTMLWrt.m_eDestEnc, &rHTMLWrt.m_aNonConvertableCharacters );
             sBuf.append("\" ").append(OOO_STRING_SVTOOLS_HTML_O_value)
                 .append("=\"");
-            rWrt.Strm().WriteCharPtr( sBuf.makeStringAndClear().getStr() );
+            rWrt.Strm().WriteOString( sBuf.makeStringAndClear() );
             HTMLOutFuncs::Out_String( rWrt.Strm(), rValue, rHTMLWrt.m_eDestEnc, &rHTMLWrt.m_aNonConvertableCharacters ).WriteCharPtr( "\">" );
         }
 
         rHTMLWrt.DecIndentLevel(); // indent the applet content
         if( aCommands.size() )
             rHTMLWrt.OutNewLine();
-        HTMLOutFuncs::Out_AsciiTag( rWrt.Strm(), OOO_STRING_SVTOOLS_HTML_applet, false );
+        HTMLOutFuncs::Out_AsciiTag( rWrt.Strm(), rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_applet, false );
     }
     else if( aGlobName == SvGlobalName( SO3_PLUGIN_CLASSID ) )
     {
@@ -1236,11 +1437,11 @@ Writer& OutHTML_FrameFormatOLENode( Writer& rWrt, const SwFrameFormat& rFrameFor
         // and for Floating-Frames just output another </IFRAME>
 
         rHTMLWrt.Strm().WriteChar( '>' );
-        HTMLOutFuncs::Out_AsciiTag( rWrt.Strm(), OOO_STRING_SVTOOLS_HTML_iframe, false );
+        HTMLOutFuncs::Out_AsciiTag( rWrt.Strm(), rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_iframe, false );
     }
 
     if( !aEndTags.isEmpty() )
-        rWrt.Strm().WriteCharPtr( aEndTags.getStr() );
+        rWrt.Strm().WriteOString( aEndTags );
 
     return rWrt;
 }
@@ -1252,7 +1453,7 @@ Writer& OutHTML_FrameFormatOLENodeGrf( Writer& rWrt, const SwFrameFormat& rFrame
 
     const SwFormatContent& rFlyContent = rFrameFormat.GetContent();
     sal_uLong nStt = rFlyContent.GetContentIdx()->GetIndex()+1;
-    SwOLENode *pOLENd = rHTMLWrt.pDoc->GetNodes()[ nStt ]->GetOLENode();
+    SwOLENode *pOLENd = rHTMLWrt.m_pDoc->GetNodes()[ nStt ]->GetOLENode();
 
     OSL_ENSURE( pOLENd, "OLE-Node expected" );
     if( !pOLENd )
@@ -1262,7 +1463,7 @@ Writer& OutHTML_FrameFormatOLENodeGrf( Writer& rWrt, const SwFrameFormat& rFrame
     {
         // If we skip images, embedded objects would be completely lost.
         // Instead, try to use the HTML export of the embedded object.
-        uno::Reference<text::XTextContent> xTextContent = SwXTextEmbeddedObject::CreateXTextEmbeddedObject(*rHTMLWrt.pDoc, const_cast<SwFrameFormat*>(&rFrameFormat));
+        uno::Reference<text::XTextContent> xTextContent = SwXTextEmbeddedObject::CreateXTextEmbeddedObject(*rHTMLWrt.m_pDoc, const_cast<SwFrameFormat*>(&rFrameFormat));
         uno::Reference<document::XEmbeddedObjectSupplier2> xEmbeddedObjectSupplier(xTextContent, uno::UNO_QUERY);
         uno::Reference<frame::XStorable> xStorable(xEmbeddedObjectSupplier->getEmbeddedObject(), uno::UNO_QUERY);
         SAL_WARN_IF(!xStorable.is(), "sw.html", "OutHTML_FrameFormatOLENodeGrf: no embedded object");
@@ -1290,12 +1491,12 @@ Writer& OutHTML_FrameFormatOLENodeGrf( Writer& rWrt, const SwFrameFormat& rFrame
                 aMediaDescriptor["FilterOptions"] <<= OUString("SkipHeaderFooter");
                 aMediaDescriptor["OutputStream"] <<= xOutputStream;
                 xStorable->storeToURL("private:stream", aMediaDescriptor.getAsConstPropertyValueList());
-                SAL_WARN_IF(aStream.GetSize()>=static_cast<sal_uInt64>(SAL_MAX_INT32), "sw.html", "Stream can't fit in OString");
+                SAL_WARN_IF(aStream.GetSize()>=o3tl::make_unsigned(SAL_MAX_INT32), "sw.html", "Stream can't fit in OString");
                 OString aData(static_cast<const char*>(aStream.GetData()), static_cast<sal_Int32>(aStream.GetSize()));
                 // Wrap output in a <span> tag to avoid 'HTML parser error: Unexpected end tag: p'
-                HTMLOutFuncs::Out_AsciiTag(rWrt.Strm(), OOO_STRING_SVTOOLS_HTML_span);
-                rWrt.Strm().WriteCharPtr(aData.getStr());
-                HTMLOutFuncs::Out_AsciiTag(rWrt.Strm(), OOO_STRING_SVTOOLS_HTML_span, false);
+                HTMLOutFuncs::Out_AsciiTag(rWrt.Strm(), rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_span);
+                rWrt.Strm().WriteOString(aData);
+                HTMLOutFuncs::Out_AsciiTag(rWrt.Strm(), rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_span, false);
             }
             catch ( uno::Exception& )
             {
@@ -1305,21 +1506,150 @@ Writer& OutHTML_FrameFormatOLENodeGrf( Writer& rWrt, const SwFrameFormat& rFrame
         return rWrt;
     }
 
+    if ( !pOLENd->GetGraphic() )
+    {
+        SAL_WARN("sw.html", "Unexpected missing OLE fallback graphic");
+        return rWrt;
+    }
+
     Graphic aGraphic( *pOLENd->GetGraphic() );
+
+    SwDocShell* pDocSh = rHTMLWrt.m_pDoc->GetDocShell();
+    bool bObjectOpened = false;
+    OUString aRTFType = "text/rtf";
+    if (!rHTMLWrt.m_aRTFOLEMimeType.isEmpty())
+    {
+        aRTFType = rHTMLWrt.m_aRTFOLEMimeType;
+    }
+
+    if (rHTMLWrt.mbXHTML && pDocSh)
+    {
+        // Map native data to an outer <object> element.
+
+        // Calculate the file name, which is meant to be the same as the
+        // replacement image, just with a .ole extension.
+        OUString aFileName = lcl_CalculateFileName(rHTMLWrt.GetOrigFileName(), aGraphic, "ole");
+
+        // Write the data.
+        SwOLEObj& rOLEObj = pOLENd->GetOLEObj();
+        uno::Reference<embed::XEmbeddedObject> xEmbeddedObject = rOLEObj.GetOleRef();
+        OUString aFileType;
+        SvFileStream aOutStream(aFileName, StreamMode::WRITE);
+        uno::Reference<io::XActiveDataStreamer> xStreamProvider;
+        uno::Reference<embed::XEmbedPersist2> xOwnEmbedded;
+        if (xEmbeddedObject.is())
+        {
+            xStreamProvider.set(xEmbeddedObject, uno::UNO_QUERY);
+            xOwnEmbedded.set(xEmbeddedObject, uno::UNO_QUERY);
+        }
+        if (xStreamProvider.is())
+        {
+            // Real OLE2 case: OleEmbeddedObject.
+            uno::Reference<io::XInputStream> xStream(xStreamProvider->getStream(), uno::UNO_QUERY);
+            if (xStream.is())
+            {
+                std::unique_ptr<SvStream> pStream(utl::UcbStreamHelper::CreateStream(xStream));
+                if (SwReqIfReader::WrapOleInRtf(*pStream, aOutStream, *pOLENd))
+                {
+                    // Data always wrapped in RTF.
+                    aFileType = aRTFType;
+                }
+            }
+        }
+        else if (xOwnEmbedded.is())
+        {
+            // Our own embedded object: OCommonEmbeddedObject.
+            SvxMSExportOLEObjects aOLEExp(0);
+            // Trigger the load of the OLE object if needed, otherwise we can't
+            // export it.
+            pOLENd->GetTwipSize();
+            SvMemoryStream aMemory;
+            tools::SvRef<SotStorage> pStorage = new SotStorage(aMemory);
+            aOLEExp.ExportOLEObject(rOLEObj.GetObject(), *pStorage);
+            pStorage->Commit();
+            aMemory.Seek(0);
+            if (SwReqIfReader::WrapOleInRtf(aMemory, aOutStream, *pOLENd))
+            {
+                // Data always wrapped in RTF.
+                aFileType = aRTFType;
+            }
+        }
+        else
+        {
+            // Otherwise the native data is just a grab-bag: ODummyEmbeddedObject.
+            const OUString& aStreamName = rOLEObj.GetCurrentPersistName();
+            uno::Reference<embed::XStorage> xStorage = pDocSh->GetStorage();
+            uno::Reference<io::XStream> xInStream;
+            try
+            {
+                // Even the native data may be missing.
+                xInStream = xStorage->openStreamElement(aStreamName, embed::ElementModes::READ);
+            } catch (const uno::Exception&)
+            {
+                TOOLS_WARN_EXCEPTION("sw.html", "OutHTML_FrameFormatOLENodeGrf: failed to open stream element");
+            }
+            if (xInStream.is())
+            {
+                uno::Reference<io::XStream> xOutStream(new utl::OStreamWrapper(aOutStream));
+                comphelper::OStorageHelper::CopyInputToOutput(xInStream->getInputStream(),
+                                                              xOutStream->getOutputStream());
+            }
+
+            uno::Reference<beans::XPropertySet> xOutStreamProps(xInStream, uno::UNO_QUERY);
+            if (xOutStreamProps.is())
+                xOutStreamProps->getPropertyValue("MediaType") >>= aFileType;
+            if (!aRTFType.isEmpty())
+            {
+                aFileType = aRTFType;
+            }
+        }
+        aFileName = URIHelper::simpleNormalizedMakeRelative(rWrt.GetBaseURL(), aFileName);
+
+        // Refer to this data.
+        if (rHTMLWrt.m_bLFPossible)
+            rHTMLWrt.OutNewLine();
+        rWrt.Strm().WriteOString("<" + rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_object);
+        rWrt.Strm().WriteOString(" data=\"" + aFileName.toUtf8() + "\"");
+        if (!aFileType.isEmpty())
+            rWrt.Strm().WriteOString(" type=\"" + aFileType.toUtf8() + "\"");
+        rWrt.Strm().WriteOString(">");
+        bObjectOpened = true;
+        rHTMLWrt.m_bLFPossible = true;
+    }
+
     OUString aGraphicURL;
+    OUString aMimeType;
     if(!rHTMLWrt.mbEmbedImages)
     {
         const OUString* pTempFileName = rHTMLWrt.GetOrigFileName();
         if(pTempFileName)
             aGraphicURL = *pTempFileName;
 
+        OUString aFilterName("JPG");
+        XOutFlags nFlags = XOutFlags::UseGifIfPossible | XOutFlags::UseNativeIfPossible;
+
+        if (bObjectOpened)
+        {
+            aFilterName = "PNG";
+            nFlags = XOutFlags::NONE;
+            aMimeType = "image/png";
+
+            if (aGraphic.GetType() == GraphicType::NONE)
+            {
+                // The OLE Object has no replacement image, write a stub.
+                aGraphicURL = lcl_CalculateFileName(rHTMLWrt.GetOrigFileName(), aGraphic, "png");
+                osl::File aFile(aGraphicURL);
+                aFile.open(osl_File_OpenFlag_Create);
+                aFile.close();
+            }
+        }
+
         ErrCode nErr = XOutBitmap::WriteGraphic( aGraphic, aGraphicURL,
-                                    "JPG",
-                                    (XOutFlags::UseGifIfPossible |
-                                     XOutFlags::UseNativeIfPossible) );
+                                    aFilterName,
+                                    nFlags );
         if( nErr )              // error, don't write anything
         {
-            rHTMLWrt.m_nWarn = ErrCode(WARN_SWG_POOR_LOAD | WARN_SW_WRITE_BASE);
+            rHTMLWrt.m_nWarn = WARN_SWG_POOR_LOAD;
             return rWrt;
         }
         aGraphicURL = URIHelper::SmartRel2Abs(
@@ -1329,9 +1659,16 @@ Writer& OutHTML_FrameFormatOLENodeGrf( Writer& rWrt, const SwFrameFormat& rFrame
     }
     HtmlFrmOpts nFlags = bInCntnr ? HtmlFrmOpts::GenImgAllMask
         : HtmlFrmOpts::GenImgMask;
+    if (bObjectOpened)
+        nFlags |= HtmlFrmOpts::Replacement;
     OutHTML_Image( rWrt, rFrameFormat, aGraphicURL, aGraphic,
             pOLENd->GetTitle(), pOLENd->GetTwipSize(),
-            nFlags, "ole" );
+            nFlags, "ole", nullptr, aMimeType );
+
+    if (bObjectOpened)
+        // Close native data.
+        rWrt.Strm().WriteOString("</" + rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_object
+                                 ">");
 
     return rWrt;
 }

@@ -31,7 +31,7 @@
 
 /** defines for DeclPrimitive3DIDBlock and ImplPrimitive3DIDBlock
     Added to be able to simply change identification stuff later, e.g. add
-    a identification string and/or ID to the interface and to the implementation
+    an identification string and/or ID to the interface and to the implementation
     ATM used to delclare implement getPrimitive3DID()
  */
 
@@ -44,15 +44,14 @@
 
 // predefines
 
-namespace drawinglayer { namespace geometry {
+namespace drawinglayer::geometry {
     class ViewInformation3D;
-}}
+}
 
-namespace drawinglayer { namespace primitive3d {
+namespace drawinglayer::primitive3d {
     /// typedefs for basePrimitive3DImplBase, Primitive3DContainer and Primitive3DReference
     typedef cppu::WeakComponentImplHelper< css::graphic::XPrimitive3D > BasePrimitive3DImplBase;
     typedef css::uno::Reference< css::graphic::XPrimitive3D > Primitive3DReference;
-    typedef css::uno::Sequence< Primitive3DReference > Primitive3DSequence;
 
     class SAL_WARN_UNUSED DRAWINGLAYER_DLLPUBLIC Primitive3DContainer : public std::deque< Primitive3DReference >
     {
@@ -60,24 +59,24 @@ namespace drawinglayer { namespace primitive3d {
         explicit Primitive3DContainer() {}
         explicit Primitive3DContainer( size_type count ) : deque(count) {}
         Primitive3DContainer( const Primitive3DContainer& other ) : deque(other) {}
-        Primitive3DContainer( const Primitive3DContainer&& other ) : deque(other) {}
+        Primitive3DContainer( Primitive3DContainer&& other ) noexcept : deque(std::move(other)) {}
         Primitive3DContainer( std::initializer_list<Primitive3DReference> init ) : deque(init) {}
+        template <class Iter>
+        Primitive3DContainer(Iter first, Iter last) : deque(first, last) {}
 
         void append(const Primitive3DContainer& rSource);
         Primitive3DContainer& operator=(const Primitive3DContainer& r) { deque::operator=(r); return *this; }
-        Primitive3DContainer& operator=(const Primitive3DContainer&& r) { deque::operator=(r); return *this; }
+        Primitive3DContainer& operator=(Primitive3DContainer&& r) noexcept { deque::operator=(std::move(r)); return *this; }
         bool operator==(const Primitive3DContainer& rB) const;
         bool operator!=(const Primitive3DContainer& rB) const { return !operator==(rB); }
         basegfx::B3DRange getB3DRange(const geometry::ViewInformation3D& aViewInformation) const;
     };
-}}
+}
 
 
 // basePrimitive3D class
 
-namespace drawinglayer
-{
-    namespace primitive3d
+namespace drawinglayer::primitive3d
     {
         /** BasePrimitive3D class
 
@@ -133,22 +132,20 @@ namespace drawinglayer
             /** The getDecomposition implementation for UNO API will use getDecomposition from this implementation. It
                 will get the ViewInformation from the ViewParameters for that purpose
              */
-            virtual Primitive3DSequence SAL_CALL getDecomposition( const css::uno::Sequence< css::beans::PropertyValue >& rViewParameters ) override;
+            virtual css::uno::Sequence< ::css::uno::Reference< ::css::graphic::XPrimitive3D > > SAL_CALL getDecomposition( const css::uno::Sequence< css::beans::PropertyValue >& rViewParameters ) override;
 
             /** the getRange default implementation will use getDecomposition to create the range information from merging
                 getRange results from the single local decomposition primitives.
              */
             virtual css::geometry::RealRectangle3D SAL_CALL getRange( const css::uno::Sequence< css::beans::PropertyValue >& rViewParameters ) override;
         };
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::primitive2d
 
 
 // BufferedDecompositionPrimitive3D class
 
-namespace drawinglayer
-{
-    namespace primitive3d
+namespace drawinglayer::primitive3d
     {
         /** BufferedDecompositionPrimitive3D class
 
@@ -189,15 +186,13 @@ namespace drawinglayer
              */
             virtual Primitive3DContainer get3DDecomposition(const geometry::ViewInformation3D& rViewInformation) const override;
         };
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::primitive3d
 
 
 // tooling
 
-namespace drawinglayer
-{
-    namespace primitive3d
+namespace drawinglayer::primitive3d
     {
         /// get B3DRange from a given Primitive3DReference
         basegfx::B3DRange DRAWINGLAYER_DLLPUBLIC getB3DRangeFromPrimitive3DReference(const Primitive3DReference& rCandidate, const geometry::ViewInformation3D& aViewInformation);
@@ -207,8 +202,7 @@ namespace drawinglayer
          */
         bool DRAWINGLAYER_DLLPUBLIC arePrimitive3DReferencesEqual(const Primitive3DReference& rA, const Primitive3DReference& rB);
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive3d
 
 
 #endif //INCLUDED_DRAWINGLAYER_PRIMITIVE3D_BASEPRIMITIVE3D_HXX

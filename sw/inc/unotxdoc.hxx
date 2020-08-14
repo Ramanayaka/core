@@ -22,7 +22,6 @@
 #include "swdllapi.h"
 #include <sfx2/sfxbasemodel.hxx>
 
-#include <com/sun/star/beans/PropertyValues.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/style/XAutoStylesSupplier.hpp>
 #include <com/sun/star/document/XLinkTargetSupplier.hpp>
@@ -30,7 +29,6 @@
 #include <com/sun/star/text/XNumberingRulesSupplier.hpp>
 #include <com/sun/star/text/XFootnotesSupplier.hpp>
 #include <com/sun/star/text/XEndnotesSupplier.hpp>
-#include <com/sun/star/text/XEndnotesSettingsSupplier.hpp>
 #include <com/sun/star/text/XTextSectionsSupplier.hpp>
 #include <com/sun/star/text/XLineNumberingProperties.hpp>
 #include <com/sun/star/text/XChapterNumberingSupplier.hpp>
@@ -45,34 +43,29 @@
 #include <com/sun/star/text/XReferenceMarksSupplier.hpp>
 #include <com/sun/star/text/XTextFramesSupplier.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
+#include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/util/XReplaceable.hpp>
-#include <com/sun/star/util/XReplaceDescriptor.hpp>
 #include <com/sun/star/util/XRefreshable.hpp>
 #include <com/sun/star/util/XLinkUpdate.hpp>
 #include <com/sun/star/view/XRenderable.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/i18n/XForbiddenCharacters.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/xforms/XFormsSupplier.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/text/XFlatParagraphIteratorProvider.hpp>
 #include <com/sun/star/document/XDocumentLanguages.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
+#include <o3tl/deleter.hxx>
 #include <rtl/ref.hxx>
-#include <svl/itemprop.hxx>
 #include <svx/fmdmod.hxx>
 #include <editeng/UnoForbiddenCharsTable.hxx>
-#include <cppuhelper/weak.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <vcl/event.hxx>
 #include <vcl/ITiledRenderable.hxx>
 #include <com/sun/star/tiledrendering/XTiledRenderable.hpp>
+#include <com/sun/star/text/XPasteBroadcaster.hpp>
 
-#include <unobaseclass.hxx>
-#include <viewopt.hxx>
+#include "unobaseclass.hxx"
+#include "viewopt.hxx"
 
 #include <deque>
 
@@ -84,10 +77,18 @@ class SwXDrawPage;
 class SwUnoCursor;
 class SwXDocumentPropertyHelper;
 class SfxViewFrame;
+class SfxViewShell;
 class SwPrintUIOptions;
 class SwPrintData;
 class SwRenderData;
 class SwViewShell;
+class SfxItemPropertySet;
+namespace com::sun::star::container { class XNameContainer; }
+namespace com::sun::star::frame { class XController; }
+namespace com::sun::star::lang { struct Locale; }
+namespace com::sun::star::uno { class XAggregation; }
+
+namespace com::sun::star::util { class XReplaceDescriptor; }
 
 typedef cppu::WeakImplHelper
 <
@@ -111,6 +112,7 @@ typedef cppu::WeakImplHelper
     css::style::XAutoStylesSupplier,
     css::lang::XServiceInfo,
     css::drawing::XDrawPageSupplier,
+    css::drawing::XDrawPagesSupplier,
     css::text::XDocumentIndexesSupplier,
     css::beans::XPropertySet,
     css::beans::XPropertyState,
@@ -122,11 +124,12 @@ typedef cppu::WeakImplHelper
     css::xforms::XFormsSupplier,
     css::text::XFlatParagraphIteratorProvider,
     css::document::XDocumentLanguages,
-    css::util::XCloneable
+    css::util::XCloneable,
+    css::text::XPasteBroadcaster
 >
 SwXTextDocumentBaseClass;
 
-class SW_DLLPUBLIC SwXTextDocument : public SwXTextDocumentBaseClass,
+class SW_DLLPUBLIC SwXTextDocument final : public SwXTextDocumentBaseClass,
     public SvxFmMSFactory,
     public SfxBaseModel,
     public vcl::ITiledRenderable,
@@ -136,7 +139,7 @@ private:
     class Impl;
     ::sw::UnoImplPtr<Impl> m_pImpl;
 
-    std::deque<UnoActionContext*> aActionArr;
+    std::deque<std::unique_ptr<UnoActionContext, o3tl::default_delete<UnoActionContext>>> maActionArr;
 
     const SfxItemPropertySet* pPropSet;
 
@@ -177,8 +180,8 @@ private:
     SfxViewFrame*                                   m_pHiddenViewFrame;
     rtl::Reference<SwXDocumentPropertyHelper>       mxPropertyHelper;
 
-    SwPrintUIOptions *                              m_pPrintUIOptions;
-    SwRenderData *                                  m_pRenderData;
+    std::unique_ptr<SwPrintUIOptions>               m_pPrintUIOptions;
+    std::unique_ptr<SwRenderData>                   m_pRenderData;
 
     void                    GetNumberFormatter();
 
@@ -202,7 +205,9 @@ private:
     using SfxBaseModel::addEventListener;
     using SfxBaseModel::removeEventListener;
 
-protected:
+    /** abstract SdrModel provider */
+    virtual SdrModel& getSdrModelFromUnoModel() const override;
+
     virtual ~SwXTextDocument() override;
 public:
     SwXTextDocument(SwDocShell* pShell);
@@ -324,6 +329,9 @@ public:
     // css::drawing::XDrawPageSupplier
     virtual css::uno::Reference< css::drawing::XDrawPage >  SAL_CALL getDrawPage() override;
 
+    // css::drawing::XDrawPagesSupplier
+    virtual css::uno::Reference< css::drawing::XDrawPages > SAL_CALL getDrawPages() override;
+
     // css::text::XDocumentIndexesSupplier
     virtual css::uno::Reference< css::container::XIndexAccess >  SAL_CALL getDocumentIndexes() override;
 
@@ -373,6 +381,12 @@ public:
     // css::util::XCloneable
     virtual css::uno::Reference< css::util::XCloneable > SAL_CALL createClone(  ) override;
 
+    // css::text::XPasteBroadcaster
+    void SAL_CALL addPasteEventListener(
+        const ::css::uno::Reference<::css::text::XPasteListener>& xListener) override;
+    void SAL_CALL removePasteEventListener(
+        const ::css::uno::Reference<::css::text::XPasteListener>& xListener) override;
+
     /// @see vcl::ITiledRenderable::paintTile().
     virtual void paintTile( VirtualDevice &rDevice,
                             int nOutputWidth,
@@ -393,6 +407,8 @@ public:
     virtual OUString getPartName(int nPart) override;
     /// @see vcl::ITiledRenderable::getPartHash().
     virtual OUString getPartHash(int nPart) override;
+    /// @see vcl::ITiledRenderable::getDocWindow().
+    virtual VclPtr<vcl::Window> getDocWindow() override;
     /// @see vcl::ITiledRenderable::initializeForTiledRendering().
     virtual void initializeForTiledRendering(const css::uno::Sequence<css::beans::PropertyValue>& rArguments) override;
     /// @see vcl::ITiledRenderable::postKeyEvent().
@@ -401,8 +417,8 @@ public:
     virtual void postMouseEvent(int nType, int nX, int nY, int nCount, int nButtons, int nModifier) override;
     /// @see vcl::ITiledRenderable::setTextSelection().
     virtual void setTextSelection(int nType, int nX, int nY) override;
-    /// @see vcl::ITiledRenderable::getTextSelection().
-    virtual OString getTextSelection(const char* pMimeType, OString& rUsedMimeType) override;
+    /// @see vcl::ITiledRenderable::getSelection().
+    virtual css::uno::Reference<css::datatransfer::XTransferable> getSelection() override;
     /// @see vcl::ITiledRenderable::setGraphicSelection().
     virtual void setGraphicSelection(int nType, int nX, int nY) override;
     /// @see vcl::ITiledRenderable::resetSelection().
@@ -415,14 +431,22 @@ public:
     virtual bool isMimeTypeSupported() override;
     /// @see vcl::ITiledRenderable::setClientVisibleArea().
     virtual void setClientVisibleArea(const tools::Rectangle& rRectangle) override;
+    /// @see vcl::ITiledRenderable::setClientZoom.
+    virtual void setClientZoom(int nTilePixelWidth_, int nTilePixelHeight_, int nTileTwipWidth_, int nTileTwipHeight_) override;
     /// @see vcl::ITiledRenderable::getPointer().
-    virtual Pointer getPointer() override;
+    virtual PointerStyle getPointer() override;
     /// @see vcl::ITiledRenderable::getTrackedChanges().
-    OUString getTrackedChanges() override;
+    void getTrackedChanges(tools::JsonWriter&) override;
     /// @see vcl::ITiledRenderable::getTrackedChangeAuthors().
-    OUString getTrackedChangeAuthors() override;
+    void getTrackedChangeAuthors(tools::JsonWriter& rJsonWriter) override;
+
+    void getRulerState(tools::JsonWriter& rJsonWriter) override;
     /// @see vcl::ITiledRenderable::getPostIts().
-    OUString getPostIts() override;
+    void getPostIts(tools::JsonWriter& rJsonWriter) override;
+
+    /// @see vcl::ITiledRenderable::executeFromFieldEvent().
+    virtual void executeFromFieldEvent(const StringMap& aArguments) override;
+
     // css::tiledrendering::XTiledRenderable
     virtual void SAL_CALL paintTile( const ::css::uno::Any& Parent, ::sal_Int32 nOutputWidth, ::sal_Int32 nOutputHeight, ::sal_Int32 nTilePosX, ::sal_Int32 nTilePosY, ::sal_Int32 nTileWidth, ::sal_Int32 nTileHeight ) override;
 
@@ -440,13 +464,9 @@ public:
                                             css::uno::Reference< css::uno::XInterface > const & xLastResult);
 
     SwDocShell*                 GetDocShell() {return pDocShell;}
-
-    void * SAL_CALL operator new( size_t ) throw();
-    void SAL_CALL operator delete( void * ) throw();
-
 };
 
-class SwXLinkTargetSupplier : public cppu::WeakImplHelper
+class SwXLinkTargetSupplier final : public cppu::WeakImplHelper
 <
     css::container::XNameAccess,
     css::lang::XServiceInfo
@@ -482,7 +502,7 @@ public:
     void    Invalidate() {pxDoc = nullptr;}
 };
 
-class SwXLinkNameAccessWrapper : public cppu::WeakImplHelper
+class SwXLinkNameAccessWrapper final : public cppu::WeakImplHelper
 <
     css::beans::XPropertySet,
     css::container::XNameAccess,
@@ -531,14 +551,14 @@ public:
 
 };
 
-class SwXOutlineTarget : public cppu::WeakImplHelper
+class SwXOutlineTarget final : public cppu::WeakImplHelper
 <
     css::beans::XPropertySet,
     css::lang::XServiceInfo
 >
 {
     const SfxItemPropertySet*   pPropSet;
-    OUString                      sOutlineText;
+    OUString                    sOutlineText;
 
 public:
     SwXOutlineTarget(const OUString& rOutlineText);
@@ -590,7 +610,7 @@ public:
 // After printing the view options are restored
 class SwViewOptionAdjust_Impl
 {
-    SwViewShell *     m_pShell;
+    SwViewShell *   m_pShell;
     SwViewOption    m_aOldViewOptions;
 public:
     SwViewOptionAdjust_Impl( SwViewShell& rSh, const SwViewOption &rViewOptions );

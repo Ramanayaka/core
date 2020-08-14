@@ -11,6 +11,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sc_ucalc))
 
+$(eval $(call gb_Library_use_common_precompiled_header,sc_ucalc))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sc_ucalc, \
     sc/qa/unit/ucalc \
     sc/qa/unit/ucalc_column \
@@ -82,7 +84,11 @@ $(eval $(call gb_CppunitTest_set_include,sc_ucalc,\
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sc_ucalc))
+$(eval $(call gb_CppunitTest_use_api,sc_ucalc,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_custom_headers,sc_ucalc,\
 	officecfg/registry \
@@ -105,17 +111,12 @@ $(eval $(call gb_CppunitTest_use_components,sc_ucalc,\
     ucb/source/ucp/file/ucpfile1 \
     unoxml/source/service/unoxml \
     uui/util/uui \
+    vcl/vcl.common \
 ))
 
 ifeq ($(OS),LINUX)
 $(eval $(call gb_CppunitTest_add_libs,sc_ucalc,\
      -lrt \
-))
-endif
-
-ifeq ($(OS), $(filter LINUX %BSD SOLARIS, $(OS)))
-$(eval $(call gb_CppunitTest_add_libs,sc_ucalc,\
-    -lpthread \
 ))
 endif
 

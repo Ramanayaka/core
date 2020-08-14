@@ -20,29 +20,26 @@
 #ifndef INCLUDED_SW_INC_DLELSTNR_HXX
 #define INCLUDED_SW_INC_DLELSTNR_HXX
 
-#include <cppuhelper/weak.hxx>
 #include <com/sun/star/linguistic2/XLinguServiceEventListener.hpp>
 #include <com/sun/star/frame/XTerminateListener.hpp>
-#include <com/sun/star/frame/XDesktop2.hpp>
 #include <cppuhelper/implbase.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace linguistic2 {
-        class XDictionaryList;
         class XLinguServiceManager2;
         class XProofreadingIterator;
     }
     namespace frame {
-        class XTerminateListener;
+        class XDesktop2;
     }
-} } }
+}
 
 /** EventListener that triggers spellchecking and hyphenation.
 
     Happens when relevant changes (to the dictionaries of the dictionary list, or
     properties) were made.
 */
-class SwLinguServiceEventListener :
+class SwLinguServiceEventListener final :
     public cppu::WeakImplHelper
     <
         css::linguistic2::XLinguServiceEventListener,

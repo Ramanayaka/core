@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.18.3 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
-  <requires lib="LibreOffice" version="1.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="sc">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkDialog" id="PrintAreasDialog">
     <property name="can_focus">False</property>
     <property name="border_width">6</property>
-    <property name="title" translatable="yes">Edit Print Ranges</property>
+    <property name="title" translatable="yes" context="printareasdialog|PrintAreasDialog">Edit Print Ranges</property>
     <property name="resizable">False</property>
+    <property name="default_width">0</property>
+    <property name="default_height">0</property>
     <property name="type_hint">dialog</property>
+    <child>
+      <placeholder/>
+    </child>
     <child internal-child="vbox">
       <object class="GtkBox" id="internal-box1">
         <property name="can_focus">False</property>
@@ -100,7 +104,7 @@
                         <property name="row_spacing">6</property>
                         <property name="column_spacing">12</property>
                         <child>
-                          <object class="foruilo-RefButton" id="rbprintarea">
+                          <object class="GtkButton" id="rbprintarea">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
                             <property name="receives_default">False</property>
@@ -114,11 +118,11 @@
                           </packing>
                         </child>
                         <child>
-                          <object class="foruilo-RefEdit" id="edprintarea">
+                          <object class="GtkEntry" id="edprintarea">
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="hexpand">True</property>
-                            <property name="invisible_char">●</property>
+                            <property name="activates_default">True</property>
                             <property name="width_chars">50</property>
                           </object>
                           <packing>
@@ -131,10 +135,10 @@
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
                             <items>
-                              <item translatable="yes">- none -</item>
-                              <item translatable="yes">- entire sheet -</item>
-                              <item translatable="yes">- user defined -</item>
-                              <item translatable="yes">- selection -</item>
+                              <item translatable="yes" context="printareasdialog|lbprintarea">- none -</item>
+                              <item translatable="yes" context="printareasdialog|lbprintarea">- entire sheet -</item>
+                              <item translatable="yes" context="printareasdialog|lbprintarea">- user defined -</item>
+                              <item translatable="yes" context="printareasdialog|lbprintarea">- selection -</item>
                             </items>
                           </object>
                           <packing>
@@ -150,7 +154,7 @@
                   <object class="GtkLabel" id="label1">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Print Range</property>
+                    <property name="label" translatable="yes" context="printareasdialog|label1">Print Range</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -185,11 +189,11 @@
                         <property name="row_spacing">6</property>
                         <property name="column_spacing">12</property>
                         <child>
-                          <object class="foruilo-RefEdit" id="edrepeatrow">
+                          <object class="GtkEntry" id="edrepeatrow">
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="hexpand">True</property>
-                            <property name="invisible_char">●</property>
+                            <property name="activates_default">True</property>
                             <property name="width_chars">50</property>
                           </object>
                           <packing>
@@ -198,7 +202,7 @@
                           </packing>
                         </child>
                         <child>
-                          <object class="foruilo-RefButton" id="rbrepeatrow">
+                          <object class="GtkButton" id="rbrepeatrow">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
                             <property name="receives_default">False</property>
@@ -216,8 +220,8 @@
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
                             <items>
-                              <item translatable="yes">- none -</item>
-                              <item translatable="yes">- user defined -</item>
+                              <item translatable="yes" context="printareasdialog|lbrepeatrow">- none -</item>
+                              <item translatable="yes" context="printareasdialog|lbrepeatrow">- user defined -</item>
                             </items>
                           </object>
                           <packing>
@@ -233,7 +237,7 @@
                   <object class="GtkLabel" id="label2">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Rows to Repeat</property>
+                    <property name="label" translatable="yes" context="printareasdialog|label2">Rows to Repeat</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -268,11 +272,11 @@
                         <property name="row_spacing">6</property>
                         <property name="column_spacing">12</property>
                         <child>
-                          <object class="foruilo-RefEdit" id="edrepeatcol">
+                          <object class="GtkEntry" id="edrepeatcol">
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="hexpand">True</property>
-                            <property name="invisible_char">●</property>
+                            <property name="activates_default">True</property>
                             <property name="width_chars">50</property>
                           </object>
                           <packing>
@@ -281,7 +285,7 @@
                           </packing>
                         </child>
                         <child>
-                          <object class="foruilo-RefButton" id="rbrepeatcol">
+                          <object class="GtkButton" id="rbrepeatcol">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
                             <property name="receives_default">False</property>
@@ -299,8 +303,8 @@
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
                             <items>
-                              <item translatable="yes">- none -</item>
-                              <item translatable="yes">- user defined -</item>
+                              <item translatable="yes" context="printareasdialog|lbrepeatcol">- none -</item>
+                              <item translatable="yes" context="printareasdialog|lbrepeatcol">- user defined -</item>
                             </items>
                           </object>
                           <packing>
@@ -316,7 +320,7 @@
                   <object class="GtkLabel" id="label3">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Columns to Repeat</property>
+                    <property name="label" translatable="yes" context="printareasdialog|label3">Columns to Repeat</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -339,9 +343,9 @@
       </object>
     </child>
     <action-widgets>
-      <action-widget response="0">ok</action-widget>
-      <action-widget response="0">cancel</action-widget>
-      <action-widget response="0">help</action-widget>
+      <action-widget response="-5">ok</action-widget>
+      <action-widget response="-6">cancel</action-widget>
+      <action-widget response="-11">help</action-widget>
     </action-widgets>
   </object>
 </interface>

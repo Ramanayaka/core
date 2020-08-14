@@ -33,9 +33,7 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <comphelper/configuration.hxx>
 #include <comphelper/processfactory.hxx>
-#include "officecfg/Office/Common.hxx"
-#include <rtl/ustrbuf.hxx>
-#include <rtl/ustring.h>
+#include <officecfg/Office/Common.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
 #include <sal/types.h>
@@ -88,14 +86,13 @@ void SvxAsianConfig::SetKerningWesternTextOnly(bool value) {
 }
 
 CharCompressType SvxAsianConfig::GetCharDistanceCompression() const {
-    return (CharCompressType)
-        officecfg::Office::Common::AsianLayout::CompressCharacterDistance::get(
-            impl_->context);
+    return static_cast<CharCompressType>(officecfg::Office::Common::AsianLayout::CompressCharacterDistance::get(
+            impl_->context));
 }
 
 void SvxAsianConfig::SetCharDistanceCompression(CharCompressType value) {
     officecfg::Office::Common::AsianLayout::CompressCharacterDistance::set(
-        (sal_uInt16)value, impl_->batch);
+        static_cast<sal_uInt16>(value), impl_->batch);
 }
 
 css::uno::Sequence< css::lang::Locale > SvxAsianConfig::GetStartEndCharLocales()
@@ -106,9 +103,9 @@ css::uno::Sequence< css::lang::Locale > SvxAsianConfig::GetStartEndCharLocales()
             impl_->context)->
         getElementNames());
     css::uno::Sequence< css::lang::Locale > ls(ns.getLength());
-    for (sal_Int32 i = 0; i < ns.getLength(); ++i) {
-        ls[i] = LanguageTag::convertToLocale( ns[i], false);
-    }
+    std::transform(ns.begin(), ns.end(), ls.begin(),
+        [](const OUString& rName) -> css::lang::Locale {
+            return LanguageTag::convertToLocale( rName, false); });
     return ls;
 }
 

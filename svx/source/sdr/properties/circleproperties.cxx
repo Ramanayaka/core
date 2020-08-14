@@ -19,7 +19,6 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
 #include <sdr/properties/circleproperties.hxx>
 #include <svl/itemset.hxx>
 #include <svl/style.hxx>
@@ -30,14 +29,12 @@
 #include <svx/sxciaitm.hxx>
 
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         // create a new itemset
         std::unique_ptr<SfxItemSet> CircleProperties::CreateObjectSpecificItemSet(SfxItemPool& rPool)
         {
-            return o3tl::make_unique<SfxItemSet>(
+            return std::make_unique<SfxItemSet>(
                 rPool,
                 svl::Items<
                     // Ranges from SdrAttrObj, SdrCircObj
@@ -63,9 +60,9 @@ namespace sdr
         {
         }
 
-        BaseProperties& CircleProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> CircleProperties::Clone(SdrObject& rObj) const
         {
-            return *(new CircleProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new CircleProperties(*this, rObj));
         }
 
         void CircleProperties::ItemSetChanged(const SfxItemSet& rSet)
@@ -81,13 +78,12 @@ namespace sdr
 
         void CircleProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr)
         {
-            SdrCircObj& rObj = static_cast<SdrCircObj&>(GetSdrObject());
+            // call parent (always first thing to do, may create the SfxItemSet)
+            RectangleProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
 
             // local changes
+            SdrCircObj& rObj = static_cast<SdrCircObj&>(GetSdrObject());
             rObj.SetXPolyDirty();
-
-            // call parent
-            RectangleProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
 
             // local changes
             rObj.ImpSetAttrToCircInfo();
@@ -96,28 +92,14 @@ namespace sdr
         void CircleProperties::ForceDefaultAttributes()
         {
             SdrCircObj& rObj = static_cast<SdrCircObj&>(GetSdrObject());
-            SdrCircKind eKindA = SDRCIRC_FULL;
-            SdrObjKind eKind = rObj.GetCircleKind();
+            SdrCircKind eKind = rObj.GetCircleKind();
 
-            if(eKind == OBJ_SECT)
-            {
-                eKindA = SDRCIRC_SECT;
-            }
-            else if(eKind == OBJ_CARC)
-            {
-                eKindA = SDRCIRC_ARC;
-            }
-            else if(eKind == OBJ_CCUT)
-            {
-                eKindA = SDRCIRC_CUT;
-            }
-
-            if(eKindA != SDRCIRC_FULL)
+            if(eKind != SdrCircKind::Full)
             {
                 // force ItemSet
                 GetObjectItemSet();
 
-                mpItemSet->Put(SdrCircKindItem(eKindA));
+                mpItemSet->Put(SdrCircKindItem(eKind));
 
                 if(rObj.GetStartAngle())
                 {
@@ -136,7 +118,6 @@ namespace sdr
             // SdrCircKindItem
             RectangleProperties::ForceDefaultAttributes();
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

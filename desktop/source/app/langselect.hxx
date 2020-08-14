@@ -22,15 +22,11 @@
 
 #include <sal/config.h>
 
-#include <rtl/ustring.hxx>
-
-namespace desktop { namespace langselect {
-
-OUString getEmergencyLocale();
+namespace desktop::langselect {
 
 bool prepareLocale();
 
-} }
+}
 
 #endif
 

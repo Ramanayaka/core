@@ -7,50 +7,44 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifdef _MSC_VER
-#pragma warning(push, 1) /* disable warnings within system headers */
-#endif
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <msiquery.h>
+#include <msi.h>
 #include <commctrl.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
-extern "C" UINT __stdcall SortTree(MSIHANDLE)
+extern "C" __declspec(dllexport) UINT __stdcall SortTree(MSIHANDLE)
 {
     // Sort items (languages) in SelectionTree control, fdo#46355
 
     HWND hwndMSI = FindWindowW(L"MsiDialogCloseClass", nullptr);
     if (hwndMSI == nullptr)
     {
-        OutputDebugStringA("SortTree: MsiDialogCloseClass not found\n");
+        OutputDebugStringW(L"SortTree: MsiDialogCloseClass not found\n");
         return ERROR_SUCCESS;
     }
     HWND hwndTV = FindWindowExW(hwndMSI, nullptr, L"SysTreeView32", nullptr);
     if (hwndTV == nullptr)
     {
-        OutputDebugStringA("SortTree: SysTreeView32 not found\n");
+        OutputDebugStringW(L"SortTree: SysTreeView32 not found\n");
         return ERROR_SUCCESS;
     }
     HTREEITEM optional = TreeView_GetRoot(hwndTV);
     if (optional == nullptr)
     {
-        OutputDebugStringA("SortTree: Optional Components branch not found\n");
+        OutputDebugStringW(L"SortTree: Optional Components branch not found\n");
         return ERROR_SUCCESS;
     }
     HTREEITEM dicts = TreeView_GetChild(hwndTV, optional);
     if (dicts == nullptr)
     {
-        OutputDebugStringA("SortTree: Dictionaries branch not found\n");
+        OutputDebugStringW(L"SortTree: Dictionaries branch not found\n");
         return ERROR_SUCCESS;
     }
     TreeView_SortChildren(hwndTV, dicts, TRUE);
     HTREEITEM langs = TreeView_GetNextSibling(hwndTV, optional);
     if (langs == nullptr)
     {
-        OutputDebugStringA("SortTree: Additional UI Languages branch not found\n");
+        OutputDebugStringW(L"SortTree: Additional UI Languages branch not found\n");
         return ERROR_SUCCESS;
     }
     TreeView_SortChildren(hwndTV, langs, TRUE);

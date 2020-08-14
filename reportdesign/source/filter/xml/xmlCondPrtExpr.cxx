@@ -19,12 +19,10 @@
 #include "xmlCondPrtExpr.hxx"
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
-#include "xmlEnums.hxx"
-#include "xmlControlProperty.hxx"
-#include "xmlComponent.hxx"
-#include "xmlstrings.hrc"
+#include <xmloff/xmlnamespace.hxx>
+#include <strings.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 namespace rptxml
 {
@@ -33,33 +31,26 @@ namespace rptxml
     using namespace uno;
     using namespace xml::sax;
 
-OXMLCondPrtExpr::OXMLCondPrtExpr( ORptFilter& _rImport,
-                sal_uInt16 nPrfx
-                ,const OUString& rLName
-                ,const uno::Reference< xml::sax::XAttributeList > & _xAttrList
+OXMLCondPrtExpr::OXMLCondPrtExpr( ORptFilter& _rImport
+                ,const uno::Reference< xml::sax::XFastAttributeList > & _xAttrList
                 ,const Reference< XPropertySet > & _xComponent ) :
-    SvXMLImportContext( _rImport, nPrfx, rLName )
+    SvXMLImportContext( _rImport )
 ,m_xComponent(_xComponent)
 {
     OSL_ENSURE(m_xComponent.is(),"Component is NULL!");
-    const SvXMLNamespaceMap& rMap = _rImport.GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = _rImport.GetFunctionElemTokenMap();
-    const sal_Int16 nLength = (_xAttrList.is()) ? _xAttrList->getLength() : 0;
     try
     {
-        for(sal_Int16 i = 0; i < nLength; ++i)
+        for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
         {
-            OUString sLocalName;
-            const OUString sAttrName = _xAttrList->getNameByIndex( i );
-            const sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-            const OUString sValue = _xAttrList->getValueByIndex( i );
+            OUString sValue = aIter.toString();
 
-            switch( rTokenMap.Get( nPrefix, sLocalName ) )
+            switch( aIter.getToken() )
             {
-                case XML_TOK_FUNCTION_FORMULA:
+                case XML_ELEMENT(REPORT, XML_FORMULA):
                     m_xComponent->setPropertyValue(PROPERTY_CONDITIONALPRINTEXPRESSION,uno::makeAny(ORptFilter::convertFormula(sValue)));
                     break;
                 default:
+                    SAL_WARN("reportdesign", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << " = " << sValue);
                     break;
             }
 
@@ -77,9 +68,15 @@ OXMLCondPrtExpr::~OXMLCondPrtExpr()
 }
 
 
-void OXMLCondPrtExpr::Characters( const OUString& rChars )
+void OXMLCondPrtExpr::characters( const OUString& rChars )
 {
-    m_xComponent->setPropertyValue(PROPERTY_CONDITIONALPRINTEXPRESSION,makeAny(rChars));
+    m_aCharBuffer.append(rChars);
+}
+
+void OXMLCondPrtExpr::endFastElement( sal_Int32 )
+{
+    if (m_aCharBuffer.getLength())
+        m_xComponent->setPropertyValue(PROPERTY_CONDITIONALPRINTEXPRESSION,makeAny(m_aCharBuffer.makeStringAndClear()));
 }
 
 } // namespace rptxml

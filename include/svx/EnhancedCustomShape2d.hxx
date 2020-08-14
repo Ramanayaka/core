@@ -22,26 +22,30 @@
 
 #include <svx/msdffdef.hxx>
 #include <svx/sdasitm.hxx>
+#include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/beans/PropertyValues.hpp>
-#include <com/sun/star/awt/Point.hpp>
-#include <com/sun/star/awt/Size.hpp>
 #include <svl/itemset.hxx>
 #include <com/sun/star/drawing/EnhancedCustomShapeParameterPair.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeSegment.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeParameter.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeTextFrame.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeAdjustmentValue.hpp>
+
 #include <svx/EnhancedCustomShapeFunctionParser.hxx>
 #include <tools/gen.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <basegfx/point/b2dpoint.hxx>
 
 #include <memory>
 #include <vector>
 
+namespace com::sun::star::awt { struct Point; }
+
 class Color;
 class SdrObject;
 class SdrPathObj;
+class SdrObjCustomShape;
 
 enum class HandleFlags
 {
@@ -70,9 +74,9 @@ namespace o3tl
 // escher, but we are using it internally in to differentiate
 // between X_RANGE and Y_RANGE
 
-class SVX_DLLPUBLIC EnhancedCustomShape2d : public SfxItemSet
+class SVXCORE_DLLPUBLIC EnhancedCustomShape2d : public SfxItemSet
 {
-        SdrObject*                  pCustomShapeObj;
+        SdrObjCustomShape&          mrSdrObjCustomShape;
         MSO_SPT                     eSpType;
 
         sal_Int32                   nCoordLeft;
@@ -113,7 +117,6 @@ class SVX_DLLPUBLIC EnhancedCustomShape2d : public SfxItemSet
         css::uno::Sequence< css::beans::PropertyValues >                          seqHandles;
         css::uno::Sequence< css::awt::Size >                                      seqSubViewSize;
 
-        bool                    bTextFlow       : 1;
         bool                    bFilled         : 1;
         bool                    bStroked        : 1;
 
@@ -124,16 +127,24 @@ class SVX_DLLPUBLIC EnhancedCustomShape2d : public SfxItemSet
         SAL_DLLPRIVATE bool     SetAdjustValueAsDouble( const double& rValue, const sal_Int32 nIndex );
         SAL_DLLPRIVATE sal_Int32 GetLuminanceChange( sal_uInt32 nIndex ) const;
         SAL_DLLPRIVATE Color    GetColorData( const Color& rFillColor, sal_uInt32 nIndex, double dBrightness ) const;
-        SAL_DLLPRIVATE void     AdaptObjColor(SdrPathObj& rObj, const SfxItemSet& rCustomShapeSet,
-                                                  sal_uInt32& nColorIndex, sal_uInt32 nColorCount);
-        SAL_DLLPRIVATE void     GetParameter( double& rParameterReturnValue,  const css::drawing::EnhancedCustomShapeParameter&,
-                                                  const bool bReplaceGeoWidth, const bool bReplaceGeoHeight ) const;
+        SAL_DLLPRIVATE void AdaptObjColor(
+            SdrPathObj& rObj,
+            double dBrightness,
+            const SfxItemSet& rCustomShapeSet,
+            sal_uInt32& nColorIndex,
+            sal_uInt32 nColorCount);
         SAL_DLLPRIVATE Point    GetPoint( const css::drawing::EnhancedCustomShapeParameterPair&,
                                                     const bool bScale = true, const bool bReplaceGeoSize = false ) const;
+        SAL_DLLPRIVATE basegfx::B2DPoint GetPointAsB2DPoint(const css::drawing::EnhancedCustomShapeParameterPair&,
+                                                    const bool bScale = true, const bool bReplaceGeoSize = false ) const;
 
-        SAL_DLLPRIVATE void     CreateSubPath( sal_Int32& rSrcPt, sal_Int32& rSegmentInd, std::vector< SdrPathObj* >& rObjectList,
-                                                   bool bLineGeometryNeededOnly, bool bSortFilledObjectsToBack,
-                                                   sal_Int32 nIndex );
+        SAL_DLLPRIVATE void CreateSubPath(
+            sal_Int32& rSrcPt,
+            sal_Int32& rSegmentInd,
+            std::vector< std::pair< SdrPathObj*, double> >& rObjectList,
+            bool bLineGeometryNeededOnly,
+            bool bSortFilledObjectsToBack,
+            sal_Int32 nIndex);
         SAL_DLLPRIVATE SdrObject* CreatePathObj( bool bLineGeometryNeededOnly );
         SAL_DLLPRIVATE void     ApplyShapeAttributes( const SdrCustomShapeGeometryItem& rItem );
 
@@ -170,26 +181,27 @@ class SVX_DLLPUBLIC EnhancedCustomShape2d : public SfxItemSet
             }
         };
 
-        SAL_DLLPRIVATE bool     IsFlipVert() { return bFlipV; };
-        SAL_DLLPRIVATE bool     IsFlipHorz() { return bFlipH; };
-        SAL_DLLPRIVATE sal_Int32 GetRotateAngle() { return nRotateAngle; };
-        bool                    IsPostRotate() const;
+        SAL_DLLPRIVATE bool     IsFlipVert() const { return bFlipV; };
+        SAL_DLLPRIVATE bool     IsFlipHorz() const { return bFlipH; };
+        SAL_DLLPRIVATE sal_Int32 GetRotateAngle() const { return nRotateAngle; };
 
         SdrObject*              CreateLineGeometry();
         SdrObject*              CreateObject( bool bLineGeometryNeededOnly );
         void                    ApplyGluePoints( SdrObject* pObj );
-        tools::Rectangle               GetTextRect() const;
-        const tools::Rectangle&        GetLogicRect() const { return aLogicRect; }
+        tools::Rectangle        GetTextRect() const;
+        const tools::Rectangle& GetLogicRect() const { return aLogicRect; }
 
         sal_uInt32              GetHdlCount() const;
         bool                    GetHandlePosition( const sal_uInt32 nIndex, Point& rReturnPosition ) const;
         bool                    SetHandleControllerPosition( const sal_uInt32 nIndex, const css::awt::Point& rPosition );
 
-        EnhancedCustomShape2d( SdrObject* pSdrObjCustomShape );
+        EnhancedCustomShape2d(SdrObjCustomShape& rSdrObjCustomShape);
         virtual ~EnhancedCustomShape2d() override;
 
         SAL_DLLPRIVATE double   GetEnumFunc( const EnhancedCustomShape::ExpressionFunct eVal ) const;
 
+        void     GetParameter( double& rParameterReturnValue,  const css::drawing::EnhancedCustomShapeParameter&,
+                               const bool bReplaceGeoWidth, const bool bReplaceGeoHeight ) const;
         SAL_DLLPRIVATE double   GetAdjustValueAsDouble( const sal_Int32 nIndex ) const;
         SAL_DLLPRIVATE double   GetEquationValueAsDouble( const sal_Int32 nIndex ) const;
 

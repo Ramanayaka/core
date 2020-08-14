@@ -18,13 +18,10 @@
  */
 
 
-#include <canvas/canvastools.hxx>
-
 #include "appletshape.hxx"
 #include "externalshapebase.hxx"
-#include "vieweventhandler.hxx"
 #include "viewappletshape.hxx"
-#include "tools.hxx"
+#include <tools.hxx>
 
 #include <algorithm>
 
@@ -32,10 +29,10 @@
 using namespace ::com::sun::star;
 
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
+        namespace {
+
         /** Represents an applet shape.
 
             This implementation offers support for applet shapes (both
@@ -45,7 +42,7 @@ namespace slideshow
         class AppletShape : public ExternalShapeBase
         {
         public:
-            /** Create a shape for the given XShape for a applet object
+            /** Create a shape for the given XShape for an applet object
 
                 @param xShape
                 The XShape to represent.
@@ -104,6 +101,8 @@ namespace slideshow
             ViewAppletShapeVector                           maViewAppletShapes;
             bool                                             mbIsPlaying;
         };
+
+        }
 
         AppletShape::AppletShape( const uno::Reference< drawing::XShape >& xShape,
                                   double                                   nPrio,
@@ -274,17 +273,13 @@ namespace slideshow
             std::size_t                              nNumPropEntries,
             const SlideShowContext&                  rContext )
         {
-            std::shared_ptr< AppletShape > pAppletShape(
-                new AppletShape(xShape,
+            return std::make_shared<AppletShape>(xShape,
                                 nPrio,
                                 rServiceName,
                                 pPropCopyTable,
                                 nNumPropEntries,
-                                rContext) );
-
-            return pAppletShape;
+                                rContext);
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

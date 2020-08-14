@@ -19,9 +19,8 @@
 
 
 #include "impviewframe.hxx"
-#include "statcach.hxx"
-#include <sfx2/viewfac.hxx>
-#include "workwin.hxx"
+#include <statcach.hxx>
+#include <workwin.hxx>
 
 #include <sfx2/app.hxx>
 #include <sfx2/bindings.hxx>
@@ -32,17 +31,17 @@
 #include <sfx2/objitem.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/request.hxx>
+#include <sfx2/sfxsids.hrc>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/viewsh.hxx>
+#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
+#include <com/sun/star/embed/VerbDescriptor.hpp>
 
-#include <svtools/asynclink.hxx>
+#include <osl/diagnose.h>
 #include <svl/eitem.hxx>
-#include <svl/intitem.hxx>
-#include <svl/rectitem.hxx>
 #include <svl/stritem.hxx>
-#include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
 #include <vcl/window.hxx>
 
@@ -164,16 +163,16 @@ void SfxViewFrame::Exec_Impl(SfxRequest &rReq )
             if ( bShow )
             {
                 // First, make the floats viewable
-                pWorkWin->MakeChildrenVisible_Impl( bShow );
+                pWorkWin->MakeChildrenVisible_Impl(true);
                 GetDispatcher()->Update_Impl( true );
 
                 // Then view it
-                GetBindings().HidePopups( !bShow );
+                GetBindings().HidePopups(false);
             }
             else
             {
-                pWorkWin->HidePopups_Impl( !bShow, true );
-                pWorkWin->MakeChildrenVisible_Impl( bShow );
+                pWorkWin->HidePopups_Impl(true);
+                pWorkWin->MakeChildrenVisible_Impl(false);
             }
 
             Invalidate( rReq.GetSlot() );
@@ -233,7 +232,7 @@ void SfxViewFrame::Exec_Impl(SfxRequest &rReq )
 
                 // Document only needs to be queried, if no other View present.
                 bool bClosed = false;
-                if ( ( bOther || pDocSh->PrepareClose( true/*bUI*/ ) ) )
+                if ( bOther || pDocSh->PrepareClose( true/*bUI*/ ) )
                 {
                     if ( !bOther )
                         pDocSh->SetModified( false );
@@ -303,7 +302,7 @@ void SfxViewFrame::GetState_Impl( SfxItemSet &rSet )
                 break;
 
             case SID_OBJECT:
-                if ( GetViewShell() && GetViewShell()->GetVerbs().getLength() && !GetObjectShell()->IsInPlaceActive() )
+                if ( GetViewShell() && GetViewShell()->GetVerbs().hasElements() && !GetObjectShell()->IsInPlaceActive() )
                 {
                     uno::Any aAny(GetViewShell()->GetVerbs());
                     rSet.Put( SfxUnoAnyItem( sal_uInt16( SID_OBJECT ), aAny ) );

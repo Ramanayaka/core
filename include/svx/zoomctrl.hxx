@@ -40,9 +40,11 @@ public:
 
     SvxZoomStatusBarControl( sal_uInt16 nSlotId, sal_uInt16 nId, StatusBar& rStb );
 
+private:
+    void ImplUpdateItemText();
 };
 
-class SVX_DLLPUBLIC SvxZoomPageStatusBarControl : public SfxStatusBarControl
+class SVX_DLLPUBLIC SvxZoomPageStatusBarControl final : public SfxStatusBarControl
 {
 private:
     Image maImage;

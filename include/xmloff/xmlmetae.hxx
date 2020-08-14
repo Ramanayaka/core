@@ -21,7 +21,6 @@
 #define INCLUDED_XMLOFF_XMLMETAE_HXX
 
 #include <sal/config.h>
-#include <xmloff/dllapi.h>
 #include <sal/types.h>
 
 #include <cppuhelper/implbase.hxx>
@@ -30,9 +29,10 @@
 #include <vector>
 
 #include <com/sun/star/beans/StringPair.hpp>
-#include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <com/sun/star/document/XDocumentProperties.hpp>
+
+namespace com::sun::star::document { class XDocumentProperties; }
+namespace com::sun::star::util { struct DateTime; }
 
 
 class SvXMLExport;
@@ -46,7 +46,7 @@ class SvXMLExport;
     office:meta must <em>not</em> be written.
     </p>
  */
-class XMLOFF_DLLPUBLIC SvXMLMetaExport : public cppu::WeakImplHelper<
+class SvXMLMetaExport final : public cppu::WeakImplHelper<
                 css::xml::sax::XDocumentHandler >
 {
 private:
@@ -57,15 +57,15 @@ private:
     /// preserved namespaces. necessary because we do not write the root node.
     std::vector< css::beans::StringPair > m_preservedNSs;
 
-    SAL_DLLPRIVATE void SimpleStringElement(
+    void SimpleStringElement(
         const OUString& rText, sal_uInt16 nNamespace,
         enum ::xmloff::token::XMLTokenEnum eElementName );
-    SAL_DLLPRIVATE void SimpleDateTimeElement(
+    void SimpleDateTimeElement(
         const css::util::DateTime & rDate, sal_uInt16 nNamespace,
         enum ::xmloff::token::XMLTokenEnum eElementName );
 
     /// currently unused; for exporting via the XDocumentProperties interface
-    SAL_DLLPRIVATE void MExport_();
+    void MExport_();
 
 public:
     SvXMLMetaExport( SvXMLExport& i_rExport,

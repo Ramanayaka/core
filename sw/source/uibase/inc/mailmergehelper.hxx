@@ -19,7 +19,6 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_MAILMERGEHELPER_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_MAILMERGEHELPER_HXX
 
-#include <unotools/configitem.hxx>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/mail/XAuthenticator.hpp>
 #include <com/sun/star/mail/XConnectionListener.hpp>
@@ -29,57 +28,53 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <vcl/scrbar.hxx>
+#include <vcl/customweld.hxx>
+#include <vcl/weld.hxx>
 #include <rtl/ustring.hxx>
-#include "swdllapi.h"
+#include <swdllapi.h>
 
 class SwMailMergeConfigItem;
 
-namespace com { namespace sun { namespace star { namespace mail {
+namespace com::sun::star::mail {
     class XMailService;
     class XSmtpService;
-} } } }
+}
 
 namespace SwMailMergeHelper
 {
-    SW_DLLPUBLIC OUString CallSaveAsDialog(OUString& rFilter);
+    SW_DLLPUBLIC OUString CallSaveAsDialog(weld::Window* pParent, OUString& rFilter);
     SW_DLLPUBLIC bool CheckMailAddress(const OUString& rMailAddress);
     SW_DLLPUBLIC css::uno::Reference<css::mail::XSmtpService> ConnectToSmtpServer(
-                            SwMailMergeConfigItem& rConfigItem,
+                            SwMailMergeConfigItem const & rConfigItem,
                             css::uno::Reference<css::mail::XMailService>& xInMailService,
                             const OUString& rInMailServerPassword,
                             const OUString& rOutMailServerPassword,
-                            vcl::Window* pDialogParentWindow = nullptr);
+                            weld::Window* pDialogParentWindow = nullptr);
 }
 
 struct SwAddressPreview_Impl;
 
 // Preview window used to show the possible selection of address blocks
 // and also the resulting address filled with database data
-class SW_DLLPUBLIC SwAddressPreview : public vcl::Window
+class SW_DLLPUBLIC SwAddressPreview : public weld::CustomWidgetController
 {
-    VclPtr<ScrollBar> aVScrollBar;
-    SwAddressPreview_Impl* pImpl;
+    std::unique_ptr<SwAddressPreview_Impl> pImpl;
+    std::unique_ptr<weld::ScrolledWindow> m_xVScrollBar;
     Link<LinkParamNone*,void> m_aSelectHdl;
 
     void DrawText_Impl(vcl::RenderContext& rRenderContext, const OUString& rAddress,
                        const Point& rTopLeft, const Size& rSize, bool bIsSelected);
 
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&) override;
-    virtual void Resize() override;
-    virtual void MouseButtonDown( const MouseEvent& rMEvt ) override;
-    virtual void KeyInput( const KeyEvent& rKEvt ) override;
-    virtual void StateChanged( StateChangedType nStateChange ) override;
+    virtual bool MouseButtonDown( const MouseEvent& rMEvt ) override;
+    virtual bool KeyInput( const KeyEvent& rKEvt ) override;
     void UpdateScrollBar();
 
-    DECL_LINK(ScrollHdl, ScrollBar*,void);
+    DECL_LINK(ScrollHdl, weld::ScrolledWindow&,void);
 
 public:
-    SwAddressPreview(vcl::Window* pParent, WinBits nStyle);
+    SwAddressPreview(std::unique_ptr<weld::ScrolledWindow> xParent);
     virtual ~SwAddressPreview() override;
-    virtual void dispose() override;
-
-    void positionScrollBar();
 
     /** The address string is a list of address elements separated by spaces
     and breaks. The addresses fit into the given layout. If more addresses then
@@ -105,11 +100,12 @@ public:
     void EnableScrollBar();
 
     // fill the actual data into a string (address block or greeting)
-    static OUString FillData(const OUString& rAddress, SwMailMergeConfigItem& rConfigItem,
+    static OUString FillData(const OUString& rAddress, SwMailMergeConfigItem const & rConfigItem,
                              const css::uno::Sequence<OUString>* pAssignments = nullptr);
 
     void SetSelectHdl (const Link<LinkParamNone*,void>& rLink) { m_aSelectHdl = rLink; }
 };
+
 
 // iterate over an address block or a greeting line the iterator returns the
 // parts either as pure string or as column
@@ -142,12 +138,12 @@ class SW_DLLPUBLIC SwAuthenticator :
 {
     OUString m_aUserName;
     OUString m_aPassword;
-    VclPtr<vcl::Window> m_pParentWindow;
+    weld::Window* m_pParentWindow;
 public:
     SwAuthenticator()
         : m_pParentWindow(nullptr)
     {}
-    SwAuthenticator(const OUString& username, const OUString& password, vcl::Window* pParent)
+    SwAuthenticator(const OUString& username, const OUString& password, weld::Window* pParent)
         : m_aUserName(username)
         , m_aPassword(password)
         , m_pParentWindow(pParent)

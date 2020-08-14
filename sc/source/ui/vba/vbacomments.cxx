@@ -17,16 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include "vbacomments.hxx"
+#include "vbacomment.hxx"
 
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/sheet/XSheetAnnotation.hpp>
-
-#include "vbaglobals.hxx"
+#include <com/sun/star/table/XCellRange.hpp>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
-uno::Any AnnotationToComment( const uno::Any& aSource, uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< frame::XModel >& xModel )
+static uno::Any AnnotationToComment( const uno::Any& aSource, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< frame::XModel >& xModel )
 {
     uno::Reference< sheet::XSheetAnnotation > xAnno( aSource, uno::UNO_QUERY_THROW );
     uno::Reference< container::XChild > xChild( xAnno, uno::UNO_QUERY_THROW );
@@ -36,6 +37,8 @@ uno::Any AnnotationToComment( const uno::Any& aSource, uno::Reference< uno::XCom
     return uno::makeAny( uno::Reference< excel::XComment > (
         new ScVbaComment( uno::Reference< XHelperInterface >(), xContext, xModel, xCellRange ) ) );
 }
+
+namespace {
 
 class CommentEnumeration : public EnumerationHelperImpl
 {
@@ -57,6 +60,8 @@ public:
     }
 
 };
+
+}
 
 ScVbaComments::ScVbaComments(
         const uno::Reference< XHelperInterface >& xParent,
@@ -92,18 +97,16 @@ ScVbaComments::getElementType()
 OUString
 ScVbaComments::getServiceImplName()
 {
-    return OUString("ScVbaComments");
+    return "ScVbaComments";
 }
 
 css::uno::Sequence<OUString>
 ScVbaComments::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.excel.Comments";
-    }
+        "ooo.vba.excel.Comments"
+    };
     return sNames;
 }
 

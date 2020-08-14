@@ -22,7 +22,6 @@
 
 #include <rtl/bootstrap.hxx>
 #include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
 #include <osl/process.h>
 #include <osl/thread.hxx>
@@ -70,10 +69,10 @@ typedef SQLRETURN (SQL_API* TSQLDataSources) (SQLHENV EnvironmentHandle, SQLUSMA
 
 // OOdbcLibWrapper
 
-bool OOdbcEnumeration::load(const sal_Char* _pLibPath)
+bool OOdbcEnumeration::load(const char* _pLibPath)
 {
     m_sLibPath = OUString::createFromAscii(_pLibPath);
-#ifdef HAVE_ODBC_SUPPORT
+#if defined(HAVE_ODBC_SUPPORT) && !defined(DISABLE_DYNLOADING)
     // load the module
     m_pOdbcLib = osl_loadModule(m_sLibPath.pData, SAL_LOADMODULE_NOW);
     return (nullptr != m_pOdbcLib);
@@ -84,7 +83,7 @@ bool OOdbcEnumeration::load(const sal_Char* _pLibPath)
 
 void OOdbcEnumeration::unload()
 {
-#ifdef HAVE_ODBC_SUPPORT
+#if defined(HAVE_ODBC_SUPPORT) && !defined(DISABLE_DYNLOADING)
     if (isLoaded())
     {
         osl_unloadModule(m_pOdbcLib);
@@ -93,7 +92,7 @@ void OOdbcEnumeration::unload()
 #endif
 }
 
-oslGenericFunction OOdbcEnumeration::loadSymbol(const sal_Char* _pFunctionName)
+oslGenericFunction OOdbcEnumeration::loadSymbol(const char* _pFunctionName)
 {
     return osl_getFunctionSymbol(m_pOdbcLib, OUString::createFromAscii(_pFunctionName).pData);
 }
@@ -129,23 +128,23 @@ OOdbcEnumeration::OOdbcEnumeration()
         bLoaded = load(ODBC_LIBRARY_PLAIN);
 #endif
 
-    if ( bLoaded )
-    {
-#ifdef HAVE_ODBC_SUPPORT
-        // load the generic functions
-        m_pAllocHandle = loadSymbol("SQLAllocHandle");
-        m_pFreeHandle = loadSymbol("SQLFreeHandle");
-        m_pSetEnvAttr = loadSymbol("SQLSetEnvAttr");
-        m_pDataSources = loadSymbol("SQLDataSources");
+    if ( !bLoaded )
+        return;
 
-        // all or nothing
-        if (!m_pAllocHandle || !m_pSetEnvAttr || !m_pDataSources || !m_pFreeHandle)
-        {
-            unload();
-            m_pAllocHandle = m_pFreeHandle = m_pSetEnvAttr = m_pDataSources = nullptr;
-        }
-#endif
+#ifdef HAVE_ODBC_SUPPORT
+    // load the generic functions
+    m_pAllocHandle = loadSymbol("SQLAllocHandle");
+    m_pFreeHandle = loadSymbol("SQLFreeHandle");
+    m_pSetEnvAttr = loadSymbol("SQLSetEnvAttr");
+    m_pDataSources = loadSymbol("SQLDataSources");
+
+    // all or nothing
+    if (!m_pAllocHandle || !m_pSetEnvAttr || !m_pDataSources || !m_pFreeHandle)
+    {
+        unload();
+        m_pAllocHandle = m_pFreeHandle = m_pSetEnvAttr = m_pDataSources = nullptr;
     }
+#endif
 }
 
 OOdbcEnumeration::~OOdbcEnumeration()
@@ -186,7 +185,7 @@ void OOdbcEnumeration::freeEnv()
 #endif
 }
 
-void OOdbcEnumeration::getDatasourceNames(StringBag& _rNames)
+void OOdbcEnumeration::getDatasourceNames(std::set<OUString>& _rNames)
 {
     OSL_ENSURE(isLoaded(), "OOdbcEnumeration::getDatasourceNames: not loaded!");
     if (!isLoaded())
@@ -233,12 +232,31 @@ class ProcessTerminationWait : public ::osl::Thread
 {
     oslProcess       m_hProcessHandle;
     Link<void*,void> m_aFinishHdl;
+    ImplSVEvent* m_nEventId;
 
 public:
     ProcessTerminationWait( oslProcess _hProcessHandle, const Link<void*,void>& _rFinishHdl )
-        :m_hProcessHandle( _hProcessHandle )
-        ,m_aFinishHdl( _rFinishHdl )
+        : m_hProcessHandle( _hProcessHandle )
+        , m_aFinishHdl( _rFinishHdl )
+        , m_nEventId(nullptr)
     {
+    }
+
+    void disableCallback()
+    {
+        // if finished event not posted yet, disable by turning it to a no-op Link
+        m_aFinishHdl = Link<void*, void>();
+        if (m_nEventId)
+        {
+            // already posted, remove it
+            Application::RemoveUserEvent(m_nEventId);
+            m_nEventId = nullptr;
+        }
+    }
+
+    void receivedCallback()
+    {
+        m_nEventId = nullptr;
     }
 
 protected:
@@ -248,7 +266,7 @@ protected:
 
         osl_joinProcess( m_hProcessHandle );
         osl_freeProcessHandle( m_hProcessHandle );
-        Application::PostUserEvent( m_aFinishHdl );
+        m_nEventId = Application::PostUserEvent( m_aFinishHdl );
     }
 };
 
@@ -261,7 +279,7 @@ OOdbcManagement::OOdbcManagement(const Link<void*,void>& rAsyncFinishCallback)
 OOdbcManagement::~OOdbcManagement()
 {
     // wait for our thread to be finished
-    if ( m_pProcessWait.get() )
+    if ( m_pProcessWait )
         m_pProcessWait->join();
 }
 
@@ -285,9 +303,21 @@ bool OOdbcManagement::manageDataSources_async()
     return true;
 }
 
+void OOdbcManagement::disableCallback()
+{
+    if (m_pProcessWait)
+        m_pProcessWait->disableCallback();
+}
+
+void OOdbcManagement::receivedCallback()
+{
+    if (m_pProcessWait)
+        m_pProcessWait->receivedCallback();
+}
+
 bool OOdbcManagement::isRunning() const
 {
-    return ( m_pProcessWait.get() && m_pProcessWait->isRunning() );
+    return ( m_pProcessWait && m_pProcessWait->isRunning() );
 }
 
 #endif // HAVE_ODBC_ADMINISTRATION

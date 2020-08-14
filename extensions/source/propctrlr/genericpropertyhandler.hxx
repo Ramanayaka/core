@@ -20,15 +20,17 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_GENERICPROPERTYHANDLER_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_GENERICPROPERTYHANDLER_HXX
 
-#include "propertyhandler.hxx"
 #include "pcrcommontypes.hxx"
 #include "pcrcommon.hxx"
 
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XIntrospectionAccess.hpp>
+#include <com/sun/star/inspection/XPropertyHandler.hpp>
+#include <com/sun/star/script/XTypeConverter.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <rtl/ref.hxx>
 
 #include <map>
@@ -38,7 +40,7 @@ namespace pcr
 {
 
 
-    struct TypeLess : std::binary_function< css::uno::Type, css::uno::Type, bool >
+    struct TypeLess
     {
         bool operator()( const css::uno::Type& _rLHS, const css::uno::Type& _rRHS ) const
         {
@@ -53,12 +55,10 @@ namespace pcr
     typedef ::cppu::WeakComponentImplHelper    <   css::inspection::XPropertyHandler
                                                 ,  css::lang::XServiceInfo
                                                 >   GenericPropertyHandler_Base;
-    class GenericPropertyHandler : public GenericPropertyHandler_Base
+    class GenericPropertyHandler final : public GenericPropertyHandler_Base
     {
-    private:
         mutable ::osl::Mutex    m_aMutex;
 
-    private:
         /// the service factory for creating services
         css::uno::Reference< css::uno::XComponentContext >        m_xContext;
         /// need this to keep alive as long as m_xComponent lives
@@ -80,21 +80,13 @@ namespace pcr
         bool    m_bPropertyMapInitialized : 1;
 
     public:
-        // XServiceInfo - static versions
-        /// @throws css::uno::RuntimeException
-        static OUString SAL_CALL getImplementationName_static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_static(  );
-        static css::uno::Reference< css::uno::XInterface > Create( const css::uno::Reference< css::uno::XComponentContext >& _rxContext );
-
-    protected:
         explicit GenericPropertyHandler(
             const css::uno::Reference< css::uno::XComponentContext >& _rxContext
         );
 
         virtual ~GenericPropertyHandler() override;
 
-    protected:
+    private:
         // XPropertyHandler overridables
         virtual void                                                SAL_CALL inspect( const css::uno::Reference< css::uno::XInterface >& _rxIntrospectee ) override;
         virtual css::uno::Any                                       SAL_CALL getPropertyValue( const OUString& _rPropertyName ) override;
@@ -125,7 +117,6 @@ namespace pcr
         virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
-    private:
         /** ensures that ->m_aProperties is initialized
             @precond
                 our mutex is locked
@@ -137,7 +128,6 @@ namespace pcr
         ::rtl::Reference< IPropertyEnumRepresentation >
                 impl_getEnumConverter( const css::uno::Type& _rEnumType );
 
-    private:
         GenericPropertyHandler( const GenericPropertyHandler& ) = delete;
         GenericPropertyHandler& operator=( const GenericPropertyHandler& ) = delete;
     };

@@ -17,23 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "view/SlsPageObjectLayouter.hxx"
+#include <view/SlsPageObjectLayouter.hxx>
 
-#include "model/SlsPageDescriptor.hxx"
-#include "view/SlsFontProvider.hxx"
-#include "view/SlsTheme.hxx"
-#include "tools/IconCache.hxx"
-#include "Window.hxx"
-#include "res_bmp.hrc"
-#include "bitmaps.hlst"
+#include <model/SlsPageDescriptor.hxx>
+#include <view/SlsTheme.hxx>
+#include <tools/IconCache.hxx>
+#include <Window.hxx>
 
-namespace sd { namespace slidesorter { namespace view {
+#include <bitmaps.hlst>
+#include <osl/diagnose.h>
+
+namespace sd::slidesorter::view {
 
 namespace {
-const static sal_Int32 gnLeftPageNumberOffset = 2;
-const static sal_Int32 gnRightPageNumberOffset = 5;
-const static sal_Int32 gnOuterBorderWidth = 5;
-const static sal_Int32 gnInfoAreaMinWidth = 26;
+const sal_Int32 gnLeftPageNumberOffset = 2;
+const sal_Int32 gnRightPageNumberOffset = 5;
+const sal_Int32 gnOuterBorderWidth = 5;
+const sal_Int32 gnInfoAreaMinWidth = 26;
 }
 
 PageObjectLayouter::PageObjectLayouter (
@@ -42,7 +42,6 @@ PageObjectLayouter::PageObjectLayouter (
     sd::Window *pWindow,
     const sal_Int32 nPageCount)
     : mpWindow(pWindow),
-      maPageObjectSize(rPageObjectWindowSize.Width(), rPageObjectWindowSize.Height()),
       maPageObjectBoundingBox(),
       maPageNumberAreaBoundingBox(),
       maPreviewBoundingBox(),
@@ -56,19 +55,20 @@ PageObjectLayouter::PageObjectLayouter (
     const int nMaximumBorderWidth (gnOuterBorderWidth);
     const int nFocusIndicatorWidth (Theme_FocusIndicatorWidth);
 
+    Size aPageObjectSize(rPageObjectWindowSize.Width(), rPageObjectWindowSize.Height());
     maPreviewBoundingBox = CalculatePreviewBoundingBox(
-        maPageObjectSize,
+        aPageObjectSize,
         Size(rPageSize.Width(), rPageSize.Height()),
         aPageNumberAreaSize.Width(),
         nFocusIndicatorWidth);
-    maFocusIndicatorBoundingBox = ::tools::Rectangle(Point(0,0), maPageObjectSize);
+    maFocusIndicatorBoundingBox = ::tools::Rectangle(Point(0,0), aPageObjectSize);
     maPageObjectBoundingBox = ::tools::Rectangle(
         Point(
             nFocusIndicatorWidth,
             nFocusIndicatorWidth),
         Size(
-            maPageObjectSize.Width()-2*nFocusIndicatorWidth,
-            maPageObjectSize.Height()-2*nFocusIndicatorWidth));
+            aPageObjectSize.Width()-2*nFocusIndicatorWidth,
+            aPageObjectSize.Height()-2*nFocusIndicatorWidth));
 
     maPageNumberAreaBoundingBox = ::tools::Rectangle(
         Point(
@@ -247,7 +247,7 @@ Size PageObjectLayouter::GetPageNumberAreaSize (const int nPageCount)
         sPageNumberTemplate = "999";
     else
         sPageNumberTemplate = "9999";
-    // More then 9999 pages are not handled.
+    // More than 9999 pages are not handled.
 
     const Size aSize (
         mpWindow->GetTextWidth(sPageNumberTemplate),
@@ -258,6 +258,6 @@ Size PageObjectLayouter::GetPageNumberAreaSize (const int nPageCount)
     return aSize;
 }
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

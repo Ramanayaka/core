@@ -20,19 +20,16 @@
 #include <sal/config.h>
 
 #include <dbase/DConnection.hxx>
-#include "dbase/DTables.hxx"
-#include "dbase/DTable.hxx"
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
-#include "file/FCatalog.hxx"
-#include "file/FConnection.hxx"
+#include <dbase/DTables.hxx>
+#include <dbase/DTable.hxx>
+#include <com/sun/star/sdbc/SQLException.hpp>
+#include <file/FCatalog.hxx>
+#include <file/FConnection.hxx>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include "dbase/DCatalog.hxx"
-#include <comphelper/types.hxx>
-#include "resource/dbase_res.hrc"
+#include <dbase/DCatalog.hxx>
+#include <comphelper/servicehelper.hxx>
+#include <cppuhelper/exc_hlp.hxx>
+#include <strings.hrc>
 #include <connectivity/dbexception.hxx>
 
 using namespace ::comphelper;
@@ -69,26 +66,23 @@ Reference< XPropertySet > ODbaseTables::createDescriptor()
 // XAppend
 sdbcx::ObjectType ODbaseTables::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
-    Reference<XUnoTunnel> xTunnel(descriptor,UNO_QUERY);
-    if(xTunnel.is())
+    auto pTable = comphelper::getUnoTunnelImplementation<ODbaseTable>(descriptor);
+    if(pTable)
     {
-        ODbaseTable* pTable = reinterpret_cast< ODbaseTable* >( xTunnel->getSomething(ODbaseTable::getUnoTunnelImplementationId()) );
-        if(pTable)
+        pTable->setPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_NAME),makeAny(_rForName));
+        try
         {
-            pTable->setPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_NAME),makeAny(_rForName));
-            try
-            {
-                if(!pTable->CreateImpl())
-                    throw SQLException();
-            }
-            catch(SQLException&)
-            {
-                throw;
-            }
-            catch(Exception&)
-            {
+            if(!pTable->CreateImpl())
                 throw SQLException();
-            }
+        }
+        catch(SQLException&)
+        {
+            throw;
+        }
+        catch(Exception& ex)
+        {
+            css::uno::Any anyEx = cppu::getCaughtException();
+            throw SQLException( ex.Message, nullptr, "", 0, anyEx );
         }
     }
     return createObject( _rForName );
@@ -110,7 +104,7 @@ void ODbaseTables::dropObject(sal_Int32 _nPos, const OUString& _sElementName)
 
     if ( xTunnel.is() )
     {
-        ODbaseTable* pTable = reinterpret_cast< ODbaseTable* >( xTunnel->getSomething(ODbaseTable::getUnoTunnelImplementationId()) );
+        ODbaseTable* pTable = reinterpret_cast< ODbaseTable* >( xTunnel->getSomething(ODbaseTable::getUnoTunnelId()) );
         if(pTable)
             pTable->DropImpl();
     }

@@ -22,23 +22,18 @@
 
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <comphelper/stl_types.hxx>
 #include "TypeInfo.hxx"
-#include <vcl/button.hxx>
-#include <svtools/wizdlg.hxx>
+#include <vcl/roadmapwizard.hxx>
 #include "DExport.hxx"
 #include "WTabPage.hxx"
 #include "FieldDescriptions.hxx"
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 #include <com/sun/star/sdbcx/XKeysSupplier.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
-#include <vcl/lstbox.hxx>
-#include <functional>
 #include <map>
 #include <algorithm>
 
@@ -88,7 +83,8 @@ namespace dbaui
         bool operator()(const OUString& _sColumnName) const override
         {
             return std::any_of(m_pVector->begin(),m_pVector->end(),
-                std::bind2nd(m_aCase, _sColumnName));
+                [this, &_sColumnName](const OUString& lhs)
+                { return m_aCase(lhs, _sColumnName); });
         }
     };
 
@@ -212,7 +208,7 @@ namespace dbaui
     };
 
     // Wizard Dialog
-    class OCopyTableWizard : public WizardDialog
+    class OCopyTableWizard : public vcl::RoadmapWizardMachine
     {
         friend class        OWizColumnSelect;
         friend class        OWizTypeSelect;
@@ -238,19 +234,13 @@ namespace dbaui
         ODatabaseExport::TColumns       m_vSourceColumns;
         ODatabaseExport::TColumnVector  m_vSourceVec;
 
-        VclPtr<HelpButton>             m_pbHelp;
-        VclPtr<CancelButton>           m_pbCancel;
-        VclPtr<PushButton>             m_pbPrev;
-        VclPtr<PushButton>             m_pbNext;
-        VclPtr<PushButton>             m_pbFinish;
-
         OTypeInfoMap                            m_aTypeInfo;
         std::vector<OTypeInfoMap::iterator>   m_aTypeInfoIndex;
         OTypeInfoMap                            m_aDestTypeInfo;
         std::vector<OTypeInfoMap::iterator>   m_aDestTypeInfoIndex;
         TNameMapping                            m_mNameMapping;
 
-        ODatabaseExport::TPositions             m_vColumnPos;
+        ODatabaseExport::TPositions             m_vColumnPositions;
         std::vector<sal_Int32>                m_vColumnTypes;
 
         css::uno::Reference< css::sdbc::XConnection >         m_xDestConnection;
@@ -278,25 +268,36 @@ namespace dbaui
         bool                     m_bUseHeaderLine;
 
     private:
-        DECL_LINK( ImplPrevHdl, Button*, void );
-        DECL_LINK( ImplNextHdl, Button*, void);
-        DECL_LINK( ImplOKHdl, Button*, void );
-        DECL_LINK( ImplActivateHdl, WizardDialog*, void );
+        DECL_LINK( ImplPrevHdl, weld::Button&, void );
+        DECL_LINK( ImplNextHdl, weld::Button&, void);
+        DECL_LINK( ImplOKHdl, weld::Button&, void );
         bool CheckColumns(sal_Int32& _rnBreakPos);
         void loadData( const ICopyTableSourceObject& _rSourceObject,
                        ODatabaseExport::TColumns& _rColumns,
                        ODatabaseExport::TColumnVector& _rColVector );
         void construct();
         // need for table creation
-        static void appendColumns( css::uno::Reference< css::sdbcx::XColumnsSupplier>& _rxColSup, const ODatabaseExport::TColumnVector* _pVec, bool _bKeyColumns = false );
-        static void appendKey(css::uno::Reference< css::sdbcx::XKeysSupplier>& _rxSup,const ODatabaseExport::TColumnVector* _pVec);
+        static void appendColumns( css::uno::Reference< css::sdbcx::XColumnsSupplier> const & _rxColSup, const ODatabaseExport::TColumnVector* _pVec, bool _bKeyColumns = false );
+        static void appendKey(css::uno::Reference< css::sdbcx::XKeysSupplier> const & _rxSup,const ODatabaseExport::TColumnVector* _pVec);
         // checks if the type is supported in the destination database
         bool supportsType(sal_Int32 _nDataType,sal_Int32& _rNewDataType);
+
+        virtual std::unique_ptr<BuilderPage> createPage(vcl::WizardTypes::WizardState /*nState*/) override
+        {
+            assert(false);
+            return nullptr;
+        }
+
+        virtual void ActivatePage() override;
+
+        sal_uInt16 GetCurLevel() const { return getCurrentState(); }
+
+        weld::Container* CreatePageContainer();
 
     public:
         // used for copy tables or queries
         OCopyTableWizard(
-            vcl::Window * pParent,
+            weld::Window * pParent,
             const OUString& _rDefaultName,
             sal_Int16 _nOperation,
             const ICopyTableSourceObject&                                                           _rSourceObject,
@@ -308,7 +309,7 @@ namespace dbaui
 
         // used for importing rtf/html sources
         OCopyTableWizard(
-            vcl::Window* pParent,
+            weld::Window* pParent,
             const OUString& _rDefaultName,
             sal_Int16 _nOperation,
             const ODatabaseExport::TColumns& _rDestColumns,
@@ -321,18 +322,17 @@ namespace dbaui
         );
 
         virtual ~OCopyTableWizard() override;
-        virtual void        dispose() override;
 
         virtual bool        DeactivatePage() override;
-        OKButton&           GetOKButton() { return static_cast<OKButton&>(*m_pbFinish); }
+        weld::Button&       GetOKButton() { return *m_xFinish; }
         Wizard_Button_Style GetPressedButton() const { return m_ePressed; }
         void                EnableNextButton(bool bEnable);
-        void                AddWizardPage(OWizardPage* pPage); // delete page from OCopyTableWizard
+        void                AddWizardPage(std::unique_ptr<OWizardPage> xPage); // delete page from OCopyTableWizard
         void                CheckButtons(); // checks which button can be disabled, enabled
 
         // returns a vector where the position of a column and if the column is in the selection
-        // when not the value is COLUMN_POSITION_NOT_FOUND == (sal_uInt32)-1
-        const ODatabaseExport::TPositions& GetColumnPositions()    const { return m_vColumnPos; }
+        // when not the value is COLUMN_POSITION_NOT_FOUND.
+        const ODatabaseExport::TPositions& GetColumnPositions()    const { return m_vColumnPositions; }
         const std::vector<sal_Int32>&    GetColumnTypes()        const { return m_vColumnTypes; }
         bool                        UseHeaderLine()         const { return m_bUseHeaderLine; }
         void                        setUseHeaderLine(bool _bUseHeaderLine) { m_bUseHeaderLine = _bUseHeaderLine; }
@@ -368,7 +368,7 @@ namespace dbaui
 
         const OTypeInfoMap& getTypeInfo()                       const { return m_aTypeInfo; }
 
-        TOTypeInfoSP        getDestTypeInfo(sal_Int32 _nPos)    const { return m_aDestTypeInfoIndex[_nPos]->second; }
+        TOTypeInfoSP const & getDestTypeInfo(sal_Int32 _nPos)    const { return m_aDestTypeInfoIndex[_nPos]->second; }
         const OTypeInfoMap& getDestTypeInfo()                   const { return m_aDestTypeInfo; }
 
         const css::lang::Locale&  GetLocale() const { return m_aLocale; }
@@ -385,6 +385,8 @@ namespace dbaui
         */
         void clearDestColumns();
 
+        css::uno::Reference< css::beans::XPropertySet > returnTable();
+        css::uno::Reference< css::beans::XPropertySet > getTable();
         css::uno::Reference< css::beans::XPropertySet > createTable();
         css::uno::Reference< css::beans::XPropertySet > createView() const;
         sal_Int32 getMaxColumnNameLength() const;
@@ -400,7 +402,7 @@ namespace dbaui
 
         OUString createUniqueName(const OUString& _sName);
 
-        // displays a error message that a column type is not supported
+        // displays an error message that a column type is not supported
         void showColumnTypeNotSupported(const OUString& _rColumnName);
 
         void removeColumnNameFromNameMap(const OUString& _sName);

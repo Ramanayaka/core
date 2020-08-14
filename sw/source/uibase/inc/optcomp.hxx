@@ -21,11 +21,7 @@
 
 #include <memory>
 #include <sfx2/tabdlg.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/lstbox.hxx>
 #include <unotools/compatibility.hxx>
-#include <svx/checklbx.hxx>
 #include <rtl/ustring.hxx>
 
 class SwWrtShell;
@@ -34,11 +30,6 @@ struct SwCompatibilityOptPage_Impl;
 class SwCompatibilityOptPage : public SfxTabPage
 {
 private:
-    // controls
-    VclPtr<VclFrame>               m_pMain;
-    VclPtr<ListBox>                m_pFormattingLB;
-    VclPtr<SvxCheckListBox>        m_pOptionsLB;
-    VclPtr<PushButton>             m_pDefaultPB;
     // config item
     SvtCompatibilityOptions m_aConfigItem;
     // text of the user entry
@@ -48,24 +39,33 @@ private:
     // impl object
     std::unique_ptr<SwCompatibilityOptPage_Impl> m_pImpl;
     // saved options after "Reset"; used in "FillItemSet" for comparison
-    sal_uLong                   m_nSavedOptions;
+    sal_uInt32                  m_nSavedOptions;
+    bool                        m_bSavedMSFormsMenuOption;
+
+    // controls
+    std::unique_ptr<weld::Frame> m_xMain;
+    std::unique_ptr<weld::Frame> m_xGlobalOptionsFrame;
+    std::unique_ptr<weld::ComboBox> m_xFormattingLB;
+    std::unique_ptr<weld::ComboBox> m_xGlobalOptionsLB;
+    std::unique_ptr<weld::TreeView> m_xOptionsLB;
+    std::unique_ptr<weld::TreeView> m_xGlobalOptionsCLB;
+    std::unique_ptr<weld::Button> m_xDefaultPB;
 
     // handler
-    DECL_LINK(SelectHdl, ListBox&, void);
-    DECL_LINK(UseAsDefaultHdl, Button*, void);
+    DECL_LINK(SelectHdl, weld::ComboBox&, void);
+    DECL_LINK(UseAsDefaultHdl, weld::Button&, void);
 
     // private methods
     void                    InitControls( const SfxItemSet& rSet );
-    void                    SetCurrentOptions( sal_uLong nOptions );
-    sal_uLong                   GetDocumentOptions() const;
+    void                    SetCurrentOptions( sal_uInt32 nOptions );
+    sal_uInt32              GetDocumentOptions() const;
     void                    WriteOptions();
 
 public:
-    SwCompatibilityOptPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    SwCompatibilityOptPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SwCompatibilityOptPage() override;
-    virtual void            dispose() override;
 
-    static VclPtr<SfxTabPage> Create( vcl::Window* pParent, const SfxItemSet* rAttrSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
 
     virtual bool            FillItemSet( SfxItemSet* rSet ) override;
     virtual void            Reset( const SfxItemSet* rSet ) override;

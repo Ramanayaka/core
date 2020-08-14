@@ -18,12 +18,15 @@
  */
 
 #include "CandleStickChartType.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include "StockBar.hxx"
-#include "servicenames_charttypes.hxx"
+#include <PropertyHelper.hxx>
+#include <StockBar.hxx>
+#include <ModifyListenerHelper.hxx>
+#include <servicenames_charttypes.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
@@ -47,38 +50,33 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "Japanese",
+    rOutProperties.emplace_back( "Japanese",
                   PROP_CANDLESTICKCHARTTYPE_JAPANESE,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "WhiteDay",
+    rOutProperties.emplace_back( "WhiteDay",
                   PROP_CANDLESTICKCHARTTYPE_WHITE_DAY,
                   cppu::UnoType<beans::XPropertySet>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
-    rOutProperties.push_back(
-        Property( "BlackDay",
+                  | beans::PropertyAttribute::MAYBEVOID );
+    rOutProperties.emplace_back( "BlackDay",
                   PROP_CANDLESTICKCHARTTYPE_BLACK_DAY,
                   cppu::UnoType<beans::XPropertySet>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "ShowFirst",
+    rOutProperties.emplace_back( "ShowFirst",
                   PROP_CANDLESTICKCHARTTYPE_SHOW_FIRST,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
-    rOutProperties.push_back(
-        Property( "ShowHighLow",
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+    rOutProperties.emplace_back( "ShowHighLow",
                   PROP_CANDLESTICKCHARTTYPE_SHOW_HIGH_LOW,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
 struct StaticCandleStickChartTypeDefaults_Initializer
@@ -148,9 +146,7 @@ struct StaticCandleStickChartTypeInfo : public rtl::StaticAggregate< uno::Refere
 namespace chart
 {
 
-CandleStickChartType::CandleStickChartType(
-    const uno::Reference< uno::XComponentContext > & xContext ) :
-        ChartType( xContext )
+CandleStickChartType::CandleStickChartType()
 {
     Reference< beans::XPropertySet > xWhiteDayProps( new ::chart::StockBar( true ));
     Reference< beans::XPropertySet > xBlackDayProps( new ::chart::StockBar( false ));
@@ -198,9 +194,9 @@ CandleStickChartType::~CandleStickChartType()
             && xPropertySet.is())
             ModifyListenerHelper::removeListener( xPropertySet, m_xModifyEventForwarder );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -213,7 +209,7 @@ uno::Reference< util::XCloneable > SAL_CALL CandleStickChartType::createClone()
 // ____ XChartType ____
 OUString SAL_CALL CandleStickChartType::getChartType()
 {
-    return OUString(CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK);
+    return CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK;
 }
 
 uno::Sequence< OUString > SAL_CALL CandleStickChartType::getSupportedMandatoryRoles()
@@ -225,17 +221,17 @@ uno::Sequence< OUString > SAL_CALL CandleStickChartType::getSupportedMandatoryRo
 
     std::vector< OUString > aMandRoles;
 
-    aMandRoles.push_back( "label");
+    aMandRoles.emplace_back("label");
     if( bShowFirst )
-        aMandRoles.push_back( "values-first");
+        aMandRoles.emplace_back("values-first");
 
     if( bShowHiLow )
     {
-        aMandRoles.push_back( "values-min");
-        aMandRoles.push_back( "values-max");
+        aMandRoles.emplace_back("values-min");
+        aMandRoles.emplace_back("values-max");
     }
 
-    aMandRoles.push_back( "values-last");
+    aMandRoles.emplace_back("values-last");
 
     return comphelper::containerToSequence( aMandRoles );
 }
@@ -250,12 +246,12 @@ Sequence< OUString > SAL_CALL CandleStickChartType::getSupportedOptionalRoles()
     std::vector< OUString > aOptRoles;
 
     if( ! bShowFirst )
-        aOptRoles.push_back( "values-first");
+        aOptRoles.emplace_back("values-first");
 
     if( ! bShowHiLow )
     {
-        aOptRoles.push_back( "values-min");
-        aOptRoles.push_back( "values-max");
+        aOptRoles.emplace_back("values-min");
+        aOptRoles.emplace_back("values-max");
     }
 
     return comphelper::containerToSequence( aOptRoles );
@@ -263,7 +259,7 @@ Sequence< OUString > SAL_CALL CandleStickChartType::getSupportedOptionalRoles()
 
 OUString SAL_CALL CandleStickChartType::getRoleOfSequenceForSeriesLabel()
 {
-    return OUString("values-last");
+    return "values-last";
 }
 
 // ____ OPropertySet ____
@@ -296,7 +292,7 @@ void SAL_CALL CandleStickChartType::setFastPropertyValue_NoBroadcast(
     {
         uno::Any aOldValue;
         Reference< util::XModifyBroadcaster > xBroadcaster;
-        this->getFastPropertyValue( aOldValue, nHandle );
+        getFastPropertyValue( aOldValue, nHandle );
         if( aOldValue.hasValue() &&
             (aOldValue >>= xBroadcaster) &&
             xBroadcaster.is())
@@ -318,7 +314,7 @@ void SAL_CALL CandleStickChartType::setFastPropertyValue_NoBroadcast(
 
 OUString SAL_CALL CandleStickChartType::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.CandleStickChartType") ;
+    return "com.sun.star.comp.chart.CandleStickChartType" ;
 }
 
 sal_Bool SAL_CALL CandleStickChartType::supportsService( const OUString& rServiceName )
@@ -336,11 +332,11 @@ css::uno::Sequence< OUString > SAL_CALL CandleStickChartType::getSupportedServic
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart_CandleStickChartType_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart_CandleStickChartType_get_implementation(css::uno::XComponentContext * /*context*/,
                                                          css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::CandleStickChartType(context));
+    return cppu::acquire(new ::chart::CandleStickChartType);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -25,13 +25,9 @@
 #include <osl/diagnose.h>
 
 #include <unotools/searchopt.hxx>
-#include <com/sun/star/util/XReplaceable.hpp>
-#include <com/sun/star/util/XSearchable.hpp>
-#include <com/sun/star/util/XSearchDescriptor.hpp>
-#include <com/sun/star/util/XPropertyReplace.hpp>
-#include <com/sun/star/util/XReplaceDescriptor.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/lang/Locale.hpp>
-#include <svl/memberid.hrc>
+#include <svl/memberid.h>
 #include <i18nlangtag/languagetag.hxx>
 
 using namespace utl;
@@ -163,43 +159,43 @@ SvxSearchItem::SvxSearchItem( const sal_uInt16 nId ) :
         rFlags |= TransliterationFlags::IGNORE_DIACRITICS_CTL ;
     if ( aOpt.IsIgnoreKashida_CTL())
         rFlags |= TransliterationFlags::IGNORE_KASHIDA_CTL ;
-    if ( m_bAsianOptions )
-    {
-        if ( aOpt.IsMatchHiraganaKatakana())
-            rFlags |= TransliterationFlags::IGNORE_KANA;
-        if ( aOpt.IsMatchContractions())
-            rFlags |= TransliterationFlags::ignoreSize_ja_JP;
-        if ( aOpt.IsMatchMinusDashChoon())
-            rFlags |= TransliterationFlags::ignoreMinusSign_ja_JP;
-        if ( aOpt.IsMatchRepeatCharMarks())
-            rFlags |= TransliterationFlags::ignoreIterationMark_ja_JP;
-        if ( aOpt.IsMatchVariantFormKanji())
-            rFlags |= TransliterationFlags::ignoreTraditionalKanji_ja_JP;
-        if ( aOpt.IsMatchOldKanaForms())
-            rFlags |= TransliterationFlags::ignoreTraditionalKana_ja_JP;
-        if ( aOpt.IsMatchDiziDuzu())
-            rFlags |= TransliterationFlags::ignoreZiZu_ja_JP;
-        if ( aOpt.IsMatchBavaHafa())
-            rFlags |= TransliterationFlags::ignoreBaFa_ja_JP;
-        if ( aOpt.IsMatchTsithichiDhizi())
-            rFlags |= TransliterationFlags::ignoreTiJi_ja_JP;
-        if ( aOpt.IsMatchHyuiyuByuvyu())
-            rFlags |= TransliterationFlags::ignoreHyuByu_ja_JP;
-        if ( aOpt.IsMatchSesheZeje())
-            rFlags |= TransliterationFlags::ignoreSeZe_ja_JP;
-        if ( aOpt.IsMatchIaiya())
-            rFlags |= TransliterationFlags::ignoreIandEfollowedByYa_ja_JP;
-        if ( aOpt.IsMatchKiku())
-            rFlags |= TransliterationFlags::ignoreKiKuFollowedBySa_ja_JP;
-        if ( aOpt.IsIgnorePunctuation())
-            rFlags |= TransliterationFlags::ignoreSeparator_ja_JP;
-        if ( aOpt.IsIgnoreWhitespace())
-            rFlags |= TransliterationFlags::ignoreSpace_ja_JP;
-        if ( aOpt.IsIgnoreProlongedSoundMark())
-            rFlags |= TransliterationFlags::ignoreProlongedSoundMark_ja_JP;
-        if ( aOpt.IsIgnoreMiddleDot())
-            rFlags |= TransliterationFlags::ignoreMiddleDot_ja_JP;
-    }
+    if ( !m_bAsianOptions )
+        return;
+
+    if ( aOpt.IsMatchHiraganaKatakana())
+        rFlags |= TransliterationFlags::IGNORE_KANA;
+    if ( aOpt.IsMatchContractions())
+        rFlags |= TransliterationFlags::ignoreSize_ja_JP;
+    if ( aOpt.IsMatchMinusDashChoon())
+        rFlags |= TransliterationFlags::ignoreMinusSign_ja_JP;
+    if ( aOpt.IsMatchRepeatCharMarks())
+        rFlags |= TransliterationFlags::ignoreIterationMark_ja_JP;
+    if ( aOpt.IsMatchVariantFormKanji())
+        rFlags |= TransliterationFlags::ignoreTraditionalKanji_ja_JP;
+    if ( aOpt.IsMatchOldKanaForms())
+        rFlags |= TransliterationFlags::ignoreTraditionalKana_ja_JP;
+    if ( aOpt.IsMatchDiziDuzu())
+        rFlags |= TransliterationFlags::ignoreZiZu_ja_JP;
+    if ( aOpt.IsMatchBavaHafa())
+        rFlags |= TransliterationFlags::ignoreBaFa_ja_JP;
+    if ( aOpt.IsMatchTsithichiDhizi())
+        rFlags |= TransliterationFlags::ignoreTiJi_ja_JP;
+    if ( aOpt.IsMatchHyuiyuByuvyu())
+        rFlags |= TransliterationFlags::ignoreHyuByu_ja_JP;
+    if ( aOpt.IsMatchSesheZeje())
+        rFlags |= TransliterationFlags::ignoreSeZe_ja_JP;
+    if ( aOpt.IsMatchIaiya())
+        rFlags |= TransliterationFlags::ignoreIandEfollowedByYa_ja_JP;
+    if ( aOpt.IsMatchKiku())
+        rFlags |= TransliterationFlags::ignoreKiKuFollowedBySa_ja_JP;
+    if ( aOpt.IsIgnorePunctuation())
+        rFlags |= TransliterationFlags::ignoreSeparator_ja_JP;
+    if ( aOpt.IsIgnoreWhitespace())
+        rFlags |= TransliterationFlags::ignoreSpace_ja_JP;
+    if ( aOpt.IsIgnoreProlongedSoundMark())
+        rFlags |= TransliterationFlags::ignoreProlongedSoundMark_ja_JP;
+    if ( aOpt.IsIgnoreMiddleDot())
+        rFlags |= TransliterationFlags::ignoreMiddleDot_ja_JP;
 }
 
 
@@ -228,17 +224,14 @@ SvxSearchItem::SvxSearchItem( const SvxSearchItem& rItem ) :
     EnableNotification( lcl_GetNotifyNames() );
 }
 
-
 SvxSearchItem::~SvxSearchItem()
 {
 }
 
-
-SfxPoolItem* SvxSearchItem::Clone( SfxItemPool *) const
+SvxSearchItem* SvxSearchItem::Clone( SfxItemPool *) const
 {
     return new SvxSearchItem(*this);
 }
-
 
 //! used below
 static bool equalsWithoutLocale( const i18nutil::SearchOptions2& rItem1, const i18nutil::SearchOptions2& rItem2 )
@@ -284,7 +277,7 @@ bool SvxSearchItem::GetPresentation
     MapUnit             ,
     MapUnit             ,
     OUString&           ,
-    const IntlWrapper *
+    const IntlWrapper&
 )   const
 {
     return false;
@@ -440,11 +433,11 @@ bool SvxSearchItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) const
         }
         break;
         case MID_SEARCH_COMMAND:
-            rVal <<= (sal_Int16) m_nCommand; break;
+            rVal <<= static_cast<sal_Int16>(m_nCommand); break;
         case MID_SEARCH_STYLEFAMILY:
-            rVal <<= (sal_Int16) m_eFamily; break;
+            rVal <<= static_cast<sal_Int16>(m_eFamily); break;
         case MID_SEARCH_CELLTYPE:
-            rVal <<= (sal_Int32) m_nCellType; break;
+            rVal <<= static_cast<sal_Int32>(m_nCellType); break;
         case MID_SEARCH_ROWDIRECTION:
             rVal <<= m_bRowDirection; break;
         case MID_SEARCH_ALLTABLES:
@@ -462,7 +455,7 @@ bool SvxSearchItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) const
         case MID_SEARCH_ASIANOPTIONS:
             rVal <<= m_bAsianOptions; break;
         case MID_SEARCH_ALGORITHMTYPE:
-            rVal <<= (sal_Int16) m_aSearchOpt.algorithmType; break;
+            rVal <<= static_cast<sal_Int16>(m_aSearchOpt.algorithmType); break;
         case MID_SEARCH_ALGORITHMTYPE2:
             rVal <<= m_aSearchOpt.AlgorithmType2; break;
         case MID_SEARCH_FLAGS:
@@ -478,7 +471,7 @@ bool SvxSearchItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) const
         case MID_SEARCH_INSERTEDCHARS:
             rVal <<= m_aSearchOpt.insertedChars; break;
         case MID_SEARCH_TRANSLITERATEFLAGS:
-            rVal <<= (sal_Int32)m_aSearchOpt.transliterateFlags; break;
+            rVal <<= static_cast<sal_Int32>(m_aSearchOpt.transliterateFlags); break;
         case MID_SEARCH_LOCALE:
         {
             LanguageType nLocale;
@@ -486,7 +479,7 @@ bool SvxSearchItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) const
                 nLocale = LanguageTag::convertToLanguageType( m_aSearchOpt.Locale );
             else
                 nLocale = LANGUAGE_NONE;
-            rVal <<= (sal_Int16)(sal_uInt16)nLocale;
+            rVal <<= static_cast<sal_Int16>(static_cast<sal_uInt16>(nLocale));
             break;
         }
 
@@ -512,91 +505,91 @@ bool SvxSearchItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
             if ( ( rVal >>= aSeq ) && ( aSeq.getLength() == SRCH_PARAMS ) )
             {
                 sal_Int16 nConvertedCount( 0 );
-                for ( sal_Int32 i = 0; i < aSeq.getLength(); ++i )
+                for ( const auto& rProp : std::as_const(aSeq) )
                 {
-                    if ( aSeq[i].Name == SRCH_PARA_OPTIONS )
+                    if ( rProp.Name == SRCH_PARA_OPTIONS )
                     {
                         css::util::SearchOptions2 nTmpSearchOpt2;
-                        if ( aSeq[i].Value >>= nTmpSearchOpt2 )
+                        if ( rProp.Value >>= nTmpSearchOpt2 )
                         {
                             m_aSearchOpt = nTmpSearchOpt2;
                             ++nConvertedCount;
                         }
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_FAMILY )
+                    else if ( rProp.Name == SRCH_PARA_FAMILY )
                     {
                         sal_uInt16 nTemp( 0 );
-                        if ( aSeq[i].Value >>= nTemp )
+                        if ( rProp.Value >>= nTemp )
                         {
                             m_eFamily = SfxStyleFamily( nTemp );
                             ++nConvertedCount;
                         }
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_COMMAND )
+                    else if ( rProp.Name == SRCH_PARA_COMMAND )
                     {
                         sal_uInt16 nTmp;
-                        if ( aSeq[i].Value >>= nTmp )
+                        if ( rProp.Value >>= nTmp )
                         {
                             m_nCommand = static_cast<SvxSearchCmd>(nTmp);
                             ++nConvertedCount;
                         }
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_CELLTYPE )
+                    else if ( rProp.Name == SRCH_PARA_CELLTYPE )
                     {
                         sal_uInt16 nTmp;
-                        if ( aSeq[i].Value >>= nTmp )
+                        if ( rProp.Value >>= nTmp )
                         {
                             m_nCellType = static_cast<SvxSearchCellType>(nTmp);
                             ++nConvertedCount;
                         }
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_APPFLAG )
+                    else if ( rProp.Name == SRCH_PARA_APPFLAG )
                     {
                         sal_uInt16 nTmp;
-                        if ( aSeq[i].Value >>= nTmp )
+                        if ( rProp.Value >>= nTmp )
                         {
                             m_nAppFlag = static_cast<SvxSearchApp>(nTmp);
                             ++nConvertedCount;
                         }
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_ROWDIR )
+                    else if ( rProp.Name == SRCH_PARA_ROWDIR )
                     {
-                        if ( aSeq[i].Value >>= m_bRowDirection )
+                        if ( rProp.Value >>= m_bRowDirection )
                             ++nConvertedCount;
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_ALLTABLES )
+                    else if ( rProp.Name == SRCH_PARA_ALLTABLES )
                     {
-                        if ( aSeq[i].Value >>= m_bAllTables )
+                        if ( rProp.Value >>= m_bAllTables )
                             ++nConvertedCount;
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_SEARCHFILTERED )
+                    else if ( rProp.Name == SRCH_PARA_SEARCHFILTERED )
                     {
-                        if ( aSeq[i].Value >>= m_bSearchFiltered )
+                        if ( rProp.Value >>= m_bSearchFiltered )
                             ++nConvertedCount;
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_SEARCHFORMATTED )
+                    else if ( rProp.Name == SRCH_PARA_SEARCHFORMATTED )
                     {
-                        if ( aSeq[i].Value >>= m_bSearchFormatted )
+                        if ( rProp.Value >>= m_bSearchFormatted )
                             ++nConvertedCount;
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_BACKWARD )
+                    else if ( rProp.Name == SRCH_PARA_BACKWARD )
                     {
-                        if ( aSeq[i].Value >>= m_bBackward )
+                        if ( rProp.Value >>= m_bBackward )
                             ++nConvertedCount;
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_PATTERN )
+                    else if ( rProp.Name == SRCH_PARA_PATTERN )
                     {
-                        if ( aSeq[i].Value >>= m_bPattern )
+                        if ( rProp.Value >>= m_bPattern )
                             ++nConvertedCount;
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_CONTENT )
+                    else if ( rProp.Name == SRCH_PARA_CONTENT )
                     {
-                        if ( aSeq[i].Value >>= m_bContent )
+                        if ( rProp.Value >>= m_bContent )
                             ++nConvertedCount;
                     }
-                    else if ( aSeq[i].Name == SRCH_PARA_ASIANOPT )
+                    else if ( rProp.Name == SRCH_PARA_ASIANOPT )
                     {
-                        if ( aSeq[i].Value >>= m_bAsianOptions )
+                        if ( rProp.Value >>= m_bAsianOptions )
                             ++nConvertedCount;
                     }
                 }
@@ -608,7 +601,7 @@ bool SvxSearchItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
         case MID_SEARCH_COMMAND:
             bRet = (rVal >>= nInt); m_nCommand = static_cast<SvxSearchCmd>(nInt); break;
         case MID_SEARCH_STYLEFAMILY:
-            bRet = (rVal >>= nInt); m_eFamily =  (SfxStyleFamily) (sal_Int16) nInt; break;
+            bRet = (rVal >>= nInt); m_eFamily =  static_cast<SfxStyleFamily>(static_cast<sal_Int16>(nInt)); break;
         case MID_SEARCH_CELLTYPE:
             bRet = (rVal >>= nInt); m_nCellType = static_cast<SvxSearchCellType>(nInt); break;
         case MID_SEARCH_ROWDIRECTION:
@@ -628,9 +621,9 @@ bool SvxSearchItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
         case MID_SEARCH_ASIANOPTIONS:
             bRet = (rVal >>= m_bAsianOptions); break;
         case MID_SEARCH_ALGORITHMTYPE:
-            bRet = (rVal >>= nInt); m_aSearchOpt.algorithmType = (SearchAlgorithms)(sal_Int16)nInt; break;
+            bRet = (rVal >>= nInt); m_aSearchOpt.algorithmType = static_cast<SearchAlgorithms>(static_cast<sal_Int16>(nInt)); break;
         case MID_SEARCH_ALGORITHMTYPE2:
-            bRet = (rVal >>= nInt); m_aSearchOpt.AlgorithmType2 = (sal_Int16)nInt; break;
+            bRet = (rVal >>= nInt); m_aSearchOpt.AlgorithmType2 = static_cast<sal_Int16>(nInt); break;
         case MID_SEARCH_FLAGS:
             bRet = (rVal >>= m_aSearchOpt.searchFlag); break;
         case MID_SEARCH_SEARCHSTRING:
@@ -647,8 +640,8 @@ bool SvxSearchItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
         {
             bRet = (rVal >>= nInt);
             if (bRet)
-                m_aSearchOpt.transliterateFlags = (TransliterationFlags)nInt;
-             break;
+                m_aSearchOpt.transliterateFlags = static_cast<TransliterationFlags>(nInt);
+            break;
         }
         case MID_SEARCH_LOCALE:
         {

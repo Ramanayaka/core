@@ -19,19 +19,17 @@
 
 #include <unotools/moduleoptions.hxx>
 #include <comphelper/sequenceashashmap.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/configitem.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <osl/diagnose.h>
 #include <o3tl/enumarray.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/instance.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/document/XTypeDetection.hpp>
 #include <com/sun/star/util/PathSubstitution.hpp>
@@ -42,10 +40,10 @@
 /*-************************************************************************************************************
     @descr          These values are used to define necessary keys from our configuration management to support
                     all functionality of these implementation.
-                    It's a fast way to make changes if some keys change his name or location!
+                    It's a fast way to make changes if some keys change its name or location!
 
                     Property handle are necessary to specify right position in return list of configuration
-                    for asked values. We ask it with a list of properties to get his values. The returned list
+                    for asked values. We ask it with a list of properties to get its values. The returned list
                     has the same order like our given name list!
                     e.g.:
                             NAMELIST[ PROPERTYHANDLE_xxx ] => VALUELIST[ PROPERTYHANDLE_xxx ]
@@ -85,10 +83,12 @@
 
 #define FACTORYCOUNT                        11
 
+namespace {
+
 /*-************************************************************************************************************
     @descr  This struct hold information about one factory. We declare a complete array which can hold infos
             for all well known factories. Values of enum "EFactory" (see header!) are directly used as index!
-            So we can support a fast access on these information.
+            So we can support a fast access on this information.
 *//*-*************************************************************************************************************/
 struct FactoryInfo
 {
@@ -105,10 +105,7 @@ struct FactoryInfo
         {
             bInstalled                  = false;
             sFactory.clear();
-            sShortName.clear();
             sTemplateFile.clear();
-            sWindowAttributes.clear();
-            sEmptyDocumentURL.clear();
             sDefaultFilter.clear();
             nIcon                       = 0;
             bChangedTemplateFile        = false;
@@ -173,9 +170,6 @@ struct FactoryInfo
         // But if you wish to set it without that... you must initialize it!
         void initInstalled        ()                                       { bInstalled        = true; }
         void initFactory          ( const OUString& sNewFactory          ) { sFactory          = sNewFactory; }
-        void initShortName        ( const OUString& sNewShortName        ) { sShortName        = sNewShortName; }
-        void initWindowAttributes ( const OUString& sNewWindowAttributes ) { sWindowAttributes = sNewWindowAttributes; }
-        void initEmptyDocumentURL ( const OUString& sNewEmptyDocumentURL ) { sEmptyDocumentURL = sNewEmptyDocumentURL; }
         void initDefaultFilter    ( const OUString& sNewDefaultFilter    ) { sDefaultFilter    = sNewDefaultFilter; }
         void setDefaultFilterReadonly( const bool bVal){bDefaultFilterReadonly = bVal;}
         void initIcon             ( sal_Int32              nNewIcon             ) { nIcon             = nNewIcon; }
@@ -222,10 +216,7 @@ struct FactoryInfo
 
         bool         bInstalled;
         OUString     sFactory;
-        OUString     sShortName;
         OUString     sTemplateFile;
-        OUString     sWindowAttributes;
-        OUString     sEmptyDocumentURL;
         OUString     sDefaultFilter;
         sal_Int32    nIcon;
 
@@ -235,6 +226,8 @@ struct FactoryInfo
 
         css::uno::Reference< css::util::XStringSubstitution >  xSubstVars;
 };
+
+}
 
 class SvtModuleOptions_Impl : public ::utl::ConfigItem
 {
@@ -256,10 +249,10 @@ class SvtModuleOptions_Impl : public ::utl::ConfigItem
 
         bool            IsModuleInstalled         (       SvtModuleOptions::EModule     eModule    ) const;
         css::uno::Sequence < OUString > GetAllServiceNames();
-        OUString        GetFactoryName            (       SvtModuleOptions::EFactory    eFactory   ) const;
-        OUString        GetFactoryStandardTemplate(       SvtModuleOptions::EFactory    eFactory   ) const;
+        OUString const & GetFactoryName           (       SvtModuleOptions::EFactory    eFactory   ) const;
+        OUString const & GetFactoryStandardTemplate(      SvtModuleOptions::EFactory    eFactory   ) const;
         static OUString GetFactoryEmptyDocumentURL(       SvtModuleOptions::EFactory    eFactory   );
-        OUString        GetFactoryDefaultFilter   (       SvtModuleOptions::EFactory    eFactory   ) const;
+        OUString const & GetFactoryDefaultFilter  (       SvtModuleOptions::EFactory    eFactory   ) const;
         bool            IsDefaultFilterReadonly(          SvtModuleOptions::EFactory eFactory      ) const;
         sal_Int32       GetFactoryIcon            (       SvtModuleOptions::EFactory    eFactory   ) const;
         static bool     ClassifyFactoryByName     ( const OUString&              sName      ,
@@ -298,7 +291,7 @@ SvtModuleOptions_Impl::SvtModuleOptions_Impl()
     :   ::utl::ConfigItem( ROOTNODE_FACTORIES )
     ,   m_bReadOnlyStatesWellKnown( false )
 {
-    // First initialize list of factory infos! Otherwise we couldnt guarantee right working of these class.
+    // First initialize list of factory infos! Otherwise we couldn't guarantee right working of these class.
     for( auto & rFactory : m_lFactories )
         rFactory.free();
 
@@ -360,22 +353,17 @@ void SvtModuleOptions_Impl::ImplCommit()
     OUString                                 sBasePath;
     for( FactoryInfo & rInfo : m_lFactories )
     {
-        // These path is used to build full qualified property names ....
+        // These path is used to build full qualified property names...
         // See pInfo->getChangedProperties() for further information
         sBasePath  = PATHSEPARATOR + rInfo.getFactory() + PATHSEPARATOR;
 
         const css::uno::Sequence< css::beans::PropertyValue > lChangedProperties = rInfo.getChangedProperties ( sBasePath );
-        const css::beans::PropertyValue*                      pChangedProperties = lChangedProperties.getConstArray();
-        sal_Int32                                             nPropertyCount     = lChangedProperties.getLength();
-        for( sal_Int32 nProperty=0; nProperty<nPropertyCount; ++nProperty )
-        {
-            lCommitProperties[nRealCount] = pChangedProperties[nProperty];
-            ++nRealCount;
-        }
+        std::copy(lChangedProperties.begin(), lChangedProperties.end(), std::next(lCommitProperties.begin(), nRealCount));
+        nRealCount += lChangedProperties.getLength();
     }
     // Resize commit list to real size.
-    // If nothing to do - suppress calling of configuration ...
-    // It could be to expensive :-)
+    // If nothing to do - suppress calling of configuration...
+    // It could be too expensive :-)
     if( nRealCount > 0 )
     {
         lCommitProperties.realloc( nRealCount );
@@ -432,14 +420,14 @@ css::uno::Sequence < OUString > SvtModuleOptions_Impl::GetAllServiceNames()
 {
     std::vector<OUString> aVec;
 
-    for( auto & rFactory : m_lFactories )
+    for( const auto & rFactory : m_lFactories )
         if( rFactory.getInstalled() )
             aVec.push_back( rFactory.getFactory() );
 
     return comphelper::containerToSequence(aVec);
 }
 
-OUString SvtModuleOptions_Impl::GetFactoryName( SvtModuleOptions::EFactory eFactory ) const
+OUString const & SvtModuleOptions_Impl::GetFactoryName( SvtModuleOptions::EFactory eFactory ) const
 {
     return m_lFactories[eFactory].getFactory();
 }
@@ -482,7 +470,7 @@ OUString SvtModuleOptions::GetFactoryShortName(SvtModuleOptions::EFactory eFacto
     return sShortName;
 }
 
-OUString SvtModuleOptions_Impl::GetFactoryStandardTemplate( SvtModuleOptions::EFactory eFactory ) const
+OUString const & SvtModuleOptions_Impl::GetFactoryStandardTemplate( SvtModuleOptions::EFactory eFactory ) const
 {
     return m_lFactories[eFactory].getTemplateFile();
 }
@@ -524,7 +512,7 @@ OUString SvtModuleOptions_Impl::GetFactoryEmptyDocumentURL( SvtModuleOptions::EF
     return sURL;
 }
 
-OUString SvtModuleOptions_Impl::GetFactoryDefaultFilter( SvtModuleOptions::EFactory eFactory ) const
+OUString const & SvtModuleOptions_Impl::GetFactoryDefaultFilter( SvtModuleOptions::EFactory eFactory ) const
 {
     return m_lFactories[eFactory].getDefaultFilter();
 }
@@ -572,14 +560,14 @@ css::uno::Sequence< OUString > SvtModuleOptions_Impl::impl_ExpandSetNames( const
     OUString* pPropNames = lPropNames.getArray();
     sal_Int32 nPropStart = 0;
 
-    for( sal_Int32 nName=0; nName<nCount; ++nName )
+    for( const auto& rSetName : lSetNames )
     {
-        pPropNames[nPropStart+PROPERTYHANDLE_SHORTNAME       ] = lSetNames[nName] + PATHSEPARATOR PROPERTYNAME_SHORTNAME;
-        pPropNames[nPropStart+PROPERTYHANDLE_TEMPLATEFILE    ] = lSetNames[nName] + PATHSEPARATOR PROPERTYNAME_TEMPLATEFILE;
-        pPropNames[nPropStart+PROPERTYHANDLE_WINDOWATTRIBUTES] = lSetNames[nName] + PATHSEPARATOR PROPERTYNAME_WINDOWATTRIBUTES;
-        pPropNames[nPropStart+PROPERTYHANDLE_EMPTYDOCUMENTURL] = lSetNames[nName] + PATHSEPARATOR PROPERTYNAME_EMPTYDOCUMENTURL;
-        pPropNames[nPropStart+PROPERTYHANDLE_DEFAULTFILTER   ] = lSetNames[nName] + PATHSEPARATOR PROPERTYNAME_DEFAULTFILTER;
-        pPropNames[nPropStart+PROPERTYHANDLE_ICON            ] = lSetNames[nName] + PATHSEPARATOR PROPERTYNAME_ICON;
+        pPropNames[nPropStart+PROPERTYHANDLE_SHORTNAME       ] = rSetName + PATHSEPARATOR PROPERTYNAME_SHORTNAME;
+        pPropNames[nPropStart+PROPERTYHANDLE_TEMPLATEFILE    ] = rSetName + PATHSEPARATOR PROPERTYNAME_TEMPLATEFILE;
+        pPropNames[nPropStart+PROPERTYHANDLE_WINDOWATTRIBUTES] = rSetName + PATHSEPARATOR PROPERTYNAME_WINDOWATTRIBUTES;
+        pPropNames[nPropStart+PROPERTYHANDLE_EMPTYDOCUMENTURL] = rSetName + PATHSEPARATOR PROPERTYNAME_EMPTYDOCUMENTURL;
+        pPropNames[nPropStart+PROPERTYHANDLE_DEFAULTFILTER   ] = rSetName + PATHSEPARATOR PROPERTYNAME_DEFAULTFILTER;
+        pPropNames[nPropStart+PROPERTYHANDLE_ICON            ] = rSetName + PATHSEPARATOR PROPERTYNAME_ICON;
         nPropStart += PROPERTYCOUNT;
     }
 
@@ -588,7 +576,7 @@ css::uno::Sequence< OUString > SvtModuleOptions_Impl::impl_ExpandSetNames( const
 
 /*-************************************************************************************************************
     @short      helper to classify given factory by name
-    @descr      Every factory has his own long and short name. So we can match right enum value for internal using.
+    @descr      Every factory has its own long and short name. So we can match right enum value for internal using.
 
     @attention  We change in/out parameter "eFactory" in every case! But you should use it only, if return value is sal_True!
                 Algorithm:  Set out-parameter to probably value ... and check the longname.
@@ -675,19 +663,19 @@ bool SvtModuleOptions_Impl::ClassifyFactoryByName( const OUString& sName, SvtMod
 /*-************************************************************************************************************
     @short      read factory configuration
     @descr      Give us a list of pure factory names (long names!) which can be used as
-                direct set node names ... and we read her property values and fill internal list.
+                direct set node names... and we read her property values and fill internal list.
                 These method can be used by initial reading at ctor and later updating by "Notify()".
 
     @seealso    ctor
     @seealso    method Notify()
 
-    @param      "lFactories" is the list of set node entries which should be readed.
+    @param      "lFactories" is the list of set node entries which should be read.
     @onerror    We do nothing.
     @threadsafe no
 *//*-*************************************************************************************************************/
 void SvtModuleOptions_Impl::impl_Read( const css::uno::Sequence< OUString >& lFactories )
 {
-    // Expand every set node name in lFactories to full qualified paths to his properties
+    // Expand every set node name in lFactories to full qualified paths to its properties
     // and get right values from configuration.
     const css::uno::Sequence< OUString > lProperties = impl_ExpandSetNames( lFactories  );
     const css::uno::Sequence< css::uno::Any >   lValues     = GetProperties( lProperties );
@@ -709,13 +697,11 @@ void SvtModuleOptions_Impl::impl_Read( const css::uno::Sequence< OUString >& lFa
     //              see "nPropertyStart += PROPERTYCOUNT" ...
 
     sal_Int32                   nPropertyStart  = 0;
-    sal_Int32                   nNodeCount      = lFactories.getLength();
     FactoryInfo*                pInfo           = nullptr;
     SvtModuleOptions::EFactory  eFactory;
 
-    for( sal_Int32 nSetNode=0; nSetNode<nNodeCount; ++nSetNode )
+    for( const OUString& sFactoryName : lFactories )
     {
-        const OUString& sFactoryName = lFactories[nSetNode];
         if( ClassifyFactoryByName( sFactoryName, eFactory ) )
         {
             OUString sTemp;
@@ -727,14 +713,8 @@ void SvtModuleOptions_Impl::impl_Read( const css::uno::Sequence< OUString >& lFa
             pInfo->initInstalled();
             pInfo->initFactory  ( sFactoryName );
 
-            if (lValues[nPropertyStart+PROPERTYHANDLE_SHORTNAME] >>= sTemp)
-                pInfo->initShortName( sTemp );
             if (lValues[nPropertyStart+PROPERTYHANDLE_TEMPLATEFILE] >>= sTemp)
                 pInfo->initTemplateFile( sTemp );
-            if (lValues[nPropertyStart+PROPERTYHANDLE_WINDOWATTRIBUTES] >>= sTemp)
-                pInfo->initWindowAttributes( sTemp );
-            if (lValues[nPropertyStart+PROPERTYHANDLE_EMPTYDOCUMENTURL] >>= sTemp)
-                pInfo->initEmptyDocumentURL( sTemp );
             if (lValues[nPropertyStart+PROPERTYHANDLE_DEFAULTFILTER   ] >>= sTemp)
                 pInfo->initDefaultFilter( sTemp );
             if (lValues[nPropertyStart+PROPERTYHANDLE_ICON] >>= nTemp)
@@ -750,20 +730,14 @@ void SvtModuleOptions_Impl::MakeReadonlyStatesAvailable()
         return;
 
     css::uno::Sequence< OUString > lFactories = GetNodeNames(OUString());
-    sal_Int32 c = lFactories.getLength();
-    sal_Int32 i = 0;
-    for (i=0; i<c; ++i)
-    {
-        OUStringBuffer sPath(256);
-        sPath.append(lFactories[i]             );
-        sPath.append(PATHSEPARATOR             );
-        sPath.append(PROPERTYNAME_DEFAULTFILTER);
-
-        lFactories[i] = sPath.makeStringAndClear();
-    }
+    std::transform(lFactories.begin(), lFactories.end(), lFactories.begin(),
+        [](const OUString& rFactory) -> OUString {
+            return rFactory + PATHSEPARATOR PROPERTYNAME_DEFAULTFILTER;
+        });
 
     css::uno::Sequence< sal_Bool > lReadonlyStates = GetReadOnlyStates(lFactories);
-    for (i=0; i<c; ++i)
+    sal_Int32 c = lFactories.getLength();
+    for (sal_Int32 i=0; i<c; ++i)
     {
         OUString&            rFactoryName = lFactories[i];
         SvtModuleOptions::EFactory  eFactory;
@@ -948,16 +922,16 @@ OUString SvtModuleOptions::GetModuleName( EModule eModule ) const
 {
     switch( eModule )
     {
-        case SvtModuleOptions::EModule::WRITER    :   { return OUString("Writer"); }
-        case SvtModuleOptions::EModule::WEB       :   { return OUString("Web"); }
-        case SvtModuleOptions::EModule::GLOBAL    :   { return OUString("Global"); }
-        case SvtModuleOptions::EModule::CALC      :   { return OUString("Calc"); }
-        case SvtModuleOptions::EModule::DRAW      :   { return OUString("Draw"); }
-        case SvtModuleOptions::EModule::IMPRESS   :   { return OUString("Impress"); }
-        case SvtModuleOptions::EModule::MATH      :   { return OUString("Math"); }
-        case SvtModuleOptions::EModule::CHART     :   { return OUString("Chart"); }
-        case SvtModuleOptions::EModule::BASIC     :   { return OUString("Basic"); }
-        case SvtModuleOptions::EModule::DATABASE  :   { return OUString("Database"); }
+        case SvtModuleOptions::EModule::WRITER    :   { return "Writer"; }
+        case SvtModuleOptions::EModule::WEB       :   { return "Web"; }
+        case SvtModuleOptions::EModule::GLOBAL    :   { return "Global"; }
+        case SvtModuleOptions::EModule::CALC      :   { return "Calc"; }
+        case SvtModuleOptions::EModule::DRAW      :   { return "Draw"; }
+        case SvtModuleOptions::EModule::IMPRESS   :   { return "Impress"; }
+        case SvtModuleOptions::EModule::MATH      :   { return "Math"; }
+        case SvtModuleOptions::EModule::CHART     :   { return "Chart"; }
+        case SvtModuleOptions::EModule::BASIC     :   { return "Basic"; }
+        case SvtModuleOptions::EModule::DATABASE  :   { return "Database"; }
         default:
             OSL_FAIL( "unknown module" );
             break;
@@ -1102,11 +1076,10 @@ SvtModuleOptions::EFactory SvtModuleOptions::ClassifyFactoryByModel(const css::u
         return EFactory::UNKNOWN_FACTORY;
 
     const css::uno::Sequence< OUString > lServices = xInfo->getSupportedServiceNames();
-    const OUString*                      pServices = lServices.getConstArray();
 
-    for (sal_Int32 i=0; i<lServices.getLength(); ++i)
+    for (const OUString& rService : lServices)
     {
-        SvtModuleOptions::EFactory eApp = SvtModuleOptions::ClassifyFactoryByServiceName(pServices[i]);
+        SvtModuleOptions::EFactory eApp = SvtModuleOptions::ClassifyFactoryByServiceName(rService);
         if (eApp != EFactory::UNKNOWN_FACTORY)
             return eApp;
     }
@@ -1120,7 +1093,7 @@ css::uno::Sequence < OUString > SvtModuleOptions::GetAllServiceNames()
     return m_pImpl->GetAllServiceNames();
 }
 
-OUString SvtModuleOptions::GetDefaultModuleName()
+OUString SvtModuleOptions::GetDefaultModuleName() const
 {
     OUString aModule;
     if (m_pImpl->IsModuleInstalled(SvtModuleOptions::EModule::WRITER))

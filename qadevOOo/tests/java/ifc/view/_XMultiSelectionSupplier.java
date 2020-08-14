@@ -120,7 +120,7 @@ public class _XMultiSelectionSupplier extends MultiMethodTest {
 
             oObj.addSelection(oObj);
 
-            log.println("ERORR: expected exception 'com.sun.star.lang.IllegalArgumentException' was not thrown => FAILED");
+            log.println("ERROR: expected exception 'com.sun.star.lang.IllegalArgumentException' was not thrown => FAILED");
             bOK = false;
         } catch (com.sun.star.lang.IllegalArgumentException ex) {
             log.println("expected exception 'com.sun.star.lang.IllegalArgumentException' => OK");
@@ -197,7 +197,7 @@ public class _XMultiSelectionSupplier extends MultiMethodTest {
 
             oObj.removeSelection(oObj);
 
-            log.println("ERORR: expected exception 'com.sun.star.lang.IllegalArgumentException' was not thrown => FAILED");
+            log.println("ERROR: expected exception 'com.sun.star.lang.IllegalArgumentException' was not thrown => FAILED");
             bOK = false;
         } catch (com.sun.star.lang.IllegalArgumentException ex) {
             log.println("expected exception 'com.sun.star.lang.IllegalArgumentException' => OK");
@@ -319,7 +319,7 @@ public class _XMultiSelectionSupplier extends MultiMethodTest {
             i++;
 
             if (ObjCompare != null) {
-                ObjCompare.compare(shouldElement, nextElement);
+                compRes = ObjCompare.compare(shouldElement, nextElement) == 0;
             } else {
                 compRes = util.ValueComparer.equalValue(shouldElement, nextElement);
             }
@@ -390,7 +390,7 @@ public class _XMultiSelectionSupplier extends MultiMethodTest {
             i--;
 
             if (ObjCompare != null) {
-                ObjCompare.compare(shouldElement, nextElement);
+                compRes = ObjCompare.compare(shouldElement, nextElement) == 0;
             } else {
                 compRes = util.ValueComparer.equalValue(shouldElement, nextElement);
             }

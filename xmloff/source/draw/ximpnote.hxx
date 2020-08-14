@@ -20,23 +20,17 @@
 #ifndef INCLUDED_XMLOFF_SOURCE_DRAW_XIMPNOTE_HXX
 #define INCLUDED_XMLOFF_SOURCE_DRAW_XIMPNOTE_HXX
 
-#include <xmloff/xmlictxt.hxx>
 #include "sdxmlimp_impl.hxx"
-#include <xmloff/nmspmap.hxx>
 #include "ximppage.hxx"
 
 // presentation:notes context
 
 class SdXMLNotesContext : public SdXMLGenericPageContext
 {
-private:
-    OUString msPageMasterName;
-
 public:
-    SdXMLNotesContext( SdXMLImport& rImport, sal_uInt16 nPrfx,
-        const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes);
+    SdXMLNotesContext( SdXMLImport& rImport,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList>& xAttrList,
+        css::uno::Reference< css::drawing::XShapes > const & rShapes);
     virtual ~SdXMLNotesContext() override;
 };
 

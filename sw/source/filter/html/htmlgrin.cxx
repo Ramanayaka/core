@@ -18,29 +18,28 @@
  */
 
 #include <memory>
-#include "hintids.hxx"
+#include <hintids.hxx>
 #include <comphelper/string.hxx>
+#include <comphelper/documentinfo.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
-#include <svx/svxids.hrc>
-#include <sfx2/sfx.hrc>
 #include <i18nlangtag/languagetag.hxx>
 #include <svl/stritem.hxx>
 #include <svl/urihelper.hxx>
+#include <svl/languageoptions.hxx>
 #include <editeng/fhgtitem.hxx>
-#include <editeng/lrspitem.hxx>
-#include <editeng/adjustitem.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/colritem.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/langitem.hxx>
-#include <editeng/scripttypeitem.hxx>
 #include <sfx2/docfile.hxx>
-#include <svtools/imap.hxx>
+#include <sfx2/event.hxx>
+#include <vcl/imap.hxx>
 #include <svtools/htmltokn.h>
 #include <svtools/htmlkywd.hxx>
 #include <unotools/eventcfg.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 #include <fmtornt.hxx>
 #include <fmturl.hxx>
@@ -49,8 +48,7 @@
 #include <fmtcntnt.hxx>
 #include <fmtanchr.hxx>
 #include <fmtfsize.hxx>
-#include "frmatr.hxx"
-#include "charatr.hxx"
+#include <charatr.hxx>
 #include <frmfmt.hxx>
 #include <charfmt.hxx>
 #include <docary.hxx>
@@ -62,24 +60,26 @@
 #include <poolfmt.hxx>
 #include <IMark.hxx>
 #include <ndgrf.hxx>
-#include <htmlnum.hxx>
-#include <swcss1.hxx>
-#include <swhtml.hxx>
+#include "htmlnum.hxx"
+#include "swcss1.hxx"
+#include "swhtml.hxx"
 #include <numrule.hxx>
+#include <IDocumentMarkAccess.hxx>
+#include <frameformats.hxx>
 
 #include <vcl/graphicfilter.hxx>
 #include <tools/urlobj.hxx>
 
 using namespace ::com::sun::star;
 
-HTMLOptionEnum<sal_Int16> aHTMLImgHAlignTable[] =
+HTMLOptionEnum<sal_Int16> const aHTMLImgHAlignTable[] =
 {
     { OOO_STRING_SVTOOLS_HTML_AL_left,    text::HoriOrientation::LEFT       },
     { OOO_STRING_SVTOOLS_HTML_AL_right,   text::HoriOrientation::RIGHT      },
     { nullptr,                            0               }
 };
 
-HTMLOptionEnum<sal_Int16> aHTMLImgVAlignTable[] =
+HTMLOptionEnum<sal_Int16> const aHTMLImgVAlignTable[] =
 {
     { OOO_STRING_SVTOOLS_HTML_VA_top,         text::VertOrientation::LINE_TOP       },
     { OOO_STRING_SVTOOLS_HTML_VA_texttop,     text::VertOrientation::CHAR_TOP       },
@@ -98,7 +98,7 @@ ImageMap *SwHTMLParser::FindImageMap( const OUString& rName ) const
 
     if (m_pImageMaps)
     {
-        for (auto &rpIMap : *m_pImageMaps)
+        for (const auto &rpIMap : *m_pImageMaps)
         {
             if (rName.equalsIgnoreAsciiCase(rpIMap->GetName()))
             {
@@ -120,7 +120,8 @@ void SwHTMLParser::ConnectImageMaps()
     while( m_nMissingImgMaps > 0 && nIdx < nEndIdx )
     {
         SwNode *pNd = rNds[nIdx + 1];
-        if( nullptr != (pGrfNd = pNd->GetGrfNode()) )
+        pGrfNd = pNd->GetGrfNode();
+        if( nullptr != pGrfNd )
         {
             SwFrameFormat *pFormat = pGrfNd->GetFlyFormat();
             SwFormatURL aURL( pFormat->GetURL() );
@@ -187,7 +188,7 @@ void SwHTMLParser::SetAnchorAndAdjustment( sal_Int16 eVertOri,
         // determine paragraph indent
         sal_uInt16 nLeftSpace = 0, nRightSpace = 0;
         short nIndent = 0;
-        GetMarginsFromContextWithNumBul( nLeftSpace, nRightSpace, nIndent );
+        GetMarginsFromContextWithNumberBullet( nLeftSpace, nRightSpace, nIndent );
 
         // determine horizontal alignment and wrapping
         sal_Int16 eHoriRel;
@@ -228,9 +229,9 @@ void SwHTMLParser::SetAnchorAndAdjustment( sal_Int16 eVertOri,
 
             if( nUpper )
             {
-                NewAttr( &m_aAttrTab.pULSpace, SvxULSpaceItem( 0, nLower, RES_UL_SPACE ) );
-                m_aParaAttrs.push_back( m_aAttrTab.pULSpace );
-                EndAttr( m_aAttrTab.pULSpace, false );
+                NewAttr(m_xAttrTab, &m_xAttrTab->pULSpace, SvxULSpaceItem(0, nLower, RES_UL_SPACE));
+                m_aParaAttrs.push_back( m_xAttrTab->pULSpace );
+                EndAttr( m_xAttrTab->pULSpace, false );
             }
         }
 
@@ -258,6 +259,12 @@ void SwHTMLParser::SetAnchorAndAdjustment( sal_Int16 eVertOri,
 
     if( bMoveBackward )
         m_pPam->Move( fnMoveBackward );
+
+    if (aAnchor.GetAnchorId() == RndStdIds::FLY_AS_CHAR && !m_pPam->GetNode().GetTextNode())
+    {
+        eState = SvParserState::Error;
+        return;
+    }
 
     aAnchor.SetAnchor( m_pPam->GetPoint() );
 
@@ -291,6 +298,20 @@ void SwHTMLParser::GetDefaultScriptType( ScriptType& rType,
     rTypeStr = GetScriptTypeString( pHeaderAttrs );
 }
 
+namespace
+{
+    bool allowAccessLink(const SwDoc& rDoc)
+    {
+        OUString sReferer;
+        SfxObjectShell * sh = rDoc.GetPersist();
+        if (sh != nullptr && sh->HasName())
+        {
+            sReferer = sh->GetMedium()->GetName();
+        }
+        return !SvtSecurityOptions().isUntrustedReferer(sReferer);
+    }
+}
+
 /*  */
 
 void SwHTMLParser::InsertImage()
@@ -298,16 +319,18 @@ void SwHTMLParser::InsertImage()
     // and now analyze
     OUString sAltNm, aId, aClass, aStyle, aMap, sHTMLGrfName;
     OUString sGrfNm;
+    OUString aGraphicData;
     sal_Int16 eVertOri = text::VertOrientation::TOP;
     sal_Int16 eHoriOri = text::HoriOrientation::NONE;
     bool bWidthProvided=false, bHeightProvided=false;
     long nWidth=0, nHeight=0;
     long nVSpace=0, nHSpace=0;
 
-    sal_uInt16 nBorder = (m_aAttrTab.pINetFormat ? 1 : 0);
+    sal_uInt16 nBorder = (m_xAttrTab->pINetFormat ? 1 : 0);
     bool bIsMap = false;
-    bool bPrcWidth = false;
-    bool bPrcHeight = false;
+    bool bPercentWidth = false;
+    bool bPercentHeight = false;
+    OUString sWidthAsString, sHeightAsString;
     SvxMacroItem aMacroItem(RES_FRMMACRO);
 
     ScriptType eDfltScriptType;
@@ -317,7 +340,7 @@ void SwHTMLParser::InsertImage()
     const HTMLOptions& rHTMLOptions = GetOptions();
     for (size_t i = rHTMLOptions.size(); i; )
     {
-        sal_uInt16 nEvent = 0;
+        SvMacroItemId nEvent = SvMacroItemId::NONE;
         ScriptType eScriptType2 = eDfltScriptType;
         const HTMLOption& rOption = rHTMLOptions[--i];
         switch( rOption.GetToken() )
@@ -336,6 +359,12 @@ void SwHTMLParser::InsertImage()
                 if( !InternalImgToPrivateURL(sGrfNm) )
                     sGrfNm = INetURLObject::GetAbsURL( m_sBaseURL, sGrfNm );
                 break;
+            case HtmlOptionId::DATA:
+                aGraphicData = rOption.GetString();
+                if (!InternalImgToPrivateURL(aGraphicData))
+                    aGraphicData = INetURLObject::GetAbsURL(
+                        m_sBaseURL, SwHTMLParser::StripQueryFromPath(m_sBaseURL, aGraphicData));
+                break;
             case HtmlOptionId::ALIGN:
                 eVertOri =
                     rOption.GetEnum( aHTMLImgVAlignTable,
@@ -346,18 +375,23 @@ void SwHTMLParser::InsertImage()
             case HtmlOptionId::WIDTH:
                 // for now only store as pixel value!
                 nWidth = rOption.GetNumber();
-                bPrcWidth = (rOption.GetString().indexOf('%') != -1);
-                if( bPrcWidth && nWidth>100 )
+                sWidthAsString = rOption.GetString();
+                bPercentWidth = (sWidthAsString.indexOf('%') != -1);
+                if( bPercentWidth && nWidth>100 )
                     nWidth = 100;
-                bWidthProvided = true;
+                // width|height = "auto" means viewing app decides the size
+                // i.e. proceed as if no particular size was provided
+                bWidthProvided = (sWidthAsString != "auto");
                 break;
             case HtmlOptionId::HEIGHT:
                 // for now only store as pixel value!
                 nHeight = rOption.GetNumber();
-                bPrcHeight = (rOption.GetString().indexOf('%') != -1);
-                if( bPrcHeight && nHeight>100 )
+                sHeightAsString = rOption.GetString();
+                bPercentHeight = (sHeightAsString.indexOf('%') != -1);
+                if( bPercentHeight && nHeight>100 )
                     nHeight = 100;
-                bHeightProvided = true;
+                // the same as above w/ HtmlOptionId::WIDTH
+                bHeightProvided = (sHeightAsString != "auto");
                 break;
             case HtmlOptionId::VSPACE:
                 nVSpace = rOption.GetNumber();
@@ -369,7 +403,7 @@ void SwHTMLParser::InsertImage()
                 sAltNm = rOption.GetString();
                 break;
             case HtmlOptionId::BORDER:
-                nBorder = (sal_uInt16)rOption.GetNumber();
+                nBorder = static_cast<sal_uInt16>(rOption.GetNumber());
                 break;
             case HtmlOptionId::ISMAP:
                 bIsMap = true;
@@ -383,23 +417,23 @@ void SwHTMLParser::InsertImage()
 
             case HtmlOptionId::SDONLOAD:
                 eScriptType2 = STARBASIC;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case HtmlOptionId::ONLOAD:
-                nEvent = SVX_EVENT_IMAGE_LOAD;
+                nEvent = SvMacroItemId::OnImageLoadDone;
                 goto IMAGE_SETEVENT;
 
             case HtmlOptionId::SDONABORT:
                 eScriptType2 = STARBASIC;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case HtmlOptionId::ONABORT:
-                nEvent = SVX_EVENT_IMAGE_ABORT;
+                nEvent = SvMacroItemId::OnImageLoadCancel;
                 goto IMAGE_SETEVENT;
 
             case HtmlOptionId::SDONERROR:
                 eScriptType2 = STARBASIC;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case HtmlOptionId::ONERROR:
-                nEvent = SVX_EVENT_IMAGE_ERROR;
+                nEvent = SvMacroItemId::OnImageLoadError;
                 goto IMAGE_SETEVENT;
 IMAGE_SETEVENT:
                 {
@@ -419,10 +453,13 @@ IMAGE_SETEVENT:
         }
     }
 
+    if (sGrfNm.isEmpty() && !aGraphicData.isEmpty())
+        sGrfNm = aGraphicData;
+
     if( sGrfNm.isEmpty() )
         return;
 
-    // When we are in a ordered list and the paragraph is still empty and not
+    // When we are in an ordered list and the paragraph is still empty and not
     // numbered, it may be a graphic for a bullet list.
     if( !m_pPam->GetPoint()->nContent.GetIndex() &&
         GetNumInfo().GetDepth() > 0 && GetNumInfo().GetDepth() <= MAXLEVEL &&
@@ -438,7 +475,7 @@ IMAGE_SETEVENT:
 
             pTextNode->SetCountedInList( true );
 
-            // It's necessary to invalide the rule, because between the reading
+            // It's necessary to invalidate the rule, because between the reading
             // of LI and the graphic an EndAction could be called.
             if( GetNumInfo().GetNumRule() )
                 GetNumInfo().GetNumRule()->SetInvalidRule( true );
@@ -457,12 +494,21 @@ IMAGE_SETEVENT:
         std::unique_ptr<SvMemoryStream> const pStream(aGraphicURL.getData());
         if (pStream)
         {
-            if (ERRCODE_NONE == GraphicFilter::GetGraphicFilter().ImportGraphic(aGraphic, "", *pStream))
-                sGrfNm.clear();
+            GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
+            aGraphic = rFilter.ImportUnloadedGraphic(*pStream);
+            sGrfNm.clear();
+
+            if (!sGrfNm.isEmpty())
+            {
+                if (ERRCODE_NONE == rFilter.ImportGraphic(aGraphic, "", *pStream))
+                    sGrfNm.clear();
+            }
         }
     }
-    else if (m_sBaseURL.isEmpty()) // sBaseURL is empty if the source is clipboard
+    else if (m_sBaseURL.isEmpty() || !aGraphicData.isEmpty())
     {
+        // sBaseURL is empty if the source is clipboard
+        // aGraphicData is non-empty for <object data="..."> -> not a linked graphic.
         if (ERRCODE_NONE == GraphicFilter::GetGraphicFilter().ImportGraphic(aGraphic, aGraphicURL))
             sGrfNm.clear();
     }
@@ -472,7 +518,7 @@ IMAGE_SETEVENT:
         aGraphic.SetDefaultType();
     }
 
-    if (!bHeightProvided || !bWidthProvided)
+    if (!nHeight || !nWidth)
     {
         Size aPixelSize = aGraphic.GetSizePixel(Application::GetDefaultDevice());
         if (!bWidthProvided)
@@ -491,21 +537,21 @@ IMAGE_SETEVENT:
     if( !IsNewDoc() )
         Reader::ResetFrameFormatAttrs( aFrameSet );
 
-    // Umrandung setzen
+    // set the border
     long nHBorderWidth = 0, nVBorderWidth = 0;
     if( nBorder )
     {
-        nHBorderWidth = (long)nBorder;
-        nVBorderWidth = (long)nBorder;
+        nHBorderWidth = static_cast<long>(nBorder);
+        nVBorderWidth = static_cast<long>(nBorder);
         SvxCSS1Parser::PixelToTwip( nVBorderWidth, nHBorderWidth );
 
         ::editeng::SvxBorderLine aHBorderLine( nullptr, nHBorderWidth );
         ::editeng::SvxBorderLine aVBorderLine( nullptr, nVBorderWidth );
 
-        if( m_aAttrTab.pINetFormat )
+        if( m_xAttrTab->pINetFormat )
         {
             const OUString& rURL =
-                static_cast<const SwFormatINetFormat&>(m_aAttrTab.pINetFormat->GetItem()).GetValue();
+                static_cast<const SwFormatINetFormat&>(m_xAttrTab->pINetFormat->GetItem()).GetValue();
 
             m_pCSS1Parser->SetATagStyles();
             sal_uInt16 nPoolId =  static_cast< sal_uInt16 >(m_xDoc->IsVisitedURL( rURL )
@@ -517,9 +563,9 @@ IMAGE_SETEVENT:
         }
         else
         {
-            const SvxColorItem& rColorItem = m_aAttrTab.pFontColor ?
-              static_cast<const SvxColorItem &>(m_aAttrTab.pFontColor->GetItem()) :
-              static_cast<const SvxColorItem &>(m_xDoc->GetDefault(RES_CHRATR_COLOR));
+            const SvxColorItem& rColorItem = m_xAttrTab->pFontColor ?
+              static_cast<const SvxColorItem &>(m_xAttrTab->pFontColor->GetItem()) :
+              m_xDoc->GetDefault(RES_CHRATR_COLOR);
             aHBorderLine.SetColor( rColorItem.GetValue() );
             aVBorderLine.SetColor( aHBorderLine.GetColor() );
         }
@@ -539,25 +585,35 @@ IMAGE_SETEVENT:
     // set other CSS1 attributes
     SetFrameFormatAttrs( aItemSet, HtmlFrameFormatFlags::Box, aFrameSet );
 
-    Size aTwipSz( bPrcWidth ? 0 : nWidth, bPrcHeight ? 0 : nHeight );
+    Size aTwipSz( bPercentWidth ? 0 : nWidth, bPercentHeight ? 0 : nHeight );
     if( (aTwipSz.Width() || aTwipSz.Height()) && Application::GetDefaultDevice() )
     {
-        aTwipSz = Application::GetDefaultDevice()
+        if (bWidthProvided || bHeightProvided || // attributes imply pixel!
+            aGraphic.GetPrefMapMode().GetMapUnit() == MapUnit::MapPixel)
+        {
+            aTwipSz = Application::GetDefaultDevice()
                     ->PixelToLogic( aTwipSz, MapMode( MapUnit::MapTwip ) );
+        }
+        else
+        {   // some bitmaps may have a size in metric units (e.g. PNG); use that
+            assert(aGraphic.GetPrefMapMode().GetMapUnit() < MapUnit::MapPixel);
+            aTwipSz = OutputDevice::LogicToLogic(aGraphic.GetPrefSize(),
+                    aGraphic.GetPrefMapMode(), MapMode(MapUnit::MapTwip));
+        }
     }
 
     // convert CSS1 size to "normal" size
     switch( aPropInfo.m_eWidthType )
     {
         case SVX_CSS1_LTYPE_TWIP:
-            aTwipSz.Width() = aPropInfo.m_nWidth;
+            aTwipSz.setWidth( aPropInfo.m_nWidth );
             nWidth = 1; // != 0
-            bPrcWidth = false;
+            bPercentWidth = false;
             break;
         case SVX_CSS1_LTYPE_PERCENTAGE:
-            aTwipSz.Width() = 0;
+            aTwipSz.setWidth( 0 );
             nWidth = aPropInfo.m_nWidth;
-            bPrcWidth = true;
+            bPercentWidth = true;
             break;
         default:
             ;
@@ -565,14 +621,14 @@ IMAGE_SETEVENT:
     switch( aPropInfo.m_eHeightType )
     {
         case SVX_CSS1_LTYPE_TWIP:
-            aTwipSz.Height() = aPropInfo.m_nHeight;
+            aTwipSz.setHeight( aPropInfo.m_nHeight );
             nHeight = 1;    // != 0
-            bPrcHeight = false;
+            bPercentHeight = false;
             break;
         case SVX_CSS1_LTYPE_PERCENTAGE:
-            aTwipSz.Height() = 0;
+            aTwipSz.setHeight( 0 );
             nHeight = aPropInfo.m_nHeight;
-            bPrcHeight = true;
+            bPercentHeight = true;
             break;
         default:
             ;
@@ -583,13 +639,29 @@ IMAGE_SETEVENT:
     bool bChangeFrameSize = false;    // Change frame format later?
     bool bRequestGrfNow = false;
     bool bSetScaleImageMap = false;
-    sal_uInt8 nPrcWidth = 0, nPrcHeight = 0;
+    sal_uInt8 nPercentWidth = 0, nPercentHeight = 0;
+
+    // bPercentWidth / bPercentHeight means we have a percent size.  If that's not the case and we have no
+    // size from nWidth / nHeight either, then inspect the image header.
+    if ((!bPercentWidth && !nWidth) && (!bPercentHeight && !nHeight) && allowAccessLink(*m_xDoc))
+    {
+        GraphicDescriptor aDescriptor(aGraphicURL);
+        if (aDescriptor.Detect(/*bExtendedInfo=*/true))
+        {
+            // Try to use size info from the image header before defaulting to
+            // HTML_DFLT_IMG_WIDTH/HEIGHT.
+            aTwipSz = Application::GetDefaultDevice()->PixelToLogic(aDescriptor.GetSizePixel(),
+                                                                    MapMode(MapUnit::MapTwip));
+            nWidth = aTwipSz.getWidth();
+            nHeight = aTwipSz.getHeight();
+        }
+    }
 
     if( !nWidth || !nHeight )
     {
         // When the graphic is in a table, it will be requested immediately,
         // so that it is available before the table is layouted.
-        if( m_pTable!=nullptr && !nWidth )
+        if (m_xTable && !nWidth)
         {
             bRequestGrfNow = true;
             IncGrfsThatResizeTable();
@@ -600,32 +672,32 @@ IMAGE_SETEVENT:
         aGrfSz = aTwipSz;
         if( !nWidth && !nHeight )
         {
-            aTwipSz.Width() = HTML_DFLT_IMG_WIDTH;
-            aTwipSz.Height() = HTML_DFLT_IMG_HEIGHT;
+            aTwipSz.setWidth( HTML_DFLT_IMG_WIDTH );
+            aTwipSz.setHeight( HTML_DFLT_IMG_HEIGHT );
         }
         else if( nWidth )
         {
             // a percentage value
-            if( bPrcWidth )
+            if( bPercentWidth )
             {
-                nPrcWidth = (sal_uInt8)nWidth;
-                nPrcHeight = 255;
+                nPercentWidth = static_cast<sal_uInt8>(nWidth);
+                nPercentHeight = 255;
             }
             else
             {
-                aTwipSz.Height() = HTML_DFLT_IMG_HEIGHT;
+                aTwipSz.setHeight( HTML_DFLT_IMG_HEIGHT );
             }
         }
         else if( nHeight )
         {
-            if( bPrcHeight )
+            if( bPercentHeight )
             {
-                nPrcHeight = (sal_uInt8)nHeight;
-                nPrcWidth = 255;
+                nPercentHeight = static_cast<sal_uInt8>(nHeight);
+                nPercentWidth = 255;
             }
             else
             {
-                aTwipSz.Width() = HTML_DFLT_IMG_WIDTH;
+                aTwipSz.setWidth( HTML_DFLT_IMG_WIDTH );
             }
         }
     }
@@ -634,11 +706,11 @@ IMAGE_SETEVENT:
         // Width and height were given and don't need to be set
         bSetTwipSize = false;
 
-        if( bPrcWidth )
-            nPrcWidth = (sal_uInt8)nWidth;
+        if( bPercentWidth )
+            nPercentWidth = static_cast<sal_uInt8>(nWidth);
 
-        if( bPrcHeight )
-            nPrcHeight = (sal_uInt8)nHeight;
+        if( bPercentHeight )
+            nPercentHeight = static_cast<sal_uInt8>(nHeight);
     }
 
     // set image map
@@ -659,7 +731,7 @@ IMAGE_SETEVENT:
         {
             SwFormatURL aURL; aURL.SetMap( pImgMap );// is copied
 
-            bSetScaleImageMap = !nPrcWidth || !nPrcHeight;
+            bSetScaleImageMap = !nPercentWidth || !nPercentHeight;
             aFrameSet.Put( aURL );
         }
         else
@@ -676,42 +748,46 @@ IMAGE_SETEVENT:
     }
 
     // observe minimum values !!
-    if( nPrcWidth )
+    if( nPercentWidth )
     {
         OSL_ENSURE( !aTwipSz.Width(),
                 "Why is a width set if we already have percentage value?" );
-        aTwipSz.Width() = aGrfSz.Width() ? aGrfSz.Width()
-                                         : HTML_DFLT_IMG_WIDTH;
+        aTwipSz.setWidth( aGrfSz.Width() ? aGrfSz.Width()
+                                         : HTML_DFLT_IMG_WIDTH );
     }
     else
     {
-        aTwipSz.Width() += 2*nVBorderWidth;
+        aTwipSz.AdjustWidth(2*nVBorderWidth );
         if( aTwipSz.Width() < MINFLY )
-            aTwipSz.Width() = MINFLY;
+            aTwipSz.setWidth( MINFLY );
     }
-    if( nPrcHeight )
+    if( nPercentHeight )
     {
         OSL_ENSURE( !aTwipSz.Height(),
                 "Why is a height set if we already have percentage value?" );
-        aTwipSz.Height() = aGrfSz.Height() ? aGrfSz.Height()
-                                           : HTML_DFLT_IMG_HEIGHT;
+        aTwipSz.setHeight( aGrfSz.Height() ? aGrfSz.Height()
+                                           : HTML_DFLT_IMG_HEIGHT );
     }
     else
     {
-        aTwipSz.Height() += 2*nHBorderWidth;
+        aTwipSz.AdjustHeight(2*nHBorderWidth );
         if( aTwipSz.Height() < MINFLY )
-            aTwipSz.Height() = MINFLY;
+            aTwipSz.setHeight( MINFLY );
     }
 
-    SwFormatFrameSize aFrameSize( ATT_FIX_SIZE, aTwipSz.Width(), aTwipSz.Height() );
-    aFrameSize.SetWidthPercent( nPrcWidth );
-    aFrameSize.SetHeightPercent( nPrcHeight );
+    SwFormatFrameSize aFrameSize( SwFrameSize::Fixed, aTwipSz.Width(), aTwipSz.Height() );
+    aFrameSize.SetWidthPercent( nPercentWidth );
+    aFrameSize.SetHeightPercent( nPercentHeight );
     aFrameSet.Put( aFrameSize );
+
+    const SwNodeType eNodeType = m_pPam->GetNode().GetNodeType();
+    if (eNodeType != SwNodeType::Text && eNodeType != SwNodeType::Table)
+        return;
 
     // passing empty sGrfNm here, means we don't want the graphic to be linked
     SwFrameFormat *const pFlyFormat =
         m_xDoc->getIDocumentContentOperations().InsertGraphic(
-            *m_pPam, sGrfNm, aEmptyOUStr, &aGraphic,
+            *m_pPam, sGrfNm, OUString(), &aGraphic,
             &aFrameSet, nullptr, nullptr);
     SwGrfNode *pGrfNd = m_xDoc->GetNodes()[ pFlyFormat->GetContent().GetContentIdx()
                                   ->GetIndex()+1 ]->GetGrfNode();
@@ -721,10 +797,10 @@ IMAGE_SETEVENT:
         pFlyFormat->SetName( sHTMLGrfName );
 
         // maybe jump to graphic
-        if( JUMPTO_GRAPHIC == m_eJumpTo && sHTMLGrfName == m_sJmpMark )
+        if( JumpToMarks::Graphic == m_eJumpTo && sHTMLGrfName == m_sJmpMark )
         {
             m_bChkJumpMark = true;
-            m_eJumpTo = JUMPTO_NONE;
+            m_eJumpTo = JumpToMarks::NONE;
         }
     }
 
@@ -742,10 +818,10 @@ IMAGE_SETEVENT:
             pGrfNd->SetScaleImageMap( true );
     }
 
-    if( m_aAttrTab.pINetFormat )
+    if( m_xAttrTab->pINetFormat )
     {
         const SwFormatINetFormat &rINetFormat =
-            static_cast<const SwFormatINetFormat&>(m_aAttrTab.pINetFormat->GetItem());
+            static_cast<const SwFormatINetFormat&>(m_xAttrTab->pINetFormat->GetItem());
 
         SwFormatURL aURL( pFlyFormat->GetURL() );
 
@@ -755,29 +831,28 @@ IMAGE_SETEVENT:
         pFlyFormat->SetFormatAttr( aURL );
 
         {
-            static const sal_uInt16 aEvents[] = {
-                SFX_EVENT_MOUSEOVER_OBJECT,
-                SFX_EVENT_MOUSECLICK_OBJECT,
-                SFX_EVENT_MOUSEOUT_OBJECT,
-                0 };
+            static const SvMacroItemId aEvents[] = {
+                SvMacroItemId::OnMouseOver,
+                SvMacroItemId::OnClick,
+                SvMacroItemId::OnMouseOut };
 
-            for( int n = 0; aEvents[ n ]; ++n )
+            for( SvMacroItemId id : aEvents )
             {
-                const SvxMacro *pMacro = rINetFormat.GetMacro( aEvents[ n ] );
+                const SvxMacro *pMacro = rINetFormat.GetMacro( id );
                 if( nullptr != pMacro )
-                    aMacroItem.SetMacro( aEvents[ n ], *pMacro );
+                    aMacroItem.SetMacro( id, *pMacro );
             }
         }
 
         if ((RndStdIds::FLY_AS_CHAR == pFlyFormat->GetAnchor().GetAnchorId()) &&
-            m_aAttrTab.pINetFormat->GetSttPara() ==
+            m_xAttrTab->pINetFormat->GetSttPara() ==
                         m_pPam->GetPoint()->nNode &&
-            m_aAttrTab.pINetFormat->GetSttCnt() ==
+            m_xAttrTab->pINetFormat->GetSttCnt() ==
                         m_pPam->GetPoint()->nContent.GetIndex() - 1 )
         {
             // the attribute was insert right before as-character anchored
             // graphic, therefore we move it
-            m_aAttrTab.pINetFormat->SetStart( *m_pPam->GetPoint() );
+            m_xAttrTab->pINetFormat->SetStart( *m_pPam->GetPoint() );
 
             // When the attribute is also an anchor, we'll insert
             // a bookmark before the graphic, because SwFormatURL
@@ -793,7 +868,10 @@ IMAGE_SETEVENT:
     }
 
     if( !aMacroItem.GetMacroTable().empty() )
+    {
+        NotifyMacroEventRead();
         pFlyFormat->SetFormatAttr( aMacroItem );
+    }
 
     // tdf#87083 If the graphic has not been loaded yet, then load it now.
     // Otherwise it may be loaded during the first paint of the object and it
@@ -862,7 +940,7 @@ void SwHTMLParser::InsertBodyOptions()
 
             case HtmlOptionId::SDONLOAD:
                 eScriptType2 = STARBASIC;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case HtmlOptionId::ONLOAD:
                 aEvent = GlobalEventConfig::GetEventName( GlobalEventId::OPENDOC );
                 bSetEvent = true;
@@ -870,7 +948,7 @@ void SwHTMLParser::InsertBodyOptions()
 
             case HtmlOptionId::SDONUNLOAD:
                 eScriptType2 = STARBASIC;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case HtmlOptionId::ONUNLOAD:
                 aEvent = GlobalEventConfig::GetEventName( GlobalEventId::PREPARECLOSEDOC );
                 bSetEvent = true;
@@ -878,7 +956,7 @@ void SwHTMLParser::InsertBodyOptions()
 
             case HtmlOptionId::SDONFOCUS:
                 eScriptType2 = STARBASIC;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case HtmlOptionId::ONFOCUS:
                 aEvent = GlobalEventConfig::GetEventName( GlobalEventId::ACTIVATEDOC );
                 bSetEvent = true;
@@ -886,7 +964,7 @@ void SwHTMLParser::InsertBodyOptions()
 
             case HtmlOptionId::SDONBLUR:
                 eScriptType2 = STARBASIC;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case HtmlOptionId::ONBLUR:
                 aEvent = GlobalEventConfig::GetEventName( GlobalEventId::DEACTIVATEDOC );
                 bSetEvent = true;
@@ -927,23 +1005,23 @@ void SwHTMLParser::InsertBodyOptions()
 
     // Prepare the items for the page style (background, frame)
     // If BrushItem already set values must remain!
-    SvxBrushItem aBrushItem( m_pCSS1Parser->makePageDescBackground() );
+    std::unique_ptr<SvxBrushItem> aBrushItem( m_pCSS1Parser->makePageDescBackground() );
     bool bSetBrush = false;
 
     if( bBGColor && !m_pCSS1Parser->IsBodyBGColorSet() )
     {
         // background colour from "BGCOLOR"
         OUString aLink;
-        if( !aBrushItem.GetGraphicLink().isEmpty() )
-            aLink = aBrushItem.GetGraphicLink();
-        SvxGraphicPosition ePos = aBrushItem.GetGraphicPos();
+        if( !aBrushItem->GetGraphicLink().isEmpty() )
+            aLink = aBrushItem->GetGraphicLink();
+        SvxGraphicPosition ePos = aBrushItem->GetGraphicPos();
 
-        aBrushItem.SetColor( aBGColor );
+        aBrushItem->SetColor( aBGColor );
 
         if( !aLink.isEmpty() )
         {
-            aBrushItem.SetGraphicLink( aLink );
-            aBrushItem.SetGraphicPos( ePos );
+            aBrushItem->SetGraphicLink( aLink );
+            aBrushItem->SetGraphicPos( ePos );
         }
         bSetBrush = true;
         m_pCSS1Parser->SetBodyBGColorSet();
@@ -952,8 +1030,8 @@ void SwHTMLParser::InsertBodyOptions()
     if( !aBackGround.isEmpty() && !m_pCSS1Parser->IsBodyBackgroundSet() )
     {
         // background graphic from "BACKGROUND"
-        aBrushItem.SetGraphicLink( INetURLObject::GetAbsURL( m_sBaseURL, aBackGround ) );
-        aBrushItem.SetGraphicPos( GPOS_TILED );
+        aBrushItem->SetGraphicLink( INetURLObject::GetAbsURL( m_sBaseURL, aBackGround ) );
+        aBrushItem->SetGraphicPos( GPOS_TILED );
         bSetBrush = true;
         m_pCSS1Parser->SetBodyBackgroundSet();
     }
@@ -967,7 +1045,7 @@ void SwHTMLParser::InsertBodyOptions()
 
         // Some attributes have to set on the page style, in fact the ones
         // which aren't inherited
-        m_pCSS1Parser->SetPageDescAttrs( bSetBrush ? &aBrushItem : nullptr,
+        m_pCSS1Parser->SetPageDescAttrs( bSetBrush ? aBrushItem.get() : nullptr,
                                        &aItemSet );
 
         const SfxPoolItem *pItem;
@@ -994,7 +1072,7 @@ void SwHTMLParser::InsertBodyOptions()
     }
     else if( bSetBrush )
     {
-        m_pCSS1Parser->SetPageDescAttrs( &aBrushItem );
+        m_pCSS1Parser->SetPageDescAttrs( aBrushItem.get() );
     }
 
     if( bLinkColor && !m_pCSS1Parser->IsBodyLinkSet() )
@@ -1048,12 +1126,11 @@ void SwHTMLParser::InsertBodyOptions()
 void SwHTMLParser::NewAnchor()
 {
     // end previous link if there was one
-    HTMLAttrContext *pOldCntxt = PopContext( HtmlTokenId::ANCHOR_ON );
-    if( pOldCntxt )
+    std::unique_ptr<HTMLAttrContext> xOldCntxt(PopContext(HtmlTokenId::ANCHOR_ON));
+    if (xOldCntxt)
     {
         // and maybe end attributes
-        EndContext( pOldCntxt );
-        delete pOldCntxt;
+        EndContext(xOldCntxt.get());
     }
 
     SvxMacroTableDtor aMacroTable;
@@ -1068,7 +1145,7 @@ void SwHTMLParser::NewAnchor()
     const HTMLOptions& rHTMLOptions = GetOptions();
     for (size_t i = rHTMLOptions.size(); i; )
     {
-        sal_uInt16 nEvent = 0;
+        SvMacroItemId nEvent = SvMacroItemId::NONE;
         ScriptType eScriptType2 = eDfltScriptType;
         const HTMLOption& rOption = rHTMLOptions[--i];
         switch( rOption.GetToken() )
@@ -1106,23 +1183,23 @@ void SwHTMLParser::NewAnchor()
 
             case HtmlOptionId::SDONCLICK:
                 eScriptType2 = STARBASIC;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case HtmlOptionId::ONCLICK:
-                nEvent = SFX_EVENT_MOUSECLICK_OBJECT;
+                nEvent = SvMacroItemId::OnClick;
                 goto ANCHOR_SETEVENT;
 
             case HtmlOptionId::SDONMOUSEOVER:
                 eScriptType2 = STARBASIC;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case HtmlOptionId::ONMOUSEOVER:
-                nEvent = SFX_EVENT_MOUSEOVER_OBJECT;
+                nEvent = SvMacroItemId::OnMouseOver;
                 goto ANCHOR_SETEVENT;
 
             case HtmlOptionId::SDONMOUSEOUT:
                 eScriptType2 = STARBASIC;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case HtmlOptionId::ONMOUSEOUT:
-                nEvent = SFX_EVENT_MOUSEOUT_OBJECT;
+                nEvent = SvMacroItemId::OnMouseOut;
                 goto ANCHOR_SETEVENT;
 ANCHOR_SETEVENT:
                 {
@@ -1168,8 +1245,8 @@ ANCHOR_SETEVENT:
         }
     }
 
-    // einen neuen Kontext anlegen
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( HtmlTokenId::ANCHOR_ON );
+    // create a new context
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(HtmlTokenId::ANCHOR_ON));
 
     bool bEnAnchor = false, bFootnoteAnchor = false, bFootnoteEnSymbol = false;
     OUString aFootnoteName;
@@ -1189,7 +1266,9 @@ ANCHOR_SETEVENT:
         if( bEnAnchor || bFootnoteAnchor || bFootnoteEnSymbol )
         {
             aFootnoteName = sHRef.copy( 1 );
-            aClass = aStrippedClass = aName = aEmptyOUStr;
+            aClass.clear();
+            aStrippedClass.clear();
+            aName.clear();
             bHasHRef = false;
         }
     }
@@ -1202,8 +1281,8 @@ ANCHOR_SETEVENT:
 
         if( ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo, &aLang, &aDir ) )
         {
-            DoPositioning( aItemSet, aPropInfo, pCntxt );
-            InsertAttrs( aItemSet, aPropInfo, pCntxt, true );
+            DoPositioning(aItemSet, aPropInfo, xCntxt.get());
+            InsertAttrs(aItemSet, aPropInfo, xCntxt.get(), true);
         }
     }
 
@@ -1225,10 +1304,13 @@ ANCHOR_SETEVENT:
         aINetFormat.SetName( aName );
 
         if( !aMacroTable.empty() )
+        {
+            NotifyMacroEventRead();
             aINetFormat.SetMacroTable( &aMacroTable );
+        }
 
         // set the default attribute
-        InsertAttr( &m_aAttrTab.pINetFormat, aINetFormat, pCntxt );
+        InsertAttr(&m_xAttrTab->pINetFormat, aINetFormat, xCntxt.get());
     }
     else if( !aName.isEmpty() )
     {
@@ -1246,7 +1328,7 @@ ANCHOR_SETEVENT:
     }
 
     // save context
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 }
 
 void SwHTMLParser::EndAnchor()
@@ -1269,7 +1351,7 @@ void SwHTMLParser::EndAnchor()
 void SwHTMLParser::InsertBookmark( const OUString& rName )
 {
     HTMLAttr* pTmp = new HTMLAttr( *m_pPam->GetPoint(),
-            SfxStringItem( RES_FLTR_BOOKMARK, rName ));
+            SfxStringItem(RES_FLTR_BOOKMARK, rName), nullptr, std::shared_ptr<HTMLAttrTable>());
     m_aSetAttrTab.push_back( pTmp );
 }
 
@@ -1286,7 +1368,7 @@ bool SwHTMLParser::HasCurrentParaBookmarks( bool bIgnoreStack ) const
         for( auto i = m_aSetAttrTab.size(); i; )
         {
             HTMLAttr* pAttr = m_aSetAttrTab[ --i ];
-            if( RES_FLTR_BOOKMARK == pAttr->pItem->Which() )
+            if( RES_FLTR_BOOKMARK == pAttr->m_pItem->Which() )
             {
                 if( pAttr->GetSttParaIdx() == nNodeIdx )
                     bHasMarks = true;
@@ -1303,7 +1385,7 @@ bool SwHTMLParser::HasCurrentParaBookmarks( bool bIgnoreStack ) const
             ppMark != pMarkAccess->getAllMarksEnd();
             ++ppMark)
         {
-            const ::sw::mark::IMark* pBookmark = ppMark->get();
+            const ::sw::mark::IMark* pBookmark = *ppMark;
 
             const sal_uLong nBookNdIdx = pBookmark->GetMarkPos().nNode.GetIndex();
             if( nBookNdIdx==nNodeIdx )
@@ -1326,13 +1408,12 @@ void SwHTMLParser::StripTrailingPara()
     bool bSetSmallFont = false;
 
     SwContentNode* pCNd = m_pPam->GetContentNode();
+    sal_uLong nNodeIdx = m_pPam->GetPoint()->nNode.GetIndex();
     if( !m_pPam->GetPoint()->nContent.GetIndex() )
     {
-        if( pCNd && pCNd->StartOfSectionIndex()+2 <
-            pCNd->EndOfSectionIndex() )
+        if( pCNd && pCNd->StartOfSectionIndex() + 2 <
+            pCNd->EndOfSectionIndex() && CanRemoveNode(nNodeIdx))
         {
-            sal_uLong nNodeIdx = m_pPam->GetPoint()->nNode.GetIndex();
-
             const SwFrameFormats& rFrameFormatTable = *m_xDoc->GetSpzFrameFormats();
 
             for( auto pFormat : rFrameFormatTable )
@@ -1369,7 +1450,7 @@ void SwHTMLParser::StripTrailingPara()
                 ppMark != pMarkAccess->getAllMarksEnd();
                 ++ppMark)
             {
-                ::sw::mark::IMark* pMark = ppMark->get();
+                ::sw::mark::IMark* pMark = *ppMark;
 
                 sal_uLong nBookNdIdx = pMark->GetMarkPos().nNode.GetIndex();
                 if(nBookNdIdx==nNodeIdx)
@@ -1387,7 +1468,7 @@ void SwHTMLParser::StripTrailingPara()
                         SwPosition aNewPos(*pNd);
                         aNewPos.nContent.Assign(pNd, pNd->Len());
                         const SwPaM aPaM(aNewPos);
-                        pMarkAccess->repositionMark(ppMark->get(), aPaM);
+                        pMarkAccess->repositionMark(*ppMark, aPaM);
                     }
                 }
                 else if( nBookNdIdx > nNodeIdx )
@@ -1400,14 +1481,14 @@ void SwHTMLParser::StripTrailingPara()
             m_xDoc->GetNodes().Delete( m_pPam->GetPoint()->nNode );
             m_pPam->Move( fnMoveBackward, GoInNode );
         }
-        else if( pCNd && pCNd->IsTextNode() && m_pTable )
+        else if (pCNd && pCNd->IsTextNode() && m_xTable)
         {
             // In empty cells we set a small font, so that the cell doesn't
             // get higher than the graphic resp. as low as possible.
             bSetSmallFont = true;
         }
     }
-    else if( pCNd && pCNd->IsTextNode() && m_pTable &&
+    else if( pCNd && pCNd->IsTextNode() && m_xTable &&
              pCNd->StartOfSectionIndex()+2 ==
              pCNd->EndOfSectionIndex() )
     {
@@ -1436,6 +1517,18 @@ void SwHTMLParser::StripTrailingPara()
         SvxFontHeightItem aFontHeightCTL( 40, 100, RES_CHRATR_CTL_FONTSIZE );
         pCNd->SetAttr( aFontHeightCTL );
     }
+}
+
+void SwHTMLParser::NotifyMacroEventRead()
+{
+    if (m_bNotifyMacroEventRead)
+        return;
+    SwDocShell *pDocSh = m_xDoc->GetDocShell();
+    if (!pDocSh)
+        return;
+    uno::Reference<frame::XModel> const xModel(pDocSh->GetBaseModel());
+    comphelper::DocumentInfo::notifyMacroEventRead(xModel);
+    m_bNotifyMacroEventRead = true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

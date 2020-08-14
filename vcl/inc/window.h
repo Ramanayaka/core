@@ -23,16 +23,19 @@
 #include <sal/config.h>
 
 #include <tools/fract.hxx>
+#include <vcl/commandevent.hxx>
 #include <vcl/idle.hxx>
+#include <vcl/inputctx.hxx>
+#include <vcl/window.hxx>
+#include <vcl/settings.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <cppuhelper/weakref.hxx>
 
+#include <optional>
 #include <list>
+#include <memory>
 #include <vector>
 #include <set>
-
-namespace vcl {
-    class Window;
-}
 
 class FixedText;
 class VclSizeGroup;
@@ -40,6 +43,7 @@ class VirtualDevice;
 class PhysicalFontCollection;
 class ImplFontCache;
 class VCLXWindow;
+class WindowStateData;
 class SalFrame;
 class SalObject;
 enum class MouseEventModifiers;
@@ -50,48 +54,65 @@ enum class GetFocusFlags;
 enum class ParentClipMode;
 enum class SalEvent;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
+    namespace accessibility {
+        class XAccessible;
+        class XAccessibleContext;
+        class XAccessibleEditableText;
+    }
 
-namespace accessibility {
-    class XAccessible;
+    namespace rendering {
+        class XCanvas;
+    }
+
+    namespace awt {
+        class XWindowPeer;
+        class XWindow;
+    }
+    namespace uno {
+        class Any;
+        class XInterface;
+    }
+    namespace datatransfer {
+        namespace clipboard {
+            class XClipboard;
+        }
+        namespace dnd {
+            class XDropTargetListener;
+            class XDragGestureRecognizer;
+            class XDragSource;
+            class XDropTarget;
+        }
+    }
 }
 
-namespace rendering {
-    class XCanvas;
-}
+VCL_DLLPUBLIC Size bestmaxFrameSizeForScreenSize(const Size &rScreenSize);
 
-namespace awt {
-    class XWindowPeer;
-    class XWindow;
-}
-namespace uno {
-    class Any;
-    class XInterface;
-}
-namespace datatransfer { namespace clipboard {
-    class XClipboard;
-}
+//return true if this window and its stack of containers are all shown
+bool isVisibleInLayout(const vcl::Window *pWindow);
 
-namespace dnd {
-    class XDropTargetListener;
-    class XDragGestureRecognizer;
-    class XDragSource;
-    class XDropTarget;
-}}}}}
+//return true if this window and its stack of containers are all enabled
+bool isEnabledInLayout(const vcl::Window *pWindow);
 
 bool ImplWindowFrameProc( vcl::Window* pInst, SalEvent nEvent, const void* pEvent );
 
 struct ImplWinData
 {
-    OUString*           mpExtOldText;
-    ExtTextInputAttr*   mpExtOldAttrAry;
-    tools::Rectangle*          mpCursorRect;
+    std::optional<OUString>
+                        mpExtOldText;
+    std::unique_ptr<ExtTextInputAttr[]>
+                        mpExtOldAttrAry;
+    std::optional<tools::Rectangle>
+                        mpCursorRect;
     long                mnCursorExtWidth;
     bool                mbVertical;
-    tools::Rectangle*          mpCompositionCharRects;
+    std::unique_ptr<tools::Rectangle[]>
+                        mpCompositionCharRects;
     long                mnCompositionCharRects;
-    tools::Rectangle*          mpFocusRect;
-    tools::Rectangle*          mpTrackRect;
+    std::optional<tools::Rectangle>
+                        mpFocusRect;
+    std::optional<tools::Rectangle>
+                        mpTrackRect;
     ShowTrackFlags      mnTrackFlags;
     sal_uInt16          mnIsTopWindow;
     bool                mbMouseOver;            //< tracks mouse over for native widget paint effect
@@ -113,9 +134,9 @@ struct ImplFrameData
     VclPtr<vcl::Window> mpFocusWin;             //< focus window (is also set, when frame doesn't have the focus)
     VclPtr<vcl::Window> mpMouseMoveWin;         //< last window, where MouseMove() called
     VclPtr<vcl::Window> mpMouseDownWin;         //< last window, where MouseButtonDown() called
-    ::std::vector<VclPtr<vcl::Window> > maOwnerDrawList;    //< List of system windows with owner draw decoration
-    PhysicalFontCollection* mpFontCollection;   //< Font-List for this frame
-    ImplFontCache*      mpFontCache;            //< Font-Cache for this frame
+    std::vector<VclPtr<vcl::Window> > maOwnerDrawList;    //< List of system windows with owner draw decoration
+    std::shared_ptr<PhysicalFontCollection> mxFontCollection;   //< Font-List for this frame
+    std::shared_ptr<ImplFontCache> mxFontCache; //< Font-Cache for this frame
     sal_Int32           mnDPIX;                 //< Original Screen Resolution
     sal_Int32           mnDPIY;                 //< Original Screen Resolution
     ImplSVEvent *       mnFocusId;              //< FocusId for PostUserLink
@@ -144,6 +165,7 @@ struct ImplFrameData
     bool                mbInSysObjFocusHdl;     //< within a SysChildren's GetFocus handler
     bool                mbInSysObjToTopHdl;     //< within a SysChildren's ToTop handler
     bool                mbSysObjFocus;          //< does a SysChild have focus
+    sal_Int32           mnTouchPanPosition;
 
     css::uno::Reference< css::datatransfer::dnd::XDragSource > mxDragSource;
     css::uno::Reference< css::datatransfer::dnd::XDropTarget > mxDropTarget;
@@ -162,8 +184,10 @@ struct ImplFrameData
 struct ImplAccessibleInfos
 {
     sal_uInt16          nAccessibleRole;
-    OUString*           pAccessibleName;
-    OUString*           pAccessibleDescription;
+    std::optional<OUString>
+                        pAccessibleName;
+    std::optional<OUString>
+                        pAccessibleDescription;
     VclPtr<vcl::Window> pLabeledByWindow;
     VclPtr<vcl::Window> pLabelForWindow;
     VclPtr<vcl::Window> pMemberOfWindow;
@@ -222,15 +246,19 @@ public:
     std::vector<Link<VclWindowEvent&,void>> maChildEventListeners;
     int mnChildEventListenersIteratingCount;
     std::set<Link<VclWindowEvent&,void>> maChildEventListenersDeleted;
+    Link<vcl::Window&, bool> maHelpRequestHdl;
+    Link<vcl::Window&, bool> maMnemonicActivateHdl;
+    Link<tools::JsonWriter&, void> maDumpAsPropertyTreeHdl;
 
     // The canvas interface for this VCL window. Is persistent after the first GetCanvas() call
     css::uno::WeakReference< css::rendering::XCanvas >    mxCanvas;
 
     vcl::Cursor*        mpCursor;
-    Pointer             maPointer;
+    PointerStyle        maPointer;
     Fraction            maZoom;
     OUString            maText;
-    vcl::Font*          mpControlFont;
+    std::unique_ptr<vcl::Font>
+                        mpControlFont;
     Color               maControlForeground;
     Color               maControlBackground;
     sal_Int32           mnLeftBorder;
@@ -253,17 +281,17 @@ public:
     css::uno::Reference< css::awt::XWindowPeer > mxWindowPeer;
     css::uno::Reference< css::accessibility::XAccessible > mxAccessible;
     std::shared_ptr< VclSizeGroup > m_xSizeGroup;
-    std::vector< VclPtr<FixedText> > m_aMnemonicLabels;
-    ImplAccessibleInfos* mpAccessibleInfos;
+    std::vector<VclPtr<FixedText>> m_aMnemonicLabels;
+    std::unique_ptr<ImplAccessibleInfos> mpAccessibleInfos;
     VCLXWindow*         mpVCLXWindow;
     vcl::Region              maWinRegion;            //< region to 'shape' the VCL window (frame coordinates)
     vcl::Region              maWinClipRegion;        //< the (clipping) region that finally corresponds to the VCL window (frame coordinates)
     vcl::Region              maInvalidateRegion;     //< region that has to be redrawn (frame coordinates)
-    vcl::Region*             mpChildClipRegion;      //< child clip region if CLIPCHILDREN is set (frame coordinates)
+    std::unique_ptr<vcl::Region> mpChildClipRegion;  //< child clip region if CLIPCHILDREN is set (frame coordinates)
     vcl::Region*             mpPaintRegion;          //< only set during Paint() method call (window coordinates)
     WinBits             mnStyle;
     WinBits             mnPrevStyle;
-    WinBits             mnExtendedStyle;
+    WindowExtendedStyle mnExtendedStyle;
     WindowType          mnType;
     ControlPart         mnNativeBackground;
     sal_uInt16          mnWaitCount;
@@ -272,7 +300,6 @@ public:
     ParentClipMode      mnParentClipMode;
     ActivateModeFlags   mnActivateMode;
     DialogControlFlags  mnDlgCtrlFlags;
-    sal_uInt16          mnLockCount;
     AlwaysInputMode     meAlwaysInputMode;
     VclAlign            meHalign;
     VclAlign            meValign;
@@ -364,10 +391,16 @@ public:
                         mbDoubleBufferingRequested:1;
 
     css::uno::Reference< css::uno::XInterface > mxDNDListenerContainer;
+
+    const vcl::ILibreOfficeKitNotifier* mpLOKNotifier; ///< To emit the LOK callbacks eg. for dialog tunneling.
+    vcl::LOKWindowId mnLOKWindowId; ///< ID of this specific window.
+    bool mbLOKParentNotifier;
 };
 
+namespace vcl
+{
 /// Sets up the buffer to have settings matching the window, and restores the original state in the dtor.
-class PaintBufferGuard
+class VCL_DLLPUBLIC PaintBufferGuard
 {
     ImplFrameData* mpFrameData;
     VclPtr<vcl::Window> m_pWindow;
@@ -385,6 +418,7 @@ public:
     /// Returns either the frame's buffer or the window, in case of no buffering.
     vcl::RenderContext* GetRenderContext();
 };
+}
 
 // helper methods
 
@@ -392,6 +426,11 @@ bool ImplHandleMouseEvent( const VclPtr<vcl::Window>& xWindow, MouseNotifyEvent 
                            long nX, long nY, sal_uInt64 nMsgTime,
                            sal_uInt16 nCode, MouseEventModifiers nMode );
 void ImplHandleResize( vcl::Window* pWindow, long nNewWidth, long nNewHeight );
+
+VCL_DLLPUBLIC void ImplWindowStateFromStr(WindowStateData& rData, const OString& rStr);
+
+VCL_DLLPUBLIC css::uno::Reference<css::accessibility::XAccessibleEditableText>
+FindFocusedEditableText(css::uno::Reference<css::accessibility::XAccessibleContext> const&);
 
 #endif // INCLUDED_VCL_INC_WINDOW_H
 

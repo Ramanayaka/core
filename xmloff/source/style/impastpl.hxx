@@ -22,23 +22,23 @@
 
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
+#include <rtl/ref.hxx>
 #include <set>
 #include <memory>
 #include <vector>
-#include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
-#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 
 #include <comphelper/stl_types.hxx>
 
 #include <xmloff/maptype.hxx>
 #include <xmloff/xmlexppr.hxx>
+#include <AutoStyleEntry.hxx>
 
 class SvXMLAutoStylePoolP;
 class XMLAutoStylePoolParent;
 struct XMLAutoStyleFamily;
 class SvXMLExportPropertyMapper;
 class SvXMLExport;
+enum class XmlStyleFamily;
 
 // Properties of a pool
 
@@ -50,7 +50,7 @@ class XMLAutoStylePoolProperties
 
 public:
 
-    XMLAutoStylePoolProperties( XMLAutoStyleFamily& rFamilyData, const ::std::vector< XMLPropertyState >& rProperties, OUString& rParentname );
+    XMLAutoStylePoolProperties( XMLAutoStyleFamily& rFamilyData, const ::std::vector< XMLPropertyState >& rProperties, OUString const & rParentname );
 
     const OUString& GetName() const { return msName; }
     const ::std::vector< XMLPropertyState >& GetProperties() const { return maProperties; }
@@ -101,7 +101,7 @@ struct XMLAutoStyleFamily
     typedef std::set<std::unique_ptr<XMLAutoStylePoolParent>,
         comphelper::UniquePtrValueLess<XMLAutoStylePoolParent>> ParentSetType;
 
-    sal_uInt32 mnFamily;
+    XmlStyleFamily mnFamily;
     OUString maStrFamilyName;
     rtl::Reference<SvXMLExportPropertyMapper> mxMapper;
 
@@ -113,11 +113,11 @@ struct XMLAutoStyleFamily
     OUString maStrPrefix;
     bool mbAsFamily;
 
-    XMLAutoStyleFamily( sal_Int32 nFamily, const OUString& rStrName,
+    XMLAutoStyleFamily( XmlStyleFamily nFamily, const OUString& rStrName,
             const rtl::Reference<SvXMLExportPropertyMapper>& rMapper,
             const OUString& rStrPrefix, bool bAsFamily );
 
-    explicit XMLAutoStyleFamily( sal_Int32 nFamily );
+    explicit XMLAutoStyleFamily( XmlStyleFamily nFamily );
 
     XMLAutoStyleFamily(const XMLAutoStyleFamily&) = delete;
     XMLAutoStyleFamily& operator=(const XMLAutoStyleFamily&) = delete;
@@ -145,35 +145,37 @@ public:
 
     SvXMLExport& GetExport() const { return rExport; }
 
-    void AddFamily( sal_Int32 nFamily, const OUString& rStrName,
+    void AddFamily( XmlStyleFamily nFamily, const OUString& rStrName,
         const rtl::Reference < SvXMLExportPropertyMapper > & rMapper,
         const OUString& rStrPrefix, bool bAsFamily );
-    void SetFamilyPropSetMapper( sal_Int32 nFamily,
+    void SetFamilyPropSetMapper( XmlStyleFamily nFamily,
         const rtl::Reference < SvXMLExportPropertyMapper > & rMapper );
-    void RegisterName( sal_Int32 nFamily, const OUString& rName );
-    void RegisterDefinedName( sal_Int32 nFamily, const OUString& rName );
+    void RegisterName( XmlStyleFamily nFamily, const OUString& rName );
+    void RegisterDefinedName( XmlStyleFamily nFamily, const OUString& rName );
     void GetRegisteredNames(
         css::uno::Sequence<sal_Int32>& aFamilies,
         css::uno::Sequence<OUString>& aNames );
 
     bool Add(
-        OUString& rName, sal_Int32 nFamily,
+        OUString& rName, XmlStyleFamily nFamily,
         const OUString& rParentName,
         const ::std::vector< XMLPropertyState >& rProperties,
         bool bDontSeek = false );
 
     bool AddNamed(
-        const OUString& rName, sal_Int32 nFamily,
+        const OUString& rName, XmlStyleFamily nFamily,
         const OUString& rParentName,
         const ::std::vector< XMLPropertyState >& rProperties );
 
-    OUString Find( sal_Int32 nFamily, const OUString& rParent,
+    OUString Find( XmlStyleFamily nFamily, const OUString& rParent,
                           const ::std::vector< XMLPropertyState >& rProperties ) const;
 
-    void exportXML( sal_Int32 nFamily,
+    void exportXML( XmlStyleFamily nFamily,
         const SvXMLAutoStylePoolP *pAntiImpl) const;
 
     void ClearEntries();
+
+    std::vector<xmloff::AutoStyleEntry> GetAutoStyleEntries() const;
 };
 
 #endif

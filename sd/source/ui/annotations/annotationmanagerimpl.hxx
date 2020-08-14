@@ -21,22 +21,26 @@
 #define INCLUDED_SD_SOURCE_UI_ANNOTATIONS_ANNOTATIONMANAGERIMPL_HXX
 
 #include <com/sun/star/document/XEventListener.hpp>
-#include <com/sun/star/office/XAnnotationAccess.hpp>
 
 #include <rtl/ustring.hxx>
 
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 
-#include "ViewShellBase.hxx"
-
 #include "annotationtag.hxx"
 
+namespace com::sun::star::drawing { class XDrawView; }
+namespace com::sun::star::office { class XAnnotationAccess; }
+namespace com::sun::star::office { class XAnnotation; }
+
 class SfxRequest;
+class SdPage;
+class SdDrawDocument;
 
 namespace sd
 {
 
+class ViewShellBase;
 typedef std::vector< rtl::Reference< AnnotationTag > > AnnotationTagVector;
 
 namespace tools {
@@ -61,13 +65,13 @@ public:
     virtual void SAL_CALL notifyEvent( const css::document::EventObject& Event ) override;
     virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
-    void ExecuteAnnotation (SfxRequest& rRequest);
+    void ExecuteAnnotation (SfxRequest const & rRequest);
     void GetAnnotationState (SfxItemSet& rItemSet);
 
-    void ExecuteInsertAnnotation(SfxRequest& rReq);
-    void ExecuteDeleteAnnotation(SfxRequest& rReq);
-    void ExecuteEditAnnotation(SfxRequest& rReq);
-    void ExecuteReplyToAnnotation(SfxRequest& rReq);
+    void ExecuteInsertAnnotation(SfxRequest const & rReq);
+    void ExecuteDeleteAnnotation(SfxRequest const & rReq);
+    void ExecuteEditAnnotation(SfxRequest const & rReq);
+    void ExecuteReplyToAnnotation(SfxRequest const & rReq);
 
     void SelectNextAnnotation(bool bForeward);
 
@@ -86,8 +90,8 @@ public:
     static Color GetColor(sal_uInt16 aAuthorIndex);
 
     // callbacks
-    void onTagSelected( AnnotationTag& rTag );
-    void onTagDeselected( AnnotationTag& rTag );
+    void onTagSelected( AnnotationTag const & rTag );
+    void onTagDeselected( AnnotationTag const & rTag );
 
     void onSelectionChanged();
 
@@ -103,7 +107,7 @@ public:
     void CreateTags();
     void DisposeTags();
 
-    SdPage* GetNextPage( SdPage* pPage, bool bForeward );
+    SdPage* GetNextPage( SdPage const * pPage, bool bForeward );
 
     SdPage* GetCurrentPage();
 

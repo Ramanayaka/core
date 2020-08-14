@@ -21,10 +21,7 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MOZAB_BOOTSTRAP_MNSPROFILEDISCOVER_HXX
 
 #include <sal/types.h>
-#include <osl/diagnose.h>
-#include <osl/conditn.hxx>
 #include <com/sun/star/mozilla/MozillaProductType.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <rtl/ustring.hxx>
 
@@ -32,27 +29,19 @@
 #include <map>
 
 using namespace com::sun::star::mozilla;
-namespace connectivity
-{
-    namespace mozab
-    {
-        class ProfileStruct;
-    }
-}
+namespace connectivity::mozab { class ProfileStruct; }
+
 typedef std::map<OUString, ::connectivity::mozab::ProfileStruct> ProfileList;
-namespace connectivity
-{
-    namespace mozab
+namespace connectivity::mozab
     {
         class ProfileStruct
         {
         public:
             ProfileStruct();
-            ProfileStruct(MozillaProductType aProduct, const OUString& aProfileName, const OUString &aProfilePath);
+            ProfileStruct(const OUString& aProfileName, const OUString &aProfilePath);
             const OUString& getProfileName() const { return profileName;}
             const OUString& getProfilePath() const;
         private:
-            MozillaProductType product;
             OUString profileName;
             OUString profilePath;
         };
@@ -79,16 +68,13 @@ namespace connectivity
             /// @throws css::uno::RuntimeException
             OUString getDefaultProfile( css::mozilla::MozillaProductType product );
             /// @throws css::uno::RuntimeException
-            bool SAL_CALL isProfileLocked( css::mozilla::MozillaProductType product, const OUString& profileName );
-            /// @throws css::uno::RuntimeException
-            bool SAL_CALL getProfileExists( css::mozilla::MozillaProductType product, const OUString& profileName );
+            bool getProfileExists( css::mozilla::MozillaProductType product, const OUString& profileName );
         private:
             ProductStruct m_ProductProfileList[4];
             void      LoadProductsInfo();
             void      LoadXPToolkitProfiles(MozillaProductType product);
         };
 
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MOZAB_BOOTSTRAP_MNSPROFILEDISCOVER_HXX

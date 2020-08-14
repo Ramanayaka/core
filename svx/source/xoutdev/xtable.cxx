@@ -18,36 +18,20 @@
  */
 
 #include <memory>
-#include <svx/XPropertyTable.hxx>
-#include "xmlxtexp.hxx"
-#include "xmlxtimp.hxx"
+#include <xmlxtexp.hxx>
+#include <xmlxtimp.hxx>
+#include <o3tl/safeint.hxx>
+#include <osl/diagnose.h>
 #include <tools/urlobj.hxx>
 #include <svx/xtable.hxx>
-#include <svx/xpool.hxx>
-#include <svx/svdobj.hxx>
-#include <svx/svdpool.hxx>
-#include <vcl/outdev.hxx>
+#include <tools/debug.hxx>
 #include <stack>
 
 using namespace com::sun::star;
 
-// Helper for other sub-classes to have easy-to-read constructors
-Color RGB_Color( ColorData nColorName )
-{
-    Color aColor( nColorName );
-    Color aRGBColor( aColor.GetRed(), aColor.GetGreen(), aColor.GetBlue() );
-    return aRGBColor;
-}
-
 XColorEntry::XColorEntry(const Color& rColor, const OUString& rName)
 :   XPropertyEntry(rName),
     aColor(rColor)
-{
-}
-
-XColorEntry::XColorEntry(const XColorEntry& rOther)
-:   XPropertyEntry(rOther),
-aColor(rOther.aColor)
 {
 }
 
@@ -126,7 +110,7 @@ XPropertyList::XPropertyList(
 
 bool XPropertyList::isValidIdx(long nIndex) const
 {
-    return ((size_t)nIndex < maList.size() && nIndex >= 0);
+    return (nIndex >= 0 && o3tl::make_unsigned(nIndex) < maList.size());
 }
 
 
@@ -166,16 +150,16 @@ long XPropertyList::GetIndex(const OUString& rName) const
     }
 
     for( long i = 0, n = maList.size(); i < n; ++i ) {
-        if (rName.equals(maList[ i ]->GetName())) {
+        if (rName == maList[ i ]->GetName()) {
             return i;
         }
     }
     return -1;
 }
 
-Bitmap XPropertyList::GetUiBitmap( long nIndex ) const
+BitmapEx XPropertyList::GetUiBitmap( long nIndex ) const
 {
-    Bitmap aRetval;
+    BitmapEx aRetval;
     if (!isValidIdx(nIndex))
         return aRetval;
 
@@ -194,7 +178,7 @@ void XPropertyList::Insert(std::unique_ptr<XPropertyEntry> pEntry, long nIndex)
 {
     if (!pEntry)
     {
-        assert("empty XPropertyEntry not allowed in XPropertyList");
+        assert(!"empty XPropertyEntry not allowed in XPropertyList");
         return;
     }
 
@@ -209,12 +193,12 @@ void XPropertyList::Replace(std::unique_ptr<XPropertyEntry> pEntry, long nIndex)
 {
     if (!pEntry)
     {
-        assert("empty XPropertyEntry not allowed in XPropertyList");
+        assert(!"empty XPropertyEntry not allowed in XPropertyList");
         return;
     }
     if (!isValidIdx(nIndex))
     {
-        assert("trying to replace invalid entry in XPropertyList");
+        assert(!"trying to replace invalid entry in XPropertyList");
         return;
     }
 
@@ -225,7 +209,7 @@ void XPropertyList::Remove(long nIndex)
 {
     if (!isValidIdx(nIndex))
     {
-        assert("trying to remove invalid entry in XPropertyList");
+        assert(!"trying to remove invalid entry in XPropertyList");
         return;
     }
 
@@ -382,22 +366,10 @@ XPropertyList::CreatePropertyListFromURL( XPropertyListType t,
     return pList;
 }
 
-// catch people being silly with ref counting ...
-
-void* XPropertyList::operator new (size_t nCount)
-{
-    return rtl_allocateMemory( nCount );
-}
-
-void XPropertyList::operator delete(void *pPtr)
-{
-    return rtl_freeMemory( pPtr );
-}
-
-static struct {
+struct {
     XPropertyListType t;
     const char *pExt;
-} pExtnMap[] = {
+} const pExtnMap[] = {
     { XPropertyListType::Color,    "soc" },
     { XPropertyListType::LineEnd, "soe" },
     { XPropertyListType::Dash,     "sod" },

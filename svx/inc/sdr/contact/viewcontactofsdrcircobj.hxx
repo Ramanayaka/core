@@ -20,35 +20,31 @@
 #ifndef INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFSDRCIRCOBJ_HXX
 #define INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFSDRCIRCOBJ_HXX
 
-#include <svx/sdr/contact/viewcontactofsdrrectobj.hxx>
+#include <sdr/contact/viewcontactofsdrrectobj.hxx>
 #include <svx/svdocirc.hxx>
 
 
-namespace sdr
-{
-    namespace contact
+namespace sdr::contact
     {
-        class ViewContactOfSdrCircObj : public ViewContactOfSdrRectObj
+        class ViewContactOfSdrCircObj final : public ViewContactOfSdrRectObj
         {
-        protected:
+        public:
+            // basic constructor, used from SdrObject.
+            explicit ViewContactOfSdrCircObj(SdrCircObj& rCircObj);
+            virtual ~ViewContactOfSdrCircObj() override;
+
+        private:
             // internal access to SdrCircObj
             const SdrCircObj& GetCircObj() const
             {
                 return static_cast<const SdrCircObj&>(GetSdrObject());
             }
 
-        public:
-            // basic constructor, used from SdrObject.
-            explicit ViewContactOfSdrCircObj(SdrCircObj& rCircObj);
-            virtual ~ViewContactOfSdrCircObj() override;
-
-        protected:
             // This method is responsible for creating the graphical visualisation data
             // ONLY based on model data
             virtual drawinglayer::primitive2d::Primitive2DContainer createViewIndependentPrimitive2DSequence() const override;
         };
-    } // end of namespace contact
-} // end of namespace sdr
+} // end of namespace sdr::contact
 
 
 #endif // INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFSDRCIRCOBJ_HXX

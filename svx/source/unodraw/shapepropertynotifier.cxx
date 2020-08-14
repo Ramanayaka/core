@@ -18,7 +18,7 @@
  */
 
 
-#include "svx/shapepropertynotifier.hxx"
+#include <svx/shapepropertynotifier.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 
@@ -139,7 +139,7 @@ namespace svx
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 

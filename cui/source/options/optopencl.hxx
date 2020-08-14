@@ -16,38 +16,27 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-
-#ifndef INCLUDED_CUI_SOURCE_OPTIONS_OPTOPENCL_HXX
-#define INCLUDED_CUI_SOURCE_OPTIONS_OPTOPENCL_HXX
+#pragma once
 
 #include <opencl/openclconfig.hxx>
 #include <sfx2/tabdlg.hxx>
-#include <svtools/simptabl.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
 
 class SvxOpenCLTabPage : public SfxTabPage
 {
 private:
     OpenCLConfig maConfig;
 
-    VclPtr<CheckBox> mpUseSwInterpreter;
-    VclPtr<CheckBox> mpUseOpenCL;
-
-    VclPtr<FixedText> mpOclUsed;
-    VclPtr<FixedText> mpOclNotUsed;
+    std::unique_ptr<weld::CheckButton> mxUseOpenCL;
+    std::unique_ptr<weld::Label> mxOclUsed;
+    std::unique_ptr<weld::Label> mxOclNotUsed;
 
 public:
-    SvxOpenCLTabPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    SvxOpenCLTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet );
     virtual ~SvxOpenCLTabPage() override;
-    virtual void dispose() override;
-
-    static VclPtr<SfxTabPage>      Create( vcl::Window* pParent, const SfxItemSet* rSet );
 
     virtual bool            FillItemSet( SfxItemSet* rSet ) override;
     virtual void            Reset( const SfxItemSet* rSet ) override;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

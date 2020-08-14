@@ -31,7 +31,7 @@
 #include <config_lgpl.h>
 #include <ne_uri.h>
 #include <rtl/ustring.hxx>
-#include <DAVException.hxx>
+#include "DAVException.hxx"
 
 namespace webdav_ucp
 {
@@ -59,7 +59,6 @@ class NeonUri
         explicit NeonUri( const OUString & inUri );
         /// @throws DAVException
         explicit NeonUri( const ne_uri * inUri );
-        ~NeonUri( );
 
         bool operator== ( const NeonUri & rOther ) const;
         bool operator!= ( const NeonUri & rOther ) const

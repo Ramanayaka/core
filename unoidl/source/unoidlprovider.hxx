@@ -7,18 +7,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_UNOIDL_SOURCE_UNOIDLPROVIDER_HXX
-#define INCLUDED_UNOIDL_SOURCE_UNOIDLPROVIDER_HXX
+#pragma once
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <set>
 
-#include "rtl/ref.hxx"
-#include "sal/types.h"
-#include "unoidl/unoidl.hxx"
+#include <rtl/ref.hxx>
+#include <sal/types.h>
+#include <unoidl/unoidl.hxx>
 
-namespace unoidl { namespace detail {
+namespace unoidl::detail {
 
 class MappedFile;
 struct MapEntry;
@@ -52,8 +51,6 @@ private:
     NestedMap map_;
 };
 
-} }
-
-#endif
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

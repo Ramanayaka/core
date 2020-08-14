@@ -24,15 +24,14 @@
  *************************************************************************/
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
-#include <cstring>
 #include <vector>
 
 #include <rtl/ustrbuf.hxx>
 #include <com/sun/star/ucb/OpenMode.hpp>
 #include <string.h>
 #include <rtl/uri.hxx>
-#include <rtl/strbuf.hxx>
 
 #include "ftpurl.hxx"
 #include "ftpcontentprovider.hxx"
@@ -43,7 +42,6 @@
 using namespace ftp;
 using namespace com::sun::star::ucb;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::io;
 
 namespace {
 
@@ -69,7 +67,7 @@ MemoryContainer::MemoryContainer()
 
 MemoryContainer::~MemoryContainer()
 {
-    rtl_freeMemory(m_pBuffer);
+    std::free(m_pBuffer);
 }
 
 
@@ -87,7 +85,10 @@ int MemoryContainer::append(
             m_nLen+=1024;
         } while(m_nLen < tmp);
 
-        m_pBuffer = rtl_reallocateMemory(m_pBuffer,m_nLen);
+        if (auto p = std::realloc(m_pBuffer, m_nLen))
+            m_pBuffer = p;
+        else
+            return 0;
     }
 
     memcpy(static_cast<sal_Int8*>(m_pBuffer)+m_nWritePos,
@@ -225,10 +226,14 @@ void FTPURL::parse(const OUString& url)
                         ""/*aAccount*/);
 
     // now check for something like ";type=i" at end of url
-    if(m_aPathSegmentVec.size() &&
-       (l = m_aPathSegmentVec.back().indexOf(';')) != -1) {
-        m_aType = m_aPathSegmentVec.back().copy(l);
-        m_aPathSegmentVec.back() = m_aPathSegmentVec.back().copy(0,l);
+    if(!m_aPathSegmentVec.empty())
+    {
+        l = m_aPathSegmentVec.back().indexOf(';');
+        if (l != -1)
+        {
+            m_aType = m_aPathSegmentVec.back().copy(l);
+            m_aPathSegmentVec.back() = m_aPathSegmentVec.back().copy(0,l);
+        }
     }
 }
 
@@ -343,7 +348,7 @@ void FTPURL::child(const OUString& title)
 OUString FTPURL::child() const
 {
     return
-        m_aPathSegmentVec.size() ?
+        !m_aPathSegmentVec.empty() ?
         decodePathSegment(m_aPathSegmentVec.back()) : OUString();
 }
 
@@ -353,9 +358,13 @@ OUString FTPURL::child() const
 
 namespace ftp {
 
+    namespace {
+
     enum OS {
         FTP_DOS,FTP_UNIX,FTP_VMS,FTP_UNKNOWN
     };
+
+    }
 
 }
 
@@ -370,13 +379,15 @@ namespace ftp {
                      &control)
 
 
-#define SET_URL(url)                                              \
-    OString urlParAscii(url.getStr(),                        \
-                             url.getLength(),                     \
-                             RTL_TEXTENCODING_UTF8);              \
-    curl_easy_setopt(curl,                                        \
-                     CURLOPT_URL,                                 \
+static void setCurlUrl(CURL* curl, OUString const & url)
+{
+    OString urlParAscii(url.getStr(),
+                             url.getLength(),
+                             RTL_TEXTENCODING_UTF8);
+    curl_easy_setopt(curl,
+                     CURLOPT_URL,
                      urlParAscii.getStr());
+};
 
 oslFileHandle FTPURL::open()
 {
@@ -387,7 +398,7 @@ oslFileHandle FTPURL::open()
 
     SET_CONTROL_CONTAINER;
     OUString url(ident(false,true));
-    SET_URL(url);
+    setCurlUrl(curl, url);
 
     oslFileHandle res( nullptr );
     if ( osl_createTempFile( nullptr, &res, nullptr ) == osl_File_E_None )
@@ -428,7 +439,7 @@ std::vector<FTPDirentry> FTPURL::list(
     curl_easy_setopt(curl,CURLOPT_WRITEDATA,&data);
 
     OUString url(ident(true,true));
-    SET_URL(url);
+    setCurlUrl(curl, url);
     curl_easy_setopt(curl,CURLOPT_POSTQUOTE,0);
 
     CURLcode err = curl_easy_perform(curl);
@@ -524,7 +535,7 @@ OUString FTPURL::net_title() const
         else if(!try_more && url.endsWith("/"))
             url = url.copy(0,url.getLength()-1);         // remove end-slash
 
-        SET_URL(url);
+        setCurlUrl(curl, url);
         err = curl_easy_perform(curl);
 
         if(err == CURLE_OK) {       // get the title from the server
@@ -557,11 +568,11 @@ OUString FTPURL::net_title() const
             throw curl_exception(err);
 #endif
         else if(try_more && err == CURLE_FTP_ACCESS_DENIED) {
-            // We  were  either denied access when trying to login to
+            // We were either denied access when trying to login to
             //  an FTP server or when trying to change working directory
             //  to the one given in the URL.
             if(!m_aPathSegmentVec.empty())
-                // determine title form url
+                // determine title from URL
                 aNetTitle = decodePathSegment(m_aPathSegmentVec.back());
             else
                 // must be root
@@ -599,7 +610,7 @@ FTPDirentry FTPURL::direntry() const
 
         std::vector<FTPDirentry> aList = aURL.list(OpenMode::ALL);
 
-        for(FTPDirentry & d : aList) {
+        for(const FTPDirentry & d : aList) {
             if(d.m_aName == nettitle) { // the relevant file is found
                 aDirentry = d;
                 break;
@@ -612,7 +623,7 @@ FTPDirentry FTPURL::direntry() const
 
 extern "C" {
 
-    size_t memory_read(void *ptr,size_t size,size_t nmemb,void *stream)
+    static size_t memory_read(void *ptr,size_t size,size_t nmemb,void *stream)
     {
         sal_Int32 nRequested = sal_Int32(size*nmemb);
         CurlInput *curlInput = static_cast<CurlInput*>(stream);
@@ -646,7 +657,7 @@ void FTPURL::insert(bool replaceExisting,void* stream) const
     curl_easy_setopt(curl, CURLOPT_UPLOAD,1);
 
     OUString url(ident(false,true));
-    SET_URL(url);
+    setCurlUrl(curl, url);
 
     CURLcode err = curl_easy_perform(curl);
     curl_easy_setopt(curl, CURLOPT_UPLOAD,false);
@@ -670,8 +681,8 @@ void FTPURL::mkdir(bool ReplaceExisting) const
         // will give an error
         title = OString("/");
 
-    OString aDel("del "); aDel += title;
-    OString mkd("mkd "); mkd += title;
+    OString aDel = "del " + title;
+    OString mkd = "mkd " + title;
 
     struct curl_slist *slist = nullptr;
 
@@ -696,7 +707,7 @@ void FTPURL::mkdir(bool ReplaceExisting) const
     OUString url(parent(true));
     if(!url.endsWith("/"))
         url += "/";
-    SET_URL(url);
+    setCurlUrl(curl, url);
 
     CURLcode err = curl_easy_perform(curl);
     curl_slist_free_all(slist);
@@ -710,15 +721,13 @@ OUString FTPURL::ren(const OUString& NewTitle)
     CURL *curl = m_pFCP->handle();
 
     // post request
-    OString renamefrom("RNFR ");
     OUString OldTitle = net_title();
-    renamefrom +=
+    OString renamefrom = "RNFR " +
         OString(OldTitle.getStr(),
                      OldTitle.getLength(),
                      RTL_TEXTENCODING_UTF8);
 
-    OString renameto("RNTO ");
-    renameto +=
+    OString renameto = "RNTO " +
         OString(NewTitle.getStr(),
                      NewTitle.getLength(),
                      RTL_TEXTENCODING_UTF8);
@@ -735,13 +744,13 @@ OUString FTPURL::ren(const OUString& NewTitle)
     OUString url(parent(true));
     if(!url.endsWith("/"))
         url += "/";
-    SET_URL(url);
+    setCurlUrl(curl, url);
 
     CURLcode err = curl_easy_perform(curl);
     curl_slist_free_all(slist);
     if(err != CURLE_OK)
         throw curl_exception(err);
-    else if( m_aPathSegmentVec.size() && m_aPathSegmentVec.back() != ".." )
+    else if( !m_aPathSegmentVec.empty() && m_aPathSegmentVec.back() != ".." )
         m_aPathSegmentVec.back() = encodePathSegment(NewTitle);
     return OldTitle;
 }
@@ -765,10 +774,10 @@ void FTPURL::del() const
             } catch(const curl_exception&) {
             }
         }
-        dele = OString("RMD ") + dele;
+        dele = "RMD " + dele;
     }
     else if(aDirentry.m_nMode != INETCOREFTP_FILEMODE_UNKNOWN)
-        dele = OString("DELE ") + dele;
+        dele = "DELE " + dele;
     else
         return;
 
@@ -785,7 +794,7 @@ void FTPURL::del() const
     OUString url(parent(true));
     if(!url.endsWith("/"))
         url += "/";
-    SET_URL(url);
+    setCurlUrl(curl, url);
 
     CURLcode err = curl_easy_perform(curl);
     curl_slist_free_all(slist);

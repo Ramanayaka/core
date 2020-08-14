@@ -20,18 +20,10 @@
 #ifndef INCLUDED_FORMULA_SOURCE_UI_DLG_PARAWIN_HXX
 #define INCLUDED_FORMULA_SOURCE_UI_DLG_PARAWIN_HXX
 
-#include <svtools/svmedit.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/group.hxx>
-#include <vcl/tabpage.hxx>
-#include <vcl/tabctrl.hxx>
-#include <vcl/scrbar.hxx>
-
-#include <vector>
-#include "formula/funcutl.hxx"
-#include "formula/omoduleclient.hxx"
+#include <formula/funcutl.hxx>
+#include <vcl/weld.hxx>
 #include "ControlHelper.hxx"
+#include <vector>
 
 namespace formula
 {
@@ -41,70 +33,71 @@ namespace formula
 class IFunctionDescription;
 class IControlReferenceHandler;
 
-class ParaWin : public TabPage
+class ParaWin
 {
 private:
-        OModuleClient        m_aModuleClient;
         Link<ParaWin&,void>  aFxLink;
         Link<ParaWin&,void>  aArgModifiedLink;
 
         ::std::vector<sal_uInt16>   aVisibleArgMapping;
         const IFunctionDescription* pFuncDesc;
         IControlReferenceHandler*   pMyParent;
-        sal_uInt16          nArgs;      // unsuppressed arguments
+        sal_uInt16       nArgs;     // unsuppressed arguments, may be >= VAR_ARGS to indicate repeating parameters
+        sal_uInt16       nMaxArgs;  // max arguments, limited to supported number of arguments
         vcl::Font        aFntBold;
         vcl::Font        aFntLight;
 
-        VclPtr<FixedText>       m_pFtEditDesc;
-        VclPtr<FixedText>       m_pFtArgName;
-        VclPtr<FixedText>       m_pFtArgDesc;
-
-        VclPtr<PushButton>      m_pBtnFx1;
-        VclPtr<FixedText>       m_pFtArg1;
-        VclPtr<ArgEdit>         m_pEdArg1;
-        VclPtr<RefButton>       m_pRefBtn1;
-
-        VclPtr<PushButton>      m_pBtnFx2;
-        VclPtr<FixedText>       m_pFtArg2;
-        VclPtr<ArgEdit>         m_pEdArg2;
-        VclPtr<RefButton>       m_pRefBtn2;
-
-        VclPtr<PushButton>      m_pBtnFx3;
-        VclPtr<FixedText>       m_pFtArg3;
-        VclPtr<ArgEdit>         m_pEdArg3;
-        VclPtr<RefButton>       m_pRefBtn3;
-
-        VclPtr<PushButton>      m_pBtnFx4;
-        VclPtr<FixedText>       m_pFtArg4;
-        VclPtr<ArgEdit>         m_pEdArg4;
-        VclPtr<RefButton>       m_pRefBtn4;
-
-        VclPtr<ScrollBar>       m_pSlider;
         OUString        m_sOptional;
         OUString        m_sRequired;
-        bool        bRefMode;
 
         sal_uInt16      nEdFocus;
         sal_uInt16      nActiveLine;
 
         ArgInput        aArgInput[4];
         OUString        aDefaultString;
-        ::std::vector<OUString>
-                        aParaArray;
+        ::std::vector<OUString> aParaArray;
 
-        DECL_LINK( ScrollHdl, ScrollBar*, void);
+        std::unique_ptr<weld::Builder> m_xBuilder;
+        std::unique_ptr<weld::Container> m_xContainer;
+
+        std::unique_ptr<weld::ScrolledWindow> m_xSlider;
+        std::unique_ptr<weld::Widget> m_xParamGrid;
+        std::unique_ptr<weld::Widget> m_xGrid;
+
+        std::unique_ptr<weld::Label> m_xFtEditDesc;
+        std::unique_ptr<weld::Label> m_xFtArgName;
+        std::unique_ptr<weld::Label> m_xFtArgDesc;
+
+        std::unique_ptr<weld::Button> m_xBtnFx1;
+        std::unique_ptr<weld::Button> m_xBtnFx2;
+        std::unique_ptr<weld::Button> m_xBtnFx3;
+        std::unique_ptr<weld::Button> m_xBtnFx4;
+
+        std::unique_ptr<weld::Label> m_xFtArg1;
+        std::unique_ptr<weld::Label> m_xFtArg2;
+        std::unique_ptr<weld::Label> m_xFtArg3;
+        std::unique_ptr<weld::Label> m_xFtArg4;
+
+        std::unique_ptr<ArgEdit> m_xEdArg1;
+        std::unique_ptr<ArgEdit> m_xEdArg2;
+        std::unique_ptr<ArgEdit> m_xEdArg3;
+        std::unique_ptr<ArgEdit> m_xEdArg4;
+
+        std::unique_ptr<RefButton> m_xRefBtn1;
+        std::unique_ptr<RefButton> m_xRefBtn2;
+        std::unique_ptr<RefButton> m_xRefBtn3;
+        std::unique_ptr<RefButton> m_xRefBtn4;
+
+        DECL_LINK( ScrollHdl, weld::ScrolledWindow&, void);
         DECL_LINK( ModifyHdl, ArgInput&, void );
         DECL_LINK( GetEdFocusHdl, ArgInput&, void );
         DECL_LINK( GetFxFocusHdl, ArgInput&, void );
         DECL_LINK( GetFxHdl, ArgInput&, void );
 
-protected:
-
-        void            SliderMoved();
         void            ArgumentModified();
 
-        void            InitArgInput( sal_uInt16 nPos, FixedText& rFtArg, PushButton& rBtnFx,
-                                        ArgEdit& rEdArg, RefButton& rRefBtn);
+        void            InitArgInput(sal_uInt16 nPos, weld::Label& rFtArg, weld::Button& rBtnFx,
+                                     ArgEdit& rEdArg, RefButton& rRefBtn);
 
         void            SetArgumentDesc(const OUString& aText);
         void            SetArgumentText(const OUString& aText);
@@ -117,9 +110,8 @@ protected:
         void            UpdateArgInput( sal_uInt16 nOffset, sal_uInt16 i );
 
 public:
-                        ParaWin(vcl::Window* pParent,IControlReferenceHandler* _pDlg);
-                        virtual ~ParaWin() override;
-        virtual void    dispose() override;
+        ParaWin(weld::Container* pParent, IControlReferenceHandler* _pDlg);
+        ~ParaWin();
 
         void            SetFunctionDesc(const IFunctionDescription* pFDesc);
         void            SetArgumentOffset(sal_uInt16 nOffset);
@@ -127,23 +119,25 @@ public:
         void            UpdateParas();
         void            ClearAll();
 
-        void            SetRefMode(bool bFlag) {bRefMode=bFlag;}
-
-        sal_uInt16      GetActiveLine() { return nActiveLine;}
+        sal_uInt16      GetActiveLine() const { return nActiveLine;}
         void            SetActiveLine(sal_uInt16 no);
-        RefEdit*        GetActiveEdit();
-        OUString        GetActiveArgName();
+        RefEdit*    GetActiveEdit();
+        OUString        GetActiveArgName() const;
 
         OUString        GetArgument(sal_uInt16 no);
         void            SetArgument(sal_uInt16 no, const OUString& aString);
         void            SetArgumentFonts(const vcl::Font& aBoldFont,const vcl::Font& aLightFont);
 
         void            SetEdFocus(); // visible edit lines
-        sal_uInt16      GetSliderPos();
+        sal_uInt16      GetSliderPos() const;
         void            SetSliderPos(sal_uInt16 nSliderPos);
 
         void            SetArgModifiedHdl( const Link<ParaWin&,void>& rLink ) { aArgModifiedLink = rLink; }
         void            SetFxHdl( const Link<ParaWin&,void>& rLink ) { aFxLink = rLink; }
+
+        void            SliderMoved();
+
+        void            Show() { m_xContainer->show(); }
 };
 
 

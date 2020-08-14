@@ -37,12 +37,12 @@ import string
 class Parser:
     """
     This parser extracts comments from source files, tries to guess
-    their language and then prints out the german ones.
+    their language and then prints out the German ones.
     """
     def __init__(self):
         self.strip = string.punctuation + " \n"
         self.text_cat = self.start_text_cat()
-        parser = argparse.ArgumentParser(description='Searches for german comments in cxx/hxx source files inside a given root directory recursively.')
+        parser = argparse.ArgumentParser(description='Searches for German comments in cxx/hxx source files inside a given root directory recursively.')
         parser.add_argument("-f", "--filenames-only", action="store_true",
             help="Only print the filenames of files containing German comments")
         parser.add_argument("-v", "--verbose", action="store_true",
@@ -96,12 +96,12 @@ class Parser:
                 # start of a real multiline comment
                 in_comment = True
                 linenum = count
-                s = re.sub(".*/\*+", "", i.strip(self.strip))
+                s = re.sub(r".*/\*+", "", i.strip(self.strip))
                 if len(s):
                     buf.append(s.strip(self.strip))
             elif in_comment and not "*/" in i:
                 # in multiline comment
-                s = re.sub("^( |\|)*\*?", "", i)
+                s = re.sub(r"^( |\|)*\*?", "", i)
                 if len(s.strip(self.strip)):
                     buf.append(s.strip(self.strip))
             elif "*/" in i and in_comment:
@@ -114,7 +114,7 @@ class Parser:
                 buf = []
             elif "/*" in i and "*/" in i:
                 # c-style oneliner comment
-                yield (count, re.sub(".*/\*(.*)\*/.*", r"\1", i).strip(self.strip))
+                yield (count, re.sub(r".*/\*(.*)\*/.*", r"\1", i).strip(self.strip))
             count += 1
 
     def start_text_cat(self):
@@ -126,9 +126,9 @@ class Parser:
         return sock
 
     def get_lang(self, s):
-        """ the output is 'german' or 'english' or 'german or english'. when
+        """ the output is 'german' or 'english' or 'german or english'. When
         unsure, just don't warn, there are strings where you just can't
-        teremine the results reliably, like '#110680#' """
+        determine the results reliably, like '#110680#' """
 
         self.text_cat.stdin.write(bytes(s, 'utf-8'))
         self.text_cat.stdin.write(bytes("\n", 'utf-8'))
@@ -138,7 +138,7 @@ class Parser:
 
     def is_german(self, s):
         """
-        determines if a string is german or not
+        determines if a string is German or not
         """
         # for short strings we can't do reliable recognition, so skip
         # short strings and less than 4 words
@@ -210,7 +210,7 @@ class Parser:
 
     def first_elem(self, path):
         """
-        Returns the root directory in our repo of a given path, so we can check against the whitelist.
+        Returns the root directory in our repo of a given path, so we can check against the allowlist.
         """
         lastElem = os.path.dirname(path)
         done = False
@@ -227,7 +227,7 @@ class Parser:
         checks each _tracked_ file in a directory recursively
         """
 
-	# top-level project directory -> use whitelist.
+	# top-level project directory -> use allowlist.
         globalscan = False
         if os.path.exists(directory + "/.git/config"):
            globalscan = True
@@ -240,7 +240,7 @@ class Parser:
         sock.close()
 
         # Helps to speedup a global scan
-        directory_whitelist = {
+        directory_allowlist = {
             "ure" : 1,
             "ios" : 1,
             "bean" : 1,
@@ -376,17 +376,17 @@ class Parser:
 
         for path in lines:
             baseDir = self.first_elem(path)
-            # If we have an globalscan use the whitelist.
+            # If we have a globalscan use the allowlist.
             if globalscan:
-                if not baseDir in directory_whitelist:
+                if not baseDir in directory_allowlist:
                     sys.stderr.write("\n - Error: Missing path %s -\n\n" % baseDir)
                     sys.exit(1)
-                elif directory_whitelist[baseDir] is 0:
+                elif directory_allowlist[baseDir] is 0:
                     self.check_file(path.strip())
                     num_checked = num_checked + 1
-                elif directory_whitelist[baseDir] is 1:
-                    sys.stderr.write("Skipping whitelisted directory %s\n" % baseDir)
-                    directory_whitelist[baseDir] = 2
+                elif directory_allowlist[baseDir] is 1:
+                    sys.stderr.write("Skipping excluded directory %s\n" % baseDir)
+                    directory_allowlist[baseDir] = 2
             elif not globalscan:
                 self.check_file(path.strip())
                 num_checked = num_checked + 1

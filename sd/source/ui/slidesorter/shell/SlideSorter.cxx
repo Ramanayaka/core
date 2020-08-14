@@ -17,34 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "SlideSorter.hxx"
+#include <SlideSorter.hxx>
 
-#include "SlideSorterViewShell.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsScrollBarManager.hxx"
-#include "controller/SlsProperties.hxx"
-#include "controller/SlsAnimator.hxx"
-#include "view/SlideSorterView.hxx"
-#include "view/SlsTheme.hxx"
-#include "model/SlideSorterModel.hxx"
+#include <com/sun/star/frame/XController.hpp>
 
-#include "glob.hrc"
-#include "DrawController.hxx"
-#include "ViewShellBase.hxx"
-#include "ViewShellManager.hxx"
-#include "Window.hxx"
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsScrollBarManager.hxx>
+#include <controller/SlsProperties.hxx>
+#include <controller/SlsAnimator.hxx>
+#include <o3tl/deleter.hxx>
+#include <view/SlideSorterView.hxx>
+#include <view/SlsTheme.hxx>
+#include <model/SlideSorterModel.hxx>
 
+#include <ViewShell.hxx>
+#include <ViewShellBase.hxx>
+#include <Window.hxx>
+
+#include <tools/debug.hxx>
 #include <vcl/scrbar.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
-#include <sfx2/dispatch.hxx>
-#include "sdresid.hxx"
-
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 
-namespace sd { namespace slidesorter {
+namespace sd::slidesorter {
 
 namespace {
 class ContentWindow : public ::sd::Window
@@ -82,21 +80,21 @@ std::shared_ptr<SlideSorter> SlideSorter::CreateSlideSorter(
             pContentWindow,
             pHorizontalScrollBar,
             pVerticalScrollBar,
-            pScrollBarBox));
+            pScrollBarBox),
+        o3tl::default_delete<SlideSorter>());
     pSlideSorter->Init();
     return pSlideSorter;
 }
 
 std::shared_ptr<SlideSorter> SlideSorter::CreateSlideSorter (
     ViewShellBase& rBase,
-    ViewShell* pViewShell,
     vcl::Window& rParentWindow)
 {
     std::shared_ptr<SlideSorter> pSlideSorter(
         new SlideSorter(
             rBase,
-            pViewShell,
-            rParentWindow));
+            rParentWindow),
+        o3tl::default_delete<SlideSorter>());
     pSlideSorter->Init();
     return pSlideSorter;
 }
@@ -118,28 +116,27 @@ SlideSorter::SlideSorter (
       mpHorizontalScrollBar(pHorizontalScrollBar),
       mpVerticalScrollBar(pVerticalScrollBar),
       mpScrollBarBox(pScrollBarBox),
-      mpProperties(new controller::Properties()),
-      mpTheme(new view::Theme(mpProperties))
+      mpProperties(std::make_shared<controller::Properties>()),
+      mpTheme(std::make_shared<view::Theme>(mpProperties))
 {
 }
 
 SlideSorter::SlideSorter (
     ViewShellBase& rBase,
-    ViewShell* pViewShell,
     vcl::Window& rParentWindow)
     : mbIsValid(false),
       mpSlideSorterController(),
       mpSlideSorterModel(),
       mpSlideSorterView(),
       mxControllerWeak(),
-      mpViewShell(pViewShell),
+      mpViewShell(nullptr),
       mpViewShellBase(&rBase),
       mpContentWindow(VclPtr<ContentWindow>::Create(rParentWindow,*this )),
       mpHorizontalScrollBar(VclPtr<ScrollBar>::Create(&rParentWindow,WinBits(WB_HSCROLL | WB_DRAG))),
       mpVerticalScrollBar(VclPtr<ScrollBar>::Create(&rParentWindow,WinBits(WB_VSCROLL | WB_DRAG))),
       mpScrollBarBox(VclPtr<ScrollBarBox>::Create(&rParentWindow)),
-      mpProperties(new controller::Properties()),
-      mpTheme(new view::Theme(mpProperties))
+      mpProperties(std::make_shared<controller::Properties>()),
+      mpTheme(std::make_shared<view::Theme>(mpProperties))
 {
 }
 
@@ -167,24 +164,24 @@ void SlideSorter::Init()
 
     // Initialize the window.
     sd::Window *pContentWindow = GetContentWindow().get();
-    if (pContentWindow)
-    {
-        vcl::Window* pParentWindow = pContentWindow->GetParent();
-        if (pParentWindow != nullptr)
-            pParentWindow->SetBackground(Wallpaper());
-        pContentWindow->SetBackground(Wallpaper());
-        pContentWindow->SetViewOrigin (Point(0,0));
-        // We do our own scrolling while dragging a page selection.
-        pContentWindow->SetUseDropScroll (false);
-        // Change the winbits so that the active window accepts the focus.
-        pContentWindow->SetStyle ((pContentWindow->GetStyle() & ~WB_DIALOGCONTROL) | WB_TABSTOP);
-        pContentWindow->Hide();
+    if (!pContentWindow)
+        return;
 
-        // Set view pointer of base class.
-        SetupControls();
+    vcl::Window* pParentWindow = pContentWindow->GetParent();
+    if (pParentWindow != nullptr)
+        pParentWindow->SetBackground(Wallpaper());
+    pContentWindow->SetBackground(Wallpaper());
+    pContentWindow->SetViewOrigin (Point(0,0));
+    // We do our own scrolling while dragging a page selection.
+    pContentWindow->SetUseDropScroll (false);
+    // Change the winbits so that the active window accepts the focus.
+    pContentWindow->SetStyle ((pContentWindow->GetStyle() & ~WB_DIALOGCONTROL) | WB_TABSTOP);
+    pContentWindow->Hide();
 
-        mbIsValid = true;
-    }
+    // Set view pointer of base class.
+    SetupControls();
+
+    mbIsValid = true;
 }
 
 SlideSorter::~SlideSorter()
@@ -211,19 +208,19 @@ SlideSorter::~SlideSorter()
 
 model::SlideSorterModel& SlideSorter::GetModel() const
 {
-    assert(mpSlideSorterModel.get()!=nullptr);
+    assert(mpSlideSorterModel);
     return *mpSlideSorterModel;
 }
 
 view::SlideSorterView& SlideSorter::GetView() const
 {
-    assert(mpSlideSorterView.get()!=nullptr);
+    assert(mpSlideSorterView);
     return *mpSlideSorterView;
 }
 
 controller::SlideSorterController& SlideSorter::GetController() const
 {
-    assert(mpSlideSorterController.get()!=nullptr);
+    assert(mpSlideSorterController);
     return *mpSlideSorterController;
 }
 
@@ -300,16 +297,10 @@ void SlideSorter::ReleaseListeners()
 void SlideSorter::CreateModelViewController()
 {
     mpSlideSorterModel.reset(CreateModel());
-    DBG_ASSERT (mpSlideSorterModel.get()!=nullptr,
-        "Can not create model for slide browser");
+    DBG_ASSERT(mpSlideSorterModel != nullptr, "Can not create model for slide browser");
 
     mpSlideSorterView.reset(new view::SlideSorterView (*this));
-    DBG_ASSERT (mpSlideSorterView.get()!=nullptr,
-        "Can not create view for slide browser");
-
-    mpSlideSorterController.reset(CreateController());
-    DBG_ASSERT (mpSlideSorterController.get()!=nullptr,
-        "Can not create controller for slide browser");
+    mpSlideSorterController.reset(new controller::SlideSorterController(*this));
 
     // Now that model, view, and controller are constructed, do the
     // initialization that relies on all three being in place.
@@ -329,13 +320,6 @@ model::SlideSorterModel* SlideSorter::CreateModel()
     }
     else
         return nullptr;
-}
-
-controller::SlideSorterController* SlideSorter::CreateController()
-{
-    controller::SlideSorterController* pController
-        = new controller::SlideSorterController (*this);
-    return pController;
 }
 
 void SlideSorter::ArrangeGUIElements (
@@ -360,7 +344,7 @@ void SlideSorter::ArrangeGUIElements (
     }
 }
 
-bool SlideSorter::RelocateToWindow (vcl::Window* pParentWindow)
+void SlideSorter::RelocateToWindow (vcl::Window* pParentWindow)
 {
    // Stop all animations for they have been started for the old window.
     mpSlideSorterController->GetAnimator()->RemoveAllAnimations();
@@ -380,13 +364,11 @@ bool SlideSorter::RelocateToWindow (vcl::Window* pParentWindow)
     // view shell.  (One is created earlier while the constructor of the base
     // class is executed.  But because at that time the correct
     // accessibility object can not be constructed we do that now.)
-    if (mpContentWindow.get() !=nullptr)
+    if (mpContentWindow)
     {
         mpContentWindow->Hide();
         mpContentWindow->Show();
     }
-
-    return true;
 }
 
 void SlideSorter::SetCurrentFunction (const rtl::Reference<FuPoor>& rpFunction)
@@ -478,6 +460,6 @@ bool ContentWindow::EventNotify(NotifyEvent&)
 
 } // end of anonymous namespace
 
-} } // end of namespace ::sd::slidesorter
+} // end of namespace ::sd::slidesorter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

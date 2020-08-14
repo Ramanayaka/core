@@ -17,31 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "view/SlsInsertionIndicatorOverlay.hxx"
+#include <view/SlsInsertionIndicatorOverlay.hxx>
 
-#include "SlideSorter.hxx"
-#include "model/SlsPageEnumeration.hxx"
-#include "view/SlideSorterView.hxx"
-#include "view/SlsLayouter.hxx"
-#include "view/SlsPageObjectLayouter.hxx"
-#include "view/SlsTheme.hxx"
-#include "cache/SlsPageCache.hxx"
+#include <SlideSorter.hxx>
+#include <view/SlideSorterView.hxx>
+#include <view/SlsLayouter.hxx>
+#include <view/SlsPageObjectLayouter.hxx>
+#include <view/SlsTheme.hxx>
 #include "SlsFramePainter.hxx"
 #include "SlsLayeredDevice.hxx"
-#include "DrawDocShell.hxx"
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
-#include "sdmod.hxx"
+#include <DrawDocShell.hxx>
+#include <drawdoc.hxx>
+#include <Window.hxx>
 
+#include <o3tl/safeint.hxx>
+#include <rtl/math.hxx>
 #include <vcl/virdev.hxx>
 #include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/tools/canvastools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 
 namespace {
 
-static const double gnPreviewOffsetScale = 1.0 / 8.0;
+const double gnPreviewOffsetScale = 1.0 / 8.0;
 
 ::tools::Rectangle GrowRectangle (const ::tools::Rectangle& rBox, const sal_Int32 nOffset)
 {
@@ -56,12 +54,12 @@ sal_Int32 RoundToInt (const double nValue) { return sal_Int32(::rtl::math::round
 
 } // end of anonymous namespace
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 
 //=====  InsertionIndicatorOverlay  ===========================================
 
-const static sal_Int32 gnShadowBorder = 3;
-const static sal_Int32 gnLayerIndex = 2;
+const sal_Int32 gnShadowBorder = 3;
+const sal_Int32 gnLayerIndex = 2;
 
 InsertionIndicatorOverlay::InsertionIndicatorOverlay (SlideSorter& rSlideSorter)
     : mrSlideSorter(rSlideSorter),
@@ -69,13 +67,12 @@ InsertionIndicatorOverlay::InsertionIndicatorOverlay (SlideSorter& rSlideSorter)
       mpLayerInvalidator(),
       maLocation(),
       maIcon(),
-      maIconOffset(),
       mpShadowPainter(
           new FramePainter(mrSlideSorter.GetTheme()->GetIcon(Theme::Icon_RawInsertShadow)))
 {
 }
 
-InsertionIndicatorOverlay::~InsertionIndicatorOverlay()
+InsertionIndicatorOverlay::~InsertionIndicatorOverlay() COVERITY_NOEXCEPT_FALSE
 {
     Hide();
 }
@@ -110,7 +107,7 @@ void InsertionIndicatorOverlay::Create (
     const sal_Int32 nSelectionCount)
 {
     view::Layouter& rLayouter (mrSlideSorter.GetView().GetLayouter());
-    std::shared_ptr<view::PageObjectLayouter> pPageObjectLayouter (
+    const std::shared_ptr<view::PageObjectLayouter>& pPageObjectLayouter (
         rLayouter.GetPageObjectLayouter());
     std::shared_ptr<view::Theme> pTheme (mrSlideSorter.GetTheme());
     const Size aOriginalPreviewSize (pPageObjectLayouter->GetPreviewSize());
@@ -129,7 +126,6 @@ void InsertionIndicatorOverlay::Create (
     Size aIconSize(
         aPreviewSize.Width() + 2 * gnShadowBorder + nCount*nOffset,
         aPreviewSize.Height() + 2 * gnShadowBorder + nCount*nOffset);
-    maIconOffset = Point(gnShadowBorder, gnShadowBorder);
 
     // Create virtual devices for bitmap and mask whose bitmaps later be
     // combined to form the BitmapEx of the icon.
@@ -139,9 +135,9 @@ void InsertionIndicatorOverlay::Create (
 
     pContent->SetFillColor();
     pContent->SetLineColor(pTheme->GetColor(Theme::Color_PreviewBorder));
-    const Point aOffset = PaintRepresentatives(*pContent.get(), aPreviewSize, nOffset, rRepresentatives);
+    const Point aOffset = PaintRepresentatives(*pContent, aPreviewSize, nOffset, rRepresentatives);
 
-    PaintPageCount(*pContent.get(), nSelectionCount, aPreviewSize, aOffset);
+    PaintPageCount(*pContent, nSelectionCount, aPreviewSize, aOffset);
 
     maIcon = pContent->GetBitmapEx(Point(0,0), aIconSize);
     maIcon.Scale(aIconSize);
@@ -161,7 +157,7 @@ Point InsertionIndicatorOverlay::PaintRepresentatives (
     const BitmapEx aExclusionOverlay (mrSlideSorter.GetTheme()->GetIcon(Theme::Icon_HideSlideOverlay));
     for (sal_Int32 nIndex=2; nIndex>=0; --nIndex)
     {
-        if (rRepresentatives.size() <= sal_uInt32(nIndex))
+        if (rRepresentatives.size() <= o3tl::make_unsigned(nIndex))
             continue;
         switch(nIndex)
         {
@@ -179,11 +175,11 @@ Point InsertionIndicatorOverlay::PaintRepresentatives (
                 break;
         }
         aPageOffset += aOffset;
-        aPageOffset.X() += gnShadowBorder;
-        aPageOffset.Y() += gnShadowBorder;
+        aPageOffset.AdjustX(gnShadowBorder );
+        aPageOffset.AdjustY(gnShadowBorder );
 
         // Paint the preview.
-        Bitmap aPreview (rRepresentatives[nIndex].maBitmap);
+        BitmapEx aPreview (rRepresentatives[nIndex].maBitmap);
         aPreview.Scale(rPreviewSize, BmpScaleFlag::BestQuality);
         rContent.DrawBitmapEx(aPageOffset, aPreview);
 
@@ -214,7 +210,8 @@ Point InsertionIndicatorOverlay::PaintRepresentatives (
         rContent.SetFillColor(COL_BLACK);
         rContent.SetLineColor();
         rContent.DrawTransparent(
-            ::basegfx::B2DPolyPolygon(::basegfx::tools::createPolygonFromRect(
+            basegfx::B2DHomMatrix(),
+            ::basegfx::B2DPolyPolygon(::basegfx::utils::createPolygonFromRect(
                 ::basegfx::B2DRectangle(aBox.Left(), aBox.Top(), aBox.Right()+1, aBox.Bottom()+1),
                 0,
                 0)),
@@ -242,38 +239,38 @@ void InsertionIndicatorOverlay::PaintPageCount (
     // Paint the number of slides.
     std::shared_ptr<view::Theme> pTheme (mrSlideSorter.GetTheme());
     std::shared_ptr<vcl::Font> pFont(Theme::GetFont(Theme::Font_PageCount, rDevice));
-    if (pFont)
-    {
-        OUString sNumber (OUString::number(nSelectionCount));
+    if (!pFont)
+        return;
 
-        // Determine the size of the (painted) text and create a bounding
-        // box that centers the text on the first preview.
-        rDevice.SetFont(*pFont);
-        ::tools::Rectangle aTextBox;
-        rDevice.GetTextBoundRect(aTextBox, sNumber);
-        Point aTextOffset (aTextBox.TopLeft());
-        Size aTextSize (aTextBox.GetSize());
-        // Place text inside the first page preview.
-        Point aTextLocation(rFirstPageOffset);
-        // Center the text.
-        aTextLocation += Point(
-            (rPreviewSize.Width()-aTextBox.GetWidth())/2,
-            (rPreviewSize.Height()-aTextBox.GetHeight())/2);
-        aTextBox = ::tools::Rectangle(aTextLocation, aTextSize);
+    OUString sNumber (OUString::number(nSelectionCount));
 
-        // Paint background, border and text.
-        static const sal_Int32 nBorder = 5;
-        rDevice.SetFillColor(pTheme->GetColor(Theme::Color_Selection));
-        rDevice.SetLineColor(pTheme->GetColor(Theme::Color_Selection));
-        rDevice.DrawRect(GrowRectangle(aTextBox, nBorder));
+    // Determine the size of the (painted) text and create a bounding
+    // box that centers the text on the first preview.
+    rDevice.SetFont(*pFont);
+    ::tools::Rectangle aTextBox;
+    rDevice.GetTextBoundRect(aTextBox, sNumber);
+    Point aTextOffset (aTextBox.TopLeft());
+    Size aTextSize (aTextBox.GetSize());
+    // Place text inside the first page preview.
+    Point aTextLocation(rFirstPageOffset);
+    // Center the text.
+    aTextLocation += Point(
+        (rPreviewSize.Width()-aTextBox.GetWidth())/2,
+        (rPreviewSize.Height()-aTextBox.GetHeight())/2);
+    aTextBox = ::tools::Rectangle(aTextLocation, aTextSize);
 
-        rDevice.SetFillColor();
-        rDevice.SetLineColor(pTheme->GetColor(Theme::Color_PageCountFontColor));
-        rDevice.DrawRect(GrowRectangle(aTextBox, nBorder-1));
+    // Paint background, border and text.
+    static const sal_Int32 nBorder = 5;
+    rDevice.SetFillColor(pTheme->GetColor(Theme::Color_Selection));
+    rDevice.SetLineColor(pTheme->GetColor(Theme::Color_Selection));
+    rDevice.DrawRect(GrowRectangle(aTextBox, nBorder));
 
-        rDevice.SetTextColor(pTheme->GetColor(Theme::Color_PageCountFontColor));
-        rDevice.DrawText(aTextBox.TopLeft()-aTextOffset, sNumber);
-    }
+    rDevice.SetFillColor();
+    rDevice.SetLineColor(pTheme->GetColor(Theme::Color_PageCountFontColor));
+    rDevice.DrawRect(GrowRectangle(aTextBox, nBorder-1));
+
+    rDevice.SetTextColor(pTheme->GetColor(Theme::Color_PageCountFontColor));
+    rDevice.DrawText(aTextBox.TopLeft()-aTextOffset, sNumber);
 }
 
 void InsertionIndicatorOverlay::SetLocation (const Point& rLocation)
@@ -316,35 +313,35 @@ void InsertionIndicatorOverlay::SetLayerInvalidator (const SharedILayerInvalidat
 
 void InsertionIndicatorOverlay::Show()
 {
-    if ( ! mbIsVisible)
-    {
-        mbIsVisible = true;
+    if (  mbIsVisible)
+        return;
 
-        std::shared_ptr<LayeredDevice> pLayeredDevice (
-            mrSlideSorter.GetView().GetLayeredDevice());
-        if (pLayeredDevice)
-        {
-            pLayeredDevice->RegisterPainter(shared_from_this(), gnLayerIndex);
-            if (mpLayerInvalidator)
-                mpLayerInvalidator->Invalidate(GetBoundingBox());
-        }
+    mbIsVisible = true;
+
+    std::shared_ptr<LayeredDevice> pLayeredDevice (
+        mrSlideSorter.GetView().GetLayeredDevice());
+    if (pLayeredDevice)
+    {
+        pLayeredDevice->RegisterPainter(shared_from_this(), gnLayerIndex);
+        if (mpLayerInvalidator)
+            mpLayerInvalidator->Invalidate(GetBoundingBox());
     }
 }
 
 void InsertionIndicatorOverlay::Hide()
 {
-    if (mbIsVisible)
-    {
-        mbIsVisible = false;
+    if (!mbIsVisible)
+        return;
 
-        std::shared_ptr<LayeredDevice> pLayeredDevice (
-            mrSlideSorter.GetView().GetLayeredDevice());
-        if (pLayeredDevice)
-        {
-            if (mpLayerInvalidator)
-                mpLayerInvalidator->Invalidate(GetBoundingBox());
-            pLayeredDevice->RemovePainter(shared_from_this(), gnLayerIndex);
-        }
+    mbIsVisible = false;
+
+    std::shared_ptr<LayeredDevice> pLayeredDevice (
+        mrSlideSorter.GetView().GetLayeredDevice());
+    if (pLayeredDevice)
+    {
+        if (mpLayerInvalidator)
+            mpLayerInvalidator->Invalidate(GetBoundingBox());
+        pLayeredDevice->RemovePainter(shared_from_this(), gnLayerIndex);
     }
 }
 
@@ -360,6 +357,6 @@ Size InsertionIndicatorOverlay::GetSize() const
         maIcon.GetSizePixel().Height() + 10);
 }
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

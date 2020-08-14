@@ -20,15 +20,13 @@
 #ifndef INCLUDED_SVGIO_INC_SVGTREFNODE_HXX
 #define INCLUDED_SVGIO_INC_SVGTREFNODE_HXX
 
-#include <svgnode.hxx>
-#include <svgstyleattributes.hxx>
-#include <svgtextnode.hxx>
+#include "svgnode.hxx"
+#include "svgstyleattributes.hxx"
+#include "svgtextnode.hxx"
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
-        class SvgTrefNode : public SvgNode
+        class SvgTrefNode final : public SvgNode
         {
         private:
             /// use styles
@@ -50,8 +48,8 @@ namespace svgio
             /// access to referenced SvgTextNode
             const SvgTextNode* getReferencedSvgTextNode() const;
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGTREFNODE_HXX
 

@@ -20,21 +20,21 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_VIEWSHELLWRAPPER_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_VIEWSHELLWRAPPER_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 #include <com/sun/star/drawing/framework/XView.hpp>
 #include <com/sun/star/drawing/framework/XRelocatableResource.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/implbase.hxx>
 
 #include <memory>
 
 namespace sd { class ViewShell; }
-namespace sd { namespace slidesorter { class SlideSorterViewShell; } }
+namespace sd::slidesorter { class SlideSorterViewShell; }
+namespace com::sun::star::awt { class XWindow; }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper    <   css::lang::XUnoTunnel
                                             ,   css::awt::XWindowListener
@@ -77,7 +77,7 @@ public:
         to obtain a pointer to the wrapped ViewShell object for a given
         XView object.
     */
-    const ::std::shared_ptr<ViewShell>& GetViewShell() { return mpViewShell;}
+    const ::std::shared_ptr<ViewShell>& GetViewShell() const { return mpViewShell;}
 
     // XUnoTunnel
 
@@ -129,7 +129,7 @@ private:
     css::uno::Reference<css::awt::XWindow >                             mxWindow;
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

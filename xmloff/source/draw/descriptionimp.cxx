@@ -21,8 +21,6 @@
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
 
 #include "descriptionimp.hxx"
 
@@ -49,7 +47,10 @@ SdXMLDescriptionContext::~SdXMLDescriptionContext()
 
 void SdXMLDescriptionContext::EndElement()
 {
-    if( !msText.isEmpty() ) try
+    if( msText.isEmpty() )
+        return;
+
+    try
     {
         uno::Reference< beans::XPropertySet > xPropSet(mxShape, uno::UNO_QUERY_THROW);
         if(IsXMLToken(GetLocalName(),XML_TITLE))

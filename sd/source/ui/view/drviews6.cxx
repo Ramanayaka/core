@@ -17,11 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DrawViewShell.hxx"
-#include <vcl/metaact.hxx>
+#include <config_features.h>
+
+#include <DrawViewShell.hxx>
 #include <sfx2/request.hxx>
-#include <sfx2/dispatch.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <svx/svdograf.hxx>
 #include <svx/svxids.hrc>
@@ -30,28 +31,18 @@
 #include <svx/imapdlg.hxx>
 #include <svx/SvxColorChildWindow.hxx>
 #include <svx/f3dchild.hxx>
-#include "optsitem.hxx"
-#include <svx/extrusionbar.hxx>
-#include <svx/fontworkbar.hxx>
 #include <avmedia/mediaplayer.hxx>
+#include <svl/intitem.hxx>
 
-#include "app.hrc"
-#include "strings.hrc"
+#include <app.hrc>
+#include <strings.hrc>
 
-#include "sdmod.hxx"
-#include "animobjs.hxx"
-#include "AnimationChildWindow.hxx"
-#include "NavigatorChildWindow.hxx"
-#include "sdresid.hxx"
-#include "drawdoc.hxx"
-#include "drawview.hxx"
-#include "FrameView.hxx"
-#include "Window.hxx"
-#include "DrawDocShell.hxx"
-#include "sdabstdlg.hxx"
-#include "framework/FrameworkHelper.hxx"
+#include <animobjs.hxx>
+#include <AnimationChildWindow.hxx>
+#include <sdresid.hxx>
+#include <drawdoc.hxx>
+#include <drawview.hxx>
 #include <svx/svdoashp.hxx>
-#include <sfx2/sidebar/Sidebar.hxx>
 
 namespace sd {
 
@@ -242,17 +233,19 @@ void DrawViewShell::SetChildWindowState( SfxItemSet& rSet )
         sal_uInt16 nId = Svx3DChildWindow::GetChildWindowId();
         rSet.Put( SfxBoolItem( SID_3D_WIN, GetViewFrame()->HasChildWindow( nId ) ) );
     }
+#if HAVE_FEATURE_AVMEDIA
     if( SfxItemState::DEFAULT == rSet.GetItemState( SID_AVMEDIA_PLAYER ) )
     {
         sal_uInt16 nId = ::avmedia::MediaPlayer::GetChildWindowId();
         rSet.Put( SfxBoolItem( SID_AVMEDIA_PLAYER, GetViewFrame()->HasChildWindow( nId ) ) );
     }
+#endif
 }
 
 /**
  * Handle SfxRequests for pipette
  */
-void DrawViewShell::ExecBmpMask( SfxRequest& rReq )
+void DrawViewShell::ExecBmpMask( SfxRequest const & rReq )
 {
     // nothing is executed during a slide show!
     if (HasCurrentFunction(SID_PRESENTATION))
@@ -275,14 +268,16 @@ void DrawViewShell::ExecBmpMask( SfxRequest& rReq )
 
             if ( pObj && !mpDrawView->IsTextEdit() )
             {
-                std::unique_ptr<SdrGrafObj> xNewObj(pObj->Clone());
+                typedef std::unique_ptr< SdrGrafObj, SdrObjectFreeOp > SdrGrafObjPtr;
+                SdrGrafObjPtr xNewObj(pObj->CloneSdrObject(pObj->getSdrModelFromSdrObject()));
                 bool bCont = true;
 
                 if (xNewObj->IsLinkedGraphic())
                 {
-                    ScopedVclPtrInstance< MessageDialog > aQueryBox( static_cast<vcl::Window*>(GetActiveWindow()),"QueryUnlinkImageDialog","modules/sdraw/ui/queryunlinkimagedialog.ui");
+                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "modules/sdraw/ui/queryunlinkimagedialog.ui"));
+                    std::unique_ptr<weld::MessageDialog> xQueryBox(xBuilder->weld_message_dialog("QueryUnlinkImageDialog"));
 
-                    if (RET_YES == aQueryBox->Execute())
+                    if (RET_YES == xQueryBox->run())
                         xNewObj->ReleaseGraphicLink();
                     else
                         bCont = false;
@@ -304,8 +299,8 @@ void DrawViewShell::ExecBmpMask( SfxRequest& rReq )
                         xNewObj->SetEmptyPresObj(false);
                         xNewObj->SetGraphic(pBmpMask->Mask(xNewObj->GetGraphic()));
 
-                        OUString aStr( mpDrawView->GetDescriptionOfMarkedObjects() );
-                        aStr += " " + SdResId(STR_EYEDROPPER);
+                        OUString aStr = mpDrawView->GetDescriptionOfMarkedObjects() +
+                            " " + SdResId(STR_EYEDROPPER);
 
                         mpDrawView->BegUndo( aStr );
                         mpDrawView->ReplaceObjectAtView(pObj, *pPV, xNewObj.release());
@@ -331,7 +326,7 @@ void DrawViewShell::GetBmpMaskState( SfxItemSet& rSet )
         pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
 
     // valid graphic object?
-    if( pObj && dynamic_cast< const SdrGrafObj *>( pObj ) !=  nullptr &&
+    if( dynamic_cast< const SdrGrafObj *>( pObj ) &&
         !static_cast<const SdrGrafObj*>(pObj)->IsEPS() &&
         !mpDrawView->IsTextEdit() )
     {

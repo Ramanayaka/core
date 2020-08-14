@@ -61,8 +61,7 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPFRIBBREAKS_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPFRIBBREAKS_HXX
 
-#include "lwpfrib.hxx"
-#include "xfilter/xfparastyle.hxx"
+#include <lwpfrib.hxx>
 #include "lwppara.hxx"
 #include "lwpfribsection.hxx"
 
@@ -75,13 +74,13 @@ public:
     void RegisterBreakStyle(LwpPara* pPara);
     void ParseLayout();
     LwpObjectID& GetLayout() { return m_Layout;}
-    bool IsLastFrib(){return m_bLastFrib;}
+    bool IsLastFrib() const {return m_bLastFrib;}
 
 private:
     LwpObjectID m_Layout;
     bool m_bLastFrib;
 
-    LwpMasterPage* m_pMasterPage;
+    std::unique_ptr<LwpMasterPage> m_pMasterPage;
 };
 
 class LwpFribLineBreak: public LwpFrib

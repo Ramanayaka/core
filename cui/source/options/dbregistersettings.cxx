@@ -25,17 +25,17 @@
 namespace svx
 {
 
-
     DatabaseMapItem::DatabaseMapItem( sal_uInt16 _nId, const DatabaseRegistrations& _rRegistrations )
         :SfxPoolItem( _nId )
         ,m_aRegistrations( _rRegistrations )
     {
     }
 
-
     bool DatabaseMapItem::operator==( const SfxPoolItem& _rCompare ) const
     {
-        const DatabaseMapItem* pItem = dynamic_cast<const DatabaseMapItem*>( &_rCompare );
+        if (!SfxPoolItem::operator==(_rCompare))
+            return false;
+        const DatabaseMapItem* pItem = static_cast<const DatabaseMapItem*>( &_rCompare );
         if ( !pItem )
             return false;
 
@@ -45,14 +45,11 @@ namespace svx
         return m_aRegistrations == pItem->m_aRegistrations;
     }
 
-
-    SfxPoolItem* DatabaseMapItem::Clone( SfxItemPool* ) const
+    DatabaseMapItem* DatabaseMapItem::Clone( SfxItemPool* ) const
     {
-        return new DatabaseMapItem( Which(), m_aRegistrations );
+        return new DatabaseMapItem( *this );
     }
 
-
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

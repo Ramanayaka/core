@@ -21,11 +21,11 @@
 #define INCLUDED_VCL_INC_HEADLESS_SVPFRAME_HXX
 
 #include <vcl/sysdata.hxx>
-#include <basegfx/range/b2ibox.hxx>
 
 #include <salframe.hxx>
 
 #include <list>
+#include <vector>
 
 #ifdef IOS
 #define SvpSalInstance AquaSalInstance
@@ -35,7 +35,7 @@
 class SvpSalInstance;
 class SvpSalGraphics;
 
-class VCL_DLLPUBLIC SvpSalFrame : public SalFrame
+class SvpSalFrame : public SalFrame
 {
     SvpSalInstance*                     m_pInstance;
     SvpSalFrame*                        m_pParent;       // pointer to parent frame
@@ -52,7 +52,7 @@ class VCL_DLLPUBLIC SvpSalFrame : public SalFrame
 
     SystemEnvData                       m_aSystemChildData;
 
-    std::list< SvpSalGraphics* >        m_aGraphics;
+    std::vector< SvpSalGraphics* >      m_aGraphics;
 
     static SvpSalFrame*       s_pFocusFrame;
 public:
@@ -69,7 +69,7 @@ public:
     virtual SalGraphics*        AcquireGraphics() override;
     virtual void                ReleaseGraphics( SalGraphics* pGraphics ) override;
 
-    virtual bool                PostEvent(ImplSVEvent* pData) override;
+    virtual bool                PostEvent(std::unique_ptr<ImplSVEvent> pData) override;
 
     virtual void                SetTitle( const OUString& rTitle ) override;
     virtual void                SetIcon( sal_uInt16 nIcon ) override;
@@ -109,7 +109,7 @@ public:
     virtual void                SetParent( SalFrame* pNewParent ) override;
     virtual bool                SetPluginParent( SystemParentData* pNewParent ) override;
     virtual void                ResetClipRegion() override;
-    virtual void                BeginSetClipRegion( sal_uLong nRects ) override;
+    virtual void                BeginSetClipRegion( sal_uInt32 nRects ) override;
     virtual void                UnionClipRegion( long nX, long nY, long nWidth, long nHeight ) override;
     virtual void                EndSetClipRegion() override;
 

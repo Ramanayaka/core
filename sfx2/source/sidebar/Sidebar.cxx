@@ -20,14 +20,15 @@
 #include <sfx2/sidebar/Sidebar.hxx>
 #include <sfx2/sidebar/SidebarController.hxx>
 #include <sfx2/sidebar/ResourceManager.hxx>
+#include <sidebar/PanelDescriptor.hxx>
 
 using namespace css;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 void Sidebar::ShowPanel (
     const OUString& rsPanelId,
-    const css::uno::Reference<frame::XFrame>& rxFrame)
+    const css::uno::Reference<frame::XFrame>& rxFrame, bool bFocus)
 {
     SidebarController* pController = SidebarController::GetSidebarControllerForFrame(rxFrame);
     if (!pController)
@@ -45,6 +46,9 @@ void Sidebar::ShowPanel (
     // All that is not necessary for the current use cases so lets
     // keep it simple for the time being.
     pController->OpenThenSwitchToDeck(xPanelDescriptor->msDeckId);
+
+    if (bFocus)
+        pController->GetFocusManager().GrabFocusPanel();
 }
 
 void Sidebar::TogglePanel (
@@ -84,6 +88,6 @@ bool Sidebar::IsPanelVisible(
     return pController->IsDeckVisible(xPanelDescriptor->msDeckId);
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

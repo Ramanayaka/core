@@ -22,17 +22,15 @@
 
 #include <sal/types.h>
 
-#if defined _MSC_VER
-#pragma warning(push,1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
+#include <objidl.h>
 
 /**********************************************************************
  stl container elements must fulfill the following requirements:
- 1. they need a copy ctor and assignement operator(?)
+ 1. they need a copy ctor and assignment operator(?)
  2. they must be comparable
  because the FORMATETC structure has a pointer to a TARGETDEVICE
  structure we need a simple wrapper class to fulfill these needs

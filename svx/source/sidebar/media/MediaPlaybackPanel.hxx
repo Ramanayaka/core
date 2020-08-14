@@ -16,17 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SD_SOURCE_SIDEBAR_MEDIAPLAYBACKPANEL_HXX
-#define INCLUDED_SD_SOURCE_SIDEBAR_MEDIAPLAYBACKPANEL_HXX
+#pragma once
 
 #include <memory>
-#include <vcl/ctrl.hxx>
 #include <com/sun/star/frame/XFrame.hpp>
 
-#include <svx/sidebar/PanelLayout.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/slider.hxx>
-#include <vcl/toolbox.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 #include <avmedia/mediaitem.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/sidebar/ControllerItem.hxx>
@@ -36,7 +31,7 @@ using namespace css;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::frame;
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 /** This panel provides media playback control in document
 */
@@ -58,7 +53,7 @@ public:
     virtual void dispose() override;
 
 protected:
-    virtual void UpdateToolBoxes(avmedia::MediaItem aMediaItem) override;
+    virtual void UpdateToolBoxes(const avmedia::MediaItem& rMediaItem) override;
 
 private:
     std::unique_ptr< ::avmedia::MediaItem > mpMediaItem;
@@ -69,17 +64,20 @@ private:
     void Update();
     virtual void NotifyItemUpdate( const sal_uInt16 nSID,
                                     const SfxItemState eState,
-                                    const SfxPoolItem* pState,
-                                    const bool bIsEnabled) override;
-    DECL_LINK(PlayToolBoxSelectHdl, ToolBox*, void);
-    DECL_LINK(VolumeSlideHdl, Slider*, void);
-    DECL_LINK(SeekHdl, Slider*, void);
+                                    const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
+
+    DECL_LINK(PlayToolBoxSelectHdl, const OString&, void);
+    DECL_LINK(VolumeSlideHdl, weld::Scale&, void);
+    DECL_LINK(SeekHdl, weld::Scale&, void);
+
     DECL_LINK(TimeoutHdl, Timer*, void);
 };
 
 
-} } // end of namespace svx::sidebar
-
-#endif
+} // end of namespace svx::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

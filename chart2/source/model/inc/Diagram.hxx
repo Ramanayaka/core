@@ -19,24 +19,24 @@
 #ifndef INCLUDED_CHART2_SOURCE_MODEL_INC_DIAGRAM_HXX
 #define INCLUDED_CHART2_SOURCE_MODEL_INC_DIAGRAM_HXX
 
-#include "OPropertySet.hxx"
-#include "MutexContainer.hxx"
+#include <OPropertySet.hxx>
+#include <MutexContainer.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/uno3.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/chart2/data/XDataSource.hpp>
 #include <com/sun/star/chart2/XDiagram.hpp>
 #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
 #include <com/sun/star/chart2/XTitled.hpp>
 #include <com/sun/star/chart/X3DDefaultSetter.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
 
-#include <map>
 #include <vector>
+
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::chart2::data { class XDataSource; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace chart
 {
@@ -55,7 +55,7 @@ typedef ::cppu::WeakImplHelper<
     Diagram_Base;
 }
 
-class Diagram :
+class Diagram final :
     public MutexContainer,
     public impl::Diagram_Base,
     public ::property::OPropertySet
@@ -74,7 +74,7 @@ public:
     /// merge XTypeProvider implementations
      DECLARE_XTYPEPROVIDER()
 
-protected:
+private:
     explicit Diagram( const Diagram & rOther );
 
     // ____ OPropertySet ____
@@ -152,7 +152,6 @@ protected:
 
     void fireModifyEvent();
 
-private:
      css::uno::Reference< css::uno::XComponentContext >                m_xContext;
 
     typedef

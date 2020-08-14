@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PropertyHelper.hxx"
-#include "ContainerHelper.hxx"
-#include "macros.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <PropertyHelper.hxx>
 #include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <comphelper/sequence.hxx>
 #include <osl/diagnose.h>
+#include <tools/diagnose_ex.h>
 
 #include <vector>
 #include <algorithm>
@@ -49,9 +49,9 @@ struct lcl_EqualsElement
         {
             return (m_xAccess->getByName( rName ) == m_aValue);
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
         return false;
     }
@@ -118,7 +118,7 @@ OUString lcl_addNamedPropertyUniqueNameToTable(
     try
     {
         Reference< container::XNameAccess > xNameAccess( xNameContainer, uno::UNO_QUERY_THROW );
-        std::vector< OUString > aNames( ::chart::ContainerHelper::SequenceToVector( xNameAccess->getElementNames()));
+        auto aNames( comphelper::sequenceToContainer<std::vector< OUString >>( xNameAccess->getElementNames()));
         std::vector< OUString >::const_iterator aIt(
             std::find_if( aNames.begin(), aNames.end(), lcl_EqualsElement( rValue, xNameAccess )));
 
@@ -162,9 +162,9 @@ OUString lcl_addNamedPropertyUniqueNameToTable(
             // element found => return name
             return *aIt;
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return rPreferredName;
@@ -172,9 +172,7 @@ OUString lcl_addNamedPropertyUniqueNameToTable(
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace PropertyHelper
+namespace chart::PropertyHelper
 {
 
 OUString addLineDashUniqueNameToTable(
@@ -266,7 +264,7 @@ void setPropertyValueAny( tPropertyValueMap & rOutMap, tPropertyValueMapKey key,
 {
     tPropertyValueMap::iterator aIt( rOutMap.find( key ));
     if( aIt == rOutMap.end())
-        rOutMap.insert( tPropertyValueMap::value_type( key, rAny ));
+        rOutMap.emplace( key, rAny );
     else
         (*aIt).second = rAny;
 }
@@ -294,8 +292,6 @@ void setEmptyPropertyValueDefault( tPropertyValueMap & rOutMap, tPropertyValueMa
     setPropertyValueDefault( rOutMap, key, uno::Any());
 }
 
-} // namespace PropertyHelper
-
-} //  namespace chart
+} //  namespace chart::PropertyHelper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

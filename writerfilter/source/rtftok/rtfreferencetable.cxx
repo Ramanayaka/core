@@ -7,13 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <rtfreferencetable.hxx>
+#include "rtfreferencetable.hxx"
 
-namespace writerfilter
+namespace writerfilter::rtftok
 {
-namespace rtftok
-{
-
 RTFReferenceTable::RTFReferenceTable(Entries_t aEntries)
     : m_aEntries(std::move(aEntries))
 {
@@ -27,7 +24,6 @@ void RTFReferenceTable::resolve(Table& rHandler)
         rHandler.entry(rEntry.first, rEntry.second);
 }
 
-} // namespace rtftok
-} // namespace writerfilter
+} // namespace writerfilter::rtftok
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

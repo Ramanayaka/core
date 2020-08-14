@@ -165,12 +165,12 @@ public:
     STDMETHOD(SetXAccessible)(hyper) override;
 
 private:
-    OLECHAR* m_pszName;
-    OLECHAR* m_pszValue;
-    OLECHAR* m_pszActionDescription;
+    BSTR m_pszName;
+    BSTR m_pszValue;
+    BSTR m_pszActionDescription;
     unsigned short m_iRole;
     DWORD   m_dState;
-    OLECHAR* m_pszDescription;
+    BSTR m_pszDescription;
     IMAccessible* m_pIParent;
     Location m_sLocation;
 
@@ -188,7 +188,7 @@ private:
     CEnumVariant* m_pEnumVar;
 
     // specify if the XAccessible is invalid
-    BOOL m_isDestroy;
+    bool m_isDestroy;
 
     css::uno::Reference<css::accessibility::XAccessible> m_xAccessible;
     // initially m_xAction and m_xContext are the same object
@@ -205,7 +205,7 @@ private:
     HRESULT GetLastChild(VARIANT varStart,VARIANT* pvarEndUpAt);//for accNavigate implementation
     HRESULT GetNextSibling(VARIANT varStart,VARIANT* pvarEndUpAt);//for accNavigate implementation
     HRESULT GetPreSibling(VARIANT varStart,VARIANT* pvarEndUpAt);//for accNavigate implementation
-    BOOL IsDescendantManage();//identify whether the current COM belongs to manage_descendant roles
+    bool IsDescendantManage();//identify whether the current COM belongs to manage_descendant roles
 
     // the following private methods are used to implement accSelect method
     HRESULT SelectChild(css::accessibility::XAccessible* pItem);
@@ -218,7 +218,7 @@ private:
             css::accessibility::XAccessible* pXAcc);
     css::uno::Reference<css::accessibility::XAccessibleSelection> GetSelection();
     // end accSelect implementation methods
-    static BOOL GetXInterfaceFromXAccessible(css::accessibility::XAccessible*,
+    static bool GetXInterfaceFromXAccessible(css::accessibility::XAccessible*,
             css::uno::XInterface**, int);
     HRESULT WINAPI SmartQI(void* pv, REFIID iid, void** ppvObject);
 
@@ -226,8 +226,8 @@ public:
     STDMETHOD(Get_XAccChildID)(/*[out,retval]*/ long* childID) override;
     // AccObjectManagerAgent is a management object in UNO, here keep its pointer for
     // the implementation of accNavigate when descendant manage happens for List,Tree, or Table
-    // AccObjectManagerAgent and the following UNO objects XAccessble,XAccessibleSelection,
-    // XAccessibleAction are all used to operate UNO accessiblility information directly when
+    // AccObjectManagerAgent and the following UNO objects XAccessible,XAccessibleSelection,
+    // XAccessibleAction are all used to operate UNO accessibility information directly when
     // implement some specific MSAA methods,such as accSelection,accNavigate
     static AccObjectManagerAgent* g_pAgent;
 
@@ -242,7 +242,7 @@ public:
         return static_cast<CMAccessible*>(pv)->SmartQI(pv,iid,ppvObject);
     }
 
-    static OUString get_StringFromAny(css::uno::Any& pAny);
+    static OUString get_StringFromAny(css::uno::Any const & pAny);
 
     static OUString get_String4Numbering(const css::uno::Any& pAny,
             sal_Int16 numberingLevel, const OUString& numberingPrefix);

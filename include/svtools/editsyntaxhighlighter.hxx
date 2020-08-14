@@ -21,15 +21,14 @@
 #define INCLUDED_SVTOOLS_EDITSYNTAXHIGHLIGHTER_HXX
 
 #include <comphelper/syntaxhighlight.hxx>
-#include <svtools/svmedit.hxx>
+#include <vcl/vclmedit.hxx>
 #include <svtools/svtdllapi.h>
 #include <svtools/colorcfg.hxx>
 
-class SVT_DLLPUBLIC MultiLineEditSyntaxHighlight : public MultiLineEdit
+class SVT_DLLPUBLIC MultiLineEditSyntaxHighlight : public VclMultiLineEdit
 {
     private:
-        bool                mbDoBracketHilight;
-        SyntaxHighlighter   aHighlighter;
+        SyntaxHighlighter    aHighlighter;
         svtools::ColorConfig m_aColorConfig;
 
     private:
@@ -45,6 +44,8 @@ class SVT_DLLPUBLIC MultiLineEditSyntaxHighlight : public MultiLineEdit
         virtual void SetText(const OUString& rNewText) override;
         virtual void SetText( const OUString& rStr, const Selection& rNewSelection ) override
                     { SetText( rStr ); SetSelection( rNewSelection ); }
+
+        static Color GetSyntaxHighlightColor(const svtools::ColorConfig& rColorConfig, HighlighterLanguage eLanguage, TokenType aToken);
 
         Color GetColorValue(TokenType aToken);
 };

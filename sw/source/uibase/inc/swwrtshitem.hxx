@@ -19,7 +19,7 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_SWWRTSHITEM_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_SWWRTSHITEM_HXX
 #include <svl/poolitem.hxx>
-#include "swdllapi.h"
+#include <swdllapi.h>
 
 class SwWrtShell;
 
@@ -29,10 +29,9 @@ class SW_DLLPUBLIC SwWrtShellItem: public SfxPoolItem
 
 public:
                             SwWrtShellItem( SwWrtShell* pWrtSh );
-                            SwWrtShellItem( const SwWrtShellItem& );
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwWrtShellItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     SwWrtShell*             GetValue() const { return pWrtSh; }
 

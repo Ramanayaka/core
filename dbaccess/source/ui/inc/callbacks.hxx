@@ -21,11 +21,7 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_CALLBACKS_HXX
 
 #include <sot/exchange.hxx>
-#include <sot/formats.hxx>
-#include <vcl/vclptr.hxx>
-#include <com/sun/star/container/XContainer.hpp>
 
-class SvTreeListEntry;
 class Point;
 class PopupMenu;
 class Control;
@@ -33,6 +29,11 @@ struct AcceptDropEvent;
 struct ExecuteDropEvent;
 
 namespace comphelper { class OInterfaceContainerHelper2; }
+
+namespace weld
+{
+    class TreeIter;
+}
 
 namespace dbaui
 {
@@ -45,12 +46,12 @@ namespace dbaui
         /** requests a quick help text to display
             @return <FALSE/> if the default quick help text should be used
         */
-        virtual bool    requestQuickHelp( const SvTreeListEntry* _pEntry, OUString& _rText ) const = 0;
+        virtual bool    requestQuickHelp(const void* pUserData, OUString& rText) const = 0;
 
         /** handler for StartDrag requests
             @return <TRUE/> if a drag operation was started
         */
-        virtual bool    requestDrag( sal_Int8 _nAction, const Point& _rPosPixel ) = 0;
+        virtual bool    requestDrag(const weld::TreeIter& rEntry) = 0;
 
         /** check whether or not a drop request should be accepted
         */
@@ -72,7 +73,7 @@ namespace dbaui
 
             Supposed to be a valid name from uiconfig/<module>/popupmenu folder.
         */
-        virtual OUString getContextMenuResourceName( Control& _rControl ) const = 0;
+        virtual OUString getContextMenuResourceName() const = 0;
 
         /** returns the controller which is responsible for providing states of certain features,
             and executing them.

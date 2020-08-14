@@ -19,12 +19,10 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_WRAPCATALOG_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_WRAPCATALOG_HXX
 
-#include "ado/WrapTypeDefs.hxx"
+#include <ado/WrapTypeDefs.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class WpADOCatalog : public WpOLEBase<_ADOCatalog>
         {
         public:
@@ -44,7 +42,6 @@ namespace connectivity
             ADOProcedures*  get_Procedures();
             void Create();
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_WRAPCATALOG_HXX

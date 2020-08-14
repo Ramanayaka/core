@@ -20,6 +20,7 @@
 #define INCLUDED_VBAHELPER_SOURCE_MSFORMS_VBACHECKBOX_HXX
 #include <cppuhelper/implbase.hxx>
 #include <ooo/vba/msforms/XCheckBox.hpp>
+#include <com/sun/star/script/XDefaultProperty.hpp>
 
 #include "vbacontrol.hxx"
 #include <vbahelper/vbahelper.hxx>
@@ -29,7 +30,7 @@ typedef cppu::ImplInheritanceHelper< ScVbaControl, ov::msforms::XCheckBox, css::
 class ScVbaCheckbox : public CheckBoxImpl_BASE
 {
 public:
-    ScVbaCheckbox(  const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext >& xContext, const css::uno::Reference< css::uno::XInterface >& xControl, const css::uno::Reference< css::frame::XModel >& xModel, ov::AbstractGeometryAttributes* pGeomHelper );
+    ScVbaCheckbox(  const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext >& xContext, const css::uno::Reference< css::uno::XInterface >& xControl, const css::uno::Reference< css::frame::XModel >& xModel, std::unique_ptr<ov::AbstractGeometryAttributes> pGeomHelper );
    // Attributes
     virtual OUString SAL_CALL getCaption() override;
     virtual void SAL_CALL setCaption( const OUString& _caption ) override;
@@ -43,7 +44,7 @@ public:
     virtual sal_Bool SAL_CALL getLocked() override;
     virtual void SAL_CALL setLocked( sal_Bool bAutoSize ) override;
     // XDefaultProperty
-    OUString SAL_CALL getDefaultPropertyName(  ) override { return OUString("Value"); }
+    OUString SAL_CALL getDefaultPropertyName(  ) override { return "Value"; }
     //XHelperInterface
     virtual OUString getServiceImplName() override;
     virtual css::uno::Sequence<OUString> getServiceNames() override;

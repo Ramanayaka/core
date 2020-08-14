@@ -22,14 +22,14 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/view/XSelectionChangeListener.hpp>
-#include <tools/resary.hxx>
 #include <memory>
 #include <set>
+#include <vector>
 #include <swdbdata.hxx>
-#include "swdllapi.h"
+#include <swdllapi.h>
 #include "sharedconnection.hxx"
 
-namespace com{namespace sun{namespace star{
+namespace com::sun::star{
     namespace sdbc{
         class XDataSource;
         class XResultSet;
@@ -37,11 +37,11 @@ namespace com{namespace sun{namespace star{
     namespace sdbcx{
         class XColumnsSupplier;
     }
-}}}
+}
 
 class SwMailMergeConfigItem_Impl;
 class SwView;
-namespace sw { namespace mark { class IMark; }}
+namespace sw::mark { class IMark; }
 
 struct SwDocMergeInfo
 {
@@ -56,7 +56,6 @@ class SW_DLLPUBLIC SwMailMergeConfigItem
     bool m_bAddressInserted;
     bool m_bGreetingInserted;
     sal_Int32 m_nGreetingMoves;
-    OUString m_rAddressBlockFrame;
     std::set<sal_Int32> m_aExcludedRecords;
     css::uno::Reference<css::view::XSelectionChangeListener> m_xDBChangedListener;
 
@@ -77,7 +76,7 @@ public:
 
     void Commit();
 
-    const ResStringArray& GetDefaultAddressHeaders() const;
+    const std::vector<std::pair<OUString, int>>& GetDefaultAddressHeaders() const;
 
     void SetCurrentConnection(
         css::uno::Reference< css::sdbc::XDataSource> const & xSource,
@@ -85,18 +84,18 @@ public:
         css::uno::Reference< css::sdbcx::XColumnsSupplier> const & xColumnsSupplier,
         const SwDBData& rDBData);
 
-    css::uno::Reference< css::sdbc::XDataSource> GetSource();
+    css::uno::Reference< css::sdbc::XDataSource> const & GetSource() const;
 
-    SharedConnection GetConnection();
+    SharedConnection const & GetConnection() const;
 
-    css::uno::Reference< css::sdbcx::XColumnsSupplier> GetColumnsSupplier();
+    css::uno::Reference< css::sdbcx::XColumnsSupplier> const & GetColumnsSupplier();
 
-    css::uno::Reference< css::sdbc::XResultSet> GetResultSet() const;
+    css::uno::Reference< css::sdbc::XResultSet> const & GetResultSet() const;
 
     void DisposeResultSet();
 
     OUString& GetFilter() const;
-    void SetFilter(OUString&);
+    void SetFilter(OUString const &);
 
     void SetCurrentDBData( const SwDBData& rDBData);
     const SwDBData& GetCurrentDBData() const;
@@ -121,7 +120,7 @@ public:
     bool IsHideEmptyParagraphs() const;
     void SetHideEmptyParagraphs(bool bSet);
 
-    const css::uno::Sequence<OUString> GetAddressBlocks() const;
+    css::uno::Sequence<OUString> GetAddressBlocks() const;
     void SetAddressBlocks(const css::uno::Sequence< OUString>& rBlocks);
 
     void SetCurrentAddressBlockIndex( sal_Int32 nSet );
@@ -137,7 +136,7 @@ public:
     bool IsGreetingLine(bool bInEMail) const;
     void SetGreetingLine(bool bSet, bool bInEMail);
 
-    const css::uno::Sequence<OUString> GetGreetings(Gender eType) const;
+    css::uno::Sequence<OUString> GetGreetings(Gender eType) const;
     void SetGreetings(Gender eType, const css::uno::Sequence< OUString>& rBlocks);
 
     sal_Int32 GetCurrentGreeting(Gender eType) const;
@@ -157,19 +156,19 @@ public:
     bool IsGreetingFieldsAssigned() const;
 
     //e-Mail settings:
-    OUString GetMailDisplayName() const;
+    OUString const & GetMailDisplayName() const;
     void SetMailDisplayName(const OUString& rName);
 
-    OUString GetMailAddress() const;
+    OUString const & GetMailAddress() const;
     void SetMailAddress(const OUString& rAddress);
 
     bool IsMailReplyTo() const;
     void SetMailReplyTo(bool bSet);
 
-    OUString GetMailReplyTo() const;
+    OUString const & GetMailReplyTo() const;
     void SetMailReplyTo(const OUString& rReplyTo);
 
-    OUString GetMailServer() const;
+    OUString const & GetMailServer() const;
     void SetMailServer(const OUString& rAddress);
 
     sal_Int16 GetMailPort() const;
@@ -181,16 +180,16 @@ public:
     bool IsAuthentication() const;
     void SetAuthentication(bool bSet);
 
-    OUString GetMailUserName() const;
+    OUString const & GetMailUserName() const;
     void SetMailUserName(const OUString& rName);
 
-    OUString GetMailPassword() const;
+    OUString const & GetMailPassword() const;
     void SetMailPassword(const OUString& rPassword);
 
     bool IsSMTPAfterPOP() const;
     void SetSMTPAfterPOP(bool bSet);
 
-    OUString GetInServerName() const;
+    OUString const & GetInServerName() const;
     void SetInServerName(const OUString& rServer);
 
     sal_Int16 GetInServerPort() const;
@@ -199,18 +198,17 @@ public:
     bool IsInServerPOP() const;
     void SetInServerPOP(bool bSet);
 
-    OUString GetInServerUserName() const;
+    OUString const & GetInServerUserName() const;
     void SetInServerUserName(const OUString& rName);
 
-    OUString GetInServerPassword() const;
+    OUString const & GetInServerPassword() const;
     void SetInServerPassword(const OUString& rPassword);
 
     //session information
     bool IsAddressInserted() const { return m_bAddressInserted; }
-    void SetAddressInserted(const OUString& rFrameName)
+    void SetAddressInserted()
     {
         m_bAddressInserted = true;
-        m_rAddressBlockFrame = rFrameName;
     }
 
     bool IsGreetingInserted() const
@@ -227,8 +225,8 @@ public:
 
     bool IsMailAvailable() const;
 
-    // notify a completed merge, provid the appropriate e-Mail address if available
-    void AddMergedDocument(SwDocMergeInfo& rInfo);
+    // notify a completed merge, provide the appropriate e-Mail address if available
+    void AddMergedDocument(SwDocMergeInfo const & rInfo);
     //returns the page and database cursor information of each merged document
     SwDocMergeInfo& GetDocumentMergeInfo(sal_uInt32 nDocument);
     sal_uInt32 GetMergedDocumentCount();

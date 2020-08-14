@@ -42,7 +42,8 @@ sub _need_to_strip
 
     # Check using the "file" command
 
-    open (FILE, "file $filename |");
+    $filename =~ s/'/'\\''/g;
+    open (FILE, "file '$filename' |");
     my $fileoutput = <FILE>;
     close (FILE);
 
@@ -79,7 +80,7 @@ sub _do_strip
 }
 
 #####################################################################
-# Resolving all variables in the packagename.
+# Resolving all variables in the packagename
 #####################################################################
 
 sub strip_libraries
@@ -116,7 +117,7 @@ sub strip_libraries
             if ($onelanguage eq "") { $onelanguage = "00"; }
 
             my $strippeddir = $strippeddirbase . $installer::globals::separator . $onelanguage;
-            installer::systemactions::create_directory($strippeddir);   # creating language specific subdirectories
+            installer::systemactions::create_directory($strippeddir); # creating language specific subdirectories
 
             my $destfilename = $strippeddir . $installer::globals::separator . $shortfilename;
             installer::systemactions::copy_one_file($sourcefilename, $destfilename);

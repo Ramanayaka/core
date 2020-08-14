@@ -18,9 +18,11 @@
  */
 
 #include <sfx2/bindings.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <wrtsh.hxx>
 #include <view.hxx>
 #include <viewopt.hxx>
+#include <drawbase.hxx>
 
 /**
    Always:
@@ -37,6 +39,8 @@
 
 const long nReadOnlyScrollOfst = 10;
 
+namespace {
+
 class ShellMoveCursor
 {
     SwWrtShell* pSh;
@@ -45,7 +49,8 @@ public:
     ShellMoveCursor( SwWrtShell* pWrtSh, bool bSel )
     {
         bAct = !pWrtSh->ActionPend() && (pWrtSh->GetFrameType(nullptr,false) & FrameTypeFlags::FLY_ANY);
-        ( pSh = pWrtSh )->MoveCursor( bSel );
+        pSh = pWrtSh;
+        pSh->MoveCursor( bSel );
         pWrtSh->GetView().GetViewFrame()->GetBindings().Invalidate(SID_HYPERLINK_GETLINK);
     }
     ~ShellMoveCursor() COVERITY_NOEXCEPT_FALSE
@@ -59,6 +64,8 @@ public:
         }
     }
 };
+
+}
 
 void SwWrtShell::MoveCursor( bool bWithSelect )
 {
@@ -102,7 +109,7 @@ bool SwWrtShell::Left( sal_uInt16 nMode, bool bSelect,
     if ( !bSelect && !bBasicCall && IsCursorReadonly()  && !GetViewOptions()->IsSelectionInReadonly())
     {
         Point aTmp( VisArea().Pos() );
-        aTmp.X() -= VisArea().Width() * nReadOnlyScrollOfst / 100;
+        aTmp.AdjustX( -(VisArea().Width() * nReadOnlyScrollOfst / 100) );
         m_rView.SetVisArea( aTmp );
         return true;
     }
@@ -119,8 +126,8 @@ bool SwWrtShell::Right( sal_uInt16 nMode, bool bSelect,
     if ( !bSelect && !bBasicCall && IsCursorReadonly() && !GetViewOptions()->IsSelectionInReadonly() )
     {
         Point aTmp( VisArea().Pos() );
-        aTmp.X() += VisArea().Width() * nReadOnlyScrollOfst / 100;
-        aTmp.X() = m_rView.SetHScrollMax( aTmp.X() );
+        aTmp.AdjustX(VisArea().Width() * nReadOnlyScrollOfst / 100 );
+        aTmp.setX( m_rView.SetHScrollMax( aTmp.X() ) );
         m_rView.SetVisArea( aTmp );
         return true;
     }
@@ -136,7 +143,7 @@ bool SwWrtShell::Up( bool bSelect, sal_uInt16 nCount, bool bBasicCall )
     if ( !bSelect && !bBasicCall && IsCursorReadonly()  && !GetViewOptions()->IsSelectionInReadonly())
     {
         Point aTmp( VisArea().Pos() );
-        aTmp.Y() -= VisArea().Height() * nReadOnlyScrollOfst / 100;
+        aTmp.AdjustY( -(VisArea().Height() * nReadOnlyScrollOfst / 100) );
         m_rView.SetVisArea( aTmp );
         return true;
     }
@@ -150,8 +157,8 @@ bool SwWrtShell::Down( bool bSelect, sal_uInt16 nCount, bool bBasicCall )
     if ( !bSelect && !bBasicCall && IsCursorReadonly() && !GetViewOptions()->IsSelectionInReadonly())
     {
         Point aTmp( VisArea().Pos() );
-        aTmp.Y() += VisArea().Height() * nReadOnlyScrollOfst / 100;
-        aTmp.Y() = m_rView.SetVScrollMax( aTmp.Y() );
+        aTmp.AdjustY(VisArea().Height() * nReadOnlyScrollOfst / 100 );
+        aTmp.setY( m_rView.SetVScrollMax( aTmp.Y() ) );
         m_rView.SetVisArea( aTmp );
         return true;
     }
@@ -165,7 +172,7 @@ bool SwWrtShell::LeftMargin( bool bSelect, bool bBasicCall )
     if ( !bSelect && !bBasicCall && IsCursorReadonly() )
     {
         Point aTmp( VisArea().Pos() );
-        aTmp.X() = DOCUMENTBORDER;
+        aTmp.setX( DOCUMENTBORDER );
         m_rView.SetVisArea( aTmp );
         return true;
     }
@@ -181,9 +188,9 @@ bool SwWrtShell::RightMargin( bool bSelect, bool bBasicCall  )
     if ( !bSelect && !bBasicCall && IsCursorReadonly() )
     {
         Point aTmp( VisArea().Pos() );
-        aTmp.X() = GetDocSize().Width() - VisArea().Width() + DOCUMENTBORDER;
+        aTmp.setX( GetDocSize().Width() - VisArea().Width() + DOCUMENTBORDER );
         if( DOCUMENTBORDER > aTmp.X() )
-            aTmp.X() = DOCUMENTBORDER;
+            aTmp.setX( DOCUMENTBORDER );
         m_rView.SetVisArea( aTmp );
         return true;
     }
@@ -223,7 +230,7 @@ bool SwWrtShell::GoStart( bool bKeepArea, bool *pMoveTable,
         }
         else if( bBoxSelection && pMoveTable )
         {
-            // JP 09.01.96: We have a box selection (or a empty cell)
+            // JP 09.01.96: We have a box selection (or an empty cell)
             //              and we want select (pMoveTable will be
             //              set in SelAll). Then the table must not
             //              be left, otherwise there is no selection
@@ -294,13 +301,13 @@ bool SwWrtShell::GoEnd(bool bKeepArea, const bool *pMoveTable)
            SwCursorShell::SttEndDoc(false);
 }
 
-bool SwWrtShell::SttDoc( bool bSelect )
+bool SwWrtShell::StartOfSection(bool const bSelect)
 {
     ShellMoveCursor aTmp( this, bSelect );
     return GoStart(false, nullptr, bSelect );
 }
 
-bool SwWrtShell::EndDoc( bool bSelect)
+bool SwWrtShell::EndOfSection(bool const bSelect)
 {
     ShellMoveCursor aTmp( this, bSelect );
     return GoEnd();
@@ -408,11 +415,11 @@ bool SwWrtShell::PushCursor(SwTwips lOffset, bool bSelect)
         if( !IsCursorVisible() )
             // set CursorPos to top-/bottom left pos. So the pagescroll is not
             // be dependent on the current cursor, but on the visarea.
-            aPt.Y() = aTmpArea.Top() + aTmpArea.Height() / 2;
+            aPt.setY( aTmpArea.Top() + aTmpArea.Height() / 2 );
 
-        aPt.Y() += lOffset;
+        aPt.AdjustY(lOffset );
         m_aDest = GetContentPos(aPt,lOffset > 0);
-        m_aDest.X() = aPt.X();
+        m_aDest.setX( aPt.X() );
         m_bDestOnStack = true;
     }
 
@@ -424,7 +431,7 @@ bool SwWrtShell::PushCursor(SwTwips lOffset, bool bSelect)
     //Place the cursor at the target position; remember that no target
     //position is longer on the stack.
     //The new visible region is to be determined beforehand.
-    aTmpArea.Pos().Y() += lOffset;
+    aTmpArea.Pos().AdjustY(lOffset );
     if( aTmpArea.IsInside(m_aDest) )
     {
         if( bSelect )
@@ -466,8 +473,8 @@ bool SwWrtShell::PushCursor(SwTwips lOffset, bool bSelect)
 
     // Position into the stack; bDiff indicates if there is a
     // difference between the old and the new cursor position.
-    m_pCursorStack = new CursorStack( bDiff, bIsFrameSel, aOldRect.Center(),
-                                lOffset, m_pCursorStack );
+    m_pCursorStack.reset( new CursorStack( bDiff, bIsFrameSel, aOldRect.Center(),
+                                lOffset, std::move(m_pCursorStack) ) );
     return !m_bDestOnStack && bDiff;
 }
 
@@ -482,7 +489,7 @@ bool SwWrtShell::PopCursor(bool bUpdate, bool bSelect)
             // If a predecessor is on the stack,
             // use the flag for a valid position.
         SwRect aTmpArea(VisArea());
-        aTmpArea.Pos().Y() -= m_pCursorStack->lOffset;
+        aTmpArea.Pos().AdjustY( -(m_pCursorStack->lOffset) );
         if( aTmpArea.IsInside( m_pCursorStack->aDocPos ) )
         {
             if( bSelect )
@@ -507,9 +514,7 @@ bool SwWrtShell::PopCursor(bool bUpdate, bool bSelect)
             return false;
         }
     }
-    CursorStack *pTmp = m_pCursorStack;
-    m_pCursorStack = m_pCursorStack->pNext;
-    delete pTmp;
+    m_pCursorStack = std::move(m_pCursorStack->pNext);
     if( nullptr == m_pCursorStack )
     {
         m_ePageMove = MV_NO;
@@ -524,11 +529,7 @@ bool SwWrtShell::PopCursor(bool bUpdate, bool bSelect)
 void SwWrtShell::ResetCursorStack_()
 {
     while(m_pCursorStack)
-    {
-        CursorStack* const pTmp = m_pCursorStack->pNext;
-        delete m_pCursorStack;
-        m_pCursorStack = pTmp;
-    }
+        m_pCursorStack = std::move(m_pCursorStack->pNext);
     m_ePageMove = MV_NO;
     m_bDestOnStack = false;
 }
@@ -632,13 +633,14 @@ bool SwWrtShell::GotoRegion( const OUString& rName )
     return bRet;
  }
 
-void SwWrtShell::GotoRefMark( const OUString& rRefMark, sal_uInt16 nSubType,
+bool SwWrtShell::GotoRefMark( const OUString& rRefMark, sal_uInt16 nSubType,
                                     sal_uInt16 nSeqNo )
 {
     SwPosition aPos = *GetCursor()->GetPoint();
     bool bRet = SwCursorShell::GotoRefMark(rRefMark, nSubType, nSeqNo);
     if (bRet)
         m_aNavigationMgr.addEntry(aPos);
+    return bRet;
 }
 
 bool SwWrtShell::GotoNextTOXBase( const OUString* pName )
@@ -659,12 +661,11 @@ bool SwWrtShell::GotoTable( const OUString& rName )
     return bRet;
 }
 
-bool SwWrtShell::GotoFormatField( const SwFormatField& rField ) {
+void SwWrtShell::GotoFormatField( const SwFormatField& rField ) {
     SwPosition aPos = *GetCursor()->GetPoint();
     bool bRet = SwCursorShell::GotoFormatField(rField);
     if (bRet)
         m_aNavigationMgr.addEntry(aPos);
-    return bRet;
 }
 
 const SwRangeRedline* SwWrtShell::GotoRedline( SwRedlineTable::size_type nArrPos, bool bSelect ) {

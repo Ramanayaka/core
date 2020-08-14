@@ -19,7 +19,6 @@
 
 #include <svl/style.hxx>
 #include <svl/itemset.hxx>
-#include <svl/itempool.hxx>
 #include <svl/whiter.hxx>
 
 #include <svx/svdoutl.hxx>
@@ -28,13 +27,14 @@
 #include <svx/svdogrp.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/lrspitem.hxx>
-#include <editeng/numitem.hxx>
+#include <editeng/outlobj.hxx>
 
-#include "drawdoc.hxx"
-#include "glob.hxx"
+#include <drawdoc.hxx>
 #include "sdtransform.hxx"
 
 using namespace ::com::sun::star::style;
+
+namespace {
 
 class SdTransformOOo2xDocument
 {
@@ -50,25 +50,24 @@ public:
     void transformStyles( SfxStyleFamily eFam );
     void transformStyle( SfxStyleSheetBase& rSheet );
 
-    void transformShapes( SdrObjList& rShapes );
+    void transformShapes( SdrObjList const & rShapes );
     void transformShape( SdrObject& rObj );
 
     void transformTextShape( SdrTextObj& rTextShape );
 
     bool getBulletState( const SfxItemSet& rSet, SfxStyleSheetBase* pSheet, bool& rState );
-    bool getBulletState( const SfxItemSet& rSet, sal_uInt16 nWhich, bool& rState );
+    static bool getBulletState( const SfxItemSet& rSet, sal_uInt16 nWhich, bool& rState );
 
     static bool transformItemSet( SfxItemSet& rSet, bool bNumbering );
 
-    bool removeAlienAttributes( SfxItemSet& rSet );
-    bool removeAlienAttributes( SfxItemSet& rSet, sal_uInt16 nWhich );
+    static bool removeAlienAttributes( SfxItemSet& rSet );
+    static bool removeAlienAttributes( SfxItemSet& rSet, sal_uInt16 nWhich );
 
     SdDrawDocument& mrDocument;
     SdrOutliner& mrOutliner;
-    const OUString msEnableNumbering;
-    const OUString msTextNamespace;
-    const OUString msTrue;
 };
+
+}
 
 /** transforms the given model from OOo 2.x to OOo 3.x. This maps
     the deprecated EE_PARA_BULLETSTATE and clears the EE_PARA_LRSPACE
@@ -82,12 +81,13 @@ void TransformOOo2xDocument( SdDrawDocument* pDocument )
     }
 }
 
+const OUStringLiteral gsEnableNumbering( "enable-numbering" );
+const OUStringLiteral gsTextNamespace( "urn:oasis:names:tc:opendocument:xmlns:text:1.0" );
+const OUStringLiteral gsTrue( "true" );
+
 SdTransformOOo2xDocument::SdTransformOOo2xDocument( SdDrawDocument& rDocument )
 : mrDocument( rDocument )
 , mrOutliner( rDocument.GetDrawOutliner() )
-, msEnableNumbering( "enable-numbering" )
-, msTextNamespace( "urn:oasis:names:tc:opendocument:xmlns:text:1.0" )
-, msTrue( "true" )
 {
 }
 
@@ -122,8 +122,8 @@ void SdTransformOOo2xDocument::transformDrawPages()
 
 void SdTransformOOo2xDocument::transformStyles()
 {
-    transformStyles( SD_STYLE_FAMILY_GRAPHICS );
-    transformStyles( SD_STYLE_FAMILY_MASTERPAGE );
+    transformStyles( SfxStyleFamily::Para );
+    transformStyles( SfxStyleFamily::Page );
 }
 
 void SdTransformOOo2xDocument::transformStyles( SfxStyleFamily eFam )
@@ -146,13 +146,13 @@ void SdTransformOOo2xDocument::transformStyle( SfxStyleSheetBase& rSheet )
     SfxItemSet& rSet = rSheet.GetItemSet();
 
     bool bState = false;
-    getBulletState( rSheet.GetItemSet(), rSheet.GetPool().Find( rSheet.GetParent(), rSheet.GetFamily() ), bState );
+    getBulletState( rSheet.GetItemSet(), rSheet.GetPool()->Find( rSheet.GetParent(), rSheet.GetFamily() ), bState );
 
     transformItemSet( rSet, bState );
     removeAlienAttributes( rSet );
 }
 
-void SdTransformOOo2xDocument::transformShapes( SdrObjList& rShapes )
+void SdTransformOOo2xDocument::transformShapes( SdrObjList const & rShapes )
 {
     const size_t nShapeCount = rShapes.GetObjCount();
     for( size_t nShape = 0; nShape < nShapeCount; ++nShape )
@@ -185,77 +185,77 @@ void SdTransformOOo2xDocument::transformShape( SdrObject& rObj )
 void SdTransformOOo2xDocument::transformTextShape( SdrTextObj& rTextShape )
 {
 
-    if(!rTextShape.IsEmptyPresObj())
+    if(rTextShape.IsEmptyPresObj())
+        return;
+
+    OutlinerParaObject* pOPO = rTextShape.GetOutlinerParaObject();
+    if (!pOPO)
+        return;
+
+    mrOutliner.SetText( *pOPO );
+
+    sal_Int32 nCount = mrOutliner.GetParagraphCount();
+
+    bool bChange = false;
+
+    for(sal_Int32 nPara = 0; nPara < nCount; nPara++)
     {
-        OutlinerParaObject* pOPO = rTextShape.GetOutlinerParaObject();
-        if (pOPO)
+        SfxItemSet aParaSet( mrOutliner.GetParaAttribs( nPara ) );
+
+        bool bItemChange = false;
+
+        bool bState = false;
+        const sal_Int16 nDepth = mrOutliner.GetDepth( nPara );
+        if( (nDepth != -1) && (!getBulletState( aParaSet, mrOutliner.GetStyleSheet( nPara ), bState ) || !bState) )
         {
-            mrOutliner.SetText( *pOPO );
-
-            sal_Int32 nCount = mrOutliner.GetParagraphCount();
-
-            bool bChange = false;
-
-            for(sal_Int32 nPara = 0; nPara < nCount; nPara++)
+            // disable bullet if text::enable-bullet="false" is found
+            if( (nDepth > 0 ) && (rTextShape.GetObjInventor()  == SdrInventor::Default) && (rTextShape.GetObjIdentifier() == OBJ_OUTLINETEXT) )
             {
-                SfxItemSet aParaSet( mrOutliner.GetParaAttribs( nPara ) );
+                // for outline object and level > 0 burn in the style sheet because it will be changed to "outline 1"
+                SfxStyleSheet* pStyleSheet = mrOutliner.GetStyleSheet( nPara );
 
-                bool bItemChange = false;
-
-                bool bState = false;
-                const sal_Int16 nDepth = mrOutliner.GetDepth( nPara );
-                if( (nDepth != -1) && (!getBulletState( aParaSet, mrOutliner.GetStyleSheet( nPara ), bState ) || !bState) )
+                if( pStyleSheet )
                 {
-                    // disable bullet if text::enable-bullet="false" is found
-                    if( (nDepth > 0 ) && (rTextShape.GetObjInventor()  == SdrInventor::Default) && (rTextShape.GetObjIdentifier() == OBJ_OUTLINETEXT) )
+                    // optimize me: only put items hard into paragraph that are not equal to "outline 1" style!
+                    SfxItemSet& rStyleSet = pStyleSheet->GetItemSet();
+
+                    SfxWhichIter aIter(aParaSet);
+                    sal_uInt16 nWhich(aIter.FirstWhich());
+
+                    // now set all none hard attributes from the style
+                    while(nWhich)
                     {
-                        // for outline object and level > 0 burn in the style sheet because it will be changed to "outline 1"
-                        SfxStyleSheet* pStyleSheet = mrOutliner.GetStyleSheet( nPara );
-
-                        if( pStyleSheet )
+                        if(SfxItemState::SET != aParaSet.GetItemState(nWhich))
                         {
-                            // optimize me: only put items hard into paragraph that are not equal to "outline 1" style!
-                            SfxItemSet& rStyleSet = pStyleSheet->GetItemSet();
-
-                            SfxWhichIter aIter(aParaSet);
-                            sal_uInt16 nWhich(aIter.FirstWhich());
-
-                            // now set all none hard attributes from the style
-                            while(nWhich)
-                            {
-                                if(SfxItemState::SET != aParaSet.GetItemState(nWhich))
-                                {
-                                    aParaSet.Put(rStyleSet.Get(nWhich));
-                                    bItemChange = true;
-                                }
-
-                                nWhich = aIter.NextWhich();
-                            }
+                            aParaSet.Put(rStyleSet.Get(nWhich));
+                            bItemChange = true;
                         }
+
+                        nWhich = aIter.NextWhich();
                     }
-
-                    mrOutliner.SetDepth( mrOutliner.GetParagraph( nPara ), -1 );
-
-                    bChange = true;
-                }
-
-                bItemChange |= transformItemSet( aParaSet, bState );
-
-                bItemChange |= removeAlienAttributes( aParaSet );
-
-                if( bItemChange )
-                {
-                    mrOutliner.SetParaAttribs( nPara, aParaSet );
-                    bChange = true;
                 }
             }
 
-            if( bChange )
-                rTextShape.SetOutlinerParaObject(mrOutliner.CreateParaObject());
+            mrOutliner.SetDepth( mrOutliner.GetParagraph( nPara ), -1 );
 
-            mrOutliner.Clear();
+            bChange = true;
+        }
+
+        bItemChange |= transformItemSet( aParaSet, bState );
+
+        bItemChange |= removeAlienAttributes( aParaSet );
+
+        if( bItemChange )
+        {
+            mrOutliner.SetParaAttribs( nPara, aParaSet );
+            bChange = true;
         }
     }
+
+    if( bChange )
+        rTextShape.SetOutlinerParaObject(mrOutliner.CreateParaObject());
+
+    mrOutliner.Clear();
 }
 
 bool SdTransformOOo2xDocument::getBulletState( const SfxItemSet& rSet, SfxStyleSheetBase* pSheet, bool& rState )
@@ -266,7 +266,7 @@ bool SdTransformOOo2xDocument::getBulletState( const SfxItemSet& rSet, SfxStyleS
     if( getBulletState( rSet, SDRATTR_XMLATTRIBUTES, rState ) )
         return true;
 
-    if( pSheet && getBulletState( pSheet->GetItemSet(), pSheet->GetPool().Find( pSheet->GetParent(), pSheet->GetFamily() ), rState ) )
+    if( pSheet && getBulletState( pSheet->GetItemSet(), pSheet->GetPool()->Find( pSheet->GetParent(), pSheet->GetFamily() ), rState ) )
         return true;
 
     return false;
@@ -274,17 +274,17 @@ bool SdTransformOOo2xDocument::getBulletState( const SfxItemSet& rSet, SfxStyleS
 
 bool SdTransformOOo2xDocument::getBulletState( const SfxItemSet& rSet, sal_uInt16 nWhich, bool& rState )
 {
-    if( (rSet.GetItemState( nWhich ) == SfxItemState::SET) )
+    if( rSet.GetItemState( nWhich ) == SfxItemState::SET )
     {
         const SvXMLAttrContainerItem& rAttr = *rSet.GetItem<SvXMLAttrContainerItem>( nWhich );
 
         const sal_uInt16 nCount = rAttr.GetAttrCount();
         for( sal_uInt16 nItem = 0; nItem < nCount; nItem++ )
         {
-            if( ( rAttr.GetAttrLName( nItem ) == msEnableNumbering ) && ( rAttr.GetAttrNamespace( nItem ) == msTextNamespace ) )
+            if( ( rAttr.GetAttrLName( nItem ) == gsEnableNumbering ) && ( rAttr.GetAttrNamespace( nItem ) == gsTextNamespace ) )
             {
                 const OUString& sValue( rAttr.GetAttrValue( nItem ) );
-                rState = sValue.equals(msTrue);
+                rState = sValue == gsTrue;
                 return true;
             }
         }
@@ -299,10 +299,10 @@ bool SdTransformOOo2xDocument::transformItemSet( SfxItemSet& rSet, bool bNumberi
     if( bNumbering )
     {
         SvxLRSpaceItem aItem( *rSet.GetItem<SvxLRSpaceItem>( EE_PARA_LRSPACE ) );
-        if( (aItem.GetLeft() != 0) || (aItem.GetTextFirstLineOfst() != 0) )
+        if( (aItem.GetLeft() != 0) || (aItem.GetTextFirstLineOffset() != 0) )
         {
             aItem.SetLeftValue( 0 );
-            aItem.SetTextFirstLineOfst( 0 );
+            aItem.SetTextFirstLineOffset( 0 );
             rSet.Put( aItem );
             bRet = true;
         }
@@ -320,14 +320,14 @@ bool SdTransformOOo2xDocument::removeAlienAttributes( SfxItemSet& rSet )
 
 bool SdTransformOOo2xDocument::removeAlienAttributes( SfxItemSet& rSet, sal_uInt16 nWhich )
 {
-    if( (rSet.GetItemState( nWhich ) == SfxItemState::SET) )
+    if( rSet.GetItemState( nWhich ) == SfxItemState::SET )
     {
         const SvXMLAttrContainerItem& rAttr = *rSet.GetItem<SvXMLAttrContainerItem>( nWhich );
 
         const sal_uInt16 nCount = rAttr.GetAttrCount();
         for( sal_uInt16 nItem = 0; nItem < nCount; nItem++ )
         {
-            if( ( rAttr.GetAttrLName( nItem ) == msEnableNumbering ) && ( rAttr.GetAttrNamespace( nItem ) == msTextNamespace ) )
+            if( ( rAttr.GetAttrLName( nItem ) == gsEnableNumbering ) && ( rAttr.GetAttrNamespace( nItem ) == gsTextNamespace ) )
             {
                 if( nCount == 1 )
                 {
@@ -341,7 +341,18 @@ bool SdTransformOOo2xDocument::removeAlienAttributes( SfxItemSet& rSet, sal_uInt
                     for( nItem = 0; nItem < nCount; nItem++ )
                     {
                         if( nItem != nFound )
-                            aNewItem.AddAttr( rAttr.GetAttrPrefix(nItem),rAttr.GetAttrNamespace(nItem), rAttr.GetAttrLName(nItem), rAttr.GetAttrValue(nItem ) );
+                        {
+                            OUString const& rNamespace(rAttr.GetAttrNamespace(nItem));
+                            OUString const& rPrefix(rAttr.GetAttrPrefix(nItem));
+                            if (rPrefix.isEmpty())
+                            {
+                                aNewItem.AddAttr(rAttr.GetAttrLName(nItem), rAttr.GetAttrValue(nItem));
+                            }
+                            else
+                            {
+                                aNewItem.AddAttr(rPrefix, rNamespace, rAttr.GetAttrLName(nItem), rAttr.GetAttrValue(nItem));
+                            }
+                        }
                     }
 
                     rSet.Put( aNewItem );

@@ -11,6 +11,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sw_ooxmlw14export))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sw_ooxmlw14export))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sw_ooxmlw14export, \
     sw/qa/extras/ooxmlexport/ooxmlw14export \
 ))
@@ -27,18 +29,20 @@ $(eval $(call gb_CppunitTest_use_externals,sw_ooxmlw14export,\
 $(eval $(call gb_CppunitTest_set_include,sw_ooxmlw14export,\
     -I$(SRCDIR)/sw/inc \
     -I$(SRCDIR)/sw/source/core/inc \
-	-I$(SRCDIR)/sw/qa/extras/inc \
+	-I$(SRCDIR)/sw/qa/inc \
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sw_ooxmlw14export))
+$(eval $(call gb_CppunitTest_use_api,sw_ooxmlw14export,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sw_ooxmlw14export))
 $(eval $(call gb_CppunitTest_use_vcl,sw_ooxmlw14export))
 
-$(eval $(call gb_CppunitTest_use_components,sw_ooxmlw14export,\
-	$(sw_ooxmlexport_components) \
-))
+$(eval $(call gb_CppunitTest_use_rdb,sw_ooxmlw14export,services))
 
 $(eval $(call gb_CppunitTest_use_configuration,sw_ooxmlw14export))
 

@@ -22,7 +22,6 @@
 #include <climits>
 #include <memory>
 
-#include <com/sun/star/uno/Any.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <sot/formats.hxx>
@@ -32,11 +31,10 @@
 class SfxItemPool;
 struct SvxClipboardFormatItem_Impl;
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxClipboardFormatItem : public SfxPoolItem
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxClipboardFormatItem final : public SfxPoolItem
 {
-protected:
     virtual bool             operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxClipboardFormatItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
 public:
     static SfxPoolItem* CreateDefault();
@@ -53,7 +51,7 @@ public:
     sal_uInt16 Count() const;
 
     SotClipboardFormatId GetClipbrdFormatId( sal_uInt16 nPos ) const;
-    const OUString GetClipbrdFormatName( sal_uInt16 nPos ) const;
+    OUString const & GetClipbrdFormatName( sal_uInt16 nPos ) const;
 
 private:
     std::unique_ptr<SvxClipboardFormatItem_Impl> pImpl;

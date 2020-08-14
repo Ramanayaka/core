@@ -17,18 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "zoomlist.hxx"
+#include <zoomlist.hxx>
 
 #include <svx/svxids.hrc>
 #include <sfx2/bindings.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <sfx2/viewsh.hxx>
 
-#include "ViewShell.hxx"
+#include <ViewShell.hxx>
 
 namespace sd {
 
-#define MAX_ENTRYS  10
+#define MAX_ENTRIES  10
 
 ZoomList::ZoomList(ViewShell* pViewShell)
 : mpViewShell (pViewShell)
@@ -40,7 +39,7 @@ void ZoomList::InsertZoomRect(const ::tools::Rectangle& rRect)
 {
     size_t nRectCount = maRectangles.size();
 
-    if (nRectCount >= MAX_ENTRYS)
+    if (nRectCount >= MAX_ENTRIES)
         maRectangles.erase(maRectangles.begin());
     else if (nRectCount == 0)
         mnCurPos = 0;
@@ -54,7 +53,7 @@ void ZoomList::InsertZoomRect(const ::tools::Rectangle& rRect)
     rBindings.Invalidate( SID_ZOOM_PREV );
 }
 
-::tools::Rectangle ZoomList::GetNextZoomRect()
+::tools::Rectangle const & ZoomList::GetNextZoomRect()
 {
     mnCurPos++;
     size_t nRectCount = maRectangles.size();
@@ -69,7 +68,7 @@ void ZoomList::InsertZoomRect(const ::tools::Rectangle& rRect)
     return maRectangles[mnCurPos];
 }
 
-::tools::Rectangle ZoomList::GetPreviousZoomRect()
+::tools::Rectangle const & ZoomList::GetPreviousZoomRect()
 {
     if (mnCurPos > 0)
         mnCurPos--;

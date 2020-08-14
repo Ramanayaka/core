@@ -24,11 +24,13 @@
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
 
-uno::Any DataPilotToPivotTable( const uno::Any& aSource, uno::Reference< uno::XComponentContext > & xContext )
+static uno::Any DataPilotToPivotTable( const uno::Any& aSource, const uno::Reference< uno::XComponentContext > & xContext )
 {
     uno::Reference< sheet::XDataPilotTable > xTable( aSource, uno::UNO_QUERY_THROW );
     return uno::makeAny( uno::Reference< excel::XPivotTable > ( new ScVbaPivotTable( xContext, xTable ) ) );
 }
+
+namespace {
 
 class PivotTableEnumeration : public EnumerationHelperImpl
 {
@@ -42,6 +44,8 @@ public:
     }
 
 };
+
+}
 
 ScVbaPivotTables::ScVbaPivotTables( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< container::XIndexAccess >& xIndexAccess  ):  ScVbaPivotTables_BASE( xParent, xContext, xIndexAccess )
 {
@@ -69,18 +73,16 @@ ScVbaPivotTables::getElementType()
 OUString
 ScVbaPivotTables::getServiceImplName()
 {
-    return OUString("ScVbaPivotTables");
+    return "ScVbaPivotTables";
 }
 
 css::uno::Sequence<OUString>
 ScVbaPivotTables::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.excel.PivotTables";
-    }
+        "ooo.vba.excel.PivotTables"
+    };
     return sNames;
 }
 

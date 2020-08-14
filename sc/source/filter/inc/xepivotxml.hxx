@@ -10,26 +10,22 @@
 #ifndef INCLUDED_SC_FILTER_XEPIVOTXML_HXX
 #define INCLUDED_SC_FILTER_XEPIVOTXML_HXX
 
-#include <xerecord.hxx>
-#include <xeroot.hxx>
+#include "xerecord.hxx"
+#include "xeroot.hxx"
 
 #include <memory>
 #include <map>
 #include <unordered_map>
 
 class ScDPCache;
-class ScDPCollection;
 class ScDPObject;
 
 class XclExpXmlPivotCaches : public XclExpRecordBase, protected XclExpRoot
 {
 public:
-    enum EntryType { Worksheet, Name, Database };
-
     struct Entry
     {
         const ScDPCache* mpCache;
-        EntryType meType;
         ScRange maSrcRange;
     };
 

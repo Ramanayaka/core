@@ -20,15 +20,13 @@
 #define INCLUDED_REPORTDESIGN_SOURCE_FILTER_XML_XMLGROUP_HXX
 
 #include <xmloff/xmlictxt.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/report/XGroups.hpp>
 
 namespace rptxml
 {
     class ORptFilter;
-    class OXMLGroup : public SvXMLImportContext
+    class OXMLGroup final : public SvXMLImportContext
     {
-    protected:
         css::uno::Reference< css::report::XGroups >   m_xGroups;
         css::uno::Reference< css::report::XGroup >    m_xGroup;
 
@@ -39,17 +37,17 @@ namespace rptxml
     public:
 
         OXMLGroup( ORptFilter& rImport
-                    , sal_uInt16 nPrfx
-                    ,const OUString& rLName
-                    ,const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList
+                    ,const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList
                     );
         virtual ~OXMLGroup() override;
 
-        virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                    const OUString& rLocalName,
-                    const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
+        virtual void SAL_CALL startFastElement(
+                sal_Int32 /*nElement*/,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ ) override {}
+        virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+                sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
-        virtual void EndElement() override;
+        virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
     };
 
 } // namespace rptxml

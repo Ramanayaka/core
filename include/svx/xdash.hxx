@@ -21,21 +21,18 @@
 #define INCLUDED_SVX_XDASH_HXX
 
 
-// class XDash
 
 
-#include <svx/xenum.hxx>
 #include <svx/svxdllapi.h>
 #include <com/sun/star/drawing/DashStyle.hpp>
 
 #include <vector>
 
-class SVX_DLLPUBLIC XDash
+class SVXCORE_DLLPUBLIC XDash final
 {
-protected:
     css::drawing::DashStyle  eDash;
-    sal_uInt16               nDots;
     sal_uInt32               nDotLen;
+    sal_uInt16               nDots;
     sal_uInt16               nDashes;
     sal_uInt32               nDashLen;
     sal_uInt32               nDistance;

@@ -24,26 +24,18 @@
 #include <com/sun/star/ucb/InsertCommandArgument.hpp>
 #include <com/sun/star/ucb/InteractiveIOException.hpp>
 #include <com/sun/star/io/NotConnectedException.hpp>
-#include <com/sun/star/io/WrongFormatException.hpp>
 
-#include <osl/time.h>
-#include <osl/security.hxx>
-#include <osl/socket.hxx>
 #include <o3tl/enumrange.hxx>
 
 #include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
-#include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
 
 #include <comphelper/processfactory.hxx>
 #include <ucbhelper/content.hxx>
 
 #include <tools/stream.hxx>
-#include <unotools/bootstrap.hxx>
 #include <unotools/streamwrap.hxx>
-
-#include <unotools/useroptions.hxx>
 
 #include <svl/sharecontrolfile.hxx>
 
@@ -53,12 +45,12 @@ namespace svt {
 
 
 ShareControlFile::ShareControlFile( const OUString& aOrigURL )
-: LockFileCommon( aOrigURL, ".~sharing." )
+    : LockFileCommon(GenerateOwnLockFileURL(aOrigURL, ".~sharing."))
 {
-    if ( !m_xStream.is() && !m_aURL.isEmpty() )
+    if ( !m_xStream.is() && !GetURL().isEmpty() )
     {
         uno::Reference< ucb::XCommandEnvironment > xDummyEnv;
-        ::ucbhelper::Content aContent = ::ucbhelper::Content( m_aURL, xDummyEnv, comphelper::getProcessComponentContext() );
+        ::ucbhelper::Content aContent( GetURL(), xDummyEnv, comphelper::getProcessComponentContext() );
 
         uno::Reference< ucb::XContentIdentifier > xContId( aContent.get().is() ? aContent.get()->getIdentifier() : nullptr );
         if ( !xContId.is() || xContId->getContentProviderScheme() != "file" )
@@ -99,8 +91,8 @@ ShareControlFile::ShareControlFile( const OUString& aOrigURL )
         }
 
         m_xSeekable.set( xStream, uno::UNO_QUERY_THROW );
-        m_xInputStream.set( xStream->getInputStream(), uno::UNO_QUERY_THROW );
-        m_xOutputStream.set( xStream->getOutputStream(), uno::UNO_QUERY_THROW );
+        m_xInputStream.set( xStream->getInputStream(), uno::UNO_SET_THROW );
+        m_xOutputStream.set( xStream->getOutputStream(), uno::UNO_SET_THROW );
         m_xTruncate.set( m_xOutputStream, uno::UNO_QUERY_THROW );
         m_xStream = xStream;
     }
@@ -123,25 +115,25 @@ void ShareControlFile::Close()
 {
     // if it is called outside of destructor the mutex must be locked
 
-    if ( m_xStream.is() )
-    {
-        try
-        {
-            if ( m_xInputStream.is() )
-                m_xInputStream->closeInput();
-            if ( m_xOutputStream.is() )
-                m_xOutputStream->closeOutput();
-        }
-        catch( uno::Exception& )
-        {}
+    if ( !m_xStream.is() )
+        return;
 
-        m_xStream.clear();
-        m_xInputStream.clear();
-        m_xOutputStream.clear();
-        m_xSeekable.clear();
-        m_xTruncate.clear();
-        m_aUsersData.clear();
+    try
+    {
+        if ( m_xInputStream.is() )
+            m_xInputStream->closeInput();
+        if ( m_xOutputStream.is() )
+            m_xOutputStream->closeOutput();
     }
+    catch( uno::Exception& )
+    {}
+
+    m_xStream.clear();
+    m_xInputStream.clear();
+    m_xOutputStream.clear();
+    m_xSeekable.clear();
+    m_xTruncate.clear();
+    m_aUsersData.clear();
 }
 
 
@@ -158,20 +150,20 @@ std::vector< o3tl::enumarray< LockFileComponent, OUString > > ShareControlFile::
         if ( nLength > SAL_MAX_INT32 )
             throw uno::RuntimeException();
 
-        uno::Sequence< sal_Int8 > aBuffer( (sal_Int32)nLength );
+        uno::Sequence< sal_Int8 > aBuffer( static_cast<sal_Int32>(nLength) );
         m_xSeekable->seek( 0 );
 
-        sal_Int32 nRead = m_xInputStream->readBytes( aBuffer, (sal_Int32)nLength );
+        sal_Int32 nRead = m_xInputStream->readBytes( aBuffer, static_cast<sal_Int32>(nLength) );
         nLength -= nRead;
         while ( nLength > 0 )
         {
-            uno::Sequence< sal_Int8 > aTmpBuf( (sal_Int32)nLength );
-            nRead = m_xInputStream->readBytes( aTmpBuf, (sal_Int32)nLength );
+            uno::Sequence< sal_Int8 > aTmpBuf( static_cast<sal_Int32>(nLength) );
+            nRead = m_xInputStream->readBytes( aTmpBuf, static_cast<sal_Int32>(nLength) );
             if ( nRead > nLength )
                 throw uno::RuntimeException();
 
             for ( sal_Int32 nInd = 0; nInd < nRead; nInd++ )
-                aBuffer[aBuffer.getLength() - (sal_Int32)nLength + nInd] = aTmpBuf[nInd];
+                aBuffer[aBuffer.getLength() - static_cast<sal_Int32>(nLength) + nInd] = aTmpBuf[nInd];
             nLength -= nRead;
         }
 
@@ -329,7 +321,7 @@ void ShareControlFile::RemoveFile()
     Close();
 
     uno::Reference<ucb::XSimpleFileAccess3> xSimpleFileAccess(ucb::SimpleFileAccess::create(comphelper::getProcessComponentContext()));
-    xSimpleFileAccess->kill( m_aURL );
+    xSimpleFileAccess->kill( GetURL() );
 }
 
 } // namespace svt

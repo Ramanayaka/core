@@ -27,8 +27,7 @@
  ************************************************************************/
 
 #include <osl/mutex.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/PropertyState.hpp>
+#include <sal/log.hxx>
 #include "NeonHeadRequest.hxx"
 #include "NeonSession.hxx"
 
@@ -46,53 +45,42 @@ void process_headers( ne_request * req,
 
 #if defined SAL_LOG_INFO
     {
-        if( !rHeaderNames.empty() )
+        for ( const auto& rHeader : rHeaderNames )
         {
-            std::vector< OUString >::const_iterator it(
-                rHeaderNames.begin() );
-            const std::vector< OUString >::const_iterator end(
-                rHeaderNames.end() );
-
-            while ( it != end )
-            {
-                SAL_INFO( "ucb.ucp.webdav", "HEAD - requested header: " << (*it) );
-                ++it;
-            }
+            SAL_INFO( "ucb.ucp.webdav", "HEAD - requested header: " << rHeader );
         }
     }
 #endif
     while ( ( cursor = ne_response_header_iterate( req, cursor,
                                                    &name, &value ) ) != nullptr ) {
+        // The HTTP header `field-name` must be a `token`, which can only contain a subset of ASCII;
+        // assume that Neon will already have rejected any invalid data, so that it is guaranteed
+        // that `name` is ASCII-only:
         OUString aHeaderName( OUString::createFromAscii( name ) );
-        OUString aHeaderValue( OUString::createFromAscii( value ) );
+        // The HTTP header `field-value` may contain obsolete (as per RFC 7230) `obs-text` non-ASCII
+        // %x80-FF octets, lets preserve them as individual characters in `aHeaderValue` by treating
+        // `value` as ISO 8859-1:
+        OUString aHeaderValue(value, strlen(value), RTL_TEXTENCODING_ISO_8859_1);
 
         SAL_INFO( "ucb.ucp.webdav", "HEAD - received header: " << aHeaderName << ":" << aHeaderValue);
 
         // Note: Empty vector means that all headers are requested.
-        bool bIncludeIt = ( rHeaderNames.empty() );
+        bool bIncludeIt = rHeaderNames.empty();
 
         if ( !bIncludeIt )
         {
             // Check whether this header was requested.
-            std::vector< OUString >::const_iterator it(
-                rHeaderNames.begin() );
-            const std::vector< OUString >::const_iterator end(
-                rHeaderNames.end() );
+            auto it = std::find_if(rHeaderNames.begin(), rHeaderNames.end(),
+                [&aHeaderName](const OUString& rName) {
+                    // header names are case insensitive
+                    return rName.equalsIgnoreAsciiCase( aHeaderName );
+                });
 
-            while ( it != end )
+            if ( it != rHeaderNames.end() )
             {
-                // header names are case insensitive
-                if ( (*it).equalsIgnoreAsciiCase( aHeaderName ) )
-                {
-                    aHeaderName = (*it);
-                    break;
-                }
-
-                ++it;
-            }
-
-            if ( it != end )
+                aHeaderName = *it;
                 bIncludeIt = true;
+            }
         }
 
         if ( bIncludeIt )
@@ -132,7 +120,7 @@ NeonHeadRequest::NeonHeadRequest( HttpSession * inSession,
                                             RTL_TEXTENCODING_UTF8 ).getStr() );
 
     {
-        osl::Guard< osl::Mutex > theGlobalGuard( aGlobalNeonMutex );
+        osl::Guard< osl::Mutex > theGlobalGuard(getGlobalNeonMutex());
         nError = ne_request_dispatch( req );
     }
 

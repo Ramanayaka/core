@@ -18,12 +18,6 @@
  */
 #include "vbacell.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
-#include "vbatable.hxx"
-#include <com/sun/star/table/XCellRange.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
-#include <rtl/ustrbuf.hxx>
-#include "wordvbahelper.hxx"
 #include "vbatablehelper.hxx"
 #include "vbarow.hxx"
 
@@ -91,18 +85,16 @@ void SAL_CALL SwVbaCell::SetHeight( float height, sal_Int32 heightrule )
 OUString
 SwVbaCell::getServiceImplName()
 {
-    return OUString("SwVbaCell");
+    return "SwVbaCell";
 }
 
 uno::Sequence< OUString >
 SwVbaCell::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Cell";
-    }
+        "ooo.vba.word.Cell"
+    };
     return aServiceNames;
 }
 

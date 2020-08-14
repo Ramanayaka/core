@@ -22,8 +22,10 @@
 
 #include "global.hxx"
 #include "address.hxx"
+#include <vector>
 
 class ScDocument;
+class ScFunctionData;
 
 //  Sequence:
 //      1)  create ScConsData
@@ -52,16 +54,14 @@ private:
     bool                bRowByName;
     SCSIZE              nColCount;
     SCSIZE              nRowCount;
-    bool**              ppUsed;
-    double**            ppSum;
-    double**            ppCount;
-    double**            ppSumSqr;
-    ScReferenceList**   ppRefs;
+    std::unique_ptr<std::unique_ptr<bool[]>[]> ppUsed;
+    std::unique_ptr<std::unique_ptr<ScFunctionData[]>[]> ppFunctionData;
+    std::unique_ptr<std::unique_ptr<ScReferenceList[]>[]> ppRefs;
     ::std::vector<OUString> maColHeaders;
     ::std::vector<OUString> maRowHeaders;
     ::std::vector<OUString> maTitles;
     SCSIZE              nDataCount;
-    SCSIZE**            ppTitlePos;
+    std::unique_ptr<std::unique_ptr<SCSIZE[]>[]> ppTitlePos;
     bool                bCornerUsed;
     OUString            aCornerText;        // only for bColByName && bRowByName
 
@@ -75,8 +75,8 @@ public:
     void        InitData();
     void        DeleteData();
 
-    void        AddFields( ScDocument* pSrcDoc, SCTAB nTab,
-                            SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 );
+    void        AddFields( const ScDocument* pSrcDoc, SCTAB nTab,
+                           SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 );
     void        DoneFields();
 
     void        AddData( ScDocument* pSrcDoc, SCTAB nTab,

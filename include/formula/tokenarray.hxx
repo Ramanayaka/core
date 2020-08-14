@@ -28,7 +28,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <com/sun/star/uno/Sequence.hxx>
 #include <formula/ExternalReferenceHelper.hxx>
 #include <formula/formuladllapi.h>
 #include <formula/opcode.hxx>
@@ -37,9 +36,12 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sheet { struct FormulaToken; }
-} } }
+}
+
+namespace com::sun::star::uno { template <typename > class Sequence; }
+namespace formula { class FormulaTokenArray; }
 
 namespace svl {
 
@@ -48,24 +50,26 @@ class SharedStringPool;
 
 }
 
-// RecalcMode access only via TokenArray SetRecalcMode / IsRecalcMode...
+// RecalcMode access only via TokenArray SetExclusiveRecalcMode...() /
+// IsRecalcMode...()
 
-// Only one of the exclusive bits can be set,
-// handled by TokenArray SetRecalcMode... methods
+// Only one of the exclusive bits can be set and one must be set,
+// handled by TokenArray SetExclusiveRecalcMode...() methods.
+// Exclusive bits are ordered by priority, AddRecalcMode() relies on that.
 enum class ScRecalcMode : sal_uInt8
 {
-    NORMAL       = 0x01,    // exclusive
-    ALWAYS       = 0x02,    // exclusive, always
-    ONLOAD       = 0x04,    // exclusive, always after load
-    ONLOAD_ONCE  = 0x08,    // exclusive, once after load
-    FORCED       = 0x10,    // combined, also if cell isn't visible
-    ONREFMOVE    = 0x20,    // combined, if reference was moved
-    EMask        = NORMAL | ALWAYS | ONLOAD | ONLOAD_ONCE  // mask of exclusive bits
+    ALWAYS         = 0x01,  // exclusive, always
+    ONLOAD_MUST    = 0x02,  // exclusive, always after load
+    ONLOAD_ONCE    = 0x04,  // exclusive, once after load, import filter
+    ONLOAD_LENIENT = 0x08,  // exclusive, lenient after load (eg. macros not always, aliens, ...)
+    NORMAL         = 0x10,  // exclusive
+    FORCED         = 0x20,  // combined, also if cell isn't visible, for macros with side effects
+    ONREFMOVE      = 0x40,  // combined, if reference was moved
+    EMask          = ALWAYS | ONLOAD_MUST | ONLOAD_LENIENT | ONLOAD_ONCE | NORMAL   // mask of exclusive bits
 };
-// If new bits are to be defined, AddRecalcMode has to be adjusted!
 namespace o3tl
 {
-    template<> struct typed_flags<ScRecalcMode> : is_typed_flags<ScRecalcMode, 0x3f> {};
+    template<> struct typed_flags<ScRecalcMode> : is_typed_flags<ScRecalcMode, 0x7f> {};
 }
 
 namespace formula
@@ -182,7 +186,7 @@ public:
         return result;
     }
 
-    FormulaTokenArrayReferencesIterator operator++()
+    FormulaTokenArrayReferencesIterator const & operator++()
     {
         assert(maIter != maEnd);
         ++maIter;
@@ -230,7 +234,7 @@ public:
 class FORMULA_DLLPUBLIC FormulaTokenArray
 {
 protected:
-    FormulaToken**  pCode;                  // Token code array
+    std::unique_ptr<FormulaToken*[]> pCode; // Token code array
     FormulaToken**  pRPN;                   // RPN array
     sal_uInt16      nLen;                   // Length of token array
     sal_uInt16      nRPN;                   // Length of RPN array
@@ -281,20 +285,18 @@ public:
      */
     sal_uInt16              RemoveToken( sal_uInt16 nOffset, sal_uInt16 nCount );
 
-    void            SetCombinedBitsRecalcMode( ScRecalcMode nBits )
-                                { nMode |= (nBits & ~ScRecalcMode::EMask); }
-    ScRecalcMode    GetCombinedBitsRecalcMode() const
-                                { return nMode & ~ScRecalcMode::EMask; }
-                            /** Exclusive bits already set in nMode are
-                                zero'ed, nBits may contain combined bits, but
-                                only one exclusive bit may be set! */
-    void            SetMaskedRecalcMode( ScRecalcMode nBits )
-                                { nMode = GetCombinedBitsRecalcMode() | nBits; }
-
     FormulaTokenArray();
-    /// Assignment with references to FormulaToken entries (not copied!)
+    /** Assignment with incrementing references of FormulaToken entries
+        (not copied!) */
     FormulaTokenArray( const FormulaTokenArray& );
     virtual ~FormulaTokenArray();
+
+    virtual void Clear();
+
+    /**
+     * The array has its final used size and no more token can be added.
+     */
+    void Finalize();
 
     void SetFromRangeName( bool b ) { mbFromRangeName = b; }
     bool IsFromRangeName() const { return mbFromRangeName; }
@@ -309,7 +311,6 @@ public:
      */
     bool IsShareable() const { return mbShareable; }
 
-    void Clear();
     void DelRPN();
     FormulaToken* FirstToken() const;
 
@@ -361,11 +362,11 @@ public:
         memcpy( pRPN, pData, nSize * sizeof( FormulaToken* ) );
     }
 
-    FormulaToken** GetArray() const  { return pCode; }
+    FormulaToken** GetArray() const  { return pCode.get(); }
 
     FormulaTokenArrayStandardRange Tokens() const
     {
-        return FormulaTokenArrayStandardRange(pCode, nLen);
+        return FormulaTokenArrayStandardRange(pCode.get(), nLen);
     }
 
     FormulaToken** GetCode()  const  { return pRPN; }
@@ -388,20 +389,28 @@ public:
     bool      IsHyperLink() const       { return bHyperLink; }
 
     ScRecalcMode    GetRecalcMode() const { return nMode; }
-                            /** Bits aren't set directly but validated and
-                                maybe handled according to priority if more
-                                than one exclusive bit was set. */
-            void            AddRecalcMode( ScRecalcMode nBits );
+
+    void            SetCombinedBitsRecalcMode( ScRecalcMode nBits )
+                                { nMode |= nBits & ~ScRecalcMode::EMask; }
+    ScRecalcMode    GetCombinedBitsRecalcMode() const
+                                { return nMode & ~ScRecalcMode::EMask; }
+
+                    /** Exclusive bits already set in nMode are zero'ed, nBits
+                        may contain combined bits, but only one exclusive bit
+                        may be set! */
+    void            SetMaskedRecalcMode( ScRecalcMode nBits )
+                                { nMode = GetCombinedBitsRecalcMode() | nBits; }
+
+                    /** Bits aren't set directly but validated and handled
+                        according to priority if more than one exclusive bit
+                        was set. */
+    void            AddRecalcMode( ScRecalcMode nBits );
 
     void            ClearRecalcMode() { nMode = ScRecalcMode::NORMAL; }
     void            SetExclusiveRecalcModeNormal()
                                 { SetMaskedRecalcMode( ScRecalcMode::NORMAL ); }
     void            SetExclusiveRecalcModeAlways()
                                 { SetMaskedRecalcMode( ScRecalcMode::ALWAYS ); }
-    void            SetExclusiveRecalcModeOnLoad()
-                                { SetMaskedRecalcMode( ScRecalcMode::ONLOAD ); }
-    void            SetExclusiveRecalcModeOnLoadOnce()
-                                { SetMaskedRecalcMode( ScRecalcMode::ONLOAD_ONCE ); }
     void            SetRecalcModeForced()
                                 { nMode |= ScRecalcMode::FORCED; }
     void            SetRecalcModeOnRefMove()
@@ -410,21 +419,21 @@ public:
                                 { return bool(nMode & ScRecalcMode::NORMAL); }
     bool            IsRecalcModeAlways() const
                                 { return bool(nMode & ScRecalcMode::ALWAYS); }
-    bool            IsRecalcModeOnLoad() const
-                                { return bool(nMode & ScRecalcMode::ONLOAD); }
-    bool            IsRecalcModeOnLoadOnce() const
-                                { return bool(nMode & ScRecalcMode::ONLOAD_ONCE); }
     bool            IsRecalcModeForced() const
                                 { return bool(nMode & ScRecalcMode::FORCED); }
     bool            IsRecalcModeOnRefMove() const
                                 { return bool(nMode & ScRecalcMode::ONREFMOVE); }
+                    /** Whether recalculation must happen after import, for
+                        example OOXML. */
+    bool            IsRecalcModeMustAfterImport() const
+                                { return (nMode & ScRecalcMode::EMask) <= ScRecalcMode::ONLOAD_ONCE; }
 
                             /** Get OpCode of the most outer function */
-    inline OpCode           GetOuterFuncOpCode();
+    inline OpCode           GetOuterFuncOpCode() const;
 
                             /** Operators +,-,*,/,^,&,=,<>,<,>,<=,>=
                                 with DoubleRef in Formula? */
-    bool                    HasMatrixDoubleRefOps();
+    bool                    HasMatrixDoubleRefOps() const;
 
     virtual FormulaToken* AddOpCode(OpCode e);
 
@@ -451,6 +460,11 @@ public:
      */
     virtual void CheckToken( const FormulaToken& t );
 
+    /**
+     * Call CheckToken() for all RPN tokens.
+     */
+    void CheckAllRPNTokens();
+
     /** Clones the token and then adds the clone to the pCode array.
         For just new'ed tokens use Add() instead of cloning it again.
         Use this AddToken() when adding a token from another origin.
@@ -468,7 +482,8 @@ public:
 
     virtual FormulaToken* MergeArray( );
 
-    /// Assignment with references to FormulaToken entries (not copied!)
+    /** Assignment with incrementing references of FormulaToken entries
+        (not copied!) */
     FormulaTokenArray& operator=( const FormulaTokenArray& );
 
     /** Determines if this formula needs any changes to convert it to something
@@ -490,7 +505,7 @@ public:
     void ReinternStrings( svl::SharedStringPool& rPool );
 };
 
-inline OpCode FormulaTokenArray::GetOuterFuncOpCode()
+inline OpCode FormulaTokenArray::GetOuterFuncOpCode() const
 {
     if ( pRPN && nRPN )
         return pRPN[nRPN-1]->GetOpCode();
@@ -547,6 +562,10 @@ public:
     void Jump( short nStart, short nNext, short nStop = SHRT_MAX );
     void Push( const FormulaTokenArray* );
     void Pop();
+
+    /** Reconstruct the iterator afresh from a token array
+    */
+    void ReInit( const FormulaTokenArray& );
 
 private:
     const FormulaToken* GetNonEndOfPathToken( short nIdx ) const;

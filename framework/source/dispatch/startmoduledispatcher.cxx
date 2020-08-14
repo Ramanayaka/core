@@ -19,24 +19,16 @@
 
 #include <dispatch/startmoduledispatcher.hxx>
 
-#include <pattern/frame.hxx>
 #include <framework/framelistanalyzer.hxx>
 #include <targets.h>
-#include <services.h>
-#include <general.h>
-#include <isstartmoduledispatch.hxx>
+#include "isstartmoduledispatch.hxx"
 
 #include <com/sun/star/frame/Desktop.hpp>
+#include <com/sun/star/frame/DispatchResultState.hpp>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/StartModule.hpp>
-#include <com/sun/star/awt/XTopWindow.hpp>
-#include <com/sun/star/beans/XFastPropertySet.hpp>
 
-#include <toolkit/helper/vclunohelper.hxx>
-#include <vcl/window.hxx>
-#include <vcl/svapp.hxx>
 #include <unotools/moduleoptions.hxx>
-#include <comphelper/processfactory.hxx>
 
 namespace framework{
 
@@ -69,8 +61,8 @@ void SAL_CALL StartModuleDispatcher::dispatchWithNotification(const css::util::U
         nResult = css::frame::DispatchResultState::FAILURE;
         if (implts_isBackingModePossible ())
         {
-            if (implts_establishBackingMode ())
-                nResult = css::frame::DispatchResultState::SUCCESS;
+            implts_establishBackingMode ();
+            nResult = css::frame::DispatchResultState::SUCCESS;
         }
     }
 
@@ -102,8 +94,8 @@ bool StartModuleDispatcher::implts_isBackingModePossible()
     if ( ! SvtModuleOptions().IsModuleInstalled(SvtModuleOptions::EModule::STARTMODULE))
         return false;
 
-    css::uno::Reference< css::frame::XFramesSupplier > xDesktop(
-        css::frame::Desktop::create( m_xContext ), css::uno::UNO_QUERY);
+    css::uno::Reference< css::frame::XFramesSupplier > xDesktop =
+        css::frame::Desktop::create( m_xContext );
 
     FrameListAnalyzer aCheck(
         xDesktop,
@@ -121,7 +113,7 @@ bool StartModuleDispatcher::implts_isBackingModePossible()
     return bIsPossible;
 }
 
-bool StartModuleDispatcher::implts_establishBackingMode()
+void StartModuleDispatcher::implts_establishBackingMode()
 {
     css::uno::Reference< css::frame::XDesktop2> xDesktop       = css::frame::Desktop::create( m_xContext );
     css::uno::Reference< css::frame::XFrame > xFrame           = xDesktop->findFrame(SPECIALTARGET_BLANK, 0);
@@ -132,8 +124,6 @@ bool StartModuleDispatcher::implts_establishBackingMode()
     xFrame->setComponent(xComponentWindow, xStartModule);
     xStartModule->attachFrame(xFrame);
     xContainerWindow->setVisible(true);
-
-    return true;
 }
 
 void StartModuleDispatcher::implts_notifyResultListener(const css::uno::Reference< css::frame::XDispatchResultListener >& xListener,

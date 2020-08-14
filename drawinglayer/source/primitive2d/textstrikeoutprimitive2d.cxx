@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <drawinglayer/primitive2d/textstrikeoutprimitive2d.hxx>
+#include <primitive2d/textstrikeoutprimitive2d.hxx>
 #include <drawinglayer/primitive2d/textlayoutdevice.hxx>
 #include <drawinglayer/primitive2d/textprimitive2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
@@ -26,12 +26,11 @@
 #include <drawinglayer/attribute/lineattribute.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
+#include <rtl/ustrbuf.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         BaseTextStrikeoutPrimitive2D::BaseTextStrikeoutPrimitive2D(
             const basegfx::B2DHomMatrix& rObjectTransformation,
             double fWidth,
@@ -56,14 +55,8 @@ namespace drawinglayer
 
             return false;
         }
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         void TextCharacterStrikeoutPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
             // strikeout with character
@@ -87,20 +80,21 @@ namespace drawinglayer
             const double fStrikeCharCount(fabs(getWidth()/fStrikeCharWidth));
             const sal_uInt32 nStrikeCharCount(static_cast< sal_uInt32 >(fStrikeCharCount + 0.5));
             std::vector<double> aDXArray(nStrikeCharCount);
-            OUString aStrikeoutString;
+            OUStringBuffer aStrikeoutString;
 
             for(sal_uInt32 a(0); a < nStrikeCharCount; a++)
             {
-                aStrikeoutString += aSingleCharString;
+                aStrikeoutString.append(aSingleCharString);
                 aDXArray[a] = (a + 1) * fStrikeCharWidth;
             }
 
+            auto len = aStrikeoutString.getLength();
             rContainer.push_back(
                 new TextSimplePortionPrimitive2D(
                     getObjectTransformation(),
-                    aStrikeoutString,
+                    aStrikeoutString.makeStringAndClear(),
                     0,
-                    aStrikeoutString.getLength(),
+                    len,
                     aDXArray,
                     getFontAttribute(),
                     getLocale(),
@@ -138,14 +132,8 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(TextCharacterStrikeoutPrimitive2D, PRIMITIVE2D_ID_TEXTCHARACTERSTRIKEOUTPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         void TextGeometryStrikeoutPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
             OSL_ENSURE(TEXT_STRIKEOUT_SLASH != getTextStrikeout() && TEXT_STRIKEOUT_X != getTextStrikeout(),
@@ -193,7 +181,7 @@ namespace drawinglayer
             aStrikeoutLine.append(basegfx::B2DPoint(getWidth(), -fStrikeoutOffset));
 
             const basegfx::B2DHomMatrix aUnscaledTransform(
-                basegfx::tools::createShearXRotateTranslateB2DHomMatrix(
+                basegfx::utils::createShearXRotateTranslateB2DHomMatrix(
                     fShearX, fRotate, aTranslate));
 
             aStrikeoutLine.transform(aUnscaledTransform);
@@ -210,7 +198,7 @@ namespace drawinglayer
                 const double fLineDist(2.0 * fStrikeoutHeight);
 
                 // move base point of text to 0.0 and de-rotate
-                basegfx::B2DHomMatrix aTransform(basegfx::tools::createTranslateB2DHomMatrix(
+                basegfx::B2DHomMatrix aTransform(basegfx::utils::createTranslateB2DHomMatrix(
                     -aTranslate.getX(), -aTranslate.getY()));
                 aTransform.rotate(-fRotate);
 
@@ -262,7 +250,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(TextGeometryStrikeoutPrimitive2D, PRIMITIVE2D_ID_TEXTGEOMETRYSTRIKEOUTPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

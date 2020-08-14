@@ -23,8 +23,6 @@
 #include <com/sun/star/ui/dialogs/XFolderPicker2.hpp>
 #include <com/sun/star/ui/dialogs/XAsynchronousExecutableDialog.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include "commonpicker.hxx"
 
@@ -40,13 +38,11 @@ typedef
 class SvtFolderPicker: public SvtFolderPicker_Base
 {
 private:
-    OUString         m_aDescription;
-
     css::uno::Reference< css::ui::dialogs::XDialogClosedListener >
                             m_xListener;
 
-    void                            prepareExecute( );
-    DECL_LINK(                DialogClosedHdl, Dialog&, void );
+    void                            prepareExecute();
+    void                            DialogClosedHdl(sal_Int32 nResult);
 
 public:
                                     SvtFolderPicker();
@@ -54,7 +50,6 @@ public:
 
 
     // XFolderPicker2 functions
-
 
     virtual void SAL_CALL           setDisplayDirectory( const OUString& aDirectory ) override;
     virtual OUString SAL_CALL       getDisplayDirectory() override;
@@ -85,20 +80,11 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL
                                     getSupportedServiceNames() override;
 
-    /* Helper for XServiceInfo */
-    static css::uno::Sequence< OUString > impl_getStaticSupportedServiceNames();
-    static OUString impl_getStaticImplementationName();
-
-    /* Helper for registry */
-    /// @throws css::uno::Exception
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL impl_createInstance (
-        const css::uno::Reference< css::uno::XComponentContext >& rxContext );
-
 protected:
 
     // OCommonPicker overridables
 
-    virtual VclPtr<SvtFileDialog_Base> implCreateDialog( vcl::Window* _pParent ) override;
+    virtual std::shared_ptr<SvtFileDialog_Base> implCreateDialog( weld::Window* pParent ) override;
     virtual sal_Int16       implExecutePicker( ) override;
 };
 

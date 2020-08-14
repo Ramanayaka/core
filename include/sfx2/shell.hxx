@@ -20,54 +20,41 @@
 #define INCLUDED_SFX2_SHELL_HXX
 
 #include <memory>
-#include <com/sun/star/embed/VerbDescriptor.hpp>
 #include <rtl/ustring.hxx>
 #include <sal/config.h>
 #include <sal/types.h>
+#include <svl/typedwhich.hxx>
 #include <sfx2/dllapi.h>
-#include <sfx2/sfxuno.hxx>
 #include <svl/SfxBroadcaster.hxx>
 #include <o3tl/typed_flags_set.hxx>
 #include <o3tl/strong_int.hxx>
 
-class ResMgr;
-namespace vcl { class Window; }
-class ToolBox;
+namespace com::sun::star::embed { struct VerbDescriptor; }
+namespace com::sun::star::uno { template <class E> class Sequence; }
+
 class SfxItemPool;
 class SfxPoolItem;
 class SfxRequest;
 class SfxItemSet;
-struct SfxFormalArgument;
-class StatusBar;
 class SfxInterface;
 class SfxViewShell;
 class SfxObjectShell;
-class SfxSlotPool;
-class SvGlobalName;
 
-class SfxShellObject;
 class SfxShell;
 struct SfxShell_Impl;
-class SfxShellObject;
 class SfxDispatcher;
 class SfxViewFrame;
 class SfxSlot;
 class SfxRepeatTarget;
-class SbxVariable;
-class SbxBase;
 class SfxBindings;
-
-namespace svl
-{
-    class IUndoManager;
-}
+class SfxModule;
+class SfxUndoManager;
 
 /**
     Id for <SfxInterface>s, gives a quasi-static access to the interface
     through an array to <SfxApplication>.
 */
-struct SfxInterfaceIdTag {};
-typedef o3tl::strong_int<sal_uInt16, SfxInterfaceIdTag> SfxInterfaceId;
+typedef o3tl::strong_int<sal_uInt16, struct SfxInterfaceIdTag> SfxInterfaceId;
 
 constexpr auto SFX_INTERFACE_NONE         = SfxInterfaceId(0);
 constexpr auto SFX_INTERFACE_SFXAPP       = SfxInterfaceId(1);
@@ -98,17 +85,16 @@ enum class SfxShellFeature
     FormShowFilterNavigator = 0x0100,
     FormShowTextControlBar  = 0x0200,
     FormTBControls          = 0x0400,
-    FormTBMoreControls      = 0x0800,
     FormTBDesign            = 0x1000,
     FormShowDataNavigator   = 0x2000,
-    // masks to make sure modules don't use flags from an other
+    // masks to make sure modules don't use flags from another
     SwMask                  = 0x0001,
     BasicMask               = 0x0004,
     FormMask                = 0x3ff8
 };
 namespace o3tl
 {
-    template<> struct typed_flags<SfxShellFeature> : is_typed_flags<SfxShellFeature, 0x3ffd> {};
+    template<> struct typed_flags<SfxShellFeature> : is_typed_flags<SfxShellFeature, 0x37fd> {};
 }
 
 /* Flags that are being used in the slot definitions for the disable-features */
@@ -143,7 +129,7 @@ class SFX2_DLLPUBLIC SfxShell: public SfxBroadcaster
 
     std::unique_ptr< SfxShell_Impl >              pImpl;
     SfxItemPool*                pPool;
-    ::svl::IUndoManager*        pUndoMgr;
+    SfxUndoManager*             pUndoMgr;
 
 private:
                                 SfxShell( const SfxShell & ) = delete;
@@ -298,7 +284,7 @@ public:
         The class SfxShell itself does not have a SfxUndoManager, a NULL-pointer
         is therefore returned.
         */
-    virtual ::svl::IUndoManager* GetUndoManager();
+    virtual SfxUndoManager*     GetUndoManager();
 
     /**
         Sets a <SfxUndoManager> for this <SfxShell> Instance. For the undo
@@ -306,12 +292,12 @@ public:
         <SfxDispatcher>.
 
         On the given <SfxUndoManager> is automatically the current
-        Max-Undo-Action-Count setting set form the options.
+        Max-Undo-Action-Count setting set from the options.
 
         'pNewUndoMgr' must exist until the Destructor of SfxShell instance is called
         or until the next 'SetUndoManager()'.
         */
-    void                        SetUndoManager( ::svl::IUndoManager *pNewUndoMgr );
+    void                        SetUndoManager( SfxUndoManager *pNewUndoMgr );
 
     /**
         Returns a pointer to the <SfxRepeatTarget> instance that is used in
@@ -425,6 +411,10 @@ public:
         <SfxShell::RemoveItem(sal_uInt16)>
         */
     const SfxPoolItem*          GetItem( sal_uInt16 nSlotId ) const;
+    template<class T> const T*  GetItem( TypedWhichId<T> nWhich ) const
+    {
+        return static_cast<const T*>(GetItem(sal_uInt16(nWhich)));
+    }
 
     /**
         With this method, any objects of subclasses of <SfxPoolItem> can be made
@@ -458,7 +448,7 @@ public:
     /** Set the name of the sidebar context that is broadcast on calls
         to Activation().
     */
-    void SetContextName (const ::rtl::OUString& rsContextName);
+    void SetContextName (const OUString& rsContextName);
 
     /** Broadcast a sidebar context change.
         This method is typically called from Activate() or
@@ -483,6 +473,14 @@ public:
 
     /**
 
+        This method determines whether we need to execute without checking
+        the disabled state of the slot. This is used for dynamic conditions
+        while you can use SfxSlotMode::FASTCALL for a specific slotid in general.
+        */
+    virtual bool IsConditionalFastCall( const SfxRequest &rReq );
+
+    /**
+
         This method controls the activation of SfxShell instance. First, by calling
         the virtual method <SfxShell::Activate(sal_Bool)> which gives the subclass the
         opportunity to respond to the event.
@@ -502,7 +500,7 @@ public:
         Then the subclass gets the opportunity in every case to respond to the
         event by calling the virtual method <SfxShell::Deactivate(sal_Bool)>.
         */
-    SAL_DLLPRIVATE void DoDeactivate_Impl( SfxViewFrame *pFrame, bool bMDI);
+    SAL_DLLPRIVATE void DoDeactivate_Impl( SfxViewFrame const *pFrame, bool bMDI);
 };
 
 /**
@@ -554,7 +552,7 @@ inline void SfxShell::SetPool
             #Class, Abstract, GetInterfaceId(),                             \
             SuperClass::GetStaticInterface(),                               \
             a##Class##Slots_Impl[0],                                        \
-            (sal_uInt16) (sizeof(a##Class##Slots_Impl) / sizeof(SfxSlot) ) );   \
+            sal_uInt16(sizeof(a##Class##Slots_Impl) / sizeof(SfxSlot) ) );   \
             InitInterface_Impl();                                           \
         }                                                                   \
         return pInterface;                                                  \

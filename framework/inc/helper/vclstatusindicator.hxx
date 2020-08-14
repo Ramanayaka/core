@@ -20,10 +20,7 @@
 #ifndef INCLUDED_FRAMEWORK_INC_HELPER_VCLSTATUSINDICATOR_HXX
 #define INCLUDED_FRAMEWORK_INC_HELPER_VCLSTATUSINDICATOR_HXX
 
-#include <general.h>
-
 #include <com/sun/star/task/XStatusIndicator.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 
 #include <cppuhelper/implbase.hxx>
@@ -33,7 +30,7 @@ namespace framework {
 
 // declaration
 
-class VCLStatusIndicator : public  ::cppu::WeakImplHelper< css::task::XStatusIndicator >
+class VCLStatusIndicator final : public  ::cppu::WeakImplHelper< css::task::XStatusIndicator >
 {
 
     // member
@@ -47,13 +44,10 @@ class VCLStatusIndicator : public  ::cppu::WeakImplHelper< css::task::XStatusInd
         /** shows the progress.
 
             @attention  This member is not synchronized using our own mutex!
-                        Its guarded by the solarmutex only. Otherwise
-                        we have to lock two of them, which can force a deadlock ...
+                        It's guarded by the solarmutex only. Otherwise
+                        we have to lock two of them, which can force a deadlock...
             */
         VclPtr<StatusBar> m_pStatusBar;
-
-        /** knows the current info text of the progress. */
-        OUString m_sText;
 
         /** knows the current range of the progress. */
         sal_Int32 m_nRange;
@@ -88,7 +82,7 @@ class VCLStatusIndicator : public  ::cppu::WeakImplHelper< css::task::XStatusInd
     private:
 
         static void impl_recalcLayout(vcl::Window* pStatusBar   ,
-                                      vcl::Window* pParentWindow);
+                                      vcl::Window const * pParentWindow);
 };
 
 } // namespace framework

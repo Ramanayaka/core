@@ -17,23 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLESTATUSBARITEM_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLESTATUSBARITEM_HXX
+#pragma once
 
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <comphelper/accessibletexthelper.hxx>
 #include <cppuhelper/implbase2.hxx>
+#include <vcl/status.hxx>
 #include <vcl/vclptr.hxx>
-
-class StatusBar;
 
 namespace utl {
 class AccessibleStateSetHelper;
 }
 
 
-//  class VCLXAccessibleStatusBarItem
 
 
 typedef ::comphelper::OAccessibleTextHelper AccessibleTextHelper_BASE;
@@ -42,8 +40,8 @@ typedef ::cppu::ImplHelper2<
     css::accessibility::XAccessible,
     css::lang::XServiceInfo > VCLXAccessibleStatusBarItem_BASE;
 
-class VCLXAccessibleStatusBarItem : public AccessibleTextHelper_BASE,
-                                    public VCLXAccessibleStatusBarItem_BASE
+class VCLXAccessibleStatusBarItem final : public AccessibleTextHelper_BASE,
+                                          public VCLXAccessibleStatusBarItem_BASE
 {
     friend class VCLXAccessibleStatusBar;
 
@@ -54,7 +52,6 @@ private:
     OUString                m_sItemText;
     bool                    m_bShowing;
 
-protected:
     bool                    IsShowing();
     void                    SetShowing( bool bShowing );
     void                    SetItemName( const OUString& sItemName );
@@ -78,7 +75,6 @@ protected:
 
 public:
     VCLXAccessibleStatusBarItem( StatusBar* pStatusBar, sal_uInt16 nItemId );
-    virtual ~VCLXAccessibleStatusBarItem() override;
 
     // XInterface
     DECLARE_XINTERFACE()
@@ -96,7 +92,7 @@ public:
 
     // XAccessibleContext
     virtual sal_Int32 SAL_CALL getAccessibleChildCount(  ) override;
-    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleChild( sal_Int32 i ) override;
+    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleChild(sal_Int32) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleParent(  ) override;
     virtual sal_Int32 SAL_CALL getAccessibleIndexInParent(  ) override;
     virtual sal_Int16 SAL_CALL getAccessibleRole(  ) override;
@@ -125,8 +121,13 @@ public:
     virtual sal_Int32 SAL_CALL getIndexAtPoint( const css::awt::Point& aPoint ) override;
     virtual sal_Bool SAL_CALL setSelection( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
     virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+    virtual OUString SAL_CALL getText() override;
+    virtual sal_Int32 SAL_CALL getCharacterCount() override;
+    virtual sal_Unicode SAL_CALL getCharacter( sal_Int32 nIndex ) override;
+    virtual OUString SAL_CALL getTextRange(sal_Int32 nStartIndex, sal_Int32 nEndIndex) override;
+    virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
+
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLESTATUSBARITEM_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

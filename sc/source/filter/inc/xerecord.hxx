@@ -22,7 +22,10 @@
 
 #include "xlconst.hxx"
 #include "xestream.hxx"
-#include <memory>
+#include "xlstream.hxx"
+#include <salhelper/simplereferenceobject.hxx>
+#include <rtl/ref.hxx>
+#include <type_traits>
 
 // Base classes to export Excel records =======================================
 
@@ -33,15 +36,39 @@
     records contained in the class). Derive from XclExpRecord (instead from
     this class) to write common records.
  */
-class XclExpRecordBase
+class XclExpRecordBase : public salhelper::SimpleReferenceObject
 {
 public:
+    XclExpRecordBase() {}
+
+    // this class is stored both ref-counted and by value
+    XclExpRecordBase(XclExpRecordBase const &)
+        : salhelper::SimpleReferenceObject() {}
+    XclExpRecordBase(XclExpRecordBase &&)
+        : salhelper::SimpleReferenceObject() {}
+    XclExpRecordBase& operator=(XclExpRecordBase const &)
+        { return *this; }
+    XclExpRecordBase& operator=(XclExpRecordBase &&) noexcept
+        { return *this; }
+
     virtual             ~XclExpRecordBase();
 
     /** Overwrite this method to do any operation while saving the record. */
     virtual void        Save( XclExpStream& rStrm );
     virtual void        SaveXml( XclExpXmlStream& rStrm );
 };
+
+/*namespace std
+{
+    template<typename T,
+            typename = typename std::enable_if<
+                std::is_base_of<XclExpRecordBase,T>::value
+              >::type>
+    class shared_ptr
+    {
+        shared_ptr() {}
+    };
+};*/
 
 class XclExpDelegatingRecord : public XclExpRecordBase
 {
@@ -121,6 +148,8 @@ public:
     explicit            XclExpRecord(
                             sal_uInt16 nRecId = EXC_ID_UNKNOWN,
                             std::size_t nRecSize = 0 );
+
+                        XclExpRecord(XclExpRecord const &) = default;
 
     virtual             ~XclExpRecord() override;
 
@@ -202,9 +231,7 @@ void XclExpValueRecord< Type >::SaveXml( XclExpXmlStream& rStrm )
 {
     if( mnAttribute == -1 )
         return;
-    rStrm.WriteAttributes(
-        mnAttribute,    OString::number( maValue ).getStr(),
-        FSEND );
+    rStrm.WriteAttributes(mnAttribute, OUString::number(maValue));
 }
 
 template<>
@@ -295,7 +322,7 @@ template< typename RecType = XclExpRecordBase >
 class XclExpRecordList : public XclExpRecordBase
 {
 public:
-    typedef std::shared_ptr< RecType > RecordRefType;
+    typedef rtl::Reference< RecType > RecordRefType;
 
     bool         IsEmpty() const { return maRecs.empty(); }
     size_t       GetSize() const { return maRecs.size(); }
@@ -304,32 +331,44 @@ public:
     bool         HasRecord( size_t nPos ) const
                             { return nPos < maRecs.size(); }
     /** Returns reference to an existing record or empty reference on error. */
-    RecordRefType GetRecord( size_t nPos ) const
-                            { return (nPos < maRecs.size()) ? maRecs[ nPos ] : RecordRefType(); }
+    RecType*     GetRecord( size_t nPos ) const
+                            { return nPos < maRecs.size() ? maRecs[ nPos ].get() : nullptr; }
     /** Returns reference to the first existing record or empty reference, if list is empty. */
-    RecordRefType GetFirstRecord() const
-                            { return maRecs.empty() ? RecordRefType() : maRecs.front(); }
+    RecType*     GetFirstRecord() const
+                            { return maRecs.empty() ? nullptr : maRecs.front().get(); }
     /** Returns reference to the last existing record or empty reference, if list is empty. */
-    RecordRefType GetLastRecord() const
-                            { return maRecs.empty() ? RecordRefType() : maRecs.back(); }
+    RecType*     GetLastRecord() const
+                            { return maRecs.empty() ? nullptr : maRecs.back().get(); }
 
     /** Inserts a record at the specified position into the list. */
-    void         InsertRecord( RecordRefType xRec, size_t nPos )
-                            { if( xRec.get() ) maRecs.insert( maRecs.begin() + ::std::min( nPos, maRecs.size() ), xRec ); }
+    void         InsertRecord( RecType* pRec, size_t nPos )
+                            { assert(pRec); maRecs.insert( maRecs.begin() + ::std::min( nPos, maRecs.size() ), pRec ); }
+    void         InsertRecord( RecordRefType pRec, size_t nPos )
+                            { assert(pRec); maRecs.insert( maRecs.begin() + ::std::min( nPos, maRecs.size() ), std::move(pRec) ); }
     /** Appends a record to the list. */
-    void         AppendRecord( RecordRefType xRec )
-                            { if( xRec.get() ) maRecs.push_back( xRec ); }
+    void         AppendRecord( RecType* pRec )
+                            { if (pRec) maRecs.push_back( pRec ); }
+    void         AppendRecord( const RecordRefType& xRec )
+                            { if (xRec) maRecs.push_back( xRec.get() ); }
+    void         AppendRecord( RecordRefType xRec ) &&
+                            { if (xRec) maRecs.push_back( std::move(xRec) ); }
     /** Replaces the record at the specified position from the list with the passed record. */
-    void         ReplaceRecord( RecordRefType xRec, size_t nPos )
-                            { RemoveRecord( nPos ); InsertRecord( xRec, nPos ); }
+    void         ReplaceRecord( RecType* pRec, size_t nPos )
+                            { if (pRec) maRecs[nPos] = pRec; else RemoveRecord( nPos ); }
+    void         ReplaceRecord( RecordRefType const & xRec, size_t nPos )
+                            { ReplaceRecord(xRec.get(), nPos); }
 
     /** Appends a newly created record to the list. */
     void         AppendNewRecord( RecType* pRec )
-                            { if( pRec ) AppendRecord( RecordRefType( pRec ) ); }
+                            { assert(pRec); maRecs.push_back( pRec ); }
+    void         AppendNewRecord( RecordRefType const & xRec )
+                            { AppendNewRecord(xRec.get()); }
+    void         AppendNewRecord( RecordRefType xRec ) &&
+                            { assert(xRec); maRecs.append(std::move(xRec)); }
 
     /** Removes the record at the specified position from the list. */
     void         RemoveRecord( size_t nPos )
-                            { if( nPos < maRecs.size() ) maRecs.erase( maRecs.begin() + nPos ); }
+                            { maRecs.erase( maRecs.begin() + nPos ); }
     /** Removes all records from the list. */
     void         RemoveAllRecords() { maRecs.clear(); }
 

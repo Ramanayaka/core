@@ -34,17 +34,17 @@
 #include <vbahelper/vbahelper.hxx>
 #include <vbahelper/vbahelperinterface.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { class XWindow2; }
     namespace awt { class XWindow; }
     namespace frame { class XController; }
     namespace frame { class XModel; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
-namespace ooo { namespace vba {
+namespace ooo::vba {
     class XHelperInterface;
-} }
+}
 
 typedef InheritedHelperInterfaceWeakImpl< ov::XWindowBase > WindowBaseImpl_BASE;
 
@@ -80,11 +80,11 @@ public:
 
 protected:
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::frame::XController > getController();
+    css::uno::Reference< css::frame::XController > getController() const;
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::awt::XWindow > getWindow();
+    css::uno::Reference< css::awt::XWindow > getWindow() const;
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::awt::XWindow2 > getWindow2();
+    css::uno::Reference< css::awt::XWindow2 > getWindow2() const;
 
     css::uno::Reference< css::frame::XModel > m_xModel;
 

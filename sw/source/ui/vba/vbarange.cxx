@@ -19,18 +19,13 @@
 #include "vbarange.hxx"
 #include <vbahelper/vbahelper.hxx>
 #include <basic/sberrors.hxx>
-#include <tools/diagnose_ex.h>
 #include "vbarangehelper.hxx"
 #include <ooo/vba/word/WdBreakType.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/style/BreakType.hpp>
 #include <com/sun/star/text/ControlCharacter.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/text/XTextRangeCompare.hpp>
-#include <com/sun/star/text/XWordCursor.hpp>
-#include <com/sun/star/text/XParagraphCursor.hpp>
-#include <ooo/vba/word/WdUnits.hpp>
-#include <ooo/vba/word/WdMovementType.hpp>
+#include <com/sun/star/text/XTextViewCursor.hpp>
 #include "vbaparagraphformat.hxx"
 #include "vbastyle.hxx"
 #include "vbafont.hxx"
@@ -41,6 +36,7 @@
 #include "vbabookmarks.hxx"
 #include "vbasections.hxx"
 #include "vbafield.hxx"
+#include "wordvbahelper.hxx"
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
@@ -160,7 +156,7 @@ SwVbaRange::setText( const OUString& rText )
     if( !sName.isEmpty() )
     {
         uno::Reference< text::XBookmarksSupplier > xBookmarksSupplier( mxTextDocument, uno::UNO_QUERY_THROW );
-        uno::Reference< container::XNameAccess > xNameAccess( xBookmarksSupplier->getBookmarks(), uno::UNO_QUERY_THROW );
+        uno::Reference< container::XNameAccess > xNameAccess( xBookmarksSupplier->getBookmarks(), uno::UNO_SET_THROW );
         if( !xNameAccess->hasByName( sName ) )
         {
             uno::Reference< frame::XModel > xModel( mxTextDocument, uno::UNO_QUERY_THROW );
@@ -310,7 +306,7 @@ SwVbaRange::getListFormat()
 ::sal_Int32 SAL_CALL SwVbaRange::getLanguageID()
 {
     uno::Reference< beans::XPropertySet > xParaProps( mxTextCursor, uno::UNO_QUERY_THROW );
-    return (sal_uInt16)SwVbaStyle::getLanguageID( xParaProps );
+    return static_cast<sal_uInt16>(SwVbaStyle::getLanguageID( xParaProps ));
 }
 
 void SAL_CALL SwVbaRange::setLanguageID( ::sal_Int32 _languageid )
@@ -327,7 +323,7 @@ SwVbaRange::PageSetup( )
     OUString aPageStyleName;
     xParaProps->getPropertyValue("PageStyleName") >>= aPageStyleName;
     uno::Reference< style::XStyleFamiliesSupplier > xSytleFamSupp( xModel, uno::UNO_QUERY_THROW );
-    uno::Reference< container::XNameAccess > xSytleFamNames( xSytleFamSupp->getStyleFamilies(), uno::UNO_QUERY_THROW );
+    uno::Reference< container::XNameAccess > xSytleFamNames( xSytleFamSupp->getStyleFamilies(), uno::UNO_SET_THROW );
     uno::Reference< container::XNameAccess > xPageStyles( xSytleFamNames->getByName("PageStyles"), uno::UNO_QUERY_THROW );
     uno::Reference< beans::XPropertySet > xPageProps( xPageStyles->getByName( aPageStyleName ), uno::UNO_QUERY_THROW );
     return uno::makeAny( uno::Reference< word::XPageSetup >( new SwVbaPageSetup( this, mxContext, xModel, xPageProps ) ) );
@@ -412,18 +408,16 @@ SwVbaRange::Fields( const uno::Any& index )
 OUString
 SwVbaRange::getServiceImplName()
 {
-    return OUString("SwVbaRange");
+    return "SwVbaRange";
 }
 
 uno::Sequence< OUString >
 SwVbaRange::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Range";
-    }
+        "ooo.vba.word.Range"
+    };
     return aServiceNames;
 }
 

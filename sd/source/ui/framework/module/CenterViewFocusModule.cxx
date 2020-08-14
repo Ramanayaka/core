@@ -19,20 +19,15 @@
 
 #include "CenterViewFocusModule.hxx"
 
-#include "framework/ConfigurationController.hxx"
-#include "framework/FrameworkHelper.hxx"
-#include "framework/ViewShellWrapper.hxx"
+#include <framework/FrameworkHelper.hxx>
+#include <framework/ViewShellWrapper.hxx>
 
-#include "DrawController.hxx"
-#include "ViewShellBase.hxx"
-#include "ViewShellManager.hxx"
-#include "strings.hrc"
-#include "sdresid.hxx"
+#include <DrawController.hxx>
+#include <ViewShellBase.hxx>
+#include <ViewShellManager.hxx>
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-
-#include <toolkit/awt/vclxdevice.hxx>
-#include <sfx2/viewfrm.hxx>
+#include <comphelper/servicehelper.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -40,11 +35,11 @@ using namespace ::com::sun::star::drawing::framework;
 
 using ::sd::framework::FrameworkHelper;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 //===== CenterViewFocusModule ====================================================
 
-CenterViewFocusModule::CenterViewFocusModule (Reference<frame::XController>& rxController)
+CenterViewFocusModule::CenterViewFocusModule (Reference<frame::XController> const & rxController)
     : CenterViewFocusModuleInterfaceBase(MutexOwner::maMutex),
       mbValid(false),
       mxConfigurationController(),
@@ -57,14 +52,9 @@ CenterViewFocusModule::CenterViewFocusModule (Reference<frame::XController>& rxC
         mxConfigurationController = xControllerManager->getConfigurationController();
 
         // Tunnel through the controller to obtain a ViewShellBase.
-        Reference<lang::XUnoTunnel> xTunnel (rxController, UNO_QUERY);
-        if (xTunnel.is())
-        {
-            ::sd::DrawController* pController = reinterpret_cast<sd::DrawController*>(
-                xTunnel->getSomething(sd::DrawController::getUnoTunnelId()));
-            if (pController != nullptr)
-                mpBase = pController->GetViewShellBase();
-        }
+        auto pController = comphelper::getUnoTunnelImplementation<sd::DrawController>(rxController);
+        if (pController != nullptr)
+            mpBase = pController->GetViewShellBase();
 
         // Check, if all required objects do exist.
         if (mxConfigurationController.is() && mpBase!=nullptr)
@@ -105,11 +95,11 @@ void SAL_CALL CenterViewFocusModule::notifyConfigurationChange (
 {
     if (mbValid)
     {
-        if (rEvent.Type.equals(FrameworkHelper::msConfigurationUpdateEndEvent))
+        if (rEvent.Type == FrameworkHelper::msConfigurationUpdateEndEvent)
         {
             HandleNewView(rEvent.Configuration);
         }
-        else if (rEvent.Type.equals(FrameworkHelper::msResourceActivationEvent))
+        else if (rEvent.Type == FrameworkHelper::msResourceActivationEvent)
         {
             if (rEvent.ResourceId->getResourceURL().match(FrameworkHelper::msViewURLPrefix))
                 mbNewViewCreated = true;
@@ -120,30 +110,28 @@ void SAL_CALL CenterViewFocusModule::notifyConfigurationChange (
 void CenterViewFocusModule::HandleNewView (
     const Reference<XConfiguration>& rxConfiguration)
 {
-    if (mbNewViewCreated)
-    {
-        mbNewViewCreated = false;
-        // Make the center pane the active one.  Tunnel through the
-        // controller to obtain a ViewShell pointer.
+    if (!mbNewViewCreated)
+        return;
 
-        Sequence<Reference<XResourceId> > xViewIds (rxConfiguration->getResources(
-            FrameworkHelper::CreateResourceId(FrameworkHelper::msCenterPaneURL),
-            FrameworkHelper::msViewURLPrefix,
-            AnchorBindingMode_DIRECT));
-        Reference<XView> xView;
-        if (xViewIds.getLength() > 0)
-            xView.set( mxConfigurationController->getResource(xViewIds[0]),UNO_QUERY);
-        Reference<lang::XUnoTunnel> xTunnel (xView, UNO_QUERY);
-        if (xTunnel.is() && mpBase!=nullptr)
+    mbNewViewCreated = false;
+    // Make the center pane the active one.  Tunnel through the
+    // controller to obtain a ViewShell pointer.
+
+    Sequence<Reference<XResourceId> > xViewIds (rxConfiguration->getResources(
+        FrameworkHelper::CreateResourceId(FrameworkHelper::msCenterPaneURL),
+        FrameworkHelper::msViewURLPrefix,
+        AnchorBindingMode_DIRECT));
+    Reference<XView> xView;
+    if (xViewIds.hasElements())
+        xView.set( mxConfigurationController->getResource(xViewIds[0]),UNO_QUERY);
+    if (mpBase!=nullptr)
+    {
+        auto pViewShellWrapper = comphelper::getUnoTunnelImplementation<ViewShellWrapper>(xView);
+        if (pViewShellWrapper != nullptr)
         {
-            ViewShellWrapper* pViewShellWrapper = reinterpret_cast<ViewShellWrapper*>(
-                xTunnel->getSomething(ViewShellWrapper::getUnoTunnelId()));
-            if (pViewShellWrapper != nullptr)
-            {
-                std::shared_ptr<ViewShell> pViewShell = pViewShellWrapper->GetViewShell();
-                if (pViewShell.get() != nullptr)
-                    mpBase->GetViewShellManager()->MoveToTop(*pViewShell);
-            }
+            std::shared_ptr<ViewShell> pViewShell = pViewShellWrapper->GetViewShell();
+            if (pViewShell != nullptr)
+                mpBase->GetViewShellManager()->MoveToTop(*pViewShell);
         }
     }
 }
@@ -160,6 +148,6 @@ void SAL_CALL CenterViewFocusModule::disposing (
         }
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

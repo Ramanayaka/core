@@ -22,7 +22,6 @@
 
 #include <com/sun/star/presentation/AnimationEffect.hpp>
 #include <com/sun/star/presentation/AnimationSpeed.hpp>
-#include <com/sun/star/drawing/XShape.hpp>
 #include <xmloff/xmlement.hxx>
 
 enum XMLEffect
@@ -89,8 +88,10 @@ extern const SvXMLEnumMapEntry<XMLEffectDirection> aXML_AnimationDirection_EnumM
 
 extern const SvXMLEnumMapEntry<css::presentation::AnimationSpeed> aXML_AnimationSpeed_EnumMap[];
 
-void SdXMLImplSetEffect( css::presentation::AnimationEffect eEffect, XMLEffect& eKind, XMLEffectDirection& eDirection, sal_Int16& nStartScale, bool& bIn );
-css::presentation::AnimationEffect ImplSdXMLgetEffect( XMLEffect eKind, XMLEffectDirection eDirection, sal_Int16 nStartScale, bool bIn );
+void SdXMLImplSetEffect(css::presentation::AnimationEffect eEffect, XMLEffect& eKind,
+                        XMLEffectDirection& eDirection, sal_Int16& nStartScale, bool& bIn);
+css::presentation::AnimationEffect
+ImplSdXMLgetEffect(XMLEffect eKind, XMLEffectDirection eDirection, sal_Int16 nStartScale, bool bIn);
 
 #endif // INCLUDED_XMLOFF_INC_ANIM_HXX
 

@@ -21,10 +21,9 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_ANCHOREDOBJECTPOSITION_HXX
 
 #include <swtypes.hxx>
-#include <frame.hxx>
+#include "frame.hxx"
 
 class SdrObject;
-class SwFrame;
 class SwFlyFrame;
 class SwContact;
 class SwFrameFormat;
@@ -43,9 +42,6 @@ namespace objectpositioning
     private:
         // object to be positioned
         SdrObject& mrDrawObj;
-
-        // does the object represents a Writer fly frame
-        bool mbIsObjFly;
         // #i26791# - anchored object the object belongs to;
         SwAnchoredObject* mpAnchoredObj;
         // frame the object is anchored at
@@ -54,6 +50,8 @@ namespace objectpositioning
         SwContact* mpContact;
         // frame format
         const SwFrameFormat* mpFrameFormat;
+        // does the object represents a Writer fly frame
+        bool mbIsObjFly;
         // #i62875#
         bool mbFollowTextFlow;
         // #i62875#
@@ -374,7 +372,7 @@ namespace objectpositioning
                                                const bool _bEvenPage
                                              ) const;
 
-        /** detemine, if object has to draw aside given fly frame
+        /** determine, if object has to draw aside given fly frame
 
             method used by <AdjustHoriRelPosForDrawAside(..)>
 

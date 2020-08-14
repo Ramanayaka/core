@@ -44,12 +44,12 @@ using namespace com::sun::star::uno;
 using namespace com::sun::star;
 using namespace comphelper;
 
-OUString dropTarget_getImplementationName()
+static OUString dropTarget_getImplementationName()
 {
-    return OUString("com.sun.star.comp.datatransfer.dnd.OleDropTarget_V1");
+    return "com.sun.star.comp.datatransfer.dnd.OleDropTarget_V1";
 }
 
-Sequence<OUString> dropTarget_getSupportedServiceNames()
+static Sequence<OUString> dropTarget_getSupportedServiceNames()
 {
     return { OUString("com.sun.star.datatransfer.dnd.OleDropTarget") };
 }
@@ -60,7 +60,7 @@ namespace /* private */
     // coordinate system upper-left hence we need to transform
     // coordinates
 
-    inline void CocoaToVCL(NSPoint& rPoint, const NSRect& bounds)
+    void CocoaToVCL(NSPoint& rPoint, const NSRect& bounds)
     {
         rPoint.y = bounds.size.height - rPoint.y;
     }
@@ -124,13 +124,13 @@ DropTarget::DropTarget() :
     mSelectedDropAction(DNDConstants::ACTION_NONE),
     mDefaultActions(DNDConstants::ACTION_COPY_OR_MOVE | DNDConstants::ACTION_LINK | DNDConstants::ACTION_DEFAULT)
 {
-    mDataFlavorMapper = DataFlavorMapperPtr_t(new DataFlavorMapper());
+    mDataFlavorMapper = std::make_shared<DataFlavorMapper>();
 }
 
 DropTarget::~DropTarget()
 {
     if( AquaSalFrame::isAlive( mpFrame ) )
-        [(id <DraggingDestinationHandler>)mView unregisterDraggingDestinationHandler:mDropTargetHelper];
+        [static_cast<id <DraggingDestinationHandler>>(mView) unregisterDraggingDestinationHandler:mDropTargetHelper];
     [mDropTargetHelper release];
 }
 
@@ -193,7 +193,7 @@ NSDragOperation DropTarget::draggingEntered(id sender)
     // a modifier key will be pressed
     mDragSourceSupportedActions = SystemToOfficeDragActions([sender draggingSourceOperationMask]);
 
-    // Only if the drop target is really interessted in the drag actions
+    // Only if the drop target is really interested in the drag actions
     // supported by the source
     if (mDragSourceSupportedActions & mDefaultActions)
     {
@@ -262,7 +262,7 @@ NSDragOperation DropTarget::draggingUpdated(id sender)
         fire_dragOver(dtde);
 
         // drag over callbacks likely have rendered something
-        [mView setNeedsDisplay: TRUE];
+        [mView setNeedsDisplay: true];
 
         dragOp = OfficeToSystemDragActions(mSelectedDropAction);
 
@@ -290,7 +290,7 @@ void DropTarget::draggingExited(id /*sender*/)
 
 BOOL DropTarget::prepareForDragOperation()
 {
-    return 1;
+    return true;
 }
 
 BOOL DropTarget::performDragOperation()
@@ -361,11 +361,11 @@ void SAL_CALL DropTarget::initialize(const Sequence< Any >& aArguments)
     sal_uInt64 tmp = 0;
     pNSView >>= tmp;
     mView = reinterpret_cast<id>(tmp);
-    mpFrame = [(SalFrameView*)mView getSalFrame];
+    mpFrame = [static_cast<SalFrameView*>(mView) getSalFrame];
 
     mDropTargetHelper = [[DropTargetHelper alloc] initWithDropTarget: this];
 
-    [(id <DraggingDestinationHandler>)mView registerDraggingDestinationHandler:mDropTargetHelper];
+    [static_cast<id <DraggingDestinationHandler>>(mView) registerDraggingDestinationHandler:mDropTargetHelper];
     [mView registerForDraggedTypes: DataFlavorMapper::getAllSupportedPboardTypes()];
 
     id wnd = [mView window];
@@ -381,7 +381,11 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
     if (parentWnd == nil && (wndStyles == topWndStyle))
     {
         [wnd registerDraggingDestinationHandler:mDropTargetHelper];
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
+            // "'NSFilenamesPboardType' is deprecated: first deprecated in macOS 10.14 - Create
+            // multiple pasteboard items with NSPasteboardTypeFileURL or kUTTypeFileURL instead"
         [wnd registerForDraggedTypes: [NSArray arrayWithObjects: NSFilenamesPboardType, nil]];
+SAL_WNODEPRECATED_DECLARATIONS_POP
     }
 }
 

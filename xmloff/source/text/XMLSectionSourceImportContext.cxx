@@ -22,9 +22,8 @@
 #include <com/sun/star/text/SectionFileLink.hpp>
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/txtimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -53,6 +52,7 @@ XMLSectionSourceImportContext::~XMLSectionSourceImportContext()
 {
 }
 
+namespace {
 enum XMLSectionSourceToken
 {
     XML_TOK_SECTION_XLINK_HREF,
@@ -60,7 +60,9 @@ enum XMLSectionSourceToken
     XML_TOK_SECTION_TEXT_SECTION_NAME
 };
 
-static const SvXMLTokenMapEntry aSectionSourceTokenMap[] =
+}
+
+const SvXMLTokenMapEntry aSectionSourceTokenMap[] =
 {
     { XML_NAMESPACE_XLINK, XML_HREF, XML_TOK_SECTION_XLINK_HREF },
     { XML_NAMESPACE_TEXT, XML_FILTER_NAME, XML_TOK_SECTION_TEXT_FILTER_NAME },
@@ -73,7 +75,7 @@ static const SvXMLTokenMapEntry aSectionSourceTokenMap[] =
 void XMLSectionSourceImportContext::StartElement(
     const Reference<XAttributeList> & xAttrList)
 {
-    SvXMLTokenMap aTokenMap(aSectionSourceTokenMap);
+    static const SvXMLTokenMap aTokenMap(aSectionSourceTokenMap);
     OUString sURL;
     OUString sFilterName;
     OUString sSectionName;
@@ -106,37 +108,24 @@ void XMLSectionSourceImportContext::StartElement(
         }
     }
 
-    // we only need them once
-    const OUString sFileLink("FileLink");
-    const OUString sLinkRegion("LinkRegion");
-
     if (!sURL.isEmpty() || !sFilterName.isEmpty())
     {
         SectionFileLink aFileLink;
         aFileLink.FileURL = GetImport().GetAbsoluteReference( sURL );
         aFileLink.FilterName = sFilterName;
 
-        rSectionPropertySet->setPropertyValue(sFileLink, Any(aFileLink));
+        rSectionPropertySet->setPropertyValue("FileLink", Any(aFileLink));
     }
 
     if (!sSectionName.isEmpty())
     {
-        rSectionPropertySet->setPropertyValue(sLinkRegion, Any(sSectionName));
+        rSectionPropertySet->setPropertyValue("LinkRegion", Any(sSectionName));
     }
 }
 
 void XMLSectionSourceImportContext::EndElement()
 {
     // this space intentionally left blank.
-}
-
-SvXMLImportContext* XMLSectionSourceImportContext::CreateChildContext(
-    sal_uInt16 nPrefix,
-    const OUString& rLocalName,
-    const Reference<XAttributeList> & )
-{
-    // ignore -> default context
-    return new SvXMLImportContext(GetImport(), nPrefix, rLocalName);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

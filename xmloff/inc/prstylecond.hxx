@@ -17,7 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-OUString GetParaStyleCondExternal( OUString const &);
-OUString GetParaStyleCondInternal( OUString const &);
+#include <rtl/ustring.hxx>
+
+OUString GetParaStyleCondExternal(OUString const&);
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

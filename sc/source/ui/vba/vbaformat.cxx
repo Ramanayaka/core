@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include "vbaformat.hxx"
+#include <ooo/vba/excel/XFont.hpp>
 #include <ooo/vba/excel/XStyle.hpp>
 #include <ooo/vba/excel/XlVAlign.hpp>
 #include <ooo/vba/excel/XlHAlign.hpp>
@@ -29,6 +30,10 @@
 #include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/text/WritingMode.hpp>
 #include <com/sun/star/util/CellProtection.hpp>
+#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
+#include <com/sun/star/util/XNumberFormats.hpp>
+#include <com/sun/star/util/XNumberFormatTypes.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 
 #include <basic/sberrors.hxx>
 #include <rtl/math.hxx>
@@ -39,6 +44,7 @@
 #include "vbafont.hxx"
 #include "vbainterior.hxx"
 
+#include <docsh.hxx>
 #include <unonames.hxx>
 #include <cellsuno.hxx>
 #include <scitems.hxx>
@@ -497,7 +503,7 @@ ScVbaFormat< Ifc... >::getIndentLevel(  )
         if (!isAmbiguous(sParaIndent))
         {
             sal_Int16 IndentLevel = 0;
-            if ( ( mxPropertySet->getPropertyValue(sParaIndent) >>= IndentLevel  ) )
+            if ( mxPropertySet->getPropertyValue(sParaIndent) >>= IndentLevel )
                 NRetIndentLevel <<= sal_Int32( rtl::math::round(static_cast<double>( IndentLevel ) / 352.8));
             else
                 NRetIndentLevel <<= sal_Int32(0);
@@ -565,7 +571,7 @@ ScVbaFormat< Ifc... >::getLocked(  )
             SfxItemSet* pDataSet = getCurrentDataSet();
             if ( pDataSet )
             {
-                const ScProtectionAttr& rProtAttr = static_cast<const ScProtectionAttr &>( pDataSet->Get(ATTR_PROTECTION) );
+                const ScProtectionAttr& rProtAttr = pDataSet->Get(ATTR_PROTECTION);
                 SfxItemState eState = pDataSet->GetItemState(ATTR_PROTECTION);
                 if(eState != SfxItemState::DONTCARE)
                     aCellProtection <<= rProtAttr.GetProtection();
@@ -598,7 +604,7 @@ ScVbaFormat< Ifc... >::getFormulaHidden(  )
             SfxItemSet* pDataSet = getCurrentDataSet();
             if ( pDataSet )
             {
-                const ScProtectionAttr& rProtAttr = static_cast<const ScProtectionAttr &>( pDataSet->Get(ATTR_PROTECTION) );
+                const ScProtectionAttr& rProtAttr = pDataSet->Get(ATTR_PROTECTION);
                 SfxItemState eState = pDataSet->GetItemState(ATTR_PROTECTION);
                 if(eState != SfxItemState::DONTCARE)
                     aBoolRet <<= rProtAttr.GetHideFormula();
@@ -664,16 +670,16 @@ ScVbaFormat< Ifc... >::setReadingOrder( const uno::Any& ReadingOrder )
         switch(nReadingOrder)
         {
             case excel::Constants::xlLTR:
-                aVal <<= (sal_Int16) text::WritingMode_LR_TB;
+                aVal <<= sal_Int16(text::WritingMode_LR_TB);
                 break;
             case excel::Constants::xlRTL:
-                aVal <<= (sal_Int16) text::WritingMode_RL_TB;
+                aVal <<= sal_Int16(text::WritingMode_RL_TB);
                 break;
             case excel::Constants::xlContext:
                 // TODO implement xlContext
                 // Reading order has to depend on the language of the first letter
                 // written.
-                aVal <<= (sal_Int16) text::WritingMode_LR_TB;
+                aVal <<= sal_Int16(text::WritingMode_LR_TB);
                 break;
             default:
                 DebugHelper::basicexception(ERRCODE_BASIC_METHOD_FAILED, OUString());
@@ -699,16 +705,17 @@ ScVbaFormat< Ifc... >::getReadingOrder(  )
         {
             text::WritingMode aWritingMode = text::WritingMode_LR_TB;
             if ( ( mxPropertySet->getPropertyValue(sWritingMode) ) >>= aWritingMode )
-            switch (aWritingMode){
-                case text::WritingMode_LR_TB:
-                    NRetReadingOrder <<= excel::Constants::xlLTR;
-                    break;
-                case text::WritingMode_RL_TB:
-                    NRetReadingOrder <<= excel::Constants::xlRTL;
-                    break;
-                default:
-                    NRetReadingOrder <<= excel::Constants::xlRTL;
-            }
+                switch (aWritingMode)
+                {
+                    case text::WritingMode_LR_TB:
+                        NRetReadingOrder <<= excel::Constants::xlLTR;
+                        break;
+                    case text::WritingMode_RL_TB:
+                        NRetReadingOrder <<= excel::Constants::xlRTL;
+                        break;
+                    default:
+                        NRetReadingOrder <<= excel::Constants::xlRTL;
+                }
         }
     }
     catch (const uno::Exception& )
@@ -788,7 +795,7 @@ template< typename... Ifc >
 ScCellRangesBase*
 ScVbaFormat< Ifc... >::getCellRangesBase()
 {
-    return ScCellRangesBase::getImplementation( mxPropertySet );
+    return comphelper::getUnoTunnelImplementation<ScCellRangesBase>( mxPropertySet );
 }
 
 template< typename... Ifc >

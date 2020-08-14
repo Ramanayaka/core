@@ -22,8 +22,11 @@
 
 #include <vector>
 #include <map>
-#include <oleacc.h>
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
+#include <oleacc.h>
 
 #include <rtl/ref.hxx>
 
@@ -37,7 +40,7 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnon-virtual-dtor"
 #endif
-#include  "UAccCOM.h"
+#include  <UAccCOM.h>
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
@@ -76,7 +79,7 @@ private:
     DWORD GetMSAAStateFromUNO(short xState);//translate state from UNO to MSAA value
     css::accessibility::XAccessibleSelection* GetXAccessibleSelection();
     void GetExpandedState(sal_Bool* isExpandable, sal_Bool* isExpanded);
-    ::rtl::OUString GetMAccessibleValueFromAny(css::uno::Any pAny);
+    OUString GetMAccessibleValueFromAny(css::uno::Any pAny);
 
 public:
 

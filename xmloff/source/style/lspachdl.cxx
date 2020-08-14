@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <lspachdl.hxx>
+#include "lspachdl.hxx"
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <sax/tools/converter.hxx>
@@ -28,10 +28,9 @@
 
 using namespace ::com::sun::star;
 using ::xmloff::token::IsXMLToken;
-using ::xmloff::token::XML_CASEMAP_NORMAL;
+using ::xmloff::token::XML_NORMAL;
 
 
-// class XMLEscapementPropHdl
 
 
 XMLLineHeightHdl::~XMLLineHeightHdl()
@@ -51,7 +50,7 @@ bool XMLLineHeightHdl::importXML( const OUString& rStrImpValue, uno::Any& rValue
             return false;
         aLSp.Height = sal::static_int_cast< sal_Int16 >(nTemp);
     }
-    else if( IsXMLToken( rStrImpValue, XML_CASEMAP_NORMAL) )
+    else if( IsXMLToken( rStrImpValue, XML_NORMAL) )
     {
         aLSp.Mode = style::LineSpacingMode::PROP;
         aLSp.Height = 100;
@@ -94,7 +93,6 @@ bool XMLLineHeightHdl::exportXML( OUString& rStrExpValue, const uno::Any& rValue
 }
 
 
-// class XMLLineHeightAtLeastHdl
 
 
 XMLLineHeightAtLeastHdl::~XMLLineHeightAtLeastHdl()
@@ -134,7 +132,6 @@ bool XMLLineHeightAtLeastHdl::exportXML( OUString& rStrExpValue, const uno::Any&
 }
 
 
-// class XMLLineSpacingHdl
 
 
 XMLLineSpacingHdl::~XMLLineSpacingHdl()

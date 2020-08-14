@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "cmdid.h"
+#include <cmdid.h>
 #include <svx/svdview.hxx>
-#include <svl/srchitem.hxx>
 #include <svl/eitem.hxx>
 #include <svl/whiter.hxx>
 #include <svx/svdopath.hxx>
@@ -27,20 +26,16 @@
 #include <sfx2/request.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/objface.hxx>
+#include <sfx2/viewfrm.hxx>
 
-#include "wrtsh.hxx"
-#include "view.hxx"
-#include "edtwin.hxx"
-#include "helpid.h"
-#include "globals.hrc"
-#include "drawbase.hxx"
-#include "beziersh.hxx"
-#include "shells.hrc"
-#define SwBezierShell
+#include <wrtsh.hxx>
+#include <view.hxx>
+#include <edtwin.hxx>
+#include <drawbase.hxx>
+#include <beziersh.hxx>
+#define ShellClass_SwBezierShell
 #include <sfx2/msg.hxx>
-#include "swslots.hxx"
-
-#include <unomid.h>
+#include <swslots.hxx>
 
 SFX_IMPL_INTERFACE(SwBezierShell, SwBaseShell)
 
@@ -59,12 +54,12 @@ SwBezierShell::SwBezierShell(SwView &_rView):
 
     SwWrtShell *pSh = &GetShell();
     SdrView*    pSdrView = pSh->GetDrawView();
-    pSdrView->SetEliminatePolyPointLimitAngle(1500L);
+    pSdrView->SetEliminatePolyPointLimitAngle(1500);
 
     SfxShell::SetContextName(vcl::EnumContext::GetContextName(vcl::EnumContext::Context::Draw));
 }
 
-void SwBezierShell::Execute(SfxRequest &rReq)
+void SwBezierShell::Execute(SfxRequest const &rReq)
 {
     SwWrtShell *pSh = &GetShell();
     SdrView*    pSdrView = pSh->GetDrawView();
@@ -92,7 +87,7 @@ void SwBezierShell::Execute(SfxRequest &rReq)
                         pSh->LeaveSelFrameMode();
                         pSh->NoEdit();
                     }
-                    GetView().AttrChangedNotify(pSh); // Shell change if applicable...
+                    GetView().AttrChangedNotify(nullptr); // Shell change if applicable...
                 }
             }
             break;
@@ -105,13 +100,13 @@ void SwBezierShell::Execute(SfxRequest &rReq)
                 if ( pSh->IsDrawCreate() )
                 {
                     GetView().GetDrawFuncPtr()->BreakCreate();
-                    GetView().AttrChangedNotify(pSh); // Shell change if applicable...
+                    GetView().AttrChangedNotify(nullptr); // Shell change if applicable...
                 }
                 else if ( pSh->HasSelection() || GetView().IsDrawMode() )
                 {
                     GetView().LeaveDrawCreate();
                     pSh->EnterStdMode();
-                    GetView().AttrChangedNotify(pSh); // Shell change if applicable...
+                    GetView().AttrChangedNotify(nullptr); // Shell change if applicable...
                 }
             }
             break;

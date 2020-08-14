@@ -9,14 +9,17 @@
 
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/bootstrap.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <sal/main.h>
 #include <svtools/langtab.hxx>
+#include <tools/diagnose_ex.h>
 #include <tools/extendapplicationenvironment.hxx>
 #include <vcl/svapp.hxx>
 #include <iostream>
+#include <sal/log.hxx>
 
 using namespace com::sun::star;
 
@@ -63,14 +66,14 @@ SAL_IMPLEMENT_MAIN()
 
         uno::Reference< lang::XComponent >(xContext, uno::UNO_QUERY_THROW)->dispose();
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN("vcl.app", "Fatal exception: " << e.Message);
+        TOOLS_WARN_EXCEPTION("vcl.app", "Fatal");
         return 1;
     }
     catch (const std::exception &e)
     {
-        SAL_WARN("vcl.app", "Fatal exception: " << e.what());
+        SAL_WARN("vcl.app", "Fatal: " << e.what());
         return 1;
     }
 

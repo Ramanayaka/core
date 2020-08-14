@@ -28,17 +28,19 @@
 #include <vector>
 
 namespace sfx2 { class FileDialogHelper; }
-class SfxMedium;
+namespace weld { class Window; }
 class SfxItemSet;
+class SfxMedium;
 enum class FileDialogFlags;
 
-typedef ::std::vector< SfxMedium* > SfxMediumList;
+typedef ::std::vector< std::unique_ptr<SfxMedium> > SfxMediumList;
 
 namespace sfx2 {
 
 class SFX2_DLLPUBLIC DocumentInserter
 {
 private:
+    weld::Window*           m_pParent;
     OUString                m_sDocFactory;
     OUString                m_sFilter;
     Link<sfx2::FileDialogHelper*,void> m_aDialogClosedLink;
@@ -48,7 +50,7 @@ private:
 
     std::unique_ptr<sfx2::FileDialogHelper>
                             m_pFileDlg;
-    SfxItemSet*             m_pItemSet;
+    std::shared_ptr<SfxItemSet> m_xItemSet;
     std::vector<OUString>   m_pURLList;
 
     DECL_LINK(DialogClosedHdl, sfx2::FileDialogHelper*, void);
@@ -60,12 +62,12 @@ public:
         Compare,
         Merge
     };
-    DocumentInserter(const OUString& rFactory, const Mode mode = Mode::Insert);
+    DocumentInserter(weld::Window* pParent, const OUString& rFactory, const Mode mode = Mode::Insert);
     ~DocumentInserter();
 
     void                    StartExecuteModal( const Link<sfx2::FileDialogHelper*,void>& _rDialogClosedLink );
-    SfxMedium*              CreateMedium(char const* pFallbackHack = nullptr);
-    SfxMediumList*          CreateMediumList();
+    std::unique_ptr<SfxMedium> CreateMedium(char const* pFallbackHack = nullptr);
+    SfxMediumList CreateMediumList();
 };
 
 } // namespace sfx2

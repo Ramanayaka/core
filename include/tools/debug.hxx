@@ -22,7 +22,6 @@
 #include <tools/toolsdllapi.h>
 
 #include <sal/detail/log.h>
-#include <sal/types.h>
 
 /** The facilities provided by this header are deprecated.  True assertions
     (that detect broken program logic) should use standard assert (which aborts
@@ -35,12 +34,13 @@
     standard assert.
 */
 
-#ifdef DBG_UTIL
-
 typedef void (*DbgTestSolarMutexProc)();
 
 TOOLS_DLLPUBLIC void DbgSetTestSolarMutex( DbgTestSolarMutexProc pParam );
 TOOLS_DLLPUBLIC void DbgTestSolarMutex();
+
+#ifndef NDEBUG
+// we want the solar mutex checking to be enabled in the assert-enabled builds that the QA people use
 
 #define DBG_TESTSOLARMUTEX()   \
 do                             \
@@ -49,7 +49,6 @@ do                             \
 } while(false)
 
 #else
-// NO DBG_UTIL
 
 #define DBG_TESTSOLARMUTEX() ((void)0)
 

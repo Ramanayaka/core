@@ -25,11 +25,9 @@
 #include <memory>
 
 #include "parametricpolypolygon.hxx"
-#include "transitiontools.hxx"
 
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 class RandomWipe : public ParametricPolyPolygon
 {
@@ -44,7 +42,7 @@ private:
     ::basegfx::B2DPolygon m_rect;
 };
 
-}
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_TRANSITIONS_RANDOMWIPE_HXX

@@ -32,9 +32,9 @@ namespace oox {
     namespace drawingml { class Color; }
 }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-class PPTShapeGroupContext : public ::oox::drawingml::ShapeGroupContext
+class PPTShapeGroupContext final : public ::oox::drawingml::ShapeGroupContext
 {
     SlidePersistPtr     mpSlidePersistPtr;
     ShapeLocation       meShapeLocation;
@@ -44,7 +44,7 @@ class PPTShapeGroupContext : public ::oox::drawingml::ShapeGroupContext
 
 public:
     PPTShapeGroupContext(
-        ::oox::core::ContextHandler2Helper& rParent,
+        ::oox::core::FragmentHandler2 const & rParent,
         const oox::ppt::SlidePersistPtr& rSlidePersistPtr,
         const oox::ppt::ShapeLocation eShapeLocation,
         const oox::drawingml::ShapePtr& pMasterShapePtr,
@@ -59,7 +59,7 @@ protected:
 
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_PPT_PPTSHAPEGROUPCONTEXT_HXX
 

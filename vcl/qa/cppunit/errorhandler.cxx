@@ -9,13 +9,16 @@
 
 #include <test/bootstrapfixture.hxx>
 #include <cppunit/TestAssert.h>
-#include <cppunit/TestFixture.h>
 
 #include <vcl/errinf.hxx>
 
+class ErrorHandlerTest;
+
+namespace {
+
 class MockErrorHandler : private ErrorHandler
 {
-    friend class ErrorHandlerTest;
+    friend ErrorHandlerTest;
 
 protected:
     virtual bool CreateString(const ErrorInfo *pErrInfo, OUString &rErrString) const override
@@ -29,6 +32,7 @@ protected:
     }
 };
 
+}
 
 class ErrorHandlerTest : public test::BootstrapFixture
 {
@@ -51,13 +55,13 @@ void ErrorHandlerTest::testGetErrorString()
     CPPUNIT_ASSERT_MESSAGE("GetErrorString(ERRCODE_ABORT, aErrStr) should return false",
                            !ErrorHandler::GetErrorString(ERRCODE_ABORT, aErrStr));
     // normally protected, but MockErrorHandler is a friend of this class
-    xErrorInfo.reset(ErrorInfo::GetErrorInfo(ERRCODE_ABORT));
+    xErrorInfo = ErrorInfo::GetErrorInfo(ERRCODE_ABORT);
     aErrHdlr.CreateString(xErrorInfo.get(), aErrStr);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("error message should be non-dynamic", OUString("Non-dynamic error"), aErrStr);
 
     CPPUNIT_ASSERT_MESSAGE("GetErrorString(ERRCODE_NONE, aErrStr) should return false",
                            !ErrorHandler::GetErrorString(ERRCODE_NONE, aErrStr));
-    xErrorInfo.reset(ErrorInfo::GetErrorInfo(ERRCODE_NONE));
+    xErrorInfo = ErrorInfo::GetErrorInfo(ERRCODE_NONE);
     aErrHdlr.CreateString(xErrorInfo.get(), aErrStr);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("error message should be non-dynamic", OUString("Non-dynamic error"), aErrStr);
 }

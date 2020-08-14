@@ -9,7 +9,7 @@
 
 $(eval $(call gb_Library_Library,sd))
 
-$(eval $(call gb_Library_set_precompiled_header,sd,$(SRCDIR)/sd/inc/pch/precompiled_sd))
+$(eval $(call gb_Library_set_precompiled_header,sd,sd/inc/pch/precompiled_sd))
 
 # runtime dependency for unit tests
 $(eval $(call gb_Library_use_package,sd,sd_xml))
@@ -61,6 +61,7 @@ endif
 
 $(eval $(call gb_Library_use_custom_headers,sd,\
 	officecfg/registry \
+	oox/generated \
 ))
 
 $(eval $(call gb_Library_use_sdk_api,sd))
@@ -108,6 +109,16 @@ $(eval $(call gb_Library_use_externals,sd,\
 	icu_headers \
 ))
 
+ifneq ($(DBUS_HAVE_GLIB),)
+$(eval $(call gb_Library_set_include,sd,\
+	$$(INCLUDE) \
+	$(DBUS_GLIB_CFLAGS) \
+))
+$(eval $(call gb_Library_add_libs,sd,\
+	$(DBUS_GLIB_LIBS) \
+))
+endif
+
 ifeq ($(OS),WNT)
 $(eval $(call gb_Library_use_system_win32_libs,sd,\
 	uuid \
@@ -135,7 +146,6 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/core/drawdoc_animations \
 	sd/source/core/pglink \
 	sd/source/core/sdiocmpt \
-	sd/source/core/sdobjfac \
 	sd/source/core/sdpage \
 	sd/source/core/sdpage2 \
 	sd/source/core/sdpage_animations \
@@ -155,6 +165,7 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/filter/html/buttonset \
 	sd/source/filter/html/htmlex \
 	sd/source/filter/html/sdhtmlfilter \
+	sd/source/filter/pdf/sdpdffilter \
 	sd/source/filter/sdfilter \
 	sd/source/filter/sdpptwrp \
 	sd/source/filter/xml/sdtransform \
@@ -172,14 +183,11 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/accessibility/AccessibleSlideSorterView \
 	sd/source/ui/accessibility/AccessibleViewForwarder \
 	sd/source/ui/accessibility/SdShapeTypes \
-    sd/source/ui/animations/CategoryListBox \
-	sd/source/ui/animations/CustomAnimationBox \
 	sd/source/ui/animations/CustomAnimationDialog \
 	sd/source/ui/animations/CustomAnimationList \
 	sd/source/ui/animations/CustomAnimationPane \
 	sd/source/ui/animations/STLPropertySet \
 	sd/source/ui/animations/SlideTransitionPane \
-	sd/source/ui/animations/SlideTransitionBox \
 	sd/source/ui/animations/motionpathtag \
 	sd/source/ui/annotations/annotationmanager \
 	sd/source/ui/annotations/annotationtag \
@@ -205,7 +213,6 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/dlg/animobjs \
 	sd/source/ui/dlg/assclass \
 	sd/source/ui/dlg/diactrl \
-	sd/source/ui/dlg/docprev \
 	sd/source/ui/dlg/filedlg \
 	sd/source/ui/dlg/gluectrl \
 	sd/source/ui/dlg/ins_paste \
@@ -247,11 +254,9 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/framework/module/ImpressModule \
 	sd/source/ui/framework/module/ModuleController \
 	sd/source/ui/framework/module/PresentationModule \
-	sd/source/ui/framework/module/ResourceManager \
 	sd/source/ui/framework/module/ShellStackGuard \
 	sd/source/ui/framework/module/SlideSorterModule \
 	sd/source/ui/framework/module/ToolBarModule \
-	sd/source/ui/framework/module/ToolPanelModule \
 	sd/source/ui/framework/module/ViewTabBarModule \
 	sd/source/ui/framework/tools/FrameworkHelper \
 	sd/source/ui/func/bulmaper \
@@ -271,6 +276,7 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/func/fudraw \
 	sd/source/ui/func/fudspord \
 	sd/source/ui/func/fuediglu \
+	sd/source/ui/func/fuexecuteinteraction \
 	sd/source/ui/func/fuexpand \
 	sd/source/ui/func/fuformatpaintbrush \
 	sd/source/ui/func/fuhhconv \
@@ -383,7 +389,6 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/slidesorter/shell/SlideSorterService \
 	sd/source/ui/slidesorter/shell/SlideSorterViewShell \
 	sd/source/ui/slidesorter/view/SlideSorterView \
-	sd/source/ui/slidesorter/view/SlsFontProvider \
 	sd/source/ui/slidesorter/view/SlsFramePainter \
 	sd/source/ui/slidesorter/view/SlsInsertAnimator \
 	sd/source/ui/slidesorter/view/SlsInsertionIndicatorOverlay \
@@ -394,7 +399,6 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/slidesorter/view/SlsTheme \
 	sd/source/ui/slidesorter/view/SlsToolTip \
 	sd/source/ui/slidesorter/view/SlsViewCacheContext \
-	sd/source/ui/table/TableDesignBox \
 	sd/source/ui/table/TableDesignPane \
 	sd/source/ui/table/tablefunction \
 	sd/source/ui/table/tableobjectbar \
@@ -414,7 +418,6 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/unoidl/SdUnoOutlineView \
 	sd/source/ui/unoidl/SdUnoSlideView \
 	sd/source/ui/unoidl/UnoDocumentSettings \
-	sd/source/ui/unoidl/facreg \
 	sd/source/ui/unoidl/randomnode \
 	sd/source/ui/unoidl/unocpres \
 	sd/source/ui/unoidl/unodoc \
@@ -511,6 +514,10 @@ $(eval $(call gb_Library_add_objcxxobjects,sd,\
 	sd/source/ui/remotecontrol/OSXNetworkService \
 ))
 
+$(eval $(call gb_Library_use_system_darwin_frameworks,sd,\
+	Foundation \
+))
+
 else # OS!=MACSOX
 
 ifeq ($(ENABLE_AVAHI),TRUE)
@@ -559,7 +566,6 @@ $(eval $(call gb_Library_add_libs,sd,\
 ))
 
 $(eval $(call gb_Library_use_system_darwin_frameworks,sd,\
-	Foundation \
 	IOBluetooth \
 ))
 
@@ -572,8 +578,5 @@ $(eval $(call gb_Library_add_defs,sd,\
 endif # ENABLE_SDREMOTE_BLUETOOTH=TRUE
 
 endif # ENABLE_SDREMOTE=TRUE
-
-# Runtime dependency for unit-tests
-$(eval $(call gb_Library_use_restarget,sd,sd))
 
 # vim: set noet sw=4 ts=4:

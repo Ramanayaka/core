@@ -59,6 +59,7 @@ CAT=type
 OBJ_EXT=obj
 EXE_EXT=.exe
 COPY=copy
+CD=cd /d
 SHAREDLIB_EXT=dll
 SHAREDLIB_OUT=$(OUT_BIN)
 UNOPKG_PLATFORM=Windows
@@ -123,21 +124,20 @@ CC_OUTPUT_SWITCH=-Fo
 
 LIBO_SDK_LDFLAGS_STDLIBS = $(LIBO_SDK_DETAIL_LDFLAGS_MSVCRT) kernel32.lib
 
-LIBRARY_LINK_FLAGS=/DLL /DEBUGTYPE:cv
-COMP_LINK_FLAGS=$(LIBRARY_LINK_FLAGS) /DEF:$(PRJ)/settings/component.uno.def
+LIBRARY_LINK_FLAGS=/DLL
+COMP_LINK_FLAGS=$(LIBRARY_LINK_FLAGS) /DEF:$(OO_SDK_HOME)/settings/component.uno.def
 EXE_LINK_FLAGS=/MAP /OPT:NOREF /SUBSYSTEM:CONSOLE /BASE:0x1b000000 /DEBUGTYPE:cv $(LIBO_SDK_LDFLAGS_STDLIBS)
 ifeq "$(DEBUG)" "yes"
-LIBRARY_LINK_FLAGS+=/DEBUG
+LIBRARY_LINK_FLAGS+=/DEBUGTYPE:cv /DEBUG
 EXE_LINK_FLAGS+=/DEBUG
+else
+EXE_LINK_FLAGS=/MAP /OPT:NOREF /SUBSYSTEM:CONSOLE /BASE:0x1100000
 endif
 
 LINK_JAVA_LIBS=/LIBPATH:"$(OO_SDK_JAVA_HOME)/lib"
 
 URE_MISC=${OFFICE_PROGRAM_PATH}
 
-# use this for release version
-#EXE_LINK_FLAGS=/MAP /OPT:NOREF /SUBSYSTEM:CONSOLE /BASE:0x1100000
-#LIBRARY_LINK_FLAGS=/DLL
 endif	
 
 
@@ -191,6 +191,7 @@ P2BG=&
 DEL=rm -f
 DELRECURSIVE=rm -rf
 COPY=cp
+CD=cd
 URLPREFIX=file://
 
 COMID=gcc3
@@ -334,6 +335,7 @@ P2BG=&
 DEL=rm -f
 DELRECURSIVE=rm -rf
 COPY=cp
+CD=cd
 URLPREFIX=file://
 
 SALLIB=-luno_sal
@@ -358,6 +360,10 @@ ifeq "$(PROCTYPE)" "powerpc"
 CC_FLAGS+=-fPIC
 endif
 
+ifeq "$(PROCTYPE)" "x86"
+CC_FLAGS+=-m32
+endif
+
 SDK_JAVA_INCLUDES = -I"$(OO_SDK_JAVA_HOME)/include" -I"$(OO_SDK_JAVA_HOME)/include/linux"
 CC_INCLUDES=-I. -I$(OUT)/inc -I$(OUT)/inc/examples -I$(PRJ)/include
 CC_DEFINES_JNI=-DUNX -DGCC -DLINUX -DCPPU_ENV=$(CPPU_ENV)
@@ -372,11 +378,21 @@ LIBRARY_LINK_FLAGS=-shared -Wl,-z,origin '-Wl,-rpath,$$ORIGIN'
 ifeq "$(PROCTYPE)" "powerpc"
 LIBRARY_LINK_FLAGS+=-fPIC
 endif
+
+ifeq "$(PROCTYPE)" "x86"
+LIBRARY_LINK_FLAGS+=-m32
+endif
+
 COMP_LINK_FLAGS=$(LIBRARY_LINK_FLAGS)
 
 EXE_LINK_FLAGS=-Wl,--allow-shlib-undefined -Wl,-export-dynamic -Wl,-z,defs -Wl,--no-whole-archive
+
+ifeq "$(PROCTYPE)" "x86"
+EXE_LINK_FLAGS+=-m32
+endif
+
 LINK_LIBS=-L"$(OUT)/lib" -L"$(OO_SDK_HOME)/lib" -L"$(OO_SDK_URE_LIB_DIR)"
-LINK_JAVA_LIBS=-L"$(OO_SDK_JAVA_HOME)/jre/lib/$(JAVA_PROC_TYPE)"
+LINK_JAVA_LIBS=-L"$(OO_SDK_JAVA_HOME)/jre/lib/$(JAVA_PROC_TYPE)" -L"$(OO_SDK_JAVA_HOME)/lib"
 
 URE_MISC=$(OFFICE_PROGRAM_PATH)
 
@@ -419,6 +435,7 @@ P2BG=&
 DEL=rm -f
 DELRECURSIVE=rm -rf
 COPY=cp
+CD=cd
 URLPREFIX=file://
 
 SALLIB=-luno_sal
@@ -529,6 +546,7 @@ P2BG=&
 DEL=rm -f
 DELRECURSIVE=rm -rf
 COPY=cp
+CD=cd
 URLPREFIX=file://
 
 SALLIB=-luno_sal

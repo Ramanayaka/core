@@ -21,14 +21,14 @@
 
 #include <com/sun/star/form/FormComponentType.hpp>
 
-#include "property.hrc"
-#include "services.hxx"
+#include <property.hxx>
+#include <services.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <tools/debug.hxx>
-#include <comphelper/container.hxx>
 #include <comphelper/basicio.hxx>
-#include <comphelper/guarding.hxx>
-#include <comphelper/processfactory.hxx>
+#include <comphelper/property.hxx>
+
+using namespace comphelper;
 
 
 namespace frm
@@ -37,7 +37,6 @@ namespace frm
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -49,18 +48,8 @@ using namespace ::com::sun::star::util;
 
 Sequence<Type> OFileControlModel::_getTypes()
 {
-    static Sequence<Type> aTypes;
-    if (!aTypes.getLength())
-    {
-        // my base class
-        Sequence<Type> aBaseClassTypes = OControlModel::_getTypes();
-
-        Sequence<Type> aOwnTypes(1);
-        Type* pOwnTypes = aOwnTypes.getArray();
-        pOwnTypes[0] = cppu::UnoType<XReset>::get();
-
-        aTypes = concatSequences(aBaseClassTypes, aOwnTypes);
-    }
+    static Sequence<Type> const aTypes =
+        concatSequences(OControlModel::_getTypes(), Sequence<Type>{ cppu::UnoType<XReset>::get() });
     return aTypes;
 }
 
@@ -190,7 +179,7 @@ void OFileControlModel::describeFixedProperties( Sequence< Property >& _rProps )
 
 OUString SAL_CALL OFileControlModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_FILECONTROL);   // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_FILECONTROL;   // old (non-sun) name for compatibility !
 }
 
 
@@ -267,7 +256,7 @@ void OFileControlModel::removeResetListener(const Reference<XResetListener>& _rx
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OFileControlModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

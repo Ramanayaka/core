@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sdbcoretools.hxx"
-#include "dbastrings.hrc"
+#include <sdbcoretools.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/sdb/XDocumentDataSource.hpp>
@@ -30,7 +28,6 @@
 #include <com/sun/star/embed/ElementModes.hpp>
 
 #include <tools/diagnose_ex.h>
-#include <tools/debug.hxx>
 #include <comphelper/interaction.hxx>
 #include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
@@ -49,7 +46,7 @@ namespace dbaccess
     using namespace ::com::sun::star::embed;
     using namespace ::com::sun::star::container;
 
-    void notifyDataSourceModified(const css::uno::Reference< css::uno::XInterface >& _rxObject,bool _bModified)
+    void notifyDataSourceModified(const css::uno::Reference< css::uno::XInterface >& _rxObject)
     {
         Reference< XInterface > xDs = getDataSource( _rxObject );
         Reference<XDocumentDataSource> xDocumentDataSource(xDs,UNO_QUERY);
@@ -57,7 +54,7 @@ namespace dbaccess
             xDs = xDocumentDataSource->getDatabaseDocument();
         Reference< XModifiable > xModi( xDs, UNO_QUERY );
         if ( xModi.is() )
-            xModi->setModified(_bModified);
+            xModi->setModified(true);
     }
 
     Reference< XInterface > getDataSource( const Reference< XInterface >& _rxDependentObject )
@@ -81,8 +78,8 @@ namespace dbaccess
         {
             Reference< XInteractionRequestStringResolver > xStringResolver = InteractionRequestStringResolver::create(_rContext);
 
-            ::rtl::Reference< ::comphelper::OInteractionRequest > pRequest( new ::comphelper::OInteractionRequest( _rError ) );
-            ::rtl::Reference< ::comphelper::OInteractionApprove > pApprove( new ::comphelper::OInteractionApprove );
+            ::rtl::Reference pRequest( new ::comphelper::OInteractionRequest( _rError ) );
+            ::rtl::Reference pApprove( new ::comphelper::OInteractionApprove );
             pRequest->addContinuation( pApprove.get() );
             Optional< OUString > aMessage = xStringResolver->getStringFromInformationalRequest( pRequest.get() );
             if ( aMessage.IsPresent )
@@ -90,7 +87,7 @@ namespace dbaccess
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
 
         if ( sDisplayMessage.isEmpty() )
@@ -109,7 +106,7 @@ namespace dbaccess
         return sDisplayMessage;
     }
 
-    namespace tools { namespace stor {
+    namespace tools::stor {
 
     bool storageIsWritable_nothrow( const Reference< XStorage >& _rxStorage )
     {
@@ -124,7 +121,7 @@ namespace dbaccess
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
         return ( nMode & ElementModes::WRITE ) != 0;
     }
@@ -142,7 +139,7 @@ namespace dbaccess
         return bSuccess;
     }
 
-    } } // tools::stor
+}
 
 }   // namespace dbaccess
 

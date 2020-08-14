@@ -115,6 +115,27 @@ interface BaseTextSelection
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
+    FN_PASTE_NESTED_TABLE  // status(final|play)
+    [
+        ExecMethod = ExecClpbrd ;
+        StateMethod = StateClpbrd ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    FN_TABLE_PASTE_ROW_BEFORE  // status(final|play)
+    [
+        ExecMethod = ExecClpbrd ;
+        StateMethod = StateClpbrd ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    FN_TABLE_PASTE_COL_BEFORE  // status(final|play)
+    [
+        ExecMethod = ExecClpbrd ;
+        StateMethod = StateClpbrd ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
     FN_REPAGINATE  // status(final|play)
     [
         ExecMethod = Execute ;
@@ -152,7 +173,7 @@ interface BaseTextSelection
 
     FN_FRAME_TO_ANCHOR // status()
     [
-        /*OS: Datentypen unvertraeglich ?? */
+        /*OS: data types incompatible?? */
         ExecMethod = Execute ;
         StateMethod = NoState ;
     ]
@@ -203,6 +224,14 @@ interface BaseTextSelection
     [
         Export = FALSE;
         StateMethod = GetState;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    SID_TABLE_CELL_BACKGROUND_COLOR
+    [
+        ExecMethod = ExecBckCol ;
+        StateMethod = GetBckColState ;
+        AutoUpdate ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
@@ -317,7 +346,7 @@ interface BaseTextSelection
         ExecMethod = Execute ;
         StateMethod = StateStyle ;
         NoRecord;
-        GroupId = GID_TEMPLATE ;
+        GroupId = SfxGroupId::Template ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
@@ -331,13 +360,13 @@ interface BaseTextSelection
     [
         ExecMethod = Execute ;
         StateMethod = StateStyle ;
-        FastCall = TRUE; // fuer Macroausfuehrung!
+        FastCall = TRUE; // for macro execution!
     ]
     SID_STYLE_APPLY // status(fina|play)
     [
         ExecMethod = Execute ;
         StateMethod = StateStyle ;
-        FastCall = TRUE;// fuer Macroausfuehrung!
+        FastCall = TRUE;// for macro execution!
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
@@ -377,13 +406,25 @@ interface BaseTextSelection
         StateMethod = StateStyle ;
     ]
 
+    SID_CLASSIFICATION_DIALOG
+    [
+        ExecMethod = Execute ;
+        StateMethod = StateStyle ;
+    ]
+
+    SID_PARAGRAPH_SIGN_CLASSIFY_DLG
+    [
+        ExecMethod = Execute ;
+        StateMethod = StateStyle ;
+    ]
+
     SID_WATERMARK
     [
         ExecMethod = Execute ;
         StateMethod = StateStyle ;
     ]
 
-     //OS: Selection.Escape gibt es zusaetzlich zu Window.Escape
+     //OS: Selection.Escape exists additionally to Window.Escape
 
     FN_ESCAPE // status(final|play|rec)
     [
@@ -403,8 +444,8 @@ interface BaseTextSelection
         StateMethod = GetState ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
-// Methode fuer Rahmen und Objekte
-    FN_TOOL_ANCHOR
+// Method for frames and objects
+    SID_ANCHOR_MENU
     [
         StateMethod = GetState ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
@@ -486,6 +527,14 @@ interface BaseTextSelection
         Export = FALSE;
     ]
 
+    FN_FRAME_WRAPTHRU_TOGGLE // status()
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+        Export = FALSE;
+    ]
+
     FN_FRAME_WRAP_CONTOUR // status()
     [
         ExecMethod = Execute ;
@@ -537,5 +586,10 @@ interface BaseTextSelection
         ExecMethod = Execute;
         StateMethod = GetState;
     ]
-}
 
+    SID_ACCESSIBILITY_CHECK
+    [
+        ExecMethod = ExecDlg;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+}

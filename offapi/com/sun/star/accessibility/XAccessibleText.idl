@@ -163,6 +163,8 @@ interface XAccessibleText : ::com::sun::star::uno::XInterface
 
         @throws ::com::sun::star::lang::IndexOutOfBoundsException
             if the index is invalid
+
+        @see CharacterProperties
     */
     sequence<::com::sun::star::beans::PropertyValue>
         getCharacterAttributes (
@@ -191,7 +193,7 @@ interface XAccessibleText : ::com::sun::star::uno::XInterface
         or not is implementation dependent.  It typically is when text is
         editable or otherwise when on the screen the caret can be placed
         behind the text.  You can be sure that the index is valid after you
-        have received a AccessibleEventId::CARET event
+        have received an AccessibleEventId::CARET event
         for this index.</p>
         @param nIndex
             Index of the character for which to return its bounding box.
@@ -489,6 +491,33 @@ interface XAccessibleText : ::com::sun::star::uno::XInterface
     boolean copyText ([in] long nStartIndex, [in] long nEndIndex)
         raises (::com::sun::star::lang::IndexOutOfBoundsException);
 
+    /** Scroll the specified text to make it visible on screen.
+
+        @param nStartIndex
+            Start index of the text to scroll.
+            The valid range is 0..length.
+
+        @param nEndIndex
+            End index of the text to scroll.
+            The valid range is nStartIndex..length.
+
+        @param aScrollType
+            Type of scroll to perform.  See AccessibleScrollType for the
+            complete list.
+
+        @return
+            Returns `TRUE` if the specified text has been scrolled
+            successfully.
+
+        @throws ::com::sun::star::lang::IndexOutOfBoundsException
+            if the indices are invalid
+
+        @since LibreOffice 7.0
+    */
+    boolean
+        scrollSubstringTo ([in] long nStartIndex, [in] long nEndIndex,
+            [in] AccessibleScrollType aScrollType)
+        raises (::com::sun::star::lang::IndexOutOfBoundsException);
 };
 
 }; }; }; };

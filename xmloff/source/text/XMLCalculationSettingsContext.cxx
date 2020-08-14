@@ -18,7 +18,7 @@
  */
 
 
-#include <XMLCalculationSettingsContext.hxx>
+#include "XMLCalculationSettingsContext.hxx"
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/XTextDocument.hpp>
@@ -26,8 +26,8 @@
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 
 

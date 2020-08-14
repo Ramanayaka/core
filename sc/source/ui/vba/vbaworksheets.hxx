@@ -20,14 +20,15 @@
 #define INCLUDED_SC_SOURCE_UI_VBA_VBAWORKSHEETS_HXX
 
 #include <ooo/vba/excel/XWorksheets.hpp>
-#include <com/sun/star/sheet/XSpreadsheets.hpp>
-#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <vbahelper/vbacollectionimpl.hxx>
 
-#include "address.hxx"
+#include <types.hxx>
+
+namespace com::sun::star::container { class XEnumerationAccess; }
+namespace com::sun::star::sheet { class XSpreadsheetDocument; }
+namespace com::sun::star::sheet { class XSpreadsheets; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 typedef CollTestImplHelper< ov::excel::XWorksheets > ScVbaWorksheets_BASE;
 
@@ -39,7 +40,7 @@ public:
     ScVbaWorksheets( const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext > & xContext, const css::uno::Reference< css::container::XIndexAccess >& xSheets, const css::uno::Reference< css::frame::XModel >& xModel );
     ScVbaWorksheets( const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext > & xContext, const css::uno::Reference< css::container::XEnumerationAccess >& xEnum,  const css::uno::Reference< css::frame::XModel >& xModel );
 
-    bool isSelectedSheets();
+    bool isSelectedSheets() const;
 
     // XEnumerationAccess
     virtual css::uno::Type SAL_CALL getElementType() override;
@@ -62,7 +63,7 @@ public:
 
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::uno::RuntimeException
-    static bool nameExists( css::uno::Reference <css::sheet::XSpreadsheetDocument>& xSpreadDoc, const OUString & name, SCTAB& nTab );
+    static bool nameExists( const css::uno::Reference <css::sheet::XSpreadsheetDocument>& xSpreadDoc, const OUString & name, SCTAB& nTab );
 };
 
 #endif // INCLUDED_SC_SOURCE_UI_VBA_VBAWORKSHEETS_HXX

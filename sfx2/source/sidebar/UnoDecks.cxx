@@ -11,8 +11,8 @@
 #include <sal/config.h>
 
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <sfx2/sidebar/UnoDecks.hxx>
-#include <sfx2/sidebar/UnoDeck.hxx>
+#include <sidebar/UnoDecks.hxx>
+#include <sidebar/UnoDeck.hxx>
 
 #include <sfx2/sidebar/ResourceManager.hxx>
 #include <sfx2/sidebar/SidebarController.hxx>
@@ -38,17 +38,11 @@ uno::Any SAL_CALL SfxUnoDecks::getByName( const OUString& aName )
 {
     SolarMutexGuard aGuard;
 
-    uno::Any aRet;
-
-    if (hasByName(aName))
-    {
-        uno::Reference<ui::XDeck> xDeck = new SfxUnoDeck(xFrame, aName);
-        aRet <<= xDeck;
-    }
-    else
+    if (!hasByName(aName))
         throw container::NoSuchElementException();
 
-    return aRet;
+    uno::Reference<ui::XDeck> xDeck = new SfxUnoDeck(xFrame, aName);
+    return uno::Any(xDeck);
 }
 
 
@@ -73,13 +67,11 @@ uno::Sequence< OUString > SAL_CALL SfxUnoDecks::getElementNames()
 
         long n = 0;
 
-        for (ResourceManager::DeckContextDescriptorContainer::const_iterator
-            iDeck(aDecks.begin()), iEnd(aDecks.end());
-            iDeck!=iEnd; ++iDeck)
-            {
-                deckList[n] = iDeck->msId;
-                n++;
-            }
+        for (const auto& rDeck : aDecks)
+        {
+            deckList[n] = rDeck.msId;
+            n++;
+        }
     }
 
     return deckList;
@@ -104,13 +96,8 @@ sal_Bool SAL_CALL SfxUnoDecks::hasByName( const OUString& aName )
             pSidebarController->IsDocumentReadOnly(),
             xFrame->getController());
 
-        for (ResourceManager::DeckContextDescriptorContainer::const_iterator
-            iDeck(aDecks.begin()), iEnd(aDecks.end());
-            iDeck!=iEnd && !bFound; ++iDeck)
-            {
-                if (iDeck->msId == aName)
-                    bFound = true;
-            }
+        bFound = std::any_of(aDecks.begin(), aDecks.end(),
+            [&aName](const ResourceManager::DeckContextDescriptor& rDeck) { return rDeck.msId == aName; });
     }
 
     return bFound;

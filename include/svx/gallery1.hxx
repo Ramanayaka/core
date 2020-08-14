@@ -24,28 +24,28 @@
 #include <svl/SfxBroadcaster.hxx>
 #include <svx/svxdllapi.h>
 #include <tools/urlobj.hxx>
+#include <svx/gallerybinaryengineentry.hxx>
+#include <svx/gallerybinaryengine.hxx>
 
 #include <cstdio>
+#include <memory>
 #include <vector>
 
-class SvStream;
-
+struct GalleryObject;
+class GalleryBinaryEngineEntry;
+class GalleryStorageLocations;
 
 class GalleryThemeEntry
 {
 private:
 
+    std::unique_ptr<GalleryBinaryEngineEntry>     mpGalleryBinaryEngineEntry;
+    GalleryStorageLocations maGalleryStorageLocations;
     OUString                aName;
-    INetURLObject           aThmURL;
-    INetURLObject           aSdgURL;
-    INetURLObject           aSdvURL;
-    INetURLObject           aStrURL;
     sal_uInt32              nId;
     bool                    bReadOnly;
     bool                    bModified;
     bool                    bThemeNameFromResource;
-
-    static INetURLObject    ImplGetURLIgnoreCase( const INetURLObject& rURL );
 
 public:
                             GalleryThemeEntry( bool bCreateUniqueURL,
@@ -54,14 +54,17 @@ public:
                                                bool bReadOnly, bool bNewFile,
                                                sal_uInt32 nId, bool bThemeNameFromResource );
 
+    std::unique_ptr<GalleryBinaryEngineEntry> createGalleryBinaryEngineEntry();
+    const std::unique_ptr<GalleryBinaryEngineEntry>& getGalleryBinaryEngineEntry() const { return mpGalleryBinaryEngineEntry; }
+
+    const GalleryStorageLocations& getGalleryStorageLocations() const { return maGalleryStorageLocations; }
+
     const OUString&         GetThemeName() const { return aName; }
 
-    const INetURLObject&    GetThmURL() const { return aThmURL; }
-    const INetURLObject&    GetSdgURL() const { return aSdgURL; }
-    const INetURLObject&    GetSdvURL() const { return aSdvURL; }
-    const INetURLObject&    GetStrURL() const { return aStrURL; }
-
-    OUString                ReadStrFromIni(const OUString &aKeyName );
+    const INetURLObject&    GetThmURL() const { return mpGalleryBinaryEngineEntry->GetThmURL(); }
+    const INetURLObject&    GetSdgURL() const { return mpGalleryBinaryEngineEntry->GetSdgURL(); }
+    const INetURLObject&    GetSdvURL() const { return mpGalleryBinaryEngineEntry->GetSdvURL(); }
+    const INetURLObject&    GetStrURL() const { return mpGalleryBinaryEngineEntry->GetStrURL(); }
 
     bool                    IsReadOnly() const { return bReadOnly; }
     bool                    IsDefault() const;
@@ -78,24 +81,18 @@ public:
     void                    SetId( sal_uInt32 nNewId, bool bResetThemeName );
 };
 
-typedef ::std::vector< GalleryThemeEntry* > GalleryThemeList;
-
 class SfxListener;
 class GalleryTheme;
 class GalleryThemeCacheEntry;
 
 
-class SVX_DLLPUBLIC Gallery : public SfxBroadcaster
+class SVXCORE_DLLPUBLIC Gallery final : public SfxBroadcaster
 {
-    // only for gengal utility!
-    friend Gallery* createGallery( const OUString& );
-    friend void     disposeGallery( Gallery* );
-
     typedef std::vector<GalleryThemeCacheEntry*> GalleryCacheThemeList;
 
 private:
 
-    GalleryThemeList            aThemeList;
+    std::vector< std::unique_ptr<GalleryThemeEntry> > aThemeList;
     GalleryCacheThemeList       aThemeCache;
     INetURLObject               aRelURL;
     INetURLObject               aUserURL;
@@ -107,25 +104,28 @@ private:
     GalleryThemeEntry*          ImplGetThemeEntry( const OUString& rThemeName );
 
     SAL_DLLPRIVATE GalleryTheme* ImplGetCachedTheme( const GalleryThemeEntry* pThemeEntry );
-    SAL_DLLPRIVATE void         ImplDeleteCachedTheme( GalleryTheme* pTheme );
+    SAL_DLLPRIVATE void         ImplDeleteCachedTheme( GalleryTheme const * pTheme );
 
+    Gallery&                    operator=( Gallery const & ) = delete; // MSVC2015 workaround
+                                Gallery( Gallery const & ) = delete; // MSVC2015 workaround
+
+public:
+                                // only for gengal utility!
                                 Gallery( const OUString& rMultiPath );
                                 virtual ~Gallery() override;
 
-public:
-
     static Gallery*             GetGalleryInstance();
 
-    SAL_DLLPRIVATE size_t       GetThemeCount() const { return aThemeList.size(); }
+    size_t                      GetThemeCount() const { return aThemeList.size(); }
     SAL_DLLPRIVATE const GalleryThemeEntry* GetThemeInfo( size_t nPos )
-                                { return nPos < aThemeList.size() ? aThemeList[ nPos ] : nullptr; }
-    SAL_DLLPRIVATE const GalleryThemeEntry* GetThemeInfo( const OUString& rThemeName ) { return ImplGetThemeEntry( rThemeName ); }
+                                { return nPos < aThemeList.size() ? aThemeList[ nPos ].get() : nullptr; }
+    const GalleryThemeEntry* GetThemeInfo( const OUString& rThemeName ) { return ImplGetThemeEntry( rThemeName ); }
 
     bool                        HasTheme( const OUString& rThemeName );
-    SAL_DLLPRIVATE OUString     GetThemeName( sal_uIntPtr nThemeId ) const;
+    SAL_DLLPRIVATE OUString     GetThemeName( sal_uInt32 nThemeId ) const;
 
     bool                        CreateTheme( const OUString& rThemeName );
-    SAL_DLLPRIVATE void         RenameTheme( const OUString& rOldName, const OUString& rNewName );
+    void                        RenameTheme( const OUString& rOldName, const OUString& rNewName );
     bool                        RemoveTheme( const OUString& rThemeName );
 
     GalleryTheme*               AcquireTheme( const OUString& rThemeName, SfxListener& rListener );

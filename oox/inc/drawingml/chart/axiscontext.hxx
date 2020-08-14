@@ -22,16 +22,14 @@
 
 #include <drawingml/chart/chartcontextbase.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 
 struct AxisDispUnitsModel;
 
 /** Handler for a value axis display units context (c:dispUnits element).
  */
-class AxisDispUnitsContext : public ContextBase< AxisDispUnitsModel >
+class AxisDispUnitsContext final : public ContextBase< AxisDispUnitsModel >
 {
 public:
     explicit            AxisDispUnitsContext( ::oox::core::ContextHandler2Helper& rParent, AxisDispUnitsModel& rModel );
@@ -58,7 +56,7 @@ public:
 
 /** Handler for a category axis context (c:catAx element).
  */
-class CatAxisContext : public AxisContextBase
+class CatAxisContext final : public AxisContextBase
 {
 public:
     explicit            CatAxisContext( ::oox::core::ContextHandler2Helper& rParent, AxisModel& rModel );
@@ -70,7 +68,7 @@ public:
 
 /** Handler for a date axis context (c:dateAx element).
  */
-class DateAxisContext : public AxisContextBase
+class DateAxisContext final : public AxisContextBase
 {
 public:
     explicit            DateAxisContext( ::oox::core::ContextHandler2Helper& rParent, AxisModel& rModel );
@@ -82,7 +80,7 @@ public:
 
 /** Handler for a series axis context (c:serAx element).
  */
-class SerAxisContext : public AxisContextBase
+class SerAxisContext final : public AxisContextBase
 {
 public:
     explicit            SerAxisContext( ::oox::core::ContextHandler2Helper& rParent, AxisModel& rModel );
@@ -94,7 +92,7 @@ public:
 
 /** Handler for a value axis context (c:valAx element).
  */
-class ValAxisContext : public AxisContextBase
+class ValAxisContext final : public AxisContextBase
 {
 public:
     explicit            ValAxisContext( ::oox::core::ContextHandler2Helper& rParent, AxisModel& rModel );
@@ -104,9 +102,7 @@ public:
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

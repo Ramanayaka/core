@@ -65,7 +65,7 @@ public class FunctionHelper
 
 
     /**
-     * This convert an URL (formatted as a string) to a struct com.sun.star.util.URL.
+     * This convert a URL (formatted as a string) to a struct com.sun.star.util.URL.
      * It use a special service to do that: the URLTransformer.
      * Because some API calls need it and it's not allowed to set "Complete"
      * part of the util struct only. The URL must be parsed.
@@ -134,7 +134,7 @@ public class FunctionHelper
      * the deprecated one not exist we get an empty frame, we can try to use the new service.
      *
      * @param xSMGR
-     *          we nee the remote service manager to create this task/frame service
+     *          we need the remote service manager to create this task/frame service
      *
      * @return [com.sun.star.frame.XFrame]
      *          the new created frame reference in case of success or null otherwise
@@ -177,7 +177,7 @@ public class FunctionHelper
      *
      * Note: First mode (creation of a child window) can be reached by two different
      *       ways.
-     *   - pack the required window handle of our java window inside an UNO object
+     *   - pack the required window handle of our java window inside a UNO object
      *     to transport it to the remote office toolkit and get a child office
      *     window.
      *     This is the old way. It's better to use the second one - but to be
@@ -306,7 +306,7 @@ public class FunctionHelper
                 // the systemw window handle. A possible reason can be an invisible
                 // java window. In this case it should be enough to set return
                 // values to null. All other resources (which was created before)
-                // will be freed automatically if scope wil be leaved.
+                // will be freed automatically if scope will be leaved.
                 System.out.println("May be the NativeView object wasn't really visible at calling time of getNativeWindow()?");
                 xPeer   = null;
                 xWindow = null;
@@ -364,7 +364,7 @@ public class FunctionHelper
 
             // pass the window the frame as his new container window.
             // It's necessary to do it first  - before you call anything else there.
-            // Otherwhise the frame throws some exceptions for "uninitialized state".
+            // Otherwise the frame throws some exceptions for "uninitialized state".
             xFrame.initialize( xWindow );
 
             // Insert the new frame in desktop hierarchy.
@@ -392,7 +392,7 @@ public class FunctionHelper
                 // It's possible to do that here - because frame has no component inside yet.
                 // So nobody can disagree with that.
                 // After the dispose() call forget all references to this frame and let him die.
-                // If a new exception will occur ... no generell solution exist then.
+                // If a new exception will occur ... no general solution exist then.
                 // Nobody can guarantee if next call will work or not.
                 com.sun.star.lang.XComponent xComponent = UnoRuntime.queryInterface(
                     com.sun.star.lang.XComponent.class,
@@ -425,7 +425,7 @@ public class FunctionHelper
 
 
     /**
-     * Dispatch an URL to given frame.
+     * Dispatch a URL to given frame.
      * Caller can register himself for following status events for dispatched
      * URL too. But nobody guarantee that such notifications will occur.
      * (see dispatchWithNotification() if you interest on that)
@@ -440,7 +440,7 @@ public class FunctionHelper
      *                      (Note: Deregistration is part of this listener himself!)
      *
      * @return  [XDispatch] It's the used dispatch object and can be used for deregistration of an optional listener.
-     *                      Otherwhise caller can ignore it.
+     *                      Otherwise caller can ignore it.
      */
     public static com.sun.star.frame.XDispatch execute(com.sun.star.frame.XFrame          xFrame     ,
                                                        com.sun.star.util.URL              aURL       ,
@@ -494,7 +494,7 @@ public class FunctionHelper
 
 
     /**
-     * Load document specified by an URL into given frame synchronously.
+     * Load document specified by a URL into given frame synchronously.
      * The result of this operation will be the loaded document for success
      * or null if loading failed.
      *
@@ -518,7 +518,7 @@ public class FunctionHelper
 
             // First prepare frame for loading
             // We must address it inside the frame tree without any complications.
-            // So we set an unambigous (we hope it) name and use it later.
+            // So we set an unambiguous (we hope it) name and use it later.
             // Don't forget to reset original name after that.
                    sOldName = xFrame.getName();
             String sTarget  = "odk_officedev_desk";
@@ -806,12 +806,12 @@ public class FunctionHelper
 
 
     /**
-     * Try to find an unique frame name, which isn't currently used inside
+     * Try to find a unique frame name, which isn't currently used inside
      * remote office instance. Because we create top level frames
      * only, it's enough to check the names of existing child frames on the
      * desktop only.
      *
-     *          should represent an unique frame name, which currently isn't
+     *          should represent a unique frame name, which currently isn't
      *          used inside the remote office frame tree
      *          (Couldn't guaranteed for a real multithreaded environment.
      *           But we try it ...)

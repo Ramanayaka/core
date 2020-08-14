@@ -26,33 +26,34 @@
 #include <algorithm>
 
 #include <rtl/tencinfo.h>
+#include <sal/log.hxx>
 
 #include <unicode/ubidi.h>
 #include <tools/tenccvt.hxx>
 #include <com/sun/star/i18n/ScriptType.hpp>
+#include <com/sun/star/i18n/XBreakIterator.hpp>
 
-#include <unotools/fontcvt.hxx>
-#include <editeng/paperinf.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/fontitem.hxx>
+#include <o3tl/sorted_vector.hxx>
 #include <frmfmt.hxx>
 #include <fmtclds.hxx>
 #include <hfspacingitem.hxx>
 #include <fmtfsize.hxx>
+#include <poolfmt.hxx>
 #include <swrect.hxx>
 #include <fmthdft.hxx>
 #include <frmatr.hxx>
 #include <ndtxt.hxx>
 #include <breakit.hxx>
-#include <i18nlangtag/mslangid.hxx>
 
 using namespace css;
 
 namespace myImplHelpers
 {
-    SwTwips CalcHdFtDist(const SwFrameFormat& rFormat, sal_uInt16 nSpacing)
+    static SwTwips CalcHdFtDist(const SwFrameFormat& rFormat, sal_uInt16 nSpacing)
     {
         /*
         The normal case for reexporting word docs is to have dynamic spacing,
@@ -80,7 +81,7 @@ namespace myImplHelpers
             else
             {
                 const SwFormatFrameSize& rSize = rFormat.GetFrameSize();
-                if (ATT_VAR_SIZE != rSize.GetHeightSizeType())
+                if (SwFrameSize::Variable != rSize.GetHeightSizeType())
                     nDist += rSize.GetHeight();
                 else
                 {
@@ -92,12 +93,12 @@ namespace myImplHelpers
         return nDist;
     }
 
-    SwTwips CalcHdDist(const SwFrameFormat& rFormat)
+    static SwTwips CalcHdDist(const SwFrameFormat& rFormat)
     {
         return CalcHdFtDist(rFormat, rFormat.GetULSpace().GetUpper());
     }
 
-    SwTwips CalcFtDist(const SwFrameFormat& rFormat)
+    static SwTwips CalcFtDist(const SwFrameFormat& rFormat)
     {
         return CalcHdFtDist(rFormat, rFormat.GetULSpace().GetLower());
     }
@@ -150,7 +151,7 @@ namespace myImplHelpers
             RES_NONE, RES_NONE, RES_POOLCOLL_HEADLINE_BASE, RES_NONE,
             RES_POOLCOLL_SIGNATURE, RES_NONE, RES_POOLCOLL_TEXT,
             RES_POOLCOLL_TEXT_MOVE, RES_NONE, RES_NONE, RES_NONE, RES_NONE,
-            RES_NONE, RES_NONE, RES_POOLCOLL_DOC_SUBTITEL
+            RES_NONE, RES_NONE, RES_POOLCOLL_DOC_SUBTITLE
         };
 
         OSL_ENSURE(SAL_N_ELEMENTS(aArr) == 75, "Style Array has false size");
@@ -239,7 +240,7 @@ namespace myImplHelpers
     {
     private:
         MapperImpl<C> maHelper;
-        std::set<const C*> maUsedStyles;
+        o3tl::sorted_vector<const C*> maUsedStyles;
         C* MakeNonCollidingStyle(const OUString& rName);
     public:
         typedef std::pair<C*, bool> StyleResult;
@@ -293,7 +294,7 @@ namespace myImplHelpers
         {
             //If the style collides first stick WW- in front of it, unless
             //it already has it and then successively add a larger and
-            //larger number after it, its got to work at some stage!
+            //larger number after it, it's got to work at some stage!
             if (!aName.startsWith("WW-"))
                 aName = "WW-" + aName;
 
@@ -304,20 +305,21 @@ namespace myImplHelpers
                     (nI < SAL_MAX_INT32)
                   )
             {
-                aName = aBaseName;
-                aName += OUString::number(nI++);
+                aName = aBaseName + OUString::number(nI++);
             }
         }
 
         return pColl ? 0 : maHelper.MakeStyle(aName);
     }
 
-    OUString FindBestMSSubstituteFont(const OUString &rFont)
+    static OUString FindBestMSSubstituteFont(const OUString &rFont)
     {
         if (IsStarSymbol(rFont))
-            return OUString("Arial Unicode MS");
+            return "Arial Unicode MS";
         return GetSubsFontName(rFont, SubsFontFlags::ONLYONE | SubsFontFlags::MS);
     }
+
+    namespace {
 
     //Utility to remove entries before a given starting position
     class IfBeforeStart
@@ -331,6 +333,8 @@ namespace myImplHelpers
             return rEntry.mnEndPos < mnStart;
         }
     };
+
+    }
 }
 
 /// Count what Word calls left/right margin from a format's LRSpace + Box.
@@ -398,12 +402,11 @@ namespace sw
             else
             {
                 dyaHdrTop = dyaHdrBottom = 0;
-                dyaHdrBottom = 0;
             }
             const SvxULSpaceItem &rUL =
                 ItemGet<SvxULSpaceItem>(rPage, RES_UL_SPACE);
-            dyaHdrTop = dyaHdrTop + rUL.GetUpper();
-            dyaHdrBottom = dyaHdrBottom + rUL.GetLower();
+            dyaHdrTop += rUL.GetUpper();
+            dyaHdrBottom += rUL.GetLower();
 
             dyaTop = dyaHdrTop;
             dyaBottom = dyaHdrBottom;
@@ -432,8 +435,7 @@ namespace sw
         {
             // Check top only if both object have a header or if
             // both object don't have a header
-            if ( (  HasHeader() &&  rOther.HasHeader() ) ||
-                 ( !HasHeader() && !rOther.HasHeader() ) )
+            if (HasHeader() == rOther.HasHeader())
             {
                 if (dyaTop != rOther.dyaTop)
                     return false;
@@ -441,8 +443,7 @@ namespace sw
 
             // Check bottom only if both object have a footer or if
             // both object don't have a footer
-            if ( (  HasFooter() &&  rOther.HasFooter() ) ||
-                 ( !HasFooter() && !rOther.HasFooter() ) )
+            if (HasFooter() == rOther.HasFooter())
             {
                 if (dyaBottom != rOther.dyaBottom)
                     return false;
@@ -543,21 +544,15 @@ namespace sw
 
             if (rText.isEmpty())
             {
-                aRunChanges.push_back(CharRunEntry(0, nScript, eChrSet,
-                    bParaIsRTL));
+                aRunChanges.emplace_back(0, nScript, eChrSet,
+                    bParaIsRTL);
                 return aRunChanges;
             }
 
             typedef std::pair<int32_t, bool> DirEntry;
-            typedef std::vector<DirEntry> DirChanges;
-            typedef DirChanges::const_iterator cDirIter;
-
             typedef std::pair<sal_Int32, sal_uInt16> ScriptEntry;
-            typedef std::vector<ScriptEntry> ScriptChanges;
-            typedef ScriptChanges::const_iterator cScriptIter;
-
-            DirChanges aDirChanges;
-            ScriptChanges aScripts;
+            std::vector<DirEntry> aDirChanges;
+            std::vector<ScriptEntry> aScripts;
 
             UBiDiDirection eDefaultDir = bParaIsRTL ? UBIDI_RTL : UBIDI_LTR;
             UErrorCode nError = U_ZERO_ERROR;
@@ -585,7 +580,7 @@ namespace sw
                 The value for UBIDI_DEFAULT_LTR is even and the one for
                 UBIDI_DEFAULT_RTL is odd
                 */
-                aDirChanges.push_back(DirEntry(nEnd, nCurrDir & 0x1));
+                aDirChanges.emplace_back(nEnd, nCurrDir & 0x1);
                 nStart = nEnd;
             }
             ubidi_close(pBidi);
@@ -601,15 +596,15 @@ namespace sw
                 if (nEnd2 < 0)
                     break;
                 nPos = nEnd2;
-                aScripts.push_back(ScriptEntry(nPos, nScript));
+                aScripts.emplace_back(nPos, nScript);
                 nScript = g_pBreakIt->GetBreakIter()->getScriptType(rText, nPos);
             }
 
-            cDirIter aBiDiEnd = aDirChanges.end();
-            cScriptIter aScriptEnd = aScripts.end();
+            auto aBiDiEnd = aDirChanges.cend();
+            auto aScriptEnd = aScripts.cend();
 
-            cDirIter aBiDiIter = aDirChanges.begin();
-            cScriptIter aScriptIter = aScripts.begin();
+            auto aBiDiIter = aDirChanges.cbegin();
+            auto aScriptIter = aScripts.cbegin();
 
             bool bCharIsRTL = bParaIsRTL;
 
@@ -634,8 +629,7 @@ namespace sw
                     nScript = aScriptIter->second;
                 }
 
-                aRunChanges.push_back(
-                    CharRunEntry(nMinPos, nScript, eChrSet, bCharIsRTL));
+                aRunChanges.emplace_back(nMinPos, nScript, eChrSet, bCharIsRTL);
 
                 if (aBiDiIter != aBiDiEnd)
                 {
@@ -681,7 +675,7 @@ namespace sw
         static bool
         CanEncode(OUString const& rString, rtl_TextEncoding const eEncoding)
         {
-            rtl::OString tmp;
+            OString tmp;
             return rString.convertToString(&tmp, eEncoding,
                     RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR |
                     RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR);
@@ -758,7 +752,7 @@ namespace sw
         /** Find cFind in rParams if not embedded in " double quotes.
             Will NOT find '\\' or '"'.
          */
-        sal_Int32 findUnquoted( const OUString& rParams, sal_Unicode cFind, sal_Int32 nFromPos )
+        static sal_Int32 findUnquoted( const OUString& rParams, sal_Unicode cFind, sal_Int32 nFromPos )
         {
             const sal_Int32 nLen = rParams.getLength();
             if (nFromPos < 0 || nLen <= nFromPos)
@@ -791,7 +785,7 @@ namespace sw
         /** Find all rFind in rParams if not embedded in " double quotes and
             replace with rReplace. Will NOT find '\\' or '"'.
          */
-        bool replaceUnquoted( OUString& rParams, const OUString& rFind, const OUString& rReplace )
+        static bool replaceUnquoted( OUString& rParams, const OUString& rFind, const OUString& rReplace )
         {
             bool bReplaced = false;
             if (rFind.isEmpty())
@@ -837,7 +831,7 @@ namespace sw
         {
             // tell the Formatter about the new entry
             sal_Int32 nCheckPos = 0;
-            short  nType = css::util::NumberFormat::DEFINED;
+            SvNumFormatType nType = SvNumFormatType::DEFINED;
             sal_uInt32  nKey = 0;
 
             SwapQuotesInField(rParams);
@@ -845,7 +839,7 @@ namespace sw
             // Force to Japanese when finding one of 'geE'.
             // XXX This actually may not be correct, all era keywords could be
             // used in other locales as well. I just don't know about Word. But
-            // this is how it was for 10 years..
+            // this is how it was for 10 years...
             bool bForceJapanese = (-1 != findUnquoted( rParams, 'g', 0));
             // XXX Why replace? The number formatter does handle them and this
             // effectively changes from Gengou to Gregorian calendar. Legacy
@@ -866,8 +860,8 @@ namespace sw
             }
 
             // Force to NatNum when finding one of 'oOA'
-            bool bForceNatNum  = replaceUnquoted( rParams, "o", "m");
-                 bForceNatNum |= replaceUnquoted( rParams, "O", "M");
+            bool bForceNatNum  = replaceUnquoted( rParams, "o", "m")
+                                 || replaceUnquoted( rParams, "O", "M");
             if (LANGUAGE_FRENCH != nDocLang)
             {
                 // Handle the 'A' case here
@@ -1047,15 +1041,15 @@ namespace sw
             return nKey;
         }
 
-        bool IsPreviousAM(OUString& rParams, sal_Int32 nPos)
+        bool IsPreviousAM(OUString const & rParams, sal_Int32 nPos)
         {
             return nPos>=2 && rParams.matchIgnoreAsciiCase("am", nPos-2);
         }
-        bool IsNextPM(OUString& rParams, sal_Int32 nPos)
+        bool IsNextPM(OUString const & rParams, sal_Int32 nPos)
         {
             return nPos+2<rParams.getLength() && rParams.matchIgnoreAsciiCase("pm", nPos+1);
         }
-        bool IsNotAM(OUString& rParams, sal_Int32 nPos)
+        bool IsNotAM(OUString const & rParams, sal_Int32 nPos)
         {
             ++nPos;
             return nPos>=rParams.getLength() || (rParams[nPos]!='M' && rParams[nPos]!='m');

@@ -17,35 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/msgbox.hxx>
 #include <unotools/localedatawrapper.hxx>
 
-#include "redcom.hxx"
-#include "docsh.hxx"
-#include "tabvwsh.hxx"
+#include <chgtrack.hxx>
+#include <redcom.hxx>
+#include <docsh.hxx>
+#include <dbfunc.hxx>
+#include <tabview.hxx>
+#include <viewutil.hxx>
 #include <svx/svxdlg.hxx>
-#include <svx/dialogs.hrc>
 
-ScRedComDialog::ScRedComDialog( vcl::Window* pParent, const SfxItemSet& rCoreSet,
+ScRedComDialog::ScRedComDialog( weld::Window* pParent, const SfxItemSet& rCoreSet,
                     ScDocShell *pShell, ScChangeAction *pAction, bool bPrevNext)
     : pChangeAction(nullptr)
     , pDocShell(nullptr)
     , pDlg(nullptr)
 {
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-    if(pFact)
-    {
-        pDlg = pFact->CreateSvxPostItDialog( pParent, rCoreSet, bPrevNext );
-        OSL_ENSURE(pDlg, "Dialog creation failed!");
-        pDocShell=pShell;
-        pDlg->DontChangeAuthor();
-        pDlg->HideAuthor();
+    pDlg = pFact->CreateSvxPostItDialog( pParent, rCoreSet, bPrevNext );
+    pDocShell=pShell;
+    pDlg->DontChangeAuthor();
+    pDlg->HideAuthor();
 
-        pDlg->SetPrevHdl(LINK( this, ScRedComDialog, PrevHdl));
-        pDlg->SetNextHdl(LINK( this, ScRedComDialog, NextHdl));
+    pDlg->SetPrevHdl(LINK( this, ScRedComDialog, PrevHdl));
+    pDlg->SetNextHdl(LINK( this, ScRedComDialog, NextHdl));
 
-        ReInit(pAction);
-    }
+    ReInit(pAction);
 }
 
 ScRedComDialog::~ScRedComDialog()
@@ -98,27 +95,26 @@ ScChangeAction *ScRedComDialog::FindNext(ScChangeAction *pAction)
 void ScRedComDialog::ReInit(ScChangeAction *pAction)
 {
     pChangeAction=pAction;
-    if(pChangeAction!=nullptr && pDocShell !=nullptr)
-    {
-        OUString aTitle;
-        pChangeAction->GetDescription( aTitle, &pDocShell->GetDocument());
-        pDlg->SetText(aTitle);
-        aComment=pChangeAction->GetComment();
+    if(pChangeAction==nullptr || pDocShell ==nullptr)
+        return;
 
-        bool bNext=FindNext(pChangeAction)!=nullptr;
-        bool bPrev=FindPrev(pChangeAction)!=nullptr;
-        pDlg->EnableTravel(bNext,bPrev);
+    OUString aTitle;
+    pChangeAction->GetDescription( aTitle, &pDocShell->GetDocument());
+    pDlg->SetText(aTitle);
+    aComment=pChangeAction->GetComment();
 
-        OUString aAuthor = pChangeAction->GetUser();
+    bool bNext=FindNext(pChangeAction)!=nullptr;
+    bool bPrev=FindPrev(pChangeAction)!=nullptr;
+    pDlg->EnableTravel(bNext,bPrev);
 
-        DateTime aDT = pChangeAction->GetDateTime();
-        OUString aDate = ScGlobal::pLocaleData->getDate( aDT );
-        aDate += " ";
-        aDate += ScGlobal::pLocaleData->getTime( aDT, false );
+    OUString aAuthor = pChangeAction->GetUser();
 
-        pDlg->ShowLastAuthor(aAuthor, aDate);
-        pDlg->SetNote(aComment);
-    }
+    DateTime aDT = pChangeAction->GetDateTime();
+    OUString aDate = ScGlobal::getLocaleDataPtr()->getDate( aDT ) + " " +
+        ScGlobal::getLocaleDataPtr()->getTime( aDT, false );
+
+    pDlg->ShowLastAuthor(aAuthor, aDate);
+    pDlg->SetNote(aComment);
 }
 
 void ScRedComDialog::Execute()
@@ -134,18 +130,18 @@ void ScRedComDialog::Execute()
 
 void ScRedComDialog::SelectCell()
 {
-    if(pChangeAction!=nullptr)
-    {
-        const ScChangeAction* pAction=pChangeAction;
-        const ScBigRange& rRange = pAction->GetBigRange();
+    if(pChangeAction==nullptr)
+        return;
 
-        if(rRange.IsValid(&pDocShell->GetDocument()))
-        {
-            ScViewData* pViewData=ScDocShell::GetViewData();
-            ScRange aRef=rRange.MakeRange();
-            ScTabView* pTabView=pViewData->GetView();
-            pTabView->MarkRange(aRef);
-        }
+    const ScChangeAction* pAction=pChangeAction;
+    const ScBigRange& rRange = pAction->GetBigRange();
+
+    if(rRange.IsValid(&pDocShell->GetDocument()))
+    {
+        ScViewData* pViewData=ScDocShell::GetViewData();
+        ScRange aRef=rRange.MakeRange();
+        ScTabView* pTabView=pViewData->GetView();
+        pTabView->MarkRange(aRef);
     }
 }
 

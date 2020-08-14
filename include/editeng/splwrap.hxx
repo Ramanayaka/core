@@ -21,20 +21,19 @@
 
 #include <editeng/editengdllapi.h>
 #include <editeng/svxenum.hxx>
+#include <i18nlangtag/lang.h>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <vcl/vclptr.hxx>
+#include <vcl/weld.hxx>
 
 // forward ---------------------------------------------------------------
 
-namespace com { namespace sun { namespace star { namespace linguistic2 {
+namespace com::sun::star::linguistic2 {
     class XDictionary;
     class XSpellChecker1;
     class XHyphenator;
-}}}}
+}
 
-namespace vcl { class Window; }
-class SdrObject;
 // misc functions ---------------------------------------------------------------
 
 void EDITENG_DLLPUBLIC SvxPrepareAutoCorrect( OUString &rOldText, const OUString &rNewText );
@@ -49,13 +48,13 @@ private:
     friend class SvxHyphenWordDialog;
     friend struct SvxHyphenWordDialog_Impl;
 
-    VclPtr<vcl::Window>     pWin;
+    weld::Window* pWin;
+    std::unique_ptr<weld::WaitObject> xWait;
     css::uno::Reference<
         css::uno::XInterface >             xLast;  // result of last spelling/hyphenation attempt
     css::uno::Reference<
         css::linguistic2::XHyphenator >    xHyph;
     bool        bOtherCntnt : 1; // set => Check special sections initially
-    bool        bHyphen     : 1; // Split instead of spell checking
     bool        bReverse    : 1; // Reverse spell check
     bool        bStartDone  : 1; // Beginning already corrected
     bool        bEndDone    : 1; // End part already corrected
@@ -71,10 +70,10 @@ private:
     void operator =(SvxSpellWrapper const &) = delete;
 
 public:
-    SvxSpellWrapper( vcl::Window* pWn,
+    SvxSpellWrapper( weld::Window* pWn,
                      const bool bStart, const bool bIsAllRight );
-    SvxSpellWrapper( vcl::Window* pWn,
-                     css::uno::Reference< css::linguistic2::XHyphenator >  &xHyphenator,
+    SvxSpellWrapper( weld::Window* pWn,
+                     css::uno::Reference< css::linguistic2::XHyphenator > const &xHyphenator,
                      const bool bStart, const bool bOther );
 
     virtual ~SvxSpellWrapper();
@@ -89,19 +88,16 @@ public:
     static void         ShowLanguageErrors();
 
     void            SpellDocument();        // Perform Spell Checking
-    bool     IsStartDone(){ return bStartDone; }
-    bool     IsEndDone(){ return bEndDone; }
-    bool     IsHyphen(){ return bHyphen; } // Split instead of Spell check
-    void     SetHyphen() { bHyphen = true; }
-    bool     IsAllRight()        { return bAllRight; }
+    bool     IsStartDone() const { return bStartDone; }
+    bool     IsEndDone() const { return bEndDone; }
+    bool     IsAllRight() const { return bAllRight; }
 
 protected:
     const css::uno::Reference< css::uno::XInterface >&
-                     GetLast()      { return xLast; }
+                     GetLast() const { return xLast; }
     void             SetLast(const css::uno::Reference< css::uno::XInterface >  &xNewLast)
                             { xLast = xNewLast; }
     virtual bool SpellMore();               // examine further documents?
-    virtual bool HasOtherCnt();             // Are there any special areas?
     virtual void SpellStart( SvxSpellArea eSpell ); // Preparing the area
     virtual void SpellContinue();     // Check Areas
                                           // Result available through GetLast

@@ -21,7 +21,6 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_DRAWINGFRAGMENT_HXX
 
 #include <memory>
-#include <com/sun/star/awt/Rectangle.hpp>
 #include <oox/drawingml/shapegroupcontext.hxx>
 #include <oox/ole/axcontrol.hxx>
 #include <oox/drawingml/shape.hxx>
@@ -32,13 +31,11 @@
 #include "drawingbase.hxx"
 #include "excelhandlers.hxx"
 
-namespace oox { namespace ole {
+namespace oox::ole {
     struct AxFontData;
-    class AxMorphDataModelBase;
-} }
+}
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 // DrawingML
 
@@ -61,7 +58,7 @@ public:
     explicit            Shape(
                             const WorksheetHelper& rHelper,
                             const AttributeList& rAttribs,
-                            const sal_Char* pcServiceName );
+                            const char* pcServiceName );
 
 protected:
     virtual void        finalizeXShape(
@@ -77,14 +74,14 @@ class GroupShapeContext : public ::oox::drawingml::ShapeGroupContext, public Wor
 {
 public:
     explicit            GroupShapeContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            const ::oox::core::FragmentHandler2& rParent,
                             const WorksheetHelper& rHelper,
                             const ::oox::drawingml::ShapePtr& rxParentShape,
                             const ::oox::drawingml::ShapePtr& rxShape );
 
     static ::oox::core::ContextHandlerRef
                         createShapeContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::FragmentHandler2& rParent,
                             const WorksheetHelper& rHelper,
                             sal_Int32 nElement,
                             const AttributeList& rAttribs,
@@ -204,8 +201,7 @@ protected:
     virtual void        finalizeImport() override;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

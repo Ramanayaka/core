@@ -18,26 +18,25 @@
  */
 
 #include <com/sun/star/awt/Gradient.hpp>
-#include <svl/itempool.hxx>
-#include <svl/itemset.hxx>
 #include "UnoNameItemTable.hxx"
 
-#include <svx/xgrad.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/xdef.hxx>
 #include <svx/xflgrit.hxx>
-#include "svx/unofill.hxx"
+#include <svx/unofill.hxx>
 #include <svx/unomid.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::cppu;
+
+namespace {
 
 class SvxUnoGradientTable : public SvxUnoNameItemTable
 {
 public:
     explicit SvxUnoGradientTable( SdrModel* pModel ) throw();
 
-    virtual NameOrIndex* createItem() const throw() override;
+    virtual NameOrIndex* createItem() const override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName(  ) override;
@@ -47,6 +46,8 @@ public:
     virtual uno::Type SAL_CALL getElementType(  ) override;
 };
 
+}
+
 SvxUnoGradientTable::SvxUnoGradientTable( SdrModel* pModel ) throw()
     : SvxUnoNameItemTable( pModel, XATTR_FILLGRADIENT, MID_FILLGRADIENT )
 {
@@ -54,18 +55,17 @@ SvxUnoGradientTable::SvxUnoGradientTable( SdrModel* pModel ) throw()
 
 OUString SAL_CALL SvxUnoGradientTable::getImplementationName()
 {
-    return OUString("SvxUnoGradientTable");
+    return "SvxUnoGradientTable";
 }
 
 uno::Sequence< OUString > SAL_CALL SvxUnoGradientTable::getSupportedServiceNames(  )
 {
-    uno::Sequence<OUString> aSNS { "com.sun.star.drawing.GradientTable" };
-    return aSNS;
+    return { "com.sun.star.drawing.GradientTable" };
 }
 
 
 // XNameContainer
-NameOrIndex* SvxUnoGradientTable::createItem() const throw()
+NameOrIndex* SvxUnoGradientTable::createItem() const
 {
     return new XFillGradientItem();
 }
@@ -79,7 +79,7 @@ uno::Type SAL_CALL SvxUnoGradientTable::getElementType(  )
 /**
  * Create a gradienttable
  */
-uno::Reference< uno::XInterface > SAL_CALL SvxUnoGradientTable_createInstance( SdrModel* pModel )
+uno::Reference< uno::XInterface > SvxUnoGradientTable_createInstance( SdrModel* pModel )
 {
     return *new SvxUnoGradientTable(pModel);
 }

@@ -17,13 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#define UNICODE
-#include "systools/win32/uwinapi.h"
-
 #include "file_error.hxx"
+#include <winerror.h>
 
-#include "osl/thread.hxx"
-#include <sal/macros.h>
+namespace {
 
 /* OS error to oslFileError values mapping table */
 struct osl_file_error_entry
@@ -32,7 +29,9 @@ struct osl_file_error_entry
     int errnocode;        /* oslFileError code */
 };
 
-static const struct osl_file_error_entry errtable[] = {
+}
+
+const struct osl_file_error_entry errtable[] = {
   {  ERROR_SUCCESS,                osl_File_E_None     },  /* 0 */
   {  ERROR_INVALID_FUNCTION,       osl_File_E_INVAL    },  /* 1 */
   {  ERROR_FILE_NOT_FOUND,         osl_File_E_NOENT    },  /* 2 */
@@ -82,7 +81,7 @@ static const struct osl_file_error_entry errtable[] = {
   {  ERROR_FILENAME_EXCED_RANGE,   osl_File_E_NOENT    },  /* 206 */
   {  ERROR_NESTING_NOT_ALLOWED,    osl_File_E_AGAIN    },  /* 215 */
   {  ERROR_FILE_CHECKED_OUT,       osl_File_E_ACCES    },  /* 220 */
-  {  ERROR_DIRECTORY,              osl_File_E_NOENT    },  /* 267 */
+  {  ERROR_DIRECTORY,              osl_File_E_NOTDIR   },  /* 267 */
   {  ERROR_NOT_ENOUGH_QUOTA,       osl_File_E_NOMEM    },  /* 1816 */
   {  ERROR_CANT_ACCESS_FILE,       osl_File_E_ACCES    },  /* 1920 */
   {  ERROR_UNEXP_NET_ERR,          osl_File_E_NETWORK  }   /* 59 */
@@ -108,7 +107,7 @@ oslFileError oslTranslateFileError (/*DWORD*/ unsigned long dwError)
     for (i = 0; i < n; ++i )
     {
         if (dwError == errtable[i].oscode)
-            return (oslFileError)(errtable[i].errnocode);
+            return static_cast<oslFileError>(errtable[i].errnocode);
     }
 
     /* The error code wasn't in the table.  We check for a range of

@@ -21,12 +21,15 @@
 #define INCLUDED_XMLOFF_NUMEHELP_HXX
 
 #include <sal/config.h>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <set>
+
+namespace com::sun::star::util { class XNumberFormats; }
+namespace com::sun::star::util { class XNumberFormatsSupplier; }
 
 class SvXMLExport;
 
@@ -59,20 +62,16 @@ class XMLOFF_DLLPUBLIC XMLNumberFormatAttributesExportHelper
 {
     css::uno::Reference< css::util::XNumberFormats > xNumberFormats;
     SvXMLExport*        pExport;
-    const OUString sStandardFormat;
-    const OUString sType;
     const OUString sAttrValue;
     const OUString sAttrDateValue;
     const OUString sAttrTimeValue;
     const OUString sAttrBooleanValue;
     const OUString sAttrStringValue;
     const OUString sAttrCurrency;
-    const OUString msCurrencySymbol;
-    const OUString msCurrencyAbbreviation;
     XMLNumberFormatSet  aNumberFormats;
 public:
-    XMLNumberFormatAttributesExportHelper(css::uno::Reference< css::util::XNumberFormatsSupplier >& xNumberFormatsSupplier);
-    XMLNumberFormatAttributesExportHelper(css::uno::Reference< css::util::XNumberFormatsSupplier >& xNumberFormatsSupplier,
+    XMLNumberFormatAttributesExportHelper(css::uno::Reference< css::util::XNumberFormatsSupplier > const & xNumberFormatsSupplier);
+    XMLNumberFormatAttributesExportHelper(css::uno::Reference< css::util::XNumberFormatsSupplier > const & xNumberFormatsSupplier,
                                             SvXMLExport& rExport );
     ~XMLNumberFormatAttributesExportHelper();
 
@@ -83,9 +82,9 @@ public:
                                 const OUString& rCurrencySymbol,
                                 bool bExportValue);
     static bool GetCurrencySymbol(const sal_Int32 nNumberFormat, OUString& rCurrencySymbol,
-        css::uno::Reference< css::util::XNumberFormatsSupplier > & xNumberFormatsSupplier);
+        css::uno::Reference< css::util::XNumberFormatsSupplier > const & xNumberFormatsSupplier);
     static sal_Int16 GetCellType(const sal_Int32 nNumberFormat, bool& bIsStandard,
-        css::uno::Reference< css::util::XNumberFormatsSupplier > & xNumberFormatsSupplier);
+        css::uno::Reference< css::util::XNumberFormatsSupplier > const & xNumberFormatsSupplier);
     static void SetNumberFormatAttributes(SvXMLExport& rXMLExport,
                                           const sal_Int32 nNumberFormat,
                                           const double& rValue,

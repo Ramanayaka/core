@@ -17,34 +17,38 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <config_gpgme.h>
 
-#include "xsecctl.hxx"
+#include <xsecctl.hxx>
 #include "xsecparser.hxx"
 #include "ooxmlsecparser.hxx"
-#include "framework/signatureverifierimpl.hxx"
-#include "framework/saxeventkeeperimpl.hxx"
-#include "gpg/xmlsignature_gpgimpl.hxx"
-#include "gpg/SEInitializer.hxx"
+#include <framework/signatureverifierimpl.hxx>
+#include <framework/saxeventkeeperimpl.hxx>
+#include <gpg/xmlsignature_gpgimpl.hxx>
+#include <gpg/SEInitializer.hxx>
 
+#include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/xml/crypto/sax/XKeyCollector.hpp>
 #include <com/sun/star/xml/crypto/sax/ElementMarkPriority.hpp>
-#include <com/sun/star/xml/crypto/sax/XReferenceResolvedBroadcaster.hpp>
 #include <com/sun/star/xml/crypto/sax/XReferenceCollector.hpp>
 #include <com/sun/star/xml/crypto/sax/XSignatureVerifyResultBroadcaster.hpp>
 #include <com/sun/star/xml/crypto/XSEInitializer.hpp>
-#include <com/sun/star/xml/sax/SAXParseException.hpp>
+#include <com/sun/star/graphic/GraphicProvider.hpp>
 #include <com/sun/star/embed/StorageFormats.hpp>
 #include <sal/log.hxx>
 #include <unotools/datetime.hxx>
+#include <comphelper/base64.hxx>
+#include <comphelper/processfactory.hxx>
+#include <comphelper/seqstream.hxx>
 
-using namespace com::sun::star;
-namespace cssu = com::sun::star::uno;
-namespace cssl = com::sun::star::lang;
-namespace cssxc = com::sun::star::xml::crypto;
-namespace cssxs = com::sun::star::xml::sax;
+namespace com::sun::star::graphic { class XGraphic; }
+
+using namespace css;
+using namespace css::uno;
+using namespace css::beans;
 
 /* protected: for signature verify */
-cssu::Reference< cssxc::sax::XReferenceResolvedListener > XSecController::prepareSignatureToRead(
+css::uno::Reference< css::xml::crypto::sax::XReferenceResolvedListener > XSecController::prepareSignatureToRead(
     sal_Int32 nSecurityId)
 {
     if ( m_eStatusOfSecurityComponents != InitializationState::INITIALIZED )
@@ -53,10 +57,10 @@ cssu::Reference< cssxc::sax::XReferenceResolvedListener > XSecController::prepar
     }
 
     sal_Int32 nIdOfSignatureElementCollector;
-    cssu::Reference< cssxc::sax::XReferenceResolvedListener > xReferenceResolvedListener;
+    css::uno::Reference< css::xml::crypto::sax::XReferenceResolvedListener > xReferenceResolvedListener;
 
     nIdOfSignatureElementCollector =
-        m_xSAXEventKeeper->addSecurityElementCollector( cssxc::sax::ElementMarkPriority_BEFOREMODIFY, false);
+        m_xSAXEventKeeper->addSecurityElementCollector( css::xml::crypto::sax::ElementMarkPriority_BEFOREMODIFY, false);
 
     m_xSAXEventKeeper->setSecurityId(nIdOfSignatureElementCollector, nSecurityId);
 
@@ -65,9 +69,9 @@ cssu::Reference< cssxc::sax::XReferenceResolvedListener > XSecController::prepar
          */
     xReferenceResolvedListener = new SignatureVerifierImpl;
 
-    cssu::Reference<cssl::XInitialization> xInitialization(xReferenceResolvedListener, cssu::UNO_QUERY);
+    css::uno::Reference<css::lang::XInitialization> xInitialization(xReferenceResolvedListener, css::uno::UNO_QUERY);
 
-    cssu::Sequence<cssu::Any> args(5);
+    css::uno::Sequence<css::uno::Any> args(5);
     args[0] <<= OUString::number(nSecurityId);
     args[1] <<= uno::Reference<xml::crypto::sax::XSecuritySAXEventKeeper>(static_cast<cppu::OWeakObject*>(m_xSAXEventKeeper.get()), uno::UNO_QUERY);
     args[2] <<= OUString::number(nIdOfSignatureElementCollector);
@@ -75,8 +79,8 @@ cssu::Reference< cssxc::sax::XReferenceResolvedListener > XSecController::prepar
     args[4] <<= m_xXMLSignature;
     xInitialization->initialize(args);
 
-    cssu::Reference< cssxc::sax::XSignatureVerifyResultBroadcaster >
-        signatureVerifyResultBroadcaster(xReferenceResolvedListener, cssu::UNO_QUERY);
+    css::uno::Reference< css::xml::crypto::sax::XSignatureVerifyResultBroadcaster >
+        signatureVerifyResultBroadcaster(xReferenceResolvedListener, css::uno::UNO_QUERY);
 
     signatureVerifyResultBroadcaster->addSignatureVerifyResultListener( this );
 
@@ -84,7 +88,7 @@ cssu::Reference< cssxc::sax::XReferenceResolvedListener > XSecController::prepar
         nIdOfSignatureElementCollector,
         xReferenceResolvedListener);
 
-    cssu::Reference<cssxc::sax::XKeyCollector> keyCollector (xReferenceResolvedListener, cssu::UNO_QUERY);
+    css::uno::Reference<css::xml::crypto::sax::XKeyCollector> keyCollector (xReferenceResolvedListener, css::uno::UNO_QUERY);
     keyCollector->setKeyId(0);
 
     return xReferenceResolvedListener;
@@ -92,13 +96,13 @@ cssu::Reference< cssxc::sax::XReferenceResolvedListener > XSecController::prepar
 
 void XSecController::addSignature()
 {
-    cssu::Reference< cssxc::sax::XReferenceResolvedListener > xReferenceResolvedListener = nullptr;
+    css::uno::Reference< css::xml::crypto::sax::XReferenceResolvedListener > xReferenceResolvedListener;
     sal_Int32 nSignatureId = 0;
 
 
     if (m_bVerifyCurrentSignature)
     {
-        chainOn(true);
+        chainOn();
         xReferenceResolvedListener = prepareSignatureToRead( m_nReservedSignatureId );
         m_bVerifyCurrentSignature = false;
         nSignatureId = m_nReservedSignatureId;
@@ -108,30 +112,38 @@ void XSecController::addSignature()
     m_vInternalSignatureInformations.push_back( isi );
 }
 
+void XSecController::setSignatureMethod(svl::crypto::SignatureMethodAlgorithm eAlgorithmID)
+{
+    if (m_vInternalSignatureInformations.empty())
+        return;
+
+    m_vInternalSignatureInformations.back().signatureInfor.eAlgorithmID = eAlgorithmID;
+}
+
 void XSecController::switchGpgSignature()
 {
-#if !defined(MACOSX) && !defined(WNT)
+#if HAVE_FEATURE_GPGME
     // swap signature verifier for the Gpg one
     m_xXMLSignature.set(new XMLSignature_GpgImpl());
-    if (!m_vInternalSignatureInformations.empty())
+    if (m_vInternalSignatureInformations.empty())
+        return;
+
+    SignatureVerifierImpl* pImpl=
+        dynamic_cast<SignatureVerifierImpl*>(
+            m_vInternalSignatureInformations.back().xReferenceResolvedListener.get());
+    if (pImpl)
     {
-        SignatureVerifierImpl* pImpl=
-            dynamic_cast<SignatureVerifierImpl*>(
-                m_vInternalSignatureInformations.back().xReferenceResolvedListener.get());
-        if (pImpl)
-        {
-            css::uno::Reference<css::xml::crypto::XSEInitializer> xGpgSEInitializer(
-                new SEInitializerGpg());
-            pImpl->updateSignature(new XMLSignature_GpgImpl(),
-                                   xGpgSEInitializer->createSecurityContext(OUString()));
-        }
+        css::uno::Reference<css::xml::crypto::XSEInitializer> xGpgSEInitializer(
+            new SEInitializerGpg());
+        pImpl->updateSignature(new XMLSignature_GpgImpl(),
+                               xGpgSEInitializer->createSecurityContext(OUString()));
     }
 #else
     (void) this;
 #endif
 }
 
-void XSecController::addReference( const OUString& ouUri, sal_Int32 nDigestID )
+void XSecController::addReference( const OUString& ouUri, sal_Int32 nDigestID, const OUString& ouType )
 {
     if (m_vInternalSignatureInformations.empty())
     {
@@ -139,7 +151,7 @@ void XSecController::addReference( const OUString& ouUri, sal_Int32 nDigestID )
         return;
     }
     InternalSignatureInformation &isi = m_vInternalSignatureInformations.back();
-    isi.addReference(SignatureReferenceType::SAMEDOCUMENT, nDigestID, ouUri, -1 );
+    isi.addReference(SignatureReferenceType::SAMEDOCUMENT, nDigestID, ouUri, -1, ouType );
 }
 
 void XSecController::addStreamReference(
@@ -147,7 +159,7 @@ void XSecController::addStreamReference(
     bool isBinary,
     sal_Int32 nDigestID )
 {
-        SignatureReferenceType type = (isBinary?SignatureReferenceType::BINARYSTREAM:SignatureReferenceType::XMLSTREAM);
+    SignatureReferenceType type = (isBinary?SignatureReferenceType::BINARYSTREAM:SignatureReferenceType::XMLSTREAM);
 
     if (m_vInternalSignatureInformations.empty())
     {
@@ -161,18 +173,18 @@ void XSecController::addStreamReference(
             /*
              * get the input stream
              */
-            cssu::Reference< css::io::XInputStream > xObjectInputStream
+        css::uno::Reference< css::io::XInputStream > xObjectInputStream
                 = getObjectInputStream( ouUri );
 
         if ( xObjectInputStream.is() )
         {
-            cssu::Reference<cssxc::XUriBinding> xUriBinding
-                (isi.xReferenceResolvedListener, cssu::UNO_QUERY);
+            css::uno::Reference<css::xml::crypto::XUriBinding> xUriBinding
+                (isi.xReferenceResolvedListener, css::uno::UNO_QUERY);
             xUriBinding->setUriBinding(ouUri, xObjectInputStream);
         }
     }
 
-    isi.addReference(type, nDigestID, ouUri, -1);
+    isi.addReference(type, nDigestID, ouUri, -1, OUString());
 }
 
 void XSecController::setReferenceCount() const
@@ -185,31 +197,31 @@ void XSecController::setReferenceCount() const
     const InternalSignatureInformation &isi =
         m_vInternalSignatureInformations.back();
 
-    if ( isi.xReferenceResolvedListener.is() )
+    if ( !isi.xReferenceResolvedListener.is() )
+        return;
+
+    const SignatureReferenceInformations &refInfors = isi.signatureInfor.vSignatureReferenceInfors;
+
+    int refNum = refInfors.size();
+    sal_Int32 referenceCount = 0;
+
+    for(int i=0 ; i<refNum; ++i)
     {
-        const SignatureReferenceInformations &refInfors = isi.signatureInfor.vSignatureReferenceInfors;
-
-        int refNum = refInfors.size();
-        sal_Int32 referenceCount = 0;
-
-        for(int i=0 ; i<refNum; ++i)
+        if (refInfors[i].nType == SignatureReferenceType::SAMEDOCUMENT )
+        /*
+         * same-document reference
+         */
         {
-            if (refInfors[i].nType == SignatureReferenceType::SAMEDOCUMENT )
-            /*
-             * same-document reference
-             */
-            {
-                referenceCount++;
-            }
+            referenceCount++;
         }
-
-        cssu::Reference<cssxc::sax::XReferenceCollector> xReferenceCollector
-            (isi.xReferenceResolvedListener, cssu::UNO_QUERY);
-        xReferenceCollector->setReferenceCount( referenceCount );
     }
+
+    css::uno::Reference<css::xml::crypto::sax::XReferenceCollector> xReferenceCollector
+        (isi.xReferenceResolvedListener, css::uno::UNO_QUERY);
+    xReferenceCollector->setReferenceCount( referenceCount );
 }
 
-void XSecController::setX509IssuerName( OUString& ouX509IssuerName )
+void XSecController::setX509IssuerName( OUString const & ouX509IssuerName )
 {
     if (m_vInternalSignatureInformations.empty())
     {
@@ -220,7 +232,7 @@ void XSecController::setX509IssuerName( OUString& ouX509IssuerName )
     isi.signatureInfor.ouX509IssuerName = ouX509IssuerName;
 }
 
-void XSecController::setX509SerialNumber( OUString& ouX509SerialNumber )
+void XSecController::setX509SerialNumber( OUString const & ouX509SerialNumber )
 {
     if (m_vInternalSignatureInformations.empty())
     {
@@ -231,7 +243,7 @@ void XSecController::setX509SerialNumber( OUString& ouX509SerialNumber )
     isi.signatureInfor.ouX509SerialNumber = ouX509SerialNumber;
 }
 
-void XSecController::setX509Certificate( OUString& ouX509Certificate )
+void XSecController::setX509Certificate( OUString const & ouX509Certificate )
 {
     if (m_vInternalSignatureInformations.empty())
     {
@@ -242,7 +254,7 @@ void XSecController::setX509Certificate( OUString& ouX509Certificate )
     isi.signatureInfor.ouX509Certificate = ouX509Certificate;
 }
 
-void XSecController::setSignatureValue( OUString& ouSignatureValue )
+void XSecController::setSignatureValue( OUString const & ouSignatureValue )
 {
     if (m_vInternalSignatureInformations.empty())
     {
@@ -253,7 +265,7 @@ void XSecController::setSignatureValue( OUString& ouSignatureValue )
     isi.signatureInfor.ouSignatureValue = ouSignatureValue;
 }
 
-void XSecController::setDigestValue( sal_Int32 nDigestID, OUString& ouDigestValue )
+void XSecController::setDigestValue( sal_Int32 nDigestID, OUString const & ouDigestValue )
 {
     if (m_vInternalSignatureInformations.empty())
     {
@@ -272,7 +284,7 @@ void XSecController::setDigestValue( sal_Int32 nDigestID, OUString& ouDigestValu
     reference.ouDigestValue = ouDigestValue;
 }
 
-void XSecController::setGpgKeyID( OUString& ouKeyID )
+void XSecController::setGpgKeyID( OUString const & ouKeyID )
 {
     if (m_vInternalSignatureInformations.empty())
     {
@@ -283,7 +295,7 @@ void XSecController::setGpgKeyID( OUString& ouKeyID )
     isi.signatureInfor.ouGpgKeyID = ouKeyID;
 }
 
-void XSecController::setGpgCertificate( OUString& ouGpgCert )
+void XSecController::setGpgCertificate( OUString const & ouGpgCert )
 {
     if (m_vInternalSignatureInformations.empty())
     {
@@ -294,7 +306,18 @@ void XSecController::setGpgCertificate( OUString& ouGpgCert )
     isi.signatureInfor.ouGpgCertificate = ouGpgCert;
 }
 
-void XSecController::setDate( OUString& ouDate )
+void XSecController::setGpgOwner( OUString const & ouGpgOwner )
+{
+    if (m_vInternalSignatureInformations.empty())
+    {
+        SAL_INFO("xmlsecurity.helper","XSecController::setGpgOwner: no signature");
+        return;
+    }
+    InternalSignatureInformation &isi = m_vInternalSignatureInformations.back();
+    isi.signatureInfor.ouGpgOwner = ouGpgOwner;
+}
+
+void XSecController::setDate( OUString const & ouDate )
 {
     if (m_vInternalSignatureInformations.empty())
     {
@@ -302,7 +325,7 @@ void XSecController::setDate( OUString& ouDate )
         return;
     }
     InternalSignatureInformation &isi = m_vInternalSignatureInformations.back();
-    utl::ISO8601parseDateTime( ouDate, isi.signatureInfor.stDateTime);
+    (void)utl::ISO8601parseDateTime( ouDate, isi.signatureInfor.stDateTime);
     isi.signatureInfor.ouDateTime = ouDate;
 }
 
@@ -333,6 +356,56 @@ void XSecController::setCertDigest(const OUString& rCertDigest)
     rInformation.signatureInfor.ouCertDigest = rCertDigest;
 }
 
+namespace {
+Reference<css::graphic::XGraphic> lcl_getGraphicFromString(const OUString& rImage)
+{
+    Sequence<sal_Int8> seq;
+    comphelper::Base64::decode(seq, rImage);
+
+    Reference< graphic::XGraphic > xGraphic;
+    if( !seq.hasElements() )
+        return Reference<css::graphic::XGraphic>();
+
+    Reference< graphic::XGraphicProvider > xGraphicProvider(
+        graphic::GraphicProvider::create(comphelper::getProcessComponentContext()) );
+    Reference< io::XInputStream > xInputStream( new ::comphelper::SequenceInputStream( seq ) );
+
+    Sequence< PropertyValue > aArgs( 1 );
+    aArgs[ 0 ].Name = "InputStream";
+    aArgs[ 0 ].Value <<= xInputStream;
+    xGraphic = xGraphicProvider->queryGraphic(aArgs);
+
+    return xGraphic;
+}
+}
+
+void XSecController::setValidSignatureImage(const OUString& rValidSigImg)
+{
+    if (m_vInternalSignatureInformations.empty() || rValidSigImg.isEmpty())
+        return;
+
+    InternalSignatureInformation& rInformation = m_vInternalSignatureInformations.back();
+    rInformation.signatureInfor.aValidSignatureImage = lcl_getGraphicFromString(rValidSigImg);
+}
+
+void XSecController::setInvalidSignatureImage(const OUString& rInvalidSigImg)
+{
+    if (m_vInternalSignatureInformations.empty() || rInvalidSigImg.isEmpty())
+        return;
+
+    InternalSignatureInformation& rInformation = m_vInternalSignatureInformations.back();
+    rInformation.signatureInfor.aInvalidSignatureImage = lcl_getGraphicFromString(rInvalidSigImg);
+}
+
+void XSecController::setSignatureLineId(const OUString& rSignatureLineId)
+{
+    if (m_vInternalSignatureInformations.empty())
+        return;
+
+    InternalSignatureInformation& rInformation = m_vInternalSignatureInformations.back();
+    rInformation.signatureInfor.ouSignatureLineId = rSignatureLineId;
+}
+
 void XSecController::addEncapsulatedX509Certificate(const OUString& rEncapsulatedX509Certificate)
 {
     if (m_vInternalSignatureInformations.empty())
@@ -345,7 +418,7 @@ void XSecController::addEncapsulatedX509Certificate(const OUString& rEncapsulate
     rInformation.signatureInfor.maEncapsulatedX509Certificates.insert(rEncapsulatedX509Certificate);
 }
 
-void XSecController::setId( OUString& ouId )
+void XSecController::setId( OUString const & ouId )
 {
     if (m_vInternalSignatureInformations.empty())
     {
@@ -356,7 +429,7 @@ void XSecController::setId( OUString& ouId )
     isi.signatureInfor.ouSignatureId = ouId;
 }
 
-void XSecController::setPropertyId( OUString& ouPropertyId )
+void XSecController::setPropertyId( OUString const & ouPropertyId )
 {
     if (m_vInternalSignatureInformations.empty())
     {
@@ -382,60 +455,55 @@ void XSecController::collectToVerify( const OUString& referenceId )
 {
     /* SAL_WARN_IF( !m_xSAXEventKeeper.is(), "xmlsecurity", "the SAXEventKeeper is NULL" ); */
 
-    if ( m_eStatusOfSecurityComponents == InitializationState::INITIALIZED )
+    if ( m_eStatusOfSecurityComponents != InitializationState::INITIALIZED )
     /*
      * if all security components are ready, verify the signature.
      */
+        return;
+
+    bool bJustChainingOn = false;
+    css::uno::Reference< css::xml::sax::XDocumentHandler > xHandler;
+
+    int i,j;
+    int sigNum = m_vInternalSignatureInformations.size();
+
+    for (i=0; i<sigNum; ++i)
     {
-        bool bJustChainingOn = false;
-        cssu::Reference< cssxs::XDocumentHandler > xHandler = nullptr;
+        InternalSignatureInformation& isi = m_vInternalSignatureInformations[i];
+        SignatureReferenceInformations& vReferenceInfors = isi.signatureInfor.vSignatureReferenceInfors;
+        int refNum = vReferenceInfors.size();
 
-        int i,j;
-        int sigNum = m_vInternalSignatureInformations.size();
-
-        for (i=0; i<sigNum; ++i)
+        for (j=0; j<refNum; ++j)
         {
-            InternalSignatureInformation& isi = m_vInternalSignatureInformations[i];
-            SignatureReferenceInformations& vReferenceInfors = isi.signatureInfor.vSignatureReferenceInfors;
-            int refNum = vReferenceInfors.size();
+            SignatureReferenceInformation &refInfor = vReferenceInfors[j];
 
-            for (j=0; j<refNum; ++j)
+            if (refInfor.ouURI == referenceId)
             {
-                SignatureReferenceInformation &refInfor = vReferenceInfors[j];
-
-                if (refInfor.ouURI == referenceId)
+                if (chainOn())
                 {
-                    if (chainOn(false))
-                    {
-                        bJustChainingOn = true;
-                        xHandler = m_xSAXEventKeeper->setNextHandler(nullptr);
-                    }
-
-                    sal_Int32 nKeeperId = m_xSAXEventKeeper->addSecurityElementCollector(
-                        cssxc::sax::ElementMarkPriority_BEFOREMODIFY, false );
-
-                    cssu::Reference<cssxc::sax::XReferenceCollector> xReferenceCollector
-                        ( isi.xReferenceResolvedListener, cssu::UNO_QUERY );
-
-                    m_xSAXEventKeeper->setSecurityId(nKeeperId, isi.signatureInfor.nSecurityId);
-                    m_xSAXEventKeeper->addReferenceResolvedListener( nKeeperId, isi.xReferenceResolvedListener);
-                    xReferenceCollector->setReferenceId( nKeeperId );
-
-                    isi.vKeeperIds[j] = nKeeperId;
-                    break;
+                    bJustChainingOn = true;
+                    xHandler = m_xSAXEventKeeper->setNextHandler(nullptr);
                 }
-            }
-        }
 
-        if ( bJustChainingOn )
-        {
-            cssu::Reference< cssxs::XDocumentHandler > xSEKHandler(static_cast<cppu::OWeakObject*>(m_xSAXEventKeeper.get()), cssu::UNO_QUERY);
-            if (m_xElementStackKeeper.is())
-            {
-                m_xElementStackKeeper->retrieve(xSEKHandler, true);
+                sal_Int32 nKeeperId = m_xSAXEventKeeper->addSecurityElementCollector(
+                    css::xml::crypto::sax::ElementMarkPriority_BEFOREMODIFY, false );
+
+                css::uno::Reference<css::xml::crypto::sax::XReferenceCollector> xReferenceCollector
+                    ( isi.xReferenceResolvedListener, css::uno::UNO_QUERY );
+
+                m_xSAXEventKeeper->setSecurityId(nKeeperId, isi.signatureInfor.nSecurityId);
+                m_xSAXEventKeeper->addReferenceResolvedListener( nKeeperId, isi.xReferenceResolvedListener);
+                xReferenceCollector->setReferenceId( nKeeperId );
+
+                isi.vKeeperIds[j] = nKeeperId;
+                break;
             }
-            m_xSAXEventKeeper->setNextHandler(xHandler);
         }
+    }
+
+    if ( bJustChainingOn )
+    {
+        m_xSAXEventKeeper->setNextHandler(xHandler);
     }
 }
 
@@ -447,15 +515,15 @@ void XSecController::addSignature( sal_Int32 nSignatureId )
     m_bVerifyCurrentSignature = true;
 }
 
-cssu::Reference< cssxs::XDocumentHandler > const & XSecController::createSignatureReader(XMLSignatureHelper& rXMLSignatureHelper, sal_Int32 nType)
+css::uno::Reference< css::xml::sax::XDocumentHandler > const & XSecController::createSignatureReader(XMLSignatureHelper& rXMLSignatureHelper, sal_Int32 nType)
 {
     if (nType == embed::StorageFormats::OFOPXML)
         m_xSecParser = new OOXMLSecParser(rXMLSignatureHelper, this);
     else
         m_xSecParser = new XSecParser(rXMLSignatureHelper, this);
-    cssu::Reference< cssl::XInitialization > xInitialization(m_xSecParser, uno::UNO_QUERY);
+    css::uno::Reference< css::lang::XInitialization > xInitialization(m_xSecParser, uno::UNO_QUERY);
 
-    setSAXChainConnector(xInitialization, nullptr, nullptr);
+    setSAXChainConnector(xInitialization);
 
     return m_xSecParser;
 }

@@ -20,9 +20,9 @@
 #ifndef INCLUDED_XMLOFF_SOURCE_CHART_MULTIPROPERTYSETHANDLER_HXX
 #define INCLUDED_XMLOFF_SOURCE_CHART_MULTIPROPERTYSETHANDLER_HXX
 
+#include <map>
 #include <memory>
 
-#include <o3tl/make_unique.hxx>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
@@ -135,7 +135,7 @@ public:
     */
     template<class T> void  Add (const OUString & sName, T& rValue)
     {
-        aPropertyList[sName] = o3tl::make_unique<PropertyWrapper<T>>(sName, rValue);
+        aPropertyList[sName] = std::make_unique<PropertyWrapper<T>>(sName, rValue);
     }
 
     /** @descr  Try to get the values for all properties added with the Add
@@ -186,8 +186,8 @@ bool    MultiPropertySetHandler::GetProperties()
 {
     css::uno::Sequence< OUString> aNameList (aPropertyList.size());
     int i = 0;
-    for (auto I=aPropertyList.begin(); I!=aPropertyList.end(); ++I)
-        aNameList[i++] = I->second->msName;
+    for (const auto& rProperty : aPropertyList)
+        aNameList[i++] = rProperty.second->msName;
     if ( ! MultiGet(aNameList))
         if ( ! SingleGet(aNameList))
             return false;
@@ -205,8 +205,8 @@ bool    MultiPropertySetHandler::MultiGet   (const css::uno::Sequence<
             int i = 0;
             css::uno::Sequence< css::uno::Any> aValueList =
                 xMultiSet->getPropertyValues (rNameList);
-            for (auto I=aPropertyList.begin(); I!=aPropertyList.end(); ++I)
-                I->second->SetValue (aValueList[i++]);
+            for (auto& rProperty : aPropertyList)
+                rProperty.second->SetValue (aValueList[i++]);
         }
         catch (const css::beans::UnknownPropertyException&)
         {
@@ -227,8 +227,8 @@ bool    MultiPropertySetHandler::SingleGet  (const css::uno::Sequence<
         try
         {
             int i = 0;
-            for (auto I=aPropertyList.begin(); I!=aPropertyList.end(); ++I)
-                I->second->SetValue (xSingleSet->getPropertyValue (rNameList[i++]));
+            for (auto& rProperty : aPropertyList)
+                rProperty.second->SetValue (xSingleSet->getPropertyValue (rNameList[i++]));
         }
         catch (const css::beans::UnknownPropertyException&)
         {

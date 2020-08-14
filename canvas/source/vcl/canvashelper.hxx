@@ -20,13 +20,10 @@
 #ifndef INCLUDED_CANVAS_SOURCE_VCL_CANVASHELPER_HXX
 #define INCLUDED_CANVAS_SOURCE_VCL_CANVASHELPER_HXX
 
+#include <com/sun/star/geometry/IntegerPoint2D.hpp>
+#include <com/sun/star/geometry/IntegerRectangle2D.hpp>
+#include <com/sun/star/rendering/IntegerBitmapLayout.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
-#include <com/sun/star/rendering/XBitmapCanvas.hpp>
-#include <com/sun/star/rendering/XIntegerBitmap.hpp>
-
-#include <vcl/outdev.hxx>
-
-#include <canvas/vclwrapper.hxx>
 
 #include "cachedbitmap.hxx"
 #include "outdevprovider.hxx"
@@ -104,10 +101,6 @@ namespace vclcanvas
         // XCanvas (only providing, not implementing the
         // interface. Also note subtle method parameter differences)
         void clear();
-        void drawPoint( const css::rendering::XCanvas*         rCanvas,
-                        const css::geometry::RealPoint2D&      aPoint,
-                        const css::rendering::ViewState&       viewState,
-                        const css::rendering::RenderState&     renderState );
         void drawLine( const css::rendering::XCanvas*      rCanvas,
                        const css::geometry::RealPoint2D&   aStartPoint,
                        const css::geometry::RealPoint2D&   aEndPoint,
@@ -243,14 +236,6 @@ namespace vclcanvas
             getData( css::rendering::IntegerBitmapLayout&      bitmapLayout,
                      const css::geometry::IntegerRectangle2D&  rect );
 
-        void setData( const css::uno::Sequence< sal_Int8 >&        data,
-                      const css::rendering::IntegerBitmapLayout&   bitmapLayout,
-                      const css::geometry::IntegerRectangle2D&     rect );
-
-        void setPixel( const css::uno::Sequence< sal_Int8 >&       color,
-                       const css::rendering::IntegerBitmapLayout&  bitmapLayout,
-                       const css::geometry::IntegerPoint2D&        pos );
-
         css::uno::Sequence< sal_Int8 >
             getPixel( css::rendering::IntegerBitmapLayout& bitmapLayout,
                       const css::geometry::IntegerPoint2D& pos );
@@ -294,13 +279,13 @@ namespace vclcanvas
         css::rendering::XGraphicDevice*              mpDevice;
 
         /// Rendering to this outdev preserves its state
-        OutDevProviderSharedPtr                      mpProtectedOutDev;
+        OutDevProviderSharedPtr                      mpProtectedOutDevProvider;
 
         /// Rendering to this outdev does not preserve its state
-        OutDevProviderSharedPtr                      mpOutDev;
+        OutDevProviderSharedPtr                      mpOutDevProvider;
 
         /// Rendering to this outdev does not preserve its state
-        OutDevProviderSharedPtr                      mp2ndOutDev;
+        OutDevProviderSharedPtr                      mp2ndOutDevProvider;
 
         /// When true, content is able to represent alpha
         bool                                         mbHaveAlpha;

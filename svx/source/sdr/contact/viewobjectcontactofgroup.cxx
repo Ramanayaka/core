@@ -21,21 +21,15 @@
 #include <sdr/contact/viewobjectcontactofgroup.hxx>
 #include <svx/sdr/contact/displayinfo.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
-#include <basegfx/numeric/ftools.hxx>
-#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
-#include <basegfx/tools/canvastools.hxx>
 #include <svx/sdr/contact/viewcontact.hxx>
 #include <svx/svdobj.hxx>
-#include <vcl/outdev.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         ViewObjectContactOfGroup::ViewObjectContactOfGroup(ObjectContact& rObjectContact, ViewContact& rViewContact)
         :   ViewObjectContactOfSdrObj(rObjectContact, rViewContact)
         {
@@ -106,7 +100,7 @@ namespace sdr
             aObjectLayers &= aLayers;
             return !aObjectLayers.IsEmpty();
         }
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

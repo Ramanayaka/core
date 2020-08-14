@@ -35,12 +35,8 @@
 
 #include <tools/diagnose_ex.h>
 #include <osl/process.h>
-#include <rtl/ustrbuf.hxx>
 
 #include <cppuhelper/component_context.hxx>
-
-#include <vector>
-#include <sal/macros.h>
 
 
 namespace logging
@@ -85,7 +81,7 @@ namespace logging
 
             OUString sLoggerName;
             try { sLoggerName = _rxLogger->getName(); }
-            catch( const Exception& ) { DBG_UNHANDLED_EXCEPTION(); }
+            catch( const Exception& ) { DBG_UNHANDLED_EXCEPTION("extensions.logging"); }
 
             TimeValue aTimeValue;
             oslDateTime aDateTime;
@@ -96,30 +92,26 @@ namespace logging
             const size_t buffer_size = sizeof( buffer );
 
             snprintf( buffer, buffer_size, "%04i-%02i-%02i",
-                      (int)aDateTime.Year,
-                      (int)aDateTime.Month,
-                      (int)aDateTime.Day );
-            rtl::OUString sDate = rtl::OUString::createFromAscii( buffer );
+                      static_cast<int>(aDateTime.Year),
+                      static_cast<int>(aDateTime.Month),
+                      static_cast<int>(aDateTime.Day) );
+            OUString sDate = OUString::createFromAscii( buffer );
 
             snprintf( buffer, buffer_size, "%02i-%02i-%02i.%03i",
-                (int)aDateTime.Hours,
-                (int)aDateTime.Minutes,
-                (int)aDateTime.Seconds,
+                static_cast<int>(aDateTime.Hours),
+                static_cast<int>(aDateTime.Minutes),
+                static_cast<int>(aDateTime.Seconds),
                 ::sal::static_int_cast< sal_Int16 >( aDateTime.NanoSeconds / 10000000 ) );
-            rtl::OUString sTime = rtl::OUString::createFromAscii( buffer );
+            OUString sTime = OUString::createFromAscii( buffer );
 
-            rtl::OUStringBuffer aBuff;
-            aBuff.append( sDate );
-            aBuff.append( '.' );
-            aBuff.append( sTime );
-            rtl::OUString sDateTime = aBuff.makeStringAndClear();
+            OUString sDateTime = sDate + "." + sTime;
 
             oslProcessIdentifier aProcessId = 0;
             oslProcessInfo info;
             info.Size = sizeof (oslProcessInfo);
             if ( osl_getProcessInfo ( nullptr, osl_Process_IDENTIFIER, &info ) == osl_Process_E_None)
                 aProcessId = info.Ident;
-            rtl::OUString aPID = OUString::number( aProcessId );
+            OUString aPID = OUString::number( aProcessId );
 
             Variable const aVariables[] =
             {
@@ -158,8 +150,8 @@ namespace logging
                 const Reference<XComponentContext>& _rContext,
                 const Reference< XLogger >& _rxLogger,
                 const Reference< XNameAccess >& _rxLoggerSettings,
-                const sal_Char* _pServiceNameAsciiNodeName,
-                const sal_Char* _pServiceSettingsAsciiNodeName,
+                const char* _pServiceNameAsciiNodeName,
+                const char* _pServiceSettingsAsciiNodeName,
                 SettingTranslation _pSettingTranslation = nullptr
             )
         {
@@ -187,7 +179,7 @@ namespace logging
                     pSetting->Value = xServiceSettingsNode->getByName( *pSettingNames );
 
                     if ( _pSettingTranslation )
-                        (_pSettingTranslation)( _rxLogger, pSetting->Name, pSetting->Value );
+                        _pSettingTranslation( _rxLogger, pSetting->Name, pSetting->Value );
                 }
             }
 
@@ -196,7 +188,7 @@ namespace logging
             if ( !sServiceName.isEmpty() )
             {
                 bool bSuccess = false;
-                if ( aSettings.getLength() )
+                if ( aSettings.hasElements() )
                 {
                     Sequence< Any > aConstructionArgs(1);
                     aConstructionArgs[0] <<= aSettings;
@@ -244,7 +236,7 @@ namespace logging
             {
                 // no node yet for this logger. Create default settings.
                 Reference< XSingleServiceFactory > xNodeFactory( xAllSettings, UNO_QUERY_THROW );
-                Reference< XInterface > xLoggerSettings( xNodeFactory->createInstance(), UNO_QUERY_THROW );
+                Reference< XInterface > xLoggerSettings( xNodeFactory->createInstance(), css::uno::UNO_SET_THROW );
                 xAllSettings->insertByName( sLoggerName, makeAny( xLoggerSettings ) );
                 Reference< XChangesBatch > xChanges( xAllSettings, UNO_QUERY_THROW );
                 xChanges->commitChanges();
@@ -284,7 +276,7 @@ namespace logging
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.logging");
         }
     }
 

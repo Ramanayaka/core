@@ -7,14 +7,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "mtvelements.hxx"
-#include "globalnames.hxx"
-#include "document.hxx"
-#include "cellvalue.hxx"
-#include "column.hxx"
+#include <mtvelements.hxx>
+#include <document.hxx>
+#include <cellvalue.hxx>
+#include <column.hxx>
 #include <table.hxx>
-
-#include <o3tl/make_unique.hxx>
 
 #include <sstream>
 
@@ -64,7 +61,7 @@ ColumnBlockPosition* ColumnBlockPositionSet::getBlockPosition(SCTAB nTab, SCCOL 
     if (itTab == maTables.end())
     {
         std::pair<TablesType::iterator,bool> r =
-            maTables.insert(TablesType::value_type(nTab, ColumnsType()));
+            maTables.emplace(nTab, ColumnsType());
         if (!r.second)
             // insertion failed.
             return nullptr;
@@ -80,8 +77,7 @@ ColumnBlockPosition* ColumnBlockPositionSet::getBlockPosition(SCTAB nTab, SCCOL 
         return &it->second;
 
     std::pair<ColumnsType::iterator,bool> r =
-        rCols.insert(
-            ColumnsType::value_type(nCol, ColumnBlockPosition()));
+        rCols.emplace(nCol, ColumnBlockPosition());
 
     if (!r.second)
         // insertion failed.
@@ -112,7 +108,7 @@ struct TableColumnBlockPositionSet::Impl
 };
 
 TableColumnBlockPositionSet::TableColumnBlockPositionSet( ScDocument& rDoc, SCTAB nTab ) :
-    mpImpl(o3tl::make_unique<Impl>())
+    mpImpl(std::make_unique<Impl>())
 {
     mpImpl->mpTab = rDoc.FetchTable(nTab);
 
@@ -124,7 +120,7 @@ TableColumnBlockPositionSet::TableColumnBlockPositionSet( ScDocument& rDoc, SCTA
     }
 }
 
-TableColumnBlockPositionSet::TableColumnBlockPositionSet( TableColumnBlockPositionSet&& rOther ) :
+TableColumnBlockPositionSet::TableColumnBlockPositionSet( TableColumnBlockPositionSet&& rOther ) noexcept :
     mpImpl(std::move(rOther.mpImpl)) {}
 
 TableColumnBlockPositionSet::~TableColumnBlockPositionSet() {}
@@ -140,8 +136,7 @@ ColumnBlockPosition* TableColumnBlockPositionSet::getBlockPosition( SCCOL nCol )
         return &it->second;
 
     std::pair<ColumnsType::iterator,bool> r =
-        mpImpl->maColumns.insert(
-            ColumnsType::value_type(nCol, ColumnBlockPosition()));
+        mpImpl->maColumns.emplace(nCol, ColumnBlockPosition());
 
     if (!r.second)
         // insertion failed.
@@ -153,6 +148,11 @@ ColumnBlockPosition* TableColumnBlockPositionSet::getBlockPosition( SCCOL nCol )
         return nullptr;
 
     return &it->second;
+}
+
+void TableColumnBlockPositionSet::invalidate()
+{
+    mpImpl->maColumns.clear();
 }
 
 ScRefCellValue toRefCell( const sc::CellStoreType::const_iterator& itPos, size_t nOffset )

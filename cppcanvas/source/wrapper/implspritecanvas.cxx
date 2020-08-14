@@ -18,20 +18,17 @@
  */
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <com/sun/star/rendering/InterpolationMode.hpp>
+#include <basegfx/utils/canvastools.hxx>
+#include <osl/diagnose.h>
 
-#include <implspritecanvas.hxx>
-#include <implcustomsprite.hxx>
+#include "implspritecanvas.hxx"
+#include "implcustomsprite.hxx"
 
 
 using namespace ::com::sun::star;
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         ImplSpriteCanvas::TransformationArbiter::TransformationArbiter() :
             maTransformation()
         {
@@ -44,10 +41,9 @@ namespace cppcanvas
 
 
         ImplSpriteCanvas::ImplSpriteCanvas( const uno::Reference< rendering::XSpriteCanvas >& rCanvas ) :
-            ImplCanvas( uno::Reference< rendering::XCanvas >(rCanvas,
-                                                             uno::UNO_QUERY) ),
+            ImplCanvas( rCanvas ),
             mxSpriteCanvas( rCanvas ),
-            mpTransformArbiter( new TransformationArbiter() )
+            mpTransformArbiter( std::make_shared<TransformationArbiter>() )
         {
             OSL_ENSURE( mxSpriteCanvas.is(), "ImplSpriteCanvas::ImplSpriteCanvas(): Invalid canvas" );
         }
@@ -57,7 +53,7 @@ namespace cppcanvas
             SpriteCanvas(),
             ImplCanvas( rOrig ),
             mxSpriteCanvas( rOrig.getUNOSpriteCanvas() ),
-            mpTransformArbiter( new TransformationArbiter() )
+            mpTransformArbiter( std::make_shared<TransformationArbiter>() )
         {
             OSL_ENSURE( mxSpriteCanvas.is(), "ImplSpriteCanvas::ImplSpriteCanvas( const ImplSpriteCanvas& ): Invalid canvas" );
 
@@ -92,15 +88,14 @@ namespace cppcanvas
             if( !mxSpriteCanvas.is() )
                 return CustomSpriteSharedPtr();
 
-            return CustomSpriteSharedPtr(
-                new ImplCustomSprite( mxSpriteCanvas,
+            return std::make_shared<ImplCustomSprite>( mxSpriteCanvas,
                                       mxSpriteCanvas->createCustomSprite( ::basegfx::unotools::size2DFromB2DSize(rSize) ),
-                                      mpTransformArbiter ) );
+                                      mpTransformArbiter );
         }
 
         CanvasSharedPtr ImplSpriteCanvas::clone() const
         {
-            return SpriteCanvasSharedPtr( new ImplSpriteCanvas( *this ) );
+            return std::make_shared<ImplSpriteCanvas>( *this );
         }
 
         uno::Reference< rendering::XSpriteCanvas > ImplSpriteCanvas::getUNOSpriteCanvas() const
@@ -108,7 +103,6 @@ namespace cppcanvas
             return mxSpriteCanvas;
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

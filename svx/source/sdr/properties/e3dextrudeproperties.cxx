@@ -18,14 +18,11 @@
  */
 
 #include <sdr/properties/e3dextrudeproperties.hxx>
-#include <svl/itemset.hxx>
-#include <svx/extrud3d.hxx>
+#include <extrud3d.hxx>
 
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         E3dExtrudeProperties::E3dExtrudeProperties(SdrObject& rObj)
         :   E3dCompoundProperties(rObj)
         {
@@ -40,9 +37,9 @@ namespace sdr
         {
         }
 
-        BaseProperties& E3dExtrudeProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> E3dExtrudeProperties::Clone(SdrObject& rObj) const
         {
-            return *(new E3dExtrudeProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new E3dExtrudeProperties(*this, rObj));
         }
 
         void E3dExtrudeProperties::PostItemChange(const sal_uInt16 nWhich)
@@ -72,7 +69,6 @@ namespace sdr
                 }
             }
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

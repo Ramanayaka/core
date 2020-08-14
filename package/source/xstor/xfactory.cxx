@@ -18,6 +18,7 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/ucb/SimpleFileAccess.hpp>
@@ -44,7 +45,7 @@ using namespace ::com::sun::star;
 #define THROW_WHERE ""
 #endif
 
-bool CheckPackageSignature_Impl( const uno::Reference< io::XInputStream >& xInputStream,
+static bool CheckPackageSignature_Impl( const uno::Reference< io::XInputStream >& xInputStream,
                                      const uno::Reference< io::XSeekable >& xSeekable )
 {
     if ( !xInputStream.is() || !xSeekable.is() )
@@ -65,24 +66,7 @@ bool CheckPackageSignature_Impl( const uno::Reference< io::XInputStream >& xInpu
         return true; // allow to create a storage based on empty stream
 }
 
-uno::Sequence< OUString > SAL_CALL OStorageFactory::impl_staticGetSupportedServiceNames()
-{
-    uno::Sequence< OUString > aRet(2);
-    aRet[0] = "com.sun.star.embed.StorageFactory";
-    aRet[1] = "com.sun.star.comp.embed.StorageFactory";
-    return aRet;
-}
 
-OUString SAL_CALL OStorageFactory::impl_staticGetImplementationName()
-{
-    return OUString("com.sun.star.comp.embed.StorageFactory");
-}
-
-uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::impl_staticCreateSelfInstance(
-            const uno::Reference< lang::XMultiServiceFactory >& xServiceManager )
-{
-    return uno::Reference< uno::XInterface >( *new OStorageFactory( comphelper::getComponentContext(xServiceManager) ) );
-}
 
 uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::createInstance()
 {
@@ -91,13 +75,9 @@ uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::createInstance()
                         io::TempFile::create(m_xContext),
                         uno::UNO_QUERY_THROW );
 
-    return uno::Reference< uno::XInterface >(
-                static_cast< OWeakObject* >( new OStorage(  xTempStream,
-                                                            embed::ElementModes::READWRITE,
-                                                            uno::Sequence< beans::PropertyValue >(),
-                                                            m_xContext,
-                                                            embed::StorageFormats::PACKAGE ) ),
-                uno::UNO_QUERY );
+    return static_cast<OWeakObject*>(new OStorage(xTempStream, embed::ElementModes::READWRITE,
+                                                  uno::Sequence<beans::PropertyValue>(), m_xContext,
+                                                  embed::StorageFormats::PACKAGE));
 }
 
 uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::createInstanceWithArguments(
@@ -165,7 +145,7 @@ uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::createInstanceWithAr
     else if ( !( aArguments[0] >>= xStream ) && !( aArguments[0] >>= xInputStream ) )
     {
         OSL_FAIL( "Wrong first argument!" );
-        throw uno::Exception(); // TODO: Illegal argument
+        throw uno::Exception("wrong first arg", nullptr); // TODO: Illegal argument
     }
 
     // retrieve mediadescriptor and set storage properties
@@ -185,22 +165,23 @@ uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::createInstanceWithAr
                 aPropsToSet[0].Value <<= aURL;
             }
 
-            for ( sal_Int32 nInd = 0, nNumArgs = 1; nInd < aDescr.getLength(); nInd++ )
+            sal_Int32 nNumArgs = 1;
+            for ( const auto& rProp : std::as_const(aDescr) )
             {
-                if ( aDescr[nInd].Name == "InteractionHandler"
-                  || aDescr[nInd].Name == "Password"
-                  || aDescr[nInd].Name == "RepairPackage"
-                  || aDescr[nInd].Name == "StatusIndicator" )
+                if ( rProp.Name == "InteractionHandler"
+                  || rProp.Name == "Password"
+                  || rProp.Name == "RepairPackage"
+                  || rProp.Name == "StatusIndicator" )
                 {
                     aPropsToSet.realloc( ++nNumArgs );
-                    aPropsToSet[nNumArgs-1].Name = aDescr[nInd].Name;
-                    aPropsToSet[nNumArgs-1].Value = aDescr[nInd].Value;
+                    aPropsToSet[nNumArgs-1].Name = rProp.Name;
+                    aPropsToSet[nNumArgs-1].Value = rProp.Value;
                 }
-                else if ( aDescr[nInd].Name == "StorageFormat" )
+                else if ( rProp.Name == "StorageFormat" )
                 {
                     OUString aFormatName;
                     sal_Int32 nFormatID = 0;
-                    if ( aDescr[nInd].Value >>= aFormatName )
+                    if ( rProp.Value >>= aFormatName )
                     {
                         if ( aFormatName == PACKAGE_STORAGE_FORMAT_STRING )
                             nStorageType = embed::StorageFormats::PACKAGE;
@@ -211,7 +192,7 @@ uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::createInstanceWithAr
                         else
                             throw lang::IllegalArgumentException( THROW_WHERE, uno::Reference< uno::XInterface >(), 1 );
                     }
-                    else if ( aDescr[nInd].Value >>= nFormatID )
+                    else if ( rProp.Value >>= nFormatID )
                     {
                         if ( nFormatID != embed::StorageFormats::PACKAGE
                           && nFormatID != embed::StorageFormats::ZIP
@@ -223,6 +204,13 @@ uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::createInstanceWithAr
                     else
                         throw lang::IllegalArgumentException( THROW_WHERE, uno::Reference< uno::XInterface >(), 1 );
                 }
+                else if (rProp.Name == "NoFileSync")
+                {
+                    // Forward NoFileSync to the storage.
+                    aPropsToSet.realloc(++nNumArgs);
+                    aPropsToSet[nNumArgs - 1].Name = rProp.Name;
+                    aPropsToSet[nNumArgs - 1].Value = rProp.Value;
+                }
                 else
                     OSL_FAIL( "Unacceptable property, will be ignored!" );
             }
@@ -230,7 +218,7 @@ uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::createInstanceWithAr
         else
         {
             OSL_FAIL( "Wrong third argument!" );
-            throw uno::Exception(); // TODO: Illegal argument
+            throw uno::Exception("wrong 3rd arg", nullptr); // TODO: Illegal argument
         }
 
     }
@@ -239,8 +227,8 @@ uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::createInstanceWithAr
     if ( xInputStream.is() )
     {
         // if xInputStream is set the storage should be open from it
-        if ( ( nStorageMode & embed::ElementModes::WRITE ) )
-              throw uno::Exception(); // TODO: access denied
+        if ( nStorageMode & embed::ElementModes::WRITE )
+              throw uno::Exception("storagemode==write", nullptr); // TODO: access denied
 
         uno::Reference< io::XSeekable > xSeekable( xInputStream, uno::UNO_QUERY );
         if ( !xSeekable.is() )
@@ -252,15 +240,14 @@ uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::createInstanceWithAr
         if ( !CheckPackageSignature_Impl( xInputStream, xSeekable ) )
             throw io::IOException(); // TODO: this is not a package file
 
-        return uno::Reference< uno::XInterface >(
-                    static_cast< OWeakObject* >( new OStorage( xInputStream, nStorageMode, aPropsToSet, m_xContext, nStorageType ) ),
-                    uno::UNO_QUERY );
+        return static_cast<OWeakObject*>(
+            new OStorage(xInputStream, nStorageMode, aPropsToSet, m_xContext, nStorageType));
     }
     else if ( xStream.is() )
     {
-               if ( ( ( nStorageMode & embed::ElementModes::WRITE ) && !xStream->getOutputStream().is() )
-          || !xStream->getInputStream().is() )
-              throw uno::Exception(); // TODO: access denied
+        if ( ( ( nStorageMode & embed::ElementModes::WRITE ) && !xStream->getOutputStream().is() )
+             || !xStream->getInputStream().is() )
+              throw uno::Exception("access denied", nullptr); // TODO: access denied
 
         uno::Reference< io::XSeekable > xSeekable( xStream, uno::UNO_QUERY );
         if ( !xSeekable.is() )
@@ -272,17 +259,16 @@ uno::Reference< uno::XInterface > SAL_CALL OStorageFactory::createInstanceWithAr
         if ( !CheckPackageSignature_Impl( xStream->getInputStream(), xSeekable ) )
             throw io::IOException(); // TODO: this is not a package file
 
-        return uno::Reference< uno::XInterface >(
-                    static_cast< OWeakObject* >( new OStorage( xStream, nStorageMode, aPropsToSet, m_xContext, nStorageType ) ),
-                    uno::UNO_QUERY );
+        return static_cast<OWeakObject*>(
+            new OStorage(xStream, nStorageMode, aPropsToSet, m_xContext, nStorageType));
     }
 
-    throw uno::Exception(); // general error during creation
+    throw uno::Exception("no input stream or regular stream", nullptr); // general error during creation
 }
 
 OUString SAL_CALL OStorageFactory::getImplementationName()
 {
-    return impl_staticGetImplementationName();
+    return "com.sun.star.comp.embed.StorageFactory";
 }
 
 sal_Bool SAL_CALL OStorageFactory::supportsService( const OUString& ServiceName )
@@ -292,7 +278,18 @@ sal_Bool SAL_CALL OStorageFactory::supportsService( const OUString& ServiceName 
 
 uno::Sequence< OUString > SAL_CALL OStorageFactory::getSupportedServiceNames()
 {
-    return impl_staticGetSupportedServiceNames();
+    return  { "com.sun.star.embed.StorageFactory",
+                "com.sun.star.comp.embed.StorageFactory" };
+}
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+package_OStorageFactory_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    static rtl::Reference<OStorageFactory> g_Instance(new OStorageFactory(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

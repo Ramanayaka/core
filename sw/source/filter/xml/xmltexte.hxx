@@ -23,21 +23,22 @@
 #include <xmloff/txtparae.hxx>
 #include <tools/globname.hxx>
 
+#define XML_EMBEDDEDOBJECTGRAPHIC_URL_BASE "vnd.sun.star.GraphicObject:"
+
 class SwXMLExport;
 class SvXMLAutoStylePoolP;
 class SwNoTextNode;
-
-namespace com { namespace sun { namespace star { namespace style {
-                class XStyle; } } } }
+class SwTableNode;
+namespace com::sun::star::style { class XStyle; }
 
 class SwXMLTextParagraphExport : public XMLTextParagraphExport
 {
-    const OUString sEmbeddedObjectProtocol;
-    const OUString sGraphicObjectProtocol;
-
     const SvGlobalName aAppletClassId;
     const SvGlobalName aPluginClassId;
     const SvGlobalName aIFrameClassId;
+
+    // Collected autostyles for use in exportTextAutoStyles
+    std::vector<const SwTableNode*> maTableNodes;
 
     static SwNoTextNode *GetNoTextNode(
         const css::uno::Reference < css::beans::XPropertySet >& rPropSet );
@@ -52,6 +53,8 @@ protected:
     virtual void exportTable(
         const css::uno::Reference< css::text::XTextContent > & rTextContent,
         bool bAutoStyles, bool bProgress ) override;
+
+    virtual void exportTableAutoStyles() override;
 
 public:
     SwXMLTextParagraphExport(

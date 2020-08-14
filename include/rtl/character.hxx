@@ -20,12 +20,12 @@
 #ifndef INCLUDED_RTL_CHARACTER_HXX
 #define INCLUDED_RTL_CHARACTER_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cassert>
 #include <cstddef>
 
-#include <sal/types.h>
+#include "sal/types.h"
 
 namespace rtl
 {
@@ -244,7 +244,7 @@ template<typename T> inline bool isAsciiOctalDigit(T code)
     @param code  A Unicode code point.
 
     @return  True if code is an ASCII white space character as defined by C for
-    isspace in the "C" locale (ASCII ' ', '\f', '\n', '\r', '\t' '\v').
+    isspace in the "C" locale (ASCII ' ', '\\f', '\\n', '\\r', '\\t' '\\v').
 
     @since LibreOffice 5.4
 */
@@ -334,6 +334,20 @@ sal_uInt32 const surrogatesLowLast = 0xDFFF;
 
 }
 /// @endcond
+
+/** Check for surrogate.
+
+    @param code  A Unicode code point.
+
+    @return  True if code is a surrogate code point (0xD800--0xDFFF).
+
+    @since LibreOffice 6.0
+*/
+inline bool isSurrogate(sal_uInt32 code) {
+    assert(isUnicodeCodePoint(code));
+    return code >= detail::surrogatesHighFirst
+        && code <= detail::surrogatesLowLast;
+}
 
 /** Check for high surrogate.
 
@@ -431,6 +445,19 @@ inline std::size_t splitSurrogates(sal_uInt32 code, sal_Unicode * output) {
         output[1] = getLowSurrogate(code);
         return 2;
     }
+}
+
+/** Check for Unicode scalar value.
+
+    @param code  An integer.
+
+    @return  True if code is a Unicode scalar value.
+
+    @since LibreOffice 6.0
+*/
+inline bool isUnicodeScalarValue(sal_uInt32 code)
+{
+    return isUnicodeCodePoint(code) && !isSurrogate(code);
 }
 
 }

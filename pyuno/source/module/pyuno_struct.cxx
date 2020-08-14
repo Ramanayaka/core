@@ -19,16 +19,13 @@
 
 #include <sal/config.h>
 
-#include <algorithm>
-#include <cassert>
-
 #include <rtl/strbuf.hxx>
-
-
-#include <typelib/typedescription.hxx>
 
 #include <com/sun/star/beans/UnknownPropertyException.hpp>
 #include <com/sun/star/beans/XMaterialHolder.hpp>
+#include <com/sun/star/script/CannotConvertException.hpp>
+#include <com/sun/star/script/XInvocation2.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
 #include "pyuno_impl.hxx"
 
@@ -47,7 +44,7 @@ using com::sun::star::beans::XMaterialHolder;
 namespace pyuno
 {
 
-void PyUNOStruct_del( PyObject* self )
+static void PyUNOStruct_del( PyObject* self )
 {
     PyUNO *me = reinterpret_cast<PyUNO*>( self );
     {
@@ -57,10 +54,10 @@ void PyUNOStruct_del( PyObject* self )
     PyObject_Del( self );
 }
 
-PyObject *PyUNOStruct_str( PyObject *self )
+static PyObject *PyUNOStruct_str( PyObject *self )
 {
     PyUNO *me = reinterpret_cast<PyUNO*>( self );
-    OStringBuffer buf;
+    OString buf;
 
     Reference<XMaterialHolder> rHolder( me->members->xInvocation,UNO_QUERY );
     if( rHolder.is() )
@@ -68,13 +65,13 @@ PyObject *PyUNOStruct_str( PyObject *self )
         PyThreadDetach antiguard;
         Any a = rHolder->getMaterial();
         OUString s = val2str( a.getValue(), a.getValueType().getTypeLibType() );
-        buf.append( OUStringToOString( s, RTL_TEXTENCODING_ASCII_US ) );
+        buf = OUStringToOString( s, RTL_TEXTENCODING_ASCII_US );
     }
 
-    return PyStr_FromString( buf.getStr());
+    return PyUnicode_FromString( buf.getStr());
 }
 
-PyObject *PyUNOStruct_repr( PyObject *self )
+static PyObject *PyUNOStruct_repr( PyObject *self )
 {
     PyUNO *me = reinterpret_cast<PyUNO*>( self );
     PyObject *ret = nullptr;
@@ -99,7 +96,7 @@ PyObject *PyUNOStruct_repr( PyObject *self )
     return ret;
 }
 
-PyObject* PyUNOStruct_dir( PyObject *self )
+static PyObject* PyUNOStruct_dir( PyObject *self )
 {
     PyUNO *me = reinterpret_cast<PyUNO*>( self );
 
@@ -108,7 +105,8 @@ PyObject* PyUNOStruct_dir( PyObject *self )
     try
     {
         member_list = PyList_New( 0 );
-        for( const auto& aMember : me->members->xInvocation->getMemberNames() )
+        const css::uno::Sequence<OUString> aMemberNames = me->members->xInvocation->getMemberNames();
+        for( const auto& aMember : aMemberNames )
         {
             // setitem steals a reference
             PyList_Append( member_list, ustring2PyString( aMember ).getAcquired() );
@@ -122,7 +120,7 @@ PyObject* PyUNOStruct_dir( PyObject *self )
     return member_list;
 }
 
-PyObject* PyUNOStruct_getattr( PyObject* self, char* name )
+static PyObject* PyUNOStruct_getattr( PyObject* self, char* name )
 {
     PyUNO *me = reinterpret_cast<PyUNO*>( self );
 
@@ -188,7 +186,7 @@ PyObject* PyUNOStruct_getattr( PyObject* self, char* name )
     return nullptr;
 }
 
-int PyUNOStruct_setattr (PyObject* self, char* name, PyObject* value)
+static int PyUNOStruct_setattr (PyObject* self, char* name, PyObject* value)
 {
     PyUNO* me;
 
@@ -299,7 +297,11 @@ static PyTypeObject PyUNOStructType =
     sizeof (PyUNO),
     0,
     PyUNOStruct_del,
-    nullptr,
+#if PY_VERSION_HEX >= 0x03080000
+    0, // Py_ssize_t tp_vectorcall_offset
+#else
+    nullptr, // printfunc tp_print
+#endif
     PyUNOStruct_getattr,
     PyUNOStruct_setattr,
     /* this type does not exist in Python 3: (cmpfunc) */ nullptr,
@@ -340,11 +342,22 @@ static PyTypeObject PyUNOStructType =
     nullptr,
     nullptr,
     nullptr
-#if PY_VERSION_HEX >= 0x02060000
     , 0
-#endif
 #if PY_VERSION_HEX >= 0x03040000
     , nullptr
+#if PY_VERSION_HEX >= 0x03080000
+    , nullptr // vectorcallfunc tp_vectorcall
+#if PY_VERSION_HEX < 0x03090000
+#if defined __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    , nullptr // tp_print
+#if defined __clang__
+#pragma clang diagnostic pop
+#endif
+#endif
+#endif
 #endif
 };
 

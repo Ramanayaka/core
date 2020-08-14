@@ -22,18 +22,17 @@
 
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
-#include <com/sun/star/drawing/XDrawPage.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <rtl/ref.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 #include <salhelper/simplereferenceobject.hxx>
-#include <xmloff/xmlimppr.hxx>
 #include <memory>
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::drawing { class XDrawPage; }
+namespace com::sun::star::xml::sax { class XAttributeList; }
 
 class SvXMLImport;
 class SvXMLImportContext;
 class SvXMLStylesContext;
-class XMLPropStyleContext;
 
 
 namespace xmloff
@@ -45,7 +44,7 @@ namespace xmloff
     class OFormLayerXMLImport_Impl;
     /** allows you to import a &lt;form:form&gt; element
     */
-    class XMLOFF_DLLPUBLIC OFormLayerXMLImport
+    class XMLOFF_DLLPUBLIC OFormLayerXMLImport final
                 :public ::salhelper::SimpleReferenceObject
     {
         std::unique_ptr<OFormLayerXMLImport_Impl>   m_pImpl;

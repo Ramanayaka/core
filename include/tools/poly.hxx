@@ -21,8 +21,8 @@
 
 #include <tools/toolsdllapi.h>
 #include <tools/gen.hxx>
-#include <tools/debug.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <o3tl/cow_wrapper.hxx>
 
 #include <vector>
 
@@ -31,15 +31,13 @@
 
 enum class PolyOptimizeFlags {
     NONE      = 0x0000,
-    OPEN      = 0x0001,
-    CLOSE     = 0x0002,
-    NO_SAME   = 0x0004,
-    REDUCE    = 0x0008,
-    EDGES     = 0x0010,
+    CLOSE     = 0x0001,
+    NO_SAME   = 0x0002,
+    EDGES     = 0x0004,
 };
 namespace o3tl
 {
-    template<> struct typed_flags<PolyOptimizeFlags> : is_typed_flags<PolyOptimizeFlags, 0x001f> {};
+    template<> struct typed_flags<PolyOptimizeFlags> : is_typed_flags<PolyOptimizeFlags, 0x0007> {};
 }
 
 enum class PolyStyle
@@ -59,8 +57,7 @@ enum class PolyFlags : sal_uInt8
 
 class SvStream;
 class ImplPolygon;
-class ImplPolyPolygon;
-namespace tools { class PolyPolygon; }
+struct ImplPolyPolygon;
 
 namespace basegfx
 {
@@ -72,10 +69,10 @@ namespace tools {
 
 class SAL_WARN_UNUSED TOOLS_DLLPUBLIC Polygon
 {
+public:
+    typedef             o3tl::cow_wrapper<ImplPolygon> ImplType;
 private:
-    ImplPolygon*        mpImplPolygon;
-
-    TOOLS_DLLPRIVATE inline void ImplMakeUnique();
+    ImplType            mpImplPolygon;
 
 public:
     static void         ImplReduceEdges( tools::Polygon& rPoly, const double& rArea, sal_uInt16 nPercent );
@@ -94,13 +91,13 @@ public:
                                  long nRadX, long nRadY );
                         Polygon( const tools::Rectangle& rBound,
                                  const Point& rStart, const Point& rEnd,
-                                 PolyStyle ePolyStyle = PolyStyle::Arc,
-                                 bool bWholeCircle = false );
+                                 PolyStyle ePolyStyle = PolyStyle::Arc );
                         Polygon( const Point& rBezPt1, const Point& rCtrlPt1,
                                  const Point& rBezPt2, const Point& rCtrlPt2,
                                  sal_uInt16 nPoints );
 
                         Polygon( const tools::Polygon& rPoly );
+                        Polygon( tools::Polygon&& rPoly) noexcept;
                         ~Polygon();
 
     void                SetPoint( const Point& rPt, sal_uInt16 nPos );
@@ -119,7 +116,7 @@ public:
 
     tools::Rectangle           GetBoundRect() const;
     bool                IsInside( const Point& rPt ) const;
-    double              CalcDistance( sal_uInt16 nPt1, sal_uInt16 nPt2 );
+    double              CalcDistance( sal_uInt16 nPt1, sal_uInt16 nPt2 ) const;
     void                Clip( const tools::Rectangle& rRect );
     void                Optimize( PolyOptimizeFlags nOptimizeFlags );
 
@@ -157,7 +154,7 @@ public:
     Point&              operator[]( sal_uInt16 nPos );
 
     tools::Polygon&     operator=( const tools::Polygon& rPoly );
-    tools::Polygon&     operator=( tools::Polygon&& rPoly );
+    tools::Polygon&     operator=( tools::Polygon&& rPoly ) noexcept;
     bool                operator==( const tools::Polygon& rPoly ) const;
     bool                operator!=( const tools::Polygon& rPoly ) const
                             { return !(Polygon::operator==( rPoly )); }
@@ -171,6 +168,7 @@ public:
     void                Read( SvStream& rIStream );
     void                Write( SvStream& rOStream ) const;
 
+    Point *             GetPointAry();
     const Point*        GetConstPointAry() const;
     const PolyFlags*    GetConstFlagAry() const;
 
@@ -186,7 +184,7 @@ public:
 class SAL_WARN_UNUSED TOOLS_DLLPUBLIC PolyPolygon
 {
 private:
-    ImplPolyPolygon*    mpImplPolyPolygon;
+    o3tl::cow_wrapper<ImplPolyPolygon>  mpImplPolyPolygon;
 
     enum class PolyClipOp {
         INTERSECT,
@@ -195,9 +193,10 @@ private:
     TOOLS_DLLPRIVATE void  ImplDoOperation( const tools::PolyPolygon& rPolyPoly, tools::PolyPolygon& rResult, PolyClipOp nOperation ) const;
 
 public:
-                        PolyPolygon( sal_uInt16 nInitSize = 16, sal_uInt16 nResize = 16 );
+                        PolyPolygon( sal_uInt16 nInitSize = 16 );
                         PolyPolygon( const tools::Polygon& rPoly );
                         PolyPolygon( const tools::PolyPolygon& rPolyPoly );
+                        PolyPolygon( tools::PolyPolygon&& rPolyPoly ) noexcept;
                         ~PolyPolygon();
 
     void                Insert( const tools::Polygon& rPoly, sal_uInt16 nPos = POLYPOLY_APPEND );
@@ -243,7 +242,7 @@ public:
     tools::Polygon& operator[]( sal_uInt16 nPos );
 
     tools::PolyPolygon& operator=( const tools::PolyPolygon& rPolyPoly );
-    tools::PolyPolygon& operator=( tools::PolyPolygon&& rPolyPoly );
+    tools::PolyPolygon& operator=( tools::PolyPolygon&& rPolyPoly ) noexcept;
     bool                operator==( const tools::PolyPolygon& rPolyPoly ) const;
     bool                operator!=( const tools::PolyPolygon& rPolyPoly ) const
                             { return !(PolyPolygon::operator==( rPolyPoly )); }
@@ -265,18 +264,6 @@ public:
 } /* namespace tools */
 
 typedef std::vector< tools::PolyPolygon > PolyPolyVector;
-
-
-template<typename charT, typename traits>
-inline std::basic_ostream<charT, traits> & operator <<(
-    std::basic_ostream<charT, traits> & stream, const tools::PolyPolygon& rPolyPoly)
-{
-    if (!rPolyPoly.Count())
-        stream << "EMPTY";
-    for (sal_uInt16 i = 0; i < rPolyPoly.Count(); ++i)
-        stream << "[" << i << "] " << rPolyPoly.GetObject(i);
-    return stream;
-}
 
 #endif
 

@@ -22,47 +22,49 @@
 
 #include <vcl/mapmod.hxx>
 #include <vcl/timer.hxx>
-#include "global.hxx"
-#include "address.hxx"
-#include "postit.hxx"
+#include <vcl/vclptr.hxx>
+#include <tools/gen.hxx>
+#include <address.hxx>
+#include <postit.hxx>
+
+namespace vcl { class Window; }
 
 class SdrModel;
+class SdrCaptionObj;
 
 class ScNoteMarker
 {
 private:
-    VclPtr<vcl::Window>     pWindow;
-    VclPtr<vcl::Window>     pRightWin;
-    VclPtr<vcl::Window>     pBottomWin;
-    VclPtr<vcl::Window>     pDiagWin;
-    ScDocument* pDoc;
-    ScAddress   aDocPos;
-    OUString    aUserText;
-    tools::Rectangle   aVisRect;
-    Timer       aTimer;
-    MapMode     aMapMode;
-    bool        bLeft;
-    bool        bByKeyboard;
+    VclPtr<vcl::Window>     m_pWindow;
+    VclPtr<vcl::Window>     m_pRightWin;
+    VclPtr<vcl::Window>     m_pBottomWin;
+    VclPtr<vcl::Window>     m_pDiagWin;
+    ScDocument* m_pDoc;
+    ScAddress   m_aDocPos;
+    OUString    m_aUserText;
+    tools::Rectangle   m_aVisRect;
+    Timer       m_aTimer;
+    MapMode     m_aMapMode;
+    bool        m_bLeft;
+    bool        m_bByKeyboard;
 
-    tools::Rectangle       aRect;
-    SdrModel*       pModel;
-    ScCaptionPtr    mxObject;
-    bool            bVisible;
-    Point           aGridOff;
+    tools::Rectangle       m_aRect;
+    std::unique_ptr<SdrModel>           m_pModel;
+    ScCaptionPtr    m_xObject;
+    bool            m_bVisible;
     DECL_LINK( TimeHdl, Timer*, void );
 
 public:
                 ScNoteMarker( vcl::Window* pWin, vcl::Window* pRight, vcl::Window* pBottom, vcl::Window* pDiagonal,
                                 ScDocument* pD, const ScAddress& aPos, const OUString& rUser,
-                                const MapMode& rMap, bool bLeftEdge, bool bForce, bool bKeyboard );
+                                const MapMode& rMap, bool bLeftEdge, bool bForce, bool bKeyboard);
                 ~ScNoteMarker();
 
     void        Draw();
     void        InvalidateWin();
 
-    const ScAddress& GetDocPos() const       { return aDocPos; }
-    bool        IsByKeyboard() const    { return bByKeyboard; }
-    void        SetGridOff( const Point& rOff ) { aGridOff = rOff; }
+    const ScAddress& GetDocPos() const       { return m_aDocPos; }
+    bool        IsByKeyboard() const    { return m_bByKeyboard; }
 };
 
 #endif

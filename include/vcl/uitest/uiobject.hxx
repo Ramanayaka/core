@@ -15,18 +15,27 @@
 #include <memory>
 
 #include <vcl/window.hxx>
-#include <vcl/spin.hxx>
-#include <vcl/button.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/tabpage.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/spinfld.hxx>
-#include <vcl/tabctrl.hxx>
-
 #include <vcl/dllapi.h>
 
 #include <set>
+
+class Button;
+class CheckBox;
+class ComboBox;
+class Dialog;
+class Edit;
+class ListBox;
+class RadioButton;
+class TabControl;
+class TabPage;
+class SvTreeListBox;
+class SvTreeListEntry;
+class SpinButton;
+class SpinField;
+class VerticalTabControl;
+class VclMultiLineEdit;
+class MenuButton;
+class ToolBox;
 
 typedef std::map<const OUString, OUString> StringMap;
 
@@ -38,8 +47,8 @@ typedef std::map<const OUString, OUString> StringMap;
  */
 class UITEST_DLLPUBLIC UIObject
 {
-    UIObject(UIObject &) = delete;
-    void operator =(UIObject) = delete;
+    UIObject(UIObject const &) = delete;
+    UIObject& operator =(UIObject const &) = delete;
 
 public:
     UIObject() = default;
@@ -133,7 +142,7 @@ protected:
 };
 
 // TODO: moggi: what about push buttons?
-class UITEST_DLLPUBLIC ButtonUIObject : public WindowUIObject
+class ButtonUIObject final : public WindowUIObject
 {
     VclPtr<Button> mxButton;
 public:
@@ -148,12 +157,14 @@ public:
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 
-protected:
+    virtual OUString get_action(VclEventId nEvent) const override;
+
+private:
 
     virtual OUString get_name() const override;
 };
 
-class UITEST_DLLPUBLIC DialogUIObject : public WindowUIObject
+class DialogUIObject final : public WindowUIObject
 {
     VclPtr<Dialog> mxDialog;
 
@@ -166,12 +177,12 @@ public:
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 
-protected:
+private:
 
     virtual OUString get_name() const override;
 };
 
-class UITEST_DLLPUBLIC EditUIObject : public WindowUIObject
+class EditUIObject : public WindowUIObject
 {
     VclPtr<Edit> mxEdit;
 
@@ -187,13 +198,36 @@ public:
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 
+    virtual OUString get_action(VclEventId nEvent) const override;
+
 protected:
 
     virtual OUString get_name() const override;
 };
 
+class MultiLineEditUIObject final : public WindowUIObject
+{
+    VclPtr<VclMultiLineEdit> mxEdit;
+
+public:
+
+    MultiLineEditUIObject(const VclPtr<VclMultiLineEdit>& xEdit);
+    virtual ~MultiLineEditUIObject() override;
+
+    virtual void execute(const OUString& rAction,
+            const StringMap& rParameters) override;
+
+    virtual StringMap get_state() override;
+
+    static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
+
+private:
+
+    virtual OUString get_name() const override;
+};
+
 // TODO: moggi: maybe let it inherit from the button case
-class UITEST_DLLPUBLIC CheckBoxUIObject : public WindowUIObject
+class CheckBoxUIObject final : public WindowUIObject
 {
 private:
     VclPtr<CheckBox> mxCheckBox;
@@ -209,12 +243,14 @@ public:
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 
-protected:
+    virtual OUString get_action(VclEventId nEvent) const override;
+
+private:
 
     virtual OUString get_name() const override;
 };
 
-class UITEST_DLLPUBLIC RadioButtonUIObject : public WindowUIObject
+class RadioButtonUIObject final : public WindowUIObject
 {
 private:
     VclPtr<RadioButton> mxRadioButton;
@@ -230,12 +266,14 @@ public:
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 
-protected:
+    virtual OUString get_action(VclEventId nEvent) const override;
+
+private:
 
     virtual OUString get_name() const override;
 };
 
-class UITEST_DLLPUBLIC TabPageUIObject : public WindowUIObject
+class TabPageUIObject final : public WindowUIObject
 {
 private:
     VclPtr<TabPage> mxTabPage;
@@ -250,12 +288,12 @@ public:
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 
-protected:
+private:
 
     virtual OUString get_name() const override;
 };
 
-class UITEST_DLLPUBLIC ListBoxUIObject : public WindowUIObject
+class ListBoxUIObject final : public WindowUIObject
 {
 private:
     VclPtr<ListBox> mxListBox;
@@ -274,13 +312,13 @@ public:
 
     virtual OUString get_action(VclEventId nEvent) const override;
 
-protected:
+private:
 
     virtual OUString get_name() const override;
 };
 
 // TODO: moggi: should it inherit from EditUIObject?
-class UITEST_DLLPUBLIC ComboBoxUIObject : public WindowUIObject
+class ComboBoxUIObject final : public WindowUIObject
 {
 private:
     VclPtr<ComboBox> mxComboBox;
@@ -297,12 +335,14 @@ public:
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 
-protected:
+    virtual OUString get_action(VclEventId nEvent) const override;
+
+private:
 
     virtual OUString get_name() const override;
 };
 
-class UITEST_DLLPUBLIC SpinUIObject : public WindowUIObject
+class SpinUIObject final : public WindowUIObject
 {
 private:
     VclPtr<SpinButton> mxSpinButton;
@@ -319,12 +359,14 @@ public:
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 
-protected:
+    virtual OUString get_action(VclEventId nEvent) const override;
+
+private:
 
     virtual OUString get_name() const override;
 };
 
-class UITEST_DLLPUBLIC SpinFieldUIObject : public EditUIObject
+class SpinFieldUIObject : public EditUIObject
 {
     VclPtr<SpinField> mxSpinField;
 
@@ -340,12 +382,14 @@ public:
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 
-protected:
+    virtual OUString get_action(VclEventId nEvent) const override;
+
+private:
 
     virtual OUString get_name() const override;
 };
 
-class UITEST_DLLPUBLIC TabControlUIObject : public WindowUIObject
+class TabControlUIObject final : public WindowUIObject
 {
 private:
     VclPtr<TabControl> mxTabControl;
@@ -362,10 +406,125 @@ public:
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 
-protected:
+    virtual OUString get_action(VclEventId nEvent) const override;
+
+private:
 
     virtual OUString get_name() const override;
 };
+
+class VerticalTabControlUIObject final : public WindowUIObject
+{
+private:
+    VclPtr<VerticalTabControl> mxTabControl;
+
+public:
+
+    VerticalTabControlUIObject(const VclPtr<VerticalTabControl>& mxTabControl);
+    virtual ~VerticalTabControlUIObject() override;
+
+    virtual void execute(const OUString& rAction,
+            const StringMap& rParameters) override;
+
+    virtual StringMap get_state() override;
+
+    static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
+
+private:
+
+    virtual OUString get_name() const override;
+};
+
+class TreeListUIObject final : public WindowUIObject
+{
+public:
+    TreeListUIObject(const VclPtr<SvTreeListBox>& xTreeList);
+
+    virtual StringMap get_state() override;
+
+    static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
+
+    virtual void execute(const OUString& rAction,
+            const StringMap& rParameters) override;
+
+    virtual std::unique_ptr<UIObject> get_child(const OUString& rID) override;
+
+    virtual std::set<OUString> get_children() const override;
+
+private:
+
+    virtual OUString get_name() const override;
+
+    VclPtr<SvTreeListBox> mxTreeList;
+};
+
+class TreeListEntryUIObject final : public UIObject
+{
+public:
+
+    TreeListEntryUIObject(const VclPtr<SvTreeListBox>& xTreeList, SvTreeListEntry* pEntry);
+
+    virtual StringMap get_state() override;
+
+    virtual void execute(const OUString& rAction,
+            const StringMap& rParameters) override;
+
+    virtual std::unique_ptr<UIObject> get_child(const OUString& rID) override;
+
+    virtual std::set<OUString> get_children() const override;
+
+    virtual OUString get_type() const override;
+
+private:
+
+    VclPtr<SvTreeListBox> mxTreeList;
+
+    SvTreeListEntry* const mpEntry;
+};
+
+class ToolBoxUIObject final : public WindowUIObject
+{
+private:
+    VclPtr<ToolBox> mxToolBox;
+
+public:
+
+    ToolBoxUIObject(const VclPtr<ToolBox>& mxToolBox);
+    virtual ~ToolBoxUIObject() override;
+
+    virtual void execute(const OUString& rAction,
+            const StringMap& rParameters) override;
+
+    virtual StringMap get_state() override;
+
+    static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
+
+private:
+
+    virtual OUString get_name() const override;
+};
+
+class MenuButtonUIObject final : public WindowUIObject
+{
+    VclPtr<MenuButton> mxMenuButton;
+
+public:
+
+    MenuButtonUIObject(const VclPtr<MenuButton>& xMenuButton);
+    virtual ~MenuButtonUIObject() override;
+
+    virtual StringMap get_state() override;
+
+    virtual void execute(const OUString& rAction,
+            const StringMap& rParameters) override;
+
+    static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
+
+private:
+
+    virtual OUString get_name() const override;
+};
+
 
 #endif
 

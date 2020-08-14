@@ -22,23 +22,21 @@
 
 #include <drawingml/chart/converterbase.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace chart2 { class XDiagram; }
     namespace chart2 { class XFormattedString; }
     namespace chart2 { class XTitled; }
-    namespace chart2 { namespace data { class XDataSequence; } }
-} } }
+    namespace chart2::data { class XDataSequence; }
+}
 
-namespace oox { namespace drawingml { struct TextCharacterProperties; } }
+namespace oox::drawingml { struct TextCharacterProperties; }
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 
 struct TextModel;
 
-class TextConverter : public ConverterBase< TextModel >
+class TextConverter final : public ConverterBase< TextModel >
 {
 public:
     explicit            TextConverter( const ConverterRoot& rParent, TextModel& rModel );
@@ -65,7 +63,7 @@ private:
 
 struct TitleModel;
 
-class TitleConverter : public ConverterBase< TitleModel >
+class TitleConverter final : public ConverterBase< TitleModel >
 {
 public:
     explicit            TitleConverter( const ConverterRoot& rParent, TitleModel& rModel );
@@ -81,7 +79,7 @@ public:
 
 struct LegendModel;
 
-class LegendConverter : public ConverterBase< LegendModel >
+class LegendConverter final : public ConverterBase< LegendModel >
 {
 public:
     explicit            LegendConverter( const ConverterRoot& rParent, LegendModel& rModel );
@@ -90,12 +88,13 @@ public:
     /** Creates a legend object and attaches it at the passed diagram. */
     void                convertFromModel(
                             const css::uno::Reference< css::chart2::XDiagram >& rxDiagram );
+
+private:
+    void                legendEntriesFormatting(const css::uno::Reference<css::chart2::XDiagram>& rxDiagram);
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

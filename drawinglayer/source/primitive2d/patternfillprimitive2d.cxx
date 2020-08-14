@@ -20,14 +20,15 @@
 #include <drawinglayer/primitive2d/patternfillprimitive2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <drawinglayer/primitive2d/bitmapprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
-#include <drawinglayer/texture/texture.hxx>
+#include <texture/texture.hxx>
 #include <drawinglayer/primitive2d/maskprimitive2d.hxx>
-#include <drawinglayer/tools/converters.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
+
+#include <converters.hxx>
 
 using namespace com::sun::star;
 
@@ -35,10 +36,8 @@ using namespace com::sun::star;
 #define MINIMUM_SQUARE_LENGTH (16.0)
 #define MINIMUM_TILES_LENGTH (3)
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void PatternFillPrimitive2D::calculateNeededDiscreteBufferSize(
             sal_uInt32& rWidth,
             sal_uInt32& rHeight,
@@ -53,7 +52,7 @@ namespace drawinglayer
 
             // get discrete rounded up square size of a single tile
             const basegfx::B2DHomMatrix aMaskRangeTransformation(
-                basegfx::tools::createScaleTranslateB2DHomMatrix(
+                basegfx::utils::createScaleTranslateB2DHomMatrix(
                     aMaskRange.getRange(),
                     aMaskRange.getMinimum()));
             const basegfx::B2DHomMatrix aTransform(
@@ -65,32 +64,32 @@ namespace drawinglayer
             const double fH(basegfx::B2DVector(aY - aTopLeft).getLength());
             const double fSquare(fW * fH);
 
-            if(fSquare > 0.0)
+            if(fSquare <= 0.0)
+                return;
+
+            // check if less than a maximum square pixels is used
+            static const sal_uInt32 fMaximumSquare(MAXIMUM_SQUARE_LENGTH * MAXIMUM_SQUARE_LENGTH);
+
+            if(fSquare >= fMaximumSquare)
+                return;
+
+            // calculate needed number of tiles and check if used more than a minimum count
+            const texture::GeoTexSvxTiled aTiling(getReferenceRange());
+            const sal_uInt32 nTiles(aTiling.getNumberOfTiles());
+            static const sal_uInt32 nMinimumTiles(MINIMUM_TILES_LENGTH * MINIMUM_TILES_LENGTH);
+
+            if(nTiles < nMinimumTiles)
+                return;
+
+            rWidth = basegfx::fround(ceil(fW));
+            rHeight = basegfx::fround(ceil(fH));
+            static const sal_uInt32 fMinimumSquare(MINIMUM_SQUARE_LENGTH * MINIMUM_SQUARE_LENGTH);
+
+            if(fSquare < fMinimumSquare)
             {
-                // check if less than a maximum square pixels is used
-                static sal_uInt32 fMaximumSquare(MAXIMUM_SQUARE_LENGTH * MAXIMUM_SQUARE_LENGTH);
-
-                if(fSquare < fMaximumSquare)
-                {
-                    // calculate needed number of tiles and check if used more than a minimum count
-                    const texture::GeoTexSvxTiled aTiling(getReferenceRange());
-                    const sal_uInt32 nTiles(aTiling.getNumberOfTiles());
-                    static sal_uInt32 nMinimumTiles(MINIMUM_TILES_LENGTH * MINIMUM_TILES_LENGTH);
-
-                    if(nTiles >= nMinimumTiles)
-                    {
-                        rWidth = basegfx::fround(ceil(fW));
-                        rHeight = basegfx::fround(ceil(fH));
-                        static sal_uInt32 fMinimumSquare(MINIMUM_SQUARE_LENGTH * MINIMUM_SQUARE_LENGTH);
-
-                        if(fSquare < fMinimumSquare)
-                        {
-                            const double fRel(fW/fH);
-                            rWidth = basegfx::fround(sqrt(fMinimumSquare * fRel));
-                            rHeight = basegfx::fround(sqrt(fMinimumSquare / fRel));
-                        }
-                    }
-                }
+                const double fRel(fW/fH);
+                rWidth = basegfx::fround(sqrt(fMinimumSquare * fRel));
+                rHeight = basegfx::fround(sqrt(fMinimumSquare / fRel));
             }
         }
 
@@ -98,18 +97,18 @@ namespace drawinglayer
         {
             Primitive2DContainer aContent;
 
-            // see if buffering is wanted. it is wanted, create buffered content in given resolution
+            // see if buffering is wanted. If so, create buffered content in given resolution
             if(0 != mnDiscreteWidth && 0 != mnDiscreteHeight)
             {
                 const geometry::ViewInformation2D aViewInformation2D;
                 const primitive2d::Primitive2DReference xEmbedRef(
                     new primitive2d::TransformPrimitive2D(
-                        basegfx::tools::createScaleB2DHomMatrix(mnDiscreteWidth, mnDiscreteHeight),
+                        basegfx::utils::createScaleB2DHomMatrix(mnDiscreteWidth, mnDiscreteHeight),
                         getChildren()));
                 const primitive2d::Primitive2DContainer xEmbedSeq { xEmbedRef };
 
                 const BitmapEx aBitmapEx(
-                    tools::convertToBitmapEx(
+                    convertToBitmapEx(
                         xEmbedSeq,
                         aViewInformation2D,
                         mnDiscreteWidth,
@@ -124,7 +123,7 @@ namespace drawinglayer
                     {
                         const primitive2d::Primitive2DReference xEmbedRefBitmap(
                             new primitive2d::BitmapPrimitive2D(
-                                aBitmapEx,
+                                VCLUnoHelper::CreateVCLXBitmap(aBitmapEx),
                                 basegfx::B2DHomMatrix()));
                         aContent = primitive2d::Primitive2DContainer { xEmbedRefBitmap };
                     }
@@ -149,7 +148,7 @@ namespace drawinglayer
                 {
                     const Primitive2DReference xRef(
                         new MaskPrimitive2D(
-                            basegfx::B2DPolyPolygon(basegfx::tools::createPolygonFromRect(aUnitRange)),
+                            basegfx::B2DPolyPolygon(basegfx::utils::createPolygonFromRect(aUnitRange)),
                             aContent));
 
                     aContent = Primitive2DContainer { xRef };
@@ -163,59 +162,58 @@ namespace drawinglayer
         {
             Primitive2DContainer aRetval;
 
-            if(!getChildren().empty())
+            if(getChildren().empty())
+                return;
+
+            if(!(!getReferenceRange().isEmpty() && getReferenceRange().getWidth() > 0.0 && getReferenceRange().getHeight() > 0.0))
+                return;
+
+            const basegfx::B2DRange aMaskRange(getMask().getB2DRange());
+
+            if(!(!aMaskRange.isEmpty() && aMaskRange.getWidth() > 0.0 && aMaskRange.getHeight() > 0.0))
+                return;
+
+            // create tiling matrices
+            std::vector< basegfx::B2DHomMatrix > aMatrices;
+            texture::GeoTexSvxTiled aTiling(getReferenceRange());
+
+            aTiling.appendTransformations(aMatrices);
+
+            // create content
+            const Primitive2DContainer aContent(createContent(rViewInformation));
+
+            // resize result
+            aRetval.resize(aMatrices.size());
+
+            // create one primitive for each matrix
+            for(size_t a(0); a < aMatrices.size(); a++)
             {
-                if(!getReferenceRange().isEmpty() && getReferenceRange().getWidth() > 0.0 && getReferenceRange().getHeight() > 0.0)
-                {
-                    const basegfx::B2DRange aMaskRange(getMask().getB2DRange());
+                aRetval[a] = new TransformPrimitive2D(
+                    aMatrices[a],
+                    aContent);
+            }
 
-                    if(!aMaskRange.isEmpty() && aMaskRange.getWidth() > 0.0 && aMaskRange.getHeight() > 0.0)
-                    {
-                        // create tiling matrices
-                        std::vector< basegfx::B2DHomMatrix > aMatrices;
-                        texture::GeoTexSvxTiled aTiling(getReferenceRange());
+            // transform result which is in unit coordinates to mask's object coordinates
+            {
+                const basegfx::B2DHomMatrix aMaskTransform(
+                    basegfx::utils::createScaleTranslateB2DHomMatrix(
+                        aMaskRange.getRange(),
+                        aMaskRange.getMinimum()));
 
-                        aTiling.appendTransformations(aMatrices);
+                const Primitive2DReference xRef(
+                    new TransformPrimitive2D(
+                        aMaskTransform,
+                        aRetval));
 
-                        // create content
-                        const Primitive2DContainer aContent(createContent(rViewInformation));
+                aRetval = Primitive2DContainer { xRef };
+            }
 
-                        // resize result
-                        aRetval.resize(aMatrices.size());
-
-                        // create one primitive for each matrix
-                        for(size_t a(0); a < aMatrices.size(); a++)
-                        {
-                            aRetval[a] = new TransformPrimitive2D(
-                                aMatrices[a],
-                                aContent);
-                        }
-
-                        // transform result which is in unit coordinates to mask's object coordinates
-                        {
-                            const basegfx::B2DHomMatrix aMaskTransform(
-                                basegfx::tools::createScaleTranslateB2DHomMatrix(
-                                    aMaskRange.getRange(),
-                                    aMaskRange.getMinimum()));
-
-                            const Primitive2DReference xRef(
-                                new TransformPrimitive2D(
-                                    aMaskTransform,
-                                    aRetval));
-
-                            aRetval = Primitive2DContainer { xRef };
-                        }
-
-                        // embed result in mask
-                        {
-                            rContainer.push_back(
-                                new MaskPrimitive2D(
-                                    getMask(),
-                                    aRetval));
-                        }
-
-                    }
-                }
+            // embed result in mask
+            {
+                rContainer.push_back(
+                    new MaskPrimitive2D(
+                        getMask(),
+                        aRetval));
             }
         }
 
@@ -253,7 +251,7 @@ namespace drawinglayer
 
         void PatternFillPrimitive2D::get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const
         {
-            // The existing bufferd decomposition uses a buffer in the remembered
+            // The existing buffered decomposition uses a buffer in the remembered
             // size or none if sizes are zero. Get new needed sizes which depend on
             // the given ViewInformation
             bool bResetBuffering = false;
@@ -327,7 +325,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(PatternFillPrimitive2D, PRIMITIVE2D_ID_PATTERNFILLPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,31 +20,55 @@
 #ifndef INCLUDED_SC_INC_MISCUNO_HXX
 #define INCLUDED_SC_INC_MISCUNO_HXX
 
+#include <vector>
+
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <osl/diagnose.h>
 #include "scdllapi.h"
 
-#define SC_SIMPLE_SERVICE_INFO( ClassName, ClassNameAscii, ServiceAscii )            \
-OUString SAL_CALL ClassName::getImplementationName()                      \
-{                                                                                    \
-    return OUString(ClassNameAscii);                         \
-}                                                                                    \
+#define SC_SIMPLE_SERVICE_INFO_IMPL( ClassName, ClassNameAscii )            \
+OUString SAL_CALL ClassName::getImplementationName()                        \
+{                                                                           \
+    return ClassNameAscii;                                                  \
+}                                                                           \
 sal_Bool SAL_CALL ClassName::supportsService( const OUString& ServiceName ) \
+{                                                                           \
+    return cppu::supportsService(this, ServiceName);                        \
+}
+
+#define SC_SIMPLE_SERVICE_INFO_NAME( ClassName, ServiceAscii ) \
+css::uno::Sequence< OUString >                                 \
+    SAL_CALL ClassName::getSupportedServiceNames()             \
+{                                                              \
+    css::uno::Sequence< OUString > aRet { ServiceAscii };      \
+    return aRet;                                               \
+}
+
+// Place the old mistyped variant as first element so existing code can
+// continue to ask aRet[0] if it doesn't iterate; new code can iterate over the
+// sequence. This mostly should be used by supportsService() iterating anyway.
+#define SC_SIMPLE_SERVICE_INFO_TYPO( ClassName, ServiceAscii, ServiceAsciiMistyped ) \
+css::uno::Sequence< OUString >                                                       \
+    SAL_CALL ClassName::getSupportedServiceNames()                                   \
 {                                                                                    \
-    return cppu::supportsService(this, ServiceName);                                \
-}                                                                                    \
-css::uno::Sequence< OUString >                                   \
-    SAL_CALL ClassName::getSupportedServiceNames()                           \
-{                                                                                    \
-    css::uno::Sequence< OUString > aRet { ServiceAscii };                  \
+    css::uno::Sequence< OUString > aRet { ServiceAsciiMistyped, ServiceAscii };      \
     return aRet;                                                                     \
 }
+
+#define SC_SIMPLE_SERVICE_INFO( ClassName, ClassNameAscii, ServiceAscii ) \
+    SC_SIMPLE_SERVICE_INFO_IMPL( ClassName, ClassNameAscii )              \
+    SC_SIMPLE_SERVICE_INFO_NAME( ClassName, ServiceAscii )
+
+#define SC_SIMPLE_SERVICE_INFO_COMPAT( ClassName, ClassNameAscii, ServiceAscii, ServiceAsciiMistyped ) \
+    SC_SIMPLE_SERVICE_INFO_IMPL( ClassName, ClassNameAscii )                                           \
+    SC_SIMPLE_SERVICE_INFO_TYPO( ClassName, ServiceAscii, ServiceAsciiMistyped )
+
 
 #define SC_IMPL_DUMMY_PROPERTY_LISTENER( ClassName )                                \
     void SAL_CALL ClassName::addPropertyChangeListener( const OUString&,       \
@@ -71,7 +95,7 @@ css::uno::Sequence< OUString >                                   \
     if (rType == cppu::UnoType<x>::get())  \
     { uno::Any aR; aR <<= uno::Reference<x>(static_cast<y*>(this)); return aR; }
 
-class ScIndexEnumeration : public cppu::WeakImplHelper<
+class ScIndexEnumeration final : public cppu::WeakImplHelper<
                                 css::container::XEnumeration,
                                 css::lang::XServiceInfo >
 {
@@ -96,7 +120,7 @@ public:
 };
 
 //  new (uno 3) variant
-class ScNameToIndexAccess : public cppu::WeakImplHelper<
+class ScNameToIndexAccess final : public cppu::WeakImplHelper<
                                 css::container::XIndexAccess,
                                 css::lang::XServiceInfo >
 {
@@ -126,8 +150,6 @@ public:
 class SC_DLLPUBLIC ScUnoHelpFunctions
 {
 public:
-    static css::uno::Reference<css::uno::XInterface>
-                            AnyToInterface( const css::uno::Any& rAny );
     static bool             GetBoolProperty( const css::uno::Reference< css::beans::XPropertySet>& xProp,
                                             const OUString& rName, bool bDefault = false );
     static sal_Int16        GetShortProperty( const css::uno::Reference< css::beans::XPropertySet>& xProp,
@@ -149,13 +171,13 @@ public:
     static sal_Int32        GetEnumFromAny( const css::uno::Any& aAny );
 
     static void             SetOptionalPropertyValue(
-        css::uno::Reference< css::beans::XPropertySet >& rPropSet,
-        const sal_Char* pPropName, const css::uno::Any& rVal );
+        const css::uno::Reference< css::beans::XPropertySet >& rPropSet,
+        const char* pPropName, const css::uno::Any& rVal );
 
     template<typename ValueType>
     static void             SetOptionalPropertyValue(
-        css::uno::Reference< css::beans::XPropertySet >& rPropSet,
-        const sal_Char* pPropName, const ValueType& rVal )
+        const css::uno::Reference< css::beans::XPropertySet >& rPropSet,
+        const char* pPropName, const ValueType& rVal )
     {
         css::uno::Any any;
         any <<= rVal;

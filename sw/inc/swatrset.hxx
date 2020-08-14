@@ -18,17 +18,15 @@
  */
 #ifndef INCLUDED_SW_INC_SWATRSET_HXX
 #define INCLUDED_SW_INC_SWATRSET_HXX
-#include <tools/solar.h>
-#include <tools/mempool.hxx>
+
 #include <svl/itemset.hxx>
 #include <svl/itempool.hxx>
-#include <swdllapi.h>
+#include "swdllapi.h"
 
 class SwModify;
 class SwDoc;
 class OutputDevice;
 class IDocumentSettingAccess;
-class SfxBoolItem;
 class SvxPostureItem;
 class SvxWeightItem;
 class SvxShadowedItem;
@@ -40,10 +38,8 @@ class SvxUnderlineItem;
 class SvxOverlineItem;
 class SvxCrossedOutItem;
 class SvxFontHeightItem;
-class SvxPropSizeItem;
 class SvxFontItem;
 class SvxColorItem;
-class SvxCharSetColorItem;
 class SvxLanguageItem;
 class SvxEscapementItem;
 class SvxCaseMapItem;
@@ -90,7 +86,6 @@ class SwFormatFootnoteAtTextEnd;
 class SwFormatEndAtTextEnd;
 class SwFormatNoBalancedColumns;
 class SvxFrameDirectionItem;
-class SwTextGridItem;
 class SwHeaderAndFooterEatSpacingItem;
 class SwFormatFollowTextFlow;
 class SwFormatWrapInfluenceOnObjPos;
@@ -133,10 +128,14 @@ class SwTableBoxNumFormat;
 class SwTableBoxFormula;
 class SwTableBoxValue;
 
-class SwAttrPool : public SfxItemPool
+namespace vcl {
+    typedef OutputDevice RenderContext;
+};
+
+class SAL_DLLPUBLIC_RTTI SwAttrPool final : public SfxItemPool
 {
 private:
-    // helpers to add/rmove DrawingLayer ItemPool, used in constructor
+    // helpers to add/remove DrawingLayer ItemPool, used in constructor
     // and destructor; still isolated to evtl. allow other use later, but
     // used bz default now to have it instantly as needed for DrawingLayer
     // FillStyle support
@@ -145,21 +144,12 @@ private:
 
     friend void InitCore();            // For creating/deleting of version maps.
     friend void FinitCore();
-    static sal_uInt16* pVersionMap1;
-    static sal_uInt16* pVersionMap2;
-    static sal_uInt16* pVersionMap3;
-    static sal_uInt16* pVersionMap4;
-    // due to extension of attribute set a new version
-    // map for binary filter is necessary (version map 5).
-    static sal_uInt16* pVersionMap5;
-    static sal_uInt16* pVersionMap6;
-    static sal_uInt16* pVersionMap7;
 
     SwDoc* m_pDoc;
 
 public:
     SwAttrPool( SwDoc* pDoc );
-protected:
+private:
     virtual ~SwAttrPool() override;
 public:
 
@@ -168,7 +158,7 @@ public:
 
 };
 
-class SW_DLLPUBLIC SwAttrSet : public SfxItemSet
+class SW_DLLPUBLIC SwAttrSet final : public SfxItemSet
 {
     // Pointer for Modify-System
     SwAttrSet *m_pOldSet, *m_pNewSet;
@@ -182,7 +172,7 @@ public:
     SwAttrSet( SwAttrPool&, const sal_uInt16* nWhichPairTable );
     SwAttrSet( const SwAttrSet& );
 
-    virtual SfxItemSet* Clone(bool bItems = true, SfxItemPool *pToPool = nullptr) const override;
+    virtual std::unique_ptr<SfxItemSet> Clone(bool bItems = true, SfxItemPool *pToPool = nullptr) const override;
 
     bool Put_BC( const SfxPoolItem& rAttr, SwAttrSet* pOld, SwAttrSet* pNew );
     bool Put_BC( const SfxItemSet& rSet, SwAttrSet* pOld, SwAttrSet* pNew );
@@ -234,7 +224,6 @@ public:
     inline const SvxEscapementItem      &GetEscapement( bool = true ) const;
     inline const SvxCaseMapItem         &GetCaseMap( bool = true ) const;
     inline const SvxNoHyphenItem      &GetNoHyphenHere( bool = true ) const;
-    inline const SvxBlinkItem         &GetBlink( bool = true ) const;
     inline const SvxFontItem          &GetCJKFont( bool = true ) const;
     inline const SvxFontHeightItem    &GetCJKSize( bool = true ) const;
     inline const SvxLanguageItem      &GetCJKLanguage( bool = true ) const;
@@ -327,14 +316,12 @@ public:
     inline  const SwTableBoxNumFormat       &GetTableBoxNumFormat( bool = true ) const;
     inline  const SwTableBoxFormula     &GetTableBoxFormula( bool = true ) const;
     inline  const SwTableBoxValue           &GetTableBoxValue( bool = true ) const;
-
-    DECL_FIXEDMEMPOOL_NEWDEL(SwAttrSet)
 };
 
 //Helper for filters to find true lineheight of a font
 SW_DLLPUBLIC long AttrSetToLineHeight( const IDocumentSettingAccess& rIDocumentSettingAccess,
                           const SwAttrSet &rSet,
-                          const OutputDevice &rOut, sal_Int16 nScript);
+                          const vcl::RenderContext &rOut, sal_Int16 nScript);
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

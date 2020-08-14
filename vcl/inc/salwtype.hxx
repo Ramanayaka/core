@@ -21,14 +21,16 @@
 #define INCLUDED_VCL_INC_SALWTYPE_HXX
 
 #include <i18nlangtag/lang.h>
+#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
 #include <tools/solar.h>
+#include <vcl/GestureEvent.hxx>
 
+class LogicalFontInstance;
 class SalGraphics;
 class SalFrame;
 class SalObject;
 namespace vcl { class Window; }
-class FontSelectPattern;
 enum class InputContextFlags;
 enum class WindowStateMask;
 enum class WindowStateState;
@@ -81,20 +83,31 @@ enum class SalEvent {
     StartReconversion,
     QueryCharPosition,
     Swipe,
-    LongPress
+    LongPress,
+    ExternalGesture,
+    Gesture,
+};
+
+struct SalAbstractMouseEvent
+{
+    sal_uInt64 mnTime;  // Time in ms, when event is created
+    long mnX;           // X-Position (Pixel, TopLeft-Output)
+    long mnY;           // Y-Position (Pixel, TopLeft-Output)
+    sal_uInt16 mnCode;  // SV-Modifiercode (KEY_SHIFT|KEY_MOD1|KEY_MOD2|MOUSE_LEFT|MOUSE_MIDDLE|MOUSE_RIGHT)
+
+protected:
+    SalAbstractMouseEvent() : mnTime(0), mnX(0), mnY(0), mnCode(0) {}
 };
 
 // MOUSELEAVE must send, when the pointer leave the client area and
 // the mouse is not captured
 // MOUSEMOVE, MOUSELEAVE, MOUSEBUTTONDOWN and MOUSEBUTTONUP
 // MAC: Ctrl+Button is MOUSE_RIGHT
-struct SalMouseEvent
+struct SalMouseEvent final : public SalAbstractMouseEvent
 {
-    sal_uInt64      mnTime;         // Time in ms, when event is created
-    long            mnX;            // X-Position (Pixel, TopLeft-Output)
-    long            mnY;            // Y-Position (Pixel, TopLeft-Output)
     sal_uInt16      mnButton;       // 0-MouseMove/MouseLeave, MOUSE_LEFT, MOUSE_RIGHT, MOUSE_MIDDLE
-    sal_uInt16      mnCode;         // SV-Modifiercode (KEY_SHIFT|KEY_MOD1|KEY_MOD2|MOUSE_LEFT|MOUSE_MIDDLE|MOUSE_RIGHT)
+
+    SalMouseEvent() : mnButton(0) {}
 };
 
 // KEYINPUT and KEYUP
@@ -139,21 +152,17 @@ struct SalPaintEvent
     {}
 };
 
-#define SAL_WHEELMOUSE_EVENT_PAGESCROLL     ((sal_uLong)0xFFFFFFFF)
-struct SalWheelMouseEvent
+#define SAL_WHEELMOUSE_EVENT_PAGESCROLL     (sal_uLong(0xFFFFFFFF))
+struct SalWheelMouseEvent final : public SalAbstractMouseEvent
 {
-    sal_uInt64      mnTime;         // Time in ms, when event is created
-    long            mnX;            // X-Position (Pixel, TopLeft-Output)
-    long            mnY;            // Y-Position (Pixel, TopLeft-Output)
     long            mnDelta;        // Number of rotations
     long            mnNotchDelta;   // Number of fixed rotations
     double          mnScrollLines;  // Actual number of lines to scroll
-    sal_uInt16      mnCode;         // SV-Modifiercode (KEY_SHIFT|KEY_MOD1|KEY_MOD2|MOUSE_LEFT|MOUSE_MIDDLE|MOUSE_RIGHT)
     bool        mbHorz;         // Horizontal
     bool        mbDeltaIsPixel; // delta value is a pixel value (on touch devices)
 
     SalWheelMouseEvent()
-    : mnTime( 0 ), mnX( 0 ), mnY( 0 ), mnDelta( 0 ), mnNotchDelta( 0 ), mnScrollLines( 0 ), mnCode( 0 ), mbHorz( false ), mbDeltaIsPixel( false )
+    : mnDelta(0), mnNotchDelta(0), mnScrollLines(0), mbHorz(false), mbDeltaIsPixel(false)
     {}
 };
 
@@ -186,7 +195,6 @@ struct SalExtTextInputPosEvent
 
 struct SalInputContextChangeEvent
 {
-    LanguageType    meLanguage;     // new language
 };
 
 struct SalSurroundingTextRequestEvent
@@ -221,8 +229,6 @@ enum class SalObjEvent {
     ToTop              = 3
 };
 
-typedef long (*SALOBJECTPROC)( void* pInst, SalObjEvent nEvent );
-
 struct SalFrameState
 {
     WindowStateMask mnMask;
@@ -239,8 +245,7 @@ struct SalFrameState
 
 struct SalInputContext
 {
-    FontSelectPattern*     mpFont;
-    LanguageType           meLanguage;
+    rtl::Reference<LogicalFontInstance> mpFont;
     InputContextFlags      mnOptions;
 };
 
@@ -258,7 +263,16 @@ struct SalLongPressEvent
     long mnY;
 };
 
-typedef void (*SALTIMERPROC)( bool idle );
+struct SalGestureEvent
+{
+    GestureEventType meEventType;
+    PanningOrientation meOrientation;
+    double mfOffset;
+    long mnX;
+    long mnY;
+};
+
+typedef void (*SALTIMERPROC)();
 
 #endif // INCLUDED_VCL_INC_SALWTYPE_HXX
 

@@ -20,16 +20,14 @@
 
 #include "pppoptimizerdialog.hxx"
 #include "optimizerdialog.hxx"
+#include <sal/log.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::beans;
-
-#define SERVICE_NAME "com.sun.star.comp.PresentationMinimizer"
-#include <cppuhelper/supportsservice.hxx>
-#include <rtl/ustrbuf.hxx>
 
 PPPOptimizerDialog::PPPOptimizerDialog( const Reference< XComponentContext > &xContext ) :
     mxContext( xContext ),
@@ -53,7 +51,7 @@ void SAL_CALL PPPOptimizerDialog::initialize( const Sequence< Any >& aArguments 
 
 OUString SAL_CALL PPPOptimizerDialog::getImplementationName()
 {
-    return PPPOptimizerDialog_getImplementationName();
+    return "com.sun.star.comp.PresentationMinimizerImp";
 }
 
 sal_Bool SAL_CALL PPPOptimizerDialog::supportsService( const OUString& ServiceName )
@@ -63,7 +61,7 @@ sal_Bool SAL_CALL PPPOptimizerDialog::supportsService( const OUString& ServiceNa
 
 Sequence< OUString > SAL_CALL PPPOptimizerDialog::getSupportedServiceNames()
 {
-    return PPPOptimizerDialog_getSupportedServiceNames();
+    return { "com.sun.star.comp.PresentationMinimizer" };
 }
 
 Reference< css::frame::XDispatch > SAL_CALL PPPOptimizerDialog::queryDispatch(
@@ -80,12 +78,9 @@ Sequence< Reference< css::frame::XDispatch > > SAL_CALL PPPOptimizerDialog::quer
     const Sequence< css::frame::DispatchDescriptor >& aDescripts )
 {
     Sequence< Reference< css::frame::XDispatch> > aReturn( aDescripts.getLength() );
-    Reference< css::frame::XDispatch>* pReturn = aReturn.getArray();
-    const css::frame::DispatchDescriptor* pDescripts = aDescripts.getConstArray();
-    for (sal_Int32 i = 0; i < aDescripts.getLength(); ++i, ++pReturn, ++pDescripts )
-    {
-        *pReturn = queryDispatch( pDescripts->FeatureURL, pDescripts->FrameName, pDescripts->SearchFlags );
-    }
+    std::transform(aDescripts.begin(), aDescripts.end(), aReturn.begin(),
+        [this](const css::frame::DispatchDescriptor& rDescr) -> Reference<css::frame::XDispatch> {
+            return queryDispatch(rDescr.FeatureURL, rDescr.FrameName, rDescr.SearchFlags); });
     return aReturn;
 }
 
@@ -93,47 +88,45 @@ void SAL_CALL PPPOptimizerDialog::dispatch( const URL& rURL,
                                             const Sequence< PropertyValue >& rArguments )
 {
 
-    if ( mxController.is() && rURL.Protocol.equalsIgnoreAsciiCase( "vnd.com.sun.star.comp.PresentationMinimizer:" ) )
+    if ( !(mxController.is() && rURL.Protocol.equalsIgnoreAsciiCase( "vnd.com.sun.star.comp.PresentationMinimizer:" )) )
+        return;
+
+    if ( rURL.Path == "execute" )
     {
-        if ( rURL.Path == "execute" )
+        try
         {
-            try
+            sal_Int64 nFileSizeSource = 0;
+            sal_Int64 nFileSizeDest = 0;
+            mpOptimizerDialog = new OptimizerDialog( mxContext, mxFrame, this );
+            mpOptimizerDialog->execute();
+
+            const Any* pVal( mpOptimizerDialog->maStats.GetStatusValue( TK_FileSizeSource ) );
+            if ( pVal )
+                *pVal >>= nFileSizeSource;
+            pVal = mpOptimizerDialog->maStats.GetStatusValue( TK_FileSizeDestination );
+            if ( pVal )
+                *pVal >>= nFileSizeDest;
+
+            if ( nFileSizeSource && nFileSizeDest )
             {
-                sal_Int64 nFileSizeSource = 0;
-                sal_Int64 nFileSizeDest = 0;
-                mpOptimizerDialog = new OptimizerDialog( mxContext, mxFrame, this );
-                mpOptimizerDialog->execute();
-
-                const Any* pVal( mpOptimizerDialog->maStats.GetStatusValue( TK_FileSizeSource ) );
-                if ( pVal )
-                    *pVal >>= nFileSizeSource;
-                pVal = mpOptimizerDialog->maStats.GetStatusValue( TK_FileSizeDestination );
-                if ( pVal )
-                    *pVal >>= nFileSizeDest;
-
-                if ( nFileSizeSource && nFileSizeDest )
-                {
-                    OUStringBuffer sBuf( "Your Presentation has been minimized from:" );
-                    sBuf.append( OUString::number( nFileSizeSource >> 10 ) );
-                    sBuf.append( "KB to " );
-                    sBuf.append( OUString::number( nFileSizeDest >> 10 ) );
-                    sBuf.append( "KB." );
-                    OUString sResult( sBuf.makeStringAndClear() );
-                    SAL_INFO("sdext.minimizer", sResult );
-                }
-                delete mpOptimizerDialog;
-                mpOptimizerDialog = nullptr;
-            }
-            catch( ... )
-            {
-
+                OUString sResult = "Your Presentation has been minimized from:" +
+                    OUString::number( nFileSizeSource >> 10 ) +
+                    "KB to " +
+                    OUString::number( nFileSizeDest >> 10 ) +
+                    "KB.";
+                SAL_INFO("sdext.minimizer", sResult );
             }
         }
-        else if ( rURL.Path == "statusupdate" )
+        catch( ... )
         {
-            if ( mpOptimizerDialog )
-                mpOptimizerDialog->UpdateStatus( rArguments );
         }
+        delete mpOptimizerDialog;
+        mpOptimizerDialog = nullptr;
+    }
+    else if ( rURL.Path == "statusupdate" )
+    {
+        if ( mpOptimizerDialog )
+            mpOptimizerDialog->UpdateStatus( rArguments );
     }
 }
 
@@ -149,20 +142,12 @@ void SAL_CALL PPPOptimizerDialog::removeStatusListener( const Reference< XStatus
     // OSL_FAIL( "PPPOptimizerDialog::removeStatusListener()\nNot implemented yet!" );
 }
 
-OUString PPPOptimizerDialog_getImplementationName()
-{
-    return OUString( "com.sun.star.comp.PresentationMinimizerImp" );
-}
 
-Sequence< OUString > PPPOptimizerDialog_getSupportedServiceNames()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+sdext_PPPOptimizerDialog_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
 {
-    Sequence<OUString> aRet { SERVICE_NAME };
-    return aRet;
-}
-
-Reference< XInterface > PPPOptimizerDialog_createInstance( const Reference< XComponentContext > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new PPPOptimizerDialog( rSMgr ));
+    return cppu::acquire(new PPPOptimizerDialog(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -36,7 +36,7 @@ $(eval $(call gb_Library_set_include,svxcore,\
     -I$(WORKDIR)/SdiTarget/svx/sdi \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,svxcore,$(SRCDIR)/svx/inc/pch/precompiled_svxcore))
+$(eval $(call gb_Library_set_precompiled_header,svxcore,svx/inc/pch/precompiled_svxcore))
 
 #BOOST switch in customshapes
 #dialog:
@@ -45,8 +45,7 @@ $(eval $(call gb_Library_set_precompiled_header,svxcore,$(SRCDIR)/svx/inc/pch/pr
 #.ENDIF
 
 $(eval $(call gb_Library_add_defs,svxcore,\
-    -DSVX_DLLIMPLEMENTATION \
-    -DBOOST_SPIRIT_USE_OLD_NAMESPACE \
+    -DSVXCORE_DLLIMPLEMENTATION \
 ))
 
 $(eval $(call gb_Library_use_libraries,svxcore,\
@@ -60,7 +59,7 @@ $(eval $(call gb_Library_use_libraries,svxcore,\
         dbtools) \
     drawinglayer \
     editeng \
-    fwe \
+    fwk \
     i18nlangtag \
     i18nutil \
     lng \
@@ -84,8 +83,9 @@ $(eval $(call gb_Library_use_externals,svxcore,\
 	icuuc \
 	icu_headers \
 	libxml2 \
+	$(if $(filter PDFIUM,$(BUILD_TYPE)),pdfium) \
 ))
-ifeq ($(ENABLE_HEADLESS),)
+ifeq ($(DISABLE_GUI),)
 $(eval $(call gb_Library_use_externals,svxcore,\
      epoxy \
  ))
@@ -104,24 +104,22 @@ $(eval $(call gb_Library_use_system_darwin_frameworks,svxcore,\
 endif
 
 $(eval $(call gb_Library_add_exception_objects,svxcore,\
-    svx/source/core/coreservices \
     svx/source/core/extedit \
     svx/source/core/graphichelper \
     svx/source/customshapes/EnhancedCustomShape2d \
     svx/source/customshapes/EnhancedCustomShapeFunctionParser \
     svx/source/customshapes/EnhancedCustomShapeGeometry \
     svx/source/customshapes/EnhancedCustomShapeTypeNames \
-    svx/source/dialog/checklbx \
     svx/source/dialog/dialmgr \
     svx/source/dialog/dlgutil \
     svx/source/dialog/hexcolorcontrol \
     svx/source/dialog/framelink \
+    svx/source/dialog/framelinkarray \
     svx/source/dialog/langbox \
     svx/source/dialog/pagenumberlistbox \
     svx/source/dialog/papersizelistbox \
     svx/source/dialog/samecontentlistbox \
     svx/source/dialog/spacinglistbox \
-    svx/source/dialog/stddlg \
     svx/source/dialog/svxdlg \
     svx/source/dialog/SvxNumOptionsTabPageHelper \
     svx/source/engine3d/camera3d \
@@ -154,7 +152,10 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/gallery2/galobj \
     svx/source/gallery2/galtheme \
     svx/source/gallery2/GalleryControl \
-    svx/source/gallery2/GallerySplitter \
+    svx/source/gallery2/gallerybinaryengine \
+    svx/source/gallery2/gallerybinaryengineentry \
+    svx/source/gallery2/gallerystoragelocations \
+    svx/source/gallery2/galleryobjectcollection \
     svx/source/items/chrtitem \
     svx/source/items/clipfmtitem \
     svx/source/items/customshapeitem \
@@ -166,11 +167,11 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/sdr/animation/objectanimator \
     svx/source/sdr/animation/animationstate \
     svx/source/sdr/attribute/sdrallfillattributeshelper \
-    svx/source/sdr/attribute/sdrlinefillshadowtextattribute \
+    svx/source/sdr/attribute/sdrlinefilleffectstextattribute \
     svx/source/sdr/attribute/sdrfilltextattribute \
-    svx/source/sdr/attribute/sdrshadowtextattribute \
+    svx/source/sdr/attribute/sdreffectstextattribute \
     svx/source/sdr/attribute/sdrtextattribute \
-    svx/source/sdr/attribute/sdrlineshadowtextattribute \
+    svx/source/sdr/attribute/sdrlineeffectstextattribute \
     svx/source/sdr/attribute/sdrformtextattribute \
     svx/source/sdr/attribute/sdrformtextoutlineattribute \
     svx/source/sdr/contact/viewobjectcontactofgroup \
@@ -217,7 +218,6 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/sdr/contact/viewcontactofsdrmeasureobj \
     svx/source/sdr/contact/objectcontactofobjlistpainter \
     svx/source/sdr/contact/viewobjectcontactofe3d \
-    svx/source/sdr/event/eventhandler \
     svx/source/sdr/overlay/overlayline \
     svx/source/sdr/overlay/overlaycrosshair \
     svx/source/sdr/overlay/overlayrollingrectangle \
@@ -236,6 +236,7 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/sdr/overlay/overlaymanager \
     svx/source/sdr/overlay/overlayobjectlist \
     svx/source/sdr/overlay/overlayhandle \
+    svx/source/sdr/misc/ImageMapInfo \
     svx/source/sdr/primitive2d/sdrellipseprimitive2d \
     svx/source/sdr/primitive2d/sdrprimitivetools \
     svx/source/sdr/primitive2d/sdrtextprimitive2d \
@@ -249,6 +250,7 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/sdr/primitive2d/sdrcaptionprimitive2d \
     svx/source/sdr/primitive2d/sdrconnectorprimitive2d \
     svx/source/sdr/primitive2d/sdrmeasureprimitive2d \
+    svx/source/sdr/primitive2d/sdrframeborderprimitive2d \
     svx/source/sdr/primitive2d/sdrattributecreator \
     svx/source/sdr/primitive2d/sdrdecompositiontools \
     svx/source/sdr/primitive3d/sdrattributecreator3d \
@@ -278,6 +280,7 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/svdraw/charthelper \
     svx/source/svdraw/gradtrns \
     svx/source/svdraw/polypolygoneditor \
+    svx/source/svdraw/presetooxhandleadjustmentrelations \
     svx/source/svdraw/sdrhittesthelper \
     svx/source/svdraw/sdrmasterpagedescriptor \
     svx/source/svdraw/sdrpagewindow \
@@ -299,7 +302,6 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/svdraw/svdglue \
     svx/source/svdraw/svdhdl \
     svx/source/svdraw/svdhlpln \
-    svx/source/svdraw/svdibrow \
     svx/source/svdraw/svditer \
     svx/source/svdraw/svdlayer \
     svx/source/svdraw/svdmark \
@@ -337,6 +339,7 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/svdraw/svdovirt \
     svx/source/svdraw/svdpage \
     svx/source/svdraw/svdpagv \
+    svx/source/svdraw/svdpdf \
     svx/source/svdraw/svdpntv \
     svx/source/svdraw/svdpoev \
     svx/source/svdraw/svdsnpv \
@@ -369,12 +372,15 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/table/viewcontactoftableobj \
     svx/source/tbxctrls/extrusioncontrols \
     svx/source/tbxctrls/fontworkgallery \
+    svx/source/tbxctrls/linectrl \
     svx/source/tbxctrls/Palette \
     svx/source/tbxctrls/PaletteManager \
     svx/source/tbxctrls/tbcontrl \
     svx/source/tbxctrls/tbxcolorupdate \
     svx/source/tbxctrls/SvxColorValueSet \
     svx/source/tbxctrls/SvxPresetListBox \
+    svx/source/tbxctrls/StylesPreviewToolBoxControl \
+    svx/source/tbxctrls/StylesPreviewWindow \
     svx/source/toolbars/extrusionbar \
     svx/source/toolbars/fontworkbar \
     svx/source/unodraw/gluepts \
@@ -407,7 +413,6 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/xoutdev/xattr \
     svx/source/xoutdev/xattr2 \
     svx/source/xoutdev/xattrbmp \
-    svx/source/xoutdev/xexch \
     svx/source/xoutdev/_xoutbmp \
     svx/source/xoutdev/_xpoly \
     svx/source/xoutdev/xpool \
@@ -434,6 +439,7 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/form/datalistener \
     svx/source/form/datanavi \
     svx/source/form/delayedevent \
+    svx/source/form/labelitemwindow \
     svx/source/form/fmcontrolbordermanager \
     svx/source/form/fmcontrollayout \
     svx/source/form/fmdmod \
@@ -441,7 +447,6 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/form/fmdpage \
     svx/source/form/fmexch \
     svx/source/form/fmexpl \
-    svx/source/form/fmitems \
     svx/source/form/fmmodel \
     svx/source/form/fmobj \
     svx/source/form/fmpage \
@@ -482,8 +487,5 @@ $(eval $(call gb_SdiTarget_set_include,svx/sdi/svxslots,\
     -I$(SRCDIR)/svx/sdi \
     -I$(SRCDIR)/sfx2/sdi \
 ))
-
-# Runtime dependency for unit-tests
-$(eval $(call gb_Library_use_restarget,svxcore,svx))
 
 # vim: set noet sw=4 ts=4:

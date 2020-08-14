@@ -18,33 +18,30 @@
  */
 
 #include <comphelper/processfactory.hxx>
-#include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/sdb/XColumn.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <vcl/builder.hxx>
+#include <vcl/scrbar.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/fixed.hxx>
 #include "general.hxx"
 #include "bibresid.hxx"
 #include "datman.hxx"
 #include "bibconfig.hxx"
-#include "bibprop.hrc"
-#include "bib.hrc"
+#include <strings.hrc>
 #include "bibmod.hxx"
-#include "bibview.hxx"
-#include "bibtools.hxx"
-#include "bibliography.hrc"
+#include <helpids.h>
 #include <tools/debug.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/i18nhelp.hxx>
 #include <vcl/mnemonic.hxx>
 #include <algorithm>
-#include <functional>
-#include <vector>
 #include <tools/urlobj.hxx>
 
 using namespace ::com::sun::star;
@@ -68,6 +65,8 @@ static OUString lcl_GetColumnName( const Mapping* pMapping, sal_uInt16 nIndexPos
     return sRet;
 }
 
+namespace {
+
 class BibPosListener    :public cppu::WeakImplHelper <sdbc::XRowSetListener>
 {
     VclPtr<BibGeneralPage>     pParentPage;
@@ -83,6 +82,8 @@ public:
     virtual void SAL_CALL disposing(const lang::EventObject& Source) override;
 
 };
+
+}
 
 BibPosListener::BibPosListener(BibGeneralPage* pParent) :
     pParentPage(pParent)
@@ -167,7 +168,6 @@ void BibPosListener::disposing(const lang::EventObject& /*Source*/)
 BibGeneralPage::BibGeneralPage(vcl::Window* pParent, BibDataManager* pMan):
     TabPage(pParent, "GeneralPage", "modules/sbibliography/ui/generalpage.ui"),
     BibShortCutHandler( this ),
-    sErrorPrefix(BibResId(ST_ERROR_PREFIX)),
     mxBibGeneralPageFocusListener(new BibGeneralPageFocusListener(this)),
     pDatMan(pMan)
 {
@@ -321,7 +321,7 @@ BibGeneralPage::BibGeneralPage(vcl::Window* pParent, BibDataManager* pMan):
     AddControlWithError(lcl_GetColumnName(pMapping, CUSTOM5_POS), *pCustom5FT,
         sTableErrorString, HID_BIB_CUSTOM5_POS, 30, aChildren);
 
-    VclBuilder::reorderWithinParent(aChildren, false);
+    BuilderUtils::reorderWithinParent(aChildren, false);
 
     xPosListener = new BibPosListener(this);
     uno::Reference< sdbc::XRowSet >  xRowSet(pDatMan->getForm(), UNO_QUERY);
@@ -332,7 +332,7 @@ BibGeneralPage::BibGeneralPage(vcl::Window* pParent, BibDataManager* pMan):
     xFormCtrl->activateTabOrder();
 
     if(!sTableErrorString.isEmpty())
-        sTableErrorString = sErrorPrefix + sTableErrorString;
+        sTableErrorString = BibResId(ST_ERROR_PREFIX) + sTableErrorString;
 
     SetText(BibResId(ST_TYPE_TITLE));
 
@@ -397,8 +397,7 @@ void BibGeneralPage::RemoveListeners()
     {
         if(aControl.is())
         {
-            uno::Reference< awt::XWindow > xCtrWin(aControl, uno::UNO_QUERY );
-            xCtrWin->removeFocusListener( mxBibGeneralPageFocusListener.get() );
+            aControl->removeFocusListener( mxBibGeneralPageFocusListener.get() );
             aControl = nullptr;
         }
     }
@@ -424,8 +423,8 @@ void BibGeneralPage::AddControlWithError( const OUString& rColumnName, FixedText
     // adds also the XControl and creates a map entry in nFT2CtrlMap[] for mapping between control and FT
 
     sal_Int16                                   nIndex = -1;
-    uno::Reference< awt::XControlModel >    xTmp = AddXControl(rColumnName, rLabel, sHelpId, nIndex, rChildren);
-    if( xTmp.is() )
+    bool bSuccess = AddXControl(rColumnName, rLabel, sHelpId, nIndex, rChildren);
+    if (bSuccess)
     {
         DBG_ASSERT( nIndexInFTArray < FIELD_COUNT, "*BibGeneralPage::AddControlWithError(): wrong array index!" );
         DBG_ASSERT( nFT2CtrlMap[ nIndexInFTArray ] < 0, "+BibGeneralPage::AddControlWithError(): index already in use!" );
@@ -441,7 +440,7 @@ void BibGeneralPage::AddControlWithError( const OUString& rColumnName, FixedText
     }
 }
 
-uno::Reference< awt::XControlModel >  BibGeneralPage::AddXControl(
+bool  BibGeneralPage::AddXControl(
         const OUString& rName,
         FixedText& rLabel, const OString& sHelpId, sal_Int16& rIndex,
         std::vector<vcl::Window*>& rChildren)
@@ -521,7 +520,7 @@ uno::Reference< awt::XControlModel >  BibGeneralPage::AddXControl(
     {
         OSL_FAIL("BibGeneralPage::AddXControl: something went wrong!");
     }
-    return xCtrModel;
+    return xCtrModel.is();
 }
 
 void BibGeneralPage::InitFixedTexts()
@@ -575,7 +574,7 @@ void BibGeneralPage::InitFixedTexts()
 
     // ... then get all strings
     for( i = 0 ; i < FIELD_COUNT ; ++i )
-        aMnemonicGenerator.CreateMnemonic( aFixedStrings[ i ] );
+        aFixedStrings[i] = aMnemonicGenerator.CreateMnemonic(aFixedStrings[i]);
 
     // set texts
     for( i = 0 ; i < FIELD_COUNT ; ++i )
@@ -585,22 +584,22 @@ void BibGeneralPage::InitFixedTexts()
 void BibGeneralPage::focusGained(const awt::FocusEvent& rEvent)
 {
     Reference<awt::XWindow> xCtrWin(rEvent.Source, UNO_QUERY );
-    if(xCtrWin.is())
-    {
-        ::Size aOutSize = pScrolledWindow->getVisibleChildSize();
-        awt::Rectangle aRect = xCtrWin->getPosSize();
-        Point aOffset(pGrid->GetPosPixel());
-        long nX = aRect.X + aOffset.X();
-        if (nX < 0 || nX > aOutSize.Width())
-        {
-            pScrolledWindow->getHorzScrollBar().DoScroll(aRect.X);
-        }
+    if(!xCtrWin.is())
+        return;
 
-        long nY = aRect.Y + aOffset.Y();
-        if (nY < 0 || nY > aOutSize.Height())
-        {
-            pScrolledWindow->getVertScrollBar().DoScroll(aRect.Y);
-        }
+    ::Size aOutSize = pScrolledWindow->getVisibleChildSize();
+    awt::Rectangle aRect = xCtrWin->getPosSize();
+    Point aOffset(pGrid->GetPosPixel());
+    long nX = aRect.X + aOffset.X();
+    if (nX < 0 || nX > aOutSize.Width())
+    {
+        pScrolledWindow->getHorzScrollBar().DoScroll(aRect.X);
+    }
+
+    long nY = aRect.Y + aOffset.Y();
+    if (nY < 0 || nY > aOutSize.Height())
+    {
+        pScrolledWindow->getVertScrollBar().DoScroll(aRect.Y);
     }
 }
 
@@ -636,12 +635,10 @@ bool BibGeneralPage::HandleShortCutKey( const KeyEvent& rKeyEvent )
 
     sal_Int16                   i;
 
-    typedef std::vector< sal_Int16 >    sal_Int16_vector;
-
-    sal_Int16_vector::size_type nFocused = 0xFFFF;  // index of focused in vector, no one focused initial
+    std::vector<sal_Int16>::size_type nFocused = 0xFFFF;  // index of focused in vector, no one focused initial
     DBG_ASSERT( nFocused > 0, "*BibGeneralPage::HandleShortCutKey(): size_type works not as expected!" );
 
-    sal_Int16_vector            aMatchList;
+    std::vector<sal_Int16>            aMatchList;
 
     for( i = 0 ; i < FIELD_COUNT ; ++i )
     {

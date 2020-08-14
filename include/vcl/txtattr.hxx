@@ -20,17 +20,15 @@
 #ifndef INCLUDED_VCL_TXTATTR_HXX
 #define INCLUDED_VCL_TXTATTR_HXX
 
-#include <rtl/ustring.hxx>
 #include <tools/color.hxx>
 #include <tools/debug.hxx>
-#include <vcl/vclenum.hxx>
+#include <tools/fontenum.hxx>
 #include <vcl/dllapi.h>
 #include <memory>
 
 namespace vcl { class Font; }
 
 #define TEXTATTR_FONTCOLOR  1
-#define TEXTATTR_HYPERLINK  2
 #define TEXTATTR_FONTWEIGHT 3
 
 #define TEXTATTR_USER_START 1000 //start id for user defined text attributes
@@ -40,11 +38,11 @@ namespace vcl { class Font; }
 class VCL_DLLPUBLIC TextAttrib
 {
 private:
-    sal_uInt16                  mnWhich;
+    sal_uInt16 const        mnWhich;
 
 protected:
-                            TextAttrib( sal_uInt16 nWhich ) { mnWhich = nWhich; }
-                            TextAttrib( const TextAttrib& rAttr ) { mnWhich = rAttr.mnWhich; }
+                            TextAttrib( sal_uInt16 nWhich ) : mnWhich(nWhich) {}
+                            TextAttrib( const TextAttrib& ) = default;
 
 public:
 
@@ -52,7 +50,7 @@ public:
 
     sal_uInt16              Which() const   { return mnWhich; }
     virtual void            SetFont( vcl::Font& rFont ) const = 0;
-    virtual TextAttrib*     Clone() const = 0;
+    virtual std::unique_ptr<TextAttrib> Clone() const = 0;
 
     virtual bool            operator==( const TextAttrib& rAttr ) const = 0;
     bool                    operator!=( const TextAttrib& rAttr ) const
@@ -60,68 +58,44 @@ public:
 };
 
 
-class VCL_DLLPUBLIC TextAttribFontColor : public TextAttrib
+class VCL_DLLPUBLIC TextAttribFontColor final : public TextAttrib
 {
 private:
     Color   maColor;
 
 public:
                             TextAttribFontColor( const Color& rColor );
-                            TextAttribFontColor( const TextAttribFontColor& rAttr );
-                            virtual ~TextAttribFontColor() override;
 
     const Color&            GetColor() const { return maColor; }
 
     virtual void            SetFont( vcl::Font& rFont ) const override;
-    virtual TextAttrib*     Clone() const override;
+    virtual std::unique_ptr<TextAttrib> Clone() const override;
     virtual bool            operator==( const TextAttrib& rAttr ) const override;
 
 };
 
-class VCL_DLLPUBLIC TextAttribFontWeight : public TextAttrib
+class VCL_DLLPUBLIC TextAttribFontWeight final : public TextAttrib
 {
 private:
     FontWeight  meWeight;
 
 public:
                             TextAttribFontWeight( FontWeight eWeight );
-                            TextAttribFontWeight( const TextAttribFontWeight& rAttr );
-                            virtual ~TextAttribFontWeight() override;
 
     virtual void            SetFont( vcl::Font& rFont ) const override;
-    virtual TextAttrib*     Clone() const override;
+    virtual std::unique_ptr<TextAttrib> Clone() const override;
     virtual bool            operator==( const TextAttrib& rAttr ) const override;
 
     FontWeight getFontWeight() const { return meWeight; }
 };
 
-
-class TextAttribHyperLink : public TextAttrib
-{
-private:
-    OUString    maURL;
-    OUString    maDescription;
-    Color       maColor;
-
-public:
-                            TextAttribHyperLink( const TextAttribHyperLink& rAttr );
-                            virtual ~TextAttribHyperLink() override;
-
-    const OUString&         GetURL() const                              { return maURL; }
-    virtual void            SetFont( vcl::Font& rFont ) const override;
-    virtual TextAttrib*     Clone() const override;
-    virtual bool            operator==( const TextAttrib& rAttr ) const override;
-};
-
-class VCL_DLLPUBLIC TextAttribProtect : public TextAttrib
+class TextAttribProtect final : public TextAttrib
 {
 public:
                             TextAttribProtect();
-                            TextAttribProtect( const TextAttribProtect& rAttr );
-                            virtual ~TextAttribProtect() override;
 
     virtual void            SetFont( vcl::Font& rFont ) const override;
-    virtual TextAttrib*     Clone() const override;
+    virtual std::unique_ptr<TextAttrib> Clone() const override;
     virtual bool            operator==( const TextAttrib& rAttr ) const override;
 
 };
@@ -135,23 +109,19 @@ private:
     sal_Int32       mnStart;
     sal_Int32       mnEnd;
 
-protected:
-
 public:
-
                     TextCharAttrib( const TextAttrib& rAttr, sal_Int32 nStart, sal_Int32 nEnd );
                     TextCharAttrib( const TextCharAttrib& rTextCharAttrib );
-                    ~TextCharAttrib();
 
     const TextAttrib&   GetAttr() const         { return *mpAttr; }
 
     sal_uInt16          Which() const               { return mpAttr->Which(); }
 
     sal_Int32           GetStart() const            { return mnStart; }
-    sal_Int32&          GetStart()                  { return mnStart; }
+    void                SetStart(sal_Int32 n)       { mnStart = n; }
 
     sal_Int32           GetEnd() const              { return mnEnd; }
-    sal_Int32&          GetEnd()                    { return mnEnd; }
+    void                SetEnd(sal_Int32 n)         { mnEnd = n; }
 
     inline sal_Int32    GetLen() const;
 

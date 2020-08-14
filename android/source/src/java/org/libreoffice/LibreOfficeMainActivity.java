@@ -2,6 +2,8 @@ package org.libreoffice;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -10,25 +12,29 @@ import android.content.SharedPreferences;
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.graphics.RectF;
+import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
 import android.preference.PreferenceManager;
-import android.support.design.widget.Snackbar;
 import android.support.design.widget.BottomSheetBehavior;
+import android.support.design.widget.Snackbar;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.text.InputType;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TabHost;
 import android.widget.Toast;
 
+import org.libreoffice.overlay.CalcHeadersController;
 import org.libreoffice.overlay.DocumentOverlay;
 import org.libreoffice.storage.DocumentProviderFactory;
 import org.libreoffice.storage.IFile;
@@ -58,6 +64,7 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
     private static final String DEFAULT_DOC_PATH = "/assets/example.odt";
     private static final String ENABLE_EXPERIMENTAL_PREFS_KEY = "ENABLE_EXPERIMENTAL";
     private static final String ASSETS_EXTRACTED_PREFS_KEY = "ASSETS_EXTRACTED";
+    private static final String ENABLE_DEVELOPER_PREFS_KEY = "ENABLE_DEVELOPER";
 
     //TODO "public static" is a temporary workaround
     public static LOKitThread loKitThread;
@@ -65,6 +72,7 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
     private GeckoLayerClient mLayerClient;
 
     private static boolean mIsExperimentalMode;
+    private static boolean mIsDeveloperMode;
 
     private int providerId;
     private URI documentUri;
@@ -79,13 +87,24 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
     private File mInputFile;
     private DocumentOverlay mDocumentOverlay;
     private File mTempFile = null;
+    private File mTempSlideShowFile = null;
     private String newDocumentType = null;
+    public boolean firstStart = true;
 
     BottomSheetBehavior bottomToolbarSheetBehavior;
+    BottomSheetBehavior toolbarColorPickerBottomSheetBehavior;
+    BottomSheetBehavior toolbarBackColorPickerBottomSheetBehavior;
     private FormattingController mFormattingController;
     private ToolbarController mToolbarController;
     private FontController mFontController;
     private SearchController mSearchController;
+    private UNOCommandsController mUNOCommandsController;
+    private CalcHeadersController mCalcHeadersController;
+    private boolean mIsSpreadsheet;
+    private LOKitTileProvider mTileProvider;
+    private String mPassword;
+    private boolean mPasswordProtected;
+    public boolean pendingInsertGraphic; // boolean indicating a pending insert graphic action, used in LOKitTileProvider.postLoad()
 
     public GeckoLayerClient getLayerClient() {
         return mLayerClient;
@@ -95,6 +114,10 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
         return mIsExperimentalMode;
     }
 
+    public static boolean isDeveloperMode() {
+        return mIsDeveloperMode;
+    }
+
     public boolean usesTemporaryFile() {
         return mTempFile != null;
     }
@@ -102,25 +125,22 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
     private boolean isKeyboardOpen = false;
     private boolean isFormattingToolbarOpen = false;
     private boolean isSearchToolbarOpen = false;
-    private boolean isDocumentChanged = false;
+    private static boolean isDocumentChanged = false;
+    private boolean isUNOCommandsToolbarOpen = false;
     public boolean isNewDocument = false;
+    private long lastModified = 0;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         Log.w(LOGTAG, "onCreate..");
         super.onCreate(savedInstanceState);
 
         SettingsListenerModel.getInstance().setListener(this);
-        SharedPreferences sPrefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-        mIsExperimentalMode = sPrefs.getBoolean(ENABLE_EXPERIMENTAL_PREFS_KEY, false);
+        updatePreferences();
 
-        if (sPrefs.getInt(ASSETS_EXTRACTED_PREFS_KEY, 0) != BuildConfig.VERSION_CODE) {
-            if(copyFromAssets(getAssets(), "unpack", getApplicationInfo().dataDir)) {
-                sPrefs.edit().putInt(ASSETS_EXTRACTED_PREFS_KEY, BuildConfig.VERSION_CODE).apply();
-            }
-        }
         setContentView(R.layout.activity_main);
 
-        toolbarTop = (Toolbar) findViewById(R.id.toolbar);
+        toolbarTop = findViewById(R.id.toolbar);
         hideBottomToolbar();
 
         mToolbarController = new ToolbarController(this, toolbarTop);
@@ -134,12 +154,13 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
 
         mFontController = new FontController(this);
         mSearchController = new SearchController(this);
+        mUNOCommandsController = new UNOCommandsController(this);
 
         loKitThread = new LOKitThread(this);
         loKitThread.start();
 
         mLayerClient = new GeckoLayerClient(this);
-        LayerView layerView = (LayerView) findViewById(R.id.layer_view);
+        LayerView layerView = findViewById(R.id.layer_view);
         mLayerClient.setView(layerView);
         layerView.setInputConnectionHandler(new LOKitInputConnectionHandler());
         mLayerClient.notifyReady();
@@ -192,39 +213,65 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
             }
         }
 
-        mDrawerLayout = (DrawerLayout) findViewById(R.id.drawer_layout);
+        mDrawerLayout = findViewById(R.id.drawer_layout);
 
         if (mDocumentPartViewListAdapter == null) {
-            mDrawerList = (ListView) findViewById(R.id.left_drawer);
+            mDrawerList = findViewById(R.id.left_drawer);
 
             mDocumentPartViewListAdapter = new DocumentPartViewListAdapter(this, R.layout.document_part_list_layout, mDocumentPartView);
             mDrawerList.setAdapter(mDocumentPartViewListAdapter);
             mDrawerList.setOnItemClickListener(new DocumentPartClickListener());
         }
 
+        lastModified = mInputFile.lastModified();
+
         mToolbarController.setupToolbars();
 
-        TabHost host = (TabHost) findViewById(R.id.toolbarTabHost);
+        TabHost host = findViewById(R.id.toolbarTabHost);
         host.setup();
 
-        TabHost.TabSpec spec = host.newTabSpec("Character");
+        TabHost.TabSpec spec = host.newTabSpec(getString(R.string.tabhost_character));
         spec.setContent(R.id.tab_character);
-        spec.setIndicator("Character");
+        spec.setIndicator(getString(R.string.tabhost_character));
         host.addTab(spec);
 
-        spec = host.newTabSpec("Paragraph");
+        spec = host.newTabSpec(getString(R.string.tabhost_paragraph));
         spec.setContent(R.id.tab_paragraph);
-        spec.setIndicator("Paragraph");
+        spec.setIndicator(getString(R.string.tabhost_paragraph));
         host.addTab(spec);
 
-        spec = host.newTabSpec("Insert");
+        spec = host.newTabSpec(getString(R.string.tabhost_insert));
         spec.setContent(R.id.tab_insert);
-        spec.setIndicator("Insert");
+        spec.setIndicator(getString(R.string.tabhost_insert));
         host.addTab(spec);
 
-        LinearLayout bottomToolbarLayout = (LinearLayout) findViewById(R.id.toolbar_bottom);
+        spec = host.newTabSpec(getString(R.string.tabhost_style));
+        spec.setContent(R.id.tab_style);
+        spec.setIndicator(getString(R.string.tabhost_style));
+        host.addTab(spec);
+
+        LinearLayout bottomToolbarLayout = findViewById(R.id.toolbar_bottom);
+        LinearLayout toolbarColorPickerLayout = findViewById(R.id.toolbar_color_picker);
+        LinearLayout toolbarBackColorPickerLayout = findViewById(R.id.toolbar_back_color_picker);
         bottomToolbarSheetBehavior = BottomSheetBehavior.from(bottomToolbarLayout);
+        toolbarColorPickerBottomSheetBehavior = BottomSheetBehavior.from(toolbarColorPickerLayout);
+        toolbarBackColorPickerBottomSheetBehavior = BottomSheetBehavior.from(toolbarBackColorPickerLayout);
         bottomToolbarSheetBehavior.setHideable(true);
+        toolbarColorPickerBottomSheetBehavior.setHideable(true);
+        toolbarBackColorPickerBottomSheetBehavior.setHideable(true);
+    }
+
+    private void updatePreferences() {
+        SharedPreferences sPrefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+        mIsExperimentalMode = BuildConfig.ALLOW_EDITING
+                && sPrefs.getBoolean(ENABLE_EXPERIMENTAL_PREFS_KEY, false);
+        mIsDeveloperMode = mIsExperimentalMode
+                && sPrefs.getBoolean(ENABLE_DEVELOPER_PREFS_KEY, false);
+        if (sPrefs.getInt(ASSETS_EXTRACTED_PREFS_KEY, 0) != BuildConfig.VERSION_CODE) {
+            if(copyFromAssets(getAssets(), "unpack", getApplicationInfo().dataDir)) {
+                sPrefs.edit().putInt(ASSETS_EXTRACTED_PREFS_KEY, BuildConfig.VERSION_CODE).apply();
+            }
+        }
     }
 
     // Loads a new Document
@@ -262,7 +309,7 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
 
                 outputChannel = new FileOutputStream(mTempFile).getChannel();
                 long bytesTransferred = 0;
-                // might not  copy all at once, so make sure everything gets copied....
+                // might not  copy all at once, so make sure everything gets copied...
                 while (bytesTransferred < inputChannel.size()) {
                     bytesTransferred += outputChannel.transferFrom(inputChannel, bytesTransferred, inputChannel.size());
                 }
@@ -294,20 +341,22 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
         if (!mInputFile.exists()) {
             // Needed for handling null in case new document is not created.
             mInputFile = new File(DEFAULT_DOC_PATH);
+            lastModified = mInputFile.lastModified();
         }
-        final long lastModified = mInputFile.lastModified();
-        final Activity activity = LibreOfficeMainActivity.this;
         Toast.makeText(this, R.string.message_saving, Toast.LENGTH_SHORT).show();
         // local save
-        LOKitShell.sendEvent(new LOEvent(LOEvent.UNO_COMMAND, ".uno:Save"));
+        LOKitShell.sendEvent(new LOEvent(LOEvent.UNO_COMMAND_NOTIFY, ".uno:Save", true));
+    }
 
+    public void saveFilesToCloud(){
+        final Activity activity = LibreOfficeMainActivity.this;
         final AsyncTask<Void, Void, Void> task = new AsyncTask<Void, Void, Void>() {
             @Override
             protected Void doInBackground(Void... params) {
                 try {
                     // rebuild the IFile object from the data passed in the Intent
                     IFile mStorageFile = DocumentProviderFactory.getInstance()
-                            .getProvider(providerId).createFromUri(documentUri);
+                            .getProvider(providerId).createFromUri(LibreOfficeMainActivity.this, documentUri);
                     // call document provider save operation
                     mStorageFile.saveDocument(mInputFile);
                 }
@@ -328,35 +377,16 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
             protected void onPostExecute(Void param) {
                 Toast.makeText(activity, R.string.message_saved,
                         Toast.LENGTH_SHORT).show();
-                isDocumentChanged=false;
+                setDocumentChanged(false);
             }
         };
-        // Delay the call to document provider save operation and check the
-        // modification time periodically to ensure the local file has been saved.
-        // TODO: ideally the save operation should have a callback
-        Runnable runTask = new Runnable() {
-            private int timesRun = 0;
 
-            @Override
-            public void run() {
-                if (lastModified < mInputFile.lastModified()) {
-                    // we are sure local save is complete, push changes to cloud
-                    task.execute();
-                }
-                else {
-                    timesRun++;
-                    if(timesRun < 4) {
-                        new Handler().postDelayed(this, 5000);
-                    }
-                    else {
-                        // 20 seconds later, the local file has not changed,
-                        // maybe there were no changes at all
-                        Toast.makeText(activity, R.string.message_save_incomplete, Toast.LENGTH_LONG).show();
-                    }
-                }
-            }
-        };
-        new Handler().postDelayed(runTask, 5000);
+        if (lastModified < mInputFile.lastModified()) {
+            task.execute();
+            lastModified = mInputFile.lastModified();
+        } else {
+            Toast.makeText(activity, R.string.message_save_incomplete, Toast.LENGTH_LONG).show();
+        }
     }
 
     @Override
@@ -364,9 +394,11 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
         super.onResume();
         Log.i(LOGTAG, "onResume..");
         // check for config change
-        boolean bEnableExperimental = PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getBoolean(ENABLE_EXPERIMENTAL_PREFS_KEY, false);
-        if (bEnableExperimental != mIsExperimentalMode) {
-            mIsExperimentalMode = bEnableExperimental;
+        updatePreferences();
+        if (mToolbarController.getEditModeStatus() && isExperimentalMode()) {
+            mToolbarController.switchToEditMode();
+        } else {
+            mToolbarController.switchToViewMode();
         }
     }
 
@@ -391,6 +423,9 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
     @Override
     protected void onStop() {
         Log.i(LOGTAG, "onStop..");
+        //save document to cache
+        if (mTileProvider != null)
+            mTileProvider.cacheDocument();
         hideSoftKeyboardDirect();
         LOKitShell.sendCloseEvent();
         super.onStop();
@@ -406,6 +441,10 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
             if (mTempFile != null) {
                 // noinspection ResultOfMethodCallIgnored
                 mTempFile.delete();
+            }
+            if (mTempSlideShowFile != null && mTempSlideShowFile.exists()) {
+                // noinspection ResultOfMethodCallIgnored
+                mTempSlideShowFile.delete();
             }
         }
     }
@@ -425,7 +464,7 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
                         if (isNewDocument) {
                             saveAs();
                         } else {
-                            saveDocument();
+                            mTileProvider.saveDocument();
                         }
                         isDocumentChanged=false;
                         onBackPressed();
@@ -486,7 +525,7 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
     }
 
     private void showSoftKeyboardDirect() {
-        LayerView layerView = (LayerView) findViewById(R.id.layer_view);
+        LayerView layerView = findViewById(R.id.layer_view);
 
         if (layerView.requestFocus()) {
             InputMethodManager inputMethodManager = (InputMethodManager) getApplicationContext().getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -495,6 +534,7 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
         isKeyboardOpen=true;
         isSearchToolbarOpen=false;
         isFormattingToolbarOpen=false;
+        isUNOCommandsToolbarOpen=false;
         hideBottomToolbar();
     }
 
@@ -502,7 +542,8 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
         LOKitShell.getMainHandler().post(new Runnable() {
             @Override
             public void run() {
-                if (findViewById(R.id.toolbar_bottom).getVisibility() != View.VISIBLE) {
+                if (findViewById(R.id.toolbar_bottom).getVisibility() != View.VISIBLE
+                        && findViewById(R.id.toolbar_color_picker).getVisibility() != View.VISIBLE) {
                     showSoftKeyboardDirect();
                 }
             }
@@ -546,9 +587,13 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
             @Override
             public void run() {
                 bottomToolbarSheetBehavior.setState(BottomSheetBehavior.STATE_COLLAPSED);
+                toolbarColorPickerBottomSheetBehavior.setState(BottomSheetBehavior.STATE_COLLAPSED);
+                toolbarBackColorPickerBottomSheetBehavior.setState(BottomSheetBehavior.STATE_COLLAPSED);
                 findViewById(R.id.search_toolbar).setVisibility(View.GONE);
+                findViewById(R.id.UNO_commands_toolbar).setVisibility(View.GONE);
                 isFormattingToolbarOpen=false;
                 isSearchToolbarOpen=false;
+                isUNOCommandsToolbarOpen=false;
             }
         });
     }
@@ -558,14 +603,17 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
             @Override
             public void run() {
                 if (isFormattingToolbarOpen) {
-                    hideBottomToolbar();
+                    hideFormattingToolbar();
                 } else {
                     showBottomToolbar();
                     findViewById(R.id.search_toolbar).setVisibility(View.GONE);
                     findViewById(R.id.formatting_toolbar).setVisibility(View.VISIBLE);
+                    findViewById(R.id.search_toolbar).setVisibility(View.GONE);
+                    findViewById(R.id.UNO_commands_toolbar).setVisibility(View.GONE);
                     hideSoftKeyboardDirect();
                     isSearchToolbarOpen=false;
                     isFormattingToolbarOpen=true;
+                    isUNOCommandsToolbarOpen=false;
                 }
 
             }
@@ -590,16 +638,49 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
                 } else {
                     showBottomToolbar();
                     findViewById(R.id.formatting_toolbar).setVisibility(View.GONE);
+                    toolbarColorPickerBottomSheetBehavior.setState(BottomSheetBehavior.STATE_COLLAPSED);
+                    toolbarBackColorPickerBottomSheetBehavior.setState(BottomSheetBehavior.STATE_COLLAPSED);
                     findViewById(R.id.search_toolbar).setVisibility(View.VISIBLE);
+                    findViewById(R.id.UNO_commands_toolbar).setVisibility(View.GONE);
                     hideSoftKeyboardDirect();
                     isFormattingToolbarOpen=false;
                     isSearchToolbarOpen=true;
+                    isUNOCommandsToolbarOpen=false;
                 }
             }
         });
     }
 
     public void hideSearchToolbar() {
+        LOKitShell.getMainHandler().post(new Runnable() {
+            @Override
+            public void run() {
+                hideBottomToolbar();
+            }
+        });
+    }
+
+    public void showUNOCommandsToolbar() {
+        LOKitShell.getMainHandler().post(new Runnable() {
+            @Override
+            public void run() {
+                if(isUNOCommandsToolbarOpen){
+                    hideUNOCommandsToolbar();
+                }else{
+                    showBottomToolbar();
+                    findViewById(R.id.formatting_toolbar).setVisibility(View.GONE);
+                    findViewById(R.id.search_toolbar).setVisibility(View.GONE);
+                    findViewById(R.id.UNO_commands_toolbar).setVisibility(View.VISIBLE);
+                    hideSoftKeyboardDirect();
+                    isFormattingToolbarOpen=false;
+                    isSearchToolbarOpen=false;
+                    isUNOCommandsToolbarOpen=true;
+                }
+            }
+        });
+    }
+
+    public void hideUNOCommandsToolbar() {
         LOKitShell.getMainHandler().post(new Runnable() {
             @Override
             public void run() {
@@ -620,9 +701,9 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
 
         AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(LibreOfficeMainActivity.this);
 
-        alertDialogBuilder.setTitle("Error");
+        alertDialogBuilder.setTitle(R.string.error);
         alertDialogBuilder.setMessage(message);
-        alertDialogBuilder.setNeutralButton("OK", new DialogInterface.OnClickListener() {
+        alertDialogBuilder.setNeutralButton(R.string.alert_ok, new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int id) {
                 finish();
             }
@@ -634,6 +715,10 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
 
     public DocumentOverlay getDocumentOverlay() {
         return mDocumentOverlay;
+    }
+
+    public CalcHeadersController getCalcHeadersController() {
+        return mCalcHeadersController;
     }
 
     public ToolbarController getToolbarController() {
@@ -658,6 +743,39 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
         aboutDialogFragment.show(getSupportFragmentManager(), "AboutDialogFragment");
     }
 
+    public void addPart(){
+        mTileProvider.addPart();
+        mDocumentPartViewListAdapter.notifyDataSetChanged();
+        setDocumentChanged(true);
+    }
+
+    public void renamePart(){
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(R.string.enter_part_name);
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        builder.setView(input);
+
+        builder.setPositiveButton(R.string.alert_ok, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                mTileProvider.renamePart( input.getText().toString());
+            }
+        });
+        builder.setNegativeButton(R.string.alert_cancel, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.cancel();
+            }
+        });
+
+        builder.show();
+    }
+
+    public void deletePart() {
+        mTileProvider.removePart();
+    }
+
     public void showSettings() {
         startActivity(new Intent(getApplicationContext(), SettingsActivity.class));
     }
@@ -674,6 +792,68 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
             Log.d(LOGTAG, "Editing Preference Changed");
             mIsExperimentalMode = sharedPreferences.getBoolean(ENABLE_EXPERIMENTAL_PREFS_KEY, false);
         }
+    }
+
+    public void promptForPassword() {
+        PasswordDialogFragment passwordDialogFragment = new PasswordDialogFragment();
+        passwordDialogFragment.setLOMainActivity(this);
+        passwordDialogFragment.show(getSupportFragmentManager(), "PasswordDialogFragment");
+    }
+
+    // this function can only be called in InvalidationHandler.java
+    public void setPassword() {
+        mTileProvider.setDocumentPassword("file://"+mInputFile.getPath(), mPassword);
+    }
+
+    // setTileProvider is meant to let main activity have a handle of LOKit when dealing with password
+    public void setTileProvider(LOKitTileProvider loKitTileProvider) {
+        mTileProvider = loKitTileProvider;
+    }
+
+    public LOKitTileProvider getTileProvider() {
+        return mTileProvider;
+    }
+
+    public void savePassword(String pwd) {
+        mPassword = pwd;
+        synchronized (mTileProvider.getMessageCallback()) {
+            mTileProvider.getMessageCallback().notifyAll();
+        }
+    }
+
+    public void setPasswordProtected(boolean b) {
+        mPasswordProtected = b;
+    }
+
+    public boolean isPasswordProtected() {
+        return mPasswordProtected;
+    }
+
+    public void initializeCalcHeaders() {
+        mCalcHeadersController = new CalcHeadersController(this, mLayerClient.getView());
+        mCalcHeadersController.setupHeaderPopupView();
+        LOKitShell.getMainHandler().post(new Runnable() {
+            @Override
+            public void run() {
+                findViewById(R.id.calc_header_top_left).setVisibility(View.VISIBLE);
+                findViewById(R.id.calc_header_row).setVisibility(View.VISIBLE);
+                findViewById(R.id.calc_header_column).setVisibility(View.VISIBLE);
+                findViewById(R.id.calc_address).setVisibility(View.VISIBLE);
+                findViewById(R.id.calc_formula).setVisibility(View.VISIBLE);
+            }
+        });
+    }
+
+    public void setIsSpreadsheet(boolean b) {
+        mIsSpreadsheet = b;
+    }
+
+    public boolean isSpreadsheet() {
+        return mIsSpreadsheet;
+    }
+
+    public static void setDocumentChanged (boolean changed) {
+        isDocumentChanged = changed;
     }
 
     private class DocumentPartClickListener implements android.widget.AdapterView.OnItemClickListener {
@@ -721,7 +901,7 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
                 source = Channels.newChannel(assetManager.open(fromAssetPath));
                 dest = new FileOutputStream(toPath).getChannel();
                 long bytesTransferred = 0;
-                // might not copy all at once, so make sure everything gets copied....
+                // might not copy all at once, so make sure everything gets copied...
                 ByteBuffer buffer = ByteBuffer.allocate(4096);
                 while (source.read(buffer) > 0) {
                     buffer.flip();
@@ -749,6 +929,52 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
             Snackbar.make(mDrawerLayout, getString(R.string.create_new_file_success) + mInputFile.getName(), Snackbar.LENGTH_LONG).show();
         else
             Snackbar.make(mDrawerLayout, getString(R.string.create_new_file_error) + mInputFile.getName(), Snackbar.LENGTH_LONG).show();    }
+
+    public void showCustomStatusMessage(String message){
+        Snackbar.make(mDrawerLayout, message, Snackbar.LENGTH_LONG).show();
+    }
+
+    public void preparePresentation() {
+        if (getExternalCacheDir() != null) {
+            String tempPath = getExternalCacheDir().getPath() + "/" + mInputFile.getName() + ".svg";
+            mTempSlideShowFile = new File(tempPath);
+            if (mTempSlideShowFile.exists() && !isDocumentChanged) {
+                startPresentation("file://" + tempPath);
+            } else {
+                LOKitShell.sendSaveAsEvent(tempPath, "svg");
+            }
+        }
+    }
+
+    public void startPresentation(String tempPath) {
+        // pre-KitKat android doesn't have chrome-based WebView, which is needed to show svg slideshow
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            Intent intent = new Intent(this, PresentationActivity.class);
+            intent.setData(Uri.parse(tempPath));
+            startActivity(intent);
+        } else {
+            // copy the svg file path to clipboard for the user to paste in a browser
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipData clip = ClipData.newPlainText("temp svg file path", tempPath);
+            clipboard.setPrimaryClip(clip);
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setMessage(R.string.alert_copy_svg_slide_show_to_clipboard)
+                    .setPositiveButton(R.string.alert_copy_svg_slide_show_to_clipboard_dismiss, null).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        mFormattingController.handleActivityResult(requestCode, resultCode, data);
+        hideBottomToolbar();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+    }
+
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

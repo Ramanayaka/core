@@ -22,27 +22,24 @@
 
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XTextCopy.hpp>
 #include <com/sun/star/text/XTextRangeCompare.hpp>
 #include <com/sun/star/text/XRelativeTextContentInsert.hpp>
 #include <com/sun/star/text/XRelativeTextContentRemove.hpp>
 #include <com/sun/star/text/XTextAppendAndConvert.hpp>
 
-#include <unobaseclass.hxx>
+#include "unobaseclass.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace text {
         class XTextContent;
+        class XText;
     }
-} } }
+}
 
-class SfxItemPropertySet;
 class SwDoc;
 class SwStartNode;
 class SwPaM;
-class OTextCursorHelper;
-class SwXTextRange;
 
 class SwXText
     : public css::lang::XTypeProvider

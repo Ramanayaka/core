@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sharedstringsbuffer.hxx"
+#include <sharedstringsbuffer.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 SharedStringsBuffer::SharedStringsBuffer( const WorkbookHelper& rHelper ) :
      WorkbookHelper( rHelper )
@@ -29,7 +28,7 @@ SharedStringsBuffer::SharedStringsBuffer( const WorkbookHelper& rHelper ) :
 
 RichStringRef SharedStringsBuffer::createRichString()
 {
-    RichStringRef xString( new RichString( *this ) );
+    RichStringRef xString = std::make_shared<RichString>( *this );
     maStrings.push_back( xString );
     return xString;
 }
@@ -44,7 +43,6 @@ RichStringRef SharedStringsBuffer::getString( sal_Int32 nStringId ) const
     return maStrings.get( nStringId );
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,16 +20,19 @@
 #include "ConfigurationControllerResourceManager.hxx"
 #include "ConfigurationControllerBroadcaster.hxx"
 #include "ResourceFactoryManager.hxx"
-#include "framework/FrameworkHelper.hxx"
+#include <framework/FrameworkHelper.hxx>
 #include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/drawing/framework/XConfiguration.hpp>
+#include <com/sun/star/drawing/framework/XResourceFactory.hpp>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 #include <algorithm>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 //===== ConfigurationControllerResourceManager ================================
 
@@ -66,12 +69,8 @@ void ConfigurationControllerResourceManager::ActivateResources (
     // Iterate in normal order over the resources that are to be
     // activated so that resources on which others depend are activated
     // before the depending resources are activated.
-    ::std::for_each(
-        rResources.begin(),
-        rResources.end(),
-        [&] (Reference<XResourceId> const& xResource) {
-            return this->ActivateResource(xResource, rxConfiguration);
-        } );
+    for (const Reference<XResourceId>& xResource : rResources)
+        ActivateResource(xResource, rxConfiguration);
 }
 
 void ConfigurationControllerResourceManager::DeactivateResources (
@@ -86,7 +85,7 @@ void ConfigurationControllerResourceManager::DeactivateResources (
         rResources.rbegin(),
         rResources.rend(),
         [&] (Reference<XResourceId> const& xResource) {
-            return this->DeactivateResource(xResource, rxConfiguration);
+            return DeactivateResource(xResource, rxConfiguration);
         } );
 }
 
@@ -102,11 +101,11 @@ void ConfigurationControllerResourceManager::ActivateResource (
     const Reference<XResourceId>& rxResourceId,
     const Reference<XConfiguration>& rxConfiguration)
 {
-   if ( ! rxResourceId.is())
-   {
+    if ( ! rxResourceId.is())
+    {
        OSL_ASSERT(rxResourceId.is());
        return;
-   }
+    }
 
     SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": activating resource " <<
         FrameworkHelper::ResourceIdToString(rxResourceId));
@@ -158,7 +157,7 @@ void ConfigurationControllerResourceManager::ActivateResource (
     }
     catch (RuntimeException&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sd");
     }
 }
 
@@ -187,7 +186,7 @@ void ConfigurationControllerResourceManager::DeactivateResource (
 
         if (aDescriptor.mxResource.is() && aDescriptor.mxResourceFactory.is())
         {
-            // 2.  Notifiy listeners that the resource is being deactivated.
+            // 2.  Notify listeners that the resource is being deactivated.
             mpBroadcaster->NotifyListeners(
                 FrameworkHelper::msResourceDeactivationEvent,
                 rxResourceId,
@@ -220,10 +219,10 @@ void ConfigurationControllerResourceManager::DeactivateResource (
     }
     catch (RuntimeException&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sd");
     }
 
-    // 5.  Notifiy listeners that the resource is being deactivated.
+    // 5.  Notify listeners that the resource is being deactivated.
     mpBroadcaster->NotifyListeners(
         FrameworkHelper::msResourceDeactivationEndEvent,
         rxResourceId,
@@ -299,6 +298,6 @@ bool ConfigurationControllerResourceManager::ResourceComparator::operator() (
         return false;
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

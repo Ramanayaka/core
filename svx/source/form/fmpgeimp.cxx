@@ -18,35 +18,33 @@
  */
 
 
-#include "svx/svxerr.hxx"
-#include "fmpgeimp.hxx"
-#include "fmundo.hxx"
-#include "svx/fmtools.hxx"
-#include "fmprop.hrc"
-#include "fmservs.hxx"
-#include "fmobj.hxx"
-#include "formcontrolfactory.hxx"
-#include "svx/svditer.hxx"
-#include "svx/fmresids.hrc"
-#include "treevisitor.hxx"
+#include <fmpgeimp.hxx>
+#include <fmundo.hxx>
+#include <svx/fmtools.hxx>
+#include <fmprop.hxx>
+#include <fmservs.hxx>
+#include <fmobj.hxx>
+#include <formcontrolfactory.hxx>
+#include <svx/svditer.hxx>
+#include <svx/strings.hrc>
+#include <treevisitor.hxx>
 
 #include <com/sun/star/sdb/CommandType.hpp>
+#include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/container/EnumerableMap.hpp>
 #include <com/sun/star/drawing/XControlShape.hpp>
 #include <com/sun/star/form/Forms.hpp>
+#include <com/sun/star/form/FormComponentType.hpp>
 
+#include <sal/log.hxx>
 #include <sfx2/objsh.hxx>
-#include <svx/fmglob.hxx>
 #include <svx/fmpage.hxx>
 #include <svx/fmmodel.hxx>
-#include <tools/resid.hxx>
+#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include <vcl/stdtext.hxx>
 #include <svx/dialmgr.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/uno3.hxx>
 #include <comphelper/types.hxx>
-#include <unotools/streamwrap.hxx>
 #include <connectivity/dbtools.hxx>
 
 using namespace ::com::sun::star::uno;
@@ -119,7 +117,7 @@ namespace
         }
     };
 
-    typedef ::std::map< Reference< XControlModel >, Reference< XControlModel >, ::comphelper::OInterfaceCompare< XControlModel > > MapControlModels;
+    typedef ::std::map< Reference< XControlModel >, Reference< XControlModel > > MapControlModels;
 
     class FormComponentAssignment
     {
@@ -162,14 +160,14 @@ void FmFormPageImpl::initFrom( FmFormPageImpl& i_foreignImpl )
         MapControlModels aModelAssignment;
 
         typedef TreeVisitor< FormComponentPair, FormHierarchyComparator, FormComponentAssignment >   FormComponentVisitor;
-        FormComponentVisitor aVisitor = FormComponentVisitor( FormHierarchyComparator() );
+        FormComponentVisitor aVisitor{ FormHierarchyComparator() };
 
         FormComponentAssignment aAssignmentProcessor( aModelAssignment );
         aVisitor.process( FormComponentPair( xForeignForms, m_xForms ), aAssignmentProcessor );
 
         // assign the cloned models to their SdrObjects
-        SdrObjListIter aForeignIter( i_foreignImpl.m_rPage );
-        SdrObjListIter aOwnIter( m_rPage );
+        SdrObjListIter aForeignIter( &i_foreignImpl.m_rPage );
+        SdrObjListIter aOwnIter( &m_rPage );
 
         OSL_ENSURE( aForeignIter.IsMore() == aOwnIter.IsMore(), "FmFormPageImpl::FmFormPageImpl: inconsistent number of objects (1)!" );
         while ( aForeignIter.IsMore() && aOwnIter.IsMore() )
@@ -216,7 +214,7 @@ void FmFormPageImpl::initFrom( FmFormPageImpl& i_foreignImpl )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 }
 
@@ -238,7 +236,7 @@ namespace
     void lcl_insertFormObject_throw( const FmFormObj& _object, const Reference< XMap >& _map )
     {
         // the control model
-        Reference< XControlModel > xControlModel( _object.GetUnoControlModel(), UNO_QUERY );
+        Reference< XControlModel > xControlModel = _object.GetUnoControlModel();
         OSL_ENSURE( xControlModel.is(), "lcl_insertFormObject_throw: suspicious: no control model!" );
         if ( !xControlModel.is() )
             return;
@@ -254,7 +252,7 @@ namespace
     void lcl_removeFormObject_throw( const FmFormObj& _object, const Reference< XMap >& _map )
     {
         // the control model
-        Reference< XControlModel > xControlModel( _object.GetUnoControlModel(), UNO_QUERY );
+        Reference< XControlModel > xControlModel = _object.GetUnoControlModel();
         OSL_ENSURE( xControlModel.is(), "lcl_removeFormObject: suspicious: no control model!" );
         if ( !xControlModel.is() )
         {
@@ -275,12 +273,12 @@ Reference< XMap > FmFormPageImpl::impl_createControlShapeMap_nothrow()
 
     try
     {
-        xMap.set( EnumerableMap::create( comphelper::getProcessComponentContext(),
+        xMap = EnumerableMap::create( comphelper::getProcessComponentContext(),
             ::cppu::UnoType< XControlModel >::get(),
             ::cppu::UnoType< XControlShape >::get()
-        ).get(), UNO_SET_THROW );
+        );
 
-        SdrObjListIter aPageIter( m_rPage );
+        SdrObjListIter aPageIter( &m_rPage );
         while ( aPageIter.IsMore() )
         {
             // only FmFormObjs are what we're interested in
@@ -293,7 +291,7 @@ Reference< XMap > FmFormPageImpl::impl_createControlShapeMap_nothrow()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
     return xMap;
 }
@@ -316,16 +314,15 @@ const Reference< css::form::XForms >& FmFormPageImpl::getForms( bool _bForceCrea
             m_aFormsCreationHdl.Call( *this );
         }
 
-        FmFormModel* pFormsModel = dynamic_cast<FmFormModel*>( m_rPage.GetModel()  );
+        FmFormModel& rFmFormModel(dynamic_cast< FmFormModel& >(m_rPage.getSdrModelFromSdrPage()));
 
         // give the newly created collection a place in the universe
-        SfxObjectShell* pObjShell = pFormsModel ? pFormsModel->GetObjectShell() : nullptr;
+        SfxObjectShell* pObjShell(rFmFormModel.GetObjectShell());
         if ( pObjShell )
             m_xForms->setParent( pObjShell->GetModel() );
 
         // tell the UNDO environment that we have a new forms collection
-        if ( pFormsModel )
-            pFormsModel->GetUndoEnv().AddForms( Reference<XNameContainer>(m_xForms,UNO_QUERY_THROW) );
+        rFmFormModel.GetUndoEnv().AddForms( Reference<XNameContainer>(m_xForms,UNO_QUERY_THROW) );
     }
     return m_xForms;
 }
@@ -344,9 +341,7 @@ bool FmFormPageImpl::validateCurForm()
     if ( !xCurrentForm.is() )
         return false;
 
-    Reference< XChild > xAsChild( xCurrentForm, UNO_QUERY );
-    DBG_ASSERT( xAsChild.is(), "FmFormPageImpl::validateCurForm: a form which is no child??" );
-    if ( !xAsChild.is() || !xAsChild->getParent().is() )
+    if ( !xCurrentForm->getParent().is() )
         xCurrentForm.clear();
 
     return xCurrentForm.is();
@@ -385,7 +380,7 @@ Reference< XForm >  FmFormPageImpl::getDefaultForm()
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("svx");
             }
         }
     }
@@ -397,13 +392,13 @@ Reference< XForm >  FmFormPageImpl::getDefaultForm()
     // did not find an existing suitable form -> create a new one
     if ( !xForm.is() )
     {
-        SdrModel* pModel = m_rPage.GetModel();
+        SdrModel& rModel(m_rPage.getSdrModelFromSdrPage());
 
-        if( pModel->IsUndoEnabled() )
+        if( rModel.IsUndoEnabled() )
         {
             OUString aStr(SvxResId(RID_STR_FORM));
             OUString aUndoStr(SvxResId(RID_STR_UNDO_CONTAINER_INSERT));
-            pModel->BegUndo(aUndoStr.replaceFirst("'#'", aStr));
+            rModel.BegUndo(aUndoStr.replaceFirst("'#'", aStr));
         }
 
         try
@@ -418,25 +413,27 @@ Reference< XForm >  FmFormPageImpl::getDefaultForm()
             OUString sName = SvxResId(RID_STR_STDFORMNAME);
             xFormProps->setPropertyValue( FM_PROP_NAME, makeAny( sName ) );
 
-            if( pModel->IsUndoEnabled() )
+            if( rModel.IsUndoEnabled() )
             {
-                pModel->AddUndo(new FmUndoContainerAction(*static_cast<FmFormModel*>(pModel),
-                                                           FmUndoContainerAction::Inserted,
-                                                           xForms,
-                                                           xForm,
-                                                           xForms->getCount()));
+                rModel.AddUndo(
+                    std::make_unique<FmUndoContainerAction>(
+                        static_cast< FmFormModel& >(rModel),
+                        FmUndoContainerAction::Inserted,
+                        xForms,
+                        xForm,
+                        xForms->getCount()));
             }
             xForms->insertByName( sName, makeAny( xForm ) );
             xCurrentForm = xForm;
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
             xForm.clear();
         }
 
-        if( pModel->IsUndoEnabled() )
-            pModel->EndUndo();
+        if( rModel.IsUndoEnabled() )
+            rModel.EndUndo();
     }
 
     return xForm;
@@ -462,7 +459,7 @@ Reference< css::form::XForm >  FmFormPageImpl::findPlaceInFormComponentHierarchy
         // first search in the current form
         xForm = findFormForDataSource( xCurrentForm, rDatabase, rCursorSource, nCommandType );
 
-        Reference< css::container::XIndexAccess >  xFormsByIndex( getForms(), UNO_QUERY );
+        Reference< css::container::XIndexAccess >  xFormsByIndex = getForms();
         DBG_ASSERT(xFormsByIndex.is(), "FmFormPageImpl::findPlaceInFormComponentHierarchy : no index access for my forms collection !");
         sal_Int32 nCount = xFormsByIndex->getCount();
         for (sal_Int32 i = 0; !xForm.is() && i < nCount; i++)
@@ -475,16 +472,15 @@ Reference< css::form::XForm >  FmFormPageImpl::findPlaceInFormComponentHierarchy
         // If no css::form found, then create a new one
         if (!xForm.is())
         {
-            SdrModel* pModel = m_rPage.GetModel();
-
-            const bool bUndo = pModel->IsUndoEnabled();
+            SdrModel& rModel(m_rPage.getSdrModelFromSdrPage());
+            const bool bUndo(rModel.IsUndoEnabled());
 
             if( bUndo )
             {
                 OUString aStr(SvxResId(RID_STR_FORM));
                 OUString aUndoStr(SvxResId(RID_STR_UNDO_CONTAINER_INSERT));
                 aUndoStr = aUndoStr.replaceFirst("#", aStr);
-                pModel->BegUndo(aUndoStr);
+                rModel.BegUndo(aUndoStr);
             }
 
             xForm.set(::comphelper::getProcessServiceFactory()->createInstance(FM_SUN_COMPONENT_FORM), UNO_QUERY);
@@ -505,7 +501,7 @@ Reference< css::form::XForm >  FmFormPageImpl::findPlaceInFormComponentHierarchy
             xFormProps->setPropertyValue(FM_PROP_COMMAND,makeAny(rCursorSource));
             xFormProps->setPropertyValue(FM_PROP_COMMANDTYPE, makeAny(nCommandType));
 
-            Reference< css::container::XNameAccess >  xNamedSet( getForms(), UNO_QUERY );
+            Reference< css::container::XNameAccess >  xNamedSet = getForms();
 
             const bool bTableOrQuery = ( CommandType::TABLE == nCommandType ) || ( CommandType::QUERY == nCommandType );
             OUString sName = FormControlFactory::getUniqueName( xNamedSet,
@@ -515,18 +511,20 @@ Reference< css::form::XForm >  FmFormPageImpl::findPlaceInFormComponentHierarchy
 
             if( bUndo )
             {
-                Reference< css::container::XIndexContainer >  xContainer( getForms(), UNO_QUERY );
-                pModel->AddUndo(new FmUndoContainerAction(*static_cast<FmFormModel*>(pModel),
-                                                         FmUndoContainerAction::Inserted,
-                                                         xContainer,
-                                                         xForm,
-                                                         xContainer->getCount()));
+                Reference< css::container::XIndexContainer >  xContainer = getForms();
+                rModel.AddUndo(
+                    std::make_unique<FmUndoContainerAction>(
+                        static_cast< FmFormModel& >(rModel),
+                        FmUndoContainerAction::Inserted,
+                        xContainer,
+                        xForm,
+                        xContainer->getCount()));
             }
 
             getForms()->insertByName( sName, makeAny( xForm ) );
 
             if( bUndo )
-                pModel->EndUndo();
+                rModel.EndUndo();
         }
         xCurrentForm = xForm;
     }
@@ -582,7 +580,7 @@ Reference< XForm >  FmFormPageImpl::findFormForDataSource(
     }
     catch(const Exception&)
     {
-        OSL_FAIL("FmFormPageImpl::findFormForDataSource: caught an exception!");
+        TOOLS_WARN_EXCEPTION("svx", "FmFormPageImpl::findFormForDataSource");
     }
 
     if (sLookupName == sFormDataSourceName)
@@ -626,7 +624,7 @@ OUString FmFormPageImpl::setUniqueName(const Reference< XFormComponent > & xForm
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 #endif
     OUString sName;
@@ -672,7 +670,7 @@ void FmFormPageImpl::formModelAssigned( const FmFormObj& _object )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 }
 
@@ -690,7 +688,7 @@ void FmFormPageImpl::formObjectInserted( const FmFormObj& _object )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 }
 
@@ -708,7 +706,7 @@ void FmFormPageImpl::formObjectRemoved( const FmFormObj& _object )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 }
 

@@ -7,29 +7,55 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef INCLUDED_SVX_INC_UIOBJECT_HXX
+#define INCLUDED_SVX_INC_UIOBJECT_HXX
+
 #include <memory>
 #include <vcl/uitest/uiobject.hxx>
+#include <svx/numvset.hxx>
 
 class SvxShowCharSet;
+class SvxNumValueSet;
 
-class SvxShowCharSetUIObject : public WindowUIObject
+class SvxShowCharSetUIObject final : public WindowUIObject
 {
-    VclPtr<SvxShowCharSet> mxCharSet;
+    SvxShowCharSet* mpCharSet;
 
 public:
-
-    SvxShowCharSetUIObject(const VclPtr<SvxShowCharSet>& xCharSet);
-
-    virtual StringMap get_state() override;
+    SvxShowCharSetUIObject(const VclPtr<vcl::Window>& xCharSetWin, SvxShowCharSet* pCharSet);
 
     virtual void execute(const OUString& rAction,
             const StringMap& rParameters) override;
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 
-protected:
+private:
 
     OUString get_name() const override;
 };
+
+
+class SvxNumValueSetUIObject final : public WindowUIObject
+{
+    SvxNumValueSet* mpNumValueSet;
+
+public:
+
+    SvxNumValueSetUIObject(vcl::Window*  xNumValueSetWin, SvxNumValueSet* pNumValueSet);
+
+    virtual void execute(const OUString& rAction,
+            const StringMap& rParameters) override;
+
+    static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
+
+    virtual StringMap get_state() override;
+
+private:
+
+    OUString get_name() const override;
+
+};
+
+#endif // INCLUDED_SVX_INC_UIOBJECT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

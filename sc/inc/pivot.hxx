@@ -36,8 +36,9 @@
 #ifndef INCLUDED_SC_INC_PIVOT_HXX
 #define INCLUDED_SC_INC_PIVOT_HXX
 
-#include "global.hxx"
-#include "address.hxx"
+#include <rtl/ustring.hxx>
+#include "types.hxx"
+#include "scdllapi.h"
 #include "dpglobal.hxx"
 #include "calcmacros.hxx"
 
@@ -113,15 +114,14 @@ typedef std::vector< std::unique_ptr<ScDPLabelData> > ScDPLabelDataVector;
 
 struct ScPivotField
 {
-    SCCOL       nCol;          ///< 0-based dimension index (not source column index)
-    long        mnOriginalDim; ///< >= 0 for duplicated field.
-    PivotFunc   nFuncMask;
-    sal_uInt8   mnDupCount;
-
     css::sheet::DataPilotFieldReference maFieldRef;
 
+    long        mnOriginalDim; ///< >= 0 for duplicated field.
+    PivotFunc   nFuncMask;
+    SCCOL       nCol;          ///< 0-based dimension index (not source column index)
+    sal_uInt8   mnDupCount;
+
     explicit ScPivotField( SCCOL nNewCol = 0 );
-    ScPivotField( const ScPivotField& r );
 
     long getOriginalDim() const;
 };
@@ -155,12 +155,12 @@ struct ScPivotParam
 
 struct ScPivotFuncData
 {
-    SCCOL      mnCol;
+    css::sheet::DataPilotFieldReference maFieldRef;
+
     long       mnOriginalDim;
     PivotFunc  mnFuncMask;
+    SCCOL      mnCol;
     sal_uInt8  mnDupCount;
-
-    css::sheet::DataPilotFieldReference maFieldRef;
 
     explicit ScPivotFuncData( SCCOL nCol, PivotFunc nFuncMask );
 

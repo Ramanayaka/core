@@ -21,14 +21,8 @@
 #include "PresenterCanvasHelper.hxx"
 #include "PresenterGeometryHelper.hxx"
 #include "PresenterPaintManager.hxx"
-#include "PresenterScrollBar.hxx"
 #include "PresenterBitmapContainer.hxx"
-#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/awt/XWindowPeer.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
 
 using namespace ::com::sun::star;
@@ -42,7 +36,7 @@ namespace
     const sal_Int16 gnSuperSampleFactor = 2;
 }
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 //===== PresenterSlidePreview =================================================
 
@@ -86,21 +80,21 @@ PresenterSlidePreview::PresenterSlidePreview (
         mxWindow->setVisible(true);
     }
 
-    if (mpPresenterController.get() != nullptr)
+    if (mpPresenterController)
         mnSlideAspectRatio = mpPresenterController->GetSlideAspectRatio();
 
-    Reference<lang::XMultiComponentFactory> xFactory (rxContext->getServiceManager(), UNO_QUERY);
+    Reference<lang::XMultiComponentFactory> xFactory = rxContext->getServiceManager();
     if (xFactory.is())
         mxPreviewRenderer.set(
             xFactory->createInstanceWithContext(
                 "com.sun.star.drawing.SlideRenderer",
                 rxContext),
             UNO_QUERY);
-    mpBitmaps.reset(new PresenterBitmapContainer(
-            OUString("PresenterScreenSettings/ScrollBar/Bitmaps"),
+    mpBitmaps = std::make_shared<PresenterBitmapContainer>(
+            "PresenterScreenSettings/ScrollBar/Bitmaps",
             std::shared_ptr<PresenterBitmapContainer>(),
             rxContext,
-            mxCanvas));
+            mxCanvas);
     Resize();
 }
 
@@ -202,21 +196,6 @@ void PresenterSlidePreview::SetSlide (const Reference<drawing::XDrawPage>& rxPag
 {
     mxCurrentSlide = rxPage;
     mxPreview = nullptr;
-
-    Reference<beans::XPropertySet> xPropertySet (mxCurrentSlide, UNO_QUERY);
-    if (xPropertySet.is())
-    {
-        awt::Size aSlideSize;
-        try
-        {
-            xPropertySet->getPropertyValue("Width") >>= aSlideSize.Width;
-            xPropertySet->getPropertyValue("Height") >>= aSlideSize.Height;
-        }
-        catch (beans::UnknownPropertyException&)
-        {
-            OSL_ASSERT(false);
-        }
-    }
 
     // The preview is not transparent, therefore only this window, not its
     // parent, has to be invalidated.
@@ -373,6 +352,6 @@ void PresenterSlidePreview::ThrowIfDisposed()
     }
 }
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

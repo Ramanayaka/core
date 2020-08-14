@@ -128,7 +128,12 @@ public:
 
     OUString GetTitle() const
     {
-        return m_aContainerName + " - " + m_aDocumentNamePart;
+        return m_aContainerName + ( m_aDocumentNamePart.isEmpty() ? OUString() : ( " - " + m_aDocumentNamePart ) );
+    }
+
+    OUString const & GetContainerName() const
+    {
+        return m_aContainerName;
     }
 
     void SetOutplaceFrameProperties( const css::uno::Sequence< css::uno::Any >& aProps )
@@ -164,7 +169,7 @@ public:
         m_xOutplaceInterceptor = xOutplaceInterceptor;
     }
 
-    const css::uno::Reference< css::util::XCloseable >& GetComponent() { return m_xComponent; }
+    const css::uno::Reference< css::util::XCloseable >& GetComponent() const { return m_xComponent; }
 
 // XEventListener
     virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;

@@ -22,19 +22,19 @@
 
 #include <oox/core/contexthandler2.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-    class GuidContext : public ::oox::core::ContextHandler2
+    class GuidContext final : public ::oox::core::ContextHandler2
     {
 
     public:
-        GuidContext( ::oox::core::ContextHandler2Helper& rParent, OUString& rGuidId );
+        GuidContext( ::oox::core::ContextHandler2Helper const & rParent, OUString& rGuidId );
         virtual void onCharacters( const OUString& aChars ) override;
 
     private:
         OUString& mrGuidId;
     };
-} }
+}
 
 #endif
 

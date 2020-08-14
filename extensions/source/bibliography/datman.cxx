@@ -23,54 +23,41 @@
 #include <sal/log.hxx>
 #include <tools/diagnose_ex.h>
 #include <comphelper/processfactory.hxx>
-#include <com/sun/star/io/XPersistObject.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
-#include <com/sun/star/sdbc/XResultSetUpdate.hpp>
 #include <com/sun/star/sdbcx/XRowLocate.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include <com/sun/star/sdb/XDatabaseEnvironment.hpp>
-#include <com/sun/star/uno/XNamingService.hpp>
 #include <com/sun/star/sdbc/XDataSource.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdb/DatabaseContext.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdb/XCompletedConnection.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/task/InteractionHandler.hpp>
 #include <com/sun/star/form/ListSourceType.hpp>
 #include <com/sun/star/form/XLoadable.hpp>
 #include <com/sun/star/form/runtime/FormController.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 #include <com/sun/star/form/XGridColumnFactory.hpp>
-#include <com/sun/star/io/XDataInputStream.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <comphelper/container.hxx>
-#include <svl/urihelper.hxx>
-#include <svtools/svtabbx.hxx>
-#include <svtools/headbar.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/group.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/msgbox.hxx>
 #include <tools/debug.hxx>
+#include <tools/urlobj.hxx>
+#include <vcl/weld.hxx>
 #include "datman.hxx"
 #include "bibresid.hxx"
 #include "bibmod.hxx"
 #include "bibview.hxx"
-#include "bibprop.hrc"
+#include "bibprop.hxx"
 #include "toolbar.hxx"
 #include "bibconfig.hxx"
 #include "bibbeam.hxx"
 #include "general.hxx"
-#include "bib.hrc"
-#include "bibliography.hrc"
+#include <strings.hrc>
+#include <helpids.h>
 #include <connectivity/dbtools.hxx>
 #include <memory>
 
@@ -85,7 +72,7 @@ using namespace ::com::sun::star::form;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::lang;
 
-Reference< XConnection > getConnection(const OUString& _rURL)
+static Reference< XConnection > getConnection(const OUString& _rURL)
 {
     // first get the sdb::DataSource corresponding to the url
     Reference< XDataSource >    xDataSource;
@@ -126,7 +113,7 @@ Reference< XConnection > getConnection(const OUString& _rURL)
     return xConn;
 }
 
-Reference< XConnection >    getConnection(const Reference< XInterface > & xRowSet)
+static Reference< XConnection >    getConnection(const Reference< XInterface > & xRowSet)
 {
     Reference< XConnection >    xConn;
     try
@@ -149,7 +136,7 @@ Reference< XConnection >    getConnection(const Reference< XInterface > & xRowSe
     return xConn;
 }
 
-Reference< XNameAccess >  getColumns(const Reference< XForm > & _rxForm)
+static Reference< XNameAccess >  getColumns(const Reference< XForm > & _rxForm)
 {
     Reference< XNameAccess >  xReturn;
     // check if the form is alive
@@ -157,8 +144,8 @@ Reference< XNameAccess >  getColumns(const Reference< XForm > & _rxForm)
     if (xSupplyCols.is())
         xReturn = xSupplyCols->getColumns();
 
-    if (!xReturn.is() || (xReturn->getElementNames().getLength() == 0))
-    {   // no ....
+    if (!xReturn.is() || !xReturn->getElementNames().hasElements())
+    {   // no...
         xReturn = nullptr;
         // -> get the table the form is bound to and ask it for their columns
         Reference< XTablesSupplier >  xSupplyTables( getConnection( _rxForm ), UNO_QUERY );
@@ -177,9 +164,9 @@ Reference< XNameAccess >  getColumns(const Reference< XForm > & _rxForm)
                 if (xSupplyCols.is())
                     xReturn = xSupplyCols->getColumns();
             }
-            catch (const Exception& e)
+            catch (const Exception&)
             {
-                SAL_WARN( "extensions.biblio", "::getColumns : caught an exception. " << e.Message);
+                TOOLS_WARN_EXCEPTION( "extensions.biblio", "::getColumns");
             }
 
         }
@@ -187,58 +174,60 @@ Reference< XNameAccess >  getColumns(const Reference< XForm > & _rxForm)
     return xReturn;
 }
 
-class MappingDialog_Impl : public ModalDialog
+namespace {
+
+class MappingDialog_Impl : public weld::GenericDialogController
 {
     BibDataManager* pDatMan;
-    VclPtr<OKButton>       pOKBT;
-    VclPtr<ListBox>        pIdentifierLB;
-    VclPtr<ListBox>        pAuthorityTypeLB;
-    VclPtr<ListBox>        pAuthorLB;
-    VclPtr<ListBox>        pTitleLB;
-    VclPtr<ListBox>        pMonthLB;
-    VclPtr<ListBox>        pYearLB;
-    VclPtr<ListBox>        pISBNLB;
-    VclPtr<ListBox>        pBooktitleLB;
-    VclPtr<ListBox>        pChapterLB;
-    VclPtr<ListBox>        pEditionLB;
-    VclPtr<ListBox>        pEditorLB;
-    VclPtr<ListBox>        pHowpublishedLB;
-    VclPtr<ListBox>        pInstitutionLB;
-    VclPtr<ListBox>        pJournalLB;
-    VclPtr<ListBox>        pNoteLB;
-    VclPtr<ListBox>        pAnnoteLB;
-    VclPtr<ListBox>        pNumberLB;
-    VclPtr<ListBox>        pOrganizationsLB;
-    VclPtr<ListBox>        pPagesLB;
-    VclPtr<ListBox>        pPublisherLB;
-    VclPtr<ListBox>        pAddressLB;
-    VclPtr<ListBox>        pSchoolLB;
-    VclPtr<ListBox>        pSeriesLB;
-    VclPtr<ListBox>        pReportTypeLB;
-    VclPtr<ListBox>        pVolumeLB;
-    VclPtr<ListBox>        pURLLB;
-    VclPtr<ListBox>        pCustom1LB;
-    VclPtr<ListBox>        pCustom2LB;
-    VclPtr<ListBox>        pCustom3LB;
-    VclPtr<ListBox>        pCustom4LB;
-    VclPtr<ListBox>        pCustom5LB;
-    VclPtr<ListBox>        aListBoxes[COLUMN_COUNT];
-    OUString        sNone;
 
+    OUString        sNone;
     bool        bModified;
 
+    std::unique_ptr<weld::Button> m_xOKBT;
+    std::unique_ptr<weld::ComboBox> m_xIdentifierLB;
+    std::unique_ptr<weld::ComboBox> m_xAuthorityTypeLB;
+    std::unique_ptr<weld::ComboBox> m_xAuthorLB;
+    std::unique_ptr<weld::ComboBox> m_xTitleLB;
+    std::unique_ptr<weld::ComboBox> m_xMonthLB;
+    std::unique_ptr<weld::ComboBox> m_xYearLB;
+    std::unique_ptr<weld::ComboBox> m_xISBNLB;
+    std::unique_ptr<weld::ComboBox> m_xBooktitleLB;
+    std::unique_ptr<weld::ComboBox> m_xChapterLB;
+    std::unique_ptr<weld::ComboBox> m_xEditionLB;
+    std::unique_ptr<weld::ComboBox> m_xEditorLB;
+    std::unique_ptr<weld::ComboBox> m_xHowpublishedLB;
+    std::unique_ptr<weld::ComboBox> m_xInstitutionLB;
+    std::unique_ptr<weld::ComboBox> m_xJournalLB;
+    std::unique_ptr<weld::ComboBox> m_xNoteLB;
+    std::unique_ptr<weld::ComboBox> m_xAnnoteLB;
+    std::unique_ptr<weld::ComboBox> m_xNumberLB;
+    std::unique_ptr<weld::ComboBox> m_xOrganizationsLB;
+    std::unique_ptr<weld::ComboBox> m_xPagesLB;
+    std::unique_ptr<weld::ComboBox> m_xPublisherLB;
+    std::unique_ptr<weld::ComboBox> m_xAddressLB;
+    std::unique_ptr<weld::ComboBox> m_xSchoolLB;
+    std::unique_ptr<weld::ComboBox> m_xSeriesLB;
+    std::unique_ptr<weld::ComboBox> m_xReportTypeLB;
+    std::unique_ptr<weld::ComboBox> m_xVolumeLB;
+    std::unique_ptr<weld::ComboBox> m_xURLLB;
+    std::unique_ptr<weld::ComboBox> m_xCustom1LB;
+    std::unique_ptr<weld::ComboBox> m_xCustom2LB;
+    std::unique_ptr<weld::ComboBox> m_xCustom3LB;
+    std::unique_ptr<weld::ComboBox> m_xCustom4LB;
+    std::unique_ptr<weld::ComboBox> m_xCustom5LB;
+    weld::ComboBox* aListBoxes[COLUMN_COUNT];
 
-    DECL_LINK(OkHdl, Button*, void);
-    DECL_LINK(ListBoxSelectHdl, ListBox&, void);
+    DECL_LINK(OkHdl, weld::Button&, void);
+    DECL_LINK(ListBoxSelectHdl, weld::ComboBox&, void);
 
 public:
-    MappingDialog_Impl(vcl::Window* pParent, BibDataManager* pDatMan);
-    virtual ~MappingDialog_Impl() override;
-    virtual void dispose() override;
+    MappingDialog_Impl(weld::Window* pParent, BibDataManager* pDatMan);
 };
 
-static sal_uInt16 lcl_FindLogicalName(BibConfig* pConfig ,
-                                    const OUString& rLogicalColumnName)
+}
+
+static sal_uInt16 lcl_FindLogicalName(BibConfig const * pConfig ,
+                                      const OUString& rLogicalColumnName)
 {
     for(sal_uInt16 i = 0; i < COLUMN_COUNT; i++)
     {
@@ -248,105 +237,101 @@ static sal_uInt16 lcl_FindLogicalName(BibConfig* pConfig ,
     return USHRT_MAX;
 }
 
-MappingDialog_Impl::MappingDialog_Impl(vcl::Window* pParent, BibDataManager* pMan)
-    : ModalDialog(pParent, "MappingDialog", "modules/sbibliography/ui/mappingdialog.ui")
+MappingDialog_Impl::MappingDialog_Impl(weld::Window* pParent, BibDataManager* pMan)
+    : GenericDialogController(pParent, "modules/sbibliography/ui/mappingdialog.ui", "MappingDialog")
     , pDatMan(pMan)
     , sNone(BibResId(RID_BIB_STR_NONE))
     , bModified(false)
+    , m_xOKBT(m_xBuilder->weld_button("ok"))
+    , m_xIdentifierLB(m_xBuilder->weld_combo_box("identifierCombobox"))
+    , m_xAuthorityTypeLB(m_xBuilder->weld_combo_box("authorityTypeCombobox"))
+    , m_xAuthorLB(m_xBuilder->weld_combo_box("authorCombobox"))
+    , m_xTitleLB(m_xBuilder->weld_combo_box("titleCombobox"))
+    , m_xMonthLB(m_xBuilder->weld_combo_box("monthCombobox"))
+    , m_xYearLB(m_xBuilder->weld_combo_box("yearCombobox"))
+    , m_xISBNLB(m_xBuilder->weld_combo_box("ISBNCombobox"))
+    , m_xBooktitleLB(m_xBuilder->weld_combo_box("bookTitleCombobox"))
+    , m_xChapterLB(m_xBuilder->weld_combo_box("chapterCombobox"))
+    , m_xEditionLB(m_xBuilder->weld_combo_box("editionCombobox"))
+    , m_xEditorLB(m_xBuilder->weld_combo_box("editorCombobox"))
+    , m_xHowpublishedLB(m_xBuilder->weld_combo_box("howPublishedCombobox"))
+    , m_xInstitutionLB(m_xBuilder->weld_combo_box("institutionCombobox"))
+    , m_xJournalLB(m_xBuilder->weld_combo_box("journalCombobox"))
+    , m_xNoteLB(m_xBuilder->weld_combo_box("noteCombobox"))
+    , m_xAnnoteLB(m_xBuilder->weld_combo_box("annoteCombobox"))
+    , m_xNumberLB(m_xBuilder->weld_combo_box("numberCombobox"))
+    , m_xOrganizationsLB(m_xBuilder->weld_combo_box("organizationCombobox"))
+    , m_xPagesLB(m_xBuilder->weld_combo_box("pagesCombobox"))
+    , m_xPublisherLB(m_xBuilder->weld_combo_box("publisherCombobox"))
+    , m_xAddressLB(m_xBuilder->weld_combo_box("addressCombobox"))
+    , m_xSchoolLB(m_xBuilder->weld_combo_box("schoolCombobox"))
+    , m_xSeriesLB(m_xBuilder->weld_combo_box("seriesCombobox"))
+    , m_xReportTypeLB(m_xBuilder->weld_combo_box("reportTypeCombobox"))
+    , m_xVolumeLB(m_xBuilder->weld_combo_box("volumeCombobox"))
+    , m_xURLLB(m_xBuilder->weld_combo_box("URLCombobox"))
+    , m_xCustom1LB(m_xBuilder->weld_combo_box("custom1Combobox"))
+    , m_xCustom2LB(m_xBuilder->weld_combo_box("custom2Combobox"))
+    , m_xCustom3LB(m_xBuilder->weld_combo_box("custom3Combobox"))
+    , m_xCustom4LB(m_xBuilder->weld_combo_box("custom4Combobox"))
+    , m_xCustom5LB(m_xBuilder->weld_combo_box("custom5Combobox"))
 {
-    get(pOKBT, "ok");
-    get(pIdentifierLB, "identifierCombobox");
-    get(pAuthorityTypeLB, "authorityTypeCombobox");
-    get(pAuthorLB, "authorCombobox");
-    get(pTitleLB, "titleCombobox");
-    get(pMonthLB, "monthCombobox");
-    get(pYearLB, "yearCombobox");
-    get(pISBNLB, "ISBNCombobox");
-    get(pBooktitleLB, "bookTitleCombobox");
-    get(pChapterLB, "chapterCombobox");
-    get(pEditionLB, "editionCombobox");
-    get(pEditorLB, "editorCombobox");
-    get(pHowpublishedLB, "howPublishedCombobox");
-    get(pInstitutionLB, "institutionCombobox");
-    get(pJournalLB, "journalCombobox");
-    get(pNoteLB, "noteCombobox");
-    get(pAnnoteLB, "annoteCombobox");
-    get(pNumberLB, "numberCombobox");
-    get(pOrganizationsLB, "organizationCombobox");
-    get(pPagesLB, "pagesCombobox");
-    get(pPublisherLB, "publisherCombobox");
-    get(pAddressLB, "addressCombobox");
-    get(pSchoolLB, "schoolCombobox");
-    get(pSeriesLB, "seriesCombobox");
-    get(pReportTypeLB, "reportTypeCombobox");
-    get(pVolumeLB, "volumeCombobox");
-    get(pURLLB, "URLCombobox");
-    get(pCustom1LB, "custom1Combobox");
-    get(pCustom2LB, "custom2Combobox");
-    get(pCustom3LB, "custom3Combobox");
-    get(pCustom4LB, "custom4Combobox");
-    get(pCustom5LB, "custom5Combobox");
-
-    pOKBT->SetClickHdl(LINK(this, MappingDialog_Impl, OkHdl));
-    OUString sTitle = GetText();
+    m_xOKBT->connect_clicked(LINK(this, MappingDialog_Impl, OkHdl));
+    OUString sTitle = m_xDialog->get_title();
     sTitle = sTitle.replaceFirst("%1", pDatMan->getActiveDataTable());
-    SetText(sTitle);
+    m_xDialog->set_title(sTitle);
 
-    aListBoxes[0] = pIdentifierLB;
-    aListBoxes[1] = pAuthorityTypeLB;
-    aListBoxes[2] = pAuthorLB;
-    aListBoxes[3] = pTitleLB;
-    aListBoxes[4] = pYearLB;
-    aListBoxes[5] = pISBNLB;
-    aListBoxes[6] = pBooktitleLB;
-    aListBoxes[7] = pChapterLB;
-    aListBoxes[8] = pEditionLB;
-    aListBoxes[9] = pEditorLB;
-    aListBoxes[10] = pHowpublishedLB;
-    aListBoxes[11] = pInstitutionLB;
-    aListBoxes[12] = pJournalLB;
-    aListBoxes[13] = pMonthLB;
-    aListBoxes[14] = pNoteLB;
-    aListBoxes[15] = pAnnoteLB;
-    aListBoxes[16] = pNumberLB;
-    aListBoxes[17] = pOrganizationsLB;
-    aListBoxes[18] = pPagesLB;
-    aListBoxes[19] = pPublisherLB;
-    aListBoxes[20] = pAddressLB;
-    aListBoxes[21] = pSchoolLB;
-    aListBoxes[22] = pSeriesLB;
-    aListBoxes[23] = pReportTypeLB;
-    aListBoxes[24] = pVolumeLB;
-    aListBoxes[25] = pURLLB;
-    aListBoxes[26] = pCustom1LB;
-    aListBoxes[27] = pCustom2LB;
-    aListBoxes[28] = pCustom3LB;
-    aListBoxes[29] = pCustom4LB;
-    aListBoxes[30] = pCustom5LB;
+    aListBoxes[0] = m_xIdentifierLB.get();
+    aListBoxes[1] = m_xAuthorityTypeLB.get();
+    aListBoxes[2] = m_xAuthorLB.get();
+    aListBoxes[3] = m_xTitleLB.get();
+    aListBoxes[4] = m_xYearLB.get();
+    aListBoxes[5] = m_xISBNLB.get();
+    aListBoxes[6] = m_xBooktitleLB.get();
+    aListBoxes[7] = m_xChapterLB.get();
+    aListBoxes[8] = m_xEditionLB.get();
+    aListBoxes[9] = m_xEditorLB.get();
+    aListBoxes[10] = m_xHowpublishedLB.get();
+    aListBoxes[11] = m_xInstitutionLB.get();
+    aListBoxes[12] = m_xJournalLB.get();
+    aListBoxes[13] = m_xMonthLB.get();
+    aListBoxes[14] = m_xNoteLB.get();
+    aListBoxes[15] = m_xAnnoteLB.get();
+    aListBoxes[16] = m_xNumberLB.get();
+    aListBoxes[17] = m_xOrganizationsLB.get();
+    aListBoxes[18] = m_xPagesLB.get();
+    aListBoxes[19] = m_xPublisherLB.get();
+    aListBoxes[20] = m_xAddressLB.get();
+    aListBoxes[21] = m_xSchoolLB.get();
+    aListBoxes[22] = m_xSeriesLB.get();
+    aListBoxes[23] = m_xReportTypeLB.get();
+    aListBoxes[24] = m_xVolumeLB.get();
+    aListBoxes[25] = m_xURLLB.get();
+    aListBoxes[26] = m_xCustom1LB.get();
+    aListBoxes[27] = m_xCustom2LB.get();
+    aListBoxes[28] = m_xCustom3LB.get();
+    aListBoxes[29] = m_xCustom4LB.get();
+    aListBoxes[30] = m_xCustom5LB.get();
 
-    aListBoxes[0]->InsertEntry(sNone);
+    aListBoxes[0]->append_text(sNone);
     Reference< XNameAccess >  xFields = getColumns( pDatMan->getForm() );
     DBG_ASSERT(xFields.is(), "MappingDialog_Impl::MappingDialog_Impl : gave me an invalid form !");
-    if(xFields.is())
+    if (xFields.is())
     {
-        Sequence< OUString > aNames = xFields->getElementNames();
-        sal_Int32 nFieldsCount = aNames.getLength();
-        const OUString* pNames = aNames.getConstArray();
-
-        for(sal_Int32 nField = 0; nField < nFieldsCount; nField++)
-            aListBoxes[0]->InsertEntry(pNames[nField]);
+        const Sequence<OUString> aFieldNames = xFields->getElementNames();
+        for(const OUString& rName : aFieldNames)
+            aListBoxes[0]->append_text(rName);
     }
 
-    Link<ListBox&,void> aLnk = LINK(this, MappingDialog_Impl, ListBoxSelectHdl);
+    Link<weld::ComboBox&,void> aLnk = LINK(this, MappingDialog_Impl, ListBoxSelectHdl);
 
-    aListBoxes[0]->SelectEntryPos(0);
-    aListBoxes[0]->SetSelectHdl(aLnk);
+    aListBoxes[0]->set_active(0);
+    aListBoxes[0]->connect_changed(aLnk);
     for(sal_uInt16 i = 1; i < COLUMN_COUNT; i++)
     {
-        for(sal_Int32 j = 0; j < aListBoxes[0]->GetEntryCount();j++)
-            aListBoxes[i]->InsertEntry(aListBoxes[0]->GetEntry(j));
-        aListBoxes[i]->SelectEntryPos(0);
-        aListBoxes[i]->SetSelectHdl(aLnk);
+        for(sal_Int32 j = 0, nEntryCount = aListBoxes[0]->get_count(); j < nEntryCount; ++j)
+            aListBoxes[i]->append_text(aListBoxes[0]->get_text(j));
+        aListBoxes[i]->set_active(0);
+        aListBoxes[i]->connect_changed(aLnk);
     }
     BibConfig* pConfig = BibModul::GetConfig();
     BibDBDescriptor aDesc;
@@ -361,71 +346,27 @@ MappingDialog_Impl::MappingDialog_Impl(vcl::Window* pParent, BibDataManager* pMa
             sal_uInt16 nListBoxIndex = lcl_FindLogicalName( pConfig, aColumnPair.sLogicalColumnName);
             if(nListBoxIndex < COLUMN_COUNT)
             {
-                aListBoxes[nListBoxIndex]->SelectEntry(aColumnPair.sRealColumnName);
+                aListBoxes[nListBoxIndex]->set_active_text(aColumnPair.sRealColumnName);
             }
         }
     }
 }
 
-MappingDialog_Impl::~MappingDialog_Impl()
+IMPL_LINK(MappingDialog_Impl, ListBoxSelectHdl, weld::ComboBox&, rListBox, void)
 {
-    disposeOnce();
-}
-
-void MappingDialog_Impl::dispose()
-{
-    pOKBT.clear();
-    pIdentifierLB.clear();
-    pAuthorityTypeLB.clear();
-    pAuthorLB.clear();
-    pTitleLB.clear();
-    pMonthLB.clear();
-    pYearLB.clear();
-    pISBNLB.clear();
-    pBooktitleLB.clear();
-    pChapterLB.clear();
-    pEditionLB.clear();
-    pEditorLB.clear();
-    pHowpublishedLB.clear();
-    pInstitutionLB.clear();
-    pJournalLB.clear();
-    pNoteLB.clear();
-    pAnnoteLB.clear();
-    pNumberLB.clear();
-    pOrganizationsLB.clear();
-    pPagesLB.clear();
-    pPublisherLB.clear();
-    pAddressLB.clear();
-    pSchoolLB.clear();
-    pSeriesLB.clear();
-    pReportTypeLB.clear();
-    pVolumeLB.clear();
-    pURLLB.clear();
-    pCustom1LB.clear();
-    pCustom2LB.clear();
-    pCustom3LB.clear();
-    pCustom4LB.clear();
-    pCustom5LB.clear();
-    for(auto & a : aListBoxes)
-        a.clear();
-    ModalDialog::dispose();
-}
-
-IMPL_LINK(MappingDialog_Impl, ListBoxSelectHdl, ListBox&, rListBox, void)
-{
-    const sal_Int32 nEntryPos = rListBox.GetSelectEntryPos();
-    if(0 < nEntryPos)
+    const sal_Int32 nEntryPos = rListBox.get_active();
+    if (0 < nEntryPos)
     {
-        for(VclPtr<ListBox> & aListBoxe : aListBoxes)
+        for(auto & pListBoxe : aListBoxes)
         {
-            if(&rListBox != aListBoxe && aListBoxe->GetSelectEntryPos() == nEntryPos)
-                aListBoxe->SelectEntryPos(0);
+            if (&rListBox != pListBoxe && pListBoxe->get_active() == nEntryPos)
+                pListBoxe->set_active(0);
         }
     }
     bModified = true;
 }
 
-IMPL_LINK_NOARG(MappingDialog_Impl, OkHdl, Button*, void)
+IMPL_LINK_NOARG(MappingDialog_Impl, OkHdl, weld::Button&, void)
 {
     if(bModified)
     {
@@ -437,7 +378,7 @@ IMPL_LINK_NOARG(MappingDialog_Impl, OkHdl, Button*, void)
         BibConfig* pConfig = BibModul::GetConfig();
         for(sal_uInt16 nEntry = 0; nEntry < COLUMN_COUNT; nEntry++)
         {
-            OUString sSel = aListBoxes[nEntry]->GetSelectEntry();
+            OUString sSel = aListBoxes[nEntry]->get_active_text();
             if(sSel != sNone)
             {
                 aNew.aColumnPairs[nWriteIndex].sRealColumnName = sSel;
@@ -452,78 +393,60 @@ IMPL_LINK_NOARG(MappingDialog_Impl, OkHdl, Button*, void)
         pDatMan->ResetIdentifierMapping();
         pConfig->SetMapping(aDesc, &aNew);
     }
-    EndDialog(bModified ? RET_OK : RET_CANCEL);
+    m_xDialog->response(bModified ? RET_OK : RET_CANCEL);
 }
 
-class DBChangeDialog_Impl : public ModalDialog
+namespace {
+
+class DBChangeDialog_Impl : public weld::GenericDialogController
 {
-    VclPtr<ListBox>    m_pSelectionLB;
-    DBChangeDialogConfig_Impl   aConfig;
+    DBChangeDialogConfig_Impl aConfig;
 
-    BibDataManager* pDatMan;
+    std::unique_ptr<weld::TreeView> m_xSelectionLB;
 
-    DECL_LINK(DoubleClickHdl, ListBox&, void);
+    DECL_LINK(DoubleClickHdl, weld::TreeView&, bool);
 public:
-    DBChangeDialog_Impl(vcl::Window* pParent, BibDataManager* pMan );
-    virtual ~DBChangeDialog_Impl() override;
-    virtual void dispose() override;
+    DBChangeDialog_Impl(weld::Window* pParent, BibDataManager* pMan);
 
     OUString     GetCurrentURL()const;
 };
 
-DBChangeDialog_Impl::DBChangeDialog_Impl(vcl::Window* pParent, BibDataManager* pMan )
-    : ModalDialog(pParent, "ChooseDataSourceDialog",
-        "modules/sbibliography/ui/choosedatasourcedialog.ui")
-    ,
-    pDatMan(pMan)
-{
-    get(m_pSelectionLB, "treeview");
-    m_pSelectionLB->set_height_request(m_pSelectionLB->GetTextHeight() * 6);
+}
 
-    m_pSelectionLB->SetStyle(m_pSelectionLB->GetStyle() | WB_SORT);
-    m_pSelectionLB->SetDoubleClickHdl( LINK(this, DBChangeDialog_Impl, DoubleClickHdl));
+DBChangeDialog_Impl::DBChangeDialog_Impl(weld::Window* pParent, BibDataManager* pDatMan )
+    : GenericDialogController(pParent, "modules/sbibliography/ui/choosedatasourcedialog.ui", "ChooseDataSourceDialog")
+    , m_xSelectionLB(m_xBuilder->weld_tree_view("treeview"))
+{
+    m_xSelectionLB->set_size_request(-1, m_xSelectionLB->get_height_rows(6));
+    m_xSelectionLB->connect_row_activated(LINK(this, DBChangeDialog_Impl, DoubleClickHdl));
+    m_xSelectionLB->make_sorted();
 
     try
     {
         OUString sActiveSource = pDatMan->getActiveDataSource();
-        const Sequence< OUString >& rSources = aConfig.GetDataSourceNames();
-        const OUString* pSourceNames = rSources.getConstArray();
-        for (sal_Int32 i = 0; i < rSources.getLength(); ++i)
-            m_pSelectionLB->InsertEntry(pSourceNames[i]);
-
-        m_pSelectionLB->SelectEntry(sActiveSource);
+        for (const OUString& rSourceName : aConfig.GetDataSourceNames())
+            m_xSelectionLB->append_text(rSourceName);
+        m_xSelectionLB->select_text(sActiveSource);
     }
-    catch (const Exception& e)
+    catch (const Exception&)
     {
-        SAL_WARN("extensions.biblio",
-            "Exception in BibDataManager::DBChangeDialog_Impl::DBChangeDialog_Impl "
-            << e.Message);
+        TOOLS_WARN_EXCEPTION("extensions.biblio", "");
     }
 }
 
-IMPL_LINK_NOARG(DBChangeDialog_Impl, DoubleClickHdl, ListBox&, void)
+IMPL_LINK_NOARG(DBChangeDialog_Impl, DoubleClickHdl, weld::TreeView&, bool)
 {
-    EndDialog(RET_OK);
-}
-
-DBChangeDialog_Impl::~DBChangeDialog_Impl()
-{
-    disposeOnce();
-}
-
-void DBChangeDialog_Impl::dispose()
-{
-    m_pSelectionLB.clear();
-    ModalDialog::dispose();
+    m_xDialog->response(RET_OK);
+    return true;
 }
 
 OUString  DBChangeDialog_Impl::GetCurrentURL()const
 {
-    return m_pSelectionLB->GetSelectEntry();
+    return m_xSelectionLB->get_selected_text();
 }
 
 // XDispatchProvider
-BibInterceptorHelper::BibInterceptorHelper( ::bib::BibBeamer* pBibBeamer, css::uno::Reference< css::frame::XDispatch > const & xDispatch)
+BibInterceptorHelper::BibInterceptorHelper( const ::bib::BibBeamer* pBibBeamer, css::uno::Reference< css::frame::XDispatch > const & xDispatch)
 {
     if( pBibBeamer )
     {
@@ -566,10 +489,9 @@ css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL
 {
     Sequence< Reference< XDispatch> > aReturn( aDescripts.getLength() );
     Reference< XDispatch >* pReturn = aReturn.getArray();
-    const DispatchDescriptor* pDescripts = aDescripts.getConstArray();
-    for ( sal_Int32 i=0; i<aDescripts.getLength(); ++i, ++pReturn, ++pDescripts )
+    for ( const DispatchDescriptor& rDescript : aDescripts )
     {
-        *pReturn = queryDispatch( pDescripts->FeatureURL, pDescripts->FrameName, pDescripts->SearchFlags );
+        *pReturn++ = queryDispatch( rDescript.FeatureURL, rDescript.FrameName, rDescript.SearchFlags );
     }
     return aReturn;
 }
@@ -598,16 +520,10 @@ void SAL_CALL BibInterceptorHelper::setMasterDispatchProvider( const css::uno::R
 }
 
 
-#define STR_UID "uid"
-OUString const gGridName("theGrid");
-OUString const gViewName("theView");
-OUString const gGlobalName("theGlobals");
-OUString const gBeamerSize("theBeamerSize");
-OUString const gViewSize("theViewSize");
+OUStringLiteral const gGridName("theGrid");
 
 BibDataManager::BibDataManager()
     :BibDataManager_Base( GetMutex() )
-    ,m_pInterceptorHelper( nullptr )
     ,m_aLoadListeners(m_aMutex)
     ,pBibView( nullptr )
     ,pToolbar(nullptr)
@@ -624,7 +540,6 @@ BibDataManager::~BibDataManager()
     {
         Reference< XComponent >  xConnection;
         xPrSet->getPropertyValue("ActiveConnection") >>= xConnection;
-        RemoveMeAsUidListener();
         if (xLoad.is())
             xLoad->unload();
         if (xComp.is())
@@ -633,11 +548,10 @@ BibDataManager::~BibDataManager()
             xConnection->dispose();
         m_xForm = nullptr;
     }
-    if( m_pInterceptorHelper )
+    if( m_xInterceptorHelper.is() )
     {
-        m_pInterceptorHelper->ReleaseInterceptor();
-        m_pInterceptorHelper->release();
-        m_pInterceptorHelper = nullptr;
+        m_xInterceptorHelper->ReleaseInterceptor();
+        m_xInterceptorHelper.clear();
     }
 }
 
@@ -652,11 +566,9 @@ void BibDataManager::InsertFields(const Reference< XFormComponent > & _rxGrid)
         // remove the old fields
         if ( xColContainer->hasElements() )
         {
-            Sequence< OUString > aNames = xColContainer->getElementNames();
-            const OUString* pNames = aNames.getConstArray();
-            const OUString* pNamesEnd = pNames + aNames.getLength();
-            for ( ; pNames != pNamesEnd; ++pNames )
-                xColContainer->removeByName( *pNames );
+            const Sequence<OUString> aOldNames = xColContainer->getElementNames();
+            for ( const OUString& rName : aOldNames )
+                xColContainer->removeByName( rName );
         }
 
         Reference< XNameAccess >  xFields = getColumns( m_xForm );
@@ -667,20 +579,16 @@ void BibDataManager::InsertFields(const Reference< XFormComponent > & _rxGrid)
 
         Reference< XPropertySet >  xField;
 
-        Sequence< OUString > aFields( xFields->getElementNames() );
-        const OUString* pFields = aFields.getConstArray();
-        const OUString* pFieldsEnd = pFields + aFields.getLength();
-
-        for ( ; pFields != pFieldsEnd; ++pFields )
+        const Sequence<OUString> aFieldNames = xFields->getElementNames();
+        for ( const OUString& rField : aFieldNames )
         {
-            xFields->getByName( *pFields ) >>= xField;
+            xFields->getByName( rField ) >>= xField;
 
             OUString sCurrentModelType;
-            const OUString sType("Type");
             sal_Int32 nType = 0;
             bool bIsFormatted           = false;
             bool bFormattedIsNumeric    = true;
-            xField->getPropertyValue(sType) >>= nType;
+            xField->getPropertyValue("Type") >>= nType;
             switch(nType)
             {
                 case DataType::BIT:
@@ -700,7 +608,7 @@ void BibDataManager::InsertFields(const Reference< XFormComponent > & _rxGrid)
                 case DataType::CHAR:
                 case DataType::CLOB:
                     bFormattedIsNumeric = false;
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
                 default:
                     sCurrentModelType = "FormattedField";
                     bIsFormatted = true;
@@ -715,11 +623,11 @@ void BibDataManager::InsertFields(const Reference< XFormComponent > & _rxGrid)
                 Any aFormatted(bFormattedIsNumeric);
                 xCurrentCol->setPropertyValue("TreatAsNumber", aFormatted);
             }
-            Any aColName = makeAny( *pFields );
+            Any aColName = makeAny( rField );
             xCurrentCol->setPropertyValue(FM_PROP_CONTROLSOURCE,    aColName);
             xCurrentCol->setPropertyValue(FM_PROP_LABEL, aColName);
 
-            xColContainer->insertByName( *pFields, makeAny( xCurrentCol ) );
+            xColContainer->insertByName( rField, makeAny( xCurrentCol ) );
         }
     }
     catch (const Exception&)
@@ -775,13 +683,13 @@ Reference< XForm >  BibDataManager::createDatabaseForm(BibDBDescriptor& rDesc)
         if(aPropertySet.is())
         {
             Any aVal;
-            aVal <<= (sal_Int32)ResultSetType::SCROLL_INSENSITIVE;
+            aVal <<= sal_Int32(ResultSetType::SCROLL_INSENSITIVE);
             aPropertySet->setPropertyValue("ResultSetType",aVal );
-            aVal <<= (sal_Int32)ResultSetConcurrency::READ_ONLY;
+            aVal <<= sal_Int32(ResultSetConcurrency::READ_ONLY);
             aPropertySet->setPropertyValue("ResultSetConcurrency", aVal);
 
             //Caching for Performance
-            aVal <<= (sal_Int32)50;
+            aVal <<= sal_Int32(50);
             aPropertySet->setPropertyValue("FetchSize", aVal);
 
             Reference< XConnection >    xConnection = getConnection(rDesc.sDataSource);
@@ -796,14 +704,13 @@ Reference< XForm >  BibDataManager::createDatabaseForm(BibDBDescriptor& rDesc)
             if (xTables.is())
                 aTableNameSeq = xTables->getElementNames();
 
-            if(aTableNameSeq.getLength() > 0)
+            if(aTableNameSeq.hasElements())
             {
-                const OUString* pTableNames = aTableNameSeq.getConstArray();
                 if(!rDesc.sTableOrQuery.isEmpty())
                     aActiveDataTable = rDesc.sTableOrQuery;
                 else
                 {
-                    rDesc.sTableOrQuery = aActiveDataTable = pTableNames[0];
+                    rDesc.sTableOrQuery = aActiveDataTable = aTableNameSeq[0];
                     rDesc.nCommandType = CommandType::TABLE;
                 }
 
@@ -843,7 +750,7 @@ Reference< XForm >  BibDataManager::createDatabaseForm(BibDBDescriptor& rDesc)
     return xResult;
 }
 
-Sequence< OUString > BibDataManager::getDataSources()
+Sequence< OUString > BibDataManager::getDataSources() const
 {
     Sequence< OUString > aTableNameSeq;
 
@@ -880,13 +787,13 @@ void BibDataManager::setFilter(const OUString& rQuery)
     }
     catch (const Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("extensions.biblio");
     }
 
 
 }
 
-OUString BibDataManager::getFilter()
+OUString BibDataManager::getFilter() const
 {
 
     OUString aQueryString;
@@ -897,7 +804,7 @@ OUString BibDataManager::getFilter()
     }
     catch (const Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("extensions.biblio");
     }
 
 
@@ -905,7 +812,7 @@ OUString BibDataManager::getFilter()
 
 }
 
-Sequence< OUString > BibDataManager::getQueryFields()
+Sequence< OUString > BibDataManager::getQueryFields() const
 {
     Sequence< OUString > aFieldSeq;
     Reference< XNameAccess >  xFields = getColumns( m_xForm );
@@ -914,17 +821,16 @@ Sequence< OUString > BibDataManager::getQueryFields()
     return aFieldSeq;
 }
 
-OUString BibDataManager::getQueryField()
+OUString BibDataManager::getQueryField() const
 {
     BibConfig* pConfig = BibModul::GetConfig();
     OUString aFieldString = pConfig->getQueryField();
     if(aFieldString.isEmpty())
     {
-        Sequence< OUString > aSeq = getQueryFields();
-        const OUString* pFields = aSeq.getConstArray();
-        if(aSeq.getLength()>0)
+        const Sequence< OUString > aSeq = getQueryFields();
+        if(aSeq.hasElements())
         {
-            aFieldString=pFields[0];
+            aFieldString=aSeq[0];
         }
     }
     return aFieldString;
@@ -940,13 +846,9 @@ void BibDataManager::startQueryWith(const OUString& rQuery)
     {
         aQueryString=aQuoteChar;
         aQueryString+=getQueryField();
-        aQueryString+=aQuoteChar;
-        aQueryString+=" like '";
-        OUString sQuery(rQuery);
-        sQuery = sQuery.replaceAll("?","_");
-        sQuery = sQuery.replaceAll("*","%");
-        aQueryString += sQuery;
-        aQueryString+="%'";
+        aQueryString+=aQuoteChar + " like '";
+        OUString sQuery = rQuery.replaceAll("?","_").replaceAll("*","%");
+        aQueryString += sQuery + "%'";
     }
     setFilter(aQueryString);
 }
@@ -957,78 +859,77 @@ void BibDataManager::setActiveDataSource(const OUString& rURL)
     aDataSourceURL = rURL;
 
     Reference< XPropertySet >  aPropertySet( m_xForm, UNO_QUERY );
-    if(aPropertySet.is())
+    if(!aPropertySet.is())
+        return;
+
+    unload();
+
+    Reference< XComponent >  xOldConnection;
+    aPropertySet->getPropertyValue("ActiveConnection") >>= xOldConnection;
+
+    Reference< XConnection >    xConnection = getConnection(rURL);
+    if(!xConnection.is())
     {
-        unload();
-
-        Reference< XComponent >  xOldConnection;
-        aPropertySet->getPropertyValue("ActiveConnection") >>= xOldConnection;
-
-        Reference< XConnection >    xConnection = getConnection(rURL);
-        if(!xConnection.is())
-        {
-            aDataSourceURL = sTmp;
-            return;
-        }
-        Any aVal; aVal <<= xConnection;
-        aPropertySet->setPropertyValue("ActiveConnection", aVal);
-        Reference< XMultiServiceFactory >   xFactory(xConnection, UNO_QUERY);
-        if ( xFactory.is() )
-            m_xParser.set( xFactory->createInstance("com.sun.star.sdb.SingleSelectQueryComposer"), UNO_QUERY );
-
-        if(xOldConnection.is())
-            xOldConnection->dispose();
-
-        Sequence< OUString > aTableNameSeq;
-        Reference< XTablesSupplier >  xSupplyTables(xConnection, UNO_QUERY);
-        if(xSupplyTables.is())
-        {
-            Reference< XNameAccess >  xAccess = xSupplyTables->getTables();
-            aTableNameSeq = xAccess->getElementNames();
-        }
-        if(aTableNameSeq.getLength() > 0)
-        {
-            const OUString* pTableNames = aTableNameSeq.getConstArray();
-            aActiveDataTable = pTableNames[0];
-            aVal <<= aActiveDataTable;
-            aPropertySet->setPropertyValue("Command", aVal);
-            aPropertySet->setPropertyValue("CommandType", makeAny(CommandType::TABLE));
-            //Caching for Performance
-            aVal <<= (sal_Int32)50;
-            aPropertySet->setPropertyValue("FetchSize", aVal);
-            OUString aString("SELECT * FROM ");
-            // quote the table name which may contain catalog.schema.table
-            Reference<XDatabaseMetaData> xMetaData(xConnection->getMetaData(),UNO_QUERY);
-            aQuoteChar = xMetaData->getIdentifierQuoteString();
-
-            OUString sCatalog, sSchema, sName;
-            ::dbtools::qualifiedNameComponents( xMetaData, aActiveDataTable, sCatalog, sSchema, sName, ::dbtools::EComposeRule::InDataManipulation );
-            aString += ::dbtools::composeTableNameForSelect( xConnection, sCatalog, sSchema, sName );
-
-            m_xParser->setElementaryQuery(aString);
-            BibConfig* pConfig = BibModul::GetConfig();
-            pConfig->setQueryField(getQueryField());
-            startQueryWith(pConfig->getQueryText());
-            setActiveDataTable(aActiveDataTable);
-        }
-        FeatureStateEvent aEvent;
-        util::URL aURL;
-        aEvent.IsEnabled  = true;
-        aEvent.Requery    = false;
-        aEvent.FeatureDescriptor = getActiveDataTable();
-
-        aEvent.State <<= getDataSources();
-
-        if(pToolbar)
-        {
-            aURL.Complete =".uno:Bib/source";
-            aEvent.FeatureURL = aURL;
-            pToolbar->statusChanged( aEvent );
-        }
-
-        updateGridModel();
-        load();
+        aDataSourceURL = sTmp;
+        return;
     }
+    Any aVal; aVal <<= xConnection;
+    aPropertySet->setPropertyValue("ActiveConnection", aVal);
+    Reference< XMultiServiceFactory >   xFactory(xConnection, UNO_QUERY);
+    if ( xFactory.is() )
+        m_xParser.set( xFactory->createInstance("com.sun.star.sdb.SingleSelectQueryComposer"), UNO_QUERY );
+
+    if(xOldConnection.is())
+        xOldConnection->dispose();
+
+    Sequence< OUString > aTableNameSeq;
+    Reference< XTablesSupplier >  xSupplyTables(xConnection, UNO_QUERY);
+    if(xSupplyTables.is())
+    {
+        Reference< XNameAccess >  xAccess = xSupplyTables->getTables();
+        aTableNameSeq = xAccess->getElementNames();
+    }
+    if(aTableNameSeq.hasElements())
+    {
+        aActiveDataTable = aTableNameSeq[0];
+        aVal <<= aActiveDataTable;
+        aPropertySet->setPropertyValue("Command", aVal);
+        aPropertySet->setPropertyValue("CommandType", makeAny(CommandType::TABLE));
+        //Caching for Performance
+        aVal <<= sal_Int32(50);
+        aPropertySet->setPropertyValue("FetchSize", aVal);
+        OUString aString("SELECT * FROM ");
+        // quote the table name which may contain catalog.schema.table
+        Reference<XDatabaseMetaData> xMetaData = xConnection->getMetaData();
+        aQuoteChar = xMetaData->getIdentifierQuoteString();
+
+        OUString sCatalog, sSchema, sName;
+        ::dbtools::qualifiedNameComponents( xMetaData, aActiveDataTable, sCatalog, sSchema, sName, ::dbtools::EComposeRule::InDataManipulation );
+        aString += ::dbtools::composeTableNameForSelect( xConnection, sCatalog, sSchema, sName );
+
+        m_xParser->setElementaryQuery(aString);
+        BibConfig* pConfig = BibModul::GetConfig();
+        pConfig->setQueryField(getQueryField());
+        startQueryWith(pConfig->getQueryText());
+        setActiveDataTable(aActiveDataTable);
+    }
+    FeatureStateEvent aEvent;
+    util::URL aURL;
+    aEvent.IsEnabled  = true;
+    aEvent.Requery    = false;
+    aEvent.FeatureDescriptor = getActiveDataTable();
+
+    aEvent.State <<= getDataSources();
+
+    if(pToolbar)
+    {
+        aURL.Complete =".uno:Bib/source";
+        aEvent.FeatureURL = aURL;
+        pToolbar->statusChanged( aEvent );
+    }
+
+    updateGridModel();
+    load();
 }
 
 
@@ -1107,7 +1008,6 @@ void SAL_CALL BibDataManager::load(  )
     if ( xFormAsLoadable.is() )
     {
         xFormAsLoadable->load();
-        SetMeAsUidListener();
 
         EventObject aEvt( static_cast< XWeak* >( this ) );
         m_aLoadListeners.notifyEach( &XLoadListener::loaded, aEvt );
@@ -1123,20 +1023,19 @@ void SAL_CALL BibDataManager::unload(  )
 
     Reference< XLoadable >xFormAsLoadable( m_xForm, UNO_QUERY );
     DBG_ASSERT( xFormAsLoadable.is() || !m_xForm.is(), "BibDataManager::unload: invalid form!");
-    if ( xFormAsLoadable.is() )
+    if ( !xFormAsLoadable.is() )
+        return;
+
+    EventObject aEvt( static_cast< XWeak* >( this ) );
+
     {
-        EventObject aEvt( static_cast< XWeak* >( this ) );
+        m_aLoadListeners.notifyEach( &XLoadListener::unloading, aEvt );
+    }
 
-        {
-            m_aLoadListeners.notifyEach( &XLoadListener::unloading, aEvt );
-        }
+    xFormAsLoadable->unload();
 
-        RemoveMeAsUidListener();
-        xFormAsLoadable->unload();
-
-        {
-            m_aLoadListeners.notifyEach( &XLoadListener::unloaded, aEvt );
-        }
+    {
+        m_aLoadListeners.notifyEach( &XLoadListener::unloaded, aEvt );
     }
 }
 
@@ -1149,19 +1048,19 @@ void SAL_CALL BibDataManager::reload(  )
 
     Reference< XLoadable >xFormAsLoadable( m_xForm, UNO_QUERY );
     DBG_ASSERT( xFormAsLoadable.is() || !m_xForm.is(), "BibDataManager::unload: invalid form!");
-    if ( xFormAsLoadable.is() )
+    if ( !xFormAsLoadable.is() )
+        return;
+
+    EventObject aEvt( static_cast< XWeak* >( this ) );
+
     {
-        EventObject aEvt( static_cast< XWeak* >( this ) );
+        m_aLoadListeners.notifyEach( &XLoadListener::reloading, aEvt );
+    }
 
-        {
-            m_aLoadListeners.notifyEach( &XLoadListener::reloading, aEvt );
-        }
+    xFormAsLoadable->reload();
 
-        xFormAsLoadable->reload();
-
-        {
-            m_aLoadListeners.notifyEach( &XLoadListener::reloaded, aEvt );
-        }
+    {
+        m_aLoadListeners.notifyEach( &XLoadListener::reloaded, aEvt );
     }
 }
 
@@ -1206,8 +1105,7 @@ Reference< awt::XControlModel > BibDataManager::createGridModel(const OUString& 
         xPropSet->setPropertyValue( "Name", makeAny( rName ) );
 
         // set the name of the to-be-created control
-        OUString aControlName("com.sun.star.form.control.InteractionGridControl");
-        Any aAny; aAny <<= aControlName;
+        Any aAny(OUString("com.sun.star.form.control.InteractionGridControl"));
         xPropSet->setPropertyValue( "DefaultControl",aAny );
 
         // the helpURL
@@ -1270,8 +1168,7 @@ Reference< awt::XControlModel > BibDataManager::loadControlModel(
                     const OUString& rName, bool bForceListBox)
 {
     Reference< awt::XControlModel > xModel;
-    OUString aName("View_");
-    aName += rName;
+    OUString aName = "View_" + rName;
 
     try
     {
@@ -1287,9 +1184,8 @@ Reference< awt::XControlModel > BibDataManager::loadControlModel(
             aElement = xFields->getByName(rName);
             aElement >>= xField;
 
-            const OUString sType("Type");
             sal_Int32 nFormatKey = 0;
-            xField->getPropertyValue(sType) >>= nFormatKey;
+            xField->getPropertyValue("Type") >>= nFormatKey;
 
             OUString aInstanceName("com.sun.star.form.component.");
 
@@ -1313,7 +1209,7 @@ Reference< awt::XControlModel > BibDataManager::loadControlModel(
                 uno::Any aAny;
 
                 //uno::Reference< beans::XPropertySet >  xPropSet(xControl, UNO_QUERY);
-                aAny <<= (sal_Int16)1;
+                aAny <<= sal_Int16(1);
                 xPropSet->setPropertyValue("BoundColumn", aAny);
                 aAny <<= ListSourceType_VALUELIST;
                 xPropSet->setPropertyValue("ListSourceType", aAny);
@@ -1397,143 +1293,22 @@ Reference< awt::XControlModel > BibDataManager::loadControlModel(
     return xModel;
 }
 
-void SAL_CALL BibDataManager::disposing()
+void BibDataManager::CreateMappingDialog(weld::Window* pParent)
 {
-    BibDataManager_Base::WeakComponentImplHelperBase::disposing();
-}
-
-
-void BibDataManager::disposing( const EventObject& /*Source*/ )
-{
-    // not interested in
-}
-
-
-void BibDataManager::propertyChange(const beans::PropertyChangeEvent& evt)
-{
-    try
-    {
-        if(evt.PropertyName == FM_PROP_VALUE)
-        {
-            if( evt.NewValue.getValueType() == cppu::UnoType<io::XInputStream>::get())
-            {
-                Reference< io::XDataInputStream >  xStream(
-                    evt.NewValue, UNO_QUERY );
-                aUID <<= xStream->readUTF();
-            }
-            else
-                aUID = evt.NewValue;
-
-            Reference< XRowLocate > xLocate(xBibCursor, UNO_QUERY);
-            DBG_ASSERT(xLocate.is(), "BibDataManager::propertyChange : invalid cursor !");
-            xLocate->moveToBookmark(aUID);
-        }
-    }
-    catch (const Exception&)
-    {
-        OSL_FAIL("::propertyChange: something went wrong !");
-    }
-}
-
-
-void BibDataManager::SetMeAsUidListener()
-{
-    try
-    {
-        Reference< XNameAccess >  xFields = getColumns( m_xForm );
-        if (!xFields.is())
-            return;
-
-        Sequence< OUString > aFields(xFields->getElementNames());
-        const OUString* pFields = aFields.getConstArray();
-        sal_Int32 nCount=aFields.getLength();
-        OUString theFieldName;
-        for( sal_Int32 i=0; i<nCount; i++ )
-        {
-            const OUString& rName = pFields[i];
-
-            if (rName.equalsIgnoreAsciiCase(STR_UID))
-            {
-                theFieldName=pFields[i];
-                break;
-            }
-        }
-
-        if(!theFieldName.isEmpty())
-        {
-            Any aElement;
-
-            aElement = xFields->getByName(theFieldName);
-            auto xPropSet = o3tl::doAccess<Reference<XPropertySet>>(aElement);
-
-            (*xPropSet)->addPropertyChangeListener(FM_PROP_VALUE, this);
-        }
-
-    }
-    catch (const Exception&)
-    {
-        OSL_FAIL("Exception in BibDataManager::SetMeAsUidListener");
-    }
-}
-
-
-void BibDataManager::RemoveMeAsUidListener()
-{
-    try
-    {
-        Reference< XNameAccess >  xFields = getColumns( m_xForm );
-        if (!xFields.is())
-            return;
-
-
-        Sequence< OUString > aFields(xFields->getElementNames());
-        const OUString* pFields = aFields.getConstArray();
-        sal_Int32 nCount=aFields.getLength();
-        OUString theFieldName;
-        for( sal_Int32 i=0; i<nCount; i++ )
-        {
-            const OUString& rName = pFields[i];
-
-            if (rName.equalsIgnoreAsciiCase(STR_UID))
-            {
-                theFieldName=pFields[i];
-                break;
-            }
-        }
-
-        if(!theFieldName.isEmpty())
-        {
-            Any aElement;
-
-            aElement = xFields->getByName(theFieldName);
-            auto xPropSet = o3tl::doAccess<Reference<XPropertySet>>(aElement);
-
-            (*xPropSet)->removePropertyChangeListener(FM_PROP_VALUE, this);
-        }
-
-    }
-    catch (const Exception&)
-    {
-        OSL_FAIL("Exception in BibDataManager::RemoveMeAsUidListener");
-    }
-}
-
-void BibDataManager::CreateMappingDialog(vcl::Window* pParent)
-{
-    VclPtrInstance< MappingDialog_Impl > pDlg(pParent, this);
-    if(RET_OK == pDlg->Execute() && pBibView)
+    MappingDialog_Impl aDlg(pParent, this);
+    if (RET_OK == aDlg.run() && pBibView)
     {
         reload();
     }
 }
 
-OUString BibDataManager::CreateDBChangeDialog(vcl::Window* pParent)
+OUString BibDataManager::CreateDBChangeDialog(weld::Window* pParent)
 {
     OUString uRet;
-    VclPtrInstance< DBChangeDialog_Impl > pDlg(pParent, this );
-    if(RET_OK == pDlg->Execute())
+    DBChangeDialog_Impl aDlg(pParent, this);
+    if (aDlg.run() == RET_OK)
     {
-        OUString sNewURL = pDlg->GetCurrentURL();
+        OUString sNewURL = aDlg.GetCurrentURL();
         if(sNewURL != getActiveDataSource())
         {
             uRet = sNewURL;
@@ -1593,18 +1368,16 @@ uno::Reference< form::runtime::XFormController > const & BibDataManager::GetForm
     return m_xFormCtrl;
 }
 
-void BibDataManager::RegisterInterceptor( ::bib::BibBeamer* pBibBeamer)
+void BibDataManager::RegisterInterceptor( const ::bib::BibBeamer* pBibBeamer)
 {
-    DBG_ASSERT( !m_pInterceptorHelper, "BibDataManager::RegisterInterceptor: called twice!" );
+    DBG_ASSERT( !m_xInterceptorHelper.is(), "BibDataManager::RegisterInterceptor: called twice!" );
 
     if( pBibBeamer )
-        m_pInterceptorHelper = new BibInterceptorHelper( pBibBeamer, m_xFormDispatch);
-    if( m_pInterceptorHelper )
-        m_pInterceptorHelper->acquire();
+        m_xInterceptorHelper = new BibInterceptorHelper( pBibBeamer, m_xFormDispatch);
 }
 
 
-bool BibDataManager::HasActiveConnection()
+bool BibDataManager::HasActiveConnection() const
 {
     return getConnection( m_xForm ).is();
 }

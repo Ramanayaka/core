@@ -65,12 +65,13 @@
 
 #include <memory>
 #include "lwpcontent.hxx"
+#include "lwphyperlinkmgr.hxx"
 
 class LwpPageLayout;
-class LwpStory: public LwpContent
+class LwpStory final : public LwpContent
 {
 public:
-    LwpStory(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpStory(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpStory() override;
 private:
     //File format members:
@@ -93,7 +94,6 @@ private:
 
     rtl::Reference<XFContentContainer> m_xXFContainer;
 
-protected:
     void Read() override;
     void XFConvertFrameInCell(XFContentContainer* pCont);
     void XFConvertFrameInFrame(XFContentContainer* pCont);
@@ -109,20 +109,19 @@ public:
      XFContentContainer* GetXFContent();
     void AddXFContent(XFContent* pContent);
 
-    bool GetDropcapFlag() { return m_bDropcap; }
+    bool GetDropcapFlag() const { return m_bDropcap; }
     LwpPageLayout* GetCurrentLayout() { return m_pCurrentLayout; }
     inline LwpMiddleLayout* GetTabLayout();//for register tab style
-    const OUString& GetSectionName() { return m_CurrSectionName; }
+    const OUString& GetSectionName() const { return m_CurrSectionName; }
     LwpHyperlinkMgr* GetHyperlinkMgr() { return m_pHyperlinkMgr.get(); }
 
-    bool IsPMModified() { return m_bPMModified; }
+    bool IsPMModified() const { return m_bPMModified; }
     inline void SetPMModified(bool bPMModified);
     inline void SetDropcapFlag(bool bFlag);
     inline void SetTabLayout(LwpLayout* pLayout);
     inline void SetSectionName(const OUString& StyleName);
 
     void SetCurrentLayout(LwpPageLayout* pPageLayout);
-    void AddPageLayout(LwpPageLayout* pObject);
     LwpPageLayout* GetNextPageLayout();
     bool IsNeedSection();
     void SortPageLayout();

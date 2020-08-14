@@ -7,8 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <BufferedStreamSocket.hxx>
+#include "BufferedStreamSocket.hxx"
 
+#include <osl/socket.hxx>
+#include <sal/log.hxx>
 #include <algorithm>
 
 #ifdef _WIN32
@@ -63,7 +65,7 @@ sal_Int32 BufferedStreamSocket::write( const void* pBuffer, sal_uInt32 n )
 #else
             pBuffer,
 #endif
-            (size_t) n, 0 );
+            static_cast<size_t>(n), 0 );
 }
 
 void BufferedStreamSocket::close()
@@ -117,7 +119,7 @@ sal_Int32 BufferedStreamSocket::readLine( OString& aLine )
         // Prevent buffer from growing massively large.
         if ( aRead > MAX_LINE_LENGTH )
         {
-            aBuffer.erase( aBuffer.begin(), aBuffer.end() );
+            aBuffer.clear();
             return 0;
         }
         aRead += aRet;

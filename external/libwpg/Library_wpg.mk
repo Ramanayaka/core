@@ -16,7 +16,7 @@ $(eval $(call gb_Library_use_externals,wpg,\
 	wpd \
 ))
 
-$(eval $(call gb_Library_set_warnings_not_errors,wpg))
+$(eval $(call gb_Library_set_warnings_disabled,wpg))
 
 $(eval $(call gb_Library_set_include,wpg,\
     -I$(call gb_UnpackedTarball_get_dir,libwpg)/inc \
@@ -39,6 +39,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,wpg,\
 	UnpackedTarball/libwpg/src/lib/WPGColor \
 	UnpackedTarball/libwpg/src/lib/WPGDashArray \
 	UnpackedTarball/libwpg/src/lib/WPGHeader \
+	UnpackedTarball/libwpg/src/lib/WPGTextDataHandler \
 	UnpackedTarball/libwpg/src/lib/WPGXParser \
 	UnpackedTarball/libwpg/src/lib/WPGraphics \
 	UnpackedTarball/libwpg/src/lib/libwpg_utils \

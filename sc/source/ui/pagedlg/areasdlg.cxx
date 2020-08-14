@@ -19,22 +19,21 @@
 
 #include <rangelst.hxx>
 
-#include <comphelper/string.hxx>
 #include <sfx2/dispatch.hxx>
 #include <svl/stritem.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <unotools/charclass.hxx>
-#include <stdlib.h>
 
-#include "areasdlg.hxx"
-#include "scresid.hxx"
-#include "rangenam.hxx"
-#include "reffact.hxx"
-#include "tabvwsh.hxx"
-#include "docsh.hxx"
-#include "globstr.hrc"
-#include "compiler.hxx"
-#include "markdata.hxx"
+#include <areasdlg.hxx>
+#include <rangenam.hxx>
+#include <reffact.hxx>
+#include <tabvwsh.hxx>
+#include <docsh.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <compiler.hxx>
+#include <markdata.hxx>
 
 // List box positions for print range (PR)
 enum {
@@ -51,12 +50,21 @@ enum {
 };
 
 #define HDL(hdl)            LINK( this, ScPrintAreasDlg, hdl )
-#define ERRORBOX(nId)       ScopedVclPtrInstance<MessageDialog>(this, ScGlobal::GetRscString(nId))->Execute()
+namespace
+{
+    void ERRORBOX(weld::Window* pParent, const char* rId)
+    {
+        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pParent,
+                                                  VclMessageType::Warning, VclButtonsType::Ok,
+                                                  ScResId(rId)));
+        xBox->run();
+    }
+}
 
 // global functions (->at the end of the file):
 
-static bool lcl_CheckRepeatString( const OUString& rStr, ScDocument* pDoc, bool bIsRow, ScRange* pRange );
-static void lcl_GetRepeatRangeString( const ScRange* pRange, ScDocument* pDoc, bool bIsRow, OUString& rStr );
+static bool lcl_CheckRepeatString( const OUString& rStr, const ScDocument& rDoc, bool bIsRow, ScRange* pRange );
+static void lcl_GetRepeatRangeString( const ScRange* pRange, const ScDocument& rDoc, bool bIsRow, OUString& rStr );
 
 #if 0
 // this method is useful when debugging address flags.
@@ -85,41 +93,44 @@ static void printAddressFlags(ScRefFlags nFlag)
 }
 #endif
 
-//  class ScPrintAreasDlg
 
-ScPrintAreasDlg::ScPrintAreasDlg( SfxBindings* pB, SfxChildWindow* pCW, vcl::Window* pParent )
-    : ScAnyRefDlg(pB, pCW, pParent, "PrintAreasDialog", "modules/scalc/ui/printareasdialog.ui")
+ScPrintAreasDlg::ScPrintAreasDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent)
+    : ScAnyRefDlgController(pB, pCW, pParent, "modules/scalc/ui/printareasdialog.ui", "PrintAreasDialog")
     , bDlgLostFocus(false)
     , pDoc(nullptr)
     , pViewData(nullptr)
     , nCurTab(0)
+    , m_xLbPrintArea(m_xBuilder->weld_combo_box("lbprintarea"))
+    , m_xEdPrintArea(new formula::RefEdit(m_xBuilder->weld_entry("edprintarea")))
+    , m_xRbPrintArea(new formula::RefButton(m_xBuilder->weld_button("rbprintarea")))
+    , m_xLbRepeatRow(m_xBuilder->weld_combo_box("lbrepeatrow"))
+    , m_xEdRepeatRow(new formula::RefEdit(m_xBuilder->weld_entry("edrepeatrow")))
+    , m_xRbRepeatRow(new formula::RefButton(m_xBuilder->weld_button("rbrepeatrow")))
+    , m_xLbRepeatCol(m_xBuilder->weld_combo_box("lbrepeatcol"))
+    , m_xEdRepeatCol(new formula::RefEdit(m_xBuilder->weld_entry("edrepeatcol")))
+    , m_xRbRepeatCol(new formula::RefButton(m_xBuilder->weld_button("rbrepeatcol")))
+    , m_xBtnOk(m_xBuilder->weld_button("ok"))
+    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
+    , m_xPrintFrame(m_xBuilder->weld_frame("printframe"))
+    , m_xRowFrame(m_xBuilder->weld_frame("rowframe"))
+    , m_xColFrame(m_xBuilder->weld_frame("colframe"))
+    , m_xPrintFrameFT(m_xPrintFrame->weld_label_widget())
+    , m_xRowFrameFT(m_xRowFrame->weld_label_widget())
+    , m_xColFrameFT(m_xColFrame->weld_label_widget())
 {
-    get(pLbPrintArea,"lbprintarea");
-    get(pEdPrintArea,"edprintarea");
-    pEdPrintArea->SetReferences(this, get<VclFrame>("printframe")->get_label_widget());
-    pRefInputEdit = pEdPrintArea;
-    get(pRbPrintArea,"rbprintarea");
-    pRbPrintArea->SetReferences(this, pEdPrintArea);
+    m_xEdPrintArea->SetReferences(this, m_xPrintFrameFT.get());
+    m_pRefInputEdit = m_xEdPrintArea.get();
+    m_xRbPrintArea->SetReferences(this, m_xEdPrintArea.get());
 
-    get(pLbRepeatRow,"lbrepeatrow");
-    get(pEdRepeatRow,"edrepeatrow");
-    pEdRepeatRow->SetReferences(this, get<VclFrame>("rowframe")->get_label_widget());
-    get(pRbRepeatRow,"rbrepeatrow");
-    pRbRepeatRow->SetReferences(this, pEdRepeatRow);
+    m_xEdRepeatRow->SetReferences(this, m_xRowFrameFT.get());
+    m_xRbRepeatRow->SetReferences(this, m_xEdRepeatRow.get());
 
-    get(pLbRepeatCol,"lbrepeatcol");
-    get(pEdRepeatCol,"edrepeatcol");
-    pEdRepeatCol->SetReferences(this, get<VclFrame>("colframe")->get_label_widget());
-    get(pRbRepeatCol,"rbrepeatcol");
-    pRbRepeatCol->SetReferences(this, pEdRepeatCol);
-
-    get(pBtnOk,"ok");
-    get(pBtnCancel,"cancel");
+    m_xEdRepeatCol->SetReferences(this, m_xColFrameFT.get());
+    m_xRbRepeatCol->SetReferences(this, m_xEdRepeatCol.get());
 
     ScTabViewShell* pScViewSh = dynamic_cast<ScTabViewShell*>( SfxViewShell::Current()  );
-    ScDocShell*     pScDocSh  = dynamic_cast<ScDocShell*>(     SfxObjectShell::Current()  );
-
-    OSL_ENSURE( pScDocSh, "Current DocumentShell not found :-(" );
+    ScDocShell* pScDocSh = dynamic_cast<ScDocShell*>(SfxObjectShell::Current());
+    assert(pScDocSh && "Current DocumentShell not found :-(");
 
     pDoc = &pScDocSh->GetDocument();
 
@@ -137,38 +148,11 @@ ScPrintAreasDlg::ScPrintAreasDlg( SfxBindings* pB, SfxChildWindow* pCW, vcl::Win
 
 ScPrintAreasDlg::~ScPrintAreasDlg()
 {
-    disposeOnce();
 }
 
-void ScPrintAreasDlg::dispose()
+void ScPrintAreasDlg::Close()
 {
-    // clean extra data of ListBox entries
-    ListBox* aLb[3] = { pLbPrintArea, pLbRepeatRow, pLbRepeatCol };
-
-    for (ListBox* pBox : aLb)
-    {
-        const sal_Int32 nCount = pBox->GetEntryCount();
-        for ( sal_Int32 j=0; j<nCount; j++ )
-            delete static_cast<OUString*>(pBox->GetEntryData(j));
-    }
-    pLbPrintArea.clear();
-    pEdPrintArea.clear();
-    pRbPrintArea.clear();
-    pLbRepeatRow.clear();
-    pEdRepeatRow.clear();
-    pRbRepeatRow.clear();
-    pLbRepeatCol.clear();
-    pEdRepeatCol.clear();
-    pRbRepeatCol.clear();
-    pBtnOk.clear();
-    pBtnCancel.clear();
-    pRefInputEdit.clear();
-    ScAnyRefDlg::dispose();
-}
-
-bool ScPrintAreasDlg::Close()
-{
-    return DoClose( ScPrintAreasDlgWrapper::GetChildWindowId() );
+    DoClose( ScPrintAreasDlgWrapper::GetChildWindowId() );
 }
 
 bool ScPrintAreasDlg::IsTableLocked() const
@@ -179,49 +163,49 @@ bool ScPrintAreasDlg::IsTableLocked() const
     return true;
 }
 
-void ScPrintAreasDlg::SetReference( const ScRange& rRef, ScDocument* /* pDoc */ )
+void ScPrintAreasDlg::SetReference( const ScRange& rRef, ScDocument& /* rDoc */ )
 {
-    if ( pRefInputEdit )
+    if ( !m_pRefInputEdit )
+        return;
+
+    if ( rRef.aStart != rRef.aEnd )
+        RefInputStart( m_pRefInputEdit );
+
+    OUString  aStr;
+    const formula::FormulaGrammar::AddressConvention eConv = pDoc->GetAddressConvention();
+
+    if (m_xEdPrintArea.get() == m_pRefInputEdit)
     {
-        if ( rRef.aStart != rRef.aEnd )
-            RefInputStart( pRefInputEdit );
-
-        OUString  aStr;
-        const formula::FormulaGrammar::AddressConvention eConv = pDoc->GetAddressConvention();
-
-        if ( pEdPrintArea == pRefInputEdit )
-        {
-            aStr = rRef.Format(ScRefFlags::RANGE_ABS, pDoc, eConv);
-            OUString aVal = pEdPrintArea->GetText();
-            Selection aSel = pEdPrintArea->GetSelection();
-            aSel.Justify();
-            aVal = aVal.replaceAt( aSel.Min(), aSel.Len(), aStr );
-            Selection aNewSel( aSel.Min(), aSel.Min()+aStr.getLength() );
-            pEdPrintArea->SetRefString( aVal );
-            pEdPrintArea->SetSelection( aNewSel );
-        }
-        else
-        {
-            bool bRow = ( pEdRepeatRow == pRefInputEdit );
-            lcl_GetRepeatRangeString(&rRef, pDoc, bRow, aStr);
-            pRefInputEdit->SetRefString( aStr );
-        }
-        Impl_ModifyHdl( *pRefInputEdit );
+        aStr = rRef.Format(*pDoc, ScRefFlags::RANGE_ABS, eConv);
+        OUString aVal = m_xEdPrintArea->GetText();
+        Selection aSel = m_xEdPrintArea->GetSelection();
+        aSel.Justify();
+        aVal = aVal.replaceAt( aSel.Min(), aSel.Len(), aStr );
+        Selection aNewSel( aSel.Min(), aSel.Min()+aStr.getLength() );
+        m_xEdPrintArea->SetRefString( aVal );
+        m_xEdPrintArea->SetSelection( aNewSel );
     }
+    else
+    {
+        bool bRow = ( m_xEdRepeatRow.get() == m_pRefInputEdit );
+        lcl_GetRepeatRangeString(&rRef, *pDoc, bRow, aStr);
+        m_pRefInputEdit->SetRefString( aStr );
+    }
+    Impl_ModifyHdl( *m_pRefInputEdit );
 }
 
 void ScPrintAreasDlg::AddRefEntry()
 {
-    if ( pRefInputEdit == pEdPrintArea )
+    if (m_pRefInputEdit == m_xEdPrintArea.get())
     {
         const sal_Unicode sep = ScCompiler::GetNativeSymbolChar(ocSep);
-        OUString aVal = pEdPrintArea->GetText() + OUStringLiteral1(sep);
-        pEdPrintArea->SetText(aVal);
+        OUString aVal = m_xEdPrintArea->GetText() + OUStringChar(sep);
+        m_xEdPrintArea->SetText(aVal);
 
         sal_Int32 nLen = aVal.getLength();
-        pEdPrintArea->SetSelection( Selection( nLen, nLen ) );
+        m_xEdPrintArea->SetSelection( Selection( nLen, nLen ) );
 
-        Impl_ModifyHdl( *pEdPrintArea );
+        Impl_ModifyHdl( *m_xEdPrintArea );
     }
 }
 
@@ -236,14 +220,14 @@ void ScPrintAreasDlg::SetActive()
     {
         bDlgLostFocus = false;
 
-        if ( pRefInputEdit )
+        if ( m_pRefInputEdit )
         {
-            pRefInputEdit->GrabFocus();
-            Impl_ModifyHdl( *pRefInputEdit );
+            m_pRefInputEdit->GrabFocus();
+            Impl_ModifyHdl( *m_pRefInputEdit );
         }
     }
     else
-        GrabFocus();
+        m_xDialog->grab_focus();
 
     RefInputDone();
 }
@@ -254,27 +238,26 @@ void ScPrintAreasDlg::Impl_Reset()
     const ScRange*  pRepeatColRange = pDoc->GetRepeatColRange( nCurTab );
     const ScRange*  pRepeatRowRange = pDoc->GetRepeatRowRange( nCurTab );
 
-    pEdPrintArea->SetModifyHdl   ( HDL(Impl_ModifyHdl) );
-    pEdRepeatRow->SetModifyHdl   ( HDL(Impl_ModifyHdl) );
-    pEdRepeatCol->SetModifyHdl   ( HDL(Impl_ModifyHdl) );
-    pEdPrintArea->SetGetFocusHdl( HDL(Impl_GetFocusHdl) );
-    pEdRepeatRow->SetGetFocusHdl( HDL(Impl_GetFocusHdl) );
-    pEdRepeatCol->SetGetFocusHdl( HDL(Impl_GetFocusHdl) );
-    pLbPrintArea->SetGetFocusHdl( HDL(Impl_GetFocusHdl) );
-    pLbRepeatRow->SetGetFocusHdl( HDL(Impl_GetFocusHdl) );
-    pLbRepeatCol->SetGetFocusHdl( HDL(Impl_GetFocusHdl) );
-    pLbPrintArea->SetSelectHdl   ( HDL(Impl_SelectHdl) );
-    pLbRepeatRow->SetSelectHdl   ( HDL(Impl_SelectHdl) );
-    pLbRepeatCol->SetSelectHdl   ( HDL(Impl_SelectHdl) );
-    pBtnOk->      SetClickHdl    ( HDL(Impl_BtnHdl)    );
-    pBtnCancel->  SetClickHdl    ( HDL(Impl_BtnHdl)    );
+    m_xEdPrintArea->SetModifyHdl   ( HDL(Impl_ModifyHdl) );
+    m_xEdRepeatRow->SetModifyHdl   ( HDL(Impl_ModifyHdl) );
+    m_xEdRepeatCol->SetModifyHdl   ( HDL(Impl_ModifyHdl) );
+    m_xEdPrintArea->SetGetFocusHdl( HDL(Impl_GetEditFocusHdl) );
+    m_xEdRepeatRow->SetGetFocusHdl( HDL(Impl_GetEditFocusHdl) );
+    m_xEdRepeatCol->SetGetFocusHdl( HDL(Impl_GetEditFocusHdl) );
+    m_xLbPrintArea->connect_focus_in( HDL(Impl_GetFocusHdl) );
+    m_xLbRepeatRow->connect_focus_in( HDL(Impl_GetFocusHdl) );
+    m_xLbRepeatCol->connect_focus_in( HDL(Impl_GetFocusHdl) );
+    m_xLbPrintArea->connect_changed( HDL(Impl_SelectHdl) );
+    m_xLbRepeatRow->connect_changed( HDL(Impl_SelectHdl) );
+    m_xLbRepeatCol->connect_changed( HDL(Impl_SelectHdl) );
+    m_xBtnOk->connect_clicked( HDL(Impl_BtnHdl)    );
+    m_xBtnCancel->connect_clicked( HDL(Impl_BtnHdl)    );
 
     Impl_FillLists();
 
     // printing area
 
     aStrRange.clear();
-    OUString aOne;
     const formula::FormulaGrammar::AddressConvention eConv = pDoc->GetAddressConvention();
     const sal_Unicode sep = ScCompiler::GetNativeSymbolChar(ocSep);
     sal_uInt16 nRangeCount = pDoc->GetPrintRangeCount( nCurTab );
@@ -284,45 +267,44 @@ void ScPrintAreasDlg::Impl_Reset()
         if (pPrintRange)
         {
             if ( !aStrRange.isEmpty() )
-                aStrRange += OUStringLiteral1(sep);
-            aOne = pPrintRange->Format(ScRefFlags::RANGE_ABS, pDoc, eConv);
-            aStrRange += aOne;
+                aStrRange += OUStringChar(sep);
+            aStrRange += pPrintRange->Format(*pDoc, ScRefFlags::RANGE_ABS, eConv);
         }
     }
-    pEdPrintArea->SetText( aStrRange );
+    m_xEdPrintArea->SetText( aStrRange );
 
     // repeat row
 
-    lcl_GetRepeatRangeString(pRepeatRowRange, pDoc, true, aStrRange);
-    pEdRepeatRow->SetText( aStrRange );
+    lcl_GetRepeatRangeString(pRepeatRowRange, *pDoc, true, aStrRange);
+    m_xEdRepeatRow->SetText( aStrRange );
 
     // repeat column
 
-    lcl_GetRepeatRangeString(pRepeatColRange, pDoc, false, aStrRange);
-    pEdRepeatCol->SetText( aStrRange );
+    lcl_GetRepeatRangeString(pRepeatColRange, *pDoc, false, aStrRange);
+    m_xEdRepeatCol->SetText( aStrRange );
 
-    Impl_ModifyHdl( *pEdPrintArea );
-    Impl_ModifyHdl( *pEdRepeatRow );
-    Impl_ModifyHdl( *pEdRepeatCol );
+    Impl_ModifyHdl( *m_xEdPrintArea );
+    Impl_ModifyHdl( *m_xEdRepeatRow );
+    Impl_ModifyHdl( *m_xEdRepeatCol );
     if( pDoc->IsPrintEntireSheet( nCurTab ) )
-        pLbPrintArea->SelectEntryPos( SC_AREASDLG_PR_ENTIRE );
+        m_xLbPrintArea->set_active(SC_AREASDLG_PR_ENTIRE);
 
-    pEdPrintArea->SaveValue();   // save for FillItemSet():
-    pEdRepeatRow->SaveValue();
-    pEdRepeatCol->SaveValue();
+    m_xEdPrintArea->SaveValue();   // save for FillItemSet():
+    m_xEdRepeatRow->SaveValue();
+    m_xEdRepeatCol->SaveValue();
 }
 
-bool ScPrintAreasDlg::Impl_GetItem( Edit* pEd, SfxStringItem& rItem )
+bool ScPrintAreasDlg::Impl_GetItem( const formula::RefEdit* pEd, SfxStringItem& rItem )
 {
     OUString  aRangeStr = pEd->GetText();
     bool bDataChanged = pEd->IsValueChangedFromSaved();
 
-    if ( !aRangeStr.isEmpty() && pEdPrintArea != pEd )
+    if ( !aRangeStr.isEmpty() && m_xEdPrintArea.get() != pEd )
     {
         ScRange aRange;
         const formula::FormulaGrammar::AddressConvention eConv = pDoc->GetAddressConvention();
-        lcl_CheckRepeatString(aRangeStr, pDoc, pEdRepeatRow == pEd, &aRange);
-        aRangeStr = aRange.Format(ScRefFlags::RANGE_ABS, pDoc, eConv);
+        lcl_CheckRepeatString(aRangeStr, *pDoc, m_xEdRepeatRow.get() == pEd, &aRange);
+        aRangeStr = aRange.Format(*pDoc, ScRefFlags::RANGE_ABS, eConv);
     }
 
     rItem.SetValue( aRangeStr );
@@ -333,9 +315,9 @@ bool ScPrintAreasDlg::Impl_GetItem( Edit* pEd, SfxStringItem& rItem )
 bool ScPrintAreasDlg::Impl_CheckRefStrings()
 {
     bool        bOk = false;
-    OUString      aStrPrintArea   = pEdPrintArea->GetText();
-    OUString      aStrRepeatRow   = pEdRepeatRow->GetText();
-    OUString      aStrRepeatCol   = pEdRepeatCol->GetText();
+    OUString      aStrPrintArea   = m_xEdPrintArea->GetText();
+    OUString      aStrRepeatRow   = m_xEdRepeatRow->GetText();
+    OUString      aStrRepeatCol   = m_xEdRepeatCol->GetText();
 
     bool bPrintAreaOk = true;
     if ( !aStrPrintArea.isEmpty() )
@@ -347,27 +329,29 @@ bool ScPrintAreasDlg::Impl_CheckRefStrings()
 
         ScAddress aAddr;
         ScRange aRange;
-        sal_Int32 nSepCount = comphelper::string::getTokenCount(aStrPrintArea, sep);
-        for ( sal_Int32 i = 0; i < nSepCount && bPrintAreaOk; ++i )
+        for ( sal_Int32 nIdx = 0; nIdx >= 0; )
         {
-            OUString aOne = aStrPrintArea.getToken(i, sep);
+            const OUString aOne = aStrPrintArea.getToken(0, sep, nIdx);
             ScRefFlags nResult = aRange.Parse( aOne, pDoc, eConv );
             if ((nResult & nValidRange) != nValidRange)
             {
                 ScRefFlags nAddrResult = aAddr.Parse( aOne, pDoc, eConv );
                 if ((nAddrResult & nValidAddr) != nValidAddr)
+                {
                     bPrintAreaOk = false;
+                    break;
+                }
             }
         }
     }
 
     bool bRepeatRowOk = aStrRepeatRow.isEmpty();
     if ( !bRepeatRowOk )
-        bRepeatRowOk = lcl_CheckRepeatString(aStrRepeatRow, pDoc, true, nullptr);
+        bRepeatRowOk = lcl_CheckRepeatString(aStrRepeatRow, *pDoc, true, nullptr);
 
     bool bRepeatColOk = aStrRepeatCol.isEmpty();
     if ( !bRepeatColOk )
-        bRepeatColOk = lcl_CheckRepeatString(aStrRepeatCol, pDoc, false, nullptr);
+        bRepeatColOk = lcl_CheckRepeatString(aStrRepeatCol, *pDoc, false, nullptr);
 
     // error messages
 
@@ -375,13 +359,13 @@ bool ScPrintAreasDlg::Impl_CheckRefStrings()
 
     if ( !bOk )
     {
-        Edit* pEd = nullptr;
+        formula::RefEdit* pEd = nullptr;
 
-             if ( !bPrintAreaOk ) pEd = pEdPrintArea;
-        else if ( !bRepeatRowOk ) pEd = pEdRepeatRow;
-        else if ( !bRepeatColOk ) pEd = pEdRepeatCol;
+        if ( !bPrintAreaOk ) pEd = m_xEdPrintArea.get();
+        else if ( !bRepeatRowOk ) pEd = m_xEdRepeatRow.get();
+        else if ( !bRepeatColOk ) pEd = m_xEdRepeatCol.get();
 
-        ERRORBOX( STR_INVALID_TABREF );
+        ERRORBOX(m_xDialog.get(), STR_INVALID_TABREF);
 
         OSL_ASSERT(pEd);
 
@@ -407,15 +391,15 @@ void ScPrintAreasDlg::Impl_FillLists()
     formula::FormulaGrammar::AddressConvention eConv = pDoc->GetAddressConvention();
 
     if ( bSimple )
-        aStrRange = aRange.Format(ScRefFlags::RANGE_ABS, pDoc, eConv);
+        aStrRange = aRange.Format(*pDoc, ScRefFlags::RANGE_ABS, eConv);
     else
     {
         ScRangeListRef aList( new ScRangeList );
         pViewData->GetMarkData().FillRangeListWithMarks( aList.get(), false );
-        aList->Format(aStrRange, ScRefFlags::RANGE_ABS, pDoc, eConv);
+        aList->Format(aStrRange, ScRefFlags::RANGE_ABS, *pDoc, eConv);
     }
 
-    pLbPrintArea->SetEntryData( SC_AREASDLG_PR_SELECT, new OUString( aStrRange ) );
+    m_xLbPrintArea->set_id(SC_AREASDLG_PR_SELECT, aStrRange);
 
     // Get ranges and remember in ListBoxen
 
@@ -425,41 +409,34 @@ void ScPrintAreasDlg::Impl_FillLists()
         // No range names to process.
         return;
 
-    ScRangeName::const_iterator itr = pRangeNames->begin(), itrEnd = pRangeNames->end();
-    for (; itr != itrEnd; ++itr)
+    for (const auto& rEntry : *pRangeNames)
     {
-        if (!itr->second->HasType(ScRangeData::Type::AbsArea   )
-            && !itr->second->HasType(ScRangeData::Type::RefArea)
-            && !itr->second->HasType(ScRangeData::Type::AbsPos ))
+        if (!rEntry.second->HasType(ScRangeData::Type::AbsArea   )
+            && !rEntry.second->HasType(ScRangeData::Type::RefArea)
+            && !rEntry.second->HasType(ScRangeData::Type::AbsPos ))
             continue;
 
-        OUString aName = itr->second->GetName();
+        OUString aName = rEntry.second->GetName();
         OUString aSymbol;
-        itr->second->GetSymbol(aSymbol);
+        rEntry.second->GetSymbol(aSymbol);
         if (aRange.ParseAny(aSymbol, pDoc, eConv) & ScRefFlags::VALID)
         {
-            if (itr->second->HasType(ScRangeData::Type::PrintArea))
+            if (rEntry.second->HasType(ScRangeData::Type::PrintArea))
             {
-                aSymbol = aRange.Format(ScRefFlags::RANGE_ABS, pDoc, eConv);
-                pLbPrintArea->SetEntryData(
-                    pLbPrintArea->InsertEntry(aName),
-                    new OUString(aSymbol) );
+                aSymbol = aRange.Format(*pDoc, ScRefFlags::RANGE_ABS, eConv);
+                m_xLbPrintArea->append(aSymbol, aName);
             }
 
-            if (itr->second->HasType(ScRangeData::Type::RowHeader))
+            if (rEntry.second->HasType(ScRangeData::Type::RowHeader))
             {
-                lcl_GetRepeatRangeString(&aRange, pDoc, true, aSymbol);
-                pLbRepeatRow->SetEntryData(
-                    pLbRepeatRow->InsertEntry(aName),
-                    new OUString(aSymbol) );
+                lcl_GetRepeatRangeString(&aRange, *pDoc, true, aSymbol);
+                m_xLbRepeatRow->append(aSymbol, aName);
             }
 
-            if (itr->second->HasType(ScRangeData::Type::ColHeader))
+            if (rEntry.second->HasType(ScRangeData::Type::ColHeader))
             {
-                lcl_GetRepeatRangeString(&aRange, pDoc, false, aSymbol);
-                pLbRepeatCol->SetEntryData(
-                    pLbRepeatCol->InsertEntry(aName),
-                    new OUString(aSymbol));
+                lcl_GetRepeatRangeString(&aRange, *pDoc, false, aSymbol);
+                m_xLbRepeatCol->append(aSymbol, aName);
             }
         }
     }
@@ -467,9 +444,9 @@ void ScPrintAreasDlg::Impl_FillLists()
 
 // Handler:
 
-IMPL_LINK( ScPrintAreasDlg, Impl_BtnHdl, Button*, pBtn, void )
+IMPL_LINK(ScPrintAreasDlg, Impl_BtnHdl, weld::Button&, rBtn, void)
 {
-    if ( pBtnOk == pBtn )
+    if (m_xBtnOk.get() == &rBtn)
     {
         if ( Impl_CheckRefStrings() )
         {
@@ -481,23 +458,23 @@ IMPL_LINK( ScPrintAreasDlg, Impl_BtnHdl, Button*, pBtn, void )
             // Printing area changed?
 
             // first try the list box, if "Entire sheet" is selected
-            bool bEntireSheet = (pLbPrintArea->GetSelectEntryPos() == SC_AREASDLG_PR_ENTIRE);
+            bool bEntireSheet = (m_xLbPrintArea->get_active() == SC_AREASDLG_PR_ENTIRE);
             SfxBoolItem aEntireSheet( FN_PARAM_4, bEntireSheet );
 
             bool bDataChanged = bEntireSheet != pDoc->IsPrintEntireSheet( nCurTab );
             if( !bEntireSheet )
             {
                 // if new list box selection is not "Entire sheet", get the edit field contents
-                bDataChanged |= Impl_GetItem( pEdPrintArea, aPrintArea );
+                bDataChanged |= Impl_GetItem( m_xEdPrintArea.get(), aPrintArea );
             }
 
             // Repeat row changed?
 
-            bDataChanged |= Impl_GetItem( pEdRepeatRow, aRepeatRow );
+            bDataChanged |= Impl_GetItem( m_xEdRepeatRow.get(), aRepeatRow );
 
             // Repeat column changed?
 
-            bDataChanged |= Impl_GetItem( pEdRepeatCol, aRepeatCol );
+            bDataChanged |= Impl_GetItem( m_xEdRepeatCol.get(), aRepeatCol );
 
             if ( bDataChanged )
             {
@@ -508,93 +485,81 @@ IMPL_LINK( ScPrintAreasDlg, Impl_BtnHdl, Button*, pBtn, void )
                       { &aPrintArea, &aRepeatRow, &aRepeatCol, &aEntireSheet });
             }
 
-            Close();
+            response(RET_OK);
         }
     }
-    else if ( pBtnCancel == pBtn )
-        Close();
+    else if (m_xBtnCancel.get() == &rBtn)
+        response(RET_CANCEL);
 }
 
-IMPL_LINK( ScPrintAreasDlg, Impl_GetFocusHdl, Control&, rCtrl, void )
+IMPL_LINK(ScPrintAreasDlg, Impl_GetEditFocusHdl, formula::RefEdit&, rCtrl, void)
 {
-    if ( &rCtrl ==static_cast<Control *>(pEdPrintArea) ||
-         &rCtrl ==static_cast<Control *>(pEdRepeatRow) ||
-         &rCtrl ==static_cast<Control *>(pEdRepeatCol))
-    {
-         pRefInputEdit = static_cast<formula::RefEdit*>(&rCtrl);
-    }
-    else if ( &rCtrl ==static_cast<Control *>(pLbPrintArea))
-    {
-        pRefInputEdit = pEdPrintArea;
-    }
-    else if ( &rCtrl ==static_cast<Control *>(pLbRepeatRow))
-    {
-        pRefInputEdit = pEdRepeatRow;
-    }
-    else if ( &rCtrl ==static_cast<Control *>(pLbRepeatCol))
-    {
-        pRefInputEdit = pEdRepeatCol;
-    }
+    m_pRefInputEdit = &rCtrl;
 }
 
-IMPL_LINK( ScPrintAreasDlg, Impl_SelectHdl, ListBox&, rLb, void )
+IMPL_LINK(ScPrintAreasDlg, Impl_GetFocusHdl, weld::Widget&, rCtrl, void)
 {
-    ListBox* pLb = &rLb;
-    const sal_Int32 nSelPos = pLb->GetSelectEntryPos();
-    Edit* pEd = nullptr;
+    if (&rCtrl == m_xLbPrintArea.get())
+        m_pRefInputEdit = m_xEdPrintArea.get();
+    else if (&rCtrl == m_xLbRepeatRow.get())
+        m_pRefInputEdit = m_xEdRepeatRow.get();
+    else if (&rCtrl == m_xLbRepeatCol.get())
+        m_pRefInputEdit = m_xEdRepeatCol.get();
+}
+
+IMPL_LINK( ScPrintAreasDlg, Impl_SelectHdl, weld::ComboBox&, rLb, void )
+{
+    const sal_Int32 nSelPos = rLb.get_active();
+    formula::RefEdit* pEd = nullptr;
 
     // list box positions of specific entries, default to "repeat row/column" list boxes
     sal_Int32 nAllSheetPos = SC_AREASDLG_RR_NONE;
-    sal_Int32 nUserDefPos = SC_AREASDLG_RR_USER;
     sal_Int32 nFirstCustomPos = SC_AREASDLG_RR_OFFSET;
 
     // find edit field for list box, and list box positions
-    if( pLb == pLbPrintArea )
+    if (&rLb == m_xLbPrintArea.get())
     {
-        pEd = pEdPrintArea;
+        pEd = m_xEdPrintArea.get();
         nAllSheetPos = SC_AREASDLG_PR_ENTIRE;
-        nUserDefPos = SC_AREASDLG_PR_USER;
         nFirstCustomPos = SC_AREASDLG_PR_SELECT;    // "Selection" and following
     }
-    else if( pLb == pLbRepeatCol )
-        pEd = pEdRepeatCol;
-    else if( pLb == pLbRepeatRow )
-        pEd = pEdRepeatRow;
+    else if (&rLb == m_xLbRepeatCol.get())
+        pEd = m_xEdRepeatCol.get();
+    else if (&rLb == m_xLbRepeatRow.get())
+        pEd = m_xEdRepeatRow.get();
     else
         return;
 
     // fill edit field according to list box selection
     if( (nSelPos == 0) || (nSelPos == nAllSheetPos) )
         pEd->SetText( EMPTY_OUSTRING );
-    else if( nSelPos == nUserDefPos && !pLb->IsTravelSelect() && pEd->GetText().isEmpty())
-        pLb->SelectEntryPos( 0 );
     else if( nSelPos >= nFirstCustomPos )
-        pEd->SetText( *static_cast< OUString* >( pLb->GetEntryData( nSelPos ) ) );
+        pEd->SetText(rLb.get_id(nSelPos));
 }
 
-IMPL_LINK( ScPrintAreasDlg, Impl_ModifyHdl, Edit&, rEd, void )
+IMPL_LINK( ScPrintAreasDlg, Impl_ModifyHdl, formula::RefEdit&, rEd, void )
 {
-    ListBox* pLb = nullptr;
+    weld::ComboBox* pLb = nullptr;
 
     // list box positions of specific entries, default to "repeat row/column" list boxes
     sal_Int32 nUserDefPos = SC_AREASDLG_RR_USER;
     sal_Int32 nFirstCustomPos = SC_AREASDLG_RR_OFFSET;
 
-    if( &rEd == pEdPrintArea )
+    if( &rEd == m_xEdPrintArea.get() )
     {
-        pLb = pLbPrintArea;
+        pLb = m_xLbPrintArea.get();
         nUserDefPos = SC_AREASDLG_PR_USER;
         nFirstCustomPos = SC_AREASDLG_PR_SELECT;    // "Selection" and following
     }
-    else if( &rEd == pEdRepeatCol )
-        pLb = pLbRepeatCol;
-    else if( &rEd == pEdRepeatRow )
-        pLb = pLbRepeatRow;
+    else if( &rEd == m_xEdRepeatCol.get() )
+        pLb = m_xLbRepeatCol.get();
+    else if( &rEd == m_xEdRepeatRow.get() )
+        pLb = m_xLbRepeatRow.get();
     else
         return;
 
     // set list box selection according to edit field
-    const sal_Int32 nEntryCount = pLb->GetEntryCount();
+    const sal_Int32 nEntryCount = pLb->get_count();
     OUString aStrEd( rEd.GetText() );
     OUString aEdUpper = aStrEd.toAsciiUpperCase();
 
@@ -605,21 +570,21 @@ IMPL_LINK( ScPrintAreasDlg, Impl_ModifyHdl, Edit&, rEd, void )
 
         for ( i=nFirstCustomPos; i<nEntryCount && !bFound; i++ )
         {
-            OUString* pSymbol = static_cast<OUString*>(pLb->GetEntryData( i ));
-            bFound  = ( (*pSymbol)  ==aStrEd || (*pSymbol) == aEdUpper );
+            const OUString& rSymbol = pLb->get_id(i);
+            bFound = (rSymbol == aStrEd || rSymbol == aEdUpper);
         }
 
-        pLb->SelectEntryPos( bFound ? i-1 : nUserDefPos );
+        pLb->set_active( bFound ? i-1 : nUserDefPos );
     }
     else
-        pLb->SelectEntryPos( !aStrEd.isEmpty() ? nUserDefPos : 0 );
+        pLb->set_active( !aStrEd.isEmpty() ? nUserDefPos : 0 );
 }
 
 // global functions:
 
 // TODO: It might make sense to move these functions to address.?xx. -kohei
 
-static bool lcl_CheckOne_OOO( const OUString& rStr, bool bIsRow, SCCOLROW& rVal )
+static bool lcl_CheckOne_OOO( const ScDocument& rDoc, const OUString& rStr, bool bIsRow, SCCOLROW& rVal )
 {
     // Allowed syntax for rStr:
     // Row: [$]1-MAXTAB
@@ -651,7 +616,7 @@ static bool lcl_CheckOne_OOO( const OUString& rStr, bool bIsRow, SCCOLROW& rVal 
         else
         {
             SCCOL nCol = 0;
-            bStrOk = ::AlphaToCol( nCol, aStr);
+            bStrOk = ::AlphaToCol(rDoc, nCol, aStr);
             nNum = nCol;
         }
     }
@@ -662,10 +627,10 @@ static bool lcl_CheckOne_OOO( const OUString& rStr, bool bIsRow, SCCOLROW& rVal 
     return bStrOk;
 }
 
-static bool lcl_CheckOne_XL_A1( const OUString& rStr, bool bIsRow, SCCOLROW& rVal )
+static bool lcl_CheckOne_XL_A1( const ScDocument& rDoc, const OUString& rStr, bool bIsRow, SCCOLROW& rVal )
 {
     // XL A1 style is identical to OOO one for print range formats.
-    return lcl_CheckOne_OOO(rStr, bIsRow, rVal);
+    return lcl_CheckOne_OOO(rDoc, rStr, bIsRow, rVal);
 }
 
 static bool lcl_CheckOne_XL_R1C1( const OUString& rStr, bool bIsRow, SCCOLROW& rVal )
@@ -696,14 +661,14 @@ static bool lcl_CheckOne_XL_R1C1( const OUString& rStr, bool bIsRow, SCCOLROW& r
     return true;
 }
 
-static bool lcl_CheckRepeatOne( const OUString& rStr, formula::FormulaGrammar::AddressConvention eConv, bool bIsRow, SCCOLROW& rVal )
+static bool lcl_CheckRepeatOne( const ScDocument& rDoc, const OUString& rStr, formula::FormulaGrammar::AddressConvention eConv, bool bIsRow, SCCOLROW& rVal )
 {
     switch (eConv)
     {
         case formula::FormulaGrammar::CONV_OOO:
-            return lcl_CheckOne_OOO(rStr, bIsRow, rVal);
+            return lcl_CheckOne_OOO(rDoc, rStr, bIsRow, rVal);
         case formula::FormulaGrammar::CONV_XL_A1:
-            return lcl_CheckOne_XL_A1(rStr, bIsRow, rVal);
+            return lcl_CheckOne_XL_A1(rDoc, rStr, bIsRow, rVal);
         case formula::FormulaGrammar::CONV_XL_R1C1:
             return lcl_CheckOne_XL_R1C1(rStr, bIsRow, rVal);
         default:
@@ -714,12 +679,12 @@ static bool lcl_CheckRepeatOne( const OUString& rStr, formula::FormulaGrammar::A
     return false;
 }
 
-static bool lcl_CheckRepeatString( const OUString& rStr, ScDocument* pDoc, bool bIsRow, ScRange* pRange )
+static bool lcl_CheckRepeatString( const OUString& rStr, const ScDocument& rDoc, bool bIsRow, ScRange* pRange )
 {
     // Row: [valid row] rsep [valid row]
     // Col: [valid col] rsep [valid col]
 
-    const formula::FormulaGrammar::AddressConvention eConv = pDoc->GetAddressConvention();
+    const formula::FormulaGrammar::AddressConvention eConv = rDoc.GetAddressConvention();
     const sal_Unicode rsep = ScCompiler::GetNativeSymbolChar(ocRange);
 
     if (pRange)
@@ -748,7 +713,7 @@ static bool lcl_CheckRepeatString( const OUString& rStr, ScDocument* pDoc, bool 
             if (aBuf.isEmpty())
                 return false;
 
-            bool bRes = lcl_CheckRepeatOne(aBuf, eConv, bIsRow, nVal);
+            bool bRes = lcl_CheckRepeatOne(rDoc, aBuf, eConv, bIsRow, nVal);
             if (!bRes)
                 return false;
 
@@ -770,12 +735,12 @@ static bool lcl_CheckRepeatString( const OUString& rStr, ScDocument* pDoc, bool 
             bEndPos = true;
         }
         else
-            aBuf += OUStringLiteral1(c);
+            aBuf += OUStringChar(c);
     }
 
     if (!aBuf.isEmpty())
     {
-        bool bRes = lcl_CheckRepeatOne(aBuf, eConv, bIsRow, nVal);
+        bool bRes = lcl_CheckRepeatOne(rDoc, aBuf, eConv, bIsRow, nVal);
         if (!bRes)
             return false;
 
@@ -799,24 +764,24 @@ static bool lcl_CheckRepeatString( const OUString& rStr, ScDocument* pDoc, bool 
     return true;
 }
 
-static void lcl_GetRepeatRangeString( const ScRange* pRange, ScDocument* pDoc, bool bIsRow, OUString& rStr )
+static void lcl_GetRepeatRangeString( const ScRange* pRange, const ScDocument& rDoc, bool bIsRow, OUString& rStr )
 {
     rStr.clear();
     if (!pRange)
         return;
 
-    const formula::FormulaGrammar::AddressConvention eConv = pDoc->GetAddressConvention();
+    const formula::FormulaGrammar::AddressConvention eConv = rDoc.GetAddressConvention();
     const ScAddress& rStart = pRange->aStart;
     const ScAddress& rEnd   = pRange->aEnd;
 
     const ScRefFlags nFmt = bIsRow
                             ? (ScRefFlags::ROW_VALID | ScRefFlags::ROW_ABS)
                             : (ScRefFlags::COL_VALID | ScRefFlags::COL_ABS);
-    rStr += rStart.Format(nFmt, pDoc, eConv);
+    rStr += rStart.Format(nFmt, &rDoc, eConv);
     if ((bIsRow && rStart.Row() != rEnd.Row()) || (!bIsRow && rStart.Col() != rEnd.Col()))
     {
         rStr += ScCompiler::GetNativeSymbol(ocRange);
-        rStr += rEnd.Format(nFmt, pDoc, eConv);
+        rStr += rEnd.Format(nFmt, &rDoc, eConv);
     }
 }
 

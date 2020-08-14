@@ -17,17 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "CNodes.hxx"
-
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/rdf/XLiteral.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-
-#include <rtl/ustrbuf.hxx>
 
 
 /// anonymous implementation namespace
@@ -74,7 +71,7 @@ CLiteral::CLiteral() :
 // com.sun.star.uno.XServiceInfo:
 OUString SAL_CALL CLiteral::getImplementationName()
 {
-    return comp_CLiteral::_getImplementationName();
+    return "CLiteral";
 }
 
 sal_Bool SAL_CALL CLiteral::supportsService(OUString const & serviceName)
@@ -84,7 +81,7 @@ sal_Bool SAL_CALL CLiteral::supportsService(OUString const & serviceName)
 
 css::uno::Sequence< OUString > SAL_CALL CLiteral::getSupportedServiceNames()
 {
-    return comp_CLiteral::_getSupportedServiceNames();
+    return { "com.sun.star.rdf.Literal" };
 }
 
 // css::lang::XInitialization:
@@ -102,34 +99,32 @@ void SAL_CALL CLiteral::initialize(const css::uno::Sequence< css::uno::Any > & a
             "CLiteral::initialize: argument must be string", *this, 0);
     }
     //FIXME: what is legal?
-    if (true) {
-        m_Value = arg0;
-    } else {
+    if (!(true)) {
         throw css::lang::IllegalArgumentException(
             "CLiteral::initialize: argument is not valid literal value", *this, 0);
     }
+    m_Value = arg0;
 
-    if (len > 1) {
-        OUString arg1;
-        css::uno::Reference< css::rdf::XURI > xURI;
-        if ((aArguments[1] >>= arg1)) {
-            if (!arg1.isEmpty()) {
-                m_Language = arg1;
-            } else {
-                throw css::lang::IllegalArgumentException(
-                    "CLiteral::initialize: argument is not valid language", *this, 1);
-            }
-        } else if ((aArguments[1] >>= xURI)) {
-            if (xURI.is()) {
-                m_xDatatype = xURI;
-            } else {
-                throw css::lang::IllegalArgumentException(
-                    "CLiteral::initialize: argument is null", *this, 1);
-            }
-        } else {
+    if (len <= 1)
+        return;
+
+    OUString arg1;
+    css::uno::Reference< css::rdf::XURI > xURI;
+    if (aArguments[1] >>= arg1) {
+        if (arg1.isEmpty()) {
             throw css::lang::IllegalArgumentException(
-                "CLiteral::initialize: argument must be string or URI", *this, 1);
+                "CLiteral::initialize: argument is not valid language", *this, 1);
         }
+        m_Language = arg1;
+    } else if (aArguments[1] >>= xURI) {
+        if (!xURI.is()) {
+            throw css::lang::IllegalArgumentException(
+                "CLiteral::initialize: argument is null", *this, 1);
+        }
+        m_xDatatype = xURI;
+    } else {
+        throw css::lang::IllegalArgumentException(
+            "CLiteral::initialize: argument must be string or URI", *this, 1);
     }
 }
 
@@ -137,15 +132,9 @@ void SAL_CALL CLiteral::initialize(const css::uno::Sequence< css::uno::Any > & a
 OUString SAL_CALL CLiteral::getStringValue()
 {
     if (!m_Language.isEmpty()) {
-        OUStringBuffer buf(m_Value);
-        buf.append("@");
-        buf.append(m_Language);
-        return buf.makeStringAndClear();
+        return m_Value + "@" + m_Language;
     } else if (m_xDatatype.is()) {
-        OUStringBuffer buf(m_Value);
-        buf.append("^^");
-        buf.append(m_xDatatype->getStringValue());
-        return buf.makeStringAndClear();
+        return m_Value + "^^" +  m_xDatatype->getStringValue();
     } else {
         return m_Value;
     }
@@ -169,25 +158,11 @@ css::uno::Reference< css::rdf::XURI > SAL_CALL CLiteral::getDatatype()
 
 } // closing anonymous implementation namespace
 
-
-// component helper namespace
-namespace comp_CLiteral {
-
-OUString SAL_CALL _getImplementationName() {
-    return OUString( "CLiteral");
-}
-
-css::uno::Sequence< OUString > SAL_CALL _getSupportedServiceNames()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+unoxml_CLiteral_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    return { "com.sun.star.rdf.Literal" };
+    return cppu::acquire(new CLiteral());
 }
-
-css::uno::Reference< css::uno::XInterface > SAL_CALL _create(
-    const css::uno::Reference< css::uno::XComponentContext > & )
-{
-    return static_cast< ::cppu::OWeakObject * >(new CLiteral);
-}
-
-} // closing component helper namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

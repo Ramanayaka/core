@@ -94,7 +94,7 @@ class BibConfig : public utl::ConfigItem
 
     OUString   sQueryField;
     OUString   sQueryText;
-    MappingArray*               pMappingsArr;
+    MappingArray    mvMappings;
     long            nBeamerSize;
     long            nViewSize;
     bool        bShowColumnAssignmentWarning;
@@ -124,7 +124,7 @@ public:
     void                    setBeamerSize(long nSize) {SetModified(); nBeamerSize = nSize;}
     long                    getBeamerSize()const {return nBeamerSize;}
     void                    setViewSize(long nSize) {SetModified(); nViewSize = nSize;}
-    long                    getViewSize() {return nViewSize;}
+    long                    getViewSize() const {return nViewSize;}
 
     const OUString&         getQueryField() const {return sQueryField;}
     void                    setQueryField(const OUString& rSet) {SetModified(); sQueryField = rSet;}

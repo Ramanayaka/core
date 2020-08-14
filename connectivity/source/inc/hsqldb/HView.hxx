@@ -23,12 +23,13 @@
 #include <connectivity/sdbcx/VView.hxx>
 
 #include <com/sun/star/sdbcx/XAlterView.hpp>
+#include <com/sun/star/sdbc/XConnection.hpp>
 
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase1.hxx>
 
 
-namespace connectivity { namespace hsqldb
+namespace connectivity::hsqldb
 {
 
     typedef ::connectivity::sdbcx::OView                   HView_Base;
@@ -82,7 +83,7 @@ namespace connectivity { namespace hsqldb
     };
 
 
-} } // namespace connectivity::hsqldb
+} // namespace connectivity::hsqldb
 
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_HSQLDB_HVIEW_HXX

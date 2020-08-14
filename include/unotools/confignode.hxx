@@ -20,25 +20,19 @@
 #define INCLUDED_UNOTOOLS_CONFIGNODE_HXX
 
 #include <unotools/unotoolsdllapi.h>
-#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/util/XChangesBatch.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <unotools/eventlisteneradapter.hxx>
 
-namespace comphelper
-{
-    class ComponentContext;
-}
+namespace com::sun::star::container { class XHierarchicalNameAccess; }
+namespace com::sun::star::container { class XNameAccess; }
+namespace com::sun::star::container { class XNameContainer; }
+namespace com::sun::star::container { class XNameReplace; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::util { class XChangesBatch; }
 
 namespace utl
 {
 
-    //= OConfigurationNode
-
-    class OConfigurationTreeRoot;
     /** a small wrapper around a configuration node.<p/>
         Nodes in the terminology used herein are <em>inner</em> nodes of a configuration
         tree, which means <em>no leafs</em>.
@@ -87,7 +81,7 @@ namespace utl
         */
         OConfigurationNode  openNode(const OUString& _rPath) const throw();
 
-        OConfigurationNode  openNode( const sal_Char* _pAsciiPath ) const
+        OConfigurationNode  openNode( const char* _pAsciiPath ) const
         {
             return openNode( OUString::createFromAscii( _pAsciiPath ) );
         }
@@ -118,7 +112,7 @@ namespace utl
         */
         css::uno::Any       getNodeValue(const OUString& _rPath) const throw();
 
-        css::uno::Any       getNodeValue( const sal_Char* _pAsciiPath ) const
+        css::uno::Any       getNodeValue( const char* _pAsciiPath ) const
         {
             return getNodeValue( OUString::createFromAscii( _pAsciiPath ) );
         }
@@ -131,7 +125,7 @@ namespace utl
         */
         bool            setNodeValue(const OUString& _rPath, const css::uno::Any& _rValue) const throw();
 
-        bool            setNodeValue( const sal_Char* _pAsciiPath, const css::uno::Any& _rValue ) const
+        bool            setNodeValue( const char* _pAsciiPath, const css::uno::Any& _rValue ) const
         {
             return setNodeValue( OUString::createFromAscii( _pAsciiPath ), _rValue );
         }
@@ -139,11 +133,6 @@ namespace utl
         /// return the names of the existing children
         css::uno::Sequence< OUString >
                             getNodeNames() const throw();
-
-        /** get the flag specifying the current escape behaviour
-            @see setEscape
-        */
-        bool    getEscape() const { return m_bEscapeNames; }
 
         /// invalidate the object
         virtual void clear() throw();
@@ -155,7 +144,6 @@ namespace utl
 
         /// checks whether or not a direct child with a given name exists
         bool hasByName(const OUString& _rName) const throw();
-        bool hasByName( const sal_Char* _pAsciiName ) const { return hasByName( OUString::createFromAscii( _pAsciiName ) ); }
 
         /// checks whether or not a descendent (no matter if direct or indirect) with the given name exists
         bool hasByHierarchicalName( const OUString& _rName ) const throw();
@@ -181,16 +169,15 @@ namespace utl
 
     //= OConfigurationTreeRoot
 
-    /** a specialized version of a OConfigurationNode, representing the root
+    /** a specialized version of an OConfigurationNode, representing the root
         of a configuration sub tree<p/>
         Only this class is able to commit any changes made any any OConfigurationNode
         objects.
     */
-    class UNOTOOLS_DLLPUBLIC OConfigurationTreeRoot : public OConfigurationNode
+    class UNOTOOLS_DLLPUBLIC OConfigurationTreeRoot final : public OConfigurationNode
     {
         css::uno::Reference< css::util::XChangesBatch >
                                 m_xCommitter;
-    protected:
         /** ctor for a readonly node
         */
         OConfigurationTreeRoot(
@@ -221,10 +208,6 @@ namespace utl
             const bool i_bUpdatable
         );
 
-        /// copy ctor
-        OConfigurationTreeRoot(const OConfigurationTreeRoot& _rSource)
-            :OConfigurationNode(_rSource), m_xCommitter(_rSource.m_xCommitter) { }
-
         /** open a new top-level configuration node
 
             opens a new node which is the root if an own configuration sub tree. This is what "top level" means: The
@@ -244,8 +227,7 @@ namespace utl
                 const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxConfProvider,
                 const OUString& _rPath,
                 sal_Int32 _nDepth,
-                CREATION_MODE _eMode,
-                bool _bLazyWrite = true
+                CREATION_MODE _eMode
             );
 
         /** open a new top-level configuration node<p/>
@@ -261,11 +243,11 @@ namespace utl
             @param      _eMode          specifies which privileges should be applied when retrieving the node
         */
         static OConfigurationTreeRoot createWithComponentContext(const css::uno::Reference< css::uno::XComponentContext >& _rxContext,
-            const OUString& _rPath, sal_Int32 _nDepth = -1, CREATION_MODE _eMode = CM_UPDATABLE, bool _bLazyWrite = true);
+            const OUString& _rPath, sal_Int32 _nDepth = -1, CREATION_MODE _eMode = CM_UPDATABLE);
 
         /** tolerant version of the <member>createWithServiceFactory</member>
 
-            <p>No assertions are thrown in case of an failure to initialize the configuration service, but once
+            <p>No assertions are thrown in case of a failure to initialize the configuration service, but once
             the configuration could be initialized, errors in the creation of the specific node (e.g. because the
             given node path does not exist) are still asserted.</p>
         */

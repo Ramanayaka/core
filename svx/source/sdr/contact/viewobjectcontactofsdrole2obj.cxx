@@ -22,8 +22,9 @@
 #include <sdr/contact/viewcontactofsdrole2obj.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
+#include <svx/svdpagv.hxx>
 #include <svx/svdview.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonHatchPrimitive2D.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <com/sun/star/embed/EmbedMisc.hpp>
 #include <com/sun/star/embed/EmbedStates.hpp>
@@ -31,11 +32,10 @@
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <svtools/embedhlp.hxx>
-#include <comphelper/sequence.hxx>
 
 using namespace com::sun::star;
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 drawinglayer::primitive2d::Primitive2DContainer ViewObjectContactOfSdrOle2Obj::createPrimitive2DSequence(
     const DisplayInfo& /*rDisplayInfo*/) const
@@ -57,7 +57,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewObjectContactOfSdrOle2Obj::c
     const bool bIsInplaceActive((nState == embed::EmbedStates::INPLACE_ACTIVE) || (nState == embed::EmbedStates::UI_ACTIVE));
     bool bDone(false);
 
-    if(!bDone && bIsInplaceActive)
+    if (bIsInplaceActive)
     {
         if( !GetObjectContact().isOutputToPrinter() && !GetObjectContact().isOutputToRecordingMetaFile() )
         {
@@ -89,8 +89,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewObjectContactOfSdrOle2Obj::c
                 }
 
                 SdrPageView* pPageView = GetObjectContact().TryToGetSdrPageView();
-                if(pPageView && ((nMiscStatus & embed::EmbedMisc::MS_EMBED_ACTIVATEWHENVISIBLE) ||
-                    xObjRef.IsGLChart()))
+                if(pPageView && (nMiscStatus & embed::EmbedMisc::MS_EMBED_ACTIVATEWHENVISIBLE))
                 {
                     // connect plugin object
                     pPageView->GetView().DoConnect(const_cast< SdrOle2Obj* >(&rSdrOle2));
@@ -111,21 +110,21 @@ drawinglayer::primitive2d::Primitive2DContainer ViewObjectContactOfSdrOle2Obj::c
                 const basegfx::B2DHomMatrix aObjectMatrix(static_cast< ViewContactOfSdrOle2Obj& >(GetViewContact()).createObjectTransform());
 
                 // shade the representation if the object is activated outplace
-                basegfx::B2DPolygon aObjectOutline(basegfx::tools::createUnitPolygon());
+                basegfx::B2DPolygon aObjectOutline(basegfx::utils::createUnitPolygon());
                 aObjectOutline.transform(aObjectMatrix);
 
                 // Use a FillHatchPrimitive2D with necessary attributes
                 const drawinglayer::attribute::FillHatchAttribute aFillHatch(
                     drawinglayer::attribute::HatchStyle::Single, // single hatch
                     125.0, // 1.25 mm
-                    45.0 * F_PI180, // 45 degree diagonal
-                    Color(COL_BLACK).getBColor(), // black color
+                    basegfx::deg2rad(45.0), // 45 degree diagonal
+                    COL_BLACK.getBColor(), // black color
                     3, // same default as VCL, a minimum of three discrete units (pixels) offset
                     false); // no filling
 
                 const drawinglayer::primitive2d::Primitive2DReference xReference(new drawinglayer::primitive2d::PolyPolygonHatchPrimitive2D(
                     basegfx::B2DPolyPolygon(aObjectOutline),
-                    Color(COL_BLACK).getBColor(),
+                    COL_BLACK.getBColor(),
                     aFillHatch));
 
                 xRetval.push_back(xReference);
@@ -146,6 +145,6 @@ ViewObjectContactOfSdrOle2Obj::~ViewObjectContactOfSdrOle2Obj()
 {
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

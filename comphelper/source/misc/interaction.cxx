@@ -18,6 +18,8 @@
  */
 
 #include <comphelper/interaction.hxx>
+
+#include <comphelper/sequence.hxx>
 #include <osl/diagnose.h>
 
 
@@ -27,17 +29,6 @@ namespace comphelper
 
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::task;
-
-    void SAL_CALL OInteractionPassword::setPassword( const OUString& Password )
-    {
-        m_sPassword = Password;
-    }
-
-
-    OUString SAL_CALL OInteractionPassword::getPassword(  )
-    {
-        return m_sPassword;
-    }
 
     OInteractionRequest::OInteractionRequest(const Any& _rRequestDescription)
         :m_aRequest(_rRequestDescription)

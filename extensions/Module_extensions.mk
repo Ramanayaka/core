@@ -9,37 +9,43 @@
 
 $(eval $(call gb_Module_Module,extensions))
 
-$(eval $(call gb_Module_add_targets,extensions,\
-	Library_res \
+$(eval $(call gb_Module_add_l10n_targets,extensions,\
+	AllLangMoTarget_pcr \
 ))
 
-$(eval $(call gb_Module_add_l10n_targets,extensions,\
-	AllLangResTarget_abp \
-	AllLangResTarget_scn \
-	AllLangResTarget_upd \
+ifneq ($(filter-out iOS ANDROID,$(OS)),)
+$(eval $(call gb_Module_add_targets,extensions,\
+	Library_abp \
+	Library_scn \
+	$(if $(filter WNT,$(OS)), \
+		Library_WinUserInfoBe \
+		$(if $(filter TRUE,$(BUILD_X86)),Executable_twain32shim) \
+	) \
 	UIConfig_sabpilot \
 	UIConfig_scanner \
 ))
+endif
 
-ifneq ($(filter-out IOS ANDROID,$(OS)),)
+ifneq ($(filter-out iOS,$(OS)),)
 $(eval $(call gb_Module_add_targets,extensions,\
-	Library_abp \
-	Library_ldapbe2 \
 	Library_log \
-	Library_scn \
 ))
 endif
 
-ifneq (,$(filter DBCONNECTIVITY,$(BUILD_TYPE)))
+ifeq ($(ENABLE_LDAP),TRUE)
+$(eval $(call gb_Module_add_targets,extensions,\
+	Library_ldapbe2 \
+))
+endif
+
 $(eval $(call gb_Module_add_targets,extensions,\
 	Library_bib \
+))
+
+ifneq (,$(filter DBCONNECTIVITY,$(BUILD_TYPE)))
+$(eval $(call gb_Module_add_targets,extensions,\
 	Library_dbp \
 	Library_pcr \
-))
-$(eval $(call gb_Module_add_l10n_targets,extensions,\
-	AllLangResTarget_bib \
-	AllLangResTarget_dbp \
-	AllLangResTarget_pcr \
 	UIConfig_sbibliography \
 	UIConfig_spropctrlr \
 ))
@@ -83,6 +89,10 @@ endif # COM=MSC
 $(eval $(call gb_Module_add_targets,extensions,\
 	Library_oleautobridge \
 ))
+
+# $(eval $(call gb_Module_add_subsequentcheck_targets,extensions,\
+# 	CustomTarget_automationtest \
+# ))
 
 endif # WNT
 

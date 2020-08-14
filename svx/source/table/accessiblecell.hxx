@@ -22,10 +22,6 @@
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleExtendedComponent.hpp>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/drawing/XShape.hpp>
-
-#include <rtl/ref.hxx>
 
 #include <editeng/AccessibleContextBase.hxx>
 #include <editeng/AccessibleComponentBase.hxx>
@@ -36,7 +32,7 @@
 
 #include <cppuhelper/implbase.hxx>
 
-#include "cell.hxx"
+#include <celltypes.hxx>
 
 
 namespace accessibility
@@ -72,7 +68,7 @@ public:
     virtual css::uno::Reference< css::accessibility::XAccessibleStateSet> SAL_CALL getAccessibleStateSet() override;
     virtual sal_Int32 SAL_CALL getAccessibleIndexInParent() override;
     virtual OUString SAL_CALL getAccessibleName() override;
-    const sdr::table::CellRef& getCellRef() { return mxCell;}
+    const sdr::table::CellRef& getCellRef() const { return mxCell;}
     void UpdateChildren();
     static OUString getCellName( sal_Int32 nCol, sal_Int32 nRow );
 
@@ -119,7 +115,7 @@ protected:
     sal_Int32 mnIndexInParent;
 
     /// The accessible text engine.  May be NULL if it can not be created.
-    AccessibleTextHelper* mpText;
+    std::unique_ptr<AccessibleTextHelper> mpText;
 
     sdr::table::CellRef mxCell;
 

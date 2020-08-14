@@ -20,8 +20,7 @@
 #include <drawinglayer/primitive2d/backgroundcolorprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 
@@ -29,15 +28,13 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void BackgroundColorPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const
         {
             if(!rViewInformation.getViewport().isEmpty())
             {
-                const basegfx::B2DPolygon aOutline(basegfx::tools::createPolygonFromRect(rViewInformation.getViewport()));
+                const basegfx::B2DPolygon aOutline(basegfx::utils::createPolygonFromRect(rViewInformation.getViewport()));
                 rContainer.push_back(new PolyPolygonColorPrimitive2D(basegfx::B2DPolyPolygon(aOutline), getBColor()));
             }
         }
@@ -93,7 +90,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(BackgroundColorPrimitive2D, PRIMITIVE2D_ID_BACKGROUNDCOLORPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

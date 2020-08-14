@@ -24,22 +24,24 @@
 #include "PresenterPaneBase.hxx"
 #include "PresenterPaneContainer.hxx"
 #include "PresenterPaneFactory.hxx"
-#include "PresenterViewFactory.hxx"
 
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
+#include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
-#include <com/sun/star/accessibility/XAccessibleEditableText.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/accessibility/XAccessibleText.hpp>
-#include <com/sun/star/drawing/framework/ResourceId.hpp>
+#include <com/sun/star/awt/XWindow2.hpp>
 #include <com/sun/star/drawing/framework/XPane.hpp>
 #include <com/sun/star/drawing/framework/XView.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <o3tl/safeint.hxx>
+#include <sal/log.hxx>
 
 #include <algorithm>
 
@@ -50,7 +52,7 @@ using namespace ::com::sun::star::drawing::framework;
 
 //===== PresenterAccessibleObject =============================================
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 namespace {
     typedef ::cppu::WeakComponentImplHelper <
@@ -198,7 +200,6 @@ namespace {
 typedef ::cppu::WeakComponentImplHelper <
     css::accessibility::XAccessibleStateSet
     > AccessibleStateSetInterfaceBase;
-}
 
 class AccessibleStateSet
     : public ::cppu::BaseMutex,
@@ -225,11 +226,9 @@ private:
 
 //===== AccessibleRelationSet =================================================
 
-namespace {
 typedef ::cppu::WeakComponentImplHelper <
     css::accessibility::XAccessibleRelationSet
     > AccessibleRelationSetInterfaceBase;
-}
 
 class AccessibleRelationSet
     : public ::cppu::BaseMutex,
@@ -258,7 +257,6 @@ private:
 
 //===== PresenterAccessibleParagraph ==========================================
 
-namespace {
 typedef ::cppu::ImplInheritanceHelper <
     PresenterAccessible::AccessibleObject,
     css::accessibility::XAccessibleText
@@ -327,6 +325,11 @@ public:
 
     virtual sal_Bool SAL_CALL copyText (sal_Int32 nStartIndex, sal_Int32 nEndIndex) override;
 
+    virtual sal_Bool SAL_CALL scrollSubstringTo(
+        sal_Int32 nStartIndex,
+        sal_Int32 nEndIndex,
+        css::accessibility::AccessibleScrollType aScrollType) override;
+
 protected:
     virtual awt::Point GetRelativeLocation() override;
     virtual awt::Size GetSize() override;
@@ -339,6 +342,8 @@ private:
 };
 
 //===== AccessibleConsole =====================================================
+
+namespace {
 
 class AccessibleConsole
 {
@@ -452,6 +457,8 @@ private:
 
     AccessibleFocusManager();
 };
+
+}
 
 //===== PresenterAccessible ===================================================
 
@@ -587,27 +594,27 @@ void PresenterAccessible::UpdateAccessibilityHierarchy (
         }
     }
 
-    if (mxNotesContentWindow != rxNotesContentWindow)
+    if (mxNotesContentWindow == rxNotesContentWindow)
+        return;
+
+    if (mpAccessibleNotes.is())
     {
-        if (mpAccessibleNotes.is())
-        {
-            mpAccessibleConsole->RemoveChild(mpAccessibleNotes);
-            mpAccessibleNotes = nullptr;
-        }
+        mpAccessibleConsole->RemoveChild(mpAccessibleNotes);
+        mpAccessibleNotes = nullptr;
+    }
 
-        mxNotesContentWindow = rxNotesContentWindow;
-        mxNotesBorderWindow = rxNotesBorderWindow;
+    mxNotesContentWindow = rxNotesContentWindow;
+    mxNotesBorderWindow = rxNotesBorderWindow;
 
-        if (mxNotesContentWindow.is())
-        {
-            mpAccessibleNotes = AccessibleNotes::Create(
-                mxComponentContext,
-                lang::Locale(),
-                mxNotesContentWindow,
-                mxNotesBorderWindow,
-                rpNotesTextView);
-            mpAccessibleConsole->AddChild(mpAccessibleNotes.get());
-        }
+    if (mxNotesContentWindow.is())
+    {
+        mpAccessibleNotes = AccessibleNotes::Create(
+            mxComponentContext,
+            lang::Locale(),
+            mxNotesContentWindow,
+            mxNotesBorderWindow,
+            rpNotesTextView);
+        mpAccessibleConsole->AddChild(mpAccessibleNotes.get());
     }
 }
 
@@ -617,9 +624,9 @@ void PresenterAccessible::NotifyCurrentSlideChange ()
     {
         PresenterPaneContainer::SharedPaneDescriptor pPreviewPane (GetPreviewPane());
         mpAccessiblePreview->SetAccessibleName(
-            (pPreviewPane&&pPreviewPane->mxPane.is()
+            pPreviewPane&&pPreviewPane->mxPane.is()
                 ? pPreviewPane->mxPane->GetTitle()
-                : OUString()));
+                : OUString());
     }
 
     // Play some focus ping-pong to trigger AT tools.
@@ -659,7 +666,7 @@ Reference<XAccessibleContext> SAL_CALL PresenterAccessible::getAccessibleContext
         Reference<XPane> xMainPane (mxMainPane, UNO_QUERY);
         if (xMainPane.is())
         {
-            mxMainWindow.set(xMainPane->getWindow(), UNO_QUERY);
+            mxMainWindow = xMainPane->getWindow();
             mxMainWindow->addFocusListener(this);
         }
         mpAccessibleConsole = AccessibleConsole::Create(
@@ -700,7 +707,7 @@ void SAL_CALL PresenterAccessible::disposing (const css::lang::EventObject& rEve
 
 void SAL_CALL PresenterAccessible::initialize (const css::uno::Sequence<css::uno::Any>& rArguments)
 {
-    if (rArguments.getLength() >= 1)
+    if (rArguments.hasElements())
     {
         mxAccessibleParent.set(rArguments[0], UNO_QUERY);
         if (mpAccessibleConsole.is())
@@ -739,23 +746,23 @@ void PresenterAccessible::AccessibleObject::SetWindow (
 {
     Reference<awt::XWindow2> xContentWindow (rxContentWindow, UNO_QUERY);
 
-    if (mxContentWindow.get() != xContentWindow.get())
+    if (mxContentWindow.get() == xContentWindow.get())
+        return;
+
+    if (mxContentWindow.is())
     {
-        if (mxContentWindow.is())
-        {
-            mxContentWindow->removeWindowListener(this);
-        }
-
-        mxContentWindow = xContentWindow;
-        mxBorderWindow.set(rxBorderWindow, UNO_QUERY);
-
-        if (mxContentWindow.is())
-        {
-            mxContentWindow->addWindowListener(this);
-        }
-
-        UpdateStateSet();
+        mxContentWindow->removeWindowListener(this);
     }
+
+    mxContentWindow = xContentWindow;
+    mxBorderWindow.set(rxBorderWindow, UNO_QUERY);
+
+    if (mxContentWindow.is())
+    {
+        mxContentWindow->addWindowListener(this);
+    }
+
+    UpdateStateSet();
 }
 
 void PresenterAccessible::AccessibleObject::SetAccessibleParent (
@@ -980,19 +987,19 @@ sal_Int32 SAL_CALL PresenterAccessible::AccessibleObject::getBackground()
 void SAL_CALL PresenterAccessible::AccessibleObject::addAccessibleEventListener (
     const Reference<XAccessibleEventListener>& rxListener)
 {
-    if (rxListener.is())
-    {
-        const osl::MutexGuard aGuard(m_aMutex);
+    if (!rxListener.is())
+        return;
 
-        if (rBHelper.bDisposed || rBHelper.bInDispose)
-        {
-            uno::Reference<uno::XInterface> xThis (static_cast<XWeak*>(this), UNO_QUERY);
-            rxListener->disposing (lang::EventObject(xThis));
-        }
-        else
-        {
-            maListeners.push_back(rxListener);
-        }
+    const osl::MutexGuard aGuard(m_aMutex);
+
+    if (rBHelper.bDisposed || rBHelper.bInDispose)
+    {
+        uno::Reference<uno::XInterface> xThis (static_cast<XWeak*>(this), UNO_QUERY);
+        rxListener->disposing (lang::EventObject(xThis));
+    }
+    else
+    {
+        maListeners.push_back(rxListener);
     }
 }
 
@@ -1158,21 +1165,17 @@ void PresenterAccessible::AccessibleObject::FireAccessibleEvent (
     aEventObject.OldValue = rOldValue;
 
     ::std::vector<Reference<XAccessibleEventListener> > aListenerCopy(maListeners);
-    for (::std::vector<Reference<XAccessibleEventListener> >::const_iterator
-             iListener(aListenerCopy.begin()),
-             iEnd(aListenerCopy.end());
-         iListener!=iEnd;
-         ++iListener)
+    for (const auto& rxListener : aListenerCopy)
     {
         try
         {
-            (*iListener)->notifyEvent(aEventObject);
+            rxListener->notifyEvent(aEventObject);
         }
         catch (const lang::DisposedException&)
         {
             // Listener has been disposed and should have been removed
             // already.
-            removeAccessibleEventListener(*iListener);
+            removeAccessibleEventListener(rxListener);
         }
         catch (const Exception&)
         {
@@ -1260,12 +1263,8 @@ sal_Bool SAL_CALL AccessibleStateSet::contains (sal_Int16 nState)
 
 sal_Bool SAL_CALL AccessibleStateSet::containsAll (const css::uno::Sequence<sal_Int16>& rStateSet)
 {
-    for (sal_Int32 nIndex=0,nCount=rStateSet.getLength(); nIndex<nCount; ++nIndex)
-    {
-        if ((mnStateSet & GetStateMask(rStateSet[nIndex])) == 0)
-            return false;
-    }
-    return true;
+    return std::none_of(rStateSet.begin(), rStateSet.end(),
+        [this](const sal_Int16 nState) { return (mnStateSet & GetStateMask(nState)) == 0; });
 }
 
 css::uno::Sequence<sal_Int16> SAL_CALL AccessibleStateSet::getStates()
@@ -1290,7 +1289,7 @@ void AccessibleRelationSet::AddRelation (
     const sal_Int16 nRelationType,
     const Reference<XInterface>& rxObject)
 {
-    maRelations.resize(maRelations.size()+1);
+    maRelations.emplace_back();
     maRelations.back().RelationType = nRelationType;
     maRelations.back().TargetSet.realloc(1);
     maRelations.back().TargetSet[0] = rxObject;
@@ -1305,7 +1304,7 @@ sal_Int32 SAL_CALL AccessibleRelationSet::getRelationCount()
 
 AccessibleRelation SAL_CALL AccessibleRelationSet::getRelation (sal_Int32 nIndex)
 {
-    if (nIndex<0 && sal_uInt32(nIndex)>=maRelations.size())
+    if (nIndex<0 && o3tl::make_unsigned(nIndex)>=maRelations.size())
         return AccessibleRelation();
     else
         return maRelations[nIndex];
@@ -1313,25 +1312,16 @@ AccessibleRelation SAL_CALL AccessibleRelationSet::getRelation (sal_Int32 nIndex
 
 sal_Bool SAL_CALL AccessibleRelationSet::containsRelation (sal_Int16 nRelationType)
 {
-    for (::std::vector<AccessibleRelation>::const_iterator iRelation(maRelations.begin());
-         iRelation!=maRelations.end();
-         ++iRelation)
-    {
-        if (iRelation->RelationType == nRelationType)
-            return true;
-    }
-    return false;
+    return std::any_of(maRelations.begin(), maRelations.end(),
+        [nRelationType](const AccessibleRelation& rRelation) { return rRelation.RelationType == nRelationType; });
 }
 
 AccessibleRelation SAL_CALL AccessibleRelationSet::getRelationByType (sal_Int16 nRelationType)
 {
-    for (::std::vector<AccessibleRelation>::const_iterator iRelation(maRelations.begin());
-         iRelation!=maRelations.end();
-         ++iRelation)
-    {
-        if (iRelation->RelationType == nRelationType)
-            return *iRelation;
-    }
+    auto iRelation = std::find_if(maRelations.begin(), maRelations.end(),
+        [nRelationType](const AccessibleRelation& rRelation) { return rRelation.RelationType == nRelationType; });
+    if (iRelation != maRelations.end())
+        return *iRelation;
     return AccessibleRelation();
 }
 
@@ -1591,6 +1581,14 @@ sal_Bool SAL_CALL PresenterAccessible::AccessibleParagraph::copyText (
     return false;
 }
 
+sal_Bool SAL_CALL PresenterAccessible::AccessibleParagraph::scrollSubstringTo(
+    sal_Int32,
+    sal_Int32,
+    AccessibleScrollType)
+{
+    return false;
+}
+
 //----- protected -------------------------------------------------------------
 
 awt::Point PresenterAccessible::AccessibleParagraph::GetRelativeLocation()
@@ -1618,8 +1616,8 @@ awt::Point PresenterAccessible::AccessibleParagraph::GetAbsoluteParentLocation()
 {
     if (mxParentAccessible.is())
     {
-        Reference<XAccessibleContext> xParentContext(
-            mxParentAccessible->getAccessibleContext(), UNO_QUERY);
+        Reference<XAccessibleContext> xParentContext =
+            mxParentAccessible->getAccessibleContext();
         if (xParentContext.is())
         {
             Reference<XAccessibleComponent> xGrandParentComponent(
@@ -1637,7 +1635,7 @@ bool PresenterAccessible::AccessibleParagraph::GetWindowState (const sal_Int16 n
     switch (nType)
     {
         case AccessibleStateType::EDITABLE:
-            return mpParagraph.get()!=nullptr;
+            return bool(mpParagraph);
 
         case AccessibleStateType::ACTIVE:
             return true;
@@ -1702,50 +1700,44 @@ void AccessibleNotes::SetTextView (
 
     mpTextView = rpTextView;
 
-    if (mpTextView)
+    if (!mpTextView)
+        return;
+
+    // Create a new set of children, one for each paragraph.
+    const sal_Int32 nParagraphCount (mpTextView->GetParagraphCount());
+    for (sal_Int32 nIndex=0; nIndex<nParagraphCount; ++nIndex)
     {
-        // Create a new set of children, one for each paragraph.
-        const sal_Int32 nParagraphCount (mpTextView->GetParagraphCount());
-        for (sal_Int32 nIndex=0; nIndex<nParagraphCount; ++nIndex)
-        {
-            rtl::Reference<PresenterAccessible::AccessibleParagraph> pParagraph (
-                new PresenterAccessible::AccessibleParagraph(
-                    css::lang::Locale(),
-                    "Paragraph"+OUString::number(nIndex),
-                    rpTextView->GetParagraph(nIndex),
-                    nIndex));
-            pParagraph->LateInitialization();
-            pParagraph->SetWindow(
-                Reference<awt::XWindow>(mxContentWindow, UNO_QUERY),
-                Reference<awt::XWindow>(mxBorderWindow, UNO_QUERY));
-            pParagraph->SetAccessibleParent(this);
-            aChildren.push_back(
-                rtl::Reference<PresenterAccessible::AccessibleObject>(pParagraph.get()));
-        }
-        maChildren.swap(aChildren);
-        FireAccessibleEvent(AccessibleEventId::INVALIDATE_ALL_CHILDREN, Any(), Any());
-
-        // Dispose the old children. (This will remove them from the focus
-        // manager).
-        for (std::vector<rtl::Reference<AccessibleObject> >::const_iterator
-                 iChild(aChildren.begin()), iEnd(aChildren.end());
-             iChild!=iEnd;
-             ++iChild)
-        {
-            Reference<lang::XComponent> xComponent (static_cast<XWeak*>(iChild->get()), UNO_QUERY);
-            if (xComponent.is())
-                xComponent->dispose();
-        }
-
-        // This class acts as a controller of who broadcasts caret motion
-        // events and handles text changes.  Register the corresponding
-        // listeners here.
-        mpTextView->GetCaret()->SetCaretMotionBroadcaster(
-            [this](sal_Int32 a, sal_Int32 b, sal_Int32 c, sal_Int32 d)
-                { return this->NotifyCaretChange(a, b, c, d); });
-        mpTextView->SetTextChangeBroadcaster(
-            [this]() { return SetTextView(mpTextView); });
+        rtl::Reference<PresenterAccessible::AccessibleParagraph> pParagraph (
+            new PresenterAccessible::AccessibleParagraph(
+                css::lang::Locale(),
+                "Paragraph"+OUString::number(nIndex),
+                rpTextView->GetParagraph(nIndex),
+                nIndex));
+        pParagraph->LateInitialization();
+        pParagraph->SetWindow(mxContentWindow, mxBorderWindow);
+        pParagraph->SetAccessibleParent(this);
+        aChildren.emplace_back(pParagraph.get());
     }
+    maChildren.swap(aChildren);
+    FireAccessibleEvent(AccessibleEventId::INVALIDATE_ALL_CHILDREN, Any(), Any());
+
+    // Dispose the old children. (This will remove them from the focus
+    // manager).
+    for (const auto& rxChild : aChildren)
+    {
+        Reference<lang::XComponent> xComponent (static_cast<XWeak*>(rxChild.get()), UNO_QUERY);
+        if (xComponent.is())
+            xComponent->dispose();
+    }
+
+    // This class acts as a controller of who broadcasts caret motion
+    // events and handles text changes.  Register the corresponding
+    // listeners here.
+    mpTextView->GetCaret()->SetCaretMotionBroadcaster(
+        [this](sal_Int32 a, sal_Int32 b, sal_Int32 c, sal_Int32 d)
+            { return this->NotifyCaretChange(a, b, c, d); });
+    mpTextView->SetTextChangeBroadcaster(
+        [this]() { return SetTextView(mpTextView); });
 }
 
 void AccessibleNotes::SetWindow (
@@ -1756,13 +1748,9 @@ void AccessibleNotes::SetWindow (
 
     // Set the windows at the children as well, so that every paragraph can
     // setup its geometry.
-    for (::std::vector<rtl::Reference<AccessibleObject> >::const_iterator
-             iChild(maChildren.begin()),
-             iEnd(maChildren.end());
-         iChild!=iEnd;
-         ++iChild)
+    for (auto& rxChild : maChildren)
     {
-        (*iChild)->SetWindow(rxContentWindow, rxBorderWindow);
+        rxChild->SetWindow(rxContentWindow, rxBorderWindow);
     }
 }
 
@@ -1853,20 +1841,16 @@ void AccessibleFocusManager::FocusObject (
     const ::rtl::Reference<PresenterAccessible::AccessibleObject>& rpObject)
 {
     // Remove the focus of any of the other focusable objects.
-    for (::std::vector<rtl::Reference<PresenterAccessible::AccessibleObject> >::const_iterator
-             iObject (maFocusableObjects.begin()),
-             iEnd (maFocusableObjects.end());
-         iObject != iEnd;
-         ++iObject)
+    for (auto& rxObject : maFocusableObjects)
     {
-        if (*iObject!=rpObject)
-            (*iObject)->SetIsFocused(false);
+        if (rxObject!=rpObject)
+            rxObject->SetIsFocused(false);
     }
 
     if (rpObject.is())
         rpObject->SetIsFocused(true);
 }
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

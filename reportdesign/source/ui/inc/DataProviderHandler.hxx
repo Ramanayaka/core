@@ -33,8 +33,6 @@
 #include <com/sun/star/script/XTypeConverter.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-#include <memory>
-
 
 namespace rptui
 {
@@ -50,14 +48,6 @@ namespace rptui
         public DataProviderHandler_Base
     {
     public:
-        // XServiceInfo - static versions
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_static(  );
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL
-                        create(const css::uno::Reference< css::uno::XComponentContext >&);
-
         explicit DataProviderHandler(css::uno::Reference< css::uno::XComponentContext > const & context);
     private:
 
@@ -91,8 +81,8 @@ namespace rptui
     protected:
         virtual ~DataProviderHandler() override {}
     private:
-        DataProviderHandler(DataProviderHandler &) = delete;
-        void operator =(DataProviderHandler &) = delete;
+        DataProviderHandler(DataProviderHandler const &) = delete;
+        void operator =(DataProviderHandler const &) = delete;
 
 
         bool impl_dialogLinkedFields_nothrow( ::osl::ClearableMutexGuard& _rClearBeforeDialog ) const;

@@ -26,7 +26,7 @@
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/chart2/data/XLabeledDataSequence2.hpp>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace chart2 {
         class XChartDocument;
         class XRegressionCurve;
@@ -34,7 +34,7 @@ namespace com { namespace sun { namespace star {
             class XDataProvider;
         }
     }
-}}}
+}
 
 class XMLPropStyleContext;
 class SvXMLStylesContext;
@@ -63,7 +63,6 @@ namespace SchXMLTools
         XML_CHART_CLASS_BAR,
         XML_CHART_CLASS_STOCK,
         XML_CHART_CLASS_BUBBLE,
-        XML_CHART_CLASS_GL3DBAR,
         XML_CHART_CLASS_ADDIN,
         XML_CHART_CLASS_UNKNOWN
     };

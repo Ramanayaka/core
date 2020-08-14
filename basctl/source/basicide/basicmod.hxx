@@ -18,8 +18,7 @@
  */
 
 
-#ifndef INCLUDED_BASCTL_SOURCE_BASICIDE_BASICMOD_HXX
-#define INCLUDED_BASCTL_SOURCE_BASICIDE_BASICMOD_HXX
+#pragma once
 
 #include <sfx2/module.hxx>
 
@@ -29,13 +28,12 @@ namespace basctl
 class Module : public SfxModule
 {
 public:
-    Module ( ResMgr *pMgr, SfxObjectFactory *pObjFact) :
-        SfxModule( pMgr, {pObjFact} )
-    { }
+    Module(const OString& rResName, SfxObjectFactory *pObjFact)
+        : SfxModule(rResName, {pObjFact})
+    {
+    }
 };
 
 } // namespace basctl
-
-#endif // INCLUDED_BASCTL_SOURCE_BASICIDE_BASICMOD_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

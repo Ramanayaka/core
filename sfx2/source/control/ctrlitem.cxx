@@ -17,13 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/log.hxx>
 #include <svl/itempool.hxx>
 
 #include <sfx2/ctrlitem.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
-#include <sfx2/msgpool.hxx>
-#include "statcach.hxx"
+#include <statcach.hxx>
 #include <sfx2/viewfrm.hxx>
 
 // returns the next registered SfxControllerItem with the same id
@@ -42,7 +42,7 @@ bool SfxControllerItem::IsBound() const
 }
 
 
-// registeres with the id at the bindings
+// registers with the id at the bindings
 
 void SfxControllerItem::Bind( sal_uInt16 nNewId, SfxBindings *pBindinx )
 {
@@ -172,7 +172,7 @@ void SfxControllerItem::SetId( sal_uInt16 nItemId )
 }
 
 
-// creates a atomic item for a controller without registration.
+// creates an atomic item for a controller without registration.
 
 SfxControllerItem::SfxControllerItem():
     nId(0),
@@ -182,7 +182,7 @@ SfxControllerItem::SfxControllerItem():
 }
 
 
-// creates a representation of the function nId and registeres it
+// creates a representation of the function nId and registers it
 
 SfxControllerItem::SfxControllerItem( sal_uInt16 nID, SfxBindings &rBindings ):
     nId(nID),
@@ -203,7 +203,7 @@ SfxControllerItem::~SfxControllerItem()
 void SfxControllerItem::dispose()
 {
     if ( IsBound() )
-        pBindings->Release(*this);
+        UnBind();
 }
 
 void SfxControllerItem::StateChanged
@@ -233,6 +233,13 @@ void SfxControllerItem::StateChanged
 {
 }
 
+void SfxControllerItem::GetControlState
+(
+    sal_uInt16,
+    boost::property_tree::ptree&
+)
+{
+}
 
 void SfxStatusForwarder::StateChanged
 (

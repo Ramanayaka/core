@@ -54,7 +54,7 @@ char const * const SyntaxStrings[] = {
 "\ttype definition:",
 "\tstruct identifier",
 "\t'{'",
-"\t\t{ type idetifier }",
+"\t\t{ type identifier }",
 "\t'}'",
 "\t|",
 "\tenum identifier",
@@ -108,9 +108,9 @@ char const CommandLineSyntax[] =
 void Init()
 {
     if( !GetIdlApp().pHashTable )
-        GetIdlApp().pHashTable      = new SvStringHashTable;
+        GetIdlApp().pHashTable.reset( new SvStringHashTable );
     if( !GetIdlApp().pGlobalNames )
-        GetIdlApp().pGlobalNames    = new SvGlobalHashNames();
+        GetIdlApp().pGlobalNames.reset( new SvGlobalHashNames() );
 }
 
 bool ReadIdl( SvIdlWorkingBase * pDataBase, const SvCommand & rCommand )
@@ -132,7 +132,7 @@ bool ReadIdl( SvIdlWorkingBase * pDataBase, const SvCommand & rCommand )
     return true;
 }
 
-static bool ResponseFile( StringList * pList, int argc, char ** argv )
+static bool ResponseFile( std::vector<OUString> * pList, int argc, char ** argv )
 {
     // program name
     pList->push_back( OUString::createFromAscii(*argv) );
@@ -174,7 +174,7 @@ static bool ResponseFile( StringList * pList, int argc, char ** argv )
 SvCommand::SvCommand( int argc, char ** argv )
     : nVerbosity(1)
 {
-    StringList aList;
+    std::vector<OUString> aList;
 
     if( ResponseFile( &aList, argc, argv ) )
     {
@@ -250,7 +250,7 @@ SvCommand::SvCommand( int argc, char ** argv )
                 { // define include paths
                     OUString aName( aParam.copy( 1 ) );
                     if( !aPath.isEmpty() )
-                        aPath += OUStringLiteral1(SAL_PATHSEPARATOR);
+                        aPath += OUStringChar(SAL_PATHSEPARATOR);
                     aPath += aName;
                 }
                 else if( aParam.startsWithIgnoreAsciiCase( "rsc" ) )
@@ -289,7 +289,7 @@ SvCommand::SvCommand( int argc, char ** argv )
     if( aInc.getLength() )
     {
         if( !aPath.isEmpty() )
-            aPath += OUStringLiteral1(SAL_PATHSEPARATOR);
+            aPath += OUStringChar(SAL_PATHSEPARATOR);
         aPath += OStringToOUString(aInc, RTL_TEXTENCODING_ASCII_US);
     }
 }

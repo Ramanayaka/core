@@ -25,10 +25,10 @@
 #include "cpp.h"
 
 #define OUTS    16384
-char outbuf[OUTS];
+static char outbuf[OUTS];
 char *outptr = outbuf;
 Source *cursource;
-int nerrs;
+static int nerrs;
 struct token nltoken = {NL, 0, 1, (uchar *) "\n", 0};
 char *curtime;
 int incdepth;
@@ -74,6 +74,7 @@ void
         {
             trp->tp = trp->lp = trp->bp;
             outptr = outbuf;
+            // coverity[overrun-buffer-arg: FALSE] - a multiple of trp->max is allocated, not trp->max itself
             anymacros |= gettokens(trp, 1);
             trp->tp = trp->bp;
         }
@@ -108,11 +109,8 @@ void
         puttokens(trp);
         anymacros = 0;
         cursource->line += cursource->lineinc;
-        if (cursource->lineinc > 1)
-        {
-            if (!Pflag)
-                genline();
-        }
+        if (cursource->lineinc > 1 && !Pflag)
+            genline();
     }
 }
 
@@ -131,7 +129,8 @@ void
             error(ERROR, "Unidentifiable control line");
         return;                         /* else empty line */
     }
-    if ((np = lookup(tp, 0)) == NULL || ((np->flag & ISKW) == 0 && !skipping))
+    np = lookup(tp, 0);
+    if (np == NULL || ((np->flag & ISKW) == 0 && !skipping))
     {
         error(WARNING, "Unknown preprocessor control %t", tp);
         return;

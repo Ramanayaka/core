@@ -19,11 +19,10 @@
 
 #include <dbaccess/dbaundomanager.hxx>
 #include <dbaccess/dataview.hxx>
-#include "singledoccontroller.hxx"
-#include "browserids.hxx"
-#include "dbu_misc.hrc"
-#include "dbustrings.hrc"
-#include "moduledbu.hxx"
+#include <core_resource.hxx>
+#include <singledoccontroller.hxx>
+#include <browserids.hxx>
+#include <strings.hrc>
 
 #include <svl/undo.hxx>
 
@@ -31,20 +30,19 @@ namespace dbaui
 {
 
     using ::com::sun::star::uno::Reference;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::XComponentContext;
     using ::com::sun::star::document::XUndoManager;
     using ::com::sun::star::beans::PropertyValue;
-    using ::com::sun::star::lang::EventObject;
 
     // OSingleDocumentController_Data
     struct OSingleDocumentController_Data
     {
-        rtl::Reference< UndoManager >  m_xUndoManager;
+        // no Reference! see UndoManager::acquire
+        std::unique_ptr<UndoManager> m_pUndoManager;
 
         OSingleDocumentController_Data( ::cppu::OWeakObject& i_parent, ::osl::Mutex& i_mutex )
-            :m_xUndoManager( new UndoManager( i_parent, i_mutex ) )
+            : m_pUndoManager(new UndoManager(i_parent, i_mutex))
         {
         }
     };
@@ -64,7 +62,7 @@ namespace dbaui
     {
         OSingleDocumentController_Base::disposing();
         ClearUndoManager();
-        m_pData->m_xUndoManager->disposing();
+        m_pData->m_pUndoManager->disposing();
     }
 
     void OSingleDocumentController::ClearUndoManager()
@@ -74,13 +72,13 @@ namespace dbaui
 
     SfxUndoManager& OSingleDocumentController::GetUndoManager() const
     {
-        return m_pData->m_xUndoManager->GetSfxUndoManager();
+        return m_pData->m_pUndoManager->GetSfxUndoManager();
     }
 
-    void OSingleDocumentController::addUndoActionAndInvalidate(SfxUndoAction *_pAction)
+    void OSingleDocumentController::addUndoActionAndInvalidate(std::unique_ptr<SfxUndoAction> _pAction)
     {
         // add undo action
-        GetUndoManager().AddUndoAction( _pAction );
+        GetUndoManager().AddUndoAction( std::move(_pAction) );
 
         // when we add an undo action the controller was modified
         setModified( true );
@@ -92,7 +90,8 @@ namespace dbaui
 
     Reference< XUndoManager > SAL_CALL OSingleDocumentController::getUndoManager(  )
     {
-        return m_pData->m_xUndoManager.get();
+        // see UndoManager::acquire
+        return m_pData->m_pUndoManager.get();
     }
 
     FeatureState OSingleDocumentController::GetState(sal_uInt16 _nId) const
@@ -104,9 +103,8 @@ namespace dbaui
                 aReturn.bEnabled = isEditable() && GetUndoManager().GetUndoActionCount() != 0;
                 if ( aReturn.bEnabled )
                 {
-                    OUString sUndo(ModuleRes(STR_UNDO_COLON));
-                    sUndo += " ";
-                    sUndo += GetUndoManager().GetUndoActionComment();
+                    OUString sUndo = DBA_RES(STR_UNDO_COLON) + " " +
+                        GetUndoManager().GetUndoActionComment();
                     aReturn.sTitle = sUndo;
                 }
                 break;
@@ -115,12 +113,33 @@ namespace dbaui
                 aReturn.bEnabled = isEditable() && GetUndoManager().GetRedoActionCount() != 0;
                 if ( aReturn.bEnabled )
                 {
-                    OUString sRedo(ModuleRes(STR_REDO_COLON));
-                    sRedo += " ";
-                    sRedo += GetUndoManager().GetRedoActionComment();
+                    OUString sRedo = DBA_RES(STR_REDO_COLON) + " " +
+                        GetUndoManager().GetRedoActionComment();
                     aReturn.sTitle = sRedo;
                 }
                 break;
+
+            case SID_GETUNDOSTRINGS:
+            {
+                size_t nCount(GetUndoManager().GetUndoActionCount());
+                Sequence<OUString> aSeq(nCount);
+                for (size_t n = 0; n < nCount; ++n)
+                    aSeq[n] = GetUndoManager().GetUndoActionComment(n);
+                aReturn.aValue <<= aSeq;
+                aReturn.bEnabled = true;
+                break;
+            }
+
+            case SID_GETREDOSTRINGS:
+            {
+                size_t nCount(GetUndoManager().GetRedoActionCount());
+                Sequence<OUString> aSeq(nCount);
+                for (size_t n = 0; n < nCount; ++n)
+                    aSeq[n] = GetUndoManager().GetRedoActionComment(n);
+                aReturn.aValue <<= aSeq;
+                aReturn.bEnabled = true;
+                break;
+            }
 
             default:
                 aReturn = OSingleDocumentController_Base::GetState(_nId);
@@ -132,16 +151,24 @@ namespace dbaui
         switch ( _nId )
         {
             case ID_BROWSER_UNDO:
-                GetUndoManager().Undo();
-                InvalidateFeature( ID_BROWSER_UNDO );
-                InvalidateFeature( ID_BROWSER_REDO );
-                break;
-
             case ID_BROWSER_REDO:
-                GetUndoManager().Redo();
+            {
+                sal_Int16 nCount(1);
+                if (_rArgs.hasElements() && _rArgs[0].Name != "KeyModifier")
+                    _rArgs[0].Value >>= nCount;
+
+                while (nCount--)
+                {
+                    if (_nId == ID_BROWSER_UNDO)
+                        GetUndoManager().Undo();
+                    else
+                        GetUndoManager().Redo();
+                }
+
                 InvalidateFeature( ID_BROWSER_UNDO );
                 InvalidateFeature( ID_BROWSER_REDO );
                 break;
+            }
 
             default:
                 OSingleDocumentController_Base::Execute( _nId, _rArgs );

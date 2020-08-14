@@ -19,15 +19,13 @@
 
 #include <sal/config.h>
 
+#include <com/sun/star/io/BufferSizeExceededException.hpp>
 #include <com/sun/star/io/NotConnectedException.hpp>
 #include <com/sun/star/io/XPipe.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/io/XConnectable.hpp>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
@@ -44,13 +42,16 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
 
-#include "services.hxx"
 #include "streamhelper.hxx"
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 // Implementation and service names
 #define IMPLEMENTATION_NAME "com.sun.star.comp.io.stm.Pipe"
 
 namespace io_stm{
+
+namespace {
 
 class OPipeImpl :
     public WeakImplHelper< XPipe , XConnectable , XServiceInfo >
@@ -98,6 +99,7 @@ private:
     std::unique_ptr<MemFIFO> m_pFIFO;
 };
 
+}
 
 OPipeImpl::OPipeImpl()
     : m_nBytesToSkip(0 )
@@ -159,7 +161,7 @@ sal_Int32 OPipeImpl::readSomeBytes(Sequence< sal_Int8 >& aData, sal_Int32 nMaxBy
             }
             if( m_pFIFO->getSize() )
             {
-                sal_Int32 nSize = Min( nMaxBytesToRead , m_pFIFO->getSize() );
+                sal_Int32 nSize = std::min( nMaxBytesToRead , m_pFIFO->getSize() );
                 aData.realloc( nSize );
                 m_pFIFO->read( aData , nSize );
                 return nSize;
@@ -197,7 +199,7 @@ void OPipeImpl::skipBytes(sal_Int32 nBytesToSkip)
     }
     m_nBytesToSkip += nBytesToSkip;
 
-    nBytesToSkip = Min( m_pFIFO->getSize() , m_nBytesToSkip );
+    nBytesToSkip = std::min( m_pFIFO->getSize() , m_nBytesToSkip );
     m_pFIFO->skip( nBytesToSkip );
     m_nBytesToSkip -= nBytesToSkip;
 }
@@ -299,7 +301,7 @@ void OPipeImpl::setSuccessor( const Reference < XConnectable >  &r )
          if( m_succ.is() )
          {
               m_succ->setPredecessor(
-                  Reference< XConnectable > ( (static_cast< XConnectable *  >(this)) ) );
+                  Reference< XConnectable > ( static_cast< XConnectable * >(this) ) );
          }
      }
 }
@@ -317,7 +319,7 @@ void OPipeImpl::setPredecessor( const Reference < XConnectable > &r )
         m_pred = r;
         if( m_pred.is() ) {
             m_pred->setSuccessor(
-                Reference < XConnectable > ( (static_cast< XConnectable *  >(this)) ) );
+                Reference < XConnectable > ( static_cast< XConnectable * >(this) ) );
         }
     }
 }
@@ -331,7 +333,7 @@ Reference < XConnectable > OPipeImpl::getPredecessor()
 // XServiceInfo
 OUString OPipeImpl::getImplementationName()
 {
-    return OPipeImpl_getImplementationName();
+    return IMPLEMENTATION_NAME;
 }
 
 // XServiceInfo
@@ -343,35 +345,16 @@ sal_Bool OPipeImpl::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > OPipeImpl::getSupportedServiceNames()
 {
-    return OPipeImpl_getSupportedServiceNames();
+    return { "com.sun.star.io.Pipe" };
 }
 
-/* implementation functions
-*
-*
-*/
+}
 
-
-Reference < XInterface > SAL_CALL OPipeImpl_CreateInstance(
-    SAL_UNUSED_PARAMETER const Reference < XComponentContext > & )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+io_OPipeImpl_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    OPipeImpl *p = new OPipeImpl;
-
-    return Reference < XInterface > ( (static_cast< OWeakObject *  >(p)) );
+    return cppu::acquire(new io_stm::OPipeImpl());
 }
-
-
-OUString    OPipeImpl_getImplementationName()
-{
-    return OUString( IMPLEMENTATION_NAME );
-}
-
-Sequence<OUString> OPipeImpl_getSupportedServiceNames()
-{
-    Sequence<OUString> aRet { "com.sun.star.io.Pipe" };
-    return aRet;
-}
-}
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

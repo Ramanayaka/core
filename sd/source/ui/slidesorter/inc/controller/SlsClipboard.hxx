@@ -21,17 +21,15 @@
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSCLIPBOARD_HXX
 
 #include <memory>
-#include "ViewClipboard.hxx"
-#include "controller/SlsSelectionObserver.hxx"
-#include "sdxfer.hxx"
+#include <ViewClipboard.hxx>
+#include <controller/SlsSelectionObserver.hxx>
+#include <sdxfer.hxx>
 
 #include <sal/types.h>
-#include <tools/solar.h>
-#include <svx/svdpage.hxx>
+#include <o3tl/deleter.hxx>
+#include <svx/svdtypes.hxx>
 
-#include "sddllapi.h"
-
-#include <set>
+#include <sddllapi.h>
 
 class SfxRequest;
 struct AcceptDropEvent;
@@ -46,19 +44,13 @@ namespace sd {
 class Window;
 }
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter { class SlideSorter; }
 
-namespace sd { namespace slidesorter { namespace model {
-class PageDescriptor;
-} } }
-
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 class SlideSorterController;
 
-class Clipboard
+class SAL_DLLPUBLIC_RTTI Clipboard
     : public ViewClipboard
 {
 public:
@@ -104,12 +96,7 @@ public:
     void Abort();
 
 protected:
-    virtual sal_uInt16 DetermineInsertPosition (
-        const SdTransferable& rTransferable) override;
-
-    virtual sal_uInt16 InsertSlides (
-        const SdTransferable& rTransferable,
-        sal_uInt16 nInsertPosition) override;
+    virtual sal_uInt16 DetermineInsertPosition () override;
 
 private:
     SlideSorter& mrSlideSorter;
@@ -122,25 +109,13 @@ private:
     */
     PageList maPagesToRemove;
 
-    /** Remember the pages inserted from another document or another place
-        in the same document so that they can be selected after the
-        drag-and-drop operation is completed.
-    */
-    PageList maPagesToSelect;
-
-    /** When pages are moved or copied then the selection of the slide
-        sorter has to be updated.  This flag is used to remember whether the
-        selection has to be updated or can stay as it is (sal_False).
-    */
-    bool mbUpdateSelectionPending;
-
     /** Used when a drop is executed to combine all undo actions into one.
         Typically created in ExecuteDrop() and released in DragFinish().
     */
     class UndoContext;
     std::unique_ptr<UndoContext> mxUndoContext;
 
-    std::unique_ptr<SelectionObserver::Context> mxSelectionObserverContext;
+    std::unique_ptr<SelectionObserver::Context, o3tl::default_delete<SelectionObserver::Context>> mxSelectionObserverContext;
     ImplSVEvent * mnDragFinishedUserEventId;
 
     void CreateSlideTransferable (
@@ -191,7 +166,7 @@ private:
     /** This method contains the code for AcceptDrop() and ExecuteDrop() shapes.
         There are only minor differences for the two cases at this level.
         @param eCommand
-            This parameter specifies whether to do a AcceptDrop() or
+            This parameter specifies whether to do an AcceptDrop() or
             ExecuteDrop().
         @param rPosition
             Since the event is given as void pointer we can not take the
@@ -221,7 +196,7 @@ private:
         trivial, ie would not change either source nor target document.
     */
     bool IsInsertionTrivial (
-        SdTransferable* pTransferable,
+        SdTransferable const * pTransferable,
         const sal_Int8 nDndAction) const;
 
     /** Asynchronous part of DragFinished.  The argument is the sal_Int8
@@ -230,7 +205,7 @@ private:
     DECL_LINK(ProcessDragFinished, void*, void);
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

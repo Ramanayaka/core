@@ -23,17 +23,16 @@
 #include <cppuhelper/proptypehlp.hxx>
 #include <comphelper/extract.hxx>
 #include <com/sun/star/beans/Property.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <functional>
 #include <type_traits>
 #include <comphelper/comphelperdllapi.h>
-#include <cppu/unotype.hxx>
+
+namespace com::sun::star::beans { class XPropertySet; }
 
 namespace comphelper
 {
 
     // comparing two property instances
-    struct PropertyCompareByName : public ::std::binary_function< css::beans::Property, css::beans::Property, bool >
+    struct PropertyCompareByName
     {
         bool operator() (const css::beans::Property& x, const css::beans::Property& y) const
         {

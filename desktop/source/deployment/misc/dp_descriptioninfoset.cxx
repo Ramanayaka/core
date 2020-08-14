@@ -17,27 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dp_descriptioninfoset.hxx"
+#include <dp_descriptioninfoset.hxx>
 
-#include "dp_resource.h"
+#include <dp_resource.h>
 #include <sal/config.h>
 
 #include <comphelper/sequence.hxx>
-#include <comphelper/seqstream.hxx>
 #include <comphelper/processfactory.hxx>
-#include <boost/optional.hpp>
+#include <comphelper/propertysequence.hxx>
+#include <optional>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/deployment/DeploymentException.hpp>
-#include <com/sun/star/beans/Optional.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/io/SequenceInputStream.hpp>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
+#include <com/sun/star/task/XInteractionHandler.hpp>
+#include <com/sun/star/ucb/XCommandEnvironment.hpp>
+#include <com/sun/star/ucb/XProgressHandler.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/xml/dom/DOMException.hpp>
 #include <com/sun/star/xml/dom/XNode.hpp>
@@ -49,7 +50,6 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/weak.hxx>
 #include <cppuhelper/exc_hlp.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <ucbhelper/content.hxx>
@@ -92,8 +92,10 @@ OUString getNodeValue(
     try {
         return node->getNodeValue();
     } catch (const css::xml::dom::DOMException & e) {
-        throw css::uno::RuntimeException(
-            "com.sun.star.xml.dom.DOMException: " + e.Message);
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException(
+            "com.sun.star.xml.dom.DOMException: " + e.Message,
+            nullptr, anyEx );
     }
 }
 
@@ -167,12 +169,10 @@ ExtensionDescription::ExtensionDescription(
         //brings up a dialog.We want to prevent this. Therefore we wrap the xCmdEnv
         //and filter the respective exception out.
         OUString sDescriptionUri(installDir + "/description.xml");
-        Reference<css::ucb::XCommandEnvironment> xFilter =
-            static_cast<css::ucb::XCommandEnvironment*>(
-                new FileDoesNotExistFilter(xCmdEnv));
+        Reference<css::ucb::XCommandEnvironment> xFilter = new FileDoesNotExistFilter(xCmdEnv);
         ::ucbhelper::Content descContent(sDescriptionUri, xFilter, xContext);
 
-        //throws an css::uno::Exception if the file is not available
+        //throws a css::uno::Exception if the file is not available
         Reference<css::io::XInputStream> xIn;
         try
         {   //throws com.sun.star.ucb.InteractiveIOException
@@ -215,7 +215,7 @@ ExtensionDescription::ExtensionDescription(
                 sDescriptionUri + " contains no root element.", nullptr);
         }
 
-        if ( ! (xRoot->getTagName() == "description"))
+        if ( xRoot->getTagName() != "description")
         {
             throw css::uno::Exception(
                 sDescriptionUri + " does not contain the root element <description>.", nullptr);
@@ -225,7 +225,7 @@ ExtensionDescription::ExtensionDescription(
         OUString nsDescription = xRoot->getNamespaceURI();
 
         //check if this namespace is supported
-        if ( ! (nsDescription == "http://openoffice.org/extensions/description/2006"))
+        if ( nsDescription != "http://openoffice.org/extensions/description/2006")
         {
             throw css::uno::Exception(sDescriptionUri + " contains a root element with an unsupported namespace. ", nullptr);
         }
@@ -302,8 +302,10 @@ DescriptionInfoset getDescriptionInfoset(OUString const & sExtensionFolderURL)
             getRootElement();
     } catch (const NoDescriptionException &) {
     } catch (const css::deployment::DeploymentException & e) {
-        throw css::uno::RuntimeException(
-             "com.sun.star.deployment.DeploymentException: " + e.Message, nullptr);
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException(
+            "com.sun.star.deployment.DeploymentException: " + e.Message,
+            nullptr, anyEx );
     }
     return DescriptionInfoset(context, root);
 }
@@ -323,7 +325,7 @@ DescriptionInfoset::DescriptionInfoset(
 
 DescriptionInfoset::~DescriptionInfoset() {}
 
-::boost::optional< OUString > DescriptionInfoset::getIdentifier() const {
+::std::optional< OUString > DescriptionInfoset::getIdentifier() const {
     return getOptionalValue("desc:identifier/@value");
 }
 
@@ -340,95 +342,94 @@ OUString DescriptionInfoset::getNodeValueFromExpression(OUString const & express
     return n.is() ? getNodeValue(n) : OUString();
 }
 
-void DescriptionInfoset::checkBlacklist() const
+void DescriptionInfoset::checkDenylist() const
 {
-    if (m_element.is()) {
-        boost::optional< OUString > id(getIdentifier());
-        if (!id)
-            return; // nothing to check
-        OUString currentversion(getVersion());
-        if (currentversion.getLength() == 0)
-            return;  // nothing to check
+    if (!m_element.is())
+        return;
 
-        css::uno::Sequence< css::uno::Any > args = css::uno::Sequence< css::uno::Any >(1);
-        css::beans::PropertyValue prop;
-        prop.Name = "nodepath";
-        prop.Value <<= OUString("/org.openoffice.Office.ExtensionDependencies/Extensions");
-        args[0] <<= prop;
+    std::optional< OUString > id(getIdentifier());
+    if (!id)
+        return; // nothing to check
+    OUString currentversion(getVersion());
+    if (currentversion.getLength() == 0)
+        return;  // nothing to check
 
-        css::uno::Reference< css::container::XNameAccess > blacklist(
-            (css::configuration::theDefaultProvider::get(m_context)
-             ->createInstanceWithArguments(
-                 "com.sun.star.configuration.ConfigurationAccess", args)),
-            css::uno::UNO_QUERY_THROW);
+    css::uno::Sequence<css::uno::Any> args(comphelper::InitAnyPropertySequence(
+    {
+        {"nodepath", css::uno::Any(OUString("/org.openoffice.Office.ExtensionDependencies/Extensions"))}
+    }));
+    css::uno::Reference< css::container::XNameAccess > denylist(
+        (css::configuration::theDefaultProvider::get(m_context)
+         ->createInstanceWithArguments(
+             "com.sun.star.configuration.ConfigurationAccess", args)),
+        css::uno::UNO_QUERY_THROW);
 
-        // check first if a blacklist entry is available
-        if (blacklist.is() && blacklist->hasByName(*id)) {
-            css::uno::Reference< css::beans::XPropertySet > extProps(
-                blacklist->getByName(*id), css::uno::UNO_QUERY_THROW);
+    // check first if a denylist entry is available
+    if (!(denylist.is() && denylist->hasByName(*id)))        return;
 
-            css::uno::Any anyValue = extProps->getPropertyValue("Versions");
+    css::uno::Reference< css::beans::XPropertySet > extProps(
+        denylist->getByName(*id), css::uno::UNO_QUERY_THROW);
 
-            css::uno::Sequence< OUString > blversions;
-            anyValue >>= blversions;
+    css::uno::Any anyValue = extProps->getPropertyValue("Versions");
 
-            // check if the current version requires further dependency checks from the blacklist
-            if (checkBlacklistVersion(currentversion, blversions)) {
-                anyValue = extProps->getPropertyValue("Dependencies");
-                OUString udeps;
-                anyValue >>= udeps;
+    css::uno::Sequence< OUString > blversions;
+    anyValue >>= blversions;
 
-                if (udeps.getLength() == 0)
-                    return; // nothing todo
+    // check if the current version requires further dependency checks from the denylist
+    if (!checkDenylistVersion(currentversion, blversions))        return;
 
-                OString xmlDependencies = OUStringToOString(udeps, RTL_TEXTENCODING_UNICODE);
+    anyValue = extProps->getPropertyValue("Dependencies");
+    OUString udeps;
+    anyValue >>= udeps;
 
-                css::uno::Reference< css::xml::dom::XDocumentBuilder> docbuilder(
-                    m_context->getServiceManager()->createInstanceWithContext("com.sun.star.xml.dom.DocumentBuilder", m_context),
-                    css::uno::UNO_QUERY_THROW);
+    if (udeps.getLength() == 0)
+        return; // nothing todo
 
-                css::uno::Sequence< sal_Int8 > byteSeq(reinterpret_cast<const sal_Int8*>(xmlDependencies.getStr()), xmlDependencies.getLength());
+    OString xmlDependencies = OUStringToOString(udeps, RTL_TEXTENCODING_UNICODE);
 
-                css::uno::Reference< css::io::XInputStream> inputstream( css::io::SequenceInputStream::createStreamFromSequence(m_context, byteSeq),
-                                                                         css::uno::UNO_QUERY_THROW);
+    css::uno::Reference< css::xml::dom::XDocumentBuilder> docbuilder(
+        m_context->getServiceManager()->createInstanceWithContext("com.sun.star.xml.dom.DocumentBuilder", m_context),
+        css::uno::UNO_QUERY_THROW);
 
-                css::uno::Reference< css::xml::dom::XDocument > xDocument(docbuilder->parse(inputstream));
-                css::uno::Reference< css::xml::dom::XElement > xElement(xDocument->getDocumentElement());
-                css::uno::Reference< css::xml::dom::XNodeList > xDeps(xElement->getChildNodes());
-                sal_Int32 nLen = xDeps->getLength();
+    css::uno::Sequence< sal_Int8 > byteSeq(reinterpret_cast<const sal_Int8*>(xmlDependencies.getStr()), xmlDependencies.getLength());
 
-                // get the parent xml document  of current description info for the import
-                css::uno::Reference< css::xml::dom::XDocument > xCurrentDescInfo(m_element->getOwnerDocument());
+    css::uno::Reference< css::io::XInputStream> inputstream( css::io::SequenceInputStream::createStreamFromSequence(m_context, byteSeq),
+                                                             css::uno::UNO_QUERY_THROW);
 
-                // get dependency node of current description info to merge the new dependencies from the blacklist
-                css::uno::Reference< css::xml::dom::XNode > xCurrentDeps(
-                    m_xpath->selectSingleNode(m_element, "desc:dependencies"));
+    css::uno::Reference< css::xml::dom::XDocument > xDocument(docbuilder->parse(inputstream));
+    css::uno::Reference< css::xml::dom::XElement > xElement(xDocument->getDocumentElement());
+    css::uno::Reference< css::xml::dom::XNodeList > xDeps(xElement->getChildNodes());
+    sal_Int32 nLen = xDeps->getLength();
 
-                // if no dependency node exists, create a new one in the current description info
-                if (!xCurrentDeps.is()) {
-                    css::uno::Reference< css::xml::dom::XNode > xNewDepNode(
-                        xCurrentDescInfo->createElementNS(
-                            "http://openoffice.org/extensions/description/2006",
-                            "dependencies"), css::uno::UNO_QUERY_THROW);
-                    m_element->appendChild(xNewDepNode);
-                    xCurrentDeps = m_xpath->selectSingleNode(m_element, "desc:dependencies");
-                }
+    // get the parent xml document  of current description info for the import
+    css::uno::Reference< css::xml::dom::XDocument > xCurrentDescInfo(m_element->getOwnerDocument());
 
-                for (sal_Int32 i=0; i<nLen; i++) {
-                    css::uno::Reference< css::xml::dom::XNode > xNode(xDeps->item(i));
-                    css::uno::Reference< css::xml::dom::XElement > xDep(xNode, css::uno::UNO_QUERY);
-                    if (xDep.is()) {
-                        // found valid blacklist dependency, import the node first and append it to the existing dependency node
-                        css::uno::Reference< css::xml::dom::XNode > importedNode = xCurrentDescInfo->importNode(xNode, true);
-                        xCurrentDeps->appendChild(importedNode);
-                    }
-                }
-            }
+    // get dependency node of current description info to merge the new dependencies from the denylist
+    css::uno::Reference< css::xml::dom::XNode > xCurrentDeps(
+        m_xpath->selectSingleNode(m_element, "desc:dependencies"));
+
+    // if no dependency node exists, create a new one in the current description info
+    if (!xCurrentDeps.is()) {
+        css::uno::Reference< css::xml::dom::XNode > xNewDepNode(
+            xCurrentDescInfo->createElementNS(
+                "http://openoffice.org/extensions/description/2006",
+                "dependencies"), css::uno::UNO_QUERY_THROW);
+        m_element->appendChild(xNewDepNode);
+        xCurrentDeps = m_xpath->selectSingleNode(m_element, "desc:dependencies");
+    }
+
+    for (sal_Int32 i=0; i<nLen; i++) {
+        css::uno::Reference< css::xml::dom::XNode > xNode(xDeps->item(i));
+        css::uno::Reference< css::xml::dom::XElement > xDep(xNode, css::uno::UNO_QUERY);
+        if (xDep.is()) {
+            // found valid denylist dependency, import the node first and append it to the existing dependency node
+            css::uno::Reference< css::xml::dom::XNode > importedNode = xCurrentDescInfo->importNode(xNode, true);
+            xCurrentDeps->appendChild(importedNode);
         }
     }
 }
 
-bool DescriptionInfoset::checkBlacklistVersion(
+bool DescriptionInfoset::checkDenylistVersion(
     const OUString& currentversion,
     css::uno::Sequence< OUString > const & versions)
 {
@@ -469,8 +470,7 @@ css::uno::Sequence< OUString > DescriptionInfoset::getSupportedPlatforms() const
     sal_Int32 nIndex = 0;
     do
     {
-        OUString aToken = value.getToken( 0, ',', nIndex );
-        aToken = aToken.trim();
+        const OUString aToken = value.getToken( 0, ',', nIndex ).trim();
         if (!aToken.isEmpty())
             vec.push_back(aToken);
 
@@ -484,8 +484,8 @@ css::uno::Reference< css::xml::dom::XNodeList >
 DescriptionInfoset::getDependencies() const {
     if (m_element.is()) {
         try {
-            // check the extension blacklist first and expand the dependencies if applicable
-            checkBlacklist();
+            // check the extension denylist first and expand the dependencies if applicable
+            checkDenylist();
 
             return m_xpath->selectNodeList(m_element, "desc:dependencies/*");
         } catch (const css::xml::xpath::XPathException &) {
@@ -520,20 +520,20 @@ OUString DescriptionInfoset::getIconURL( bool bHighContrast ) const
     return OUString();
 }
 
-::boost::optional< OUString > DescriptionInfoset::getLocalizedUpdateWebsiteURL()
+::std::optional< OUString > DescriptionInfoset::getLocalizedUpdateWebsiteURL()
     const
 {
     bool bParentExists = false;
     const OUString sURL (getLocalizedHREFAttrFromChild("/desc:description/desc:update-website", &bParentExists ));
 
     if (!sURL.isEmpty())
-        return ::boost::optional< OUString >(sURL);
+        return ::std::optional< OUString >(sURL);
     else
-        return bParentExists ? ::boost::optional< OUString >(OUString()) :
-            ::boost::optional< OUString >();
+        return bParentExists ? ::std::optional< OUString >(OUString()) :
+            ::std::optional< OUString >();
 }
 
-::boost::optional< OUString > DescriptionInfoset::getOptionalValue(
+::std::optional< OUString > DescriptionInfoset::getOptionalValue(
     OUString const & expression) const
 {
     css::uno::Reference< css::xml::dom::XNode > n;
@@ -545,8 +545,8 @@ OUString DescriptionInfoset::getIconURL( bool bHighContrast ) const
         }
     }
     return n.is()
-        ? ::boost::optional< OUString >(getNodeValue(n))
-        : ::boost::optional< OUString >();
+        ? ::std::optional< OUString >(getNodeValue(n))
+        : ::std::optional< OUString >();
 }
 
 css::uno::Sequence< OUString > DescriptionInfoset::getUrls(
@@ -576,10 +576,9 @@ std::pair< OUString, OUString > DescriptionInfoset::getLocalizedPublisherNameAnd
     OUString sURL;
     if (node.is())
     {
-        const OUString exp1("text()");
         css::uno::Reference< css::xml::dom::XNode > xPathName;
         try {
-            xPathName = m_xpath->selectSingleNode(node, exp1);
+            xPathName = m_xpath->selectSingleNode(node, "text()");
         } catch (const css::xml::xpath::XPathException &) {
             // ignore
         }
@@ -587,10 +586,9 @@ std::pair< OUString, OUString > DescriptionInfoset::getLocalizedPublisherNameAnd
         if (xPathName.is())
             sPublisherName = xPathName->getNodeValue();
 
-        const OUString exp2("@xlink:href");
         css::uno::Reference< css::xml::dom::XNode > xURL;
         try {
-            xURL = m_xpath->selectSingleNode(node, exp2);
+            xURL = m_xpath->selectSingleNode(node, "@xlink:href");
         } catch (const css::xml::xpath::XPathException &) {
             // ignore
         }
@@ -612,10 +610,9 @@ OUString DescriptionInfoset::getLocalizedDisplayName() const
         getLocalizedChild("desc:display-name");
     if (node.is())
     {
-        const OUString exp("text()");
         css::uno::Reference< css::xml::dom::XNode > xtext;
         try {
-            xtext = m_xpath->selectSingleNode(node, exp);
+            xtext = m_xpath->selectSingleNode(node, "text()");
         } catch (const css::xml::xpath::XPathException &) {
             // ignore
         }
@@ -631,7 +628,7 @@ OUString DescriptionInfoset::getLocalizedLicenseURL() const
 
 }
 
-::boost::optional<SimpleLicenseAttributes>
+::std::optional<SimpleLicenseAttributes>
 DescriptionInfoset::getSimpleLicenseAttributes() const
 {
     //Check if the node exist
@@ -648,22 +645,22 @@ DescriptionInfoset::getSimpleLicenseAttributes() const
             attributes.acceptBy =
                 getNodeValueFromExpression("/desc:description/desc:registration/desc:simple-license/@accept-by");
 
-            ::boost::optional< OUString > suppressOnUpdate = getOptionalValue("/desc:description/desc:registration/desc:simple-license/@suppress-on-update");
+            ::std::optional< OUString > suppressOnUpdate = getOptionalValue("/desc:description/desc:registration/desc:simple-license/@suppress-on-update");
             if (suppressOnUpdate)
                 attributes.suppressOnUpdate = (*suppressOnUpdate).trim().equalsIgnoreAsciiCase("true");
             else
                 attributes.suppressOnUpdate = false;
 
-            ::boost::optional< OUString > suppressIfRequired = getOptionalValue("/desc:description/desc:registration/desc:simple-license/@suppress-if-required");
+            ::std::optional< OUString > suppressIfRequired = getOptionalValue("/desc:description/desc:registration/desc:simple-license/@suppress-if-required");
             if (suppressIfRequired)
                 attributes.suppressIfRequired = (*suppressIfRequired).trim().equalsIgnoreAsciiCase("true");
             else
                 attributes.suppressIfRequired = false;
 
-            return ::boost::optional<SimpleLicenseAttributes>(attributes);
+            return ::std::optional<SimpleLicenseAttributes>(attributes);
         }
     }
-    return ::boost::optional<SimpleLicenseAttributes>();
+    return ::std::optional<SimpleLicenseAttributes>();
 }
 
 OUString DescriptionInfoset::getLocalizedDescriptionURL() const
@@ -693,9 +690,9 @@ DescriptionInfoset::getLocalizedChild( const OUString & sParent) const
         {
             // Already tried full tag, continue with first fallback.
             const std::vector< OUString > aFallbacks( getOfficeLanguageTag().getFallbackStrings( false));
-            for (std::vector< OUString >::const_iterator it( aFallbacks.begin()); it != aFallbacks.end(); ++it)
+            for (auto const& fallback : aFallbacks)
             {
-                nodeMatch = matchLanguageTag(xParent, *it);
+                nodeMatch = matchLanguageTag(xParent, fallback);
                 if (nodeMatch.is())
                     break;
             }
@@ -764,9 +761,8 @@ DescriptionInfoset::getChildWithDefaultLocale(css::uno::Reference< css::xml::dom
         }
     }
 
-    const OUString exp2("*[1]");
     try {
-        return m_xpath->selectSingleNode(xParent, exp2);
+        return m_xpath->selectSingleNode(xParent, "*[1]");
     } catch (const css::xml::xpath::XPathException &) {
         // ignore
         return nullptr;
@@ -785,10 +781,9 @@ OUString DescriptionInfoset::getLocalizedHREFAttrFromChild(
     {
         if (out_bParentExists)
             *out_bParentExists = true;
-        const OUString exp("@xlink:href");
         css::uno::Reference< css::xml::dom::XNode > xURL;
         try {
-            xURL = m_xpath->selectSingleNode(node, exp);
+            xURL = m_xpath->selectSingleNode(node, "@xlink:href");
         } catch (const css::xml::xpath::XPathException &) {
             // ignore
         }

@@ -17,16 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "framework/PresentationFactory.hxx"
+#include <framework/PresentationFactory.hxx>
 
-#include "DrawController.hxx"
-#include "ViewShellBase.hxx"
-#include "facreg.hxx"
+#include <DrawController.hxx>
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <com/sun/star/drawing/framework/XView.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <tools/diagnose_ex.h>
-#include "slideshow.hxx"
+#include <slideshow.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -34,7 +35,7 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::drawing::framework;
 
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 namespace {
 
@@ -85,24 +86,13 @@ private:
 
 //===== PresentationFactory ===================================================
 
-static const char gsPresentationViewURL[] = "private:resource/view/Presentation";
+const char gsPresentationViewURL[] = "private:resource/view/Presentation";
 
 PresentationFactory::PresentationFactory (
     const Reference<frame::XController>& rxController)
     : PresentationFactoryInterfaceBase(MutexOwner::maMutex),
-      mxConfigurationController(),
       mxController(rxController)
 {
-    try
-    {
-        // Get the XController from the first argument.
-        Reference<XControllerManager> xControllerManager(rxController, UNO_QUERY_THROW);
-        mxConfigurationController = xControllerManager->getConfigurationController();
-    }
-    catch (RuntimeException&)
-    {
-        DBG_UNHANDLED_EXCEPTION();
-    }
 }
 
 PresentationFactory::~PresentationFactory()
@@ -132,17 +122,12 @@ void SAL_CALL PresentationFactory::releaseResource (
 {
     ThrowIfDisposed();
 
-    Reference<lang::XUnoTunnel> xTunnel (mxController, UNO_QUERY);
-    if (xTunnel.is())
+    auto pController = comphelper::getUnoTunnelImplementation<sd::DrawController>(mxController);
+    if (pController != nullptr)
     {
-        ::sd::DrawController* pController = reinterpret_cast<sd::DrawController*>(
-            xTunnel->getSomething(sd::DrawController::getUnoTunnelId()));
-        if (pController != nullptr)
-        {
-            ViewShellBase* pBase = pController->GetViewShellBase();
-            if (pBase != nullptr)
-                SlideShow::Stop( *pBase );
-        }
+        ViewShellBase* pBase = pController->GetViewShellBase();
+        if (pBase != nullptr)
+            SlideShow::Stop( *pBase );
     }
 }
 
@@ -185,32 +170,32 @@ void PresentationFactoryProvider::disposing()
 void SAL_CALL PresentationFactoryProvider::initialize(
     const Sequence<Any>& aArguments)
 {
-    if (aArguments.getLength() > 0)
+    if (!aArguments.hasElements())
+        return;
+
+    try
     {
-        try
-        {
-            // Get the XController from the first argument.
-            Reference<frame::XController> xController (aArguments[0], UNO_QUERY_THROW);
-            Reference<XControllerManager> xCM (xController, UNO_QUERY_THROW);
-            Reference<XConfigurationController> xCC (xCM->getConfigurationController());
-            if (xCC.is())
-                xCC->addResourceFactory(
-                    gsPresentationViewURL,
-                    new PresentationFactory(xController));
-        }
-        catch (RuntimeException&)
-        {
-            DBG_UNHANDLED_EXCEPTION();
-        }
+        // Get the XController from the first argument.
+        Reference<frame::XController> xController (aArguments[0], UNO_QUERY_THROW);
+        Reference<XControllerManager> xCM (xController, UNO_QUERY_THROW);
+        Reference<XConfigurationController> xCC (xCM->getConfigurationController());
+        if (xCC.is())
+            xCC->addResourceFactory(
+                gsPresentationViewURL,
+                new PresentationFactory(xController));
+    }
+    catch (RuntimeException&)
+    {
+        DBG_UNHANDLED_EXCEPTION("sd");
     }
 }
 
 } // end of anonymous namespace.
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_framework_PresentationFactoryProvider_get_implementation(css::uno::XComponentContext*,
                                                                     css::uno::Sequence<css::uno::Any> const &)
 {

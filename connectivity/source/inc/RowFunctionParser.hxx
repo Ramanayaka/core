@@ -24,7 +24,6 @@
 #include "FDatabaseMetaDataResultSet.hxx"
 #include <connectivity/dbtoolsdllapi.hxx>
 #include <memory>
-#include <vector>
 
 namespace connectivity
 {
@@ -60,7 +59,7 @@ struct OOO_DLLPUBLIC_DBTOOLS ParseError
     ParseError( const char* ) {}
 };
 
-class OOO_DLLPUBLIC_DBTOOLS FunctionParser
+class FunctionParser
 {
 public:
 
@@ -97,7 +96,7 @@ public:
         @return the generated function object.
        */
 
-    static std::shared_ptr<ExpressionNode> parseFunction( const OUString& _sFunction);
+    static std::shared_ptr<ExpressionNode> const & parseFunction( const OUString& _sFunction);
 
 private:
     // disabled constructor/destructor, since this is

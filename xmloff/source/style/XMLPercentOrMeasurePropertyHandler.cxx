@@ -18,13 +18,11 @@
  */
 
 
-#include "XMLPercentOrMeasurePropertyHandler.hxx"
+#include <XMLPercentOrMeasurePropertyHandler.hxx>
 
 #include <rtl/ustrbuf.hxx>
 
 #include <com/sun/star/uno/Any.hxx>
-
-#include <sax/tools/converter.hxx>
 
 #include <xmloff/xmluconv.hxx>
 
@@ -45,7 +43,7 @@ bool XMLPercentOrMeasurePropertyHandler::importXML(
     Any& rValue,
     const SvXMLUnitConverter& rUnitConverter ) const
 {
-    if( (rStrImpValue.indexOf( '%' ) != -1))
+    if( rStrImpValue.indexOf( '%' ) != -1 )
         return false;
 
     sal_Int32 nValue;
@@ -62,7 +60,7 @@ bool XMLPercentOrMeasurePropertyHandler::exportXML(
     const Any& rValue,
     const SvXMLUnitConverter& rUnitConverter ) const
 {
-      OUStringBuffer aOut;
+    OUStringBuffer aOut;
 
     sal_Int32 nValue = 0;
     if( !(rValue >>= nValue ) )

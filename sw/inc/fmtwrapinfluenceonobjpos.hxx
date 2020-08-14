@@ -19,8 +19,9 @@
 #ifndef INCLUDED_SW_INC_FMTWRAPINFLUENCEONOBJPOS_HXX
 #define INCLUDED_SW_INC_FMTWRAPINFLUENCEONOBJPOS_HXX
 
-#include <hintids.hxx>
-#include <format.hxx>
+#include "hintids.hxx"
+#include "format.hxx"
+#include "swtypes.hxx"
 #include <svl/poolitem.hxx>
 #include <com/sun/star/text/WrapInfluenceOnPosition.hpp>
 
@@ -28,22 +29,26 @@ class SW_DLLPUBLIC SwFormatWrapInfluenceOnObjPos: public SfxPoolItem
 {
 private:
     sal_Int16 mnWrapInfluenceOnPosition;
+    /// Allow objects to overlap, permitted by default.
+    bool mbAllowOverlap = true;
+    /// Vertical offset added during positioning to avoid an overlap.
+    SwTwips mnOverlapVertOffset = 0;
 
 public:
 
     // #i35017# - constant name has changed
     SwFormatWrapInfluenceOnObjPos(
             sal_Int16 _nWrapInfluenceOnPosition = css::text::WrapInfluenceOnPosition::ONCE_CONCURRENT );
-    SwFormatWrapInfluenceOnObjPos(
-            const SwFormatWrapInfluenceOnObjPos& _rCpy );
     virtual ~SwFormatWrapInfluenceOnObjPos() override;
 
-    SwFormatWrapInfluenceOnObjPos& operator=(
-            const SwFormatWrapInfluenceOnObjPos& _rSource );
+    SwFormatWrapInfluenceOnObjPos(SwFormatWrapInfluenceOnObjPos const &) = default;
+    SwFormatWrapInfluenceOnObjPos(SwFormatWrapInfluenceOnObjPos &&) = default;
+    SwFormatWrapInfluenceOnObjPos & operator =(SwFormatWrapInfluenceOnObjPos const &) = delete; // due to SfxPoolItem
+    SwFormatWrapInfluenceOnObjPos & operator =(SwFormatWrapInfluenceOnObjPos &&) = delete; // due to SfxPoolItem
 
     /// pure virtual methods of class <SfxPoolItem>
     virtual bool operator==( const SfxPoolItem& _rAttr ) const override;
-    virtual SfxPoolItem* Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatWrapInfluenceOnObjPos* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -55,11 +60,16 @@ public:
     sal_Int16 GetWrapInfluenceOnObjPos(
                         const bool _bIterativeAsOnceConcurrent = false ) const;
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void SetAllowOverlap(bool bAllowOverlap);
+    bool GetAllowOverlap() const;
+    void SetOverlapVertOffset(SwTwips nOverlapVertOffset);
+    SwTwips GetOverlapVertOffset() const;
+
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 inline const SwFormatWrapInfluenceOnObjPos& SwAttrSet::GetWrapInfluenceOnObjPos(bool bInP) const
-    { return static_cast<const SwFormatWrapInfluenceOnObjPos&>(Get( RES_WRAP_INFLUENCE_ON_OBJPOS,bInP)); }
+    { return Get( RES_WRAP_INFLUENCE_ON_OBJPOS,bInP); }
 
  inline const SwFormatWrapInfluenceOnObjPos& SwFormat::GetWrapInfluenceOnObjPos(bool bInP) const
     { return m_aSet.GetWrapInfluenceOnObjPos(bInP); }

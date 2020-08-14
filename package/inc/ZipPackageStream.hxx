@@ -24,12 +24,11 @@
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/packages/XDataSinkEncrSupport.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <ZipPackageEntry.hxx>
+#include "ZipPackageEntry.hxx"
 #include <rtl/ref.hxx>
-#include <comphelper/refcountedmutex.hxx>
 #include <cppuhelper/implbase.hxx>
 
-#include <EncryptionData.hxx>
+#include "EncryptionData.hxx"
 
 #define PACKAGE_STREAM_NOTSET           0
 #define PACKAGE_STREAM_PACKAGEMEMBER    1
@@ -39,7 +38,7 @@
 
 class ZipPackage;
 struct ZipEntry;
-class ZipPackageStream : public cppu::ImplInheritanceHelper
+class ZipPackageStream final : public cppu::ImplInheritanceHelper
 <
     ZipPackageEntry,
     css::io::XActiveDataSink,
@@ -73,8 +72,9 @@ private:
 
     /// Check that m_xStream implements io::XSeekable and return it
     css::uno::Reference< css::io::XInputStream > const & GetOwnSeekStream();
+    /// get raw data using unbuffered stream
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::io::XInputStream > SAL_CALL getRawData();
+    css::uno::Reference< css::io::XInputStream > getRawData();
 
 public:
     bool IsPackageMember () const { return m_nStreamMode == PACKAGE_STREAM_PACKAGEMEMBER;}
@@ -82,11 +82,12 @@ public:
     bool IsFromManifest() const { return m_bFromManifest; }
     void SetFromManifest( bool bValue ) { m_bFromManifest = bValue; }
 
-    ::rtl::Reference< EncryptionData > GetEncryptionData( bool bWinEncoding = false );
+    enum class Bugs { None, WinEncodingWrongSHA1, WrongSHA1 };
+    ::rtl::Reference<EncryptionData> GetEncryptionData(Bugs bugs = Bugs::None);
 
-    css::uno::Sequence< sal_Int8 > GetEncryptionKey( bool bWinEncoding = false );
+    css::uno::Sequence<sal_Int8> GetEncryptionKey(Bugs bugs = Bugs::None);
 
-    sal_Int32 GetStartKeyGenID();
+    sal_Int32 GetStartKeyGenID() const;
 
     sal_Int32 GetEncryptionAlgorithm() const;
     sal_Int32 GetBlockSize() const;
@@ -131,12 +132,13 @@ public:
                             std::vector < css::uno::Sequence < css::beans::PropertyValue > > &rManList,
                             ZipOutputStream & rZipOut,
                             const css::uno::Sequence < sal_Int8 >& rEncryptionKey,
+                            sal_Int32 nPBKDF2IterationCount,
                             const rtlRandomPool &rRandomPool ) override;
 
     void setZipEntryOnLoading( const ZipEntry &rInEntry);
-    void successfullyWritten( ZipEntry *pEntry );
+    void successfullyWritten( ZipEntry const *pEntry );
 
-    static css::uno::Sequence < sal_Int8 > static_getImplementationId();
+    static css::uno::Sequence < sal_Int8 > getUnoTunnelId();
 
     // XActiveDataSink
     virtual void SAL_CALL setInputStream( const css::uno::Reference< css::io::XInputStream >& aStream ) override;

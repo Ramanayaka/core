@@ -20,16 +20,20 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_REHEARSETIMINGSACTIVITY_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_REHEARSETIMINGSACTIVITY_HXX
 
-#include "activity.hxx"
+#include <activity.hxx>
+#include <activitiesqueue.hxx>
+#include <eventqueue.hxx>
+#include <vieweventhandler.hxx>
 
 #include <basegfx/range/b2drange.hxx>
+#include <vcl/font.hxx>
 
 #include <vector>
 #include <utility>
 #include <memory>
 
 namespace vcl { class Font; }
-namespace canvas{ namespace tools{ class ElapsedTime; }}
+namespace canvas::tools{ class ElapsedTime; }
 namespace cppcanvas{ class CustomSprite; }
 namespace basegfx
 {
@@ -37,8 +41,7 @@ namespace basegfx
     class B2DRange;
 }
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 struct SlideShowContext;
 class EventMultiplexer;
@@ -131,8 +134,7 @@ private:
     bool                            mbDrawPressed;
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_REHEARSETIMINGSACTIVITY_HXX
 

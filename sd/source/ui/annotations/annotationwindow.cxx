@@ -17,72 +17,42 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <editeng/fontitem.hxx>
 #include <editeng/eeitem.hxx>
-#include <editeng/fhgtitem.hxx>
-#include <editeng/bulletitem.hxx>
 #include <editeng/udlnitem.hxx>
-#include <editeng/shdditem.hxx>
-#include <editeng/flditem.hxx>
-#include <editeng/frmdir.hxx>
-#include <editeng/frmdiritem.hxx>
 #include <editeng/langitem.hxx>
-#include <editeng/adjustitem.hxx>
 #include <editeng/editview.hxx>
-#include <svx/svdview.hxx>
-#include <svx/sdrpaintwindow.hxx>
-#include <svx/sdr/overlay/overlaymanager.hxx>
 #include <editeng/editstat.hxx>
 #include <editeng/outliner.hxx>
 #include <editeng/editeng.hxx>
-#include <editeng/editobj.hxx>
-#include <editeng/unolingu.hxx>
 #include <editeng/outlobj.hxx>
 #include <editeng/postitem.hxx>
 #include <editeng/wghtitem.hxx>
 #include <editeng/crossedoutitem.hxx>
 #include <svx/svxids.hrc>
-#include <svtools/langtab.hxx>
-#include <svl/slstitm.hxx>
-#include <unotools/securityoptions.hxx>
 #include <unotools/useroptions.hxx>
-#include <svl/languageoptions.hxx>
-#include <svl/zforlist.hxx>
-#include <svtools/svmedit.hxx>
 
-#include <linguistic/lngprops.hxx>
-
-#include <sfx2/request.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
 
+#include <vcl/commandevent.hxx>
 #include <vcl/vclenum.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/help.hxx>
 #include <vcl/scrbar.hxx>
-#include <vcl/button.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/gradient.hxx>
-#include <vcl/cursor.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/ptrstyle.hxx>
 
-#include <tools/helpers.hxx>
-
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/tuple/b2dtuple.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-
-#include "annotations.hrc"
+#include <strings.hrc>
 #include "annotationwindow.hxx"
 #include "annotationmanagerimpl.hxx"
 
-#include "DrawDocShell.hxx"
-#include "ViewShell.hxx"
-#include "drawdoc.hxx"
-#include "View.hxx"
-#include "textapi.hxx"
-#include "sdresid.hxx"
+#include <com/sun/star/office/XAnnotation.hpp>
+#include <DrawDocShell.hxx>
+#include <ViewShell.hxx>
+#include <drawdoc.hxx>
+#include <textapi.hxx>
+#include <sdresid.hxx>
 
 #include <memory>
 
@@ -95,15 +65,15 @@ using namespace ::com::sun::star::text;
 #define METABUTTON_WIDTH        16
 #define METABUTTON_HEIGHT       18
 #define METABUTTON_AREA_WIDTH   30
-#define POSTIT_META_HEIGHT  (sal_Int32)     30
+#define POSTIT_META_HEIGHT  sal_Int32(30)
 
 namespace sd {
 
-Color ColorFromAlphaColor(sal_uInt8 aTransparency, Color &aFront, Color &aBack )
+static Color ColorFromAlphaColor(sal_uInt8 aTransparency, Color const &aFront, Color const &aBack )
 {
-    return Color((sal_uInt8)(aFront.GetRed()    * aTransparency/(double)255 + aBack.GetRed()    * (1-aTransparency/(double)255)),
-                 (sal_uInt8)(aFront.GetGreen()  * aTransparency/(double)255 + aBack.GetGreen()  * (1-aTransparency/(double)255)),
-                 (sal_uInt8)(aFront.GetBlue()   * aTransparency/(double)255 + aBack.GetBlue()   * (1-aTransparency/(double)255)));
+    return Color(static_cast<sal_uInt8>(aFront.GetRed()    * aTransparency/double(255) + aBack.GetRed()    * (1-aTransparency/double(255))),
+                 static_cast<sal_uInt8>(aFront.GetGreen()  * aTransparency/double(255) + aBack.GetGreen()  * (1-aTransparency/double(255))),
+                 static_cast<sal_uInt8>(aFront.GetBlue()   * aTransparency/double(255) + aBack.GetBlue()   * (1-aTransparency/double(255))));
 }
 
 /************ AnnotationTextWindow **********************************/
@@ -265,8 +235,6 @@ AnnotationWindow::AnnotationWindow( AnnotationManagerImpl& rManager, DrawDocShel
 , mrManager( rManager )
 , mpDocShell( pDocShell )
 , mpDoc( pDocShell->GetDoc() )
-, mpOutlinerView(nullptr)
-, mpOutliner(nullptr)
 , mpVScrollbar(nullptr)
 , mbReadonly(pDocShell->IsReadOnly())
 , mbProtected(false)
@@ -285,8 +253,8 @@ AnnotationWindow::~AnnotationWindow()
 void AnnotationWindow::dispose()
 {
     mpMeta.disposeAndClear();
-    delete mpOutlinerView;
-    delete mpOutliner;
+    mpOutlinerView.reset();
+    mpOutliner.reset();
     mpOutliner = nullptr;
     mpVScrollbar.disposeAndClear();
     mpTextWindow.disposeAndClear();
@@ -297,10 +265,10 @@ void AnnotationWindow::InitControls()
 {
     // actual window which holds the user text
     mpTextWindow = VclPtr<AnnotationTextWindow>::Create(this, WB_NODIALOGCONTROL);
-    mpTextWindow->SetPointer(Pointer(PointerStyle::Text));
+    mpTextWindow->SetPointer(PointerStyle::Text);
 
     // window control for author and date
-    mpMeta = VclPtr<MultiLineEdit>::Create(this,0);
+    mpMeta = VclPtr<VclMultiLineEdit>::Create(this,0);
     mpMeta->SetReadOnly();
     mpMeta->SetRightToLeft(AllSettings::GetLayoutRTL());
     mpMeta->AlwaysDisableInput(true);
@@ -316,8 +284,8 @@ void AnnotationWindow::InitControls()
     aSettings.SetStyleSettings(aStyleSettings);
     mpMeta->SetSettings(aSettings);
 
-    mpOutliner = new ::Outliner(GetAnnotationPool(),OutlinerMode::TextObject);
-    SdDrawDocument::SetCalcFieldValueHdl( mpOutliner );
+    mpOutliner.reset( new ::Outliner(GetAnnotationPool(),OutlinerMode::TextObject) );
+    SdDrawDocument::SetCalcFieldValueHdl( mpOutliner.get() );
     mpOutliner->SetUpdateMode( true );
     Rescale();
 
@@ -328,9 +296,9 @@ void AnnotationWindow::InitControls()
     }
 
     mpTextWindow->EnableRTL( false );
-    mpOutlinerView = new OutlinerView ( mpOutliner, mpTextWindow );
-    mpOutliner->InsertView(mpOutlinerView );
-    mpTextWindow->SetOutlinerView(mpOutlinerView);
+    mpOutlinerView.reset( new OutlinerView ( mpOutliner.get(), mpTextWindow ) );
+    mpOutliner->InsertView(mpOutlinerView.get() );
+    mpTextWindow->SetOutlinerView(mpOutlinerView.get());
     mpOutlinerView->SetOutputArea( PixelToLogic( ::tools::Rectangle(0,0,1,1) ) );
 
     //create Scrollbars
@@ -376,8 +344,7 @@ void AnnotationWindow::Rescale()
     if ( mpMeta )
     {
         vcl::Font aFont( mpMeta->GetSettings().GetStyleSettings().GetFieldFont() );
-        sal_Int32 nHeight = aFont.GetFontHeight();
-        nHeight = nHeight * aMode.GetScaleY().GetNumerator() / aMode.GetScaleY().GetDenominator();
+        sal_Int32 nHeight = long(aFont.GetFontHeight() * aMode.GetScaleY());
         aFont.SetFontHeight( nHeight );
         mpMeta->SetControlFont( aFont );
     }
@@ -506,41 +473,41 @@ TextApiObject* getTextApiObject( const Reference< XAnnotation >& xAnnotation )
 
 void AnnotationWindow::setAnnotation( const Reference< XAnnotation >& xAnnotation )
 {
-    if( (xAnnotation != mxAnnotation) && xAnnotation.is() )
+    if( (xAnnotation == mxAnnotation) || !xAnnotation.is() )
+        return;
+
+    mxAnnotation = xAnnotation;
+
+    SetColor();
+
+    SvtUserOptions aUserOptions;
+    mbProtected = aUserOptions.GetFullName() != xAnnotation->getAuthor();
+
+    Engine()->Clear();
+    TextApiObject* pTextApi = getTextApiObject( mxAnnotation );
+
+    if( pTextApi )
     {
-        mxAnnotation = xAnnotation;
-
-        SetColor();
-
-        SvtUserOptions aUserOptions;
-        mbProtected = aUserOptions.GetFullName() != xAnnotation->getAuthor();
-
-        Engine()->Clear();
-        TextApiObject* pTextApi = getTextApiObject( mxAnnotation );
-
-        if( pTextApi )
-        {
-            std::unique_ptr< OutlinerParaObject > pOPO( pTextApi->CreateText() );
-            Engine()->SetText( *pOPO.get() );
-        }
-
-        Engine()->ClearModifyFlag();
-        Engine()->GetUndoManager().Clear();
-
-        Invalidate();
-
-        OUString sMeta( xAnnotation->getAuthor() );
-        OUString sDateTime( getAnnotationDateTimeString(xAnnotation) );
-
-        if( !sDateTime.isEmpty() )
-        {
-            if( !sMeta.isEmpty() )
-                sMeta += "\n";
-
-           sMeta += sDateTime;
-        }
-        mpMeta->SetText(sMeta);
+        std::unique_ptr< OutlinerParaObject > pOPO( pTextApi->CreateText() );
+        Engine()->SetText(*pOPO);
     }
+
+    Engine()->ClearModifyFlag();
+    Engine()->GetUndoManager().Clear();
+
+    Invalidate();
+
+    OUString sMeta( xAnnotation->getAuthor() );
+    OUString sDateTime( getAnnotationDateTimeString(xAnnotation) );
+
+    if( !sDateTime.isEmpty() )
+    {
+        if( !sMeta.isEmpty() )
+            sMeta += "\n";
+
+        sMeta += sDateTime;
+    }
+    mpMeta->SetText(sMeta);
 }
 
 void AnnotationWindow::SetColor()
@@ -607,14 +574,14 @@ void AnnotationWindow::Deactivate()
 
         if( pTextApi )
         {
-            OutlinerParaObject* pOPO = Engine()->CreateParaObject();
+            std::unique_ptr<OutlinerParaObject> pOPO = Engine()->CreateParaObject();
             if( pOPO )
             {
                 if( mpDoc->IsUndoEnabled() )
                     mpDoc->BegUndo( SdResId( STR_ANNOTATION_UNDO_EDIT ) );
 
                 pTextApi->SetText( *pOPO );
-                delete pOPO;
+                pOPO.reset();
 
                 // set current time to changed annotation
                 xAnnotation->setDateTime( getCurrentDateTime() );
@@ -636,67 +603,67 @@ void AnnotationWindow::Paint(vcl::RenderContext& rRenderContext, const ::tools::
 {
     FloatingWindow::Paint(rRenderContext, rRect);
 
-    if(mpMeta->IsVisible() && !mbReadonly)
+    if(!(mpMeta->IsVisible() && !mbReadonly))
+        return;
+
+    const bool bHighContrast = Application::GetSettings().GetStyleSettings().GetHighContrastMode();
+    //draw left over space
+    if ( bHighContrast )
+        SetFillColor(COL_BLACK);
+    else
+        SetFillColor(maColor);
+    SetLineColor();
+    DrawRect(PixelToLogic(::tools::Rectangle(Point(mpMeta->GetPosPixel().X()+mpMeta->GetSizePixel().Width(),mpMeta->GetPosPixel().Y()),Size(METABUTTON_AREA_WIDTH,mpMeta->GetSizePixel().Height()))));
+
+    if ( bHighContrast )
     {
-        const bool bHighContrast = Application::GetSettings().GetStyleSettings().GetHighContrastMode();
-        //draw left over space
-        if ( bHighContrast )
-            SetFillColor(COL_BLACK);
-        else
-            SetFillColor(maColor);
-        SetLineColor();
-        DrawRect(PixelToLogic(::tools::Rectangle(Point(mpMeta->GetPosPixel().X()+mpMeta->GetSizePixel().Width(),mpMeta->GetPosPixel().Y()),Size(METABUTTON_AREA_WIDTH,mpMeta->GetSizePixel().Height()))));
-
-        if ( bHighContrast )
-        {
-            //draw rect around button
-            SetFillColor(COL_BLACK);
-            SetLineColor(COL_WHITE);
-        }
-        else
-        {
-            //draw button
-            Gradient aGradient;
-            if (mbMouseOverButton)
-                aGradient = Gradient(GradientStyle::Linear,ColorFromAlphaColor(80,maColorDark,maColor),ColorFromAlphaColor(15,maColorDark,maColor));
-            else
-                aGradient = Gradient(GradientStyle::Linear,ColorFromAlphaColor(15,maColorDark,maColor),ColorFromAlphaColor(80,maColorDark,maColor));
-            DrawGradient(maRectMetaButton,aGradient);
-            //draw rect around button
-            SetFillColor();
-            SetLineColor(ColorFromAlphaColor(90,maColorDark,maColor));
-        }
-        DrawRect(maRectMetaButton);
-
-        //draw arrow
-        if( bHighContrast )
-            SetFillColor(COL_WHITE);
-        else
-            SetFillColor(COL_BLACK);
-        SetLineColor();
-        DrawPolygon( ::tools::Polygon(maPopupTriangle));
+        //draw rect around button
+        SetFillColor(COL_BLACK);
+        SetLineColor(COL_WHITE);
     }
+    else
+    {
+        //draw button
+        Gradient aGradient;
+        if (mbMouseOverButton)
+            aGradient = Gradient(GradientStyle::Linear,ColorFromAlphaColor(80,maColorDark,maColor),ColorFromAlphaColor(15,maColorDark,maColor));
+        else
+            aGradient = Gradient(GradientStyle::Linear,ColorFromAlphaColor(15,maColorDark,maColor),ColorFromAlphaColor(80,maColorDark,maColor));
+        DrawGradient(maRectMetaButton,aGradient);
+        //draw rect around button
+        SetFillColor();
+        SetLineColor(ColorFromAlphaColor(90,maColorDark,maColor));
+    }
+    DrawRect(maRectMetaButton);
+
+    //draw arrow
+    if( bHighContrast )
+        SetFillColor(COL_WHITE);
+    else
+        SetFillColor(COL_BLACK);
+    SetLineColor();
+    DrawPolygon( ::tools::Polygon(maPopupTriangle));
 }
 
 void AnnotationWindow::MouseMove( const MouseEvent& rMEvt )
 {
-    if( !mbReadonly )
+    if( mbReadonly )
+        return;
+
+    if (maRectMetaButton.IsInside(PixelToLogic(rMEvt.GetPosPixel())))
     {
-        if (maRectMetaButton.IsInside(PixelToLogic(rMEvt.GetPosPixel())))
+        if (!mbMouseOverButton)
         {
-            if (!mbMouseOverButton)
-            {
-                Invalidate(maRectMetaButton);
-                mbMouseOverButton = true;
-            }
+            Invalidate(maRectMetaButton);
+            mbMouseOverButton = true;
         }
-        else
+    }
+    else
+    {
+        if (mbMouseOverButton)
         {
-            if (mbMouseOverButton)
-            {
-                Invalidate(maRectMetaButton);
-                mbMouseOverButton = false;
-            }
+            Invalidate(maRectMetaButton);
+            mbMouseOverButton = false;
         }
     }
 }
@@ -753,25 +720,25 @@ void AnnotationWindow::ExecuteSlot( sal_uInt16 nSID )
         {
         case SID_ATTR_CHAR_WEIGHT:
         {
-            FontWeight eFW = static_cast<const SvxWeightItem&>( aEditAttr.Get( EE_CHAR_WEIGHT ) ).GetWeight();
+            FontWeight eFW = aEditAttr.Get( EE_CHAR_WEIGHT ).GetWeight();
             aNewAttr.Put( SvxWeightItem( eFW == WEIGHT_NORMAL ? WEIGHT_BOLD : WEIGHT_NORMAL, EE_CHAR_WEIGHT ) );
         }
         break;
         case SID_ATTR_CHAR_POSTURE:
         {
-            FontItalic eFI = static_cast<const SvxPostureItem&>( aEditAttr.Get( EE_CHAR_ITALIC ) ).GetPosture();
+            FontItalic eFI = aEditAttr.Get( EE_CHAR_ITALIC ).GetPosture();
             aNewAttr.Put( SvxPostureItem( eFI == ITALIC_NORMAL ? ITALIC_NONE : ITALIC_NORMAL, EE_CHAR_ITALIC ) );
         }
         break;
         case SID_ATTR_CHAR_UNDERLINE:
         {
-            FontLineStyle eFU = static_cast<const SvxUnderlineItem&>( aEditAttr. Get( EE_CHAR_UNDERLINE ) ).GetLineStyle();
+            FontLineStyle eFU = aEditAttr. Get( EE_CHAR_UNDERLINE ).GetLineStyle();
             aNewAttr.Put( SvxUnderlineItem( eFU == LINESTYLE_SINGLE ? LINESTYLE_NONE : LINESTYLE_SINGLE, EE_CHAR_UNDERLINE ) );
         }
         break;
         case SID_ATTR_CHAR_STRIKEOUT:
         {
-            FontStrikeout eFSO = static_cast<const SvxCrossedOutItem&>( aEditAttr.Get( EE_CHAR_STRIKEOUT ) ).GetStrikeout();
+            FontStrikeout eFSO = aEditAttr.Get( EE_CHAR_STRIKEOUT ).GetStrikeout();
             aNewAttr.Put( SvxCrossedOutItem( eFSO == STRIKEOUT_SINGLE ? STRIKEOUT_NONE : STRIKEOUT_SINGLE, EE_CHAR_STRIKEOUT ) );
         }
         break;

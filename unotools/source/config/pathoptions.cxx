@@ -21,24 +21,18 @@
 
 #include <sal/log.hxx>
 #include <unotools/pathoptions.hxx>
-#include <unotools/configitem.hxx>
-#include <unotools/configmgr.hxx>
+#include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
-#include <tools/solar.h>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <osl/mutex.hxx>
 #include <osl/file.hxx>
-#include <unotools/bootstrap.hxx>
 
 #include <unotools/ucbhelper.hxx>
 #include <comphelper/getexpandeduri.hxx>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/beans/XFastPropertySet.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/util/thePathSettings.hpp>
 #include <com/sun/star/util/PathSubstitution.hpp>
 #include <com/sun/star/util/XStringSubstitution.hpp>
@@ -70,9 +64,7 @@ using namespace com::sun::star::lang;
 
 #define STRPOS_NOTFOUND       -1
 
-typedef std::unordered_map<OUString, sal_Int32, OUStringHash> NameToHandleMap;
-
-typedef std::unordered_map<sal_Int32, sal_Int32> EnumToHandleMap;
+typedef std::unordered_map<OUString, sal_Int32> NameToHandleMap;
 
 typedef std::set<OUString> VarNameSet;
 
@@ -85,7 +77,8 @@ class SvtPathOptions_Impl
         Reference< XFastPropertySet >       m_xPathSettings;
         Reference< XStringSubstitution >    m_xSubstVariables;
         Reference< XMacroExpander >         m_xMacroExpander;
-        mutable EnumToHandleMap             m_aMapEnumToPropHandle;
+        mutable std::unordered_map<sal_Int32, sal_Int32>
+                                            m_aMapEnumToPropHandle;
         VarNameSet                          m_aSystemPathVarNames;
 
         OUString                            m_aEmptyString;
@@ -112,6 +105,7 @@ class SvtPathOptions_Impl
         const OUString& GetLinguisticPath() { return GetPath( SvtPathOptions::PATH_LINGUISTIC ); }
         const OUString& GetModulePath() { return GetPath( SvtPathOptions::PATH_MODULE ); }
         const OUString& GetPalettePath() { return GetPath( SvtPathOptions::PATH_PALETTE ); }
+        const OUString& GetIconsetPath() { return GetPath( SvtPathOptions::PATH_ICONSET); }
         const OUString& GetPluginPath() { return GetPath( SvtPathOptions::PATH_PLUGIN ); }
         const OUString& GetStoragePath() { return GetPath( SvtPathOptions::PATH_STORAGE ); }
         const OUString& GetTempPath() { return GetPath( SvtPathOptions::PATH_TEMP ); }
@@ -120,6 +114,7 @@ class SvtPathOptions_Impl
         const OUString& GetWorkPath() { return GetPath( SvtPathOptions::PATH_WORK ); }
         const OUString& GetUIConfigPath() { return GetPath( SvtPathOptions::PATH_UICONFIG ); }
         const OUString& GetFingerprintPath() { return GetPath( SvtPathOptions::PATH_FINGERPRINT ); }
+        const OUString& GetNumbertextPath() { return GetPath( SvtPathOptions::PATH_NUMBERTEXT ); }
         const OUString& GetClassificationPath() { return GetPath( SvtPathOptions::PATH_CLASSIFICATION ); }
 
         // set the paths
@@ -156,6 +151,8 @@ class SvtPathOptions_Impl
 
 static std::weak_ptr<SvtPathOptions_Impl> g_pOptions;
 
+namespace {
+
 // functions -------------------------------------------------------------
 struct PropertyStruct
 {
@@ -168,7 +165,9 @@ struct VarNameAttribute
     const char*             pVarName;       // The name of the path variable
 };
 
-static const PropertyStruct aPropNames[] =
+}
+
+const PropertyStruct aPropNames[] =
 {
     { "Addin",          SvtPathOptions::PATH_ADDIN          },
     { "AutoCorrect",    SvtPathOptions::PATH_AUTOCORRECT    },
@@ -183,6 +182,7 @@ static const PropertyStruct aPropNames[] =
     { "Gallery",        SvtPathOptions::PATH_GALLERY        },
     { "Graphic",        SvtPathOptions::PATH_GRAPHIC        },
     { "Help",           SvtPathOptions::PATH_HELP           },
+    { "Iconset",        SvtPathOptions::PATH_ICONSET        },
     { "Linguistic",     SvtPathOptions::PATH_LINGUISTIC     },
     { "Module",         SvtPathOptions::PATH_MODULE         },
     { "Palette",        SvtPathOptions::PATH_PALETTE        },
@@ -194,10 +194,11 @@ static const PropertyStruct aPropNames[] =
     { "Work",           SvtPathOptions::PATH_WORK           },
     { "UIConfig",       SvtPathOptions::PATH_UICONFIG       },
     { "Fingerprint",    SvtPathOptions::PATH_FINGERPRINT    },
+    { "Numbertext",     SvtPathOptions::PATH_NUMBERTEXT     },
     { "Classification", SvtPathOptions::PATH_CLASSIFICATION }
 };
 
-static const VarNameAttribute aVarNameAttribute[] =
+const VarNameAttribute aVarNameAttribute[] =
 {
     { SUBSTITUTE_INSTPATH },    // $(instpath)
     { SUBSTITUTE_PROGPATH },    // $(progpath)
@@ -218,9 +219,9 @@ const OUString& SvtPathOptions_Impl::GetPath( SvtPathOptions::Paths ePath )
     {
         OUString    aPathValue;
         OUString    aResult;
-        sal_Int32   nHandle = m_aMapEnumToPropHandle[ (sal_Int32)ePath ];
+        sal_Int32   nHandle = m_aMapEnumToPropHandle[ static_cast<sal_Int32>(ePath) ];
 
-        // Substitution is done by the service itself using the substition service
+        // Substitution is done by the service itself using the substitution service
         Any         a = m_xPathSettings->getFastPropertyValue( nHandle );
         a >>= aPathValue;
         if( ePath == SvtPathOptions::PATH_ADDIN     ||
@@ -235,10 +236,11 @@ const OUString& SvtPathOptions_Impl::GetPath( SvtPathOptions::Paths ePath )
             osl::FileBase::getSystemPathFromFileURL( aPathValue, aResult );
             aPathValue = aResult;
         }
-        else if (ePath == SvtPathOptions::PATH_PALETTE)
+        else if (ePath == SvtPathOptions::PATH_PALETTE ||
+                 ePath == SvtPathOptions::PATH_ICONSET)
         {
             auto ctx = comphelper::getProcessComponentContext();
-            OUStringBuffer buf;
+            OUStringBuffer buf(aPathValue.getLength()*2);
             for (sal_Int32 i = 0;;)
             {
                 buf.append(
@@ -266,41 +268,41 @@ void SvtPathOptions_Impl::SetPath( SvtPathOptions::Paths ePath, const OUString& 
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    if ( ePath < SvtPathOptions::PATH_COUNT )
+    if ( ePath >= SvtPathOptions::PATH_COUNT )
+        return;
+
+    OUString    aResult;
+    OUString    aNewValue;
+    Any         a;
+
+    switch ( ePath )
     {
-        OUString    aResult;
-        OUString    aNewValue;
-        Any         a;
-
-        switch ( ePath )
+        case SvtPathOptions::PATH_ADDIN:
+        case SvtPathOptions::PATH_FILTER:
+        case SvtPathOptions::PATH_HELP:
+        case SvtPathOptions::PATH_MODULE:
+        case SvtPathOptions::PATH_PLUGIN:
+        case SvtPathOptions::PATH_STORAGE:
         {
-            case SvtPathOptions::PATH_ADDIN:
-            case SvtPathOptions::PATH_FILTER:
-            case SvtPathOptions::PATH_HELP:
-            case SvtPathOptions::PATH_MODULE:
-            case SvtPathOptions::PATH_PLUGIN:
-            case SvtPathOptions::PATH_STORAGE:
-            {
-                // These office paths have to be convert back to UCB-URL's
-                osl::FileBase::getFileURLFromSystemPath( rNewPath, aResult );
-                aNewValue = aResult;
-            }
-            break;
+            // These office paths have to be convert back to UCB-URL's
+            osl::FileBase::getFileURLFromSystemPath( rNewPath, aResult );
+            aNewValue = aResult;
+        }
+        break;
 
-            default:
-                aNewValue = rNewPath;
-        }
+        default:
+            aNewValue = rNewPath;
+    }
 
-        // Resubstitution is done by the service itself using the substition service
-        a <<= aNewValue;
-        try
-        {
-            m_xPathSettings->setFastPropertyValue( m_aMapEnumToPropHandle[ (sal_Int32)ePath], a );
-        }
-        catch (const Exception& e)
-        {
-            SAL_WARN("unotools.config", "SetPath: exception: " << e.Message);
-        }
+    // Resubstitution is done by the service itself using the substitution service
+    a <<= aNewValue;
+    try
+    {
+        m_xPathSettings->setFastPropertyValue( m_aMapEnumToPropHandle[ static_cast<sal_Int32>(ePath)], a );
+    }
+    catch (const Exception&)
+    {
+        TOOLS_WARN_EXCEPTION("unotools.config", "SetPath");
     }
 }
 
@@ -394,7 +396,7 @@ OUString SvtPathOptions_Impl::SubstVar( const OUString& rVar ) const
 }
 
 SvtPathOptions_Impl::SvtPathOptions_Impl() :
-    m_aPathArray( (sal_Int32)SvtPathOptions::PATH_COUNT )
+    m_aPathArray( sal_Int32(SvtPathOptions::PATH_COUNT) )
 {
     Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
 
@@ -406,13 +408,12 @@ SvtPathOptions_Impl::SvtPathOptions_Impl() :
 
     // Create temporary hash map to have a mapping between property names and property handles
     Reference< XPropertySetInfo > xPropSetInfo = xPathSettings->getPropertySetInfo();
-    Sequence< Property > aPathPropSeq = xPropSetInfo->getProperties();
+    const Sequence< Property > aPathPropSeq = xPropSetInfo->getProperties();
 
     NameToHandleMap aTempHashMap;
-    for ( sal_Int32 n = 0; n < aPathPropSeq.getLength(); n++ )
+    for ( const css::beans::Property& aProperty : aPathPropSeq )
     {
-        const css::beans::Property& aProperty = aPathPropSeq[n];
-        aTempHashMap.insert( NameToHandleMap::value_type( aProperty.Name, aProperty.Handle ));
+        aTempHashMap.emplace(aProperty.Name, aProperty.Handle);
     }
 
     // Create mapping between internal enum (SvtPathOptions::Paths) and property handle
@@ -425,7 +426,7 @@ SvtPathOptions_Impl::SvtPathOptions_Impl() :
         {
             sal_Int32 nHandle   = pIter->second;
             sal_Int32 nEnum     = p.ePath;
-            m_aMapEnumToPropHandle.insert( EnumToHandleMap::value_type( nEnum, nHandle ));
+            m_aMapEnumToPropHandle.emplace( nEnum, nHandle );
         }
     }
 
@@ -536,6 +537,11 @@ const OUString& SvtPathOptions::GetFingerprintPath() const
     return pImpl->GetFingerprintPath();
 }
 
+const OUString& SvtPathOptions::GetNumbertextPath() const
+{
+    return pImpl->GetNumbertextPath();
+}
+
 const OUString& SvtPathOptions::GetModulePath() const
 {
     return pImpl->GetModulePath();
@@ -544,6 +550,11 @@ const OUString& SvtPathOptions::GetModulePath() const
 const OUString& SvtPathOptions::GetPalettePath() const
 {
     return pImpl->GetPalettePath();
+}
+
+const OUString& SvtPathOptions::GetIconsetPath() const
+{
+    return pImpl->GetIconsetPath();
 }
 
 const OUString& SvtPathOptions::GetPluginPath() const
@@ -768,6 +779,7 @@ bool SvtPathOptions::SearchFile( OUString& rIniFile, Paths ePath )
                 case PATH_LINGUISTIC:   aPath = GetLinguisticPath();    break;
                 case PATH_MODULE:       aPath = GetModulePath();        break;
                 case PATH_PALETTE:      aPath = GetPalettePath();       break;
+                case PATH_ICONSET:      aPath = GetIconsetPath();       break;
                 case PATH_PLUGIN:       aPath = GetPluginPath();        break;
                 case PATH_STORAGE:      aPath = GetStoragePath();       break;
                 case PATH_TEMP:         aPath = GetTempPath();          break;
@@ -775,6 +787,7 @@ bool SvtPathOptions::SearchFile( OUString& rIniFile, Paths ePath )
                 case PATH_WORK:         aPath = GetWorkPath();          break;
                 case PATH_UICONFIG:     aPath = pImpl->GetUIConfigPath(); break;
                 case PATH_FINGERPRINT:  aPath = GetFingerprintPath();   break;
+                case PATH_NUMBERTEXT:   aPath = GetNumbertextPath();    break;
                 case PATH_CLASSIFICATION: aPath = GetClassificationPath(); break;
                 // coverity[dead_error_begin] - following conditions exist to avoid compiler warning
                 case PATH_USERCONFIG:

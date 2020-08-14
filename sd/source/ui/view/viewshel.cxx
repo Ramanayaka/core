@@ -18,79 +18,75 @@
  */
 
 #include <memory>
-#include "ViewShell.hxx"
-#include "ViewShellImplementation.hxx"
-#include "createtableobjectbar.hxx"
+#include <ViewShell.hxx>
+#include <ViewShellImplementation.hxx>
+#include <createtableobjectbar.hxx>
 
-#include <com/sun/star/embed/EmbedStates.hpp>
-#include "ViewShellBase.hxx"
-#include "ShellFactory.hxx"
-#include "DrawController.hxx"
-#include "LayerTabBar.hxx"
+#include <ViewShellBase.hxx>
+#include <ShellFactory.hxx>
+#include <DrawController.hxx>
+#include <LayerTabBar.hxx>
 
+#include <sal/log.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
+#include <vcl/commandevent.hxx>
 #include <vcl/scrbar.hxx>
 #include <svl/eitem.hxx>
 #include <svx/ruler.hxx>
 #include <svx/svxids.hrc>
 #include <svx/fmshell.hxx>
-#include "WindowUpdater.hxx"
-#include "GraphicViewShell.hxx"
-#include <sfx2/childwin.hxx>
+#include <WindowUpdater.hxx>
 #include <sdxfer.hxx>
 
-#include "app.hrc"
-#include "helpids.h"
-#include "strings.hrc"
-#include "res_bmp.hrc"
-#include "OutlineView.hxx"
-#include "Client.hxx"
-#include "sdresid.hxx"
-#include "DrawDocShell.hxx"
-#include "slideshow.hxx"
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
-#include "zoomlist.hxx"
-#include "FrameView.hxx"
-#include "optsitem.hxx"
-#include "BezierObjectBar.hxx"
-#include "TextObjectBar.hxx"
-#include "GraphicObjectBar.hxx"
-#include "MediaObjectBar.hxx"
-#include "SlideSorter.hxx"
-#include "SlideSorterViewShell.hxx"
-#include "ViewShellManager.hxx"
-#include "FormShellManager.hxx"
-#include <svx/dialogs.hrc>
+#include <app.hrc>
+
+#include <OutlineView.hxx>
+#include <DrawViewShell.hxx>
+#include <DrawDocShell.hxx>
+#include <slideshow.hxx>
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
+#include <zoomlist.hxx>
+#include <FrameView.hxx>
+#include <BezierObjectBar.hxx>
+#include <TextObjectBar.hxx>
+#include <GraphicObjectBar.hxx>
+#include <MediaObjectBar.hxx>
+#include <SlideSorter.hxx>
+#include <SlideSorterViewShell.hxx>
+#include <ViewShellManager.hxx>
+#include <FormShellManager.hxx>
 #include <svx/extrusionbar.hxx>
 #include <svx/fontworkbar.hxx>
 #include <svx/svdoutl.hxx>
-#include <tools/diagnose_ex.h>
+#include <tools/svborder.hxx>
 #include <comphelper/lok.hxx>
 
 #include <svl/slstitm.hxx>
 #include <sfx2/request.hxx>
-#include "SpellDialogChildWindow.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsPageSelector.hxx"
-#include "controller/SlsSelectionObserver.hxx"
-#include "view/SlideSorterView.hxx"
+#include <SpellDialogChildWindow.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsPageSelector.hxx>
+#include <controller/SlsSelectionObserver.hxx>
+#include <view/SlideSorterView.hxx>
 
-#include <basegfx/tools/zoomtools.hxx>
+#include <basegfx/utils/zoomtools.hxx>
 
-#include "Window.hxx"
-#include "fupoor.hxx"
+#include <Window.hxx>
+#include <fupoor.hxx>
+#include <futext.hxx>
 
 #include <editeng/numitem.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/editview.hxx>
 #include <editeng/editeng.hxx>
+#include <svl/intitem.hxx>
 #include <svl/poolitem.hxx>
-#include <glob.hrc>
-#include "strings.hxx"
-#include "AccessibleDocumentViewBase.hxx"
+#include <strings.hxx>
+#include <sdmod.hxx>
+#include <AccessibleDocumentViewBase.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -103,15 +99,10 @@ class ViewShellObjectBarFactory
 {
 public:
     explicit ViewShellObjectBarFactory (::sd::ViewShell& rViewShell);
-    virtual ~ViewShellObjectBarFactory() override;
     virtual SfxShell* CreateShell( ::sd::ShellId nId ) override;
     virtual void ReleaseShell (SfxShell* pShell) override;
 private:
     ::sd::ViewShell& mrViewShell;
-    /** This cache holds the already created object bars.
-    */
-    typedef ::std::map< ::sd::ShellId,SfxShell*> ShellCache;
-    ShellCache maShellCache;
 };
 
 } // end of anonymous namespace
@@ -120,7 +111,7 @@ namespace sd {
 
 bool ViewShell::IsPageFlipMode() const
 {
-    return dynamic_cast< const DrawViewShell *>( this ) !=  nullptr && mpContentWindow.get() != nullptr &&
+    return dynamic_cast< const DrawViewShell *>( this ) !=  nullptr && mpContentWindow &&
         mpContentWindow->GetVisibleHeight() >= 1.0;
 }
 
@@ -154,11 +145,11 @@ ViewShell::~ViewShell()
     if (mpContentWindow)
         mpContentWindow->SetViewShell(nullptr);
 
-    delete mpZoomList;
+    mpZoomList.reset();
 
     mpLayerTabBar.disposeAndClear();
 
-    if (mpImpl->mpSubShellFactory.get() != nullptr)
+    if (mpImpl->mpSubShellFactory)
         GetViewShellBase().GetViewShellManager()->RemoveSubShellFactory(
             this,mpImpl->mpSubShellFactory);
 
@@ -200,7 +191,7 @@ void ViewShell::construct()
     if (IsMainViewShell())
         GetDocSh()->Connect (this);
 
-    mpZoomList = new ZoomList( this );
+    mpZoomList.reset( new ZoomList( this ) );
 
     mpContentWindow.reset(VclPtr< ::sd::Window >::Create(GetParentWindow()));
     SetActiveWindow (mpContentWindow.get());
@@ -242,7 +233,7 @@ void ViewShell::construct()
         pSpellDialog->InvalidateSpellDialog();
 
     // Register the sub shell factory.
-    mpImpl->mpSubShellFactory.reset(new ViewShellObjectBarFactory(*this));
+    mpImpl->mpSubShellFactory = std::make_shared<ViewShellObjectBarFactory>(*this);
     GetViewShellBase().GetViewShellManager()->AddSubShellFactory(this,mpImpl->mpSubShellFactory);
 }
 
@@ -308,9 +299,9 @@ void ViewShell::Activate(bool bIsMDIActivate)
        is sent sometimes asynchronous,  it can happen, that the wrong window
        gets the focus. */
 
-    if (mpHorizontalRuler.get() != nullptr)
+    if (mpHorizontalRuler)
         mpHorizontalRuler->SetActive();
-    if (mpVerticalRuler.get() != nullptr)
+    if (mpVerticalRuler)
         mpVerticalRuler->SetActive();
 
     if (bIsMDIActivate)
@@ -336,7 +327,7 @@ void ViewShell::Activate(bool bIsMDIActivate)
             GetCurrentFunction()->Activate();
 
         if(!GetDocSh()->IsUIActive())
-            UpdatePreview( GetActualPage(), true );
+            UpdatePreview( GetActualPage() );
     }
 
     ReadFrameViewData( mpFrameView );
@@ -385,9 +376,9 @@ void ViewShell::Deactivate(bool bIsMDIActivate)
             GetCurrentFunction()->Deactivate();
     }
 
-    if (mpHorizontalRuler.get() != nullptr)
+    if (mpHorizontalRuler)
         mpHorizontalRuler->SetActive(false);
-    if (mpVerticalRuler.get() != nullptr)
+    if (mpVerticalRuler)
         mpVerticalRuler->SetActive(false);
 
     SfxShell::Deactivate(bIsMDIActivate);
@@ -405,13 +396,10 @@ bool ViewShell::KeyInput(const KeyEvent& rKEvt, ::sd::Window* pWin)
     if(pWin)
         SetActiveWindow(pWin);
 
-    if(!bReturn)
-    {
-        // give key input first to SfxViewShell to give CTRL+Key
-        // (e.g. CTRL+SHIFT+'+', to front) priority.
-        OSL_ASSERT (GetViewShell()!=nullptr);
-        bReturn = GetViewShell()->KeyInput(rKEvt);
-    }
+    // give key input first to SfxViewShell to give CTRL+Key
+    // (e.g. CTRL+SHIFT+'+', to front) priority.
+    OSL_ASSERT(GetViewShell() != nullptr);
+    bReturn = GetViewShell()->KeyInput(rKEvt);
 
     const size_t OriCount = GetView()->GetMarkedObjectList().GetMarkCount();
     if(!bReturn)
@@ -438,6 +426,12 @@ bool ViewShell::KeyInput(const KeyEvent& rKEvt, ::sd::Window* pWin)
                 else
                 {
                     bReturn = true;
+                    if (HasCurrentFunction())
+                    {
+                        FuText* pTextFunction = dynamic_cast<FuText*>(GetCurrentFunction().get());
+                        if(pTextFunction != nullptr)
+                            pTextFunction->InvalidateBindings();
+                    }
                 }
             }
         }
@@ -488,54 +482,24 @@ void ViewShell::MouseButtonDown(const MouseEvent& rMEvt, ::sd::Window* pWin)
     if( GetView() )
         bConsumed = GetView()->getSmartTags().MouseButtonDown( rMEvt );
 
-    if( !bConsumed )
+    if( bConsumed )
+        return;
+
+    rtl::Reference< sdr::SelectionController > xSelectionController( GetView()->getSelectionController() );
+    if( !xSelectionController.is() || !xSelectionController->onMouseButtonDown( rMEvt, pWin ) )
     {
-        rtl::Reference< sdr::SelectionController > xSelectionController( GetView()->getSelectionController() );
-        if( !xSelectionController.is() || !xSelectionController->onMouseButtonDown( rMEvt, pWin ) )
+        if(HasCurrentFunction())
+            GetCurrentFunction()->MouseButtonDown(rMEvt);
+    }
+    else
+    {
+        if (HasCurrentFunction())
         {
-            if(HasCurrentFunction())
-                GetCurrentFunction()->MouseButtonDown(rMEvt);
+            FuText* pTextFunction = dynamic_cast<FuText*>(GetCurrentFunction().get());
+            if (pTextFunction != nullptr)
+                pTextFunction->InvalidateBindings();
         }
     }
-}
-
-void ViewShell::LogicMouseButtonDown(const MouseEvent& rMouseEvent)
-{
-    // When we're not doing tiled rendering, then positions must be passed as pixels.
-    assert(comphelper::LibreOfficeKit::isActive());
-
-    Point aPoint = mpActiveWindow->GetPointerPosPixel();
-    mpActiveWindow->SetLastMousePos(rMouseEvent.GetPosPixel());
-
-    MouseButtonDown(rMouseEvent, mpActiveWindow);
-
-    mpActiveWindow->SetPointerPosPixel(aPoint);
-}
-
-void ViewShell::LogicMouseButtonUp(const MouseEvent& rMouseEvent)
-{
-    // When we're not doing tiled rendering, then positions must be passed as pixels.
-    assert(comphelper::LibreOfficeKit::isActive());
-
-    Point aPoint = mpActiveWindow->GetPointerPosPixel();
-    mpActiveWindow->SetLastMousePos(rMouseEvent.GetPosPixel());
-
-    MouseButtonUp(rMouseEvent, mpActiveWindow);
-
-    mpActiveWindow->SetPointerPosPixel(aPoint);
-}
-
-void ViewShell::LogicMouseMove(const MouseEvent& rMouseEvent)
-{
-    // When we're not doing tiled rendering, then positions must be passed as pixels.
-    assert(comphelper::LibreOfficeKit::isActive());
-
-    Point aPoint = mpActiveWindow->GetPointerPosPixel();
-    mpActiveWindow->SetLastMousePos(rMouseEvent.GetPosPixel());
-
-    MouseMove(rMouseEvent, mpActiveWindow);
-
-    mpActiveWindow->SetPointerPosPixel(aPoint);
 }
 
 void ViewShell::SetCursorMm100Position(const Point& rPosition, bool bPoint, bool bClearMark)
@@ -554,62 +518,17 @@ void ViewShell::SetCursorMm100Position(const Point& rPosition, bool bPoint, bool
     }
 }
 
-OString ViewShell::GetTextSelection(const OString& _aMimeType, OString& rUsedMimeType)
+uno::Reference<datatransfer::XTransferable> ViewShell::GetSelectionTransferrable() const
 {
     SdrView* pSdrView = GetView();
     if (!pSdrView)
-        return OString();
+        return uno::Reference<datatransfer::XTransferable>();
 
     if (!pSdrView->GetTextEditObject())
-        return OString();
+        return uno::Reference<datatransfer::XTransferable>();
 
     EditView& rEditView = pSdrView->GetTextEditOutlinerView()->GetEditView();
-    uno::Reference<datatransfer::XTransferable> xTransferable = rEditView.GetEditEngine()->CreateTransferable(rEditView.GetSelection());
-
-    // Take care of UTF-8 text here.
-    bool bConvert = false;
-    sal_Int32 nIndex = 0;
-    OString aMimeType = _aMimeType;
-    if (aMimeType.getToken(0, ';', nIndex) == "text/plain")
-    {
-        if (aMimeType.getToken(0, ';', nIndex) == "charset=utf-8")
-        {
-            aMimeType = "text/plain;charset=utf-16";
-            bConvert = true;
-        }
-    }
-
-    datatransfer::DataFlavor aFlavor;
-    aFlavor.MimeType = OUString::fromUtf8(aMimeType.getStr());
-    if (aMimeType == "text/plain;charset=utf-16")
-        aFlavor.DataType = cppu::UnoType<OUString>::get();
-    else
-        aFlavor.DataType = cppu::UnoType< uno::Sequence<sal_Int8> >::get();
-
-    if (!xTransferable->isDataFlavorSupported(aFlavor))
-        return OString();
-
-    uno::Any aAny(xTransferable->getTransferData(aFlavor));
-
-    OString aRet;
-    if (aFlavor.DataType == cppu::UnoType<OUString>::get())
-    {
-        OUString aString;
-        aAny >>= aString;
-        if (bConvert)
-            aRet = OUStringToOString(aString, RTL_TEXTENCODING_UTF8);
-        else
-            aRet = OString(reinterpret_cast<const sal_Char *>(aString.getStr()), aString.getLength() * sizeof(sal_Unicode));
-    }
-    else
-    {
-        uno::Sequence<sal_Int8> aSequence;
-        aAny >>= aSequence;
-        aRet = OString(reinterpret_cast<sal_Char*>(aSequence.getArray()), aSequence.getLength());
-    }
-
-    rUsedMimeType = _aMimeType;
-    return aRet;
+    return rEditView.GetEditEngine()->CreateTransferable(rEditView.GetSelection());
 }
 
 void ViewShell::SetGraphicMm100Position(bool bStart, const Point& rPosition)
@@ -638,7 +557,7 @@ void ViewShell::MouseMove(const MouseEvent& rMEvt, ::sd::Window* pWin)
         {
             std::shared_ptr<ViewShell::Implementation::ToolBarManagerLock> pLock(
                 mpImpl->mpUpdateLockForMouse);
-            if (pLock.get() != nullptr)
+            if (pLock != nullptr)
                 pLock->Release();
         }
     }
@@ -680,13 +599,22 @@ void ViewShell::MouseButtonUp(const MouseEvent& rMEvt, ::sd::Window* pWin)
             if(HasCurrentFunction())
                 GetCurrentFunction()->MouseButtonUp(rMEvt);
         }
+        else
+        {
+            if (HasCurrentFunction())
+            {
+                FuText* pTextFunction = dynamic_cast<FuText*>(GetCurrentFunction().get());
+                if (pTextFunction != nullptr)
+                    pTextFunction->InvalidateBindings();
+            }
+        }
     }
 
     if ( ! mpImpl->mpUpdateLockForMouse.expired())
     {
         std::shared_ptr<ViewShell::Implementation::ToolBarManagerLock> pLock(
             mpImpl->mpUpdateLockForMouse);
-        if (pLock.get() != nullptr)
+        if (pLock != nullptr)
             pLock->Release();
     }
 }
@@ -695,27 +623,27 @@ void ViewShell::Command(const CommandEvent& rCEvt, ::sd::Window* pWin)
 {
     bool bDone = HandleScrollCommand (rCEvt, pWin);
 
-    if( !bDone )
-    {
-        if( rCEvt.GetCommand() == CommandEventId::InputLanguageChange )
-        {
-            //#i42732# update state of fontname if input language changes
-            GetViewFrame()->GetBindings().Invalidate( SID_ATTR_CHAR_FONT );
-            GetViewFrame()->GetBindings().Invalidate( SID_ATTR_CHAR_FONTHEIGHT );
-        }
-        else
-        {
-            bool bConsumed = false;
-            if( GetView() )
-                bConsumed = GetView()->getSmartTags().Command(rCEvt);
+    if( bDone )
+        return;
 
-            if( !bConsumed && HasCurrentFunction())
-                GetCurrentFunction()->Command(rCEvt);
-        }
+    if( rCEvt.GetCommand() == CommandEventId::InputLanguageChange )
+    {
+        //#i42732# update state of fontname if input language changes
+        GetViewFrame()->GetBindings().Invalidate( SID_ATTR_CHAR_FONT );
+        GetViewFrame()->GetBindings().Invalidate( SID_ATTR_CHAR_FONTHEIGHT );
+    }
+    else
+    {
+        bool bConsumed = false;
+        if( GetView() )
+            bConsumed = GetView()->getSmartTags().Command(rCEvt);
+
+        if( !bConsumed && HasCurrentFunction())
+            GetCurrentFunction()->Command(rCEvt);
     }
 }
 
-bool ViewShell::Notify(NotifyEvent& rNEvt, ::sd::Window* pWin)
+bool ViewShell::Notify(NotifyEvent const & rNEvt, ::sd::Window* pWin)
 {
     // handle scroll commands when they arrived at child windows
     bool bRet = false;
@@ -773,7 +701,7 @@ bool ViewShell::HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWi
                     break;
                 }
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case CommandEventId::StartAutoScroll:
         case CommandEventId::AutoScroll:
         {
@@ -789,7 +717,7 @@ bool ViewShell::HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWi
                         long        nNewZoom;
                         Point aOldMousePos = GetActiveWindow()->PixelToLogic(rCEvt.GetMousePosPixel());
 
-                        if( pData->GetDelta() < 0L )
+                        if( pData->GetDelta() < 0 )
                             nNewZoom = std::max<long>( pWin->GetMinZoom(), basegfx::zoomtools::zoomOut( nOldZoom ));
                         else
                             nNewZoom = std::min<long>( pWin->GetMaxZoom(), basegfx::zoomtools::zoomIn( nOldZoom ));
@@ -834,29 +762,29 @@ bool ViewShell::HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWi
 
 void ViewShell::SetupRulers()
 {
-    if(mbHasRulers && (mpContentWindow.get() != nullptr) && !SlideShow::IsRunning(GetViewShellBase()))
-    {
-        long nHRulerOfs = 0;
+    if(!(mbHasRulers && mpContentWindow && !SlideShow::IsRunning(GetViewShellBase())))
+        return;
 
-        if ( mpVerticalRuler.get() == nullptr )
+    long nHRulerOfs = 0;
+
+    if ( !mpVerticalRuler )
+    {
+        mpVerticalRuler.reset(CreateVRuler(GetActiveWindow()));
+        if ( mpVerticalRuler )
         {
-            mpVerticalRuler.reset(CreateVRuler(GetActiveWindow()));
-            if ( mpVerticalRuler.get() != nullptr )
-            {
-                nHRulerOfs = mpVerticalRuler->GetSizePixel().Width();
-                mpVerticalRuler->SetActive();
-                mpVerticalRuler->Show();
-            }
+            nHRulerOfs = mpVerticalRuler->GetSizePixel().Width();
+            mpVerticalRuler->SetActive();
+            mpVerticalRuler->Show();
         }
-        if ( mpHorizontalRuler.get() == nullptr )
+    }
+    if ( !mpHorizontalRuler )
+    {
+        mpHorizontalRuler.reset(CreateHRuler(GetActiveWindow()));
+        if ( mpHorizontalRuler )
         {
-            mpHorizontalRuler.reset(CreateHRuler(GetActiveWindow()));
-            if ( mpHorizontalRuler.get() != nullptr )
-            {
-                mpHorizontalRuler->SetWinPos(nHRulerOfs);
-                mpHorizontalRuler->SetActive();
-                mpHorizontalRuler->Show();
-            }
+            mpHorizontalRuler->SetWinPos(nHRulerOfs);
+            mpHorizontalRuler->SetActive();
+            mpHorizontalRuler->Show();
         }
     }
 }
@@ -907,20 +835,19 @@ const SfxPoolItem* ViewShell::GetNumBulletItem(SfxItemSet& aNewAttr, sal_uInt16&
             if(bOutliner)
             {
                 SfxStyleSheetBasePool* pSSPool = mpView->GetDocSh()->GetStyleSheetPool();
-                SfxStyleSheetBase* pFirstStyleSheet = pSSPool->Find( STR_LAYOUT_OUTLINE " 1", SD_STYLE_FAMILY_PSEUDO);
+                SfxStyleSheetBase* pFirstStyleSheet = pSSPool->Find( STR_LAYOUT_OUTLINE " 1", SfxStyleFamily::Pseudo);
                 if( pFirstStyleSheet )
                     pFirstStyleSheet->GetItemSet().GetItemState(EE_PARA_NUMBULLET, false, reinterpret_cast<const SfxPoolItem**>(&pItem));
             }
 
             if( pItem == nullptr )
-                pItem = static_cast<const SvxNumBulletItem*>( aNewAttr.GetPool()->GetSecondaryPool()->GetPoolDefaultItem(EE_PARA_NUMBULLET) );
+                pItem = aNewAttr.GetPool()->GetSecondaryPool()->GetPoolDefaultItem(EE_PARA_NUMBULLET);
 
-            std::unique_ptr<SfxPoolItem> pNewItem(pItem->CloneSetWhich(EE_PARA_NUMBULLET));
-            aNewAttr.Put(*pNewItem);
+            aNewAttr.Put(pItem->CloneSetWhich(EE_PARA_NUMBULLET));
 
             if(bTitle && aNewAttr.GetItemState(EE_PARA_NUMBULLET) == SfxItemState::SET )
             {
-                const SvxNumBulletItem* pBulletItem = static_cast<const SvxNumBulletItem*>(aNewAttr.GetItem(EE_PARA_NUMBULLET));
+                const SvxNumBulletItem* pBulletItem = aNewAttr.GetItem(EE_PARA_NUMBULLET);
                 SvxNumRule* pRule = pBulletItem->GetNumRule();
                 if(pRule)
                 {
@@ -950,7 +877,7 @@ void ViewShell::Resize()
 
     // Make sure that the new size is not degenerate.
     const Size aSize (mpParentWindow->GetSizePixel());
-    if (aSize.Width()==0 || aSize.Height()==0)
+    if (aSize.IsEmpty())
         return;
 
     // Remember the new position and size.
@@ -972,26 +899,26 @@ SvBorder ViewShell::GetBorder()
     SvBorder aBorder;
 
     // Horizontal scrollbar.
-    if (mpHorizontalScrollBar.get()!=nullptr
+    if (mpHorizontalScrollBar
         && mpHorizontalScrollBar->IsVisible())
     {
         aBorder.Bottom() = maScrBarWH.Height();
     }
 
     // Vertical scrollbar.
-    if (mpVerticalScrollBar.get()!=nullptr
+    if (mpVerticalScrollBar
         && mpVerticalScrollBar->IsVisible())
     {
         aBorder.Right() = maScrBarWH.Width();
     }
 
     // Place horizontal ruler below tab bar.
-    if (mbHasRulers && mpContentWindow.get() != nullptr)
+    if (mbHasRulers && mpContentWindow)
     {
         SetupRulers();
-        if (mpHorizontalRuler.get() != nullptr)
+        if (mpHorizontalRuler)
             aBorder.Top() = mpHorizontalRuler->GetSizePixel().Height();
-        if (mpVerticalRuler.get() != nullptr)
+        if (mpVerticalRuler)
             aBorder.Left() = mpVerticalRuler->GetSizePixel().Width();
     }
 
@@ -1002,6 +929,8 @@ void ViewShell::ArrangeGUIElements()
 {
     if (mpImpl->mbArrangeActive)
         return;
+    if (maViewSize.IsEmpty())
+        return;
     mpImpl->mbArrangeActive = true;
 
     // Calculate border for in-place editing.
@@ -1011,11 +940,11 @@ void ViewShell::ArrangeGUIElements()
     long nBottom = maViewPos.Y() + maViewSize.Height();
 
     // Horizontal scrollbar.
-    if (mpHorizontalScrollBar.get()!=nullptr
+    if (mpHorizontalScrollBar
         && mpHorizontalScrollBar->IsVisible())
     {
         nBottom -= maScrBarWH.Height();
-        if (mpLayerTabBar.get()!=nullptr && mpLayerTabBar->IsVisible())
+        if (mpLayerTabBar && mpLayerTabBar->IsVisible())
             nBottom -= mpLayerTabBar->GetSizePixel().Height();
         mpHorizontalScrollBar->SetPosSizePixel (
             Point(nLeft, nBottom),
@@ -1023,7 +952,7 @@ void ViewShell::ArrangeGUIElements()
     }
 
     // Vertical scrollbar.
-    if (mpVerticalScrollBar.get()!=nullptr
+    if (mpVerticalScrollBar
         && mpVerticalScrollBar->IsVisible())
     {
         nRight -= maScrBarWH.Width();
@@ -1033,11 +962,11 @@ void ViewShell::ArrangeGUIElements()
     }
 
     // Filler in the lower right corner.
-    if (mpScrollBarBox.get() != nullptr)
+    if (mpScrollBarBox)
     {
-        if (mpHorizontalScrollBar.get()!=nullptr
+        if (mpHorizontalScrollBar
             && mpHorizontalScrollBar->IsVisible()
-            && mpVerticalScrollBar.get()!=nullptr
+            && mpVerticalScrollBar
             && mpVerticalScrollBar->IsVisible())
         {
             mpScrollBarBox->Show();
@@ -1048,23 +977,23 @@ void ViewShell::ArrangeGUIElements()
     }
 
     // Place horizontal ruler below tab bar.
-    if (mbHasRulers && mpContentWindow.get() != nullptr)
+    if (mbHasRulers && mpContentWindow)
     {
-        if (mpHorizontalRuler.get() != nullptr)
+        if (mpHorizontalRuler)
         {
             Size aRulerSize = mpHorizontalRuler->GetSizePixel();
-            aRulerSize.Width() = nRight - nLeft;
+            aRulerSize.setWidth( nRight - nLeft );
             mpHorizontalRuler->SetPosSizePixel (
                 Point(nLeft,nTop), aRulerSize);
-            if (mpVerticalRuler.get() != nullptr)
+            if (mpVerticalRuler)
                 mpHorizontalRuler->SetBorderPos(
                     mpVerticalRuler->GetSizePixel().Width()-1);
             nTop += aRulerSize.Height();
         }
-        if (mpVerticalRuler.get() != nullptr)
+        if (mpVerticalRuler)
         {
             Size aRulerSize = mpVerticalRuler->GetSizePixel();
-            aRulerSize.Height() = nBottom  - nTop;
+            aRulerSize.setHeight( nBottom  - nTop );
             mpVerticalRuler->SetPosSizePixel (
                 Point (nLeft,nTop), aRulerSize);
             nLeft += aRulerSize.Width();
@@ -1092,7 +1021,7 @@ void ViewShell::ArrangeGUIElements()
         Size(maViewSize.Width()-maScrBarWH.Width(),
             maViewSize.Height()-maScrBarWH.Height()));
 
-    if (mpContentWindow.get() != nullptr)
+    if (mpContentWindow)
         mpContentWindow->UpdateMapOrigin();
 
     UpdateScrollBars();
@@ -1103,10 +1032,10 @@ void ViewShell::ArrangeGUIElements()
 void ViewShell::SetUIUnit(FieldUnit eUnit)
 {
     // Set unit at horizontal and vertical rulers.
-    if (mpHorizontalRuler.get() != nullptr)
+    if (mpHorizontalRuler)
         mpHorizontalRuler->SetUnit(eUnit);
 
-    if (mpVerticalRuler.get() != nullptr)
+    if (mpVerticalRuler)
         mpVerticalRuler->SetUnit(eUnit);
 }
 
@@ -1115,7 +1044,7 @@ void ViewShell::SetUIUnit(FieldUnit eUnit)
  */
 void ViewShell::SetDefTabHRuler( sal_uInt16 nDefTab )
 {
-    if (mpHorizontalRuler.get() != nullptr)
+    if (mpHorizontalRuler)
         mpHorizontalRuler->SetDefTabDist( nDefTab );
 }
 
@@ -1133,14 +1062,14 @@ bool ViewShell::PrepareClose (bool bUI)
     return bResult;
 }
 
-void ViewShell::UpdatePreview (SdPage*, bool )
+void ViewShell::UpdatePreview (SdPage*)
 {
     // Do nothing.  After the actual preview has been removed,
     // OutlineViewShell::UpdatePreview() is the place where something
     // useful is still done.
 }
 
-::svl::IUndoManager* ViewShell::ImpGetUndoManager() const
+SfxUndoManager* ViewShell::ImpGetUndoManager() const
 {
     const ViewShell* pMainViewShell = GetViewShellBase().GetMainViewShell().get();
 
@@ -1177,56 +1106,57 @@ void ViewShell::UpdatePreview (SdPage*, bool )
 
 void ViewShell::ImpGetUndoStrings(SfxItemSet &rSet) const
 {
-    ::svl::IUndoManager* pUndoManager = ImpGetUndoManager();
-    if(pUndoManager)
+    SfxUndoManager* pUndoManager = ImpGetUndoManager();
+    if(!pUndoManager)
+        return;
+
+    sal_uInt16 nCount(pUndoManager->GetUndoActionCount());
+    if(nCount)
     {
-        sal_uInt16 nCount(pUndoManager->GetUndoActionCount());
-        if(nCount)
+        // prepare list
+        std::vector<OUString> aStringList;
+        aStringList.reserve(nCount);
+        for (sal_uInt16 a = 0; a < nCount; ++a)
         {
-            // prepare list
-            std::vector<OUString> aStringList;
-
-            for (sal_uInt16 a = 0; a < nCount; ++a)
-            {
-                // generate one String in list per undo step
-                aStringList.push_back( pUndoManager->GetUndoActionComment(a) );
-            }
-
-            // set item
-            rSet.Put(SfxStringListItem(SID_GETUNDOSTRINGS, &aStringList));
+            // generate one String in list per undo step
+            aStringList.push_back( pUndoManager->GetUndoActionComment(a) );
         }
-        else
-        {
-            rSet.DisableItem(SID_GETUNDOSTRINGS);
-        }
+
+        // set item
+        rSet.Put(SfxStringListItem(SID_GETUNDOSTRINGS, &aStringList));
+    }
+    else
+    {
+        rSet.DisableItem(SID_GETUNDOSTRINGS);
     }
 }
 
 void ViewShell::ImpGetRedoStrings(SfxItemSet &rSet) const
 {
-    ::svl::IUndoManager* pUndoManager = ImpGetUndoManager();
-    if(pUndoManager)
+    SfxUndoManager* pUndoManager = ImpGetUndoManager();
+    if(!pUndoManager)
+        return;
+
+    sal_uInt16 nCount(pUndoManager->GetRedoActionCount());
+    if(nCount)
     {
-        sal_uInt16 nCount(pUndoManager->GetRedoActionCount());
-        if(nCount)
-        {
-            // prepare list
-            ::std::vector< OUString > aStringList;
-            sal_uInt16 a;
+        // prepare list
+        ::std::vector< OUString > aStringList;
+        aStringList.reserve(nCount);
+        for(sal_uInt16 a = 0; a < nCount; a++)
+            // generate one String in list per undo step
+            aStringList.push_back( pUndoManager->GetRedoActionComment(a) );
 
-            for( a = 0; a < nCount; a++)
-                // generate one String in list per undo step
-                aStringList.push_back( pUndoManager->GetRedoActionComment(a) );
-
-            // set item
-            rSet.Put(SfxStringListItem(SID_GETREDOSTRINGS, &aStringList));
-        }
-        else
-        {
-            rSet.DisableItem(SID_GETREDOSTRINGS);
-        }
+        // set item
+        rSet.Put(SfxStringListItem(SID_GETREDOSTRINGS, &aStringList));
+    }
+    else
+    {
+        rSet.DisableItem(SID_GETREDOSTRINGS);
     }
 }
+
+namespace {
 
 class KeepSlideSorterInSyncWithPageChanges
 {
@@ -1236,7 +1166,7 @@ class KeepSlideSorterInSyncWithPageChanges
     sd::slidesorter::controller::SelectionObserver::Context m_aContext;
 
 public:
-    explicit KeepSlideSorterInSyncWithPageChanges(sd::slidesorter::SlideSorter& rSlideSorter)
+    explicit KeepSlideSorterInSyncWithPageChanges(sd::slidesorter::SlideSorter const & rSlideSorter)
         : m_aDrawLock(rSlideSorter)
         , m_aModelLock(rSlideSorter.GetController())
         , m_aUpdateLock(rSlideSorter)
@@ -1245,17 +1175,19 @@ public:
     }
 };
 
+}
+
 void ViewShell::ImpSidUndo(SfxRequest& rReq)
 {
     //The xWatcher keeps the SlideSorter selection in sync
     //with the page insertions/deletions that Undo may introduce
-    std::unique_ptr<KeepSlideSorterInSyncWithPageChanges> xWatcher;
+    std::unique_ptr<KeepSlideSorterInSyncWithPageChanges, o3tl::default_delete<KeepSlideSorterInSyncWithPageChanges>> xWatcher;
     slidesorter::SlideSorterViewShell* pSlideSorterViewShell
         = slidesorter::SlideSorterViewShell::GetSlideSorter(GetViewShellBase());
     if (pSlideSorterViewShell)
         xWatcher.reset(new KeepSlideSorterInSyncWithPageChanges(pSlideSorterViewShell->GetSlideSorter()));
 
-    ::svl::IUndoManager* pUndoManager = ImpGetUndoManager();
+    SfxUndoManager* pUndoManager = ImpGetUndoManager();
     sal_uInt16 nNumber(1);
     const SfxItemSet* pReqArgs = rReq.GetArgs();
     bool bRepair = false;
@@ -1279,7 +1211,7 @@ void ViewShell::ImpSidUndo(SfxRequest& rReq)
         {
             if (comphelper::LibreOfficeKit::isActive() && !bRepair)
             {
-                // If an other view created the first undo action, prevent redoing it from this view.
+                // If another view created the first undo action, prevent redoing it from this view.
                 const SfxUndoAction* pAction = pUndoManager->GetUndoAction();
                 if (pAction->GetViewShellId() != GetViewShellBase().GetViewShellId())
                 {
@@ -1318,13 +1250,13 @@ void ViewShell::ImpSidRedo(SfxRequest& rReq)
 {
     //The xWatcher keeps the SlideSorter selection in sync
     //with the page insertions/deletions that Undo may introduce
-    std::unique_ptr<KeepSlideSorterInSyncWithPageChanges> xWatcher;
+    std::unique_ptr<KeepSlideSorterInSyncWithPageChanges, o3tl::default_delete<KeepSlideSorterInSyncWithPageChanges>> xWatcher;
     slidesorter::SlideSorterViewShell* pSlideSorterViewShell
         = slidesorter::SlideSorterViewShell::GetSlideSorter(GetViewShellBase());
     if (pSlideSorterViewShell)
         xWatcher.reset(new KeepSlideSorterInSyncWithPageChanges(pSlideSorterViewShell->GetSlideSorter()));
 
-    ::svl::IUndoManager* pUndoManager = ImpGetUndoManager();
+    SfxUndoManager* pUndoManager = ImpGetUndoManager();
     sal_uInt16 nNumber(1);
     const SfxItemSet* pReqArgs = rReq.GetArgs();
     bool bRepair = false;
@@ -1347,7 +1279,7 @@ void ViewShell::ImpSidRedo(SfxRequest& rReq)
         {
             if (comphelper::LibreOfficeKit::isActive() && !bRepair)
             {
-                // If an other view created the first undo action, prevent redoing it from this view.
+                // If another view created the first undo action, prevent redoing it from this view.
                 const SfxUndoAction* pAction = pUndoManager->GetRedoAction();
                 if (pAction->GetViewShellId() != GetViewShellBase().GetViewShellId())
                 {
@@ -1471,7 +1403,7 @@ void ViewShell::SetCurrentFunction( const rtl::Reference<FuPoor>& xFunction)
 {
     if( mxCurrentFunction.is() && (mxOldFunction != mxCurrentFunction) )
         mxCurrentFunction->Dispose();
-    rtl::Reference<FuPoor> xTemp( mxCurrentFunction );
+    rtl::Reference<FuPoor> xDisposeAfterNewOne( mxCurrentFunction );
     mxCurrentFunction = xFunction;
 }
 
@@ -1480,7 +1412,7 @@ void ViewShell::SetOldFunction(const rtl::Reference<FuPoor>& xFunction)
     if( mxOldFunction.is() && (xFunction != mxOldFunction) && (mxCurrentFunction != mxOldFunction) )
         mxOldFunction->Dispose();
 
-    rtl::Reference<FuPoor> xTemp( mxOldFunction );
+    rtl::Reference<FuPoor> xDisposeAfterNewOne( mxOldFunction );
     mxOldFunction = xFunction;
 }
 
@@ -1515,7 +1447,7 @@ void ViewShell::DeactivateCurrentFunction( bool bPermanent /* == false */ )
         if( mxCurrentFunction != mxOldFunction )
             mxCurrentFunction->Dispose();
 
-        rtl::Reference<FuPoor> xTemp( mxCurrentFunction );
+        rtl::Reference<FuPoor> xDisposeAfterNewOne( mxCurrentFunction );
         mxCurrentFunction.clear();
     }
 }
@@ -1532,7 +1464,7 @@ void ViewShell::DisposeFunctions()
 
     if(mxOldFunction.is())
     {
-        rtl::Reference<FuPoor> xTemp( mxOldFunction );
+        rtl::Reference<FuPoor> xDisposeAfterNewOne( mxOldFunction );
         mxOldFunction->Dispose();
         mxOldFunction.clear();
     }
@@ -1567,23 +1499,23 @@ void ViewShell::ShowUIControls (bool bVisible)
 {
     if (mbHasRulers)
     {
-        if (mpHorizontalRuler.get() != nullptr)
+        if (mpHorizontalRuler)
             mpHorizontalRuler->Show( bVisible );
 
-        if (mpVerticalRuler.get() != nullptr)
+        if (mpVerticalRuler)
             mpVerticalRuler->Show( bVisible );
     }
 
-    if (mpVerticalScrollBar.get() != nullptr)
+    if (mpVerticalScrollBar)
         mpVerticalScrollBar->Show( bVisible );
 
-    if (mpHorizontalScrollBar.get() != nullptr)
+    if (mpHorizontalScrollBar)
         mpHorizontalScrollBar->Show( bVisible );
 
-    if (mpScrollBarBox.get() != nullptr)
+    if (mpScrollBarBox)
         mpScrollBarBox->Show(bVisible);
 
-    if (mpContentWindow.get() != nullptr)
+    if (mpContentWindow)
         mpContentWindow->Show( bVisible );
 }
 
@@ -1593,14 +1525,14 @@ bool ViewShell::RelocateToParentWindow (vcl::Window* pParentWindow)
 
     mpParentWindow->SetBackground (Wallpaper());
 
-    if (mpContentWindow.get() != nullptr)
+    if (mpContentWindow)
         mpContentWindow->SetParent(pParentWindow);
 
-    if (mpHorizontalScrollBar.get() != nullptr)
+    if (mpHorizontalScrollBar)
         mpHorizontalScrollBar->SetParent(mpParentWindow);
-    if (mpVerticalScrollBar.get() != nullptr)
+    if (mpVerticalScrollBar)
         mpVerticalScrollBar->SetParent(mpParentWindow);
-    if (mpScrollBarBox.get() != nullptr)
+    if (mpScrollBarBox)
         mpScrollBarBox->SetParent(mpParentWindow);
 
     return true;
@@ -1608,7 +1540,7 @@ bool ViewShell::RelocateToParentWindow (vcl::Window* pParentWindow)
 
 void ViewShell::SwitchViewFireFocus(const css::uno::Reference< css::accessibility::XAccessible >& xAcc )
 {
-    if (xAcc.get())
+    if (xAcc)
     {
         ::accessibility::AccessibleDocumentViewBase* pBase = static_cast< ::accessibility::AccessibleDocumentViewBase* >(xAcc.get());
         if (pBase)
@@ -1632,6 +1564,11 @@ void ViewShell::NotifyAccUpdate( )
     GetViewShellBase().GetDrawController().NotifyAccUpdate();
 }
 
+weld::Window* ViewShell::GetFrameWeld() const
+{
+    return mpActiveWindow ? mpActiveWindow->GetFrameWeld() : nullptr;
+}
+
 sd::Window* ViewShell::GetContentWindow() const
 {
     return mpContentWindow.get();
@@ -1649,64 +1586,48 @@ ViewShellObjectBarFactory::ViewShellObjectBarFactory (
 {
 }
 
-ViewShellObjectBarFactory::~ViewShellObjectBarFactory()
-{
-    for (ShellCache::iterator aI(maShellCache.begin());
-         aI!=maShellCache.end();
-         ++aI)
-    {
-        delete aI->second;
-    }
-}
-
 SfxShell* ViewShellObjectBarFactory::CreateShell( ::sd::ShellId nId )
 {
     SfxShell* pShell = nullptr;
 
-    ShellCache::iterator aI (maShellCache.find(nId));
-    if (aI == maShellCache.end() || aI->second==nullptr)
+    ::sd::View* pView = mrViewShell.GetView();
+    switch (nId)
     {
-        ::sd::View* pView = mrViewShell.GetView();
-        switch (nId)
-        {
-            case ToolbarId::Bezier_Toolbox_Sd:
-                pShell = new ::sd::BezierObjectBar(&mrViewShell, pView);
-                break;
+        case ToolbarId::Bezier_Toolbox_Sd:
+            pShell = new ::sd::BezierObjectBar(&mrViewShell, pView);
+            break;
 
-            case ToolbarId::Draw_Text_Toolbox_Sd:
-                pShell = new ::sd::TextObjectBar(
-                    &mrViewShell, mrViewShell.GetDoc()->GetPool(), pView);
-                break;
+        case ToolbarId::Draw_Text_Toolbox_Sd:
+            pShell = new ::sd::TextObjectBar(
+                &mrViewShell, mrViewShell.GetDoc()->GetPool(), pView);
+            break;
 
-            case ToolbarId::Draw_Graf_Toolbox:
-                pShell = new ::sd::GraphicObjectBar(&mrViewShell, pView);
-                break;
+        case ToolbarId::Draw_Graf_Toolbox:
+            pShell = new ::sd::GraphicObjectBar(&mrViewShell, pView);
+            break;
 
-            case ToolbarId::Draw_Media_Toolbox:
-                pShell = new ::sd::MediaObjectBar(&mrViewShell, pView);
-                break;
+        case ToolbarId::Draw_Media_Toolbox:
+            pShell = new ::sd::MediaObjectBar(&mrViewShell, pView);
+            break;
 
-            case ToolbarId::Draw_Table_Toolbox:
-                pShell = ::sd::ui::table::CreateTableObjectBar( mrViewShell, pView );
-                break;
+        case ToolbarId::Draw_Table_Toolbox:
+            pShell = ::sd::ui::table::CreateTableObjectBar( mrViewShell, pView );
+            break;
 
-            case ToolbarId::Svx_Extrusion_Bar:
-                pShell = new svx::ExtrusionBar(
-                    &mrViewShell.GetViewShellBase());
-                break;
+        case ToolbarId::Svx_Extrusion_Bar:
+            pShell = new svx::ExtrusionBar(
+                &mrViewShell.GetViewShellBase());
+            break;
 
-            case ToolbarId::Svx_Fontwork_Bar:
-                pShell = new svx::FontworkBar(
-                    &mrViewShell.GetViewShellBase());
-                break;
+         case ToolbarId::Svx_Fontwork_Bar:
+            pShell = new svx::FontworkBar(
+                &mrViewShell.GetViewShellBase());
+            break;
 
-            default:
-                pShell = nullptr;
-                break;
-        }
+        default:
+            pShell = nullptr;
+            break;
     }
-    else
-        pShell = aI->second;
 
     return pShell;
 }

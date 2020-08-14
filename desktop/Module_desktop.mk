@@ -20,16 +20,14 @@ $(eval $(call gb_Module_add_targets,desktop,\
     $(if $(ENABLE_BREAKPAD), \
         Library_crashreport \
         ) \
-    $(if $(ENABLE_HEADLESS),,Library_spl) \
+    $(if $(DISABLE_GUI),,Library_spl) \
     Package_branding \
     $(if $(CUSTOM_BRAND_DIR),Package_branding_custom) \
+    UIConfig_deployment \
 ))
 
 $(eval $(call gb_Module_add_l10n_targets,desktop,\
-    AllLangResTarget_deployment \
-    AllLangResTarget_deploymentgui \
-    AllLangResTarget_dkt \
-    UIConfig_deployment \
+    AllLangMoTarget_dkt \
 ))
 
 ifneq (,$(filter DESKTOP,$(BUILD_TYPE)))
@@ -80,7 +78,9 @@ $(eval $(call gb_Module_add_targets,desktop,\
     Executable_sdraw \
     Executable_simpress \
     Executable_smath \
-    Executable_soffice \
+    Executable_soffice_exe \
+    Executable_soffice_com \
+    Executable_soffice_safe \
     Executable_sweb \
     Executable_swriter \
     Executable_unoinfo \
@@ -102,7 +102,9 @@ else ifeq ($(OS),MACOSX)
 
 else ifeq ($(OS),ANDROID)
 
-else ifeq ($(OS),IOS)
+else ifeq ($(OS),iOS)
+
+else ifeq ($(OS),HAIKU)
 
 else
 
@@ -139,6 +141,7 @@ $(eval $(call gb_Module_add_check_targets,desktop, \
 ifeq ($(OS),LINUX)
 $(eval $(call gb_Module_add_check_targets,desktop, \
     CppunitTest_desktop_lib \
+    CppunitTest_desktop_lokinit \
 ))
 endif
 

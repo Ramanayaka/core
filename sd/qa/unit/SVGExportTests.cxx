@@ -7,18 +7,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "sdmodeltestbase.hxx"
+#include <test/bootstrapfixture.hxx>
 
+#include <sal/macros.h>
 #include <test/xmltesttools.hxx>
+#include <unotest/macros_test.hxx>
 #include <unotools/mediadescriptor.hxx>
 #include <com/sun/star/frame/XStorable.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <comphelper/processfactory.hxx>
-#include <com/sun/star/packages/zip/ZipFileAccess.hpp>
 
-#include <boost/preprocessor/stringize.hpp>
-
-#define MAKE_PATH_STRING( path ) BOOST_PP_STRINGIZE( path )
 #define SVG_SVG  *[name()='svg']
 #define SVG_G *[name()='g']
 #define SVG_TEXT *[name()='text']
@@ -37,7 +35,7 @@ protected:
         xmlXPathRegisterNs(pXmlXpathCtx, BAD_CAST("svg"), BAD_CAST("urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"));
     }
 
-    void load(const char* pDir, const char* pName)
+    void load(const OUString& pDir, const char* pName)
     {
         return loadURL(m_directories.getURLFromSrc(pDir) + OUString::createFromAscii(pName), pName);
     }
@@ -92,26 +90,41 @@ public:
     {
         executeExport( "svg-export-text-decorations.odp" );
 
-        xmlDocPtr svgDoc = parseXml(maTempFile);
+        xmlDocUniquePtr svgDoc = parseXml(maTempFile);
         CPPUNIT_ASSERT(svgDoc);
 
         svgDoc->name = reinterpret_cast<char *>(xmlStrdup(reinterpret_cast<xmlChar const *>(OUStringToOString(maTempFile.GetURL(), RTL_TEXTENCODING_UTF8).getStr())));
 
-        assertXPath(svgDoc, MAKE_PATH_STRING( /SVG_SVG ), 1);
-        assertXPath(svgDoc, MAKE_PATH_STRING( /SVG_SVG/SVG_G[2] ), "class", "SlideGroup");
-        assertXPath(svgDoc, MAKE_PATH_STRING( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G ), "class", "Slide");
-        assertXPath(svgDoc, MAKE_PATH_STRING( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[1] ), "class", "TitleText");
-        assertXPath(svgDoc, MAKE_PATH_STRING( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[1]/SVG_G/SVG_TEXT ), "class", "TextShape");
-        assertXPath(svgDoc, MAKE_PATH_STRING( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[1]/SVG_G/SVG_TEXT/SVG_TSPAN ), "class", "TextParagraph");
-        assertXPath(svgDoc, MAKE_PATH_STRING( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[1]/SVG_G/SVG_TEXT/SVG_TSPAN ), "text-decoration", "underline");
+        assertXPath(svgDoc, SAL_STRINGIFY( /SVG_SVG ), 1);
+        assertXPath(svgDoc, SAL_STRINGIFY( /SVG_SVG/SVG_G[2] ), "class", "SlideGroup");
+        assertXPath(svgDoc, SAL_STRINGIFY( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G ), "class", "Slide");
+        assertXPath(svgDoc, SAL_STRINGIFY( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[1] ), "class", "TitleText");
+        assertXPath(svgDoc, SAL_STRINGIFY( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[1]/SVG_G/SVG_TEXT ), "class", "TextShape");
+        assertXPath(svgDoc, SAL_STRINGIFY( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[1]/SVG_G/SVG_TEXT/SVG_TSPAN ), "class", "TextParagraph");
+        assertXPath(svgDoc, SAL_STRINGIFY( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[1]/SVG_G/SVG_TEXT/SVG_TSPAN ), "text-decoration", "underline");
 
-        assertXPath(svgDoc, MAKE_PATH_STRING( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[2]/SVG_G/SVG_TEXT ), "class", "TextShape");
-        assertXPath(svgDoc, MAKE_PATH_STRING( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[2]/SVG_G/SVG_TEXT/SVG_TSPAN ), "class", "TextParagraph");
-        assertXPath(svgDoc, MAKE_PATH_STRING( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[2]/SVG_G/SVG_TEXT/SVG_TSPAN ), "text-decoration", "line-through");
+        assertXPath(svgDoc, SAL_STRINGIFY( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[2]/SVG_G/SVG_TEXT ), "class", "TextShape");
+        assertXPath(svgDoc, SAL_STRINGIFY( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[2]/SVG_G/SVG_TEXT/SVG_TSPAN ), "class", "TextParagraph");
+        assertXPath(svgDoc, SAL_STRINGIFY( /SVG_SVG/SVG_G[2]/SVG_G/SVG_G/SVG_G/SVG_G/SVG_G[2]/SVG_G/SVG_TEXT/SVG_TSPAN ), "text-decoration", "line-through");
+    }
+
+    void testSVGExportJavascriptURL()
+    {
+        executeExport("textbox-link-javascript.odp");
+
+        xmlDocUniquePtr svgDoc = parseXml(maTempFile);
+        CPPUNIT_ASSERT(svgDoc);
+
+        // There should be only one child (no link to javascript url)
+        assertXPathChildren(svgDoc,
+                            SAL_STRINGIFY(/ SVG_SVG / SVG_G[2] / SVG_G / SVG_G / SVG_G / SVG_G
+                                             / SVG_G[4] / SVG_G),
+                            1);
     }
 
     CPPUNIT_TEST_SUITE(SdSVGFilterTest);
     CPPUNIT_TEST(testSVGExportTextDecorations);
+    CPPUNIT_TEST(testSVGExportJavascriptURL);
     CPPUNIT_TEST_SUITE_END();
 };
 

@@ -29,17 +29,29 @@
 
 #include <vector>
 
+#include <optional>
+
 #include <tools/color.hxx>
 #include <swtypes.hxx>
 #include <viewopt.hxx>
+#include "TextFrameIndex.hxx"
+
+#if defined _MSC_VER
+// For MSVC (without /vmg) SwTextNode must consistently be defined for
+// WrongListIterator::m_pGetWrongList of pointer-to-SwTextNode-member type to consistently have the
+// same size in all translation units that include this file:
+#include <ndtxt.hxx>
+#endif
 
 class SwWrongList;
 
 enum WrongAreaLineType
 {
-    WRONGAREA_DASHED,
+    WRONGAREA_NONE,
     WRONGAREA_WAVE,
-    WRONGAREA_NONE
+    WRONGAREA_BOLDWAVE,
+    WRONGAREA_BOLD,
+    WRONGAREA_DASHED
 };
 
 enum WrongListType
@@ -55,7 +67,6 @@ class SwWrongArea
 {
 public:
     OUString maType;
-    css::uno::Reference< css::container::XStringKeyMap > mxPropertyBag;
     sal_Int32 mnPos;
     sal_Int32 mnLen;
     SwWrongList* mpSubList;
@@ -76,14 +87,79 @@ public:
                  SwWrongList* pSubList);
 private:
 
+    static Color getGrammarColor ( css::uno::Reference< css::container::XStringKeyMap > const & xPropertyBag)
+    {
+        try
+        {
+            if (xPropertyBag.is())
+            {
+                css::uno::Any aLineColor = xPropertyBag->getValue("LineColor");
+                css::util::Color lineColor = 0;
+
+                if (aLineColor >>= lineColor)
+                {
+                    return Color( lineColor );
+                }
+            }
+        }
+        catch(const css::container::NoSuchElementException&)
+        {
+        }
+        catch(const css::uno::RuntimeException&)
+        {
+        }
+
+        return COL_LIGHTBLUE;
+    }
+
+    static WrongAreaLineType getGrammarLineType( css::uno::Reference< css::container::XStringKeyMap > const & xPropertyBag )
+    {
+        try
+        {
+            if (xPropertyBag.is())
+            {
+                css::uno::Any aLineType = xPropertyBag->getValue("LineType");
+                ::sal_Int16 lineType = 0;
+
+                if (!(aLineType >>= lineType))
+                {
+                    return WRONGAREA_WAVE;
+                }
+                if (css::awt::FontUnderline::BOLDWAVE == lineType)
+                {
+                    return WRONGAREA_BOLDWAVE;
+                }
+                if (css::awt::FontUnderline::BOLD == lineType)
+                {
+                    return WRONGAREA_BOLD;
+                }
+                if (css::awt::FontUnderline::DASH == lineType)
+                {
+                    return WRONGAREA_DASHED;
+                }
+                if (css::awt::FontUnderline::SMALLWAVE == lineType)
+                {
+                    return WRONGAREA_WAVE; //Code draws wave height based on space that fits.
+                }
+            }
+        }
+        catch(const css::container::NoSuchElementException&)
+        {
+        }
+        catch(const css::uno::RuntimeException&)
+        {
+        }
+
+        return WRONGAREA_WAVE;
+    }
+
     static Color getSmartColor ( css::uno::Reference< css::container::XStringKeyMap > const & xPropertyBag)
     {
         try
         {
             if (xPropertyBag.is())
             {
-                const OUString colorKey("LineColor");
-                css::uno::Any aLineColor = xPropertyBag->getValue(colorKey);
+                css::uno::Any aLineColor = xPropertyBag->getValue("LineColor");
                 css::util::Color lineColor = 0;
 
                 if (aLineColor >>= lineColor)
@@ -108,8 +184,7 @@ private:
         {
             if (xPropertyBag.is())
             {
-                const OUString typeKey("LineType");
-                css::uno::Any aLineType = xPropertyBag->getValue(typeKey);
+                css::uno::Any aLineType = xPropertyBag->getValue("LineType");
                 ::sal_Int16 lineType = 0;
 
                 if (!(aLineType >>= lineType))
@@ -119,6 +194,14 @@ private:
                 if (css::awt::FontUnderline::WAVE == lineType)
                 {
                     return WRONGAREA_WAVE;
+                }
+                if (css::awt::FontUnderline::BOLDWAVE == lineType)
+                {
+                    return WRONGAREA_BOLDWAVE;
+                }
+                if (css::awt::FontUnderline::BOLD == lineType)
+                {
+                    return WRONGAREA_BOLD;
                 }
                 if (css::awt::FontUnderline::SMALLWAVE == lineType)
                 {
@@ -145,7 +228,7 @@ private:
         }
         else if (WRONGLIST_GRAMMAR == listType)
         {
-            return Color( COL_LIGHTBLUE );
+            return getGrammarColor(xPropertyBag);
         }
         else if (WRONGLIST_SMARTTAG == listType)
         {
@@ -164,7 +247,7 @@ private:
         }
         else if (WRONGLIST_GRAMMAR == listType)
         {
-            return WRONGAREA_WAVE;
+            return getGrammarLineType(xPropertyBag);
         }
         else if (WRONGLIST_SMARTTAG == listType)
         {
@@ -181,8 +264,8 @@ class SwWrongList
     std::vector<SwWrongArea> maList;
     WrongListType            meType;
 
-    sal_Int32 nBeginInvalid;   // Start of the invalid range
-    sal_Int32 nEndInvalid;     // End of the invalid range
+    sal_Int32 mnBeginInvalid;   // Start of the invalid range
+    sal_Int32 mnEndInvalid;     // End of the invalid range
 
     static void ShiftLeft( sal_Int32 &rPos, sal_Int32 nStart, sal_Int32 nEnd )
     { if( rPos > nStart ) rPos = rPos > nEnd ? rPos - nEnd + nStart : nStart; }
@@ -202,10 +285,10 @@ public:
     virtual void CopyFrom( const SwWrongList& rCopy );
 
     WrongListType GetWrongListType() const { return meType; }
-    sal_Int32 GetBeginInv() const { return nBeginInvalid; }
-    sal_Int32 GetEndInv() const { return nEndInvalid; }
+    sal_Int32 GetBeginInv() const { return mnBeginInvalid; }
+    sal_Int32 GetEndInv() const { return mnEndInvalid; }
     void SetInvalid( sal_Int32 nBegin, sal_Int32 nEnd );
-    void Validate(){ nBeginInvalid = nEndInvalid = COMPLETE_STRING; }
+    void Validate(){ mnBeginInvalid = mnEndInvalid = COMPLETE_STRING; }
     void Invalidate( sal_Int32 nBegin, sal_Int32 nEnd );
     bool InvalidateWrong();
     enum class FreshState { FRESH, CURSOR, NOTHING };
@@ -237,7 +320,7 @@ public:
         return nIdx < maList.size() ? maList[nIdx].mnPos : 0;
     }
 
-    sal_uInt16 Count() const { return (sal_uInt16)maList.size(); }
+    sal_uInt16 Count() const { return static_cast<sal_uInt16>(maList.size()); }
 
     void Insert( const OUString& rType,
                         css::uno::Reference< css::container::XStringKeyMap > const & xPropertyBag,
@@ -270,6 +353,60 @@ public:
     void RemoveEntry( sal_Int32 nBegin, sal_Int32 nEnd );
     bool LookForEntry( sal_Int32 nBegin, sal_Int32 nEnd );
 };
+
+class SwTextNode;
+class SwTextFrame;
+
+namespace sw {
+
+struct MergedPara;
+
+class WrongListIteratorBase
+{
+protected:
+    SwWrongList const* (SwTextNode::*const m_pGetWrongList)() const;
+    sw::MergedPara const*const m_pMergedPara;
+    size_t m_CurrentExtent;
+    TextFrameIndex m_CurrentIndex;
+    SwWrongList const*const m_pWrongList;
+
+public:
+    /// for the text frame
+    WrongListIteratorBase(SwTextFrame const& rFrame,
+        SwWrongList const* (SwTextNode::*pGetWrongList)() const);
+    /// for SwTextSlot
+    WrongListIteratorBase(SwWrongList const& rWrongList);
+};
+
+class WrongListIterator
+    : public WrongListIteratorBase
+{
+public:
+    /// for the text frame
+    WrongListIterator(SwTextFrame const& rFrame,
+        SwWrongList const* (SwTextNode::*pGetWrongList)() const);
+    /// for SwTextSlot
+    WrongListIterator(SwWrongList const& rWrongList);
+
+    bool Check(TextFrameIndex &rStart, TextFrameIndex &rLen);
+    const SwWrongArea* GetWrongElement(TextFrameIndex nStart);
+
+    bool LooksUseful() { return m_pMergedPara || m_pWrongList; }
+};
+
+class WrongListIteratorCounter
+    : public WrongListIteratorBase
+{
+public:
+    WrongListIteratorCounter(SwTextFrame const& rFrame,
+        SwWrongList const* (SwTextNode::*pGetWrongList)() const);
+    WrongListIteratorCounter(SwWrongList const& rWrongList);
+
+    sal_uInt16 GetElementCount();
+    std::optional<std::pair<TextFrameIndex, TextFrameIndex>> GetElementAt(sal_uInt16 nIndex);
+};
+
+} // namespace sw
 
 #endif
 

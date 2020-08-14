@@ -42,6 +42,11 @@ import javax.swing.event.UndoableEditListener;
 import javax.swing.text.BadLocationException;
 import javax.swing.undo.CompoundEdit;
 import javax.swing.undo.UndoManager;
+import java.util.List;
+import java.util.ArrayList;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class PlainSourceView extends JScrollPane implements
     ScriptSourceView, DocumentListener {
@@ -56,6 +61,10 @@ public class PlainSourceView extends JScrollPane implements
     private CompoundEdit compoundEdit = null;
     private static final int noLimit = -1;
     UndoManager undoManager;
+    private List<UnsavedChangesListener> unsavedListener = new ArrayList<UnsavedChangesListener>();
+
+    private static final Pattern tabPattern = Pattern.compile("^ *(\\t)");
+    private static final Pattern indentationPattern = Pattern.compile("^([^\\S\\r\\n]*)(([^\\{])*\\{\\s*)*");
 
     public PlainSourceView(ScriptSourceModel model) {
         this.model = model;
@@ -71,6 +80,10 @@ public class PlainSourceView extends JScrollPane implements
         }
         if(undoManager.canUndo()){
             undoManager.undo();
+        }
+        // check if it's the last undoable change
+        if(undoManager.canUndo() == false){
+            setModified(false);
         }
     }
     public void redo(){
@@ -119,8 +132,17 @@ public class PlainSourceView extends JScrollPane implements
         return isModified;
     }
 
+    private void notifyListeners (boolean isUnsaved) {
+        for (UnsavedChangesListener listener : unsavedListener) {
+            listener.onUnsavedChanges(isUnsaved);
+        }
+    }
+
     public void setModified(boolean value) {
-        isModified = value;
+        if(value != isModified) {
+            notifyListeners(value);
+            isModified = value;
+        }
     }
 
     private void initUI() {
@@ -153,6 +175,51 @@ public class PlainSourceView extends JScrollPane implements
         ta.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.CTRL_MASK), redoKey);
 
         ta.addKeyListener(new KeyAdapter(){
+            @Override
+            public void keyPressed(KeyEvent ke) {
+                // if shift + tab was pressed, remove the first tab before any code begins
+                if (ke.isShiftDown() && ke.getKeyCode() == KeyEvent.VK_TAB) {
+                    try {
+                        int caretOffset = ta.getCaretPosition();
+                        int lineOffset = ta.getLineOfOffset(caretOffset);
+                        int startOffset = ta.getLineStartOffset(lineOffset);
+                        int endOffset = ta.getLineEndOffset(lineOffset);
+
+                        Matcher matcher = tabPattern.matcher(ta.getText(startOffset, endOffset - startOffset));
+                        if (matcher.find()) {
+                            ta.replaceRange(null, startOffset + matcher.start(1), startOffset + matcher.end(1));
+                        }
+                    } catch (BadLocationException e) {
+                        // could not find correct location of the tab
+                    }
+                }
+                // if the enter key was pressed, adjust indentation of the current line accordingly
+                if (ke.getKeyCode() == KeyEvent.VK_ENTER) {
+                    try {
+                        int caretOffset = ta.getCaretPosition();
+                        int lineOffset = ta.getLineOfOffset(caretOffset);
+                        int startOffset = ta.getLineStartOffset(lineOffset);
+                        int endOffset = ta.getLineEndOffset(lineOffset);
+
+                        Matcher matcher = indentationPattern.matcher(ta.getText(startOffset, endOffset - startOffset));
+                        // insert new line including indentation of the previous line
+                        ta.insert("\n", caretOffset++);
+                        if (matcher.find()) {
+                            if (matcher.group(1).length() > 0) {
+                                ta.insert(matcher.group(1), caretOffset++);
+                            }
+                            // if there is an open curly bracket in the current line, increase indentation level
+                            if (matcher.group(3) != null) {
+                                ta.insert("\t", caretOffset);
+                            }
+                        }
+                        ke.consume();
+                    } catch (BadLocationException e) {
+                        // could not find correct location of the indentation
+                    }
+                }
+            }
+
             @Override
             public void keyReleased(KeyEvent ke){
                 if(ke.getKeyCode() == KeyEvent.VK_SPACE || ke.getKeyCode() == KeyEvent.VK_ENTER){
@@ -203,7 +270,7 @@ public class PlainSourceView extends JScrollPane implements
     /* If the number of lines in the JTextArea has changed then update the
        GlyphGutter */
     private void doChanged() {
-        isModified = true;
+        setModified(true);
 
         if (linecount != ta.getLineCount()) {
             gg.update();
@@ -221,6 +288,10 @@ public class PlainSourceView extends JScrollPane implements
 
     public int getCurrentPosition() {
         return model.getCurrentPosition();
+    }
+
+    public void addListener(UnsavedChangesListener toAdd) {
+        unsavedListener.add(toAdd);
     }
 }
 

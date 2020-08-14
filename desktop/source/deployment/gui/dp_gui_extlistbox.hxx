@@ -21,13 +21,12 @@
 #define INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_GUI_DP_GUI_EXTLISTBOX_HXX
 
 #include <rtl/ustring.hxx>
-#include <vcl/scrbar.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/fixedhyper.hxx>
-#include <vcl/dialog.hxx>
+#include <vcl/customweld.hxx>
+#include <vcl/image.hxx>
+#include <vcl/weld.hxx>
 
-#include <svtools/extensionlistbox.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <cppuhelper/weakref.hxx>
 #include <unotools/collatorwrapper.hxx>
 
 #include <com/sun/star/lang/Locale.hpp>
@@ -35,6 +34,8 @@
 #include <com/sun/star/deployment/XPackage.hpp>
 
 #include <memory>
+
+#include "dp_gui.h"
 
 namespace dp_gui {
 
@@ -74,7 +75,7 @@ struct Entry_Impl
     OUString        m_sErrorText;
     OUString        m_sLicenseText;
     Image           m_aIcon;
-    VclPtr<FixedHyperlink> m_pPublisher;
+    tools::Rectangle m_aLinkRect;
 
     css::uno::Reference<css::deployment::XPackage> m_xPackage;
 
@@ -91,7 +92,7 @@ class ExtensionBox_Impl;
 
 class ExtensionRemovedListener : public ::cppu::WeakImplHelper<css::lang::XEventListener>
 {
-    VclPtr<ExtensionBox_Impl>   m_pParent;
+    ExtensionBox_Impl*   m_pParent;
 
 public:
 
@@ -103,8 +104,7 @@ public:
     virtual void SAL_CALL disposing(css::lang::EventObject const& evt) override;
 };
 
-
-class ExtensionBox_Impl : public ::svt::IExtensionListBox
+class ExtensionBox_Impl : public weld::CustomWidgetController
 {
     bool m_bHasScrollBar : 1;
     bool m_bHasActive : 1;
@@ -118,13 +118,10 @@ class ExtensionBox_Impl : public ::svt::IExtensionListBox
     long m_nTopIndex;
     long m_nStdHeight;
     long m_nActiveHeight;
-    long m_nExtraHeight;
     Image m_aSharedImage;
     Image m_aLockedImage;
     Image m_aWarningImage;
     Image m_aDefaultImage;
-
-    VclPtr<ScrollBar>      m_pScrollBar;
 
     rtl::Reference<ExtensionRemovedListener> m_xRemoveListener;
 
@@ -140,12 +137,15 @@ class ExtensionBox_Impl : public ::svt::IExtensionListBox
     std::vector< TEntry_Impl > m_vEntries;
     std::vector< TEntry_Impl > m_vRemovedEntries;
 
-    css::lang::Locale    *m_pLocale;
-    CollatorWrapper      *m_pCollator;
+    std::unique_ptr<css::lang::Locale> m_pLocale;
+    std::unique_ptr<CollatorWrapper>   m_pCollator;
 
     //Holds weak references to extensions to which is we have added an XEventListener
     std::vector< css::uno::WeakReference<
         css::deployment::XPackage> > m_vListenerAdded;
+
+    std::unique_ptr<weld::ScrolledWindow> m_xScrollBar;
+
     //Removes the dead weak references from m_vListenerAdded
     void cleanVecListenerAdded();
     void addEventListenerOnce(css::uno::Reference<css::deployment::XPackage> const & extension);
@@ -158,27 +158,27 @@ class ExtensionBox_Impl : public ::svt::IExtensionListBox
     bool FindEntryPos( const TEntry_Impl& rEntry, long nStart, long nEnd, long &nFound );
     void DeleteRemoved();
 
-
-    DECL_LINK( ScrollHdl, ScrollBar*, void );
+    DECL_LINK( ScrollHdl, weld::ScrolledWindow&, void );
 
     void Init();
 public:
-    explicit ExtensionBox_Impl(vcl::Window* pParent);
+    explicit ExtensionBox_Impl(std::unique_ptr<weld::ScrolledWindow> xScroll);
     virtual ~ExtensionBox_Impl() override;
-    virtual void dispose() override;
 
-    virtual void MouseButtonDown( const MouseEvent& rMEvt ) override;
+    virtual bool MouseButtonDown( const MouseEvent& rMEvt ) override;
+    virtual bool MouseMove( const MouseEvent& rMEvt ) override;
+    virtual bool KeyInput(const KeyEvent& rKEvt) override;
     virtual void Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle &rPaintRect ) override;
     virtual void Resize() override;
-    virtual bool EventNotify( NotifyEvent& rNEvt ) override;
-    virtual Size GetOptimalSize() const override;
+    virtual OUString RequestHelp(tools::Rectangle& rRect) override;
 
-    TEntry_Impl     GetEntryData( long nPos ) { return m_vEntries[ nPos ]; }
-    long            GetEntryCount() { return (long) m_vEntries.size(); }
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
+
+    TEntry_Impl const & GetEntryData( long nPos ) { return m_vEntries[ nPos ]; }
+    long            GetEntryCount() const { return static_cast<long>(m_vEntries.size()); }
     tools::Rectangle       GetEntryRect( const long nPos ) const;
-    bool            HasActive() { return m_bHasActive; }
+    bool            HasActive() const { return m_bHasActive; }
     long            PointToPos( const Point& rPos );
-    void            DoScroll( long nDelta );
     virtual void    RecalcAll();
     void            RemoveUnlocked();
 
@@ -195,14 +195,19 @@ public:
     void setExtensionManager(TheExtensionManager* pManager) { m_pManager = pManager; }
 
     //These functions are used for automatic testing
+public:
+    enum { ENTRY_NOTFOUND = -1 };
 
     /** @return  The count of the entries in the list box. */
-    virtual sal_Int32 getItemCount() const override;
+    sal_Int32 getItemCount() const;
 
     /** @return  The index of the first selected entry in the list box.
         When nothing is selected, which is the case when getItemCount returns '0',
         then this function returns ENTRY_NOTFOUND */
-    virtual sal_Int32 getSelIndex() const override;
+    /** @return  The index of the first selected entry in the list box.
+        When nothing is selected, which is the case when getItemCount returns '0',
+        then this function returns ENTRY_NOTFOUND */
+    sal_Int32 getSelIndex() const;
 };
 
 }

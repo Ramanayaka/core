@@ -34,38 +34,34 @@
  *
  ************************************************************************/
 
+#include <sal/log.hxx>
 #include "pq_preparedstatement.hxx"
-#include "pq_resultset.hxx"
 #include "pq_tools.hxx"
 #include "pq_statics.hxx"
 #include "pq_statement.hxx"
 
+#include <o3tl/deleter.hxx>
 #include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
 
 
-#include <cppuhelper/typeprovider.hxx>
-#include <cppuhelper/queryinterface.hxx>
 #include <comphelper/sequence.hxx>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 
+#include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 
+#include <memory>
 #include <string.h>
 
 #include <connectivity/dbconversion.hxx>
 
-using osl::Mutex;
 using osl::MutexGuard;
 
 
 using com::sun::star::uno::Any;
-using com::sun::star::uno::makeAny;
 using com::sun::star::uno::Type;
-using com::sun::star::uno::RuntimeException;
-using com::sun::star::uno::Exception;
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::UNO_QUERY;
@@ -90,47 +86,38 @@ namespace pq_sdbc_driver
 {
 static ::cppu::IPropertyArrayHelper & getPreparedStatementPropertyArrayHelper()
 {
-    static ::cppu::IPropertyArrayHelper *pArrayHelper;
-    if( ! pArrayHelper )
-    {
-        MutexGuard guard( Mutex::getGlobalMutex() );
-        if( ! pArrayHelper )
-        {
-            static Property aTable[] =
-                {
-                    Property(
-                        "CursorName", 0,
-                        ::cppu::UnoType<OUString>::get() , 0 ),
-                    Property(
-                        "EscapeProcessing", 1,
-                        cppu::UnoType<bool>::get() , 0 ),
-                    Property(
-                        "FetchDirection", 2,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "FetchSize", 3,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "MaxFieldSize", 4,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "MaxRows", 5,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "QueryTimeOut", 6,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "ResultSetConcurrency", 7,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "ResultSetType", 8,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 )
-                };
-            static_assert( SAL_N_ELEMENTS(aTable) == PREPARED_STATEMENT_SIZE, "wrong number of elements" );
-            static ::cppu::OPropertyArrayHelper arrayHelper( aTable, PREPARED_STATEMENT_SIZE, true );
-            pArrayHelper = &arrayHelper;
-        }
-    }
+    static ::cppu::OPropertyArrayHelper arrayHelper(
+        Sequence<Property>{
+            Property(
+                "CursorName", 0,
+                ::cppu::UnoType<OUString>::get() , 0 ),
+            Property(
+                "EscapeProcessing", 1,
+                cppu::UnoType<bool>::get() , 0 ),
+            Property(
+                "FetchDirection", 2,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "FetchSize", 3,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "MaxFieldSize", 4,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "MaxRows", 5,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "QueryTimeOut", 6,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "ResultSetConcurrency", 7,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "ResultSetType", 8,
+                ::cppu::UnoType<sal_Int32>::get() , 0 )},
+        true );
+    static ::cppu::IPropertyArrayHelper *pArrayHelper = &arrayHelper;
+
     return *pArrayHelper;
 }
 
@@ -172,8 +159,8 @@ PreparedStatement::PreparedStatement(
     , m_multipleResultUpdateCount(0)
     , m_lastOidInserted( InvalidOid )
 {
-    m_props[PREPARED_STATEMENT_QUERY_TIME_OUT] <<= (sal_Int32)0;
-    m_props[PREPARED_STATEMENT_MAX_ROWS] <<= (sal_Int32)0;
+    m_props[PREPARED_STATEMENT_QUERY_TIME_OUT] <<= sal_Int32(0);
+    m_props[PREPARED_STATEMENT_MAX_ROWS] <<= sal_Int32(0);
     m_props[PREPARED_STATEMENT_RESULT_SET_CONCURRENCY] <<=
         css::sdbc::ResultSetConcurrency::READ_ONLY;
     m_props[PREPARED_STATEMENT_RESULT_SET_TYPE] <<=
@@ -181,9 +168,9 @@ PreparedStatement::PreparedStatement(
 
     splitSQL( m_stmt, m_splittedStatement );
     int elements = 0;
-    for(OString & str : m_splittedStatement)
+    for(const OString & str : m_splittedStatement)
     {
-        // ignore quoted strings ....
+        // ignore quoted strings...
         if( ! isQuoted( str ) )
         {
             // the ':' cannot be the first or the last part of the
@@ -201,17 +188,16 @@ PreparedStatement::PreparedStatement(
             }
         }
     }
-    m_vars = OStringVector ( elements );
+    m_vars = std::vector< OString >( elements );
 }
 
 PreparedStatement::~PreparedStatement()
 {
-    POSTGRE_TRACE( "dtor PreparedStatement" );
 }
 
 void PreparedStatement::checkColumnIndex( sal_Int32 parameterIndex )
 {
-    if( parameterIndex < 1 || parameterIndex > (sal_Int32) m_vars.size() )
+    if( parameterIndex < 1 || parameterIndex > static_cast<sal_Int32>(m_vars.size()) )
     {
         throw SQLException(
             "pq_preparedstatement: parameter index out of range (expected 1 to "
@@ -239,20 +225,12 @@ Any PreparedStatement::queryInterface( const Type & rType )
 
 Sequence< Type > PreparedStatement::getTypes()
 {
-    static Sequence< Type > *pCollection;
-    if( ! pCollection )
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( !pCollection )
-        {
-            static Sequence< Type > collection(
-                ::comphelper::concatSequences(
-                    OPropertySetHelper::getTypes(),
-                    PreparedStatement_BASE::getTypes()));
-            pCollection = &collection;
-        }
-    }
-    return *pCollection;
+    static Sequence< Type > collection(
+        ::comphelper::concatSequences(
+            OPropertySetHelper::getTypes(),
+            PreparedStatement_BASE::getTypes()));
+
+    return collection;
 }
 
 Sequence< sal_Int8> PreparedStatement::getImplementationId()
@@ -290,16 +268,12 @@ void PreparedStatement::raiseSQLException( const char * errorMsg )
     buf.appendAscii( m_executedStatement.getStr() );
     buf.append( "')" );
     OUString error = buf.makeStringAndClear();
-    log(m_pSettings, LogLevel::Error, error);
+    SAL_WARN("connectivity.postgresql", error);
     throw SQLException( error, *this, OUString(), 1, Any() );
 }
 
 Reference< XResultSet > PreparedStatement::executeQuery( )
 {
-    Reference< XCloseable > lastResultSet = m_lastResultset;
-    if( lastResultSet.is() )
-        lastResultSet->close();
-
     if( ! execute( ) )
     {
         raiseSQLException(  "not a query" );
@@ -322,15 +296,15 @@ sal_Bool PreparedStatement::execute( )
 
     OStringBuffer buf( m_stmt.getLength() *2 );
 
-    OStringVector::size_type vars = 0;
-    for(OString & str : m_splittedStatement)
+    std::vector< OString >::size_type vars = 0;
+    for(const OString & str : m_splittedStatement)
     {
         // LEM TODO: instead of this manual mucking with SQL
         // could we use PQexecParams / PQExecPrepared / ...?
         // Only snafu is giving the types of the parameters and
         // that it needs $1, $2, etc instead of "?"
 
-//         printf( "Splitted %d %s\n" , i , str.getStr() );
+//         printf( "Split %d %s\n" , i , str.getStr() );
         if( isQuoted( str ) )
         {
             buf.append( str );
@@ -374,6 +348,10 @@ sal_Bool PreparedStatement::execute( )
     }
 
     m_executedStatement = buf.makeStringAndClear();
+
+    Reference< XCloseable > lastResultSet = m_lastResultset;
+    if( lastResultSet.is() )
+        lastResultSet->close();
 
     m_lastResultset.clear();
     m_lastTableInserted.clear();
@@ -451,11 +429,7 @@ void PreparedStatement::setInt( sal_Int32 parameterIndex, sal_Int32 x )
     MutexGuard guard(m_xMutex->GetMutex() );
     checkClosed();
     checkColumnIndex( parameterIndex );
-    OStringBuffer buf( 20 );
-    buf.append( "'" );
-    buf.append( x );
-    buf.append( "'" );
-    m_vars[parameterIndex-1] = buf.makeStringAndClear();
+    m_vars[parameterIndex-1] = "'" + OString::number(x) + "'";
 }
 
 void PreparedStatement::setLong( sal_Int32 parameterIndex, sal_Int64 x )
@@ -463,11 +437,7 @@ void PreparedStatement::setLong( sal_Int32 parameterIndex, sal_Int64 x )
     MutexGuard guard(m_xMutex->GetMutex() );
     checkClosed();
     checkColumnIndex( parameterIndex );
-    OStringBuffer buf( 20 );
-    buf.append( "'" );
-    buf.append( x );
-    buf.append( "'" );
-    m_vars[parameterIndex-1] = buf.makeStringAndClear();
+    m_vars[parameterIndex-1] = "'" + OString::number(x) + "'";
 }
 
 void PreparedStatement::setFloat( sal_Int32 parameterIndex, float x )
@@ -475,11 +445,7 @@ void PreparedStatement::setFloat( sal_Int32 parameterIndex, float x )
     MutexGuard guard(m_xMutex->GetMutex() );
     checkClosed();
     checkColumnIndex( parameterIndex );
-    OStringBuffer buf( 20 );
-    buf.append( "'" );
-    buf.append( x );
-    buf.append( "'" );
-    m_vars[parameterIndex-1] = buf.makeStringAndClear();
+    m_vars[parameterIndex-1] = "'" + OString::number(x) + "'";
 }
 
 void PreparedStatement::setDouble( sal_Int32 parameterIndex, double x )
@@ -487,11 +453,7 @@ void PreparedStatement::setDouble( sal_Int32 parameterIndex, double x )
     MutexGuard guard(m_xMutex->GetMutex() );
     checkClosed();
     checkColumnIndex( parameterIndex );
-    OStringBuffer buf( 20 );
-    buf.append( "'" );
-    buf.append( x );
-    buf.append( "'" );
-    m_vars[parameterIndex-1] = buf.makeStringAndClear();
+    m_vars[parameterIndex-1] = "'" + OString::number(x) + "'";
 }
 
 void PreparedStatement::setString( sal_Int32 parameterIndex, const OUString& x )
@@ -517,21 +479,17 @@ void PreparedStatement::setBytes(
     MutexGuard guard(m_xMutex->GetMutex() );
     checkClosed();
     checkColumnIndex( parameterIndex );
-    OStringBuffer buf( 20 );
-    buf.append( "'" );
     size_t len;
-    unsigned char * escapedString =
-        PQescapeBytea( reinterpret_cast<unsigned char const *>(x.getConstArray()), x.getLength(), &len);
+    std::unique_ptr<unsigned char, o3tl::free_delete> escapedString(
+        PQescapeBytea( reinterpret_cast<unsigned char const *>(x.getConstArray()), x.getLength(), &len));
     if( ! escapedString )
     {
         throw SQLException(
             "pq_preparedstatement.setBytes: Error during converting bytesequence to an SQL conform string",
             *this, OUString(), 1, Any() );
     }
-    buf.append( reinterpret_cast<char *>(escapedString), len -1 );
-    free( escapedString );
-    buf.append( "'" );
-    m_vars[parameterIndex-1] = buf.makeStringAndClear();
+    m_vars[parameterIndex-1]
+        = "'" + rtl::OStringView(reinterpret_cast<char *>(escapedString.get()), len -1) + "'";
 }
 
 
@@ -600,18 +558,15 @@ void PreparedStatement::setObjectWithInfo(
         {
             x >>= myString;
         }
-        if( !myString.isEmpty() )
-        {
-//              printf( "setObjectWithInfo %s\n", OUStringToOString(myString,RTL_TEXTENCODING_ASCII_US).getStr());
-            setString( parameterIndex, myString );
-        }
-        else
+        if( myString.isEmpty() )
         {
             throw SQLException(
                 "pq_preparedstatement::setObjectWithInfo: can't convert value of type "
                 +  x.getValueTypeName() + " to type DECIMAL or NUMERIC",
                 *this, OUString(), 1, Any () );
         }
+
+        setString( parameterIndex, myString );
     }
     else
     {
@@ -657,7 +612,7 @@ void PreparedStatement::setArray(
 void PreparedStatement::clearParameters(  )
 {
     MutexGuard guard(m_xMutex->GetMutex() );
-    m_vars = OStringVector ( m_vars.size() );
+    m_vars = std::vector< OString >( m_vars.size() );
 }
 
 Any PreparedStatement::getWarnings(  )
@@ -762,6 +717,10 @@ sal_Int32 PreparedStatement::getUpdateCount(  )
 }
 sal_Bool PreparedStatement::getMoreResults(  )
 {
+    Reference< XCloseable > lastResultSet = m_lastResultset;
+    if( lastResultSet.is() )
+        lastResultSet->close();
+    m_multipleResultUpdateCount = -1;
     return false;
 }
 

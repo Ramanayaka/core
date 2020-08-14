@@ -17,23 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/task/XStatusIndicatorFactory.hpp>
-
 #include <memory>
+#include <map>
 
 #include <osl/module.hxx>
+#include <tools/svlibrary.h>
 #include <sfx2/docfile.hxx>
-#include <sfx2/viewfrm.hxx>
-#include <sfx2/progress.hxx>
+#include <sfx2/frame.hxx>
+#include <sfx2/sfxsids.hrc>
 #include <svl/itemset.hxx>
 
-#include "DrawDocShell.hxx"
-#include "strings.hrc"
+#include <DrawDocShell.hxx>
 
-#include "sdresid.hxx"
-#include "pres.hxx"
-#include "drawdoc.hxx"
-#include "sdfilter.hxx"
+#include <pres.hxx>
+#include <sdfilter.hxx>
 
 
 using namespace ::com::sun::star::uno;
@@ -59,14 +56,40 @@ OUString SdFilter::ImplGetFullLibraryName( const OUString& rLibraryName )
 }
 
 #ifndef DISABLE_DYNLOADING
-extern "C" { static void SAL_CALL thisModule() {} }
 
-::osl::Module* SdFilter::OpenLibrary( const OUString& rLibraryName )
+static std::map<OUString, std::unique_ptr<osl::Module>> g_SdModuleMap;
+
+extern "C" { static void thisModule() {} }
+
+oslGenericFunction SdFilter::GetLibrarySymbol( const OUString& rLibraryName, const OUString &rFnSymbol )
 {
-    std::unique_ptr< osl::Module > mod(new osl::Module);
-    return mod->loadRelative(&thisModule, ImplGetFullLibraryName(rLibraryName),
-                             SAL_LOADMODULE_GLOBAL | SAL_LOADMODULE_LAZY)
-        ? mod.release() : nullptr;
+    osl::Module *pMod = nullptr;
+    auto it = g_SdModuleMap.find(rLibraryName);
+    if (it != g_SdModuleMap.end())
+        pMod = it->second.get();
+
+    if (!pMod)
+    {
+        pMod = new osl::Module;
+        if (pMod->loadRelative(&thisModule, ImplGetFullLibraryName(rLibraryName),
+                               SAL_LOADMODULE_GLOBAL | SAL_LOADMODULE_LAZY))
+            g_SdModuleMap[rLibraryName] = std::unique_ptr<osl::Module>(pMod);
+        else
+        {
+            delete pMod;
+            pMod = nullptr;
+        }
+    }
+    if (!pMod)
+        return nullptr;
+    else
+        return pMod->getFunctionSymbol(rFnSymbol);
+}
+
+void SdFilter::Preload()
+{
+    (void)GetLibrarySymbol("sdfilt", "ImportPPT");
+    (void)GetLibrarySymbol("icg", "ImportCGM");
 }
 
 #endif

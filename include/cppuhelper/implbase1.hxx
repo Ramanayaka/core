@@ -19,8 +19,11 @@
 #ifndef INCLUDED_CPPUHELPER_IMPLBASE1_HXX
 #define INCLUDED_CPPUHELPER_IMPLBASE1_HXX
 
-#include <cppuhelper/implbase_ex.hxx>
-#include <rtl/instance.hxx>
+#include "cppuhelper/implbase_ex.hxx"
+#include "rtl/instance.hxx"
+#include "cppuhelper/weak.hxx"
+#include "cppuhelper/weakagg.hxx"
+#include "com/sun/star/lang/XTypeProvider.hpp"
 
 namespace cppu
 {
@@ -69,6 +72,14 @@ namespace cppu
     {
         struct cd : public rtl::StaticAggregate< class_data, ImplClassData1 < Ifc1, ImplHelper1<Ifc1> > > {};
     public:
+#if defined LIBO_INTERNAL_ONLY
+        ImplHelper1() = default;
+        ImplHelper1(ImplHelper1 const &) = default;
+        ImplHelper1(ImplHelper1 &&) = default;
+        ImplHelper1 & operator =(ImplHelper1 const &) = default;
+        ImplHelper1 & operator =(ImplHelper1 &&) = default;
+#endif
+
         virtual css::uno::Any SAL_CALL queryInterface( css::uno::Type const & rType ) SAL_OVERRIDE
             { return ImplHelper_query( rType, cd::get(), this ); }
         virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() SAL_OVERRIDE
@@ -153,7 +164,7 @@ namespace cppu
             { return ImplHelper_getImplementationId( cd::get() ); }
     };
     /** Implementation helper implementing interfaces css::lang::XTypeProvider and
-        css::uno::XInterface inherting from a BaseClass.
+        css::uno::XInterface inheriting from a BaseClass.
         All acquire() and release() calls are delegated to the BaseClass. Upon queryInterface(),
         if a demanded interface is not supported by this class directly, the request is
         delegated to the BaseClass.
@@ -220,7 +231,7 @@ namespace cppu
             { return ImplHelper_getImplementationId( cd::get() ); }
     };
     /** Implementation helper implementing interfaces css::lang::XTypeProvider and
-        css::uno::XInterface inherting from a BaseClass.
+        css::uno::XInterface inheriting from a BaseClass.
         All acquire(),  release() and queryInterface() calls are delegated to the BaseClass.
         Upon queryAggregation(), if a demanded interface is not supported by this class directly,
         the request is delegated to the BaseClass.

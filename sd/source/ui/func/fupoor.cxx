@@ -17,37 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fupoor.hxx"
+#include <fupoor.hxx>
 
 #include <svx/svxids.hrc>
-#include <svl/aeitem.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/svdograf.hxx>
 #include <vcl/seleng.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/request.hxx>
-#include <vcl/dialog.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/drawing/XLayer.hpp>
-#include <com/sun/star/drawing/XLayerManager.hpp>
-#include <com/sun/star/container/XChild.hpp>
+#include <svl/stritem.hxx>
 
-#include "FrameView.hxx"
-#include "app.hrc"
-#include "fusel.hxx"
-#include "sdpage.hxx"
-#include "drawview.hxx"
-#include "DrawViewShell.hxx"
-#include "Window.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "zoomlist.hxx"
-#include "Client.hxx"
-#include "slideshow.hxx"
-#include "LayerTabBar.hxx"
+#include <app.hrc>
+#include <fusel.hxx>
+#include <sdpage.hxx>
+#include <DrawViewShell.hxx>
+#include <Window.hxx>
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
+#include <zoomlist.hxx>
+#include <slideshow.hxx>
+#include <LayerTabBar.hxx>
 
 #include <sfx2/viewfrm.hxx>
 
@@ -72,7 +63,6 @@ FuPoor::FuPoor (
       mpDocSh( pDrDoc->GetDocSh() ),
       mpDoc(pDrDoc),
       nSlotId( rReq.GetSlot() ),
-      pDialog(nullptr),
       bIsInDragMode(false),
       bNoScrollUntilInside (true),
       bScrollable (false),
@@ -98,15 +88,10 @@ FuPoor::~FuPoor()
     aDragTimer.Stop();
     aScrollTimer.Stop();
     aDelayToScrollTimer.Stop();
-    pDialog.disposeAndClear();
 }
 
 void FuPoor::Activate()
 {
-    if (pDialog)
-    {
-        pDialog->Show();
-    }
 }
 
 void FuPoor::Deactivate()
@@ -115,11 +100,6 @@ void FuPoor::Deactivate()
     aScrollTimer.Stop();
     aDelayToScrollTimer.Stop ();
     bScrollable = bDelayActive = false;
-
-    if (pDialog)
-    {
-        pDialog->Hide();
-    }
 
     if (mpWindow && mpWindow->IsMouseCaptured())
         mpWindow->ReleaseMouse();
@@ -137,36 +117,36 @@ void FuPoor::ForceScroll(const Point& aPixPos)
 {
     aScrollTimer.Stop();
 
-    if ( !mpView->IsDragHelpLine() && !mpView->IsSetPageOrg() &&
-            !SlideShow::IsRunning( mpViewShell->GetViewShellBase() ) )
+    if ( mpView->IsDragHelpLine() || mpView->IsSetPageOrg() ||
+         SlideShow::IsRunning( mpViewShell->GetViewShellBase() ) )
+        return;
+
+    Point aPos = mpWindow->OutputToScreenPixel(aPixPos);
+    const ::tools::Rectangle& rRect = mpViewShell->GetAllWindowRect();
+
+    if ( bNoScrollUntilInside )
     {
-        Point aPos = mpWindow->OutputToScreenPixel(aPixPos);
-        const ::tools::Rectangle& rRect = mpViewShell->GetAllWindowRect();
+        if ( rRect.IsInside(aPos) )
+            bNoScrollUntilInside = false;
+    }
+    else
+    {
+        short dx = 0, dy = 0;
 
-        if ( bNoScrollUntilInside )
+        if ( aPos.X() <= rRect.Left()   ) dx = -1;
+        if ( aPos.X() >= rRect.Right()  ) dx =  1;
+        if ( aPos.Y() <= rRect.Top()    ) dy = -1;
+        if ( aPos.Y() >= rRect.Bottom() ) dy =  1;
+
+        if ( dx != 0 || dy != 0 )
         {
-            if ( rRect.IsInside(aPos) )
-                bNoScrollUntilInside = false;
-        }
-        else
-        {
-            short dx = 0, dy = 0;
-
-            if ( aPos.X() <= rRect.Left()   ) dx = -1;
-            if ( aPos.X() >= rRect.Right()  ) dx =  1;
-            if ( aPos.Y() <= rRect.Top()    ) dy = -1;
-            if ( aPos.Y() >= rRect.Bottom() ) dy =  1;
-
-            if ( dx != 0 || dy != 0 )
+            if (bScrollable)
             {
-                if (bScrollable)
-                {
-                    // scroll action in derived class
-                    mpViewShell->ScrollLines(dx, dy);
-                    aScrollTimer.Start();
-                }
-                else if (! bDelayActive) StartDelayToScrollTimer ();
+                // scroll action in derived class
+                mpViewShell->ScrollLines(dx, dy);
+                aScrollTimer.Start();
             }
+            else if (! bDelayActive) StartDelayToScrollTimer ();
         }
     }
 }
@@ -208,13 +188,13 @@ bool FuPoor::KeyInput(const KeyEvent& rKEvt)
 
                     if(pActualPage)
                     {
-                        SdrObjListIter aIter(*pActualPage, SdrIterMode::DeepNoGroups);
+                        SdrObjListIter aIter(pActualPage, SdrIterMode::DeepNoGroups);
 
                         while(aIter.IsMore() && !pCandidate)
                         {
                             SdrObject* pObj = aIter.Next();
 
-                            if(pObj && dynamic_cast< const SdrTextObj *>( pObj ) !=  nullptr)
+                            if(dynamic_cast< const SdrTextObj *>( pObj ))
                             {
                                 SdrInventor nInv(pObj->GetObjInventor());
                                 sal_uInt16 nKnd(pObj->GetObjIdentifier());
@@ -257,7 +237,7 @@ bool FuPoor::KeyInput(const KeyEvent& rKEvt)
                 {
                     SdrObject* pObj = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
 
-                    if( pObj && dynamic_cast< const SdrOle2Obj* >( pObj ) !=  nullptr && !mpDocSh->IsUIActive() )
+                    if( dynamic_cast< const SdrOle2Obj* >( pObj ) && !mpDocSh->IsUIActive() )
                     {
                         //HMHmpView->HideMarkHdl();
                         mpViewShell->ActivateObject( static_cast< SdrOle2Obj* >( pObj ), 0 );
@@ -623,18 +603,18 @@ bool FuPoor::KeyInput(const KeyEvent& rKEvt)
                     bool bOldSuppress = false;
                     SdrEdgeObj* pEdgeObj = nullptr;
 
-                    if(pHdl && pHdl->GetObj() && nullptr != dynamic_cast< const SdrEdgeObj *>( pHdl->GetObj() ) && 0 == pHdl->GetPolyNum())
+                    if(pHdl && dynamic_cast< const SdrEdgeObj *>( pHdl->GetObj() ) && 0 == pHdl->GetPolyNum())
                     {
                         pEdgeObj = static_cast<SdrEdgeObj*>(pHdl->GetObj());
 
-                        if(0L == pHdl->GetPointNum())
+                        if(0 == pHdl->GetPointNum())
                         {
                             if(pEdgeObj->GetConnection(true).GetObject())
                             {
                                 bIsMoveOfConnectedHandle = true;
                             }
                         }
-                        if(1L == pHdl->GetPointNum())
+                        if(1 == pHdl->GetPointNum())
                         {
                             if(pEdgeObj->GetConnection(false).GetObject())
                             {
@@ -734,7 +714,7 @@ bool FuPoor::KeyInput(const KeyEvent& rKEvt)
                     else
                     {
                         // move handle with index nHandleIndex
-                        if(pHdl && (nX || nY))
+                        if (nX || nY)
                         {
                             // now move the Handle (nX, nY)
                             Point aStartPoint(pHdl->GetPos());
@@ -840,13 +820,13 @@ bool FuPoor::KeyInput(const KeyEvent& rKEvt)
 
                     if(pActualPage)
                     {
-                        SdrObjListIter aIter(*pActualPage, SdrIterMode::DeepNoGroups);
+                        SdrObjListIter aIter(pActualPage, SdrIterMode::DeepNoGroups);
 
                         while(aIter.IsMore() && !pCandidate)
                         {
                             SdrObject* pObj = aIter.Next();
 
-                            if(pObj && dynamic_cast< const SdrTextObj *>( pObj ) !=  nullptr)
+                            if(dynamic_cast< const SdrTextObj *>( pObj ))
                             {
                                 SdrInventor nInv(pObj->GetObjInventor());
                                 sal_uInt16 nKnd(pObj->GetObjIdentifier());
@@ -949,18 +929,18 @@ void FuPoor::DoPasteUnformatted()
  */
 IMPL_LINK_NOARG(FuPoor, DragHdl, Timer *, void)
 {
-    if( mpView )
-    {
-        sal_uInt16 nHitLog = sal_uInt16 ( mpWindow->PixelToLogic(Size(HITPIX,0)).Width() );
-        SdrHdl* pHdl = mpView->PickHandle(aMDPos);
+    if( !mpView )
+        return;
 
-        if ( pHdl==nullptr && mpView->IsMarkedHit(aMDPos, nHitLog)
-             && !mpView->IsPresObjSelected(false) )
-        {
-            mpWindow->ReleaseMouse();
-            bIsInDragMode = true;
-            mpView->StartDrag( aMDPos, mpWindow );
-        }
+    sal_uInt16 nHitLog = sal_uInt16 ( mpWindow->PixelToLogic(Size(HITPIX,0)).Width() );
+    SdrHdl* pHdl = mpView->PickHandle(aMDPos);
+
+    if ( pHdl==nullptr && mpView->IsMarkedHit(aMDPos, nHitLog)
+         && !mpView->IsPresObjSelected(false) )
+    {
+        mpWindow->ReleaseMouse();
+        bIsInDragMode = true;
+        mpView->StartDrag( aMDPos, mpWindow );
     }
 }
 
@@ -990,8 +970,8 @@ bool FuPoor::MouseButtonUp (const MouseEvent& rMEvt)
     SetMouseButtonCode(rMEvt.GetButtons());
 
     aDelayToScrollTimer.Stop ();
-    return bScrollable  =
-        bDelayActive = false;
+    bScrollable = bDelayActive = false;
+    return bScrollable;
 }
 
 bool FuPoor::MouseButtonDown(const MouseEvent& rMEvt)
@@ -1031,7 +1011,7 @@ void FuPoor::ReceiveRequest(SfxRequest& /*rReq*/)
 {
 }
 
-SdrObject* FuPoor::CreateDefaultObject(const sal_uInt16, const ::tools::Rectangle& )
+SdrObjectUniquePtr FuPoor::CreateDefaultObject(const sal_uInt16, const ::tools::Rectangle& )
 {
     // empty base implementation
     return nullptr;
@@ -1055,33 +1035,31 @@ void FuPoor::ImpForceQuadratic(::tools::Rectangle& rRect)
 
 void FuPoor::SwitchLayer (sal_Int32 nOffset)
 {
-    if(mpViewShell && dynamic_cast< const DrawViewShell *>( mpViewShell ) !=  nullptr)
+    auto pDrawViewShell = dynamic_cast<DrawViewShell *>( mpViewShell );
+    if(!pDrawViewShell)
+        return;
+
+    // Calculate the new index.
+    sal_Int32 nIndex = pDrawViewShell->GetActiveTabLayerIndex() + nOffset;
+
+    // Make sure the new index lies inside the range of valid indices.
+    if (nIndex < 0)
+        nIndex = 0;
+    else if (nIndex >= pDrawViewShell->GetTabLayerCount ())
+        nIndex = pDrawViewShell->GetTabLayerCount() - 1;
+
+    // Set the new active layer.
+    if (nIndex != pDrawViewShell->GetActiveTabLayerIndex ())
     {
-        DrawViewShell* pDrawViewShell =
-            static_cast<DrawViewShell*>(mpViewShell);
+        LayerTabBar* pLayerTabControl =
+            static_cast<DrawViewShell*>(mpViewShell)->GetLayerTabControl();
+        if (pLayerTabControl != nullptr)
+            pLayerTabControl->SendDeactivatePageEvent ();
 
-        // Calculate the new index.
-        sal_Int32 nIndex = pDrawViewShell->GetActiveTabLayerIndex() + nOffset;
+        pDrawViewShell->SetActiveTabLayerIndex (nIndex);
 
-        // Make sure the new index lies inside the range of valid indices.
-        if (nIndex < 0)
-            nIndex = 0;
-        else if (nIndex >= pDrawViewShell->GetTabLayerCount ())
-            nIndex = pDrawViewShell->GetTabLayerCount() - 1;
-
-        // Set the new active layer.
-        if (nIndex != pDrawViewShell->GetActiveTabLayerIndex ())
-        {
-            LayerTabBar* pLayerTabControl =
-                static_cast<DrawViewShell*>(mpViewShell)->GetLayerTabControl();
-            if (pLayerTabControl != nullptr)
-                pLayerTabControl->SendDeactivatePageEvent ();
-
-            pDrawViewShell->SetActiveTabLayerIndex (nIndex);
-
-            if (pLayerTabControl != nullptr)
-                pLayerTabControl->SendActivatePageEvent ();
-        }
+        if (pLayerTabControl != nullptr)
+            pLayerTabControl->SendActivatePageEvent ();
     }
 }
 
@@ -1089,7 +1067,7 @@ void FuPoor::SwitchLayer (sal_Int32 nOffset)
     This is used when a function gets a KEY_ESCAPE but can also
     be called directly.
 
-    @returns true if a active function was aborted
+    @returns true if an active function was aborted
 */
 bool FuPoor::cancel()
 {

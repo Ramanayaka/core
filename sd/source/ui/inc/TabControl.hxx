@@ -21,7 +21,7 @@
 #define INCLUDED_SD_SOURCE_UI_INC_TABCONTROL_HXX
 
 #include <svtools/tabbar.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 
 namespace sd {
 
@@ -31,13 +31,11 @@ namespace sd {
 
 class DrawViewShell;
 
-class TabControl
+class TabControl final
     : public TabBar,
       public DragSourceHelper,
       public DropTargetHelper
 {
-    //declare bIsMarked variable
-    sal_uInt16    RrePageID;
 public:
     TabControl (DrawViewShell* pDrViewSh, vcl::Window* pParent);
     virtual void dispose() override;
@@ -55,8 +53,8 @@ public:
     */
     void SendDeactivatePageEvent();
 
-protected:
-    DrawViewShell*  pDrViewSh;
+private:
+    DrawViewShell*      pDrViewSh;
     bool                bInternalMove;
 
     // TabBar
@@ -80,7 +78,6 @@ protected:
     virtual sal_Int8    AcceptDrop( const AcceptDropEvent& rEvt ) override;
     virtual sal_Int8    ExecuteDrop( const ExecuteDropEvent& rEvt ) override;
 
-private:
     // nested class to implement the TransferableHelper
     class TabControlTransferable : public TransferableHelper
     {
@@ -103,7 +100,6 @@ private:
 
     void                DragFinished();
 
-private:
     using TabBar::StartDrag;
 };
 

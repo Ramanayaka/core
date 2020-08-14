@@ -20,18 +20,15 @@
 #ifndef INCLUDED_CPPCANVAS_SPRITECANVAS_HXX
 #define INCLUDED_CPPCANVAS_SPRITECANVAS_HXX
 
-#include <sal/types.h>
-#include <osl/diagnose.h>
 #include <basegfx/vector/b2dsize.hxx>
 #include <cppcanvas/canvas.hxx>
-#include <cppcanvas/sprite.hxx>
 #include <cppcanvas/customsprite.hxx>
 #include <memory>
 
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
     class  XSpriteCanvas;
-} } } }
+}
 
 
 /* Definition of SpriteCanvas */

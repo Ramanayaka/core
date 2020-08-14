@@ -8,7 +8,6 @@
  */
 
 #include <comphelper/processfactory.hxx>
-#include <comphelper/random.hxx>
 #include <cppuhelper/bootstrap.hxx>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
@@ -20,16 +19,20 @@
 #include <vcl/gdimtf.hxx>
 #include <vcl/wmf.hxx>
 
+#include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
 #include <tools/stream.hxx>
 #include <tools/vcompat.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wrkwin.hxx>
 #include <vcl/virdev.hxx>
+#include <sal/log.hxx>
 
 #include <cstdlib>
 
 using namespace css;
+
+namespace {
 
 class DemoMtfWin : public WorkWindow
 {
@@ -54,12 +57,16 @@ public:
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect)  override;
 };
 
+}
+
 void DemoMtfWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect)
 {
     maMtf.Play(this, maMtf.GetActionSize());
 
     WorkWindow::Paint(rRenderContext, rRect);
 }
+
+namespace {
 
 class DemoMtfApp : public Application
 {
@@ -91,20 +98,20 @@ public:
 
             Application::Execute();
         }
-        catch (const css::uno::Exception& e)
+        catch (const css::uno::Exception&)
         {
-            SAL_WARN("vcl.app", "Fatal exception: " << e.Message);
+            TOOLS_WARN_EXCEPTION("vcl.app", "Fatal");
             return 1;
         }
         catch (const std::exception& e)
         {
-            SAL_WARN("vcl.app", "Fatal exception: " << e.what());
+            SAL_WARN("vcl.app", "Fatal: " << e.what());
             return 1;
         }
         return 0;
     }
 
-protected:
+private:
     uno::Reference<lang::XMultiServiceFactory> xMSF;
     void Init() override
     {
@@ -148,6 +155,7 @@ protected:
 
 };
 
+}
 
 void vclmain::createApplication()
 {

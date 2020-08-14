@@ -20,24 +20,25 @@
 #ifndef INCLUDED_SW_INC_VIEWOPT_HXX
 #define INCLUDED_SW_INC_VIEWOPT_HXX
 
-#include <config_features.h>
+#include <config_feature_desktop.h>
 
 #include <tools/gen.hxx>
 #include <tools/color.hxx>
 
 #include <sfx2/zoomitem.hxx>
-#include <svx/svxids.hrc>
 #include "swdllapi.h"
-#include "authratr.hxx"
+
+#include <svtools/miscopt.hxx>
 
 class SwRect;
 namespace vcl { class Window; }
 class OutputDevice;
-class SwViewShell;
 class SwDocShell;
 namespace svtools{ class ColorConfig;}
+enum class SwFillMode;
 
-enum class ViewOptFlags1 {
+enum class ViewOptFlags1 : sal_uInt32 {
+    UseHeaderFooterMenu = 0x00000001,
     Tab           = 0x00000002,
     Blank         = 0x00000004,
     HardBlank     = 0x00000008,
@@ -46,6 +47,7 @@ enum class ViewOptFlags1 {
     Pagebreak     = 0x00000040,
     Columnbreak   = 0x00000080,
     SoftHyph      = 0x00000100,
+    Bookmarks     = 0x00000200,
     Ref           = 0x00000400,
     FieldName     = 0x00000800,
     Postits       = 0x00004000,
@@ -60,11 +62,13 @@ enum class ViewOptFlags1 {
     Synchronize   = 0x01000000,
     GridVisible   = 0x02000000,
     OnlineSpell   = 0x04000000,
+    ShowInlineTooltips = 0x10000000, //tooltips on tracked changes
     ViewMetachars = 0x20000000,
-    Pageback      = 0x40000000
+    Pageback      = 0x40000000,
+    ShowOutlineContentVisibilityButton = 0x80000000
 };
 namespace o3tl {
-    template<> struct typed_flags<ViewOptFlags1> : is_typed_flags<ViewOptFlags1, 0x67dfcdfe> {};
+    template<> struct typed_flags<ViewOptFlags1> : is_typed_flags<ViewOptFlags1, 0xF7dfcfff> {};
 }
 
 enum class ViewOptCoreFlags2 {
@@ -76,7 +80,7 @@ enum class ViewOptCoreFlags2 {
     Printing          = 0x0020,
 };
 namespace o3tl {
-    template<> struct typed_flags<ViewOptCoreFlags2> : is_typed_flags<ViewOptCoreFlags2, 0x007f> {};
+    template<> struct typed_flags<ViewOptCoreFlags2> : is_typed_flags<ViewOptCoreFlags2, 0x003f> {};
 };
 
 enum class ViewOptFlags2 {
@@ -92,10 +96,11 @@ enum class ViewOptFlags2 {
     ScrollbarTips   = 0x00400000,
     PrintFormat     = 0x00800000,
     ShadowCursor    = 0x01000000,
-    VRulerRight     = 0x02000000
+    VRulerRight     = 0x02000000,
+    ResolvedPostits = 0x04000000,
 };
 namespace o3tl {
-    template<> struct typed_flags<ViewOptFlags2> : is_typed_flags<ViewOptFlags2, 0x03d7dc00> {};
+    template<> struct typed_flags<ViewOptFlags2> : is_typed_flags<ViewOptFlags2, 0x07d7dc00> {};
 };
 
 // Table background.
@@ -122,29 +127,28 @@ namespace o3tl {
 
 class SW_DLLPUBLIC SwViewOption
 {
-    static Color    m_aDocColor;  // color of document boundaries
-    static Color    m_aDocBoundColor;  // color of document boundaries
-    static Color    m_aObjectBoundColor; // color of object boundaries
-    static Color    m_aAppBackgroundColor; // application background
-    static Color    m_aTableBoundColor; // color of table boundaries
-    static Color    m_aFontColor;
-    static Color    m_aIndexShadingsColor; // background color of indexes
-    static Color    m_aLinksColor;
-    static Color    m_aVisitedLinksColor;
-    static Color    m_aDirectCursorColor;
-    static Color    m_aTextGridColor;
-    static Color    m_aSpellColor;     // mark color of online spell checking
-    static Color    m_aSmarttagColor;
-    static Color    m_aFieldShadingsColor;
-    static Color    m_aSectionBoundColor;
-    static Color    m_aPageBreakColor;
-    static Color    m_aScriptIndicatorColor;
-    static Color    m_aShadowColor;
-    static Color    m_aHeaderFooterMarkColor;
+    static Color    s_aDocColor;  // color of document boundaries
+    static Color    s_aDocBoundColor;  // color of document boundaries
+    static Color    s_aObjectBoundColor; // color of object boundaries
+    static Color    s_aAppBackgroundColor; // application background
+    static Color    s_aTableBoundColor; // color of table boundaries
+    static Color    s_aFontColor;
+    static Color    s_aIndexShadingsColor; // background color of indexes
+    static Color    s_aLinksColor;
+    static Color    s_aVisitedLinksColor;
+    static Color    s_aDirectCursorColor;
+    static Color    s_aTextGridColor;
+    static Color    s_aSpellColor;     // mark color of online spell checking
+    static Color    s_aSmarttagColor;
+    static Color    s_aFieldShadingsColor;
+    static Color    s_aSectionBoundColor;
+    static Color    s_aPageBreakColor;
+    static Color    s_aScriptIndicatorColor;
+    static Color    s_aShadowColor;
+    static Color    s_aHeaderFooterMarkColor;
 
-    static ViewOptFlags m_nAppearanceFlags;
-protected:
-    static sal_uInt16   m_nPixelTwips;// 1 Pixel == ? Twips
+    static ViewOptFlags s_nAppearanceFlags;
+    static sal_uInt16   s_nPixelTwips;// 1 Pixel == ? Twips
 
     OUString        m_sSymbolFont;        // Symbolfont.
     ViewOptFlags1   m_nCoreOptions;       // Bits for SwViewShell.
@@ -157,7 +161,7 @@ protected:
     short           m_nDivisionY;
     sal_uInt8       m_nPagePreviewRow;       // Page Preview Row/Columns.
     sal_uInt8       m_nPagePreviewCol;       // Page Preview Row/Columns.
-    sal_uInt8       m_nShadowCursorFillMode;  // FillMode for ShadowCursor.
+    SwFillMode      m_nShadowCursorFillMode;  // FillMode for ShadowCursor.
     bool            m_bReadonly : 1;      // Readonly-Doc.
     bool            m_bStarOneSetting : 1;// Prevent from UI automatics (no scrollbars in readonly documents).
     bool            m_bIsPagePreview : 1; // The preview mustn't print field/footnote/... shadings.
@@ -186,7 +190,6 @@ protected:
     bool  m_bTest6        :1;     // Test-flag  "No screen adj"
     bool  m_bTest7        :1;     // Test-flag  "win format"
     bool  m_bTest8        :1;     // Test-flag  ""
-    static bool  m_bTest9;    // Test-Flag  "DrawingLayerNotLoading"
     bool  m_bTest10       :1;     // Test-Flag  "Format by Input"
 #endif
 
@@ -195,7 +198,7 @@ public:
             SwViewOption(const SwViewOption&);
             ~SwViewOption();
 
-    static void Init( vcl::Window *pWin );        // Initializing of static data.
+    static void Init( vcl::Window const *pWin );        // Initializing of static data.
 
     ViewOptFlags1   GetCoreOptions() const {return m_nCoreOptions;}
     inline void     SetUIOptions( const SwViewOption& );
@@ -214,104 +217,138 @@ public:
     bool IsTab(bool bHard = false) const
                     {   return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::Tab) &&
                             ((m_nCoreOptions & ViewOptFlags1::ViewMetachars)||bHard); }
-    void SetTab( bool b )        {
-        b ? (m_nCoreOptions |= ViewOptFlags1::Tab ) : ( m_nCoreOptions &= ~ViewOptFlags1::Tab); }
+    void SetTab( bool b )
+        { SetCoreOption(b, ViewOptFlags1::Tab); }
 
     bool IsBlank(bool bHard = false) const
                     { return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::Blank) &&
                             ((m_nCoreOptions & ViewOptFlags1::ViewMetachars)||bHard); }
     void SetBlank( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Blank ) : ( m_nCoreOptions &= ~ViewOptFlags1::Blank); }
+        { SetCoreOption(b, ViewOptFlags1::Blank); }
 
     bool IsHardBlank() const
                     { return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::HardBlank); }
     void SetHardBlank( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::HardBlank ) : ( m_nCoreOptions &= ~ViewOptFlags1::HardBlank); }
+        { SetCoreOption(b, ViewOptFlags1::HardBlank); }
 
     bool IsParagraph(bool bHard = false) const
                     {   return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::Paragraph) &&
                             ((m_nCoreOptions & ViewOptFlags1::ViewMetachars)||bHard); }
     void SetParagraph( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Paragraph ) : ( m_nCoreOptions &= ~ViewOptFlags1::Paragraph); }
+        { SetCoreOption(b, ViewOptFlags1::Paragraph); }
+
+    void SetShowBookmarks(bool const b)
+    {
+        SetCoreOption(b, ViewOptFlags1::Bookmarks);
+    }
+    bool IsShowBookmarks(bool const bHard = false) const
+    {
+        return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::Bookmarks)
+                && (bHard || (m_nCoreOptions & ViewOptFlags1::ViewMetachars));
+    }
 
     bool IsLineBreak(bool bHard = false) const
                     {   return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::Linebreak) &&
                             ((m_nCoreOptions & ViewOptFlags1::ViewMetachars)||bHard); }
     void SetLineBreak( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Linebreak ) : ( m_nCoreOptions &= ~ViewOptFlags1::Linebreak); }
+        { SetCoreOption(b, ViewOptFlags1::Linebreak); }
 
     void SetPageBreak( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Pagebreak ) : ( m_nCoreOptions &= ~ViewOptFlags1::Pagebreak); }
+        { SetCoreOption(b, ViewOptFlags1::Pagebreak); }
 
     void SetColumnBreak( bool b)
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Columnbreak ) : ( m_nCoreOptions &= ~ViewOptFlags1::Columnbreak); }
+        { SetCoreOption(b, ViewOptFlags1::Columnbreak); }
 
     bool IsSoftHyph() const
                     { return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::SoftHyph); }
     void SetSoftHyph( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::SoftHyph ) : ( m_nCoreOptions &= ~ViewOptFlags1::SoftHyph); }
+        { SetCoreOption(b, ViewOptFlags1::SoftHyph); }
 
     bool IsFieldName() const       { return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::FieldName); }
     void SetFieldName( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::FieldName ) : ( m_nCoreOptions &= ~ViewOptFlags1::FieldName); }
+        { SetCoreOption(b, ViewOptFlags1::FieldName); }
 
     bool IsPostIts() const
         { return bool(m_nCoreOptions & ViewOptFlags1::Postits); }
     void SetPostIts( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Postits ) : ( m_nCoreOptions &= ~ViewOptFlags1::Postits); }
+        { SetCoreOption(b, ViewOptFlags1::Postits); }
+
+    bool IsResolvedPostIts() const
+        { return bool(m_nUIOptions & ViewOptFlags2::ResolvedPostits); }
+    void SetResolvedPostIts( bool b )
+        { SetUIOption(b, ViewOptFlags2::ResolvedPostits); }
+
     static void PaintPostIts( OutputDevice *pOut, const SwRect &rRect,
                               bool bIsScript );
     static sal_uInt16 GetPostItsWidth( const OutputDevice *pOut );
+
+    //show/hide tooltips on tracked changes
+    bool IsShowInlineTooltips() const
+        { return bool(m_nCoreOptions & ViewOptFlags1::ShowInlineTooltips); }
+    void SetShowInlineTooltips( bool b )
+        { SetCoreOption(b, ViewOptFlags1::ShowInlineTooltips); }
+
+    //show/hide interactive header/footer on top/bottom of pages
+    bool IsUseHeaderFooterMenu() const
+        { return bool(m_nCoreOptions & ViewOptFlags1::UseHeaderFooterMenu ); }
+    void SetUseHeaderFooterMenu( bool b )
+        { SetCoreOption(b, ViewOptFlags1::UseHeaderFooterMenu); }
+
+    //show/hide outline content visibility button
+    bool IsShowOutlineContentVisibilityButton() const
+        { SvtMiscOptions aMiscOptions; return aMiscOptions.IsExperimentalMode() && (m_nCoreOptions & ViewOptFlags1::ShowOutlineContentVisibilityButton); }
+    void SetShowOutlineContentVisibilityButton(bool b)
+        { SetCoreOption(b, ViewOptFlags1::ShowOutlineContentVisibilityButton); }
 
     bool IsShowHiddenChar(bool bHard = false) const
         { return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::CharHidden) &&
                             ((m_nCoreOptions & ViewOptFlags1::ViewMetachars)||bHard); }
 
     void SetShowHiddenChar( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::CharHidden ) : ( m_nCoreOptions &= ~ViewOptFlags1::CharHidden); }
+        { SetCoreOption(b, ViewOptFlags1::CharHidden); }
 
     bool IsShowHiddenField() const
         { return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::FieldHidden); }
     void SetShowHiddenField( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::FieldHidden ) : ( m_nCoreOptions &= ~ViewOptFlags1::FieldHidden); }
+        { SetCoreOption(b, ViewOptFlags1::FieldHidden); }
 
     bool IsGraphic() const
         { return bool(m_nCoreOptions & ViewOptFlags1::Graphic); }
     void SetGraphic( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Graphic ) : ( m_nCoreOptions &= ~ViewOptFlags1::Graphic); }
+        { SetCoreOption(b, ViewOptFlags1::Graphic); }
 
     bool IsPageBack() const
         { return bool(m_nCoreOptions & ViewOptFlags1::Pageback); }
     void SetPageBack( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Pageback) : ( m_nCoreOptions &= ~ViewOptFlags1::Pageback); }
+        { SetCoreOption(b, ViewOptFlags1::Pageback); }
 
     bool IsTable() const
         { return bool(m_nCoreOptions & ViewOptFlags1::Table); }
     void SetTable( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Table ) : ( m_nCoreOptions &= ~ViewOptFlags1::Table); }
+        { SetCoreOption(b, ViewOptFlags1::Table); }
 
     bool IsDraw() const
         { return bool(m_nCoreOptions & ViewOptFlags1::Draw); }
     void SetDraw( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Draw ) : ( m_nCoreOptions &= ~ViewOptFlags1::Draw); }
+        { SetCoreOption(b, ViewOptFlags1::Draw); }
 
     bool IsControl() const
         { return bool(m_nCoreOptions & ViewOptFlags1::Control); }
     void SetControl( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Control ) : ( m_nCoreOptions &= ~ViewOptFlags1::Control); }
+        { SetCoreOption(b, ViewOptFlags1::Control); }
 
     bool IsSnap() const
         { return bool(m_nCoreOptions & ViewOptFlags1::Snap); }
     void SetSnap( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Snap ) : ( m_nCoreOptions &= ~ViewOptFlags1::Snap); }
+        { SetCoreOption(b, ViewOptFlags1::Snap); }
 
-    void SetSnapSize( Size &rSz ){ m_aSnapSize = rSz; }
+    void SetSnapSize( Size const &rSz ){ m_aSnapSize = rSz; }
     const Size &GetSnapSize() const { return m_aSnapSize; }
 
     bool IsGridVisible() const
         { return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::GridVisible); }
     void SetGridVisible( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::GridVisible ) : ( m_nCoreOptions &= ~ViewOptFlags1::GridVisible); }
+        { SetCoreOption(b, ViewOptFlags1::GridVisible); }
 
     bool IsOnlineSpell() const
         { return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::OnlineSpell); }
@@ -320,42 +357,42 @@ public:
     bool IsViewMetaChars() const
         { return !m_bReadonly && (m_nCoreOptions & ViewOptFlags1::ViewMetachars); }
     void SetViewMetaChars( bool b)
-        { b ? (m_nCoreOptions |= ViewOptFlags1::ViewMetachars ) : ( m_nCoreOptions &= ~ViewOptFlags1::ViewMetachars); }
+        { SetCoreOption(b, ViewOptFlags1::ViewMetachars); }
 
     bool IsSynchronize() const
         {  return bool(m_nCoreOptions & ViewOptFlags1::Synchronize); }
     void SetSynchronize( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Synchronize ) : ( m_nCoreOptions &= ~ViewOptFlags1::Synchronize); }
+        { SetCoreOption(b, ViewOptFlags1::Synchronize); }
 
     bool IsCrossHair() const
         { return bool(m_nCoreOptions & ViewOptFlags1::Crosshair); }
     void SetCrossHair( bool b )
-        { b ? (m_nCoreOptions |= ViewOptFlags1::Crosshair ) : ( m_nCoreOptions &= ~ViewOptFlags1::Crosshair); }
+        { SetCoreOption(b, ViewOptFlags1::Crosshair); }
 
     // Options from nCore2Options
     bool IsBlackFont() const
         {return bool(m_nCore2Options & ViewOptCoreFlags2::BlackFont); }
 
     void SetBlackFont(bool b)
-        { b ? (m_nCore2Options |= ViewOptCoreFlags2::BlackFont) : (m_nCore2Options &= ~ViewOptCoreFlags2::BlackFont);}
+        { SetCore2Option(b, ViewOptCoreFlags2::BlackFont); }
 
     bool IsShowHiddenPara() const
         {return bool(m_nCore2Options & ViewOptCoreFlags2::HiddenPara); }
 
     void SetShowHiddenPara(bool b)
-        { b ? (m_nCore2Options |= ViewOptCoreFlags2::HiddenPara) : (m_nCore2Options &= ~ViewOptCoreFlags2::HiddenPara);}
+        { SetCore2Option(b, ViewOptCoreFlags2::HiddenPara); }
 
     bool IsSmoothScroll() const
         {return bool(m_nCore2Options & ViewOptCoreFlags2::SmoothScroll); }
 
     void SetSmoothScroll(bool b)
-        { b ? (m_nCore2Options |= ViewOptCoreFlags2::SmoothScroll) : (m_nCore2Options &= ~ViewOptCoreFlags2::SmoothScroll);}
+        { SetCore2Option(b, ViewOptCoreFlags2::SmoothScroll); }
 
     bool IsCursorInProtectedArea() const
         {return bool(m_nCore2Options & ViewOptCoreFlags2::CursorInProt); }
 
     void SetCursorInProtectedArea(bool b)
-        { b ? (m_nCore2Options |= ViewOptCoreFlags2::CursorInProt) : (m_nCore2Options &= ~ViewOptCoreFlags2::CursorInProt);}
+        { SetCore2Option(b, ViewOptCoreFlags2::CursorInProt); }
 
     static bool IsIgnoreProtectedArea();
 
@@ -363,13 +400,28 @@ public:
         {return bool(m_nCore2Options & ViewOptCoreFlags2::PdfExport); }
 
     void SetPDFExport(bool b)
-        { b ? (m_nCore2Options |= ViewOptCoreFlags2::PdfExport) : (m_nCore2Options &= ~ViewOptCoreFlags2::PdfExport);}
+        { SetCore2Option(b, ViewOptCoreFlags2::PdfExport); }
 
     bool IsPrinting() const
         {return bool(m_nCore2Options & ViewOptCoreFlags2::Printing); }
 
     void SetPrinting(bool b)
-        { b ? (m_nCore2Options |= ViewOptCoreFlags2::Printing) : (m_nCore2Options &= ~ViewOptCoreFlags2::Printing);}
+        { SetCore2Option(b, ViewOptCoreFlags2::Printing); }
+
+    void SetCore2Option(bool b, ViewOptCoreFlags2 f)
+    {
+        if (b)
+            m_nCore2Options |= f;
+        else
+            m_nCore2Options &= ~f;
+    }
+    void SetCoreOption(bool b, ViewOptFlags1 f)
+    {
+        if (b)
+            m_nCoreOptions |= f;
+        else
+            m_nCoreOptions &= ~f;
+    }
 
     short GetDivisionX() const   { return m_nDivisionX; }
     void  SetDivisionX( short n ){ m_nDivisionX = n; }
@@ -435,7 +487,7 @@ public:
     sal_uInt16 GetZoom() const    { return m_nZoom; }
     void   SetZoom( sal_uInt16 n ){ m_nZoom = n; }
 
-    static void DrawRect( OutputDevice* pOut, const SwRect &rRect, long nCol );
+    static void DrawRect( OutputDevice* pOut, const SwRect &rRect, ::Color nCol );
     static void DrawRectPrinter( OutputDevice* pOut, const SwRect& rRect );
 
     SwViewOption& operator=( const SwViewOption &rOpt );
@@ -478,19 +530,26 @@ public:
     sal_uInt8   GetTableDest() const    { return m_nTableDestination; }
 
     void   SetViewVScrollBar(bool b)
-        { b ? (m_nUIOptions |= ViewOptFlags2::VScrollbar ) : ( m_nUIOptions &= ~ViewOptFlags2::VScrollbar); }
+        { SetUIOption(b, ViewOptFlags2::VScrollbar); }
     void   SetViewHScrollBar(bool b)
-        { b ? (m_nUIOptions |= ViewOptFlags2::HScrollbar ) : ( m_nUIOptions &= ~ViewOptFlags2::HScrollbar); }
+        { SetUIOption(b, ViewOptFlags2::HScrollbar); }
     void   SetKeepRatio     (bool b)
-        { b ? (m_nUIOptions |= ViewOptFlags2::KeepAspectRatio ) : ( m_nUIOptions &= ~ViewOptFlags2::KeepAspectRatio); }
+        { SetUIOption(b, ViewOptFlags2::KeepAspectRatio); }
     void   SetGrfKeepZoom   (bool b)
-        { b ? (m_nUIOptions |= ViewOptFlags2::GrfKeepZoom ) : ( m_nUIOptions &= ~ViewOptFlags2::GrfKeepZoom); }
+        { SetUIOption(b, ViewOptFlags2::GrfKeepZoom); }
     void SetShowContentTips( bool b)
-        { b ? (m_nUIOptions |= ViewOptFlags2::ContentTips) : (m_nUIOptions &= ~ViewOptFlags2::ContentTips); }
+        { SetUIOption(b, ViewOptFlags2::ContentTips); }
     void SetPrtFormat( bool b)
-        { b ? (m_nUIOptions |= ViewOptFlags2::PrintFormat) : (m_nUIOptions &= ~ViewOptFlags2::PrintFormat); }
+        { SetUIOption(b, ViewOptFlags2::PrintFormat); }
     void SetShowScrollBarTips( bool b)
-        { b ? (m_nUIOptions |= ViewOptFlags2::ScrollbarTips) : (m_nUIOptions &= ~ViewOptFlags2::ScrollbarTips); }
+        { SetUIOption(b, ViewOptFlags2::ScrollbarTips); }
+    void SetUIOption( bool b, ViewOptFlags2 f)
+    {
+        if (b)
+            m_nUIOptions |= f;
+        else
+            m_nUIOptions &= ~f;
+    }
 
     void            SetZoomType     (SvxZoomType eZoom_){ m_eZoom = eZoom_;  }
     void            SetTableDest( sal_uInt8 nNew )    { m_nTableDestination = nNew;  }
@@ -510,7 +569,7 @@ public:
 #endif
         }
     void            SetViewAnyRuler(bool bSet)
-                        { bSet ? (m_nUIOptions |= ViewOptFlags2::AnyRuler) : (m_nUIOptions &= ~ViewOptFlags2::AnyRuler);}
+                        { SetUIOption(bSet, ViewOptFlags2::AnyRuler);}
 
     bool        IsViewHRuler(bool bDirect = false)     const
                         {
@@ -524,7 +583,7 @@ public:
 #endif
                         }
     void            SetViewHRuler   (bool b)
-                        {    b ? (m_nUIOptions |= ViewOptFlags2::HRuler ) : ( m_nUIOptions &= ~ViewOptFlags2::HRuler);}
+                        { SetUIOption(b, ViewOptFlags2::HRuler ); }
 
     bool            IsViewVRuler(bool bDirect = false) const
                         {
@@ -538,19 +597,19 @@ public:
 #endif
                         }
     void            SetViewVRuler     (bool b)
-                        { b ? (m_nUIOptions |= ViewOptFlags2::VRuler ) : ( m_nUIOptions &= ~ViewOptFlags2::VRuler);}
+                        { SetUIOption(b, ViewOptFlags2::VRuler); }
 
     // ShadowCursor, switch on/off, get/set color/mode.
     bool    IsShadowCursor()    const
         { return bool(m_nUIOptions & ViewOptFlags2::ShadowCursor); }
     void   SetShadowCursor(bool b)
-        { b ? (m_nUIOptions |= ViewOptFlags2::ShadowCursor ) : ( m_nUIOptions &= ~ViewOptFlags2::ShadowCursor); }
+        { SetUIOption(b, ViewOptFlags2::ShadowCursor); }
 
     //move vertical ruler to the right
     bool    IsVRulerRight()    const
         { return bool(m_nUIOptions & ViewOptFlags2::VRulerRight); }
     void   SetVRulerRight(bool b)
-        { b ? (m_nUIOptions |= ViewOptFlags2::VRulerRight ) : ( m_nUIOptions &= ~ViewOptFlags2::VRulerRight); }
+        { SetUIOption(b, ViewOptFlags2::VRulerRight); }
 
     bool            IsStarOneSetting() const {return m_bStarOneSetting; }
     void            SetStarOneSetting(bool bSet) {m_bStarOneSetting = bSet; }
@@ -558,8 +617,8 @@ public:
     bool            IsPagePreview() const {return m_bIsPagePreview; }
     void            SetPagePreview(bool bSet) { m_bIsPagePreview= bSet; }
 
-    sal_uInt8           GetShdwCursorFillMode() const { return m_nShadowCursorFillMode; }
-    void            SetShdwCursorFillMode( sal_uInt8 nMode ) { m_nShadowCursorFillMode = nMode; };
+    SwFillMode      GetShdwCursorFillMode() const { return m_nShadowCursorFillMode; }
+    void            SetShdwCursorFillMode( SwFillMode nMode ) { m_nShadowCursorFillMode = nMode; };
 
     bool        IsShowPlaceHolderFields() const { return m_bShowPlaceHolderFields; }
     void            SetShowPlaceHolderFields(bool bSet) { m_bShowPlaceHolderFields = bSet; }

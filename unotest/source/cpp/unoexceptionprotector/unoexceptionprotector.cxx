@@ -18,19 +18,17 @@
  */
 
 #include <string>
-#include <iostream>
 
-#include "com/sun/star/uno/Any.hxx"
-#include "com/sun/star/uno/Exception.hpp"
-#include "cppuhelper/exc_hlp.hxx"
-#include "cppunit/Message.h"
-#include "osl/thread.h"
-#include "rtl/string.hxx"
-#include "rtl/ustring.h"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
+#include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Exception.hpp>
+#include <cppuhelper/exc_hlp.hxx>
+#include <cppunit/Message.h>
+#include <osl/thread.h>
+#include <rtl/string.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
 
-#include "cppunittester/protectorfactory.hxx"
+#include <cppunit/Protector.h>
 
 namespace {
 
@@ -75,7 +73,7 @@ bool Prot::protect(
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT CppUnit::Protector * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT CppUnit::Protector *
 unoexceptionprotector() {
     return new Prot;
 }

@@ -17,16 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_options.h>
-
-#include <svx/svxids.hrc>
-#include "sc.hrc"
-#include "mid.hrc"
-#include "scitems.hxx"
-#include <editeng/memberids.hrc>
+#include <mid.h>
+#include <editeng/memberids.h>
+#include <svx/unomid.hxx>
 
 #include <sfx2/msg.hxx>
-#include <svl/stritem.hxx>
 #include <svl/slstitm.hxx>
 #include <editeng/fontitem.hxx>
 #include <svx/hlnkitem.hxx>
@@ -50,8 +45,6 @@
 #include <svx/xlnedit.hxx>
 #include <svx/xfillit0.hxx>
 #include <svx/xflclit.hxx>
-#include <svx/xgrad.hxx>
-#include <svx/xflgrit.hxx>
 #include <svx/xflhtit.hxx>
 #include <svx/xbtmpit.hxx>
 #include <svx/xlineit0.hxx>
@@ -69,12 +62,10 @@
 #include <svx/xftshxy.hxx>
 #include <editeng/langitem.hxx>
 #include <editeng/justifyitem.hxx>
-#include <svx/grafctrl.hxx>
 #include <editeng/shdditem.hxx>
 #include <editeng/shaditem.hxx>
 #include <editeng/contouritem.hxx>
 #include <editeng/crossedoutitem.hxx>
-#include <editeng/formatbreakitem.hxx>
 #include <editeng/charreliefitem.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/lspcitem.hxx>
@@ -89,17 +80,15 @@
 #include <svx/xflftrit.hxx>
 #include <svx/xlncapit.hxx>
 #include <svx/xlinjoit.hxx>
-#include <svx/AffineMatrixItem.hxx>
 #include <svx/galleryitem.hxx>
-#include <svx/sdshitm.hxx>
-#include <svl/aeitem.hxx>
+#include <svx/sdooitm.hxx>
 #include <avmedia/mediaitem.hxx>
 #include <sfx2/frame.hxx>
-#include "attrib.hxx"
+#include <attrib.hxx>
 #include <svx/sdprcitm.hxx>
 #include <svx/sdmetitm.hxx>
 
-#define avmedia_MediaItem           ::avmedia::MediaItem
+#define avmedia_MediaItem ::avmedia::MediaItem
 
 #ifdef DISABLE_DYNLOADING
 /* Avoid clash with the ones from svx/source/form/typemap.cxx */
@@ -119,12 +108,13 @@
 #define aSvxLanguageItem_Impl sc_source_ui_appl_typemap_aSvxLanguageItem_Impl
 #define aSvxPostureItem_Impl sc_source_ui_appl_typemap_aSvxPostureItem_Impl
 #define aSvxShadowedItem_Impl sc_source_ui_appl_typemap_aSvxShadowedItem_Impl
-#define aSvxTextLineItem_Impl sc_source_ui_appl_typemap_aSvxTextLineItem_Impl
+#define aSvxUnderlineItem_Impl sc_source_ui_appl_typemap_aSvxUnderlineItem_Impl
+#define aSvxOverlineItem_Impl sc_source_ui_appl_typemap_aSvxOverlineItem_Impl
 #define aSvxWeightItem_Impl sc_source_ui_appl_typemap_aSvxWeightItem_Impl
 #endif
 
 #define SFX_TYPEMAP
-#include "scslots.hxx"
+#include <scslots.hxx>
 
 #ifdef DISABLE_DYNLOADING
 #undef aSfxBoolItem_Impl

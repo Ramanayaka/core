@@ -21,17 +21,12 @@
 
 #include <fmtanchr.hxx>
 #include <fmtornt.hxx>
-#include <fmturl.hxx>
-#include <fmtfsize.hxx>
-#include <fmtclds.hxx>
-#include <fmtcntnt.hxx>
-#include <fmtsrnd.hxx>
-#include <fmtinfmt.hxx>
 #include <flypos.hxx>
-#include <docary.hxx>
 
-#include "doc.hxx"
-#include "frmfmt.hxx"
+#include <frmfmt.hxx>
+#include <ndindex.hxx>
+#include <pam.hxx>
+#include <osl/diagnose.h>
 
 using namespace css;
 
@@ -46,25 +41,25 @@ SwHTMLPosFlyFrame::SwHTMLPosFlyFrame( const SwPosFlyFrame& rPosFly,
     nAllFlags( nFlags )
 {
     const SwFormatAnchor& rAnchor = rPosFly.GetFormat().GetAnchor();
-    if ((RndStdIds::FLY_AT_CHAR == rAnchor.GetAnchorId()) &&
-        HtmlPosition::Inside == GetOutPos() )
+    if ((RndStdIds::FLY_AT_CHAR != rAnchor.GetAnchorId()) ||
+        HtmlPosition::Inside != GetOutPos())
+        return;
+
+    // Output of auto-bound frames will be a character farther back,
+    // because then the position aligns with Netscape.
+    OSL_ENSURE( rAnchor.GetContentAnchor(), "No anchor position?" );
+    if( !rAnchor.GetContentAnchor() )
+        return;
+
+    nContentIdx = rAnchor.GetContentAnchor()->nContent.GetIndex();
+    sal_Int16 eHoriRel = rPosFly.GetFormat().GetHoriOrient().
+                                        GetRelationOrient();
+    if( text::RelOrientation::FRAME == eHoriRel || text::RelOrientation::PRINT_AREA == eHoriRel )
     {
-        // Output of auto-bound frames will be a character farther back,
-        // because then the position aligns with Netscape.
-        OSL_ENSURE( rAnchor.GetContentAnchor(), "No anchor position?" );
-        if( rAnchor.GetContentAnchor() )
-        {
-            nContentIdx = rAnchor.GetContentAnchor()->nContent.GetIndex();
-            sal_Int16 eHoriRel = rPosFly.GetFormat().GetHoriOrient().
-                                                GetRelationOrient();
-            if( text::RelOrientation::FRAME == eHoriRel || text::RelOrientation::PRINT_AREA == eHoriRel )
-            {
-                const SwContentNode *pCNd = pNdIdx->GetNode().GetContentNode();
-                OSL_ENSURE( pCNd, "No Content-Node at PaM position" );
-                if( pCNd && nContentIdx < pCNd->Len() )
-                    nContentIdx++;
-            }
-        }
+        const SwContentNode *pCNd = pNdIdx->GetNode().GetContentNode();
+        OSL_ENSURE( pCNd, "No Content-Node at PaM position" );
+        if( pCNd && nContentIdx < pCNd->Len() )
+            nContentIdx++;
     }
 }
 

@@ -19,11 +19,8 @@
 
 #include <xmloff/controlpropertyhdl.hxx>
 
-#include <o3tl/make_unique.hxx>
-
 #include <com/sun/star/util/MeasureUnit.hpp>
 #include <com/sun/star/awt/TextAlign.hpp>
-#include <com/sun/star/awt/FontWidth.hpp>
 #include <com/sun/star/awt/FontEmphasisMark.hpp>
 
 #include <sax/tools/converter.hxx>
@@ -34,7 +31,6 @@
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <rtl/ustrbuf.hxx>
-#include "callbacks.hxx"
 #include <xmloff/XMLConstantsPropertyHandler.hxx>
 
 namespace xmloff
@@ -59,49 +55,53 @@ namespace xmloff
         {
             case XML_TYPE_TEXT_ALIGN:
                 if (!m_pTextAlignHandler)
-                    m_pTextAlignHandler = o3tl::make_unique<XMLConstantsPropertyHandler>(aTextAlignMap, XML_TOKEN_INVALID );
+                    m_pTextAlignHandler = std::make_unique<XMLConstantsPropertyHandler>(aTextAlignMap, XML_TOKEN_INVALID );
                 pHandler = m_pTextAlignHandler.get();
                 break;
 
             case XML_TYPE_CONTROL_BORDER:
                 if (!m_pControlBorderStyleHandler)
-                    m_pControlBorderStyleHandler = o3tl::make_unique<OControlBorderHandler>( OControlBorderHandler::STYLE );
+                    m_pControlBorderStyleHandler = std::make_unique<OControlBorderHandler>( OControlBorderHandler::STYLE );
                 pHandler = m_pControlBorderStyleHandler.get();
                 break;
 
             case XML_TYPE_CONTROL_BORDER_COLOR:
                 if ( !m_pControlBorderColorHandler )
-                    m_pControlBorderColorHandler = o3tl::make_unique<OControlBorderHandler>( OControlBorderHandler::COLOR );
+                    m_pControlBorderColorHandler = std::make_unique<OControlBorderHandler>( OControlBorderHandler::COLOR );
                 pHandler = m_pControlBorderColorHandler.get();
                 break;
 
             case XML_TYPE_ROTATION_ANGLE:
                 if (!m_pRotationAngleHandler)
-                    m_pRotationAngleHandler = o3tl::make_unique<ORotationAngleHandler>();
+                    m_pRotationAngleHandler = std::make_unique<ORotationAngleHandler>();
                 pHandler = m_pRotationAngleHandler.get();
                 break;
 
             case XML_TYPE_FONT_WIDTH:
                 if (!m_pFontWidthHandler)
-                    m_pFontWidthHandler = o3tl::make_unique<OFontWidthHandler>();
+                    m_pFontWidthHandler = std::make_unique<OFontWidthHandler>();
                 pHandler = m_pFontWidthHandler.get();
                 break;
 
             case XML_TYPE_CONTROL_TEXT_EMPHASIZE:
                 if (!m_pFontEmphasisHandler)
-                    m_pFontEmphasisHandler = o3tl::make_unique<XMLConstantsPropertyHandler>( aFontEmphasisMap, XML_NONE );
+                    m_pFontEmphasisHandler = std::make_unique<XMLConstantsPropertyHandler>( aFontEmphasisMap, XML_NONE );
                 pHandler = m_pFontEmphasisHandler.get();
                 break;
 
             case XML_TYPE_TEXT_FONT_RELIEF:
                 if (!m_pFontReliefHandler)
-                    m_pFontReliefHandler = o3tl::make_unique<XMLConstantsPropertyHandler>( aFontReliefMap, XML_NONE );
+                    m_pFontReliefHandler = std::make_unique<XMLConstantsPropertyHandler>( aFontReliefMap, XML_NONE );
                 pHandler = m_pFontReliefHandler.get();
                 break;
             case XML_TYPE_TEXT_LINE_MODE:
-                pHandler = new XMLNamedBoolPropertyHdl(
-                                            ::xmloff::token::XML_SKIP_WHITE_SPACE,
-                                            ::xmloff::token::XML_CONTINUOUS);
+                if (!m_pTextLineModeHandler)
+                {
+                    m_pTextLineModeHandler = std::make_unique<XMLNamedBoolPropertyHdl>(
+                            ::xmloff::token::XML_SKIP_WHITE_SPACE,
+                            ::xmloff::token::XML_CONTINUOUS);
+                }
+                pHandler = m_pTextLineModeHandler.get();
                 break;
         }
 
@@ -263,7 +263,7 @@ namespace xmloff
 
         if ( !_rStrExpValue.isEmpty() )
             _rStrExpValue += " ";
-        _rStrExpValue += aOut.makeStringAndClear();
+        _rStrExpValue += aOut;
 
         return true;
     }
@@ -279,7 +279,7 @@ namespace xmloff
         bool const bSuccess = ::sax::Converter::convertMeasure(
                 nWidth, _rStrImpValue, util::MeasureUnit::POINT);
         if (bSuccess)
-            _rValue <<= (sal_Int16)nWidth;
+            _rValue <<= static_cast<sal_Int16>(nWidth);
 
         return bSuccess;
     }
@@ -311,7 +311,7 @@ namespace xmloff
         if (bSucces)
         {
             fValue *= 10;
-            _rValue <<= (float)fValue;
+            _rValue <<= static_cast<float>(fValue);
         }
 
         return bSucces;
@@ -325,7 +325,7 @@ namespace xmloff
         if (bSuccess)
         {
             OUStringBuffer sValue;
-            ::sax::Converter::convertDouble(sValue, ((double)fAngle) / 10);
+            ::sax::Converter::convertDouble(sValue, static_cast<double>(fAngle) / 10);
             _rStrExpValue = sValue.makeStringAndClear();
         }
 

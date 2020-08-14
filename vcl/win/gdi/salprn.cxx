@@ -18,6 +18,8 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 #include <memory>
 #include <string.h>
@@ -25,8 +27,12 @@
 #include <svsys.h>
 
 #include <osl/module.h>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #include <tools/urlobj.hxx>
+
+#include <vcl/weld.hxx>
+#include <vcl/QueueInfo.hxx>
 
 #include <win/wincomp.hxx>
 #include <win/saldata.hxx>
@@ -47,7 +53,17 @@
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <comphelper/processfactory.hxx>
 
+#include <vcl/threadex.hxx>
+
 #include <malloc.h>
+
+#include <winspool.h>
+#if defined GetDefaultPrinter
+#  undef GetDefaultPrinter
+#endif
+#if defined SetPrinterData
+#  undef SetPrinterData
+#endif
 
 #define CATCH_DRIVER_EX_BEGIN                                               \
     __try                                                                   \
@@ -71,8 +87,8 @@ using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::ui::dialogs;
 
-static char aImplWindows[] = "windows";
-static char aImplDevice[]  = "device";
+const wchar_t aImplWindows[] = L"windows";
+const wchar_t aImplDevice[]  = L"device";
 
 static DEVMODEW const * SAL_DEVMODE_W( const ImplJobSetup* pSetupData )
 {
@@ -148,64 +164,57 @@ void WinSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
     EnumPrintersW( PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS, nullptr, 4, nullptr, 0, &nBytes, &nInfoPrn4 );
     if ( nBytes )
     {
-        PRINTER_INFO_4W* pWinInfo4 = static_cast<PRINTER_INFO_4W*>(rtl_allocateMemory( nBytes ));
+        PRINTER_INFO_4W* pWinInfo4 = static_cast<PRINTER_INFO_4W*>(std::malloc( nBytes ));
         if ( EnumPrintersW( PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS, nullptr, 4, reinterpret_cast<LPBYTE>(pWinInfo4), nBytes, &nBytes, &nInfoPrn4 ) )
         {
             for ( i = 0; i < nInfoPrn4; i++ )
             {
-                SalPrinterQueueInfo* pInfo = new SalPrinterQueueInfo;
-                pInfo->maPrinterName = OUString( reinterpret_cast< const sal_Unicode* >(pWinInfo4[i].pPrinterName) );
+                std::unique_ptr<SalPrinterQueueInfo> pInfo(new SalPrinterQueueInfo);
+                pInfo->maPrinterName = o3tl::toU(pWinInfo4[i].pPrinterName);
                 pInfo->mnStatus      = PrintQueueFlags::NONE;
                 pInfo->mnJobs        = 0;
-                pInfo->mpSysData     = nullptr;
-                pList->Add( pInfo );
+                pList->Add( std::move(pInfo) );
             }
         }
-        rtl_freeMemory( pWinInfo4 );
+        std::free( pWinInfo4 );
     }
 }
 
 void WinSalInstance::GetPrinterQueueState( SalPrinterQueueInfo* pInfo )
 {
     HANDLE hPrinter = nullptr;
-    LPWSTR pPrnName = reinterpret_cast<LPWSTR>(const_cast<sal_Unicode*>(pInfo->maPrinterName.getStr()));
+    LPWSTR pPrnName = const_cast<LPWSTR>(o3tl::toW(pInfo->maPrinterName.getStr()));
     if( OpenPrinterW( pPrnName, &hPrinter, nullptr ) )
     {
         DWORD               nBytes = 0;
         GetPrinterW( hPrinter, 2, nullptr, 0, &nBytes );
         if( nBytes )
         {
-            PRINTER_INFO_2W* pWinInfo2 = static_cast<PRINTER_INFO_2W*>(rtl_allocateMemory(nBytes));
+            PRINTER_INFO_2W* pWinInfo2 = static_cast<PRINTER_INFO_2W*>(std::malloc(nBytes));
             if( GetPrinterW( hPrinter, 2, reinterpret_cast<LPBYTE>(pWinInfo2), nBytes, &nBytes ) )
             {
                 if( pWinInfo2->pDriverName )
-                    pInfo->maDriver = OUString( reinterpret_cast< const sal_Unicode* >(pWinInfo2->pDriverName) );
+                    pInfo->maDriver = o3tl::toU(pWinInfo2->pDriverName);
                 OUString aPortName;
                 if ( pWinInfo2->pPortName )
-                    aPortName = OUString( reinterpret_cast< const sal_Unicode* >(pWinInfo2->pPortName) );
+                    aPortName = o3tl::toU(pWinInfo2->pPortName);
                 // pLocation can be 0 (the Windows docu doesn't describe this)
                 if ( pWinInfo2->pLocation && *pWinInfo2->pLocation )
-                    pInfo->maLocation = OUString( reinterpret_cast< const sal_Unicode* >(pWinInfo2->pLocation) );
+                    pInfo->maLocation = o3tl::toU(pWinInfo2->pLocation);
                 else
                     pInfo->maLocation = aPortName;
                 // pComment can be 0 (the Windows docu doesn't describe this)
                 if ( pWinInfo2->pComment )
-                    pInfo->maComment = OUString( reinterpret_cast< const sal_Unicode* >(pWinInfo2->pComment) );
+                    pInfo->maComment = o3tl::toU(pWinInfo2->pComment);
                 pInfo->mnStatus      = ImplWinQueueStatusToSal( pWinInfo2->Status );
                 pInfo->mnJobs        = pWinInfo2->cJobs;
-                if( ! pInfo->mpSysData )
-                    pInfo->mpSysData = new OUString(aPortName);
+                if( ! pInfo->mpPortName )
+                    pInfo->mpPortName.reset(new OUString(aPortName));
             }
-            rtl_freeMemory(pWinInfo2);
+            std::free(pWinInfo2);
         }
         ClosePrinter( hPrinter );
     }
-}
-
-void WinSalInstance::DeletePrinterQueueInfo( SalPrinterQueueInfo* pInfo )
-{
-    delete pInfo->mpSysData;
-    delete pInfo;
 }
 
 OUString WinSalInstance::GetDefaultPrinter()
@@ -214,34 +223,34 @@ OUString WinSalInstance::GetDefaultPrinter()
     GetDefaultPrinterW( nullptr, &nChars );
     if( nChars )
     {
-        LPWSTR  pStr = static_cast<LPWSTR>(rtl_allocateMemory(nChars*sizeof(WCHAR)));
+        LPWSTR  pStr = static_cast<LPWSTR>(std::malloc(nChars*sizeof(WCHAR)));
         OUString aDefPrt;
         if( GetDefaultPrinterW( pStr, &nChars ) )
         {
-            aDefPrt = OUString(reinterpret_cast<sal_Unicode* >(pStr));
+            aDefPrt = o3tl::toU(pStr);
         }
-        rtl_freeMemory( pStr );
+        std::free( pStr );
         if( !aDefPrt.isEmpty() )
             return aDefPrt;
     }
 
     // get default printer from win.ini
-    char szBuffer[256];
-    GetProfileStringA( aImplWindows, aImplDevice, "", szBuffer, sizeof( szBuffer ) );
+    wchar_t szBuffer[256];
+    GetProfileStringW( aImplWindows, aImplDevice, L"", szBuffer, SAL_N_ELEMENTS( szBuffer ) );
     if ( szBuffer[0] )
     {
         // search for printer name
-        char* pBuf = szBuffer;
-        char* pTmp = pBuf;
+        wchar_t* pBuf = szBuffer;
+        wchar_t* pTmp = pBuf;
         while ( *pTmp && (*pTmp != ',') )
             pTmp++;
-        return ImplSalGetUniString( pBuf, static_cast<sal_Int32>(pTmp-pBuf) );
+        return OUString( o3tl::toU(pBuf), static_cast<sal_Int32>(pTmp-pBuf) );
     }
     else
         return OUString();
 }
 
-static DWORD ImplDeviceCaps( WinSalInfoPrinter* pPrinter, WORD nCaps,
+static DWORD ImplDeviceCaps( WinSalInfoPrinter const * pPrinter, WORD nCaps,
                              BYTE* pOutput, const ImplJobSetup* pSetupData )
 {
     DEVMODEW const * pDevMode;
@@ -250,12 +259,12 @@ static DWORD ImplDeviceCaps( WinSalInfoPrinter* pPrinter, WORD nCaps,
     else
         pDevMode = SAL_DEVMODE_W( pSetupData );
 
-    return DeviceCapabilitiesW( reinterpret_cast<LPCWSTR>(pPrinter->maDeviceName.getStr()),
-                                reinterpret_cast<LPCWSTR>(pPrinter->maPortName.getStr()),
+    return DeviceCapabilitiesW( o3tl::toW(pPrinter->maDeviceName.getStr()),
+                                o3tl::toW(pPrinter->maPortName.getStr()),
                                 nCaps, reinterpret_cast<LPWSTR>(pOutput), pDevMode );
 }
 
-static bool ImplTestSalJobSetup( WinSalInfoPrinter* pPrinter,
+static bool ImplTestSalJobSetup( WinSalInfoPrinter const * pPrinter,
                                  ImplJobSetup* pSetupData, bool bDelete )
 {
     if ( pSetupData && pSetupData->GetDriverData() )
@@ -280,13 +289,13 @@ static bool ImplTestSalJobSetup( WinSalInfoPrinter* pPrinter,
             // can avoid potential driver crashes as their jobsetups are often not compatible
             // #110800#, #111151#, #112381#, #i16580#, #i14173# and perhaps #112375#
             HANDLE hPrn;
-            LPWSTR pPrinterNameW = reinterpret_cast<LPWSTR>(const_cast<sal_Unicode*>(pPrinter->maDeviceName.getStr()));
+            LPWSTR pPrinterNameW = const_cast<LPWSTR>(o3tl::toW(pPrinter->maDeviceName.getStr()));
             if ( !OpenPrinterW( pPrinterNameW, &hPrn, nullptr ) )
-                return FALSE;
+                return false;
 
             // #131642# hPrn==HGDI_ERROR even though OpenPrinter() succeeded!
             if( hPrn == HGDI_ERROR )
-                return FALSE;
+                return false;
 
             nSysJobSize = DocumentPropertiesW( nullptr, hPrn,
                                                pPrinterNameW,
@@ -295,7 +304,7 @@ static bool ImplTestSalJobSetup( WinSalInfoPrinter* pPrinter,
             if( nSysJobSize < 0 )
             {
                 ClosePrinter( hPrn );
-                return FALSE;
+                return false;
             }
             DEVMODEW *pBuffer = static_cast<DEVMODEW*>(_alloca( nSysJobSize ));
             LONG nRet = DocumentPropertiesW( nullptr, hPrn,
@@ -304,7 +313,7 @@ static bool ImplTestSalJobSetup( WinSalInfoPrinter* pPrinter,
             if( nRet < 0 )
             {
                 ClosePrinter( hPrn );
-                return FALSE;
+                return false;
             }
 
             // the spec version differs between the windows platforms, ie 98,NT,2000/XP
@@ -319,35 +328,35 @@ static bool ImplTestSalJobSetup( WinSalInfoPrinter* pPrinter,
         if ( (pSetupData->GetSystem() == JOBSETUP_SYSTEM_WINDOWS) &&
              (pPrinter->maDriverName == pSetupData->GetDriver()) &&
              (pSetupData->GetDriverDataLen() > sizeof( SalDriverData )) &&
-             (long)(pSetupData->GetDriverDataLen() - pSetupDriverData->mnDriverOffset) == nSysJobSize &&
+             static_cast<long>(pSetupData->GetDriverDataLen() - pSetupDriverData->mnDriverOffset) == nSysJobSize &&
              pSetupDriverData->mnSysSignature == SAL_DRIVERDATA_SYSSIGN )
         {
             if( pDevModeW &&
                 (dmSpecVersion == pDevModeW->dmSpecVersion) &&
                 (dmDriverVersion == pDevModeW->dmDriverVersion) )
-                return TRUE;
+                return true;
         }
         if ( bDelete )
         {
-            rtl_freeMemory( const_cast<sal_uInt8*>(pSetupData->GetDriverData()) );
+            std::free( const_cast<sal_uInt8*>(pSetupData->GetDriverData()) );
             pSetupData->SetDriverData( nullptr );
             pSetupData->SetDriverDataLen( 0 );
         }
     }
 
-    return FALSE;
+    return false;
 }
 
-static bool ImplUpdateSalJobSetup( WinSalInfoPrinter* pPrinter, ImplJobSetup* pSetupData,
-                                   bool bIn, WinSalFrame* pVisibleDlgParent )
+static bool ImplUpdateSalJobSetup( WinSalInfoPrinter const * pPrinter, ImplJobSetup* pSetupData,
+                                   bool bIn, weld::Window* pVisibleDlgParent )
 {
     HANDLE hPrn;
-    LPWSTR pPrinterNameW = reinterpret_cast<LPWSTR>(const_cast<sal_Unicode*>(pPrinter->maDeviceName.getStr()));
+    LPWSTR pPrinterNameW = const_cast<LPWSTR>(o3tl::toW(pPrinter->maDeviceName.getStr()));
     if ( !OpenPrinterW( pPrinterNameW, &hPrn, nullptr ) )
-        return FALSE;
+        return false;
     // #131642# hPrn==HGDI_ERROR even though OpenPrinter() succeeded!
     if( hPrn == HGDI_ERROR )
-        return FALSE;
+        return false;
 
     LONG            nRet;
     HWND            hWnd = nullptr;
@@ -361,7 +370,7 @@ static bool ImplUpdateSalJobSetup( WinSalInfoPrinter* pPrinter, ImplJobSetup* pS
     if ( nSysJobSize < 0 )
     {
         ClosePrinter( hPrn );
-        return FALSE;
+        return false;
     }
 
     // make Outputbuffer
@@ -383,54 +392,55 @@ static bool ImplUpdateSalJobSetup( WinSalInfoPrinter* pPrinter, ImplJobSetup* pS
     // check if the dialog should be shown
     if ( pVisibleDlgParent )
     {
-        hWnd = pVisibleDlgParent->mhWnd;
+        hWnd = pVisibleDlgParent->get_system_data().hWnd;
         nMode |= DM_IN_PROMPT;
     }
 
     // Release mutex, in the other case we don't get paints and so on
-    sal_uLong nMutexCount=0;
-    if ( pVisibleDlgParent )
-        nMutexCount = ImplSalReleaseYieldMutex();
+    sal_uInt32 nMutexCount = 0;
+    WinSalInstance* pInst = GetSalData()->mpInstance;
+    if ( pInst && pVisibleDlgParent )
+        nMutexCount = pInst->ReleaseYieldMutexAll();
 
-    BYTE* pOutDevMode = (reinterpret_cast<BYTE*>(pOutBuffer) + pOutBuffer->mnDriverOffset);
+    BYTE* pOutDevMode = reinterpret_cast<BYTE*>(pOutBuffer) + pOutBuffer->mnDriverOffset;
     nRet = DocumentPropertiesW( hWnd, hPrn,
                                 pPrinterNameW,
                                 reinterpret_cast<LPDEVMODEW>(pOutDevMode), reinterpret_cast<LPDEVMODEW>(const_cast<BYTE *>(pInBuffer)), nMode );
-    if ( pVisibleDlgParent )
-        ImplSalAcquireYieldMutex( nMutexCount );
+    if ( pInst && pVisibleDlgParent )
+        pInst->AcquireYieldMutex( nMutexCount );
     ClosePrinter( hPrn );
 
     if( (nRet < 0) || (pVisibleDlgParent && (nRet == IDCANCEL)) )
     {
-        rtl_freeMemory( pOutBuffer );
-        return FALSE;
+        std::free( pOutBuffer );
+        return false;
     }
 
     // fill up string buffers with 0 so they do not influence a JobSetup's memcmp
     if( reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmSize >= 64 )
     {
-        sal_Int32 nLen = rtl_ustr_getLength( SAL_U(reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmDeviceName) );
+        sal_Int32 nLen = rtl_ustr_getLength( o3tl::toU(reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmDeviceName) );
         if ( sal::static_int_cast<size_t>(nLen) < SAL_N_ELEMENTS( reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmDeviceName ) )
             memset( reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmDeviceName+nLen, 0, sizeof( reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmDeviceName )-(nLen*sizeof(sal_Unicode)) );
     }
     if( reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmSize >= 166 )
     {
-        sal_Int32 nLen = rtl_ustr_getLength( SAL_U(reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmFormName) );
+        sal_Int32 nLen = rtl_ustr_getLength( o3tl::toU(reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmFormName) );
         if ( sal::static_int_cast<size_t>(nLen) < SAL_N_ELEMENTS( reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmFormName ) )
             memset( reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmFormName+nLen, 0, sizeof( reinterpret_cast<LPDEVMODEW>(pOutDevMode)->dmFormName )-(nLen*sizeof(sal_Unicode)) );
     }
 
     // update data
     if ( pSetupData->GetDriverData() )
-        rtl_freeMemory( const_cast<sal_uInt8*>(pSetupData->GetDriverData()) );
+        std::free( const_cast<sal_uInt8*>(pSetupData->GetDriverData()) );
     pSetupData->SetDriverDataLen( nDriverDataLen );
     pSetupData->SetDriverData(reinterpret_cast<BYTE*>(pOutBuffer));
     pSetupData->SetSystem( JOBSETUP_SYSTEM_WINDOWS );
 
-    return TRUE;
+    return true;
 }
 
-static void ImplDevModeToJobSetup( WinSalInfoPrinter* pPrinter, ImplJobSetup* pSetupData, JobSetFlags nFlags )
+static void ImplDevModeToJobSetup( WinSalInfoPrinter const * pPrinter, ImplJobSetup* pSetupData, JobSetFlags nFlags )
 {
     if ( !pSetupData || !pSetupData->GetDriverData() )
         return;
@@ -464,12 +474,12 @@ static void ImplDevModeToJobSetup( WinSalInfoPrinter* pPrinter, ImplJobSetup* pS
             {
                 if( pDevModeW->dmDefaultSource == pBins[ i ] )
                 {
-                    pSetupData->SetPaperBin( (sal_uInt16)i );
+                    pSetupData->SetPaperBin( static_cast<sal_uInt16>(i) );
                     break;
                 }
             }
 
-            rtl_freeMemory( pBins );
+            std::free( pBins );
         }
     }
 
@@ -510,9 +520,9 @@ static void ImplDevModeToJobSetup( WinSalInfoPrinter* pPrinter, ImplJobSetup* pS
                 }
             }
             if( pPapers )
-                rtl_freeMemory( pPapers );
+                std::free( pPapers );
             if( pPaperSizes )
-                rtl_freeMemory( pPaperSizes );
+                std::free( pPaperSizes );
         }
         switch( pDevModeW->dmPaperSize )
         {
@@ -685,7 +695,7 @@ static void ImplDevModeToJobSetup( WinSalInfoPrinter* pPrinter, ImplJobSetup* pS
     if( nFlags & JobSetFlags::DUPLEXMODE )
     {
         DuplexMode eDuplex = DuplexMode::Unknown;
-        if( (pDevModeW->dmFields & DM_DUPLEX) )
+        if( pDevModeW->dmFields & DM_DUPLEX )
         {
             if( pDevModeW->dmDuplex == DMDUP_SIMPLEX )
                 eDuplex = DuplexMode::Off;
@@ -698,7 +708,7 @@ static void ImplDevModeToJobSetup( WinSalInfoPrinter* pPrinter, ImplJobSetup* pS
     }
 }
 
-static void ImplJobSetupToDevMode( WinSalInfoPrinter* pPrinter, const ImplJobSetup* pSetupData, JobSetFlags nFlags )
+static void ImplJobSetupToDevMode( WinSalInfoPrinter const * pPrinter, const ImplJobSetup* pSetupData, JobSetFlags nFlags )
 {
     if ( !pSetupData || !pSetupData->GetDriverData() )
         return;
@@ -728,7 +738,7 @@ static void ImplJobSetupToDevMode( WinSalInfoPrinter* pPrinter, const ImplJobSet
             ImplDeviceCaps( pPrinter, DC_BINS, reinterpret_cast<BYTE*>(pBins), pSetupData );
             pDevModeW->dmFields |= DM_DEFAULTSOURCE;
             pDevModeW->dmDefaultSource = pBins[ pSetupData->GetPaperBin() ];
-            rtl_freeMemory( pBins );
+            std::free( pBins );
         }
     }
 
@@ -765,18 +775,15 @@ static void ImplJobSetupToDevMode( WinSalInfoPrinter* pPrinter, const ImplJobSet
             case PAPER_TABLOID:
                 pDevModeW->dmPaperSize = DMPAPER_TABLOID;
                 break;
-#if 0
-            //http://msdn.microsoft.com/en-us/library/ms776398(VS.85).aspx
-            //DMPAPER_ENV_B6 is documented as:
-            //"DMPAPER_ENV_B6   35  Envelope B6 176 x 125 mm"
-            //which is the wrong way around, it is surely 125 x 176, i.e.
-            //compare DMPAPER_ENV_B4 and DMPAPER_ENV_B4 as
-            //DMPAPER_ENV_B4    33  Envelope B4 250 x 353 mm
-            //DMPAPER_ENV_B5    34  Envelope B5 176 x 250 mm
-            case PAPER_B6_ISO:
-                pDevModeW->dmPaperSize = DMPAPER_ENV_B6;
-                break;
-#endif
+
+            // http://msdn.microsoft.com/en-us/library/ms776398(VS.85).aspx
+            // DMPAPER_ENV_B6 is documented as:
+            // "DMPAPER_ENV_B6   35  Envelope B6 176 x 125 mm"
+            // which is the wrong way around, it is surely 125 x 176, i.e.
+            // compare DMPAPER_ENV_B4 and DMPAPER_ENV_B4 as
+            // DMPAPER_ENV_B4    33  Envelope B4 250 x 353 mm
+            // DMPAPER_ENV_B5    34  Envelope B5 176 x 250 mm
+
             case PAPER_ENV_C4:
                 pDevModeW->dmPaperSize = DMPAPER_ENV_C4;
                 break;
@@ -950,20 +957,20 @@ static void ImplJobSetupToDevMode( WinSalInfoPrinter* pPrinter, const ImplJobSet
                 {
                     pDevModeW->dmFields       |= DM_PAPERLENGTH | DM_PAPERWIDTH;
                     pDevModeW->dmPaperSize     = DMPAPER_USER;
-                    pDevModeW->dmPaperWidth    = (short)(pSetupData->GetPaperWidth()/10);
-                    pDevModeW->dmPaperLength   = (short)(pSetupData->GetPaperHeight()/10);
+                    pDevModeW->dmPaperWidth    = static_cast<short>(pSetupData->GetPaperWidth()/10);
+                    pDevModeW->dmPaperLength   = static_cast<short>(pSetupData->GetPaperHeight()/10);
                 }
 
                 if ( pPapers )
-                    rtl_freeMemory(pPapers);
+                    std::free(pPapers);
                 if ( pPaperSizes )
-                    rtl_freeMemory(pPaperSizes);
+                    std::free(pPaperSizes);
 
                 break;
             }
         }
     }
-    if( (nFlags & JobSetFlags::DUPLEXMODE) )
+    if( nFlags & JobSetFlags::DUPLEXMODE )
     {
         switch( pSetupData->GetDuplexMode() )
         {
@@ -996,7 +1003,7 @@ static HDC ImplCreateICW_WithCatch( LPWSTR pDriver,
     return hDC;
 }
 
-static HDC ImplCreateSalPrnIC( WinSalInfoPrinter* pPrinter, const ImplJobSetup* pSetupData )
+static HDC ImplCreateSalPrnIC( WinSalInfoPrinter const * pPrinter, const ImplJobSetup* pSetupData )
 {
     HDC hDC = nullptr;
     DEVMODEW const * pDevMode;
@@ -1014,8 +1021,8 @@ static HDC ImplCreateSalPrnIC( WinSalInfoPrinter* pPrinter, const ImplJobSetup* 
     memset( pDriverName+pPrinter->maDriverName.getLength(), 0, 32 );
     memcpy( pDeviceName, pPrinter->maDeviceName.getStr(), pPrinter->maDeviceName.getLength()*sizeof(sal_Unicode));
     memset( pDeviceName+pPrinter->maDeviceName.getLength(), 0, 32 );
-    hDC = ImplCreateICW_WithCatch( reinterpret_cast< LPWSTR >(pDriverName),
-                                   reinterpret_cast< LPCWSTR >(pDeviceName),
+    hDC = ImplCreateICW_WithCatch( o3tl::toW(pDriverName),
+                                   o3tl::toW(pDeviceName),
                                    pDevMode );
     return hDC;
 }
@@ -1033,7 +1040,7 @@ static bool ImplUpdateSalPrnIC( WinSalInfoPrinter* pPrinter, const ImplJobSetup*
 {
     HDC hNewDC = ImplCreateSalPrnIC( pPrinter, pSetupData );
     if ( !hNewDC )
-        return FALSE;
+        return false;
 
     if ( pPrinter->mpGraphics )
     {
@@ -1045,7 +1052,7 @@ static bool ImplUpdateSalPrnIC( WinSalInfoPrinter* pPrinter, const ImplJobSetup*
     pPrinter->mpGraphics = ImplCreateSalPrnGraphics( hNewDC );
     pPrinter->mhDC      = hNewDC;
 
-    return TRUE;
+    return true;
 }
 
 
@@ -1053,13 +1060,11 @@ SalInfoPrinter* WinSalInstance::CreateInfoPrinter( SalPrinterQueueInfo* pQueueIn
                                                    ImplJobSetup* pSetupData )
 {
     WinSalInfoPrinter* pPrinter = new WinSalInfoPrinter;
-    if( ! pQueueInfo->mpSysData )
+    if( ! pQueueInfo->mpPortName )
         GetPrinterQueueState( pQueueInfo );
     pPrinter->maDriverName  = pQueueInfo->maDriver;
     pPrinter->maDeviceName  = pQueueInfo->maPrinterName;
-    pPrinter->maPortName    = pQueueInfo->mpSysData ?
-                                *pQueueInfo->mpSysData
-                              : OUString();
+    pPrinter->maPortName    = pQueueInfo->mpPortName ? *pQueueInfo->mpPortName : OUString();
 
     // check if the provided setup data match the actual printer
     ImplTestSalJobSetup( pPrinter, pSetupData, true );
@@ -1090,9 +1095,9 @@ void WinSalInstance::DestroyInfoPrinter( SalInfoPrinter* pPrinter )
 WinSalInfoPrinter::WinSalInfoPrinter() :
     mpGraphics( nullptr ),
     mhDC( nullptr ),
-    mbGraphics( FALSE )
+    mbGraphics( false )
 {
-    m_bPapersInit = FALSE;
+    m_bPapersInit = false;
 }
 
 WinSalInfoPrinter::~WinSalInfoPrinter()
@@ -1118,15 +1123,15 @@ void WinSalInfoPrinter::InitPaperFormats( const ImplJobSetup* pSetupData )
         POINT* pPaperSizes = static_cast<POINT*>(rtl_allocateZeroMemory(nCount*sizeof(POINT)));
         ImplDeviceCaps( this, DC_PAPERSIZE, reinterpret_cast<BYTE*>(pPaperSizes), pSetupData );
 
-        sal_Unicode* pNamesBuffer = static_cast<sal_Unicode*>(rtl_allocateMemory(nCount*64*sizeof(sal_Unicode)));
+        sal_Unicode* pNamesBuffer = static_cast<sal_Unicode*>(std::malloc(nCount*64*sizeof(sal_Unicode)));
         ImplDeviceCaps( this, DC_PAPERNAMES, reinterpret_cast<BYTE*>(pNamesBuffer), pSetupData );
         for( DWORD i = 0; i < nCount; ++i )
         {
             PaperInfo aInfo(pPaperSizes[i].x * 10, pPaperSizes[i].y * 10);
             m_aPaperFormats.push_back( aInfo );
         }
-        rtl_freeMemory( pNamesBuffer );
-        rtl_freeMemory( pPaperSizes );
+        std::free( pNamesBuffer );
+        std::free( pPaperSizes );
     }
 
     m_bPapersInit = true;
@@ -1147,31 +1152,31 @@ SalGraphics* WinSalInfoPrinter::AcquireGraphics()
         return nullptr;
 
     if ( mpGraphics )
-        mbGraphics = TRUE;
+        mbGraphics = true;
 
     return mpGraphics;
 }
 
 void WinSalInfoPrinter::ReleaseGraphics( SalGraphics* )
 {
-    mbGraphics = FALSE;
+    mbGraphics = false;
 }
 
-bool WinSalInfoPrinter::Setup( SalFrame* pFrame, ImplJobSetup* pSetupData )
+bool WinSalInfoPrinter::Setup(weld::Window* pFrame, ImplJobSetup* pSetupData)
 {
-    if ( ImplUpdateSalJobSetup( this, pSetupData, true, static_cast<WinSalFrame*>(pFrame) ) )
+    if ( ImplUpdateSalJobSetup(this, pSetupData, true, pFrame))
     {
         ImplDevModeToJobSetup( this, pSetupData, JobSetFlags::ALL );
         return ImplUpdateSalPrnIC( this, pSetupData );
     }
 
-    return FALSE;
+    return false;
 }
 
 bool WinSalInfoPrinter::SetPrinterData( ImplJobSetup* pSetupData )
 {
     if ( !ImplTestSalJobSetup( this, pSetupData, false ) )
-        return FALSE;
+        return false;
     return ImplUpdateSalPrnIC( this, pSetupData );
 }
 
@@ -1184,7 +1189,7 @@ bool WinSalInfoPrinter::SetData( JobSetFlags nFlags, ImplJobSetup* pSetupData )
         return ImplUpdateSalPrnIC( this, pSetupData );
     }
 
-    return FALSE;
+    return false;
 }
 
 sal_uInt16 WinSalInfoPrinter::GetPaperBinCount( const ImplJobSetup* pSetupData )
@@ -1203,7 +1208,7 @@ OUString WinSalInfoPrinter::GetPaperBinName( const ImplJobSetup* pSetupData, sal
     DWORD nBins = ImplDeviceCaps( this, DC_BINNAMES, nullptr, pSetupData );
     if ( (nPaperBin < nBins) && (nBins != GDI_ERROR) )
     {
-        auto pBuffer = std::unique_ptr<sal_Unicode[]>(new sal_Unicode[nBins*24]);
+        auto pBuffer = std::make_unique<sal_Unicode[]>(nBins*24);
         DWORD nRet = ImplDeviceCaps( this, DC_BINNAMES, reinterpret_cast<BYTE*>(pBuffer.get()), pSetupData );
         if ( nRet && (nRet != GDI_ERROR) )
             aPaperBinName = OUString( pBuffer.get() + (nPaperBin*24) );
@@ -1257,55 +1262,45 @@ sal_uInt32 WinSalInfoPrinter::GetCapabilities( const ImplJobSetup* pSetupData, P
 
 void WinSalInfoPrinter::GetPageInfo( const ImplJobSetup*,
                                   long& rOutWidth, long& rOutHeight,
-                                  long& rPageOffX, long& rPageOffY,
-                                  long& rPageWidth, long& rPageHeight )
+                                  Point& rPageOffset,
+                                  Size& rPaperSize )
 {
     HDC hDC = mhDC;
 
     rOutWidth   = GetDeviceCaps( hDC, HORZRES );
     rOutHeight  = GetDeviceCaps( hDC, VERTRES );
 
-    rPageOffX   = GetDeviceCaps( hDC, PHYSICALOFFSETX );
-    rPageOffY   = GetDeviceCaps( hDC, PHYSICALOFFSETY );
-    rPageWidth  = GetDeviceCaps( hDC, PHYSICALWIDTH );
-    rPageHeight = GetDeviceCaps( hDC, PHYSICALHEIGHT );
+    rPageOffset.setX( GetDeviceCaps( hDC, PHYSICALOFFSETX ) );
+    rPageOffset.setY( GetDeviceCaps( hDC, PHYSICALOFFSETY ) );
+    rPaperSize.setWidth( GetDeviceCaps( hDC, PHYSICALWIDTH ) );
+    rPaperSize.setHeight( GetDeviceCaps( hDC, PHYSICALHEIGHT ) );
 }
 
 
-SalPrinter* WinSalInstance::CreatePrinter( SalInfoPrinter* pInfoPrinter )
+std::unique_ptr<SalPrinter> WinSalInstance::CreatePrinter( SalInfoPrinter* pInfoPrinter )
 {
     WinSalPrinter* pPrinter = new WinSalPrinter;
     pPrinter->mpInfoPrinter = static_cast<WinSalInfoPrinter*>(pInfoPrinter);
-    return pPrinter;
+    return std::unique_ptr<SalPrinter>(pPrinter);
 }
 
-void WinSalInstance::DestroyPrinter( SalPrinter* pPrinter )
-{
-    delete pPrinter;
-}
-
-BOOL CALLBACK SalPrintAbortProc( HDC hPrnDC, int /* nError */ )
+static BOOL CALLBACK SalPrintAbortProc( HDC hPrnDC, int /* nError */ )
 {
     SalData*    pSalData = GetSalData();
     WinSalPrinter* pPrinter;
-    bool        bWhile = TRUE;
     int         i = 0;
+    bool        bWhile = true;
 
+    // Ensure we handle the mutex which will be released in WinSalInstance::DoYield
+    SolarMutexGuard aSolarMutexGuard;
     do
     {
         // process messages
-        MSG aMsg;
-        if ( PeekMessageW( &aMsg, nullptr, 0, 0, PM_REMOVE ) )
-        {
-            TranslateMessage( &aMsg );
-            DispatchMessageW( &aMsg );
-
-            i++;
-            if ( i > 15 )
-                bWhile = FALSE;
-        }
+        bWhile = Application::Reschedule( true );
+        if (i > 15)
+            bWhile = false;
         else
-            bWhile = FALSE;
+            ++i;
 
         pPrinter = pSalData->mpFirstPrinter;
         while ( pPrinter )
@@ -1331,10 +1326,11 @@ static DEVMODEW const * ImplSalSetCopies( DEVMODEW const * pDevMode, sal_uLong n
         if ( nCopies > 32765 )
             nCopies = 32765;
         sal_uLong nDevSize = pDevMode->dmSize+pDevMode->dmDriverExtra;
-        LPDEVMODEW pNewDevMode = static_cast<LPDEVMODEW>(rtl_allocateMemory( nDevSize ));
+        LPDEVMODEW pNewDevMode = static_cast<LPDEVMODEW>(std::malloc( nDevSize ));
+        assert(pNewDevMode); // Don't handle OOM conditions
         memcpy( pNewDevMode, pDevMode, nDevSize );
         pNewDevMode->dmFields |= DM_COPIES;
-        pNewDevMode->dmCopies  = (short)(sal_uInt16)nCopies;
+        pNewDevMode->dmCopies  = static_cast<short>(static_cast<sal_uInt16>(nCopies));
         pNewDevMode->dmFields |= DM_COLLATE;
         if ( bCollate )
             pNewDevMode->dmCollate = DMCOLLATE_TRUE;
@@ -1354,10 +1350,10 @@ WinSalPrinter::WinSalPrinter() :
     mpInfoPrinter( nullptr ),
     mpNextPrinter( nullptr ),
     mhDC( nullptr ),
-    mnError( 0 ),
+    mnError( SalPrinterError::NONE ),
     mnCopies( 0 ),
-    mbCollate( FALSE ),
-    mbAbort( FALSE ),
+    mbCollate( false ),
+    mbAbort( false ),
     mbValid( true )
 {
     SalData* pSalData = GetSalData();
@@ -1405,9 +1401,8 @@ void WinSalPrinter::markInvalid()
 
 // need wrappers for StarTocW/A to use structured exception handling
 // since SEH does not mix with standard exception handling's cleanup
-static int lcl_StartDocW( HDC hDC, DOCINFOW* pInfo, WinSalPrinter* pPrt )
+static int lcl_StartDocW( HDC hDC, DOCINFOW const * pInfo, WinSalPrinter* pPrt )
 {
-    (void) pPrt;
     int nRet = 0;
     CATCH_DRIVER_EX_BEGIN;
     nRet = ::StartDocW( hDC, pInfo );
@@ -1423,8 +1418,8 @@ bool WinSalPrinter::StartJob( const OUString* pFileName,
                            bool /*bDirect*/,
                            ImplJobSetup* pSetupData )
 {
-    mnError     = 0;
-    mbAbort     = FALSE;
+    mnError     = SalPrinterError::NONE;
+    mbAbort     = false;
     mnCopies        = nCopies;
     mbCollate   = bCollate;
 
@@ -1442,54 +1437,36 @@ bool WinSalPrinter::StartJob( const OUString* pFileName,
     sal_Unicode aDevBuf[4096];
     memcpy( aDrvBuf, mpInfoPrinter->maDriverName.getStr(), (mpInfoPrinter->maDriverName.getLength()+1)*sizeof(sal_Unicode));
     memcpy( aDevBuf, mpInfoPrinter->maDeviceName.getStr(), (mpInfoPrinter->maDeviceName.getLength()+1)*sizeof(sal_Unicode));
-    hDC = CreateDCW( reinterpret_cast<LPCWSTR>(aDrvBuf),
-                     reinterpret_cast<LPCWSTR>(aDevBuf),
+    hDC = CreateDCW( o3tl::toW(aDrvBuf),
+                     o3tl::toW(aDevBuf),
                      nullptr,
                      pDevModeW );
 
     if ( pDevModeW != pOrgDevModeW )
-        rtl_freeMemory( const_cast<DEVMODEW *>(pDevModeW) );
+        std::free( const_cast<DEVMODEW *>(pDevModeW) );
 
     if ( !hDC )
     {
-        mnError = SAL_PRINTER_ERROR_GENERALERROR;
-        return FALSE;
+        mnError = SalPrinterError::General;
+        return false;
     }
 
     // make sure mhDC is set before the printer driver may call our abortproc
     mhDC = hDC;
     if ( SetAbortProc( hDC, SalPrintAbortProc ) <= 0 )
     {
-        mnError = SAL_PRINTER_ERROR_GENERALERROR;
-        return FALSE;
+        mnError = SalPrinterError::General;
+        return false;
     }
 
-    mnError = 0;
-    mbAbort = FALSE;
+    mnError = SalPrinterError::NONE;
+    mbAbort = false;
 
     // As the Telecom Balloon Fax driver tends to send messages repeatedly
     // we try to process first all, and then insert a dummy message
-    bool bWhile = TRUE;
-    int  i = 0;
-    do
-    {
-        // process messages
-        MSG aMsg;
-        if ( PeekMessageW( &aMsg, nullptr, 0, 0, PM_REMOVE ) )
-        {
-            TranslateMessage( &aMsg );
-            DispatchMessageW( &aMsg );
-
-            i++;
-            if ( i > 15 )
-                bWhile = FALSE;
-        }
-        else
-            bWhile = FALSE;
-    }
-    while ( bWhile );
-    BOOL const ret = PostMessageW(GetSalData()->mpFirstInstance->mhComWnd, SAL_MSG_DUMMY, 0, 0);
-    SAL_WARN_IF(0 == ret, "vcl", "ERROR: PostMessage() failed!");
+    for (int i = 0; Application::Reschedule( true ) && i <= 15; ++i);
+    bool const ret = PostMessageW(GetSalData()->mpInstance->mhComWnd, SAL_MSG_DUMMY, 0, 0);
+    SAL_WARN_IF(!ret, "vcl", "ERROR: PostMessage() failed!");
 
     // bring up a file chooser if printing to file port but no file name given
     OUString aOutFileName;
@@ -1503,25 +1480,23 @@ bool WinSalPrinter::StartJob( const OUString* pFileName,
         {
             Sequence< OUString > aPathSeq( xFilePicker->getSelectedFiles() );
             INetURLObject aObj( aPathSeq[0] );
-            // we're using ansi calls (StartDocA) so convert the string
             aOutFileName = aObj.PathToFileName();
         }
         else
         {
-            mnError = SAL_PRINTER_ERROR_ABORT;
-            return FALSE;
+            mnError = SalPrinterError::Abort;
+            return false;
         }
     }
 
-    DOCINFOW aInfo;
-    memset( &aInfo, 0, sizeof( DOCINFOW ) );
+    DOCINFOW aInfo = {};
     aInfo.cbSize = sizeof( aInfo );
-    aInfo.lpszDocName = SAL_W(rJobName.getStr());
+    aInfo.lpszDocName = o3tl::toW(rJobName.getStr());
     if ( pFileName || aOutFileName.getLength() )
     {
         if ( (pFileName && !pFileName->isEmpty()) || aOutFileName.getLength() )
         {
-            aInfo.lpszOutput = SAL_W((pFileName && !pFileName->isEmpty()) ? pFileName->getStr() : aOutFileName.getStr());
+            aInfo.lpszOutput = o3tl::toW((pFileName && !pFileName->isEmpty()) ? pFileName->getStr() : aOutFileName.getStr());
         }
         else
             aInfo.lpszOutput = L"FILE:";
@@ -1529,20 +1504,28 @@ bool WinSalPrinter::StartJob( const OUString* pFileName,
     else
         aInfo.lpszOutput = nullptr;
 
-    // start Job
-    int nRet = lcl_StartDocW( hDC, &aInfo, this );
+    // start Job, in the main thread
+    int nRet = vcl::solarthread::syncExecute([hDC, this, &aInfo]() -> int { return lcl_StartDocW(hDC, &aInfo, this); });
 
     if ( nRet <= 0 )
     {
         long nError = GetLastError();
         if ( (nRet == SP_USERABORT) || (nRet == SP_APPABORT) || (nError == ERROR_PRINT_CANCELLED) || (nError == ERROR_CANCELLED) )
-            mnError = SAL_PRINTER_ERROR_ABORT;
+            mnError = SalPrinterError::Abort;
         else
-            mnError = SAL_PRINTER_ERROR_GENERALERROR;
-        return FALSE;
+            mnError = SalPrinterError::General;
+        return false;
     }
 
-    return TRUE;
+    return true;
+}
+
+void WinSalPrinter::DoEndDoc(HDC hDC)
+{
+    CATCH_DRIVER_EX_BEGIN;
+    if( ::EndDoc( hDC ) <= 0 )
+        GetLastError();
+    CATCH_DRIVER_EX_END( "exception in EndDoc", this );
 }
 
 bool WinSalPrinter::EndJob()
@@ -1563,18 +1546,15 @@ bool WinSalPrinter::EndJob()
         // it should be safe to release the yield mutex over the EndDoc
         // call, however the real solution is supposed to be the threading
         // framework yet to come.
-        volatile sal_uLong nAcquire = GetSalData()->mpFirstInstance->ReleaseYieldMutex();
-        CATCH_DRIVER_EX_BEGIN;
-        if( ::EndDoc( hDC ) <= 0 )
-            GetLastError();
-        CATCH_DRIVER_EX_END( "exception in EndDoc", this );
-
-        GetSalData()->mpFirstInstance->AcquireYieldMutex( nAcquire );
+        {
+            SolarMutexReleaser aReleaser;
+            DoEndDoc( hDC );
+        }
         DeleteDC( hDC );
         mhDC = nullptr;
     }
 
-    return TRUE;
+    return true;
 }
 
 SalGraphics* WinSalPrinter::StartPage( ImplJobSetup* pSetupData, bool bNewJobData )
@@ -1591,7 +1571,7 @@ SalGraphics* WinSalPrinter::StartPage( ImplJobSetup* pSetupData, bool bNewJobDat
         pDevModeW = ImplSalSetCopies( pOrgDevModeW, mnCopies, mbCollate );
         ResetDCW( hDC, pDevModeW );
         if ( pDevModeW != pOrgDevModeW )
-            rtl_freeMemory( const_cast<DEVMODEW *>(pDevModeW) );
+            std::free( const_cast<DEVMODEW *>(pDevModeW) );
     }
     volatile int nRet = 0;
     CATCH_DRIVER_EX_BEGIN;
@@ -1601,7 +1581,7 @@ SalGraphics* WinSalPrinter::StartPage( ImplJobSetup* pSetupData, bool bNewJobDat
     if ( nRet <= 0 )
     {
         GetLastError();
-        mnError = SAL_PRINTER_ERROR_GENERALERROR;
+        mnError = SalPrinterError::General;
         return nullptr;
     }
 
@@ -1638,11 +1618,11 @@ void WinSalPrinter::EndPage()
     if ( nRet <= 0 )
     {
         GetLastError();
-        mnError = SAL_PRINTER_ERROR_GENERALERROR;
+        mnError = SalPrinterError::General;
     }
 }
 
-sal_uLong WinSalPrinter::GetErrorCode()
+SalPrinterError WinSalPrinter::GetErrorCode()
 {
     return mnError;
 }

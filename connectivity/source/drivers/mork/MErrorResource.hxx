@@ -20,42 +20,33 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MERRORRESOURCE_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MERRORRESOURCE_HXX
 
-namespace connectivity
-{
-    namespace mork
+namespace connectivity::mork
     {
         class ErrorDescriptor
         {
         private:
-            sal_uInt16      m_nErrorResourceId;
-            sal_Int32       m_nErrorCondition;
-            OUString m_sParameter;
+            const char* m_pErrorResourceId;
 
         public:
             ErrorDescriptor()
-                :m_nErrorResourceId(0)
-                ,m_nErrorCondition(0)
-                ,m_sParameter()
+                :m_pErrorResourceId(nullptr)
             {
             }
 
-            void setResId( const sal_uInt16 _nErrorResourceId )
+            void setResId(const char* pErrorResourceId)
             {
-                m_nErrorResourceId = _nErrorResourceId;
+                m_pErrorResourceId = pErrorResourceId;
             }
             void reset()
             {
-                m_nErrorResourceId = 0;
-                m_nErrorCondition = 0;
+                m_pErrorResourceId = nullptr;
             }
 
-            sal_uInt16 getResId() const                  { return m_nErrorResourceId; }
-            sal_Int32  getErrorCondition() const         { return m_nErrorCondition; }
-            const OUString& getParameter() const  { return m_sParameter; }
+            const char* getResId() const                  { return m_pErrorResourceId; }
 
-            bool is() const { return ( m_nErrorResourceId != 0 ) || ( m_nErrorCondition != 0 ); }
+            bool is() const { return m_pErrorResourceId != nullptr; }
         };
-    }
+
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MERRORRESOURCE_HXX

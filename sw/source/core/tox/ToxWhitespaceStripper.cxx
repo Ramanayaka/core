@@ -7,10 +7,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "ToxWhitespaceStripper.hxx"
+#include <ToxWhitespaceStripper.hxx>
 
-#include "rtl/ustrbuf.hxx"
-#include "sal/log.hxx"
+#include <o3tl/safeint.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 
 namespace sw {
@@ -36,13 +37,11 @@ ToxWhitespaceStripper::ToxWhitespaceStripper(const OUString& inputString)
         }
         mNewPositions.push_back(buffer.getLength()-1);
     }
-    // Add one position if the position after the stripped string is requested, e.g., for attributes which
-    // extend beyond the string.
-    mNewPositions.push_back(buffer.getLength());
     // strip the last whitespace (if there was one)
     if (lastCharacterWasWhitespace) {
         buffer.truncate(buffer.getLength() - 1);
     }
+    mNewPositions.push_back(buffer.getLength());
     mStripped = buffer.getStr();
 }
 
@@ -51,7 +50,7 @@ sal_Int32
 ToxWhitespaceStripper::GetPositionInStrippedString(sal_Int32 pos) const
 {
     assert(0 <= pos);
-    if (static_cast<size_t>(pos) >= mNewPositions.size()) {
+    if (o3tl::make_unsigned(pos) >= mNewPositions.size()) {
         // TODO probably this should assert, not just warn?
         SAL_WARN("sw.core", "Requested position of TOX entry text which does not exist. "
                             "Maybe the formatting hint is corrupt?");

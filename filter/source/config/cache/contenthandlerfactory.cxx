@@ -19,26 +19,20 @@
 
 
 #include "contenthandlerfactory.hxx"
-#include "querytokenizer.hxx"
-#include "macros.hxx"
-#include "constant.hxx"
-#include "versions.hxx"
 
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <comphelper/enumhelper.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config{
 
 ContentHandlerFactory::ContentHandlerFactory(const css::uno::Reference< css::uno::XComponentContext >& rxContext)
  : m_xContext(rxContext)
 {
     BaseContainer::init(rxContext                                             ,
-                        ContentHandlerFactory::impl_getImplementationName()   ,
-                        ContentHandlerFactory::impl_getSupportedServiceNames(),
+                        "com.sun.star.comp.filter.config.ContentHandlerFactory"   ,
+                        { "com.sun.star.frame.ContentHandlerFactory" },
                         FilterCache::E_CONTENTHANDLER                         );
 }
 
@@ -60,51 +54,15 @@ css::uno::Reference< css::uno::XInterface > SAL_CALL ContentHandlerFactory::crea
     css::uno::Reference< css::uno::XInterface > xHandler;
 
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
-    OUString sRealHandler = sHandler;
-
-    #ifdef FILTER_CONFIG_MIGRATION_Q_
-
-        /* -> TODO - HACK
-            check if the given handler name really exists ...
-            Because our old implementation worked with an internal
-            type name instead of a handler name. For a small migration time
-            we must simulate this old feature :-( */
-
-        auto & cache = TheFilterCache::get();
-
-        if (!cache.hasItem(FilterCache::E_CONTENTHANDLER, sHandler) && cache.hasItem(FilterCache::E_TYPE, sHandler))
-        {
-            FILTER_CONFIG_LOG_("ContentHandlerFactory::createInstanceWithArguments() ... simulate old type search functionality!\n");
-
-            css::uno::Sequence< OUString > lTypes { sHandler };
-
-            css::uno::Sequence< css::beans::NamedValue > lQuery { { PROPNAME_TYPES, css::uno::makeAny(lTypes) } };
-
-            css::uno::Reference< css::container::XEnumeration > xSet = BaseContainer::createSubSetEnumerationByProperties(lQuery);
-            while(xSet->hasMoreElements())
-            {
-                ::comphelper::SequenceAsHashMap lHandlerProps(xSet->nextElement());
-                if (!(lHandlerProps[PROPNAME_NAME] >>= sRealHandler))
-                    continue;
-            }
-
-            // prevent outside code against NoSuchElementException!
-            // But don't implement such defensive strategy for our new create handling :-)
-            if (!cache.hasItem(FilterCache::E_CONTENTHANDLER, sRealHandler))
-                return css::uno::Reference< css::uno::XInterface>();
-        }
-
-        /* <- HACK */
-
-    #endif // FILTER_CONFIG_MIGRATION_Q_
+    auto & cache = TheFilterCache::get();
 
     // search handler on cache
-    CacheItem aHandler = cache.getItem(FilterCache::E_CONTENTHANDLER, sRealHandler);
+    CacheItem aHandler = cache.getItem(FilterCache::E_CONTENTHANDLER, sHandler);
 
     // create service instance
-    xHandler = m_xContext->getServiceManager()->createInstanceWithContext(sRealHandler, m_xContext);
+    xHandler = m_xContext->getServiceManager()->createInstanceWithContext(sHandler, m_xContext);
 
     // initialize filter
     css::uno::Reference< css::lang::XInitialization > xInit(xHandler, css::uno::UNO_QUERY);
@@ -134,26 +92,14 @@ css::uno::Sequence< OUString > SAL_CALL ContentHandlerFactory::getAvailableServi
     return BaseContainer::getElementNames();
 }
 
+} // namespace filter::config
 
-OUString ContentHandlerFactory::impl_getImplementationName()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_ContentHandlerFactory_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return OUString( "com.sun.star.comp.filter.config.ContentHandlerFactory" );
+    return cppu::acquire(new filter::config::ContentHandlerFactory(context));
 }
 
-
-css::uno::Sequence< OUString > ContentHandlerFactory::impl_getSupportedServiceNames()
-{
-    return { "com.sun.star.frame.ContentHandlerFactory" };
-}
-
-
-css::uno::Reference< css::uno::XInterface > SAL_CALL ContentHandlerFactory::impl_createInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& xSMGR)
-{
-    ContentHandlerFactory* pNew = new ContentHandlerFactory( comphelper::getComponentContext(xSMGR) );
-    return css::uno::Reference< css::uno::XInterface >(static_cast< css::lang::XMultiServiceFactory* >(pNew), css::uno::UNO_QUERY);
-}
-
-    } // namespace config
-} // namespace filter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

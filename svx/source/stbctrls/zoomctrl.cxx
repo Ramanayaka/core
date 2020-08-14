@@ -19,24 +19,28 @@
 
 #include <i18nutil/unicode.hxx>
 #include <vcl/builder.hxx>
+#include <vcl/commandevent.hxx>
+#include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/status.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/settings.hxx>
-#include <sfx2/dispatch.hxx>
 #include <tools/urlobj.hxx>
+#include <sal/log.hxx>
 
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 
 #include <svx/zoomctrl.hxx>
-#include <svx/zoomslideritem.hxx>
 #include <sfx2/zoomitem.hxx>
-#include "stbctrls.h"
 #include <svx/dialmgr.hxx>
 #include "modctrl_internal.hxx"
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
+
+#include <com/sun/star/beans/PropertyValue.hpp>
 
 SFX_IMPL_STATUSBAR_CONTROL(SvxZoomStatusBarControl,SvxZoomItem);
+
+namespace {
 
 class ZoomPopup_Impl
 {
@@ -44,7 +48,7 @@ public:
     ZoomPopup_Impl( sal_uInt16 nZ, SvxZoomEnableFlags nValueSet );
 
     sal_uInt16 GetZoom();
-    OString    GetCurItemIdent() const { return m_xMenu->GetCurItemIdent(); }
+    OString const & GetCurItemIdent() const { return m_xMenu->GetCurItemIdent(); }
 
     sal_uInt16 Execute(vcl::Window* pWindow, const Point& rPopupPos)
     {
@@ -57,8 +61,10 @@ private:
     sal_uInt16          nZoom;
 };
 
+}
+
 ZoomPopup_Impl::ZoomPopup_Impl( sal_uInt16 nZ, SvxZoomEnableFlags nValueSet )
-    : m_aBuilder(nullptr, VclBuilderContainer::getUIRootDir(), "svx/ui/zoommenu.ui", "")
+    : m_aBuilder(nullptr, AllSettings::GetUIRootDir(), "svx/ui/zoommenu.ui", "")
     , m_xMenu(m_aBuilder.get_menu("menu"))
     , nZoom(nZ)
 {
@@ -106,6 +112,7 @@ SvxZoomStatusBarControl::SvxZoomStatusBarControl( sal_uInt16 _nSlotId,
     nValueSet( SvxZoomEnableFlags::ALL )
 {
     GetStatusBar().SetQuickHelpText(GetId(), SvxResId(RID_SVXSTR_ZOOMTOOL_HINT));
+    ImplUpdateItemText();
 }
 
 void SvxZoomStatusBarControl::StateChanged( sal_uInt16, SfxItemState eState,
@@ -116,17 +123,14 @@ void SvxZoomStatusBarControl::StateChanged( sal_uInt16, SfxItemState eState,
         GetStatusBar().SetItemText( GetId(), "" );
         nValueSet = SvxZoomEnableFlags::NONE;
     }
-    else if ( dynamic_cast< const SfxUInt16Item* >(pState) !=  nullptr )
+    else if ( auto pItem = dynamic_cast< const SfxUInt16Item* >(pState) )
     {
-        const SfxUInt16Item* pItem = static_cast<const SfxUInt16Item*>(pState);
         nZoom = pItem->GetValue();
+        ImplUpdateItemText();
 
-        OUString aStr(unicode::formatPercent(nZoom, Application::GetSettings().GetUILanguageTag()));
-        GetStatusBar().SetItemText( GetId(), aStr );
-
-        if ( dynamic_cast<const SvxZoomItem*>( pState) !=  nullptr )
+        if ( auto pZoomItem = dynamic_cast<const SvxZoomItem*>(pState) )
         {
-            nValueSet = static_cast<const SvxZoomItem*>(pState)->GetValueSet();
+            nValueSet = pZoomItem->GetValueSet();
         }
         else
         {
@@ -136,10 +140,18 @@ void SvxZoomStatusBarControl::StateChanged( sal_uInt16, SfxItemState eState,
     }
 }
 
+void SvxZoomStatusBarControl::ImplUpdateItemText()
+{
+    // workaround - don't bother updating when we don't have a real zoom value
+    if (nZoom)
+    {
+        OUString aStr(unicode::formatPercent(nZoom, Application::GetSettings().GetUILanguageTag()));
+        GetStatusBar().SetItemText( GetId(), aStr );
+    }
+}
+
 void SvxZoomStatusBarControl::Paint( const UserDrawEvent& )
 {
-    OUString aStr(unicode::formatPercent(nZoom, Application::GetSettings().GetUILanguageTag()));
-    GetStatusBar().SetItemText( GetId(), aStr );
 }
 
 void SvxZoomStatusBarControl::Command( const CommandEvent& rCEvt )
@@ -152,6 +164,7 @@ void SvxZoomStatusBarControl::Command( const CommandEvent& rCEvt )
         if (aPop.Execute(&rStatusbar, rCEvt.GetMousePosPixel()) && (nZoom != aPop.GetZoom() || !nZoom))
         {
             nZoom = aPop.GetZoom();
+            ImplUpdateItemText();
             SvxZoomItem aZoom(SvxZoomType::PERCENT, nZoom, GetId());
 
             OString sIdent = aPop.GetCurItemIdent();
@@ -182,7 +195,7 @@ SFX_IMPL_STATUSBAR_CONTROL(SvxZoomPageStatusBarControl,SfxVoidItem);
 SvxZoomPageStatusBarControl::SvxZoomPageStatusBarControl(sal_uInt16 _nSlotId,
     sal_uInt16 _nId, StatusBar& rStb)
     : SfxStatusBarControl(_nSlotId, _nId, rStb)
-    , maImage(BitmapEx(RID_SVXBMP_ZOOM_PAGE))
+    , maImage(StockImage::Yes, RID_SVXBMP_ZOOM_PAGE)
 {
     GetStatusBar().SetQuickHelpText(GetId(), SvxResId(RID_SVXSTR_FIT_SLIDE));
 }

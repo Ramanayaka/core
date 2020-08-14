@@ -27,7 +27,7 @@
 #include <astobserves.hxx>
 #include <astneeds.hxx>
 #include <astsequence.hxx>
-#include "astoperation.hxx"
+#include <astoperation.hxx>
 
 #include <osl/diagnose.h>
 
@@ -193,11 +193,11 @@ bool AstService::dump(RegistryKey& rKey)
         case NT_service_member:
             if (getNodeType() == NT_singleton) {
                 OSL_ASSERT(superName.isEmpty());
-                superName = (static_cast<AstServiceMember *>(*i))->
+                superName = static_cast<AstServiceMember *>(*i)->
                     getRealService()->getRelativName();
                 break;
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case NT_interface_member:
         case NT_observes:
         case NT_needs:
@@ -321,8 +321,8 @@ bool AstService::dump(RegistryKey& rKey)
     return true;
 }
 
-bool AstAttribute::dumpBlob(
-    typereg::Writer & rBlob, sal_uInt16 index, sal_uInt16 * methodIndex)
+void AstAttribute::dumpBlob(
+    typereg::Writer & rBlob, sal_uInt16 index, sal_uInt16 * methodIndex) const
 {
     RTFieldAccess accessMode = RTFieldAccess::INVALID;
 
@@ -377,46 +377,44 @@ bool AstAttribute::dumpBlob(
     dumpExceptions(
         rBlob, m_setDocumentation, m_setExceptions, RTMethodMode::ATTRIBUTE_SET,
         methodIndex);
-
-    return true;
 }
 
 void AstAttribute::dumpExceptions(
     typereg::Writer & writer, OUString const & documentation,
-    DeclList const & exceptions, RTMethodMode flags, sal_uInt16 * methodIndex)
+    DeclList const & exceptions, RTMethodMode flags, sal_uInt16 * methodIndex) const
 {
-    if (!exceptions.empty()) {
-        OSL_ASSERT(methodIndex != nullptr);
-        sal_uInt16 idx = (*methodIndex)++;
-        // exceptions.size() <= SAL_MAX_UINT16 already checked in
-        // AstInterface::dump:
-        writer.setMethodData(
-            idx, documentation, flags,
-            OStringToOUString(getLocalName(), RTL_TEXTENCODING_UTF8),
-            "void", 0,
-            static_cast< sal_uInt16 >(exceptions.size()));
-        sal_uInt16 exceptionIndex = 0;
-        for (DeclList::const_iterator i(exceptions.begin());
-             i != exceptions.end(); ++i)
-        {
-            writer.setMethodExceptionTypeName(
-                idx, exceptionIndex++,
-                OStringToOUString(
-                    (*i)->getRelativName(), RTL_TEXTENCODING_UTF8));
-        }
+    if (exceptions.empty())
+        return;
+
+    OSL_ASSERT(methodIndex != nullptr);
+    sal_uInt16 idx = (*methodIndex)++;
+    // exceptions.size() <= SAL_MAX_UINT16 already checked in
+    // AstInterface::dump:
+    writer.setMethodData(
+        idx, documentation, flags,
+        OStringToOUString(getLocalName(), RTL_TEXTENCODING_UTF8),
+        "void", 0,
+        static_cast< sal_uInt16 >(exceptions.size()));
+    sal_uInt16 exceptionIndex = 0;
+    for (auto const& elem : exceptions)
+    {
+        writer.setMethodExceptionTypeName(
+            idx, exceptionIndex++,
+            OStringToOUString(
+                elem->getRelativName(), RTL_TEXTENCODING_UTF8));
     }
 }
 
-const sal_Char* AstSequence::getRelativName() const
+const char* AstSequence::getRelativName() const
 {
-    if ( !m_pRelativName )
+    if ( !m_xRelativName )
     {
-        m_pRelativName = new OString("[]");
+        m_xRelativName = OString("[]");
         AstDeclaration const * pType = resolveTypedefs( m_pMemberType );
-        *m_pRelativName += pType->getRelativName();
+        *m_xRelativName += pType->getRelativName();
     }
 
-    return m_pRelativName->getStr();
+    return m_xRelativName->getStr();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

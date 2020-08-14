@@ -20,19 +20,17 @@
 #define INCLUDED_SW_SOURCE_FILTER_INC_FLTSHELL_HXX
 
 #include <hintids.hxx>
-#include <vcl/keycod.hxx>
+#include <svl/listener.hxx>
 #include <tools/datetime.hxx>
-#include <editeng/formatbreakitem.hxx>
-#include <poolfmt.hxx>
-#include <fmtornt.hxx>
+#include <mdiexp.hxx>
 #include <ndindex.hxx>
 #include <pam.hxx>
+#include <strings.hrc>
 #include <IDocumentRedlineAccess.hxx>
 
 #include <cstddef>
 #include <limits>
 #include <memory>
-#include <deque>
 
 class SwTOXBase;
 class SwField;
@@ -53,23 +51,12 @@ public:
     SwNodeIndex m_nNode;
     sal_Int32 m_nContent;
 public:
-    SwFltPosition(const SwFltPosition &rOther)
-        : m_nNode(rOther.m_nNode)
-        , m_nContent(rOther.m_nContent)
-    {
-    }
-    SwFltPosition &operator=(const SwFltPosition &rOther)
-    {
-        m_nNode = rOther.m_nNode;
-        m_nContent = rOther.m_nContent;
-        return *this;
-    }
     bool operator==(const SwFltPosition &rOther) const
     {
         return (m_nContent == rOther.m_nContent &&
                 m_nNode == rOther.m_nNode);
     }
-    void SetPos(SwNodeIndex &rNode, sal_uInt16 nIdx)
+    void SetPos(SwNodeIndex const &rNode, sal_uInt16 nIdx)
     {
         m_nNode = rNode;
         m_nContent = nIdx;
@@ -104,27 +91,31 @@ public:
     bool bOld;          // to mark Attributes *before* skipping field results
     bool bOpen;     //Entry open, awaiting being closed
     bool bConsumedByField;
+    bool m_isAnnotationOnEnd; ///< annotation already moved onto its end pos.
 
     sal_Int32 mnStartCP;
     sal_Int32 mnEndCP;
     bool bIsParaEnd;
 
-    SW_DLLPUBLIC SwFltStackEntry(const SwPosition & rStartPos, SfxPoolItem* pHt );
+    SW_DLLPUBLIC SwFltStackEntry(const SwPosition & rStartPos, std::unique_ptr<SfxPoolItem> pHt );
     SW_DLLPUBLIC ~SwFltStackEntry();
 
+    enum class RegionMode { NoCheck = 0, CheckNodes = 1<<0, CheckFieldmark = 1<<1 };
     SW_DLLPUBLIC void SetEndPos(  const SwPosition & rEndPos);
-    SW_DLLPUBLIC bool MakeRegion(SwDoc* pDoc, SwPaM& rRegion, bool bCheck) const;
+    SW_DLLPUBLIC bool MakeRegion(SwDoc* pDoc, SwPaM& rRegion, RegionMode eCheck) const;
     SW_DLLPUBLIC static bool MakeRegion(SwDoc* pDoc, SwPaM& rRegion,
-        bool bCheck, const SwFltPosition &rMkPos, const SwFltPosition &rPtPos, bool bIsParaEnd=false,
+        RegionMode eCheck, const SwFltPosition &rMkPos, const SwFltPosition &rPtPos, bool bIsParaEnd=false,
         sal_uInt16 nWhich=0);
 
     void SetStartCP(sal_Int32 nCP) {mnStartCP = nCP;}
     void SetEndCP(sal_Int32 nCP) {mnEndCP = nCP;}
     sal_Int32 GetStartCP() const {return mnStartCP;}
     sal_Int32 GetEndCP() const {return mnEndCP;}
-    bool IsParaEnd(){ return bIsParaEnd;}
+    bool IsParaEnd() const { return bIsParaEnd;}
     void SetIsParaEnd(bool bArg){ bIsParaEnd = bArg;}
 };
+
+template<> struct o3tl::typed_flags<SwFltStackEntry::RegionMode>: o3tl::is_typed_flags<SwFltStackEntry::RegionMode, 0x03> {};
 
 class SW_DLLPUBLIC SwFltControlStack
 {
@@ -132,8 +123,7 @@ private:
     SwFltControlStack(SwFltControlStack const&) = delete;
     SwFltControlStack& operator=(SwFltControlStack const&) = delete;
 
-    typedef std::deque<std::unique_ptr<SwFltStackEntry>> Entries;
-    typedef Entries::iterator myEIter;
+    typedef std::vector<std::unique_ptr<SwFltStackEntry>> Entries;
     Entries m_Entries;
 
     sal_uLong nFieldFlags;
@@ -155,7 +145,8 @@ protected:
     bool HasSdOD();
 
 public:
-    void MoveAttrs( const SwPosition&  rPos );
+    enum class MoveAttrsMode { DEFAULT, POSTIT_INSERTED };
+    void MoveAttrs(const SwPosition& rPos, MoveAttrsMode = MoveAttrsMode::DEFAULT);
     enum Flags
     {
         HYPO,
@@ -174,7 +165,7 @@ public:
 
     void NewAttr(const SwPosition& rPos, const SfxPoolItem & rAttr );
 
-    virtual SwFltStackEntry* SetAttr(const SwPosition& rPos, sal_uInt16 nAttrId, bool bTstEnde=true, long nHand = LONG_MAX, bool consumedByField=false);
+    virtual SwFltStackEntry* SetAttr(const SwPosition& rPos, sal_uInt16 nAttrId, bool bTstEnd=true, long nHand = LONG_MAX, bool consumedByField=false);
 
     void StealAttr(const SwNodeIndex& rNode);
     void MarkAllAttrsOld();
@@ -190,12 +181,12 @@ public:
     void DeleteAndDestroy(Entries::size_type nCnt);
 };
 
-class SwFltAnchorClient;
+class SwFltAnchorListener;
 
-class SW_DLLPUBLIC SwFltAnchor : public SfxPoolItem
+class SW_DLLPUBLIC SwFltAnchor: public SfxPoolItem
 {
     SwFrameFormat* pFrameFormat;
-    std::unique_ptr<SwFltAnchorClient> pClient;
+    std::unique_ptr<SwFltAnchorListener> pListener;
 
 public:
     SwFltAnchor(SwFrameFormat* pFlyFormat);
@@ -204,59 +195,39 @@ public:
 
     // "purely virtual methods" of SfxPoolItem
     virtual bool operator==(const SfxPoolItem&) const override;
-    virtual SfxPoolItem* Clone(SfxItemPool* = nullptr) const override;
-    void SetFrameFormat(SwFrameFormat * _pFrameFormat);
-    const SwFrameFormat* GetFrameFormat() const { return pFrameFormat;}
-          SwFrameFormat* GetFrameFormat() { return pFrameFormat;}
+    virtual SwFltAnchor* Clone(SfxItemPool* = nullptr) const override;
+    void SetFrameFormat(SwFrameFormat* _pFrameFormat);
+    const SwFrameFormat* GetFrameFormat() const { return pFrameFormat; }
+          SwFrameFormat* GetFrameFormat() { return pFrameFormat; }
 };
 
-class SwFltAnchorClient : public SwClient
+class SwFltAnchorListener : public SvtListener
 {
-    SwFltAnchor * m_pFltAnchor;
-
-public:
-    SwFltAnchorClient(SwFltAnchor * pFltAnchor);
-
-    virtual void Modify (const SfxPoolItem *pOld, const SfxPoolItem *pNew) override;
+    SwFltAnchor* m_pFltAnchor;
+    public:
+        SwFltAnchorListener(SwFltAnchor* pFltAnchor);
+        virtual void Notify(const SfxHint&) override;
 };
 
 class SW_DLLPUBLIC SwFltRedline : public SfxPoolItem
 {
 public:
     DateTime        aStamp;
-    DateTime        aStampPrev;
-    RedlineType_t   eType;
-    RedlineType_t   eTypePrev;
+    RedlineType     eType;
     std::size_t     nAutorNo;
-    std::size_t     nAutorNoPrev;
 
-    static constexpr auto NoPrevAuthor
-        = std::numeric_limits<std::size_t>::max();
-
-    SwFltRedline(RedlineType_t   eType_,
+    SwFltRedline(RedlineType   eType_,
                  std::size_t     nAutorNo_,
-                 const DateTime& rStamp_,
-                 RedlineType_t   eTypePrev_    = nsRedlineType_t::REDLINE_INSERT,
-                 std::size_t     nAutorNoPrev_ = NoPrevAuthor)
+                 const DateTime& rStamp_)
         : SfxPoolItem(RES_FLTR_REDLINE), aStamp(rStamp_),
-        aStampPrev( DateTime::EMPTY ),
         eType(eType_),
-        eTypePrev(eTypePrev_), nAutorNo(nAutorNo_), nAutorNoPrev(nAutorNoPrev_)
+        nAutorNo(nAutorNo_)
     {
     }
 
-    SwFltRedline(const SwFltRedline& rCpy):
-        SfxPoolItem(RES_FLTR_REDLINE),
-        aStamp(         rCpy.aStamp       ),
-        aStampPrev(     rCpy.aStampPrev   ),
-        eType(          rCpy.eType        ),
-        eTypePrev(      rCpy.eTypePrev    ),
-        nAutorNo(       rCpy.nAutorNo     ),
-        nAutorNoPrev(   rCpy.nAutorNoPrev )
-        {}
     // "purely virtual methods" of SfxPoolItem
     virtual bool operator==(const SfxPoolItem& rItem) const override;
-    virtual SfxPoolItem* Clone(SfxItemPool* = nullptr) const override;
+    virtual SwFltRedline* Clone(SfxItemPool* = nullptr) const override;
 };
 
 class SW_DLLPUBLIC SwFltBookmark : public SfxPoolItem
@@ -273,11 +244,10 @@ public:
                    const OUString& rVa,
                    long nHand,
                    const bool bIsTOCBookmark = false );
-    SwFltBookmark( const SwFltBookmark& );
 
     // "purely virtual methods" of SfxPoolItem
     virtual bool operator==(const SfxPoolItem&) const override;
-    virtual SfxPoolItem* Clone(SfxItemPool* = nullptr) const override;
+    virtual SwFltBookmark* Clone(SfxItemPool* = nullptr) const override;
 
     long GetHandle() const              { return mnHandle; }
     const OUString& GetName() const       { return maName; }
@@ -296,10 +266,9 @@ class SW_DLLPUBLIC SwFltRDFMark : public SfxPoolItem
 
 public:
     SwFltRDFMark();
-    SwFltRDFMark(const SwFltRDFMark&);
 
     virtual bool operator==(const SfxPoolItem&) const override;
-    virtual SfxPoolItem* Clone(SfxItemPool* = nullptr) const override;
+    virtual SwFltRDFMark* Clone(SfxItemPool* = nullptr) const override;
 
     void SetHandle(long nHandle);
     long GetHandle() const;
@@ -309,16 +278,15 @@ public:
 
 class SW_DLLPUBLIC SwFltTOX : public SfxPoolItem
 {
-    SwTOXBase* pTOXBase;
+    std::shared_ptr<SwTOXBase> m_xTOXBase;
     bool bHadBreakItem; // there was a break item BEFORE insertion of the TOX
     bool bHadPageDescItem;
 public:
-    SwFltTOX(SwTOXBase* pBase);
-    SwFltTOX(const SwFltTOX&);
+    SwFltTOX(std::shared_ptr<SwTOXBase> xBase);
     // "purely virtual methods" of SfxPoolItem
     virtual bool operator==(const SfxPoolItem&) const override;
-    virtual SfxPoolItem* Clone(SfxItemPool* = nullptr) const override;
-    SwTOXBase* GetBase()            { return pTOXBase; }
+    virtual SwFltTOX* Clone(SfxItemPool* = nullptr) const override;
+    const SwTOXBase& GetBase() const { return *m_xTOXBase; }
     void SetHadBreakItem(    bool bVal ) { bHadBreakItem    = bVal; }
     void SetHadPageDescItem( bool bVal ) { bHadPageDescItem = bVal; }
     bool HadBreakItem()    const { return bHadBreakItem; }
@@ -339,6 +307,28 @@ public:
 };
 
 SW_DLLPUBLIC void UpdatePageDescs(SwDoc &rDoc, size_t nInPageDescOffset);
+
+class ImportProgress
+{
+private:
+    SwDocShell *m_pDocShell;
+public:
+    ImportProgress(SwDocShell *pDocShell, long nStartVal, long nEndVal)
+        : m_pDocShell(pDocShell)
+    {
+        ::StartProgress(STR_STATSTR_W4WREAD, nStartVal, nEndVal, m_pDocShell);
+    }
+
+    void Update(sal_uInt16 nProgress)
+    {
+        ::SetProgressState(nProgress, m_pDocShell);    // Update
+    }
+
+    ~ImportProgress()
+    {
+        ::EndProgress(m_pDocShell);
+    }
+};
 
 #endif
 

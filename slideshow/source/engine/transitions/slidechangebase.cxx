@@ -19,24 +19,20 @@
 
 
 #include <tools/diagnose_ex.h>
-#include <canvas/canvastools.hxx>
-#include <basegfx/numeric/ftools.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <cppcanvas/basegfxfactory.hxx>
+#include <cppcanvas/customsprite.hxx>
 
 #include "slidechangebase.hxx"
-#include "tools.hxx"
+#include <tools.hxx>
 
 #include <algorithm>
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
-SlideChangeBase::SlideChangeBase( boost::optional<SlideSharedPtr> const & leavingSlide,
+SlideChangeBase::SlideChangeBase( std::optional<SlideSharedPtr> const & leavingSlide,
                                   const SlideSharedPtr&                   pEnteringSlide,
                                   const SoundPlayerSharedPtr&             pSoundPlayer,
                                   const UnoViewContainer&                 rViewContainer,
@@ -75,13 +71,13 @@ SlideBitmapSharedPtr SlideChangeBase::getEnteringBitmap( const ViewEntry& rViewE
 {
     if( !rViewEntry.mpEnteringBitmap )
         rViewEntry.mpEnteringBitmap = createBitmap( rViewEntry.mpView,
-                                                    boost::optional<SlideSharedPtr>(mpEnteringSlide) );
+                                                    std::optional<SlideSharedPtr>(mpEnteringSlide) );
 
     return rViewEntry.mpEnteringBitmap;
 }
 
 SlideBitmapSharedPtr SlideChangeBase::createBitmap( const UnoViewSharedPtr&                rView,
-                                                    const boost::optional<SlideSharedPtr>& rSlide ) const
+                                                    const std::optional<SlideSharedPtr>& rSlide ) const
 {
     SlideBitmapSharedPtr pRet;
     if( !rSlide )
@@ -128,7 +124,7 @@ SlideBitmapSharedPtr SlideChangeBase::createBitmap( const UnoViewSharedPtr&     
                                            slideSizePixel.getY() ),
                   0x000000FFU );
 
-        pRet.reset( new SlideBitmap( pBitmap ));
+        pRet = std::make_shared<SlideBitmap>( pBitmap );
     }
     else
     {
@@ -148,28 +144,27 @@ void SlideChangeBase::renderBitmap(
     SlideBitmapSharedPtr const & pSlideBitmap,
     cppcanvas::CanvasSharedPtr const & pCanvas )
 {
-    if( pSlideBitmap && pCanvas )
-    {
-        // need to render without any transformation (we
-        // assume device units):
-        const basegfx::B2DHomMatrix viewTransform(
-            pCanvas->getTransformation() );
-        const basegfx::B2DPoint pageOrigin(
-            viewTransform * basegfx::B2DPoint() );
-        const cppcanvas::CanvasSharedPtr pDevicePixelCanvas(
-            pCanvas->clone() );
+    if( !(pSlideBitmap && pCanvas) )
+        return;
 
-        // render at output position, don't modify bitmap object (no move!):
-        const basegfx::B2DHomMatrix transform(basegfx::tools::createTranslateB2DHomMatrix(
-            pageOrigin.getX(), pageOrigin.getY()));
+    // need to render without any transformation (we
+    // assume device units):
+    const basegfx::B2DHomMatrix viewTransform(
+        pCanvas->getTransformation() );
+    const basegfx::B2DPoint pageOrigin(
+        viewTransform * basegfx::B2DPoint() );
+    const cppcanvas::CanvasSharedPtr pDevicePixelCanvas(
+        pCanvas->clone() );
 
-        pDevicePixelCanvas->setTransformation( transform );
-        pSlideBitmap->draw( pDevicePixelCanvas );
-    }
+    // render at output position, don't modify bitmap object (no move!):
+    const basegfx::B2DHomMatrix transform(basegfx::utils::createTranslateB2DHomMatrix(
+        pageOrigin.getX(), pageOrigin.getY()));
+
+    pDevicePixelCanvas->setTransformation( transform );
+    pSlideBitmap->draw( pDevicePixelCanvas );
 }
 
-void SlideChangeBase::prefetch( const AnimatableShapeSharedPtr&,
-                                const ShapeAttributeLayerSharedPtr& )
+void SlideChangeBase::prefetch()
 {
     // we're a one-shot activity, and already finished
     if( mbFinished || mbPrefetched )
@@ -180,19 +175,19 @@ void SlideChangeBase::prefetch( const AnimatableShapeSharedPtr&,
 
     // init views and create slide bitmaps
     for( const auto& pView : mrViewContainer )
-        this->viewAdded( pView );
+        viewAdded( pView );
 
     mbPrefetched = true;
 }
 
-void SlideChangeBase::start( const AnimatableShapeSharedPtr&     rShape,
-                             const ShapeAttributeLayerSharedPtr& rLayer )
+void SlideChangeBase::start( const AnimatableShapeSharedPtr&     /*rShape*/,
+                             const ShapeAttributeLayerSharedPtr& /*rLayer*/ )
 {
     // we're a one-shot activity, and already finished
     if( mbFinished )
         return;
 
-    prefetch(rShape,rLayer); // no-op, if already done
+    prefetch(); // no-op, if already done
 
     // get the subclasses a chance to do any specific initialization before run
     for ( ViewsVecT::const_iterator aCurr( beginViews() ), aEnd( endViews() ); aCurr != aEnd; ++aCurr )
@@ -358,7 +353,7 @@ bool SlideChangeBase::operator()( double nValue )
 
 void SlideChangeBase::prepareForRun(
     const ViewEntry& /* rViewEntry */,
-    const std::shared_ptr<cppcanvas::Canvas>& /* rDestinationCanvas */ )
+    const cppcanvas::CanvasSharedPtr& /* rDestinationCanvas */ )
 {
 }
 
@@ -392,7 +387,7 @@ void SlideChangeBase::viewAdded( const UnoViewSharedPtr& rView )
     if( mbFinished )
         return;
 
-    maViewData.push_back( ViewEntry(rView) );
+    maViewData.emplace_back(rView );
 
     ViewEntry& rEntry( maViewData.back() );
     getEnteringBitmap( rEntry );
@@ -510,7 +505,6 @@ void SlideChangeBase::clearViewEntry( ViewEntry& rEntry )
     rEntry.mpOutSprite.reset();
 }
 
-} // namespace internal
 } // namespace presentation
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

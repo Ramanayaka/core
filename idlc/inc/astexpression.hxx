@@ -23,7 +23,8 @@
 
 #include <memory>
 
-#include <idlc.hxx>
+#include "idlc.hxx"
+#include <optional>
 
 // Enum to define all the different operators to combine expressions
 enum class ExprComb
@@ -84,7 +85,7 @@ struct AstExprValue
     ExprType et;
 };
 
-const sal_Char* SAL_CALL exprTypeToString(ExprType t);
+const char* exprTypeToString(ExprType t);
 
 class AstExpression final
 {
@@ -103,7 +104,7 @@ public:
 
     // Data Accessors
     AstExprValue* getExprValue()
-        { return m_exprValue; }
+        { return m_exprValue.get(); }
 
     // Evaluation and value coercion
     bool coerce(ExprType type);
@@ -116,21 +117,21 @@ public:
 
     OString toString();
 private:
-    // Fill out the lineno, filename and definition scope details
-    void    fillDefinitionDetails();
     // Evaluate different sets of operators
     std::unique_ptr<AstExprValue> eval_bin_op();
     std::unique_ptr<AstExprValue> eval_bit_op();
     std::unique_ptr<AstExprValue> eval_un_op();
-    AstExprValue* eval_symbol();
-
-    OString  m_fileName;     // fileName defined in
+    std::unique_ptr<AstExprValue> eval_symbol();
 
     ExprComb        m_combOperator;
-    AstExpression*  m_subExpr1;
-    AstExpression*  m_subExpr2;
-    AstExprValue*   m_exprValue;
-    OString* m_pSymbolicName;
+    std::unique_ptr<AstExpression>
+                    m_subExpr1;
+    std::unique_ptr<AstExpression>
+                    m_subExpr2;
+    std::unique_ptr<AstExprValue>
+                    m_exprValue;
+    std::optional<OString>
+                    m_xSymbolicName;
 };
 
 #endif // INCLUDED_IDLC_INC_ASTEXPRESSION_HXX

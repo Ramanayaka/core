@@ -20,17 +20,17 @@
 #ifndef INCLUDED_TESTTOOLS_SOURCE_BRIDGETEST_CURRENTCONTEXTCHECKER_HXX
 #define INCLUDED_TESTTOOLS_SOURCE_BRIDGETEST_CURRENTCONTEXTCHECKER_HXX
 
-#include "sal/config.h"
-#include "com/sun/star/uno/Reference.hxx"
-#include "com/sun/star/uno/RuntimeException.hpp"
+#include <sal/config.h>
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/uno/RuntimeException.hpp>
 #include <cppuhelper/implbase.hxx>
-#include "osl/diagnose.hxx"
-#include "sal/types.h"
-#include "test/testtools/bridgetest/XCurrentContextChecker.hpp"
+#include <osl/diagnose.hxx>
+#include <sal/types.h>
+#include <test/testtools/bridgetest/XCurrentContextChecker.hpp>
 
-#include <dllapi.hxx>
+#include "dllapi.hxx"
 
-namespace testtools { namespace bridgetest {
+namespace testtools::bridgetest {
 
 class LO_DLLPUBLIC_TESTTOOLS CurrentContextChecker :
     public ::osl::DebugBase< CurrentContextChecker >,
@@ -47,15 +47,15 @@ public:
         ::sal_Int32 setSteps, ::sal_Int32 checkSteps) override;
 
 private:
-    CurrentContextChecker(CurrentContextChecker &) = delete;
-    void operator =(CurrentContextChecker &) = delete;
+    CurrentContextChecker(CurrentContextChecker const &) = delete;
+    void operator =(CurrentContextChecker const &) = delete;
 
     SAL_DLLPRIVATE bool performCheck(
         css::uno::Reference< ::test::testtools::bridgetest::XCurrentContextChecker > const & other,
         ::sal_Int32 setSteps, ::sal_Int32 checkSteps);
 };
 
-} }
+}
 
 #endif
 

@@ -20,22 +20,19 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSSELECTIONFUNCTION_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSSELECTIONFUNCTION_HXX
 
-#include "model/SlsSharedPageDescriptor.hxx"
-#include "controller/SlsFocusManager.hxx"
-#include "controller/SlsInsertionIndicatorHandler.hxx"
-#include "fupoor.hxx"
-#include <svtools/transfer.hxx>
+#include <controller/SlsFocusManager.hxx>
+#include <fupoor.hxx>
 #include <memory>
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter { class SlideSorter; }
 
-namespace sd { namespace slidesorter { namespace controller {
+struct AcceptDropEvent;
+
+namespace sd::slidesorter::controller {
 
 class SlideSorterController;
 
-class SelectionFunction
+class SelectionFunction final
     : public FuPoor
 {
 public:
@@ -64,7 +61,7 @@ public:
         be called directly.
 
         @returns
-            true if a active function was aborted
+            true if an active function was aborted
     */
     virtual bool cancel() override;
 
@@ -97,7 +94,7 @@ public:
     */
     void ResetMouseAnchor();
 
-protected:
+private:
     SlideSorter& mrSlideSorter;
     SlideSorterController& mrController;
 
@@ -107,7 +104,6 @@ protected:
 
     virtual ~SelectionFunction() override;
 
-private:
     /** Remember the slide where the shift key was pressed and started a
         multiselection via keyboard.
     */
@@ -149,7 +145,7 @@ private:
     void SwitchMode (const std::shared_ptr<ModeHandler>& rpHandler);
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

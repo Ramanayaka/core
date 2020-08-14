@@ -24,19 +24,21 @@
 #include <jerror.h>
 
 #include "JpegReader.hxx"
-#include <vcl/bitmapaccess.hxx>
-#include <vcl/FilterConfigItem.hxx>
 #include <vcl/graphicfilter.hxx>
+#include <vcl/outdev.hxx>
 #include <tools/fract.hxx>
+#include <tools/stream.hxx>
 #include <memory>
 
 #define BUFFER_SIZE  4096
+
+extern "C" {
 
 /*
  * Initialize source --- called by jpeg_read_header
  * before any data is actually read.
  */
-extern "C" void init_source (j_decompress_ptr cinfo)
+static void init_source (j_decompress_ptr cinfo)
 {
     SourceManagerStruct * source = reinterpret_cast<SourceManagerStruct *>(cinfo->src);
 
@@ -48,7 +50,9 @@ extern "C" void init_source (j_decompress_ptr cinfo)
     source->no_data_available = FALSE;
 }
 
-long StreamRead( SvStream* pStream, void* pBuffer, long nBufferSize )
+}
+
+static long StreamRead( SvStream* pStream, void* pBuffer, long nBufferSize )
 {
     long nRead = 0;
 
@@ -71,7 +75,9 @@ long StreamRead( SvStream* pStream, void* pBuffer, long nBufferSize )
     return nRead;
 }
 
-extern "C" boolean fill_input_buffer (j_decompress_ptr cinfo)
+extern "C" {
+
+static boolean fill_input_buffer (j_decompress_ptr cinfo)
 {
     SourceManagerStruct * source = reinterpret_cast<SourceManagerStruct *>(cinfo->src);
     size_t nbytes;
@@ -87,8 +93,8 @@ extern "C" boolean fill_input_buffer (j_decompress_ptr cinfo)
         }
         WARNMS(cinfo, JWRN_JPEG_EOF);
         /* Insert a fake EOI marker */
-        source->buffer[0] = (JOCTET) 0xFF;
-        source->buffer[1] = (JOCTET) JPEG_EOI;
+        source->buffer[0] = JOCTET(0xFF);
+        source->buffer[1] = JOCTET(JPEG_EOI);
         nbytes = 2;
     }
 
@@ -99,7 +105,7 @@ extern "C" boolean fill_input_buffer (j_decompress_ptr cinfo)
     return TRUE;
 }
 
-extern "C" void skip_input_data (j_decompress_ptr cinfo, long numberOfBytes)
+static void skip_input_data (j_decompress_ptr cinfo, long numberOfBytes)
 {
     SourceManagerStruct * source = reinterpret_cast<SourceManagerStruct *>(cinfo->src);
 
@@ -107,25 +113,27 @@ extern "C" void skip_input_data (j_decompress_ptr cinfo, long numberOfBytes)
      * it doesn't work on pipes.  Not clear that being smart is worth
      * any trouble anyway --- large skips are infrequent.
      */
-    if (numberOfBytes > 0)
-    {
-        while (numberOfBytes > (long) source->pub.bytes_in_buffer)
-        {
-            numberOfBytes -= (long) source->pub.bytes_in_buffer;
-            (void) fill_input_buffer(cinfo);
+    if (numberOfBytes <= 0)
+        return;
 
-            /* note we assume that fill_input_buffer will never return false,
-             * so suspension need not be handled.
-             */
-        }
-        source->pub.next_input_byte += (size_t) numberOfBytes;
-        source->pub.bytes_in_buffer -= (size_t) numberOfBytes;
+    while (numberOfBytes > static_cast<long>(source->pub.bytes_in_buffer))
+    {
+        numberOfBytes -= static_cast<long>(source->pub.bytes_in_buffer);
+        (void) fill_input_buffer(cinfo);
+
+        /* note we assume that fill_input_buffer will never return false,
+         * so suspension need not be handled.
+         */
     }
+    source->pub.next_input_byte += static_cast<size_t>(numberOfBytes);
+    source->pub.bytes_in_buffer -= static_cast<size_t>(numberOfBytes);
 }
 
-extern "C" void term_source (j_decompress_ptr)
+static void term_source (j_decompress_ptr)
 {
     /* no work necessary here */
+}
+
 }
 
 void jpeg_svstream_src (j_decompress_ptr cinfo, void* input)
@@ -180,7 +188,7 @@ JPEGReader::~JPEGReader()
 {
 }
 
-bool JPEGReader::CreateBitmap(JPEGCreateBitmapParam& rParam)
+bool JPEGReader::CreateBitmap(JPEGCreateBitmapParam const & rParam)
 {
     if (rParam.nWidth > SAL_MAX_INT32 / 8 || rParam.nHeight > SAL_MAX_INT32 / 8)
         return false; // avoid overflows later
@@ -204,7 +212,7 @@ bool JPEGReader::CreateBitmap(JPEGCreateBitmapParam& rParam)
 
         for( sal_uInt16 n = 0; n < 256; n++ )
         {
-            const sal_uInt8 cGray = (sal_uInt8) n;
+            const sal_uInt8 cGray = static_cast<sal_uInt8>(n);
             aGrayPal[ n ] = BitmapColor( cGray, cGray, cGray );
         }
 
@@ -221,11 +229,10 @@ bool JPEGReader::CreateBitmap(JPEGCreateBitmapParam& rParam)
 
         if (((1 == nUnit) || (2 == nUnit)) && rParam.X_density && rParam.Y_density )
         {
-            Point       aEmptyPoint;
             Fraction    aFractX( 1, rParam.X_density );
             Fraction    aFractY( 1, rParam.Y_density );
-            MapMode     aMapMode( nUnit == 1 ? MapUnit::MapInch : MapUnit::MapCM, aEmptyPoint, aFractX, aFractY );
-            Size        aPrefSize = OutputDevice::LogicToLogic( aSize, aMapMode, MapUnit::Map100thMM );
+            MapMode     aMapMode( nUnit == 1 ? MapUnit::MapInch : MapUnit::MapCM, Point(), aFractX, aFractY );
+            Size        aPrefSize = OutputDevice::LogicToLogic(aSize, aMapMode, MapMode(MapUnit::Map100thMM));
 
             mpBitmap->SetPrefSize(aPrefSize);
             mpBitmap->SetPrefMapMode(MapMode(MapUnit::Map100thMM));
@@ -243,7 +250,7 @@ Graphic JPEGReader::CreateIntermediateGraphic(long nLines)
     if (!mnLastLines)
     {
         mpIncompleteAlpha.reset(new Bitmap(aSizePixel, 1));
-        mpIncompleteAlpha->Erase(Color(COL_WHITE));
+        mpIncompleteAlpha->Erase(COL_WHITE);
     }
 
     if (nLines && (nLines < aSizePixel.Height()))
@@ -253,8 +260,8 @@ Graphic JPEGReader::CreateIntermediateGraphic(long nLines)
         if (nNewLines > 0)
         {
             {
-                Bitmap::ScopedWriteAccess pAccess(*mpIncompleteAlpha);
-                pAccess->SetFillColor(Color(COL_BLACK));
+                BitmapScopedWriteAccess pAccess(*mpIncompleteAlpha);
+                pAccess->SetFillColor(COL_BLACK);
                 pAccess->FillRect(tools::Rectangle(Point(0, mnLastLines), Size(pAccess->Width(), nNewLines)));
             }
 
@@ -275,7 +282,7 @@ Graphic JPEGReader::CreateIntermediateGraphic(long nLines)
     return aGraphic;
 }
 
-ReadState JPEGReader::Read( Graphic& rGraphic, GraphicFilterImportFlags nImportFlags, Bitmap::ScopedWriteAccess* ppAccess )
+ReadState JPEGReader::Read( Graphic& rGraphic, GraphicFilterImportFlags nImportFlags, BitmapScopedWriteAccess* ppAccess )
 {
     ReadState   eReadState;
     bool        bRet = false;
@@ -285,7 +292,7 @@ ReadState JPEGReader::Read( Graphic& rGraphic, GraphicFilterImportFlags nImportF
 
     // read the (partial) image
     long nLines;
-    ReadJPEG( this, &mrStream, &nLines, GetPreviewSize(), nImportFlags, ppAccess );
+    ReadJPEG( this, &mrStream, &nLines, nImportFlags, ppAccess );
 
     auto bUseExistingBitmap = static_cast<bool>(nImportFlags & GraphicFilterImportFlags::UseExistingBitmap);
     if (bUseExistingBitmap || !mpBitmap->IsEmpty())

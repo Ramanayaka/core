@@ -45,7 +45,7 @@ enum class SwNeighbourAdjust {
 
 typedef std::vector<SwFootnoteFrame*> SwFootnoteFrames;
 
-class SwFootnoteBossFrame: public SwLayoutFrame
+class SAL_DLLPUBLIC_RTTI SwFootnoteBossFrame: public SwLayoutFrame
 {
     // for private footnote operations
     friend class SwFrame;
@@ -58,6 +58,9 @@ class SwFootnoteBossFrame: public SwLayoutFrame
     SwFootnoteContFrame *MakeFootnoteCont();
     SwFootnoteFrame     *FindFirstFootnote();
     SwNeighbourAdjust NeighbourhoodAdjustment_() const;
+
+    static void CollectFootnotes_(const SwContentFrame*, SwFootnoteFrame*,
+                                  SwFootnoteFrames&, const SwFootnoteBossFrame*);
 
 protected:
     void          InsertFootnote( SwFootnoteFrame * );
@@ -75,11 +78,11 @@ public:
 
     // footnote interface
     void AppendFootnote( SwContentFrame *, SwTextFootnote * );
-    void RemoveFootnote( const SwContentFrame *, const SwTextFootnote *, bool bPrep = true );
+    bool RemoveFootnote(const SwContentFrame *, const SwTextFootnote *, bool bPrep = true);
     static       SwFootnoteFrame     *FindFootnote( const SwContentFrame *, const SwTextFootnote * );
                  SwFootnoteContFrame *FindFootnoteCont();
     inline const SwFootnoteContFrame *FindFootnoteCont() const;
-           const SwFootnoteFrame     *FindFirstFootnote( SwContentFrame* ) const;
+           const SwFootnoteFrame     *FindFirstFootnote( SwContentFrame const * ) const;
                  SwFootnoteContFrame *FindNearestFootnoteCont( bool bDontLeave = false );
 
     static void ChangeFootnoteRef( const SwContentFrame *pOld, const SwTextFootnote *,
@@ -96,18 +99,8 @@ public:
     SwTwips GetVarSpace() const;
 
     // methods needed for layouting
-    // The parameters <_bCollectOnlyPreviousFootnotes> and <_pRefFootnoteBossFrame> control
-    // if only footnotes that are positioned before the given reference
-    // footnote boss-frame have to be collected.
-    // Note: if parameter <_bCollectOnlyPreviousFootnotes> is true, then parameter
-    // <_pRefFootnoteBossFrame> has to be referenced by an object.
-    static void CollectFootnotes_( const SwContentFrame*   _pRef,
-                              SwFootnoteFrame*           _pFootnote,
-                              SwFootnoteFrames&          _rFootnoteArr,
-                              const bool      _bCollectOnlyPreviousFootnotes = false,
-                              const SwFootnoteBossFrame* _pRefFootnoteBossFrame = nullptr);
     // The parameter <_bCollectOnlyPreviousFootnotes> controls if only footnotes
-    // that are positioned before the footnote boss-frame <this> have to be
+    // that are positioned before the this footnote boss-frame have to be
     // collected.
     void    CollectFootnotes( const SwContentFrame* _pRef,
                          SwFootnoteBossFrame*     _pOld,
@@ -115,7 +108,7 @@ public:
                          const bool    _bCollectOnlyPreviousFootnotes = false );
     void    MoveFootnotes_( SwFootnoteFrames &rFootnoteArr, bool bCalc = false );
     void    MoveFootnotes( const SwContentFrame *pSrc, SwContentFrame *pDest,
-                      SwTextFootnote *pAttr );
+                      SwTextFootnote const *pAttr );
 
     // should AdjustNeighbourhood be called (or Grow/Shrink)?
     SwNeighbourAdjust NeighbourhoodAdjustment() const

@@ -23,12 +23,30 @@
 
 #include <tools/poly.hxx>
 #include <tools/helpers.hxx>
-
+#include <vcl/metaact.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/window.hxx>
 
-#include "salgdi.hxx"
+#include <salgdi.hxx>
+
+void OutputDevice::DrawBorder(tools::Rectangle aBorderRect)
+{
+    sal_uInt16 nPixel = static_cast<sal_uInt16>(PixelToLogic(Size(1, 1)).Width());
+
+    aBorderRect.AdjustLeft(nPixel);
+    aBorderRect.AdjustTop(nPixel);
+
+    SetLineColor(COL_LIGHTGRAY);
+    DrawRect(aBorderRect);
+
+    aBorderRect.AdjustLeft(-nPixel);
+    aBorderRect.AdjustTop(-nPixel);
+    aBorderRect.AdjustRight(-nPixel);
+    aBorderRect.AdjustBottom(-nPixel);
+    SetLineColor(COL_GRAY);
+
+    DrawRect(aBorderRect);
+}
 
 void OutputDevice::DrawRect( const tools::Rectangle& rRect )
 {
@@ -88,11 +106,8 @@ void OutputDevice::DrawRect( const tools::Rectangle& rRect,
     nVertRound = ImplLogicHeightToDevicePixel( nVertRound );
 
     // we need a graphics
-    if ( !mpGraphics )
-    {
-        if ( !AcquireGraphics() )
-            return;
-    }
+    if ( !mpGraphics && !AcquireGraphics() )
+        return;
 
     if ( mbInitClipRegion )
         InitClipRegion();
@@ -112,11 +127,11 @@ void OutputDevice::DrawRect( const tools::Rectangle& rRect,
     }
     else
     {
-        const tools::Polygon aRoundRectPoly( aRect, nHorzRound, nVertRound );
+        tools::Polygon aRoundRectPoly( aRect, nHorzRound, nVertRound );
 
         if ( aRoundRectPoly.GetSize() >= 2 )
         {
-            const SalPoint* pPtAry = reinterpret_cast<const SalPoint*>(aRoundRectPoly.GetConstPointAry());
+            SalPoint* pPtAry = reinterpret_cast<SalPoint*>(aRoundRectPoly.GetPointAry());
 
             if ( !mbFillColor )
                 mpGraphics->DrawPolyLine( aRoundRectPoly.GetSize(), pPtAry, this );
@@ -142,11 +157,8 @@ void OutputDevice::Invert( const tools::Rectangle& rRect, InvertFlags nFlags )
     aRect.Justify();
 
     // we need a graphics
-    if ( !mpGraphics )
-    {
-        if ( !AcquireGraphics() )
-            return;
-    }
+    if ( !mpGraphics && !AcquireGraphics() )
+        return;
 
     if ( mbInitClipRegion )
         InitClipRegion();
@@ -155,12 +167,10 @@ void OutputDevice::Invert( const tools::Rectangle& rRect, InvertFlags nFlags )
         return;
 
     SalInvert nSalFlags = SalInvert::NONE;
-    if ( nFlags & InvertFlags::Highlight )
-        nSalFlags |= SalInvert::Highlight;
     if ( nFlags & InvertFlags::N50 )
         nSalFlags |= SalInvert::N50;
-    if ( nFlags == (InvertFlags) 0xffff ) // vcldemo trackframe test
-        nSalFlags = SalInvert::TrackFrame;
+    if ( nFlags & InvertFlags::TrackFrame )
+        nSalFlags |= SalInvert::TrackFrame;
     mpGraphics->Invert( aRect.Left(), aRect.Top(), aRect.GetWidth(), aRect.GetHeight(), nSalFlags, this );
 }
 
@@ -178,11 +188,8 @@ void OutputDevice::Invert( const tools::Polygon& rPoly, InvertFlags nFlags )
     tools::Polygon aPoly( ImplLogicToDevicePixel( rPoly ) );
 
     // we need a graphics
-    if ( !mpGraphics )
-    {
-        if ( !AcquireGraphics() )
-            return;
-    }
+    if ( !mpGraphics && !AcquireGraphics() )
+        return;
 
     if ( mbInitClipRegion )
         InitClipRegion();
@@ -191,10 +198,10 @@ void OutputDevice::Invert( const tools::Polygon& rPoly, InvertFlags nFlags )
         return;
 
     SalInvert nSalFlags = SalInvert::NONE;
-    if ( nFlags & InvertFlags::Highlight )
-        nSalFlags |= SalInvert::Highlight;
     if ( nFlags & InvertFlags::N50 )
         nSalFlags |= SalInvert::N50;
+    if ( nFlags & InvertFlags::TrackFrame )
+        nSalFlags |= SalInvert::TrackFrame;
     const SalPoint* pPtAry = reinterpret_cast<const SalPoint*>(aPoly.GetConstPointAry());
     mpGraphics->Invert( nPoints, pPtAry, nSalFlags, this );
 }
@@ -254,15 +261,15 @@ void OutputDevice::DrawGrid( const tools::Rectangle& rRect, const Size& rDist, D
     const long nEndX = ImplLogicXToDevicePixel( nRight );
     const long nStartY = ImplLogicYToDevicePixel( nY );
     const long nEndY = ImplLogicYToDevicePixel( nBottom );
-    long nHorzCount = 0L;
-    long nVertCount = 0L;
+    long nHorzCount = 0;
+    long nVertCount = 0;
 
     std::vector< sal_Int32 > aVertBuf;
     std::vector< sal_Int32 > aHorzBuf;
 
     if( ( nFlags & DrawGridFlags::Dots ) || ( nFlags & DrawGridFlags::HorzLines ) )
     {
-        aVertBuf.resize( aDstRect.GetHeight() / nDistY + 2L );
+        aVertBuf.resize( aDstRect.GetHeight() / nDistY + 2 );
         aVertBuf[ nVertCount++ ] = nStartY;
         while( ( nY += nDistY ) <= nBottom )
         {
@@ -272,7 +279,7 @@ void OutputDevice::DrawGrid( const tools::Rectangle& rRect, const Size& rDist, D
 
     if( ( nFlags & DrawGridFlags::Dots ) || ( nFlags & DrawGridFlags::VertLines ) )
     {
-        aHorzBuf.resize( aDstRect.GetWidth() / nDistX + 2L );
+        aHorzBuf.resize( aDstRect.GetWidth() / nDistX + 2 );
         aHorzBuf[ nHorzCount++ ] = nStartX;
         while( ( nX += nDistX ) <= nRight )
         {
@@ -291,9 +298,9 @@ void OutputDevice::DrawGrid( const tools::Rectangle& rRect, const Size& rDist, D
 
     if( nFlags & DrawGridFlags::Dots )
     {
-        for( long i = 0L; i < nVertCount; i++ )
+        for( long i = 0; i < nVertCount; i++ )
         {
-            for( long j = 0L, Y = aVertBuf[ i ]; j < nHorzCount; j++ )
+            for( long j = 0, Y = aVertBuf[ i ]; j < nHorzCount; j++ )
             {
                 mpGraphics->DrawPixel( aHorzBuf[ j ], Y, this );
             }
@@ -303,7 +310,7 @@ void OutputDevice::DrawGrid( const tools::Rectangle& rRect, const Size& rDist, D
     {
         if( nFlags & DrawGridFlags::HorzLines )
         {
-            for( long i = 0L; i < nVertCount; i++ )
+            for( long i = 0; i < nVertCount; i++ )
             {
                 nY = aVertBuf[ i ];
                 mpGraphics->DrawLine( nStartX, nY, nEndX, nY, this );
@@ -312,7 +319,7 @@ void OutputDevice::DrawGrid( const tools::Rectangle& rRect, const Size& rDist, D
 
         if( nFlags & DrawGridFlags::VertLines )
         {
-            for( long i = 0L; i < nHorzCount; i++ )
+            for( long i = 0; i < nHorzCount; i++ )
             {
                 nX = aHorzBuf[ i ];
                 mpGraphics->DrawLine( nX, nStartY, nX, nEndY, this );
@@ -363,8 +370,8 @@ BmpMirrorFlags AdjustTwoRect( SalTwoRect& rTwoRect, const Size& rSizePix )
         }
         else
         {
-            const double fFactorX = ( rTwoRect.mnSrcWidth > 1 ) ? (double) ( rTwoRect.mnDestWidth - 1 ) / ( rTwoRect.mnSrcWidth - 1 ) : 0.0;
-            const double fFactorY = ( rTwoRect.mnSrcHeight > 1 ) ? (double) ( rTwoRect.mnDestHeight - 1 ) / ( rTwoRect.mnSrcHeight - 1 ) : 0.0;
+            const double fFactorX = ( rTwoRect.mnSrcWidth > 1 ) ? static_cast<double>( rTwoRect.mnDestWidth - 1 ) / ( rTwoRect.mnSrcWidth - 1 ) : 0.0;
+            const double fFactorY = ( rTwoRect.mnSrcHeight > 1 ) ? static_cast<double>( rTwoRect.mnDestHeight - 1 ) / ( rTwoRect.mnSrcHeight - 1 ) : 0.0;
 
             const long nDstX1 = rTwoRect.mnDestX + FRound( fFactorX * ( aCropRect.Left() - rTwoRect.mnSrcX ) );
             const long nDstY1 = rTwoRect.mnDestY + FRound( fFactorY * ( aCropRect.Top() - rTwoRect.mnSrcY ) );
@@ -387,40 +394,40 @@ BmpMirrorFlags AdjustTwoRect( SalTwoRect& rTwoRect, const Size& rSizePix )
 
 void AdjustTwoRect( SalTwoRect& rTwoRect, const tools::Rectangle& rValidSrcRect )
 {
-    if( ( rTwoRect.mnSrcX < rValidSrcRect.Left() ) || ( rTwoRect.mnSrcX >= rValidSrcRect.Right() ) ||
+    if( !(( rTwoRect.mnSrcX < rValidSrcRect.Left() ) || ( rTwoRect.mnSrcX >= rValidSrcRect.Right() ) ||
         ( rTwoRect.mnSrcY < rValidSrcRect.Top() ) || ( rTwoRect.mnSrcY >= rValidSrcRect.Bottom() ) ||
         ( ( rTwoRect.mnSrcX + rTwoRect.mnSrcWidth ) > rValidSrcRect.Right() ) ||
-        ( ( rTwoRect.mnSrcY + rTwoRect.mnSrcHeight ) > rValidSrcRect.Bottom() ) )
+        ( ( rTwoRect.mnSrcY + rTwoRect.mnSrcHeight ) > rValidSrcRect.Bottom() )) )
+        return;
+
+    const tools::Rectangle aSourceRect( Point( rTwoRect.mnSrcX, rTwoRect.mnSrcY ),
+                                 Size( rTwoRect.mnSrcWidth, rTwoRect.mnSrcHeight ) );
+    tools::Rectangle aCropRect( aSourceRect );
+
+    aCropRect.Intersection( rValidSrcRect );
+
+    if( aCropRect.IsEmpty() )
     {
-        const tools::Rectangle aSourceRect( Point( rTwoRect.mnSrcX, rTwoRect.mnSrcY ),
-                                     Size( rTwoRect.mnSrcWidth, rTwoRect.mnSrcHeight ) );
-        tools::Rectangle aCropRect( aSourceRect );
+        rTwoRect.mnSrcWidth = rTwoRect.mnSrcHeight = rTwoRect.mnDestWidth = rTwoRect.mnDestHeight = 0;
+    }
+    else
+    {
+        const double fFactorX = ( rTwoRect.mnSrcWidth > 1 ) ? static_cast<double>( rTwoRect.mnDestWidth - 1 ) / ( rTwoRect.mnSrcWidth - 1 ) : 0.0;
+        const double fFactorY = ( rTwoRect.mnSrcHeight > 1 ) ? static_cast<double>( rTwoRect.mnDestHeight - 1 ) / ( rTwoRect.mnSrcHeight - 1 ) : 0.0;
 
-        aCropRect.Intersection( rValidSrcRect );
+        const long nDstX1 = rTwoRect.mnDestX + FRound( fFactorX * ( aCropRect.Left() - rTwoRect.mnSrcX ) );
+        const long nDstY1 = rTwoRect.mnDestY + FRound( fFactorY * ( aCropRect.Top() - rTwoRect.mnSrcY ) );
+        const long nDstX2 = rTwoRect.mnDestX + FRound( fFactorX * ( aCropRect.Right() - rTwoRect.mnSrcX ) );
+        const long nDstY2 = rTwoRect.mnDestY + FRound( fFactorY * ( aCropRect.Bottom() - rTwoRect.mnSrcY ) );
 
-        if( aCropRect.IsEmpty() )
-        {
-            rTwoRect.mnSrcWidth = rTwoRect.mnSrcHeight = rTwoRect.mnDestWidth = rTwoRect.mnDestHeight = 0;
-        }
-        else
-        {
-            const double fFactorX = ( rTwoRect.mnSrcWidth > 1 ) ? (double) ( rTwoRect.mnDestWidth - 1 ) / ( rTwoRect.mnSrcWidth - 1 ) : 0.0;
-            const double fFactorY = ( rTwoRect.mnSrcHeight > 1 ) ? (double) ( rTwoRect.mnDestHeight - 1 ) / ( rTwoRect.mnSrcHeight - 1 ) : 0.0;
-
-            const long nDstX1 = rTwoRect.mnDestX + FRound( fFactorX * ( aCropRect.Left() - rTwoRect.mnSrcX ) );
-            const long nDstY1 = rTwoRect.mnDestY + FRound( fFactorY * ( aCropRect.Top() - rTwoRect.mnSrcY ) );
-            const long nDstX2 = rTwoRect.mnDestX + FRound( fFactorX * ( aCropRect.Right() - rTwoRect.mnSrcX ) );
-            const long nDstY2 = rTwoRect.mnDestY + FRound( fFactorY * ( aCropRect.Bottom() - rTwoRect.mnSrcY ) );
-
-            rTwoRect.mnSrcX = aCropRect.Left();
-            rTwoRect.mnSrcY = aCropRect.Top();
-            rTwoRect.mnSrcWidth = aCropRect.GetWidth();
-            rTwoRect.mnSrcHeight = aCropRect.GetHeight();
-            rTwoRect.mnDestX = nDstX1;
-            rTwoRect.mnDestY = nDstY1;
-            rTwoRect.mnDestWidth = nDstX2 - nDstX1 + 1;
-            rTwoRect.mnDestHeight = nDstY2 - nDstY1 + 1;
-        }
+        rTwoRect.mnSrcX = aCropRect.Left();
+        rTwoRect.mnSrcY = aCropRect.Top();
+        rTwoRect.mnSrcWidth = aCropRect.GetWidth();
+        rTwoRect.mnSrcHeight = aCropRect.GetHeight();
+        rTwoRect.mnDestX = nDstX1;
+        rTwoRect.mnDestY = nDstY1;
+        rTwoRect.mnDestWidth = nDstX2 - nDstX1 + 1;
+        rTwoRect.mnDestHeight = nDstY2 - nDstY1 + 1;
     }
 }
 

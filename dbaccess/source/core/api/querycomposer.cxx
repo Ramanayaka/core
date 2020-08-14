@@ -17,34 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
 #include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/util/XNumberFormatter.hpp>
 #include <com/sun/star/sdbc/ColumnSearch.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
-#include <com/sun/star/sdbc/XResultSetMetaData.hpp>
-#include <com/sun/star/lang/ServiceNotRegisteredException.hpp>
+#include <com/sun/star/sdbc/XConnection.hpp>
 #include <comphelper/sequence.hxx>
-#include <com/sun/star/uno/XAggregation.hpp>
-#include <comphelper/processfactory.hxx>
-#include "dbastrings.hrc"
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <unotools/configmgr.hxx>
 #include <comphelper/types.hxx>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/i18n/XLocaleData.hpp>
-#include <unotools/syslocale.hxx>
-#include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/sdb/SQLFilterOperator.hpp>
-#include "querycomposer.hxx"
-#include "HelperCollections.hxx"
-#include "composertools.hxx"
+#include <querycomposer.hxx>
+#include <composertools.hxx>
 #include <algorithm>
 
 using namespace dbaccess;
-using namespace dbtools;
 using namespace comphelper;
 using namespace connectivity;
 using namespace ::com::sun::star::uno;
@@ -53,9 +38,7 @@ using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::script;
 using namespace ::cppu;
 using namespace ::osl;
 using namespace ::utl;
@@ -103,7 +86,7 @@ Any SAL_CALL OQueryComposer::queryInterface( const Type & rType )
 // XServiceInfo
 OUString OQueryComposer::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdb.dbaccess.OQueryComposer");
+    return "com.sun.star.sdb.dbaccess.OQueryComposer";
 }
 
 sal_Bool OQueryComposer::supportsService( const OUString& _rServiceName )
@@ -113,8 +96,7 @@ sal_Bool OQueryComposer::supportsService( const OUString& _rServiceName )
 
 Sequence< OUString > OQueryComposer::getSupportedServiceNames(  )
 {
-    Sequence<OUString> aSNS { SERVICE_SDB_SQLQUERYCOMPOSER };
-    return aSNS;
+    return { SERVICE_SDB_SQLQUERYCOMPOSER };
 }
 
 // XSQLQueryComposer
@@ -248,7 +230,7 @@ Reference< XNameAccess > SAL_CALL OQueryComposer::getTables(  )
     ::connectivity::checkDisposed(OSubComponent::rBHelper.bDisposed);
 
     ::osl::MutexGuard aGuard( m_aMutex );
-    return Reference<XTablesSupplier>(m_xComposer,UNO_QUERY)->getTables();
+    return Reference<XTablesSupplier>(m_xComposer,UNO_QUERY_THROW)->getTables();
 }
 
 // XColumnsSupplier
@@ -257,7 +239,7 @@ Reference< XNameAccess > SAL_CALL OQueryComposer::getColumns(  )
     ::connectivity::checkDisposed(OSubComponent::rBHelper.bDisposed);
 
     ::osl::MutexGuard aGuard( m_aMutex );
-    return Reference<XColumnsSupplier>(m_xComposer,UNO_QUERY)->getColumns();
+    return Reference<XColumnsSupplier>(m_xComposer,UNO_QUERY_THROW)->getColumns();
 }
 
 Reference< XIndexAccess > SAL_CALL OQueryComposer::getParameters(  )
@@ -265,7 +247,7 @@ Reference< XIndexAccess > SAL_CALL OQueryComposer::getParameters(  )
     ::connectivity::checkDisposed(OSubComponent::rBHelper.bDisposed);
 
     ::osl::MutexGuard aGuard( m_aMutex );
-    return Reference<XParametersSupplier>(m_xComposer,UNO_QUERY)->getParameters();
+    return Reference<XParametersSupplier>(m_xComposer,UNO_QUERY_THROW)->getParameters();
 }
 
 void SAL_CALL OQueryComposer::acquire() throw()

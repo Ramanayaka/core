@@ -19,22 +19,19 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_TRUEGUARD_HXX
 #define INCLUDED_CHART2_SOURCE_INC_TRUEGUARD_HXX
 
-#include "charttoolsdllapi.hxx"
-
 namespace chart
 {
 /** This guard sets the given boolean reference to true in the constructor and to false in the destructor
  */
-class OOO_DLLPUBLIC_CHARTTOOLS TrueGuard final
+class TrueGuard final
 {
 public:
-    explicit TrueGuard( bool& rbTrueDuringGuardedTime );
+    explicit TrueGuard(bool& rbTrueDuringGuardedTime);
     ~TrueGuard();
 
 private:
     bool& m_rbTrueDuringGuardedTime;
 };
-
 }
 // INCLUDED_CHART2_SOURCE_INC_TRUEGUARD_HXX
 #endif

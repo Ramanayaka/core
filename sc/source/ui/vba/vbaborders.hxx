@@ -21,11 +21,11 @@
 
 #include <ooo/vba/excel/XBorders.hpp>
 
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-
 #include <vbahelper/vbacollectionimpl.hxx>
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::table { class XCellRange; }
 
 typedef CollTestImplHelper< ov::excel::XBorders > ScVbaBorders_BASE;
 class ScVbaPalette;
@@ -36,7 +36,10 @@ class ScVbaBorders : public ScVbaBorders_BASE
     bool bRangeIsSingleCell;
     css::uno::Reference< css::beans::XPropertySet > m_xProps;
 public:
-    ScVbaBorders( const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext > & xContext, const css::uno::Reference< css::table::XCellRange >& xRange, ScVbaPalette& rPalette );
+    ScVbaBorders( const css::uno::Reference< ov::XHelperInterface >& xParent,
+                  const css::uno::Reference< css::uno::XComponentContext > & xContext,
+                  const css::uno::Reference< css::table::XCellRange >& xRange,
+                  const ScVbaPalette& rPalette );
 
     // XEnumerationAccess
     virtual css::uno::Type SAL_CALL getElementType() override;

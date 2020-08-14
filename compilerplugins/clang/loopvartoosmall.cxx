@@ -2,10 +2,14 @@
 /*
  * This file is part of the LibreOffice project.
  *
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- */
+ * Based on LLVM/Clang.
+ *
+ * This file is distributed under the University of Illinois Open Source
+ * License. See LICENSE.TXT for details.
+ *
+*/
+
+#ifndef LO_CLANG_SHARED_PLUGINS
 
 #include <algorithm>
 #include <cassert>
@@ -23,10 +27,11 @@ namespace
 {
 
 class LoopVarTooSmall:
-    public RecursiveASTVisitor<LoopVarTooSmall>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<LoopVarTooSmall>
 {
 public:
-    explicit LoopVarTooSmall(InstantiationData const & data): Plugin(data) {}
+    explicit LoopVarTooSmall(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     virtual void run() override {
         TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
@@ -149,7 +154,16 @@ void LoopVarTooSmall::checkSubExpr(Expr const * expr, bool positive) {
         return;
     unsigned qt2BitWidth;
     llvm::APSInt aIntResult;
-    if (binOpRHS->EvaluateAsInt(aIntResult, compiler.getASTContext())) {
+    // Work around missing Clang 3.9 fix <https://reviews.llvm.org/rL271762>
+    // "Sema: do not attempt to sizeof a dependent type", causing Clang 3.8 to
+    // crash during EvaluateAsInt() on expressions of the form
+    //
+    //   sizeof (T)
+    //
+    // with dependent type T:
+    if (!binOpRHS->isValueDependent()
+        && compat::EvaluateAsInt(binOpRHS, aIntResult, compiler.getASTContext()))
+    {
         if (less && aIntResult.isStrictlyPositive()) {
             --aIntResult;
         }
@@ -222,8 +236,10 @@ void LoopVarTooSmall::checkExpr(Expr const * expr) {
     }
 }
 
-loplugin::Plugin::Registration< LoopVarTooSmall > X("loopvartoosmall");
+loplugin::Plugin::Registration< LoopVarTooSmall > loopvartoosmall("loopvartoosmall");
 
 }
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

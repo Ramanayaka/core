@@ -26,14 +26,12 @@
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <rtl/ref.hxx>
 #include <sot/stg.hxx>
 #include <sot/storage.hxx>
 #include <tools/stream.hxx>
 #include <unotools/tempfile.hxx>
 #include <unotools/ucbhelper.hxx>
 #include <ucbhelper/content.hxx>
-#include <ucbhelper/commandenvironment.hxx>
 
 using namespace css;
 
@@ -67,7 +65,7 @@ void SAL_CALL OPackageStructureCreator::convertToPackage( const OUString& aFolde
     ::ucbhelper::Content aContent;
     if( ::ucbhelper::Content::create( aFolderUrl, xComEnv, comphelper::getProcessComponentContext(), aContent ) )
     {
-        SvStream* pTempStream = nullptr;
+        std::unique_ptr<SvStream> pTempStream;
 
         OUString aTempURL = ::utl::TempFile().GetURL();
         try {
@@ -82,7 +80,7 @@ void SAL_CALL OPackageStructureCreator::convertToPackage( const OUString& aFolde
 
                 if ( !aTempURL.isEmpty() )
                 {
-                    pTempStream = new SvFileStream( aTempURL, StreamMode::STD_READWRITE );
+                    pTempStream.reset(new SvFileStream( aTempURL, StreamMode::STD_READWRITE ));
                     tools::SvRef<SotStorage> aTargetStorage = new SotStorage( true, *pTempStream );
                     aStorage->CopyTo( aTargetStorage.get() );
                     aTargetStorage->Commit();
@@ -105,7 +103,7 @@ void SAL_CALL OPackageStructureCreator::convertToPackage( const OUString& aFolde
                         if ( nRead < 32000 )
                             aSeq.realloc( nRead );
                         xTargetStream->writeBytes( aSeq );
-                    } while( !pTempStream->IsEof() && !pTempStream->GetError() && nRead );
+                    } while (pTempStream->good() && nRead);
 
                     if ( pTempStream->GetError() )
                         throw io::IOException();
@@ -116,7 +114,7 @@ void SAL_CALL OPackageStructureCreator::convertToPackage( const OUString& aFolde
         }
         catch (const uno::RuntimeException&)
         {
-            delete pTempStream;
+            pTempStream.reset();
 
             if ( !aTempURL.isEmpty() )
                 ::utl::UCBContentHelper::Kill( aTempURL );
@@ -125,7 +123,7 @@ void SAL_CALL OPackageStructureCreator::convertToPackage( const OUString& aFolde
         }
         catch (const io::IOException&)
         {
-            delete pTempStream;
+            pTempStream.reset();
 
             if ( !aTempURL.isEmpty() )
                 ::utl::UCBContentHelper::Kill( aTempURL );
@@ -136,7 +134,7 @@ void SAL_CALL OPackageStructureCreator::convertToPackage( const OUString& aFolde
         {
         }
 
-        delete pTempStream;
+        pTempStream.reset();
 
         if ( !aTempURL.isEmpty() )
             ::utl::UCBContentHelper::Kill( aTempURL );
@@ -148,7 +146,7 @@ void SAL_CALL OPackageStructureCreator::convertToPackage( const OUString& aFolde
 
 OUString SAL_CALL OPackageStructureCreator::getImplementationName()
 {
-    return OUString("com.sun.star.comp.embed.PackageStructureCreator");
+    return "com.sun.star.comp.embed.PackageStructureCreator";
 }
 
 sal_Bool SAL_CALL OPackageStructureCreator::supportsService( const OUString& ServiceName )
@@ -158,15 +156,12 @@ sal_Bool SAL_CALL OPackageStructureCreator::supportsService( const OUString& Ser
 
 uno::Sequence< OUString > SAL_CALL OPackageStructureCreator::getSupportedServiceNames()
 {
-    uno::Sequence< OUString > aRet(2);
-    aRet[0] = "com.sun.star.embed.PackageStructureCreator";
-    aRet[1] = "com.sun.star.comp.embed.PackageStructureCreator";
-    return aRet;
+    return { "com.sun.star.embed.PackageStructureCreator", "com.sun.star.comp.embed.PackageStructureCreator" };
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_embed_PackageStructureCreator_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

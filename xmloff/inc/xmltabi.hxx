@@ -29,7 +29,7 @@ class SvxXMLTabStopContext_Impl;
 
 typedef std::vector<rtl::Reference<SvxXMLTabStopContext_Impl>> SvxXMLTabStopArray_Impl;
 
-class SvxXMLTabStopImportContext : public XMLElementPropertyContext
+class SvxXMLTabStopImportContext final : public XMLElementPropertyContext
 {
 private:
     std::unique_ptr<SvxXMLTabStopArray_Impl> mpTabStops;
@@ -41,7 +41,7 @@ public:
                                 const XMLPropertyState& rProp,
                                  ::std::vector< XMLPropertyState > &rProps );
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                    const OUString& rLocalName,
                                    const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 

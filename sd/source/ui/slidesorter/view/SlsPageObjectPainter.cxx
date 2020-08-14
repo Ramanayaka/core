@@ -17,28 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "view/SlsPageObjectPainter.hxx"
+#include <view/SlsPageObjectPainter.hxx>
 
-#include "model/SlsPageDescriptor.hxx"
-#include "view/SlideSorterView.hxx"
-#include "view/SlsPageObjectLayouter.hxx"
-#include "view/SlsLayouter.hxx"
-#include "view/SlsTheme.hxx"
+#include <model/SlsPageDescriptor.hxx>
+#include <view/SlideSorterView.hxx>
+#include <view/SlsPageObjectLayouter.hxx>
+#include <view/SlsLayouter.hxx>
+#include <view/SlsTheme.hxx>
+#include <SlideSorter.hxx>
 #include "SlsFramePainter.hxx"
-#include "cache/SlsPageCache.hxx"
-#include "controller/SlsProperties.hxx"
-#include "Window.hxx"
-#include "sdpage.hxx"
-#include "sdresid.hxx"
-#include <vcl/svapp.hxx>
-#include <vcl/vclenum.hxx>
+#include <cache/SlsPageCache.hxx>
+#include <Window.hxx>
+#include <sdpage.hxx>
 #include <vcl/virdev.hxx>
-#include "CustomAnimationEffect.hxx"
+#include <CustomAnimationEffect.hxx>
 #include <memory>
 
 using namespace ::drawinglayer::primitive2d;
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 
 //===== PageObjectPainter =====================================================
 
@@ -68,22 +65,22 @@ void PageObjectPainter::PaintPageObject (
     OutputDevice& rDevice,
     const model::SharedPageDescriptor& rpDescriptor)
 {
-    if (UpdatePageObjectLayouter())
-    {
-        PageObjectLayouter *pPageObjectLayouter = mrLayouter.GetPageObjectLayouter().get();
-        // Turn off antialiasing to avoid the bitmaps from being
-        // shifted by fractions of a pixel and thus show blurry edges.
-        const AntialiasingFlags nSavedAntialiasingMode (rDevice.GetAntialiasing());
-        rDevice.SetAntialiasing(nSavedAntialiasingMode & ~AntialiasingFlags::EnableB2dDraw);
+    if (!UpdatePageObjectLayouter())
+        return;
 
-        PaintBackground(pPageObjectLayouter, rDevice, rpDescriptor);
-        PaintPreview(pPageObjectLayouter, rDevice, rpDescriptor);
-        PaintPageNumber(pPageObjectLayouter, rDevice, rpDescriptor);
-        PaintTransitionEffect(pPageObjectLayouter, rDevice, rpDescriptor);
-        if (rpDescriptor->GetPage()->hasAnimationNode())
-            PaintCustomAnimationEffect(pPageObjectLayouter, rDevice, rpDescriptor);
-        rDevice.SetAntialiasing(nSavedAntialiasingMode);
-    }
+    PageObjectLayouter *pPageObjectLayouter = mrLayouter.GetPageObjectLayouter().get();
+    // Turn off antialiasing to avoid the bitmaps from being
+    // shifted by fractions of a pixel and thus show blurry edges.
+    const AntialiasingFlags nSavedAntialiasingMode (rDevice.GetAntialiasing());
+    rDevice.SetAntialiasing(nSavedAntialiasingMode & ~AntialiasingFlags::EnableB2dDraw);
+
+    PaintBackground(pPageObjectLayouter, rDevice, rpDescriptor);
+    PaintPreview(pPageObjectLayouter, rDevice, rpDescriptor);
+    PaintPageNumber(pPageObjectLayouter, rDevice, rpDescriptor);
+    PaintTransitionEffect(pPageObjectLayouter, rDevice, rpDescriptor);
+    if (rpDescriptor->GetPage()->hasAnimationNode())
+        PaintCustomAnimationEffect(pPageObjectLayouter, rDevice, rpDescriptor);
+    rDevice.SetAntialiasing(nSavedAntialiasingMode);
 }
 
 bool PageObjectPainter::UpdatePageObjectLayouter()
@@ -137,25 +134,25 @@ void PageObjectPainter::PaintPreview (
         PageObjectLayouter::Part::Preview,
         PageObjectLayouter::ModelCoordinateSystem));
 
-    if (mpCache != nullptr)
-    {
-        const SdrPage* pPage = rpDescriptor->GetPage();
-        mpCache->SetPreciousFlag(pPage, true);
+    if (mpCache == nullptr)
+        return;
 
-        const Bitmap aPreview (GetPreviewBitmap(rpDescriptor, &rDevice));
-        if ( ! aPreview.IsEmpty())
-        {
-            if (aPreview.GetSizePixel() != aBox.GetSize())
-                rDevice.DrawBitmap(aBox.TopLeft(), aBox.GetSize(), aPreview);
-            else
-                rDevice.DrawBitmap(aBox.TopLeft(), aPreview);
-        }
+    const SdrPage* pPage = rpDescriptor->GetPage();
+    mpCache->SetPreciousFlag(pPage, true);
+
+    const BitmapEx aPreview (GetPreviewBitmap(rpDescriptor, &rDevice));
+    if ( ! aPreview.IsEmpty())
+    {
+        if (aPreview.GetSizePixel() != aBox.GetSize())
+            rDevice.DrawBitmapEx(aBox.TopLeft(), aBox.GetSize(), aPreview);
+        else
+            rDevice.DrawBitmapEx(aBox.TopLeft(), aPreview);
     }
 }
 
-Bitmap PageObjectPainter::CreateMarkedPreview (
+BitmapEx PageObjectPainter::CreateMarkedPreview (
     const Size& rSize,
-    const Bitmap& rPreview,
+    const BitmapEx& rPreview,
     const BitmapEx& rOverlay,
     const OutputDevice* pReferenceDevice)
 {
@@ -166,7 +163,7 @@ Bitmap PageObjectPainter::CreateMarkedPreview (
         pDevice.disposeAndReset(VclPtr<VirtualDevice>::Create());
     pDevice->SetOutputSizePixel(rSize);
 
-    pDevice->DrawBitmap(Point(0,0), rSize, rPreview);
+    pDevice->DrawBitmapEx(Point(0,0), rSize, rPreview);
 
     // Paint bitmap tiled over the preview to mark it as excluded.
     const sal_Int32 nIconWidth (rOverlay.GetSizePixel().Width());
@@ -177,10 +174,10 @@ Bitmap PageObjectPainter::CreateMarkedPreview (
             for (long nY=0; nY<rSize.Height(); nY+=nIconHeight)
                 pDevice->DrawBitmapEx(Point(nX,nY), rOverlay);
     }
-    return pDevice->GetBitmap(Point(0,0), rSize);
+    return pDevice->GetBitmapEx(Point(0,0), rSize);
 }
 
-Bitmap PageObjectPainter::GetPreviewBitmap (
+BitmapEx PageObjectPainter::GetPreviewBitmap (
     const model::SharedPageDescriptor& rpDescriptor,
     const OutputDevice* pReferenceDevice) const
 {
@@ -191,7 +188,7 @@ Bitmap PageObjectPainter::GetPreviewBitmap (
     {
         PageObjectLayouter *pPageObjectLayouter = mrLayouter.GetPageObjectLayouter().get();
 
-        Bitmap aMarkedPreview (mpCache->GetMarkedPreviewBitmap(pPage));
+        BitmapEx aMarkedPreview (mpCache->GetMarkedPreviewBitmap(pPage));
         const ::tools::Rectangle aPreviewBox (pPageObjectLayouter->GetBoundingBox(
             rpDescriptor,
             PageObjectLayouter::Part::Preview,
@@ -231,7 +228,7 @@ void PageObjectPainter::PaintPageNumber (
         // Page number is painted on background for hover or selection or
         // both.  Each of these background colors has a predefined luminance
         // which is compatible with the PageNumberHover color.
-        aPageNumberColor = Color(mpTheme->GetColor(Theme::Color_PageNumberHover));
+        aPageNumberColor = mpTheme->GetColor(Theme::Color_PageNumberHover);
     }
     else
     {
@@ -240,7 +237,7 @@ void PageObjectPainter::PaintPageNumber (
         // When the background color is black then this is interpreted as
         // high contrast mode and the font color is set to white.
         if (nBackgroundLuminance == 0)
-            aPageNumberColor = Color(mpTheme->GetColor(Theme::Color_PageNumberHighContrast));
+            aPageNumberColor = mpTheme->GetColor(Theme::Color_PageNumberHighContrast);
         else
         {
             // Compare luminance of default page number color and background
@@ -250,9 +247,9 @@ void PageObjectPainter::PaintPageNumber (
             if (abs(nBackgroundLuminance - nFontLuminance) < 60)
             {
                 if (nBackgroundLuminance > nFontLuminance-30)
-                    aPageNumberColor = Color(mpTheme->GetColor(Theme::Color_PageNumberBrightBackground));
+                    aPageNumberColor = mpTheme->GetColor(Theme::Color_PageNumberBrightBackground);
                 else
-                    aPageNumberColor = Color(mpTheme->GetColor(Theme::Color_PageNumberDarkBackground));
+                    aPageNumberColor = mpTheme->GetColor(Theme::Color_PageNumberDarkBackground);
             }
         }
     }
@@ -464,6 +461,6 @@ void PageObjectPainter::PaintBorder (
     }
 }
 
-} } } // end of namespace sd::slidesorter::view
+} // end of namespace sd::slidesorter::view
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

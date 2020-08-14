@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "extended/AccessibleGridControlTableBase.hxx"
-#include <svtools/accessibletable.hxx>
-#include <tools/multisel.hxx>
+#include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <extended/AccessibleGridControlTableBase.hxx>
+#include <vcl/accessibletable.hxx>
+#include <vcl/svapp.hxx>
 #include <comphelper/sequence.hxx>
-#include <comphelper/servicehelper.hxx>
-
 
 using css::uno::Reference;
 using css::uno::Sequence;
@@ -30,8 +30,8 @@ using css::uno::Any;
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
-using namespace ::svt;
-using namespace ::svt::table;
+using namespace ::vcl;
+using namespace ::vcl::table;
 
 
 namespace accessibility {
@@ -42,10 +42,6 @@ AccessibleGridControlTableBase::AccessibleGridControlTableBase(
         IAccessibleTable& rTable,
         AccessibleTableControlObjType eObjType ) :
     GridControlAccessibleElement( rxParent, rTable, eObjType )
-{
-}
-
-AccessibleGridControlTableBase::~AccessibleGridControlTableBase()
 {
 }
 

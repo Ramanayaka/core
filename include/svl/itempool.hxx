@@ -20,14 +20,13 @@
 #ifndef INCLUDED_SVL_ITEMPOOL_HXX
 #define INCLUDED_SVL_ITEMPOOL_HXX
 
-#include <rtl/string.hxx>
 #include <svl/poolitem.hxx>
 #include <svl/svldllapi.h>
-#include <tools/solar.h>
+#include <svl/typedwhich.hxx>
 #include <memory>
 #include <vector>
+#include <o3tl/sorted_vector.hxx>
 
-class SvStream;
 class SfxBroadcaster;
 struct SfxItemPool_Impl;
 
@@ -37,8 +36,6 @@ struct SfxItemInfo
     bool            _bPoolable;
 };
 
-class SfxStyleSheetIterator;
-struct SfxPoolItemArray_Impl;
 class SfxItemPool;
 
 class SVL_DLLPUBLIC SfxItemPoolUser
@@ -60,6 +57,8 @@ protected:
 class SVL_DLLPUBLIC SfxItemPool
 {
     friend struct SfxItemPool_Impl;
+    friend class SfxItemSet;
+    friend class SfxAllItemSet;
 
     const SfxItemInfo*              pItemInfos;
     std::unique_ptr<SfxItemPool_Impl>               pImpl;
@@ -76,14 +75,13 @@ private:
 
 public:
     // for default SfxItemSet::CTOR, set default WhichRanges
-    void                            FillItemIdRanges_Impl( sal_uInt16*& pWhichRanges ) const;
+    void                            FillItemIdRanges_Impl( std::unique_ptr<sal_uInt16[]>& pWhichRanges ) const;
     const sal_uInt16*               GetFrozenIdRanges() const;
 
 protected:
     static inline void              ClearRefCount(SfxPoolItem& rItem);
-    static inline void              AddRef(const SfxPoolItem& rItem, sal_uInt32 n = 1);
+    static inline void              AddRef(const SfxPoolItem& rItem);
     static inline sal_uInt32        ReleaseRef(const SfxPoolItem& rItem, sal_uInt32 n = 1);
-    static inline void              SetKind( SfxPoolItem& rItem, SfxItemKind nRef );
 
 public:
                                     SfxItemPool( const SfxItemPool &rPool,
@@ -91,8 +89,7 @@ public:
                                     SfxItemPool( const OUString &rName,
                                                  sal_uInt16 nStart, sal_uInt16 nEnd,
                                                  const SfxItemInfo *pItemInfos,
-                                                 std::vector<SfxPoolItem*> *pDefaults = nullptr,
-                                                 bool bLoadRefCounts = true );
+                                                 std::vector<SfxPoolItem*> *pDefaults = nullptr );
 
 protected:
     virtual                         ~SfxItemPool();
@@ -103,10 +100,15 @@ public:
     SfxBroadcaster&                 BC();
 
     void                            SetPoolDefaultItem( const SfxPoolItem& );
+
     const SfxPoolItem*              GetPoolDefaultItem( sal_uInt16 nWhich ) const;
+    template<class T> const T*      GetPoolDefaultItem( TypedWhichId<T> nWhich ) const
+    { return static_cast<const T*>(GetPoolDefaultItem(sal_uInt16(nWhich))); }
+
     void                            ResetPoolDefaultItem( sal_uInt16 nWhich );
 
-    void                            SetDefaults( std::vector<SfxPoolItem*>* pDefaults );
+    void                            SetDefaults(std::vector<SfxPoolItem*>* pDefaults);
+    void                            ClearDefaults();
     void                            ReleaseDefaults( bool bDelete = false );
     static void                     ReleaseDefaults( std::vector<SfxPoolItem*> *pDefaults, bool bDelete = false );
 
@@ -142,40 +144,45 @@ public:
     virtual bool                    GetPresentation( const SfxPoolItem& rItem,
                                                      MapUnit ePresentationMetric,
                                                      OUString& rText,
-                                                     const IntlWrapper * pIntlWrapper = nullptr ) const;
+                                                     const IntlWrapper& rIntlWrapper ) const;
     virtual SfxItemPool*            Clone() const;
     const OUString&                 GetName() const;
 
-    virtual const SfxPoolItem&      Put( const SfxPoolItem&, sal_uInt16 nWhich = 0 );
+    template<class T> const T&      Put( std::unique_ptr<T> xItem, sal_uInt16 nWhich = 0 )
+    { return static_cast<const T&>(PutImpl( *xItem.release(), nWhich, /*bPassingOwnership*/true)); }
+    template<class T> const T&      Put( const T& rItem, sal_uInt16 nWhich = 0 )
+    { return static_cast<const T&>(PutImpl( rItem, nWhich, /*bPassingOwnership*/false)); }
     void                            Remove( const SfxPoolItem& );
+
     const SfxPoolItem&              GetDefaultItem( sal_uInt16 nWhich ) const;
+    template<class T> const T&      GetDefaultItem( TypedWhichId<T> nWhich ) const
+    { return static_cast<const T&>(GetDefaultItem(sal_uInt16(nWhich))); }
 
-    const SfxPoolItem*              LoadItem( SvStream &rStream,
-                                              const SfxItemPool *pRefPool );
-    bool                            StoreItem( SvStream &rStream,
-                                               const SfxPoolItem &rItem,
-                                               bool bDirect ) const;
+    bool                            CheckItemInPool(const SfxPoolItem *) const;
 
-    sal_uInt32                      GetSurrogate(const SfxPoolItem *) const;
-    const SfxPoolItem *             GetItem2(sal_uInt16 nWhich, sal_uInt32 nSurrogate) const;
+    struct Item2Range
+    {
+        o3tl::sorted_vector<SfxPoolItem*>::const_iterator m_begin;
+        o3tl::sorted_vector<SfxPoolItem*>::const_iterator m_end;
+        o3tl::sorted_vector<SfxPoolItem*>::const_iterator const & begin() const { return m_begin; }
+        o3tl::sorted_vector<SfxPoolItem*>::const_iterator const & end() const { return m_end; }
+    };
     const SfxPoolItem *             GetItem2Default(sal_uInt16 nWhich) const;
-    sal_uInt32                      GetItemCount2(sal_uInt16 nWhich) const;
-    const SfxPoolItem*              LoadSurrogate(SvStream& rStream,
-                                            sal_uInt16 &rWhich, sal_uInt16 nSlotId,
-                                            const SfxItemPool* pRefPool = nullptr );
-    bool                            StoreSurrogate(SvStream& rStream,
-                                            const SfxPoolItem *pItem ) const;
+    template<class T> const T*      GetItem2Default( TypedWhichId<T> nWhich ) const
+    { return static_cast<const T*>(GetItem2Default(sal_uInt16(nWhich))); }
 
-    SvStream &                      Load(SvStream &);
-    virtual SvStream &              Store(SvStream &) const;
-    void                            LoadCompleted();
+    sal_uInt32                      GetItemCount2(sal_uInt16 nWhich) const;
+    Item2Range                      GetItemSurrogates(sal_uInt16 nWhich) const;
+    /*
+        This is only valid for SfxPoolItem that override IsSortable and operator<.
+        Returns a range of items defined by using operator<.
+        @param rNeedle must be the same type or a supertype of the pool items for nWhich.
+    */
+    std::vector<const SfxPoolItem*> FindItemSurrogate(sal_uInt16 nWhich, SfxPoolItem const & rNeedle) const;
 
     sal_uInt16                      GetFirstWhich() const;
     sal_uInt16                      GetLastWhich() const;
     bool                            IsInRange( sal_uInt16 nWhich ) const;
-    bool                            IsInVersionsRange( sal_uInt16 nWhich ) const;
-    bool                            IsInStoringRange( sal_uInt16 nWhich ) const;
-    void                            SetStoringRange( sal_uInt16 nFrom, sal_uInt16 nTo );
     void                            SetSecondaryPool( SfxItemPool *pPool );
     SfxItemPool*                    GetSecondaryPool() const;
     SfxItemPool*                    GetMasterPool() const;
@@ -188,30 +195,22 @@ public:
                                     { return IsItemPoolable( rItem.Which() ); }
     void                            SetItemInfos( const SfxItemInfo *pInfos );
     sal_uInt16                      GetWhich( sal_uInt16 nSlot, bool bDeep = true ) const;
-    sal_uInt16                      GetSlotId( sal_uInt16 nWhich, bool bDeep = true ) const;
+    sal_uInt16                      GetSlotId( sal_uInt16 nWhich ) const;
     sal_uInt16                      GetTrueWhich( sal_uInt16 nSlot, bool bDeep = true ) const;
     sal_uInt16                      GetTrueSlotId( sal_uInt16 nWhich ) const;
-
-    void                            SetVersionMap( sal_uInt16 nVer,
-                                                   sal_uInt16 nOldStart, sal_uInt16 nOldEnd,
-                                                   const sal_uInt16 *pWhichIdTab );
-    sal_uInt16                      GetNewWhich( sal_uInt16 nOldWhich ) const;
-    void                            SetFileFormatVersion( sal_uInt16 nFileFormatVersion );
-    bool                            IsCurrentVersionLoading() const;
 
     static bool                     IsWhich(sal_uInt16 nId) {
                                         return nId && nId <= SFX_WHICH_MAX; }
     static bool                     IsSlot(sal_uInt16 nId) {
                                         return nId && nId > SFX_WHICH_MAX; }
 
-    static const SfxItemPool*       GetStoringPool();
+    void                            dumpAsXml(xmlTextWriterPtr pWriter) const;
 
-    void                            dumpAsXml(struct _xmlTextWriter* pWriter) const;
-
+protected:
+    virtual const SfxPoolItem&      PutImpl( const SfxPoolItem&, sal_uInt16 nWhich = 0, bool bPassingOwnership = false );
 private:
     const SfxItemPool&              operator=(const SfxItemPool &) = delete;
 
-    static const SfxItemPool*       pStoringPool_;
      //IDs below or equal are Which IDs, IDs above slot IDs
     static const sal_uInt16         SFX_WHICH_MAX = 4999;
 };
@@ -223,20 +222,15 @@ inline void SfxItemPool::ClearRefCount(SfxPoolItem& rItem)
 }
 
 // only the pool may manipulate the reference counts
-inline void SfxItemPool::AddRef(const SfxPoolItem& rItem, sal_uInt32 n)
+inline void SfxItemPool::AddRef(const SfxPoolItem& rItem)
 {
-    rItem.AddRef(n);
+    rItem.AddRef();
 }
 
 // only the pool may manipulate the reference counts
 inline sal_uInt32 SfxItemPool::ReleaseRef(const SfxPoolItem& rItem, sal_uInt32 n)
 {
     return rItem.ReleaseRef(n);
-}
-
-inline void SfxItemPool::SetKind( SfxPoolItem& rItem, SfxItemKind nRef )
-{
-    rItem.SetKind( nRef );
 }
 
 #endif

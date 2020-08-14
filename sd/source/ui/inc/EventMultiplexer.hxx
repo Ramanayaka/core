@@ -23,12 +23,8 @@
 #include <sal/config.h>
 
 #include <rtl/ref.hxx>
-#include <svl/lstner.hxx>
-#include <tools/link.hxx>
-#include <o3tl/typed_flags_set.hxx>
 
-#include <set>
-#include <memory>
+template <typename Arg, typename Ret> class Link;
 
 namespace sd {
 class ViewShellBase;
@@ -119,7 +115,7 @@ enum class EventMultiplexerEventId
     EditModeMaster,
 };
 
-namespace sd { namespace tools {
+namespace sd::tools {
 
 class EventMultiplexerEvent
 {
@@ -169,14 +165,14 @@ public:
     */
     void MultiplexEvent(
         EventMultiplexerEventId eEventId,
-        void* pUserData);
+        void const * pUserData);
 
 private:
     class Implementation;
     rtl::Reference<Implementation> mpImpl;
 };
 
-} } // end of namespace ::sd::tools
+} // end of namespace ::sd::tools
 
 #endif
 

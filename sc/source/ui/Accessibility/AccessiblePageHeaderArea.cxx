@@ -20,27 +20,23 @@
 #include <sal/config.h>
 
 #include <tools/gen.hxx>
-#include "AccessiblePageHeaderArea.hxx"
-#include "AccessibleText.hxx"
-#include "AccessibilityHints.hxx"
-#include "editsrc.hxx"
-#include "prevwsh.hxx"
-#include "prevloc.hxx"
-#include "scresid.hxx"
-#include "scres.hrc"
-#include "strings.hxx"
+#include <AccessiblePageHeaderArea.hxx>
+#include <AccessibleText.hxx>
+#include <editsrc.hxx>
+#include <prevwsh.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
+#include <strings.hxx>
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <editeng/editobj.hxx>
 #include <svx/AccessibleTextHelper.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <toolkit/helper/convert.hxx>
 #include <vcl/svapp.hxx>
-#include <o3tl/make_unique.hxx>
+
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
@@ -50,13 +46,10 @@ ScAccessiblePageHeaderArea::ScAccessiblePageHeaderArea(
         const uno::Reference<XAccessible>& rxParent,
         ScPreviewShell* pViewShell,
         const EditTextObject* pEditObj,
-        bool bHeader,
         SvxAdjust eAdjust)
         : ScAccessibleContextBase(rxParent, AccessibleRole::TEXT),
         mpEditObj(pEditObj->Clone()),
-        mpTextHelper(nullptr),
         mpViewShell(pViewShell),
-        mbHeader(bHeader),
         meAdjust(eAdjust)
 {
     if (mpViewShell)
@@ -81,11 +74,8 @@ void SAL_CALL ScAccessiblePageHeaderArea::disposing()
         mpViewShell->RemoveAccessibilityObject(*this);
         mpViewShell = nullptr;
     }
-    if (mpTextHelper)
-        DELETEZ(mpTextHelper);
-    if (mpEditObj)
-        DELETEZ(mpEditObj);
-
+    mpTextHelper.reset();
+    mpEditObj.reset();
     ScAccessibleContextBase::disposing();
 }
 
@@ -114,7 +104,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeaderArea::getAccessible
     uno::Reference<XAccessible> xRet;
     if (containsPoint(rPoint))
     {
-         SolarMutexGuard aGuard;
+        SolarMutexGuard aGuard;
         IsObjectValid();
 
         if(!mpTextHelper)
@@ -178,7 +168,7 @@ uno::Reference<XAccessibleStateSet> SAL_CALL
 OUString SAL_CALL
        ScAccessiblePageHeaderArea::getImplementationName()
 {
-    return OUString("ScAccessiblePageHeaderArea");
+    return "ScAccessiblePageHeaderArea";
 }
 
 uno::Sequence< OUString> SAL_CALL
@@ -202,7 +192,7 @@ uno::Sequence<sal_Int8> SAL_CALL
 }
 
 //===== internal ==============================================================
-OUString SAL_CALL ScAccessiblePageHeaderArea::createAccessibleDescription()
+OUString ScAccessiblePageHeaderArea::createAccessibleDescription()
 {
     OUString sDesc;
     switch (meAdjust)
@@ -223,7 +213,7 @@ OUString SAL_CALL ScAccessiblePageHeaderArea::createAccessibleDescription()
     return sDesc;
 }
 
-OUString SAL_CALL ScAccessiblePageHeaderArea::createAccessibleName()
+OUString ScAccessiblePageHeaderArea::createAccessibleName()
 {
     OUString sName;
     switch (meAdjust)
@@ -282,10 +272,10 @@ void ScAccessiblePageHeaderArea::CreateTextHelper()
 {
     if (!mpTextHelper)
     {
-        mpTextHelper = new ::accessibility::AccessibleTextHelper(
-            o3tl::make_unique<ScAccessibilityEditSource>(
-                o3tl::make_unique<ScAccessibleHeaderTextData>(
-                    mpViewShell, mpEditObj, mbHeader, meAdjust)));
+        mpTextHelper.reset( new ::accessibility::AccessibleTextHelper(
+            std::make_unique<ScAccessibilityEditSource>(
+                std::make_unique<ScAccessibleHeaderTextData>(
+                    mpViewShell, mpEditObj.get(), meAdjust))) );
         mpTextHelper->SetEventSource(this);
     }
 }

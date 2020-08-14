@@ -20,30 +20,31 @@
 #include <sfx2/objsh.hxx>
 #include <vcl/svapp.hxx>
 
-#include "addinlis.hxx"
-#include "miscuno.hxx"
-#include "document.hxx"
-#include "brdcst.hxx"
-#include "sc.hrc"
+#include <addinlis.hxx>
+#include <miscuno.hxx>
+#include <document.hxx>
+#include <brdcst.hxx>
+#include <sc.hrc>
+
+#include <com/sun/star/sheet/XVolatileResult.hpp>
 
 using namespace com::sun::star;
 
 SC_SIMPLE_SERVICE_INFO( ScAddInListener, "ScAddInListener", "stardiv.one.sheet.AddInListener" )
 
-::std::list<ScAddInListener*> ScAddInListener::aAllListeners;
+::std::vector<rtl::Reference<ScAddInListener>> ScAddInListener::aAllListeners;
 
 ScAddInListener* ScAddInListener::CreateListener(
                         const uno::Reference<sheet::XVolatileResult>& xVR, ScDocument* pDoc )
 {
-    ScAddInListener* pNew = new ScAddInListener( xVR, pDoc );
+    rtl::Reference<ScAddInListener> xNew = new ScAddInListener( xVR, pDoc );
 
-    pNew->acquire(); // for aAllListeners
-    aAllListeners.push_back( pNew );
+    aAllListeners.push_back( xNew );
 
     if ( xVR.is() )
-        xVR->addResultListener( pNew ); // after at least 1 ref exists!
+        xVR->addResultListener( xNew.get() ); // after at least 1 ref exists!
 
-    return pNew;
+    return xNew.get();
 }
 
 ScAddInListener::ScAddInListener( uno::Reference<sheet::XVolatileResult> const & xVR, ScDocument* pDoc ) :
@@ -62,11 +63,11 @@ ScAddInListener* ScAddInListener::Get( const uno::Reference<sheet::XVolatileResu
     ScAddInListener* pLst = nullptr;
     sheet::XVolatileResult* pComp = xVR.get();
 
-    for(::std::list<ScAddInListener*>::iterator iter = aAllListeners.begin(); iter != aAllListeners.end(); ++iter)
+    for (auto const& listener : aAllListeners)
     {
-        if ( pComp == (*iter)->xVolRes.get() )
+        if ( pComp == listener->xVolRes.get() )
         {
-            pLst = *iter;
+            pLst = listener.get();
             break;
         }
     }
@@ -76,7 +77,7 @@ ScAddInListener* ScAddInListener::Get( const uno::Reference<sheet::XVolatileResu
 //TODO: move to some container object?
 void ScAddInListener::RemoveDocument( ScDocument* pDocumentP )
 {
-    ::std::list<ScAddInListener*>::iterator iter = aAllListeners.begin();
+    auto iter = aAllListeners.begin();
     while(iter != aAllListeners.end())
     {
         ScAddInDocs* p = (*iter)->pDocs.get();
@@ -87,12 +88,7 @@ void ScAddInListener::RemoveDocument( ScDocument* pDocumentP )
             if ( p->empty() )
             {
                 if ( (*iter)->xVolRes.is() )
-                    (*iter)->xVolRes->removeResultListener( *iter );
-
-                (*iter)->release(); // Ref for aAllListeners - pLst may be deleted here
-
-                // this AddIn is no longer used
-                // don't delete, just remove the ref for the list
+                    (*iter)->xVolRes->removeResultListener( iter->get() );
 
                 iter = aAllListeners.erase( iter );
                 continue;
@@ -114,9 +110,8 @@ void SAL_CALL ScAddInListener::modified( const css::sheet::ResultEvent& aEvent )
 
     Broadcast( ScHint(SfxHintId::ScDataChanged, ScAddress()) );
 
-    for ( ScAddInDocs::iterator it = pDocs->begin(); it != pDocs->end(); ++it )
+    for (auto const& pDoc : *pDocs)
     {
-        ScDocument* pDoc = *it;
         pDoc->TrackFormulas();
         pDoc->GetDocumentShell()->Broadcast( SfxHint( SfxHintId::ScDataChanged ) );
     }
@@ -127,7 +122,7 @@ void SAL_CALL ScAddInListener::modified( const css::sheet::ResultEvent& aEvent )
 void SAL_CALL ScAddInListener::disposing( const css::lang::EventObject& /* Source */ )
 {
     // hold a ref so this is not deleted at removeResultListener
-    uno::Reference<sheet::XResultListener> xRef( this );
+    uno::Reference<sheet::XResultListener> xKeepAlive( this );
 
     if ( xVolRes.is() )
     {

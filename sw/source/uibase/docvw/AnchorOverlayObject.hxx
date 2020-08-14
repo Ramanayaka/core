@@ -28,7 +28,7 @@ class SwView;
 class SwRect;
 class Point;
 
-namespace sw { namespace sidebarwindows {
+namespace sw::sidebarwindows {
 
 enum class AnchorState
 {
@@ -37,16 +37,15 @@ enum class AnchorState
     Tri
 };
 
-class AnchorOverlayObject: public sdr::overlay::OverlayObjectWithBasePosition
+class AnchorOverlayObject final : public sdr::overlay::OverlayObjectWithBasePosition
 {
     public:
-        static AnchorOverlayObject* CreateAnchorOverlayObject( SwView& rDocView,
+        static std::unique_ptr<AnchorOverlayObject> CreateAnchorOverlayObject( SwView const & rDocView,
                                                                const SwRect& aAnchorRect,
                                                                long aPageBorder,
                                                                const Point& aLineStart,
                                                                const Point& aLineEnd,
                                                                const Color& aColorAnchor );
-        static void DestroyAnchorOverlayObject( AnchorOverlayObject* pAnchor );
 
         const basegfx::B2DPoint& GetSecondPosition() const { return maSecondPosition; }
         const basegfx::B2DPoint& GetThirdPosition() const { return maThirdPosition; }
@@ -76,7 +75,7 @@ class AnchorOverlayObject: public sdr::overlay::OverlayObjectWithBasePosition
         void SetAnchorState( const AnchorState aState );
         AnchorState GetAnchorState() const { return mAnchorState; }
 
-    protected:
+    private:
         /*                        6------------7
              1                   /
             /4\ ---------------5
@@ -97,7 +96,6 @@ class AnchorOverlayObject: public sdr::overlay::OverlayObjectWithBasePosition
         // geometry creation for OverlayObject
         virtual drawinglayer::primitive2d::Primitive2DContainer createOverlayObjectPrimitive2DSequence() override;
 
-    private:
         // object's geometry
         basegfx::B2DPolygon maTriangle;
         basegfx::B2DPolygon maLine;
@@ -114,10 +112,11 @@ class AnchorOverlayObject: public sdr::overlay::OverlayObjectWithBasePosition
                              const basegfx::B2DPoint& rSixthPos,
                              const basegfx::B2DPoint& rSeventhPos,
                              const Color& rBaseColor );
+    public:
         virtual ~AnchorOverlayObject() override;
 };
 
-} } // end of namespace sw::annotation
+} // end of namespace sw::annotation
 
 #endif
 

@@ -21,11 +21,12 @@
 #include <svl/itemiter.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/GraphicObject.hxx>
 
 #include <editeng/itemtype.hxx>
-#include <svtools/grfmgr.hxx>
+#include <editeng/eerdll.hxx>
 #include <unotools/intlwrapper.hxx>
-#include <comphelper/processfactory.hxx>
+#include <unotools/syslocale.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <fmtanchr.hxx>
 #include <fmtfsize.hxx>
@@ -50,9 +51,7 @@
 #include <grfatr.hxx>
 #include <pagedesc.hxx>
 #include <charfmt.hxx>
-#include <fmtcol.hxx>
-#include <tox.hxx>
-#include <attrdesc.hrc>
+#include <strings.hrc>
 #include <fmtftntx.hxx>
 #include <fmtfollowtextflow.hxx>
 #include <libxml/xmlwriter.h>
@@ -69,24 +68,20 @@ void SwAttrSet::GetPresentation(
 {
     rText.clear();
     OUString aStr;
-    if( Count() )
+    if( !Count() )
+        return;
+
+    SfxItemIter aIter( *this );
+    const SfxPoolItem* pItem = aIter.GetCurItem();
+    const IntlWrapper aInt(SvtSysLocale().GetUILanguageTag());
+    do
     {
-        SfxItemIter aIter( *this );
-        const IntlWrapper rInt( ::comphelper::getProcessComponentContext(),
-                                    GetAppLanguageTag() );
-        while( true )
-        {
-            aIter.GetCurItem()->GetPresentation( ePres, eCoreMetric,
-                                                 ePresMetric, aStr,
-                                                 &rInt );
-            if( rText.getLength() && aStr.getLength() )
-                rText += ", ";
-            rText += aStr;
-            if( aIter.IsAtEnd() )
-                break;
-            aIter.NextItem();
-        }
-    }
+        pItem->GetPresentation(ePres, eCoreMetric, ePresMetric, aStr, aInt);
+        if( rText.getLength() && aStr.getLength() )
+            rText += ", ";
+        rText += aStr;
+        pItem = aIter.NextItem();
+    } while (pItem);
 }
 
 bool SwFormatCharFormat::GetPresentation
@@ -95,16 +90,15 @@ bool SwFormatCharFormat::GetPresentation
     MapUnit             eCoreUnit,
     MapUnit             ePresUnit,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper& /*rIntl*/
 )   const
 {
     const SwCharFormat *pCharFormat = GetCharFormat();
     if ( pCharFormat )
     {
         OUString aStr;
-        rText = SwResId( STR_CHARFMT );
         pCharFormat->GetPresentation( ePres, eCoreUnit, ePresUnit, aStr );
-        rText = rText + "(" + aStr + ")";
+        rText = SwResId( STR_CHARFMT ) + "(" + aStr + ")";
     }
     else
         rText = SwResId( STR_NO_CHARFMT );
@@ -117,7 +111,7 @@ bool SwFormatAutoFormat::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     rText.clear(); //TODO
@@ -130,7 +124,7 @@ bool SwFormatINetFormat::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     rText = GetValue();
@@ -139,7 +133,7 @@ bool SwFormatINetFormat::GetPresentation
 
 bool SwFormatRuby::GetPresentation( SfxItemPresentation /*ePres*/,
                                     MapUnit /*eCoreMetric*/, MapUnit /*ePresMetric*/,
-                                    OUString &rText, const IntlWrapper* /*pIntl*/ ) const
+                                    OUString &rText, const IntlWrapper& /*rIntl*/ ) const
 {
     rText.clear();
     return true;
@@ -151,7 +145,7 @@ bool SwFormatDrop::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     rText.clear();
@@ -161,8 +155,7 @@ bool SwFormatDrop::GetPresentation
         {
             rText = OUString::number( GetChars() ) + " ";
         }
-        rText = rText +
-                SwResId( STR_DROP_OVER ) +
+        rText += SwResId( STR_DROP_OVER ) +
                 " " +
                 OUString::number( GetLines() ) +
                 " " +
@@ -179,11 +172,11 @@ bool SwRegisterItem::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
-    const sal_uInt16 nId = GetValue() ? STR_REGISTER_ON : STR_REGISTER_OFF;
-    rText = SwResId( nId );
+    const char* pId = GetValue() ? STR_REGISTER_ON : STR_REGISTER_OFF;
+    rText = SwResId(pId);
     return true;
 }
 
@@ -193,7 +186,7 @@ bool SwNumRuleItem::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     if( !GetValue().isEmpty() )
@@ -210,11 +203,11 @@ bool SwParaConnectBorderItem::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
-    const sal_uInt16 nId = GetValue() ? STR_CONNECT_BORDER_ON : STR_CONNECT_BORDER_OFF;
-    rText = SwResId( nId );
+    const char* pId = GetValue() ? STR_CONNECT_BORDER_ON : STR_CONNECT_BORDER_OFF;
+    rText = SwResId(pId);
     return true;
 }
 
@@ -226,34 +219,34 @@ bool SwFormatFrameSize::GetPresentation
     MapUnit             eCoreUnit,
     MapUnit             ePresUnit,
     OUString&           rText,
-    const IntlWrapper*        pIntl
+    const IntlWrapper&  rIntl
 )   const
 {
     rText = SwResId( STR_FRM_WIDTH ) + " ";
     if ( GetWidthPercent() )
     {
-        rText = rText + unicode::formatPercent(GetWidthPercent(),
+        rText += unicode::formatPercent(GetWidthPercent(),
             Application::GetSettings().GetUILanguageTag());
     }
     else
     {
-        rText = rText + ::GetMetricText( GetWidth(), eCoreUnit, ePresUnit, pIntl ) +
-            " " + ::GetSvxString( ::GetMetricId( ePresUnit ) );
+        rText += ::GetMetricText( GetWidth(), eCoreUnit, ePresUnit, &rIntl ) +
+            " " + ::EditResId( ::GetMetricId( ePresUnit ) );
     }
-    if ( ATT_VAR_SIZE != GetHeightSizeType() )
+    if ( SwFrameSize::Variable != GetHeightSizeType() )
     {
-        const sal_uInt16 nId = ATT_FIX_SIZE == m_eFrameHeightType ?
+        const char* pId = SwFrameSize::Fixed == m_eFrameHeightType ?
                                 STR_FRM_FIXEDHEIGHT : STR_FRM_MINHEIGHT;
-        rText = rText + ", " + SwResId( nId ) + " ";
+        rText += ", " + SwResId(pId) + " ";
         if ( GetHeightPercent() )
         {
-            rText = rText + unicode::formatPercent(GetHeightPercent(),
+            rText += unicode::formatPercent(GetHeightPercent(),
                 Application::GetSettings().GetUILanguageTag());
         }
         else
         {
-            rText = ::GetMetricText( GetHeight(), eCoreUnit, ePresUnit, pIntl ) +
-                    " " + ::GetSvxString( ::GetMetricId( ePresUnit ) );
+            rText = ::GetMetricText( GetHeight(), eCoreUnit, ePresUnit, &rIntl ) +
+                    " " + EditResId( ::GetMetricId( ePresUnit ) );
         }
     }
     return true;
@@ -268,11 +261,11 @@ bool SwFormatHeader::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
-    const sal_uInt16 nId = GetHeaderFormat() ? STR_HEADER : STR_NO_HEADER;
-    rText = SwResId( nId );
+    const char* pId = GetHeaderFormat() ? STR_HEADER : STR_NO_HEADER;
+    rText = SwResId(pId);
     return true;
 }
 
@@ -285,11 +278,11 @@ bool SwFormatFooter::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
-    const sal_uInt16 nId = GetFooterFormat() ? STR_FOOTER : STR_NO_FOOTER;
-    rText = SwResId( nId );
+    const char* pId = GetFooterFormat() ? STR_FOOTER : STR_NO_FOOTER;
+    rText = SwResId(pId);
     return true;
 }
 
@@ -299,38 +292,38 @@ bool SwFormatSurround::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
-    sal_uInt16 nId = 0;
-    switch ( (css::text::WrapTextMode)GetValue() )
+    const char* pId = nullptr;
+    switch ( GetValue() )
     {
         case css::text::WrapTextMode_NONE:
-            nId = STR_SURROUND_NONE;
+            pId = STR_SURROUND_NONE;
         break;
         case css::text::WrapTextMode_THROUGH:
-            nId = STR_SURROUND_THROUGH;
+            pId = STR_SURROUND_THROUGH;
         break;
         case css::text::WrapTextMode_PARALLEL:
-            nId = STR_SURROUND_PARALLEL;
+            pId = STR_SURROUND_PARALLEL;
         break;
         case css::text::WrapTextMode_DYNAMIC:
-            nId = STR_SURROUND_IDEAL;
+            pId = STR_SURROUND_IDEAL;
         break;
         case css::text::WrapTextMode_LEFT:
-            nId = STR_SURROUND_LEFT;
+            pId = STR_SURROUND_LEFT;
         break;
         case css::text::WrapTextMode_RIGHT:
-            nId = STR_SURROUND_RIGHT;
+            pId = STR_SURROUND_RIGHT;
         break;
         default:;//prevent warning
     }
-    if ( nId )
-        rText = SwResId( nId );
+    if (pId)
+        rText = SwResId(pId);
 
     if ( IsAnchorOnly() )
     {
-        rText = rText + " " + SwResId( STR_SURROUND_ANCHORONLY );
+        rText += " " + SwResId( STR_SURROUND_ANCHORONLY );
     }
     return true;
 }
@@ -343,41 +336,41 @@ bool SwFormatVertOrient::GetPresentation
     MapUnit             eCoreUnit,
     MapUnit             ePresUnit,
     OUString&           rText,
-    const IntlWrapper*        pIntl
+    const IntlWrapper&  rIntl
 )   const
 {
-    sal_uInt16 nId = 0;
+    const char* pId = nullptr;
     switch ( GetVertOrient() )
     {
         case text::VertOrientation::NONE:
         {
-            rText = rText + SwResId( STR_POS_Y ) + " " +
-                    ::GetMetricText( GetPos(), eCoreUnit, ePresUnit, pIntl ) +
-                    " " + ::GetSvxString( ::GetMetricId( ePresUnit ) );
+            rText += SwResId( STR_POS_Y ) + " " +
+                    ::GetMetricText( GetPos(), eCoreUnit, ePresUnit, &rIntl ) +
+                    " " + EditResId( ::GetMetricId( ePresUnit ) );
         }
         break;
         case text::VertOrientation::TOP:
-            nId = STR_VERT_TOP;
+            pId = STR_VERT_TOP;
             break;
         case text::VertOrientation::CENTER:
-            nId = STR_VERT_CENTER;
+            pId = STR_VERT_CENTER;
             break;
         case text::VertOrientation::BOTTOM:
-            nId = STR_VERT_BOTTOM;
+            pId = STR_VERT_BOTTOM;
             break;
         case text::VertOrientation::LINE_TOP:
-            nId = STR_LINE_TOP;
+            pId = STR_LINE_TOP;
             break;
         case text::VertOrientation::LINE_CENTER:
-            nId = STR_LINE_CENTER;
+            pId = STR_LINE_CENTER;
             break;
         case text::VertOrientation::LINE_BOTTOM:
-            nId = STR_LINE_BOTTOM;
+            pId = STR_LINE_BOTTOM;
             break;
         default:;//prevent warning
     }
-    if ( nId )
-        rText += SwResId( nId );
+    if (pId)
+        rText += SwResId(pId);
     return true;
 }
 
@@ -389,41 +382,41 @@ bool SwFormatHoriOrient::GetPresentation
     MapUnit             eCoreUnit,
     MapUnit             ePresUnit,
     OUString&           rText,
-    const IntlWrapper*        pIntl
+    const IntlWrapper&  rIntl
 )   const
 {
-    sal_uInt16 nId = 0;
+    const char* pId = nullptr;
     switch ( GetHoriOrient() )
     {
         case text::HoriOrientation::NONE:
         {
-            rText = rText + SwResId( STR_POS_X ) + " " +
-                    ::GetMetricText( GetPos(), eCoreUnit, ePresUnit, pIntl ) +
-                    " " + ::GetSvxString( ::GetMetricId( ePresUnit ) );
+            rText += SwResId( STR_POS_X ) + " " +
+                    ::GetMetricText( GetPos(), eCoreUnit, ePresUnit, &rIntl ) +
+                    " " + EditResId( ::GetMetricId( ePresUnit ) );
         }
         break;
         case text::HoriOrientation::RIGHT:
-            nId = STR_HORI_RIGHT;
+            pId = STR_HORI_RIGHT;
         break;
         case text::HoriOrientation::CENTER:
-            nId = STR_HORI_CENTER;
+            pId = STR_HORI_CENTER;
         break;
         case text::HoriOrientation::LEFT:
-            nId = STR_HORI_LEFT;
+            pId = STR_HORI_LEFT;
         break;
         case text::HoriOrientation::INSIDE:
-            nId = STR_HORI_INSIDE;
+            pId = STR_HORI_INSIDE;
         break;
         case text::HoriOrientation::OUTSIDE:
-            nId = STR_HORI_OUTSIDE;
+            pId = STR_HORI_OUTSIDE;
         break;
         case text::HoriOrientation::FULL:
-            nId = STR_HORI_FULL;
+            pId = STR_HORI_FULL;
         break;
         default:;//prevent warning
     }
-    if ( nId )
-        rText += SwResId( nId );
+    if (pId)
+        rText += SwResId(pId);
     return true;
 }
 
@@ -435,25 +428,25 @@ bool SwFormatAnchor::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
-    sal_uInt16 nId = 0;
+    const char* pId = nullptr;
     switch ( GetAnchorId() )
     {
         case RndStdIds::FLY_AT_PARA:
-            nId = STR_FLY_AT_PARA;
+            pId = STR_FLY_AT_PARA;
             break;
         case RndStdIds::FLY_AS_CHAR:
-            nId = STR_FLY_AS_CHAR;
+            pId = STR_FLY_AS_CHAR;
             break;
         case RndStdIds::FLY_AT_PAGE:
-            nId = STR_FLY_AT_PAGE;
+            pId = STR_FLY_AT_PAGE;
             break;
         default:;//prevent warning
     }
-    if ( nId )
-        rText += SwResId( nId );
+    if (pId)
+        rText += SwResId(pId);
     return true;
 }
 
@@ -463,7 +456,7 @@ bool SwFormatPageDesc::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     const SwPageDesc *pPageDesc = GetPageDesc();
@@ -482,7 +475,7 @@ bool SwFormatCol::GetPresentation
     MapUnit             eCoreUnit,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        pIntl
+    const IntlWrapper&  rIntl
 )   const
 {
     sal_uInt16 nCnt = GetNumCols();
@@ -492,9 +485,9 @@ bool SwFormatCol::GetPresentation
         if ( COLADJ_NONE != GetLineAdj() )
         {
             const long nWdth = static_cast<long>(GetLineWidth());
-            rText = rText + " " + SwResId( STR_LINE_WIDTH ) + " " +
+            rText += " " + SwResId( STR_LINE_WIDTH ) + " " +
                     ::GetMetricText( nWdth, eCoreUnit,
-                                      MapUnit::MapPoint, pIntl );
+                                      MapUnit::MapPoint, &rIntl );
         }
     }
     else
@@ -510,23 +503,23 @@ bool SwFormatURL::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     rText.clear();
-    if ( pMap )
+    if ( m_pMap )
         rText += "Client-Map";
-    if ( !sURL.isEmpty() )
+    if ( !m_sURL.isEmpty() )
     {
-        if ( pMap )
+        if ( m_pMap )
             rText += " - ";
-        rText = rText + "URL: " + sURL;
-        if ( bIsServerMap )
+        rText += "URL: " + m_sURL;
+        if ( m_bIsServerMap )
             rText += " (Server-Map)";
     }
-    if ( !sTargetFrameName.isEmpty() )
+    if ( !m_sTargetFrameName.isEmpty() )
     {
-        rText = rText + ", Target: " + sTargetFrameName;
+        rText += ", Target: " + m_sTargetFrameName;
     }
     return true;
 }
@@ -537,7 +530,7 @@ bool SwFormatEditInReadonly::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     rText.clear();
@@ -560,7 +553,7 @@ bool SwFormatLayoutSplit::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     if ( GetValue() )
@@ -574,7 +567,7 @@ bool SwFormatRowSplit::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           /*rText*/,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     return false;
@@ -586,7 +579,7 @@ bool SwFormatFootnoteEndAtTextEnd::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           /*rText*/,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     return true;
@@ -598,7 +591,7 @@ bool SwFormatChain::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     if ( GetPrev() || GetNext() )
@@ -622,7 +615,7 @@ bool SwFormatLineNumber::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*    /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     if ( IsCount() )
@@ -631,7 +624,7 @@ bool SwFormatLineNumber::GetPresentation
         rText += SwResId(STR_DONTLINECOUNT);
     if ( GetStartValue() )
     {
-        rText = rText + " " + SwResId(STR_LINCOUNT_START) +
+        rText += " " + SwResId(STR_LINCOUNT_START) +
                 OUString::number( GetStartValue() );
     }
     return true;
@@ -643,25 +636,25 @@ bool SwTextGridItem::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper*  /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
-    sal_uInt16 nId = 0;
+    const char* pId = nullptr;
 
     switch ( GetGridType() )
     {
     case GRID_NONE :
-        nId = STR_GRID_NONE;
+        pId = STR_GRID_NONE;
         break;
     case GRID_LINES_ONLY :
-        nId = STR_GRID_LINES_ONLY;
+        pId = STR_GRID_LINES_ONLY;
         break;
     case GRID_LINES_CHARS :
-        nId = STR_GRID_LINES_CHARS;
+        pId = STR_GRID_LINES_CHARS;
         break;
     }
-    if ( nId )
-        rText += SwResId( nId );
+    if (pId)
+        rText += SwResId(pId);
     return true;
 }
 
@@ -671,7 +664,7 @@ bool SwHeaderAndFooterEatSpacingItem::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           /*rText*/,
-    const IntlWrapper*        /*pIntl*/
+    const IntlWrapper&  /*rIntl*/
 )   const
 {
     return false;
@@ -681,21 +674,21 @@ bool SwHeaderAndFooterEatSpacingItem::GetPresentation
 
 bool SwMirrorGrf::GetPresentation(
     SfxItemPresentation /*ePres*/, MapUnit /*eCoreUnit*/, MapUnit /*ePresUnit*/,
-    OUString& rText, const IntlWrapper* /*pIntl*/ ) const
+    OUString& rText, const IntlWrapper& /*rIntl*/ ) const
 {
-    sal_uInt16 nId;
+    const char* pId;
     switch( GetValue() )
     {
-    case MirrorGraph::Dont:     nId = STR_NO_MIRROR;    break;
-    case MirrorGraph::Vertical: nId = STR_VERT_MIRROR;  break;
-    case MirrorGraph::Horizontal:  nId = STR_HORI_MIRROR;  break;
-    case MirrorGraph::Both: nId = STR_BOTH_MIRROR;  break;
-    default:                    nId = 0;    break;
+    case MirrorGraph::Dont:     pId = STR_NO_MIRROR;    break;
+    case MirrorGraph::Vertical: pId = STR_VERT_MIRROR;  break;
+    case MirrorGraph::Horizontal:  pId = STR_HORI_MIRROR;  break;
+    case MirrorGraph::Both:     pId = STR_BOTH_MIRROR;  break;
+    default:                    pId = nullptr;    break;
     }
-    if ( nId )
+    if (pId)
     {
-        rText = SwResId( nId );
-        if (bGrfToggle)
+        rText = SwResId(pId);
+        if (m_bGrfToggle)
             rText += SwResId( STR_MIRROR_TOGGLE );
     }
     return true;
@@ -703,71 +696,71 @@ bool SwMirrorGrf::GetPresentation(
 
 bool SwRotationGrf::GetPresentation(
     SfxItemPresentation ePres, MapUnit /*eCoreUnit*/, MapUnit /*ePresUnit*/,
-    OUString &rText, const IntlWrapper* /*pIntl*/) const
+    OUString &rText, const IntlWrapper& /*rIntl*/) const
 {
     if( SfxItemPresentation::Complete == ePres )
         rText = SwResId( STR_ROTATION );
     else if( rText.getLength() )
         rText.clear();
-    rText = rText + OUString::number( GetValue() ) + "\xB0";
+    rText += OUString::number( GetValue() ) + "\xB0";
     return true;
 }
 
 bool SwLuminanceGrf::GetPresentation(
     SfxItemPresentation ePres, MapUnit /*eCoreUnit*/, MapUnit /*ePresUnit*/,
-    OUString &rText, const IntlWrapper* /*pIntl*/) const
+    OUString &rText, const IntlWrapper& /*rIntl*/) const
 {
     if( SfxItemPresentation::Complete == ePres )
         rText = SwResId( STR_LUMINANCE );
     else if( rText.getLength() )
         rText.clear();
-    rText = rText + unicode::formatPercent(GetValue(),
-        Application::GetSettings().GetUILanguageTag());
+    rText += unicode::formatPercent(GetValue(),
+                Application::GetSettings().GetUILanguageTag());
     return true;
 }
 
 bool SwContrastGrf::GetPresentation(
     SfxItemPresentation ePres, MapUnit /*eCoreUnit*/, MapUnit /*ePresUnit*/,
-    OUString &rText, const IntlWrapper* /*pIntl*/) const
+    OUString &rText, const IntlWrapper& /*rIntl*/) const
 {
     if( SfxItemPresentation::Complete == ePres )
         rText = SwResId( STR_CONTRAST );
     else if( rText.getLength() )
         rText.clear();
-    rText = rText + unicode::formatPercent(GetValue(),
-        Application::GetSettings().GetUILanguageTag());
+    rText += unicode::formatPercent(GetValue(),
+                Application::GetSettings().GetUILanguageTag());
     return true;
 }
 
 bool SwChannelGrf::GetPresentation(
     SfxItemPresentation ePres, MapUnit /*eCoreUnit*/, MapUnit /*ePresUnit*/,
-    OUString &rText, const IntlWrapper* /*pIntl*/) const
+    OUString &rText, const IntlWrapper& /*rIntl*/) const
 {
     if( SfxItemPresentation::Complete == ePres )
     {
-        sal_uInt16 nId;
+        const char* pId;
         switch ( Which() )
         {
-        case RES_GRFATR_CHANNELR:   nId = STR_CHANNELR; break;
-        case RES_GRFATR_CHANNELG:   nId = STR_CHANNELG; break;
-        case RES_GRFATR_CHANNELB:   nId = STR_CHANNELB; break;
-        default:                    nId = 0; break;
+        case RES_GRFATR_CHANNELR:   pId = STR_CHANNELR; break;
+        case RES_GRFATR_CHANNELG:   pId = STR_CHANNELG; break;
+        case RES_GRFATR_CHANNELB:   pId = STR_CHANNELB; break;
+        default:                    pId = nullptr; break;
         }
-        if( nId )
-            rText = SwResId( nId );
+        if (pId)
+            rText = SwResId(pId);
         else if( rText.getLength() )
             rText.clear();
     }
     else if( rText.getLength() )
         rText.clear();
-    rText = rText + unicode::formatPercent(GetValue(),
-        Application::GetSettings().GetUILanguageTag());
+    rText += unicode::formatPercent(GetValue(),
+                Application::GetSettings().GetUILanguageTag());
     return true;
 }
 
 bool SwGammaGrf::GetPresentation(
     SfxItemPresentation ePres, MapUnit /*eCoreUnit*/, MapUnit /*ePresUnit*/,
-    OUString &rText, const IntlWrapper* /*pIntl*/) const
+    OUString &rText, const IntlWrapper& /*rIntl*/) const
 {
     OUStringBuffer aText;
     if( SfxItemPresentation::Complete == ePres )
@@ -780,47 +773,47 @@ bool SwGammaGrf::GetPresentation(
 
 bool SwInvertGrf::GetPresentation(
     SfxItemPresentation ePres, MapUnit /*eCoreUnit*/, MapUnit /*ePresUnit*/,
-    OUString &rText, const IntlWrapper* /*pIntl*/) const
+    OUString &rText, const IntlWrapper& /*rIntl*/) const
 {
     rText.clear();
     if( SfxItemPresentation::Complete == ePres )
     {
-        const sal_uInt16 nId = GetValue() ? STR_INVERT : STR_INVERT_NOT;
-        rText = SwResId( nId );
+        const char* pId = GetValue() ? STR_INVERT : STR_INVERT_NOT;
+        rText = SwResId(pId);
     }
     return true;
 }
 
 bool SwTransparencyGrf::GetPresentation(
     SfxItemPresentation ePres, MapUnit /*eCoreUnit*/, MapUnit /*ePresUnit*/,
-    OUString &rText, const IntlWrapper* /*pIntl*/) const
+    OUString &rText, const IntlWrapper& /*rIntl*/) const
 {
     if( SfxItemPresentation::Complete == ePres )
         rText = SwResId( STR_TRANSPARENCY );
     else if( rText.getLength() )
         rText.clear();
-    rText = rText + unicode::formatPercent(GetValue(),
+    rText += unicode::formatPercent(GetValue(),
         Application::GetSettings().GetUILanguageTag());
     return true;
 }
 
 bool SwDrawModeGrf::GetPresentation(
     SfxItemPresentation ePres, MapUnit /*eCoreUnit*/, MapUnit /*ePresUnit*/,
-    OUString &rText, const IntlWrapper* /*pIntl*/) const
+    OUString &rText, const IntlWrapper& /*rIntl*/) const
 {
     rText.clear();
     if( SfxItemPresentation::Complete == ePres )
     {
-        sal_uInt16 nId;
+        const char* pId;
         switch ( GetValue() )
         {
 
-        case GraphicDrawMode::Greys:     nId = STR_DRAWMODE_GREY; break;
-        case GraphicDrawMode::Mono:      nId = STR_DRAWMODE_BLACKWHITE; break;
-        case GraphicDrawMode::Watermark: nId = STR_DRAWMODE_WATERMARK; break;
-        default:                        nId = STR_DRAWMODE_STD; break;
+        case GraphicDrawMode::Greys:     pId = STR_DRAWMODE_GREY; break;
+        case GraphicDrawMode::Mono:      pId = STR_DRAWMODE_BLACKWHITE; break;
+        case GraphicDrawMode::Watermark: pId = STR_DRAWMODE_WATERMARK; break;
+        default:                         pId = STR_DRAWMODE_STD; break;
         }
-        rText = SwResId( STR_DRAWMODE ) + SwResId( nId );
+        rText = SwResId( STR_DRAWMODE ) + SwResId(pId);
     }
     return true;
 }
@@ -829,13 +822,13 @@ bool SwFormatFollowTextFlow::GetPresentation( SfxItemPresentation ePres,
                                               MapUnit /*eCoreMetric*/,
                                               MapUnit /*ePresMetric*/,
                                               OUString &rText,
-                                              const IntlWrapper*    /*pIntl*/ ) const
+                                              const IntlWrapper& /*rIntl*/ ) const
 {
     rText.clear();
     if( SfxItemPresentation::Complete == ePres )
     {
-        const sal_uInt16 nId = GetValue() ? STR_FOLLOW_TEXT_FLOW : STR_DONT_FOLLOW_TEXT_FLOW;
-        rText = SwResId( nId );
+        const char* pId = GetValue() ? STR_FOLLOW_TEXT_FLOW : STR_DONT_FOLLOW_TEXT_FLOW;
+        rText = SwResId(pId);
     }
     return true;
 }

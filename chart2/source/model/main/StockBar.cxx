@@ -17,19 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "StockBar.hxx"
-#include "LinePropertiesHelper.hxx"
-#include "FillProperties.hxx"
-#include "UserDefinedProperties.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include "ModifyListenerHelper.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/style/XStyle.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <StockBar.hxx>
+#include <LinePropertiesHelper.hxx>
+#include <FillProperties.hxx>
+#include <UserDefinedProperties.hxx>
+#include <PropertyHelper.hxx>
+#include <ModifyListenerHelper.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
+
+namespace com::sun::star::beans { class XPropertySetInfo; }
 
 using namespace ::com::sun::star;
 
@@ -111,10 +110,9 @@ namespace chart
 
 StockBar::StockBar( bool bRisingCourse ) :
         ::property::OPropertySet( m_aMutex ),
-    m_bRisingCourse( bRisingCourse ),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
 {
-    if( ! m_bRisingCourse )
+    if( ! bRisingCourse )
     {
         setFastPropertyValue_NoBroadcast(
             ::chart::FillProperties::PROP_FILL_COLOR,
@@ -126,10 +124,8 @@ StockBar::StockBar( bool bRisingCourse ) :
 }
 
 StockBar::StockBar( const StockBar & rOther ) :
-        MutexContainer(),
-        impl::StockBar_Base(),
+        impl::StockBar_Base(rOther),
         ::property::OPropertySet( rOther, m_aMutex ),
-    m_bRisingCourse( rOther.m_bRisingCourse ),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
 {}
 
@@ -171,9 +167,9 @@ void SAL_CALL StockBar::addModifyListener( const uno::Reference< util::XModifyLi
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -184,9 +180,9 @@ void SAL_CALL StockBar::removeModifyListener( const uno::Reference< util::XModif
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 

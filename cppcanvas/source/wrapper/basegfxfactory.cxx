@@ -18,24 +18,14 @@
  */
 
 
-#include <rtl/instance.hxx>
-#include <osl/getglobalmutex.hxx>
 #include <osl/diagnose.h>
 
-#include <com/sun/star/rendering/InterpolationMode.hpp>
-
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 
 #include <cppcanvas/basegfxfactory.hxx>
 
-#include <com/sun/star/rendering/RenderState.hpp>
-#include <com/sun/star/rendering/StringContext.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
-#include <com/sun/star/rendering/XCanvasFont.hpp>
-
-#include <canvasgraphichelper.hxx>
 
 #include "implpolypolygon.hxx"
 #include "implbitmap.hxx"
@@ -47,62 +37,56 @@ namespace cppcanvas
     PolyPolygonSharedPtr BaseGfxFactory::createPolyPolygon( const CanvasSharedPtr&          rCanvas,
                                                             const ::basegfx::B2DPolygon&    rPoly )
     {
-        OSL_ENSURE( rCanvas.get() != nullptr &&
-                    rCanvas->getUNOCanvas().is(),
+        OSL_ENSURE( rCanvas &&  rCanvas->getUNOCanvas().is(),
                     "BaseGfxFactory::createPolyPolygon(): Invalid canvas" );
 
-        if( rCanvas.get() == nullptr )
+        if( !rCanvas )
             return PolyPolygonSharedPtr();
 
         uno::Reference< rendering::XCanvas > xCanvas( rCanvas->getUNOCanvas() );
         if( !xCanvas.is() )
             return PolyPolygonSharedPtr();
 
-        return PolyPolygonSharedPtr(
-            new internal::ImplPolyPolygon( rCanvas,
+        return std::make_shared<internal::ImplPolyPolygon>( rCanvas,
                                            ::basegfx::unotools::xPolyPolygonFromB2DPolygon(
                                                xCanvas->getDevice(),
-                                               rPoly) ) );
+                                               rPoly) );
     }
 
     BitmapSharedPtr BaseGfxFactory::createBitmap( const CanvasSharedPtr&    rCanvas,
                                                   const ::basegfx::B2ISize& rSize )
     {
-        OSL_ENSURE( rCanvas.get() != nullptr &&
-                    rCanvas->getUNOCanvas().is(),
+        OSL_ENSURE( rCanvas && rCanvas->getUNOCanvas().is(),
                     "BaseGfxFactory::createBitmap(): Invalid canvas" );
 
-        if( rCanvas.get() == nullptr )
+        if( !rCanvas )
             return BitmapSharedPtr();
 
         uno::Reference< rendering::XCanvas > xCanvas( rCanvas->getUNOCanvas() );
         if( !xCanvas.is() )
             return BitmapSharedPtr();
 
-        return BitmapSharedPtr(
-            new internal::ImplBitmap( rCanvas,
+        return std::make_shared<internal::ImplBitmap>( rCanvas,
                                       xCanvas->getDevice()->createCompatibleBitmap(
-                                          ::basegfx::unotools::integerSize2DFromB2ISize(rSize) ) ) );
+                                          ::basegfx::unotools::integerSize2DFromB2ISize(rSize) ) );
     }
 
     BitmapSharedPtr BaseGfxFactory::createAlphaBitmap( const CanvasSharedPtr&   rCanvas,
                                                        const ::basegfx::B2ISize& rSize )
     {
-        OSL_ENSURE( rCanvas.get() != nullptr &&
-                    rCanvas->getUNOCanvas().is(),
+        OSL_ENSURE( rCanvas && rCanvas->getUNOCanvas().is(),
                     "BaseGfxFactory::createBitmap(): Invalid canvas" );
 
-        if( rCanvas.get() == nullptr )
+        if( !rCanvas )
             return BitmapSharedPtr();
 
         uno::Reference< rendering::XCanvas > xCanvas( rCanvas->getUNOCanvas() );
         if( !xCanvas.is() )
             return BitmapSharedPtr();
 
-        return BitmapSharedPtr(
-            new internal::ImplBitmap( rCanvas,
+        return std::make_shared<internal::ImplBitmap>( rCanvas,
                                       xCanvas->getDevice()->createCompatibleAlphaBitmap(
-                                          ::basegfx::unotools::integerSize2DFromB2ISize(rSize) ) ) );
+                                          ::basegfx::unotools::integerSize2DFromB2ISize(rSize) ) );
     }
 
 }

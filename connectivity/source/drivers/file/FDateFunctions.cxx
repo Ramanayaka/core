@@ -18,10 +18,11 @@
  */
 
 
-#include "file/FDateFunctions.hxx"
+#include <file/FDateFunctions.hxx>
 #include <tools/date.hxx>
 #include <tools/time.hxx>
 #include <tools/datetime.hxx>
+#include <osl/diagnose.h>
 
 using namespace connectivity;
 using namespace connectivity::file;
@@ -218,7 +219,7 @@ ORowSetValue OOp_Year::operate(const ORowSetValue& lhs) const
         return lhs;
 
     css::util::Date aD = lhs;
-    return static_cast<sal_Int16>(aD.Year);
+    return aD.Year;
 }
 
 ORowSetValue OOp_Hour::operate(const ORowSetValue& lhs) const

@@ -22,36 +22,35 @@
 #include <memory>
 #include <utility>
 
-#include "AccessibleEditObject.hxx"
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
-#include "AccessibleText.hxx"
-#include "editsrc.hxx"
-#include "scmod.hxx"
-#include "inputhdl.hxx"
+#include <AccessibleEditObject.hxx>
+#include <AccessibleText.hxx>
+#include <editsrc.hxx>
+#include <scmod.hxx>
+#include <inputhdl.hxx>
 
 #include <unotools/accessiblestatesethelper.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
-#include <comphelper/servicehelper.hxx>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <svx/AccessibleTextHelper.hxx>
 #include <editeng/editview.hxx>
 #include <editeng/editeng.hxx>
 #include <svx/svdmodel.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/window.hxx>
 #include <sfx2/objsh.hxx>
+#include <cppuhelper/queryinterface.hxx>
 
-#include "unonames.hxx"
-#include "document.hxx"
-#include "AccessibleDocument.hxx"
+#include <unonames.hxx>
+#include <document.hxx>
+#include <AccessibleDocument.hxx>
 #include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <unotools/accessiblerelationsethelper.hxx>
 #include <com/sun/star/accessibility/XAccessibleText.hpp>
-#include <o3tl/make_unique.hxx>
+
 using ::com::sun::star::lang::IndexOutOfBoundsException;
-using ::com::sun::star::uno::RuntimeException;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
@@ -61,14 +60,35 @@ ScAccessibleEditObject::ScAccessibleEditObject(
         const uno::Reference<XAccessible>& rxParent,
         EditView* pEditView, vcl::Window* pWin, const OUString& rName,
         const OUString& rDescription, EditObjectType eObjectType)
-    :
-    ScAccessibleContextBase(rxParent, AccessibleRole::TEXT_FRAME),
-    mpTextHelper(nullptr),
-    mpEditView(pEditView),
-    mpWindow(pWin),
-    meObjectType(eObjectType),
-    mbHasFocus(false)
+    : ScAccessibleContextBase(rxParent, AccessibleRole::TEXT_FRAME)
+    , mpEditView(pEditView)
+    , mpWindow(pWin)
+    , meObjectType(eObjectType)
+    , mbHasFocus(false)
+    , m_pScDoc(nullptr)
 {
+    InitAcc(rxParent, pEditView, pWin, rName, rDescription);
+}
+
+ScAccessibleEditObject::ScAccessibleEditObject(EditObjectType eObjectType)
+    : ScAccessibleContextBase(nullptr, AccessibleRole::TEXT_FRAME)
+    , mpEditView(nullptr)
+    , mpWindow(nullptr)
+    , meObjectType(eObjectType)
+    , mbHasFocus(false)
+    , m_pScDoc(nullptr)
+{
+}
+
+void ScAccessibleEditObject::InitAcc(
+        const uno::Reference<XAccessible>& rxParent,
+        EditView* pEditView, vcl::Window* pWin, const OUString& rName,
+        const OUString& rDescription)
+{
+    SetParent(rxParent);
+    mpEditView = pEditView;
+    mpWindow = pWin;
+
     CreateTextHelper();
     SetName(rName);
     SetDescription(rDescription);
@@ -80,13 +100,7 @@ ScAccessibleEditObject::ScAccessibleEditObject(
             m_pScDoc = pAccDoc->GetDocument();
             m_curCellAddress =pAccDoc->GetCurCellAddress();
         }
-        else
-        {
-            m_pScDoc=nullptr;
-        }
     }
-    else
-        m_pScDoc=nullptr;
 }
 
 ScAccessibleEditObject::~ScAccessibleEditObject()
@@ -156,7 +170,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessibleEditObject::getAccessibleAtPo
     uno::Reference<XAccessible> xRet;
     if (containsPoint(rPoint))
     {
-         SolarMutexGuard aGuard;
+        SolarMutexGuard aGuard;
         IsObjectValid();
 
         CreateTextHelper();
@@ -273,14 +287,14 @@ uno::Reference<XAccessibleStateSet> SAL_CALL
     return pStateSet;
 }
 
-OUString SAL_CALL
+OUString
     ScAccessibleEditObject::createAccessibleDescription()
 {
 //    OSL_FAIL("Should never be called, because is set in the constructor.")
     return OUString();
 }
 
-OUString SAL_CALL
+OUString
     ScAccessibleEditObject::createAccessibleName()
 {
     OSL_FAIL("Should never be called, because is set in the constructor.");
@@ -313,7 +327,7 @@ void SAL_CALL
 
 OUString SAL_CALL ScAccessibleEditObject::getImplementationName()
 {
-    return OUString("ScAccessibleEditObject");
+    return "ScAccessibleEditObject";
 }
 
 //=====  XTypeProvider  =======================================================
@@ -333,47 +347,52 @@ bool ScAccessibleEditObject::IsDefunc(
          (rxParentStates.is() && rxParentStates->contains(AccessibleStateType::DEFUNC));
 }
 
+OutputDevice* ScAccessibleEditObject::GetOutputDeviceForView()
+{
+    return mpWindow;
+}
+
 void ScAccessibleEditObject::CreateTextHelper()
 {
-    if (!mpTextHelper)
+    if (mpTextHelper)
+        return;
+
+    ::std::unique_ptr < ScAccessibleTextData > pAccessibleTextData;
+    if (meObjectType == CellInEditMode || meObjectType == EditControl)
     {
-        ::std::unique_ptr < ScAccessibleTextData > pAccessibleTextData;
-        if (meObjectType == CellInEditMode || meObjectType == EditControl)
-        {
-            pAccessibleTextData.reset
-                (new ScAccessibleEditObjectTextData(mpEditView, mpWindow));
-        }
-        else
-        {
-            pAccessibleTextData.reset
-                (new ScAccessibleEditLineTextData(nullptr, mpWindow));
-        }
+        pAccessibleTextData.reset
+            (new ScAccessibleEditObjectTextData(mpEditView, GetOutputDeviceForView()));
+    }
+    else
+    {
+        pAccessibleTextData.reset
+            (new ScAccessibleEditLineTextData(nullptr, GetOutputDeviceForView()));
+    }
 
-        std::unique_ptr<ScAccessibilityEditSource> pEditSrc =
-            o3tl::make_unique<ScAccessibilityEditSource>(std::move(pAccessibleTextData));
+    std::unique_ptr<ScAccessibilityEditSource> pEditSrc =
+        std::make_unique<ScAccessibilityEditSource>(std::move(pAccessibleTextData));
 
-        mpTextHelper = o3tl::make_unique<::accessibility::AccessibleTextHelper>(std::move(pEditSrc));
-        mpTextHelper->SetEventSource(this);
+    mpTextHelper = std::make_unique<::accessibility::AccessibleTextHelper>(std::move(pEditSrc));
+    mpTextHelper->SetEventSource(this);
 
-        const ScInputHandler* pInputHdl = SC_MOD()->GetInputHdl();
-        if ( pInputHdl && pInputHdl->IsEditMode() )
-        {
-            mpTextHelper->SetFocus();
-        }
-        else
-        {
-            mpTextHelper->SetFocus(mbHasFocus);
-        }
+    const ScInputHandler* pInputHdl = SC_MOD()->GetInputHdl();
+    if ( pInputHdl && pInputHdl->IsEditMode() )
+    {
+        mpTextHelper->SetFocus();
+    }
+    else
+    {
+        mpTextHelper->SetFocus(mbHasFocus);
+    }
 
-        // #i54814# activate cell in edit mode
-        if( meObjectType == CellInEditMode )
+    // #i54814# activate cell in edit mode
+    if( meObjectType == CellInEditMode )
+    {
+        // do not activate cell object, if top edit line is active
+        if( pInputHdl && !pInputHdl->IsTopMode() )
         {
-            // do not activate cell object, if top edit line is active
-            if( pInputHdl && !pInputHdl->IsTopMode() )
-            {
-                SdrHint aHint( SdrHintKind::BeginEdit );
-                mpTextHelper->GetEditSource().GetBroadcaster().Broadcast( aHint );
-            }
+            SdrHint aHint( SdrHintKind::BeginEdit );
+            mpTextHelper->GetEditSource().GetBroadcaster().Broadcast( aHint );
         }
     }
 }
@@ -512,6 +531,64 @@ uno::Reference< XAccessibleRelationSet > ScAccessibleEditObject::getAccessibleRe
         return rSet;
     }
     return uno::Reference< XAccessibleRelationSet >();
+}
+
+tools::Rectangle ScAccessibleEditControlObject::GetBoundingBoxOnScreen() const
+{
+    tools::Rectangle aScreenBounds;
+
+    if (m_pController && m_pController->GetDrawingArea())
+    {
+        aScreenBounds = tools::Rectangle(m_pController->GetDrawingArea()->get_accessible_location(),
+                                         m_pController->GetOutputSizePixel());
+    }
+
+    return aScreenBounds;
+}
+
+tools::Rectangle ScAccessibleEditControlObject::GetBoundingBox() const
+{
+    tools::Rectangle aBounds( GetBoundingBoxOnScreen() );
+
+    uno::Reference< XAccessibleContext > xContext(const_cast<ScAccessibleEditControlObject*>(this)->getAccessibleContext());
+    if ( xContext.is() )
+    {
+        uno::Reference< XAccessible > xParent( xContext->getAccessibleParent() );
+        if ( xParent.is() )
+        {
+            uno::Reference< XAccessibleComponent > xParentComponent( xParent->getAccessibleContext(), uno::UNO_QUERY );
+            if ( xParentComponent.is() )
+            {
+                Point aScreenLoc = aBounds.TopLeft();
+                awt::Point aParentScreenLoc = xParentComponent->getLocationOnScreen();
+                Point aPos( aScreenLoc.getX() - aParentScreenLoc.X, aScreenLoc.getY() - aParentScreenLoc.Y );
+                aBounds.SetPos( aPos );
+            }
+        }
+    }
+
+    return aBounds;
+}
+
+void SAL_CALL ScAccessibleEditControlObject::disposing()
+{
+    ScAccessibleEditObject::disposing();
+    m_pController = nullptr;
+}
+
+uno::Reference< XAccessibleRelationSet > ScAccessibleEditControlObject::getAccessibleRelationSet()
+{
+    SolarMutexGuard aGuard;
+    if (!m_pController || !m_pController->GetDrawingArea())
+        return uno::Reference< XAccessibleRelationSet >();
+    return m_pController->GetDrawingArea()->get_accessible_relation_set();
+}
+
+OutputDevice* ScAccessibleEditControlObject::GetOutputDeviceForView()
+{
+    if (!m_pController || !m_pController->GetDrawingArea())
+        return nullptr;
+    return &m_pController->GetDrawingArea()->get_ref_device();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

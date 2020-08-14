@@ -7,113 +7,101 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "searchresults.hxx"
-
-#include <svtools/simptabl.hxx>
-#include <svtools/treelistentry.hxx>
+#include <searchresults.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
-#include "dociter.hxx"
-#include "document.hxx"
-#include "rangeutl.hxx"
-#include "tabvwsh.hxx"
-#include <scres.hrc>
-#include "scresid.hxx"
+#include <sfx2/viewfrm.hxx>
+#include <svx/srchdlg.hxx>
+#include <dociter.hxx>
+#include <document.hxx>
+#include <tabvwsh.hxx>
+#include <strings.hrc>
+#include <sc.hrc>
+#include <scresid.hxx>
 
 namespace sc {
 
-SearchResultsDlg::SearchResultsDlg( SfxBindings* _pBindings, vcl::Window* pParent ) :
-    ModelessDialog(pParent, "SearchResultsDialog", "modules/scalc/ui/searchresults.ui"),
-    mpBindings(_pBindings), mpDoc(nullptr)
+SearchResultsDlg::SearchResultsDlg(SfxBindings* _pBindings, weld::Window* pParent)
+    : SfxDialogController(pParent, "modules/scalc/ui/searchresults.ui", "SearchResultsDialog")
+    , aSkipped(ScResId(SCSTR_SKIPPED))
+    , mpBindings(_pBindings)
+    , mpDoc(nullptr)
+    , mbSorted(false)
+    , mxList(m_xBuilder->weld_tree_view("results"))
+    , mxSearchResults(m_xBuilder->weld_label("lbSearchResults"))
+    , mxShowDialog(m_xBuilder->weld_check_button("cbShow"))
 {
-    get(mpLabel, "skipped");
-
-    SvSimpleTableContainer *pContainer = get<SvSimpleTableContainer>("results");
-    Size aControlSize(150, 120);
-    aControlSize = pContainer->LogicToPixel(aControlSize, MapUnit::MapAppFont);
-    pContainer->set_width_request(aControlSize.Width());
-    pContainer->set_height_request(aControlSize.Height());
-
-    mpList = VclPtr<SvSimpleTable>::Create(*pContainer);
-    long nTabs[] = {3, 0, 40, 60};
-    mpList->SetTabs(&nTabs[0]);
-    mpList->InsertHeaderEntry(ScResId(STR_SHEET) + "\t" + ScResId(STR_CELL) + "\t" + ScResId(STR_CONTENT));
-    mpList->SetSelectHdl( LINK(this, SearchResultsDlg, ListSelectHdl) );
+    mxList->set_size_request(mxList->get_approximate_digit_width() * 50, mxList->get_height_rows(15));
+    mxShowDialog->connect_toggled(LINK(this, SearchResultsDlg, OnShowToggled));
+    std::vector<int> aWidths;
+    aWidths.push_back(mxList->get_approximate_digit_width() * 10);
+    aWidths.push_back(mxList->get_approximate_digit_width() * 10);
+    mxList->set_column_fixed_widths(aWidths);
+    mxList->connect_changed(LINK(this, SearchResultsDlg, ListSelectHdl));
+    mxList->connect_column_clicked(LINK(this, SearchResultsDlg, HeaderBarClick));
 }
 
 SearchResultsDlg::~SearchResultsDlg()
 {
-    disposeOnce();
-}
-
-void SearchResultsDlg::dispose()
-{
-    mpList.disposeAndClear();
-    mpLabel.disposeAndClear();
-    ModelessDialog::dispose();
+    // tdf#133807 if the search dialog is shown then re-present that dialog
+    // when this results dialog is dismissed
+    SfxViewFrame* pViewFrame = mpBindings->GetDispatcher()->GetFrame();
+    if (!pViewFrame)
+        return;
+    SfxChildWindow* pChildWindow = pViewFrame->GetChildWindow(
+            SvxSearchDialogWrapper::GetChildWindowId());
+    if (!pChildWindow)
+        return;
+    SvxSearchDialog* pSearchDlg = static_cast<SvxSearchDialog*>(pChildWindow->GetController().get());
+    if (!pSearchDlg)
+        return;
+    pSearchDlg->Present();
 }
 
 namespace
 {
     class ListWrapper {
-        size_t mnCount;
-        static const size_t mnMaximum = 1000;
-        OUStringBuffer maName;
-        VclPtr<FixedText> mpLabel;
-        VclPtr<SvSimpleTable> mpList;
+        weld::TreeView& mrList;
     public:
-        ListWrapper(const VclPtr<SvSimpleTable> &pList,
-                    const VclPtr<FixedText> &pLabel) :
-            mnCount(0),
-            mpLabel(pLabel),
-            mpList(pList)
+        size_t mnCount = 0;
+        static const size_t mnMaximum = 1000;
+        ListWrapper(weld::TreeView& rList)
+            : mrList(rList)
         {
-            mpList->Clear();
-            mpList->SetUpdateMode(false);
+            mrList.clear();
+            mrList.freeze();
         }
-        void Insert(const OUString &aTabName,
+        ~ListWrapper()
+        {
+            mrList.thaw();
+        }
+        void Insert(const OUString &rTabName,
                     const ScAddress &rPos,
                     formula::FormulaGrammar::AddressConvention eConvention,
-                    const OUString &aText)
+                    const OUString &rText)
         {
             if (mnCount++ < mnMaximum)
             {
-                maName.append(aTabName);
-                maName.append("\t");
-                maName.append(rPos.Format(ScRefFlags::ADDR_ABS,
-                                          nullptr, eConvention));
-                maName.append("\t");
-                maName.append(aText);
-                mpList->InsertEntry(maName.makeStringAndClear());
+                mrList.append_text(rTabName);
+                int nPos = mrList.n_children() - 1;
+                mrList.set_text(nPos, rPos.Format(ScRefFlags::ADDR_ABS,
+                                      nullptr, eConvention), 1);
+                mrList.set_text(nPos, rText, 2);
             }
-        }
-        void Update()
-        {
-            if (mnCount > mnMaximum)
-            {
-                if (mpLabel)
-                {
-                    size_t nSkipped = mnCount - mnMaximum;
-                    OUString aSkipped(mpLabel->GetText());
-                    mpList->InsertEntry(
-                        aSkipped.replaceFirst("$1", OUString::number(nSkipped)));
-                }
-            }
-            mpList->SetUpdateMode(true);
         }
     };
 }
 
 void SearchResultsDlg::FillResults( ScDocument* pDoc, const ScRangeList &rMatchedRanges, bool bCellNotes )
 {
-    ListWrapper aList(mpList, mpLabel);
+    ListWrapper aList(*mxList);
     std::vector<OUString> aTabNames = pDoc->GetAllTableNames();
     SCTAB nTabCount = aTabNames.size();
 
     // tdf#92160 - too many results blow the widget's mind
     size_t nMatchMax = rMatchedRanges.size();
-    if (nMatchMax > 1000)
-        nMatchMax = 1000;
+    if (nMatchMax > ListWrapper::mnMaximum)
+        nMatchMax = ListWrapper::mnMaximum;
 
     if (bCellNotes)
     {
@@ -122,17 +110,17 @@ void SearchResultsDlg::FillResults( ScDocument* pDoc, const ScRangeList &rMatche
             /* TODO: a CellNotes iterator would come handy and might speed
              * things up a little, though we only loop through the
              * search/replace result positions here. */
-            ScRange aRange( *rMatchedRanges[i] );
+            ScRange const & rRange( rMatchedRanges[i] );
             // Bear in mind that mostly the range is one address position
             // or a column or a row joined.
-            ScAddress aPos( aRange.aStart );
-            for ( ; aPos.Tab() <= aRange.aEnd.Tab(); aPos.IncTab())
+            ScAddress aPos( rRange.aStart );
+            for ( ; aPos.Tab() <= rRange.aEnd.Tab(); aPos.IncTab())
             {
                 if (aPos.Tab() >= nTabCount)
                     break;  // can this even happen? we just searched on existing sheets ...
-                for (aPos.SetCol( aRange.aStart.Col()); aPos.Col() <= aRange.aEnd.Col(); aPos.IncCol())
+                for (aPos.SetCol( rRange.aStart.Col()); aPos.Col() <= rRange.aEnd.Col(); aPos.IncCol())
                 {
-                    for (aPos.SetRow( aRange.aStart.Row()); aPos.Row() <= aRange.aEnd.Row(); aPos.IncRow())
+                    for (aPos.SetRow( rRange.aStart.Row()); aPos.Row() <= rRange.aEnd.Row(); aPos.IncRow())
                     {
                         const ScPostIt* pNote = pDoc->GetNote( aPos);
                         if (pNote)
@@ -148,10 +136,10 @@ void SearchResultsDlg::FillResults( ScDocument* pDoc, const ScRangeList &rMatche
     {
         for (size_t i = 0, n = nMatchMax; i < n; ++i)
         {
-            ScCellIterator aIter(pDoc, *rMatchedRanges[i]);
+            ScCellIterator aIter(pDoc, rMatchedRanges[i]);
             for (bool bHas = aIter.first(); bHas; bHas = aIter.next())
             {
-                ScAddress aPos = aIter.GetPos();
+                const ScAddress& aPos = aIter.GetPos();
                 if (aPos.Tab() >= nTabCount)
                     // Out-of-bound sheet index.
                     continue;
@@ -162,11 +150,17 @@ void SearchResultsDlg::FillResults( ScDocument* pDoc, const ScRangeList &rMatche
             }
         }
     }
-    aList.Update();
+
+    OUString aTotal(ScResId(SCSTR_TOTAL, aList.mnCount));
+    OUString aSearchResults = aTotal.replaceFirst("%1", OUString::number(aList.mnCount));
+    if (aList.mnCount > ListWrapper::mnMaximum)
+        aSearchResults += " " + ScGlobal::ReplaceOrAppend( aSkipped, "%1", OUString::number( ListWrapper::mnMaximum ) );
+    mxSearchResults->set_label(aSearchResults);
+
     mpDoc = pDoc;
 }
 
-bool SearchResultsDlg::Close()
+void SearchResultsDlg::Close()
 {
     if (mpBindings)
     {
@@ -177,21 +171,50 @@ bool SearchResultsDlg::Close()
         if (pDispacher)
         {
             pDispacher->ExecuteList(SID_SEARCH_RESULTS_DIALOG,
-                SfxCallMode::ASYNCHRON | SfxCallMode::RECORD, { &aItem });
+                SfxCallMode::SYNCHRON | SfxCallMode::RECORD, { &aItem });
         }
     }
 
-    return ModelessDialog::Close();
+    SfxDialogController::Close();
 }
 
-IMPL_LINK_NOARG( SearchResultsDlg, ListSelectHdl, SvTreeListBox*, void )
+IMPL_LINK(SearchResultsDlg, HeaderBarClick, int, nColumn, void)
+{
+    if (!mbSorted)
+    {
+        mxList->make_sorted();
+        mbSorted = true;
+    }
+
+    bool bSortAtoZ = mxList->get_sort_order();
+
+    //set new arrow positions in headerbar
+    if (nColumn == mxList->get_sort_column())
+    {
+        bSortAtoZ = !bSortAtoZ;
+        mxList->set_sort_order(bSortAtoZ);
+    }
+    else
+    {
+        mxList->set_sort_indicator(TRISTATE_INDET, mxList->get_sort_column());
+        mxList->set_sort_column(nColumn);
+    }
+
+    if (nColumn != -1)
+    {
+        //sort lists
+        mxList->set_sort_indicator(bSortAtoZ ? TRISTATE_TRUE : TRISTATE_FALSE, nColumn);
+    }
+}
+
+IMPL_LINK_NOARG( SearchResultsDlg, ListSelectHdl, weld::TreeView&, void )
 {
     if (!mpDoc)
         return;
 
-    SvTreeListEntry *pEntry = mpList->FirstSelected();
-    OUString aTabStr = SvTabListBox::GetEntryText(pEntry, 0);
-    OUString aPosStr = SvTabListBox::GetEntryText(pEntry, 1);
+    int nEntry = mxList->get_selected_index();
+    OUString aTabStr = mxList->get_text(nEntry, 0);
+    OUString aPosStr = mxList->get_text(nEntry, 1);
 
     SCTAB nTab = -1;
     if (!mpDoc->GetTable(aTabStr, nTab))
@@ -211,11 +234,20 @@ IMPL_LINK_NOARG( SearchResultsDlg, ListSelectHdl, SvTreeListBox*, void )
     pScViewShell->AlignToCursor(aPos.Col(), aPos.Row(), SC_FOLLOW_JUMP);
 }
 
-SearchResultsDlgWrapper::SearchResultsDlgWrapper(
-    vcl::Window* _pParent, sal_uInt16 nId, SfxBindings* pBindings, SfxChildWinInfo* /*pInfo*/ ) :
-    SfxChildWindow(_pParent, nId)
+IMPL_STATIC_LINK( SearchResultsDlg, OnShowToggled, weld::ToggleButton&, rButton, void )
 {
-    SetWindow( VclPtr<SearchResultsDlg>::Create(pBindings, _pParent) );
+    ScTabViewShell* pScViewShell = ScTabViewShell::GetActiveViewShell();
+    ScViewOptions aViewOpt( pScViewShell->GetViewData().GetOptions() );
+    aViewOpt.SetOption( VOPT_SUMMARY, rButton.get_active() );
+    pScViewShell->GetViewData().SetOptions( aViewOpt );
+}
+
+SearchResultsDlgWrapper::SearchResultsDlgWrapper(
+    vcl::Window* _pParent, sal_uInt16 nId, SfxBindings* pBindings, SfxChildWinInfo* /*pInfo*/)
+    : SfxChildWindow(_pParent, nId)
+    , m_xDialog(std::make_shared<SearchResultsDlg>(pBindings, _pParent->GetFrameWeld()))
+{
+    SetController(m_xDialog);
 }
 
 SearchResultsDlgWrapper::~SearchResultsDlgWrapper() {}

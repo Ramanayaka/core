@@ -16,32 +16,25 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "Shape.hxx"
+#include <Shape.hxx>
 
-#include <com/sun/star/beans/NamedValue.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/text/ParagraphVertAlign.hpp>
-#include <comphelper/property.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 #include <svx/unoshape.hxx>
 
-#include "corestrings.hrc"
-#include "core_resource.hrc"
-#include "core_resource.hxx"
-#include "Tools.hxx"
-#include "RptObject.hxx"
-#include "FormatCondition.hxx"
-#include "ReportHelperImpl.hxx"
+#include <strings.hxx>
+#include <strings.hrc>
+#include <core_resource.hxx>
+#include <Tools.hxx>
+#include <FormatCondition.hxx>
+#include <ReportHelperImpl.hxx>
 
 namespace reportdesign
 {
 
     using namespace com::sun::star;
     using namespace comphelper;
-uno::Sequence< OUString > lcl_getShapeOptionals()
+static uno::Sequence< OUString > lcl_getShapeOptionals()
 {
     const OUString pProps[] = {
         OUString(PROPERTY_DATAFIELD)
@@ -59,7 +52,7 @@ OShape::OShape(uno::Reference< uno::XComponentContext > const & _xContext)
 ,m_nZOrder(0)
 ,m_bOpaque(false)
 {
-    m_aProps.aComponent.m_sName  = RPT_RESSTRING(RID_STR_SHAPE);
+    m_aProps.aComponent.m_sName  = RptResId(RID_STR_SHAPE);
 }
 
 OShape::OShape(uno::Reference< uno::XComponentContext > const & _xContext
@@ -73,7 +66,7 @@ OShape::OShape(uno::Reference< uno::XComponentContext > const & _xContext
 ,m_bOpaque(false)
 ,m_sServiceName(_sServiceName)
 {
-    m_aProps.aComponent.m_sName  = RPT_RESSTRING(RID_STR_SHAPE);
+    m_aProps.aComponent.m_sName  = RptResId(RID_STR_SHAPE);
     m_aProps.aComponent.m_xFactory = _xFactory;
     osl_atomic_increment( &m_refCount );
     {
@@ -114,35 +107,17 @@ void SAL_CALL OShape::dispose()
     cppu::WeakComponentImplHelperBase::dispose();
 }
 
-uno::Reference< uno::XInterface > OShape::create(uno::Reference< uno::XComponentContext > const & xContext)
-{
-    return *(new OShape(xContext));
-}
-
-
-OUString OShape::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.report.Shape");
-}
-
 
 OUString SAL_CALL OShape::getImplementationName(  )
 {
-    return getImplementationName_Static();
-}
-
-uno::Sequence< OUString > OShape::getSupportedServiceNames_Static(  )
-{
-    uno::Sequence< OUString > aServices { SERVICE_SHAPE };
-
-    return aServices;
+    return "com.sun.star.comp.report.Shape";
 }
 
 uno::Sequence< OUString > SAL_CALL OShape::getSupportedServiceNames(  )
 {
     if(m_sServiceName.isEmpty())
     {
-        return getSupportedServiceNames_Static();
+        return { SERVICE_SHAPE };
     }
     else
     {
@@ -194,14 +169,14 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL OShape::getPropertySetInfo(  
 
 cppu::IPropertyArrayHelper& OShape::getInfoHelper()
 {
-    if ( !m_pAggHelper.get() )
+    if (!m_pAggHelper)
     {
         uno::Sequence<beans::Property> aAggSeq;
         if ( m_aProps.aComponent.m_xProperty.is() )
             aAggSeq = m_aProps.aComponent.m_xProperty->getPropertySetInfo()->getProperties();
         m_pAggHelper.reset(new OPropertyArrayAggregationHelper(ShapePropertySet::getPropertySetInfo()->getProperties(),aAggSeq));
     }
-    return *(m_pAggHelper.get());
+    return *m_pAggHelper;
 }
 
 
@@ -307,13 +282,13 @@ uno::Reference< util::XCloneable > SAL_CALL OShape::createClone(  )
     uno::Reference< report::XReportComponent> xSet;
     try
     {
-        SvxShape* pShape = SvxShape::getImplementation( xSource );
+        SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>( xSource );
         if ( pShape )
         {
             SdrObject* pObject = pShape->GetSdrObject();
             if ( pObject )
             {
-                SdrObject* pClone = pObject->Clone();
+                SdrObject* pClone(pObject->CloneSdrObject(pObject->getSdrModelFromSdrObject()));
                 if ( pClone )
                 {
                     xSet.set(pClone->getUnoShape(),uno::UNO_QUERY_THROW );
@@ -323,7 +298,7 @@ uno::Reference< util::XCloneable > SAL_CALL OShape::createClone(  )
     }
     catch(const uno::Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
     return xSet.get();
 }
@@ -422,7 +397,7 @@ OUString SAL_CALL OShape::getShapeType(  )
     ::osl::MutexGuard aGuard(m_aMutex);
     if ( m_aProps.aComponent.m_xShape.is() )
         return m_aProps.aComponent.m_xShape->getShapeType();
-    return OUString("com.sun.star.drawing.CustomShape");
+    return "com.sun.star.drawing.CustomShape";
 }
 
 ::sal_Int32 SAL_CALL OShape::getZOrder()
@@ -506,6 +481,13 @@ void SAL_CALL OShape::setCustomShapeGeometry( const uno::Sequence< beans::Proper
 
 
 }// namespace reportdesign
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_OShape_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new reportdesign::OShape(context));
+}
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

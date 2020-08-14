@@ -34,7 +34,7 @@ class XMLFontFamilyPropHdl;
 class XMLFontPitchPropHdl;
 class XMLFontEncodingPropHdl;
 
-class XMLOFF_DLLPUBLIC XMLFontStylesContext : public SvXMLStylesContext
+class XMLOFF_DLLPUBLIC XMLFontStylesContext final : public SvXMLStylesContext
 {
     std::unique_ptr<XMLFontFamilyNamePropHdl>    pFamilyNameHdl;
     std::unique_ptr<XMLFontFamilyPropHdl>        pFamilyHdl;
@@ -45,19 +45,13 @@ class XMLOFF_DLLPUBLIC XMLFontStylesContext : public SvXMLStylesContext
 
     rtl_TextEncoding        eDfltEncoding;
 
-protected:
-
     virtual SvXMLStyleContext *CreateStyleChildContext( sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 
 public:
 
-
-    XMLFontStylesContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
-            const OUString& rLName,
-            const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-            rtl_TextEncoding eDfltEnc );
+    XMLFontStylesContext( SvXMLImport& rImport, rtl_TextEncoding eDfltEnc );
 
     ~XMLFontStylesContext() override;
 

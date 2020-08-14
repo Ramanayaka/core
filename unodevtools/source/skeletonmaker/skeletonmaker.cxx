@@ -18,12 +18,12 @@
  */
 #include <iostream>
 
-#include "codemaker/global.hxx"
-#include "codemaker/typemanager.hxx"
-#include "sal/main.h"
-#include "rtl/process.h"
-#include "options.hxx"
-#include "unoidl/unoidl.hxx"
+#include <codemaker/global.hxx>
+#include <codemaker/typemanager.hxx>
+#include <sal/main.h>
+#include <rtl/process.h>
+#include <options.hxx>
+#include <unoidl/unoidl.hxx>
 
 #include "skeletonjava.hxx"
 #include "skeletoncpp.hxx"
@@ -33,7 +33,7 @@ using namespace ::unodevtools;
 
 namespace {
 
-static const char usageText[] =
+const char usageText[] =
 "\n sub-commands:\n"
 "    dump        dump declarations on stdout (e.g. constructors, methods, type\n"
 "                mapping for properties) or complete method bodies with\n"
@@ -91,7 +91,7 @@ static const char usageText[] =
 "                           forwarding, or '<name>->|.' for composition.\n"
 "                           Using \"_\" means that a default bodies with default\n"
 "                           return values are dumped.\n"
-"    -t <name>              specifies an UNOIDL type name, e.g.\n"
+"    -t <name>              specifies a UNOIDL type name, e.g.\n"
 "                           com.sun.star.text.XText (can be used more than once)\n"
 "    -p <protocol:cmd(s)>   specifies an add-on protocol name and the corresponding\n"
 "                           command names, where the commands are a ',' separated list\n"
@@ -232,18 +232,12 @@ SAL_IMPLEMENT_MAIN()
         }
         if ( readOption( &sOption, "p", &nPos, arg) ) {
             OString sTmp(OUStringToOString(sOption, RTL_TEXTENCODING_UTF8));
-            sal_Int32 nIndex= sTmp.indexOf(':');
-            OString sPrt = sTmp.copy(0, nIndex+1);
-            OString sCmds = sTmp.copy(nIndex+1);
-
-            nIndex = 0;
+            sal_Int32 nIndex{ sTmp.indexOf(':')+1 };
+            const OString sPrt = sTmp.copy(0, nIndex);
             std::vector< OString > vCmds;
-            do {
-                OString sCmd = sCmds.getToken( 0, ',', nIndex );
-                vCmds.push_back(sCmd);
-            } while ( nIndex >= 0 );
-
-            options.protocolCmdMap.insert(ProtocolCmdMap::value_type(sPrt, vCmds));
+            while (nIndex>=0)
+                vCmds.push_back(sTmp.getToken( 0, ',', nIndex ));
+            options.protocolCmdMap.emplace(sPrt, vCmds);
             continue;
         }
 
@@ -254,38 +248,35 @@ SAL_IMPLEMENT_MAIN()
 
     if ( types.empty() && options.componenttype != 3) {
         std::cerr
-            << ("\nError: no type is specified, use the -T option at least once\n");
+            << "\nError: no type is specified, use the -T option at least once\n";
         printUsageAndExit(programname, version);
         exit(EXIT_FAILURE);
     }
 
     rtl::Reference< TypeManager > manager(new TypeManager);
-    for (std::vector< OString >::const_iterator i(registries.begin());
-         i != registries.end(); ++i)
+    for (const auto& rRegistry : registries)
     {
-        manager->loadProvider(convertToFileUrl(*i), true);
+        manager->loadProvider(convertToFileUrl(rRegistry), true);
     }
 
     if ( options.dump ) {
-        std::vector< OString >::const_iterator iter = types.begin();
-        while (iter != types.end()) {
+        for (const auto& rType : types) {
             std::cout << "\n/***************************************************"
                 "*****************************/\n";
             switch (options.language )
             {
             case 1: //Java
                 java::generateDocumentation(std::cout, options, manager,
-                                            *iter, delegate);
+                                            rType, delegate);
                 break;
             case 2: //C++
                 cpp::generateDocumentation(std::cout, options, manager,
-                                           *iter, delegate);
+                                           rType, delegate);
                 break;
             default:
                 OSL_ASSERT(false);
                 break;
             }
-            ++iter;
         }
     } else {
         switch ( options.language )

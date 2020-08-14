@@ -19,14 +19,12 @@
 
 #include <sal/types.h>
 
-#include <string.h>
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
 #include <cppunit/plugin/TestPlugIn.h>
 
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <cppuhelper/interfacecontainer.hxx>
-#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/propshlp.hxx>
 
@@ -34,7 +32,7 @@ using namespace com::sun::star;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 
-class ContainerListener;
+namespace {
 
 struct ContainerStats {
     int m_nAlive;
@@ -54,6 +52,8 @@ public:
         m_pStats->m_nDisposed++;
     }
 };
+
+}
 
 namespace cppu_ifcontainer
 {
@@ -111,12 +111,11 @@ namespace cppu_ifcontainer
                 pContainer->addInterface(xRef);
                 aListeners.push_back(xRef);
             }
-            Sequence< Reference< XInterface > > aElements;
-            aElements = pContainer->getElements();
+            Sequence< Reference< XInterface > > aElements = pContainer->getElements();
 
             CPPUNIT_ASSERT_MESSAGE("query contents",
-                                   bool((int)aElements.getLength() == nTests));
-            if ((int)aElements.getLength() == nTests)
+                                   bool(static_cast<int>(aElements.getLength()) == nTests));
+            if (static_cast<int>(aElements.getLength()) == nTests)
             {
                 for (i = 0; i < nTests; i++)
                 {
@@ -209,7 +208,7 @@ namespace cppu_ifcontainer
                 ::cppu::UnoType< ::sal_uInt32 >::get(),
                 ::cppu::UnoType< ::sal_Int32 >::get(),
                 ::cppu::UnoType< ::sal_Int16 >::get(),
-                ::cppu::UnoType< ::rtl::OUString >::get(),
+                ::cppu::UnoType< OUString >::get(),
                 ::cppu::UnoType< ::sal_Int8 >::get()
             };
             doContainerTest< cppu::OMultiTypeInterfaceContainerHelper,
@@ -218,7 +217,7 @@ namespace cppu_ifcontainer
 
         void testOMultiTypeInterfaceContainerHelperInt32()
         {
-            sal_Int32 pTypes[nTests] =
+            sal_Int32 const pTypes[nTests] =
             {
                 0,
                 -1,
@@ -239,7 +238,7 @@ namespace cppu_ifcontainer
             typedef cppu::OMultiTypeInterfaceContainerHelperVar<
                 char const *, void, rtl::CStringEqual> StrContainer;
 
-            const char *pTypes[nTests] =
+            const char * const pTypes[nTests] =
             {
                 "this_is", "such", "fun", "writing", "unit", "tests", "when", "it", "works", "anyway"
             };

@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "pivotcachebuffer.hxx"
+#include <pivotcachebuffer.hxx>
 
-#include <set>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
@@ -27,25 +26,30 @@
 #include <com/sun/star/sheet/DataPilotFieldGroupBy.hpp>
 #include <com/sun/star/sheet/DataPilotFieldGroupInfo.hpp>
 #include <com/sun/star/sheet/XDataPilotFieldGrouping.hpp>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
-#include <rtl/ustrbuf.hxx>
-#include <oox/core/filterbase.hxx>
+#include <sal/log.hxx>
 #include <oox/helper/attributelist.hxx>
+#include <oox/helper/binaryinputstream.hxx>
 #include <oox/helper/containerhelper.hxx>
 #include <oox/helper/propertyset.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include "defnamesbuffer.hxx"
-#include "excelhandlers.hxx"
-#include "pivotcachefragment.hxx"
-#include "sheetdatabuffer.hxx"
-#include "tablebuffer.hxx"
-#include "unitconverter.hxx"
-#include "worksheetbuffer.hxx"
+#include <tools/diagnose_ex.h>
+#include <defnamesbuffer.hxx>
+#include <pivotcachefragment.hxx>
+#include <sheetdatabuffer.hxx>
+#include <tablebuffer.hxx>
+#include <unitconverter.hxx>
+#include <worksheetbuffer.hxx>
+#include <dpobject.hxx>
+#include <dpsave.hxx>
+#include <tools/datetime.hxx>
+#include <addressconverter.hxx>
+#include <biffhelper.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::sheet;
@@ -152,9 +156,9 @@ void PivotCacheItem::readBool( const AttributeList& rAttribs )
     mnType = XML_b;
 }
 
-void PivotCacheItem::readError( const AttributeList& rAttribs, const UnitConverter& rUnitConverter )
+void PivotCacheItem::readError( const AttributeList& rAttribs )
 {
-    maValue <<= static_cast< sal_Int32 >( rUnitConverter.calcBiffErrorCode( rAttribs.getXString( XML_v, OUString() ) ) );
+    maValue <<= rAttribs.getXString( XML_v, OUString() );
     mnType = XML_e;
 }
 
@@ -230,6 +234,22 @@ OUString PivotCacheItem::getName() const
     return OUString();
 }
 
+OUString PivotCacheItem::getFormattedName(const ScDPSaveDimension& rSaveDim, ScDPObject* pObj, const DateTime& rNullDate) const
+{
+    switch( mnType )
+    {
+        case XML_m: return OUString();
+        case XML_s: return maValue.get< OUString >();
+        case XML_n: return pObj->GetFormattedString(rSaveDim.GetName(), maValue.get<double>());
+        case XML_i: return pObj->GetFormattedString(rSaveDim.GetName(), static_cast<double>(maValue.get< sal_Int32 >()));
+        case XML_b: return pObj->GetFormattedString(rSaveDim.GetName(), static_cast<double>(maValue.get< bool >()));
+        case XML_d: return pObj->GetFormattedString(rSaveDim.GetName(), maValue.get< css::util::DateTime >() - rNullDate);
+        case XML_e: return maValue.get< OUString >();
+    }
+    OSL_FAIL( "PivotCacheItem::getFormattedName - invalid data type" );
+    return OUString();
+}
+
 PivotCacheItemList::PivotCacheItemList( const WorkbookHelper& rHelper ) :
     WorkbookHelper( rHelper )
 {
@@ -245,7 +265,7 @@ void PivotCacheItemList::importItem( sal_Int32 nElement, const AttributeList& rA
         case XLS_TOKEN( n ):    rItem.readNumeric( rAttribs );                      break;
         case XLS_TOKEN( d ):    rItem.readDate( rAttribs );                         break;
         case XLS_TOKEN( b ):    rItem.readBool( rAttribs );                         break;
-        case XLS_TOKEN( e ):    rItem.readError( rAttribs, getUnitConverter() );    break;
+        case XLS_TOKEN( e ):    rItem.readError( rAttribs );                        break;
         default:    OSL_FAIL( "PivotCacheItemList::importItem - unknown element type" );
     }
 }
@@ -284,10 +304,10 @@ const PivotCacheItem* PivotCacheItemList::getCacheItem( sal_Int32 nItemIdx ) con
 
 void PivotCacheItemList::applyItemCaptions( const IdCaptionPairList& vCaptions )
 {
-    for( IdCaptionPairList::const_iterator aIt = vCaptions.begin(), aEnd = vCaptions.end(); aIt != aEnd; ++aIt )
+    for( const auto& [rId, rCaption] : vCaptions )
     {
-        if ( static_cast<sal_uInt32>( aIt->first ) < maItems.size() )
-            maItems[ aIt->first ].setStringValue( aIt->second );
+        if ( o3tl::make_unsigned( rId ) < maItems.size() )
+            maItems[ rId ].setStringValue( rCaption );
     }
 }
 
@@ -295,15 +315,15 @@ void PivotCacheItemList::getCacheItemNames( ::std::vector< OUString >& orItemNam
 {
     orItemNames.clear();
     orItemNames.reserve( maItems.size() );
-    for( CacheItemVector::const_iterator aIt = maItems.begin(), aEnd = maItems.end(); aIt != aEnd; ++aIt )
-        orItemNames.push_back( aIt->getName() );
+    for( const auto& rItem : maItems )
+        orItemNames.push_back( rItem.getName() );
 }
 
 // private --------------------------------------------------------------------
 
 PivotCacheItem& PivotCacheItemList::createItem()
 {
-    maItems.resize( maItems.size() + 1 );
+    maItems.emplace_back();
     return maItems.back();
 }
 
@@ -637,29 +657,30 @@ OUString PivotCacheField::createParentGroupField( const Reference< XDataPilotFie
     if( !xDPGrouping.is() ) return OUString();
 
     // map the group item indexes from maGroupItems to all item indexes from maDiscreteItems
-    typedef ::std::vector< sal_Int32 > GroupItemList;
-    typedef ::std::vector< GroupItemList > GroupItemMap;
-    GroupItemMap aItemMap( maGroupItems.size() );
-    for( IndexVector::const_iterator aBeg = maDiscreteItems.begin(), aIt = aBeg, aEnd = maDiscreteItems.end(); aIt != aEnd; ++aIt )
+    std::vector< std::vector<sal_Int32> > aItemMap( maGroupItems.size() );
+    sal_Int32 nIndex = -1;
+    for( const auto& rDiscreteItem : maDiscreteItems )
     {
-        if( GroupItemList* pItems = ContainerHelper::getVectorElementAccess( aItemMap, *aIt ) )
+        ++nIndex;
+        if( std::vector<sal_Int32>* pItems = ContainerHelper::getVectorElementAccess( aItemMap, rDiscreteItem ) )
         {
-            if ( const PivotCacheItem* pItem = rBaseCacheField.getCacheItems().getCacheItem( aIt - aBeg ) )
+            if ( const PivotCacheItem* pItem = rBaseCacheField.getCacheItems().getCacheItem( nIndex ) )
             {
                 // Skip unspecified or unused entries or errors
                 if ( pItem->isUnused() || ( pItem->getType() == XML_m ) ||  ( pItem->getType() == XML_e ) )
                     continue;
             }
-            pItems->push_back( static_cast< sal_Int32 >( aIt - aBeg ) );
+            pItems->push_back( nIndex );
         }
     }
 
     // process all groups
     Reference< XDataPilotField > xDPGroupField;
-    for( GroupItemMap::iterator aBeg = aItemMap.begin(), aIt = aBeg, aEnd = aItemMap.end(); aIt != aEnd; ++aIt )
+    nIndex = 0;
+    for( const auto& rItems : aItemMap )
     {
-        SAL_WARN_IF( aIt->empty(), "sc", "PivotCacheField::createParentGroupField - item/group should not be empty" );
-        if( !aIt->empty() )
+        SAL_WARN_IF( rItems.empty(), "sc", "PivotCacheField::createParentGroupField - item/group should not be empty" );
+        if( !rItems.empty() )
         {
             /*  Insert the names of the items that are part of this group. Calc
                 expects the names of the members of the field whose members are
@@ -669,8 +690,8 @@ OUString PivotCacheField::createParentGroupField( const Reference< XDataPilotFie
                 names as they are already grouped is used here to resolve the
                 item names. */
             ::std::vector< OUString > aMembers;
-            for( GroupItemList::iterator aBeg2 = aIt->begin(), aIt2 = aBeg2, aEnd2 = aIt->end(); aIt2 != aEnd2; ++aIt2 )
-                if( const PivotCacheGroupItem* pName = ContainerHelper::getVectorElement( orItemNames, *aIt2 ) )
+            for( auto i : rItems )
+                if( const PivotCacheGroupItem* pName = ContainerHelper::getVectorElement( orItemNames, i ) )
                     if( ::std::find( aMembers.begin(), aMembers.end(), pName->maGroupName ) == aMembers.end() )
                         aMembers.push_back( pName->maGroupName );
 
@@ -700,7 +721,7 @@ OUString PivotCacheField::createParentGroupField( const Reference< XDataPilotFie
                     Therefore, a name from the passed list of original item
                     names is used to find the correct group. */
                 OUString aFirstItem;
-                if( const PivotCacheGroupItem* pName = ContainerHelper::getVectorElement( orItemNames, aIt->front() ) )
+                if( const PivotCacheGroupItem* pName = ContainerHelper::getVectorElement( orItemNames, rItems.front() ) )
                     aFirstItem = pName->maOrigName;
                 Reference< XNamed > xGroupName;
                 OUString aAutoName;
@@ -714,15 +735,15 @@ OUString PivotCacheField::createParentGroupField( const Reference< XDataPilotFie
                         aAutoName = xGroupName->getName();
                     }
                 }
-                catch( Exception& )
+                catch( Exception const & )
                 {
-                    SAL_WARN("sc", "PivotCacheField::createParentGroupField - exception was thrown" );
+                    TOOLS_WARN_EXCEPTION("sc", "PivotCacheField::createParentGroupField" );
                 }
                 SAL_WARN_IF( aAutoName.isEmpty(), "sc", "PivotCacheField::createParentGroupField - cannot find auto-generated group name" );
 
                 // get the real group name from the list of group items
                 OUString aGroupName;
-                if( const PivotCacheItem* pGroupItem = maGroupItems.getCacheItem( static_cast< sal_Int32 >( aIt - aBeg ) ) )
+                if( const PivotCacheItem* pGroupItem = maGroupItems.getCacheItem( nIndex ) )
                     aGroupName = pGroupItem->getName();
                 SAL_WARN_IF( aGroupName.isEmpty(), "sc", "PivotCacheField::createParentGroupField - cannot find group name" );
                 if( aGroupName.isEmpty() )
@@ -737,30 +758,31 @@ OUString PivotCacheField::createParentGroupField( const Reference< XDataPilotFie
                         aPropSet.setProperty( PROP_GroupInfo, aGroupInfo );
                     }
                     // replace original item names in passed vector with group name
-                    for( GroupItemList::iterator aIt2 = aIt->begin(), aEnd2 = aIt->end(); aIt2 != aEnd2; ++aIt2 )
-                        if( PivotCacheGroupItem* pName = ContainerHelper::getVectorElementAccess( orItemNames, *aIt2 ) )
+                    for( auto i : rItems )
+                        if( PivotCacheGroupItem* pName = ContainerHelper::getVectorElementAccess( orItemNames, i ) )
                             pName->maGroupName = aGroupName;
                 }
             }
-            catch( Exception& )
+            catch( Exception const & )
             {
-                SAL_WARN("sc", "PivotCacheField::createParentGroupField - exception was thrown" );
+                TOOLS_WARN_EXCEPTION("sc", "PivotCacheField::createParentGroupField" );
             }
         }
+        ++nIndex;
     }
 
     Reference< XNamed > xFieldName( xDPGroupField, UNO_QUERY );
     return xFieldName.is() ? xFieldName->getName() : OUString();
 }
 
-void PivotCacheField::writeSourceHeaderCell( WorksheetHelper& rSheetHelper, sal_Int32 nCol, sal_Int32 nRow ) const
+void PivotCacheField::writeSourceHeaderCell( const WorksheetHelper& rSheetHelper, sal_Int32 nCol, sal_Int32 nRow ) const
 {
     CellModel aModel;
     aModel.maCellAddr = ScAddress( SCCOL( nCol ), SCROW( nRow ), rSheetHelper.getSheetIndex() );
     rSheetHelper.getSheetData().setStringCell( aModel, maFieldModel.maName );
 }
 
-void PivotCacheField::writeSourceDataCell( WorksheetHelper& rSheetHelper, sal_Int32 nCol, sal_Int32 nRow, const PivotCacheItem& rItem ) const
+void PivotCacheField::writeSourceDataCell( const WorksheetHelper& rSheetHelper, sal_Int32 nCol, sal_Int32 nRow, const PivotCacheItem& rItem ) const
 {
     bool bHasIndex = rItem.getType() == XML_x;
     OSL_ENSURE( bHasIndex != maSharedItems.empty(), "PivotCacheField::writeSourceDataCell - shared items missing or not expected" );
@@ -770,7 +792,7 @@ void PivotCacheField::writeSourceDataCell( WorksheetHelper& rSheetHelper, sal_In
         writeItemToSourceDataCell( rSheetHelper, nCol, nRow, rItem );
 }
 
-void PivotCacheField::importPCRecordItem( SequenceInputStream& rStrm, WorksheetHelper& rSheetHelper, sal_Int32 nCol, sal_Int32 nRow ) const
+void PivotCacheField::importPCRecordItem( SequenceInputStream& rStrm, const WorksheetHelper& rSheetHelper, sal_Int32 nCol, sal_Int32 nRow ) const
 {
     if( hasSharedItems() )
     {
@@ -791,29 +813,29 @@ void PivotCacheField::importPCRecordItem( SequenceInputStream& rStrm, WorksheetH
 
 // private --------------------------------------------------------------------
 
-void PivotCacheField::writeItemToSourceDataCell( WorksheetHelper& rSheetHelper,
+void PivotCacheField::writeItemToSourceDataCell( const WorksheetHelper& rSheetHelper,
         sal_Int32 nCol, sal_Int32 nRow, const PivotCacheItem& rItem )
 {
-    if( rItem.getType() != XML_m )
+    if( rItem.getType() == XML_m )
+        return;
+
+    CellModel aModel;
+    aModel.maCellAddr = ScAddress( SCCOL( nCol ), SCROW( nRow ), rSheetHelper.getSheetIndex() );
+    SheetDataBuffer& rSheetData = rSheetHelper.getSheetData();
+    switch( rItem.getType() )
     {
-        CellModel aModel;
-        aModel.maCellAddr = ScAddress( SCCOL( nCol ), SCROW( nRow ), rSheetHelper.getSheetIndex() );
-        SheetDataBuffer& rSheetData = rSheetHelper.getSheetData();
-        switch( rItem.getType() )
-        {
-            case XML_s: rSheetData.setStringCell( aModel, rItem.getValue().get< OUString >() );                             break;
-            case XML_n: rSheetData.setValueCell( aModel, rItem.getValue().get< double >() );                                break;
-            case XML_i: rSheetData.setValueCell( aModel, rItem.getValue().get< sal_Int16 >() );                             break;
-            case XML_d: rSheetData.setDateTimeCell( aModel, rItem.getValue().get< css::util::DateTime >() );                           break;
-            case XML_b: rSheetData.setBooleanCell( aModel, rItem.getValue().get< bool >() );                                break;
-            case XML_e: rSheetData.setErrorCell( aModel, static_cast< sal_uInt8 >( rItem.getValue().get< sal_Int32 >() ) ); break;
-            default:    OSL_FAIL( "PivotCacheField::writeItemToSourceDataCell - unexpected item data type" );
-        }
+        case XML_s: rSheetData.setStringCell( aModel, rItem.getValue().get< OUString >() );                             break;
+        case XML_n: rSheetData.setValueCell( aModel, rItem.getValue().get< double >() );                                break;
+        case XML_i: rSheetData.setValueCell( aModel, rItem.getValue().get< sal_Int16 >() );                             break;
+        case XML_d: rSheetData.setDateTimeCell( aModel, rItem.getValue().get< css::util::DateTime >() );                           break;
+        case XML_b: rSheetData.setBooleanCell( aModel, rItem.getValue().get< bool >() );                                break;
+        case XML_e: rSheetData.setErrorCell( aModel, static_cast< sal_uInt8 >( rItem.getValue().get< sal_Int32 >() ) ); break;
+        default:    OSL_FAIL( "PivotCacheField::writeItemToSourceDataCell - unexpected item data type" );
     }
 }
 
 void PivotCacheField::writeSharedItemToSourceDataCell(
-        WorksheetHelper& rSheetHelper, sal_Int32 nCol, sal_Int32 nRow, sal_Int32 nItemIdx ) const
+        const WorksheetHelper& rSheetHelper, sal_Int32 nCol, sal_Int32 nRow, sal_Int32 nItemIdx ) const
 {
     if( const PivotCacheItem* pCacheItem = maSharedItems.getCacheItem( nItemIdx ) )
         writeItemToSourceDataCell( rSheetHelper, nCol, nRow, *pCacheItem );
@@ -959,7 +981,7 @@ void PivotCache::importPCDSheetSource( SequenceInputStream& rStrm, const Relatio
 
 PivotCacheField& PivotCache::createCacheField()
 {
-    PivotCacheFieldVector::value_type xCacheField( new PivotCacheField( *this, true/*bIsDatabaseField*/ ) );
+    PivotCacheFieldVector::value_type xCacheField = std::make_shared<PivotCacheField>( *this, true/*bIsDatabaseField*/ );
     maFields.push_back( xCacheField );
     return *xCacheField;
 }
@@ -1025,7 +1047,7 @@ sal_Int32 PivotCache::getCacheDatabaseIndex( sal_Int32 nFieldIdx ) const
     return ContainerHelper::getVectorElement( maDatabaseIndexes, nFieldIdx, -1 );
 }
 
-void PivotCache::writeSourceHeaderCells( WorksheetHelper& rSheetHelper ) const
+void PivotCache::writeSourceHeaderCells( const WorksheetHelper& rSheetHelper ) const
 {
     OSL_ENSURE( static_cast< size_t >( maSheetSrcModel.maRange.aEnd.Col() - maSheetSrcModel.maRange.aStart.Col() + 1 ) == maDatabaseFields.size(),
         "PivotCache::writeSourceHeaderCells - source cell range width does not match number of source fields" );
@@ -1034,11 +1056,16 @@ void PivotCache::writeSourceHeaderCells( WorksheetHelper& rSheetHelper ) const
     SCROW nRow = maSheetSrcModel.maRange.aStart.Row();
     mnCurrRow = -1;
     updateSourceDataRow( rSheetHelper, nRow );
-    for( PivotCacheFieldVector::const_iterator aIt = maDatabaseFields.begin(), aEnd = maDatabaseFields.end(); (aIt != aEnd) && (nCol <= nMaxCol); ++aIt, ++nCol )
-        (*aIt)->writeSourceHeaderCell( rSheetHelper, nCol, nRow );
+    for( const auto& rxDatabaseField : maDatabaseFields )
+    {
+        if (nCol > nMaxCol)
+            break;
+        rxDatabaseField->writeSourceHeaderCell( rSheetHelper, nCol, nRow );
+        ++nCol;
+    }
 }
 
-void PivotCache::writeSourceDataCell( WorksheetHelper& rSheetHelper, sal_Int32 nColIdx, sal_Int32 nRowIdx, const PivotCacheItem& rItem ) const
+void PivotCache::writeSourceDataCell( const WorksheetHelper& rSheetHelper, sal_Int32 nColIdx, sal_Int32 nRowIdx, const PivotCacheItem& rItem ) const
 {
     SCCOL nCol = maSheetSrcModel.maRange.aStart.Col() + nColIdx;
     OSL_ENSURE( ( maSheetSrcModel.maRange.aStart.Col() <= nCol ) && ( nCol <= maSheetSrcModel.maRange.aEnd.Col() ), "PivotCache::writeSourceDataCell - invalid column index" );
@@ -1049,14 +1076,19 @@ void PivotCache::writeSourceDataCell( WorksheetHelper& rSheetHelper, sal_Int32 n
         pCacheField->writeSourceDataCell( rSheetHelper, nCol, nRow, rItem );
 }
 
-void PivotCache::importPCRecord( SequenceInputStream& rStrm, WorksheetHelper& rSheetHelper, sal_Int32 nRowIdx ) const
+void PivotCache::importPCRecord( SequenceInputStream& rStrm, const WorksheetHelper& rSheetHelper, sal_Int32 nRowIdx ) const
 {
     SCROW nRow = maSheetSrcModel.maRange.aStart.Row() + nRowIdx;
     OSL_ENSURE( ( maSheetSrcModel.maRange.aStart.Row() < nRow ) && ( nRow <= maSheetSrcModel.maRange.aEnd.Row() ), "PivotCache::importPCRecord - invalid row index" );
     SCCOL nCol = maSheetSrcModel.maRange.aStart.Col();
     SCCOL nMaxCol = getAddressConverter().getMaxApiAddress().Col();
-    for( PivotCacheFieldVector::const_iterator aIt = maDatabaseFields.begin(), aEnd = maDatabaseFields.end(); !rStrm.isEof() && (aIt != aEnd) && (nCol <= nMaxCol); ++aIt, ++nCol )
-        (*aIt)->importPCRecordItem( rStrm, rSheetHelper, nCol, nRow );
+    for( const auto& rxDatabaseField : maDatabaseFields )
+    {
+        if( rStrm.isEof() || (nCol > nMaxCol) )
+            break;
+        rxDatabaseField->importPCRecordItem( rStrm, rSheetHelper, nCol, nRow );
+        ++nCol;
+    }
 }
 
 // private --------------------------------------------------------------------
@@ -1133,7 +1165,7 @@ void PivotCache::prepareSourceDataSheet()
     }
 }
 
-void PivotCache::updateSourceDataRow( WorksheetHelper& rSheetHelper, sal_Int32 nRow ) const
+void PivotCache::updateSourceDataRow( const WorksheetHelper& rSheetHelper, sal_Int32 nRow ) const
 {
     if( mnCurrRow != nRow )
     {
@@ -1182,11 +1214,10 @@ PivotCache& PivotCacheBuffer::createPivotCache( sal_Int32 nCacheId )
 {
     maCacheIds.push_back( nCacheId );
     PivotCacheMap::mapped_type& rxCache = maCaches[ nCacheId ];
-    rxCache.reset( new PivotCache( *this ) );
+    rxCache = std::make_shared<PivotCache>( *this );
     return *rxCache;
 }
 
-} // namespace xls
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,10 +19,10 @@
 
 #include <basic/basicmanagerrepository.hxx>
 #include <basic/basmgr.hxx>
-#include "scriptcont.hxx"
-#include "dlgcont.hxx"
-#include <basic/sbuno.hxx>
-#include "sbintern.hxx"
+#include <scriptcont.hxx>
+#include <dlgcont.hxx>
+#include <sbintern.hxx>
+#include <sbxbase.hxx>
 
 #include <com/sun/star/document/XStorageBasedDocument.hpp>
 #include <com/sun/star/document/XEmbeddedScripts.hpp>
@@ -35,14 +35,11 @@
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
-#include <comphelper/stl_types.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/documentinfo.hxx>
 #include <unotools/eventlisteneradapter.hxx>
 
-#include <osl/getglobalmutex.hxx>
-#include <rtl/instance.hxx>
-#include <rtl/strbuf.hxx>
+#include <sot/storage.hxx>
 
 #include <map>
 
@@ -60,18 +57,17 @@ namespace basic
     using ::com::sun::star::uno::UNO_QUERY_THROW;
     using ::com::sun::star::uno::Exception;
     using ::com::sun::star::document::XStorageBasedDocument;
-    using ::com::sun::star::lang::XComponent;
     using ::com::sun::star::document::XEmbeddedScripts;
 
-    typedef std::map< Reference< XInterface >, BasicManager*, ::comphelper::OInterfaceCompare< XInterface > > BasicManagerStore;
+    typedef std::map< Reference< XInterface >, std::unique_ptr<BasicManager> > BasicManagerStore;
 
     typedef std::vector< BasicManagerCreationListener* >  CreationListeners;
 
-    class ImplRepository : public ::utl::OEventListenerAdapter, public SfxListener
+    class ImplRepository : public ::utl::OEventListenerAdapter, public SfxListener, public SvRefBase
     {
     private:
-        friend struct CreateImplRepository;
         ImplRepository();
+        ~ImplRepository();
 
     private:
         BasicManagerStore   m_aStore;
@@ -83,7 +79,7 @@ namespace basic
         BasicManager*   getDocumentBasicManager( const Reference< XModel >& _rxDocumentModel );
         BasicManager*   getOrCreateApplicationBasicManager();
         static BasicManager* getApplicationBasicManager();
-        static void          setApplicationBasicManager( BasicManager* _pBasicManager );
+        static void          setApplicationBasicManager( std::unique_ptr<BasicManager> _pBasicManager );
         void    registerCreationListener( BasicManagerCreationListener& _rListener );
         void    revokeCreationListener( BasicManagerCreationListener& _rListener );
 
@@ -100,7 +96,7 @@ namespace basic
             @precond
                 our mutex is locked
         */
-        BasicManager*&
+        BasicManagerStore::iterator
                 impl_getLocationForModel( const Reference< XModel >& _rxDocumentModel );
 
         /** tests if there is a location set at which the BasicManager for the given model
@@ -124,7 +120,7 @@ namespace basic
                 the model whose BasicManager will be created. Must not be <NULL/>.
         */
         bool impl_createManagerForModel(
-                    BasicManager*& _out_rpBasicManager,
+                    BasicManagerStore::iterator location,
                     const Reference< XModel >& _rxDocumentModel );
 
         /** creates the application-wide BasicManager
@@ -195,26 +191,27 @@ namespace basic
         StarBASIC* impl_getDefaultAppBasicLibrary();
     };
 
-
-    struct CreateImplRepository
-    {
-        ImplRepository* operator()()
-        {
-            static ImplRepository* pRepository = new ImplRepository;
-            return pRepository;
-        }
-    };
-
-
     ImplRepository::ImplRepository()
     {
     }
 
+    ImplRepository::~ImplRepository()
+    {
+        // Avoid double-delete of managers when they are destroyed in our dtor, and start notify us
+        for (auto& it : m_aStore)
+            EndListening(*it.second);
+    }
 
     ImplRepository& ImplRepository::Instance()
     {
-        return *rtl_Instance< ImplRepository, CreateImplRepository, ::osl::MutexGuard, ::osl::GetGlobalMutex >::
-            create( CreateImplRepository(), ::osl::GetGlobalMutex() );
+        tools::SvRef<SvRefBase>& repository = GetSbxData_Impl().mrImplRepository;
+        {
+            static osl::Mutex aMutex;
+            osl::MutexGuard aGuard(aMutex);
+            if (!repository)
+                repository = new ImplRepository;
+        }
+        return *static_cast<ImplRepository*>(repository.get());
     }
 
     BasicManager* ImplRepository::getDocumentBasicManager( const Reference< XModel >& _rxDocumentModel )
@@ -229,11 +226,11 @@ namespace basic
             thus a recursive call of this function will find and return it
             without creating another instance.
          */
-        BasicManager*& pBasicManager = impl_getLocationForModel( _rxDocumentModel );
-        if (pBasicManager != nullptr)
-            return pBasicManager;
-        if (impl_createManagerForModel(pBasicManager, _rxDocumentModel))
-            return pBasicManager;
+        auto const loc = impl_getLocationForModel( _rxDocumentModel );
+        if (loc->second != nullptr)
+            return loc->second.get();
+        if (impl_createManagerForModel(loc, _rxDocumentModel))
+            return loc->second.get();
         return nullptr;
     }
 
@@ -241,7 +238,7 @@ namespace basic
     {
         SolarMutexGuard g;
 
-        BasicManager* pAppManager = GetSbData()->pAppBasMgr;
+        BasicManager* pAppManager = GetSbData()->pAppBasMgr.get();
         if (pAppManager == nullptr)
             pAppManager = impl_createApplicationBasicManager();
         return pAppManager;
@@ -251,17 +248,14 @@ namespace basic
     {
         SolarMutexGuard g;
 
-        return GetSbData()->pAppBasMgr;
+        return GetSbData()->pAppBasMgr.get();
     }
 
-    void ImplRepository::setApplicationBasicManager( BasicManager* _pBasicManager )
+    void ImplRepository::setApplicationBasicManager( std::unique_ptr<BasicManager> _pBasicManager )
     {
         SolarMutexGuard g;
 
-        BasicManager* pPreviousManager = getApplicationBasicManager();
-        delete pPreviousManager;
-
-        GetSbData()->pAppBasMgr = _pBasicManager;
+        GetSbData()->pAppBasMgr = std::move(_pBasicManager);
     }
 
 
@@ -285,7 +279,7 @@ namespace basic
         aAppBasic.insertName( Application::GetAppName() );
 
         BasicManager* pBasicManager = new BasicManager( new StarBASIC, &aAppBasicDir );
-        setApplicationBasicManager( pBasicManager );
+        setApplicationBasicManager( std::unique_ptr<BasicManager>(pBasicManager) );
 
         // The first dir in the path as destination:
         OUString aFileName( aAppBasic.getName() );
@@ -348,12 +342,9 @@ namespace basic
 
     void ImplRepository::impl_notifyCreationListeners( const Reference< XModel >& _rxDocumentModel, BasicManager& _rManager )
     {
-        for (   CreationListeners::const_iterator loop = m_aCreationListeners.begin();
-                loop != m_aCreationListeners.end();
-                ++loop
-            )
+        for (auto const& creationListener : m_aCreationListeners)
         {
-            (*loop)->onBasicManagerCreated( _rxDocumentModel, _rManager );
+            creationListener->onBasicManagerCreated( _rxDocumentModel, _rManager );
         }
     }
 
@@ -367,13 +358,12 @@ namespace basic
         return pAppBasic;
     }
 
-    BasicManager*& ImplRepository::impl_getLocationForModel( const Reference< XModel >& _rxDocumentModel )
+    BasicManagerStore::iterator ImplRepository::impl_getLocationForModel( const Reference< XModel >& _rxDocumentModel )
     {
         Reference< XInterface > xNormalized( _rxDocumentModel, UNO_QUERY );
         DBG_ASSERT( _rxDocumentModel.is(), "ImplRepository::impl_getLocationForModel: invalid model!" );
 
-        BasicManager*& location = m_aStore[ xNormalized ];
-        return location;
+        return m_aStore.try_emplace(xNormalized).first;
     }
 
     bool ImplRepository::impl_hasLocationForModel( const Reference< XModel >& _rxDocumentModel ) const
@@ -405,26 +395,32 @@ namespace basic
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("basic");
         }
     }
 
-    bool ImplRepository::impl_createManagerForModel( BasicManager*& _out_rpBasicManager, const Reference< XModel >& _rxDocumentModel )
+    bool ImplRepository::impl_createManagerForModel( BasicManagerStore::iterator location, const Reference< XModel >& _rxDocumentModel )
     {
+        auto & _out_rpBasicManager = location->second;
+
         StarBASIC* pAppBasic = impl_getDefaultAppBasicLibrary();
 
         _out_rpBasicManager = nullptr;
         Reference< XStorage > xStorage;
         if ( !impl_getDocumentStorage_nothrow( _rxDocumentModel, xStorage ) )
         {
+            m_aStore.erase(location);
             // the document is not able to provide the storage it is based on.
             return false;
         }
         Reference< XPersistentLibraryContainer > xBasicLibs;
         Reference< XPersistentLibraryContainer > xDialogLibs;
         if ( !impl_getDocumentLibraryContainers_nothrow( _rxDocumentModel, xBasicLibs, xDialogLibs ) )
+        {
+            m_aStore.erase(location);
             // the document does not have BasicLibraries and DialogLibraries
             return false;
+        }
 
         if ( xStorage.is() )
         {
@@ -435,9 +431,9 @@ namespace basic
 
             // Storage and BaseURL are only needed by binary documents!
             tools::SvRef<SotStorage> xDummyStor = new SotStorage( OUString() );
-            _out_rpBasicManager = new BasicManager( *xDummyStor, OUString() /* TODO/LATER: xStorage */,
+            _out_rpBasicManager.reset(new BasicManager( *xDummyStor, OUString() /* TODO/LATER: xStorage */,
                                                                 pAppBasic,
-                                                                &aAppBasicDir, true );
+                                                                &aAppBasicDir, true ));
             if ( !_out_rpBasicManager->GetErrors().empty() )
             {
                 // handle errors
@@ -448,8 +444,7 @@ namespace basic
                     if ( ErrorHandler::HandleError( rError.GetErrorId() ) == DialogMask::ButtonsCancel )
                     {
                         // user wants to break loading of BASIC-manager
-                        delete _out_rpBasicManager;
-                        _out_rpBasicManager = nullptr;
+                        _out_rpBasicManager.reset();
                         xStorage.clear();
                         break;
                     }
@@ -463,7 +458,7 @@ namespace basic
             // create new BASIC-manager
             StarBASIC* pBasic = new StarBASIC( pAppBasic );
             pBasic->SetFlag( SbxFlagBits::ExtSearch );
-            _out_rpBasicManager = new BasicManager( pBasic, nullptr, true );
+            _out_rpBasicManager.reset(new BasicManager( pBasic, nullptr, true ));
         }
 
         // knit the containers with the BasicManager
@@ -516,7 +511,7 @@ namespace basic
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("basic");
             return false;
         }
         return true;
@@ -536,7 +531,7 @@ namespace basic
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("basic");
         }
         return _out_rxBasicLibraries.is() && _out_rxDialogLibraries.is();
     }
@@ -546,14 +541,17 @@ namespace basic
     {
         OSL_PRECOND( _pos != m_aStore.end(), "ImplRepository::impl_removeFromRepository: invalid position!" );
 
-        BasicManager* pManager = _pos->second;
+        std::unique_ptr<BasicManager> pManager = std::move(_pos->second);
+        Reference<XModel> xModel(_pos->first, UNO_QUERY);
 
         // *first* remove from map (else Notify won't work properly)
         m_aStore.erase( _pos );
 
-        // *then* delete the BasicManager
         EndListening( *pManager );
-        delete pManager;
+
+        assert(xModel.is());
+        if (xModel.is())
+            stopComponentListening(xModel);
     }
 
 
@@ -563,16 +561,13 @@ namespace basic
 
         Reference< XInterface > xNormalizedSource( _rSource.Source, UNO_QUERY );
 
-        for (   BasicManagerStore::iterator loop = m_aStore.begin();
-                loop != m_aStore.end();
-                ++loop
-            )
+        BasicManagerStore::iterator it = std::find_if(m_aStore.begin(), m_aStore.end(),
+            [&xNormalizedSource](BasicManagerStore::reference rEntry) {
+                return rEntry.first.get() == xNormalizedSource.get(); });
+        if (it != m_aStore.end())
         {
-            if ( loop->first.get() == xNormalizedSource.get() )
-            {
-                impl_removeFromRepository( loop );
-                return;
-            }
+            impl_removeFromRepository( it );
+            return;
         }
 
         OSL_FAIL( "ImplRepository::_disposing: where does this come from?" );
@@ -588,20 +583,15 @@ namespace basic
         BasicManager* pManager = dynamic_cast< BasicManager* >( &_rBC );
         OSL_ENSURE( pManager, "ImplRepository::Notify: where does this come from?" );
 
-        for (   BasicManagerStore::iterator loop = m_aStore.begin();
-                loop != m_aStore.end();
-                ++loop
-            )
+        BasicManagerStore::iterator it = std::find_if(m_aStore.begin(), m_aStore.end(),
+            [&pManager](BasicManagerStore::reference rEntry) { return rEntry.second.get() == pManager; });
+        if (it != m_aStore.end())
         {
-            if ( loop->second == pManager )
-            {
-                // a BasicManager which is still in our repository is being deleted.
-                // That's bad, since by definition, we *own* all instances in our
-                // repository.
-                OSL_FAIL( "ImplRepository::Notify: nobody should tamper with the managers, except ourself!" );
-                m_aStore.erase( loop );
-                break;
-            }
+            // a BasicManager which is still in our repository is being deleted.
+            // That's bad, since by definition, we *own* all instances in our
+            // repository.
+            OSL_FAIL( "ImplRepository::Notify: nobody should tamper with the managers, except ourself!" );
+            m_aStore.erase( it );
         }
     }
 

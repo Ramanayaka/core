@@ -17,20 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svl/intitem.hxx>
 #include <editeng/editeng.hxx>
-#include <editeng/editview.hxx>
-#include <editeng/editdata.hxx>
 #include <editeng/eerdll.hxx>
-#include <editeng/lrspitem.hxx>
-#include <editeng/fhgtitem.hxx>
 
 #include <editeng/outliner.hxx>
-#include <outleeng.hxx>
-#include <paralist.hxx>
+#include "outleeng.hxx"
+#include "paralist.hxx"
 #include <editeng/editrids.hrc>
 #include <svl/itemset.hxx>
-#include <editeng/eeitem.hxx>
 #include <editeng/editstat.hxx>
 #include "outlundo.hxx"
 
@@ -66,7 +60,7 @@ const SvxNumberFormat* OutlinerEditEng::GetNumberFormat( sal_Int32 nPara ) const
 
 tools::Rectangle OutlinerEditEng::GetBulletArea( sal_Int32 nPara )
 {
-    tools::Rectangle aBulletArea = tools::Rectangle( Point(), Point() );
+    tools::Rectangle aBulletArea { Point(), Point() };
     if ( nPara < pOwner->pParaList->GetParagraphCount() )
     {
         if ( pOwner->ImplHasNumberFormat( nPara ) )
@@ -91,12 +85,12 @@ void OutlinerEditEng::ParagraphDeleted( sal_Int32 nDeletedParagraph )
 
 void OutlinerEditEng::ParagraphConnected( sal_Int32 /*nLeftParagraph*/, sal_Int32 nRightParagraph )
 {
-    if( pOwner && pOwner->IsUndoEnabled() && !const_cast<EditEngine&>(pOwner->GetEditEngine()).IsInUndo() )
+    if( pOwner && pOwner->IsUndoEnabled() && !pOwner->GetEditEngine().IsInUndo() )
     {
         Paragraph* pPara = pOwner->GetParagraph( nRightParagraph );
         if( pPara && Outliner::HasParaFlag( pPara, ParaFlag::ISPAGE ) )
         {
-            pOwner->InsertUndo( new OutlinerUndoChangeParaFlags( pOwner, nRightParagraph, ParaFlag::ISPAGE, ParaFlag::NONE ) );
+            pOwner->InsertUndo( std::make_unique<OutlinerUndoChangeParaFlags>( pOwner, nRightParagraph, ParaFlag::ISPAGE, ParaFlag::NONE ) );
         }
     }
 }
@@ -127,19 +121,19 @@ OUString OutlinerEditEng::GetUndoComment( sal_uInt16 nUndoId ) const
     switch( nUndoId )
     {
         case OLUNDO_DEPTH:
-            return EditResId::GetString(RID_OUTLUNDO_DEPTH);
+            return EditResId(RID_OUTLUNDO_DEPTH);
 
         case OLUNDO_EXPAND:
-            return EditResId::GetString(RID_OUTLUNDO_EXPAND);
+            return EditResId(RID_OUTLUNDO_EXPAND);
 
         case OLUNDO_COLLAPSE:
-            return EditResId::GetString(RID_OUTLUNDO_COLLAPSE);
+            return EditResId(RID_OUTLUNDO_COLLAPSE);
 
         case OLUNDO_ATTR:
-            return EditResId::GetString(RID_OUTLUNDO_ATTR);
+            return EditResId(RID_OUTLUNDO_ATTR);
 
         case OLUNDO_INSERT:
-            return EditResId::GetString(RID_OUTLUNDO_INSERT);
+            return EditResId(RID_OUTLUNDO_INSERT);
 
         default:
             return EditEngine::GetUndoComment( nUndoId );
@@ -169,13 +163,7 @@ void OutlinerEditEng::DrawingTab( const Point& rStartPos, long nWidth, const OUS
             bEndOfLine, bEndOfParagraph, rOverlineColor, rTextLineColor );
 }
 
-void OutlinerEditEng::FieldClicked( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos )
-{
-    EditEngine::FieldClicked( rField, nPara, nPos );    // If URL
-    pOwner->FieldClicked( rField, nPara, nPos );
-}
-
-OUString OutlinerEditEng::CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rpTxtColor, Color*& rpFldColor )
+OUString OutlinerEditEng::CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor )
 {
     return pOwner->CalcFieldValue( rField, nPara, nPos, rpTxtColor, rpFldColor );
 }
@@ -183,22 +171,22 @@ OUString OutlinerEditEng::CalcFieldValue( const SvxFieldItem& rField, sal_Int32 
 void OutlinerEditEng::SetParaAttribs( sal_Int32 nPara, const SfxItemSet& rSet )
 {
     Paragraph* pPara = pOwner->pParaList->GetParagraph( nPara );
-    if( pPara )
-    {
-        if ( !IsInUndo() && IsUndoEnabled() )
-            pOwner->UndoActionStart( OLUNDO_ATTR );
+    if( !pPara )
+        return;
 
-        EditEngine::SetParaAttribs( nPara, rSet );
+    if ( !IsInUndo() && IsUndoEnabled() )
+        pOwner->UndoActionStart( OLUNDO_ATTR );
 
-        pOwner->ImplCheckNumBulletItem( nPara );
-        // #i100014#
-        // It is not a good idea to subtract 1 from a count and cast the result
-        // to sal_uInt16 without check, if the count is 0.
-        pOwner->ImplCheckParagraphs( nPara, pOwner->pParaList->GetParagraphCount() );
+    EditEngine::SetParaAttribs( nPara, rSet );
 
-        if ( !IsInUndo() && IsUndoEnabled() )
-            pOwner->UndoActionEnd();
-    }
+    pOwner->ImplCheckNumBulletItem( nPara );
+    // #i100014#
+    // It is not a good idea to subtract 1 from a count and cast the result
+    // to sal_uInt16 without check, if the count is 0.
+    pOwner->ImplCheckParagraphs( nPara, pOwner->pParaList->GetParagraphCount() );
+
+    if ( !IsInUndo() && IsUndoEnabled() )
+        pOwner->UndoActionEnd();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

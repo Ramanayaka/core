@@ -10,12 +10,12 @@
 #ifndef INCLUDED_SC_OOX_XLS_REVISIONFRAGMENT_HXX
 #define INCLUDED_SC_OOX_XLS_REVISIONFRAGMENT_HXX
 
-#include <excelhandlers.hxx>
+#include "excelhandlers.hxx"
 #include <memory>
 
 class ScChangeTrack;
 
-namespace oox { namespace xls {
+namespace oox::xls {
 
 class RevisionHeadersFragment : public WorkbookFragmentBase
 {
@@ -71,7 +71,7 @@ private:
     void pushRevision();
 };
 
-}}
+}
 
 #endif
 

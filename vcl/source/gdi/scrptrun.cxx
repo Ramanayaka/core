@@ -37,10 +37,10 @@
   * This file is largely copied from the ICU project,
   * under folder source/extra/scrptrun/scrptrun.cpp
   */
-#include "unicode/utypes.h"
-#include "unicode/uscript.h"
+#include <unicode/utypes.h>
+#include <unicode/uscript.h>
 
-#include "scrptrun.h"
+#include <scrptrun.h>
 #include <algorithm>
 
 namespace {
@@ -115,16 +115,29 @@ struct PairIndices
 
 };
 
+// There are three Unicode script codes for Japanese text, but only one
+// OpenType script tag, so we want to keep them in one run as splitting is
+// pointless for the purpose of OpenType shaping.
+UScriptCode getScript(UChar32 ch, UErrorCode* status)
+{
+    UScriptCode script = uscript_getScript(ch, status);
+    if (U_FAILURE(*status))
+        return script;
+    if (script == USCRIPT_KATAKANA || script == USCRIPT_KATAKANA_OR_HIRAGANA)
+        return USCRIPT_HIRAGANA;
+    return script;
 }
 
-static const PairIndices gPairIndices;
+}
+
+const PairIndices gPairIndices;
 
 
 namespace vcl {
 
 const char ScriptRun::fgClassID=0;
 
-static inline UBool sameScript(int32_t scriptOne, int32_t scriptTwo)
+static bool sameScript(int32_t scriptOne, int32_t scriptTwo)
 {
     return scriptOne <= USCRIPT_INHERITED || scriptTwo <= USCRIPT_INHERITED || scriptOne == scriptTwo;
 }
@@ -159,7 +172,7 @@ UBool ScriptRun::next()
             }
         }
 
-        UScriptCode sc = uscript_getScript(ch, &error);
+        UScriptCode sc = getScript(ch, &error);
         int32_t pairIndex = gPairIndices.getPairIndex(ch);
 
         // Paired character handling:
@@ -167,7 +180,7 @@ UBool ScriptRun::next()
         // if it's an open character, push it onto the stack.
         // if it's a close character, find the matching open on the
         // stack, and use that script code. Any non-matching open
-        // characters above it on the stack will be poped.
+        // characters above it on the stack will be popped.
         if (pairIndex >= 0) {
             if ((pairIndex & 1) == 0) {
                 ++parenSP;

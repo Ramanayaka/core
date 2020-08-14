@@ -17,19 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_CALC_CDRIVER_HXX
-#define INCLUDED_CONNECTIVITY_SOURCE_INC_CALC_CDRIVER_HXX
+#pragma once
 
-#include "file/FDriver.hxx"
+#include <file/FDriver.hxx>
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
-namespace connectivity
-{
-    namespace calc
+namespace connectivity::calc
     {
         /// @throws css::uno::Exception
-        css::uno::Reference< css::uno::XInterface > SAL_CALL
+        css::uno::Reference< css::uno::XInterface >
             ODriver_CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory);
 
         class ODriver : public file::OFileDriver
@@ -39,8 +36,6 @@ namespace connectivity
                                 css::uno::XComponentContext >& _rxContext) :
                 file::OFileDriver(_rxContext) {}
 
-            /// @throws css::uno::RuntimeException
-            static OUString getImplementationName_Static(  );
             OUString SAL_CALL getImplementationName(  ) override;
 
             // XDriver
@@ -50,9 +45,7 @@ namespace connectivity
             virtual sal_Bool SAL_CALL acceptsURL( const OUString& url ) override;
             virtual css::uno::Sequence< css::sdbc::DriverPropertyInfo > SAL_CALL getPropertyInfo( const OUString& url, const css::uno::Sequence< css::beans::PropertyValue >& info ) override;
         };
-    }
-}
 
-#endif // INCLUDED_CONNECTIVITY_SOURCE_INC_CALC_CDRIVER_HXX
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

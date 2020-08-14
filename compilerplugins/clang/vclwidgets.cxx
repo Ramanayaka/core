@@ -12,7 +12,6 @@
 #include <iostream>
 
 #include "plugin.hxx"
-#include "compat.hxx"
 #include "check.hxx"
 #include "clang/AST/CXXInheritance.h"
 
@@ -27,10 +26,11 @@
 namespace {
 
 class VCLWidgets:
-    public RecursiveASTVisitor<VCLWidgets>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<VCLWidgets>
 {
 public:
-    explicit VCLWidgets(InstantiationData const & data): Plugin(data) {}
+    explicit VCLWidgets(loplugin::InstantiationData const & data): FilteringPlugin(data)
+    {}
 
     virtual void run() override { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
 
@@ -47,20 +47,14 @@ public:
     bool VisitCXXConstructExpr(const CXXConstructExpr *);
     bool VisitBinaryOperator(const BinaryOperator *);
 private:
-    void checkAssignmentForVclPtrToRawConversion(const SourceLocation& sourceLoc, const Type* lhsType, const Expr* rhs);
+    void checkAssignmentForVclPtrToRawConversion(const SourceLocation& sourceLoc, const clang::Type* lhsType, const Expr* rhs);
     bool isDisposeCallingSuperclassDispose(const CXXMethodDecl* pMethodDecl);
     bool mbCheckingMemcpy = false;
 };
 
 #define BASE_REF_COUNTED_CLASS "VclReferenceBase"
 
-bool BaseCheckNotWindowSubclass(
-    const CXXRecordDecl *BaseDefinition
-#if CLANG_VERSION < 30800
-    , void *
-#endif
-    )
-{
+bool BaseCheckNotWindowSubclass(const CXXRecordDecl *BaseDefinition) {
     return !loplugin::DeclCheck(BaseDefinition).Class(BASE_REF_COUNTED_CLASS)
         .GlobalNamespace();
 }
@@ -79,13 +73,13 @@ bool isDerivedFromVclReferenceBase(const CXXRecordDecl *decl) {
     if (// not sure what hasAnyDependentBases() does,
         // but it avoids classes we don't want, e.g. WeakAggComponentImplHelper1
         !decl->hasAnyDependentBases() &&
-        !compat::forallBases(*decl, BaseCheckNotWindowSubclass, nullptr, true)) {
+        !decl->forallBases(BaseCheckNotWindowSubclass)) {
         return true;
     }
     return false;
 }
 
-bool containsVclReferenceBaseSubclass(const Type* pType0);
+bool containsVclReferenceBaseSubclass(const clang::Type* pType0);
 
 bool containsVclReferenceBaseSubclass(const QualType& qType) {
     auto check = loplugin::TypeCheck(qType);
@@ -99,10 +93,10 @@ bool containsVclReferenceBaseSubclass(const QualType& qType) {
     return containsVclReferenceBaseSubclass(qType.getTypePtr());
 }
 
-bool containsVclReferenceBaseSubclass(const Type* pType0) {
+bool containsVclReferenceBaseSubclass(const clang::Type* pType0) {
     if (!pType0)
         return false;
-    const Type* pType = pType0->getUnqualifiedDesugaredType();
+    const clang::Type* pType = pType0->getUnqualifiedDesugaredType();
     if (!pType)
         return false;
     const CXXRecordDecl* pRecordDecl = pType->getAsCXXRecordDecl();
@@ -132,7 +126,7 @@ bool containsVclReferenceBaseSubclass(const Type* pType0) {
         QualType pointeeType = pType->getPointeeType();
         return containsVclReferenceBaseSubclass(pointeeType);
     } else if (pType->isArrayType()) {
-        const ArrayType* pArrayType = dyn_cast<ArrayType>(pType);
+        const clang::ArrayType* pArrayType = dyn_cast<clang::ArrayType>(pType);
         QualType elementType = pArrayType->getElementType();
         return containsVclReferenceBaseSubclass(elementType);
     } else {
@@ -195,7 +189,7 @@ bool VCLWidgets::VisitCXXDestructorDecl(const CXXDestructorDecl* pCXXDestructorD
         report(
             DiagnosticsEngine::Warning,
             BASE_REF_COUNTED_CLASS " subclass with VclPtr field must call disposeOnce() from its destructor",
-            pCXXDestructorDecl->getLocStart())
+            compat::getBeginLoc(pCXXDestructorDecl))
           << pCXXDestructorDecl->getSourceRange();
         return true;
     }
@@ -213,7 +207,7 @@ bool VCLWidgets::VisitCXXDestructorDecl(const CXXDestructorDecl* pCXXDestructorD
             //  assert(true), ...;
             //
             auto skip = false;
-            for (auto loc = (*i)->getLocStart();
+            for (auto loc = compat::getBeginLoc(*i);
                  compiler.getSourceManager().isMacroBodyExpansion(loc);
                  loc = compiler.getSourceManager().getImmediateMacroCallerLoc(
                      loc))
@@ -244,16 +238,17 @@ bool VCLWidgets::VisitCXXDestructorDecl(const CXXDestructorDecl* pCXXDestructorD
     }
     if (!bOk) {
         SourceLocation spellingLocation = compiler.getSourceManager().getSpellingLoc(
-                              pCXXDestructorDecl->getLocStart());
-        StringRef filename = compiler.getSourceManager().getFilename(spellingLocation);
-        if (   !(loplugin::hasPathnamePrefix(filename, SRCDIR "/vcl/source/window/window.cxx"))
-            && !(loplugin::hasPathnamePrefix(filename, SRCDIR "/vcl/source/gdi/virdev.cxx"))
-            && !(loplugin::hasPathnamePrefix(filename, SRCDIR "/vcl/qa/cppunit/lifecycle.cxx")) )
+                              compat::getBeginLoc(pCXXDestructorDecl));
+        StringRef filename = getFilenameOfLocation(spellingLocation);
+        if (   !(loplugin::isSamePathname(filename, SRCDIR "/vcl/source/window/window.cxx"))
+            && !(loplugin::isSamePathname(filename, SRCDIR "/vcl/source/gdi/virdev.cxx"))
+            && !(loplugin::isSamePathname(filename, SRCDIR "/vcl/qa/cppunit/lifecycle.cxx"))
+            && !(loplugin::isSamePathname(filename, SRCDIR "/sfx2/source/dialog/tabdlg.cxx")) )
         {
             report(
                 DiagnosticsEngine::Warning,
                 BASE_REF_COUNTED_CLASS " subclass should have nothing in its destructor but a call to disposeOnce()",
-                pCXXDestructorDecl->getLocStart())
+                compat::getBeginLoc(pCXXDestructorDecl))
               << pCXXDestructorDecl->getSourceRange();
         }
     }
@@ -269,22 +264,22 @@ bool VCLWidgets::VisitBinaryOperator(const BinaryOperator * binaryOperator)
         return true;
     }
     SourceLocation spellingLocation = compiler.getSourceManager().getSpellingLoc(
-                          binaryOperator->getLocStart());
+                          compat::getBeginLoc(binaryOperator));
     checkAssignmentForVclPtrToRawConversion(spellingLocation, binaryOperator->getLHS()->getType().getTypePtr(), binaryOperator->getRHS());
     return true;
 }
 
 // Look for places where we are accidentally assigning a returned-by-value VclPtr<T> to a T*, which generally
 // ends up in a use-after-free.
-void VCLWidgets::checkAssignmentForVclPtrToRawConversion(const SourceLocation& spellingLocation, const Type* lhsType, const Expr* rhs)
+void VCLWidgets::checkAssignmentForVclPtrToRawConversion(const SourceLocation& spellingLocation, const clang::Type* lhsType, const Expr* rhs)
 {
-    if (!lhsType || !isa<PointerType>(lhsType)) {
+    if (!lhsType || !isa<clang::PointerType>(lhsType)) {
         return;
     }
     if (!rhs) {
         return;
     }
-    StringRef filename = compiler.getSourceManager().getFilename(spellingLocation);
+    StringRef filename = getFilenameOfLocation(spellingLocation);
     if (loplugin::isSamePathname(filename, SRCDIR "/include/rtl/ref.hxx")) {
         return;
     }
@@ -295,7 +290,7 @@ void VCLWidgets::checkAssignmentForVclPtrToRawConversion(const SourceLocation& s
 
     // if we have T* on the LHS and VclPtr<T> on the RHS, we expect to see either
     // an ImplicitCastExpr
-    // or a ExprWithCleanups and then an ImplicitCastExpr
+    // or an ExprWithCleanups and then an ImplicitCastExpr
     if (auto implicitCastExpr = dyn_cast<ImplicitCastExpr>(rhs)) {
         if (implicitCastExpr->getCastKind() != CK_UserDefinedConversion) {
             return;
@@ -362,16 +357,16 @@ bool VCLWidgets::VisitVarDecl(const VarDecl * pVarDecl) {
         return true;
     }
     SourceLocation spellingLocation = compiler.getSourceManager().getSpellingLoc(
-                          pVarDecl->getLocStart());
+                          compat::getBeginLoc(pVarDecl));
     if (pVarDecl->getInit()) {
         checkAssignmentForVclPtrToRawConversion(spellingLocation, pVarDecl->getType().getTypePtr(), pVarDecl->getInit());
     }
-    StringRef aFileName = compiler.getSourceManager().getFilename(spellingLocation);
+    StringRef aFileName = getFilenameOfLocation(spellingLocation);
     if (loplugin::isSamePathname(aFileName, SRCDIR "/include/vcl/vclptr.hxx"))
         return true;
     if (loplugin::isSamePathname(aFileName, SRCDIR "/vcl/source/window/layout.cxx"))
         return true;
-    // whitelist the valid things that can contain pointers.
+    // allowlist the valid things that can contain pointers.
     // It is containing stuff like std::unique_ptr we get worried
     if (pVarDecl->getType()->isArrayType()) {
         return true;
@@ -398,7 +393,7 @@ bool VCLWidgets::VisitVarDecl(const VarDecl * pVarDecl) {
         return true;
     }
     // std::pair seems to show up in whacky ways in clang's AST. Sometimes it's a class, sometimes it's a typedef, and sometimes
-    // its an ElaboratedType (whatever that is)
+    // it's an ElaboratedType (whatever that is)
     if (s.find("pair") != std::string::npos) {
         return true;
     }
@@ -418,7 +413,8 @@ bool VCLWidgets::VisitFieldDecl(const FieldDecl * fieldDecl) {
     if (ignoreLocation(fieldDecl)) {
         return true;
     }
-    StringRef aFileName = compiler.getSourceManager().getFilename(compiler.getSourceManager().getSpellingLoc(fieldDecl->getLocStart()));
+    StringRef aFileName = getFilenameOfLocation(
+        compiler.getSourceManager().getSpellingLoc(compat::getBeginLoc(fieldDecl)));
     if (loplugin::isSamePathname(aFileName, SRCDIR "/include/vcl/vclptr.hxx"))
         return true;
     if (loplugin::isSamePathname(aFileName, SRCDIR "/include/rtl/ref.hxx"))
@@ -569,8 +565,8 @@ static void findDisposeAndClearStatements(std::set<const FieldDecl*>& aVclPtrFie
     const MemberExpr *pCalleeMemberExpr = dyn_cast<MemberExpr>(pCallExpr->getCallee());
 
     if (!pCalleeMemberExpr->getBase()) return;
-    if (!isa<MemberExpr>(pCalleeMemberExpr->getBase())) return;
-    const MemberExpr *pCalleeMemberExprBase = dyn_cast<MemberExpr>(pCalleeMemberExpr->getBase());
+    const MemberExpr *pCalleeMemberExprBase = dyn_cast<MemberExpr>(pCalleeMemberExpr->getBase()->IgnoreImpCasts());
+    if (pCalleeMemberExprBase == nullptr) return;
 
     const FieldDecl* xxx = dyn_cast_or_null<FieldDecl>(pCalleeMemberExprBase->getMemberDecl());
     if (xxx)
@@ -603,7 +599,7 @@ bool VCLWidgets::VisitFunctionDecl( const FunctionDecl* functionDecl )
                 report(
                     DiagnosticsEngine::Warning,
                     BASE_REF_COUNTED_CLASS " subclass dispose() function MUST call dispose() of its superclass as the last thing it does",
-                    functionDecl->getLocStart())
+                    compat::getBeginLoc(functionDecl))
                   << functionDecl->getSourceRange();
            }
         }
@@ -657,7 +653,7 @@ bool VCLWidgets::VisitFunctionDecl( const FunctionDecl* functionDecl )
                 report(
                     DiagnosticsEngine::Warning,
                     aMessage,
-                    functionDecl->getLocStart())
+                    compat::getBeginLoc(functionDecl))
                   << functionDecl->getSourceRange();
            }
        }
@@ -674,14 +670,14 @@ bool VCLWidgets::VisitCXXDeleteExpr(const CXXDeleteExpr *pCXXDeleteExpr)
     const CXXRecordDecl *pPointee = pCXXDeleteExpr->getArgument()->getType()->getPointeeCXXRecordDecl();
     if (pPointee && isDerivedFromVclReferenceBase(pPointee)) {
         SourceLocation spellingLocation = compiler.getSourceManager().getSpellingLoc(
-                              pCXXDeleteExpr->getLocStart());
-        StringRef filename = compiler.getSourceManager().getFilename(spellingLocation);
-        if ( !(loplugin::hasPathnamePrefix(filename, SRCDIR "/include/vcl/vclreferencebase.hxx")))
+                              compat::getBeginLoc(pCXXDeleteExpr));
+        StringRef filename = getFilenameOfLocation(spellingLocation);
+        if ( !(loplugin::isSamePathname(filename, SRCDIR "/include/vcl/vclreferencebase.hxx")))
         {
             report(
                 DiagnosticsEngine::Warning,
                 "calling delete on instance of " BASE_REF_COUNTED_CLASS " subclass, must rather call disposeAndClear()",
-                pCXXDeleteExpr->getLocStart())
+                compat::getBeginLoc(pCXXDeleteExpr))
               << pCXXDeleteExpr->getSourceRange();
         }
     }
@@ -692,10 +688,15 @@ bool VCLWidgets::VisitCXXDeleteExpr(const CXXDeleteExpr *pCXXDeleteExpr)
     if (pImplicitCastExpr->getCastKind() != CK_UserDefinedConversion) {
         return true;
     }
+    if (!loplugin::TypeCheck(pImplicitCastExpr->getSubExprAsWritten()->getType()).Class("VclPtr")
+        .GlobalNamespace())
+    {
+        return true;
+    }
     report(
         DiagnosticsEngine::Warning,
         "calling delete on instance of VclPtr, must rather call disposeAndClear()",
-        pCXXDeleteExpr->getLocStart())
+        compat::getBeginLoc(pCXXDeleteExpr))
      << pCXXDeleteExpr->getSourceRange();
     return true;
 }
@@ -736,7 +737,7 @@ bool VCLWidgets::isDisposeCallingSuperclassDispose(const CXXMethodDecl* pMethodD
     return true;
 }
 
-bool containsVclPtr(const Type* pType0);
+bool containsVclPtr(const clang::Type* pType0);
 
 bool containsVclPtr(const QualType& qType) {
     auto check = loplugin::TypeCheck(qType);
@@ -750,16 +751,16 @@ bool containsVclPtr(const QualType& qType) {
     return containsVclPtr(qType.getTypePtr());
 }
 
-bool containsVclPtr(const Type* pType0) {
+bool containsVclPtr(const clang::Type* pType0) {
     if (!pType0)
         return false;
-    const Type* pType = pType0->getUnqualifiedDesugaredType();
+    const clang::Type* pType = pType0->getUnqualifiedDesugaredType();
     if (!pType)
         return false;
     if (pType->isPointerType()) {
         return false;
     } else if (pType->isArrayType()) {
-        const ArrayType* pArrayType = dyn_cast<ArrayType>(pType);
+        const clang::ArrayType* pArrayType = dyn_cast<clang::ArrayType>(pType);
         QualType elementType = pArrayType->getElementType();
         return containsVclPtr(elementType);
     } else {
@@ -851,7 +852,8 @@ bool VCLWidgets::VisitCXXConstructExpr( const CXXConstructExpr* constructExpr )
     const CXXConstructorDecl* pConstructorDecl = constructExpr->getConstructor();
     const CXXRecordDecl* recordDecl = pConstructorDecl->getParent();
     if (isDerivedFromVclReferenceBase(recordDecl)) {
-        StringRef aFileName = compiler.getSourceManager().getFilename(compiler.getSourceManager().getSpellingLoc(constructExpr->getLocStart()));
+        StringRef aFileName = getFilenameOfLocation(
+            compiler.getSourceManager().getSpellingLoc(compat::getBeginLoc(constructExpr)));
         if (!loplugin::isSamePathname(aFileName, SRCDIR "/include/vcl/vclptr.hxx")) {
             report(
                 DiagnosticsEngine::Warning,
@@ -862,7 +864,7 @@ bool VCLWidgets::VisitCXXConstructExpr( const CXXConstructExpr* constructExpr )
     return true;
 }
 
-loplugin::Plugin::Registration< VCLWidgets > X("vclwidgets");
+loplugin::Plugin::Registration< VCLWidgets > vclwidgets("vclwidgets");
 
 }
 

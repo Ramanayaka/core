@@ -33,7 +33,6 @@ $(eval $(call gb_UIConfig_add_popupmenufiles,modules/simpress,\
 	sd/uiconfig/simpress/popupmenu/multiselect \
 	sd/uiconfig/simpress/popupmenu/notebookbar \
 	sd/uiconfig/simpress/popupmenu/oleobject \
-	sd/uiconfig/simpress/popupmenu/outlinetext \
 	sd/uiconfig/simpress/popupmenu/outline \
 	sd/uiconfig/simpress/popupmenu/pagepanemaster \
 	sd/uiconfig/simpress/popupmenu/pagepanenoselmaster \
@@ -41,7 +40,6 @@ $(eval $(call gb_UIConfig_add_popupmenufiles,modules/simpress,\
 	sd/uiconfig/simpress/popupmenu/pagepane \
 	sd/uiconfig/simpress/popupmenu/pagetab \
 	sd/uiconfig/simpress/popupmenu/page \
-	sd/uiconfig/simpress/popupmenu/tabletext \
 	sd/uiconfig/simpress/popupmenu/table \
 	sd/uiconfig/simpress/popupmenu/textbox \
 ))
@@ -84,7 +82,6 @@ $(eval $(call gb_UIConfig_add_toolbarfiles,modules/simpress,\
 	sd/uiconfig/simpress/toolbar/linesbar \
 	sd/uiconfig/simpress/toolbar/masterviewtoolbar \
 	sd/uiconfig/simpress/toolbar/mediaobjectbar \
-	sd/uiconfig/simpress/toolbar/moreformcontrols \
 	sd/uiconfig/simpress/toolbar/notebookbarshortcuts \
 	sd/uiconfig/simpress/toolbar/optimizetablebar \
 	sd/uiconfig/simpress/toolbar/optionsbar \
@@ -108,35 +105,46 @@ $(eval $(call gb_UIConfig_add_toolbarfiles,modules/simpress,\
 $(eval $(call gb_UIConfig_add_uifiles,modules/simpress,\
 	sd/uiconfig/simpress/ui/annotationmenu \
 	sd/uiconfig/simpress/ui/annotationtagmenu \
+	sd/uiconfig/simpress/ui/clientboxfragment \
 	sd/uiconfig/simpress/ui/currentmastermenu \
 	sd/uiconfig/simpress/ui/customanimationspanel \
-	sd/uiconfig/simpress/ui/customanimationspanelhorizontal \
 	sd/uiconfig/simpress/ui/customanimationproperties \
 	sd/uiconfig/simpress/ui/customanimationeffecttab \
+	sd/uiconfig/simpress/ui/customanimationfragment \
 	sd/uiconfig/simpress/ui/customanimationtimingtab \
 	sd/uiconfig/simpress/ui/customanimationtexttab \
 	sd/uiconfig/simpress/ui/customslideshows \
 	sd/uiconfig/simpress/ui/definecustomslideshow \
+	sd/uiconfig/simpress/ui/displaywindow \
 	sd/uiconfig/simpress/ui/dlgfield \
 	sd/uiconfig/simpress/ui/dockinganimation \
 	sd/uiconfig/simpress/ui/effectmenu \
 	sd/uiconfig/simpress/ui/fontsizemenu \
 	sd/uiconfig/simpress/ui/fontstylemenu \
+	sd/uiconfig/simpress/ui/gluebox \
 	sd/uiconfig/simpress/ui/headerfooterdialog \
 	sd/uiconfig/simpress/ui/headerfootertab \
+	sd/uiconfig/simpress/ui/impressprinteroptions \
 	sd/uiconfig/simpress/ui/insertslides \
 	sd/uiconfig/simpress/ui/interactiondialog \
 	sd/uiconfig/simpress/ui/interactionpage \
 	sd/uiconfig/simpress/ui/layoutmenu \
+	sd/uiconfig/simpress/ui/layoutpanel \
+	sd/uiconfig/simpress/ui/layoutwindow \
 	sd/uiconfig/simpress/ui/masterlayoutdlg \
 	sd/uiconfig/simpress/ui/mastermenu \
+	sd/uiconfig/simpress/ui/masterpagepanel \
 	sd/uiconfig/simpress/ui/navigatorpanel \
 	sd/uiconfig/simpress/ui/notebookbar \
+	sd/uiconfig/simpress/ui/notebookbar_compact \
+	sd/uiconfig/simpress/ui/notebookbar_single \
 	sd/uiconfig/simpress/ui/notebookbar_groups \
+	sd/uiconfig/simpress/ui/notebookbar_groupedbar_full \
+	sd/uiconfig/simpress/ui/notebookbar_groupedbar_compact \
 	sd/uiconfig/simpress/ui/optimpressgeneralpage \
+	sd/uiconfig/simpress/ui/pagesfieldbox \
 	sd/uiconfig/simpress/ui/photoalbum \
 	sd/uiconfig/simpress/ui/presentationdialog \
-	sd/uiconfig/simpress/ui/printeroptions \
 	sd/uiconfig/simpress/ui/prntopts \
 	sd/uiconfig/simpress/ui/publishingdialog \
 	sd/uiconfig/simpress/ui/remotedialog \
@@ -147,9 +155,7 @@ $(eval $(call gb_UIConfig_add_uifiles,modules/simpress,\
 	sd/uiconfig/simpress/ui/slidecontextmenu \
 	sd/uiconfig/simpress/ui/slidedesigndialog \
 	sd/uiconfig/simpress/ui/slidetransitionspanel \
-	sd/uiconfig/simpress/ui/slidetransitionspanelhorizontal \
 	sd/uiconfig/simpress/ui/tabledesignpanel \
-	sd/uiconfig/simpress/ui/tabledesignpanelhorizontal \
 	sd/uiconfig/simpress/ui/templatedialog \
 ))
 

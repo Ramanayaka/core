@@ -27,9 +27,7 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 
 struct DataSequenceModel
@@ -40,6 +38,7 @@ struct DataSequenceModel
     OUString     maFormula;          /// Formula reference, e.g. into a spreadsheet.
     OUString     maFormatCode;       /// Number format for double values.
     sal_Int32           mnPointCount;       /// Number of points in this series source.
+    sal_Int32           mnLevelCount;       /// Number of category levels.
 
     explicit            DataSequenceModel();
                         ~DataSequenceModel();
@@ -57,9 +56,7 @@ struct DataSourceModel
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

@@ -17,16 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_VLC_VLCMANAGER_HXX
-#define INCLUDED_AVMEDIA_SOURCE_VLC_VLCMANAGER_HXX
+#pragma once
 #include <com/sun/star/media/XManager.hpp>
 #include "vlccommon.hxx"
-#include "wrapper/Wrapper.hxx"
+#include <wrapper/Wrapper.hxx>
 #include <memory>
 #include <cppuhelper/implbase.hxx>
 
-namespace avmedia {
-namespace vlc {
+namespace avmedia::vlc {
 
 class Manager : public ::cppu::WeakImplHelper< css::media::XManager,
                                                css::lang::XServiceInfo >
@@ -34,26 +32,22 @@ class Manager : public ::cppu::WeakImplHelper< css::media::XManager,
     std::unique_ptr<wrapper::Instance> mInstance;
     wrapper::EventHandler mEventHandler;
 public:
-    explicit Manager( const css::uno::Reference< css::lang::XMultiServiceFactory >& rxMgr );
+    explicit Manager();
     virtual ~Manager() override;
 
-    css::uno::Reference< css::media::XPlayer > SAL_CALL createPlayer( const rtl::OUString& aURL ) override;
+    css::uno::Reference< css::media::XPlayer > SAL_CALL createPlayer( const OUString& aURL ) override;
 
-    rtl::OUString SAL_CALL getImplementationName() override;
-    sal_Bool SAL_CALL supportsService( const rtl::OUString& serviceName ) override;
-    css::uno::Sequence< rtl::OUString > SAL_CALL getSupportedServiceNames() override;
+    OUString SAL_CALL getImplementationName() override;
+    sal_Bool SAL_CALL supportsService( const OUString& serviceName ) override;
+    css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
 private:
-    css::uno::Reference< css::lang::XMultiServiceFactory > mxMgr;
     css::uno::Reference< css::media::XPlayer >             mPlayer;
-    rtl::OUString                                          mURL;
+    OUString                                               mURL;
     bool                                                   m_is_vlc_found;
 };
 
 }
-}
 
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

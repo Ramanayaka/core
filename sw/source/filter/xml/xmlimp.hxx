@@ -26,8 +26,6 @@
 
 #include <com/sun/star/document/XDocumentProperties.hpp>
 
-#include <sot/storage.hxx>
-
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 
@@ -50,7 +48,7 @@ enum class SfxStyleFamily;
 #define PROGRESS_BAR_STEP 20
 
 namespace SwImport {
-    SwDoc* GetDocFromXMLImport( SvXMLImport& );
+    SwDoc* GetDocFromXMLImport( SvXMLImport const & );
 }
 
 // we only need this scoped enum to be flags here, in sw
@@ -63,13 +61,15 @@ class SwXMLImport: public SvXMLImport
 {
     std::unique_ptr<SwNodeIndex> m_pSttNdIdx;
 
-    SvXMLUnitConverter      *m_pTwipUnitConv;
-    SvXMLImportItemMapper   *m_pTableItemMapper;// paragraph item import
-    SvXMLTokenMap           *m_pDocElemTokenMap;
-    SvXMLTokenMap           *m_pTableElemTokenMap;
-    SvXMLTokenMap           *m_pTableCellAttrTokenMap;
-    SvXMLGraphicHelper      *m_pGraphicResolver;
-    SvXMLEmbeddedObjectHelper   *m_pEmbeddedResolver;
+    std::unique_ptr<SvXMLUnitConverter> m_pTwipUnitConv;
+    std::unique_ptr<SvXMLImportItemMapper> m_pTableItemMapper;// paragraph item import
+    std::unique_ptr<SvXMLTokenMap> m_pDocElemTokenMap;
+    std::unique_ptr<SvXMLTokenMap> m_pTableElemTokenMap;
+    std::unique_ptr<SvXMLTokenMap> m_pTableCellAttrTokenMap;
+
+    rtl::Reference<SvXMLGraphicHelper> m_xGraphicStorageHandler;
+
+    rtl::Reference<SvXMLEmbeddedObjectHelper> m_xEmbeddedResolver;
 
     SvXMLItemMapEntriesRef  m_xTableItemMap;
     SvXMLItemMapEntriesRef  m_xTableColItemMap;
@@ -101,11 +101,8 @@ class SwXMLImport: public SvXMLImport
 
 protected:
 
-    // This method is called after the namespace map has been updated, but
-    // before a context for the current element has been pushed.
-    virtual SvXMLImportContext *CreateContext( sal_uInt16 nPrefix,
-                  const OUString& rLocalName,
-                  const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
+    virtual SvXMLImportContext *CreateFastContext( sal_Int32 nElement,
+        const ::css::uno::Reference< ::css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
     virtual XMLTextImportHelper* CreateTextImport() override;
 
@@ -136,19 +133,12 @@ public:
 
     // NB: in contrast to other CreateFooContexts, this particular one handles
     //     the root element (i.e. office:document-meta)
-    SvXMLImportContext *CreateMetaContext( const OUString& rLocalName );
-    SvXMLImportContext *CreateScriptContext( const OUString& rLocalName );
-    SvXMLImportContext *CreateStylesContext(
-                const OUString& rLocalName,
-                const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-                bool bAuto );
-    SvXMLImportContext *CreateMasterStylesContext(
-                const OUString& rLocalName,
-                const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList );
-    SvXMLImportContext *CreateFontDeclsContext(
-            const OUString& rLocalName,
-            const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList );
-    SvXMLImportContext *CreateBodyContentContext( const OUString& rLocalName );
+    SvXMLImportContext *CreateMetaContext( const sal_Int32 nElement );
+    SvXMLImportContext *CreateScriptContext();
+    SvXMLImportContext *CreateStylesContext( bool bAuto );
+    SvXMLImportContext *CreateMasterStylesContext();
+    SvXMLImportContext *CreateFontDeclsContext();
+    SvXMLImportContext *CreateBodyContentContext();
     SfxStyleFamily GetStyleFamilyMask() const { return m_nStyleFamilyMask; }
     bool IsInsertMode() const { return m_bInsert; }
     bool IsStylesOnlyMode() const { return !m_bLoadDoc; }
@@ -159,15 +149,16 @@ public:
     SvXMLImportContext *CreateTableItemImportContext( sal_uInt16 nPrefix,
                 const OUString& rLocalName,
                 const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-                sal_uInt16 nSubFamily, SfxItemSet& rItemSet );
+                XmlStyleFamily nSubFamily, SfxItemSet& rItemSet );
 
     const SvXMLTokenMap& GetDocElemTokenMap();
     const SvXMLTokenMap& GetTableElemTokenMap();
     const SvXMLTokenMap& GetTableCellAttrTokenMap();
 
-    bool FindAutomaticStyle( sal_uInt16 nFamily,
+    bool FindAutomaticStyle( XmlStyleFamily nFamily,
                              const OUString& rName,
                              const SfxItemSet **ppItemSet ) const;
+    void MergeListsAtDocumentInsertPosition(SwDoc *pDoc);
 
     virtual void SetStatistics(
         const css::uno::Sequence< css::beans::NamedValue> & i_rStats) override;

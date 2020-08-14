@@ -17,18 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <math.h>
-
 #include "psputil.hxx"
 #include "glyphset.hxx"
 
-#include "unx/printergfx.hxx"
-#include "unx/fontmanager.hxx"
-#include <unx/helper.hxx>
-
-#include "osl/thread.h"
-
-#include "sal/alloca.h"
+#include <unx/printergfx.hxx>
+#include <unx/fontmanager.hxx>
 
 using namespace psp ;
 
@@ -60,32 +53,31 @@ void PrinterGfx::SetFont(
 }
 
 void PrinterGfx::drawGlyph(const Point& rPoint,
-                           sal_GlyphId aGlyphId,
-                           sal_Int32 nDelta)
+                           sal_GlyphId aGlyphId)
 {
 
     // draw the string
     // search for a glyph set matching the set font
-    std::list< GlyphSet >::iterator aIter;
-    for (aIter = maPS3Font.begin(); aIter != maPS3Font.end(); ++aIter)
-        if ( ((*aIter).GetFontID()  == mnFontID)
-             && ((*aIter).IsVertical() == mbTextVertical))
+    bool bGlyphFound = false;
+    for (auto & elem : maPS3Font)
+        if ( (elem.GetFontID()  == mnFontID)
+             && (elem.IsVertical() == mbTextVertical))
         {
-            (*aIter).DrawGlyph (*this, rPoint, aGlyphId, nDelta);
+            elem.DrawGlyph (*this, rPoint, aGlyphId);
+            bGlyphFound = true;
             break;
         }
 
     // not found ? create a new one
-    if (aIter == maPS3Font.end())
+    if (!bGlyphFound)
     {
-        maPS3Font.push_back (GlyphSet(mnFontID, mbTextVertical));
-        maPS3Font.back().DrawGlyph (*this, rPoint, aGlyphId, nDelta);
+        maPS3Font.emplace_back(mnFontID, mbTextVertical);
+        maPS3Font.back().DrawGlyph (*this, rPoint, aGlyphId);
     }
 }
 
 void PrinterGfx::DrawGlyph(const Point& rPoint,
-                           const GlyphItem& rGlyph,
-                           sal_Int32 nDelta)
+                           const GlyphItem& rGlyph)
 {
     // move and rotate the user coordinate system
     // avoid the gsave/grestore for the simple cases since it allows
@@ -112,7 +104,7 @@ void PrinterGfx::DrawGlyph(const Point& rPoint,
         nDescend = nDescend * nTextHeight / 1000;
         nAscend = nAscend * nTextHeight / 1000;
 
-        Point aRotPoint = Point( -nDescend*nTextWidth/nTextHeight, nAscend*nTextWidth/nTextHeight );
+        Point aRotPoint( -nDescend*nTextWidth/nTextHeight, nAscend*nTextWidth/nTextHeight );
 
         // transform matrix to new individual direction
         PSGSave ();
@@ -124,14 +116,14 @@ void PrinterGfx::DrawGlyph(const Point& rPoint,
             PSTranslate( aPoint );
         PSRotate (900);
         // draw the rotated glyph
-        drawGlyph(aRotPoint, rGlyph.maGlyphId, 0);
+        drawGlyph(aRotPoint, rGlyph.glyphId());
 
         // restore previous state
         maVirtualStatus = aSaveStatus;
         PSGRestore();
     }
     else
-        drawGlyph(aPoint, rGlyph.maGlyphId, nDelta);
+        drawGlyph(aPoint, rGlyph.glyphId());
 
     // restore the user coordinate system
     if (nCurrentTextAngle != 0)
@@ -155,13 +147,12 @@ PrinterGfx::OnEndJob ()
 }
 
 void
-PrinterGfx::writeResources( osl::File* pFile, std::list< OString >& rSuppliedFonts )
+PrinterGfx::writeResources( osl::File* pFile, std::vector< OString >& rSuppliedFonts )
 {
     // write glyphsets and reencodings
-    std::list< GlyphSet >::iterator aIter;
-    for (aIter = maPS3Font.begin(); aIter != maPS3Font.end(); ++aIter)
+    for (auto & PS3Font : maPS3Font)
     {
-        aIter->PSUploadFont (*pFile, *this, mbUploadPS42Fonts, rSuppliedFonts );
+        PS3Font.PSUploadFont (*pFile, *this, mbUploadPS42Fonts, rSuppliedFonts );
     }
 }
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

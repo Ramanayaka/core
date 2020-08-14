@@ -18,7 +18,6 @@
  */
 #include <connectivity/DriversConfig.hxx>
 #include <tools/wldcrd.hxx>
-#include <svtools/miscopt.hxx>
 #include <comphelper/sequence.hxx>
 
 using namespace connectivity;
@@ -42,48 +41,48 @@ namespace
     void lcl_fillValues(const ::utl::OConfigurationNode& _aURLPatternNode,const OUString& _sNode,::comphelper::NamedValueCollection& _rValues)
     {
         const ::utl::OConfigurationNode aPropertiesNode = _aURLPatternNode.openNode(_sNode);
-        if ( aPropertiesNode.isValid() )
+        if ( !aPropertiesNode.isValid() )
+            return;
+
+        uno::Sequence< OUString > aStringSeq;
+        const uno::Sequence< OUString > aProperties = aPropertiesNode.getNodeNames();
+        const OUString* pPropertiesIter = aProperties.getConstArray();
+        const OUString* pPropertiesEnd  = pPropertiesIter + aProperties.getLength();
+        for (;pPropertiesIter != pPropertiesEnd ; ++pPropertiesIter)
         {
-            uno::Sequence< OUString > aStringSeq;
-            const uno::Sequence< OUString > aProperties = aPropertiesNode.getNodeNames();
-            const OUString* pPropertiesIter = aProperties.getConstArray();
-            const OUString* pPropertiesEnd  = pPropertiesIter + aProperties.getLength();
-            for (;pPropertiesIter != pPropertiesEnd ; ++pPropertiesIter)
+            uno::Any aValue = aPropertiesNode.getNodeValue(*pPropertiesIter + "/Value");
+            if ( aValue >>= aStringSeq )
             {
-                uno::Any aValue = aPropertiesNode.getNodeValue(*pPropertiesIter + "/Value");
-                if ( aValue >>= aStringSeq )
-                {
-                    lcl_convert(aStringSeq,aValue);
-                }
-                _rValues.put(*pPropertiesIter,aValue);
-            } // for (;pPropertiesIter != pPropertiesEnd ; ++pPropertiesIter,++pNamedIter)
-        } // if ( aPropertiesNode.isValid() )
+                lcl_convert(aStringSeq,aValue);
+            }
+            _rValues.put(*pPropertiesIter,aValue);
+        } // for (;pPropertiesIter != pPropertiesEnd ; ++pPropertiesIter,++pNamedIter)
     }
     void lcl_readURLPatternNode(const ::utl::OConfigurationTreeRoot& _aInstalled,const OUString& _sEntry,TInstalledDriver& _rInstalledDriver)
     {
         const ::utl::OConfigurationNode aURLPatternNode = _aInstalled.openNode(_sEntry);
-        if ( aURLPatternNode.isValid() )
-        {
-            OUString sParentURLPattern;
-            aURLPatternNode.getNodeValue("ParentURLPattern") >>= sParentURLPattern;
-            if ( !sParentURLPattern.isEmpty() )
-                lcl_readURLPatternNode(_aInstalled,sParentURLPattern,_rInstalledDriver);
+        if ( !aURLPatternNode.isValid() )
+            return;
 
-            OUString sDriverFactory;
-            aURLPatternNode.getNodeValue("Driver") >>= sDriverFactory;
-            if ( !sDriverFactory.isEmpty() )
-                _rInstalledDriver.sDriverFactory = sDriverFactory;
+        OUString sParentURLPattern;
+        aURLPatternNode.getNodeValue("ParentURLPattern") >>= sParentURLPattern;
+        if ( !sParentURLPattern.isEmpty() )
+            lcl_readURLPatternNode(_aInstalled,sParentURLPattern,_rInstalledDriver);
 
-            OUString sDriverTypeDisplayName;
-            aURLPatternNode.getNodeValue("DriverTypeDisplayName") >>= sDriverTypeDisplayName;
-            OSL_ENSURE(!sDriverTypeDisplayName.isEmpty(),"No valid DriverTypeDisplayName property!");
-            if ( !sDriverTypeDisplayName.isEmpty() )
-                _rInstalledDriver.sDriverTypeDisplayName = sDriverTypeDisplayName;
+        OUString sDriverFactory;
+        aURLPatternNode.getNodeValue("Driver") >>= sDriverFactory;
+        if ( !sDriverFactory.isEmpty() )
+            _rInstalledDriver.sDriverFactory = sDriverFactory;
 
-            lcl_fillValues(aURLPatternNode,"Properties",_rInstalledDriver.aProperties);
-            lcl_fillValues(aURLPatternNode,"Features",_rInstalledDriver.aFeatures);
-            lcl_fillValues(aURLPatternNode,"MetaData",_rInstalledDriver.aMetaData);
-        }
+        OUString sDriverTypeDisplayName;
+        aURLPatternNode.getNodeValue("DriverTypeDisplayName") >>= sDriverTypeDisplayName;
+        OSL_ENSURE(!sDriverTypeDisplayName.isEmpty(),"No valid DriverTypeDisplayName property!");
+        if ( !sDriverTypeDisplayName.isEmpty() )
+            _rInstalledDriver.sDriverTypeDisplayName = sDriverTypeDisplayName;
+
+        lcl_fillValues(aURLPatternNode,"Properties",_rInstalledDriver.aProperties);
+        lcl_fillValues(aURLPatternNode,"Features",_rInstalledDriver.aFeatures);
+        lcl_fillValues(aURLPatternNode,"MetaData",_rInstalledDriver.aMetaData);
     }
 }
 
@@ -103,8 +102,6 @@ const TInstalledDrivers& DriversConfigImpl::getInstalledDrivers(const uno::Refer
 
         if ( m_aInstalled.isValid() )
         {
-            SvtMiscOptions aMiscOptions;
-
             const uno::Sequence< OUString > aURLPatterns = m_aInstalled.getNodeNames();
             const OUString* pPatternIter = aURLPatterns.getConstArray();
             const OUString* pPatternEnd  = pPatternIter + aURLPatterns.getLength();
@@ -112,10 +109,8 @@ const TInstalledDrivers& DriversConfigImpl::getInstalledDrivers(const uno::Refer
             {
                 TInstalledDriver aInstalledDriver;
                 lcl_readURLPatternNode(m_aInstalled,*pPatternIter,aInstalledDriver);
-                if ( !aInstalledDriver.sDriverFactory.isEmpty() &&
-                     ( aMiscOptions.IsExperimentalMode() ||
-                       aInstalledDriver.sDriverFactory != "com.sun.star.comp.sdbc.firebird.Driver" ))
-                    m_aDrivers.insert(TInstalledDrivers::value_type(*pPatternIter,aInstalledDriver));
+                if ( !aInstalledDriver.sDriverFactory.isEmpty() )
+                    m_aDrivers.emplace(*pPatternIter,aInstalledDriver);
             }
         } // if ( m_aInstalled.isValid() )
     }
@@ -154,15 +149,13 @@ OUString DriversConfig::getDriverFactoryName(const OUString& _sURL) const
     const TInstalledDrivers& rDrivers = m_aNode->getInstalledDrivers(m_xORB);
     OUString sRet;
     OUString sOldPattern;
-    TInstalledDrivers::const_iterator aIter = rDrivers.begin();
-    TInstalledDrivers::const_iterator aEnd = rDrivers.end();
-    for(;aIter != aEnd;++aIter)
+    for(const auto& [rPattern, rDriver] : rDrivers)
     {
-        WildCard aWildCard(aIter->first);
-        if ( sOldPattern.getLength() < aIter->first.getLength() && aWildCard.Matches(_sURL) )
+        WildCard aWildCard(rPattern);
+        if ( sOldPattern.getLength() < rPattern.getLength() && aWildCard.Matches(_sURL) )
         {
-            sRet = aIter->second.sDriverFactory;
-            sOldPattern = aIter->first;
+            sRet = rDriver.sDriverFactory;
+            sOldPattern = rPattern;
         }
     }
 
@@ -174,15 +167,13 @@ OUString DriversConfig::getDriverTypeDisplayName(const OUString& _sURL) const
     const TInstalledDrivers& rDrivers = m_aNode->getInstalledDrivers(m_xORB);
     OUString sRet;
     OUString sOldPattern;
-    TInstalledDrivers::const_iterator aIter = rDrivers.begin();
-    TInstalledDrivers::const_iterator aEnd = rDrivers.end();
-    for(;aIter != aEnd;++aIter)
+    for(const auto& [rPattern, rDriver] : rDrivers)
     {
-        WildCard aWildCard(aIter->first);
-        if ( sOldPattern.getLength() < aIter->first.getLength() && aWildCard.Matches(_sURL) )
+        WildCard aWildCard(rPattern);
+        if ( sOldPattern.getLength() < rPattern.getLength() && aWildCard.Matches(_sURL) )
         {
-            sRet = aIter->second.sDriverTypeDisplayName;
-            sOldPattern = aIter->first;
+            sRet = rDriver.sDriverTypeDisplayName;
+            sOldPattern = rPattern;
         }
     }
 
@@ -209,26 +200,24 @@ const ::comphelper::NamedValueCollection& DriversConfig::impl_get(const OUString
     const TInstalledDrivers& rDrivers = m_aNode->getInstalledDrivers(m_xORB);
     const ::comphelper::NamedValueCollection* pRet = nullptr;
     OUString sOldPattern;
-    TInstalledDrivers::const_iterator aIter = rDrivers.begin();
-    TInstalledDrivers::const_iterator aEnd = rDrivers.end();
-    for(;aIter != aEnd;++aIter)
+    for(const auto& [rPattern, rDriver] : rDrivers)
     {
-        WildCard aWildCard(aIter->first);
-        if ( sOldPattern.getLength() < aIter->first.getLength() && aWildCard.Matches(_sURL) )
+        WildCard aWildCard(rPattern);
+        if ( sOldPattern.getLength() < rPattern.getLength() && aWildCard.Matches(_sURL) )
         {
             switch(_nProps)
             {
                 case 0:
-                    pRet = &aIter->second.aFeatures;
+                    pRet = &rDriver.aFeatures;
                     break;
                 case 1:
-                    pRet = &aIter->second.aProperties;
+                    pRet = &rDriver.aProperties;
                     break;
                 case 2:
-                    pRet = &aIter->second.aMetaData;
+                    pRet = &rDriver.aMetaData;
                     break;
             }
-            sOldPattern = aIter->first;
+            sOldPattern = rPattern;
         }
     } // for(;aIter != aEnd;++aIter)
     if ( pRet == nullptr )

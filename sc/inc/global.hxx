@@ -23,25 +23,29 @@
 #include "address.hxx"
 #include <i18nlangtag/lang.h>
 #include <svx/svdtypes.hxx>
-#include <tools/stream.hxx>
-#include <com/sun/star/uno/Reference.hxx>
+#include <tools/ref.hxx>
+#include <sal/types.h>
+#include <com/sun/star/i18n/CollatorOptions.hpp>
 #include "scdllapi.h"
 #include <rtl/ustring.hxx>
 
-#include <vector>
+#include <atomic>
+// HACK: <atomic> includes <stdbool.h>, which in some Clang versions does '#define bool bool',
+// which confuses clang plugins.
+#undef bool
+#include <map>
+#include <memory>
 
-class Bitmap;
+namespace com::sun::star::uno { template <typename > class Reference; }
+
 class SfxItemSet;
 class SfxViewShell;
-class Color;
 struct ScCalcConfig;
 enum class SvtScriptType;
 enum class FormulaError : sal_uInt16;
+enum class SvNumFormatType : sal_Int16;
 
 #define SC_COLLATOR_IGNORES css::i18n::CollatorOptions::CollatorOptions_IGNORE_CASE
-
-#define SC_TRANSLITERATION_IGNORECASE TransliterationFlags::IGNORE_CASE
-#define SC_TRANSLITERATION_CASESENSE  TransliterationFlags::NONE
 
 //  Calc has lots of names...
 //  Clipboard names are in so3/soapp.hxx now
@@ -50,6 +54,9 @@ enum class FormulaError : sal_uInt16;
 #define STRING_SCAPP    "scalc"
 
 #define STRING_STANDARD "Standard"
+
+// Have the dreaded programmatic filter name defined in one place.
+#define SC_TEXT_CSV_FILTER_NAME "Text - txt - csv (StarCalc)"
 
 // characters
 
@@ -60,6 +67,7 @@ const sal_Unicode CHAR_LRM      = 0x200E;
 const sal_Unicode CHAR_RLM      = 0x200F;
 const sal_Unicode CHAR_NBHY     = 0x2011;
 const sal_Unicode CHAR_ZWNBSP   = 0x2060;
+const sal_Unicode CHAR_NNBSP    = 0x202F; //NARROW NO-BREAK SPACE
 
 #define MINDOUBLE   1.7e-307
 #define MAXDOUBLE   1.7e307
@@ -270,13 +278,6 @@ namespace o3tl
     template<> struct typed_flags<ScCloneFlags> : is_typed_flags<ScCloneFlags, 0x0007> {};
 }
 
-#ifndef DELETEZ
-#define DELETEZ(pPtr) { delete pPtr; pPtr = 0; }
-#endif
-
-                                    // is bit set in set?
-#define IS_SET(bit,set)(((set)&(bit))==(bit))
-
 enum CellType
     {
         CELLTYPE_NONE,
@@ -286,13 +287,13 @@ enum CellType
         CELLTYPE_EDIT,
     };
 
-enum DelCellCmd
+enum class DelCellCmd
     {
-        DEL_CELLSUP,
-        DEL_CELLSLEFT,
-        DEL_DELROWS,
-        DEL_DELCOLS,
-        DEL_NONE
+        CellsUp,
+        CellsLeft,
+        Rows,
+        Cols,
+        NONE
     };
 
 enum InsCellCmd
@@ -380,8 +381,9 @@ enum ScVObjMode                     // output modes of objects on a page
 
 enum ScAnchorType                   // anchor of a character object
 {
-    SCA_CELL,
-    SCA_PAGE,
+    SCA_CELL,                       // anchor to cell, move with cell
+    SCA_CELL_RESIZE,                // anchor to cell, move and resize with cell
+    SCA_PAGE,                       // anchor to page, independent of any cells
     SCA_DONTKNOW                    // for multi selection
 };
 
@@ -464,7 +466,6 @@ struct ScImportParam
     bool            operator==  ( const ScImportParam& r ) const;
 };
 
-class ScDocument;
 class ScDocShell;
 class SvxSearchItem;
 class ScAutoFormat;
@@ -475,7 +476,6 @@ class SvxBrushItem;
 class ScFunctionList;
 class ScFunctionMgr;
 class SfxItemPool;
-class SdrModel;
 class EditTextObject;
 class SfxObjectShell;
 class SvNumberFormatter;
@@ -486,76 +486,67 @@ class SvtSysLocale;
 class CalendarWrapper;
 class CollatorWrapper;
 class IntlWrapper;
-class OutputDevice;
 class ScFieldEditEngine;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace lang {
         struct Locale;
     }
     namespace i18n {
         class XOrdinalSuffix;
     }
-}}}
+}
 namespace utl {
     class TransliterationWrapper;
 }
 
 class ScGlobal
 {
-    static SvxSearchItem*   pSearchItem;
-    static ScAutoFormat*    pAutoFormat;
-    static LegacyFuncCollection* pLegacyFuncCollection;
-    static ScUnoAddInCollection* pAddInCollection;
-    static ScUserList*      pUserList;
-    static OUString**       ppRscString;
-    static OUString*        pStrScDoc;
-    static OUString*        pEmptyOUString;
-    static OUString*        pStrClipDocName;
-    static SvxBrushItem*    pEmptyBrushItem;
-    static SvxBrushItem*    pButtonBrushItem;
-    static SvxBrushItem*    pEmbeddedBrushItem;
-    static SvxBrushItem*    pProtectedBrushItem;
+    static std::unique_ptr<SvxSearchItem> xSearchItem;
+    static std::unique_ptr<ScAutoFormat> xAutoFormat;
+    static std::atomic<LegacyFuncCollection*> pLegacyFuncCollection;
+    static std::atomic<ScUnoAddInCollection*> pAddInCollection;
+    static std::unique_ptr<ScUserList> xUserList;
+    static SC_DLLPUBLIC const OUString aEmptyOUString;
+    static OUString         aStrClipDocName;
+    static std::unique_ptr<SvxBrushItem> xEmptyBrushItem;
+    static std::unique_ptr<SvxBrushItem> xButtonBrushItem;
+    static std::unique_ptr<SvxBrushItem> xEmbeddedBrushItem;
 
-    static ScFunctionList*  pStarCalcFunctionList;
-    static ScFunctionMgr*   pStarCalcFunctionMgr;
+    static std::unique_ptr<ScFunctionList> xStarCalcFunctionList;
+    static std::unique_ptr<ScFunctionMgr> xStarCalcFunctionMgr;
 
-    static ScUnitConverter* pUnitConverter;
+    static std::atomic<ScUnitConverter*> pUnitConverter;
 
-    static  SvNumberFormatter*  pEnglishFormatter;          // for UNO / XML export
+    static std::unique_ptr<SvNumberFormatter> xEnglishFormatter;          // for UNO / XML export
 
     static css::uno::Reference< css::i18n::XOrdinalSuffix> xOrdinalSuffix;
-    static CalendarWrapper*     pCalendar;
-    static CollatorWrapper*     pCaseCollator;
-    static CollatorWrapper*     pCollator;
-    static ::utl::TransliterationWrapper* pTransliteration;
-    static ::utl::TransliterationWrapper* pCaseTransliteration;
-    static IntlWrapper*         pScIntlWrapper;
-    static css::lang::Locale*   pLocale;
+    static std::unique_ptr<CalendarWrapper>  xCalendar;
+    static std::atomic<CollatorWrapper*>     pCaseCollator;
+    static std::atomic<CollatorWrapper*>     pCollator;
+    static std::atomic<::utl::TransliterationWrapper*> pTransliteration;
+    static std::atomic<::utl::TransliterationWrapper*> pCaseTransliteration;
+    static std::atomic<css::lang::Locale*>   pLocale;
 
-    static ScFieldEditEngine*   pFieldEditEngine;
+    static std::unique_ptr<ScFieldEditEngine> xFieldEditEngine;
 
     static void                 InitPPT();
 
 public:
-    static SvtSysLocale*        pSysLocale;
-    // for faster access a pointer to the single instance provided by SvtSysLocale
-    SC_DLLPUBLIC static const CharClass*     pCharClass;
-    // for faster access a pointer to the single instance provided by SvtSysLocale
-    SC_DLLPUBLIC static const LocaleDataWrapper* pLocaleData;
-    SC_DLLPUBLIC static const LocaleDataWrapper* GetpLocaleData();
+    static std::unique_ptr<SvtSysLocale> xSysLocale;
+    SC_DLLPUBLIC static const LocaleDataWrapper* getLocaleDataPtr();
+    SC_DLLPUBLIC static const CharClass* getCharClassPtr();
 
     static CalendarWrapper*     GetCalendar();
     SC_DLLPUBLIC static CollatorWrapper*        GetCollator();
     static CollatorWrapper*     GetCaseCollator();
-    static IntlWrapper*         GetScIntlWrapper();
     static css::lang::Locale*   GetLocale();
 
     SC_DLLPUBLIC static ::utl::TransliterationWrapper* GetpTransliteration();
     static ::utl::TransliterationWrapper* GetCaseTransliteration();
 
     SC_DLLPUBLIC static LanguageType            eLnge;
-    static sal_Unicode          cListDelimiter;
+    static constexpr sal_Unicode cListDelimiter = ',';
 
     static const OUString&      GetClipDocName();
     static void                 SetClipDocName( const OUString& rNew );
@@ -568,17 +559,23 @@ public:
     SC_DLLPUBLIC static ScUnoAddInCollection* GetAddInCollection();
     SC_DLLPUBLIC static ScUserList*         GetUserList();
     static void                 SetUserList( const ScUserList* pNewList );
-    SC_DLLPUBLIC static const OUString&       GetRscString( sal_uInt16 nIndex );
-    /// Open the specified URL.
-    static void                 OpenURL(const OUString& rURL, const OUString& rTarget);
+    /**
+     * Open the specified URL.
+     * @param bIgnoreSettings - If true, ignore security settings (Ctrl-Click) and just open the URL.
+     */
+    static void OpenURL(const OUString& rURL, const OUString& rTarget, bool bIgnoreSettings = false);
+    /// Whether the URL can be opened according to current security options (Click/Ctrl-Click)
+    static bool                 ShouldOpenURL();
     SC_DLLPUBLIC static OUString            GetAbsDocName( const OUString& rFileName,
-                                                SfxObjectShell* pShell );
+                                                const SfxObjectShell* pShell );
     SC_DLLPUBLIC static OUString            GetDocTabName( const OUString& rFileName,
                                                 const OUString& rTabName );
-    SC_DLLPUBLIC static sal_uInt32 GetStandardFormat( SvNumberFormatter&, sal_uInt32 nFormat, short nType );
+    SC_DLLPUBLIC static sal_uInt32 GetStandardFormat( SvNumberFormatter&, sal_uInt32 nFormat, SvNumFormatType nType );
 
     SC_DLLPUBLIC static sal_uInt16 GetStandardRowHeight();
+    /// Horizontal pixel per twips factor.
     SC_DLLPUBLIC static double              nScreenPPTX;
+    /// Vertical pixel per twips factor.
     SC_DLLPUBLIC static double              nScreenPPTY;
 
     static tools::SvRef<ScDocShell>   xDrawClipDocShellRef;
@@ -589,15 +586,14 @@ public:
     SC_DLLPUBLIC static long                nLastRowHeightExtra;
     static long             nLastColWidthExtra;
 
-    static void             Init();                     // during start up
+    SC_DLLPUBLIC static void Init();                     // during start up
     static void             InitAddIns();
-    static void             Clear();                    // at the end of the program
+    SC_DLLPUBLIC static void Clear();                    // at the end of the program
 
-    static void             InitTextHeight(SfxItemPool* pPool);
-    static SvxBrushItem*    GetEmptyBrushItem() { return pEmptyBrushItem; }
+    static void             InitTextHeight(const SfxItemPool* pPool);
+    static SvxBrushItem*    GetEmptyBrushItem() { return xEmptyBrushItem.get(); }
     static SvxBrushItem*    GetButtonBrushItem();
-    static SvxBrushItem*    GetProtectedBrushItem() { return pProtectedBrushItem; }
-    SC_DLLPUBLIC    static const OUString&    GetEmptyOUString();
+    static const OUString&  GetEmptyOUString() { return aEmptyOUString; }
 
     static bool             HasStarCalcFunctionList();
     static ScFunctionList*  GetStarCalcFunctionList();
@@ -682,7 +678,7 @@ public:
 
     /** Adds a language item to the item set, if the number format item contains
         a language that differs from its parent's language. */
-    SC_DLLPUBLIC static void             AddLanguage( SfxItemSet& rSet, SvNumberFormatter& rFormatter );
+    SC_DLLPUBLIC static void             AddLanguage( SfxItemSet& rSet, const SvNumberFormatter& rFormatter );
 
     /** Obtain the ordinal suffix for a number according to the system locale */
     static OUString         GetOrdinalSuffix( sal_Int32 nNumber);
@@ -806,14 +802,16 @@ public:
 
         @param rCurFmtType
             Can be assigned a format type in case a date or time or date+time
-            string was converted, e.g. css::util::NumberFormat::DATE or
-            css::util::NumberFormat::TIME or a combination thereof.
+            string was converted, e.g. SvNumFormatType::DATE or
+            SvNumFormatType::TIME or a combination thereof.
 
      */
     static double ConvertStringToValue( const OUString& rStr, const ScCalcConfig& rConfig,
             FormulaError & rError, FormulaError nStringNoValueError,
-            SvNumberFormatter* pFormatter, short & rCurFmtType );
+            SvNumberFormatter* pFormatter, SvNumFormatType & rCurFmtType );
 
+    /// Calc's threaded group calculation is in progress.
+    SC_DLLPUBLIC static bool bThreadedGroupCalcInProgress;
 };
 
 // maybe move to dbdata.hxx (?):
@@ -894,7 +892,7 @@ struct ScConsolidateParam
     SCTAB           nTab;
     ScSubTotalFunc  eFunction;
     sal_uInt16      nDataAreaCount;         // number of data areas
-    ScArea**        ppDataAreas;            // array of pointers into data areas
+    std::unique_ptr<ScArea[]> pDataAreas; // array of pointers into data areas
     bool            bByCol;
     bool            bByRow;
     bool            bReferenceData;         // reference source data
@@ -907,7 +905,7 @@ struct ScConsolidateParam
     bool                operator==      ( const ScConsolidateParam& r ) const;
     void                Clear           (); // = ClearDataAreas()+Members
     void                ClearDataAreas  ();
-    void                SetAreas        ( ScArea* const* ppAreas, sal_uInt16 nCount );
+    void                SetAreas        ( std::unique_ptr<ScArea[]> pAreas, sal_uInt16 nCount );
 };
 
 extern SfxViewShell* pScActiveViewShell;

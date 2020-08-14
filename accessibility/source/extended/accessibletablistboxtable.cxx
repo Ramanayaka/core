@@ -17,13 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-
-#include "extended/accessibletablistboxtable.hxx"
-#include "extended/AccessibleBrowseBoxTableCell.hxx"
-#include "extended/AccessibleBrowseBoxCheckBoxCell.hxx"
-#include <svtools/svtabbx.hxx>
+#include <extended/accessibletablistboxtable.hxx>
+#include <extended/AccessibleBrowseBoxTableCell.hxx>
+#include <extended/AccessibleBrowseBoxCheckBoxCell.hxx>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
-
+#include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <vcl/toolkit/svtabbx.hxx>
 
 namespace accessibility
 {
@@ -63,192 +63,135 @@ namespace accessibility
 
     void AccessibleTabListBoxTable::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
     {
-        if ( isAlive() )
+        if ( !isAlive() )
+            return;
+
+        switch ( VclEventId nEventId = rVclWindowEvent.GetId(); nEventId )
         {
-            VclEventId nEventId = rVclWindowEvent.GetId();
-            switch ( nEventId )
+            case  VclEventId::ObjectDying :
             {
-                case  VclEventId::ObjectDying :
-                {
-                    m_pTabListBox->RemoveEventListener( LINK( this, AccessibleTabListBoxTable, WindowEventListener ) );
-                    m_pTabListBox = nullptr;
-                    break;
-                }
-
-                case VclEventId::ControlGetFocus :
-                case VclEventId::ControlLoseFocus :
-                {
-                    uno::Any aOldValue, aNewValue;
-                    if ( nEventId == VclEventId::ControlGetFocus )
-                        aNewValue <<= AccessibleStateType::FOCUSED;
-                    else
-                        aOldValue <<= AccessibleStateType::FOCUSED;
-                    commitEvent( AccessibleEventId::STATE_CHANGED, aNewValue, aOldValue );
-                    break;
-                }
-
-                case VclEventId::ListboxSelect :
-                {
-                    // First send an event that tells the listeners of a
-                    // modified selection.  The active descendant event is
-                    // send after that so that the receiving AT has time to
-                    // read the text or name of the active child.
-                    commitEvent( AccessibleEventId::SELECTION_CHANGED, Any(), Any() );
-                    if ( m_pTabListBox && m_pTabListBox->HasFocus() )
-                    {
-                        SvTreeListEntry* pEntry = static_cast< SvTreeListEntry* >( rVclWindowEvent.GetData() );
-                        if ( pEntry )
-                        {
-                            sal_Int32 nRow = m_pTabListBox->GetEntryPos( pEntry );
-                            sal_uInt16 nCol = m_pTabListBox->GetCurrColumn();
-                            Reference< XAccessible > xChild =
-                                m_pTabListBox->CreateAccessibleCell( nRow, nCol );
-                            uno::Any aOldValue, aNewValue;
-
-                            if ( m_pTabListBox->IsTransientChildrenDisabled() )
-                            {
-                                aNewValue <<= AccessibleStateType::FOCUSED;
-                                TriState eState = TRISTATE_INDET;
-                                if ( m_pTabListBox->IsCellCheckBox( nRow, nCol, eState ) )
-                                {
-                                    AccessibleCheckBoxCell* pCell =
-                                        static_cast< AccessibleCheckBoxCell* >( xChild.get() );
-                                    pCell->commitEvent( AccessibleEventId::STATE_CHANGED, aNewValue, aOldValue );
-                                }
-                                else
-                                {
-                                    AccessibleBrowseBoxTableCell* pCell =
-                                        static_cast< AccessibleBrowseBoxTableCell* >( xChild.get() );
-                                    pCell->commitEvent( AccessibleEventId::STATE_CHANGED, aNewValue, aOldValue );
-                                }
-                            }
-                            else
-                            {
-                                aNewValue <<= xChild;
-                                commitEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, aNewValue, aOldValue );
-                            }
-                        }
-                    }
-                    break;
-                }
-                case VclEventId::WindowGetFocus :
-                {
-                    uno::Any aOldValue, aNewValue;
-                    aNewValue <<= AccessibleStateType::FOCUSED;
-                    commitEvent( AccessibleEventId::STATE_CHANGED, aNewValue, aOldValue );
-                    break;
-
-                }
-                case VclEventId::WindowLoseFocus :
-                {
-                    uno::Any aOldValue, aNewValue;
-                    aOldValue <<= AccessibleStateType::FOCUSED;
-                    commitEvent( AccessibleEventId::STATE_CHANGED, aNewValue, aOldValue );
-                    break;
-                }
-                case VclEventId::ListboxTreeSelect:
-                    {
-                        SvTreeListEntry* pEntry = static_cast< SvTreeListEntry* >( rVclWindowEvent.GetData() );
-                        if (pEntry)
-                        {
-                            sal_Int32 nRow = m_pTabListBox->GetEntryPos( pEntry );
-                            Reference< XAccessible > xChild = m_pTabListBox->CreateAccessibleCell( nRow, m_pTabListBox->GetCurrColumn() );
-                            TriState eState = TRISTATE_INDET;
-                            if ( m_pTabListBox->IsCellCheckBox( nRow, m_pTabListBox->GetCurrColumn(), eState ) )
-                            {
-                                AccessibleCheckBoxCell* pCell = static_cast< AccessibleCheckBoxCell* >( xChild.get() );
-                                pCell->commitEvent( AccessibleEventId::SELECTION_CHANGED, Any(), Any() );
-                            }
-                            else
-                            {
-                                AccessibleBrowseBoxTableCell* pCell = static_cast< AccessibleBrowseBoxTableCell* >( xChild.get() );
-                                pCell->commitEvent( AccessibleEventId::SELECTION_CHANGED, Any(), Any() );
-                            }
-                        }
-                    }
-                    break;
-                case VclEventId::ListboxTreeFocus:
-                    {
-                        if ( m_pTabListBox && m_pTabListBox->HasFocus() )
-                        {
-                            uno::Any aOldValue, aNewValue;
-                            SvTreeListEntry* pEntry = static_cast< SvTreeListEntry* >( rVclWindowEvent.GetData() );
-                            if ( pEntry )
-                            {
-                                sal_Int32 nRow = m_pTabListBox->GetEntryPos( pEntry );
-                                m_xCurChild = m_pTabListBox->CreateAccessibleCell( nRow, m_pTabListBox->GetCurrColumn() );
-                                aNewValue <<= m_xCurChild;
-                                commitEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, aNewValue ,aOldValue);
-                            }
-                            else
-                            {
-                                aNewValue <<= AccessibleStateType::FOCUSED;
-                                commitEvent( AccessibleEventId::STATE_CHANGED, aNewValue ,aOldValue);
-                            }
-                        }
-                    }
-                    break;
-
-                case VclEventId::CheckboxToggle :
-                {
-                    if ( m_pTabListBox && m_pTabListBox->HasFocus() )
-                    {
-                        SvTreeListEntry* pEntry = static_cast< SvTreeListEntry* >( rVclWindowEvent.GetData() );
-                        if ( pEntry )
-                        {
-                            sal_Int32 nRow = m_pTabListBox->GetEntryPos( pEntry );
-                            sal_uInt16 nCol = m_pTabListBox->GetCurrColumn();
-                            TriState eState = TRISTATE_INDET;
-                            if ( m_pTabListBox->IsCellCheckBox( nRow, nCol, eState ) )
-                            {
-                                Reference< XAccessible > xChild =
-                                    m_pTabListBox->CreateAccessibleCell( nRow, nCol );
-                                AccessibleCheckBoxCell* pCell =
-                                    static_cast< AccessibleCheckBoxCell* >( xChild.get() );
-                                pCell->SetChecked( SvHeaderTabListBox::IsItemChecked( pEntry, nCol ) );
-                            }
-                        }
-                    }
-                    break;
-                }
-
-                case VclEventId::TableCellNameChanged :
-                {
-                    if ( m_pTabListBox->IsTransientChildrenDisabled() )
-                    {
-                        commitEvent( AccessibleEventId::SELECTION_CHANGED, Any(), Any() );
-                        TabListBoxEventData* pData = static_cast< TabListBoxEventData* >( rVclWindowEvent.GetData() );
-                        SvTreeListEntry* pEntry = pData != nullptr ? pData->m_pEntry : nullptr;
-                        if ( pEntry )
-                        {
-                            sal_Int32 nRow = m_pTabListBox->GetEntryPos( pEntry );
-                            sal_uInt16 nCol = pData->m_nColumn;
-                            Reference< XAccessible > xChild =
-                                m_pTabListBox->CreateAccessibleCell( nRow, nCol );
-                            uno::Any aOldValue, aNewValue;
-                            aOldValue <<= pData->m_sOldText;
-                            OUString sNewText( m_pTabListBox->GetCellText( nRow, nCol ) );
-                            aNewValue <<= sNewText;
-                            TriState eState = TRISTATE_INDET;
-
-                            if ( m_pTabListBox->IsCellCheckBox( nRow, nCol, eState ) )
-                            {
-                                AccessibleCheckBoxCell* pCell =
-                                    static_cast< AccessibleCheckBoxCell* >( xChild.get() );
-                                pCell->commitEvent( AccessibleEventId::NAME_CHANGED, aNewValue, aOldValue );
-                            }
-                            else
-                            {
-                                AccessibleBrowseBoxTableCell* pCell =
-                                    static_cast< AccessibleBrowseBoxTableCell* >( xChild.get() );
-                                pCell->nameChanged( sNewText, pData->m_sOldText );
-                            }
-                        }
-                    }
-                    break;
-                }
-                default: break;
+                m_pTabListBox->RemoveEventListener( LINK( this, AccessibleTabListBoxTable, WindowEventListener ) );
+                m_pTabListBox = nullptr;
+                break;
             }
+
+            case VclEventId::ControlGetFocus :
+            case VclEventId::ControlLoseFocus :
+            {
+                uno::Any aOldValue, aNewValue;
+                if ( nEventId == VclEventId::ControlGetFocus )
+                    aNewValue <<= AccessibleStateType::FOCUSED;
+                else
+                    aOldValue <<= AccessibleStateType::FOCUSED;
+                commitEvent( AccessibleEventId::STATE_CHANGED, aNewValue, aOldValue );
+                break;
+            }
+
+            case VclEventId::ListboxSelect :
+            {
+                // First send an event that tells the listeners of a
+                // modified selection.  The active descendant event is
+                // send after that so that the receiving AT has time to
+                // read the text or name of the active child.
+                commitEvent( AccessibleEventId::SELECTION_CHANGED, Any(), Any() );
+                if ( m_pTabListBox && m_pTabListBox->HasFocus() )
+                {
+                    SvTreeListEntry* pEntry = static_cast< SvTreeListEntry* >( rVclWindowEvent.GetData() );
+                    if ( pEntry )
+                    {
+                        sal_Int32 nRow = m_pTabListBox->GetEntryPos( pEntry );
+                        sal_uInt16 nCol = m_pTabListBox->GetCurrColumn();
+                        Reference< XAccessible > xChild =
+                            m_pTabListBox->CreateAccessibleCell( nRow, nCol );
+                        uno::Any aOldValue, aNewValue;
+                        aNewValue <<= xChild;
+                        commitEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, aNewValue, aOldValue );
+                    }
+                }
+                break;
+            }
+            case VclEventId::WindowGetFocus :
+            {
+                uno::Any aOldValue, aNewValue;
+                aNewValue <<= AccessibleStateType::FOCUSED;
+                commitEvent( AccessibleEventId::STATE_CHANGED, aNewValue, aOldValue );
+                break;
+
+            }
+            case VclEventId::WindowLoseFocus :
+            {
+                uno::Any aOldValue, aNewValue;
+                aOldValue <<= AccessibleStateType::FOCUSED;
+                commitEvent( AccessibleEventId::STATE_CHANGED, aNewValue, aOldValue );
+                break;
+            }
+            case VclEventId::ListboxTreeSelect:
+                {
+                    SvTreeListEntry* pEntry = static_cast< SvTreeListEntry* >( rVclWindowEvent.GetData() );
+                    if (pEntry)
+                    {
+                        sal_Int32 nRow = m_pTabListBox->GetEntryPos( pEntry );
+                        Reference< XAccessible > xChild = m_pTabListBox->CreateAccessibleCell( nRow, m_pTabListBox->GetCurrColumn() );
+                        TriState eState = TRISTATE_INDET;
+                        if ( m_pTabListBox->IsCellCheckBox( nRow, m_pTabListBox->GetCurrColumn(), eState ) )
+                        {
+                            AccessibleCheckBoxCell* pCell = static_cast< AccessibleCheckBoxCell* >( xChild.get() );
+                            pCell->commitEvent( AccessibleEventId::SELECTION_CHANGED, Any(), Any() );
+                        }
+                        else
+                        {
+                            AccessibleBrowseBoxTableCell* pCell = static_cast< AccessibleBrowseBoxTableCell* >( xChild.get() );
+                            pCell->commitEvent( AccessibleEventId::SELECTION_CHANGED, Any(), Any() );
+                        }
+                    }
+                }
+                break;
+            case VclEventId::ListboxTreeFocus:
+                {
+                    if ( m_pTabListBox && m_pTabListBox->HasFocus() )
+                    {
+                        uno::Any aOldValue, aNewValue;
+                        SvTreeListEntry* pEntry = static_cast< SvTreeListEntry* >( rVclWindowEvent.GetData() );
+                        if ( pEntry )
+                        {
+                            sal_Int32 nRow = m_pTabListBox->GetEntryPos( pEntry );
+                            m_xCurChild = m_pTabListBox->CreateAccessibleCell( nRow, m_pTabListBox->GetCurrColumn() );
+                            aNewValue <<= m_xCurChild;
+                            commitEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, aNewValue ,aOldValue);
+                        }
+                        else
+                        {
+                            aNewValue <<= AccessibleStateType::FOCUSED;
+                            commitEvent( AccessibleEventId::STATE_CHANGED, aNewValue ,aOldValue);
+                        }
+                    }
+                }
+                break;
+
+            case VclEventId::CheckboxToggle :
+            {
+                if ( m_pTabListBox && m_pTabListBox->HasFocus() )
+                {
+                    SvTreeListEntry* pEntry = static_cast< SvTreeListEntry* >( rVclWindowEvent.GetData() );
+                    if ( pEntry )
+                    {
+                        sal_Int32 nRow = m_pTabListBox->GetEntryPos( pEntry );
+                        sal_uInt16 nCol = m_pTabListBox->GetCurrColumn();
+                        TriState eState = TRISTATE_INDET;
+                        if ( m_pTabListBox->IsCellCheckBox( nRow, nCol, eState ) )
+                        {
+                            Reference< XAccessible > xChild =
+                                m_pTabListBox->CreateAccessibleCell( nRow, nCol );
+                            AccessibleCheckBoxCell* pCell =
+                                static_cast< AccessibleCheckBoxCell* >( xChild.get() );
+                            pCell->SetChecked( SvHeaderTabListBox::IsItemChecked( pEntry, nCol ) );
+                        }
+                    }
+                }
+                break;
+            }
+
+            default: break;
         }
     }
 
@@ -313,7 +256,7 @@ namespace accessibility
 
     OUString AccessibleTabListBoxTable::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.svtools.AccessibleTabListBoxTable" );
+        return "com.sun.star.comp.svtools.AccessibleTabListBoxTable";
     }
 
     // XAccessibleSelection

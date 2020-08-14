@@ -21,27 +21,24 @@
 #define INCLUDED_SC_SOURCE_UI_INC_TPSTAT_HXX
 
 #include <sfx2/tabdlg.hxx>
-#include <vcl/fixed.hxx>
 
 class ScDocStatPage: public SfxTabPage
 {
-    friend class VclPtr<ScDocStatPage>;
 public:
-    static VclPtr<SfxTabPage> Create( vcl::Window* pParent, const SfxItemSet* rSet );
-    virtual         ~ScDocStatPage() override;
-    virtual void    dispose() override;
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet);
+    ScDocStatPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
+    virtual ~ScDocStatPage() override;
 
-private:
-            ScDocStatPage( vcl::Window *pParent, const SfxItemSet& rSet );
 protected:
     virtual bool    FillItemSet( SfxItemSet* rSet ) override;
     virtual void    Reset      ( const SfxItemSet* rSet ) override;
 
 private:
-    VclPtr<FixedText>       m_pFtTables;
-    VclPtr<FixedText>       m_pFtCells;
-    VclPtr<FixedText>       m_pFtPages;
-    VclPtr<FixedText>       m_pFtFormula;
+    std::unique_ptr<weld::Label> m_xFtTables;
+    std::unique_ptr<weld::Label> m_xFtCells;
+    std::unique_ptr<weld::Label> m_xFtPages;
+    std::unique_ptr<weld::Label> m_xFtFormula;
+    std::unique_ptr<weld::Frame> m_xFrame;
 };
 
 #endif

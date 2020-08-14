@@ -20,6 +20,7 @@
 #include "vbacommandbarcontrols.hxx"
 #include <vbahelper/vbahelper.hxx>
 #include <filter/msfilter/msvbahelper.hxx>
+#include <sal/log.hxx>
 
 using namespace com::sun::star;
 using namespace ooo::vba;
@@ -178,18 +179,16 @@ ScVbaCommandBarControl::Controls( const uno::Any& aIndex )
 OUString
 ScVbaCommandBarControl::getServiceImplName()
 {
-    return OUString("ScVbaCommandBarControl");
+    return "ScVbaCommandBarControl";
 }
 
 uno::Sequence<OUString>
 ScVbaCommandBarControl::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.CommandBarControl";
-    }
+        "ooo.vba.CommandBarControl"
+    };
     return aServiceNames;
 }
 
@@ -210,18 +209,16 @@ ScVbaCommandBarPopup::ScVbaCommandBarPopup( const css::uno::Reference< ov::XHelp
 OUString
 ScVbaCommandBarPopup::getServiceImplName()
 {
-    return OUString("ScVbaCommandBarPopup");
+    return "ScVbaCommandBarPopup";
 }
 
 uno::Sequence<OUString>
 ScVbaCommandBarPopup::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.CommandBarPopup";
-    }
+        "ooo.vba.CommandBarPopup"
+    };
     return aServiceNames;
 }
 
@@ -242,18 +239,16 @@ ScVbaCommandBarButton::ScVbaCommandBarButton( const css::uno::Reference< ov::XHe
 OUString
 ScVbaCommandBarButton::getServiceImplName()
 {
-    return OUString("ScVbaCommandBarButton");
+    return "ScVbaCommandBarButton";
 }
 
 uno::Sequence<OUString>
 ScVbaCommandBarButton::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.CommandBarButton";
-    }
+        "ooo.vba.CommandBarButton"
+    };
     return aServiceNames;
 }
 

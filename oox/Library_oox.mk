@@ -9,7 +9,7 @@
 
 $(eval $(call gb_Library_Library,oox))
 
-$(eval $(call gb_Library_set_precompiled_header,oox,$(SRCDIR)/oox/inc/pch/precompiled_oox))
+$(eval $(call gb_Library_set_precompiled_header,oox,oox/inc/pch/precompiled_oox))
 
 $(eval $(call gb_Library_use_custom_headers,oox,oox/generated))
 
@@ -38,6 +38,7 @@ $(eval $(call gb_Library_use_api,oox,\
 ))
 
 $(eval $(call gb_Library_use_libraries,oox,\
+    $(call gb_Helper_optional,AVMEDIA,avmedia) \
     basegfx \
     comphelper \
     cppu \
@@ -47,7 +48,7 @@ $(eval $(call gb_Library_use_libraries,oox,\
     drawinglayer \
     msfilter \
     sal \
-	i18nlangtag \
+    i18nlangtag \
     sax \
     sfx \
     svl \
@@ -95,13 +96,13 @@ $(eval $(call gb_Library_add_exception_objects,oox,\
     oox/source/core/recordparser \
     oox/source/core/relations \
     oox/source/core/relationshandler \
-    oox/source/core/services \
     oox/source/core/xmlfilterbase \
     oox/source/crypto/AgileEngine \
     oox/source/crypto/CryptTools \
     oox/source/crypto/DocumentEncryption \
     oox/source/crypto/DocumentDecryption \
     oox/source/crypto/Standard2007Engine \
+    oox/source/crypto/StrongEncryptionDataSpace \
     oox/source/docprop/docprophandler \
     oox/source/docprop/ooxmldocpropimport \
     oox/source/drawingml/chart/axiscontext \
@@ -139,13 +140,16 @@ $(eval $(call gb_Library_add_exception_objects,oox,\
     oox/source/drawingml/customshapepresetdata \
     oox/source/drawingml/customshapeproperties \
     oox/source/drawingml/diagram/constraintlistcontext \
+    oox/source/drawingml/diagram/datamodel \
     oox/source/drawingml/diagram/datamodelcontext \
     oox/source/drawingml/diagram/diagram \
     oox/source/drawingml/diagram/diagramdefinitioncontext \
     oox/source/drawingml/diagram/diagramfragmenthandler \
     oox/source/drawingml/diagram/diagramlayoutatoms \
+    oox/source/drawingml/diagram/layoutatomvisitorbase \
     oox/source/drawingml/diagram/layoutatomvisitors \
     oox/source/drawingml/diagram/layoutnodecontext \
+    oox/source/drawingml/diagram/rulelistcontext \
     oox/source/drawingml/drawingmltypes \
     oox/source/drawingml/effectproperties \
     oox/source/drawingml/effectpropertiescontext \
@@ -158,6 +162,7 @@ $(eval $(call gb_Library_add_exception_objects,oox,\
     oox/source/drawingml/linepropertiescontext \
     oox/source/drawingml/lineproperties \
     oox/source/drawingml/objectdefaultcontext \
+    oox/source/drawingml/presetgeometrynames \
     oox/source/drawingml/scene3dcontext \
     oox/source/drawingml/shapecontext \
     oox/source/drawingml/shape \
@@ -222,6 +227,7 @@ $(eval $(call gb_Library_add_exception_objects,oox,\
     oox/source/helper/graphichelper \
     oox/source/helper/grabbagstack \
     oox/source/helper/modelobjecthelper \
+    oox/source/helper/ooxresid \
     oox/source/helper/progressbar \
     oox/source/helper/propertymap \
     oox/source/helper/propertyset \
@@ -255,8 +261,6 @@ $(eval $(call gb_Library_add_exception_objects,oox,\
     oox/source/ppt/commontimenodecontext \
     oox/source/ppt/conditioncontext \
     oox/source/ppt/customshowlistcontext \
-    oox/source/ppt/dgmimport \
-    oox/source/ppt/dgmlayout \
     oox/source/ppt/headerfootercontext \
     oox/source/ppt/layoutfragmenthandler \
     oox/source/ppt/pptfilterhelpers \
@@ -267,6 +271,7 @@ $(eval $(call gb_Library_add_exception_objects,oox,\
     oox/source/ppt/pptshapegroupcontext \
     oox/source/ppt/pptshapepropertiescontext \
     oox/source/ppt/presentationfragmenthandler \
+    oox/source/ppt/presPropsfragmenthandler \
     oox/source/ppt/slidefragmenthandler \
     oox/source/ppt/slidemastertextstylescontext \
     oox/source/ppt/slidepersist \
@@ -300,14 +305,14 @@ $(eval $(call gb_Library_add_exception_objects,oox,\
     oox/source/vml/vmltextbox \
 ))
 
-ifeq ($(OS),IOS)
+ifeq ($(OS),iOS)
 # Either a compiler bug in Xcode 5.1.1 or some hard-to-spot undefined
 # behaviour in the source code... Compiling this source file with
 # optimization causes some Smart Art images to end up with completely
 # wrong colour, some even totally black.
-$(eval $(call gb_Library_add_cxxobjects,oox,\
+$(eval $(call gb_Library_add_exception_objects,oox,\
     oox/source/drawingml/color \
-    , $(gb_COMPILERNOOPTFLAGS) $(gb_LinkTarget_EXCEPTIONFLAGS) \
+    , $(gb_COMPILERNOOPTFLAGS) \
 ))
 else
 $(eval $(call gb_Library_add_exception_objects,oox,\

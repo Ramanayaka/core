@@ -17,10 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/textchain.hxx>
-#include <svx/textchaincursor.hxx>
+#include <textchain.hxx>
+#include <textchaincursor.hxx>
 #include <svx/svdedxv.hxx>
 #include <svx/svdoutl.hxx>
+#include <vcl/event.hxx>
 
 // XXX: Possible duplication of code in behavior with stuff in ImpEditView (or ImpEditEngine) and OutlinerView
 
@@ -83,8 +84,8 @@ void TextChainCursorManager::impDetectEvent(const KeyEvent& rKEvt,
     OUString aLastParaText = pOutl->GetText(pOutl->GetParagraph(nLastPara));
     sal_Int32 nLastParaLen = aLastParaText.getLength();
 
-    ESelection aEndSel = ESelection(nLastPara, nLastParaLen);
-    bool bAtEndOfTextContent = aCurSel.IsEqual(aEndSel);
+    ESelection aEndSel(nLastPara, nLastParaLen);
+    bool bAtEndOfTextContent = aCurSel == aEndSel;
 
     // Possibility: Are we "pushing" at the end of the object?
     if (nCode == KEY_RIGHT && bAtEndOfTextContent && pNextLink)
@@ -105,8 +106,8 @@ void TextChainCursorManager::impDetectEvent(const KeyEvent& rKEvt,
         return;
     }
 
-    ESelection aStartSel = ESelection(0, 0);
-    bool bAtStartOfTextContent = aCurSel.IsEqual(aStartSel);
+    ESelection aStartSel(0, 0);
+    bool bAtStartOfTextContent = aCurSel == aStartSel;
 
     // Possibility: Are we "pushing" at the start of the object?
     if (nCode == KEY_LEFT && bAtStartOfTextContent && pPrevLink)
@@ -188,13 +189,6 @@ void TextChainCursorManager::HandleCursorEvent(
 void TextChainCursorManager::impChangeEditingTextObj(SdrTextObj *pTargetTextObj, ESelection aNewSel)
 {
     assert(pTargetTextObj);
-
-    // To ensure that we check for overflow in the next box // This is handled in SdrTextObj::EndTextEdit
-    SdrTextObj *pNextLink = mpTextObj->GetNextLinkInChain();
-    TextChain *pTextChain = mpTextObj->GetTextChain();
-    // If we are moving forward
-    if (pNextLink && pTargetTextObj == pNextLink)
-        pTextChain->SetPendingOverflowCheck(pNextLink, true);
 
     mpEditView->SdrEndTextEdit();
     mpEditView->SdrBeginTextEdit(pTargetTextObj);

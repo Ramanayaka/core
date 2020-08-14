@@ -21,21 +21,17 @@
 
 #include <macroloader.hxx>
 
-#include <com/sun/star/document/UpdateDocMode.hpp>
-#include <com/sun/star/document/MacroExecMode.hpp>
 #include <com/sun/star/frame/DispatchResultState.hpp>
 #include <basic/basmgr.hxx>
 #include <basic/sbuno.hxx>
+#include <basic/sberrors.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/weak.hxx>
+#include <cppuhelper/weakref.hxx>
 #include <framework/documentundoguard.hxx>
-#include <rtl/ref.hxx>
 #include <sfx2/app.hxx>
-#include <sfx2/docfile.hxx>
 #include <sfx2/frame.hxx>
 #include <sfx2/objsh.hxx>
-#include <sfx2/request.hxx>
-#include <sfx2/sfxsids.hrc>
-#include <svl/intitem.hxx>
 #include <tools/urlobj.hxx>
 #include <vcl/svapp.hxx>
 
@@ -50,7 +46,7 @@ using namespace ::com::sun::star::util;
 SfxMacroLoader::SfxMacroLoader(const css::uno::Sequence< css::uno::Any >& aArguments)
 {
     Reference < XFrame > xFrame;
-    if ( aArguments.getLength() )
+    if ( aArguments.hasElements() )
     {
         aArguments[0] >>= xFrame;
         m_xFrame = xFrame;
@@ -59,7 +55,7 @@ SfxMacroLoader::SfxMacroLoader(const css::uno::Sequence< css::uno::Any >& aArgum
 
 OUString SAL_CALL SfxMacroLoader::getImplementationName()
 {
-    return OUString("com.sun.star.comp.sfx2.SfxMacroLoader");
+    return "com.sun.star.comp.sfx2.SfxMacroLoader";
 }
 
 sal_Bool SAL_CALL SfxMacroLoader::supportsService(OUString const & ServiceName)
@@ -69,8 +65,7 @@ sal_Bool SAL_CALL SfxMacroLoader::supportsService(OUString const & ServiceName)
 
 css::uno::Sequence<OUString> SAL_CALL SfxMacroLoader::getSupportedServiceNames()
 {
-    css::uno::Sequence< OUString > aSeq { "com.sun.star.frame.ProtocolHandler" };
-    return aSeq;
+    return { "com.sun.star.frame.ProtocolHandler" };
 }
 
 SfxObjectShell* SfxMacroLoader::GetObjectShell_Impl()
@@ -111,10 +106,9 @@ uno::Sequence< uno::Reference<frame::XDispatch> > SAL_CALL
 {
     sal_Int32 nCount = seqDescriptor.getLength();
     uno::Sequence< uno::Reference<frame::XDispatch> > lDispatcher(nCount);
-    for( sal_Int32 i=0; i<nCount; ++i )
-        lDispatcher[i] = this->queryDispatch( seqDescriptor[i].FeatureURL,
-                                              seqDescriptor[i].FrameName,
-                                              seqDescriptor[i].SearchFlags );
+    std::transform(seqDescriptor.begin(), seqDescriptor.end(), lDispatcher.begin(),
+        [this](const frame::DispatchDescriptor& rDescr) -> uno::Reference<frame::XDispatch> {
+            return queryDispatch(rDescr.FeatureURL, rDescr.FrameName, rDescr.SearchFlags); });
     return lDispatcher;
 }
 
@@ -127,20 +121,20 @@ void SAL_CALL SfxMacroLoader::dispatchWithNotification(
 
     uno::Any aAny;
     ErrCode nErr = loadMacro( aURL.Complete, aAny, GetObjectShell_Impl() );
-    if( xListener.is() )
-    {
-        // always call dispatchFinished(), because we didn't load a document but
-        // executed a macro instead!
-        frame::DispatchResultEvent aEvent;
+    if( !xListener.is() )
+        return;
 
-        aEvent.Source = static_cast< ::cppu::OWeakObject* >(this);
-        if( nErr == ERRCODE_NONE )
-            aEvent.State = frame::DispatchResultState::SUCCESS;
-        else
-            aEvent.State = frame::DispatchResultState::FAILURE;
+    // always call dispatchFinished(), because we didn't load a document but
+    // executed a macro instead!
+    frame::DispatchResultEvent aEvent;
 
-        xListener->dispatchFinished( aEvent ) ;
-    }
+    aEvent.Source = static_cast< ::cppu::OWeakObject* >(this);
+    if( nErr == ERRCODE_NONE )
+        aEvent.State = frame::DispatchResultState::SUCCESS;
+    else
+        aEvent.State = frame::DispatchResultState::FAILURE;
+
+    xListener->dispatchFinished( aEvent ) ;
 }
 
 uno::Any SAL_CALL SfxMacroLoader::dispatchWithReturnValue(
@@ -210,18 +204,18 @@ ErrCode SfxMacroLoader::loadMacro( const OUString& rURL, css::uno::Any& rRetval,
     // 'macro://[docname|.]/lib.mod.proc(args)' => macro of current or qualified document
     // 'macro://obj.method(args)' => direct API call, execute it via App-BASIC
     const OUString& aMacro( rURL );
-    sal_Int32 nHashPos = aMacro.indexOf( '/', 8 );
+    sal_Int32 nThirdSlashPos = aMacro.indexOf( '/', 8 );
     sal_Int32 nArgsPos = aMacro.indexOf( '(' );
     BasicManager *pAppMgr = SfxApplication::GetBasicManager();
     BasicManager *pBasMgr = nullptr;
     ErrCode nErr = ERRCODE_NONE;
 
     // should a macro function be executed ( no direct API call)?
-    if ( -1 != nHashPos && ( -1 == nArgsPos || nHashPos < nArgsPos ) )
+    if ( -1 != nThirdSlashPos && ( -1 == nArgsPos || nThirdSlashPos < nArgsPos ) )
     {
         // find BasicManager
         SfxObjectShell* pDoc = nullptr;
-        OUString aBasMgrName( INetURLObject::decode(aMacro.copy( 8, nHashPos-8 ), INetURLObject::DecodeMechanism::WithCharset) );
+        OUString aBasMgrName( INetURLObject::decode(aMacro.copy( 8, nThirdSlashPos-8 ), INetURLObject::DecodeMechanism::WithCharset) );
         if ( aBasMgrName.isEmpty() )
             pBasMgr = pAppMgr;
         else if ( aBasMgrName == "." )
@@ -258,13 +252,13 @@ ErrCode SfxMacroLoader::loadMacro( const OUString& rURL, css::uno::Any& rRetval,
             }
 
             // find BASIC method
-            OUString aQualifiedMethod( INetURLObject::decode(aMacro.copy( nHashPos+1 ), INetURLObject::DecodeMechanism::WithCharset) );
+            OUString aQualifiedMethod( INetURLObject::decode(aMacro.copy( nThirdSlashPos+1 ), INetURLObject::DecodeMechanism::WithCharset) );
             OUString aArgs;
             if ( -1 != nArgsPos )
             {
                 // remove arguments from macro name
-                aArgs = aQualifiedMethod.copy( nArgsPos - nHashPos - 1 );
-                aQualifiedMethod = aQualifiedMethod.copy( 0, nArgsPos - nHashPos - 1 );
+                aArgs = aQualifiedMethod.copy( nArgsPos - nThirdSlashPos - 1 );
+                aQualifiedMethod = aQualifiedMethod.copy( 0, nArgsPos - nThirdSlashPos - 1 );
             }
 
             if ( pBasMgr->HasMacro( aQualifiedMethod ) )
@@ -333,7 +327,7 @@ ErrCode SfxMacroLoader::loadMacro( const OUString& rURL, css::uno::Any& rRetval,
 #endif
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_sfx2_SfxMacroLoader_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &arguments)

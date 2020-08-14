@@ -19,8 +19,8 @@
 #ifndef INCLUDED_UNO_ENVIRONMENT_H
 #define INCLUDED_UNO_ENVIRONMENT_H
 
-#include <cppu/cppudllapi.h>
-#include <rtl/ustring.h>
+#include "cppu/cppudllapi.h"
+#include "rtl/ustring.h"
 
 #include <stdarg.h>
 
@@ -32,11 +32,11 @@ extern "C"
 struct _uno_ExtEnvironment;
 struct _typelib_InterfaceTypeDescription;
 
-#if defined( SAL_W32)
+#if defined( _WIN32)
 #pragma pack(push, 8)
 #endif
 
-/** The binary specification of an UNO environment.
+/** The binary specification of a UNO environment.
 */
 typedef struct SAL_DLLPUBLIC_RTTI _uno_Environment
 {
@@ -128,11 +128,11 @@ typedef void (SAL_CALL * uno_freeProxyFunc)( struct _uno_ExtEnvironment * pEnv, 
 */
 typedef void * (SAL_CALL * uno_memAlloc)( sal_Size nBytes );
 
-/** The binary specification of an UNO environment supporting interface registration.
+/** The binary specification of a UNO environment supporting interface registration.
 */
 typedef struct SAL_DLLPUBLIC_RTTI _uno_ExtEnvironment
 {
-    /** inherits all members of an uno_Environment
+    /** inherits all members of a uno_Environment
     */
     uno_Environment aBase;
 
@@ -245,7 +245,7 @@ typedef struct SAL_DLLPUBLIC_RTTI _uno_ExtEnvironment
 
 } uno_ExtEnvironment;
 
-#if defined( SAL_W32)
+#if defined( _WIN32)
 #pragma pack(pop)
 #endif
 

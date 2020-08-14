@@ -19,21 +19,9 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_CNTTAB_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_CNTTAB_HXX
 
-#include <svx/stddlg.hxx>
-#include <vcl/button.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/field.hxx>
-#include <vcl/lstbox.hxx>
-#include <sfx2/tabdlg.hxx>
+#include <sal/types.h>
 
-#include "tox.hxx"
-#include <toxmgr.hxx>
-#include <svx/checklbx.hxx>
-#include <tools/resary.hxx>
-#include <svtools/treelistbox.hxx>
-#include <vcl/menubtn.hxx>
-#include <svx/langbox.hxx>
+#include <toxe.hxx>
 
 #define TOX_PAGE_SELECT 1
 #define TOX_PAGE_ENTRY  2
@@ -53,7 +41,7 @@ struct CurTOXType
     TOXTypes    eType;
     sal_uInt16      nIndex; //for TOX_USER only
 
-    bool operator==(const CurTOXType& rCmp)
+    bool operator==(const CurTOXType& rCmp) const
     {
         return eType == rCmp.eType && nIndex == rCmp.nIndex;
     }
@@ -62,18 +50,6 @@ struct CurTOXType
     CurTOXType () : eType (TOX_INDEX), nIndex (0) {};
 
     CurTOXType (TOXTypes t) : eType (t), nIndex (0) {};
-};
-
-class SwOLENames
-{
-    ResStringArray aNamesAry;
-public:
-    SwOLENames(const ResId& rResId)
-        : aNamesAry(rResId)
-    {
-    }
-
-    ResStringArray& GetNames() { return aNamesAry;}
 };
 
 #endif

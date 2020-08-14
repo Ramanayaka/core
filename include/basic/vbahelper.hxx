@@ -20,12 +20,13 @@
 #ifndef INCLUDED_BASIC_VBAHELPER_HXX
 #define INCLUDED_BASIC_VBAHELPER_HXX
 
-#include <com/sun/star/frame/XModel.hpp>
 #include <rtl/ustring.hxx>
 #include <basic/basicdllapi.h>
 
-namespace basic {
-namespace vba {
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::uno { template <typename > class Reference; }
+
+namespace basic::vba {
 
 /*  This header contains public helper functions for VBA used from this module
     and from other VBA implementation modules such as vbahelper.
@@ -86,8 +87,7 @@ BASIC_DLLPUBLIC void registerCurrentDirectory(
     const OUString& rPath );
 
 
-} // namespace vba
-} // namespace basic
+} // namespace basic::vba
 
 #endif
 

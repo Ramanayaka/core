@@ -17,34 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableWindowTitle.hxx"
-#include "TableWindow.hxx"
-#include "QueryTableView.hxx"
+#include <TableWindowTitle.hxx>
+#include <TableWindow.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/help.hxx>
-#include <vcl/menu.hxx>
 #include <vcl/settings.hxx>
-#include "dbustrings.hrc"
-#include <sfx2/cntids.hrc>
-#include "TableWindowListBox.hxx"
-#include "TableConnection.hxx"
-#include "dbu_qry.hrc"
-#include "QueryDesignView.hxx"
-#include "JoinController.hxx"
-
-#include <algorithm>
+#include <vcl/commandevent.hxx>
+#include <vcl/event.hxx>
+#include <TableWindowListBox.hxx>
+#include <TableConnection.hxx>
+#include <JoinController.hxx>
 
 using namespace dbaui;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
-// class OTableWindowTitle
 OTableWindowTitle::OTableWindowTitle( OTableWindow* pParent ) :
      FixedText( pParent, WB_3DLOOK|WB_LEFT|WB_NOLABEL|WB_VCENTER )
     ,m_pTabWin( pParent )
 {
     // set background- and text colour
     StyleSettings aSystemStyle = Application::GetSettings().GetStyleSettings();
-    SetBackground(Wallpaper(Color(aSystemStyle.GetFaceColor())));
+    SetBackground(Wallpaper(aSystemStyle.GetFaceColor()));
     SetTextColor(aSystemStyle.GetButtonTextColor());
 
     vcl::Font aFont( GetFont() );
@@ -81,26 +74,26 @@ void OTableWindowTitle::LoseFocus()
 
 void OTableWindowTitle::RequestHelp( const HelpEvent& rHEvt )
 {
-    if(m_pTabWin)
-    {
-        OUString aHelpText = m_pTabWin->GetComposedName();
-        if( !aHelpText.isEmpty())
-        {
-            // show help
-            tools::Rectangle aItemRect(Point(0,0),GetSizePixel());
-            aItemRect = LogicToPixel( aItemRect );
-            Point aPt = OutputToScreenPixel( aItemRect.TopLeft() );
-            aItemRect.Left()   = aPt.X();
-            aItemRect.Top()    = aPt.Y();
-            aPt = OutputToScreenPixel( aItemRect.BottomRight() );
-            aItemRect.Right()  = aPt.X();
-            aItemRect.Bottom() = aPt.Y();
-            if( rHEvt.GetMode() == HelpEventMode::BALLOON )
-                Help::ShowBalloon( this, aItemRect.Center(), aItemRect, aHelpText);
-            else
-                Help::ShowQuickHelp( this, aItemRect, aHelpText );
-        }
-    }
+    if(!m_pTabWin)
+        return;
+
+    OUString aHelpText = m_pTabWin->GetComposedName();
+    if( aHelpText.isEmpty())
+        return;
+
+    // show help
+    tools::Rectangle aItemRect(Point(0,0),GetSizePixel());
+    aItemRect = LogicToPixel( aItemRect );
+    Point aPt = OutputToScreenPixel( aItemRect.TopLeft() );
+    aItemRect.SetLeft( aPt.X() );
+    aItemRect.SetTop( aPt.Y() );
+    aPt = OutputToScreenPixel( aItemRect.BottomRight() );
+    aItemRect.SetRight( aPt.X() );
+    aItemRect.SetBottom( aPt.Y() );
+    if( rHEvt.GetMode() == HelpEventMode::BALLOON )
+        Help::ShowBalloon( this, aItemRect.Center(), aItemRect, aHelpText);
+    else
+        Help::ShowQuickHelp( this, aItemRect, aHelpText );
 }
 
 void OTableWindowTitle::Command( const CommandEvent& rEvt )
@@ -134,7 +127,8 @@ void OTableWindowTitle::MouseButtonDown( const MouseEvent& rEvt )
             Size aSize(GetTextWidth(GetText()) + 20,
                         m_pTabWin->GetSizePixel().Height() - m_pTabWin->GetListBox()->GetSizePixel().Height());
 
-            aSize.Height() += (m_pTabWin->GetListBox()->GetEntryCount() + 2) * m_pTabWin->GetListBox()->GetEntryHeight();
+            weld::TreeView& rTreeView = m_pTabWin->GetListBox()->get_widget();
+            aSize.AdjustHeight(rTreeView.get_height_rows(rTreeView.n_children() + 2));
             if(m_pTabWin->GetSizePixel() != aSize)
             {
                 m_pTabWin->SetSizePixel(aSize);
@@ -169,7 +163,7 @@ void OTableWindowTitle::DataChanged(const DataChangedEvent& rDCEvt)
     {
         // assume worst-case: colours have changed, therefore I have to adept
         StyleSettings aSystemStyle = Application::GetSettings().GetStyleSettings();
-        SetBackground(Wallpaper(Color(aSystemStyle.GetFaceColor())));
+        SetBackground(Wallpaper(aSystemStyle.GetFaceColor()));
         SetTextColor(aSystemStyle.GetButtonTextColor());
     }
 }

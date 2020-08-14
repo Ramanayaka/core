@@ -20,19 +20,14 @@
 #ifndef INCLUDED_OOX_DRAWINGML_TABLE_TABLECELL_HXX
 #define INCLUDED_OOX_DRAWINGML_TABLE_TABLECELL_HXX
 
-#include <oox/helper/propertymap.hxx>
-#include <oox/drawingml/color.hxx>
 #include <oox/drawingml/drawingmltypes.hxx>
-#include <drawingml/textliststyle.hxx>
+#include <drawingml/textfont.hxx>
 #include <com/sun/star/table/XCell.hpp>
 
-#include "drawingml/fillproperties.hxx"
-#include "drawingml/lineproperties.hxx"
+#include <drawingml/fillproperties.hxx>
+#include <drawingml/lineproperties.hxx>
 
-#include <vector>
-#include <map>
-
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
 class TableCellContext;
 class TableProperties;
@@ -45,7 +40,6 @@ class TableCell
 public:
 
     TableCell();
-    ~TableCell();
 
     sal_Int32   getRowSpan() const { return mnRowSpan; };
     void        setRowSpan( sal_Int32 nRowSpan ){ mnRowSpan = nRowSpan; };
@@ -71,7 +65,7 @@ public:
     void        setHorzOverflowToken( sal_Int32 nToken ){ mnHorzOverflowToken = nToken; };
 
     void                        setTextBody( const oox::drawingml::TextBodyPtr& pTextBody ){ mpTextBody = pTextBody; };
-    const oox::drawingml::TextBodyPtr& getTextBody(){ return mpTextBody; };
+    const oox::drawingml::TextBodyPtr& getTextBody() const { return mpTextBody; };
 
     void pushToXCell( const ::oox::core::XmlFilterBase& rFilterBase,
             const ::oox::drawingml::TextListStylePtr& pMasterTextListStyle,
@@ -108,7 +102,7 @@ private:
     sal_Int32 mnHorzOverflowToken;
 };
 
-} } }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TABLE_TABLECELL_HXX
 

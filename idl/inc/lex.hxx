@@ -21,7 +21,7 @@
 #define INCLUDED_IDL_INC_LEX_HXX
 
 #include <sal/types.h>
-#include <hash.hxx>
+#include "hash.hxx"
 #include <tools/stream.hxx>
 #include <vector>
 #include <memory>
@@ -35,12 +35,12 @@ enum class SVTOKENTYPE { Empty,      Comment,
 class SvToken
 {
 friend class SvTokenStream;
-    sal_uLong               nLine, nColumn;
+    sal_uInt64              nLine, nColumn;
     SVTOKENTYPE             nType;
     OString                 aString;
     union
     {
-        sal_uLong           nLong;
+        sal_uInt64          nLong;
         bool                bBool;
         char                cChar;
         SvStringHashEntry * pHash;
@@ -53,11 +53,11 @@ public:
 
     OString     GetTokenAsString() const;
 
-    void        SetLine( sal_uLong nLineP )     { nLine = nLineP;       }
-    sal_uLong   GetLine() const             { return nLine;         }
+    void        SetLine( sal_uInt64 nLineP )     { nLine = nLineP;       }
+    sal_uInt64  GetLine() const             { return nLine;         }
 
-    void        SetColumn( sal_uLong nColumnP ) { nColumn = nColumnP;   }
-    sal_uLong   GetColumn() const           { return nColumn;       }
+    void        SetColumn( sal_uInt64 nColumnP ) { nColumn = nColumnP;   }
+    sal_uInt64  GetColumn() const           { return nColumn;       }
 
     bool        IsComment() const   { return nType == SVTOKENTYPE::Comment; }
     bool        IsInteger() const   { return nType == SVTOKENTYPE::Integer; }
@@ -79,13 +79,13 @@ public:
                         ? pHash->GetName()
                         : aString;
                 }
-    sal_uLong   GetNumber() const       { return nLong;         }
+    sal_uInt64   GetNumber() const       { return nLong;         }
     bool        GetBool() const         { return bBool;         }
     char        GetChar() const         { return cChar;         }
 
     void        SetHash( SvStringHashEntry * pHashP )
                 { pHash = pHashP; nType = SVTOKENTYPE::HashId; }
-    bool        Is( SvStringHashEntry * pEntry ) const
+    bool        Is( SvStringHashEntry const * pEntry ) const
                 { return IsIdentifierHash() && pHash == pEntry; }
 };
 
@@ -98,13 +98,13 @@ inline SvToken::SvToken()
 
 class SvTokenStream
 {
-    sal_uLong       nLine, nColumn;
+    sal_uInt64      nLine, nColumn;
     sal_Int32       nBufPos;
     char            c;          // next character
     static const sal_uInt16 nTabSize = 4;   // length of tabulator
     OString         aStrTrue;
     OString         aStrFalse;
-    sal_uLong       nMaxPos;
+    sal_uInt32      nMaxPos;
 
     std::unique_ptr<SvFileStream>          pInStream;
     OUString                               aFileName;
@@ -124,12 +124,12 @@ class SvTokenStream
                     }
 
     void            FillTokenList();
-    sal_uLong       GetNumber();
+    sal_uInt64       GetNumber();
     bool            MakeToken( SvToken & );
-    bool            IsEof() const { return pInStream->IsEof(); }
+    bool            IsEof() const { return pInStream->eof(); }
     void            SetMax()
                     {
-                        sal_uLong n = Tell();
+                        sal_uInt32 n = Tell();
                         if( n > nMaxPos )
                             nMaxPos = n;
                     }
@@ -159,7 +159,7 @@ public:
         if(pCurToken != aTokList.begin())
             --pCurToken;
 
-        return *(*pRetToken).get();
+        return *(*pRetToken);
     }
 
     SvToken& GetToken_Next()
@@ -171,10 +171,10 @@ public:
 
         SetMax();
 
-        return *(*pRetToken).get();
+        return *(*pRetToken);
     }
 
-    SvToken& GetToken() const { return *(*pCurToken).get(); }
+    SvToken& GetToken() const { return *(*pCurToken); }
 
     bool     ReadIf( char cChar )
     {
@@ -187,16 +187,14 @@ public:
             return false;
     }
 
-    bool     ReadIfDelimiter()
+    void     ReadIfDelimiter()
     {
         if( GetToken().IsChar()
             && (';' == GetToken().GetChar()
                  || ',' == GetToken().GetChar()) )
         {
             GetToken_Next();
-            return true;
         }
-        return false;
     }
 
     sal_uInt32 Tell() const { return pCurToken-aTokList.begin(); }

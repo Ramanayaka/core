@@ -35,14 +35,12 @@
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include "odbc/OStatement.hxx"
-#include "odbc/ODatabaseMetaData.hxx"
-#include "odbc/odbcbasedllapi.hxx"
-#include <connectivity/StdTypeDefs.hxx>
+#include <odbc/OStatement.hxx>
+#include <odbc/ODatabaseMetaData.hxx>
+#include <odbc/odbcbasedllapi.hxx>
+#include <memory>
 
-namespace connectivity
-{
-    namespace odbc
+namespace connectivity::odbc
     {
         /*
         **  java_sql_ResultSet
@@ -61,18 +59,18 @@ namespace connectivity
                                     public  ::cppu::OPropertySetHelper,
                                     public  ::comphelper::OPropertyArrayUsageHelper<ODatabaseMetaDataResultSet>
         {
-            ::connectivity::TIntVector                  m_aColMapping; // pos 0 is unused so we don't have to decrement 1 every time
+            std::vector< sal_Int32>                     m_aColMapping; // pos 0 is unused so we don't have to decrement 1 every time
 
-            std::map<sal_Int32, ::connectivity::TInt2IntMap >
+            std::map<sal_Int32, ::std::map<sal_Int32,sal_Int32> >
                                                         m_aValueRange;
 
-            std::map<sal_Int32,SWORD>                 m_aODBCColumnTypes;
+            std::map<sal_Int32,SWORD>                   m_aODBCColumnTypes;
 
             SQLHANDLE                                   m_aStatementHandle;   // ... until freed
             css::uno::WeakReferenceHelper               m_aStatement;
             css::uno::Reference< css::sdbc::XResultSetMetaData>
                                                         m_xMetaData;
-            SQLUSMALLINT*                               m_pRowStatusArray;
+            std::unique_ptr<SQLUSMALLINT[]>             m_pRowStatusArray;
             rtl::Reference<OConnection>                 m_pConnection;
             rtl_TextEncoding                            m_nTextEncoding;
             sal_Int32                                   m_nRowPos;
@@ -255,7 +253,6 @@ namespace connectivity
         protected:
             using OPropertySetHelper::getFastPropertyValue;
         };
-    }
 
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ODBC_ODATABASEMETADATARESULTSET_HXX

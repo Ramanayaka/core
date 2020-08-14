@@ -20,32 +20,25 @@
 #ifndef INCLUDED_SFX2_NOTEBOOKBAR_DROPDOWNBOX_HXX
 #define INCLUDED_SFX2_NOTEBOOKBAR_DROPDOWNBOX_HXX
 
-#include <vcl/builderfactory.hxx>
 #include <vcl/IPrioritable.hxx>
 #include <vcl/layout.hxx>
-#include <sfx2/dllapi.h>
-#include <sfx2/viewfrm.hxx>
-#include <vcl/floatwin.hxx>
-#include <vcl/toolbox.hxx>
-#include <sfx2/tbxctrl.hxx>
+#include "NotebookbarPopup.hxx"
 
-class Popup;
-
-class SFX2_DLLPUBLIC DropdownBox : public VclHBox,
-                                   public vcl::IPrioritable
+class DropdownBox : public VclHBox, public vcl::IPrioritable
 {
 private:
     bool m_bInFullView;
     VclPtr<PushButton> m_pButton;
-    VclPtr<Popup> m_pPopup;
+    VclPtr<NotebookbarPopup> m_pPopup;
 
 public:
-    explicit DropdownBox(vcl::Window *pParent);
+    explicit DropdownBox(vcl::Window* pParent);
     virtual ~DropdownBox() override;
     virtual void dispose() override;
 
     void HideContent() override;
     void ShowContent() override;
+    bool IsHidden() override;
 
 private:
     DECL_LINK(PBClickHdl, Button*, void);

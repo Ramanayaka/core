@@ -18,24 +18,30 @@
  */
 
 #include <sal/config.h>
-#include <rtl/uuid.h>
+#include <sal/log.hxx>
+#include <xmlsec-wrapper.h>
 #include <cppuhelper/supportsservice.hxx>
-#include "gpg/xmlsignature_gpgimpl.hxx"
+#include <gpg/xmlsignature_gpgimpl.hxx>
 
+#if defined _MSC_VER && defined __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundef"
+#endif
 #include <gpgme.h>
+#if defined _MSC_VER && defined __clang__
+#pragma clang diagnostic pop
+#endif
 #include <context.h>
 #include <key.h>
 #include <data.h>
 #include <signingresult.h>
 #include <importresult.h>
 
-#include "xmlsec/xmldocumentwrapper_xmlsecimpl.hxx"
-#include "xmlsec/xmlelementwrapper_xmlsecimpl.hxx"
-#include "xmlsec/xmlstreamio.hxx"
-#include "xmlsec/errorcallback.hxx"
+#include <xmlelementwrapper_xmlsecimpl.hxx>
+#include <xmlsec/xmlstreamio.hxx>
+#include <xmlsec/errorcallback.hxx>
 
 #include "SecurityEnvironment.hxx"
-#include "xmlsec-wrapper.h"
 
 using namespace css::uno;
 using namespace css::lang;
@@ -352,23 +358,27 @@ SAL_CALL XMLSignature_GpgImpl::validate(
         if(!xmlSecCheckNodeName(cur, xmlSecNodeSignatureValue, xmlSecDSigNs))
             throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
         xmlChar* pSignatureValue=xmlNodeGetContent(cur);
-        if(xmlSecBase64Decode(pSignatureValue, reinterpret_cast<xmlSecByte*>(pSignatureValue), xmlStrlen(pSignatureValue)) < 0)
+        int nSigSize = xmlSecBase64Decode(pSignatureValue, reinterpret_cast<xmlSecByte*>(pSignatureValue), xmlStrlen(pSignatureValue));
+        if( nSigSize < 0)
             throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
 
         GpgME::Data data_signature(
             reinterpret_cast<char*>(pSignatureValue),
-            xmlStrlen(pSignatureValue), false);
+            nSigSize, false);
 
         GpgME::VerificationResult verify_res=rCtx.verifyDetachedSignature(
             data_signature, data_text);
 
         // TODO: needs some more error handling, needs checking _all_ signatures
-        if( verify_res.isNull() ||
-            verify_res.numSignatures() == 0 ||
-            verify_res.signature(0).validity() < GpgME::Signature::Full )
+        if( verify_res.isNull() || verify_res.numSignatures() == 0
+            // there is at least 1 signature and it is anything else than fully valid
+            || ( (verify_res.numSignatures() > 0)
+                  && verify_res.signature(0).status().encodedError() > 0 ) )
         {
-            // let's try again, but this time import the public key payload
-            // (avoiding that in a first cut for being a bit speedier)
+            // let's try again, but this time import the public key
+            // payload (avoiding that in a first cut for being a bit
+            // speedier. also prevents all too easy poisoning/sha1
+            // fingerprint collision attacks)
 
             // walk xml tree to PGPData node - go to children, first is
             // SignedInfo, 2nd is signaturevalue, 3rd is KeyInfo
@@ -400,23 +410,27 @@ SAL_CALL XMLSignature_GpgImpl::validate(
 
             // got a key packet, import & re-validate
             xmlChar* pKeyPacket=xmlNodeGetContent(cur);
-            if(xmlSecBase64Decode(pKeyPacket, reinterpret_cast<xmlSecByte*>(pKeyPacket), xmlStrlen(pKeyPacket)) < 0)
+            int nKeyLen = xmlSecBase64Decode(pKeyPacket, reinterpret_cast<xmlSecByte*>(pKeyPacket), xmlStrlen(pKeyPacket));
+            if( nKeyLen < 0)
                 throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
 
             GpgME::Data data_key(
                 reinterpret_cast<char*>(pKeyPacket),
-                xmlStrlen(pKeyPacket), false);
+                nKeyLen, false);
 
-            GpgME::ImportResult import_res=rCtx.importKeys(data_key);
+            rCtx.importKeys(data_key);
             xmlFree(pKeyPacket);
 
-            // and re-run
+            // and re-run (rewind text and signature streams to position 0)
+            (void)data_text.seek(0,SEEK_SET);
+            (void)data_signature.seek(0,SEEK_SET);
             verify_res=rCtx.verifyDetachedSignature(data_signature, data_text);
 
             // TODO: needs some more error handling, needs checking _all_ signatures
-            if( verify_res.isNull() ||
-                verify_res.numSignatures() == 0 ||
-                verify_res.signature(0).validity() < GpgME::Signature::Full )
+            if( verify_res.isNull() || verify_res.numSignatures() == 0
+                // there is at least 1 signature and it is anything else than valid
+                || ( (verify_res.numSignatures() > 0)
+                      && verify_res.signature(0).status().encodedError() > 0 ) )
             {
                 clearErrorRecorder();
                 xmlFree(pSignatureValue);
@@ -497,22 +511,17 @@ Sequence< OUString > SAL_CALL XMLSignature_GpgImpl::getSupportedServiceNames() {
 
 //Helper for XServiceInfo
 Sequence< OUString > XMLSignature_GpgImpl::impl_getSupportedServiceNames() {
-    ::osl::Guard< ::osl::Mutex > aGuard( ::osl::Mutex::getGlobalMutex() ) ;
     Sequence<OUString> seqServiceNames { "com.sun.star.xml.crypto.XMLSignature" };
     return seqServiceNames ;
 }
 
 OUString XMLSignature_GpgImpl::impl_getImplementationName() {
-    return OUString("com.sun.star.xml.security.bridge.xmlsec.XMLSignature_GpgImpl") ;
+    return "com.sun.star.xml.security.bridge.xmlsec.XMLSignature_GpgImpl" ;
 }
 
 //Helper for registry
-Reference< XInterface > SAL_CALL XMLSignature_GpgImpl::impl_createInstance( const Reference< XMultiServiceFactory >& ) {
+Reference< XInterface > XMLSignature_GpgImpl::impl_createInstance( const Reference< XMultiServiceFactory >& ) {
     return Reference< XInterface >( *new XMLSignature_GpgImpl ) ;
-}
-
-Reference< XSingleServiceFactory > XMLSignature_GpgImpl::impl_createFactory( const Reference< XMultiServiceFactory >& aServiceManager ) {
-    return ::cppu::createSingleFactory( aServiceManager , impl_getImplementationName() , impl_createInstance , impl_getSupportedServiceNames() ) ;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

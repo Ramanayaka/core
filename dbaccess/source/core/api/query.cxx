@@ -18,35 +18,29 @@
  */
 
 #include "query.hxx"
-#include "dbastrings.hrc"
+#include <stringconstants.hxx>
+#include <connectivity/dbexception.hxx>
+#include <connectivity/PColumn.hxx>
 #include <connectivity/warningscontainer.hxx>
 #include "HelperCollections.hxx"
-#include "core_resource.hxx"
-#include "core_resource.hrc"
+#include <core_resource.hxx>
+#include <strings.hrc>
 
-#include <cppuhelper/queryinterface.hxx>
-#include <tools/debug.hxx>
+#include <cppuhelper/interfacecontainer.hxx>
 #include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
-#include <comphelper/propagg.hxx>
-#include <comphelper/sequence.hxx>
 
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
+#include <com/sun/star/sdb/SQLContext.hpp>
 
-#include <comphelper/types.hxx>
 #include <comphelper/property.hxx>
 #include <unotools/sharedunocomponent.hxx>
-#include "definitioncolumn.hxx"
+#include <definitioncolumn.hxx>
 
-#include <functional>
-
-#include "sdbcoretools.hxx"
-#include "querycomposer.hxx"
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include "ContainerMediator.hxx"
+#include <ContainerMediator.hxx>
 
 using namespace dbaccess;
 using namespace ::com::sun::star::uno;
@@ -75,9 +69,8 @@ OQuery::OQuery( const Reference< XPropertySet >& _rxCommandDefinition
     ,ODataSettings(OContentHelper::rBHelper,true)
     ,m_xCommandDefinition(_rxCommandDefinition)
     ,m_xConnection(_rxConn)
-    ,m_pColumnMediator( nullptr )
     ,m_pWarnings( nullptr )
-    ,m_eDoingCurrently(NONE)
+    ,m_eDoingCurrently(AggregateAction::NONE)
 {
     registerProperties();
     ODataSettings::registerPropertiesFor(this);
@@ -92,7 +85,7 @@ OQuery::OQuery( const Reference< XPropertySet >& _rxCommandDefinition
         }
         catch(Exception&)
         {
-            OSL_FAIL("OQueryDescriptor_Base::OQueryDescriptor_Base: caught an exception!");
+            TOOLS_WARN_EXCEPTION("dbaccess", "OQueryDescriptor_Base::OQueryDescriptor_Base");
         }
 
         m_xCommandDefinition->addPropertyChangeListener(OUString(), this);
@@ -130,7 +123,7 @@ void OQuery::rebuildColumns()
         {
             xColumnDefinitions = xColSup->getColumns();
             if ( xColumnDefinitions.is() )
-                m_pColumnMediator = new OContainerMediator( m_pColumns, xColumnDefinitions );
+                m_pColumnMediator = new OContainerMediator( m_pColumns.get(), xColumnDefinitions );
         }
 
         // fill the columns with columns from the statement
@@ -144,7 +137,7 @@ void OQuery::rebuildColumns()
         {
             xComposer->setQuery( m_sCommand );
             Reference< XColumnsSupplier > xCols( xComposer, UNO_QUERY_THROW );
-            xColumns.set( xCols->getColumns(), UNO_QUERY_THROW );
+            xColumns.set( xCols->getColumns(), UNO_SET_THROW );
             xColumnsIndexed.set( xColumns, UNO_QUERY_THROW );
         }
         catch( const SQLException& ) { }
@@ -161,35 +154,33 @@ void OQuery::rebuildColumns()
                 ::dbtools::throwSQLException( sError, StandardSQLState::GENERAL_ERROR, *this );
             }
 
-            Reference< XDatabaseMetaData > xDBMeta( m_xConnection->getMetaData(), UNO_QUERY_THROW );
+            Reference< XDatabaseMetaData > xDBMeta( m_xConnection->getMetaData(), UNO_SET_THROW );
             ::rtl::Reference< OSQLColumns > aParseColumns(
                 ::connectivity::parse::OParseColumn::createColumnsForResultSet( xResultSetMeta, xDBMeta,xColumnDefinitions ) );
             xColumns = OPrivateColumns::createWithIntrinsicNames(
-                aParseColumns, xDBMeta->supportsMixedCaseQuotedIdentifiers(), *this, m_aMutex );
+                aParseColumns, xDBMeta->supportsMixedCaseQuotedIdentifiers(), *this, m_aMutex ).release();
             if ( !xColumns.is() )
                 throw RuntimeException();
         }
 
-        Sequence< OUString> aNames = xColumns->getElementNames();
-        const OUString* pIter = aNames.getConstArray();
-        const OUString* pEnd  = pIter + aNames.getLength();
-        for ( sal_Int32 i = 0;pIter != pEnd; ++pIter,++i)
+        const Sequence<OUString> aColNames = xColumns->getElementNames();
+        for ( const OUString& rName : aColNames )
         {
-            Reference<XPropertySet> xSource(xColumns->getByName( *pIter ),UNO_QUERY);
-            OUString sLabel = *pIter;
-            if ( xColumnDefinitions.is() && xColumnDefinitions->hasByName(*pIter) )
+            Reference<XPropertySet> xSource(xColumns->getByName( rName ),UNO_QUERY);
+            OUString sLabel = rName;
+            if ( xColumnDefinitions.is() && xColumnDefinitions->hasByName(rName) )
             {
-                Reference<XPropertySet> xCommandColumn(xColumnDefinitions->getByName( *pIter ),UNO_QUERY);
+                Reference<XPropertySet> xCommandColumn(xColumnDefinitions->getByName( rName ),UNO_QUERY);
                 xCommandColumn->getPropertyValue(PROPERTY_LABEL) >>= sLabel;
             }
             OQueryColumn* pColumn = new OQueryColumn( xSource, m_xConnection, sLabel);
             Reference< XChild > xChild( *pColumn, UNO_QUERY_THROW );
             xChild->setParent( *this );
 
-            implAppendColumn( *pIter, pColumn );
+            implAppendColumn( rName, pColumn );
             Reference< XPropertySet > xDest( *pColumn, UNO_QUERY_THROW );
             if ( m_pColumnMediator.is() )
-                m_pColumnMediator->notifyElementCreated( *pIter, xDest );
+                m_pColumnMediator->notifyElementCreated( rName, xDest );
         }
     }
     catch( const SQLContext& e )
@@ -209,7 +200,7 @@ void OQuery::rebuildColumns()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -226,7 +217,7 @@ void SAL_CALL OQuery::propertyChange( const PropertyChangeEvent& _rSource )
         OSL_ENSURE(_rSource.Source.get() == Reference< XInterface >(m_xCommandDefinition, UNO_QUERY).get(),
             "OQuery::propertyChange : where did this call come from ?");
 
-        if (m_eDoingCurrently == SETTING_PROPERTIES)
+        if (m_eDoingCurrently == AggregateAction::SettingProperties)
             // we're setting the property ourself, so we will do the necessary notifications later
             return;
 
@@ -238,7 +229,7 @@ void SAL_CALL OQuery::propertyChange( const PropertyChangeEvent& _rSource )
             ODataSettings::setFastPropertyValue_NoBroadcast(nOwnHandle, _rSource.NewValue);
                 // don't use our own setFastPropertyValue_NoBroadcast, this would forward it to the CommandSettings,
                 // again
-                // and don't use the "real" setPropertyValue, this is to expensive and not sure to succeed
+                // and don't use the "real" setPropertyValue, this is too expensive and not sure to succeed
         }
         else
         {
@@ -290,12 +281,12 @@ void OQuery::setFastPropertyValue_NoBroadcast( sal_Int32 _nHandle, const Any& _r
         m_xCommandPropInfo->hasPropertyByName(sAggPropName))
     {   // the base class holds the property values itself, but we have to forward this to our CommandDefinition
 
-        m_eDoingCurrently = SETTING_PROPERTIES;
+        m_eDoingCurrently = AggregateAction::SettingProperties;
         OAutoActionReset aAutoReset(*this);
         m_xCommandDefinition->setPropertyValue(sAggPropName, _rValue);
 
         if ( PROPERTY_ID_COMMAND == _nHandle )
-            // the columns are out of date if we are based on a new statement ....
+            // the columns are out of date if we are based on a new statement...
             setColumnsOutOfDate();
     }
 }
@@ -335,7 +326,7 @@ void SAL_CALL OQuery::rename( const OUString& newName )
 void OQuery::registerProperties()
 {
     // the properties which OCommandBase supplies (it has no own registration, as it's not derived from
-    // a OPropertyStateContainer)
+    // an OPropertyStateContainer)
     registerProperty(PROPERTY_NAME, PROPERTY_ID_NAME, PropertyAttribute::BOUND|PropertyAttribute::CONSTRAINED,
                     &m_sElementName, cppu::UnoType<decltype(m_sElementName)>::get());
 
@@ -360,7 +351,7 @@ void OQuery::registerProperties()
 
 OUString OQuery::determineContentType() const
 {
-    return OUString( "application/vnd.org.openoffice.DatabaseQuery" );
+    return "application/vnd.org.openoffice.DatabaseQuery";
 }
 
 }   // namespace dbaccess

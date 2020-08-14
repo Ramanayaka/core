@@ -19,7 +19,6 @@
 
 #include <uielement/progressbarwrapper.hxx>
 
-#include <helper/statusindicator.hxx>
 #include <uielement/statusindicatorinterfacewrapper.hxx>
 
 #include <com/sun/star/ui/UIElementType.hpp>
@@ -56,11 +55,10 @@ void ProgressBarWrapper::setStatusBar( const uno::Reference< awt::XWindow >& rSt
     if ( m_bOwnsInstance )
     {
         // dispose XWindow reference of our status bar
-        uno::Reference< lang::XComponent > xComponent( m_xStatusBar, uno::UNO_QUERY );
         try
         {
-            if ( xComponent.is() )
-                xComponent->dispose();
+            if ( m_xStatusBar.is() )
+                m_xStatusBar->dispose();
         }
         catch ( const uno::Exception& )
         {
@@ -100,26 +98,26 @@ void ProgressBarWrapper::start( const OUString& Text, ::sal_Int32 Range )
         nValue   = m_nValue;
     }
 
-    if ( xWindow.is() )
+    if ( !xWindow.is() )
+        return;
+
+    SolarMutexGuard aSolarMutexGuard;
+    VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
+    if ( !(pWindow && pWindow->GetType() == WindowType::STATUSBAR) )
+        return;
+
+    StatusBar* pStatusBar = static_cast<StatusBar *>(pWindow.get());
+    if ( !pStatusBar->IsProgressMode() )
+        pStatusBar->StartProgressMode( Text );
+    else
     {
-        SolarMutexGuard aSolarMutexGuard;
-        VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
-        if ( pWindow && pWindow->GetType() == WindowType::STATUSBAR )
-        {
-            StatusBar* pStatusBar = static_cast<StatusBar *>(pWindow.get());
-            if ( !pStatusBar->IsProgressMode() )
-                pStatusBar->StartProgressMode( Text );
-            else
-            {
-                pStatusBar->SetUpdateMode( false );
-                pStatusBar->EndProgressMode();
-                pStatusBar->StartProgressMode( Text );
-                pStatusBar->SetProgressValue( sal_uInt16( nValue ));
-                pStatusBar->SetUpdateMode( true );
-            }
-            pStatusBar->Show( true, ShowFlags::NoFocusChange | ShowFlags::NoActivate );
-        }
+        pStatusBar->SetUpdateMode( false );
+        pStatusBar->EndProgressMode();
+        pStatusBar->StartProgressMode( Text );
+        pStatusBar->SetProgressValue( sal_uInt16( nValue ));
+        pStatusBar->SetUpdateMode( true );
     }
+    pStatusBar->Show( true, ShowFlags::NoFocusChange | ShowFlags::NoActivate );
 }
 
 void ProgressBarWrapper::end()
@@ -166,25 +164,25 @@ void ProgressBarWrapper::setText( const OUString& Text )
         nValue   = m_nValue;
     }
 
-    if ( xWindow.is() )
+    if ( !xWindow.is() )
+        return;
+
+    SolarMutexGuard aSolarMutexGuard;
+    VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
+    if ( !(pWindow && pWindow->GetType() == WindowType::STATUSBAR) )
+        return;
+
+    StatusBar* pStatusBar = static_cast<StatusBar *>(pWindow.get());
+    if( pStatusBar->IsProgressMode() )
     {
-        SolarMutexGuard aSolarMutexGuard;
-        VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
-        if ( pWindow && pWindow->GetType() == WindowType::STATUSBAR )
-        {
-            StatusBar* pStatusBar = static_cast<StatusBar *>(pWindow.get());
-            if( pStatusBar->IsProgressMode() )
-            {
-                pStatusBar->SetUpdateMode( false );
-                pStatusBar->EndProgressMode();
-                pStatusBar->StartProgressMode( Text );
-                pStatusBar->SetProgressValue( sal_uInt16( nValue ));
-                pStatusBar->SetUpdateMode( true );
-            }
-            else
-                pStatusBar->SetText( Text );
-        }
+        pStatusBar->SetUpdateMode( false );
+        pStatusBar->EndProgressMode();
+        pStatusBar->StartProgressMode( Text );
+        pStatusBar->SetProgressValue( sal_uInt16( nValue ));
+        pStatusBar->SetUpdateMode( true );
     }
+    else
+        pStatusBar->SetText( Text );
 }
 
 void ProgressBarWrapper::setValue( ::sal_Int32 nValue )
@@ -273,9 +271,8 @@ void SAL_CALL ProgressBarWrapper::dispose()
         {
             try
             {
-                uno::Reference< lang::XComponent > xComponent( m_xStatusBar, uno::UNO_QUERY );
-                if ( xComponent.is() )
-                    xComponent->dispose();
+                if ( m_xStatusBar.is() )
+                    m_xStatusBar->dispose();
             }
             catch ( const lang::DisposedException& )
             {
@@ -304,9 +301,9 @@ uno::Reference< uno::XInterface > SAL_CALL ProgressBarWrapper::getRealInterface(
                     uno::Reference< lang::XComponent >(
                         static_cast< cppu::OWeakObject* >( this ),
                         uno::UNO_QUERY ));
-             xComp.set(static_cast< cppu::OWeakObject* >( pWrapper ),
+            xComp.set(static_cast< cppu::OWeakObject* >( pWrapper ),
                         uno::UNO_QUERY );
-             m_xProgressBarIfacWrapper = xComp;
+            m_xProgressBarIfacWrapper = xComp;
         }
 
         return xComp;

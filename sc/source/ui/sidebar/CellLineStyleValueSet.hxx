@@ -20,30 +20,27 @@
 #define INCLUDED_SC_SOURCE_UI_SIDEBAR_CELLLINESTYLEVALUESET_HXX
 
 #include <svtools/valueset.hxx>
-#include <vcl/image.hxx>
 
 #define CELL_LINE_STYLE_ENTRIES 9
 
-namespace sc { namespace sidebar {
+namespace sc::sidebar {
 
 class CellLineStyleValueSet : public ValueSet
 {
 private:
-    VclPtr<VirtualDevice> pVDev;
     sal_uInt16      nSelItem;
     OUString        maStrUnit[CELL_LINE_STYLE_ENTRIES];
 public:
-    explicit CellLineStyleValueSet(vcl::Window* pParent);
+    CellLineStyleValueSet();
     virtual ~CellLineStyleValueSet() override;
-    virtual void dispose() override;
 
     void SetUnit(const OUString* str);
     void SetSelItem(sal_uInt16 nSel);
-    virtual Size GetOptimalSize() const override;
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
     virtual void UserDraw( const UserDrawEvent& rUDEvt ) override;
 };
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 #endif // INCLUDED_SC_SOURCE_UI_SIDEBAR_CELLLINESTYLEVALUESET_HXX
 

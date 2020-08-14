@@ -17,22 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "richstring.hxx"
+#include <richstring.hxx>
+#include <biffhelper.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <rtl/ustrbuf.hxx>
 #include <editeng/editobj.hxx>
+#include <osl/diagnose.h>
 #include <oox/helper/binaryinputstream.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/helper/propertyset.hxx>
 #include <oox/token/tokens.hxx>
-#include "editutil.hxx"
+#include <editutil.hxx>
 
 #include <vcl/svapp.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::uno;
@@ -42,7 +43,7 @@ namespace {
 const sal_uInt8 BIFF12_STRINGFLAG_FONTS         = 0x01;
 const sal_uInt8 BIFF12_STRINGFLAG_PHONETICS     = 0x02;
 
-inline bool lclNeedsRichTextFormat( const oox::xls::Font* pFont )
+bool lclNeedsRichTextFormat( const oox::xls::Font* pFont )
 {
     return pFont && pFont->needsRichTextFormat();
 }
@@ -63,7 +64,7 @@ void RichStringPortion::setText( const OUString& rText )
 
 FontRef const & RichStringPortion::createFont()
 {
-    mxFont.reset( new Font( *this, false ) );
+    mxFont = std::make_shared<Font>( *this, false );
     return mxFont;
 }
 
@@ -74,7 +75,7 @@ void RichStringPortion::setFontId( sal_Int32 nFontId )
 
 void RichStringPortion::finalizeImport()
 {
-    if( mxFont.get() )
+    if( mxFont )
         mxFont->finalizeImport();
     else if( mnFontId >= 0 )
         mxFont = getStyles().getFont( mnFontId );
@@ -87,7 +88,7 @@ void RichStringPortion::convert( const Reference< XText >& rxText, bool bReplace
 
     Reference< XTextRange > xRange;
     if( bReplace )
-        xRange.set( rxText, UNO_QUERY );
+        xRange = rxText;
     else
         xRange = rxText->getEnd();
     OSL_ENSURE( xRange.is(), "RichStringPortion::convert - cannot get text range interface" );
@@ -95,7 +96,7 @@ void RichStringPortion::convert( const Reference< XText >& rxText, bool bReplace
     if( xRange.is() )
     {
         xRange->setString( maText );
-        if( mxFont.get() )
+        if( mxFont )
         {
             PropertySet aPropSet( xRange );
             mxFont->writeToPropertySet( aPropSet );
@@ -111,7 +112,7 @@ void RichStringPortion::convert( ScEditEngineDefaulter& rEE, ESelection& rSelect
     rSelection.nStartPara = rSelection.nEndPara;
     SfxItemSet aItemSet( rEE.GetEmptyItemSet() );
 
-    const Font* pFontToUse = mxFont.get() ? mxFont.get() : lclNeedsRichTextFormat( pFont ) ? pFont : nullptr;
+    const Font* pFontToUse = mxFont ? mxFont.get() : lclNeedsRichTextFormat( pFont ) ? pFont : nullptr;
 
     if ( pFontToUse )
         pFontToUse->fillToItemSet( aItemSet, true );
@@ -119,16 +120,16 @@ void RichStringPortion::convert( ScEditEngineDefaulter& rEE, ESelection& rSelect
     // #TODO need to manually adjust nEndPos ( and nEndPara ) to cater for any paragraphs
     sal_Int32 nLastParaLoc = -1;
     sal_Int32 nSearchIndex = maText.indexOf( '\n' );
-    sal_Int32 nParaOccurence = 0;
+    sal_Int32 nParaOccurrence = 0;
     while ( nSearchIndex != -1 )
     {
         nLastParaLoc = nSearchIndex;
-        ++nParaOccurence;
+        ++nParaOccurrence;
         rSelection.nEndPos = 0;
         nSearchIndex = maText.indexOf( '\n', nSearchIndex + 1);
     }
 
-    rSelection.nEndPara += nParaOccurence;
+    rSelection.nEndPara += nParaOccurrence;
     if ( nLastParaLoc != -1 )
     {
         rSelection.nEndPos = maText.getLength() - 1 - nLastParaLoc;
@@ -144,7 +145,7 @@ void RichStringPortion::writeFontProperties( const Reference<XText>& rxText ) co
 {
     PropertySet aPropSet(rxText);
 
-    if (mxFont.get())
+    if (mxFont)
         mxFont->writeToPropertySet(aPropSet);
 }
 
@@ -300,12 +301,12 @@ RichString::RichString( const WorkbookHelper& rHelper ) :
 {
 }
 
-RichStringPortionRef RichString::importText( const AttributeList& )
+RichStringPortionRef RichString::importText()
 {
     return createPortion();
 }
 
-RichStringPortionRef RichString::importRun( const AttributeList& )
+RichStringPortionRef RichString::importRun()
 {
     return createPortion();
 }
@@ -383,29 +384,29 @@ void RichString::convert( const Reference< XText >& rxText ) const
     }
 
     bool bReplaceOld = true;
-    for( PortionVector::const_iterator aIt = maTextPortions.begin(), aEnd = maTextPortions.end(); aIt != aEnd; ++aIt )
+    for( const auto& rxTextPortion : maTextPortions )
     {
-        (*aIt)->convert( rxText, bReplaceOld );
+        rxTextPortion->convert( rxText, bReplaceOld );
         bReplaceOld = false;    // do not replace first portion text with following portions
     }
 }
 
-::EditTextObject* RichString::convert( ScEditEngineDefaulter& rEE, const oox::xls::Font* pFirstPortionFont ) const
+std::unique_ptr<EditTextObject> RichString::convert( ScEditEngineDefaulter& rEE, const oox::xls::Font* pFirstPortionFont ) const
 {
     ESelection aSelection;
 
-    OUString sString;
-    for( PortionVector::const_iterator aIt = maTextPortions.begin(), aEnd = maTextPortions.end(); aIt != aEnd; ++aIt )
-        sString += (*aIt)->getText();
+    OUStringBuffer sString;
+    for( const auto& rxTextPortion : maTextPortions )
+        sString.append(rxTextPortion->getText());
 
     // fdo#84370 - diving into editeng is not thread safe.
     SolarMutexGuard aGuard;
 
-    rEE.SetText( sString );
+    rEE.SetTextCurrentDefaults( sString.makeStringAndClear() );
 
-    for( PortionVector::const_iterator aIt = maTextPortions.begin(), aEnd = maTextPortions.end(); aIt != aEnd; ++aIt )
+    for( const auto& rxTextPortion : maTextPortions )
     {
-        (*aIt)->convert( rEE, aSelection, pFirstPortionFont );
+        rxTextPortion->convert( rEE, aSelection, pFirstPortionFont );
         pFirstPortionFont = nullptr;
     }
 
@@ -416,14 +417,14 @@ void RichString::convert( const Reference< XText >& rxText ) const
 
 RichStringPortionRef RichString::createPortion()
 {
-    RichStringPortionRef xPortion( new RichStringPortion( *this ) );
+    RichStringPortionRef xPortion = std::make_shared<RichStringPortion>( *this );
     maTextPortions.push_back( xPortion );
     return xPortion;
 }
 
 RichStringPhoneticRef RichString::createPhonetic()
 {
-    RichStringPhoneticRef xPhonetic( new RichStringPhonetic( *this ) );
+    RichStringPhoneticRef xPhonetic = std::make_shared<RichStringPhonetic>( *this );
     maPhonPortions.push_back( xPhonetic );
     return xPhonetic;
 }
@@ -431,25 +432,25 @@ RichStringPhoneticRef RichString::createPhonetic()
 void RichString::createTextPortions( const OUString& rText, FontPortionModelList& rPortions )
 {
     maTextPortions.clear();
-    if( !rText.isEmpty() )
-    {
-         sal_Int32 nStrLen = rText.getLength();
-        // add leading and trailing string position to ease the following loop
-        if( rPortions.empty() || (rPortions.front().mnPos > 0) )
-            rPortions.insert( rPortions.begin(), FontPortionModel( 0 ) );
-        if( rPortions.back().mnPos < nStrLen )
-            rPortions.push_back( FontPortionModel( nStrLen ) );
+    if( rText.isEmpty() )
+        return;
 
-        // create all string portions according to the font id vector
-        for( ::std::vector< FontPortionModel >::const_iterator aIt = rPortions.begin(); aIt->mnPos < nStrLen; ++aIt )
+    sal_Int32 nStrLen = rText.getLength();
+    // add leading and trailing string position to ease the following loop
+    if( rPortions.empty() || (rPortions.front().mnPos > 0) )
+        rPortions.insert( rPortions.begin(), FontPortionModel( 0 ) );
+    if( rPortions.back().mnPos < nStrLen )
+        rPortions.push_back( FontPortionModel( nStrLen ) );
+
+    // create all string portions according to the font id vector
+    for( ::std::vector< FontPortionModel >::const_iterator aIt = rPortions.begin(); aIt->mnPos < nStrLen; ++aIt )
+    {
+        sal_Int32 nPortionLen = (aIt + 1)->mnPos - aIt->mnPos;
+        if( (0 < nPortionLen) && (aIt->mnPos + nPortionLen <= nStrLen) )
         {
-            sal_Int32 nPortionLen = (aIt + 1)->mnPos - aIt->mnPos;
-            if( (0 < nPortionLen) && (aIt->mnPos + nPortionLen <= nStrLen) )
-            {
-                RichStringPortionRef xPortion = createPortion();
-                xPortion->setText( rText.copy( aIt->mnPos, nPortionLen ) );
-                xPortion->setFontId( aIt->mnFontId );
-            }
+            RichStringPortionRef xPortion = createPortion();
+            xPortion->setText( rText.copy( aIt->mnPos, nPortionLen ) );
+            xPortion->setFontId( aIt->mnFontId );
         }
     }
 }
@@ -457,31 +458,30 @@ void RichString::createTextPortions( const OUString& rText, FontPortionModelList
 void RichString::createPhoneticPortions( const OUString& rText, PhoneticPortionModelList& rPortions, sal_Int32 nBaseLen )
 {
     maPhonPortions.clear();
-    if( !rText.isEmpty())
-    {
-        sal_Int32 nStrLen = rText.getLength();
-        // no portions - assign phonetic text to entire base text
-        if( rPortions.empty() )
-            rPortions.push_back( PhoneticPortionModel( 0, 0, nBaseLen ) );
-        // add trailing string position to ease the following loop
-        if( rPortions.back().mnPos < nStrLen )
-            rPortions.push_back( PhoneticPortionModel( nStrLen, nBaseLen, 0 ) );
+    if( rText.isEmpty())
+        return;
 
-        // create all phonetic portions according to the portions vector
-        for( ::std::vector< PhoneticPortionModel >::const_iterator aIt = rPortions.begin(); aIt->mnPos < nStrLen; ++aIt )
+    sal_Int32 nStrLen = rText.getLength();
+    // no portions - assign phonetic text to entire base text
+    if( rPortions.empty() )
+        rPortions.push_back( PhoneticPortionModel( 0, 0, nBaseLen ) );
+    // add trailing string position to ease the following loop
+    if( rPortions.back().mnPos < nStrLen )
+        rPortions.push_back( PhoneticPortionModel( nStrLen, nBaseLen, 0 ) );
+
+    // create all phonetic portions according to the portions vector
+    for( ::std::vector< PhoneticPortionModel >::const_iterator aIt = rPortions.begin(); aIt->mnPos < nStrLen; ++aIt )
+    {
+        sal_Int32 nPortionLen = (aIt + 1)->mnPos - aIt->mnPos;
+        if( (0 < nPortionLen) && (aIt->mnPos + nPortionLen <= nStrLen) )
         {
-            sal_Int32 nPortionLen = (aIt + 1)->mnPos - aIt->mnPos;
-            if( (0 < nPortionLen) && (aIt->mnPos + nPortionLen <= nStrLen) )
-            {
-                RichStringPhoneticRef xPhonetic = createPhonetic();
-                xPhonetic->setText( rText.copy( aIt->mnPos, nPortionLen ) );
-                xPhonetic->setBaseRange( aIt->mnBasePos, aIt->mnBasePos + aIt->mnBaseLen );
-            }
+            RichStringPhoneticRef xPhonetic = createPhonetic();
+            xPhonetic->setText( rText.copy( aIt->mnPos, nPortionLen ) );
+            xPhonetic->setBaseRange( aIt->mnBasePos, aIt->mnBasePos + aIt->mnBaseLen );
         }
     }
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,11 +19,7 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_OLE_WINDATA_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_OLE_WINDATA_HXX
 
-#pragma warning (push,1)
-#pragma warning (disable:4668)
-#pragma warning (disable:4548)
-
-#include "oleidl.h"
+#include <oleidl.h>
 
 #if defined __clang__
 #pragma clang diagnostic push
@@ -43,12 +39,8 @@
 #pragma clang diagnostic pop
 #endif
 
-#pragma warning (pop)
+#include <osl/diagnose.h>
 
-#include "osl/diagnose.h"
-
-namespace ole_adapter
-{
 //Wrapper for VARDESC
 class VarDesc
 {
@@ -154,12 +146,12 @@ class ExcepInfo : public EXCEPINFO
     ExcepInfo(const ExcepInfo &);
 public:
    ExcepInfo()
+       : EXCEPINFO{}
    {
-      memset(this, 0, sizeof(ExcepInfo));
    }
    ~ExcepInfo()
    {
-         if (bstrSource != nullptr)
+      if (bstrSource != nullptr)
          ::SysFreeString(bstrSource);
       if (bstrDescription != nullptr)
         ::SysFreeString(bstrDescription);
@@ -201,9 +193,6 @@ public:
       return m_pTypeAttr;
    }
 };
-
-
-}
 
 #endif
 

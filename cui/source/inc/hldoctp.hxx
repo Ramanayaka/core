@@ -26,57 +26,50 @@
 |* Tabpage : Hyperlink - Document
 |*
 \************************************************************************/
-
-class SvxHyperlinkDocTp : public SvxHyperlinkTabPageBase
+class SvxHyperlinkDocTp final : public SvxHyperlinkTabPageBase
 {
 private:
-    VclPtr<SvxHyperURLBox>      m_pCbbPath;
-    VclPtr<PushButton>          m_pBtFileopen;
-
-    VclPtr<Edit>                m_pEdTarget;
-    VclPtr<FixedText>           m_pFtFullURL;
-    VclPtr<PushButton>          m_pBtBrowse;
+    std::unique_ptr<SvxHyperURLBox> m_xCbbPath;
+    std::unique_ptr<weld::Button> m_xBtFileopen;
+    std::unique_ptr<weld::Entry> m_xEdTarget;
+    std::unique_ptr<weld::Label> m_xFtFullURL;
+    std::unique_ptr<weld::Button> m_xBtBrowse;
 
     OUString            maStrURL;
 
-    bool                mbMarkWndOpen;
+    bool                m_bMarkWndOpen;
 
-    DECL_LINK (ClickFileopenHdl_Impl, Button*, void );
-    DECL_LINK (ClickTargetHdl_Impl  , Button*, void );
+    DECL_LINK (ClickFileopenHdl_Impl, weld::Button&, void );
+    DECL_LINK (ClickTargetHdl_Impl, weld::Button&, void );
 
-    DECL_LINK (ModifiedPathHdl_Impl  , Edit&, void ); ///< Contents of combobox "Path" modified
-    DECL_LINK (ModifiedTargetHdl_Impl, Edit&, void ); ///< Contents of editfield "Target" modified
+    DECL_LINK (ModifiedPathHdl_Impl, weld::ComboBox&, void ); ///< Contents of combobox "Path" modified
+    DECL_LINK (ModifiedTargetHdl_Impl, weld::Entry&, void ); ///< Contents of editfield "Target" modified
 
-    DECL_LINK( LostFocusPathHdl_Impl, Control&, void ); ///< Combobox "path" lost its focus
+    DECL_LINK( LostFocusPathHdl_Impl, weld::Widget&, void ); ///< Combobox "path" lost its focus
 
     DECL_LINK( TimeoutHdl_Impl, Timer *, void ); ///< Handler for timer -timeout
 
-    enum EPathType { Type_Unknown, Type_Invalid,
-                     Type_ExistsFile, Type_File,
-                     Type_ExistsDir, Type_Dir };
+    enum class EPathType { Invalid, ExistsFile };
     static EPathType GetPathType ( const OUString& rStrPath );
 
-protected:
     void FillDlgFields(const OUString& rStrURL) override;
     void GetCurentItemData ( OUString& rStrURL, OUString& aStrName,
                              OUString& aStrIntName, OUString& aStrFrame,
                              SvxLinkInsertMode& eMode ) override;
-    virtual bool   ShouldOpenMarkWnd () override {return mbMarkWndOpen;}
-    virtual void   SetMarkWndShouldOpen (bool bOpen) override {mbMarkWndOpen=bOpen;}
-    OUString GetCurrentURL    ();
+    virtual bool   ShouldOpenMarkWnd () override {return m_bMarkWndOpen;}
+    virtual void   SetMarkWndShouldOpen (bool bOpen) override {m_bMarkWndOpen=bOpen;}
+    OUString GetCurrentURL() const;
 
 public:
-    SvxHyperlinkDocTp ( vcl::Window *pParent, IconChoiceDialog* pDlg, const SfxItemSet* pItemSet);
+    SvxHyperlinkDocTp(weld::Container* pParent, SvxHpLinkDlg* pDlg, const SfxItemSet* pItemSet);
     virtual ~SvxHyperlinkDocTp() override;
-    virtual void dispose() override;
 
-    static VclPtr<IconChoicePage> Create( vcl::Window* pWindow, IconChoiceDialog* pDlg, const SfxItemSet* pItemSet );
+    static std::unique_ptr<IconChoicePage> Create(weld::Container* pWindow, SvxHpLinkDlg* pDlg, const SfxItemSet* pItemSet);
 
     virtual void        SetMarkStr ( const OUString& aStrMark ) override;
 
     virtual void        SetInitFocus() override;
 };
-
 
 #endif // INCLUDED_CUI_SOURCE_INC_HLDOCTP_HXX
 

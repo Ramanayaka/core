@@ -21,12 +21,9 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_MYSQL_YTABLE_HXX
 
 #include <connectivity/TTableHelper.hxx>
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 #include <comphelper/IdPropArrayHelper.hxx>
 
-namespace connectivity
-{
-    namespace mysql
+namespace connectivity::mysql
     {
 
         class OMySQLTable;
@@ -36,7 +33,7 @@ namespace connectivity
         {
             sal_Int32 m_nPrivileges; // we have to set our privileges by our own
 
-            /** executes the statmenmt.
+            /** executes the statement.
                 @param  _rStatement
                     The statement to execute.
                 */
@@ -47,19 +44,19 @@ namespace connectivity
                 @param  _rNames
                     The column names.
             */
-            virtual sdbcx::OCollection* createColumns(const TStringVector& _rNames) override;
+            virtual sdbcx::OCollection* createColumns(const ::std::vector< OUString>& _rNames) override;
 
             /** creates the key collection for the table
                 @param  _rNames
                     The key names.
             */
-            virtual sdbcx::OCollection* createKeys(const TStringVector& _rNames) override;
+            virtual sdbcx::OCollection* createKeys(const ::std::vector< OUString>& _rNames) override;
 
             /** creates the index collection for the table
                 @param  _rNames
                     The index names.
             */
-            virtual sdbcx::OCollection* createIndexes(const TStringVector& _rNames) override;
+            virtual sdbcx::OCollection* createIndexes(const ::std::vector< OUString>& _rNames) override;
 
             /** Returns always "RENAME TABLE " even for views.
             *
@@ -72,7 +69,7 @@ namespace connectivity
                 This method needs to be implemented in derived classes.
                 <BR>
                 The method gets called with s_aMutex acquired.
-                @return                         an pointer to the newly created array helper. Must not be NULL.
+                @return                         a pointer to the newly created array helper. Must not be NULL.
             */
             virtual ::cppu::IPropertyArrayHelper* createArrayHelper(sal_Int32 nId) const override;
             virtual ::cppu::IPropertyArrayHelper & SAL_CALL getInfoHelper() override;
@@ -84,23 +81,23 @@ namespace connectivity
                             const css::uno::Reference< css::sdbc::XConnection >& _xConnection,
                             const OUString& Name,
                             const OUString& Type,
-                            const OUString& Description = OUString(),
-                            const OUString& SchemaName = OUString(),
-                            const OUString& CatalogName = OUString(),
-                            sal_Int32 _nPrivileges = 0
+                            const OUString& Description,
+                            const OUString& SchemaName,
+                            const OUString& CatalogName,
+                            sal_Int32 _nPrivileges
                 );
 
             // ODescriptor
             virtual void construct() override;
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
             // XAlterTable
             virtual void SAL_CALL alterColumnByName( const OUString& colName, const css::uno::Reference< css::beans::XPropertySet >& descriptor ) override;
             /** returns the ALTER TABLE XXX statement
             */
-            OUString getAlterTableColumnPart();
+            OUString getAlterTableColumnPart() const;
 
             // some methods to alter table structures
             void alterColumnType(sal_Int32 nNewType,const OUString& _rColName,const css::uno::Reference< css::beans::XPropertySet >& _xDescriptor);
@@ -109,7 +106,7 @@ namespace connectivity
 
             virtual OUString getTypeCreatePattern() const override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_MYSQL_YTABLE_HXX
 

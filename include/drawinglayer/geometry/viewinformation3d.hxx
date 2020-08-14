@@ -23,25 +23,23 @@
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <sal/config.h>
-#include <com/sun/star/uno/Sequence.h>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <o3tl/cow_wrapper.hxx>
 
 
 // predefines
 
-namespace drawinglayer { namespace geometry {
+namespace drawinglayer::geometry {
     class ImpViewInformation3D;
-}}
+}
 
 namespace basegfx {
     class B3DHomMatrix;
 }
 
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::uno { template <typename > class Sequence; }
 
-namespace drawinglayer
-{
-    namespace geometry
+namespace drawinglayer::geometry
     {
         /** ViewInformation3D class
 
@@ -108,7 +106,7 @@ namespace drawinglayer
 
                 @param rViewParameters
                 A sequence of property values which allows holding any combination of local and various
-                other parameters. This constructor is feeded completely with a sequence of PropertyValues
+                other parameters. This constructor is fed completely with a sequence of PropertyValues
                 which will be parsed to be able to offer the most used ones in a convenient way.
             */
             explicit ViewInformation3D(const css::uno::Sequence< css::beans::PropertyValue >& rViewParameters);
@@ -117,9 +115,9 @@ namespace drawinglayer
             ViewInformation3D();
 
             /// copy constructor
-            ViewInformation3D(const ViewInformation3D& rCandidate);
+            ViewInformation3D(const ViewInformation3D&);
 
-            ViewInformation3D(ViewInformation3D&& rCandidate);
+            ViewInformation3D(ViewInformation3D&&);
 
             /// destructor
             ~ViewInformation3D();
@@ -128,8 +126,8 @@ namespace drawinglayer
             bool isDefault() const;
 
             /// assignment operator
-            ViewInformation3D& operator=(const ViewInformation3D& rCandidate);
-            ViewInformation3D& operator=(ViewInformation3D&& rCandidate);
+            ViewInformation3D& operator=(const ViewInformation3D&);
+            ViewInformation3D& operator=(ViewInformation3D&&);
 
             /// compare operators
             bool operator==(const ViewInformation3D& rCandidate) const;
@@ -164,8 +162,8 @@ namespace drawinglayer
             */
             const css::uno::Sequence< css::beans::PropertyValue >& getExtendedInformationSequence() const;
         };
-    } // end of namespace geometry
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::geometry
 
 
 #endif //INCLUDED_DRAWINGLAYER_GEOMETRY_VIEWINFORMATION3D_HXX

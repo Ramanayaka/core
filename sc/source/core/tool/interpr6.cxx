@@ -17,16 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "interpre.hxx"
-#include "columnspanset.hxx"
-#include "column.hxx"
-#include "document.hxx"
-#include "cellvalue.hxx"
-#include "dociter.hxx"
-#include "mtvcellfunc.hxx"
-#include "scmatrix.hxx"
+#include <interpre.hxx>
+#include <columnspanset.hxx>
+#include <column.hxx>
+#include <document.hxx>
+#include <cellvalue.hxx>
+#include <dociter.hxx>
+#include <mtvcellfunc.hxx>
+#include <scmatrix.hxx>
 
-#include "arraysumfunctor.hxx"
+#include <arraysumfunctor.hxx>
 
 #include <formula/token.hxx>
 
@@ -203,6 +203,8 @@ double ScInterpreter::GetGammaDist( double fX, double fAlpha, double fLambda )
         return GetLowRegIGamma( fAlpha, fX / fLambda);
 }
 
+namespace {
+
 class NumericCellAccumulator
 {
     double mfFirst;
@@ -319,13 +321,14 @@ public:
 
 class FuncCount : public sc::ColumnSpanSet::ColumnAction
 {
+    const ScInterpreterContext& mrContext;
     sc::ColumnBlockConstPosition maPos;
     ScColumn* mpCol;
     size_t mnCount;
     sal_uInt32 mnNumFmt;
 
 public:
-    FuncCount() : mpCol(nullptr), mnCount(0), mnNumFmt(0) {}
+    FuncCount(const ScInterpreterContext& rContext) : mrContext(rContext), mpCol(nullptr), mnCount(0), mnNumFmt(0) {}
 
     virtual void startColumn(ScColumn* pCol) override
     {
@@ -341,7 +344,7 @@ public:
         NumericCellCounter aFunc;
         maPos.miCellPos = sc::ParseBlock(maPos.miCellPos, mpCol->GetCellStore(), aFunc, nRow1, nRow2);
         mnCount += aFunc.getCount();
-        mnNumFmt = mpCol->GetNumberFormat(nRow2);
+        mnNumFmt = mpCol->GetNumberFormat(mrContext, nRow2);
     };
 
     size_t getCount() const { return mnCount; }
@@ -350,6 +353,7 @@ public:
 
 class FuncSum : public sc::ColumnSpanSet::ColumnAction
 {
+    const ScInterpreterContext& mrContext;
     sc::ColumnBlockConstPosition maPos;
     ScColumn* mpCol;
     double mfSum;
@@ -357,7 +361,7 @@ class FuncSum : public sc::ColumnSpanSet::ColumnAction
     sal_uInt32 mnNumFmt;
 
 public:
-    FuncSum() : mpCol(nullptr), mfSum(0.0), mnError(FormulaError::NONE), mnNumFmt(0) {}
+    FuncSum(const ScInterpreterContext& rContext) : mrContext(rContext), mpCol(nullptr), mfSum(0.0), mnError(FormulaError::NONE), mnNumFmt(0) {}
 
     virtual void startColumn(ScColumn* pCol) override
     {
@@ -389,7 +393,7 @@ public:
             mfSum += aFunc.getRest();
         }
 
-        mnNumFmt = mpCol->GetNumberFormat(nRow2);
+        mnNumFmt = mpCol->GetNumberFormat(mrContext, nRow2);
     };
 
     FormulaError getError() const { return mnError; }
@@ -397,24 +401,26 @@ public:
     sal_uInt32 getNumberFormat() const { return mnNumFmt; }
 };
 
-void IterateMatrix(
-    const ScMatrixRef& pMat, ScIterFunc eFunc, bool bTextAsZero,
-    sal_uLong& rCount, short& rFuncFmtType, double& fRes, double& fMem )
+}
+
+static void IterateMatrix(
+    const ScMatrixRef& pMat, ScIterFunc eFunc, bool bTextAsZero, SubtotalFlags nSubTotalFlags,
+    sal_uLong& rCount, SvNumFormatType& rFuncFmtType, double& fRes, double& fMem )
 {
     if (!pMat)
         return;
 
-    // TODO fdo73148 take mnSubTotalFlags into account
-    rFuncFmtType = css::util::NumberFormat::NUMBER;
+    const bool bIgnoreErrVal = bool(nSubTotalFlags & SubtotalFlags::IgnoreErrVal);
+    rFuncFmtType = SvNumFormatType::NUMBER;
     switch (eFunc)
     {
         case ifAVERAGE:
         case ifSUM:
         {
-            ScMatrix::IterateResult aRes = pMat->Sum(bTextAsZero);
+            ScMatrix::IterateResult aRes = pMat->Sum(bTextAsZero, bIgnoreErrVal);
             // If the first value is a NaN, it probably means it was an empty cell,
             // and should be treated as zero.
-            if ( !rtl::math::isFinite(aRes.mfFirst) )
+            if ( !std::isfinite(aRes.mfFirst) )
             {
                 sal_uInt32 nErr = reinterpret_cast< sal_math_Double * >(&aRes.mfFirst)->nan_parts.fraction_lo;
                 if (nErr & 0xffff0000)
@@ -436,11 +442,12 @@ void IterateMatrix(
             rCount += pMat->Count(bTextAsZero, false);  // do not count error values
         break;
         case ifCOUNT2:
+            /* TODO: what is this supposed to be with bIgnoreErrVal? */
             rCount += pMat->Count(true, true);          // do count error values
         break;
         case ifPRODUCT:
         {
-            ScMatrix::IterateResult aRes = pMat->Product(bTextAsZero);
+            ScMatrix::IterateResult aRes = pMat->Product(bTextAsZero, bIgnoreErrVal);
             fRes *= aRes.mfFirst;
             fRes *= aRes.mfRest;
             rCount += aRes.mnCount;
@@ -448,7 +455,7 @@ void IterateMatrix(
         break;
         case ifSUMSQ:
         {
-            ScMatrix::IterateResult aRes = pMat->SumSquare(bTextAsZero);
+            ScMatrix::IterateResult aRes = pMat->SumSquare(bTextAsZero, bIgnoreErrVal);
             fRes += aRes.mfFirst;
             fRes += aRes.mfRest;
             rCount += aRes.mnCount;
@@ -462,7 +469,7 @@ void IterateMatrix(
 size_t ScInterpreter::GetRefListArrayMaxSize( short nParamCount )
 {
     size_t nSize = 0;
-    if (bMatrixFormula || pCur->IsInForceArray())
+    if (IsInArrayContext())
     {
         for (short i=1; i <= nParamCount; ++i)
         {
@@ -546,6 +553,7 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
                 }
                 else
                 {
+                    Pop();
                     switch ( eFunc )
                     {
                         case ifAVERAGE:
@@ -555,7 +563,6 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
                         {
                             if ( bTextAsZero )
                             {
-                                Pop();
                                 nCount++;
                                 if ( eFunc == ifPRODUCT )
                                     fRes = 0.0;
@@ -569,7 +576,6 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
                         }
                         break;
                         default:
-                            Pop();
                             nCount++;
                     }
                 }
@@ -591,7 +597,7 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
                     case ifPRODUCT: fRes *= fVal; break;
                     default: ; // nothing
                 }
-                nFuncFmtType = css::util::NumberFormat::NUMBER;
+                nFuncFmtType = SvNumFormatType::NUMBER;
                 break;
             case svExternalSingleRef:
             {
@@ -668,17 +674,19 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
                     return;
                 }
 
+                if ( ( ( mnSubTotalFlags & SubtotalFlags::IgnoreFiltered ) &&
+                     pDok->RowFiltered( aAdr.Row(), aAdr.Tab() ) ) ||
+                     ( ( mnSubTotalFlags & SubtotalFlags::IgnoreHidden ) &&
+                       pDok->RowHidden( aAdr.Row(), aAdr.Tab() ) ) )
+                {
+                    break;
+                }
                 if ( nGlobalError != FormulaError::NONE && ( eFunc == ifCOUNT2 || eFunc == ifCOUNT ||
                      ( mnSubTotalFlags & SubtotalFlags::IgnoreErrVal ) ) )
                 {
                     nGlobalError = FormulaError::NONE;
                     if ( eFunc == ifCOUNT2 && !( mnSubTotalFlags & SubtotalFlags::IgnoreErrVal ) )
                         ++nCount;
-                    break;
-                }
-                if ( ( mnSubTotalFlags & SubtotalFlags::IgnoreFiltered ) &&
-                     pDok->RowFiltered( aAdr.Row(), aAdr.Tab() ) )
-                {
                     break;
                 }
                 ScRefCellValue aCell(*pDok, aAdr);
@@ -781,7 +789,7 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
                     nCount = 0;
                 }
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
             case svDoubleRef :
             {
                 PopDoubleRef( aRange, nParamCount, nRefInList);
@@ -805,7 +813,7 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
                     ScCellIterator aIter( pDok, aRange, mnSubTotalFlags );
                     for (bool bHas = aIter.first(); bHas; bHas = aIter.next())
                     {
-                        if ( !aIter.hasEmptyData() )
+                        if ( !aIter.isEmpty() )
                         {
                             ++nCount;
                         }
@@ -814,14 +822,17 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
                     if ( nGlobalError != FormulaError::NONE )
                         nGlobalError = FormulaError::NONE;
                 }
-                else if ( ( eFunc == ifSUM || eFunc == ifCOUNT ) && mnSubTotalFlags == SubtotalFlags::NONE )
+                else if (((eFunc == ifSUM && !bCalcAsShown) || eFunc == ifCOUNT )
+                        && mnSubTotalFlags == SubtotalFlags::NONE)
                 {
-                    sc::ColumnSpanSet aSet( false );
-                    aSet.set( aRange, true );
+                    // Use fast span set array method.
+                    // ifSUM with bCalcAsShown has to use the slow bells and
+                    // whistles ScValueIterator below.
+                    sc::RangeColumnSpanSet aSet( aRange );
 
                     if ( eFunc == ifSUM )
                     {
-                        FuncSum aAction;
+                        FuncSum aAction(mrContext);
                         aSet.executeColumnAction( *pDok, aAction, fMem );
                         FormulaError nErr = aAction.getError();
                         if ( nErr != FormulaError::NONE )
@@ -836,7 +847,7 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
                     }
                     else
                     {
-                        FuncCount aAction;
+                        FuncCount aAction(mrContext);
                         aSet.executeColumnAction(*pDok, aAction);
                         nCount += aAction.getCount();
 
@@ -844,16 +855,17 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
                         nFuncFmtIndex = aAction.getNumberFormat();
                     }
 
-                    nFuncFmtType = pDok->GetFormatTable()->GetType( nFuncFmtIndex );
+                    nFuncFmtType = mrContext.GetNumberFormatType( nFuncFmtIndex );
                 }
                 else
                 {
                     ScValueIterator aValIter( pDok, aRange, mnSubTotalFlags, bTextAsZero );
+                    aValIter.SetInterpreterContext( &mrContext );
                     FormulaError nErr = FormulaError::NONE;
                     if (aValIter.GetFirst(fVal, nErr))
                     {
                         // placed the loop on the inside for performance reasons:
-                        aValIter.GetCurNumFmtInfo( nFuncFmtType, nFuncFmtIndex );
+                        aValIter.GetCurNumFmtInfo( mrContext, nFuncFmtType, nFuncFmtIndex );
                         switch( eFunc )
                         {
                             case ifAVERAGE:
@@ -968,14 +980,14 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
                 if ( nGlobalError != FormulaError::NONE && !( mnSubTotalFlags & SubtotalFlags::IgnoreErrVal ) )
                     break;
 
-                IterateMatrix( pMat, eFunc, bTextAsZero, nCount, nFuncFmtType, fRes, fMem );
+                IterateMatrix( pMat, eFunc, bTextAsZero, mnSubTotalFlags, nCount, nFuncFmtType, fRes, fMem );
             }
             break;
             case svMatrix :
             {
                 ScMatrixRef pMat = PopMatrix();
 
-                IterateMatrix( pMat, eFunc, bTextAsZero, nCount, nFuncFmtType, fRes, fMem );
+                IterateMatrix( pMat, eFunc, bTextAsZero, mnSubTotalFlags, nCount, nFuncFmtType, fRes, fMem );
             }
             break;
             case svError:
@@ -1001,8 +1013,8 @@ void ScInterpreter::IterateParameters( ScIterFunc eFunc, bool bTextAsZero )
 
     // A boolean return type makes no sense on sums et al.
     // Counts are always numbers.
-    if( nFuncFmtType == css::util::NumberFormat::LOGICAL || eFunc == ifCOUNT || eFunc == ifCOUNT2 )
-        nFuncFmtType = css::util::NumberFormat::NUMBER;
+    if( nFuncFmtType == SvNumFormatType::LOGICAL || eFunc == ifCOUNT || eFunc == ifCOUNT2 )
+        nFuncFmtType = SvNumFormatType::NUMBER;
 
     if (xResMat)
     {
@@ -1068,10 +1080,11 @@ void ScInterpreter::ScRawSubtract()
     // Obtain the minuend.
     double fRes = GetDouble();
 
-    while (nGlobalError == FormulaError::NONE && nParamCount-- > 1)
+    while (nGlobalError == FormulaError::NONE && nParamCount > 1)
     {
         // Simple single values without matrix support.
         fRes -= GetDouble();
+        --nParamCount;
     }
     while (nParamCount-- > 0)
         PopError();

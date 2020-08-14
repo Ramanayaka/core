@@ -20,21 +20,23 @@
 #ifndef INCLUDED_SVTOOLS_PRINTOPTIONS_HXX
 #define INCLUDED_SVTOOLS_PRINTOPTIONS_HXX
 
+#include <config_options.h>
 #include <svtools/svtdllapi.h>
 #include <sal/types.h>
-#include <osl/mutex.hxx>
-#include <rtl/ustring.hxx>
 #include <unotools/options.hxx>
+
+namespace osl { class Mutex; }
 
 class SvtPrintOptions_Impl;
 class PrinterOptions;
 
 
-class SVT_DLLPUBLIC SvtBasePrintOptions: public utl::detail::Options
+class UNLESS_MERGELIBS(SVT_DLLPUBLIC) SvtBasePrintOptions: public utl::detail::Options
 {
-protected:
 
     SvtPrintOptions_Impl* m_pDataContainer;
+
+protected:
 
     void        SetDataContainer( SvtPrintOptions_Impl* pDataContainer ) { m_pDataContainer = pDataContainer; }
 
@@ -47,17 +49,17 @@ public:
                 SvtBasePrintOptions();
                 virtual ~SvtBasePrintOptions() override;
 
-    bool        IsReduceTransparency() const;
-    sal_Int16   GetReducedTransparencyMode() const;
-    bool        IsReduceGradients() const;
-    sal_Int16   GetReducedGradientMode() const;
-    sal_Int16   GetReducedGradientStepCount() const;
-    bool        IsReduceBitmaps() const;
-    sal_Int16   GetReducedBitmapMode() const;
-    sal_Int16   GetReducedBitmapResolution() const;
-    bool        IsReducedBitmapIncludesTransparency() const;
-    bool        IsConvertToGreyscales() const;
-    bool        IsPDFAsStandardPrintJobFormat() const;
+    static bool        IsReduceTransparency();
+    static sal_Int16   GetReducedTransparencyMode();
+    static bool        IsReduceGradients();
+    static sal_Int16   GetReducedGradientMode();
+    static sal_Int16   GetReducedGradientStepCount();
+    static bool        IsReduceBitmaps();
+    static sal_Int16   GetReducedBitmapMode();
+    static sal_Int16   GetReducedBitmapResolution();
+    static bool        IsReducedBitmapIncludesTransparency();
+    static bool        IsConvertToGreyscales();
+    static bool        IsPDFAsStandardPrintJobFormat();
 
     void        SetReduceTransparency( bool bState );
     void        SetReducedTransparencyMode( sal_Int16 nMode );
@@ -73,12 +75,12 @@ public:
 
 public:
 
-    void        GetPrinterOptions( PrinterOptions& rOptions ) const;
-    void        SetPrinterOptions( const PrinterOptions& rOptions );
+    static void        GetPrinterOptions( PrinterOptions& rOptions );
+    void               SetPrinterOptions( const PrinterOptions& rOptions );
 };
 
 
-class SVT_DLLPUBLIC SvtPrinterOptions : public SvtBasePrintOptions
+class UNLESS_MERGELIBS(SVT_DLLPUBLIC) SvtPrinterOptions final : public SvtBasePrintOptions
 {
 private:
 
@@ -92,7 +94,7 @@ public:
 };
 
 
-class SVT_DLLPUBLIC SvtPrintFileOptions : public SvtBasePrintOptions
+class UNLESS_MERGELIBS(SVT_DLLPUBLIC) SvtPrintFileOptions final : public SvtBasePrintOptions
 {
 private:
 

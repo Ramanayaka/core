@@ -24,7 +24,7 @@
 #include <limits.h>
 #include <algorithm>
 #include <ostream>
-#include <cstdlib>
+#include <config_options.h>
 
 class SvStream;
 namespace rtl
@@ -48,15 +48,14 @@ public:
     long&               A() { return nA; }
     long&               B() { return nB; }
 
-    TOOLS_DLLPUBLIC friend SvStream&    ReadPair( SvStream& rIStream, Pair& rPair );
-    TOOLS_DLLPUBLIC friend SvStream&    WritePair( SvStream& rOStream, const Pair& rPair );
+    TOOLS_DLLPUBLIC rtl::OString        toString() const;
 
 protected:
     long                nA;
     long                nB;
 };
 
-namespace tools { namespace detail {
+namespace tools::detail {
 
 // Used to implement operator == for subclasses of Pair:
 inline bool equal(Pair const & p1, Pair const & p2)
@@ -64,11 +63,12 @@ inline bool equal(Pair const & p1, Pair const & p2)
     return p1.A() == p2.A() && p1.B() == p2.B();
 }
 
-} }
+}
 
 // Point
 
-class SAL_WARN_UNUSED SAL_DLLPUBLIC_EXPORT Point : public Pair
+class Size;
+class SAL_WARN_UNUSED UNLESS_MERGELIBS(SAL_DLLPUBLIC_EXPORT) Point final : protected Pair
 {
 public:
                         Point() {}
@@ -77,13 +77,13 @@ public:
     long                X() const { return nA; }
     long                Y() const { return nB; }
 
-    long&               X() { return nA; }
-    long&               Y() { return nB; }
-
     void                Move( long nHorzMove, long nVertMove );
+    void                Move( Size const & s );
+    long                AdjustX( long nHorzMove ) { nA += nHorzMove; return nA; }
+    long                AdjustY( long nVertMove ) { nB += nVertMove; return nB; }
 
     void                RotateAround( long& rX, long& rY, short nOrientation ) const;
-
+    void                RotateAround( Point&, short nOrientation ) const;
 
     Point&              operator += ( const Point& rPoint );
     Point&              operator -= ( const Point& rPoint );
@@ -97,8 +97,13 @@ public:
 
     long                getX() const { return X(); }
     long                getY() const { return Y(); }
-    void                setX(long nX)  { X() = nX; }
-    void                setY(long nY)  { Y() = nY; }
+    void                setX(long nX)  { nA = nX; }
+    void                setY(long nY)  { nB = nY; }
+
+    Pair const &        toPair() const { return *this; }
+    Pair &              toPair() { return *this; }
+
+    using Pair::toString;
 };
 
 inline void Point::Move( long nHorzMove, long nVertMove )
@@ -157,7 +162,7 @@ inline Point operator/( const Point &rVal1, const long nVal2 )
 
 inline bool operator ==(Point const & p1, Point const & p2)
 {
-    return tools::detail::equal(p1, p2);
+    return tools::detail::equal(p1.toPair(), p2.toPair());
 }
 
 inline bool operator !=(Point const & p1, Point const & p2)
@@ -174,7 +179,7 @@ inline std::basic_ostream<charT, traits> & operator <<(
 
 // Size
 
-class SAL_WARN_UNUSED Size : public Pair
+class SAL_WARN_UNUSED Size final : protected Pair
 {
 public:
                     Size() {}
@@ -183,18 +188,31 @@ public:
     long            Width() const  { return nA; }
     long            Height() const { return nB; }
 
-    long&           Width()  { return nA; }
-    long&           Height() { return nB; }
+    long            AdjustWidth( long n ) { nA += n; return nA; }
+    long            AdjustHeight( long n ) { nB += n; return nB; }
 
     long            getWidth() const { return Width(); }
     long            getHeight() const { return Height(); }
-    void            setWidth(long nWidth)  { Width() = nWidth; }
-    void            setHeight(long nHeight)  { Height() = nHeight; }
+    void            setWidth(long nWidth)  { nA = nWidth; }
+    void            setHeight(long nHeight)  { nB = nHeight; }
+
+    bool            IsEmpty() const { return nA <= 0 || nB <= 0; }
+
+    void extendBy(long x, long y)
+    {
+        nA += x;
+        nB += y;
+    }
+
+    Pair const &    toPair() const { return *this; }
+    Pair &          toPair() { return *this; }
+
+    using Pair::toString;
 };
 
 inline bool operator ==(Size const & s1, Size const & s2)
 {
-    return tools::detail::equal(s1, s2);
+    return tools::detail::equal(s1.toPair(), s2.toPair());
 }
 
 inline bool operator !=(Size const & s1, Size const & s2)
@@ -209,11 +227,17 @@ inline std::basic_ostream<charT, traits> & operator <<(
     return stream << size.Width() << 'x' << size.Height();
 }
 
+inline void Point::Move( Size const & s )
+{
+    AdjustX(s.Width());
+    AdjustY(s.Height());
+}
+
 // Range
 
 #define RANGE_MAX   LONG_MAX
 
-class SAL_WARN_UNUSED Range : public Pair
+class SAL_WARN_UNUSED Range final : protected Pair
 {
 public:
                     Range() {}
@@ -229,6 +253,11 @@ public:
     bool            IsInside( long nIs ) const;
 
     void            Justify();
+
+    Pair const &    toPair() const { return *this; }
+    Pair &          toPair() { return *this; }
+
+    using Pair::toString;
 };
 
 inline bool Range::IsInside( long nIs ) const
@@ -248,7 +277,7 @@ inline void Range::Justify()
 
 inline bool operator ==(Range const & r1, Range const & r2)
 {
-    return tools::detail::equal(r1, r2);
+    return tools::detail::equal(r1.toPair(), r2.toPair());
 }
 
 inline bool operator !=(Range const & r1, Range const & r2)
@@ -268,7 +297,7 @@ inline std::basic_ostream<charT, traits> & operator <<(
 #define SELECTION_MIN   LONG_MIN
 #define SELECTION_MAX   LONG_MAX
 
-class SAL_WARN_UNUSED Selection : public Pair
+class SAL_WARN_UNUSED Selection final : protected Pair
 {
 public:
                     Selection() {}
@@ -291,6 +320,11 @@ public:
     long            getMin() const { return Min(); }
     void            setMin(long nMin)  { Min() = nMin; }
     void            setMax(long nMax)  { Max() = nMax; }
+
+    Pair const &    toPair() const { return *this; }
+    Pair &          toPair() { return *this; }
+
+    using Pair::toString;
 };
 
 inline bool Selection::IsInside( long nIs ) const
@@ -310,7 +344,7 @@ inline void Selection::Justify()
 
 inline bool operator ==(Selection const & s1, Selection const & s2)
 {
-    return tools::detail::equal(s1, s2);
+    return tools::detail::equal(s1.toPair(), s2.toPair());
 }
 
 inline bool operator !=(Selection const & s1, Selection const & s2)
@@ -326,7 +360,6 @@ inline std::basic_ostream<charT, traits> & operator <<(
 }
 // Rectangle
 
-#define RECT_EMPTY  ((short)-32767)
 #define RECT_MAX    LONG_MAX
 #define RECT_MIN    LONG_MIN
 
@@ -341,24 +374,29 @@ inline std::basic_ostream<charT, traits> & operator <<(
 /// Ok, now is the time for despair.
 namespace tools
 {
-class SAL_WARN_UNUSED TOOLS_DLLPUBLIC Rectangle
+class SAL_WARN_UNUSED TOOLS_DLLPUBLIC Rectangle final
 {
+    static constexpr short RECT_EMPTY = -32767;
 public:
                         Rectangle();
                         Rectangle( const Point& rLT, const Point& rRB );
                         Rectangle( long nLeft, long nTop,
                                    long nRight, long nBottom );
+    /// Constructs an empty Rectangle, with top/left at the specified params
+                        Rectangle( long nLeft, long nTop );
                         Rectangle( const Point& rLT, const Size& rSize );
 
-    long                Left() const    { return nLeft;   }
-    long                Right() const   { return nRight;  }
-    long                Top() const     { return nTop;    }
-    long                Bottom() const  { return nBottom; }
+    static Rectangle    Justify( const Point& rLT, const Point& rRB );
 
-    long&               Left()          { return nLeft;   }
-    long&               Right()         { return nRight;  }
-    long&               Top()           { return nTop;    }
-    long&               Bottom()        { return nBottom; }
+    long                Left() const    { return nLeft;   }
+    long                Right() const;
+    long                Top() const     { return nTop;    }
+    long                Bottom() const;
+
+    void                SetLeft(long v)    { nLeft = v;   }
+    void                SetRight(long v)   { nRight = v;  }
+    void                SetTop(long v)     { nTop = v;    }
+    void                SetBottom(long v)  { nBottom = v; }
 
     inline Point        TopLeft() const;
     inline Point        TopRight() const;
@@ -372,6 +410,11 @@ public:
 
     /// Move the top and left edges by a delta, preserving width and height
     inline void         Move( long nHorzMoveDelta, long nVertMoveDelta );
+    void                Move( Size const & s ) { Move(s.Width(), s.Height()); }
+    long                AdjustLeft( long nHorzMoveDelta ) { nLeft += nHorzMoveDelta; return nLeft; }
+    long                AdjustRight( long nHorzMoveDelta );
+    long                AdjustTop( long nVertMoveDelta ) { nTop += nVertMoveDelta; return nTop; }
+    long                AdjustBottom( long nVertMoveDelta );
     inline void         SetPos( const Point& rPoint );
     void                SetSize( const Size& rSize );
     inline Size         GetSize() const;
@@ -393,7 +436,11 @@ public:
     bool                IsOver( const tools::Rectangle& rRect ) const;
 
     void                SetEmpty() { nRight = nBottom = RECT_EMPTY; }
+    void                SetWidthEmpty() { nRight = RECT_EMPTY; }
+    void                SetHeightEmpty() { nBottom = RECT_EMPTY; }
     inline bool         IsEmpty() const;
+    bool                IsWidthEmpty() const { return nRight == RECT_EMPTY; }
+    bool                IsHeightEmpty() const { return nBottom == RECT_EMPTY; }
 
     inline bool         operator == ( const tools::Rectangle& rRect ) const;
     inline bool         operator != ( const tools::Rectangle& rRect ) const;
@@ -404,20 +451,17 @@ public:
     friend inline tools::Rectangle operator + ( const tools::Rectangle& rRect, const Point& rPt );
     friend inline tools::Rectangle operator - ( const tools::Rectangle& rRect, const Point& rPt );
 
-    TOOLS_DLLPUBLIC friend SvStream&    ReadRectangle( SvStream& rIStream, tools::Rectangle& rRect );
-    TOOLS_DLLPUBLIC friend SvStream&    WriteRectangle( SvStream& rOStream, const tools::Rectangle& rRect );
-
     // ONE
     long                getX() const { return nLeft; }
     long                getY() const { return nTop; }
     /// Returns the difference between right and left, assuming the range includes one end, but not the other.
-    long                getWidth() const { return nRight - nLeft; }
+    long                getWidth() const;
     /// Returns the difference between bottom and top, assuming the range includes one end, but not the other.
-    long                getHeight() const { return nBottom - nTop; }
+    long                getHeight() const;
     /// Set the left edge of the rectangle to x, preserving the width
-    void                setX( long x ) { nRight  += x - nLeft; nLeft = x; }
+    void                setX( long x );
     /// Set the top edge of the rectangle to y, preserving the height
-    void                setY( long y ) { nBottom += y - nTop;  nTop  = y; }
+    void                setY( long y );
     void                setWidth( long n ) { nRight = nLeft + n; }
     void                setHeight( long n ) { nBottom = nTop + n; }
     /// Returns the string representation of the rectangle, format is "x, y, width, height".
@@ -426,8 +470,15 @@ public:
     /**
      * Expands the rectangle in all directions by the input value.
      */
-    inline void expand(long nExpandBy);
-    inline void shrink(long nShrinkBy);
+    void expand(long nExpandBy);
+    void shrink(long nShrinkBy);
+
+    /**
+     * Sanitizing variants for handling data from the outside
+     */
+    void                SaturatingSetSize(const Size& rSize);
+    void                SaturatingSetX(long x);
+    void                SaturatingSetY(long y);
 
 private:
     long                nLeft;
@@ -460,12 +511,19 @@ inline tools::Rectangle::Rectangle( long _nLeft,  long _nTop,
     nBottom = _nBottom;
 }
 
+inline tools::Rectangle::Rectangle( long _nLeft,  long _nTop )
+{
+    nLeft   = _nLeft;
+    nTop    = _nTop;
+    nRight = nBottom = RECT_EMPTY;
+}
+
 inline tools::Rectangle::Rectangle( const Point& rLT, const Size& rSize )
 {
     nLeft   = rLT.X();
     nTop    = rLT.Y();
-    nRight  = rSize.Width()  ? nLeft+rSize.Width()-1 : RECT_EMPTY;
-    nBottom = rSize.Height() ? nTop+rSize.Height()-1 : RECT_EMPTY;
+    nRight  = rSize.Width()  ? nLeft+(rSize.Width()-1) : RECT_EMPTY;
+    nBottom = rSize.Height() ? nTop+(rSize.Height()-1) : RECT_EMPTY;
 }
 
 inline bool tools::Rectangle::IsEmpty() const
@@ -649,36 +707,19 @@ namespace tools
 {
 inline Rectangle operator + ( const Rectangle& rRect, const Point& rPt )
 {
-    Rectangle aRect( rRect.nLeft  + rPt.X(), rRect.nTop    + rPt.Y(),
-                     (rRect.nRight  == RECT_EMPTY) ? RECT_EMPTY : rRect.nRight + rPt.X(),
-                     (rRect.nBottom == RECT_EMPTY) ? RECT_EMPTY : rRect.nBottom + rPt.Y() );
-    return aRect;
+    return rRect.IsEmpty()
+        ?  Rectangle( rRect.nLeft  + rPt.X(), rRect.nTop    + rPt.Y() )
+        :  Rectangle( rRect.nLeft  + rPt.X(), rRect.nTop    + rPt.Y(),
+                      rRect.nRight + rPt.X(), rRect.nBottom + rPt.Y() );
 }
 
 inline Rectangle operator - ( const Rectangle& rRect, const Point& rPt )
 {
-    Rectangle aRect( rRect.nLeft - rPt.X(),
-                     rRect.nTop - rPt.Y(),
-                     (rRect.nRight  == RECT_EMPTY) ? RECT_EMPTY : rRect.nRight - rPt.X(),
-                     (rRect.nBottom == RECT_EMPTY) ? RECT_EMPTY : rRect.nBottom - rPt.Y() );
-    return aRect;
+    return rRect.IsEmpty()
+        ? Rectangle( rRect.nLeft - rPt.X(),  rRect.nTop - rPt.Y() )
+        : Rectangle( rRect.nLeft - rPt.X(),  rRect.nTop - rPt.Y(),
+                     rRect.nRight - rPt.X(), rRect.nBottom - rPt.Y() );
 }
-}
-
-inline void tools::Rectangle::expand(long nExpandBy)
-{
-    nLeft   -= nExpandBy;
-    nTop    -= nExpandBy;
-    nRight  += nExpandBy;
-    nBottom += nExpandBy;
-}
-
-inline void tools::Rectangle::shrink(long nShrinkBy)
-{
-    nLeft   += nShrinkBy;
-    nTop    += nShrinkBy;
-    nRight  -= nShrinkBy;
-    nBottom -= nShrinkBy;
 }
 
 template< typename charT, typename traits >

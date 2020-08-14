@@ -22,20 +22,18 @@
 
 #include <sal/config.h>
 
-#include <memory>
 #include <vector>
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
-#include <CustomAnimationEffect.hxx>
+#include "CustomAnimationEffect.hxx"
 
 #include <unordered_map>
 
 namespace sd {
 
-typedef std::unordered_map< OUString, CustomAnimationEffectPtr, OUStringHash > EffectsSubTypeMap;
-typedef std::unordered_map< OUString, OUString, OUStringHash > UStringMap;
-typedef std::vector< OUString > UStringList;
+typedef std::unordered_map< OUString, CustomAnimationEffectPtr > EffectsSubTypeMap;
+typedef std::unordered_map< OUString, OUString > UStringMap;
 
 class CustomAnimationPreset
 {
@@ -52,8 +50,8 @@ public:
     const OUString& getLabel() const { return maLabel; }
     double getDuration() const { return mfDuration; }
 
-    UStringList getSubTypes();
-    UStringList getProperties() const;
+    std::vector<OUString> getSubTypes();
+    std::vector<OUString> getProperties() const;
 
     bool hasProperty( const OUString& rProperty ) const;
     bool isTextOnly() const { return mbIsTextOnly; }
@@ -70,7 +68,7 @@ private:
 };
 
 typedef std::shared_ptr< CustomAnimationPreset > CustomAnimationPresetPtr;
-typedef std::unordered_map<OUString, CustomAnimationPresetPtr, OUStringHash> EffectDescriptorMap;
+typedef std::unordered_map<OUString, CustomAnimationPresetPtr> EffectDescriptorMap;
 typedef std::vector< CustomAnimationPresetPtr > EffectDescriptorList;
 
 struct PresetCategory
@@ -90,6 +88,9 @@ public:
     SAL_DLLPRIVATE CustomAnimationPresets();
     SAL_DLLPRIVATE ~CustomAnimationPresets();
 
+    /** This method gets presets instance, which is localized
+     * for the current user's locale.
+    */
     static const CustomAnimationPresets& getCustomAnimationPresets();
 
     SAL_DLLPRIVATE css::uno::Reference< css::animations::XAnimationNode > getRandomPreset( sal_Int16 nPresetClass ) const;
@@ -117,7 +118,7 @@ private:
 
 private:
     css::uno::Reference< css::animations::XAnimationNode > mxRootNode;
-    EffectDescriptorMap maEffectDiscriptorMap;
+    EffectDescriptorMap maEffectDescriptorMap;
     UStringMap maEffectNameMap;
     UStringMap maPropertyNameMap;
 
@@ -127,7 +128,8 @@ private:
     PresetCategoryList maMotionPathsPresets;
     PresetCategoryList maMiscPresets;
 
-    SAL_DLLPRIVATE static CustomAnimationPresets*  mpCustomAnimationPresets;
+    //! Maps per-language the animation presets.
+    SAL_DLLPRIVATE static std::map<OUString, CustomAnimationPresets>  mPresetsMap;
 };
 
 

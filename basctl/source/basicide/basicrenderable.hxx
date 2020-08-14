@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_BASCTL_SOURCE_BASICIDE_BASICRENDERABLE_HXX
-#define INCLUDED_BASCTL_SOURCE_BASICIDE_BASICRENDERABLE_HXX
+#pragma once
 
 #include <com/sun/star/view/XRenderable.hpp>
 #include <cppuhelper/compbase.hxx>
@@ -33,10 +32,14 @@ class Renderable :
     public cppu::WeakComponentImplHelper< css::view::XRenderable >,
     public vcl::PrinterOptionsHelper
 {
-    VclPtr<BaseWindow>  mpWindow;
-    osl::Mutex          maMutex;
+    VclPtr<BaseWindow>      mpWindow;
+    osl::Mutex              maMutex;
+    std::vector<sal_Int32>  maValidPages;
 
-    VclPtr<Printer> getPrinter();
+    VclPtr<Printer> getPrinter() const;
+    bool isPrintOddPages() const;
+    bool isPrintEvenPages() const;
+    static bool isOnEvenPage( sal_Int32 nPage ) { return nPage % 2 == 0; };
 public:
     explicit Renderable (BaseWindow*);
     virtual ~Renderable() override;
@@ -59,7 +62,5 @@ public:
 };
 
 } // namespace basctl
-
-#endif // INCLUDED_BASCTL_SOURCE_BASICIDE_BASICRENDERABLE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

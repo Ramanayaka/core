@@ -25,7 +25,6 @@
 #include <rtl/ustring.hxx>
 
 #include <vector>
-#include <list>
 
 #define OU2ENC(rtlOUString, rtlEncoding) \
     OString((rtlOUString).getStr(), (rtlOUString).getLength(), \
@@ -44,14 +43,14 @@ OString Win_AddLongPathPrefix( const OString &rPathName );
 // temporary function, to be removed when new style dictionaries
 // using configuration entries are fully implemented and provided
 std::vector< SvtLinguConfigDictionaryEntry > GetOldStyleDics( const char * pDicType );
-void MergeNewStyleDicsAndOldStyleDics( std::list< SvtLinguConfigDictionaryEntry > &rNewStyleDics, const std::vector< SvtLinguConfigDictionaryEntry > &rOldStyleDics );
+void MergeNewStyleDicsAndOldStyleDics( std::vector< SvtLinguConfigDictionaryEntry > &rNewStyleDics, const std::vector< SvtLinguConfigDictionaryEntry > &rOldStyleDics );
 
 //Find an encoding from a charset string, using
 //rtl_getTextEncodingFromMimeCharset and falling back to
 //rtl_getTextEncodingFromUnixCharset with the addition of
 //ISCII-DEVANAGARI. On failure will return final fallback of
 //RTL_TEXTENCODING_ISO_8859_1
-rtl_TextEncoding getTextEncodingFromCharset(const sal_Char* pCharset);
+rtl_TextEncoding getTextEncodingFromCharset(const char* pCharset);
 
 #endif
 

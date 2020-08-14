@@ -21,8 +21,7 @@
 
 #include <rtl/ref.hxx>
 #include <connectivity/CommonTools.hxx>
-#include "connectivity/FValue.hxx"
-#include <comphelper/types.hxx>
+#include <connectivity/FValue.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 
 namespace dbaccess

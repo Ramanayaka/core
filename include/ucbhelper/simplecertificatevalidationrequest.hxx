@@ -20,10 +20,11 @@
 #ifndef INCLUDED_UCBHELPER_SIMPLECERTIFICATEVALIDATIONREQUEST_HXX
 #define INCLUDED_UCBHELPER_SIMPLECERTIFICATEVALIDATIONREQUEST_HXX
 
-#include <rtl/ref.hxx>
 #include <ucbhelper/interactionrequest.hxx>
 #include <ucbhelper/ucbhelperdllapi.h>
-#include <com/sun/star/security/XCertificate.hpp>
+
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
+namespace com::sun::star::security { class XCertificate; }
 
 
 namespace ucbhelper {
@@ -31,9 +32,9 @@ namespace ucbhelper {
 /**
   * This class implements a simple validation interaction request of a certificate.
   * Instances can be passed directly to XInteractionHandler::handle(...). Each
-  * instance contains an CertificateValidationRequest and two interaction
+  * instance contains a CertificateValidationRequest and two interaction
   * continuations: "Abort" and "Approved". The parameters
-  * for the CertificateValidationRequest object are partly taken from contructors parameters and partly defaulted
+  * for the CertificateValidationRequest object are partly taken from constructors parameters and partly defaulted
   * as follows:
   *
   * Read-write values: certificateValidity, certificate
@@ -42,7 +43,7 @@ namespace ucbhelper {
   * @see InteractionApproved
   * @see InteractionRetry
   */
-class UCBHELPER_DLLPUBLIC SimpleCertificateValidationRequest : public ucbhelper::InteractionRequest
+class UCBHELPER_DLLPUBLIC SimpleCertificateValidationRequest final : public ucbhelper::InteractionRequest
 {
 public:
     /**

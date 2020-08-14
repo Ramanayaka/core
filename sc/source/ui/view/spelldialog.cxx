@@ -17,25 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "spelldialog.hxx"
+#include <spelldialog.hxx>
 
-#include <sfx2/app.hxx>
 #include <sfx2/bindings.hxx>
-#include <sfx2/dispatch.hxx>
 #include <svx/svxids.hrc>
 #include <editeng/editstat.hxx>
 #include <editeng/editview.hxx>
 #include <editeng/unolingu.hxx>
-#include "selectionstate.hxx"
+#include <selectionstate.hxx>
 
-#include "spelleng.hxx"
-#include "tabvwsh.hxx"
-#include "docsh.hxx"
-#include "scmod.hxx"
-#include "editable.hxx"
-#include "undoblk.hxx"
+#include <spelleng.hxx>
+#include <tabvwsh.hxx>
+#include <docsh.hxx>
+#include <scmod.hxx>
+#include <editable.hxx>
+#include <undoblk.hxx>
 #include <gridwin.hxx>
 #include <refupdatecontext.hxx>
+#include <vcl/svapp.hxx>
 
 SFX_IMPL_CHILDWINDOW_WITHID( ScSpellDialogChildWindow, SID_SPELL_DIALOG )
 
@@ -72,7 +71,7 @@ void ScSpellDialogChildWindow::InvalidateSpellDialog()
 svx::SpellPortions ScSpellDialogChildWindow::GetNextWrongSentence( bool /*bRecheck*/ )
 {
     svx::SpellPortions aPortions;
-    if( mxEngine.get() && mpViewData )
+    if( mxEngine && mpViewData )
     {
         if( EditView* pEditView = mpViewData->GetSpellingView() )
         {
@@ -91,13 +90,20 @@ svx::SpellPortions ScSpellDialogChildWindow::GetNextWrongSentence( bool /*bReche
 
 void ScSpellDialogChildWindow::ApplyChangedSentence( const svx::SpellPortions& rChanged, bool bRecheck )
 {
-    if( mxEngine.get() && mpViewData )
+    if( mxEngine && mpViewData )
         if( EditView* pEditView = mpViewData->GetSpellingView() )
+        {
             mxEngine->ApplyChangedSentence( *pEditView, rChanged, bRecheck );
+
+            // Reset the spell checking results to clear the markers.
+            mpViewData->GetActiveWin()->ResetAutoSpell();
+        }
 }
 
 void ScSpellDialogChildWindow::GetFocus()
 {
+    SolarMutexGuard aGuard;
+
     if( IsSelectionChanged() )
     {
         Reset();
@@ -116,7 +122,7 @@ void ScSpellDialogChildWindow::Reset()
 {
     if( mpViewShell && (mpViewShell == dynamic_cast<ScTabViewShell*>( SfxViewShell::Current() ))  )
     {
-        if( mxEngine.get() && mxEngine->IsAnyModified() )
+        if( mxEngine && mxEngine->IsAnyModified() )
         {
             const ScAddress& rCursor = mxOldSel->GetCellCursor();
             SCTAB nTab = rCursor.Tab();
@@ -124,10 +130,10 @@ void ScSpellDialogChildWindow::Reset()
             SCROW nOldRow = rCursor.Row();
             SCCOL nNewCol = mpViewData->GetCurX();
             SCROW nNewRow = mpViewData->GetCurY();
-            mpDocShell->GetUndoManager()->AddUndoAction( new ScUndoConversion(
+            mpDocShell->GetUndoManager()->AddUndoAction( std::make_unique<ScUndoConversion>(
                 mpDocShell, mpViewData->GetMarkData(),
-                nOldCol, nOldRow, nTab, mxUndoDoc.release(),
-                nNewCol, nNewRow, nTab, mxRedoDoc.release(),
+                nOldCol, nOldRow, nTab, std::move(mxUndoDoc),
+                nNewCol, nNewRow, nTab, std::move(mxRedoDoc),
                 ScConversionParam( SC_CONVERSION_SPELLCHECK ) ) );
 
             sc::SetFormulaDirtyContext aCxt;
@@ -194,7 +200,7 @@ void ScSpellDialogChildWindow::Init()
             ScEditableTester aTester( mpDoc, rMarkData );
             if( !aTester.IsEditable() )
             {
-                // #i85751# Don't show a ErrorMessage here, because the vcl
+                // #i85751# Don't show an ErrorMessage here, because the vcl
                 // parent of the InfoBox is not fully initialized yet.
                 // This leads to problems in the modality behaviour of the
                 // ScSpellDialogChildWindow.
@@ -225,13 +231,12 @@ void ScSpellDialogChildWindow::Init()
 
     if ( rMarkData.GetSelectCount() > 1 )
     {
-        ScMarkData::iterator itr = rMarkData.begin(), itrEnd = rMarkData.end();
-        for (; itr != itrEnd; ++itr)
+        for (const auto& rTab : rMarkData)
         {
-            if( *itr != nTab )
+            if( rTab != nTab )
             {
-                mxUndoDoc->AddUndoTab( *itr, *itr );
-                mxRedoDoc->AddUndoTab( *itr, *itr );
+                mxUndoDoc->AddUndoTab( rTab, rTab );
+                mxRedoDoc->AddUndoTab( rTab, rTab );
             }
         }
     }
@@ -250,7 +255,7 @@ void ScSpellDialogChildWindow::Init()
     mxEngine->SetControlWord( EEControlBits::USECHARATTRIBS );
     mxEngine->EnableUndo( false );
     mxEngine->SetPaperSize( aRect.GetSize() );
-    mxEngine->SetText( EMPTY_OUSTRING );
+    mxEngine->SetTextCurrentDefaults( EMPTY_OUSTRING );
     mxEngine->ClearModifyFlag();
 
     mbNeedNextObj = true;
@@ -258,7 +263,8 @@ void ScSpellDialogChildWindow::Init()
 
 bool ScSpellDialogChildWindow::IsSelectionChanged()
 {
-    if( !mxOldRangeList.get() || !mpViewShell || (mpViewShell != dynamic_cast<ScTabViewShell*>( SfxViewShell::Current() ))  )
+    if (!mxOldRangeList || !mpViewShell
+        || (mpViewShell != dynamic_cast<ScTabViewShell*>(SfxViewShell::Current())))
         return true;
 
     if( EditView* pEditView = mpViewData->GetSpellingView() )

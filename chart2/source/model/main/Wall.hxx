@@ -22,11 +22,9 @@
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
-#include "MutexContainer.hxx"
-#include "OPropertySet.hxx"
-#include <cppuhelper/weak.hxx>
+#include <MutexContainer.hxx>
+#include <OPropertySet.hxx>
 
-#include "ModifyListenerHelper.hxx"
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/uno3.hxx>
 
@@ -42,7 +40,7 @@ typedef ::cppu::WeakImplHelper<
     Wall_Base;
 }
 
-class Wall :
+class Wall final :
     public MutexContainer,
     public impl::Wall_Base,
     public ::property::OPropertySet
@@ -54,7 +52,7 @@ public:
     /// merge XInterface implementations
      DECLARE_XINTERFACE()
 
-protected:
+private:
     explicit Wall( const Wall & rOther );
 
     // ____ OPropertySet ____

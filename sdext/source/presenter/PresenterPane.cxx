@@ -20,16 +20,13 @@
 #include "PresenterPane.hxx"
 #include "PresenterController.hxx"
 #include "PresenterPaintManager.hxx"
-#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <com/sun/star/drawing/CanvasFeature.hpp>
-#include <com/sun/star/rendering/CompositeOperation.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 //===== PresenterPane =========================================================
 
@@ -40,7 +37,7 @@ PresenterPane::PresenterPane (
       maBoundingBox()
 {
     Reference<lang::XMultiComponentFactory> xFactory (
-        mxComponentContext->getServiceManager(), UNO_QUERY_THROW);
+        mxComponentContext->getServiceManager(), UNO_SET_THROW);
     mxPresenterHelper.set(
         xFactory->createInstanceWithContext(
             "com.sun.star.comp.Draw.PresenterHelper",
@@ -128,27 +125,26 @@ void SAL_CALL PresenterPane::windowPaint (const awt::PaintEvent& rEvent)
 
 
 void PresenterPane::CreateCanvases (
-    const Reference<awt::XWindow>& rxParentWindow,
     const Reference<rendering::XSpriteCanvas>& rxParentCanvas)
 {
     if ( ! mxPresenterHelper.is())
         return;
-    if ( ! rxParentWindow.is())
+    if ( ! mxParentWindow.is())
         return;
     if ( ! rxParentCanvas.is())
         return;
 
     mxBorderCanvas = mxPresenterHelper->createSharedCanvas(
         rxParentCanvas,
-        rxParentWindow,
-        Reference<rendering::XCanvas>(rxParentCanvas, UNO_QUERY),
-        rxParentWindow,
+        mxParentWindow,
+        rxParentCanvas,
+        mxParentWindow,
         mxBorderWindow);
     mxContentCanvas = mxPresenterHelper->createSharedCanvas(
         rxParentCanvas,
-        rxParentWindow,
-        Reference<rendering::XCanvas>(rxParentCanvas, UNO_QUERY),
-        rxParentWindow,
+        mxParentWindow,
+        rxParentCanvas,
+        mxParentWindow,
         mxContentWindow);
 
     PaintBorder(mxBorderWindow->getPosSize());
@@ -169,6 +165,6 @@ void PresenterPane::UpdateBoundingBox()
         maBoundingBox = awt::Rectangle();
 }
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

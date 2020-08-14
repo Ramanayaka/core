@@ -22,15 +22,13 @@
 
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 #include <cppuhelper/weakref.hxx>
 #include <tools/link.hxx>
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-} } } }
+}
 class VclWindowEvent;
 
 namespace framework{

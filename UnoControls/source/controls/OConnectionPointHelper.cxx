@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "OConnectionPointHelper.hxx"
+#include <OConnectionPointHelper.hxx>
 
-#include "OConnectionPointContainerHelper.hxx"
+#include <OConnectionPointContainerHelper.hxx>
 
 #include <com/sun/star/lang/InvalidListenerException.hpp>
 #include <cppuhelper/queryinterface.hxx>
@@ -31,7 +31,7 @@ using namespace ::cppu;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 
-namespace unocontrols{
+namespace unocontrols {
 
 //  construct/destruct
 
@@ -105,8 +105,7 @@ Type SAL_CALL OConnectionPointHelper::getConnectionType()
     // Set default return value, if method failed.
     if ( !impl_LockContainer() )
     {
-        // Container not exist! It's a runtime error.
-        throw RuntimeException();
+        throw RuntimeException("Container does not exist!");
     }
 
     // If container reference valid, return right type of supported interfaces of THIS connectionpoint.
@@ -149,8 +148,7 @@ void SAL_CALL OConnectionPointHelper::advise( const Reference< XInterface >& xLi
     // Operation is permitted only, if reference to container is valid!
     if ( !impl_LockContainer() )
     {
-        // Container not exist! It's a runtime error.
-        throw RuntimeException();
+        throw RuntimeException("Container does not exist!");
     }
     // Forward it to OConnectionPointHelperContainer!
     m_pContainerImplementation->advise( m_aInterfaceType, xListener );
@@ -167,8 +165,7 @@ void SAL_CALL OConnectionPointHelper::unadvise( const Reference< XInterface >& x
     // Operation is permitted only, if reference to container is valid!
     if ( !impl_LockContainer() )
     {
-        // Container not exist! It's a runtime error.
-        throw RuntimeException();
+        throw RuntimeException("Container does not exist!");
 
     }
     // Forward it to OConnectionPointHelperContainer!
@@ -186,8 +183,7 @@ Sequence< Reference< XInterface > > SAL_CALL OConnectionPointHelper::getConnecti
     // Operation is permitted only, if reference to container is valid!
     if ( !impl_LockContainer() )
     {
-        // Container not exist! It's a runtime error.
-        throw RuntimeException();
+        throw RuntimeException("Container does not exist!");
     }
     // Set default return value, if method failed.
     Sequence< Reference< XInterface > > seqReturnConnections;

@@ -21,13 +21,12 @@
 // Global header
 
 
-#include <limits.h>
 #include <utility>
 #include <memory>
 #include <vector>
 #include <algorithm>
-#include <functional>
-#include <osl/mutex.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <tools/debug.hxx>
 #include <vcl/window.hxx>
 #include <vcl/svapp.hxx>
 #include <comphelper/sequence.hxx>
@@ -42,10 +41,9 @@
 
 
 #include <editeng/editdata.hxx>
-#include <editeng/unopracc.hxx>
-#include "editeng/unoedprx.hxx"
+#include <editeng/unoedprx.hxx>
 #include <editeng/AccessibleStaticTextBase.hxx>
-#include "editeng/AccessibleEditableTextPara.hxx"
+#include <editeng/AccessibleEditableTextPara.hxx>
 
 
 using namespace ::com::sun::star;
@@ -64,29 +62,37 @@ namespace accessibility
 {
     typedef std::vector< beans::PropertyValue > PropertyValueVector;
 
-    class PropertyValueEqualFunctor : public std::binary_function< beans::PropertyValue, beans::PropertyValue, bool >
+    namespace {
+
+    class PropertyValueEqualFunctor
     {
+        const beans::PropertyValue& m_rPValue;
+
     public:
-        PropertyValueEqualFunctor()
+        explicit PropertyValueEqualFunctor(const beans::PropertyValue& rPValue)
+            : m_rPValue(rPValue)
         {}
-        bool operator() ( const beans::PropertyValue& lhs, const beans::PropertyValue& rhs ) const
+        bool operator() ( const beans::PropertyValue& rhs ) const
         {
-            return ( lhs.Name == rhs.Name && lhs.Value == rhs.Value );
+            return ( m_rPValue.Name == rhs.Name && m_rPValue.Value == rhs.Value );
         }
     };
+
+    }
+
     sal_Unicode const cNewLine(0x0a);
 
 
     // Static Helper
 
 
-    ESelection MakeSelection( sal_Int32 nStartPara, sal_Int32 nStartIndex,
+    static ESelection MakeSelection( sal_Int32 nStartPara, sal_Int32 nStartIndex,
                               sal_Int32 nEndPara, sal_Int32 nEndIndex )
     {
-        DBG_ASSERT(nStartPara >= 0 && nStartPara <= SAL_MAX_INT32 &&
-                   nStartIndex >= 0 && nStartIndex <= USHRT_MAX &&
-                   nEndPara >= 0 && nEndPara <= SAL_MAX_INT32 &&
-                   nEndIndex >= 0 && nEndIndex <= USHRT_MAX ,
+        DBG_ASSERT(nStartPara >= 0 &&
+                   nStartIndex >= 0 &&
+                   nEndPara >= 0 &&
+                   nEndIndex >= 0,
                    "AccessibleStaticTextBase_Impl::MakeSelection: index value overflow");
 
         return ESelection(nStartPara, nStartIndex, nEndPara, nEndIndex);
@@ -166,13 +172,6 @@ namespace accessibility
 
         // a wrapper for the text forwarders (guarded by solar mutex)
         mutable SvxEditSourceAdapter maEditSource;
-
-        // guard for maOffset
-        mutable ::osl::Mutex maMutex;
-
-        /// our current offset to the containing shape/cell (guarded by maMutex)
-        Point maOffset;
-
     };
 
 
@@ -180,11 +179,8 @@ namespace accessibility
 
 
     AccessibleStaticTextBase_Impl::AccessibleStaticTextBase_Impl() :
-        mxThis( nullptr ),
         mxTextParagraph( new AccessibleEditableTextPara(nullptr) ),
-        maEditSource(),
-        maMutex(),
-        maOffset(0,0)
+        maEditSource()
     {
 
         // TODO: this is still somewhat of a hack, all the more since
@@ -201,13 +197,6 @@ namespace accessibility
 
     void AccessibleStaticTextBase_Impl::SetOffset( const Point& rPoint )
     {
-
-        // guard against non-atomic access to maOffset data structure
-        {
-            ::osl::MutexGuard aGuard( maMutex );
-            maOffset = rPoint;
-        }
-
         if( mxTextParagraph.is() )
             mxTextParagraph->SetEEOffset( rPoint );
     }
@@ -297,8 +286,8 @@ namespace accessibility
             if( nCurrIndex >= nFlatIndex )
             {
                 // check overflow
-                DBG_ASSERT(nCurrPara >= 0 && nCurrPara <= SAL_MAX_INT32 &&
-                           nFlatIndex - nCurrIndex + nCurrCount >= 0 && nFlatIndex - nCurrIndex + nCurrCount <= USHRT_MAX ,
+                DBG_ASSERT(nCurrPara >= 0 &&
+                           nFlatIndex - nCurrIndex + nCurrCount >= 0,
                            "AccessibleStaticTextBase_Impl::Index2Internal: index value overflow");
 
                 return EPosition(nCurrPara, nFlatIndex - nCurrIndex + nCurrCount);
@@ -309,8 +298,8 @@ namespace accessibility
         if( bExclusive && nCurrIndex == nFlatIndex )
         {
             // check overflow
-            DBG_ASSERT(nCurrPara > 0 && nCurrPara <= SAL_MAX_INT32 &&
-                       nFlatIndex - nCurrIndex + nCurrCount >= 0 && nFlatIndex - nCurrIndex + nCurrCount <= USHRT_MAX ,
+            DBG_ASSERT(nCurrPara > 0 &&
+                       nFlatIndex - nCurrIndex + nCurrCount >= 0,
                        "AccessibleStaticTextBase_Impl::Index2Internal: index value overflow");
 
             return EPosition(nCurrPara-1, nFlatIndex - nCurrIndex + nCurrCount);
@@ -478,19 +467,19 @@ namespace accessibility
     }
 
     // XAccessibleContext
-    sal_Int32 SAL_CALL AccessibleStaticTextBase::getAccessibleChildCount()
+    sal_Int32 AccessibleStaticTextBase::getAccessibleChildCount()
     {
         // no children at all
         return 0;
     }
 
-    uno::Reference< XAccessible > SAL_CALL AccessibleStaticTextBase::getAccessibleChild( sal_Int32 /*i*/ )
+    uno::Reference< XAccessible > AccessibleStaticTextBase::getAccessibleChild( sal_Int32 /*i*/ )
     {
         // no children at all
         return uno::Reference< XAccessible >();
     }
 
-    uno::Reference< XAccessible > SAL_CALL AccessibleStaticTextBase::getAccessibleAtPoint( const awt::Point& /*_aPoint*/ )
+    uno::Reference< XAccessible > AccessibleStaticTextBase::getAccessibleAtPoint( const awt::Point& /*_aPoint*/ )
     {
         // no children at all
         return uno::Reference< XAccessible >();
@@ -652,11 +641,11 @@ namespace accessibility
         SolarMutexGuard aGuard;
 
         sal_Int32 i, nParas;
-        OUString aRes;
+        OUStringBuffer aRes;
         for( i=0, nParas=mpImpl->GetParagraphCount(); i<nParas; ++i )
-            aRes += mpImpl->GetParagraph(i).getText();
+            aRes.append(mpImpl->GetParagraph(i).getText());
 
-        return aRes;
+        return aRes.makeStringAndClear();
     }
 
     OUString SAL_CALL AccessibleStaticTextBase::getTextRange( sal_Int32 nStartIndex, sal_Int32 nEndIndex )
@@ -694,7 +683,7 @@ namespace accessibility
         {
             nEndIndex++;
         }
-        OUString aRes;
+        OUStringBuffer aRes;
         EPosition aStartIndex( mpImpl->Range2Internal(nStartIndex) );
         EPosition aEndIndex( mpImpl->Range2Internal(nEndIndex) );
 
@@ -714,8 +703,8 @@ namespace accessibility
             // paragraphs inbetween are fully included
             for( ; i<aEndIndex.nPara; ++i )
             {
-                aRes += OUStringLiteral1(cNewLine);
-                aRes += mpImpl->GetParagraph(i).getText();
+                aRes.append(cNewLine);
+                aRes.append(mpImpl->GetParagraph(i).getText());
             }
 
             if( i<=aEndIndex.nPara )
@@ -724,22 +713,22 @@ namespace accessibility
                 //we need to add a "\n" before we add the last part of the string.
                 if ( !bEnd && aEndIndex.nIndex )
                 {
-                    aRes += OUStringLiteral1(cNewLine);
+                    aRes.append(cNewLine);
                 }
-                aRes += mpImpl->GetParagraph(i).getTextRange( 0, aEndIndex.nIndex );
+                aRes.append(mpImpl->GetParagraph(i).getTextRange( 0, aEndIndex.nIndex ));
             }
         }
         //According to the flag we marked before, we have to add "\n" at the beginning
         //or at the end of the result string.
         if ( bStart )
         {
-            aRes = OUStringLiteral1(cNewLine) + aRes;
+            aRes.insert(0, OUStringChar(cNewLine));
         }
         if ( bEnd )
         {
-            aRes += OUStringLiteral1(cNewLine);
+            aRes.append(OUStringChar(cNewLine));
         }
-        return aRes;
+        return aRes.makeStringAndClear();
     }
 
     css::accessibility::TextSegment SAL_CALL AccessibleStaticTextBase::getTextAtIndex( sal_Int32 nIndex, sal_Int16 aTextType )
@@ -873,7 +862,7 @@ namespace accessibility
             mpImpl->CorrectTextSegment( aResult, aPos.nPara );
             if ( bLineBreak )
             {
-                aResult.SegmentText = OUStringLiteral1(cNewLine) + aResult.SegmentText;
+                aResult.SegmentText = OUStringChar(cNewLine) + aResult.SegmentText;
             }
        }
 
@@ -894,6 +883,11 @@ namespace accessibility
                                  aEndIndex.nPara, aEndIndex.nIndex );
     }
 
+    sal_Bool SAL_CALL AccessibleStaticTextBase::scrollSubstringTo( sal_Int32, sal_Int32, AccessibleScrollType )
+    {
+        return false;
+    }
+
     // XAccessibleTextAttributes
     uno::Sequence< beans::PropertyValue > AccessibleStaticTextBase::getDefaultAttributes( const uno::Sequence< OUString >& RequestedAttributes )
     {
@@ -910,12 +904,11 @@ namespace accessibility
             uno::Sequence< beans::PropertyValue > aSeq = mpImpl->GetParagraph( nPara ).getDefaultAttributes( RequestedAttributes );
             PropertyValueVector aIntersectionVec;
 
-            PropertyValueVector::const_iterator aEnd = aDefAttrVec.end();
-            for ( PropertyValueVector::const_iterator aItr = aDefAttrVec.begin(); aItr != aEnd; ++aItr )
+            for ( const auto& rDefAttr : aDefAttrVec )
             {
                 const beans::PropertyValue* pItr = aSeq.getConstArray();
                 const beans::PropertyValue* pEnd  = pItr + aSeq.getLength();
-                const beans::PropertyValue* pFind = std::find_if( pItr, pEnd, std::bind2nd( PropertyValueEqualFunctor(), std::cref( *aItr ) ) );
+                const beans::PropertyValue* pFind = std::find_if( pItr, pEnd, PropertyValueEqualFunctor(rDefAttr) );
                 if ( pFind != pEnd )
                 {
                     aIntersectionVec.push_back( *pFind );
@@ -953,7 +946,7 @@ namespace accessibility
         {
             const beans::PropertyValue* pItr = aIntersectionSeq.getConstArray();
             const beans::PropertyValue* pEnd  = pItr + aIntersectionSeq.getLength();
-            bool bNone = std::none_of( pItr, pEnd, std::bind2nd( PropertyValueEqualFunctor(), std::cref( pDefAttr[i] ) ) );
+            bool bNone = std::none_of( pItr, pEnd, PropertyValueEqualFunctor( pDefAttr[i] ) );
             if ( bNone && pDefAttr[i].Handle != 0)
             {
                 aDiffVec.push_back( pDefAttr[i] );

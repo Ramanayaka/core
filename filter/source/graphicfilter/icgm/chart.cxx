@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <main.hxx>
-#include <chart.hxx>
+#include "chart.hxx"
 
 
 CGMChart::CGMChart()
@@ -33,34 +32,16 @@ CGMChart::CGMChart()
 CGMChart::~CGMChart()
 {
     // delete the whole textentry structure
-
-    while( !maTextEntryList.empty() )
+    for (const auto & pTextEntry : maTextEntryList)
     {
-        DeleteTextEntry( maTextEntryList[ 0 ] );
+        if ( pTextEntry )
+            delete [] pTextEntry->pText;
     }
 }
 
-void CGMChart::DeleteTextEntry( TextEntry* pTextEntry )
+void CGMChart::InsertTextEntry( std::unique_ptr<TextEntry> pTextEntry )
 {
-    if ( pTextEntry )
-    {
-        delete pTextEntry->pText;
-        ::std::vector< TextEntry* >::iterator it;
-        for ( it = maTextEntryList.begin(); it != maTextEntryList.end(); ++it )
-        {
-            if ( *it == pTextEntry )
-            {
-                maTextEntryList.erase( it );
-                break;
-            }
-        }
-        delete pTextEntry;
-    }
-}
-
-void CGMChart::InsertTextEntry( TextEntry* pTextEntry )
-{
-    maTextEntryList.push_back( pTextEntry );
+    maTextEntryList.push_back( std::move(pTextEntry) );
 }
 
 void CGMChart::ResetAnnotation()
@@ -68,7 +49,7 @@ void CGMChart::ResetAnnotation()
     mDataNode[ 0 ].nZoneEnum = 0;
 }
 
-bool CGMChart::IsAnnotation()
+bool CGMChart::IsAnnotation() const
 {
     return ( mDataNode[ 0 ].nZoneEnum == 0 );
 }

@@ -20,32 +20,18 @@
 #define INCLUDED_CUI_SOURCE_INC_INSRC_HXX
 
 #include <rtl/string.hxx>
-#include <rtl/ustring.hxx>
+#include <svx/svxdlg.hxx>
+#include <vcl/weld.hxx>
 
-#include <svx/stddlg.hxx>
-
-#include <vcl/fixed.hxx>
-#include <vcl/field.hxx>
-#include <vcl/group.hxx>
-#include <vcl/button.hxx>
-
-class SvxInsRowColDlg : public SvxAbstractInsRowColDlg
+class SvxInsRowColDlg : public SvxAbstractInsRowColDlg, public weld::GenericDialogController
 {
-    VclPtr<ModalDialog>    m_pDialog;
-    VclPtr<NumericField>   m_pCountEdit;
-
-    VclPtr<RadioButton>    m_pBeforeBtn;
-    VclPtr<RadioButton>    m_pAfterBtn;
-
-    OUString   aRow;
-    OUString   aCol;
-
-    bool bColumn;
+private:
+    std::unique_ptr<weld::SpinButton> m_xCountEdit;
+    std::unique_ptr<weld::RadioButton> m_xBeforeBtn;
+    std::unique_ptr<weld::RadioButton> m_xAfterBtn;
 
 public:
-    SvxInsRowColDlg( vcl::Window* pParent, bool bCol, const OString& sHelpId );
-    virtual ~SvxInsRowColDlg() override;
-    virtual void dispose() override;
+    SvxInsRowColDlg(weld::Window* pParent, bool bCol, const OString& rHelpId);
 
     virtual short Execute() override;
 

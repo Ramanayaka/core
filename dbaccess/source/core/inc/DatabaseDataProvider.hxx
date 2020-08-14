@@ -19,26 +19,22 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_INC_DATABASEDATAPROVIDER_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_INC_DATABASEDATAPROVIDER_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "com/sun/star/uno/XComponentContext.hpp"
-#include "com/sun/star/lang/XServiceInfo.hpp"
-#include "com/sun/star/chart2/data/XDatabaseDataProvider.hpp"
-#include "com/sun/star/chart2/XInternalDataProvider.hpp"
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/chart2/data/XDatabaseDataProvider.hpp>
+#include <com/sun/star/chart2/XInternalDataProvider.hpp>
 #include <com/sun/star/chart/XComplexDescriptionAccess.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
-#include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/container/XChild.hpp>
 
 #include <cppuhelper/compbase.hxx>
-#include "cppuhelper/basemutex.hxx"
-#include "cppuhelper/propertysetmixin.hxx"
-#include <cppuhelper/implementationentry.hxx>
+#include <cppuhelper/basemutex.hxx>
+#include <cppuhelper/propertysetmixin.hxx>
 
-#include <comphelper/sequence.hxx>
-
-#include "connectivity/parameters.hxx"
-#include "connectivity/filtermanager.hxx"
+#include <connectivity/parameters.hxx>
+#include <connectivity/filtermanager.hxx>
 
 
 namespace dbaccess
@@ -55,14 +51,6 @@ class DatabaseDataProvider: private ::cppu::BaseMutex,
 {
 public:
     explicit DatabaseDataProvider(css::uno::Reference< css::uno::XComponentContext > const & context);
-
-    // css::lang::XServiceInfo - static methods
-    /// @throws css::uno::RuntimeException
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-    /// @throws css::uno::RuntimeException
-    static OUString getImplementationName_Static();
-    static css::uno::Reference< css::uno::XInterface >
-        SAL_CALL Create(css::uno::Reference< css::uno::XComponentContext > const & context);
 
 private:
     // css::uno::XInterface:
@@ -208,8 +196,8 @@ private:
     virtual double SAL_CALL getNotANumber() override;
     virtual sal_Bool SAL_CALL isNotANumber(double nNumber ) override;
 private:
-    DatabaseDataProvider(DatabaseDataProvider &) = delete;
-    void operator =(DatabaseDataProvider &) = delete;
+    DatabaseDataProvider(DatabaseDataProvider const &) = delete;
+    DatabaseDataProvider& operator =(DatabaseDataProvider const &) = delete;
 
     virtual ~DatabaseDataProvider() override {}
 

@@ -19,19 +19,18 @@
 
 #include <config_folders.h>
 
-#include <cstring>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <limits.h>
 #include <osl/file.hxx>
 #include <osl/process.h>
 #include <osl/thread.h>
 #include <rtl/bootstrap.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 #include <tools/urlobj.hxx>
 #include <unx/helper.hxx>
-#include <vcl/ppdparser.hxx>
-#include <memory>
+
+#include <tuple>
 
 using ::rtl::Bootstrap;
 
@@ -39,45 +38,39 @@ namespace psp {
 
 OUString getOfficePath( whichOfficePath ePath )
 {
-    static OUString aInstallationRootPath;
-    static OUString aUserPath;
-    static OUString aConfigPath;
-    static bool bOnce = false;
+    static const auto aPaths = [] {
+        OUString sRoot, sUser, sConfig;
+        Bootstrap::get("BRAND_BASE_DIR", sRoot);
+        Bootstrap aBootstrap(sRoot + "/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap"));
+        aBootstrap.getFrom("UserInstallation", sUser);
+        aBootstrap.getFrom("CustomDataUrl", sConfig);
+        OUString aUPath = sUser + "/user/psprint";
+        if (sRoot.startsWith("file://"))
+        {
+            OUString aSysPath;
+            if (osl::FileBase::getSystemPathFromFileURL(sRoot, aSysPath) == osl::FileBase::E_None)
+                sRoot = aSysPath;
+        }
+        if (sUser.startsWith("file://"))
+        {
+            OUString aSysPath;
+            if (osl::FileBase::getSystemPathFromFileURL(sUser, aSysPath) == osl::FileBase::E_None)
+                sUser = aSysPath;
+        }
+        if (sConfig.startsWith("file://"))
+        {
+            OUString aSysPath;
+            if (osl::FileBase::getSystemPathFromFileURL(sConfig, aSysPath) == osl::FileBase::E_None)
+                sConfig = aSysPath;
+        }
 
-    if( ! bOnce )
-    {
-        bOnce = true;
-        OUString aIni;
-        Bootstrap::get( "BRAND_BASE_DIR", aInstallationRootPath );
-        aIni = aInstallationRootPath + "/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE( "bootstrap" );
-        Bootstrap aBootstrap( aIni );
-        aBootstrap.getFrom( "CustomDataUrl", aConfigPath );
-        aBootstrap.getFrom( "UserInstallation", aUserPath );
-        OUString aUPath = aUserPath;
-
-        if( aConfigPath.startsWith( "file://" ) )
-        {
-            OUString aSysPath;
-            if( osl_getSystemPathFromFileURL( aConfigPath.pData, &aSysPath.pData ) == osl_File_E_None )
-                aConfigPath = aSysPath;
-        }
-        if( aInstallationRootPath.startsWith( "file://" ) )
-        {
-            OUString aSysPath;
-            if( osl_getSystemPathFromFileURL( aInstallationRootPath.pData, &aSysPath.pData ) == osl_File_E_None )
-                aInstallationRootPath = aSysPath;
-        }
-        if( aUserPath.startsWith( "file://" ) )
-        {
-            OUString aSysPath;
-            if( osl_getSystemPathFromFileURL( aUserPath.pData, &aSysPath.pData ) == osl_File_E_None )
-                aUserPath = aSysPath;
-        }
         // ensure user path exists
-        aUPath += "/user/psprint";
         SAL_INFO("vcl.fonts", "Trying to create: " << aUPath);
-        osl_createDirectoryPath( aUPath.pData, nullptr, nullptr );
-    }
+        osl::Directory::createPath(aUPath);
+
+        return std::make_tuple(sRoot, sUser, sConfig);
+    }();
+    const auto& [aInstallationRootPath, aUserPath, aConfigPath] = aPaths;
 
     switch( ePath )
     {
@@ -102,7 +95,7 @@ static OString getEnvironmentPath( const char* pKey )
 
 } // namespace psp
 
-void psp::getPrinterPathList( std::list< OUString >& rPathList, const char* pSubDir )
+void psp::getPrinterPathList( std::vector< OUString >& rPathList, const char* pSubDir )
 {
     rPathList.clear();
     rtl_TextEncoding aEncoding = osl_getThreadTextEncoding();
@@ -144,8 +137,7 @@ void psp::getPrinterPathList( std::list< OUString >& rPathList, const char* pSub
 
         if( pSubDir )
         {
-            aDir += "/";
-            aDir += pSubDir;
+            aDir += OStringLiteral("/") + pSubDir;
         }
         struct stat aStat;
         if( stat( aDir.getStr(), &aStat ) || ! S_ISDIR( aStat.st_mode ) )
@@ -161,20 +153,20 @@ void psp::getPrinterPathList( std::list< OUString >& rPathList, const char* pSub
     }
     #endif
 
-    if( rPathList.empty() )
+    if( !rPathList.empty() )
+        return;
+
+    // last resort: next to program file (mainly for setup)
+    OUString aExe;
+    if( osl_getExecutableFile( &aExe.pData ) == osl_Process_E_None )
     {
-        // last resort: next to program file (mainly for setup)
-        OUString aExe;
-        if( osl_getExecutableFile( &aExe.pData ) == osl_Process_E_None )
+        INetURLObject aDir( aExe );
+        aDir.removeSegment();
+        aExe = aDir.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+        OUString aSysPath;
+        if( osl_getSystemPathFromFileURL( aExe.pData, &aSysPath.pData ) == osl_File_E_None )
         {
-            INetURLObject aDir( aExe );
-            aDir.removeSegment();
-            aExe = aDir.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-            OUString aSysPath;
-            if( osl_getSystemPathFromFileURL( aExe.pData, &aSysPath.pData ) == osl_File_E_None )
-            {
-                rPathList.push_back( aSysPath );
-            }
+            rPathList.push_back( aSysPath );
         }
     }
 }
@@ -190,21 +182,25 @@ OUString const & psp::getFontPath()
         OUString aConfigPath( getOfficePath( whichOfficePath::ConfigPath ) );
         OUString aInstallationRootPath( getOfficePath( whichOfficePath::InstallationRootPath ) );
         OUString aUserPath( getOfficePath( whichOfficePath::UserPath ) );
+        if (!aInstallationRootPath.isEmpty())
+        {
+            // internal font resources, required for normal operation, like OpenSymbol
+            aPathBuffer.append(aInstallationRootPath
+                               + "/" LIBO_SHARE_RESOURCE_FOLDER "/common/fonts;");
+        }
         if( !aConfigPath.isEmpty() )
         {
             // #i53530# Path from CustomDataUrl will completely
-            // replace net and user paths if the path exists
-            aPathBuffer.append(aConfigPath);
-            aPathBuffer.append("/" LIBO_SHARE_FOLDER "/fonts");
+            // replace net share and user paths if the path exists
+            OUString sPath = aConfigPath + "/" LIBO_SHARE_FOLDER "/fonts";
             // check existence of config path
             struct stat aStat;
-            if( 0 != stat( OUStringToOString( aPathBuffer.makeStringAndClear(), osl_getThreadTextEncoding() ).getStr(), &aStat )
+            if( 0 != stat( OUStringToOString( sPath, osl_getThreadTextEncoding() ).getStr(), &aStat )
                 || ! S_ISDIR( aStat.st_mode ) )
                 aConfigPath.clear();
             else
             {
-                aPathBuffer.append(aConfigPath);
-                aPathBuffer.append("/" LIBO_SHARE_FOLDER "/fonts");
+                aPathBuffer.append(sPath);
             }
         }
         if( aConfigPath.isEmpty() )

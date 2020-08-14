@@ -11,16 +11,15 @@
 #define INCLUDED_XMLOFF_SOURCE_CHART_SCHXMLPROPERTYMAPPINGCONTEXT_HXX
 
 #include "transporttypes.hxx"
-#include "SchXMLChartContext.hxx"
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/SchXMLImportHelper.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace chart2 {
         class XChartDocument;
         class XDataSeries;
     }
-}}}
+}
 
 class SchXMLPropertyMappingContext : public SvXMLImportContext
 {

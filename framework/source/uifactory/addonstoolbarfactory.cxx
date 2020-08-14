@@ -19,23 +19,17 @@
 
 #include <uielement/addonstoolbarwrapper.hxx>
 
-#include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
 #include <com/sun/star/frame/XModuleManager2.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/ui/XModuleUIConfigurationManagerSupplier.hpp>
-#include <com/sun/star/ui/XUIConfigurationManagerSupplier.hpp>
 #include <com/sun/star/ui/XUIElementFactory.hpp>
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <o3tl/safeint.hxx>
 #include <vcl/svapp.hxx>
-#include <rtl/ref.hxx>
-#include <rtl/ustrbuf.hxx>
-
-#include <services.h>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
@@ -55,7 +49,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.AddonsToolBarFactory");
+        return "com.sun.star.comp.framework.AddonsToolBarFactory";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -119,26 +113,25 @@ bool AddonsToolBarFactory::hasButtonsInContext(
 
     // Check before we create a toolbar that we have at least one button in
     // the current frame context.
-    for ( sal_uInt32 i = 0; i < (sal_uInt32)rPropSeqSeq.getLength(); i++ )
+    for ( Sequence<PropertyValue> const & props : rPropSeqSeq )
     {
         bool    bIsButton( true );
         bool    bIsCorrectContext( false );
         sal_uInt32  nPropChecked( 0 );
 
-        const Sequence< PropertyValue >& rPropSeq = rPropSeqSeq[i];
-        for ( sal_uInt32 j = 0; j < (sal_uInt32)rPropSeq.getLength(); j++ )
+        for ( PropertyValue const & prop : props )
         {
-            if ( rPropSeq[j].Name == "Context" )
+            if ( prop.Name == "Context" )
             {
                 OUString aContextList;
-                if ( rPropSeq[j].Value >>= aContextList )
+                if ( prop.Value >>= aContextList )
                     bIsCorrectContext = IsCorrectContext( aModuleIdentifier, aContextList );
                 nPropChecked++;
             }
-            else if ( rPropSeq[j].Name == "URL" )
+            else if ( prop.Name == "URL" )
             {
                 OUString aURL;
-                rPropSeq[j].Value >>= aURL;
+                prop.Value >>= aURL;
                 bIsButton = aURL != "private:separator";
                 nPropChecked++;
             }
@@ -165,14 +158,14 @@ Reference< XUIElement > SAL_CALL AddonsToolBarFactory::createUIElement(
     Reference< XFrame >                     xFrame;
     OUString                           aResourceURL( ResourceURL );
 
-    for ( sal_Int32 n = 0; n < Args.getLength(); n++ )
+    for ( PropertyValue const & arg : Args )
     {
-        if ( Args[n].Name == "ConfigurationData" )
-            Args[n].Value >>= aConfigData;
-        else if ( Args[n].Name == "Frame" )
-            Args[n].Value >>= xFrame;
-        else if ( Args[n].Name == "ResourceURL" )
-            Args[n].Value >>= aResourceURL;
+        if ( arg.Name == "ConfigurationData" )
+            arg.Value >>= aConfigData;
+        else if ( arg.Name == "Frame" )
+            arg.Value >>= xFrame;
+        else if ( arg.Name == "ResourceURL" )
+            arg.Value >>= aResourceURL;
     }
 
     if ( !aResourceURL.startsWith("private:resource/toolbar/addon_") )
@@ -181,7 +174,7 @@ Reference< XUIElement > SAL_CALL AddonsToolBarFactory::createUIElement(
     // Identify frame and determine module identifier to look for context based buttons
     Reference< css::ui::XUIElement > xToolBar;
     if ( xFrame.is() &&
-         ( aConfigData.getLength()> 0 ) &&
+         aConfigData.hasElements() &&
          hasButtonsInContext( aConfigData, xFrame ))
     {
         PropertyValue aPropValue;
@@ -208,7 +201,7 @@ Reference< XUIElement > SAL_CALL AddonsToolBarFactory::createUIElement(
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_AddonsToolBarFactory_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

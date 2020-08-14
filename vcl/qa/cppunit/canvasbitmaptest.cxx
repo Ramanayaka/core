@@ -29,32 +29,29 @@
 #include <com/sun/star/rendering/XBitmapPalette.hpp>
 
 #include <cppuhelper/implbase.hxx>
-#include <tools/diagnose_ex.h>
 #include <rtl/ref.hxx>
+#include <sal/log.hxx>
 
-#include <vcl/svapp.hxx>
 #include <vcl/canvastools.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/outdev.hxx>
 #include <vcl/bitmapaccess.hxx>
-#include <vcl/virdev.hxx>
 #include <vcl/bitmapex.hxx>
 
-#include "canvasbitmap.hxx"
+#include <canvasbitmap.hxx>
 #include <algorithm>
+#include <bitmapwriteaccess.hxx>
 
 using namespace ::com::sun::star;
 using namespace vcl::unotools;
 
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
 
-bool operator==( const RGBColor& rLHS, const ARGBColor& rRHS )
+static bool operator==( const RGBColor& rLHS, const ARGBColor& rRHS )
 {
     return rLHS.Red == rRHS.Red && rLHS.Green == rRHS.Green && rLHS.Blue == rRHS.Blue;
 }
 
-} } } }
+}
 
 namespace
 {
@@ -87,10 +84,13 @@ void checkCanvasBitmap( const rtl::Reference<VclCanvasBitmap>& xBmp,
     BitmapEx aContainedBmpEx( xBmp->getBitmapEx() );
     Bitmap   aContainedBmp( aContainedBmpEx.GetBitmap() );
     int      nDepth = nOriginalDepth;
+    int      extraBpp = 0;
 
     {
         Bitmap::ScopedReadAccess pAcc( aContainedBmp );
         nDepth = pAcc->GetBitCount();
+        if( pAcc->GetScanlineFormat() == ScanlineFormat::N32BitTcMask )
+            extraBpp = 8; // the format has 8 unused bits
     }
 
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Original bitmap size not (200,200)",
@@ -109,7 +109,7 @@ void checkCanvasBitmap( const rtl::Reference<VclCanvasBitmap>& xBmp,
     uno::Sequence<sal_Int8> aPixelData = xBmp->getData(aLayout, geometry::IntegerRectangle2D(0,0,1,1));
 
     const sal_Int32 nExpectedBitsPerPixel(
-        aContainedBmpEx.IsTransparent() ? std::max(8,nDepth)+8 : nDepth);
+        (aContainedBmpEx.IsTransparent() ? std::max(8,nDepth)+8 : nDepth) + extraBpp);
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "# scanlines not 1",
                             static_cast<sal_Int32>(1), aLayout.ScanLines);
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "# scanline bytes mismatch",
@@ -190,7 +190,7 @@ void checkCanvasBitmap( const rtl::Reference<VclCanvasBitmap>& xBmp,
         CPPUNIT_ASSERT_MESSAGE( "8bit or less: missing palette",
                                 xPal.is());
         CPPUNIT_ASSERT_EQUAL_MESSAGE( "Palette incorrect entry count",
-                                static_cast<sal_Int32>(1L << nOriginalDepth), xPal->getNumberOfEntries());
+                                static_cast<sal_Int32>(1 << nOriginalDepth), xPal->getNumberOfEntries());
         uno::Sequence<double> aIndex;
         CPPUNIT_ASSERT_MESSAGE( "Palette is not read-only",
                                 !xPal->setIndex(aIndex,true,0));
@@ -207,34 +207,35 @@ void checkCanvasBitmap( const rtl::Reference<VclCanvasBitmap>& xBmp,
     CPPUNIT_ASSERT_DOUBLES_EQUAL_MESSAGE(
         "150th pixel is not white", 1.0, pRGBStart[150].Blue, 1E-12);
 
-    if( nOriginalDepth > 8 )
+    if( nOriginalDepth <= 8 )
+        return;
+
+    uno::Sequence<rendering::ARGBColor> aARGBColor(1);
+    uno::Sequence<rendering::RGBColor>  aRGBColor(1);
+    uno::Sequence<sal_Int8> aPixel3, aPixel4;
+
+    const Color aCol(COL_GREEN);
+    aARGBColor[0].Red   = vcl::unotools::toDoubleColor(aCol.GetRed());
+    aARGBColor[0].Green = vcl::unotools::toDoubleColor(aCol.GetGreen());
+    aARGBColor[0].Blue  = vcl::unotools::toDoubleColor(aCol.GetBlue());
+    aARGBColor[0].Alpha = 1.0;
+
+    aRGBColor[0].Red   = vcl::unotools::toDoubleColor(aCol.GetRed());
+    aRGBColor[0].Green = vcl::unotools::toDoubleColor(aCol.GetGreen());
+    aRGBColor[0].Blue  = vcl::unotools::toDoubleColor(aCol.GetBlue());
+
+    aPixel3 = xBmp->convertIntegerFromARGB( aARGBColor );
+    aPixel4 = xBmp->getPixel( aLayout, geometry::IntegerPoint2D(5,0) );
+    CPPUNIT_ASSERT_MESSAGE( "Green pixel from bitmap mismatch with manually converted green pixel",
+                            bool(aPixel3 == aPixel4));
+
+    if( !aContainedBmpEx.IsTransparent() )
     {
-        uno::Sequence<rendering::ARGBColor> aARGBColor(1);
-        uno::Sequence<rendering::RGBColor>  aRGBColor(1);
-        uno::Sequence<sal_Int8> aPixel3, aPixel4;
-
-        const Color aCol(COL_GREEN);
-        aARGBColor[0].Red   = vcl::unotools::toDoubleColor(aCol.GetRed());
-        aARGBColor[0].Green = vcl::unotools::toDoubleColor(aCol.GetGreen());
-        aARGBColor[0].Blue  = vcl::unotools::toDoubleColor(aCol.GetBlue());
-        aARGBColor[0].Alpha = 1.0;
-
-        aRGBColor[0].Red   = vcl::unotools::toDoubleColor(aCol.GetRed());
-        aRGBColor[0].Green = vcl::unotools::toDoubleColor(aCol.GetGreen());
-        aRGBColor[0].Blue  = vcl::unotools::toDoubleColor(aCol.GetBlue());
-
-        aPixel3 = xBmp->convertIntegerFromARGB( aARGBColor );
-        aPixel4 = xBmp->getPixel( aLayout, geometry::IntegerPoint2D(5,0) );
-        CPPUNIT_ASSERT_MESSAGE( "Green pixel from bitmap mismatch with manually converted green pixel",
+        aPixel3 = xBmp->convertIntegerFromRGB( aRGBColor );
+        CPPUNIT_ASSERT_MESSAGE( "Green pixel from bitmap mismatch with manually RGB-converted green pixel",
                                 bool(aPixel3 == aPixel4));
-
-        if( !aContainedBmpEx.IsTransparent() )
-        {
-            aPixel3 = xBmp->convertIntegerFromRGB( aRGBColor );
-            CPPUNIT_ASSERT_MESSAGE( "Green pixel from bitmap mismatch with manually RGB-converted green pixel",
-                                    bool(aPixel3 == aPixel4));
-        }
     }
+
 }
 
 class TestBitmap : public cppu::WeakImplHelper< rendering::XIntegerReadOnlyBitmap,
@@ -308,7 +309,7 @@ private:
     }
 
     /// @throws uno::RuntimeException
-    uno::Reference< rendering::XBitmapPalette > SAL_CALL getPalette(  )
+    uno::Reference< rendering::XBitmapPalette > getPalette(  )
     {
         uno::Reference< XBitmapPalette > aRet;
         if( mnBitsPerPixel == 8 )
@@ -479,15 +480,13 @@ private:
     virtual uno::Sequence< rendering::RGBColor > SAL_CALL convertIntegerToRGB( const uno::Sequence< ::sal_Int8 >& deviceColor ) override
     {
         const uno::Sequence< rendering::ARGBColor > aTemp( convertIntegerToARGB(deviceColor) );
-        const std::size_t nLen(aTemp.getLength());
-        uno::Sequence< rendering::RGBColor > aRes( nLen );
-        rendering::RGBColor* pOut = aRes.getArray();
-        for( std::size_t i=0; i<nLen; ++i )
-        {
-            *pOut++ = rendering::RGBColor(aTemp[i].Red,
-                                          aTemp[i].Green,
-                                          aTemp[i].Blue);
-        }
+        uno::Sequence< rendering::RGBColor > aRes( aTemp.getLength() );
+        std::transform(aTemp.begin(), aTemp.end(), aRes.begin(),
+            [](const rendering::ARGBColor& rColor) {
+                return rendering::RGBColor(rColor.Red,
+                                           rColor.Green,
+                                           rColor.Blue);
+        });
 
         return aRes;
     }
@@ -500,21 +499,18 @@ private:
                                0, static_cast<int>(nLen%nBytesPerPixel));
 
         uno::Sequence< rendering::ARGBColor > aRes( nLen / nBytesPerPixel );
-        rendering::ARGBColor* pOut( aRes.getArray() );
 
         if( getPalette().is() )
         {
-            for( std::size_t i=0; i<nLen; ++i )
-            {
-                *pOut++ = rendering::ARGBColor(
-                    1.0,
-                    vcl::unotools::toDoubleColor(deviceColor[i]),
-                    vcl::unotools::toDoubleColor(deviceColor[i]),
-                    vcl::unotools::toDoubleColor(deviceColor[i]));
-            }
+            std::transform(deviceColor.begin(), deviceColor.end(), aRes.begin(),
+                [](sal_Int8 nIn) {
+                    auto fColor = vcl::unotools::toDoubleColor(nIn);
+                    return rendering::ARGBColor(1.0, fColor, fColor, fColor);
+                });
         }
         else
         {
+            rendering::ARGBColor* pOut( aRes.getArray() );
             for( std::size_t i=0; i<nLen; i+=4 )
             {
                 *pOut++ = rendering::ARGBColor(
@@ -537,21 +533,18 @@ private:
                                0, static_cast<int>(nLen%nBytesPerPixel));
 
         uno::Sequence< rendering::ARGBColor > aRes( nLen / nBytesPerPixel );
-        rendering::ARGBColor* pOut( aRes.getArray() );
 
         if( getPalette().is() )
         {
-            for( std::size_t i=0; i<nLen; ++i )
-            {
-                *pOut++ = rendering::ARGBColor(
-                    1.0,
-                    vcl::unotools::toDoubleColor(deviceColor[i]),
-                    vcl::unotools::toDoubleColor(deviceColor[i]),
-                    vcl::unotools::toDoubleColor(deviceColor[i]));
-            }
+            std::transform(deviceColor.begin(), deviceColor.end(), aRes.begin(),
+                [](sal_Int8 nIn) {
+                    auto fColor = vcl::unotools::toDoubleColor(nIn);
+                    return rendering::ARGBColor(1.0, fColor, fColor, fColor);
+                });
         }
         else
         {
+            rendering::ARGBColor* pOut( aRes.getArray() );
             for( std::size_t i=0; i<nLen; i+=4 )
             {
                 const double fAlpha=vcl::unotools::toDoubleColor(deviceColor[i+3]);
@@ -630,17 +623,17 @@ public:
 
 void CanvasBitmapTest::runTest()
 {
-    static const sal_Int8 lcl_depths[]={1,4,8,16,24};
+    static const sal_Int8 lcl_depths[]={1,4,8,24};
 
     // Testing VclCanvasBitmap wrapper
 
-    for( unsigned int i=0; i<SAL_N_ELEMENTS(lcl_depths); ++i )
+    for( size_t i=0; i<SAL_N_ELEMENTS(lcl_depths); ++i )
     {
         const sal_Int8 nDepth( lcl_depths[i] );
         Bitmap aBitmap(Size(200,200),nDepth);
         aBitmap.Erase(COL_WHITE);
         {
-            Bitmap::ScopedWriteAccess pAcc(aBitmap);
+            BitmapScopedWriteAccess pAcc(aBitmap);
             if( pAcc.get() )
             {
                 BitmapColor aBlack(0);
@@ -652,8 +645,8 @@ void CanvasBitmapTest::runTest()
                 }
                 else
                 {
-                    aBlack = Color(COL_BLACK);
-                    aWhite = Color(COL_WHITE);
+                    aBlack = COL_BLACK;
+                    aWhite = COL_WHITE;
                 }
                 pAcc->SetFillColor(COL_GREEN);
                 pAcc->FillRect(tools::Rectangle(0,0,100,100));
@@ -663,14 +656,14 @@ void CanvasBitmapTest::runTest()
             }
         }
 
-        rtl::Reference<VclCanvasBitmap> xBmp( new VclCanvasBitmap(aBitmap) );
+        rtl::Reference<VclCanvasBitmap> xBmp( new VclCanvasBitmap(BitmapEx(aBitmap)) );
 
         checkCanvasBitmap( xBmp, "single bitmap", nDepth );
 
         Bitmap aMask(Size(200,200),1);
         aMask.Erase(COL_WHITE);
         {
-            Bitmap::ScopedWriteAccess pAcc(aMask);
+            BitmapScopedWriteAccess pAcc(aMask);
             if( pAcc.get() )
             {
                 pAcc->SetFillColor(COL_BLACK);
@@ -718,7 +711,8 @@ void CanvasBitmapTest::runTest()
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bitmap does not have bitcount of 8",
                             static_cast<sal_uInt16>(8),  aBmp.GetBitCount());
     {
-        BitmapReadAccess* pBmpAcc   = aBmp.GetBitmap().AcquireReadAccess();
+        Bitmap aBitmap = aBmp.GetBitmap();
+        BitmapReadAccess* pBmpAcc   = aBitmap.AcquireReadAccess();
 
         CPPUNIT_ASSERT_MESSAGE( "Bitmap has invalid BitmapReadAccess",
                                 pBmpAcc );
@@ -745,7 +739,8 @@ void CanvasBitmapTest::runTest()
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bitmap has bitcount of 24",
                             static_cast<sal_uInt16>(24), aBmp.GetBitCount());
     {
-        BitmapReadAccess* pBmpAcc   = aBmp.GetBitmap().AcquireReadAccess();
+        Bitmap aBitmap = aBmp.GetBitmap();
+        BitmapReadAccess* pBmpAcc   = aBitmap.AcquireReadAccess();
         BitmapReadAccess* pAlphaAcc = aBmp.GetAlpha().AcquireReadAccess();
 
         CPPUNIT_ASSERT_MESSAGE( "Bitmap has invalid BitmapReadAccess",

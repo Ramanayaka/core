@@ -17,15 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "flt_reghelper.hxx"
-#include "xmlservices.hxx"
-#include "xmlstrings.hrc"
+#include <strings.hxx>
 
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/document/XEventListener.hpp>
 #include <com/sun/star/document/XExtendedFilterDetection.hpp>
-#include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
@@ -35,10 +31,8 @@
 #include <com/sun/star/frame/XLoadEventListener.hpp>
 #include <com/sun/star/frame/XModel2.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/sdb/DatabaseContext.hpp>
 #include <com/sun/star/sdb/XDocumentDataSource.hpp>
 #include <com/sun/star/task/XJobExecutor.hpp>
@@ -54,20 +48,14 @@
 #include <comphelper/documentconstants.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/sequenceashashmap.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <comphelper/types.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <osl/file.hxx>
 #include <sfx2/docfile.hxx>
 #include <unotools/moduleoptions.hxx>
-#include <toolkit/awt/vclxwindow.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
-#include <ucbhelper/commandenvironment.hxx>
-#include <ucbhelper/content.hxx>
-#include <vcl/msgbox.hxx>
 #include <vcl/svapp.hxx>
 
 using namespace ::ucbhelper;
@@ -81,7 +69,6 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::document;
-using namespace ::com::sun::star::registry;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::embed;
 using namespace ::com::sun::star::ui::dialogs;
@@ -90,6 +77,8 @@ using ::com::sun::star::sdb::application::NamedDatabaseObject;
 
 namespace dbaxml
 {
+
+namespace {
 
 class DBTypeDetection : public ::cppu::WeakImplHelper< XExtendedFilterDetection, XServiceInfo>
 {
@@ -103,17 +92,10 @@ public:
     sal_Bool                        SAL_CALL supportsService(const OUString& ServiceName) override;
     Sequence< OUString >            SAL_CALL getSupportedServiceNames() override;
 
-    // static methods
-    static OUString                 getImplementationName_Static() throw(  )
-    {
-        return OUString("org.openoffice.comp.dbflt.DBTypeDetection");
-    }
-    static Sequence< OUString> getSupportedServiceNames_Static() throw(  );
-    static css::uno::Reference< css::uno::XInterface >
-            SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
-
     virtual OUString SAL_CALL detect( css::uno::Sequence< css::beans::PropertyValue >& Descriptor ) override;
 };
+
+}
 
 DBTypeDetection::DBTypeDetection(const Reference< XComponentContext >& _rxContext)
     :m_aContext( _rxContext )
@@ -169,11 +151,11 @@ OUString SAL_CALL DBTypeDetection::detect( css::uno::Sequence< css::beans::Prope
                     }
                     catch( Exception& )
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("dbaccess");
                     }
                 }
 
-                return OUString("StarBase");
+                return "StarBase";
             }
             ::comphelper::disposeComponent(xStorageProperties);
         }
@@ -181,15 +163,10 @@ OUString SAL_CALL DBTypeDetection::detect( css::uno::Sequence< css::beans::Prope
     return OUString();
 }
 
-Reference< XInterface > SAL_CALL DBTypeDetection::Create( const Reference< XMultiServiceFactory >  & rSMgr )
-{
-    return *(new DBTypeDetection( comphelper::getComponentContext(rSMgr) ));
-}
-
 // XServiceInfo
 OUString SAL_CALL DBTypeDetection::getImplementationName()
 {
-    return getImplementationName_Static();
+    return "org.openoffice.comp.dbflt.DBTypeDetection";
 }
 
 // XServiceInfo
@@ -201,25 +178,22 @@ sal_Bool SAL_CALL DBTypeDetection::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > SAL_CALL DBTypeDetection::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-// ORegistryServiceManager_Static
-Sequence< OUString > DBTypeDetection::getSupportedServiceNames_Static() throw(  )
-{
-    Sequence<OUString> aSNS { "com.sun.star.document.ExtendedTypeDetection" };
-    return aSNS;
+    return { "com.sun.star.document.ExtendedTypeDetection" };
 }
 
 } // namespace dbaxml
 
-extern "C" void SAL_CALL createRegistryInfo_DBTypeDetection()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+org_openoffice_comp_dbflt_DBTypeDetection_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static ::dbaxml::OMultiInstanceAutoRegistration< ::dbaxml::DBTypeDetection > aAutoRegistration;
+    return cppu::acquire(new ::dbaxml::DBTypeDetection(context));
 }
 
 namespace dbaxml
 {
+
+namespace {
 
 class DBContentLoader : public ::cppu::WeakImplHelper< XFrameLoader, XServiceInfo>
 {
@@ -238,15 +212,6 @@ public:
     sal_Bool                        SAL_CALL supportsService(const OUString& ServiceName) override;
     Sequence< OUString >            SAL_CALL getSupportedServiceNames() override;
 
-    // static methods
-    static OUString                 getImplementationName_Static() throw(  )
-    {
-        return OUString("org.openoffice.comp.dbflt.DBContentLoader2");
-    }
-    static Sequence< OUString > getSupportedServiceNames_Static() throw(  );
-    static css::uno::Reference< css::uno::XInterface >
-            SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
-
     // XLoader
     virtual void SAL_CALL load( const Reference< XFrame > & _rFrame, const OUString& _rURL,
                                 const Sequence< PropertyValue >& _rArgs,
@@ -254,9 +219,10 @@ public:
     virtual void SAL_CALL cancel() override;
 
 private:
-    bool impl_executeNewDatabaseWizard( Reference< XModel >& _rxModel, bool& _bShouldStartTableWizard );
+    bool impl_executeNewDatabaseWizard( Reference< XModel > const & _rxModel, bool& _bShouldStartTableWizard );
 };
 
+}
 
 DBContentLoader::DBContentLoader(const Reference< XComponentContext >& _rxFactory)
     :m_aContext( _rxFactory )
@@ -265,15 +231,10 @@ DBContentLoader::DBContentLoader(const Reference< XComponentContext >& _rxFactor
 
 }
 
-Reference< XInterface > SAL_CALL DBContentLoader::Create( const Reference< XMultiServiceFactory >  & rSMgr )
-{
-    return *(new DBContentLoader( comphelper::getComponentContext(rSMgr) ));
-}
-
 // XServiceInfo
 OUString SAL_CALL DBContentLoader::getImplementationName()
 {
-    return getImplementationName_Static();
+    return "org.openoffice.comp.dbflt.DBContentLoader2";
 }
 
 // XServiceInfo
@@ -285,15 +246,9 @@ sal_Bool SAL_CALL DBContentLoader::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > SAL_CALL DBContentLoader::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
+    return { "com.sun.star.frame.FrameLoader" };
 }
 
-// ORegistryServiceManager_Static
-Sequence< OUString > DBContentLoader::getSupportedServiceNames_Static() throw(  )
-{
-    Sequence<OUString> aSNS { "com.sun.star.frame.FrameLoader" };
-    return aSNS;
-}
 
 namespace
 {
@@ -326,7 +281,7 @@ namespace
             xWindow = xActiveFrame->getContainerWindow();
             Reference<XFrame> xFrame = xActiveFrame;
             while ( xFrame.is() && !xFrame->isTop() )
-                xFrame.set(xFrame->getCreator(),UNO_QUERY);
+                xFrame = xFrame->getCreator();
 
             if ( xFrame.is() )
                 xWindow = xFrame->getContainerWindow();
@@ -335,20 +290,13 @@ namespace
     }
 }
 
-bool DBContentLoader::impl_executeNewDatabaseWizard( Reference< XModel >& _rxModel, bool& _bShouldStartTableWizard )
+bool DBContentLoader::impl_executeNewDatabaseWizard( Reference< XModel > const & _rxModel, bool& _bShouldStartTableWizard )
 {
-    Sequence< Any > aWizardArgs(2);
-    aWizardArgs[0] <<= PropertyValue(
-                    "ParentWindow",
-                    0,
-                    makeAny( lcl_getTopMostWindow( m_aContext ) ),
-                    PropertyState_DIRECT_VALUE);
-
-    aWizardArgs[1] <<= PropertyValue(
-                    "InitialSelection",
-                    0,
-                    makeAny( _rxModel ),
-                    PropertyState_DIRECT_VALUE);
+    Sequence<Any> aWizardArgs(comphelper::InitAnyPropertySequence(
+    {
+        {"ParentWindow", Any(lcl_getTopMostWindow( m_aContext ))},
+        {"InitialSelection", Any(_rxModel)}
+    }));
 
     // create the dialog
     Reference< XExecutableDialog > xAdminDialog( m_aContext->getServiceManager()->createInstanceWithArgumentsAndContext("com.sun.star.sdb.DatabaseWizardDialog", aWizardArgs, m_aContext), UNO_QUERY_THROW);
@@ -368,7 +316,7 @@ void SAL_CALL DBContentLoader::load(const Reference< XFrame > & rFrame, const OU
         const Sequence< PropertyValue >& rArgs,
         const Reference< XLoadEventListener > & rListener)
 {
-    // first check if preview is true, if so return with out creating a controller. Preview is not supported
+    // first check if preview is true, if so return without creating a controller. Preview is not supported
     ::comphelper::NamedValueCollection aMediaDesc( rArgs );
     bool bPreview = aMediaDesc.getOrDefault( "Preview", false );
     if ( bPreview )
@@ -394,7 +342,7 @@ void SAL_CALL DBContentLoader::load(const Reference< XFrame > & rFrame, const OU
     // not touch it.
     if ( !aMediaDesc.has( "InteractionHandler" ) )
     {
-        Reference< XInteractionHandler2 > xHandler( InteractionHandler::createWithParent(m_aContext, nullptr) );
+       Reference< XInteractionHandler2 > xHandler( InteractionHandler::createWithParent(m_aContext, nullptr) );
        aMediaDesc.put( "InteractionHandler", xHandler );
     }
 
@@ -407,10 +355,13 @@ void SAL_CALL DBContentLoader::load(const Reference< XFrame > & rFrame, const OU
     OUString sViewName = aMediaDesc.getOrDefault( "ViewName", OUString( "Default" ) );
     aMediaDesc.remove( "ViewName" );
 
+    // this needs to stay alive for duration of this method
+    Reference< XDatabaseContext > xDatabaseContext;
+
     sal_Int32 nInitialSelection = -1;
     if ( !xModel.is() )
     {
-        Reference< XDatabaseContext > xDatabaseContext( DatabaseContext::create(m_aContext) );
+        xDatabaseContext = DatabaseContext::create(m_aContext);
 
         OUString sFactoryName = SvtModuleOptions().GetFactoryEmptyDocumentURL(SvtModuleOptions::EFactory::DATABASE);
         bCreateNew = sFactoryName.match(_rURL);
@@ -465,11 +416,11 @@ void SAL_CALL DBContentLoader::load(const Reference< XFrame > & rFrame, const OU
 
     if ( !bCreateNew )
     {
-        // We need to XLoadable::load the document if it does not yet have an URL.
-        // If it already *does* have an URL, then it was either passed in the arguments, or a previous incarnation
+        // We need to XLoadable::load the document if it does not yet have a URL.
+        // If it already *does* have a URL, then it was either passed in the arguments, or a previous incarnation
         // of that model existed before (which can happen if a model is closed, but an associated DataSource is kept
         // alive 'til loading the document again).
-        bool bNeedLoad = ( xModel->getURL().isEmpty() );
+        bool bNeedLoad = xModel->getURL().isEmpty();
         try
         {
             aMediaDesc.put( "FileName", _rURL );
@@ -486,7 +437,7 @@ void SAL_CALL DBContentLoader::load(const Reference< XFrame > & rFrame, const OU
         }
         catch(const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
             bSuccess = false;
         }
     }
@@ -496,7 +447,7 @@ void SAL_CALL DBContentLoader::load(const Reference< XFrame > & rFrame, const OU
         try
         {
             Reference< XModel2 > xModel2( xModel, UNO_QUERY_THROW );
-            Reference< XController2 > xController( xModel2->createViewController( sViewName, Sequence< PropertyValue >(), rFrame ), UNO_QUERY_THROW );
+            Reference< XController2 > xController( xModel2->createViewController( sViewName, Sequence< PropertyValue >(), rFrame ), UNO_SET_THROW );
 
             xController->attachModel( xModel );
             xModel->connectController( xController.get() );
@@ -508,7 +459,7 @@ void SAL_CALL DBContentLoader::load(const Reference< XFrame > & rFrame, const OU
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
             bSuccess = false;
         }
     }
@@ -558,12 +509,10 @@ IMPL_LINK_NOARG( DBContentLoader, OnStartTableWizard, void*, void )
     m_nStartWizard = nullptr;
     try
     {
-        Sequence< Any > aWizArgs(1);
-        PropertyValue aValue;
-        aValue.Name = "DatabaseLocation";
-        aValue.Value <<= m_sCurrentURL;
-        aWizArgs[0] <<= aValue;
-
+        Sequence<Any> aWizArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"DatabaseLocation", Any(m_sCurrentURL)}
+        }));
         SolarMutexGuard aGuard;
         Reference< XJobExecutor > xTableWizard( m_aContext->getServiceManager()->createInstanceWithArgumentsAndContext("com.sun.star.wizards.table.CallTableWizard", aWizArgs, m_aContext), UNO_QUERY);
         if ( xTableWizard.is() )
@@ -578,9 +527,11 @@ IMPL_LINK_NOARG( DBContentLoader, OnStartTableWizard, void*, void )
 
 }
 
-extern "C" void SAL_CALL createRegistryInfo_DBContentLoader2()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+org_openoffice_comp_dbflt_DBContentLoader2_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static ::dbaxml::OMultiInstanceAutoRegistration< ::dbaxml::DBContentLoader > aAutoRegistration;
+    return cppu::acquire(new ::dbaxml::DBContentLoader(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

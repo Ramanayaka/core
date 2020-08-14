@@ -16,20 +16,18 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "FormattedField.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include "corestrings.hrc"
-#include "core_resource.hrc"
-#include "core_resource.hxx"
+#include <FormattedField.hxx>
+#include <com/sun/star/sdbc/XDataSource.hpp>
+#include <strings.hxx>
+#include <strings.hrc>
+#include <core_resource.hxx>
 #include <tools/color.hxx>
 #include <connectivity/dbtools.hxx>
 #include <comphelper/property.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "Tools.hxx"
-#include "FormatCondition.hxx"
-#include <com/sun/star/text/ParagraphVertAlign.hpp>
-#include "ReportHelperImpl.hxx"
+#include <Tools.hxx>
+#include <FormatCondition.hxx>
+#include <ReportHelperImpl.hxx>
 
 namespace reportdesign
 {
@@ -37,12 +35,7 @@ namespace reportdesign
     using namespace com::sun::star;
     using namespace comphelper;
 
-uno::Reference< uno::XInterface > OFormattedField::create(uno::Reference< uno::XComponentContext > const & xContext)
-{
-    return *(new OFormattedField(xContext));
-}
-
-uno::Sequence< OUString > lcl_getFormattedFieldOptionals()
+static uno::Sequence< OUString > lcl_getFormattedFieldOptionals()
 {
     OUString pProps[] = { OUString(PROPERTY_MASTERFIELDS),OUString(PROPERTY_DETAILFIELDS) };
     return uno::Sequence< OUString >(pProps,SAL_N_ELEMENTS(pProps));
@@ -54,7 +47,7 @@ OFormattedField::OFormattedField(uno::Reference< uno::XComponentContext > const 
 ,m_aProps(m_aMutex,static_cast< container::XContainer*>( this ),_xContext)
 ,m_nFormatKey(0)
 {
-    m_aProps.aComponent.m_sName  = RPT_RESSTRING(RID_STR_FORMATTEDFIELD);
+    m_aProps.aComponent.m_sName  = RptResId(RID_STR_FORMATTEDFIELD);
 }
 
 OFormattedField::OFormattedField(uno::Reference< uno::XComponentContext > const & _xContext
@@ -65,7 +58,7 @@ OFormattedField::OFormattedField(uno::Reference< uno::XComponentContext > const 
 ,m_aProps(m_aMutex,static_cast< container::XContainer*>( this ),_xContext)
 ,m_nFormatKey(0)
 {
-    m_aProps.aComponent.m_sName  = RPT_RESSTRING(RID_STR_FORMATTEDFIELD);
+    m_aProps.aComponent.m_sName  = RptResId(RID_STR_FORMATTEDFIELD);
     m_aProps.aComponent.m_xFactory = _xFactory;
     osl_atomic_increment( &m_refCount );
     {
@@ -99,29 +92,14 @@ void SAL_CALL OFormattedField::dispose()
     m_xFormatsSupplier.clear();
 }
 
-OUString OFormattedField::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.report.OFormattedField");
-}
-
-
 OUString SAL_CALL OFormattedField::getImplementationName(  )
 {
-    return getImplementationName_Static();
-}
-
-uno::Sequence< OUString > OFormattedField::getSupportedServiceNames_Static(  )
-{
-    uno::Sequence< OUString > aServices(2);
-    aServices[0] = SERVICE_FORMATTEDFIELD;
-    aServices[1] = "com.sun.star.awt.UnoControlFormattedFieldModel";
-
-    return aServices;
+    return "com.sun.star.comp.report.OFormattedField";
 }
 
 uno::Sequence< OUString > SAL_CALL OFormattedField::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
+    return { SERVICE_FORMATTEDFIELD, "com.sun.star.awt.UnoControlFormattedFieldModel" };
 }
 
 sal_Bool SAL_CALL OFormattedField::supportsService(const OUString& ServiceName)
@@ -216,16 +194,13 @@ uno::Reference< util::XCloneable > SAL_CALL OFormattedField::createClone(  )
     uno::Reference< report::XReportComponent> xSource = this;
     uno::Reference< report::XFormattedField> xSet(cloneObject(xSource,m_aProps.aComponent.m_xFactory,SERVICE_FORMATTEDFIELD),uno::UNO_QUERY_THROW);
 
-    if ( xSet.is() )
+    sal_Int32 i = 0;
+    for (const auto& rxFormatCondition : m_aProps.m_aFormatConditions)
     {
-        ::std::vector< uno::Reference< report::XFormatCondition> >::const_iterator aIter = m_aProps.m_aFormatConditions.begin();
-        ::std::vector< uno::Reference< report::XFormatCondition> >::const_iterator aEnd  = m_aProps.m_aFormatConditions.end();
-        for (sal_Int32 i = 0; aIter != aEnd; ++aIter,++i)
-        {
-            uno::Reference< report::XFormatCondition > xCond = xSet->createFormatCondition();
-            ::comphelper::copyProperties(aIter->get(),xCond.get());
-            xSet->insertByIndex(i,uno::makeAny(xCond));
-        }
+        uno::Reference< report::XFormatCondition > xCond = xSet->createFormatCondition();
+        ::comphelper::copyProperties(rxFormatCondition.get(), xCond.get());
+        xSet->insertByIndex(i,uno::makeAny(xCond));
+        ++i;
     }
     return xSet.get();
 }
@@ -360,11 +335,18 @@ OUString SAL_CALL OFormattedField::getShapeType(  )
     ::osl::MutexGuard aGuard(m_aMutex);
     if ( m_aProps.aComponent.m_xShape.is() )
         return m_aProps.aComponent.m_xShape->getShapeType();
-   return OUString("com.sun.star.drawing.ControlShape");
+    return "com.sun.star.drawing.ControlShape";
 }
 
 
 } // namespace reportdesign
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_OFormattedField_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new reportdesign::OFormattedField(context));
+}
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

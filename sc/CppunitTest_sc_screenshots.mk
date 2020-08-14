@@ -11,6 +11,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sc_screenshots))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sc_screenshots))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sc_screenshots, \
     sc/qa/unit/screenshots/screenshots \
 ))
@@ -24,6 +26,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sc_screenshots, \
     sfx \
     svl \
     svt \
+    svx \
     svxcore \
     sc \
     scui \
@@ -47,6 +50,7 @@ $(eval $(call gb_CppunitTest_set_include,sc_screenshots,\
 
 $(eval $(call gb_CppunitTest_use_api,sc_screenshots,\
     offapi \
+    oovbaapi \
     udkapi \
 ))
 
@@ -61,7 +65,5 @@ $(eval $(call gb_CppunitTest_use_uiconfigs,sc_screenshots,\
 	cui \
 	modules/scalc \
 ))
-
-$(call gb_CppunitTest_get_target,sc_screenshots) : $(call gb_AllLangResTarget_get_target,sc)
 
 # vim: set noet sw=4 ts=4:

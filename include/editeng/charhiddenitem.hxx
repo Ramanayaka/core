@@ -29,21 +29,16 @@
     This item marks text as hidden
 */
 
-class EDITENG_DLLPUBLIC SvxCharHiddenItem : public SfxBoolItem
+class EDITENG_DLLPUBLIC SvxCharHiddenItem final : public SfxBoolItem
 {
 public:
     SvxCharHiddenItem( const bool bHidden /*= false*/, const sal_uInt16 nId );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxCharHiddenItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
-
-    SvxCharHiddenItem& operator=(const SvxCharHiddenItem& rHidden) {
-            SetValue(rHidden.GetValue());
-            return *this;
-        }
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

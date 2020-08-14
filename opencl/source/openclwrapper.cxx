@@ -9,11 +9,12 @@
 
 #include <config_folders.h>
 
-#include "opencl_device.hxx"
+#include <opencl_device.hxx>
+#include <opencl_device_selection.h>
 
-#include <comphelper/string.hxx>
 #include <opencl/openclconfig.hxx>
 #include <opencl/openclwrapper.hxx>
+#include <opencl/platforminfo.hxx>
 #include <osl/file.hxx>
 #include <rtl/bootstrap.hxx>
 #include <rtl/digest.h>
@@ -24,13 +25,8 @@
 #include <opencl/OpenCLZone.hxx>
 
 #include <memory>
-#include <unicode/regex.h>
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-
-#include <cmath>
 
 #include <officecfg/Office/Common.hxx>
 
@@ -61,15 +57,19 @@ if( status != CL_SUCCESS )  \
 
 using namespace std;
 
-namespace opencl {
+namespace {
+
+bool bIsInited = false;
+
+}
+
+namespace openclwrapper {
 
 GPUEnv gpuEnv;
 sal_uInt64 kernelFailures = 0;
 
 namespace
 {
-
-bool bIsInited = false;
 
 OString generateMD5(const void* pData, size_t length)
 {
@@ -90,23 +90,21 @@ OString generateMD5(const void* pData, size_t length)
 
 OString const & getCacheFolder()
 {
-    static OString aCacheFolder;
-
-    if (aCacheFolder.isEmpty())
+    static OString const aCacheFolder = [&]()
     {
         OUString url("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache/");
         rtl::Bootstrap::expandMacros(url);
 
         osl::Directory::create(url);
 
-        aCacheFolder = rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8);
-    }
+        return OUStringToOString(url, RTL_TEXTENCODING_UTF8);
+    }();
     return aCacheFolder;
 }
 
 }
 
-bool initializeCommandQueue(GPUEnv& aGpuEnv)
+static bool initializeCommandQueue(GPUEnv& aGpuEnv)
 {
     OpenCLZone zone;
 
@@ -187,7 +185,7 @@ OString createFileName(cl_device_id deviceId, const char* clFileName)
             platformVersion, nullptr);
 
     // create hash for deviceName + driver version + platform version
-    OString aString = OString(deviceName) + driverVersion + platformVersion;
+    OString aString = rtl::OStringView(deviceName) + driverVersion + platformVersion;
     OString aHash = generateMD5(aString.getStr(), aString.getLength());
 
     return getCacheFolder() + fileName + "-" + aHash + ".bin";
@@ -218,7 +216,7 @@ std::vector<std::shared_ptr<osl::File> > binaryGenerated( const char * clFileNam
     assert(pDevID == gpuEnv.mpDevID);
 
     OString fileName = createFileName(gpuEnv.mpDevID, clFileName);
-    auto pNewFile = std::make_shared<osl::File>(rtl::OStringToOUString(fileName, RTL_TEXTENCODING_UTF8));
+    auto pNewFile = std::make_shared<osl::File>(OStringToOUString(fileName, RTL_TEXTENCODING_UTF8));
     if(pNewFile->open(osl_File_OpenFlag_Read) == osl::FileBase::E_None)
     {
         aGeneratedFiles.push_back(pNewFile);
@@ -234,7 +232,7 @@ std::vector<std::shared_ptr<osl::File> > binaryGenerated( const char * clFileNam
 
 bool writeBinaryToFile( const OString& rFileName, const char* binary, size_t numBytes )
 {
-    osl::File file(rtl::OStringToOUString(rFileName, RTL_TEXTENCODING_UTF8));
+    osl::File file(OStringToOUString(rFileName, RTL_TEXTENCODING_UTF8));
     osl::FileBase::RC status = file.open(
             osl_File_OpenFlag_Write | osl_File_OpenFlag_Create );
 
@@ -299,7 +297,6 @@ struct OpenCLEnv
     cl_platform_id mpOclPlatformID;
     cl_context mpOclContext;
     cl_device_id mpOclDevsID;
-    cl_command_queue mpOclCmdQueue[OPENCL_CMDQUEUE_SIZE];
 };
 
 bool initOpenCLAttr( OpenCLEnv * env )
@@ -319,38 +316,6 @@ bool initOpenCLAttr( OpenCLEnv * env )
 
     return false;
 }
-
-}
-
-void releaseOpenCLEnv( GPUEnv *gpuInfo )
-{
-    OpenCLZone zone;
-
-    if ( !bIsInited )
-    {
-        return;
-    }
-
-    for (_cl_command_queue* & i : gpuEnv.mpCmdQueue)
-    {
-        if (i)
-        {
-            clReleaseCommandQueue(i);
-            i = nullptr;
-        }
-    }
-    gpuEnv.mnCmdQueuePos = 0;
-
-    if ( gpuEnv.mpContext )
-    {
-        clReleaseContext( gpuEnv.mpContext );
-        gpuEnv.mpContext = nullptr;
-    }
-    bIsInited = false;
-    gpuInfo->mnIsUserCreated = 0;
-}
-
-namespace {
 
 bool buildProgram(const char* buildOption, GPUEnv* gpuInfo, int idx)
 {
@@ -379,7 +344,7 @@ bool buildProgram(const char* buildOption, GPUEnv* gpuInfo, int idx)
         }
 
         OString aBuildLogFileURL = getCacheFolder() + "kernel-build.log";
-        osl::File aBuildLogFile(rtl::OStringToOUString(aBuildLogFileURL, RTL_TEXTENCODING_UTF8));
+        osl::File aBuildLogFile(OStringToOUString(aBuildLogFileURL, RTL_TEXTENCODING_UTF8));
         osl::FileBase::RC status = aBuildLogFile.open(
                 osl_File_OpenFlag_Write | osl_File_OpenFlag_Create );
 
@@ -530,10 +495,9 @@ bool initOpenCLRunEnv( GPUEnv *gpuInfo )
     const bool bIsNotWinOrIsWin8OrGreater = IsWindows8OrGreater();
 # else
     bool bIsNotWinOrIsWin8OrGreater = true;
-    OSVERSIONINFO aVersionInfo;
-    memset( &aVersionInfo, 0, sizeof(aVersionInfo) );
+    OSVERSIONINFOW aVersionInfo = {};
     aVersionInfo.dwOSVersionInfoSize = sizeof( aVersionInfo );
-    if (GetVersionEx( &aVersionInfo ))
+    if (GetVersionExW( &aVersionInfo ))
     {
         // Windows 7 or lower?
         if (aVersionInfo.dwMajorVersion < 6 ||
@@ -789,10 +753,12 @@ void findDeviceInfoFromDeviceId(cl_device_id aDeviceId, size_t& rDeviceId, size_
 
 bool canUseOpenCL()
 {
-    if (getenv("SAL_DISABLE_OPENCL") || !officecfg::Office::Common::Misc::UseOpenCL::get())
-        return false;
-
-    return true;
+    if( const char* env = getenv( "SC_FORCE_CALCULATION" ))
+    {
+        if( strcmp( env, "opencl" ) == 0 )
+            return true;
+    }
+    return !getenv("SAL_DISABLE_OPENCL") && officecfg::Office::Common::Misc::UseOpenCL::get();
 }
 
 bool switchOpenCLDevice(const OUString* pDevice, bool bAutoSelect, bool bForceEvaluation, OUString& rOutSelectedDeviceVersionIDString)
@@ -810,8 +776,7 @@ bool switchOpenCLDevice(const OUString* pDevice, bool bAutoSelect, bool bForceEv
         if (status < 0)
             return false;
 
-        OUString url("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache/");
-        rtl::Bootstrap::expandMacros(url);
+        OUString url(OStringToOUString(getCacheFolder(), RTL_TEXTENCODING_UTF8));
         OUString path;
         osl::FileBase::getSystemPathFromFileURL(url,path);
         ds_device aSelectedDevice = getDeviceSelection(path, bForceEvaluation);
@@ -882,6 +847,30 @@ void getOpenCLDeviceInfo(size_t& rDeviceId, size_t& rPlatformId)
 
     cl_device_id id = gpuEnv.mpDevID;
     findDeviceInfoFromDeviceId(id, rDeviceId, rPlatformId);
+}
+
+void getOpenCLDeviceName(OUString& rDeviceName, OUString& rPlatformName)
+{
+    if (!canUseOpenCL())
+        return;
+
+    int status = clewInit(OPENCL_DLL_NAME);
+    if (status < 0)
+        return;
+
+    cl_device_id deviceId = gpuEnv.mpDevID;
+    cl_platform_id platformId;
+    if( clGetDeviceInfo(deviceId, CL_DEVICE_PLATFORM, sizeof(platformId), &platformId, nullptr) != CL_SUCCESS )
+        return;
+
+    char deviceName[DEVICE_NAME_LENGTH] = {0};
+    if( clGetDeviceInfo(deviceId, CL_DEVICE_NAME, sizeof(deviceName), deviceName, nullptr) != CL_SUCCESS )
+        return;
+    char platformName[64];
+    if( clGetPlatformInfo(platformId, CL_PLATFORM_NAME, 64, platformName, nullptr) != CL_SUCCESS )
+        return;
+    rDeviceName = OUString::createFromAscii(deviceName);
+    rPlatformName = OUString::createFromAscii(platformName);
 }
 
 void setOpenCLCmdQueuePosition( int nPos )
@@ -956,6 +945,34 @@ bool GPUEnv::isOpenCLEnabled()
     return gpuEnv.mpDevID && gpuEnv.mpContext;
 }
 
+}
+
+void releaseOpenCLEnv( openclwrapper::GPUEnv *gpuInfo )
+{
+    OpenCLZone zone;
+
+    if ( !bIsInited )
+    {
+        return;
+    }
+
+    for (_cl_command_queue* & i : openclwrapper::gpuEnv.mpCmdQueue)
+    {
+        if (i)
+        {
+            clReleaseCommandQueue(i);
+            i = nullptr;
+        }
+    }
+    openclwrapper::gpuEnv.mnCmdQueuePos = 0;
+
+    if ( openclwrapper::gpuEnv.mpContext )
+    {
+        clReleaseContext( openclwrapper::gpuEnv.mpContext );
+        openclwrapper::gpuEnv.mpContext = nullptr;
+    }
+    bIsInited = false;
+    gpuInfo->mnIsUserCreated = 0;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

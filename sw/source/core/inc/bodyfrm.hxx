@@ -19,12 +19,13 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_BODYFRM_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_BODYFRM_HXX
 
-#include <tools/mempool.hxx>
 #include "layfrm.hxx"
 
 class SwBorderAttrs;
 
-class SwBodyFrame: public SwLayoutFrame
+/// Container of body content (i.e. not header or footer). Typical parent is an
+/// SwPageFrame, typical lower is an SwTextFrame.
+class SAL_DLLPUBLIC_RTTI SwBodyFrame: public SwLayoutFrame
 {
 protected:
     virtual void Format( vcl::RenderContext* pRenderContext, const SwBorderAttrs *pAttrs = nullptr ) override;
@@ -33,8 +34,6 @@ public:
     SwBodyFrame( SwFrameFormat*, SwFrame* );
 
     virtual void PaintSubsidiaryLines( const SwPageFrame*, const SwRect& ) const override;
-
-    DECL_FIXEDMEMPOOL_NEWDEL(SwBodyFrame)
 };
 
 #endif

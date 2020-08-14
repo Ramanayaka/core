@@ -18,31 +18,27 @@
  */
 
 #include "XMLAutoTextEventExport.hxx"
-#include "facreg.hxx"
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/util/MeasureUnit.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/container/XNameReplace.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Exception.hpp>
-#include <rtl/ustrbuf.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <osl/diagnose.h>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/XMLEventExport.hxx>
 #include <tools/debug.hxx>
-#include <tools/fldunit.hxx>
 #include <comphelper/processfactory.hxx>
 
 
 using namespace ::com::sun::star;
 using namespace ::xmloff::token;
 
-using ::std::set;
-using ::com::sun::star::container::XNameAccess;
 using ::com::sun::star::container::XNameReplace;
 using ::com::sun::star::document::XEventsSupplier;
 using ::com::sun::star::lang::XMultiServiceFactory;
@@ -59,7 +55,7 @@ XMLAutoTextEventExport::XMLAutoTextEventExport(
     const css::uno::Reference< css::uno::XComponentContext >& xContext,
     OUString const & implementationName, SvXMLExportFlags nFlags
     )
-:   SvXMLExport(util::MeasureUnit::INCH, xContext, implementationName, XML_AUTO_TEXT, nFlags)
+:   SvXMLExport(xContext, implementationName, util::MeasureUnit::INCH, XML_AUTO_TEXT, nFlags)
 {
 }
 
@@ -76,8 +72,7 @@ void XMLAutoTextEventExport::initialize(
         rArguments[1] >>= xSupplier;
         if (xSupplier.is())
         {
-            Reference<XNameAccess> xAccess(xSupplier->getEvents(), UNO_QUERY);
-            xEvents = xAccess;
+            xEvents = xSupplier->getEvents();
         }
         else
         {
@@ -152,7 +147,7 @@ ErrCode XMLAutoTextEventExport::exportDoc( enum XMLTokenEnum )
     return ERRCODE_NONE;
 }
 
-bool XMLAutoTextEventExport::hasEvents()
+bool XMLAutoTextEventExport::hasEvents() const
 {
     // TODO: provide full implementation that check for presence of events
     return xEvents.is();
@@ -202,42 +197,22 @@ void XMLAutoTextEventExport::ExportContent_() {}
 
 // methods to support the component registration
 
-Sequence< OUString > SAL_CALL XMLAutoTextEventExport_getSupportedServiceNames()
-    throw()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_Writer_XMLOasisAutotextEventsExporter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    Sequence<OUString> aSeq { XMLAutoTextEventExport_getImplementationName() };
-    return aSeq;
+    return cppu::acquire(new XMLAutoTextEventExport(
+        context, "com.sun.star.comp.Writer.XMLOasisAutotextEventsExporter",
+        SvXMLExportFlags::ALL | SvXMLExportFlags::OASIS));
 }
 
-OUString SAL_CALL XMLAutoTextEventExport_getImplementationName() throw()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_Writer_XMLAutotextEventsExporter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return OUString( "com.sun.star.comp.Writer.XMLOasisAutotextEventsExporter"  );
-}
-
-Reference< XInterface > SAL_CALL XMLAutoTextEventExport_createInstance(
-        const Reference< XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new XMLAutoTextEventExport( comphelper::getComponentContext(rSMgr), XMLAutoTextEventExport_getImplementationName(), SvXMLExportFlags::ALL|SvXMLExportFlags::OASIS));
-}
-
-// methods to support the component registration
-
-Sequence< OUString > SAL_CALL XMLAutoTextEventExportOOO_getSupportedServiceNames()
-    throw()
-{
-    Sequence<OUString> aSeq { XMLAutoTextEventExportOOO_getImplementationName() };
-    return aSeq;
-}
-
-OUString SAL_CALL XMLAutoTextEventExportOOO_getImplementationName() throw()
-{
-    return OUString( "com.sun.star.comp.Writer.XMLAutotextEventsExporter"  );
-}
-
-Reference< XInterface > SAL_CALL XMLAutoTextEventExportOOO_createInstance(
-        const Reference< XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new XMLAutoTextEventExport( comphelper::getComponentContext(rSMgr), XMLAutoTextEventExportOOO_getImplementationName(), SvXMLExportFlags::ALL));
+    return cppu::acquire(new XMLAutoTextEventExport(
+        context, "com.sun.star.comp.Writer.XMLAutotextEventsExporter",
+        SvXMLExportFlags::ALL));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

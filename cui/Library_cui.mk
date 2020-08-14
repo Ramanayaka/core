@@ -17,11 +17,10 @@ $(eval $(call gb_Library_set_include,cui,\
     -I$(SRCDIR)/cui/source/inc \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,cui,$(SRCDIR)/cui/inc/pch/precompiled_cui))
+$(eval $(call gb_Library_set_precompiled_header,cui,cui/inc/pch/precompiled_cui))
 
 $(eval $(call gb_Library_add_defs,cui,\
-    $(if $(filter TRUE,$(ENABLE_GTK)),-DENABLE_GTK) \
-    $(if $(filter TRUE,$(ENABLE_KDE4)),-DENABLE_KDE4) \
+    -DCUI_DLLIMPLEMENTATION \
 ))
 
 $(eval $(call gb_Library_use_custom_headers,cui,\
@@ -60,16 +59,25 @@ $(eval $(call gb_Library_use_libraries,cui,\
     ucbhelper \
     utl \
     vcl \
+    $(if $(ENABLE_BREAKPAD), \
+        crashreport \
+    ) \
 ))
 
 $(eval $(call gb_Library_use_externals,cui,\
 	boost_headers \
 	$(call gb_Helper_optional,OPENCL,\
 		clew) \
+    $(call gb_Helper_optional,DESKTOP,\
+		curl) \
     icuuc \
     icu_headers \
+    libxml2 \
+    orcus-parser \
+    orcus \
+    qrcodegen \
 ))
-ifeq ($(ENABLE_HEADLESS),)
+ifeq ($(DISABLE_GUI),)
 $(eval $(call gb_Library_use_externals,cui,\
      epoxy \
  ))
@@ -79,6 +87,7 @@ ifeq ($(OS),WNT)
 $(eval $(call gb_Library_use_system_win32_libs,cui,\
     advapi32 \
     shlwapi \
+    ole32 \
 ))
 endif
 
@@ -86,12 +95,19 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     cui/source/customize/acccfg \
     cui/source/customize/cfg \
     cui/source/customize/cfgutil \
+    cui/source/customize/CommandCategoryListBox \
     cui/source/customize/eventdlg \
     cui/source/customize/macropg \
+    cui/source/customize/SvxConfigPageHelper \
+    cui/source/customize/SvxMenuConfigPage \
+    cui/source/customize/SvxToolbarConfigPage \
+    cui/source/customize/SvxNotebookbarConfigPage \
+    cui/source/customize/CustomNotebookbarGenerator \
     cui/source/dialogs/about \
+    $(call gb_Helper_optional,EXTENSIONS, \
+        cui/source/dialogs/AdditionsDialog) \
     cui/source/dialogs/colorpicker \
     cui/source/dialogs/cuicharmap \
-    cui/source/dialogs/charwin \
     cui/source/dialogs/cuifmsearch \
     cui/source/dialogs/cuigaldlg \
     cui/source/dialogs/cuigrfflt \
@@ -99,6 +115,8 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     cui/source/dialogs/cuiimapwnd \
     cui/source/dialogs/cuitbxform \
     cui/source/dialogs/dlgname \
+    cui/source/dialogs/DiagramDialog \
+    cui/source/dialogs/FontFeaturesDialog \
     cui/source/dialogs/hangulhanjadlg \
     cui/source/dialogs/hldocntp \
     cui/source/dialogs/hldoctp \
@@ -108,6 +126,7 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     cui/source/dialogs/hltpbase \
     cui/source/dialogs/hyphen \
     cui/source/dialogs/iconcdlg \
+    cui/source/dialogs/tipofthedaydlg \
     cui/source/dialogs/insdlg \
     cui/source/dialogs/insrc \
     cui/source/dialogs/linkdlg \
@@ -117,10 +136,13 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     cui/source/dialogs/screenshotannotationdlg \
     cui/source/dialogs/pastedlg \
     cui/source/dialogs/postdlg \
+    cui/source/dialogs/QrCodeGenDialog \
     cui/source/dialogs/scriptdlg \
+    cui/source/dialogs/SignatureLineDialogBase \
+    cui/source/dialogs/SignatureLineDialog \
+    cui/source/dialogs/SignSignatureLineDialog \
     cui/source/dialogs/sdrcelldlg \
     cui/source/dialogs/showcols \
-    cui/source/dialogs/SpellAttrib \
     cui/source/dialogs/SpellDialog \
     cui/source/dialogs/splitcelldlg \
     cui/source/dialogs/srchxtra \
@@ -153,21 +175,18 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     cui/source/options/optfltr \
     cui/source/options/optgdlg \
     cui/source/options/optgenrl \
-    cui/source/options/optHeaderTabListbox \
     cui/source/options/opthtml \
     cui/source/options/optinet2 \
     cui/source/options/optjava \
     cui/source/options/optjsearch \
     cui/source/options/optlingu \
-    cui/source/options/optmemory \
 	$(call gb_Helper_optional,OPENCL, \
 	    cui/source/options/optopencl) \
     cui/source/options/optpath \
     cui/source/options/optsave \
     cui/source/options/optupdt \
-    cui/source/options/personalization \
-    cui/source/options/personasdochandler \
-    cui/source/options/radiobtnbox \
+    $(call gb_Helper_optional,DESKTOP,\
+        cui/source/options/personalization) \
     cui/source/options/sdbcdriverenum \
     cui/source/options/securityoptions \
     cui/source/options/treeopt \
@@ -177,7 +196,6 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     cui/source/tabpages/autocdlg \
     cui/source/tabpages/backgrnd \
     cui/source/tabpages/bbdlg \
-    cui/source/tabpages/borderconn \
     cui/source/tabpages/border \
     cui/source/tabpages/chardlg \
     cui/source/tabpages/connect \
@@ -208,10 +226,6 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     cui/source/tabpages/tpshadow \
     cui/source/tabpages/tptrans \
     cui/source/tabpages/transfrm \
-    cui/source/uno/services \
 ))
-
-# Runtime dependency for unit-tests
-$(eval $(call gb_Library_use_restarget,cui,cui))
 
 # vim: set noet sw=4 ts=4:

@@ -18,20 +18,28 @@
  */
 
 #include <comphelper/string.hxx>
+#include <comphelper/processfactory.hxx>
+
+#include <config_gpgme.h>
+#if HAVE_FEATURE_GPGME
+# include <com/sun/star/xml/crypto/GPGSEInitializer.hpp>
+# include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
+#endif
+
+#include <i18nlangtag/languagetag.hxx>
 #include <i18nlangtag/mslangid.hxx>
+#include <o3tl/safeint.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/msgbox.hxx>
 #include <unotools/saveopt.hxx>
 #include <svl/intitem.hxx>
-#include <vcl/edit.hxx>
 #include <vcl/settings.hxx>
 
-#include <cuires.hrc>
 #include <unotools/useroptions.hxx>
-#include "cuioptgenrl.hxx"
-#include <dialmgr.hxx>
-#include <svx/dlgutil.hxx>
+#include <cuioptgenrl.hxx>
 #include <svx/svxids.hrc>
+#include <svx/optgenrl.hxx>
+
+using namespace css;
 
 namespace
 {
@@ -159,17 +167,17 @@ const vFieldInfo[] =
 struct SvxGeneralTabPage::Row
 {
     // row label
-    VclPtr<FixedText> pLabel;
+    std::unique_ptr<weld::Label> xLabel;
     // first and last field in the row (last is exclusive)
     unsigned nFirstField, nLastField;
 
 public:
-    explicit Row (FixedText *pLabel_)
-        : pLabel(pLabel_)
+    explicit Row (std::unique_ptr<weld::Label> xLabel_)
+        : xLabel(std::move(xLabel_))
         , nFirstField(0)
         , nLastField(0)
     {
-        pLabel->Show();
+        xLabel->show();
     }
 };
 
@@ -181,44 +189,46 @@ struct SvxGeneralTabPage::Field
     // which field is this? (in vFieldInfo[] above)
     unsigned iField;
     // edit box
-    VclPtr<Edit> pEdit;
+    std::unique_ptr<weld::Entry> xEdit;
+    std::unique_ptr<weld::Container> xParent;
 
 public:
-    Field (Edit *pEdit_, unsigned iField_)
+    Field (std::unique_ptr<weld::Entry> xEdit_, unsigned iField_)
         : iField(iField_)
-        , pEdit(pEdit_)
+        , xEdit(std::move(xEdit_))
+        , xParent(xEdit->weld_parent())
     {
         //We want all widgets inside a container, so each row of the toplevel
         //grid has another container in it. To avoid adding spacing to these
         //empty grids they all default to invisible, so show them if their
         //children are visible
-        pEdit->GetParent()->Show();
-        pEdit->Show();
+        xParent->show();
+        xEdit->show();
     }
 };
 
-
-SvxGeneralTabPage::SvxGeneralTabPage(vcl::Window* pParent, const SfxItemSet& rCoreSet)
-
-    : SfxTabPage(pParent, "OptUserPage", "cui/ui/optuserpage.ui", &rCoreSet)
+SvxGeneralTabPage::SvxGeneralTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rCoreSet)
+    : SfxTabPage(pPage, pController, "cui/ui/optuserpage.ui", "OptUserPage", &rCoreSet)
+    , m_xUseDataCB(m_xBuilder->weld_check_button("usefordocprop"))
+    , m_xCryptoFrame(m_xBuilder->weld_widget( "cryptography"))
+    , m_xSigningKeyLB(m_xBuilder->weld_combo_box("signingkey"))
+    , m_xEncryptionKeyLB(m_xBuilder->weld_combo_box("encryptionkey"))
+    , m_xEncryptToSelfCB(m_xBuilder->weld_check_button("encrypttoself"))
 {
-    get(m_pUseDataCB, "usefordocprop");
     InitControls();
+#if HAVE_FEATURE_GPGME
+    InitCryptography();
+#else
+    m_xCryptoFrame->hide();
+#endif
+
     SetExchangeSupport(); // this page needs ExchangeSupport
     SetLinks();
 }
 
 SvxGeneralTabPage::~SvxGeneralTabPage()
 {
-    disposeOnce();
 }
-
-void SvxGeneralTabPage::dispose()
-{
-    m_pUseDataCB.clear();
-    SfxTabPage::dispose();
-}
-
 
 // Initializes the titles and the edit boxes,
 // according to vRowInfo[] and vFieldInfo[] above.
@@ -249,7 +259,7 @@ void SvxGeneralTabPage::InitControls ()
             continue;
         // creating row
         vRows.push_back(std::make_shared<Row>(
-            get<FixedText>(vRowInfo[iRow].pTextId)));
+            m_xBuilder->weld_label(vRowInfo[iRow].pTextId)));
         Row& rRow = *vRows.back();
         // fields in the row
         static unsigned const nFieldCount = SAL_N_ELEMENTS(vFieldInfo);
@@ -262,7 +272,7 @@ void SvxGeneralTabPage::InitControls ()
         {
             // creating edit field
             vFields.push_back(std::make_shared<Field>(
-                get<Edit>(vFieldInfo[iField].pEditId), iField));
+                m_xBuilder->weld_entry(vFieldInfo[iField].pEditId), iField));
             // "short name" field?
             if (vFieldInfo[iField].nUserOptionsId == UserOptToken::ID)
             {
@@ -274,34 +284,75 @@ void SvxGeneralTabPage::InitControls ()
     }
 }
 
+void SvxGeneralTabPage::InitCryptography()
+{
+#if HAVE_FEATURE_GPGME
+    m_xCryptoFrame->show();
+
+    uno::Reference< xml::crypto::XSEInitializer > xSEInitializer;
+    try
+    {
+        xSEInitializer = xml::crypto::GPGSEInitializer::create( comphelper::getProcessComponentContext() );
+        uno::Reference<xml::crypto::XXMLSecurityContext> xSC = xSEInitializer->createSecurityContext( OUString() );
+        if (xSC.is())
+        {
+            uno::Reference<xml::crypto::XSecurityEnvironment> xSE = xSC->getSecurityEnvironment();
+            uno::Sequence<uno::Reference<security::XCertificate>> xCertificates = xSE->getPersonalCertificates();
+
+            if (xCertificates.hasElements())
+            {
+                for (auto& xCert : xCertificates)
+                {
+                    m_xSigningKeyLB->append_text( xCert->getIssuerName());
+                    m_xEncryptionKeyLB->append_text( xCert->getIssuerName());
+                }
+            }
+
+             //tdf#115015: wrap checkbox text and listboxes if necessary
+            int nPrefWidth(m_xEncryptToSelfCB->get_preferred_size().Width());
+            int nMaxWidth = m_xEncryptToSelfCB->get_approximate_digit_width() * 40;
+            if (nPrefWidth > nMaxWidth)
+            {
+                 m_xSigningKeyLB->set_size_request(nMaxWidth, -1);
+                 m_xEncryptionKeyLB->set_size_request(nMaxWidth, -1);
+                 m_xEncryptToSelfCB->set_label_line_wrap(true);
+                 m_xEncryptToSelfCB->set_size_request(nMaxWidth, -1);
+            }
+        }
+    }
+    catch ( uno::Exception const & )
+    {}
+#endif
+
+}
 
 void SvxGeneralTabPage::SetLinks ()
 {
     // link for updating the initials
-    Link<Edit&,void> aLink = LINK( this, SvxGeneralTabPage, ModifyHdl_Impl );
+    Link<weld::Entry&,void> aLink = LINK( this, SvxGeneralTabPage, ModifyHdl_Impl );
     Row& rNameRow = *vRows[nNameRow];
     for (unsigned i = rNameRow.nFirstField; i != rNameRow.nLastField - 1; ++i)
-        vFields[i]->pEdit->SetModifyHdl(aLink);
+        vFields[i]->xEdit->connect_changed(aLink);
 }
 
 
-VclPtr<SfxTabPage> SvxGeneralTabPage::Create( vcl::Window* pParent, const SfxItemSet* rAttrSet )
+std::unique_ptr<SfxTabPage> SvxGeneralTabPage::Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet )
 {
-    return VclPtr<SvxGeneralTabPage>::Create( pParent, *rAttrSet );
+    return std::make_unique<SvxGeneralTabPage>( pPage, pController, *rAttrSet );
 }
 
 bool SvxGeneralTabPage::FillItemSet( SfxItemSet* )
 {
     // remove leading and trailing whitespaces
     for (auto const & i: vFields)
-        i->pEdit->SetText(comphelper::string::strip(i->pEdit->GetText(), ' '));
+        i->xEdit->set_text(comphelper::string::strip(i->xEdit->get_text(), ' '));
 
     bool bModified = false;
     bModified |= GetData_Impl();
     SvtSaveOptions aSaveOpt;
-    if ( m_pUseDataCB->IsChecked() != aSaveOpt.IsUseUserData() )
+    if (m_xUseDataCB->get_active() != aSaveOpt.IsUseUserData())
     {
-        aSaveOpt.SetUseUserData( m_pUseDataCB->IsChecked() );
+        aSaveOpt.SetUseUserData(m_xUseDataCB->get_active());
         bModified = true;
     }
     return bModified;
@@ -320,20 +371,20 @@ void SvxGeneralTabPage::Reset( const SfxItemSet* rSet )
         {
             for (auto const & i: vFields)
                 if (nField == vFieldInfo[i->iField].nGrabFocusId)
-                    i->pEdit->GrabFocus();
+                    i->xEdit->grab_focus();
         }
         else
-            vFields.front()->pEdit->GrabFocus();
+            vFields.front()->xEdit->grab_focus();
     }
 
-    m_pUseDataCB->Check( SvtSaveOptions().IsUseUserData() );
+    m_xUseDataCB->set_active(SvtSaveOptions().IsUseUserData());
 }
 
 
 // ModifyHdl_Impl()
 // This handler updates the initials (short name)
 // when one of the name fields was updated.
-IMPL_LINK( SvxGeneralTabPage, ModifyHdl_Impl, Edit&, rEdit, void )
+IMPL_LINK( SvxGeneralTabPage, ModifyHdl_Impl, weld::Entry&, rEdit, void )
 {
     // short name field and row
     Field& rShortName = *vFields[nShortNameField];
@@ -344,25 +395,25 @@ IMPL_LINK( SvxGeneralTabPage, ModifyHdl_Impl, Edit&, rEdit, void )
     unsigned nField = nInits;
     for (unsigned i = 0; i != nInits; ++i)
     {
-        if (vFields[rNameRow.nFirstField + i]->pEdit == &rEdit)
+        if (vFields[rNameRow.nFirstField + i]->xEdit.get() == &rEdit)
             nField = i;
     }
     // updating the initial
-    if (nField < nInits && rShortName.pEdit->IsEnabled())
+    if (!(nField < nInits && rShortName.xEdit->get_sensitive()))
+        return;
+
+    OUString sShortName = rShortName.xEdit->get_text();
+    // clear short name if it contains more characters than the number of initials
+    if (o3tl::make_unsigned(sShortName.getLength()) > nInits)
     {
-        OUString sShortName = rShortName.pEdit->GetText();
-        // clear short name if it contains more characters than the number of initials
-        if ((unsigned)sShortName.getLength() > nInits)
-        {
-            rShortName.pEdit->SetText(OUString());
-        }
-        while ((unsigned)sShortName.getLength() < nInits)
-            sShortName += " ";
-        OUString sName = rEdit.GetText();
-        OUString sLetter = sName.isEmpty()
-            ? OUString(u' ') : sName.copy(0, 1);
-        rShortName.pEdit->SetText(sShortName.replaceAt(nField, 1, sLetter).trim());
+        rShortName.xEdit->set_text(OUString());
     }
+    while (o3tl::make_unsigned(sShortName.getLength()) < nInits)
+        sShortName += " ";
+    OUString sName = rEdit.get_text();
+    OUString sLetter = sName.isEmpty()
+        ? OUString(u' ') : sName.copy(0, 1);
+    rShortName.xEdit->set_text(sShortName.replaceAt(nField, 1, sLetter).trim());
 }
 
 
@@ -373,14 +424,36 @@ bool SvxGeneralTabPage::GetData_Impl()
     for (auto const & i: vFields)
         aUserOpt.SetToken(
             vFieldInfo[i->iField].nUserOptionsId,
-            i->pEdit->GetText()
+            i->xEdit->get_text()
         );
 
     // modified?
+    bool bModified = false;
     for (auto const & i: vFields)
-        if (i->pEdit->IsValueChangedFromSaved())
-            return true;
-    return false;
+    {
+        if (i->xEdit->get_value_changed_from_saved())
+        {
+            bModified = true;
+            break;
+        }
+    }
+
+#if HAVE_FEATURE_GPGME
+    OUString aSK = m_xSigningKeyLB->get_active() == 0 ? OUString() //i.e. no key
+                       : m_xSigningKeyLB->get_active_text();
+    OUString aEK = m_xEncryptionKeyLB->get_active() == 0 ? OUString()
+                       : m_xEncryptionKeyLB->get_active_text();
+
+    aUserOpt.SetToken( UserOptToken::SigningKey, aSK );
+    aUserOpt.SetToken( UserOptToken::EncryptionKey, aEK );
+    aUserOpt.SetBoolValue( UserOptToken::EncryptToSelf, m_xEncryptToSelfCB->get_active() );
+
+    bModified |= m_xSigningKeyLB->get_value_changed_from_saved() ||
+                 m_xEncryptionKeyLB->get_value_changed_from_saved() ||
+                 m_xEncryptToSelfCB->get_state_changed_from_saved();
+#endif
+
+    return bModified;
 }
 
 
@@ -398,18 +471,30 @@ void SvxGeneralTabPage::SetData_Impl()
             Field& rField = *vFields[iField];
             // updating content
             UserOptToken const nToken = vFieldInfo[rField.iField].nUserOptionsId;
-            rField.pEdit->SetText(aUserOpt.GetToken(nToken));
+            rField.xEdit->set_text(aUserOpt.GetToken(nToken));
             // is enabled?
             bool const bEnableEdit = !aUserOpt.IsTokenReadonly(nToken);
-            rField.pEdit->Enable(bEnableEdit);
+            rField.xEdit->set_sensitive(bEnableEdit);
             bEnableLabel = bEnableLabel || bEnableEdit;
         }
-        rRow.pLabel->Enable(bEnableLabel);
+        rRow.xLabel->set_sensitive(bEnableLabel);
     }
 
     // saving
     for (auto const & i: vFields)
-        i->pEdit->SaveValue();
+        i->xEdit->save_value();
+
+#if HAVE_FEATURE_GPGME
+    OUString aSK = aUserOpt.GetToken(UserOptToken::SigningKey);
+    aSK.isEmpty() ? m_xSigningKeyLB->set_active( 0 ) //i.e. 'No Key'
+                  : m_xSigningKeyLB->set_active_text( aSK );
+
+    OUString aEK = aUserOpt.GetToken(UserOptToken::EncryptionKey);
+    aEK.isEmpty() ? m_xEncryptionKeyLB->set_active( 0 ) //i.e. 'No Key'
+                  : m_xEncryptionKeyLB->set_active_text( aEK );
+
+    m_xEncryptToSelfCB->set_active( aUserOpt.GetEncryptToSelf() );
+#endif
 }
 
 

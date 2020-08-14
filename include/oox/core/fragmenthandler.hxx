@@ -20,13 +20,9 @@
 #ifndef INCLUDED_OOX_CORE_FRAGMENTHANDLER_HXX
 #define INCLUDED_OOX_CORE_FRAGMENTHANDLER_HXX
 
-#include <exception>
-
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/XFastDocumentHandler.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <oox/core/contexthandler.hxx>
@@ -36,15 +32,14 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XInputStream; }
-    namespace xml { namespace sax { class XFastAttributeList; } }
-    namespace xml { namespace sax { class XFastContextHandler; } }
-    namespace xml { namespace sax { class XLocator; } }
-} } }
+    namespace xml::sax { class XFastAttributeList; }
+    namespace xml::sax { class XFastContextHandler; }
+    namespace xml::sax { class XLocator; }
+}
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 class XmlFilterBase;
 
@@ -93,6 +88,11 @@ public:
     explicit            FragmentHandler( XmlFilterBase& rFilter, const OUString& rFragmentPath );
     virtual             ~FragmentHandler() override;
 
+    FragmentHandler(FragmentHandler const &) = default;
+    FragmentHandler(FragmentHandler &&) = default;
+    FragmentHandler & operator =(FragmentHandler const &) = delete; // due to ContextHandler
+    FragmentHandler & operator =(FragmentHandler &&) = delete; // due to ContextHandler
+
     /** Returns the com.sun.star.xml.sax.XFastContextHandler interface of this context. */
     css::uno::Reference< css::xml::sax::XFastContextHandler >
                         getFastContextHandler() { return static_cast< ContextHandler* >( this ); }
@@ -117,7 +117,7 @@ public:
     // XML stream handling ----------------------------------------------------
 
     /** Opens the fragment stream referred by the own fragment path. Derived
-        classes may provide specilized stream implementations. */
+        classes may provide specialized stream implementations. */
     virtual css::uno::Reference< css::io::XInputStream >
                         openFragmentStream() const;
 
@@ -132,8 +132,7 @@ protected:
 typedef ::rtl::Reference< FragmentHandler > FragmentHandlerRef;
 
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 #endif
 

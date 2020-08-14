@@ -20,6 +20,7 @@
 #ifndef INCLUDED_TOOLKIT_AWT_VCLXMENU_HXX
 #define INCLUDED_TOOLKIT_AWT_VCLXMENU_HXX
 
+#include <config_options.h>
 #include <toolkit/dllapi.h>
 #include <toolkit/helper/listenermultiplexer.hxx>
 
@@ -29,6 +30,7 @@
 #include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/weak.hxx>
 #include <osl/mutex.hxx>
 
@@ -39,7 +41,6 @@
 
 class Menu;
 class MenuBar;
-class VclSimpleEvent;
 class PopupMenu;
 class VclMenuEvent;
 
@@ -48,7 +49,6 @@ typedef ::std::vector<
 > PopupMenuRefList;
 
 
-//  class VCLXMenu
 
 
 class TOOLKIT_DLLPUBLIC VCLXMenu :  public css::awt::XMenuBar,
@@ -88,9 +88,7 @@ public:
     void SAL_CALL release() throw() override  { OWeakObject::release(); }
 
     // css::lang::XUnoTunnel
-    static const css::uno::Sequence< sal_Int8 >&   GetUnoTunnelId() throw();
-    static VCLXMenu* GetImplementation( const css::uno::Reference< css::uno::XInterface >& rxIFace );
-    sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& rIdentifier ) override;
+    UNO3_GETIMPLEMENTATION_DECL(VCLXMenu)
 
     // css::lang::XTypeProvider
     css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
@@ -145,14 +143,14 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
 
-class TOOLKIT_DLLPUBLIC VCLXMenuBar : public VCLXMenu
+class UNLESS_MERGELIBS(TOOLKIT_DLLPUBLIC) VCLXMenuBar final : public VCLXMenu
 {
 public:
     VCLXMenuBar();
     VCLXMenuBar( MenuBar* pMenuBar );
 };
 
-class TOOLKIT_DLLPUBLIC VCLXPopupMenu : public VCLXMenu
+class TOOLKIT_DLLPUBLIC VCLXPopupMenu final : public VCLXMenu
 {
 public:
     VCLXPopupMenu();

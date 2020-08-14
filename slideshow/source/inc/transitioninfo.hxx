@@ -23,8 +23,7 @@
 #include <sal/types.h>
 
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 struct TransitionInfo
 {
@@ -112,9 +111,9 @@ struct TransitionInfo
     */
     bool            mbOutInvertsSweep;
 
-    /** when true, scale clip polygon isotrophically to
+    /** when true, scale clip polygon isotropically to
         target size.  when false, scale is
-        anisotrophically.
+        anisotropically.
     */
     bool            mbScaleIsotrophically;
 
@@ -136,8 +135,7 @@ struct TransitionInfo
     };
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_TRANSITIONINFO_HXX
 

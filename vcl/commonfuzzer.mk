@@ -12,26 +12,29 @@ fuzzer_externals = \
     boost_headers \
     orcus \
     orcus-parser \
+    boost_locale \
     boost_filesystem \
     boost_system \
     boost_iostreams \
     curl \
+    dtoa \
     harfbuzz \
     graphite \
     cairo \
     fontconfig \
     freetype \
+    gpgmepp \
     icui18n \
     icuuc \
     icudata \
     lcms2 \
     librdf \
+    libexttextcat \
     liblangtag \
     libxslt \
     libxml2 \
-    jpeg \
-    png \
-    clew \
+    libjpeg \
+    libpng \
     openssl \
     expat \
     mythes \
@@ -43,19 +46,20 @@ fuzzer_core_libraries = \
     basctl \
     avmedia \
     basegfx \
+    bib \
     canvastools \
-    comphelper \
     configmgr \
     cppcanvas \
+    ctl \
+    dba \
     dbtools \
     deployment \
     deploymentmisc \
     drawinglayer \
     editeng \
+    emfio \
     filterconfig \
     fsstorage \
-    fwe \
-    fwi \
     fwk \
     i18npool \
     i18nutil \
@@ -66,6 +70,7 @@ fuzzer_core_libraries = \
     package2 \
     sax \
     sb \
+    spell \
     sfx \
     sofficeapp \
     sot \
@@ -87,7 +92,6 @@ fuzzer_core_libraries = \
     utl \
     uui \
     vcl \
-    opencl \
     xmlscript \
     xo \
     xstor \
@@ -97,6 +101,7 @@ fuzzer_core_libraries = \
     sm \
     gie \
     oox \
+    proxyfac \
     reflection \
     odfflatxml \
     invocadapt \
@@ -142,16 +147,24 @@ fuzzer_calc_libraries = \
     sc \
     for \
     forui \
+    guesslang \
 
 fuzzer_writer_libraries = \
     msword \
     sw \
     swd \
     writerfilter \
+    wpftwriter \
     textfd \
+    guesslang \
 
 fuzzer_draw_libraries = \
     sdfilt \
     sd \
     sdd \
     icg \
+    guesslang \
+
+fuzzer_math_libraries = \
+    sm \
+    guesslang \

@@ -19,16 +19,15 @@
 
 #include <sal/config.h>
 
-#include <map>
-
 #include <svtools/helpopt.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/configitem.hxx>
 #include <tools/debug.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <comphelper/sequence.hxx>
 #include <vcl/help.hxx>
 #include <osl/mutex.hxx>
+#include <sal/log.hxx>
 
 #include "itemholder2.hxx"
 
@@ -39,7 +38,6 @@ using namespace com::sun::star;
 namespace {
     //global
     std::weak_ptr<SvtHelpOptions_Impl> g_pHelpOptions;
-}
 
 enum class HelpProperty
 {
@@ -47,13 +45,17 @@ enum class HelpProperty
     HelpTips        = 1,
     Locale          = 2,
     System          = 3,
-    StyleSheet      = 4
+    StyleSheet      = 4,
+    OfflineHelpPopUp = 5
 };
+
+}
 
 class SvtHelpOptions_Impl : public utl::ConfigItem
 {
     bool            bExtendedHelp;
     bool            bHelpTips;
+    bool            bOfflineHelpPopUp;
     OUString        aLocale;
     OUString        aSystem;
     OUString        sHelpStyleSheet;
@@ -73,7 +75,8 @@ public:
     bool            IsExtendedHelp() const                  { return bExtendedHelp; }
     void            SetHelpTips( bool b )               { bHelpTips = b; SetModified(); }
     bool            IsHelpTips() const                      { return bHelpTips; }
-
+    void            SetOfflineHelpPopUp(bool b) { bOfflineHelpPopUp = b; SetModified();}
+    bool            IsOfflineHelpPopUp() const { return bOfflineHelpPopUp;}
     const OUString& GetSystem() const                       { return aSystem; }
 
     const OUString& GetHelpStyleSheet()const{return sHelpStyleSheet;}
@@ -90,7 +93,8 @@ Sequence< OUString > const & SvtHelpOptions_Impl::GetPropertyNames()
         "Tip",
         "Locale",
         "System",
-        "HelpStyleSheet"
+        "HelpStyleSheet",
+        "BuiltInHelpNotInstalledPopUp"
     };
 
     return aNames;
@@ -107,6 +111,7 @@ SvtHelpOptions_Impl::SvtHelpOptions_Impl()
     : ConfigItem( "Office.Common/Help" )
     , bExtendedHelp( false )
     , bHelpTips( true )
+    , bOfflineHelpPopUp( true)
 {
     Sequence< OUString > aNames = GetPropertyNames();
     Load( aNames );
@@ -119,83 +124,75 @@ SvtHelpOptions_Impl::~SvtHelpOptions_Impl()
         Commit();
 }
 
-static int lcl_MapPropertyName( const OUString& rCompare,
-                const uno::Sequence< OUString>& aInternalPropertyNames)
-{
-    for(int nProp = 0; nProp < aInternalPropertyNames.getLength(); ++nProp)
-    {
-        if( aInternalPropertyNames[nProp] == rCompare )
-            return nProp;
-    }
-    return -1;
-}
-
 void  SvtHelpOptions_Impl::Load(const uno::Sequence< OUString>& rPropertyNames)
 {
     const uno::Sequence< OUString> aInternalPropertyNames( GetPropertyNames());
     Sequence< Any > aValues = GetProperties( rPropertyNames );
     const Any* pValues = aValues.getConstArray();
     DBG_ASSERT( aValues.getLength() == rPropertyNames.getLength(), "GetProperties failed" );
-    if ( aValues.getLength() == rPropertyNames.getLength() )
-    {
-        for ( int nProp = 0; nProp < rPropertyNames.getLength(); nProp++ )
-        {
-            assert(pValues[nProp].hasValue() && "property value missing");
-            if ( pValues[nProp].hasValue() )
-            {
-                bool bTmp;
-                OUString aTmpStr;
-                sal_Int32 nTmpInt = 0;
-                if ( pValues[nProp] >>= bTmp )
-                {
-                    switch ( static_cast< HelpProperty >(
-                        lcl_MapPropertyName(rPropertyNames[nProp], aInternalPropertyNames) ) )
-                    {
-                        case HelpProperty::ExtendedHelp:
-                            bExtendedHelp = bTmp;
-                            break;
-                        case HelpProperty::HelpTips:
-                            bHelpTips = bTmp;
-                            break;
-                        default:
-                            SAL_WARN( "svtools.config", "Wrong Member!" );
-                            break;
-                    }
-                }
-                else if ( pValues[nProp] >>= aTmpStr )
-                {
-                    switch ( static_cast< HelpProperty >(nProp) )
-                    {
-                        case HelpProperty::Locale:
-                            aLocale = aTmpStr;
-                            break;
+    if ( aValues.getLength() != rPropertyNames.getLength() )
+        return;
 
-                        case HelpProperty::System:
-                            aSystem = aTmpStr;
-                            break;
-                        case HelpProperty::StyleSheet:
-                            sHelpStyleSheet = aTmpStr;
+    for ( int nProp = 0; nProp < rPropertyNames.getLength(); nProp++ )
+    {
+        assert(pValues[nProp].hasValue() && "property value missing");
+        if ( pValues[nProp].hasValue() )
+        {
+            bool bTmp;
+            OUString aTmpStr;
+            sal_Int32 nTmpInt = 0;
+            if ( pValues[nProp] >>= bTmp )
+              {
+                switch ( static_cast< HelpProperty >(
+                    comphelper::findValue(aInternalPropertyNames, rPropertyNames[nProp]) ) )
+                {
+                    case HelpProperty::ExtendedHelp:
+                        bExtendedHelp = bTmp;
                         break;
-                        default:
-                            SAL_WARN( "svtools.config", "Wrong Member!" );
-                            break;
-                    }
-                }
-                else if ( pValues[nProp] >>= nTmpInt )
-                {
-                    SAL_WARN( "svtools.config", "Wrong Member!" );
-                }
-                else
-                {
-                    SAL_WARN( "svtools.config", "Wrong Type!" );
+                    case HelpProperty::HelpTips:
+                        bHelpTips = bTmp;
+                        break;
+                    case HelpProperty::OfflineHelpPopUp:
+                        bOfflineHelpPopUp = bTmp;
+                        break;
+                    default:
+                        SAL_WARN( "svtools.config", "Wrong Member!" );
+                        break;
                 }
             }
+            else if ( pValues[nProp] >>= aTmpStr )
+            {
+                switch ( static_cast< HelpProperty >(nProp) )
+                {
+                    case HelpProperty::Locale:
+                        aLocale = aTmpStr;
+                        break;
+
+                    case HelpProperty::System:
+                        aSystem = aTmpStr;
+                        break;
+                    case HelpProperty::StyleSheet:
+                        sHelpStyleSheet = aTmpStr;
+                    break;
+                    default:
+                        SAL_WARN( "svtools.config", "Wrong Member!" );
+                        break;
+                }
+            }
+            else if ( pValues[nProp] >>= nTmpInt )
+            {
+                SAL_WARN( "svtools.config", "Wrong Member!" );
+            }
+            else
+            {
+                SAL_WARN( "svtools.config", "Wrong Type!" );
+            }
         }
-        if ( IsHelpTips() != Help::IsQuickHelpEnabled() )
-            IsHelpTips() ? Help::EnableQuickHelp() : Help::DisableQuickHelp();
-        if ( IsExtendedHelp() != Help::IsBalloonHelpEnabled() )
-            IsExtendedHelp() ? Help::EnableBalloonHelp() : Help::DisableBalloonHelp();
     }
+    if ( IsHelpTips() != Help::IsQuickHelpEnabled() )
+        IsHelpTips() ? Help::EnableQuickHelp() : Help::DisableQuickHelp();
+    if ( IsExtendedHelp() != Help::IsBalloonHelpEnabled() )
+        IsExtendedHelp() ? Help::EnableBalloonHelp() : Help::DisableBalloonHelp();
 }
 
 void SvtHelpOptions_Impl::ImplCommit()
@@ -225,6 +222,9 @@ void SvtHelpOptions_Impl::ImplCommit()
             case HelpProperty::StyleSheet:
                 pValues[nProp] <<= sHelpStyleSheet;
             break;
+            case HelpProperty::OfflineHelpPopUp:
+              pValues[nProp] <<= bOfflineHelpPopUp;
+              break;
 
         }
     }
@@ -268,7 +268,15 @@ bool SvtHelpOptions::IsExtendedHelp() const
 {
     return pImpl->IsExtendedHelp();
 }
+void SvtHelpOptions::SetOfflineHelpPopUp (bool b )
+{
+    pImpl->SetOfflineHelpPopUp( b );
+}
 
+bool SvtHelpOptions::IsOfflineHelpPopUp() const
+{
+    return pImpl->IsOfflineHelpPopUp();
+}
 void SvtHelpOptions::SetHelpTips( bool b )
 {
     pImpl->SetHelpTips( b );
@@ -279,7 +287,7 @@ bool SvtHelpOptions::IsHelpTips() const
     return pImpl->IsHelpTips();
 }
 
-OUString SvtHelpOptions::GetSystem() const
+OUString const & SvtHelpOptions::GetSystem() const
 {
     return pImpl->GetSystem();
 }

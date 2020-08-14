@@ -18,25 +18,20 @@
  */
 
 #include <drawinglayer/primitive2d/textdecoratedprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/attribute/strokeattribute.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
-#include <drawinglayer/primitive2d/texteffectprimitive2d.hxx>
+#include <primitive2d/texteffectprimitive2d.hxx>
 #include <drawinglayer/primitive2d/shadowprimitive2d.hxx>
-#include <drawinglayer/primitive2d/transformprimitive2d.hxx>
-#include <drawinglayer/primitive2d/textlineprimitive2d.hxx>
-#include <drawinglayer/primitive2d/textstrikeoutprimitive2d.hxx>
+#include <primitive2d/textlineprimitive2d.hxx>
+#include <primitive2d/textstrikeoutprimitive2d.hxx>
 #include <drawinglayer/primitive2d/textbreakuphelper.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void TextDecoratedPortionPrimitive2D::impCreateGeometryContent(
             std::vector< Primitive2DReference >& rTarget,
-            basegfx::tools::B2DHomMatrixBufferedOnDemandDecompose& rDecTrans,
+            basegfx::utils::B2DHomMatrixBufferedOnDemandDecompose const & rDecTrans,
             const OUString& rText,
             sal_Int32 nTextPosition,
             sal_Int32 nTextLength,
@@ -60,95 +55,95 @@ namespace drawinglayer
             const bool bUnderlineUsed(TEXT_LINE_NONE != getFontUnderline());
             const bool bStrikeoutUsed(TEXT_STRIKEOUT_NONE != getTextStrikeout());
 
-            if(bUnderlineUsed || bStrikeoutUsed || bOverlineUsed)
+            if(!(bUnderlineUsed || bStrikeoutUsed || bOverlineUsed))
+                return;
+
+            // common preparations
+            TextLayouterDevice aTextLayouter;
+
+            // TextLayouterDevice is needed to get metrics for text decorations like
+            // underline/strikeout/emphasis marks from it. For setup, the font size is needed
+            aTextLayouter.setFontAttribute(
+                getFontAttribute(),
+                rDecTrans.getScale().getX(),
+                rDecTrans.getScale().getY(),
+                getLocale());
+
+            // get text width
+            double fTextWidth(0.0);
+
+            if(rDXArray.empty())
             {
-                // common preparations
-                TextLayouterDevice aTextLayouter;
+                fTextWidth = aTextLayouter.getTextWidth(rText, nTextPosition, nTextLength);
+            }
+            else
+            {
+                fTextWidth = rDXArray.back() * rDecTrans.getScale().getX();
+                const double fFontScaleX(rDecTrans.getScale().getX());
 
-                // TextLayouterDevice is needed to get metrics for text decorations like
-                // underline/strikeout/emphasis marks from it. For setup, the font size is needed
-                aTextLayouter.setFontAttribute(
-                    getFontAttribute(),
-                    rDecTrans.getScale().getX(),
-                    rDecTrans.getScale().getY(),
-                    getLocale());
-
-                // get text width
-                double fTextWidth(0.0);
-
-                if(rDXArray.empty())
+                if(!basegfx::fTools::equal(fFontScaleX, 1.0)
+                    && !basegfx::fTools::equalZero(fFontScaleX))
                 {
-                    fTextWidth = aTextLayouter.getTextWidth(rText, nTextPosition, nTextLength);
+                    // need to take FontScaling out of the DXArray
+                    fTextWidth /= fFontScaleX;
                 }
-                else
-                {
-                    fTextWidth = rDXArray.back() * rDecTrans.getScale().getX();
-                    const double fFontScaleX(rDecTrans.getScale().getX());
+            }
 
-                    if(!basegfx::fTools::equal(fFontScaleX, 1.0)
-                        && !basegfx::fTools::equalZero(fFontScaleX))
-                    {
-                        // need to take FontScaling out of the DXArray
-                        fTextWidth /= fFontScaleX;
-                    }
-                }
+            if(bOverlineUsed)
+            {
+                // create primitive geometry for overline
+                rTarget.push_back(Primitive2DReference(
+                    new TextLinePrimitive2D(
+                        rDecTrans.getB2DHomMatrix(),
+                        fTextWidth,
+                        aTextLayouter.getOverlineOffset(),
+                        aTextLayouter.getOverlineHeight(),
+                        getFontOverline(),
+                        getOverlineColor())));
+            }
 
-                if(bOverlineUsed)
-                {
-                    // create primitive geometry for overline
-                    rTarget.push_back(Primitive2DReference(
-                        new TextLinePrimitive2D(
-                            rDecTrans.getB2DHomMatrix(),
-                            fTextWidth,
-                            aTextLayouter.getOverlineOffset(),
-                            aTextLayouter.getOverlineHeight(),
-                            getFontOverline(),
-                            getOverlineColor())));
-                }
+            if(bUnderlineUsed)
+            {
+                // create primitive geometry for underline
+                rTarget.push_back(Primitive2DReference(
+                    new TextLinePrimitive2D(
+                        rDecTrans.getB2DHomMatrix(),
+                        fTextWidth,
+                        aTextLayouter.getUnderlineOffset(),
+                        aTextLayouter.getUnderlineHeight(),
+                        getFontUnderline(),
+                        getTextlineColor())));
+            }
 
-                if(bUnderlineUsed)
-                {
-                    // create primitive geometry for underline
-                    rTarget.push_back(Primitive2DReference(
-                        new TextLinePrimitive2D(
-                            rDecTrans.getB2DHomMatrix(),
-                            fTextWidth,
-                            aTextLayouter.getUnderlineOffset(),
-                            aTextLayouter.getUnderlineHeight(),
-                            getFontUnderline(),
-                            getTextlineColor())));
-                }
+            if(!bStrikeoutUsed)
+                return;
 
-                if(bStrikeoutUsed)
-                {
-                    // create primitive geometry for strikeout
-                    if(TEXT_STRIKEOUT_SLASH == getTextStrikeout() || TEXT_STRIKEOUT_X == getTextStrikeout())
-                    {
-                        // strikeout with character
-                        const sal_Unicode aStrikeoutChar(TEXT_STRIKEOUT_SLASH == getTextStrikeout() ? '/' : 'X');
+            // create primitive geometry for strikeout
+            if(TEXT_STRIKEOUT_SLASH == getTextStrikeout() || TEXT_STRIKEOUT_X == getTextStrikeout())
+            {
+                // strikeout with character
+                const sal_Unicode aStrikeoutChar(TEXT_STRIKEOUT_SLASH == getTextStrikeout() ? '/' : 'X');
 
-                        rTarget.push_back(Primitive2DReference(
-                            new TextCharacterStrikeoutPrimitive2D(
-                                rDecTrans.getB2DHomMatrix(),
-                                fTextWidth,
-                                getFontColor(),
-                                aStrikeoutChar,
-                                getFontAttribute(),
-                                getLocale())));
-                    }
-                    else
-                    {
-                        // strikeout with geometry
-                        rTarget.push_back(Primitive2DReference(
-                            new TextGeometryStrikeoutPrimitive2D(
-                                rDecTrans.getB2DHomMatrix(),
-                                fTextWidth,
-                                getFontColor(),
-                                aTextLayouter.getUnderlineHeight(),
-                                aTextLayouter.getStrikeoutOffset(),
-                                getTextStrikeout())));
-                    }
-                }
+                rTarget.push_back(Primitive2DReference(
+                    new TextCharacterStrikeoutPrimitive2D(
+                        rDecTrans.getB2DHomMatrix(),
+                        fTextWidth,
+                        getFontColor(),
+                        aStrikeoutChar,
+                        getFontAttribute(),
+                        getLocale())));
+            }
+            else
+            {
+                // strikeout with geometry
+                rTarget.push_back(Primitive2DReference(
+                    new TextGeometryStrikeoutPrimitive2D(
+                        rDecTrans.getB2DHomMatrix(),
+                        fTextWidth,
+                        getFontColor(),
+                        aTextLayouter.getUnderlineHeight(),
+                        aTextLayouter.getStrikeoutOffset(),
+                        getTextStrikeout())));
             }
 
             // TODO: Handle Font Emphasis Above/Below
@@ -176,7 +171,7 @@ namespace drawinglayer
                 }
             }
             std::vector< Primitive2DReference > aNewPrimitives;
-            basegfx::tools::B2DHomMatrixBufferedOnDemandDecompose aDecTrans(getTextTransform());
+            basegfx::utils::B2DHomMatrixBufferedOnDemandDecompose aDecTrans(getTextTransform());
             Primitive2DContainer aRetval;
 
             // create basic geometry such as SimpleTextPrimitive, Overline, Underline,
@@ -228,18 +223,19 @@ namespace drawinglayer
                         // is constant, relative to font size, rotated with the text and has a
                         // constant color.
                         // shadow parameter values
-                        static double fFactor(1.0 / 24.0);
+                        static const double fFactor(1.0 / 24.0);
                         const double fTextShadowOffset(aDecTrans.getScale().getY() * fFactor);
                         static basegfx::BColor aShadowColor(0.3, 0.3, 0.3);
 
-                        // preapare shadow transform matrix
-                        const basegfx::B2DHomMatrix aShadowTransform(basegfx::tools::createTranslateB2DHomMatrix(
+                        // prepare shadow transform matrix
+                        const basegfx::B2DHomMatrix aShadowTransform(basegfx::utils::createTranslateB2DHomMatrix(
                             fTextShadowOffset, fTextShadowOffset));
 
                         // create shadow primitive
                         aShadow = new ShadowPrimitive2D(
                             aShadowTransform,
                             aShadowColor,
+                            0,          // fShadowBlur = 0, there's no blur for text shadow yet.
                             aRetval);
                     }
 
@@ -398,7 +394,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(TextDecoratedPortionPrimitive2D, PRIMITIVE2D_ID_TEXTDECORATEDPORTIONPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

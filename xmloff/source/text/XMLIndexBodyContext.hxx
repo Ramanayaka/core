@@ -24,10 +24,10 @@
 #include <com/sun/star/uno/Reference.h>
 
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
     namespace beans { class XPropertySet; }
-} } }
+}
 
 /**
  * Import index body.
@@ -50,17 +50,17 @@ public:
     virtual ~XMLIndexBodyContext() override;
 
     /// return whether any content elements were encountered
-    inline bool HasContent();
+    inline bool HasContent() const;
 
 protected:
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList ) override;
 };
 
-inline bool XMLIndexBodyContext::HasContent()
+inline bool XMLIndexBodyContext::HasContent() const
 {
     return bHasContent;
 }

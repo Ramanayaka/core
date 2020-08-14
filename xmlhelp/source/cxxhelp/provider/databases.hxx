@@ -23,7 +23,6 @@
 #include <sal/config.h>
 
 #include <memory>
-#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -31,9 +30,7 @@
 #include <rtl/ustring.hxx>
 #include <rtl/string.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/ucb/XContent.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/i18n/XCollator.hpp>
@@ -92,10 +89,10 @@ namespace chelp {
 
         public:
 
-            KeywordElement( Databases* pDatabases,
+            KeywordElement( Databases const * pDatabases,
                             helpdatafileproxy::Hdf* pHdf,
-                            OUString& key,
-                            OUString& ids );
+                            OUString const & key,
+                            OUString const & ids );
 
         private:
 
@@ -104,7 +101,7 @@ namespace chelp {
             css::uno::Sequence< OUString > listAnchor;
             css::uno::Sequence< OUString > listTitle;
 
-            void init( Databases *pDatabases,helpdatafileproxy::Hdf* pHdf,const OUString& ids );
+            void init( Databases const *pDatabases,helpdatafileproxy::Hdf* pHdf,const OUString& ids );
         };
 
         explicit KeywordInfo( const std::vector< KeywordElement >& aVector );
@@ -144,7 +141,7 @@ namespace chelp {
 
         ~Databases();
 
-        OString getImageTheme();
+        OString getImageTheme() const;
 
         OUString getInstallPathAsURL();
 
@@ -204,17 +201,10 @@ namespace chelp {
             OUString* o_pExtensionRegistryPath = nullptr );
 
         /**
-         *  Maps a given language-locale combination to language.
+         *  Maps a given language-locale combination to language or locale.
          */
 
         OUString processLang( const OUString& Language );
-
-        /**
-         *  Maps a given language-locale combination to locale.
-         *  The returned string maybe empty
-         */
-
-        static OUString country( const OUString& Language );
 
         void replaceName( OUString& oustring ) const;
 
@@ -257,37 +247,34 @@ namespace chelp {
 
         std::vector< OUString >    m_avModules;
 
-        typedef std::unordered_map< OUString,helpdatafileproxy::Hdf*,OUStringHash >   DatabasesTable;
+        typedef std::unordered_map< OUString, std::unique_ptr<helpdatafileproxy::Hdf> >   DatabasesTable;
         DatabasesTable m_aDatabases;         // Language and module dependent databases
 
-        typedef std::unordered_map< OUString,OUString,OUStringHash > LangSetTable;
+        typedef std::unordered_map< OUString,OUString > LangSetTable;
         LangSetTable m_aLangSet;   // Mapping to of lang-country to lang
 
-        typedef std::unordered_map< OUString,StaticModuleInformation*,OUStringHash > ModInfoTable;
+        typedef std::unordered_map< OUString, std::unique_ptr<StaticModuleInformation> > ModInfoTable;
         ModInfoTable m_aModInfo;   // Module information
 
-        typedef std::unordered_map< OUString,KeywordInfo*,OUStringHash > KeywordInfoTable;
+        typedef std::unordered_map< OUString, std::unique_ptr<KeywordInfo> > KeywordInfoTable;
         KeywordInfoTable m_aKeywordInfo;   // Module information
 
         typedef
         std::unordered_map<
              OUString,
-             css::uno::Reference< css::container::XHierarchicalNameAccess >,
-             OUStringHash >         ZipFileTable;
+             css::uno::Reference< css::container::XHierarchicalNameAccess > > ZipFileTable;
         ZipFileTable m_aZipFileTable;   // No closing of an once opened jarfile
 
         typedef
         std::unordered_map<
              OUString,
-             css::uno::Reference< css::i18n::XCollator >,
-             OUStringHash >      CollatorTable;
+             css::uno::Reference< css::i18n::XCollator > > CollatorTable;
         CollatorTable    m_aCollatorTable;
 
 
         typedef
         std::unordered_set<
-            OString,
-            OStringHash >      EmptyActiveTextSet;
+            OString >       EmptyActiveTextSet;
         EmptyActiveTextSet  m_aEmptyActiveTextSet;
 
         // methods
@@ -310,8 +297,7 @@ namespace chelp {
     typedef std::unordered_map
     <
         OUString,
-        bool,
-        OUStringHash
+        bool
     >
     ExtensionHelpExistenceMap;
 

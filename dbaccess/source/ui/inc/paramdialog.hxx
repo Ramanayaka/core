@@ -20,22 +20,15 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_PARAMDIALOG_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_PARAMDIALOG_HXX
 
-#include "commontypes.hxx"
-
-#include <vcl/dialog.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/group.hxx>
-#include <vcl/lstbox.hxx>
+#include <vcl/weld.hxx>
+#include <vcl/timer.hxx>
 
 #include <com/sun/star/util/XNumberFormatter.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <connectivity/predicateinput.hxx>
-#include "svx/ParseContext.hxx"
+#include <svx/ParseContext.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 namespace connectivity
@@ -52,23 +45,13 @@ namespace o3tl {
     template<> struct typed_flags<VisitFlags> : is_typed_flags<VisitFlags, 0x03> {};
 }
 
-
 namespace dbaui
 {
-
     // OParameterDialog
-    class OParameterDialog
-            :public ModalDialog
-            ,public ::svxform::OParseContextClient
+    class OParameterDialog final
+            : public weld::GenericDialogController
+            , public ::svxform::OParseContextClient
     {
-    protected:
-        // the controls
-        VclPtr<ListBox>        m_pAllParams;
-        VclPtr<Edit>           m_pParam;
-        VclPtr<PushButton>     m_pTravelNext;
-        VclPtr<OKButton>       m_pOKBtn;
-        VclPtr<CancelButton>   m_pCancelBtn;
-
         sal_Int32              m_nCurrentlySelected;
 
         css::uno::Reference< css::container::XIndexAccess >
@@ -84,32 +67,35 @@ namespace dbaui
         Timer                  m_aResetVisitFlag;
             // we reset the "visited flag" 1 second after and entry has been selected
 
-        bool                   m_bNeedErrorOnCurrent;
-
         css::uno::Sequence< css::beans::PropertyValue >
                                m_aFinalValues;     /// the final values as entered by the user
 
+        // the controls
+        std::unique_ptr<weld::TreeView> m_xAllParams;
+        std::unique_ptr<weld::Entry> m_xParam;
+        std::unique_ptr<weld::Button> m_xTravelNext;
+        std::unique_ptr<weld::Button> m_xOKBtn;
+        std::unique_ptr<weld::Button> m_xCancelBtn;
+
     public:
-        OParameterDialog(vcl::Window* _pParent,
+        OParameterDialog(weld::Window* _pParent,
             const css::uno::Reference< css::container::XIndexAccess > & _rParamContainer,
             const css::uno::Reference< css::sdbc::XConnection > & _rxConnection,
             const css::uno::Reference< css::uno::XComponentContext >& rxContext);
         virtual ~OParameterDialog() override;
-        virtual void dispose() override;
 
         const css::uno::Sequence< css::beans::PropertyValue >&
                     getValues() const { return m_aFinalValues; }
 
-    protected:
+    private:
         void Construct();
 
-    private:
         DECL_LINK(OnVisitedTimeout, Timer*, void);
-        DECL_LINK(OnValueModified, Edit&, void);
-        DECL_LINK(OnEntryListBoxSelected, ListBox&, void);
-        DECL_LINK(OnButtonClicked, Button*, void);
-        DECL_LINK(OnValueLoseFocusHdl, Control&, void);
-        bool OnValueLoseFocus();
+        DECL_LINK(OnValueModified, weld::Entry&, void);
+        DECL_LINK(OnEntryListBoxSelected, weld::TreeView&, void);
+        DECL_LINK(OnButtonClicked, weld::Button&, void);
+        DECL_LINK(OnValueLoseFocusHdl, weld::Widget&, void);
+        bool CheckValueForError();
         bool OnEntrySelected();
     };
 

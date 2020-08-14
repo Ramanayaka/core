@@ -23,6 +23,8 @@
 using namespace com::sun::star;
 using namespace ooo::vba;
 
+namespace {
+
 class CommandBarControlEnumeration : public ::cppu::WeakImplHelper< container::XEnumeration >
 {
     //uno::Reference< uno::XComponentContext > m_xContext;
@@ -38,14 +40,14 @@ public:
     }
     virtual uno::Any SAL_CALL nextElement() override
     {
-        if( hasMoreElements() )
-        {
-            return m_pCommandBarControls->createCollectionObject( uno::makeAny( m_nCurrentPosition++ ) );
-        }
-        else
+        if( !hasMoreElements() )
             throw container::NoSuchElementException();
+
+        return m_pCommandBarControls->createCollectionObject( uno::makeAny( m_nCurrentPosition++ ) );
     }
 };
+
+}
 
 ScVbaCommandBarControls::ScVbaCommandBarControls( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< container::XIndexAccess>& xIndexAccess, VbaCommandBarHelperRef const & pHelper, const uno::Reference< container::XIndexAccess>& xBarSettings, const OUString& sResourceUrl ) : CommandBarControls_BASE( xParent, xContext, xIndexAccess ), pCBarHelper( pHelper ), m_xBarSettings( xBarSettings ), m_sResourceUrl( sResourceUrl )
 {
@@ -232,21 +234,20 @@ ScVbaCommandBarControls::Add( const uno::Any& Type, const uno::Any& Id, const un
 OUString
 ScVbaCommandBarControls::getServiceImplName()
 {
-    return OUString("ScVbaCommandBarControls");
+    return "ScVbaCommandBarControls";
 }
 
 uno::Sequence<OUString>
 ScVbaCommandBarControls::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.CommandBarControls";
-    }
+        "ooo.vba.CommandBarControls"
+    };
     return aServiceNames;
 }
 
+namespace {
 
 class VbaDummyIndexAccess : public ::cppu::WeakImplHelper< container::XIndexAccess >
 {
@@ -264,6 +265,7 @@ public:
         { return false; }
 };
 
+}
 
 VbaDummyCommandBarControls::VbaDummyCommandBarControls(
         const uno::Reference< XHelperInterface >& xParent,
@@ -303,17 +305,15 @@ uno::Reference< XCommandBarControl > SAL_CALL VbaDummyCommandBarControls::Add(
 // XHelperInterface
 OUString VbaDummyCommandBarControls::getServiceImplName()
 {
-    return OUString("VbaDummyCommandBarControls");
+    return "VbaDummyCommandBarControls";
 }
 
 uno::Sequence<OUString> VbaDummyCommandBarControls::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.CommandBarControls";
-    }
+        "ooo.vba.CommandBarControls"
+    };
     return aServiceNames;
 }
 

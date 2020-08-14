@@ -17,21 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "addressconverter.hxx"
+#include <addressconverter.hxx>
 
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/sheet/XCellRangeAddressable.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <convuno.hxx>
 #include <osl/diagnose.h>
-#include <rtl/strbuf.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <oox/core/filterbase.hxx>
-#include <oox/helper/containerhelper.hxx>
 #include <oox/helper/binaryinputstream.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::sheet;
@@ -68,8 +64,8 @@ void BinRangeList::read( SequenceInputStream& rStrm )
 {
     sal_Int32 nCount = rStrm.readInt32();
     mvRanges.resize( getLimitedValue< size_t, sal_Int64 >( nCount, 0, rStrm.getRemaining() / 16 ) );
-    for( ::std::vector< BinRange >::iterator aIt = mvRanges.begin(), aEnd = mvRanges.end(); aIt != aEnd; ++aIt )
-        aIt->read( rStrm );
+    for( auto& rRange : mvRanges )
+        rRange.read( rStrm );
 }
 
 AddressConverter::AddressConverter( const WorkbookHelper& rHelper ) :
@@ -78,9 +74,7 @@ AddressConverter::AddressConverter( const WorkbookHelper& rHelper ) :
     mbRowOverflow( false ),
     mbTabOverflow( false )
 {
-    maDConChars.set( 0xFFFF, '\x01', 0xFFFF, '\x02', 0xFFFF );
     initializeMaxPos( OOX_MAXTAB, OOX_MAXCOL, OOX_MAXROW );
-    maLinkChars.set( 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF );
 }
 
 bool AddressConverter::parseOoxAddress2d(
@@ -103,14 +97,14 @@ bool AddressConverter::parseOoxAddress2d(
             case STATE_COL:
             {
                 if( ('a' <= cChar) && (cChar <= 'z') )
-                    (cChar -= 'a') += 'A';
+                    cChar = (cChar - 'a') + 'A';
                 if( ('A' <= cChar) && (cChar <= 'Z') )
                 {
                     /*  Return, if 1-based column index is already 6 characters
                         long (12356631 is column index for column AAAAAA). */
                     if( ornColumn >= 12356631 )
                         return false;
-                    (ornColumn *= 26) += (cChar - 'A' + 1);
+                    ornColumn = (ornColumn * 26) + (cChar - 'A' + 1);
                 }
                 else if( ornColumn > 0 )
                 {
@@ -129,7 +123,7 @@ bool AddressConverter::parseOoxAddress2d(
                     // return, if 1-based row is already 9 digits long
                     if( ornRow >= 100000000 )
                         return false;
-                    (ornRow *= 10) += (cChar - '0');
+                    ornRow = (ornRow * 10) + (cChar - '0');
                 }
                 else
                     return false;
@@ -158,14 +152,14 @@ bool AddressConverter::parseOoxAddress2d( sal_Int32& ornColumn, sal_Int32& ornRo
             case STATE_COL:
             {
                 if( ('a' <= cChar) && (cChar <= 'z') )
-                    (cChar -= 'a') += 'A';
+                    cChar = (cChar - 'a') + 'A';
                 if( ('A' <= cChar) && (cChar <= 'Z') )
                 {
                     /*  Return, if 1-based column index is already 6 characters
                         long (12356631 is column index for column AAAAAA). */
                     if( ornColumn >= 12356631 )
                         return false;
-                    (ornColumn *= 26) += (cChar - 'A' + 1);
+                    ornColumn = (ornColumn * 26) + (cChar - 'A' + 1);
                 }
                 else if( ornColumn > 0 )
                 {
@@ -184,7 +178,7 @@ bool AddressConverter::parseOoxAddress2d( sal_Int32& ornColumn, sal_Int32& ornRo
                     // return, if 1-based row is already 9 digits long
                     if( ornRow >= 100000000 )
                         return false;
-                    (ornRow *= 10) += (cChar - '0');
+                    ornRow = (ornRow * 10) + (cChar - '0');
                 }
                 else
                     return false;
@@ -423,7 +417,7 @@ bool AddressConverter::convertToCellRange( ScRange& orRange,
 void AddressConverter::validateCellRangeList( ScRangeList& orRanges, bool bTrackOverflow )
 {
     for( size_t nIndex = orRanges.size(); nIndex > 0; --nIndex )
-        if( !validateCellRange( *orRanges[ nIndex - 1 ], true, bTrackOverflow ) )
+        if( !validateCellRange( orRanges[ nIndex - 1 ], true, bTrackOverflow ) )
             orRanges.Remove( nIndex - 1 );
 }
 
@@ -437,7 +431,7 @@ void AddressConverter::convertToCellRangeList( ScRangeList& orRanges,
     {
         OUString aToken = rString.getToken( 0, ' ', nPos );
         if( !aToken.isEmpty() && convertToCellRange( aRange, aToken, nSheet, true, bTrackOverflow ) )
-            orRanges.Append(aRange);
+            orRanges.push_back(aRange);
     }
 }
 
@@ -445,9 +439,9 @@ void AddressConverter::convertToCellRangeList( ScRangeList& orRanges,
         const BinRangeList& rBinRanges, sal_Int16 nSheet, bool bTrackOverflow )
 {
     ScRange aRange;
-    for( ::std::vector< BinRange >::const_iterator aIt = rBinRanges.begin(), aEnd = rBinRanges.end(); aIt != aEnd; ++aIt )
-        if( convertToCellRange( aRange, *aIt, nSheet, true, bTrackOverflow ) )
-            orRanges.Append( aRange );
+    for( const auto& rBinRange : rBinRanges )
+        if( convertToCellRange( aRange, rBinRange, nSheet, true, bTrackOverflow ) )
+            orRanges.push_back( aRange );
 }
 
 Sequence<CellRangeAddress> AddressConverter::toApiSequence(const ScRangeList& orRanges)
@@ -457,23 +451,12 @@ Sequence<CellRangeAddress> AddressConverter::toApiSequence(const ScRangeList& or
     CellRangeAddress* pApiRanges = aRangeSequence.getArray();
     for (size_t i = 0; i < nSize; ++i)
     {
-        ScUnoConversion::FillApiRange(pApiRanges[i], *orRanges[i]);
+        ScUnoConversion::FillApiRange(pApiRanges[i], orRanges[i]);
     }
     return aRangeSequence;
 }
 
 // private --------------------------------------------------------------------
-
-void AddressConverter::ControlCharacters::set(
-        sal_Unicode cThisWorkbook, sal_Unicode cExternal,
-        sal_Unicode cThisSheet, sal_Unicode cInternal, sal_Unicode cSameSheet )
-{
-    mcThisWorkbook = cThisWorkbook;
-    mcExternal     = cExternal;
-    mcThisSheet    = cThisSheet;
-    mcInternal     = cInternal;
-    mcSameSheet    = cSameSheet;
-}
 
 void AddressConverter::initializeMaxPos(
         sal_Int16 nMaxXlsTab, sal_Int32 nMaxXlsCol, sal_Int32 nMaxXlsRow )
@@ -495,7 +478,6 @@ void AddressConverter::initializeMaxPos(
     }
 }
 
-} // namespace xls
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

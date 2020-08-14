@@ -31,12 +31,10 @@
 #include <com/sun/star/frame/XNotifyingDispatch.hpp>
 #include <com/sun/star/frame/XDispatchResultListener.hpp>
 #include <com/sun/star/frame/XSynchronousDispatch.hpp>
-#include <com/sun/star/uno/Exception.hpp>
-#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/util/URL.hpp>
 
 #include <cppuhelper/implbase.hxx>
-#include <sfx2/sfxuno.hxx>
+#include <cppuhelper/weakref.hxx>
 #include <vcl/errcode.hxx>
 
 class SfxObjectShell;
@@ -67,7 +65,7 @@ public:
 
     virtual css::uno::Reference < css::frame::XDispatch > SAL_CALL queryDispatch(
             const css::util::URL& aURL, const OUString& sTargetFrameName,
-            FrameSearchFlags eSearchFlags ) override;
+            sal_Int32 eSearchFlags ) override;
 
     virtual css::uno::Sequence< css::uno::Reference < css::frame::XDispatch > > SAL_CALL queryDispatches(
             const css::uno::Sequence < css::frame::DispatchDescriptor >& seqDescriptor ) override;

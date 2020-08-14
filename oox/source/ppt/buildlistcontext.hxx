@@ -20,16 +20,16 @@
 #ifndef INCLUDED_OOX_SOURCE_PPT_BUILDLISTCONTEXT_HXX
 #define INCLUDED_OOX_SOURCE_PPT_BUILDLISTCONTEXT_HXX
 
-#include "oox/core/fragmenthandler2.hxx"
+#include <oox/core/fragmenthandler2.hxx>
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
     /** CT_BuildList */
     class BuildListContext
         : public ::oox::core::FragmentHandler2
     {
     public:
-        explicit BuildListContext( ::oox::core::FragmentHandler2& rParent );
+        explicit BuildListContext( ::oox::core::FragmentHandler2 const & rParent );
 
         virtual ~BuildListContext( ) override;
 
@@ -41,7 +41,7 @@ namespace oox { namespace ppt {
         bool              mbBuildAsOne;
     };
 
-} }
+}
 
 #endif
 

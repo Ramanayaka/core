@@ -18,27 +18,35 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <cstring>
 
-#include "headless/svpbmp.hxx"
-#include "headless/svpgdi.hxx"
-#include "headless/svpinst.hxx"
+#include <headless/svpbmp.hxx>
+#include <headless/svpgdi.hxx>
+#include <headless/svpinst.hxx>
 
 #include <basegfx/vector/b2ivector.hxx>
 #include <basegfx/range/b2ibox.hxx>
 #include <o3tl/safeint.hxx>
-#include <vcl/salbtype.hxx>
+#include <tools/helpers.hxx>
 #include <vcl/bitmap.hxx>
 
 using namespace basegfx;
+
+SvpSalBitmap::SvpSalBitmap()
+:   SalBitmap(),
+    basegfx::SystemDependentDataHolder(), // MM02
+    mpDIB()
+{
+}
 
 SvpSalBitmap::~SvpSalBitmap()
 {
     Destroy();
 }
 
-BitmapBuffer* ImplCreateDIB(
+static std::unique_ptr<BitmapBuffer> ImplCreateDIB(
     const Size& rSize,
     sal_uInt16 nBitCount,
     const BitmapPalette& rPal)
@@ -48,7 +56,6 @@ BitmapBuffer* ImplCreateDIB(
         || nBitCount ==  1
         || nBitCount ==  4
         || nBitCount ==  8
-        || nBitCount == 16
         || nBitCount == 24
         || nBitCount == 32)
         && "Unsupported BitCount!");
@@ -56,11 +63,11 @@ BitmapBuffer* ImplCreateDIB(
     if (!rSize.Width() || !rSize.Height())
         return nullptr;
 
-    BitmapBuffer* pDIB = nullptr;
+    std::unique_ptr<BitmapBuffer> pDIB;
 
     try
     {
-        pDIB = new BitmapBuffer;
+        pDIB.reset(new BitmapBuffer);
     }
     catch (const std::bad_alloc&)
     {
@@ -80,30 +87,15 @@ BitmapBuffer* ImplCreateDIB(
         case 8:
             pDIB->mnFormat = ScanlineFormat::N8BitPal;
             break;
-        case 16:
-        {
-#ifdef OSL_BIGENDIAN
-            pDIB->mnFormat= ScanlineFormat::N16BitTcMsbMask;
-#else
-            pDIB->mnFormat= ScanlineFormat::N16BitTcLsbMask;
-#endif
-            ColorMaskElement aRedMask(0xf800);
-            aRedMask.CalcMaskShift();
-            ColorMaskElement aGreenMask(0x07e0);
-            aGreenMask.CalcMaskShift();
-            ColorMaskElement aBlueMask(0x001f);
-            aBlueMask.CalcMaskShift();
-            pDIB->maColorMask = ColorMask(aRedMask, aGreenMask, aBlueMask);
+        case 24:
+            pDIB->mnFormat = SVP_24BIT_FORMAT;
             break;
-        }
         default:
             nBitCount = 32;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case 32:
-        {
             pDIB->mnFormat = SVP_CAIRO_FORMAT;
             break;
-        }
     }
 
     pDIB->mnFormat |= ScanlineFormat::TopDown;
@@ -114,14 +106,12 @@ BitmapBuffer* ImplCreateDIB(
     if (bFail)
     {
         SAL_WARN("vcl.gdi", "checked multiply failed");
-        delete pDIB;
         return nullptr;
     }
     pDIB->mnScanlineSize = AlignedWidth4Bytes(nScanlineBase);
     if (pDIB->mnScanlineSize < nScanlineBase/8)
     {
         SAL_WARN("vcl.gdi", "scanline calculation wraparound");
-        delete pDIB;
         return nullptr;
     }
     pDIB->mnBitCount = nBitCount;
@@ -132,10 +122,11 @@ BitmapBuffer* ImplCreateDIB(
         pDIB->maPalette.SetEntryCount( nColors );
     }
 
-    const size_t size = pDIB->mnScanlineSize * pDIB->mnHeight;
-    if (size > SAL_MAX_INT32/2)
+    size_t size;
+    bFail = o3tl::checked_multiply<size_t>(pDIB->mnHeight, pDIB->mnScanlineSize, size);
+    SAL_WARN_IF(bFail, "vcl.gdi", "checked multiply failed");
+    if (bFail || size > SAL_MAX_INT32/2)
     {
-        delete pDIB;
         return nullptr;
     }
 
@@ -145,8 +136,7 @@ BitmapBuffer* ImplCreateDIB(
 #ifdef __SANITIZE_ADDRESS__
         if (!pDIB->mpBits)
         {   // can only happen with ASAN allocator_may_return_null=1
-            delete pDIB;
-            pDIB = nullptr;
+            pDIB.reset();
         }
         else
 #endif
@@ -156,18 +146,16 @@ BitmapBuffer* ImplCreateDIB(
     }
     catch (const std::bad_alloc&)
     {
-        delete pDIB;
-        pDIB = nullptr;
+        pDIB.reset();
     }
 
     return pDIB;
 }
 
-bool SvpSalBitmap::Create(BitmapBuffer *pBuf)
+void SvpSalBitmap::Create(std::unique_ptr<BitmapBuffer> pBuf)
 {
     Destroy();
-    mpDIB = pBuf;
-    return mpDIB != nullptr;
+    mpDIB = std::move(pBuf);
 }
 
 bool SvpSalBitmap::Create(const Size& rSize, sal_uInt16 nBitCount, const BitmapPalette& rPal)
@@ -186,13 +174,12 @@ bool SvpSalBitmap::Create(const SalBitmap& rBmp)
     if (rSalBmp.mpDIB)
     {
         // TODO: reference counting...
-        mpDIB = new BitmapBuffer( *rSalBmp.mpDIB );
+        mpDIB.reset(new BitmapBuffer( *rSalBmp.mpDIB ));
 
         const size_t size = mpDIB->mnScanlineSize * mpDIB->mnHeight;
         if (size > SAL_MAX_INT32/2)
         {
-            delete mpDIB;
-            mpDIB = nullptr;
+            mpDIB.reset();
             return false;
         }
 
@@ -204,8 +191,7 @@ bool SvpSalBitmap::Create(const SalBitmap& rBmp)
         }
         catch (const std::bad_alloc&)
         {
-            delete mpDIB;
-            mpDIB = nullptr;
+            mpDIB.reset();
         }
     }
 
@@ -234,8 +220,7 @@ void SvpSalBitmap::Destroy()
     if (mpDIB)
     {
         delete[] mpDIB->mpBits;
-        delete mpDIB;
-        mpDIB = nullptr;
+        mpDIB.reset();
     }
 }
 
@@ -245,8 +230,8 @@ Size SvpSalBitmap::GetSize() const
 
     if (mpDIB)
     {
-        aSize.Width() = mpDIB->mnWidth;
-        aSize.Height() = mpDIB->mnHeight;
+        aSize.setWidth( mpDIB->mnWidth );
+        aSize.setHeight( mpDIB->mnHeight );
     }
 
     return aSize;
@@ -266,11 +251,13 @@ sal_uInt16 SvpSalBitmap::GetBitCount() const
 
 BitmapBuffer* SvpSalBitmap::AcquireBuffer(BitmapAccessMode)
 {
-    return mpDIB;
+    return mpDIB.get();
 }
 
-void SvpSalBitmap::ReleaseBuffer(BitmapBuffer*, BitmapAccessMode)
+void SvpSalBitmap::ReleaseBuffer(BitmapBuffer*, BitmapAccessMode nMode)
 {
+    if( nMode == BitmapAccessMode::Write )
+        InvalidateChecksum();
 }
 
 bool SvpSalBitmap::GetSystemData( BitmapSystemData& )
@@ -288,7 +275,7 @@ bool SvpSalBitmap::Scale( const double& /*rScaleX*/, const double& /*rScaleY*/, 
     return false;
 }
 
-bool SvpSalBitmap::Replace( const ::Color& /*rSearchColor*/, const ::Color& /*rReplaceColor*/, sal_uLong /*nTol*/ )
+bool SvpSalBitmap::Replace( const ::Color& /*rSearchColor*/, const ::Color& /*rReplaceColor*/, sal_uInt8 /*nTol*/ )
 {
     return false;
 }

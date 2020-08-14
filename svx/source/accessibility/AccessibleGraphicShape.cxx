@@ -22,9 +22,10 @@
 #include <svx/ShapeTypeHandler.hxx>
 #include <svx/SvxShapeTypes.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/svdmodel.hxx>
 
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
+#include <com/sun/star/drawing/XShapeDescriptor.hpp>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/queryinterface.hxx>
 
 using namespace ::accessibility;
@@ -95,7 +96,7 @@ void SAL_CALL
 OUString SAL_CALL
     AccessibleGraphicShape::getImplementationName()
 {
-    return OUString("AccessibleGraphicShape");
+    return "AccessibleGraphicShape";
 }
 
 
@@ -103,16 +104,8 @@ css::uno::Sequence< OUString> SAL_CALL
     AccessibleGraphicShape::getSupportedServiceNames()
 {
     ThrowIfDisposed ();
-    // Get list of supported service names from base class...
-    uno::Sequence<OUString> aServiceNames =
-        AccessibleShape::getSupportedServiceNames();
-    sal_Int32 nCount (aServiceNames.getLength());
-
-    // ...and add additional names.
-    aServiceNames.realloc (nCount + 1);
-    aServiceNames[nCount] = "com.sun.star.drawing.AccessibleGraphicShape";
-
-    return aServiceNames;
+    const css::uno::Sequence<OUString> vals { "com.sun.star.drawing.AccessibleGraphicShape" };
+    return comphelper::concatSequences(AccessibleShape::getSupportedServiceNames(), vals);
 }
 
 // XTypeProvider
@@ -120,15 +113,8 @@ uno::Sequence<uno::Type> SAL_CALL
     AccessibleGraphicShape::getTypes()
 {
     // Get list of types from the context base implementation...
-    uno::Sequence<uno::Type> aTypeList (AccessibleShape::getTypes());
-    // ...and add the additional type for the component.
-    long nTypeCount = aTypeList.getLength();
-    aTypeList.realloc (nTypeCount + 1);
-    const uno::Type aImageType =
-        cppu::UnoType<XAccessibleImage>::get();
-    aTypeList[nTypeCount] = aImageType;
-
-    return aTypeList;
+    return comphelper::concatSequences(AccessibleShape::getTypes(),
+            uno::Sequence { cppu::UnoType<XAccessibleImage>::get() });
 }
 
 
@@ -147,32 +133,12 @@ OUString
 
         default:
             sName = "UnknownAccessibleGraphicShape";
-            uno::Reference<drawing::XShapeDescriptor> xDescriptor (mxShape, uno::UNO_QUERY);
+            uno::Reference<drawing::XShapeDescriptor> xDescriptor (mxShape);
             if (xDescriptor.is())
                 sName += ": " + xDescriptor->getShapeType();
     }
 
     return sName;
-}
-
-OUString AccessibleGraphicShape::CreateAccessibleDescription()
-{
-    //Don't use the same information for accessible name and accessible description.
-    OUString sDesc;
-    if (m_pShape)
-        sDesc =  m_pShape->GetTitle();
-    if (!sDesc.isEmpty())
-        return sDesc;
-    return CreateAccessibleBaseName();
-}
-
-//  Return this object's role.
-sal_Int16 SAL_CALL AccessibleGraphicShape::getAccessibleRole()
-{
-    if( m_pShape->GetModel()->GetImageMapForObject(m_pShape) != nullptr )
-        return AccessibleRole::IMAGE_MAP;
-    else
-        return AccessibleShape::getAccessibleRole();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

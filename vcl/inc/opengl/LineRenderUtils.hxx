@@ -11,8 +11,7 @@
 #ifndef INCLUDED_VCL_INC_OPENGL_LINERENDERUTILS_H
 #define INCLUDED_VCL_INC_OPENGL_LINERENDERUTILS_H
 
-#include "opengl/VertexUtils.hxx"
-#include "opengl/RenderList.hxx"
+#include <opengl/RenderList.hxx>
 
 namespace vcl
 {
@@ -29,7 +28,7 @@ private:
 
 public:
     LineBuilder(std::vector<Vertex>& rVertices, std::vector<GLuint>& rIndices,
-                SalColor nColor, GLfloat fTransparency,
+                Color nColor, GLfloat fTransparency,
                 GLfloat fLineWidth, bool bUseAA);
 
     void appendLineSegment(const glm::vec2& rPoint1, const glm::vec2& rNormal1, GLfloat aExtrusion1,
@@ -39,9 +38,12 @@ public:
 
     void appendAndConnectLinePoint(const glm::vec2& rPoint, const glm::vec2& aNormal, GLfloat aExtrusion);
 
-    void appendMiterJoint(glm::vec2 const & point, glm::vec2 prevLineVector, glm::vec2 const & nextLineVector);
-    void appendBevelJoint(glm::vec2 const & point, glm::vec2 prevLineVector, glm::vec2 nextLineVector);
-    void appendRoundJoint(glm::vec2 const & point, glm::vec2 prevLineVector, glm::vec2 nextLineVector);
+    void appendMiterJoint(glm::vec2 const& point, const glm::vec2& prevLineVector,
+                          glm::vec2 const& nextLineVector);
+    void appendBevelJoint(glm::vec2 const& point, const glm::vec2& prevLineVector,
+                          const glm::vec2& nextLineVector);
+    void appendRoundJoint(glm::vec2 const& point, const glm::vec2& prevLineVector,
+                          const glm::vec2& nextLineVector);
     void appendRoundLineCapVertices(const glm::vec2& rPoint1, const glm::vec2& rPoint2);
     void appendSquareLineCapVertices(const glm::vec2& rPoint1, const glm::vec2& rPoint2);
 };

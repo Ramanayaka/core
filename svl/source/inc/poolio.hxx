@@ -20,46 +20,21 @@
 #ifndef INCLUDED_SVL_SOURCE_INC_POOLIO_HXX
 #define INCLUDED_SVL_SOURCE_INC_POOLIO_HXX
 
+#include <svl/itempool.hxx>
 #include <svl/SfxBroadcaster.hxx>
-#include <deque>
+#include <tools/debug.hxx>
 #include <memory>
-#include <unordered_map>
-#include <vector>
+#include <o3tl/sorted_vector.hxx>
 
 class SfxPoolItem;
 class SfxItemPoolUser;
 
-#ifndef DELETEZ
-#define DELETEZ(pPtr) { delete pPtr; pPtr = 0; }
-#endif
+const sal_uInt32 SFX_ITEMS_DEFAULT = 0xfffffffe;
 
-static const sal_uInt32 SFX_ITEMS_DIRECT  = 0xffffffff;
-static const sal_uInt32 SFX_ITEMS_NULL    = 0xfffffff0;  // instead StoreSurrogate
-static const sal_uInt32 SFX_ITEMS_DEFAULT = 0xfffffffe;
-
-struct SfxPoolVersion_Impl
+static bool CompareSortablePoolItems(SfxPoolItem const* lhs, SfxPoolItem const* rhs)
 {
-    sal_uInt16          _nVer;
-    sal_uInt16          _nStart, _nEnd;
-    const sal_uInt16*         _pMap;
-
-                    SfxPoolVersion_Impl( sal_uInt16 nVer, sal_uInt16 nStart, sal_uInt16 nEnd,
-                                         const sal_uInt16 *pMap )
-                    :   _nVer( nVer ),
-                        _nStart( nStart ),
-                        _nEnd( nEnd ),
-                        _pMap( pMap )
-                    {}
-                    SfxPoolVersion_Impl( const SfxPoolVersion_Impl &rOrig )
-                    :   _nVer( rOrig._nVer ),
-                        _nStart( rOrig._nStart ),
-                        _nEnd( rOrig._nEnd ),
-                        _pMap( rOrig._pMap )
-                    {}
-};
-
-typedef std::shared_ptr< SfxPoolVersion_Impl > SfxPoolVersion_ImplPtr;
-
+    return (*lhs) < (*rhs);
+}
 /**
  * This array contains a set of SfxPoolItems, if those items are
  * poolable then each item has a unique set of properties, and we
@@ -68,80 +43,135 @@ typedef std::shared_ptr< SfxPoolVersion_Impl > SfxPoolVersion_ImplPtr;
  */
 struct SfxPoolItemArray_Impl
 {
-    typedef std::vector<sal_uInt32> FreeList;
-    typedef std::unordered_map<SfxPoolItem*,sal_uInt32> PoolItemPtrToIndexMap;
 private:
-    std::vector<SfxPoolItem*> maPoolItemVector;
+    o3tl::sorted_vector<SfxPoolItem*> maPoolItemSet;
+    // In some cases, e.g. subclasses of NameOrIndex, the parent class (NameOrIndex) is sortable,
+    // but the subclasses do not define an operator<, which means that we don't get an ordering
+    // strong enough to enforce uniqueness purely with operator<, which means we need to do
+    // a partial scan with operator==
+    std::vector<SfxPoolItem*> maSortablePoolItems;
 public:
-    /// Track list of indices into our array that contain an empty slot
-    FreeList maFree;
-    /// Hash of SfxPoolItem pointer to index into our array that contains that slot
-    PoolItemPtrToIndexMap     maPtrToIndex;
-
-    SfxPoolItemArray_Impl () {}
-    SfxPoolItem*& operator[](size_t n) {return maPoolItemVector[n];}
-    std::vector<SfxPoolItem*>::iterator begin() {return maPoolItemVector.begin();}
-    std::vector<SfxPoolItem*>::iterator end() {return maPoolItemVector.end();}
+    o3tl::sorted_vector<SfxPoolItem*>::const_iterator begin() const { return maPoolItemSet.begin(); }
+    o3tl::sorted_vector<SfxPoolItem*>::const_iterator end() const { return maPoolItemSet.end(); }
     /// clear array of PoolItem variants after all PoolItems are deleted
     /// or all ref counts are decreased
     void clear();
-    size_t size() const {return maPoolItemVector.size();}
-    void push_back(SfxPoolItem* pItem) {maPoolItemVector.push_back(pItem);}
+    size_t size() const {return maPoolItemSet.size();}
+    bool empty() const {return maPoolItemSet.empty();}
+    o3tl::sorted_vector<SfxPoolItem*>::const_iterator find(SfxPoolItem* pItem) const { return maPoolItemSet.find(pItem); }
+    void insert(SfxPoolItem* pItem)
+    {
+        bool bInserted = maPoolItemSet.insert(pItem).second;
+        assert( bInserted && "duplicate item?" );
+        (void)bInserted;
 
-    /// re-build the list of free slots and hash from clean
-    void SVL_DLLPUBLIC ReHash();
+        if (pItem->IsSortable())
+        {
+            // bail early if someone modified one of these things underneath me
+            assert( std::is_sorted_until(maSortablePoolItems.begin(), maSortablePoolItems.end(), CompareSortablePoolItems) == maSortablePoolItems.end());
+
+            auto it = std::lower_bound(maSortablePoolItems.begin(), maSortablePoolItems.end(), pItem, CompareSortablePoolItems);
+            maSortablePoolItems.insert(maSortablePoolItems.begin() + (it - maSortablePoolItems.begin()), pItem);
+        }
+    }
+    const SfxPoolItem* findByLessThan(const SfxPoolItem* pNeedle) const
+    {
+        // bail early if someone modified one of these things underneath me
+        assert( std::is_sorted_until(maSortablePoolItems.begin(), maSortablePoolItems.end(), CompareSortablePoolItems) == maSortablePoolItems.end());
+        assert( maPoolItemSet.empty() || maPoolItemSet.front()->IsSortable() );
+
+        auto it = std::lower_bound(maSortablePoolItems.begin(), maSortablePoolItems.end(), pNeedle, CompareSortablePoolItems);
+        for (;;)
+        {
+            if (it == maSortablePoolItems.end())
+                return nullptr;
+            if (**it < *pNeedle)
+                return nullptr;
+            if (*pNeedle == **it)
+                return *it;
+            ++it;
+        }
+    }
+    std::vector<const SfxPoolItem*> findSurrogateRange(const SfxPoolItem* pNeedle) const
+    {
+        std::vector<const SfxPoolItem*> rv;
+        if (!maSortablePoolItems.empty())
+        {
+            // bail early if someone modified one of these things underneath me
+            assert( std::is_sorted_until(maSortablePoolItems.begin(), maSortablePoolItems.end(), CompareSortablePoolItems) == maSortablePoolItems.end());
+
+            auto range = std::equal_range(maSortablePoolItems.begin(), maSortablePoolItems.end(), pNeedle, CompareSortablePoolItems);
+            rv.reserve(std::distance(range.first, range.second));
+            for (auto it = range.first; it != range.second; ++it)
+                rv.push_back(*it);
+        }
+        else
+        {
+            for (const SfxPoolItem* p : maPoolItemSet)
+                if (*pNeedle == *p)
+                    rv.push_back(p);
+        }
+        return rv;
+    }
+    void erase(o3tl::sorted_vector<SfxPoolItem*>::const_iterator it)
+    {
+        auto pNeedle = *it;
+        if ((*it)->IsSortable())
+        {
+            // bail early if someone modified one of these things underneath me
+            assert( std::is_sorted_until(maSortablePoolItems.begin(), maSortablePoolItems.end(), CompareSortablePoolItems) == maSortablePoolItems.end());
+
+            auto sortIt = std::lower_bound(maSortablePoolItems.begin(), maSortablePoolItems.end(), pNeedle, CompareSortablePoolItems);
+            for (;;)
+            {
+                if (sortIt == maSortablePoolItems.end())
+                {
+                    assert(false && "did not find item?");
+                    break;
+                }
+                if (**sortIt < *pNeedle)
+                {
+                    assert(false && "did not find item?");
+                    break;
+                }
+                // need to compare by pointer here, since we might have duplicates
+                if (*sortIt == pNeedle)
+                {
+                    maSortablePoolItems.erase(sortIt);
+                    break;
+                }
+                ++sortIt;
+            }
+        }
+        maPoolItemSet.erase(it);
+    }
 };
 
 struct SfxItemPool_Impl
 {
     SfxBroadcaster                  aBC;
-    std::vector<SfxPoolItemArray_Impl*> maPoolItems;
+    std::vector<SfxPoolItemArray_Impl> maPoolItemArrays;
     std::vector<SfxItemPoolUser*>   maSfxItemPoolUsers; /// ObjectUser section
     OUString                        aName;
     std::vector<SfxPoolItem*>       maPoolDefaults;
     std::vector<SfxPoolItem*>*      mpStaticDefaults;
     SfxItemPool*                    mpMaster;
     SfxItemPool*                    mpSecondary;
-    sal_uInt16*                     mpPoolRanges;
-    std::deque< SfxPoolVersion_ImplPtr > aVersions;
+    std::unique_ptr<sal_uInt16[]>   mpPoolRanges;
     sal_uInt16                      mnStart;
     sal_uInt16                      mnEnd;
-    sal_uInt16                      mnFileFormatVersion;
-    sal_uInt16                      nVersion;
-    sal_uInt16                      nLoadingVersion;
-    sal_uInt16                      nInitRefCount; // 1, during load, may be 2
-    sal_uInt16                      nVerStart, nVerEnd; // WhichRange in versions
-    sal_uInt16                      nStoringStart, nStoringEnd; // Range to be saved
-    sal_uInt8                       nMajorVer, nMinorVer; // The Pool itself
     MapUnit                         eDefMetric;
-    bool                            bInSetItem;
-    bool                            bStreaming; // in Load() or Store()
-    bool                            mbPersistentRefCounts;
 
     SfxItemPool_Impl( SfxItemPool* pMaster, const OUString& rName, sal_uInt16 nStart, sal_uInt16 nEnd )
-        : maPoolItems(nEnd - nStart + 1)
+        : maPoolItemArrays(nEnd - nStart + 1)
         , aName(rName)
         , maPoolDefaults(nEnd - nStart + 1)
         , mpStaticDefaults(nullptr)
         , mpMaster(pMaster)
         , mpSecondary(nullptr)
-        , mpPoolRanges(nullptr)
         , mnStart(nStart)
         , mnEnd(nEnd)
-        , mnFileFormatVersion(0)
-        , nVersion(0)
-        , nLoadingVersion(0)
-        , nInitRefCount(0)
-        , nVerStart(0)
-        , nVerEnd(0)
-        , nStoringStart(0)
-        , nStoringEnd(0)
-        , nMajorVer(0)
-        , nMinorVer(0)
         , eDefMetric(MapUnit::MapCM)
-        , bInSetItem(false)
-        , bStreaming(false)
-        , mbPersistentRefCounts(false)
     {
         DBG_ASSERT(mnStart, "Start-Which-Id must be greater 0" );
     }
@@ -153,21 +183,14 @@ struct SfxItemPool_Impl
 
     void DeleteItems()
     {
-        for (auto pPoolItemArray : maPoolItems)
-            delete pPoolItemArray;
-        maPoolItems.clear();
+        maPoolItemArrays.clear();
         maPoolDefaults.clear();
-
-        delete[] mpPoolRanges;
-        mpPoolRanges = nullptr;
+        mpPoolRanges.reset();
     }
-
-    void readTheItems(SvStream & rStream, sal_uInt32 nCount, sal_uInt16 nVersion,
-                      SfxPoolItem * pDefItem, SfxPoolItemArray_Impl ** pArr);
 
     // unit testing
     friend class PoolItemTest;
-    static SfxItemPool_Impl *GetImpl(SfxItemPool *pPool) { return pPool->pImpl.get(); }
+    static SfxItemPool_Impl *GetImpl(SfxItemPool const *pPool) { return pPool->pImpl.get(); }
 };
 
 
@@ -184,48 +207,6 @@ struct SfxItemPool_Impl
 #define SFX_ITEMPOOL_REC_WHICHIDS       sal_uInt16(0x0030)
 #define SFX_ITEMPOOL_REC_ITEMS          sal_uInt16(0x0040)
 #define SFX_ITEMPOOL_REC_DEFAULTS       sal_uInt16(0x0050)
-
-
-/** Read in a Unicode string from a streamed byte string representation.
-
-    @param rStream  Some (input) stream.  Its Stream/TargetCharSets must
-    be set to correct values!
-
-    @return  On success, returns the reconstructed Unicode string.
- */
-OUString readByteString(SvStream & rStream);
-
-/** Write a byte string representation of a Unicode string into a stream.
-
-    @param rStream  Some (output) stream.  Its Stream/TargetCharSets must
-    be set to correct values!
-
-    @param rString  Some Unicode string.
- */
-void writeByteString(SvStream & rStream, const OUString& rString);
-
-/** Read in a Unicode string from either a streamed Unicode or byte string
-    representation.
-
-    @param rStream  Some (input) stream.  If bUnicode is false, its
-    Stream/TargetCharSets must be set to correct values!
-
-    @param bUnicode  Whether to read in a stream Unicode (true) or byte
-    string (false) representation.
-
-    @return          On success, returns the reconstructed Unicode string.
- */
-OUString readUnicodeString(SvStream & rStream, bool bUnicode);
-
-/** Write a Unicode string representation of a Unicode string into a
-    stream.
-
-    @param rStream  Some (output) stream.
-
-    @param rString  Some Unicode string.
- */
-void writeUnicodeString(SvStream & rStream, const OUString& rString);
-
 
 #endif // INCLUDED_SVL_SOURCE_INC_POOLIO_HXX
 

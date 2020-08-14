@@ -33,7 +33,6 @@ namespace utl
     using ::com::sun::star::uno::XInterface;
     using ::com::sun::star::uno::UNO_QUERY;
     using ::com::sun::star::uno::Exception;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::util::XCloseable;
     using ::com::sun::star::util::XCloseListener;
     using ::com::sun::star::util::CloseVetoException;
@@ -43,6 +42,9 @@ namespace utl
 
     typedef ::cppu::WeakImplHelper <   XCloseListener
                                     >   CloseListener_Base;
+
+    namespace {
+
     class CloseListener_Impl : public CloseListener_Base
     {
     public:
@@ -68,6 +70,8 @@ namespace utl
     private:
         bool    m_bHasOwnership;
     };
+
+    }
 
     void SAL_CALL CloseListener_Impl::queryClosing( const EventObject&, sal_Bool i_deliverOwnership )
     {
@@ -104,7 +108,7 @@ namespace utl
             i_data.xCloseable->addCloseListener( i_data.pListener.get() );
         }
 
-        void lcl_deinit( CloseVeto_Data& i_data )
+        void lcl_deinit( CloseVeto_Data const & i_data )
         {
             if ( !i_data.xCloseable.is() )
                 return;
@@ -119,7 +123,7 @@ namespace utl
                 catch( const CloseVetoException& ) { }
                 catch( const Exception& )
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("unotools");
                 }
             }
         }

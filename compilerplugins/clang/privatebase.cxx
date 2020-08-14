@@ -7,15 +7,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef LO_CLANG_SHARED_PLUGINS
+
 #include "plugin.hxx"
 
 namespace {
 
 class PrivateBase:
-    public RecursiveASTVisitor<PrivateBase>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<PrivateBase>
 {
 public:
-    explicit PrivateBase(InstantiationData const & data): Plugin(data) {}
+    explicit PrivateBase(loplugin::InstantiationData const & data): FilteringPlugin(data)
+    {}
 
     void run() override;
 
@@ -40,15 +43,17 @@ bool PrivateBase::VisitCXXRecordDecl(CXXRecordDecl const * decl) {
                 DiagnosticsEngine::Warning,
                 "base class is private by default; explicitly give an access"
                     " specifier",
-                i->getLocStart())
+                compat::getBeginLoc(i))
                 << i->getSourceRange();
         }
     }
     return true;
 }
 
-loplugin::Plugin::Registration<PrivateBase> X("privatebase");
+loplugin::Plugin::Registration<PrivateBase> privatebase("privatebase");
 
 }
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

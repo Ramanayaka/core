@@ -17,34 +17,36 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <swtypes.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/view/DocumentZoomType.hpp>
+#include <comphelper/ChainablePropertySetInfo.hxx>
+#include <cppuhelper/supportsservice.hxx>
 #include <o3tl/any.hxx>
 #include <osl/diagnose.h>
+#include <rtl/ustrbuf.hxx>
+#include <svl/itemprop.hxx>
+#include <tools/urlobj.hxx>
+#include <tools/UnitConversion.hxx>
+#include <vcl/svapp.hxx>
+
 #include <unomod.hxx>
-#include <unomid.h>
-#include <unoprnms.hxx>
-#include <unomap.hxx>
+#include <usrpref.hxx>
 #include <prtopt.hxx>
 #include <swmodule.hxx>
 #include <view.hxx>
 #include <docsh.hxx>
 #include <wrtsh.hxx>
 #include <viewopt.hxx>
-#include <vcl/svapp.hxx>
 #include <doc.hxx>
 #include <IDocumentDeviceAccess.hxx>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/view/DocumentZoomType.hpp>
-#include <comphelper/ChainablePropertySetInfo.hxx>
-#include <cppuhelper/supportsservice.hxx>
 #include <edtwin.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <tools/urlobj.hxx>
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 using namespace ::comphelper;
+
+namespace {
 
 enum SwViewSettingsPropertyHandles
 {
@@ -89,7 +91,11 @@ enum SwViewSettingsPropertyHandles
     HANDLE_VIEWSET_HORI_RULER_METRIC,
     HANDLE_VIEWSET_VERT_RULER_METRIC,
     HANDLE_VIEWSET_SCROLLBAR_TIPS,
-    HANDLE_VIEWSET_HIDE_WHITESPACE
+    HANDLE_VIEWSET_INLINECHANGES_TIPS,
+    HANDLE_VIEWSET_HIDE_WHITESPACE,
+    HANDLE_VIEWSET_USE_HEADERFOOTERMENU,
+    HANDLE_VIEWSET_BOOKMARKS,
+    HANDLE_VIEWSET_SHOW_OUTLINECONTENTVISIBILITYBUTTON
 };
 
 enum SwPrintSettingsPropertyHandles
@@ -114,6 +120,8 @@ enum SwPrintSettingsPropertyHandles
     HANDLE_PRINTSET_HIDDEN_TEXT
 };
 
+}
+
 static ChainablePropertySetInfo * lcl_createViewSettingsInfo()
 {
     static PropertyInfo const aViewSettingsMap_Impl[] =
@@ -124,11 +132,15 @@ static ChainablePropertySetInfo * lcl_createViewSettingsInfo()
         { OUString( "IsSnapToRaster"),       HANDLE_VIEWSET_IS_SNAP_TO_RASTER,       cppu::UnoType<bool>::get(),   PROPERTY_NONE},
         { OUString( "IsVertRulerRightAligned"),HANDLE_VIEWSET_VRULER_RIGHT         , cppu::UnoType<bool>::get(), PROPERTY_NONE},
         { OUString( "ShowContentTips" ),     HANDLE_VIEWSET_SHOW_CONTENT_TIPS      , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { OUString( "ShowInlineTooltips" ),  HANDLE_VIEWSET_INLINECHANGES_TIPS      , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { OUString( "UseHeaderFooterMenu" ), HANDLE_VIEWSET_USE_HEADERFOOTERMENU , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { OUString( "ShowOutlineContentVisibilityButton" ), HANDLE_VIEWSET_SHOW_OUTLINECONTENTVISIBILITYBUTTON , cppu::UnoType<bool>::get(), PROPERTY_NONE},
         { OUString( "RasterResolutionX"),    HANDLE_VIEWSET_RASTER_RESOLUTION_X,     cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
         { OUString( "RasterResolutionY"),    HANDLE_VIEWSET_RASTER_RESOLUTION_Y,     cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
         { OUString( "RasterSubdivisionX"),   HANDLE_VIEWSET_RASTER_SUBDIVISION_X,    cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
         { OUString( "RasterSubdivisionY"),   HANDLE_VIEWSET_RASTER_SUBDIVISION_Y,    cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
         { OUString( "ShowAnnotations" ),     HANDLE_VIEWSET_ANNOTATIONS          , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { OUString( "ShowBookmarks" ), HANDLE_VIEWSET_BOOKMARKS, cppu::UnoType<bool>::get(), PROPERTY_NONE },
         { OUString( "ShowBreaks"),           HANDLE_VIEWSET_BREAKS               , cppu::UnoType<bool>::get(), PROPERTY_NONE},
         { OUString( "ShowDrawings"),         HANDLE_VIEWSET_DRAWINGS             , cppu::UnoType<bool>::get(), PROPERTY_NONE},
         { OUString( "ShowFieldCommands"),    HANDLE_VIEWSET_FIELD_COMMANDS       , cppu::UnoType<bool>::get(), PROPERTY_NONE},
@@ -226,7 +238,7 @@ Reference< XPropertySet >  SwXModule::getPrintSettings()
 
 OUString SwXModule::getImplementationName()
 {
-    return OUString( "SwXModule"  );
+    return "SwXModule";
 }
 
 sal_Bool SwXModule::supportsService(const OUString& rServiceName)
@@ -236,9 +248,7 @@ sal_Bool SwXModule::supportsService(const OUString& rServiceName)
 
 Sequence< OUString > SwXModule::getSupportedServiceNames()
 {
-    OUString sService( "com.sun.star.text.GlobalSettings");
-    const Sequence< OUString > aSeq( &sService, 1 );
-    return aSeq;
+    return { "com.sun.star.text.GlobalSettings" };
 }
 
 SwXPrintSettings::SwXPrintSettings(SwXPrintSettingsType eType, SwDoc* pDoc)
@@ -271,82 +281,79 @@ void SwXPrintSettings::_preSetValues ()
     }
 }
 
+namespace
+{
+    bool tryBoolAccess(const uno::Any &rValue)
+    {
+        const auto xPrSet = o3tl::tryAccess<bool>(rValue);
+        if (!xPrSet)
+            throw lang::IllegalArgumentException();
+        return *xPrSet;
+    }
+}
+
 void SwXPrintSettings::_setSingleValue( const comphelper::PropertyInfo & rInfo, const uno::Any &rValue )
 {
-    bool bVal;
-
     switch( rInfo.mnHandle )
     {
         case HANDLE_PRINTSET_LEFT_PAGES:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintLeftPage(bVal);
+            mpPrtOpt->SetPrintLeftPage(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_RIGHT_PAGES:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintRightPage(bVal);
+            mpPrtOpt->SetPrintRightPage(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_REVERSED:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintReverse(bVal);
+            mpPrtOpt->SetPrintReverse(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_PROSPECT:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintProspect(bVal);
+            mpPrtOpt->SetPrintProspect(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_GRAPHICS:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintGraphic(bVal);
+            mpPrtOpt->SetPrintGraphic(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_TABLES:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintTable(bVal);
+            mpPrtOpt->SetPrintTable(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_DRAWINGS:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintDraw(bVal);
+            mpPrtOpt->SetPrintDraw(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_CONTROLS:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintControl(bVal);
+            mpPrtOpt->SetPrintControl(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_PAGE_BACKGROUND:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintPageBackground(bVal);
+            mpPrtOpt->SetPrintPageBackground(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_BLACK_FONTS:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintBlackFont(bVal);
+            mpPrtOpt->SetPrintBlackFont(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_SINGLE_JOBS:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintSingleJobs(bVal);
+            mpPrtOpt->SetPrintSingleJobs(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_PAPER_FROM_SETUP:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPaperFromSetup(bVal);
+            mpPrtOpt->SetPaperFromSetup(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_ANNOTATION_MODE:
@@ -354,47 +361,43 @@ void SwXPrintSettings::_setSingleValue( const comphelper::PropertyInfo & rInfo, 
             sal_Int16 nTmp = 0;
             rValue >>= nTmp;
             SwPostItMode nVal = static_cast<SwPostItMode>(nTmp);
-            if(nVal <= SwPostItMode::EndPage)
-                mpPrtOpt->SetPrintPostIts(nVal);
-            else
+            if(nVal > SwPostItMode::EndPage)
                 throw lang::IllegalArgumentException();
+
+            mpPrtOpt->SetPrintPostIts(nVal);
         }
         break;
         case HANDLE_PRINTSET_EMPTY_PAGES:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintEmptyPages(bVal);
+            mpPrtOpt->SetPrintEmptyPages(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_FAX_NAME:
         {
             OUString sString;
-            if ( rValue >>= sString)
-                mpPrtOpt->SetFaxName(sString);
-            else
+            if ( !(rValue >>= sString))
                 throw lang::IllegalArgumentException();
+
+            mpPrtOpt->SetFaxName(sString);
         }
         break;
         case HANDLE_PRINTSET_PROSPECT_RTL:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintProspect_RTL(bVal);
+            mpPrtOpt->SetPrintProspect_RTL(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_PLACEHOLDER:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintTextPlaceholder(bVal);
+            mpPrtOpt->SetPrintTextPlaceholder(tryBoolAccess(rValue));
         }
         break;
         case HANDLE_PRINTSET_HIDDEN_TEXT:
         {
-            bVal = *o3tl::tryAccess<bool>(rValue);
-            mpPrtOpt->SetPrintHiddenText(bVal);
+            mpPrtOpt->SetPrintHiddenText(tryBoolAccess(rValue));
         }
         break;
         default:
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(OUString::number(rInfo.mnHandle));
     }
 }
 
@@ -489,7 +492,7 @@ void SwXPrintSettings::_getSingleValue( const comphelper::PropertyInfo & rInfo, 
         }
         break;
         default:
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(OUString::number(rInfo.mnHandle));
     }
 }
 
@@ -500,7 +503,7 @@ void SwXPrintSettings::_postGetValues ()
 
 OUString SwXPrintSettings::getImplementationName()
 {
-    return OUString("SwXPrintSettings");
+    return "SwXPrintSettings";
 }
 
 sal_Bool SwXPrintSettings::supportsService(const OUString& rServiceName)
@@ -517,13 +520,12 @@ Sequence< OUString > SwXPrintSettings::getSupportedServiceNames()
 SwXViewSettings::SwXViewSettings(SwView* pVw)
     : ChainablePropertySet( lcl_createViewSettingsInfo (), &Application::GetSolarMutex() )
     , pView(pVw)
-    , mpViewOption(nullptr)
     , mpConstViewOption(nullptr)
     , bObjectValid(true)
     , mbApplyZoom(false)
-    , eHRulerUnit(FUNIT_CM)
+    , eHRulerUnit(FieldUnit::CM)
     , mbApplyHRulerMetric(false)
-    , eVRulerUnit(FUNIT_CM)
+    , eVRulerUnit(FieldUnit::CM)
     , mbApplyVRulerMetric(false)
 {
     // This property only exists if we have a view (ie, not at the module )
@@ -550,7 +552,7 @@ void SwXViewSettings::_preSetValues ()
     else
         pVOpt = SW_MOD()->GetViewOption(false);
 
-    mpViewOption = new SwViewOption (*pVOpt);
+    mpViewOption.reset( new SwViewOption (*pVOpt) );
     mbApplyZoom = false;
     if(pView)
         mpViewOption->SetStarOneSetting(true);
@@ -582,6 +584,7 @@ void SwXViewSettings::_setSingleValue( const comphelper::PropertyInfo & rInfo, c
         case  HANDLE_VIEWSET_PROTECTED_SPACES      :   mpViewOption->SetHardBlank(*o3tl::doAccess<bool>(rValue));    break;
         case  HANDLE_VIEWSET_TABSTOPS              :   mpViewOption->SetTab(*o3tl::doAccess<bool>(rValue));  break;
         case  HANDLE_VIEWSET_BREAKS                :   mpViewOption->SetLineBreak(*o3tl::doAccess<bool>(rValue)); break;
+        case  HANDLE_VIEWSET_BOOKMARKS             :   mpViewOption->SetShowBookmarks(*o3tl::doAccess<bool>(rValue)); break;
         case  HANDLE_VIEWSET_HIDDEN_TEXT           :   mpViewOption->SetShowHiddenField(*o3tl::doAccess<bool>(rValue));  break;
         case  HANDLE_VIEWSET_HIDDEN_CHARACTERS     :   mpViewOption->SetShowHiddenChar(*o3tl::doAccess<bool>(rValue)); break;
         case  HANDLE_VIEWSET_HIDDEN_PARAGRAPHS     :   mpViewOption->SetShowHiddenPara(*o3tl::doAccess<bool>(rValue));   break;
@@ -592,13 +595,16 @@ void SwXViewSettings::_setSingleValue( const comphelper::PropertyInfo & rInfo, c
         case  HANDLE_VIEWSET_IS_RASTER_VISIBLE     : mpViewOption->SetGridVisible(*o3tl::doAccess<bool>(rValue)); break;
         case  HANDLE_VIEWSET_IS_SNAP_TO_RASTER     : mpViewOption->SetSnap(*o3tl::doAccess<bool>(rValue)); break;
         case  HANDLE_VIEWSET_SCROLLBAR_TIPS        : mpViewOption->SetShowScrollBarTips(*o3tl::doAccess<bool>(rValue)); break;
+        case  HANDLE_VIEWSET_INLINECHANGES_TIPS    : mpViewOption->SetShowInlineTooltips(*o3tl::doAccess<bool>(rValue)); break;
+        case  HANDLE_VIEWSET_USE_HEADERFOOTERMENU  : mpViewOption->SetUseHeaderFooterMenu(*o3tl::doAccess<bool>(rValue)); break;
+        case  HANDLE_VIEWSET_SHOW_OUTLINECONTENTVISIBILITYBUTTON : mpViewOption->SetShowOutlineContentVisibilityButton(*o3tl::doAccess<bool>(rValue)); break;
         case  HANDLE_VIEWSET_RASTER_RESOLUTION_X   :
         {
             sal_Int32 nTmp = 0;
             if(!(rValue >>= nTmp)  ||  nTmp < 10)
                 throw IllegalArgumentException();
             Size aSize( mpViewOption->GetSnapSize() );
-            aSize.Width() = convertMm100ToTwip( nTmp );
+            aSize.setWidth( convertMm100ToTwip( nTmp ) );
             mpViewOption->SetSnapSize( aSize );
         }
         break;
@@ -608,32 +614,32 @@ void SwXViewSettings::_setSingleValue( const comphelper::PropertyInfo & rInfo, c
             if(!(rValue >>= nTmp)  ||  nTmp < 10)
                 throw IllegalArgumentException();
             Size aSize( mpViewOption->GetSnapSize() );
-            aSize.Height() = convertMm100ToTwip( nTmp );
+            aSize.setHeight( convertMm100ToTwip( nTmp ) );
             mpViewOption->SetSnapSize( aSize );
         }
         break;
         case  HANDLE_VIEWSET_RASTER_SUBDIVISION_X  :
         {
             sal_Int32 nTmp = 0;
-            if(!(rValue >>= nTmp)  ||  !(0 <= nTmp  &&  nTmp < 100))
+            if(!(rValue >>= nTmp)  ||  (0 > nTmp  ||  nTmp >= 100))
                 throw IllegalArgumentException();
-            mpViewOption->SetDivisionX( (short) nTmp );
+            mpViewOption->SetDivisionX( static_cast<short>(nTmp) );
         }
         break;
         case  HANDLE_VIEWSET_RASTER_SUBDIVISION_Y  :
         {
             sal_Int32 nTmp = 0;
-            if(!(rValue >>= nTmp)  ||  !(0 <= nTmp  &&  nTmp < 100))
+            if(!(rValue >>= nTmp)  ||  (0 > nTmp  ||  nTmp >= 100))
                 throw IllegalArgumentException();
-            mpViewOption->SetDivisionY( (short) nTmp );
+            mpViewOption->SetDivisionY( static_cast<short>(nTmp) );
         }
         break;
         case  HANDLE_VIEWSET_ZOOM                   :
         {
             sal_Int16 nZoom = 0;
-            if(!(rValue >>= nZoom) || nZoom > 1000 || nZoom < 5)
+            if(!(rValue >>= nZoom) || nZoom > MAXZOOM || nZoom < MINZOOM)
                 throw lang::IllegalArgumentException();
-            mpViewOption->SetZoom((sal_uInt16)nZoom);
+            mpViewOption->SetZoom(static_cast<sal_uInt16>(nZoom));
             mbApplyZoom = true;
         }
         break;
@@ -708,20 +714,18 @@ void SwXViewSettings::_setSingleValue( const comphelper::PropertyInfo & rInfo, c
         break;
         case HANDLE_VIEWSET_HELP_URL:
         {
-            if ( pView )
-            {
-                OUString sHelpURL;
-                if ( ! ( rValue >>= sHelpURL ) )
-                    throw IllegalArgumentException();
-
-                INetURLObject aHID( sHelpURL );
-                if ( aHID.GetProtocol() == INetProtocol::Hid )
-                      pView->GetEditWin().SetHelpId( OUStringToOString( aHID.GetURLPath(), RTL_TEXTENCODING_UTF8 ) );
-                else
-                    throw IllegalArgumentException ();
-            }
-            else
+            if ( !pView )
                 throw UnknownPropertyException();
+
+            OUString sHelpURL;
+            if ( ! ( rValue >>= sHelpURL ) )
+                throw IllegalArgumentException();
+
+            INetURLObject aHID( sHelpURL );
+            if ( aHID.GetProtocol() != INetProtocol::Hid )
+                throw IllegalArgumentException ();
+
+            pView->GetEditWin().SetHelpId( OUStringToOString( aHID.GetURLPath(), RTL_TEXTENCODING_UTF8 ) );
         }
         break;
         case HANDLE_VIEWSET_HORI_RULER_METRIC:
@@ -729,13 +733,13 @@ void SwXViewSettings::_setSingleValue( const comphelper::PropertyInfo & rInfo, c
         {
             sal_uInt16 nUnit;
             if( rValue >>= nUnit )
-                switch( nUnit )
+                switch (static_cast<FieldUnit>(nUnit))
                 {
-                case FUNIT_MM:
-                case FUNIT_CM:
-                case FUNIT_POINT:
-                case FUNIT_PICA:
-                case FUNIT_INCH:
+                case FieldUnit::MM:
+                case FieldUnit::CM:
+                case FieldUnit::POINT:
+                case FieldUnit::PICA:
+                case FieldUnit::INCH:
                     if( rInfo.mnHandle == HANDLE_VIEWSET_HORI_RULER_METRIC )
                     {
                         eHRulerUnit = static_cast<FieldUnit>(nUnit);
@@ -753,7 +757,7 @@ void SwXViewSettings::_setSingleValue( const comphelper::PropertyInfo & rInfo, c
         }
         break;
         default:
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(OUString::number(rInfo.mnHandle));
     }
 }
 
@@ -781,8 +785,7 @@ void SwXViewSettings::_postSetValues()
     SW_MOD()->ApplyUsrPref( *mpViewOption, pView, pView ? SvViewOpt::DestViewOnly
                                                   : SvViewOpt::DestText );
 
-    delete mpViewOption;
-    mpViewOption = nullptr;
+    mpViewOption.reset();
 }
 
 void SwXViewSettings::_preGetValues ()
@@ -824,6 +827,7 @@ void SwXViewSettings::_getSingleValue( const comphelper::PropertyInfo & rInfo, u
         case  HANDLE_VIEWSET_PROTECTED_SPACES      :   bBoolVal = mpConstViewOption->IsHardBlank(); break;
         case  HANDLE_VIEWSET_TABSTOPS              :   bBoolVal = mpConstViewOption->IsTab(true);   break;
         case  HANDLE_VIEWSET_BREAKS                :   bBoolVal = mpConstViewOption->IsLineBreak(true); break;
+        case  HANDLE_VIEWSET_BOOKMARKS             :   bBoolVal = mpConstViewOption->IsShowBookmarks(true); break;
         case  HANDLE_VIEWSET_HIDDEN_TEXT           :   bBoolVal = mpConstViewOption->IsShowHiddenField();   break;
         case  HANDLE_VIEWSET_HIDDEN_CHARACTERS     :   bBoolVal = mpConstViewOption->IsShowHiddenChar(true); break;
         case  HANDLE_VIEWSET_HIDE_WHITESPACE       :   bBoolVal = mpConstViewOption->IsHideWhitespaceMode(); break;
@@ -832,28 +836,29 @@ void SwXViewSettings::_getSingleValue( const comphelper::PropertyInfo & rInfo, u
         case  HANDLE_VIEWSET_TEXT_BOUNDARIES       :   bBoolVal = SwViewOption::IsDocBoundaries(); break;
         case  HANDLE_VIEWSET_SMOOTH_SCROLLING      :   bBoolVal = mpConstViewOption->IsSmoothScroll();  break;
         case  HANDLE_VIEWSET_SHOW_CONTENT_TIPS     :   bBoolVal = mpConstViewOption->IsShowContentTips(); break;
+        case  HANDLE_VIEWSET_INLINECHANGES_TIPS    :   bBoolVal = mpConstViewOption->IsShowInlineTooltips(); break;
         case  HANDLE_VIEWSET_IS_RASTER_VISIBLE     : bBoolVal = mpConstViewOption->IsGridVisible(); break;
         case  HANDLE_VIEWSET_IS_SNAP_TO_RASTER     : bBoolVal = mpConstViewOption->IsSnap(); break;
         case  HANDLE_VIEWSET_SCROLLBAR_TIPS        : bBoolVal = mpConstViewOption->IsShowScrollBarTips(); break;
         case  HANDLE_VIEWSET_RASTER_RESOLUTION_X   :
             bBool = false;
-            rValue <<= (sal_Int32) convertTwipToMm100(mpConstViewOption->GetSnapSize().Width());
+            rValue <<= static_cast<sal_Int32>(convertTwipToMm100(mpConstViewOption->GetSnapSize().Width()));
         break;
         case  HANDLE_VIEWSET_RASTER_RESOLUTION_Y   :
             bBool = false;
-            rValue <<= (sal_Int32) convertTwipToMm100(mpConstViewOption->GetSnapSize().Height());
+            rValue <<= static_cast<sal_Int32>(convertTwipToMm100(mpConstViewOption->GetSnapSize().Height()));
         break;
         case  HANDLE_VIEWSET_RASTER_SUBDIVISION_X  :
             bBool = false;
-            rValue <<= (sal_Int32) mpConstViewOption->GetDivisionX();
+            rValue <<= static_cast<sal_Int32>(mpConstViewOption->GetDivisionX());
         break;
         case  HANDLE_VIEWSET_RASTER_SUBDIVISION_Y  :
             bBool = false;
-            rValue <<= (sal_Int32) mpConstViewOption->GetDivisionY();
+            rValue <<= static_cast<sal_Int32>(mpConstViewOption->GetDivisionY());
         break;
         case  HANDLE_VIEWSET_ZOOM                   :
                 bBool = false;
-                rValue <<= (sal_Int16)mpConstViewOption->GetZoom();
+                rValue <<= static_cast<sal_Int16>(mpConstViewOption->GetZoom());
         break;
         case HANDLE_VIEWSET_ZOOM_TYPE:
         {
@@ -889,17 +894,15 @@ void SwXViewSettings::_getSingleValue( const comphelper::PropertyInfo & rInfo, u
         break;
         case HANDLE_VIEWSET_HELP_URL :
         {
-            if ( pView )
-            {
-                bBool = false;
-                OUStringBuffer sHelpURL;
-                sHelpURL.append ( INET_HID_SCHEME );
-                SwEditWin &rEditWin = pView->GetEditWin();
-                sHelpURL.append( OUString::fromUtf8( rEditWin.GetHelpId() ) );
-                rValue <<= sHelpURL.makeStringAndClear();
-            }
-            else
+            if ( !pView )
                 throw UnknownPropertyException();
+
+            bBool = false;
+            OUStringBuffer sHelpURL;
+            sHelpURL.append ( INET_HID_SCHEME );
+            SwEditWin &rEditWin = pView->GetEditWin();
+            sHelpURL.append( OUString::fromUtf8( rEditWin.GetHelpId() ) );
+            rValue <<= sHelpURL.makeStringAndClear();
         }
         break;
         case HANDLE_VIEWSET_HORI_RULER_METRIC:
@@ -908,12 +911,12 @@ void SwXViewSettings::_getSingleValue( const comphelper::PropertyInfo & rInfo, u
             {
                 FieldUnit eUnit;
                 pView->GetHRulerMetric( eUnit );
-                rValue <<= (sal_Int32)eUnit;
+                rValue <<= static_cast<sal_Int32>(eUnit);
             }
             else
             {
                 const SwMasterUsrPref* pUsrPref = SW_MOD()->GetUsrPref( false );
-                rValue <<= (sal_Int32)pUsrPref->GetHScrollMetric();
+                rValue <<= static_cast<sal_Int32>(pUsrPref->GetHScrollMetric());
             }
             bBool = false;
         }
@@ -924,12 +927,12 @@ void SwXViewSettings::_getSingleValue( const comphelper::PropertyInfo & rInfo, u
             {
                 FieldUnit eUnit;
                 pView->GetVRulerMetric( eUnit );
-                rValue <<= (sal_Int32)eUnit;
+                rValue <<= static_cast<sal_Int32>(eUnit);
             }
             else
             {
                 const SwMasterUsrPref* pUsrPref = SW_MOD()->GetUsrPref( false );
-                rValue <<= (sal_Int32)pUsrPref->GetVScrollMetric();
+                rValue <<= static_cast<sal_Int32>(pUsrPref->GetVScrollMetric());
             }
             bBool = false;
         }
@@ -947,7 +950,7 @@ void SwXViewSettings::_postGetValues ()
 
 OUString SwXViewSettings::getImplementationName()
 {
-    return OUString("SwXViewSettings");
+    return "SwXViewSettings";
 }
 
 sal_Bool SwXViewSettings::supportsService(const OUString& rServiceName)
@@ -961,7 +964,7 @@ Sequence< OUString > SwXViewSettings::getSupportedServiceNames()
     return aRet;
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 SwXModule_get_implementation(css::uno::XComponentContext*,
         css::uno::Sequence<css::uno::Any> const &)
 {

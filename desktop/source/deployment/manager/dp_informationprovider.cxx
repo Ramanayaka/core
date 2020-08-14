@@ -18,7 +18,7 @@
  */
 
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/servicedecl.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 #include <com/sun/star/deployment/UpdateInformationProvider.hpp>
 #include <com/sun/star/deployment/XPackage.hpp>
@@ -27,26 +27,23 @@
 #include <com/sun/star/deployment/XUpdateInformationProvider.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/task/XAbortChannel.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/xml/dom/XElement.hpp>
-#include <com/sun/star/xml/dom/XNode.hpp>
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <osl/diagnose.h>
-#include <sal/log.hxx>
 #include <rtl/ustring.hxx>
+#include <tools/diagnose_ex.h>
 #include <ucbhelper/content.hxx>
 
-#include "dp_dependencies.hxx"
-#include "dp_descriptioninfoset.hxx"
-#include "dp_identifier.hxx"
-#include "dp_services.hxx"
-#include "dp_version.hxx"
-#include "dp_misc.h"
-#include "dp_update.hxx"
+#include <dp_dependencies.hxx>
+#include <dp_descriptioninfoset.hxx>
+#include <dp_identifier.hxx>
+#include <dp_version.hxx>
+#include <dp_update.hxx>
 
 namespace beans      = com::sun::star::beans ;
 namespace deployment = com::sun::star::deployment ;
@@ -59,12 +56,19 @@ namespace xml = com::sun::star::xml ;
 
 namespace dp_info {
 
+namespace {
+
 class PackageInformationProvider :
-        public ::cppu::WeakImplHelper< deployment::XPackageInformationProvider >
+        public ::cppu::WeakImplHelper< deployment::XPackageInformationProvider, lang::XServiceInfo >
 
 {
     public:
     explicit PackageInformationProvider( uno::Reference< uno::XComponentContext >const& xContext);
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
     // XPackageInformationProvider
     virtual OUString SAL_CALL getPackageLocation( const OUString& extensionId ) override;
@@ -81,11 +85,29 @@ private:
     uno::Reference< deployment::XUpdateInformationProvider > mxUpdateInformation;
 };
 
+}
 
 PackageInformationProvider::PackageInformationProvider( uno::Reference< uno::XComponentContext > const& xContext) :
     mxContext( xContext ),
     mxUpdateInformation( deployment::UpdateInformationProvider::create( xContext ) )
 {
+}
+
+// XServiceInfo
+OUString PackageInformationProvider::getImplementationName()
+{
+    return "com.sun.star.comp.deployment.PackageInformationProvider";
+}
+
+sal_Bool PackageInformationProvider::supportsService( const OUString& ServiceName )
+{
+    return cppu::supportsService(this, ServiceName);
+}
+
+css::uno::Sequence< OUString > PackageInformationProvider::getSupportedServiceNames()
+{
+    // a private one:
+    return { "com.sun.star.comp.deployment.PackageInformationProvider" };
 }
 
 OUString PackageInformationProvider::getPackageLocation(
@@ -143,11 +165,9 @@ PackageInformationProvider::getPackageLocation( const OUString& _sExtensionId )
             ::ucbhelper::Content aContent( aLocationURL, nullptr, mxContext );
             aLocationURL = aContent.getURL();
         }
-        catch (const css::ucb::ContentCreationException& e)
+        catch (const css::ucb::ContentCreationException&)
         {
-           SAL_WARN(
-            "desktop.deployment",
-            "ignoring ContentCreationException \"" << e.Message << "\"");
+            TOOLS_WARN_EXCEPTION("desktop.deployment", "ignoring");
         }
     }
     return aLocationURL;
@@ -193,9 +213,9 @@ PackageInformationProvider::isUpdateAvailable( const OUString& _sExtensionId )
     }
 
     int nCount = 0;
-    for (dp_misc::UpdateInfoMap::iterator i(updateInfoMap.begin()); i != updateInfoMap.end(); ++i)
+    for (auto const& updateInfo : updateInfoMap)
     {
-        dp_misc::UpdateInfo const & info = i->second;
+        dp_misc::UpdateInfo const & info = updateInfo.second;
 
         OUString sOnlineVersion;
         if (info.info.is())
@@ -204,7 +224,7 @@ PackageInformationProvider::isUpdateAvailable( const OUString& _sExtensionId )
             dp_misc::DescriptionInfoset infoset(mxContext, info.info);
             uno::Sequence< uno::Reference< xml::dom::XElement > >
                 ds( dp_misc::Dependencies::check( infoset ) );
-            if ( ! ds.getLength() )
+            if ( ! ds.hasElements() )
                 sOnlineVersion = info.version;
         }
 
@@ -216,10 +236,8 @@ PackageInformationProvider::isUpdateAvailable( const OUString& _sExtensionId )
             extensions = extMgr->getExtensionsWithSameIdentifier(
                 dp_misc::getIdentifier(info.extension), info.extension->getName(),
                 uno::Reference<css_ucb::XCommandEnvironment>());
-        } catch (const lang::IllegalArgumentException& e) {
-            SAL_WARN(
-                "desktop.deployment",
-                "ignoring IllegalArgumentException \"" << e.Message << "\"");
+        } catch (const lang::IllegalArgumentException&) {
+            TOOLS_WARN_EXCEPTION("desktop.deployment", "ignoring");
             continue;
         }
         OSL_ASSERT(extensions.getLength() == 3);
@@ -241,10 +259,10 @@ PackageInformationProvider::isUpdateAvailable( const OUString& _sExtensionId )
         OUString updateVersionShared;
         if (sourceUser != dp_misc::UPDATE_SOURCE_NONE)
             updateVersionUser = dp_misc::getHighestVersion(
-                OUString(), sVersionShared, sVersionBundled, sOnlineVersion);
+                sVersionShared, sVersionBundled, sOnlineVersion);
         if (sourceShared  != dp_misc::UPDATE_SOURCE_NONE)
             updateVersionShared = dp_misc::getHighestVersion(
-                OUString(), OUString(), sVersionBundled, sOnlineVersion);
+                OUString(), sVersionBundled, sOnlineVersion);
         OUString updateVersion;
         if (dp_misc::compareVersions(updateVersionUser, updateVersionShared) == dp_misc::GREATER)
             updateVersion = updateVersionUser;
@@ -254,7 +272,7 @@ PackageInformationProvider::isUpdateAvailable( const OUString& _sExtensionId )
         {
 
             OUString aNewEntry[2];
-            aNewEntry[0] = i->first;
+            aNewEntry[0] = updateInfo.first;
             aNewEntry[1] = updateVersion;
             aList.realloc( ++nCount );
             aList[ nCount-1 ] = ::uno::Sequence< OUString >( aNewEntry, 2 );
@@ -309,15 +327,14 @@ uno::Sequence< uno::Sequence< OUString > > SAL_CALL PackageInformationProvider::
 }
 
 
-namespace sdecl = comphelper::service_decl;
-sdecl::class_<PackageInformationProvider> const servicePIP;
-sdecl::ServiceDecl const serviceDecl(
-    servicePIP,
-    // a private one:
-    "com.sun.star.comp.deployment.PackageInformationProvider",
-    "com.sun.star.comp.deployment.PackageInformationProvider" );
-
 } // namespace dp_info
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_deployment_PackageInformationProvider_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new dp_info::PackageInformationProvider(context));
+}
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

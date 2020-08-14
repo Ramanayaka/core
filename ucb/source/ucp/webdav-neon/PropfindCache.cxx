@@ -29,17 +29,6 @@ namespace webdav_ucp
     {
     }
 
-    PropertyNames::PropertyNames( const PropertyNames& theOther ) :
-        m_nStaleTime( theOther.m_nStaleTime ),
-        m_sURL( theOther.m_sURL ),
-        m_aPropertiesNames( theOther.m_aPropertiesNames )
-    {
-    }
-
-    PropertyNames::~PropertyNames()
-    {
-    }
-
     //PropertyNamesCache implementation
 
     PropertyNamesCache::PropertyNamesCache()
@@ -54,8 +43,7 @@ namespace webdav_ucp
     {
         // search the URL in the static map
         osl::MutexGuard aGuard( m_aMutex );
-        PropNameCache::const_iterator it;
-        it = m_aTheCache.find( rURL );
+        PropNameCache::const_iterator it = m_aTheCache.find( rURL );
         if ( it == m_aTheCache.end() )
             return false;
         else
@@ -78,8 +66,7 @@ namespace webdav_ucp
     void PropertyNamesCache::removeCachedPropertyNames( const OUString& rURL )
     {
         osl::MutexGuard aGuard( m_aMutex );
-        PropNameCache::const_iterator it;
-        it = m_aTheCache.find( rURL );
+        PropNameCache::const_iterator it = m_aTheCache.find( rURL );
         if ( it != m_aTheCache.end() )
         {
             m_aTheCache.erase( it );

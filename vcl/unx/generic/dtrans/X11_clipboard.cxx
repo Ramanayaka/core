@@ -18,19 +18,12 @@
  */
 
 #include <X11/Xatom.h>
-#include <X11_clipboard.hxx>
-#include <X11_transferable.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
+#include "X11_clipboard.hxx"
+#include "X11_transferable.hxx"
 #include <com/sun/star/datatransfer/clipboard/RenderingCapabilities.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
-#include <uno/dispatcher.h>
-#include <uno/mapping.hxx>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <rtl/ref.hxx>
-#include <rtl/tencinfo.h>
+#include <sal/log.hxx>
 
 #if OSL_DEBUG_LEVEL > 1
 #include <stdio.h>
@@ -55,7 +48,8 @@ X11Clipboard::X11Clipboard( SelectionManager& rManager, Atom aSelection ) :
         m_aSelection( aSelection )
 {
 #if OSL_DEBUG_LEVEL > 1
-    fprintf( stderr, "creating instance of X11Clipboard (this=%p)\n", this );
+    SAL_INFO("vcl.unx.dtrans", "creating instance of X11Clipboard (this="
+            << this << ").");
 #endif
 }
 
@@ -65,12 +59,12 @@ X11Clipboard::create( SelectionManager& rManager, Atom aSelection )
     rtl::Reference<X11Clipboard> cb(new X11Clipboard(rManager, aSelection));
     if( aSelection != None )
     {
-        rManager.registerHandler( aSelection, *cb.get() );
+        rManager.registerHandler(aSelection, *cb);
     }
     else
     {
-        rManager.registerHandler( XA_PRIMARY, *cb.get() );
-        rManager.registerHandler( rManager.getAtom( "CLIPBOARD" ), *cb.get() );
+        rManager.registerHandler(XA_PRIMARY, *cb);
+        rManager.registerHandler(rManager.getAtom("CLIPBOARD"), *cb);
     }
     return cb.get();
 }
@@ -80,8 +74,13 @@ X11Clipboard::~X11Clipboard()
     MutexGuard aGuard( *Mutex::getGlobalMutex() );
 
 #if OSL_DEBUG_LEVEL > 1
-    fprintf( stderr, "shutting down instance of X11Clipboard (this=%p, Selection=\"%s\")\n", this, OUStringToOString( m_xSelectionManager->getString( m_aSelection ), RTL_TEXTENCODING_ISO_8859_1 ).getStr() );
+    SAL_INFO("vcl.unx.dtrans", "shutting down instance of X11Clipboard (this="
+            << this
+            << ", Selection=\""
+            << m_xSelectionManager->getString( m_aSelection )
+            << "\").");
 #endif
+
     if( m_aSelection != None )
         m_xSelectionManager->deregisterHandler( m_aSelection );
     else
@@ -95,18 +94,18 @@ void X11Clipboard::fireChangedContentsEvent()
 {
     ClearableMutexGuard aGuard( m_xSelectionManager->getMutex() );
 #if OSL_DEBUG_LEVEL > 1
-    fprintf( stderr, "X11Clipboard::fireChangedContentsEvent for %s (%" SAL_PRI_SIZET "u listeners)\n",
-             OUStringToOString( m_xSelectionManager->getString( m_aSelection ), RTL_TEXTENCODING_ISO_8859_1 ).getStr(), m_aListeners.size() );
+    SAL_INFO("vcl.unx.dtrans", "X11Clipboard::fireChangedContentsEvent for "
+            << m_xSelectionManager->getString( m_aSelection )
+            << " (" << m_aListeners.size() << " listeners).");
 #endif
-    ::std::list< Reference< XClipboardListener > > listeners( m_aListeners );
+    ::std::vector< Reference< XClipboardListener > > listeners( m_aListeners );
     aGuard.clear();
 
     ClipboardEvent aEvent( static_cast<OWeakObject*>(this), m_aContents);
-    while( listeners.begin() != listeners.end() )
+    for (auto const& listener : listeners)
     {
-        if( listeners.front().is() )
-            listeners.front()->changedContents(aEvent);
-        listeners.pop_front();
+        if( listener.is() )
+            listener->changedContents(aEvent);
     }
 }
 
@@ -118,7 +117,7 @@ void X11Clipboard::clearContents()
     // copy member references on stack so they can be called
     // without having the mutex
     Reference< XClipboardOwner > xOwner( m_aOwner );
-    Reference< XTransferable > xTrans( m_aContents );
+    Reference< XTransferable > xKeepAlive( m_aContents );
     // clear members
     m_aOwner.clear();
     m_aContents.clear();
@@ -191,7 +190,7 @@ void SAL_CALL X11Clipboard::addClipboardListener( const Reference< XClipboardLis
 void SAL_CALL X11Clipboard::removeClipboardListener( const Reference< XClipboardListener >& listener )
 {
     MutexGuard aGuard( m_xSelectionManager->getMutex() );
-    m_aListeners.remove( listener );
+    m_aListeners.erase( std::remove(m_aListeners.begin(), m_aListeners.end(), listener), m_aListeners.end() );
 }
 
 Reference< XTransferable > X11Clipboard::getTransferable()
@@ -216,7 +215,7 @@ Reference< XInterface > X11Clipboard::getReference() throw()
 
 OUString SAL_CALL X11Clipboard::getImplementationName(  )
 {
-    return OUString(X11_CLIPBOARD_IMPLEMENTATION_NAME);
+    return X11_CLIPBOARD_IMPLEMENTATION_NAME;
 }
 
 sal_Bool SAL_CALL X11Clipboard::supportsService( const OUString& ServiceName )

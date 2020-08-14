@@ -18,16 +18,10 @@
  */
 
 #include <standard/vclxaccessibletextfield.hxx>
-#include <vcl/lstbox.hxx>
-#include <helper/listboxhelper.hxx>
+#include <vcl/toolkit/lstbox.hxx>
 
-#include <unotools/accessiblestatesethelper.hxx>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <vcl/svapp.hxx>
-#include <vcl/combobox.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -37,25 +31,19 @@ using namespace ::com::sun::star::accessibility;
 
 
 VCLXAccessibleTextField::VCLXAccessibleTextField (VCLXWindow* pVCLWindow, const Reference< XAccessible >& _xParent) :
-
     VCLXAccessibleTextComponent (pVCLWindow),
-
     m_xParent( _xParent )
 
 {
 }
 
 
-VCLXAccessibleTextField::~VCLXAccessibleTextField()
-{
-}
-
 OUString VCLXAccessibleTextField::implGetText()
 {
     OUString aText;
     VclPtr< ListBox > pListBox = GetAs< ListBox >();
     if (pListBox && !pListBox->IsInDropDown())
-        aText = pListBox->GetSelectEntry();
+        aText = pListBox->GetSelectedEntry();
 
     return aText;
 }
@@ -106,17 +94,14 @@ Reference< XAccessible > SAL_CALL VCLXAccessibleTextField::getAccessibleParent( 
 
 OUString VCLXAccessibleTextField::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleTextField" );
+    return "com.sun.star.comp.toolkit.AccessibleTextField";
 }
 
 
 Sequence< OUString > VCLXAccessibleTextField::getSupportedServiceNames()
 {
-    Sequence< OUString > aNames = VCLXAccessibleTextComponent::getSupportedServiceNames();
-    sal_Int32 nLength = aNames.getLength();
-    aNames.realloc( nLength + 1 );
-    aNames[nLength] = "com.sun.star.accessibility.AccessibleTextField";
-    return aNames;
+    return comphelper::concatSequences(VCLXAccessibleTextComponent::getSupportedServiceNames(),
+                                       Sequence<OUString>{"com.sun.star.accessibility.AccessibleTextField"});
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,9 +21,9 @@
 
 #include <svtools/svtdllapi.h>
 #include <rtl/ustring.hxx>
-#include <tools/color.hxx>
 #include <svl/SfxBroadcaster.hxx>
 #include <svl/lstner.hxx>
+#include <tools/color.hxx>
 #include <memory>
 
 
@@ -35,14 +35,14 @@ class ExtendedColorConfigValue
 {
     OUString m_sName;
     OUString m_sDisplayName;
-    sal_Int32       m_nColor;
-    sal_Int32       m_nDefaultColor;
+    Color       m_nColor;
+    Color       m_nDefaultColor;
 public:
     ExtendedColorConfigValue() : m_nColor(0),m_nDefaultColor(0){}
     ExtendedColorConfigValue(const OUString& _sName
                             ,const OUString& _sDisplayName
-                            ,sal_Int32      _nColor
-                            ,sal_Int32      _nDefaultColor)
+                            ,Color      _nColor
+                            ,Color      _nDefaultColor)
     : m_sName(_sName)
     ,m_sDisplayName(_sDisplayName)
     ,m_nColor(_nColor)
@@ -51,13 +51,13 @@ public:
 
     const OUString& getName()         const { return m_sName; }
     const OUString& getDisplayName()  const { return m_sDisplayName; }
-    sal_Int32       getColor()        const { return m_nColor; }
-    sal_Int32       getDefaultColor() const { return m_nDefaultColor; }
+    Color           getColor()        const { return m_nColor; }
+    Color           getDefaultColor() const { return m_nDefaultColor; }
 
-    void            setColor(sal_Int32 _nColor) { m_nColor = _nColor; }
+    void            setColor(Color _nColor) { m_nColor = _nColor; }
 };
 
-class SVT_DLLPUBLIC ExtendedColorConfig : public SfxBroadcaster, public SfxListener
+class SVT_DLLPUBLIC ExtendedColorConfig final : public SfxBroadcaster, public SfxListener
 {
     friend class ExtendedColorConfig_Impl;
 private:
@@ -87,7 +87,7 @@ public:
 
     void                        DeleteScheme(const OUString& rScheme );
     void                        AddScheme(const OUString& rScheme );
-    bool                        LoadScheme(const OUString& rScheme );
+    void                        LoadScheme(const OUString& rScheme );
     void                        SetCurrentSchemeName(const OUString& rScheme);
 
     sal_Int32                   GetComponentCount() const;

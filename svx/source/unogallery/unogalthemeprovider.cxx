@@ -20,11 +20,8 @@
 #include <sal/config.h>
 
 #include "unogaltheme.hxx"
-#include "svx/gallery1.hxx"
-#include <rtl/ref.hxx>
+#include <svx/gallery1.hxx>
 #include <vcl/svapp.hxx>
-#include <unotools/pathoptions.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/container/ElementExistException.hpp>
@@ -88,7 +85,7 @@ GalleryThemeProvider::GalleryThemeProvider() :
 
 OUString SAL_CALL GalleryThemeProvider::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.gallery.GalleryThemeProvider" );
+    return "com.sun.star.comp.gallery.GalleryThemeProvider";
 }
 
 sal_Bool SAL_CALL GalleryThemeProvider::supportsService( const OUString& ServiceName )
@@ -104,15 +101,13 @@ uno::Sequence< OUString > SAL_CALL GalleryThemeProvider::getSupportedServiceName
 
 uno::Sequence< uno::Type > SAL_CALL GalleryThemeProvider::getTypes()
 {
-    uno::Sequence< uno::Type >  aTypes( 6 );
-    uno::Type*                  pTypes = aTypes.getArray();
-
-    *pTypes++ = cppu::UnoType<lang::XServiceInfo>::get();
-    *pTypes++ = cppu::UnoType<lang::XTypeProvider>::get();
-    *pTypes++ = cppu::UnoType<lang::XInitialization>::get();
-    *pTypes++ = cppu::UnoType<container::XElementAccess>::get();
-    *pTypes++ = cppu::UnoType<container::XNameAccess>::get();
-    *pTypes++ = cppu::UnoType<gallery::XGalleryThemeProvider>::get();
+    static const uno::Sequence aTypes {
+        cppu::UnoType<lang::XServiceInfo>::get(),
+        cppu::UnoType<lang::XTypeProvider>::get(),
+        cppu::UnoType<lang::XInitialization>::get(),
+        cppu::UnoType<container::XElementAccess>::get(),
+        cppu::UnoType<container::XNameAccess>::get(),
+        cppu::UnoType<gallery::XGalleryThemeProvider>::get() };
 
     return aTypes;
 }
@@ -125,18 +120,15 @@ uno::Sequence< sal_Int8 > SAL_CALL GalleryThemeProvider::getImplementationId()
 void SAL_CALL GalleryThemeProvider::initialize( const uno::Sequence< uno::Any >& rArguments )
 {
     uno::Sequence< beans::PropertyValue >   aParams;
-    sal_Int32                               i;
 
-    for( i = 0; i < rArguments.getLength(); ++i )
+    for( const auto& rArgument : rArguments )
     {
-        if( rArguments[ i ] >>= aParams )
+        if( rArgument >>= aParams )
             break;
     }
 
-    for( i = 0; i < aParams.getLength(); ++i )
+    for( const beans::PropertyValue& rProp : std::as_const(aParams) )
     {
-        const beans::PropertyValue& rProp = aParams[ i ];
-
         if ( rProp.Name == "ProvideHiddenThemes" )
             rProp.Value >>= mbHiddenThemes;
     }
@@ -166,10 +158,8 @@ uno::Any SAL_CALL GalleryThemeProvider::getByName( const OUString& rName )
     {
         throw container::NoSuchElementException();
     }
-    else
-    {
-        aRet <<= uno::Reference< gallery::XGalleryTheme >( new ::unogallery::GalleryTheme( rName ) );
-    }
+
+    aRet <<= uno::Reference< gallery::XGalleryTheme >( new ::unogallery::GalleryTheme( rName ) );
 
     return aRet;
 }
@@ -239,15 +229,13 @@ void SAL_CALL GalleryThemeProvider::removeByName( const OUString& rName )
     {
         throw container::NoSuchElementException();
     }
-    else
-    {
-        mpGallery->RemoveTheme( rName );
-    }
+
+    mpGallery->RemoveTheme( rName );
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_gallery_GalleryThemeProvider_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <o3tl/safeint.hxx>
 #include <xmloff/unointerfacetouniqueidentifiermapper.hxx>
 
 using namespace ::com::sun::star;
@@ -44,9 +47,8 @@ const OUString& UnoInterfaceToUniqueIdentifierMapper::registerReference( const R
     }
     else
     {
-        OUString aId( "id" );
-        aId += OUString::number( mnNextId++ );
-        return (*maEntries.insert( IdMap_t::value_type( aId, xRef ) ).first).first;
+        OUString aId = "id" + OUString::number( mnNextId++ );
+        return (*maEntries.emplace( aId, xRef ).first).first;
     }
 }
 
@@ -115,22 +117,16 @@ bool UnoInterfaceToUniqueIdentifierMapper::findReference( const Reference< XInte
 {
     uno::Reference< uno::XInterface > xRef( rInterface, uno::UNO_QUERY );
 
-    rIter = maEntries.begin();
-
     const IdMap_t::const_iterator aEnd( maEntries.end() );
-    while( rIter != aEnd )
-    {
+    rIter = std::find_if(maEntries.begin(), aEnd, [&xRef](const IdMap_t::value_type& rItem) {
         // The Reference == operator, does a repeated queryInterface on
         // this to ensure we got the right XInterface base-class. However,
         // we can be sure that this has been done already by the time we
         // get to here.
-        if( (*rIter).second.get() == xRef.get() )
-            return true;
+        return rItem.second.get() == xRef.get();
+    });
 
-        ++rIter;
-    }
-
-    return false;
+    return rIter != aEnd;
 }
 
 bool UnoInterfaceToUniqueIdentifierMapper::findIdentifier( const OUString& rIdentifier, IdMap_t::const_iterator& rIter ) const
@@ -166,8 +162,11 @@ void UnoInterfaceToUniqueIdentifierMapper::insertReference( const OUString& rIde
     // so we make sure we will never generate
     // an integer value like this one
     sal_Int32 nId = rIdentifier.copy(2).toInt32();
-    if( mnNextId <= nId )
-        mnNextId = nId + 1;
+    if (nId > 0 && mnNextId <= o3tl::make_unsigned(nId))
+    {
+        mnNextId = nId;
+        ++mnNextId;
+    }
 }
 
 }

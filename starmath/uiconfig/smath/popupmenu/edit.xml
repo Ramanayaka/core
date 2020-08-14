@@ -166,10 +166,12 @@
       <menu:menuitem menu:label="dddot a" menu:id=".uno:InsertCommandText?Text:string=dddot &lt;?&gt; "/>
       <menu:menuitem menu:label="bar a" menu:id=".uno:InsertCommandText?Text:string=bar &lt;?&gt; "/>
       <menu:menuitem menu:label="vec a" menu:id=".uno:InsertCommandText?Text:string=vec &lt;?&gt; "/>
+      <menu:menuitem menu:label="harpoon a" menu:id=".uno:InsertCommandText?Text:string=harpoon &lt;?&gt; "/>
       <menu:menuitem menu:label="tilde a" menu:id=".uno:InsertCommandText?Text:string=tilde &lt;?&gt; "/>
       <menu:menuitem menu:label="hat a" menu:id=".uno:InsertCommandText?Text:string=hat &lt;?&gt; "/>
       <menu:menuseparator/>
       <menu:menuitem menu:label="widevec abc" menu:id=".uno:InsertCommandText?Text:string=widevec {&lt;?&gt;} "/>
+      <menu:menuitem menu:label="wideharpoon abc" menu:id=".uno:InsertCommandText?Text:string=wideharpoon {&lt;?&gt;} "/>
       <menu:menuitem menu:label="widetilde abc" menu:id=".uno:InsertCommandText?Text:string=widetilde {&lt;?&gt;} "/>
       <menu:menuitem menu:label="widehat abc" menu:id=".uno:InsertCommandText?Text:string=widehat {&lt;?&gt;} "/>
       <menu:menuitem menu:label="overline abc" menu:id=".uno:InsertCommandText?Text:string=overline {&lt;?&gt;} "/>
@@ -181,6 +183,7 @@
       <menu:menuitem menu:label="ital b" menu:id=".uno:InsertCommandText?Text:string=ital &lt;?&gt; "/>
       <menu:menuitem menu:label="size s b" menu:id=".uno:InsertCommandText?Text:string=size &lt;?&gt; {&lt;?&gt;} "/>
       <menu:menuitem menu:label="font f b" menu:id=".uno:InsertCommandText?Text:string=font &lt;?&gt; {&lt;?&gt;} "/>
+      <menu:menuitem menu:label="color rgb" menu:id=".uno:InsertCommandText?Text:string=color rgb 0 0 0 "/>
     </menu:menupopup>
   </menu:menu>
   <menu:menu menu:id=".uno:BracketsMenu">
@@ -249,6 +252,7 @@
       <menu:menuitem menu:label="Re" menu:id=".uno:InsertCommandText?Text:string=Re "/>
       <menu:menuitem menu:label="Im" menu:id=".uno:InsertCommandText?Text:string=Im "/>
       <menu:menuitem menu:label="wp" menu:id=".uno:InsertCommandText?Text:string=wp "/>
+      <menu:menuitem menu:label="laplace" menu:id=".uno:InsertCommandText?Text:string=laplace "/>
       <menu:menuseparator/>
       <menu:menuitem menu:label="leftarrow" menu:id=".uno:InsertCommandText?Text:string=leftarrow "/>
       <menu:menuitem menu:label="rightarrow" menu:id=".uno:InsertCommandText?Text:string=rightarrow "/>

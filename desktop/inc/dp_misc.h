@@ -20,22 +20,17 @@
 #ifndef INCLUDED_DESKTOP_INC_DP_MISC_H
 #define INCLUDED_DESKTOP_INC_DP_MISC_H
 
-#include <rtl/ustrbuf.hxx>
-#include <rtl/instance.hxx>
 #include <osl/mutex.hxx>
 #include <osl/process.h>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/deployment/XPackageRegistry.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
-#include "dp_misc_api.hxx"
+#include <dp_misc_api.hxx>
 
 namespace dp_misc {
 
-const sal_Char CR = 0x0d;
-const sal_Char LF = 0x0a;
+const char CR = 0x0d;
+const char LF = 0x0a;
 
 
 class MutexHolder
@@ -70,7 +65,7 @@ OUString expandUnoRcUrl( OUString const & url );
 
 /** appends a relative path to a url.
 
-    The relative path must already be correctly encoded for use in an URL.
+    The relative path must already be correctly encoded for use in a URL.
     If the URL starts with vnd.sun.star.expand then the relative path will
     be again encoded for use in an "expand" URL.
  */
@@ -95,7 +90,7 @@ DESKTOP_DEPLOYMENTMISC_DLLPUBLIC
 css::uno::Reference< css::uno::XInterface> resolveUnoURL(
     OUString const & connectString,
     css::uno::Reference< css::uno::XComponentContext> const & xLocalContext,
-    AbortChannel * abortChannel = nullptr );
+    AbortChannel const * abortChannel = nullptr );
 
 
 DESKTOP_DEPLOYMENTMISC_DLLPUBLIC bool office_is_running();
@@ -108,10 +103,8 @@ oslProcess raiseProcess( OUString const & appURL,
 
 
 /** writes the argument string to the console.
-    On Linux/Unix/etc. it converts the UTF16 string to an ANSI string using
-    osl_getThreadTextEncoding() as target encoding. On Windows it uses WriteFile
-    with the standard out stream. unopkg.com reads the data and prints them out using
-    WriteConsoleW.
+    It converts the UTF16 string to an ANSI string using osl_getThreadTextEncoding()
+    as target encoding.
 */
 DESKTOP_DEPLOYMENTMISC_DLLPUBLIC
 void writeConsole(OUString const & sText);
@@ -124,9 +117,9 @@ void writeConsoleError(OUString const & sText);
 
 
 /** reads from the console.
-    On Linux/Unix/etc. it uses fgets to read char values and converts them to OUString
-    using osl_getThreadTextEncoding as target encoding. The returned string has a maximum
-    size of 1024 and does NOT include leading and trailing white space(applied OUString::trim())
+    It uses fgets to read char values and converts them to OUString using
+    osl_getThreadTextEncoding as target encoding. The returned string has a maximum size of
+    1024 and does NOT include leading and trailing white space(applied OUString::trim())
 */
 DESKTOP_DEPLOYMENTMISC_DLLPUBLIC
 OUString readConsole();

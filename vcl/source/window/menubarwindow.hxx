@@ -22,7 +22,7 @@
 
 #include "menuwindow.hxx"
 
-#include <vcl/button.hxx>
+#include <vcl/toolkit/button.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/toolbox.hxx>
 #include <vcl/window.hxx>
@@ -47,7 +47,7 @@ public:
     void    SetImages( long nMaxHeight, bool bForce = false );
 
     void    calcMinSize();
-    const Size& getMinSize() { return maMinSize;}
+    const Size& getMinSize() const { return maMinSize;}
 
     Image   maImage;
 };
@@ -67,19 +67,20 @@ private:
         Link<MenuBar::MenuBarButtonCallbackArg&,bool>  m_aHighlightLink;
     };
 
-    VclPtr<Menu>           pMenu;
-    VclPtr<PopupMenu>      pActivePopup;
-    sal_uInt16      nHighlightedItem;
-    sal_uInt16      nRolloveredItem;
-    VclPtr<vcl::Window> xSaveFocusId;
+    VclPtr<Menu>           m_pMenu;
+    VclPtr<PopupMenu>      m_pActivePopup;
+    VclPtr<PopupMenu>      mpParentPopup;
+    sal_uInt16      m_nHighlightedItem;
+    sal_uInt16      m_nRolloveredItem;
+    VclPtr<vcl::Window> m_xSaveFocusId;
     bool            mbAutoPopup;
-    bool            bIgnoreFirstMove;
+    bool            m_bIgnoreFirstMove;
     bool            mbHideAccel;
     bool            mbMenuKey;
 
-    VclPtr<DecoToolBox>  aCloseBtn;
-    VclPtr<PushButton>   aFloatBtn;
-    VclPtr<PushButton>   aHideBtn;
+    VclPtr<DecoToolBox>  m_aCloseBtn;
+    VclPtr<PushButton>   m_aFloatBtn;
+    VclPtr<PushButton>   m_aHideBtn;
 
     std::map< sal_uInt16, AddButtonEntry > m_aAddButtons;
 
@@ -122,13 +123,13 @@ public:
     void    SetMenu(MenuBar* pMenu);
     void    SetHeight(long nHeight);
     void    KillActivePopup();
-    void    PopupClosed(Menu* pMenu);
-    sal_uInt16 GetHighlightedItem() const { return nHighlightedItem; }
+    void    PopupClosed(Menu const * pMenu);
+    sal_uInt16 GetHighlightedItem() const { return m_nHighlightedItem; }
     virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
 
     void    SetAutoPopup(bool bAuto) { mbAutoPopup = bAuto; }
     void    LayoutChanged();
-    Size            MinCloseButtonSize();
+    Size const & MinCloseButtonSize();
 
     /// Add an arbitrary button to the menubar that will appear next to the close button.
     sal_uInt16 AddMenuBarButton(const Image&, const Link<MenuBar::MenuBarButtonCallbackArg&,bool>&, const OUString&);

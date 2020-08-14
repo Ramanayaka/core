@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEICONCHOICECTRL_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEICONCHOICECTRL_HXX
+#pragma once
 
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <cppuhelper/implbase2.hxx>
 #include <vcl/vclevent.hxx>
 #include <toolkit/awt/vclxaccessiblecomponent.hxx>
@@ -37,14 +35,12 @@ namespace accessibility
 
     /** the class OAccessibleListBoxEntry represents the base class for an accessible object of a listbox entry
     */
-    class AccessibleIconChoiceCtrl  :public AccessibleIconChoiceCtrl_BASE
-                                    ,public VCLXAccessibleComponent
+    class AccessibleIconChoiceCtrl final : public AccessibleIconChoiceCtrl_BASE
+                                          ,public VCLXAccessibleComponent
     {
-    protected:
         css::uno::Reference< css::accessibility::XAccessible > m_xParent;
 
-    protected:
-        virtual ~AccessibleIconChoiceCtrl() override;
+        virtual ~AccessibleIconChoiceCtrl() override = default;
 
         /** this function is called upon disposing the component */
         virtual void SAL_CALL   disposing() override;
@@ -52,7 +48,7 @@ namespace accessibility
         virtual void    ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
         virtual void    FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet ) override;
 
-        VclPtr< SvtIconChoiceCtrl > getCtrl();
+        VclPtr< SvtIconChoiceCtrl > getCtrl() const;
 
     public:
         /** OAccessibleBase needs a valid view
@@ -61,7 +57,7 @@ namespace accessibility
             @param  _xParent
                 is our parent accessible object
         */
-        AccessibleIconChoiceCtrl( SvtIconChoiceCtrl& _rIconCtrl,
+        AccessibleIconChoiceCtrl( SvtIconChoiceCtrl const & _rIconCtrl,
                                   const css::uno::Reference< css::accessibility::XAccessible >& _xParent );
 
         // XTypeProvider
@@ -100,6 +96,5 @@ namespace accessibility
 }// namespace accessibility
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEICONCHOICECTRL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,27 +22,21 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/task/XStatusIndicatorFactory.hpp>
 
-#include <basic/sbx.hxx>
-
 #include <svl/eitem.hxx>
-#include <tools/time.hxx>
+#include <tools/debug.hxx>
+#include <sal/log.hxx>
 
-#include "appdata.hxx"
-#include <sfx2/request.hxx>
+#include <appdata.hxx>
+#include <sfx2/bindings.hxx>
 #include <sfx2/frame.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <sfx2/viewsh.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/app.hxx>
-#include <sfx2/dispatch.hxx>
-#include "sfxtypes.hxx"
+#include <sfxtypes.hxx>
 #include <sfx2/docfile.hxx>
-#include "workwin.hxx"
-#include <sfx2/sfxresid.hxx>
-#include "bastyp.hrc"
-#include <sfx2/msg.hxx>
-#include "sfxslots.hxx"
-#include "sfxbasecontroller_internal.hxx"
+#include <sfx2/sfxsids.hrc>
+#include <workwin.hxx>
+#include <sfxbasecontroller_internal.hxx>
 #include <time.h>
 
 using namespace ::com::sun::star::uno;
@@ -51,10 +45,9 @@ using namespace ::com::sun::star::task;
 struct SfxProgress_Impl
 {
     Reference < XStatusIndicator > xStatusInd;
-    OUString                aText, aStateText;
-    sal_uIntPtr             nMax;
+    OUString                aText;
+    sal_uInt32              nMax;
     clock_t                 nCreate;
-    bool                    bLocked;
     bool                    bWaitMode;
     bool                    bRunning;
 
@@ -64,37 +57,11 @@ struct SfxProgress_Impl
     SfxViewFrame*           pView;
 
     explicit                SfxProgress_Impl();
-    void                    Enable_Impl();
-
 };
-
-
-void SfxProgress_Impl::Enable_Impl()
-{
-    SfxObjectShell* pDoc = xObjSh.get();
-    SfxViewFrame *pFrame = SfxViewFrame::GetFirst(pDoc);
-    while ( pFrame )
-    {
-        pFrame->Enable(true/*bEnable*/);
-        pFrame->GetDispatcher()->Lock( false );
-        pFrame = SfxViewFrame::GetNext(*pFrame, pDoc);
-    }
-
-    if ( pView )
-    {
-        pView->Enable( true/*bEnable*/ );
-        pView->GetDispatcher()->Lock( false );
-    }
-
-    if ( !pDoc )
-        SfxGetpApp()->GetAppDispatcher_Impl()->Lock( false );
-}
-
 
 SfxProgress_Impl::SfxProgress_Impl()
     : nMax(0)
     , nCreate(0)
-    , bLocked(false)
     , bWaitMode(false)
     , bRunning(false)
     , pActiveProgress(nullptr)
@@ -137,7 +104,6 @@ SfxProgress::SfxProgress
     pImpl->xObjSh = pObjSh;
     pImpl->aText = rText;
     pImpl->nMax = nRange;
-    pImpl->bLocked = false;
     pImpl->bWaitMode = bWait;
     pImpl->nCreate = Get10ThSec();
     SAL_INFO(
@@ -197,19 +163,6 @@ void SfxProgress::Stop()
         pImpl->xObjSh->SetProgress_Impl(nullptr);
     else
         SfxGetpApp()->SetProgress_Impl(nullptr);
-    if ( pImpl->bLocked )
-        pImpl->Enable_Impl();
-}
-
-void SfxProgress::SetStateText
-(
-    sal_uInt32       nNewVal,     /* New value for the progress-bar */
-    const OUString& rNewVal     /* Status as Text */
-)
-
-{
-    pImpl->aStateText = rNewVal;
-    SetState( nNewVal );
 }
 
 void SfxProgress::SetState
@@ -258,12 +211,10 @@ void SfxProgress::SetState
                 const SfxBoolItem* pHiddenItem = SfxItemSet::GetItem<SfxBoolItem>(pMedium->GetItemSet(), SID_HIDDEN, false);
                 if ( !pHiddenItem || !pHiddenItem->GetValue() )
                 {
-                    {
-                        const SfxUnoAnyItem* pIndicatorItem = SfxItemSet::GetItem<SfxUnoAnyItem>(pMedium->GetItemSet(), SID_PROGRESS_STATUSBAR_CONTROL, false);
-                        Reference< XStatusIndicator > xInd;
-                        if ( pIndicatorItem && (pIndicatorItem->GetValue()>>=xInd) )
-                            pImpl->xStatusInd = xInd;
-                    }
+                    const SfxUnoAnyItem* pIndicatorItem = SfxItemSet::GetItem<SfxUnoAnyItem>(pMedium->GetItemSet(), SID_PROGRESS_STATUSBAR_CONTROL, false);
+                    Reference< XStatusIndicator > xInd;
+                    if ( pIndicatorItem && (pIndicatorItem->GetValue()>>=xInd) )
+                        pImpl->xStatusInd = xInd;
                 }
             }
         }
@@ -301,35 +252,35 @@ void SfxProgress::Resume()
 
 {
     if( pImpl->pActiveProgress ) return;
-    if ( bSuspended )
+    if ( !bSuspended )
+        return;
+
+    SAL_INFO("sfx.bastyp", "SfxProgress: resumed");
+    if ( pImpl->xStatusInd.is() )
     {
-        SAL_INFO("sfx.bastyp", "SfxProgress: resumed");
-        if ( pImpl->xStatusInd.is() )
-        {
-            pImpl->xStatusInd->start( pImpl->aText, pImpl->nMax );
-            pImpl->xStatusInd->setValue( nVal );
-        }
+        pImpl->xStatusInd->start( pImpl->aText, pImpl->nMax );
+        pImpl->xStatusInd->setValue( nVal );
+    }
 
-        if ( pImpl->bWaitMode )
-        {
-            if ( pImpl->xObjSh.is() )
-            {
-                for ( SfxViewFrame *pFrame = SfxViewFrame::GetFirst(pImpl->xObjSh.get() );
-                        pFrame;
-                        pFrame = SfxViewFrame::GetNext( *pFrame, pImpl->xObjSh.get() ) )
-                    pFrame->GetWindow().EnterWait();
-            }
-        }
-
+    if ( pImpl->bWaitMode )
+    {
         if ( pImpl->xObjSh.is() )
         {
-            SfxViewFrame *pFrame = SfxViewFrame::GetFirst(pImpl->xObjSh.get());
-            if ( pFrame )
-                pFrame->GetBindings().ENTERREGISTRATIONS();
+            for ( SfxViewFrame *pFrame = SfxViewFrame::GetFirst(pImpl->xObjSh.get() );
+                    pFrame;
+                    pFrame = SfxViewFrame::GetNext( *pFrame, pImpl->xObjSh.get() ) )
+                pFrame->GetWindow().EnterWait();
         }
-
-        bSuspended = false;
     }
+
+    if ( pImpl->xObjSh.is() )
+    {
+        SfxViewFrame *pFrame = SfxViewFrame::GetFirst(pImpl->xObjSh.get());
+        if ( pFrame )
+            pFrame->GetBindings().ENTERREGISTRATIONS();
+    }
+
+    bSuspended = false;
 }
 
 
@@ -346,43 +297,31 @@ void SfxProgress::Suspend()
 
 {
     if( pImpl->pActiveProgress ) return;
-    if ( !bSuspended )
-    {
-        SAL_INFO("sfx.bastyp", "SfxProgress: suspended");
-        bSuspended = true;
-
-        if ( pImpl->xStatusInd.is() )
-        {
-            pImpl->xStatusInd->reset();
-        }
-
-        if ( pImpl->xObjSh.is() )
-        {
-            for ( SfxViewFrame *pFrame =
-                    SfxViewFrame::GetFirst(pImpl->xObjSh.get());
-                    pFrame;
-                    pFrame = SfxViewFrame::GetNext( *pFrame, pImpl->xObjSh.get() ) )
-                pFrame->GetWindow().LeaveWait();
-        }
-        if ( pImpl->xObjSh.is() )
-        {
-            SfxViewFrame *pFrame = SfxViewFrame::GetFirst( pImpl->xObjSh.get() );
-            if ( pFrame )
-                pFrame->GetBindings().LEAVEREGISTRATIONS();
-        }
-    }
-}
-
-
-void SfxProgress::UnLock()
-{
-    if( pImpl->pActiveProgress ) return;
-    if ( !pImpl->bLocked )
+    if ( bSuspended )
         return;
 
-    SAL_INFO("sfx.bastyp", "SfxProgress: unlocked");
-    pImpl->bLocked = false;
-    pImpl->Enable_Impl();
+    SAL_INFO("sfx.bastyp", "SfxProgress: suspended");
+    bSuspended = true;
+
+    if ( pImpl->xStatusInd.is() )
+    {
+        pImpl->xStatusInd->reset();
+    }
+
+    if ( pImpl->xObjSh.is() )
+    {
+        for ( SfxViewFrame *pFrame =
+                SfxViewFrame::GetFirst(pImpl->xObjSh.get());
+                pFrame;
+                pFrame = SfxViewFrame::GetNext( *pFrame, pImpl->xObjSh.get() ) )
+            pFrame->GetWindow().LeaveWait();
+    }
+    if ( pImpl->xObjSh.is() )
+    {
+        SfxViewFrame *pFrame = SfxViewFrame::GetFirst( pImpl->xObjSh.get() );
+        if ( pFrame )
+            pFrame->GetBindings().LEAVEREGISTRATIONS();
+    }
 }
 
 
@@ -395,24 +334,14 @@ void SfxProgress::Reschedule()
 
 {
     SFX_STACK(SfxProgress::Reschedule);
-
-    if( pImpl->pActiveProgress ) return;
-    SfxApplication* pApp = SfxGetpApp();
-    if ( pImpl->bLocked && 0 == pApp->Get_Impl()->nRescheduleLocks )
-    {
-        SfxAppData_Impl *pAppData = pApp->Get_Impl();
-        ++pAppData->nInReschedule;
-        Application::Reschedule();
-        --pAppData->nInReschedule;
-    }
 }
 
 
 SfxProgress* SfxProgress::GetActiveProgress
 (
-    SfxObjectShell* pDocSh        /*  the <SfxObjectShell>, which should be
+    SfxObjectShell const * pDocSh /*  the <SfxObjectShell>, which should be
                                       queried after a current <SfxProgress>,
-                                      or 0 if an current SfxProgress for the
+                                      or 0 if a current SfxProgress for the
                                       entire application should be obtained.
                                       The pointer only needs at the time of
                                       the call to be valid.

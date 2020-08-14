@@ -25,11 +25,10 @@
 #include <svx/zoomsliderctrl.hxx>
 #include <sfx2/docfac.hxx>
 #include <svx/lboxctrl.hxx>
-#include <sfx2/docfile.hxx>
-#include <sfx2/docfilt.hxx>
 #include <sfx2/app.hxx>
 
 #include <smdll.hxx>
+#include <smmod.hxx>
 #include <document.hxx>
 #include <view.hxx>
 
@@ -38,7 +37,6 @@
 #include <starmath.hrc>
 
 #include <svx/xmlsecctrl.hxx>
-#include <o3tl/make_unique.hxx>
 
 namespace
 {
@@ -55,7 +53,7 @@ namespace
 
         SfxObjectFactory& rFactory = SmDocShell::Factory();
 
-        auto pUniqueModule = o3tl::make_unique<SmModule>(&rFactory);
+        auto pUniqueModule = std::make_unique<SmModule>(&rFactory);
         SmModule* pModule = pUniqueModule.get();
         SfxApplication::SetModule(SfxToolsModule::Math, std::move(pUniqueModule));
 
@@ -70,8 +68,6 @@ namespace
         SvxZoomStatusBarControl::RegisterControl(SID_ATTR_ZOOM, pModule);
         SvxZoomSliderControl::RegisterControl(SID_ATTR_ZOOMSLIDER, pModule);
         SvxModifyControl::RegisterControl(SID_TEXTSTATUS, pModule);
-        SvxUndoRedoControl::RegisterControl(SID_UNDO, pModule);
-        SvxUndoRedoControl::RegisterControl(SID_REDO, pModule);
         XmlSecStatusBarControl::RegisterControl(SID_SIGNATURE, pModule);
 
         SmCmdBoxWrapper::RegisterChildWindow(true);

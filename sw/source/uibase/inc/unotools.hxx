@@ -19,89 +19,64 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_UNOTOOLS_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_UNOTOOLS_HXX
 
-#include <vcl/button.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/layout.hxx>
 #include <vcl/idle.hxx>
-#include <actctrl.hxx>
+#include <vcl/weld.hxx>
+#include <vcl/customweld.hxx>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/text/XTextCursor.hpp>
-#include <com/sun/star/awt/XControl.hpp>
-#include <tools/resary.hxx>
-#include "swdllapi.h"
+#include <swdllapi.h>
 
-class SwOneExampleFrame;
-
-class SwFrameCtrlWindow : public VclEventBox
-{
-    SwOneExampleFrame* pExampleFrame;
-public:
-    SwFrameCtrlWindow(vcl::Window* pParent, SwOneExampleFrame* pFrame);
-
-    virtual void Command( const CommandEvent& rCEvt ) override;
-    virtual Size GetOptimalSize() const override;
-    virtual void Resize() override;
-};
-
-#define EX_SHOW_ONLINE_LAYOUT   0x001
-
+#define EX_SHOW_ONLINE_LAYOUT   0x01
 // hard zoom value
 #define EX_SHOW_BUSINESS_CARDS  0x02
 //don't modify page size
 #define EX_SHOW_DEFAULT_PAGE    0x04
+//replace sample toc strings in the template to localized versions
+#define EX_LOCALIZE_TOC_STRINGS 0x08
 
 class SwView;
 
-class SW_DLLPUBLIC SwOneExampleFrame
+class SW_DLLPUBLIC SwOneExampleFrame : public weld::CustomWidgetController
 {
-    css::uno::Reference< css::awt::XControl >         m_xControl;
+    ScopedVclPtr<VirtualDevice> m_xVirDev;
     css::uno::Reference< css::frame::XModel >         m_xModel;
     css::uno::Reference< css::frame::XController >    m_xController;
     css::uno::Reference< css::text::XTextCursor >     m_xCursor;
 
-    VclPtr<SwFrameCtrlWindow> m_aTopWindow;
     Idle            m_aLoadedIdle;
     Link<SwOneExampleFrame&,void> m_aInitializedLink;
 
-    ResStringArray  m_aMenuRes;
     OUString        m_sArgumentURL;
 
     SwView*         m_pModuleView;
 
-    sal_uInt32          m_nStyleFlags;
+    sal_uInt32      m_nStyleFlags;
 
     bool            m_bIsInitialized;
-    bool            m_bServiceAvailable;
-
-    static  bool    bShowServiceNotAvailableMessage;
 
     DECL_DLLPRIVATE_LINK( TimeoutHdl, Timer*, void );
-    DECL_DLLPRIVATE_LINK( PopupHdl, Menu*, bool );
+    void PopupHdl(const OString& rId);
 
     SAL_DLLPRIVATE void  CreateControl();
     SAL_DLLPRIVATE void  DisposeControl();
 
 public:
-    SwOneExampleFrame(vcl::Window& rWin,
-                    sal_uInt32 nStyleFlags,
+    SwOneExampleFrame(sal_uInt32 nStyleFlags,
                     const Link<SwOneExampleFrame&,void>* pInitalizedLink,
                     const OUString* pURL = nullptr);
-    ~SwOneExampleFrame();
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
+    virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
+    virtual bool Command(const CommandEvent& rCEvt) override;
+    virtual ~SwOneExampleFrame() override;
 
     css::uno::Reference< css::frame::XModel > &       GetModel()      {return m_xModel;}
-    css::uno::Reference< css::frame::XController > &  GetController() {return m_xController;}
     css::uno::Reference< css::text::XTextCursor > &   GetTextCursor() {return m_xCursor;}
 
     void ClearDocument();
 
     bool IsInitialized() const {return m_bIsInitialized;}
-    bool IsServiceAvailable() const {return m_bServiceAvailable;}
 
-    void CreatePopup(const Point& rPt);
-
-    static void     CreateErrorMessage();
+    bool CreatePopup(const Point& rPt);
 };
 
 #endif

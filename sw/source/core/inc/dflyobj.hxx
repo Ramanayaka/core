@@ -20,12 +20,13 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_DFLYOBJ_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_DFLYOBJ_HXX
 
-#include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <svx/svdovirt.hxx>
+#include <svx/svdobj.hxx>
+
+namespace drawinglayer::geometry { class ViewInformation2D; }
 
 class SwFlyFrame;
 class SwFrameFormat;
-class SdrObjMacroHitRec;
 
 const sal_uInt16 SwFlyDrawObjIdentifier = 0x0001;
 
@@ -33,21 +34,25 @@ const sal_uInt16 SwFlyDrawObjIdentifier = 0x0001;
 class SwFlyDrawObj : public SdrObject
 {
 private:
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
+    bool mbIsTextBox;
 
 protected:
     // #i95264# SwFlyDrawObj needs an own VC since createViewIndependentPrimitive2DSequence()
     // is called when RecalcBoundRect() is used
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
+
+    // protected destructor
+    virtual ~SwFlyDrawObj() override;
 
 public:
-
-    SwFlyDrawObj();
-    virtual ~SwFlyDrawObj() override;
+    SwFlyDrawObj(SdrModel& rSdrModel);
 
     // for instantiation of this class while loading (via factory)
     virtual SdrInventor GetObjInventor()     const override;
     virtual sal_uInt16  GetObjIdentifier()   const override;
+    virtual bool IsTextBox() const override { return mbIsTextBox; }
+    void SetTextBox(bool bIsTextBox) { mbIsTextBox = bIsTextBox; }
 };
 
 // virtual objects for Flys
@@ -58,11 +63,18 @@ class SwVirtFlyDrawObj : public SdrVirtObj
 private:
     SwFlyFrame *m_pFlyFrame;
 
+    // RotGrfFlyFrame: Helper to access the rotation angle (in 10th degrees, left-handed)
+    // of a GraphicFrame
+    sal_uInt16 getPossibleRotationFromFraphicFrame(Size& rSize) const;
+
 protected:
     // AW: Need own sdr::contact::ViewContact since AnchorPos from parent is
     // not used but something own (top left of new SnapRect minus top left
     // of original SnapRect)
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
+
+    // protected destructor
+    virtual ~SwVirtFlyDrawObj() override;
 
 public:
     // for paints triggered form ExecutePrimitive
@@ -73,9 +85,13 @@ public:
     basegfx::B2DRange getOuterBound() const;
     basegfx::B2DRange getInnerBound() const;
 
+    // RotGrfFlyFrame: Check if this is a SwGrfNode
+    bool ContainsSwGrfNode() const;
 
-    SwVirtFlyDrawObj(SdrObject& rNew, SwFlyFrame* pFly);
-    virtual ~SwVirtFlyDrawObj() override;
+    SwVirtFlyDrawObj(
+        SdrModel& rSdrModel,
+        SdrObject& rNew,
+        SwFlyFrame* pFly);
 
     // override method of base class SdrVirtObj
     virtual void     TakeObjInfo( SdrObjTransformInfoRec& rInfo ) const override;
@@ -83,6 +99,7 @@ public:
     // we treat the size calculation completely on ourself here
     virtual const tools::Rectangle& GetCurrentBoundRect() const override;
     virtual const tools::Rectangle& GetLastBoundRect() const override;
+    virtual       long       GetRotateAngle() const override;
     virtual       void       RecalcBoundRect() override;
     virtual       void       RecalcSnapRect() override;
     virtual const tools::Rectangle& GetSnapRect()  const override;
@@ -95,12 +112,16 @@ public:
     virtual       void       NbcMove  (const Size& rSiz) override;
     virtual       void       NbcResize(const Point& rRef, const Fraction& xFact,
                                        const Fraction& yFact) override;
-    virtual       void       NbcCrop(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
+    virtual       void       NbcCrop(const basegfx::B2DPoint& rRef, double fxFact, double fyFact) override;
     virtual       void       Move  (const Size& rSiz) override;
     virtual       void       Resize(const Point& rRef, const Fraction& xFact,
                                     const Fraction& yFact, bool bUnsetRelative = true) override;
-    virtual       void       Crop(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
+    virtual       void       Crop(const basegfx::B2DPoint& rRef, double fxFact, double fyFact) override;
     virtual       void       addCropHandles(SdrHdlList& rTarget) const override;
+    virtual       void       Rotate(const Point& rRef, long nAngle, double sn, double cs) override;
+
+    // FullDrag support
+    virtual SdrObjectUniquePtr getFullDragClone() const override;
 
     const SwFrameFormat *GetFormat() const;
           SwFrameFormat *GetFormat();
@@ -111,10 +132,15 @@ public:
 
     void SetRect() const;
 
-    // if an URL is attached to a graphic than this is a macro object
+    // if a URL is attached to a graphic than this is a macro object
     virtual bool       HasMacro() const override;
     virtual SdrObject* CheckMacroHit       (const SdrObjMacroHitRec& rRec) const override;
-    virtual Pointer    GetMacroPointer     (const SdrObjMacroHitRec& rRec) const override;
+    virtual PointerStyle GetMacroPointer     (const SdrObjMacroHitRec& rRec) const override;
+
+    // RotGrfFlyFrame: If true, this SdrObject supports only limited rotation.
+    virtual bool HasLimitedRotation() const override;
+
+    virtual bool IsTextBox() const override;
 };
 
 #endif

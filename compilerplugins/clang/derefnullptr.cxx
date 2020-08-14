@@ -7,23 +7,29 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef LO_CLANG_SHARED_PLUGINS
+
 #include "plugin.hxx"
 
 namespace {
 
 class DerefNullPtr:
-    public RecursiveASTVisitor<DerefNullPtr>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<DerefNullPtr>
 {
 public:
-    explicit DerefNullPtr(InstantiationData const & data): Plugin(data) {}
+    explicit DerefNullPtr(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     void run() override
     { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
 
-    bool VisitUnaryDeref(UnaryOperator const * op);
+    bool VisitUnaryOperator(UnaryOperator const * op);
 };
 
-bool DerefNullPtr::VisitUnaryDeref(UnaryOperator const * op) {
+bool DerefNullPtr::VisitUnaryOperator(UnaryOperator const * op) {
+    if (op->getOpcode() != UO_Deref) {
+        return true;
+    }
     if (!ignoreLocation(op)
         && (op->getSubExpr()->IgnoreParenCasts()->isNullPointerConstant(
                 compiler.getASTContext(), Expr::NPC_ValueDependentIsNotNull/*TODO*/)
@@ -31,14 +37,16 @@ bool DerefNullPtr::VisitUnaryDeref(UnaryOperator const * op) {
     {
         report(
             DiagnosticsEngine::Warning, "null pointer dereference",
-            op->getLocStart())
+            compat::getBeginLoc(op))
             << op->getSourceRange();
     }
     return true;
 }
 
-loplugin::Plugin::Registration<DerefNullPtr> X("derefnullptr");
+loplugin::Plugin::Registration<DerefNullPtr> derefnullptr("derefnullptr");
 
 }
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

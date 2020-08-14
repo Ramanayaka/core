@@ -20,28 +20,25 @@
 #define INCLUDED_SW_SOURCE_UI_DBUI_DBTABLEPREVIEWDIALOG_HXX
 
 #include <sfx2/basedlgs.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
 #include <com/sun/star/uno/Sequence.h>
 
-namespace com{ namespace sun{ namespace star{
+namespace com::sun::star{
     namespace beans{  struct PropertyValue; }
     namespace frame{ class XFrame2;     }
-    }}}
+}
 
-class SwDBTablePreviewDialog : public SfxModalDialog
+class SwDBTablePreviewDialog : public SfxDialogController
 {
-    VclPtr<FixedText>      m_pDescriptionFI;
-    VclPtr<vcl::Window>    m_pBeamerWIN;
+    std::unique_ptr<weld::Label> m_xDescriptionFI;
+    std::unique_ptr<weld::Container> m_xBeamerWIN;
 
     css::uno::Reference< css::frame::XFrame2 >         m_xFrame;
 public:
-    SwDBTablePreviewDialog(vcl::Window* pParent,
-            css::uno::Sequence< css::beans::PropertyValue>& rValues  );
+    SwDBTablePreviewDialog(weld::Window* pParent,
+            css::uno::Sequence< css::beans::PropertyValue> const & rValues  );
     virtual ~SwDBTablePreviewDialog() override;
-    virtual void dispose() override;
-
 };
+
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

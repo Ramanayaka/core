@@ -21,9 +21,12 @@
 #include <comphelper/sequenceashashmap.hxx>
 #include <osl/thread.h>
 #include <osl/diagnose.h>
-#include "xistream.hxx"
-#include "xlstring.hxx"
-#include "xiroot.hxx"
+#include <sal/log.hxx>
+#include <tools/solar.h>
+#include <ftools.hxx>
+#include <xistream.hxx>
+#include <xlstring.hxx>
+#include <xiroot.hxx>
 
 #include <vector>
 #include <memory>
@@ -61,8 +64,8 @@ XclImpDecrypterRef XclImpDecrypter::Clone() const
 ::comphelper::DocPasswordVerifierResult XclImpDecrypter::verifyPassword( const OUString& rPassword, uno::Sequence< beans::NamedValue >& o_rEncryptionData )
 {
     o_rEncryptionData = OnVerifyPassword( rPassword );
-    mnError = o_rEncryptionData.getLength() ? ERRCODE_NONE : ERRCODE_ABORT;
-    return o_rEncryptionData.getLength() ? ::comphelper::DocPasswordVerifierResult::OK : ::comphelper::DocPasswordVerifierResult::WrongPassword;
+    mnError = o_rEncryptionData.hasElements() ? ERRCODE_NONE : ERRCODE_ABORT;
+    return o_rEncryptionData.hasElements() ? ::comphelper::DocPasswordVerifierResult::OK : ::comphelper::DocPasswordVerifierResult::WrongPassword;
 }
 
 ::comphelper::DocPasswordVerifierResult XclImpDecrypter::verifyEncryptionData( const uno::Sequence< beans::NamedValue >& rEncryptionData )
@@ -72,7 +75,7 @@ XclImpDecrypterRef XclImpDecrypter::Clone() const
     return bValid ? ::comphelper::DocPasswordVerifierResult::OK : ::comphelper::DocPasswordVerifierResult::WrongPassword;
 }
 
-void XclImpDecrypter::Update( SvStream& rStrm, sal_uInt16 nRecSize )
+void XclImpDecrypter::Update( const SvStream& rStrm, sal_uInt16 nRecSize )
 {
     if( IsValid() )
     {
@@ -128,7 +131,7 @@ uno::Sequence< beans::NamedValue > XclImpBiff5Decrypter::OnVerifyPassword( const
 {
     maEncryptionData.realloc( 0 );
 
-    /*  Convert password to a byte string. TODO: this needs some finetuning
+    /*  Convert password to a byte string. TODO: this needs some fine tuning
         according to the spec... */
     OString aBytePassword = OUStringToOString( rPassword, osl_getThreadTextEncoding() );
     sal_Int32 nLen = aBytePassword.getLength();
@@ -143,9 +146,12 @@ uno::Sequence< beans::NamedValue > XclImpBiff5Decrypter::OnVerifyPassword( const
 
             // since the export uses Std97 encryption always we have to request it here
             ::std::vector< sal_uInt16 > aPassVect( 16 );
-            ::std::vector< sal_uInt16 >::iterator aIt = aPassVect.begin();
-            for( sal_Int32 nInd = 0; nInd < nLen; ++nInd, ++aIt )
-                *aIt = static_cast< sal_uInt16 >( rPassword[nInd] );
+            sal_Int32 nInd = 0;
+            std::for_each(aPassVect.begin(), aPassVect.begin() + nLen,
+                [&rPassword, &nInd](sal_uInt16& rPass) {
+                    rPass = static_cast< sal_uInt16 >( rPassword[nInd] );
+                    ++nInd;
+                });
 
             uno::Sequence< sal_Int8 > aDocId = ::comphelper::DocPasswordHelper::GenerateRandomByteSequence( 16 );
             OSL_ENSURE( aDocId.getLength() == 16, "Unexpected length of the sequence!" );
@@ -167,7 +173,7 @@ bool XclImpBiff5Decrypter::OnVerifyEncryptionData( const uno::Sequence< beans::N
 {
     maEncryptionData.realloc( 0 );
 
-    if( rEncryptionData.getLength() )
+    if( rEncryptionData.hasElements() )
     {
         // init codec
         maCodec.InitCodec( rEncryptionData );
@@ -176,7 +182,7 @@ bool XclImpBiff5Decrypter::OnVerifyEncryptionData( const uno::Sequence< beans::N
             maEncryptionData = rEncryptionData;
     }
 
-    return maEncryptionData.getLength();
+    return maEncryptionData.hasElements();
 }
 
 void XclImpBiff5Decrypter::OnUpdate( std::size_t /*nOldStrmPos*/, std::size_t nNewStrmPos, sal_uInt16 nRecSize )
@@ -248,10 +254,11 @@ uno::Sequence< beans::NamedValue > XclImpBiff8Decrypter::OnVerifyPassword( const
         // copy string to sal_uInt16 array
         ::std::vector< sal_uInt16 > aPassVect( 16 );
         const sal_Unicode* pcChar = rPassword.getStr();
-        const sal_Unicode* pcCharEnd = pcChar + nLen;
-        ::std::vector< sal_uInt16 >::iterator aIt = aPassVect.begin();
-        for( ; pcChar < pcCharEnd; ++pcChar, ++aIt )
-            *aIt = static_cast< sal_uInt16 >( *pcChar );
+        std::for_each(aPassVect.begin(), aPassVect.begin() + nLen,
+            [&pcChar](sal_uInt16& rPass) {
+                rPass = static_cast< sal_uInt16 >( *pcChar );
+                ++pcChar;
+            });
 
         // init codec
         mpCodec->InitKey(aPassVect.data(), maSalt.data());
@@ -266,7 +273,7 @@ bool XclImpBiff8Decrypter::OnVerifyEncryptionData( const uno::Sequence< beans::N
 {
     maEncryptionData.realloc( 0 );
 
-    if( rEncryptionData.getLength() )
+    if( rEncryptionData.hasElements() )
     {
         // init codec
         mpCodec->InitCodec( rEncryptionData );
@@ -275,30 +282,30 @@ bool XclImpBiff8Decrypter::OnVerifyEncryptionData( const uno::Sequence< beans::N
             maEncryptionData = rEncryptionData;
     }
 
-    return maEncryptionData.getLength();
+    return maEncryptionData.hasElements();
 }
 
 void XclImpBiff8Decrypter::OnUpdate( std::size_t nOldStrmPos, std::size_t nNewStrmPos, sal_uInt16 /*nRecSize*/ )
 {
-    if( nNewStrmPos != nOldStrmPos )
+    if( nNewStrmPos == nOldStrmPos )
+        return;
+
+    sal_uInt32 nOldBlock = GetBlock( nOldStrmPos );
+    sal_uInt16 nOldOffset = GetOffset( nOldStrmPos );
+
+    sal_uInt32 nNewBlock = GetBlock( nNewStrmPos );
+    sal_uInt16 nNewOffset = GetOffset( nNewStrmPos );
+
+    /*  Rekey cipher, if block changed or if previous offset in same block. */
+    if( (nNewBlock != nOldBlock) || (nNewOffset < nOldOffset) )
     {
-        sal_uInt32 nOldBlock = GetBlock( nOldStrmPos );
-        sal_uInt16 nOldOffset = GetOffset( nOldStrmPos );
-
-        sal_uInt32 nNewBlock = GetBlock( nNewStrmPos );
-        sal_uInt16 nNewOffset = GetOffset( nNewStrmPos );
-
-        /*  Rekey cipher, if block changed or if previous offset in same block. */
-        if( (nNewBlock != nOldBlock) || (nNewOffset < nOldOffset) )
-        {
-            mpCodec->InitCipher( nNewBlock );
-            nOldOffset = 0;     // reset nOldOffset for next if() statement
-        }
-
-        /*  Seek to correct offset. */
-        if( nNewOffset > nOldOffset )
-            mpCodec->Skip( nNewOffset - nOldOffset );
+        mpCodec->InitCipher( nNewBlock );
+        nOldOffset = 0;     // reset nOldOffset for next if() statement
     }
+
+    /*  Seek to correct offset. */
+    if( nNewOffset > nOldOffset )
+        mpCodec->Skip( nNewOffset - nOldOffset );
 }
 
 sal_uInt16 XclImpBiff8Decrypter::OnRead( SvStream& rStrm, sal_uInt8* pnData, sal_uInt16 nBytes )
@@ -437,8 +444,7 @@ XclImpStream::XclImpStream( SvStream& rInStrm, const XclImpRoot& rRoot ) :
     mbValidRec( false ),
     mbValid( false )
 {
-    mrStrm.Seek( STREAM_SEEK_TO_END );
-    mnStreamSize = mrStrm.Tell();
+    mnStreamSize = mrStrm.TellEnd();
     mrStrm.Seek( STREAM_SEEK_TO_BEGIN );
 }
 
@@ -519,7 +525,7 @@ void XclImpStream::EnableDecryption( bool bEnable )
 
 void XclImpStream::PushPosition()
 {
-    maPosStack.push_back( XclImpStreamPos() );
+    maPosStack.emplace_back( );
     StorePosition( maPosStack.back() );
 }
 
@@ -630,7 +636,7 @@ sal_Int16 XclImpStream::ReadInt16()
         {
             SVBT16 pnBuffer;
             mxDecrypter->Read( mrStrm, pnBuffer, 2 );
-            nValue = static_cast< sal_Int16 >( SVBT16ToShort( pnBuffer ) );
+            nValue = static_cast< sal_Int16 >( SVBT16ToUInt16( pnBuffer ) );
         }
         else
             mrStrm.ReadInt16( nValue );
@@ -648,7 +654,7 @@ sal_uInt16 XclImpStream::ReaduInt16()
         {
             SVBT16 pnBuffer;
             mxDecrypter->Read( mrStrm, pnBuffer, 2 );
-            nValue = SVBT16ToShort( pnBuffer );
+            nValue = SVBT16ToUInt16( pnBuffer );
         }
         else
             mrStrm.ReadUInt16( nValue );
@@ -771,18 +777,18 @@ void XclImpStream::CopyRecordToStream( SvStream& rOutStrm )
 
 void XclImpStream::Seek( std::size_t nPos )
 {
-    if( mbValidRec )
+    if( !mbValidRec )
+        return;
+
+    std::size_t nCurrPos = GetRecPos();
+    if( !mbValid || (nPos < nCurrPos) ) // from invalid state or backward
     {
-        std::size_t nCurrPos = GetRecPos();
-        if( !mbValid || (nPos < nCurrPos) ) // from invalid state or backward
-        {
-            RestorePosition( maFirstRec );
-            Ignore( nPos );
-        }
-        else if( nPos > nCurrPos )          // forward
-        {
-            Ignore( nPos - nCurrPos );
-        }
+        RestorePosition( maFirstRec );
+        Ignore( nPos );
+    }
+    else if( nPos > nCurrPos )          // forward
+    {
+        Ignore( nPos - nCurrPos );
     }
 }
 
@@ -793,10 +799,10 @@ void XclImpStream::Ignore( std::size_t nBytes )
     while( mbValid && (nBytesLeft > 0) )
     {
         sal_uInt16 nReadSize = GetMaxRawReadSize( nBytesLeft );
-        mrStrm.SeekRel( nReadSize );
+        mbValid = checkSeek(mrStrm, mrStrm.Tell() + nReadSize);
         mnRawRecLeft = mnRawRecLeft - nReadSize;
         nBytesLeft -= nReadSize;
-        if( nBytesLeft > 0 )
+        if (mbValid && nBytesLeft > 0)
             JumpToNextContinue();
         OSL_ENSURE( mbValid, "XclImpStream::Ignore - record overread" );
     }
@@ -825,22 +831,22 @@ std::size_t XclImpStream::ReadUniStringExtHeader( bool& rb16Bit, sal_uInt8 nFlag
 
 OUString XclImpStream::ReadRawUniString( sal_uInt16 nChars, bool b16Bit )
 {
-    OUString aRet;
+    OUStringBuffer aRet(std::min<sal_uInt16>(nChars, mnRawRecLeft / (b16Bit ? 2 : 1)));
     sal_uInt16 nCharsLeft = nChars;
     sal_uInt16 nReadSize;
-
-    std::unique_ptr<sal_Unicode[]> pcBuffer(new sal_Unicode[ nCharsLeft + 1 ]);
 
     while( IsValid() && (nCharsLeft > 0) )
     {
         if( b16Bit )
         {
-            nReadSize = ::std::min< sal_uInt16 >( nCharsLeft, mnRawRecLeft / 2 );
+            nReadSize = std::min<sal_uInt16>(nCharsLeft, mnRawRecLeft / 2);
             OSL_ENSURE( (nReadSize <= nCharsLeft) || !(mnRawRecLeft & 0x1),
                 "XclImpStream::ReadRawUniString - missing a byte" );
         }
         else
             nReadSize = GetMaxRawReadSize( nCharsLeft );
+
+        std::unique_ptr<sal_Unicode[]> pcBuffer(new sal_Unicode[nReadSize + 1]);
 
         sal_Unicode* pcUniChar = pcBuffer.get();
         sal_Unicode* pcEndChar = pcBuffer.get() + nReadSize;
@@ -865,14 +871,16 @@ OUString XclImpStream::ReadRawUniString( sal_uInt16 nChars, bool b16Bit )
         }
 
         *pcEndChar = '\0';
-        aRet += OUString( pcBuffer.get() );
+        // this has the side-effect of only copying as far as the first null, which appears to be intentional. e.g.
+        // see tdf#124318
+        aRet.append( pcBuffer.get() );
 
         nCharsLeft = nCharsLeft - nReadSize;
         if( nCharsLeft > 0 )
             JumpToNextStringContinue( b16Bit );
     }
 
-    return aRet;
+    return aRet.makeStringAndClear();
 }
 
 OUString XclImpStream::ReadUniString( sal_uInt16 nChars, sal_uInt8 nFlags )
@@ -936,7 +944,7 @@ void XclImpStream::IgnoreUniString( sal_uInt16 nChars )
 OUString XclImpStream::ReadRawByteString( sal_uInt16 nChars )
 {
     nChars = GetMaxRawReadSize(nChars);
-    std::unique_ptr<sal_Char[]> pcBuffer(new sal_Char[ nChars + 1 ]);
+    std::unique_ptr<char[]> pcBuffer(new char[ nChars + 1 ]);
     sal_uInt16 nCharsRead = ReadRawData( pcBuffer.get(), nChars );
     pcBuffer[ nCharsRead ] = '\0';
     OUString aRet( pcBuffer.get(), strlen(pcBuffer.get()), mrRoot.GetTextEncoding() );
@@ -963,9 +971,8 @@ void XclImpStream::RestorePosition( const XclImpStreamPos& rPos )
 
 bool XclImpStream::ReadNextRawRecHeader()
 {
-    std::size_t nSeekedPos = mrStrm.Seek( mnNextRecPos );
-    bool bRet = (nSeekedPos == mnNextRecPos) && (mnNextRecPos + 4 <= mnStreamSize);
-    if( bRet )
+    bool bRet = checkSeek(mrStrm, mnNextRecPos) && (mnNextRecPos + 4 <= mnStreamSize);
+    if (bRet)
     {
         mrStrm.ReadUInt16( mnRawRecId ).ReadUInt16( mnRawRecSize );
         bRet = mrStrm.good();

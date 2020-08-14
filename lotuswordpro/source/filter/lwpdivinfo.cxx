@@ -59,12 +59,14 @@
  ************************************************************************/
 
 #include "lwpdivinfo.hxx"
-#include "lwpobjstrm.hxx"
-#include "lwpfilehdr.hxx"
+#include "lwpdoc.hxx"
+#include <lwpobjstrm.hxx>
+#include <lwpfilehdr.hxx>
 #include "lwpholder.hxx"
 #include "lwppagehint.hxx"
+#include <sal/log.hxx>
 
-LwpDivInfo::LwpDivInfo(LwpObjectHeader& objHdr, LwpSvStream* pStrm)
+LwpDivInfo::LwpDivInfo(LwpObjectHeader const & objHdr, LwpSvStream* pStrm)
     : LwpObject(objHdr, pStrm)
     , m_nFlags(0)
     , m_nPageNoStyle(0)
@@ -153,7 +155,7 @@ void LwpDivInfo::GetNumberOfPages(sal_uInt16 & nPageno)
     }
 }
 
-sal_uInt16 LwpDivInfo::GetMaxNumberOfPages()
+sal_uInt16 LwpDivInfo::GetMaxNumberOfPages() const
 {
     LwpDocument* pDiv = dynamic_cast<LwpDocument*>(m_ParentID.obj().get());
     if(!pDiv)

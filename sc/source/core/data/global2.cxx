@@ -19,25 +19,19 @@
 
 #include <sfx2/docfile.hxx>
 #include <sfx2/objsh.hxx>
+#include <unotools/configmgr.hxx>
 #include <unotools/pathoptions.hxx>
-#include <unotools/useroptions.hxx>
 #include <tools/urlobj.hxx>
-#include <unotools/charclass.hxx>
-#include <stdlib.h>
-#include <unotools/syslocale.hxx>
 #include <svl/zforlist.hxx>
 #include <formula/errorcodes.hxx>
+#include <sal/log.hxx>
+#include <rtl/character.hxx>
 
-#include "global.hxx"
-#include "rangeutl.hxx"
-#include "rechead.hxx"
-#include "compiler.hxx"
-#include "paramisc.hxx"
-#include "calcconfig.hxx"
-
-#include "sc.hrc"
-#include "globstr.hrc"
-
+#include <global.hxx>
+#include <rangeutl.hxx>
+#include <compiler.hxx>
+#include <paramisc.hxx>
+#include <calcconfig.hxx>
 
 // struct ScImportParam:
 
@@ -105,41 +99,23 @@ bool ScImportParam::operator==( const ScImportParam& rOther ) const
 
 // struct ScConsolidateParam:
 
-ScConsolidateParam::ScConsolidateParam() :
-    ppDataAreas( nullptr )
+ScConsolidateParam::ScConsolidateParam()
 {
     Clear();
 }
 
-ScConsolidateParam::ScConsolidateParam( const ScConsolidateParam& r ) :
-        nCol(r.nCol),nRow(r.nRow),nTab(r.nTab),
-        eFunction(r.eFunction),nDataAreaCount(0),
-        ppDataAreas( nullptr ),
-        bByCol(r.bByCol),bByRow(r.bByRow),bReferenceData(r.bReferenceData)
+ScConsolidateParam::ScConsolidateParam( const ScConsolidateParam& r )
 {
-    if ( r.nDataAreaCount > 0 )
-    {
-        nDataAreaCount = r.nDataAreaCount;
-        ppDataAreas = new ScArea*[nDataAreaCount];
-        for ( sal_uInt16 i=0; i<nDataAreaCount; i++ )
-            ppDataAreas[i] = new ScArea( *(r.ppDataAreas[i]) );
-    }
+    operator=(r);
 }
 
 ScConsolidateParam::~ScConsolidateParam()
 {
-    ClearDataAreas();
 }
 
 void ScConsolidateParam::ClearDataAreas()
 {
-    if ( ppDataAreas )
-    {
-        for ( sal_uInt16 i=0; i<nDataAreaCount; i++ )
-            delete ppDataAreas[i];
-        delete [] ppDataAreas;
-        ppDataAreas = nullptr;
-    }
+    pDataAreas.reset();
     nDataAreaCount = 0;
 }
 
@@ -156,15 +132,26 @@ void ScConsolidateParam::Clear()
 
 ScConsolidateParam& ScConsolidateParam::operator=( const ScConsolidateParam& r )
 {
-    nCol            = r.nCol;
-    nRow            = r.nRow;
-    nTab            = r.nTab;
-    bByCol          = r.bByCol;
-    bByRow          = r.bByRow;
-    bReferenceData  = r.bReferenceData;
-    eFunction       = r.eFunction;
-    SetAreas( r.ppDataAreas, r.nDataAreaCount );
-
+    if (this != &r)
+    {
+        nCol            = r.nCol;
+        nRow            = r.nRow;
+        nTab            = r.nTab;
+        bByCol          = r.bByCol;
+        bByRow          = r.bByRow;
+        bReferenceData  = r.bReferenceData;
+        eFunction       = r.eFunction;
+        nDataAreaCount  = r.nDataAreaCount;
+        if ( r.nDataAreaCount > 0 )
+        {
+            nDataAreaCount = r.nDataAreaCount;
+            pDataAreas.reset( new ScArea[nDataAreaCount] );
+            for ( sal_uInt16 i=0; i<nDataAreaCount; i++ )
+                pDataAreas[i] = r.pDataAreas[i];
+        }
+        else
+            pDataAreas.reset();
+    }
     return *this;
 }
 
@@ -180,42 +167,33 @@ bool ScConsolidateParam::operator==( const ScConsolidateParam& r ) const
                  && (eFunction      == r.eFunction);
 
     if ( nDataAreaCount == 0 )
-        bEqual = bEqual && (ppDataAreas == nullptr) && (r.ppDataAreas == nullptr);
+        bEqual = bEqual && (pDataAreas == nullptr) && (r.pDataAreas == nullptr);
     else
-        bEqual = bEqual && (ppDataAreas != nullptr) && (r.ppDataAreas != nullptr);
+        bEqual = bEqual && (pDataAreas != nullptr) && (r.pDataAreas != nullptr);
 
     if ( bEqual && (nDataAreaCount > 0) )
         for ( sal_uInt16 i=0; i<nDataAreaCount && bEqual; i++ )
-            bEqual = *(ppDataAreas[i]) == *(r.ppDataAreas[i]);
+            bEqual = pDataAreas[i] == r.pDataAreas[i];
 
     return bEqual;
 }
 
-void ScConsolidateParam::SetAreas( ScArea* const* ppAreas, sal_uInt16 nCount )
+void ScConsolidateParam::SetAreas( std::unique_ptr<ScArea[]> pAreas, sal_uInt16 nCount )
 {
-    ClearDataAreas();
-    if ( ppAreas && nCount > 0 )
-    {
-        ppDataAreas = new ScArea*[nCount];
-        for ( sal_uInt16 i=0; i<nCount; i++ )
-            ppDataAreas[i] = new ScArea( *(ppAreas[i]) );
-        nDataAreaCount = nCount;
-    }
+    pDataAreas = std::move(pAreas);
+    nDataAreaCount = nCount;
 }
 
 // struct ScSolveParam
 
 ScSolveParam::ScSolveParam()
-    :   pStrTargetVal( nullptr )
 {
 }
 
 ScSolveParam::ScSolveParam( const ScSolveParam& r )
     :   aRefFormulaCell ( r.aRefFormulaCell ),
         aRefVariableCell( r.aRefVariableCell ),
-        pStrTargetVal   ( r.pStrTargetVal
-                            ? new OUString(*r.pStrTargetVal)
-                            : nullptr )
+        pStrTargetVal   ( r.pStrTargetVal )
 {
 }
 
@@ -224,7 +202,7 @@ ScSolveParam::ScSolveParam( const ScAddress& rFormulaCell,
                             const OUString&   rTargetValStr )
     :   aRefFormulaCell ( rFormulaCell ),
         aRefVariableCell( rVariableCell ),
-        pStrTargetVal   ( new OUString(rTargetValStr) )
+        pStrTargetVal   ( rTargetValStr )
 {
 }
 
@@ -236,9 +214,7 @@ ScSolveParam& ScSolveParam::operator=( const ScSolveParam& r )
 {
     aRefFormulaCell  = r.aRefFormulaCell;
     aRefVariableCell = r.aRefVariableCell;
-    pStrTargetVal.reset( r.pStrTargetVal
-                            ? new OUString(*r.pStrTargetVal)
-                            : nullptr);
+    pStrTargetVal = r.pStrTargetVal;
     return *this;
 }
 
@@ -253,7 +229,7 @@ bool ScSolveParam::operator==( const ScSolveParam& r ) const
             bEqual = true;
         else if ( !pStrTargetVal || !r.pStrTargetVal )
             bEqual = false;
-        else if ( pStrTargetVal && r.pStrTargetVal )
+        else
             bEqual = ( *pStrTargetVal == *(r.pStrTargetVal) );
     }
 
@@ -306,15 +282,19 @@ bool ScTabOpParam::operator==( const ScTabOpParam& r ) const
 }
 
 OUString ScGlobal::GetAbsDocName( const OUString& rFileName,
-                                SfxObjectShell* pShell )
+                                  const SfxObjectShell* pShell )
 {
     OUString aAbsName;
-    if ( !pShell->HasName() )
+    if (!pShell || !pShell->HasName())
     {   // maybe relative to document path working directory
         INetURLObject aObj;
-        SvtPathOptions aPathOpt;
-        aObj.SetSmartURL( aPathOpt.GetWorkPath() );
-        aObj.setFinalSlash();       // it IS a path
+        if (!utl::ConfigManager::IsFuzzing())
+        {
+            aObj.SetSmartURL(SvtPathOptions().GetWorkPath());
+            aObj.setFinalSlash();       // it IS a path
+        }
+        else
+            aObj.SetSmartURL("file:///tmp/document");
         bool bWasAbs = true;
         aAbsName = aObj.smartRel2Abs( rFileName, bWasAbs ).GetMainURL(INetURLObject::DecodeMechanism::NONE);
         //  returned string must be encoded because it's used directly to create SfxMedium
@@ -341,15 +321,14 @@ OUString ScGlobal::GetAbsDocName( const OUString& rFileName,
 OUString ScGlobal::GetDocTabName( const OUString& rFileName,
                                 const OUString& rTabName )
 {
-    OUString  aDocTab('\'');
-    aDocTab += rFileName;
+    OUString  aDocTab = "'" + rFileName;
     sal_Int32 nPos = 1;
     while( (nPos = aDocTab.indexOf( '\'', nPos )) != -1 )
     {   // escape Quotes
         aDocTab = aDocTab.replaceAt( nPos, 0, "\\" );
         nPos += 2;
     }
-    aDocTab += "'" + OUStringLiteral1(SC_COMPILER_FILE_TAB_SEP) + rTabName;
+    aDocTab += "'" + OUStringChar(SC_COMPILER_FILE_TAB_SEP) + rTabName;
         // "'Doc'#Tab"
     return aDocTab;
 }
@@ -375,7 +354,7 @@ bool isEmptyString( const OUString& rStr )
 
 double ScGlobal::ConvertStringToValue( const OUString& rStr, const ScCalcConfig& rConfig,
         FormulaError & rError, FormulaError nStringNoValueError,
-        SvNumberFormatter* pFormatter, short & rCurFmtType )
+        SvNumberFormatter* pFormatter, SvNumFormatType & rCurFmtType )
 {
     // We keep ScCalcConfig::StringConversion::LOCALE default until
     // we provide a friendly way to convert string numbers into numbers in the UI.
@@ -442,8 +421,8 @@ Label_fallback_to_unambiguous:
     // Decimal and group separator 0 => only integer and possibly exponent,
     // stops at first non-digit non-sign.
     fValue = ::rtl::math::stringToDouble( rStr, 0, 0, &eStatus, &nParseEnd);
-    sal_Int32 nLen;
-    if (eStatus == rtl_math_ConversionStatus_Ok && nParseEnd < (nLen = rStr.getLength()))
+    sal_Int32 nLen = rStr.getLength();
+    if (eStatus == rtl_math_ConversionStatus_Ok && nParseEnd < nLen)
     {
         // Not at string end, check for trailing blanks or switch to date or
         // time parsing or bail out.
@@ -466,7 +445,7 @@ Label_fallback_to_unambiguous:
                     sal_Int32 nUnit[done] = {0,0,0,0,0,0,0};
                     const sal_Int32 nLimit[done] = {0,12,31,0,59,59,0};
                     State eState = (bDate ? month : minute);
-                    rCurFmtType = (bDate ? css::util::NumberFormat::DATE : css::util::NumberFormat::TIME);
+                    rCurFmtType = (bDate ? SvNumFormatType::DATE : SvNumFormatType::TIME);
                     nUnit[eState-1] = rStr.copy( 0, nParseEnd).toInt32();
                     const sal_Unicode* pLastStart = p;
                     // Ensure there's no preceding sign. Negative dates
@@ -481,7 +460,7 @@ Label_fallback_to_unambiguous:
                     while (p < pStop && rError == FormulaError::NONE && eState < blank)
                     {
                         if (eState == minute)
-                            rCurFmtType |= css::util::NumberFormat::TIME;
+                            rCurFmtType |= SvNumFormatType::TIME;
                         if (rtl::isAsciiDigit(*p))
                         {
                             // Maximum 2 digits per unit, except fractions.
@@ -590,7 +569,7 @@ Label_fallback_to_unambiguous:
                                 else
                                 {
                                     if (pFormatter)
-                                        fValue = aDate - *(pFormatter->GetNullDate());
+                                        fValue = aDate - pFormatter->GetNullDate();
                                     else
                                     {
                                         SAL_WARN("sc.core","ScGlobal::ConvertStringToValue - fixed null date");

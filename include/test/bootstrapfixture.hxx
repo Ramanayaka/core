@@ -6,8 +6,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-#ifndef INCLUDED_TEST_BOOTSTRAPFIXTURE_HXX
-#define INCLUDED_TEST_BOOTSTRAPFIXTURE_HXX
+#pragma once
 
 #include <sal/config.h>
 
@@ -46,6 +45,9 @@ class OOO_DLLPUBLIC_TEST BootstrapFixture : public BootstrapFixtureBase
   bool m_bNeedUCB;
   bool m_bAssertOnDialog;
 
+protected:
+  css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
+
 public:
   DECL_STATIC_LINK( BootstrapFixture, ImplInitFilterHdl, ConvertData&, bool );
 
@@ -54,11 +56,9 @@ public:
 
   virtual void setUp() override;
 
-  static void validate(const OUString& rURL, ValidationFormat);
+  void validate(const OUString& rURL, ValidationFormat) const;
 };
 
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

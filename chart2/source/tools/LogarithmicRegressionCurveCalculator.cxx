@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "LogarithmicRegressionCurveCalculator.hxx"
-#include "macros.hxx"
-#include "RegressionCalculationHelper.hxx"
+#include <LogarithmicRegressionCurveCalculator.hxx>
+#include <RegressionCalculationHelper.hxx>
 #include <SpecialCharacters.hxx>
 
 #include <rtl/math.hxx>
@@ -56,7 +55,7 @@ void SAL_CALL LogarithmicRegressionCurveCalculator::recalculateRegression(
     {
         ::rtl::math::setNan( & m_fSlope );
         ::rtl::math::setNan( & m_fIntercept );
-        ::rtl::math::setNan( & m_fCorrelationCoeffitient );
+        ::rtl::math::setNan( & m_fCorrelationCoefficient );
         return;
     }
 
@@ -85,7 +84,7 @@ void SAL_CALL LogarithmicRegressionCurveCalculator::recalculateRegression(
 
     m_fSlope = fQxy / fQx;
     m_fIntercept = fAverageY - m_fSlope * fAverageX;
-    m_fCorrelationCoeffitient = fQxy / sqrt( fQx * fQy );
+    m_fCorrelationCoefficient = fQxy / sqrt( fQx * fQy );
 }
 
 double SAL_CALL LogarithmicRegressionCurveCalculator::getCurveValue( double x )
@@ -93,8 +92,8 @@ double SAL_CALL LogarithmicRegressionCurveCalculator::getCurveValue( double x )
     double fResult;
     ::rtl::math::setNan( & fResult );
 
-    if( ! ( ::rtl::math::isNan( m_fSlope ) ||
-            ::rtl::math::isNan( m_fIntercept )))
+    if( ! ( std::isnan( m_fSlope ) ||
+            std::isnan( m_fIntercept )))
     {
         fResult = m_fSlope * log( x ) + m_fIntercept;
     }
@@ -115,9 +114,9 @@ uno::Sequence< geometry::RealPoint2D > SAL_CALL LogarithmicRegressionCurveCalcul
         // optimize result
         uno::Sequence< geometry::RealPoint2D > aResult( 2 );
         aResult[0].X = min;
-        aResult[0].Y = this->getCurveValue( min );
+        aResult[0].Y = getCurveValue( min );
         aResult[1].X = max;
-        aResult[1].Y = this->getCurveValue( max );
+        aResult[1].Y = getCurveValue( max );
 
         return aResult;
     }
@@ -157,17 +156,17 @@ OUString LogarithmicRegressionCurveCalculator::ImplGetRepresentation(
     {
         if( m_fSlope < 0.0 )
         {
-            aTmpBuf.append( OUStringLiteral1(aMinusSign) + " " );
+            aTmpBuf.append( OUStringChar(aMinusSign) ).append( " " );
         }
         if( bHasSlope )
         {
             OUString aValueString = getFormattedString( xNumFormatter, nNumberFormatKey, fabs(m_fSlope), pValueLength );
             if ( aValueString != "1" )  // aValueString may be rounded to 1 if nValueLength is small
             {
-                aTmpBuf.append( aValueString + " " );
+                aTmpBuf.append( aValueString ).append( " " );
             }
         }
-        aTmpBuf.append( "ln(" + mXName + ") " );
+        aTmpBuf.append( "ln(" ).append( mXName ).append( ") " );
         addStringToEquation( aBuf, nLineLength, aTmpBuf, pFormulaMaxWidth );
         aTmpBuf.truncate();
 
@@ -176,7 +175,7 @@ OUString LogarithmicRegressionCurveCalculator::ImplGetRepresentation(
     }
              // add intercept value
     if( m_fIntercept < 0.0 )
-        aTmpBuf.append( OUStringLiteral1(aMinusSign)+" " );
+        aTmpBuf.append( OUStringChar(aMinusSign) ).append( " " );
     OUString aValueString = getFormattedString( xNumFormatter, nNumberFormatKey, fabs(m_fIntercept), pValueLength );
     if ( aValueString != "0" )  // aValueString may be rounded to 0 if nValueLength is small
     {
@@ -184,7 +183,7 @@ OUString LogarithmicRegressionCurveCalculator::ImplGetRepresentation(
         addStringToEquation( aBuf, nLineLength, aTmpBuf, pFormulaMaxWidth );
     }
 
-    if ( aBuf.toString().equals( OUString(mYName + " = ") ) )
+    if ( aBuf.toString() == (mYName + " = ") )
         aBuf.append( "0" );
 
     return aBuf.makeStringAndClear();

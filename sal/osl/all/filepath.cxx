@@ -19,8 +19,9 @@
 
 #include <osl/file.h>
 #include <rtl/ustring.h>
+#include <cassert>
 
-static sal_uInt32 SAL_CALL osl_defCalcTextWidth( rtl_uString *ustrText )
+static sal_uInt32 osl_defCalcTextWidth( rtl_uString *ustrText )
 {
     return ustrText ? ustrText->length : 0;
 }
@@ -48,6 +49,8 @@ oslFileError SAL_CALL osl_abbreviateSystemPath( rtl_uString *ustrSystemPath, rtl
             rtl_uString_newFromString( &ustrFile, ustrSystemPath );
         }
     }
+
+    assert(ustrPath && ustrFile);
 
     uPathWidth = pfnCalcWidth( ustrPath );
     uFileWidth = pfnCalcWidth( ustrFile );
@@ -90,7 +93,7 @@ oslFileError SAL_CALL osl_abbreviateSystemPath( rtl_uString *ustrSystemPath, rtl
 
     rtl_uString_newConcat( pustrCompacted, ustrPath, ustrFile );
 
-    /* Event now if path was compacted to ".../..." it can be to large */
+    /* Event now if path was compacted to ".../..." it can be too large */
 
     uPathWidth += uFileWidth;
 
@@ -101,11 +104,8 @@ oslFileError SAL_CALL osl_abbreviateSystemPath( rtl_uString *ustrSystemPath, rtl
         uPathWidth = pfnCalcWidth( *pustrCompacted );
     }
 
-    if ( ustrPath )
-        rtl_uString_release( ustrPath );
-
-    if ( ustrFile )
-        rtl_uString_release( ustrFile );
+    rtl_uString_release(ustrPath);
+    rtl_uString_release(ustrFile);
 
     return osl_File_E_None;
 }

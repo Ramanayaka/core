@@ -17,37 +17,33 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xetable.hxx"
+#include <xetable.hxx>
 
 #include <map>
+#include <numeric>
 #include <com/sun/star/i18n/ScriptType.hpp>
-#include "scitems.hxx"
+#include <scitems.hxx>
 #include <svl/intitem.hxx>
-#include "document.hxx"
-#include "dociter.hxx"
-#include "olinetab.hxx"
-#include "formulacell.hxx"
-#include "patattr.hxx"
-#include "attrib.hxx"
-#include "xehelper.hxx"
-#include "xecontent.hxx"
-#include "xeescher.hxx"
-#include "xeextlst.hxx"
-#include "tokenarray.hxx"
+#include <svl/stritem.hxx>
+#include <editeng/flditem.hxx>
+#include <document.hxx>
+#include <dociter.hxx>
+#include <olinetab.hxx>
+#include <formulacell.hxx>
+#include <patattr.hxx>
+#include <attrib.hxx>
+#include <xehelper.hxx>
+#include <xecontent.hxx>
+#include <xeescher.hxx>
+#include <xeextlst.hxx>
+#include <xeformula.hxx>
+#include <xlcontent.hxx>
+#include <xltools.hxx>
+#include <tokenarray.hxx>
 #include <formula/errorcodes.hxx>
-#include <thread>
 #include <comphelper/threadpool.hxx>
-
-#if defined(ANDROID)
-namespace std
-{
-template<typename T>
-T trunc(T x)
-{
-    return ::trunc(x);
-}
-}
-#endif
+#include <oox/token/tokens.hxx>
+#include <oox/export/utils.hxx>
 
 using namespace ::oox;
 
@@ -153,7 +149,7 @@ XclExpArrayRef XclExpArrayBuffer::CreateArray( const ScTokenArray& rScTokArr, co
 
     OSL_ENSURE( maRecMap.find( rScPos ) == maRecMap.end(), "XclExpArrayBuffer::CreateArray - array exists already" );
     XclExpArrayRef& rxRec = maRecMap[ rScPos ];
-    rxRec.reset( new XclExpArray( xTokArr, rScRange ) );
+    rxRec = new XclExpArray( xTokArr, rScRange );
     return rxRec;
 }
 
@@ -171,10 +167,12 @@ XclExpArrayRef XclExpArrayBuffer::FindArray( const ScTokenArray& rScTokArr, cons
         return xRec;
 
     const ScSingleRefData& rRef = *pToken->GetSingleRef();
-    ScAddress aAbsPos = rRef.toAbs(rBasePos);
+    ScAddress aAbsPos = rRef.toAbs(&GetRoot().GetDoc(), rBasePos);
     XclExpArrayMap::const_iterator it = maRecMap.find(aAbsPos);
 
-    return (it == maRecMap.end()) ? xRec : xRec = it->second;
+    if (it != maRecMap.end())
+        xRec = it->second;
+    return xRec;
 }
 
 // Shared formulas ============================================================
@@ -278,7 +276,7 @@ XclExpShrfmlaRef XclExpShrfmlaBuffer::CreateOrExtendShrfmla(
     {
         // create a new record
         XclTokenArrayRef xTokArr = GetFormulaCompiler().CreateFormula( EXC_FMLATYPE_SHARED, *pShrdScTokArr, &rScPos );
-        xRec.reset( new XclExpShrfmla( xTokArr, rScPos ) );
+        xRec = new XclExpShrfmla( xTokArr, rScPos );
         maRecMap[ pShrdScTokArr ] = xRec;
     }
     else
@@ -383,22 +381,25 @@ void XclExpTableop::Finalize()
     }
 
     // check if referred cells are outside of own range
-    if( mbValid ) switch( mnScMode )
+    if( !mbValid )
+        return;
+
+    switch( mnScMode )
     {
-        case 0:
-            mbValid =   (mnColInpXclCol + 1 < maXclRange.maFirst.mnCol) || (mnColInpXclCol > maXclRange.maLast.mnCol) ||
-                        (mnColInpXclRow     < maXclRange.maFirst.mnRow) || (mnColInpXclRow > maXclRange.maLast.mnRow);
-        break;
-        case 1:
-            mbValid =   (mnColInpXclCol     < maXclRange.maFirst.mnCol) || (mnColInpXclCol > maXclRange.maLast.mnCol) ||
-                        (mnColInpXclRow + 1 < maXclRange.maFirst.mnRow) || (mnColInpXclRow > maXclRange.maLast.mnRow);
-        break;
-        case 2:
-            mbValid =   ((mnColInpXclCol + 1 < maXclRange.maFirst.mnCol) || (mnColInpXclCol > maXclRange.maLast.mnCol) ||
-                         (mnColInpXclRow + 1 < maXclRange.maFirst.mnRow) || (mnColInpXclRow > maXclRange.maLast.mnRow)) &&
-                        ((mnRowInpXclCol + 1 < maXclRange.maFirst.mnCol) || (mnRowInpXclCol > maXclRange.maLast.mnCol) ||
-                         (mnRowInpXclRow + 1 < maXclRange.maFirst.mnRow) || (mnRowInpXclRow > maXclRange.maLast.mnRow));
-        break;
+    case 0:
+        mbValid =   (mnColInpXclCol + 1 < maXclRange.maFirst.mnCol) || (mnColInpXclCol > maXclRange.maLast.mnCol) ||
+                    (mnColInpXclRow     < maXclRange.maFirst.mnRow) || (mnColInpXclRow > maXclRange.maLast.mnRow);
+    break;
+    case 1:
+        mbValid =   (mnColInpXclCol     < maXclRange.maFirst.mnCol) || (mnColInpXclCol > maXclRange.maLast.mnCol) ||
+                    (mnColInpXclRow + 1 < maXclRange.maFirst.mnRow) || (mnColInpXclRow > maXclRange.maLast.mnRow);
+    break;
+    case 2:
+        mbValid =   ((mnColInpXclCol + 1 < maXclRange.maFirst.mnCol) || (mnColInpXclCol > maXclRange.maLast.mnCol) ||
+                     (mnColInpXclRow + 1 < maXclRange.maFirst.mnRow) || (mnColInpXclRow > maXclRange.maLast.mnRow)) &&
+                    ((mnRowInpXclCol + 1 < maXclRange.maFirst.mnCol) || (mnRowInpXclCol > maXclRange.maLast.mnCol) ||
+                     (mnRowInpXclRow + 1 < maXclRange.maFirst.mnRow) || (mnRowInpXclRow > maXclRange.maLast.mnRow));
+    break;
     }
 }
 
@@ -458,12 +459,12 @@ XclExpTableopRef XclExpTableopBuffer::CreateOrExtendTableop(
 
     // try to extract cell references of a multiple operations formula
     XclMultipleOpRefs aRefs;
-    if (XclTokenArrayHelper::GetMultipleOpRefs(aRefs, rScTokArr, rScPos))
+    if (XclTokenArrayHelper::GetMultipleOpRefs(&GetDoc(), aRefs, rScTokArr, rScPos))
     {
         // try to find an existing TABLEOP record for this cell position
         for( size_t nPos = 0, nSize = maTableopList.GetSize(); !xRec && (nPos < nSize); ++nPos )
         {
-            XclExpTableopRef xTempRec = maTableopList.GetRecord( nPos );
+            XclExpTableop* xTempRec = maTableopList.GetRecord( nPos );
             if( xTempRec->TryExtend( rScPos, aRefs ) )
                 xRec = xTempRec;
         }
@@ -526,7 +527,7 @@ XclExpTableopRef XclExpTableopBuffer::TryCreate( const ScAddress& rScPos, const 
     XclExpTableopRef xRec;
     if( bOk )
     {
-        xRec.reset( new XclExpTableop( rScPos, rRefs, nScMode ) );
+        xRec = new XclExpTableop( rScPos, rRefs, nScMode );
         maTableopList.AppendRecord( xRec );
     }
 
@@ -616,8 +617,6 @@ void XclExpSingleCellBase::WriteBody( XclExpStream& rStrm )
     WriteContents( rStrm );
 }
 
-IMPL_FIXEDMEMPOOL_NEWDEL( XclExpNumberCell )
-
 XclExpNumberCell::XclExpNumberCell(
         const XclExpRoot& rRoot, const XclAddress& rXclPos,
         const ScPatternAttr* pPattern, sal_uInt32 nForcedXFId, double fValue ) :
@@ -627,13 +626,13 @@ XclExpNumberCell::XclExpNumberCell(
 {
 }
 
-static OString lcl_GetStyleId( XclExpXmlStream& rStrm, sal_uInt32 nXFIndex )
+static OString lcl_GetStyleId( const XclExpXmlStream& rStrm, sal_uInt32 nXFIndex )
 {
     return OString::number( rStrm.GetRoot().GetXFBuffer()
             .GetXmlCellIndex( nXFIndex ) );
 }
 
-static OString lcl_GetStyleId( XclExpXmlStream& rStrm, const XclExpCellBase& rCell )
+static OString lcl_GetStyleId( const XclExpXmlStream& rStrm, const XclExpCellBase& rCell )
 {
     sal_uInt32 nXFId    = rCell.GetFirstXFId();
     sal_uInt16 nXFIndex = rStrm.GetRoot().GetXFBuffer().GetXFIndex( nXFId );
@@ -644,12 +643,12 @@ void XclExpNumberCell::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_c,
-            XML_r,      XclXmlUtils::ToOString( rStrm.GetRoot().GetStringBuf(), GetXclPos() ).getStr(),
-            XML_s,      lcl_GetStyleId( rStrm, *this ).getStr(),
-            XML_t,      "n",
+            XML_r, XclXmlUtils::ToOString(rStrm.GetRoot().GetStringBuf(), GetXclPos()).getStr(),
+            XML_s, lcl_GetStyleId(rStrm, *this),
+            XML_t, "n"
             // OOXTODO: XML_cm, XML_vm, XML_ph
-            FSEND );
-    rWorksheet->startElement( XML_v, FSEND );
+    );
+    rWorksheet->startElement(XML_v);
     rWorksheet->write( mfValue );
     rWorksheet->endElement( XML_v );
     rWorksheet->endElement( XML_c );
@@ -659,8 +658,6 @@ void XclExpNumberCell::WriteContents( XclExpStream& rStrm )
 {
     rStrm << mfValue;
 }
-
-IMPL_FIXEDMEMPOOL_NEWDEL( XclExpBooleanCell )
 
 XclExpBooleanCell::XclExpBooleanCell(
         const XclExpRoot& rRoot, const XclAddress& rXclPos,
@@ -675,12 +672,12 @@ void XclExpBooleanCell::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_c,
-            XML_r,      XclXmlUtils::ToOString( rStrm.GetRoot().GetStringBuf(), GetXclPos() ).getStr(),
-            XML_s,      lcl_GetStyleId( rStrm, *this ).getStr(),
-            XML_t,      "b",
+            XML_r, XclXmlUtils::ToOString(rStrm.GetRoot().GetStringBuf(), GetXclPos()).getStr(),
+            XML_s, lcl_GetStyleId(rStrm, *this),
+            XML_t, "b"
             // OOXTODO: XML_cm, XML_vm, XML_ph
-            FSEND );
-    rWorksheet->startElement( XML_v, FSEND );
+    );
+    rWorksheet->startElement( XML_v );
     rWorksheet->write( mbValue ? "1" : "0" );
     rWorksheet->endElement( XML_v );
     rWorksheet->endElement( XML_c );
@@ -691,8 +688,6 @@ void XclExpBooleanCell::WriteContents( XclExpStream& rStrm )
     rStrm << sal_uInt16( mbValue ? 1 : 0 ) << EXC_BOOLERR_BOOL;
 }
 
-IMPL_FIXEDMEMPOOL_NEWDEL( XclExpLabelCell )
-
 XclExpLabelCell::XclExpLabelCell(
         const XclExpRoot& rRoot, const XclAddress& rXclPos,
         const ScPatternAttr* pPattern, sal_uInt32 nForcedXFId, const OUString& rStr ) :
@@ -700,7 +695,7 @@ XclExpLabelCell::XclExpLabelCell(
 {
     sal_uInt16 nMaxLen = (rRoot.GetBiff() == EXC_BIFF8) ? EXC_STR_MAXLEN : EXC_LABEL_MAXLEN;
     XclExpStringRef xText = XclExpStringHelper::CreateCellString(
-        rRoot, rStr, pPattern, EXC_STR_DEFAULT, nMaxLen);
+        rRoot, rStr, pPattern, XclStrFlags::NONE, nMaxLen);
     Init( rRoot, pPattern, xText );
 }
 
@@ -715,10 +710,10 @@ XclExpLabelCell::XclExpLabelCell(
     XclExpStringRef xText;
     if (pEditText)
         xText = XclExpStringHelper::CreateCellString(
-            rRoot, *pEditText, pPattern, rLinkHelper, EXC_STR_DEFAULT, nMaxLen);
+            rRoot, *pEditText, pPattern, rLinkHelper, XclStrFlags::NONE, nMaxLen);
     else
         xText = XclExpStringHelper::CreateCellString(
-            rRoot, EMPTY_OUSTRING, pPattern, EXC_STR_DEFAULT, nMaxLen);
+            rRoot, EMPTY_OUSTRING, pPattern, XclStrFlags::NONE, nMaxLen);
 
     Init( rRoot, pPattern, xText );
 }
@@ -744,13 +739,13 @@ void XclExpLabelCell::Init( const XclExpRoot& rRoot,
     else
         nXclFont = mxText->GetLeadingFont();
 
-   // create cell format
-   if( GetXFId() == EXC_XFID_NOTFOUND )
-   {
+    // create cell format
+    if( GetXFId() == EXC_XFID_NOTFOUND )
+    {
        OSL_ENSURE( nXclFont != EXC_FONT_NOTFOUND, "XclExpLabelCell::Init - leading font not found" );
        bool bForceLineBreak = mxText->IsWrapped();
        SetXFId( rRoot.GetXFBuffer().InsertWithFont( pPattern, ApiScriptType::WEAK, nXclFont, bForceLineBreak ) );
-   }
+    }
 
     // get auto-wrap attribute from cell format
     const XclExpXF* pXF = rRoot.GetXFBuffer().GetXFById( GetXFId() );
@@ -786,13 +781,13 @@ void XclExpLabelCell::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_c,
-            XML_r,      XclXmlUtils::ToOString( rStrm.GetRoot().GetStringBuf(), GetXclPos() ).getStr(),
-            XML_s,      lcl_GetStyleId( rStrm, *this ).getStr(),
-            XML_t,      "s",
+            XML_r, XclXmlUtils::ToOString(rStrm.GetRoot().GetStringBuf(), GetXclPos()).getStr(),
+            XML_s, lcl_GetStyleId(rStrm, *this),
+            XML_t, "s"
             // OOXTODO: XML_cm, XML_vm, XML_ph
-            FSEND );
-    rWorksheet->startElement( XML_v, FSEND );
-    rWorksheet->write( (sal_Int32) mnSstIndex );
+    );
+    rWorksheet->startElement( XML_v );
+    rWorksheet->write( static_cast<sal_Int32>(mnSstIndex) );
     rWorksheet->endElement( XML_v );
     rWorksheet->endElement( XML_c );
 }
@@ -816,8 +811,6 @@ void XclExpLabelCell::WriteContents( XclExpStream& rStrm )
     }
 }
 
-IMPL_FIXEDMEMPOOL_NEWDEL( XclExpFormulaCell )
-
 XclExpFormulaCell::XclExpFormulaCell(
         const XclExpRoot& rRoot, const XclAddress& rXclPos,
         const ScPatternAttr* pPattern, sal_uInt32 nForcedXFId,
@@ -837,7 +830,7 @@ XclExpFormulaCell::XclExpFormulaCell(
 
         // current cell number format
         sal_uInt32 nScNumFmt = pPattern ?
-            GETITEM( pPattern->GetItemSet(), SfxUInt32Item, ATTR_VALUE_FORMAT ).GetValue() :
+            pPattern->GetItemSet().Get( ATTR_VALUE_FORMAT ).GetValue() :
             rNumFmtBfr.GetStandardFormat();
 
         // alternative number format passed to XF buffer
@@ -846,21 +839,21 @@ XclExpFormulaCell::XclExpFormulaCell(
             "TRUE";"FALSE" (language dependent). Don't do it for automatic
             formula formats, because Excel gets them right. */
         /*  #i8640# Don't set text format, if we have string results. */
-        short nFormatType = mrScFmlaCell.GetFormatType();
+        SvNumFormatType nFormatType = mrScFmlaCell.GetFormatType();
         if( ((nScNumFmt % SV_COUNTRY_LANGUAGE_OFFSET) == 0) &&
-                (nFormatType != css::util::NumberFormat::LOGICAL) &&
-                (nFormatType != css::util::NumberFormat::TEXT) )
+                (nFormatType != SvNumFormatType::LOGICAL) &&
+                (nFormatType != SvNumFormatType::TEXT) )
             nAltScNumFmt = nScNumFmt;
         /*  If cell number format is Boolean and automatic formula
             format is Boolean don't write that ugly special format. */
-        else if( (nFormatType == css::util::NumberFormat::LOGICAL) &&
-                (rFormatter.GetType( nScNumFmt ) == css::util::NumberFormat::LOGICAL) )
+        else if( (nFormatType == SvNumFormatType::LOGICAL) &&
+                (rFormatter.GetType( nScNumFmt ) == SvNumFormatType::LOGICAL) )
             nAltScNumFmt = rNumFmtBfr.GetStandardFormat();
 
         // #i41420# find script type according to result type (always latin for numeric results)
         sal_Int16 nScript = ApiScriptType::LATIN;
         bool bForceLineBreak = false;
-        if( nFormatType == css::util::NumberFormat::TEXT )
+        if( nFormatType == SvNumFormatType::TEXT )
         {
             OUString aResult = mrScFmlaCell.GetString().getString();
             bForceLineBreak = mrScFmlaCell.IsMultilineResult();
@@ -947,11 +940,11 @@ void XclExpFormulaCell::SaveXml( XclExpXmlStream& rStrm )
     XclXmlUtils::GetFormulaTypeAndValue( mrScFmlaCell, sType, sValue );
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_c,
-            XML_r,      XclXmlUtils::ToOString( rStrm.GetRoot().GetStringBuf(), GetXclPos() ).getStr(),
-            XML_s,      lcl_GetStyleId( rStrm, *this ).getStr(),
-            XML_t,      sType,
+            XML_r, XclXmlUtils::ToOString(rStrm.GetRoot().GetStringBuf(), GetXclPos()).getStr(),
+            XML_s, lcl_GetStyleId(rStrm, *this),
+            XML_t, sType
             // OOXTODO: XML_cm, XML_vm, XML_ph
-            FSEND );
+    );
 
     bool bWriteFormula = true;
     bool bTagStarted = false;
@@ -980,7 +973,7 @@ void XclExpFormulaCell::SaveXml( XclExpXmlStream& rStrm )
                 rStrm.GetRoot().GetAddressConverter().ValidateRange( aMatScRange, true );
 
                 OStringBuffer sFmlaCellRange;
-                if (ValidRange(aMatScRange))
+                if (rStrm.GetRoot().GetDoc().ValidRange(aMatScRange))
                 {
                     // calculate the cell range.
                     sFmlaCellRange.append( XclXmlUtils::ToOString(
@@ -994,10 +987,10 @@ void XclExpFormulaCell::SaveXml( XclExpXmlStream& rStrm )
                         aMatScRange.aStart.Row() == static_cast<SCROW>(GetXclPos().mnRow))
                 {
                     rWorksheet->startElement( XML_f,
-                            XML_aca, XclXmlUtils::ToPsz( (mxTokArr && mxTokArr->IsVolatile()) ||
+                            XML_aca, ToPsz( (mxTokArr && mxTokArr->IsVolatile()) ||
                                 (mxAddRec && mxAddRec->IsVolatile())),
                             XML_t, mxAddRec ? "array" : nullptr,
-                            XML_ref, !sFmlaCellRange.isEmpty()? sFmlaCellRange.getStr() : nullptr,
+                            XML_ref, !sFmlaCellRange.isEmpty()? sFmlaCellRange.getStr() : nullptr
                             // OOXTODO: XML_dt2D,   bool
                             // OOXTODO: XML_dtr,    bool
                             // OOXTODO: XML_del1,   bool
@@ -1007,7 +1000,7 @@ void XclExpFormulaCell::SaveXml( XclExpXmlStream& rStrm )
                             // OOXTODO: XML_ca,     bool
                             // OOXTODO: XML_si,     uint
                             // OOXTODO: XML_bx      bool
-                            FSEND );
+                    );
                     bTagStarted = true;
                 }
             }
@@ -1019,26 +1012,26 @@ void XclExpFormulaCell::SaveXml( XclExpXmlStream& rStrm )
         if (!bTagStarted)
         {
             rWorksheet->startElement( XML_f,
-                    XML_aca, XclXmlUtils::ToPsz( (mxTokArr && mxTokArr->IsVolatile()) ||
-                        (mxAddRec && mxAddRec->IsVolatile()) ),
-                    FSEND );
+                    XML_aca, ToPsz( (mxTokArr && mxTokArr->IsVolatile()) ||
+                        (mxAddRec && mxAddRec->IsVolatile()) ) );
         }
         rWorksheet->writeEscaped( XclXmlUtils::ToOUString(
-                    rStrm.GetRoot().GetCompileFormulaContext(), mrScFmlaCell.aPos, mrScFmlaCell.GetCode()));
+                    rStrm.GetRoot().GetCompileFormulaContext(), mrScFmlaCell.aPos, mrScFmlaCell.GetCode(),
+                    mrScFmlaCell.GetErrCode()));
         rWorksheet->endElement( XML_f );
     }
 
     if( strcmp( sType, "inlineStr" ) == 0 )
     {
-        rWorksheet->startElement( XML_is, FSEND );
-        rWorksheet->startElement( XML_t, FSEND );
+        rWorksheet->startElement(XML_is);
+        rWorksheet->startElement(XML_t);
         rWorksheet->writeEscaped( sValue );
         rWorksheet->endElement( XML_t );
         rWorksheet->endElement( XML_is );
     }
     else
     {
-        rWorksheet->startElement( XML_v, FSEND );
+        rWorksheet->startElement(XML_v);
         rWorksheet->writeEscaped( sValue );
         rWorksheet->endElement( XML_v );
     }
@@ -1060,20 +1053,20 @@ void XclExpFormulaCell::WriteContents( XclExpStream& rStrm )
         // result of the formula
         switch( mrScFmlaCell.GetFormatType() )
         {
-            case css::util::NumberFormat::NUMBER:
+            case SvNumFormatType::NUMBER:
                 {
                     // either value or error code
                     rStrm << mrScFmlaCell.GetValue();
                 }
                 break;
 
-            case css::util::NumberFormat::TEXT:
+            case SvNumFormatType::TEXT:
                 {
                     OUString aResult = mrScFmlaCell.GetString().getString();
                     if( !aResult.isEmpty() || (rStrm.GetRoot().GetBiff() <= EXC_BIFF5) )
                     {
                         rStrm << EXC_FORMULA_RES_STRING;
-                        mxStringRec.reset( new XclExpStringRec( rStrm.GetRoot(), aResult ) );
+                        mxStringRec = new XclExpStringRec( rStrm.GetRoot(), aResult );
                     }
                     else
                         rStrm << EXC_FORMULA_RES_EMPTY;     // BIFF8 only
@@ -1081,7 +1074,7 @@ void XclExpFormulaCell::WriteContents( XclExpStream& rStrm )
                 }
                 break;
 
-            case css::util::NumberFormat::LOGICAL:
+            case SvNumFormatType::LOGICAL:
                 {
                     sal_uInt8 nXclValue = (mrScFmlaCell.GetValue() == 0.0) ? 0 : 1;
                     rStrm << EXC_FORMULA_RES_BOOL << sal_uInt8( 0 )
@@ -1129,8 +1122,8 @@ bool XclExpMultiCellBase::IsEmpty() const
 
 void XclExpMultiCellBase::ConvertXFIndexes( const XclExpRoot& rRoot )
 {
-    for( XclExpMultiXFIdDeq::iterator aIt = maXFIds.begin(), aEnd = maXFIds.end(); aIt != aEnd; ++aIt )
-        aIt->ConvertXFIndex( rRoot );
+    for( auto& rXFId : maXFIds )
+        rXFId.ConvertXFIndex( rRoot );
 }
 
 void XclExpMultiCellBase::Save( XclExpStream& rStrm )
@@ -1241,10 +1234,8 @@ void XclExpMultiCellBase::SaveXml( XclExpXmlStream& rStrm )
 
 sal_uInt16 XclExpMultiCellBase::GetCellCount() const
 {
-    sal_uInt16 nCount = 0;
-    for( XclExpMultiXFIdDeq::const_iterator aIt = maXFIds.begin(), aEnd = maXFIds.end(); aIt != aEnd; ++aIt )
-        nCount = nCount + aIt->mnCount;
-    return nCount;
+    return std::accumulate(maXFIds.begin(), maXFIds.end(), sal_uInt16(0),
+        [](const sal_uInt16& rSum, const XclExpMultiXFId& rXFId) { return rSum + rXFId.mnCount; });
 }
 
 void XclExpMultiCellBase::AppendXFId( const XclExpMultiXFId& rXFId )
@@ -1277,10 +1268,10 @@ void XclExpMultiCellBase::GetXFIndexes( ScfUInt16Vec& rXFIndexes ) const
 {
     OSL_ENSURE( GetLastXclCol() < rXFIndexes.size(), "XclExpMultiCellBase::GetXFIndexes - vector too small" );
     ScfUInt16Vec::iterator aDestIt = rXFIndexes.begin() + GetXclCol();
-    for( XclExpMultiXFIdDeq::const_iterator aIt = maXFIds.begin(), aEnd = maXFIds.end(); aIt != aEnd; ++aIt )
+    for( const auto& rXFId : maXFIds )
     {
-        ::std::fill( aDestIt, aDestIt + aIt->mnCount, aIt->mnXFIndex );
-        aDestIt += aIt->mnCount;
+        ::std::fill( aDestIt, aDestIt + rXFId.mnCount, rXFId.mnXFIndex );
+        aDestIt += rXFId.mnCount;
     }
 }
 
@@ -1292,13 +1283,13 @@ void XclExpMultiCellBase::RemoveUnusedXFIndexes( const ScfUInt16Vec& rXFIndexes 
 
     // build new XF index vector, containing passed XF indexes
     maXFIds.clear();
-    XclExpMultiXFId aXFId( 0 );
-    for( ScfUInt16Vec::const_iterator aIt = rXFIndexes.begin() + GetXclCol(), aEnd = rXFIndexes.begin() + nLastXclCol + 1; aIt != aEnd; ++aIt )
-    {
-        // AppendXFId() tests XclExpXFIndex::mnXFId, set it too
-        aXFId.mnXFId = aXFId.mnXFIndex = *aIt;
-        AppendXFId( aXFId );
-    }
+    std::for_each(rXFIndexes.begin() + GetXclCol(), rXFIndexes.begin() + nLastXclCol + 1,
+        [this](const sal_uInt16& rXFIndex) {
+            XclExpMultiXFId aXFId( 0 );
+            // AppendXFId() tests XclExpXFIndex::mnXFId, set it too
+            aXFId.mnXFId = aXFId.mnXFIndex = rXFIndex;
+            AppendXFId( aXFId );
+        });
 
     // remove leading and trailing unused XF indexes
     if( !maXFIds.empty() && (maXFIds.front().mnXFIndex == EXC_XF_NOTFOUND) )
@@ -1311,8 +1302,6 @@ void XclExpMultiCellBase::RemoveUnusedXFIndexes( const ScfUInt16Vec& rXFIndexes 
 
     // The Save() function will skip all XF indexes equal to EXC_XF_NOTFOUND.
 }
-
-IMPL_FIXEDMEMPOOL_NEWDEL( XclExpBlankCell )
 
 XclExpBlankCell::XclExpBlankCell( const XclAddress& rXclPos, const XclExpMultiXFId& rXFId ) :
     XclExpMultiCellBase( EXC_ID3_BLANK, EXC_ID_MULBLANK, 0, rXclPos )
@@ -1355,12 +1344,9 @@ void XclExpBlankCell::WriteXmlContents( XclExpXmlStream& rStrm, const XclAddress
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->singleElement( XML_c,
-            XML_r,      XclXmlUtils::ToOString( rStrm.GetRoot().GetStringBuf(), rAddress ).getStr(),
-            XML_s,      lcl_GetStyleId( rStrm, nXFId ).getStr(),
-            FSEND );
+            XML_r, XclXmlUtils::ToOString(rStrm.GetRoot().GetStringBuf(), rAddress).getStr(),
+            XML_s, lcl_GetStyleId(rStrm, nXFId) );
 }
-
-IMPL_FIXEDMEMPOOL_NEWDEL( XclExpRkCell )
 
 XclExpRkCell::XclExpRkCell(
         const XclExpRoot& rRoot, const XclAddress& rXclPos,
@@ -1387,12 +1373,12 @@ void XclExpRkCell::WriteXmlContents( XclExpXmlStream& rStrm, const XclAddress& r
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_c,
-            XML_r,      XclXmlUtils::ToOString( rStrm.GetRoot().GetStringBuf(), rAddress ).getStr(),
-            XML_s,      lcl_GetStyleId( rStrm, nXFId ).getStr(),
-            XML_t,      "n",
+            XML_r, XclXmlUtils::ToOString(rStrm.GetRoot().GetStringBuf(), rAddress).getStr(),
+            XML_s, lcl_GetStyleId(rStrm, nXFId),
+            XML_t, "n"
             // OOXTODO: XML_cm, XML_vm, XML_ph
-            FSEND );
-    rWorksheet->startElement( XML_v, FSEND );
+    );
+    rWorksheet->startElement( XML_v );
     rWorksheet->write( XclTools::GetDoubleFromRK( maRkValues[ nRelCol ] ) );
     rWorksheet->endElement( XML_v );
     rWorksheet->endElement( XML_c );
@@ -1423,46 +1409,46 @@ XclExpOutlineBuffer::XclExpOutlineBuffer( const XclExpRoot& rRoot, bool bRows ) 
 
 void XclExpOutlineBuffer::UpdateColRow( SCCOLROW nScPos )
 {
-    if( mpScOLArray )
+    if( !mpScOLArray )
+        return;
+
+    // find open level index for passed position
+    size_t nNewOpenScLevel = 0; // new open level (0-based Calc index)
+    sal_uInt8 nNewLevel = 0;    // new open level (1-based Excel index)
+
+    if( mpScOLArray->FindTouchedLevel( nScPos, nScPos, nNewOpenScLevel ) )
+        nNewLevel = static_cast< sal_uInt8 >( nNewOpenScLevel + 1 );
+    // else nNewLevel keeps 0 to show that there are no groups
+
+    mbCurrCollapse = false;
+    if( nNewLevel >= mnCurrLevel )
     {
-        // find open level index for passed position
-        size_t nNewOpenScLevel = 0; // new open level (0-based Calc index)
-        sal_uInt8 nNewLevel = 0;    // new open level (1-based Excel index)
-
-        if( mpScOLArray->FindTouchedLevel( nScPos, nScPos, nNewOpenScLevel ) )
-            nNewLevel = static_cast< sal_uInt8 >( nNewOpenScLevel + 1 );
-        // else nNewLevel keeps 0 to show that there are no groups
-
-        mbCurrCollapse = false;
-        if( nNewLevel >= mnCurrLevel )
+        // new level(s) opened, or no level closed - update all level infos
+        for( size_t nScLevel = 0; nScLevel <= nNewOpenScLevel; ++nScLevel )
         {
-            // new level(s) opened, or no level closed - update all level infos
-            for( size_t nScLevel = 0; nScLevel <= nNewOpenScLevel; ++nScLevel )
+            /*  In each level: check if a new group is started (there may be
+                neighbored groups without gap - therefore check ALL levels). */
+            if( maLevelInfos[ nScLevel ].mnScEndPos < nScPos )
             {
-                /*  In each level: check if a new group is started (there may be
-                    neighbored groups without gap - therefore check ALL levels). */
-                if( maLevelInfos[ nScLevel ].mnScEndPos < nScPos )
+                if( const ScOutlineEntry* pEntry = mpScOLArray->GetEntryByPos( nScLevel, nScPos ) )
                 {
-                    if( const ScOutlineEntry* pEntry = mpScOLArray->GetEntryByPos( nScLevel, nScPos ) )
-                    {
-                        maLevelInfos[ nScLevel ].mnScEndPos = pEntry->GetEnd();
-                        maLevelInfos[ nScLevel ].mbHidden = pEntry->IsHidden();
-                    }
+                    maLevelInfos[ nScLevel ].mnScEndPos = pEntry->GetEnd();
+                    maLevelInfos[ nScLevel ].mbHidden = pEntry->IsHidden();
                 }
             }
         }
-        else
-        {
-            // level(s) closed - check if any of the closed levels are collapsed
-            // Calc uses 0-based level indexes
-            sal_uInt16 nOldOpenScLevel = mnCurrLevel - 1;
-            for( sal_uInt16 nScLevel = nNewOpenScLevel + 1; !mbCurrCollapse && (nScLevel <= nOldOpenScLevel); ++nScLevel )
-                mbCurrCollapse = maLevelInfos[ nScLevel ].mbHidden;
-        }
-
-        // cache new opened level
-        mnCurrLevel = nNewLevel;
     }
+    else
+    {
+        // level(s) closed - check if any of the closed levels are collapsed
+        // Calc uses 0-based level indexes
+        sal_uInt16 nOldOpenScLevel = mnCurrLevel - 1;
+        for( sal_uInt16 nScLevel = nNewOpenScLevel + 1; !mbCurrCollapse && (nScLevel <= nOldOpenScLevel); ++nScLevel )
+            mbCurrCollapse = maLevelInfos[ nScLevel ].mbHidden;
+    }
+
+    // cache new opened level
+    mnCurrLevel = nNewLevel;
 }
 
 XclExpGuts::XclExpGuts( const XclExpRoot& rRoot ) :
@@ -1472,25 +1458,26 @@ XclExpGuts::XclExpGuts( const XclExpRoot& rRoot ) :
     mnRowLevels( 0 ),
     mnRowWidth( 0 )
 {
-    if( const ScOutlineTable* pOutlineTable = rRoot.GetDoc().GetOutlineTable( rRoot.GetCurrScTab() ) )
-    {
-        // column outline groups
-        const ScOutlineArray& rColArray = pOutlineTable->GetColArray();
-        mnColLevels = ulimit_cast< sal_uInt16 >( rColArray.GetDepth(), EXC_OUTLINE_MAX );
-        if( mnColLevels )
-        {
-            ++mnColLevels;
-            mnColWidth = 12 * mnColLevels + 5;
-        }
+    const ScOutlineTable* pOutlineTable = rRoot.GetDoc().GetOutlineTable( rRoot.GetCurrScTab() );
+    if(!pOutlineTable)
+        return;
 
-        // row outline groups
-        const ScOutlineArray& rRowArray = pOutlineTable->GetRowArray();
-        mnRowLevels = ulimit_cast< sal_uInt16 >( rRowArray.GetDepth(), EXC_OUTLINE_MAX );
-        if( mnRowLevels )
-        {
-            ++mnRowLevels;
-            mnRowWidth = 12 * mnRowLevels + 5;
-        }
+    // column outline groups
+    const ScOutlineArray& rColArray = pOutlineTable->GetColArray();
+    mnColLevels = ulimit_cast< sal_uInt16 >( rColArray.GetDepth(), EXC_OUTLINE_MAX );
+    if( mnColLevels )
+    {
+        ++mnColLevels;
+        mnColWidth = 12 * mnColLevels + 5;
+    }
+
+    // row outline groups
+    const ScOutlineArray& rRowArray = pOutlineTable->GetRowArray();
+    mnRowLevels = ulimit_cast< sal_uInt16 >( rRowArray.GetDepth(), EXC_OUTLINE_MAX );
+    if( mnRowLevels )
+    {
+        ++mnRowLevels;
+        mnRowWidth = 12 * mnRowLevels + 5;
     }
 }
 
@@ -1500,6 +1487,7 @@ void XclExpGuts::WriteBody( XclExpStream& rStrm )
 }
 
 XclExpDimensions::XclExpDimensions( const XclExpRoot& rRoot ) :
+    mrRoot(rRoot),
     mnFirstUsedXclRow( 0 ),
     mnFirstFreeXclRow( 0 ),
     mnFirstUsedXclCol( 0 ),
@@ -1529,13 +1517,13 @@ void XclExpDimensions::SetDimensions(
 void XclExpDimensions::SaveXml( XclExpXmlStream& rStrm )
 {
     ScRange aRange;
-    aRange.aStart.SetRow( (SCROW) mnFirstUsedXclRow );
-    aRange.aStart.SetCol( (SCCOL) mnFirstUsedXclCol );
+    aRange.aStart.SetRow( static_cast<SCROW>(mnFirstUsedXclRow) );
+    aRange.aStart.SetCol( static_cast<SCCOL>(mnFirstUsedXclCol) );
 
     if( mnFirstFreeXclRow != mnFirstUsedXclRow && mnFirstFreeXclCol != mnFirstUsedXclCol )
     {
-        aRange.aEnd.SetRow( (SCROW) (mnFirstFreeXclRow-1) );
-        aRange.aEnd.SetCol( (SCCOL) (mnFirstFreeXclCol-1) );
+        aRange.aEnd.SetRow( static_cast<SCROW>(mnFirstFreeXclRow-1) );
+        aRange.aEnd.SetCol( static_cast<SCCOL>(mnFirstFreeXclCol-1) );
     }
 
     aRange.PutInOrder();
@@ -1543,8 +1531,7 @@ void XclExpDimensions::SaveXml( XclExpXmlStream& rStrm )
             // To be compatible with MS Office 2007,
             // we need full address notation format
             // e.g. "A1:AMJ177" and not partial like: "1:177".
-            XML_ref, XclXmlUtils::ToOString( aRange, true ).getStr(),
-            FSEND );
+            XML_ref, XclXmlUtils::ToOString(mrRoot.GetDoc(), aRange, true) );
 }
 
 void XclExpDimensions::WriteBody( XclExpStream& rStrm )
@@ -1561,38 +1548,65 @@ void XclExpDimensions::WriteBody( XclExpStream& rStrm )
 
 namespace {
 
-double lclGetCorrectedColWidth( const XclExpRoot& rRoot, sal_uInt16 nXclColWidth )
+double lclGetCChCorrection(const XclExpRoot& rRoot)
 {
+    // Convert the correction from 1/256ths of a character size to count of chars
+    // TODO: make to fit ECMA-376-1:2016 18.3.1.81 sheetFormatPr (Sheet Format Properties):
+    // 5 pixels are added to the base width: 2 for margin padding on each side, plus 1 for gridline
+    // So this should depend on rRoot.GetCharWidth(), not on font height
+
     long nFontHt = rRoot.GetFontBuffer().GetAppFontData().mnHeight;
-    return nXclColWidth - XclTools::GetXclDefColWidthCorrection( nFontHt );
+    return XclTools::GetXclDefColWidthCorrection(nFontHt) / 256.0;
 }
 
 } // namespace
 
 XclExpDefcolwidth::XclExpDefcolwidth( const XclExpRoot& rRoot ) :
-    XclExpUInt16Record( EXC_ID_DEFCOLWIDTH, EXC_DEFCOLWIDTH_DEF ),
+    XclExpDoubleRecord(EXC_ID_DEFCOLWIDTH, EXC_DEFCOLWIDTH_DEF + lclGetCChCorrection(rRoot)),
     XclExpRoot( rRoot )
 {
 }
 
 bool XclExpDefcolwidth::IsDefWidth( sal_uInt16 nXclColWidth ) const
 {
-    double fNewColWidth = lclGetCorrectedColWidth( GetRoot(), nXclColWidth );
     // This formula is taking number of characters with GetValue()
-    // and it is translating it into default column width. 0.5 means half character.
+    // and it is translating it into default column width.
     // https://msdn.microsoft.com/en-us/library/documentformat.openxml.spreadsheet.column.aspx
-    long defaultColumnWidth = static_cast< long >( 256.0 * ( GetValue() + 0.5 ) );
+    double defaultColumnWidth = 256.0 * GetValue();
 
     // exactly matched, if difference is less than 1/16 of a character to the left or to the right
-    return std::abs( defaultColumnWidth - fNewColWidth ) < 16;
+    return std::abs(defaultColumnWidth - nXclColWidth) < 256.0 * 1.0 / 16.0;
 }
 
-void XclExpDefcolwidth::SetDefWidth( sal_uInt16 nXclColWidth )
+void XclExpDefcolwidth::SetDefWidth( sal_uInt16 nXclColWidth, bool bXLS )
 {
-    double fNewColWidth = lclGetCorrectedColWidth( GetRoot(), nXclColWidth );
-    // This function is taking width and translate it into number of characters
-    // Next this number of characters are stored. 0.5 means half character.
-    SetValue( limit_cast< sal_uInt16 >( fNewColWidth / 256.0 - 0.5 ) );
+    double fCCh = nXclColWidth / 256.0;
+    if (bXLS)
+    {
+        const double fCorrection = lclGetCChCorrection(GetRoot());
+        const double fCorrectedCCh = fCCh - fCorrection;
+        // Now get the value which would be stored in XLS DefColWidth struct
+        double fCChRound = std::round(fCorrectedCCh);
+        // If default width was set to a value that is not representable as integral CCh between 0
+        // and 255, then just ignore that value, and use an arbitrary default. That way, the stored
+        // default might not represent the most used column width (or any used column width), but
+        // that's OK, and it just means that those columns will explicitly store their width in
+        // 1/256ths of char, and have fUserSet in their ColInfo records.
+        if (fCChRound < 0.0 || fCChRound > 255.0 || std::abs(fCChRound - fCorrectedCCh) > 1.0 / 512)
+            fCChRound = 8.0;
+        fCCh = fCChRound + fCorrection;
+    }
+
+    SetValue(fCCh);
+}
+
+void XclExpDefcolwidth::Save(XclExpStream& rStrm)
+{
+    double fCorrectedCCh = GetValue() - lclGetCChCorrection(GetRoot());
+    // Convert double to sal_uInt16
+    XclExpUInt16Record aUInt16Rec(GetRecId(),
+                                  static_cast<sal_uInt16>(std::round(fCorrectedCCh)));
+    aUInt16Rec.Save(rStrm);
 }
 
 XclExpColinfo::XclExpColinfo( const XclExpRoot& rRoot,
@@ -1622,10 +1636,6 @@ XclExpColinfo::XclExpColinfo( const XclExpRoot& rRoot,
     // column flags
     ::set_flag( mnFlags, EXC_COLINFO_HIDDEN, rDoc.ColHidden(nScCol, nScTab) );
 
-    XclExpDefcolwidth defColWidth = XclExpDefcolwidth( rRoot );
-    mbCustomWidth = !defColWidth.IsDefWidth( mnWidth );
-    set_flag(mnFlags, EXC_COLINFO_CUSTOMWIDTH, mbCustomWidth);
-
     // outline data
     rOutlineBfr.Update( nScCol );
     ::set_flag( mnFlags, EXC_COLINFO_COLLAPSED, rOutlineBfr.IsCollapsed() );
@@ -1638,12 +1648,13 @@ void XclExpColinfo::ConvertXFIndexes()
     maXFId.ConvertXFIndex( GetRoot() );
 }
 
-bool XclExpColinfo::IsDefault( const XclExpDefcolwidth& rDefColWidth ) const
+bool XclExpColinfo::IsDefault( const XclExpDefcolwidth& rDefColWidth )
 {
+    mbCustomWidth = !rDefColWidth.IsDefWidth(mnWidth);
     return (maXFId.mnXFIndex == EXC_XF_DEFAULTCELL) &&
            (mnFlags == 0) &&
            (mnOutlineLevel == 0) &&
-           rDefColWidth.IsDefWidth( mnWidth );
+           !mbCustomWidth;
 }
 
 bool XclExpColinfo::TryMerge( const XclExpColinfo& rColInfo )
@@ -1677,11 +1688,6 @@ void XclExpColinfo::WriteBody( XclExpStream& rStrm )
 
 void XclExpColinfo::SaveXml( XclExpXmlStream& rStrm )
 {
-    // if last column is equal to last possible column, Excel adds one more
-    sal_uInt16 nLastXclCol = mnLastXclCol;
-    if( nLastXclCol == static_cast< sal_uInt16 >( rStrm.GetRoot().GetMaxPos().Col() ) )
-        ++nLastXclCol;
-
     const double nExcelColumnWidth = mnScWidth  / static_cast< double >( sc::TwipsToHMM( GetCharWidth() ) );
 
     // tdf#101363 In MS specification the output value is set with double precision after delimiter:
@@ -1695,16 +1701,15 @@ void XclExpColinfo::SaveXml( XclExpXmlStream& rStrm )
     const double nTruncatedExcelColumnWidth = std::trunc( nExcelColumnWidth * 100.0 + 0.5 ) / 100.0;
     rStrm.GetCurrentStream()->singleElement( XML_col,
             // OOXTODO: XML_bestFit,
-            XML_collapsed,      XclXmlUtils::ToPsz( ::get_flag( mnFlags, EXC_COLINFO_COLLAPSED ) ),
-            XML_customWidth,    XclXmlUtils::ToPsz( mbCustomWidth ),
-            XML_hidden,         XclXmlUtils::ToPsz( ::get_flag( mnFlags, EXC_COLINFO_HIDDEN ) ),
-            XML_outlineLevel,   OString::number( mnOutlineLevel ).getStr(),
-            XML_max,            OString::number( nLastXclCol + 1 ).getStr(),
-            XML_min,            OString::number( mnFirstXclCol + 1 ).getStr(),
+            XML_collapsed,      ToPsz( ::get_flag( mnFlags, EXC_COLINFO_COLLAPSED ) ),
+            XML_customWidth,    ToPsz( mbCustomWidth ),
+            XML_hidden,         ToPsz( ::get_flag( mnFlags, EXC_COLINFO_HIDDEN ) ),
+            XML_outlineLevel,   OString::number(mnOutlineLevel),
+            XML_max,            OString::number(mnLastXclCol + 1),
+            XML_min,            OString::number(mnFirstXclCol + 1),
             // OOXTODO: XML_phonetic,
-            XML_style,          lcl_GetStyleId( rStrm, maXFId.mnXFIndex ).getStr(),
-            XML_width,          OString::number( nTruncatedExcelColumnWidth ).getStr(),
-            FSEND );
+            XML_style,          lcl_GetStyleId(rStrm, maXFId.mnXFIndex),
+            XML_width,          OString::number(nTruncatedExcelColumnWidth) );
 }
 
 XclExpColinfoBuffer::XclExpColinfoBuffer( const XclExpRoot& rRoot ) :
@@ -1728,7 +1733,7 @@ void XclExpColinfoBuffer::Initialize( SCROW nLastScRow )
     }
 }
 
-void XclExpColinfoBuffer::Finalize( ScfUInt16Vec& rXFIndexes )
+void XclExpColinfoBuffer::Finalize( ScfUInt16Vec& rXFIndexes, bool bXLS )
 {
     rXFIndexes.clear();
     rXFIndexes.reserve( maColInfos.GetSize() );
@@ -1752,8 +1757,7 @@ void XclExpColinfoBuffer::Finalize( ScfUInt16Vec& rXFIndexes )
     }
 
     // put XF indexes into passed vector, collect use count of all different widths
-    typedef ::std::map< sal_uInt16, sal_uInt16 > XclExpWidthMap;
-    XclExpWidthMap aWidthMap;
+    std::map< sal_uInt16, sal_uInt16 > aWidthMap;
     sal_uInt16 nMaxColCount = 0;
     sal_uInt16 nMaxUsedWidth = 0;
     for( nPos = 0, nSize = maColInfos.GetSize(); nPos < nSize; ++nPos )
@@ -1774,7 +1778,7 @@ void XclExpColinfoBuffer::Finalize( ScfUInt16Vec& rXFIndexes )
             nMaxUsedWidth = nWidth;
         }
     }
-    maDefcolwidth.SetDefWidth( nMaxUsedWidth );
+    maDefcolwidth.SetDefWidth( nMaxUsedWidth, bXLS );
 
     // remove all default COLINFO records
     nPos = 0;
@@ -1802,8 +1806,7 @@ void XclExpColinfoBuffer::SaveXml( XclExpXmlStream& rStrm )
         return;
 
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
-    rWorksheet->startElement( XML_cols,
-            FSEND );
+    rWorksheet->startElement(XML_cols);
     maColInfos.SaveXml( rStrm );
     rWorksheet->endElement( XML_cols );
 }
@@ -1822,7 +1825,7 @@ XclExpDefaultRowData::XclExpDefaultRowData( const XclExpRow& rRow ) :
     ::set_flag( mnFlags, EXC_DEFROW_UNSYNCED, rRow.IsUnsynced() );
 }
 
-bool operator<( const XclExpDefaultRowData& rLeft, const XclExpDefaultRowData& rRight )
+static bool operator<( const XclExpDefaultRowData& rLeft, const XclExpDefaultRowData& rRight )
 {
     return (rLeft.mnHeight < rRight.mnHeight) ||
         ((rLeft.mnHeight == rRight.mnHeight) && (rLeft.mnFlags < rRight.mnFlags));
@@ -1902,9 +1905,9 @@ void XclExpRow::Finalize( const ScfUInt16Vec& rColXFIndexes, bool bProgress )
     ScfUInt16Vec aXFIndexes( nColCount, EXC_XF_NOTFOUND );
     for( nPos = 0, nSize = maCellList.GetSize(); nPos < nSize; ++nPos )
     {
-        XclExpCellRef xCell = maCellList.GetRecord( nPos );
-        xCell->ConvertXFIndexes( GetRoot() );
-        xCell->GetBlankXFIndexes( aXFIndexes );
+        XclExpCellBase* pCell = maCellList.GetRecord( nPos );
+        pCell->ConvertXFIndexes( GetRoot() );
+        pCell->GetBlankXFIndexes( aXFIndexes );
     }
 
     // *** Fill gaps with BLANK/MULBLANK cell records *** ---------------------
@@ -1930,7 +1933,7 @@ void XclExpRow::Finalize( const ScfUInt16Vec& rColXFIndexes, bool bProgress )
             if( nFirstFreeXclCol < nNextUsedXclCol )
             {
                 aXFId.mnCount = nNextUsedXclCol - nFirstFreeXclCol;
-                XclExpCellRef xNewCell( new XclExpBlankCell( XclAddress( nFirstFreeXclCol, mnXclRow ), aXFId ) );
+                XclExpCellRef xNewCell = new XclExpBlankCell( XclAddress( nFirstFreeXclCol, mnXclRow ), aXFId );
                 // insert the cell, InsertCell() may merge it with existing BLANK records
                 InsertCell( xNewCell, nPos, false );
                 // insert default XF indexes into aXFIndexes
@@ -1945,24 +1948,20 @@ void XclExpRow::Finalize( const ScfUInt16Vec& rColXFIndexes, bool bProgress )
 
     // *** Find default row format *** ----------------------------------------
 
-    ScfUInt16Vec::iterator aCellBeg = aXFIndexes.begin(), aCellEnd = aXFIndexes.end(), aCellIt;
-    ScfUInt16Vec::const_iterator aColBeg = rColXFIndexes.begin(), aColIt;
-
     // find most used XF index in the row
-    typedef ::std::map< sal_uInt16, size_t > XclExpXFIndexMap;
-    XclExpXFIndexMap aIndexMap;
+    std::map< sal_uInt16, size_t > aIndexMap;
     sal_uInt16 nRowXFIndex = EXC_XF_DEFAULTCELL;
     size_t nMaxXFCount = 0;
     const size_t nHalfIndexes = aXFIndexes.size() / 2;
-    for( aCellIt = aCellBeg; aCellIt != aCellEnd; ++aCellIt )
+    for( const auto& rXFIndex : aXFIndexes )
     {
-        if( *aCellIt != EXC_XF_NOTFOUND )
+        if( rXFIndex != EXC_XF_NOTFOUND )
         {
-            size_t& rnCount = aIndexMap[ *aCellIt ];
+            size_t& rnCount = aIndexMap[ rXFIndex ];
             ++rnCount;
             if( rnCount > nMaxXFCount )
             {
-                nRowXFIndex = *aCellIt;
+                nRowXFIndex = rXFIndex;
                 nMaxXFCount = rnCount;
                 if (nMaxXFCount > nHalfIndexes)
                 {
@@ -1983,9 +1982,10 @@ void XclExpRow::Finalize( const ScfUInt16Vec& rColXFIndexes, bool bProgress )
         // count needed XF indexes for blank cells with and without row default XF index
         size_t nXFCountWithRowDefXF = 0;
         size_t nXFCountWithoutRowDefXF = 0;
-        for( aCellIt = aCellBeg, aColIt = aColBeg; aCellIt != aCellEnd; ++aCellIt, ++aColIt )
+        ScfUInt16Vec::const_iterator aColIt = rColXFIndexes.begin();
+        for( const auto& rXFIndex : aXFIndexes )
         {
-            sal_uInt16 nXFIndex = *aCellIt;
+            sal_uInt16 nXFIndex = rXFIndex;
             if( nXFIndex != EXC_XF_NOTFOUND )
             {
                 if( nXFIndex != nRowXFIndex )
@@ -1993,6 +1993,7 @@ void XclExpRow::Finalize( const ScfUInt16Vec& rColXFIndexes, bool bProgress )
                 if( nXFIndex != *aColIt )
                     ++nXFCountWithoutRowDefXF;  // without row default XF index
             }
+            ++aColIt;
         }
 
         // use column XF indexes if this would cause less or equal number of BLANK records
@@ -2005,9 +2006,13 @@ void XclExpRow::Finalize( const ScfUInt16Vec& rColXFIndexes, bool bProgress )
     {
         // use column default XF indexes
         // #i194#: remove cell XF indexes equal to column default XF indexes
-        for( aCellIt = aCellBeg, aColIt = aColBeg; aCellIt != aCellEnd; ++aCellIt, ++aColIt )
-            if( *aCellIt == *aColIt )
-                *aCellIt = EXC_XF_NOTFOUND;
+        ScfUInt16Vec::const_iterator aColIt = rColXFIndexes.begin();
+        for( auto& rXFIndex : aXFIndexes )
+        {
+            if( rXFIndex == *aColIt )
+                rXFIndex = EXC_XF_NOTFOUND;
+            ++aColIt;
+        }
     }
     else
     {
@@ -2015,16 +2020,16 @@ void XclExpRow::Finalize( const ScfUInt16Vec& rColXFIndexes, bool bProgress )
         mnXFIndex = nRowXFIndex;
         ::set_flag( mnFlags, EXC_ROW_USEDEFXF );
         // #98133#, #i194#, #i27407#: remove cell XF indexes equal to row default XF index
-        for( aCellIt = aCellBeg; aCellIt != aCellEnd; ++aCellIt )
-            if( *aCellIt == nRowXFIndex )
-                *aCellIt = EXC_XF_NOTFOUND;
+        for( auto& rXFIndex : aXFIndexes )
+            if( rXFIndex == nRowXFIndex )
+                rXFIndex = EXC_XF_NOTFOUND;
     }
 
     // remove unused parts of BLANK/MULBLANK cell records
     nPos = 0;
     while( nPos < maCellList.GetSize() )   // do not cache list size, may change in the loop
     {
-        XclExpCellRef xCell = maCellList.GetRecord( nPos );
+        XclExpCellBase* xCell = maCellList.GetRecord( nPos );
         xCell->RemoveUnusedBlankCells( aXFIndexes );
         if( xCell->IsEmpty() )
             maCellList.RemoveRecord( nPos );
@@ -2088,7 +2093,7 @@ void XclExpRow::InsertCell( XclExpCellRef xCell, size_t nPos, bool bIsMergedBase
         ::set_flag( mnFlags, EXC_ROW_UNSYNCED );
 
     // try to merge with previous cell, insert the new cell if not successful
-    XclExpCellRef xPrevCell = maCellList.GetRecord( nPos - 1 );
+    XclExpCellBase* xPrevCell = maCellList.GetRecord( nPos - 1 );
     if( xPrevCell && xPrevCell->TryMerge( *xCell ) )
         xCell = xPrevCell;
     else
@@ -2122,19 +2127,19 @@ void XclExpRow::SaveXml( XclExpXmlStream& rStrm )
     for ( sal_uInt32 i=0; i<mnXclRowRpt; ++i )
     {
         rWorksheet->startElement( XML_row,
-                XML_r,              OString::number(  (mnCurrentRow++) ).getStr(),
+                XML_r,              OString::number(mnCurrentRow++),
                 // OOXTODO: XML_spans,          optional
                 XML_s,              haveFormat ? lcl_GetStyleId( rStrm, mnXFIndex ).getStr() : nullptr,
-                XML_customFormat,   XclXmlUtils::ToPsz( haveFormat ),
-                XML_ht,             OString::number( (double) mnHeight / 20.0 ).getStr(),
-                XML_hidden,         XclXmlUtils::ToPsz( ::get_flag( mnFlags, EXC_ROW_HIDDEN ) ),
-                XML_customHeight,   XclXmlUtils::ToPsz( ::get_flag( mnFlags, EXC_ROW_UNSYNCED ) ),
-                XML_outlineLevel,   OString::number(  mnOutlineLevel ).getStr(),
-                XML_collapsed,      XclXmlUtils::ToPsz( ::get_flag( mnFlags, EXC_ROW_COLLAPSED ) ),
+                XML_customFormat,   ToPsz( haveFormat ),
+                XML_ht,             OString::number(static_cast<double>(mnHeight) / 20.0),
+                XML_hidden,         ToPsz( ::get_flag( mnFlags, EXC_ROW_HIDDEN ) ),
+                XML_customHeight,   ToPsz( ::get_flag( mnFlags, EXC_ROW_UNSYNCED ) ),
+                XML_outlineLevel,   OString::number(mnOutlineLevel),
+                XML_collapsed,      ToPsz( ::get_flag( mnFlags, EXC_ROW_COLLAPSED ) )
                 // OOXTODO: XML_thickTop,       bool
                 // OOXTODO: XML_thickBot,       bool
                 // OOXTODO: XML_ph,             bool
-                FSEND );
+        );
         // OOXTODO: XML_extLst
         maCellList.SaveXml( rStrm );
         rWorksheet->endElement( XML_row );
@@ -2161,6 +2166,8 @@ void XclExpRowBuffer::CreateRows( SCROW nFirstFreeScRow )
         GetOrCreateRow(  ::std::max ( nFirstFreeScRow - 1, GetMaxPos().Row() ), true );
 }
 
+namespace {
+
 class RowFinalizeTask : public comphelper::ThreadTask
 {
     bool mbProgress;
@@ -2182,6 +2189,8 @@ public:
     }
 };
 
+}
+
 void XclExpRowBuffer::Finalize( XclExpDefaultRowData& rDefRowData, const ScfUInt16Vec& rColXFIndexes )
 {
     // *** Finalize all rows *** ----------------------------------------------
@@ -2198,25 +2207,26 @@ void XclExpRowBuffer::Finalize( XclExpDefaultRowData& rDefRowData, const ScfUInt
 #endif
     if (nThreads == 1)
     {
-        RowMap::iterator itr, itrBeg = maRowMap.begin(), itrEnd = maRowMap.end();
-        for (itr = itrBeg; itr != itrEnd; ++itr)
-            itr->second->Finalize( rColXFIndexes, true );
+        for (auto& rEntry : maRowMap)
+            rEntry.second->Finalize( rColXFIndexes, true );
     }
     else
     {
         comphelper::ThreadPool &rPool = comphelper::ThreadPool::getSharedOptimalPool();
         std::shared_ptr<comphelper::ThreadTaskTag> pTag = comphelper::ThreadPool::createThreadTaskTag();
-        std::vector<RowFinalizeTask*> aTasks(nThreads, nullptr);
+        std::vector<std::unique_ptr<RowFinalizeTask>> aTasks(nThreads);
         for ( size_t i = 0; i < nThreads; i++ )
-            aTasks[ i ] = new RowFinalizeTask( pTag, rColXFIndexes, i == 0 );
+            aTasks[ i ].reset( new RowFinalizeTask( pTag, rColXFIndexes, i == 0 ) );
 
-        RowMap::iterator itr, itrBeg = maRowMap.begin(), itrEnd = maRowMap.end();
         size_t nIdx = 0;
-        for ( itr = itrBeg; itr != itrEnd; ++itr, ++nIdx )
-            aTasks[ nIdx % nThreads ]->push_back( itr->second.get() );
+        for ( const auto& rEntry : maRowMap )
+        {
+            aTasks[ nIdx % nThreads ]->push_back( rEntry.second.get() );
+            ++nIdx;
+        }
 
         for ( size_t i = 1; i < nThreads; i++ )
-            rPool.pushTask( aTasks[ i ] );
+            rPool.pushTask( std::move(aTasks[ i ]) );
 
         // Progress bar updates must be synchronous to avoid deadlock
         aTasks[0]->doWork();
@@ -2226,20 +2236,17 @@ void XclExpRowBuffer::Finalize( XclExpDefaultRowData& rDefRowData, const ScfUInt
 
     // *** Default row format *** ---------------------------------------------
 
-    typedef ::std::map< XclExpDefaultRowData, size_t > XclExpDefRowDataMap;
-    XclExpDefRowDataMap aDefRowMap;
+    std::map< XclExpDefaultRowData, size_t > aDefRowMap;
 
     XclExpDefaultRowData aMaxDefData;
     size_t nMaxDefCount = 0;
     // only look for default format in existing rows, if there are more than unused
     // if the row is hidden, then row xml must be created even if it not contain cells
     XclExpRow* pPrev = nullptr;
-    typedef std::vector< XclExpRow* > XclRepeatedRows;
-    XclRepeatedRows aRepeated;
-    RowMap::iterator itr, itrBeg = maRowMap.begin(), itrEnd = maRowMap.end();
-    for (itr = itrBeg; itr != itrEnd; ++itr)
+    std::vector< XclExpRow* > aRepeated;
+    for (const auto& rEntry : maRowMap)
     {
-        const RowRef& rRow = itr->second;
+        const RowRef& rRow = rEntry.second;
         if ( rRow->IsDefaultable() )
         {
             XclExpDefaultRowData aDefData( *rRow );
@@ -2278,13 +2285,13 @@ void XclExpRowBuffer::Finalize( XclExpDefaultRowData& rDefRowData, const ScfUInt
     rDefRowData = aMaxDefData;
 
     // now disable repeating extra (empty) rows that are equal to the default row
-    for ( XclRepeatedRows::iterator it = aRepeated.begin(), it_end = aRepeated.end(); it != it_end; ++it)
+    for (auto& rpRow : aRepeated)
     {
-        if ( (*it)->GetXclRowRpt() > 1
-             && (*it)->GetHeight() == rDefRowData.mnHeight
-             && (*it)->IsHidden() == rDefRowData.IsHidden() )
+        if ( rpRow->GetXclRowRpt() > 1
+             && rpRow->GetHeight() == rDefRowData.mnHeight
+             && rpRow->IsHidden() == rDefRowData.IsHidden() )
         {
-            (*it)->SetXclRowRpt( 1 );
+            rpRow->SetXclRowRpt( 1 );
         }
     }
 
@@ -2295,9 +2302,9 @@ void XclExpRowBuffer::Finalize( XclExpDefaultRowData& rDefRowData, const ScfUInt
     sal_uInt32 nFirstUsedXclRow = SAL_MAX_UINT32;
     sal_uInt32 nFirstFreeXclRow = 0;
 
-    for (itr = itrBeg; itr != itrEnd; ++itr)
+    for (const auto& rEntry : maRowMap)
     {
-        const RowRef& rRow = itr->second;
+        const RowRef& rRow = rEntry.second;
         // disable unused rows
         rRow->DisableIfDefault( aMaxDefData );
 
@@ -2333,24 +2340,21 @@ void XclExpRowBuffer::Save( XclExpStream& rStrm )
 
     // save in blocks of 32 rows, each block contains first all ROWs, then all cells
     size_t nSize = maRowMap.size();
-    RowMap::iterator itr, itrBeg = maRowMap.begin(), itrEnd = maRowMap.end();
+    RowMap::iterator itr = maRowMap.begin(), itrEnd = maRowMap.end();
     RowMap::iterator itrBlkStart = maRowMap.begin(), itrBlkEnd = maRowMap.begin();
-    sal_uInt16 nStartXclRow = (nSize == 0) ? 0 : itrBeg->second->GetXclRow();
+    sal_uInt16 nStartXclRow = (nSize == 0) ? 0 : itr->second->GetXclRow();
 
-    for (itr = itrBeg; itr != itrEnd; ++itr)
+    for (; itr != itrEnd; ++itr)
     {
         // find end of row block
-        while( (itrBlkEnd != itrEnd) && (itrBlkEnd->second->GetXclRow() - nStartXclRow < EXC_ROW_ROWBLOCKSIZE) )
-            ++itrBlkEnd;
+        itrBlkEnd = std::find_if_not(itrBlkEnd, itrEnd,
+            [&nStartXclRow](const RowMap::value_type& rRow) { return rRow.second->GetXclRow() - nStartXclRow < EXC_ROW_ROWBLOCKSIZE; });
 
         // write the ROW records
-        RowMap::iterator itRow;
-        for( itRow = itrBlkStart; itRow != itrBlkEnd; ++itRow )
-            itRow->second->Save( rStrm );
+        std::for_each(itrBlkStart, itrBlkEnd, [&rStrm](const RowMap::value_type& rRow) { rRow.second->Save( rStrm ); });
 
         // write the cell records
-        for( itRow = itrBlkStart; itRow != itrBlkEnd; ++itRow )
-             itRow->second->WriteCellList( rStrm );
+        std::for_each(itrBlkStart, itrBlkEnd, [&rStrm](const RowMap::value_type& rRow) { rRow.second->WriteCellList( rStrm ); });
 
         itrBlkStart = (itrBlkEnd == itrEnd) ? itrBlkEnd : itrBlkEnd++;
         nStartXclRow += EXC_ROW_ROWBLOCKSIZE;
@@ -2359,22 +2363,16 @@ void XclExpRowBuffer::Save( XclExpStream& rStrm )
 
 void XclExpRowBuffer::SaveXml( XclExpXmlStream& rStrm )
 {
-    sal_Int32 nNonEmpty = 0;
-    RowMap::iterator itr = maRowMap.begin(), itrEnd = maRowMap.end();
-    for (; itr != itrEnd; ++itr)
-        if (itr->second->IsEnabled())
-            ++nNonEmpty;
-
-    if (nNonEmpty == 0)
+    if (std::none_of(maRowMap.begin(), maRowMap.end(), [](const RowMap::value_type& rRow) { return rRow.second->IsEnabled(); }))
     {
-        rStrm.GetCurrentStream()->singleElement( XML_sheetData, FSEND );
+        rStrm.GetCurrentStream()->singleElement(XML_sheetData);
         return;
     }
 
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
-    rWorksheet->startElement( XML_sheetData, FSEND );
-    for (itr = maRowMap.begin(); itr != itrEnd; ++itr)
-        itr->second->SaveXml(rStrm);
+    rWorksheet->startElement(XML_sheetData);
+    for (const auto& rEntry : maRowMap)
+        rEntry.second->SaveXml(rStrm);
     rWorksheet->endElement( XML_sheetData );
 }
 
@@ -2387,7 +2385,7 @@ XclExpRow& XclExpRowBuffer::GetOrCreateRow( sal_uInt32 nXclRow, bool bRowAlwaysE
     if( !bFound || bFoundHigher )
     {
         size_t nFrom = 0;
-        RowRef pPrevEntry = nullptr;
+        RowRef pPrevEntry;
         if( itr != maRowMap.begin() )
         {
             --itr;
@@ -2421,8 +2419,8 @@ XclExpRow& XclExpRowBuffer::GetOrCreateRow( sal_uInt32 nXclRow, bool bRowAlwaysE
                 {
                     mnHighestOutlineLevel = maOutlineBfr.GetLevel();
                 }
-                RowRef p(new XclExpRow(GetRoot(), nFrom, maOutlineBfr, bRowAlwaysEmpty, bHidden, nHeight));
-                maRowMap.insert(RowMap::value_type(nFrom, p));
+                RowRef p = std::make_shared<XclExpRow>(GetRoot(), nFrom, maOutlineBfr, bRowAlwaysEmpty, bHidden, nHeight);
+                maRowMap.emplace(nFrom, p);
                 pPrevEntry = p;
             }
             ++nFrom;
@@ -2441,7 +2439,7 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
     maArrayBfr( rRoot ),
     maShrfmlaBfr( rRoot ),
     maTableopBfr( rRoot ),
-    mxDefrowheight( new XclExpDefrowheight ),
+    mxDefrowheight( new XclExpDefrowheight() ),
     mxGuts( new XclExpGuts( rRoot ) ),
     mxNoteList( new XclExpNoteList ),
     mxMergedcells( new XclExpMergedcells( rRoot ) ),
@@ -2464,6 +2462,9 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
 
     if(nLastUsedScCol > nMaxScCol)
         nLastUsedScCol = nMaxScCol;
+
+    // check extra blank rows to avoid of losing their not default settings (workaround for tdf#41425)
+    nLastUsedScRow += 1000;
 
     if(nLastUsedScRow > nMaxScRow)
         nLastUsedScRow = nMaxScRow;
@@ -2526,11 +2527,11 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
         {
             const SfxItemSet& rItemSet = pPattern->GetItemSet();
             // base cell in a merged range
-            const ScMergeAttr& rMergeItem = GETITEM( rItemSet, ScMergeAttr, ATTR_MERGE );
+            const ScMergeAttr& rMergeItem = rItemSet.Get( ATTR_MERGE );
             bIsMergedBase = rMergeItem.IsMerged();
             /*  overlapped cell in a merged range; in Excel all merged cells
                 must contain same XF index, for correct border */
-            const ScMergeFlagAttr& rMergeFlagItem = GETITEM( rItemSet, ScMergeFlagAttr, ATTR_MERGE_FLAG );
+            const ScMergeFlagAttr& rMergeFlagItem = rItemSet.Get( ATTR_MERGE_FLAG );
             if( rMergeFlagItem.IsOverlapped() )
                 nMergeBaseXFId = mxMergedcells->GetBaseXFId( aScPos );
         }
@@ -2543,40 +2544,51 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
             {
                 double fValue = rScCell.mfValue;
 
+                if (pPattern)
+                {
+                    OUString aUrl = pPattern->GetItemSet().Get(ATTR_HYPERLINK).GetValue();
+                    if (!aUrl.isEmpty())
+                    {
+                        rtl::Reference<XclExpHyperlink> aLink =
+                            new XclExpHyperlink(GetRoot(), SvxURLField(aUrl, aUrl), aScPos);
+                        mxHyperlinkList->AppendRecord(aLink);
+                    }
+                }
+
                 // try to create a Boolean cell
                 if( pPattern && ((fValue == 0.0) || (fValue == 1.0)) )
                 {
-                    sal_uInt32 nScNumFmt = GETITEM( pPattern->GetItemSet(), SfxUInt32Item, ATTR_VALUE_FORMAT ).GetValue();
-                    if( rFormatter.GetType( nScNumFmt ) == css::util::NumberFormat::LOGICAL )
-                        xCell.reset( new XclExpBooleanCell(
-                            GetRoot(), aXclPos, pPattern, nMergeBaseXFId, fValue != 0.0 ) );
+                    sal_uInt32 nScNumFmt = pPattern->GetItemSet().Get( ATTR_VALUE_FORMAT ).GetValue();
+                    if( rFormatter.GetType( nScNumFmt ) == SvNumFormatType::LOGICAL )
+                        xCell = new XclExpBooleanCell(
+                            GetRoot(), aXclPos, pPattern, nMergeBaseXFId, fValue != 0.0 );
                 }
 
                 // try to create an RK value (compressed floating-point number)
                 sal_Int32 nRkValue;
                 if( !xCell && XclTools::GetRKFromDouble( nRkValue, fValue ) )
-                    xCell.reset( new XclExpRkCell(
-                        GetRoot(), aXclPos, pPattern, nMergeBaseXFId, nRkValue ) );
+                    xCell = new XclExpRkCell(
+                        GetRoot(), aXclPos, pPattern, nMergeBaseXFId, nRkValue );
 
                 // else: simple floating-point number cell
                 if( !xCell )
-                    xCell.reset( new XclExpNumberCell(
-                        GetRoot(), aXclPos, pPattern, nMergeBaseXFId, fValue ) );
+                    xCell = new XclExpNumberCell(
+                        GetRoot(), aXclPos, pPattern, nMergeBaseXFId, fValue );
             }
             break;
 
             case CELLTYPE_STRING:
             {
-                xCell.reset(new XclExpLabelCell(
-                    GetRoot(), aXclPos, pPattern, nMergeBaseXFId, rScCell.mpString->getString()));
+                xCell = new XclExpLabelCell(
+                    GetRoot(), aXclPos, pPattern, nMergeBaseXFId, rScCell.mpString->getString());
             }
             break;
 
             case CELLTYPE_EDIT:
             {
                 XclExpHyperlinkHelper aLinkHelper( GetRoot(), aScPos );
-                xCell.reset(new XclExpLabelCell(
-                    GetRoot(), aXclPos, pPattern, nMergeBaseXFId, rScCell.mpEditText, aLinkHelper));
+                xCell = new XclExpLabelCell(
+                    GetRoot(), aXclPos, pPattern, nMergeBaseXFId, rScCell.mpEditText, aLinkHelper);
 
                 // add a single created HLINK record to the record list
                 if( aLinkHelper.HasLinkRecord() )
@@ -2589,26 +2601,38 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
 
             case CELLTYPE_FORMULA:
             {
-                xCell.reset(new XclExpFormulaCell(
+                if (pPattern)
+                {
+                    OUString aUrl = pPattern->GetItemSet().Get(ATTR_HYPERLINK).GetValue();
+                    if (!aUrl.isEmpty())
+                    {
+                        rtl::Reference<XclExpHyperlink> aLink =
+                            new XclExpHyperlink(GetRoot(), SvxURLField(aUrl, aUrl), aScPos);
+                        mxHyperlinkList->AppendRecord(aLink);
+                    }
+                }
+
+                xCell = new XclExpFormulaCell(
                     GetRoot(), aXclPos, pPattern, nMergeBaseXFId,
-                    *rScCell.mpFormula, maArrayBfr, maShrfmlaBfr, maTableopBfr));
+                    *rScCell.mpFormula, maArrayBfr, maShrfmlaBfr, maTableopBfr);
             }
             break;
 
             default:
                 OSL_FAIL( "XclExpCellTable::XclExpCellTable - unknown cell type" );
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case CELLTYPE_NONE:
             {
-                xCell.reset( new XclExpBlankCell(
-                    GetRoot(), aXclPos, nLastXclCol, pPattern, nMergeBaseXFId ) );
+                xCell = new XclExpBlankCell(
+                    GetRoot(), aXclPos, nLastXclCol, pPattern, nMergeBaseXFId );
             }
             break;
         }
 
+        assert(xCell && "can only reach here with xCell set");
+
         // insert the cell into the current row
-        if( xCell )
-            maRowBfr.AppendCell( xCell, bIsMergedBase );
+        maRowBfr.AppendCell( xCell, bIsMergedBase );
 
         if ( !aAddNoteText.isEmpty()  )
             mxNoteList->AppendNewRecord( new XclExpNote( GetRoot(), aScPos, nullptr, aAddNoteText ) );
@@ -2621,11 +2645,11 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
             // base cell in a merged range
             if( bIsMergedBase )
             {
-                const ScMergeAttr& rMergeItem = GETITEM( rItemSet, ScMergeAttr, ATTR_MERGE );
+                const ScMergeAttr& rMergeItem = rItemSet.Get( ATTR_MERGE );
                 ScRange aScRange( aScPos );
                 aScRange.aEnd.IncCol( rMergeItem.GetColMerge() - 1 );
                 aScRange.aEnd.IncRow( rMergeItem.GetRowMerge() - 1 );
-                sal_uInt32 nXFId = xCell ? xCell->GetFirstXFId() : EXC_XFID_NOTFOUND;
+                sal_uInt32 nXFId = xCell->GetFirstXFId();
                 // blank cells merged vertically may occur repeatedly
                 OSL_ENSURE( (aScRange.aStart.Col() == aScRange.aEnd.Col()) || (nScCol == nLastScCol),
                     "XclExpCellTable::XclExpCellTable - invalid repeated blank merged cell" );
@@ -2640,7 +2664,7 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
             // data validation
             if( ScfTools::CheckItem( rItemSet, ATTR_VALIDDATA, false ) )
             {
-                sal_uLong nScHandle = GETITEM( rItemSet, SfxUInt32Item, ATTR_VALIDDATA ).GetValue();
+                sal_uLong nScHandle = rItemSet.Get( ATTR_VALIDDATA ).GetValue();
                 ScRange aScRange( aScPos );
                 aScRange.aEnd.SetCol( nLastScCol );
                 mxDval->InsertCellRange( aScRange, nScHandle );
@@ -2652,7 +2676,7 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
     maRowBfr.CreateRows( ::std::max( nFirstUnflaggedScRow, nFirstUngroupedScRow ) );
 }
 
-void XclExpCellTable::Finalize()
+void XclExpCellTable::Finalize(bool bXLS)
 {
     // Finalize multiple operations.
     maTableopBfr.Finalize();
@@ -2660,7 +2684,7 @@ void XclExpCellTable::Finalize()
     /*  Finalize column buffer. This calculates column default XF indexes from
         the XF identifiers and fills a vector with these XF indexes. */
     ScfUInt16Vec aColXFIndexes;
-    maColInfoBfr.Finalize( aColXFIndexes );
+    maColInfoBfr.Finalize( aColXFIndexes, bXLS );
 
     /*  Finalize row buffer. This calculates all cell XF indexes from the XF
         identifiers. Then the XF index vector aColXFIndexes (filled above) is
@@ -2679,7 +2703,7 @@ XclExpRecordRef XclExpCellTable::CreateRecord( sal_uInt16 nRecId ) const
     XclExpRecordRef xRec;
     switch( nRecId )
     {
-        case EXC_ID3_DIMENSIONS:    xRec.reset( new XclExpDelegatingRecord( &const_cast<XclExpRowBuffer*>(&maRowBfr)->GetDimensions() ) );   break;
+        case EXC_ID3_DIMENSIONS:    xRec = new XclExpDelegatingRecord( &const_cast<XclExpRowBuffer*>(&maRowBfr)->GetDimensions() );   break;
         case EXC_ID2_DEFROWHEIGHT:  xRec = mxDefrowheight;  break;
         case EXC_ID_GUTS:           xRec = mxGuts;          break;
         case EXC_ID_NOTE:           xRec = mxNoteList;      break;
@@ -2707,15 +2731,14 @@ void XclExpCellTable::SaveXml( XclExpXmlStream& rStrm )
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_sheetFormatPr,
         // OOXTODO: XML_baseColWidth
-        // OOXTODO: XML_defaultColWidth
+        XML_defaultColWidth, OString::number(maColInfoBfr.GetDefColWidth()),
         // OOXTODO: XML_customHeight
         // OOXTODO: XML_thickTop
         // OOXTODO: XML_thickBottom
-        XML_defaultRowHeight, OString::number( static_cast< double> ( rDefData.mnHeight ) / 20.0 ).getStr(),
-        XML_zeroHeight, XclXmlUtils::ToPsz( rDefData.IsHidden() ),
-        XML_outlineLevelRow, OString::number( maRowBfr.GetHighestOutlineLevel() ).getStr(),
-        XML_outlineLevelCol, OString::number( maColInfoBfr.GetHighestOutlineLevel() ).getStr(),
-        FSEND );
+        XML_defaultRowHeight, OString::number(static_cast<double> (rDefData.mnHeight) / 20.0),
+        XML_zeroHeight, ToPsz( rDefData.IsHidden() ),
+        XML_outlineLevelRow, OString::number(maRowBfr.GetHighestOutlineLevel()),
+        XML_outlineLevelCol, OString::number(maColInfoBfr.GetHighestOutlineLevel()) );
     rWorksheet->endElement( XML_sheetFormatPr );
 
     maColInfoBfr.SaveXml( rStrm );

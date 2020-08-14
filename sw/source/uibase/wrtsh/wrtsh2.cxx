@@ -20,43 +20,32 @@
 #include <hintids.hxx>
 #include <svl/macitem.hxx>
 #include <sfx2/frame.hxx>
-#include <vcl/msgbox.hxx>
-#include <svl/urihelper.hxx>
 #include <svl/eitem.hxx>
+#include <svl/listener.hxx>
 #include <svl/stritem.hxx>
 #include <sfx2/docfile.hxx>
-#include <sfx2/fcontnr.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/linkmgr.hxx>
+#include <sfx2/viewfrm.hxx>
+#include <sot/exchange.hxx>
 #include <fmtinfmt.hxx>
-#include <frmatr.hxx>
-#include <swtypes.hxx>
 #include <wrtsh.hxx>
 #include <docsh.hxx>
 #include <fldbas.hxx>
 #include <expfld.hxx>
-#include <ddefld.hxx>
 #include <docufld.hxx>
 #include <reffld.hxx>
 #include <swundo.hxx>
 #include <doc.hxx>
-#include <IDocumentUndoRedo.hxx>
-#include <viewopt.hxx>
 #include <frmfmt.hxx>
 #include <fmtfld.hxx>
-#include <swtable.hxx>
-#include <mdiexp.hxx>
 #include <view.hxx>
 #include <swevent.hxx>
-#include <poolfmt.hxx>
 #include <section.hxx>
 #include <navicont.hxx>
-#include <navipi.hxx>
 #include <txtinet.hxx>
 #include <cmdid.h>
-#include <wrtsh.hrc>
-#include "swabstdlg.hxx"
-#include "fldui.hrc"
+#include <swabstdlg.hxx>
 #include <SwRewriter.hxx>
 
 #include <com/sun/star/document/XDocumentProperties.hpp>
@@ -66,8 +55,10 @@
 
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <comphelper/lok.hxx>
+#include <sfx2/event.hxx>
+#include <sal/log.hxx>
 
-void SwWrtShell::Insert(SwField &rField)
+void SwWrtShell::Insert(SwField const& rField, SwPaM* pAnnotationRange)
 {
     ResetCursorStack();
     if(!CanInsert())
@@ -81,6 +72,11 @@ void SwWrtShell::Insert(SwField &rField)
 
     bool bDeleted = false;
     std::unique_ptr<SwPaM> pAnnotationTextRange;
+    if (pAnnotationRange)
+    {
+        pAnnotationTextRange.reset(new SwPaM(*pAnnotationRange->Start(), *pAnnotationRange->End()));
+    }
+
     if ( HasSelection() )
     {
         if ( rField.GetTyp()->Which() == SwFieldIds::Postit )
@@ -110,7 +106,7 @@ void SwWrtShell::Insert(SwField &rField)
         }
         else
         {
-            bDeleted = DelRight() != 0;
+            bDeleted = DelRight();
         }
     }
 
@@ -120,6 +116,17 @@ void SwWrtShell::Insert(SwField &rField)
     {
         if ( GetDoc() != nullptr )
         {
+            const SwPaM& rCurrPaM = GetCurrentShellCursor();
+            if (*rCurrPaM.Start() == *pAnnotationTextRange->Start()
+                && *rCurrPaM.End() == *pAnnotationTextRange->End())
+            {
+                // Annotation range was passed in externally, and inserting the postit field shifted
+                // its start/end positions right by one. Restore the original position for the range
+                // start. This allows commenting on the placeholder character of the field.
+                SwIndex& rRangeStart = pAnnotationTextRange->Start()->nContent;
+                if (rRangeStart.GetIndex() > 0)
+                    --rRangeStart;
+            }
             IDocumentMarkAccess* pMarksAccess = GetDoc()->getIDocumentMarkAccess();
             pMarksAccess->makeAnnotationMark( *pAnnotationTextRange, OUString() );
         }
@@ -135,48 +142,78 @@ void SwWrtShell::Insert(SwField &rField)
 void SwWrtShell::UpdateInputFields( SwInputFieldList* pLst )
 {
     // Go through the list of fields and updating
-    SwInputFieldList* pTmp = pLst;
-    if( !pTmp )
-        pTmp = new SwInputFieldList( this );
-
-    const size_t nCnt = pTmp->Count();
-    if(nCnt)
+    std::unique_ptr<SwInputFieldList> pTmp;
+    if (!pLst)
     {
-        pTmp->PushCursor();
-
-        bool bCancel = false;
-        OString aDlgPos;
-        for( size_t i = 0; i < nCnt && !bCancel; ++i )
-        {
-            pTmp->GotoFieldPos( i );
-            SwField* pField = pTmp->GetField( i );
-            if(pField->GetTyp()->Which() == SwFieldIds::Dropdown)
-                bCancel = StartDropDownFieldDlg( pField, true, &aDlgPos );
-            else
-                bCancel = StartInputFieldDlg( pField, true, nullptr, &aDlgPos);
-
-            if (!bCancel)
-            {
-                // Otherwise update error at multi-selection:
-                pTmp->GetField( i )->GetTyp()->UpdateFields();
-            }
-        }
-        pTmp->PopCursor();
+        pTmp.reset(new SwInputFieldList( this ));
+        pLst = pTmp.get();
     }
 
-    if( !pLst )
-        delete pTmp;
+    const size_t nCnt = pLst->Count();
+    if(!nCnt)
+        return;
+
+    pLst->PushCursor();
+
+    bool bCancel = false;
+
+    size_t nIndex = 0;
+    FieldDialogPressedButton ePressedButton = FieldDialogPressedButton::NONE;
+
+    SwField* pField = GetCurField();
+    if (pField)
+    {
+        for (size_t i = 0; i < nCnt; i++)
+        {
+            if (pField == pLst->GetField(i))
+            {
+                nIndex = i;
+                break;
+            }
+        }
+    }
+
+    while (!bCancel)
+    {
+        bool bPrev = nIndex > 0;
+        bool bNext = nIndex < nCnt - 1;
+        pLst->GotoFieldPos(nIndex);
+        pField = pLst->GetField(nIndex);
+        if (pField->GetTyp()->Which() == SwFieldIds::Dropdown)
+        {
+            bCancel = StartDropDownFieldDlg(pField, bPrev, bNext, GetView().GetFrameWeld(), &ePressedButton);
+        }
+        else
+            bCancel = StartInputFieldDlg(pField, bPrev, bNext, GetView().GetFrameWeld(), &ePressedButton);
+
+        if (!bCancel)
+        {
+            // Otherwise update error at multi-selection:
+            pLst->GetField(nIndex)->GetTyp()->UpdateFields();
+
+            if (ePressedButton == FieldDialogPressedButton::Previous && nIndex > 0)
+                nIndex--;
+            else if (ePressedButton == FieldDialogPressedButton::Next && nIndex < nCnt - 1)
+                nIndex++;
+            else
+                bCancel = true;
+        }
+    }
+
+    pLst->PopCursor();
 }
+
+namespace {
 
 // Listener class: will close InputField dialog if input field(s)
 // is(are) deleted (for instance, by an extension) after the dialog shows up.
 // Otherwise, the for loop in SwWrtShell::UpdateInputFields will crash when doing:
 //         'pTmp->GetField( i )->GetTyp()->UpdateFields();'
 // on a deleted field.
-class FieldDeletionModify : public SwModify
+class FieldDeletionListener : public SvtListener
 {
     public:
-        FieldDeletionModify(AbstractFieldInputDlg* pInputFieldDlg, SwField* pField)
+        FieldDeletionListener(AbstractFieldInputDlg* pInputFieldDlg, SwField* pField)
             : mpInputFieldDlg(pInputFieldDlg)
             , mpFormatField(nullptr)
         {
@@ -194,31 +231,22 @@ class FieldDeletionModify : public SwModify
 
             // Register for possible field deletion while dialog is open
             if (mpFormatField)
-                mpFormatField->Add(this);
+                StartListening(mpFormatField->GetNotifier());
         }
 
-        virtual ~FieldDeletionModify() override
+        virtual ~FieldDeletionListener() override
         {
-            if (mpFormatField)
-            {
-                // Dialog closed, remove modification listener
-                mpFormatField->Remove(this);
-            }
+            // Dialog closed, remove modification listener
+            EndListeningAll();
         }
 
-        void Modify( const SfxPoolItem* pOld, const SfxPoolItem *) override
+        virtual void Notify(const SfxHint& rHint) override
         {
             // Input field has been deleted: better to close the dialog
-            if (pOld)
+            if(rHint.GetId() == SfxHintId::Dying)
             {
-                switch (pOld->Which())
-                {
-                case RES_REMOVE_UNO_OBJECT:
-                case RES_OBJECTDYING:
-                    mpFormatField = nullptr;
-                    mpInputFieldDlg->EndDialog(RET_CANCEL);
-                    break;
-                }
+                mpFormatField = nullptr;
+                mpInputFieldDlg->EndDialog(RET_CANCEL);
             }
         }
     private:
@@ -226,48 +254,54 @@ class FieldDeletionModify : public SwModify
         SwFormatField* mpFormatField;
 };
 
+}
+
 // Start input dialog for a specific field
-bool SwWrtShell::StartInputFieldDlg( SwField* pField, bool bNextButton,
-                                   vcl::Window* pParentWin, OString* pWindowState )
+bool SwWrtShell::StartInputFieldDlg(SwField* pField, bool bPrevButton, bool bNextButton,
+                                    weld::Widget* pParentWin, SwWrtShell::FieldDialogPressedButton* pPressedButton)
 {
 
     SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-    OSL_ENSURE(pFact, "Dialog creation failed!");
-    ScopedVclPtr<AbstractFieldInputDlg> pDlg(pFact->CreateFieldInputDlg(pParentWin, *this, pField, bNextButton));
-    OSL_ENSURE(pDlg, "Dialog creation failed!");
-    if(pWindowState && !pWindowState->isEmpty())
-        pDlg->SetWindowState(*pWindowState);
+    ScopedVclPtr<AbstractFieldInputDlg> pDlg(pFact->CreateFieldInputDlg(pParentWin, *this, pField, bPrevButton, bNextButton));
 
     bool bRet;
 
     {
-        FieldDeletionModify aModify(pDlg.get(), pField);
+        FieldDeletionListener aModify(pDlg.get(), pField);
         bRet = RET_CANCEL == pDlg->Execute();
     }
 
-    if(pWindowState)
-        *pWindowState = pDlg->GetWindowState();
+    if (pPressedButton)
+    {
+        if (pDlg->PrevButtonPressed())
+            *pPressedButton = FieldDialogPressedButton::Previous;
+        else if (pDlg->NextButtonPressed())
+            *pPressedButton = FieldDialogPressedButton::Next;
+    }
 
     pDlg.disposeAndClear();
-    GetWin()->Update();
+    GetWin()->PaintImmediately();
     return bRet;
 }
 
-bool SwWrtShell::StartDropDownFieldDlg(SwField* pField, bool bNextButton, OString* pWindowState)
+bool SwWrtShell::StartDropDownFieldDlg(SwField* pField, bool bPrevButton, bool bNextButton,
+                                       weld::Widget* pParentWin, SwWrtShell::FieldDialogPressedButton* pPressedButton)
 {
     SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-    OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
-
-    ScopedVclPtr<AbstractDropDownFieldDialog> pDlg(pFact->CreateDropDownFieldDialog(*this, pField, bNextButton));
-    OSL_ENSURE(pDlg, "Dialog creation failed!");
-    if(pWindowState && !pWindowState->isEmpty())
-        pDlg->SetWindowState(*pWindowState);
+    ScopedVclPtr<AbstractDropDownFieldDialog> pDlg(pFact->CreateDropDownFieldDialog(pParentWin, *this, pField, bPrevButton, bNextButton));
     const short nRet = pDlg->Execute();
-    if(pWindowState)
-        *pWindowState = pDlg->GetWindowState();
+
+    if (pPressedButton)
+    {
+        if (pDlg->PrevButtonPressed())
+            *pPressedButton = FieldDialogPressedButton::Previous;
+        else if (pDlg->NextButtonPressed())
+            *pPressedButton = FieldDialogPressedButton::Next;
+    }
+
     pDlg.disposeAndClear();
     bool bRet = RET_CANCEL == nRet;
-    GetWin()->Update();
+    GetWin()->PaintImmediately();
     if(RET_YES == nRet)
     {
         GetView().GetViewFrame()->GetDispatcher()->Execute(FN_EDIT_FIELD, SfxCallMode::SYNCHRON);
@@ -290,25 +324,12 @@ void SwWrtShell::InsertTableOf(const SwTOXBase& rTOX, const SfxItemSet* pSet)
 
 // Update directory - remove selection
 
-bool SwWrtShell::UpdateTableOf(const SwTOXBase& rTOX, const SfxItemSet* pSet)
+void SwWrtShell::UpdateTableOf(const SwTOXBase& rTOX, const SfxItemSet* pSet)
 {
-    bool bResult = false;
-
     if(CanInsert())
     {
-        bResult = SwEditShell::UpdateTableOf(rTOX, pSet);
-
-        if (pSet == nullptr)
-        {
-            SwDoc *const pDoc_ = GetDoc();
-            if (pDoc_)
-            {
-                pDoc_->GetIDocumentUndoRedo().DelAllUndoObj();
-            }
-        }
+        SwEditShell::UpdateTableOf(rTOX, pSet);
     }
-
-    return bResult;
 }
 
 // handler for click on the field given as parameter.
@@ -389,17 +410,17 @@ void SwWrtShell::ClickToField( const SwField& rField )
             const SwInputField* pInputField = dynamic_cast<const SwInputField*>(&rField);
             if ( pInputField == nullptr )
             {
-                StartInputFieldDlg( const_cast<SwField*>(&rField), false );
+                StartInputFieldDlg(const_cast<SwField*>(&rField), false, false, GetView().GetFrameWeld());
             }
         }
         break;
 
     case SwFieldIds::SetExp:
         if( static_cast<const SwSetExpField&>(rField).GetInputFlag() )
-            StartInputFieldDlg( const_cast<SwField*>(&rField), false );
+            StartInputFieldDlg(const_cast<SwField*>(&rField), false, false, GetView().GetFrameWeld());
         break;
     case SwFieldIds::Dropdown :
-        StartDropDownFieldDlg( const_cast<SwField*>(&rField), false );
+        StartDropDownFieldDlg(const_cast<SwField*>(&rField), false, false, GetView().GetFrameWeld());
     break;
     default:
         SAL_WARN_IF(rField.IsClickable(), "sw", "unhandled clickable field!");
@@ -416,12 +437,12 @@ void SwWrtShell::ClickToINetAttr( const SwFormatINetFormat& rItem, LoadUrlFlags 
     m_bIsInClickToEdit = true;
 
     // At first run the possibly set ObjectSelect Macro
-    const SvxMacro* pMac = rItem.GetMacro( SFX_EVENT_MOUSECLICK_OBJECT );
+    const SvxMacro* pMac = rItem.GetMacro( SvMacroItemId::OnClick );
     if( pMac )
     {
         SwCallMouseEvent aCallEvent;
         aCallEvent.Set( &rItem );
-        GetDoc()->CallEvent( SFX_EVENT_MOUSECLICK_OBJECT, aCallEvent );
+        GetDoc()->CallEvent( SvMacroItemId::OnClick, aCallEvent );
     }
 
     // So that the implementation of templates is displayed immediately
@@ -446,13 +467,9 @@ bool SwWrtShell::ClickToINetGrf( const Point& rDocPt, LoadUrlFlags nFilter )
     {
         bRet = true;
         // At first run the possibly set ObjectSelect Macro
-        const SvxMacro* pMac = &pFnd->GetMacro().GetMacro( SFX_EVENT_MOUSECLICK_OBJECT );
-        if( pMac )
-        {
-            SwCallMouseEvent aCallEvent;
-            aCallEvent.Set( EVENT_OBJECT_URLITEM, pFnd );
-            GetDoc()->CallEvent( SFX_EVENT_MOUSECLICK_OBJECT, aCallEvent );
-        }
+        SwCallMouseEvent aCallEvent;
+        aCallEvent.Set(EVENT_OBJECT_URLITEM, pFnd);
+        GetDoc()->CallEvent(SvMacroItemId::OnClick, aCallEvent);
 
         ::LoadURL(*this, sURL, nFilter, sTargetFrameName);
     }
@@ -470,8 +487,9 @@ void LoadURL( SwViewShell& rVSh, const OUString& rURL, LoadUrlFlags nFilter,
     if ( dynamic_cast<const SwCursorShell*>( &rVSh) ==  nullptr )
         return;
 
-    // We are doing tiledRendering, let the client handles the URL loading.
-    if (comphelper::LibreOfficeKit::isActive())
+    // We are doing tiledRendering, let the client handles the URL loading,
+    // unless we are jumping to a TOC mark.
+    if (comphelper::LibreOfficeKit::isActive() && !rURL.startsWith("#"))
     {
         rVSh.GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_HYPERLINK_CLICKED, rURL.toUtf8().getStr());
         return;
@@ -506,7 +524,7 @@ void LoadURL( SwViewShell& rVSh, const OUString& rURL, LoadUrlFlags nFilter,
     //#39076# Silent can be removed accordingly to SFX.
     SfxBoolItem aBrowse( SID_BROWSE, true );
 
-    if( nFilter & LoadUrlFlags::NewView )
+    if ((nFilter & LoadUrlFlags::NewView) && !comphelper::LibreOfficeKit::isActive())
         aTargetFrameName.SetValue( "_blank" );
 
     const SfxPoolItem* aArr[] = {
@@ -552,10 +570,10 @@ void SwWrtShell::NavigatorPaste( const NaviContentBookmark& rBkmk,
     }
     else
     {
-        SwSectionData aSection( FILE_LINK_SECTION, GetUniqueSectionName() );
+        SwSectionData aSection( SectionType::FileLink, GetUniqueSectionName() );
         OUString aLinkFile = rBkmk.GetURL().getToken(0, '#')
-            + OUStringLiteral1(sfx2::cTokenSeparator)
-            + OUStringLiteral1(sfx2::cTokenSeparator)
+            + OUStringChar(sfx2::cTokenSeparator)
+            + OUStringChar(sfx2::cTokenSeparator)
             + rBkmk.GetURL().getToken(1, '#');
         aSection.SetLinkFileName( aLinkFile );
         aSection.SetProtectFlag( true );
@@ -564,7 +582,7 @@ void SwWrtShell::NavigatorPaste( const NaviContentBookmark& rBkmk,
         {
             aSection = SwSectionData(*pIns);
             aSection.SetLinkFileName( OUString() );
-            aSection.SetType( CONTENT_SECTION );
+            aSection.SetType( SectionType::Content );
             aSection.SetProtectFlag( false );
 
             // the update of content from linked section at time delete

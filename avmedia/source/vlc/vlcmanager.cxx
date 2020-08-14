@@ -11,24 +11,22 @@
 #include <boost/lexical_cast.hpp>
 #include <com/sun/star/uno/Exception.hpp>
 #include <cppuhelper/supportsservice.hxx>
+#include <sal/log.hxx>
 #include "vlcmanager.hxx"
 #include "vlcplayer.hxx"
-#include "wrapper/Instance.hxx"
-#include "wrapper/EventManager.hxx"
-#include "wrapper/Media.hxx"
-#include "wrapper/Player.hxx"
-#include "wrapper/Common.hxx"
+#include <wrapper/Instance.hxx>
+#include <wrapper/EventManager.hxx>
+#include <wrapper/Media.hxx>
+#include <wrapper/Player.hxx>
+#include <wrapper/Common.hxx>
+#include <officecfg/Office/Common.hxx>
 
 using namespace ::com::sun::star;
 
-namespace avmedia {
-namespace vlc {
+namespace avmedia::vlc {
 
 namespace
 {
-    const rtl::OUString VLC_IMPLEMENTATION_NAME = "com.sun.star.comp.avmedia.Manager_VLC";
-    const ::rtl::OUString VLC_SERVICENAME = "com.sun.star.media.Manager_VLC";
-
     const char * const VLC_ARGS[] = {
         "--demux",
         "ffmpeg",
@@ -37,9 +35,8 @@ namespace
     };
 }
 
-Manager::Manager( const uno::Reference< lang::XMultiServiceFactory >& rxMgr )
+Manager::Manager()
     : mEventHandler()
-    , mxMgr( rxMgr )
 {
     using namespace wrapper;
     static bool success = Instance::LoadSymbols() && EventManager::LoadSymbols()
@@ -82,7 +79,7 @@ Manager::~Manager()
     mEventHandler.stop();
 }
 
-uno::Reference< media::XPlayer > SAL_CALL Manager::createPlayer( const rtl::OUString& rURL )
+uno::Reference< media::XPlayer > SAL_CALL Manager::createPlayer( const OUString& rURL )
 {
     if ( !m_is_vlc_found )
         throw uno::RuntimeException("VLC not found", nullptr);
@@ -105,22 +102,35 @@ uno::Reference< media::XPlayer > SAL_CALL Manager::createPlayer( const rtl::OUSt
     return mPlayer;
 }
 
-rtl::OUString SAL_CALL Manager::getImplementationName()
+OUString SAL_CALL Manager::getImplementationName()
 {
-    return VLC_IMPLEMENTATION_NAME;
+    return "com.sun.star.comp.avmedia.Manager_VLC";
 }
 
-sal_Bool SAL_CALL Manager::supportsService( const rtl::OUString& serviceName )
+sal_Bool SAL_CALL Manager::supportsService( const OUString& serviceName )
 {
     return cppu::supportsService(this, serviceName);
 }
 
-uno::Sequence< rtl::OUString > SAL_CALL Manager::getSupportedServiceNames()
+uno::Sequence< OUString > SAL_CALL Manager::getSupportedServiceNames()
 {
-    return { VLC_SERVICENAME };
+    return {  "com.sun.star.media.Manager_VLC" };
 }
 
-} // end namespace vlc
-} // end namespace avmedia
+} // end namespace
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_media_Manager_VLC_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    // Experimental for now - code is neither elegant nor well tested.
+    if (!officecfg::Office::Common::Misc::ExperimentalMode::get(context))
+        return nullptr;
+    static uno::Reference< uno::XInterface > manager( *new ::avmedia::vlc::Manager );
+    manager->acquire();
+    return manager.get();
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

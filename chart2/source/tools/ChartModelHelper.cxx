@@ -17,25 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ChartModelHelper.hxx"
-#include "macros.hxx"
-#include "DiagramHelper.hxx"
-#include "DataSourceHelper.hxx"
-#include "ControllerLockGuard.hxx"
-#include "RangeHighlighter.hxx"
-#include "InternalDataProvider.hxx"
-#include "ChartModel.hxx"
+#include <ChartModelHelper.hxx>
+#include <DiagramHelper.hxx>
+#include <DataSourceHelper.hxx>
+#include <ControllerLockGuard.hxx>
+#include <RangeHighlighter.hxx>
+#include <InternalDataProvider.hxx>
+#include <ChartModel.hxx>
 
 #include <com/sun/star/chart/ChartDataRowSource.hpp>
 #include <com/sun/star/chart/XChartDocument.hpp>
 #include <com/sun/star/chart2/data/XDataReceiver.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/chart2/XChartTypeContainer.hpp>
 #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
-#include <com/sun/star/chart2/XDataSeriesContainer.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/embed/XVisualObject.hpp>
 #include <com/sun/star/view/XSelectionChangeListener.hpp>
+#include <tools/diagnose_ex.h>
 
 namespace chart
 {
@@ -97,9 +95,9 @@ uno::Reference< XDiagram > ChartModelHelper::findDiagram( const uno::Reference< 
         if( xChartDoc.is())
             return xChartDoc->getFirstDiagram();
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
     return nullptr;
 }
@@ -111,7 +109,7 @@ uno::Reference< XCoordinateSystem > ChartModelHelper::getFirstCoordinateSystem( 
     if( xCooSysCnt.is() )
     {
         uno::Sequence< uno::Reference< XCoordinateSystem > > aCooSysSeq( xCooSysCnt->getCoordinateSystems() );
-        if( aCooSysSeq.getLength() )
+        if( aCooSysSeq.hasElements() )
             XCooSys = aCooSysSeq[0];
     }
     return XCooSys;
@@ -124,7 +122,7 @@ uno::Reference< XCoordinateSystem > ChartModelHelper::getFirstCoordinateSystem( 
     if( xCooSysCnt.is() )
     {
         uno::Sequence< uno::Reference< XCoordinateSystem > > aCooSysSeq( xCooSysCnt->getCoordinateSystems() );
-        if( aCooSysSeq.getLength() )
+        if( aCooSysSeq.hasElements() )
             XCooSys = aCooSysSeq[0];
     }
     return XCooSys;
@@ -256,13 +254,13 @@ bool ChartModelHelper::setIncludeHiddenCells( bool bIncludeHiddenCells, ChartMod
                 if( xUsedData.is() )
                 {
                     uno::Reference< beans::XPropertySet > xProp;
-                    uno::Sequence< uno::Reference< chart2::data::XLabeledDataSequence > > aData( xUsedData->getDataSequences());
-                    for( sal_Int32 i=0; i<aData.getLength(); ++i )
+                    const uno::Sequence< uno::Reference< chart2::data::XLabeledDataSequence > > aData( xUsedData->getDataSequences());
+                    for( uno::Reference< chart2::data::XLabeledDataSequence > const & labeledData : aData )
                     {
-                        xProp.set( uno::Reference< beans::XPropertySet >( aData[i]->getValues(), uno::UNO_QUERY ) );
+                        xProp.set( uno::Reference< beans::XPropertySet >( labeledData->getValues(), uno::UNO_QUERY ) );
                         if(xProp.is())
                             xProp->setPropertyValue("IncludeHiddenCells", aNewValue );
-                        xProp.set( uno::Reference< beans::XPropertySet >( aData[i]->getLabel(), uno::UNO_QUERY ) );
+                        xProp.set( uno::Reference< beans::XPropertySet >( labeledData->getLabel(), uno::UNO_QUERY ) );
                         if(xProp.is())
                             xProp->setPropertyValue("IncludeHiddenCells", aNewValue );
                     }
@@ -276,9 +274,9 @@ bool ChartModelHelper::setIncludeHiddenCells( bool bIncludeHiddenCells, ChartMod
             xDiagramProperties->setPropertyValue( "IncludeHiddenCells", aNewValue);
         }
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        ASSERT_EXCEPTION(e);
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
     return bChanged;
 }

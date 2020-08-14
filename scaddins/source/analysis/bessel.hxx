@@ -20,12 +20,9 @@
 #ifndef INCLUDED_SCADDINS_SOURCE_ANALYSIS_BESSEL_HXX
 #define INCLUDED_SCADDINS_SOURCE_ANALYSIS_BESSEL_HXX
 
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/sheet/NoConvergenceException.hpp>
 #include <sal/types.h>
 
-namespace sca {
-namespace analysis {
+namespace sca::analysis {
 
 
 //     BESSEL functions
@@ -59,8 +56,7 @@ double BesselY( double x, sal_Int32 n );
 */
 double BesselK( double x, sal_Int32 n );
 
-} // namespace analysis
-} // namespace sca
+} // namespace sca::analysis
 
 #endif
 

@@ -21,12 +21,10 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DINDEXCOLUMNS_HXX
 
 #include <connectivity/sdbcx/VCollection.hxx>
-#include "dbase/DIndex.hxx"
-#include "dbase/DTable.hxx"
+#include <dbase/DIndex.hxx>
+#include <dbase/DTable.hxx>
 
-namespace connectivity
-{
-    namespace dbase
+namespace connectivity::dbase
     {
         class ODbaseIndexColumns : public sdbcx::OCollection
         {
@@ -39,13 +37,13 @@ namespace connectivity
         public:
             ODbaseIndexColumns( ODbaseIndex* _pIndex,
                                 ::osl::Mutex& _rMutex,
-                                const TStringVector &_rVector)
+                                const ::std::vector< OUString> &_rVector)
                         : sdbcx::OCollection(*_pIndex,_pIndex->getTable()->getConnection()->getMetaData()->supportsMixedCaseQuotedIdentifiers(),_rMutex,_rVector)
                         , m_pIndex(_pIndex)
             {}
 
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DINDEXCOLUMNS_HXX
 

@@ -28,19 +28,11 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <comphelper/uno3.hxx>
 #include <connectivity/CommonTools.hxx>
 
 
-namespace connectivity
-{
-
-
-    namespace hsqldb
+namespace connectivity::hsqldb
     {
-        /// @throws css::uno::Exception
-        css::uno::Reference< css::uno::XInterface > SAL_CALL ODriverDelegator_CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory);
-
         typedef ::cppu::WeakComponentImplHelper<   css::sdbc::XDriver
                                                  , css::sdbcx::XDataDefinitionSupplier
                                                  , css::lang::XServiceInfo
@@ -58,7 +50,7 @@ namespace connectivity
         /** delegates all calls to the original driver and extend the existing one with the SDBCX layer.
 
         */
-        class ODriverDelegator : public ::cppu::BaseMutex
+        class ODriverDelegator final : public ::cppu::BaseMutex
                                 ,public ODriverDelegator_BASE
         {
             TWeakPairVector                                           m_aConnections; //  vector containing a list
@@ -88,10 +80,6 @@ namespace connectivity
 
             // XServiceInfo
             DECLARE_SERVICE_INFO();
-            /// @throws css::uno::RuntimeException
-            static OUString getImplementationName_Static(  );
-            /// @throws css::uno::RuntimeException
-            static css::uno::Sequence< OUString > getSupportedServiceNames_Static(  );
 
             // XDriver
             virtual css::uno::Reference< css::sdbc::XConnection > SAL_CALL connect( const OUString& url, const css::uno::Sequence< css::beans::PropertyValue >& info ) override;
@@ -118,7 +106,7 @@ namespace connectivity
 
             void shutdownConnections();
             void flushConnections();
-        protected:
+        private:
             /// dtor
             virtual ~ODriverDelegator() override;
             // OComponentHelper
@@ -130,10 +118,9 @@ namespace connectivity
                 const css::uno::Reference< css::sdbc::XConnection >& _rxConnection
             );
         };
-    }
 
 
-}   // namespace connectivity
+}   // namespace connectivity::hsqldb
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_HSQLDB_HDRIVER_HXX
 

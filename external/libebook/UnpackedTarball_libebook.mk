@@ -11,23 +11,6 @@ $(eval $(call gb_UnpackedTarball_UnpackedTarball,libebook))
 
 $(eval $(call gb_UnpackedTarball_set_tarball,libebook,$(EBOOK_TARBALL)))
 
-$(eval $(call gb_UnpackedTarball_set_patchlevel,libebook,0))
-
-$(eval $(call gb_UnpackedTarball_add_patches,libebook, \
-    external/libebook/ubsan.patch \
-    external/libebook/0001-lrf-compute-color-interpolation-coeff.-correctly.patch.1 \
-))
-
-ifeq ($(COM_IS_CLANG),TRUE)
-ifneq ($(filter -fsanitize=%,$(CC)),)
-$(eval $(call gb_UnpackedTarball_add_patches,libebook, \
-    external/libebook/ubsan-visibility.patch \
-))
-endif
-endif
-
-$(eval $(call gb_UnpackedTarball_add_patches,libebook, \
-    external/libebook/iOS.patch.0 \
-))
+$(eval $(call gb_UnpackedTarball_update_autoconf_configs,libebook))
 
 # vim: set noet sw=4 ts=4:

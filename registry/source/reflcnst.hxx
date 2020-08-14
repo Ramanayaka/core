@@ -20,8 +20,7 @@
 #ifndef INCLUDED_REGISTRY_SOURCE_REFLCNST_HXX
 #define INCLUDED_REGISTRY_SOURCE_REFLCNST_HXX
 
-#include <registry/refltype.hxx>
-#include <sal/macros.h>
+#include <registry/types.hxx>
 
 #include <string.h>
 
@@ -108,16 +107,16 @@ inline sal_uInt32 writeBYTE(sal_uInt8* buffer, sal_uInt8 v)
 
 inline sal_uInt32 writeINT16(sal_uInt8* buffer, sal_Int16 v)
 {
-    buffer[0] = (sal_uInt8)((v >> 8) & 0xFF);
-    buffer[1] = (sal_uInt8)((v >> 0) & 0xFF);
+    buffer[0] = static_cast<sal_uInt8>((v >> 8) & 0xFF);
+    buffer[1] = static_cast<sal_uInt8>((v >> 0) & 0xFF);
 
     return sizeof(sal_Int16);
 }
 
 inline sal_uInt32 writeUINT16(sal_uInt8* buffer, sal_uInt16 v)
 {
-    buffer[0] = (sal_uInt8)((v >> 8) & 0xFF);
-    buffer[1] = (sal_uInt8)((v >> 0) & 0xFF);
+    buffer[0] = static_cast<sal_uInt8>((v >> 8) & 0xFF);
+    buffer[1] = static_cast<sal_uInt8>((v >> 0) & 0xFF);
 
     return sizeof(sal_uInt16);
 }
@@ -135,10 +134,10 @@ inline sal_uInt32 readUINT16(const sal_uInt8* buffer, sal_uInt16& v)
 
 inline sal_uInt32 writeINT32(sal_uInt8* buffer, sal_Int32 v)
 {
-    buffer[0] = (sal_uInt8)((v >> 24) & 0xFF);
-    buffer[1] = (sal_uInt8)((v >> 16) & 0xFF);
-    buffer[2] = (sal_uInt8)((v >> 8) & 0xFF);
-    buffer[3] = (sal_uInt8)((v >> 0) & 0xFF);
+    buffer[0] = static_cast<sal_uInt8>((v >> 24) & 0xFF);
+    buffer[1] = static_cast<sal_uInt8>((v >> 16) & 0xFF);
+    buffer[2] = static_cast<sal_uInt8>((v >> 8) & 0xFF);
+    buffer[3] = static_cast<sal_uInt8>((v >> 0) & 0xFF);
 
     return sizeof(sal_Int32);
 }
@@ -157,10 +156,10 @@ inline sal_uInt32 readINT32(const sal_uInt8* buffer, sal_Int32& v)
 
 inline sal_uInt32 writeUINT32(sal_uInt8* buffer, sal_uInt32 v)
 {
-    buffer[0] = (sal_uInt8)((v >> 24) & 0xFF);
-    buffer[1] = (sal_uInt8)((v >> 16) & 0xFF);
-    buffer[2] = (sal_uInt8)((v >> 8) & 0xFF);
-    buffer[3] = (sal_uInt8)((v >> 0) & 0xFF);
+    buffer[0] = static_cast<sal_uInt8>((v >> 24) & 0xFF);
+    buffer[1] = static_cast<sal_uInt8>((v >> 16) & 0xFF);
+    buffer[2] = static_cast<sal_uInt8>((v >> 8) & 0xFF);
+    buffer[3] = static_cast<sal_uInt8>((v >> 0) & 0xFF);
 
     return sizeof(sal_uInt32);
 }
@@ -180,19 +179,19 @@ inline sal_uInt32 readUINT32(const sal_uInt8* buffer, sal_uInt32& v)
 
 inline sal_uInt32 writeUINT64(sal_uInt8* buffer, sal_uInt64 v)
 {
-    buffer[0] = (sal_uInt8)((v >> 56) & 0xFF);
-    buffer[1] = (sal_uInt8)((v >> 48) & 0xFF);
-    buffer[2] = (sal_uInt8)((v >> 40) & 0xFF);
-    buffer[3] = (sal_uInt8)((v >> 32) & 0xFF);
-    buffer[4] = (sal_uInt8)((v >> 24) & 0xFF);
-    buffer[5] = (sal_uInt8)((v >> 16) & 0xFF);
-    buffer[6] = (sal_uInt8)((v >> 8) & 0xFF);
-    buffer[7] = (sal_uInt8)((v >> 0) & 0xFF);
+    buffer[0] = static_cast<sal_uInt8>((v >> 56) & 0xFF);
+    buffer[1] = static_cast<sal_uInt8>((v >> 48) & 0xFF);
+    buffer[2] = static_cast<sal_uInt8>((v >> 40) & 0xFF);
+    buffer[3] = static_cast<sal_uInt8>((v >> 32) & 0xFF);
+    buffer[4] = static_cast<sal_uInt8>((v >> 24) & 0xFF);
+    buffer[5] = static_cast<sal_uInt8>((v >> 16) & 0xFF);
+    buffer[6] = static_cast<sal_uInt8>((v >> 8) & 0xFF);
+    buffer[7] = static_cast<sal_uInt8>((v >> 0) & 0xFF);
 
     return sizeof(sal_uInt64);
 }
 
-inline sal_uInt32 writeUtf8(sal_uInt8* buffer, const sal_Char* v)
+inline sal_uInt32 writeUtf8(sal_uInt8* buffer, const char* v)
 {
     sal_uInt32 size = strlen(v) + 1;
 
@@ -201,7 +200,7 @@ inline sal_uInt32 writeUtf8(sal_uInt8* buffer, const sal_Char* v)
     return size;
 }
 
-inline sal_uInt32 readUtf8(const sal_uInt8* buffer, sal_Char* v, sal_uInt32 maxSize)
+inline sal_uInt32 readUtf8(const sal_uInt8* buffer, char* v, sal_uInt32 maxSize)
 {
     sal_uInt32 size = strlen(reinterpret_cast<const char*>(buffer)) + 1;
     if(size > maxSize)

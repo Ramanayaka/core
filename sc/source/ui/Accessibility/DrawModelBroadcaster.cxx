@@ -17,10 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DrawModelBroadcaster.hxx"
-#include <rtl/strbuf.hxx>
+#include <DrawModelBroadcaster.hxx>
+#include <sal/log.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/unomod.hxx>
+#include <svx/svdobj.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 
@@ -48,29 +50,65 @@ void SAL_CALL ScDrawModelBroadcaster::removeEventListener( const uno::Reference<
     maEventListeners.removeInterface( xListener );
 }
 
+void SAL_CALL ScDrawModelBroadcaster::addShapeEventListener(
+                const css::uno::Reference< css::drawing::XShape >& xShape,
+                const uno::Reference< document::XShapeEventListener >& xListener )
+{
+    assert(xShape.is() && "no shape?");
+    osl::MutexGuard aGuard(maListenerMutex);
+    auto rv = maShapeListeners.emplace(xShape, xListener);
+    assert(rv.second && "duplicate listener?");
+    (void)rv;
+}
+
+void SAL_CALL ScDrawModelBroadcaster::removeShapeEventListener(
+                const css::uno::Reference< css::drawing::XShape >& xShape,
+                const uno::Reference< document::XShapeEventListener >& xListener )
+{
+    osl::MutexGuard aGuard(maListenerMutex);
+    auto it = maShapeListeners.find(xShape);
+    if (it != maShapeListeners.end())
+    {
+        assert(it->second == xListener && "removing wrong listener?");
+        (void)xListener;
+        maShapeListeners.erase(it);
+    }
+}
+
 void ScDrawModelBroadcaster::Notify( SfxBroadcaster&,
         const SfxHint& rHint )
 {
-    const SdrHint* pSdrHint = dynamic_cast<const SdrHint*>(&rHint);
-    if( !pSdrHint )
+    if (rHint.GetId() != SfxHintId::ThisIsAnSdrHint)
         return;
+    const SdrHint* pSdrHint = static_cast<const SdrHint*>(&rHint);
 
     document::EventObject aEvent;
     if( !SvxUnoDrawMSFactory::createEvent( mpDrawModel, pSdrHint, aEvent ) )
         return;
 
-    ::comphelper::OInterfaceIteratorHelper2 aIter( maEventListeners );
+    ::comphelper::OInterfaceIteratorHelper3 aIter( maEventListeners );
     while( aIter.hasMoreElements() )
     {
-        uno::Reference < document::XEventListener > xListener( aIter.next(), uno::UNO_QUERY );
+        const uno::Reference < document::XEventListener >& xListener = aIter.next();
         try
         {
             xListener->notifyEvent( aEvent );
         }
-        catch( const uno::RuntimeException& r )
+        catch( const uno::RuntimeException& )
         {
-            SAL_WARN("sc.ui", "Runtime exception caught while notifying shape. : " << r.Message);
+            TOOLS_WARN_EXCEPTION("sc.ui", "Runtime exception caught while notifying shape");
         }
+    }
+
+    // right now, we're only handling the specific event necessary to fix this performance problem
+    if (pSdrHint->GetKind() == SdrHintKind::ObjectChange)
+    {
+        auto pSdrObject = const_cast<SdrObject*>(pSdrHint->GetObject());
+        uno::Reference<drawing::XShape> xShape(pSdrObject->getUnoShape(), uno::UNO_QUERY);
+        osl::MutexGuard aGuard(maListenerMutex);
+        auto it = maShapeListeners.find(xShape);
+        if (it != maShapeListeners.end())
+            it->second->notifyShapeEvent(aEvent);
     }
 }
 

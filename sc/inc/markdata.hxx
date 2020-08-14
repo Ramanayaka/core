@@ -30,13 +30,11 @@
 
 namespace sc {
 
-struct RowSpan;
 struct ColRowSpan;
 
 }
 
 class ScMarkArray;
-class ScRangeList;
 
 //!     todo:
 //!     It should be possible to have MarkArrays for each table, in order to
@@ -52,23 +50,25 @@ private:
     ScRange         aMarkRange;             // area
     ScRange         aMultiRange;            // maximum area altogether
     ScMultiSel      aMultiSel;              // multi selection
-    bool            bMarked:1;                // rectangle marked
+    ScRangeList     aTopEnvelope;           // list of ranges in the top envelope of the multi selection
+    ScRangeList     aBottomEnvelope;        // list of ranges in the bottom envelope of the multi selection
+    ScRangeList     aLeftEnvelope;          // list of ranges in the left envelope of the multi selection
+    ScRangeList     aRightEnvelope;         // list of ranges in the right envelope of the multi selection
+    const ScSheetLimits& mrSheetLimits;
+    bool            bMarked:1;              // rectangle marked
     bool            bMultiMarked:1;
 
-    bool            bMarking:1;               // area is being marked -> no MarkToMulti
-    bool            bMarkIsNeg:1;             // cancel if multi selection
-    ScRangeList     aTopEnvelope;             // list of ranges in the top envelope of the multi selection
-    ScRangeList     aBottomEnvelope;          // list of ranges in the bottom envelope of the multi selection
-    ScRangeList     aLeftEnvelope;            // list of ranges in the left envelope of the multi selection
-    ScRangeList     aRightEnvelope;           // list of ranges in the right envelope of the multi selection
-
+    bool            bMarking:1;             // area is being marked -> no MarkToMulti
+    bool            bMarkIsNeg:1;           // cancel if multi selection
 
 public:
-                ScMarkData();
-                ScMarkData(const ScMarkData& rData);
-                ~ScMarkData();
-
+    ScMarkData(const ScSheetLimits& rSheetLimits);
+    ScMarkData(const ScSheetLimits& rSheetLimits, const ScRangeList& rList);
+    ScMarkData(const ScMarkData& rData) = default;
+    ScMarkData(ScMarkData&& rData) = default;
     ScMarkData& operator=(const ScMarkData& rData);
+    ScMarkData& operator=(ScMarkData&& rData);
+    ~ScMarkData();
 
     void        ResetMark();
     void        SetMarkArea( const ScRange& rRange );
@@ -141,6 +141,9 @@ public:
     //  adjust table marking:
     void        InsertTab( SCTAB nTab );
     void        DeleteTab( SCTAB nTab );
+
+    void        ShiftCols(const ScDocument* pDoc, SCCOL nStartCol, long nColOffset);
+    void        ShiftRows(const ScDocument* pDoc, SCROW nStartRow, long nRowOffset);
 
     // Generate envelopes if multimarked and fills the passed ScRange object with
     // the smallest range that includes the marked area plus its envelopes.

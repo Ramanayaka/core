@@ -21,18 +21,15 @@
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_MENUBARWRAPPER_HXX
 
 #include <helper/uiconfigelementwrapperbase.hxx>
-#include <macros/xinterface.hxx>
-#include <macros/xtypeprovider.hxx>
 #include <uielement/menubarmanager.hxx>
 
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 
 namespace framework
 {
 
-class MenuBarWrapper : public UIConfigElementWrapperBase,
+class MenuBarWrapper final : public UIConfigElementWrapperBase,
                        public css::container::XNameAccess
 
 {
@@ -42,9 +39,11 @@ class MenuBarWrapper : public UIConfigElementWrapperBase,
         virtual ~MenuBarWrapper() override;
 
         //  XInterface, XTypeProvider
-
-        FWK_DECLARE_XINTERFACE
-        FWK_DECLARE_XTYPEPROVIDER
+        virtual css::uno::Any  SAL_CALL queryInterface( const css::uno::Type& aType ) override;
+        virtual void SAL_CALL acquire() throw() override;
+        virtual void SAL_CALL release() throw() override;
+        virtual css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
+        virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 
         MenuBarManager* GetMenuBarManager() const { return static_cast< MenuBarManager* >( m_xMenuBarManager.get() ); }
 

@@ -19,19 +19,16 @@
 
 
 #include "cacheupdatelistener.hxx"
-#include "constant.hxx"
 
 #include <com/sun/star/util/XChangesNotifier.hpp>
 #include <com/sun/star/util/XRefreshable.hpp>
 #include <com/sun/star/document/FilterConfigRefresh.hpp>
-#include <salhelper/singletonref.hxx>
 #include <unotools/configpaths.hxx>
 #include <rtl/ustring.hxx>
 #include <comphelper/processfactory.hxx>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config{
 
 CacheUpdateListener::CacheUpdateListener(FilterCache &rFilterCache,
                                          const css::uno::Reference< css::uno::XInterface >& xConfigAccess,
@@ -50,7 +47,7 @@ CacheUpdateListener::~CacheUpdateListener()
 void CacheUpdateListener::startListening()
 {
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::ClearableMutexGuard aLock(m_aLock);
     css::uno::Reference< css::util::XChangesNotifier > xNotifier(m_xConfig, css::uno::UNO_QUERY);
     aLock.clear();
     // <- SAFE
@@ -66,7 +63,7 @@ void CacheUpdateListener::startListening()
 void CacheUpdateListener::stopListening()
 {
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::ClearableMutexGuard aLock(m_aLock);
     css::uno::Reference< css::util::XChangesNotifier > xNotifier(m_xConfig, css::uno::UNO_QUERY);
     aLock.clear();
     // <- SAFE
@@ -82,7 +79,7 @@ void CacheUpdateListener::stopListening()
 void SAL_CALL  CacheUpdateListener::changesOccurred(const css::util::ChangesEvent& aEvent)
 {
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::ClearableMutexGuard aLock(m_aLock);
 
     // disposed ?
     if ( ! m_xConfig.is())
@@ -93,7 +90,7 @@ void SAL_CALL  CacheUpdateListener::changesOccurred(const css::util::ChangesEven
     aLock.clear();
     // <- SAFE
 
-    OUStringList lChangedItems;
+    std::vector<OUString> lChangedItems;
     sal_Int32    c = aEvent.Changes.getLength();
     sal_Int32    i = 0;
 
@@ -140,21 +137,17 @@ void SAL_CALL  CacheUpdateListener::changesOccurred(const css::util::ChangesEven
         if ( sNode.isEmpty() )
             continue;
 
-        OUStringList::const_iterator pIt = ::std::find(lChangedItems.begin(), lChangedItems.end(), sNode);
-        if (pIt == lChangedItems.end())
+        auto pIt = ::std::find(lChangedItems.cbegin(), lChangedItems.cend(), sNode);
+        if (pIt == lChangedItems.cend())
             lChangedItems.push_back(sNode);
     }
 
     bool                     bNotifyRefresh = false;
-    OUStringList::const_iterator pIt;
-    for (  pIt  = lChangedItems.begin();
-           pIt != lChangedItems.end()  ;
-         ++pIt                         )
+    for (auto const& changedItem : lChangedItems)
     {
-        const OUString& sItem = *pIt;
         try
         {
-            m_rCache.refreshItem(eType, sItem);
+            m_rCache.refreshItem(eType, changedItem);
         }
         catch(const css::container::NoSuchElementException&)
             {
@@ -180,14 +173,12 @@ void SAL_CALL  CacheUpdateListener::changesOccurred(const css::util::ChangesEven
 void SAL_CALL CacheUpdateListener::disposing(const css::lang::EventObject& aEvent)
 {
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
     if (aEvent.Source == m_xConfig)
         m_xConfig.clear();
-    aLock.clear();
     // <- SAFE
 }
 
-    } // namespace config
-} // namespace filter
+} // namespace filter::config
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

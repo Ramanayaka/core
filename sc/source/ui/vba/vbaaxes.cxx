@@ -21,11 +21,12 @@
 #include "vbaaxis.hxx"
 #include "vbachart.hxx"
 #include <basic/sberrors.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <com/sun/star/script/BasicErrorException.hpp>
 #include <ooo/vba/excel/XlAxisType.hpp>
 #include <ooo/vba/excel/XlAxisGroup.hpp>
 #include <ooo/vba/excel/XAxis.hpp>
-#include <map>
 
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
@@ -69,11 +70,11 @@ ScVbaAxes::createAxis( const uno::Reference< excel::XChart >& xChart, const uno:
         throw uno::RuntimeException("Object failure, can't access chart implementation"  );
 
     uno::Reference< beans::XPropertySet > xAxisPropertySet;
-    if (((nType == xlCategory) || (nType == xlSeriesAxis) || (nType == xlValue)))
+    if ((nType == xlCategory) || (nType == xlSeriesAxis) || (nType == xlValue))
     {
         if ((nAxisGroup != xlPrimary) && (nAxisGroup != xlSecondary))
             DebugHelper::runtimeexception(ERRCODE_BASIC_METHOD_FAILED);
-        xAxisPropertySet.set( pChart->getAxisPropertySet(nType, nAxisGroup), uno::UNO_QUERY_THROW );
+        xAxisPropertySet.set( pChart->getAxisPropertySet(nType, nAxisGroup), uno::UNO_SET_THROW );
     }
     else
         DebugHelper::runtimeexception(ERRCODE_BASIC_METHOD_FAILED);
@@ -94,26 +95,26 @@ class AxisIndexWrapper : public ::cppu::WeakImplHelper< container::XIndexAccess 
 public:
     AxisIndexWrapper( const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< excel::XChart >& xChart ) : mxContext( xContext ), mxChart( xChart )
     {
-        if ( mxChart.is() )
-        {
-            ScVbaChart* pChart = static_cast< ScVbaChart* >( mxChart.get() );
-            // primary
-            bool bBool = false;
-            uno::Reference< beans::XPropertySet > xDiagramPropertySet( pChart->xDiagramPropertySet() );
-            if ( ( xDiagramPropertySet->getPropertyValue("HasXAxis") >>= bBool )  && bBool )
-                mCoordinates.push_back( AxesCoordinate( xlPrimary, xlCategory ) );
-            if ( ( xDiagramPropertySet->getPropertyValue("HasYAxis") >>= bBool )  && bBool )
-                mCoordinates.push_back( AxesCoordinate( xlPrimary, xlSeriesAxis ) );
+        if ( !mxChart.is() )
+            return;
 
-            if (  pChart->is3D() )
-                mCoordinates.push_back( AxesCoordinate( xlPrimary, xlValue ) );
+        ScVbaChart* pChart = static_cast< ScVbaChart* >( mxChart.get() );
+        // primary
+        bool bBool = false;
+        uno::Reference< beans::XPropertySet > xDiagramPropertySet( pChart->xDiagramPropertySet() );
+        if ( ( xDiagramPropertySet->getPropertyValue("HasXAxis") >>= bBool )  && bBool )
+            mCoordinates.emplace_back( xlPrimary, xlCategory );
+        if ( ( xDiagramPropertySet->getPropertyValue("HasYAxis") >>= bBool )  && bBool )
+            mCoordinates.emplace_back( xlPrimary, xlSeriesAxis );
 
-            // secondary
-            if ( ( xDiagramPropertySet->getPropertyValue("HasSecondaryXAxis") >>= bBool )  && bBool )
-                mCoordinates.push_back( AxesCoordinate( xlSecondary, xlCategory ) );
-            if ( ( xDiagramPropertySet->getPropertyValue("HasSecondaryYAxis") >>= bBool )  && bBool )
-                mCoordinates.push_back( AxesCoordinate( xlSecondary, xlSeriesAxis ) );
-        }
+        if (  pChart->is3D() )
+            mCoordinates.emplace_back( xlPrimary, xlValue );
+
+        // secondary
+        if ( ( xDiagramPropertySet->getPropertyValue("HasSecondaryXAxis") >>= bBool )  && bBool )
+            mCoordinates.emplace_back( xlSecondary, xlCategory );
+        if ( ( xDiagramPropertySet->getPropertyValue("HasSecondaryYAxis") >>= bBool )  && bBool )
+            mCoordinates.emplace_back( xlSecondary, xlSeriesAxis );
 
     }
     virtual ::sal_Int32 SAL_CALL getCount() override { return mCoordinates.size(); }
@@ -124,12 +125,13 @@ public:
             AxesCoordinate dIndexes = mCoordinates[ Index ];
             return uno::makeAny( ScVbaAxes::createAxis( mxChart, mxContext, dIndexes.second, dIndexes.first ) );
         }
-        catch (const css::script::BasicErrorException& e)
+        catch (const css::script::BasicErrorException&)
         {
+            css::uno::Any anyEx = cppu::getCaughtException();
             throw css::lang::WrappedTargetException(
                    "Error Getting Index!",
                    static_cast < OWeakObject * > ( this ),
-                   makeAny( e ) );
+                   anyEx );
         }
     }
     // XElementAccess
@@ -139,7 +141,7 @@ public:
     }
     virtual sal_Bool SAL_CALL hasElements( ) override
     {
-        return ( mCoordinates.size() > 0 );
+        return ( !mCoordinates.empty() );
     }
 };
 
@@ -193,18 +195,16 @@ ScVbaAxes::createCollectionObject(const css::uno::Any& aSource)
 OUString
 ScVbaAxes::getServiceImplName()
 {
-    return OUString("ScVbaAxes");
+    return "ScVbaAxes";
 }
 
 uno::Sequence< OUString >
 ScVbaAxes::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Axes";
-    }
+        "ooo.vba.excel.Axes"
+    };
     return aServiceNames;
 }
 

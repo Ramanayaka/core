@@ -18,11 +18,7 @@
  */
 
 #include "commontimenodecontext.hxx"
-
-#include <algorithm>
-
-#include "comphelper/anytostring.hxx"
-#include "cppuhelper/exc_hlp.hxx"
+#include "conditioncontext.hxx"
 
 #include <com/sun/star/animations/AnimationFill.hpp>
 #include <com/sun/star/animations/AnimationRestart.hpp>
@@ -30,11 +26,9 @@
 #include <com/sun/star/presentation/EffectPresetClass.hpp>
 #include <com/sun/star/presentation/EffectNodeType.hpp>
 
-#include "oox/helper/attributelist.hxx"
-#include "oox/core/fragmenthandler.hxx"
-#include "oox/ppt/pptimport.hxx"
+#include <oox/helper/attributelist.hxx>
 #include <oox/ppt/pptfilterhelpers.hxx>
-#include "oox/drawingml/drawingmltypes.hxx"
+#include <oox/drawingml/drawingmltypes.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
@@ -47,7 +41,7 @@ using namespace ::com::sun::star::presentation;
 using namespace ::com::sun::star::xml::sax;
 
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
 const convert_subtype* convert_subtype::getList()
 {
@@ -80,10 +74,10 @@ const convert_subtype* convert_subtype::getList()
     return aList;
 }
 
-const preset_maping* preset_maping::getList()
+const preset_mapping* preset_mapping::getList()
 {
 
-    static const preset_maping aList[] =
+    static const preset_mapping aList[] =
     {
         { css::presentation::EffectPresetClass::ENTRANCE, 1    ,"ooo-entrance-appear" },
         { css::presentation::EffectPresetClass::ENTRANCE, 2    ,"ooo-entrance-fly-in" },
@@ -294,7 +288,7 @@ const preset_maping* preset_maping::getList()
 
 OUString getConvertedSubType( sal_Int16 nPresetClass, sal_Int32 nPresetId, sal_Int32 nPresetSubType )
 {
-    const sal_Char* pStr = nullptr;
+    const char* pStr = nullptr;
 
     if( (nPresetClass == EffectPresetClass::ENTRANCE) || (nPresetClass == EffectPresetClass::EXIT) )
     {
@@ -352,11 +346,11 @@ OUString getConvertedSubType( sal_Int16 nPresetClass, sal_Int32 nPresetId, sal_I
 }
 
     CommonTimeNodeContext::CommonTimeNodeContext(
-            FragmentHandler2& rParent,
+            FragmentHandler2 const & rParent,
             sal_Int32  aElement,
             const Reference< XFastAttributeList >& xAttribs,
             const TimeNodePtr & pNode )
-        : TimeNodeContext( rParent, aElement, xAttribs, pNode )
+        : TimeNodeContext( rParent, aElement, pNode )
             , mbIterate( false )
     {
         AttributeList attribs( xAttribs );
@@ -529,7 +523,7 @@ OUString getConvertedSubType( sal_Int16 nPresetClass, sal_Int32 nPresetId, sal_I
             if( attribs.hasAttribute( XML_presetID ) )
             {
                 sal_Int32 nPresetId = attribs.getInteger( XML_presetID, 0 );
-                const preset_maping* p = preset_maping::getList();
+                const preset_mapping* p = preset_mapping::getList();
                 while( p->mpStrPresetId && ((p->mnPresetClass != nEffectPresetClass) || (p->mnPresetId != nPresetId )) )
                     p++;
 
@@ -607,9 +601,9 @@ OUString getConvertedSubType( sal_Int16 nPresetClass, sal_Int32 nPresetId, sal_I
             return new TimeNodeListContext( *this, mpNode->getChildren() );
 
         case PPT_TOKEN( stCondLst ):
-            return new CondListContext( *this, aElementToken, rAttribs.getFastAttributeList(), mpNode, mpNode->getStartCondition() );
+            return new CondListContext( *this, aElementToken, mpNode, mpNode->getStartCondition() );
         case PPT_TOKEN( endCondLst ):
-            return new CondListContext( *this, aElementToken, rAttribs.getFastAttributeList(), mpNode, mpNode->getEndCondition() );
+            return new CondListContext( *this, aElementToken, mpNode, mpNode->getEndCondition() );
 
         case PPT_TOKEN( endSync ):
             return new CondContext( *this, rAttribs.getFastAttributeList(), mpNode, mpNode->getEndSyncValue() );
@@ -648,15 +642,15 @@ OUString getConvertedSubType( sal_Int16 nPresetClass, sal_Int32 nPresetId, sal_I
         case PPT_TOKEN( tmAbs ):
             if( mbIterate )
             {
-                double fTime = rAttribs.getUnsigned( XML_val, 0 );
-                // time in ms. property is in % TODO
-                mpNode->getNodeProperties()[ NP_ITERATEINTERVAL ] <<= fTime;
+                double fTime = rAttribs.getUnsigned( XML_val, 0 ) / 1000.0; // convert ms. to second.
+                mpNode->getNodeProperties()[NP_ITERATEINTERVAL] <<= fTime;
             }
             return this;
         case PPT_TOKEN( tmPct ):
             if( mbIterate )
             {
-                double fPercent = (double)rAttribs.getUnsigned( XML_val, 0 ) / 100000.0;
+                // TODO: should use duration to get iterate interval in second.
+                double fPercent = static_cast<double>(rAttribs.getUnsigned( XML_val, 0 )) / 100000.0;
                 mpNode->getNodeProperties()[ NP_ITERATEINTERVAL ] <<= fPercent;
             }
             return this;
@@ -667,6 +661,6 @@ OUString getConvertedSubType( sal_Int16 nPresetClass, sal_Int32 nPresetId, sal_I
         return this;
     }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

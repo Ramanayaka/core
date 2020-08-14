@@ -20,6 +20,7 @@
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/linguistic2/LinguServiceManager.hpp>
 #include <com/sun/star/linguistic2/XLinguServiceEventBroadcaster.hpp>
+#include <com/sun/star/linguistic2/XProofreadingIterator.hpp>
 #include <com/sun/star/linguistic2/LinguServiceEventFlags.hpp>
 
 #include <unotools/lingucfg.hxx>
@@ -27,7 +28,7 @@
 #include <com/sun/star/uno/Reference.h>
 #include <comphelper/processfactory.hxx>
 #include <vcl/svapp.hxx>
-#include "dlelstnr.hxx"
+#include <dlelstnr.hxx>
 #include <proofreadingiterator.hxx>
 #include <swmodule.hxx>
 #include <wrtsh.hxx>
@@ -82,19 +83,19 @@ void SAL_CALL SwLinguServiceEventListener::processLinguServiceEvent(
     {
         SwModule::CheckSpellChanges( false, bIsSpellWrong, bIsSpellAll, false );
     }
-    if (rLngSvcEvent.nEvent & HYPHENATE_AGAIN)
-    {
-        SwView *pSwView = SwModule::GetFirstView();
+    if (!(rLngSvcEvent.nEvent & HYPHENATE_AGAIN))
+        return;
 
-        //!! since this function may be called within the ctor of
-        //!! SwView (during formatting) where the WrtShell is not yet
-        //!! created, we have to check for the WrtShellPtr to see
-        //!! if it is already availbale
-        while (pSwView && pSwView->GetWrtShellPtr())
-        {
-            pSwView->GetWrtShell().ChgHyphenation();
-            pSwView = SwModule::GetNextView( pSwView );
-        }
+    SwView *pSwView = SwModule::GetFirstView();
+
+    //!! since this function may be called within the ctor of
+    //!! SwView (during formatting) where the WrtShell is not yet
+    //!! created, we have to check for the WrtShellPtr to see
+    //!! if it is already available
+    while (pSwView && pSwView->GetWrtShellPtr())
+    {
+        pSwView->GetWrtShell().ChgHyphenation();
+        pSwView = SwModule::GetNextView( pSwView );
     }
 }
 

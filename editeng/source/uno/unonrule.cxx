@@ -19,20 +19,25 @@
 
 #include <sal/config.h>
 
+#include <com/sun/star/awt/FontDescriptor.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/text/HoriOrientation.hpp>
 #include <com/sun/star/awt/XBitmap.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/implbase1.hxx>
+#include <vcl/font.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/graph.hxx>
-#include <svtools/grfmgr.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
+#include <vcl/GraphicObject.hxx>
+#include <vcl/GraphicLoader.hxx>
+#include <tools/debug.hxx>
 
 #include <editeng/brushitem.hxx>
 #include <editeng/unoprnms.hxx>
 #include <editeng/numitem.hxx>
-#include <editeng/eeitem.hxx>
-#include <editeng/unotext.hxx>
 #include <editeng/unofdesc.hxx>
 #include <editeng/unonrule.hxx>
 #include <editeng/editids.hrc>
@@ -71,21 +76,21 @@ const o3tl::enumarray<SvxAdjust, unsigned short> aSvxToUnoAdjust
     text::HoriOrientation::LEFT
 };
 
-SvxAdjust ConvertUnoAdjust( unsigned short nAdjust )
+static SvxAdjust ConvertUnoAdjust( unsigned short nAdjust )
 {
     DBG_ASSERT( nAdjust <= 7, "Enum has changed! [CL]" );
     return aUnoToSvxAdjust[nAdjust];
 }
 
-unsigned short ConvertUnoAdjust( SvxAdjust eAdjust )
+static unsigned short ConvertUnoAdjust( SvxAdjust eAdjust )
 {
-    DBG_ASSERT( (int)eAdjust <= 6, "Enum has changed! [CL]" );
+    DBG_ASSERT( static_cast<int>(eAdjust) <= 6, "Enum has changed! [CL]" );
     return aSvxToUnoAdjust[eAdjust];
 }
 
 UNO3_GETIMPLEMENTATION_IMPL( SvxUnoNumberingRules );
 
-SvxUnoNumberingRules::SvxUnoNumberingRules( const SvxNumRule& rRule ) throw()
+SvxUnoNumberingRules::SvxUnoNumberingRules(const SvxNumRule& rRule)
 : maRule( rRule )
 {
 }
@@ -152,7 +157,7 @@ Reference< XCloneable > SAL_CALL SvxUnoNumberingRules::createClone(  )
 
 OUString SAL_CALL SvxUnoNumberingRules::getImplementationName(  )
 {
-    return OUString( "SvxUnoNumberingRules" );
+    return "SvxUnoNumberingRules";
 }
 
 sal_Bool SAL_CALL SvxUnoNumberingRules::supportsService( const OUString& ServiceName )
@@ -162,15 +167,13 @@ sal_Bool SAL_CALL SvxUnoNumberingRules::supportsService( const OUString& Service
 
 Sequence< OUString > SAL_CALL SvxUnoNumberingRules::getSupportedServiceNames(  )
 {
-    OUString aService( "com.sun.star.text.NumberingRules" );
-    Sequence< OUString > aSeq( &aService, 1 );
-    return aSeq;
+    return { "com.sun.star.text.NumberingRules" };
 }
 
 Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal_Int32 nIndex) const
 {
     //  NumberingRule aRule;
-    const SvxNumberFormat& rFmt = maRule.GetLevel((sal_uInt16) nIndex);
+    const SvxNumberFormat& rFmt = maRule.GetLevel(static_cast<sal_uInt16>(nIndex));
     sal_uInt16 nIdx = 0;
 
     const int nProps = 15;
@@ -178,7 +181,7 @@ Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal
 
     Any aVal;
     {
-        aVal <<= (sal_uInt16)rFmt.GetNumberingType();
+        aVal <<= static_cast<sal_uInt16>(rFmt.GetNumberingType());
         beans::PropertyValue aAlignProp( UNO_NAME_NRULE_NUMBERINGTYPE, -1, aVal, beans::PropertyState_DIRECT_VALUE);
         pArray[nIdx++] = aAlignProp;
     }
@@ -220,15 +223,15 @@ Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal
 
     {
         const SvxBrushItem* pBrush = rFmt.GetBrush();
-        if(pBrush && pBrush->GetGraphicObject())
+        const Graphic* pGraphic = nullptr;
+        if (pBrush)
+            pGraphic = pBrush->GetGraphic();
+        if (pGraphic)
         {
-            const GraphicObject* pGrafObj = pBrush->GetGraphicObject();
-            OUString aURL( UNO_NAME_GRAPHOBJ_URLPREFIX);
-            aURL += OStringToOUString(pGrafObj->GetUniqueID(),
-                RTL_TEXTENCODING_ASCII_US);
+            uno::Reference<awt::XBitmap> xBitmap(pGraphic->GetXGraphic(), uno::UNO_QUERY);
+            aVal <<= xBitmap;
 
-            aVal <<= aURL;
-            const beans::PropertyValue aGraphicProp( "GraphicURL", -1, aVal, beans::PropertyState_DIRECT_VALUE);
+            const beans::PropertyValue aGraphicProp("GraphicBitmap", -1, aVal, beans::PropertyState_DIRECT_VALUE);
             pArray[nIdx++] = aGraphicProp;
         }
     }
@@ -241,21 +244,21 @@ Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal
         pArray[nIdx++] = aGraphicSizeProp;
     }
 
-    aVal <<= (sal_Int16)rFmt.GetStart();
+    aVal <<= static_cast<sal_Int16>(rFmt.GetStart());
     pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_START_WITH, -1, aVal, beans::PropertyState_DIRECT_VALUE);
 
-    aVal <<= (sal_Int32)rFmt.GetAbsLSpace();
+    aVal <<= rFmt.GetAbsLSpace();
     pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_LEFT_MARGIN, -1, aVal, beans::PropertyState_DIRECT_VALUE);
 
-    aVal <<= (sal_Int32)rFmt.GetFirstLineOffset();
+    aVal <<= rFmt.GetFirstLineOffset();
     pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_FIRST_LINE_OFFSET, -1, aVal, beans::PropertyState_DIRECT_VALUE);
 
     pArray[nIdx++] = beans::PropertyValue("SymbolTextDistance", -1, aVal, beans::PropertyState_DIRECT_VALUE);
 
-    aVal <<= (sal_Int32)rFmt.GetBulletColor().GetColor();
+    aVal <<= rFmt.GetBulletColor();
     pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_BULLET_COLOR, -1, aVal, beans::PropertyState_DIRECT_VALUE);
 
-    aVal <<= (sal_Int16)rFmt.GetBulletRelSize();
+    aVal <<= static_cast<sal_Int16>(rFmt.GetBulletRelSize());
     pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_BULLET_RELSIZE, -1, aVal, beans::PropertyState_DIRECT_VALUE);
 
     DBG_ASSERT( nIdx <= nProps, "FixMe: overflow in Array!!! [CL]" );
@@ -266,11 +269,9 @@ Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal
 
 void SvxUnoNumberingRules::setNumberingRuleByIndex(const Sequence<beans::PropertyValue >& rProperties, sal_Int32 nIndex)
 {
-    SvxNumberFormat aFmt(maRule.GetLevel( (sal_uInt16)nIndex ));
-    const beans::PropertyValue* pPropArray = rProperties.getConstArray();
-    for(int i = 0; i < rProperties.getLength(); i++)
+    SvxNumberFormat aFmt(maRule.GetLevel( static_cast<sal_uInt16>(nIndex) ));
+    for(const beans::PropertyValue& rProp : rProperties)
     {
-        const beans::PropertyValue& rProp = pPropArray[i];
         const OUString& rPropName = rProp.Name;
         const Any& aVal = rProp.Value;
 
@@ -282,7 +283,7 @@ void SvxUnoNumberingRules::setNumberingRuleByIndex(const Sequence<beans::Propert
             // There is no reason to limit numbering types.
             if ( nSet>=0 )
             {
-                aFmt.SetNumberingType((SvxNumType)nSet);
+                aFmt.SetNumberingType(static_cast<SvxNumType>(nSet));
                 continue;
             }
         }
@@ -337,7 +338,7 @@ void SvxUnoNumberingRules::setNumberingRuleByIndex(const Sequence<beans::Propert
             sal_Int16 nAdjust = sal_Int16();
             if( aVal >>= nAdjust )
             {
-                aFmt.SetNumAdjust(ConvertUnoAdjust( (unsigned short)nAdjust ));
+                aFmt.SetNumAdjust(ConvertUnoAdjust( static_cast<unsigned short>(nAdjust) ));
                 continue;
             }
         }
@@ -352,24 +353,28 @@ void SvxUnoNumberingRules::setNumberingRuleByIndex(const Sequence<beans::Propert
                 continue;
             }
         }
-        else if ( rPropName == "Graphic" )
-        {
-            Reference< awt::XBitmap > xBmp;
-            if( aVal >>= xBmp )
-            {
-                Graphic aGraf( VCLUnoHelper::GetBitmap( xBmp ) );
-                SvxBrushItem aBrushItem(aGraf, GPOS_AREA, SID_ATTR_BRUSH);
-                aFmt.SetGraphicBrush( &aBrushItem );
-                continue;
-            }
-        }
         else if ( rPropName == "GraphicURL" )
         {
             OUString aURL;
-            if( aVal >>= aURL )
+            if (aVal >>= aURL)
             {
-                GraphicObject aGrafObj( GraphicObject::CreateGraphicObjectFromURL( aURL ) );
-                SvxBrushItem aBrushItem( aGrafObj, GPOS_AREA, SID_ATTR_BRUSH );
+                Graphic aGraphic = vcl::graphic::loadFromURL(aURL);
+                if (!aGraphic.IsNone())
+                {
+                    SvxBrushItem aBrushItem(aGraphic, GPOS_AREA, SID_ATTR_BRUSH);
+                    aFmt.SetGraphicBrush(&aBrushItem);
+                }
+                continue;
+            }
+        }
+        else if ( rPropName == "GraphicBitmap" )
+        {
+            uno::Reference<awt::XBitmap> xBitmap;
+            if (aVal >>= xBitmap)
+            {
+                uno::Reference<graphic::XGraphic> xGraphic(xBitmap, uno::UNO_QUERY);
+                Graphic aGraphic(xGraphic);
+                SvxBrushItem aBrushItem(aGraphic, GPOS_AREA, SID_ATTR_BRUSH);
                 aFmt.SetGraphicBrush( &aBrushItem );
                 continue;
             }
@@ -397,7 +402,7 @@ void SvxUnoNumberingRules::setNumberingRuleByIndex(const Sequence<beans::Propert
             sal_Int32 nMargin = 0;
             if( aVal >>= nMargin )
             {
-                aFmt.SetAbsLSpace((sal_uInt16)nMargin);
+                aFmt.SetAbsLSpace(nMargin);
                 continue;
             }
         }
@@ -406,7 +411,7 @@ void SvxUnoNumberingRules::setNumberingRuleByIndex(const Sequence<beans::Propert
             sal_Int32 nMargin = 0;
             if( aVal >>= nMargin )
             {
-                aFmt.SetFirstLineOffset((sal_uInt16)nMargin);
+                aFmt.SetFirstLineOffset(nMargin);
                 continue;
             }
         }
@@ -415,7 +420,7 @@ void SvxUnoNumberingRules::setNumberingRuleByIndex(const Sequence<beans::Propert
             sal_Int32 nTextDistance = 0;
             if( aVal >>= nTextDistance )
             {
-                aFmt.SetCharTextDistance((sal_uInt16)nTextDistance);
+                aFmt.SetCharTextDistance(static_cast<sal_uInt16>(nTextDistance));
                 continue;
             }
         }
@@ -433,13 +438,15 @@ void SvxUnoNumberingRules::setNumberingRuleByIndex(const Sequence<beans::Propert
             sal_Int16 nSize = sal_Int16();
             if( aVal >>= nSize )
             {
-                // [Bug 120650] the slide content corrupt when open in Aoo
-                if ((nSize>250)||(nSize<=0))
+                // [AOO Bug 120650] the slide content corrupt when open in Aoo
+                // [TDF# 126234] when MS Office document being imported, the value of the relative size
+                // of the bullet could be as high as 400%
+                if ((nSize>400)||(nSize<=0))
                 {
                     nSize = 100;
                 }
 
-                aFmt.SetBulletRelSize( (short)nSize );
+                aFmt.SetBulletRelSize( static_cast<short>(nSize) );
                 continue;
             }
         }
@@ -461,19 +468,19 @@ void SvxUnoNumberingRules::setNumberingRuleByIndex(const Sequence<beans::Propert
             aFmt.SetGraphicBrush( &aBrushItem );
         }
     }
-    maRule.SetLevel( (sal_uInt16)nIndex, aFmt );
+    maRule.SetLevel( static_cast<sal_uInt16>(nIndex), aFmt );
 }
 
 const SvxNumRule& SvxGetNumRule( Reference< XIndexReplace > const & xRule )
 {
-    SvxUnoNumberingRules* pRule = SvxUnoNumberingRules::getImplementation( xRule );
+    SvxUnoNumberingRules* pRule = comphelper::getUnoTunnelImplementation<SvxUnoNumberingRules>( xRule );
     if( pRule == nullptr )
         throw IllegalArgumentException();
 
     return pRule->getNumRule();
 }
 
-css::uno::Reference< css::container::XIndexReplace > SvxCreateNumRule( const SvxNumRule* pRule ) throw()
+css::uno::Reference< css::container::XIndexReplace > SvxCreateNumRule(const SvxNumRule* pRule)
 {
     DBG_ASSERT( pRule, "No default SvxNumRule!" );
     if( pRule )
@@ -482,16 +489,20 @@ css::uno::Reference< css::container::XIndexReplace > SvxCreateNumRule( const Svx
     }
     else
     {
-        SvxNumRule aDefaultRule( SvxNumRuleFlags::BULLET_REL_SIZE | SvxNumRuleFlags::BULLET_COLOR | SvxNumRuleFlags::CHAR_TEXT_DISTANCE, SVX_MAX_NUM, false);
+        SvxNumRule aDefaultRule( SvxNumRuleFlags::BULLET_REL_SIZE | SvxNumRuleFlags::BULLET_COLOR, SVX_MAX_NUM, false);
         return new SvxUnoNumberingRules( aDefaultRule );
     }
 }
+
+namespace {
 
 class SvxUnoNumberingRulesCompare : public ::cppu::WeakAggImplHelper1< XAnyCompare >
 {
 public:
     virtual sal_Int16 SAL_CALL compare( const Any& Any1, const Any& Any2 ) override;
 };
+
+}
 
 sal_Int16 SAL_CALL SvxUnoNumberingRulesCompare::compare( const Any& Any1, const Any& Any2 )
 {
@@ -506,10 +517,10 @@ sal_Int16 SvxUnoNumberingRules::Compare( const Any& Any1, const Any& Any2 )
         if( x1.get() == x2.get() )
             return 0;
 
-        SvxUnoNumberingRules* pRule1 = SvxUnoNumberingRules::getImplementation( x1 );
+        SvxUnoNumberingRules* pRule1 = comphelper::getUnoTunnelImplementation<SvxUnoNumberingRules>( x1 );
         if( pRule1 )
         {
-            SvxUnoNumberingRules* pRule2 = SvxUnoNumberingRules::getImplementation( x2 );
+            SvxUnoNumberingRules* pRule2 = comphelper::getUnoTunnelImplementation<SvxUnoNumberingRules>( x2 );
             if( pRule2 )
             {
                 const SvxNumRule& rRule1 = pRule1->getNumRule();
@@ -539,7 +550,7 @@ Reference< XAnyCompare > SvxCreateNumRuleCompare() throw()
     return new SvxUnoNumberingRulesCompare;
 }
 
-css::uno::Reference< css::container::XIndexReplace > SvxCreateNumRule() throw()
+css::uno::Reference< css::container::XIndexReplace > SvxCreateNumRule()
 {
     SvxNumRule aTempRule( SvxNumRuleFlags::NONE, 10, false );
     return SvxCreateNumRule( &aTempRule );

@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cstdio>
-
-#include "document.hxx"
-#include "docuno.hxx"
-#include "sheetdata.hxx"
+#include <document.hxx>
+#include <docuno.hxx>
+#include <sheetdata.hxx>
 
 #include "xmlbodyi.hxx"
 #include "xmltabi.hxx"
@@ -30,26 +28,28 @@
 #include "xmlimprt.hxx"
 #include "xmldpimp.hxx"
 #include "xmlcvali.hxx"
-#include "xmlstyli.hxx"
 #include "xmllabri.hxx"
+#include "xmlmappingi.hxx"
 #include "XMLConsolidationContext.hxx"
 #include "XMLDDELinksContext.hxx"
 #include "XMLCalculationSettingsContext.hxx"
 #include "XMLTrackedChangesContext.hxx"
+#include "XMLChangeTrackingImportHelper.hxx"
 #include "XMLEmptyContext.hxx"
 #include "XMLDetectiveContext.hxx"
-#include "scerrors.hxx"
-#include "tabprotection.hxx"
+#include <scerrors.hxx>
+#include <tabprotection.hxx>
 #include "datastreamimport.hxx"
 #include <sax/fastattribs.hxx>
 
-#include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 
-#include <sax/tools/converter.hxx>
+#include <comphelper/base64.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <sal/types.h>
+#include <sal/log.hxx>
+#include <rtl/math.hxx>
 
 #include <memory>
 
@@ -57,7 +57,7 @@ using namespace com::sun::star;
 using namespace xmloff::token;
 
 ScXMLBodyContext::ScXMLBodyContext( ScXMLImport& rImport,
-                                    const uno::Reference<xml::sax::XFastAttributeList>& xAttrList ) :
+                                    const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList ) :
     ScXMLImportContext( rImport ),
     sPassword(),
     meHash1(PASSHASH_SHA1),
@@ -72,7 +72,7 @@ ScXMLBodyContext::ScXMLBodyContext( ScXMLImport& rImport,
         // ODF 1.1 and earlier => GRAM_PODF; ODF 1.2 and later => GRAM_ODFF;
         // no version => earlier than 1.2 => GRAM_PODF.
         formula::FormulaGrammar::Grammar eGrammar = formula::FormulaGrammar::GRAM_ODFF;
-        OUString aVer( rImport.GetODFVersion());
+        const OUString& aVer( rImport.GetODFVersion());
         sal_Int32 nLen = aVer.getLength();
         SAL_INFO("sc.filter", "ScXMLBodyContext ODFVersion: nLen: " << nLen << " str : " << aVer);
         if (!nLen)
@@ -89,20 +89,17 @@ ScXMLBodyContext::ScXMLBodyContext( ScXMLImport& rImport,
         pDoc->SetStorageGrammar( eGrammar);
     }
 
-    if( !xAttrList.is() )
+    if ( !rAttrList.is() )
         return;
 
-    sax_fastparser::FastAttributeList *pAttribList =
-        static_cast< sax_fastparser::FastAttributeList *>( xAttrList.get() );
-
-    for( auto &it : *pAttribList )
+    for (auto &it : *rAttrList)
     {
         sal_Int32 nToken = it.getToken();
-        if( NAMESPACE_TOKEN( XML_NAMESPACE_TABLE ) == ( nToken & NMSP_MASK ) )
+        if( IsTokenInNamespace(nToken, XML_NAMESPACE_TABLE) )
         {
             const sal_Int32 nLocalToken = nToken & TOKEN_MASK;
             if( nLocalToken == XML_STRUCTURE_PROTECTED )
-                bProtected = IsXMLToken( it.toCString(), XML_TRUE );
+                bProtected = IsXMLToken( it, XML_TRUE );
             else if ( nLocalToken == XML_PROTECTION_KEY )
                 sPassword = it.toString();
             else if (  nLocalToken == XML_PROTECTION_KEY_DIGEST_ALGORITHM )
@@ -125,7 +122,7 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
         ScXMLBodyContext::createFastChildContext( sal_Int32 nElement,
         const uno::Reference< xml::sax::XFastAttributeList > & xAttrList )
 {
-    ScSheetSaveData* pSheetData = ScModelObj::getImplementation(GetScImport().GetModel())->GetSheetSaveData();
+    ScSheetSaveData* pSheetData = comphelper::getUnoTunnelImplementation<ScModelObj>(GetScImport().GetModel())->GetSheetSaveData();
     if ( pSheetData && pSheetData->HasStartPos() )
     {
         // stream part to copy ends before the next child element
@@ -134,23 +131,25 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
     }
 
     SvXMLImportContext *pContext = nullptr;
+    sax_fastparser::FastAttributeList *pAttribList =
+        &sax_fastparser::castToFastAttributeList( xAttrList );
 
     switch( nElement )
     {
     case XML_ELEMENT( TABLE, XML_TRACKED_CHANGES ):
         pChangeTrackingImportHelper = GetScImport().GetChangeTrackingImportHelper();
         if (pChangeTrackingImportHelper)
-            pContext = new ScXMLTrackedChangesContext( GetScImport(), nElement, xAttrList, pChangeTrackingImportHelper);
+            pContext = new ScXMLTrackedChangesContext( GetScImport(), pAttribList, pChangeTrackingImportHelper);
         break;
     case XML_ELEMENT( TABLE, XML_CALCULATION_SETTINGS ):
-        pContext = new ScXMLCalculationSettingsContext( GetScImport(), nElement, xAttrList );
+        pContext = new ScXMLCalculationSettingsContext( GetScImport(), pAttribList );
         bHadCalculationSettings = true;
         break;
     case XML_ELEMENT( TABLE, XML_CONTENT_VALIDATIONS ):
-        pContext = new ScXMLContentValidationsContext( GetScImport(), nElement, xAttrList );
+        pContext = new ScXMLContentValidationsContext( GetScImport() );
         break;
     case XML_ELEMENT( TABLE, XML_LABEL_RANGES ):
-        pContext = new ScXMLLabelRangesContext( GetScImport(), nElement, xAttrList );
+        pContext = new ScXMLLabelRangesContext( GetScImport() );
         break;
     case XML_ELEMENT( TABLE, XML_TABLE ):
         if (GetScImport().GetTables().GetCurrentSheet() >= MAXTAB)
@@ -160,48 +159,44 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
         }
         else
         {
-            pContext = new ScXMLTableContext( GetScImport(), xAttrList );
+            pContext = new ScXMLTableContext( GetScImport(), pAttribList );
         }
         break;
     case XML_ELEMENT( TABLE, XML_NAMED_EXPRESSIONS ):
         pContext = new ScXMLNamedExpressionsContext (
-            GetScImport(), nElement, xAttrList,
-            new ScXMLNamedExpressionsContext::GlobalInserter(GetScImport()) );
+            GetScImport(),
+            std::make_shared<ScXMLNamedExpressionsContext::GlobalInserter>(GetScImport()) );
         break;
     case XML_ELEMENT( TABLE, XML_DATABASE_RANGES ):
-        pContext = new ScXMLDatabaseRangesContext ( GetScImport(), nElement,
-                                                        xAttrList );
+        pContext = new ScXMLDatabaseRangesContext ( GetScImport() );
+        break;
+    case XML_ELEMENT( CALC_EXT, XML_DATA_MAPPINGS ):
+        pContext = new ScXMLMappingsContext(GetScImport());
         break;
     case XML_ELEMENT( TABLE, XML_DATABASE_RANGE ):
-        pContext = new ScXMLDatabaseRangeContext ( GetScImport(), nElement,
-                                                        xAttrList );
+        pContext = new ScXMLDatabaseRangeContext ( GetScImport(),
+                                                        pAttribList );
         break;
     case XML_ELEMENT( TABLE, XML_DATA_PILOT_TABLES ):
-        pContext = new ScXMLDataPilotTablesContext ( GetScImport(), nElement,
-                                                        xAttrList );
+        pContext = new ScXMLDataPilotTablesContext ( GetScImport() );
         break;
     case XML_ELEMENT( TABLE, XML_CONSOLIDATION ):
-        pContext = new ScXMLConsolidationContext ( GetScImport(), nElement,
-                                                        xAttrList );
+        pContext = new ScXMLConsolidationContext ( GetScImport(), pAttribList );
         break;
     case XML_ELEMENT( TABLE, XML_DDE_LINKS ):
-        pContext = new ScXMLDDELinksContext ( GetScImport(), nElement,
-                                                        xAttrList );
+        pContext = new ScXMLDDELinksContext ( GetScImport() );
         break;
     case XML_ELEMENT( CALC_EXT, XML_DATA_STREAM_SOURCE ):
-        pContext = new ScXMLDataStreamContext(GetScImport(), nElement, xAttrList);
+        pContext = new ScXMLDataStreamContext(GetScImport(), pAttribList);
         break;
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport() );
 
     return pContext;
 }
 
 void SAL_CALL ScXMLBodyContext::characters(const OUString &)
 {
-    ScSheetSaveData* pSheetData = ScModelObj::getImplementation(GetScImport().GetModel())->GetSheetSaveData();
+    ScSheetSaveData* pSheetData = comphelper::getUnoTunnelImplementation<ScModelObj>(GetScImport().GetModel())->GetSheetSaveData();
     if ( pSheetData && pSheetData->HasStartPos() )
     {
         // stream part to copy ends before any content (whitespace) within the spreadsheet element
@@ -213,7 +208,7 @@ void SAL_CALL ScXMLBodyContext::characters(const OUString &)
 
 void SAL_CALL ScXMLBodyContext::endFastElement(sal_Int32 nElement)
 {
-    ScSheetSaveData* pSheetData = ScModelObj::getImplementation(GetScImport().GetModel())->GetSheetSaveData();
+    ScSheetSaveData* pSheetData = comphelper::getUnoTunnelImplementation<ScModelObj>(GetScImport().GetModel())->GetSheetSaveData();
     if ( pSheetData && pSheetData->HasStartPos() )
     {
         // stream part to copy ends before the closing tag of spreadsheet element
@@ -232,7 +227,7 @@ void SAL_CALL ScXMLBodyContext::endFastElement(sal_Int32 nElement)
     if (!bHadCalculationSettings)
     {
         // #111055#; set calculation settings defaults if there is no calculation settings element
-        rtl::Reference<ScXMLCalculationSettingsContext> pContext( new ScXMLCalculationSettingsContext(GetScImport(), nElement, nullptr) );
+        rtl::Reference<ScXMLCalculationSettingsContext> pContext( new ScXMLCalculationSettingsContext(GetScImport(), nullptr) );
         pContext->endFastElement( nElement );
     }
 
@@ -242,37 +237,37 @@ void SAL_CALL ScXMLBodyContext::endFastElement(sal_Int32 nElement)
     ScDocument*                 pDoc        = GetScImport().GetDocument();
     ScMyImpDetectiveOp          aDetOp;
 
-    if (pDoc && GetScImport().GetModel().is())
+    if (!(pDoc && GetScImport().GetModel().is()))
+        return;
+
+    if (pDetOpArray)
     {
-        if (pDetOpArray)
+        pDetOpArray->Sort();
+        while( pDetOpArray->GetFirstOp( aDetOp ) )
         {
-            pDetOpArray->Sort();
-            while( pDetOpArray->GetFirstOp( aDetOp ) )
-            {
-                ScDetOpData aOpData( aDetOp.aPosition, aDetOp.eOpType );
-                pDoc->AddDetectiveOperation( aOpData );
-            }
-        }
-
-        if (pChangeTrackingImportHelper)
-            pChangeTrackingImportHelper->CreateChangeTrack(GetScImport().GetDocument());
-
-        // #i37959# handle document protection after the sheet settings
-        if (bProtected)
-        {
-            std::unique_ptr<ScDocProtection> pProtection(new ScDocProtection);
-            pProtection->setProtected(true);
-
-            uno::Sequence<sal_Int8> aPass;
-            if (!sPassword.isEmpty())
-            {
-                ::sax::Converter::decodeBase64(aPass, sPassword);
-                pProtection->setPasswordHash(aPass, meHash1, meHash2);
-            }
-
-            pDoc->SetDocProtection(pProtection.get());
+            ScDetOpData aOpData( aDetOp.aPosition, aDetOp.eOpType );
+            pDoc->AddDetectiveOperation( aOpData );
         }
     }
+
+    if (pChangeTrackingImportHelper)
+        pChangeTrackingImportHelper->CreateChangeTrack(GetScImport().GetDocument());
+
+    // #i37959# handle document protection after the sheet settings
+    if (!bProtected)
+        return;
+
+    std::unique_ptr<ScDocProtection> pProtection(new ScDocProtection);
+    pProtection->setProtected(true);
+
+    uno::Sequence<sal_Int8> aPass;
+    if (!sPassword.isEmpty())
+    {
+        ::comphelper::Base64::decode(aPass, sPassword);
+        pProtection->setPasswordHash(aPass, meHash1, meHash2);
+    }
+
+    pDoc->SetDocProtection(pProtection.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,21 +21,17 @@
 #define INCLUDED_SVTOOLS_RTFOUT_HXX
 
 #include <svtools/svtdllapi.h>
-#include <tools/solar.h>
 
+#include <rtl/ustring.hxx>
 #include <rtl/textenc.h>
 
-namespace rtl {
-  class OUString;
-};
 class SvStream;
 
 namespace RTFOutFuncs {
 
 SVT_DLLPUBLIC SvStream& Out_String(
-    SvStream&, const rtl::OUString&,
-    rtl_TextEncoding eDestEnc = RTL_TEXTENCODING_MS_1252,
-    bool bWriteHelpFile = false );
+    SvStream&, const OUString&,
+    rtl_TextEncoding eDestEnc = RTL_TEXTENCODING_MS_1252 );
 
 }
 

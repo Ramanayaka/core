@@ -17,18 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "tablefragment.hxx"
+#include <tablefragment.hxx>
+#include <biffhelper.hxx>
 
-#include "autofilterbuffer.hxx"
-#include "autofiltercontext.hxx"
-#include "tablecolumnsbuffer.hxx"
-#include "tablecolumnscontext.hxx"
-#include "tablebuffer.hxx"
+#include <autofiltercontext.hxx>
+#include <tablecolumnscontext.hxx>
+#include <tablebuffer.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::oox::core;
 
@@ -95,7 +92,6 @@ const RecordInfo* TableFragment::getRecordInfos() const
     return spRecInfos;
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

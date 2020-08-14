@@ -10,9 +10,15 @@
 #ifndef INCLUDED_CHART2_SOURCE_VIEW_MAIN_VBUTTON_HXX
 #define INCLUDED_CHART2_SOURCE_VIEW_MAIN_VBUTTON_HXX
 
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <tools/color.hxx>
+#include <com/sun/star/awt/Point.hpp>
+#include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::drawing { class XShapes; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
 
 namespace chart
 {
@@ -28,7 +34,8 @@ private:
     css::awt::Point m_aPosition;
     css::awt::Size m_aSize;
     bool m_bShowArrow;
-    sal_Int32 m_nArrowColor;
+    Color m_nArrowColor;
+    Color m_nBGColor;
 
     css::uno::Reference<css::drawing::XShape>
         createTriangle(css::awt::Size aSize);
@@ -45,9 +52,13 @@ public:
     {
         m_bShowArrow = bShowArrow;
     }
-    void setArrowColor(sal_Int32 nArrowColor)
+    void setArrowColor(Color nArrowColor)
     {
         m_nArrowColor = nArrowColor;
+    }
+    void setBGColor(Color nBGColor)
+    {
+        m_nBGColor = nBGColor;
     }
     void setLabel(OUString const & rLabel)
     {
@@ -61,7 +72,7 @@ public:
     {
         m_aPosition = rPosition;
     }
-    css::awt::Size getSize()
+    css::awt::Size const & getSize() const
     {
         return m_aSize;
     }

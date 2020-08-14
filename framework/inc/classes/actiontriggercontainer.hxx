@@ -24,7 +24,7 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
-#include <framework/fwedllapi.h>
+#include <framework/fwkdllapi.h>
 
 #define SERVICENAME_ACTIONTRIGGERCONTAINER          "com.sun.star.ui.ActionTriggerContainer"
 #define IMPLEMENTATIONNAME_ACTIONTRIGGERCONTAINER   "com.sun.star.comp.ui.ActionTriggerContainer"
@@ -32,7 +32,7 @@
 namespace framework
 {
 
-class FWE_DLLPUBLIC ActionTriggerContainer :    public PropertySetContainer,
+class ActionTriggerContainer final : public PropertySetContainer,
                                 public css::lang::XMultiServiceFactory,
                                 public css::lang::XServiceInfo,
                                 public css::lang::XTypeProvider

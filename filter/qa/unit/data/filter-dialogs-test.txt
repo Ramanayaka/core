@@ -13,7 +13,7 @@
 # workdir/screenshots using the pattern of the ui-file name.
 #
 # Syntax:
-# - emty lines are allowed
+# - empty lines are allowed
 # - lines starting with '#' are treated as comment
 # - all other lines should contain a *.ui filename in the same
 #   notation as in the dialog constructors (see code)
@@ -44,7 +44,6 @@ filter/ui/pdflinkspage.ui
 filter/ui/pdfsignpage.ui
 filter/ui/xmlfiltertabpagegeneral.ui
 filter/ui/xmlfiltertabpagetransformation.ui
-filter/ui/impswfdialog.ui
 filter/ui/testxmlfilter.ui
 filter/ui/warnpdfdialog.ui
 filter/ui/xmlfiltersettings.ui

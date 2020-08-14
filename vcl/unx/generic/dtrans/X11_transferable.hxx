@@ -20,10 +20,9 @@
 #ifndef INCLUDED_VCL_UNX_GENERIC_DTRANS_X11_TRANSFERABLE_HXX
 #define INCLUDED_VCL_UNX_GENERIC_DTRANS_X11_TRANSFERABLE_HXX
 
-#include <X11_selection.hxx>
+#include "X11_selection.hxx"
 #include <com/sun/star/datatransfer/XTransferable.hpp>
 
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <cppuhelper/implbase.hxx>
 
 namespace x11 {

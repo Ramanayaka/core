@@ -35,7 +35,7 @@ interface DrawView
     ]
     SID_RELOAD  // ole : no, status : ?
     [
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
         ExecMethod = ExecCtrl ;
         StateMethod = GetCtrlState ;
         Asynchron , AutoUpdate ,
@@ -289,7 +289,7 @@ interface DrawView
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetMenuState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
         Export ,
         MenuConfig , AccelConfig , ToolBoxConfig ;
     ]
@@ -299,6 +299,11 @@ interface DrawView
         StateMethod = GetMenuState ;
     ]
     SID_EMOJI_CONTROL // ole : no, status : ?
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetMenuState ;
+    ]
+    SID_CHARMAP_CONTROL // ole : no, status : ?
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetMenuState ;
@@ -314,6 +319,11 @@ interface DrawView
         StateMethod = GetMenuState ;
     ]
     FN_INSERT_HARD_SPACE // status(final|play)
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetMenuState ;
+    ]
+    FN_INSERT_NNBSP // status(final|play)
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetMenuState ;
@@ -349,7 +359,7 @@ interface DrawView
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetMenuState ;
-        GroupId = GID_INSERT ;
+        GroupId = SfxGroupId::Insert ;
         Export , Asynchron ,
         MenuConfig , AccelConfig , ToolBoxConfig ;
     ]
@@ -373,7 +383,7 @@ interface DrawView
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetMenuState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
         Export , Asynchron ,
         MenuConfig , AccelConfig , ToolBoxConfig ;
     ]
@@ -459,6 +469,11 @@ interface DrawView
         StateMethod = GetMenuState ;
         FastCall = FALSE ;
     ]
+    SID_TEXT_COMBINE // ole : no, status : ?
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetMenuState ;
+    ]
     SID_COMBINE // ole : no, status : ?
     [
         ExecMethod = FuTemporary ;
@@ -539,6 +554,11 @@ interface DrawView
         ExecMethod = FuTemporary ;
         StateMethod = GetMenuState ;
     ]
+    SID_FRAME_UP // ole : no, status : play rec
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetMenuState ;
+    ]
     SID_BEFORE_OBJ // ole : no, status : no
     [
         ExecMethod = FuTemporary ;
@@ -555,6 +575,11 @@ interface DrawView
         StateMethod = GetMenuState ;
     ]
     SID_MOREBACK // ole : no, status : play rec
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetMenuState ;
+    ]
+    SID_FRAME_DOWN // ole : no, status : play rec
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetMenuState ;
@@ -663,7 +688,7 @@ interface DrawView
     [
         ExecMethod = FuSupport ;
         StateMethod = GetMenuState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
         Asynchron ,
         MenuConfig , AccelConfig , ToolBoxConfig ;
     ]
@@ -764,7 +789,7 @@ interface DrawView
     [
         ExecMethod = FuPermanent ;
         StateMethod = GetMenuState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
         AutoUpdate ,
         MenuConfig , AccelConfig , ToolBoxConfig ;
     ]
@@ -1221,7 +1246,7 @@ interface DrawView
     SID_OBJECT_ALIGN // ole : no, status : ?
     [
         StateMethod = GetMenuState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
         Export ;
     ]
 
@@ -1260,6 +1285,11 @@ interface DrawView
         ExecMethod = FuSupport ;
         StateMethod = GetMenuState ;
     ]
+    SID_DRAWTBX_REDACTED_EXPORT // ole : no, status : ?
+    [
+        ExecMethod = FuSupport ;
+        StateMethod = GetMenuState ;
+    ]
     SID_DRAWTBX_LINES // ole : no, status : ?
     [
         ExecMethod = FuSupport ;
@@ -1285,6 +1315,7 @@ interface DrawView
         ExecMethod = FuPermanent ;
         StateMethod = GetMenuState ;
         Export = FALSE ;
+        ReadOnlyDoc = TRUE ;
     ]
 
      // Begin FormSlots
@@ -1448,7 +1479,7 @@ interface DrawView
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetAttrState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_STYLE_DRAGHIERARCHIE // ole : no, status : ?
     [
@@ -1458,51 +1489,56 @@ interface DrawView
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetAttrState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_STYLE_DELETE // ole : no, status : ?
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetAttrState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_STYLE_HIDE
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetAttrState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_STYLE_SHOW
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetAttrState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_STYLE_APPLY // ole : no, status : ?
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetAttrState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_STYLE_WATERCAN // ole : no, status : ?
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetAttrState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_STYLE_NEW_BY_EXAMPLE // ole : no, status : ?
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetAttrState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_STYLE_UPDATE_BY_EXAMPLE // ole : no, status : ?
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetAttrState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_SET_DEFAULT // ole : no, status : ?
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetAttrState ;
+    ]
+    SID_REMOVE_HYPERLINK // ole : no, status : ?
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetAttrState ;
@@ -1540,6 +1576,10 @@ interface DrawView
         StateMethod = GetRulerState ;
     ]
 
+    SID_RULER_PROTECT // status()
+    [
+        StateMethod = GetRulerState ;
+    ]
     SID_RULER_TEXT_RIGHT_TO_LEFT
     [
         ExecMethod = ExecRuler ;
@@ -1641,7 +1681,7 @@ interface DrawView
     SID_CAPTUREPOINT // ole : no, status : ?
     [
         ExecMethod = FuTemporary ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_SWITCH_POINTEDIT // ole : no, status : ?
     [
@@ -1652,7 +1692,7 @@ interface DrawView
     [
         ExecMethod = FuSupport ;
         StateMethod = GetMenuState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     MenuConfig = TRUE ;
     ]
     SID_COLOR_CONTROL // ole : no, status : ?
@@ -1727,7 +1767,7 @@ interface DrawView
     SID_GALLERY_FORMATS // ole : no, status : ?
     [
         ExecMethod = ExecGallery ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_NAVIGATOR_INIT // ole : no, status : ?
     [
@@ -1785,6 +1825,11 @@ interface DrawView
         StateMethod = GetAttrState ;
     ]
     SID_ATTR_SHADOW_TRANSPARENCE
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetAttrState ;
+    ]
+    SID_ATTR_SHADOW_BLUR
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetAttrState ;
@@ -2052,11 +2097,6 @@ interface DrawView
         ExecMethod = FuTemporary ;
         StateMethod = GetMenuState ;
     ]
-    SID_SHOW_ITEMBROWSER // ole : no, status : play rec
-    [
-        ExecMethod = FuSupport ;
-        StateMethod = GetMenuState ;
-    ]
     SID_AUTOSPELL_CHECK // ole : no, status : play rec
     [
         ExecMethod = FuSupport ;
@@ -2238,6 +2278,11 @@ interface DrawView
         ExecMethod = FuTemporary ;
         StateMethod = GetMenuState ;
     ]
+    SID_COPY_HYPERLINK_LOCATION // ole : no, status : ?
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetMenuState ;
+    ]
     SID_HIDE_LAST_LEVEL // ole : no, status : ?
     [
         ExecMethod = FuTemporary ;
@@ -2293,7 +2338,7 @@ interface DrawView
         ExecMethod = FuSupport ;
         StateMethod = GetCtrlState ;
     ]
-    SID_TRANSLITERATE_KATAGANA // ole : no, status : ?
+    SID_TRANSLITERATE_KATAKANA // ole : no, status : ?
     [
         ExecMethod = FuSupport ;
         StateMethod = GetCtrlState ;
@@ -2367,7 +2412,7 @@ interface DrawView
         ExecMethod = Execute ;
         StateMethod = GetMenuState ;
     ]
-    SID_EXTRUSION_TOOGLE
+    SID_EXTRUSION_TOGGLE
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetMenuState ;
@@ -2547,6 +2592,12 @@ interface DrawView
         ExecMethod = FuPermanent ;
         StateMethod = GetMenuState ;
     ]
+    SID_INSERT_SIGNATURELINE
+    [
+        ExecMethod = FuPermanent ;
+        StateMethod = GetMenuState ;
+        ReadOnlyDoc = TRUE ;
+    ]
     SID_AVMEDIA_PLAYER // ole : yes, status : ?
     [
         ExecMethod = FuTemporary ;
@@ -2597,6 +2648,16 @@ interface DrawView
     [
         ExecMethod = FuTemporary ;
         StateMethod = GetPageProperties ;
+    ]
+    SID_ATTR_PAGE_LRSPACE
+    [
+        ExecMethod = SetPageProperties ;
+        StateMethod = GetMarginProperties ;
+    ]
+    SID_ATTR_PAGE_ULSPACE
+    [
+        ExecMethod = SetPageProperties ;
+        StateMethod = GetMarginProperties ;
     ]
     SID_ATTR_PAGE_COLOR
     [
@@ -2663,7 +2724,32 @@ interface DrawView
         ExecMethod = ExecChar ;
         StateMethod = GetAttrState ;
     ]
+    SID_ATTR_CHAR_OVERLINE
+    [
+        ExecMethod = ExecChar ;
+        StateMethod = GetAttrState ;
+    ]
     SID_ATTR_CHAR_UNDERLINE
+    [
+        ExecMethod = ExecChar ;
+        StateMethod = GetAttrState ;
+    ]
+    SID_ULINE_VAL_NONE
+    [
+        ExecMethod = ExecChar ;
+        StateMethod = GetAttrState ;
+    ]
+    SID_ULINE_VAL_SINGLE
+    [
+        ExecMethod = ExecChar ;
+        StateMethod = GetAttrState ;
+    ]
+    SID_ULINE_VAL_DOUBLE
+    [
+        ExecMethod = ExecChar ;
+        StateMethod = GetAttrState ;
+    ]
+    SID_ULINE_VAL_DOTTED
     [
         ExecMethod = ExecChar ;
         StateMethod = GetAttrState ;
@@ -2677,6 +2763,11 @@ interface DrawView
     [
         ExecMethod = ExecChar ;
         StateMethod = GetAttrState ;
+    ]
+    SID_ATTR_CHAR_CONTOUR  // ole : ?, status : ?
+    [
+        ExecMethod = ExecChar ;
+        StateMethod = GetAttrState;
     ]
     SID_ATTR_CHAR_COLOR
     [
@@ -2731,10 +2822,6 @@ interface DrawView
     SID_PRESENTATION_MINIMIZER
     [
         ExecMethod = FuTemporary ;
-    ]
-    SID_INSERT_3DMODEL
-    [
-        ExecMethod = FuTemporary ;
         StateMethod = GetMenuState ;
     ]
     SID_GO_TO_NEXT_PAGE
@@ -2760,6 +2847,55 @@ interface DrawView
     SID_CLASSIFICATION_APPLY
     [
         ExecMethod = FuTemporary ;
+    ]
+    SID_CLASSIFICATION_DIALOG
+    [
+        ExecMethod = FuTemporary ;
+    ]
+    SID_REGENERATE_DIAGRAM
+    [
+        ExecMethod = ExecCtrl ;
+        StateMethod = GetMenuState ;
+    ]
+    SID_EDIT_DIAGRAM
+    [
+        ExecMethod = ExecCtrl ;
+        StateMethod = GetMenuState ;
+    ]
+    SID_INSERT_QRCODE
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetMenuState ;
+    ]
+    SID_EDIT_QRCODE
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetMenuState ;
+    ]
+    SID_ADDITIONS_DIALOG
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetMenuState ;
+    ]
+    SID_ATTR_GLOW_COLOR
+    [
+        ExecMethod = FuTemporary ;
+        StateMethod = GetAttrState ;
+    ]
+    SID_ATTR_GLOW_RADIUS
+    [
+        ExecMethod = FuTemporary;
+        StateMethod = GetAttrState;
+    ]
+    SID_ATTR_GLOW_TRANSPARENCY
+    [
+        ExecMethod = FuTemporary;
+        StateMethod = GetAttrState;
+    ]
+    SID_ATTR_SOFTEDGE_RADIUS
+    [
+        ExecMethod = FuTemporary;
+        StateMethod = GetAttrState;
     ]
 
 }

@@ -15,6 +15,7 @@
 #include "plugin.hxx"
 #include "compat.hxx"
 #include "check.hxx"
+#include "functionaddress.hxx"
 
 /*
   Find params on methods where the param is only ever passed as a single constant value.
@@ -53,22 +54,28 @@ bool operator < (const MyCallSiteInfo &lhs, const MyCallSiteInfo &rhs)
 static std::set<MyCallSiteInfo> callSet;
 
 class ConstantParam:
-    public RecursiveASTVisitor<ConstantParam>, public loplugin::Plugin
+    public loplugin::FunctionAddress<loplugin::FilteringPlugin<ConstantParam>>
 {
 public:
-    explicit ConstantParam(InstantiationData const & data): Plugin(data) {}
+    explicit ConstantParam(loplugin::InstantiationData const & data): FunctionAddress(data) {}
 
     virtual void run() override
     {
         // ignore some files that make clang crash inside EvaluateAsInt
-        std::string fn( compiler.getSourceManager().getFileEntryForID(
-                        compiler.getSourceManager().getMainFileID())->getName() );
-        normalizeDotDotInFilePath(fn);
+        std::string fn(handler.getMainFileName());
+        loplugin::normalizeDotDotInFilePath(fn);
         if (loplugin::isSamePathname(fn, SRCDIR "/basegfx/source/matrix/b2dhommatrix.cxx")
             || loplugin::isSamePathname(fn, SRCDIR "/basegfx/source/matrix/b3dhommatrix.cxx"))
              return;
 
         TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
+
+        // this catches places that take the address of a method
+        for (auto functionDecl : getFunctionsWithAddressTaken())
+        {
+            for (unsigned i = 0; i < functionDecl->getNumParams(); ++i)
+                addToCallSet(functionDecl, i, functionDecl->getParamDecl(i)->getName(), "unknown3");
+        }
 
         // dump all our output in one write call - this is to try and limit IO "crosstalk" between multiple processes
         // writing to the same logfile
@@ -78,7 +85,7 @@ public:
             output += s.returnType + "\t" + s.nameAndParams + "\t" + s.sourceLocation + "\t"
                         + s.paramName + "\t" + s.paramType + "\t" + s.callValue + "\n";
         std::ofstream myfile;
-        myfile.open( SRCDIR "/loplugin.constantparam.log", std::ios::app | std::ios::out);
+        myfile.open( WORKDIR "/loplugin.constantparam.log", std::ios::app | std::ios::out);
         myfile << output;
         myfile.close();
     }
@@ -87,7 +94,6 @@ public:
     bool shouldVisitImplicitCode () const { return true; }
 
     bool VisitCallExpr( const CallExpr* );
-    bool VisitDeclRefExpr( const DeclRefExpr* );
     bool VisitCXXConstructExpr( const CXXConstructExpr* );
 private:
     void addToCallSet(const FunctionDecl* functionDecl, int paramIndex, llvm::StringRef paramName, const std::string& callValue);
@@ -98,14 +104,12 @@ void ConstantParam::addToCallSet(const FunctionDecl* functionDecl, int paramInde
 {
     if (functionDecl->getInstantiatedFromMemberFunction())
         functionDecl = functionDecl->getInstantiatedFromMemberFunction();
+#if CLANG_VERSION < 90000
     else if (functionDecl->getClassScopeSpecializationPattern())
         functionDecl = functionDecl->getClassScopeSpecializationPattern();
-// workaround clang-3.5 issue
-#if CLANG_VERSION >= 30600
+#endif
     else if (functionDecl->getTemplateInstantiationPattern())
         functionDecl = functionDecl->getTemplateInstantiationPattern();
-#endif
-
 
     if (!functionDecl->getNameInfo().getLoc().isValid())
         return;
@@ -117,14 +121,14 @@ void ConstantParam::addToCallSet(const FunctionDecl* functionDecl, int paramInde
     if (isInUnoIncludeFile(functionDecl))
         return;
     SourceLocation expansionLoc = compiler.getSourceManager().getExpansionLoc( functionDecl->getLocation() );
-    StringRef filename = compiler.getSourceManager().getFilename(expansionLoc);
-    if (!loplugin::hasPathnamePrefix(filename, SRCDIR))
+    StringRef filename = getFilenameOfLocation(expansionLoc);
+    if (!loplugin::hasPathnamePrefix(filename, SRCDIR "/"))
         return;
     filename = filename.substr(strlen(SRCDIR)+1);
 
 
     MyCallSiteInfo aInfo;
-    aInfo.returnType = compat::getReturnType(*functionDecl).getCanonicalType().getAsString();
+    aInfo.returnType = functionDecl->getReturnType().getCanonicalType().getAsString();
 
     if (isa<CXXMethodDecl>(functionDecl)) {
         const CXXRecordDecl* recordDecl = dyn_cast<CXXMethodDecl>(functionDecl)->getParent();
@@ -133,7 +137,7 @@ void ConstantParam::addToCallSet(const FunctionDecl* functionDecl, int paramInde
     }
     aInfo.nameAndParams += functionDecl->getNameAsString() + "(";
     bool bFirst = true;
-    for (const ParmVarDecl *pParmVarDecl : compat::parameters(*functionDecl)) {
+    for (const ParmVarDecl *pParmVarDecl : functionDecl->parameters()) {
         if (bFirst)
             bFirst = false;
         else
@@ -144,14 +148,14 @@ void ConstantParam::addToCallSet(const FunctionDecl* functionDecl, int paramInde
     if (isa<CXXMethodDecl>(functionDecl) && dyn_cast<CXXMethodDecl>(functionDecl)->isConst()) {
         aInfo.nameAndParams += " const";
     }
-    aInfo.paramName = paramName;
+    aInfo.paramName = paramName.str();
     aInfo.paramIndex = paramIndex;
     if (paramIndex < (int)functionDecl->getNumParams())
         aInfo.paramType = functionDecl->getParamDecl(paramIndex)->getType().getCanonicalType().getAsString();
     aInfo.callValue = callValue;
 
     aInfo.sourceLocation = filename.str() + ":" + std::to_string(compiler.getSourceManager().getSpellingLineNumber(expansionLoc));
-    normalizeDotDotInFilePath(aInfo.sourceLocation);
+    loplugin::normalizeDotDotInFilePath(aInfo.sourceLocation);
 
     callSet.insert(aInfo);
 }
@@ -164,11 +168,12 @@ std::string ConstantParam::getCallValue(const Expr* arg)
     }
     arg = arg->IgnoreParenCasts();
     // ignore this, it seems to trigger an infinite recursion
-    if (isa<UnaryExprOrTypeTraitExpr>(arg)) {
+    if (isa<UnaryExprOrTypeTraitExpr>(arg))
         return "unknown1";
-    }
+    if (arg->isValueDependent())
+        return "unknown2";
     APSInt x1;
-    if (arg->EvaluateAsInt(x1, compiler.getASTContext()))
+    if (compat::EvaluateAsInt(arg, x1, compiler.getASTContext()))
     {
         return x1.toString(10);
     }
@@ -197,8 +202,8 @@ std::string ConstantParam::getCallValue(const Expr* arg)
     // Get the expression contents.
     // This helps us find params which are always initialised with something like "OUString()".
     SourceManager& SM = compiler.getSourceManager();
-    SourceLocation startLoc = arg->getLocStart();
-    SourceLocation endLoc = arg->getLocEnd();
+    SourceLocation startLoc = compat::getBeginLoc(arg);
+    SourceLocation endLoc = compat::getEndLoc(arg);
     const char *p1 = SM.getCharacterData( startLoc );
     const char *p2 = SM.getCharacterData( endLoc );
     if (!p1 || !p2 || (p2 - p1) < 0 || (p2 - p1) > 40) {
@@ -236,9 +241,8 @@ bool ConstantParam::VisitCallExpr(const CallExpr * callExpr) {
     else {
         functionDecl = callExpr->getDirectCallee();
     }
-    if (functionDecl == nullptr) {
+    if (!functionDecl)
         return true;
-    }
     functionDecl = functionDecl->getCanonicalDecl();
     // method overrides don't always specify the same default params (although they probably should)
     // so we need to work our way up to the root method
@@ -251,13 +255,12 @@ bool ConstantParam::VisitCallExpr(const CallExpr * callExpr) {
     // work our way back to the root definition for template methods
     if (functionDecl->getInstantiatedFromMemberFunction())
         functionDecl = functionDecl->getInstantiatedFromMemberFunction();
+#if CLANG_VERSION < 90000
     else if (functionDecl->getClassScopeSpecializationPattern())
         functionDecl = functionDecl->getClassScopeSpecializationPattern();
-// workaround clang-3.5 issue
-#if CLANG_VERSION >= 30600
+#endif
     else if (functionDecl->getTemplateInstantiationPattern())
         functionDecl = functionDecl->getTemplateInstantiationPattern();
-#endif
 
     unsigned len = std::max(callExpr->getNumArgs(), functionDecl->getNumParams());
     for (unsigned i = 0; i < len; ++i) {
@@ -271,24 +274,9 @@ bool ConstantParam::VisitCallExpr(const CallExpr * callExpr) {
             continue;
         std::string callValue = getCallValue(valExpr);
         std::string paramName = i < functionDecl->getNumParams()
-                                ? functionDecl->getParamDecl(i)->getName()
-                                : llvm::StringRef("###" + std::to_string(i));
+                                ? functionDecl->getParamDecl(i)->getName().str()
+                                : "###" + std::to_string(i);
         addToCallSet(functionDecl, i, paramName, callValue);
-    }
-    return true;
-}
-
-// this catches places that take the address of a method
-bool ConstantParam::VisitDeclRefExpr( const DeclRefExpr* declRefExpr )
-{
-    const Decl* decl = declRefExpr->getDecl();
-    if (!isa<FunctionDecl>(decl)) {
-        return true;
-    }
-    const FunctionDecl* functionDecl = dyn_cast<FunctionDecl>(decl);
-    for (unsigned i = 0; i < functionDecl->getNumParams(); ++i)
-    {
-        addToCallSet(functionDecl, i, functionDecl->getParamDecl(i)->getName(), "unknown3");
     }
     return true;
 }
@@ -310,8 +298,8 @@ bool ConstantParam::VisitCXXConstructExpr( const CXXConstructExpr* constructExpr
             continue;
         std::string callValue = getCallValue(valExpr);
         std::string paramName = i < constructorDecl->getNumParams()
-                                ? constructorDecl->getParamDecl(i)->getName()
-                                : llvm::StringRef("###" + std::to_string(i));
+                                ? constructorDecl->getParamDecl(i)->getName().str()
+                                : "###" + std::to_string(i);
         addToCallSet(constructorDecl, i, paramName, callValue);
     }
     return true;

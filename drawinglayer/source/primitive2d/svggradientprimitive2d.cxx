@@ -19,9 +19,8 @@
 
 #include <drawinglayer/primitive2d/svggradientprimitive2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
@@ -29,7 +28,9 @@
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 #include <drawinglayer/primitive2d/maskprimitive2d.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
-
+#include <sal/log.hxx>
+#include <cmath>
+#include <vcl/skia/SkiaHelper.hxx>
 
 using namespace com::sun::star;
 
@@ -43,7 +44,7 @@ namespace
 
         if(nSteps)
         {
-            // calc discrete length to change color all 1.5 disctete units (pixels)
+            // calc discrete length to change color all 1.5 discrete units (pixels)
             const sal_uInt32 nDistSteps(basegfx::fround(fDelta / (fDiscreteUnit * 1.5)));
 
             nSteps = std::min(nSteps, nDistSteps);
@@ -58,10 +59,8 @@ namespace
 } // end of anonymous namespace
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void SvgGradientHelper::createSingleGradientEntryFill(Primitive2DContainer& rContainer) const
         {
             const SvgGradientEntryVector& rEntries = getGradientEntries();
@@ -105,131 +104,203 @@ namespace drawinglayer
 
             if(rEntries.empty())
             {
-                // no fill at all
+                // no fill at all, done
+                return;
             }
-            else
-            {
-                const sal_uInt32 nCount(rEntries.size());
 
-                if(1 == nCount)
+            // sort maGradientEntries by offset, small to big
+            std::sort(maGradientEntries.begin(), maGradientEntries.end());
+
+            // gradient with at least two colors
+            bool bAllInvisible(true);
+            bool bInvalidEntries(false);
+
+            for(const SvgGradientEntry& rCandidate : rEntries)
+            {
+                if(basegfx::fTools::equalZero(rCandidate.getOpacity()))
                 {
-                    // fill with single existing color
-                    setSingleEntry();
+                    // invisible
+                    mbFullyOpaque = false;
+                }
+                else if(basegfx::fTools::equal(rCandidate.getOpacity(), 1.0))
+                {
+                    // completely opaque
+                    bAllInvisible = false;
                 }
                 else
                 {
-                    // sort maGradientEntries when more than one
-                    std::sort(maGradientEntries.begin(), maGradientEntries.end());
-
-                    // gradient with at least two colors
-                    bool bAllInvisible(true);
-
-                    for(sal_uInt32 a(0); a < nCount; a++)
-                    {
-                        const SvgGradientEntry& rCandidate = rEntries[a];
-
-                        if(basegfx::fTools::equalZero(rCandidate.getOpacity()))
-                        {
-                            // invisible
-                            mbFullyOpaque = false;
-                        }
-                        else if(basegfx::fTools::equal(rCandidate.getOpacity(), 1.0))
-                        {
-                            // completely opaque
-                            bAllInvisible = false;
-                        }
-                        else
-                        {
-                            // opacity
-                            bAllInvisible = false;
-                            mbFullyOpaque = false;
-                        }
-                    }
-
-                    if(bAllInvisible)
-                    {
-                        // all invisible, nothing to do
-                    }
-                    else
-                    {
-                        const basegfx::B2DRange aPolyRange(getPolyPolygon().getB2DRange());
-
-                        if(aPolyRange.isEmpty())
-                        {
-                            // no range to fill, nothing to do
-                        }
-                        else
-                        {
-                            const double fPolyWidth(aPolyRange.getWidth());
-                            const double fPolyHeight(aPolyRange.getHeight());
-
-                            if(basegfx::fTools::equalZero(fPolyWidth) || basegfx::fTools::equalZero(fPolyHeight))
-                            {
-                                // no width/height to fill, nothing to do
-                            }
-                            else
-                            {
-                                mbCreatesContent = true;
-                            }
-                        }
-                    }
+                    // opacity
+                    bAllInvisible = false;
+                    mbFullyOpaque = false;
                 }
+
+                if(!basegfx::fTools::betweenOrEqualEither(rCandidate.getOffset(), 0.0, 1.0))
+                {
+                    bInvalidEntries = true;
+                }
+            }
+
+            if(bAllInvisible)
+            {
+                // all invisible, nothing to do
+                return;
+            }
+
+            if(bInvalidEntries)
+            {
+                // invalid entries, do nothing
+                SAL_WARN("drawinglayer", "SvgGradientHelper got invalid SvgGradientEntries outside [0.0 .. 1.0]");
+                return;
+            }
+
+            const basegfx::B2DRange aPolyRange(getPolyPolygon().getB2DRange());
+
+            if(aPolyRange.isEmpty())
+            {
+                // no range to fill, nothing to do
+                return;
+            }
+
+            const double fPolyWidth(aPolyRange.getWidth());
+            const double fPolyHeight(aPolyRange.getHeight());
+
+            if(basegfx::fTools::equalZero(fPolyWidth) || basegfx::fTools::equalZero(fPolyHeight))
+            {
+                // no width/height to fill, nothing to do
+                return;
+            }
+
+            mbCreatesContent = true;
+
+            if(1 == rEntries.size())
+            {
+                // fill with single existing color
+                setSingleEntry();
             }
         }
 
-        double SvgGradientHelper::createRun(
+        const SvgGradientEntry& SvgGradientHelper::FindEntryLessOrEqual(
+            sal_Int32& rInt,
+            const double fFrac) const
+        {
+            const bool bMirror(SpreadMethod::Reflect == getSpreadMethod() && 0 != rInt % 2);
+            const SvgGradientEntryVector& rCurrent(bMirror ? getMirroredGradientEntries() : getGradientEntries());
+
+            for(SvgGradientEntryVector::const_reverse_iterator aIter(rCurrent.rbegin()); aIter != rCurrent.rend(); aIter++)
+            {
+               if(basegfx::fTools::lessOrEqual(aIter->getOffset(), fFrac))
+               {
+                   return *aIter;
+               }
+            }
+
+            // walk over gap to the left, be prepared for missing 0.0/1.0 entries
+            rInt--;
+            const bool bMirror2(SpreadMethod::Reflect == getSpreadMethod() && 0 != rInt % 2);
+            const SvgGradientEntryVector& rCurrent2(bMirror2 ? getMirroredGradientEntries() : getGradientEntries());
+            return rCurrent2.back();
+        }
+
+        const SvgGradientEntry& SvgGradientHelper::FindEntryMore(
+            sal_Int32& rInt,
+            const double fFrac) const
+        {
+            const bool bMirror(SpreadMethod::Reflect == getSpreadMethod() && 0 != rInt % 2);
+            const SvgGradientEntryVector& rCurrent(bMirror ? getMirroredGradientEntries() : getGradientEntries());
+
+            for(SvgGradientEntryVector::const_iterator aIter(rCurrent.begin()); aIter != rCurrent.end(); aIter++)
+            {
+               if(basegfx::fTools::more(aIter->getOffset(), fFrac))
+               {
+                   return *aIter;
+               }
+            }
+
+            // walk over gap to the right, be prepared for missing 0.0/1.0 entries
+            rInt++;
+            const bool bMirror2(SpreadMethod::Reflect == getSpreadMethod() && 0 != rInt % 2);
+            const SvgGradientEntryVector& rCurrent2(bMirror2 ? getMirroredGradientEntries() : getGradientEntries());
+            return rCurrent2.front();
+        }
+
+        // tdf#124424 Adapted creation of color runs to do in a single effort. Previous
+        // version tried to do this from [0.0 .. 1.0] and to re-use transformed versions
+        // in the caller if SpreadMethod was on some repeat mode, but had problems when
+        // e.g. like in the bugdoc from the task a negative-only fStart/fEnd run was
+        // requested in which case it did nothing. Even when reusing the spread might
+        // not have been a full one from [0.0 .. 1.0].
+        // This gets complicated due to mirrored runs, but also for gradient definitions
+        // with missing entries for 0.0 and 1.0 in which case these have to be guessed
+        // to be there with same parametrisation as their nearest existing entries. These
+        // *could* have been added at checkPreconditions() but would then create unnecessary
+        // spreads on zone overlaps.
+        void SvgGradientHelper::createRun(
             Primitive2DContainer& rTargetColor,
             Primitive2DContainer& rTargetOpacity,
-            double fPos,
-            double fMax,
-            const SvgGradientEntryVector& rEntries,
-            sal_Int32 nOffset) const
+            double fStart,
+            double fEnd) const
         {
-            const sal_uInt32 nCount(rEntries.size());
+            double fInt(0.0);
+            double fFrac(0.0);
+            double fEnd2(0.0);
 
-            if(nCount)
+            if(SpreadMethod::Pad == getSpreadMethod())
             {
-                const SvgGradientEntry& rStart = rEntries[0];
-                const bool bCreateStartPad(fPos < 0.0 && SpreadMethod::Pad == getSpreadMethod());
-                const bool bCreateStartFill(rStart.getOffset() > 0.0);
-                sal_uInt32 nIndex(0);
-
-                if(bCreateStartPad || bCreateStartFill)
+                if(fStart < 0.0)
                 {
-                    const SvgGradientEntry aTemp(bCreateStartPad ? fPos : 0.0, rStart.getColor(), rStart.getOpacity());
-
-                    createAtom(rTargetColor, rTargetOpacity, aTemp, rStart, nOffset);
-                    fPos = rStart.getOffset();
+                    fFrac = std::modf(fStart, &fInt);
+                    const SvgGradientEntry& rFront(getGradientEntries().front());
+                    const SvgGradientEntry aTemp(1.0 + fFrac, rFront.getColor(), rFront.getOpacity());
+                    createAtom(rTargetColor, rTargetOpacity, aTemp, rFront, static_cast<sal_Int32>(fInt - 1), 0);
+                    fStart = rFront.getOffset();
                 }
 
-                while(fPos < 1.0 && nIndex + 1 < nCount)
+                if(fEnd > 1.0)
                 {
-                    const SvgGradientEntry& rCandidateA = rEntries[nIndex++];
-                    const SvgGradientEntry& rCandidateB = rEntries[nIndex];
-
-                    createAtom(rTargetColor, rTargetOpacity, rCandidateA, rCandidateB, nOffset);
-                    fPos = rCandidateB.getOffset();
-                }
-
-                const SvgGradientEntry& rEnd = rEntries[nCount - 1];
-                const bool bCreateEndPad(fPos < fMax && SpreadMethod::Pad == getSpreadMethod());
-                const bool bCreateEndFill(rEnd.getOffset() < 1.0);
-
-                if(bCreateEndPad || bCreateEndFill)
-                {
-                    fPos = bCreateEndPad ? fMax : 1.0;
-                    const SvgGradientEntry aTemp(fPos, rEnd.getColor(), rEnd.getOpacity());
-
-                    createAtom(rTargetColor, rTargetOpacity, rEnd, aTemp, nOffset);
+                    // change fEnd early, but create geometry later (after range below)
+                    fEnd2 = fEnd;
+                    fEnd = getGradientEntries().back().getOffset();
                 }
             }
-            else
+
+            while(fStart < fEnd)
             {
-                OSL_ENSURE(false, "GradientAtom creation without ColorStops (!)");
-                fPos = fMax;
+                fFrac = std::modf(fStart, &fInt);
+
+                if(fFrac < 0.0)
+                {
+                    fInt -= 1;
+                    fFrac = 1.0 + fFrac;
+                }
+
+                sal_Int32 nIntLeft(static_cast<sal_Int32>(fInt));
+                sal_Int32 nIntRight(nIntLeft);
+
+                const SvgGradientEntry& rLeft(FindEntryLessOrEqual(nIntLeft, fFrac));
+                const SvgGradientEntry& rRight(FindEntryMore(nIntRight, fFrac));
+                createAtom(rTargetColor, rTargetOpacity, rLeft, rRight, nIntLeft, nIntRight);
+
+                const double fNextfStart(static_cast<double>(nIntRight) + rRight.getOffset());
+
+                if(basegfx::fTools::more(fNextfStart, fStart))
+                {
+                    fStart = fNextfStart;
+                }
+                else
+                {
+                    SAL_WARN("drawinglayer", "SvgGradientHelper spread error");
+                    fStart += 1.0;
+                }
             }
 
-            return fPos;
+            if(fEnd2 > 1.0)
+            {
+                // create end run for SpreadMethod::Pad late to keep correct creation order
+                fFrac = std::modf(fEnd2, &fInt);
+                const SvgGradientEntry& rBack(getGradientEntries().back());
+                const SvgGradientEntry aTemp(fFrac, rBack.getColor(), rBack.getOpacity());
+                createAtom(rTargetColor, rTargetOpacity, rBack, aTemp, 0, static_cast<sal_Int32>(fInt));
+            }
         }
 
         void SvgGradientHelper::createResult(
@@ -242,31 +313,31 @@ namespace drawinglayer
             const Primitive2DContainer aTargetColorEntries(rTargetColor.maybeInvert(bInvert));
             const Primitive2DContainer aTargetOpacityEntries(rTargetOpacity.maybeInvert(bInvert));
 
-            if(!aTargetColorEntries.empty())
+            if(aTargetColorEntries.empty())
+                return;
+
+            Primitive2DReference xRefContent;
+
+            if(!aTargetOpacityEntries.empty())
             {
-                Primitive2DReference xRefContent;
+                const Primitive2DReference xRefOpacity = new TransparencePrimitive2D(
+                    aTargetColorEntries,
+                    aTargetOpacityEntries);
 
-                if(!aTargetOpacityEntries.empty())
-                {
-                    const Primitive2DReference xRefOpacity = new TransparencePrimitive2D(
-                        aTargetColorEntries,
-                        aTargetOpacityEntries);
-
-                    xRefContent = new TransformPrimitive2D(
-                        rUnitGradientToObject,
-                        Primitive2DContainer { xRefOpacity });
-                }
-                else
-                {
-                    xRefContent = new TransformPrimitive2D(
-                        rUnitGradientToObject,
-                        aTargetColorEntries);
-                }
-
-                rContainer.push_back(new MaskPrimitive2D(
-                    getPolyPolygon(),
-                    Primitive2DContainer { xRefContent }));
+                xRefContent = new TransformPrimitive2D(
+                    rUnitGradientToObject,
+                    Primitive2DContainer { xRefOpacity });
             }
+            else
+            {
+                xRefContent = new TransformPrimitive2D(
+                    rUnitGradientToObject,
+                    aTargetColorEntries);
+            }
+
+            rContainer.push_back(new MaskPrimitive2D(
+                getPolyPolygon(),
+                Primitive2DContainer { xRefContent }));
         }
 
         SvgGradientHelper::SvgGradientHelper(
@@ -279,6 +350,7 @@ namespace drawinglayer
         :   maGradientTransform(rGradientTransform),
             maPolyPolygon(rPolyPolygon),
             maGradientEntries(rGradientEntries),
+            maMirroredGradientEntries(),
             maStart(rStart),
             maSpreadMethod(aSpreadMethod),
             mbPreconditionsChecked(false),
@@ -293,6 +365,36 @@ namespace drawinglayer
         {
         }
 
+        const SvgGradientEntryVector& SvgGradientHelper::getMirroredGradientEntries() const
+        {
+            if(maMirroredGradientEntries.empty() && !getGradientEntries().empty())
+            {
+                const_cast< SvgGradientHelper* >(this)->createMirroredGradientEntries();
+            }
+
+            return maMirroredGradientEntries;
+        }
+
+        void SvgGradientHelper::createMirroredGradientEntries()
+        {
+            if(!(maMirroredGradientEntries.empty() && !getGradientEntries().empty()))
+                return;
+
+            const sal_uInt32 nCount(getGradientEntries().size());
+            maMirroredGradientEntries.clear();
+            maMirroredGradientEntries.reserve(nCount);
+
+            for(sal_uInt32 a(0); a < nCount; a++)
+            {
+                const SvgGradientEntry& rCandidate = getGradientEntries()[nCount - 1 - a];
+
+                maMirroredGradientEntries.emplace_back(
+                        1.0 - rCandidate.getOffset(),
+                        rCandidate.getColor(),
+                        rCandidate.getOpacity());
+            }
+        }
+
         bool SvgGradientHelper::operator==(const SvgGradientHelper& rSvgGradientHelper) const
         {
             const SvgGradientHelper& rCompare = rSvgGradientHelper;
@@ -305,14 +407,11 @@ namespace drawinglayer
                 && getSpreadMethod() == rCompare.getSpreadMethod());
         }
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void SvgLinearGradientPrimitive2D::checkPreconditions()
         {
             // call parent
@@ -336,7 +435,8 @@ namespace drawinglayer
             Primitive2DContainer& rTargetOpacity,
             const SvgGradientEntry& rFrom,
             const SvgGradientEntry& rTo,
-            sal_Int32 nOffset) const
+            sal_Int32 nOffsetFrom,
+            sal_Int32 nOffsetTo) const
         {
             // create gradient atom [rFrom.getOffset() .. rTo.getOffset()] with (rFrom.getOffset() > rTo.getOffset())
             if(rFrom.getOffset() == rTo.getOffset())
@@ -347,8 +447,8 @@ namespace drawinglayer
             {
                 rTargetColor.push_back(
                     new SvgLinearAtomPrimitive2D(
-                        rFrom.getColor(), rFrom.getOffset() + nOffset,
-                        rTo.getColor(), rTo.getOffset() + nOffset));
+                        rFrom.getColor(), rFrom.getOffset() + nOffsetFrom,
+                        rTo.getColor(), rTo.getOffset() + nOffsetTo));
 
                 if(!getFullyOpaque())
                 {
@@ -359,8 +459,8 @@ namespace drawinglayer
 
                     rTargetOpacity.push_back(
                         new SvgLinearAtomPrimitive2D(
-                            aColorFrom, rFrom.getOffset() + nOffset,
-                            aColorTo, rTo.getOffset() + nOffset));
+                            aColorFrom, rFrom.getOffset() + nOffsetFrom,
+                            aColorTo, rTo.getOffset() + nOffsetTo));
                 }
             }
         }
@@ -387,7 +487,7 @@ namespace drawinglayer
 
                 // create ObjectTransform based on polygon range
                 const basegfx::B2DHomMatrix aObjectTransform(
-                    basegfx::tools::createScaleTranslateB2DHomMatrix(
+                    basegfx::utils::createScaleTranslateB2DHomMatrix(
                         fPolyWidth, fPolyHeight,
                         aPolyRange.getMinX(), aPolyRange.getMinY()));
                 basegfx::B2DHomMatrix aUnitGradientToObject;
@@ -404,14 +504,11 @@ namespace drawinglayer
                     aUnitGradientToObject.rotate(atan2(aVector.getY(), aVector.getX()));
                     aUnitGradientToObject.translate(getStart().getX(), getStart().getY());
 
-                    if(!getGradientTransform().isIdentity())
-                    {
-                        aUnitGradientToObject = getGradientTransform() * aUnitGradientToObject;
-                    }
+                    aUnitGradientToObject *= getGradientTransform();
 
                     // create full transform from unit gradient coordinates to object coordinates
                     // including the SvgGradient transformation
-                    aUnitGradientToObject = aObjectTransform * aUnitGradientToObject;
+                    aUnitGradientToObject *= aObjectTransform;
                 }
                 else
                 {
@@ -424,10 +521,7 @@ namespace drawinglayer
                     aUnitGradientToObject.rotate(atan2(aVector.getY(), aVector.getX()));
                     aUnitGradientToObject.translate(aStart.getX(), aStart.getY());
 
-                    if(!getGradientTransform().isIdentity())
-                    {
-                        aUnitGradientToObject = getGradientTransform() * aUnitGradientToObject;
-                    }
+                    aUnitGradientToObject *= getGradientTransform();
                 }
 
                 // create inverse from it
@@ -449,96 +543,16 @@ namespace drawinglayer
                     // add a pre-multiply to aUnitGradientToObject to allow
                     // multiplication of the polygon(xl, 0.0, xr, 1.0)
                     const basegfx::B2DHomMatrix aPreMultiply(
-                        basegfx::tools::createScaleTranslateB2DHomMatrix(
+                        basegfx::utils::createScaleTranslateB2DHomMatrix(
                             1.0, aUnitRange.getHeight(), 0.0, aUnitRange.getMinY()));
                     aUnitGradientToObject = aUnitGradientToObject * aPreMultiply;
 
-                    // create central run, may also already do all necessary when
-                    // SpreadMethod::Pad is set as SpreadMethod and/or the range is smaller
-                    double fPos(createRun(aTargetColor, aTargetOpacity, aUnitRange.getMinX(), aUnitRange.getMaxX(), getGradientEntries(), 0));
-
-                    if(fPos < aUnitRange.getMaxX())
-                    {
-                        // can only happen when SpreadMethod is SpreadMethod::Reflect or SpreadMethod::Repeat,
-                        // else the start and end pads are already created and fPos == aUnitRange.getMaxX().
-                        // Its possible to express the repeated linear gradient by adding the
-                        // transformed central run. Create it this way
-                        Primitive2DContainer aTargetColorEntries(aTargetColor.maybeInvert());
-                        Primitive2DContainer aTargetOpacityEntries(aTargetOpacity.maybeInvert());
-                        aTargetColor.clear();
-                        aTargetOpacity.clear();
-
-                        if(!aTargetColorEntries.empty())
-                        {
-                            // add original central run as group primitive
-                            aTargetColor.push_back(new GroupPrimitive2D(aTargetColorEntries));
-
-                            if(!aTargetOpacityEntries.empty())
-                            {
-                                aTargetOpacity.push_back(new GroupPrimitive2D(aTargetOpacityEntries));
-                            }
-
-                            // add negative runs
-                            fPos = 0.0;
-                            sal_Int32 nOffset(0);
-
-                            while(fPos > aUnitRange.getMinX())
-                            {
-                                fPos -= 1.0;
-                                nOffset++;
-
-                                basegfx::B2DHomMatrix aTransform;
-                                const bool bMirror(SpreadMethod::Reflect == getSpreadMethod() && (nOffset % 2));
-
-                                if(bMirror)
-                                {
-                                    aTransform.scale(-1.0, 1.0);
-                                    aTransform.translate(fPos + 1.0, 0.0);
-                                }
-                                else
-                                {
-                                    aTransform.translate(fPos, 0.0);
-                                }
-
-                                aTargetColor.push_back(new TransformPrimitive2D(aTransform, aTargetColorEntries));
-
-                                if(!aTargetOpacityEntries.empty())
-                                {
-                                    aTargetOpacity.push_back(new TransformPrimitive2D(aTransform, aTargetOpacityEntries));
-                                }
-                            }
-
-                            // add positive runs
-                            fPos = 1.0;
-                            nOffset = 1;
-
-                            while(fPos < aUnitRange.getMaxX())
-                            {
-                                basegfx::B2DHomMatrix aTransform;
-                                const bool bMirror(SpreadMethod::Reflect == getSpreadMethod() && (nOffset % 2));
-
-                                if(bMirror)
-                                {
-                                    aTransform.scale(-1.0, 1.0);
-                                    aTransform.translate(fPos + 1.0, 0.0);
-                                }
-                                else
-                                {
-                                    aTransform.translate(fPos, 0.0);
-                                }
-
-                                aTargetColor.push_back(new TransformPrimitive2D(aTransform, aTargetColorEntries));
-
-                                if(!aTargetOpacityEntries.empty())
-                                {
-                                    aTargetOpacity.push_back(new TransformPrimitive2D(aTransform, aTargetOpacityEntries));
-                                }
-
-                                fPos += 1.0;
-                                nOffset++;
-                            }
-                        }
-                    }
+                    // create full color run, including all SpreadMethod variants
+                    createRun(
+                        aTargetColor,
+                        aTargetOpacity,
+                        aUnitRange.getMinX(),
+                        aUnitRange.getMaxX());
                 }
 
                 createResult(rContainer, aTargetColor, aTargetOpacity, aUnitGradientToObject);
@@ -586,14 +600,11 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(SvgLinearGradientPrimitive2D, PRIMITIVE2D_ID_SVGLINEARGRADIENTPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void SvgRadialGradientPrimitive2D::checkPreconditions()
         {
             // call parent
@@ -615,7 +626,8 @@ namespace drawinglayer
             Primitive2DContainer& rTargetOpacity,
             const SvgGradientEntry& rFrom,
             const SvgGradientEntry& rTo,
-            sal_Int32 nOffset) const
+            sal_Int32 nOffsetFrom,
+            sal_Int32 nOffsetTo) const
         {
             // create gradient atom [rFrom.getOffset() .. rTo.getOffset()] with (rFrom.getOffset() > rTo.getOffset())
             if(rFrom.getOffset() == rTo.getOffset())
@@ -624,8 +636,8 @@ namespace drawinglayer
             }
             else
             {
-                const double fScaleFrom(rFrom.getOffset() + nOffset);
-                const double fScaleTo(rTo.getOffset() + nOffset);
+                const double fScaleFrom(rFrom.getOffset() + nOffsetFrom);
+                const double fScaleTo(rTo.getOffset() + nOffsetTo);
 
                 if(isFocalSet())
                 {
@@ -673,37 +685,6 @@ namespace drawinglayer
             }
         }
 
-        const SvgGradientEntryVector& SvgRadialGradientPrimitive2D::getMirroredGradientEntries() const
-        {
-            if(maMirroredGradientEntries.empty() && !getGradientEntries().empty())
-            {
-                const_cast< SvgRadialGradientPrimitive2D* >(this)->createMirroredGradientEntries();
-            }
-
-            return maMirroredGradientEntries;
-        }
-
-        void SvgRadialGradientPrimitive2D::createMirroredGradientEntries()
-        {
-            if(maMirroredGradientEntries.empty() && !getGradientEntries().empty())
-            {
-                const sal_uInt32 nCount(getGradientEntries().size());
-                maMirroredGradientEntries.clear();
-                maMirroredGradientEntries.reserve(nCount);
-
-                for(sal_uInt32 a(0); a < nCount; a++)
-                {
-                    const SvgGradientEntry& rCandidate = getGradientEntries()[nCount - 1 - a];
-
-                    maMirroredGradientEntries.push_back(
-                        SvgGradientEntry(
-                            1.0 - rCandidate.getOffset(),
-                            rCandidate.getColor(),
-                            rCandidate.getOpacity()));
-                }
-            }
-        }
-
         void SvgRadialGradientPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
             if(!getPreconditionsChecked())
@@ -726,7 +707,7 @@ namespace drawinglayer
 
                 // create ObjectTransform based on polygon range
                 const basegfx::B2DHomMatrix aObjectTransform(
-                    basegfx::tools::createScaleTranslateB2DHomMatrix(
+                    basegfx::utils::createScaleTranslateB2DHomMatrix(
                         fPolyWidth, fPolyHeight,
                         aPolyRange.getMinX(), aPolyRange.getMinY()));
                 basegfx::B2DHomMatrix aUnitGradientToObject;
@@ -758,10 +739,7 @@ namespace drawinglayer
                     aUnitGradientToObject.scale(fRadius, fRadius);
                     aUnitGradientToObject.translate(aStart.getX(), aStart.getY());
 
-                    if(!getGradientTransform().isIdentity())
-                    {
-                        aUnitGradientToObject = getGradientTransform() * aUnitGradientToObject;
-                    }
+                    aUnitGradientToObject *= getGradientTransform();
                 }
 
                 // create inverse from it
@@ -793,35 +771,12 @@ namespace drawinglayer
                         const_cast< SvgRadialGradientPrimitive2D* >(this)->maFocalLength = fMax;
                     }
 
-                    // create central run, may also already do all necessary when
-                    // SpreadMethod::Pad is set as SpreadMethod and/or the range is smaller
-                    double fPos(createRun(aTargetColor, aTargetOpacity, 0.0, fMax, getGradientEntries(), 0));
-
-                    if(fPos < fMax)
-                    {
-                        // can only happen when SpreadMethod is SpreadMethod::Reflect or SpreadMethod::Repeat,
-                        // else the start and end pads are already created and fPos == fMax.
-                        // For radial there is no way to transform the already created
-                        // central run, it needs to be created from 1.0 to fMax
-                        sal_Int32 nOffset(1);
-
-                        while(fPos < fMax)
-                        {
-                            const bool bMirror(SpreadMethod::Reflect == getSpreadMethod() && (nOffset % 2));
-
-                            if(bMirror)
-                            {
-                                createRun(aTargetColor, aTargetOpacity, 0.0, fMax, getMirroredGradientEntries(), nOffset);
-                            }
-                            else
-                            {
-                                createRun(aTargetColor, aTargetOpacity, 0.0, fMax, getGradientEntries(), nOffset);
-                            }
-
-                            nOffset++;
-                            fPos += 1.0;
-                        }
-                    }
+                    // create full color run, including all SpreadMethod variants
+                    createRun(
+                        aTargetColor,
+                        aTargetOpacity,
+                        0.0,
+                        fMax);
                 }
 
                 createResult(rContainer, aTargetColor, aTargetOpacity, aUnitGradientToObject, true);
@@ -843,7 +798,6 @@ namespace drawinglayer
             maFocal(rStart),
             maFocalVector(0.0, 0.0),
             maFocalLength(0.0),
-            maMirroredGradientEntries(),
             mbFocalSet(false)
         {
             if(pFocal && !pFocal->equal(getStart()))
@@ -894,50 +848,60 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(SvgRadialGradientPrimitive2D, PRIMITIVE2D_ID_SVGRADIALGRADIENTPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 // SvgLinearAtomPrimitive2D class
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void SvgLinearAtomPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
             const double fDelta(getOffsetB() - getOffsetA());
 
-            if(!basegfx::fTools::equalZero(fDelta))
+            if(basegfx::fTools::equalZero(fDelta))
+                return;
+
+            // use one discrete unit for overlap (one pixel)
+            const double fDiscreteUnit(getDiscreteUnit());
+
+            // use color distance and discrete lengths to calculate step count
+            const sal_uInt32 nSteps(calculateStepsForSvgGradient(getColorA(), getColorB(), fDelta, fDiscreteUnit));
+
+            // HACK: Splitting a gradient into adjacent polygons with gradually changing color is silly.
+            // If antialiasing is used to draw them, the AA-ed adjacent edges won't line up perfectly
+            // because of the AA (see SkiaSalGraphicsImpl::mergePolyPolygonToPrevious()).
+            // Make the polygons a bit wider, so they the partial overlap "fixes" this.
+            const double fixup = SkiaHelper::isVCLSkiaEnabled() ? fDiscreteUnit / 2 : 0;
+
+            // tdf#117949 Use a small amount of discrete overlap at the edges. Usually this
+            // should be exactly 0.0 and 1.0, but there were cases when this gets clipped
+            // against the mask polygon which got numerically problematic.
+            // This change is unnecessary in that respect, but avoids that numerical havoc
+            // by at the same time doing no real harm AFAIK
+            // TTTT: Remove again when clipping is fixed (!)
+
+            // prepare polygon in needed width at start position (with discrete overlap)
+            const basegfx::B2DPolygon aPolygon(
+                basegfx::utils::createPolygonFromRect(
+                    basegfx::B2DRange(
+                        getOffsetA() - fDiscreteUnit,
+                        -0.0001, // TTTT -> should be 0.0, see comment above
+                        getOffsetA() + (fDelta / nSteps) + fDiscreteUnit + fixup,
+                        1.0001))); // TTTT -> should be 1.0, see comment above
+
+            // prepare loop (inside to outside, [0.0 .. 1.0[)
+            double fUnitScale(0.0);
+            const double fUnitStep(1.0 / nSteps);
+
+            for(sal_uInt32 a(0); a < nSteps; a++, fUnitScale += fUnitStep)
             {
-                // use one discrete unit for overlap (one pixel)
-                const double fDiscreteUnit(getDiscreteUnit());
+                basegfx::B2DPolygon aNew(aPolygon);
 
-                // use color distance and discrete lengths to calculate step count
-                const sal_uInt32 nSteps(calculateStepsForSvgGradient(getColorA(), getColorB(), fDelta, fDiscreteUnit));
-
-                // prepare polygon in needed width at start position (with discrete overlap)
-                const basegfx::B2DPolygon aPolygon(
-                    basegfx::tools::createPolygonFromRect(
-                        basegfx::B2DRange(
-                            getOffsetA() - fDiscreteUnit,
-                            0.0,
-                            getOffsetA() + (fDelta / nSteps) + fDiscreteUnit,
-                            1.0)));
-
-                // prepare loop (inside to outside, [0.0 .. 1.0[)
-                double fUnitScale(0.0);
-                const double fUnitStep(1.0 / nSteps);
-
-                for(sal_uInt32 a(0); a < nSteps; a++, fUnitScale += fUnitStep)
-                {
-                    basegfx::B2DPolygon aNew(aPolygon);
-
-                    aNew.transform(basegfx::tools::createTranslateB2DHomMatrix(fDelta * fUnitScale, 0.0));
-                    rContainer.push_back(new PolyPolygonColorPrimitive2D(
-                        basegfx::B2DPolyPolygon(aNew),
-                        basegfx::interpolate(getColorA(), getColorB(), fUnitScale)));
-                }
+                aNew.transform(basegfx::utils::createTranslateB2DHomMatrix(fDelta * fUnitScale, 0.0));
+                rContainer.push_back(new PolyPolygonColorPrimitive2D(
+                    basegfx::B2DPolyPolygon(aNew),
+                    basegfx::interpolate(getColorA(), getColorB(), fUnitScale)));
             }
         }
 
@@ -975,65 +939,62 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(SvgLinearAtomPrimitive2D, PRIMITIVE2D_ID_SVGLINEARATOMPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 // SvgRadialAtomPrimitive2D class
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void SvgRadialAtomPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
             const double fDeltaScale(getScaleB() - getScaleA());
 
-            if(!basegfx::fTools::equalZero(fDeltaScale))
+            if(basegfx::fTools::equalZero(fDeltaScale))
+                return;
+
+            // use one discrete unit for overlap (one pixel)
+            const double fDiscreteUnit(getDiscreteUnit());
+
+            // use color distance and discrete lengths to calculate step count
+            const sal_uInt32 nSteps(calculateStepsForSvgGradient(getColorA(), getColorB(), fDeltaScale, fDiscreteUnit));
+
+            // prepare loop ([0.0 .. 1.0[, full polygons, no polypolygons with holes)
+            double fUnitScale(0.0);
+            const double fUnitStep(1.0 / nSteps);
+
+            for(sal_uInt32 a(0); a < nSteps; a++, fUnitScale += fUnitStep)
             {
-                // use one discrete unit for overlap (one pixel)
-                const double fDiscreteUnit(getDiscreteUnit());
+                basegfx::B2DHomMatrix aTransform;
+                const double fEndScale(getScaleB() - (fDeltaScale * fUnitScale));
 
-                // use color distance and discrete lengths to calculate step count
-                const sal_uInt32 nSteps(calculateStepsForSvgGradient(getColorA(), getColorB(), fDeltaScale, fDiscreteUnit));
-
-                // prepare loop ([0.0 .. 1.0[, full polygons, no polypolygons with holes)
-                double fUnitScale(0.0);
-                const double fUnitStep(1.0 / nSteps);
-
-                for(sal_uInt32 a(0); a < nSteps; a++, fUnitScale += fUnitStep)
+                if(isTranslateSet())
                 {
-                    basegfx::B2DHomMatrix aTransform;
-                    const double fEndScale(getScaleB() - (fDeltaScale * fUnitScale));
+                    const basegfx::B2DVector aTranslate(
+                        basegfx::interpolate(
+                            getTranslateB(),
+                            getTranslateA(),
+                            fUnitScale));
 
-                    if(isTranslateSet())
-                    {
-                        const basegfx::B2DVector aTranslate(
-                            basegfx::interpolate(
-                                getTranslateB(),
-                                getTranslateA(),
-                                fUnitScale));
-
-                        aTransform = basegfx::tools::createScaleTranslateB2DHomMatrix(
-                            fEndScale,
-                            fEndScale,
-                            aTranslate.getX(),
-                            aTranslate.getY());
-                    }
-                    else
-                    {
-                        aTransform = basegfx::tools::createScaleB2DHomMatrix(
-                            fEndScale,
-                            fEndScale);
-                    }
-
-                    basegfx::B2DPolygon aNew(basegfx::tools::createPolygonFromUnitCircle());
-
-                    aNew.transform(aTransform);
-                    rContainer.push_back(new PolyPolygonColorPrimitive2D(
-                        basegfx::B2DPolyPolygon(aNew),
-                        basegfx::interpolate(getColorB(), getColorA(), fUnitScale)));
+                    aTransform = basegfx::utils::createScaleTranslateB2DHomMatrix(
+                        fEndScale,
+                        fEndScale,
+                        aTranslate.getX(),
+                        aTranslate.getY());
                 }
+                else
+                {
+                    aTransform = basegfx::utils::createScaleB2DHomMatrix(
+                        fEndScale,
+                        fEndScale);
+                }
+
+                basegfx::B2DPolygon aNew(basegfx::utils::createPolygonFromUnitCircle());
+
+                aNew.transform(aTransform);
+                rContainer.push_back(new PolyPolygonColorPrimitive2D(
+                    basegfx::B2DPolyPolygon(aNew),
+                    basegfx::interpolate(getColorB(), getColorA(), fUnitScale)));
             }
         }
 
@@ -1044,13 +1005,12 @@ namespace drawinglayer
             maColorA(aColorA),
             maColorB(aColorB),
             mfScaleA(fScaleA),
-            mfScaleB(fScaleB),
-            mpTranslate(nullptr)
+            mfScaleB(fScaleB)
         {
             // check and evtl. set translations
             if(!rTranslateA.equal(rTranslateB))
             {
-                mpTranslate = new VectorPair(rTranslateA, rTranslateB);
+                mpTranslate.reset( new VectorPair(rTranslateA, rTranslateB) );
             }
 
             // scale A and B have to be positive
@@ -1077,8 +1037,7 @@ namespace drawinglayer
             maColorA(aColorA),
             maColorB(aColorB),
             mfScaleA(fScaleA),
-            mfScaleB(fScaleB),
-            mpTranslate(nullptr)
+            mfScaleB(fScaleB)
         {
             // scale A and B have to be positive
             mfScaleA = std::max(mfScaleA, 0.0);
@@ -1094,11 +1053,6 @@ namespace drawinglayer
 
         SvgRadialAtomPrimitive2D::~SvgRadialAtomPrimitive2D()
         {
-            if(mpTranslate)
-            {
-                delete mpTranslate;
-                mpTranslate = nullptr;
-            }
         }
 
         bool SvgRadialAtomPrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const
@@ -1130,7 +1084,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(SvgRadialAtomPrimitive2D, PRIMITIVE2D_ID_SVGRADIALATOMPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

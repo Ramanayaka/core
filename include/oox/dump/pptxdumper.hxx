@@ -24,18 +24,16 @@
 #include <oox/dump/dumperbase.hxx>
 #include <rtl/ustring.hxx>
 
-#if OOX_INCLUDE_DUMPER
+#ifdef DBG_UTIL
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XInputStream; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
-namespace oox { namespace core { class FilterBase; } }
+namespace oox::core { class FilterBase; }
 
-namespace oox {
-namespace dump {
-namespace pptx {
+namespace oox::dump::pptx {
 
 
 class RootStorageObject : public StorageObjectBase
@@ -67,9 +65,7 @@ protected:
 };
 
 
-} // namespace pptx
-} // namespace dump
-} // namespace oox
+} // namespace oox::dump::pptx
 
 #endif
 #endif

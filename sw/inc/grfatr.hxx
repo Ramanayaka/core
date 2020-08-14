@@ -19,15 +19,14 @@
 #ifndef INCLUDED_SW_INC_GRFATR_HXX
 #define INCLUDED_SW_INC_GRFATR_HXX
 
-#include <hintids.hxx>
+#include "hintids.hxx"
 #include <tools/gen.hxx>
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
-#include <svtools/grfmgr.hxx>
+#include <vcl/GraphicObject.hxx>
 #include <svx/grfcrop.hxx>
 #include "swdllapi.h"
-#include <swatrset.hxx>
-#include <format.hxx>
+#include "swatrset.hxx"
 
 enum class MirrorGraph
 {
@@ -39,19 +38,15 @@ enum class MirrorGraph
 
 class SW_DLLPUBLIC SwMirrorGrf : public SfxEnumItem<MirrorGraph>
 {
-    bool bGrfToggle; // Flip graphics on even pages.
+    bool m_bGrfToggle; // Flip graphics on even pages.
 
 public:
     SwMirrorGrf( MirrorGraph eMiro = MirrorGraph::Dont )
-        : SfxEnumItem( RES_GRFATR_MIRRORGRF, eMiro ), bGrfToggle( false )
-    {}
-    SwMirrorGrf( const SwMirrorGrf &rMirrorGrf )
-        : SfxEnumItem( RES_GRFATR_MIRRORGRF, rMirrorGrf.GetValue()),
-        bGrfToggle( rMirrorGrf.IsGrfToggle() )
+        : SfxEnumItem( RES_GRFATR_MIRRORGRF, eMiro ), m_bGrfToggle( false )
     {}
 
     // pure virtual methods of SfxPoolItem
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwMirrorGrf* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     // pure virtual methods of SfxEnumItem
     virtual sal_uInt16      GetValueCount() const override;
@@ -60,22 +55,15 @@ public:
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     virtual bool             QueryValue( css::uno::Any& rVal,
                                         sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal,
                                         sal_uInt8 nMemberId ) override;
 
-    SwMirrorGrf& operator=( const SwMirrorGrf& rMirrorGrf )
-        {
-            SfxEnumItem::SetValue( rMirrorGrf.GetValue() );
-            bGrfToggle = rMirrorGrf.IsGrfToggle();
-            return *this;
-        }
-
-    bool IsGrfToggle() const         { return bGrfToggle; }
-    void SetGrfToggle( bool bNew )   { bGrfToggle = bNew; }
+    bool IsGrfToggle() const         { return m_bGrfToggle; }
+    void SetGrfToggle( bool bNew )   { m_bGrfToggle = bNew; }
 };
 
 class SW_DLLPUBLIC SwCropGrf : public SvxGrfCrop
@@ -86,34 +74,38 @@ public:
                 sal_Int32 nTop,     sal_Int32 nBottom );
 
     // "pure virtual methods" of SfxPoolItem
-    virtual SfxPoolItem*        Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwCropGrf* Clone( SfxItemPool *pPool = nullptr ) const override;
 };
 
-class SwRotationGrf : public SfxUInt16Item
+class SAL_DLLPUBLIC_RTTI SwRotationGrf : public SfxUInt16Item
 {
-    Size aUnrotatedSize;
+private:
+    Size m_aUnrotatedSize;
+
+    // tdf#115529 check and evtl. correct value, it is in 10th
+    // degrees and *has* to be in the range [0 .. 3600[
+    static sal_Int16 checkAndCorrectValue(sal_Int16 nValue);
+
 public:
     SwRotationGrf()
         : SfxUInt16Item( RES_GRFATR_ROTATION, 0 )
     {}
-    SwRotationGrf( sal_Int16 nVal, const Size& rSz )
-        : SfxUInt16Item( RES_GRFATR_ROTATION, nVal ), aUnrotatedSize( rSz )
-    {}
+    SwRotationGrf( sal_Int16 nVal, const Size& rSz );
 
     // pure virtual methods from SfxInt16Item
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwRotationGrf* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
     virtual bool             QueryValue( css::uno::Any& rVal,
                                             sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal,
                                             sal_uInt8 nMemberId ) override;
 
-    const Size& GetUnrotatedSize() const            { return aUnrotatedSize; }
+    const Size& GetUnrotatedSize() const            { return m_aUnrotatedSize; }
 };
 
 class SW_DLLPUBLIC SwLuminanceGrf : public SfxInt16Item
@@ -124,12 +116,12 @@ public:
     {}
 
     // pure virtual methods from SfxInt16Item
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwLuminanceGrf* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 };
 
 class SW_DLLPUBLIC SwContrastGrf : public SfxInt16Item
@@ -140,12 +132,12 @@ public:
     {}
 
     // pure virtual methods from SfxInt16Item
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwContrastGrf* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 };
 
 class SwChannelGrf : public SfxInt16Item
@@ -161,7 +153,7 @@ public:
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 };
 
 class SwChannelRGrf : public SwChannelGrf
@@ -170,7 +162,7 @@ public:
     SwChannelRGrf( sal_Int16 nVal = 0 )
         : SwChannelGrf( nVal, RES_GRFATR_CHANNELR )
     {}
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwChannelRGrf* Clone( SfxItemPool *pPool = nullptr ) const override;
 };
 class SwChannelGGrf : public SwChannelGrf
 {
@@ -178,7 +170,7 @@ public:
     SwChannelGGrf( sal_Int16 nVal = 0 )
         : SwChannelGrf( nVal, RES_GRFATR_CHANNELG )
     {}
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwChannelGGrf* Clone( SfxItemPool *pPool = nullptr ) const override;
 };
 class SwChannelBGrf : public SwChannelGrf
 {
@@ -186,41 +178,35 @@ public:
     SwChannelBGrf( sal_Int16 nVal = 0 )
         : SwChannelGrf( nVal, RES_GRFATR_CHANNELB )
     {}
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwChannelBGrf* Clone( SfxItemPool *pPool = nullptr ) const override;
 };
 
 class SW_DLLPUBLIC SwGammaGrf : public SfxPoolItem
 {
-    double nValue;
+    double m_nValue;
 public:
-    SwGammaGrf() : SfxPoolItem( RES_GRFATR_GAMMA ), nValue( 1.0 )
+    SwGammaGrf() : SfxPoolItem( RES_GRFATR_GAMMA ), m_nValue( 1.0 )
     {}
 
     SwGammaGrf( const double& rVal )
-        : SfxPoolItem( RES_GRFATR_GAMMA ), nValue( rVal )
+        : SfxPoolItem( RES_GRFATR_GAMMA ), m_nValue( rVal )
     {}
 
-    SwGammaGrf& operator=( const SwGammaGrf& rCopy )
-    {
-        nValue = rCopy.nValue;
-        return *this;
-    }
-
     // pure virtual methods from SfxEnumItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwGammaGrf*     Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     virtual bool             QueryValue( css::uno::Any& rVal,
                                             sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal,
                                             sal_uInt8 nMemberId ) override;
 
-    const double& GetValue() const              { return nValue; }
+    const double& GetValue() const              { return m_nValue; }
 };
 
 class SwInvertGrf: public SfxBoolItem
@@ -231,12 +217,12 @@ public:
     {}
 
     // pure virtual methods from SfxInt16Item
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwInvertGrf* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 };
 
 class SwTransparencyGrf : public SfxByteItem
@@ -247,12 +233,12 @@ public:
     {}
 
     // pure virtual methods from SfxInt16Item
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwTransparencyGrf* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal,
                                         sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal,
@@ -274,7 +260,7 @@ public:
     {}
 
     // pure virtual methods of SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwDrawModeGrf*  Clone( SfxItemPool *pPool = nullptr ) const override;
 
     // pure virtual methods of SfxEnumItem
     virtual sal_uInt16      GetValueCount() const override;
@@ -282,7 +268,7 @@ public:
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal,
                                         sal_uInt8 nMemberId = 0 ) const override;
@@ -292,29 +278,29 @@ public:
 
 // Implementation of graphics attributes methods of SwAttr
 inline const SwMirrorGrf &SwAttrSet::GetMirrorGrf(bool bInP) const
-    { return static_cast<const SwMirrorGrf&>(Get( RES_GRFATR_MIRRORGRF,bInP)); }
+    { return Get( RES_GRFATR_MIRRORGRF,bInP); }
 inline const SwCropGrf   &SwAttrSet::GetCropGrf(bool bInP) const
-    { return static_cast<const SwCropGrf&>(Get( RES_GRFATR_CROPGRF,bInP)); }
+    { return Get( RES_GRFATR_CROPGRF,bInP); }
 inline const SwRotationGrf &SwAttrSet::GetRotationGrf(bool bInP) const
-    { return static_cast<const SwRotationGrf&>(Get( RES_GRFATR_ROTATION,bInP)); }
+    { return Get( RES_GRFATR_ROTATION,bInP); }
 inline const SwLuminanceGrf &SwAttrSet::GetLuminanceGrf(bool bInP) const
-    { return static_cast<const SwLuminanceGrf&>(Get( RES_GRFATR_LUMINANCE,bInP)); }
+    { return Get( RES_GRFATR_LUMINANCE,bInP); }
 inline const SwContrastGrf &SwAttrSet::GetContrastGrf(bool bInP) const
-    { return static_cast<const SwContrastGrf&>(Get( RES_GRFATR_CONTRAST,bInP)); }
+    { return Get( RES_GRFATR_CONTRAST,bInP); }
 inline const SwChannelRGrf &SwAttrSet::GetChannelRGrf(bool bInP) const
-    { return static_cast<const SwChannelRGrf&>(Get( RES_GRFATR_CHANNELR,bInP)); }
+    { return Get( RES_GRFATR_CHANNELR,bInP); }
 inline const SwChannelGGrf &SwAttrSet::GetChannelGGrf(bool bInP) const
-    { return static_cast<const SwChannelGGrf&>(Get( RES_GRFATR_CHANNELG,bInP)); }
+    { return Get( RES_GRFATR_CHANNELG,bInP); }
 inline const SwChannelBGrf &SwAttrSet::GetChannelBGrf(bool bInP) const
-    { return static_cast<const SwChannelBGrf&>(Get( RES_GRFATR_CHANNELB,bInP)); }
+    { return Get( RES_GRFATR_CHANNELB,bInP); }
 inline const SwGammaGrf &SwAttrSet::GetGammaGrf(bool bInP) const
-    { return static_cast<const SwGammaGrf&>(Get( RES_GRFATR_GAMMA,bInP)); }
+    { return Get( RES_GRFATR_GAMMA,bInP); }
 inline const SwInvertGrf &SwAttrSet::GetInvertGrf(bool bInP) const
-    { return static_cast<const SwInvertGrf&>(Get( RES_GRFATR_INVERT,bInP)); }
+    { return Get( RES_GRFATR_INVERT,bInP); }
 inline const SwTransparencyGrf &SwAttrSet::GetTransparencyGrf(bool bInP) const
-    { return static_cast<const SwTransparencyGrf&>(Get( RES_GRFATR_TRANSPARENCY,bInP)); }
+    { return Get( RES_GRFATR_TRANSPARENCY,bInP); }
 inline const SwDrawModeGrf      &SwAttrSet::GetDrawModeGrf(bool bInP) const
-    { return static_cast<const SwDrawModeGrf&>(Get( RES_GRFATR_DRAWMODE,bInP)); }
+    { return Get( RES_GRFATR_DRAWMODE,bInP); }
 
 #endif // INCLUDED_SW_INC_GRFATR_HXX
 

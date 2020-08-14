@@ -18,20 +18,20 @@
  */
 
 
-#include "drawingml/table/tablecellcontext.hxx"
-#include "drawingml/textbodycontext.hxx"
-#include "drawingml/linepropertiescontext.hxx"
-#include "drawingml/misccontexts.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <drawingml/table/tablecellcontext.hxx>
+#include <drawingml/textbodycontext.hxx>
+#include <drawingml/linepropertiescontext.hxx>
+#include <drawingml/misccontexts.hxx>
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star;
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
-TableCellContext::TableCellContext( ContextHandler2Helper& rParent, const AttributeList& rAttribs, TableCell& rTableCell )
+TableCellContext::TableCellContext( ContextHandler2Helper const & rParent, const AttributeList& rAttribs, TableCell& rTableCell )
 : ContextHandler2( rParent )
 , mrTableCell( rTableCell )
 {
@@ -55,7 +55,7 @@ TableCellContext::onCreateContext( ::sal_Int32 aElementToken, const AttributeLis
     {
     case A_TOKEN( txBody ):     // CT_TextBody
         {
-            oox::drawingml::TextBodyPtr xTextBody( new oox::drawingml::TextBody );
+            oox::drawingml::TextBodyPtr xTextBody = std::make_shared<oox::drawingml::TextBody>();
             mrTableCell.setTextBody( xTextBody );
             return new oox::drawingml::TextBodyContext( *this, *xTextBody );
         }
@@ -98,6 +98,6 @@ TableCellContext::onCreateContext( ::sal_Int32 aElementToken, const AttributeLis
     return this;
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

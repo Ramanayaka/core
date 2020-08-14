@@ -19,10 +19,8 @@
 
 #include <drawinglayer/primitive3d/sdrlatheprimitive3d.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b3dpolypolygontools.hxx>
-#include <drawinglayer/primitive3d/sdrdecompositiontools3d.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/polygon/b3dpolygon.hxx>
+#include <primitive3d/sdrdecompositiontools3d.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 #include <drawinglayer/geometry/viewinformation3d.hxx>
 #include <drawinglayer/attribute/sdrfillattribute.hxx>
@@ -33,10 +31,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         Primitive3DContainer SdrLathePrimitive3D::create3DDecomposition(const geometry::ViewInformation3D& rViewInformation) const
         {
             Primitive3DContainer aRetval;
@@ -73,7 +69,7 @@ namespace drawinglayer
                 // create geometry
                 std::vector< basegfx::B3DPolyPolygon > aFill;
                 extractPlanesFromSlice(aFill, rSliceVector,
-                    bCreateNormals, true/*smoothHorizontalNormals*/, getSmoothNormals(), getSmoothLids(), bClosedRotation,
+                    bCreateNormals, getSmoothNormals(), getSmoothLids(), bClosedRotation,
                     0.85, 0.6, bCreateTextureCoordinatesX || bCreateTextureCoordinatesY, aTexTransform);
 
                 // get full range
@@ -205,20 +201,20 @@ namespace drawinglayer
             // prepare the polygon. No double points, correct orientations and a correct
             // outmost polygon are needed
             // Also important: subdivide here to ensure equal point count for all slices (!)
-            maCorrectedPolyPolygon = basegfx::tools::adaptiveSubdivideByAngle(getPolyPolygon());
+            maCorrectedPolyPolygon = basegfx::utils::adaptiveSubdivideByAngle(getPolyPolygon());
             maCorrectedPolyPolygon.removeDoublePoints();
-            maCorrectedPolyPolygon = basegfx::tools::correctOrientations(maCorrectedPolyPolygon);
-            maCorrectedPolyPolygon = basegfx::tools::correctOutmostPolygon(maCorrectedPolyPolygon);
+            maCorrectedPolyPolygon = basegfx::utils::correctOrientations(maCorrectedPolyPolygon);
+            maCorrectedPolyPolygon = basegfx::utils::correctOutmostPolygon(maCorrectedPolyPolygon);
 
             // check edge count of first sub-polygon. If different, reSegment polyPolygon. This ensures
-            // that for polyPolygons, the subPolys 1..n only get reSegmented when polygon 0L is different
+            // that for polyPolygons, the subPolys 1..n only get reSegmented when polygon 0 is different
             // at all (and not always)
             const basegfx::B2DPolygon aSubCandidate(maCorrectedPolyPolygon.getB2DPolygon(0));
-            const sal_uInt32 nSubEdgeCount(aSubCandidate.isClosed() ? aSubCandidate.count() : (aSubCandidate.count() ? aSubCandidate.count() - 1L : 0L));
+            const sal_uInt32 nSubEdgeCount(aSubCandidate.isClosed() ? aSubCandidate.count() : (aSubCandidate.count() ? aSubCandidate.count() - 1 : 0));
 
             if(nSubEdgeCount != getVerticalSegments())
             {
-                maCorrectedPolyPolygon = basegfx::tools::reSegmentPolyPolygon(maCorrectedPolyPolygon, getVerticalSegments());
+                maCorrectedPolyPolygon = basegfx::utils::reSegmentPolyPolygon(maCorrectedPolyPolygon, getVerticalSegments());
             }
 
             // prepare slices as geometry
@@ -229,7 +225,7 @@ namespace drawinglayer
         {
             // This can be made dependent of  getSdrLFSAttribute().getFill() and getSdrLFSAttribute().getLine()
             // again when no longer geometry is needed for non-visible 3D objects as it is now for chart
-            if(getPolyPolygon().count() && !maSlices.size())
+            if(getPolyPolygon().count() && maSlices.empty())
             {
                 ::osl::MutexGuard aGuard( m_aMutex );
 
@@ -264,7 +260,6 @@ namespace drawinglayer
             mfDiagonal(fDiagonal),
             mfBackScale(fBackScale),
             mfRotation(fRotation),
-            mpLastRLGViewInformation(nullptr),
             mbSmoothNormals(bSmoothNormals),
             mbSmoothLids(bSmoothLids),
             mbCharacterMode(bCharacterMode),
@@ -288,7 +283,7 @@ namespace drawinglayer
             }
 
             // no close front/back when polygon is not closed
-            if(getPolyPolygon().count() && !getPolyPolygon().getB2DPolygon(0L).isClosed())
+            if(getPolyPolygon().count() && !getPolyPolygon().getB2DPolygon(0).isClosed())
             {
                 mbCloseFront = mbCloseBack = false;
             }
@@ -362,7 +357,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(SdrLathePrimitive3D, PRIMITIVE3D_ID_SDRLATHEPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

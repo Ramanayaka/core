@@ -34,16 +34,15 @@
 #include <com/sun/star/sdbcx/XDeleteRows.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include "odbc/OFunctions.hxx"
-#include "odbc/OStatement.hxx"
-#include "odbc/odbcbasedllapi.hxx"
+#include <odbc/OFunctions.hxx>
+#include <odbc/OStatement.hxx>
+#include <odbc/odbcbasedllapi.hxx>
 #include <connectivity/CommonTools.hxx>
 #include <connectivity/FValue.hxx>
-#include "TSkipDeletedSet.hxx"
+#include <TSkipDeletedSet.hxx>
+#include <memory>
 
-namespace connectivity
-{
-    namespace odbc
+namespace connectivity::odbc
     {
 
         /*
@@ -66,8 +65,8 @@ namespace connectivity
         typedef std::pair<sal_Int64,sal_Int32> TVoidPtr;
         typedef std::allocator< TVoidPtr > TVoidAlloc;
         typedef std::vector<TVoidPtr> TVoidVector;
-        /// unary_function Functor object for class ZZ returntype is void
-        struct OOO_DLLPUBLIC_ODBCBASE TBookmarkPosMapCompare : std::binary_function< css::uno::Sequence<sal_Int8>, css::uno::Sequence<sal_Int8>, bool >
+        /// Functor object for class ZZ returntype is void
+        struct OOO_DLLPUBLIC_ODBCBASE TBookmarkPosMapCompare
         {
             bool operator()( const css::uno::Sequence<sal_Int8>& _rLH,
                                     const css::uno::Sequence<sal_Int8>& _rRH) const
@@ -130,21 +129,20 @@ namespace connectivity
             // Else, we read and cache all columns whose number is <= a requested column.
             // m_aRow[colNumber].getBound() says if it contains an up-to-date value or not.
             TDataRow                                    m_aRow;
-            bool                                    m_bFetchDataInOrder;
+            bool                                        m_bFetchDataInOrder;
             SQLHANDLE                                   m_aStatementHandle;
             SQLHANDLE                                   m_aConnectionHandle;
             OStatement_Base*                            m_pStatement;
-            OSkipDeletedSet*                            m_pSkipDeletedSet;
+            std::unique_ptr<OSkipDeletedSet>            m_pSkipDeletedSet;
             css::uno::Reference< css::uno::XInterface>    m_xStatement;
             css::uno::Reference< css::sdbc::XResultSetMetaData>        m_xMetaData;
-            SQLUSMALLINT*                               m_pRowStatusArray;
+            std::unique_ptr<SQLUSMALLINT[]>             m_pRowStatusArray;
             rtl_TextEncoding                            m_nTextEncoding;
             sal_Int32                                   m_nRowPos;
             mutable sal_uInt32                          m_nUseBookmarks;
             SQLRETURN                                   m_nCurrentFetchState;
             bool                                    m_bWasNull;
             bool                                    m_bEOF;                 // after last record
-            bool                                    m_bInserting;
             bool                                    m_bRowInserted;
             bool                                    m_bRowDeleted;
             bool                                    m_bUseFetchScroll;
@@ -169,7 +167,7 @@ namespace connectivity
             void releaseBuffer();
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            void updateValue(sal_Int32 columnIndex,SQLSMALLINT _nType,void* _pValue);
+            void updateValue(sal_Int32 columnIndex, SQLSMALLINT _nType, void const * _pValue);
             void fillNeededData(SQLRETURN _nRet);
             bool moveImpl(IResultSetHelper::Movement _eCursorPosition, sal_Int32 _nOffset);
             TVoidPtr allocBindColumn(sal_Int32 _nType,sal_Int32 _nColumnIndex);
@@ -350,7 +348,7 @@ namespace connectivity
         protected:
             using OPropertySetHelper::getFastPropertyValue;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ODBC_ORESULTSET_HXX
 

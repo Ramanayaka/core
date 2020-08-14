@@ -35,11 +35,6 @@ HWPFont::HWPFont()
 
 HWPFont::~HWPFont()
 {
-    for (int ii = 0; ii < NLanguage; ii++)
-    {
-        nFonts[ii] = 0;
-        delete[]fontnames[ii];
-    }
 }
 
 
@@ -47,23 +42,25 @@ void HWPFont::AddFont(int lang, const char *font)
 {
     int nfonts;
 
-    if (!(lang >= 0 && lang < NLanguage))
+    if (lang < 0 || lang >= NLanguage)
         return;
     nfonts = nFonts[lang];
     if (MAXFONTS <= nfonts)
         return;
-    strncpy(fontnames[lang] + FONTNAMELEN * nfonts, font, FONTNAMELEN - 1);
+    auto const p = fontnames[lang].get() + FONTNAMELEN * nfonts;
+    strncpy(p, font, FONTNAMELEN - 1);
+    p[FONTNAMELEN - 1] = '\0'; // just in case, even though the array is zero-initialized
     nFonts[lang]++;
 }
 
 
 const char *HWPFont::GetFontName(int lang, int id)
 {
-    if (!(lang >= 0 && lang < NLanguage))
+    if (lang < 0 || lang >= NLanguage)
         return nullptr;
     if (id < 0 || nFonts[lang] <= id)
         return nullptr;
-    return fontnames[lang] + id * FONTNAMELEN;
+    return fontnames[lang].get() + id * FONTNAMELEN;
 }
 
 
@@ -78,14 +75,14 @@ void HWPFont::Read(HWPFile & hwpf)
     for(lang = 0; lang < NLanguage; lang++)
     {
         hwpf.Read2b(&nfonts, 1);
-        if (!(nfonts > 0 && nfonts < MAXFONTS))
+        if (nfonts <= 0 || nfonts >= MAXFONTS)
         {
             (void)hwpf.SetState(HWP_InvalidFileFormat);
             return;
         }
-        fontnames[lang] = new char[nfonts * FONTNAMELEN];
+        fontnames[lang].reset(new char[nfonts * FONTNAMELEN]);
 
-        memset(fontnames[lang], 0, nfonts * FONTNAMELEN);
+        memset(fontnames[lang].get(), 0, nfonts * FONTNAMELEN);
         for (int jj = 0; jj < nfonts; jj++)
         {
             hwpf.ReadBlock(buffer, FONTNAMELEN);

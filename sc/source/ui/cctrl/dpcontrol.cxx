@@ -17,17 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dpcontrol.hxx"
+#include <dpcontrol.hxx>
 
 #include <vcl/outdev.hxx>
 #include <vcl/settings.hxx>
-#include "global.hxx"
-#include "scitems.hxx"
-#include "document.hxx"
-#include "docpool.hxx"
-#include "patattr.hxx"
+#include <scitems.hxx>
+#include <document.hxx>
+#include <docpool.hxx>
+#include <patattr.hxx>
 
-ScDPFieldButton::ScDPFieldButton(OutputDevice* pOutDev, const StyleSettings* pStyle, const Fraction* pZoomX, const Fraction* pZoomY, ScDocument* pDoc) :
+ScDPFieldButton::ScDPFieldButton(OutputDevice* pOutDev, const StyleSettings* pStyle, const Fraction* pZoomY, ScDocument* pDoc) :
     mpDoc(pDoc),
     mpOutDev(pOutDev),
     mpStyle(pStyle),
@@ -37,11 +36,6 @@ ScDPFieldButton::ScDPFieldButton(OutputDevice* pOutDev, const StyleSettings* pSt
     mbPopupPressed(false),
     mbPopupLeft(false)
 {
-    if (pZoomX)
-        maZoomX = *pZoomX;
-    else
-        maZoomX = Fraction(1, 1);
-
     if (pZoomY)
         maZoomY = *pZoomY;
     else
@@ -64,7 +58,7 @@ void ScDPFieldButton::setBoundingBox(const Point& rPos, const Size& rSize, bool 
     if (bLayoutRTL)
     {
         // rPos is the logical-left position, adjust maPos to visual-left (inside the cell border)
-        maPos.X() -= maSize.Width() - 1;
+        maPos.AdjustX( -(maSize.Width() - 1) );
     }
 }
 
@@ -121,7 +115,7 @@ void ScDPFieldButton::draw()
         {
             //  use ScPatternAttr::GetFont only for font size
             vcl::Font aAttrFont;
-            static_cast<const ScPatternAttr&>(mpDoc->GetPool()->GetDefaultItem(ATTR_PATTERN)).
+            mpDoc->GetPool()->GetDefaultItem(ATTR_PATTERN).
                 GetFont( aAttrFont, SC_AUTOCOL_BLACK, mpOutDev, &maZoomY );
             aTextFont.SetFontSize( aAttrFont.GetFontSize() );
         }
@@ -147,7 +141,7 @@ void ScDPFieldButton::getPopupBoundingBox(Point& rPos, Size& rSize) const
 {
     float fScaleFactor = mpOutDev->GetDPIScaleFactor();
 
-    long nMaxSize = 18L * fScaleFactor; // Button max size in either dimension
+    long nMaxSize = 18 * fScaleFactor; // Button max size in either dimension
 
     long nW = std::min(maSize.getWidth() / 2, nMaxSize);
     long nH = std::min(maSize.getHeight(),    nMaxSize);

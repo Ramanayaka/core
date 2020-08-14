@@ -23,13 +23,12 @@
 #include <unotools/unotoolsdllapi.h>
 #include <rtl/ustring.hxx>
 #include <i18nlangtag/languagetag.hxx>
-#include <com/sun/star/i18n/XExtendedTransliteration.hpp>
+#include <i18nlangtag/lang.h>
+#include <com/sun/star/uno/Reference.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace uno {
-        class XComponentContext;
-    }
-}}}
+namespace com::sun::star::uno { template <typename > class Sequence; }
+namespace com::sun::star::i18n { class XExtendedTransliteration; }
+namespace com::sun::star::uno { class XComponentContext; }
 enum class TransliterationFlags;
 
 namespace utl

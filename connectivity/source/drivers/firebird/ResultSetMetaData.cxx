@@ -21,9 +21,12 @@
 #include "Util.hxx"
 
 #include <com/sun/star/sdbc/ColumnValue.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
+
+#include <sal/log.hxx>
 
 using namespace connectivity::firebird;
 
@@ -32,11 +35,41 @@ using namespace com::sun::star::sdbc;
 using namespace com::sun::star::sdbcx;
 using namespace com::sun::star::uno;
 
-using com::sun::star::beans::XPropertySet;
-using com::sun::star::container::XNameAccess;
-
 OResultSetMetaData::~OResultSetMetaData()
 {
+}
+
+OUString OResultSetMetaData::getCharacterSet( sal_Int32 nIndex )
+{
+    OUString sTable = getTableName( nIndex );
+    if( !sTable.isEmpty() )
+    {
+        OUString sColumnName = getColumnName( nIndex );
+
+        OUString sSql = "SELECT charset.RDB$CHARACTER_SET_NAME "
+                        "FROM RDB$CHARACTER_SETS charset "
+                        "JOIN RDB$FIELDS fields "
+                        "ON (fields.RDB$CHARACTER_SET_ID = charset.RDB$CHARACTER_SET_ID) "
+                        "JOIN RDB$RELATION_FIELDS relfields "
+                        "ON (fields.RDB$FIELD_NAME = relfields.RDB$FIELD_SOURCE) "
+                        "WHERE relfields.RDB$RELATION_NAME = '"
+                   + escapeWith(sTable, '\'', '\'') + "' AND "
+                   "relfields.RDB$FIELD_NAME = '"+ escapeWith(sColumnName, '\'', '\'') +"'";
+
+        Reference<XStatement> xStmt= m_pConnection->createStatement();
+
+        Reference<XResultSet> xRes =
+                xStmt->executeQuery(sSql);
+        Reference<XRow> xRow ( xRes, UNO_QUERY);
+        if(xRes->next())
+        {
+            OUString sCharset = xRow->getString(1).trim();
+            return sCharset;
+        }
+    }
+    return OUString();
+
+
 }
 
 void OResultSetMetaData::verifyValidColumn(sal_Int32 column)
@@ -60,11 +93,21 @@ sal_Int32 SAL_CALL OResultSetMetaData::getColumnType(sal_Int32 column)
 {
     verifyValidColumn(column);
 
-    short aType = m_pSqlda->sqlvar[column-1].sqltype;
-    short aSubType = m_pSqlda->sqlvar[column-1].sqlsubtype;
-    short aScale = m_pSqlda->sqlvar[column-1].sqlscale;
+    short aType = m_pSqlda->sqlvar[column-1].sqltype & ~1;
+    OUString sCharset;
 
-    return getColumnTypeFromFBType(aType, aSubType, aScale);
+    // do not query the character set unnecessarily
+    if(aType == SQL_TEXT || aType == SQL_VARYING)
+    {
+        sCharset = getCharacterSet(column);
+    }
+
+    ColumnTypeInfo aInfo( m_pSqlda->sqlvar[column-1].sqltype,
+            m_pSqlda->sqlvar[column-1].sqlsubtype,
+            -(m_pSqlda->sqlvar[column-1].sqlscale),
+            sCharset );
+
+    return aInfo.getSdbcType();
 }
 
 sal_Bool SAL_CALL OResultSetMetaData::isCaseSensitive(sal_Int32)
@@ -109,11 +152,11 @@ OUString SAL_CALL OResultSetMetaData::getColumnTypeName(sal_Int32 column)
 {
     verifyValidColumn(column);
 
-    short aType = m_pSqlda->sqlvar[column-1].sqltype;
-    short aSubType = m_pSqlda->sqlvar[column-1].sqlsubtype;
-    short aScale = m_pSqlda->sqlvar[column-1].sqlscale;
+    ColumnTypeInfo aInfo( m_pSqlda->sqlvar[column-1].sqltype,
+            m_pSqlda->sqlvar[column-1].sqlsubtype,
+            -(m_pSqlda->sqlvar[column-1].sqlscale) );
 
-    return getColumnTypeNameFromFBType(aType, aSubType, aScale);
+    return aInfo.getColumnTypeName();
 }
 
 OUString SAL_CALL OResultSetMetaData::getColumnLabel(sal_Int32 column)
@@ -202,7 +245,7 @@ sal_Int32 SAL_CALL OResultSetMetaData::getPrecision(sal_Int32 column)
         Reference<XRow> xRow ( xRes, UNO_QUERY);
         if(xRes->next())
         {
-            return (sal_Int32) xRow->getShort(1);
+            return static_cast<sal_Int32>(xRow->getShort(1));
         }
         else
         {

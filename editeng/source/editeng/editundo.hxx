@@ -17,15 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_EDITENG_SOURCE_EDITENG_EDITUNDO_HXX
-#define INCLUDED_EDITENG_SOURCE_EDITENG_EDITUNDO_HXX
+#pragma once
 
 #include <editdoc.hxx>
 #include <editeng/editund2.hxx>
 #include <editeng/editdata.hxx>
+#include <editeng/editobj.hxx>
 #include <vector>
 #include <memory>
 
+class EditTextObject;
 class EditEngine;
 enum class SetAttribsMode;
 enum class TransliterationFlags;
@@ -261,7 +262,7 @@ public:
     virtual ~EditUndoTransliteration() override;
 
     void                SetText( const OUString& rText ) { aText = rText; }
-    void                SetText( EditTextObject* pObj ) { pTxtObj.reset( pObj ); }
+    void                SetText( std::unique_ptr<EditTextObject> pObj ) { pTxtObj = std::move( pObj ); }
     void                SetNewSelection( const ESelection& rSel ) { aNewESel = rSel; }
 
     virtual void        Undo() override;
@@ -283,8 +284,5 @@ public:
     virtual void    Undo() override;
     virtual void    Redo() override;
 };
-
-
-#endif // INCLUDED_EDITENG_SOURCE_EDITENG_EDITUNDO_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

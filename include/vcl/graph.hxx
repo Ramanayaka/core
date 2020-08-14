@@ -21,19 +21,16 @@
 #define INCLUDED_VCL_GRAPH_HXX
 
 #include <memory>
-#include <tools/stream.hxx>
 #include <vcl/dllapi.h>
 #include <tools/solar.h>
 #include <rtl/ustring.hxx>
-#include <vcl/bitmap.hxx>
 #include <vcl/bitmapex.hxx>
-#include <vcl/animate.hxx>
-#include <vcl/gdimtf.hxx>
+#include <vcl/animate/Animation.hxx>
 #include <vcl/gfxlink.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <vcl/svgdata.hxx>
+#include <vcl/vectorgraphicdata.hxx>
 #include <basegfx/vector/b2dsize.hxx>
-
+#include <vcl/GraphicExternalLink.hxx>
 
 enum class GraphicType
 {
@@ -43,36 +40,17 @@ enum class GraphicType
     Default
 };
 
-namespace com { namespace sun { namespace star { namespace graphic { class XGraphic;} } } }
+namespace com::sun::star::graphic { class XGraphic; }
 namespace vcl { class Font; }
 
-class GfxLink;
+class Bitmap;
+class GDIMetaFile;
+class SvStream;
 class ImpGraphic;
 class OutputDevice;
-class ReaderData;
+class GraphicReader;
 
-class VCL_DLLPUBLIC GraphicReader
-{
-public:
-    virtual         ~GraphicReader();
-
-    const OUString& GetUpperFilterName() const { return maUpperName; }
-
-    // TODO: when incompatible changes are possible again
-    // the preview size hint should be redone
-    void            DisablePreviewMode();
-    void            SetPreviewSize( const Size& );
-    Size            GetPreviewSize() const;
-
-protected:
-    OUString        maUpperName;
-
-                    GraphicReader();
-private:
-    std::unique_ptr<ReaderData>   mpReaderData;
-};
-
-class VCL_DLLPUBLIC GraphicConversionParameters
+class SAL_WARN_UNUSED VCL_DLLPUBLIC GraphicConversionParameters
 {
 private:
     Size            maSizePixel;            // default is (0,0)
@@ -101,33 +79,34 @@ public:
     bool            getSnapHorVerLines() const { return mbSnapHorVerLines; }
 };
 
+class Image;
 class VCL_DLLPUBLIC Graphic
 {
 private:
-
     std::shared_ptr<ImpGraphic> mxImpGraphic;
+    SAL_DLLPRIVATE void ImplTestRefCount();
 
 public:
-
-    SAL_DLLPRIVATE void ImplTestRefCount();
     SAL_DLLPRIVATE ImpGraphic* ImplGetImpGraphic() const { return mxImpGraphic.get(); }
 
-public:
                     Graphic();
+                    Graphic( const GraphicExternalLink& rGraphicLink );
                     Graphic( const Graphic& rGraphic );
-                    Graphic( Graphic&& rGraphic );
+                    Graphic( Graphic&& rGraphic ) noexcept;
                     Graphic( const Bitmap& rBmp );
+                    Graphic( const Image& rImage );
                     Graphic( const BitmapEx& rBmpEx );
-                    Graphic( const SvgDataPtr& rSvgDataPtr );
+                    Graphic( const std::shared_ptr<VectorGraphicData>& rVectorGraphicDataPtr );
                     Graphic( const Animation& rAnimation );
                     Graphic( const GDIMetaFile& rMtf );
                     Graphic( const css::uno::Reference< css::graphic::XGraphic >& rxGraphic );
 
     Graphic&        operator=( const Graphic& rGraphic );
-    Graphic&        operator=( Graphic&& rGraphic );
+    Graphic&        operator=( Graphic&& rGraphic ) noexcept;
     bool            operator==( const Graphic& rGraphic ) const;
     bool            operator!=( const Graphic& rGraphic ) const;
-    bool            operator!() const;
+
+    bool            IsNone() const;
 
     void            Clear();
 
@@ -140,12 +119,14 @@ public:
     bool            IsAnimated() const;
     bool            IsEPS() const;
 
+    bool isAvailable() const;
+    bool makeAvailable();
+
     // #i102089# Access of Bitmap potentially will have to rasterconvert the Graphic
     // if it is a MetaFile. To be able to control this conversion it is necessary to
     // allow giving parameters which control AntiAliasing and LineSnapping of the
     // MetaFile when played. Defaults will use a no-AAed, not snapped conversion as
     // before.
-    Bitmap          GetBitmap(const GraphicConversionParameters& rParameters = GraphicConversionParameters()) const;
     BitmapEx        GetBitmapEx(const GraphicConversionParameters& rParameters = GraphicConversionParameters()) const;
     /// Gives direct access to the contained BitmapEx.
     const BitmapEx& GetBitmapExRef() const;
@@ -179,7 +160,7 @@ public:
     void            StartAnimation( OutputDevice* pOutDev,
                           const Point& rDestPt,
                           const Size& rDestSize,
-                          long nExtraData = 0L,
+                          long nExtraData = 0,
                           OutputDevice* pFirstFrameOutDev = nullptr );
     void            StopAnimation( OutputDevice* pOutputDevice,
                           long nExtraData );
@@ -187,45 +168,50 @@ public:
     void            SetAnimationNotifyHdl( const Link<Animation*,void>& rLink );
     Link<Animation*,void> GetAnimationNotifyHdl() const;
 
-    sal_uLong       GetAnimationLoopCount() const;
+    sal_uInt32      GetAnimationLoopCount() const;
 
     BitmapChecksum  GetChecksum() const;
 
-public:
+    OUString getOriginURL() const;
+    void setOriginURL(OUString const & rOriginURL);
 
-    std::shared_ptr<GraphicReader>& GetContext();
-    void                            SetContext( const std::shared_ptr<GraphicReader> &pReader );
+    OString getUniqueID() const;
+
+    std::shared_ptr<GraphicReader>& GetReaderContext();
+    void                            SetReaderContext( const std::shared_ptr<GraphicReader> &pReader );
     void                            SetDummyContext(bool value);
-    bool                            IsDummyContext();
-private:
-    friend class GraphicObject;
+    bool                            IsDummyContext() const;
 
-    bool            SwapOut();
-    void            SwapOutAsLink();
-    bool            SwapOut( SvStream* pOStm );
-    bool            SwapIn();
-    bool            SwapIn( SvStream* pIStm );
-    bool            IsSwapOut() const;
-
-public:
-    void            SetLink( const GfxLink& );
-    GfxLink         GetLink() const;
-    bool            IsLink() const;
+    void            SetGfxLink(const std::shared_ptr<GfxLink>& rGfxLink);
+    std::shared_ptr<GfxLink> GetSharedGfxLink() const;
+    GfxLink         GetGfxLink() const;
+    bool            IsGfxLink() const;
 
     bool            ExportNative( SvStream& rOStream ) const;
 
     friend VCL_DLLPUBLIC void WriteGraphic(SvStream& rOStream, const Graphic& rGraphic);
     friend VCL_DLLPUBLIC void ReadGraphic(SvStream& rIStream, Graphic& rGraphic);
 
-public:
+    const std::shared_ptr<VectorGraphicData>& getVectorGraphicData() const;
 
-    const SvgDataPtr& getSvgData() const;
-
-    void setPdfData(const css::uno::Sequence<sal_Int8>& rPdfData);
-    const css::uno::Sequence<sal_Int8>& getPdfData() const;
+    /// Get the page number of the multi-page source this Graphic is rendered from.
+    sal_Int32 getPageNumber() const;
 
     static css::uno::Sequence<sal_Int8> getUnoTunnelId();
 };
+
+namespace std {
+
+template <>
+struct hash<Graphic>
+{
+    std::size_t operator()(Graphic const & rGraphic) const
+    {
+        return static_cast<std::size_t>(rGraphic.GetChecksum());
+    }
+};
+
+} // end namespace std
 
 #endif // INCLUDED_VCL_GRAPH_HXX
 

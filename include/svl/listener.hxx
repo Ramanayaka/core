@@ -21,17 +21,20 @@
 
 #include <svl/svldllapi.h>
 
-#include <unordered_set>
+#include <o3tl/sorted_vector.hxx>
 
 class SvtBroadcaster;
 class SfxHint;
 
 class SVL_DLLPUBLIC SvtListener
 {
-    typedef std::unordered_set<SvtBroadcaster*> BroadcastersType;
+    friend class SvtBroadcaster;
+    typedef o3tl::sorted_vector<SvtBroadcaster*> BroadcastersType;
     BroadcastersType maBroadcasters;
 
     const SvtListener&  operator=(const SvtListener &) = delete;
+    // called from the SvtBroadcaster destructor
+    void BroadcasterDying( SvtBroadcaster& rBroadcaster );
 
 public:
     class SVL_DLLPUBLIC QueryBase
@@ -52,6 +55,7 @@ public:
     bool EndListening( SvtBroadcaster& rBroadcaster );
     void EndListeningAll();
 
+    /// Overwrites existing broadcasters with the ones from the specified listener
     void CopyAllBroadcasters( const SvtListener& r );
     bool HasBroadcaster() const;
 

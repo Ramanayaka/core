@@ -8,7 +8,7 @@
  */
 
 #include <memory>
-#include "config_test.h"
+#include <config_features.h>
 
 #ifdef MACOSX
 #define __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES 0
@@ -19,15 +19,15 @@
 
 #include <swmodeltestbase.hxx>
 
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <com/sun/star/awt/XBitmap.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/document/XEmbeddedObjectSupplier2.hpp>
 #include <com/sun/star/drawing/PointSequenceSequence.hpp>
 #include <com/sun/star/drawing/GraphicExportFilter.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeAdjustmentValue.hpp>
+#include <com/sun/star/drawing/PolyPolygonBezierCoords.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/style/BreakType.hpp>
+#include <com/sun/star/style/DropCapFormat.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/text/HoriOrientation.hpp>
 #include <com/sun/star/text/RelOrientation.hpp>
@@ -38,29 +38,33 @@
 #include <com/sun/star/text/WrapTextMode.hpp>
 #include <com/sun/star/text/XDependentTextField.hpp>
 #include <com/sun/star/text/XFormField.hpp>
-#include <com/sun/star/text/XPageCursor.hpp>
-#include <com/sun/star/text/XTextColumns.hpp>
 #include <com/sun/star/text/XTextFieldsSupplier.hpp>
 #include <com/sun/star/text/XTextFrame.hpp>
 #include <com/sun/star/text/XTextFramesSupplier.hpp>
-#include <com/sun/star/text/XTextViewCursorSupplier.hpp>
-#include <com/sun/star/text/RubyAdjust.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
 #include <com/sun/star/text/SizeType.hpp>
 #include <com/sun/star/util/DateTime.hpp>
-#include <com/sun/star/document/XFilter.hpp>
-#include <com/sun/star/document/XImporter.hpp>
-#include <vcl/bitmapaccess.hxx>
+#include <com/sun/star/text/GraphicCrop.hpp>
+#include <com/sun/star/drawing/HomogenMatrix3.hpp>
+#include <com/sun/star/awt/CharSet.hpp>
+#include <com/sun/star/text/WritingMode2.hpp>
+#include <com/sun/star/text/XTextSectionsSupplier.hpp>
+#include <com/sun/star/text/XTextDocument.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
+#include <com/sun/star/table/XTableRows.hpp>
+#include <com/sun/star/text/XTextTablesSupplier.hpp>
+#include <com/sun/star/text/XTextTable.hpp>
+
+#include <basegfx/polygon/b2dpolypolygontools.hxx>
+#include <o3tl/cppunittraitshelper.hxx>
 #include <unotools/fltrcfg.hxx>
 #include <comphelper/sequenceashashmap.hxx>
-#include <com/sun/star/text/GraphicCrop.hpp>
 #include <tools/datetimeutils.hxx>
 #include <oox/drawingml/drawingmltypes.hxx>
 #include <unotools/streamwrap.hxx>
 #include <comphelper/propertysequence.hxx>
-#include <com/sun/star/drawing/HomogenMatrix3.hpp>
-#include <com/sun/star/awt/CharSet.hpp>
-#include <test/mtfxmldump.hxx>
+#include <osl/time.h>
+#include <comphelper/processfactory.hxx>
 
 class Test : public SwModelTestBase
 {
@@ -84,7 +88,6 @@ public:
     }
 };
 
-#if !defined _WIN32
 class FailTest : public Test
 {
 public:
@@ -101,13 +104,11 @@ public:
             {
                 OUString aURL(m_directories.getURLFromSrc(mpTestDocumentPath) + OUString::createFromAscii(filename));
                 CPPUNIT_ASSERT_MESSAGE("no desktop", mxDesktop.is());
-                uno::Reference<frame::XComponentLoader> xLoader(mxDesktop, uno::UNO_QUERY);
-                CPPUNIT_ASSERT_MESSAGE("no loader", xLoader.is());
                 uno::Sequence<beans::PropertyValue> args( comphelper::InitPropertySequence({
                         { "DocumentService", uno::Any(OUString("com.sun.star.text.TextDocument")) }
                     }));
 
-                uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(aURL, "_default", 0, args);
+                uno::Reference<lang::XComponent> xComponent = mxDesktop->loadComponentFromURL(aURL, "_default", 0, args);
                 OUString sMessage = "loading succeeded: " + aURL;
                 CPPUNIT_ASSERT_MESSAGE(OUStringToOString(sMessage, RTL_TEXTENCODING_UTF8).getStr(), !xComponent.is());
             }
@@ -116,15 +117,12 @@ public:
         finish();
     }
 };
-#endif
 
 DECLARE_OOXMLIMPORT_TEST(testImageHyperlink, "image-hyperlink.docx")
 {
     OUString URL = getProperty<OUString>(getShape(1), "HyperLinkURL");
     CPPUNIT_ASSERT_EQUAL(OUString("http://www.libreoffice.org/"), URL);
 }
-
-#if !defined(_WIN32)
 
 DECLARE_SW_IMPORT_TEST(testMathMalformedXml, "math-malformed_xml.docx", nullptr, FailTest)
 {
@@ -197,7 +195,7 @@ DECLARE_OOXMLIMPORT_TEST(testN757890, "n757890.docx")
     xPara->getPropertyValue("ParaStyleName") >>= aValue;
     CPPUNIT_ASSERT_EQUAL(OUString("Heading 1"), aValue);
 
-    // This wan't centered
+    // This wasn't centered
     uno::Reference<text::XTextFramesSupplier> xTextFramesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xIndexAccess(xTextFramesSupplier->getTextFrames(), uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xFrame(xIndexAccess->getByIndex(0), uno::UNO_QUERY);
@@ -219,6 +217,93 @@ xray ThisComponent.DrawPage(1).getByIndex(0).Anchor.PageStyleName
     // use a small trick and instead of checking the page layout, check the page style
     uno::Reference<text::XTextContent> xTextContent(xShape, uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(OUString("First Page"), getProperty<OUString>(xTextContent->getAnchor(), "PageStyleName"));
+}
+
+DECLARE_OOXMLIMPORT_TEST(testTdf129237, "tdf129237.docx")
+{
+    uno::Reference<text::XTextFieldsSupplier> xTextFieldsSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XEnumerationAccess> xFieldsAccess(xTextFieldsSupplier->getTextFields());
+    uno::Reference<container::XEnumeration> xFields(xFieldsAccess->createEnumeration());
+
+    if( !xFields->hasMoreElements() ) {
+        CPPUNIT_ASSERT(false);
+        return;
+    }
+
+    uno::Reference<text::XTextField> xEnumerationAccess1(xFields->nextElement(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("DocInformation:Title (fixed)"), xEnumerationAccess1->getPresentation(true).trim());
+    CPPUNIT_ASSERT_EQUAL(OUString("title new"), xEnumerationAccess1->getPresentation(false).trim());
+
+    if( !xFields->hasMoreElements() ) {
+        CPPUNIT_ASSERT(false);
+        return;
+    }
+
+    uno::Reference<text::XTextField> xEnumerationAccess2(xFields->nextElement(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("DocInformation:Title (fixed)"), xEnumerationAccess2->getPresentation(true).trim());
+    CPPUNIT_ASSERT_EQUAL(OUString("MoM is supreme"), xEnumerationAccess2->getPresentation(false).trim());
+
+    if( !xFields->hasMoreElements() ) {
+        CPPUNIT_ASSERT(false);
+        return;
+    }
+
+    uno::Reference<text::XTextField> xEnumerationAccess3(xFields->nextElement(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("DocInformation:Title (fixed)"), xEnumerationAccess3->getPresentation(true).trim());
+    CPPUNIT_ASSERT_EQUAL(OUString("MY PATNA IS BEST IN THE WORLD"), xEnumerationAccess3->getPresentation(false).trim());
+
+    if( !xFields->hasMoreElements() ) {
+        CPPUNIT_ASSERT(false);
+        return;
+    }
+
+    uno::Reference<text::XTextField> xEnumerationAccess4(xFields->nextElement(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("DocInformation:Title (fixed)"), xEnumerationAccess4->getPresentation(true).trim());
+    CPPUNIT_ASSERT_EQUAL(OUString("Title New"), xEnumerationAccess4->getPresentation(false).trim());
+}
+
+DECLARE_OOXMLIMPORT_TEST(testTdf134572, "tdf134572.docx")
+{
+    uno::Reference<text::XTextFieldsSupplier> xTextFieldsSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XEnumerationAccess> xFieldsAccess(xTextFieldsSupplier->getTextFields());
+    uno::Reference<container::XEnumeration> xFields(xFieldsAccess->createEnumeration());
+
+    if( !xFields->hasMoreElements() ) {
+        CPPUNIT_ASSERT(false);
+        return;
+    }
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: RK - Risk / EH&S
+    // - Actual  : [Responsible Office]
+    uno::Reference<text::XTextField> xEnumerationAccess1(xFields->nextElement(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("RK - Risk / EH&S"), xEnumerationAccess1->getPresentation(false).trim());
+
+    if( !xFields->hasMoreElements() ) {
+        CPPUNIT_ASSERT(false);
+        return;
+    }
+
+    // - Expected: Choose an item.
+    // - Actual  : A.M.
+    uno::Reference<text::XTextField> xEnumerationAccess2(xFields->nextElement(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("Choose an item."), xEnumerationAccess2->getPresentation(false).trim());
+}
+
+DECLARE_OOXMLIMPORT_TEST(testTdf128076, "tdf128076.docx")
+{
+    uno::Reference<text::XTextFieldsSupplier> xTextFieldsSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XEnumerationAccess> xFieldsAccess(xTextFieldsSupplier->getTextFields());
+    uno::Reference<container::XEnumeration> xFields(xFieldsAccess->createEnumeration());
+
+    if( !xFields->hasMoreElements() ) {
+        CPPUNIT_ASSERT(false);
+        return;
+    }
+
+    uno::Reference<text::XTextField> xEnumerationAccess(xFields->nextElement(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("User Field adres = Test"), xEnumerationAccess->getPresentation(true).trim());
+    CPPUNIT_ASSERT_EQUAL(OUString("Test"), xEnumerationAccess->getPresentation(false).trim());
 }
 
 DECLARE_OOXMLIMPORT_TEST(testfdo90720, "testfdo90720.docx")
@@ -278,6 +363,12 @@ xray ThisComponent.StyleFamilies.PageStyles.Default.Width
     CPPUNIT_ASSERT( pos.X > width / 2 );
 }
 
+DECLARE_OOXMLIMPORT_TEST(testTdf115719b, "tdf115719b.docx")
+{
+    // This was 0, 4th (last) paragraph had no increased spacing.
+    CPPUNIT_ASSERT(getProperty<sal_Int32>(getParagraph(4), "ParaTopMargin") > 0);
+}
+
 DECLARE_OOXMLIMPORT_TEST(testN766477, "n766477.docx")
 {
     /*
@@ -301,14 +392,33 @@ DECLARE_OOXMLIMPORT_TEST(testN766477, "n766477.docx")
     CPPUNIT_ASSERT_EQUAL(OUString("Checkbox_Checked"), aElementNames[0]);
 }
 
+DECLARE_OOXMLIMPORT_TEST(testTdf130804, "tdf130804.docx")
+{
+    OUString flyHeight = parseDump("/root/page/body/txt[1]/infos/bounds", "height");
+    OUString txtHeight = parseDump("/root/page/body/txt[1]/anchored/fly/infos/bounds", "height");
+
+    //Without the fix in place, txtHeight would have been flyHeight + 55
+    CPPUNIT_ASSERT_EQUAL(flyHeight, txtHeight);
+
+    // Also check the bookmark portion is ignored in the next paragraph
+    OUString aTop = parseDump("/root/page/body/txt[2]/infos/prtBounds", "top");
+    CPPUNIT_ASSERT_EQUAL(OUString("240"), aTop);
+}
+
 DECLARE_OOXMLIMPORT_TEST(testN758883, "n758883.docx")
 {
     /*
      * The problem was that direct formatting of the paragraph was not applied
      * to the numbering. This is easier to test using a layout dump.
      */
-    OUString aHeight = parseDump("/root/page/body/txt/Special", "nHeight");
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(220), aHeight.toInt32()); // It was 280
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    assertXPath(pXmlDoc, "/root/page/body/txt/Special[1]", "nHeight", "220");
+
+    // check the bookmark portions are of the expected height
+    assertXPath(pXmlDoc, "/root/page/body/txt/Special[2]", "nType", "PortionType::Bookmark");
+    assertXPath(pXmlDoc, "/root/page/body/txt/Special[2]", "nHeight", "253");
+    assertXPath(pXmlDoc, "/root/page/body/txt/Special[3]", "nType", "PortionType::Bookmark");
+    assertXPath(pXmlDoc, "/root/page/body/txt/Special[3]", "nHeight", "253");
 
     /*
      * Next problem was that the page margin contained the width of the page border as well.
@@ -330,7 +440,7 @@ DECLARE_OOXMLIMPORT_TEST(testN758883, "n758883.docx")
     xPropertySet.set(getShape(1), uno::UNO_QUERY);
     text::WrapTextMode eValue;
     xPropertySet->getPropertyValue("Surround") >>= eValue;
-    CPPUNIT_ASSERT_EQUAL(eValue, text::WrapTextMode_THROUGH);
+    CPPUNIT_ASSERT_EQUAL(text::WrapTextMode_THROUGH, eValue);
 
     /*
      * 5th problem: anchor type of the second textbox was wrong.
@@ -388,15 +498,16 @@ DECLARE_OOXMLIMPORT_TEST(testN775899, "n775899.docx")
 
 DECLARE_OOXMLIMPORT_TEST(testN777345, "n777345.docx")
 {
-#if !defined(MACOSX)
     // The problem was that v:imagedata inside v:rect was ignored.
     uno::Reference<document::XEmbeddedObjectSupplier2> xSupplier(getShape(1), uno::UNO_QUERY);
     uno::Reference<graphic::XGraphic> xGraphic = xSupplier->getReplacementGraphic();
     Graphic aGraphic(xGraphic);
-    // If this changes later, feel free to update it, but make sure it's not
-    // the checksum of a white/transparent placeholder rectangle.
-    CPPUNIT_ASSERT_EQUAL(BitmapChecksum(SAL_CONST_UINT64(18203404956065762943)), aGraphic.GetChecksum());
-#endif
+    BitmapEx aBitmap = aGraphic.GetBitmapEx();
+    CPPUNIT_ASSERT_EQUAL( Size( 17, 16 ), aBitmap.GetSizePixel());
+    CPPUNIT_ASSERT_EQUAL( COL_BLACK, aBitmap.GetPixelColor( 0, 0 ));
+    CPPUNIT_ASSERT_EQUAL( COL_BLACK, aBitmap.GetPixelColor( 16, 15 ));
+    CPPUNIT_ASSERT_EQUAL( Color( 153, 0, 0 ), aBitmap.GetPixelColor( 16, 0 ));
+    CPPUNIT_ASSERT_EQUAL( Color( 153, 0, 0 ), aBitmap.GetPixelColor( 0, 15 ));
 }
 
 DECLARE_OOXMLIMPORT_TEST(testN778140, "n778140.docx")
@@ -432,17 +543,15 @@ DECLARE_OOXMLIMPORT_TEST(testN779627, "n779627.docx")
     uno::Any aValue = xTableProperties->getPropertyValue("LeftMargin");
     sal_Int32 nLeftMargin;
     aValue >>= nLeftMargin;
+    // only border width considered.
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Left margin shouldn't take tableCellMar into account in nested tables",
-            sal_Int32(0), nLeftMargin);
+            sal_Int32(9), nLeftMargin);
 
     /*
      * Another problem tested with this document is the unnecessary loading of the shapes
      * anchored to a discarded header or footer
      */
-    uno::Reference<text::XTextDocument> textDocument(mxComponent, uno::UNO_QUERY);
-    uno::Reference<drawing::XDrawPageSupplier> drawPageSupplier(textDocument, uno::UNO_QUERY);
-    uno::Reference<drawing::XDrawPage> drawPage = drawPageSupplier->getDrawPage();
-    CPPUNIT_ASSERT_EQUAL( sal_Int32( 0 ), drawPage->getCount());
+    CPPUNIT_ASSERT_EQUAL(0, getShapes());
 }
 
 DECLARE_OOXMLIMPORT_TEST(testN779627b, "n779627b.docx")
@@ -480,10 +589,10 @@ DECLARE_OOXMLIMPORT_TEST(testN773061, "n773061.docx")
     uno::Reference<text::XTextFramesSupplier> xTextFramesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xIndexAccess(xTextFramesSupplier->getTextFrames(), uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xFrame(xIndexAccess->getByIndex(0), uno::UNO_QUERY);
-    CPPUNIT_ASSERT_EQUAL( getProperty< sal_Int32 >( xFrame, "LeftBorderDistance" ), sal_Int32( 0 ));
-    CPPUNIT_ASSERT_EQUAL( getProperty< sal_Int32 >( xFrame, "TopBorderDistance" ), sal_Int32( 0 ));
-    CPPUNIT_ASSERT_EQUAL( getProperty< sal_Int32 >( xFrame, "RightBorderDistance" ), sal_Int32( 0 ));
-    CPPUNIT_ASSERT_EQUAL( getProperty< sal_Int32 >( xFrame, "BottomBorderDistance" ), sal_Int32( 0 ));
+    CPPUNIT_ASSERT_EQUAL( sal_Int32( 0 ), getProperty< sal_Int32 >( xFrame, "LeftBorderDistance" ) );
+    CPPUNIT_ASSERT_EQUAL( sal_Int32( 0 ), getProperty< sal_Int32 >( xFrame, "TopBorderDistance" ) );
+    CPPUNIT_ASSERT_EQUAL( sal_Int32( 0 ), getProperty< sal_Int32 >( xFrame, "RightBorderDistance" ) );
+    CPPUNIT_ASSERT_EQUAL( sal_Int32( 0 ), getProperty< sal_Int32 >( xFrame, "BottomBorderDistance" ) );
 }
 
 DECLARE_OOXMLIMPORT_TEST(testN780645, "n780645.docx")
@@ -493,7 +602,7 @@ DECLARE_OOXMLIMPORT_TEST(testN780645, "n780645.docx")
     uno::Reference<text::XTextTablesSupplier> xTablesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xTables(xTablesSupplier->getTextTables( ), uno::UNO_QUERY);
     uno::Reference<text::XTextTable> xTextTable(xTables->getByIndex(0), uno::UNO_QUERY);
-    uno::Reference<table::XTableRows> xTableRows(xTextTable->getRows(), uno::UNO_QUERY);
+    uno::Reference<table::XTableRows> xTableRows = xTextTable->getRows();
     CPPUNIT_ASSERT_EQUAL(sal_Int16(2135), getProperty< uno::Sequence<text::TableColumnSeparator> >(xTableRows->getByIndex(1), "TableColumnSeparators")[0].Position); // was 1999
 }
 
@@ -502,12 +611,9 @@ DECLARE_OOXMLIMPORT_TEST(testWordArtResizing, "WordArt.docx")
     /* The Word-Arts and watermarks were getting resized automatically, It was as if they were
        getting glued to the fallback geometry(the sdrObj) and were getting bound to the font size.
        The test-case ensures the original height and width of the word-art is not changed while importing*/
+    CPPUNIT_ASSERT_EQUAL(1, getShapes());
 
-    uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<container::XIndexAccess> xDrawPage(xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xDrawPage->getCount());
-
-    uno::Reference<drawing::XShape> xShape(xDrawPage->getByIndex(0), uno::UNO_QUERY);
+    uno::Reference<drawing::XShape> xShape(getShape(1), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(10105), xShape->getSize().Width);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(4755), xShape->getSize().Height);
 }
@@ -525,17 +631,15 @@ DECLARE_OOXMLIMPORT_TEST(testGroupshapeLine, "groupshape-line.docx")
      * xray ThisComponent.DrawPage(1).getByIndex(0).Position 'x: 1272, y: 2286
      * xray ThisComponent.DrawPage(1).getByIndex(0).Size 'width: 10160, height: 0
      */
-    uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<container::XIndexAccess> xDrawPage(xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), xDrawPage->getCount());
+    CPPUNIT_ASSERT_EQUAL(2, getShapes());
 
-    uno::Reference<drawing::XShape> xShape(xDrawPage->getByIndex(0), uno::UNO_QUERY);
+    uno::Reference<drawing::XShape> xShape(getShape(1), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(2656), xShape->getPosition().X);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(339), xShape->getPosition().Y);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(3270), xShape->getSize().Width);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1392), xShape->getSize().Height);
 
-    uno::Reference<drawing::XShapes> xGroupShape(xDrawPage->getByIndex(1), uno::UNO_QUERY);
+    uno::Reference<drawing::XShapes> xGroupShape(getShape(2), uno::UNO_QUERY);
     xShape.set(xGroupShape->getByIndex(0), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1272), xShape->getPosition().X);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(2286), xShape->getPosition().Y);
@@ -551,12 +655,16 @@ DECLARE_OOXMLIMPORT_TEST(testGroupshapeChildRotation, "groupshape-child-rotation
     uno::Reference<drawing::XShapes> xGroupShape(getShape(1), uno::UNO_QUERY);
     uno::Reference<drawing::XShape> xShape(xGroupShape->getByIndex(0), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0), xShape->getPosition().X);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), xShape->getPosition().Y);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(-5741), xShape->getPosition().Y);
 
-#if ! TEST_FONTS_MISSING
+#if HAVE_MORE_FONTS
     xShape.set(xGroupShape->getByIndex(4), uno::UNO_QUERY);
-    // This was 887, i.e. border distances were included in the height.
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(686), xShape->getSize().Height);
+    // This was true, a VML textbox without <v:textbox style="mso-fit-shape-to-text:t"> had
+    // auto-grow on.
+    CPPUNIT_ASSERT(!getProperty<bool>(xShape, "TextAutoGrowHeight"));
+    // Paragraph Style Normal should provide the font name - which slightly affects the shape's height (was 686)
+    uno::Reference<text::XText> xText = uno::Reference<text::XTextRange>(xShape, uno::UNO_QUERY_THROW)->getText();
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Font", OUString("Times New Roman"), getProperty<OUString>(getRun(xText, 1), "CharFontName"));
 #endif
 
     uno::Reference<drawing::XShapeDescriptor> xShapeDescriptor(xGroupShape->getByIndex(5), uno::UNO_QUERY);
@@ -569,7 +677,7 @@ DECLARE_OOXMLIMPORT_TEST(testTableWidth, "table_width.docx")
     uno::Reference<text::XTextTablesSupplier> xTablesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xTables(xTablesSupplier->getTextTables(), uno::UNO_QUERY);
     // Relative width wasn't recognized during import.
-    CPPUNIT_ASSERT_EQUAL(true, bool(getProperty<bool>(xTables->getByIndex(0), "IsWidthRelative")));
+    CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(xTables->getByIndex(0), "IsWidthRelative"));
 
     uno::Reference<text::XTextFramesSupplier> xFramesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xFrames(xFramesSupplier->getTextFrames(), uno::UNO_QUERY);
@@ -589,9 +697,9 @@ DECLARE_OOXMLIMPORT_TEST(testN820788, "n820788.docx")
 DECLARE_OOXMLIMPORT_TEST(testN820504, "n820504.docx")
 {
     uno::Reference<style::XStyleFamiliesSupplier> xFamiliesSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<container::XNameAccess> xFamiliesAccess(xFamiliesSupplier->getStyleFamilies(), uno::UNO_QUERY);
+    uno::Reference<container::XNameAccess> xFamiliesAccess = xFamiliesSupplier->getStyleFamilies();
     uno::Reference<container::XNameAccess> xStylesAccess(xFamiliesAccess->getByName("ParagraphStyles"), uno::UNO_QUERY);
-    uno::Reference<beans::XPropertySet> xStyle(xStylesAccess->getByName("Default Style"), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xStyle(xStylesAccess->getByName("Default Paragraph Style"), uno::UNO_QUERY);
     // The problem was that the CharColor was set to AUTO (-1) even if we have some default char color set
     CPPUNIT_ASSERT_EQUAL(sal_Int32(4040635), getProperty<sal_Int32>(xStyle, "CharColor"));
 
@@ -622,7 +730,7 @@ DECLARE_OOXMLIMPORT_TEST(testGroupshapeSdt, "groupshape-sdt.docx")
     CPPUNIT_ASSERT_EQUAL(sal_Int32(20), getProperty<sal_Int32>(getRun(getParagraphOfText(1, xShape->getText()), 1), "CharKerning"));
 }
 
-void lcl_countTextFrames(css::uno::Reference< lang::XComponent >& xComponent,
+static void lcl_countTextFrames(const css::uno::Reference< lang::XComponent >& xComponent,
    sal_Int32 nExpected )
 {
     uno::Reference<text::XTextFramesSupplier> xTextFramesSupplier(xComponent, uno::UNO_QUERY);
@@ -639,8 +747,12 @@ DECLARE_OOXMLIMPORT_TEST(testBnc779620, "bnc779620.docx")
 DECLARE_OOXMLIMPORT_TEST(testTdf105127, "tdf105127.docx")
 {
     auto aPolyPolygon = getProperty<drawing::PolyPolygonBezierCoords>(getShape(1), "PolyPolygonBezier");
-    // This was 1910, the shape was rendered upside down.
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(3257), aPolyPolygon.Coordinates[0][0].Y);
+    // tdf#106792 These values were wrong all the time due to a missing
+    // conversion in SvxShapePolyPolygon::getPropertyValueImpl. There was no
+    // ForceMetricTo100th_mm -> the old results were in twips due to the
+    // object residing in Writer. The UNO API by definition is in 100thmm,
+    // thus I will correct the value here.
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(5744), aPolyPolygon.Coordinates[0][0].Y); // was: 3257
 }
 
 DECLARE_OOXMLIMPORT_TEST(testTdf105143, "tdf105143.docx")
@@ -684,6 +796,29 @@ DECLARE_OOXMLIMPORT_TEST(testTdf105975formula, "tdf105975.docx")
     CPPUNIT_ASSERT_EQUAL(OUString("25"), xEnumerationAccess->getPresentation(false).trim());
 }
 
+DECLARE_OOXMLIMPORT_TEST(testTdf107784, "tdf107784.docx")
+{
+    // Make sure the field displays the citation's title and not the identifier
+    uno::Reference<text::XTextFieldsSupplier> xTextFieldsSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XEnumerationAccess> xFieldsAccess(xTextFieldsSupplier->getTextFields());
+    uno::Reference<container::XEnumeration> xFields(xFieldsAccess->createEnumeration());
+
+    if( !xFields->hasMoreElements() ) {
+        CPPUNIT_ASSERT(false);
+        return;
+    }
+
+    uno::Reference<text::XTextField> xEnumerationAccess(xFields->nextElement(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("Bibliography entry"), xEnumerationAccess->getPresentation(true).trim());
+    CPPUNIT_ASSERT_EQUAL(OUString("(Smith, 1950)"), xEnumerationAccess->getPresentation(false).trim());
+}
+
+DECLARE_OOXMLIMPORT_TEST(testTdf115883, "tdf115883.docx")
+{
+    // Import failed due to an unhandled exception when getting the Surround
+    // property of a not yet inserted frame.
+}
+
 DECLARE_OOXMLIMPORT_TEST(testTdf75573, "tdf75573_page1frame.docx")
 {
     // the problem was that the frame was discarded
@@ -716,11 +851,30 @@ DECLARE_OOXMLIMPORT_TEST(testTdf75573_lostTable, "tdf75573_lostTable.docx")
     uno::Reference<container::XIndexAccess> xTables(xTablesSupplier->getTextTables(), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("# of tables", sal_Int32(1), xTables->getCount() );
 
-    uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<container::XIndexAccess> xDraws(xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("# of frames/shapes", sal_Int32(0), xDraws->getCount() );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("# of frames/shapes", 0, getShapes() );
 
     CPPUNIT_ASSERT_EQUAL_MESSAGE("# of pages", 3, getPages() );
+}
+
+DECLARE_OOXMLIMPORT_TEST(testTdf109316_dropCaps, "tdf109316_dropCaps.docx")
+{
+    uno::Reference<beans::XPropertySet> xSet(getParagraph(1), uno::UNO_QUERY);
+    css::style::DropCapFormat aDropCap = getProperty<css::style::DropCapFormat>(xSet,"DropCapFormat");
+    CPPUNIT_ASSERT_EQUAL( sal_Int8(2), aDropCap.Lines );
+    CPPUNIT_ASSERT_EQUAL( sal_Int8(1), aDropCap.Count );
+    CPPUNIT_ASSERT_EQUAL( sal_Int16(1270), aDropCap.Distance );
+
+    xSet.set(getParagraph(2), uno::UNO_QUERY);
+    aDropCap = getProperty<css::style::DropCapFormat>(xSet,"DropCapFormat");
+    CPPUNIT_ASSERT_EQUAL( sal_Int8(3), aDropCap.Lines );
+    CPPUNIT_ASSERT_EQUAL( sal_Int8(1), aDropCap.Count );
+    CPPUNIT_ASSERT_EQUAL( sal_Int16(508), aDropCap.Distance );
+
+    xSet.set(getParagraph(3), uno::UNO_QUERY);
+    aDropCap = getProperty<css::style::DropCapFormat>(xSet,"DropCapFormat");
+    CPPUNIT_ASSERT_EQUAL( sal_Int8(4), aDropCap.Lines );
+    CPPUNIT_ASSERT_EQUAL( sal_Int8(7), aDropCap.Count );
+    CPPUNIT_ASSERT_EQUAL( sal_Int16(0), aDropCap.Distance );
 }
 
 DECLARE_OOXMLIMPORT_TEST(lineWpsOnly, "line-wps-only.docx")
@@ -778,14 +932,14 @@ DECLARE_OOXMLIMPORT_TEST(testTdf48658_transparentOLEheader, "tdf48658_transparen
 {
     // The problem was that the shape in the header was hidden in the background.
     // The round-tripped document was always fine (even before the fix) but the shape numbers change, so import-only test.
-    CPPUNIT_ASSERT_EQUAL(true, bool(getProperty<bool>(getShape(1), "Opaque")));
+    CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(getShape(1), "Opaque"));
 }
 
 DECLARE_OOXMLIMPORT_TEST(testDMLGroupShapeParaAdjust, "dml-groupshape-paraadjust.docx")
 {
     // Paragraph adjustment inside a group shape was not imported
     uno::Reference<container::XIndexAccess> xGroup(getShape(1), uno::UNO_QUERY);
-    uno::Reference<text::XText> xText = uno::Reference<text::XTextRange>(xGroup->getByIndex(1), uno::UNO_QUERY)->getText();
+    uno::Reference<text::XText> xText = uno::Reference<text::XTextRange>(xGroup->getByIndex(1), uno::UNO_QUERY_THROW)->getText();
     // 2nd line is adjusted to the right
     CPPUNIT_ASSERT_EQUAL(sal_Int16(style::ParagraphAdjust_RIGHT), getProperty<sal_Int16>(getRun(getParagraphOfText(2, xText), 1), "ParaAdjust"));
     // 3rd line has no adjustment
@@ -808,7 +962,7 @@ DECLARE_OOXMLIMPORT_TEST(testTdf99135, "tdf99135.docx")
 
 DECLARE_OOXMLIMPORT_TEST(testTdf85523, "tdf85523.docx")
 {
-    auto xTextField = getProperty< uno::Reference<beans::XPropertySet> >(getRun(getParagraph(1), 6), "TextField");
+    auto xTextField = getProperty< uno::Reference<beans::XPropertySet> >(getRun(getParagraph(1), 7), "TextField");
     auto xText = getProperty< uno::Reference<text::XText> >(xTextField, "TextRange");
     // This was "commentX": an unexpected extra char was added at the comment end.
     getParagraphOfText(1, xText, "comment");
@@ -849,13 +1003,13 @@ DECLARE_OOXMLIMPORT_TEST(testFdo75722dml, "fdo75722-dml.docx")
     CPPUNIT_ASSERT_EQUAL(sal_Int64(3128), nRot);
 }
 
-DECLARE_OOXMLIMPORT_TEST(testFdo76803, "fdo76803.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testFdo76803, "fdo76803.docx")
 {
     // The ContourPolyPolygon was wrong
     uno::Reference<beans::XPropertySet> xPropertySet(getShape(1), uno::UNO_QUERY);
 
     drawing::PointSequenceSequence rContour = getProperty<drawing::PointSequenceSequence>(xPropertySet, "ContourPolyPolygon");
-    basegfx::B2DPolyPolygon aPolyPolygon(basegfx::tools::UnoPointSequenceSequenceToB2DPolyPolygon(rContour));
+    basegfx::B2DPolyPolygon aPolyPolygon(basegfx::utils::UnoPointSequenceSequenceToB2DPolyPolygon(rContour));
 
     // We've got exactly one polygon inside
     CPPUNIT_ASSERT_EQUAL(sal_uInt32(1), aPolyPolygon.count());
@@ -865,17 +1019,21 @@ DECLARE_OOXMLIMPORT_TEST(testFdo76803, "fdo76803.docx")
 
     CPPUNIT_ASSERT_EQUAL(sal_uInt32(4), aPolygon.count());
 
-    CPPUNIT_ASSERT_EQUAL(double(-163), aPolygon.getB2DPoint(0).getX());
-    CPPUNIT_ASSERT_EQUAL(double(0), aPolygon.getB2DPoint(0).getY());
+    CPPUNIT_ASSERT_EQUAL(double(-149), aPolygon.getB2DPoint(0).getX());
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: -35
+    // - Actual  : -67
+    // i.e. the cropping did not influence the wrap polygon during export.
+    CPPUNIT_ASSERT_EQUAL(double(-35), aPolygon.getB2DPoint(0).getY());
 
-    CPPUNIT_ASSERT_EQUAL(double(-163), aPolygon.getB2DPoint(1).getX());
-    CPPUNIT_ASSERT_EQUAL(double(3661), aPolygon.getB2DPoint(1).getY());
+    CPPUNIT_ASSERT_EQUAL(double(-149), aPolygon.getB2DPoint(1).getX());
+    CPPUNIT_ASSERT_EQUAL(double(3511), aPolygon.getB2DPoint(1).getY());
 
-    CPPUNIT_ASSERT_EQUAL(double(16988), aPolygon.getB2DPoint(2).getX());
-    CPPUNIT_ASSERT_EQUAL(double(3661), aPolygon.getB2DPoint(2).getY());
+    CPPUNIT_ASSERT_EQUAL(double(16889), aPolygon.getB2DPoint(2).getX());
+    CPPUNIT_ASSERT_EQUAL(double(3511), aPolygon.getB2DPoint(2).getY());
 
-    CPPUNIT_ASSERT_EQUAL(double(16988), aPolygon.getB2DPoint(3).getX());
-    CPPUNIT_ASSERT_EQUAL(double(0), aPolygon.getB2DPoint(3).getY());
+    CPPUNIT_ASSERT_EQUAL(double(16889), aPolygon.getB2DPoint(3).getX());
+    CPPUNIT_ASSERT_EQUAL(double(-35), aPolygon.getB2DPoint(3).getY());
 }
 
 DECLARE_OOXMLIMPORT_TEST(testUnbalancedColumnsCompat, "unbalanced-columns-compat.docx")
@@ -912,6 +1070,7 @@ DECLARE_OOXMLIMPORT_TEST(testBnc821804, "bnc821804.docx")
     CPPUNIT_ASSERT_EQUAL(OUString(" (1st run of an insert) (2nd run of an insert)"), getRun(getParagraph(1),3)->getString());
     CPPUNIT_ASSERT(!hasProperty(getRun(getParagraph(1), 3), "RedlineType"));
     // And the end SwXRedlinePortion of the redline.
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(1), 4), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Insert"),getProperty<OUString>(getRun(getParagraph(1), 4), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("unknown1"),getProperty<OUString>(getRun(getParagraph(1), 4), "RedlineAuthor"));
     CPPUNIT_ASSERT_EQUAL(OString("2006-08-29T09:46:00Z"),dateTimeToString(getProperty<util::DateTime>(getRun(getParagraph(1), 4), "RedlineDateTime")));
@@ -920,6 +1079,7 @@ DECLARE_OOXMLIMPORT_TEST(testBnc821804, "bnc821804.docx")
     CPPUNIT_ASSERT_EQUAL(OUString("Normal text"), getRun(getParagraph(2),1)->getString());
     CPPUNIT_ASSERT(!hasProperty(getRun(getParagraph(2), 1), "RedlineType"));
 
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(3), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Delete"),getProperty<OUString>(getRun(getParagraph(3), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("unknown2"),getProperty<OUString>(getRun(getParagraph(3), 1), "RedlineAuthor"));
     CPPUNIT_ASSERT_EQUAL(OString("2006-08-29T09:47:00Z"),dateTimeToString(getProperty<util::DateTime>(getRun(getParagraph(3), 1), "RedlineDateTime")));
@@ -927,34 +1087,42 @@ DECLARE_OOXMLIMPORT_TEST(testBnc821804, "bnc821804.docx")
 
     // This is both inserted and formatted, so there are two SwXRedlinePortion "runs". Given that the redlines overlap and Writer core
     // doesn't officially expect that (even though it copes, the redline info will be split depending on how Writer deal with it).
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(4), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Insert"),getProperty<OUString>(getRun(getParagraph(4), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(true,getProperty<bool>(getRun(getParagraph(4), 1), "IsStart"));
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(4), 2), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("ParagraphFormat"),getProperty<OUString>(getRun(getParagraph(4), 2), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(true,getProperty<bool>(getRun(getParagraph(4), 2), "IsStart"));
     CPPUNIT_ASSERT_EQUAL(OUString("Inserted and formatted"), getRun(getParagraph(4),3)->getString());
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(4), 4), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Insert"),getProperty<OUString>(getRun(getParagraph(4), 4), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(false,getProperty<bool>(getRun(getParagraph(4), 4), "IsStart"));
     CPPUNIT_ASSERT_EQUAL(OUString(" and this is only formatted"), getRun(getParagraph(4),5)->getString());
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(4), 6), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("ParagraphFormat"),getProperty<OUString>(getRun(getParagraph(4), 6), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(false,getProperty<bool>(getRun(getParagraph(4), 6), "IsStart"));
 
     CPPUNIT_ASSERT_EQUAL(OUString("Normal text"), getRun(getParagraph(5),1)->getString());
     CPPUNIT_ASSERT(!hasProperty(getRun(getParagraph(5), 1), "RedlineType"));
 
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(6), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Format"),getProperty<OUString>(getRun(getParagraph(6), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(true,getProperty<bool>(getRun(getParagraph(6), 1), "IsStart"));
     CPPUNIT_ASSERT_EQUAL(OUString("unknown5"),getProperty<OUString>(getRun(getParagraph(6), 1), "RedlineAuthor"));
     CPPUNIT_ASSERT_EQUAL(OString("2006-08-29T10:02:00Z"),dateTimeToString(getProperty<util::DateTime>(getRun(getParagraph(6), 1), "RedlineDateTime")));
     CPPUNIT_ASSERT_EQUAL(OUString("Formatted run"), getRun(getParagraph(6),2)->getString());
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(6), 3), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Format"),getProperty<OUString>(getRun(getParagraph(6), 3), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(false,getProperty<bool>(getRun(getParagraph(6), 3), "IsStart"));
     CPPUNIT_ASSERT_EQUAL(OUString(" and normal text here "), getRun(getParagraph(6),4)->getString());
     CPPUNIT_ASSERT(!hasProperty(getRun(getParagraph(6), 4), "RedlineType"));
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(6), 5), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Insert"),getProperty<OUString>(getRun(getParagraph(6), 5), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(true,getProperty<bool>(getRun(getParagraph(6), 5), "IsStart"));
     CPPUNIT_ASSERT_EQUAL(OUString("unknown6"),getProperty<OUString>(getRun(getParagraph(6), 5), "RedlineAuthor"));
     CPPUNIT_ASSERT_EQUAL(OString("2006-08-29T09:48:00Z"),dateTimeToString(getProperty<util::DateTime>(getRun(getParagraph(6), 5), "RedlineDateTime")));
     CPPUNIT_ASSERT_EQUAL(OUString("and inserted again"), getRun(getParagraph(6),6)->getString());
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(6), 7), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Insert"),getProperty<OUString>(getRun(getParagraph(6), 7), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(false,getProperty<bool>(getRun(getParagraph(6), 7), "IsStart"));
     CPPUNIT_ASSERT_EQUAL(OUString(" and normal text again "), getRun(getParagraph(6),8)->getString());
@@ -967,25 +1135,32 @@ DECLARE_OOXMLIMPORT_TEST(testBnc821804, "bnc821804.docx")
     CPPUNIT_ASSERT_EQUAL(OUString(" and normal."), getRun(getParagraph(6),12)->getString());
     CPPUNIT_ASSERT(!hasProperty(getRun(getParagraph(6), 12), "RedlineType"));
 
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(7), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Insert"),getProperty<OUString>(getRun(getParagraph(7), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(true,getProperty<bool>(getRun(getParagraph(7), 1), "IsStart"));
     CPPUNIT_ASSERT_EQUAL(OUString("unknown8"),getProperty<OUString>(getRun(getParagraph(7), 1), "RedlineAuthor"));
     CPPUNIT_ASSERT_EQUAL(OUString("One insert."), getRun(getParagraph(7),2)->getString());
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(7), 3), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Insert"),getProperty<OUString>(getRun(getParagraph(7), 3), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(false,getProperty<bool>(getRun(getParagraph(7), 3), "IsStart"));
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(7), 4), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Insert"),getProperty<OUString>(getRun(getParagraph(7), 4), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(true,getProperty<bool>(getRun(getParagraph(7), 4), "IsStart"));
     CPPUNIT_ASSERT_EQUAL(OUString("unknown9"),getProperty<OUString>(getRun(getParagraph(7), 4), "RedlineAuthor"));
     CPPUNIT_ASSERT_EQUAL(OUString("Second insert."), getRun(getParagraph(7),5)->getString());
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(7), 6), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Insert"),getProperty<OUString>(getRun(getParagraph(7), 6), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(false,getProperty<bool>(getRun(getParagraph(7), 6), "IsStart"));
 
     // Overlapping again.
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(8), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Delete"),getProperty<OUString>(getRun(getParagraph(8), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(true,getProperty<bool>(getRun(getParagraph(8), 1), "IsStart"));
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(8), 2), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("ParagraphFormat"),getProperty<OUString>(getRun(getParagraph(8), 2), "RedlineType"));
-    CPPUNIT_ASSERT_EQUAL(true,getProperty<bool>(getRun(getParagraph(8), 2), "IsStart"));
+    CPPUNIT_ASSERT_EQUAL(true,getProperty<bool>(getRun(getParagraph(8), 1), "IsStart"));
     CPPUNIT_ASSERT_EQUAL(OUString("Deleted and formatted"), getRun(getParagraph(8),3)->getString());
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(8), 4), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("Delete"),getProperty<OUString>(getRun(getParagraph(8), 4), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(false,getProperty<bool>(getRun(getParagraph(8), 4), "IsStart"));
     CPPUNIT_ASSERT_EQUAL(OUString(" and this is only formatted"), getRun(getParagraph(8),5)->getString());
@@ -995,9 +1170,11 @@ DECLARE_OOXMLIMPORT_TEST(testBnc821804, "bnc821804.docx")
     CPPUNIT_ASSERT_EQUAL(OUString("Normal text"), getRun(getParagraph(9),1)->getString());
     CPPUNIT_ASSERT(!hasProperty(getRun(getParagraph(9), 1), "RedlineType"));
 
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(10), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("ParagraphFormat"),getProperty<OUString>(getRun(getParagraph(10), 1), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(true,getProperty<bool>(getRun(getParagraph(10), 1), "IsStart"));
     CPPUNIT_ASSERT_EQUAL(OUString("This is only formatted."), getRun(getParagraph(10),2)->getString());
+    CPPUNIT_ASSERT(hasProperty(getRun(getParagraph(10), 3), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(OUString("ParagraphFormat"),getProperty<OUString>(getRun(getParagraph(10), 3), "RedlineType"));
     CPPUNIT_ASSERT_EQUAL(false,getProperty<bool>(getRun(getParagraph(10), 3), "IsStart"));
 }
@@ -1011,11 +1188,11 @@ DECLARE_OOXMLIMPORT_TEST(testFdo87488, "fdo87488.docx")
     // StarView MetaFile.
     uno::Reference<container::XIndexAccess> group(getShape(1), uno::UNO_QUERY);
     {
-        uno::Reference<text::XTextRange> text(group->getByIndex(0), uno::UNO_QUERY);
+        uno::Reference<text::XTextRange> text(group->getByIndex(1), uno::UNO_QUERY);
         CPPUNIT_ASSERT_EQUAL(OUString("text2"), text->getString());
     }
     {
-        uno::Reference<beans::XPropertySet> props(group->getByIndex(0), uno::UNO_QUERY);
+        uno::Reference<beans::XPropertySet> props(group->getByIndex(1), uno::UNO_QUERY);
         CPPUNIT_ASSERT_EQUAL(props->getPropertyValue("RotateAngle"),
                              uno::makeAny<sal_Int32>(270 * 100));
         comphelper::SequenceAsHashMap geom(props->getPropertyValue("CustomShapeGeometry"));
@@ -1023,33 +1200,24 @@ DECLARE_OOXMLIMPORT_TEST(testFdo87488, "fdo87488.docx")
     }
 }
 
-DECLARE_OOXMLIMPORT_TEST(testTdf49073, "tdf49073.docx")
-{
-    // test case for Asisan phontic guide ( ruby text.)
-    sal_Unicode aRuby[3] = {0x304D,0x3082,0x3093};
-    OUString sRuby = OUString(aRuby, SAL_N_ELEMENTS(aRuby));
-    CPPUNIT_ASSERT_EQUAL(sRuby,getProperty<OUString>(getParagraph(1)->getStart(), "RubyText"));
-    OUString sStyle = getProperty<OUString>( getParagraph(1)->getStart(), "RubyCharStyleName");
-    uno::Reference<beans::XPropertySet> xPropertySet(getStyles("CharacterStyles")->getByName(sStyle), uno::UNO_QUERY );
-    CPPUNIT_ASSERT_EQUAL(5.f, getProperty<float>(xPropertySet, "CharHeight"));
-    CPPUNIT_ASSERT_EQUAL(sal_Int16(text::RubyAdjust_CENTER) ,getProperty<sal_Int16>(getParagraph(2)->getStart(),"RubyAdjust"));
-    CPPUNIT_ASSERT_EQUAL(sal_Int16(text::RubyAdjust_BLOCK)  ,getProperty<sal_Int16>(getParagraph(3)->getStart(),"RubyAdjust"));
-    CPPUNIT_ASSERT_EQUAL(sal_Int16(text::RubyAdjust_INDENT_BLOCK),getProperty<sal_Int16>(getParagraph(4)->getStart(),"RubyAdjust"));
-    CPPUNIT_ASSERT_EQUAL(sal_Int16(text::RubyAdjust_LEFT)   ,getProperty<sal_Int16>(getParagraph(5)->getStart(),"RubyAdjust"));
-    CPPUNIT_ASSERT_EQUAL(sal_Int16(text::RubyAdjust_RIGHT)  ,getProperty<sal_Int16>(getParagraph(6)->getStart(),"RubyAdjust"));
-}
-
-#endif
-
 DECLARE_OOXMLIMPORT_TEST(testTdf85232, "tdf85232.docx")
 {
     uno::Reference<drawing::XShapes> xShapes(getShapeByName("Group 219"), uno::UNO_QUERY);
     uno::Reference<drawing::XShape> xShape(xShapes->getByIndex(1), uno::UNO_QUERY);
-    uno::Reference<drawing::XShapeDescriptor> xShapeDescriptor(xShape, uno::UNO_QUERY);
+    uno::Reference<drawing::XShapeDescriptor> xShapeDescriptor = xShape;
     // Make sure we're not testing the ellipse child.
     CPPUNIT_ASSERT_EQUAL(OUString("com.sun.star.drawing.LineShape"), xShapeDescriptor->getShapeType());
-    // This was 2900: horizontal position of the line was incorrect, the 3 children were not connected visually.
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(2267), xShape->getPosition().X);
+
+    // tdf#106792 checked that during load of tdf85232.docx the method
+    // SvxShapePolyPolygon::setPropertyValueImpl is used three times. In
+    // that method, a call to ForceMetricToItemPoolMetric was missing so
+    // that the import did not convert the input values from 100thmm
+    // to twips what is needed due to the object residing in Writer. The
+    // UNO API by definition is in 100thmm. Result is that in SwXShape::getPosition
+    // the offset (aOffset) now is (0, 0) instead of an existing offset in
+    // the load of the document before (what is plausible for a GroupObject).
+    // Thus, I will adapt the result value here to the now (hopefully) correct one.
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(1630), xShape->getPosition().X); // was: 2267
 }
 
 DECLARE_OOXMLIMPORT_TEST(testTdf95755, "tdf95755.docx")
@@ -1072,6 +1240,9 @@ DECLARE_OOXMLIMPORT_TEST(testTdf60351, "tdf60351.docx")
     // Get the first image in the document and check its contour polygon.
     // It should contain 6 points. Check their coordinates.
     uno::Reference<beans::XPropertySet> xPropertySet(getShape(1), uno::UNO_QUERY);
+    // test for TODO: if paragraph's background becomes bottommost [better yet: wraps around shape], then remove this hack
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("HACK ALERT: Shape is in foreground", true, getProperty<bool>(xPropertySet, "Opaque"));
+
     css::drawing::PointSequenceSequence aPolyPolygon;
     xPropertySet->getPropertyValue("ContourPolyPolygon") >>= aPolyPolygon;
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aPolyPolygon.getLength());
@@ -1097,7 +1268,7 @@ DECLARE_OOXMLIMPORT_TEST(testTdf95970, "tdf95970.docx")
     // Proper color order of image on test doc (left->right):
     // top row: green->red
     // bottom row: yellow->blue
-    uno::Reference<drawing::XShape> xShape(getShape(1), uno::UNO_QUERY_THROW);
+    uno::Reference<drawing::XShape> xShape(getShape(1), uno::UNO_SET_THROW);
     uno::Reference<beans::XPropertySet> xPropertySet(getShape(1), uno::UNO_QUERY_THROW);
     sal_Int32 aRotate = 0;
     xPropertySet->getPropertyValue("RotateAngle") >>= aRotate;
@@ -1120,7 +1291,7 @@ DECLARE_OOXMLIMPORT_TEST(testTdf95970, "tdf95970.docx")
 
 DECLARE_OOXMLIMPORT_TEST(testTdf96674, "tdf96674.docx")
 {
-    uno::Reference<drawing::XShape> xShape(getShape(1), uno::UNO_QUERY);
+    uno::Reference<drawing::XShape> xShape = getShape(1);
     CPPUNIT_ASSERT(xShape.is());
     awt::Size aActualSize(xShape->getSize());
     // Width was 3493: the vertical line was horizontal.
@@ -1180,10 +1351,8 @@ DECLARE_OOXMLIMPORT_TEST(testTdf101626, "tdf101626.docx")
     uno::Sequence<beans::PropertyValue> aProps;
     xLevels->getByIndex(0) >>= aProps; // 1st level
 
-    for (int i = 0; i < aProps.getLength(); ++i)
+    for (beans::PropertyValue const & rProp : std::as_const(aProps))
     {
-        const beans::PropertyValue& rProp = aProps[i];
-
         if (rProp.Name == "BulletChar")
         {
             // the bulletChar has to be 0x2d!
@@ -1202,10 +1371,8 @@ DECLARE_OOXMLIMPORT_TEST( testTdf106606, "tdf106606.docx" )
         uno::Sequence<beans::PropertyValue>     aProps;
         xLevels->getByIndex( 0 ) >>= aProps; // 1st level
 
-        for ( int i = 0; i < aProps.getLength(); ++i )
+        for ( beans::PropertyValue const & rProp : std::as_const(aProps))
         {
-            const beans::PropertyValue& rProp = aProps[i];
-
             // If the image was prematurely removed from cache when processed for previous numbering list, then the sequence hasn't the property.
             if ( rProp.Name == "GraphicBitmap" )
                 return true;
@@ -1224,6 +1391,19 @@ DECLARE_OOXMLIMPORT_TEST(testTdf101627, "tdf101627.docx")
     uno::Reference<text::XTextRange> xFrame(getShape(1), uno::UNO_QUERY);
     CPPUNIT_ASSERT(xFrame->getString().startsWith( "1" ) );
     CPPUNIT_ASSERT_EQUAL(sal_Int32(466), getProperty<sal_Int32>(xFrame, "Height"));
+}
+
+DECLARE_OOXMLIMPORT_TEST(testTdf133448, "tdf133448.docx")
+{
+    auto xGraphic = getProperty<uno::Reference<graphic::XGraphic>>(getShape(1), "Graphic");
+    Graphic aGraphic(xGraphic);
+    uno::Reference<beans::XPropertySet> xGraphicDescriptor(xGraphic, uno::UNO_QUERY_THROW);
+    awt::Size aSizePixel;
+    CPPUNIT_ASSERT(xGraphicDescriptor->getPropertyValue("SizePixel") >>= aSizePixel);
+
+    //Without the fix in place, the graphic's size is 0x0
+    CPPUNIT_ASSERT_GREATER(sal_Int32(0), aSizePixel.Width);
+    CPPUNIT_ASSERT_GREATER(sal_Int32(0), aSizePixel.Height);
 }
 
 DECLARE_OOXMLIMPORT_TEST(testTdf100072, "tdf100072.docx")
@@ -1255,13 +1435,13 @@ DECLARE_OOXMLIMPORT_TEST(testTdf100072, "tdf100072.docx")
     ReadGraphic(aStream, aGraphic);
     const GDIMetaFile& rMetaFile = aGraphic.GetGDIMetaFile();
     MetafileXmlDump dumper;
-    xmlDocPtr pXmlDoc = dumper.dumpAndParse(rMetaFile);
+    xmlDocUniquePtr pXmlDoc = dumpAndParse(dumper, rMetaFile);
 
     // Get first polyline rightside x coordinate
-    sal_Int32 nFirstEnd = getXPath(pXmlDoc, "/metafile/polyline[1]/point[2]", "x").toInt32();
+    sal_Int32 nFirstEnd = getXPath(pXmlDoc, "(//polyline)[1]/point[2]", "x").toInt32();
 
     // Get last stroke x coordinate
-    sal_Int32 nSecondEnd = getXPath(pXmlDoc, "/metafile/polyline[last()]/point[2]", "x").toInt32();
+    sal_Int32 nSecondEnd = getXPath(pXmlDoc, "(//polyline)[last()]/point[2]", "x").toInt32();
 
     // Assert that the difference is less than half point.
     CPPUNIT_ASSERT_MESSAGE("Shape line width does not match", abs(nFirstEnd - nSecondEnd) < 10);
@@ -1300,6 +1480,38 @@ DECLARE_OOXMLIMPORT_TEST(testTdf108806, "tdf108806.docx")
     CPPUNIT_ASSERT_EQUAL(
         OUString("First part of a line (before CRLF). Second part of the same line (after CRLF)."),
         paragraph->getString());
+}
+
+DECLARE_OOXMLIMPORT_TEST(testTdf87533_bidi, "tdf87533_bidi.docx")
+{
+    // "w:bidi" (specified inside Default paragraph properties) should not be ignored
+    const OUString writingMode = "WritingMode"; //getPropertyName(PROP_WRITING_MODE);
+
+    // check: "Default Style" master-style has RTL
+    {
+        const uno::Reference<beans::XPropertySet> xPropertySet(getStyles("PageStyles")->getByName("Default Page Style"), uno::UNO_QUERY);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(text::WritingMode2::RL_TB), getProperty<sal_Int32>(xPropertySet, writingMode));
+    }
+
+    // check: "Standard" master-style has RTL
+    {
+        const uno::Reference<beans::XPropertySet> xPropertySet(getStyles("PageStyles")->getByName("Standard"), uno::UNO_QUERY);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(text::WritingMode2::RL_TB), getProperty<sal_Int32>(xPropertySet, writingMode));
+    }
+
+    // check: style of the first paragraph has RTL
+    // it has missing usage of the <w:bidi> => this property should be taken from style
+    {
+        const uno::Reference<beans::XPropertySet> xPara(getParagraph(1), uno::UNO_QUERY);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(text::WritingMode2::RL_TB), getProperty<sal_Int32>(xPara, writingMode));
+    }
+
+    // check: style of the first paragraph has LTR
+    // it has <w:bidi w:val="false"/>
+    {
+        const uno::Reference<beans::XPropertySet> xPara(getParagraph(2), uno::UNO_QUERY);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(text::WritingMode2::LR_TB), getProperty<sal_Int32>(xPara, writingMode));
+    }
 }
 
 DECLARE_OOXMLIMPORT_TEST(testVmlAdjustments, "vml-adjustments.docx")
@@ -1359,8 +1571,10 @@ DECLARE_OOXMLIMPORT_TEST(testTdf108714, "tdf108714.docx")
     CPPUNIT_ASSERT_EQUAL(style::BreakType_PAGE_BEFORE, breakType);
 
     // A table with immediately following break
+    // Line breaks in block and paragraph levels must be taken into account
+    // Several successive out-of-place w:br's must produce required amount of breaks
     uno::Reference<text::XTextContent> table = getParagraphOrTable(5);
-    getCell(table, "A1", "Paragraph 5 in table");
+    getCell(table, "A1", "\n\n\n\nParagraph 5 in table");
     breakType = getProperty<style::BreakType>(table, "BreakType");
     CPPUNIT_ASSERT_EQUAL(style::BreakType_NONE, breakType);
 
@@ -1368,6 +1582,63 @@ DECLARE_OOXMLIMPORT_TEST(testTdf108714, "tdf108714.docx")
     CPPUNIT_ASSERT_EQUAL(OUString("Paragraph 6"), paragraph->getString());
     breakType = getProperty<style::BreakType>(paragraph, "BreakType");
     CPPUNIT_ASSERT_EQUAL(style::BreakType_PAGE_BEFORE, breakType);
+}
+
+DECLARE_OOXMLIMPORT_TEST(testImageLazyRead, "image-lazy-read.docx")
+{
+    auto xGraphic = getProperty<uno::Reference<graphic::XGraphic>>(getShape(1), "Graphic");
+    Graphic aGraphic(xGraphic);
+    // This failed, import loaded the graphic, it wasn't lazy-read.
+    CPPUNIT_ASSERT(!aGraphic.isAvailable());
+}
+
+DECLARE_OOXMLIMPORT_TEST(testTdf108995, "xml_space.docx")
+{
+    CPPUNIT_ASSERT_EQUAL(1, getParagraphs());
+    // We need to take xml:space attribute into account
+    uno::Reference< text::XTextRange > paragraph = getParagraph(1);
+    CPPUNIT_ASSERT_EQUAL(OUString("\tA\t\tline  with\txml:space=\"preserve\" \n"
+                                  "A  line  without xml:space"),
+                         paragraph->getString());
+}
+
+DECLARE_OOXMLIMPORT_TEST(testGroupShapeTextHighlight, "tdf131841_HighlightColorGroupedShape.docx")
+{
+    // tdf#131841 Highlight color of text in grouped shapes was not imported.
+
+    // These are the possible highlight colors in MSO Word. Check that we import them properly.
+    const std::vector<sal_uInt32> xColors {
+        0xFFFF00UL, // yellow
+        0x00FF00UL, // green
+        0x00FFFFUL, // cyan
+        0xFF00FFUL, // magenta
+        0x0000FFUL, // blue
+        0xFF0000UL, // red
+        0x00008BUL, // dark blue
+        0x008B8BUL, // dark cyan
+        0x006400UL, // dark green
+        0x800080UL, // dark magenta
+        0x8B0000UL, // dark red
+        0x808000UL, // dark yellow
+        0xA9A9A9UL, // dark grey
+        0xD3D3D3UL, // light grey
+        0x000000UL  // black
+    };
+
+    // The grouped shape, consists of 15 rectangles.
+    uno::Reference<drawing::XShapes> xGroupShape(getShape(1), uno::UNO_QUERY);
+
+    // Iterate through all of the rectangles and check the colors of the texts.
+    // They should correspond to the list above.
+    for (size_t idx = 0; idx < xColors.size(); ++idx)
+    {
+        uno::Reference<text::XTextRange> xTextRange(xGroupShape->getByIndex(idx), uno::UNO_QUERY);
+        uno::Reference<text::XTextRange> firstParagraph = getParagraphOfText(1, xTextRange->getText());
+        uno::Reference<text::XTextRange> firstRun = getRun(firstParagraph, 1);
+        uno::Reference<beans::XPropertySet> props(firstRun, uno::UNO_QUERY_THROW);
+
+        CPPUNIT_ASSERT_EQUAL(xColors[idx], props->getPropertyValue("CharBackColor").get<sal_uInt32>());
+    }
 }
 
 // tests should only be added to ooxmlIMPORT *if* they fail round-tripping in ooxmlEXPORT

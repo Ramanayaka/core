@@ -18,22 +18,22 @@
  */
 
 
-#include "extended/AccessibleBrowseBoxHeaderCell.hxx"
-#include <svtools/accessibletableprovider.hxx>
-#include "extended/AccessibleBrowseBox.hxx"
+#include <extended/AccessibleBrowseBoxHeaderCell.hxx>
+#include <vcl/accessibletableprovider.hxx>
+#include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
 namespace accessibility
 {
     using namespace ::com::sun::star::accessibility;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::uno;
-    using namespace ::svt;
 
 AccessibleBrowseBoxHeaderCell::AccessibleBrowseBoxHeaderCell(sal_Int32 _nColumnRowId,
                                   const Reference< XAccessible >& rxParent,
-                                  IAccessibleTableProvider&                  rBrowseBox,
+                                  vcl::IAccessibleTableProvider& rBrowseBox,
                                   const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
-                                  AccessibleBrowseBoxObjType  eObjType)
+                                  vcl::AccessibleBrowseBoxObjType eObjType)
 : BrowseBoxAccessibleElement(rxParent,
                           rBrowseBox,
                           _xFocusWindow,
@@ -112,15 +112,15 @@ void SAL_CALL AccessibleBrowseBoxHeaderCell::grabFocus()
 */
 OUString SAL_CALL AccessibleBrowseBoxHeaderCell::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.svtools.AccessibleBrowseBoxHeaderCell" );
+    return "com.sun.star.comp.svtools.AccessibleBrowseBoxHeaderCell";
 }
 
 namespace
 {
-    tools::Rectangle getRectangle(IAccessibleTableProvider* _pBrowseBox,sal_Int32 _nRowColIndex, bool _bOnScreen,bool _bRowBar)
+    tools::Rectangle getRectangle(vcl::IAccessibleTableProvider* _pBrowseBox,sal_Int32 _nRowColIndex, bool _bOnScreen,bool _bRowBar)
     {
         sal_Int32 nRow  = 0;
-        sal_uInt16 nCol =  (sal_uInt16)_nRowColIndex;
+        sal_uInt16 nCol =  static_cast<sal_uInt16>(_nRowColIndex);
         if ( _bRowBar )
         {
             nRow = _nRowColIndex + 1;

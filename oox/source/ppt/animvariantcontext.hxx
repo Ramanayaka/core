@@ -22,17 +22,17 @@
 
 #include <com/sun/star/uno/Any.hxx>
 
-#include "oox/core/fragmenthandler2.hxx"
-#include "oox/drawingml/color.hxx"
+#include <oox/core/fragmenthandler2.hxx>
+#include <oox/drawingml/color.hxx>
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
     /** context CT_TLAnimVariant */
     class AnimVariantContext
         : public ::oox::core::FragmentHandler2
     {
     public:
-        AnimVariantContext( ::oox::core::FragmentHandler2& rParent, ::sal_Int32 aElement, css::uno::Any & aValue );
+        AnimVariantContext( ::oox::core::FragmentHandler2 const & rParent, ::sal_Int32 aElement, css::uno::Any & aValue );
         virtual ~AnimVariantContext( ) throw( ) override;
         virtual void onEndElement() override;
         virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs ) override;
@@ -43,7 +43,7 @@ namespace oox { namespace ppt {
         ::oox::drawingml::Color     maColor;
     };
 
-} }
+}
 
 #endif
 

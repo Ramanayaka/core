@@ -19,12 +19,13 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_ELEMENTSELECTOR_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_ELEMENTSELECTOR_HXX
 
-#include "ObjectHierarchy.hxx"
+#include <ObjectIdentifier.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/frame/XController.hpp>
 #include <cppuhelper/implbase1.hxx>
 #include <svtools/toolboxcontroller.hxx>
 
-#include <vcl/lstbox.hxx>
+#include <vcl/InterimItemWindow.hxx>
 #include <cppuhelper/weakref.hxx>
 
 namespace chart
@@ -41,26 +42,29 @@ struct ListBoxEntryData
     }
 };
 
-class SelectorListBox : public ListBox
+class SelectorListBox final : public InterimItemWindow
 {
-    public:
-        SelectorListBox( vcl::Window* pParent, WinBits nStyle );
+public:
+    SelectorListBox(vcl::Window* pParent);
+    virtual void dispose() override;
+    virtual ~SelectorListBox() override;
 
-        virtual void Select() override;
-        virtual bool EventNotify( NotifyEvent& rNEvt ) override;
-        virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+    void ReleaseFocus_Impl();
 
-        void ReleaseFocus_Impl();
+    void SetChartController( const css::uno::Reference< css::frame::XController >& xChartController );
+    void UpdateChartElementsListAndSelection();
 
-        void SetChartController( const css::uno::Reference< css::frame::XController >& xChartController );
-        void UpdateChartElementsListAndSelection();
+private:
+    css::uno::WeakReference<css::frame::XController> m_xChartController;
+    std::unique_ptr<weld::ComboBox> m_xWidget;
 
-    private:
-        css::uno::WeakReference< css::frame::XController >   m_xChartController;
+    std::vector<ListBoxEntryData> m_aEntries;
 
-        std::vector< ListBoxEntryData > m_aEntries;
+    bool m_bReleaseFocus;
 
-        bool m_bReleaseFocus;
+    DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
+    DECL_LINK(SelectHdl, weld::ComboBox&, void);
+    DECL_LINK(FocusOutHdl, weld::Widget&, void);
 };
 
 typedef ::cppu::ImplHelper1 < css::lang::XServiceInfo> ElementSelectorToolbarController_BASE;

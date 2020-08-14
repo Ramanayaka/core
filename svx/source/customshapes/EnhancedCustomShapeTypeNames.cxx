@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/EnhancedCustomShapeTypeNames.hxx"
+#include <svx/EnhancedCustomShapeTypeNames.hxx>
 #include <osl/mutex.hxx>
 #include <unordered_map>
 #include <memory>
@@ -31,12 +31,17 @@ static ::osl::Mutex& getHashMapMutex()
     return s_aHashMapProtection;
 }
 
+namespace {
+
 struct NameTypeTable
 {
     const char* pS;
     MSO_SPT     pE;
 };
-static const NameTypeTable pNameTypeTableArray[] =
+
+}
+
+const NameTypeTable pNameTypeTableArray[] =
 {
     { "non-primitive", mso_sptMin },
     { "rectangle", mso_sptRectangle },
@@ -291,7 +296,7 @@ MSO_SPT EnhancedCustomShapeTypeNames::Get( const OUString& rShapeType )
     int i, nLen = rShapeType.getLength();
     std::unique_ptr<char[]> pBuf(new char[ nLen + 1 ]);
     for ( i = 0; i < nLen; i++ )
-        pBuf[ i ] = (char)rShapeType[ i ];
+        pBuf[ i ] = static_cast<char>(rShapeType[ i ]);
     pBuf[ i ] = 0;
     TypeNameHashMap::const_iterator aHashIter( pHashMap->find( pBuf.get() ) );
     if ( aHashIter != pHashMap->end() )
@@ -309,13 +314,18 @@ OUString EnhancedCustomShapeTypeNames::Get( const MSO_SPT eShapeType )
 typedef std::unordered_map< const char*, const char*, rtl::CStringHash, rtl::CStringEqual> TypeACCNameHashMap;
 
 static TypeACCNameHashMap* pACCHashMap = nullptr;
+
+namespace {
+
 struct ACCNameTypeTable
 {
     const char* pS;
     const char* pE;
 };
 
-static const ACCNameTypeTable pACCNameTypeTableArray[] =
+}
+
+const ACCNameTypeTable pACCNameTypeTableArray[] =
 {
     { "non-primitive", "Non Primitive Shape" },
     { "rectangle", "Rectangle" },
@@ -546,7 +556,7 @@ OUString EnhancedCustomShapeTypeNames::GetAccName( const OUString& rShapeType )
     int i, nLen = rShapeType.getLength();
     std::unique_ptr<char[]> pBuf(new char[ nLen + 1 ]);
     for ( i = 0; i < nLen; i++ )
-        pBuf[ i ] = (char)rShapeType[ i ];
+        pBuf[ i ] = static_cast<char>(rShapeType[ i ]);
     pBuf[ i ] = 0;
     TypeACCNameHashMap::const_iterator aHashIter( pACCHashMap->find( pBuf.get() ) );
     if ( aHashIter != pACCHashMap->end() )

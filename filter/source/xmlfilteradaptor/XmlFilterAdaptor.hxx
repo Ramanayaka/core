@@ -41,7 +41,7 @@ enum FilterType
  * setSourceDocument or setTargetDocument determines which Impl function the filter
  * member calls */
 
-class XmlFilterAdaptor : public cppu::WeakImplHelper
+class XmlFilterAdaptor final : public cppu::WeakImplHelper
 <
     css::document::XFilter,
     css::document::XExporter,
@@ -50,9 +50,6 @@ class XmlFilterAdaptor : public cppu::WeakImplHelper
     css::lang::XServiceInfo
 >
 {
-
-protected:
-
     css::uno::Reference< css::uno::XComponentContext > mxContext;
     css::uno::Reference< css::lang::XComponent > mxDoc;
     OUString msFilterName;
@@ -61,10 +58,10 @@ protected:
     FilterType meType;
 
     /// @throws css::uno::RuntimeException
-    bool SAL_CALL exportImpl( const css::uno::Sequence< css::beans::PropertyValue >& aDescriptor );
+    bool exportImpl( const css::uno::Sequence< css::beans::PropertyValue >& aDescriptor );
 
     /// @throws css::uno::RuntimeException
-    bool SAL_CALL importImpl( const css::uno::Sequence< css::beans::PropertyValue >& aDescriptor );
+    bool importImpl( const css::uno::Sequence< css::beans::PropertyValue >& aDescriptor );
 
 
 public:
@@ -106,18 +103,6 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
 };
-
-/// @throws css::uno::RuntimeException
-OUString XmlFilterAdaptor_getImplementationName();
-
-/// @throws css::uno::RuntimeException
-css::uno::Sequence< OUString > SAL_CALL XmlFilterAdaptor_getSupportedServiceNames(  );
-
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface >
-
-SAL_CALL XmlFilterAdaptor_createInstance( const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr);
-
 
 #endif
 

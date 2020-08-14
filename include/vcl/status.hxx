@@ -24,11 +24,16 @@
 #include <vcl/dllapi.h>
 #include <vcl/window.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <memory>
 #include <vector>
 
+class DataChangedEvent;
+class HelpEvent;
+class MouseEvent;
+class UserDrawEvent;
 struct ImplStatusItem;
 
-void VCL_DLLPUBLIC DrawProgress(vcl::Window* pWindow, vcl::RenderContext& rRenderContext, const Point& rPos,
+void DrawProgress(vcl::Window* pWindow, vcl::RenderContext& rRenderContext, const Point& rPos,
                                 long nOffset, long nPrgsWidth, long nPrgsHeight,
                                 sal_uInt16 nPercent1, sal_uInt16 nPercent2, sal_uInt16 nPercentCount,
                                 const tools::Rectangle& rFramePosSize);
@@ -44,23 +49,24 @@ enum class StatusBarItemBits {
     Flat            = 0x0020,
     AutoSize        = 0x0040,
     UserDraw        = 0x0080,
+    Mandatory       = 0x0100,
 };
 namespace o3tl
 {
-    template<> struct typed_flags<StatusBarItemBits> : is_typed_flags<StatusBarItemBits, 0x00ff> {};
+    template<> struct typed_flags<StatusBarItemBits> : is_typed_flags<StatusBarItemBits, 0x01ff> {};
 }
 
-#define STATUSBAR_APPEND            ((sal_uInt16)0xFFFF)
-#define STATUSBAR_ITEM_NOTFOUND     ((sal_uInt16)0xFFFF)
-#define STATUSBAR_OFFSET            ((long)5)
+#define STATUSBAR_APPEND            (sal_uInt16(0xFFFF))
+#define STATUSBAR_ITEM_NOTFOUND     (sal_uInt16(0xFFFF))
+#define STATUSBAR_OFFSET            (long(5))
 
 
 class VCL_DLLPUBLIC StatusBar : public vcl::Window
 {
-    class   ImplData;
+    class SAL_DLLPRIVATE ImplData;
 private:
-    std::vector<ImplStatusItem *> mpItemList;
-    ImplData*           mpImplData;
+    std::vector<std::unique_ptr<ImplStatusItem>> mvItemList;
+    std::unique_ptr<ImplData> mpImplData;
     OUString            maPrgsTxt;
     Point               maPrgsTxtPos;
     tools::Rectangle           maPrgsFrameRect;
@@ -73,7 +79,7 @@ private:
     sal_uInt16          mnCurItemId;
     sal_uInt16          mnPercent;
     sal_uInt16          mnPercentCount;
-    bool                mbVisibleItems;
+    sal_uInt32          mnLastProgressPaint_ms;
     bool                mbFormat;
     bool                mbProgressMode;
     bool                mbInUserDraw;
@@ -127,8 +133,6 @@ public:
     void                HideItem( sal_uInt16 nItemId );
     bool                IsItemVisible( sal_uInt16 nItemId ) const;
 
-    bool                AreItemsVisible() const { return mbVisibleItems; }
-
     void                RedrawItem( sal_uInt16 nItemId );
 
     void                Clear();
@@ -146,14 +150,15 @@ public:
 
     long                GetItemOffset( sal_uInt16 nItemId ) const;
 
-    void                SetItemText( sal_uInt16 nItemId, const OUString& rText );
+    /// @param nCharsWidth, if not -1, overrides the normal width calculation
+    void                SetItemText( sal_uInt16 nItemId, const OUString& rText, int nCharsWidth = -1 );
     const OUString&     GetItemText( sal_uInt16 nItemId ) const;
 
     void                SetItemData( sal_uInt16 nItemId, void* pNewData );
     void*               GetItemData( sal_uInt16 nItemId ) const;
 
     void                SetItemCommand( sal_uInt16 nItemId, const OUString& rCommand );
-    const OUString      GetItemCommand( sal_uInt16 nItemId );
+    OUString            GetItemCommand( sal_uInt16 nItemId );
 
     void                SetHelpText( sal_uInt16 nItemId, const OUString& rText );
     const OUString&     GetHelpText( sal_uInt16 nItemId ) const;
@@ -164,7 +169,6 @@ public:
     const OUString&     GetQuickHelpText( sal_uInt16 nItemId ) const;
 
     void                SetHelpId( sal_uInt16 nItemId, const OString& rHelpId );
-    OString             GetHelpId( sal_uInt16 nItemId ) const;
 
     void                StartProgressMode( const OUString& rText );
     void                SetProgressValue( sal_uInt16 nPercent );

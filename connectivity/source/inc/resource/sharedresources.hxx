@@ -21,7 +21,7 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_RESOURCE_SHAREDRESOURCES_HXX
 
 #include <rtl/ustring.hxx>
-#include <list>
+#include <vector>
 #include <connectivity/dbtoolsdllapi.hxx>
 
 
@@ -41,20 +41,20 @@ namespace connectivity
         ~SharedResources();
 
         /** loads a string from the shared resource file
-            @param  _nResId
+            @param  pResId
                 the resource ID of the string
             @return
                 the string from the resource file
         */
         OUString
             getResourceString(
-                ResourceId _nResId
+                const char* pResId
             ) const;
 
         /** loads a string from the shared resource file, and replaces
             a given ASCII pattern with a given string
 
-            @param  _nResId
+            @param  pResId
                 the resource ID of the string to load
             @param  _pAsciiPatternToReplace
                 the ASCII string which is to search in the string. Must not be <NULL/>.
@@ -66,15 +66,15 @@ namespace connectivity
         */
         OUString
             getResourceStringWithSubstitution(
-                ResourceId _nResId,
-                const sal_Char* _pAsciiPatternToReplace,
+                const char* pResId,
+                const char* _pAsciiPatternToReplace,
                 const OUString& _rStringToSubstitute
             ) const;
 
         /** loads a string from the shared resource file, and replaces
             a given ASCII pattern with a given string
 
-            @param  _nResId
+            @param  pResId
                 the resource ID of the string to load
             @param  _pAsciiPatternToReplace1
                 the ASCII string (1) which is to search in the string. Must not be <NULL/>.
@@ -90,17 +90,17 @@ namespace connectivity
         */
         OUString
             getResourceStringWithSubstitution(
-                ResourceId _nResId,
-                const sal_Char* _pAsciiPatternToReplace1,
+                const char* pResId,
+                const char* _pAsciiPatternToReplace1,
                 const OUString& _rStringToSubstitute1,
-                const sal_Char* _pAsciiPatternToReplace2,
+                const char* _pAsciiPatternToReplace2,
                 const OUString& _rStringToSubstitute2
             ) const;
 
         /** loads a string from the shared resource file, and replaces
             a given ASCII pattern with a given string
 
-            @param  _nResId
+            @param  pResId
                 the resource ID of the string to load
             @param  _pAsciiPatternToReplace1
                 the ASCII string (1) which is to search in the string. Must not be <NULL/>.
@@ -120,18 +120,18 @@ namespace connectivity
         */
         OUString
             getResourceStringWithSubstitution(
-                ResourceId _nResId,
-                const sal_Char* _pAsciiPatternToReplace1,
+                const char* pResId,
+                const char* _pAsciiPatternToReplace1,
                 const OUString& _rStringToSubstitute1,
-                const sal_Char* _pAsciiPatternToReplace2,
+                const char* _pAsciiPatternToReplace2,
                 const OUString& _rStringToSubstitute2,
-                const sal_Char* _pAsciiPatternToReplace3,
+                const char* _pAsciiPatternToReplace3,
                 const OUString& _rStringToSubstitute3
             ) const;
 
         /** loads a string from the shared resource file, and replaces a given ASCII pattern with a given string
 
-            @param  _nResId
+            @param  pResId
                 the resource ID of the string to load
             @param  _aStringToSubstitutes
                 A list of substitutions.
@@ -139,8 +139,8 @@ namespace connectivity
             @return
                 the string from the resource file, with applied string substitution
         */
-        OUString getResourceStringWithSubstitution( ResourceId _nResId,
-                    const std::list< std::pair<const sal_Char* , OUString > >& _rStringToSubstitutes) const;
+        OUString getResourceStringWithSubstitution( const char* pResId,
+                    const std::vector< std::pair<const char* , OUString > >& _rStringToSubstitutes) const;
     };
 
 

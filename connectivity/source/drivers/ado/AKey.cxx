@@ -17,13 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AKey.hxx"
+#include <ado/AKey.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
-#include "ado/AColumns.hxx"
-#include "ado/AConnection.hxx"
+#include <ado/AColumns.hxx>
+#include <ado/AConnection.hxx>
 
 using namespace connectivity::ado;
 using namespace com::sun::star::uno;
@@ -52,7 +52,7 @@ OAdoKey::OAdoKey(bool _bCase,OConnection* _pConnection)
 
 void OAdoKey::refreshColumns()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
 
     WpADOColumns aColumns;
     if ( m_aKey.IsValid() )
@@ -64,10 +64,10 @@ void OAdoKey::refreshColumns()
     if(m_pColumns)
         m_pColumns->reFill(aVector);
     else
-        m_pColumns = new OColumns(*this,m_aMutex,aVector,aColumns,isCaseSensitive(),m_pConnection);
+        m_pColumns.reset(new OColumns(*this, m_aMutex, aVector, aColumns, isCaseSensitive(), m_pConnection));
 }
 
-Sequence< sal_Int8 > OAdoKey::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OAdoKey::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -78,7 +78,7 @@ Sequence< sal_Int8 > OAdoKey::getUnoTunnelImplementationId()
 
 sal_Int64 OAdoKey::getSomething( const Sequence< sal_Int8 > & rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return isUnoTunnelId<OAdoKey>(rId)
                 ? reinterpret_cast< sal_Int64 >( this )
                 : OKey_ADO::getSomething(rId);
 }

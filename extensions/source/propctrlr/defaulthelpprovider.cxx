@@ -20,7 +20,6 @@
 
 #include "defaulthelpprovider.hxx"
 #include "pcrcommon.hxx"
-#include "pcrservices.hxx"
 #include "modulepcr.hxx"
 
 #include <com/sun/star/ucb/AlreadyInitializedException.hpp>
@@ -29,12 +28,7 @@
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/window.hxx>
 #include <tools/diagnose_ex.h>
-
-
-extern "C" void SAL_CALL createRegistryInfo_DefaultHelpProvider()
-{
-    ::pcr::OAutoRegistration< ::pcr::DefaultHelpProvider > aAutoRegistration;
-}
+#include <cppuhelper/supportsservice.hxx>
 
 
 namespace pcr
@@ -67,22 +61,19 @@ namespace pcr
     }
 
 
-    OUString DefaultHelpProvider::getImplementationName_static(  )
+    Sequence< OUString > SAL_CALL DefaultHelpProvider::getSupportedServiceNames()
     {
-        return OUString("org.openoffice.comp.extensions.DefaultHelpProvider");
+        return { "com.sun.star.inspection.DefaultHelpProvider" };
     }
 
-
-    Sequence< OUString > DefaultHelpProvider::getSupportedServiceNames_static(  )
+    OUString SAL_CALL DefaultHelpProvider::getImplementationName()
     {
-        Sequence< OUString > aSupported { "com.sun.star.inspection.DefaultHelpProvider" };
-        return aSupported;
+        return "org.openoffice.comp.extensions.DefaultHelpProvider";
     }
 
-
-    Reference< XInterface > SAL_CALL DefaultHelpProvider::Create( const Reference< XComponentContext >& )
+    sal_Bool SAL_CALL DefaultHelpProvider::supportsService(const OUString& aServiceName)
     {
-        return *new DefaultHelpProvider;
+        return cppu::supportsService(this, aServiceName);
     }
 
 
@@ -97,7 +88,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
     }
 
@@ -137,7 +128,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
 
         m_bConstructed = true;
@@ -153,12 +144,12 @@ namespace pcr
 
         try
         {
-            Reference< XWindow > xControlWindow( _rxControl->getControlWindow(), UNO_QUERY_THROW );
+            Reference< XWindow > xControlWindow( _rxControl->getControlWindow(), css::uno::UNO_SET_THROW );
             pControlWindow = VCLUnoHelper::GetWindow( xControlWindow ).get();
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
 
         return pControlWindow;
@@ -183,5 +174,11 @@ namespace pcr
 
 } // namespace pcr
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_DefaultHelpProvider_get_implementation(
+    css::uno::XComponentContext*  , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new pcr::DefaultHelpProvider());
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

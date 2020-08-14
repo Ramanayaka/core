@@ -17,30 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "warnbox.hxx"
+#include <warnbox.hxx>
 
-#include "scmod.hxx"
-#include "inputopt.hxx"
-#include "scresid.hxx"
-#include "scres.hrc"
+#include <scmod.hxx>
+#include <inputopt.hxx>
 
-ScReplaceWarnBox::ScReplaceWarnBox( vcl::Window* pParent ) :
-    WarningBox( pParent, WB_YES_NO | WB_DEF_YES, ScResId( STR_REPLCELLSWARN ) )
-{
+ScReplaceWarnBox::ScReplaceWarnBox(weld::Window* pParent)
+    : MessageDialogController(pParent, "modules/scalc/ui/checkwarningdialog.ui",
+            "CheckWarningDialog", "ask")
     // By default, the check box is ON, and the user needs to un-check it to
     // disable all future warnings.
-    SetCheckBoxState(true);
-    SetCheckBoxText(ScResId(SCSTR_WARN_ME_IN_FUTURE_CHECK));
-    SetHelpId( HID_SC_REPLCELLSWARN );
+    , m_xWarningOnBox(m_xBuilder->weld_check_button("ask"))
+{
+    m_xDialog->set_default_response(RET_YES);
 }
 
-sal_Int16 ScReplaceWarnBox::Execute()
+short ScReplaceWarnBox::run()
 {
-    sal_Int16 nRet = RET_YES;
+    short nRet = RET_YES;
     if( SC_MOD()->GetInputOptions().GetReplaceCellsWarn() )
     {
-        nRet = WarningBox::Execute();
-        if (!GetCheckBoxState())
+        nRet = MessageDialogController::run();
+        if (!m_xWarningOnBox->get_active())
         {
             ScModule* pScMod = SC_MOD();
             ScInputOptions aInputOpt( pScMod->GetInputOptions() );

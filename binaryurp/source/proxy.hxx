@@ -20,20 +20,20 @@
 #ifndef INCLUDED_BINARYURP_SOURCE_PROXY_HXX
 #define INCLUDED_BINARYURP_SOURCE_PROXY_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "osl/interlck.h"
-#include "rtl/ref.hxx"
-#include "rtl/ustring.hxx"
-#include "typelib/typedescription.h"
-#include "typelib/typedescription.hxx"
-#include "uno/any2.h"
-#include "uno/dispatcher.h"
+#include <atomic>
+#include <cstddef>
+
+#include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
+#include <typelib/typedescription.h>
+#include <typelib/typedescription.hxx>
+#include <uno/any2.h>
+#include <uno/dispatcher.h>
 
 namespace binaryurp { class Bridge; }
-namespace com { namespace sun { namespace star { namespace uno {
-    class UnoInterfaceReference;
-} } } }
+namespace com::sun::star::uno { class UnoInterfaceReference; }
 
 namespace binaryurp {
 
@@ -78,7 +78,7 @@ private:
     rtl::Reference< Bridge > bridge_;
     OUString oid_;
     com::sun::star::uno::TypeDescription type_;
-    oslInterlockedCount references_;
+    std::atomic<std::size_t> references_;
 };
 
 }

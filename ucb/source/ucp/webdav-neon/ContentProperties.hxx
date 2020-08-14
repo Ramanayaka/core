@@ -26,8 +26,7 @@
  *
  ************************************************************************/
 
-#ifndef INCLUDED_UCB_SOURCE_UCP_WEBDAV_NEON_CONTENTPROPERTIES_HXX
-#define INCLUDED_UCB_SOURCE_UCP_WEBDAV_NEON_CONTENTPROPERTIES_HXX
+#pragma once
 
 #include <config_lgpl.h>
 #include <memory>
@@ -36,10 +35,11 @@
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
+#include "DAVResource.hxx"
 
-namespace com { namespace sun { namespace star { namespace beans {
+namespace com::sun::star::beans {
     struct Property;
-} } } }
+}
 
 namespace webdav_ucp
 {
@@ -67,13 +67,7 @@ public:
 
 };
 
-typedef std::unordered_map
-<
-    OUString,
-    PropertyValue,
-    OUStringHash
->
-PropertyValueMap;
+typedef std::unordered_map< OUString, PropertyValue> PropertyValueMap;
 
 class ContentProperties
 {
@@ -98,7 +92,7 @@ public:
     // Maps the UCB property names contained in rProps with their DAV property
     // counterparts, if possible. All unmappable properties will be included
     // unchanged in resulting vector.
-    // The vector filles by this method can directly be handed over to
+    // The vector filled by this method can directly be handed over to
     // DAVResourceAccess::PROPFIND. The result from PROPFIND
     // (vector< DAVResource >) can be used to create a ContentProperties
     // instance which can map DAV properties back to UCB properties.
@@ -108,7 +102,7 @@ public:
     // Maps the UCB property names contained in rProps with their HTTP header
     // counterparts, if possible. All unmappable properties will be included
     // unchanged in resulting vector.
-    // The vector filles by this method can directly be handed over to
+    // The vector filled by this method can directly be handed over to
     // DAVResourceAccess::HEAD. The result from HEAD (vector< DAVResource >)
     // can be used to create a ContentProperties instance which can map header
     // names back to UCB properties.
@@ -116,7 +110,7 @@ public:
                                     std::vector< OUString > & resources );
 
     // return true, if all properties contained in rProps are contained in
-    // this ContentProperties instance. Otherwiese, false will be returned.
+    // this ContentProperties instance. Otherwise, false will be returned.
     // rNamesNotContained contain the missing names.
     bool containsAllNames(
                     const css::uno::Sequence< css::beans::Property >& rProps,
@@ -185,7 +179,5 @@ public:
 };
 
 } // namespace webdav_ucp
-
-#endif // INCLUDED_UCB_SOURCE_UCP_WEBDAV_NEON_CONTENTPROPERTIES_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

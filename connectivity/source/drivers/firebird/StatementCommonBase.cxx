@@ -18,14 +18,17 @@
  */
 
 #include "Driver.hxx"
-#include "ResultSet.hxx"
 #include "StatementCommonBase.hxx"
 #include "Util.hxx"
 
+#include <sal/log.hxx>
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include "propertyids.hxx"
-#include "TConnection.hxx"
+#include <propertyids.hxx>
+#include <vcl/svapp.hxx>
+#include <TConnection.hxx>
+
+#include <com/sun/star/sdbc/SQLException.hpp>
 
 using namespace ::connectivity::firebird;
 
@@ -61,7 +64,7 @@ OStatementCommonBase::~OStatementCommonBase()
 
 void OStatementCommonBase::disposeResultSet()
 {
-    uno::Reference< XComponent > xComp(m_xResultSet.get(), UNO_QUERY);
+    uno::Reference< XComponent > xComp(m_xResultSet, UNO_QUERY);
     if (xComp.is())
         xComp->dispose();
     m_xResultSet.clear();
@@ -125,7 +128,7 @@ void OStatementCommonBase::prepareAndDescribeStatement(const OUString& sql,
                                                       XSQLDA*& pOutSqlda,
                                                       XSQLDA* pInSqlda)
 {
-    MutexGuard aGuard(m_aMutex);
+    SolarMutexGuard g; // tdf#122129
 
     freeStatementHandle();
 
@@ -136,9 +139,7 @@ void OStatementCommonBase::prepareAndDescribeStatement(const OUString& sql,
         pOutSqlda->sqln = 10;
     }
 
-    ISC_STATUS aErr = 0;
-
-    aErr = isc_dsql_allocate_statement(m_statusVector,
+    ISC_STATUS aErr = isc_dsql_allocate_statement(m_statusVector,
                                        &m_pConnection->getDBHandle(),
                                        &m_aStatementHandle);
 
@@ -241,7 +242,7 @@ sal_Bool SAL_CALL OStatementCommonBase::getMoreResults()
 sal_Int32 SAL_CALL OStatementCommonBase::getUpdateCount()
 {
     // TODO: verify we really can't support this
-    return 0;
+    return -1;
 }
 
 
@@ -304,7 +305,7 @@ sal_Bool OStatementCommonBase::convertFastPropertyValue(
 
 void OStatementCommonBase::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,const Any&)
 {
-    // set the value to what ever is necessary
+    // set the value to whatever is necessary
     switch(nHandle)
     {
         case PROPERTY_ID_QUERYTIMEOUT:
@@ -373,8 +374,8 @@ short OStatementCommonBase::getSqlInfoItem(char aInfoItem)
 
     if (!aErr && aResultsBuffer[0] == aInfoItem)
     {
-        const short aBytes = (short) isc_vax_integer(aResultsBuffer+1, 2);
-        return (short) isc_vax_integer(aResultsBuffer+3, aBytes);
+        const short aBytes = static_cast<short>(isc_vax_integer(aResultsBuffer+1, 2));
+        return static_cast<short>(isc_vax_integer(aResultsBuffer+3, aBytes));
     }
 
     evaluateStatusVector(aStatusVector,
@@ -385,10 +386,7 @@ short OStatementCommonBase::getSqlInfoItem(char aInfoItem)
 
 bool OStatementCommonBase::isDDLStatement()
 {
-    if (getSqlInfoItem(isc_info_sql_stmt_type) == isc_info_sql_stmt_ddl)
-        return true;
-    else
-        return false;
+    return getSqlInfoItem(isc_info_sql_stmt_type) == isc_info_sql_stmt_ddl;
 }
 
 sal_Int32 OStatementCommonBase::getStatementChangeCount()
@@ -433,12 +431,14 @@ sal_Int32 OStatementCommonBase::getStatementChangeCount()
         case isc_info_sql_stmt_delete:
             aDesiredInfoType = isc_info_req_delete_count;
             break;
+        case isc_info_sql_stmt_exec_procedure:
+            return 0; // cannot determine
         default:
             throw SQLException(); // TODO: better error message?
     }
 
     char* pResults = aResultsBuffer;
-    if (((short) *pResults++) == isc_info_sql_records)
+    if (static_cast<short>(*pResults++) == isc_info_sql_records)
     {
 //         const short aTotalLength = (short) isc_vax_integer(pResults, 2);
         pResults += 2;
@@ -447,11 +447,11 @@ sal_Int32 OStatementCommonBase::getStatementChangeCount()
         while (*pResults != isc_info_rsb_end)
         {
             const char aToken = *pResults;
-            const short aLength =  (short) isc_vax_integer(pResults+1, 2);
+            const short aLength =  static_cast<short>(isc_vax_integer(pResults+1, 2));
 
             if (aToken == aDesiredInfoType)
             {
-                return sal_Int32(isc_vax_integer(pResults + 3, aLength));
+                return isc_vax_integer(pResults + 3, aLength);
             }
 
             pResults += (3 + aLength);

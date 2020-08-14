@@ -18,13 +18,8 @@
 #include <test/xmltesttools.hxx>
 #include <comphelper/processfactory.hxx>
 #include <unotools/mediadescriptor.hxx>
-#include <unotools/ucbstreamhelper.hxx>
 #include <unotools/localfilehelper.hxx>
 #include <unotest/macros_test.hxx>
-#include <sfx2/docfilt.hxx>
-#include <sfx2/docfile.hxx>
-
-#include "docsh.hxx"
 
 using namespace css::uno;
 using namespace css::lang;
@@ -36,14 +31,14 @@ class ScHTMLExportTest : public test::BootstrapFixture, public unotest::MacrosTe
     Reference<XComponent> mxComponent;
     OUString              maFilterOptions;
 
-    void load(const char* pDir, const char* pName)
+    void load(const OUString& pDir, const char* pName)
     {
         if (mxComponent.is())
             mxComponent->dispose();
         mxComponent = loadFromDesktop(m_directories.getURLFromSrc(pDir) + OUString::createFromAscii(pName), "com.sun.star.comp.Calc.SpreadsheetDocument");
     }
 
-    void save(const OUString& aFilterName, TempFile& rTempFile)
+    void save(const OUString& aFilterName, TempFile const & rTempFile)
     {
         Reference<XStorable> xStorable(mxComponent, UNO_QUERY);
         MediaDescriptor aMediaDescriptor;
@@ -78,7 +73,7 @@ public:
         OUString const url(aTempDir.GetURL());
         TempFile aTempFile(&url, false);
 
-        htmlDocPtr pDoc;
+        htmlDocUniquePtr pDoc;
 
         load("/sc/qa/extras/testdocuments/", "BaseForHTMLExport.ods");
         save("HTML (StarCalc)", aTempFile);

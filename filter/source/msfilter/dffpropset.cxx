@@ -20,11 +20,12 @@
 #include <algorithm>
 #include <filter/msfilter/dffpropset.hxx>
 #include <filter/msfilter/dffrecordheader.hxx>
+#include <sal/log.hxx>
 #include <svx/msdffdef.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <tools/stream.hxx>
 
-static const DffPropSetEntry mso_PropSetDefaults[] = {
+const DffPropSetEntry mso_PropSetDefaults[] = {
 
 // 0
 { { false, false, false, false }, 0, 0 },
@@ -1109,14 +1110,22 @@ void DffPropSet::ReadPropSet( SvStream& rIn, bool bSetUninitializedOnly )
 
     sal_uInt32 nComplexDataFilePos = rIn.Tell() + ( nPropCount * 6 );
 
-    for( sal_uInt32 nPropNum = 0; nPropNum < nPropCount; nPropNum++ )
+    const size_t nMaxPossibleRecords = rIn.remainingSize() / (sizeof(sal_uInt16) + sizeof(sal_uInt32));
+    if (nPropCount > nMaxPossibleRecords)
     {
-        sal_uInt16 nTmp;
-        sal_uInt32 nRecType, nContent;
+        SAL_WARN("filter.ms", "Parsing error: " << nMaxPossibleRecords <<
+                 " max possible entries, but " << nPropCount << " claimed, truncating");
+        nPropCount = nMaxPossibleRecords;
+    }
+
+    for (sal_uInt32 nPropNum = 0; nPropNum < nPropCount; ++nPropNum)
+    {
+        sal_uInt16 nTmp(0);
+        sal_uInt32 nContent(0);
         rIn.ReadUInt16( nTmp )
            .ReadUInt32( nContent );
 
-        nRecType = nTmp & 0x3fff;
+        sal_uInt32 nRecType = nTmp & 0x3fff;
 
         if ( nRecType > 0x3ff )
             break;
@@ -1132,7 +1141,7 @@ void DffPropSet::ReadPropSet( SvStream& rIn, bool bSetUninitializedOnly )
                                 | ( nCurrentFlags >> 16 ) ) ^ 0xffffffff;       // attributes from mergeflags
                 nCurrentFlags &= ( ( nMergeFlags & 0xffff0000 )                 // apply zero master bits
                                 | ( nMergeFlags >> 16 ) ) ^ 0xffffffff;
-                nCurrentFlags |= (sal_uInt16)nMergeFlags;                       // apply filled master bits
+                nCurrentFlags |= static_cast<sal_uInt16>(nMergeFlags);                       // apply filled master bits
                 mpPropSetEntries[ nRecType ].nContent = nCurrentFlags;
                 mpPropSetEntries[ nRecType ].nComplexIndexOrFlagsHAttr |= static_cast< sal_uInt16 >( nContent >> 16 );
             }
@@ -1168,11 +1177,11 @@ void DffPropSet::ReadPropSet( SvStream& rIn, bool bSetUninitializedOnly )
                 {
                     // now check if the current content size is possible, or 6 bytes too small
                     sal_uInt32  nOldPos = rIn.Tell();
-                    sal_Int16   nNumElem, nNumElemReserved, nSize;
 
-                    rIn.Seek( nComplexDataFilePos );
-                    rIn. ReadInt16( nNumElem ).ReadInt16( nNumElemReserved ).ReadInt16( nSize );
-                    if ( nNumElemReserved >= nNumElem )
+                    sal_Int16 nNumElem(0), nNumElemReserved(0), nSize(0);
+                    if (checkSeek(rIn, nComplexDataFilePos))
+                        rIn.ReadInt16(nNumElem).ReadInt16(nNumElemReserved).ReadInt16(nSize);
+                    if (nNumElemReserved >= nNumElem)
                     {
                         // the size of these array elements is nowhere defined,
                         // what if the size is negative ?
@@ -1180,7 +1189,7 @@ void DffPropSet::ReadPropSet( SvStream& rIn, bool bSetUninitializedOnly )
                         // for -16 this works
                         if ( nSize < 0 )
                             nSize = ( -nSize ) >> 2;
-                        sal_uInt32 nDataSize = (sal_uInt32)( nSize * nNumElem );
+                        sal_uInt32 nDataSize = static_cast<sal_uInt32>( nSize * nNumElem );
 
                         // sometimes the content size is 6 bytes too small (array header information is missing )
                         if ( nDataSize == nContent )
@@ -1208,6 +1217,17 @@ void DffPropSet::ReadPropSet( SvStream& rIn, bool bSetUninitializedOnly )
             }
             if ( bSetProperty )
             {
+                // tdf#130262: ignore negative values for distances (maybe this list needs to be extended)
+                // LO does not allow negative values but [MS-ODRAW] does not forbid them
+                if (    nRecType == DFF_Prop_dxWrapDistLeft || nRecType == DFF_Prop_dxWrapDistRight
+                     || nRecType == DFF_Prop_dyWrapDistTop  || nRecType == DFF_Prop_dyWrapDistBottom )
+                {
+                    if ( static_cast<sal_Int32>(nContent) < 0 )
+                    {
+                        break;
+                    }
+                }
+
                 mpPropSetEntries[ nRecType ].nContent = nContent;
                 mpPropSetEntries[ nRecType ].aFlags = aPropFlag;
             }
@@ -1330,8 +1350,7 @@ bool DffPropSet::SeekToContent( sal_uInt32 nRecType, SvStream& rStrm ) const
             sal_uInt16 nIndex = mpPropSetEntries[ nRecType ].nComplexIndexOrFlagsHAttr;
             if ( nIndex < maOffsets.size() )
             {
-                rStrm.Seek( maOffsets[ nIndex ] );
-                return true;
+                return checkSeek(rStrm, maOffsets[nIndex]);
             }
         }
     }

@@ -21,9 +21,9 @@
 #define INCLUDED_VCL_SOURCE_FILTER_IGIF_GIFREAD_HXX
 
 #include <vcl/graph.hxx>
-#include <vcl/bitmapaccess.hxx>
 
 VCL_DLLPUBLIC bool ImportGIF( SvStream& rStream, Graphic& rGraphic );
+bool IsGIFAnimated(SvStream& rStream);
 
 #endif // INCLUDED_VCL_SOURCE_FILTER_IGIF_GIFREAD_HXX
 

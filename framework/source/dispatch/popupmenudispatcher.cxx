@@ -18,27 +18,17 @@
  */
 
 #include <dispatch/popupmenudispatcher.hxx>
-#include <general.h>
-#include <framework/menuconfiguration.hxx>
-#include <framework/addonmenu.hxx>
 #include <services.h>
 #include <properties.h>
 
 #include <com/sun/star/frame/XLayoutManager2.hpp>
-#include <com/sun/star/awt/WindowAttribute.hpp>
-#include <com/sun/star/awt/WindowDescriptor.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
-#include <com/sun/star/awt/XWindowPeer.hpp>
-#include <com/sun/star/beans/UnknownPropertyException.hpp>
-#include <com/sun/star/lang/WrappedTargetException.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <com/sun/star/ui/XUIElement.hpp>
 
+#include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <ucbhelper/content.hxx>
+#include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 
 namespace framework{
@@ -57,7 +47,6 @@ using namespace ::osl;
 PopupMenuDispatcher::PopupMenuDispatcher(
     const uno::Reference< XComponentContext >& xContext )
         :   m_xContext              ( xContext                       )
-        ,   m_aListenerContainer    ( m_mutex )
         ,   m_bAlreadyDisposed      ( false                      )
         ,   m_bActivateListener     ( false                      )
 {
@@ -72,7 +61,7 @@ PopupMenuDispatcher::~PopupMenuDispatcher()
 
 OUString SAL_CALL PopupMenuDispatcher::getImplementationName()
 {
-    return impl_getStaticImplementationName();
+    return "com.sun.star.comp.framework.PopupMenuControllerDispatcher";
 }
 
 sal_Bool SAL_CALL PopupMenuDispatcher::supportsService( const OUString& sServiceName )
@@ -82,54 +71,8 @@ sal_Bool SAL_CALL PopupMenuDispatcher::supportsService( const OUString& sService
 
 css::uno::Sequence< OUString > SAL_CALL PopupMenuDispatcher::getSupportedServiceNames()
 {
-    return impl_getStaticSupportedServiceNames();
+    return { SERVICENAME_PROTOCOLHANDLER };
 }
-
-css::uno::Sequence< OUString > PopupMenuDispatcher::impl_getStaticSupportedServiceNames()
-{
-    css::uno::Sequence<OUString> seqServiceNames { SERVICENAME_PROTOCOLHANDLER };
-    return seqServiceNames;
-}
-
-OUString PopupMenuDispatcher::impl_getStaticImplementationName()
-{
-    return OUString(IMPLEMENTATIONNAME_POPUPMENUDISPATCHER);
-}
-
-css::uno::Reference< css::uno::XInterface >
-SAL_CALL PopupMenuDispatcher::impl_createInstance( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager )
-{
-    /* create new instance of service */
-    PopupMenuDispatcher* pClass = new PopupMenuDispatcher( comphelper::getComponentContext(xServiceManager) );
-    /* hold it alive by increasing his ref count!!! */
-    css::uno::Reference< css::uno::XInterface > xService( static_cast< ::cppu::OWeakObject* >(pClass), css::uno::UNO_QUERY );
-    /* initialize new service instance ... he can use his own refcount ... we hold it! */
-    pClass->impl_initService();
-    /* return new created service as reference */
-    return xService;
-}
-
-css::uno::Reference< css::lang::XSingleServiceFactory >
-PopupMenuDispatcher::impl_createFactory( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager )
-{
-    css::uno::Reference< css::lang::XSingleServiceFactory > xReturn (
-       cppu::createSingleFactory ( xServiceManager,
-                                PopupMenuDispatcher::impl_getStaticImplementationName()   ,
-                                PopupMenuDispatcher::impl_createInstance                  ,
-                                PopupMenuDispatcher::impl_getStaticSupportedServiceNames() )
-                                                                    );
-    return xReturn;
-}
-
-DEFINE_INIT_SERVICE(PopupMenuDispatcher,
-{
-    /*Attention
-    I think we don't need any mutex or lock here ... because we are called by our own static method impl_createInstance()
-    to create a new instance of this class by our own supported service factory.
-    see macro DEFINE_XSERVICEINFO_MULTISERVICE and "impl_initService()" for further information!
-    */
-}
-)
 
 void SAL_CALL PopupMenuDispatcher::initialize( const css::uno::Sequence< css::uno::Any >& lArguments )
 {
@@ -222,7 +165,7 @@ PopupMenuDispatcher::queryDispatches(
     css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > lDispatcher( nCount );
     for( sal_Int32 i=0; i<nCount; ++i )
     {
-        lDispatcher[i] = this->queryDispatch(
+        lDispatcher[i] = queryDispatch(
                             lDescriptor[i].FeatureURL,
                             lDescriptor[i].FrameName,
                             lDescriptor[i].SearchFlags);
@@ -234,22 +177,14 @@ void SAL_CALL PopupMenuDispatcher::dispatch( const URL& /*aURL*/, const Sequence
 {
 }
 
-void SAL_CALL PopupMenuDispatcher::addStatusListener( const uno::Reference< XStatusListener >& xControl,
-                                                      const URL& aURL )
+void SAL_CALL PopupMenuDispatcher::addStatusListener( const uno::Reference< XStatusListener >& /*xControl*/,
+                                                      const URL& /*aURL*/ )
 {
-    SolarMutexGuard g;
-    // Safe impossible cases
-    // Add listener to container.
-    m_aListenerContainer.addInterface( aURL.Complete, xControl );
 }
 
-void SAL_CALL PopupMenuDispatcher::removeStatusListener( const uno::Reference< XStatusListener >& xControl,
-                                                         const URL& aURL )
+void SAL_CALL PopupMenuDispatcher::removeStatusListener( const uno::Reference< XStatusListener >& /*xControl*/,
+                                                         const URL& /*aURL*/ )
 {
-    SolarMutexGuard g;
-    // Safe impossible cases
-    // Add listener to container.
-    m_aListenerContainer.removeInterface( aURL.Complete, xControl );
 }
 
 void SAL_CALL PopupMenuDispatcher::frameAction( const FrameActionEvent& aEvent )
@@ -269,61 +204,68 @@ void SAL_CALL PopupMenuDispatcher::disposing( const EventObject& )
     // Safe impossible cases
     SAL_WARN_IF( m_bAlreadyDisposed, "fwk", "MenuDispatcher::disposing(): Object already disposed .. don't call it again!" );
 
-    if( !m_bAlreadyDisposed )
+    if( m_bAlreadyDisposed )
+        return;
+
+    m_bAlreadyDisposed = true;
+
+    if ( m_bActivateListener )
     {
-        m_bAlreadyDisposed = true;
-
-        if ( m_bActivateListener )
+        uno::Reference< XFrame > xFrame( m_xWeakFrame.get(), UNO_QUERY );
+        if ( xFrame.is() )
         {
-            uno::Reference< XFrame > xFrame( m_xWeakFrame.get(), UNO_QUERY );
-            if ( xFrame.is() )
-            {
-                xFrame->removeFrameActionListener( uno::Reference< XFrameActionListener >( static_cast<OWeakObject *>(this), UNO_QUERY ));
-                m_bActivateListener = false;
-            }
+            xFrame->removeFrameActionListener( uno::Reference< XFrameActionListener >( static_cast<OWeakObject *>(this), UNO_QUERY ));
+            m_bActivateListener = false;
         }
-
-        // Forget our factory.
-        m_xContext.clear();
     }
+
+    // Forget our factory.
+    m_xContext.clear();
 }
 
 void PopupMenuDispatcher::impl_RetrievePopupControllerQuery()
 {
-    if ( !m_xPopupCtrlQuery.is() )
+    if ( m_xPopupCtrlQuery.is() )
+        return;
+
+    css::uno::Reference< css::frame::XLayoutManager2 > xLayoutManager;
+    css::uno::Reference< css::frame::XFrame > xFrame( m_xWeakFrame );
+
+    if ( !xFrame.is() )
+        return;
+
+    css::uno::Reference< css::beans::XPropertySet > xPropSet( xFrame, css::uno::UNO_QUERY );
+    if ( !xPropSet.is() )
+        return;
+
+    try
     {
-        css::uno::Reference< css::frame::XLayoutManager2 > xLayoutManager;
-        css::uno::Reference< css::frame::XFrame > xFrame( m_xWeakFrame );
+        xPropSet->getPropertyValue( FRAME_PROPNAME_ASCII_LAYOUTMANAGER ) >>= xLayoutManager;
 
-        if ( xFrame.is() )
+        if ( xLayoutManager.is() )
         {
-            css::uno::Reference< css::beans::XPropertySet > xPropSet( xFrame, css::uno::UNO_QUERY );
-            if ( xPropSet.is() )
-            {
-                try
-                {
-                    xPropSet->getPropertyValue( FRAME_PROPNAME_ASCII_LAYOUTMANAGER ) >>= xLayoutManager;
+            css::uno::Reference< css::ui::XUIElement > xMenuBar = xLayoutManager->getElement( "private:resource/menubar/menubar" );
 
-                    if ( xLayoutManager.is() )
-                    {
-                        css::uno::Reference< css::ui::XUIElement > xMenuBar;
-                        xMenuBar = xLayoutManager->getElement( "private:resource/menubar/menubar" );
-
-                        m_xPopupCtrlQuery.set( xMenuBar, css::uno::UNO_QUERY );
-                    }
-                }
-                catch ( const css::uno::RuntimeException& )
-                {
-                    throw;
-                }
-                catch ( const css::uno::Exception& )
-                {
-                }
-            }
+            m_xPopupCtrlQuery.set( xMenuBar, css::uno::UNO_QUERY );
         }
+    }
+    catch ( const css::uno::RuntimeException& )
+    {
+        throw;
+    }
+    catch ( const css::uno::Exception& )
+    {
     }
 }
 
 } //  namespace framework
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_PopupMenuDispatcher_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::PopupMenuDispatcher(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

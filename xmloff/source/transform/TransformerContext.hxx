@@ -24,7 +24,7 @@
 #include <salhelper/simplereferenceobject.hxx>
 #include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <memory>
 
@@ -41,8 +41,8 @@ class XMLTransformerContext : public ::salhelper::SimpleReferenceObject
 
     std::unique_ptr<SvXMLNamespaceMap>   m_xRewindMap;
 
-    SvXMLNamespaceMap  *TakeRewindMap() { return m_xRewindMap.release(); }
-    void PutRewindMap( SvXMLNamespaceMap *p ) { m_xRewindMap.reset(p); }
+    std::unique_ptr<SvXMLNamespaceMap>  TakeRewindMap() { return std::move(m_xRewindMap); }
+    void PutRewindMap( std::unique_ptr<SvXMLNamespaceMap> p ) { m_xRewindMap = std::move(p); }
 
 protected:
 
@@ -72,12 +72,12 @@ public:
                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList );
 
     // StartElement is called after a context has been constructed and
-    // before a elements context is parsed. It may be used for actions that
+    // before an elements context is parsed. It may be used for actions that
     // require virtual methods. The default is to do nothing.
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList );
 
     // EndElement is called before a context will be destructed, but
-    // after a elements context has been parsed. It may be used for actions
+    // after an elements context has been parsed. It may be used for actions
     // that require virtual methods. The default is to do nothing.
     virtual void EndElement();
 

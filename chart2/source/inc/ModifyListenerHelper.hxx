@@ -19,27 +19,23 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_MODIFYLISTENERHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_MODIFYLISTENERHELPER_HXX
 
-#include <cppuhelper/interfacecontainer.hxx>
 #include <com/sun/star/util/XModifyListener.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
-#include <com/sun/star/util/XModifiable.hpp>
-#include <com/sun/star/uno/XWeak.hpp>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/weakref.hxx>
 
 #include "MutexContainer.hxx"
-#include "charttoolsdllapi.hxx"
 
-#include <list>
+#include <vector>
 #include <algorithm>
 #include <utility>
 
-namespace chart
-{
-namespace ModifyListenerHelper
+namespace com::sun::star::uno { class XWeak; }
+namespace com::sun::star::uno { template <class interface_type> class WeakReference; }
+
+namespace chart::ModifyListenerHelper
 {
 
-OOO_DLLPUBLIC_CHARTTOOLS css::uno::Reference< css::util::XModifyListener > createModifyEventForwarder();
+css::uno::Reference< css::util::XModifyListener > createModifyEventForwarder();
 
 /** This helper class serves as forwarder of modify events.  It can be used
     whenever an object has to send modify events after it gets a modify event of
@@ -89,7 +85,7 @@ private:
 //     ::osl::Mutex & m_rMutex;
     ::cppu::OBroadcastHelper  m_aModifyListeners;
 
-    typedef std::list<
+    typedef std::vector<
             std::pair<
             css::uno::WeakReference< css::util::XModifyListener >,
             css::uno::Reference< css::util::XModifyListener > > >
@@ -259,8 +255,7 @@ void removeListenerFromAllSequenceElements(
                          impl::removeListenerFunctor< T >( xListener ));
 }
 
-} //  namespace ModifyListenerHelper
-} //  namespace chart
+} //  namespace chart::ModifyListenerHelper
 
 // INCLUDED_CHART2_SOURCE_INC_MODIFYLISTENERHELPER_HXX
 #endif

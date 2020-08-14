@@ -22,18 +22,19 @@
 
 #include <svtools/svtdllapi.h>
 #include <svtools/svparser.hxx>
+#include <svtools/htmltokn.h>
 
 #include <vector>
 
-namespace com { namespace sun { namespace star {
+namespace com :: sun :: star :: uno { template <class interface_type> class Reference; }
+
+namespace com::sun::star {
     namespace document {
         class XDocumentProperties;
     }
-} } }
+}
 
 class Color;
-class SvNumberFormatter;
-class SvKeyValueIterator;
 enum class HtmlOptionId;
 
 #define HTMLFONTSZ1_DFLT 7
@@ -74,8 +75,8 @@ enum class HTMLScriptLanguage
 template<typename EnumT>
 struct HTMLOptionEnum
 {
-    const sal_Char *pName;  // value of an HTML option
-    EnumT           nValue; // and corresponding value of an enum
+    const char *pName;  // value of an HTML option
+    EnumT       nValue; // and corresponding value of an enum
 };
 
 /** Representation of an HTML option (=attribute in a start tag).
@@ -167,6 +168,9 @@ private:
 
     OUString aEndToken;
 
+    /// XML namespace, in case of XHTML.
+    OUString maNamespace;
+
 protected:
     OUString sSaveToken;             // the read tag as string
 
@@ -180,6 +184,8 @@ protected:
     virtual ~HTMLParser() override;
 
     void FinishHeader() { bIsInHeader = false; }
+
+    void SetNamespace(const OUString& rNamespace);
 
 public:
     HTMLParser( SvStream& rIn, bool bReadNewDoc = true );
@@ -226,7 +232,7 @@ public:
     // Determine the options. pNoConvertToken is the optional token
     // of an option, for which the CR/LFs are not deleted from the value
     // of the option.
-    const HTMLOptions& GetOptions( HtmlOptionId *pNoConvertToken=nullptr );
+    const HTMLOptions& GetOptions( HtmlOptionId const *pNoConvertToken=nullptr );
 
     // for asynchronous reading from the SvStream
     virtual void Continue( HtmlTokenId nToken ) override;
@@ -254,10 +260,9 @@ public:
     void ParseScriptOptions( OUString& rLangString, const OUString&, HTMLScriptLanguage& rLang,
                              OUString& rSrc, OUString& rLibrary, OUString& rModule );
 
-    // remove a comment around the content of <SCRIPT> or <STYLE>
-    // In case of 'bFull', the whole line behind a "<!--" might
-    // be deleted (for JavaScript)
-    static void RemoveSGMLComment( OUString &rString, bool bFull );
+    // Remove a comment around the content of <SCRIPT> or <STYLE>.
+    // The whole line behind a "<!--" might be deleted (for JavaScript).
+    static void RemoveSGMLComment( OUString &rString );
 
     static bool InternalImgToPrivateURL( OUString& rURL );
     static rtl_TextEncoding GetEncodingByHttpHeader( SvKeyValueIterator *pHTTPHeader );
@@ -268,21 +273,21 @@ inline void HTMLParser::StartPRE()
 {
     bReadPRE = true;
     bPre_IgnoreNewPara = true;
-    nPre_LinePos = 0UL;
+    nPre_LinePos = 0;
 }
 
 inline void HTMLParser::StartListing()
 {
     bReadListing = true;
     bPre_IgnoreNewPara = true;
-    nPre_LinePos = 0UL;
+    nPre_LinePos = 0;
 }
 
 inline void HTMLParser::StartXMP()
 {
     bReadXMP = true;
     bPre_IgnoreNewPara = true;
-    nPre_LinePos = 0UL;
+    nPre_LinePos = 0;
 }
 
 #endif

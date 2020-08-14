@@ -39,33 +39,29 @@ namespace o3tl
 // flags for SvxBackgroundTabPage
 enum class SvxBackgroundTabFlags
 {
-    NONE                = 0x00,
-    SHOW_SELECTOR       = 0x01,
-    SHOW_TBLCTL         = 0x08,
-    SHOW_HIGHLIGHTING   = 0x10,
+    NONE                 = 0x00,
+    SHOW_SELECTOR        = 0x01,
+    SHOW_TBLCTL          = 0x08,
+    SHOW_HIGHLIGHTING    = 0x10,
+    SHOW_CHAR_BKGCOLOR   = 0x20,
 };
 namespace o3tl
 {
-    template<> struct typed_flags<SvxBackgroundTabFlags> : is_typed_flags<SvxBackgroundTabFlags, 0x19> {};
+    template<> struct typed_flags<SvxBackgroundTabFlags> : is_typed_flags<SvxBackgroundTabFlags, 0x39> {};
 }
 
 // flags for SvxBorderTabPage
 #define SVX_HIDESHADOWCTL   0x01
 
-#define DISABLE_CASEMAP             ((sal_uInt16)0x0001)
-#define DISABLE_WORDLINE            ((sal_uInt16)0x0002)
-#define DISABLE_BLINK               ((sal_uInt16)0x0004)
-#define DISABLE_UNDERLINE_COLOR     ((sal_uInt16)0x0008)
-
-#define DISABLE_LANGUAGE            ((sal_uInt16)0x0010)
-#define DISABLE_HIDE_LANGUAGE       ((sal_uInt16)0x0020)
+#define DISABLE_CASEMAP             (sal_uInt16(0x0001))
+#define DISABLE_HIDE_LANGUAGE       (sal_uInt16(0x0020))
 
 // flags for SvxCharBasePage's child class
 #define SVX_PREVIEW_CHARACTER   0x01
 // flags for SvxCharNamePage
 #define SVX_RELATIVE_MODE       0x02
 // flags for SvxCharEffectsPage
-#define SVX_ENABLE_FLASH    0x04
+#define SVX_ENABLE_CHAR_TRANSPARENCY 0x08
 
 
 // Default values for Number Format Category List and Preview

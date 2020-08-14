@@ -26,19 +26,17 @@
 #include <rtl/string.hxx>
 #include <svl/macitem.hxx>
 
-#include "HtmlWriter.hxx"
-
 class Color;
 class ImageMap;
+class HtmlWriter;
 class SvStream;
-class SvxMacroTableDtor;
 class SvNumberFormatter;
 
 struct HTMLOutEvent
 {
-    const sal_Char *pBasicName;
-    const sal_Char *pJavaName;
-    sal_uInt16 nEvent;
+    const char *pBasicName;
+    const char *pJavaName;
+    SvMacroItemId nEvent;
 };
 
 struct SVT_DLLPUBLIC HTMLOutContext
@@ -57,24 +55,22 @@ struct HTMLOutFuncs
                         rtl_TextEncoding eDestEnc,
                         OUString *pNonConvertableChars );
 
-    SVT_DLLPUBLIC static SvStream& Out_AsciiTag( SvStream&, const sal_Char* pStr,
-                                   bool bOn = true,
-                                   rtl_TextEncoding eDestEnc = RTL_TEXTENCODING_MS_1252);
+    SVT_DLLPUBLIC static SvStream& Out_AsciiTag( SvStream&, const OString& rStr,
+                                   bool bOn = true);
     SVT_DLLPUBLIC static SvStream& Out_Char( SvStream&, sal_uInt32 cChar,
                         HTMLOutContext& rContext,
                         OUString *pNonConvertableChars );
     SVT_DLLPUBLIC static SvStream& Out_String( SvStream&, const OUString&,
                         rtl_TextEncoding eDestEnc,
                         OUString *pNonConvertableChars = nullptr );
-    SVT_DLLPUBLIC static SvStream& Out_Hex( SvStream&, sal_uLong nHex, sal_uInt8 nLen,
-                        rtl_TextEncoding eDestEnc = RTL_TEXTENCODING_MS_1252 );
-    SVT_DLLPUBLIC static SvStream& Out_Color( SvStream&, const Color& );
+    SVT_DLLPUBLIC static SvStream& Out_Hex( SvStream&, sal_uLong nHex, sal_uInt8 nLen );
+    SVT_DLLPUBLIC static SvStream& Out_Color( SvStream&, const Color&, bool bXHTML = false );
     SVT_DLLPUBLIC static SvStream& Out_ImageMap( SvStream&, const OUString&, const ImageMap&, const OUString&,
                                    const HTMLOutEvent *pEventTable,
                                    bool bOutStarBasic,
-                                   const sal_Char *pDelim,
-                                   const sal_Char *pIndentArea,
-                                   const sal_Char *pIndentMap = nullptr,
+                                   const char *pDelim,
+                                   const char *pIndentArea,
+                                   const char *pIndentMap,
                                    rtl_TextEncoding eDestEnc = RTL_TEXTENCODING_MS_1252,
                                    OUString *pNonConvertableChars = nullptr );
     SVT_DLLPUBLIC static SvStream& FlushToAscii( SvStream&, HTMLOutContext& rContext );

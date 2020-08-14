@@ -17,28 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/PanelTitleBar.hxx>
+#include <sidebar/PanelTitleBar.hxx>
 #include <sfx2/sfxresid.hxx>
-
-#include "Sidebar.hrc"
-
-#include <sfx2/sidebar/Paint.hxx>
+#include <sfx2/strings.hrc>
+#include <sidebar/Paint.hxx>
 #include <sfx2/sidebar/Panel.hxx>
 #include <sfx2/sidebar/Theme.hxx>
-#include <sfx2/sidebar/ControllerFactory.hxx>
-#include <sfx2/sidebar/Tools.hxx>
-#include <tools/svborder.hxx>
-#include <vcl/gradient.hxx>
+#include <sidebar/ControllerFactory.hxx>
+#include <sidebar/Tools.hxx>
+#include <vcl/event.hxx>
 #include <vcl/image.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
+#include <tools/diagnose_ex.h>
+
+#include <com/sun/star/frame/XDispatch.hpp>
 
 using namespace css;
 using namespace css::uno;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
-static const sal_Int32 gaLeftIconPadding (5);
-static const sal_Int32 gaRightIconPadding (5);
+const sal_Int32 gaLeftIconPadding (5);
+const sal_Int32 gaRightIconPadding (5);
 
 PanelTitleBar::PanelTitleBar(const OUString& rsTitle,
                              vcl::Window* pParentWindow,
@@ -71,34 +71,34 @@ void PanelTitleBar::SetMoreOptionsCommand(const OUString& rsCommandName,
                                           const css::uno::Reference<css::frame::XFrame>& rxFrame,
                                           const css::uno::Reference<css::frame::XController>& rxController)
 {
-    if (!rsCommandName.equals(msMoreOptionsCommand))
-    {
-        if (msMoreOptionsCommand.getLength() > 0)
-            maToolBox->RemoveItem(maToolBox->GetItemPos(mnMenuItemIndex));
+    if (rsCommandName == msMoreOptionsCommand)
+        return;
 
-        msMoreOptionsCommand = rsCommandName;
-        mxFrame = rxFrame;
+    if (msMoreOptionsCommand.getLength() > 0)
+        maToolBox->RemoveItem(maToolBox->GetItemPos(mnMenuItemIndex));
 
-        if (msMoreOptionsCommand.getLength() > 0)
-        {
-            maToolBox->InsertItem(
-                mnMenuItemIndex,
-                Theme::GetImage(Theme::Image_PanelMenu));
-            Reference<frame::XToolbarController> xController (
-                ControllerFactory::CreateToolBoxController(
-                    maToolBox.get(),
-                    mnMenuItemIndex,
-                    msMoreOptionsCommand,
-                    rxFrame, rxController,
-                    VCLUnoHelper::GetInterface(maToolBox.get()),
-                    0));
-            maToolBox->SetController(mnMenuItemIndex, xController);
-            maToolBox->SetOutStyle(TOOLBOX_STYLE_FLAT);
-            maToolBox->SetQuickHelpText(
-                mnMenuItemIndex,
-                SfxResId(SFX_STR_SIDEBAR_MORE_OPTIONS));
-        }
-    }
+    msMoreOptionsCommand = rsCommandName;
+    mxFrame = rxFrame;
+
+    if (msMoreOptionsCommand.getLength() <= 0)
+        return;
+
+    maToolBox->InsertItem(
+        mnMenuItemIndex,
+        Theme::GetImage(Theme::Image_PanelMenu));
+    Reference<frame::XToolbarController> xController (
+        ControllerFactory::CreateToolBoxController(
+            maToolBox.get(),
+            mnMenuItemIndex,
+            msMoreOptionsCommand,
+            rxFrame, rxController,
+            VCLUnoHelper::GetInterface(maToolBox.get()),
+            0, true));
+    maToolBox->SetController(mnMenuItemIndex, xController);
+    maToolBox->SetOutStyle(TOOLBOX_STYLE_FLAT);
+    maToolBox->SetQuickHelpText(
+        mnMenuItemIndex,
+        SfxResId(SFX_STR_SIDEBAR_MORE_OPTIONS));
 }
 
 tools::Rectangle PanelTitleBar::GetTitleArea (const tools::Rectangle& rTitleBarBox)
@@ -118,7 +118,7 @@ tools::Rectangle PanelTitleBar::GetTitleArea (const tools::Rectangle& rTitleBarB
         return rTitleBarBox;
 }
 
-void PanelTitleBar::PaintDecoration (vcl::RenderContext& rRenderContext, const tools::Rectangle& /*rTitleBarBox*/)
+void PanelTitleBar::PaintDecoration (vcl::RenderContext& rRenderContext)
 {
     if (mpPanel != nullptr)
     {
@@ -138,21 +138,23 @@ Paint PanelTitleBar::GetBackgroundPaint()
 
 void PanelTitleBar::HandleToolBoxItemClick (const sal_uInt16 nItemIndex)
 {
-    if (nItemIndex == mnMenuItemIndex)
-        if (msMoreOptionsCommand.getLength() > 0)
-        {
-            try
-            {
-                const util::URL aURL (Tools::GetURL(msMoreOptionsCommand));
-                Reference<frame::XDispatch> xDispatch (Tools::GetDispatch(mxFrame, aURL));
-                if (xDispatch.is())
-                    xDispatch->dispatch(aURL, Sequence<beans::PropertyValue>());
-            }
-            catch(Exception& rException)
-            {
-                SAL_WARN("sfx", "caught exception: " << rException.Message);
-            }
-        }
+    if (nItemIndex != mnMenuItemIndex)
+        return;
+
+    if (msMoreOptionsCommand.getLength() <= 0)
+        return;
+
+    try
+    {
+        const util::URL aURL (Tools::GetURL(msMoreOptionsCommand));
+        Reference<frame::XDispatch> xDispatch (Tools::GetDispatch(mxFrame, aURL));
+        if (xDispatch.is())
+            xDispatch->dispatch(aURL, Sequence<beans::PropertyValue>());
+    }
+    catch(Exception const &)
+    {
+        DBG_UNHANDLED_EXCEPTION("sfx");
+    }
 }
 
 Reference<accessibility::XAccessible> PanelTitleBar::CreateAccessible()
@@ -184,6 +186,7 @@ void PanelTitleBar::MouseButtonUp (const MouseEvent& rMouseEvent)
             {
                 mpPanel->SetExpanded( ! mpPanel->IsExpanded());
                 Invalidate();
+                GrabFocus();
             }
         }
     }
@@ -199,6 +202,6 @@ void PanelTitleBar::DataChanged (const DataChangedEvent& rEvent)
     TitleBar::DataChanged(rEvent);
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

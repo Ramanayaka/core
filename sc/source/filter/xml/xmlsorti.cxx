@@ -17,28 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include "xmldrani.hxx"
 #include "xmlsorti.hxx"
 #include "xmlimprt.hxx"
-#include "docuno.hxx"
-#include "convuno.hxx"
-#include "XMLConverter.hxx"
-#include "unonames.hxx"
-#include "rangeutl.hxx"
+#include <convuno.hxx>
+#include <unonames.hxx>
+#include <rangeutl.hxx>
 
-#include <xmloff/xmltkmap.hxx>
-#include <xmloff/nmspmap.hxx>
 #include <xmloff/xmltoken.hxx>
+#include <xmloff/xmlnamespace.hxx>
+
+#include <com/sun/star/util/SortField.hpp>
 
 using namespace com::sun::star;
 using namespace xmloff::token;
 
 ScXMLSortContext::ScXMLSortContext( ScXMLImport& rImport,
-                                      sal_uInt16 nPrfx,
-                                      const OUString& rLName,
-                                      const css::uno::Reference<
-                                      css::xml::sax::XAttributeList>& xAttrList,
+                                      const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                                       ScXMLDatabaseRangeContext* pTempDatabaseRangeContext) :
-    ScXMLImportContext( rImport, nPrfx, rLName ),
+    ScXMLImportContext( rImport ),
     pDatabaseRangeContext(pTempDatabaseRangeContext),
     sAlgorithm(),
     nUserListIndex(0),
@@ -47,53 +44,58 @@ ScXMLSortContext::ScXMLSortContext( ScXMLImport& rImport,
     bIsCaseSensitive(false),
     bEnabledUserList(false)
 {
-    sal_Int16 nAttrCount(xAttrList.is() ? xAttrList->getLength() : 0);
-    const SvXMLTokenMap& rAttrTokenMap(GetScImport().GetSortAttrTokenMap());
-    for( sal_Int16 i=0; i < nAttrCount; ++i )
-    {
-        const OUString& sAttrName(xAttrList->getNameByIndex( i ));
-        OUString aLocalName;
-        sal_uInt16 nPrefix(GetScImport().GetNamespaceMap().GetKeyByAttrName(
-                                            sAttrName, &aLocalName ));
-        const OUString& sValue(xAttrList->getValueByIndex( i ));
+    if ( !rAttrList.is() )
+        return;
 
-        switch( rAttrTokenMap.Get( nPrefix, aLocalName ) )
+    for (auto &aIter : *rAttrList)
+    {
+        switch (aIter.getToken())
         {
-            case XML_TOK_SORT_ATTR_BIND_STYLES_TO_CONTENT :
+            case XML_ELEMENT( TABLE, XML_BIND_STYLES_TO_CONTENT ):
             {
-                bBindFormatsToContent = IsXMLToken(sValue, XML_TRUE);
+                bBindFormatsToContent = IsXMLToken(aIter, XML_TRUE);
             }
             break;
-            case XML_TOK_SORT_ATTR_TARGET_RANGE_ADDRESS :
+            case XML_ELEMENT( TABLE, XML_TARGET_RANGE_ADDRESS ):
             {
                 ScRange aScRange;
                 sal_Int32 nOffset(0);
-                if (ScRangeStringConverter::GetRangeFromString( aScRange, sValue, GetScImport().GetDocument(), ::formula::FormulaGrammar::CONV_OOO, nOffset ))
+                if (ScRangeStringConverter::GetRangeFromString( aScRange, aIter.toString(), GetScImport().GetDocument(), ::formula::FormulaGrammar::CONV_OOO, nOffset ))
                 {
                     ScUnoConversion::FillApiAddress( aOutputPosition, aScRange.aStart );
                     bCopyOutputData = true;
                 }
             }
             break;
-            case XML_TOK_SORT_ATTR_CASE_SENSITIVE :
+            case XML_ELEMENT( TABLE, XML_CASE_SENSITIVE ):
             {
-                bIsCaseSensitive = IsXMLToken(sValue, XML_TRUE);
+                bIsCaseSensitive = IsXMLToken(aIter, XML_TRUE);
             }
             break;
-            case XML_TOK_SORT_ATTR_RFC_LANGUAGE_TAG :
-                maLanguageTagODF.maRfcLanguageTag = sValue;
+            case XML_ELEMENT( TABLE, XML_RFC_LANGUAGE_TAG ):
+            {
+                maLanguageTagODF.maRfcLanguageTag = aIter.toString();
+            }
             break;
-            case XML_TOK_SORT_ATTR_LANGUAGE :
-                maLanguageTagODF.maLanguage = sValue;
+            case XML_ELEMENT( TABLE, XML_LANGUAGE ):
+            {
+                maLanguageTagODF.maLanguage = aIter.toString();
+            }
             break;
-            case XML_TOK_SORT_ATTR_SCRIPT :
-                maLanguageTagODF.maScript = sValue;
+            case XML_ELEMENT( TABLE, XML_SCRIPT ):
+            {
+                maLanguageTagODF.maScript = aIter.toString();
+            }
             break;
-            case XML_TOK_SORT_ATTR_COUNTRY :
-                maLanguageTagODF.maCountry = sValue;
+            case XML_ELEMENT( TABLE, XML_COUNTRY ):
+            {
+                maLanguageTagODF.maCountry = aIter.toString();
+            }
             break;
-            case XML_TOK_SORT_ATTR_ALGORITHM :
-                sAlgorithm = sValue;
+            case XML_ELEMENT( TABLE, XML_ALGORITHM ):
+            {
+                sAlgorithm = aIter.toString();
+            }
             break;
         }
     }
@@ -103,30 +105,26 @@ ScXMLSortContext::~ScXMLSortContext()
 {
 }
 
-SvXMLImportContext *ScXMLSortContext::CreateChildContext( sal_uInt16 nPrefix,
-                                            const OUString& rLName,
-                                            const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList )
+uno::Reference< xml::sax::XFastContextHandler > SAL_CALL ScXMLSortContext::createFastChildContext(
+    sal_Int32 nElement, const uno::Reference< xml::sax::XFastAttributeList >& xAttrList )
 {
     SvXMLImportContext *pContext(nullptr);
+    sax_fastparser::FastAttributeList *pAttribList =
+        &sax_fastparser::castToFastAttributeList( xAttrList );
 
-    const SvXMLTokenMap& rTokenMap(GetScImport().GetSortElemTokenMap());
-    switch( rTokenMap.Get( nPrefix, rLName ) )
+    switch (nElement)
     {
-        case XML_TOK_SORT_SORT_BY :
+        case XML_ELEMENT( TABLE, XML_SORT_BY ):
         {
-            pContext = new ScXMLSortByContext( GetScImport(), nPrefix,
-                                                          rLName, xAttrList, this);
+            pContext = new ScXMLSortByContext( GetScImport(), nElement, pAttribList, this );
         }
         break;
     }
 
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLName );
-
     return pContext;
 }
 
-void ScXMLSortContext::EndElement()
+void SAL_CALL ScXMLSortContext::endFastElement( sal_Int32 /*nElement*/ )
 {
     sal_Int32 nAlgoLength(sAlgorithm.getLength());
     sal_uInt8 i (0);
@@ -197,40 +195,34 @@ void ScXMLSortContext::AddSortField(const OUString& sFieldNumber, const OUString
 }
 
 ScXMLSortByContext::ScXMLSortByContext( ScXMLImport& rImport,
-                                      sal_uInt16 nPrfx,
-                                      const OUString& rLName,
-                                      const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+                                      sal_Int32 /*nElement*/,
+                                      const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                                       ScXMLSortContext* pTempSortContext) :
-    ScXMLImportContext( rImport, nPrfx, rLName ),
+    ScXMLImportContext( rImport ),
     pSortContext(pTempSortContext),
     sDataType(GetXMLToken(XML_AUTOMATIC)),
     sOrder(GetXMLToken(XML_ASCENDING))
 {
-    sal_Int16 nAttrCount(xAttrList.is() ? xAttrList->getLength() : 0);
-    const SvXMLTokenMap& rAttrTokenMap(GetScImport().GetSortSortByAttrTokenMap());
-    for( sal_Int16 i=0; i < nAttrCount; ++i )
-    {
-        const OUString& sAttrName(xAttrList->getNameByIndex( i ));
-        OUString aLocalName;
-        sal_uInt16 nPrefix(GetScImport().GetNamespaceMap().GetKeyByAttrName(
-                                            sAttrName, &aLocalName ));
-        const OUString& sValue(xAttrList->getValueByIndex( i ));
+    if ( !rAttrList.is() )
+        return;
 
-        switch( rAttrTokenMap.Get( nPrefix, aLocalName ) )
+    for (auto &aIter : *rAttrList)
+    {
+        switch (aIter.getToken())
         {
-            case XML_TOK_SORT_BY_ATTR_FIELD_NUMBER :
+            case XML_ELEMENT( TABLE, XML_FIELD_NUMBER ):
             {
-                sFieldNumber = sValue;
+                sFieldNumber = aIter.toString();
             }
             break;
-            case XML_TOK_SORT_BY_ATTR_DATA_TYPE :
+            case XML_ELEMENT( TABLE, XML_DATA_TYPE ):
             {
-                sDataType = sValue;
+                sDataType = aIter.toString();
             }
             break;
-            case XML_TOK_SORT_BY_ATTR_ORDER :
+            case XML_ELEMENT( TABLE, XML_ORDER ):
             {
-                sOrder = sValue;
+                sOrder = aIter.toString();
             }
             break;
         }
@@ -241,14 +233,7 @@ ScXMLSortByContext::~ScXMLSortByContext()
 {
 }
 
-SvXMLImportContext *ScXMLSortByContext::CreateChildContext( sal_uInt16 nPrefix,
-                                            const OUString& rLName,
-                                            const css::uno::Reference<css::xml::sax::XAttributeList>& /* xAttrList */ )
-{
-    return new SvXMLImportContext( GetImport(), nPrefix, rLName );
-}
-
-void ScXMLSortByContext::EndElement()
+void SAL_CALL ScXMLSortByContext::endFastElement( sal_Int32 /*nElement*/ )
 {
     pSortContext->AddSortField(sFieldNumber, sDataType, sOrder);
 }

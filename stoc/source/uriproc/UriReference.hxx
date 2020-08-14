@@ -20,18 +20,17 @@
 #ifndef INCLUDED_STOC_SOURCE_URIPROC_URIREFERENCE_HXX
 #define INCLUDED_STOC_SOURCE_URIPROC_URIREFERENCE_HXX
 
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <osl/mutex.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <rtl/ustrbuf.hxx>
 
-namespace stoc { namespace uriproc {
+namespace stoc::uriproc {
 
 class UriReference {
 public:
     UriReference(
-        OUString const & scheme, bool isHierarchical, bool hasAuthority,
+        OUString const & scheme, bool hasAuthority,
         OUString const & authority, OUString const & path,
         bool hasQuery, OUString const & query);
 
@@ -41,10 +40,10 @@ public:
     OUString getUriReference();
 
     /// @throws css::uno::RuntimeException
-    bool isAbsolute();
+    bool isAbsolute() const;
 
     /// @throws css::uno::RuntimeException
-    const OUString& getScheme() { return m_scheme;}
+    const OUString& getScheme() const { return m_scheme;}
 
     /// @throws css::uno::RuntimeException
     OUString getSchemeSpecificPart();
@@ -94,19 +93,18 @@ public:
     OUString m_path;
     OUString m_query;
     OUString m_fragment;
-    bool m_isHierarchical;
     bool m_hasAuthority;
     bool m_hasQuery;
     bool m_hasFragment;
 
 private:
-    UriReference(UriReference &) = delete;
-    void operator =(UriReference) = delete;
+    UriReference(UriReference const &) = delete;
+    void operator =(UriReference const &) = delete;
 
     void appendSchemeSpecificPart(OUStringBuffer & buffer) const;
 };
 
-} }
+}
 
 #endif
 

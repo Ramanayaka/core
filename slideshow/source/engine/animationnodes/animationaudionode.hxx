@@ -19,13 +19,12 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_ANIMATIONAUDIONODE_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_ANIMATIONAUDIONODE_HXX
 
-#include "basecontainernode.hxx"
-#include "soundplayer.hxx"
-#include "com/sun/star/animations/XAnimationNode.hpp"
-#include "com/sun/star/animations/XAudio.hpp"
+#include <basecontainernode.hxx>
+#include <soundplayer.hxx>
+#include <com/sun/star/animations/XAnimationNode.hpp>
+#include <com/sun/star/animations/XAudio.hpp>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /** Audio node.
 
@@ -38,7 +37,7 @@ class AnimationAudioNode : public BaseNode, public AnimationEventHandler
 public:
     AnimationAudioNode(
         css::uno::Reference<css::animations::XAnimationNode> const& xNode,
-        ::std::shared_ptr<BaseContainerNode> const& pParent,
+        BaseContainerNodeSharedPtr const& pParent,
         NodeContext const& rContext );
 
 protected:
@@ -59,10 +58,10 @@ private:
 
     void createPlayer() const;
     void resetPlayer() const;
+    void checkPlayingStatus();
 };
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_ANIMATIONAUDIONODE_HXX
 

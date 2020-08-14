@@ -20,13 +20,11 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FDATABASEMETADATA_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FDATABASEMETADATA_HXX
 
-#include "TDatabaseMetaDataBase.hxx"
-#include "file/FConnection.hxx"
-#include "file/filedllapi.hxx"
+#include <TDatabaseMetaDataBase.hxx>
+#include <file/FConnection.hxx>
+#include <file/filedllapi.hxx>
 
-namespace connectivity
-{
-    namespace file
+namespace connectivity::file
     {
 
         //************ Class: ODatabaseMetaData
@@ -183,7 +181,7 @@ namespace connectivity
 
             virtual css::uno::Reference< css::sdbc::XResultSet > SAL_CALL getUDTs( const css::uno::Any& catalog, const OUString& schemaPattern, const OUString& typeNamePattern, const css::uno::Sequence< sal_Int32 >& types ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FDATABASEMETADATA_HXX
 

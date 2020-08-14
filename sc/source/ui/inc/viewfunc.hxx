@@ -21,9 +21,8 @@
 
 #include "tabview.hxx"
 
-#include "tabbgcolor.hxx"
+#include <tabbgcolor.hxx>
 
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <vector>
 
@@ -43,7 +42,6 @@ class ScValidationData;
 class ScConversionParam;
 class SdrModel;
 class Graphic;
-class Exchange;
 class ScRangeList;
 class SvxHyperlinkItem;
 class ScTransferObj;
@@ -51,6 +49,7 @@ class ScTableProtection;
 enum class CreateNameFlags;
 
 namespace editeng { class SvxBorderLine; }
+namespace com::sun::star::embed { class XEmbeddedObject; }
 
 namespace sc {
 
@@ -58,7 +57,16 @@ struct ColRowSpan;
 
 }
 
-namespace com { namespace sun { namespace star { namespace datatransfer { class XTransferable; } } } }
+namespace com::sun::star::datatransfer { class XTransferable; }
+
+struct ScDataFormFragment
+{
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Label> m_xLabel;
+    std::unique_ptr<weld::Entry> m_xEdit;
+
+    ScDataFormFragment(weld::Container* pGrid, int nLine);
+};
 
 class ScViewFunc : public ScTabView
 {
@@ -72,15 +80,16 @@ public:
                     ~ScViewFunc();
 
     SC_DLLPUBLIC const ScPatternAttr*    GetSelectionPattern ();
-    void                    GetSelectionFrame   ( SvxBoxItem&       rLineOuter,
-                                                  SvxBoxInfoItem&   rLineInner );
+    void GetSelectionFrame(
+        std::shared_ptr<SvxBoxItem>& rLineOuter,
+        std::shared_ptr<SvxBoxInfoItem>& rLineInner );
 
     SvtScriptType   GetSelectionScriptType();
 
-    bool            GetAutoSumArea(ScRangeList& rRangeList);
-    void            EnterAutoSum(const ScRangeList& rRangeList, bool bSubTotal, const ScAddress& rAddr);
-    bool            AutoSum( const ScRange& rRange, bool bSubTotal, bool bSetCursor, bool bContinue );
-    OUString        GetAutoSumFormula( const ScRangeList& rRangeList, bool bSubTotal, const ScAddress& rAddr );
+    bool            GetAutoSumArea( ScRangeList& rRangeList );
+    void            EnterAutoSum( const ScRangeList& rRangeList, bool bSubTotal, const ScAddress& rAddr, const OpCode eCode );
+    bool            AutoSum( const ScRange& rRange, bool bSubTotal, bool bSetCursor, bool bContinue, const OpCode eCode );
+    OUString        GetAutoSumFormula( const ScRangeList& rRangeList, bool bSubTotal, const ScAddress& rAddr, const OpCode eCode );
 
     void            EnterData( SCCOL nCol, SCROW nRow, SCTAB nTab, const OUString& rString,
                                const EditTextObject* pData = nullptr );
@@ -99,10 +108,14 @@ public:
     void            EnterDataAtCursor( const OUString& rString );         //! Not used?
 
     SC_DLLPUBLIC void           CutToClip();
-    SC_DLLPUBLIC bool           CopyToClip( ScDocument* pClipDoc, bool bCut = false, bool bApi = false,
+    SC_DLLPUBLIC bool           CopyToClip( ScDocument* pClipDoc, bool bCut, bool bApi = false,
                                             bool bIncludeObjects = false, bool bStopEdit = true );
     SC_DLLPUBLIC bool           CopyToClip( ScDocument* pClipDoc, const ScRangeList& rRange, bool bCut,
                                             bool bApi = false, bool bIncludeObjects = false, bool bStopEdit = true );
+    bool                        CopyToClipSingleRange( ScDocument* pClipDoc, const ScRangeList& rRanges, bool bCut,
+                                            bool bIncludeObjects );
+    bool                        CopyToClipMultiRange( const ScDocument* pClipDoc, const ScRangeList& rRanges, bool bCut,
+                                            bool bApi, bool bIncludeObjects );
     ScTransferObj*              CopyToTransferable();
     SC_DLLPUBLIC bool           PasteFromClip( InsertDeleteFlags nFlags, ScDocument* pClipDoc,
                                     ScPasteFunc nFunction = ScPasteFunc::NONE, bool bSkipEmpty = false,
@@ -128,7 +141,7 @@ public:
 
     bool            PasteDataFormat( SotClipboardFormatId nFormatId,
                                         const css::uno::Reference< css::datatransfer::XTransferable >& rxTransferable,
-                                        SCCOL nPosX, SCROW nPosY, Point* pLogicPos,
+                                        SCCOL nPosX, SCROW nPosY, const Point* pLogicPos,
                                         bool bLink = false, bool bAllowDialogs = false );
 
     bool            PasteFile( const Point&, const OUString&, bool bLink );
@@ -158,8 +171,9 @@ public:
     bool            InsertName( const OUString& rName, const OUString& rSymbol,
                                 const OUString& rType );
 
-    void            ApplyAttributes( const SfxItemSet* pDialogSet, const SfxItemSet* pOldSet );
-    void            ApplyAttr( const SfxPoolItem& rAttrItem );
+    void            ApplyAttributes( const SfxItemSet* pDialogSet, const SfxItemSet* pOldSet, bool bAdjustBlockHeight = true );
+    void            ApplyAttr( const SfxPoolItem& rAttrItem, bool bAdjustBlockHeight = true );
+
     void            ApplySelectionPattern( const ScPatternAttr& rAttr,
                                             bool bCursorOnly = false);
     void            ApplyPatternLines(const ScPatternAttr& rAttr,
@@ -170,11 +184,11 @@ public:
 
     const SfxStyleSheet*
                     GetStyleSheetFromMarked();
-    void            SetStyleSheetToMarked( SfxStyleSheet* pStyleSheet );
+    void            SetStyleSheetToMarked( const SfxStyleSheet* pStyleSheet );
     void            RemoveStyleSheetInUse( const SfxStyleSheetBase* pStyleSheet );
     void            UpdateStyleSheetInUse( const SfxStyleSheetBase* pStyleSheet );
 
-    void            SetNumberFormat( short nFormatType, sal_uLong nAdd = 0 );
+    void            SetNumberFormat( SvNumFormatType nFormatType, sal_uLong nAdd = 0 );
     void            SetNumFmtByStr( const OUString& rCode );
     void            ChangeNumFmtDecimals( bool bIncrement );
 
@@ -195,7 +209,7 @@ public:
 
     void SetWidthOrHeight(
         bool bWidth, const std::vector<sc::ColRowSpan>& rRanges, ScSizeMode eMode,
-        sal_uInt16 nSizeTwips, bool bRecord = true, ScMarkData* pMarkData = nullptr );
+        sal_uInt16 nSizeTwips, bool bRecord = true, const ScMarkData* pMarkData = nullptr );
 
     void            SetMarkedWidthOrHeight( bool bWidth, ScSizeMode eMode, sal_uInt16 nSizeTwips );
 
@@ -307,7 +321,7 @@ public:
     void            DetectiveMarkPred();
     void            DetectiveMarkSucc();
 
-    void            InsertCurrentTime(short nCellFmt, const OUString& rUndoStr);
+    void            InsertCurrentTime(SvNumFormatType nCellFmt, const OUString& rUndoStr);
 
     void            ShowNote( bool bShow );
     void            EditNote();
@@ -315,12 +329,17 @@ public:
     bool            SelectionEditable( bool* pOnlyNotBecauseOfMatrix = nullptr );
 
     SC_DLLPUBLIC void
-                    DataFormPutData( SCROW nCurrentRow ,
-                                     SCROW nStartRow , SCCOL nStartCol ,
-                                     SCROW nEndRow , SCCOL nEndCol ,
-                                     std::vector<VclPtr<Edit> >& aEdits,
-                                     sal_uInt16 aColLength );
+                    DataFormPutData(SCROW nCurrentRow ,
+                                    SCROW nStartRow , SCCOL nStartCol ,
+                                    SCROW nEndRow , SCCOL nEndCol ,
+                                    std::vector<std::unique_ptr<ScDataFormFragment>>& rEdits,
+                                    sal_uInt16 aColLength);
     void            UpdateSelectionArea( const ScMarkData& rSel, ScPatternAttr* pAttr = nullptr );
+
+    void            OnLOKInsertDeleteColumn(SCCOL nStartCol, long nOffset);
+    void            OnLOKInsertDeleteRow(SCROW nStartRow, long nOffset);
+    void            OnLOKSetWidthOrHeight(SCCOLROW nStart, bool bWidth);
+
                                                 // Internal helper functions
 protected:
     static void     UpdateLineAttrs( ::editeng::SvxBorderLine&        rLine,

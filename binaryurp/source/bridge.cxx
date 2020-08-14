@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <algorithm>
 #include <cassert>
@@ -26,37 +26,36 @@
 #include <memory>
 #include <vector>
 
-#include "com/sun/star/bridge/InvalidProtocolChangeException.hpp"
-#include "com/sun/star/bridge/XBridge.hpp"
-#include "com/sun/star/bridge/XInstanceProvider.hpp"
-#include "com/sun/star/bridge/XProtocolProperties.hpp"
-#include "com/sun/star/connection/XConnection.hpp"
-#include "com/sun/star/io/IOException.hpp"
-#include "com/sun/star/lang/DisposedException.hpp"
-#include "com/sun/star/lang/EventObject.hpp"
-#include "com/sun/star/lang/XEventListener.hpp"
-#include "com/sun/star/uno/Reference.hxx"
-#include "com/sun/star/uno/RuntimeException.hpp"
-#include "com/sun/star/uno/Sequence.hxx"
-#include "com/sun/star/uno/XInterface.hpp"
-#include "cppuhelper/exc_hlp.hxx"
-#include "cppuhelper/weak.hxx"
-#include "osl/mutex.hxx"
-#include "osl/thread.hxx"
-#include "rtl/byteseq.hxx"
-#include "rtl/random.h"
-#include "rtl/ref.hxx"
-#include "rtl/ustrbuf.hxx"
-#include "rtl/ustring.h"
-#include "rtl/ustring.hxx"
-#include "sal/log.hxx"
-#include "sal/types.h"
-#include "typelib/typeclass.h"
-#include "typelib/typedescription.h"
-#include "typelib/typedescription.hxx"
-#include "uno/dispatcher.hxx"
-#include "uno/environment.hxx"
-#include "uno/lbnames.h"
+#include <com/sun/star/bridge/InvalidProtocolChangeException.hpp>
+#include <com/sun/star/bridge/XBridge.hpp>
+#include <com/sun/star/bridge/XInstanceProvider.hpp>
+#include <com/sun/star/bridge/XProtocolProperties.hpp>
+#include <com/sun/star/connection/XConnection.hpp>
+#include <com/sun/star/io/IOException.hpp>
+#include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/lang/EventObject.hpp>
+#include <com/sun/star/lang/XEventListener.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/XInterface.hpp>
+#include <cppuhelper/exc_hlp.hxx>
+#include <cppuhelper/weak.hxx>
+#include <osl/mutex.hxx>
+#include <osl/thread.hxx>
+#include <rtl/byteseq.hxx>
+#include <rtl/random.h>
+#include <rtl/ref.hxx>
+#include <rtl/string.h>
+#include <rtl/ustring.hxx>
+#include <sal/log.hxx>
+#include <sal/types.h>
+#include <typelib/typeclass.h>
+#include <typelib/typedescription.h>
+#include <typelib/typedescription.hxx>
+#include <uno/dispatcher.hxx>
+#include <uno/environment.hxx>
+#include <uno/lbnames.h>
 
 #include "binaryany.hxx"
 #include "bridge.hxx"
@@ -86,7 +85,7 @@ OUString toString(css::uno::TypeDescription const & type) {
     return OUString(d->pTypeName);
 }
 
-extern "C" void SAL_CALL freeProxyCallback(
+extern "C" void freeProxyCallback(
     SAL_UNUSED_PARAMETER uno_ExtEnvironment *, void * pProxy)
 {
     assert(pProxy != nullptr);
@@ -104,7 +103,7 @@ public:
 
     ~AttachThread();
 
-    const rtl::ByteSequence& getTid() throw () { return tid_;}
+    const rtl::ByteSequence& getTid() const throw () { return tid_;}
 
 private:
     AttachThread(const AttachThread&) = delete;
@@ -205,8 +204,8 @@ Bridge::Bridge(
 }
 
 void Bridge::start() {
-    rtl::Reference< Reader > r(new Reader(this));
-    rtl::Reference< Writer > w(new Writer(this));
+    rtl::Reference r(new Reader(this));
+    rtl::Reference w(new Writer(this));
     {
         osl::MutexGuard g(mutex_);
         assert(
@@ -296,7 +295,7 @@ void Bridge::terminate(bool final) {
         try {
             connection_->close();
         } catch (const css::io::IOException & e) {
-            SAL_INFO("binaryurp", "caught IO exception '" << e.Message << '\'');
+            SAL_INFO("binaryurp", "caught IO exception '" << e << '\'');
         }
         assert(w.is());
         w->stop();
@@ -313,27 +312,27 @@ void Bridge::terminate(bool final) {
             osl::MutexGuard g(mutex_);
             s.swap(stubs_);
         }
-        for (Stubs::iterator i(s.begin()); i != s.end(); ++i) {
-            for (Stub::iterator j(i->second.begin()); j != i->second.end(); ++j)
+        for (auto & stub : s)
+        {
+            for (auto & item : stub.second)
             {
                 SAL_INFO(
                     "binaryurp",
-                    "stub '" << i->first << "', '" << toString(j->first)
+                    "stub '" << stub.first << "', '" << toString(item.first)
                         << "' still mapped at Bridge::terminate");
                 binaryUno_.get()->pExtEnv->revokeInterface(
-                    binaryUno_.get()->pExtEnv, j->second.object.get());
+                    binaryUno_.get()->pExtEnv, item.second.object.get());
             }
         }
         factory_->removeBridge(this);
-        for (Listeners::iterator i(ls.begin()); i != ls.end(); ++i) {
+        for (auto const& listener : ls)
+        {
             try {
-                (*i)->disposing(
+                listener->disposing(
                     css::lang::EventObject(
                         static_cast< cppu::OWeakObject * >(this)));
             } catch (const css::uno::RuntimeException & e) {
-                SAL_WARN(
-                    "binaryurp",
-                    "caught runtime exception '" << e.Message << '\'');
+                SAL_WARN("binaryurp", "caught " << e);
             }
         }
     }
@@ -428,9 +427,9 @@ OUString Bridge::registerOutgoingInterface(
         //TODO: Release sub-stub if it is not successfully sent to remote side
         // (otherwise, stub will leak until terminate()):
         if (j == stub->end()) {
-            j = stub->insert(Stub::value_type(type, SubStub())).first;
+            j = stub->emplace(type, SubStub()).first;
             if (stub == &newStub) {
-                i = stubs_.insert(Stubs::value_type(oid, Stub())).first;
+                i = stubs_.emplace(oid, Stub()).first;
                 std::swap(i->second, newStub);
                 j = i->second.find(type);
                 assert(j !=  i->second.end());
@@ -466,11 +465,12 @@ css::uno::UnoInterfaceReference Bridge::findStub(
         if (j != i->second.end()) {
             return j->second.object;
         }
-        for (j = i->second.begin(); j != i->second.end(); ++j) {
+        for (auto const& item : i->second)
+        {
             if (typelib_typedescription_isAssignableFrom(
-                    type.get(), j->first.get()))
+                    type.get(), item.first.get()))
             {
-                return j->second.object;
+                return item.second.object;
             }
         }
     }
@@ -532,7 +532,7 @@ void Bridge::freeProxy(Proxy & proxy) {
         makeReleaseCall(proxy.getOid(), proxy.getType());
     } catch (const css::uno::RuntimeException & e) {
         SAL_INFO(
-            "binaryurp", "caught runtime exception '" << e.Message << '\'');
+            "binaryurp", "caught runtime exception '" << e << '\'');
     } catch (const std::exception & e) {
         SAL_WARN("binaryurp", "caught C++ exception '" << e.what() << '\'');
     }
@@ -606,7 +606,8 @@ bool Bridge::makeCall(
         decrementActiveCalls();
         decrementCalls();
     }
-    if (resp.get() == nullptr) {
+    if (resp == nullptr)
+    {
         throw css::lang::DisposedException(
             "Binary URP bridge disposed during call",
             static_cast< cppu::OWeakObject * >(this));
@@ -622,10 +623,9 @@ void Bridge::sendRequestChangeRequest() {
     assert(mode_ == MODE_REQUESTED);
     random_ = random();
     std::vector< BinaryAny > a;
-    a.push_back(
-        BinaryAny(
+    a.emplace_back(
             css::uno::TypeDescription(cppu::UnoType< sal_Int32 >::get()),
-            &random_));
+            &random_);
     sendProtPropRequest(OutgoingRequest::KIND_REQUEST_CHANGE, a);
 }
 
@@ -643,8 +643,7 @@ void Bridge::handleRequestChangeReply(
         }
         SAL_WARN(
             "binaryurp",
-            "requestChange caught RuntimeException \'" << e.Message
-                << "' in state 'requested'");
+            "requestChange caught " << e << " in state 'requested'");
         mode_ = MODE_NORMAL;
         getWriter()->unblock();
         decrementCalls();
@@ -769,11 +768,10 @@ void Bridge::handleCommitChangeRequest(
     BinaryAny ret;
     assert(inArguments.size() == 1);
     css::uno::Sequence< css::bridge::ProtocolProperty > s;
-    bool ok = (mapBinaryToCppAny(inArguments[0]) >>= s);
+    [[maybe_unused]] bool ok = (mapBinaryToCppAny(inArguments[0]) >>= s);
     assert(ok);
-    (void) ok; // avoid warnings
-    for (sal_Int32 i = 0; i != s.getLength(); ++i) {
-        if (s[i].Name == "CurrentContext") {
+    for (const auto & pp : std::as_const(s)) {
+        if (pp.Name == "CurrentContext") {
             bCcMode = true;
         } else {
             bCcMode = false;
@@ -782,7 +780,7 @@ void Bridge::handleCommitChangeRequest(
                 css::uno::Any(
                     css::bridge::InvalidProtocolChangeException(
                         "InvalidProtocolChangeException",
-                        css::uno::Reference< css::uno::XInterface >(), s[i],
+                        css::uno::Reference< css::uno::XInterface >(), pp,
                         1)));
             break;
         }
@@ -841,7 +839,8 @@ Bridge::~Bridge() {
         osl::MutexGuard g(mutex_);
         SAL_WARN_IF(
             state_ == STATE_STARTED || state_ == STATE_TERMINATED, "binaryurp",
-            "undisposed bridge, potential deadlock ahead");
+            "undisposed bridge \"" << name_ <<"\" in state " << state_
+                << ", potential deadlock ahead");
     }
 #endif
     dispose();
@@ -865,10 +864,9 @@ css::uno::Reference< css::uno::XInterface > Bridge::getInstance(
     css::uno::TypeDescription ifc(cppu::UnoType<css::uno::XInterface>::get());
     typelib_TypeDescription * p = ifc.get();
     std::vector< BinaryAny > inArgs;
-    inArgs.push_back(
-        BinaryAny(
+    inArgs.emplace_back(
             css::uno::TypeDescription(cppu::UnoType< css::uno::Type >::get()),
-            &p));
+            &p);
     BinaryAny ret;
     std::vector< BinaryAny> outArgs;
     bool bExc = makeCall(
@@ -877,10 +875,25 @@ css::uno::Reference< css::uno::XInterface > Bridge::getInstance(
             "com.sun.star.uno.XInterface::queryInterface"),
         false, inArgs, &ret, &outArgs);
     throwException(bExc, ret);
+    auto const t = ret.getType();
+    if (t.get()->eTypeClass == typelib_TypeClass_VOID) {
+        return {};
+    }
+    if (!t.equals(ifc)) {
+        throw css::uno::RuntimeException(
+            "initial object queryInterface for OID \"" + sInstanceName + "\" returned ANY of type "
+            + OUString::unacquired(&t.get()->pTypeName));
+    }
+    auto const val = *static_cast< uno_Interface ** >(ret.getValue(ifc));
+    if (val == nullptr) {
+        throw css::uno::RuntimeException(
+            "initial object queryInterface for OID \"" + sInstanceName
+            + "\" returned null css.uno.XInterface ANY");
+    }
     return css::uno::Reference< css::uno::XInterface >(
         static_cast< css::uno::XInterface * >(
             binaryToCppMapping_.mapInterface(
-                *static_cast< uno_Interface ** >(ret.getValue(ifc)),
+                val,
                 ifc.get())),
         SAL_NO_ACQUIRE);
 }
@@ -890,10 +903,8 @@ OUString Bridge::getName() {
 }
 
 OUString Bridge::getDescription() {
-    OUStringBuffer b(name_);
-    b.append(':');
-    b.append(connection_->getDescription());
-    return b.makeStringAndClear();
+    OUString b = name_ + ":" + connection_->getDescription();
+    return b;
 }
 
 void Bridge::dispose() {
@@ -965,9 +976,26 @@ void Bridge::sendProtPropRequest(
 void Bridge::makeReleaseCall(
     OUString const & oid, css::uno::TypeDescription const & type)
 {
-    AttachThread att(getThreadPool());
+    //HACK to decouple the processing of release calls from all other threads.  Normally, sending
+    // the release request should use the current thread's TID (via AttachThread), which would cause
+    // that asynchronous request to be processed by a physical thread that is paired with the
+    // physical thread processing the normal synchronous call stack (see ThreadIdHashMap in
+    // cppu/source/threadpool/threadpool.hxx).  However, that can lead to deadlock when a thread
+    // illegally makes a synchronous UNO call with the SolarMutex locked (e.g.,
+    // SfxBaseModel::postEvent_Impl in sfx2/source/doc/sfxbasemodel.cxx doing documentEventOccurred
+    // and notifyEvent calls), and while that call is on the stack the remote side sends back some
+    // release request on the same logical UNO thread for an object that wants to acquire the
+    // SolarMutex in its destructor (e.g., SwXTextDocument in sw/inc/unotxdoc.hxx holding its
+    // m_pImpl via an sw::UnoImplPtr).  While the correct approach would be to not make UNO calls
+    // with the SolarMutex (or any other mutex) locked, fixing that would probably be a heroic
+    // effort.  So for now live with this hack, hoping that it does not introduce any new issues of
+    // its own:
+    static auto const tid = [] {
+            static sal_Int8 const id[] = {'r', 'e', 'l', 'e', 'a', 's', 'e', 'h', 'a', 'c', 'k'};
+            return rtl::ByteSequence(id, SAL_N_ELEMENTS(id));
+        }();
     sendRequest(
-        att.getTid(), oid, type,
+        tid, oid, type,
         css::uno::TypeDescription("com.sun.star.uno.XInterface::release"),
         std::vector< BinaryAny >());
 }

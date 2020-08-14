@@ -23,27 +23,22 @@
 #include <rtl/ref.hxx>
 #include <svx/svxdllapi.h>
 
-// class OfaPtrItem ------------------------------------------------------
-
-class SVX_DLLPUBLIC OfaPtrItem : public SfxPoolItem
+class SVX_DLLPUBLIC OfaPtrItem final : public SfxPoolItem
 {
 private:
     void* pPtr;
 
 public:
                              OfaPtrItem( sal_uInt16 nWhich, void *pPtr );
-                             OfaPtrItem( const OfaPtrItem& );
 
     virtual bool             operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual OfaPtrItem*      Clone( SfxItemPool *pPool = nullptr ) const override;
 
     void*                    GetValue() const { return pPtr; }
 };
 
-// class OfaRefItem - for ref counting items
-
 template <class reference_type>
-class OfaRefItem : public SfxPoolItem
+class OfaRefItem final : public SfxPoolItem
 {
  private:
     rtl::Reference<reference_type> mxRef;
@@ -51,14 +46,12 @@ public:
     OfaRefItem( sal_uInt16 _nWhich, const rtl::Reference<reference_type> &xRef )
         : SfxPoolItem( _nWhich ), mxRef( xRef )
     {}
-    OfaRefItem( const OfaRefItem& rItem )
-        : SfxPoolItem( rItem.Which() ), mxRef( rItem.mxRef )
-    {}
     virtual bool operator==( const SfxPoolItem& rItem ) const override
     {
-        return mxRef == static_cast<OfaRefItem<reference_type> const &>(rItem).mxRef;
+        return SfxPoolItem::operator==(rItem)
+            && mxRef == static_cast<OfaRefItem<reference_type> const &>(rItem).mxRef;
     }
-    virtual SfxPoolItem* Clone( SfxItemPool* /*pPool = 0*/ ) const override
+    virtual OfaRefItem<reference_type>* Clone( SfxItemPool* /*pPool = 0*/ ) const override
     {
         return new OfaRefItem( *this );
     }

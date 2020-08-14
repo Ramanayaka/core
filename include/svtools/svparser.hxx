@@ -21,7 +21,6 @@
 #define INCLUDED_SVTOOLS_SVPARSER_HXX
 
 #include <svtools/svtdllapi.h>
-#include <svtools/htmltokn.h>
 #include <tools/link.hxx>
 #include <tools/ref.hxx>
 #include <tools/solar.h>
@@ -54,6 +53,7 @@ protected:
     sal_uLong           nlLinePos;          // current column number
 
     std::unique_ptr<SvParser_Impl<T>> pImplData; // internal data
+    long                m_nTokenIndex;      // current token index to detect loops for seeking backwards
     long                nTokenValue;        // additional value (RTF)
     bool                bTokenHasValue;     // indicates whether nTokenValue is valid
     SvParserState       eState;             // status also in derived classes
@@ -88,7 +88,7 @@ protected:
     virtual T GetNextToken_() = 0;
 
     // is called for each Token that is recognized in CallParser
-    virtual void NextToken( T nToken );
+    virtual void NextToken( T nToken ) = 0;
 
     // at times of SvRefBase derivation, not everybody may delete
     virtual ~SvParser() override;
@@ -96,7 +96,7 @@ protected:
     void ClearTxtConvContext();
 
 private:
-    TokenStackType* pTokenStack;
+    std::unique_ptr<TokenStackType[]> pTokenStack;
     TokenStackType *pTokenStackPos;
     sal_uInt8 nTokenStackSize, nTokenStackPos;
 
@@ -146,7 +146,7 @@ public:
 // 'pWhichIds'. It has the length 'nWhichIds'.
 // The WhichMap is not deleted.
 SVT_DLLPUBLIC void BuildWhichTable( std::vector<sal_uInt16> &rWhichMap,
-                               sal_uInt16 *pWhichIds,
+                               sal_uInt16 const *pWhichIds,
                                sal_uInt16 nWhichIds );
 
 /*========================================================================
@@ -178,7 +178,7 @@ public:
 
     /** Assignment.
     */
-    SvKeyValue& operator= (SvKeyValue &rOther)
+    SvKeyValue& operator= (SvKeyValue const &rOther)
     {
         m_aKey   = rOther.m_aKey;
         m_aValue = rOther.m_aValue;

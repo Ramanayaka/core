@@ -17,32 +17,33 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "formulaiter.hxx"
+#include <formulaiter.hxx>
 
-#include "formulacell.hxx"
-#include "tokenarray.hxx"
+#include <formulacell.hxx>
+#include <tokenarray.hxx>
 #include <formula/token.hxx>
+#include <token.hxx>
 
 using namespace formula;
 
-ScDetectiveRefIter::ScDetectiveRefIter( ScFormulaCell* pCell ) :
-    pCode(pCell->GetCode()),
-    maIter(*pCode),
+ScDetectiveRefIter::ScDetectiveRefIter( const ScDocument* pDoc, ScFormulaCell* pCell ) :
+    mpDoc(pDoc),
+    maIter(*pCell->GetCode()),
     aPos(pCell->aPos)
 {
 }
 
-static bool lcl_ScDetectiveRefIter_SkipRef( formula::FormulaToken* p, const ScAddress& rPos )
+static bool lcl_ScDetectiveRefIter_SkipRef( const ScDocument* pDoc, formula::FormulaToken* p, const ScAddress& rPos )
 {
     ScSingleRefData& rRef1 = *p->GetSingleRef();
-    ScAddress aAbs1 = rRef1.toAbs(rPos);
-    if (!ValidAddress(aAbs1))
+    ScAddress aAbs1 = rRef1.toAbs(pDoc, rPos);
+    if (!pDoc->ValidAddress(aAbs1))
         return true;
     if ( p->GetType() == svDoubleRef || p->GetType() == svExternalDoubleRef )
     {
         ScSingleRefData& rRef2 = p->GetDoubleRef()->Ref2;
-        ScAddress aAbs2 = rRef2.toAbs(rPos);
-        if (!ValidAddress(aAbs2))
+        ScAddress aAbs2 = rRef2.toAbs(pDoc, rPos);
+        if (!pDoc->ValidAddress(aAbs2))
             return true;
     }
     return false;
@@ -55,8 +56,8 @@ bool ScDetectiveRefIter::GetNextRef( ScRange& rRange )
     if( p )
     {
         SingleDoubleRefProvider aProv( *p );
-        rRange.aStart = aProv.Ref1.toAbs(aPos);
-        rRange.aEnd = aProv.Ref2.toAbs(aPos);
+        rRange.aStart = aProv.Ref1.toAbs(mpDoc, aPos);
+        rRange.aEnd = aProv.Ref2.toAbs(mpDoc, aPos);
         bRet = true;
     }
 
@@ -66,7 +67,7 @@ bool ScDetectiveRefIter::GetNextRef( ScRange& rRange )
 formula::FormulaToken* ScDetectiveRefIter::GetNextRefToken()
 {
     formula::FormulaToken* p = maIter.GetNextReferenceRPN();
-    while (p && lcl_ScDetectiveRefIter_SkipRef(p, aPos))
+    while (p && lcl_ScDetectiveRefIter_SkipRef(mpDoc, p, aPos))
     {
         p = maIter.GetNextReferenceRPN();
     }

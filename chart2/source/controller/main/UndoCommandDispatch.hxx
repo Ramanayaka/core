@@ -21,8 +21,8 @@
 
 #include "CommandDispatch.hxx"
 
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/document/XUndoManager.hpp>
+namespace com::sun::star::document { class XUndoManager; }
+namespace com::sun::star::frame { class XModel; }
 
 namespace chart
 {

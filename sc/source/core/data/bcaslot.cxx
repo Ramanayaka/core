@@ -19,50 +19,41 @@
 
 #include <sfx2/objsh.hxx>
 #include <svl/listener.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
-#include "document.hxx"
-#include "brdcst.hxx"
-#include "bcaslot.hxx"
-#include "scerrors.hxx"
-#include "docoptio.hxx"
-#include "refupdat.hxx"
-#include "table.hxx"
+#include <document.hxx>
+#include <brdcst.hxx>
+#include <bcaslot.hxx>
+#include <scerrors.hxx>
+#include <refupdat.hxx>
 #include <bulkdatahint.hxx>
+#include <columnspanset.hxx>
 
 #if DEBUG_AREA_BROADCASTER
 #include <formulacell.hxx>
 #include <grouparealistener.hxx>
 #endif
 
-#include <o3tl/make_unique.hxx>
-
 // Number of slots per dimension
 // must be integer divisors of MAXCOLCOUNT respectively MAXROWCOUNT
-#define BCA_SLOTS_COL ((MAXCOLCOUNT_DEFINE) / 16)
-#if MAXROWCOUNT_DEFINE == 32000
-#define BCA_SLOTS_ROW 256
-#define BCA_SLICE 125
-#else
-#define BCA_SLICE 128
-#define BCA_SLOTS_ROW ((MAXROWCOUNT_DEFINE) / BCA_SLICE)
-#endif
-#define BCA_SLOT_COLS ((MAXCOLCOUNT_DEFINE) / BCA_SLOTS_COL)
-#define BCA_SLOT_ROWS ((MAXROWCOUNT_DEFINE) / BCA_SLOTS_ROW)
+constexpr SCCOL BCA_SLOTS_COL  = MAXCOLCOUNT / 16;
+constexpr SCROW BCA_SLICE = 128;
+constexpr SCROW BCA_SLOTS_ROW  = MAXROWCOUNT / BCA_SLICE;
+constexpr SCCOL BCA_SLOT_COLS  = MAXCOLCOUNT / BCA_SLOTS_COL;
+constexpr SCROW BCA_SLOT_ROWS  = MAXROWCOUNT / BCA_SLOTS_ROW;
 // multiple?
-#if (BCA_SLOT_COLS * BCA_SLOTS_COL) != (MAXCOLCOUNT_DEFINE)
-#error bad BCA_SLOTS_COL value!
-#endif
-#if (BCA_SLOT_ROWS * BCA_SLOTS_ROW) != (MAXROWCOUNT_DEFINE)
-#error bad BCA_SLOTS_ROW value!
-#endif
+static_assert((BCA_SLOT_COLS * BCA_SLOTS_COL) == MAXCOLCOUNT, "bad BCA_SLOTS_COL value");
+static_assert((BCA_SLOT_ROWS * BCA_SLOTS_ROW) == MAXROWCOUNT, "bad BCA_SLOTS_ROW value");
+
 // size of slot array if linear
-#define BCA_SLOTS_DEFINE (BCA_SLOTS_COL * BCA_SLOTS_ROW)
+constexpr int BCA_SLOTS  = BCA_SLOTS_COL * BCA_SLOTS_ROW;
 // Arbitrary 2**31/8, assuming size_t can hold at least 2^31 values and
 // sizeof_ptr is at most 8 bytes. You'd probably doom your machine's memory
-// anyway, once you reached these values..
-#if BCA_SLOTS_DEFINE > 268435456
-#error BCA_SLOTS_DEFINE DOOMed!
-#endif
+// anyway, once you reached these values...
+static_assert(BCA_SLOTS <= 268435456, "DOOMed");
+
+namespace {
 
 struct ScSlotData
 {
@@ -73,13 +64,10 @@ struct ScSlotData
 
     ScSlotData( SCROW r1, SCROW r2, SCSIZE s, SCSIZE c ) : nStartRow(r1), nStopRow(r2), nSlice(s), nCumulated(c) {}
 };
+
+}
+
 typedef ::std::vector< ScSlotData > ScSlotDistribution;
-#if MAXROWCOUNT_DEFINE <= 65536
-// Linear distribution.
-static ScSlotDistribution aSlotDistribution( ScSlotData( 0, MAXROWCOUNT, BCA_SLOT_ROWS, 0));
-static SCSIZE nBcaSlotsRow = BCA_SLOTS_ROW;
-static SCSIZE nBcaSlots = BCA_SLOTS_DEFINE;
-#else
 // Logarithmic or any other distribution.
 // Upper sheet part usually is more populated and referenced and gets fine
 // grained resolution, larger data in larger hunks.
@@ -94,7 +82,7 @@ static SCSIZE initSlotDistribution( ScSlotDistribution & rSD, SCSIZE & rBSR )
     // Must be sorted by row1,row2!
     while (nRow2 <= MAXROWCOUNT)
     {
-        rSD.push_back( ScSlotData( nRow1, nRow2, nSlice, nSlots));
+        rSD.emplace_back( nRow1, nRow2, nSlice, nSlots);
         nSlots += (nRow2 - nRow1) / nSlice;
         nRow1 = nRow2;
         nRow2 *= 2;
@@ -107,7 +95,6 @@ static ScSlotDistribution aSlotDistribution;
 static SCSIZE nBcaSlotsRow;
 static SCSIZE nBcaSlots = initSlotDistribution( aSlotDistribution, nBcaSlotsRow) * BCA_SLOTS_COL;
 // Ensure that all static variables are initialized with this one call.
-#endif
 
 ScBroadcastArea::ScBroadcastArea( const ScRange& rRange ) :
     pUpdateChainNext(nullptr),
@@ -145,7 +132,7 @@ ScBroadcastAreaSlot::~ScBroadcastAreaSlot()
 ScDocument::HardRecalcState ScBroadcastAreaSlot::CheckHardRecalcStateCondition() const
 {
     ScDocument::HardRecalcState eState = pDoc->GetHardRecalcState();
-    if (eState == ScDocument::HARDRECALCSTATE_OFF)
+    if (eState == ScDocument::HardRecalcState::OFF)
     {
         if (aBroadcastAreaTbl.size() >= aBroadcastAreaTbl.max_size())
         {   // this is more hypothetical now, check existed for old SV_PTRARR_SORT
@@ -156,7 +143,7 @@ ScDocument::HardRecalcState ScBroadcastAreaSlot::CheckHardRecalcStateCondition()
                 pShell->SetError(SCWARN_CORE_HARD_RECALC);
 
             pDoc->SetAutoCalc( false );
-            eState = ScDocument::HARDRECALCSTATE_ETERNAL;
+            eState = ScDocument::HardRecalcState::ETERNAL;
             pDoc->SetHardRecalcState( eState );
         }
     }
@@ -168,12 +155,13 @@ bool ScBroadcastAreaSlot::StartListeningArea(
 {
     bool bNewArea = false;
     OSL_ENSURE(pListener, "StartListeningArea: pListener Null");
-    if (CheckHardRecalcStateCondition() == ScDocument::HARDRECALCSTATE_ETERNAL)
+    assert(!pDoc->IsDelayedFormulaGrouping()); // otherwise the group size might be incorrect
+    if (CheckHardRecalcStateCondition() == ScDocument::HardRecalcState::ETERNAL)
         return false;
     if ( !rpArea )
     {
         // Even if most times the area doesn't exist yet and immediately trying
-        // to new and insert it would save an attempt to find it, on mass
+        // to new and insert it would save an attempt to find it, on massive
         // operations like identical large [HV]LOOKUP() areas the new/delete
         // would add quite some penalty for all but the first formula cell.
         ScBroadcastAreas::const_iterator aIter( FindBroadcastArea( rRange, bGroupListening));
@@ -209,7 +197,7 @@ bool ScBroadcastAreaSlot::StartListeningArea(
 void ScBroadcastAreaSlot::InsertListeningArea( ScBroadcastArea* pArea )
 {
     OSL_ENSURE( pArea, "InsertListeningArea: pArea NULL");
-    if (CheckHardRecalcStateCondition() == ScDocument::HARDRECALCSTATE_ETERNAL)
+    if (CheckHardRecalcStateCondition() == ScDocument::HardRecalcState::ETERNAL)
         return;
     if (aBroadcastAreaTbl.insert( pArea).second)
         pArea->IncRef();
@@ -483,10 +471,9 @@ void ScBroadcastAreaSlot::UpdateInsert( ScBroadcastArea* pArea )
         {
             SvtBroadcaster& rTarget = pTarget->GetBroadcaster();
             SvtBroadcaster::ListenersType& rListeners = pArea->GetBroadcaster().GetAllListeners();
-            SvtBroadcaster::ListenersType::iterator it = rListeners.begin(), itEnd = rListeners.end();
-            for (; it != itEnd; ++it)
+            for (auto& pListener : rListeners)
             {
-                SvtListener& rListener = **it;
+                SvtListener& rListener = *pListener;
                 rListener.StartListening(rTarget);
             }
         }
@@ -528,10 +515,6 @@ void ScBroadcastAreaSlot::GetAllListeners(
         const ScRange& rAreaRange = pArea->GetRange();
         switch (eGroup)
         {
-            case sc::ListenerGroupType::Single:
-                if (pArea->IsGroupListening())
-                    continue;
-            break;
             case sc::ListenerGroupType::Group:
                 if (!pArea->IsGroupListening())
                     continue;
@@ -543,28 +526,23 @@ void ScBroadcastAreaSlot::GetAllListeners(
 
         switch (eType)
         {
-            case sc::AreaInside:
+            case sc::AreaOverlapType::Inside:
                 if (!rRange.In(rAreaRange))
                     // The range needs to be fully inside specified range.
                     continue;
                 break;
-            case sc::AreaPartialOverlap:
-                if (!rRange.Intersects(rAreaRange) || rRange.In(rAreaRange))
-                    // The range needs to be only partially overlapping.
-                    continue;
-                break;
-            case sc::AreaInsideOrOverlap:
+            case sc::AreaOverlapType::InsideOrOverlap:
                 if (!rRange.Intersects(rAreaRange))
                     // The range needs to be partially overlapping or fully inside.
                     continue;
                 break;
-            case sc::OneRowInsideArea:
+            case sc::AreaOverlapType::OneRowInside:
                 if (rAreaRange.aStart.Row() != rAreaRange.aEnd.Row() || !rRange.In(rAreaRange))
                     // The range needs to be one single row and fully inside
                     // specified range.
                     continue;
                 break;
-            case sc::OneColumnInsideArea:
+            case sc::AreaOverlapType::OneColumnInside:
                 if (rAreaRange.aStart.Col() != rAreaRange.aEnd.Col() || !rRange.In(rAreaRange))
                     // The range needs to be one single column and fully inside
                     // specified range.
@@ -573,13 +551,12 @@ void ScBroadcastAreaSlot::GetAllListeners(
         }
 
         SvtBroadcaster::ListenersType& rLst = pArea->GetBroadcaster().GetAllListeners();
-        SvtBroadcaster::ListenersType::iterator itLst = rLst.begin(), itLstEnd = rLst.end();
-        for (; itLst != itLstEnd; ++itLst)
+        for (const auto& pListener : rLst)
         {
             sc::AreaListener aEntry;
             aEntry.maArea = rAreaRange;
             aEntry.mbGroupListening = pArea->IsGroupListening();
-            aEntry.mpListener = *itLst;
+            aEntry.mpListener = pListener;
             rListeners.push_back(aEntry);
         }
     }
@@ -588,16 +565,14 @@ void ScBroadcastAreaSlot::GetAllListeners(
 #if DEBUG_AREA_BROADCASTER
 void ScBroadcastAreaSlot::Dump() const
 {
-    ScBroadcastAreas::const_iterator it = aBroadcastAreaTbl.begin(), itEnd = aBroadcastAreaTbl.end();
-    for (; it != itEnd; ++it)
+    for (const ScBroadcastAreaEntry& rEntry : aBroadcastAreaTbl)
     {
-        const ScBroadcastAreaEntry& rEntry = *it;
         const ScBroadcastArea* pArea = rEntry.mpArea;
         const SvtBroadcaster& rBC = pArea->GetBroadcaster();
         const SvtBroadcaster::ListenersType& rListeners = rBC.GetAllListeners();
         size_t n = rListeners.size();
 
-        cout << "  * range: " << rtl::OUStringToOString(pArea->GetRange().Format(ScRefFlags::VALID|ScRefFlags::TAB_3D, pDoc), RTL_TEXTENCODING_UTF8).getStr()
+        cout << "  * range: " << OUStringToOString(pArea->GetRange().Format(ScRefFlags::VALID|ScRefFlags::TAB_3D, pDoc), RTL_TEXTENCODING_UTF8).getStr()
             << ", group: " << pArea->IsGroupListening()
             << ", listener count: " << n << endl;
 
@@ -607,7 +582,7 @@ void ScBroadcastAreaSlot::Dump() const
             if (pFC)
             {
                 cout << "    * listener: formula cell: "
-                     << rtl::OUStringToOString(pFC->aPos.Format(ScRefFlags::VALID|ScRefFlags::TAB_3D, pDoc), RTL_TEXTENCODING_UTF8).getStr()
+                     << OUStringToOString(pFC->aPos.Format(ScRefFlags::VALID|ScRefFlags::TAB_3D, pDoc), RTL_TEXTENCODING_UTF8).getStr()
                      << endl;
                 continue;
             }
@@ -616,7 +591,7 @@ void ScBroadcastAreaSlot::Dump() const
             if (pFGListener)
             {
                 cout << "    * listener: formula group: (pos: "
-                     << rtl::OUStringToOString(pFGListener->getTopCellPos().Format(ScRefFlags::VALID | ScRefFlags::TAB_3D, pDoc), RTL_TEXTENCODING_UTF8).getStr()
+                     << OUStringToOString(pFGListener->getTopCellPos().Format(ScRefFlags::VALID | ScRefFlags::TAB_3D, pDoc), RTL_TEXTENCODING_UTF8).getStr()
                      << ", length: " << pFGListener->getGroupLength()
                      << ")" << endl;
                 continue;
@@ -637,23 +612,18 @@ void ScBroadcastAreaSlot::FinallyEraseAreas()
 
 ScBroadcastAreaSlotMachine::TableSlots::TableSlots()
 {
-    ppSlots = new ScBroadcastAreaSlot* [ nBcaSlots ];
-    memset( ppSlots, 0 , sizeof( ScBroadcastAreaSlot* ) * nBcaSlots );
+    ppSlots.reset( new ScBroadcastAreaSlot* [ nBcaSlots ] );
+    memset( ppSlots.get(), 0 , sizeof( ScBroadcastAreaSlot* ) * nBcaSlots );
 }
 
 ScBroadcastAreaSlotMachine::TableSlots::~TableSlots()
 {
-    for ( ScBroadcastAreaSlot** pp = ppSlots + nBcaSlots; --pp >= ppSlots; /* nothing */ )
-    {
-        if (*pp)
-            delete *pp;
-    }
-    delete [] ppSlots;
+    for ( ScBroadcastAreaSlot** pp = ppSlots.get() + nBcaSlots; --pp >= ppSlots.get(); /* nothing */ )
+        delete *pp;
 }
 
 ScBroadcastAreaSlotMachine::ScBroadcastAreaSlotMachine(
         ScDocument* pDocument ) :
-    pBCAlways( nullptr ),
     pDoc( pDocument ),
     pUpdateChain( nullptr ),
     pEOUpdateChain( nullptr ),
@@ -663,34 +633,30 @@ ScBroadcastAreaSlotMachine::ScBroadcastAreaSlotMachine(
 
 ScBroadcastAreaSlotMachine::~ScBroadcastAreaSlotMachine()
 {
-    for (TableSlotsMap::iterator iTab( aTableSlotsMap.begin());
-            iTab != aTableSlotsMap.end(); ++iTab)
-    {
-        delete (*iTab).second;
-    }
-    delete pBCAlways;
+    aTableSlotsMap.clear();
+    pBCAlways.reset();
     // Areas to-be-erased still present is a serious error in handling, but at
     // this stage there's nothing we can do anymore.
     SAL_WARN_IF( !maAreasToBeErased.empty(), "sc.core", "ScBroadcastAreaSlotMachine::dtor: maAreasToBeErased not empty");
 }
 
 inline SCSIZE ScBroadcastAreaSlotMachine::ComputeSlotOffset(
-        const ScAddress& rAddress )
+        const ScAddress& rAddress ) const
 {
     SCROW nRow = rAddress.Row();
     SCCOL nCol = rAddress.Col();
-    if ( !ValidRow(nRow) || !ValidCol(nCol) )
+    if ( !pDoc->ValidRow(nRow) || !pDoc->ValidCol(nCol) )
     {
         OSL_FAIL( "Row/Col invalid, using first slot!" );
         return 0;
     }
-    for (ScSlotData & i : aSlotDistribution)
+    for (const ScSlotData & i : aSlotDistribution)
     {
         if (nRow < i.nStopRow)
         {
             const ScSlotData& rSD = i;
             return rSD.nCumulated +
-                (static_cast<SCSIZE>(nRow - rSD.nStartRow)) / rSD.nSlice +
+                static_cast<SCSIZE>(nRow - rSD.nStartRow) / rSD.nSlice +
                 static_cast<SCSIZE>(nCol) / BCA_SLOT_COLS * nBcaSlotsRow;
         }
     }
@@ -699,7 +665,7 @@ inline SCSIZE ScBroadcastAreaSlotMachine::ComputeSlotOffset(
 }
 
 void ScBroadcastAreaSlotMachine::ComputeAreaPoints( const ScRange& rRange,
-        SCSIZE& rStart, SCSIZE& rEnd, SCSIZE& rRowBreak )
+        SCSIZE& rStart, SCSIZE& rEnd, SCSIZE& rRowBreak ) const
 {
     rStart = ComputeSlotOffset( rRange.aStart );
     rEnd = ComputeSlotOffset( rRange.aEnd );
@@ -708,7 +674,7 @@ void ScBroadcastAreaSlotMachine::ComputeAreaPoints( const ScRange& rRange,
         ScAddress( rRange.aStart.Col(), rRange.aEnd.Row(), 0 ) ) - rStart;
 }
 
-inline void ComputeNextSlot( SCSIZE & nOff, SCSIZE & nBreak, ScBroadcastAreaSlot** & pp,
+static void ComputeNextSlot( SCSIZE & nOff, SCSIZE & nBreak, ScBroadcastAreaSlot** & pp,
         SCSIZE & nStart, ScBroadcastAreaSlot** const & ppSlots, SCSIZE nRowBreak )
 {
     if ( nOff < nBreak )
@@ -731,7 +697,7 @@ void ScBroadcastAreaSlotMachine::StartListeningArea(
     if ( rRange == BCA_LISTEN_ALWAYS  )
     {
         if ( !pBCAlways )
-            pBCAlways = new SvtBroadcaster;
+            pBCAlways.reset( new SvtBroadcaster );
         pListener->StartListening( *pBCAlways );
     }
     else
@@ -747,8 +713,7 @@ void ScBroadcastAreaSlotMachine::StartListeningArea(
         {
             TableSlotsMap::iterator iTab( aTableSlotsMap.find( nTab));
             if (iTab == aTableSlotsMap.end())
-                iTab = aTableSlotsMap.insert( TableSlotsMap::value_type(
-                            nTab, new TableSlots)).first;
+                iTab = aTableSlotsMap.emplace(nTab, std::make_unique<TableSlots>()).first;
             ScBroadcastAreaSlot** ppSlots = (*iTab).second->getSlots();
             SCSIZE nStart, nEnd, nRowBreak;
             ComputeAreaPoints( rRange, nStart, nEnd, nRowBreak );
@@ -786,8 +751,7 @@ void ScBroadcastAreaSlotMachine::EndListeningArea(
             pListener->EndListening( *pBCAlways);
             if (!pBCAlways->HasListeners())
             {
-                delete pBCAlways;
-                pBCAlways = nullptr;
+                pBCAlways.reset();
             }
         }
     }
@@ -995,14 +959,13 @@ void ScBroadcastAreaSlotMachine::UpdateBroadcastAreas(
             // Remove sheets, if any, iDel or/and iTab may as well point to end().
             while (iDel != iTab)
             {
-                delete (*iDel).second;
                 aTableSlotsMap.erase( iDel++);
             }
             // shift remaining down
             while (iTab != aTableSlotsMap.end())
             {
                 SCTAB nTab = (*iTab).first + nDz;
-                aTableSlotsMap[nTab] = (*iTab).second;
+                aTableSlotsMap[nTab] = std::move((*iTab).second);
                 aTableSlotsMap.erase( iTab++);
             }
         }
@@ -1019,14 +982,14 @@ void ScBroadcastAreaSlotMachine::UpdateBroadcastAreas(
                 while (iTab != iStop)
                 {
                     SCTAB nTab = (*iTab).first + nDz;
-                    aTableSlotsMap[nTab] = (*iTab).second;
+                    aTableSlotsMap[nTab] = std::move((*iTab).second);
                     aTableSlotsMap.erase( iTab--);
                 }
                 // Shift the very first, iTab==iStop in this case.
                 if (bStopIsBegin)
                 {
                     SCTAB nTab = (*iTab).first + nDz;
-                    aTableSlotsMap[nTab] = (*iTab).second;
+                    aTableSlotsMap[nTab] = std::move((*iTab).second);
                     aTableSlotsMap.erase( iStop);
                 }
             }
@@ -1061,8 +1024,7 @@ void ScBroadcastAreaSlotMachine::UpdateBroadcastAreas(
         {
             TableSlotsMap::iterator iTab( aTableSlotsMap.find( nTab));
             if (iTab == aTableSlotsMap.end())
-                iTab = aTableSlotsMap.insert( TableSlotsMap::value_type(
-                            nTab, new TableSlots)).first;
+                iTab = aTableSlotsMap.emplace(nTab, std::make_unique<TableSlots>()).first;
             ScBroadcastAreaSlot** ppSlots = (*iTab).second->getSlots();
             SCSIZE nStart, nEnd, nRowBreak;
             ComputeAreaPoints( aRange, nStart, nEnd, nRowBreak );
@@ -1097,18 +1059,18 @@ void ScBroadcastAreaSlotMachine::EnterBulkBroadcast()
 
 void ScBroadcastAreaSlotMachine::LeaveBulkBroadcast( SfxHintId nHintId )
 {
-    if (nInBulkBroadcast > 0)
+    if (nInBulkBroadcast <= 0)
+        return;
+
+    if (--nInBulkBroadcast == 0)
     {
-        if (--nInBulkBroadcast == 0)
-        {
-            ScBroadcastAreasBulk().swap( aBulkBroadcastAreas);
-            bool bBroadcasted = BulkBroadcastGroupAreas( nHintId );
-            // Trigger the "final" tracking.
-            if (pDoc->IsTrackFormulasPending())
-                pDoc->FinalTrackFormulas( nHintId );
-            else if (bBroadcasted)
-                pDoc->TrackFormulas( nHintId );
-        }
+        ScBroadcastAreasBulk().swap( aBulkBroadcastAreas);
+        bool bBroadcasted = BulkBroadcastGroupAreas( nHintId );
+        // Trigger the "final" tracking.
+        if (pDoc->IsTrackFormulasPending())
+            pDoc->FinalTrackFormulas( nHintId );
+        else if (bBroadcasted)
+            pDoc->TrackFormulas( nHintId );
     }
 }
 
@@ -1123,12 +1085,12 @@ void ScBroadcastAreaSlotMachine::InsertBulkGroupArea( ScBroadcastArea* pArea, co
     if (it == m_BulkGroupAreas.end() || m_BulkGroupAreas.key_comp()(pArea, it->first))
     {
         // Insert a new one.
-        it = m_BulkGroupAreas.insert(it, std::make_pair(pArea, o3tl::make_unique<sc::ColumnSpanSet>(false)));
+        it = m_BulkGroupAreas.insert(it, std::make_pair(pArea, std::make_unique<sc::ColumnSpanSet>()));
     }
 
     sc::ColumnSpanSet *const pSet = it->second.get();
     assert(pSet);
-    pSet->set(rRange, true);
+    pSet->set(*pDoc, rRange, true);
 }
 
 bool ScBroadcastAreaSlotMachine::BulkBroadcastGroupAreas( SfxHintId nHintId )
@@ -1139,10 +1101,8 @@ bool ScBroadcastAreaSlotMachine::BulkBroadcastGroupAreas( SfxHintId nHintId )
     sc::BulkDataHint aHint( *pDoc, nHintId);
 
     bool bBroadcasted = false;
-    BulkGroupAreasType::iterator it = m_BulkGroupAreas.begin(), itEnd = m_BulkGroupAreas.end();
-    for (; it != itEnd; ++it)
+    for (const auto& [pArea, rxSpans] : m_BulkGroupAreas)
     {
-        ScBroadcastArea* pArea = it->first;
         assert(pArea);
         SvtBroadcaster& rBC = pArea->GetBroadcaster();
         if (!rBC.HasListeners())
@@ -1153,7 +1113,7 @@ bool ScBroadcastAreaSlotMachine::BulkBroadcastGroupAreas( SfxHintId nHintId )
         }
         else
         {
-            const sc::ColumnSpanSet *const pSpans = it->second.get();
+            const sc::ColumnSpanSet *const pSpans = rxSpans.get();
             assert(pSpans);
             aHint.setSpans(pSpans);
             rBC.Broadcast(aHint);
@@ -1179,7 +1139,7 @@ void ScBroadcastAreaSlotMachine::RemoveBulkGroupArea( ScBroadcastArea* pArea )
 void ScBroadcastAreaSlotMachine::PushAreaToBeErased( ScBroadcastAreaSlot* pSlot,
         ScBroadcastAreas::iterator& rIter )
 {
-    maAreasToBeErased.push_back( ::std::make_pair( pSlot, rIter));
+    maAreasToBeErased.emplace_back( pSlot, rIter);
 }
 
 void ScBroadcastAreaSlotMachine::FinallyEraseAreas( ScBroadcastAreaSlot* pSlot )
@@ -1193,13 +1153,12 @@ void ScBroadcastAreaSlotMachine::FinallyEraseAreas( ScBroadcastAreaSlot* pSlot )
     // invalidate iterators and would be inefficient anyway. Instead, copy
     // elements to be preserved (usually none!) to temporary vector and swap.
     AreasToBeErased aCopy;
-    for (AreasToBeErased::iterator aIt( maAreasToBeErased.begin());
-            aIt != maAreasToBeErased.end(); ++aIt)
+    for (auto& rArea : maAreasToBeErased)
     {
-        if ((*aIt).first == pSlot)
-            pSlot->EraseArea( (*aIt).second);
+        if (rArea.first == pSlot)
+            pSlot->EraseArea( rArea.second);
         else
-            aCopy.push_back( *aIt);
+            aCopy.push_back( rArea);
     }
     maAreasToBeErased.swap( aCopy);
 }
@@ -1235,12 +1194,10 @@ std::vector<sc::AreaListener> ScBroadcastAreaSlotMachine::GetAllListeners(
 void ScBroadcastAreaSlotMachine::Dump() const
 {
     cout << "slot distribution count: " << nBcaSlots << endl;
-    TableSlotsMap::const_iterator it = aTableSlotsMap.begin(), itEnd = aTableSlotsMap.end();
-    for (; it != itEnd; ++it)
+    for (const auto& [rIndex, pTabSlots] : aTableSlotsMap)
     {
-        cout << "-- sheet (index: " << it->first << ")" << endl;
+        cout << "-- sheet (index: " << rIndex << ")" << endl;
 
-        TableSlots* pTabSlots = it->second;
         assert(pTabSlots);
         ScBroadcastAreaSlot** ppSlots = pTabSlots->getSlots();
         for (SCSIZE i = 0; i < nBcaSlots; ++i)

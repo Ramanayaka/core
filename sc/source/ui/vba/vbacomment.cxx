@@ -18,7 +18,6 @@
  */
 #include "vbacomment.hxx"
 
-#include <ooo/vba/excel/XlCreator.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSheetAnnotationAnchor.hpp>
@@ -28,11 +27,14 @@
 #include <com/sun/star/sheet/XCellAddressable.hpp>
 #include <com/sun/star/table/CellAddress.hpp>
 #include <com/sun/star/table/XCell.hpp>
-#include <com/sun/star/text/XText.hpp>
+#include <com/sun/star/text/XSimpleText.hpp>
+#include <com/sun/star/text/XTextCursor.hpp>
+#include <com/sun/star/text/XTextRange.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <ooo/vba/office/MsoShapeType.hpp>
 
 #include <vbahelper/vbashape.hxx>
-#include "vbaglobals.hxx"
+#include <sal/log.hxx>
 #include "vbacomments.hxx"
 
 using namespace ::ooo::vba;
@@ -49,30 +51,30 @@ ScVbaComment::ScVbaComment(
 {
     if  ( !xRange.is() )
         throw lang::IllegalArgumentException("range is not set ", uno::Reference< uno::XInterface >() , 1 );
-    uno::Reference< text::XSimpleText > xAnnoText( getAnnotation(), uno::UNO_QUERY );
+    getAnnotation();
 }
 
 // private helper functions
 
-uno::Reference< sheet::XSheetAnnotation > SAL_CALL
+uno::Reference< sheet::XSheetAnnotation >
 ScVbaComment::getAnnotation()
 {
-    uno::Reference< table::XCell > xCell( mxRange->getCellByPosition(0, 0), uno::UNO_QUERY_THROW );
+    uno::Reference< table::XCell > xCell( mxRange->getCellByPosition(0, 0), uno::UNO_SET_THROW );
     uno::Reference< sheet::XSheetAnnotationAnchor > xAnnoAnchor( xCell, uno::UNO_QUERY_THROW );
-    return uno::Reference< sheet::XSheetAnnotation > ( xAnnoAnchor->getAnnotation(), uno::UNO_QUERY_THROW );
+    return uno::Reference< sheet::XSheetAnnotation > ( xAnnoAnchor->getAnnotation(), uno::UNO_SET_THROW );
 }
 
-uno::Reference< sheet::XSheetAnnotations > SAL_CALL
-ScVbaComment::getAnnotations()
+uno::Reference< sheet::XSheetAnnotations >
+ScVbaComment::getAnnotations() const
 {
     uno::Reference< sheet::XSheetCellRange > xSheetCellRange(mxRange, ::uno::UNO_QUERY_THROW );
     uno::Reference< sheet::XSpreadsheet > xSheet = xSheetCellRange->getSpreadsheet();
     uno::Reference< sheet::XSheetAnnotationsSupplier > xAnnosSupp( xSheet, uno::UNO_QUERY_THROW );
 
-    return uno::Reference< sheet::XSheetAnnotations > ( xAnnosSupp->getAnnotations(), uno::UNO_QUERY_THROW );
+    return uno::Reference< sheet::XSheetAnnotations > ( xAnnosSupp->getAnnotations(), uno::UNO_SET_THROW );
 }
 
-sal_Int32 SAL_CALL
+sal_Int32
 ScVbaComment::getAnnotationIndex()
 {
     uno::Reference< sheet::XSheetAnnotations > xAnnos = getAnnotations();
@@ -94,10 +96,10 @@ ScVbaComment::getAnnotationIndex()
     }
     SAL_INFO("sc.ui", "returning index is " << aIndex);
 
-       return aIndex;
+    return aIndex;
 }
 
-uno::Reference< excel::XComment > SAL_CALL
+uno::Reference< excel::XComment >
 ScVbaComment::getCommentByIndex( sal_Int32 Index )
 {
     uno::Reference< container::XIndexAccess > xIndexAccess( getAnnotations(), uno::UNO_QUERY_THROW );
@@ -181,7 +183,7 @@ ScVbaComment::Text( const uno::Any& aText, const uno::Any& aStart, const uno::An
 
         if ( aStart >>= nStart )
         {
-            uno::Reference< text::XTextCursor > xTextCursor( xAnnoText->createTextCursor(), uno::UNO_QUERY_THROW );
+            uno::Reference< text::XTextCursor > xTextCursor( xAnnoText->createTextCursor(), uno::UNO_SET_THROW );
 
             if ( bOverwrite )
             {
@@ -216,18 +218,16 @@ ScVbaComment::Text( const uno::Any& aText, const uno::Any& aStart, const uno::An
 OUString
 ScVbaComment::getServiceImplName()
 {
-    return OUString("ScVbaComment");
+    return "ScVbaComment";
 }
 
 uno::Sequence< OUString >
 ScVbaComment::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.ScVbaComment";
-    }
+       "ooo.vba.excel.ScVbaComment"
+    };
     return aServiceNames;
 }
 

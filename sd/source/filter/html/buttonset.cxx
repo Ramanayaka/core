@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
@@ -45,6 +45,8 @@ using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 
+namespace {
+
 class ButtonsImpl
 {
 public:
@@ -59,6 +61,8 @@ public:
 private:
     Reference< XStorage > mxStorage;
 };
+
+}
 
 ButtonsImpl::ButtonsImpl( const OUString& rURL )
 {
@@ -153,32 +157,32 @@ public:
 
 ButtonSetImpl::ButtonSetImpl()
 {
-    const OUString sSubPath( "/wizard/web/buttons"  );
+    static const char sSubPath[] = "/wizard/web/buttons" ;
 
-    OUString sSharePath( SvtPathOptions().GetConfigPath() );
-    sSharePath += sSubPath;
+    OUString sSharePath = SvtPathOptions().GetConfigPath() +
+        sSubPath;
     scanForButtonSets( sSharePath );
 
-    OUString sUserPath( SvtPathOptions().GetUserConfigPath() );
-    sUserPath += sSubPath;
+    OUString sUserPath = SvtPathOptions().GetUserConfigPath() +
+        sSubPath;
     scanForButtonSets( sUserPath );
 }
 
 void ButtonSetImpl::scanForButtonSets( const OUString& rPath )
 {
     osl::Directory aDirectory( rPath );
-    if( aDirectory.open() == osl::FileBase::E_None )
+    if( aDirectory.open() != osl::FileBase::E_None )
+        return;
+
+    osl::DirectoryItem aItem;
+    while( aDirectory.getNextItem( aItem, 2211 ) == osl::FileBase::E_None )
     {
-        osl::DirectoryItem aItem;
-        while( aDirectory.getNextItem( aItem, 2211 ) == osl::FileBase::E_None )
+        osl::FileStatus aStatus( osl_FileStatus_Mask_FileName|osl_FileStatus_Mask_FileURL );
+        if( aItem.getFileStatus( aStatus ) == osl::FileBase::E_None )
         {
-            osl::FileStatus aStatus( osl_FileStatus_Mask_FileName|osl_FileStatus_Mask_FileURL );
-            if( aItem.getFileStatus( aStatus ) == osl::FileBase::E_None )
-            {
-                OUString sFileName( aStatus.getFileName() );
-                if( sFileName.endsWithIgnoreAsciiCase( ".zip" ) )
-                    maButtons.push_back( std::make_shared< ButtonsImpl >( aStatus.getFileURL() ) );
-            }
+            OUString sFileName( aStatus.getFileName() );
+            if( sFileName.endsWithIgnoreAsciiCase( ".zip" ) )
+                maButtons.push_back( std::make_shared< ButtonsImpl >( aStatus.getFileURL() ) );
         }
     }
 }
@@ -192,7 +196,7 @@ bool ButtonSetImpl::getPreview( int nSet, const std::vector< OUString >& rButton
 {
     if( (nSet >= 0) && (nSet < static_cast<int>(maButtons.size())))
     {
-        ButtonsImpl& rSet = *maButtons[nSet].get();
+        ButtonsImpl& rSet = *maButtons[nSet];
 
         std::vector< Graphic > aGraphics;
 
@@ -210,27 +214,24 @@ bool ButtonSetImpl::getPreview( int nSet, const std::vector< OUString >& rButton
             aGraphics.push_back(aGraphic);
 
             Size aGraphicSize( aGraphic.GetSizePixel( pDev ) );
-            aSize.Width() += aGraphicSize.Width();
+            aSize.AdjustWidth(aGraphicSize.Width() );
 
             if( aSize.Height() < aGraphicSize.Height() )
-                aSize.Height() = aGraphicSize.Height();
+                aSize.setHeight( aGraphicSize.Height() );
 
             if( aIter != rButtons.end() )
-                aSize.Width() += 3;
+                aSize.AdjustWidth(3 );
         }
 
         pDev->SetOutputSizePixel( aSize );
 
         Point aPos;
 
-        std::vector< Graphic >::iterator aGraphIter( aGraphics.begin() );
-        while( aGraphIter != aGraphics.end() )
+        for( const Graphic& aGraphic : aGraphics )
         {
-            Graphic aGraphic( (*aGraphIter++) );
-
             aGraphic.Draw( pDev, aPos );
 
-            aPos.X() += aGraphic.GetSizePixel().Width() + 3;
+            aPos.AdjustX(aGraphic.GetSizePixel().Width() + 3 );
         }
 
         rImage = Image( pDev->GetBitmapEx( Point(), aSize ) );
@@ -243,7 +244,7 @@ bool ButtonSetImpl::exportButton( int nSet, const OUString& rPath, const OUStrin
 {
     if( (nSet >= 0) && (nSet < static_cast<int>(maButtons.size())))
     {
-        ButtonsImpl& rSet = *maButtons[nSet].get();
+        ButtonsImpl& rSet = *maButtons[nSet];
 
         return rSet.copyGraphic( rName, rPath );
     }

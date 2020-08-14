@@ -11,31 +11,26 @@
 #include <datastreamgettime.hxx>
 
 #include <com/sun/star/frame/XLayoutManager.hpp>
-#include <com/sun/star/ui/XUIElement.hpp>
-#include <officecfg/Office/Common.hxx>
 #include <osl/conditn.hxx>
 #include <osl/time.h>
-#include <rtl/strbuf.hxx>
 #include <salhelper/thread.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <datastreamdlg.hxx>
+#include <tools/stream.hxx>
+#include <vcl/svapp.hxx>
 #include <docsh.hxx>
-#include <rangelst.hxx>
 #include <tabvwsh.hxx>
 #include <viewdata.hxx>
 #include <stringutil.hxx>
 #include <documentlinkmgr.hxx>
 #include <o3tl/enumarray.hxx>
 
-#include "officecfg/Office/Calc.hxx"
+#include <officecfg/Office/Calc.hxx>
 
-
-#if defined(_WIN32)
-#define __ORCUS_STATIC_LIB
-#endif
 #include <orcus/csv_parser.hpp>
 
 #include <queue>
+
+namespace com::sun::star::ui { class XUIElement; }
 
 namespace sc {
 
@@ -48,7 +43,7 @@ double datastream_get_time(DebugTime nIdx)
 
 namespace {
 
-inline double getNow()
+double getNow()
 {
     TimeValue now;
     osl_getSystemTime(&now);
@@ -71,7 +66,7 @@ public:
     static void begin_row() {}
     static void end_row() {}
 
-    void cell(const char* p, size_t n)
+    void cell(const char* p, size_t n, bool /*transient*/)
     {
         if (mnCols >= mnColCount)
             return;
@@ -97,24 +92,15 @@ public:
 
 namespace datastreams {
 
-void emptyLineQueue( std::queue<DataStream::LinesType*>& rQueue )
-{
-    while (!rQueue.empty())
-    {
-        delete rQueue.front();
-        rQueue.pop();
-    }
-}
-
 class ReaderThread : public salhelper::Thread
 {
-    SvStream *mpStream;
+    std::unique_ptr<SvStream> mpStream;
     size_t mnColCount;
     bool mbTerminate;
     osl::Mutex maMtxTerminate;
 
-    std::queue<DataStream::LinesType*> maPendingLines;
-    std::queue<DataStream::LinesType*> maUsedLines;
+    std::queue<std::unique_ptr<DataStream::LinesType>> maPendingLines;
+    std::queue<std::unique_ptr<DataStream::LinesType>> maUsedLines;
     osl::Mutex maMtxLines;
 
     osl::Condition maCondReadStream;
@@ -124,21 +110,14 @@ class ReaderThread : public salhelper::Thread
 
 public:
 
-    ReaderThread(SvStream *pData, size_t nColCount):
+    ReaderThread(std::unique_ptr<SvStream> pData, size_t nColCount):
         Thread("ReaderThread"),
-        mpStream(pData),
+        mpStream(std::move(pData)),
         mnColCount(nColCount),
         mbTerminate(false)
     {
         maConfig.delimiters.push_back(',');
         maConfig.text_qualifier = '"';
-    }
-
-    virtual ~ReaderThread() override
-    {
-        delete mpStream;
-        emptyLineQueue(maPendingLines);
-        emptyLineQueue(maUsedLines);
     }
 
     bool isTerminateRequested()
@@ -165,9 +144,9 @@ public:
         maCondConsume.reset();
     }
 
-    DataStream::LinesType* popNewLines()
+    std::unique_ptr<DataStream::LinesType> popNewLines()
     {
-        DataStream::LinesType* pLines = maPendingLines.front();
+        auto pLines = std::move(maPendingLines.front());
         maPendingLines.pop();
         return pLines;
     }
@@ -178,14 +157,14 @@ public:
             maCondReadStream.set(); // start producer again
     }
 
-    bool hasNewLines()
+    bool hasNewLines() const
     {
         return !maPendingLines.empty();
     }
 
-    void pushUsedLines( DataStream::LinesType* pLines )
+    void pushUsedLines( std::unique_ptr<DataStream::LinesType> pLines )
     {
-        maUsedLines.push(pLines);
+        maUsedLines.push(std::move(pLines));
     }
 
     osl::Mutex& getLinesMutex()
@@ -198,20 +177,20 @@ private:
     {
         while (!isTerminateRequested())
         {
-            DataStream::LinesType* pLines = nullptr;
+            std::unique_ptr<DataStream::LinesType> pLines;
             osl::ResettableMutexGuard aGuard(maMtxLines);
 
             if (!maUsedLines.empty())
             {
                 // Re-use lines from previous runs.
-                pLines = maUsedLines.front();
+                pLines = std::move(maUsedLines.front());
                 maUsedLines.pop();
                 aGuard.clear(); // unlock
             }
             else
             {
                 aGuard.clear(); // unlock
-                pLines = new DataStream::LinesType(10);
+                pLines.reset(new DataStream::LinesType(10));
             }
 
             // Read & store new lines from stream.
@@ -233,7 +212,7 @@ private:
                 maCondReadStream.reset();
                 aGuard.reset(); // lock
             }
-            maPendingLines.push(pLines);
+            maPendingLines.push(std::move(pLines));
             maCondConsume.set();
             if (!mpStream->good())
                 requestTerminate();
@@ -300,7 +279,6 @@ DataStream::DataStream(ScDocShell *pShell, const OUString& rURL, const ScRange& 
     mbRunning(false),
     mbValuesInLine(false),
     mbRefreshOnEmptyLine(false),
-    mpLines(nullptr),
     mnLinesCount(0),
     mnLinesSinceRefresh(0),
     mfLastRefreshTime(0.0),
@@ -324,7 +302,7 @@ DataStream::~DataStream()
         mxReaderThread->endThread();
         mxReaderThread->join();
     }
-    delete mpLines;
+    mpLines.reset();
 }
 
 DataStream::Line DataStream::ConsumeLine()
@@ -337,7 +315,7 @@ DataStream::Line DataStream::ConsumeLine()
 
         osl::ResettableMutexGuard aGuard(mxReaderThread->getLinesMutex());
         if (mpLines)
-            mxReaderThread->pushUsedLines(mpLines);
+            mxReaderThread->pushUsedLines(std::move(mpLines));
 
         while (!mxReaderThread->hasNewLines())
         {
@@ -378,17 +356,18 @@ void DataStream::Decode(const OUString& rURL, const ScRange& rRange,
 
     maStartRange = aRange;
     maEndRange = aRange;
+    const auto & rDoc = mpDocShell->GetDocument();
     if (nLimit == 0)
     {
         // Unlimited
-        maEndRange.aStart.SetRow(MAXROW);
+        maEndRange.aStart.SetRow(rDoc.MaxRow());
     }
     else if (nLimit > 0)
     {
         // Limited.
         maEndRange.aStart.IncRow(nLimit-1);
-        if (maEndRange.aStart.Row() > MAXROW)
-            maEndRange.aStart.SetRow(MAXROW);
+        if (maEndRange.aStart.Row() > rDoc.MaxRow())
+            maEndRange.aStart.SetRow(rDoc.MaxRow());
     }
 
     maEndRange.aEnd.SetRow(maEndRange.aStart.Row());
@@ -401,12 +380,8 @@ void DataStream::StartImport()
 
     if (!mxReaderThread.is())
     {
-        SvStream *pStream = nullptr;
-        if (mnSettings & SCRIPT_STREAM)
-            pStream = new SvScriptStream(msURL);
-        else
-            pStream = new SvFileStream(msURL, StreamMode::READ);
-        mxReaderThread = new datastreams::ReaderThread(pStream, maStartRange.aEnd.Col() - maStartRange.aStart.Col() + 1);
+        std::unique_ptr<SvStream> pStream(new SvFileStream(msURL, StreamMode::READ));
+        mxReaderThread = new datastreams::ReaderThread(std::move(pStream), maStartRange.aEnd.Col() - maStartRange.aStart.Col() + 1);
         mxReaderThread->launch();
     }
     mbRunning = true;
@@ -502,12 +477,10 @@ void DataStream::Text2Doc()
 
     MoveData();
     {
-        std::vector<Cell>::const_iterator it = aLine.maCells.begin(), itEnd = aLine.maCells.end();
         SCCOL nCol = maStartRange.aStart.Col();
         const char* pLineHead = aLine.maLine.getStr();
-        for (; it != itEnd; ++it, ++nCol)
+        for (const Cell& rCell : aLine.maCells)
         {
-            const Cell& rCell = *it;
             if (rCell.mbValue)
             {
                 maDocAccess.setNumericCell(
@@ -519,6 +492,7 @@ void DataStream::Text2Doc()
                     ScAddress(nCol, mnCurRow, maStartRange.aStart.Tab()),
                     OUString(pLineHead+rCell.maStr.Pos, rCell.maStr.Size, RTL_TEXTENCODING_UTF8));
             }
+            ++nCol;
         }
     }
 

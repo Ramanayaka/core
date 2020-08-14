@@ -48,17 +48,13 @@ InterceptedInteraction::EInterceptionState InterceptedInteraction::intercepted(
 css::uno::Reference< css::task::XInteractionContinuation > InterceptedInteraction::extractContinuation(const css::uno::Sequence< css::uno::Reference< css::task::XInteractionContinuation > >& lContinuations,
                                                                                                        const css::uno::Type&                                                                   aType         )
 {
-    const css::uno::Reference< css::task::XInteractionContinuation >* pContinuations = lContinuations.getConstArray();
-
-    sal_Int32 c = lContinuations.getLength();
-    sal_Int32 i = 0;
-
-    for (i=0; i<c; ++i)
-    {
-        css::uno::Reference< css::uno::XInterface > xCheck(pContinuations[i], css::uno::UNO_QUERY);
-        if (xCheck->queryInterface(aType).hasValue())
-            return pContinuations[i];
-    }
+    const css::uno::Reference< css::task::XInteractionContinuation >* pContinuations = std::find_if(lContinuations.begin(), lContinuations.end(),
+        [&aType](const css::uno::Reference< css::task::XInteractionContinuation >& rContinuation) {
+            css::uno::Reference< css::uno::XInterface > xCheck(rContinuation, css::uno::UNO_QUERY);
+            return xCheck->queryInterface(aType).hasValue();
+        });
+    if (pContinuations != lContinuations.end())
+        return *pContinuations;
 
     return css::uno::Reference< css::task::XInteractionContinuation >();
 }
@@ -87,7 +83,7 @@ void InterceptedInteraction::impl_handleDefault(const css::uno::Reference< css::
         {
             // Runtime error! The defined continuation could not be located
             // inside the set of available continuations of the incoming request.
-            // Whats wrong - the interception list or the request?
+            // What's wrong - the interception list or the request?
             OSL_FAIL("InterceptedInteraction::handle()\nCould intercept this interaction request - but can't locate the right continuation!");
         }
         break;
@@ -100,41 +96,28 @@ void InterceptedInteraction::impl_handleDefault(const css::uno::Reference< css::
 InterceptedInteraction::EInterceptionState InterceptedInteraction::impl_interceptRequest(const css::uno::Reference< css::task::XInteractionRequest >& xRequest)
 {
     css::uno::Any                                                                    aRequest       = xRequest->getRequest();
-    css::uno::Type                                                                   aRequestType   = aRequest.getValueType();
+    const css::uno::Type&                                                            aRequestType   = aRequest.getValueType();
     css::uno::Sequence< css::uno::Reference< css::task::XInteractionContinuation > > lContinuations = xRequest->getContinuations();
 
     // check against the list of static requests
-    sal_Int32 nHandle = 0;
-    ::std::vector< InterceptedRequest >::const_iterator pIt;
-    for (  pIt  = m_lInterceptions.begin();
-           pIt != m_lInterceptions.end()  ;
-         ++pIt                            )
+    auto pIt = std::find_if(m_lInterceptions.begin(), m_lInterceptions.end(),
+        [&aRequestType](const InterceptedRequest& rInterception) {
+            // check the request
+            // don't change intercepted and request type here -> it will check the wrong direction!
+            return rInterception.Request.getValueType().isAssignableFrom(aRequestType);
+        });
+
+    if (pIt != m_lInterceptions.end()) // intercepted ...
     {
         const InterceptedRequest& rInterception = *pIt;
-        css::uno::Type aInterceptedType = rInterception.Request.getValueType();
 
-        // check the request
-        bool bMatch = aInterceptedType.isAssignableFrom(aRequestType); // don't change intercepted and request type here -> it will check the wrong direction!
-
-        // intercepted ...
         // Call they might existing derived class, so they can handle that by its own.
         // If it's not interested on that (maybe it's not overwritten and the default implementation
-        // returns E_NOT_INTERCEPTED as default) -> break this loop and search for the right continuation.
-        if (bMatch)
-        {
-            EInterceptionState eState = intercepted(rInterception, xRequest);
-            if (eState == E_NOT_INTERCEPTED)
-                break;
+        // returns E_NOT_INTERCEPTED as default) -> search required continuation
+        EInterceptionState eState = intercepted(rInterception, xRequest);
+        if (eState != E_NOT_INTERCEPTED)
             return eState;
-        }
 
-        ++nHandle;
-    }
-
-    if (pIt != m_lInterceptions.end()) // => can be true only if bMatch=TRUE!
-    {
-        // match -> search required continuation
-        const InterceptedRequest& rInterception = *pIt;
         css::uno::Reference< css::task::XInteractionContinuation > xContinuation = InterceptedInteraction::extractContinuation(lContinuations, rInterception.Continuation);
         if (xContinuation.is())
         {

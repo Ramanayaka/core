@@ -18,8 +18,8 @@
  */
 
 #include "updatecheckconfig.hxx"
+#include "updatecheck.hxx"
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
@@ -28,16 +28,11 @@
 #include <osl/time.h>
 #include <osl/file.hxx>
 #include <sal/macros.h>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #ifdef _WIN32
-#ifdef _MSC_VER
-#pragma warning(push,1) // disable warnings within system headers
-#pragma warning(disable: 4917)
-#endif
+#include <objbase.h>
 #include <shlobj.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 #endif
 
 namespace container = com::sun::star::container ;
@@ -64,7 +59,7 @@ namespace uno = com::sun::star::uno ;
 
 #define PROPERTY_VERSION        "Version"
 
-static const sal_Char * const aUpdateEntryProperties[] = {
+const char * const aUpdateEntryProperties[] = {
     UPDATE_VERSION,
     UPDATE_BUILDID,
     UPDATE_DESCRIPTION,
@@ -78,13 +73,13 @@ static const sal_Char * const aUpdateEntryProperties[] = {
     OLD_VERSION
 };
 
-static const sal_uInt32 nUpdateEntryProperties = SAL_N_ELEMENTS(aUpdateEntryProperties);
+const sal_uInt32 nUpdateEntryProperties = SAL_N_ELEMENTS(aUpdateEntryProperties);
 
 NamedValueByNameAccess::~NamedValueByNameAccess()
 {
 }
 
-css::uno::Any NamedValueByNameAccess::getValue(const sal_Char * pName)
+css::uno::Any NamedValueByNameAccess::getValue(const char * pName)
 {
     const sal_Int32 nLen = m_rValues.getLength();
     for( sal_Int32 n=0; n < nLen; ++n )
@@ -108,7 +103,7 @@ UpdateCheckROModel::isDownloadPaused() const
 }
 
 OUString
-UpdateCheckROModel::getStringValue(const sal_Char * pStr) const
+UpdateCheckROModel::getStringValue(const char * pStr) const
 {
     uno::Any aAny( m_aNameAccess.getValue(pStr) );
     OUString aRet;
@@ -155,20 +150,21 @@ UpdateCheckROModel::getUpdateEntry(UpdateInfo& rInfo) const
         OUString aUStr = getStringValue(
             OString(OStringLiteral(RELEASE_NOTE) + OString::number(n)).getStr());
         if( !aUStr.isEmpty() )
-            rInfo.ReleaseNotes.push_back(ReleaseNote((sal_Int8) n, aUStr));
+            rInfo.ReleaseNotes.push_back(ReleaseNote(static_cast<sal_Int8>(n), aUStr));
     }
 }
 
-OUString UpdateCheckConfig::getDesktopDirectory()
+OUString UpdateCheckConfig::getDownloadsDirectory()
 {
     OUString aRet;
 
 #ifdef _WIN32
-    WCHAR szPath[MAX_PATH];
+    PWSTR szPath;
 
-    if (TRUE == SHGetSpecialFolderPathW(nullptr, szPath, CSIDL_DESKTOPDIRECTORY, true))
+    if (SHGetKnownFolderPath(FOLDERID_Downloads, 0, nullptr, &szPath) == S_OK)
     {
-        aRet = OUString( reinterpret_cast< sal_Unicode * >(szPath) );
+        aRet = o3tl::toU(szPath);
+        CoTaskMemFree(szPath);
         osl::FileBase::getFileURLFromSystemPath( aRet, aRet );
     }
 #else
@@ -195,7 +191,7 @@ OUString UpdateCheckConfig::getAllUsersDirectory()
 
     if (TRUE == SHGetSpecialFolderPathW(nullptr, szPath, CSIDL_COMMON_DOCUMENTS, true))
     {
-        aRet = OUString( reinterpret_cast< sal_Unicode * >(szPath) );
+        aRet = o3tl::toU(szPath);
         osl::FileBase::getFileURLFromSystemPath( aRet, aRet );
     }
 #else
@@ -313,10 +309,9 @@ UpdateCheckConfig::getLocalFileName() const
 OUString
 UpdateCheckConfig::getDownloadDestination() const
 {
-    OUString aName = DOWNLOAD_DESTINATION;
     OUString aRet;
 
-    const_cast <UpdateCheckConfig *> (this)->getByName(aName) >>= aRet;
+    const_cast <UpdateCheckConfig *> (this)->getByName(DOWNLOAD_DESTINATION) >>= aRet;
 
     return aRet;
 }
@@ -434,19 +429,6 @@ UpdateCheckConfig::clearUpdateFound()
     commitChanges();
 }
 
-uno::Sequence< OUString >
-UpdateCheckConfig::getServiceNames()
-{
-    uno::Sequence< OUString > aServiceList { "com.sun.star.setup.UpdateCheckConfig" };
-    return aServiceList;
-}
-
-OUString
-UpdateCheckConfig::getImplName()
-{
-    return OUString("vnd.sun.UpdateCheckConfig");
-}
-
 uno::Type SAL_CALL
 UpdateCheckConfig::getElementType()
 {
@@ -471,7 +453,7 @@ UpdateCheckConfig::getByName( const OUString& aName )
         aValue >>= aStr;
 
         if( aStr.isEmpty() )
-            aValue <<= getDesktopDirectory();
+            aValue <<= getDownloadsDirectory();
     }
     return aValue;
 }
@@ -657,7 +639,7 @@ bool UpdateCheckConfig::isVersionGreater( const OUString& rVersion1,
 OUString SAL_CALL
 UpdateCheckConfig::getImplementationName()
 {
-    return getImplName();
+    return "vnd.sun.UpdateCheckConfig";
 }
 
 sal_Bool SAL_CALL
@@ -669,7 +651,15 @@ UpdateCheckConfig::supportsService(OUString const & serviceName)
 uno::Sequence< OUString > SAL_CALL
 UpdateCheckConfig::getSupportedServiceNames()
 {
-    return getServiceNames();
+    return { "com.sun.star.setup.UpdateCheckConfig" };
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_update_UpdateCheckConfig_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(UpdateCheckConfig::get(context, *UpdateCheck::get()).get());
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

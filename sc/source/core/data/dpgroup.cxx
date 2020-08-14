@@ -17,17 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dpgroup.hxx"
+#include <dpgroup.hxx>
 
-#include "global.hxx"
-#include "document.hxx"
-#include "dpfilteredcache.hxx"
-#include "dptabsrc.hxx"
-#include "dptabres.hxx"
-#include "dpobject.hxx"
-#include "dpglobal.hxx"
-#include "dputil.hxx"
-#include "globalnames.hxx"
+#include <dpcache.hxx>
+#include <document.hxx>
+#include <dpfilteredcache.hxx>
+#include <dputil.hxx>
 
 #include <osl/diagnose.h>
 #include <rtl/math.hxx>
@@ -48,6 +43,8 @@ using ::std::shared_ptr;
 
 const sal_uInt16 SC_DP_LEAPYEAR = 1648;     // arbitrary leap year for date calculations
 
+namespace {
+
 class ScDPGroupNumFilter : public ScDPFilteredCache::FilterBase
 {
 public:
@@ -60,6 +57,8 @@ private:
     ScDPNumGroupInfo maNumInfo;
 };
 
+}
+
 ScDPGroupNumFilter::ScDPGroupNumFilter(const std::vector<ScDPItemData>& rValues, const ScDPNumGroupInfo& rInfo) :
     maValues(rValues), maNumInfo(rInfo) {}
 
@@ -68,13 +67,12 @@ bool ScDPGroupNumFilter::match(const ScDPItemData& rCellData) const
     if (rCellData.GetType() != ScDPItemData::Value)
         return false;
 
-    std::vector<ScDPItemData>::const_iterator it = maValues.begin(), itEnd = maValues.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rValue : maValues)
     {
-        double fVal = it->GetValue();
-        if (rtl::math::isInf(fVal))
+        double fVal = rValue.GetValue();
+        if (std::isinf(fVal))
         {
-            if (rtl::math::isSignBitSet(fVal))
+            if (std::signbit(fVal))
             {
                 // Less than the min value.
                 if (rCellData.GetValue() < maNumInfo.mfStart)
@@ -105,6 +103,8 @@ std::vector<ScDPItemData> ScDPGroupNumFilter::getMatchValues() const
     return std::vector<ScDPItemData>();
 }
 
+namespace {
+
 class ScDPGroupDateFilter : public ScDPFilteredCache::FilterBase
 {
 public:
@@ -119,6 +119,8 @@ private:
     Date             maNullDate;
     ScDPNumGroupInfo maNumInfo;
 };
+
+}
 
 ScDPGroupDateFilter::ScDPGroupDateFilter(
     const std::vector<ScDPItemData>& rValues, const Date& rNullDate, const ScDPNumGroupInfo& rNumInfo) :
@@ -137,10 +139,8 @@ bool ScDPGroupDateFilter::match( const ScDPItemData & rCellData ) const
     if ( !rCellData.IsValue() )
         return false;
 
-    std::vector<ScDPItemData>::const_iterator it = maValues.begin(), itEnd = maValues.end();
-    for (; it != itEnd; ++it)
+    for (const ScDPItemData& rValue : maValues)
     {
-        const ScDPItemData& rValue = *it;
         if (rValue.GetType() != ScDPItemData::GroupValue)
             continue;
 
@@ -168,31 +168,29 @@ bool ScDPGroupDateFilter::match( const ScDPItemData & rCellData ) const
             nGroupType == DataPilotFieldGroupBy::SECONDS)
         {
             // handle time
-            // (as in the cell functions, ScInterpreter::ScGetHour etc.: seconds are rounded)
+            // (do as in the cell functions, ScInterpreter::ScGetHour() etc.)
 
-            double time = rCellData.GetValue() - approxFloor(rCellData.GetValue());
-            long seconds = static_cast<long>(approxFloor(time*DATE_TIME_FACTOR + 0.5));
+            sal_uInt16 nHour, nMinute, nSecond;
+            double fFractionOfSecond;
+            tools::Time::GetClock( rCellData.GetValue(), nHour, nMinute, nSecond, fFractionOfSecond, 0);
 
             switch (nGroupType)
             {
                 case DataPilotFieldGroupBy::HOURS:
                 {
-                    sal_Int32 hrs = seconds / 3600;
-                    if (hrs == nValue)
+                    if (nHour == nValue)
                         return true;
                 }
                 break;
                 case DataPilotFieldGroupBy::MINUTES:
                 {
-                    sal_Int32 minutes = (seconds % 3600) / 60;
-                    if (minutes == nValue)
+                    if (nMinute == nValue)
                         return true;
                 }
                 break;
                 case DataPilotFieldGroupBy::SECONDS:
                 {
-                    sal_Int32 sec = seconds % 60;
-                    if (sec == nValue)
+                    if (nSecond == nValue)
                         return true;
                 }
                 break;
@@ -203,7 +201,7 @@ bool ScDPGroupDateFilter::match( const ScDPItemData & rCellData ) const
             continue;
         }
 
-        Date date = maNullDate + static_cast<long>(approxFloor(rCellData.GetValue()));
+        Date date = maNullDate + static_cast<sal_Int32>(approxFloor(rCellData.GetValue()));
         switch (nGroupType)
         {
             case DataPilotFieldGroupBy::YEARS:
@@ -286,7 +284,7 @@ bool isDateInGroup(const ScDPItemData& rGroupItem, const ScDPItemData& rChildIte
                 nGroupPart == css::sheet::DataPilotFieldGroupBy::QUARTERS)
             {
                 Date aDate(1, 1, SC_DP_LEAPYEAR);
-                aDate += (nChildValue - 1);            // days are 1-based
+                aDate.AddDays(nChildValue - 1);            // days are 1-based
                 sal_Int32 nCompare = aDate.GetMonth();
                 if (nGroupPart == css::sheet::DataPilotFieldGroupBy::QUARTERS)
                     nCompare = ( ( nCompare - 1 ) / 3 ) + 1;    // get quarter from date
@@ -308,10 +306,6 @@ ScDPGroupItem::ScDPGroupItem( const ScDPItemData& rName ) :
 {
 }
 
-ScDPGroupItem::~ScDPGroupItem()
-{
-}
-
 void ScDPGroupItem::AddElement( const ScDPItemData& rName )
 {
     aElements.push_back( rName );
@@ -319,27 +313,20 @@ void ScDPGroupItem::AddElement( const ScDPItemData& rName )
 
 bool ScDPGroupItem::HasElement( const ScDPItemData& rData ) const
 {
-    for ( ScDPItemDataVec::const_iterator aIter(aElements.begin()); aIter != aElements.end(); ++aIter )
-        if ( aIter->IsCaseInsEqual( rData ) )
-            return true;
-
-    return false;
+    return std::any_of(aElements.begin(), aElements.end(),
+        [&rData](const ScDPItemData& rElement) { return rElement.IsCaseInsEqual(rData); });
 }
 
 bool ScDPGroupItem::HasCommonElement( const ScDPGroupItem& rOther ) const
 {
-    for ( ScDPItemDataVec::const_iterator aIter(aElements.begin()); aIter != aElements.end(); ++aIter )
-        if ( rOther.HasElement( *aIter ) )
-            return true;
-
-    return false;
+    return std::any_of(aElements.begin(), aElements.end(),
+        [&rOther](const ScDPItemData& rElement) { return rOther.HasElement(rElement); });
 }
 
 void ScDPGroupItem::FillGroupFilter( ScDPFilteredCache::GroupFilter& rFilter ) const
 {
-    ScDPItemDataVec::const_iterator itrEnd = aElements.end();
-    for (ScDPItemDataVec::const_iterator itr = aElements.begin(); itr != itrEnd; ++itr)
-        rFilter.addMatchItem(*itr);
+    for (const auto& rElement : aElements)
+        rFilter.addMatchItem(rElement);
 }
 
 ScDPGroupDimension::ScDPGroupDimension( long nSource, const OUString& rNewName ) :
@@ -396,18 +383,20 @@ const std::vector<SCROW>& ScDPGroupDimension::GetColumnEntries(
 
 const ScDPGroupItem* ScDPGroupDimension::GetGroupForData( const ScDPItemData& rData ) const
 {
-    for (ScDPGroupItemVec::const_iterator aIter = aItems.begin(); aIter != aItems.end(); ++aIter)
-        if (aIter->HasElement(rData))
-            return &*aIter;
+    auto aIter = std::find_if(aItems.begin(), aItems.end(),
+        [&rData](const ScDPGroupItem& rItem) { return rItem.HasElement(rData); });
+    if (aIter != aItems.end())
+        return &*aIter;
 
     return nullptr;
 }
 
 const ScDPGroupItem* ScDPGroupDimension::GetGroupForName( const ScDPItemData& rName ) const
 {
-    for ( ScDPGroupItemVec::const_iterator aIter(aItems.begin()); aIter != aItems.end(); ++aIter )
-        if ( aIter->GetName().IsCaseInsEqual( rName ) )
-            return &*aIter;
+    auto aIter = std::find_if(aItems.begin(), aItems.end(),
+        [&rName](const ScDPGroupItem& rItem) { return rItem.GetName().IsCaseInsEqual(rName); });
+    if (aIter != aItems.end())
+        return &*aIter;
 
     return nullptr;
 }
@@ -492,7 +481,6 @@ void ScDPGroupTableData::AddGroupDimension( const ScDPGroupDimension& rGroup )
     ScDPGroupDimension aNewGroup( rGroup );
     aNewGroup.SetGroupDim( GetColumnCount() );      // new dimension will be at the end
     aGroups.push_back( aNewGroup );
-    aGroupNames.insert(aNewGroup.GetName());
 }
 
 void ScDPGroupTableData::SetNumGroupDimension( long nIndex, const ScDPNumGroupDimension& rGroup )
@@ -508,7 +496,7 @@ void ScDPGroupTableData::SetNumGroupDimension( long nIndex, const ScDPNumGroupDi
 long ScDPGroupTableData::GetDimensionIndex( const OUString& rName )
 {
     for (long i = 0; i < nSourceCount; ++i)                         // nSourceCount excludes data layout
-        if (pSourceData->getDimensionName(i).equals(rName))        //TODO: ignore case?
+        if (pSourceData->getDimensionName(i) == rName)        //TODO: ignore case?
             return i;
     return -1;  // none
 }
@@ -593,7 +581,7 @@ bool ScDPGroupTableData::IsDateDimension(long nDim)
     return pSourceData->IsDateDimension( nDim );
 }
 
-sal_uLong ScDPGroupTableData::GetNumberFormat(long nDim)
+sal_uInt32 ScDPGroupTableData::GetNumberFormat(long nDim)
 {
     if ( nDim >= nSourceCount )
     {
@@ -608,8 +596,8 @@ sal_uLong ScDPGroupTableData::GetNumberFormat(long nDim)
 
 void ScDPGroupTableData::DisposeData()
 {
-    for ( ScDPGroupDimensionVec::iterator aIter(aGroups.begin()); aIter != aGroups.end(); ++aIter )
-        aIter->DisposeData();
+    for ( auto& rGroup : aGroups )
+        rGroup.DisposeData();
 
     for ( long i=0; i<nSourceCount; i++ )
         pNumGroups[i].DisposeData();
@@ -653,13 +641,10 @@ void ScDPGroupTableData::ModifyFilterCriteria(vector<ScDPFilteredCache::Criterio
     // Build dimension ID to object map for group dimensions.
     typedef std::unordered_map<long, const ScDPGroupDimension*> GroupFieldMapType;
     GroupFieldMapType aGroupFieldIds;
+
+    for (const auto& rGroup : aGroups)
     {
-        ScDPGroupDimensionVec::const_iterator itr = aGroups.begin(), itrEnd = aGroups.end();
-        for (; itr != itrEnd; ++itr)
-        {
-            aGroupFieldIds.insert(
-                GroupFieldMapType::value_type(itr->GetGroupDim(), &(*itr)));
-        }
+        aGroupFieldIds.emplace(rGroup.GetGroupDim(), &rGroup);
     }
 
     vector<ScDPFilteredCache::Criterion> aNewCriteria;
@@ -668,39 +653,38 @@ void ScDPGroupTableData::ModifyFilterCriteria(vector<ScDPFilteredCache::Criterio
     // Go through all the filtered field names and process them appropriately.
 
     const ScDPCache& rCache = GetCacheTable().getCache();
-    vector<ScDPFilteredCache::Criterion>::const_iterator itrEnd = rCriteria.end();
     GroupFieldMapType::const_iterator itrGrpEnd = aGroupFieldIds.end();
-    for (vector<ScDPFilteredCache::Criterion>::const_iterator itr = rCriteria.begin(); itr != itrEnd; ++itr)
+    for (const auto& rCriterion : rCriteria)
     {
-        std::vector<ScDPItemData> aMatchValues = itr->mpFilter->getMatchValues();
+        std::vector<ScDPItemData> aMatchValues = rCriterion.mpFilter->getMatchValues();
 
-        GroupFieldMapType::const_iterator itrGrp = aGroupFieldIds.find(itr->mnFieldIndex);
+        GroupFieldMapType::const_iterator itrGrp = aGroupFieldIds.find(rCriterion.mnFieldIndex);
         if (itrGrp == itrGrpEnd)
         {
-            if (IsNumGroupDimension(itr->mnFieldIndex))
+            if (IsNumGroupDimension(rCriterion.mnFieldIndex))
             {
                 // internal number group field
-                const ScDPNumGroupInfo* pNumInfo = rCache.GetNumGroupInfo(itr->mnFieldIndex);
+                const ScDPNumGroupInfo* pNumInfo = rCache.GetNumGroupInfo(rCriterion.mnFieldIndex);
                 if (!pNumInfo)
                     // Number group dimension without num info?  Something is wrong...
                     continue;
 
                 ScDPFilteredCache::Criterion aCri;
-                aCri.mnFieldIndex = itr->mnFieldIndex;
-                const ScDPNumGroupDimension& rNumGrpDim = pNumGroups[itr->mnFieldIndex];
+                aCri.mnFieldIndex = rCriterion.mnFieldIndex;
+                const ScDPNumGroupDimension& rNumGrpDim = pNumGroups[rCriterion.mnFieldIndex];
 
                 if (rNumGrpDim.IsDateDimension())
                 {
                     // grouped by dates.
-                    aCri.mpFilter.reset(
-                        new ScDPGroupDateFilter(
-                            aMatchValues, *pDoc->GetFormatTable()->GetNullDate(), *pNumInfo));
+                    aCri.mpFilter =
+                        std::make_shared<ScDPGroupDateFilter>(
+                            aMatchValues, pDoc->GetFormatTable()->GetNullDate(), *pNumInfo);
                 }
                 else
                 {
                     // This dimension is grouped by numeric ranges.
-                    aCri.mpFilter.reset(
-                        new ScDPGroupNumFilter(aMatchValues, *pNumInfo));
+                    aCri.mpFilter =
+                        std::make_shared<ScDPGroupNumFilter>(aMatchValues, *pNumInfo);
                 }
 
                 aNewCriteria.push_back(aCri);
@@ -708,7 +692,7 @@ void ScDPGroupTableData::ModifyFilterCriteria(vector<ScDPFilteredCache::Criterio
             else
             {
                 // This is a regular source field.
-                aNewCriteria.push_back(*itr);
+                aNewCriteria.push_back(rCriterion);
             }
         }
         else
@@ -725,9 +709,9 @@ void ScDPGroupTableData::ModifyFilterCriteria(vector<ScDPFilteredCache::Criterio
                 // external number group
                 ScDPFilteredCache::Criterion aCri;
                 aCri.mnFieldIndex = nSrcDim;  // use the source dimension, not the group dimension.
-                aCri.mpFilter.reset(
-                    new ScDPGroupDateFilter(
-                        aMatchValues, *pDoc->GetFormatTable()->GetNullDate(), *pNumInfo));
+                aCri.mpFilter =
+                    std::make_shared<ScDPGroupDateFilter>(
+                        aMatchValues, pDoc->GetFormatTable()->GetNullDate(), *pNumInfo);
 
                 aNewCriteria.push_back(aCri);
             }
@@ -737,7 +721,7 @@ void ScDPGroupTableData::ModifyFilterCriteria(vector<ScDPFilteredCache::Criterio
 
                 ScDPFilteredCache::Criterion aCri;
                 aCri.mnFieldIndex = nSrcDim;
-                aCri.mpFilter.reset(new ScDPFilteredCache::GroupFilter());
+                aCri.mpFilter = std::make_shared<ScDPFilteredCache::GroupFilter>();
                 ScDPFilteredCache::GroupFilter* pGrpFilter =
                     static_cast<ScDPFilteredCache::GroupFilter*>(aCri.mpFilter.get());
 
@@ -822,10 +806,9 @@ void ScDPGroupTableData::FillGroupValues(vector<SCROW>& rItems, const vector<lon
     long nGroupedColumns = aGroups.size();
 
     const ScDPCache& rCache = GetCacheTable().getCache();
-    vector<long>::const_iterator it = rDims.begin(), itEnd = rDims.end();
-    for (size_t i = 0; it != itEnd; ++it, ++i)
+    size_t i = 0;
+    for (long nColumn : rDims)
     {
-        long nColumn = *it;
         bool bDateDim = false;
 
         long nSourceDim = nColumn;
@@ -883,29 +866,23 @@ void ScDPGroupTableData::FillGroupValues(vector<SCROW>& rItems, const vector<lon
                 rItems[i] = rCache.GetIdByItemData(nColumn, aItem);
             }
         }
+
+        ++i;
     }
 }
 
 bool ScDPGroupTableData::IsBaseForGroup(long nDim) const
 {
-    for ( ScDPGroupDimensionVec::const_iterator aIter(aGroups.begin()); aIter != aGroups.end(); ++aIter )
-    {
-        const ScDPGroupDimension& rDim = *aIter;
-        if ( rDim.GetSourceDim() == nDim )
-            return true;
-    }
-
-    return false;
+    return std::any_of(aGroups.begin(), aGroups.end(),
+        [&nDim](const ScDPGroupDimension& rDim) { return rDim.GetSourceDim() == nDim; });
 }
 
 long ScDPGroupTableData::GetGroupBase(long nGroupDim) const
 {
-    for ( ScDPGroupDimensionVec::const_iterator aIter(aGroups.begin()); aIter != aGroups.end(); ++aIter )
-    {
-        const ScDPGroupDimension& rDim = *aIter;
-        if ( rDim.GetGroupDim() == nGroupDim )
-            return rDim.GetSourceDim();
-    }
+    auto aIter = std::find_if(aGroups.begin(), aGroups.end(),
+        [&nGroupDim](const ScDPGroupDimension& rDim) { return rDim.GetGroupDim() == nGroupDim; });
+    if (aIter != aGroups.end())
+        return aIter->GetSourceDim();
 
     return -1;      // none
 }
@@ -920,12 +897,10 @@ bool ScDPGroupTableData::IsNumOrDateGroup(long nDimension) const
                pNumGroups[nDimension].IsDateDimension();
     }
 
-    for ( ScDPGroupDimensionVec::const_iterator aIter(aGroups.begin()); aIter != aGroups.end(); ++aIter )
-    {
-        const ScDPGroupDimension& rDim = *aIter;
-        if ( rDim.GetGroupDim() == nDimension )
-            return rDim.IsDateDimension();
-    }
+    auto aIter = std::find_if(aGroups.begin(), aGroups.end(),
+        [&nDimension](const ScDPGroupDimension& rDim) { return rDim.GetGroupDim() == nDimension; });
+    if (aIter != aGroups.end())
+        return aIter->IsDateDimension();
 
     return false;
 }
@@ -933,24 +908,24 @@ bool ScDPGroupTableData::IsNumOrDateGroup(long nDimension) const
 bool ScDPGroupTableData::IsInGroup( const ScDPItemData& rGroupData, long nGroupIndex,
                                     const ScDPItemData& rBaseData, long nBaseIndex ) const
 {
-    for ( ScDPGroupDimensionVec::const_iterator aIter(aGroups.begin()); aIter != aGroups.end(); ++aIter )
+    auto aIter = std::find_if(aGroups.begin(), aGroups.end(),
+        [&nGroupIndex, &nBaseIndex](const ScDPGroupDimension& rDim) {
+            return rDim.GetGroupDim() == nGroupIndex && rDim.GetSourceDim() == nBaseIndex; });
+    if (aIter != aGroups.end())
     {
         const ScDPGroupDimension& rDim = *aIter;
-        if ( rDim.GetGroupDim() == nGroupIndex && rDim.GetSourceDim() == nBaseIndex )
+        if (rDim.IsDateDimension())
         {
-            if (rDim.IsDateDimension())
-            {
-                return isDateInGroup(rGroupData, rBaseData);
-            }
-            else
-            {
-                // If the item is in a group, only that group is valid.
-                // If the item is not in any group, its own name is valid.
+            return isDateInGroup(rGroupData, rBaseData);
+        }
+        else
+        {
+            // If the item is in a group, only that group is valid.
+            // If the item is not in any group, its own name is valid.
 
-                const ScDPGroupItem* pGroup = rDim.GetGroupForData( rBaseData );
-                return pGroup ? pGroup->GetName().IsCaseInsEqual( rGroupData ) :
-                                rGroupData.IsCaseInsEqual( rBaseData );
-            }
+            const ScDPGroupItem* pGroup = rDim.GetGroupForData( rBaseData );
+            return pGroup ? pGroup->GetName().IsCaseInsEqual( rGroupData ) :
+                            rGroupData.IsCaseInsEqual( rBaseData );
         }
     }
 
@@ -963,9 +938,9 @@ bool ScDPGroupTableData::HasCommonElement( const ScDPItemData& rFirstData, long 
 {
     const ScDPGroupDimension* pFirstDim = nullptr;
     const ScDPGroupDimension* pSecondDim = nullptr;
-    for ( ScDPGroupDimensionVec::const_iterator aIter(aGroups.begin()); aIter != aGroups.end(); ++aIter )
+    for ( const auto& rDim : aGroups )
     {
-        const ScDPGroupDimension* pDim = &(*aIter);
+        const ScDPGroupDimension* pDim = &rDim;
         if ( pDim->GetGroupDim() == nFirstIndex )
             pFirstDim = pDim;
         else if ( pDim->GetGroupDim() == nSecondIndex )
@@ -1019,10 +994,10 @@ long ScDPGroupTableData::GetSourceDim( long nDim )
 {
     if ( getIsDataLayoutDimension( nDim ) )
         return nSourceCount;
-    if (  nDim >= nSourceCount && nDim < nSourceCount +(long) aGroups.size()  )
+    if (  nDim >= nSourceCount && nDim < nSourceCount +static_cast<long>(aGroups.size())  )
     {
-         const ScDPGroupDimension& rGroupDim = aGroups[nDim - nSourceCount];
-            return  rGroupDim.GetSourceDim();
+        const ScDPGroupDimension& rGroupDim = aGroups[nDim - nSourceCount];
+        return  rGroupDim.GetSourceDim();
     }
     return nDim;
 }
@@ -1031,7 +1006,11 @@ long ScDPGroupTableData::Compare(long nDim, long nDataId1, long nDataId2)
 {
     if ( getIsDataLayoutDimension(nDim) )
         return 0;
-    return ScDPItemData::Compare( *GetMemberById(nDim,  nDataId1),*GetMemberById(nDim,  nDataId2) );
+    const ScDPItemData* rItem1 = GetMemberById(nDim, nDataId1);
+    const ScDPItemData* rItem2 = GetMemberById(nDim, nDataId2);
+    if (rItem1 == nullptr || rItem2 == nullptr)
+        return 0;
+    return ScDPItemData::Compare( *rItem1,*rItem2);
 }
 
 #if DUMP_PIVOT_TABLE

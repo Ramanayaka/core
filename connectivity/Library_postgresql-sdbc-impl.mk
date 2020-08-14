@@ -15,7 +15,7 @@ $(eval $(call gb_Library_add_defs,postgresql-sdbc-impl,\
 	-DPQ_SDBC_MICRO=2 \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,postgresql-sdbc-impl,$(SRCDIR)/connectivity/inc/pch/precompiled_postgresql-sdbc-impl))
+$(eval $(call gb_Library_set_precompiled_header,postgresql-sdbc-impl,connectivity/inc/pch/precompiled_postgresql-sdbc-impl))
 
 $(eval $(call gb_Library_use_sdk_api,postgresql-sdbc-impl))
 
@@ -47,7 +47,7 @@ $(eval $(call gb_Library_use_externals,postgresql-sdbc-impl,\
 	postgresql \
 	$(if $(filter-out MSC,$(COM)), \
 		openssl \
-		openldap \
+		$(if $(ENABLE_LDAP),openldap) \
 		nss3 \
 		plc4 \
 		ssl3 \
@@ -61,7 +61,6 @@ $(eval $(call gb_Library_add_libs,postgresql-sdbc-impl,\
 	$(if $(WITH_GSSAPI),$(GSSAPI_LIBS)) \
 	$(if $(WITH_KRB5),$(KRB5_LIBS)) \
 	$(if $(filter-out MACOSX,$(OS)),-ldl) \
-	$(if $(filter-out MACOSX,$(OS)),-lpthread) \
 ))
 
 endif

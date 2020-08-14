@@ -19,6 +19,7 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_FILTER_XML_XMLTABLEFILTERPATTERN_HXX
 #define INCLUDED_DBACCESS_SOURCE_FILTER_XML_XMLTABLEFILTERPATTERN_HXX
 
+#include <rtl/ustrbuf.hxx>
 #include <xmloff/xmlictxt.hxx>
 
 namespace dbaxml
@@ -28,16 +29,18 @@ namespace dbaxml
     {
         OXMLTableFilterList&    m_rParent;
         bool                m_bNameFilter;
+        OUStringBuffer      maBuffer;
     public:
         OXMLTableFilterPattern( SvXMLImport& rImport
-                                ,sal_uInt16 nPrfx
-                                ,const OUString& rLName
                                 ,bool _bNameFilter
                                 ,OXMLTableFilterList& _rParent);
 
         virtual ~OXMLTableFilterPattern() override;
 
-        virtual void Characters( const OUString& rChars ) override;
+        virtual void SAL_CALL startFastElement( sal_Int32 /*nElement*/,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override {}
+        virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
+        virtual void SAL_CALL characters( const OUString& rChars ) override;
     };
 } // namespace dbaxml
 

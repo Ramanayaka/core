@@ -19,17 +19,21 @@
 #ifndef INCLUDED_COM_SUN_STAR_UNO_SEQUENCE_HXX
 #define INCLUDED_COM_SUN_STAR_UNO_SEQUENCE_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cassert>
 #include <cstddef>
+#if defined LIBO_INTERNAL_ONLY
+# include <type_traits>
+# include <ostream>
+#endif
 
-#include <osl/interlck.h>
-#include <com/sun/star/uno/Sequence.h>
-#include <typelib/typedescription.h>
-#include <uno/data.h>
-#include <com/sun/star/uno/genfunc.hxx>
-#include <cppu/unotype.hxx>
+#include "osl/interlck.h"
+#include "com/sun/star/uno/Sequence.h"
+#include "typelib/typedescription.h"
+#include "uno/data.h"
+#include "com/sun/star/uno/genfunc.hxx"
+#include "cppu/unotype.hxx"
 
 namespace com
 {
@@ -51,7 +55,7 @@ inline Sequence< E >::Sequence()
     const Type & rType = ::cppu::getTypeFavourUnsigned( this );
     ::uno_type_sequence_construct(
         &_pSequence, rType.getTypeLibType(),
-        0, 0, cpp_acquire );
+        NULL, 0, cpp_acquire );
     // no bad_alloc, because empty sequence is statically allocated in cppu
 }
 
@@ -69,10 +73,20 @@ inline Sequence< E >::Sequence(
 {
 }
 
+#if defined(__COVERITY__)
+extern "C" void __coverity_tainted_data_sanitize__(void *);
+#endif
+
 template< class E >
 inline Sequence< E >::Sequence( const E * pElements, sal_Int32 len )
 {
     const Type & rType = ::cppu::getTypeFavourUnsigned( this );
+
+#if defined(__COVERITY__)
+    // cid#1448292 coverity has difficulty with css::uno::Sequence
+    __coverity_tainted_data_sanitize__(pElements);
+#endif
+
     bool success =
     ::uno_type_sequence_construct(
         &_pSequence, rType.getTypeLibType(),
@@ -88,7 +102,7 @@ inline Sequence< E >::Sequence( sal_Int32 len )
     bool success =
     ::uno_type_sequence_construct(
         &_pSequence, rType.getTypeLibType(),
-        0, len, cpp_acquire );
+        NULL, len, cpp_acquire );
     if (! success)
         throw ::std::bad_alloc();
 }
@@ -199,6 +213,72 @@ inline ::com::sun::star::uno::Sequence< sal_Int8 > SAL_CALL toUnoSequence(
 {
     return * reinterpret_cast< const ::com::sun::star::uno::Sequence< sal_Int8 > * >( &rByteSequence );
 }
+
+#if defined LIBO_INTERNAL_ONLY
+
+/// @cond INTERNAL
+
+namespace uno_detail {
+
+template< typename value_t, typename charT, typename traits >
+void sequence_output_elems( std::basic_ostream<charT, traits> &os, const value_t *pAry, sal_Int32 nLen, std::true_type )
+{
+    // for integral types, use hex notation
+    auto const flags = os.setf(std::ios_base::hex);
+    for(sal_Int32 i=0; i<nLen-1; ++i)
+        os << "0x" << *pAry++ << ", ";
+    if( nLen > 1 )
+        os << "0x" << *pAry++;
+    os.setf(flags);
+}
+
+template< typename value_t, typename charT, typename traits >
+void sequence_output_elems( std::basic_ostream<charT, traits> &os, const value_t *pAry, sal_Int32 nLen, std::false_type )
+{
+    // every other type: rely on their own ostream operator<<
+    for(sal_Int32 i=0; i<nLen-1; ++i)
+        os << *pAry++ << ", ";
+    if( nLen > 1 )
+        os << *pAry++;
+}
+
+template< typename value_t, typename charT, typename traits >
+void sequence_output_bytes( std::basic_ostream<charT, traits> &os, const value_t *pAry, sal_Int32 nLen )
+{
+    // special case bytes - ostream operator<< outputs those as char
+    // values, but we need raw ints here
+    auto const flags = os.setf(std::ios_base::hex);
+    for(sal_Int32 i=0; i<nLen-1; ++i)
+        os << "0x" << (0xFF & +*pAry++) << ", ";
+    if( nLen > 1 )
+        os << "0x" << (0xFF & +*pAry++);
+    os.setf(flags);
+}
+
+}
+
+/**
+   Support for Sequence in std::ostream (and thus in CPPUNIT_ASSERT or SAL_INFO
+   macros, for example).
+
+   @since LibreOffice 6.1
+*/
+template< typename value_t, typename charT, typename traits >
+inline std::basic_ostream<charT, traits> &operator<<(std::basic_ostream<charT, traits> &os, css::uno::Sequence<value_t> const& v)
+{
+    const value_t *pAry = v.getConstArray();
+    sal_Int32 nLen = v.getLength();
+    if constexpr (std::is_same<sal_Int8, value_t>::value) {
+        uno_detail::sequence_output_bytes(os, pAry, nLen);
+    } else {
+        uno_detail::sequence_output_elems(os, pAry, nLen, std::is_integral<value_t>());
+    }
+    return os;
+}
+
+/// @endcond
+
+#endif
 
 }
 }

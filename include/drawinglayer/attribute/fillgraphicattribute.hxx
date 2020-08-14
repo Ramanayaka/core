@@ -31,14 +31,12 @@ namespace basegfx {
     class B2DRange;
 }
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpFillGraphicAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC FillGraphicAttribute
         {
@@ -56,8 +54,8 @@ namespace drawinglayer
                 bool bTiling,
                 double fOffsetX = 0.0,
                 double fOffsetY = 0.0);
-            FillGraphicAttribute(const FillGraphicAttribute& rCandidate);
-            FillGraphicAttribute& operator=(const FillGraphicAttribute& rCandidate);
+            FillGraphicAttribute(const FillGraphicAttribute&);
+            FillGraphicAttribute& operator=(const FillGraphicAttribute&);
             ~FillGraphicAttribute();
 
             // checks if the incarnation is default constructed
@@ -73,8 +71,8 @@ namespace drawinglayer
             double getOffsetX() const;
             double getOffsetY() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_FILLGRAPHICATTRIBUTE_HXX

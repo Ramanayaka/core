@@ -22,17 +22,12 @@
 
 #include <osl/mutex.hxx>
 #include <osl/conditn.hxx>
-#include <ucbhelper/macros.hxx>
 #include <cppuhelper/weak.hxx>
 #include <comphelper/interfacecontainer2.hxx>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <com/sun/star/ucb/XDynamicResultSet.hpp>
 #include <com/sun/star/ucb/XSourceInitialization.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/ucb/XDynamicResultSetListener.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <rtl/ref.hxx>
 
 #include <memory>
@@ -81,17 +76,17 @@ protected:
     osl::Condition          m_aListenerSet;
 
 protected:
-    void SAL_CALL impl_init();
-    void SAL_CALL impl_deinit();
+    void impl_init();
+    void impl_deinit();
     /// @throws css::lang::DisposedException
     /// @throws css::uno::RuntimeException
-    void SAL_CALL
+    void
     impl_EnsureNotDisposed();
 
-    virtual void SAL_CALL
+    virtual void
     impl_InitResultSetOne( const css::uno::Reference<
                 css::sdbc::XResultSet >& xResultSet );
-    virtual void SAL_CALL
+    virtual void
     impl_InitResultSetTwo( const css::uno::Reference<
                 css::sdbc::XResultSet >& xResultSet );
 
@@ -142,11 +137,11 @@ public:
 
     // own methods:
     /// @throws css::uno::RuntimeException
-    virtual void SAL_CALL
+    virtual void
     impl_disposing( const css::lang::EventObject& Source );
 
     /// @throws css::uno::RuntimeException
-    void SAL_CALL
+    void
     impl_notify( const css::ucb::ListEvent& Changes );
 };
 
@@ -183,7 +178,7 @@ public:
 
 
     // own methods:
-    void SAL_CALL impl_OwnerDies();
+    void impl_OwnerDies();
 };
 
 

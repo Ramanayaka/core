@@ -18,24 +18,20 @@
  */
 
 
+#include <algorithm>
 #include <memory>
 #include <HelpCompiler.hxx>
 #include <BasCodeTagger.hxx>
-#include <limits.h>
+#include <iostream>
 #include <stdlib.h>
 #include <string.h>
-#include <libxslt/xslt.h>
 #include <libxslt/xsltInternals.h>
 #include <libxslt/transform.h>
-#include <libxslt/xsltutils.h>
 #include <osl/thread.hxx>
 #include <chrono>
-#include<rtl/character.hxx>
+#include <rtl/character.hxx>
+#include <sal/log.hxx>
 
-static void impl_sleep( sal_uInt32 nSec )
-{
-    osl::Thread::wait( std::chrono::seconds(nSec) );
-}
 HelpCompiler::HelpCompiler(StreamTable &in_streamTable, const fs::path &in_inputFile,
     const fs::path &in_src, const fs::path &in_zipdir, const fs::path &in_resCompactStylesheet,
     const fs::path &in_resEmbStylesheet, const std::string &in_module, const std::string &in_lang,
@@ -115,29 +111,25 @@ void HelpCompiler::saveXhpForJar( xmlDocPtr doc, const fs::path &filePath )
     xmlFreeDoc(compacted);
 }
 
-
 xmlDocPtr HelpCompiler::getSourceDocument(const fs::path &filePath)
 {
-    static xsltStylesheetPtr cur = nullptr;
-
     xmlDocPtr res;
-    if( bExtensionMode )
+    if (bExtensionMode)
     {
+        // this is the mode when used within LibreOffice for importing help
+        // bundled with an extension
         res = xmlParseFile(filePath.native_file_string().c_str());
-        if( !res ){
-            impl_sleep( 3 );
-            res = xmlParseFile(filePath.native_file_string().c_str());
-        }
     }
     else
     {
+        // this is the mode when used at build time to generate LibreOffice
+        // help from its xhp source
+        static xsltStylesheetPtr cur = nullptr;
         static const char *params[2 + 1];
         if (!cur)
         {
             static std::string fsroot('\'' + src.toUTF8() + '\'');
 
-            xmlSubstituteEntitiesDefault(1);
-            xmlLoadExtDtdDefaultValue = 1;
             cur = xsltParseStylesheetFile(reinterpret_cast<const xmlChar *>(resEmbStylesheet.native_file_string().c_str()));
 
             int nbparams = 0;
@@ -146,11 +138,6 @@ xmlDocPtr HelpCompiler::getSourceDocument(const fs::path &filePath)
             params[nbparams] = nullptr;
         }
         xmlDocPtr doc = xmlParseFile(filePath.native_file_string().c_str());
-        if( !doc )
-        {
-            impl_sleep( 3 );
-            doc = xmlParseFile(filePath.native_file_string().c_str());
-        }
 
         saveXhpForJar( doc, filePath );
 
@@ -240,23 +227,25 @@ xmlNodePtr HelpCompiler::clone(xmlNodePtr node, const std::string& appl)
     return root;
 }
 
+namespace {
+
 class myparser
 {
 public:
     std::string documentId;
     std::string fileName;
     std::string title;
-    std::unique_ptr<HashSet> hidlist;
+    std::unique_ptr< std::vector<std::string> > hidlist;
     std::unique_ptr<Hashtable> keywords;
     std::unique_ptr<Stringtable> helptexts;
 private:
-    HashSet extendedHelpText;
+    std::vector<std::string> extendedHelpText;
 public:
     myparser(const std::string &indocumentId, const std::string &infileName,
         const std::string &intitle) : documentId(indocumentId), fileName(infileName),
         title(intitle)
     {
-        hidlist.reset(new HashSet);
+        hidlist.reset(new std::vector<std::string>);
         keywords.reset(new Hashtable);
         helptexts.reset(new Stringtable);
     }
@@ -264,6 +253,8 @@ public:
 private:
     std::string dump(xmlNodePtr node);
 };
+
+}
 
 std::string myparser::dump(xmlNodePtr node)
 {
@@ -286,7 +277,7 @@ std::string myparser::dump(xmlNodePtr node)
     return app;
 }
 
-void trim(std::string& str)
+static void trim(std::string& str)
 {
     std::string::size_type pos = str.find_last_not_of(' ');
     if(pos != std::string::npos)
@@ -297,7 +288,7 @@ void trim(std::string& str)
             str.erase(0, pos);
     }
     else
-        str.erase(str.begin(), str.end());
+        str.clear();
 }
 
 void myparser::traverse( xmlNodePtr parentNode )
@@ -325,10 +316,18 @@ void myparser::traverse( xmlNodePtr parentNode )
         else if (!strcmp(reinterpret_cast<const char*>(test->name), "bookmark"))
         {
             xmlChar *branchxml = xmlGetProp(test, reinterpret_cast<const xmlChar*>("branch"));
-            xmlChar *idxml = xmlGetProp(test, reinterpret_cast<const xmlChar*>("id"));
+            if (branchxml == nullptr) {
+                throw HelpProcessingException(
+                    HelpProcessingErrorClass::XmlParsing, "bookmark lacks branch attribute");
+            }
             std::string branch(reinterpret_cast<char*>(branchxml));
-            std::string anchor(reinterpret_cast<char*>(idxml));
             xmlFree (branchxml);
+            xmlChar *idxml = xmlGetProp(test, reinterpret_cast<const xmlChar*>("id"));
+            if (idxml == nullptr) {
+                throw HelpProcessingException(
+                    HelpProcessingErrorClass::XmlParsing, "bookmark lacks id attribute");
+            }
+            std::string anchor(reinterpret_cast<char*>(idxml));
             xmlFree (idxml);
 
             if (branch.compare(0, 3, "hid") == 0)
@@ -418,10 +417,8 @@ void myparser::traverse( xmlNodePtr parentNode )
                 //TODO: make these asserts and flush out all our broken help ids
                 SAL_WARN_IF(hidstr.empty(), "helpcompiler", "hid='' for text:" << text);
                 SAL_WARN_IF(!hidstr.empty() && extendedHelpText.empty(), "helpcompiler", "hid='.' with no hid bookmark branches in file: " << fileName + " for text: " << text);
-                HashSet::const_iterator aEnd = extendedHelpText.end();
-                for (HashSet::const_iterator iter = extendedHelpText.begin(); iter != aEnd; ++iter)
+                for (const std::string& name : extendedHelpText)
                 {
-                    std::string name = *iter;
                     (*helptexts)[name] = text;
                 }
             }
@@ -432,7 +429,7 @@ void myparser::traverse( xmlNodePtr parentNode )
     }
 }
 
-bool HelpCompiler::compile()
+void HelpCompiler::compile()
 {
     // we now have the jaroutputstream, which will contain the document.
     // now determine the document as a dom tree in variable docResolved
@@ -444,14 +441,9 @@ bool HelpCompiler::compile()
 
     if (!docResolvedOrg)
     {
-        impl_sleep( 3 );
-        docResolvedOrg = getSourceDocument(inputFile);
-        if( !docResolvedOrg )
-        {
-            std::stringstream aStrStream;
-            aStrStream << "ERROR: file not existing: " << inputFile.native_file_string().c_str() << std::endl;
-            throw HelpProcessingException( HelpProcessingErrorClass::General, aStrStream.str() );
-        }
+        std::stringstream aStrStream;
+        aStrStream << "ERROR: file not existing: " << inputFile.native_file_string().c_str() << std::endl;
+        throw HelpProcessingException( HelpProcessingErrorClass::General, aStrStream.str() );
     }
 
     std::string documentId;
@@ -477,11 +469,10 @@ bool HelpCompiler::compile()
 
     streamTable.dropappl();
     streamTable.appl_doc = docResolvedDoc;
-    streamTable.appl_hidlist = aparser.hidlist.release();
-    streamTable.appl_helptexts = aparser.helptexts.release();
-    streamTable.appl_keywords = aparser.keywords.release();
+    streamTable.appl_hidlist = std::move(aparser.hidlist);
+    streamTable.appl_helptexts = std::move(aparser.helptexts);
+    streamTable.appl_keywords = std::move(aparser.keywords);
 
-    streamTable.document_id = documentId;
     streamTable.document_path = fileName;
     streamTable.document_title = title;
     std::string actMod = module;
@@ -496,23 +487,10 @@ bool HelpCompiler::compile()
     }
     streamTable.document_module = actMod;
     xmlFreeDoc(docResolvedOrg);
-    return true;
 }
 
 namespace fs
 {
-    rtl_TextEncoding getThreadTextEncoding()
-    {
-        static bool bNeedsInit = true;
-        static rtl_TextEncoding nThreadTextEncoding;
-        if( bNeedsInit )
-        {
-            bNeedsInit = false;
-            nThreadTextEncoding = osl_getThreadTextEncoding();
-        }
-        return nThreadTextEncoding;
-    }
-
     void create_directory(const fs::path& indexDirName)
     {
         HCDBG(

@@ -23,18 +23,16 @@
 #include <svtools/svtdllapi.h>
 
 #include <memory>
-#include <vector>
 
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/frame/XDispatchProvider.hpp>
-#include <com/sun/star/ui/XAcceleratorConfiguration.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
-#include <com/sun/star/util/URL.hpp>
 #include <com/sun/star/awt/KeyEvent.hpp>
 #include <vcl/keycod.hxx>
-#include <vcl/evntpost.hxx>
-#include <osl/mutex.h>
+
+namespace com :: sun :: star :: frame { class XDispatchProvider; }
+namespace com :: sun :: star :: frame { class XFrame; }
+namespace com :: sun :: star :: frame { class XModel; }
+namespace com :: sun :: star :: ui { class XAcceleratorConfiguration; }
+namespace com :: sun :: star :: uno { class XComponentContext; }
+namespace com :: sun :: star :: util { class XURLTransformer; }
 
 
 namespace svt
@@ -70,7 +68,7 @@ struct TMutexInit
             Of course this queue will be stopped if the environment
             will be destructed...
  */
-class SVT_DLLPUBLIC AcceleratorExecute : private TMutexInit
+class SVT_DLLPUBLIC AcceleratorExecute final : private TMutexInit
 {
     // member
     private:
@@ -125,14 +123,14 @@ class SVT_DLLPUBLIC AcceleratorExecute : private TMutexInit
         /** @short  init this instance.
 
             @descr  It must be called as first method after creation.
-                    And further it can be called more than once ...
-                    but at least its should be used one times only.
+                    And further it can be called more than once...
+                    but at least it should be used one times only.
                     Otherwise nobody can say, which asynchronous
                     executions will be used inside the old and which one
                     will be used inside the new environment.
 
             @param  rxContext
-                    reference to an uno service manager.
+                    reference to a uno service manager.
 
             @param  xEnv
                     if it points to a valid frame it will be used
@@ -162,7 +160,7 @@ class SVT_DLLPUBLIC AcceleratorExecute : private TMutexInit
             @return [bool]
                     true if this key is configured and match to a command.
                     Attention: This state does not mean the success state
-                    of the corresponding execute. Because its done asynchronous!
+                    of the corresponding execute. Because it's done asynchronously!
          */
         bool execute(const vcl::KeyCode&       aKey);
         bool execute(const css::awt::KeyEvent& aKey);

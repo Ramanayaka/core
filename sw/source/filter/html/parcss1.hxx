@@ -20,6 +20,11 @@
 #ifndef INCLUDED_SW_SOURCE_FILTER_HTML_PARCSS1_HXX
 #define INCLUDED_SW_SOURCE_FILTER_HTML_PARCSS1_HXX
 
+#include <rtl/ustring.hxx>
+#include <tools/color.hxx>
+
+#include <memory>
+
 // tokens of the CSS1 parser
 enum CSS1Token
 {
@@ -150,12 +155,12 @@ inline void CSS1Expression::Set( CSS1Token eTyp, const OUString &rVal,
 
 inline sal_uInt32 CSS1Expression::GetULength() const
 {
-    return nValue < 0. ? 0UL : (sal_uInt32)(nValue + .5);
+    return nValue < 0. ? 0UL : static_cast<sal_uInt32>(nValue + .5);
 }
 
 inline sal_Int32 CSS1Expression::GetSLength() const
 {
-    return (sal_Int32)(nValue + (nValue < 0. ? -.5 : .5 ));
+    return static_cast<sal_Int32>(nValue + (nValue < 0. ? -.5 : .5 ));
 }
 
 /** Parser of a style element/option
@@ -173,23 +178,23 @@ inline sal_Int32 CSS1Expression::GetSLength() const
  */
 class CSS1Parser
 {
-    bool bWhiteSpace : 1; // read a whitespace?
-    bool bEOF : 1; // is end of "file"?
+    bool m_bWhiteSpace : 1; // read a whitespace?
+    bool m_bEOF : 1; // is end of "file"?
 
-    sal_Unicode cNextCh; // next character
+    sal_Unicode m_cNextCh; // next character
 
-    sal_Int32 nInPos; // current position in the input string
+    sal_Int32 m_nInPos; // current position in the input string
 
-    sal_uInt32 nlLineNr; // current row number
-    sal_uInt32 nlLinePos; // current column number
+    sal_uInt32 m_nlLineNr; // current row number
+    sal_uInt32 m_nlLinePos; // current column number
 
-    double nValue; // value of the token as number
+    double m_nValue; // value of the token as number
 
-    CSS1ParserState eState; // current state of the parser
-    CSS1Token nToken; // the current token
+    CSS1ParserState m_eState; // current state of the parser
+    CSS1Token m_nToken; // the current token
 
-    OUString aIn; // the string to parse
-    OUString aToken; // token as string
+    OUString m_aIn; // the string to parse
+    OUString m_aToken; // token as string
 
     /// prepare parsing
     void InitRead( const OUString& rIn );
@@ -201,14 +206,14 @@ class CSS1Parser
     CSS1Token GetNextToken();
 
     /// Is the parser still working?
-    bool IsParserWorking() const { return CSS1_PAR_WORKING == eState; }
+    bool IsParserWorking() const { return CSS1_PAR_WORKING == m_eState; }
 
-    bool IsEOF() const { return bEOF; }
+    bool IsEOF() const { return m_bEOF; }
 
     // parse parts of the grammar
     void ParseRule();
-    CSS1Selector *ParseSelector();
-    CSS1Expression *ParseDeclaration( OUString& rProperty );
+    std::unique_ptr<CSS1Selector> ParseSelector();
+    std::unique_ptr<CSS1Expression> ParseDeclaration( OUString& rProperty );
 
 protected:
     void ParseStyleSheet();
@@ -219,9 +224,8 @@ protected:
      * or DeclarationParsed() need to be called afterwards
      *
      * @param rIn the style element as string
-     * @return true if ???
      */
-    bool ParseStyleSheet( const OUString& rIn );
+    void ParseStyleSheet( const OUString& rIn );
 
     /** parse the content of a HTML style option
      *
@@ -231,24 +235,22 @@ protected:
      * @param rIn the style option as string
      * @return true if ???
      */
-    bool ParseStyleOption( const OUString& rIn );
+    void ParseStyleOption( const OUString& rIn );
 
     /** Called after a selector was parsed.
      *
      * @param pSelector The selector that was parsed
      * @param bFirst if true, a new declaration starts with this selector
-     * @return If true, the selector will be deleted. (Returns always true?)
      */
-    virtual bool SelectorParsed( CSS1Selector* pSelector, bool bFirst );
+    virtual void SelectorParsed( std::unique_ptr<CSS1Selector> pSelector, bool bFirst );
 
     /** Called after a declaration or property was parsed
      *
      * @param rProperty The declaration/property
      * @param pExpr ???
-     * @return If true, the declaration will be deleted. (Returns always true?)
      */
-    virtual bool DeclarationParsed( const OUString& rProperty,
-                                    const CSS1Expression *pExpr );
+    virtual void DeclarationParsed( const OUString& rProperty,
+                                    std::unique_ptr<CSS1Expression> pExpr );
 
 public:
     CSS1Parser();

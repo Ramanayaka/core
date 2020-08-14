@@ -9,20 +9,30 @@
 
 #include <xepivotxml.hxx>
 #include <dpcache.hxx>
+#include <dpdimsave.hxx>
+#include <dpitemdata.hxx>
 #include <dpobject.hxx>
 #include <dpsave.hxx>
 #include <dputil.hxx>
 #include <document.hxx>
 #include <generalfunction.hxx>
+#include <unonames.hxx>
+#include <xestyle.hxx>
+#include <xeroot.hxx>
 
+#include <o3tl/temporary.hxx>
+#include <o3tl/safeint.hxx>
 #include <oox/export/utils.hxx>
 #include <oox/token/namespaces.hxx>
+#include <sax/tools/converter.hxx>
+#include <sax/fastattribs.hxx>
 
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/sheet/DataPilotFieldGroupBy.hpp>
 #include <com/sun/star/sheet/DataPilotFieldOrientation.hpp>
+#include <com/sun/star/sheet/DataPilotFieldLayoutMode.hpp>
 #include <com/sun/star/sheet/DataPilotOutputRangeType.hpp>
-#include <com/sun/star/sheet/GeneralFunction.hpp>
-
-#include <o3tl/make_unique.hxx>
+#include <com/sun/star/sheet/XDimensionsSupplier.hpp>
 
 #include <vector>
 
@@ -38,20 +48,22 @@ void savePivotCacheRecordsXml( XclExpXmlStream& rStrm, const ScDPCache& rCache )
 
     sax_fastparser::FSHelperPtr& pRecStrm = rStrm.GetCurrentStream();
     pRecStrm->startElement(XML_pivotCacheRecords,
-        XML_xmlns, XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(xls))).getStr(),
-        FSNS(XML_xmlns, XML_r), XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(officeRel))).getStr(),
-        XML_count, OString::number(static_cast<long>(nCount)).getStr(),
-        FSEND);
+        XML_xmlns, rStrm.getNamespaceURL(OOX_NS(xls)).toUtf8(),
+        FSNS(XML_xmlns, XML_r), rStrm.getNamespaceURL(OOX_NS(officeRel)).toUtf8(),
+        XML_count, OString::number(static_cast<long>(nCount)));
 
     for (SCROW i = 0; i < nCount; ++i)
     {
-        pRecStrm->startElement(XML_r, FSEND);
+        pRecStrm->startElement(XML_r);
         for (size_t nField = 0; nField < nFieldCount; ++nField)
         {
             const ScDPCache::IndexArrayType* pArray = rCache.GetFieldIndexArray(nField);
             assert(pArray);
-            assert(static_cast<size_t>(i) < pArray->size());
-            pRecStrm->singleElement(XML_x, XML_v, OString::number((*pArray)[i]), FSEND);
+            assert(o3tl::make_unsigned(i) < pArray->size());
+
+            // We are using XML_x reference (like: <x v="0"/>), instead of values here (eg: <s v="No Discount"/>).
+            // That's why in SavePivotCacheXml method, we need to list all items.
+            pRecStrm->singleElement(XML_x, XML_v, OString::number((*pArray)[i]));
         }
         pRecStrm->endElement(XML_r);
     }
@@ -79,34 +91,32 @@ const char* toOOXMLAxisType( sheet::DataPilotFieldOrientation eOrient )
     return "";
 }
 
-const char* toOOXMLSubtotalType( sheet::GeneralFunction eFunc )
+const char* toOOXMLSubtotalType(ScGeneralFunction eFunc)
 {
     switch (eFunc)
     {
-        case sheet::GeneralFunction_SUM:
+        case ScGeneralFunction::SUM:
             return "sum";
-        case sheet::GeneralFunction_COUNT:
+        case ScGeneralFunction::COUNT:
             return "count";
-        case sheet::GeneralFunction_AVERAGE:
+        case ScGeneralFunction::AVERAGE:
             return "average";
-        case sheet::GeneralFunction_MAX:
+        case ScGeneralFunction::MAX:
             return "max";
-        case sheet::GeneralFunction_MIN:
+        case ScGeneralFunction::MIN:
             return "min";
-        case sheet::GeneralFunction_PRODUCT:
+        case ScGeneralFunction::PRODUCT:
             return "product";
-        case sheet::GeneralFunction_COUNTNUMS:
+        case ScGeneralFunction::COUNTNUMS:
             return "countNums";
-        case sheet::GeneralFunction_STDEV:
+        case ScGeneralFunction::STDEV:
             return "stdDev";
-        case sheet::GeneralFunction_STDEVP:
+        case ScGeneralFunction::STDEVP:
             return "stdDevp";
-        case sheet::GeneralFunction_VAR:
+        case ScGeneralFunction::VAR:
             return "var";
-        case sheet::GeneralFunction_VARP:
+        case ScGeneralFunction::VARP:
             return "varp";
-        case sheet::GeneralFunction_NONE:
-        case sheet::GeneralFunction_AUTO:
         default:
             ;
     }
@@ -121,7 +131,7 @@ XclExpXmlPivotCaches::XclExpXmlPivotCaches( const XclExpRoot& rRoot ) :
 void XclExpXmlPivotCaches::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& pWorkbookStrm = rStrm.GetCurrentStream();
-    pWorkbookStrm->startElement(XML_pivotCaches, FSEND);
+    pWorkbookStrm->startElement(XML_pivotCaches);
 
     for (size_t i = 0, n = maCaches.size(); i < n; ++i)
     {
@@ -138,9 +148,8 @@ void XclExpXmlPivotCaches::SaveXml( XclExpXmlStream& rStrm )
             &aRelId);
 
         pWorkbookStrm->singleElement(XML_pivotCache,
-            XML_cacheId, OString::number(nCacheId).getStr(),
-            FSNS(XML_r, XML_id), XclXmlUtils::ToOString(aRelId).getStr(),
-            FSEND);
+            XML_cacheId, OString::number(nCacheId),
+            FSNS(XML_r, XML_id), aRelId.toUtf8());
 
         rStrm.PushStream(pPCStrm);
         SavePivotCacheXml(rStrm, rEntry, nCacheId);
@@ -173,6 +182,64 @@ const XclExpXmlPivotCaches::Entry* XclExpXmlPivotCaches::GetCache( sal_Int32 nCa
     return &maCaches[nPos];
 }
 
+namespace {
+/**
+ * Create combined date and time string according the requirements of Excel.
+ * A single point in time can be represented by concatenating a complete date expression,
+ * the letter T as a delimiter, and a valid time expression. For example, "2007-04-05T14:30".
+ *
+ * fSerialDateTime - a number representing the number of days since 1900-Jan-0 (integer portion of the number),
+ * plus a fractional portion of a 24 hour day (fractional portion of the number).
+ */
+OUString GetExcelFormattedDate( double fSerialDateTime, const SvNumberFormatter& rFormatter )
+{
+    // tdf#125055: properly round the value to seconds when truncating nanoseconds below
+    constexpr double fHalfSecond = 1 / 86400.0 * 0.5;
+    css::util::DateTime aUDateTime
+        = (DateTime(rFormatter.GetNullDate()) + fSerialDateTime + fHalfSecond).GetUNODateTime();
+    // We need to reset nanoseconds, to avoid string like: "1982-02-18T16:04:47.999999849"
+    aUDateTime.NanoSeconds = 0;
+    OUStringBuffer sBuf;
+    ::sax::Converter::convertDateTime(sBuf, aUDateTime, nullptr, true);
+    return sBuf.makeStringAndClear();
+}
+
+// Excel seems to expect different order of group item values; we need to rearrange elements
+// to output "<date1" first, then elements, then ">date2" last.
+// Since ScDPItemData::DateFirst is -1, ScDPItemData::DateLast is 10000, and other date group
+// items would fit between those in order (like 0 = Jan, 1 = Feb, etc.), we can simply sort
+// the items by value.
+std::vector<OUString> SortGroupItems(const ScDPCache& rCache, long nDim)
+{
+    struct ItemData
+    {
+        sal_Int32 nVal;
+        const ScDPItemData* pData;
+    };
+    std::vector<ItemData> aDataToSort;
+    ScfInt32Vec aGIIds;
+    rCache.GetGroupDimMemberIds(nDim, aGIIds);
+    for (sal_Int32 id : aGIIds)
+    {
+        const ScDPItemData* pGIData = rCache.GetItemDataById(nDim, id);
+        if (pGIData->GetType() == ScDPItemData::GroupValue)
+        {
+            auto aGroupVal = pGIData->GetGroupValue();
+            aDataToSort.push_back({ aGroupVal.mnValue, pGIData });
+        }
+    }
+    std::sort(aDataToSort.begin(), aDataToSort.end(),
+              [](const ItemData& a, const ItemData& b) { return a.nVal < b.nVal; });
+
+    std::vector<OUString> aSortedResult;
+    for (const auto& el : aDataToSort)
+    {
+        aSortedResult.push_back(rCache.GetFormattedString(nDim, *el.pData, false));
+    }
+    return aSortedResult;
+}
+} // namespace
+
 void XclExpXmlPivotCaches::SavePivotCacheXml( XclExpXmlStream& rStrm, const Entry& rEntry, sal_Int32 nCounter )
 {
     assert(rEntry.mpCache);
@@ -194,117 +261,237 @@ void XclExpXmlPivotCaches::SavePivotCacheXml( XclExpXmlStream& rStrm, const Entr
     rStrm.PopStream();
 
     pDefStrm->startElement(XML_pivotCacheDefinition,
-        XML_xmlns, XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(xls))).getStr(),
-        FSNS(XML_xmlns, XML_r), XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(officeRel))).getStr(),
-        FSNS(XML_r, XML_id), XclXmlUtils::ToOString(aRelId).getStr(),
-        XML_recordCount, OString::number(rEntry.mpCache->GetDataSize()).getStr(),
-        FSEND);
+        XML_xmlns, rStrm.getNamespaceURL(OOX_NS(xls)).toUtf8(),
+        FSNS(XML_xmlns, XML_r), rStrm.getNamespaceURL(OOX_NS(officeRel)).toUtf8(),
+        FSNS(XML_r, XML_id), aRelId.toUtf8(),
+        XML_recordCount, OString::number(rEntry.mpCache->GetDataSize()),
+        XML_createdVersion, "3"); // MS Excel 2007, tdf#112936: setting version number makes MSO to handle the pivot table differently
 
-    if (rEntry.meType == Worksheet)
-    {
-        pDefStrm->startElement(XML_cacheSource,
-            XML_type, "worksheet",
-            FSEND);
+    pDefStrm->startElement(XML_cacheSource, XML_type, "worksheet");
 
-        OUString aSheetName;
-        GetDoc().GetName(rEntry.maSrcRange.aStart.Tab(), aSheetName);
-        pDefStrm->singleElement(XML_worksheetSource,
-            XML_ref, XclXmlUtils::ToOString(rEntry.maSrcRange).getStr(),
-            XML_sheet, XclXmlUtils::ToOString(aSheetName).getStr(),
-            FSEND);
+    OUString aSheetName;
+    GetDoc().GetName(rEntry.maSrcRange.aStart.Tab(), aSheetName);
+    pDefStrm->singleElement(XML_worksheetSource,
+        XML_ref, XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), rEntry.maSrcRange),
+        XML_sheet, aSheetName.toUtf8());
 
-        pDefStrm->endElement(XML_cacheSource);
-    }
+    pDefStrm->endElement(XML_cacheSource);
 
     size_t nCount = rCache.GetFieldCount();
+    const size_t nGroupFieldCount = rCache.GetGroupFieldCount();
     pDefStrm->startElement(XML_cacheFields,
-        XML_count, OString::number(static_cast<long>(nCount)).getStr(),
-        FSEND);
+        XML_count, OString::number(static_cast<long>(nCount + nGroupFieldCount)));
+
+    auto WriteFieldGroup = [this, &rCache, pDefStrm](size_t i, size_t base) {
+        const sal_Int32 nDatePart = rCache.GetGroupType(i);
+        if (!nDatePart)
+            return;
+        OString sGroupBy;
+        switch (nDatePart)
+        {
+        case sheet::DataPilotFieldGroupBy::SECONDS:
+            sGroupBy = "seconds";
+            break;
+        case sheet::DataPilotFieldGroupBy::MINUTES:
+            sGroupBy = "minutes";
+            break;
+        case sheet::DataPilotFieldGroupBy::HOURS:
+            sGroupBy = "hours";
+            break;
+        case sheet::DataPilotFieldGroupBy::DAYS:
+            sGroupBy = "days";
+            break;
+        case sheet::DataPilotFieldGroupBy::MONTHS:
+            sGroupBy = "months";
+            break;
+        case sheet::DataPilotFieldGroupBy::QUARTERS:
+            sGroupBy = "quarters";
+            break;
+        case sheet::DataPilotFieldGroupBy::YEARS:
+            sGroupBy = "years";
+            break;
+        }
+
+        // fieldGroup element
+        pDefStrm->startElement(XML_fieldGroup, XML_base, OString::number(base));
+
+        SvNumberFormatter& rFormatter = GetFormatter();
+
+        // rangePr element
+        const ScDPNumGroupInfo* pGI = rCache.GetNumGroupInfo(i);
+        auto pGroupAttList = sax_fastparser::FastSerializerHelper::createAttrList();
+        pGroupAttList->add(XML_groupBy, sGroupBy);
+        // Possible TODO: find out when to write autoStart attribute for years grouping
+        pGroupAttList->add(XML_startDate, GetExcelFormattedDate(pGI->mfStart, rFormatter).toUtf8());
+        pGroupAttList->add(XML_endDate, GetExcelFormattedDate(pGI->mfEnd, rFormatter).toUtf8());
+        if (pGI->mfStep)
+            pGroupAttList->add(XML_groupInterval, OString::number(pGI->mfStep));
+        pDefStrm->singleElement(XML_rangePr, pGroupAttList);
+
+        // groupItems element
+        auto aElemVec = SortGroupItems(rCache, i);
+        pDefStrm->startElement(XML_groupItems, XML_count, OString::number(aElemVec.size()));
+        for (const auto& sElem : aElemVec)
+        {
+            pDefStrm->singleElement(XML_s, XML_v, sElem.toUtf8());
+        }
+        pDefStrm->endElement(XML_groupItems);
+        pDefStrm->endElement(XML_fieldGroup);
+    };
 
     for (size_t i = 0; i < nCount; ++i)
     {
         OUString aName = rCache.GetDimensionName(i);
 
         pDefStrm->startElement(XML_cacheField,
-            XML_name, XclXmlUtils::ToOString(aName).getStr(),
-            XML_numFmtId, OString::number(0).getStr(),
-            FSEND);
+            XML_name, aName.toUtf8(),
+            XML_numFmtId, OString::number(0));
 
         const ScDPCache::ScDPItemDataVec& rFieldItems = rCache.GetDimMemberValues(i);
 
-        ScDPCache::ScDPItemDataVec::const_iterator it = rFieldItems.begin(), itEnd = rFieldItems.end();
-
         std::set<ScDPItemData::Type> aDPTypes;
         double fMin = std::numeric_limits<double>::infinity(), fMax = -std::numeric_limits<double>::infinity();
-        for (; it != itEnd; ++it)
+        bool isValueInteger = true;
+        bool isContainsDate = rCache.IsDateDimension(i);
+        bool isLongText = false;
+        for (const auto& rFieldItem : rFieldItems)
         {
-            ScDPItemData::Type eType = it->GetType();
+            ScDPItemData::Type eType = rFieldItem.GetType();
+            // tdf#123939 : error and string are same for cache; if both are present, keep only one
+            if (eType == ScDPItemData::Error)
+                eType = ScDPItemData::String;
             aDPTypes.insert(eType);
             if (eType == ScDPItemData::Value)
             {
-                double fVal = it->GetValue();
+                double fVal = rFieldItem.GetValue();
                 fMin = std::min(fMin, fVal);
                 fMax = std::max(fMax, fVal);
+
+                // Check if all values are integers
+                if (isValueInteger && (modf(fVal, &o3tl::temporary(double())) != 0.0))
+                {
+                    isValueInteger = false;
+                }
+            }
+            else if (eType == ScDPItemData::String && !isLongText)
+            {
+                isLongText = rFieldItem.GetString().getLength() > 255;
             }
         }
 
-        auto aDPTypeEnd = aDPTypes.cend();
-
         auto pAttList = sax_fastparser::FastSerializerHelper::createAttrList();
-        // tdf#89139: Only create item list for string-only fields.
-        // Using containsXXX attributes in this case makes Excel think the file is corrupted.
-        // OTOH listing items for e.g. number fields also triggers "corrupted" warning in Excel.
-        bool bListItems = aDPTypes.size() == 1 && aDPTypes.find(ScDPItemData::String) != aDPTypeEnd;
-        if (bListItems)
+        // TODO In same cases, disable listing of items, as it is done in MS Excel.
+        // Exporting savePivotCacheRecordsXml method needs to be updated accordingly
+        //bool bListItems = true;
+
+        std::set<ScDPItemData::Type> aDPTypesWithoutBlank = aDPTypes;
+        aDPTypesWithoutBlank.erase(ScDPItemData::Empty);
+
+        const bool isContainsString = aDPTypesWithoutBlank.count(ScDPItemData::String) > 0;
+        const bool isContainsBlank = aDPTypes.count(ScDPItemData::Empty) > 0;
+        const bool isContainsNumber
+            = !isContainsDate && aDPTypesWithoutBlank.count(ScDPItemData::Value) > 0;
+        bool isContainsNonDate = !(isContainsDate && aDPTypesWithoutBlank.size() <= 1);
+
+        // XML_containsSemiMixedTypes possible values:
+        // 1 - (Default) at least one text value, or can also contain a mix of other data types and blank values,
+        //     or blank values only
+        // 0 - the field does not have a mix of text and other values
+        if (!(isContainsString || (aDPTypes.size() > 1) || (isContainsBlank && aDPTypesWithoutBlank.empty())))
+            pAttList->add(XML_containsSemiMixedTypes, ToPsz10(false));
+
+        if (!isContainsNonDate)
+            pAttList->add(XML_containsNonDate, ToPsz10(false));
+
+        if (isContainsDate)
+            pAttList->add(XML_containsDate, ToPsz10(true));
+
+        // default for containsString field is true, so we are writing only when is false
+        if (!isContainsString)
+            pAttList->add(XML_containsString, ToPsz10(false));
+
+        if (isContainsBlank)
+            pAttList->add(XML_containsBlank, ToPsz10(true));
+
+        // XML_containsMixedType possible values:
+        // 1 - field contains more than one data type
+        // 0 - (Default) only one data type. The field can still contain blank values (that's why we are using aDPTypesWithoutBlank)
+        if (aDPTypesWithoutBlank.size() > 1)
+            pAttList->add(XML_containsMixedTypes, ToPsz10(true));
+
+        // If field contain mixed types (Date and Numbers), MS Excel is saving only "minDate" and "maxDate" and not "minValue" and "maxValue"
+        // Example how Excel is saving mixed Date and Numbers:
+        // <sharedItems containsSemiMixedTypes="0" containsDate="1" containsString="0" containsMixedTypes="1" minDate="1900-01-03T22:26:04" maxDate="1900-01-07T14:02:04" />
+        // Example how Excel is saving Dates only:
+        // <sharedItems containsSemiMixedTypes="0" containsNonDate="0" containsDate="1" containsString="0" minDate="1903-08-24T07:40:48" maxDate="2024-05-23T07:12:00"/>
+        if (isContainsNumber)
+            pAttList->add(XML_containsNumber, ToPsz10(true));
+
+        if (isValueInteger && isContainsNumber)
+            pAttList->add(XML_containsInteger, ToPsz10(true));
+
+
+        // Number type fields could be mixed with blank types, and it shouldn't be treated as listed items.
+        // Example:
+        //    <cacheField name="employeeID" numFmtId="0">
+        //        <sharedItems containsString="0" containsBlank="1" containsNumber="1" containsInteger="1" minValue="35" maxValue="89"/>
+        //    </cacheField>
+        if (isContainsNumber)
+        {
+            pAttList->add(XML_minValue, OString::number(fMin));
+            pAttList->add(XML_maxValue, OString::number(fMax));
+        }
+
+        if (isContainsDate)
+        {
+            pAttList->add(XML_minDate, GetExcelFormattedDate(fMin, GetFormatter()).toUtf8());
+            pAttList->add(XML_maxDate, GetExcelFormattedDate(fMax, GetFormatter()).toUtf8());
+        }
+
+        //if (bListItems) // see TODO above
         {
             pAttList->add(XML_count, OString::number(static_cast<long>(rFieldItems.size())));
         }
-        else
+
+        if (isLongText)
         {
-            pAttList->add(XML_containsMixedTypes, XclXmlUtils::ToPsz10(aDPTypes.size() > 1));
-            pAttList->add(XML_containsSemiMixedTypes, XclXmlUtils::ToPsz10(aDPTypes.size() > 1));
-            pAttList->add(XML_containsString, XclXmlUtils::ToPsz10(aDPTypes.find(ScDPItemData::String) != aDPTypeEnd));
-            if (aDPTypes.find(ScDPItemData::Value) != aDPTypeEnd)
-            {
-                pAttList->add(XML_containsNumber, XclXmlUtils::ToPsz10(true));
-                pAttList->add(XML_minValue, OString::number(fMin));
-                pAttList->add(XML_maxValue, OString::number(fMax));
-            }
+            pAttList->add(XML_longText, ToPsz10(true));
         }
+
         sax_fastparser::XFastAttributeListRef xAttributeList(pAttList);
 
         pDefStrm->startElement(XML_sharedItems, xAttributeList);
 
-        if (bListItems)
+        //if (bListItems) // see TODO above
         {
-            it = rFieldItems.begin();
-            for (; it != itEnd; ++it)
+            for (const ScDPItemData& rItem : rFieldItems)
             {
-                const ScDPItemData& rItem = *it;
                 switch (rItem.GetType())
                 {
                     case ScDPItemData::String:
-                        pDefStrm->singleElement(XML_s,
-                            XML_v, XclXmlUtils::ToOString(rItem.GetString()),
-                            FSEND);
+                        pDefStrm->singleElement(XML_s, XML_v, rItem.GetString().toUtf8());
                     break;
                     case ScDPItemData::Value:
-                        pDefStrm->singleElement(XML_n,
-                            XML_v, OString::number(rItem.GetValue()),
-                            FSEND);
+                        if (isContainsDate)
+                        {
+                            pDefStrm->singleElement(XML_d,
+                                XML_v, GetExcelFormattedDate(rItem.GetValue(), GetFormatter()).toUtf8());
+                        }
+                        else
+                            pDefStrm->singleElement(XML_n,
+                                XML_v, OString::number(rItem.GetValue()));
                     break;
                     case ScDPItemData::Empty:
-                        pDefStrm->singleElement(XML_m, FSEND);
+                        pDefStrm->singleElement(XML_m);
                     break;
                     case ScDPItemData::Error:
                         pDefStrm->singleElement(XML_e,
-                            XML_v, XclXmlUtils::ToOString(rItem.GetString()),
-                            FSEND);
+                            XML_v, rItem.GetString().toUtf8());
                     break;
-                    case ScDPItemData::GroupValue:
+                    case ScDPItemData::GroupValue: // Should not happen here!
                     case ScDPItemData::RangeStart:
                         // TODO : What do we do with these types?
-                        pDefStrm->singleElement(XML_m, FSEND);
+                        pDefStrm->singleElement(XML_m);
                     break;
                     default:
                         ;
@@ -313,6 +500,40 @@ void XclExpXmlPivotCaches::SavePivotCacheXml( XclExpXmlStream& rStrm, const Entr
         }
 
         pDefStrm->endElement(XML_sharedItems);
+
+        WriteFieldGroup(i, i);
+
+        pDefStrm->endElement(XML_cacheField);
+    }
+
+    ScDPObject* pDPObject
+        = rCache.GetAllReferences().empty() ? nullptr : *rCache.GetAllReferences().begin();
+
+    for (size_t i = nCount; pDPObject && i < nCount + nGroupFieldCount; ++i)
+    {
+        const OUString aName = pDPObject->GetDimName(i, o3tl::temporary(bool()));
+        // tdf#126748: DPObject might not reference all group fields, when there are several
+        // DPObjects referencing this cache. Trying to get a dimension data for a field not used
+        // in a given DPObject will give nullptr, and dereferencing it then will crash. To avoid
+        // the crash, until there's a correct method to find the names of group fields in cache,
+        // just skip the fields, creating bad cache data, which is of course a temporary hack.
+        // TODO: reimplement the whole block to get the names from another source, not from first
+        // cache reference.
+        if (aName.isEmpty())
+            break;
+
+        ScDPSaveData* pSaveData = pDPObject->GetSaveData();
+        assert(pSaveData);
+
+        const ScDPSaveGroupDimension* pDim = pSaveData->GetDimensionData()->GetNamedGroupDim(aName);
+        assert(pDim);
+
+        const SCCOL nBase = rCache.GetDimensionIndex(pDim->GetSourceDimName());
+        assert(nBase >= 0);
+
+        pDefStrm->startElement(XML_cacheField, XML_name, aName.toUtf8(), XML_numFmtId,
+                               OString::number(0), XML_databaseField, ToPsz10(false));
+        WriteFieldGroup(i, nBase);
         pDefStrm->endElement(XML_cacheField);
     }
 
@@ -326,14 +547,22 @@ XclExpXmlPivotTableManager::XclExpXmlPivotTableManager( const XclExpRoot& rRoot 
 
 void XclExpXmlPivotTableManager::Initialize()
 {
-    const ScDocument& rDoc = GetDoc();
+    ScDocument& rDoc = GetDoc();
     if (!rDoc.HasPivotTable())
         // No pivot table to export.
         return;
 
-    const ScDPCollection* pDPColl = rDoc.GetDPCollection();
+    ScDPCollection* pDPColl = rDoc.GetDPCollection();
     if (!pDPColl)
         return;
+
+    // Update caches from DPObject
+    for (size_t i = 0; i < pDPColl->GetCount(); ++i)
+    {
+        ScDPObject& rDPObj = (*pDPColl)[i];
+        rDPObj.SyncAllDimensionMembers();
+        (void)rDPObj.GetOutputRangeByType(sheet::DataPilotOutputRangeType::TABLE);
+    }
 
     // Go through the caches first.
 
@@ -349,12 +578,10 @@ void XclExpXmlPivotTableManager::Initialize()
         // Get all pivot objects that reference this cache, and set up an
         // object to cache ID mapping.
         const ScDPCache::ScDPObjectSet& rRefs = pCache->GetAllReferences();
-        ScDPCache::ScDPObjectSet::const_iterator it = rRefs.begin(), itEnd = rRefs.end();
-        for (; it != itEnd; ++it)
-            maCacheIdMap.insert(CacheIdMapType::value_type(*it, aCaches.size()+1));
+        for (const auto& rRef : rRefs)
+            maCacheIdMap.emplace(rRef, aCaches.size()+1);
 
         XclExpXmlPivotCaches::Entry aEntry;
-        aEntry.meType = XclExpXmlPivotCaches::Worksheet;
         aEntry.mpCache = pCache;
         aEntry.maSrcRange = rRange;
         aCaches.push_back(aEntry); // Cache ID equals position + 1.
@@ -369,7 +596,7 @@ void XclExpXmlPivotTableManager::Initialize()
         // Get the cache ID for this pivot table.
         CacheIdMapType::iterator itCache = maCacheIdMap.find(&rDPObj);
         if (itCache == maCacheIdMap.end())
-            // No cache ID found.  Something is wrong here....
+            // No cache ID found.  Something is wrong here...
             continue;
 
         sal_Int32 nCacheId = itCache->second;
@@ -380,7 +607,7 @@ void XclExpXmlPivotTableManager::Initialize()
         {
             // Insert a new instance for this sheet index.
             std::pair<TablesType::iterator, bool> r =
-                m_Tables.insert(std::make_pair(nTab, o3tl::make_unique<XclExpXmlPivotTables>(GetRoot(), maCaches)));
+                m_Tables.insert(std::make_pair(nTab, std::make_unique<XclExpXmlPivotTables>(GetRoot(), maCaches)));
             it = r.first;
         }
 
@@ -412,13 +639,11 @@ void XclExpXmlPivotTables::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& pWSStrm = rStrm.GetCurrentStream(); // worksheet stream
 
-    sal_Int32 nCounter = 1; // 1-based
-    TablesType::iterator it = maTables.begin(), itEnd = maTables.end();
-    for (; it != itEnd; ++it, ++nCounter)
+    for (const auto& rTable : maTables)
     {
-        const ScDPObject& rObj = *it->mpTable;
-        sal_Int32 nCacheId = it->mnCacheId;
-        sal_Int32 nPivotId = it->mnPivotId;
+        const ScDPObject& rObj = *rTable.mpTable;
+        sal_Int32 nCacheId = rTable.mnCacheId;
+        sal_Int32 nPivotId = rTable.mnPivotId;
 
         sax_fastparser::FSHelperPtr pPivotStrm = rStrm.CreateOutputStream(
             XclXmlUtils::GetStreamName("xl/pivotTables/", "pivotTable", nPivotId),
@@ -443,7 +668,7 @@ struct DataField
     DataField( long nPos, const ScDPSaveDimension* pDim ) : mnPos(nPos), mpDim(pDim) {}
 };
 
-/** Returns a OOXML subtotal function name string. See ECMA-376-1:2016 18.18.43 */
+/** Returns an OOXML subtotal function name string. See ECMA-376-1:2016 18.18.43 */
 OString GetSubtotalFuncName(ScGeneralFunction eFunc)
 {
     switch (eFunc)
@@ -484,11 +709,43 @@ sal_Int32 GetSubtotalAttrToken(ScGeneralFunction eFunc)
     return XML_defaultSubtotal;
 }
 
+// An item is expected to contain sequences of css::xml::FastAttribute and css::xml::Attribute
+void WriteGrabBagItemToStream(XclExpXmlStream& rStrm, sal_Int32 tokenId, const css::uno::Any& rItem)
+{
+    css::uno::Sequence<css::uno::Any> aSeqs;
+    if(!(rItem >>= aSeqs))
+        return;
+
+    auto& pStrm = rStrm.GetCurrentStream();
+    pStrm->write("<")->writeId(tokenId);
+
+    css::uno::Sequence<css::xml::FastAttribute> aFastSeq;
+    css::uno::Sequence<css::xml::Attribute> aUnkSeq;
+    for (const auto& a : std::as_const(aSeqs))
+    {
+        if (a >>= aFastSeq)
+        {
+            for (const auto& rAttr : std::as_const(aFastSeq))
+                rStrm.WriteAttributes(rAttr.Token, rAttr.Value);
+        }
+        else if (a >>= aUnkSeq)
+        {
+            for (const auto& rAttr : std::as_const(aUnkSeq))
+                pStrm->write(" ")
+                    ->write(rAttr.Name)
+                    ->write("=\"")
+                    ->writeEscaped(rAttr.Value)
+                    ->write("\"");
+        }
+    }
+
+    pStrm->write("/>");
+}
 }
 
 void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDPObject& rDPObj, sal_Int32 nCacheId )
 {
-    typedef std::unordered_map<OUString, long, OUStringHash> NameToIdMapType;
+    typedef std::unordered_map<OUString, long> NameToIdMapType;
 
     const XclExpXmlPivotCaches::Entry* pCacheEntry = mrCaches.GetCache(nCacheId);
     if (!pCacheEntry)
@@ -499,15 +756,15 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
 
     const ScDPSaveData& rSaveData = *rDPObj.GetSaveData();
 
-    size_t nFieldCount = rCache.GetFieldCount();
+    size_t nFieldCount = rCache.GetFieldCount() + rCache.GetGroupFieldCount();
     std::vector<const ScDPSaveDimension*> aCachedDims;
     NameToIdMapType aNameToIdMap;
 
     aCachedDims.reserve(nFieldCount);
     for (size_t i = 0; i < nFieldCount; ++i)
     {
-        OUString aName = rCache.GetDimensionName(i);
-        aNameToIdMap.insert(NameToIdMapType::value_type(aName, aCachedDims.size()));
+        OUString aName = const_cast<ScDPObject&>(rDPObj).GetDimName(i, o3tl::temporary(bool()));
+        aNameToIdMap.emplace(aName, aCachedDims.size());
         const ScDPSaveDimension* pDim = rSaveData.GetExistingDimensionByName(aName);
         aCachedDims.push_back(pDim);
     }
@@ -517,11 +774,12 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
     std::vector<long> aPageFields;
     std::vector<DataField> aDataFields;
 
+    long nDataDimCount = rSaveData.GetDataDimensionCount();
     // Use dimensions in the save data to get their correct ordering.
     // Dimension order here is significant as they specify the order of
     // appearance in each axis.
     const ScDPSaveData::DimsType& rDims = rSaveData.GetDimensions();
-
+    bool bTabularMode = false;
     for (const auto & i : rDims)
     {
         const ScDPSaveDimension& rDim = *i;
@@ -548,6 +806,8 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
         switch (eOrient)
         {
             case sheet::DataPilotFieldOrientation_COLUMN:
+                if (nPos == -2 && nDataDimCount <= 1)
+                    break;
                 aColFields.push_back(nPos);
             break;
             case sheet::DataPilotFieldOrientation_ROW:
@@ -557,61 +817,64 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
                 aPageFields.push_back(nPos);
             break;
             case sheet::DataPilotFieldOrientation_DATA:
-                aDataFields.push_back(DataField(nPos, &rDim));
+                aDataFields.emplace_back(nPos, &rDim);
             break;
             case sheet::DataPilotFieldOrientation_HIDDEN:
             default:
                 ;
         }
+        if(rDim.GetLayoutInfo())
+            bTabularMode |= (rDim.GetLayoutInfo()->LayoutMode == sheet::DataPilotFieldLayoutMode::TABULAR_LAYOUT);
     }
 
     sax_fastparser::FSHelperPtr& pPivotStrm = rStrm.GetCurrentStream();
     pPivotStrm->startElement(XML_pivotTableDefinition,
-        XML_xmlns, XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(xls))).getStr(),
-        XML_name, XclXmlUtils::ToOString(rDPObj.GetName()).getStr(),
-        XML_cacheId, OString::number(nCacheId).getStr(),
-        XML_applyNumberFormats, BS(false),
-        XML_applyBorderFormats, BS(false),
-        XML_applyFontFormats, BS(false),
-        XML_applyPatternFormats, BS(false),
-        XML_applyAlignmentFormats, BS(false),
-        XML_applyWidthHeightFormats, BS(false),
+        XML_xmlns, rStrm.getNamespaceURL(OOX_NS(xls)).toUtf8(),
+        XML_name, rDPObj.GetName().toUtf8(),
+        XML_cacheId, OString::number(nCacheId),
+        XML_applyNumberFormats, ToPsz10(false),
+        XML_applyBorderFormats, ToPsz10(false),
+        XML_applyFontFormats, ToPsz10(false),
+        XML_applyPatternFormats, ToPsz10(false),
+        XML_applyAlignmentFormats, ToPsz10(false),
+        XML_applyWidthHeightFormats, ToPsz10(false),
         XML_dataCaption, "Values",
-        XML_useAutoFormatting, BS(false),
-        XML_itemPrintTitles, BS(true),
-        XML_indent, BS(false),
-        XML_outline, BS(true),
-        XML_outlineData, BS(true),
-        FSEND);
+        XML_useAutoFormatting, ToPsz10(false),
+        XML_itemPrintTitles, ToPsz10(true),
+        XML_indent, ToPsz10(false),
+        XML_outline, ToPsz10(!bTabularMode),
+        XML_outlineData, ToPsz10(!bTabularMode),
+        XML_compact, ToPsz10(false),
+        XML_compactData, ToPsz10(false));
 
     // NB: Excel's range does not include page field area (if any).
     ScRange aOutRange = rDPObj.GetOutputRangeByType(sheet::DataPilotOutputRangeType::TABLE);
 
-    sal_Int32 nFirstHeaderRow = aColFields.size();
+    sal_Int32 nFirstHeaderRow = rDPObj.GetHeaderLayout() ? 2 : 1;
     sal_Int32 nFirstDataRow = 2;
     sal_Int32 nFirstDataCol = 1;
     ScRange aResRange = rDPObj.GetOutputRangeByType(sheet::DataPilotOutputRangeType::RESULT);
+
+    if (!aOutRange.IsValid())
+        aOutRange = rDPObj.GetOutRange();
+
     if (aOutRange.IsValid() && aResRange.IsValid())
     {
         nFirstDataRow = aResRange.aStart.Row() - aOutRange.aStart.Row();
         nFirstDataCol = aResRange.aStart.Col() - aOutRange.aStart.Col();
     }
 
-    if (!aOutRange.IsValid())
-        aOutRange = rDPObj.GetOutRange();
-
     pPivotStrm->write("<")->writeId(XML_location);
     rStrm.WriteAttributes(XML_ref,
-        XclXmlUtils::ToOString(aOutRange),
-        XML_firstHeaderRow, OString::number(nFirstHeaderRow).getStr(),
-        XML_firstDataRow, OString::number(nFirstDataRow).getStr(),
-        XML_firstDataCol, OString::number(nFirstDataCol).getStr(),
-        FSEND);
+        XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), aOutRange),
+        XML_firstHeaderRow, OUString::number(nFirstHeaderRow),
+        XML_firstDataRow, OUString::number(nFirstDataRow),
+        XML_firstDataCol, OUString::number(nFirstDataCol));
 
     if (!aPageFields.empty())
     {
-        rStrm.WriteAttributes(XML_rowPageCount, OString::number(static_cast<long>(aPageFields.size())).getStr(), FSEND);
-        rStrm.WriteAttributes(XML_colPageCount, OString::number(1).getStr(), FSEND);
+        rStrm.WriteAttributes(XML_rowPageCount, OUString::number(static_cast<long>(aPageFields.size())));
+        rStrm.WriteAttributes(XML_colPageCount, OUString::number(1));
     }
 
     pPivotStrm->write("/>");
@@ -621,8 +884,7 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
     // they appear in the cache.
 
     pPivotStrm->startElement(XML_pivotFields,
-        XML_count, OString::number(static_cast<long>(aCachedDims.size())).getStr(),
-        FSEND);
+        XML_count, OString::number(static_cast<long>(aCachedDims.size())));
 
     for (size_t i = 0; i < nFieldCount; ++i)
     {
@@ -630,85 +892,161 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
         if (!pDim)
         {
             pPivotStrm->singleElement(XML_pivotField,
-                XML_showAll, BS(false),
-                FSEND);
+                XML_compact, ToPsz10(false),
+                XML_showAll, ToPsz10(false));
             continue;
         }
+
+        bool bDimInTabularMode = false;
+        if(pDim->GetLayoutInfo())
+            bDimInTabularMode = (pDim->GetLayoutInfo()->LayoutMode == sheet::DataPilotFieldLayoutMode::TABULAR_LAYOUT);
 
         sheet::DataPilotFieldOrientation eOrient = pDim->GetOrientation();
 
         if (eOrient == sheet::DataPilotFieldOrientation_HIDDEN)
         {
-            pPivotStrm->singleElement(XML_pivotField,
-                XML_showAll, BS(false),
-                FSEND);
+            if(bDimInTabularMode)
+            {
+                pPivotStrm->singleElement(XML_pivotField,
+                    XML_compact, ToPsz10(false),
+                    XML_showAll, ToPsz10(false),
+                    XML_outline, ToPsz10(false));
+            }
+            else
+            {
+                pPivotStrm->singleElement(XML_pivotField,
+                    XML_compact, ToPsz10(false),
+                    XML_showAll, ToPsz10(false));
+            }
             continue;
         }
 
         if (eOrient == sheet::DataPilotFieldOrientation_DATA)
         {
-            pPivotStrm->singleElement(XML_pivotField,
-                XML_dataField, BS(true),
-                XML_showAll, BS(false),
-                FSEND);
-
+            if(bDimInTabularMode)
+            {
+                pPivotStrm->singleElement(XML_pivotField,
+                    XML_dataField, ToPsz10(true),
+                    XML_compact, ToPsz10(false),
+                    XML_showAll, ToPsz10(false),
+                    XML_outline, ToPsz10(false));
+            }
+            else
+            {
+                pPivotStrm->singleElement(XML_pivotField,
+                    XML_dataField, ToPsz10(true),
+                    XML_compact, ToPsz10(false),
+                    XML_showAll, ToPsz10(false));
+            }
             continue;
         }
 
         // Dump field items.
-        css::uno::Sequence<OUString> aMemberNames;
+        std::vector<ScDPLabelData::Member> aMembers;
         {
             // We need to get the members in actual order, getting which requires non-const reference here
             auto& dpo = const_cast<ScDPObject&>(rDPObj);
-            dpo.GetMemberNames(i, aMemberNames);
+            dpo.GetMembers(i, dpo.GetUsedHierarchy(i), aMembers);
         }
 
-        const ScDPCache::ScDPItemDataVec& rCacheFieldItems = rCache.GetDimMemberValues(i);
-        std::vector<size_t> aMemberSequence;
-        for (const OUString& sMemberName : aMemberNames)
+        std::vector<OUString> aCacheFieldItems;
+        if (i < rCache.GetFieldCount() && !rCache.GetGroupType(i))
         {
-            auto it = std::find_if(rCacheFieldItems.begin(), rCacheFieldItems.end(),
-                [&sMemberName](const ScDPItemData& arg) -> bool { return arg.GetString() == sMemberName; });
-            if (it != rCacheFieldItems.end())
+            for (const auto& it : rCache.GetDimMemberValues(i))
             {
-                aMemberSequence.push_back(it - rCacheFieldItems.begin());
+                OUString sFormattedName;
+                if (it.HasStringData() || it.IsEmpty())
+                    sFormattedName = it.GetString();
+                else
+                    sFormattedName = const_cast<ScDPObject&>(rDPObj).GetFormattedString(
+                        pDim->GetName(), it.GetValue());
+                aCacheFieldItems.push_back(sFormattedName);
             }
+        }
+        else
+        {
+            aCacheFieldItems = SortGroupItems(rCache, i);
+        }
+        // The pair contains the member index in cache and if it is hidden
+        std::vector< std::pair<size_t, bool> > aMemberSequence;
+        std::set<size_t> aUsedCachePositions;
+        for (const auto & rMember : aMembers)
+        {
+            auto it = std::find(aCacheFieldItems.begin(), aCacheFieldItems.end(), rMember.maName);
+            if (it != aCacheFieldItems.end())
+            {
+                size_t nCachePos = static_cast<size_t>(std::distance(aCacheFieldItems.begin(), it));
+                auto aInserted = aUsedCachePositions.insert(nCachePos);
+                if (aInserted.second)
+                    aMemberSequence.emplace_back(std::make_pair(nCachePos, !rMember.mbVisible));
+            }
+        }
+        // Now add all remaining cache items as hidden
+        for (size_t nItem = 0; nItem < aCacheFieldItems.size(); ++nItem)
+        {
+            if (aUsedCachePositions.find(nItem) == aUsedCachePositions.end())
+                aMemberSequence.emplace_back(nItem, true);
+        }
+
+        // tdf#125086: check if this field *also* appears in Data region
+        bool bAppearsInData = false;
+        {
+            OUString aSrcName = ScDPUtil::getSourceDimensionName(pDim->GetName());
+            const auto it = std::find_if(
+                aDataFields.begin(), aDataFields.end(), [&aSrcName](const DataField& rDataField) {
+                    OUString aThisName
+                        = ScDPUtil::getSourceDimensionName(rDataField.mpDim->GetName());
+                    return aThisName == aSrcName;
+                });
+            if (it != aDataFields.end())
+                bAppearsInData = true;
         }
 
         auto pAttList = sax_fastparser::FastSerializerHelper::createAttrList();
         pAttList->add(XML_axis, toOOXMLAxisType(eOrient));
-        pAttList->add(XML_showAll, BS(false));
+        if (bAppearsInData)
+            pAttList->add(XML_dataField, ToPsz10(true));
+        pAttList->add(XML_compact, ToPsz10(false));
+        pAttList->add(XML_showAll, ToPsz10(false));
 
         long nSubTotalCount = pDim->GetSubTotalsCount();
         std::vector<OString> aSubtotalSequence;
+        bool bHasDefaultSubtotal = false;
         for (long nSubTotal = 0; nSubTotal < nSubTotalCount; ++nSubTotal)
         {
             ScGeneralFunction eFunc = pDim->GetSubTotalFunc(nSubTotal);
             aSubtotalSequence.push_back(GetSubtotalFuncName(eFunc));
             sal_Int32 nAttToken = GetSubtotalAttrToken(eFunc);
-            if (!pAttList->hasAttribute(nAttToken))
-                pAttList->add(nAttToken, BS(true));
+            if (nAttToken == XML_defaultSubtotal)
+                bHasDefaultSubtotal = true;
+            else if (!pAttList->hasAttribute(nAttToken))
+                pAttList->add(nAttToken, ToPsz10(true));
         }
+        // XML_defaultSubtotal is true by default; only write it if it's false
+        if (!bHasDefaultSubtotal)
+            pAttList->add(XML_defaultSubtotal, ToPsz10(false));
 
+        if(bDimInTabularMode)
+            pAttList->add( XML_outline, ToPsz10(false));
         sax_fastparser::XFastAttributeListRef xAttributeList(pAttList);
         pPivotStrm->startElement(XML_pivotField, xAttributeList);
 
         pPivotStrm->startElement(XML_items,
-            XML_count, OString::number(static_cast<long>(aMemberSequence.size() + aSubtotalSequence.size())),
-            FSEND);
+            XML_count, OString::number(static_cast<long>(aMemberSequence.size() + aSubtotalSequence.size())));
 
-        for (size_t nMember : aMemberSequence)
+        for (const auto & nMember : aMemberSequence)
         {
-            pPivotStrm->singleElement(XML_item,
-                XML_x, OString::number(static_cast<long>(nMember)),
-                FSEND);
+            auto pItemAttList = sax_fastparser::FastSerializerHelper::createAttrList();
+            if (nMember.second)
+                pItemAttList->add(XML_h, ToPsz10(true));
+            pItemAttList->add(XML_x, OString::number(static_cast<long>(nMember.first)));
+            sax_fastparser::XFastAttributeListRef xItemAttributeList(pItemAttList);
+            pPivotStrm->singleElement(XML_item, xItemAttributeList);
         }
 
         for (const OString& sSubtotal : aSubtotalSequence)
         {
-            pPivotStrm->singleElement(XML_item,
-                XML_t, sSubtotal,
-                FSEND);
+            pPivotStrm->singleElement(XML_item, XML_t, sSubtotal);
         }
 
         pPivotStrm->endElement(XML_items);
@@ -722,15 +1060,11 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
     if (!aRowFields.empty())
     {
         pPivotStrm->startElement(XML_rowFields,
-            XML_count, OString::number(static_cast<long>(aRowFields.size())),
-            FSEND);
+            XML_count, OString::number(static_cast<long>(aRowFields.size())));
 
-        std::vector<long>::iterator it = aRowFields.begin(), itEnd = aRowFields.end();
-        for (; it != itEnd; ++it)
+        for (const auto& rRowField : aRowFields)
         {
-            pPivotStrm->singleElement(XML_field,
-                XML_x, OString::number(*it),
-                FSEND);
+            pPivotStrm->singleElement(XML_field, XML_x, OString::number(rRowField));
         }
 
         pPivotStrm->endElement(XML_rowFields);
@@ -743,15 +1077,11 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
     if (!aColFields.empty())
     {
         pPivotStrm->startElement(XML_colFields,
-            XML_count, OString::number(static_cast<long>(aColFields.size())),
-            FSEND);
+            XML_count, OString::number(static_cast<long>(aColFields.size())));
 
-        std::vector<long>::iterator it = aColFields.begin(), itEnd = aColFields.end();
-        for (; it != itEnd; ++it)
+        for (const auto& rColField : aColFields)
         {
-            pPivotStrm->singleElement(XML_field,
-                XML_x, OString::number(*it),
-                FSEND);
+            pPivotStrm->singleElement(XML_field, XML_x, OString::number(rColField));
         }
 
         pPivotStrm->endElement(XML_colFields);
@@ -764,16 +1094,13 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
     if (!aPageFields.empty())
     {
         pPivotStrm->startElement(XML_pageFields,
-            XML_count, OString::number(static_cast<long>(aPageFields.size())),
-            FSEND);
+            XML_count, OString::number(static_cast<long>(aPageFields.size())));
 
-        std::vector<long>::iterator it = aPageFields.begin(), itEnd = aPageFields.end();
-        for (; it != itEnd; ++it)
+        for (const auto& rPageField : aPageFields)
         {
             pPivotStrm->singleElement(XML_pageField,
-                XML_fld, OString::number(*it),
-                XML_hier, OString::number(-1), // TODO : handle this correctly.
-                FSEND);
+                XML_fld, OString::number(rPageField),
+                XML_hier, OString::number(-1)); // TODO : handle this correctly.
         }
 
         pPivotStrm->endElement(XML_pageFields);
@@ -783,49 +1110,81 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
 
     if (!aDataFields.empty())
     {
+        css::uno::Reference<css::container::XNameAccess> xDimsByName;
+        if (auto xDimSupplier = const_cast<ScDPObject&>(rDPObj).GetSource())
+            xDimsByName = xDimSupplier->getDimensions();
+
         pPivotStrm->startElement(XML_dataFields,
-            XML_count, OString::number(static_cast<long>(aDataFields.size())),
-            FSEND);
+            XML_count, OString::number(static_cast<long>(aDataFields.size())));
 
-        std::vector<DataField>::iterator it = aDataFields.begin(), itEnd = aDataFields.end();
-        for (; it != itEnd; ++it)
+        for (const auto& rDataField : aDataFields)
         {
-            long nDimIdx = it->mnPos;
+            long nDimIdx = rDataField.mnPos;
             assert(aCachedDims[nDimIdx]); // the loop above should have screened for NULL's.
-            const ScDPSaveDimension& rDim = *it->mpDim;
-            const OUString* pName = rDim.GetLayoutName();
-            pPivotStrm->write("<")->writeId(XML_dataField);
-            if (pName)
-                rStrm.WriteAttributes(XML_name, XclXmlUtils::ToOString(*pName), FSEND);
-
-            rStrm.WriteAttributes(XML_fld, OString::number(nDimIdx).getStr(), FSEND);
-
-            sheet::GeneralFunction eFunc = static_cast<sheet::GeneralFunction>(rDim.GetFunction());
-            const char* pSubtotal = toOOXMLSubtotalType(eFunc);
+            const ScDPSaveDimension& rDim = *rDataField.mpDim;
+            std::optional<OUString> pName = rDim.GetLayoutName();
+            // tdf#124651: despite being optional in CT_DataField according to ECMA-376 Part 1,
+            // Excel (at least 2016) seems to insist on the presence of "name" attribute in
+            // dataField element.
+            // tdf#124881: try to create a meaningful name; don't use empty string.
+            if (!pName)
+                pName = ScDPUtil::getDisplayedMeasureName(
+                    rDim.GetName(), ScDPUtil::toSubTotalFunc(rDim.GetFunction()));
+            auto pItemAttList = sax_fastparser::FastSerializerHelper::createAttrList();
+            pItemAttList->add(XML_name, pName->toUtf8());
+            pItemAttList->add(XML_fld, OString::number(nDimIdx));
+            const char* pSubtotal = toOOXMLSubtotalType(rDim.GetFunction());
             if (pSubtotal)
-                rStrm.WriteAttributes(XML_subtotal, pSubtotal, FSEND);
-
-            pPivotStrm->write("/>");
+                pItemAttList->add(XML_subtotal, pSubtotal);
+            if (xDimsByName)
+            {
+                try
+                {
+                    css::uno::Reference<css::beans::XPropertySet> xDimProps(
+                        xDimsByName->getByName(rDim.GetName()), uno::UNO_QUERY_THROW);
+                    css::uno::Any aVal = xDimProps->getPropertyValue(SC_UNONAME_NUMFMT);
+                    sal_uInt32 nScNumFmt = aVal.get<sal_uInt32>();
+                    sal_uInt16 nXclNumFmt = GetRoot().GetNumFmtBuffer().Insert(nScNumFmt);
+                    pItemAttList->add(XML_numFmtId, OString::number(nXclNumFmt));
+                }
+                catch (uno::Exception&)
+                {
+                    SAL_WARN("sc.filter",
+                             "Couldn't get number format for data field " << rDim.GetName());
+                    // Just skip exporting number format
+                }
+            }
+            sax_fastparser::XFastAttributeListRef xItemAttributeList(pItemAttList);
+            pPivotStrm->singleElement(XML_dataField, xItemAttributeList);
         }
 
         pPivotStrm->endElement(XML_dataFields);
     }
 
-    OUStringBuffer aBuf("../pivotCache/pivotCacheDefinition");
-    aBuf.append(nCacheId);
-    aBuf.append(".xml");
+    // Now add style info (use grab bag, or just a set which is default on Excel 2007 through 2016)
+    if (const auto [bHas, aVal] = rDPObj.GetInteropGrabBagValue("pivotTableStyleInfo"); bHas)
+        WriteGrabBagItemToStream(rStrm, XML_pivotTableStyleInfo, aVal);
+    else
+        pPivotStrm->singleElement(XML_pivotTableStyleInfo, XML_name, "PivotStyleLight16",
+                                  XML_showRowHeaders, "1", XML_showColHeaders, "1",
+                                  XML_showRowStripes, "0", XML_showColStripes, "0",
+                                  XML_showLastColumn, "1");
+
+    OUString aBuf = "../pivotCache/pivotCacheDefinition" +
+        OUString::number(nCacheId) +
+        ".xml";
 
     rStrm.addRelation(
         pPivotStrm->getOutputStream(),
         CREATE_OFFICEDOC_RELATION_TYPE("pivotCacheDefinition"),
-        aBuf.makeStringAndClear());
+        aBuf);
 
     pPivotStrm->endElement(XML_pivotTableDefinition);
 }
 
 void XclExpXmlPivotTables::AppendTable( const ScDPObject* pTable, sal_Int32 nCacheId, sal_Int32 nPivotId )
 {
-    maTables.push_back(Entry(pTable, nCacheId, nPivotId));
+    maTables.emplace_back(pTable, nCacheId, nPivotId);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

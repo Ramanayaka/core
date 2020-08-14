@@ -23,7 +23,6 @@
 #include "fpinteraction.hxx"
 
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
-#include <com/sun/star/task/XInteractionHandler.hpp>
 #include <ucbhelper/content.hxx>
 #include <rtl/ref.hxx>
 #include <memory>
@@ -35,7 +34,7 @@ namespace svt
 
     //= SmartContent
 
-    /** a "smart content" which basically wraps an UCB content, but caches some information
+    /** a "smart content" which basically wraps a UCB content, but caches some information
         so that repeatedly recreating it may be faster
     */
     class SmartContent
@@ -45,8 +44,8 @@ namespace svt
         {
             NOT_BOUND,  // never bound
             UNKNOWN,    // bound, but validity is unknown
-            VALID,      // bound to an URL, and valid
-            INVALID     // bound to an URL, and invalid
+            VALID,      // bound to a URL, and valid
+            INVALID     // bound to a URL, and invalid
         };
 
     private:
@@ -131,7 +130,7 @@ namespace svt
 
         /** returns the URL of the content
         */
-        OUString  getURL() const { return m_pContent ? m_pContent->getURL() : m_sURL; }
+        OUString const & getURL() const { return m_pContent ? m_pContent->getURL() : m_sURL; }
 
         /** (re)creates the content for the given URL
 

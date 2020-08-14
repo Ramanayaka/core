@@ -27,7 +27,7 @@ namespace chart
 class NetChartType_Base : public ChartType
 {
 public:
-    explicit NetChartType_Base( css::uno::Reference< css::uno::XComponentContext > const & xContext );
+    explicit NetChartType_Base();
     virtual ~NetChartType_Base() override;
 
 protected:
@@ -47,10 +47,10 @@ protected:
         getPropertySetInfo() override;
 };
 
-class NetChartType : public NetChartType_Base
+class NetChartType final : public NetChartType_Base
 {
 public:
-    explicit NetChartType( css::uno::Reference< css::uno::XComponentContext > const & xContext );
+    explicit NetChartType();
     virtual ~NetChartType() override;
 
     virtual OUString SAL_CALL
@@ -60,7 +60,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL
         getSupportedServiceNames() override;
 
-protected:
+private:
     explicit NetChartType( const NetChartType & rOther );
 
     // ____ XChartType ____

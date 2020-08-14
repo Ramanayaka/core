@@ -11,7 +11,6 @@
 #include <com/sun/star/frame/XSynchronousDispatch.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <vcl/svapp.hxx>
@@ -24,7 +23,7 @@ class CrashReportUI : public ::cppu::WeakImplHelper< css::lang::XServiceInfo    
                                                    css::frame::XSynchronousDispatch > // => XDispatch!
 {
 public:
-    explicit CrashReportUI(const css::uno::Reference< css::uno::XComponentContext >& xContext);
+    explicit CrashReportUI();
 
     // css.lang.XServiceInfo
 
@@ -37,20 +36,16 @@ public:
 
     virtual css::uno::Any SAL_CALL dispatchWithReturnValue(const css::util::URL& aURL,
                                         const css::uno::Sequence< css::beans::PropertyValue >& lArguments ) override;
-
-private:
-    css::uno::Reference< css::uno::XComponentContext > mxContext;
 };
 
-CrashReportUI::CrashReportUI(const css::uno::Reference<css::uno::XComponentContext>& xContext):
-    mxContext(xContext)
+CrashReportUI::CrashReportUI()
 {
 
 }
 
 OUString SAL_CALL CrashReportUI::getImplementationName()
 {
-    return OUString("com.sun.star.comp.svx.CrashReportUI");
+    return "com.sun.star.comp.svx.CrashReportUI";
 }
 
 sal_Bool SAL_CALL CrashReportUI::supportsService(const OUString& sServiceName)
@@ -68,19 +63,19 @@ css::uno::Any SAL_CALL CrashReportUI::dispatchWithReturnValue(const css::util::U
 {
     SolarMutexGuard aGuard;
     css::uno::Any aRet;
-    ScopedVclPtrInstance<CrashReportDialog> xDialog(nullptr);
-    xDialog->Execute();
+    CrashReportDialog aDialog(nullptr);
+    aDialog.run();
     return aRet;
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_svx_CrashReportUI_get_implementation(
-    css::uno::XComponentContext *context,
+    css::uno::XComponentContext * /*context*/,
     css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new CrashReportUI(context));
+    return cppu::acquire(new CrashReportUI());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

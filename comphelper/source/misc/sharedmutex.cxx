@@ -26,23 +26,10 @@ namespace comphelper
 {
 
     SharedMutex::SharedMutex()
-        :m_pMutexImpl( new ::osl::Mutex )
+        :m_pMutexImpl( std::make_shared<::osl::Mutex >())
     {
     }
 
-
-    SharedMutex::SharedMutex( const SharedMutex& _rhs )
-        :m_pMutexImpl()
-    {
-        *this = _rhs;
-    }
-
-
-    SharedMutex& SharedMutex::operator=( const SharedMutex& _rhs )
-    {
-        m_pMutexImpl = _rhs.m_pMutexImpl;
-        return *this;
-    }
 
     RefCountedMutex::~RefCountedMutex()
     {

@@ -19,46 +19,46 @@
 #ifndef INCLUDED_SVX_LAYCTRL_HXX
 #define INCLUDED_SVX_LAYCTRL_HXX
 
-#include <sfx2/tbxctrl.hxx>
-#include <svx/svxdllapi.h>
+#include <svtools/popupwindowcontroller.hxx>
 
-// class SvxTableToolBoxControl ------------------------------------------
-
-class SVX_DLLPUBLIC SvxTableToolBoxControl : public SfxToolBoxControl
+class SvxTableToolBoxControl final : public svt::PopupWindowController
 {
-private:
-    bool    bEnabled;
-
 public:
-    virtual VclPtr<SfxPopupWindow> CreatePopupWindow() override;
-    virtual void                StateChanged( sal_uInt16 nSID,
-                                              SfxItemState eState,
-                                              const SfxPoolItem* pState ) override;
-
-    SFX_DECL_TOOLBOX_CONTROL();
-
-    SvxTableToolBoxControl( sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx );
+    SvxTableToolBoxControl(const css::uno::Reference<css::uno::XComponentContext>& rContext);
     virtual ~SvxTableToolBoxControl() override;
+
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) override;
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
+
+    // XInitialization
+    virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& rArguments ) override;
+
+    void TableDialog(const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
+    void CloseAndShowTableDialog();
 };
 
-// class SvxColumnsToolBoxControl ----------------------------------------
-
-class SVX_DLLPUBLIC SvxColumnsToolBoxControl : public SfxToolBoxControl
+class SvxColumnsToolBoxControl final : public svt::PopupWindowController
 {
-    bool    bEnabled;
 public:
-    virtual VclPtr<SfxPopupWindow> CreatePopupWindow() override;
-
-    SFX_DECL_TOOLBOX_CONTROL();
-
-    SvxColumnsToolBoxControl( sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx );
+    SvxColumnsToolBoxControl(const css::uno::Reference<css::uno::XComponentContext>& rContext);
     virtual ~SvxColumnsToolBoxControl() override;
 
-    virtual void                StateChanged( sal_uInt16 nSID,
-                                              SfxItemState eState,
-                                              const SfxPoolItem* pState ) override;
-};
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) override;
 
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
+
+    // XInitialization
+    virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& rArguments ) override;
+
+    void InsertColumns(const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
+};
 
 #endif
 

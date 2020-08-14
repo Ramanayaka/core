@@ -22,13 +22,13 @@
 #include <com/sun/star/sheet/XSheetCondition.hpp>
 #include <com/sun/star/sheet/ValidationType.hpp>
 #include <com/sun/star/sheet/ValidationAlertStyle.hpp>
+#include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <ooo/vba/excel/XlDVType.hpp>
-#include <ooo/vba/excel/XlFormatConditionOperator.hpp>
 #include <ooo/vba/excel/XlDVAlertStyle.hpp>
 
-#include "unonames.hxx"
-#include "rangelst.hxx"
+#include <unonames.hxx>
+#include <rangelst.hxx>
 #include "excelvbahelper.hxx"
 #include "vbarange.hxx"
 
@@ -260,7 +260,7 @@ ScVbaValidation::Add( const uno::Any& Type, const uno::Any& AlertStyle, const un
         {
             case excel::XlDVAlertStyle::xlValidAlertStop:
                 // yes I know it's already defaulted but safer to assume
-                // someone propbably could change the code above
+                // someone probably could change the code above
                 eStyle = sheet::ValidationAlertStyle_STOP;
                 break;
             case excel::XlDVAlertStyle::xlValidAlertWarning:
@@ -301,7 +301,6 @@ ScVbaValidation::getFormula1()
 
     ScRefFlags nFlags = ScRefFlags::ZERO;
     ScRangeList aCellRanges;
-    formula::FormulaGrammar::AddressConvention eConv = formula::FormulaGrammar::CONV_XL_A1;
 
     ScDocShell* pDocSh = excel::GetDocShellFromRange( m_xRange );
     // in calc validation formula is either a range or formula
@@ -309,7 +308,7 @@ ScVbaValidation::getFormula1()
     // In VBA both formula and address can have a leading '='
     // in result of getFormula1, however it *seems* that a named range or
     // real formula has to (or is expected to) have the '='
-    if ( pDocSh && !ScVbaRange::getCellRangesForAddress(  nFlags, sString, pDocSh, aCellRanges, eConv, 0 ) )
+    if ( pDocSh && !ScVbaRange::getCellRangesForAddress(  nFlags, sString, pDocSh, aCellRanges, formula::FormulaGrammar::CONV_XL_A1, 0 ) )
         sString = "=" + sString;
     return sString;
 }
@@ -317,7 +316,7 @@ ScVbaValidation::getFormula1()
 OUString SAL_CALL
 ScVbaValidation::getFormula2()
 {
-        uno::Reference< sheet::XSheetCondition > xCond( lcl_getValidationProps( m_xRange ), uno::UNO_QUERY_THROW );
+    uno::Reference< sheet::XSheetCondition > xCond( lcl_getValidationProps( m_xRange ), uno::UNO_QUERY_THROW );
     return xCond->getFormula2();
 }
 
@@ -359,7 +358,7 @@ ScVbaValidation::getType()
             case sheet::ValidationType::ValidationType_MAKE_FIXED_SIZE:
             default:
                 break;
-        };
+        }
     }
     return nExcelType;
 }
@@ -367,18 +366,16 @@ ScVbaValidation::getType()
 OUString
 ScVbaValidation::getServiceImplName()
 {
-    return OUString("ScVbaValidation");
+    return "ScVbaValidation";
 }
 
 uno::Sequence< OUString >
 ScVbaValidation::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Validation";
-    }
+        "ooo.vba.excel.Validation"
+    };
     return aServiceNames;
 }
 

@@ -31,6 +31,8 @@ using namespace com::sun::star::beans;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::awt;
 
+namespace {
+
 // Handles for properties
 // (PLEASE SORT THIS FIELD, IF YOU ADD NEW PROPERTIES!)
 // We use an enum to define these handles, to use all numbers from 0 to nn and
@@ -42,13 +44,15 @@ enum EPROPERTIES
     PROPERTYCOUNT
 };
 
+}
+
 namespace framework
 {
 
 ActionTriggerSeparatorPropertySet::ActionTriggerSeparatorPropertySet()
         :   OBroadcastHelper        ( m_aMutex )
-        ,   OPropertySetHelper      ( *(static_cast< OBroadcastHelper * >(this))        )
-        ,   OWeakObject             (                                                   )
+        ,   OPropertySetHelper      ( *static_cast< OBroadcastHelper * >(this) )
+        ,   OWeakObject             ()
         ,   m_nSeparatorType( 0 )
 {
 }
@@ -62,8 +66,8 @@ Any SAL_CALL ActionTriggerSeparatorPropertySet::queryInterface( const Type& aTyp
 {
     Any a = ::cppu::queryInterface(
                 aType,
-                (static_cast< XServiceInfo* >(this)),
-                (static_cast< XTypeProvider* >(this)));
+                static_cast< XServiceInfo* >(this),
+                static_cast< XTypeProvider* >(this));
 
     if( a.hasValue() )
         return a;
@@ -91,7 +95,7 @@ void ActionTriggerSeparatorPropertySet::release() throw()
 // XServiceInfo
 OUString SAL_CALL ActionTriggerSeparatorPropertySet::getImplementationName()
 {
-    return OUString( IMPLEMENTATIONNAME_ACTIONTRIGGERSEPARATOR );
+    return IMPLEMENTATIONNAME_ACTIONTRIGGERSEPARATOR;
 }
 
 sal_Bool SAL_CALL ActionTriggerSeparatorPropertySet::supportsService( const OUString& ServiceName )
@@ -180,7 +184,7 @@ void SAL_CALL ActionTriggerSeparatorPropertySet::getFastPropertyValue(
 {
     // Define static member to give structure of properties to baseclass "OPropertySetHelper".
     // "impl_getStaticPropertyDescriptor" is a non exported and static function, who will define a static propertytable.
-    // "rrue" say: Table is sorted by name.
+    // "true" indicates: Table is sorted by name.
     static OPropertyArrayHelper ourInfoHelper( impl_getStaticPropertyDescriptor(), true );
 
     return ourInfoHelper;
@@ -195,18 +199,12 @@ Reference< XPropertySetInfo > SAL_CALL ActionTriggerSeparatorPropertySet::getPro
     return xInfo;
 }
 
-const Sequence< Property > ActionTriggerSeparatorPropertySet::impl_getStaticPropertyDescriptor()
+Sequence< Property > ActionTriggerSeparatorPropertySet::impl_getStaticPropertyDescriptor()
 {
-    const Property pActionTriggerPropertys[] =
+    return
     {
         Property( "SeparatorType", HANDLE_TYPE, cppu::UnoType<sal_Int16>::get(), PropertyAttribute::TRANSIENT )
     };
-
-    // Use it to initialize sequence!
-    const Sequence< Property > seqActionTriggerPropertyDescriptor( pActionTriggerPropertys, PROPERTYCOUNT );
-
-    // Return "PropertyDescriptor"
-    return seqActionTriggerPropertyDescriptor;
 }
 
 bool ActionTriggerSeparatorPropertySet::impl_tryToChangeProperty(

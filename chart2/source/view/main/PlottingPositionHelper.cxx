@@ -17,20 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PlottingPositionHelper.hxx"
-#include "CommonConverters.hxx"
-#include "ViewDefines.hxx"
-#include "Linear3DTransformation.hxx"
-#include "VPolarTransformation.hxx"
-#include "AbstractShapeFactory.hxx"
-#include "PropertyMapper.hxx"
-#include "DateHelper.hxx"
-#include "defines.hxx"
+#include <PlottingPositionHelper.hxx>
+#include <CommonConverters.hxx>
+#include <Linear3DTransformation.hxx>
+#include <VPolarTransformation.hxx>
+#include <ShapeFactory.hxx>
+#include <PropertyMapper.hxx>
+#include <defines.hxx>
 
 #include <com/sun/star/chart/TimeUnit.hpp>
 #include <com/sun/star/chart2/AxisType.hpp>
 #include <com/sun/star/drawing/DoubleSequence.hpp>
 #include <com/sun/star/drawing/Position3D.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
 
 #include <rtl/math.hxx>
 
@@ -42,7 +41,6 @@ using namespace ::com::sun::star::chart2;
 PlottingPositionHelper::PlottingPositionHelper()
         : m_aScales()
         , m_aMatrixScreenToScene()
-        , m_xTransformationLogicToScene(nullptr)
         , m_bSwapXAndY( false )
         , m_nXResolution( 1000 )
         , m_nYResolution( 1000 )
@@ -59,7 +57,7 @@ PlottingPositionHelper::PlottingPositionHelper()
 PlottingPositionHelper::PlottingPositionHelper( const PlottingPositionHelper& rSource )
         : m_aScales( rSource.m_aScales )
         , m_aMatrixScreenToScene( rSource.m_aMatrixScreenToScene )
-        , m_xTransformationLogicToScene( nullptr ) //should be recalculated
+        // m_xTransformationLogicToScene( nullptr ) //should be recalculated
         , m_bSwapXAndY( rSource.m_bSwapXAndY )
         , m_nXResolution( rSource.m_nXResolution )
         , m_nYResolution( rSource.m_nYResolution )
@@ -79,15 +77,14 @@ PlottingPositionHelper::~PlottingPositionHelper()
 
 }
 
-PlottingPositionHelper* PlottingPositionHelper::clone() const
+std::unique_ptr<PlottingPositionHelper> PlottingPositionHelper::clone() const
 {
-    PlottingPositionHelper* pRet = new PlottingPositionHelper(*this);
-    return pRet;
+    return std::make_unique<PlottingPositionHelper>(*this);
 }
 
-PlottingPositionHelper* PlottingPositionHelper::createSecondaryPosHelper( const ExplicitScaleData& rSecondaryScale )
+std::unique_ptr<PlottingPositionHelper> PlottingPositionHelper::createSecondaryPosHelper( const ExplicitScaleData& rSecondaryScale )
 {
-    PlottingPositionHelper* pRet = this->clone();
+    auto pRet = clone();
     pRet->m_aScales[1]=rSecondaryScale;
     return pRet;
 }
@@ -109,10 +106,10 @@ uno::Reference< XTransformation > PlottingPositionHelper::getTransformationScale
 {
     //this is a standard transformation for a cartesian coordinate system
 
-    //transformation from 2) to 4) //@todo 2) and 4) need a ink to a document
+    //transformation from 2) to 4) //@todo 2) and 4) need an ink to a document
 
     //we need to apply this transformation to each geometric object because of a bug/problem
-    //of the old drawing layer (the UNO_NAME_3D_EXTRUDE_DEPTH is an integer value instead of an double )
+    //of the old drawing layer (the UNO_NAME_3D_EXTRUDE_DEPTH is an integer value instead of a double )
     if(!m_xTransformationLogicToScene.is())
     {
         ::basegfx::B3DHomMatrix aMatrix;
@@ -175,23 +172,23 @@ uno::Reference< XTransformation > PlottingPositionHelper::getTransformationScale
 drawing::Position3D PlottingPositionHelper::transformLogicToScene(
     double fX, double fY, double fZ, bool bClip ) const
 {
-    this->doLogicScaling( &fX,&fY,&fZ );
+    doLogicScaling( &fX,&fY,&fZ );
     if(bClip)
-        this->clipScaledLogicValues( &fX,&fY,&fZ );
+        clipScaledLogicValues( &fX,&fY,&fZ );
 
-    return this->transformScaledLogicToScene( fX, fY, fZ, false );
+    return transformScaledLogicToScene( fX, fY, fZ, false );
 }
 
 drawing::Position3D PlottingPositionHelper::transformScaledLogicToScene(
     double fX, double fY, double fZ, bool bClip  ) const
 {
     if( bClip )
-        this->clipScaledLogicValues( &fX,&fY,&fZ );
+        clipScaledLogicValues( &fX,&fY,&fZ );
 
     drawing::Position3D aPos( fX, fY, fZ);
 
     uno::Reference< XTransformation > xTransformation =
-        this->getTransformationScaledLogicToScene();
+        getTransformationScaledLogicToScene();
     uno::Sequence< double > aSeq =
         xTransformation->transform( Position3DToSequence(aPos) );
     return SequenceToPosition3D(aSeq);
@@ -199,7 +196,7 @@ drawing::Position3D PlottingPositionHelper::transformScaledLogicToScene(
 
 awt::Point PlottingPositionHelper::transformSceneToScreenPosition( const drawing::Position3D& rScenePosition3D
                 , const uno::Reference< drawing::XShapes >& xSceneTarget
-                , AbstractShapeFactory* pShapeFactory
+                , ShapeFactory* pShapeFactory
                 , sal_Int32 nDimensionCount )
 {
     //@todo would like to have a cheaper method to do this transformation
@@ -233,7 +230,7 @@ void PlottingPositionHelper::transformScaledLogicToScene( drawing::PolyPolygonSh
             double& fX = xValues[nP];
             double& fY = yValues[nP];
             double& fZ = zValues[nP];
-            aScenePosition = this->transformScaledLogicToScene( fX,fY,fZ,true );
+            aScenePosition = transformScaledLogicToScene( fX,fY,fZ,true );
             fX = aScenePosition.PositionX;
             fY = aScenePosition.PositionY;
             fZ = aScenePosition.PositionZ;
@@ -336,10 +333,9 @@ PolarPlottingPositionHelper::~PolarPlottingPositionHelper()
 {
 }
 
-PlottingPositionHelper* PolarPlottingPositionHelper::clone() const
+std::unique_ptr<PlottingPositionHelper> PolarPlottingPositionHelper::clone() const
 {
-    PolarPlottingPositionHelper* pRet = new PolarPlottingPositionHelper(*this);
-    return pRet;
+    return std::make_unique<PolarPlottingPositionHelper>(*this);
 }
 
 void PolarPlottingPositionHelper::setTransformationSceneToScreen( const drawing::HomogenMatrix& rMatrix)
@@ -412,18 +408,19 @@ double PolarPlottingPositionHelper::getWidthAngleDegree( double& fStartLogicValu
         fStartLogicValueOnAngleAxis = fHelp;
     }
 
-    double fStartAngleDegree = this->transformToAngleDegree( fStartLogicValueOnAngleAxis );
-    double fEndAngleDegree   = this->transformToAngleDegree( fEndLogicValueOnAngleAxis );
+    double fStartAngleDegree = transformToAngleDegree( fStartLogicValueOnAngleAxis );
+    double fEndAngleDegree   = transformToAngleDegree( fEndLogicValueOnAngleAxis );
     double fWidthAngleDegree = fEndAngleDegree - fStartAngleDegree;
 
     if( ::rtl::math::approxEqual( fStartAngleDegree, fEndAngleDegree )
         && !::rtl::math::approxEqual( fStartLogicValueOnAngleAxis, fEndLogicValueOnAngleAxis ) )
         fWidthAngleDegree = 360.0;
 
-    while(fWidthAngleDegree<0.0)
-        fWidthAngleDegree+=360.0;
-    while(fWidthAngleDegree>360.0)
-        fWidthAngleDegree-=360.0;
+    // tdf#123504: both 0 and 360 are valid and different values here!
+    while (fWidthAngleDegree < 0.0)
+        fWidthAngleDegree += 360.0;
+    while (fWidthAngleDegree > 360.0)
+        fWidthAngleDegree -= 360.0;
 
     return fWidthAngleDegree;
 }
@@ -476,10 +473,11 @@ double PolarPlottingPositionHelper::transformToAngleDegree( double fLogicValueOn
     fRet = m_fAngleDegreeOffset
                   + fAxisAngleScaleDirection*(fScaledLogicAngleValue-MinAngleValue)*360.0
                     /fabs(MaxAngleValue-MinAngleValue);
-    while(fRet>360.0)
-        fRet-=360.0;
-    while(fRet<0)
-        fRet+=360.0;
+    // tdf#123504: both 0 and 360 are valid and different values here!
+    while (fRet > 360.0)
+        fRet -= 360.0;
+    while (fRet < 0)
+        fRet += 360.0;
     return fRet;
 }
 
@@ -598,24 +596,24 @@ double PolarPlottingPositionHelper::transformToRadius( double fLogicValueOnRadiu
 drawing::Position3D PolarPlottingPositionHelper::transformLogicToScene( double fX, double fY, double fZ, bool bClip ) const
 {
     if(bClip)
-        this->clipLogicValues( &fX,&fY,&fZ );
+        clipLogicValues( &fX,&fY,&fZ );
     double fLogicValueOnAngleAxis  = m_bSwapXAndY ? fY : fX;
     double fLogicValueOnRadiusAxis = m_bSwapXAndY ? fX : fY;
-    return this->transformAngleRadiusToScene( fLogicValueOnAngleAxis, fLogicValueOnRadiusAxis, fZ );
+    return transformAngleRadiusToScene( fLogicValueOnAngleAxis, fLogicValueOnRadiusAxis, fZ );
 }
 
 drawing::Position3D PolarPlottingPositionHelper::transformScaledLogicToScene( double fX, double fY, double fZ, bool bClip ) const
 {
     if(bClip)
-        this->clipScaledLogicValues( &fX,&fY,&fZ );
+        clipScaledLogicValues( &fX,&fY,&fZ );
     double fLogicValueOnAngleAxis  = m_bSwapXAndY ? fY : fX;
     double fLogicValueOnRadiusAxis = m_bSwapXAndY ? fX : fY;
-    return this->transformAngleRadiusToScene( fLogicValueOnAngleAxis, fLogicValueOnRadiusAxis, fZ, false );
+    return transformAngleRadiusToScene( fLogicValueOnAngleAxis, fLogicValueOnRadiusAxis, fZ, false );
 }
 drawing::Position3D PolarPlottingPositionHelper::transformUnitCircleToScene( double fUnitAngleDegree, double fUnitRadius
                                                                             , double fLogicZ ) const
 {
-    double fAnglePi = fUnitAngleDegree*F_PI/180.0;
+    double fAnglePi = basegfx::deg2rad(fUnitAngleDegree);
 
     double fX=fUnitRadius*rtl::math::cos(fAnglePi);
     double fY=fUnitRadius*rtl::math::sin(fAnglePi);
@@ -629,8 +627,8 @@ drawing::Position3D PolarPlottingPositionHelper::transformUnitCircleToScene( dou
 
 drawing::Position3D PolarPlottingPositionHelper::transformAngleRadiusToScene( double fLogicValueOnAngleAxis, double fLogicValueOnRadiusAxis, double fLogicZ, bool bDoScaling ) const
 {
-    double fUnitAngleDegree = this->transformToAngleDegree(fLogicValueOnAngleAxis,bDoScaling);
-    double fUnitRadius      = this->transformToRadius(fLogicValueOnRadiusAxis,bDoScaling);
+    double fUnitAngleDegree = transformToAngleDegree(fLogicValueOnAngleAxis,bDoScaling);
+    double fUnitRadius      = transformToRadius(fLogicValueOnRadiusAxis,bDoScaling);
 
     return transformUnitCircleToScene( fUnitAngleDegree, fUnitRadius, fLogicZ );
 }

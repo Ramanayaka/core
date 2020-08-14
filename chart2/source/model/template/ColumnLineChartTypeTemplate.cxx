@@ -18,17 +18,20 @@
  */
 
 #include "ColumnLineChartTypeTemplate.hxx"
-#include "macros.hxx"
-#include "CommonConverters.hxx"
-#include "DiagramHelper.hxx"
-#include "DataSeriesHelper.hxx"
-#include "servicenames_charttypes.hxx"
+#include <CommonConverters.hxx>
+#include <DiagramHelper.hxx>
+#include <DataSeriesHelper.hxx>
+#include <servicenames_charttypes.hxx>
 #include "ColumnLineDataInterpreter.hxx"
-#include "PropertyHelper.hxx"
+#include <PropertyHelper.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/chart2/XChartTypeContainer.hpp>
 #include <com/sun/star/chart2/XDataSeriesContainer.hpp>
+#include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
 
@@ -50,12 +53,11 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "NumberOfLines",
+    rOutProperties.emplace_back( "NumberOfLines",
                   PROP_COL_LINE_NUMBER_OF_LINES,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
 struct StaticColumnLineChartTypeTemplateDefaults_Initializer
@@ -159,7 +161,7 @@ void ColumnLineChartTypeTemplate::createChartTypes(
     const Sequence< Reference< XCoordinateSystem > > & rCoordSys,
     const Sequence< Reference< XChartType > >& aOldChartTypesSeq )
 {
-    if( rCoordSys.getLength() == 0 ||
+    if( ! rCoordSys.hasElements() ||
         ! rCoordSys[0].is() )
         return;
 
@@ -226,9 +228,9 @@ void ColumnLineChartTypeTemplate::createChartTypes(
             xDSCnt->setDataSeries( aLineSeq );
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -282,27 +284,27 @@ sal_Bool SAL_CALL ColumnLineChartTypeTemplate::matchesTemplate(
 
         Reference< XCoordinateSystemContainer > xCooSysCnt(
             xDiagram, uno::UNO_QUERY_THROW );
-        Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
+        const Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
             xCooSysCnt->getCoordinateSystems());
-        for( sal_Int32 i=0; i<aCooSysSeq.getLength(); ++i )
+        for( Reference< XCoordinateSystem > const & coords : aCooSysSeq )
         {
-            Reference< XChartTypeContainer > xCTCnt( aCooSysSeq[i], uno::UNO_QUERY_THROW );
-            Sequence< Reference< XChartType > > aChartTypeSeq( xCTCnt->getChartTypes());
-            for( sal_Int32 j=0; j<aChartTypeSeq.getLength(); ++j )
+            Reference< XChartTypeContainer > xCTCnt( coords, uno::UNO_QUERY_THROW );
+            const Sequence< Reference< XChartType > > aChartTypeSeq( xCTCnt->getChartTypes());
+            for( Reference< XChartType > const & chartType : aChartTypeSeq )
             {
-                if( aChartTypeSeq[j].is())
+                if( chartType.is())
                 {
                     ++nNumberOfChartTypes;
                     if( nNumberOfChartTypes > 2 )
                         break;
-                    OUString aCTService = aChartTypeSeq[j]->getChartType();
+                    OUString aCTService = chartType->getChartType();
                     if( aCTService == CHART2_SERVICE_NAME_CHARTTYPE_COLUMN )
                     {
-                        xColumnChartType.set( aChartTypeSeq[j] );
-                        xColumnChartCooSys.set( aCooSysSeq[i] );
+                        xColumnChartType.set( chartType );
+                        xColumnChartCooSys.set( coords );
                     }
                     else if( aCTService == CHART2_SERVICE_NAME_CHARTTYPE_LINE )
-                        xLineChartType.set( aChartTypeSeq[j] );
+                        xLineChartType.set( chartType );
                 }
             }
             if( nNumberOfChartTypes > 2 )
@@ -338,9 +340,9 @@ sal_Bool SAL_CALL ColumnLineChartTypeTemplate::matchesTemplate(
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return bResult;
@@ -374,9 +376,9 @@ Reference< XChartType > SAL_CALL ColumnLineChartTypeTemplate::getChartTypeForNew
                          CHART2_SERVICE_NAME_CHARTTYPE_LINE ), uno::UNO_QUERY_THROW );
         ChartTypeTemplate::copyPropertiesFromOldToNewCoordinateSystem( aFormerlyUsedChartTypes, xResult );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return xResult;

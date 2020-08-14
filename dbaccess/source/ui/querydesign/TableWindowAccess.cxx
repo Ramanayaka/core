@@ -17,20 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableWindowAccess.hxx"
-#include "JAccess.hxx"
-#include "TableWindow.hxx"
-#include "TableWindowListBox.hxx"
-#include "JoinDesignView.hxx"
-#include "JoinController.hxx"
-#include "JoinTableView.hxx"
+#include <TableWindowAccess.hxx>
+#include <TableWindow.hxx>
+#include <TableWindowListBox.hxx>
+#include <JoinTableView.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleRelationType.hpp>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <comphelper/sequence.hxx>
-#include "dbu_qry.hrc"
+#include <vcl/vclevent.hxx>
 
 namespace dbaui
 {
@@ -71,7 +66,7 @@ namespace dbaui
     }
     OUString SAL_CALL OTableWindowAccess::getImplementationName()
     {
-        return OUString("org.openoffice.comp.dbu.TableWindowAccessibility");
+        return "org.openoffice.comp.dbu.TableWindowAccessibility";
     }
     Sequence< OUString > SAL_CALL OTableWindowAccess::getSupportedServiceNames()
     {
@@ -126,12 +121,17 @@ namespace dbaui
         if( m_pTable )
         {
             // search the position of our table window in the table window map
-            OJoinTableView::OTableWindowMap& rMap = m_pTable->getTableView()->GetTabWinMap();
-            OJoinTableView::OTableWindowMap::const_iterator aIter = rMap.begin();
-            OJoinTableView::OTableWindowMap::const_iterator aEnd = rMap.end();
-            for (nIndex = 0; aIter != aEnd && aIter->second != m_pTable; ++nIndex,++aIter)
-                ;
-            nIndex = aIter != aEnd ? nIndex : -1;
+            bool bFoundElem = false;
+            for (auto const& tabWin : m_pTable->getTableView()->GetTabWinMap())
+            {
+                if (tabWin.second == m_pTable)
+                {
+                    bFoundElem = true;
+                    break;
+                }
+                ++nIndex;
+            }
+            nIndex = bFoundElem? nIndex : -1;
         }
         return nIndex;
     }
@@ -215,6 +215,8 @@ namespace dbaui
             auto aEnd = rConnectionList.end();
             std::vector< Reference<XInterface> > aRelations;
             aRelations.reserve(5); // just guessing
+            // TODO JNA aIter comes from pView->getTableConnections(m_pTable)
+            // and aEnd comes from pView->getTableConnections().end()
             for (; aIter != aEnd ; ++aIter )
             {
                 uno::Reference<uno::XInterface> xInterface(

@@ -18,18 +18,16 @@
  */
 
 #include <tools/urlobj.hxx>
-#include <vcl/svapp.hxx>
 #include <sfx2/docfile.hxx>
 
-#include "select.hxx"
-#include "sc.hrc"
-#include "tabvwsh.hxx"
-#include "scmod.hxx"
-#include "document.hxx"
-#include "transobj.hxx"
-#include "docsh.hxx"
-#include "tabprotection.hxx"
-#include "markdata.hxx"
+#include <select.hxx>
+#include <tabvwsh.hxx>
+#include <scmod.hxx>
+#include <document.hxx>
+#include <transobj.hxx>
+#include <docsh.hxx>
+#include <tabprotection.hxx>
+#include <markdata.hxx>
 #include <gridwin.hxx>
 
 #if defined(_WIN32)
@@ -51,7 +49,7 @@ ScViewFunctionSet::ScViewFunctionSet( ScViewData* pNewViewData ) :
     OSL_ENSURE(pViewData, "ViewData==0 at FunctionSet");
 }
 
-ScSplitPos ScViewFunctionSet::GetWhich()
+ScSplitPos ScViewFunctionSet::GetWhich() const
 {
     if (pEngine)
         return pEngine->GetWhich();
@@ -161,56 +159,54 @@ void ScViewFunctionSet::BeginDrag()
 
     ScModule* pScMod = SC_MOD();
     bool bRefMode = pScMod->IsFormulaMode();
-    if (!bRefMode)
-    {
-        pViewData->GetView()->FakeButtonUp( GetWhich() );   // ButtonUp is swallowed
+    if (bRefMode)
+        return;
 
-        ScMarkData& rMark = pViewData->GetMarkData();
-        rMark.MarkToSimple();
-        if ( rMark.IsMarked() && !rMark.IsMultiMarked() )
-        {
-            ScDocument* pClipDoc = new ScDocument( SCDOCMODE_CLIP );
-            // bApi = TRUE -> no error messages
-            bool bCopied = pViewData->GetView()->CopyToClip( pClipDoc, false, true );
-            if ( bCopied )
-            {
-                sal_Int8 nDragActions = pViewData->GetView()->SelectionEditable() ?
-                                        ( DND_ACTION_COPYMOVE | DND_ACTION_LINK ) :
-                                        ( DND_ACTION_COPY | DND_ACTION_LINK );
+    pViewData->GetView()->FakeButtonUp( GetWhich() );   // ButtonUp is swallowed
 
-                ScDocShell* pDocSh = pViewData->GetDocShell();
-                TransferableObjectDescriptor aObjDesc;
-                pDocSh->FillTransferableObjectDescriptor( aObjDesc );
-                aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
-                // maSize is set in ScTransferObj ctor
+    ScMarkData& rMark = pViewData->GetMarkData();
+    rMark.MarkToSimple();
+    if ( !(rMark.IsMarked() && !rMark.IsMultiMarked()) )
+        return;
 
-                rtl::Reference<ScTransferObj> pTransferObj = new ScTransferObj( pClipDoc, aObjDesc );
+    ScDocumentUniquePtr pClipDoc(new ScDocument( SCDOCMODE_CLIP ));
+    // bApi = TRUE -> no error messages
+    bool bCopied = pViewData->GetView()->CopyToClip( pClipDoc.get(), false, true );
+    if ( !bCopied )
+        return;
 
-                // set position of dragged cell within range
-                ScRange aMarkRange = pTransferObj->GetRange();
-                SCCOL nStartX = aMarkRange.aStart.Col();
-                SCROW nStartY = aMarkRange.aStart.Row();
-                SCCOL nHandleX = (nPosX >= nStartX) ? nPosX - nStartX : 0;
-                SCROW nHandleY = (nPosY >= nStartY) ? nPosY - nStartY : 0;
-                pTransferObj->SetDragHandlePos( nHandleX, nHandleY );
-                pTransferObj->SetSourceCursorPos( pViewData->GetCurX(), pViewData->GetCurY() );
-                pTransferObj->SetVisibleTab( nTab );
+    sal_Int8 nDragActions = pViewData->GetView()->SelectionEditable() ?
+                            ( DND_ACTION_COPYMOVE | DND_ACTION_LINK ) :
+                            ( DND_ACTION_COPY | DND_ACTION_LINK );
 
-                pTransferObj->SetDragSource( pDocSh, rMark );
+    ScDocShell* pDocSh = pViewData->GetDocShell();
+    TransferableObjectDescriptor aObjDesc;
+    pDocSh->FillTransferableObjectDescriptor( aObjDesc );
+    aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
+    // maSize is set in ScTransferObj ctor
 
-                vcl::Window* pWindow = pViewData->GetActiveWin();
-                if ( pWindow->IsTracking() )
-                    pWindow->EndTracking( TrackingEventFlags::Cancel );    // abort selecting
+    rtl::Reference<ScTransferObj> pTransferObj = new ScTransferObj( std::move(pClipDoc), aObjDesc );
 
-                SC_MOD()->SetDragObject( pTransferObj.get(), nullptr );      // for internal D&D
-                pTransferObj->StartDrag( pWindow, nDragActions );
+    // set position of dragged cell within range
+    ScRange aMarkRange = pTransferObj->GetRange();
+    SCCOL nStartX = aMarkRange.aStart.Col();
+    SCROW nStartY = aMarkRange.aStart.Row();
+    SCCOL nHandleX = (nPosX >= nStartX) ? nPosX - nStartX : 0;
+    SCROW nHandleY = (nPosY >= nStartY) ? nPosY - nStartY : 0;
+    pTransferObj->SetDragHandlePos( nHandleX, nHandleY );
+    pTransferObj->SetSourceCursorPos( pViewData->GetCurX(), pViewData->GetCurY() );
+    pTransferObj->SetVisibleTab( nTab );
 
-                return;         // dragging started
-            }
-            else
-                delete pClipDoc;
-        }
-    }
+    pTransferObj->SetDragSource( pDocSh, rMark );
+
+    vcl::Window* pWindow = pViewData->GetActiveWin();
+    if ( pWindow->IsTracking() )
+        pWindow->EndTracking( TrackingEventFlags::Cancel );    // abort selecting
+
+    SC_MOD()->SetDragObject( pTransferObj.get(), nullptr );      // for internal D&D
+    pTransferObj->StartDrag( pWindow, nDragActions );
+
+    return;         // dragging started
 
 }
 
@@ -286,12 +282,12 @@ void ScViewFunctionSet::SetAnchorFlag( bool bSet )
     bAnchor = bSet;
 }
 
-bool ScViewFunctionSet::SetCursorAtPoint( const Point& rPointPixel, bool /* bDontSelectAtCursor */ )
+void ScViewFunctionSet::SetCursorAtPoint( const Point& rPointPixel, bool /* bDontSelectAtCursor */ )
 {
     if ( bDidSwitch )
     {
         if ( rPointPixel == aSwitchPos )
-            return false;                   // don't scroll in wrong window
+            return;                   // don't scroll in wrong window
         else
             bDidSwitch = false;
     }
@@ -303,9 +299,9 @@ bool ScViewFunctionSet::SetCursorAtPoint( const Point& rPointPixel, bool /* bDon
 
     Point aEffPos = rPointPixel;
     if ( aEffPos.X() == 0 )
-        aEffPos.X() = -1;
+        aEffPos.setX( -1 );
     if ( aEffPos.Y() == 0 )
-        aEffPos.Y() = -1;
+        aEffPos.setY( -1 );
 
     //  Scrolling
     Size aWinSize = pEngine->GetWindow()->GetOutputSizePixel();
@@ -321,13 +317,28 @@ bool ScViewFunctionSet::SetCursorAtPoint( const Point& rPointPixel, bool /* bDon
                                                  pEngine->GetWindow(),
                                                  nullptr, false);
 
-    bool bBottomScroll = ( aEditArea.Bottom() >= aWinSize.Height() );
-    bool bRightScroll  = ( aEditArea.Right() >= aWinSize.Width() );
+    bool bFillingSelection = pViewData->IsFillMode() || pViewData->GetFillMode() == ScFillMode::MATRIX;
+    bool bBottomScroll;
+    bool bRightScroll;
+    // for Autofill don't yet assume we want to auto-scroll to the cell under the mouse
+    // because the autofill handle extends into a cells neighbours so initial click is usually
+    // above a neighbour cell
+    if (bFillingSelection)
+    {
+        bBottomScroll = aEffPos.Y() >= aWinSize.Height();
+        bRightScroll  = aEffPos.X() >= aWinSize.Width();
+    }
+    else
+    {
+        //in the normal case make the full selected cell visible
+        bBottomScroll = aEditArea.Bottom() >= aWinSize.Height();
+        bRightScroll  = aEditArea.Right() >= aWinSize.Width();
+    }
+
     bool bScroll = bRightScroll || bBottomScroll || bLeftScroll || bTopScroll;
 
-    // for Autofill switch in the center of cell
-    // thereby don't prevent scrolling to bottom/right
-    if ( pViewData->IsFillMode() || pViewData->GetFillMode() == ScFillMode::MATRIX )
+    // for Autofill switch in the center of cell thereby don't prevent scrolling to bottom/right
+    if (bFillingSelection)
     {
         bool bLeft, bTop;
         pViewData->GetMouseQuadrant( aEffPos, GetWhich(), nPosX, nPosY, bLeft, bTop );
@@ -340,7 +351,7 @@ bool ScViewFunctionSet::SetCursorAtPoint( const Point& rPointPixel, bool /* bDon
             if (--nPosY >= 0)
             {
                 nPosY = pDoc->LastVisibleRow(0, nPosY, nTab);
-                if (!ValidRow(nPosY))
+                if (!pDoc->ValidRow(nPosY))
                     nPosY = -1;
             }
         }
@@ -400,7 +411,7 @@ bool ScViewFunctionSet::SetCursorAtPoint( const Point& rPointPixel, bool /* bDon
     }
 
     pViewData->ResetOldCursor();
-    return SetCursorAtCell( nPosX, nPosY, bScroll );
+    SetCursorAtCell( nPosX, nPosY, bScroll );
 }
 
 bool ScViewFunctionSet::SetCursorAtCell( SCCOL nPosX, SCROW nPosY, bool bScroll )
@@ -494,7 +505,7 @@ bool ScViewFunctionSet::SetCursorAtCell( SCCOL nPosX, SCROW nPosY, bool bScroll 
             long nSizeX = 0;
             for (SCCOL i=nPosX+1; i<=nEndX; i++)
                 nSizeX += pDoc->GetColWidth( i, nTab );
-            long nSizeY = (long) pDoc->GetRowHeight( nPosY+1, nEndY, nTab );
+            long nSizeY = static_cast<long>(pDoc->GetRowHeight( nPosY+1, nEndY, nTab ));
 
             SCCOL nDelStartX = nStartX;
             SCROW nDelStartY = nStartY;
@@ -560,7 +571,7 @@ bool ScViewFunctionSet::SetCursorAtCell( SCCOL nPosX, SCROW nPosY, bool bScroll 
                 if (++nPosY < nStartY)
                 {
                     nPosY = pDoc->FirstVisibleRow(nPosY, nStartY-1, nTab);
-                    if (!ValidRow(nPosY))
+                    if (!pDoc->ValidRow(nPosY))
                         nPosY = nStartY;
                 }
                 nSizeY += pDoc->GetRowHeight( nPosY, nStartY-1, nTab );
@@ -794,12 +805,12 @@ void ScHeaderFunctionSet::CreateAnchor()
     if (bColumn)
     {
         pView->InitBlockMode( static_cast<SCCOL>(nCursorPos), 0, pViewData->GetTabNo(), true, true );
-        pView->MarkCursor( static_cast<SCCOL>(nCursorPos), MAXROW, pViewData->GetTabNo() );
+        pView->MarkCursor( static_cast<SCCOL>(nCursorPos), pViewData->MaxRow(), pViewData->GetTabNo() );
     }
     else
     {
         pView->InitBlockMode( 0, nCursorPos, pViewData->GetTabNo(), true, false, true );
-        pView->MarkCursor( MAXCOL, nCursorPos, pViewData->GetTabNo() );
+        pView->MarkCursor( pViewData->MaxCol(), nCursorPos, pViewData->GetTabNo() );
     }
     bAnchor = true;
 }
@@ -810,13 +821,13 @@ void ScHeaderFunctionSet::DestroyAnchor()
     bAnchor = false;
 }
 
-bool ScHeaderFunctionSet::SetCursorAtPoint( const Point& rPointPixel, bool /* bDontSelectAtCursor */ )
+void ScHeaderFunctionSet::SetCursorAtPoint( const Point& rPointPixel, bool /* bDontSelectAtCursor */ )
 {
     if ( bDidSwitch )
     {
         // next valid position has to be originated from another window
         if ( rPointPixel == aSwitchPos )
-            return false;                   // don't scroll in the wrong window
+            return;                   // don't scroll in the wrong window
         else
             bDidSwitch = false;
     }
@@ -873,7 +884,7 @@ bool ScHeaderFunctionSet::SetCursorAtPoint( const Point& rPointPixel, bool /* bD
     {
         aSwitchPos = rPointPixel;
         bDidSwitch = true;
-        return false;               // do not crunch with wrong positions
+        return;               // do not crunch with wrong positions
     }
 
     SCCOL  nPosX;
@@ -917,8 +928,6 @@ bool ScHeaderFunctionSet::SetCursorAtPoint( const Point& rPointPixel, bool /* bD
 
     if (bHide)
         pView->ShowAllCursors();
-
-    return true;
 }
 
 bool ScHeaderFunctionSet::IsSelectionAtPoint( const Point& rPointPixel )

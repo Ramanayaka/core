@@ -18,7 +18,9 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
+#include <memory>
 #include <string.h>
 
 #include <basegfx/numeric/ftools.hxx>
@@ -27,7 +29,7 @@
 #include <basegfx/vector/b2dsize.hxx>
 #include <basegfx/vector/b2isize.hxx>
 #include <com/sun/star/lang/NoSupportException.hpp>
-#include <osl/thread.h>
+#include <osl/thread.hxx>
 #include <osl/time.h>
 #include <tools/diagnose_ex.h>
 #include <vcl/syschild.hxx>
@@ -36,9 +38,9 @@
 
 #include <canvas/elapsedtime.hxx>
 #include <canvas/canvastools.hxx>
-#include <canvas/rendering/icolorbuffer.hxx>
-#include <canvas/rendering/irendermodule.hxx>
-#include <canvas/rendering/isurface.hxx>
+#include <rendering/icolorbuffer.hxx>
+#include <rendering/irendermodule.hxx>
+#include <rendering/isurface.hxx>
 
 #include "dx_config.hxx"
 #include "dx_impltools.hxx"
@@ -49,7 +51,7 @@
 //#define FAKE_MAX_TEXTURE_SIZE (4096)
 
 #define VERTEX_BUFFER_SIZE (341*3) // 1023, the size of the internal
-                                   // vertex buffer (must be divisable
+                                   // vertex buffer (must be divisible
                                    // by 3, as each triangle primitive
                                    // has 3 vertices)
 
@@ -64,50 +66,6 @@ namespace dxcanvas
 {
     namespace
     {
-
-        // monitorSupport
-
-
-        class monitorSupport
-        {
-        public:
-
-            monitorSupport() :
-                mhLibrary(LoadLibrary("user32.dll")),
-                mpMonitorFromWindow(nullptr)
-            {
-                if(mhLibrary)
-                    mpMonitorFromWindow = reinterpret_cast<fMonitorFromWindow>(
-                        GetProcAddress(
-                            mhLibrary,"MonitorFromWindow"));
-            }
-
-            ~monitorSupport()
-            {
-                if(mhLibrary)
-                    FreeLibrary(mhLibrary);
-                mhLibrary=nullptr;
-            }
-
-            HMONITOR MonitorFromWindow( HWND hwnd )
-            {
-                // return adapter_default in case something went wrong...
-                if(!(mpMonitorFromWindow))
-                    return HMONITOR(nullptr);
-                // MONITOR_DEFAULTTONEAREST
-                const DWORD dwFlags(0x00000002);
-                return mpMonitorFromWindow(hwnd,dwFlags);
-            }
-        private:
-
-            HINSTANCE mhLibrary;
-            typedef HMONITOR (WINAPI *fMonitorFromWindow )( HWND hwnd, DWORD dwFlags );
-            fMonitorFromWindow mpMonitorFromWindow;
-        };
-
-        monitorSupport aMonitorSupport;
-
-
         class DXRenderModule;
 
 
@@ -145,8 +103,8 @@ namespace dxcanvas
                 ImplRenderModuleGuard(const ImplRenderModuleGuard&) = delete;
                 const ImplRenderModuleGuard& operator=(const ImplRenderModuleGuard&) = delete;
 
-                explicit inline ImplRenderModuleGuard( DXRenderModule& rRenderModule );
-                inline ~ImplRenderModuleGuard();
+                explicit ImplRenderModuleGuard( DXRenderModule& rRenderModule );
+                ~ImplRenderModuleGuard();
 
             private:
                 DXRenderModule& mrRenderModule;
@@ -163,7 +121,7 @@ namespace dxcanvas
 
 
         /// Default implementation of IDXRenderModule
-        class DXRenderModule : public IDXRenderModule
+        class DXRenderModule final: public IDXRenderModule
         {
         public:
             explicit DXRenderModule( const vcl::Window& rWindow );
@@ -245,14 +203,14 @@ namespace dxcanvas
         // DXSurface::ImplRenderModuleGuard
 
 
-        inline DXSurface::ImplRenderModuleGuard::ImplRenderModuleGuard(
+        DXSurface::ImplRenderModuleGuard::ImplRenderModuleGuard(
             DXRenderModule& rRenderModule ) :
             mrRenderModule( rRenderModule )
         {
             mrRenderModule.lock();
         }
 
-        inline DXSurface::ImplRenderModuleGuard::~ImplRenderModuleGuard()
+        DXSurface::ImplRenderModuleGuard::~ImplRenderModuleGuard()
         {
             mrRenderModule.unlock();
         }
@@ -514,8 +472,7 @@ namespace dxcanvas
             ::basegfx::B2IVector aPageSize(maPageSize);
             while(true)
             {
-                mpTexture = std::shared_ptr<canvas::ISurface>(
-                    new DXSurface(*this,aPageSize));
+                mpTexture = std::make_shared<DXSurface>(*this,aPageSize);
                 if(mpTexture->isValid())
                     break;
 
@@ -560,7 +517,7 @@ namespace dxcanvas
 
         void DXRenderModule::disposing()
         {
-            if(!(mhWnd))
+            if(!mhWnd)
                 return;
 
             mpTexture.reset();
@@ -597,7 +554,7 @@ namespace dxcanvas
                               const_cast<vcl::Window *>(&rWindow), 0) );
 
             // system child window must not receive mouse events
-            mpWindow->SetMouseTransparent( TRUE );
+            mpWindow->SetMouseTransparent( true );
 
             // parent should receive paint messages as well
             mpWindow->SetParentClipMode(ParentClipMode::NoClip);
@@ -660,7 +617,7 @@ namespace dxcanvas
                 return false;
             maPageSize = ::basegfx::B2IVector(aCaps.MaxTextureWidth,aCaps.MaxTextureHeight);
 
-            // check device against white & blacklist entries
+            // check device against allow & denylist entries
             D3DADAPTER_IDENTIFIER9 aIdent;
             if(FAILED(mpDirect3D9->GetAdapterIdentifier(nAdapter,0,&aIdent)))
                 return false;
@@ -680,9 +637,9 @@ namespace dxcanvas
             if( !aConfigItem.isDeviceUsable(aInfo) )
                 return false;
 
-            if( aConfigItem.isBlacklistCurrentDevice() )
+            if( aConfigItem.isDenylistCurrentDevice() )
             {
-                aConfigItem.blacklistDevice(aInfo);
+                aConfigItem.denylistDevice(aInfo);
                 return false;
             }
 
@@ -880,10 +837,7 @@ namespace dxcanvas
                             return true;
                     }
 
-                    TimeValue aTimeout;
-                    aTimeout.Seconds=1;
-                    aTimeout.Nanosec=0;
-                    osl_waitThread(&aTimeout);
+                    osl::Thread::wait(std::chrono::seconds(1));
                 }
                 while(hr == D3DERR_DEVICELOST);
 
@@ -996,7 +950,7 @@ namespace dxcanvas
             if(mpTexture.use_count() == 1)
                 return mpTexture;
 
-            return std::shared_ptr<canvas::ISurface>( new DXSurface(*this,aSize) );
+            return std::make_shared<DXSurface>(*this,aSize);
         }
 
 
@@ -1102,7 +1056,7 @@ namespace dxcanvas
 
         UINT DXRenderModule::getAdapterFromWindow()
         {
-            HMONITOR hMonitor(aMonitorSupport.MonitorFromWindow(mhWnd));
+            HMONITOR hMonitor(MonitorFromWindow(mhWnd, MONITOR_DEFAULTTONEAREST));
             UINT aAdapterCount(mpDirect3D9->GetAdapterCount());
             for(UINT i=0; i<aAdapterCount; ++i)
                 if(hMonitor == mpDirect3D9->GetAdapterMonitor(i))
@@ -1252,7 +1206,7 @@ namespace dxcanvas
 
     IDXRenderModuleSharedPtr createRenderModule( const vcl::Window& rParent )
     {
-        return IDXRenderModuleSharedPtr( new DXRenderModule(rParent) );
+        return std::make_shared<DXRenderModule>(rParent);
     }
 }
 

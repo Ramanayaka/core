@@ -28,9 +28,7 @@
 
 /* Definition of ViewEventHandler interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
 
         /** Interface for handling view events.
@@ -80,10 +78,8 @@ namespace slideshow
             virtual void viewsChanged() = 0;
         };
 
-        typedef ::std::shared_ptr< ViewEventHandler > ViewEventHandlerSharedPtr;
         typedef ::std::weak_ptr< ViewEventHandler >   ViewEventHandlerWeakPtr;
 
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_VIEWEVENTHANDLER_HXX

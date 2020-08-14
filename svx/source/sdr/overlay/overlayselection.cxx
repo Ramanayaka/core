@@ -20,7 +20,8 @@
 #include <svx/sdr/overlay/overlayselection.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonHairlinePrimitive2D.hxx>
 #include <svtools/optionsdrawinglayer.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/outdev.hxx>
@@ -31,19 +32,17 @@
 #include <svx/sdr/overlay/overlaymanager.hxx>
 
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         // combine rages geometrically to a single, ORed polygon
-        basegfx::B2DPolyPolygon impCombineRangesToPolyPolygon(const std::vector< basegfx::B2DRange >& rRanges)
+        static basegfx::B2DPolyPolygon impCombineRangesToPolyPolygon(const std::vector< basegfx::B2DRange >& rRanges)
         {
             const sal_uInt32 nCount(rRanges.size());
             basegfx::B2DPolyPolygon aRetval;
 
             for(sal_uInt32 a(0); a < nCount; a++)
             {
-                const basegfx::B2DPolygon aDiscretePolygon(basegfx::tools::createPolygonFromRect(rRanges[a]));
+                const basegfx::B2DPolygon aDiscretePolygon(basegfx::utils::createPolygonFromRect(rRanges[a]));
 
                 if(0 == a)
                 {
@@ -51,7 +50,7 @@ namespace sdr
                 }
                 else
                 {
-                    aRetval = basegfx::tools::solvePolygonOperationOr(aRetval, basegfx::B2DPolyPolygon(aDiscretePolygon));
+                    aRetval = basegfx::utils::solvePolygonOperationOr(aRetval, basegfx::B2DPolyPolygon(aDiscretePolygon));
                 }
             }
 
@@ -60,7 +59,7 @@ namespace sdr
 
         // check if wanted type OverlayType::Transparent or OverlayType::Solid
         // is possible. If not, fallback to invert mode (classic mode)
-        OverlayType impCheckPossibleOverlayType(OverlayType aOverlayType)
+        static OverlayType impCheckPossibleOverlayType(OverlayType aOverlayType)
         {
             if(OverlayType::Invert != aOverlayType)
             {
@@ -111,7 +110,7 @@ namespace sdr
 
                 for(sal_uInt32 a(0);a < nCount; a++)
                 {
-                    const basegfx::B2DPolygon aPolygon(basegfx::tools::createPolygonFromRect(maRanges[a]));
+                    const basegfx::B2DPolygon aPolygon(basegfx::utils::createPolygonFromRect(maRanges[a]));
                     aRetval[a] = drawinglayer::primitive2d::Primitive2DReference(
                         new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
                             basegfx::B2DPolyPolygon(aPolygon),
@@ -186,7 +185,7 @@ namespace sdr
         drawinglayer::primitive2d::Primitive2DContainer OverlaySelection::getOverlayObjectPrimitive2DSequence() const
         {
             // get current values
-               const OverlayType aNewOverlayType(impCheckPossibleOverlayType(meOverlayType));
+            const OverlayType aNewOverlayType(impCheckPossibleOverlayType(meOverlayType));
             const SvtOptionsDrawinglayer aSvtOptionsDrawinglayer;
             const sal_uInt16 nNewTransparence(aSvtOptionsDrawinglayer.GetTransparentSelectionPercent());
 
@@ -196,7 +195,7 @@ namespace sdr
                     || nNewTransparence != mnLastTransparence)
                 {
                     // conditions of last local decomposition have changed, delete
-                    const_cast< OverlaySelection* >(this)->setPrimitive2DSequence(drawinglayer::primitive2d::Primitive2DContainer());
+                    const_cast< OverlaySelection* >(this)->resetPrimitive2DSequence();
                 }
             }
 
@@ -219,7 +218,6 @@ namespace sdr
                 objectChange();
             }
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

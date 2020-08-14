@@ -19,8 +19,8 @@
 
 
 #include <cppuhelper/supportsservice.hxx>
+#include <comphelper/interfacecontainer2.hxx>
 
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/util/XCloseBroadcaster.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
@@ -29,9 +29,12 @@
 #include <com/sun/star/frame/XDesktop.hpp>
 #include <com/sun/star/frame/TerminationVetoException.hpp>
 #include <com/sun/star/frame/DoubleInitializationException.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/embed/Actions.hpp>
+#include <com/sun/star/embed/XActionsApproval.hpp>
 
 #include "instancelocker.hxx"
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
@@ -40,8 +43,7 @@ using namespace ::com::sun::star;
 
 
 OInstanceLocker::OInstanceLocker()
-: m_pListenersContainer( nullptr )
-, m_bDisposed( false )
+: m_bDisposed( false )
 , m_bInitialized( false )
 {
 }
@@ -51,18 +53,12 @@ OInstanceLocker::~OInstanceLocker()
 {
     if ( !m_bDisposed )
     {
-        m_refCount++; // to call dispose
+        osl_atomic_increment(&m_refCount); // to call dispose
         try {
             dispose();
         }
         catch ( uno::RuntimeException& )
         {}
-    }
-
-    if ( m_pListenersContainer )
-    {
-        delete m_pListenersContainer;
-        m_pListenersContainer = nullptr;
     }
 }
 
@@ -75,7 +71,7 @@ void SAL_CALL OInstanceLocker::dispose()
     if ( m_bDisposed )
         throw lang::DisposedException();
 
-       lang::EventObject aSource( static_cast< ::cppu::OWeakObject* >(this) );
+    lang::EventObject aSource( static_cast< ::cppu::OWeakObject* >(this) );
     if ( m_pListenersContainer )
         m_pListenersContainer->disposeAndClear( aSource );
 
@@ -96,7 +92,7 @@ void SAL_CALL OInstanceLocker::addEventListener( const uno::Reference< lang::XEv
         throw lang::DisposedException(); // TODO
 
     if ( !m_pListenersContainer )
-        m_pListenersContainer = new ::comphelper::OInterfaceContainerHelper2( m_aMutex );
+        m_pListenersContainer.reset( new ::comphelper::OInterfaceContainerHelper2( m_aMutex ) );
 
     m_pListenersContainer->addInterface( xListener );
 }
@@ -180,7 +176,7 @@ void SAL_CALL OInstanceLocker::initialize( const uno::Sequence< uno::Any >& aArg
 // XServiceInfo
 OUString SAL_CALL OInstanceLocker::getImplementationName(  )
 {
-    return OUString( "com.sun.star.comp.embed.InstanceLocker" );
+    return "com.sun.star.comp.embed.InstanceLocker";
 }
 
 sal_Bool SAL_CALL OInstanceLocker::supportsService( const OUString& ServiceName )
@@ -190,8 +186,7 @@ sal_Bool SAL_CALL OInstanceLocker::supportsService( const OUString& ServiceName 
 
 uno::Sequence< OUString > SAL_CALL OInstanceLocker::getSupportedServiceNames()
 {
-    const OUString aServiceName( "com.sun.star.embed.InstanceLocker" );
-    return uno::Sequence< OUString >( &aServiceName, 1 );
+    return { "com.sun.star.embed.InstanceLocker" };
 }
 
 // OLockListener
@@ -218,7 +213,7 @@ OLockListener::~OLockListener()
 
 void OLockListener::Dispose()
 {
-    ::osl::ResettableMutexGuard aGuard( m_aMutex );
+    osl::MutexGuard aGuard( m_aMutex );
 
     if ( m_bDisposed )
         return;
@@ -258,14 +253,73 @@ void OLockListener::Dispose()
 
 void SAL_CALL OLockListener::disposing( const lang::EventObject& aEvent )
 {
-    ::osl::ResettableMutexGuard aGuard( m_aMutex );
+    osl::ClearableMutexGuard aGuard( m_aMutex );
 
     // object is disposed
-    if ( aEvent.Source == m_xInstance )
-    {
-        // the object does not listen for anything any more
-        m_nMode = 0;
+    if ( aEvent.Source != m_xInstance )
+        return;
 
+    // the object does not listen for anything any more
+    m_nMode = 0;
+
+    // dispose the wrapper;
+    uno::Reference< lang::XComponent > xComponent( m_xWrapper.get(), uno::UNO_QUERY );
+    aGuard.clear();
+    if ( xComponent.is() )
+    {
+        try { xComponent->dispose(); }
+        catch( uno::Exception& ){}
+    }
+}
+
+
+// XCloseListener
+
+void SAL_CALL OLockListener::queryClosing( const lang::EventObject& aEvent, sal_Bool )
+{
+    // GetsOwnership parameter is always ignored, the user of the service must close the object always
+    osl::ClearableMutexGuard aGuard( m_aMutex );
+    if ( !(!m_bDisposed && aEvent.Source == m_xInstance && ( m_nMode & embed::Actions::PREVENT_CLOSE )) )
+        return;
+
+    try
+    {
+        uno::Reference< embed::XActionsApproval > xApprove = m_xApproval;
+
+        // unlock the mutex here
+        aGuard.clear();
+
+        if ( xApprove.is() && xApprove->approveAction( embed::Actions::PREVENT_CLOSE ) )
+            throw util::CloseVetoException();
+    }
+    catch( util::CloseVetoException& )
+    {
+        // rethrow this exception
+        throw;
+    }
+    catch( uno::Exception& )
+    {
+        // no action should be done
+    }
+}
+
+
+void SAL_CALL OLockListener::notifyClosing( const lang::EventObject& aEvent )
+{
+    osl::ClearableMutexGuard aGuard( m_aMutex );
+
+    // object is closed, no reason to listen
+    if ( aEvent.Source != m_xInstance )
+        return;
+
+    uno::Reference< util::XCloseBroadcaster > xCloseBroadcaster( aEvent.Source, uno::UNO_QUERY );
+    if ( !xCloseBroadcaster.is() )
+        return;
+
+    xCloseBroadcaster->removeCloseListener( static_cast< util::XCloseListener* >( this ) );
+    m_nMode &= ~embed::Actions::PREVENT_CLOSE;
+    if ( !m_nMode )
+    {
         // dispose the wrapper;
         uno::Reference< lang::XComponent > xComponent( m_xWrapper.get(), uno::UNO_QUERY );
         aGuard.clear();
@@ -278,125 +332,66 @@ void SAL_CALL OLockListener::disposing( const lang::EventObject& aEvent )
 }
 
 
-// XCloseListener
-
-void SAL_CALL OLockListener::queryClosing( const lang::EventObject& aEvent, sal_Bool )
-{
-    // GetsOwnership parameter is always ignored, the user of the service must close the object always
-    ::osl::ResettableMutexGuard aGuard( m_aMutex );
-    if ( !m_bDisposed && aEvent.Source == m_xInstance && ( m_nMode & embed::Actions::PREVENT_CLOSE ) )
-    {
-        try
-        {
-            uno::Reference< embed::XActionsApproval > xApprove = m_xApproval;
-
-            // unlock the mutex here
-            aGuard.clear();
-
-            if ( xApprove.is() && xApprove->approveAction( embed::Actions::PREVENT_CLOSE ) )
-                throw util::CloseVetoException();
-        }
-        catch( util::CloseVetoException& )
-        {
-            // rethrow this exception
-            throw;
-        }
-        catch( uno::Exception& )
-        {
-            // no action should be done
-        }
-    }
-}
-
-
-void SAL_CALL OLockListener::notifyClosing( const lang::EventObject& aEvent )
-{
-    ::osl::ResettableMutexGuard aGuard( m_aMutex );
-
-    // object is closed, no reason to listen
-    if ( aEvent.Source == m_xInstance )
-    {
-        uno::Reference< util::XCloseBroadcaster > xCloseBroadcaster( aEvent.Source, uno::UNO_QUERY );
-        if ( xCloseBroadcaster.is() )
-        {
-            xCloseBroadcaster->removeCloseListener( static_cast< util::XCloseListener* >( this ) );
-            m_nMode &= ~embed::Actions::PREVENT_CLOSE;
-            if ( !m_nMode )
-            {
-                // dispose the wrapper;
-                uno::Reference< lang::XComponent > xComponent( m_xWrapper.get(), uno::UNO_QUERY );
-                aGuard.clear();
-                if ( xComponent.is() )
-                {
-                    try { xComponent->dispose(); }
-                    catch( uno::Exception& ){}
-                }
-            }
-        }
-    }
-}
-
-
 // XTerminateListener
 
 void SAL_CALL OLockListener::queryTermination( const lang::EventObject& aEvent )
 {
-    ::osl::ResettableMutexGuard aGuard( m_aMutex );
-    if ( aEvent.Source == m_xInstance && ( m_nMode & embed::Actions::PREVENT_TERMINATION ) )
+    osl::ClearableMutexGuard aGuard( m_aMutex );
+    if ( !(aEvent.Source == m_xInstance && ( m_nMode & embed::Actions::PREVENT_TERMINATION )) )
+        return;
+
+    try
     {
-        try
-        {
-            uno::Reference< embed::XActionsApproval > xApprove = m_xApproval;
+        uno::Reference< embed::XActionsApproval > xApprove = m_xApproval;
 
-            // unlock the mutex here
-            aGuard.clear();
+        // unlock the mutex here
+        aGuard.clear();
 
-            if ( xApprove.is() && xApprove->approveAction( embed::Actions::PREVENT_TERMINATION ) )
-                throw frame::TerminationVetoException();
-        }
-        catch( frame::TerminationVetoException& )
-        {
-            // rethrow this exception
-            throw;
-        }
-        catch( uno::Exception& )
-        {
-            // no action should be done
-        }
+        if ( xApprove.is() && xApprove->approveAction( embed::Actions::PREVENT_TERMINATION ) )
+            throw frame::TerminationVetoException();
+    }
+    catch( frame::TerminationVetoException& )
+    {
+        // rethrow this exception
+        throw;
+    }
+    catch( uno::Exception& )
+    {
+        // no action should be done
     }
 }
 
 
 void SAL_CALL OLockListener::notifyTermination( const lang::EventObject& aEvent )
 {
-    ::osl::ResettableMutexGuard aGuard( m_aMutex );
+    osl::ClearableMutexGuard aGuard( m_aMutex );
 
     // object is terminated, no reason to listen
-    if ( aEvent.Source == m_xInstance )
+    if ( aEvent.Source != m_xInstance )
+        return;
+
+    uno::Reference< frame::XDesktop > xDesktop( aEvent.Source, uno::UNO_QUERY );
+    if ( !xDesktop.is() )
+        return;
+
+    try
     {
-        uno::Reference< frame::XDesktop > xDesktop( aEvent.Source, uno::UNO_QUERY );
-        if ( xDesktop.is() )
+        xDesktop->removeTerminateListener( static_cast< frame::XTerminateListener* >( this ) );
+        m_nMode &= ~embed::Actions::PREVENT_TERMINATION;
+        if ( !m_nMode )
         {
-            try
+            // dispose the wrapper;
+            uno::Reference< lang::XComponent > xComponent( m_xWrapper.get(), uno::UNO_QUERY );
+            aGuard.clear();
+            if ( xComponent.is() )
             {
-                xDesktop->removeTerminateListener( static_cast< frame::XTerminateListener* >( this ) );
-                m_nMode &= ~embed::Actions::PREVENT_TERMINATION;
-                if ( !m_nMode )
-                {
-                    // dispose the wrapper;
-                    uno::Reference< lang::XComponent > xComponent( m_xWrapper.get(), uno::UNO_QUERY );
-                    aGuard.clear();
-                    if ( xComponent.is() )
-                    {
-                        try { xComponent->dispose(); }
-                        catch( uno::Exception& ){}
-                    }
-                }
+                try { xComponent->dispose(); }
+                catch( uno::Exception& ){}
             }
-            catch( uno::Exception& )
-            {}
         }
     }
+    catch( uno::Exception& )
+    {}
 }
 
 
@@ -404,7 +399,7 @@ void SAL_CALL OLockListener::notifyTermination( const lang::EventObject& aEvent 
 
 void OLockListener::Init()
 {
-    ::osl::ResettableMutexGuard aGuard( m_aMutex );
+    osl::ClearableMutexGuard aGuard( m_aMutex );
 
     if ( m_bDisposed || m_bInitialized )
         return;
@@ -440,7 +435,7 @@ void OLockListener::Init()
     m_bInitialized = true;
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_embed_InstanceLocker(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

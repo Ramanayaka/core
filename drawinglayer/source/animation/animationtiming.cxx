@@ -18,14 +18,12 @@
  */
 
 #include <memory>
+
 #include <drawinglayer/animation/animationtiming.hxx>
 #include <basegfx/numeric/ftools.hxx>
-#include <o3tl/make_unique.hxx>
 
-namespace drawinglayer
+namespace drawinglayer::animation
 {
-    namespace animation
-    {
 
 
         AnimationEntry::AnimationEntry()
@@ -49,7 +47,7 @@ namespace drawinglayer
 
         std::unique_ptr<AnimationEntry> AnimationEntryFixed::clone() const
         {
-            return o3tl::make_unique<AnimationEntryFixed>(mfDuration, mfState);
+            return std::make_unique<AnimationEntryFixed>(mfDuration, mfState);
         }
 
         bool AnimationEntryFixed::operator==(const AnimationEntry& rCandidate) const
@@ -98,7 +96,7 @@ namespace drawinglayer
 
         std::unique_ptr<AnimationEntry> AnimationEntryLinear::clone() const
         {
-            return o3tl::make_unique<AnimationEntryLinear>(mfDuration, mfFrequency, mfStart, mfStop);
+            return std::make_unique<AnimationEntryLinear>(mfDuration, mfFrequency, mfStart, mfStop);
         }
 
         bool AnimationEntryLinear::operator==(const AnimationEntry& rCandidate) const
@@ -162,7 +160,7 @@ namespace drawinglayer
 
         AnimationEntryList::Entries::size_type AnimationEntryList::impGetIndexAtTime(double fTime, double &rfAddedTime) const
         {
-            Entries::size_type nIndex(0L);
+            Entries::size_type nIndex(0);
 
             while(nIndex < maEntries.size() && basegfx::fTools::lessOrEqual(rfAddedTime + maEntries[nIndex]->getDuration(), fTime))
             {
@@ -183,14 +181,14 @@ namespace drawinglayer
 
         std::unique_ptr<AnimationEntry> AnimationEntryList::clone() const
         {
-            std::unique_ptr<AnimationEntryList> pNew(o3tl::make_unique<AnimationEntryList>());
+            std::unique_ptr<AnimationEntryList> pNew(std::make_unique<AnimationEntryList>());
 
             for(const auto &i : maEntries)
             {
                 pNew->append(*i);
             }
 
-            return std::move(pNew);
+            return pNew;
         }
 
         bool AnimationEntryList::operator==(const AnimationEntry& rCandidate) const
@@ -276,14 +274,14 @@ namespace drawinglayer
 
         std::unique_ptr<AnimationEntry> AnimationEntryLoop::clone() const
         {
-            std::unique_ptr<AnimationEntryLoop> pNew(o3tl::make_unique<AnimationEntryLoop>(mnRepeat));
+            std::unique_ptr<AnimationEntryLoop> pNew(std::make_unique<AnimationEntryLoop>(mnRepeat));
 
             for(const auto &i : maEntries)
             {
                 pNew->append(*i);
             }
 
-            return std::move(pNew);
+            return pNew;
         }
 
         bool AnimationEntryLoop::operator==(const AnimationEntry& rCandidate) const
@@ -297,14 +295,14 @@ namespace drawinglayer
 
         double AnimationEntryLoop::getDuration() const
         {
-            return (mfDuration * (double)mnRepeat);
+            return (mfDuration * static_cast<double>(mnRepeat));
         }
 
         double AnimationEntryLoop::getStateAtTime(double fTime) const
         {
             if(mnRepeat && !basegfx::fTools::equalZero(mfDuration))
             {
-                const sal_uInt32 nCurrentLoop((sal_uInt32)(fTime / mfDuration));
+                const sal_uInt32 nCurrentLoop(static_cast<sal_uInt32>(fTime / mfDuration));
 
                 if(nCurrentLoop > mnRepeat)
                 {
@@ -312,7 +310,7 @@ namespace drawinglayer
                 }
                 else
                 {
-                    const double fTimeAtLoopStart((double)nCurrentLoop * mfDuration);
+                    const double fTimeAtLoopStart(static_cast<double>(nCurrentLoop) * mfDuration);
                     const double fRelativeTime(fTime - fTimeAtLoopStart);
                     return AnimationEntryList::getStateAtTime(fRelativeTime);
                 }
@@ -327,11 +325,11 @@ namespace drawinglayer
 
             if(mnRepeat && !basegfx::fTools::equalZero(mfDuration))
             {
-                const sal_uInt32 nCurrentLoop((sal_uInt32)(fTime / mfDuration));
+                const sal_uInt32 nCurrentLoop(static_cast<sal_uInt32>(fTime / mfDuration));
 
                 if(nCurrentLoop <= mnRepeat)
                 {
-                    const double fTimeAtLoopStart((double)nCurrentLoop * mfDuration);
+                    const double fTimeAtLoopStart(static_cast<double>(nCurrentLoop) * mfDuration);
                     const double fRelativeTime(fTime - fTimeAtLoopStart);
                     const double fNextEventAtLoop(AnimationEntryList::getNextEventTime(fRelativeTime));
 
@@ -344,7 +342,6 @@ namespace drawinglayer
 
             return fNewTime;
         }
-    } // end of namespace animation
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

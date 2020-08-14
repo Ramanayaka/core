@@ -20,53 +20,26 @@
 #define INCLUDED_SVX_SVXERR_HXX
 
 #include <vcl/errcode.hxx>
+#include <svtools/ehdl.hxx>
+#include <svx/svxdllapi.h>
 
-// define ----------------------------------------------------------------
-
-#define ERRCODE_SVX_LINGU_THESAURUSNOTEXISTS   ErrCode(1UL | ERRCODE_AREA_SVX | \
-                                                ERRCODE_CLASS_NOTEXISTS)
-
-#define ERRCODE_SVX_LINGU_LINGUNOTEXISTS       ErrCode(3UL | ERRCODE_AREA_SVX | \
-                                                ERRCODE_CLASS_NOTEXISTS )
-#define ERRCODE_SVX_LINGU_HYPHENNOTEXISTS      ErrCode(4UL | ERRCODE_AREA_SVX | \
-                                                ERRCODE_CLASS_NOTEXISTS )
-#define ERRCODE_SVX_LINGU_DICT_NOTREADABLE     ErrCode(5UL | ERRCODE_AREA_SVX | \
-                                                ERRCODE_CLASS_READ )
-#define ERRCODE_SVX_LINGU_DICT_NOTWRITEABLE    ErrCode(6UL | ERRCODE_AREA_SVX | \
-                                                ERRCODE_CLASS_WRITE )
-
-#define ERRCODE_SVX_GRAPHIC_NOTREADABLE        ErrCode(7UL | ERRCODE_AREA_SVX | \
-                                                ERRCODE_CLASS_READ )
-
-#define ERRCODE_SVX_LINGU_NOLANGUAGE           ErrCode(9UL | ERRCODE_AREA_SVX | \
-                                                ERRCODE_CLASS_NOTEXISTS )
-#define ERRCODE_SVX_FORMS_NOIOSERVICES         ErrCode(10UL | ERRCODE_AREA_SVX )
-#define ERRCODE_SVX_FORMS_READWRITEFAILED      ErrCode(11UL | ERRCODE_AREA_SVX )
-
-#define ERRCODE_SVX_BULLETITEM_NOBULLET        ErrCode(12UL | ERRCODE_AREA_SVX )
-
-#define ERRCODE_SVX_MODIFIED_VBASIC_STORAGE    ErrCode(13UL | ERRCODE_AREA_SVX     \
-                                                     | ERRCODE_WARNING_MASK \
-                                                     | ERRCODE_CLASS_WRITE )
-
-#define ERRCODE_SVX_VBASIC_STORAGE_EXIST       ErrCode(14UL | ERRCODE_AREA_SVX     \
-                                                     | ERRCODE_WARNING_MASK \
-                                                     | ERRCODE_CLASS_WRITE )
-
+#define ERRCODE_SVX_LINGU_LINGUNOTEXISTS      ErrCode( ErrCodeArea::Svx, ErrCodeClass::NotExists, 3 )
+#define ERRCODE_SVX_LINGU_DICT_NOTWRITEABLE   ErrCode( ErrCodeArea::Svx, ErrCodeClass::Write, 6 )
+#define ERRCODE_SVX_GRAPHIC_NOTREADABLE       ErrCode( ErrCodeArea::Svx, ErrCodeClass::Read, 7 )
+#define ERRCODE_SVX_LINGU_NOLANGUAGE          ErrCode( ErrCodeArea::Svx, ErrCodeClass::NotExists, 9 )
+#define ERRCODE_SVX_MODIFIED_VBASIC_STORAGE   ErrCode( WarningFlag::Yes, ErrCodeArea::Svx, ErrCodeClass::Write, 13 )
+#define ERRCODE_SVX_VBASIC_STORAGE_EXIST      ErrCode( WarningFlag::Yes, ErrCodeArea::Svx, ErrCodeClass::Write, 14 )
 /** Error message: "Wrong password." */
-#define ERRCODE_SVX_WRONGPASS               ErrCode(15UL | ERRCODE_AREA_SVX | ERRCODE_CLASS_NONE)
-
+#define ERRCODE_SVX_WRONGPASS                 ErrCode( ErrCodeArea::Svx, ErrCodeClass::NONE, 15)
 /** Error message: "Read error. Unsupported encryption method." */
-#define ERRCODE_SVX_READ_FILTER_CRYPT       ErrCode(16UL | ERRCODE_AREA_SVX | ERRCODE_CLASS_READ)
-
+#define ERRCODE_SVX_READ_FILTER_CRYPT         ErrCode( ErrCodeArea::Svx, ErrCodeClass::Read, 16)
 /** Error message: "Read error. Passwort encrypted Powerpoint documents..." */
-#define ERRCODE_SVX_READ_FILTER_PPOINT      ErrCode(17UL | ERRCODE_AREA_SVX | ERRCODE_CLASS_READ)
-
+#define ERRCODE_SVX_READ_FILTER_PPOINT        ErrCode( ErrCodeArea::Svx, ErrCodeClass::Read, 17)
 /** Error message: "Warning. Passwort protection is not supported when..." */
-#define ERRCODE_SVX_EXPORT_FILTER_CRYPT      ErrCode(18UL | ERRCODE_AREA_SVX | ERRCODE_CLASS_EXPORT | ERRCODE_WARNING_MASK)
+#define ERRCODE_SVX_EXPORT_FILTER_CRYPT       ErrCode( WarningFlag::Yes, ErrCodeArea::Svx, ErrCodeClass::Export, 18)
 
 
-// both codes will be used twice : with ERRCODE_CLASS_READ- and ERRCODE_CLASS_WRITE-bits
+// both codes will be used twice : with ErrCodeClass::Read- and ErrCodeClass::Write-bits
 #define ERRCTX_SVX_LINGU_THESAURUS              1
 #define ERRCTX_SVX_LINGU_SPELLING               2
 #define ERRCTX_SVX_LINGU_HYPHENATION            3
@@ -74,22 +47,15 @@
 #define ERRCTX_SVX_BACKGROUND                   5
 #define ERRCTX_SVX_IMPORT_GRAPHIC               6
 
-// class SvxErrorHandler -------------------------------------------------
-
-#ifndef __RSC
-
-#include <svtools/ehdl.hxx>
-#include <svx/svxdllapi.h>
-
-class SVX_DLLPUBLIC SvxErrorHandler : private SfxErrorHandler
+class SVX_DLLPUBLIC SvxErrorHandler final : private SfxErrorHandler
 {
 public:
     SvxErrorHandler();
     static void ensure();
 };
 
-#endif
-
+SVX_DLLPUBLIC extern const ErrMsgCode RID_SVXERRCODE[];
+SVX_DLLPUBLIC extern const ErrMsgCode RID_SVXERRCTX[];
 
 #endif
 

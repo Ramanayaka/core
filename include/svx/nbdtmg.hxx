@@ -24,7 +24,7 @@
 #include <editeng/numitem.hxx>
 #include <vcl/font.hxx>
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 #define DEFAULT_BULLET_TYPES                            8
 #define DEFAULT_NUM_VALUSET_COUNT                       8
@@ -33,11 +33,6 @@ namespace svx { namespace sidebar {
 enum class NBOType
 {
     Bullets = 1, Numbering, Outline
-};
-
-enum class NBType
-{
-    Bullets = 1, GraphicBullets
 };
 
 class  SVX_DLLPUBLIC NumSettings_Impl
@@ -50,10 +45,10 @@ class  SVX_DLLPUBLIC NumSettings_Impl
         SvxAdjust       eNumAlign;
         long            nNumAlignAt;
         long            nNumIndentAt;
-        rtl::OUString   sPrefix;
-        rtl::OUString   sSuffix;
-        rtl::OUString   sBulletChar;
-        rtl::OUString   sBulletFont;
+        OUString   sPrefix;
+        OUString   sSuffix;
+        OUString   sBulletChar;
+        OUString   sBulletFont;
         SvxBrushItem   *pBrushItem;
         Size            aSize;
 
@@ -76,11 +71,11 @@ typedef std::vector< std::shared_ptr<NumSettings_Impl> > NumSettingsArr_Impl;
 class  SVX_DLLPUBLIC BulletsSettings
 {
 public:
-    bool            bIsCustomized;
+    vcl::Font       aFont;
     OUString        sDescription;
     sal_Unicode     cBulletChar;
-    vcl::Font       aFont;
-    BulletsSettings() : bIsCustomized(false), cBulletChar(0) {}
+    bool            bIsCustomized;
+    BulletsSettings() : cBulletChar(0), bIsCustomized(false)  {}
 };
 
 
@@ -103,7 +98,7 @@ class  SVX_DLLPUBLIC OutlineSettings_Impl
 {
     public:
         bool            bIsCustomized;
-        rtl::OUString   sDescription;
+        OUString   sDescription;
         NumSettingsArr_Impl *pNumSettingsArr;
     public:
         OutlineSettings_Impl() :
@@ -120,6 +115,8 @@ class SVX_DLLPUBLIC NBOTypeMgrBase
         // store the attributes passed from pSet
         OUString        aBulletCharFmtName;
         OUString        aNumCharFmtName;
+        bool    bIsLoading;
+
         NBOTypeMgrBase(const NBOTypeMgrBase&) = delete;
 
     public:
@@ -139,18 +136,17 @@ class SVX_DLLPUBLIC NBOTypeMgrBase
         // store the attributes passed from pSet
         void SetItems(const SfxItemSet* pArg);
     protected:
-        const OUString& GetBulletCharFmtName() { return aBulletCharFmtName;}
-        const OUString& GetNumCharFmtName() { return aNumCharFmtName;}
-        MapUnit GetMapUnit() { return eCoreUnit;}
+        const OUString& GetBulletCharFmtName() const { return aBulletCharFmtName;}
+        const OUString& GetNumCharFmtName() const { return aNumCharFmtName;}
+        MapUnit GetMapUnit() const { return eCoreUnit;}
     protected:
-        bool    bIsLoading;
         void    ImplLoad(const OUString& filename);
         void    ImplStore(const OUString& filename);
 
 };
 
 
-class SVX_DLLPUBLIC BulletsTypeMgr: public NBOTypeMgrBase
+class BulletsTypeMgr final : public NBOTypeMgrBase
 {
     friend class OutlineTypeMgr;
     friend class NumberingTypeMgr;
@@ -172,7 +168,7 @@ class SVX_DLLPUBLIC BulletsTypeMgr: public NBOTypeMgrBase
 };
 
 
-class SVX_DLLPUBLIC NumberingTypeMgr: public NBOTypeMgrBase
+class NumberingTypeMgr: public NBOTypeMgrBase
 {
     private:
         NumberingTypeMgr(const NumberingTypeMgr&) = delete;
@@ -191,7 +187,7 @@ class SVX_DLLPUBLIC NumberingTypeMgr: public NBOTypeMgrBase
         static NumberingTypeMgr& GetInstance();
 };
 
-class SVX_DLLPUBLIC OutlineTypeMgr: public NBOTypeMgrBase
+class OutlineTypeMgr: public NBOTypeMgrBase
 {
     private:
         OutlineTypeMgr(const OutlineTypeMgr&) = delete;
@@ -208,7 +204,7 @@ class SVX_DLLPUBLIC OutlineTypeMgr: public NBOTypeMgrBase
         virtual bool IsCustomized(sal_uInt16 nIndex) override;
         static OutlineTypeMgr& GetInstance();
 };
-}}
+}
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

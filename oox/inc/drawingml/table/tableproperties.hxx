@@ -22,21 +22,18 @@
 
 #include <drawingml/table/tablerow.hxx>
 #include <drawingml/table/tablestyle.hxx>
-#include <oox/helper/propertymap.hxx>
 #include <oox/drawingml/color.hxx>
 
-#include <map>
 #include <memory>
 #include <vector>
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
 class TableProperties
 {
 public:
 
     TableProperties();
-    ~TableProperties();
 
     std::vector< sal_Int32 >&           getTableGrid() { return mvTableGrid; };
     std::vector< TableRow >&            getTableRows() { return mvTableRows; };
@@ -55,19 +52,24 @@ public:
     void                                setBandRow(bool b)  { mbBandRow = b; };
     bool                                isBandCol() const   { return mbBandCol; };
     void                                setBandCol(bool b)  { mbBandCol = b; };
+    Color&                              getBgColor(){ return maBgColor; };
 
     void pushToPropSet( const ::oox::core::XmlFilterBase& rFilterBase,
         const css::uno::Reference < css::beans::XPropertySet > & xPropSet,
         const ::oox::drawingml::TextListStylePtr& pMasterTextListStyle );
 
+    /// Distributes text body with multiple columns in table cells.
+    void pullFromTextBody(oox::drawingml::TextBodyPtr pTextBody, sal_Int32 nShapeWidth, bool bhasSameSubTypeIndex, bool bMaster);
+
 private:
 
-    const TableStyle&                   getUsedTableStyle(const ::oox::core::XmlFilterBase& rFilterBase, TableStyle*& rTableStyleToDelete);
+    const TableStyle&                   getUsedTableStyle(const ::oox::core::XmlFilterBase& rFilterBase, std::unique_ptr<TableStyle>& rTableStyleToDelete);
 
     OUString                            maStyleId;              // either StyleId is available
     std::shared_ptr< TableStyle >       mpTableStyle;           // or the complete TableStyle
     std::vector< sal_Int32 >            mvTableGrid;
     std::vector< TableRow >             mvTableRows;
+    Color                               maBgColor;
 
     bool                                mbFirstRow;
     bool                                mbFirstCol;
@@ -77,7 +79,7 @@ private:
     bool                                mbBandCol;
 };
 
-} } }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TABLE_TABLEPROPERTIES_HXX
 

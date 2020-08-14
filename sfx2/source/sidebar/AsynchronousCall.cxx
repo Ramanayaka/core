@@ -20,13 +20,7 @@
 #include <sfx2/sidebar/AsynchronousCall.hxx>
 #include <vcl/svapp.hxx>
 
-namespace sfx2 { namespace sidebar {
-
-AsynchronousCall::AsynchronousCall()
-    : maAction(),
-      mnCallId(nullptr)
-{
-}
+namespace sfx2::sidebar {
 
 AsynchronousCall::AsynchronousCall (const Action& rAction)
     : maAction(rAction),
@@ -57,6 +51,14 @@ void AsynchronousCall::CancelRequest()
     }
 }
 
+void AsynchronousCall::Sync()
+{
+    if (mnCallId != nullptr) {
+        maAction();
+        CancelRequest();
+    }
+}
+
 IMPL_LINK_NOARG(AsynchronousCall, HandleUserCall, void*, void )
 {
     mnCallId = nullptr;
@@ -64,6 +66,6 @@ IMPL_LINK_NOARG(AsynchronousCall, HandleUserCall, void*, void )
         maAction();
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

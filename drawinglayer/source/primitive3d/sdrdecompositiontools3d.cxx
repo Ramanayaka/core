@@ -17,41 +17,36 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <drawinglayer/primitive3d/sdrdecompositiontools3d.hxx>
-#include <basegfx/polygon/b3dpolygon.hxx>
+#include <primitive3d/sdrdecompositiontools3d.hxx>
 #include <drawinglayer/attribute/strokeattribute.hxx>
 #include <drawinglayer/primitive3d/baseprimitive3d.hxx>
 #include <drawinglayer/primitive3d/polygonprimitive3d.hxx>
 #include <basegfx/polygon/b3dpolypolygon.hxx>
 #include <drawinglayer/primitive3d/polypolygonprimitive3d.hxx>
-#include <vcl/vclenum.hxx>
 #include <drawinglayer/attribute/fillgraphicattribute.hxx>
 #include <drawinglayer/attribute/sdrfillgraphicattribute.hxx>
-#include <vcl/bitmapaccess.hxx>
 #include <basegfx/polygon/b3dpolypolygontools.hxx>
-#include <drawinglayer/primitive3d/textureprimitive3d.hxx>
+#include <primitive3d/textureprimitive3d.hxx>
 #include <drawinglayer/primitive3d/modifiedcolorprimitive3d.hxx>
-#include <drawinglayer/primitive3d/hatchtextureprimitive3d.hxx>
-#include <drawinglayer/primitive3d/shadowprimitive3d.hxx>
+#include <primitive3d/hatchtextureprimitive3d.hxx>
+#include <primitive3d/shadowprimitive3d.hxx>
 #include <basegfx/range/b2drange.hxx>
 #include <drawinglayer/attribute/sdrlineattribute.hxx>
 #include <drawinglayer/attribute/sdrobjectattribute3d.hxx>
 #include <drawinglayer/attribute/sdrfillattribute.hxx>
 #include <drawinglayer/attribute/sdrshadowattribute.hxx>
-#include <drawinglayer/primitive3d/hiddengeometryprimitive3d.hxx>
+#include <primitive3d/hiddengeometryprimitive3d.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         basegfx::B3DRange getRangeFrom3DGeometry(std::vector< basegfx::B3DPolyPolygon >& rFill)
         {
             basegfx::B3DRange aRetval;
 
-            for(basegfx::B3DPolyPolygon & a : rFill)
+            for(const basegfx::B3DPolyPolygon & a : rFill)
             {
-                aRetval.expand(basegfx::tools::getRange(a));
+                aRetval.expand(basegfx::utils::getRange(a));
             }
 
             return aRetval;
@@ -64,7 +59,7 @@ namespace drawinglayer
 
             for(basegfx::B3DPolyPolygon & a : rFill)
             {
-                a = basegfx::tools::applyDefaultNormalsSphere(a, aCenter);
+                a = basegfx::utils::applyDefaultNormalsSphere(a, aCenter);
             }
         }
 
@@ -81,7 +76,7 @@ namespace drawinglayer
             // invert normals
             for(basegfx::B3DPolyPolygon & a : rFill)
             {
-                a = basegfx::tools::invertNormals(a);
+                a = basegfx::utils::invertNormals(a);
             }
         }
 
@@ -105,7 +100,7 @@ namespace drawinglayer
                 // apply parallel texture coordinates in X and/or Y
                 for(auto & a: rFill)
                 {
-                    a = basegfx::tools::applyDefaultTextureCoordinatesParallel(a, rRange, bParallelX, bParallelY);
+                    a = basegfx::utils::applyDefaultTextureCoordinatesParallel(a, rRange, bParallelX, bParallelY);
                 }
             }
 
@@ -116,7 +111,7 @@ namespace drawinglayer
 
                 for(auto & a: rFill)
                 {
-                    a = basegfx::tools::applyDefaultTextureCoordinatesSphere(a, aCenter, bSphereX, bSphereY);
+                    a = basegfx::utils::applyDefaultTextureCoordinatesSphere(a, aCenter, bSphereX, bSphereY);
                 }
             }
 
@@ -146,7 +141,7 @@ namespace drawinglayer
             // create primitives
             Primitive3DContainer aRetval(aScaledPolyPolygon.count());
 
-            for(sal_uInt32 a(0L); a < aScaledPolyPolygon.count(); a++)
+            for(sal_uInt32 a(0); a < aScaledPolyPolygon.count(); a++)
             {
                 const Primitive3DReference xRef(new PolygonStrokePrimitive3D(aScaledPolyPolygon.getB3DPolygon(a), aLineAttribute, aStrokeAttribute));
                 aRetval[a] = xRef;
@@ -172,7 +167,7 @@ namespace drawinglayer
         {
             Primitive3DContainer aRetval;
 
-            if(r3DPolyPolygonVector.size())
+            if(!r3DPolyPolygonVector.empty())
             {
                 // create list of simple fill primitives
                 aRetval.resize(r3DPolyPolygonVector.size());
@@ -244,8 +239,8 @@ namespace drawinglayer
                     if(css::drawing::TextureKind2_LUMINANCE == aSdr3DObjectAttribute.getTextureKind())
                     {
                         // use modified color primitive to force textures to gray
-                        const basegfx::BColorModifierSharedPtr aBColorModifier(
-                            new basegfx::BColorModifier_gray());
+                        const basegfx::BColorModifierSharedPtr aBColorModifier =
+                            std::make_shared<basegfx::BColorModifier_gray>();
                         const Primitive3DReference xRef2(
                             new ModifiedColorPrimitive3D(
                                 aRetval,
@@ -323,7 +318,6 @@ namespace drawinglayer
             return { aHidden };
         }
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

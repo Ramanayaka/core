@@ -27,19 +27,19 @@
 #include <sal/types.h>
 
 namespace oox { class AttributeList; }
-namespace oox { namespace core { class ContextHandler2Helper; } }
+namespace oox::core { class ContextHandler2Helper; }
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-class OOX_DLLPUBLIC ConnectorShapeContext : public ShapeContext
+class OOX_DLLPUBLIC ConnectorShapeContext final : public ShapeContext
 {
 public:
-    ConnectorShapeContext( ::oox::core::ContextHandler2Helper& rParent, const ShapePtr& pMasterShapePtr, const ShapePtr& pGroupShapePtr );
+    ConnectorShapeContext( ::oox::core::ContextHandler2Helper const & rParent, const ShapePtr& pMasterShapePtr, const ShapePtr& pGroupShapePtr );
     virtual ~ConnectorShapeContext() override;
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_CONNECTORSHAPECONTEXT_HXX
 

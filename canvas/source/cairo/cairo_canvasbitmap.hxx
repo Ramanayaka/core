@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_CANVASBITMAP_HXX
-#define INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_CANVASBITMAP_HXX
+#pragma once
 
 #include <cppuhelper/compbase.hxx>
 
@@ -28,14 +27,12 @@
 #include <com/sun/star/beans/XFastPropertySet.hpp>
 #include <comphelper/uno3.hxx>
 
-#include <basegfx/vector/b2isize.hxx>
-
-#include <canvas/base/basemutexhelper.hxx>
-#include <canvas/base/integerbitmapbase.hxx>
+#include <base/bitmapcanvasbase.hxx>
+#include <base/basemutexhelper.hxx>
+#include <base/integerbitmapbase.hxx>
 
 #include "cairo_canvashelper.hxx"
 #include "cairo_repainttarget.hxx"
-#include "cairo_spritecanvas.hxx"
 
 
 /* Definition of CanvasBitmap class */
@@ -125,7 +122,5 @@ namespace cairocanvas
         const bool                mbHasAlpha;
     };
 }
-
-#endif // INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_CANVASBITMAP_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

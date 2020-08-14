@@ -17,37 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_UNOCONTROLS_SOURCE_INC_PROGRESSBAR_HXX
-#define INCLUDED_UNOCONTROLS_SOURCE_INC_PROGRESSBAR_HXX
+#pragma once
 
-#include <com/sun/star/lang/XServiceName.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/awt/XProgressBar.hpp>
 
-#include <vcl/vclptr.hxx>
+#include <tools/color.hxx>
 
-#include "basecontrol.hxx"
+#include <basecontrol.hxx>
 
-//  namespaces
-
-namespace unocontrols{
+namespace unocontrols {
 
 #define PROGRESSBAR_FREESPACE               4
 #define PROGRESSBAR_DEFAULT_HORIZONTAL      true
 #define PROGRESSBAR_DEFAULT_BLOCKDIMENSION  Size(1,1)
-#define PROGRESSBAR_DEFAULT_BACKGROUNDCOLOR TRGB_COLORDATA( 0x00, 0xC0, 0xC0, 0xC0 )    // lightgray
-#define PROGRESSBAR_DEFAULT_FOREGROUNDCOLOR TRGB_COLORDATA( 0x00, 0x00, 0x00, 0x80 )    // blue
+#define PROGRESSBAR_DEFAULT_BACKGROUNDCOLOR sal_Int32(Color( 0x00, 0xC0, 0xC0, 0xC0 )) // lightgray
+#define PROGRESSBAR_DEFAULT_FOREGROUNDCOLOR sal_Int32(Color( 0x00, 0x00, 0x00, 0x80 )) // blue
 #define PROGRESSBAR_DEFAULT_MINRANGE        INT_MIN
 #define PROGRESSBAR_DEFAULT_MAXRANGE        INT_MAX
 #define PROGRESSBAR_DEFAULT_BLOCKVALUE      1
 #define PROGRESSBAR_DEFAULT_VALUE           PROGRESSBAR_DEFAULT_MINRANGE
-#define PROGRESSBAR_LINECOLOR_BRIGHT        TRGB_COLORDATA( 0x00, 0xFF, 0xFF, 0xFF )    // white
-#define PROGRESSBAR_LINECOLOR_SHADOW        TRGB_COLORDATA( 0x00, 0x00, 0x00, 0x00 )    // black
+#define PROGRESSBAR_LINECOLOR_BRIGHT        sal_Int32(Color( 0x00, 0xFF, 0xFF, 0xFF )) // white
+#define PROGRESSBAR_LINECOLOR_SHADOW        sal_Int32(Color( 0x00, 0x00, 0x00, 0x00 )) // black
 
-class ProgressBar   : public css::awt::XControlModel
+class ProgressBar final : public css::awt::XControlModel
                     , public css::awt::XProgressBar
                     , public BaseControl
 {
-
 public:
 
     ProgressBar( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
@@ -58,7 +53,7 @@ public:
 
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      increment refcount
         @seealso    XInterface
         @seealso    release()
@@ -67,7 +62,7 @@ public:
 
     virtual void SAL_CALL acquire() throw() override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      decrement refcount
         @seealso    XInterface
         @seealso    acquire()
@@ -117,14 +112,7 @@ public:
 
     virtual css::uno::Reference< css::awt::XControlModel > SAL_CALL getModel() override;
 
-    //  BaseControl
-
-    static const css::uno::Sequence< OUString > impl_getStaticSupportedServiceNames();
-
-    static const OUString impl_getStaticImplementationName();
-
-protected:
-
+private:
     virtual void impl_paint(
         sal_Int32 nX ,
         sal_Int32 nY ,
@@ -133,21 +121,18 @@ protected:
 
     void impl_recalcRange();
 
-private:
-
-    bool            m_bHorizontal;   // orientation for steps            [true=horizontal/false=vertikal]
+    bool            m_bHorizontal;   // orientation for steps            [true=horizontal/false=vertical]
     css::awt::Size  m_aBlockSize;   // width and height of a block      [>=0,0]
-    sal_Int32       m_nForegroundColor;   //                                  (alpha,r,g,b)
-    sal_Int32       m_nBackgroundColor;   //                                  (alpha,r,g,b)
+    Color           m_nForegroundColor;   //                                  (alpha,r,g,b)
+    Color           m_nBackgroundColor;   //                                  (alpha,r,g,b)
     sal_Int32       m_nMinRange;   // lowest value  =   0%             [long, <_nMaxRange]
     sal_Int32       m_nMaxRange;   // highest value = 100%             [long, >_nMinRange]
     double          m_nBlockValue;   // value for one block              [long, >0]
     sal_Int32       m_nValue;   // value for progress               [long]
 
-};  // class ProgressBar
+};
 
-}   // namespace unocontrols
+}
 
-#endif // INCLUDED_UNOCONTROLS_SOURCE_INC_PROGRESSBAR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

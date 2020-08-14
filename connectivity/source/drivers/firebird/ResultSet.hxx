@@ -20,32 +20,23 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_RESULTSET_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_RESULTSET_HXX
 
-#include "Statement.hxx"
+#include "Connection.hxx"
 
 #include <ibase.h>
 
 #include <connectivity/FValue.hxx>
-#include <connectivity/OSubComponent.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/proparrhlp.hxx>
 #include <comphelper/propertycontainer.hxx>
 
 #include <com/sun/star/util/XCancellable.hpp>
-#include <com/sun/star/sdbc/FetchDirection.hpp>
-#include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
-#include <com/sun/star/sdbc/ResultSetType.hpp>
 #include <com/sun/star/sdbc/XCloseable.hpp>
 #include <com/sun/star/sdbc/XColumnLocate.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
-#if 0
-#include <com/sun/star/sdbc/XWarningsSupplier.hpp>
-#endif
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
         /*
         **  OResultSet
@@ -54,9 +45,6 @@ namespace connectivity
                                                        css::sdbc::XRow,
                                                        css::sdbc::XResultSetMetaDataSupplier,
                                                        css::util::XCancellable,
-#if 0
-                                                       css::sdbc::XWarningsSupplier,
-#endif
                                                        css::sdbc::XCloseable,
                                                        css::sdbc::XColumnLocate,
                                                        css::lang::XServiceInfo> OResultSet_BASE;
@@ -115,10 +103,10 @@ namespace connectivity
 
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            void SAL_CALL checkColumnIndex( sal_Int32 index );
+            void checkColumnIndex( sal_Int32 index );
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            void SAL_CALL checkRowIndex();
+            void checkRowIndex();
 
             // you can't delete objects of this type
             virtual ~OResultSet() override;
@@ -128,7 +116,7 @@ namespace connectivity
             OResultSet(Connection* pConnection,
                        ::osl::Mutex& rMutex,
                        const css::uno::Reference< css::uno::XInterface >& xStatement,
-                       isc_stmt_handle& aStatementHandle,
+                       isc_stmt_handle aStatementHandle,
                        XSQLDA* aSqlda
                       );
 
@@ -162,7 +150,7 @@ namespace connectivity
             virtual css::uno::Reference< css::uno::XInterface > SAL_CALL getStatement(  ) override;
             // XRow
             virtual sal_Bool SAL_CALL wasNull(  ) override;
-            virtual ::rtl::OUString SAL_CALL getString( sal_Int32 columnIndex ) override;
+            virtual OUString SAL_CALL getString( sal_Int32 columnIndex ) override;
             virtual sal_Bool SAL_CALL getBoolean( sal_Int32 columnIndex ) override;
             virtual sal_Int8 SAL_CALL getByte( sal_Int32 columnIndex ) override;
             virtual sal_Int16 SAL_CALL getShort( sal_Int32 columnIndex ) override;
@@ -188,13 +176,9 @@ namespace connectivity
             // XCloseable
             virtual void SAL_CALL close(  ) override;
             // XWarningsSupplier
-#if 0
-            virtual css::uno::Any SAL_CALL getWarnings(  ) throw(css::sdbc::SQLException, css::uno::RuntimeException, std::exception) override;
-            virtual void SAL_CALL clearWarnings(  ) throw(css::sdbc::SQLException, css::uno::RuntimeException, std::exception) override;
-#endif
 
             // XColumnLocate
-            virtual sal_Int32 SAL_CALL findColumn(const ::rtl::OUString& columnName) override;
+            virtual sal_Int32 SAL_CALL findColumn(const OUString& columnName) override;
 
         };
 
@@ -219,7 +203,7 @@ namespace connectivity
              OResultSet::retrieveValue(
                  const sal_Int32 nColumnIndex,
                  const ISC_SHORT nType);
-        template <> ::rtl::OUString
+        template <> OUString
             OResultSet::retrieveValue(
                 const sal_Int32 nColumnIndex,
                 const ISC_SHORT nType);
@@ -227,7 +211,7 @@ namespace connectivity
              OResultSet::retrieveValue(
                  const sal_Int32 nColumnIndex,
                  const ISC_SHORT nType);
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_RESULTSET_HXX
 

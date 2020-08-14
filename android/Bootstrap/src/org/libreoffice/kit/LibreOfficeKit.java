@@ -67,24 +67,6 @@ public final class LibreOfficeKit
         String cacheDir = activity.getApplication().getCacheDir().getAbsolutePath();
         String apkFile = activity.getApplication().getPackageResourcePath();
 
-        // If there is a fonts.conf file in the apk that can be extracted, automatically
-        // set the FONTCONFIG_FILE env var.
-        InputStream inputStream;
-        try {
-            inputStream = activity.getAssets().open("unpack/etc/fonts/fonts.conf");
-        } catch (java.io.IOException exception) {
-            inputStream = null;
-        }
-
-        putenv("OOO_DISABLE_RECOVERY=1");
-
-        if (inputStream != null) {
-            putenv("FONTCONFIG_FILE=" + dataDir + "/etc/fonts/fonts.conf");
-        }
-
-        // TMPDIR is used by osl_getTempDirURL()
-        putenv("TMPDIR=" + cacheDir);
-
         if (!initializeNative(dataDir, cacheDir, apkFile, mgr)) {
             Log.e(LOGTAG, "Initialize native failed!");
             return;
@@ -107,6 +89,19 @@ class NativeLibLoader {
         protected static synchronized void load() {
             if (done)
                 return;
+            System.loadLibrary("nspr4");
+            System.loadLibrary("plds4");
+            System.loadLibrary("plc4");
+            System.loadLibrary("nssutil3");
+            System.loadLibrary("freebl3");
+            System.loadLibrary("sqlite3");
+            System.loadLibrary("softokn3");
+            System.loadLibrary("nss3");
+            System.loadLibrary("nssckbi");
+            System.loadLibrary("nssdbm3");
+            System.loadLibrary("smime3");
+            System.loadLibrary("ssl3");
+
             System.loadLibrary("lo-native-code");
             done = true;
         }

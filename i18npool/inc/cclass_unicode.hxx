@@ -19,18 +19,17 @@
 #ifndef INCLUDED_I18NPOOL_INC_CCLASS_UNICODE_HXX
 #define INCLUDED_I18NPOOL_INC_CCLASS_UNICODE_HXX
 
-#include <com/sun/star/i18n/XNativeNumberSupplier.hpp>
 #include <com/sun/star/i18n/XCharacterClassification.hpp>
-#include <com/sun/star/i18n/XLocaleData4.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-#include <transliteration_body.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <memory>
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class XComponentContext;
-} } } }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::i18n { class XNativeNumberSupplier; }
+namespace com::sun::star::i18n { class XLocaleData5; }
+namespace i18npool { class Transliteration_casemapping; }
 
 
 /// Flag values of table.
@@ -60,9 +59,9 @@ namespace o3tl {
 }
 
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
-class cclass_Unicode : public cppu::WeakImplHelper < XCharacterClassification, css::lang::XServiceInfo >
+class cclass_Unicode final : public cppu::WeakImplHelper < css::i18n::XCharacterClassification, css::lang::XServiceInfo >
 {
 public:
     cclass_Unicode(const css::uno::Reference < css::uno::XComponentContext >& rxContext );
@@ -81,10 +80,10 @@ public:
         const css::lang::Locale& rLocale ) override;
     virtual sal_Int32 SAL_CALL getStringType( const OUString& text, sal_Int32 nPos, sal_Int32 nCount,
         const css::lang::Locale& rLocale ) override;
-    virtual ParseResult SAL_CALL parseAnyToken( const OUString& Text, sal_Int32 nPos,
+    virtual css::i18n::ParseResult SAL_CALL parseAnyToken( const OUString& Text, sal_Int32 nPos,
         const css::lang::Locale& rLocale, sal_Int32 nStartCharFlags, const OUString& userDefinedCharactersStart,
         sal_Int32 nContCharFlags, const OUString& userDefinedCharactersCont ) override;
-    virtual ParseResult SAL_CALL parsePredefinedToken( sal_Int32 nTokenType, const OUString& Text,
+    virtual css::i18n::ParseResult SAL_CALL parsePredefinedToken( sal_Int32 nTokenType, const OUString& Text,
         sal_Int32 nPos, const css::lang::Locale& rLocale, sal_Int32 nStartCharFlags,
         const OUString& userDefinedCharactersStart, sal_Int32 nContCharFlags,
         const OUString& userDefinedCharactersCont ) override;
@@ -95,7 +94,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
 private:
-    Transliteration_casemapping *trans;
+    std::unique_ptr<Transliteration_casemapping> trans;
 
 // --- parser specific (implemented in cclass_unicode_parser.cxx) ---
 
@@ -119,25 +118,26 @@ private:
     static const sal_Int32      pParseTokensType[];
 
     /// If and where c occurs in pStr
-    static  const sal_Unicode*  StrChr( const sal_Unicode* pStr, sal_Unicode c );
+    static  const sal_Unicode*  StrChr( const sal_Unicode* pStr, sal_uInt32 c );
 
 
     css::uno::Reference < css::uno::XComponentContext > m_xContext;
 
     /// used for parser only
     css::lang::Locale    aParserLocale;
-    css::uno::Reference < XLocaleData4 > mxLocaleData;
+    css::uno::Reference < css::i18n::XLocaleData5 > mxLocaleData;
     css::uno::Reference < css::i18n::XNativeNumberSupplier > xNatNumSup;
     OUString             aStartChars;
     OUString             aContChars;
-    ParserFlags*         pTable;
-    ParserFlags*         pStart;
-    ParserFlags*         pCont;
+    std::unique_ptr<ParserFlags[]> pTable;
+    std::unique_ptr<ParserFlags[]> pStart;
+    std::unique_ptr<ParserFlags[]> pCont;
     sal_Int32            nStartTypes;
     sal_Int32            nContTypes;
     ScanState            eState;
     sal_Unicode          cGroupSep;
     sal_Unicode          cDecimalSep;
+    sal_Unicode          cDecimalSepAlt;
 
     /// Get corresponding KParseTokens flag for a character
     static sal_Int32 getParseTokensType(sal_uInt32 c, bool isFirst);
@@ -149,7 +149,7 @@ private:
     ParserFlags getFlagsExtended(sal_uInt32 c);
 
     /// Access parser table flags for user defined start characters.
-    ParserFlags getStartCharsFlags( sal_Unicode c );
+    ParserFlags getStartCharsFlags( sal_uInt32 c );
 
     /// Access parser table flags for user defined continuation characters.
     ParserFlags getContCharsFlags( sal_Unicode c );
@@ -168,18 +168,18 @@ private:
     void destroyParserTable();
 
     /// Parse a text.
-    void parseText( ParseResult& r, const OUString& rText, sal_Int32 nPos,
+    void parseText( css::i18n::ParseResult& r, const OUString& rText, sal_Int32 nPos,
         sal_Int32 nTokenType = 0xffffffff );
 
     /// Setup International class, new'ed only if different from existing.
-    bool setupInternational( const css::lang::Locale& rLocale );
+    void setupInternational( const css::lang::Locale& rLocale );
 
     /// Implementation of getCharacterType() for one single character
-    static sal_Int32 SAL_CALL getCharType( const OUString& Text, sal_Int32 *nPos, sal_Int32 increment);
+    static sal_Int32 getCharType( const OUString& Text, sal_Int32 *nPos, sal_Int32 increment);
 
 };
 
-} } } }
+}
 
 #endif
 

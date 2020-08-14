@@ -22,11 +22,7 @@
 
 #include <editeng/unoedsrc.hxx>
 #include <editeng/unotext.hxx>
-#include <editeng/eeitem.hxx>
-#include <editeng/outliner.hxx>
-#include <editeng/unoipset.hxx>
-#include <editeng/unoprnms.hxx>
-#include <editeng/unoforou.hxx>
+#include <editeng/outlobj.hxx>
 
 class SwDoc;
 
@@ -35,7 +31,7 @@ class SwTextAPIEditSource : public SvxEditSource
 {
     SwTextAPIEditSource_Impl* pImpl;
 
-    virtual SvxEditSource*      Clone() const override;
+    virtual std::unique_ptr<SvxEditSource> Clone() const override;
     virtual SvxTextForwarder*   GetTextForwarder() override;
     virtual void                UpdateData() override;
     explicit            SwTextAPIEditSource( const SwTextAPIEditSource& rSource );
@@ -45,23 +41,23 @@ public:
     virtual             ~SwTextAPIEditSource() override;
 
     void                Dispose();
-    void                SetText( OutlinerParaObject& rText );
+    void                SetText( OutlinerParaObject const & rText );
     void                SetString( const OUString& rText );
-    OutlinerParaObject* CreateText();
-    OUString            GetText();
+    std::unique_ptr<OutlinerParaObject> CreateText();
+    OUString            GetText() const;
 };
 
 class SwTextAPIObject : public SvxUnoText
 {
-    SwTextAPIEditSource* pSource;
+    std::unique_ptr<SwTextAPIEditSource> pSource;
 public:
-                        SwTextAPIObject( SwTextAPIEditSource* p);
+                        SwTextAPIObject( std::unique_ptr<SwTextAPIEditSource> p);
     virtual             ~SwTextAPIObject() throw() override;
     void                DisposeEditSource() { pSource->Dispose(); }
-    OutlinerParaObject* CreateText() { return pSource->CreateText(); }
+    std::unique_ptr<OutlinerParaObject> CreateText() { return pSource->CreateText(); }
     void                SetString( const OUString& rText ) { pSource->SetString( rText ); }
-    void                SetText( OutlinerParaObject& rText ) { pSource->SetText( rText ); }
-    OUString            GetText() { return pSource->GetText(); }
+    void                SetText( OutlinerParaObject const & rText ) { pSource->SetText( rText ); }
+    OUString            GetText() const { return pSource->GetText(); }
 };
 
 #endif

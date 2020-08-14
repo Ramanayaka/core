@@ -18,20 +18,13 @@
  */
 
 #include "imp_share.hxx"
-#include <com/sun/star/form/binding/XBindableValue.hpp>
-#include <com/sun/star/form/binding/XValueBinding.hpp>
-#include <com/sun/star/form/binding/XListEntrySink.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
-#include <com/sun/star/table/CellAddress.hpp>
-#include <com/sun/star/table/CellRangeAddress.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/document/XStorageBasedDocument.hpp>
-#include <com/sun/star/document/XGraphicObjectResolver.hpp>
+#include <com/sun/star/util/MalformedNumberFormatException.hpp>
 #include <com/sun/star/xml/sax/SAXException.hpp>
 
+#include <cppuhelper/exc_hlp.hxx>
 #include <sal/log.hxx>
-#include <comphelper/processfactory.hxx>
+#include <tools/diagnose_ex.h>
 #include <i18nlangtag/languagetag.hxx>
 
 using namespace ::com::sun::star;
@@ -73,9 +66,9 @@ Reference< xml::input::XElement > Frame::startChildElement(
 
 void Frame::endElement()
 {
-        if ( !m_xContainer.is() )
+    if ( !m_xContainer.is() )
             m_xContainer.set( m_xImport->_xDialogModelFactory->createInstance( "com.sun.star.awt.UnoFrameModel" ), UNO_QUERY );
-        Reference< beans::XPropertySet > xProps( m_xContainer, UNO_QUERY_THROW );
+    Reference< beans::XPropertySet > xProps( m_xContainer, UNO_QUERY_THROW );
         // m_xImport is what we need to add to ( e.g. the dialog in this case )
     ControlImportContext ctx( m_xImport.get(), xProps,   getControlId( _xAttributes ) );
 
@@ -119,7 +112,7 @@ Reference< xml::input::XElement > MultiPage::startChildElement(
         // Create new DialogImport for this container
 
         DialogImport* pMultiPageImport = new DialogImport( *m_xImport );
-                pMultiPageImport->_xDialogModel = m_xContainer;
+        pMultiPageImport->_xDialogModel = m_xContainer;
         return new BulletinBoardElement( rLocalName, xAttributes, this,  pMultiPageImport );
     }
     else
@@ -131,7 +124,7 @@ Reference< xml::input::XElement > MultiPage::startChildElement(
 
 void MultiPage::endElement()
 {
-        Reference< beans::XPropertySet > xProps( m_xContainer, UNO_QUERY_THROW );
+    Reference< beans::XPropertySet > xProps( m_xContainer, UNO_QUERY_THROW );
         // m_xImport is what we need to add to ( e.g. the dialog in this case )
     ControlImportContext ctx( m_xImport.get(), xProps, getControlId( _xAttributes ));
 
@@ -149,7 +142,7 @@ void MultiPage::endElement()
 
     ctx.importDefaults( 0, 0, _xAttributes ); // inherited from BulletinBoardElement
     ctx.importLongProperty("MultiPageValue" , "value",  _xAttributes );
-        ctx.importBooleanProperty( "Decoration", "withtabs",  _xAttributes) ;
+    ctx.importBooleanProperty( "Decoration", "withtabs",  _xAttributes) ;
     ctx.importEvents( _events );
     // avoid ring-reference:
     // vector< event elements > holding event elements holding this (via _pParent)
@@ -172,7 +165,7 @@ Reference< xml::input::XElement > Page::startChildElement(
     {
 
         DialogImport* pPageImport = new DialogImport( *m_xImport );
-                pPageImport->_xDialogModel = m_xContainer;
+        pPageImport->_xDialogModel = m_xContainer;
         return new BulletinBoardElement( rLocalName, xAttributes, this,  pPageImport );
     }
     else
@@ -184,7 +177,7 @@ Reference< xml::input::XElement > Page::startChildElement(
 
 void Page::endElement()
 {
-        Reference< beans::XPropertySet > xProps( m_xContainer, UNO_QUERY_THROW );
+    Reference< beans::XPropertySet > xProps( m_xContainer, UNO_QUERY_THROW );
 
     ControlImportContext ctx( m_xImport.get(), xProps, getControlId( _xAttributes ));
 
@@ -216,16 +209,15 @@ Reference< xml::input::XElement > ProgressBarElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement(
-            nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException( "expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement(
+        nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void ProgressBarElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.UnoControlProgressBarModel" );
@@ -234,7 +226,7 @@ void ProgressBarElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importBorderStyle( xControlModel );
         pStyle->importFillColorStyle( xControlModel );
@@ -258,15 +250,14 @@ Reference< xml::input::XElement > ScrollBarElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException("expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void ScrollBarElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), getControlModelName( "com.sun.star.awt.UnoControlScrollBarModel" , _xAttributes ) );
@@ -275,7 +266,7 @@ void ScrollBarElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importBorderStyle( xControlModel );
     }
@@ -308,14 +299,12 @@ Reference< xml::input::XElement > SpinButtonElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException("expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
 
 void SpinButtonElement::endElement()
@@ -326,7 +315,7 @@ void SpinButtonElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importBorderStyle( xControlModel );
     }
@@ -356,15 +345,14 @@ Reference< xml::input::XElement > FixedLineElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException("expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void FixedLineElement::endElement()
 {
     ControlImportContext ctx(m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.UnoControlFixedLineModel" );
@@ -373,7 +361,7 @@ void FixedLineElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importTextColorStyle( xControlModel );
         pStyle->importTextLineColorStyle( xControlModel );
         pStyle->importFontStyle( xControlModel );
@@ -396,15 +384,14 @@ Reference< xml::input::XElement > PatternFieldElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException("expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void PatternFieldElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.UnoControlPatternFieldModel" );
@@ -413,7 +400,7 @@ void PatternFieldElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importTextColorStyle( xControlModel );
         pStyle->importTextLineColorStyle( xControlModel );
@@ -444,14 +431,12 @@ Reference< xml::input::XElement > FormattedFieldElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException("expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
 
 void FormattedFieldElement::endElement()
@@ -462,7 +447,7 @@ void FormattedFieldElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importTextColorStyle( xControlModel );
         pStyle->importTextLineColorStyle( xControlModel );
@@ -549,9 +534,10 @@ void FormattedFieldElement::endElement()
         }
         catch (const util::MalformedNumberFormatException & exc)
         {
-           SAL_WARN( "xmlscript.xmldlg", "### util::MalformedNumberFormatException occurred!" );
+            css::uno::Any anyEx = cppu::getCaughtException();
+            SAL_WARN( "xmlscript.xmldlg", exceptionToString(anyEx) );
             // rethrow
-            throw xml::sax::SAXException( exc.Message, Reference< XInterface >(), Any() );
+            throw xml::sax::SAXException( exc.Message, Reference< XInterface >(), anyEx );
         }
     }
     ctx.importBooleanProperty("TreatAsNumber", "treat-as-number" , _xAttributes );
@@ -572,15 +558,14 @@ Reference< xml::input::XElement > TimeFieldElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException("expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void TimeFieldElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.UnoControlTimeFieldModel" );
@@ -589,7 +574,7 @@ void TimeFieldElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importTextColorStyle( xControlModel );
         pStyle->importTextLineColorStyle( xControlModel );
@@ -626,15 +611,14 @@ Reference< xml::input::XElement > NumericFieldElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException( "expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void NumericFieldElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.UnoControlNumericFieldModel" );
@@ -643,7 +627,7 @@ void NumericFieldElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importTextColorStyle( xControlModel );
         pStyle->importTextLineColorStyle( xControlModel );
@@ -682,15 +666,14 @@ Reference< xml::input::XElement > DateFieldElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException("expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void DateFieldElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.UnoControlDateFieldModel" );
@@ -699,7 +682,7 @@ void DateFieldElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importTextColorStyle( xControlModel );
         pStyle->importTextLineColorStyle( xControlModel );
@@ -737,15 +720,14 @@ Reference< xml::input::XElement > CurrencyFieldElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException( "expected event element!" , Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void CurrencyFieldElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.UnoControlCurrencyFieldModel" );
@@ -754,7 +736,7 @@ void CurrencyFieldElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importTextColorStyle( xControlModel );
         pStyle->importTextLineColorStyle( xControlModel );
@@ -793,15 +775,14 @@ Reference< xml::input::XElement > FileControlElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException( "expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void FileControlElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.UnoControlFileControlModel" );
@@ -810,7 +791,7 @@ void FileControlElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importTextColorStyle( xControlModel );
         pStyle->importTextLineColorStyle( xControlModel );
@@ -837,15 +818,14 @@ Reference< xml::input::XElement > TreeControlElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException( "expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void TreeControlElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.tree.TreeControlModel" );
@@ -854,7 +834,7 @@ void TreeControlElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importBorderStyle( xControlModel );
     }
@@ -883,14 +863,12 @@ Reference< xml::input::XElement > ImageControlElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException( "expected event element!" , Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
 
 void ImageControlElement::endElement()
@@ -901,7 +879,7 @@ void ImageControlElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importBorderStyle( xControlModel );
     }
@@ -909,7 +887,7 @@ void ImageControlElement::endElement()
     ctx.importDefaults( _nBasePosX, _nBasePosY, _xAttributes );
     ctx.importBooleanProperty( "ScaleImage", "scale-image", _xAttributes );
     ctx.importImageScaleModeProperty( "ScaleMode" , "scale-mode" , _xAttributes );
-    ctx.importImageURLProperty( "ImageURL" , "src" , _xAttributes );
+    ctx.importGraphicOrImageProperty("src" , _xAttributes);
     ctx.importBooleanProperty( "Tabstop", "tabstop", _xAttributes );
     ctx.importEvents( _events );
     // avoid ring-reference:
@@ -925,14 +903,12 @@ Reference< xml::input::XElement > TextElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException( "expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
 
 void TextElement::endElement()
@@ -943,7 +919,7 @@ void TextElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importTextColorStyle( xControlModel );
         pStyle->importTextLineColorStyle( xControlModel );
@@ -972,15 +948,14 @@ Reference< xml::input::XElement > FixedHyperLinkElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException( "expected event element!" , Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void FixedHyperLinkElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.UnoControlFixedHyperlinkModel" );
@@ -989,7 +964,7 @@ void FixedHyperLinkElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importTextColorStyle( xControlModel );
         pStyle->importTextLineColorStyle( xControlModel );
@@ -1000,7 +975,6 @@ void FixedHyperLinkElement::endElement()
     ctx.importDefaults( _nBasePosX, _nBasePosY, _xAttributes );
     ctx.importStringProperty( "Label", "value", _xAttributes );
     ctx.importStringProperty( "URL", "url", _xAttributes );
-    ctx.importStringProperty( "Description", "description", _xAttributes );
 
     ctx.importAlignProperty( "Align", "align" ,_xAttributes );
     ctx.importVerticalAlignProperty( "VerticalAlign", "valign", _xAttributes );
@@ -1021,15 +995,14 @@ Reference< xml::input::XElement > TextFieldElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException( "expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void TextFieldElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.UnoControlEditModel" );
@@ -1066,7 +1039,7 @@ void TextFieldElement::endElement()
         sal_Int16 nChar = 0;
         if(!aValue.isEmpty())
         {
-            nChar = (sal_Int16)aValue[ 0 ];
+            nChar = static_cast<sal_Int16>(aValue[ 0 ]);
         }
         xControlModel->setPropertyValue( "EchoChar", makeAny( nChar ) );
     }
@@ -1170,7 +1143,7 @@ void TitledBoxElement::endElement()
         ctx.importStringProperty( "Label", "value", xAttributes );
         ctx.importAlignProperty( "Align", "align", xAttributes );
         ctx.importVerticalAlignProperty( "VerticalAlign", "valign", xAttributes );
-        ctx.importImageURLProperty( "ImageURL" ,  "image-src" , _xAttributes );
+        ctx.importGraphicOrImageProperty("image-src" , _xAttributes);
         ctx.importImagePositionProperty( "ImagePosition", "image-position", xAttributes );
         ctx.importBooleanProperty( "MultiLine", "multiline", xAttributes );
         ctx.importStringProperty( "GroupName", "group-name", xAttributes );
@@ -1203,14 +1176,12 @@ Reference< xml::input::XElement > RadioElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException("expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
 
 // radiogroup
@@ -1263,7 +1234,7 @@ void RadioGroupElement::endElement()
         ctx.importStringProperty( "Label", "value", xAttributes );
         ctx.importAlignProperty( "Align", "align", xAttributes );
         ctx.importVerticalAlignProperty( "VerticalAlign", "valign", xAttributes );
-        ctx.importImageURLProperty( "ImageURL" , "image-src" , xAttributes );
+        ctx.importGraphicOrImageProperty("image-src" , _xAttributes);
         ctx.importImagePositionProperty( "ImagePosition", "image-position", xAttributes );
         ctx.importBooleanProperty( "MultiLine", "multiline", xAttributes );
         ctx.importStringProperty( "GroupName", "group-name", xAttributes );
@@ -1484,15 +1455,14 @@ Reference< xml::input::XElement > CheckBoxElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException( "expected event element!", Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
+
 void CheckBoxElement::endElement()
 {
     ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.UnoControlCheckBoxModel" );
@@ -1514,7 +1484,7 @@ void CheckBoxElement::endElement()
     ctx.importStringProperty( "Label", "value", _xAttributes );
     ctx.importAlignProperty( "Align", "align", _xAttributes );
     ctx.importVerticalAlignProperty( "VerticalAlign", "valign", _xAttributes );
-    ctx.importImageURLProperty( "ImageURL" ,  "image-src" , _xAttributes );
+    ctx.importGraphicOrImageProperty("image-src" , _xAttributes);
     ctx.importImagePositionProperty( "ImagePosition", "image-position", _xAttributes );
     ctx.importBooleanProperty( "MultiLine", "multiline", _xAttributes );
 
@@ -1550,14 +1520,12 @@ Reference< xml::input::XElement > ButtonElement::startChildElement(
     Reference< xml::input::XAttributes > const & xAttributes )
 {
     // event
-    if (m_xImport->isEventElement( nUid, rLocalName ))
-    {
-        return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
-    }
-    else
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
     {
         throw xml::sax::SAXException( "expected event element!",  Reference< XInterface >(), Any() );
     }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
 }
 
 void ButtonElement::endElement()
@@ -1568,7 +1536,7 @@ void ButtonElement::endElement()
     if (xStyle.is())
     {
         StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
-        Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+        const Reference< beans::XPropertySet >& xControlModel( ctx.getControlModel() );
         pStyle->importBackgroundColorStyle( xControlModel );
         pStyle->importTextColorStyle( xControlModel );
         pStyle->importTextLineColorStyle( xControlModel );
@@ -1582,7 +1550,7 @@ void ButtonElement::endElement()
     ctx.importVerticalAlignProperty( "VerticalAlign", "valign", _xAttributes );
     ctx.importBooleanProperty( "DefaultButton", "default", _xAttributes );
     ctx.importButtonTypeProperty( "PushButtonType", "button-type", _xAttributes );
-    ctx.importImageURLProperty( "ImageURL" , "image-src" , _xAttributes );
+    ctx.importGraphicOrImageProperty("image-src" , _xAttributes);
     ctx.importImagePositionProperty( "ImagePosition", "image-position", _xAttributes );
     ctx.importImageAlignProperty( "ImageAlign", "image-align", _xAttributes );
     if (ctx.importLongProperty( "RepeatDelay", "repeat", _xAttributes ))
@@ -1725,6 +1693,11 @@ Reference< xml::input::XElement > BulletinBoardElement::startChildElement(
     {
         return new ProgressBarElement( rLocalName, xAttributes, this, m_xImport.get() );
     }
+    // table
+    else if (rLocalName == "table")
+    {
+        return new GridControlElement( rLocalName, xAttributes, this, m_xImport.get() );
+    }
     else if ( rLocalName == "multipage" )
     {
         return new MultiPage( rLocalName, xAttributes, this, m_xImport.get() );
@@ -1777,14 +1750,12 @@ Reference< xml::input::XElement > StyleElement::startChildElement(
 void StyleElement::endElement()
 {
     OUString aStyleId( _xAttributes->getValueByUidName( m_xImport->XMLNS_DIALOGS_UID, "style-id" ) );
-    if (!aStyleId.isEmpty())
-    {
-        m_xImport->addStyle( aStyleId, this );
-    }
-    else
+    if (aStyleId.isEmpty())
     {
         throw xml::sax::SAXException( "missing style-id attribute!", Reference< XInterface >(), Any() );
     }
+
+    m_xImport->addStyle( aStyleId, this );
 }
 
 // styles
@@ -1859,13 +1830,66 @@ void WindowElement::endElement()
     ctx.importBooleanProperty("Sizeable", "resizeable", _xAttributes );
     ctx.importStringProperty("Title", "title", _xAttributes );
     ctx.importBooleanProperty("Decoration", "withtitlebar", _xAttributes );
-        ctx.importImageURLProperty( "ImageURL" , "image-src" , _xAttributes );
+    ctx.importGraphicOrImageProperty("image-src" , _xAttributes);
     ctx.importScollableSettings( _xAttributes );
     ctx.importEvents( _events );
     // avoid ring-reference:
     // vector< event elements > holding event elements holding this (via _pParent)
     _events.clear();
 }
+
+// table
+Reference< xml::input::XElement > GridControlElement::startChildElement(
+    sal_Int32 nUid, OUString const & rLocalName,
+    Reference< xml::input::XAttributes > const & xAttributes )
+{
+    // event
+    if (!m_xImport->isEventElement( nUid, rLocalName ))
+    {
+        throw xml::sax::SAXException( "expected event element!", Reference< XInterface >(), Any() );
+    }
+
+    return new EventElement( nUid, rLocalName, xAttributes, this, m_xImport.get() );
+
+}
+
+void GridControlElement::endElement()
+{
+    ControlImportContext ctx( m_xImport.get(), getControlId( _xAttributes ), "com.sun.star.awt.grid.UnoControlGridModel");
+    Reference< beans::XPropertySet > xControlModel( ctx.getControlModel() );
+    Reference< xml::input::XElement > xStyle( getStyle( _xAttributes ) );
+    if (xStyle.is())
+    {
+        StyleElement * pStyle = static_cast< StyleElement * >( xStyle.get () );
+        pStyle->importBackgroundColorStyle( xControlModel );
+        pStyle->importBorderStyle( xControlModel );
+        pStyle->importTextColorStyle( xControlModel );
+        pStyle->importTextLineColorStyle( xControlModel );
+        pStyle->importFontStyle( xControlModel );
+    }
+    ctx.importDefaults( _nBasePosX, _nBasePosY, _xAttributes );
+    ctx.importBooleanProperty( "Tabstop", "tabstop", _xAttributes );
+    ctx.importVerticalAlignProperty( "VerticalAlign", "valign", _xAttributes );
+    ctx.importSelectionTypeProperty( "SelectionModel", "selectiontype", _xAttributes );
+    ctx.importBooleanProperty( "ShowColumnHeader", "showcolumnheader", _xAttributes );
+    ctx.importBooleanProperty( "ShowRowHeader", "showrowheader", _xAttributes );
+    ctx.importHexLongProperty( "GridLineColor", "gridline-color", _xAttributes );
+    ctx.importBooleanProperty( "UseGridLines", "usegridlines", _xAttributes );
+    ctx.importHexLongProperty( "HeaderBackgroundColor", "headerbackground-color", _xAttributes );
+    ctx.importHexLongProperty( "HeaderTextColor", "headertext-color", _xAttributes );
+    ctx.importHexLongProperty( "ActiveSelectionBackgroundColor", "activeselectionbackground-color", _xAttributes );
+    ctx.importHexLongProperty( "ActiveSelectionTextColor", "activeselectiontext-color", _xAttributes );
+    ctx.importHexLongProperty( "InactiveSelectionBackgroundColor", "inactiveselectionbackground-color", _xAttributes );
+    ctx.importHexLongProperty( "InactiveSelectionTextColor", "inactiveselectiontext-color", _xAttributes );
+    ctx.importEvents( _events );
+    // avoid ring-reference:
+    // vector< event elements > holding event elements holding this (via _pParent)
+    _events.clear();
+
+    ctx.finish();
+}
+
+//##################################################################################################
 
 }
 

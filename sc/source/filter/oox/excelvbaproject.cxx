@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "excelvbaproject.hxx"
+#include <excelvbaproject.hxx>
 
-#include <list>
+#include <vector>
 #include <set>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
@@ -27,13 +27,10 @@
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/script/ModuleType.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
-#include <rtl/ustrbuf.hxx>
-#include <oox/helper/helper.hxx>
 #include <oox/helper/propertyset.hxx>
 #include <oox/token/properties.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::frame;
@@ -56,7 +53,7 @@ struct SheetCodeNameInfo
     PropertySet         maSheetProps;       /// Property set of the sheet without codename.
     OUString            maPrefix;           /// Prefix for the codename to be generated.
 
-    explicit     SheetCodeNameInfo( PropertySet& rSheetProps, const OUString& rPrefix ) :
+    explicit     SheetCodeNameInfo( const PropertySet& rSheetProps, const OUString& rPrefix ) :
                             maSheetProps( rSheetProps ), maPrefix( rPrefix ) {}
 };
 
@@ -66,13 +63,16 @@ void ExcelVbaProject::prepareImport()
 {
     /*  Check if the sheets have imported codenames. Generate new unused
         codenames if not. */
-    if( mxDocument.is() ) try
+    if( !mxDocument.is() )
+        return;
+
+    try
     {
         // collect existing codenames (do not use them when creating new codenames)
         ::std::set< OUString > aUsedCodeNames;
 
         // collect sheets without codenames
-        ::std::list< SheetCodeNameInfo >  aCodeNameInfos;
+        ::std::vector< SheetCodeNameInfo >  aCodeNameInfos;
 
         // iterate over all imported sheets
         Reference< XEnumerationAccess > xSheetsEA( mxDocument->getSheets(), UNO_QUERY_THROW );
@@ -90,7 +90,7 @@ void ExcelVbaProject::prepareImport()
             else
             {
                 // TODO: once we have chart sheets we need a switch/case on sheet type ('SheetNNN' vs. 'ChartNNN')
-                aCodeNameInfos.push_back( SheetCodeNameInfo( aSheetProp, "Sheet" ) );
+                aCodeNameInfos.emplace_back( aSheetProp, "Sheet" );
             }
         }
         catch( Exception& )
@@ -98,20 +98,20 @@ void ExcelVbaProject::prepareImport()
         }
 
         // create new codenames if sheets do not have one
-        for( ::std::list< SheetCodeNameInfo >::iterator aIt = aCodeNameInfos.begin(), aEnd = aCodeNameInfos.end(); aIt != aEnd; ++aIt )
+        for (auto & codeName : aCodeNameInfos)
         {
             // search for an unused codename
             sal_Int32 nCounter = 1;
             OUString aCodeName;
             do
             {
-                aCodeName = aIt->maPrefix + OUString::number( nCounter++ );
+                aCodeName = codeName.maPrefix + OUString::number( nCounter++ );
             }
             while( aUsedCodeNames.count( aCodeName ) > 0 );
             aUsedCodeNames.insert( aCodeName );
 
             // set codename at sheet
-            aIt->maSheetProps.setProperty( PROP_CodeName, aCodeName );
+            codeName.maSheetProps.setProperty( PROP_CodeName, aCodeName );
 
             // tell base class to create a dummy module
             addDummyModule( aCodeName, ModuleType::DOCUMENT );
@@ -122,7 +122,6 @@ void ExcelVbaProject::prepareImport()
     }
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

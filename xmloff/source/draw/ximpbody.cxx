@@ -18,8 +18,7 @@
  */
 
 #include "ximpbody.hxx"
-#include <xmloff/prstylei.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include "ximpnote.hxx"
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XDrawPages.hpp>
@@ -31,87 +30,86 @@
 #include <com/sun/star/animations/XAnimationNodeSupplier.hpp>
 
 #include <xmloff/unointerfacetouniqueidentifiermapper.hxx>
-#include <xmloff/xmluconv.hxx>
-#include <xmloff/xmlprmap.hxx>
 #include <xmloff/families.hxx>
 #include "ximpshow.hxx"
-#include "PropertySetMerger.hxx"
-#include "animationimport.hxx"
-#include <osl/diagnose.hxx>
+#include "layerimp.hxx"
+#include <animationimport.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
+using namespace ::xmloff::token;
 
 SdXMLDrawPageContext::SdXMLDrawPageContext( SdXMLImport& rImport,
-    sal_uInt16 nPrfx, const OUString& rLocalName,
-    const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
-    uno::Reference< drawing::XShapes >& rShapes)
-:   SdXMLGenericPageContext( rImport, nPrfx, rLocalName, xAttrList, rShapes )
+    const css::uno::Reference< css::xml::sax::XFastAttributeList>& xAttrList,
+    uno::Reference< drawing::XShapes > const & rShapes)
+:   SdXMLGenericPageContext( rImport, xAttrList, rShapes )
 ,   mbHadSMILNodes( false )
 {
     bool bHaveXmlId( false );
-    OUString sXmlId;
+    OUString sXmlId, sStyleName, sContextName, sMasterPageName, sHREF;
 
-    sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
-
-    for(sal_Int16 i=0; i < nAttrCount; i++)
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( xAttrList ))
     {
-        OUString sAttrName = xAttrList->getNameByIndex( i );
-        OUString aLocalName;
-        sal_uInt16 nPrefix = GetSdImport().GetNamespaceMap().GetKeyByAttrName( sAttrName, &aLocalName );
-        OUString sValue = xAttrList->getValueByIndex( i );
-        const SvXMLTokenMap& rAttrTokenMap = GetSdImport().GetDrawPageAttrTokenMap();
-
-        switch(rAttrTokenMap.Get(nPrefix, aLocalName))
+        OUString sValue = aIter.toString();
+        switch(aIter.getToken())
         {
-            case XML_TOK_DRAWPAGE_NAME:
+            case XML_ELEMENT(DRAW, XML_NAME):
             {
-                maContextName = sValue;
+                sContextName = sValue;
                 break;
             }
-            case XML_TOK_DRAWPAGE_STYLE_NAME:
+            case XML_ELEMENT(DRAW, XML_STYLE_NAME):
             {
-                maStyleName = sValue;
+                sStyleName = sValue;
                 break;
             }
-            case XML_TOK_DRAWPAGE_MASTER_PAGE_NAME:
+            case XML_ELEMENT(DRAW, XML_MASTER_PAGE_NAME):
             {
-                maMasterPageName = sValue;
+                sMasterPageName = sValue;
                 break;
             }
-            case XML_TOK_DRAWPAGE_PAGE_LAYOUT_NAME:
+            case XML_ELEMENT(PRESENTATION, XML_PRESENTATION_PAGE_LAYOUT_NAME):
+            case XML_ELEMENT(PRESENTATION_SO52, XML_PRESENTATION_PAGE_LAYOUT_NAME):
+            case XML_ELEMENT(PRESENTATION_OOO, XML_PRESENTATION_PAGE_LAYOUT_NAME):
             {
                 maPageLayoutName =  sValue;
                 break;
             }
-            case XML_TOK_DRAWPAGE_USE_HEADER_NAME:
+            case XML_ELEMENT(PRESENTATION, XML_USE_HEADER_NAME):
+            case XML_ELEMENT(PRESENTATION_SO52, XML_USE_HEADER_NAME):
+            case XML_ELEMENT(PRESENTATION_OOO, XML_USE_HEADER_NAME):
             {
                 maUseHeaderDeclName =  sValue;
                 break;
             }
-            case XML_TOK_DRAWPAGE_USE_FOOTER_NAME:
+            case XML_ELEMENT(PRESENTATION, XML_USE_FOOTER_NAME):
+            case XML_ELEMENT(PRESENTATION_SO52, XML_USE_FOOTER_NAME):
+            case XML_ELEMENT(PRESENTATION_OOO, XML_USE_FOOTER_NAME):
             {
                 maUseFooterDeclName =  sValue;
                 break;
             }
-            case XML_TOK_DRAWPAGE_USE_DATE_TIME_NAME:
+            case XML_ELEMENT(PRESENTATION, XML_USE_DATE_TIME_NAME):
+            case XML_ELEMENT(PRESENTATION_SO52, XML_USE_DATE_TIME_NAME):
+            case XML_ELEMENT(PRESENTATION_OOO, XML_USE_DATE_TIME_NAME):
             {
                 maUseDateTimeDeclName =  sValue;
                 break;
             }
-            case XML_TOK_DRAWPAGE_DRAWID:
+            case XML_ELEMENT(DRAW, XML_ID):
             {
                 if (!bHaveXmlId) { sXmlId = sValue; }
             }
             break;
-            case XML_TOK_DRAWPAGE_XMLID:
+            case XML_ELEMENT(XML, XML_ID):
             {
                 sXmlId = sValue;
                 bHaveXmlId = true;
             }
             break;
-            case XML_TOK_DRAWPAGE_HREF:
+            case XML_ELEMENT(XLINK, XML_HREF):
             {
-                maHREF = sValue;
+                sHREF = sValue;
                 break;
             }
         }
@@ -128,18 +126,18 @@ SdXMLDrawPageContext::SdXMLDrawPageContext( SdXMLImport& rImport,
     uno::Reference< drawing::XDrawPage > xShapeDrawPage(rShapes, uno::UNO_QUERY);
 
     // set PageName?
-    if(!maContextName.isEmpty())
+    if(!sContextName.isEmpty())
     {
         if(xShapeDrawPage.is())
         {
             uno::Reference < container::XNamed > xNamed(xShapeDrawPage, uno::UNO_QUERY);
             if(xNamed.is())
-                xNamed->setName(maContextName);
+                xNamed->setName(sContextName);
         }
     }
 
     // set MasterPage?
-    if(!maMasterPageName.isEmpty())
+    if(!sMasterPageName.isEmpty())
     {
         // #85906# Code for setting masterpage needs complete rework
         // since GetSdImport().GetMasterStylesContext() gives always ZERO
@@ -154,7 +152,7 @@ SdXMLDrawPageContext::SdXMLDrawPageContext( SdXMLImport& rImport,
         {
             bool bDone(false);
             OUString sDisplayName( rImport.GetStyleDisplayName(
-                            XML_STYLE_FAMILY_MASTER_PAGE, maMasterPageName ) );
+                            XmlStyleFamily::MASTER_PAGE, sMasterPageName ) );
 
             for(sal_Int32 a = 0; !bDone && a < xMasterPages->getCount(); a++)
             {
@@ -166,9 +164,9 @@ SdXMLDrawPageContext::SdXMLDrawPageContext( SdXMLImport& rImport,
                     uno::Reference < container::XNamed > xMasterNamed(xMasterPage, uno::UNO_QUERY);
                     if(xMasterNamed.is())
                     {
-                        OUString sMasterPageName = xMasterNamed->getName();
+                        OUString sLoopMasterPageName = xMasterNamed->getName();
 
-                        if(!sMasterPageName.isEmpty() && sMasterPageName.equals(sDisplayName))
+                        if(!sLoopMasterPageName.isEmpty() && sLoopMasterPageName == sDisplayName)
                         {
                             xDrawPage->setMasterPage(xMasterPage);
                             bDone = true;
@@ -177,28 +175,28 @@ SdXMLDrawPageContext::SdXMLDrawPageContext( SdXMLImport& rImport,
                 }
             }
 
-            SAL_WARN_IF( !bDone, "xmloff", "xmloff::SdXMLDrawPageContext::SdXMLDrawPageContext(), could not find a slide master!" );
+            SAL_WARN_IF( !bDone, "xmloff", "xmloff::SdXMLDrawPageContext::SdXMLDrawPageContext(), could not find a master slide!" );
         }
     }
 
-    SetStyle( maStyleName );
+    SetStyle( sStyleName );
 
-    if( !maHREF.isEmpty() )
+    if( !sHREF.isEmpty() )
     {
         uno::Reference< beans::XPropertySet > xProps( xShapeDrawPage, uno::UNO_QUERY );
         if( xProps.is() )
         {
-            sal_Int32 nIndex = maHREF.lastIndexOf( '#' );
+            sal_Int32 nIndex = sHREF.lastIndexOf( '#' );
             if( nIndex != -1 )
             {
-                OUString aFileName( maHREF.copy( 0, nIndex ) );
-                OUString aBookmarkName( maHREF.copy( nIndex+1 ) );
+                OUString aFileName( sHREF.copy( 0, nIndex ) );
+                OUString aBookmarkName( sHREF.copy( nIndex+1 ) );
 
-                maHREF = GetImport().GetAbsoluteReference( aFileName ) + "#"
+                sHREF = GetImport().GetAbsoluteReference( aFileName ) + "#"
                     + aBookmarkName;
             }
 
-            xProps->setPropertyValue("BookmarkURL", uno::makeAny( maHREF ) );
+            xProps->setPropertyValue("BookmarkURL", uno::makeAny( sHREF ) );
         }
     }
 
@@ -211,17 +209,15 @@ SdXMLDrawPageContext::~SdXMLDrawPageContext()
 {
 }
 
-SvXMLImportContext *SdXMLDrawPageContext::CreateChildContext( sal_uInt16 nPrefix,
-    const OUString& rLocalName,
-    const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList )
+css::uno::Reference< css::xml::sax::XFastContextHandler >  SdXMLDrawPageContext::createFastChildContext(sal_Int32 nElement,
+        const css::uno::Reference<css::xml::sax::XFastAttributeList>& xAttrList)
 {
-    SvXMLImportContext *pContext = nullptr;
-    const SvXMLTokenMap& rTokenMap = GetSdImport().GetDrawPageElemTokenMap();
-
     // some special objects inside draw:page context
-    switch(rTokenMap.Get(nPrefix, rLocalName))
+    switch(nElement)
     {
-        case XML_TOK_DRAWPAGE_NOTES:
+        case XML_ELEMENT(PRESENTATION, XML_NOTES):
+        case XML_ELEMENT(PRESENTATION_SO52, XML_NOTES):
+        case XML_ELEMENT(PRESENTATION_OOO, XML_NOTES):
         {
             if( GetSdImport().IsImpress() )
             {
@@ -229,46 +225,45 @@ SvXMLImportContext *SdXMLDrawPageContext::CreateChildContext( sal_uInt16 nPrefix
                 uno::Reference< presentation::XPresentationPage > xPresPage(GetLocalShapesContext(), uno::UNO_QUERY);
                 if(xPresPage.is())
                 {
-                    uno::Reference< drawing::XDrawPage > xNotesDrawPage(xPresPage->getNotesPage(), uno::UNO_QUERY);
+                    uno::Reference< drawing::XDrawPage > xNotesDrawPage = xPresPage->getNotesPage();
                     if(xNotesDrawPage.is())
                     {
-                        uno::Reference< drawing::XShapes > xNewShapes(xNotesDrawPage, uno::UNO_QUERY);
-                        if(xNewShapes.is())
-                        {
-                            // presentation:notes inside draw:page context
-                            pContext = new SdXMLNotesContext( GetSdImport(), nPrefix, rLocalName, xAttrList, xNewShapes);
-                        }
+                        // presentation:notes inside draw:page context
+                        return new SdXMLNotesContext( GetSdImport(), xAttrList, xNotesDrawPage);
                     }
                 }
             }
             break;
         }
-        case XML_TOK_DRAWPAGE_PAR:
-        case XML_TOK_DRAWPAGE_SEQ:
+        case XML_ELEMENT(ANIMATION, XML_PAR):
+        case XML_ELEMENT(ANIMATION_OOO, XML_PAR):
+        case XML_ELEMENT(ANIMATION, XML_SEQ):
+        case XML_ELEMENT(ANIMATION_OOO, XML_SEQ):
         {
             if( GetSdImport().IsImpress() )
             {
                 uno::Reference< animations::XAnimationNodeSupplier > xNodeSupplier(GetLocalShapesContext(), uno::UNO_QUERY);
                 if(xNodeSupplier.is())
                 {
-                    pContext = new xmloff::AnimationNodeContext( xNodeSupplier->getAnimationNode(), GetSdImport(), nPrefix, rLocalName, xAttrList );
                     mbHadSMILNodes = true;
+                    return new xmloff::AnimationNodeContext( xNodeSupplier->getAnimationNode(), GetSdImport(), nElement, xAttrList );
                 }
             }
             break;
         }
+        case XML_ELEMENT(DRAW, XML_LAYER_SET):
+        {
+            return new SdXMLLayerSetContext( GetSdImport() );
+        }
     }
 
     // call parent when no own context was created
-    if(!pContext)
-        pContext = SdXMLGenericPageContext::CreateChildContext(nPrefix, rLocalName, xAttrList);
-
-    return pContext;
+    return SdXMLGenericPageContext::createFastChildContext(nElement, xAttrList);
 }
 
-void SdXMLDrawPageContext::EndElement()
+void SdXMLDrawPageContext::endFastElement(sal_Int32 nElement)
 {
-    SdXMLGenericPageContext::EndElement();
+    SdXMLGenericPageContext::endFastElement(nElement);
     GetImport().GetShapeImport()->endPage(GetLocalShapesContext());
 
     if( mbHadSMILNodes )
@@ -280,9 +275,8 @@ void SdXMLDrawPageContext::EndElement()
     }
 }
 
-SdXMLBodyContext::SdXMLBodyContext( SdXMLImport& rImport,
-    const OUString& rLocalName )
-:   SvXMLImportContext( rImport, XML_NAMESPACE_OFFICE, rLocalName )
+SdXMLBodyContext::SdXMLBodyContext( SdXMLImport& rImport )
+:   SvXMLImportContext( rImport )
 {
 }
 
@@ -290,24 +284,19 @@ SdXMLBodyContext::~SdXMLBodyContext()
 {
 }
 
-SvXMLImportContext *SdXMLBodyContext::CreateChildContext(
-    sal_uInt16 nPrefix,
-    const OUString& rLocalName,
-    const uno::Reference< xml::sax::XAttributeList>& xAttrList )
+css::uno::Reference< css::xml::sax::XFastContextHandler > SdXMLBodyContext::createFastChildContext(
+     sal_Int32 nElement,
+     const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList )
 {
-    SvXMLImportContext *pContext = nullptr;
-    const SvXMLTokenMap& rTokenMap = GetSdImport().GetBodyElemTokenMap();
-
-    switch(rTokenMap.Get(nPrefix, rLocalName))
+    switch (nElement)
     {
-        case XML_TOK_BODY_HEADER_DECL:
-        case XML_TOK_BODY_FOOTER_DECL:
-        case XML_TOK_BODY_DATE_TIME_DECL:
+        case XML_ELEMENT(PRESENTATION, XML_SETTINGS):
+        case XML_ELEMENT(PRESENTATION_SO52, XML_SETTINGS):
+        case XML_ELEMENT(PRESENTATION_OOO, XML_SETTINGS):
         {
-            pContext = new SdXMLHeaderFooterDeclContext( GetImport(), nPrefix, rLocalName, xAttrList );
-            break;
+            return new SdXMLShowsContext( GetSdImport(), xAttrList );
         }
-        case XML_TOK_BODY_PAGE:
+        case XML_ELEMENT(DRAW, XML_PAGE):
         {
             // only read the first page in preview mode
             if( (GetSdImport().GetNewPageCount() == 0) || !GetSdImport().IsPreview() )
@@ -336,28 +325,36 @@ SvXMLImportContext *SdXMLBodyContext::CreateChildContext(
 
                 if(xNewDrawPage.is())
                 {
-                    uno::Reference< drawing::XShapes > xNewShapes(xNewDrawPage, uno::UNO_QUERY);
-                    if(xNewShapes.is())
-                    {
-                        // draw:page inside office:body context
-                        pContext = new SdXMLDrawPageContext(GetSdImport(), nPrefix, rLocalName, xAttrList,
-                            xNewShapes);
-                    }
+                    // draw:page inside office:body context
+                    return new SdXMLDrawPageContext(GetSdImport(), xAttrList, xNewDrawPage);
                 }
             }
             break;
         }
-        case XML_TOK_BODY_SETTINGS:
+    }
+    return nullptr;
+}
+
+SvXMLImportContextRef SdXMLBodyContext::CreateChildContext(
+    sal_uInt16 nPrefix,
+    const OUString& rLocalName,
+    const uno::Reference< xml::sax::XAttributeList>& xAttrList )
+{
+    SvXMLImportContextRef xContext;
+    const SvXMLTokenMap& rTokenMap = GetSdImport().GetBodyElemTokenMap();
+
+    switch(rTokenMap.Get(nPrefix, rLocalName))
+    {
+        case XML_TOK_BODY_HEADER_DECL:
+        case XML_TOK_BODY_FOOTER_DECL:
+        case XML_TOK_BODY_DATE_TIME_DECL:
         {
-            pContext = new SdXMLShowsContext( GetSdImport(), nPrefix, rLocalName, xAttrList );
+            xContext = new SdXMLHeaderFooterDeclContext( GetImport(), nPrefix, rLocalName, xAttrList );
+            break;
         }
     }
 
-    // call parent when no own context was created
-    if(!pContext)
-        pContext = SvXMLImportContext::CreateChildContext(nPrefix, rLocalName, xAttrList);
-
-    return pContext;
+    return xContext;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

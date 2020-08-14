@@ -18,19 +18,21 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <algorithm>
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
 #include <com/sun/star/rendering/PathCapType.hpp>
 #include <com/sun/star/rendering/PathJoinType.hpp>
 #include <com/sun/star/rendering/RepaintResult.hpp>
 #include <com/sun/star/rendering/TexturingMode.hpp>
 #include <comphelper/sequence.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 #include <rtl/math.hxx>
 #include <tools/diagnose_ex.h>
 
@@ -122,7 +124,7 @@ namespace dxcanvas
     {
         ENSURE_OR_THROW( rTarget,
                           "CanvasHelper::setTarget(): Invalid target" );
-        ENSURE_OR_THROW( !mpGraphicsProvider.get(),
+        ENSURE_OR_THROW( !mpGraphicsProvider,
                           "CanvasHelper::setTarget(): target set, old target would be overwritten" );
 
         mpGraphicsProvider = rTarget;
@@ -133,7 +135,7 @@ namespace dxcanvas
     {
         ENSURE_OR_THROW( rTarget,
                          "CanvasHelper::setTarget(): invalid target" );
-        ENSURE_OR_THROW( !mpGraphicsProvider.get(),
+        ENSURE_OR_THROW( !mpGraphicsProvider,
                          "CanvasHelper::setTarget(): target set, old target would be overwritten" );
 
         mpGraphicsProvider = rTarget;
@@ -145,7 +147,7 @@ namespace dxcanvas
         if( needOutput() )
         {
             GraphicsSharedPtr pGraphics( mpGraphicsProvider->getGraphics() );
-            Gdiplus::Color aClearColor = Gdiplus::Color((Gdiplus::ARGB)Gdiplus::Color::White);
+            Gdiplus::Color aClearColor{Gdiplus::ARGB(Gdiplus::Color::White)};
 
             ENSURE_OR_THROW(
                 Gdiplus::Ok == pGraphics->SetCompositingMode(
@@ -363,7 +365,7 @@ namespace dxcanvas
                     strokeAttributes.DashArray ) );
             if( !rDashArray.empty() )
             {
-                aPen.SetDashPattern( &rDashArray[0],
+                aPen.SetDashPattern( rDashArray.data(),
                                      rDashArray.size() );
             }
             aPen.SetLineCap( gdiCapFromCap(strokeAttributes.StartCapType),
@@ -521,9 +523,8 @@ namespace dxcanvas
             // TODO(F2): Proper layout (BiDi, CTL)! IMHO must use
             // DrawDriverString here, and perform layouting myself...
             ENSURE_OR_THROW(
-                Gdiplus::Ok == pGraphics->DrawString( reinterpret_cast<LPCWSTR>(
-                                                          text.Text.copy( text.StartPosition,
-                                                                          text.Length ).getStr()),
+                Gdiplus::Ok == pGraphics->DrawString( o3tl::toW(text.Text.copy( text.StartPosition,
+                                                                            text.Length ).getStr()),
                                                       text.Length,
                                                       pFont->getFont().get(),
                                                       aPoint,
@@ -623,15 +624,15 @@ namespace dxcanvas
 
             // Setup an ImageAttributes with an alpha-modulating
             // color matrix.
-            const rendering::ARGBColor& rARGBColor(
+            rendering::ARGBColor aARGBColor(
                 mpDevice->getDeviceColorSpace()->convertToARGB(renderState.DeviceColor)[0]);
 
             Gdiplus::ImageAttributes aImgAttr;
             tools::setModulateImageAttributes( aImgAttr,
-                                               rARGBColor.Red,
-                                               rARGBColor.Green,
-                                               rARGBColor.Blue,
-                                               rARGBColor.Alpha );
+                                               aARGBColor.Red,
+                                               aARGBColor.Green,
+                                               aARGBColor.Blue,
+                                               aARGBColor.Alpha );
 
             ENSURE_OR_THROW(
                 Gdiplus::Ok == pGraphics->DrawImage( pBitmap.get(),
@@ -663,7 +664,6 @@ namespace dxcanvas
         switch( nMode )
         {
             case rendering::CompositeOperation::OVER:
-                // FALLTHROUGH intended
             case rendering::CompositeOperation::CLEAR:
                 aRet = Gdiplus::CompositingModeSourceOver;
                 break;
@@ -673,25 +673,15 @@ namespace dxcanvas
                 break;
 
             case rendering::CompositeOperation::DESTINATION:
-                // FALLTHROUGH intended
             case rendering::CompositeOperation::UNDER:
-                // FALLTHROUGH intended
             case rendering::CompositeOperation::INSIDE:
-                // FALLTHROUGH intended
             case rendering::CompositeOperation::INSIDE_REVERSE:
-                // FALLTHROUGH intended
             case rendering::CompositeOperation::OUTSIDE:
-                // FALLTHROUGH intended
             case rendering::CompositeOperation::OUTSIDE_REVERSE:
-                // FALLTHROUGH intended
             case rendering::CompositeOperation::ATOP:
-                // FALLTHROUGH intended
             case rendering::CompositeOperation::ATOP_REVERSE:
-                // FALLTHROUGH intended
             case rendering::CompositeOperation::XOR:
-                // FALLTHROUGH intended
             case rendering::CompositeOperation::ADD:
-                // FALLTHROUGH intended
             case rendering::CompositeOperation::SATURATE:
                 // TODO(F2): Problem, because GDI+ only knows about two compositing modes
                 aRet = Gdiplus::CompositingModeSourceOver;
@@ -705,7 +695,7 @@ namespace dxcanvas
         return aRet;
     }
 
-    void CanvasHelper::setupGraphicsState( GraphicsSharedPtr&            rGraphics,
+    void CanvasHelper::setupGraphicsState( GraphicsSharedPtr const & rGraphics,
                                            const rendering::ViewState&   viewState,
                                            const rendering::RenderState& renderState )
     {
@@ -721,7 +711,7 @@ namespace dxcanvas
         // add output offset
         if( !maOutputOffset.equalZero() )
         {
-            const basegfx::B2DHomMatrix aOutputOffset(basegfx::tools::createTranslateB2DHomMatrix(
+            const basegfx::B2DHomMatrix aOutputOffset(basegfx::utils::createTranslateB2DHomMatrix(
                 maOutputOffset.getX(), maOutputOffset.getY()));
             aTransform = aOutputOffset * aTransform;
         }
@@ -760,7 +750,7 @@ namespace dxcanvas
         // add output offset
         if( !maOutputOffset.equalZero() )
         {
-            const basegfx::B2DHomMatrix aOutputOffset(basegfx::tools::createTranslateB2DHomMatrix(
+            const basegfx::B2DHomMatrix aOutputOffset(basegfx::utils::createTranslateB2DHomMatrix(
                 maOutputOffset.getX(), maOutputOffset.getY()));
             aTransform = aOutputOffset * aTransform;
         }

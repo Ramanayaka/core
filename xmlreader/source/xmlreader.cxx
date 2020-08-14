@@ -21,11 +21,9 @@
 
 #include <cassert>
 #include <climits>
-#include <cstddef>
 
 #include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
 #include <osl/file.h>
 #include <rtl/character.hxx>
 #include <rtl/string.h>
@@ -52,20 +50,6 @@ bool isSpace(char c) {
     }
 }
 
-}
-
-XmlReader::XmlReader(char const *sStr, size_t nLength)
-    : fileUrl_("stream")
-    , fileHandle_(nullptr)
-    , fileSize_(0)
-    , fileAddress_(nullptr)
-{
-    namespaceIris_.push_back(Span("http://www.w3.org/XML/1998/namespace"));
-    namespaces_.push_back(NamespaceData(Span("xml"), NAMESPACE_XML));
-    pos_ = sStr;
-    end_ = pos_ + nLength;
-    state_ = State::Content;
-    firstAttribute_ = true;
 }
 
 XmlReader::XmlReader(OUString const & fileUrl)
@@ -100,8 +84,8 @@ XmlReader::XmlReader(OUString const & fileUrl)
         throw css::uno::RuntimeException(
             "cannot mmap " + fileUrl_ + " (" + OUString::number(e) + ")" );
     }
-    namespaceIris_.push_back(Span("http://www.w3.org/XML/1998/namespace"));
-    namespaces_.push_back(NamespaceData(Span("xml"), NAMESPACE_XML));
+    namespaceIris_.emplace_back("http://www.w3.org/XML/1998/namespace");
+    namespaces_.emplace_back(Span("xml"), NAMESPACE_XML);
     pos_ = static_cast< char * >(fileAddress_);
     end_ = pos_ + fileSize_;
     state_ = State::Content;
@@ -128,13 +112,13 @@ XmlReader::~XmlReader() {
 int XmlReader::registerNamespaceIri(Span const & iri) {
     int id = toNamespaceId(namespaceIris_.size());
     namespaceIris_.push_back(iri);
-    if (iri.equals("http://www.w3.org/2001/XMLSchema-instance")) {
+    if (iri == "http://www.w3.org/2001/XMLSchema-instance") {
         // Old user layer .xcu files used the xsi namespace prefix without
         // declaring a corresponding namespace binding, see issue 77174; reading
         // those files during migration would fail without this hack that can be
         // removed once migration is no longer relevant (see
         // configmgr::Components::parseModificationLayer):
-        namespaces_.push_back(NamespaceData(Span("xsi"), id));
+        namespaces_.emplace_back(Span("xsi"), id);
     }
     return id;
 }
@@ -148,7 +132,7 @@ XmlReader::Result XmlReader::nextItem(Text reportText, Span * data, int * nsId)
             return handleSkippedText(data, nsId);
         case Text::Raw:
             return handleRawText(data);
-        case Text::Normalized:
+        default: // Text::Normalized
             return handleNormalizedText(data);
         }
     case State::StartTag:
@@ -198,13 +182,12 @@ Span XmlReader::getAttributeValue(bool fullyNormalize) {
 }
 
 int XmlReader::getNamespaceId(Span const & prefix) const {
-    for (NamespaceList::const_reverse_iterator i(namespaces_.rbegin());
-         i != namespaces_.rend(); ++i)
-    {
-        if (prefix.equals(i->prefix)) {
-            return i->nsId;
-        }
-    }
+    auto i = std::find_if(namespaces_.crbegin(), namespaces_.crend(),
+        [&prefix](const NamespaceData& rNamespaceData) { return prefix == rNamespaceData.prefix; });
+
+    if (i != namespaces_.rend())
+        return i->nsId;
+
     return NAMESPACE_UNKNOWN;
 }
 
@@ -386,7 +369,7 @@ int XmlReader::scanNamespaceIri(char const * begin, char const * end) {
     assert(begin != nullptr && begin <= end);
     Span iri(handleAttributeValue(begin, end, false));
     for (NamespaceIris::size_type i = 0; i < namespaceIris_.size(); ++i) {
-        if (namespaceIris_[i].equals(iri)) {
+        if (namespaceIris_[i] == iri) {
             return toNamespaceId(i);
         }
     }
@@ -472,9 +455,9 @@ char const * XmlReader::handleReference(char const * position, char const * end)
     } else {
         struct EntityRef {
             char const * inBegin;
-            sal_Int32 inLength;
+            sal_Int32 const inLength;
             char const * outBegin;
-            sal_Int32 outLength;
+            sal_Int32 const outLength;
         };
         static EntityRef const refs[] = {
             { RTL_CONSTASCII_STRINGPARAM("amp;"),
@@ -652,23 +635,21 @@ XmlReader::Result XmlReader::handleStartTag(int * nsId, Span * localName) {
         char const * valueEnd = pos_ + i;
         pos_ += i + 1;
         if (attrNameColon == nullptr &&
-            Span(attrNameBegin, attrNameEnd - attrNameBegin).equals("xmlns"))
+            Span(attrNameBegin, attrNameEnd - attrNameBegin) == "xmlns")
         {
             hasDefaultNs = true;
             defaultNsId = scanNamespaceIri(valueBegin, valueEnd);
         } else if (attrNameColon != nullptr &&
-                   Span(attrNameBegin, attrNameColon - attrNameBegin).equals(
-                       "xmlns"))
+                   Span(attrNameBegin, attrNameColon - attrNameBegin) ==
+                       "xmlns")
         {
-            namespaces_.push_back(
-                NamespaceData(
+            namespaces_.emplace_back(
                     Span(attrNameColon + 1, attrNameEnd - (attrNameColon + 1)),
-                    scanNamespaceIri(valueBegin, valueEnd)));
+                    scanNamespaceIri(valueBegin, valueEnd));
         } else {
-            attributes_.push_back(
-                AttributeData(
+            attributes_.emplace_back(
                     attrNameBegin, attrNameEnd, attrNameColon, valueBegin,
-                    valueEnd));
+                    valueEnd);
         }
     }
     if (!hasDefaultNs && !elements_.empty()) {
@@ -725,7 +706,8 @@ XmlReader::Result XmlReader::handleEndTag() {
 
 void XmlReader::handleElementEnd() {
     assert(!elements_.empty());
-    namespaces_.resize(elements_.top().inheritedNamespaces);
+    auto end = elements_.top().inheritedNamespaces;
+    namespaces_.resize(end);
     elements_.pop();
     state_ = elements_.empty() ? State::Done : State::Content;
 }

@@ -23,7 +23,7 @@
 
 using namespace ::com::sun::star;
 
-vcl::unohelper::DragAndDropClient::~DragAndDropClient() {}
+vcl::unohelper::DragAndDropClient::~DragAndDropClient() COVERITY_NOEXCEPT_FALSE {}
 
 void vcl::unohelper::DragAndDropClient::dragGestureRecognized( const css::datatransfer::dnd::DragGestureEvent& /*dge*/ )
 {
@@ -62,10 +62,10 @@ vcl::unohelper::DragAndDropWrapper::~DragAndDropWrapper()
 uno::Any vcl::unohelper::DragAndDropWrapper::queryInterface( const uno::Type & rType )
 {
     uno::Any aRet = ::cppu::queryInterface( rType,
-                            (static_cast< css::lang::XEventListener* >( static_cast<css::datatransfer::dnd::XDragGestureListener*>(this)) ),
-                            (static_cast< css::datatransfer::dnd::XDragGestureListener* >(this)),
-                            (static_cast< css::datatransfer::dnd::XDragSourceListener* >(this)),
-                            (static_cast< css::datatransfer::dnd::XDropTargetListener* >(this)) );
+                            static_cast< css::lang::XEventListener* >( static_cast<css::datatransfer::dnd::XDragGestureListener*>(this) ),
+                            static_cast< css::datatransfer::dnd::XDragGestureListener* >(this),
+                            static_cast< css::datatransfer::dnd::XDragSourceListener* >(this),
+                            static_cast< css::datatransfer::dnd::XDropTargetListener* >(this) );
     return (aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType ));
 }
 

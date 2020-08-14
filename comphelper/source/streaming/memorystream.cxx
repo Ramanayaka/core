@@ -25,13 +25,15 @@
 #include <com/sun/star/io/XStream.hpp>
 #include <com/sun/star/io/XSeekableInputStream.hpp>
 #include <com/sun/star/io/XTruncate.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+//#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/diagnose.h>
 
 #include <string.h>
 #include <vector>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using ::cppu::OWeakObject;
 using ::cppu::WeakImplHelper;
@@ -42,6 +44,8 @@ using namespace ::osl;
 
 namespace comphelper
 {
+
+namespace {
 
 class UNOMemoryStream : public WeakImplHelper<XServiceInfo, XStream, XSeekableInputStream, XOutputStream, XTruncate>
 {
@@ -82,6 +86,8 @@ private:
     sal_Int32 mnCursor;
 };
 
+}
+
 UNOMemoryStream::UNOMemoryStream()
 : mnCursor(0)
 {
@@ -90,7 +96,7 @@ UNOMemoryStream::UNOMemoryStream()
 // XServiceInfo
 OUString SAL_CALL UNOMemoryStream::getImplementationName()
 {
-    return OUString("com.sun.star.comp.MemoryStream");
+    return "com.sun.star.comp.MemoryStream";
 }
 
 sal_Bool SAL_CALL UNOMemoryStream::supportsService(const OUString& ServiceName)
@@ -126,7 +132,7 @@ sal_Int32 SAL_CALL UNOMemoryStream::readBytes( Sequence< sal_Int8 >& aData, sal_
     if( nBytesToRead )
     {
         sal_Int8* pData = &(*maData.begin());
-        sal_Int8* pCursor = &((pData)[mnCursor]);
+        sal_Int8* pCursor = &(pData[mnCursor]);
         memcpy( static_cast<void*>(aData.getArray()), static_cast<void*>(pCursor), nBytesToRead );
 
         mnCursor += nBytesToRead;
@@ -150,7 +156,7 @@ void SAL_CALL UNOMemoryStream::skipBytes( sal_Int32 nBytesToSkip )
 
 sal_Int32 SAL_CALL UNOMemoryStream::available()
 {
-    return static_cast< sal_Int32 >( maData.size() ) - mnCursor;
+    return std::min<sal_Int64>( SAL_MAX_INT32, maData.size() - mnCursor);
 }
 
 void SAL_CALL UNOMemoryStream::closeInput()
@@ -165,9 +171,6 @@ void SAL_CALL UNOMemoryStream::seek( sal_Int64 location )
         throw IllegalArgumentException("this implementation does not support more than 2GB!", static_cast<OWeakObject*>(this), 0 );
 
     // seek operation should be able to resize the stream
-    if ( location > static_cast< sal_Int64 >( maData.size() ) )
-        maData.resize( static_cast< sal_Int32 >( location ) );
-
     if ( location > static_cast< sal_Int64 >( maData.size() ) )
         maData.resize( static_cast< sal_Int32 >( location ) );
 
@@ -188,24 +191,24 @@ sal_Int64 SAL_CALL UNOMemoryStream::getLength()
 void SAL_CALL UNOMemoryStream::writeBytes( const Sequence< sal_Int8 >& aData )
 {
     const sal_Int32 nBytesToWrite( aData.getLength() );
-    if( nBytesToWrite )
+    if( !nBytesToWrite )
+        return;
+
+    sal_Int64 nNewSize = static_cast<sal_Int64>(mnCursor) + nBytesToWrite;
+    if( nNewSize > SAL_MAX_INT32 )
     {
-        sal_Int64 nNewSize = static_cast< sal_Int64 >( mnCursor + nBytesToWrite );
-        if( nNewSize > SAL_MAX_INT32 )
-        {
-            OSL_ASSERT(false);
-            throw IOException("this implementation does not support more than 2GB!", static_cast<OWeakObject*>(this) );
-        }
-
-        if( static_cast< sal_Int32 >( nNewSize ) > static_cast< sal_Int32 >( maData.size() ) )
-            maData.resize( static_cast< sal_Int32 >( nNewSize ) );
-
-        sal_Int8* pData = &(*maData.begin());
-        sal_Int8* pCursor = &(pData[mnCursor]);
-        memcpy( pCursor, aData.getConstArray(), nBytesToWrite );
-
-        mnCursor += nBytesToWrite;
+        OSL_ASSERT(false);
+        throw IOException("this implementation does not support more than 2GB!", static_cast<OWeakObject*>(this) );
     }
+
+    if( static_cast< sal_Int32 >( nNewSize ) > static_cast< sal_Int32 >( maData.size() ) )
+        maData.resize( nNewSize );
+
+    sal_Int8* pData = &(*maData.begin());
+    sal_Int8* pCursor = &(pData[mnCursor]);
+    memcpy( pCursor, aData.getConstArray(), nBytesToWrite );
+
+    mnCursor += nBytesToWrite;
 }
 
 void SAL_CALL UNOMemoryStream::flush()
@@ -220,13 +223,13 @@ void SAL_CALL UNOMemoryStream::closeOutput()
 //XTruncate
 void SAL_CALL UNOMemoryStream::truncate()
 {
-    maData.resize( 0 );
+    maData.clear();
     mnCursor = 0;
 }
 
 } // namespace comphelper
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_MemoryStream(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

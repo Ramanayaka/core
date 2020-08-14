@@ -25,16 +25,16 @@
 #include <rtl/strbuf.hxx>
 
 #include <map>
-#include <set>
+#include <memory>
 
-#include <wrtww8.hxx>
+#include "wrtww8.hxx"
 
 class RtfExport;
 class RtfAttributeOutput;
 class SwFrameFormat;
 
 /// Handles export of drawings using RTF markup
-class RtfSdrExport : public EscherEx
+class RtfSdrExport final : public EscherEx
 {
     RtfExport& m_rExport;
 
@@ -46,15 +46,17 @@ class RtfSdrExport : public EscherEx
     sal_uInt32 m_nShapeType;
 
     /// Remember the shape flags.
-    sal_uInt32 m_nShapeFlags;
+    ShapeFlag m_nShapeFlags;
 
     /// Remember style, the most important shape attribute ;-)
     OStringBuffer m_aShapeStyle;
 
-    std::map<OString,OString> m_aShapeProps;
+    std::map<OString, OString> m_aShapeProps;
 
     /// Remember which shape types we had already written.
-    bool* m_pShapeTypeWritten;
+    std::unique_ptr<bool[]> m_pShapeTypeWritten;
+
+    bool m_bInGroup = false;
 
 public:
     explicit RtfSdrExport(RtfExport& rExport);
@@ -70,22 +72,20 @@ public:
     /// Write editeng text, e.g. shape or comment.
     void WriteOutliner(const OutlinerParaObject& rParaObj, TextTypes eType);
 
-protected:
+private:
     /// Start the shape for which we just collected the information.
     ///
     /// Returns the element's tag number, -1 means we wrote nothing.
     using EscherEx::StartShape;
-    sal_Int32   StartShape();
+    sal_Int32 StartShape();
 
     /// End the shape.
     ///
     /// The parameter is just what we got from StartShape().
     using EscherEx::EndShape;
-    void        EndShape(sal_Int32 nShapeElement);
+    void EndShape(sal_Int32 nShapeElement);
 
     void Commit(EscherPropertyContainer& rProps, const tools::Rectangle& rRect) override;
-
-private:
 
     void OpenContainer(sal_uInt16 nEscherContainer, int nRecInstance = 0) override;
     void CloseContainer() override;
@@ -93,9 +93,8 @@ private:
     sal_uInt32 EnterGroup(const OUString& rShapeName, const tools::Rectangle* pBoundRect) override;
     void LeaveGroup() override;
 
-    void AddShape(sal_uInt32 nShapeType, sal_uInt32 nShapeFlags, sal_uInt32 nShapeId = 0) override;
+    void AddShape(sal_uInt32 nShapeType, ShapeFlag nShapeFlags, sal_uInt32 nShapeId = 0) override;
 
-private:
     /// Add starting and ending point of a line to the m_pShapeAttrList.
     void AddLineDimensions(const tools::Rectangle& rRectangle);
 

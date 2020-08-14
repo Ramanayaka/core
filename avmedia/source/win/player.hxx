@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_WIN_PLAYER_HXX
-#define INCLUDED_AVMEDIA_SOURCE_WIN_PLAYER_HXX
+#pragma once
 
 #include <sal/config.h>
 
@@ -26,7 +25,7 @@
 
 #include "wincommon.hxx"
 
-#include "com/sun/star/media/XPlayer.hpp"
+#include <com/sun/star/media/XPlayer.hpp>
 
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
@@ -44,7 +43,7 @@ struct IDDrawExclModeVideo;
 struct IDirectDraw;
 struct IDirectDrawSurface;
 
-namespace avmedia { namespace win {
+namespace avmedia::win {
 
 typedef ::cppu::WeakComponentImplHelper< css::media::XPlayer,
                                          css::lang::XServiceInfo > Player_BASE;
@@ -55,7 +54,7 @@ class Player : public cppu::BaseMutex,
 {
 public:
 
-    explicit Player( const css::uno::Reference< css::lang::XMultiServiceFactory >& rxMgr );
+    explicit Player();
     ~Player() override;
 
     bool                create( const OUString& rURL );
@@ -92,8 +91,6 @@ public:
 
 private:
 
-    css::uno::Reference< css::lang::XMultiServiceFactory > mxMgr;
-
     OUString                maURL;
     IGraphBuilder*          mpGB;
     IBaseFilter*            mpOMF;
@@ -114,9 +111,7 @@ private:
     void                    ImplLayoutVideoWindow();
 };
 
-} // namespace win
-} // namespace avmedia
+} // namespace avmedia::win
 
-#endif // INCLUDED_AVMEDIA_SOURCE_WIN_PLAYER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

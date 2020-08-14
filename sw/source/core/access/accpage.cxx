@@ -18,24 +18,21 @@
  */
 
 #include <vcl/window.hxx>
-#include <vcl/svapp.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include "accpage.hxx"
 
-#include "access.hrc"
+#include <strings.hrc>
 #include <pagefrm.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
-using uno::RuntimeException;
 using uno::Sequence;
 
-const sal_Char sImplementationName[] = "com.sun.star.comp.Writer.SwAccessiblePageView";
+const char sImplementationName[] = "com.sun.star.comp.Writer.SwAccessiblePageView";
 
 bool SwAccessiblePage::IsSelected()
 {
@@ -53,7 +50,7 @@ void SwAccessiblePage::GetStates(
     // FOCUSED
     if( IsSelected() )
     {
-        OSL_ENSURE( bIsSelected, "bSelected out of sync" );
+        OSL_ENSURE( m_bIsSelected, "bSelected out of sync" );
         ::rtl::Reference < SwAccessibleContext > xThis( this );
         GetMap()->SetCursorContext( xThis );
 
@@ -70,8 +67,8 @@ void SwAccessiblePage::InvalidateCursorPos_()
 
     {
         osl::MutexGuard aGuard( m_Mutex );
-        bOldSelected = bIsSelected;
-        bIsSelected = bNewSelected;
+        bOldSelected = m_bIsSelected;
+        m_bIsSelected = bNewSelected;
     }
 
     if( bNewSelected )
@@ -93,25 +90,25 @@ void SwAccessiblePage::InvalidateCursorPos_()
 void SwAccessiblePage::InvalidateFocus_()
 {
     vcl::Window *pWin = GetWindow();
-    if( pWin )
+    if( !pWin )
+        return;
+
+    bool bSelected;
+
     {
-        bool bSelected;
-
-        {
-            osl::MutexGuard aGuard( m_Mutex );
-            bSelected = bIsSelected;
-        }
-        OSL_ENSURE( bSelected, "focus object should be selected" );
-
-        FireStateChangedEvent( AccessibleStateType::FOCUSED,
-                               pWin->HasFocus() && bSelected );
+        osl::MutexGuard aGuard( m_Mutex );
+        bSelected = m_bIsSelected;
     }
+    OSL_ENSURE( bSelected, "focus object should be selected" );
+
+    FireStateChangedEvent( AccessibleStateType::FOCUSED,
+                           pWin->HasFocus() && bSelected );
 }
 
 SwAccessiblePage::SwAccessiblePage(std::shared_ptr<SwAccessibleMap> const& pInitMap,
                                     const SwFrame* pFrame )
     : SwAccessibleContext( pInitMap, AccessibleRole::PANEL, pFrame )
-    , bIsSelected( false )
+    , m_bIsSelected( false )
 {
     assert(pFrame != nullptr);
     assert(pInitMap != nullptr);
@@ -129,12 +126,12 @@ SwAccessiblePage::~SwAccessiblePage()
 bool SwAccessiblePage::HasCursor()
 {
     osl::MutexGuard aGuard( m_Mutex );
-    return bIsSelected;
+    return m_bIsSelected;
 }
 
 OUString SwAccessiblePage::getImplementationName( )
 {
-    return OUString(sImplementationName);
+    return sImplementationName;
 }
 
 sal_Bool SwAccessiblePage::supportsService( const OUString& rServiceName)
@@ -144,11 +141,7 @@ sal_Bool SwAccessiblePage::supportsService( const OUString& rServiceName)
 
 Sequence<OUString> SwAccessiblePage::getSupportedServiceNames( )
 {
-    Sequence< OUString > aRet(2);
-    OUString* pArray = aRet.getArray();
-    pArray[0] = "com.sun.star.text.AccessiblePageView";
-    pArray[1] = sAccessibleServiceName;
-    return aRet;
+    return { "com.sun.star.text.AccessiblePageView", sAccessibleServiceName };
 }
 
 Sequence< sal_Int8 > SAL_CALL SwAccessiblePage::getImplementationId()

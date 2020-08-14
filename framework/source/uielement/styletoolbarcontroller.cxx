@@ -12,10 +12,13 @@
 #include <tools/urlobj.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/toolbox.hxx>
+#include <sal/log.hxx>
 
+#include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/status/Template.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
+#include <com/sun/star/util/XURLTransformer.hpp>
 
 namespace {
 
@@ -24,17 +27,17 @@ OUString MapFamilyToCommand( const OUString& rFamily )
     if ( rFamily == "ParagraphStyles" ||
          rFamily == "CellStyles" ||         // In sc
          rFamily == "graphics" )            // In sd
-        return OUString( ".uno:ParaStyle" );
+        return ".uno:ParaStyle";
     else if ( rFamily == "CharacterStyles" )
-        return OUString( ".uno:CharStyle" );
+        return ".uno:CharStyle";
     else if ( rFamily == "PageStyles" )
-        return OUString( ".uno:PageStyle" );
+        return ".uno:PageStyle";
     else if ( rFamily == "FrameStyles" )
-        return OUString( ".uno:FrameStyle" );
+        return ".uno:FrameStyle";
     else if ( rFamily == "NumberingStyles" )
-        return OUString( ".uno:ListStyle" );
+        return ".uno:ListStyle";
     else if ( rFamily == "TableStyles" )
-        return OUString( ".uno:TableStyle" );
+        return ".uno:TableStyle";
 
     return OUString();
 }

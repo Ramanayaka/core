@@ -20,10 +20,7 @@
 #ifndef INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_INC_DP_UCB_H
 #define INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_INC_DP_UCB_H
 
-#include <list>
 #include <vector>
-#include <rtl/byteseq.hxx>
-#include <rtl/instance.hxx>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include "dp_misc_api.hxx"
@@ -52,8 +49,7 @@ struct DESKTOP_DEPLOYMENTMISC_DLLPUBLIC StrTitle
         createCursor( ::ucbhelper::Content &rContent,
                       ucbhelper::ResultSetInclude eInclude )
     {
-        return css::uno::Reference< css::sdbc::XResultSet >(
-                rContent.createCursor( StrTitle::getTitleSequence(), eInclude ) );
+        return rContent.createCursor( StrTitle::getTitleSequence(), eInclude );
     }
 };
 
@@ -89,7 +85,7 @@ bool readLine( OUString * res, OUString const & startingWith,
                ::ucbhelper::Content & ucb_content, rtl_TextEncoding textenc );
 
 DESKTOP_DEPLOYMENTMISC_DLLPUBLIC
-bool readProperties( std::list< std::pair< OUString, OUString> > & out_result,
+bool readProperties( std::vector< std::pair< OUString, OUString> > & out_result,
                 ::ucbhelper::Content & ucb_content);
 
 

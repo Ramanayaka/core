@@ -22,7 +22,6 @@
 
 #include <svx/svxdllapi.h>
 #include <cppuhelper/weak.hxx>
-#include <memory>
 
 class KeyEvent;
 class MouseEvent;
@@ -30,16 +29,17 @@ namespace vcl { class Window; }
 class SfxItemSet;
 class SfxRequest;
 class SfxStyleSheet;
-class SdrPage;
 class SdrModel;
 class Point;
+class FontList;
+class SdrObject;
 
 namespace sdr
 {
 
 namespace table { struct CellPos; }
 
-class SVX_DLLPUBLIC SelectionController: public cppu::OWeakObject
+class SVXCORE_DLLPUBLIC SelectionController: public cppu::OWeakObject
 {
 public:
     virtual bool onKeyInput(const KeyEvent& rKEvt, vcl::Window* pWin);
@@ -52,7 +52,6 @@ public:
     virtual void GetState( SfxItemSet& rSet );
     virtual void Execute( SfxRequest& rReq );
 
-    virtual bool HasMarked();
     virtual bool DeleteMarked();
 
     virtual bool GetAttributes(SfxItemSet& rTargetSet, bool bOnlyHardAttr) const;
@@ -61,11 +60,8 @@ public:
     virtual bool GetStyleSheet( SfxStyleSheet* &rpStyleSheet ) const;
     virtual bool SetStyleSheet( SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr );
 
-    virtual bool GetMarkedObjModel( SdrPage* pNewPage );
+    virtual SdrObject* GetMarkedSdrObjClone( SdrModel& rTargetModel );
     virtual bool PasteObjModel( const SdrModel& rModel );
-
-    /** returns a format paint brush set from the current selection */
-    virtual bool TakeFormatPaintBrush( std::shared_ptr< SfxItemSet >& rFormatSet  );
 
     /** applies a format paint brush set from the current selection.
         if bNoCharacterFormats is true, no character attributes are changed.
@@ -78,6 +74,8 @@ public:
     virtual bool setCursorLogicPosition(const Point& rPosition, bool bPoint);
     /// Get the position of the first and the last selected cell.
     virtual void getSelectedCells(table::CellPos& rFirstPos, table::CellPos& rLastPos);
+    /// Changes the font (grow/shrink) according to the input parameters.
+    virtual bool ChangeFontSize(bool bGrow, const FontList* pFontList);
 };
 
 }

@@ -21,24 +21,17 @@
 
 #include <sfx2/tabdlg.hxx>
 
-#include "swtypes.hxx"
-#include "swtablerep.hxx"
-
 class SwWrtShell;
 struct TColumn;
 
 // table dialog
-class SwTableTabDlg : public SfxTabDialog
+class SwTableTabDlg : public SfxTabDialogController
 {
     SwWrtShell* pShell;
-    sal_uInt16 m_nTextFlowId;
-    sal_uInt16 m_nBackgroundId;
-    sal_uInt16 m_nBorderId;
 
-    virtual void        PageCreated(sal_uInt16 nId, SfxTabPage& rPage) override;
+    virtual void PageCreated(const OString& rId, SfxTabPage& rPage) override;
 public:
-     SwTableTabDlg( vcl::Window* pParent,
-                    const SfxItemSet* pItemSet, SwWrtShell* pSh );
+    SwTableTabDlg(weld::Window* pParent, const SfxItemSet* pItemSet, SwWrtShell* pSh);
 };
 
 #endif

@@ -19,12 +19,10 @@
 
 #include <svglinenode.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgLineNode::SvgLineNode(
             SvgDocument& rDocument,
             SvgNode* pParent)
@@ -33,8 +31,7 @@ namespace svgio
             maX1(0),
             maY1(0),
             maX2(0),
-            maY2(0),
-            mpaTransform(nullptr)
+            maY2(0)
         {
         }
 
@@ -124,34 +121,33 @@ namespace svgio
         {
             const SvgStyleAttributes* pStyle = getSvgStyleAttributes();
 
-            if(pStyle)
+            if(!pStyle)
+                return;
+
+            const basegfx::B2DPoint X(
+                getX1().isSet() ? getX1().solve(*this, xcoordinate) : 0.0,
+                getY1().isSet() ? getY1().solve(*this, ycoordinate) : 0.0);
+            const basegfx::B2DPoint Y(
+                getX2().isSet() ? getX2().solve(*this, xcoordinate) : 0.0,
+                getY2().isSet() ? getY2().solve(*this, ycoordinate) : 0.0);
+
+            // X and Y may be equal, do not drop them. Markers or linecaps 'round' and 'square'
+            // need to be drawn for zero-length lines too.
+
+            basegfx::B2DPolygon aPath;
+
+            aPath.append(X);
+            aPath.append(Y);
+
+            drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
+
+            pStyle->add_path(basegfx::B2DPolyPolygon(aPath), aNewTarget, nullptr);
+
+            if(!aNewTarget.empty())
             {
-                const basegfx::B2DPoint X(
-                    getX1().isSet() ? getX1().solve(*this, xcoordinate) : 0.0,
-                    getY1().isSet() ? getY1().solve(*this, ycoordinate) : 0.0);
-                const basegfx::B2DPoint Y(
-                    getX2().isSet() ? getX2().solve(*this, xcoordinate) : 0.0,
-                    getY2().isSet() ? getY2().solve(*this, ycoordinate) : 0.0);
-
-                // X and Y may be equal, do not drop them. Markers or linecaps 'round' and 'square'
-                // need to be drawn for zero-length lines too.
-
-                basegfx::B2DPolygon aPath;
-
-                aPath.append(X);
-                aPath.append(Y);
-
-                drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
-
-                pStyle->add_path(basegfx::B2DPolyPolygon(aPath), aNewTarget, nullptr);
-
-                if(!aNewTarget.empty())
-                {
-                    pStyle->add_postProcess(rTarget, aNewTarget, getTransform());
-                }
+                pStyle->add_postProcess(rTarget, aNewTarget, getTransform());
             }
         }
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

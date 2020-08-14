@@ -46,14 +46,14 @@ namespace helpdatafileproxy {
             { return m_pBuffer.get(); }
     };
 
-    typedef std::unordered_map< OString,std::pair<int,int>,OStringHash >   StringToValPosMap;
-    typedef std::unordered_map< OString,OString,OStringHash >     StringToDataMap;
+    typedef std::unordered_map< OString,std::pair<int,int> >   StringToValPosMap;
+    typedef std::unordered_map< OString,OString >     StringToDataMap;
 
     class Hdf
     {
         OUString       m_aFileURL;
-        StringToDataMap*    m_pStringToDataMap;
-        StringToValPosMap*  m_pStringToValPosMap;
+        std::unique_ptr<StringToDataMap>   m_pStringToDataMap;
+        std::unique_ptr<StringToValPosMap> m_pStringToValPosMap;
         css::uno::Reference< css::ucb::XSimpleFileAccess3 >
                             m_xSFA;
 
@@ -72,8 +72,6 @@ namespace helpdatafileproxy {
         Hdf( const OUString& rFileURL,
             css::uno::Reference< css::ucb::XSimpleFileAccess3 > const & xSFA )
                 : m_aFileURL( rFileURL )
-                , m_pStringToDataMap( nullptr )
-                , m_pStringToValPosMap( nullptr )
                 , m_xSFA( xSFA )
                 , m_pItData( nullptr )
                 , m_nItRead( -1 )
@@ -81,8 +79,7 @@ namespace helpdatafileproxy {
         {
             OSL_ASSERT(comphelper::isFileUrl(rFileURL));
         }
-        ~Hdf()
-            { releaseHashMap(); }
+        ~Hdf();
 
         void createHashMap( bool bOptimizeForPerformance );
         void releaseHashMap();

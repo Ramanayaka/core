@@ -22,13 +22,11 @@
 #include <comphelper/extract.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <osl/diagnose.h>
 #include <com/sun/star/uno/Any.hxx>
 
 using namespace ::com::sun::star::uno;
 
 
-// class XMLEnumPropertyHdl
 
 XMLEnumPropertyHdl::~XMLEnumPropertyHdl()
 {
@@ -47,16 +45,16 @@ bool XMLEnumPropertyHdl::importXML( const OUString& rStrImpValue, Any& rValue, c
             rValue = ::cppu::int2enum( nValue, mrType );
             break;
         case TypeClass_LONG:
-            rValue <<= (sal_Int32) nValue;
+            rValue <<= static_cast<sal_Int32>(nValue);
             break;
         case TypeClass_SHORT:
-            rValue <<= (sal_Int16) nValue;
+            rValue <<= static_cast<sal_Int16>(nValue);
             break;
         case TypeClass_BYTE:
-            rValue <<= (sal_Int8) nValue;
+            rValue <<= static_cast<sal_Int8>(nValue);
             break;
         default:
-            OSL_FAIL( "Wrong type for enum property handler!" );
+            assert(!"Wrong type for enum property handler!");
             return false;
         }
         return true;
@@ -74,7 +72,7 @@ bool XMLEnumPropertyHdl::exportXML( OUString& rStrExpValue, const Any& rValue, c
 
     OUStringBuffer aOut;
 
-    if(!SvXMLUnitConverter::convertEnum( aOut, (sal_uInt16)nValue, mpEnumMap ))
+    if(!SvXMLUnitConverter::convertEnum( aOut, static_cast<sal_uInt16>(nValue), mpEnumMap ))
         return false;
 
     rStrExpValue = aOut.makeStringAndClear();

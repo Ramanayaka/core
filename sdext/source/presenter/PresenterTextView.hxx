@@ -21,21 +21,20 @@
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERTEXTVIEW_HXX
 
 #include "PresenterTheme.hxx"
-#include <com/sun/star/accessibility/XAccessibleText.hpp>
+#include <com/sun/star/accessibility/TextSegment.hpp>
+#include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/geometry/RealPoint2D.hpp>
 #include <com/sun/star/geometry/RealSize2D.hpp>
 #include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <com/sun/star/i18n/XScriptTypeDetector.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
-#include <com/sun/star/style/ParagraphAdjust.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <cppuhelper/basemutex.hxx>
 
 #include <functional>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 class PresenterTextCaret
 {
@@ -106,7 +105,7 @@ public:
         const double nClipTop,
         const double nClipBottom);
 
-    double GetTotalTextHeight();
+    double GetTotalTextHeight() const;
 
     void SetCharacterOffset (const sal_Int32 nCharacterOffset);
     sal_Int32 GetCharacterCount() const;
@@ -138,7 +137,7 @@ public:
     void SetCaretPosition (const sal_Int32 nPosition) const;
     void SetOrigin (const double nXOrigin, const double nYOrigin);
     css::awt::Point GetRelativeLocation() const;
-    css::awt::Size GetSize();
+    css::awt::Size GetSize() const;
 
 private:
     OUString msParagraphText;
@@ -273,7 +272,7 @@ private:
         const sal_Int32 nCharacterIndex) const;
 };
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 #endif
 

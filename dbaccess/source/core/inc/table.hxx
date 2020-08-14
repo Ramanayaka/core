@@ -20,22 +20,12 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_INC_TABLE_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_INC_TABLE_HXX
 
-#include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <com/sun/star/sdbcx/XDataDescriptorFactory.hpp>
-#include <com/sun/star/sdbcx/XIndexesSupplier.hpp>
-#include <com/sun/star/sdbcx/XKeysSupplier.hpp>
-#include <com/sun/star/sdbcx/XRename.hpp>
-#include <com/sun/star/sdbcx/XAlterTable.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 
-#include "apitools.hxx"
 #include "datasettings.hxx"
-#include <column.hxx>
+#include "column.hxx"
 #include <connectivity/CommonTools.hxx>
 #include <connectivity/TTableHelper.hxx>
-#include <comphelper/uno3.hxx>
 #include <comphelper/IdPropArrayHelper.hxx>
 
 namespace dbaccess
@@ -76,19 +66,19 @@ namespace dbaccess
             @param  _rNames
                 The column names.
         */
-        virtual ::connectivity::sdbcx::OCollection* createColumns(const ::connectivity::TStringVector& _rNames) override;
+        virtual ::connectivity::sdbcx::OCollection* createColumns(const ::std::vector< OUString>& _rNames) override;
 
         /** creates the key collection for the table
             @param  _rNames
                 The key names.
         */
-        virtual ::connectivity::sdbcx::OCollection* createKeys(const ::connectivity::TStringVector& _rNames) override;
+        virtual ::connectivity::sdbcx::OCollection* createKeys(const ::std::vector< OUString>& _rNames) override;
 
         /** creates the index collection for the table
             @param  _rNames
                 The index names.
         */
-        virtual ::connectivity::sdbcx::OCollection* createIndexes(const ::connectivity::TStringVector& _rNames) override;
+        virtual ::connectivity::sdbcx::OCollection* createIndexes(const ::std::vector< OUString>& _rNames) override;
 
         // OComponentHelper
         virtual void SAL_CALL disposing() override;
@@ -125,7 +115,7 @@ namespace dbaccess
         //XTypeProvider
         virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
         virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
-        static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+        static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
     // css::lang::XServiceInfo
         DECLARE_SERVICE_INFO();

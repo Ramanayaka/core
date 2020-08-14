@@ -24,13 +24,12 @@
 #include <pagedesc.hxx>
 
 class SwDoc;
-class SwPageDesc;
 
 class SwUndoPageDesc : public SwUndo
 {
-    SwPageDescExt aOld, aNew;
-    SwDoc * pDoc;
-    bool bExchange;
+    SwPageDescExt m_aOld, m_aNew;
+    SwDoc * m_pDoc;
+    bool m_bExchange;
 
     // To avoid duplication of (header/footer)content nodes for simple page desc changes
     void ExchangeContentNodes( SwPageDesc& rSource, SwPageDesc &rDest );
@@ -48,9 +47,9 @@ public:
 
 class SwUndoPageDescCreate : public SwUndo
 {
-    const SwPageDesc * pDesc;
-    SwPageDescExt aNew;
-    SwDoc * pDoc;
+    const SwPageDesc * m_pDesc;
+    SwPageDescExt m_aNew;
+    SwDoc * m_pDoc;
 
     void DoImpl();
 
@@ -67,8 +66,8 @@ public:
 
 class SwUndoPageDescDelete : public SwUndo
 {
-    SwPageDescExt aOld;
-    SwDoc * pDoc;
+    SwPageDescExt m_aOld;
+    SwDoc * m_pDoc;
 
     void DoImpl();
 

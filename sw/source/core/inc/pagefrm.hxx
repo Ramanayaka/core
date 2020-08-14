@@ -21,7 +21,7 @@
 
 #include <viewsh.hxx>
 #include "ftnboss.hxx"
-#include <tools/mempool.hxx>
+#include "hffrm.hxx"
 
 #include <SidebarWindowsTypes.hxx>
 
@@ -36,16 +36,18 @@ namespace vcl { class Font; }
 class SwSortedObjs;
 class SwAnchoredObject;
 
-/// A page of the document layout.
-class SwPageFrame: public SwFootnoteBossFrame
+/// A page of the document layout. Upper frame is expected to be an SwRootFrame
+/// instance. At least an SwBodyFrame lower is expected.
+class SAL_DLLPUBLIC_RTTI SwPageFrame: public SwFootnoteBossFrame
 {
     friend class SwFrame;
 
-    SwSortedObjs *m_pSortedObjs;
+    std::unique_ptr<SwSortedObjs> m_pSortedObjs;
 
     SwPageDesc *m_pDesc; //PageDesc that describes the Page
 
-    sal_uInt16  m_nPhyPageNum; // Physical page number
+    /// Physical page number: index into list of SwRootFrame lowers
+    sal_uInt16  m_nPhyPageNum;
 
     bool m_bInvalidContent      :1;
     bool m_bInvalidLayout       :1;
@@ -89,7 +91,7 @@ class SwPageFrame: public SwFootnoteBossFrame
 
     static void GetHorizontalShadowRect( const SwRect& _rPageRect,
                                      const SwViewShell*    _pViewShell,
-                                     OutputDevice* pRenderContext,
+                                     OutputDevice const * pRenderContext,
                                      SwRect&       _orBottomShadowRect,
                                      bool bPaintLeftShadow,
                                      bool bPaintRightShadow,
@@ -107,8 +109,6 @@ protected:
     size_t GetContentHeight(const long nTop, const long nBottom) const;
 
 public:
-    DECL_FIXEDMEMPOOL_NEWDEL(SwPageFrame)
-
     SwPageFrame( SwFrameFormat*, SwFrame*, SwPageDesc* );
 
     /// Make this public, so that the SwViewShell can access it when switching from browse mode
@@ -116,8 +116,8 @@ public:
     void PrepareHeader();
     void PrepareFooter();
 
-    const SwSortedObjs  *GetSortedObjs() const  { return m_pSortedObjs; }
-          SwSortedObjs  *GetSortedObjs()          { return m_pSortedObjs; }
+    const SwSortedObjs *GetSortedObjs() const { return m_pSortedObjs.get(); }
+          SwSortedObjs *GetSortedObjs()       { return m_pSortedObjs.get(); }
 
     void AppendDrawObjToPage( SwAnchoredObject& _rNewObj );
     void RemoveDrawObjFromPage( SwAnchoredObject& _rToRemoveObj );
@@ -136,7 +136,7 @@ public:
     inline const SwContentFrame  *FindFirstBodyContent() const;
     inline const SwContentFrame  *FindLastBodyContent() const;
 
-    SwRect GetBoundRect(OutputDevice* pOutputDevice) const;
+    SwRect GetBoundRect(OutputDevice const * pOutputDevice) const;
 
     // Specialized GetContentPos() for Field in Frames
     void GetContentPosition( const Point &rPt, SwPosition &rPos ) const;
@@ -160,7 +160,7 @@ public:
     //   this assertion. Thus, delete it.
     void PlaceFly( SwFlyFrame* pFly, SwFlyFrameFormat* pFormat );
 
-    virtual bool GetCursorOfst( SwPosition *, Point&,
+    virtual bool GetModelPositionForViewPoint( SwPosition *, Point&,
                               SwCursorMoveState* = nullptr, bool bTestBackground = false ) const override;
     /// Get info from Client
     virtual bool GetInfo( SfxPoolItem& ) const override;
@@ -169,7 +169,7 @@ public:
     virtual void Paste( SwFrame* pParent, SwFrame* pSibling = nullptr ) override;
     virtual void CheckDirection( bool bVert ) override;
     void CheckGrid( bool bInvalidate );
-    void PaintGrid( OutputDevice* pOut, SwRect &rRect ) const;
+    void PaintGrid( OutputDevice const * pOut, SwRect const &rRect ) const;
     bool HasGrid() const { return m_bHasGrid; }
 
     void PaintDecorators( ) const;
@@ -232,7 +232,7 @@ public:
 
         @return reference to an instance of class Color
     */
-    const Color GetDrawBackgrdColor() const;
+    Color GetDrawBackgrdColor() const;
 
     /** paint margin area of a page
 
@@ -248,7 +248,7 @@ public:
         has to be generated.
     */
     void PaintMarginArea( const SwRect& _rOutputRect,
-                          SwViewShell* _pViewShell ) const;
+                          SwViewShell const * _pViewShell ) const;
 
     /** paint page border and shadow
 
@@ -295,7 +295,7 @@ public:
     */
     static void GetBorderAndShadowBoundRect( const SwRect& _rPageRect,
                                              const SwViewShell*    _pViewShell,
-                                             OutputDevice* pRenderContext,
+                                             OutputDevice const * pRenderContext,
                                              SwRect& _orBorderAndShadowBoundRect,
                                              const bool bLeftShadow,
                                              const bool bRightShadow,
@@ -303,7 +303,7 @@ public:
                                             );
 
     static void PaintNotesSidebar(const SwRect& _rPageRect, SwViewShell* _pViewShell, sal_uInt16 nPageNum, bool bRight);
-    static void PaintNotesSidebarArrows(const Point &rMiddleFirst, const Point &rMiddleSecond, SwViewShell* _pViewShell, const Color& rColorUp, const Color& rColorDown);
+    static void PaintNotesSidebarArrows(const Point &rMiddleFirst, const Point &rMiddleSecond, SwViewShell const * _pViewShell, const Color& rColorUp, const Color& rColorDown);
     /**
         asks the page on which side a margin should be shown, e.g for notes
         returns true for left side, false for right side
@@ -312,9 +312,9 @@ public:
 
     virtual bool FillSelection( SwSelectionList& rList, const SwRect& rRect ) const override;
 
-    const SwRect PrtWithoutHeaderAndFooter() const;
+    SwRect PrtWithoutHeaderAndFooter() const;
 
-    // in case this is am empty page, this function returns the 'reference' page
+    // in case this is an empty page, this function returns the 'reference' page
     const SwPageFrame& GetFormatPage() const;
 
     /// If in header or footer area, it also indicates the exact area in rControl.
@@ -329,6 +329,9 @@ public:
     /// Is bottom-of-page-frame - bottom-of-text-frame difference valid in case whitespace is hidden?
     /// If false is returned, then the caller should handle negative difference as (at least) zero difference instead.
     bool CheckPageHeightValidForHideWhitespace(SwTwips nDiff);
+
+    const SwHeaderFrame* GetHeaderFrame() const;
+    const SwFooterFrame* GetFooterFrame() const;
 };
 
 inline SwContentFrame *SwPageFrame::FindFirstBodyContent()

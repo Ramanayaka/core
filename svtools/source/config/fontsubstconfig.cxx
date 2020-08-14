@@ -32,13 +32,13 @@ using namespace com::sun::star::uno;
 using namespace com::sun::star::beans;
 
 
-const sal_Char cReplacement[] = "Replacement";
-const sal_Char cFontPairs[] = "FontPairs";
+const char cReplacement[] = "Replacement";
+const char cFontPairs[] = "FontPairs";
 
-const sal_Char cReplaceFont[]   = "ReplaceFont";
-const sal_Char cSubstituteFont[]= "SubstituteFont";
-const sal_Char cOnScreenOnly[]  = "OnScreenOnly";
-const sal_Char cAlways[]        = "Always";
+const char cReplaceFont[]   = "ReplaceFont";
+const char cSubstituteFont[]= "SubstituteFont";
+const char cOnScreenOnly[]  = "OnScreenOnly";
+const char cAlways[]        = "Always";
 
 typedef std::vector<SubstitutionStruct> SubstitutionStructArr;
 
@@ -59,25 +59,23 @@ SvtFontSubstConfig::SvtFontSubstConfig() :
         bIsEnabled = *o3tl::doAccess<bool>(aValues.getConstArray()[0]);
 
     OUString sPropPrefix(cFontPairs);
-    Sequence<OUString> aNodeNames = GetNodeNames(sPropPrefix, ConfigNameFormat::LocalPath);
-    const OUString* pNodeNames = aNodeNames.getConstArray();
+    const Sequence<OUString> aNodeNames = GetNodeNames(sPropPrefix, ConfigNameFormat::LocalPath);
     Sequence<OUString> aPropNames(aNodeNames.getLength() * 4);
     OUString* pNames = aPropNames.getArray();
     sal_Int32 nName = 0;
     sPropPrefix += "/";
-    sal_Int32 nNode;
-    for(nNode = 0; nNode < aNodeNames.getLength(); nNode++)
+    for(const OUString& rNodeName : aNodeNames)
     {
-        OUString sStart = sPropPrefix + pNodeNames[nNode] + "/";
-        pNames[nName] = sStart;     pNames[nName++] += cReplaceFont;
-        pNames[nName] = sStart;     pNames[nName++] += cSubstituteFont;
-        pNames[nName] = sStart;     pNames[nName++] += cAlways;
-        pNames[nName] = sStart;     pNames[nName++] += cOnScreenOnly;
+        OUString sStart = sPropPrefix + rNodeName + "/";
+        pNames[nName++] = sStart + cReplaceFont;
+        pNames[nName++] = sStart + cSubstituteFont;
+        pNames[nName++] = sStart + cAlways;
+        pNames[nName++] = sStart + cOnScreenOnly;
     }
     Sequence<Any> aNodeValues = GetProperties(aPropNames);
     const Any* pNodeValues = aNodeValues.getConstArray();
     nName = 0;
-    for(nNode = 0; nNode < aNodeNames.getLength(); nNode++)
+    for(sal_Int32 nNode = 0; nNode < aNodeNames.getLength(); nNode++)
     {
         SubstitutionStruct aInsert;
         pNodeValues[nName++] >>= aInsert.sFont;
@@ -161,10 +159,7 @@ void SvtFontSubstConfig::Apply()
     OutputDevice::BeginFontSubstitution();
 
     // remove old substitutions
-    sal_uInt16 nOldCount = OutputDevice::GetFontSubstituteCount();
-
-    while (nOldCount)
-        OutputDevice::RemoveFontSubstitute(--nOldCount);
+    OutputDevice::RemoveFontsSubstitute();
 
     // read new substitutions
     sal_Int32 nCount = IsEnabled() ? SubstitutionCount() : 0;

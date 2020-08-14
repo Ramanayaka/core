@@ -20,13 +20,17 @@
 #define INCLUDED_CHART2_SOURCE_INC_CHARTVIEW_DRAWMODELWRAPPER_HXX
 
 #include <svx/svdmodel.hxx>
-#include <svx/svdobj.hxx>
 
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/drawing/XDrawPage.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include "chartviewdllapi.hxx"
+#include <chartview/chartviewdllapi.hxx>
+
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::drawing { class XDrawPage; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::drawing { class XShapes; }
+
+class SdrObjList;
+class SdrObject;
 
 namespace chart
 {
@@ -42,10 +46,7 @@ private:
     VclPtr<OutputDevice> m_pRefDevice;
 
 public:
-    DrawModelWrapper() = delete;
-
-    SAL_DLLPRIVATE DrawModelWrapper(
-        const css::uno::Reference<css::uno::XComponentContext>& xContext );
+    SAL_DLLPRIVATE DrawModelWrapper();
     SAL_DLLPRIVATE virtual ~DrawModelWrapper() override;
 
     css::uno::Reference< css::lang::XMultiServiceFactory > getShapeFactory();
@@ -82,9 +83,11 @@ public:
     XPatternListRef   GetPatternList() const;
 
     SdrObject* getNamedSdrObject( const OUString& rName );
-    static SdrObject* getNamedSdrObject( const OUString& rName, SdrObjList* pObjList );
+    static SdrObject* getNamedSdrObject( const OUString& rName, SdrObjList const * pObjList );
 
     static bool removeShape( const css::uno::Reference< css::drawing::XShape >& xShape );
+
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 } //namespace chart
 #endif

@@ -18,7 +18,6 @@
  */
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_SECTFRM_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_SECTFRM_HXX
-#include <tools/mempool.hxx>
 
 #include "layfrm.hxx"
 #include "flowfrm.hxx"
@@ -59,7 +58,7 @@ class SwSectionFrame: public SwLayoutFrame, public SwFlowFrame
 
 protected:
     virtual void MakeAll(vcl::RenderContext* pRenderContext) override;
-    virtual bool ShouldBwdMoved( SwLayoutFrame *pNewUpper, bool bHead, bool &rReformat ) override;
+    virtual bool ShouldBwdMoved( SwLayoutFrame *pNewUpper, bool &rReformat ) override;
     virtual void Format( vcl::RenderContext* pRenderContext, const SwBorderAttrs *pAttrs = nullptr ) override;
     virtual void Modify( const SfxPoolItem*, const SfxPoolItem* ) override;
     virtual void SwClientNotify( const SwModify&, const SfxHint& ) override;
@@ -156,8 +155,6 @@ public:
 
     void SetFootnoteLock( bool bNew ) { m_bFootnoteLock = bNew; }
     bool IsFootnoteLock() const { return m_bFootnoteLock; }
-
-    DECL_FIXEDMEMPOOL_NEWDEL(SwSectionFrame)
 };
 
 inline const SwSectionFrame *SwSectionFrame::GetFollow() const

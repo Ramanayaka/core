@@ -25,9 +25,7 @@
 #include <vcl/timer.hxx>
 #include <vcl/graph.hxx>
 
-#include "Window.hxx"
-
-#include "slideshowimpl.hxx"
+#include <Window.hxx>
 
 namespace sd {
 
@@ -54,13 +52,12 @@ public:
     virtual void dispose() override;
 
     void            SetEndMode();
-    bool            SetPauseMode( sal_Int32 nTimeoutSec, Graphic* pLogo = nullptr );
+    bool            SetPauseMode( sal_Int32 nTimeoutSec, Graphic const * pLogo = nullptr );
     bool            SetBlankMode( sal_Int32 nPageIndexToRestart, const Color& rBlankColor );
 
     const Color&        GetBlankColor() const { return maShowBackground.GetColor(); }
 
     void            SetPreviewMode();
-    void            SetPresentationArea( const ::tools::Rectangle& rPresArea );
 
     void            SetMouseAutoHide( bool bMouseAutoHide ) { mbMouseAutoHide = bMouseAutoHide; }
 
@@ -98,7 +95,6 @@ private:
     sal_Int32       mnRestartPageIndex;
     ShowWindowMode  meShowWindowMode;
     bool            mbShowNavigatorAfterSpecialMode;
-    ::tools::Rectangle       maPresArea;
     bool            mbMouseAutoHide;
     bool            mbMouseCursorHidden;
     sal_uInt64      mnFirstMouseMove;

@@ -20,15 +20,12 @@
 #ifndef INCLUDED_FRAMEWORK_INC_RECORDING_DISPATCHRECORDERSUPPLIER_HXX
 #define INCLUDED_FRAMEWORK_INC_RECORDING_DISPATCHRECORDERSUPPLIER_HXX
 
-#include <macros/xserviceinfo.hxx>
-#include <general.h>
-#include <stdtypes.h>
-
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/frame/XDispatchRecorderSupplier.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/util/URL.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <cppuhelper/implbase.hxx>
 
@@ -41,7 +38,7 @@ namespace framework{
 
     @threadsafe     yes
  */
-class DispatchRecorderSupplier  :   public  ::cppu::WeakImplHelper<
+class DispatchRecorderSupplier final : public  ::cppu::WeakImplHelper<
                                                 css::lang::XServiceInfo             ,
                                                 css::frame::XDispatchRecorderSupplier >
 {
@@ -62,13 +59,10 @@ class DispatchRecorderSupplier  :   public  ::cppu::WeakImplHelper<
 
     public:
 
-        // XInterface, XTypeProvider, XServiceInfo
-
-        DECLARE_XSERVICEINFO_NOFACTORY
-        /* Helper for registry */
-        /// @throws css::uno::Exception
-        static css::uno::Reference< css::uno::XInterface >             SAL_CALL impl_createInstance                ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
-        static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL impl_createFactory                 ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
+        /* interface XServiceInfo */
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
         // XDispatchRecorderSupplier
 
@@ -82,7 +76,7 @@ class DispatchRecorderSupplier  :   public  ::cppu::WeakImplHelper<
 
     public:
 
-         DispatchRecorderSupplier( const css::uno::Reference< css::lang::XMultiServiceFactory >& xFactory );
+        DispatchRecorderSupplier();
         virtual ~DispatchRecorderSupplier() override;
 
 };      //  class DispatchRecorderSupplier

@@ -76,14 +76,14 @@ int main (int argc, char **argv)
         exit(1);
     }
 
-    sal_Char szBuf[1024];
+    char szBuf[1024];
     OString sTestName;
 
     try
     {
         // Load dll for the tested component
         for( int n = 2 ; n <argc ; n ++ ) {
-#ifdef SAL_W32
+#ifdef _WIN32
             OUString aDllName = OStringToOUString( argv[n] , RTL_TEXTENCODING_ASCII_US );
 #else
             OUString aDllName = "lib";
@@ -111,7 +111,7 @@ int main (int argc, char **argv)
         sTestName = "test";
         sTestName += argv[2];
 
-#ifdef SAL_W32
+#ifdef _WIN32
         OUString aDllName = OStringToOUString( sTestName , RTL_TEXTENCODING_ASCII_US );
 #else
         OUString aDllName = "lib";
@@ -153,7 +153,7 @@ int main (int argc, char **argv)
     // loop until all test are performed
     while( nHandle != -1 )
     {
-        // Instantiate serivce
+        // Instantiate service
         Reference< XInterface > x =
             xSMgr->createInstance( OStringToOUString( argv[1] , RTL_TEXTENCODING_ASCII_US ) );
         if( ! x.is() )

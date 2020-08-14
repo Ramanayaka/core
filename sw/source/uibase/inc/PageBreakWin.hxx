@@ -9,10 +9,13 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_PAGEBREAKWIN_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_PAGEBREAKWIN_HXX
 
-#include <FrameControl.hxx>
+#include "edtwin.hxx"
+#include "FrameControl.hxx"
 #include <vcl/builder.hxx>
-#include <vcl/menubtn.hxx>
+#include <vcl/timer.hxx>
+#include <optional>
 
+class Menu;
 class SwPageFrame;
 
 /** Class for the page break control window.
@@ -31,7 +34,7 @@ class SwPageBreakWin : public SwFrameMenuButtonBase
     Timer                 m_aFadeTimer;
     bool                  m_bDestroyed;
 
-    const Point*          m_pMousePt;
+    std::optional<Point> m_xMousePt;
 
 public:
     SwPageBreakWin( SwEditWin* pEditWin, const SwFrame *pFrame );
@@ -43,7 +46,7 @@ public:
     virtual void MouseMove( const MouseEvent& rMEvt ) override;
     virtual void Activate( ) override;
 
-    void UpdatePosition( const Point* pEvtPt = nullptr );
+    void UpdatePosition(const std::optional<Point>& xEvtPt = std::optional<Point>());
 
     virtual void ShowAll( bool bShow ) override;
     virtual bool Contains( const Point &rDocPt ) const override;

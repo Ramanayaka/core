@@ -22,7 +22,6 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/rendering/XBitmap.hpp>
-#include <com/sun/star/rendering/XGraphicDevice.hpp>
 
 #include <cppcanvas/bitmap.hxx>
 #include <canvasgraphichelper.hxx>
@@ -30,11 +29,8 @@
 
 /*Definition of ImplBitmap */
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-
-    namespace internal
-    {
         // share partial CanvasGraphic implementation from CanvasGraphicHelper
         class ImplBitmap : public virtual ::cppcanvas::Bitmap, protected CanvasGraphicHelper
         {
@@ -47,7 +43,7 @@ namespace cppcanvas
 
             // CanvasGraphic implementation (that was not already implemented by CanvasGraphicHelper)
             virtual bool draw() const override;
-            virtual bool drawAlphaModulated( double nAlphaModulation ) const override;
+            virtual void drawAlphaModulated( double nAlphaModulation ) const override;
 
             virtual BitmapCanvasSharedPtr                       getBitmapCanvas() const override;
 
@@ -61,7 +57,7 @@ namespace cppcanvas
             const css::uno::Reference< css::rendering::XBitmap > mxBitmap;
             BitmapCanvasSharedPtr                                mpBitmapCanvas;
          };
-    }
+
 }
 
 #endif // INCLUDED_CPPCANVAS_SOURCE_WRAPPER_IMPLBITMAP_HXX

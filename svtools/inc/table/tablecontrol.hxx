@@ -17,23 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_INC_TABLE_TABLECONTROL_HXX
-#define INCLUDED_SVTOOLS_INC_TABLE_TABLECONTROL_HXX
+#pragma once
 
 #include <svtools/svtdllapi.h>
-#include <svtools/table/tablemodel.hxx>
-#include <svtools/accessibletable.hxx>
-#include <svtools/accessiblefactory.hxx>
+#include <table/tablemodel.hxx>
+#include <vcl/accessibletable.hxx>
 
 #include <vcl/ctrl.hxx>
 #include <vcl/seleng.hxx>
 
 #include <memory>
 
-namespace svt { namespace table
+namespace svt::table
 {
-
-
     class TableControl_Impl;
 
 
@@ -55,7 +51,7 @@ namespace svt { namespace table
         cell).
         The control supports accessibility, this is encapsulated in IAccessibleTable
     */
-    class SVT_DLLPUBLIC TableControl : public Control, public IAccessibleTable
+    class TableControl final : public Control, public vcl::table::IAccessibleTable
     {
     private:
         std::shared_ptr<TableControl_Impl>            m_pImpl;
@@ -100,7 +96,7 @@ namespace svt { namespace table
         */
         void    GoTo( ColPos _nColumnPos, RowPos _nRow);
 
-        SVT_DLLPRIVATE virtual void Resize() override;
+        virtual void Resize() override;
         void    Select();
 
         /**after removing a row, updates the vector which contains the selected rows
@@ -116,12 +112,12 @@ namespace svt { namespace table
         virtual void        StateChanged( StateChangedType i_nStateChange ) override;
 
         /** Creates and returns the accessible object of the whole GridControl. */
-        SVT_DLLPRIVATE virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
-        SVT_DLLPRIVATE virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessibleControl( sal_Int32 _nIndex ) override;
-        SVT_DLLPRIVATE virtual OUString GetAccessibleObjectName(AccessibleTableControlObjType eObjType, sal_Int32 _nRow, sal_Int32 _nCol) const override;
-        SVT_DLLPRIVATE virtual void GoToCell( sal_Int32 _nColumnPos, sal_Int32 _nRow ) override;
-        SVT_DLLPRIVATE virtual OUString GetAccessibleObjectDescription(AccessibleTableControlObjType eObjType) const override;
-        SVT_DLLPRIVATE virtual void FillAccessibleStateSet( ::utl::AccessibleStateSetHelper& rStateSet, AccessibleTableControlObjType eObjType ) const override;
+        virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+        virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessibleControl( sal_Int32 _nIndex ) override;
+        virtual OUString GetAccessibleObjectName(vcl::table::AccessibleTableControlObjType eObjType, sal_Int32 _nRow, sal_Int32 _nCol) const override;
+        virtual void GoToCell( sal_Int32 _nColumnPos, sal_Int32 _nRow ) override;
+        virtual OUString GetAccessibleObjectDescription(vcl::table::AccessibleTableControlObjType eObjType) const override;
+        virtual void FillAccessibleStateSet( ::utl::AccessibleStateSetHelper& rStateSet, vcl::table::AccessibleTableControlObjType eObjType ) const override;
 
         // temporary methods
         // Those do not really belong into the public API - they're intended for firing A11Y-related events. However,
@@ -149,9 +145,7 @@ namespace svt { namespace table
         virtual tools::Rectangle GetFieldCharacterBounds(sal_Int32 _nRow,sal_Int32 _nColumnPos,sal_Int32 nIndex) override;
         virtual sal_Int32 GetFieldIndexAtPoint(sal_Int32 _nRow,sal_Int32 _nColumnPos,const Point& _rPoint) override;
         virtual void FillAccessibleStateSetForCell( ::utl::AccessibleStateSetHelper& _rStateSet, sal_Int32 _nRow, sal_uInt16 _nColumnPos ) const override;
-        virtual OUString GetRowDescription( sal_Int32 _nRow ) const override;
         virtual OUString GetRowName(sal_Int32 _nIndex) const override;
-        virtual OUString GetColumnDescription( sal_uInt16 _nColumnPos ) const override;
         virtual OUString GetColumnName( sal_Int32 _nIndex ) const override;
         virtual bool HasRowHeader() override;
         virtual bool HasColHeader() override;
@@ -165,7 +159,7 @@ namespace svt { namespace table
 
 
     private:
-        DECL_DLLPRIVATE_LINK( ImplSelectHdl, LinkParamNone*, void );
+        DECL_LINK( ImplSelectHdl, LinkParamNone*, void );
 
     private:
         TableControl( const TableControl& ) = delete;
@@ -173,9 +167,8 @@ namespace svt { namespace table
     };
 
 
-} } // namespace svt::table
+} // namespace svt::table
 
 
-#endif // INCLUDED_SVTOOLS_INC_TABLE_TABLECONTROL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

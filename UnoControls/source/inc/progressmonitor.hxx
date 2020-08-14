@@ -17,73 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_UNOCONTROLS_SOURCE_INC_PROGRESSMONITOR_HXX
-#define INCLUDED_UNOCONTROLS_SOURCE_INC_PROGRESSMONITOR_HXX
+#pragma once
 
-#include <com/sun/star/awt/XFileDialog.hpp>
-#include <com/sun/star/awt/XTextComponent.hpp>
-#include <com/sun/star/awt/XListBox.hpp>
 #include <com/sun/star/awt/XProgressMonitor.hpp>
-#include <com/sun/star/awt/TextAlign.hpp>
-#include <com/sun/star/awt/XScrollBar.hpp>
-#include <com/sun/star/awt/XVclContainerPeer.hpp>
-#include <com/sun/star/awt/XTabControllerModel.hpp>
-#include <com/sun/star/awt/XMessageBox.hpp>
-#include <com/sun/star/awt/XTextEditField.hpp>
-#include <com/sun/star/awt/Style.hpp>
-#include <com/sun/star/awt/XTimeField.hpp>
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
-#include <com/sun/star/awt/XControlModel.hpp>
-#include <com/sun/star/awt/XSpinField.hpp>
-#include <com/sun/star/awt/XUnoControlContainer.hpp>
-#include <com/sun/star/awt/XTextLayoutConstrains.hpp>
-#include <com/sun/star/awt/XNumericField.hpp>
 #include <com/sun/star/awt/XButton.hpp>
-#include <com/sun/star/awt/XTextArea.hpp>
-#include <com/sun/star/awt/XImageButton.hpp>
-#include <com/sun/star/awt/XFixedText.hpp>
-#include <com/sun/star/awt/XControlContainer.hpp>
-#include <com/sun/star/awt/XDialog.hpp>
-#include <com/sun/star/awt/ScrollBarOrientation.hpp>
-#include <com/sun/star/awt/XRadioButton.hpp>
-#include <com/sun/star/awt/XCurrencyField.hpp>
-#include <com/sun/star/awt/XPatternField.hpp>
-#include <com/sun/star/awt/VclWindowPeerAttribute.hpp>
-#include <com/sun/star/awt/XTabController.hpp>
-#include <com/sun/star/awt/XVclContainer.hpp>
-#include <com/sun/star/awt/XDateField.hpp>
-#include <com/sun/star/awt/XComboBox.hpp>
-#include <com/sun/star/awt/XControl.hpp>
-#include <com/sun/star/awt/XCheckBox.hpp>
 #include <com/sun/star/awt/XLayoutConstrains.hpp>
-#include <com/sun/star/awt/XProgressBar.hpp>
 #include <rtl/ref.hxx>
 
 #include <vector>
+#include <memory>
 
-#include "basecontainercontrol.hxx"
+#include <basecontainercontrol.hxx>
 
-namespace unocontrols{
+namespace com::sun::star::awt { class XFixedText; }
+namespace com::sun::star::awt { class XControlModel; }
+
+namespace unocontrols {
 
 class ProgressBar;
 
 #define PROGRESSMONITOR_FREEBORDER                      10                                                      // border around and between the controls
-#define FIXEDTEXT_SERVICENAME                           "com.sun.star.awt.UnoControlFixedText"
-#define BUTTON_SERVICENAME                              "com.sun.star.awt.UnoControlButton"
-#define FIXEDTEXT_MODELNAME                             "com.sun.star.awt.UnoControlFixedTextModel"
-#define BUTTON_MODELNAME                                "com.sun.star.awt.UnoControlButtonModel"
-#define CONTROLNAME_TEXT                                "Text"                                                  // identifier the control in container
-#define CONTROLNAME_BUTTON                              "Button"                                                //              -||-
-#define CONTROLNAME_PROGRESSBAR                         "ProgressBar"                                           //              -||-
-#define DEFAULT_BUTTONLABEL                             "Abbrechen"
 #define PROGRESSMONITOR_DEFAULT_TOPIC                   ""
 #define PROGRESSMONITOR_DEFAULT_TEXT                    ""
-#define PROGRESSMONITOR_LINECOLOR_BRIGHT                TRGB_COLORDATA( 0x00, 0xFF, 0xFF, 0xFF )                // white
-#define PROGRESSMONITOR_LINECOLOR_SHADOW                TRGB_COLORDATA( 0x00, 0x00, 0x00, 0x00 )                // black
+#define PROGRESSMONITOR_LINECOLOR_BRIGHT                sal_Int32(Color( 0x00, 0xFF, 0xFF, 0xFF ))             // white
+#define PROGRESSMONITOR_LINECOLOR_SHADOW                sal_Int32(Color( 0x00, 0x00, 0x00, 0x00 ))             // black
 #define PROGRESSMONITOR_DEFAULT_WIDTH                   350
 #define PROGRESSMONITOR_DEFAULT_HEIGHT                  100
-
-//  structs, types
 
 /// Item of TextList
 struct IMPL_TextlistItem
@@ -92,23 +51,19 @@ struct IMPL_TextlistItem
     OUString sText;          /// Right site of textline in dialog
 };
 
-//  class declaration
-
-class ProgressMonitor   : public css::awt::XLayoutConstrains
+class ProgressMonitor final : public css::awt::XLayoutConstrains
                         , public css::awt::XButton
                         , public css::awt::XProgressMonitor
                         , public BaseContainerControl
 {
-
 public:
-
     ProgressMonitor( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
 
     virtual ~ProgressMonitor() override;
 
     //  XInterface
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      give answer, if interface is supported
         @descr      The interfaces are searched by type.
 
@@ -123,7 +78,7 @@ public:
 
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      increment refcount
         @seealso    XInterface
         @seealso    release()
@@ -132,7 +87,7 @@ public:
 
     virtual void SAL_CALL acquire() throw() override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      decrement refcount
         @seealso    XInterface
         @seealso    acquire()
@@ -143,7 +98,7 @@ public:
 
     //  XTypeProvider
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      get information about supported interfaces
         @seealso    XTypeProvider
         @return     Sequence of types of all supported interfaces
@@ -159,7 +114,7 @@ public:
 
     //  XProgressMonitor
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      add topic to dialog
         @descr      Add a topic with a text in right textlist (used for FixedText-member).<BR>
                     ( "beforeProgress" fix the right list ). The dialog metric is recalculated.
@@ -251,19 +206,11 @@ public:
                                         sal_Int32   nHeight ,
                                         sal_Int16   nFlags  ) override;
 
-    //  BaseControl
-
-    static const css::uno::Sequence< OUString > impl_getStaticSupportedServiceNames();
-
-    static const OUString impl_getStaticImplementationName();
-
-protected:
-
+private:
     virtual void impl_paint( sal_Int32 nX ,
                              sal_Int32 nY ,
                              const css::uno::Reference< css::awt::XGraphics >& xGraphics ) override;
 
-private:
     using BaseControl::impl_recalcLayout;
 
     void impl_recalcLayout();
@@ -276,30 +223,26 @@ private:
 
 // debug methods
 
-private:
-
     static bool impl_debug_checkParameter( const OUString& sTopic, const OUString& sText );    // addText, updateText
     static bool impl_debug_checkParameter( const OUString& rTopic );                           // removeText
 
 // private variables
 
 private:
-    ::std::vector < IMPL_TextlistItem* >          maTextlist_Top;         // Elements before progress
+    ::std::vector < std::unique_ptr<IMPL_TextlistItem> > maTextlist_Top;         // Elements before progress
     css::uno::Reference< css::awt::XFixedText >   m_xTopic_Top;   // (used, if parameter "beforeProgress"=true in "addText, updateText, removeText")
     css::uno::Reference< css::awt::XFixedText >   m_xText_Top;
 
-    ::std::vector < IMPL_TextlistItem* >          maTextlist_Bottom;      // Elements below of progress
+    ::std::vector < std::unique_ptr<IMPL_TextlistItem> > maTextlist_Bottom;      // Elements below of progress
     css::uno::Reference< css::awt::XFixedText >   m_xTopic_Bottom;   // (used, if parameter "beforeProgress"=false in "addText, updateText, removeText")
     css::uno::Reference< css::awt::XFixedText >   m_xText_Bottom;
 
     rtl::Reference<ProgressBar>                   m_xProgressBar;
     css::uno::Reference< css::awt::XButton >      m_xButton;
     css::awt::Rectangle                           m_a3DLine;
+};
 
-};  // class ProgressMonitor
+}
 
-}   // namespace unocontrols
-
-#endif // INCLUDED_UNOCONTROLS_SOURCE_INC_PROGRESSMONITOR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

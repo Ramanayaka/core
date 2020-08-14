@@ -18,15 +18,16 @@
  */
 
 #include "bessel.hxx"
-#include "analysishelper.hxx"
 
 #include <rtl/math.hxx>
+
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/sheet/NoConvergenceException.hpp>
 
 using ::com::sun::star::lang::IllegalArgumentException;
 using ::com::sun::star::sheet::NoConvergenceException;
 
-namespace sca {
-namespace analysis {
+namespace sca::analysis {
 
 const double f_PI       = 3.1415926535897932385;
 const double f_PI_DIV_2 = f_PI / 2.0;
@@ -74,10 +75,9 @@ double BesselJ( double x, sal_Int32 N )
     bool bAsymptoticPossible = pow(fX,0.4) > N;
     if (fEstimateIteration > fMaxIteration)
     {
-        if (bAsymptoticPossible)
-            return fSign * sqrt(f_2_DIV_PI/fX)* cos(fX-N*f_PI_DIV_2-f_PI_DIV_4);
-        else
+        if (!bAsymptoticPossible)
             throw NoConvergenceException();
+        return fSign * sqrt(f_2_DIV_PI/fX)* cos(fX-N*f_PI_DIV_2-f_PI_DIV_4);
     }
 
     double const epsilon = 1.0e-15; // relative error
@@ -148,10 +148,10 @@ double BesselJ( double x, sal_Int32 N )
         k = k + 1.0;
     }
     while (!bHasfound && k <= fMaxIteration);
-    if (bHasfound)
-        return u * fSign;
-    else
+    if (!bHasfound)
         throw NoConvergenceException(); // unlikely to happen
+
+    return u * fSign;
 }
 
 
@@ -224,7 +224,7 @@ double BesselI( double x, sal_Int32 n )
 
 /// @throws IllegalArgumentException
 /// @throws NoConvergenceException
-double Besselk0( double fNum )
+static double Besselk0( double fNum )
 {
     double  fRet;
 
@@ -251,7 +251,7 @@ double Besselk0( double fNum )
 
 /// @throws IllegalArgumentException
 /// @throws NoConvergenceException
-double Besselk1( double fNum )
+static double Besselk1( double fNum )
 {
     double  fRet;
 
@@ -262,7 +262,7 @@ double Besselk1( double fNum )
 
         fRet = log( fNum2 ) * BesselI( fNum, 1 ) +
                 ( 1.0 + y * ( 0.15443144 + y * ( -0.67278579 + y * ( -0.18156897 + y * ( -0.1919402e-1 +
-                    y * ( -0.110404e-2 + y * ( -0.4686e-4 ) ) ) ) ) ) )
+                    y * ( -0.110404e-2 + y * -0.4686e-4 ) ) ) ) ) )
                 / fNum;
     }
     else
@@ -271,7 +271,7 @@ double Besselk1( double fNum )
 
         fRet = exp( -fNum ) / sqrt( fNum ) * ( 1.25331414 + y * ( 0.23498619 +
                 y * ( -0.3655620e-1 + y * ( 0.1504268e-1 + y * ( -0.780353e-2 +
-                y * ( 0.325614e-2 + y * ( -0.68245e-3 ) ) ) ) ) ) );
+                y * ( 0.325614e-2 + y * -0.68245e-3 ) ) ) ) ) );
     }
 
     return fRet;
@@ -318,12 +318,12 @@ double BesselK( double fNum, sal_Int32 nOrder )
     Chapter 6.3.2 , algorithm 6.24
     The source is in German.
     See #i31656# for a commented version of the implementation, attachment #desc6
-    http://www.openoffice.org/nonav/issues/showattachment.cgi/63609/Comments%20to%20the%20implementation%20of%20the%20Bessel%20functions.odt
+    https://bz.apache.org/ooo/attachment.cgi?id=63609
 */
 
 /// @throws IllegalArgumentException
 /// @throws NoConvergenceException
-double Bessely0( double fX )
+static double Bessely0( double fX )
 {
     if (fX <= 0)
         throw IllegalArgumentException();
@@ -367,17 +367,16 @@ double Bessely0( double fX )
         k=k+1;
     }
     while (!bHasFound && k<fMaxIteration);
-    if (bHasFound)
-        return u*f_2_DIV_PI;
-    else
+    if (!bHasFound)
         throw NoConvergenceException(); // not likely to happen
+    return u*f_2_DIV_PI;
 }
 
 // See #i31656# for a commented version of this implementation, attachment #desc6
-// http://www.openoffice.org/nonav/issues/showattachment.cgi/63609/Comments%20to%20the%20implementation%20of%20the%20Bessel%20functions.odt
+// https://bz.apache.org/ooo/attachment.cgi?id=63609
 /// @throws IllegalArgumentException
 /// @throws NoConvergenceException
-double Bessely1( double fX )
+static double Bessely1( double fX )
 {
     if (fX <= 0)
         throw IllegalArgumentException();
@@ -423,10 +422,9 @@ double Bessely1( double fX )
         k=k+1;
     }
     while (!bHasFound && k<fMaxIteration);
-    if (bHasFound)
-        return -u*2.0/f_PI;
-    else
+    if (!bHasFound)
         throw NoConvergenceException();
+    return -u*2.0/f_PI;
 }
 
 double BesselY( double fNum, sal_Int32 nOrder )
@@ -453,7 +451,6 @@ double BesselY( double fNum, sal_Int32 nOrder )
     }
 }
 
-} // namespace analysis
-} // namespace sca
+} // namespace sca::analysis
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

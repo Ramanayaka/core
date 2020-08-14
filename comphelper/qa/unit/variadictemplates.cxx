@@ -7,13 +7,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <sal/types.h>
 #include <comphelper/unwrapargs.hxx>
-#include "cppunit/TestAssert.h"
-#include "cppunit/TestFixture.h"
-#include "cppunit/extensions/HelperMacros.h"
-#include "cppunit/plugin/TestPlugIn.h"
+#include <cppunit/TestAssert.h>
+#include <cppunit/TestFixture.h>
+#include <cppunit/extensions/HelperMacros.h>
+#include <cppunit/plugin/TestPlugIn.h>
 
 #include <sstream>
 
@@ -32,7 +32,7 @@ namespace {
 namespace detail {
 
 template <typename T>
-inline void extract(
+void extract(
     ::com::sun::star::uno::Sequence< ::com::sun::star::uno::Any> const& seq,
     sal_Int32 nArg, T & v,
     ::com::sun::star::uno::Reference< ::com::sun::star::uno::XInterface>
@@ -54,9 +54,9 @@ inline void extract(
 }
 
 template <typename T>
-inline void extract(
+void extract(
     ::com::sun::star::uno::Sequence< ::com::sun::star::uno::Any> const& seq,
-    sal_Int32 nArg, ::boost::optional<T> & v,
+    sal_Int32 nArg, ::std::optional<T> & v,
     ::com::sun::star::uno::Reference< ::com::sun::star::uno::XInterface>
     const& xErrorContext )
 {
@@ -70,7 +70,7 @@ inline void extract(
 } // namespace detail
 
 template < typename T0, typename T1, typename T2, typename T3, typename T4 >
-inline void unwrapArgsBaseline(
+void unwrapArgsBaseline(
     ::com::sun::star::uno::Sequence< ::com::sun::star::uno::Any > const& seq,
     T0& v0, T1& v1, T2& v2, T3& v3, T4& v4,
     ::com::sun::star::uno::Reference<
@@ -90,8 +90,6 @@ void VariadicTemplatesTest::testUnwrapArgs() {
     OUString tmp1   = "Test1";
     sal_Int32 tmp2  = 42;
     sal_uInt32 tmp3 = 42;
-    OUString tmp4   = "Test2";
-    OUString tmp5   = "Test3";
     ::com::sun::star::uno::Any tmp6(
         ::com::sun::star::uno::makeAny( tmp1 )
         );
@@ -102,24 +100,24 @@ void VariadicTemplatesTest::testUnwrapArgs() {
         ::com::sun::star::uno::makeAny( tmp3 )
         );
     ::com::sun::star::uno::Any tmp9(
-        ::com::sun::star::uno::makeAny( tmp4 )
+        ::com::sun::star::uno::makeAny( OUString("Test2") )
         );
-    ::boost::optional< ::com::sun::star::uno::Any > tmp10(
-        ::com::sun::star::uno::makeAny( tmp5 )
+    ::std::optional< ::com::sun::star::uno::Any > tmp10(
+        ::com::sun::star::uno::makeAny( OUString("Test3") )
         );
-    ::boost::optional< ::com::sun::star::uno::Any > tmp11(
+    ::std::optional< ::com::sun::star::uno::Any > tmp11(
         ::com::sun::star::uno::makeAny( tmp1 )
         );
 
     // test equality with the baseline and template specialization with
-    // boost::optional< T >
+    // std::optional< T >
     try {
         ::com::sun::star::uno::Sequence< ::com::sun::star::uno::Any > seq1(
             static_cast< sal_uInt32 >( 5 ) );
         ::com::sun::star::uno::Sequence< ::com::sun::star::uno::Any > seq2(
             static_cast< sal_uInt32 >( 5 ) );
 
-        // tmp11 should be ignored as it is ::boost::optional< T >
+        // tmp11 should be ignored as it is ::std::optional< T >
         ::comphelper::unwrapArgs( seq1, tmp6, tmp7, tmp8, tmp9, tmp10, tmp11 );
         unwrapArgsBaseline( seq2, tmp6, tmp7, tmp8, tmp9, tmp10 );
         ::com::sun::star::uno::Any* p1 = seq1.getArray();

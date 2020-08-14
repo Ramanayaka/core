@@ -23,24 +23,22 @@
 
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
 
 #include <map>
 #include <memory>
 #include <vector>
 
-#include <com/sun/star/table/XTableColumns.hpp>
 #include <com/sun/star/table/XColumnRowRange.hpp>
 #include <com/sun/star/table/XCell.hpp>
-#include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 
 #include <rtl/ref.hxx>
 
 #include <xmloff/dllapi.h>
 #include <salhelper/simplereferenceobject.hxx>
-#include <xmloff/xmlprmap.hxx>
+#include <xmloff/prhdlfac.hxx>
 #include <xmloff/xmlexppr.hxx>
+#include <xmloff/styleexp.hxx>
 
 class SvXMLExport;
 class SvXMLExportPropertyMapper;
@@ -55,7 +53,7 @@ struct XMLTableInfo
     std::vector< OUString > maDefaultRowCellStyles;
 };
 
-class XMLOFF_DLLPUBLIC XMLTableExport : public salhelper::SimpleReferenceObject
+class XMLOFF_DLLPUBLIC XMLTableExport final : public salhelper::SimpleReferenceObject
 {
 public:
     XMLTableExport(SvXMLExport& rExp, const rtl::Reference< SvXMLExportPropertyMapper >& xCellExportPropertySetMapper, const rtl::Reference< XMLPropertyHandlerFactory >& xFactoryRef );
@@ -85,16 +83,21 @@ private:
     bool                                            mbExportTables;
     bool                                            mbWriter;
 
-protected:
     SvXMLExport& GetExport() { return mrExport; }
     const SvXMLExport& GetExport() const  { return mrExport; }
-private:
 
     SAL_DLLPRIVATE void ImpExportText( const css::uno::Reference < css::table::XCell >& xCell );
 
     void ExportCell( const css::uno::Reference < css::table::XCell >& xCell, const std::shared_ptr< XMLTableInfo >& pTableInfo, const OUString& sDefaultCellStyle  );
     void ExportTableColumns( const css::uno::Reference < css::container::XIndexAccess >& xtableColumns, const std::shared_ptr< XMLTableInfo >& pTableInfo );
 
+};
+
+class XMLOFF_DLLPUBLIC XMLCellStyleExport final : public XMLStyleExport
+{
+    using XMLStyleExport::XMLStyleExport;
+    virtual void exportStyleAttributes(const css::uno::Reference<css::style::XStyle>& rStyle) override;
+    virtual void exportStyleContent(const css::uno::Reference<css::style::XStyle>& rStyle) override;
 };
 
 #endif

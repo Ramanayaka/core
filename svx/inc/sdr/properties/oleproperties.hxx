@@ -23,13 +23,13 @@
 #include <sdr/properties/rectangleproperties.hxx>
 
 
-namespace sdr
-{
-    namespace properties
+namespace sdr::properties
     {
-        class OleProperties : public RectangleProperties
+        class OleProperties final : public RectangleProperties
         {
-        protected:
+            // apply the correct SfyStyleSheet from SdrObject's SdrModel
+            virtual void applyDefaultStyleSheetFromSdrModel() override;
+
         public:
             // basic constructor
             explicit OleProperties(SdrObject& rObj);
@@ -41,14 +41,13 @@ namespace sdr
             virtual ~OleProperties() override;
 
             // Clone() operator, normally just calls the local copy constructor
-            virtual BaseProperties& Clone(SdrObject& rObj) const override;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
 
             // force default attributes for a specific object type, called from
             // DefaultProperties::GetObjectItemSet() if a new ItemSet is created
             virtual void ForceDefaultAttributes() override;
         };
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace sdr::properties
 
 
 #endif // INCLUDED_SVX_INC_SDR_PROPERTIES_OLEPROPERTIES_HXX

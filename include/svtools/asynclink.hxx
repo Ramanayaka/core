@@ -20,26 +20,26 @@
 #ifndef INCLUDED_SVTOOLS_ASYNCLINK_HXX
 #define INCLUDED_SVTOOLS_ASYNCLINK_HXX
 
+#include <config_options.h>
 #include <svtools/svtdllapi.h>
-#include <tools/solar.h>
 #include <tools/link.hxx>
+#include <vcl/idle.hxx>
 #include <osl/mutex.hxx>
+#include <memory>
 
-class Idle;
 class Timer;
 struct ImplSVEvent;
 
 namespace svtools {
 
-class SVT_DLLPUBLIC AsynchronLink
+class UNLESS_MERGELIBS(SVT_DLLPUBLIC) AsynchronLink
 {
     Link<void*,void> _aLink;
     ImplSVEvent*     _nEventId;
-    Idle*            _pIdle;
     bool             _bInCall;
     bool*            _pDeleted;
     void*            _pArg;
-    ::osl::Mutex*    _pMutex;
+    std::unique_ptr<::osl::Mutex> _pMutex;
 
     DECL_DLLPRIVATE_LINK( HandleCall_Idle, Timer*, void );
     DECL_DLLPRIVATE_LINK( HandleCall_PostUserEvent, void*, void );
@@ -49,19 +49,15 @@ public:
     AsynchronLink( const Link<void*,void>& rLink )
         : _aLink( rLink )
         , _nEventId( nullptr )
-        , _pIdle( nullptr )
         , _bInCall( false )
         , _pDeleted( nullptr )
         , _pArg( nullptr )
-        , _pMutex( nullptr )
     {}
     AsynchronLink()
         : _nEventId( nullptr )
-        , _pIdle( nullptr )
         , _bInCall( false )
         , _pDeleted( nullptr )
         , _pArg( nullptr )
-        , _pMutex( nullptr )
     {}
     ~AsynchronLink();
 

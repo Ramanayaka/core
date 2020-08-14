@@ -19,26 +19,28 @@
 
 #include <memory>
 #include <sal/config.h>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+#include <tools/debug.hxx>
 
 #include <vcl/opengl/OpenGLHelper.hxx>
 
 #include <vcl/bitmap.hxx>
 #include <vcl/checksum.hxx>
 #include <vcl/outdev.hxx>
-#include <vcl/salbtype.hxx>
-#include "svdata.hxx"
-#include "salgdi.hxx"
-#include "vcleventlisteners.hxx"
+#include <svdata.hxx>
+#include <salgdi.hxx>
+#include <vcleventlisteners.hxx>
 #include <vcl/lazydelete.hxx>
+#include <scanlinewriter.hxx>
 
-#include <o3tl/make_unique.hxx>
 #include <o3tl/make_shared.hxx>
 
-#include "opengl/zone.hxx"
-#include "opengl/program.hxx"
-#include "opengl/salbmp.hxx"
-#include "opengl/RenderState.hxx"
-#include "opengl/FixedTextureAtlas.hxx"
+#include <opengl/zone.hxx>
+#include <opengl/program.hxx>
+#include <opengl/salbmp.hxx>
+#include <opengl/RenderState.hxx>
+#include <opengl/FixedTextureAtlas.hxx>
 
 #if OSL_DEBUG_LEVEL > 0
 #  define CANARY "tex-canary"
@@ -47,17 +49,13 @@
 namespace
 {
 
-inline bool determineTextureFormat(sal_uInt16 nBits, GLenum& nFormat, GLenum& nType)
+bool determineTextureFormat(sal_uInt16 nBits, GLenum& nFormat, GLenum& nType)
 {
     switch(nBits)
     {
     case 8:
         nFormat = GL_LUMINANCE;
         nType = GL_UNSIGNED_BYTE;
-        return true;
-    case 16:
-        nFormat = GL_RGB;
-        nType = GL_UNSIGNED_SHORT_5_6_5;
         return true;
     case 24:
         nFormat = GL_RGB;
@@ -74,19 +72,18 @@ inline bool determineTextureFormat(sal_uInt16 nBits, GLenum& nFormat, GLenum& nT
     return false;
 }
 
-inline bool isValidBitCount( sal_uInt16 nBitCount )
+bool isValidBitCount( sal_uInt16 nBitCount )
 {
-    return (nBitCount == 1) || (nBitCount == 4) || (nBitCount == 8) || (nBitCount == 16) || (nBitCount == 24) || (nBitCount == 32);
+    return (nBitCount == 1) || (nBitCount == 4) || (nBitCount == 8) || (nBitCount == 24) || (nBitCount == 32);
 }
 
-sal_uInt16 lclBytesPerRow(sal_uInt16 nBits, int nWidth)
+sal_uInt32 lclBytesPerRow(sal_uInt16 nBits, int nWidth)
 {
     switch(nBits)
     {
     case 1:  return (nWidth + 7) >> 3;
     case 4:  return (nWidth + 1) >> 1;
     case 8:  return  nWidth;
-    case 16: return  nWidth * 2;
     case 24: return  nWidth * 3;
     case 32: return  nWidth * 4;
     default:
@@ -94,10 +91,6 @@ sal_uInt16 lclBytesPerRow(sal_uInt16 nBits, int nWidth)
     }
     return 0;
 }
-
-typedef std::vector<std::unique_ptr< FixedTextureAtlasManager > > TextureAtlasVector;
-static vcl::DeleteOnDeinit< TextureAtlasVector > gTextureAtlases(new TextureAtlasVector);
-
 }
 
 OpenGLSalBitmap::OpenGLSalBitmap()
@@ -115,14 +108,29 @@ OpenGLSalBitmap::~OpenGLSalBitmap()
     VCL_GL_INFO( "~OpenGLSalBitmap" );
 }
 
-bool OpenGLSalBitmap::Create( const OpenGLTexture& rTex, long nX, long nY, long nWidth, long nHeight )
+void OpenGLSalBitmap::Create( const OpenGLTexture& rTex, long nX, long nY, long nWidth, long nHeight )
 {
+    DBG_TESTSOLARMUTEX();
     static const BitmapPalette aEmptyPalette;
     OpenGLVCLContextZone aContextZone;
 
     Destroy();
     VCL_GL_INFO( "OpenGLSalBitmap::Create from FBO: ["
                   << nX << ", " << nY << "] " << nWidth << "x" << nHeight );
+
+    GLint nMaxTextureSize;
+    glGetIntegerv( GL_MAX_TEXTURE_SIZE, &nMaxTextureSize );
+    if ( nWidth > nMaxTextureSize )
+    {
+        nWidth = nMaxTextureSize;
+        VCL_GL_INFO( "Width limited to " << nMaxTextureSize );
+    }
+
+    if ( nHeight > nMaxTextureSize )
+    {
+        nHeight = nMaxTextureSize;
+        VCL_GL_INFO( "Height limited to " << nMaxTextureSize );
+    }
 
     mnWidth = nWidth;
     mnHeight = nHeight;
@@ -140,12 +148,11 @@ bool OpenGLSalBitmap::Create( const OpenGLTexture& rTex, long nX, long nY, long 
 
     assert(mnWidth == maTexture.GetWidth() &&
            mnHeight == maTexture.GetHeight());
-
-    return true;
 }
 
 bool OpenGLSalBitmap::Create( const Size& rSize, sal_uInt16 nBits, const BitmapPalette& rBitmapPalette )
 {
+    DBG_TESTSOLARMUTEX();
     OpenGLVCLContextZone aContextZone;
 
     Destroy();
@@ -157,21 +164,33 @@ bool OpenGLSalBitmap::Create( const Size& rSize, sal_uInt16 nBits, const BitmapP
     mnBits = nBits;
     mnWidth = rSize.Width();
     mnHeight = rSize.Height();
+
+    // Limit size to what GL allows, so later glTexImage2D() won't fail.
+    GLint nMaxTextureSize;
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &nMaxTextureSize);
+    if (mnWidth > nMaxTextureSize)
+        mnWidth = nMaxTextureSize;
+    if (mnHeight > nMaxTextureSize)
+        mnHeight = nMaxTextureSize;
+
     return false;
 }
 
 bool OpenGLSalBitmap::Create( const SalBitmap& rSalBmp )
 {
+    DBG_TESTSOLARMUTEX();
     return Create( rSalBmp, rSalBmp.GetBitCount() );
 }
 
 bool OpenGLSalBitmap::Create( const SalBitmap& rSalBmp, SalGraphics* pGraphics )
 {
+    DBG_TESTSOLARMUTEX();
     return Create( rSalBmp, pGraphics ? pGraphics->GetBitCount() : rSalBmp.GetBitCount() );
 }
 
 bool OpenGLSalBitmap::Create( const SalBitmap& rSalBmp, sal_uInt16 nNewBitCount )
 {
+    DBG_TESTSOLARMUTEX();
     OpenGLZone aZone;
 
     // check that carefully only in the debug mode
@@ -210,6 +229,7 @@ bool OpenGLSalBitmap::Create( const SalBitmap& rSalBmp, sal_uInt16 nNewBitCount 
 
 bool OpenGLSalBitmap::Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& /*xBitmapCanvas*/, Size& /*rSize*/, bool /*bMask*/ )
 {
+    DBG_TESTSOLARMUTEX();
     // TODO Is this method needed?
     return false;
 }
@@ -229,7 +249,7 @@ void OpenGLSalBitmap::Destroy()
 
     VCL_GL_INFO("Destroy OpenGLSalBitmap texture:" << maTexture.Id());
     maTexture = OpenGLTexture();
-    mpUserBuffer.reset();
+    DeallocateUserData();
 }
 
 bool OpenGLSalBitmap::AllocateUserData()
@@ -247,7 +267,7 @@ bool OpenGLSalBitmap::AllocateUserData()
     {
         try
         {
-            size_t nToAllocate = static_cast<sal_uInt32>(mnBytesPerRow) * mnHeight;
+            size_t nToAllocate = mnBytesPerRow * mnHeight;
 #if OSL_DEBUG_LEVEL > 0
             nToAllocate += sizeof(CANARY);
 #endif
@@ -263,8 +283,7 @@ bool OpenGLSalBitmap::AllocateUserData()
     if (!alloc)
     {
         SAL_WARN("vcl.opengl", "bad alloc " << mnBytesPerRow << "x" << mnHeight);
-        mpUserBuffer.reset();
-        mnBytesPerRow = 0;
+        DeallocateUserData();
     }
 #ifdef DBG_UTIL
     else
@@ -274,123 +293,34 @@ bool OpenGLSalBitmap::AllocateUserData()
     }
 #endif
 
-    return mpUserBuffer.get() != nullptr;
+    return mpUserBuffer != nullptr;
+}
+
+void OpenGLSalBitmap::DeallocateUserData()
+{
+    mpUserBuffer.reset();
+    mnBytesPerRow = 0;
 }
 
 namespace {
 
-class ImplPixelFormat
-{
-protected:
-    sal_uInt8* mpData;
-public:
-    static ImplPixelFormat* GetFormat( sal_uInt16 nBits, const BitmapPalette& rPalette );
-
-    virtual void StartLine( sal_uInt8* pLine ) { mpData = pLine; }
-    virtual const BitmapColor& ReadPixel() = 0;
-    virtual ~ImplPixelFormat() { }
-};
-
-class ImplPixelFormat8 : public ImplPixelFormat
-{
-private:
-    const BitmapPalette& mrPalette;
-
-public:
-    explicit ImplPixelFormat8( const BitmapPalette& rPalette )
-    : mrPalette( rPalette )
-    {
-    }
-    virtual const BitmapColor& ReadPixel() override
-    {
-        assert( mrPalette.GetEntryCount() > *mpData );
-        return mrPalette[ *mpData++ ];
-    }
-};
-
-class ImplPixelFormat4 : public ImplPixelFormat
-{
-private:
-    const BitmapPalette& mrPalette;
-    sal_uInt32 mnX;
-    sal_uInt32 mnShift;
-
-public:
-    explicit ImplPixelFormat4( const BitmapPalette& rPalette )
-        : mrPalette( rPalette )
-        , mnX(0)
-        , mnShift(4)
-    {
-    }
-    virtual void StartLine( sal_uInt8* pLine ) override
-    {
-        mpData = pLine;
-        mnX = 0;
-        mnShift = 4;
-    }
-    virtual const BitmapColor& ReadPixel() override
-    {
-        sal_uInt32 nIdx = ( mpData[mnX >> 1] >> mnShift) & 0x0f;
-        assert( mrPalette.GetEntryCount() > nIdx );
-        const BitmapColor& rColor = mrPalette[nIdx];
-        mnX++;
-        mnShift ^= 4;
-        return rColor;
-    }
-};
-
-class ImplPixelFormat1 : public ImplPixelFormat
-{
-private:
-    const BitmapPalette& mrPalette;
-    sal_uInt32 mnX;
-
-public:
-    explicit ImplPixelFormat1( const BitmapPalette& rPalette )
-        : mrPalette(rPalette)
-        , mnX(0)
-    {
-    }
-    virtual void StartLine( sal_uInt8* pLine ) override
-    {
-        mpData = pLine;
-        mnX = 0;
-    }
-    virtual const BitmapColor& ReadPixel() override
-    {
-        const BitmapColor& rColor = mrPalette[ (mpData[mnX >> 3 ] >> ( 7 - ( mnX & 7 ) )) & 1];
-        mnX++;
-        return rColor;
-    }
-};
-
-ImplPixelFormat* ImplPixelFormat::GetFormat( sal_uInt16 nBits, const BitmapPalette& rPalette )
-{
-    switch( nBits )
-    {
-    case 1: return new ImplPixelFormat1( rPalette );
-    case 4: return new ImplPixelFormat4( rPalette );
-    case 8: return new ImplPixelFormat8( rPalette );
-    }
-
-    return nullptr;
-}
-
 void lclInstantiateTexture(OpenGLTexture& rTexture, const int nWidth, const int nHeight,
-                           const GLenum nFormat, const GLenum nType, sal_uInt8* pData)
+                           const GLenum nFormat, const GLenum nType, sal_uInt8 const * pData)
 {
     if (nWidth == nHeight)
     {
-        TextureAtlasVector &sTextureAtlases = *gTextureAtlases.get();
-        if (sTextureAtlases.empty())
-        {
-            sTextureAtlases.push_back(o3tl::make_unique<FixedTextureAtlasManager>(8, 8, 16));
-            sTextureAtlases.push_back(o3tl::make_unique<FixedTextureAtlasManager>(8, 8, 24));
-            sTextureAtlases.push_back(o3tl::make_unique<FixedTextureAtlasManager>(8, 8, 32));
-            sTextureAtlases.push_back(o3tl::make_unique<FixedTextureAtlasManager>(8, 8, 48));
-            sTextureAtlases.push_back(o3tl::make_unique<FixedTextureAtlasManager>(8, 8, 64));
-        }
-        for (std::unique_ptr<FixedTextureAtlasManager> & pTextureAtlas : sTextureAtlases)
+        typedef std::vector<std::unique_ptr<FixedTextureAtlasManager>> TextureAtlasVector;
+        static vcl::DeleteOnDeinit<TextureAtlasVector> aTextureAtlases([]() {
+            TextureAtlasVector* p = new TextureAtlasVector;
+            p->reserve(5);
+            p->push_back(std::make_unique<FixedTextureAtlasManager>(8, 8, 16));
+            p->push_back(std::make_unique<FixedTextureAtlasManager>(8, 8, 24));
+            p->push_back(std::make_unique<FixedTextureAtlasManager>(8, 8, 32));
+            p->push_back(std::make_unique<FixedTextureAtlasManager>(8, 8, 48));
+            p->push_back(std::make_unique<FixedTextureAtlasManager>(8, 8, 64));
+            return p;
+        }());
+        for (std::unique_ptr<FixedTextureAtlasManager>& pTextureAtlas : *aTextureAtlases.get())
         {
             if (nWidth == pTextureAtlas->GetSubtextureSize())
             {
@@ -401,47 +331,6 @@ void lclInstantiateTexture(OpenGLTexture& rTexture, const int nWidth, const int 
     }
     rTexture = OpenGLTexture (nWidth, nHeight, nFormat, nType, pData);
 }
-
-// Write color information for 1 and 4 bit palette bitmap scanlines.
-class ScanlineWriter
-{
-    BitmapPalette& maPalette;
-    sal_uInt8 mnColorsPerByte; // number of colors that are stored in one byte
-    sal_uInt8 mnColorBitSize;  // number of bits a color takes
-    sal_uInt8 mnColorBitMask;  // bit mask used to isolate the color
-    sal_uInt8* mpCurrentScanline;
-    long mnX;
-
-public:
-    ScanlineWriter(BitmapPalette& aPalette, sal_Int8 nColorsPerByte)
-        : maPalette(aPalette)
-        , mnColorsPerByte(nColorsPerByte)
-        , mnColorBitSize(8 / mnColorsPerByte) // bit size is number of bit in a byte divided by number of colors per byte (8 / 2 = 4 for 4-bit)
-        , mnColorBitMask((1 << mnColorBitSize) - 1) // calculate the bit mask from the bit size
-        , mpCurrentScanline(nullptr)
-        , mnX(0)
-    {}
-
-    void writeRGB(sal_uInt8 nR, sal_uInt8 nG, sal_uInt8 nB)
-    {
-        // calculate to which index we will write
-        long nScanlineIndex = mnX / mnColorsPerByte;
-
-        // calculate the number of shifts to get the color information to the right place
-        long nShift = (8 - mnColorBitSize) - ((mnX % mnColorsPerByte) * mnColorBitSize);
-
-        sal_uInt16 nColorIndex = maPalette.GetBestIndex(BitmapColor(nR, nG, nB));
-        mpCurrentScanline[nScanlineIndex] &= ~(mnColorBitMask << nShift); // clear
-        mpCurrentScanline[nScanlineIndex] |= (nColorIndex & mnColorBitMask) << nShift; // set
-        mnX++;
-    }
-
-    void nextLine(sal_uInt8* pScanline)
-    {
-        mnX = 0;
-        mpCurrentScanline = pScanline;
-    }
-};
 
 } // end anonymous namespace
 
@@ -458,18 +347,18 @@ GLuint OpenGLSalBitmap::CreateTexture()
     sal_uInt8* pData( nullptr );
     bool bAllocated( false );
 
-    if (mpUserBuffer.get() != nullptr)
+    if (mpUserBuffer != nullptr)
     {
-        if( mnBits == 16 || mnBits == 24 || mnBits == 32 )
+        if( mnBits == 24 || mnBits == 32 )
         {
             // no conversion needed for truecolor
             pData = mpUserBuffer.get();
 
             determineTextureFormat(mnBits, nFormat, nType);
         }
-        else if( mnBits == 8 && maPalette.IsGreyPalette() )
+        else if( mnBits == 8 && maPalette.IsGreyPalette8Bit() )
         {
-            // no conversion needed for grayscale
+            // no conversion needed for 8bit grayscale
             pData = mpUserBuffer.get();
             nFormat = GL_LUMINANCE;
             nType = GL_UNSIGNED_BYTE;
@@ -477,46 +366,12 @@ GLuint OpenGLSalBitmap::CreateTexture()
         else
         {
             VCL_GL_INFO( "::CreateTexture - convert from " << mnBits << " to 24 bits" );
-
             // convert to 24 bits RGB using palette
-            pData = new sal_uInt8[mnHeight * mnWidth * 3];
-            bAllocated = true;
             determineTextureFormat(24, nFormat, nType);
-
-            std::unique_ptr<ImplPixelFormat> pSrcFormat(ImplPixelFormat::GetFormat(mnBits, maPalette));
-
-            sal_uInt8* pSrcData = mpUserBuffer.get();
-            sal_uInt8* pDstData = pData;
-
-            sal_uInt32 nY = mnHeight;
-            while( nY-- )
-            {
-                pSrcFormat->StartLine( pSrcData );
-
-                sal_uInt32 nX = mnWidth;
-                if (nFormat == GL_BGR)
-                {
-                    while( nX-- )
-                    {
-                        const BitmapColor& c = pSrcFormat->ReadPixel();
-                        *pDstData++ = c.GetBlue();
-                        *pDstData++ = c.GetGreen();
-                        *pDstData++ = c.GetRed();
-                    }
-                }
-                else // RGB
-                {
-                    while( nX-- )
-                    {
-                        const BitmapColor& c = pSrcFormat->ReadPixel();
-                        *pDstData++ = c.GetRed();
-                        *pDstData++ = c.GetGreen();
-                        *pDstData++ = c.GetBlue();
-                    }
-                }
-
-                pSrcData += mnBytesPerRow;
-            }
+            pData = convertDataBitCount( mpUserBuffer.get(), mnWidth, mnHeight,
+                mnBits, mnBytesPerRow, maPalette,
+                nFormat == GL_BGR ? BitConvert::BGR : BitConvert::RGB ).release();
+            bAllocated = true;
         }
     }
 
@@ -553,7 +408,7 @@ bool OpenGLSalBitmap::ReadTexture()
     xContext->state().scissor().disable();
     xContext->state().stencil().disable();
 
-    if (mnBits == 8 || mnBits == 16 || mnBits == 24 || mnBits == 32)
+    if ((mnBits == 8 && maPalette.IsGreyPalette8Bit()) || mnBits == 24 || mnBits == 32)
     {
         determineTextureFormat(mnBits, nFormat, nType);
 
@@ -568,35 +423,24 @@ bool OpenGLSalBitmap::ReadTexture()
 
         maTexture.Read(nFormat, nType, pData);
 
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
         // If we read over the end of pData we have a real hidden memory
         // corruption problem !
-        size_t nCanary = static_cast<sal_uInt32>(mnBytesPerRow) * mnHeight;
+        size_t nCanary = mnBytesPerRow * mnHeight;
         assert(!memcmp(pData + nCanary, CANARY, sizeof (CANARY)));
 #endif
         return true;
     }
-    else if (mnBits == 1 || mnBits == 4)
-    {   // convert buffers from 24-bit RGB to 1 or 4-bit buffer
+    else if (mnBits == 1 || mnBits == 4 || mnBits == 8)
+    {   // convert buffers from 24-bit RGB to 1,4 or 8-bit buffer
         std::vector<sal_uInt8> aBuffer(mnWidth * mnHeight * 3);
 
         sal_uInt8* pBuffer = aBuffer.data();
         determineTextureFormat(24, nFormat, nType);
         maTexture.Read(nFormat, nType, pBuffer);
-        sal_uInt16 nSourceBytesPerRow = lclBytesPerRow(24, mnWidth);
+        sal_uInt32 nSourceBytesPerRow = lclBytesPerRow(24, mnWidth);
 
-        std::unique_ptr<ScanlineWriter> pWriter;
-        switch(mnBits)
-        {
-            case 1:
-                pWriter.reset(new ScanlineWriter(maPalette, 8));
-                break;
-            case 4:
-            default:
-                pWriter.reset(new ScanlineWriter(maPalette, 2));
-                break;
-        }
-
+        std::unique_ptr<vcl::ScanlineWriter> pWriter = vcl::ScanlineWriter::Create(mnBits, maPalette);
         for (int y = 0; y < mnHeight; ++y)
         {
             sal_uInt8* pSource = &pBuffer[y * nSourceBytesPerRow];
@@ -628,7 +472,7 @@ sal_uInt16 OpenGLSalBitmap::GetBitCount() const
     return mnBits;
 }
 
-bool OpenGLSalBitmap::calcChecksumGL(OpenGLTexture& rInputTexture, ChecksumType& rChecksum) const
+bool OpenGLSalBitmap::calcChecksumGL(OpenGLTexture& rInputTexture, BitmapChecksum& rChecksum) const
 {
     OUString FragShader("areaHashCRC64TFragmentShader");
 
@@ -653,7 +497,7 @@ bool OpenGLSalBitmap::calcChecksumGL(OpenGLTexture& rInputTexture, ChecksumType&
     int nNewWidth = ceil( nWidth / 4.0 );
     int nNewHeight = ceil( nHeight / 4.0 );
 
-    OpenGLTexture aFirstPassTexture = OpenGLTexture(nNewWidth, nNewHeight);
+    OpenGLTexture aFirstPassTexture(nNewWidth, nNewHeight);
     OpenGLFramebuffer* pFramebuffer = xContext->AcquireFramebuffer(aFirstPassTexture);
 
     pProgram->SetUniform1f( "xstep", 1.0 / mnWidth );
@@ -680,7 +524,7 @@ bool OpenGLSalBitmap::calcChecksumGL(OpenGLTexture& rInputTexture, ChecksumType&
     nNewWidth = ceil( nWidth / 4.0 );
     nNewHeight = ceil( nHeight / 4.0 );
 
-    OpenGLTexture aSecondPassTexture = OpenGLTexture(nNewWidth, nNewHeight);
+    OpenGLTexture aSecondPassTexture(nNewWidth, nNewHeight);
     pFramebuffer = xContext->AcquireFramebuffer(aSecondPassTexture);
 
     pProgram->SetUniform1f( "xstep", 1.0 / mnWidth );
@@ -700,7 +544,7 @@ bool OpenGLSalBitmap::calcChecksumGL(OpenGLTexture& rInputTexture, ChecksumType&
     std::vector<sal_uInt8> aBuf( aFinalTexture.GetWidth() * aFinalTexture.GetHeight() * 4 );
     aFinalTexture.Read(GL_RGBA, GL_UNSIGNED_BYTE, aBuf.data());
 
-    ChecksumType nCrc = vcl_get_checksum(0, aBuf.data(), aBuf.size());
+    BitmapChecksum nCrc = vcl_get_checksum(0, aBuf.data(), aBuf.size());
 
     rChecksum = nCrc;
     return true;
@@ -732,23 +576,26 @@ BitmapBuffer* OpenGLSalBitmap::AcquireBuffer( BitmapAccessMode nMode )
 
     if( nMode != BitmapAccessMode::Info )
     {
-        if (!mpUserBuffer.get())
+        if (!mpUserBuffer)
         {
             if( !AllocateUserData() )
                 return nullptr;
             if( maTexture && !ReadTexture() )
+            {
+                DeallocateUserData();
                 return nullptr;
+            }
         }
     }
 
     // mpUserBuffer must be unique when we are doing the write access
-    if (nMode == BitmapAccessMode::Write && mpUserBuffer && !mpUserBuffer.unique())
+    if (nMode == BitmapAccessMode::Write && mpUserBuffer && mpUserBuffer.use_count() > 1)
     {
         std::shared_ptr<sal_uInt8> aBuffer(mpUserBuffer);
 
         mpUserBuffer.reset();
         AllocateUserData();
-        memcpy(mpUserBuffer.get(), aBuffer.get(), static_cast<sal_uInt32>(mnBytesPerRow) * mnHeight);
+        memcpy(mpUserBuffer.get(), aBuffer.get(), mnBytesPerRow * mnHeight);
     }
 
     BitmapBuffer* pBuffer = new BitmapBuffer;
@@ -770,18 +617,6 @@ BitmapBuffer* OpenGLSalBitmap::AcquireBuffer( BitmapAccessMode nMode )
         case 8:
             pBuffer->mnFormat = ScanlineFormat::N8BitPal;
             break;
-        case 16:
-        {
-            pBuffer->mnFormat = ScanlineFormat::N16BitTcMsbMask;
-            ColorMaskElement aRedMask(0x0000f800);
-            aRedMask.CalcMaskShift();
-            ColorMaskElement aGreenMask(0x000007e0);
-            aGreenMask.CalcMaskShift();
-            ColorMaskElement aBlueMask(0x0000001f);
-            aBlueMask.CalcMaskShift();
-            pBuffer->maColorMask  = ColorMask(aRedMask, aGreenMask, aBlueMask);
-            break;
-        }
         case 24:
         {
             pBuffer->mnFormat = ScanlineFormat::N24BitTcRgb;
@@ -799,6 +634,7 @@ BitmapBuffer* OpenGLSalBitmap::AcquireBuffer( BitmapAccessMode nMode )
             pBuffer->maColorMask  = ColorMask(aRedMask, aGreenMask, aBlueMask);
             break;
         }
+        default: assert(false);
     }
 
     return pBuffer;
@@ -844,6 +680,7 @@ bool OpenGLSalBitmap::GetSystemData( BitmapSystemData& /*rData*/ )
         if( !AllocateUserData() || !ReadTexture() )
         {
             rBitmap.ReleaseBuffer( pBuffer, false );
+            DeallocateUserData();
             return false;
         }
     }
@@ -859,7 +696,7 @@ bool OpenGLSalBitmap::GetSystemData( BitmapSystemData& /*rData*/ )
 #endif
 }
 
-bool OpenGLSalBitmap::Replace( const Color& rSearchColor, const Color& rReplaceColor, sal_uLong nTol )
+bool OpenGLSalBitmap::Replace( const Color& rSearchColor, const Color& rReplaceColor, sal_uInt8 nTol )
 {
     VCL_GL_INFO("::Replace");
 
@@ -877,7 +714,7 @@ bool OpenGLSalBitmap::Replace( const Color& rSearchColor, const Color& rReplaceC
     if( !pProgram )
         return false;
 
-    OpenGLTexture aNewTex = OpenGLTexture( mnWidth, mnHeight );
+    OpenGLTexture aNewTex( mnWidth, mnHeight );
     pFramebuffer = xContext->AcquireFramebuffer( aNewTex );
 
     pProgram->SetTexture( "sampler", maTexture );
@@ -900,8 +737,8 @@ bool OpenGLSalBitmap::ConvertToGreyscale()
     VCL_GL_INFO("::ConvertToGreyscale");
 
     // avoid re-converting to 8bits.
-    if ( mnBits == 8 && maPalette == Bitmap::GetGreyPalette(256) )
-        return false;
+    if ( mnBits == 8 && maPalette.IsGreyPalette8Bit())
+        return true;
 
     OpenGLZone aZone;
     rtl::Reference<OpenGLContext> xContext = OpenGLContext::getVCLContext();
@@ -929,11 +766,18 @@ bool OpenGLSalBitmap::ConvertToGreyscale()
     maPalette = Bitmap::GetGreyPalette(256);
 
     // AllocateUserData will handle the rest.
-    mpUserBuffer.reset();
+    DeallocateUserData();
     mbDirtyTexture = false;
 
     CHECK_GL_ERROR();
     return true;
+}
+
+// This is needed to just make the bitmap usable as an alpha channel.
+// Converting to 8bit grey will do.
+bool OpenGLSalBitmap::InterpretAs8Bit()
+{
+    return ConvertToGreyscale();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

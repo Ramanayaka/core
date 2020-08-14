@@ -18,23 +18,24 @@
  */
 
 #include "nssrenam.h"
-#include "nspr.h"
-#include "nss.h"
-#include "secder.h"
+#include <secder.h>
 
-#include "hasht.h"
-#include "secoid.h"
-#include "pk11func.h"
+#include <cert.h>
+#include <hasht.h>
+#include <secoid.h>
+#include <pk11pub.h>
 
 #include <sal/config.h>
 #include <comphelper/servicehelper.hxx>
+#include <cppuhelper/supportsservice.hxx>
 #include <rtl/ref.hxx>
 #include "x509certificate_nssimpl.hxx"
 
-#include "certificateextension_xmlsecimpl.hxx"
+#include <certificateextension_xmlsecimpl.hxx>
 
 #include "sanextension_nssimpl.hxx"
 #include <tools/time.hxx>
+#include <svl/sigstruct.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno ;
@@ -44,7 +45,7 @@ using ::com::sun::star::security::XCertificate ;
 using ::com::sun::star::util::DateTime ;
 
 X509Certificate_NssImpl::X509Certificate_NssImpl() :
-    m_pCert( nullptr )
+    m_pCert(nullptr)
 {
 }
 
@@ -58,7 +59,7 @@ X509Certificate_NssImpl::~X509Certificate_NssImpl() {
 sal_Int16 SAL_CALL X509Certificate_NssImpl::getVersion() {
     if( m_pCert != nullptr ) {
         if( m_pCert->version.len > 0 ) {
-            return ( char )*( m_pCert->version.data ) ;
+            return static_cast<char>(*( m_pCert->version.data )) ;
         } else
             return 0 ;
     } else {
@@ -207,7 +208,7 @@ css::uno::Sequence< css::uno::Reference< css::security::XCertificateExtension > 
             unsigned char* objid = reinterpret_cast<unsigned char *>(const_cast<char *>(objID.getStr()));
             unsigned int objidlen = objID.getLength();
 
-            if (objID.equals("2.5.29.17"))
+            if (objID == "2.5.29.17")
             {
                 SanExtensionImpl* pExtn = new SanExtensionImpl;
                 pExtn->setCertExtn(value, vlen, objid, objidlen, crit);
@@ -252,7 +253,7 @@ css::uno::Reference< css::security::XCertificateExtension > SAL_CALL X509Certifi
                 unsigned char* objid = (*extns)->id.data;
                 unsigned int objidlen = (*extns)->id.len;
 
-                if ( objId.equals("OID.2.5.29.17") )
+                if ( objId == "OID.2.5.29.17" )
                 {
                     rtl::Reference<SanExtensionImpl> xSanImpl(
                         new SanExtensionImpl);
@@ -329,9 +330,20 @@ void X509Certificate_NssImpl::setRawCert( const Sequence< sal_Int8 >& rawCert ) 
     m_pCert = cert ;
 }
 
+SECKEYPrivateKey* X509Certificate_NssImpl::getPrivateKey()
+{
+    if (m_pCert && m_pCert->slot)
+    {
+        SECKEYPrivateKey* pPrivateKey = PK11_FindPrivateKeyFromCert(m_pCert->slot, m_pCert, nullptr);
+        if (pPrivateKey)
+            return pPrivateKey;
+    }
+    return nullptr;
+}
+
 /* XUnoTunnel */
 sal_Int64 SAL_CALL X509Certificate_NssImpl::getSomething( const Sequence< sal_Int8 >& aIdentifier ) {
-    if( aIdentifier.getLength() == 16 && 0 == memcmp( getUnoTunnelId().getConstArray(), aIdentifier.getConstArray(), 16 ) ) {
+    if( isUnoTunnelId<X509Certificate_NssImpl>(aIdentifier) ) {
         return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_uIntPtr>(this));
     }
     return 0 ;
@@ -348,7 +360,7 @@ const Sequence< sal_Int8>& X509Certificate_NssImpl::getUnoTunnelId() {
     return theX509Certificate_NssImplUnoTunnelId::get().getSeq();
 }
 
-OUString getAlgorithmDescription(SECAlgorithmID *aid)
+static OUString getAlgorithmDescription(SECAlgorithmID const *aid)
 {
     SECOidTag tag;
     tag = SECOID_GetAlgorithmTag(aid);
@@ -358,7 +370,7 @@ OUString getAlgorithmDescription(SECAlgorithmID *aid)
     return OUString::createFromAscii( pDesc ) ;
 }
 
-css::uno::Sequence< sal_Int8 > getThumbprint(CERTCertificate *pCert, SECOidTag id)
+static css::uno::Sequence< sal_Int8 > getThumbprint(CERTCertificate const *pCert, SECOidTag id)
 {
     if( pCert != nullptr )
     {
@@ -440,6 +452,20 @@ OUString SAL_CALL X509Certificate_NssImpl::getSignatureAlgorithm()
     }
 }
 
+svl::crypto::SignatureMethodAlgorithm X509Certificate_NssImpl::getSignatureMethodAlgorithm()
+{
+    svl::crypto::SignatureMethodAlgorithm nRet = svl::crypto::SignatureMethodAlgorithm::RSA;
+
+    if (!m_pCert)
+        return nRet;
+
+    SECOidTag eTag = SECOID_GetAlgorithmTag(&m_pCert->subjectPublicKeyInfo.algorithm);
+    if (eTag == SEC_OID_ANSIX962_EC_PUBLIC_KEY)
+        nRet = svl::crypto::SignatureMethodAlgorithm::ECDSA;
+
+    return nRet;
+}
+
 css::uno::Sequence< sal_Int8 > SAL_CALL X509Certificate_NssImpl::getSHA1Thumbprint()
 {
     return getThumbprint(m_pCert, SEC_OID_SHA1);
@@ -491,5 +517,20 @@ sal_Int32 SAL_CALL X509Certificate_NssImpl::getCertificateUsage(  )
 
     return usage;
 }
+
+/* XServiceInfo */
+OUString SAL_CALL X509Certificate_NssImpl::getImplementationName()
+{
+    return "com.sun.star.xml.security.gpg.XCertificate_NssImpl";
+}
+
+/* XServiceInfo */
+sal_Bool SAL_CALL X509Certificate_NssImpl::supportsService(const OUString& serviceName)
+{
+    return cppu::supportsService(this, serviceName);
+}
+
+/* XServiceInfo */
+Sequence<OUString> SAL_CALL X509Certificate_NssImpl::getSupportedServiceNames() { return { OUString() }; }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

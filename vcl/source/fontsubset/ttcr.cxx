@@ -19,16 +19,16 @@
 
 /*
  * TrueTypeCreator method implementation
- *
- * @author: Alexander Gelfenbain
- *
  */
 
+#include <iomanip>
 #include <assert.h>
+
+#include <sal/log.hxx>
 
 #include "ttcr.hxx"
 #include "list.h"
-#include "string.h"
+#include <string.h>
 
 namespace vcl
 {
@@ -42,94 +42,55 @@ namespace vcl
         list   tables;                      /**< List of table tags and pointers */
     };
 
-/* These must be #defined so that they can be used in initializers */
-#define T_maxp  0x6D617870
-#define T_glyf  0x676C7966
-#define T_head  0x68656164
-#define T_loca  0x6C6F6361
-#define T_name  0x6E616D65
-#define T_hhea  0x68686561
-#define T_hmtx  0x686D7478
-#define T_cmap  0x636D6170
-#define T_post  0x706F7374
+namespace {
 
-typedef struct {
+struct TableEntry {
     sal_uInt32 tag;
     sal_uInt32 length;
     sal_uInt8  *data;
-} TableEntry;
+};
+
+}
 
 /*- Data access macros for data stored in big-endian or little-endian format */
-static sal_Int16 GetInt16( const sal_uInt8* ptr, sal_uInt32 offset, int bigendian)
+static sal_Int16 GetInt16( const sal_uInt8* ptr, sal_uInt32 offset)
 {
-    sal_Int16 t;
     assert(ptr != nullptr);
-
-    if (bigendian) {
-        t = (ptr+offset)[0] << 8 | (ptr+offset)[1];
-    } else {
-        t = (ptr+offset)[1] << 8 | (ptr+offset)[0];
-    }
-
+    sal_Int16 t = (ptr+offset)[0] << 8 | (ptr+offset)[1];
     return t;
 }
 
-static sal_uInt16 GetUInt16( const sal_uInt8* ptr, sal_uInt32 offset, int bigendian)
+static sal_uInt16 GetUInt16( const sal_uInt8* ptr, sal_uInt32 offset)
 {
-    sal_uInt16 t;
     assert(ptr != nullptr);
-
-    if (bigendian) {
-        t = (ptr+offset)[0] << 8 | (ptr+offset)[1];
-    } else {
-        t = (ptr+offset)[1] << 8 | (ptr+offset)[0];
-    }
-
+    sal_uInt16 t = (ptr+offset)[0] << 8 | (ptr+offset)[1];
     return t;
 }
 
-static void PutInt16(sal_Int16 val, sal_uInt8 *ptr, sal_uInt32 offset, int bigendian)
+static void PutInt16(sal_Int16 val, sal_uInt8 *ptr, sal_uInt32 offset)
 {
     assert(ptr != nullptr);
 
-    if (bigendian) {
-        ptr[offset] = (sal_uInt8)((val >> 8) & 0xFF);
-        ptr[offset+1] = (sal_uInt8)(val & 0xFF);
-    } else {
-        ptr[offset+1] = (sal_uInt8)((val >> 8) & 0xFF);
-        ptr[offset] = (sal_uInt8)(val & 0xFF);
-    }
+    ptr[offset] = static_cast<sal_uInt8>((val >> 8) & 0xFF);
+    ptr[offset+1] = static_cast<sal_uInt8>(val & 0xFF);
 }
 
-static void PutUInt16(sal_uInt16 val, sal_uInt8 *ptr, sal_uInt32 offset, int bigendian)
+static void PutUInt16(sal_uInt16 val, sal_uInt8 *ptr, sal_uInt32 offset)
 {
     assert(ptr != nullptr);
 
-    if (bigendian) {
-        ptr[offset] = (sal_uInt8)((val >> 8) & 0xFF);
-        ptr[offset+1] = (sal_uInt8)(val & 0xFF);
-    } else {
-        ptr[offset+1] = (sal_uInt8)((val >> 8) & 0xFF);
-        ptr[offset] = (sal_uInt8)(val & 0xFF);
-    }
+    ptr[offset] = static_cast<sal_uInt8>((val >> 8) & 0xFF);
+    ptr[offset+1] = static_cast<sal_uInt8>(val & 0xFF);
 }
 
-static void PutUInt32(sal_uInt32 val, sal_uInt8 *ptr, sal_uInt32 offset, int bigendian)
+static void PutUInt32(sal_uInt32 val, sal_uInt8 *ptr, sal_uInt32 offset)
 {
     assert(ptr != nullptr);
 
-    if (bigendian) {
-        ptr[offset]   = (sal_uInt8)((val >> 24) & 0xFF);
-        ptr[offset+1] = (sal_uInt8)((val >> 16) & 0xFF);
-        ptr[offset+2] = (sal_uInt8)((val >> 8) & 0xFF);
-        ptr[offset+3] = (sal_uInt8)(val & 0xFF);
-    } else {
-        ptr[offset+3] = (sal_uInt8)((val >> 24) & 0xFF);
-        ptr[offset+2] = (sal_uInt8)((val >> 16) & 0xFF);
-        ptr[offset+1] = (sal_uInt8)((val >> 8) & 0xFF);
-        ptr[offset]   = (sal_uInt8)(val & 0xFF);
-    }
-
+    ptr[offset]   = static_cast<sal_uInt8>((val >> 24) & 0xFF);
+    ptr[offset+1] = static_cast<sal_uInt8>((val >> 16) & 0xFF);
+    ptr[offset+2] = static_cast<sal_uInt8>((val >> 8) & 0xFF);
+    ptr[offset+3] = static_cast<sal_uInt8>(val & 0xFF);
 }
 
 static int TableEntryCompareF(const void *l, const void *r)
@@ -159,7 +120,7 @@ static int NameRecordCompareF(const void *l, const void *r)
 static sal_uInt32 CheckSum(sal_uInt32 *ptr, sal_uInt32 length)
 {
     sal_uInt32 sum = 0;
-    sal_uInt32 *endptr = ptr + ((length + 3) & (sal_uInt32) ~3) / 4;
+    sal_uInt32 *endptr = ptr + ((length + 3) & sal_uInt32(~3)) / 4;
 
     while (ptr < endptr) sum += *ptr++;
 
@@ -196,46 +157,45 @@ void TrueTypeCreatorNewEmpty(sal_uInt32 tag, TrueTypeCreator **_this)
     *_this = ptr;
 }
 
-int AddTable(TrueTypeCreator *_this, TrueTypeTable *table)
+void AddTable(TrueTypeCreator *_this, TrueTypeTable *table)
 {
     if (table != nullptr) {
         listAppend(_this->tables, table);
     }
-    return SF_OK;
 }
 
 void RemoveTable(TrueTypeCreator *_this, sal_uInt32 tag)
 {
-    if (listCount(_this->tables))
-    {
-        listToFirst(_this->tables);
-        int done = 0;
-        do {
-            if (static_cast<TrueTypeTable *>(listCurrent(_this->tables))->tag == tag)
+    if (!listCount(_this->tables))
+        return;
+
+    listToFirst(_this->tables);
+    int done = 0;
+    do {
+        if (static_cast<TrueTypeTable *>(listCurrent(_this->tables))->tag == tag)
+        {
+            listRemove(_this->tables);
+        }
+        else
+        {
+            if (listNext(_this->tables))
             {
-                listRemove(_this->tables);
+                done = 1;
             }
-            else
-            {
-                if (listNext(_this->tables))
-                {
-                    done = 1;
-                }
-            }
-        } while (!done);
-    }
+        }
+    } while (!done);
 }
 
 static void ProcessTables(TrueTypeCreator *);
 
-int StreamToMemory(TrueTypeCreator *_this, sal_uInt8 **ptr, sal_uInt32 *length)
+SFErrCodes StreamToMemory(TrueTypeCreator *_this, sal_uInt8 **ptr, sal_uInt32 *length)
 {
     sal_uInt16 searchRange=1, entrySelector=0, rangeShift;
     sal_uInt32 s, offset, checkSumAdjustment = 0;
     sal_uInt32 *p;
     sal_uInt8 *head = nullptr;     /* saved pointer to the head table data for checkSumAdjustment calculation */
 
-    if (listIsEmpty(_this->tables)) return SF_TTFORMAT;
+    if (listIsEmpty(_this->tables)) return SFErrCodes::TtFormat;
 
     ProcessTables(_this);
 
@@ -266,67 +226,68 @@ int StreamToMemory(TrueTypeCreator *_this, sal_uInt8 **ptr, sal_uInt32 *length)
     s = offset = 12 + 16 * numTables;
 
     for (int i = 0; i < numTables; ++i) {
-        s += (te[i].length + 3) & (sal_uInt32) ~3;
+        s += (te[i].length + 3) & sal_uInt32(~3);
         /* if ((te[i].length & 3) != 0) s += (4 - (te[i].length & 3)) & 3; */
     }
 
     sal_uInt8* ttf = static_cast<sal_uInt8*>(smalloc(s));
 
     /* Offset Table */
-    PutUInt32(_this->tag, ttf, 0, 1);
-    PutUInt16(numTables, ttf, 4, 1);
-    PutUInt16(searchRange, ttf, 6, 1);
-    PutUInt16(entrySelector, ttf, 8, 1);
-    PutUInt16(rangeShift, ttf, 10, 1);
+    PutUInt32(_this->tag, ttf, 0);
+    PutUInt16(numTables, ttf, 4);
+    PutUInt16(searchRange, ttf, 6);
+    PutUInt16(entrySelector, ttf, 8);
+    PutUInt16(rangeShift, ttf, 10);
 
     /* Table Directory */
     for (int i = 0; i < numTables; ++i) {
-        PutUInt32(te[i].tag, ttf + 12, 16 * i, 1);
-        PutUInt32(CheckSum(reinterpret_cast<sal_uInt32 *>(te[i].data), te[i].length), ttf + 12, 16 * i + 4, 1);
-        PutUInt32(offset, ttf + 12, 16 * i + 8, 1);
-        PutUInt32(te[i].length, ttf + 12, 16 * i + 12, 1);
+        PutUInt32(te[i].tag, ttf + 12, 16 * i);
+        PutUInt32(CheckSum(reinterpret_cast<sal_uInt32 *>(te[i].data), te[i].length), ttf + 12, 16 * i + 4);
+        PutUInt32(offset, ttf + 12, 16 * i + 8);
+        PutUInt32(te[i].length, ttf + 12, 16 * i + 12);
 
         if (te[i].tag == T_head) {
             head = ttf + offset;
         }
 
-        memcpy(ttf+offset, te[i].data, (te[i].length + 3) & (sal_uInt32) ~3 );
-        offset += (te[i].length + 3) & (sal_uInt32) ~3;
+        memcpy(ttf+offset, te[i].data, (te[i].length + 3) & sal_uInt32(~3) );
+        offset += (te[i].length + 3) & sal_uInt32(~3);
         /* if ((te[i].length & 3) != 0) offset += (4 - (te[i].length & 3)) & 3; */
     }
 
     free(te);
 
     p = reinterpret_cast<sal_uInt32 *>(ttf);
-    for (int i = 0; i < (int)s / 4; ++i) checkSumAdjustment += p[i];
-    PutUInt32(0xB1B0AFBA - checkSumAdjustment, head, 8, 1);
+    for (int i = 0; i < static_cast<int>(s) / 4; ++i) checkSumAdjustment += p[i];
+    PutUInt32(0xB1B0AFBA - checkSumAdjustment, head, 8);
 
     *ptr = ttf;
     *length = s;
 
-    return SF_OK;
+    return SFErrCodes::Ok;
 }
 
-int StreamToFile(TrueTypeCreator *_this, const char* fname)
+SFErrCodes StreamToFile(TrueTypeCreator *_this, const char* fname)
 {
     sal_uInt8 *ptr;
     sal_uInt32 length;
-    int r;
+    SFErrCodes r;
     FILE* fd;
 
-    if ((r = StreamToMemory(_this, &ptr, &length)) != SF_OK) return r;
-    if (fname && (fd = fopen(fname, "wb")) != nullptr)
+    if ((r = StreamToMemory(_this, &ptr, &length)) != SFErrCodes::Ok) return r;
+    r = SFErrCodes::BadFile;
+    if (fname)
     {
-        if (fwrite(ptr, 1, length, fd) != length) {
-            r = SF_FILEIO;
-        } else {
-            r = SF_OK;
+        fd = fopen(fname, "wb");
+        if (fd)
+        {
+            if (fwrite(ptr, 1, length, fd) != length) {
+                r = SFErrCodes::FileIo;
+            } else {
+                r = SFErrCodes::Ok;
+            }
+            fclose(fd);
         }
-        fclose(fd);
-    }
-    else
-    {
-        r = SF_BADFILE;
     }
     free(ptr);
     return r;
@@ -336,17 +297,13 @@ int StreamToFile(TrueTypeCreator *_this, const char* fname)
  * TrueTypeTable private methods
  */
 
-#define TABLESIZE_head 54
-#define TABLESIZE_hhea 36
-#define TABLESIZE_maxp 32
-
 /*    Table         data points to
  * --------------------------------------------
  *    generic       tdata_generic struct
- *    'head'        TABLESIZE_head bytes of memory
- *    'hhea'        TABLESIZE_hhea bytes of memory
+ *    'head'        HEAD_Length bytes of memory
+ *    'hhea'        HHEA_Length bytes of memory
  *    'loca'        tdata_loca struct
- *    'maxp'        TABLESIZE_maxp bytes of memory
+ *    'maxp'        MAXP_Version1Length bytes of memory
  *    'glyf'        list of GlyphData structs (defined in sft.h)
  *    'name'        list of NameRecord structs (defined in sft.h)
  *    'post'        tdata_post struct
@@ -358,46 +315,50 @@ int StreamToFile(TrueTypeCreator *_this, const char* fname)
 #define CMAP_PAIR_INIT 500
 #define CMAP_PAIR_INCR 500
 
-typedef struct {
+namespace {
+
+struct CmapSubTable {
     sal_uInt32  id;                         /* subtable ID (platform/encoding ID)    */
     sal_uInt32  n;                          /* number of used translation pairs      */
     sal_uInt32  m;                          /* number of allocated translation pairs */
     sal_uInt32 *xc;                         /* character array                       */
     sal_uInt32 *xg;                         /* glyph array                           */
-} CmapSubTable;
+};
 
-typedef struct {
+struct table_cmap {
     sal_uInt32 n;                           /* number of used CMAP sub-tables       */
     sal_uInt32 m;                           /* number of allocated CMAP sub-tables  */
     CmapSubTable *s;                    /* sorted array of sub-tables           */
-} table_cmap;
+};
 
-typedef struct {
+struct tdata_generic {
     sal_uInt32 tag;
     sal_uInt32 nbytes;
     sal_uInt8 *ptr;
-} tdata_generic;
+};
 
-typedef struct {
+struct tdata_loca {
     sal_uInt32 nbytes;                      /* number of bytes in loca table */
     sal_uInt8 *ptr;                          /* pointer to the data */
-} tdata_loca;
+};
 
-typedef struct {
+struct tdata_post {
     sal_uInt32 format;
     sal_uInt32 italicAngle;
     sal_Int16  underlinePosition;
     sal_Int16  underlineThickness;
     sal_uInt32 isFixedPitch;
     void   *ptr;                        /* format-specific pointer */
-} tdata_post;
+};
+
+}
 
 /* allocate memory for a TT table */
 static sal_uInt8 *ttmalloc(sal_uInt32 nbytes)
 {
     sal_uInt32 n;
 
-    n = (nbytes + 3) & (sal_uInt32) ~3;
+    n = (nbytes + 3) & sal_uInt32(~3);
     sal_uInt8* res = static_cast<sal_uInt8*>(calloc(n, 1));
     assert(res != nullptr);
 
@@ -469,21 +430,21 @@ static void TrueTypeTableDispose_glyf(TrueTypeTable *_this)
 
 static void TrueTypeTableDispose_cmap(TrueTypeTable *_this)
 {
-    if (_this) {
-        table_cmap *t = static_cast<table_cmap *>(_this->data);
-        if (t) {
-            CmapSubTable *s = t->s;
-            if (s) {
-                for (sal_uInt32 i = 0; i < t->m; i++) {
-                    if (s[i].xc) free(s[i].xc);
-                    if (s[i].xg) free(s[i].xg);
-                }
-                free(s);
+    if (!_this)        return;
+
+    table_cmap *t = static_cast<table_cmap *>(_this->data);
+    if (t) {
+        CmapSubTable *s = t->s;
+        if (s) {
+            for (sal_uInt32 i = 0; i < t->m; i++) {
+                if (s[i].xc) free(s[i].xc);
+                if (s[i].xg) free(s[i].xg);
             }
-            free(t);
+            free(s);
         }
-        free(_this);
+        free(t);
     }
+    free(_this);
 }
 
 static void TrueTypeTableDispose_name(TrueTypeTable *_this)
@@ -496,26 +457,31 @@ static void TrueTypeTableDispose_name(TrueTypeTable *_this)
 
 static void TrueTypeTableDispose_post(TrueTypeTable *_this)
 {
-    if (_this) {
-        tdata_post *p = static_cast<tdata_post *>(_this->data);
-        if (p) {
-            if (p->format == 0x00030000) {
-                /* do nothing */
-            } else {
-                fprintf(stderr, "Unsupported format of a 'post' table: %08X.\n", (int)p->format);
-            }
-            free(p);
+    if (!_this)        return;
+
+    tdata_post *p = static_cast<tdata_post *>(_this->data);
+    if (p) {
+        if (p->format == 0x00030000) {
+            /* do nothing */
+        } else {
+            SAL_WARN("vcl.fonts", "Unsupported format of a 'post' table: "
+                    << std::setfill('0')
+                    << std::setw(8)
+                    << std::hex
+                    << std::uppercase
+                    << static_cast<int>(p->format) << ".");
         }
-        free(_this);
+        free(p);
     }
+    free(_this);
 }
 
 /* destructor vtable */
 
-static struct {
+struct {
     sal_uInt32 tag;
     void (*f)(TrueTypeTable *);
-} vtable1[] =
+} const vtable1[] =
 {
     {0,      TrueTypeTableDispose_generic},
     {T_head, TrueTypeTableDispose_head},
@@ -543,7 +509,7 @@ static int GetRawData_generic(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 
 
 static int GetRawData_head(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *len, sal_uInt32 *tag)
 {
-    *len = TABLESIZE_head;
+    *len = HEAD_Length;
     *ptr = static_cast<sal_uInt8 *>(_this->data);
     *tag = T_head;
 
@@ -552,7 +518,7 @@ static int GetRawData_head(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *le
 
 static int GetRawData_hhea(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *len, sal_uInt32 *tag)
 {
-    *len = TABLESIZE_hhea;
+    *len = HHEA_Length;
     *ptr = static_cast<sal_uInt8 *>(_this->data);
     *tag = T_hhea;
 
@@ -578,7 +544,7 @@ static int GetRawData_loca(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *le
 
 static int GetRawData_maxp(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *len, sal_uInt32 *tag)
 {
-    *len = TABLESIZE_maxp;
+    *len = MAXP_Version1Length;
     *ptr = static_cast<sal_uInt8 *>(_this->data);
     *tag = T_maxp;
 
@@ -623,58 +589,58 @@ static int GetRawData_glyf(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *le
 }
 
 /* cmap packers */
-static sal_uInt8 *PackCmapType0(CmapSubTable *s, sal_uInt32 *length)
+static sal_uInt8 *PackCmapType0(CmapSubTable const *s, sal_uInt32 *length)
 {
     sal_uInt8* ptr = static_cast<sal_uInt8*>(smalloc(262));
     sal_uInt8 *p = ptr + 6;
     sal_uInt32 i, j;
     sal_uInt16 g;
 
-    PutUInt16(0, ptr, 0, 1);
-    PutUInt16(262, ptr, 2, 1);
-    PutUInt16(0, ptr, 4, 1);
+    PutUInt16(0, ptr, 0);
+    PutUInt16(262, ptr, 2);
+    PutUInt16(0, ptr, 4);
 
     for (i = 0; i < 256; i++) {
         g = 0;
         for (j = 0; j < s->n; j++) {
             if (s->xc[j] == i) {
-                g = (sal_uInt16) s->xg[j];
+                g = static_cast<sal_uInt16>(s->xg[j]);
             }
         }
-        p[i] = (sal_uInt8) g;
+        p[i] = static_cast<sal_uInt8>(g);
     }
     *length = 262;
     return ptr;
 }
 
-static sal_uInt8 *PackCmapType6(CmapSubTable *s, sal_uInt32 *length)
+static sal_uInt8 *PackCmapType6(CmapSubTable const *s, sal_uInt32 *length)
 {
     sal_uInt8* ptr = static_cast<sal_uInt8*>(smalloc(s->n*2 + 10));
     sal_uInt8 *p = ptr + 10;
     sal_uInt32 i, j;
     sal_uInt16 g;
 
-    PutUInt16(6, ptr, 0, 1);
-    PutUInt16((sal_uInt16)(s->n*2+10), ptr, 2, 1);
-    PutUInt16(0, ptr, 4, 1);
-    PutUInt16(0, ptr, 6, 1);
-    PutUInt16((sal_uInt16)(s->n), ptr, 8, 1 );
+    PutUInt16(6, ptr, 0);
+    PutUInt16(static_cast<sal_uInt16>(s->n*2+10), ptr, 2);
+    PutUInt16(0, ptr, 4);
+    PutUInt16(0, ptr, 6);
+    PutUInt16(static_cast<sal_uInt16>(s->n), ptr, 8 );
 
     for (i = 0; i < s->n; i++) {
         g = 0;
         for (j = 0; j < s->n; j++) {
             if (s->xc[j] == i) {
-                g = (sal_uInt16) s->xg[j];
+                g = static_cast<sal_uInt16>(s->xg[j]);
             }
         }
-        PutUInt16( g, p, 2*i, 1 );
+        PutUInt16( g, p, 2*i );
     }
     *length = s->n*2+10;
     return ptr;
 }
 
 /* XXX it only handles Format 0 encoding tables */
-static sal_uInt8 *PackCmap(CmapSubTable *s, sal_uInt32 *length)
+static sal_uInt8 *PackCmap(CmapSubTable const *s, sal_uInt32 *length)
 {
     if( s->xg[s->n-1] > 0xff )
         return PackCmapType6(s, length);
@@ -709,14 +675,14 @@ static int GetRawData_cmap(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *le
     cmapsize = tlen + 4 + 8 * t->n;
     _this->rawdata = cmap = ttmalloc(cmapsize);
 
-    PutUInt16(0, cmap, 0, 1);
-    PutUInt16((sal_uInt16)t->n, cmap, 2, 1);
+    PutUInt16(0, cmap, 0);
+    PutUInt16(static_cast<sal_uInt16>(t->n), cmap, 2);
     coffset = 4 + t->n * 8;
 
     for (i = 0; i < t->n; i++) {
-        PutUInt16((sal_uInt16)(t->s[i].id >> 16), cmap + 4, i * 8, 1);
-        PutUInt16((sal_uInt16)(t->s[i].id & 0xFF), cmap + 4, 2 + i * 8, 1);
-        PutUInt32(coffset, cmap + 4, 4 + i * 8, 1);
+        PutUInt16(static_cast<sal_uInt16>(t->s[i].id >> 16), cmap + 4, i * 8);
+        PutUInt16(static_cast<sal_uInt16>(t->s[i].id & 0xFF), cmap + 4, 2 + i * 8);
+        PutUInt32(coffset, cmap + 4, 4 + i * 8);
         memcpy(cmap + coffset, subtables[i], sizes[i]);
         free(subtables[i]);
         coffset += sizes[i];
@@ -747,7 +713,7 @@ static int GetRawData_name(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *le
     l = static_cast<list>(_this->data);
     assert(l != nullptr);
 
-    if ((n = (sal_Int16)listCount(l)) == 0) return TTCR_NONAMES;
+    if ((n = static_cast<sal_Int16>(listCount(l))) == 0) return TTCR_NONAMES;
 
     NameRecord* nr = static_cast<NameRecord*>(scalloc(n, sizeof(NameRecord)));
 
@@ -769,20 +735,20 @@ static int GetRawData_name(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *le
     int nameLen = stringLen + 12 * n + 6;
     sal_uInt8* name = ttmalloc(nameLen);
 
-    PutUInt16(0, name, 0, 1);
-    PutUInt16(n, name, 2, 1);
-    PutUInt16((sal_uInt16)(6 + 12 * n), name, 4, 1);
+    PutUInt16(0, name, 0);
+    PutUInt16(n, name, 2);
+    PutUInt16(static_cast<sal_uInt16>(6 + 12 * n), name, 4);
 
     p1 = name + 6;
     p2 = p1 + 12 * n;
 
     for (i = 0; i < n; i++) {
-        PutUInt16(nr[i].platformID, p1, 0, 1);
-        PutUInt16(nr[i].encodingID, p1, 2, 1);
-        PutUInt16((sal_uInt16)nr[i].languageID, p1, 4, 1);
-        PutUInt16(nr[i].nameID, p1, 6, 1);
-        PutUInt16(nr[i].slen, p1, 8, 1);
-        PutUInt16((sal_uInt16)(p2 - (name + 6 + 12 * n)), p1, 10, 1);
+        PutUInt16(nr[i].platformID, p1, 0);
+        PutUInt16(nr[i].encodingID, p1, 2);
+        PutUInt16(static_cast<sal_uInt16>(nr[i].languageID), p1, 4);
+        PutUInt16(nr[i].nameID, p1, 6);
+        PutUInt16(nr[i].slen, p1, 8);
+        PutUInt16(static_cast<sal_uInt16>(p2 - (name + 6 + 12 * n)), p1, 10);
         if (nr[i].slen) {
             memcpy(p2, nr[i].sptr, nr[i].slen);
         }
@@ -795,7 +761,7 @@ static int GetRawData_name(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *le
     _this->rawdata = name;
 
     *ptr = name;
-    *len = (sal_uInt16)nameLen;
+    *len = static_cast<sal_uInt16>(nameLen);
     *tag = T_name;
 
     /*{int j; for(j=0; j<nameLen; j++) printf("%c", name[j]); }; */
@@ -815,14 +781,19 @@ static int GetRawData_post(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *le
     if (p->format == 0x00030000) {
         postLen = 32;
         post = ttmalloc(postLen);
-        PutUInt32(0x00030000, post, 0, 1);
-        PutUInt32(p->italicAngle, post, 4, 1);
-        PutUInt16(p->underlinePosition, post, 8, 1);
-        PutUInt16(p->underlineThickness, post, 10, 1);
-        PutUInt16((sal_uInt16)p->isFixedPitch, post, 12, 1);
+        PutUInt32(0x00030000, post, 0);
+        PutUInt32(p->italicAngle, post, 4);
+        PutUInt16(p->underlinePosition, post, 8);
+        PutUInt16(p->underlineThickness, post, 10);
+        PutUInt16(static_cast<sal_uInt16>(p->isFixedPitch), post, 12);
         ret = TTCR_OK;
     } else {
-        fprintf(stderr, "Unrecognized format of a post table: %08X.\n", (int)p->format);
+        SAL_WARN("vcl.fonts", "Unrecognized format of a post table: "
+                << std::setfill('0')
+                << std::setw(8)
+                << std::hex
+                << std::uppercase
+                << static_cast<int>(p->format) << ".");
         ret = TTCR_POSTFORMAT;
     }
 
@@ -833,10 +804,10 @@ static int GetRawData_post(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *le
     return ret;
 }
 
-static struct {
+struct {
     sal_uInt32 tag;
     int (*f)(TrueTypeTable *, sal_uInt8 **, sal_uInt32 *, sal_uInt32 *);
-} vtable2[] =
+} const vtable2[] =
 {
     {0,      GetRawData_generic},
     {T_head, GetRawData_head},
@@ -898,19 +869,19 @@ TrueTypeTable *TrueTypeTableNew_head(sal_uInt32 fontRevision,
     assert(created != nullptr);
 
     TrueTypeTable* table  = static_cast<TrueTypeTable*>(smalloc(sizeof(TrueTypeTable)));
-    sal_uInt8* ptr = ttmalloc(TABLESIZE_head);
+    sal_uInt8* ptr = ttmalloc(HEAD_Length);
 
-    PutUInt32(0x00010000, ptr, 0, 1);             /* version */
-    PutUInt32(fontRevision, ptr, 4, 1);
-    PutUInt32(0x5F0F3CF5, ptr, 12, 1);            /* magic number */
-    PutUInt16(flags, ptr, 16, 1);
-    PutUInt16(unitsPerEm, ptr, 18, 1);
+    PutUInt32(0x00010000, ptr, 0);             /* version */
+    PutUInt32(fontRevision, ptr, 4);
+    PutUInt32(0x5F0F3CF5, ptr, 12);            /* magic number */
+    PutUInt16(flags, ptr, 16);
+    PutUInt16(unitsPerEm, ptr, 18);
     memcpy(ptr+20, created, 8);                   /* Created Long Date */
     memset(ptr+28, 0, 8);                         /* Modified Long Date */
-    PutUInt16(macStyle, ptr, 44, 1);
-    PutUInt16(lowestRecPPEM, ptr, 46, 1);
-    PutUInt16(fontDirectionHint, ptr, 48, 1);
-    PutUInt16(0, ptr, 52, 1);                     /* glyph data format: 0 */
+    PutUInt16(macStyle, ptr, 44);
+    PutUInt16(lowestRecPPEM, ptr, 46);
+    PutUInt16(fontDirectionHint, ptr, 48);
+    PutUInt16(0, ptr, 52);                     /* glyph data format: 0 */
 
     table->data = static_cast<void *>(ptr);
     table->tag = T_head;
@@ -926,20 +897,20 @@ TrueTypeTable *TrueTypeTableNew_hhea(sal_Int16  ascender,
                                      sal_Int16  caretSlopeRun)
 {
     TrueTypeTable* table = static_cast<TrueTypeTable*>(smalloc(sizeof(TrueTypeTable)));
-    sal_uInt8* ptr = ttmalloc(TABLESIZE_hhea);
+    sal_uInt8* ptr = ttmalloc(HHEA_Length);
 
-    PutUInt32(0x00010000, ptr, 0, 1);             /* version */
-    PutUInt16(ascender, ptr, 4, 1);
-    PutUInt16(descender, ptr, 6, 1);
-    PutUInt16(linegap, ptr, 8, 1);
-    PutUInt16(caretSlopeRise, ptr, 18, 1);
-    PutUInt16(caretSlopeRun, ptr, 20, 1);
-    PutUInt16(0, ptr, 22, 1);                     /* reserved 1 */
-    PutUInt16(0, ptr, 24, 1);                     /* reserved 2 */
-    PutUInt16(0, ptr, 26, 1);                     /* reserved 3 */
-    PutUInt16(0, ptr, 28, 1);                     /* reserved 4 */
-    PutUInt16(0, ptr, 30, 1);                     /* reserved 5 */
-    PutUInt16(0, ptr, 32, 1);                     /* metricDataFormat */
+    PutUInt32(0x00010000, ptr, 0);             /* version */
+    PutUInt16(ascender, ptr, 4);
+    PutUInt16(descender, ptr, 6);
+    PutUInt16(linegap, ptr, 8);
+    PutUInt16(caretSlopeRise, ptr, 18);
+    PutUInt16(caretSlopeRun, ptr, 20);
+    PutUInt16(0, ptr, 22);                     /* reserved 1 */
+    PutUInt16(0, ptr, 24);                     /* reserved 2 */
+    PutUInt16(0, ptr, 26);                     /* reserved 3 */
+    PutUInt16(0, ptr, 28);                     /* reserved 4 */
+    PutUInt16(0, ptr, 30);                     /* reserved 5 */
+    PutUInt16(0, ptr, 32);                     /* metricDataFormat */
 
     table->data = static_cast<void *>(ptr);
     table->tag = T_hhea;
@@ -965,10 +936,10 @@ TrueTypeTable *TrueTypeTableNew_loca()
 TrueTypeTable *TrueTypeTableNew_maxp( const sal_uInt8* maxp, int size)
 {
     TrueTypeTable* table = static_cast<TrueTypeTable*>(smalloc(sizeof(TrueTypeTable)));
-    table->data = ttmalloc(TABLESIZE_maxp);
+    table->data = ttmalloc(MAXP_Version1Length);
 
-    if (maxp && size == TABLESIZE_maxp) {
-        memcpy(table->data, maxp, TABLESIZE_maxp);
+    if (maxp && size == MAXP_Version1Length) {
+        memcpy(table->data, maxp, MAXP_Version1Length);
     }
 
     table->tag = T_maxp;
@@ -1019,7 +990,7 @@ static void DisposeNameRecord(void *ptr)
     }
 }
 
-static NameRecord* NameRecordNewCopy(NameRecord *nr)
+static NameRecord* NameRecordNewCopy(NameRecord const *nr)
 {
     NameRecord* p = static_cast<NameRecord*>(smalloc(sizeof(NameRecord)));
 
@@ -1033,7 +1004,7 @@ static NameRecord* NameRecordNewCopy(NameRecord *nr)
     return p;
 }
 
-TrueTypeTable *TrueTypeTableNew_name(int n, NameRecord *nr)
+TrueTypeTable *TrueTypeTableNew_name(int n, NameRecord const *nr)
 {
     TrueTypeTable* table = static_cast<TrueTypeTable*>(smalloc(sizeof(TrueTypeTable)));
     list l = listNewEmpty();
@@ -1056,8 +1027,8 @@ TrueTypeTable *TrueTypeTableNew_name(int n, NameRecord *nr)
     return table;
 }
 
-TrueTypeTable *TrueTypeTableNew_post(sal_uInt32 format,
-                                     sal_uInt32 italicAngle,
+TrueTypeTable *TrueTypeTableNew_post(sal_Int32 format,
+                                     sal_Int32 italicAngle,
                                      sal_Int16 underlinePosition,
                                      sal_Int16 underlineThickness,
                                      sal_uInt32 isFixedPitch)
@@ -1083,8 +1054,6 @@ TrueTypeTable *TrueTypeTableNew_post(sal_uInt32 format,
 int GetRawData(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *len, sal_uInt32 *tag)
 {
     /* XXX do a binary search */
-    unsigned int i;
-
     assert(_this != nullptr);
     assert(ptr != nullptr);
     assert(len != nullptr);
@@ -1097,13 +1066,13 @@ int GetRawData(TrueTypeTable *_this, sal_uInt8 **ptr, sal_uInt32 *len, sal_uInt3
         _this->rawdata = nullptr;
     }
 
-    for(i=0; i < SAL_N_ELEMENTS(vtable2); i++) {
+    for(size_t i=0; i < SAL_N_ELEMENTS(vtable2); i++) {
         if (_this->tag == vtable2[i].tag) {
             return vtable2[i].f(_this, ptr, len, tag);
         }
     }
 
-    assert(!"Unknown TrueType table.\n");
+    assert(!"Unknown TrueType table.");
     return TTCR_UNKNOWN;
 }
 
@@ -1182,7 +1151,7 @@ sal_uInt32 glyfAdd(TrueTypeTable *table, GlyphData *glyphdata, TrueTypeFont *fnt
     assert(table != nullptr);
     assert(table->tag == T_glyf);
 
-    if (!glyphdata) return (sal_uInt32)~0;
+    if (!glyphdata) return sal_uInt32(~0);
 
     std::vector< sal_uInt32 > glyphlist;
 
@@ -1304,16 +1273,16 @@ static void ProcessTables(TrueTypeCreator *tt)
         /* printf("IDs: %d %d.\n", gd->glyphID, gd->newID); */
 
         if (gd->nbytes != 0) {
-            z = GetInt16(gd->ptr, 2, 1);
+            z = GetInt16(gd->ptr, 2);
             if (z < xMin) xMin = z;
 
-            z = GetInt16(gd->ptr, 4, 1);
+            z = GetInt16(gd->ptr, 4);
             if (z < yMin) yMin = z;
 
-            z = GetInt16(gd->ptr, 6, 1);
+            z = GetInt16(gd->ptr, 6);
             if (z > xMax) xMax = z;
 
-            z = GetInt16(gd->ptr, 8, 1);
+            z = GetInt16(gd->ptr, 8);
             if (z > yMax) yMax = z;
         }
 
@@ -1346,8 +1315,8 @@ static void ProcessTables(TrueTypeCreator *tt)
             sal_uInt8 *ptr = gd->ptr + 10;
             do {
                 sal_uInt32 j;
-                flags = GetUInt16(ptr, 0, 1);
-                index = GetUInt16(ptr, 2, 1);
+                flags = GetUInt16(ptr, 0);
+                index = GetUInt16(ptr, 2);
                 /* XXX use the sorted array of old to new glyphID mapping and do a binary search */
                 for (j = 0; j < nGlyphs; j++) {
                     if (gid[j] == index) {
@@ -1356,7 +1325,7 @@ static void ProcessTables(TrueTypeCreator *tt)
                 }
                 /* printf("X: %d -> %d.\n", index, j); */
 
-                PutUInt16((sal_uInt16) j, ptr, 2, 1);
+                PutUInt16(static_cast<sal_uInt16>(j), ptr, 2);
 
                 ptr += 4;
 
@@ -1380,10 +1349,10 @@ static void ProcessTables(TrueTypeCreator *tt)
             memcpy(p1, gd->ptr, gd->nbytes);
         }
         if (indexToLocFormat == 1) {
-            PutUInt32(p1 - glyfPtr, p2, 0, 1);
+            PutUInt32(p1 - glyfPtr, p2, 0);
             p2 += 4;
         } else {
-            PutUInt16((sal_uInt16)((p1 - glyfPtr) >> 1), p2, 0, 1);
+            PutUInt16(static_cast<sal_uInt16>((p1 - glyfPtr) >> 1), p2, 0);
             p2 += 2;
         }
         p1 += gd->nbytes;
@@ -1397,9 +1366,9 @@ static void ProcessTables(TrueTypeCreator *tt)
     free(gid);
 
     if (indexToLocFormat == 1) {
-        PutUInt32(p1 - glyfPtr, p2, 0, 1);
+        PutUInt32(p1 - glyfPtr, p2, 0);
     } else {
-        PutUInt16((sal_uInt16)((p1 - glyfPtr) >> 1), p2, 0, 1);
+        PutUInt16(static_cast<sal_uInt16>((p1 - glyfPtr) >> 1), p2, 0);
     }
 
     glyf->rawdata = glyfPtr;
@@ -1412,20 +1381,20 @@ static void ProcessTables(TrueTypeCreator *tt)
 
     head = FindTable(tt, T_head);
     sal_uInt8* const pHeadData = static_cast<sal_uInt8*>(head->data);
-    PutInt16(xMin, pHeadData, 36, 1);
-    PutInt16(yMin, pHeadData, 38, 1);
-    PutInt16(xMax, pHeadData, 40, 1);
-    PutInt16(yMax, pHeadData, 42, 1);
-    PutInt16(indexToLocFormat, pHeadData,  50, 1);
+    PutInt16(xMin, pHeadData, HEAD_xMin_offset);
+    PutInt16(yMin, pHeadData, HEAD_yMin_offset);
+    PutInt16(xMax, pHeadData, HEAD_xMax_offset);
+    PutInt16(yMax, pHeadData, HEAD_yMax_offset);
+    PutInt16(indexToLocFormat, pHeadData, HEAD_indexToLocFormat_offset);
 
     maxp = FindTable(tt, T_maxp);
 
     sal_uInt8* const pMaxpData = static_cast<sal_uInt8*>(maxp->data);
-    PutUInt16((sal_uInt16)nGlyphs, pMaxpData, 4, 1);
-    PutUInt16(maxPoints, pMaxpData, 6, 1);
-    PutUInt16(maxContours, pMaxpData, 8, 1);
-    PutUInt16(maxCompositePoints, pMaxpData, 10, 1);
-    PutUInt16(maxCompositeContours, pMaxpData, 12, 1);
+    PutUInt16(static_cast<sal_uInt16>(nGlyphs), pMaxpData, MAXP_numGlyphs_offset);
+    PutUInt16(maxPoints, pMaxpData, MAXP_maxPoints_offset);
+    PutUInt16(maxContours, pMaxpData, MAXP_maxContours_offset);
+    PutUInt16(maxCompositePoints, pMaxpData, MAXP_maxCompositePoints_offset);
+    PutUInt16(maxCompositeContours, pMaxpData, MAXP_maxCompositeContours_offset);
 
     /*
      * Generate an htmx table and update hhea table
@@ -1444,17 +1413,17 @@ static void ProcessTables(TrueTypeCreator *tt)
 
     for (i = 0; i < nGlyphs; i++) {
         if (i < nGlyphs - nlsb) {
-            PutUInt16(met[i].adv, p1, 0, 1);
-            PutUInt16(met[i].sb, p1, 2, 1);
+            PutUInt16(met[i].adv, p1, 0);
+            PutUInt16(met[i].sb, p1, 2);
             p1 += 4;
         } else {
-            PutUInt16(met[i].sb, p1, 0, 1);
+            PutUInt16(met[i].sb, p1, 0);
             p1 += 2;
         }
     }
 
     AddTable(tt, TrueTypeTableNew(T_hmtx, hmtxSize, hmtxPtr));
-    PutUInt16((sal_uInt16)(nGlyphs - nlsb), hheaPtr, 34, 1);
+    PutUInt16(static_cast<sal_uInt16>(nGlyphs - nlsb), hheaPtr, 34);
     free(hmtxPtr);
     free(met);
 }
@@ -1479,19 +1448,17 @@ extern "C"
     {
         vcl::TrueTypeTable *_this = static_cast<vcl::TrueTypeTable *>(arg);
         /* XXX do a binary search */
-        unsigned int i;
-
         assert(_this != nullptr);
 
         if (_this->rawdata) free(_this->rawdata);
 
-        for(i=0; i < SAL_N_ELEMENTS(vcl::vtable1); i++) {
+        for(size_t i=0; i < SAL_N_ELEMENTS(vcl::vtable1); i++) {
             if (_this->tag == vcl::vtable1[i].tag) {
                 vcl::vtable1[i].f(_this);
                 return;
             }
         }
-        assert(!"Unknown TrueType table.\n");
+        assert(!"Unknown TrueType table.");
     }
 }
 
@@ -1503,7 +1470,7 @@ static sal_uInt32 mkTag(sal_uInt8 a, sal_uInt8 b, sal_uInt8 c, sal_uInt8 d) {
 int main()
 {
     TrueTypeCreator *ttcr;
-    sal_uInt8 *t1, *t2, *t3, *t4, *t5, *t6, *t7;
+    sal_uInt8 *t1, *t2, *t3, *t4, *t5, *t6;
 
     TrueTypeCreatorNewEmpty(mkTag('t','r','u','e'), &ttcr);
 
@@ -1513,15 +1480,13 @@ int main()
     t4 = malloc(4000); memset(t4, 'd', 4000);
     t5 = malloc(5000); memset(t5, 'e', 5000);
     t6 = malloc(6000); memset(t6, 'f', 6000);
-    t7 = malloc(7000); memset(t7, 'g', 7000);
 
-    AddTable(ttcr, TrueTypeTableNew(0x6D617870, 1000, t1));
-    AddTable(ttcr, TrueTypeTableNew(0x4F532F32, 2000, t2));
-    AddTable(ttcr, TrueTypeTableNew(0x636D6170, 3000, t3));
-    AddTable(ttcr, TrueTypeTableNew(0x6C6F6361, 4000, t4));
-    AddTable(ttcr, TrueTypeTableNew(0x68686561, 5000, t5));
-    AddTable(ttcr, TrueTypeTableNew(0x676C7966, 6000, t6));
-    AddTable(ttcr, TrueTypeTableNew(0x6B65726E, 7000, t7));
+    AddTable(ttcr, TrueTypeTableNew(T_maxp, 1000, t1));
+    AddTable(ttcr, TrueTypeTableNew(T_OS2, 2000, t2));
+    AddTable(ttcr, TrueTypeTableNew(T_cmap, 3000, t3));
+    AddTable(ttcr, TrueTypeTableNew(T_loca, 4000, t4));
+    AddTable(ttcr, TrueTypeTableNew(T_hhea, 5000, t5));
+    AddTable(ttcr, TrueTypeTableNew(T_glyf, 6000, t6));
 
     free(t1);
     free(t2);
@@ -1529,7 +1494,6 @@ int main()
     free(t4);
     free(t5);
     free(t6);
-    free(t7);
 
     StreamToFile(ttcr, "ttcrout.ttf");
 

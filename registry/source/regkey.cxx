@@ -20,8 +20,6 @@
 
 #include "regkey.hxx"
 
-#include <registry/registry.hxx>
-#include <rtl/alloc.h>
 #include <osl/diagnose.h>
 #include "regimpl.hxx"
 #include "keyimpl.hxx"
@@ -154,7 +152,7 @@ RegError REGISTRY_CALLTYPE closeSubKeys(RegKeyHandle* phSubKeys,
     {
         (void) pReg->closeKey(phSubKeys[i]);
     }
-    rtl_freeMemory(phSubKeys);
+    std::free(phSubKeys);
 
     return RegError::NO_ERROR;
 }
@@ -238,7 +236,7 @@ RegError REGISTRY_CALLTYPE setValue(RegKeyHandle hKey,
 
 RegError REGISTRY_CALLTYPE setLongListValue(RegKeyHandle hKey,
                                                   rtl_uString* keyName,
-                                                  sal_Int32* pValueList,
+                                                  sal_Int32 const * pValueList,
                                                   sal_uInt32 len)
 {
     ORegKey* pKey = static_cast< ORegKey* >(hKey);
@@ -280,7 +278,7 @@ RegError REGISTRY_CALLTYPE setLongListValue(RegKeyHandle hKey,
 
 RegError REGISTRY_CALLTYPE setStringListValue(RegKeyHandle hKey,
                                                    rtl_uString* keyName,
-                                                   sal_Char** pValueList,
+                                                   char** pValueList,
                                                    sal_uInt32 len)
 {
     ORegKey* pKey = static_cast< ORegKey* >(hKey);
@@ -492,7 +490,7 @@ RegError REGISTRY_CALLTYPE getLongListValue(RegKeyHandle hKey,
 
 RegError REGISTRY_CALLTYPE getStringListValue(RegKeyHandle hKey,
                                               rtl_uString* keyName,
-                                              sal_Char*** pValueList,
+                                              char*** pValueList,
                                               sal_uInt32* pLen)
 {
     OSL_PRECOND((pValueList != nullptr) && (pLen != nullptr), "registry::getStringListValue(): invalid parameter");
@@ -576,18 +574,18 @@ RegError REGISTRY_CALLTYPE freeValueList(RegValueType valueType,
     {
         case RegValueType::LONGLIST:
             {
-                rtl_freeMemory(pValueList);
+                std::free(pValueList);
             }
             break;
         case RegValueType::STRINGLIST:
             {
-                sal_Char** pVList = static_cast<sal_Char**>(pValueList);
+                char** pVList = static_cast<char**>(pValueList);
                 for (sal_uInt32 i=0; i < len; i++)
                 {
-                    rtl_freeMemory(pVList[i]);
+                    std::free(pVList[i]);
                 }
 
-                rtl_freeMemory(pVList);
+                std::free(pVList);
             }
             break;
         case RegValueType::UNICODELIST:
@@ -595,10 +593,10 @@ RegError REGISTRY_CALLTYPE freeValueList(RegValueType valueType,
                 sal_Unicode** pVList = static_cast<sal_Unicode**>(pValueList);
                 for (sal_uInt32 i=0; i < len; i++)
                 {
-                    rtl_freeMemory(pVList[i]);
+                    std::free(pVList[i]);
                 }
 
-                rtl_freeMemory(pVList);
+                std::free(pVList);
             }
             break;
         default:
@@ -660,7 +658,7 @@ RegError REGISTRY_CALLTYPE freeKeyNames(rtl_uString** pKeyNames,
         rtl_uString_release(pKeyNames[i]);
     }
 
-    rtl_freeMemory(pKeyNames);
+    std::free(pKeyNames);
 
     return RegError::NO_ERROR;
 }

@@ -19,6 +19,8 @@
 
 #include <sal/config.h>
 
+#include <utility>
+
 #include <com/sun/star/datatransfer/UnsupportedFlavorException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <sal/types.h>
@@ -112,7 +114,11 @@ Any SAL_CALL OSXTransferable::getTransferData( const DataFlavor& aFlavor )
       : mDataFlavorMapper->openOfficeToSystemFlavor(aFlavor, bInternal);
   DataProviderPtr_t dp;
 
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
+      // "'NSFilenamesPboardType' is deprecated: first deprecated in macOS 10.14 - Create multiple
+      // pasteboard items with NSPasteboardTypeFileURL or kUTTypeFileURL instead"
   if ([sysFormat caseInsensitiveCompare: NSFilenamesPboardType] == NSOrderedSame)
+SAL_WNODEPRECATED_DECLARATIONS_POP
     {
       NSArray* sysData = [mPasteboard propertyListForType: const_cast<NSString *>(sysFormat)];
       dp = DataFlavorMapper::getDataProvider(sysFormat, sysData);
@@ -123,7 +129,7 @@ Any SAL_CALL OSXTransferable::getTransferData( const DataFlavor& aFlavor )
       dp = DataFlavorMapper::getDataProvider(sysFormat, sysData);
     }
 
-  if (dp.get() == nullptr)
+  if (!dp)
     {
       throw UnsupportedFlavorException("AquaClipboard: Unsupported data flavor",
                                        static_cast<XTransferable*>(this));
@@ -139,8 +145,8 @@ Sequence< DataFlavor > SAL_CALL OSXTransferable::getTransferDataFlavors(  )
 
 sal_Bool SAL_CALL OSXTransferable::isDataFlavorSupported(const DataFlavor& aFlavor)
 {
-    for (sal_Int32 i = 0; i < mFlavorList.getLength(); i++)
-      if (compareDataFlavors(aFlavor, mFlavorList[i]))
+    for (const DataFlavor& rFlavor : std::as_const(mFlavorList))
+      if (compareDataFlavors(aFlavor, rFlavor))
         return true;
 
     return false;

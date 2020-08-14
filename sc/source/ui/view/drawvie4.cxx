@@ -21,126 +21,92 @@
 #include <svx/svdograf.hxx>
 #include <svx/svdogrp.hxx>
 #include <svx/svdoole2.hxx>
-#include <svx/svdpage.hxx>
 #include <svx/svdundo.hxx>
 #include <sfx2/docfile.hxx>
 #include <tools/urlobj.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
+#include <sal/log.hxx>
 
-#include "drawview.hxx"
-#include "global.hxx"
-#include "drwlayer.hxx"
-#include "viewdata.hxx"
-#include "document.hxx"
-#include "docsh.hxx"
-#include "drwtrans.hxx"
-#include "transobj.hxx"
-#include "drawutil.hxx"
-#include "scmod.hxx"
-#include "globstr.hrc"
-#include "chartarr.hxx"
+#include <drawview.hxx>
+#include <global.hxx>
+#include <drwlayer.hxx>
+#include <viewdata.hxx>
+#include <document.hxx>
+#include <docsh.hxx>
+#include <drwtrans.hxx>
+#include <transobj.hxx>
+#include <drawutil.hxx>
+#include <scmod.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
 #include <gridwin.hxx>
+#include <userdat.hxx>
 
 #include <com/sun/star/embed/NoVisualAreaSizeException.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
-#include <com/sun/star/embed/XComponentSupplier.hpp>
 #include <com/sun/star/chart2/XChartTypeContainer.hpp>
 #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
 #include <com/sun/star/chart2/XDataSeriesContainer.hpp>
+#include <com/sun/star/chart2/XChartDocument.hpp>
 
 using namespace com::sun::star;
 
 Point aDragStartDiff;
 
-void ScDrawView::CheckOle( const SdrMarkList& rMarkList, bool& rAnyOle, bool& rOneOle )
-{
-    rAnyOle = rOneOle = false;
-    const size_t nCount = rMarkList.GetMarkCount();
-    for (size_t i=0; i<nCount; ++i)
-    {
-        SdrMark* pMark = rMarkList.GetMark(i);
-        SdrObject* pObj = pMark->GetMarkedSdrObj();
-        sal_uInt16 nSdrObjKind = pObj->GetObjIdentifier();
-        if (nSdrObjKind == OBJ_OLE2)
-        {
-            rAnyOle = true;
-            rOneOle = (nCount == 1);
-            break;
-        }
-        else if ( dynamic_cast<const SdrObjGroup*>( pObj) !=  nullptr )
-        {
-            SdrObjListIter aIter( *pObj, SdrIterMode::DeepNoGroups );
-            SdrObject* pSubObj = aIter.Next();
-            while (pSubObj)
-            {
-                if ( pSubObj->GetObjIdentifier() == OBJ_OLE2 )
-                {
-                    rAnyOle = true;
-                    // rOneOle remains sal_False - a group isn't treated like a single OLE object
-                    return;
-                }
-                pSubObj = aIter.Next();
-            }
-        }
-    }
-}
-
 void ScDrawView::BeginDrag( vcl::Window* pWindow, const Point& rStartPos )
 {
-    if ( AreObjectsMarked() )
+    if ( !AreObjectsMarked() )
+        return;
+
+    BrkAction();
+
+    tools::Rectangle aMarkedRect = GetAllMarkedRect();
+
+    aDragStartDiff = rStartPos - aMarkedRect.TopLeft();
+
+    bool bAnyOle, bOneOle;
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    CheckOle( rMarkList, bAnyOle, bOneOle );
+
+    ScDocShellRef aDragShellRef;
+    if (bAnyOle)
     {
-        BrkAction();
-
-        tools::Rectangle aMarkedRect = GetAllMarkedRect();
-        vcl::Region aRegion( aMarkedRect );
-
-        aDragStartDiff = rStartPos - aMarkedRect.TopLeft();
-
-        bool bAnyOle, bOneOle;
-        const SdrMarkList& rMarkList = GetMarkedObjectList();
-        CheckOle( rMarkList, bAnyOle, bOneOle );
-
-        ScDocShellRef aDragShellRef;
-        if (bAnyOle)
-        {
-            aDragShellRef = new ScDocShell;     // DocShell needs a Ref immediately
-            aDragShellRef->DoInitNew();
-        }
-        ScDrawLayer::SetGlobalDrawPersist( aDragShellRef.get() );
-        SdrModel* pModel = GetMarkedObjModel();
-        ScDrawLayer::SetGlobalDrawPersist(nullptr);
-
-        //  Charts now always copy their data in addition to the source reference, so
-        //  there's no need to call SchDLL::Update for the charts in the clipboard doc.
-        //  Update with the data (including NumberFormatter) from the live document would
-        //  also store the NumberFormatter in the clipboard chart (#88749#)
-
-        ScDocShell* pDocSh = pViewData->GetDocShell();
-
-        TransferableObjectDescriptor aObjDesc;
-        pDocSh->FillTransferableObjectDescriptor( aObjDesc );
-        aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
-        // maSize is set in ScDrawTransferObj ctor
-
-        rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( pModel, pDocSh, aObjDesc );
-
-        pTransferObj->SetDrawPersist( aDragShellRef.get() );    // keep persist for ole objects alive
-        pTransferObj->SetDragSource( this );               // copies selection
-
-        SC_MOD()->SetDragObject( nullptr, pTransferObj.get() );     // for internal D&D
-        pTransferObj->StartDrag( pWindow, DND_ACTION_COPYMOVE | DND_ACTION_LINK );
+        aDragShellRef = new ScDocShell;     // DocShell needs a Ref immediately
+        aDragShellRef->DoInitNew();
     }
+    ScDrawLayer::SetGlobalDrawPersist( aDragShellRef.get() );
+    std::unique_ptr<SdrModel> pModel(CreateMarkedObjModel());
+    ScDrawLayer::SetGlobalDrawPersist(nullptr);
+
+    //  Charts now always copy their data in addition to the source reference, so
+    //  there's no need to call SchDLL::Update for the charts in the clipboard doc.
+    //  Update with the data (including NumberFormatter) from the live document would
+    //  also store the NumberFormatter in the clipboard chart (#88749#)
+
+    ScDocShell* pDocSh = pViewData->GetDocShell();
+
+    TransferableObjectDescriptor aObjDesc;
+    pDocSh->FillTransferableObjectDescriptor( aObjDesc );
+    aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
+    // maSize is set in ScDrawTransferObj ctor
+
+    rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( std::move(pModel), pDocSh, aObjDesc );
+
+    pTransferObj->SetDrawPersist( aDragShellRef.get() );    // keep persist for ole objects alive
+    pTransferObj->SetDragSource( this );               // copies selection
+
+    SC_MOD()->SetDragObject( nullptr, pTransferObj.get() );     // for internal D&D
+    pTransferObj->StartDrag( pWindow, DND_ACTION_COPYMOVE | DND_ACTION_LINK );
 }
 
 namespace {
 
 void getRangeFromDataSource( uno::Reference< chart2::data::XDataSource > const & xDataSource, std::vector<OUString>& rRangeRep)
 {
-    uno::Sequence<uno::Reference<chart2::data::XLabeledDataSequence> > xSeqs = xDataSource->getDataSequences();
-    for (sal_Int32 i = 0, n = xSeqs.getLength(); i < n; ++i)
+    const uno::Sequence<uno::Reference<chart2::data::XLabeledDataSequence> > xSeqs = xDataSource->getDataSequences();
+    for (const uno::Reference<chart2::data::XLabeledDataSequence>& xLS : xSeqs)
     {
-        uno::Reference<chart2::data::XLabeledDataSequence> xLS = xSeqs[i];
         uno::Reference<chart2::data::XDataSequence> xSeq = xLS->getValues();
         if (xSeq.is())
         {
@@ -166,24 +132,23 @@ void getRangeFromErrorBar(const uno::Reference< chart2::XChartDocument >& rChart
     if(!xCooSysContainer.is())
         return;
 
-    uno::Sequence< uno::Reference< chart2::XCoordinateSystem > > xCooSysSequence( xCooSysContainer->getCoordinateSystems());
-    for(sal_Int32 i = 0; i < xCooSysSequence.getLength(); ++i)
+    const uno::Sequence< uno::Reference< chart2::XCoordinateSystem > > xCooSysSequence( xCooSysContainer->getCoordinateSystems());
+    for(const auto& rCooSys : xCooSysSequence)
     {
-        uno::Reference< chart2::XChartTypeContainer > xChartTypeContainer( xCooSysSequence[i], uno::UNO_QUERY);
+        uno::Reference< chart2::XChartTypeContainer > xChartTypeContainer( rCooSys, uno::UNO_QUERY);
         if(!xChartTypeContainer.is())
             continue;
 
-        uno::Sequence< uno::Reference< chart2::XChartType > > xChartTypeSequence( xChartTypeContainer->getChartTypes() );
-        for(sal_Int32 nChartType = 0; nChartType < xChartTypeSequence.getLength(); ++nChartType)
+        const uno::Sequence< uno::Reference< chart2::XChartType > > xChartTypeSequence( xChartTypeContainer->getChartTypes() );
+        for(const auto& rChartType : xChartTypeSequence)
         {
-            uno::Reference< chart2::XDataSeriesContainer > xDataSequenceContainer( xChartTypeSequence[nChartType], uno::UNO_QUERY);
+            uno::Reference< chart2::XDataSeriesContainer > xDataSequenceContainer( rChartType, uno::UNO_QUERY);
             if(!xDataSequenceContainer.is())
                 continue;
 
-            uno::Sequence< uno::Reference< chart2::XDataSeries > > xSeriesSequence( xDataSequenceContainer->getDataSeries() );
-            for(sal_Int32 nDataSeries = 0; nDataSeries < xSeriesSequence.getLength(); ++nDataSeries)
+            const uno::Sequence< uno::Reference< chart2::XDataSeries > > xSeriesSequence( xDataSequenceContainer->getDataSeries() );
+            for(const uno::Reference<chart2::XDataSeries>& xSeries : xSeriesSequence)
             {
-                uno::Reference< chart2::XDataSeries > xSeries = xSeriesSequence[nDataSeries];
                 uno::Reference< beans::XPropertySet > xPropSet( xSeries, uno::UNO_QUERY);
                 uno::Reference< chart2::data::XDataSource > xErrorBarY;
                 xPropSet->getPropertyValue("ErrorBarY") >>= xErrorBarY;
@@ -204,15 +169,11 @@ void getRangeFromOle2Object(const SdrOle2Obj& rObj, std::vector<OUString>& rRang
         // not a chart object.
         return;
 
-    uno::Reference<embed::XEmbeddedObject> xObj = rObj.GetObjRef();
+    const uno::Reference<embed::XEmbeddedObject>& xObj = rObj.GetObjRef();
     if (!xObj.is())
         return;
 
-    uno::Reference<embed::XComponentSupplier> xCompSupp(xObj, uno::UNO_QUERY);
-    if (!xCompSupp.is())
-        return;
-
-    uno::Reference<chart2::XChartDocument> xChartDoc(xCompSupp->getComponent(), uno::UNO_QUERY);
+    uno::Reference<chart2::XChartDocument> xChartDoc(xObj->getComponent(), uno::UNO_QUERY);
     if (!xChartDoc.is())
         return;
 
@@ -227,59 +188,75 @@ void getRangeFromOle2Object(const SdrOle2Obj& rObj, std::vector<OUString>& rRang
 
     // Get all data sources used in this chart.
     getRangeFromDataSource(xDataSource, rRangeRep);
+
+    return;
 }
 
 // Get all cell ranges that are referenced by the selected chart objects.
-void getChartSourceRanges(ScDocument* pDoc, const SdrMarkList& rObjs, std::vector<ScRange>& rRanges)
+void getOleSourceRanges(const SdrMarkList& rMarkList, bool& rAnyOle, bool& rOneOle, std::vector<ScRange>* pRanges = nullptr, const ScDocument* pDoc = nullptr )
 {
+    bool bCalcSourceRanges = pRanges && pDoc;
     std::vector<OUString> aRangeReps;
-    for (size_t i = 0, n = rObjs.GetMarkCount(); i < n; ++i)
+    rAnyOle = rOneOle = false;
+    const size_t nCount = rMarkList.GetMarkCount();
+    for (size_t i=0; i<nCount; ++i)
     {
-        const SdrMark* pMark = rObjs.GetMark(i);
-        if (!pMark)
+        SdrMark* pMark = rMarkList.GetMark(i);
+        if ( !pMark )
             continue;
 
-        const SdrObject* pObj = pMark->GetMarkedSdrObj();
-        if (!pObj)
+        SdrObject* pObj = pMark->GetMarkedSdrObj();
+        if ( !pObj )
             continue;
 
-        switch (pObj->GetObjIdentifier())
+        sal_uInt16 nSdrObjKind = pObj->GetObjIdentifier();
+        if (nSdrObjKind == OBJ_OLE2)
         {
-            case OBJ_OLE2:
-                getRangeFromOle2Object(static_cast<const SdrOle2Obj&>(*pObj), aRangeReps);
-            break;
-            case OBJ_GRUP:
+            rAnyOle = true;
+            rOneOle = (nCount == 1);
+            if ( bCalcSourceRanges )
+                getRangeFromOle2Object( static_cast<const SdrOle2Obj&>( *pObj ), aRangeReps );
+            else
+                break;
+        }
+        else if ( dynamic_cast<const SdrObjGroup*>( pObj) !=  nullptr )
+        {
+            SdrObjListIter aIter( *pObj, SdrIterMode::DeepNoGroups );
+            SdrObject* pSubObj = aIter.Next();
+            while (pSubObj)
             {
-                SdrObjListIter aIter(*pObj, SdrIterMode::DeepNoGroups);
-                for (SdrObject* pSubObj = aIter.Next(); pSubObj; pSubObj = aIter.Next())
+                if ( pSubObj->GetObjIdentifier() == OBJ_OLE2 )
                 {
-                    if (pSubObj->GetObjIdentifier() != OBJ_OLE2)
-                        continue;
+                    rAnyOle = true;
+                    // rOneOle remains false - a group isn't treated like a single OLE object
+                    if ( !bCalcSourceRanges )
+                        return;
 
-                    getRangeFromOle2Object(static_cast<const SdrOle2Obj&>(*pSubObj), aRangeReps);
+                    getRangeFromOle2Object( static_cast<const SdrOle2Obj&>( *pSubObj ), aRangeReps );
                 }
-
+                pSubObj = aIter.Next();
             }
-            break;
-            default:
-                ;
         }
     }
 
+    if (!bCalcSourceRanges)
+        return;
+
     // Compile all range representation strings into ranges.
-    std::vector<OUString>::const_iterator it = aRangeReps.begin(), itEnd = aRangeReps.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rRangeRep : aRangeReps)
     {
         ScRangeList aRange;
         ScAddress aAddr;
-        if (aRange.Parse(*it, pDoc, pDoc->GetAddressConvention()) & ScRefFlags::VALID)
+        if (aRange.Parse(rRangeRep, pDoc, pDoc->GetAddressConvention()) & ScRefFlags::VALID)
         {
             for(size_t i = 0; i < aRange.size(); ++i)
-                rRanges.push_back(*aRange[i]);
+                pRanges->push_back(aRange[i]);
         }
-        else if (aAddr.Parse(*it, pDoc, pDoc->GetAddressConvention()) & ScRefFlags::VALID)
-            rRanges.push_back(aAddr);
+        else if (aAddr.Parse(rRangeRep, pDoc, pDoc->GetAddressConvention()) & ScRefFlags::VALID)
+            pRanges->push_back(aAddr);
     }
+
+    return;
 }
 
 class InsertTabIndex
@@ -347,23 +324,29 @@ void copyChartRefDataToClipDoc(ScDocument* pSrcDoc, ScDocument* pClipDoc, const 
 
 }
 
+void ScDrawView::CheckOle( const SdrMarkList& rMarkList, bool& rAnyOle, bool& rOneOle )
+{
+    getOleSourceRanges( rMarkList, rAnyOle, rOneOle );
+}
+
 void ScDrawView::DoCopy()
 {
     const SdrMarkList& rMarkList = GetMarkedObjectList();
     std::vector<ScRange> aRanges;
-    getChartSourceRanges(pDoc, rMarkList, aRanges);
+    bool bAnyOle = false, bOneOle = false;
+    getOleSourceRanges( rMarkList, bAnyOle, bOneOle, &aRanges, pDoc );
 
     // update ScGlobal::xDrawClipDocShellRef
-    ScDrawLayer::SetGlobalDrawPersist( ScTransferObj::SetDrawClipDoc(!aRanges.empty()) );
-    if (ScGlobal::xDrawClipDocShellRef.is())
+    ScDrawLayer::SetGlobalDrawPersist( ScTransferObj::SetDrawClipDoc( bAnyOle ) );
+    if (ScGlobal::xDrawClipDocShellRef.is() && !aRanges.empty())
     {
         // Copy data referenced by the chart objects to the draw clip
-        // document. We need to do this before GetMarkedObjModel() below.
+        // document. We need to do this before CreateMarkedObjModel() below.
         ScDocShellRef xDocSh = ScGlobal::xDrawClipDocShellRef;
         ScDocument& rClipDoc = xDocSh->GetDocument();
         copyChartRefDataToClipDoc(pDoc, &rClipDoc, aRanges);
     }
-    SdrModel* pModel = GetMarkedObjModel();
+    std::unique_ptr<SdrModel> pModel(CreateMarkedObjModel());
     ScDrawLayer::SetGlobalDrawPersist(nullptr);
 
     //  Charts now always copy their data in addition to the source reference, so
@@ -378,7 +361,7 @@ void ScDrawView::DoCopy()
     aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
     // maSize is set in ScDrawTransferObj ctor
 
-    rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( pModel, pDocSh, aObjDesc );
+    rtl::Reference<ScDrawTransferObj> pTransferObj(new ScDrawTransferObj( std::move(pModel), pDocSh, aObjDesc ));
 
     if ( ScGlobal::xDrawClipDocShellRef.is() )
     {
@@ -386,7 +369,6 @@ void ScDrawView::DoCopy()
     }
 
     pTransferObj->CopyToClipboard( pViewData->GetActiveWin() );     // system clipboard
-    SC_MOD()->SetClipObject( nullptr, pTransferObj.get() );                  // internal clipboard
 }
 
 uno::Reference<datatransfer::XTransferable> ScDrawView::CopyToTransferable()
@@ -397,7 +379,7 @@ uno::Reference<datatransfer::XTransferable> ScDrawView::CopyToTransferable()
 
     // update ScGlobal::xDrawClipDocShellRef
     ScDrawLayer::SetGlobalDrawPersist( ScTransferObj::SetDrawClipDoc( bAnyOle ) );
-    SdrModel* pModel = GetMarkedObjModel();
+    std::unique_ptr<SdrModel> pModel( CreateMarkedObjModel() );
     ScDrawLayer::SetGlobalDrawPersist(nullptr);
 
     //  Charts now always copy their data in addition to the source reference, so
@@ -413,7 +395,7 @@ uno::Reference<datatransfer::XTransferable> ScDrawView::CopyToTransferable()
     aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
     // maSize is set in ScDrawTransferObj ctor
 
-    ScDrawTransferObj* pTransferObj = new ScDrawTransferObj( pModel, pDocSh, aObjDesc );
+    ScDrawTransferObj* pTransferObj = new ScDrawTransferObj( std::move(pModel), pDocSh, aObjDesc );
     uno::Reference<datatransfer::XTransferable> xTransferable( pTransferObj );
 
     if ( ScGlobal::xDrawClipDocShellRef.is() )
@@ -449,7 +431,7 @@ void ScDrawView::CalcNormScale( Fraction& rFractX, Fraction& rFractY ) const
 
 void ScDrawView::SetMarkedOriginalSize()
 {
-    SdrUndoGroup* pUndoGroup = new SdrUndoGroup(*GetModel());
+    std::unique_ptr<SdrUndoGroup> pUndoGroup(new SdrUndoGroup(*GetModel()));
 
     const SdrMarkList& rMarkList = GetMarkedObjectList();
     long nDone = 0;
@@ -463,7 +445,7 @@ void ScDrawView::SetMarkedOriginalSize()
         if (nIdent == OBJ_OLE2)
         {
             // TODO/LEAN: working with visual area can switch object to running state
-             uno::Reference < embed::XEmbeddedObject > xObj( static_cast<SdrOle2Obj*>(pObj)->GetObjRef(), uno::UNO_QUERY );
+            uno::Reference < embed::XEmbeddedObject > xObj = static_cast<SdrOle2Obj*>(pObj)->GetObjRef();
             if ( xObj.is() )    // NULL for an invalid object that couldn't be loaded
             {
                 sal_Int64 nAspect = static_cast<SdrOle2Obj*>(pObj)->GetAspect();
@@ -483,7 +465,8 @@ void ScDrawView::SetMarkedOriginalSize()
                         aSz = xObj->getVisualAreaSize( static_cast<SdrOle2Obj*>(pObj)->GetAspect() );
                         aOriginalSize = OutputDevice::LogicToLogic(
                                             Size( aSz.Width, aSz.Height ),
-                                            aUnit, MapUnit::Map100thMM );
+                                            MapMode(aUnit),
+                                            MapMode(MapUnit::Map100thMM));
                         bDo = true;
                     } catch( embed::NoVisualAreaSizeException& )
                     {
@@ -522,7 +505,7 @@ void ScDrawView::SetMarkedOriginalSize()
         {
             tools::Rectangle aDrawRect = pObj->GetLogicRect();
 
-            pUndoGroup->AddAction( new SdrUndoGeoObj( *pObj ) );
+            pUndoGroup->AddAction( std::make_unique<SdrUndoGeoObj>( *pObj ) );
             pObj->Resize( aDrawRect.TopLeft(), Fraction( aOriginalSize.Width(), aDrawRect.GetWidth() ),
                                                  Fraction( aOriginalSize.Height(), aDrawRect.GetHeight() ) );
             ++nDone;
@@ -531,13 +514,68 @@ void ScDrawView::SetMarkedOriginalSize()
 
     if (nDone && pViewData)
     {
-        pUndoGroup->SetComment(ScGlobal::GetRscString( STR_UNDO_ORIGINALSIZE ));
+        pUndoGroup->SetComment(ScResId( STR_UNDO_ORIGINALSIZE ));
         ScDocShell* pDocSh = pViewData->GetDocShell();
-        pDocSh->GetUndoManager()->AddUndoAction(pUndoGroup);
+        pDocSh->GetUndoManager()->AddUndoAction(std::move(pUndoGroup));
         pDocSh->SetDrawModified();
     }
+}
+
+void ScDrawView::FitToCellSize()
+{
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+
+    if (rMarkList.GetMarkCount() != 1)
+    {
+        SAL_WARN("sc.ui", "Fit to cell only works with one graphic!");
+        return;
+    }
+
+    SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
+
+    ScAnchorType aAnchorType = ScDrawLayer::GetAnchorType(*pObj);
+    if (aAnchorType != SCA_CELL && aAnchorType != SCA_CELL_RESIZE)
+    {
+        SAL_WARN("sc.ui", "Fit to cell only works with cell anchored graphics!");
+        return;
+    }
+
+    ScDrawObjData* pObjData = ScDrawLayer::GetObjData(pObj);
+    if (!pObjData)
+    {
+        SAL_WARN("sc.ui", "Missing ScDrawObjData!");
+        return;
+    }
+
+    std::unique_ptr<SdrUndoGroup> pUndoGroup(new SdrUndoGroup(*GetModel()));
+    tools::Rectangle aGraphicRect = pObj->GetSnapRect();
+    tools::Rectangle aCellRect = ScDrawLayer::GetCellRect( *pDoc, pObjData->maStart, true);
+
+    // For graphic objects, we want to keep the aspect ratio
+    if (pObj->shouldKeepAspectRatio())
+    {
+        long nWidth = aGraphicRect.GetWidth();
+        assert(nWidth && "div-by-zero");
+        double fScaleX = static_cast<double>(aCellRect.GetWidth()) / static_cast<double>(nWidth);
+        long nHeight = aGraphicRect.GetHeight();
+        assert(nHeight && "div-by-zero");
+        double fScaleY = static_cast<double>(aCellRect.GetHeight()) / static_cast<double>(nHeight);
+        double fScaleMin = std::min(fScaleX, fScaleY);
+
+        aCellRect.setWidth(static_cast<double>(aGraphicRect.GetWidth()) * fScaleMin);
+        aCellRect.setHeight(static_cast<double>(aGraphicRect.GetHeight()) * fScaleMin);
+    }
+
+    pUndoGroup->AddAction( std::make_unique<SdrUndoGeoObj>( *pObj ) );
+    if (pObj->GetObjIdentifier() == OBJ_CUSTOMSHAPE)
+        pObj->AdjustToMaxRect(aCellRect);
     else
-        delete pUndoGroup;
+        pObj->SetSnapRect(aCellRect);
+
+    pUndoGroup->SetComment(ScResId( STR_UNDO_FITCELLSIZE ));
+    ScDocShell* pDocSh = pViewData->GetDocShell();
+    pDocSh->GetUndoManager()->AddUndoAction(std::move(pUndoGroup));
+
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

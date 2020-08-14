@@ -23,15 +23,18 @@
 #include <vcl/graph.hxx>
 #include <svx/svxdllapi.h>
 
-#include <com/sun/star/drawing/XShape.hpp>
+namespace com::sun::star::drawing { class XShape; }
+namespace weld { class Widget; }
+namespace weld { class Window; }
 
-class SVX_DLLPUBLIC GraphicHelper
+class SVXCORE_DLLPUBLIC GraphicHelper
 {
 
 public:
     static void GetPreferredExtension( OUString& rExtension, const Graphic& rGraphic );
-    static OUString ExportGraphic( const Graphic& rGraphic, const OUString& rGraphicName );
-    static void SaveShapeAsGraphic( const css::uno::Reference< css::drawing::XShape >& xShape );
+    static OUString ExportGraphic(weld::Window* pWin, const Graphic& rGraphic, const OUString& rGraphicName);
+    static void SaveShapeAsGraphic(weld::Window* pWin, const css::uno::Reference< css::drawing::XShape >& xShape);
+    static short HasToSaveTransformedImage(weld::Widget* pWin);
 };
 
 

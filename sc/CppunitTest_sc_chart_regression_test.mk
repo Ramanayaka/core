@@ -9,6 +9,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sc_chart_regression_test))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sc_chart_regression_test))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sc_chart_regression_test, \
     sc/qa/extras/regression-test \
 ))
@@ -102,6 +104,7 @@ $(eval $(call gb_CppunitTest_use_components,sc_chart_regression_test,\
     unotools/util/utl \
     unoxml/source/rdf/unordf \
     unoxml/source/service/unoxml \
+    vcl/vcl.common \
     xmloff/util/xo \
 ))
 

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include "system.h"
 #include "time.hxx"
@@ -32,29 +32,16 @@ extern "C" {
 
 void sal_detail_initialize(int argc, char ** argv)
 {
-    sal_initGlobalTimer();
-    // SetProcessDEPPolicy(PROCESS_DEP_ENABLE);
-    // SetDllDirectoryW(L"");
-    // SetSearchPathMode(
-    //   BASE_SEARCH_PATH_ENABLE_SAFE_SEARCHMODE | BASE_SEARCH_PATH_PERMANENT);
-    HMODULE h = GetModuleHandleW(L"kernel32.dll");
-    if (h != nullptr) {
-        FARPROC p;
-#ifndef _WIN64
-        p = GetProcAddress(h, "SetProcessDEPPolicy");
-        if (p != 0) {
-            reinterpret_cast< BOOL (WINAPI *)(DWORD) >(p)(0x00000001);
-        }
-#endif
-        p = GetProcAddress(h, "SetDllDirectoryW");
-        if (p != nullptr) {
-            reinterpret_cast< BOOL (WINAPI *)(LPCWSTR) >(p)(L"");
-        }
-        p = GetProcAddress(h, "SetSearchPathMode");
-        if (p != nullptr) {
-            reinterpret_cast< BOOL (WINAPI *)(DWORD) >(p)(0x8001);
-        }
+    if (argc == sal::detail::InitializeSoffice)
+    {
+        return;
     }
+    sal_initGlobalTimer();
+#ifndef _WIN64
+    SetProcessDEPPolicy(PROCESS_DEP_ENABLE);
+#endif
+    SetDllDirectoryW(L""); // remove the current directory from the default DLL search order
+    SetSearchPathMode(BASE_SEARCH_PATH_ENABLE_SAFE_SEARCHMODE | BASE_SEARCH_PATH_PERMANENT);
 
     WSADATA wsaData;
     int     error;
@@ -70,7 +57,7 @@ void sal_detail_initialize(int argc, char ** argv)
 
         if ((LOBYTE(wsaData.wVersion) <  wMajorVersionRequired) ||
             ((LOBYTE(wsaData.wVersion) == wMajorVersionRequired) &&
-            ((HIBYTE(wsaData.wVersion) < wMinorVersionRequired))))
+             (HIBYTE(wsaData.wVersion) < wMinorVersionRequired)))
             {
                 // How to handle a very unlikely error ???
             }

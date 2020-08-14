@@ -8,13 +8,12 @@
  */
 
 #include <comphelper/syntaxhighlight.hxx>
-#include "cppunit/TestAssert.h"
-#include "cppunit/TestFixture.h"
-#include "cppunit/extensions/HelperMacros.h"
-#include "cppunit/plugin/TestPlugIn.h"
+#include <cppunit/TestAssert.h>
+#include <cppunit/TestFixture.h>
+#include <cppunit/extensions/HelperMacros.h>
+#include <cppunit/plugin/TestPlugIn.h>
 #include <rtl/ustring.hxx>
 
-#include <cassert>
 #include <vector>
 
 class SyntaxHighlightTest : public CppUnit::TestFixture
@@ -38,9 +37,8 @@ public:
 };
 
 void SyntaxHighlightTest::testBasicString() {
-    OUString s("\"foo\"");
     std::vector<HighlightPortion> ps;
-    SyntaxHighlighter(HighlighterLanguage::Basic).getHighlightPortions(s, ps);
+    SyntaxHighlighter(HighlighterLanguage::Basic).getHighlightPortions("\"foo\"", ps);
     CPPUNIT_ASSERT_EQUAL(
         static_cast<std::vector<HighlightPortion>::size_type>(1), ps.size());
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0), ps[0].nBegin);
@@ -49,9 +47,8 @@ void SyntaxHighlightTest::testBasicString() {
 }
 
 void SyntaxHighlightTest::testBasicComment() {
-    OUString s("' foo");
     std::vector<HighlightPortion> ps;
-    SyntaxHighlighter(HighlighterLanguage::Basic).getHighlightPortions(s, ps);
+    SyntaxHighlighter(HighlighterLanguage::Basic).getHighlightPortions("' foo", ps);
     CPPUNIT_ASSERT_EQUAL(
         static_cast<std::vector<HighlightPortion>::size_type>(1), ps.size());
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0), ps[0].nBegin);
@@ -60,9 +57,8 @@ void SyntaxHighlightTest::testBasicComment() {
 }
 
 void SyntaxHighlightTest::testBasicCommentNewline() {
-    OUString s("' foo\n");
     std::vector<HighlightPortion> ps;
-    SyntaxHighlighter(HighlighterLanguage::Basic).getHighlightPortions(s, ps);
+    SyntaxHighlighter(HighlighterLanguage::Basic).getHighlightPortions("' foo\n", ps);
     CPPUNIT_ASSERT_EQUAL(
         static_cast<std::vector<HighlightPortion>::size_type>(2), ps.size());
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0), ps[0].nBegin);
@@ -74,9 +70,8 @@ void SyntaxHighlightTest::testBasicCommentNewline() {
 }
 
 void SyntaxHighlightTest::testBasicEmptyComment() {
-    OUString s("'");
     std::vector<HighlightPortion> ps;
-    SyntaxHighlighter(HighlighterLanguage::Basic).getHighlightPortions(s, ps);
+    SyntaxHighlighter(HighlighterLanguage::Basic).getHighlightPortions("'", ps);
     CPPUNIT_ASSERT_EQUAL(
         static_cast<std::vector<HighlightPortion>::size_type>(1), ps.size());
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0), ps[0].nBegin);
@@ -85,9 +80,8 @@ void SyntaxHighlightTest::testBasicEmptyComment() {
 }
 
 void SyntaxHighlightTest::testBasicEmptyCommentNewline() {
-    OUString s("'\n");
     std::vector<HighlightPortion> ps;
-    SyntaxHighlighter(HighlighterLanguage::Basic).getHighlightPortions(s, ps);
+    SyntaxHighlighter(HighlighterLanguage::Basic).getHighlightPortions("'\n", ps);
     CPPUNIT_ASSERT_EQUAL(
         static_cast<std::vector<HighlightPortion>::size_type>(2), ps.size());
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0), ps[0].nBegin);
@@ -107,12 +101,11 @@ void SyntaxHighlightTest::testBasic()
         aBasicString, aPortions );
 
     sal_Int32 prevEnd = 0;
-    for(std::vector<HighlightPortion>::const_iterator itr =
-            aPortions.begin(), itrEnd = aPortions.end(); itr != itrEnd; ++itr)
+    for (auto const& portion : aPortions)
     {
-        CPPUNIT_ASSERT_EQUAL(prevEnd, itr->nBegin);
-        CPPUNIT_ASSERT(itr->nBegin < itr->nEnd);
-        prevEnd = itr->nEnd;
+        CPPUNIT_ASSERT_EQUAL(prevEnd, portion.nBegin);
+        CPPUNIT_ASSERT(portion.nBegin < portion.nEnd);
+        prevEnd = portion.nEnd;
     }
     CPPUNIT_ASSERT_EQUAL(aBasicString.getLength(), prevEnd);
 }

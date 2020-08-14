@@ -19,14 +19,15 @@
 #ifndef INCLUDED_REPORTDESIGN_SOURCE_UI_INC_COLORCHANGER_HXX
 #define INCLUDED_REPORTDESIGN_SOURCE_UI_INC_COLORCHANGER_HXX
 
+#include <vcl/outdev.hxx>
+
 namespace rptui
 {
 
     //= ColorChanger
 
-    class ColorChanger
+    class ColorChanger final
     {
-    protected:
         VclPtr<OutputDevice> m_pDev;
 
     public:

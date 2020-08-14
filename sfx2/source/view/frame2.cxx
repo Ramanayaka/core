@@ -19,18 +19,14 @@
 
 
 #include "impframe.hxx"
-#include "objshimp.hxx"
-#include <sfx2/sfxhelp.hxx>
-#include "workwin.hxx"
+#include <workwin.hxx>
 
-#include <sfx2/app.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
-#include <sfx2/docfac.hxx>
 #include <sfx2/docfile.hxx>
-#include <sfx2/event.hxx>
-#include <sfx2/objface.hxx>
-#include <sfx2/request.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <sfx2/sfxuno.hxx>
+#include <sfx2/viewsh.hxx>
 
 #include <com/sun/star/awt/XWindow2.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -41,14 +37,11 @@
 
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/processfactory.hxx>
-#include <svl/eitem.hxx>
-#include <svl/intitem.hxx>
-#include <svl/itemset.hxx>
-#include <svl/rectitem.hxx>
-#include <svl/stritem.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
+#include <vcl/event.hxx>
 #include <vcl/syswin.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -58,9 +51,9 @@ using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::beans;
 using ::com::sun::star::frame::XComponentLoader;
 
-
 class SfxFrameWindow_Impl : public vcl::Window
 {
+    DECL_LINK(ModalHierarchyHdl, bool, void);
 public:
     SfxFrame*           pFrame;
 
@@ -72,18 +65,29 @@ public:
     virtual bool        EventNotify( NotifyEvent& rEvt ) override;
     virtual void        Resize() override;
     virtual void        GetFocus() override;
+    virtual void        dispose() override;
     void                DoResize();
 };
 
-SfxFrameWindow_Impl::SfxFrameWindow_Impl( SfxFrame* pF, vcl::Window& i_rContainerWindow )
-        : Window( &i_rContainerWindow, WB_BORDER | WB_CLIPCHILDREN | WB_NODIALOGCONTROL | WB_3DLOOK )
-        , pFrame( pF )
+SfxFrameWindow_Impl::SfxFrameWindow_Impl(SfxFrame* pF, vcl::Window& i_rContainerWindow)
+    : Window(&i_rContainerWindow, WB_BORDER | WB_CLIPCHILDREN | WB_NODIALOGCONTROL | WB_3DLOOK)
+    , pFrame(pF)
 {
+    i_rContainerWindow.SetModalHierarchyHdl(LINK(this, SfxFrameWindow_Impl, ModalHierarchyHdl));
+}
+
+void SfxFrameWindow_Impl::dispose()
+{
+    GetParent()->SetModalHierarchyHdl(Link<bool, void>());
+    vcl::Window::dispose();
 }
 
 void SfxFrameWindow_Impl::DataChanged( const DataChangedEvent& rDCEvt )
 {
     Window::DataChanged( rDCEvt );
+    // tdf#131613 the printers changing has no effect on window layout
+    if (rDCEvt.GetType() == DataChangedEventType::PRINTER)
+        return;
     SfxWorkWindow *pWorkWin = pFrame->GetWorkWindow_Impl();
     if ( pWorkWin )
         pWorkWin->DataChanged_Impl();
@@ -116,18 +120,16 @@ bool SfxFrameWindow_Impl::EventNotify( NotifyEvent& rNEvt )
         if ( pView->GetViewShell()->KeyInput( *rNEvt.GetKeyEvent() ) )
             return true;
     }
-    else if ( rNEvt.GetType() == MouseNotifyEvent::EXECUTEDIALOG /*|| rNEvt.GetType() == MouseNotifyEvent::INPUTDISABLE*/ )
-    {
-        pView->SetModalMode( true );
-        return true;
-    }
-    else if ( rNEvt.GetType() == MouseNotifyEvent::ENDEXECUTEDIALOG /*|| rNEvt.GetType() == MouseNotifyEvent::INPUTENABLE*/ )
-    {
-        pView->SetModalMode( false );
-        return true;
-    }
 
     return Window::EventNotify( rNEvt );
+}
+
+IMPL_LINK(SfxFrameWindow_Impl, ModalHierarchyHdl, bool, bSetModal, void)
+{
+    SfxViewFrame* pView = pFrame->GetCurrentViewFrame();
+    if (!pView || !pView->GetObjectShell())
+        return;
+    pView->SetModalMode(bSetModal);
 }
 
 bool SfxFrameWindow_Impl::PreNotify( NotifyEvent& rNEvt )
@@ -212,12 +214,12 @@ Reference < XFrame > SfxFrame::CreateBlankFrame()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sfx.view");
     }
     return xFrame;
 }
 
-SfxFrame* SfxFrame::Create( SfxObjectShell& rDoc, vcl::Window& rWindow, SfxInterfaceId nViewId, bool bHidden )
+SfxFrame* SfxFrame::CreateHidden( SfxObjectShell const & rDoc, vcl::Window& rWindow, SfxInterfaceId nViewId )
 {
     SfxFrame* pFrame = nullptr;
     try
@@ -240,9 +242,9 @@ SfxFrame* SfxFrame::Create( SfxObjectShell& rDoc, vcl::Window& rWindow, SfxInter
 
         ::comphelper::NamedValueCollection aArgs( aLoadArgs );
         aArgs.put( "Model", rDoc.GetModel() );
-        aArgs.put( "Hidden", bHidden );
+        aArgs.put( "Hidden", true );
         if ( nViewId != SFX_INTERFACE_NONE )
-            aArgs.put( "ViewId", (sal_uInt16)nViewId );
+            aArgs.put( "ViewId", static_cast<sal_uInt16>(nViewId) );
 
         aLoadArgs = aArgs.getPropertyValues();
 
@@ -268,7 +270,7 @@ SfxFrame* SfxFrame::Create( SfxObjectShell& rDoc, vcl::Window& rWindow, SfxInter
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sfx.view");
     }
 
     return pFrame;
@@ -288,7 +290,6 @@ SfxFrame* SfxFrame::Create( const Reference < XFrame >& i_rFrame )
 
 SfxFrame::SfxFrame( vcl::Window& i_rContainerWindow )
     :SvCompatWeakBase<SfxFrame>( this )
-    ,pChildArr( nullptr )
     ,pWindow( nullptr )
 {
     Construct_Impl();
@@ -343,12 +344,6 @@ SystemWindow* SfxFrame::GetTopWindow_Impl() const
         return nullptr;
 }
 
-
-bool SfxFrame::Close()
-{
-    delete this;
-    return true;
-}
 
 void SfxFrame::LockResize_Impl( bool bLock )
 {

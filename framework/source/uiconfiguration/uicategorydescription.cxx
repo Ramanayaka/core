@@ -19,25 +19,18 @@
 
 #include <uielement/uicommanddescription.hxx>
 
-#include "properties.h"
+#include <helper/mischelper.hxx>
 
-#include "helper/mischelper.hxx"
-
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/XContainer.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <unotools/configmgr.hxx>
 
-#include <vcl/mnemonic.hxx>
-#include <comphelper/sequence.hxx>
+#include <comphelper/propertysequence.hxx>
 
 #include <unordered_map>
 
@@ -85,8 +78,7 @@ class ConfigurationAccess_UICategory : public ::cppu::WeakImplHelper<XNameAccess
 
     private:
         typedef std::unordered_map< OUString,
-                                    OUString,
-                                    OUStringHash > IdToInfoCache;
+                                    OUString > IdToInfoCache;
 
         void initializeConfigAccess();
 
@@ -104,16 +96,14 @@ class ConfigurationAccess_UICategory : public ::cppu::WeakImplHelper<XNameAccess
 //  XInterface, XTypeProvider
 
 ConfigurationAccess_UICategory::ConfigurationAccess_UICategory( const OUString& aModuleName, const Reference< XNameAccess >& rGenericUICategories, const Reference< XComponentContext >& rxContext ) :
-    m_aConfigCategoryAccess( "/org.openoffice.Office.UI." ),
+    // Create configuration hierarchical access name
+    m_aConfigCategoryAccess( "/org.openoffice.Office.UI." + aModuleName + "/Commands/Categories"),
     m_aPropUIName( "Name" ),
     m_xGenericUICategories( rGenericUICategories ),
+    m_xConfigProvider(theDefaultProvider::get( rxContext )),
     m_bConfigAccessInitialized( false ),
     m_bCacheFilled( false )
 {
-    // Create configuration hierarchical access name
-    m_aConfigCategoryAccess += aModuleName + "/Commands/Categories";
-
-    m_xConfigProvider = theDefaultProvider::get( rxContext );
 }
 
 ConfigurationAccess_UICategory::~ConfigurationAccess_UICategory()
@@ -158,7 +148,7 @@ sal_Bool SAL_CALL ConfigurationAccess_UICategory::hasByName( const OUString& rId
 // XElementAccess
 Type SAL_CALL ConfigurationAccess_UICategory::getElementType()
 {
-    return( cppu::UnoType<OUString>::get());
+    return cppu::UnoType<OUString>::get();
 }
 
 sal_Bool SAL_CALL ConfigurationAccess_UICategory::hasElements()
@@ -174,20 +164,19 @@ void ConfigurationAccess_UICategory::fillCache()
     if ( m_bCacheFilled )
         return;
 
-    sal_Int32            i( 0 );
     OUString        aUIName;
-    Sequence< OUString > aNameSeq = m_xConfigAccess->getElementNames();
+    const Sequence< OUString > aNameSeq = m_xConfigAccess->getElementNames();
 
-    for ( i = 0; i < aNameSeq.getLength(); i++ )
+    for ( OUString const & rName : aNameSeq )
     {
         try
         {
-            Reference< XNameAccess > xNameAccess(m_xConfigAccess->getByName( aNameSeq[i] ),UNO_QUERY);
+            Reference< XNameAccess > xNameAccess(m_xConfigAccess->getByName( rName ),UNO_QUERY);
             if ( xNameAccess.is() )
             {
                 xNameAccess->getByName( m_aPropUIName ) >>= aUIName;
 
-                m_aIdCache.insert( IdToInfoCache::value_type( aNameSeq[i], aUIName ));
+                m_aIdCache.emplace( rName, aUIName );
             }
         }
         catch ( const css::lang::WrappedTargetException& )
@@ -294,14 +283,12 @@ Sequence< OUString > ConfigurationAccess_UICategory::getAllIds()
 
 void ConfigurationAccess_UICategory::initializeConfigAccess()
 {
-    Sequence< Any > aArgs( 1 );
-    PropertyValue   aPropValue;
-
     try
     {
-        aPropValue.Name  = "nodepath";
-        aPropValue.Value <<= m_aConfigCategoryAccess;
-        aArgs[0] <<= aPropValue;
+        Sequence<Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", Any(m_aConfigCategoryAccess)}
+        }));
 
         m_xConfigAccess.set( m_xConfigProvider->createInstanceWithArguments(
                     "com.sun.star.configuration.ConfigurationAccess", aArgs ),UNO_QUERY );
@@ -357,7 +344,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.UICategoryDescription");
+        return "com.sun.star.comp.framework.UICategoryDescription";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -380,8 +367,7 @@ UICategoryDescription::UICategoryDescription( const Reference< XComponentContext
     m_xGenericUICommands = new ConfigurationAccess_UICategory( aGenericCategories, xEmpty, rxContext );
 
     // insert generic categories mappings
-    m_aModuleToCommandFileMap.insert( ModuleToCommandFileMap::value_type(
-        OUString("generic"), aGenericCategories ));
+    m_aModuleToCommandFileMap.emplace( OUString("generic"), aGenericCategories );
 
     UICommandsHashMap::iterator pCatIter = m_aUICommandsHashMap.find( aGenericCategories );
     if ( pCatIter != m_aUICommandsHashMap.end() )
@@ -408,7 +394,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_UICategoryDescription_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

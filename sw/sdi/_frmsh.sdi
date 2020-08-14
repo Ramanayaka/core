@@ -108,7 +108,7 @@ interface BaseTextFrame
 
     FN_FRAME_TO_ANCHOR  // status()
     [
-        /*OS: Datentypen unvertraeglich ?? */
+        /*OS: data types incompatible?? */
         ExecMethod = Execute ;
         StateMethod = NoState ;
     ]
@@ -257,7 +257,7 @@ interface BaseTextFrame
     [
         ExecMethod = Execute ;
         StateMethod = GetState ;
-        GroupId = GID_FRAME;
+        GroupId = SfxGroupId::Frame;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
@@ -330,6 +330,12 @@ interface BaseTextFrame
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
+    SID_OBJECT_ALIGN
+    [
+        StateMethod = GetState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
     FN_FORMAT_FOOTNOTE_DLG // status()
     [
         ExecMethod = Execute;
@@ -364,8 +370,8 @@ interface BaseTextFrame
                 DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
         ]
 
-// Abfragefunktionen fuer ImageMaps
-// Slots ohne Export
+// Query functions for ImageMaps
+// Slots without export
 
     FN_INSERT_FRAME
     [
@@ -379,7 +385,7 @@ interface BaseTextFrame
     [
         ExecMethod = ExecFrameStyle ;
         StateMethod = GetLineStyleState ;
-        GroupId = GID_FRAME;
+        GroupId = SfxGroupId::Frame;
         Export = False;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
@@ -399,6 +405,16 @@ interface BaseTextFrame
     [
         ExecMethod = Execute ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+    SID_SELECTALL
+    [
+        ExecMethod = ExecMove ;
+        StateMethod = NoState ;
+    ]
+    FN_POSTIT
+    [
+        ExecMethod = ExecField ;
+        StateMethod = GetState ;
     ]
 }
 

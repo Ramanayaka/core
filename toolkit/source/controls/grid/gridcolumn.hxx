@@ -21,7 +21,6 @@
 #define INCLUDED_TOOLKIT_SOURCE_CONTROLS_GRID_GRIDCOLUMN_HXX
 
 #include <com/sun/star/awt/grid/XGridColumn.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/style/HorizontalAlignment.hpp>
@@ -29,10 +28,6 @@
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/componentguard.hxx>
-#include <rtl/ref.hxx>
-#include <toolkit/helper/mutexandbroadcasthelper.hxx>
-
-#include <vector>
 
 namespace toolkit
 {
@@ -88,21 +83,20 @@ public:
     // XUnoTunnel and friends
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& i_identifier ) override;
     static css::uno::Sequence< sal_Int8 > getUnoTunnelId() throw();
-    static GridColumn* getImplementation( const css::uno::Reference< css::uno::XInterface >& i_component );
 
     // attribute access
     void setIndex( sal_Int32 const i_index );
 
 private:
     void broadcast_changed(
-            sal_Char const * const i_asciiAttributeName,
+            char const * const i_asciiAttributeName,
             const css::uno::Any& i_oldValue,
             const css::uno::Any& i_newValue,
             ::comphelper::ComponentGuard& i_Guard
         );
 
     template< class TYPE >
-    void impl_set( TYPE & io_attribute, TYPE const & i_newValue, sal_Char const * i_attributeName )
+    void impl_set( TYPE & io_attribute, TYPE const & i_newValue, char const * i_attributeName )
     {
         ::comphelper::ComponentGuard aGuard( *this, rBHelper );
         if ( io_attribute == i_newValue )

@@ -20,55 +20,30 @@
 #ifndef INCLUDED_XMLSECURITY_INC_XMLSIGNATUREHELPER_HXX
 #define INCLUDED_XMLSECURITY_INC_XMLSIGNATUREHELPER_HXX
 
-#include <vector>
-
 #include <tools/link.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ref.hxx>
-#include <sigstruct.hxx>
-#include <xsecctl.hxx>
-#include <xmlsecurity/xmlsecuritydllapi.h>
+#include <svl/sigstruct.hxx>
+#include "xmlsecuritydllapi.h"
+#include "xmlsignaturehelper.hxx"
+#include "xsecctl.hxx"
 
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/xml/sax/XWriter.hpp>
-#include <com/sun/star/xml/crypto/XUriBinding.hpp>
-#include <com/sun/star/xml/crypto/XSEInitializer.hpp>
-#include <com/sun/star/xml/crypto/sax/XSignatureCreationResultListener.hpp>
-#include <com/sun/star/xml/crypto/sax/XSignatureVerifyResultListener.hpp>
+class DateTime;
+class UriBindingHelper;
 
-class Date;
-namespace tools { class Time; }
-
-namespace com {
-namespace sun {
-namespace star {
-namespace io {
-    class XOutputStream;
-    class XInputStream; }
-namespace embed {
-    class XStorage; }
-}}}
-
-struct XMLSignatureCreationResult
-{
-    css::xml::crypto::SecurityOperationStatus nSignatureCreationResult;
-
-    XMLSignatureCreationResult( css::xml::crypto::SecurityOperationStatus nResult )
-    {
-        nSignatureCreationResult = nResult;
+namespace com::sun::star {
+    namespace io {
+        class XOutputStream;
+        class XInputStream;
     }
-};
+    namespace embed { class XStorage; }
+}
 
-struct XMLSignatureVerifyResult
-{
-    css::xml::crypto::SecurityOperationStatus nSignatureVerifyResult;
-
-    XMLSignatureVerifyResult( css::xml::crypto::SecurityOperationStatus nResult )
-    {
-        nSignatureVerifyResult = nResult;
-    }
-};
-
+namespace com::sun::star::graphic { class XGraphic; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::xml::crypto { class XXMLSecurityContext; }
+namespace com::sun::star::xml::sax { class XDocumentHandler; }
+namespace com::sun::star::xml::sax { class XWriter; }
 
 /**********************************************************
  XMLSignatureHelper
@@ -87,12 +62,8 @@ class XMLSECURITY_DLLPUBLIC XMLSignatureHelper
 {
 private:
     css::uno::Reference< css::uno::XComponentContext > mxCtx;
-    css::uno::Reference< css::xml::crypto::XUriBinding > mxUriBinding;
+    rtl::Reference<UriBindingHelper> mxUriBinding;
 
-    std::vector<XMLSignatureCreationResult>
-                                maCreationResults;
-    std::vector<XMLSignatureVerifyResult>
-                                maVerifyResults;
     rtl::Reference<XSecController> mpXSecController;
     bool                        mbError;
     bool mbODFPre1_2;
@@ -105,8 +76,6 @@ public:
     XMLSignatureHelper(const css::uno::Reference< css::uno::XComponentContext >& mrCtx );
     ~XMLSignatureHelper();
 
-    void SignatureCreationResultListener(XMLSignatureCreationResult& rResult);
-    void SignatureVerifyResultListener(XMLSignatureVerifyResult& rResult);
     void StartVerifySignatureElement();
 
     // Set the storage which should be used by the default UriBinding
@@ -146,18 +115,25 @@ public:
         certificate.
      */
     void SetX509Certificate(sal_Int32 nSecurityId, const OUString& ouX509IssuerName,
-        const OUString& ouX509SerialNumber, const OUString& ouX509Cert, const OUString& ouX509CertDigest);
+        const OUString& ouX509SerialNumber, const OUString& ouX509Cert, const OUString& ouX509CertDigest,
+        svl::crypto::SignatureMethodAlgorithm eAlgorithmID);
 
     void AddEncapsulatedX509Certificate(const OUString& ouEncapsulatedX509Certificate);
 
     void SetGpgCertificate(sal_Int32 nSecurityId, const OUString& ouGpgCertDigest,
-        const OUString& ouGpgCert);
+        const OUString& ouGpgCert, const OUString& ouGpgOwner);
 
-    void        SetDateTime( sal_Int32 nSecurityId, const Date& rDate, const tools::Time& rTime );
+    void        SetDateTime( sal_Int32 nSecurityId, const DateTime& rDateTime );
     void SetDescription(sal_Int32 nSecurityId, const OUString& rDescription);
+    void SetSignatureLineId(sal_Int32 nSecurityId, const OUString& rSignatureLineId);
+    void
+    SetSignatureLineValidGraphic(sal_Int32 nSecurityId,
+                                 const css::uno::Reference<css::graphic::XGraphic>& xValidGraphic);
+    void SetSignatureLineInvalidGraphic(
+        sal_Int32 nSecurityId, const css::uno::Reference<css::graphic::XGraphic>& xInvalidGraphic);
 
     void        AddForSigning( sal_Int32 securityId, const OUString& uri, bool bBinary, bool bXAdESCompliantIfODF );
-    bool        CreateAndWriteSignature( const css::uno::Reference< css::xml::sax::XDocumentHandler >& xDocumentHandler, bool bXAdESCompliantIfODF );
+    void        CreateAndWriteSignature( const css::uno::Reference< css::xml::sax::XDocumentHandler >& xDocumentHandler, bool bXAdESCompliantIfODF );
     bool        ReadAndVerifySignature( const css::uno::Reference< css::io::XInputStream >& xInputStream );
 
     // MT: ??? I think only for adding/removing, not for new signatures...
@@ -179,7 +155,7 @@ public:
     /// Given that xStorage is an OOXML _xmlsignatures storage, create origin.sigs and its relations.
     void ExportSignatureRelations(const css::uno::Reference<css::embed::XStorage>& xStorage, int nSignatureCount);
     /// Given that xSignatureStorage is an OOXML _xmlsignatures storage, create and write a new signature.
-    bool CreateAndWriteOOXMLSignature(const css::uno::Reference<css::embed::XStorage>& xRootStorage, const css::uno::Reference<css::embed::XStorage>& xSignatureStorage, int nSignatureIndex);
+    void CreateAndWriteOOXMLSignature(const css::uno::Reference<css::embed::XStorage>& xRootStorage, const css::uno::Reference<css::embed::XStorage>& xSignatureStorage, int nSignatureIndex);
     /// Similar to CreateAndWriteOOXMLSignature(), but used to write the signature to the persistent storage, not the temporary one.
     void ExportOOXMLSignature(const css::uno::Reference<css::embed::XStorage>& xRootStorage, const css::uno::Reference<css::embed::XStorage>& xSignatureStorage, const SignatureInformation& rInformation, int nSignatureIndex);
     /// Given that xStorage is an OOXML root storage, advertise signatures in its [Content_Types].xml stream.

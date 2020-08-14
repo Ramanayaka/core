@@ -23,19 +23,16 @@
 #include <com/sun/star/animations/XTransitionFilter.hpp>
 #include <com/sun/star/presentation/XTransitionFactory.hpp>
 
-#include "animatableshape.hxx"
 #include "rgbcolor.hxx"
 #include "slide.hxx"
 #include "screenupdater.hxx"
 #include "animationactivity.hxx"
 #include "activitiesfactory.hxx"
 #include "numberanimation.hxx"
-#include "transitioninfo.hxx"
 #include "soundplayer.hxx"
+#include "shapemanager.hxx"
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /* Definition of Transitionfactory class */
         namespace TransitionFactory
@@ -110,7 +107,7 @@ namespace slideshow
                 const RGBColor&                                rTransitionFadeColor,
                 const SoundPlayerSharedPtr&                    rSoundPlayer );
         }
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_TRANSITIONFACTORY_HXX

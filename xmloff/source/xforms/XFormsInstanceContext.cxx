@@ -20,21 +20,20 @@
 
 #include "XFormsInstanceContext.hxx"
 
-#include "DomBuilderContext.hxx"
-#include "xformsapi.hxx"
+#include <DomBuilderContext.hxx>
 
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/xforms/XModel2.hpp>
 #include <osl/diagnose.h>
 
-#include <xmloff/xmlnmspe.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlerror.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 
 
 using com::sun::star::uno::Reference;
@@ -47,7 +46,7 @@ using com::sun::star::xml::sax::XAttributeList;
 using xmloff::token::XML_SRC;
 using xmloff::token::XML_ID;
 
-static const SvXMLTokenMapEntry aAttributes[] =
+const SvXMLTokenMapEntry aAttributes[] =
 {
     TOKEN_MAP_ENTRY( NONE, SRC ),
     TOKEN_MAP_ENTRY( NONE, ID ),
@@ -65,7 +64,7 @@ XFormsInstanceContext::XFormsInstanceContext(
     SAL_WARN_IF( !mxModel.is(), "xmloff", "need model" );
 }
 
-SvXMLImportContext* XFormsInstanceContext::CreateChildContext(
+SvXMLImportContextRef XFormsInstanceContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList>& )
@@ -78,7 +77,6 @@ SvXMLImportContext* XFormsInstanceContext::CreateChildContext(
     if( mxInstance.is() )
     {
         GetImport().SetError( XMLERROR_XFORMS_ONLY_ONE_INSTANCE_ELEMENT, rLocalName );
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
     }
     else
     {

@@ -37,18 +37,16 @@ ScVbaPivotTable::PivotCache()
 OUString
 ScVbaPivotTable::getServiceImplName()
 {
-    return OUString("ScVbaPivotTable");
+    return "ScVbaPivotTable";
 }
 
 uno::Sequence< OUString >
 ScVbaPivotTable::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.PivotTable";
-    }
+        "ooo.vba.excel.PivotTable"
+    };
     return aServiceNames;
 }
 

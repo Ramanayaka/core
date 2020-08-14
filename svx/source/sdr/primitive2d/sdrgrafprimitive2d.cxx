@@ -20,24 +20,18 @@
 #include <sdr/primitive2d/sdrgrafprimitive2d.hxx>
 #include <drawinglayer/primitive2d/graphicprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <svx/sdr/primitive2d/sdrdecompositiontools.hxx>
-#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
+#include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
-#include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/matrix/b2dhommatrixtools.hxx>
-#include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void SdrGrafPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*aViewInformation*/) const
         {
             Primitive2DContainer  aRetval;
 
             // create unit outline polygon
-            basegfx::B2DPolygon aUnitOutline(basegfx::tools::createUnitPolygon());
+            const basegfx::B2DPolygon& aUnitOutline(basegfx::utils::createUnitPolygon());
 
             // add fill, but only when graphic is transparent
             if(!getSdrLFSTAttribute().getFill().isDefault() && isTransparent())
@@ -53,7 +47,7 @@ namespace drawinglayer
             }
 
             // add graphic content
-            if(255L != getGraphicAttr().GetTransparency())
+            if(255 != getGraphicAttr().GetTransparency())
             {
                 // standard graphic fill
                 const Primitive2DReference xGraphicContentPrimitive(
@@ -61,7 +55,6 @@ namespace drawinglayer
                         getTransform(),
                         getGraphicObject(),
                         getGraphicAttr()));
-
                 aRetval.push_back(xGraphicContentPrimitive);
             }
 
@@ -82,10 +75,10 @@ namespace drawinglayer
                     double fScaleX(0.0 != aScale.getX() ? fHalfLineWidth / fabs(aScale.getX()) : 1.0);
                     double fScaleY(0.0 != aScale.getY() ? fHalfLineWidth / fabs(aScale.getY()) : 1.0);
                     const basegfx::B2DRange aExpandedRange(-fScaleX, -fScaleY, 1.0 + fScaleX, 1.0 + fScaleY);
-                    basegfx::B2DPolygon aExpandedUnitOutline(basegfx::tools::createPolygonFromRect(aExpandedRange));
+                    basegfx::B2DPolygon aExpandedUnitOutline(basegfx::utils::createPolygonFromRect(aExpandedRange));
 
                     aExpandedUnitOutline.transform(getTransform());
-                aRetval.push_back(
+                    aRetval.push_back(
                         createPolygonLinePrimitive(
                             aExpandedUnitOutline,
                             getSdrLFSTAttribute().getLine(),
@@ -96,12 +89,19 @@ namespace drawinglayer
                     basegfx::B2DPolygon aTransformed(aUnitOutline);
 
                     aTransformed.transform(getTransform());
-                aRetval.push_back(
+                    aRetval.push_back(
                         createPolygonLinePrimitive(
                             aTransformed,
                             getSdrLFSTAttribute().getLine(),
                             attribute::SdrLineStartEndAttribute()));
                 }
+            }
+
+            // Soft edges should be before text, since text is not affected by soft edges
+            if (!aRetval.empty() && getSdrLFSTAttribute().getSoftEdgeRadius())
+            {
+                aRetval = createEmbeddedSoftEdgePrimitive(
+                    aRetval, getSdrLFSTAttribute().getSoftEdgeRadius());
             }
 
             // add text
@@ -114,8 +114,14 @@ namespace drawinglayer
                         getSdrLFSTAttribute().getText(),
                         getSdrLFSTAttribute().getLine(),
                         false,
-                        false,
                         false));
+            }
+
+            // tdf#132199: put glow before shadow, to have shadow of the glow, not the opposite
+            if (!aRetval.empty() && !getSdrLFSTAttribute().getGlow().isDefault())
+            {
+                // glow
+                aRetval = createEmbeddedGlowPrimitive(aRetval, getSdrLFSTAttribute().getGlow());
             }
 
             // add shadow
@@ -123,7 +129,8 @@ namespace drawinglayer
             {
                 aRetval = createEmbeddedShadowPrimitive(
                     aRetval,
-                    getSdrLFSTAttribute().getShadow());
+                    getSdrLFSTAttribute().getShadow(),
+                    getTransform());
             }
 
             rContainer.insert(rContainer.end(), aRetval.begin(), aRetval.end());
@@ -131,7 +138,7 @@ namespace drawinglayer
 
         SdrGrafPrimitive2D::SdrGrafPrimitive2D(
             const basegfx::B2DHomMatrix& rTransform,
-            const attribute::SdrLineFillShadowTextAttribute& rSdrLFSTAttribute,
+            const attribute::SdrLineFillEffectsTextAttribute& rSdrLFSTAttribute,
             const GraphicObject& rGraphicObject,
             const GraphicAttr& rGraphicAttr)
         :   BufferedDecompositionPrimitive2D(),
@@ -141,7 +148,7 @@ namespace drawinglayer
             maGraphicAttr(rGraphicAttr)
         {
             // reset some values from GraphicAttr which are part of transformation already
-            maGraphicAttr.SetRotation(0L);
+            maGraphicAttr.SetRotation(0);
         }
 
         bool SdrGrafPrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const
@@ -161,14 +168,13 @@ namespace drawinglayer
 
         bool SdrGrafPrimitive2D::isTransparent() const
         {
-            return ((0L != getGraphicAttr().GetTransparency())
+            return ((0 != getGraphicAttr().GetTransparency())
                 || (getGraphicObject().IsTransparent()));
         }
 
         // provide unique ID
         ImplPrimitive2DIDBlock(SdrGrafPrimitive2D, PRIMITIVE2D_ID_SDRGRAFPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE script:module PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "module.dtd">
-<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Module" script:language="StarBasic">REM =======================================================================================================================
+<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Module" script:language="StarBasic">
+REM =======================================================================================================================
 REM ===					The Access2Base library is a part of the LibreOffice project.									===
 REM ===					Full documentation is available on http://www.access2base.com									===
 REM =======================================================================================================================
@@ -15,6 +16,8 @@ REM --- CLASS ROOT FIELDS 								        														---
 REM -----------------------------------------------------------------------------------------------------------------------
 
 Private	_Type					As String				&apos;	Must be MODULE
+Private _This					As Object				&apos;	Workaround for absence of This builtin function
+Private _Parent					As Object
 Private	_Name					As String
 Private _Library				As Object				&apos;	com.sun.star.container.XNameAccess
 Private _LibraryName			As String
@@ -33,6 +36,8 @@ REM --- CONSTRUCTORS / DESTRUCTORS						        														---
 REM -----------------------------------------------------------------------------------------------------------------------
 Private Sub Class_Initialize()
 	_Type = OBJMODULE
+	Set _This = Nothing
+	Set _Parent = Nothing
 	_Name = &quot;&quot;
 	Set _Library = Nothing
 	_LibraryName = &quot;&quot;
@@ -225,8 +230,7 @@ REM ----------------------------------------------------------------------------
 Public Function Properties(ByVal Optional pvIndex As Variant) As Variant
 &apos;	Return
 &apos;		a Collection object if pvIndex absent
-&apos;		a Property object otherwiseREM -----------------------------------------------------------------------------------------------------------------------
-
+&apos;		a Property object otherwise
 
 Const cstThisSub = &quot;Module.Properties&quot;
 	Utils._SetCalledSub(cstThisSub)
@@ -236,9 +240,9 @@ Dim vProperty As Variant, vPropertiesList() As Variant, sObject As String
 	vPropertiesList = _PropertiesList()
 	sObject = Utils._PCase(_Type)
 	If IsMissing(pvIndex) Then
-		vProperty = PropertiesGet._Properties(sObject, _Name, vPropertiesList)
+		vProperty = PropertiesGet._Properties(sObject, _This, vPropertiesList)
 	Else
-		vProperty = PropertiesGet._Properties(sObject, _Name, vPropertiesList, pvIndex)
+		vProperty = PropertiesGet._Properties(sObject, _This, vPropertiesList, pvIndex)
 		vProperty._Value = _PropertyGet(vPropertiesList(pvIndex))
 	End If
 	
@@ -366,8 +370,7 @@ End Function	&apos;	Find
 
 REM -----------------------------------------------------------------------------------------------------------------------
 Public Function getProperty(Optional ByVal pvProperty As Variant) As Variant
-&apos;	Return property value of psProperty property nameREM -----------------------------------------------------------------------------------------------------------------------
-
+&apos;	Return property value of psProperty property name
 
 Const cstThisSub = &quot;Module.Properties&quot;
 
@@ -445,7 +448,7 @@ Private Function _FindPattern(ByVal psPattern As Variant, Optional ByRef plStart
 
 &apos;	Common patterns
 Const cstComment = &quot;(&apos;|\bREM\b)[^\n]*$&quot;
-Const cstString = &quot;&quot;&quot;[^&quot;&quot;]*&quot;&quot;&quot;
+Const cstString = &quot;&quot;&quot;[^&quot;&quot;\n]*&quot;&quot;&quot;
 Const cstBeginStatement = &quot;(^|:|\bthen\b|\belse\b|\n)[ \t]*&quot;
 Const cstEndStatement = &quot;[ \t]*($|:|\bthen\b|\belse\b|\n)&quot;
 Const cstContinuation = &quot;[ \t]_\n&quot;
@@ -496,7 +499,7 @@ Dim bEndStatement As Boolean, bQuote As Boolean
 					plStart = lStart + 1
 					sMatch = Right(sMatch, Len(sMatch) - 1)
 				End If
-			Case UCase(Left(sMatch, 3)) = &quot;REM&quot;
+			Case UCase(Left(sMatch, 4)) = &quot;REM &quot; Or UCase(Left(sMatch, 4)) = &quot;REM&quot; &amp; vbTab Or UCase(Left(sMatch, 4)) = &quot;REM&quot; &amp; vbNewLine
 				bEndStatement = True
 			Case UCase(Left(sMatch, 4)) = &quot;THEN&quot; Or UCase(Left(sMatch, 4)) = &quot;ELSE&quot;
 				If psPattern = &quot;%$&quot; Then
@@ -610,7 +613,7 @@ Const cstName = &quot;\w*&quot;	&apos;&quot;[A-Za-z_][A-Za-z_0-9]*&quot;
 			ReDim Preserve _ProcDecPositions(0 To iProc)
 			ReDim Preserve _ProcEndPositions(0 To iProc)
 			ReDim Preserve _ProcTypes(0 To iProc)
-			_ProcDecpositions(iProc) = lPosition
+			_ProcDecPositions(iProc) = lPosition
 			lPosition = lPosition + Len(sDecProc)
 			&apos;	Identify procedure type
 			Select Case True
@@ -715,6 +718,5 @@ Error_Function:
 	_PropertyGet = Null
 	GoTo Exit_Function
 End Function		&apos;	_PropertyGet
-
 
 </script:module>

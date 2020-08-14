@@ -17,50 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_HELPER_ACCRESMGR_HXX
-#define INCLUDED_ACCESSIBILITY_INC_HELPER_ACCRESMGR_HXX
+#pragma once
 
 #include <rtl/ustring.hxx>
 
-class SimpleResMgr;
-
-#define TK_RES_STRING(id) ::accessibility::TkResMgr::loadString(id)
-
-
-// TkResMgr
-
-namespace accessibility
-{
-
-class TkResMgr
-{
-    static SimpleResMgr* m_pImpl;
-
-private:
-    // no instantiation allowed
-    TkResMgr() = delete;
-    ~TkResMgr() { }
-
-    // we'll instantiate one static member of the following class,
-    // which in its dtor ensures that m_pImpl will be deleted
-    class EnsureDelete
-    {
-    public:
-        EnsureDelete() { }
-        ~EnsureDelete();
-    };
-    friend class EnsureDelete;
-
-protected:
-    static void ensureImplExists();
-
-public:
-    // loads the string with the specified resource id
-    static OUString loadString( sal_uInt16 nResId );
-};
-
-}
-
-#endif // INCLUDED_ACCESSIBILITY_INC_HELPER_ACCRESMGR_HXX
+OUString AccResId(const char* pId);
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,12 +20,15 @@
 #ifndef INCLUDED_BASIC_MODSIZEEXCEEDED_HXX
 #define INCLUDED_BASIC_MODSIZEEXCEEDED_HXX
 
-#include <com/sun/star/task/XInteractionHandler.hpp>
+#include <config_options.h>
+#include <com/sun/star/task/XInteractionRequest.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <basic/basicdllapi.h>
 #include <vector>
 
-class BASIC_DLLPUBLIC ModuleSizeExceeded : public cppu::WeakImplHelper< css::task::XInteractionRequest >
+namespace com::sun::star::task { class XInteractionContinuation; }
+
+class UNLESS_MERGELIBS(BASIC_DLLPUBLIC) ModuleSizeExceeded final : public cppu::WeakImplHelper< css::task::XInteractionRequest >
 {
 // C++ interface
 public:

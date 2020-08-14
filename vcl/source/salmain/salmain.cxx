@@ -17,25 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
+#include <config_features.h>
 
-#include <cstdlib>
-
-#include "sal/main.h"
-#include "tools/extendapplicationenvironment.hxx"
+#include <sal/main.h>
+#include <tools/extendapplicationenvironment.hxx>
+#include <vcl/glxtestprocess.hxx>
 #include <vcl/vclmain.hxx>
 #include <vcl/svmain.hxx>
 
-#include "salinst.hxx"
-
-#if defined( UNX ) && !defined MACOSX && !defined IOS && !defined ANDROID && !defined LIBO_HEADLESS
-#include "opengl/x11/glxtest.hxx"
-#endif
-
 SAL_IMPLEMENT_MAIN() {
-#if defined( UNX ) && !defined MACOSX && !defined IOS && !defined ANDROID && !defined LIBO_HEADLESS
     fire_glxtest_process();
-#endif
     tools::extendApplicationEnvironment();
     vclmain::createApplication();
     return SVMain();

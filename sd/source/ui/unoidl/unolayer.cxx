@@ -31,22 +31,19 @@
 // following ones for InsertSdPage()
 #include <svx/svdlayer.hxx>
 
-#include "DrawDocShell.hxx"
+#include <DrawDocShell.hxx>
 #include <drawdoc.hxx>
 #include <unomodel.hxx>
-#include "unoprnms.hxx"
+#include <unoprnms.hxx>
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <svx/svdpool.hxx>
-#include "FrameView.hxx"
-#include "DrawViewShell.hxx"
-#include "View.hxx"
-#include "ViewShell.hxx"
-#include "app.hrc"
-#include "strings.hrc"
-#include "sdresid.hxx"
-#include "glob.hrc"
+#include <FrameView.hxx>
+#include <DrawViewShell.hxx>
+#include <View.hxx>
+#include <ViewShell.hxx>
+#include <strings.hrc>
+#include <sdresid.hxx>
 
-#include "unokywds.hxx"
 #include "unowcntr.hxx"
 #include <vcl/svapp.hxx>
 
@@ -60,83 +57,30 @@ using namespace ::com::sun::star;
 #define WID_LAYER_TITLE     5
 #define WID_LAYER_DESC      6
 
-const SvxItemPropertySet* ImplGetSdLayerPropertySet()
+static const SvxItemPropertySet* ImplGetSdLayerPropertySet()
 {
     static const SfxItemPropertyMapEntry aSdLayerPropertyMap_Impl[] =
     {
-        { OUString(UNO_NAME_LAYER_LOCKED),      WID_LAYER_LOCKED,   cppu::UnoType<bool>::get(),            0, 0 },
-        { OUString(UNO_NAME_LAYER_PRINTABLE),   WID_LAYER_PRINTABLE,cppu::UnoType<bool>::get(),            0, 0 },
-        { OUString(UNO_NAME_LAYER_VISIBLE),     WID_LAYER_VISIBLE,  cppu::UnoType<bool>::get(),            0, 0 },
-        { OUString(UNO_NAME_LAYER_NAME),        WID_LAYER_NAME,     ::cppu::UnoType<OUString>::get(), 0, 0 },
-        { OUString("Title"),                    WID_LAYER_TITLE,    ::cppu::UnoType<OUString>::get(), 0, 0 },
-        { OUString("Description"),              WID_LAYER_DESC,     ::cppu::UnoType<OUString>::get(), 0, 0 },
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        { UNO_NAME_LAYER_LOCKED,      WID_LAYER_LOCKED,   cppu::UnoType<bool>::get(),            0, 0 },
+        { UNO_NAME_LAYER_PRINTABLE,   WID_LAYER_PRINTABLE,cppu::UnoType<bool>::get(),            0, 0 },
+        { UNO_NAME_LAYER_VISIBLE,     WID_LAYER_VISIBLE,  cppu::UnoType<bool>::get(),            0, 0 },
+        { UNO_NAME_LAYER_NAME,        WID_LAYER_NAME,     ::cppu::UnoType<OUString>::get(), 0, 0 },
+        { "Title",                    WID_LAYER_TITLE,    ::cppu::UnoType<OUString>::get(), 0, 0 },
+        { "Description",              WID_LAYER_DESC,     ::cppu::UnoType<OUString>::get(), 0, 0 },
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     static SvxItemPropertySet aSDLayerPropertySet_Impl( aSdLayerPropertyMap_Impl, SdrObject::GetGlobalDrawObjectItemPool() );
     return &aSDLayerPropertySet_Impl;
 }
 
-OUString SdLayer::convertToInternalName( const OUString& rName )
-{
-    if ( rName == sUNO_LayerName_background )
-    {
-        return SdResId( STR_LAYER_BCKGRND );
-    }
-    else if ( rName == sUNO_LayerName_background_objects )
-    {
-        return  SdResId( STR_LAYER_BCKGRNDOBJ );
-    }
-    else if ( rName == sUNO_LayerName_layout )
-    {
-        return  SdResId( STR_LAYER_LAYOUT );
-    }
-    else if ( rName == sUNO_LayerName_controls )
-    {
-        return  SdResId( STR_LAYER_CONTROLS );
-    }
-    else if ( rName == sUNO_LayerName_measurelines )
-    {
-        return  SdResId( STR_LAYER_MEASURELINES );
-    }
-    else
-    {
-        return rName;
-    }
-}
-
-OUString SdLayer::convertToExternalName( const OUString& rName )
-{
-    if( rName == SdResId( STR_LAYER_BCKGRND ) )
-    {
-        return OUString( sUNO_LayerName_background );
-    }
-    else if( rName == SdResId( STR_LAYER_BCKGRNDOBJ ) )
-    {
-        return OUString( sUNO_LayerName_background_objects );
-    }
-    else if( rName == SdResId( STR_LAYER_LAYOUT ) )
-    {
-        return OUString( sUNO_LayerName_layout );
-    }
-    else if( rName == SdResId( STR_LAYER_CONTROLS ) )
-    {
-        return OUString( sUNO_LayerName_controls );
-    }
-    else if( rName == SdResId( STR_LAYER_MEASURELINES ) )
-    {
-        return OUString( sUNO_LayerName_measurelines );
-    }
-    else
-    {
-        return rName;
-    }
-}
-
-SdLayer::SdLayer( SdLayerManager* pLayerManager_, SdrLayer* pSdrLayer_ ) throw()
+SdLayer::SdLayer(SdLayerManager* pLayerManager_, SdrLayer* pSdrLayer_)
 : mxLayerManager(pLayerManager_)
 , pLayer(pSdrLayer_)
 , pPropSet(ImplGetSdLayerPropertySet())
 {
+    // no defaults possible yet, a "set" would overwrite existing information
+    // in view, which is currently needed for saving, because pLayer is not updated
+    // from view.
 }
 
 SdLayer::~SdLayer() throw()
@@ -149,7 +93,7 @@ UNO3_GETIMPLEMENTATION_IMPL( SdLayer );
 // XServiceInfo
 OUString SAL_CALL SdLayer::getImplementationName()
 {
-    return OUString("SdUnoLayer");
+    return "SdUnoLayer";
 }
 
 sal_Bool SAL_CALL SdLayer::supportsService( const OUString& ServiceName )
@@ -159,9 +103,7 @@ sal_Bool SAL_CALL SdLayer::supportsService( const OUString& ServiceName )
 
 uno::Sequence< OUString > SAL_CALL SdLayer::getSupportedServiceNames()
 {
-    OUString aServiceName("com.sun.star.drawing.Layer");
-    uno::Sequence< OUString > aSeq( &aServiceName, 1 );
-    return aSeq;
+    return { "com.sun.star.drawing.Layer" };
 }
 
 // beans::XPropertySet
@@ -184,17 +126,20 @@ void SAL_CALL SdLayer::setPropertyValue( const OUString& aPropertyName, const un
     {
     case WID_LAYER_LOCKED:
     {
-        set(LOCKED, cppu::any2bool(aValue));
+        pLayer->SetLockedODF( cppu::any2bool(aValue) );
+        set(LOCKED, cppu::any2bool(aValue)); // changes the View, if any exists
         break;
     }
     case WID_LAYER_PRINTABLE:
     {
-        set(PRINTABLE, cppu::any2bool(aValue));
+        pLayer->SetPrintableODF( cppu::any2bool(aValue) );
+        set(PRINTABLE, cppu::any2bool(aValue)); // changes the View, if any exists
         break;
     }
     case WID_LAYER_VISIBLE:
     {
-        set(VISIBLE, cppu::any2bool(aValue));
+        pLayer->SetVisibleODF( cppu::any2bool(aValue) );
+        set(VISIBLE, cppu::any2bool(aValue)); // changes the View, if any exists
         break;
     }
     case WID_LAYER_NAME:
@@ -203,7 +148,7 @@ void SAL_CALL SdLayer::setPropertyValue( const OUString& aPropertyName, const un
         if(!(aValue >>= aName))
             throw lang::IllegalArgumentException();
 
-        pLayer->SetName(SdLayer::convertToInternalName( aName ) );
+        pLayer->SetName(aName);
         mxLayerManager->UpdateLayerView();
         break;
     }
@@ -260,7 +205,7 @@ uno::Any SAL_CALL SdLayer::getPropertyValue( const OUString& PropertyName )
         break;
     case WID_LAYER_NAME:
     {
-        OUString aRet( SdLayer::convertToExternalName( pLayer->GetName() ) );
+        OUString aRet(pLayer->GetName());
         aValue <<= aRet;
         break;
     }
@@ -315,67 +260,76 @@ bool SdLayer::get( LayerAttribute what ) throw()
                 case LOCKED:    return pFrameView->GetLockedLayers().IsSet(pLayer->GetID());
                 }
         }
+
+        // no view at all, e.g. Draw embedded as OLE in text document, ODF default values
+        switch(what)
+        {
+            case VISIBLE:   return true;
+            case PRINTABLE: return true;
+            case LOCKED:    return false;
+        }
+
     }
     return false; //TODO: uno::Exception?
 }
 
 void SdLayer::set( LayerAttribute what, bool flag ) throw()
 {
-    if(pLayer && mxLayerManager.is())
+    if(!(pLayer && mxLayerManager.is()))
+        return;
+
+    // Try 1. is an arbitrary page open?
+    ::sd::View *pView = mxLayerManager->GetView();
+    SdrPageView* pSdrPageView = nullptr;
+    if(pView)
+        pSdrPageView = pView->GetSdrPageView();
+
+    if(pSdrPageView)
     {
-        // Try 1. is an arbitrary page open?
-        ::sd::View *pView = mxLayerManager->GetView();
-        SdrPageView* pSdrPageView = nullptr;
-        if(pView)
-            pSdrPageView = pView->GetSdrPageView();
-
-        if(pSdrPageView)
+        OUString aLayerName(pLayer->GetName());
+        switch(what)
         {
-            OUString aLayerName(pLayer->GetName());
-            switch(what)
-            {
-            case VISIBLE:   pSdrPageView->SetLayerVisible(aLayerName,flag);
-                            break;
-            case PRINTABLE: pSdrPageView->SetLayerPrintable(aLayerName,flag);
-                            break;
-            case LOCKED:    pSdrPageView->SetLayerLocked(aLayerName,flag);
-                            break;
-            }
-        }
-
-        // Try 2. get info from FrameView
-        if(mxLayerManager->GetDocShell())
-        {
-            ::sd::FrameView *pFrameView = mxLayerManager->GetDocShell()->GetFrameView();
-
-            if(pFrameView)
-            {
-                SdrLayerIDSet aNewLayers;
-                switch(what)
-                {
-                case VISIBLE:   aNewLayers = pFrameView->GetVisibleLayers();
-                                break;
-                case PRINTABLE: aNewLayers = pFrameView->GetPrintableLayers();
-                                break;
-                case LOCKED:    aNewLayers = pFrameView->GetLockedLayers();
-                                break;
-                }
-
-                aNewLayers.Set(pLayer->GetID(),flag);
-
-                switch(what)
-                {
-                case VISIBLE:   pFrameView->SetVisibleLayers(aNewLayers);
-                                break;
-                case PRINTABLE: pFrameView->SetPrintableLayers(aNewLayers);
-                                break;
-                case LOCKED:    pFrameView->SetLockedLayers(aNewLayers);
-                                break;
-                }
-                return;
-            }
+        case VISIBLE:   pSdrPageView->SetLayerVisible(aLayerName,flag);
+                        break;
+        case PRINTABLE: pSdrPageView->SetLayerPrintable(aLayerName,flag);
+                        break;
+        case LOCKED:    pSdrPageView->SetLayerLocked(aLayerName,flag);
+                        break;
         }
     }
+
+    // Try 2. get info from FrameView
+    if(!mxLayerManager->GetDocShell())
+        return;
+
+    ::sd::FrameView *pFrameView = mxLayerManager->GetDocShell()->GetFrameView();
+
+    if(!pFrameView)
+        return;
+
+    SdrLayerIDSet aNewLayers;
+    switch(what)
+    {
+    case VISIBLE:   aNewLayers = pFrameView->GetVisibleLayers();
+                    break;
+    case PRINTABLE: aNewLayers = pFrameView->GetPrintableLayers();
+                    break;
+    case LOCKED:    aNewLayers = pFrameView->GetLockedLayers();
+                    break;
+    }
+
+    aNewLayers.Set(pLayer->GetID(),flag);
+
+    switch(what)
+    {
+    case VISIBLE:   pFrameView->SetVisibleLayers(aNewLayers);
+                    break;
+    case PRINTABLE: pFrameView->SetPrintableLayers(aNewLayers);
+                    break;
+    case LOCKED:    pFrameView->SetLockedLayers(aNewLayers);
+                    break;
+    }
+    return;
     //TODO: uno::Exception?
 }
 
@@ -416,7 +370,7 @@ void SAL_CALL SdLayer::removeEventListener( const uno::Reference< lang::XEventLi
 SdLayerManager::SdLayerManager( SdXImpressDocument& rMyModel ) throw()
 :mpModel( &rMyModel)
 {
-    mpLayers = new SvUnoWeakContainer;
+    mpLayers.reset(new SvUnoWeakContainer);
 }
 
 SdLayerManager::~SdLayerManager() throw()
@@ -434,9 +388,7 @@ void SAL_CALL SdLayerManager::dispose(  )
     if( mpLayers )
     {
         mpLayers->dispose();
-
-        delete mpLayers;
-        mpLayers = nullptr;
+        mpLayers.reset();
     }
 }
 
@@ -453,7 +405,7 @@ void SAL_CALL SdLayerManager::removeEventListener( const uno::Reference< lang::X
 // XServiceInfo
 OUString SAL_CALL SdLayerManager::getImplementationName()
 {
-    return OUString("SdUnoLayerManager");
+    return "SdUnoLayerManager";
 }
 
 sal_Bool SAL_CALL SdLayerManager::supportsService( const OUString& ServiceName )
@@ -487,15 +439,14 @@ uno::Reference< drawing::XLayer > SAL_CALL SdLayerManager::insertNewByIndex( sal
         // Test for existing names
         while( aLayerName.isEmpty() || rLayerAdmin.GetLayer( aLayerName ) )
         {
-            aLayerName = SdResId(STR_LAYER);
-            aLayerName += OUString::number(nLayer);
+            aLayerName = SdResId(STR_LAYER) + OUString::number(nLayer);
             ++nLayer;
         }
 
         SdrLayerAdmin& rLA=mpModel->mpDoc->GetLayerAdmin();
         const sal_Int32 nMax=rLA.GetLayerCount();
         if (nIndex>nMax) nIndex=nMax;
-        xLayer = GetLayer (rLA.NewLayer(aLayerName,(sal_uInt16)nIndex));
+        xLayer = GetLayer (rLA.NewLayer(aLayerName,static_cast<sal_uInt16>(nIndex)));
         mpModel->SetModified();
     }
     return xLayer;
@@ -508,7 +459,7 @@ void SAL_CALL SdLayerManager::remove( const uno::Reference< drawing::XLayer >& x
     if( mpModel == nullptr )
         throw lang::DisposedException();
 
-    SdLayer* pSdLayer = SdLayer::getImplementation(xLayer);
+    SdLayer* pSdLayer = comphelper::getUnoTunnelImplementation<SdLayer>(xLayer);
 
     if(pSdLayer && GetView())
     {
@@ -528,15 +479,15 @@ void SAL_CALL SdLayerManager::attachShapeToLayer( const uno::Reference< drawing:
     if( mpModel == nullptr )
         throw lang::DisposedException();
 
-    SdLayer* pSdLayer = SdLayer::getImplementation(xLayer);
+    SdLayer* pSdLayer = comphelper::getUnoTunnelImplementation<SdLayer>(xLayer);
     SdrLayer* pSdrLayer = pSdLayer?pSdLayer->GetSdrLayer():nullptr;
     if(pSdrLayer==nullptr)
         return;
 
-    SvxShape* pShape = SvxShape::getImplementation( xShape );
+    SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>( xShape );
     SdrObject* pSdrObject = pShape?pShape->GetSdrObject():nullptr;
 
-    if(pSdrObject && pSdrLayer )
+    if(pSdrObject)
         pSdrObject->SetLayer(pSdrLayer->GetID());
 
     mpModel->SetModified();
@@ -553,7 +504,7 @@ uno::Reference< drawing::XLayer > SAL_CALL SdLayerManager::getLayerForShape( con
 
     if(mpModel->mpDoc)
     {
-        SvxShape* pShape = SvxShape::getImplementation( xShape );
+        SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>( xShape );
         SdrObject* pObj = pShape?pShape->GetSdrObject():nullptr;
         if(pObj)
         {
@@ -597,7 +548,7 @@ uno::Any SAL_CALL SdLayerManager::getByIndex( sal_Int32 nLayer )
     if( mpModel->mpDoc )
     {
         SdrLayerAdmin& rLayerAdmin = mpModel->mpDoc->GetLayerAdmin();
-        uno::Reference<drawing::XLayer> xLayer (GetLayer (rLayerAdmin.GetLayer((sal_uInt16)nLayer)));
+        uno::Reference<drawing::XLayer> xLayer (GetLayer (rLayerAdmin.GetLayer(static_cast<sal_uInt16>(nLayer))));
         aAny <<= xLayer;
     }
     return aAny;
@@ -612,7 +563,7 @@ uno::Any SAL_CALL SdLayerManager::getByName( const OUString& aName )
         throw lang::DisposedException();
 
     SdrLayerAdmin& rLayerAdmin = mpModel->mpDoc->GetLayerAdmin();
-    SdrLayer* pLayer = rLayerAdmin.GetLayer( SdLayer::convertToInternalName( aName ) );
+    SdrLayer* pLayer = rLayerAdmin.GetLayer(aName);
     if( pLayer == nullptr )
         throw container::NoSuchElementException();
 
@@ -637,7 +588,7 @@ uno::Sequence< OUString > SAL_CALL SdLayerManager::getElementNames()
     {
         SdrLayer* pLayer = rLayerAdmin.GetLayer( nLayer );
         if( pLayer )
-            *pStrings++ = SdLayer::convertToExternalName( pLayer->GetName() );
+            *pStrings++ = pLayer->GetName();
     }
 
     return aSeq;
@@ -652,7 +603,7 @@ sal_Bool SAL_CALL SdLayerManager::hasByName( const OUString& aName )
 
     SdrLayerAdmin& rLayerAdmin = mpModel->mpDoc->GetLayerAdmin();
 
-    return nullptr != rLayerAdmin.GetLayer( SdLayer::convertToInternalName( aName ) );
+    return nullptr != rLayerAdmin.GetLayer(aName);
 }
 
 // XElementAccess
@@ -672,19 +623,19 @@ sal_Bool SAL_CALL SdLayerManager::hasElements()
  */
 void SdLayerManager::UpdateLayerView() const throw()
 {
-    if(mpModel->mpDocShell)
+    if(!mpModel->mpDocShell)
+        return;
+
+    ::sd::DrawViewShell* pDrViewSh = dynamic_cast< ::sd::DrawViewShell* >( mpModel->mpDocShell->GetViewShell());
+
+    if(pDrViewSh)
     {
-        ::sd::DrawViewShell* pDrViewSh = dynamic_cast< ::sd::DrawViewShell* >( mpModel->mpDocShell->GetViewShell());
-
-        if(pDrViewSh)
-        {
-            bool bLayerMode = pDrViewSh->IsLayerModeActive();
-            pDrViewSh->ChangeEditMode(pDrViewSh->GetEditMode(), !bLayerMode);
-            pDrViewSh->ChangeEditMode(pDrViewSh->GetEditMode(), bLayerMode);
-        }
-
-        mpModel->mpDoc->SetChanged();
+        bool bLayerMode = pDrViewSh->IsLayerModeActive();
+        pDrViewSh->ChangeEditMode(pDrViewSh->GetEditMode(), !bLayerMode);
+        pDrViewSh->ChangeEditMode(pDrViewSh->GetEditMode(), bLayerMode);
     }
+
+    mpModel->mpDoc->SetChanged();
 }
 
 /** */
@@ -711,16 +662,16 @@ namespace
     @return
         Return </True> if both pointers point to the same object.
 */
-bool compare_layers (const uno::WeakReference<uno::XInterface>& xRef, void* pSearchData)
+bool compare_layers (const uno::WeakReference<uno::XInterface>& xRef, void const * pSearchData)
 {
     uno::Reference<uno::XInterface> xLayer (xRef);
     if (xLayer.is())
     {
-        SdLayer* pSdLayer = SdLayer::getImplementation (xRef);
+        SdLayer* pSdLayer = comphelper::getUnoTunnelImplementation<SdLayer> (xRef);
         if (pSdLayer != nullptr)
         {
             SdrLayer* pSdrLayer = pSdLayer->GetSdrLayer ();
-            if (pSdrLayer == static_cast<SdrLayer*>(pSearchData))
+            if (pSdrLayer == static_cast<SdrLayer const *>(pSearchData))
                 return true;
         }
     }

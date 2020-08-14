@@ -19,20 +19,19 @@
 
 #include <com/sun/star/text/WritingMode.hpp>
 #include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
-#include "oox/drawingml/drawingmltypes.hxx"
-#include "drawingml/textbodyproperties.hxx"
+#include <drawingml/textbodyproperties.hxx>
 #include <oox/token/properties.hxx>
-#include "oox/token/tokens.hxx"
+#include <oox/token/tokens.hxx>
 
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::text;
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 TextBodyProperties::TextBodyProperties()
     : mbAnchorCtr(false)
     , meVA( TextVerticalAdjust_TOP )
+    , msPrst()
 {
 }
 
@@ -40,22 +39,23 @@ TextBodyProperties::TextBodyProperties()
 void TextBodyProperties::pushVertSimulation()
 {
     sal_Int32 tVert = moVert.get( XML_horz );
-    if( tVert == XML_vert || tVert == XML_eaVert || tVert == XML_vert270 || tVert == XML_mongolianVert ) {
-        // #160799# fake different vertical text modes by top-bottom writing mode
-        maPropertyMap.setProperty( PROP_TextWritingMode, WritingMode_TB_RL);
+    if( !(tVert == XML_vert || tVert == XML_eaVert || tVert == XML_vert270 || tVert == XML_mongolianVert) )
+        return;
 
-        // workaround for TB_LR as using WritingMode2 doesn't work
-        if( meVA != TextVerticalAdjust_CENTER )
-            maPropertyMap.setProperty( PROP_TextHorizontalAdjust,
-                                (tVert == XML_vert270) ? TextHorizontalAdjust_RIGHT : TextHorizontalAdjust_LEFT);
-        if( tVert == XML_vert270 )
-            maPropertyMap.setProperty( PROP_TextVerticalAdjust, TextVerticalAdjust_BOTTOM);
-        if( ( tVert == XML_vert && meVA == TextVerticalAdjust_TOP ) ||
-            ( tVert == XML_vert270 && meVA == TextVerticalAdjust_BOTTOM ) )
-            maPropertyMap.setProperty( PROP_TextHorizontalAdjust, TextHorizontalAdjust_RIGHT);
-        else if( meVA == TextVerticalAdjust_CENTER )
-            maPropertyMap.setProperty( PROP_TextHorizontalAdjust, TextHorizontalAdjust_CENTER);
-    }
+    // #160799# fake different vertical text modes by top-bottom writing mode
+    maPropertyMap.setProperty( PROP_TextWritingMode, WritingMode_TB_RL);
+
+    // workaround for TB_LR as using WritingMode2 doesn't work
+    if( meVA != TextVerticalAdjust_CENTER )
+        maPropertyMap.setProperty( PROP_TextHorizontalAdjust,
+                            (tVert == XML_vert270) ? TextHorizontalAdjust_RIGHT : TextHorizontalAdjust_LEFT);
+    if( tVert == XML_vert270 )
+        maPropertyMap.setProperty( PROP_TextVerticalAdjust, TextVerticalAdjust_BOTTOM);
+    if( ( tVert == XML_vert && meVA == TextVerticalAdjust_TOP ) ||
+        ( tVert == XML_vert270 && meVA == TextVerticalAdjust_BOTTOM ) )
+        maPropertyMap.setProperty( PROP_TextHorizontalAdjust, TextHorizontalAdjust_RIGHT);
+    else if( meVA == TextVerticalAdjust_CENTER )
+        maPropertyMap.setProperty( PROP_TextHorizontalAdjust, TextHorizontalAdjust_CENTER);
 }
 
 /* Push adjusted values, taking into consideration Shape Rotation */
@@ -67,9 +67,9 @@ void TextBodyProperties::pushRotationAdjustments()
 
     switch( moRotation.get(0) )
     {
-        case (90*1*60000): nOff = 3; break;
-        case (90*2*60000): nOff = 2; break;
-        case (90*3*60000): nOff = 1; break;
+        case 90*1*60000: nOff = 3; break;
+        case 90*2*60000: nOff = 2; break;
+        case 90*3*60000: nOff = 1; break;
         default: break;
     }
 
@@ -95,7 +95,6 @@ void TextBodyProperties::pushRotationAdjustments()
     }
 }
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -18,24 +18,27 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <algorithm>
 
 #include <cppuhelper/factory.hxx>
-#include <com/sun/star/registry/XRegistryKey.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/linguistic2/XLinguProperties.hpp>
 #include <com/sun/star/linguistic2/XLinguServiceEventBroadcaster.hpp>
-#include <com/sun/star/linguistic2/XHyphenatedWord.hpp>
 #include <rtl/ustrbuf.hxx>
 #include <i18nlangtag/lang.h>
 #include <unotools/localedatawrapper.hxx>
 #include <tools/debug.hxx>
 #include <svl/lngmisc.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/sequence.hxx>
 #include <osl/mutex.hxx>
 
 #include "hyphdsp.hxx"
-#include "linguistic/hyphdta.hxx"
-#include "linguistic/lngprops.hxx"
+#include <linguistic/hyphdta.hxx>
+#include <linguistic/misc.hxx>
 #include "lngsvcmgr.hxx"
 
 using namespace osl;
@@ -110,7 +113,7 @@ Reference<XHyphenatedWord>  HyphenatorDispatcher::buildHyphWord(
                     if (!bSkip  &&  nHyphIdx >= 0)
                     {
                         if (nLeading <= nMaxLeading) {
-                            nHyphenationPos = (sal_Int16) nHyphIdx;
+                            nHyphenationPos = static_cast<sal_Int16>(nHyphIdx);
                             nOrigHyphPos = i;
                         }
                     }
@@ -220,7 +223,7 @@ Reference< XPossibleHyphens > HyphenatorDispatcher::buildPossHyphens(
                 else
                 {
                     if (!bSkip  &&  nHyphIdx >= 0)
-                        pPos[ nHyphCount++ ] = (sal_Int16) nHyphIdx;
+                        pPos[ nHyphCount++ ] = static_cast<sal_Int16>(nHyphIdx);
                     bSkip = true;   //! multiple '=' should count as one only
                 }
             }
@@ -249,14 +252,13 @@ Sequence< Locale > SAL_CALL HyphenatorDispatcher::getLocales()
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
-    Sequence< Locale > aLocales( static_cast< sal_Int32 >(aSvcMap.size()) );
-    Locale *pLocales = aLocales.getArray();
-    HyphSvcByLangMap_t::const_iterator aIt;
-    for (aIt = aSvcMap.begin();  aIt != aSvcMap.end();  ++aIt)
-    {
-        *pLocales++ = LanguageTag::convertToLocale( aIt->first );
-    }
-    return aLocales;
+    std::vector<Locale> aLocales;
+    aLocales.reserve(aSvcMap.size());
+
+    std::transform(aSvcMap.begin(), aSvcMap.end(), std::back_inserter(aLocales),
+        [](HyphSvcByLangMap_t::const_reference elem) { return LanguageTag::convertToLocale(elem.first); });
+
+    return comphelper::containerToSequence(aLocales);
 }
 
 
@@ -271,7 +273,7 @@ sal_Bool SAL_CALL HyphenatorDispatcher::hasLocale(const Locale& rLocale)
 Reference< XHyphenatedWord > SAL_CALL
     HyphenatorDispatcher::hyphenate(
             const OUString& rWord, const Locale& rLocale, sal_Int16 nMaxLeading,
-            const PropertyValues& rProperties )
+            const css::uno::Sequence< ::css::beans::PropertyValue >& rProperties )
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
@@ -298,14 +300,14 @@ Reference< XHyphenatedWord > SAL_CALL
 
         // replace typographical apostroph by ascii apostroph
         OUString aSingleQuote( GetLocaleDataWrapper( nLanguage ).getQuotationMarkEnd() );
-        DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpectend length of quotation mark" );
+        DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpected length of quotation mark" );
         if (!aSingleQuote.isEmpty())
             aChkWord = aChkWord.replace( aSingleQuote[0], '\'' );
 
         bWordModified |= RemoveHyphens( aChkWord );
         if (IsIgnoreControlChars( rProperties, GetPropSet() ))
             bWordModified |= RemoveControlChars( aChkWord );
-        sal_Int16 nChkMaxLeading = (sal_Int16) GetPosInWordToCheck( rWord, nMaxLeading );
+        sal_Int16 nChkMaxLeading = static_cast<sal_Int16>(GetPosInWordToCheck( rWord, nMaxLeading ));
 
         // check for results from (positive) dictionaries which have precedence!
         Reference< XDictionaryEntry > xEntry;
@@ -327,13 +329,13 @@ Reference< XHyphenatedWord > SAL_CALL
         }
         else
         {
-            sal_Int32 nLen = pEntry->aSvcImplNames.getLength() > 0 ? 1 : 0;
+            sal_Int32 nLen = pEntry->aSvcImplNames.hasElements() ? 1 : 0;
             DBG_ASSERT( pEntry->nLastTriedSvcIndex < nLen,
                     "lng : index out of range");
 
             sal_Int32 i = 0;
             Reference< XHyphenator > xHyph;
-            if (pEntry->aSvcRefs.getLength() > 0)
+            if (pEntry->aSvcRefs.hasElements())
                 xHyph = pEntry->aSvcRefs[0];
 
             // try already instantiated service
@@ -379,7 +381,7 @@ Reference< XHyphenatedWord > SAL_CALL
                     xRes = xHyph->hyphenate( aChkWord, rLocale, nChkMaxLeading,
                                             rProperties );
 
-                pEntry->nLastTriedSvcIndex = (sal_Int16) i;
+                pEntry->nLastTriedSvcIndex = static_cast<sal_Int16>(i);
                 ++i;
 
                 // if language is not supported by the services
@@ -407,7 +409,7 @@ Reference< XHyphenatedWord > SAL_CALL
 Reference< XHyphenatedWord > SAL_CALL
     HyphenatorDispatcher::queryAlternativeSpelling(
             const OUString& rWord, const Locale& rLocale, sal_Int16 nIndex,
-            const PropertyValues& rProperties )
+            const css::uno::Sequence< ::css::beans::PropertyValue >& rProperties )
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
@@ -423,7 +425,7 @@ Reference< XHyphenatedWord > SAL_CALL
     LangSvcEntries_Hyph     *pEntry = aIt != aSvcMap.end() ? aIt->second.get() : nullptr;
 
     bool bWordModified = false;
-    if (!pEntry || !(0 <= nIndex && nIndex <= nWordLen - 2))
+    if (!pEntry || 0 > nIndex || nIndex > nWordLen - 2)
     {
         return nullptr;
     }
@@ -433,14 +435,14 @@ Reference< XHyphenatedWord > SAL_CALL
 
         // replace typographical apostroph by ascii apostroph
         OUString aSingleQuote( GetLocaleDataWrapper( nLanguage ).getQuotationMarkEnd() );
-        DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpectend length of quotation mark" );
+        DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpected length of quotation mark" );
         if (!aSingleQuote.isEmpty())
             aChkWord = aChkWord.replace( aSingleQuote[0], '\'' );
 
         bWordModified |= RemoveHyphens( aChkWord );
         if (IsIgnoreControlChars( rProperties, GetPropSet() ))
             bWordModified |= RemoveControlChars( aChkWord );
-        sal_Int16 nChkIndex = (sal_Int16) GetPosInWordToCheck( rWord, nIndex );
+        sal_Int16 nChkIndex = static_cast<sal_Int16>(GetPosInWordToCheck( rWord, nIndex ));
 
         // check for results from (positive) dictionaries which have precedence!
         Reference< XDictionaryEntry > xEntry;
@@ -459,13 +461,13 @@ Reference< XHyphenatedWord > SAL_CALL
         }
         else
         {
-            sal_Int32 nLen = pEntry->aSvcImplNames.getLength() > 0 ? 1 : 0;
+            sal_Int32 nLen = pEntry->aSvcImplNames.hasElements() ? 1 : 0;
             DBG_ASSERT( pEntry->nLastTriedSvcIndex < nLen,
                     "lng : index out of range");
 
             sal_Int32 i = 0;
             Reference< XHyphenator > xHyph;
-            if (pEntry->aSvcRefs.getLength() > 0)
+            if (pEntry->aSvcRefs.hasElements())
                 xHyph = pEntry->aSvcRefs[0];
 
             // try already instantiated service
@@ -510,7 +512,7 @@ Reference< XHyphenatedWord > SAL_CALL
                     xRes = xHyph->queryAlternativeSpelling( aChkWord, rLocale,
                                 nChkIndex, rProperties );
 
-                pEntry->nLastTriedSvcIndex = (sal_Int16) i;
+                pEntry->nLastTriedSvcIndex = static_cast<sal_Int16>(i);
                 ++i;
 
                 // if language is not supported by the services
@@ -538,7 +540,7 @@ Reference< XHyphenatedWord > SAL_CALL
 Reference< XPossibleHyphens > SAL_CALL
     HyphenatorDispatcher::createPossibleHyphens(
             const OUString& rWord, const Locale& rLocale,
-            const PropertyValues& rProperties )
+            const css::uno::Sequence< ::css::beans::PropertyValue >& rProperties )
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
@@ -558,7 +560,7 @@ Reference< XPossibleHyphens > SAL_CALL
 
         // replace typographical apostroph by ascii apostroph
         OUString aSingleQuote( GetLocaleDataWrapper( nLanguage ).getQuotationMarkEnd() );
-        DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpectend length of quotation mark" );
+        DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpected length of quotation mark" );
         if (!aSingleQuote.isEmpty())
             aChkWord = aChkWord.replace( aSingleQuote[0], '\'' );
 
@@ -581,13 +583,13 @@ Reference< XPossibleHyphens > SAL_CALL
         }
         else
         {
-            sal_Int32 nLen = pEntry->aSvcImplNames.getLength() > 0 ? 1 : 0;
+            sal_Int32 nLen = pEntry->aSvcImplNames.hasElements() ? 1 : 0;
             DBG_ASSERT( pEntry->nLastTriedSvcIndex < nLen,
                     "lng : index out of range");
 
             sal_Int32 i = 0;
             Reference< XHyphenator > xHyph;
-            if (pEntry->aSvcRefs.getLength() > 0)
+            if (pEntry->aSvcRefs.hasElements())
                 xHyph = pEntry->aSvcRefs[0];
 
             // try already instantiated service
@@ -631,7 +633,7 @@ Reference< XPossibleHyphens > SAL_CALL
                 if (xHyph.is()  &&  xHyph->hasLocale( rLocale ))
                     xRes = xHyph->createPossibleHyphens( aChkWord, rLocale, rProperties );
 
-                pEntry->nLastTriedSvcIndex = (sal_Int16) i;
+                pEntry->nLastTriedSvcIndex = static_cast<sal_Int16>(i);
                 ++i;
 
                 // if language is not supported by the services
@@ -660,8 +662,7 @@ void HyphenatorDispatcher::SetServiceList( const Locale &rLocale,
 
     LanguageType nLanguage = LinguLocaleToLanguage( rLocale );
 
-    sal_Int32 nLen = rSvcImplNames.getLength();
-    if (0 == nLen)
+    if (!rSvcImplNames.hasElements())
         // remove entry
         aSvcMap.erase( nLanguage );
     else
@@ -677,7 +678,7 @@ void HyphenatorDispatcher::SetServiceList( const Locale &rLocale,
         }
         else
         {
-            std::shared_ptr< LangSvcEntries_Hyph > pTmpEntry( new LangSvcEntries_Hyph( rSvcImplNames[0] ) );
+            auto pTmpEntry = std::make_shared<LangSvcEntries_Hyph>( rSvcImplNames[0] );
             pTmpEntry->aSvcRefs = Sequence< Reference < XHyphenator > >( 1 );
             aSvcMap[ nLanguage ] = pTmpEntry;
         }
@@ -699,7 +700,7 @@ Sequence< OUString >
     if (pEntry)
     {
         aRes = pEntry->aSvcImplNames;
-        if (aRes.getLength() > 0)
+        if (aRes.hasElements())
             aRes.realloc(1);
     }
 

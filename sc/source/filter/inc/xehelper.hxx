@@ -21,9 +21,10 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_XEHELPER_HXX
 
 #include <memory>
+#include <rangelst.hxx>
 #include "xladdress.hxx"
 #include "xeroot.hxx"
-#include "xestring.hxx"
+#include "xlstring.hxx"
 
 // Export progress bar ========================================================
 
@@ -174,7 +175,7 @@ class XclExpHyperlink;
 class XclExpHyperlinkHelper : protected XclExpRoot
 {
 public:
-    typedef std::shared_ptr< XclExpHyperlink > XclExpHyperlinkRef;
+    typedef rtl::Reference< XclExpHyperlink > XclExpHyperlinkRef;
 
     explicit            XclExpHyperlinkHelper( const XclExpRoot& rRoot, const ScAddress& rScPos );
                         virtual ~XclExpHyperlinkHelper() override;
@@ -186,12 +187,12 @@ public:
     /** Returns true, if a single HLINK record has been created. */
     bool                HasLinkRecord() const;
     /** Returns the created single HLINk record, or an empty reference. */
-    XclExpHyperlinkRef  GetLinkRecord();
+    XclExpHyperlinkRef  GetLinkRecord() const;
 
     /** Returns true, if multiple URLs have been processed. */
     bool         HasMultipleUrls() const { return mbMultipleUrls; }
     /** Returns a string containing all processed URLs. */
-    const OUString& GetUrlList() { return maUrlList; }
+    const OUString& GetUrlList() const { return maUrlList; }
 
 private:
     XclExpHyperlinkRef  mxLinkRec;          /// Created HLINK record.
@@ -229,7 +230,7 @@ public:
     static XclExpStringRef CreateString(
                             const XclExpRoot& rRoot,
                             const OUString& rString,
-                            XclStrFlags nFlags = EXC_STR_DEFAULT,
+                            XclStrFlags nFlags = XclStrFlags::NONE,
                             sal_uInt16 nMaxLen = EXC_STR_MAXLEN );
 
     /** Creates a new unformatted string from the passed character.
@@ -242,7 +243,7 @@ public:
     static XclExpStringRef CreateString(
                             const XclExpRoot& rRoot,
                             sal_Unicode cChar,
-                            XclStrFlags nFlags = EXC_STR_DEFAULT,
+                            XclStrFlags nFlags = XclStrFlags::NONE,
                             sal_uInt16 nMaxLen = EXC_STR_MAXLEN );
 
     /** Appends an unformatted string to an Excel string object.
@@ -279,7 +280,7 @@ public:
                             const XclExpRoot& rRoot,
                             const OUString& rString,
                             const ScPatternAttr* pCellAttr,
-                            XclStrFlags nFlags = EXC_STR_DEFAULT,
+                            XclStrFlags nFlags = XclStrFlags::NONE,
                             sal_uInt16 nMaxLen = EXC_STR_MAXLEN );
 
     /** Creates a new formatted string from a Calc edit cell.
@@ -296,7 +297,7 @@ public:
                             const EditTextObject& rEditText,
                             const ScPatternAttr* pCellAttr,
                             XclExpHyperlinkHelper& rLinkHelper,
-                            XclStrFlags nFlags = EXC_STR_DEFAULT,
+                            XclStrFlags nFlags = XclStrFlags::NONE,
                             sal_uInt16 nMaxLen = EXC_STR_MAXLEN );
 
     /** Creates a new formatted string from a drawing text box.
@@ -308,16 +309,16 @@ public:
     static XclExpStringRef CreateString(
                             const XclExpRoot& rRoot,
                             const SdrTextObj& rTextObj,
-                            XclStrFlags nFlags = EXC_STR_DEFAULT );
+                            XclStrFlags nFlags = XclStrFlags::NONE );
 
-    /** Creates a new formatted string from a edit text string.
+    /** Creates a new formatted string from an edit text string.
         @param rEditObj  The edittext object.
         @param nFlags  Modifiers for string export.
         @return  The new string object. */
     static XclExpStringRef CreateString(
                             const XclExpRoot& rRoot,
                             const EditTextObject& rEditObj,
-                            XclStrFlags nFlags = EXC_STR_DEFAULT );
+                            XclStrFlags nFlags = XclStrFlags::NONE );
 
     /** Returns the script type first text portion different to WEAK, or the system
         default script type, if there is only weak script in the passed string. */
@@ -326,12 +327,10 @@ public:
 
 // Header/footer conversion ===================================================
 
-class EditEngine;
-
 /** Converts edit engine text objects to an Excel header/footer string.
     @descr  Header/footer content is divided into three parts: Left, center and
     right portion. All formatting information will be encoded in the Excel string
-    using special character seuences. A control sequence starts with the ampersand
+    using special character sequences. A control sequence starts with the ampersand
     character.
 
     Supported control sequences:

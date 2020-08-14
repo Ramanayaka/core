@@ -19,12 +19,15 @@
 #ifndef INCLUDED_UNOTOOLS_CONFIGVALUECONTAINER_HXX
 #define INCLUDED_UNOTOOLS_CONFIGVALUECONTAINER_HXX
 
+#include <config_options.h>
 #include <unotools/unotoolsdllapi.h>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <osl/mutex.hxx>
-#include <o3tl/typed_flags_set.hxx>
+#include <com/sun/star/uno/Type.hxx>
 #include <memory>
 
+
+namespace com::sun::star::uno { template <typename > class Reference; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace osl { class Mutex; }
 
 namespace utl
 {
@@ -52,7 +55,7 @@ namespace utl
         before your base class' dtor is called, so accessing the memory during such a theoretical auto-commit would
         yield undefined behaviour.</p>
     */
-    class UNOTOOLS_DLLPUBLIC OConfigurationValueContainer
+    class UNLESS_MERGELIBS(UNOTOOLS_DLLPUBLIC) OConfigurationValueContainer
     {
     private:
         std::unique_ptr<OConfigurationValueContainerImpl> m_pImpl;
@@ -80,7 +83,7 @@ namespace utl
         OConfigurationValueContainer(
             const css::uno::Reference< css::uno::XComponentContext >& _rxORB,
             ::osl::Mutex& _rAccessSafety,
-            const sal_Char* _pConfigLocation,
+            const char* _pConfigLocation,
             const sal_Int32 _nLevels
         );
 
@@ -102,7 +105,7 @@ namespace utl
                 is the type of your accessor. This type must be supported by the configuration.
         */
         void    registerExchangeLocation(
-            const sal_Char* _pRelativePathAscii,
+            const char* _pRelativePathAscii,
             void* _pContainer,
             const css::uno::Type& _rValueType
         );

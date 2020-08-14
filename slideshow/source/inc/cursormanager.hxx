@@ -21,14 +21,11 @@
 #define INCLUDED_SLIDESHOW_SOURCE_INC_CURSORMANAGER_HXX
 
 #include <sal/types.h>
-#include <memory>
 
 
 /* Definition of CursorManager interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
 
         /** Interface for handling the view cursor.
@@ -56,9 +53,6 @@ namespace slideshow
             virtual void resetCursor() = 0;
         };
 
-        typedef ::std::shared_ptr< CursorManager > CursorManagerSharedPtr;
-
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_CURSORMANAGER_HXX

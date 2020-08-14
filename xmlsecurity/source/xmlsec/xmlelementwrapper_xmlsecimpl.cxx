@@ -19,92 +19,60 @@
 
 #include <string.h>
 
-#include "xmlsec/xmlelementwrapper_xmlsecimpl.hxx"
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include "xmlelementwrapper_xmlsecimpl.hxx"
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/typeprovider.hxx>
 
-namespace cssu = com::sun::star::uno;
+namespace com::sun::star::uno { class XComponentContext; }
 
-#define IMPLEMENTATION_NAME "com.sun.star.xml.security.bridge.xmlsec.XMLElementWrapper_XmlSecImpl"
+using namespace com::sun::star;
 
 XMLElementWrapper_XmlSecImpl::XMLElementWrapper_XmlSecImpl(const xmlNodePtr pNode)
     : m_pElement( pNode )
 {
 }
 
-/* XXMLElementWrapper */
-
-
 /* XUnoTunnel */
-cssu::Sequence< sal_Int8 > XMLElementWrapper_XmlSecImpl::getUnoTunnelImplementationId()
+uno::Sequence< sal_Int8 > XMLElementWrapper_XmlSecImpl::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
     return implId.getImplementationId();
 }
 
-sal_Int64 SAL_CALL XMLElementWrapper_XmlSecImpl::getSomething( const cssu::Sequence< sal_Int8 >& aIdentifier )
+sal_Int64 SAL_CALL XMLElementWrapper_XmlSecImpl::getSomething( const uno::Sequence< sal_Int8 >& aIdentifier )
 {
-    if (aIdentifier.getLength() == 16 &&
-        0 == memcmp(
-            getUnoTunnelImplementationId().getConstArray(),
-            aIdentifier.getConstArray(),
-            16 ))
+    if (isUnoTunnelId<XMLElementWrapper_XmlSecImpl>(aIdentifier))
     {
         return reinterpret_cast < sal_Int64 > ( this );
     }
-    else
-    {
-        return 0;
-    }
-}
 
-
-OUString XMLElementWrapper_XmlSecImpl_getImplementationName ()
-{
-    return OUString ( IMPLEMENTATION_NAME );
-}
-
-cssu::Sequence< OUString > SAL_CALL XMLElementWrapper_XmlSecImpl_getSupportedServiceNames(  )
-{
-    cssu::Sequence<OUString> aRet { "com.sun.star.xml.wrapper.XMLElementWrapper" };
-    return aRet;
-}
-
-cssu::Reference< cssu::XInterface > SAL_CALL
-    XMLElementWrapper_XmlSecImpl_createInstance(
-        const cssu::Reference< cssu::XComponentContext > &)
-{
-    return static_cast<cppu::OWeakObject*>(new XMLElementWrapper_XmlSecImpl(nullptr));
+    return 0;
 }
 
 /* XServiceInfo */
 OUString SAL_CALL XMLElementWrapper_XmlSecImpl::getImplementationName(  )
 {
-    return XMLElementWrapper_XmlSecImpl_getImplementationName();
+    return "com.sun.star.xml.wrapper.XMLElementWrapper";
 }
+
 sal_Bool SAL_CALL XMLElementWrapper_XmlSecImpl::supportsService( const OUString& rServiceName )
 {
     return cppu::supportsService( this, rServiceName );
 }
-cssu::Sequence< OUString > SAL_CALL XMLElementWrapper_XmlSecImpl::getSupportedServiceNames(  )
+
+uno::Sequence< OUString > SAL_CALL XMLElementWrapper_XmlSecImpl::getSupportedServiceNames(  )
 {
-    return XMLElementWrapper_XmlSecImpl_getSupportedServiceNames();
+    uno::Sequence<OUString> aRet { "com.sun.star.xml.wrapper.XMLElementWrapper" };
+    return aRet;
 }
 
-
-void XMLElementWrapper_XmlSecImpl::setNativeElement(const xmlNodePtr pNode)
-/****** XMLElementWrapper_XmlSecImpl/setNativeElement *************************
- *
- *   NAME
- *  setNativeElement -- Configures the libxml2 node wrapped by this object
- *
- *   INPUTS
- *  pNode - the new libxml2 node to be wrapped by this object
- ******************************************************************************/
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_xml_wrapper_XMLElementWrapper_get_implementation(
+    uno::XComponentContext* /*pCtx*/, uno::Sequence<uno::Any> const& /*rSeq*/)
 {
-    m_pElement = pNode;
+    return cppu::acquire(new XMLElementWrapper_XmlSecImpl(nullptr));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

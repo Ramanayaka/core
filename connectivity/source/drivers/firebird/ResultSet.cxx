@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -22,19 +22,19 @@
 #include "Util.hxx"
 
 #include <comphelper/sequence.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <connectivity/dbexception.hxx>
 #include <propertyids.hxx>
-#include <rtl/string.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <time.h>
+#include <sal/log.hxx>
 #include <TConnection.hxx>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/sdbcx/CompareBookmark.hpp>
+#include <com/sun/star/sdbc/FetchDirection.hpp>
+#include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
+#include <com/sun/star/sdbc/ResultSetType.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 
 using namespace ::comphelper;
 using namespace ::connectivity;
@@ -56,7 +56,7 @@ using namespace ::com::sun::star::util;
 OResultSet::OResultSet(Connection* pConnection,
                        ::osl::Mutex& rMutex,
                        const uno::Reference< XInterface >& xStatement,
-                       isc_stmt_handle& aStatementHandle,
+                       isc_stmt_handle aStatementHandle,
                        XSQLDA* pSqlda )
     : OResultSet_BASE(rMutex)
     , OPropertyContainer(OResultSet_BASE::rBHelper)
@@ -68,7 +68,6 @@ OResultSet::OResultSet(Connection* pConnection,
     , m_pConnection(pConnection)
     , m_rMutex(rMutex)
     , m_xStatement(xStatement)
-    , m_xMetaData(nullptr)
     , m_pSqlda(pSqlda)
     , m_statementHandle(aStatementHandle)
     , m_bWasNull(false)
@@ -136,7 +135,7 @@ sal_Bool SAL_CALL OResultSet::next()
     {
         return true;
     }
-    else if (fetchStat == 100L) // END OF DATASET
+    else if (fetchStat == 100) // END OF DATASET
     {
         m_bIsAfterLastRow = true;
         return false;
@@ -278,7 +277,7 @@ sal_Bool SAL_CALL OResultSet::relative(sal_Int32 row)
     }
 }
 
-void SAL_CALL OResultSet::checkColumnIndex(sal_Int32 nIndex)
+void OResultSet::checkColumnIndex(sal_Int32 nIndex)
 {
     MutexGuard aGuard(m_rMutex);
     checkDisposed(OResultSet_BASE::rBHelper.bDisposed);
@@ -292,7 +291,7 @@ void SAL_CALL OResultSet::checkColumnIndex(sal_Int32 nIndex)
     }
 }
 
-void SAL_CALL OResultSet::checkRowIndex()
+void OResultSet::checkRowIndex()
 {
     MutexGuard aGuard(m_rMutex);
     checkDisposed(OResultSet_BASE::rBHelper.bDisposed);
@@ -503,7 +502,7 @@ Date OResultSet::retrieveValue(const sal_Int32 nColumnIndex, const ISC_SHORT /*n
 {
     if ((m_pSqlda->sqlvar[nColumnIndex-1].sqltype & ~1) == SQL_TYPE_DATE)
     {
-        ISC_DATE aISCDate = *(reinterpret_cast<ISC_DATE*>(m_pSqlda->sqlvar[nColumnIndex-1].sqldata));
+        ISC_DATE aISCDate = *reinterpret_cast<ISC_DATE*>(m_pSqlda->sqlvar[nColumnIndex-1].sqldata);
 
         struct tm aCTime;
         isc_decode_sql_date(&aISCDate, &aCTime);
@@ -521,14 +520,17 @@ Time OResultSet::retrieveValue(const sal_Int32 nColumnIndex, const ISC_SHORT /*n
 {
     if ((m_pSqlda->sqlvar[nColumnIndex-1].sqltype & ~1) == SQL_TYPE_TIME)
     {
-        ISC_TIME aISCTime = *(reinterpret_cast<ISC_TIME*>(m_pSqlda->sqlvar[nColumnIndex-1].sqldata));
+        ISC_TIME aISCTime = *reinterpret_cast<ISC_TIME*>(m_pSqlda->sqlvar[nColumnIndex-1].sqldata);
 
         struct tm aCTime;
         isc_decode_sql_time(&aISCTime, &aCTime);
 
-        // first field is nanoseconds -- not supported in firebird or struct tm.
+        // First field is nanoseconds.
         // last field denotes UTC (true) or unknown (false)
-        return Time(0, aCTime.tm_sec, aCTime.tm_min, aCTime.tm_hour, false);
+        // Here we "know" that ISC_TIME is simply in units of seconds/ISC_TIME_SECONDS_PRECISION
+        // with no other funkiness, so we can get the fractional seconds easily.
+        return Time((aISCTime % ISC_TIME_SECONDS_PRECISION) * (1000000000 / ISC_TIME_SECONDS_PRECISION),
+                    aCTime.tm_sec, aCTime.tm_min, aCTime.tm_hour, false);
     }
     else
     {
@@ -541,12 +543,13 @@ DateTime OResultSet::retrieveValue(const sal_Int32 nColumnIndex, const ISC_SHORT
 {
     if ((m_pSqlda->sqlvar[nColumnIndex-1].sqltype & ~1) == SQL_TIMESTAMP)
     {
-        ISC_TIMESTAMP aISCTimestamp = *(reinterpret_cast<ISC_TIMESTAMP*>(m_pSqlda->sqlvar[nColumnIndex-1].sqldata));
+        ISC_TIMESTAMP aISCTimestamp = *reinterpret_cast<ISC_TIMESTAMP*>(m_pSqlda->sqlvar[nColumnIndex-1].sqldata);
 
         struct tm aCTime;
         isc_decode_timestamp(&aISCTimestamp, &aCTime);
 
-        return DateTime(0, //nanoseconds, not supported
+        // Ditto here, see comment in previous function about ISC_TIME and ISC_TIME_SECONDS_PRECISION.
+        return DateTime((aISCTimestamp.timestamp_time % ISC_TIME_SECONDS_PRECISION) * (1000000000 / ISC_TIME_SECONDS_PRECISION), //nanoseconds
                         aCTime.tm_sec,
                         aCTime.tm_min,
                         aCTime.tm_hour,
@@ -577,7 +580,7 @@ OUString OResultSet::retrieveValue(const sal_Int32 nColumnIndex, const ISC_SHORT
     {
         // First 2 bytes are a short containing the length of the string
         // No idea if sqllen is still valid here?
-        sal_uInt16 aLength = *(reinterpret_cast<sal_uInt16*>(m_pSqlda->sqlvar[nColumnIndex-1].sqldata));
+        sal_uInt16 aLength = *reinterpret_cast<sal_uInt16*>(m_pSqlda->sqlvar[nColumnIndex-1].sqldata);
         return OUString(m_pSqlda->sqlvar[nColumnIndex-1].sqldata + 2,
                         aLength,
                         RTL_TEXTENCODING_UTF8);
@@ -604,6 +607,11 @@ OUString OResultSet::retrieveValue(const sal_Int32 nColumnIndex, const ISC_SHORT
                 return OUString(); // never reached
         }
     }
+    else if(aSqlType == SQL_BLOB && aSqlSubType == static_cast<short>(BlobSubtype::Clob) )
+    {
+        uno::Reference<XClob> xClob = getClob(nColumnIndex);
+        return xClob->getSubString( 0, xClob->length() );
+    }
     else
     {
         return retrieveValue< ORowSetValue >(nColumnIndex, 0);
@@ -614,10 +622,10 @@ template <>
 ISC_QUAD* OResultSet::retrieveValue(const sal_Int32 nColumnIndex, const ISC_SHORT nType)
 {
     // TODO: this is probably wrong
-    if ((m_pSqlda->sqlvar[nColumnIndex-1].sqltype & ~1) == nType)
-        return reinterpret_cast<ISC_QUAD*>(m_pSqlda->sqlvar[nColumnIndex-1].sqldata);
-    else
+    if ((m_pSqlda->sqlvar[nColumnIndex-1].sqltype & ~1) != nType)
         throw SQLException(); // TODO: better exception (can't convert Blob)
+
+    return reinterpret_cast<ISC_QUAD*>(m_pSqlda->sqlvar[nColumnIndex-1].sqldata);
 }
 
 template <typename T>
@@ -832,22 +840,6 @@ void SAL_CALL OResultSet::cancel(  )
 
 }
 
-//----- XWarningsSupplier UNSUPPORTED -----------------------------------------
-#if 0
-void SAL_CALL OResultSet::clearWarnings() throw(SQLException, RuntimeException, std::exception)
-{
-    ::dbtools::throwFunctionNotSupportedSQLException("clearWarnings not supported in firebird",
-                                                  *this);
-}
-
-Any SAL_CALL OResultSet::getWarnings() throw(SQLException, RuntimeException, std::exception)
-{
-    ::dbtools::throwFunctionNotSupportedSQLException("getWarnings not supported in firebird",
-                                                  *this);
-    return Any();
-}
-#endif
-
 //----- OIdPropertyArrayUsageHelper ------------------------------------------
 IPropertyArrayHelper* OResultSet::createArrayHelper() const
 {
@@ -879,7 +871,7 @@ uno::Reference< css::beans::XPropertySetInfo > SAL_CALL OResultSet::getPropertyS
 // ---- XServiceInfo -----------------------------------------------------------
 OUString SAL_CALL OResultSet::getImplementationName()
 {
-    return OUString("com.sun.star.sdbcx.firebird.ResultSet");
+    return "com.sun.star.sdbcx.firebird.ResultSet";
 }
 
 Sequence< OUString > SAL_CALL OResultSet::getSupportedServiceNames()

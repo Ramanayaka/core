@@ -40,11 +40,9 @@
 #include <connectivity/CommonTools.hxx>
 #include <connectivity/FValue.hxx>
 #include <connectivity/sqliterator.hxx>
-#include "TSortIndex.hxx"
+#include <TSortIndex.hxx>
 
-namespace connectivity
-{
-    namespace mork
+namespace connectivity::mork
     {
 
         /*
@@ -79,7 +77,6 @@ namespace connectivity
             css::uno::Reference< css::sdbc::XResultSetMetaData>   m_xMetaData;
             sal_uInt32                                  m_nRowPos;
             bool                                        m_bWasNull;
-            sal_Int32                                   m_nFetchSize;
             sal_Int32                                   m_nResultSetType;
             sal_Int32                                   m_nFetchDirection;
 
@@ -225,16 +222,13 @@ protected:
             css::uno::Sequence< OUString> m_aColumnNames;
             OValueRow                m_aRow;
             OValueRow                m_aParameterRow;
-            std::vector< OUString> m_aAttributeStrings;
             sal_Int32                m_nParamIndex;
             bool                 m_bIsAlwaysFalseQuery;
             ::rtl::Reference<OKeySet>     m_pKeySet;
-            sal_Int32                     m_nUpdatedRow;    //updated row
             TriState                      m_bIsReadOnly;
             void resetParameters() { m_nParamIndex = 0; }
 
             ::rtl::Reference<connectivity::OSQLColumns>  m_xColumns; // this are the select columns
-            ::rtl::Reference<connectivity::OSQLColumns>  m_xParamColumns;
 
             void parseParameter( const OSQLParseNode* pNode, OUString& rMatchString );
             /// @throws css::sdbc::SQLException
@@ -262,7 +256,7 @@ protected:
             bool validRow( sal_uInt32 nRow );
             bool seekRow( eRowPosition pos, sal_Int32 nOffset = 0 );
             sal_Int32 deletedCount();
-            bool fillKeySet(sal_Int32 nMaxCardNumber);  //When we get new rows, fill the m_pKeySet items for them
+            void fillKeySet(sal_Int32 nMaxCardNumber);  //When we get new rows, fill the m_pKeySet items for them
             sal_Int32 getRowForCardNumber(sal_Int32 nCardNum);
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
@@ -281,15 +275,12 @@ public:
             // MozAddressbook Specific methods
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            void SAL_CALL executeQuery();
+            void executeQuery();
 
             void setTable(OTable* _rTable);
 
             void setParameterRow(const OValueRow& _rParaRow)
                       { m_aParameterRow = _rParaRow; }
-
-            void setParameterColumns(const ::rtl::Reference<connectivity::OSQLColumns>& _xParamColumns)
-                      { m_xParamColumns = _xParamColumns; }
 
             void setBindingRow(const OValueRow& _aRow)
                       { m_aRow = _aRow; }
@@ -334,7 +325,7 @@ public:
             OSL_ENSURE(column > 0, "OResultSet::mapColumn: invalid column index!");
                 // the first column (index 0) is for convenience only. The
                 // first real select column is no 1.
-            if ((column > 0) && (column < (sal_Int32)m_aColMapping.size()))
+            if ((column > 0) && (column < static_cast<sal_Int32>(m_aColMapping.size())))
                 map = m_aColMapping[column];
 
             return map;
@@ -349,7 +340,6 @@ public:
             }
         };
 
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MRESULTSET_HXX

@@ -19,11 +19,10 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_OBJECTHIERARCHY_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_OBJECTHIERARCHY_HXX
 
-#include "ObjectIdentifier.hxx"
+#include <ObjectIdentifier.hxx>
 
-#include <rtl/ustring.hxx>
-#include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/awt/KeyEvent.hpp>
+namespace com::sun::star::awt { struct KeyEvent; }
+namespace com::sun::star::chart2 { class XChartDocument; }
 
 #include <memory>
 #include <vector>
@@ -50,7 +49,7 @@ public:
      */
     explicit ObjectHierarchy(
         const css::uno::Reference< css::chart2::XChartDocument > & xChartDocument,
-        ExplicitValueProvider * pExplicitValueProvider = nullptr,
+        ExplicitValueProvider * pExplicitValueProvider,
         bool bFlattenDiagram = false,
         bool bOrderingForElementSelector = false );
     ~ObjectHierarchy();
@@ -80,7 +79,7 @@ class ObjectKeyNavigation
 public:
     explicit ObjectKeyNavigation( const ObjectIdentifier & rCurrentOID,
                                   const css::uno::Reference< css::chart2::XChartDocument > & xChartDocument,
-                                  ExplicitValueProvider * pExplicitValueProvider = nullptr );
+                                  ExplicitValueProvider * pExplicitValueProvider );
 
     bool handleKeyEvent( const css::awt::KeyEvent & rEvent );
     const ObjectIdentifier& getCurrentSelection() const { return m_aCurrentOID;}

@@ -20,12 +20,12 @@
 #ifndef INCLUDED_UCB_SOURCE_UCP_INC_URIHELPER_HXX
 #define INCLUDED_UCB_SOURCE_UCP_INC_URIHELPER_HXX
 
-#include "rtl/ustring.hxx"
-#include "rtl/ustrbuf.hxx"
-#include "rtl/uri.hxx"
+#include <rtl/ustring.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <rtl/uri.hxx>
 
 
-namespace ucb_impl { namespace urihelper {
+namespace ucb_impl::urihelper {
 
     inline OUString encodeSegment( const OUString & rSegment )
     {
@@ -80,7 +80,7 @@ namespace ucb_impl { namespace urihelper {
                                   rtl_UriEncodeKeepEscapes, /* #i81690# */
                                   RTL_TEXTENCODING_UTF8 );
 
-        OUStringBuffer aResult;
+        OUStringBuffer aResult(256);
         sal_Int32 nIndex = 0;
         do
         {
@@ -109,7 +109,7 @@ namespace ucb_impl { namespace urihelper {
         return aResult.makeStringAndClear();
     }
 
-} } // namespace
+} // namespace
 
 #endif // INCLUDED_UCB_SOURCE_UCP_INC_URIHELPER_HXX
 

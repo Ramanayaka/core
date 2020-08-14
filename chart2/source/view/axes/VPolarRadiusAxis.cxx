@@ -19,10 +19,9 @@
 
 #include "VPolarRadiusAxis.hxx"
 #include "VCartesianAxis.hxx"
-#include "PlottingPositionHelper.hxx"
-#include "CommonConverters.hxx"
+#include <PlottingPositionHelper.hxx>
+#include <CommonConverters.hxx>
 #include "Tickmarks_Equidistant.hxx"
-#include <rtl/math.hxx>
 
 namespace chart
 {
@@ -130,7 +129,7 @@ void VPolarRadiusAxis::createShapes()
     TickFactory aAngleTickFactory( rAngleScale, rAngleIncrement );
     aAngleTickFactory.getAllTicks( aAngleTickInfos );
 
-    uno::Reference< XScaling > xInverseScaling( nullptr );
+    uno::Reference< XScaling > xInverseScaling;
     if( rAngleScale.Scaling.is() )
         xInverseScaling = rAngleScale.Scaling->getInverseScaling();
 
@@ -148,7 +147,7 @@ void VPolarRadiusAxis::createShapes()
         }
 
         //xxxxx pTickInfo->updateUnscaledValue( xInverseScaling );
-        aAxisProperties.m_pfMainLinePositionAtOtherAxis.reset(pTickInfo->getUnscaledTickValue());
+        aAxisProperties.m_pfMainLinePositionAtOtherAxis = pTickInfo->getUnscaledTickValue();
         aAxisProperties.m_bDisplayLabels=false;
 
         VCartesianAxis aAxis(aAxisProperties,m_xNumberFormatsSupplier

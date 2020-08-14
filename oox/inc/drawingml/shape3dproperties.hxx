@@ -20,19 +20,14 @@
 #ifndef INCLUDED_OOX_DRAWINGML_SHAPE3DPROPERTIES_HXX
 #define INCLUDED_OOX_DRAWINGML_SHAPE3DPROPERTIES_HXX
 
-#include <map>
-#include <com/sun/star/graphic/XGraphic.hpp>
-#include <com/sun/star/geometry/IntegerRectangle2D.hpp>
-#include <oox/core/xmlfilterbase.hxx>
 #include <oox/drawingml/color.hxx>
 #include <oox/helper/helper.hxx>
 
 namespace oox { class PropertyMap; }
 namespace oox { class PropertySet; }
-namespace oox { namespace core { class ModelObjectContainer; } }
+namespace oox::core { class ModelObjectContainer; }
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 
 struct RotationProperties
@@ -78,15 +73,14 @@ struct Shape3DProperties
     css::uno::Sequence< css::beans::PropertyValue > getCameraAttributes();
     css::uno::Sequence< css::beans::PropertyValue > getLightRigAttributes();
     css::uno::Sequence< css::beans::PropertyValue > getShape3DAttributes(
-            const GraphicHelper& rGraphicHelper, sal_Int32 rPhClr );
+            const GraphicHelper& rGraphicHelper, ::Color rPhClr );
     static css::uno::Sequence< css::beans::PropertyValue > getBevelAttributes( BevelProperties rProps );
     static css::uno::Sequence< css::beans::PropertyValue > getColorAttributes(
-            const Color& rColor, const GraphicHelper& rGraphicHelper, sal_Int32 rPhClr );
+            const Color& rColor, const GraphicHelper& rGraphicHelper, ::Color rPhClr );
 };
 
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 #endif
 

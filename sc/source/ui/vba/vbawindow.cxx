@@ -16,25 +16,25 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <vbahelper/helperdecl.hxx>
-#include "service.hxx"
+#include "excelvbahelper.hxx"
 #include "vbawindow.hxx"
 #include "vbaworksheets.hxx"
 #include "vbaworksheet.hxx"
-#include "vbaglobals.hxx"
+#include "vbaworkbook.hxx"
 #include "vbapane.hxx"
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
+#include <com/sun/star/sheet/XViewSplitable.hpp>
+#include <com/sun/star/sheet/XViewFreezable.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/view/DocumentZoomType.hpp>
 #include <com/sun/star/table/CellRangeAddress.hpp>
+#include <o3tl/safeint.hxx>
+#include <ooo/vba/excel/XApplication.hpp>
 #include <ooo/vba/excel/XlWindowState.hpp>
 #include <ooo/vba/excel/XlWindowView.hpp>
-#include <ooo/vba/excel/Constants.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/XWindow2.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
 #include <basic/sberrors.hxx>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <docsh.hxx>
@@ -43,8 +43,8 @@
 #include <sc.hrc>
 #include <sfx2/viewfrm.hxx>
 #include <vcl/wrkwin.hxx>
-#include "unonames.hxx"
-#include "markdata.hxx"
+#include <unonames.hxx>
+#include <markdata.hxx>
 #include <unordered_map>
 
 using namespace ::com::sun::star;
@@ -52,7 +52,7 @@ using namespace ::ooo::vba;
 using namespace ::ooo::vba::excel::XlWindowState;
 
 typedef  std::unordered_map< OUString,
-SCTAB, OUStringHash > NameIndexHash;
+SCTAB > NameIndexHash;
 
 typedef std::vector< uno::Reference< sheet::XSpreadsheet > > Sheets;
 
@@ -60,6 +60,8 @@ typedef ::cppu::WeakImplHelper< container::XEnumerationAccess
     , css::container::XIndexAccess
     , css::container::XNameAccess
     > SelectedSheets_BASE;
+
+namespace {
 
 class SelectedSheetsEnum : public ::cppu::WeakImplHelper< container::XEnumeration >
 {
@@ -116,10 +118,11 @@ public:
         sheets.reserve( nTabCount );
         uno::Reference <sheet::XSpreadsheetDocument> xSpreadSheet( m_xModel, uno::UNO_QUERY_THROW );
         uno::Reference <container::XIndexAccess> xIndex( xSpreadSheet->getSheets(), uno::UNO_QUERY_THROW );
-        ScMarkData::const_iterator itr = rMarkData.begin(), itrEnd = rMarkData.end();
-        for (; itr != itrEnd && *itr < nTabCount; ++itr)
+        for (const auto& rTab : rMarkData)
         {
-            uno::Reference< sheet::XSpreadsheet > xSheet( xIndex->getByIndex( *itr ), uno::UNO_QUERY_THROW );
+            if (rTab >= nTabCount)
+                break;
+            uno::Reference< sheet::XSpreadsheet > xSheet( xIndex->getByIndex( rTab ), uno::UNO_QUERY_THROW );
             uno::Reference< container::XNamed > xNamed( xSheet, uno::UNO_QUERY_THROW );
             sheets.push_back( xSheet );
             namesToIndices[ xNamed->getName() ] = nIndex++;
@@ -140,7 +143,7 @@ public:
     virtual uno::Any SAL_CALL getByIndex( ::sal_Int32 Index ) override
     {
         if ( Index < 0
-        || static_cast< Sheets::size_type >( Index ) >= sheets.size() )
+        || o3tl::make_unsigned( Index ) >= sheets.size() )
             throw lang::IndexOutOfBoundsException();
 
         return uno::makeAny( sheets[ Index ] );
@@ -179,6 +182,8 @@ public:
     }
 
 };
+
+}
 
 ScVbaWindow::ScVbaWindow(
         const uno::Reference< XHelperInterface >& xParent,
@@ -219,19 +224,19 @@ ScVbaWindow::init()
 }
 
 uno::Reference< beans::XPropertySet >
-ScVbaWindow::getControllerProps()
+ScVbaWindow::getControllerProps() const
 {
     return uno::Reference< beans::XPropertySet >( getController(), uno::UNO_QUERY_THROW );
 }
 
 uno::Reference< beans::XPropertySet >
-ScVbaWindow::getFrameProps()
+ScVbaWindow::getFrameProps() const
 {
     return uno::Reference< beans::XPropertySet >( getController()->getFrame(), uno::UNO_QUERY_THROW );
 }
 
 uno::Reference< awt::XDevice >
-ScVbaWindow::getDevice()
+ScVbaWindow::getDevice() const
 {
     return uno::Reference< awt::XDevice >( getWindow(), uno::UNO_QUERY_THROW );
 }
@@ -319,7 +324,7 @@ ScVbaWindow::getCaption()
             //  name == title + extension ( .csv, ,odt, .xls )
             //  etc. then also use the name
 
-            if ( !sTitle.equals( sName ) )
+            if ( sTitle != sName )
             {
                 // starts with title
                 if ( sName.startsWith( sTitle ) )
@@ -713,7 +718,7 @@ void ScVbaWindow::SplitAtDefinedPosition( sal_Int32 nColumns, sal_Int32 nRows )
         xViewSplitable->splitAtPosition(0,0);
 
         uno::Reference< excel::XApplication > xApplication( Application(), uno::UNO_QUERY_THROW );
-        uno::Reference< excel::XWorksheet > xSheet( xApplication->getActiveSheet(), uno::UNO_QUERY_THROW );
+        uno::Reference< excel::XWorksheet > xSheet( xApplication->getActiveSheet(), uno::UNO_SET_THROW );
         xSheet->Cells(uno::makeAny(cellRow), uno::makeAny(cellColumn))->Select();
 
         //pViewShell->FreezeSplitters( FALSE );
@@ -817,7 +822,7 @@ sal_Int32 SAL_CALL
 ScVbaWindow::PointsToScreenPixelsX(sal_Int32 _points)
 {
     sal_Int32 nHundredthsofOneMillimeters = Millimeter::getInHundredthsOfOneMillimeter( _points );
-    double fConvertFactor = (getDevice()->getInfo().PixelPerMeterX/100000);
+    double fConvertFactor = getDevice()->getInfo().PixelPerMeterX/100000;
     return static_cast<sal_Int32>(fConvertFactor * nHundredthsofOneMillimeters );
 }
 
@@ -825,7 +830,7 @@ sal_Int32 SAL_CALL
 ScVbaWindow::PointsToScreenPixelsY(sal_Int32 _points)
 {
     sal_Int32 nHundredthsofOneMillimeters = Millimeter::getInHundredthsOfOneMillimeter( _points );
-    double fConvertFactor = (getDevice()->getInfo().PixelPerMeterY/100000);
+    double fConvertFactor = getDevice()->getInfo().PixelPerMeterY/100000;
     return static_cast<sal_Int32>(fConvertFactor * nHundredthsofOneMillimeters );
 }
 
@@ -870,28 +875,24 @@ void SAL_CALL ScVbaWindow::setTabRatio( double fRatio )
 OUString
 ScVbaWindow::getServiceImplName()
 {
-    return OUString("ScVbaWindow");
+    return "ScVbaWindow";
 }
 
 uno::Sequence< OUString >
 ScVbaWindow::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Window";
-    }
+        "ooo.vba.excel.Window"
+    };
     return aServiceNames;
 }
-namespace window
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Calc_ScVbaWindow_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
 {
-namespace sdecl = comphelper::service_decl;
-sdecl::vba_service_class_<ScVbaWindow, sdecl::with_args<true> > const serviceImpl;
-sdecl::ServiceDecl const serviceDecl(
-    serviceImpl,
-    "ScVbaWindow",
-    "ooo.vba.excel.Window" );
+    return cppu::acquire(new ScVbaWindow(args, context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -18,26 +18,19 @@
  */
 
 #include <sdr/overlay/overlayrectangle.hxx>
-#include <vcl/outdev.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/numeric/ftools.hxx>
 #include <sdr/overlay/overlaytools.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         drawinglayer::primitive2d::Primitive2DContainer OverlayRectangle::createOverlayObjectPrimitive2DSequence()
         {
             const basegfx::B2DRange aHatchRange(getBasePosition(), maSecondPosition);
             basegfx::BColor aColor(getBaseColor().getBColor());
-            static double fChange(0.1); // just small optical change, do not make it annoying
+            static const double fChange(0.1); // just small optical change, do not make it annoying
 
             if(mbOverlayState)
             {
@@ -92,30 +85,29 @@ namespace sdr
 
         void OverlayRectangle::Trigger(sal_uInt32 nTime)
         {
-            if(getOverlayManager())
+            if(!getOverlayManager())
+                return;
+
+            // #i53216# produce event after nTime + x
+            SetTime(nTime + mnBlinkTime);
+
+            // switch state
+            if(mbOverlayState)
             {
-                // #i53216# produce event after nTime + x
-                SetTime(nTime + mnBlinkTime);
-
-                // switch state
-                if(mbOverlayState)
-                {
-                    mbOverlayState = false;
-                }
-                else
-                {
-                    mbOverlayState = true;
-                }
-
-                // re-insert me as event
-                getOverlayManager()->InsertEvent(this);
-
-                // register change (after change)
-                objectChange();
+                mbOverlayState = false;
             }
+            else
+            {
+                mbOverlayState = true;
+            }
+
+            // re-insert me as event
+            getOverlayManager()->InsertEvent(*this);
+
+            // register change (after change)
+            objectChange();
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

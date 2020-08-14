@@ -30,14 +30,12 @@ namespace basegfx {
     class B2DPolyPolygon;
 }
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpSdrLineStartEndAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC SdrLineStartEndAttribute
         {
@@ -59,10 +57,10 @@ namespace drawinglayer
                 bool bStartCentered,
                 bool bEndCentered);
             SdrLineStartEndAttribute();
-            SdrLineStartEndAttribute(const SdrLineStartEndAttribute& rCandidate);
-            SdrLineStartEndAttribute(SdrLineStartEndAttribute&& rCandidate);
-            SdrLineStartEndAttribute& operator=(const SdrLineStartEndAttribute& rCandidate);
-            SdrLineStartEndAttribute& operator=(SdrLineStartEndAttribute&& rCandidate);
+            SdrLineStartEndAttribute(const SdrLineStartEndAttribute&);
+            SdrLineStartEndAttribute(SdrLineStartEndAttribute&&);
+            SdrLineStartEndAttribute& operator=(const SdrLineStartEndAttribute&);
+            SdrLineStartEndAttribute& operator=(SdrLineStartEndAttribute&&);
             ~SdrLineStartEndAttribute();
 
             // checks if the incarnation is default constructed
@@ -81,8 +79,8 @@ namespace drawinglayer
             bool isStartCentered() const;
             bool isEndCentered() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_SDRLINESTARTENDATTRIBUTE_HXX

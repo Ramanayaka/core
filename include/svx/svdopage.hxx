@@ -24,26 +24,32 @@
 #include <svx/sdrpageuser.hxx>
 #include <svx/svxdllapi.h>
 
-class SVX_DLLPUBLIC SdrPageObj : public SdrObject, public sdr::PageUser
+class SVXCORE_DLLPUBLIC SdrPageObj final : public SdrObject, public sdr::PageUser
 {
 public:
-    // this method is called form the destructor of the referenced page.
+    // this method is called from the destructor of the referenced page.
     // do all necessary action to forget the page. It is not necessary to call
-    // RemovePageUser(), that is done form the destructor.
+    // RemovePageUser(), that is done from the destructor.
     virtual void PageInDestruction(const SdrPage& rPage) override;
 
 private:
     // To make things more safe, remember the page, not a number
     SdrPage*                                mpShownPage;
 
-protected:
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
+
+    // protected destructor
+    virtual ~SdrPageObj() override;
 
 public:
-    SdrPageObj(SdrPage* pNewPage = nullptr);
-    SdrPageObj(const tools::Rectangle& rRect, SdrPage* pNewPage = nullptr);
-    virtual ~SdrPageObj() override;
+    SdrPageObj(
+        SdrModel& rSdrModel,
+        SdrPage* pNewPage = nullptr);
+    SdrPageObj(
+        SdrModel& rSdrModel,
+        const tools::Rectangle& rRect,
+        SdrPage* pNewPage = nullptr);
 
     SdrPage* GetReferencedPage() const { return mpShownPage;}
     void SetReferencedPage(SdrPage* pNewPage);
@@ -53,7 +59,7 @@ public:
 
     virtual sal_uInt16 GetObjIdentifier() const override;
     virtual void TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
-    virtual SdrPageObj* Clone() const override;
+    virtual SdrPageObj* CloneSdrObject(SdrModel& rTargetModel) const override;
     SdrPageObj& operator=(const SdrPageObj& rObj);
 
     virtual OUString TakeObjNameSingul() const override;

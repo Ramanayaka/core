@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_RANGE_B2DRANGE_HXX
-#define INCLUDED_BASEGFX_RANGE_B2DRANGE_HXX
+#pragma once
 
 #include <ostream>
 #include <vector>
@@ -274,7 +273,28 @@ namespace basegfx
             maRangeY.grow(fValue);
         }
 
+        /// clamp value on range
+        B2DTuple clamp(const B2DTuple& rTuple) const
+        {
+            return B2DTuple(
+                maRangeX.clamp(rTuple.getX()),
+                maRangeY.clamp(rTuple.getY()));
+        }
+
+        /** Transform Range by given transformation matrix. */
         BASEGFX_DLLPUBLIC void transform(const B2DHomMatrix& rMatrix);
+
+        /** Transform Range by given transformation matrix.
+
+            This operation transforms the Range by transforming all four possible
+            extrema points (corners) of the given range and building a new one.
+            This means that the range will grow evtl. when a shear and/or rotation
+            is part of the transformation.
+        */
+        BASEGFX_DLLPUBLIC B2DRange& operator*=( const ::basegfx::B2DHomMatrix& rMat );
+
+        /** Get a range filled with (0.0, 0.0, 1.0, 1.0) */
+        static const B2DRange& getUnitB2DRange();
 
     private:
         typedef ::basegfx::BasicRange< ValueType, TraitsType >  MyBasicRange;
@@ -282,6 +302,10 @@ namespace basegfx
         MyBasicRange        maRangeX;
         MyBasicRange        maRangeY;
     };
+
+    /** Transform B2DRange by given transformation matrix (see operator*=())
+    */
+    B2DRange operator*( const B2DHomMatrix& rMat, const B2DRange& rB2DRange );
 
     /** Round double to nearest integer for 2D range
 
@@ -320,7 +344,5 @@ namespace basegfx
     }
 
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_RANGE_B2DRANGE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

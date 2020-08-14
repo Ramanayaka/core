@@ -22,16 +22,16 @@
 #include <vcl/accel.hxx>
 #include <accmgr.hxx>
 
+#include <algorithm>
+
 ImplAccelManager::~ImplAccelManager()
 {
-    delete mpAccelList;
-    delete mpSequenceList;
 }
 
 bool ImplAccelManager::InsertAccel( Accelerator* pAccel )
 {
     if ( !mpAccelList ) {
-        mpAccelList = new ImplAccelList;
+        mpAccelList.reset( new std::vector< Accelerator* > );
     } else {
         for (Accelerator* i : *mpAccelList) {
             if ( i == pAccel ) {
@@ -44,7 +44,7 @@ bool ImplAccelManager::InsertAccel( Accelerator* pAccel )
     return true;
 }
 
-void ImplAccelManager::RemoveAccel( Accelerator* pAccel )
+void ImplAccelManager::RemoveAccel( Accelerator const * pAccel )
 {
     // do we have a list ?
     if ( !mpAccelList )
@@ -68,15 +68,9 @@ void ImplAccelManager::RemoveAccel( Accelerator* pAccel )
     }
 
     // throw it away
-    for ( ImplAccelList::iterator it = mpAccelList->begin();
-          it != mpAccelList->end();
-          ++it
-    ) {
-        if ( *it == pAccel ) {
-            mpAccelList->erase( it );
-            break;
-        }
-    }
+    auto it = std::find(mpAccelList->begin(), mpAccelList->end(), pAccel);
+    if (it != mpAccelList->end())
+        mpAccelList->erase( it );
 }
 
 void ImplAccelManager::EndSequence()
@@ -91,8 +85,7 @@ void ImplAccelManager::EndSequence()
     }
 
     // delete sequence-list
-    delete mpSequenceList;
-    mpSequenceList = nullptr;
+    mpSequenceList.reset();
 }
 
 bool ImplAccelManager::IsAccelKey( const vcl::KeyCode& rKeyCode )
@@ -142,10 +135,9 @@ bool ImplAccelManager::IsAccelKey( const vcl::KeyCode& rKeyCode )
                     // stop sequence (first call deactivate-handler)
                     EndSequence();
 
-                    // set accelerator of the actuel item
+                    // set accelerator of the actual item
                     // and call the handler
                     bool bDel = false;
-                    pAccel->maCurKeyCode    = rKeyCode;
                     pAccel->mnCurId         = pEntry->mnId;
                     pAccel->mpDel           = &bDel;
                     pAccel->Select();
@@ -153,7 +145,6 @@ bool ImplAccelManager::IsAccelKey( const vcl::KeyCode& rKeyCode )
                     // did the accelerator survive the call
                     if ( !bDel )
                     {
-                        pAccel->maCurKeyCode    = vcl::KeyCode();
                         pAccel->mnCurId         = 0;
                         pAccel->mpDel           = nullptr;
                     }
@@ -193,7 +184,7 @@ bool ImplAccelManager::IsAccelKey( const vcl::KeyCode& rKeyCode )
             {
 
                 // create sequence list
-                mpSequenceList = new ImplAccelList;
+                mpSequenceList.reset( new std::vector< Accelerator* > );
                 mpSequenceList->insert( mpSequenceList->begin(), pAccel     );
                 mpSequenceList->insert( mpSequenceList->begin(), pNextAccel );
 
@@ -213,7 +204,6 @@ bool ImplAccelManager::IsAccelKey( const vcl::KeyCode& rKeyCode )
                     // define accelerator of the actual item
                     // and call the handler
                     bool bDel = false;
-                    pAccel->maCurKeyCode    = rKeyCode;
                     pAccel->mnCurId         = pEntry->mnId;
                     pAccel->mpDel           = &bDel;
                     pAccel->Select();
@@ -221,7 +211,6 @@ bool ImplAccelManager::IsAccelKey( const vcl::KeyCode& rKeyCode )
                     // if the accelerator did survive the call
                     if ( !bDel )
                     {
-                        pAccel->maCurKeyCode    = vcl::KeyCode();
                         pAccel->mnCurId         = 0;
                         pAccel->mpDel           = nullptr;
                     }

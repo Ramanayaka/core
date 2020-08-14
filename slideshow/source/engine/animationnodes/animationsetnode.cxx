@@ -18,17 +18,16 @@
  */
 
 
-#include "animationfactory.hxx"
+#include <animationfactory.hxx>
 #include "setactivity.hxx"
 #include "animationsetnode.hxx"
 #include "nodetools.hxx"
-#include "tools.hxx"
-#include "delayevent.hxx"
+#include <tools.hxx>
+#include <delayevent.hxx>
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 AnimationActivitySharedPtr AnimationSetNode::createActivity() const
 {
@@ -87,6 +86,7 @@ AnimationActivitySharedPtr AnimationSetNode::createActivity() const
                 pShape,
                 getContext().mpSubsettableShapeManager,
                 getSlideSize(),
+                getContext().mpBox2DWorld,
                 AnimationFactory::FLAG_NO_SPRITE ),
             aValue );
     }
@@ -110,6 +110,7 @@ AnimationActivitySharedPtr AnimationSetNode::createActivity() const
                 pShape,
                 getContext().mpSubsettableShapeManager,
                 getSlideSize(),
+                getContext().mpBox2DWorld,
                 AnimationFactory::FLAG_NO_SPRITE ),
             aValue );
     }
@@ -133,6 +134,7 @@ AnimationActivitySharedPtr AnimationSetNode::createActivity() const
                 pShape,
                 getContext().mpSubsettableShapeManager,
                 getSlideSize(),
+                getContext().mpBox2DWorld,
                 AnimationFactory::FLAG_NO_SPRITE ),
             aValue );
     }
@@ -156,6 +158,7 @@ AnimationActivitySharedPtr AnimationSetNode::createActivity() const
                 pShape,
                 getContext().mpSubsettableShapeManager,
                 getSlideSize(),
+                getContext().mpBox2DWorld,
                 AnimationFactory::FLAG_NO_SPRITE ),
             aValue );
     }
@@ -179,6 +182,7 @@ AnimationActivitySharedPtr AnimationSetNode::createActivity() const
                 pShape,
                 getContext().mpSubsettableShapeManager,
                 getSlideSize(),
+                getContext().mpBox2DWorld,
                 AnimationFactory::FLAG_NO_SPRITE ),
             aValue );
     }
@@ -187,7 +191,6 @@ AnimationActivitySharedPtr AnimationSetNode::createActivity() const
     return AnimationActivitySharedPtr();
 }
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,10 +21,10 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_XIHELPER_HXX
 
 #include <editeng/editdata.hxx>
-#include "types.hxx"
+#include <types.hxx>
 #include "xladdress.hxx"
 #include "xiroot.hxx"
-#include "xistring.hxx"
+#include "xltools.hxx"
 #include <memory>
 #include <vector>
 
@@ -116,7 +116,7 @@ public:
     XclImpStringHelper() = delete;
     /** Returns a new edit engine text object.
         @param nXFIndex  Index to XF for first text portion (for escapement). */
-    static EditTextObject* CreateTextObject(
+    static std::unique_ptr<EditTextObject> CreateTextObject(
                             const XclImpRoot& rRoot,
                             const XclImpString& rString );
 
@@ -128,7 +128,6 @@ public:
 // Header/footer conversion ===================================================
 
 class EditEngine;
-class EditTextObject;
 class SfxItemSet;
 class SvxFieldItem;
 struct XclFontData;
@@ -136,7 +135,7 @@ struct XclFontData;
 /** Converts an Excel header/footer string into three edit engine text objects.
     @descr  Header/footer content is divided into three parts: Left, center and
     right portion. All formatting information is encoded in the Excel string
-    using special character seuences. A control sequence starts with the ampersand
+    using special character sequences. A control sequence starts with the ampersand
     character.
 
     Supported control sequences:
@@ -197,7 +196,6 @@ private:    // types
         sal_uInt16          mnMaxLineHt;    /// Maximum font height for the current text line.
         explicit            XclImpHFPortionInfo();
     };
-    typedef ::std::vector< XclImpHFPortionInfo > XclImpHFPortionInfoVec;
 
 private:
     /** Returns the current edit engine text object. */
@@ -239,15 +237,16 @@ private:
 
 private:
     EditEngine&         mrEE;               /// The header/footer edit engine.
-    XclImpHFPortionInfoVec maInfos;         /// Edit engine text objects for all portions.
-    OUString            maCurrText;         /// Current text to insert into edit engine.
+    std::vector< XclImpHFPortionInfo >
+                        maInfos;         /// Edit engine text objects for all portions.
+    OUStringBuffer      maCurrText;         /// Current text to insert into edit engine.
     XclFontDataPtr      mxFontData;         /// Font data of current text.
     XclImpHFPortion     meCurrObj;          /// The current portion.
 };
 
 // URL conversion =============================================================
 
-/** This class contains static methods to decode an URL stored in an Excel file.
+/** This class contains static methods to decode a URL stored in an Excel file.
     @descr  Excel URLs can contain a sheet name, for instance: path\[test.xls]Sheet1
     This sheet name will be extracted automatically. */
 class XclImpUrlHelper
@@ -338,7 +337,7 @@ public:
     explicit            XclImpCachedMatrix( XclImpStream& rStrm );
                         ~XclImpCachedMatrix();
 
-    /** Creates a new ScFullMatrix object and fills it with the contained values. */
+    /** Creates a new ScMatrix object and fills it with the contained values. */
     ScMatrixRef CreateScMatrix( svl::SharedStringPool& rPool ) const;
 
 private:

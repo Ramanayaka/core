@@ -18,14 +18,15 @@
  */
 
 
-#include "fmcontrolbordermanager.hxx"
+#include <fmcontrolbordermanager.hxx>
 
-#include "fmprop.hrc"
+#include <fmprop.hxx>
 
 #include <com/sun/star/form/validation/XValidatableFormComponent.hpp>
 #include <com/sun/star/awt/XTextComponent.hpp>
 #include <com/sun/star/awt/XListBox.hpp>
 #include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
 
 
@@ -150,7 +151,7 @@ namespace svxform
     }
 
 
-    sal_Int32 ControlBorderManager::getControlColorByStatus( ControlStatus _nStatus )
+    Color ControlBorderManager::getControlColorByStatus( ControlStatus _nStatus )
     {
         // "invalid" is ranked highest
         if ( _nStatus & ControlStatus::Invalid )
@@ -165,7 +166,7 @@ namespace svxform
             return m_nMouseHoveColor;
 
         OSL_FAIL( "ControlBorderManager::getControlColorByStatus: invalid status!" );
-        return 0x00000000;
+        return Color(0);
     }
 
 
@@ -240,7 +241,7 @@ namespace svxform
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "ControlBorderManager::controlStatusGained: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "svx", "ControlBorderManager::controlStatusGained" );
         }
     }
 
@@ -264,7 +265,7 @@ namespace svxform
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "ControlBorderManager::controlStatusLost: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "svx", "ControlBorderManager::controlStatusLost" );
         }
     }
 
@@ -282,7 +283,7 @@ namespace svxform
     }
 
 
-    void ControlBorderManager::setStatusColor( ControlStatus _nStatus, sal_Int32 _nColor )
+    void ControlBorderManager::setStatusColor( ControlStatus _nStatus, Color _nColor )
     {
         switch ( _nStatus )
         {
@@ -311,17 +312,14 @@ namespace svxform
         ControlBag aInvalidControls;
         m_aInvalidControls.swap( aInvalidControls );
 
-        for ( ControlBag::const_iterator loop = aInvalidControls.begin();
-              loop != aInvalidControls.end();
-              ++loop
-            )
+        for (const auto& rControl : aInvalidControls)
         {
-            Reference< XVclWindowPeer > xPeer( loop->xControl->getPeer(), UNO_QUERY );
+            Reference< XVclWindowPeer > xPeer( rControl.xControl->getPeer(), UNO_QUERY );
             if ( xPeer.is() )
             {
-                updateBorderStyle( loop->xControl, xPeer, *loop );
-                xPeer->setProperty( FM_PROP_HELPTEXT, makeAny( loop->sOriginalHelpText ) );
-                setUnderline( xPeer, *loop );
+                updateBorderStyle( rControl.xControl, xPeer, rControl );
+                xPeer->setProperty( FM_PROP_HELPTEXT, makeAny( rControl.sOriginalHelpText ) );
+                setUnderline( xPeer, rControl );
             }
         }
     }
@@ -416,7 +414,7 @@ namespace svxform
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "ControlBorderManager::validityChanged: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "svx", "ControlBorderManager::validityChanged" );
         }
     }
 

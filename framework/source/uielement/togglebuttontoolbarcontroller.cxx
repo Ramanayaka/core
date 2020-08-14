@@ -17,27 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "uielement/togglebuttontoolbarcontroller.hxx"
+#include <uielement/togglebuttontoolbarcontroller.hxx>
 
-#include <framework/addonsoptions.hxx>
-
-#include <com/sun/star/util/XURLTransformer.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/util/XMacroExpander.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-
-#include <rtl/uri.hxx>
-#include <comphelper/processfactory.hxx>
-#include <unotools/ucbstreamhelper.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/mnemonic.hxx>
-#include <vcl/window.hxx>
-#include <vcl/graph.hxx>
-#include <vcl/bitmap.hxx>
-#include <vcl/graphicfilter.hxx>
 #include <vcl/toolbox.hxx>
-#include <svtools/miscopt.hxx>
+#include <vcl/menu.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::awt;
@@ -60,9 +44,9 @@ ToggleButtonToolbarController::ToggleButtonToolbarController(
     ComplexToolbarController( rxContext, rFrame, pToolbar, nID, aCommand )
 {
     if ( eStyle == Style::DropDownButton )
-        m_pToolbar->SetItemBits( m_nID, ToolBoxItemBits::DROPDOWNONLY | m_pToolbar->GetItemBits( m_nID ) );
+        m_xToolbar->SetItemBits( m_nID, ToolBoxItemBits::DROPDOWNONLY | m_xToolbar->GetItemBits( m_nID ) );
     else // Style::ToggleDropDownButton
-        m_pToolbar->SetItemBits( m_nID, ToolBoxItemBits::DROPDOWN | m_pToolbar->GetItemBits( m_nID ) );
+        m_xToolbar->SetItemBits( m_nID, ToolBoxItemBits::DROPDOWN | m_xToolbar->GetItemBits( m_nID ) );
 }
 
 ToggleButtonToolbarController::~ToggleButtonToolbarController()
@@ -98,18 +82,21 @@ uno::Reference< awt::XWindow > SAL_CALL ToggleButtonToolbarController::createPop
     const sal_uInt32 nCount = m_aDropdownMenuList.size();
     for ( sal_uInt32 i = 0; i < nCount; i++ )
     {
-        OUString aLabel( m_aDropdownMenuList[i] );
-        aPopup->InsertItem( sal_uInt16( i+1 ), aLabel );
-        if ( aLabel == m_aCurrentSelection )
+        const OUString & rLabel = m_aDropdownMenuList[i].mLabel;
+        aPopup->InsertItem( sal_uInt16( i+1 ), rLabel );
+        if ( rLabel == m_aCurrentSelection )
             aPopup->CheckItem( sal_uInt16( i+1 ) );
         else
             aPopup->CheckItem( sal_uInt16( i+1 ), false );
+
+        if ( !m_aDropdownMenuList[i].mTipHelpText.isEmpty() )
+            aPopup->SetTipHelpText( sal_uInt16( i+1 ), m_aDropdownMenuList[i].mTipHelpText );
     }
 
-    m_pToolbar->SetItemDown( m_nID, true );
+    m_xToolbar->SetItemDown( m_nID, true );
     aPopup->SetSelectHdl( LINK( this, ToggleButtonToolbarController, MenuSelectHdl ));
-    aPopup->Execute( m_pToolbar, m_pToolbar->GetItemRect( m_nID ));
-    m_pToolbar->SetItemDown( m_nID, false );
+    aPopup->Execute( m_xToolbar, m_xToolbar->GetItemRect( m_nID ));
+    m_xToolbar->SetItemDown( m_nID, false );
 
     return xWindow;
 }
@@ -120,16 +107,20 @@ void ToggleButtonToolbarController::executeControlCommand( const css::frame::Con
 
     if ( rControlCommand.Command == "SetList" )
     {
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        for ( auto const & arg : rControlCommand.Arguments )
         {
-            if ( rControlCommand.Arguments[i].Name == "List" )
+            if ( arg.Name == "List" )
             {
                 Sequence< OUString > aList;
                 m_aDropdownMenuList.clear();
+                m_aCurrentSelection.clear();
 
-                rControlCommand.Arguments[i].Value >>= aList;
-                for ( sal_Int32 j = 0; j < aList.getLength(); j++ )
-                    m_aDropdownMenuList.push_back( aList[j] );
+                arg.Value >>= aList;
+                for ( OUString const & label : std::as_const(aList) )
+                {
+                    m_aDropdownMenuList.push_back( DropdownMenuItem() );
+                    m_aDropdownMenuList.back().mLabel = label;
+                }
 
                 // send notification
                 uno::Sequence< beans::NamedValue > aInfo { { "List", css::uno::makeAny(aList) } };
@@ -143,18 +134,18 @@ void ToggleButtonToolbarController::executeControlCommand( const css::frame::Con
     }
     else if ( rControlCommand.Command == "CheckItemPos" )
     {
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        for ( auto const & arg : rControlCommand.Arguments )
         {
-            if ( rControlCommand.Arguments[i].Name == "Pos" )
+            if ( arg.Name == "Pos" )
             {
                 sal_Int32 nPos( -1 );
 
-                rControlCommand.Arguments[i].Value >>= nPos;
+                arg.Value >>= nPos;
                 if ( nPos >= 0 &&
                      ( sal::static_int_cast< sal_uInt32 >(nPos)
                        < m_aDropdownMenuList.size() ) )
                 {
-                    m_aCurrentSelection = m_aDropdownMenuList[nPos];
+                    m_aCurrentSelection = m_aDropdownMenuList[nPos].mLabel;
 
                     // send notification
                     uno::Sequence< beans::NamedValue > aInfo { { "ItemChecked", css::uno::makeAny(nPos) } };
@@ -169,48 +160,61 @@ void ToggleButtonToolbarController::executeControlCommand( const css::frame::Con
     else if ( rControlCommand.Command == "AddEntry" )
     {
         OUString   aText;
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        OUString   aTipHelpText;
+
+        for ( auto const & arg : rControlCommand.Arguments )
         {
-            if ( rControlCommand.Arguments[i].Name == "Text" )
+            if ( arg.Name == "Text" )
             {
-                if ( rControlCommand.Arguments[i].Value >>= aText )
-                    m_aDropdownMenuList.push_back( aText );
-                break;
+                arg.Value >>= aText;
             }
+            else if ( arg.Name == "TipHelpText" )
+            {
+                arg.Value >>= aTipHelpText;
+            }
+        }
+
+        if (!aText.isEmpty())
+        {
+            m_aDropdownMenuList.push_back( DropdownMenuItem() );
+            m_aDropdownMenuList.back().mLabel = aText;
+            m_aDropdownMenuList.back().mTipHelpText = aTipHelpText;
         }
     }
     else if ( rControlCommand.Command == "InsertEntry" )
     {
-        sal_Int32      nPos( COMBOBOX_APPEND );
-        sal_Int32      nSize = sal_Int32( m_aDropdownMenuList.size() );
+        sal_Int32 nPos(0);
+        sal_Int32 nSize = sal_Int32( m_aDropdownMenuList.size() );
         OUString  aText;
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        for ( auto const & arg : rControlCommand.Arguments )
         {
-            if ( rControlCommand.Arguments[i].Name == "Pos" )
+            if ( arg.Name == "Pos" )
             {
                 sal_Int32 nTmpPos = 0;
-                if ( rControlCommand.Arguments[i].Value >>= nTmpPos )
+                if ( arg.Value >>= nTmpPos )
                 {
                     if (( nTmpPos >= 0 ) && ( nTmpPos < nSize ))
                         nPos = nTmpPos;
                 }
             }
-            else if ( rControlCommand.Arguments[i].Name == "Text" )
-                rControlCommand.Arguments[i].Value >>= aText;
+            else if ( arg.Name == "Text" )
+                arg.Value >>= aText;
         }
 
-        std::vector< OUString >::iterator aIter = m_aDropdownMenuList.begin();
+        std::vector< DropdownMenuItem >::iterator aIter = m_aDropdownMenuList.begin();
         aIter += nPos;
-        m_aDropdownMenuList.insert( aIter, aText );
+        aIter = m_aDropdownMenuList.insert(aIter, DropdownMenuItem());
+        if (aIter != m_aDropdownMenuList.end())
+            aIter->mLabel = aText;
     }
     else if ( rControlCommand.Command == "RemoveEntryPos" )
     {
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        for ( auto const & arg : rControlCommand.Arguments )
         {
-            if ( rControlCommand.Arguments[i].Name == "Pos" )
+            if ( arg.Name == "Pos" )
             {
                 sal_Int32 nPos( -1 );
-                if ( rControlCommand.Arguments[i].Value >>= nPos )
+                if ( arg.Value >>= nPos )
                 {
                     if ( nPos < sal_Int32( m_aDropdownMenuList.size() ))
                     {
@@ -223,17 +227,17 @@ void ToggleButtonToolbarController::executeControlCommand( const css::frame::Con
     }
     else if ( rControlCommand.Command == "RemoveEntryText" )
     {
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        for ( auto const & arg : rControlCommand.Arguments )
         {
-            if ( rControlCommand.Arguments[i].Name == "Text" )
+            if ( arg.Name == "Text" )
             {
                 OUString aText;
-                if ( rControlCommand.Arguments[i].Value >>= aText )
+                if ( arg.Value >>= aText )
                 {
                     sal_Int32 nSize = sal_Int32( m_aDropdownMenuList.size() );
                     for ( sal_Int32 j = 0; j < nSize; j++ )
                     {
-                        if ( m_aDropdownMenuList[j] == aText )
+                        if ( m_aDropdownMenuList[j].mLabel == aText )
                         {
                             m_aDropdownMenuList.erase(m_aDropdownMenuList.begin() + j);
                             break;
@@ -244,6 +248,10 @@ void ToggleButtonToolbarController::executeControlCommand( const css::frame::Con
             }
         }
     }
+    else if ( rControlCommand.Command == "createPopupMenu" )
+    {
+        createPopupWindow();
+    }
 }
 
 IMPL_LINK( ToggleButtonToolbarController, MenuSelectHdl, Menu *, pMenu, bool )
@@ -253,7 +261,7 @@ IMPL_LINK( ToggleButtonToolbarController, MenuSelectHdl, Menu *, pMenu, bool )
     sal_uInt16 nItemId = pMenu->GetCurItemId();
     if ( nItemId > 0 && nItemId <= m_aDropdownMenuList.size() )
     {
-        m_aCurrentSelection = m_aDropdownMenuList[nItemId-1];
+        m_aCurrentSelection = m_aDropdownMenuList[nItemId-1].mLabel;
 
         execute( 0 );
     }

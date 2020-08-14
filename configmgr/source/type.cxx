@@ -23,13 +23,9 @@
 
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Type.hxx>
 #include <com/sun/star/uno/TypeClass.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
 #include <cppu/unotype.hxx>
-#include <rtl/string.h>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
@@ -63,7 +59,7 @@ Type elementType(Type type) {
     }
 }
 
-css::uno::Type mapType(Type type) {
+css::uno::Type const & mapType(Type type) {
     switch (type) {
     case TYPE_ANY:
         return cppu::UnoType< css::uno::Any >::get();
@@ -155,7 +151,7 @@ Type getDynamicType(css::uno::Any const & value) {
                 return TYPE_HEXBINARY_LIST;
             }
         }
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     default:
         return TYPE_ERROR;
     }

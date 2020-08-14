@@ -19,8 +19,7 @@
 #ifndef INCLUDED_SFX2_SIDEBAR_SIDEBARPANELBASE_HXX
 #define INCLUDED_SFX2_SIDEBAR_SIDEBARPANELBASE_HXX
 
-#include <vcl/EnumContext.hxx>
-#include <sfx2/sidebar/IContextChangeReceiver.hxx>
+#include <sfx2/dllapi.h>
 
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
@@ -36,7 +35,7 @@
 
 namespace vcl { class Window; }
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 typedef cppu::WeakComponentImplHelper<css::ui::XContextChangeEventListener,
                                        css::ui::XUIElement,
@@ -48,7 +47,7 @@ typedef cppu::WeakComponentImplHelper<css::ui::XContextChangeEventListener,
 /** Base class for sidebar panels that provides some convenience
     functionality.
 */
-class SFX2_DLLPUBLIC SidebarPanelBase : private ::cppu::BaseMutex,
+class SFX2_DLLPUBLIC SidebarPanelBase final : private ::cppu::BaseMutex,
                                         public SidebarPanelBaseInterfaceBase
 {
 public:
@@ -81,9 +80,7 @@ public:
     // XUpdateModel
     virtual void SAL_CALL updateModel(const css::uno::Reference<css::frame::XModel>& xModel) override;
 
-protected:
-    css::uno::Reference<css::frame::XFrame> mxFrame;
-
+private:
     SidebarPanelBase(const OUString& rsResourceURL, const css::uno::Reference<css::frame::XFrame>& rxFrame,
                      vcl::Window* pWindow, const css::ui::LayoutSize& rLayoutSize);
     virtual ~SidebarPanelBase() override;
@@ -92,13 +89,13 @@ protected:
 
     virtual void SAL_CALL disposing() override;
 
-private:
+    css::uno::Reference<css::frame::XFrame> mxFrame;
     VclPtr<vcl::Window> mpControl;
     const OUString msResourceURL;
     const css::ui::LayoutSize maLayoutSize;
 };
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

@@ -17,15 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABBARPAGE_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABBARPAGE_HXX
+#pragma once
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase2.hxx>
-#include "extended/accessibletabbarbase.hxx"
-
-#include <vector>
+#include <extended/accessibletabbarbase.hxx>
 
 namespace utl {
 class AccessibleStateSetHelper;
@@ -36,15 +33,14 @@ namespace accessibility
 {
 
 
-    //  class AccessibleTabBarPage
 
 
     typedef ::cppu::ImplHelper2<
         css::accessibility::XAccessible,
         css::lang::XServiceInfo > AccessibleTabBarPage_BASE;
 
-    class AccessibleTabBarPage :    public AccessibleTabBarBase,
-                                    public AccessibleTabBarPage_BASE
+    class AccessibleTabBarPage final : public AccessibleTabBarBase,
+                                       public AccessibleTabBarPage_BASE
     {
         friend class AccessibleTabBarPageList;
 
@@ -56,10 +52,9 @@ namespace accessibility
 
         css::uno::Reference< css::accessibility::XAccessible >        m_xParent;
 
-    protected:
         bool                    IsEnabled();
-        bool                    IsShowing();
-        bool                    IsSelected();
+        bool                    IsShowing() const;
+        bool                    IsSelected() const;
 
         void                    SetShowing( bool bShowing );
         void                    SetSelected( bool bSelected );
@@ -78,7 +73,6 @@ namespace accessibility
     public:
         AccessibleTabBarPage( TabBar* pTabBar, sal_uInt16 nPageId,
                               const css::uno::Reference< css::accessibility::XAccessible >& rxParent );
-        virtual ~AccessibleTabBarPage() override;
 
         // XInterface
         DECLARE_XINTERFACE()
@@ -122,6 +116,5 @@ namespace accessibility
 }   // namespace accessibility
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABBARPAGE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

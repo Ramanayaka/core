@@ -22,7 +22,7 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <propertysetbase.hxx>
+#include "propertysetbase.hxx"
 #include <com/sun/star/form/binding/XValueBinding.hpp>
 #include <com/sun/star/form/binding/XListEntrySource.hpp>
 #include <com/sun/star/form/validation/XValidator.hpp>
@@ -44,7 +44,7 @@ namespace xforms
     class Model;
     class EvaluationContext;
 }
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace xml {
         namespace xpath { class XXPathAPI; }
         namespace dom
@@ -56,7 +56,7 @@ namespace com { namespace sun { namespace star {
     namespace container { class XNameContainer; }
     namespace xforms { class XModel; }
     namespace xsd { class XDataType; }
-} } }
+}
 
 
 namespace xforms
@@ -65,7 +65,7 @@ namespace xforms
 /** An XForms Binding. Contains:
  *  # a connection to its model
  *  # an ID
- *  # an binding expression
+ *  # a binding expression
  *  # model item properties
  *  # (NOT YET IMPLEMENTED) child bindings (sequence of)
  *
@@ -246,19 +246,18 @@ public:
     void deferNotifications( bool );
 
     /// is this binding valid? (are constraint, type and required MIPs ok?)
-    bool isValid();
+    bool isValid() const;
 
     /// determine whether this binding currently performs a useful
     /// function, r whether is may be discarded
-    bool isUseful();
+    bool isUseful() const;
 
     /// explain why binding is invalid
     OUString explainInvalid();
 
 
     // the ID for XUnoTunnel calls
-    static css::uno::Sequence<sal_Int8> getUnoTunnelID();
-    static Binding* getBinding( const css::uno::Reference<css::beans::XPropertySet>& );
+    static css::uno::Sequence<sal_Int8> getUnoTunnelId();
 
 
 private:
@@ -274,7 +273,6 @@ private:
 
     /// get the model implementation
     xforms::Model* getModelImpl() const;
-    static xforms::Model* getModelImpl( const css::uno::Reference<css::xforms::XModel>& xModel );
 
     /// get MIP evaluation contexts
     /// (only valid if control has already been bound)
@@ -296,10 +294,10 @@ private:
     MIP getLocalMIP() const;
 
     /// get the data type that applies to this binding
-    css::uno::Reference<css::xsd::XDataType> getDataType();
+    css::uno::Reference<css::xsd::XDataType> getDataType() const;
 
     /// determine whether binding is valid according to the given data type
-    bool isValid_DataType();
+    bool isValid_DataType() const;
 
     /// explain validity of binding with respect to the given data type
     OUString explainInvalid_DataType();

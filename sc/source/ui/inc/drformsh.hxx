@@ -21,15 +21,14 @@
 #define INCLUDED_SC_SOURCE_UI_INC_DRFORMSH_HXX
 
 #include <sfx2/shell.hxx>
-#include "shellids.hxx"
-#include <sfx2/module.hxx>
-#include <svx/svdmark.hxx>
+#include <shellids.hxx>
 
 class ScViewData;
+class SfxModule;
 
 #include "drawsh.hxx"
 
-class ScDrawFormShell: public ScDrawShell
+class ScDrawFormShell : public ScDrawShell
 {
 public:
     SFX_DECL_INTERFACE(SCID_FORM_SHELL)

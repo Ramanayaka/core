@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.18.3 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="cui">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkAdjustment" id="adjustment1">
     <property name="upper">19.989999999999998</property>
     <property name="step_increment">0.050000000000000003</property>
@@ -13,39 +13,33 @@
     <property name="step_increment">0.050000000000000003</property>
     <property name="page_increment">10</property>
   </object>
-  <object class="GtkListStore" id="liststore1">
-    <columns>
-      <!-- column-name gchararray1 -->
-      <column type="gchararray"/>
-    </columns>
-    <data>
-      <row>
-        <col id="0" translatable="yes">Left</col>
-      </row>
-      <row>
-        <col id="0" translatable="yes">Centered</col>
-      </row>
-      <row>
-        <col id="0" translatable="yes">Right</col>
-      </row>
-    </data>
+  <object class="GtkAdjustment" id="adjustment3">
+    <property name="upper">19.989999999999998</property>
+    <property name="step_increment">0.050000000000000003</property>
+    <property name="page_increment">10</property>
   </object>
-  <object class="GtkListStore" id="liststore2">
+  <object class="GtkAdjustment" id="adjustment4">
+    <property name="upper">19.989999999999998</property>
+    <property name="step_increment">0.01</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustment5">
+    <property name="upper">19.989999999999998</property>
+    <property name="step_increment">0.01</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustment6">
+    <property name="upper">19.989999999999998</property>
+    <property name="step_increment">0.01</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkTreeStore" id="liststore1">
     <columns>
-      <!-- column-name gchararray1 -->
+      <!-- column-name text -->
+      <column type="gchararray"/>
+      <!-- column-name id -->
       <column type="gchararray"/>
     </columns>
-    <data>
-      <row>
-        <col id="0" translatable="yes">Tab stop</col>
-      </row>
-      <row>
-        <col id="0" translatable="yes">Space</col>
-      </row>
-      <row>
-        <col id="0" translatable="yes">Nothing</col>
-      </row>
-    </data>
   </object>
   <object class="GtkBox" id="NumberingPositionPage">
     <property name="visible">True</property>
@@ -54,50 +48,6 @@
     <property name="vexpand">True</property>
     <property name="border_width">6</property>
     <property name="spacing">12</property>
-    <child>
-      <object class="GtkFrame" id="frame3">
-        <property name="visible">True</property>
-        <property name="can_focus">False</property>
-        <property name="label_xalign">0</property>
-        <property name="shadow_type">none</property>
-        <child>
-          <object class="GtkAlignment" id="alignment5">
-            <property name="visible">True</property>
-            <property name="can_focus">False</property>
-            <property name="top_padding">6</property>
-            <property name="left_padding">12</property>
-            <child>
-              <object class="GtkTreeView" id="levellb:border">
-                <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <property name="headers_visible">False</property>
-                <property name="search_column">0</property>
-                <child internal-child="selection">
-                  <object class="GtkTreeSelection" id="treeview-selection6">
-                    <property name="mode">multiple</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-          </object>
-        </child>
-        <child type="label">
-          <object class="GtkLabel" id="1">
-            <property name="visible">True</property>
-            <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Level</property>
-            <attributes>
-              <attribute name="weight" value="bold"/>
-            </attributes>
-          </object>
-        </child>
-      </object>
-      <packing>
-        <property name="expand">False</property>
-        <property name="fill">True</property>
-        <property name="position">0</property>
-      </packing>
-    </child>
     <child>
       <object class="GtkBox" id="box1">
         <property name="visible">True</property>
@@ -135,10 +85,10 @@
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
                         <property name="hexpand">True</property>
-                        <property name="xalign">1</property>
-                        <property name="label" translatable="yes">Numbering followed by:</property>
+                        <property name="label" translatable="yes" context="numberingpositionpage|numfollowedby">Numbering followed by:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">numfollowedbylb</property>
+                        <property name="xalign">1</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -149,10 +99,10 @@
                       <object class="GtkLabel" id="num2align">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">1</property>
-                        <property name="label" translatable="yes">N_umbering alignment:</property>
+                        <property name="label" translatable="yes" context="numberingpositionpage|num2align">N_umbering alignment:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">num2alignlb</property>
+                        <property name="xalign">1</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -163,10 +113,10 @@
                       <object class="GtkLabel" id="alignedat">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">1</property>
-                        <property name="label" translatable="yes">Aligned at:</property>
+                        <property name="label" translatable="yes" context="numberingpositionpage|alignedat">Aligned at:</property>
                         <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">alignedatmf:0.00cm</property>
+                        <property name="mnemonic_widget">alignedatmf</property>
+                        <property name="xalign">1</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -177,10 +127,10 @@
                       <object class="GtkLabel" id="indentat">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">1</property>
-                        <property name="label" translatable="yes">Indent at:</property>
+                        <property name="label" translatable="yes" context="numberingpositionpage|indentat">Indent at:</property>
                         <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">indentatmf:0.00cm</property>
+                        <property name="mnemonic_widget">indentatmf</property>
+                        <property name="xalign">1</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -188,20 +138,11 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkComboBox" id="num2alignlb">
-                        <property name="visible">True</property>
-                        <property name="can_focus">False</property>
-                      </object>
-                      <packing>
-                        <property name="left_attach">1</property>
-                        <property name="top_attach">1</property>
-                      </packing>
-                    </child>
-                    <child>
-                      <object class="GtkSpinButton" id="indentatmf:0.00cm">
+                      <object class="GtkSpinButton" id="indentatmf">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <property name="invisible_char">●</property>
+                        <property name="activates_default">True</property>
+                        <property name="adjustment">adjustment6</property>
                         <property name="digits">2</property>
                       </object>
                       <packing>
@@ -213,10 +154,10 @@
                       <object class="GtkLabel" id="at">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">1</property>
-                        <property name="label" translatable="yes">Tab stop at:</property>
+                        <property name="label" translatable="yes" context="numberingpositionpage|at">Tab stop at:</property>
                         <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">atmf:0.00cm</property>
+                        <property name="mnemonic_widget">atmf</property>
+                        <property name="xalign">1</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -224,10 +165,11 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkSpinButton" id="atmf:0.00cm">
+                      <object class="GtkSpinButton" id="atmf">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <property name="invisible_char">●</property>
+                        <property name="activates_default">True</property>
+                        <property name="adjustment">adjustment5</property>
                         <property name="digits">2</property>
                       </object>
                       <packing>
@@ -236,10 +178,11 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkSpinButton" id="alignedatmf:0.00cm">
+                      <object class="GtkSpinButton" id="alignedatmf">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <property name="invisible_char">●</property>
+                        <property name="activates_default">True</property>
+                        <property name="adjustment">adjustment4</property>
                         <property name="digits">2</property>
                       </object>
                       <packing>
@@ -248,10 +191,14 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkComboBox" id="numfollowedbylb">
+                      <object class="GtkComboBoxText" id="numfollowedbylb">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="model">liststore2</property>
+                        <items>
+                          <item translatable="yes" context="numberingpositionpage|liststore2">Tab stop</item>
+                          <item translatable="yes" context="numberingpositionpage|liststore2">Space</item>
+                          <item translatable="yes" context="numberingpositionpage|liststore2">Nothing</item>
+                        </items>
                       </object>
                       <packing>
                         <property name="left_attach">1</property>
@@ -262,10 +209,10 @@
                       <object class="GtkLabel" id="indent">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">1</property>
-                        <property name="label" translatable="yes">Indent:</property>
+                        <property name="label" translatable="yes" context="numberingpositionpage|indent">Indent:</property>
                         <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">indentmf:0.00cm</property>
+                        <property name="mnemonic_widget">indentmf</property>
+                        <property name="xalign">1</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -273,10 +220,10 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkSpinButton" id="indentmf:0.00cm">
+                      <object class="GtkSpinButton" id="indentmf">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <property name="invisible_char">●</property>
+                        <property name="activates_default">True</property>
                         <property name="adjustment">adjustment2</property>
                         <property name="digits">2</property>
                       </object>
@@ -287,7 +234,7 @@
                     </child>
                     <child>
                       <object class="GtkCheckButton" id="relative">
-                        <property name="label" translatable="yes">Relati_ve</property>
+                        <property name="label" translatable="yes" context="numberingpositionpage|relative">Relati_ve</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -306,10 +253,10 @@
                       <object class="GtkLabel" id="numberingwidth">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">1</property>
-                        <property name="label" translatable="yes">Width of numbering:</property>
+                        <property name="label" translatable="yes" context="numberingpositionpage|numberingwidth">Width of numbering:</property>
                         <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">numberingwidthmf:0.00cm</property>
+                        <property name="mnemonic_widget">numberingwidthmf</property>
+                        <property name="xalign">1</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -317,10 +264,10 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkSpinButton" id="numberingwidthmf:0.00cm">
+                      <object class="GtkSpinButton" id="numberingwidthmf">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <property name="invisible_char">●</property>
+                        <property name="activates_default">True</property>
                         <property name="adjustment">adjustment1</property>
                         <property name="digits">2</property>
                       </object>
@@ -330,11 +277,11 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkSpinButton" id="numdistmf:0.00cm">
+                      <object class="GtkSpinButton" id="numdistmf">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <property name="invisible_char">●</property>
-                        <property name="adjustment">adjustment1</property>
+                        <property name="activates_default">True</property>
+                        <property name="adjustment">adjustment3</property>
                         <property name="digits">2</property>
                       </object>
                       <packing>
@@ -346,12 +293,12 @@
                       <object class="GtkLabel" id="numdist">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">1</property>
-                        <property name="label" translatable="yes">Minimum space between
+                        <property name="label" translatable="yes" context="numberingpositionpage|numdist">Minimum space between
 numbering and text:</property>
                         <property name="use_underline">True</property>
                         <property name="justify">right</property>
-                        <property name="mnemonic_widget">numdistmf:0.00cm</property>
+                        <property name="mnemonic_widget">numdistmf</property>
+                        <property name="xalign">1</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -362,10 +309,10 @@ numbering and text:</property>
                       <object class="GtkLabel" id="numalign">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">1</property>
-                        <property name="label" translatable="yes">N_umbering alignment:</property>
+                        <property name="label" translatable="yes" context="numberingpositionpage|numalign">N_umbering alignment:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">numalignlb</property>
+                        <property name="xalign">1</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -373,14 +320,28 @@ numbering and text:</property>
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkComboBox" id="numalignlb">
+                      <object class="GtkComboBoxText" id="numalignlb">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="model">liststore1</property>
+                        <items>
+                          <item translatable="yes" context="numberingpositionpage|liststore1">Left</item>
+                          <item translatable="yes" context="numberingpositionpage|liststore1">Centered</item>
+                          <item translatable="yes" context="numberingpositionpage|liststore1">Right</item>
+                        </items>
                       </object>
                       <packing>
                         <property name="left_attach">1</property>
                         <property name="top_attach">9</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkComboBoxText" id="num2alignlb">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">1</property>
+                        <property name="top_attach">1</property>
                       </packing>
                     </child>
                   </object>
@@ -391,7 +352,7 @@ numbering and text:</property>
               <object class="GtkLabel" id="label10">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">Position and Spacing</property>
+                <property name="label" translatable="yes" context="numberingpositionpage|label10">Position and Spacing</property>
                 <attributes>
                   <attribute name="weight" value="bold"/>
                 </attributes>
@@ -405,51 +366,156 @@ numbering and text:</property>
           </packing>
         </child>
         <child>
-          <object class="GtkGrid" id="grid2">
+          <object class="GtkFrame">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="hexpand">True</property>
-            <property name="vexpand">True</property>
-            <property name="column_spacing">12</property>
+            <property name="label_xalign">0</property>
+            <property name="shadow_type">none</property>
             <child>
-              <object class="GtkButton" id="standard">
-                <property name="label" translatable="yes">Default</property>
+              <object class="GtkAlignment">
                 <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <property name="receives_default">True</property>
-                <property name="valign">end</property>
-              </object>
-              <packing>
-                <property name="left_attach">1</property>
-                <property name="top_attach">0</property>
-              </packing>
-            </child>
-            <child>
-              <object class="cuilo-SvxNumberingPreview" id="preview">
-                    <property name="width_request">300</property>
-                    <property name="height_request">150</property>
+                <property name="can_focus">False</property>
+                <property name="top_padding">6</property>
+                <property name="left_padding">12</property>
+                <child>
+                  <object class="GtkGrid" id="grid2">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="hexpand">True</property>
                     <property name="vexpand">True</property>
+                    <property name="column_spacing">12</property>
+                    <child>
+                      <object class="GtkButton" id="standard">
+                        <property name="label" translatable="yes" context="numberingpositionpage|standard">Default</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="receives_default">True</property>
+                        <property name="valign">end</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">1</property>
+                        <property name="top_attach">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkScrolledWindow" id="previewwin">
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">True</property>
+                        <property name="hscrollbar_policy">never</property>
+                        <property name="vscrollbar_policy">never</property>
+                        <property name="shadow_type">in</property>
+                        <child>
+                          <object class="GtkViewport">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <child>
+                              <object class="GtkDrawingArea" id="preview">
+                                <property name="width_request">300</property>
+                                <property name="height_request">150</property>
+                                <property name="visible">True</property>
+                                <property name="can_focus">False</property>
+                                <property name="hexpand">True</property>
+                                <property name="vexpand">True</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="left_attach">0</property>
+                        <property name="top_attach">0</property>
+                      </packing>
+                    </child>
                   </object>
-              <packing>
-                <property name="left_attach">0</property>
-                <property name="top_attach">0</property>
-              </packing>
+                </child>
+              </object>
+            </child>
+            <child type="label">
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label" translatable="yes" context="numberingpositionpage|previewframe">Preview</property>
+                <attributes>
+                  <attribute name="weight" value="bold"/>
+                </attributes>
+              </object>
             </child>
           </object>
           <packing>
             <property name="expand">False</property>
             <property name="fill">True</property>
-            <property name="position">1</property>
+            <property name="position">2</property>
           </packing>
         </child>
       </object>
       <packing>
         <property name="expand">False</property>
         <property name="fill">True</property>
-        <property name="position">1</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkFrame" id="frame3">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="label_xalign">0</property>
+        <property name="shadow_type">none</property>
+        <child>
+          <object class="GtkAlignment" id="alignment5">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="top_padding">6</property>
+            <property name="left_padding">12</property>
+            <child>
+              <object class="GtkScrolledWindow">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="shadow_type">in</property>
+                <child>
+                  <object class="GtkTreeView" id="levellb">
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="model">liststore1</property>
+                    <property name="headers_visible">False</property>
+                    <property name="headers_clickable">False</property>
+                    <property name="search_column">0</property>
+                    <property name="show_expanders">False</property>
+                    <child internal-child="selection">
+                      <object class="GtkTreeSelection" id="treeview-selection1"/>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn" id="treeviewcolumn1">
+                        <child>
+                          <object class="GtkCellRendererText" id="cellrenderertext1"/>
+                          <attributes>
+                            <attribute name="text">0</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child type="label">
+          <object class="GtkLabel" id="1">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="label" translatable="yes" context="numberingpositionpage|1">Level</property>
+            <attributes>
+              <attribute name="weight" value="bold"/>
+            </attributes>
+          </object>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
       </packing>
     </child>
   </object>

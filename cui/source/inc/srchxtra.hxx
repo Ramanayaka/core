@@ -19,75 +19,65 @@
 #ifndef INCLUDED_CUI_SOURCE_INC_SRCHXTRA_HXX
 #define INCLUDED_CUI_SOURCE_INC_SRCHXTRA_HXX
 
-#include <vcl/field.hxx>
-#include <svtools/ctrltool.hxx>
 #include <sfx2/tabdlg.hxx>
-
-#include <svx/checklbx.hxx>
+#include <svtools/ctrltool.hxx>
 #include <svx/srchdlg.hxx>
+#include <vcl/weld.hxx>
 
-class SvxSearchFormatDialog : public SfxTabDialog
+class SvxSearchFormatDialog : public SfxTabDialogController
 {
 public:
-    SvxSearchFormatDialog( vcl::Window* pParent, const SfxItemSet& rSet );
+    SvxSearchFormatDialog(weld::Window* pParent, const SfxItemSet& rSet);
     virtual ~SvxSearchFormatDialog() override;
-    virtual void dispose() override;
 
 protected:
-    virtual void    PageCreated( sal_uInt16 nId, SfxTabPage &rPage ) override;
+    virtual void PageCreated(const OString& rId, SfxTabPage &rPage) override;
 
 private:
-    FontList*  m_pFontList;
-    sal_uInt16 m_nNamePageId;
-    sal_uInt16 m_nParaStdPageId;
-    sal_uInt16 m_nParaAlignPageId;
-    sal_uInt16 m_nBackPageId;
+    std::unique_ptr<FontList> m_pFontList;
 };
 
 // class SvxSearchFormatDialog -------------------------------------------
 
-class SvxSearchAttributeDialog : public ModalDialog
+class SvxSearchAttributeDialog : public weld::GenericDialogController
 {
 public:
-    SvxSearchAttributeDialog( vcl::Window* pParent, SearchAttrItemList& rLst,
-                              const sal_uInt16* pWhRanges );
+    SvxSearchAttributeDialog(weld::Window* pParent, SearchAttrItemList& rLst,
+                             const sal_uInt16* pWhRanges);
     virtual ~SvxSearchAttributeDialog() override;
-    virtual void dispose() override;
 
 private:
-    VclPtr<SvxCheckListBox>    m_pAttrLB;
-    VclPtr<OKButton>           m_pOKBtn;
-
     SearchAttrItemList& rList;
 
-    DECL_LINK(OKHdl, Button*, void);
+    std::unique_ptr<weld::TreeView> m_xAttrLB;
+    std::unique_ptr<weld::Button> m_xOKBtn;
+
+    DECL_LINK(OKHdl, weld::Button&, void);
 };
 
 // class SvxSearchSimilarityDialog ---------------------------------------
 
-class SvxSearchSimilarityDialog : public ModalDialog
+class SvxSearchSimilarityDialog : public weld::GenericDialogController
 {
 private:
-    VclPtr<NumericField>        m_pOtherFld;
-    VclPtr<NumericField>        m_pLongerFld;
-    VclPtr<NumericField>        m_pShorterFld;
-    VclPtr<CheckBox>            m_pRelaxBox;
+    std::unique_ptr<weld::SpinButton> m_xOtherFld;
+    std::unique_ptr<weld::SpinButton> m_xLongerFld;
+    std::unique_ptr<weld::SpinButton> m_xShorterFld;
+    std::unique_ptr<weld::CheckButton> m_xRelaxBox;
 
 public:
-    SvxSearchSimilarityDialog(  vcl::Window* pParent,
-                                bool bRelax,
-                                sal_uInt16 nOther,
-                                sal_uInt16 nShorter,
-                                sal_uInt16 nLonger );
+    SvxSearchSimilarityDialog(weld::Window* pParent,
+                              bool bRelax,
+                              sal_uInt16 nOther,
+                              sal_uInt16 nShorter,
+                              sal_uInt16 nLonger);
     virtual ~SvxSearchSimilarityDialog() override;
-    virtual void dispose() override;
 
-    sal_uInt16  GetOther()      { return (sal_uInt16)m_pOtherFld->GetValue(); }
-    sal_uInt16  GetShorter()    { return (sal_uInt16)m_pShorterFld->GetValue(); }
-    sal_uInt16  GetLonger()     { return (sal_uInt16)m_pLongerFld->GetValue(); }
-    bool    IsRelaxed()     { return m_pRelaxBox->IsChecked(); }
+    sal_uInt16  GetOther() const      { return static_cast<sal_uInt16>(m_xOtherFld->get_value()); }
+    sal_uInt16  GetShorter() const    { return static_cast<sal_uInt16>(m_xShorterFld->get_value()); }
+    sal_uInt16  GetLonger() const     { return static_cast<sal_uInt16>(m_xLongerFld->get_value()); }
+    bool        IsRelaxed() const     { return m_xRelaxBox->get_active(); }
 };
-
 
 #endif
 

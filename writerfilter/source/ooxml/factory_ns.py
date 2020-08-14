@@ -7,7 +7,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-from __future__ import print_function
 from xml.dom import minidom
 import sys
 
@@ -21,6 +20,7 @@ def createHeader(model, ns):
 #include "OOXMLFactory_generated.hxx"
 #include "oox/token/namespaces.hxx"
 #include "ooxml/resourceids.hxx"
+#include "tools/ref.hxx"
 
 namespace writerfilter {
 namespace ooxml {
@@ -31,7 +31,7 @@ namespace ooxml {
     print("""class OOXMLFactory_%s : public OOXMLFactory_ns
 {
 public:
-    typedef std::shared_ptr <OOXMLFactory_ns> Pointer_t;
+    typedef tools::SvRef<OOXMLFactory_ns> Pointer_t;
 
     static Pointer_t getInstance();
 
@@ -65,6 +65,7 @@ protected:
     print("""/// @endcond
 }}
 #endif //INCLUDED_OOXML_FACTORY_%s_HXX""" % nsToken.upper())
+
 
 modelPath = sys.argv[1]
 filePath = sys.argv[2]

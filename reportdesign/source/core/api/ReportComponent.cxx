@@ -16,9 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "ReportComponent.hxx"
+#include <ReportComponent.hxx>
 
-#include "corestrings.hrc"
 #include <vcl/svapp.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/settings.hxx>
@@ -26,12 +25,9 @@
 #include <toolkit/helper/vclunohelper.hxx>
 #include <com/sun/star/awt/FontWeight.hpp>
 #include <com/sun/star/awt/FontWidth.hpp>
-#include "ReportControlModel.hxx"
-#include <com/sun/star/reflection/XProxyFactory.hpp>
-#include <com/sun/star/text/ParagraphVertAlign.hpp>
+#include <ReportControlModel.hxx>
 #include <com/sun/star/i18n/ScriptType.hpp>
-#include <editeng/unolingu.hxx>
-#include <unotools/syslocale.hxx>
+#include <comphelper/uno3.hxx>
 #include <unotools/lingucfg.hxx>
 #include <i18nlangtag/mslangid.hxx>
 #include <i18nlangtag/languagetag.hxx>
@@ -43,7 +39,7 @@ namespace reportdesign
     using namespace com::sun::star;
     using namespace comphelper;
 
-void lcl_getDefaultFonts( vcl::Font& rLatinFont, vcl::Font& rCJKFont, vcl::Font& rCTLFont, LanguageType  _eLatin, LanguageType _eCJK, LanguageType _eCTL )
+static void lcl_getDefaultFonts( vcl::Font& rLatinFont, vcl::Font& rCJKFont, vcl::Font& rCTLFont, LanguageType  _eLatin, LanguageType _eCJK, LanguageType _eCTL )
 {
         LanguageType eLatin = _eLatin;
 
@@ -83,11 +79,11 @@ OFormatProperties::OFormatProperties()
         SvtLinguConfig aLinguConfig;
         using namespace ::com::sun::star::i18n::ScriptType;
 
-        aLinguConfig.GetProperty(OUString("DefaultLocale")) >>= aCharLocale;
+        aLinguConfig.GetProperty("DefaultLocale") >>= aCharLocale;
         LanguageType eCurLang = MsLangId::resolveSystemLanguageByScriptType(LanguageTag::convertToLanguageType( aCharLocale, false), LATIN);
-        aLinguConfig.GetProperty(OUString("DefaultLocale_CJK"))  >>= aCharLocaleAsian;
+        aLinguConfig.GetProperty("DefaultLocale_CJK")  >>= aCharLocaleAsian;
         LanguageType eCurLangCJK = MsLangId::resolveSystemLanguageByScriptType(LanguageTag::convertToLanguageType( aCharLocaleAsian, false), ASIAN);
-        aLinguConfig.GetProperty(OUString("DefaultLocale_CTL"))  >>= aCharLocaleComplex;
+        aLinguConfig.GetProperty("DefaultLocale_CTL")  >>= aCharLocaleComplex;
         LanguageType eCurLangCTL = MsLangId::resolveSystemLanguageByScriptType(LanguageTag::convertToLanguageType( aCharLocaleComplex, false), COMPLEX);
 
         vcl::Font aLatin,aCJK,aCTL;

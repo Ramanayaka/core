@@ -17,49 +17,47 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <basic/basmgr.hxx>
-#include <svtools/imapobj.hxx>
+#include <editeng/flditem.hxx>
+#include <vcl/imapobj.hxx>
 #include <svl/urihelper.hxx>
-#include <unotools/securityoptions.hxx>
+#include <sfx2/sfxhelp.hxx>
 #include <vcl/help.hxx>
 #include <svx/svdview.hxx>
 #include <fmturl.hxx>
 #include <frmfmt.hxx>
 #include <doc.hxx>
 #include <IDocumentLayoutAccess.hxx>
-#include <shellres.hxx>
 #include <viewimp.hxx>
 #include <pagefrm.hxx>
-#include <cntfrm.hxx>
 #include <rootfrm.hxx>
-#include <frmatr.hxx>
 #include <viewsh.hxx>
 #include <drawdoc.hxx>
 #include <dpage.hxx>
 #include <dcontact.hxx>
 #include <dflyobj.hxx>
 #include <docsh.hxx>
-#include <usrfld.hxx>
 #include <flyfrm.hxx>
-#include <ndnotxt.hxx>
-#include <grfatr.hxx>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::frame;
 
-SwDPage::SwDPage(SwDrawModel& rNewModel, bool bMasterPage) :
-    FmFormPage(rNewModel, bMasterPage),
-    pGridLst( nullptr ),
+SwDPage::SwDPage(SwDrawModel& rNewModel, bool bMasterPage)
+:   FmFormPage(rNewModel, bMasterPage),
     pDoc(&rNewModel.GetDoc())
 {
 }
 
-SwDPage::SwDPage(const SwDPage& rSrcPage) :
-    FmFormPage( rSrcPage ),
-    pDoc( nullptr )
+SwDPage::~SwDPage()
 {
+}
+
+void SwDPage::lateInit(const SwDPage& rSrcPage)
+{
+    FmFormPage::lateInit( rSrcPage );
+
     if ( rSrcPage.pGridLst )
     {
         pGridLst.reset( new SdrPageGridFrameList );
@@ -68,39 +66,15 @@ SwDPage::SwDPage(const SwDPage& rSrcPage) :
     }
 }
 
-SwDPage::~SwDPage()
+SwDPage* SwDPage::CloneSdrPage(SdrModel& rTargetModel) const
 {
-}
-
-void SwDPage::lateInit(const SwDPage& rPage, SwDrawModel* const pNewModel)
-{
-    FmFormPage::lateInit( rPage, pNewModel );
-
-    SwDrawModel* pSwDrawModel = pNewModel;
-    if (!pSwDrawModel)
-    {
-        pSwDrawModel = &dynamic_cast<SwDrawModel&>(*GetModel());
-        assert( pSwDrawModel );
-    }
-    pDoc = &pSwDrawModel->GetDoc();
-}
-
-SwDPage* SwDPage::Clone() const
-{
-    return Clone( nullptr );
-}
-
-SwDPage* SwDPage::Clone(SdrModel* const pNewModel) const
-{
-    SwDPage* const pNewPage = new SwDPage( *this );
-    SwDrawModel* pSwDrawModel = nullptr;
-    if ( pNewModel )
-    {
-        pSwDrawModel = &dynamic_cast<SwDrawModel&>(*pNewModel);
-        assert( pSwDrawModel );
-    }
-    pNewPage->lateInit( *this, pSwDrawModel );
-    return pNewPage;
+    SwDrawModel& rSwDrawModel(static_cast< SwDrawModel& >(rTargetModel));
+    SwDPage* pClonedSwDPage(
+        new SwDPage(
+            rSwDrawModel,
+            IsMasterPage()));
+    pClonedSwDPage->lateInit(*this);
+    return pClonedSwDPage;
 }
 
 SdrObject*  SwDPage::ReplaceObject( SdrObject* pNewObj, size_t nObjNum )
@@ -114,19 +88,19 @@ SdrObject*  SwDPage::ReplaceObject( SdrObject* pNewObj, size_t nObjNum )
     return FmFormPage::ReplaceObject( pNewObj, nObjNum );
 }
 
-void InsertGridFrame( SdrPageGridFrameList *pLst, const SwFrame *pPg )
+static void InsertGridFrame( SdrPageGridFrameList *pLst, const SwFrame *pPg )
 {
-    SwRect aPrt( pPg->Prt() );
-    aPrt += pPg->Frame().Pos();
+    SwRect aPrt( pPg->getFramePrintArea() );
+    aPrt += pPg->getFrameArea().Pos();
     const tools::Rectangle aUser( aPrt.SVRect() );
-    const tools::Rectangle aPaper( pPg->Frame().SVRect() );
+    const tools::Rectangle aPaper( pPg->getFrameArea().SVRect() );
     pLst->Insert( SdrPageGridFrame( aPaper, aUser ) );
 }
 
 const SdrPageGridFrameList*  SwDPage::GetGridFrameList(
                         const SdrPageView* pPV, const tools::Rectangle *pRect ) const
 {
-    SwViewShell* pSh = static_cast< SwDrawModel* >(GetModel())->GetDoc().getIDocumentLayoutAccess().GetCurrentViewShell();
+    SwViewShell* pSh = static_cast< SwDrawModel& >(getSdrModelFromSdrPage()).GetDoc().getIDocumentLayoutAccess().GetCurrentViewShell();
     if(pSh)
     {
         for(SwViewShell& rShell : pSh->GetRingContainer())
@@ -148,7 +122,7 @@ const SdrPageGridFrameList*  SwDPage::GetGridFrameList(
             const SwRect aRect( *pRect );
             const SwFrame *pPg = pSh->GetLayout()->Lower();
             do
-            {   if ( pPg->Frame().IsOver( aRect ) )
+            {   if ( pPg->getFrameArea().IsOver( aRect ) )
                     ::InsertGridFrame( const_cast<SwDPage*>(this)->pGridLst.get(), pPg );
                 pPg = pPg->GetNext();
             } while ( pPg );
@@ -161,13 +135,13 @@ const SdrPageGridFrameList*  SwDPage::GetGridFrameList(
                 do
                 {   ::InsertGridFrame( const_cast<SwDPage*>(this)->pGridLst.get(), pPg );
                     pPg = pPg->GetNext();
-                } while ( pPg && pPg->Frame().IsOver( pSh->VisArea() ) );
+                } while ( pPg && pPg->getFrameArea().IsOver( pSh->VisArea() ) );
         }
     }
     return pGridLst.get();
 }
 
-bool SwDPage::RequestHelp( vcl::Window* pWindow, SdrView* pView,
+bool SwDPage::RequestHelp( vcl::Window* pWindow, SdrView const * pView,
                            const HelpEvent& rEvt )
 {
     assert( pDoc );
@@ -183,11 +157,15 @@ bool SwDPage::RequestHelp( vcl::Window* pWindow, SdrView* pView,
         SdrPageView* pPV;
         SdrObject* pObj = pView->PickObj(aPos, 0, pPV, SdrSearchOptions::PICKMACRO);
         SwVirtFlyDrawObj* pDrawObj = dynamic_cast<SwVirtFlyDrawObj*>(pObj);
+        OUString sText;
+        tools::Rectangle aPixRect;
         if (pDrawObj)
         {
             SwFlyFrame *pFly = pDrawObj->GetFlyFrame();
+
+            aPixRect = pWindow->LogicToPixel(pFly->getFrameArea().SVRect());
+
             const SwFormatURL &rURL = pFly->GetFormat()->GetURL();
-            OUString sText;
             if( rURL.GetMap() )
             {
                 IMapObject *pTmpObj = pFly->GetFormat()->GetIMapObject( aPos, pFly );
@@ -210,7 +188,7 @@ bool SwDPage::RequestHelp( vcl::Window* pWindow, SdrView* pView,
                 {
                     // then append the relative pixel position!!
                     Point aPt( aPos );
-                    aPt -= pFly->Frame().Pos();
+                    aPt -= pFly->getFrameArea().Pos();
                     // without MapMode-Offset !!!!!
                     // without MapMode-Offset, without Offset, w ... !!!!!
                     aPt = pWindow->LogicToPixel(
@@ -219,34 +197,36 @@ bool SwDPage::RequestHelp( vcl::Window* pWindow, SdrView* pView,
                           + "," + OUString::number( aPt.getY() );
                 }
             }
-
-            if ( !sText.isEmpty() )
+        }
+        else
+        {
+            SdrViewEvent aVEvt;
+            MouseEvent aMEvt(pWindow->ScreenToOutputPixel(rEvt.GetMousePosPixel()), 1,
+                             MouseEventModifiers::NONE, MOUSE_LEFT);
+            pView->PickAnything(aMEvt, SdrMouseEventKind::BUTTONDOWN, aVEvt);
+            if (aVEvt.eEvent == SdrEventKind::ExecuteUrl)
             {
-                // #i80029#
-                bool bExecHyperlinks = pDoc->GetDocShell()->IsReadOnly();
-                if ( !bExecHyperlinks )
-                {
-                    SvtSecurityOptions aSecOpts;
-                    bExecHyperlinks = !aSecOpts.IsOptionSet( SvtSecurityOptions::EOption::CtrlClickHyperlink );
-
-                    if ( !bExecHyperlinks )
-                        sText = SwViewShell::GetShellRes()->aLinkCtrlClick + ": " + sText;
-                    else
-                        sText = SwViewShell::GetShellRes()->aLinkClick + ": " + sText;
-                }
-
-                // then display the help:
-                tools::Rectangle aRect( rEvt.GetMousePosPixel(), Size(1,1) );
-                if( rEvt.GetMode() & HelpEventMode::BALLOON )
-                {
-                    Help::ShowBalloon( pWindow, rEvt.GetMousePosPixel(), aRect, sText );
-                }
-                else
-                {
-                    Help::ShowQuickHelp( pWindow, aRect, sText );
-                }
-                bContinue = false;
+                sText = aVEvt.pURLField->GetURL();
+                aPixRect = pWindow->LogicToPixel(aVEvt.pObj->GetLogicRect());
             }
+        }
+
+        if (!sText.isEmpty())
+        {
+            // #i80029#
+            bool bExecHyperlinks = pDoc->GetDocShell()->IsReadOnly();
+            if (!bExecHyperlinks)
+                sText = SfxHelp::GetURLHelpText(sText);
+
+            // then display the help:
+            tools::Rectangle aScreenRect(pWindow->OutputToScreenPixel(aPixRect.TopLeft()),
+                                         pWindow->OutputToScreenPixel(aPixRect.BottomRight()));
+
+            if (rEvt.GetMode() & HelpEventMode::BALLOON)
+                Help::ShowBalloon(pWindow, rEvt.GetMousePosPixel(), aScreenRect, sText);
+            else
+                Help::ShowQuickHelp(pWindow, aScreenRect, sText);
+            bContinue = false;
         }
     }
 

@@ -17,11 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <unotools/linguprops.hxx>
-#include <unotools/lingucfg.hxx>
 #include <hintids.hxx>
-#include <sfx2/progress.hxx>
-#include <svx/svdmodel.hxx>
+#include <sot/exchange.hxx>
 #include <svx/svdpage.hxx>
 #include <editeng/keepitem.hxx>
 #include <editeng/ulspitem.hxx>
@@ -30,14 +27,12 @@
 #include <editeng/shaditem.hxx>
 #include <editeng/protitem.hxx>
 #include <editeng/opaqitem.hxx>
-#include <editeng/prntitem.hxx>
-#include <svx/fmglob.hxx>
 #include <svx/svdouno.hxx>
-#include <svx/fmpage.hxx>
 #include <editeng/frmdiritem.hxx>
 #include <swmodule.hxx>
 #include <modcfg.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <SwStyleNameMapper.hxx>
 #include <drawdoc.hxx>
 #include <fchrfmt.hxx>
@@ -50,10 +45,7 @@
 #include <fmtfsize.hxx>
 #include <fmtsrnd.hxx>
 #include <fmtflcnt.hxx>
-#include <fmtcnct.hxx>
 #include <frmfmt.hxx>
-#include <txtflcnt.hxx>
-#include <docfld.hxx>
 #include <pam.hxx>
 #include <ndtxt.hxx>
 #include <ndnotxt.hxx>
@@ -63,7 +55,6 @@
 #include <IDocumentRedlineAccess.hxx>
 #include <DocumentSettingManager.hxx>
 #include <IDocumentDrawModelAccess.hxx>
-#include <DocumentContentOperationsManager.hxx>
 #include <IDocumentFieldsAccess.hxx>
 #include <IDocumentState.hxx>
 #include <IDocumentLayoutAccess.hxx>
@@ -71,9 +62,9 @@
 #include <rootfrm.hxx>
 #include <pagefrm.hxx>
 #include <cntfrm.hxx>
+#include <txtfrm.hxx>
+#include <notxtfrm.hxx>
 #include <flyfrm.hxx>
-#include <fesh.hxx>
-#include <docsh.hxx>
 #include <dflyobj.hxx>
 #include <dcontact.hxx>
 #include <swundo.hxx>
@@ -84,17 +75,13 @@
 #include <docary.hxx>
 #include <swtable.hxx>
 #include <tblsel.hxx>
-#include <viewopt.hxx>
-#include <fldupde.hxx>
 #include <txtftn.hxx>
 #include <ftnidx.hxx>
 #include <ftninfo.hxx>
 #include <pagedesc.hxx>
-#include <PostItMgr.hxx>
-#include <comcore.hrc>
+#include <strings.hrc>
+#include <frameformats.hxx>
 #include <tools/datetimeutils.hxx>
-
-#include <unoframe.hxx>
 
 #include <sortedobjs.hxx>
 
@@ -125,7 +112,9 @@ SdrObject* SwDoc::CloneSdrObj( const SdrObject& rObj, bool bMoveWithinDoc,
         getIDocumentDrawModelAccess().GetDrawModel()->InsertPage( pPg );
     }
 
-    SdrObject *pObj = rObj.Clone();
+    // TTTT Clone directly to target SdrModel
+    SdrObject *pObj(rObj.CloneSdrObject(*getIDocumentDrawModelAccess().GetDrawModel()));
+
     if( bMoveWithinDoc && SdrInventor::FmForm == pObj->GetObjInventor() )
     {
         // We need to preserve the Name for Controls
@@ -136,12 +125,12 @@ SdrObject* SwDoc::CloneSdrObj( const SdrObject& rObj, bool bMoveWithinDoc,
         if( xSet.is() )
             aVal = xSet->getPropertyValue( sName );
         if( bInsInPage )
-            pPg->InsertObject( pObj );
+            pPg->InsertObjectThenMakeNameUnique( pObj );
         if( xSet.is() )
             xSet->setPropertyValue( sName, aVal );
     }
     else if( bInsInPage )
-        pPg->InsertObject( pObj );
+        pPg->InsertObjectThenMakeNameUnique( pObj );
 
     // For drawing objects: set layer of cloned object to invisible layer
     SdrLayerID nLayerIdForClone = rObj.GetLayer();
@@ -259,19 +248,19 @@ SwFlyFrameFormat* SwDoc::MakeFlySection_( const SwPosition& rAnchPos,
 
     if( SfxItemState::SET != pFormat->GetAttrSet().GetItemState( RES_FRM_SIZE ))
     {
-        SwFormatFrameSize aFormatSize( ATT_VAR_SIZE, 0, DEF_FLY_WIDTH );
+        SwFormatFrameSize aFormatSize( SwFrameSize::Variable, 0, DEF_FLY_WIDTH );
         const SwNoTextNode* pNoTextNode = rNode.GetNoTextNode();
         if( pNoTextNode )
         {
             // Set size
-             Size aSize( pNoTextNode->GetTwipSize() );
+            Size aSize( pNoTextNode->GetTwipSize() );
             if( MINFLY > aSize.Width() )
-                aSize.Width() = DEF_FLY_WIDTH;
+                aSize.setWidth( DEF_FLY_WIDTH );
             aFormatSize.SetWidth( aSize.Width() );
             if( aSize.Height() )
             {
                 aFormatSize.SetHeight( aSize.Height() );
-                aFormatSize.SetHeightSizeType( ATT_FIX_SIZE );
+                aFormatSize.SetHeightSizeType( SwFrameSize::Fixed );
             }
         }
         pFormat->SetFormatAttr( aFormatSize );
@@ -286,7 +275,7 @@ SwFlyFrameFormat* SwDoc::MakeFlySection_( const SwPosition& rAnchPos,
         sal_uLong nNodeIdx = rAnchPos.nNode.GetIndex();
         const sal_Int32 nCntIdx = rAnchPos.nContent.GetIndex();
         GetIDocumentUndoRedo().AppendUndo(
-            new SwUndoInsLayFormat( pFormat, nNodeIdx, nCntIdx ));
+            std::make_unique<SwUndoInsLayFormat>( pFormat, nNodeIdx, nCntIdx ));
     }
 
     getIDocumentState().SetModified();
@@ -307,7 +296,7 @@ SwFlyFrameFormat* SwDoc::MakeFlySection( RndStdIds eAnchorType,
             ( pFrameFormat && SfxItemState::SET == pFrameFormat->GetItemState(
                 RES_ANCHOR, true, reinterpret_cast<const SfxPoolItem**>(&pAnch) )) )
         {
-            if ( (RndStdIds::FLY_AT_PAGE != pAnch->GetAnchorId()) )
+            if ( RndStdIds::FLY_AT_PAGE != pAnch->GetAnchorId() )
             {
                 pAnchorPos = pAnch->GetContentAnchor();
             }
@@ -328,7 +317,10 @@ SwFlyFrameFormat* SwDoc::MakeFlySection( RndStdIds eAnchorType,
             (SwNodeIndex( GetNodes().GetEndOfAutotext()),
              getIDocumentStylePoolAccess().GetTextCollFromPool( nCollId ));
         SwContentNode * pAnchorNode = pAnchorPos->nNode.GetNode().GetContentNode();
-        assert(pAnchorNode); // pAnchorNode from cursor, must be valid
+        // pAnchorNode from cursor must be valid, unless a whole table is selected (in which
+        // case the node is not a content node, and pAnchorNode is nullptr). In the latter case,
+        // bCalledFromShell is false.
+        assert(!bCalledFromShell || pAnchorNode);
 
         const SfxPoolItem * pItem = nullptr;
 
@@ -339,7 +331,7 @@ SwFlyFrameFormat* SwDoc::MakeFlySection( RndStdIds eAnchorType,
             pNewTextNd->SetAttr(*pItem);
         }
 
-         pFormat = MakeFlySection_( *pAnchorPos, *pNewTextNd,
+        pFormat = MakeFlySection_( *pAnchorPos, *pNewTextNd,
                                 eAnchorType, pFlySet, pFrameFormat );
     }
     return pFormat;
@@ -349,7 +341,7 @@ SwFlyFrameFormat* SwDoc::MakeFlyAndMove( const SwPaM& rPam, const SfxItemSet& rS
                                     const SwSelBoxes* pSelBoxes,
                                     SwFrameFormat *pParent )
 {
-    const SwFormatAnchor& rAnch = static_cast<const SwFormatAnchor&>(rSet.Get( RES_ANCHOR ));
+    const SwFormatAnchor& rAnch = rSet.Get( RES_ANCHOR );
 
     GetIDocumentUndoRedo().StartUndo( SwUndoId::INSLAYFMT, nullptr );
 
@@ -437,7 +429,7 @@ SwFlyFrameFormat* SwDoc::MakeFlyAndMove( const SwPaM& rPam, const SfxItemSet& rS
                         *rTmp.GetPoint() != *rTmp.GetMark() )
                     {
                         // aPos is the newly created fly section, so definitely outside rPam, it's pointless to check that again.
-                        getIDocumentContentOperations().CopyRange( *const_cast<SwPaM*>(&rTmp), aPos, /*bCopyAll=*/false, /*bCheckPos=*/false );
+                        getIDocumentContentOperations().CopyRange(*const_cast<SwPaM*>(&rTmp), aPos, SwCopyFlags::IsMoveToFly);
                     }
                 }
                 getIDocumentRedlineAccess().SetRedlineMove(bOldRedlineMove);
@@ -500,7 +492,10 @@ static bool lcl_TstFlyRange( const SwPaM* pPam, const SwPosition* pFlyPos,
                      (nPamEndContentIndex > nFlyContentIndex )));
         }
 
-    } while( !bOk && pPam != ( pTmp = pTmp->GetNext() ));
+        if( bOk )
+            break;
+        pTmp = pTmp->GetNext();
+    } while( pPam != pTmp );
     return bOk;
 }
 
@@ -575,7 +570,9 @@ SwPosFlyFrames SwDoc::GetAllFlyFormats( const SwPaM* pCmpRange, bool bDrawAlso,
                     }
                     if ( pContentFrame )
                     {
-                        SwNodeIndex aIdx( *pContentFrame->GetNode() );
+                        SwNodeIndex aIdx( pContentFrame->IsTextFrame()
+                            ? *static_cast<SwTextFrame const*>(pContentFrame)->GetTextNodeFirst()
+                            : *static_cast<SwNoTextFrame const*>(pContentFrame)->GetNode() );
                         aRetval.insert(std::make_shared<SwPosFlyFrame>(aIdx, pFly, aRetval.size()));
                     }
                 }
@@ -643,7 +640,7 @@ lcl_InsertLabel(SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable,
     // Get the field first, because we retrieve the TextColl via the field's name
     OSL_ENSURE( nId == USHRT_MAX  || nId < rDoc.getIDocumentFieldsAccess().GetFieldTypes()->size(),
             "FieldType index out of bounds." );
-    SwFieldType *pType = (nId != USHRT_MAX) ? (*rDoc.getIDocumentFieldsAccess().GetFieldTypes())[nId] : nullptr;
+    SwFieldType *pType = (nId != USHRT_MAX) ? (*rDoc.getIDocumentFieldsAccess().GetFieldTypes())[nId].get() : nullptr;
     OSL_ENSURE(!pType || pType->Which() == SwFieldIds::SetExp, "wrong Id for Label");
 
     SwTextFormatColl * pColl = nullptr;
@@ -670,10 +667,10 @@ lcl_InsertLabel(SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable,
 
     switch ( eType )
     {
-        case LTYPE_TABLE:
+        case SwLabelType::Table:
             bTable = true;
-            SAL_FALLTHROUGH;
-        case LTYPE_FLY:
+            [[fallthrough]];
+        case SwLabelType::Fly:
             // At the FlySection's Beginning/End insert the corresponding Node with its Field.
             // The Frame is created automatically.
             {
@@ -702,7 +699,7 @@ lcl_InsertLabel(SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable,
             }
             break;
 
-        case LTYPE_OBJECT:
+        case SwLabelType::Object:
             {
                 // Destroy Frame,
                 // insert new Frame,
@@ -730,7 +727,7 @@ lcl_InsertLabel(SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable,
 
                 /* #i6447#: Only the selected items are copied from the old
                    format. */
-                SfxItemSet* pNewSet = pNewFormat->GetAttrSet().Clone();
+                std::unique_ptr<SfxItemSet> pNewSet = pNewFormat->GetAttrSet().Clone();
 
                 // Copy only the set attributes.
                 // The others should apply from the Templates.
@@ -774,9 +771,9 @@ lcl_InsertLabel(SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable,
                 pNewSet->Put( pOldFormat->GetAnchor() );
 
                 // The new one should be changeable in its height.
-                SwFormatFrameSize aFrameSize( pOldFormat->GetFrameSize() );
-                aFrameSize.SetHeightSizeType( ATT_MIN_SIZE );
-                pNewSet->Put( aFrameSize );
+                std::unique_ptr<SwFormatFrameSize> aFrameSize(pOldFormat->GetFrameSize().Clone());
+                aFrameSize->SetHeightSizeType( SwFrameSize::Minimum );
+                pNewSet->Put( std::move(aFrameSize) );
 
                 SwStartNode* pSttNd = rDoc.GetNodes().MakeTextSection(
                             SwNodeIndex( rDoc.GetNodes().GetEndOfAutotext() ),
@@ -813,7 +810,7 @@ lcl_InsertLabel(SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable,
 
                 // The old one should not have a flow and it should be adjusted to above and
                 // middle.
-                // Also, the width should be 100% and it should also adjust the hight, if changed.
+                // Also, the width should be 100% and it should also adjust the height, if changed.
                 pNewSet->ClearItem();
 
                 pNewSet->Put( SwFormatSurround( css::text::WrapTextMode_NONE ) );
@@ -823,7 +820,7 @@ lcl_InsertLabel(SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable,
                 pNewSet->Put( SwFormatVertOrient( 0, eVert ) );
                 pNewSet->Put( SwFormatHoriOrient( 0, text::HoriOrientation::CENTER ) );
 
-                aFrameSize = pOldFormat->GetFrameSize();
+                aFrameSize.reset(pOldFormat->GetFrameSize().Clone());
 
                 SwOLENode* pOleNode = rDoc.GetNodes()[nNdIdx + 1]->GetOLENode();
                 bool isMath = false;
@@ -836,9 +833,9 @@ lcl_InsertLabel(SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable,
                         isMath = ( SotExchange::IsMath( aCLSID ) != 0 );
                     }
                 }
-                aFrameSize.SetWidthPercent(isMath ? 0 : 100);
-                aFrameSize.SetHeightPercent(SwFormatFrameSize::SYNCED);
-                pNewSet->Put( aFrameSize );
+                aFrameSize->SetWidthPercent(isMath ? 0 : 100);
+                aFrameSize->SetHeightPercent(SwFormatFrameSize::SYNCED);
+                pNewSet->Put( std::move(aFrameSize) );
 
                 // Hard-set the attributes, because they could come from the Template
                 // and then size calculations could not be correct anymore.
@@ -863,7 +860,7 @@ lcl_InsertLabel(SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable,
                 else
                     pOldFormat->SetFormatAttr( *pNewSet );
 
-                delete pNewSet;
+                pNewSet.reset();
 
                 // Have only the FlyFrames created.
                 // We leave this to established methods (especially for InCntFlys).
@@ -966,21 +963,21 @@ SwDoc::InsertLabel(
         OUString const& rCharacterStyle,
         bool const bCpyBrd )
 {
-    SwUndoInsertLabel * pUndo(nullptr);
+    std::unique_ptr<SwUndoInsertLabel> pUndo;
     if (GetIDocumentUndoRedo().DoesUndo())
     {
-        pUndo = new SwUndoInsertLabel(
+        pUndo.reset(new SwUndoInsertLabel(
                         eType, rText, rSeparator, rNumberingSeparator,
-                        bBefore, nId, rCharacterStyle, bCpyBrd, this );
+                        bBefore, nId, rCharacterStyle, bCpyBrd, this ));
     }
 
-    SwFlyFrameFormat *const pNewFormat = lcl_InsertLabel(*this, mpTextFormatCollTable, pUndo,
+    SwFlyFrameFormat *const pNewFormat = lcl_InsertLabel(*this, mpTextFormatCollTable.get(), pUndo.get(),
             eType, rText, rSeparator, rNumberingSeparator, bBefore,
             nId, nNdIdx, rCharacterStyle, bCpyBrd);
 
     if (pUndo)
     {
-        GetIDocumentUndoRedo().AppendUndo(pUndo);
+        GetIDocumentUndoRedo().AppendUndo(std::move(pUndo));
     }
     else
     {
@@ -1006,7 +1003,7 @@ lcl_InsertDrawLabel( SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable
     // Because we get by the TextColl's name, we need to create the field first.
     OSL_ENSURE( nId == USHRT_MAX  || nId < rDoc.getIDocumentFieldsAccess().GetFieldTypes()->size(),
             "FieldType index out of bounds" );
-    SwFieldType *pType = nId != USHRT_MAX ? (*rDoc.getIDocumentFieldsAccess().GetFieldTypes())[nId] : nullptr;
+    SwFieldType *pType = nId != USHRT_MAX ? (*rDoc.getIDocumentFieldsAccess().GetFieldTypes())[nId].get() : nullptr;
     OSL_ENSURE( !pType || pType->Which() == SwFieldIds::SetExp, "Wrong label id" );
 
     SwTextFormatColl *pColl = nullptr;
@@ -1049,7 +1046,7 @@ lcl_InsertDrawLabel( SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable
     // The TextAttribute needs to be destroyed.
     // Unfortunately, this also destroys the Format next to the Frames.
     // To avoid this, we disconnect the attribute from the Format.
-    SfxItemSet* pNewSet = pOldFormat->GetAttrSet().Clone( false );
+    std::unique_ptr<SfxItemSet> pNewSet = pOldFormat->GetAttrSet().Clone( false );
 
     // Protect the Frame's size and position
     if ( rSdrObj.IsMoveProtect() || rSdrObj.IsResizeProtect() )
@@ -1082,8 +1079,8 @@ lcl_InsertDrawLabel( SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable
     pNewSet->Put( pOldFormat->GetAnchor() );
 
     // The new one should be variable in its height!
-     Size aSz( rSdrObj.GetCurrentBoundRect().GetSize() );
-    SwFormatFrameSize aFrameSize( ATT_MIN_SIZE, aSz.Width(), aSz.Height() );
+    Size aSz( rSdrObj.GetCurrentBoundRect().GetSize() );
+    SwFormatFrameSize aFrameSize( SwFrameSize::Minimum, aSz.Width(), aSz.Height() );
     pNewSet->Put( aFrameSize );
 
     // Apply the margin to the new Frame.
@@ -1169,7 +1166,7 @@ lcl_InsertDrawLabel( SwDoc & rDoc, SwTextFormatColls *const pTextFormatCollTable
     else
         pOldFormat->SetFormatAttr( *pNewSet );
 
-    delete pNewSet;
+    pNewSet.reset();
 
     // Have only the FlyFrames created.
     // We leave this to established methods (especially for InCntFlys).
@@ -1242,31 +1239,31 @@ SwFlyFrameFormat* SwDoc::InsertDrawLabel(
 {
     SwDrawContact *const pContact =
         static_cast<SwDrawContact*>(GetUserCall( &rSdrObj ));
-    OSL_ENSURE( RES_DRAWFRMFMT == pContact->GetFormat()->Which(),
-            "InsertDrawLabel(): not a DrawFrameFormat" );
     if (!pContact)
         return nullptr;
+    OSL_ENSURE( RES_DRAWFRMFMT == pContact->GetFormat()->Which(),
+            "InsertDrawLabel(): not a DrawFrameFormat" );
 
     SwDrawFrameFormat* pOldFormat = static_cast<SwDrawFrameFormat *>(pContact->GetFormat());
     if (!pOldFormat)
         return nullptr;
 
-    SwUndoInsertLabel * pUndo = nullptr;
+    std::unique_ptr<SwUndoInsertLabel> pUndo;
     if (GetIDocumentUndoRedo().DoesUndo())
     {
         GetIDocumentUndoRedo().ClearRedo();
-        pUndo = new SwUndoInsertLabel(
-            LTYPE_DRAW, rText, rSeparator, rNumberSeparator, false,
-            nId, rCharacterStyle, false, this );
+        pUndo.reset(new SwUndoInsertLabel(
+            SwLabelType::Draw, rText, rSeparator, rNumberSeparator, false,
+            nId, rCharacterStyle, false, this ));
     }
 
     SwFlyFrameFormat *const pNewFormat = lcl_InsertDrawLabel(
-        *this, mpTextFormatCollTable, pUndo, pOldFormat,
+        *this, mpTextFormatCollTable.get(), pUndo.get(), pOldFormat,
         rText, rSeparator, rNumberSeparator, nId, rCharacterStyle, rSdrObj);
 
     if (pUndo)
     {
-        GetIDocumentUndoRedo().AppendUndo( pUndo );
+        GetIDocumentUndoRedo().AppendUndo( std::move(pUndo) );
     }
     else
     {
@@ -1276,8 +1273,59 @@ SwFlyFrameFormat* SwDoc::InsertDrawLabel(
     return pNewFormat;
 }
 
-static OUString lcl_GetUniqueFlyName(const SwDoc* pDoc, sal_uInt16 nDefStrId, RES_FMT eType)
+static void lcl_collectUsedNums(std::vector<unsigned int>& rSetFlags, sal_Int32 nNmLen, const OUString& rName, const OUString& rCmpName)
 {
+    if (rName.startsWith(rCmpName))
+    {
+        // Only get and set the Flag
+        const sal_Int32 nNum = rName.copy(nNmLen).toInt32() - 1;
+        if (nNum >= 0)
+            rSetFlags.push_back(nNum);
+    }
+}
+
+static void lcl_collectUsedNums(std::vector<unsigned int>& rSetFlags, sal_Int32 nNmLen, const SdrObject& rObj, const OUString& rCmpName)
+{
+    OUString sName = rObj.GetName();
+    lcl_collectUsedNums(rSetFlags, nNmLen, sName, rCmpName);
+    // tdf#122487 take groups into account, iterate and recurse through their
+    // contents for name collision check
+    if (!rObj.IsGroupObject())
+        return;
+
+    const SdrObjList* pSub(rObj.GetSubList());
+    assert(pSub && "IsGroupObject is implemented as GetSubList != nullptr");
+    const size_t nCount = pSub->GetObjCount();
+    for (size_t i = 0; i < nCount; ++i)
+    {
+        SdrObject* pObj = pSub->GetObj(i);
+        if (!pObj)
+            continue;
+        lcl_collectUsedNums(rSetFlags, nNmLen, *pObj, rCmpName);
+    }
+}
+
+namespace
+{
+    int first_available_number(std::vector<unsigned int>& numbers)
+    {
+        std::sort(numbers.begin(), numbers.end());
+        auto last = std::unique(numbers.begin(), numbers.end());
+        numbers.erase(last, numbers.end());
+
+        for (size_t i = 0; i < numbers.size(); ++i)
+        {
+            if (numbers[i] != i)
+                return i;
+        }
+
+        return numbers.size();
+    }
+}
+
+static OUString lcl_GetUniqueFlyName(const SwDoc* pDoc, const char* pDefStrId, sal_uInt16 eType)
+{
+    assert(eType >= RES_FMT_BEGIN && eType < RES_FMT_END);
     if( pDoc->IsInMailMerge())
     {
         OUString newName = "MailMergeFly"
@@ -1286,58 +1334,35 @@ static OUString lcl_GetUniqueFlyName(const SwDoc* pDoc, sal_uInt16 nDefStrId, RE
         return newName;
     }
 
-    ResId aId( nDefStrId, *pSwResMgr );
-    OUString aName( aId );
+    OUString aName(SwResId(pDefStrId));
     sal_Int32 nNmLen = aName.getLength();
 
     const SwFrameFormats& rFormats = *pDoc->GetSpzFrameFormats();
 
-    std::vector<sal_uInt8> aSetFlags(rFormats.size()/8 + 2);
+    std::vector<unsigned int> aUsedNums;
+    aUsedNums.reserve(rFormats.size());
 
     for( SwFrameFormats::size_type n = 0; n < rFormats.size(); ++n )
     {
         const SwFrameFormat* pFlyFormat = rFormats[ n ];
         if (eType != pFlyFormat->Which())
             continue;
-        OUString sName;
         if (eType == RES_DRAWFRMFMT)
         {
             const SdrObject *pObj = pFlyFormat->FindSdrObject();
             if (pObj)
-                sName = pObj->GetName();
+                lcl_collectUsedNums(aUsedNums, nNmLen, *pObj, aName);
         }
         else
         {
-            sName = pFlyFormat->GetName();
-        }
-        if (sName.startsWith(aName))
-        {
-            // Only get and set the Flag
-            const sal_Int32 nNum = sName.copy(nNmLen).toInt32()-1;
-            if( nNum >= 0 && static_cast<SwFrameFormats::size_type>(nNum) < rFormats.size() )
-                aSetFlags[ nNum / 8 ] |= (0x01 << ( nNum & 0x07 ));
+            OUString sName = pFlyFormat->GetName();
+            lcl_collectUsedNums(aUsedNums, nNmLen, sName, aName);
         }
     }
 
     // All numbers are flagged accordingly, so determine the right one
-    SwFrameFormats::size_type nNum = rFormats.size();
-    for( std::vector<sal_uInt8>::size_type n=0; n<aSetFlags.size(); ++n )
-    {
-        sal_uInt8 nTmp = aSetFlags[ n ];
-        if( 0xff != nTmp )
-        {
-            // so determine the number
-            nNum = n * 8;
-            while( nTmp & 1 )
-            {
-                ++nNum;
-                nTmp >>= 1;
-            }
-            break;
-        }
-    }
-
-    return aName + OUString::number( ++nNum );
+    SwFrameFormats::size_type nNum = first_available_number(aUsedNums) + 1;
+    return aName + OUString::number(nNum);
 }
 
 OUString SwDoc::GetUniqueGrfName() const
@@ -1360,16 +1385,21 @@ OUString SwDoc::GetUniqueShapeName() const
     return lcl_GetUniqueFlyName(this, STR_SHAPE_DEFNAME, RES_DRAWFRMFMT);
 }
 
+OUString SwDoc::GetUniqueDrawObjectName() const
+{
+    return lcl_GetUniqueFlyName(this, "DrawObject", RES_DRAWFRMFMT);
+}
+
 const SwFlyFrameFormat* SwDoc::FindFlyByName( const OUString& rName, SwNodeType nNdTyp ) const
 {
     auto range = GetSpzFrameFormats()->rangeFind( RES_FLYFRMFMT, rName );
     for( auto it = range.first; it != range.second; it++ )
     {
         const SwFrameFormat* pFlyFormat = *it;
-        const SwNodeIndex* pIdx = nullptr;
-        if( RES_FLYFRMFMT == pFlyFormat->Which() && pFlyFormat->GetName() == rName &&
-            nullptr != ( pIdx = pFlyFormat->GetContent().GetContentIdx() ) &&
-            pIdx->GetNode().GetNodes().IsDocNodes() )
+        if( RES_FLYFRMFMT != pFlyFormat->Which() || pFlyFormat->GetName() != rName )
+            continue;
+        const SwNodeIndex* pIdx = pFlyFormat->GetContent().GetContentIdx();
+        if( pIdx && pIdx->GetNode().GetNodes().IsDocNodes() )
         {
             if( nNdTyp != SwNodeType::NONE )
             {
@@ -1392,22 +1422,22 @@ void SwDoc::SetFlyName( SwFlyFrameFormat& rFormat, const OUString& rName )
     OUString sName( rName );
     if( sName.isEmpty() || FindFlyByName( sName ) )
     {
-        sal_uInt16 nTyp = STR_FRAME_DEFNAME;
+        const char* pTyp = STR_FRAME_DEFNAME;
         const SwNodeIndex* pIdx = rFormat.GetContent().GetContentIdx();
         if( pIdx && pIdx->GetNode().GetNodes().IsDocNodes() )
         {
             switch( GetNodes()[ pIdx->GetIndex() + 1 ]->GetNodeType() )
             {
                 case SwNodeType::Grf:
-                    nTyp = STR_GRAPHIC_DEFNAME;
+                    pTyp = STR_GRAPHIC_DEFNAME;
                     break;
                 case SwNodeType::Ole:
-                    nTyp = STR_OBJECT_DEFNAME;
+                    pTyp = STR_OBJECT_DEFNAME;
                     break;
                 default: break;
             }
         }
-        sName = lcl_GetUniqueFlyName(this, nTyp, RES_FLYFRMFMT);
+        sName = lcl_GetUniqueFlyName(this, pTyp, RES_FLYFRMFMT);
     }
     rFormat.SetName( sName, true );
     getIDocumentState().SetModified();
@@ -1417,14 +1447,12 @@ void SwDoc::SetAllUniqueFlyNames()
 {
     sal_Int32 n, nFlyNum = 0, nGrfNum = 0, nOLENum = 0;
 
-    ResId nFrameId( STR_FRAME_DEFNAME, *pSwResMgr ),
-          nGrfId( STR_GRAPHIC_DEFNAME, *pSwResMgr ),
-          nOLEId( STR_OBJECT_DEFNAME, *pSwResMgr );
-    const OUString sFlyNm( nFrameId );
-    const OUString sGrfNm( nGrfId );
-    const OUString sOLENm( nOLEId );
+    const OUString sFlyNm(SwResId(STR_FRAME_DEFNAME));
+    const OUString sGrfNm(SwResId(STR_GRAPHIC_DEFNAME));
+    const OUString sOLENm(SwResId(STR_OBJECT_DEFNAME));
 
-    if( 255 < ( n = GetSpzFrameFormats()->size() ))
+    n = GetSpzFrameFormats()->size();
+    if( 255 < n )
         n = 255;
     SwFrameFormatsV aArr;
     aArr.reserve( n );
@@ -1433,9 +1461,10 @@ void SwDoc::SetAllUniqueFlyNames()
 
     for( n = GetSpzFrameFormats()->size(); n; )
     {
-        if( RES_FLYFRMFMT == (pFlyFormat = (*GetSpzFrameFormats())[ --n ])->Which() )
+        pFlyFormat = (*GetSpzFrameFormats())[ --n ];
+        if( RES_FLYFRMFMT == pFlyFormat->Which() )
         {
-            const OUString aNm = pFlyFormat->GetName();
+            const OUString& aNm = pFlyFormat->GetName();
             if ( !aNm.isEmpty() )
             {
                 sal_Int32 *pNum = nullptr;
@@ -1482,10 +1511,9 @@ void SwDoc::SetAllUniqueFlyNames()
 
     for( n = aArr.size(); n; )
     {
-        const SwNodeIndex* pIdx;
-
-        if( nullptr != ( pIdx = ( pFlyFormat = aArr[ --n ])->GetContent().GetContentIdx() )
-            && pIdx->GetNode().GetNodes().IsDocNodes() )
+        pFlyFormat = aArr[ --n ];
+        const SwNodeIndex* pIdx = pFlyFormat->GetContent().GetContentIdx();
+        if( pIdx && pIdx->GetNode().GetNodes().IsDocNodes() )
         {
             switch( GetNodes()[ pIdx->GetIndex() + 1 ]->GetNodeType() )
             {
@@ -1503,21 +1531,21 @@ void SwDoc::SetAllUniqueFlyNames()
     }
     aArr.clear();
 
-    if( !GetFootnoteIdxs().empty() )
+    if( GetFootnoteIdxs().empty() )
+        return;
+
+    SwTextFootnote::SetUniqueSeqRefNo( *this );
+    // #i52775# Chapter footnotes did not get updated correctly.
+    // Calling UpdateAllFootnote() instead of UpdateFootnote() solves this problem,
+    // but I do not dare to call UpdateAllFootnote() in all cases: Safety first.
+    if ( FTNNUM_CHAPTER == GetFootnoteInfo().m_eNum )
     {
-        SwTextFootnote::SetUniqueSeqRefNo( *this );
-        // #i52775# Chapter footnotes did not get updated correctly.
-        // Calling UpdateAllFootnote() instead of UpdateFootnote() solves this problem,
-        // but I do not dare to call UpdateAllFootnote() in all cases: Safety first.
-        if ( FTNNUM_CHAPTER == GetFootnoteInfo().eNum )
-        {
-            GetFootnoteIdxs().UpdateAllFootnote();
-        }
-        else
-        {
-            SwNodeIndex aTmp( GetNodes() );
-            GetFootnoteIdxs().UpdateFootnote( aTmp );
-        }
+        GetFootnoteIdxs().UpdateAllFootnote();
+    }
+    else
+    {
+        SwNodeIndex aTmp( GetNodes() );
+        GetFootnoteIdxs().UpdateFootnote( aTmp );
     }
 }
 
@@ -1534,7 +1562,7 @@ bool SwDoc::IsInHeaderFooter( const SwNodeIndex& rIdx ) const
     {
         // get up by using the Anchor
 #if OSL_DEBUG_LEVEL > 0
-        std::list<const SwFrameFormat*> checkFormats;
+        std::vector<const SwFrameFormat*> checkFormats;
         for( auto pFormat : *GetSpzFrameFormats() )
         {
             const SwNodeIndex* pIdx = pFormat->GetContent().GetContentIdx();
@@ -1551,7 +1579,7 @@ bool SwDoc::IsInHeaderFooter( const SwNodeIndex& rIdx ) const
             if( pIdx && pFlyNd == &pIdx->GetNode() )
             {
 #if OSL_DEBUG_LEVEL > 0
-                std::list<const SwFrameFormat*>::iterator checkPos = std::find(
+                auto checkPos = std::find(
                         checkFormats.begin(), checkFormats.end(), pFormat );
                 assert( checkPos != checkFormats.end());
                 checkFormats.erase( checkPos );
@@ -1627,8 +1655,7 @@ SvxFrameDirection SwDoc::GetTextDirection( const SwPosition& rPos,
             }
         }
         if( !pItem )
-            pItem = static_cast<const SvxFrameDirectionItem*>(&GetAttrPool().GetDefaultItem(
-                                                            RES_FRAMEDIR ));
+            pItem = &GetAttrPool().GetDefaultItem( RES_FRAMEDIR );
         nRet = pItem->GetValue();
     }
     return nRet;
@@ -1640,13 +1667,13 @@ bool SwDoc::IsInVerticalText( const SwPosition& rPos ) const
     return SvxFrameDirection::Vertical_RL_TB == nDir || SvxFrameDirection::Vertical_LR_TB == nDir;
 }
 
-std::set<SwRootFrame*> SwDoc::GetAllLayouts()
+o3tl::sorted_vector<SwRootFrame*> SwDoc::GetAllLayouts()
 {
-    std::set<SwRootFrame*> aAllLayouts;
+    o3tl::sorted_vector<SwRootFrame*> aAllLayouts;
     SwViewShell *pStart = getIDocumentLayoutAccess().GetCurrentViewShell();
     if(pStart)
     {
-        for(SwViewShell& rShell : pStart->GetRingContainer())
+        for(const SwViewShell& rShell : pStart->GetRingContainer())
         {
             if(rShell.GetLayout())
                 aAllLayouts.insert(rShell.GetLayout());

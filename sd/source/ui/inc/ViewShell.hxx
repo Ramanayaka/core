@@ -22,37 +22,34 @@
 
 #include <rtl/ref.hxx>
 
-#include <vcl/field.hxx>
 #include <sfx2/viewsh.hxx>
 #include <vcl/prntypes.hxx>
-#include <svtools/transfer.hxx>
-#include "glob.hxx"
-#include "pres.hxx"
-#include "cfgids.hxx"
+#include <vcl/scrbar.hxx>
+#include <o3tl/deleter.hxx>
+#include <pres.hxx>
 #include "View.hxx"
-#include "sddllapi.h"
+#include "fupoor.hxx"
+#include <sddllapi.h>
 
-#include <com/sun/star/drawing/XDrawSubController.hpp>
 #include <memory>
 
 class SdPage;
 class SvxRuler;
 class SdrOle2Obj;       // for the ones, who have undefined parts of SVDRAW
-class ScrollBarBox;
 class SdDrawDocument;
-class ScrollBar;
 
-namespace com { namespace sun { namespace star {
-namespace embed {
-    class XEmbeddedObject;
-}}}}
+namespace weld
+{
+    class Window;
+}
+
+namespace com::sun::star::drawing { class XDrawSubController; }
 
 namespace sd {
 
 class DrawDocShell;
 class FrameView;
 class LayerTabBar;
-class View;
 class ViewShellBase;
 class Window;
 class WindowUpdater;
@@ -61,16 +58,16 @@ class ZoomList;
 #undef OUTPUT_DRAWMODE_COLOR
 #undef OUTPUT_DRAWMODE_CONTRAST
 
-static const DrawModeFlags OUTPUT_DRAWMODE_COLOR = DrawModeFlags::Default;
-static const DrawModeFlags OUTPUT_DRAWMODE_GRAYSCALE
+const DrawModeFlags OUTPUT_DRAWMODE_COLOR = DrawModeFlags::Default;
+const DrawModeFlags OUTPUT_DRAWMODE_GRAYSCALE
         = DrawModeFlags::GrayLine | DrawModeFlags::GrayFill
         | DrawModeFlags::BlackText | DrawModeFlags::GrayBitmap
         | DrawModeFlags::GrayGradient;
-static const DrawModeFlags OUTPUT_DRAWMODE_BLACKWHITE
+const DrawModeFlags OUTPUT_DRAWMODE_BLACKWHITE
         = DrawModeFlags::BlackLine | DrawModeFlags::BlackText
         | DrawModeFlags::WhiteFill | DrawModeFlags::GrayBitmap
         | DrawModeFlags::WhiteGradient;
-static const DrawModeFlags OUTPUT_DRAWMODE_CONTRAST
+const DrawModeFlags OUTPUT_DRAWMODE_CONTRAST
         = DrawModeFlags::SettingsLine | DrawModeFlags::SettingsFill
         | DrawModeFlags::SettingsText | DrawModeFlags::SettingsGradient;
 
@@ -78,7 +75,7 @@ static const DrawModeFlags OUTPUT_DRAWMODE_CONTRAST
 
     <p>Despite its name this class is not a descendant of SfxViewShell
     but of SfxShell.  Its name expresses the fact that it acts like a
-    view shell.  Being a stacked shell rather then being an actual view shell
+    view shell.  Being a stacked shell rather than being an actual view shell
     there can be several instances of this class that
     <ul>
     <li>all are based on the same view shell and thus show the same
@@ -89,7 +86,7 @@ static const DrawModeFlags OUTPUT_DRAWMODE_CONTRAST
 
     <p>This class replaces the former ViewShell class.</p>
 */
-class ViewShell
+class SAL_DLLPUBLIC_RTTI ViewShell
     : public SfxShell
 {
 public:
@@ -155,6 +152,7 @@ public:
         show running then the active window is a ShowWindow.
     */
     ::sd::Window* GetActiveWindow() const { return mpActiveWindow;}
+    SD_DLLPUBLIC weld::Window* GetFrameWeld() const;
 
     /** Set the active window.  When the shell is displayed in the center
         pane then the window of the ViewShellBase is also set to the given
@@ -180,7 +178,7 @@ public:
     virtual void MouseButtonDown(const MouseEvent& rMEvt, ::sd::Window* pWin);
     virtual void Command(const CommandEvent& rCEvt, ::sd::Window* pWin);
     bool RequestHelp( const HelpEvent& rEvt );
-    bool Notify( NotifyEvent& rNEvt, ::sd::Window* pWin );
+    bool Notify( NotifyEvent const & rNEvt, ::sd::Window* pWin );
 
     bool HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWin);
 
@@ -189,8 +187,10 @@ public:
 
     const SfxPoolItem* GetNumBulletItem(SfxItemSet& aNewAttr, sal_uInt16& nNumItemId);
 
-    bool HasRuler() { return mbHasRulers;}
+    bool HasRuler() const { return mbHasRulers;}
     void SetRuler(bool bRuler);
+    // Hides horizontal, vertical scrollbar as well as scrollbox
+    void SetScrollBarsVisible(bool bVisible);
 
     /** Set internal values of all scroll bars that determine thumb size and
         position.  The external values like size and position of the scroll
@@ -209,13 +209,13 @@ public:
         model according to the content of the outline view.  This in turn
         updates the previews in the slide sorter.
     */
-    virtual void UpdatePreview (SdPage* pPage, bool bInit = false);
+    virtual void UpdatePreview (SdPage* pPage);
 
     void    DrawMarkRect(const ::tools::Rectangle& rRect) const;
 
     void    ExecReq( SfxRequest &rReq );
 
-    ZoomList* GetZoomList() { return mpZoomList;}
+    ZoomList* GetZoomList() { return mpZoomList.get();}
 
     FrameView* GetFrameView() { return mpFrameView; }
     /** Setting a frame view triggers ReadFrameViewData() for the new
@@ -248,7 +248,7 @@ public:
     bool HasOldFunction() const { return mxOldFunction.is(); }
     const rtl::Reference<FuPoor>& GetCurrentFunction() const { return mxCurrentFunction; }
     bool HasCurrentFunction( sal_uInt16 nSID ) { return mxCurrentFunction.is() && (mxCurrentFunction->GetSlotID() == nSID ); }
-    bool HasCurrentFunction() { return mxCurrentFunction.is(); }
+    bool HasCurrentFunction() const { return mxCurrentFunction.is(); }
 
     void SetCurrentFunction(const rtl::Reference<FuPoor>& xFunction);
     void SetOldFunction(const rtl::Reference<FuPoor>& xFunction);
@@ -277,8 +277,8 @@ public:
     virtual sal_Int8 ExecuteDrop( const ExecuteDropEvent& rEvt, DropTargetHelper& rTargetHelper,
                                   ::sd::Window* pTargetWindow, sal_uInt16 nPage, SdrLayerID nLayer );
 
-    virtual void WriteUserDataSequence ( css::uno::Sequence < css::beans::PropertyValue >&, bool bBrowse );
-    virtual void ReadUserDataSequence ( const css::uno::Sequence < css::beans::PropertyValue >&, bool bBrowse );
+    virtual void WriteUserDataSequence ( css::uno::Sequence < css::beans::PropertyValue >& );
+    virtual void ReadUserDataSequence ( const css::uno::Sequence < css::beans::PropertyValue >& );
 
     /** this method is called when the visible area of the view from this viewshell is changed */
     virtual void VisAreaChanged(const ::tools::Rectangle& rRect);
@@ -300,8 +300,8 @@ public:
     void    NotifyAccUpdate();
     void    fireSwitchCurrentPage(sal_Int32 pageIndex);
     void SetWinViewPos(const Point& rWinPos);
-    Point GetWinViewPos() const;
-    Point GetViewOrigin() const;
+    Point const & GetWinViewPos() const;
+    Point const & GetViewOrigin() const;
 
     /** Return the window updater of this view shell.
         @return
@@ -354,7 +354,7 @@ public:
 
     /** Return the type of the shell.
     */
-    ShellType GetShellType() const;
+    SD_DLLPUBLIC ShellType GetShellType() const; //Export for unit test
 
     /** This method is more or less an alias to Deactivate().  It is called
         before an object of this class is taken from the stack of view
@@ -362,7 +362,7 @@ public:
 
         <p>When this method is not called before a view shell is taken from
         a stack then the Deactivate() call from the SFX as a response to
-        RemoveSubShell() comes to late when the view shell is not on the
+        RemoveSubShell() comes too late when the view shell is not on the
         stack anymore.</p>
     */
     virtual void Shutdown();
@@ -410,16 +410,10 @@ public:
         SdPage* pPage,
         const sal_Int32 nInsertPosition = -1);
 
-    /// Same as MouseButtonDown(), but coordinates are in logic unit.
-    void LogicMouseButtonDown(const MouseEvent& rMouseEvent);
-    /// Same as MouseButtonUp(), but coordinates are in logic unit.
-    void LogicMouseButtonUp(const MouseEvent& rMouseEvent);
-    /// Same as MouseMove(), but coordinates are in logic unit.
-    void LogicMouseMove(const MouseEvent& rMouseEvent);
     /// Allows adjusting the point or mark of the selection to a document coordinate.
     void SetCursorMm100Position(const Point& rPosition, bool bPoint, bool bClearMark);
-    /// Gets the currently selected text.
-    OString GetTextSelection(const OString& aMimeType, OString& rUsedMimeType);
+    /// Gets the current selection
+    css::uno::Reference<css::datatransfer::XTransferable> GetSelectionTransferrable() const;
     /// Allows starting or ending a graphic move or resize action.
     void SetGraphicMm100Position(bool bStart, const Point& rPosition);
 
@@ -461,7 +455,7 @@ protected:
 
     rtl::Reference<FuPoor>   mxCurrentFunction;
     rtl::Reference<FuPoor>   mxOldFunction;
-    ZoomList*   mpZoomList;
+    std::unique_ptr<ZoomList> mpZoomList;
 
     Point       maViewPos;
     Size        maViewSize;
@@ -487,10 +481,10 @@ protected:
     /// The type of the shell.  Returned by GetShellType().
     ShellType meShellType;
 
-    ::std::unique_ptr<Implementation> mpImpl;
+    std::unique_ptr<Implementation, o3tl::default_delete<Implementation>> mpImpl;
 
     // Support methods for centralized UNDO/REDO
-    virtual ::svl::IUndoManager* ImpGetUndoManager() const;
+    virtual SfxUndoManager* ImpGetUndoManager() const;
     void ImpGetUndoStrings(SfxItemSet &rSet) const;
     void ImpGetRedoStrings(SfxItemSet &rSet) const;
     void ImpSidUndo(SfxRequest& rReq);
@@ -529,7 +523,7 @@ protected:
         i.e. construct calls Show, and if a11y is enabled this
         reenters the not-fully constructed object and calls
         CreateAccessibleDocumentView, so if construct is called
-        from the ctor then if a derived class is contructed the base-case
+        from the ctor then if a derived class is constructed the base-case
         CreateAccessibleDocumentView is used, not the derived
         CreateAccessibleDocumentView. i.e. run smoketest under a11y with
         debugging assertions enabled

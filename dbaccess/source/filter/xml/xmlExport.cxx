@@ -19,22 +19,19 @@
 
 #include "xmlExport.hxx"
 #include "xmlAutoStyle.hxx"
-#include "xmlservices.hxx"
-#include "flt_reghelper.hxx"
 #include <sax/tools/converter.hxx>
-#include <xmloff/ProgressBarHelper.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/txtimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/sequence.hxx>
 #include <comphelper/string.hxx>
 #include <comphelper/types.hxx>
-#include "xmlstrings.hrc"
-#include "xmlEnums.hxx"
+#include <strings.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <com/sun/star/sdb/XFormDocumentsSupplier.hpp>
 #include <com/sun/star/sdb/XOfficeDatabaseDocument.hpp>
 #include <com/sun/star/sdb/XReportDocumentsSupplier.hpp>
@@ -52,7 +49,7 @@
 #include <connectivity/DriversConfig.hxx>
 #include <connectivity/dbtools.hxx>
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <memory>
 #include <iterator>
 
@@ -62,77 +59,35 @@ using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star;
 
-namespace dbaxml
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_sdb_DBExportFilter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    class ODBExportHelper
-    {
-    public:
-        /// @throws RuntimeException
-        static OUString SAL_CALL getImplementationName_Static(  );
-        /// @throws RuntimeException
-        static Sequence< OUString > SAL_CALL getSupportedServiceNames_Static(  );
-        static Reference< XInterface > SAL_CALL Create(const Reference< css::lang::XMultiServiceFactory >&);
-    };
-    class ODBFullExportHelper
-    {
-    public:
-        /// @throws RuntimeException
-        static OUString SAL_CALL getImplementationName_Static(  );
-        /// @throws RuntimeException
-        static Sequence< OUString > SAL_CALL getSupportedServiceNames_Static(  );
-        static Reference< XInterface > SAL_CALL Create(const Reference< css::lang::XMultiServiceFactory >&);
-    };
+    return cppu::acquire(new ::dbaxml::ODBExport(context,
+        "com.sun.star.comp.sdb.DBExportFilter"));
 }
 
-extern "C" void SAL_CALL createRegistryInfo_ODBFilterExport( )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_sdb_XMLSettingsExporter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    static ::dbaxml::OMultiInstanceAutoRegistration< ::dbaxml::ODBExport > aAutoRegistration;
+    return cppu::acquire(new ::dbaxml::ODBExport(context,
+        "com.sun.star.comp.sdb.XMLSettingsExporter",
+        SvXMLExportFlags::SETTINGS | SvXMLExportFlags::PRETTY ));
 }
 
-extern "C" void SAL_CALL createRegistryInfo_OSettingsExport( )
-
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_sdb_XMLFullExporter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    static ::dbaxml::OMultiInstanceAutoRegistration< ::dbaxml::ODBExportHelper > aAutoRegistration;
-}
-
-extern "C" void SAL_CALL createRegistryInfo_OFullExport( )
-{
-    static ::dbaxml::OMultiInstanceAutoRegistration< ::dbaxml::ODBFullExportHelper > aAutoRegistration;
+    return cppu::acquire(new ::dbaxml::ODBExport(context,
+        "com.sun.star.comp.sdb.XMLFullExporter",
+        SvXMLExportFlags::ALL));
 }
 
 namespace dbaxml
 {
-    Reference< XInterface > SAL_CALL ODBExportHelper::Create(const Reference< XMultiServiceFactory >& _rxORB)
-    {
-        return static_cast< XServiceInfo* >(new ODBExport(comphelper::getComponentContext(_rxORB), getImplementationName_Static(), SvXMLExportFlags::SETTINGS | SvXMLExportFlags::PRETTY ));
-    }
-
-    OUString SAL_CALL ODBExportHelper::getImplementationName_Static(  )
-    {
-        return OUString("com.sun.star.comp.sdb.XMLSettingsExporter");
-    }
-
-    Sequence< OUString > SAL_CALL ODBExportHelper::getSupportedServiceNames_Static(  )
-    {
-        Sequence< OUString > aSupported { "com.sun.star.document.ExportFilter" };
-        return aSupported;
-    }
-
-    Reference< XInterface > SAL_CALL ODBFullExportHelper::Create(const Reference< XMultiServiceFactory >& _rxORB)
-    {
-        return static_cast< XServiceInfo* >(new ODBExport(comphelper::getComponentContext(_rxORB), getImplementationName_Static(), SvXMLExportFlags::ALL));
-    }
-    OUString SAL_CALL ODBFullExportHelper::getImplementationName_Static(  )
-    {
-        return OUString("com.sun.star.comp.sdb.XMLFullExporter");
-    }
-    Sequence< OUString > SAL_CALL ODBFullExportHelper::getSupportedServiceNames_Static(  )
-    {
-        Sequence< OUString > aSupported { "com.sun.star.document.ExportFilter" };
-        return aSupported;
-    }
-
-    OUString lcl_implGetPropertyXMLType(const Type& _rType)
+    static OUString lcl_implGetPropertyXMLType(const Type& _rType)
     {
         // possible types we can write (either because we recognize them directly or because we convert _rValue
         // into one of these types)
@@ -141,26 +96,28 @@ namespace dbaxml
         switch (_rType.getTypeClass())
         {
             case TypeClass_STRING:
-                return OUString("string");
+                return "string";
             case TypeClass_DOUBLE:
-                return OUString("double");
+                return "double";
             case TypeClass_BOOLEAN:
-                return OUString("boolean");
+                return "boolean";
             case TypeClass_BYTE:
             case TypeClass_SHORT:
-                return OUString("short");
+                return "short";
             case TypeClass_LONG:
-                return OUString("int");
+                return "int";
             case TypeClass_HYPER:
-                return OUString("long");
+                return "long";
             case TypeClass_ENUM:
-                return OUString("int");
+                return "int";
 
             default:
                 OSL_FAIL( "lcl_implGetPropertyXMLType: unsupported value type!" );
-                return OUString("double");
+                return "double";
         }
     }
+
+    namespace {
 
     class OSpecialHandleXMLExportPropertyMapper : public SvXMLExportPropertyMapper
     {
@@ -181,8 +138,11 @@ namespace dbaxml
             // nothing to do here
         }
     };
+
+    }
+
 ODBExport::ODBExport(const Reference< XComponentContext >& _rxContext, OUString const & implementationName, SvXMLExportFlags nExportFlag)
-: SvXMLExport( util::MeasureUnit::MM_10TH, _rxContext, implementationName, XML_DATABASE,
+: SvXMLExport( _rxContext, implementationName, util::MeasureUnit::MM_10TH, XML_DATABASE,
         SvXMLExportFlags::OASIS | nExportFlag)
 ,m_aTypeCollection(_rxContext)
 ,m_bAllreadyFilled(false)
@@ -223,45 +183,28 @@ ODBExport::ODBExport(const Reference< XComponentContext >& _rxContext, OUString 
     m_xRowExportHelper = new OSpecialHandleXMLExportPropertyMapper(OXMLHelper::GetRowStylesPropertySetMapper());
 
     GetAutoStylePool()->AddFamily(
-        XML_STYLE_FAMILY_TABLE_TABLE,
+        XmlStyleFamily::TABLE_TABLE,
         OUString(XML_STYLE_FAMILY_TABLE_TABLE_STYLES_NAME ),
         m_xExportHelper.get(),
         OUString(XML_STYLE_FAMILY_TABLE_TABLE_STYLES_PREFIX ));
 
     GetAutoStylePool()->AddFamily(
-        XML_STYLE_FAMILY_TABLE_COLUMN,
+        XmlStyleFamily::TABLE_COLUMN,
         OUString(XML_STYLE_FAMILY_TABLE_COLUMN_STYLES_NAME ),
         m_xColumnExportHelper.get(),
         OUString(XML_STYLE_FAMILY_TABLE_COLUMN_STYLES_PREFIX ));
 
     GetAutoStylePool()->AddFamily(
-        XML_STYLE_FAMILY_TABLE_CELL,
+        XmlStyleFamily::TABLE_CELL,
         OUString(XML_STYLE_FAMILY_TABLE_CELL_STYLES_NAME ),
         m_xCellExportHelper.get(),
         OUString(XML_STYLE_FAMILY_TABLE_CELL_STYLES_PREFIX ));
 
     GetAutoStylePool()->AddFamily(
-        XML_STYLE_FAMILY_TABLE_ROW,
+        XmlStyleFamily::TABLE_ROW,
         OUString(XML_STYLE_FAMILY_TABLE_ROW_STYLES_NAME ),
         m_xRowExportHelper.get(),
         OUString(XML_STYLE_FAMILY_TABLE_ROW_STYLES_PREFIX ));
-}
-
-OUString ODBExport::getImplementationName_Static()
-{
-    return OUString("com.sun.star.comp.sdb.DBExportFilter");
-}
-
-css::uno::Sequence<OUString> ODBExport::getSupportedServiceNames_Static()
-{
-    css::uno::Sequence<OUString> s { "com.sun.star.document.ExportFilter" };
-    return s;
-}
-
-css::uno::Reference< css::uno::XInterface >
-    SAL_CALL ODBExport::Create(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxORB)
-{
-    return static_cast< XServiceInfo* >(new ODBExport( comphelper::getComponentContext(_rxORB), getImplementationName_Static()));
 }
 
 void ODBExport::exportDataSource()
@@ -286,12 +229,23 @@ void ODBExport::exportDataSource()
 
         ::connectivity::DriversConfig aDriverConfig(getComponentContext());
         const OUString sURL = ::comphelper::getString(xProp->getPropertyValue(PROPERTY_URL));
-        ::comphelper::NamedValueCollection aDriverSupportedProperties( aDriverConfig.getProperties( sURL ) );
+        const ::comphelper::NamedValueCollection& aDriverSupportedProperties( aDriverConfig.getProperties( sURL ) );
 
         static OUString s_sTrue(::xmloff::token::GetXMLToken( XML_TRUE ));
         static OUString s_sFalse(::xmloff::token::GetXMLToken( XML_FALSE ));
         // loop through the properties, and export only those which are not defaulted
         TSettingsMap aSettingsMap;
+        // Don't try to get XPropertySetInfo from xProp, simply wrap the attempt into try block
+        try
+        {
+            const Any aValue = xProp->getPropertyValue(PROPERTY_SUPPRESSVERSIONCL);
+            if (!getBOOL(aValue)) // default in the XML schema is true -> only write false
+                aSettingsMap.emplace(XML_SUPPRESS_VERSION_COLUMNS, s_sFalse);
+        }
+        catch (const UnknownPropertyException&)
+        {
+        }
+
         Sequence< Property > aProperties = xSettingsInfo->getProperties();
         const Property* pProperties = aProperties.getConstArray();
         const Property* pPropertiesEnd = pProperties + aProperties.getLength();
@@ -327,7 +281,7 @@ void ODBExport::exportDataSource()
             {
                 const OUString                       sPropertyName;
                 const XMLTokenEnum                          eAttributeToken;
-                const ::boost::optional< OUString >  aXMLDefault;
+                const ::std::optional< OUString >  aXMLDefault;
 
                 PropertyMap( const OUString& _rPropertyName, const XMLTokenEnum _eToken )
                     :sPropertyName( _rPropertyName )
@@ -355,7 +309,6 @@ void ODBExport::exportDataSource()
                 PropertyMap( INFO_PARAMETERNAMESUBST,   XML_PARAMETER_NAME_SUBSTITUTION,    s_sTrue     ),
                 PropertyMap( INFO_IGNOREDRIVER_PRIV,    XML_IGNORE_DRIVER_PRIVILEGES,       s_sTrue     ),
                 PropertyMap( INFO_USECATALOG,           XML_USE_CATALOG,                    s_sFalse    ),
-                PropertyMap( PROPERTY_SUPPRESSVERSIONCL,XML_SUPPRESS_VERSION_COLUMNS,       s_sTrue     ),
                 PropertyMap( INFO_CONN_LDAP_BASEDN,     XML_BASE_DN                                     ),
                 PropertyMap( INFO_CONN_LDAP_ROWCOUNT,   XML_MAX_ROW_COUNT                               )
             };
@@ -395,8 +348,6 @@ void ODBExport::exportDataSource()
                 // special handlings
                 if ( pProperties->Name == PROPERTY_BOOLEANCOMPARISONMODE )
                 {
-                    sal_Int32 nValue = 0;
-                    aValue >>= nValue;
                     if ( sValue == "0" )
                         sValue = "equal-integer";
                     else if ( sValue == "1" )
@@ -457,14 +408,14 @@ void ODBExport::exportDataSource()
                 {
                     if ( !aDriverSupportedProperties.has(pProperties->Name) || aDriverSupportedProperties.get(pProperties->Name) != aValue )
                     {
-                        m_aDataSourceSettings.push_back( TypedPropertyValue(
-                            pProperties->Name, pProperties->Type, aValue ) );
+                        m_aDataSourceSettings.emplace_back(
+                            pProperties->Name, pProperties->Type, aValue );
                     }
                     continue;
                 }
             }
 
-            aSettingsMap.insert(TSettingsMap::value_type(eToken,sValue));
+            aSettingsMap.emplace(eToken,sValue);
         }
         if ( bAutoIncrementEnabled && !(aAutoIncrement.first.isEmpty() && aAutoIncrement.second.isEmpty()) )
             m_aAutoIncrement.reset( new TStringPair(aAutoIncrement));
@@ -479,7 +430,7 @@ void ODBExport::exportDataSource()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -506,14 +457,14 @@ void ODBExport::exportApplicationConnectionSettings(const TSettingsMap& _aSettin
     Reference<XPropertySet> xProp(getDataSource());
     Sequence< OUString> aValue;
     xProp->getPropertyValue(PROPERTY_TABLEFILTER) >>= aValue;
-    if ( aValue.getLength() )
+    if ( aValue.hasElements() )
     {
         SvXMLElementExport aElem2(*this,XML_NAMESPACE_DB, XML_TABLE_FILTER, true, true);
         exportSequence(aValue,XML_TABLE_INCLUDE_FILTER,XML_TABLE_FILTER_PATTERN);
     }
 
     xProp->getPropertyValue(PROPERTY_TABLETYPEFILTER) >>= aValue;
-    if ( aValue.getLength() )
+    if ( aValue.hasElements() )
         exportSequence(aValue,XML_TABLE_TYPE_FILTER,XML_TABLE_TYPE);
 
     exportDataSourceSettings();
@@ -621,7 +572,7 @@ void ODBExport::exportConnectionData()
                     }
                     catch( const Exception& )
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("dbaccess");
                     }
 
                     SvXMLElementExport aServerDB(*this,XML_NAMESPACE_DB, XML_SERVER_DATABASE, true, true);
@@ -643,12 +594,14 @@ void ODBExport::exportConnectionData()
 template< typename T > void ODBExport::exportDataSourceSettingsSequence(
     std::vector< TypedPropertyValue >::iterator const & in)
 {
-    OSequenceIterator< T > i( in->Value );
-    while (i.hasMoreElements())
+    css::uno::Sequence<T> anySeq;
+    bool bSuccess = in->Value >>= anySeq;
+    assert(bSuccess); (void)bSuccess;
+    for (T const & i : anySeq )
     {
         SvXMLElementExport aDataValue(*this,XML_NAMESPACE_DB, XML_DATA_SOURCE_SETTING_VALUE, true, false);
         // (no whitespace inside the tag)
-        Characters(implConvertAny(i.nextElement()));
+        Characters(implConvertAny(css::uno::Any(i)));
     }
 }
 
@@ -674,7 +627,7 @@ void ODBExport::exportDataSourceSettings()
         {
             Sequence<Any> aSeq;
             aIter->Value >>= aSeq;
-            if ( aSeq.getLength() )
+            if ( aSeq.hasElements() )
                 sTypeName = lcl_implGetPropertyXMLType(aSeq[0].getValueType());
         }
 
@@ -735,7 +688,7 @@ void ODBExport::exportCharSet()
 
 void ODBExport::exportDelimiter()
 {
-    if ( m_aDelimiter.get() && m_aDelimiter->bUsed )
+    if ( m_aDelimiter && m_aDelimiter->bUsed )
     {
         AddAttribute(XML_NAMESPACE_DB, XML_FIELD,m_aDelimiter->sField);
         AddAttribute(XML_NAMESPACE_DB, XML_STRING,m_aDelimiter->sText);
@@ -747,7 +700,7 @@ void ODBExport::exportDelimiter()
 
 void ODBExport::exportAutoIncrement()
 {
-    if ( m_aAutoIncrement.get() )
+    if (m_aAutoIncrement)
     {
         AddAttribute(XML_NAMESPACE_DB, XML_ADDITIONAL_COLUMN_STATEMENT,m_aAutoIncrement->second);
         AddAttribute(XML_NAMESPACE_DB, XML_ROW_RETRIEVING_STATEMENT,m_aAutoIncrement->first);
@@ -759,8 +712,7 @@ void ODBExport::exportSequence(const Sequence< OUString>& _aValue
                             ,::xmloff::token::XMLTokenEnum _eTokenFilter
                             ,::xmloff::token::XMLTokenEnum _eTokenType)
 {
-    Reference<XPropertySet> xProp(getDataSource());
-    if ( _aValue.getLength() )
+    if ( _aValue.hasElements() )
     {
         SvXMLElementExport aElem(*this,XML_NAMESPACE_DB, _eTokenFilter, true, true);
 
@@ -799,27 +751,27 @@ void ODBExport::exportCollection(const Reference< XNameAccess >& _xCollection
                                 ,const ::comphelper::mem_fun1_t<ODBExport,XPropertySet* >& _aMemFunc
                                 )
 {
-    if ( _xCollection.is() )
+    if ( !_xCollection.is() )
+        return;
+
+    std::unique_ptr<SvXMLElementExport> pComponents;
+    if ( _bExportContext )
+        pComponents.reset( new SvXMLElementExport(*this,XML_NAMESPACE_DB, _eComponents, true, true));
+    Sequence< OUString> aSeq = _xCollection->getElementNames();
+    const OUString* pIter = aSeq.getConstArray();
+    const OUString* pEnd   = pIter + aSeq.getLength();
+    for(;pIter != pEnd;++pIter)
     {
-        std::unique_ptr<SvXMLElementExport> pComponents;
-        if ( _bExportContext )
-            pComponents.reset( new SvXMLElementExport(*this,XML_NAMESPACE_DB, _eComponents, true, true));
-        Sequence< OUString> aSeq = _xCollection->getElementNames();
-        const OUString* pIter = aSeq.getConstArray();
-        const OUString* pEnd   = pIter + aSeq.getLength();
-        for(;pIter != pEnd;++pIter)
+        Reference<XPropertySet> xProp(_xCollection->getByName(*pIter),UNO_QUERY);
+        if ( _bExportContext && XML_TABLE_REPRESENTATIONS != _eComponents )
+            AddAttribute(XML_NAMESPACE_DB, XML_NAME,*pIter);
+        Reference< XNameAccess > xSub(xProp,UNO_QUERY);
+        if ( xSub.is() )
         {
-            Reference<XPropertySet> xProp(_xCollection->getByName(*pIter),UNO_QUERY);
-            if ( _bExportContext && XML_TABLE_REPRESENTATIONS != _eComponents )
-                AddAttribute(XML_NAMESPACE_DB, XML_NAME,*pIter);
-            Reference< XNameAccess > xSub(xProp,UNO_QUERY);
-            if ( xSub.is() )
-            {
-                exportCollection(xSub,_eSubComponents,_eSubComponents,_bExportContext,_aMemFunc);
-            }
-            else if ( xProp.is() )
-                _aMemFunc(this,xProp.get());
+            exportCollection(xSub,_eSubComponents,_eSubComponents,_bExportContext,_aMemFunc);
         }
+        else if ( xProp.is() )
+            _aMemFunc(this,xProp.get());
     }
 }
 
@@ -912,20 +864,20 @@ void ODBExport::exportTableName(XPropertySet* _xProp,bool _bUpdate)
 {
     OUString sValue;
     _xProp->getPropertyValue(_bUpdate ? OUString(PROPERTY_UPDATE_TABLENAME) : OUString(PROPERTY_NAME)) >>= sValue;
-    if ( !sValue.isEmpty() )
-    {
-        AddAttribute(XML_NAMESPACE_DB, XML_NAME,sValue);
-        _xProp->getPropertyValue(_bUpdate ? OUString(PROPERTY_UPDATE_SCHEMANAME) : OUString(PROPERTY_SCHEMANAME)) >>= sValue;
-        if ( !sValue.isEmpty() )
-            AddAttribute(XML_NAMESPACE_DB, XML_SCHEMA_NAME,sValue);
-        _xProp->getPropertyValue(_bUpdate ? OUString(PROPERTY_UPDATE_CATALOGNAME) : OUString(PROPERTY_CATALOGNAME)) >>= sValue;
-        if ( !sValue.isEmpty() )
-            AddAttribute(XML_NAMESPACE_DB, XML_CATALOG_NAME,sValue);
+    if ( sValue.isEmpty() )
+        return;
 
-        if ( _bUpdate )
-        {
-            SvXMLElementExport aComponents(*this,XML_NAMESPACE_DB, XML_UPDATE_TABLE, true, true);
-        }
+    AddAttribute(XML_NAMESPACE_DB, XML_NAME,sValue);
+    _xProp->getPropertyValue(_bUpdate ? OUString(PROPERTY_UPDATE_SCHEMANAME) : OUString(PROPERTY_SCHEMANAME)) >>= sValue;
+    if ( !sValue.isEmpty() )
+        AddAttribute(XML_NAMESPACE_DB, XML_SCHEMA_NAME,sValue);
+    _xProp->getPropertyValue(_bUpdate ? OUString(PROPERTY_UPDATE_CATALOGNAME) : OUString(PROPERTY_CATALOGNAME)) >>= sValue;
+    if ( !sValue.isEmpty() )
+        AddAttribute(XML_NAMESPACE_DB, XML_CATALOG_NAME,sValue);
+
+    if ( _bUpdate )
+    {
+        SvXMLElementExport aComponents(*this,XML_NAMESPACE_DB, XML_UPDATE_TABLE, true, true);
     }
 }
 
@@ -987,8 +939,7 @@ void ODBExport::exportColumns(const Reference<XColumnsSupplier>& _xColSup)
 
                 OUString sValue;
                 xProp->getPropertyValue(PROPERTY_HELPTEXT) >>= sValue;
-                Any aColumnDefault;
-                aColumnDefault = xProp->getPropertyValue(PROPERTY_CONTROLDEFAULT);
+                Any aColumnDefault = xProp->getPropertyValue(PROPERTY_CONTROLDEFAULT);
 
                 if ( bHidden || !sValue.isEmpty() || aColumnDefault.hasValue() || pAtt->getLength() )
                 {
@@ -1021,7 +972,7 @@ void ODBExport::exportColumns(const Reference<XColumnsSupplier>& _xColSup)
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -1031,17 +982,17 @@ void ODBExport::exportForms()
     OUString sService;
     dbtools::getDataSourceSetting(getDataSource(),"Forms",aValue);
     aValue >>= sService;
-    if ( sService.isEmpty() )
+    if ( !sService.isEmpty() )
+        return;
+
+    Reference<XFormDocumentsSupplier> xSup(GetModel(),UNO_QUERY);
+    if ( xSup.is() )
     {
-        Reference<XFormDocumentsSupplier> xSup(GetModel(),UNO_QUERY);
-        if ( xSup.is() )
+        Reference< XNameAccess > xCollection = xSup->getFormDocuments();
+        if ( xCollection.is() && xCollection->hasElements() )
         {
-            Reference< XNameAccess > xCollection = xSup->getFormDocuments();
-            if ( xCollection.is() && xCollection->hasElements() )
-            {
-                ::comphelper::mem_fun1_t<ODBExport,XPropertySet* > aMemFunc(&ODBExport::exportComponent);
-                exportCollection(xCollection,XML_FORMS,XML_COMPONENT_COLLECTION,true,aMemFunc);
-            }
+            ::comphelper::mem_fun1_t<ODBExport,XPropertySet* > aMemFunc(&ODBExport::exportComponent);
+            exportCollection(xCollection,XML_FORMS,XML_COMPONENT_COLLECTION,true,aMemFunc);
         }
     }
 }
@@ -1052,17 +1003,17 @@ void ODBExport::exportReports()
     OUString sService;
     dbtools::getDataSourceSetting(getDataSource(),"Reports",aValue);
     aValue >>= sService;
-    if ( sService.isEmpty() )
+    if ( !sService.isEmpty() )
+        return;
+
+    Reference<XReportDocumentsSupplier> xSup(GetModel(),UNO_QUERY);
+    if ( xSup.is() )
     {
-        Reference<XReportDocumentsSupplier> xSup(GetModel(),UNO_QUERY);
-        if ( xSup.is() )
+        Reference< XNameAccess > xCollection = xSup->getReportDocuments();
+        if ( xCollection.is() && xCollection->hasElements() )
         {
-            Reference< XNameAccess > xCollection = xSup->getReportDocuments();
-            if ( xCollection.is() && xCollection->hasElements() )
-            {
-                ::comphelper::mem_fun1_t<ODBExport,XPropertySet* > aMemFunc(&ODBExport::exportComponent);
-                exportCollection(xCollection,XML_REPORTS,XML_COMPONENT_COLLECTION,true,aMemFunc);
-            }
+            ::comphelper::mem_fun1_t<ODBExport,XPropertySet* > aMemFunc(&ODBExport::exportComponent);
+            exportCollection(xCollection,XML_REPORTS,XML_COMPONENT_COLLECTION,true,aMemFunc);
         }
     }
 }
@@ -1073,55 +1024,55 @@ void ODBExport::exportQueries(bool _bExportContext)
     OUString sService;
     dbtools::getDataSourceSetting(getDataSource(),"CommandDefinitions",aValue);
     aValue >>= sService;
-    if ( sService.isEmpty() )
-    {
-        Reference<XQueryDefinitionsSupplier> xSup(getDataSource(),UNO_QUERY);
-        if ( xSup.is() )
-        {
-            Reference< XNameAccess > xCollection = xSup->getQueryDefinitions();
-            if ( xCollection.is() && xCollection->hasElements() )
-            {
-                std::unique_ptr< ::comphelper::mem_fun1_t<ODBExport,XPropertySet* > > pMemFunc;
-                if ( _bExportContext )
-                    pMemFunc.reset( new ::comphelper::mem_fun1_t<ODBExport,XPropertySet* >(&ODBExport::exportQuery) );
-                else
-                    pMemFunc.reset( new ::comphelper::mem_fun1_t<ODBExport,XPropertySet* >(&ODBExport::exportAutoStyle) );
+    if ( !sService.isEmpty() )
+        return;
 
-                exportCollection(xCollection,XML_QUERIES,XML_QUERY_COLLECTION,_bExportContext,*pMemFunc);
-            }
-        }
+    Reference<XQueryDefinitionsSupplier> xSup(getDataSource(),UNO_QUERY);
+    if ( !xSup.is() )
+        return;
+
+    Reference< XNameAccess > xCollection = xSup->getQueryDefinitions();
+    if ( xCollection.is() && xCollection->hasElements() )
+    {
+        std::unique_ptr< ::comphelper::mem_fun1_t<ODBExport,XPropertySet* > > pMemFunc;
+        if ( _bExportContext )
+            pMemFunc.reset( new ::comphelper::mem_fun1_t<ODBExport,XPropertySet* >(&ODBExport::exportQuery) );
+        else
+            pMemFunc.reset( new ::comphelper::mem_fun1_t<ODBExport,XPropertySet* >(&ODBExport::exportAutoStyle) );
+
+        exportCollection(xCollection,XML_QUERIES,XML_QUERY_COLLECTION,_bExportContext,*pMemFunc);
     }
 }
 
 void ODBExport::exportTables(bool _bExportContext)
 {
     Reference<XTablesSupplier> xSup(getDataSource(),UNO_QUERY);
-    if ( xSup.is() )
+    if ( !xSup.is() )
+        return;
+
+    Reference< XNameAccess > xCollection = xSup->getTables();
+    if ( xCollection.is() && xCollection->hasElements() )
     {
-        Reference< XNameAccess > xCollection = xSup->getTables();
-        if ( xCollection.is() && xCollection->hasElements() )
-        {
-            std::unique_ptr< ::comphelper::mem_fun1_t<ODBExport,XPropertySet* > > pMemFunc;
-            if ( _bExportContext )
-                pMemFunc.reset( new ::comphelper::mem_fun1_t<ODBExport,XPropertySet* >(&ODBExport::exportTable) );
-            else
-                pMemFunc.reset( new ::comphelper::mem_fun1_t<ODBExport,XPropertySet* >(&ODBExport::exportAutoStyle) );
-            exportCollection(xCollection,XML_TABLE_REPRESENTATIONS,XML_TOKEN_INVALID,_bExportContext,*pMemFunc);
-        }
+        std::unique_ptr< ::comphelper::mem_fun1_t<ODBExport,XPropertySet* > > pMemFunc;
+        if ( _bExportContext )
+            pMemFunc.reset( new ::comphelper::mem_fun1_t<ODBExport,XPropertySet* >(&ODBExport::exportTable) );
+        else
+            pMemFunc.reset( new ::comphelper::mem_fun1_t<ODBExport,XPropertySet* >(&ODBExport::exportAutoStyle) );
+        exportCollection(xCollection,XML_TABLE_REPRESENTATIONS,XML_TOKEN_INVALID,_bExportContext,*pMemFunc);
     }
 }
 
 void ODBExport::exportAutoStyle(XPropertySet* _xProp)
 {
-    typedef std::pair<TPropertyStyleMap*,sal_uInt16> TEnumMapperPair;
+    typedef std::pair<TPropertyStyleMap*,XmlStyleFamily> TEnumMapperPair;
     typedef std::pair< rtl::Reference < SvXMLExportPropertyMapper> , TEnumMapperPair> TExportPropMapperPair;
     Reference<XColumnsSupplier> xSup(_xProp,UNO_QUERY);
     if ( xSup.is() )
     {
         const TExportPropMapperPair pExportHelper[] = {
-             TExportPropMapperPair(m_xExportHelper,TEnumMapperPair(&m_aAutoStyleNames,XML_STYLE_FAMILY_TABLE_TABLE ))
-            // ,TExportPropMapperPair(m_xCellExportHelper,TEnumMapperPair(&m_aCellAutoStyleNames,XML_STYLE_FAMILY_TABLE_CELL))
-            ,TExportPropMapperPair(m_xRowExportHelper,TEnumMapperPair(&m_aRowAutoStyleNames,XML_STYLE_FAMILY_TABLE_ROW))
+             TExportPropMapperPair(m_xExportHelper,TEnumMapperPair(&m_aAutoStyleNames,XmlStyleFamily::TABLE_TABLE ))
+            // ,TExportPropMapperPair(m_xCellExportHelper,TEnumMapperPair(&m_aCellAutoStyleNames,XmlStyleFamily::TABLE_CELL))
+            ,TExportPropMapperPair(m_xRowExportHelper,TEnumMapperPair(&m_aRowAutoStyleNames,XmlStyleFamily::TABLE_ROW))
         };
 
         std::vector< XMLPropertyState > aPropertyStates;
@@ -1129,7 +1080,7 @@ void ODBExport::exportAutoStyle(XPropertySet* _xProp)
         {
             aPropertyStates = i.first->Filter(_xProp);
             if ( !aPropertyStates.empty() )
-                i.second.first->insert( TPropertyStyleMap::value_type(_xProp,GetAutoStylePool()->Add( i.second.second, aPropertyStates )));
+                i.second.first->emplace( _xProp,GetAutoStylePool()->Add( i.second.second, aPropertyStates ) );
         }
 
         Reference< XNameAccess > xCollection;
@@ -1148,7 +1099,7 @@ void ODBExport::exportAutoStyle(XPropertySet* _xProp)
                 if ( xFac.is() )
                 {
                     Reference< XPropertySet> xColumn = xFac->createDataDescriptor();
-                    m_aTableDummyColumns.insert(TTableColumnMap::value_type(Reference< XPropertySet>(_xProp),xColumn));
+                    m_aTableDummyColumns.emplace( Reference< XPropertySet>(_xProp),xColumn );
                     exportAutoStyle(xColumn.get());
                 }
             }
@@ -1160,51 +1111,48 @@ void ODBExport::exportAutoStyle(XPropertySet* _xProp)
         }
         catch(const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
         m_aCurrentPropertyStates.clear();
     }
     else
     { // here I know I have a column
         const TExportPropMapperPair pExportHelper[] = {
-             TExportPropMapperPair(m_xColumnExportHelper,TEnumMapperPair(&m_aAutoStyleNames,XML_STYLE_FAMILY_TABLE_COLUMN ))
-            ,TExportPropMapperPair(m_xCellExportHelper,TEnumMapperPair(&m_aCellAutoStyleNames,XML_STYLE_FAMILY_TABLE_CELL))
+             TExportPropMapperPair(m_xColumnExportHelper,TEnumMapperPair(&m_aAutoStyleNames,XmlStyleFamily::TABLE_COLUMN ))
+            ,TExportPropMapperPair(m_xCellExportHelper,TEnumMapperPair(&m_aCellAutoStyleNames,XmlStyleFamily::TABLE_CELL))
         };
         for (const auto & i : pExportHelper)
         {
             std::vector< XMLPropertyState > aPropStates = i.first->Filter( _xProp );
             if ( !aPropStates.empty() )
             {
-                std::vector< XMLPropertyState >::iterator aItr = aPropStates.begin();
-                std::vector< XMLPropertyState >::const_iterator aEnd = aPropStates.end();
                 const rtl::Reference < XMLPropertySetMapper >& pStyle = i.first->getPropertySetMapper();
-                while ( aItr != aEnd )
+                for (auto & propState : aPropStates)
                 {
-                    if ( aItr->mnIndex != -1 )
+                    if ( propState.mnIndex != -1 )
                     {
-                        switch ( pStyle->GetEntryContextId(aItr->mnIndex) )
+                        switch ( pStyle->GetEntryContextId(propState.mnIndex) )
                         {
                             case CTF_DB_NUMBERFORMAT:
                                 {
                                     sal_Int32 nNumberFormat = -1;
-                                    if ( aItr->maValue >>= nNumberFormat )
+                                    if ( propState.maValue >>= nNumberFormat )
                                         addDataStyle(nNumberFormat);
                                 }
                                 break;
                             case CTF_DB_COLUMN_TEXT_ALIGN:
-                                if ( !aItr->maValue.hasValue() )
-                                    aItr->maValue <<= css::awt::TextAlign::LEFT;
+                                if ( !propState.maValue.hasValue() )
+                                    propState.maValue <<= css::awt::TextAlign::LEFT;
                                 break;
                         }
                     }
-                    ++aItr;
                 }
 
             }
-            if ( XML_STYLE_FAMILY_TABLE_CELL == i.second.second )
-                std::copy( m_aCurrentPropertyStates.begin(), m_aCurrentPropertyStates.end(), std::back_inserter( aPropStates ));
+            if ( XmlStyleFamily::TABLE_CELL == i.second.second )
+                aPropStates.insert( aPropStates.end(), m_aCurrentPropertyStates.begin(), m_aCurrentPropertyStates.end() );
             if ( !aPropStates.empty() )
-                i.second.first->insert( TPropertyStyleMap::value_type(_xProp,GetAutoStylePool()->Add( i.second.second, aPropStates )));
+                i.second.first->emplace( _xProp,GetAutoStylePool()->Add( i.second.second, aPropStates ) );
         }
     }
 }
@@ -1229,10 +1177,10 @@ void ODBExport::ExportAutoStyles_()
     if ( getExportFlags() & SvXMLExportFlags::CONTENT )
     {
         collectComponentStyles();
-        GetAutoStylePool()->exportXML(XML_STYLE_FAMILY_TABLE_TABLE);
-        GetAutoStylePool()->exportXML(XML_STYLE_FAMILY_TABLE_COLUMN);
-        GetAutoStylePool()->exportXML(XML_STYLE_FAMILY_TABLE_CELL);
-        GetAutoStylePool()->exportXML(XML_STYLE_FAMILY_TABLE_ROW);
+        GetAutoStylePool()->exportXML(XmlStyleFamily::TABLE_TABLE);
+        GetAutoStylePool()->exportXML(XmlStyleFamily::TABLE_COLUMN);
+        GetAutoStylePool()->exportXML(XmlStyleFamily::TABLE_CELL);
+        GetAutoStylePool()->exportXML(XmlStyleFamily::TABLE_ROW);
         exportDataStyles();
     }
 }
@@ -1240,37 +1188,37 @@ void ODBExport::ExportAutoStyles_()
 void ODBExport::GetViewSettings(Sequence<PropertyValue>& aProps)
 {
     Reference<XQueryDefinitionsSupplier> xSup(getDataSource(),UNO_QUERY);
-    if ( xSup.is() )
-    {
-        Reference< XNameAccess > xCollection = xSup->getQueryDefinitions();
-        if ( xCollection.is() && xCollection->hasElements() )
-        {
-            try
-            {
-                sal_Int32 nLength = aProps.getLength();
-                aProps.realloc(nLength + 1);
-                aProps[nLength].Name = "Queries";
-                Sequence< OUString> aSeq = xCollection->getElementNames();
-                const OUString* pIter = aSeq.getConstArray();
-                const OUString* pEnd   = pIter + aSeq.getLength();
+    if ( !xSup.is() )
+        return;
 
-                Sequence<PropertyValue> aQueries(aSeq.getLength());
-                for(sal_Int32 i = 0;pIter != pEnd;++pIter,++i)
-                {
-                    Reference<XPropertySet> xProp(xCollection->getByName(*pIter),UNO_QUERY);
-                    if ( xProp.is() )
-                    {
-                        aQueries[i].Name = *pIter;
-                        aQueries[i].Value = xProp->getPropertyValue(PROPERTY_LAYOUTINFORMATION);
-                    }
-                }
-                aProps[nLength].Value <<= aQueries;
-            }
-            catch(const Exception&)
+    Reference< XNameAccess > xCollection = xSup->getQueryDefinitions();
+    if ( !(xCollection.is() && xCollection->hasElements()) )
+        return;
+
+    try
+    {
+        sal_Int32 nLength = aProps.getLength();
+        aProps.realloc(nLength + 1);
+        aProps[nLength].Name = "Queries";
+        Sequence< OUString> aSeq = xCollection->getElementNames();
+        const OUString* pIter = aSeq.getConstArray();
+        const OUString* pEnd   = pIter + aSeq.getLength();
+
+        Sequence<PropertyValue> aQueries(aSeq.getLength());
+        for(sal_Int32 i = 0;pIter != pEnd;++pIter,++i)
+        {
+            Reference<XPropertySet> xProp(xCollection->getByName(*pIter),UNO_QUERY);
+            if ( xProp.is() )
             {
-                OSL_FAIL("ODBExport::GetViewSettings: Exception caught!");
+                aQueries[i].Name = *pIter;
+                aQueries[i].Value = xProp->getPropertyValue(PROPERTY_LAYOUTINFORMATION);
             }
         }
+        aProps[nLength].Value <<= aQueries;
+    }
+    catch(const Exception&)
+    {
+        OSL_FAIL("ODBExport::GetViewSettings: Exception caught!");
     }
 
 }
@@ -1278,25 +1226,25 @@ void ODBExport::GetViewSettings(Sequence<PropertyValue>& aProps)
 void ODBExport::GetConfigurationSettings(Sequence<PropertyValue>& aProps)
 {
     Reference<XPropertySet> xProp(getDataSource());
-    if ( xProp.is() )
+    if ( !xProp.is() )
+        return;
+
+    sal_Int32 nLength = aProps.getLength();
+    try
     {
-        sal_Int32 nLength = aProps.getLength();
-        try
+        Any aValue = xProp->getPropertyValue(PROPERTY_LAYOUTINFORMATION);
+        Sequence< PropertyValue > aPropValues;
+        aValue >>= aPropValues;
+        if ( aPropValues.hasElements() )
         {
-            Any aValue = xProp->getPropertyValue(PROPERTY_LAYOUTINFORMATION);
-            Sequence< PropertyValue > aPropValues;
-            aValue >>= aPropValues;
-            if ( aPropValues.getLength() )
-            {
-                aProps.realloc(nLength + 1);
-                aProps[nLength].Name = "layout-settings";
-                aProps[nLength].Value = aValue;
-            }
+            aProps.realloc(nLength + 1);
+            aProps[nLength].Name = "layout-settings";
+            aProps[nLength].Value = aValue;
         }
-        catch(const Exception&)
-        {
-            OSL_FAIL("Could not access layout information from the data source!");
-        }
+    }
+    catch(const Exception&)
+    {
+        OSL_FAIL("Could not access layout information from the data source!");
     }
 }
 

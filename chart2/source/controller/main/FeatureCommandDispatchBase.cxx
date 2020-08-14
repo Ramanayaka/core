@@ -54,11 +54,10 @@ void FeatureCommandDispatchBase::fireStatusEvent( const OUString& rURL,
 {
     if ( rURL.isEmpty() )
     {
-        SupportedFeatures::const_iterator aEnd( m_aSupportedFeatures.end() );
-        for ( SupportedFeatures::const_iterator aIter( m_aSupportedFeatures.begin() ); aIter != aEnd; ++aIter )
+        for (auto const& elem : m_aSupportedFeatures)
         {
-            FeatureState aFeatureState( getState( aIter->first ) );
-            fireStatusEventForURL( aIter->first, aFeatureState.aState, aFeatureState.bEnabled, xSingleListener );
+            FeatureState aFeatureState( getState(elem.first) );
+            fireStatusEventForURL( elem.first, aFeatureState.aState, aFeatureState.bEnabled, xSingleListener );
         }
     }
     else
@@ -79,7 +78,7 @@ void FeatureCommandDispatchBase::dispatch( const util::URL& URL,
     }
 }
 
-void FeatureCommandDispatchBase::implDescribeSupportedFeature( const sal_Char* pAsciiCommandURL,
+void FeatureCommandDispatchBase::implDescribeSupportedFeature( const char* pAsciiCommandURL,
     sal_uInt16 nId, sal_Int16 nGroup )
 {
     ControllerFeature aFeature;

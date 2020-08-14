@@ -17,28 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_UNOCONTROLS_INC_BASECONTAINERCONTROL_HXX
-#define INCLUDED_UNOCONTROLS_INC_BASECONTAINERCONTROL_HXX
+#pragma once
 
-#include <com/sun/star/lang/XServiceName.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/container/XContainer.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/container/XNameReplace.hpp>
-#include <com/sun/star/container/XContainerListener.hpp>
-#include <com/sun/star/container/XSet.hpp>
-#include <com/sun/star/container/ContainerEvent.hpp>
-#include <com/sun/star/container/XIndexReplace.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
+#include <memory>
 #include <vector>
 
 #include "basecontrol.hxx"
+#include <com/sun/star/awt/XControlContainer.hpp>
 
-//  "namespaces"
-
-namespace unocontrols{
-
-//  structs, types, forwards
+namespace unocontrols {
 
 struct IMPL_ControlInfo
 {
@@ -50,16 +37,15 @@ class BaseContainerControl  : public css::awt::XControlModel
                             , public css::awt::XControlContainer
                             , public BaseControl
 {
-
 public:
 
-       BaseContainerControl( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
+    BaseContainerControl( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
 
     virtual ~BaseContainerControl() override;
 
     //  XInterface
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      give answer, if interface is supported
         @descr      The interfaces are searched by type.
 
@@ -78,7 +64,7 @@ public:
 
     //  XTypeProvider
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      get information about supported interfaces
         @seealso    XTypeProvider
         @return     Sequence of types of all supported interfaces
@@ -143,7 +129,7 @@ public:
 protected:
     using OComponentHelper::disposing;
 
-    virtual css::awt::WindowDescriptor* impl_getWindowDescriptor(
+    virtual css::awt::WindowDescriptor impl_getWindowDescriptor(
         const css::uno::Reference< css::awt::XWindowPeer >& xParentPeer
     ) override;
 
@@ -155,23 +141,14 @@ protected:
     ) override;
 
 private:
-
-    void impl_activateTabControllers();
-
-    void impl_cleanMemory();
-
     // list of pointer of "struct IMPL_ControlInfo" to hold child-controls
-    ::std::vector< IMPL_ControlInfo* > maControlInfoList;
-
-    // list of references of XTabController to hold tab-order in this container
-    css::uno::Sequence< css::uno::Reference< css::awt::XTabController > >  m_xTabControllerList;
+    ::std::vector< std::unique_ptr<IMPL_ControlInfo> > maControlInfoList;
 
     ::cppu::OMultiTypeInterfaceContainerHelper                          m_aListeners;
 
-};  // class BaseContainerControl
+};
 
-}   // namespace unocontrols
+}
 
-#endif // INCLUDED_UNOCONTROLS_INC_BASECONTAINERCONTROL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ole/vbaproject.hxx"
+#include <oox/ole/vbaproject.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/document/XStorageBasedDocument.hpp>
@@ -31,24 +31,22 @@
 #include <com/sun/star/script/vba/XVBAMacroResolver.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <comphelper/configurationhelper.hxx>
-#include <comphelper/string.hxx>
+#include <comphelper/documentinfo.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <osl/diagnose.h>
 #include <rtl/tencinfo.h>
-#include <rtl/ustrbuf.h>
-#include "oox/helper/binaryinputstream.hxx"
-#include "oox/helper/containerhelper.hxx"
-#include "oox/helper/propertyset.hxx"
-#include "oox/helper/textinputstream.hxx"
-#include "oox/ole/olestorage.hxx"
-#include "oox/ole/vbacontrol.hxx"
-#include "oox/ole/vbahelper.hxx"
-#include "oox/ole/vbainputstream.hxx"
-#include "oox/ole/vbamodule.hxx"
-#include "oox/token/properties.hxx"
+#include <sal/log.hxx>
+#include <oox/helper/binaryinputstream.hxx>
+#include <oox/helper/propertyset.hxx>
+#include <oox/helper/textinputstream.hxx>
+#include <oox/ole/olestorage.hxx>
+#include <oox/ole/vbacontrol.hxx>
+#include <oox/ole/vbahelper.hxx>
+#include <oox/ole/vbainputstream.hxx>
+#include <oox/ole/vbamodule.hxx>
+#include <oox/token/properties.hxx>
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::container;
@@ -162,7 +160,7 @@ bool VbaProject::importVbaProject( StorageBase& rVbaPrjStrg )
    }
    StorageRef noStorage;
    // if the GraphicHelper tries to use noStorage it will of course crash
-   // but.. this shouldn't happen as there is no reason for GraphicHelper
+   // but... this shouldn't happen as there is no reason for GraphicHelper
    // to do that when importing VBA projects
    GraphicHelper grfHlp( mxContext, xFrame, noStorage );
    importVbaProject( rVbaPrjStrg, grfHlp );
@@ -187,18 +185,18 @@ void VbaProject::importVbaProject( StorageBase& rVbaPrjStrg, const GraphicHelper
 void VbaProject::importVbaData(const uno::Reference<io::XInputStream>& xInputStream)
 {
     uno::Reference<document::XStorageBasedDocument> xStorageBasedDoc(mxDocModel, uno::UNO_QUERY);
-    uno::Reference<embed::XStorage> xDocStorage(xStorageBasedDoc->getDocumentStorage(), uno::UNO_QUERY);
+    uno::Reference<embed::XStorage> xDocStorage = xStorageBasedDoc->getDocumentStorage();
     {
         const sal_Int32 nOpenMode = ElementModes::SEEKABLE | ElementModes::WRITE | ElementModes::TRUNCATE;
         uno::Reference<io::XOutputStream> xDocStream(xDocStorage->openStreamElement("_MS_VBA_Macros_XML", nOpenMode), uno::UNO_QUERY);
         comphelper::OStorageHelper::CopyInputToOutput(xInputStream, xDocStream);
     }
-    uno::Reference<embed::XTransactedObject>(xDocStorage, uno::UNO_QUERY)->commit();
+    uno::Reference<embed::XTransactedObject>(xDocStorage, uno::UNO_QUERY_THROW)->commit();
 }
 
 void VbaProject::registerMacroAttacher( const VbaMacroAttacherRef& rxAttacher )
 {
-    OSL_ENSURE( rxAttacher.get(), "VbaProject::registerMacroAttacher - unexpected empty reference" );
+    OSL_ENSURE( rxAttacher, "VbaProject::registerMacroAttacher - unexpected empty reference" );
     maMacroAttachers.push_back( rxAttacher );
 }
 
@@ -265,7 +263,7 @@ void VbaProject::importVba( StorageBase& rVbaPrjStrg, const GraphicHelper& rGrap
 void VbaProject::readVbaModules( StorageBase& rVbaPrjStrg )
 {
     StorageRef xVbaStrg = rVbaPrjStrg.openSubStorage( "VBA", false );
-    OSL_ENSURE( xVbaStrg.get(), "VbaProject::readVbaModules - cannot open 'VBA' substorage" );
+    OSL_ENSURE( xVbaStrg, "VbaProject::readVbaModules - cannot open 'VBA' substorage" );
     if( !xVbaStrg )
         return;
 
@@ -326,7 +324,7 @@ void VbaProject::readVbaModules( StorageBase& rVbaPrjStrg )
                 OSL_ENSURE( !aName.isEmpty(), "VbaProject::importVba - invalid module name" );
                 OSL_ENSURE( !maModules.has( aName ), "VbaProject::importVba - multiple modules with the same name" );
                 VbaModuleMap::mapped_type& rxModule = maModules[ aName ];
-                rxModule.reset( new VbaModule( mxContext, mxDocModel, aName, eTextEnc, bExecutable ) );
+                rxModule = std::make_shared<VbaModule>( mxContext, mxDocModel, aName, eTextEnc, bExecutable );
                 // read all remaining records until the MODULEEND record
                 rxModule->importDirRecords( aDirStrm );
                 OSL_ENSURE( !maModulesByStrm.has( rxModule->getStreamName() ), "VbaProject::importVba - multiple modules with the same stream name" );
@@ -399,7 +397,11 @@ void VbaProject::readVbaModules( StorageBase& rVbaPrjStrg )
             }
         }
     }
-    if( !maModules.empty() ) try
+
+    if( maModules.empty() )
+        return;
+
+    try
     {
         /*  Set library container to VBA compatibility mode. This will create
             the VBA Globals object and store it in the Basic manager of the
@@ -423,7 +425,7 @@ void VbaProject::readVbaModules( StorageBase& rVbaPrjStrg )
 void VbaProject::importModulesAndForms( StorageBase& rVbaPrjStrg, const GraphicHelper& rGraphicHelper )
 {
     StorageRef xVbaStrg = rVbaPrjStrg.openSubStorage( "VBA", false );
-    OSL_ENSURE( xVbaStrg.get(), "VbaProject::importModulesAndForms - cannot open 'VBA' substorage" );
+    OSL_ENSURE( xVbaStrg, "VbaProject::importModulesAndForms - cannot open 'VBA' substorage" );
     if( !xVbaStrg )
         return;
     rtl_TextEncoding eTextEnc = RTL_TEXTENCODING_MS_1252;
@@ -431,12 +433,12 @@ void VbaProject::importModulesAndForms( StorageBase& rVbaPrjStrg, const GraphicH
 
     // create empty dummy modules
     VbaModuleMap aDummyModules;
-    for( DummyModuleMap::iterator aIt = maDummyModules.begin(), aEnd = maDummyModules.end(); aIt != aEnd; ++aIt )
+    for (auto const& dummyModule : maDummyModules)
     {
-        OSL_ENSURE( !maModules.has( aIt->first ) && !aDummyModules.has( aIt->first ), "VbaProject::importVba - multiple modules with the same name" );
-        VbaModuleMap::mapped_type& rxModule = aDummyModules[ aIt->first ];
-        rxModule.reset( new VbaModule( mxContext, mxDocModel, aIt->first, eTextEnc, bExecutable ) );
-        rxModule->setType( aIt->second );
+        OSL_ENSURE( !maModules.has( dummyModule.first ) && !aDummyModules.has( dummyModule.first ), "VbaProject::importVba - multiple modules with the same name" );
+        VbaModuleMap::mapped_type& rxModule = aDummyModules[ dummyModule.first ];
+        rxModule = std::make_shared<VbaModule>( mxContext, mxDocModel, dummyModule.first, eTextEnc, bExecutable );
+        rxModule->setType( dummyModule.second );
     }
 
     /*  Now it is time to load the source code. All modules will be inserted
@@ -483,16 +485,16 @@ void VbaProject::importModulesAndForms( StorageBase& rVbaPrjStrg, const GraphicH
         storages that misses to mention a module for an existing form. */
     ::std::vector< OUString > aElements;
     rVbaPrjStrg.getElementNames( aElements );
-    for( ::std::vector< OUString >::iterator aIt = aElements.begin(), aEnd = aElements.end(); aIt != aEnd; ++aIt )
+    for (auto const& elem : aElements)
     {
         // try to open the element as storage
-        if( *aIt != "VBA" )
+        if( elem != "VBA" )
         {
-            StorageRef xSubStrg = rVbaPrjStrg.openSubStorage( *aIt, false );
-            if( xSubStrg.get() ) try
+            StorageRef xSubStrg = rVbaPrjStrg.openSubStorage( elem, false );
+            if( xSubStrg ) try
             {
                 // resolve module name from storage name (which equals the module stream name)
-                VbaModule* pModule = maModulesByStrm.get( *aIt ).get();
+                VbaModule* pModule = maModulesByStrm.get( elem ).get();
                 OSL_ENSURE( pModule && (pModule->getType() == ModuleType::FORM),
                     "VbaProject::importVba - form substorage without form module" );
                 OUString aModuleName;
@@ -513,8 +515,13 @@ void VbaProject::importModulesAndForms( StorageBase& rVbaPrjStrg, const GraphicH
 
 void VbaProject::attachMacros()
 {
-    if( !maMacroAttachers.empty() && mxContext.is() ) try
+    if( !(!maMacroAttachers.empty() && mxContext.is()) )
+        return;
+
+    try
     {
+        comphelper::DocumentInfo::notifyMacroEventRead(mxDocModel);
+
         Reference< XMultiComponentFactory > xFactory( mxContext->getServiceManager(), UNO_SET_THROW );
         Sequence< Any > aArgs( 2 );
         aArgs[ 0 ] <<= mxDocModel;
@@ -522,6 +529,7 @@ void VbaProject::attachMacros()
         Reference< XVBAMacroResolver > xResolver( xFactory->createInstanceWithArgumentsAndContext(
             "com.sun.star.script.vba.VBAMacroResolver", aArgs, mxContext ), UNO_QUERY_THROW );
         maMacroAttachers.forEachMem( &VbaMacroAttacherBase::resolveAndAttachMacro, ::std::cref( xResolver ) );
+
     }
     catch(const Exception& )
     {
@@ -530,10 +538,13 @@ void VbaProject::attachMacros()
 
 void VbaProject::copyStorage( StorageBase& rVbaPrjStrg )
 {
-    if( mxContext.is() ) try
+    if( !mxContext.is() )
+        return;
+
+    try
     {
         Reference< XStorageBasedDocument > xStorageBasedDoc( mxDocModel, UNO_QUERY_THROW );
-        Reference< XStorage > xDocStorage( xStorageBasedDoc->getDocumentStorage(), UNO_QUERY_THROW );
+        Reference< XStorage > xDocStorage( xStorageBasedDoc->getDocumentStorage(), UNO_SET_THROW );
         {
             const sal_Int32 nOpenMode = ElementModes::SEEKABLE | ElementModes::WRITE | ElementModes::TRUNCATE;
             Reference< XStream > xDocStream( xDocStorage->openStreamElement( "_MS_VBA_Macros", nOpenMode ), UNO_SET_THROW );
@@ -548,7 +559,6 @@ void VbaProject::copyStorage( StorageBase& rVbaPrjStrg )
     }
 }
 
-} // namespace ole
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

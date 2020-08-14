@@ -22,17 +22,15 @@
 
 #include <memory>
 #include "LoggedResources.hxx"
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 
 struct FontTable_Impl;
-struct FontEntry
+struct FontEntry : public virtual SvRefBase
 {
-    typedef std::shared_ptr<FontEntry> Pointer_t;
+    typedef tools::SvRef<FontEntry> Pointer_t;
 
     OUString        sFontName;
     sal_Int32       nTextEncoding;
@@ -51,7 +49,7 @@ class FontTable : public LoggedProperties, public LoggedTable
     virtual ~FontTable() override;
 
     sal_uInt32          size();
-    const FontEntry::Pointer_t  getFontEntry(sal_uInt32 nIndex);
+    FontEntry::Pointer_t  getFontEntry(sal_uInt32 nIndex);
 
  private:
     // Properties
@@ -60,7 +58,7 @@ class FontTable : public LoggedProperties, public LoggedTable
     void resolveSprm(Sprm & r_sprm);
 
     // Table
-    virtual void lcl_entry(int pos, writerfilter::Reference<Properties>::Pointer_t ref) override;
+    virtual void lcl_entry(writerfilter::Reference<Properties>::Pointer_t ref) override;
 
     // Stream
     virtual void lcl_startSectionGroup() override;
@@ -76,12 +74,11 @@ class FontTable : public LoggedProperties, public LoggedTable
                            writerfilter::Reference<Table>::Pointer_t ref) override;
     virtual void lcl_substream(Id name,
                                ::writerfilter::Reference<Stream>::Pointer_t ref) override;
-    virtual void lcl_info(const std::string & info) override;
     virtual void lcl_startShape(css::uno::Reference<css::drawing::XShape> const& xShape) override;
     virtual void lcl_endShape( ) override;
 
 };
-typedef std::shared_ptr< FontTable >          FontTablePtr;
+typedef tools::SvRef< FontTable >          FontTablePtr;
 
 class EmbeddedFontHandler : public LoggedProperties
 {
@@ -93,13 +90,12 @@ private:
     virtual void lcl_sprm( Sprm& rSprm ) override;
     OUString fontName;
     const char* const style;
-    OUString id;
     OUString fontKey;
     css::uno::Reference<css::io::XInputStream> inputStream;
 };
 
 
-}}
+}
 
 #endif
 

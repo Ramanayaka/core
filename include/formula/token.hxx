@@ -27,7 +27,6 @@
 #include <vector>
 
 #include <formula/formuladllapi.h>
-#include <formula/IFunctionDescription.hxx>
 #include <formula/opcode.hxx>
 #include <formula/types.hxx>
 #include <formula/paramclass.hxx>
@@ -35,7 +34,6 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <svl/sharedstring.hxx>
-#include <tools/mempool.hxx>
 
 class ScJumpMatrix;
 class ScMatrix;
@@ -84,6 +82,9 @@ enum StackVar : sal_uInt8
 
 // Only to be used for debugging output. No guarantee of stability of the
 // return value.
+
+// Turn this into an operator<< when StackVar becomes a scoped enum
+
 inline std::string StackVarEnumToString(StackVar const e)
 {
     switch (e)
@@ -118,15 +119,13 @@ inline std::string StackVarEnumToString(StackVar const e)
     return os.str();
 }
 
-class FORMULA_DLLPUBLIC FormulaToken : public IFormulaToken
+class FORMULA_DLLPUBLIC FormulaToken
 {
     OpCode                      eOp;
-            FormulaToken&            operator=( const FormulaToken& ) = delete;
-protected:
+    const StackVar              eType;          // type of data
+    mutable oslInterlockedCount mnRefCnt;        // reference count
 
-            const StackVar      eType;          // type of data
-            mutable oslInterlockedCount mnRefCnt;        // reference count
-
+    FormulaToken&            operator=( const FormulaToken& ) = delete;
 public:
     FormulaToken( StackVar eTypeP,OpCode e = ocPush );
     FormulaToken( const FormulaToken& r );
@@ -136,7 +135,7 @@ public:
     void                Delete()                { delete this; }
     void                DeleteIfZeroRef()       { if (mnRefCnt == 0) delete this; }
     StackVar            GetType() const         { return eType; }
-            bool                IsFunction() const; // pure functions, no operators
+    bool                IsFunction() const; // pure functions, no operators
 
     bool IsExternalRef() const;
     bool IsRef() const;
@@ -180,7 +179,8 @@ public:
     virtual void                SetInForceArray( ParamClass c );
     virtual double              GetDouble() const;
     virtual double&             GetDoubleAsReference();
-    virtual short               GetDoubleType() const;
+    virtual sal_Int16           GetDoubleType() const;
+    virtual void                SetDoubleType( sal_Int16 nType );
     virtual svl::SharedString   GetString() const;
     virtual void                SetString( const svl::SharedString& rStr );
     virtual sal_uInt16          GetIndex() const;
@@ -209,16 +209,6 @@ public:
 
     virtual bool                TextEqual( const formula::FormulaToken& rToken ) const;
     virtual bool                operator==( const FormulaToken& rToken ) const;
-
-    virtual bool isFunction() const override
-    {
-        return IsFunction();
-    }
-
-    virtual sal_uInt32 getArgumentCount() const override
-    {
-        return GetParamCount();
-    }
 
     /** This is dirty and only the compiler should use it! */
     struct PrivateAccess { friend class FormulaCompiler; private: PrivateAccess() { }  };
@@ -264,14 +254,12 @@ public:
     virtual ParamClass          GetInForceArray() const override;
     virtual void                SetInForceArray( ParamClass c ) override;
     virtual bool                operator==( const FormulaToken& rToken ) const override;
-
-    DECL_FIXEDMEMPOOL_NEWDEL_DLL( FormulaByteToken )
 };
 
 
 // A special token for the FormulaAutoPilot only. Keeps a reference pointer of
 // the token of which it was created for comparison.
-class FORMULA_DLLPUBLIC FormulaFAPToken : public FormulaByteToken
+class FORMULA_DLLPUBLIC FormulaFAPToken final : public FormulaByteToken
 {
 private:
             FormulaTokenRef     pOrigToken;
@@ -300,34 +288,31 @@ public:
     virtual FormulaToken*       Clone() const override { return new FormulaDoubleToken(*this); }
     virtual double              GetDouble() const override;
     virtual double&             GetDoubleAsReference() override;
-    virtual short               GetDoubleType() const override;     ///< always returns 0 for "not typed"
+    virtual sal_Int16           GetDoubleType() const override;     ///< always returns 0 for "not typed"
     virtual bool                operator==( const FormulaToken& rToken ) const override;
-
-    DECL_FIXEDMEMPOOL_NEWDEL_DLL( FormulaDoubleToken )
 };
 
-class FORMULA_DLLPUBLIC FormulaTypedDoubleToken : public FormulaDoubleToken
+class FORMULA_DLLPUBLIC FormulaTypedDoubleToken final : public FormulaDoubleToken
 {
 private:
-            short               mnType;     /**< Can hold, for example, a value
-                                              of css::util::NumberFormat, or by
+            sal_Int16           mnType;     /**< Can hold, for example, a value
+                                              of SvNumFormatType, or by
                                               contract any other
                                               classification. */
 public:
-                                FormulaTypedDoubleToken( double f, short nType ) :
+                                FormulaTypedDoubleToken( double f, sal_Int16 nType ) :
                                     FormulaDoubleToken( f ), mnType( nType ) {}
                                 FormulaTypedDoubleToken( const FormulaTypedDoubleToken& r ) :
                                     FormulaDoubleToken( r ), mnType( r.mnType ) {}
 
     virtual FormulaToken*       Clone() const override { return new FormulaTypedDoubleToken(*this); }
-    virtual short               GetDoubleType() const override;
+    virtual sal_Int16           GetDoubleType() const override;
+    virtual void                SetDoubleType( sal_Int16 nType ) override;
     virtual bool                operator==( const FormulaToken& rToken ) const override;
-
-    DECL_FIXEDMEMPOOL_NEWDEL_DLL( FormulaTypedDoubleToken )
 };
 
 
-class FORMULA_DLLPUBLIC FormulaStringToken : public FormulaToken
+class FORMULA_DLLPUBLIC FormulaStringToken final : public FormulaToken
 {
     svl::SharedString maString;
 public:
@@ -338,14 +323,12 @@ public:
     virtual svl::SharedString GetString() const override;
     virtual void SetString( const svl::SharedString& rStr ) override;
     virtual bool operator==( const FormulaToken& rToken ) const override;
-
-    DECL_FIXEDMEMPOOL_NEWDEL_DLL( FormulaStringToken )
 };
 
 
 /** Identical to FormulaStringToken, but with explicit OpCode instead of implicit
     ocPush, and an optional sal_uInt8 for ocBad tokens. */
-class FORMULA_DLLPUBLIC FormulaStringOpToken : public FormulaByteToken
+class FORMULA_DLLPUBLIC FormulaStringOpToken final : public FormulaByteToken
 {
     svl::SharedString maString;
 public:
@@ -358,7 +341,7 @@ public:
     virtual bool operator==( const FormulaToken& rToken ) const override;
 };
 
-class FORMULA_DLLPUBLIC FormulaIndexToken : public FormulaToken
+class FORMULA_DLLPUBLIC FormulaIndexToken final : public FormulaToken
 {
 private:
             sal_uInt16          nIndex;
@@ -378,7 +361,7 @@ public:
 };
 
 
-class FORMULA_DLLPUBLIC FormulaExternalToken : public FormulaToken
+class FORMULA_DLLPUBLIC FormulaExternalToken final : public FormulaToken
 {
 private:
             OUString              aExternal;
@@ -402,7 +385,7 @@ public:
 };
 
 
-class FORMULA_DLLPUBLIC FormulaMissingToken : public FormulaToken
+class FORMULA_DLLPUBLIC FormulaMissingToken final : public FormulaToken
 {
 public:
                                 FormulaMissingToken() :
@@ -416,14 +399,14 @@ public:
     virtual bool                operator==( const FormulaToken& rToken ) const override;
 };
 
-class FORMULA_DLLPUBLIC FormulaJumpToken : public FormulaToken
+class FORMULA_DLLPUBLIC FormulaJumpToken final : public FormulaToken
 {
 private:
             std::unique_ptr<short[]>
                                 pJump;
             ParamClass          eInForceArray;
 public:
-                                FormulaJumpToken( OpCode e, short* p ) :
+                                FormulaJumpToken( OpCode e, short const * p ) :
                                     FormulaToken( formula::svJump , e),
                                     eInForceArray( ParamClass::Unknown)
                                 {
@@ -446,7 +429,7 @@ public:
 };
 
 
-class FORMULA_DLLPUBLIC FormulaUnknownToken : public FormulaToken
+class FORMULA_DLLPUBLIC FormulaUnknownToken final : public FormulaToken
 {
 public:
                                 FormulaUnknownToken( OpCode e ) :
@@ -459,7 +442,7 @@ public:
 };
 
 
-class FORMULA_DLLPUBLIC FormulaErrorToken : public FormulaToken
+class FORMULA_DLLPUBLIC FormulaErrorToken final : public FormulaToken
 {
          FormulaError          nError;
 public:

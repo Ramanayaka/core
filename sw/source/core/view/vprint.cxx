@@ -19,25 +19,12 @@
 
 
 #include <hintids.hxx>
-#include <sfx2/app.hxx>
-#include <sfx2/objsh.hxx>
-#include <sfx2/prnmon.hxx>
-#include <svl/languageoptions.hxx>
-#include <editeng/paperinf.hxx>
-#include <editeng/pbinitem.hxx>
+#include <sfx2/printer.hxx>
 #include <svx/svdview.hxx>
-#include <toolkit/awt/vclxdevice.hxx>
-#include <unotools/localedatawrapper.hxx>
-#include <unotools/moduleoptions.hxx>
-#include <unotools/syslocale.hxx>
-#include <vcl/oldprintadaptor.hxx>
 
-#include <unotxdoc.hxx>
-#include <docsh.hxx>
 #include <txtfld.hxx>
 #include <fmtfld.hxx>
 #include <fmtfsize.hxx>
-#include <frmatr.hxx>
 #include <rootfrm.hxx>
 #include <pagefrm.hxx>
 #include <cntfrm.hxx>
@@ -46,30 +33,19 @@
 #include <IDocumentDeviceAccess.hxx>
 #include <IDocumentFieldsAccess.hxx>
 #include <IDocumentLayoutAccess.hxx>
-#include <wdocsh.hxx>
 #include <fesh.hxx>
 #include <pam.hxx>
 #include <viewimp.hxx>
 #include <layact.hxx>
 #include <ndtxt.hxx>
-#include <fldbas.hxx>
-#include <docfld.hxx>
-#include <docufld.hxx>
-#include <shellres.hxx>
 #include <viewopt.hxx>
 #include <printdata.hxx>
 #include <pagedesc.hxx>
-#include <poolfmt.hxx>
-#include <mdiexp.hxx>
-#include <statstr.hrc>
 #include <ptqueue.hxx>
-#include <tabfrm.hxx>
-#include <txtfrm.hxx>
 #include <viscrs.hxx>
 #include <fmtpdsc.hxx>
-#include <globals.hrc>
-#include "PostItMgr.hxx"
-#include <vprint.hxx>
+#include <PostItMgr.hxx>
+#include "vprint.hxx"
 
 using namespace ::com::sun::star;
 
@@ -90,6 +66,8 @@ public:
 
 SwQueuedPaint *SwPaintQueue::s_pPaintQueue = nullptr;
 
+namespace {
+
 // saves some settings from the draw view
 class SwDrawViewSave
 {
@@ -100,10 +78,12 @@ public:
     ~SwDrawViewSave();
 };
 
+}
+
 void SwPaintQueue::Add( SwViewShell *pNew, const SwRect &rNew )
 {
-    SwQueuedPaint *pPt;
-    if (nullptr != (pPt = s_pPaintQueue))
+    SwQueuedPaint *pPt = s_pPaintQueue;
+    if (nullptr != pPt)
     {
         while ( pPt->pSh != pNew && pPt->pNext )
             pPt = pPt->pNext;
@@ -122,60 +102,59 @@ void SwPaintQueue::Add( SwViewShell *pNew, const SwRect &rNew )
 
 void SwPaintQueue::Repaint()
 {
-    if (!SwRootFrame::IsInPaint() && s_pPaintQueue)
-    {
-        SwQueuedPaint *pPt = s_pPaintQueue;
-        do
-        {   SwViewShell *pSh = pPt->pSh;
-            SET_CURR_SHELL( pSh );
-            if ( pSh->IsPreview() )
-            {
-                if ( pSh->GetWin() )
-                {
-                    // for previewing, since rows/columns are known in PaintHdl (UI)
-                    pSh->GetWin()->Invalidate();
-                    pSh->GetWin()->Update();
-                }
-            }
-            else
-                pSh->Paint(*pSh->GetOut(), pPt->aRect.SVRect());
-            pPt = pPt->pNext;
-        } while ( pPt );
+    if (!(!SwRootFrame::IsInPaint() && s_pPaintQueue))
+        return;
 
-        do
+    SwQueuedPaint *pPt = s_pPaintQueue;
+    do
+    {   SwViewShell *pSh = pPt->pSh;
+        CurrShell aCurr( pSh );
+        if ( pSh->IsPreview() )
         {
-            pPt = s_pPaintQueue;
-            s_pPaintQueue = s_pPaintQueue->pNext;
-            delete pPt;
-        } while (s_pPaintQueue);
-    }
+            if ( pSh->GetWin() )
+            {
+                // for previewing, since rows/columns are known in PaintHdl (UI)
+                pSh->GetWin()->Invalidate();
+            }
+        }
+        else
+            pSh->Paint(*pSh->GetOut(), pPt->aRect.SVRect());
+        pPt = pPt->pNext;
+    } while ( pPt );
+
+    do
+    {
+        pPt = s_pPaintQueue;
+        s_pPaintQueue = s_pPaintQueue->pNext;
+        delete pPt;
+    } while (s_pPaintQueue);
 }
 
-void SwPaintQueue::Remove( SwViewShell *pSh )
+void SwPaintQueue::Remove( SwViewShell const *pSh )
 {
-    SwQueuedPaint *pPt;
-    if (nullptr != (pPt = s_pPaintQueue))
+    SwQueuedPaint *pPt = s_pPaintQueue;
+    if (nullptr == pPt)
+        return;
+
+    SwQueuedPaint *pPrev = nullptr;
+    while ( pPt && pPt->pSh != pSh )
     {
-        SwQueuedPaint *pPrev = nullptr;
-        while ( pPt && pPt->pSh != pSh )
-        {
-            pPrev = pPt;
-            pPt = pPt->pNext;
-        }
-        if ( pPt )
-        {
-            if ( pPrev )
-                pPrev->pNext = pPt->pNext;
-            else if (pPt == s_pPaintQueue)
-                s_pPaintQueue = nullptr;
-            delete pPt;
-        }
+        pPrev = pPt;
+        pPt = pPt->pNext;
+    }
+    if ( pPt )
+    {
+        if ( pPrev )
+            pPrev->pNext = pPt->pNext;
+        else if (pPt == s_pPaintQueue)
+            s_pPaintQueue = nullptr;
+        delete pPt;
     }
 }
 
 void SetSwVisArea( SwViewShell *pSh, const SwRect &rRect )
 {
-    OSL_ENSURE( !pSh->GetWin(), "Drucken mit Window?" );
+    OSL_ENSURE( !pSh->GetWin(), "Print with window?" );
     pSh->maVisArea = rRect;
     pSh->Imp()->SetFirstVisPageInvalid();
     Point aPt( rRect.Pos() );
@@ -184,7 +163,7 @@ void SetSwVisArea( SwViewShell *pSh, const SwRect &rRect )
     // move the start point of the output operation to a position
     // such that in the output device all pages will be painted
     // at the same position
-    aPt.X() = -aPt.X(); aPt.Y() = -aPt.Y();
+    aPt.setX( -aPt.X() ); aPt.setY( -aPt.Y() );
 
     vcl::RenderContext *pOut = pSh->GetOut();
 
@@ -210,7 +189,10 @@ void SwViewShell::InitPrt( OutputDevice *pOutDev )
         pOutDev->SetFillColor();
     }
     else
-        maPrtOffset.X() = maPrtOffset.Y() = 0;
+    {
+        maPrtOffset.setX(0);
+        maPrtOffset.setY(0);
+    }
 
     if ( !mpWin )
         mpOut = pOutDev;
@@ -219,7 +201,7 @@ void SwViewShell::InitPrt( OutputDevice *pOutDev )
 void SwViewShell::ChgAllPageOrientation( Orientation eOri )
 {
     OSL_ENSURE( mnStartAction, "missing an Action" );
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
     const size_t nAll = GetDoc()->GetPageDescCnt();
     bool bNewOri = eOri != Orientation::Portrait;
@@ -255,10 +237,10 @@ void SwViewShell::ChgAllPageOrientation( Orientation eOri )
     }
 }
 
-void SwViewShell::ChgAllPageSize( Size &rSz )
+void SwViewShell::ChgAllPageSize( Size const &rSz )
 {
     OSL_ENSURE( mnStartAction, "missing an Action" );
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
     SwDoc* pMyDoc = GetDoc();
     const size_t nAll = pMyDoc->GetPageDescCnt();
@@ -278,8 +260,8 @@ void SwViewShell::ChgAllPageSize( Size &rSz )
                   : aSz.Height() < aSz.Width() )
         {
             SwTwips aTmp = aSz.Height();
-            aSz.Height() = aSz.Width();
-            aSz.Width()  = aTmp;
+            aSz.setHeight( aSz.Width() );
+            aSz.setWidth( aTmp );
         }
 
         SwFormatFrameSize aFrameSz( rPgFormat.GetFrameSize() );
@@ -291,7 +273,7 @@ void SwViewShell::ChgAllPageSize( Size &rSz )
 
 void SwViewShell::CalcPagesForPrint( sal_uInt16 nMax )
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
     SwRootFrame* pMyLayout = GetLayout();
 
@@ -303,7 +285,7 @@ void SwViewShell::CalcPagesForPrint( sal_uInt16 nMax )
     {
         pPage->Calc(GetOut());
         SwRect aOldVis( VisArea() );
-        maVisArea = pPage->Frame();
+        maVisArea = pPage->getFrameArea();
         Imp()->SetFirstVisPageInvalid();
         aAction.Reset();
         aAction.SetPaint( false );
@@ -344,10 +326,10 @@ void SwViewShell::FillPrtDoc( SwDoc *pPrtDoc, const SfxPrinter* pPrt)
     pPrtDoc->ReplaceStyles( *GetDoc() );
 
     SwShellCursor *pActCursor = pFESh->GetCursor_();
-    SwShellCursor *pFirstCursor = dynamic_cast<SwShellCursor*>(pActCursor->GetNext());
+    SwShellCursor *pFirstCursor = pActCursor->GetNext();
     if( !pActCursor->HasMark() ) // with a multi-selection the current cursor might be empty
     {
-        pActCursor = dynamic_cast<SwShellCursor*>(pActCursor->GetPrev());
+        pActCursor = pActCursor->GetPrev();
     }
 
     // Y-position of the first selection
@@ -356,12 +338,13 @@ void SwViewShell::FillPrtDoc( SwDoc *pPrtDoc, const SfxPrinter* pPrt)
     {
         SwShellTableCursor* pShellTableCursor = pFESh->GetTableCursor();
 
-        const SwContentNode* pContentNode = pShellTableCursor->GetNode().GetContentNode();
-        const SwContentFrame *pContentFrame = pContentNode ? pContentNode->getLayoutFrame( GetLayout(), nullptr, pShellTableCursor->Start() ) : nullptr;
+        const SwContentNode *const pContentNode =
+            pShellTableCursor->Start()->nNode.GetNode().GetContentNode();
+        const SwContentFrame *const pContentFrame = pContentNode ? pContentNode->getLayoutFrame(GetLayout(), pShellTableCursor->Start()) : nullptr;
         if( pContentFrame )
         {
             SwRect aCharRect;
-            SwCursorMoveState aTmpState( MV_NONE );
+            SwCursorMoveState aTmpState( CursorMoveState::NONE );
             pContentFrame->GetCharRect( aCharRect, *pShellTableCursor->Start(), &aTmpState );
             aSelPoint = Point( aCharRect.Left(), aCharRect.Top() );
         }
@@ -443,7 +426,8 @@ sw_getPage(SwRootFrame const& rLayout, sal_Int32 const nPage)
 bool SwViewShell::PrintOrPDFExport(
     OutputDevice *pOutDev,
     SwPrintData const& rPrintData,
-    sal_Int32 nRenderer     /* the index in the vector of pages to be printed */ )
+    sal_Int32 nRenderer,     /* the index in the vector of pages to be printed */
+    bool bIsPDFExport )
 {
     // CAUTION: Do also always update the printing routines in viewpg.cxx (PrintProspect)!
 
@@ -461,9 +445,14 @@ bool SwViewShell::PrintOrPDFExport(
     // will fit on the real page, and replay that scaled
     // output to the real outputdevice
     GDIMetaFile *pOrigRecorder(nullptr);
-    GDIMetaFile *pMetaFile(nullptr);
+    std::unique_ptr<GDIMetaFile> pMetaFile;
     SwPostItMode nPostItMode = rPrintData.GetPrintPostIts();
-    if (nPostItMode == SwPostItMode::InMargins)
+
+    // tdf#91680 Reserve space in margin for comments only if there are comments
+    const bool bHasPostItsToPrintInMargins = ( nPostItMode == SwPostItMode::InMargins ) &&
+                                sw_GetPostIts( &GetDoc()->getIDocumentFieldsAccess(), nullptr );
+
+    if ( bHasPostItsToPrintInMargins )
     {
         //get and disable the existing recorder
         pOrigRecorder = pOutDev->GetConnectMetaFile();
@@ -472,7 +461,7 @@ bool SwViewShell::PrintOrPDFExport(
         pOutDev->EnableOutput(false);
         // just record the rendering commands to the metafile
         // instead
-        pMetaFile = new GDIMetaFile;
+        pMetaFile.reset(new GDIMetaFile);
         pMetaFile->SetPrefSize(pOutDev->GetOutputSize());
         pMetaFile->SetPrefMapMode(pOutDev->GetMapMode());
         pMetaFile->Record(pOutDev);
@@ -484,7 +473,7 @@ bool SwViewShell::PrintOrPDFExport(
     // It is implemented this way because PDF export calls this Prt function
     // once per page and we do not like to always have the temporary document
     // to be created that often here.
-    SwViewShell *pShell = new SwViewShell(*this, nullptr, pOutDev);
+    std::unique_ptr<SwViewShell> pShell(new SwViewShell(*this, nullptr, pOutDev));
 
     SdrView *pDrawView = pShell->GetDrawView();
     if (pDrawView)
@@ -495,7 +484,7 @@ bool SwViewShell::PrintOrPDFExport(
 
     {   // additional scope so that the CurrShell is reset before destroying the shell
 
-        SET_CURR_SHELL( pShell );
+        CurrShell aCurr( pShell.get() );
 
         //JP 01.02.99: Bug 61335 - the ReadOnly flag is never copied
         if( mpOpt->IsReadonly() )
@@ -503,8 +492,7 @@ bool SwViewShell::PrintOrPDFExport(
 
         // save options at draw view:
         SwDrawViewSave aDrawViewSave( pShell->GetDrawView() );
-
-        pShell->PrepareForPrint( rPrintData );
+        pShell->PrepareForPrint( rPrintData, bIsPDFExport );
 
         const sal_Int32 nPage = rPrintData.GetRenderData().GetPagesToPrint()[ nRenderer ];
         OSL_ENSURE( nPage < 0 ||
@@ -512,7 +500,7 @@ bool SwViewShell::PrintOrPDFExport(
             "SwViewShell::PrintOrPDFExport: nPage not valid" );
         SwViewShell *const pViewSh2 = (nPage < 0)
                 ? rPrintData.GetRenderData().m_pPostItShell.get()// post-it page
-                : pShell; // a 'regular' page, not one from the post-it doc
+                : pShell.get(); // a 'regular' page, not one from the post-it doc
 
         SwPageFrame const*const pStPage =
             sw_getPage(*pViewSh2->GetLayout(), abs(nPage));
@@ -524,18 +512,18 @@ bool SwViewShell::PrintOrPDFExport(
 
         //!! applying view options and formatting the document should now only be done in getRendererCount!
 
-        ::SetSwVisArea( pViewSh2, pStPage->Frame() );
+        ::SetSwVisArea( pViewSh2, pStPage->getFrameArea() );
 
         pShell->InitPrt(pOutDev);
 
-        ::SetSwVisArea( pViewSh2, pStPage->Frame() );
+        ::SetSwVisArea( pViewSh2, pStPage->getFrameArea() );
 
-        pStPage->GetUpper()->Paint( *pOutDev, pStPage->Frame(), &rPrintData );
+        pStPage->GetUpper()->PaintSwFrame( *pOutDev, pStPage->getFrameArea(), &rPrintData );
 
         SwPaintQueue::Repaint();
 
-        SwPostItMgr *pPostItManager = (nPostItMode == SwPostItMode::InMargins) ?
-            pShell->GetPostItMgr() : nullptr;
+        SwPostItMgr *pPostItManager = bHasPostItsToPrintInMargins ? pShell->GetPostItMgr() : nullptr;
+
         if (pPostItManager)
         {
             pPostItManager->CalcRects();
@@ -553,7 +541,7 @@ bool SwViewShell::PrintOrPDFExport(
             //Now scale the recorded page down so the notes
             //will fit in the final page
             double fScale = 0.75;
-            long nOrigHeight = pStPage->Frame().Height();
+            long nOrigHeight = pStPage->getFrameArea().Height();
             long nNewHeight = nOrigHeight*fScale;
             long nShiftY = (nOrigHeight-nNewHeight)/2;
             pMetaFile->Scale( fScale, fScale );
@@ -566,11 +554,11 @@ bool SwViewShell::PrintOrPDFExport(
 
             //play back the scaled page
             pMetaFile->Play(pOutDev);
-            delete pMetaFile;
+            pMetaFile.reset();
         }
     }
 
-    delete pShell;
+    pShell.reset();
 
     // restore settings of OutputDevice (should be done always now since the
     // output device is now provided by a call from outside the Writer)
@@ -582,16 +570,16 @@ bool SwViewShell::PrintOrPDFExport(
 void SwViewShell::PrtOle2( SwDoc *pDoc, const SwViewOption *pOpt, const SwPrintData& rOptions,
                            vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect )
 {
-    // For printing a shell is needed. Either the Doc already has one, than we
-    // create a new view, or it has none, than we create the first view.
-    SwViewShell *pSh;
+    // For printing a shell is needed. Either the Doc already has one, then we
+    // create a new view, or it has none, then we create the first view.
+    std::unique_ptr<SwViewShell> pSh;
     if( pDoc->getIDocumentLayoutAccess().GetCurrentViewShell() )
-        pSh = new SwViewShell( *pDoc->getIDocumentLayoutAccess().GetCurrentViewShell(), nullptr, &rRenderContext,VSHELLFLAG_SHARELAYOUT );
+        pSh.reset(new SwViewShell( *pDoc->getIDocumentLayoutAccess().GetCurrentViewShell(), nullptr, &rRenderContext,VSHELLFLAG_SHARELAYOUT ));
     else
-        pSh = new SwViewShell( *pDoc, nullptr, pOpt, &rRenderContext);
+        pSh.reset(new SwViewShell( *pDoc, nullptr, pOpt, &rRenderContext));
 
     {
-        SET_CURR_SHELL( pSh );
+        CurrShell aCurr( pSh.get() );
         pSh->PrepareForPrint( rOptions );
         pSh->SetPrtFormatOption( true );
 
@@ -606,31 +594,28 @@ void SwViewShell::PrtOle2( SwDoc *pDoc, const SwViewOption *pOpt, const SwPrintD
         }
 
         // CalcPagesForPrint() should not be necessary here. The pages in the
-        // visible area will be formatted in SwRootFrame::Paint().
+        // visible area will be formatted in SwRootFrame::PaintSwFrame().
         // Removing this gives us a performance gain during saving the
         // document because the thumbnail creation will not trigger a complete
         // formatting of the document.
 
         rRenderContext.Push( PushFlags::CLIPREGION );
         rRenderContext.IntersectClipRegion( aSwRect.SVRect() );
-        pSh->GetLayout()->Paint( rRenderContext, aSwRect );
+        pSh->GetLayout()->PaintSwFrame( rRenderContext, aSwRect );
 
         rRenderContext.Pop();
         // first the CurrShell object needs to be destroyed!
     }
-    delete pSh;
 }
 
 /// Check if the DocNodesArray contains fields.
 bool SwViewShell::IsAnyFieldInDoc() const
 {
-    const SfxPoolItem* pItem;
-    sal_uInt32 nMaxItems = mpDoc->GetAttrPool().GetItemCount2( RES_TXTATR_FIELD );
-    for( sal_uInt32 n = 0; n < nMaxItems; ++n )
+    for (const SfxPoolItem* pItem : mxDoc->GetAttrPool().GetItemSurrogates(RES_TXTATR_FIELD))
     {
-        if( nullptr != (pItem = mpDoc->GetAttrPool().GetItem2( RES_TXTATR_FIELD, n )))
+        auto pFormatField = dynamic_cast<const SwFormatField*>(pItem);
+        if(pFormatField)
         {
-            const SwFormatField* pFormatField = static_cast<const SwFormatField*>(pItem);
             const SwTextField* pTextField = pFormatField->GetTextField();
             if( pTextField && pTextField->GetTextNode().GetNodes().IsDocNodes() )
             {
@@ -639,12 +624,11 @@ bool SwViewShell::IsAnyFieldInDoc() const
         }
     }
 
-    nMaxItems = mpDoc->GetAttrPool().GetItemCount2( RES_TXTATR_INPUTFIELD );
-    for( sal_uInt32 n = 0; n < nMaxItems; ++n )
+    for (const SfxPoolItem* pItem : mxDoc->GetAttrPool().GetItemSurrogates(RES_TXTATR_INPUTFIELD))
     {
-        if( nullptr != (pItem = mpDoc->GetAttrPool().GetItem2( RES_TXTATR_INPUTFIELD, n )))
+        const SwFormatField* pFormatField = dynamic_cast<const SwFormatField*>(pItem);
+        if(pFormatField)
         {
-            const SwFormatField* pFormatField = static_cast<const SwFormatField*>(pItem);
             const SwTextField* pTextField = pFormatField->GetTextField();
             if( pTextField && pTextField->GetTextNode().GetNodes().IsDocNodes() )
             {
@@ -676,27 +660,28 @@ SwDrawViewSave::~SwDrawViewSave()
 }
 
 // OD 09.01.2003 #i6467# - method also called for page preview
-void SwViewShell::PrepareForPrint( const SwPrintData &rOptions )
+void SwViewShell::PrepareForPrint( const SwPrintData &rOptions, bool bIsPDFExport )
  {
     mpOpt->SetGraphic  ( rOptions.m_bPrintGraphic );
     mpOpt->SetTable    ( rOptions.m_bPrintTable );
-    mpOpt->SetDraw     ( rOptions.m_bPrintDraw  );
+    mpOpt->SetDraw     ( rOptions.m_bPrintDraw );
     mpOpt->SetControl  ( rOptions.m_bPrintControl );
     mpOpt->SetPageBack ( rOptions.m_bPrintPageBackground );
-    mpOpt->SetBlackFont( rOptions.m_bPrintBlackFont );
+    // Font should not be black if it's a PDF Export
+    mpOpt->SetBlackFont( rOptions.m_bPrintBlackFont && !bIsPDFExport );
 
-    if ( HasDrawView() )
+    if ( !HasDrawView() )
+        return;
+
+    SdrView *pDrawView = GetDrawView();
+    // OD 09.01.2003 #i6467# - consider, if view shell belongs to page preview
+    if ( !IsPreview() )
     {
-        SdrView *pDrawView = GetDrawView();
-        // OD 09.01.2003 #i6467# - consider, if view shell belongs to page preview
-        if ( !IsPreview() )
-        {
-            pDrawView->SetLayerPrintable( "Controls", rOptions.m_bPrintControl );
-        }
-        else
-        {
-            pDrawView->SetLayerVisible( "Controls", rOptions.m_bPrintControl );
-        }
+        pDrawView->SetLayerPrintable( "Controls", rOptions.m_bPrintControl );
+    }
+    else
+    {
+        pDrawView->SetLayerVisible( "Controls", rOptions.m_bPrintControl );
     }
 }
 

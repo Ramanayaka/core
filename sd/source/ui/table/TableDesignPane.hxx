@@ -20,19 +20,13 @@
 #ifndef INCLUDED_SD_SOURCE_UI_TABLE_TABLEDESIGNPANE_HXX
 #define INCLUDED_SD_SOURCE_UI_TABLE_TABLEDESIGNPANE_HXX
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/ui/XUIElement.hpp>
-#include <com/sun/star/ui/LayoutSize.hpp>
-#include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-
 #include <svtools/valueset.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
+#include <vcl/weld.hxx>
 
-#include <memory>
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::container { class XIndexAccess; }
+namespace com::sun::star::drawing { class XDrawView; }
 
 namespace sd
 {
@@ -59,9 +53,9 @@ class TableValueSet : public ValueSet
 private:
     bool m_bModal;
 public:
-    TableValueSet(vcl::Window *pParent, WinBits nStyle);
+    TableValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow);
     virtual void Resize() override;
-    virtual void DataChanged( const DataChangedEvent& rDCEvt ) override;
+    virtual void StyleUpdated() override;
     void updateSettings();
     void setModal(bool bModal) { m_bModal = bModal; }
 };
@@ -69,7 +63,7 @@ public:
 class TableDesignWidget final
 {
 public:
-    TableDesignWidget( VclBuilderContainer* pParent, ViewShellBase& rBase, bool bModal );
+    TableDesignWidget(weld::Builder& rBuilder, ViewShellBase& rBase);
     ~TableDesignWidget();
 
     // callbacks
@@ -77,9 +71,6 @@ public:
 
     void ApplyOptions();
     void ApplyStyle();
-
-    bool isStyleChanged() const { return mbStyleSelected; }
-    bool isOptionsChanged() const { return mbOptionsChanged; }
 
 private:
     void addListener();
@@ -90,57 +81,37 @@ private:
 
     DECL_LINK(EventMultiplexerListener, tools::EventMultiplexerEvent&, void);
     DECL_LINK(implValueSetHdl, ValueSet*, void);
-    DECL_LINK(implCheckBoxHdl, Button*, void);
+    DECL_LINK(implCheckBoxHdl, weld::ToggleButton&, void);
 
 private:
     ViewShellBase& mrBase;
 
-    VclPtr<TableValueSet> m_pValueSet;
-    VclPtr<CheckBox> m_aCheckBoxes[CB_COUNT];
+    std::unique_ptr<TableValueSet> m_xValueSet;
+    std::unique_ptr<weld::CustomWeld> m_xValueSetWin;
+    std::unique_ptr<weld::CheckButton> m_aCheckBoxes[CB_COUNT];
 
     css::uno::Reference< css::beans::XPropertySet > mxSelectedTable;
     css::uno::Reference< css::drawing::XDrawView > mxView;
     css::uno::Reference< css::container::XIndexAccess > mxTableFamily;
-
-    bool mbModal;
-    bool mbStyleSelected;
-    bool mbOptionsChanged;
 };
 
 class TableDesignPane : public PanelLayout
 {
 private:
-    TableDesignWidget aImpl;
+    std::unique_ptr<TableDesignWidget> m_xImpl;
 public:
     TableDesignPane( vcl::Window* pParent, ViewShellBase& rBase )
         : PanelLayout(pParent, "TableDesignPanel",
-        "modules/simpress/ui/tabledesignpanel.ui", css::uno::Reference<css::frame::XFrame>())
-        , aImpl(this, rBase, false)
+            "modules/simpress/ui/tabledesignpanel.ui", css::uno::Reference<css::frame::XFrame>())
+        , m_xImpl(new TableDesignWidget(*m_xBuilder, rBase))
     {
     }
-    TableDesignPane( vcl::Window* pParent, ViewShellBase& rBase, bool )
-        : PanelLayout(pParent, "TableDesignPanel",
-        "modules/simpress/ui/tabledesignpanelhorizontal.ui", css::uno::Reference<css::frame::XFrame>())
-        , aImpl(this, rBase, false)
+    virtual void dispose() override
     {
+        m_xImpl.reset();
+        PanelLayout::dispose();
     }
 };
-
-class TableDesignDialog : public ModalDialog
-{
-private:
-    TableDesignWidget aImpl;
-public:
-    TableDesignDialog( vcl::Window* pParent, ViewShellBase& rBase )
-        : ModalDialog(pParent, "TableDesignDialog",
-        "modules/sdraw/ui/tabledesigndialog.ui")
-        , aImpl(this, rBase, true)
-    {
-    }
-    virtual short Execute() override;
-};
-
-void showTableDesignDialog( vcl::Window*, ViewShellBase& );
 
 }
 

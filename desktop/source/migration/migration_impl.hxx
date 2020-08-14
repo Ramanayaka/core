@@ -19,27 +19,18 @@
 #ifndef INCLUDED_DESKTOP_SOURCE_MIGRATION_MIGRATION_IMPL_HXX
 #define INCLUDED_DESKTOP_SOURCE_MIGRATION_MIGRATION_IMPL_HXX
 
-#include <algorithm>
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
-#include "migration.hxx"
-
 #include <sal/types.h>
-#include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
 
 #include <com/sun/star/uno/Reference.hxx>
 
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/ui/XModuleUIConfigurationManagerSupplier.hpp>
 #include <com/sun/star/ui/XUIConfigurationManager.hpp>
-#include <com/sun/star/ui/XUIConfigurationPersistence.hpp>
 
 namespace desktop
 {
@@ -55,12 +46,10 @@ typedef std::unique_ptr< strings_v > strings_vr;
 
 struct migration_step
 {
-    OUString name;
     strings_v includeFiles;
     strings_v excludeFiles;
     strings_v includeConfig;
     strings_v excludeConfig;
-    strings_v includeExtensions;
     strings_v excludeExtensions;
     OUString service;
 };
@@ -83,7 +72,7 @@ inline bool areBothOpenFrom(OUString const & cmd1, OUString const & cmd2)
 
 /**
     define the item, e.g.:menuitem, toolbaritem, to be migrated. we keep the information
-    of the command URL, the previous sibling node and the parent node of a item
+    of the command URL, the previous sibling node and the parent node of an item
 */
 struct MigrationItem
 {
@@ -93,7 +82,6 @@ struct MigrationItem
     css::uno::Reference< css::container::XIndexContainer > m_xPopupMenu;
 
     MigrationItem()
-        :m_xPopupMenu(nullptr)
     {
     }
 
@@ -101,14 +89,12 @@ struct MigrationItem
         const OUString& sPrevSibling,
         const OUString& sCommandURL,
         const css::uno::Reference< css::container::XIndexContainer > & xPopupMenu)
+          : m_sParentNodeName(sParentNodeName), m_sPrevSibling(sPrevSibling),
+            m_sCommandURL(sCommandURL), m_xPopupMenu(xPopupMenu)
     {
-        m_sParentNodeName = sParentNodeName;
-        m_sPrevSibling    = sPrevSibling;
-        m_sCommandURL     = sCommandURL;
-        m_xPopupMenu      = xPopupMenu;
     }
 
-    bool operator==(const MigrationItem& aMigrationItem)
+    bool operator==(const MigrationItem& aMigrationItem) const
     {
         return
             (aMigrationItem.m_sCommandURL == m_sCommandURL
@@ -120,8 +106,7 @@ struct MigrationItem
     }
 };
 
-typedef std::unordered_map< OUString, std::vector< MigrationItem >,
-                            OUStringHash > MigrationHashMap;
+typedef std::unordered_map< OUString, std::vector< MigrationItem > > MigrationHashMap;
 
 /**
     information for the UI elements to be migrated for one module
@@ -166,7 +151,7 @@ private:
      MigrationHashMap     m_aOldVersionItemsHashMap;
 
     // functions to control the migration process
-    static bool   readAvailableMigrations(migrations_available&);
+    static void   readAvailableMigrations(migrations_available&);
     bool          alreadyMigrated();
     static migrations_vr readMigrationSteps(const OUString& rMigrationName);
     sal_Int32     findPreferredMigrationProcess(const migrations_available&);
@@ -180,7 +165,7 @@ private:
     // helpers
     strings_vr getAllFiles(const OUString& baseURL) const;
     static strings_vr applyPatterns(const strings_v& vSet, const strings_v& vPatterns);
-    static css::uno::Reference< css::container::XNameAccess > getConfigAccess(const sal_Char* path, bool rw=false);
+    static css::uno::Reference< css::container::XNameAccess > getConfigAccess(const char* path, bool rw=false);
 
     std::vector< MigrationModuleInfo > dectectUIChangesForAllModules() const;
     void compareOldAndNewConfig(const OUString& sParentNodeName,

@@ -18,12 +18,9 @@
  */
 
 #include "AppSwapWindow.hxx"
-#include "dbaccess_helpid.hrc"
-#include "dbu_app.hrc"
+#include <helpids.h>
 #include "AppView.hxx"
-#include <vcl/svapp.hxx>
-#include <vcl/syswin.hxx>
-#include <vcl/menu.hxx>
+#include <vcl/event.hxx>
 #include <vcl/mnemonic.hxx>
 #include <vcl/settings.hxx>
 #include "AppController.hxx"
@@ -34,7 +31,6 @@ using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
 
-// class OApplicationSwapWindow
 OApplicationSwapWindow::OApplicationSwapWindow( vcl::Window* _pParent, OAppBorderWindow& _rBorderWindow )
     :Window(_pParent,WB_DIALOGCONTROL )
     ,m_aIconControl(VclPtr<OApplicationIconControl>::Create(this))
@@ -62,7 +58,7 @@ void OApplicationSwapWindow::dispose()
 
 void OApplicationSwapWindow::Resize()
 {
-    Size aFLSize = LogicToPixel( Size( 8, 0 ), MapUnit::MapAppFont );
+    Size aFLSize = LogicToPixel(Size(8, 0), MapMode(MapUnit::MapAppFont));
     long nX = 0;
     if ( m_aIconControl->GetEntryCount() != 0 )
         nX = m_aIconControl->GetBoundingBox( m_aIconControl->GetEntry(0) ).GetWidth() + aFLSize.Width();
@@ -77,8 +73,7 @@ void OApplicationSwapWindow::ImplInitSettings()
 {
     // FIXME RenderContext
     const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
-    vcl::Font aFont;
-    aFont = rStyleSettings.GetFieldFont();
+    vcl::Font aFont = rStyleSettings.GetFieldFont();
     aFont.SetColor( rStyleSettings.GetWindowTextColor() );
     SetPointFont(*this, aFont);
 
@@ -129,7 +124,7 @@ bool OApplicationSwapWindow::interceptKeyInput( const KeyEvent& _rEvent )
 ElementType OApplicationSwapWindow::getElementType() const
 {
     SvxIconChoiceCtrlEntry* pEntry = m_aIconControl->GetSelectedEntry();
-    return ( pEntry ) ? *static_cast<ElementType*>(pEntry->GetUserData()) : E_NONE;
+    return pEntry ? *static_cast<ElementType*>(pEntry->GetUserData()) : E_NONE;
 }
 
 bool OApplicationSwapWindow::onContainerSelected( ElementType _eType )
@@ -166,9 +161,9 @@ IMPL_LINK_NOARG(OApplicationSwapWindow, ChangeToLastSelected, void*, void)
 
 void OApplicationSwapWindow::selectContainer(ElementType _eType)
 {
-    sal_uLong nCount = m_aIconControl->GetEntryCount();
+    sal_Int32 nCount = m_aIconControl->GetEntryCount();
     SvxIconChoiceCtrlEntry* pEntry = nullptr;
-    for (sal_uLong i=0; i < nCount; ++i)
+    for (sal_Int32 i=0; i < nCount; ++i)
     {
         pEntry = m_aIconControl->GetEntry(i);
         if ( pEntry && *static_cast<ElementType*>(pEntry->GetUserData()) == _eType )

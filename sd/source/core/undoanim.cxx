@@ -19,15 +19,16 @@
 
 #include <sal/config.h>
 
-#include <com/sun/star/animations/XAnimationNode.hpp>
-#include "CustomAnimationCloner.hxx"
+#include <CustomAnimationCloner.hxx>
 
-#include "undoanim.hxx"
-#include "glob.hrc"
-#include "sdpage.hxx"
-#include "sdresid.hxx"
-#include "CustomAnimationEffect.hxx"
-#include "drawdoc.hxx"
+#include <undoanim.hxx>
+#include <strings.hrc>
+#include <sdpage.hxx>
+#include <sdresid.hxx>
+#include <CustomAnimationEffect.hxx>
+#include <drawdoc.hxx>
+
+namespace com::sun::star::animations { class XAnimationNode; }
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Exception;
@@ -119,17 +120,17 @@ struct UndoAnimationPathImpl
         : mpPage( pThePage )
         , mnEffectOffset( -1 )
     {
-        if( mpPage && xNode.is() )
+        if( !(mpPage && xNode.is()) )
+            return;
+
+        std::shared_ptr< sd::MainSequence > pMainSequence( mpPage->getMainSequence() );
+        if( pMainSequence )
         {
-            std::shared_ptr< sd::MainSequence > pMainSequence( mpPage->getMainSequence() );
-            if( pMainSequence.get() )
+            CustomAnimationEffectPtr pEffect( pMainSequence->findEffect( xNode ) );
+            if( pEffect )
             {
-                CustomAnimationEffectPtr pEffect( pMainSequence->findEffect( xNode ) );
-                if( pEffect.get() )
-                {
-                    mnEffectOffset = pMainSequence->getOffsetFromEffect( pEffect );
-                    msUndoPath = pEffect->getPath();
-                }
+                mnEffectOffset = pMainSequence->getOffsetFromEffect( pEffect );
+                msUndoPath = pEffect->getPath();
             }
         }
     }
@@ -142,7 +143,7 @@ struct UndoAnimationPathImpl
         if( mpPage && (mnEffectOffset >= 0) )
         {
             std::shared_ptr< sd::MainSequence > pMainSequence( mpPage->getMainSequence() );
-            if( pMainSequence.get() )
+            if( pMainSequence )
                 pEffect = pMainSequence->getEffectFromOffset( mnEffectOffset );
         }
         return pEffect;
@@ -162,7 +163,7 @@ UndoAnimationPath::~UndoAnimationPath()
 void UndoAnimationPath::Undo()
 {
     CustomAnimationEffectPtr pEffect = mpImpl->getEffect();
-    if( pEffect.get() )
+    if( pEffect )
     {
         mpImpl->msRedoPath = pEffect->getPath();
         pEffect->setPath( mpImpl->msUndoPath );
@@ -172,7 +173,7 @@ void UndoAnimationPath::Undo()
 void UndoAnimationPath::Redo()
 {
     CustomAnimationEffectPtr pEffect = mpImpl->getEffect();
-    if( pEffect.get() )
+    if( pEffect )
     {
         pEffect->setPath( mpImpl->msRedoPath );
     }

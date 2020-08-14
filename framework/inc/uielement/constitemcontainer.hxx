@@ -20,12 +20,11 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_CONSTITEMCONTAINER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_CONSTITEMCONTAINER_HXX
 
-#include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
+#include <config_options.h>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XFastPropertySet.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
+#include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 
 #include <rtl/ustring.hxx>
@@ -33,14 +32,14 @@
 #include <cppuhelper/propshlp.hxx>
 
 #include <vector>
-#include <fwidllapi.h>
+#include <framework/fwkdllapi.h>
 
 namespace framework
 {
 
 class RootItemContainer;
 class ItemContainer;
-class FWI_DLLPUBLIC ConstItemContainer : public ::cppu::WeakImplHelper<
+class ConstItemContainer final : public ::cppu::WeakImplHelper<
                                                     css::container::XIndexAccess,
                                                     css::lang::XUnoTunnel       ,
                                                     css::beans::XFastPropertySet,
@@ -56,8 +55,7 @@ class FWI_DLLPUBLIC ConstItemContainer : public ::cppu::WeakImplHelper<
         virtual ~ConstItemContainer() override;
 
         // XUnoTunnel
-        static const css::uno::Sequence< sal_Int8 >&   GetUnoTunnelId() throw();
-        static ConstItemContainer*                                  GetImplementation( const css::uno::Reference< css::uno::XInterface >& rxIFace ) throw();
+        static const css::uno::Sequence< sal_Int8 >&   getUnoTunnelId() throw();
         sal_Int64                                                   SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& rIdentifier ) override;
 
         // XIndexAccess
@@ -87,8 +85,8 @@ class FWI_DLLPUBLIC ConstItemContainer : public ::cppu::WeakImplHelper<
         virtual css::uno::Any SAL_CALL getFastPropertyValue( sal_Int32 nHandle ) override;
 
     private:
-        ::cppu::IPropertyArrayHelper& SAL_CALL getInfoHelper();
-        const css::uno::Sequence< css::beans::Property > impl_getStaticPropertyDescriptor();
+        ::cppu::IPropertyArrayHelper& getInfoHelper();
+        css::uno::Sequence< css::beans::Property > impl_getStaticPropertyDescriptor();
 
         void copyItemContainer( const std::vector< css::uno::Sequence< css::beans::PropertyValue > >& rSourceVector );
         css::uno::Reference< css::container::XIndexAccess > deepCopyContainer( const css::uno::Reference< css::container::XIndexAccess >& rSubContainer );

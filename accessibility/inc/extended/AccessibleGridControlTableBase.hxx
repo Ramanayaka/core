@@ -18,10 +18,9 @@
  */
 
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLTABLEBASE_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLTABLEBASE_HXX
+#pragma once
 
-#include "extended/AccessibleGridControlBase.hxx"
+#include <extended/AccessibleGridControlBase.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include <com/sun/star/accessibility/XAccessibleTable.hpp>
 
@@ -46,11 +45,11 @@ public:
         @param eObjType  Type of table control object */
     AccessibleGridControlTableBase(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::table::IAccessibleTable& rTable,
-        ::svt::table::AccessibleTableControlObjType  eObjType );
+        ::vcl::table::IAccessibleTable& rTable,
+        ::vcl::table::AccessibleTableControlObjType  eObjType );
 
 protected:
-    virtual ~AccessibleGridControlTableBase() override;
+    virtual ~AccessibleGridControlTableBase() override = default;
 
 public:
     // XAccessibleContext
@@ -121,7 +120,7 @@ public:
     /** Queries for a new interface. */
     css::uno::Any SAL_CALL queryInterface( const css::uno::Type& rType ) override;
 
-    /** Aquires the object (calls acquire() on base class). */
+    /** Acquires the object (calls acquire() on base class). */
     virtual void SAL_CALL acquire() throw () override;
 
     /** Releases the object (calls release() on base class). */
@@ -129,10 +128,10 @@ public:
 
     // XTypeProvider
 
-    /** @return  A sequence of possible types (received from base classes). */
+    /** @return  a sequence of possible types (received from base classes). */
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
 
-    /** @return  An unique implementation ID. */
+    /** @return  a unique implementation ID. */
     virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 
 protected:
@@ -172,6 +171,5 @@ protected:
 } // namespace accessibility
 
 
-#endif // ACCESSIBILITY_EXT_ACCESSIBILEGRIDCONTROLTABLEBASE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,13 +19,15 @@
 
 #include <transliteration_Ignore.hxx>
 
+#include <numeric>
+
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
-OUString SAL_CALL
-ignoreKiKuFollowedBySa_ja_JP::folding( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset )
+OUString
+ignoreKiKuFollowedBySa_ja_JP::foldingImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset, bool useOffset )
 {
     // Create a string buffer which can hold nCount + 1 characters.
     // The reference count is 1 now.
@@ -33,13 +35,10 @@ ignoreKiKuFollowedBySa_ja_JP::folding( const OUString& inStr, sal_Int32 startPos
     sal_Unicode * dst = newStr->buffer;
     const sal_Unicode * src = inStr.getStr() + startPos;
 
-    sal_Int32 *p = nullptr;
-    sal_Int32 position = 0;
     if (useOffset) {
         // Allocate nCount length to offset argument.
         offset.realloc( nCount );
-        p = offset.getArray();
-        position = startPos;
+        std::iota(offset.begin(), offset.end(), startPos);
     }
 
 
@@ -54,10 +53,6 @@ ignoreKiKuFollowedBySa_ja_JP::folding( const OUString& inStr, sal_Int32 startPos
         if (previousChar == 0x30AF ) { // KATAKANA LETTER KU
             if (0x30B5 <= currentChar && // KATAKANA LETTER SA
                     currentChar <= 0x30BE) { // KATAKANA LETTER ZO
-                if (useOffset) {
-                    *p ++ = position++;
-                    *p ++ = position++;
-                }
                 *dst ++ = 0x30AD;          // KATAKANA LETTER KI
                 *dst ++ = currentChar;
                 previousChar = *src ++;
@@ -66,15 +61,11 @@ ignoreKiKuFollowedBySa_ja_JP::folding( const OUString& inStr, sal_Int32 startPos
             }
         }
 
-        if (useOffset)
-            *p ++ = position++;
         *dst ++ = previousChar;
         previousChar = currentChar;
     }
 
     if (nCount == 0) {
-        if (useOffset)
-            *p = position;
         *dst ++ = previousChar;
     }
 
@@ -86,6 +77,6 @@ ignoreKiKuFollowedBySa_ja_JP::folding( const OUString& inStr, sal_Int32 startPos
     return OUString(newStr, SAL_NO_ACQUIRE); // take ownership
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

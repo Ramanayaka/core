@@ -32,33 +32,29 @@ namespace rptui
 
 class OReportModel;
 
-class REPORTDESIGN_DLLPUBLIC OReportPage : public SdrPage
+class REPORTDESIGN_DLLPUBLIC OReportPage final : public SdrPage
 {
     OReportPage& operator=(const OReportPage&) = delete;
+    OReportPage(const OReportPage&) = delete;
 
     OReportModel&           rModel;
     css::uno::Reference< css::report::XSection > m_xSection;
     bool                    m_bSpecialInsertMode;
     std::vector<SdrObject*> m_aTemporaryObjectList;
 
-    OReportPage(const OReportPage&);
-
     // method to remove temporary objects, created by 'special mode'
     // (BegDragObj)
-    void removeTempObject(SdrObject *_pToRemoveObj);
+    void removeTempObject(SdrObject const *_pToRemoveObj);
 
     virtual ~OReportPage() override;
 
-protected:
     virtual css::uno::Reference< css::uno::XInterface > createUnoPage() override;
 public:
 
     OReportPage( OReportModel& rModel
                 ,const css::uno::Reference< css::report::XSection >& _xSection );
 
-
-    virtual SdrPage* Clone() const override;
-    virtual SdrPage* Clone( SdrModel* pNewModel ) const override;
+    virtual SdrPage* CloneSdrPage(SdrModel& rTargetModel) const override;
 
     virtual void NbcInsertObject(SdrObject* pObj, size_t nPos=SAL_MAX_SIZE) override;
     virtual SdrObject* RemoveObject(size_t nObjNum) override;
@@ -66,7 +62,7 @@ public:
     /** returns the index inside the object list which belongs to the report component.
         @param  _xObject    the report component
     */
-    sal_uLong getIndexOf(const css::uno::Reference< css::report::XReportComponent >& _xObject);
+    size_t getIndexOf(const css::uno::Reference< css::report::XReportComponent >& _xObject);
 
     /** removes the SdrObject which belongs to the report component.
         @param  _xObject    the report component
@@ -74,7 +70,7 @@ public:
     void removeSdrObject(const css::uno::Reference< css::report::XReportComponent >& _xObject);
 
     void setSpecialMode() {m_bSpecialInsertMode = true;}
-    bool getSpecialMode() {return m_bSpecialInsertMode;}
+    bool getSpecialMode() const {return m_bSpecialInsertMode;}
     // all temporary objects will remove and destroy
     void resetSpecialMode();
 

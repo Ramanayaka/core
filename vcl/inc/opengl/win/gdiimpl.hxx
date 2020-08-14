@@ -13,14 +13,38 @@
 #include <memory>
 #include <vcl/dllapi.h>
 
-#include "openglgdiimpl.hxx"
-#include "svdata.hxx"
-#include "win/salgdi.h"
+#include <opengl/gdiimpl.hxx>
+#include <svdata.hxx>
+#include <win/salgdi.h>
+#include <win/wingdiimpl.hxx>
 #include <o3tl/lru_map.hxx>
 #include <vcl/opengl/OpenGLContext.hxx>
-#include "ControlCacheKey.hxx"
+#include <ControlCacheKey.hxx>
 
-class WinOpenGLSalGraphicsImpl : public OpenGLSalGraphicsImpl
+class OpenGLCompatibleDC : public CompatibleDC
+{
+public:
+    OpenGLCompatibleDC(SalGraphics &rGraphics, int x, int y, int width, int height);
+
+    virtual std::unique_ptr<Texture> getAsMaskTexture() const override;
+    // caller must delete
+    OpenGLTexture* getOpenGLTexture() const;
+
+    /// Copy bitmap data to the texture. Texture must be initialized and the correct size to hold the bitmap.
+    bool copyToTexture(Texture& aTexture) const;
+
+    struct Texture;
+};
+
+struct OpenGLCompatibleDC::Texture : public CompatibleDC::Texture
+{
+    OpenGLTexture texture;
+    virtual bool isValid() const { return !!texture; }
+    virtual int GetWidth() const { return texture.GetWidth(); }
+    virtual int GetHeight() const { return texture.GetHeight(); }
+};
+
+class WinOpenGLSalGraphicsImpl : public OpenGLSalGraphicsImpl, public WinSalGraphicsImplBase
 {
     friend class WinLayout;
 private:
@@ -36,30 +60,36 @@ public:
 protected:
     virtual rtl::Reference<OpenGLContext> CreateWinContext() override;
 
-    bool RenderTextureCombo(TextureCombo& rCombo, int nX, int nY);
+    bool RenderTextureCombo(TextureCombo const & rCombo, int nX, int nY);
 
 public:
     virtual void Init() override;
     virtual void copyBits( const SalTwoRect& rPosAry, SalGraphics* pSrcGraphics ) override;
 
+    virtual bool UseTextDraw() const override { return true; }
+    virtual void PreDrawText() override;
+    virtual void PostDrawText() override;
+    virtual void DrawTextMask( CompatibleDC::Texture* rTexture, Color nMaskColor, const SalTwoRect& rPosAry ) override;
+    using OpenGLSalGraphicsImpl::DrawMask;
+    virtual void DeferredTextDraw(const CompatibleDC::Texture* pTexture, Color nMaskColor, const SalTwoRect& rPosAry) override;
 
-    bool TryRenderCachedNativeControl(ControlCacheKey& rControlCacheKey, int nX, int nY);
-
-    bool RenderAndCacheNativeControl(OpenGLCompatibleDC& rWhite, OpenGLCompatibleDC& rBlack,
-                                     int nX, int nY , ControlCacheKey& aControlCacheKey);
+    virtual bool UseRenderNativeControl() const override { return true; }
+    virtual bool TryRenderCachedNativeControl(ControlCacheKey const & rControlCacheKey, int nX, int nY) override;
+    virtual bool RenderAndCacheNativeControl(CompatibleDC& rWhite, CompatibleDC& rBlack,
+                                     int nX, int nY , ControlCacheKey& aControlCacheKey) override;
 
 };
 
-typedef std::pair<ControlCacheKey, std::unique_ptr<TextureCombo>> ControlCachePair;
-typedef o3tl::lru_map<ControlCacheKey, std::unique_ptr<TextureCombo>, ControlCacheHashFunction> ControlCacheType;
+typedef std::pair<ControlCacheKey, std::unique_ptr<TextureCombo>> OpenGLControlCachePair;
+typedef o3tl::lru_map<ControlCacheKey, std::unique_ptr<TextureCombo>, ControlCacheHashFunction> OpenGLControlCacheType;
 
-class TheTextureCache {
-    ControlCacheType cache;
+class OpenGLControlsCache {
+    OpenGLControlCacheType cache;
 
-    TheTextureCache();
+    OpenGLControlsCache();
 
 public:
-    static ControlCacheType & get();
+    static OpenGLControlCacheType & get();
 };
 
 #endif

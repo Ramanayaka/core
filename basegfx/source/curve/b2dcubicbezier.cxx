@@ -30,7 +30,7 @@
 // #i37443#
 #define FACTOR_FOR_UNSHARPEN    (1.6)
 #ifdef DBG_UTIL
-static double fMultFactUnsharpen = FACTOR_FOR_UNSHARPEN;
+const double fMultFactUnsharpen = FACTOR_FOR_UNSHARPEN;
 #endif
 
 namespace basegfx
@@ -113,8 +113,7 @@ namespace basegfx
             const B2DPoint& rfEB,           // edge on B
             const B2DPoint& rfPB,           // end point
             B2DPolygon& rTarget,            // target polygon
-            const double& rfAngleBound,     // angle bound in [0.0 .. 2PI]
-            bool bAllowUnsharpen)           // #i37443# allow the criteria to get unsharp in recursions
+            const double& rfAngleBound)     // angle bound in [0.0 .. 2PI]
         {
             sal_uInt16 nMaxRecursionDepth(8);
             const B2DVector aLeft(rfEA - rfPA);
@@ -231,7 +230,7 @@ namespace basegfx
                     }
                     else
                     {
-                        ImpSubDivAngle(rfPA, aS1L, aS2L, aS3C, rTarget, rfAngleBound, bAllowUnsharpen, nMaxRecursionDepth);
+                        ImpSubDivAngle(rfPA, aS1L, aS2L, aS3C, rTarget, rfAngleBound, true/*bAllowUnsharpen*/, nMaxRecursionDepth);
                     }
 
                     // right
@@ -241,7 +240,7 @@ namespace basegfx
                     }
                     else
                     {
-                        ImpSubDivAngle(aS3C, aS2R, aS1R, rfPB, rTarget, rfAngleBound, bAllowUnsharpen, nMaxRecursionDepth);
+                        ImpSubDivAngle(aS3C, aS2R, aS1R, rfPB, rTarget, rfAngleBound, true/*bAllowUnsharpen*/, nMaxRecursionDepth);
                     }
                 }
             }
@@ -326,17 +325,9 @@ namespace basegfx
 
 namespace basegfx
 {
-    B2DCubicBezier::B2DCubicBezier(const B2DCubicBezier& rBezier)
-    :   maStartPoint(rBezier.maStartPoint),
-        maEndPoint(rBezier.maEndPoint),
-        maControlPointA(rBezier.maControlPointA),
-        maControlPointB(rBezier.maControlPointB)
-    {
-    }
+    B2DCubicBezier::B2DCubicBezier(const B2DCubicBezier&) = default;
 
-    B2DCubicBezier::B2DCubicBezier()
-    {
-    }
+    B2DCubicBezier::B2DCubicBezier() = default;
 
     B2DCubicBezier::B2DCubicBezier(const B2DPoint& rStart, const B2DPoint& rControlPointA, const B2DPoint& rControlPointB, const B2DPoint& rEnd)
     :   maStartPoint(rStart),
@@ -346,20 +337,10 @@ namespace basegfx
     {
     }
 
-    B2DCubicBezier::~B2DCubicBezier()
-    {
-    }
+    B2DCubicBezier::~B2DCubicBezier() = default;
 
     // assignment operator
-    B2DCubicBezier& B2DCubicBezier::operator=(const B2DCubicBezier& rBezier)
-    {
-        maStartPoint = rBezier.maStartPoint;
-        maEndPoint = rBezier.maEndPoint;
-        maControlPointA = rBezier.maControlPointA;
-        maControlPointB = rBezier.maControlPointB;
-
-        return *this;
-    }
+    B2DCubicBezier& B2DCubicBezier::operator=(const B2DCubicBezier&) = default;
 
     // compare operators
     bool B2DCubicBezier::operator==(const B2DCubicBezier& rBezier) const
@@ -400,85 +381,85 @@ namespace basegfx
 
     void B2DCubicBezier::testAndSolveTrivialBezier()
     {
-        if(maControlPointA != maStartPoint || maControlPointB != maEndPoint)
+        if(maControlPointA == maStartPoint && maControlPointB == maEndPoint)
+            return;
+
+        const B2DVector aEdge(maEndPoint - maStartPoint);
+
+        // controls parallel to edge can be trivial. No edge -> not parallel -> control can
+        // still not be trivial (e.g. ballon loop)
+        if(aEdge.equalZero())
+            return;
+
+        // get control vectors
+        const B2DVector aVecA(maControlPointA - maStartPoint);
+        const B2DVector aVecB(maControlPointB - maEndPoint);
+
+        // check if trivial per se
+        bool bAIsTrivial(aVecA.equalZero());
+        bool bBIsTrivial(aVecB.equalZero());
+
+        // #i102241# prepare inverse edge length to normalize cross values;
+        // else the small compare value used in fTools::equalZero
+        // will be length dependent and this detection will work as less
+        // precise as longer the edge is. In principle, the length of the control
+        // vector would need to be used too, but to be trivial it is assumed to
+        // be of roughly equal length to the edge, so edge length can be used
+        // for both. Only needed when one of both is not trivial per se.
+        const double fInverseEdgeLength(bAIsTrivial && bBIsTrivial
+            ? 1.0
+            : 1.0 / aEdge.getLength());
+
+        // if A is not zero, check if it could be
+        if(!bAIsTrivial)
         {
-            const B2DVector aEdge(maEndPoint - maStartPoint);
+            // #i102241# parallel to edge? Check aVecA, aEdge. Use cross() which does what
+            // we need here with the precision we need
+            const double fCross(aVecA.cross(aEdge) * fInverseEdgeLength);
 
-            // controls parallel to edge can be trivial. No edge -> not parallel -> control can
-            // still not be trivial (e.g. ballon loop)
-            if(!aEdge.equalZero())
+            if(fTools::equalZero(fCross))
             {
-                // get control vectors
-                const B2DVector aVecA(maControlPointA - maStartPoint);
-                const B2DVector aVecB(maControlPointB - maEndPoint);
+                // get scale to edge. Use bigger distance for numeric quality
+                const double fScale(fabs(aEdge.getX()) > fabs(aEdge.getY())
+                    ? aVecA.getX() / aEdge.getX()
+                    : aVecA.getY() / aEdge.getY());
 
-                // check if trivial per se
-                bool bAIsTrivial(aVecA.equalZero());
-                bool bBIsTrivial(aVecB.equalZero());
-
-                // #i102241# prepare inverse edge length to normalize cross values;
-                // else the small compare value used in fTools::equalZero
-                // will be length dependent and this detection will work as less
-                // precise as longer the edge is. In principle, the length of the control
-                // vector would need to be used too, but to be trivial it is assumed to
-                // be of roughly equal length to the edge, so edge length can be used
-                // for both. Only needed when one of both is not trivial per se.
-                const double fInverseEdgeLength(bAIsTrivial && bBIsTrivial
-                    ? 1.0
-                    : 1.0 / aEdge.getLength());
-
-                // if A is not zero, check if it could be
-                if(!bAIsTrivial)
+                // relative end point of vector in edge range?
+                if (fTools::betweenOrEqualEither(fScale, 0.0, 1.0))
                 {
-                    // #i102241# parallel to edge? Check aVecA, aEdge. Use cross() which does what
-                    // we need here with the precision we need
-                    const double fCross(aVecA.cross(aEdge) * fInverseEdgeLength);
-
-                    if(fTools::equalZero(fCross))
-                    {
-                        // get scale to edge. Use bigger distance for numeric quality
-                        const double fScale(fabs(aEdge.getX()) > fabs(aEdge.getY())
-                            ? aVecA.getX() / aEdge.getX()
-                            : aVecA.getY() / aEdge.getY());
-
-                        // relative end point of vector in edge range?
-                        if (fTools::betweenOrEqualEither(fScale, 0.0, 1.0))
-                        {
-                            bAIsTrivial = true;
-                        }
-                    }
-                }
-
-                // if B is not zero, check if it could be, but only if A is already trivial;
-                // else solve to trivial will not be possible for whole edge
-                if(bAIsTrivial && !bBIsTrivial)
-                {
-                    // parallel to edge? Check aVecB, aEdge
-                    const double fCross(aVecB.cross(aEdge) * fInverseEdgeLength);
-
-                    if(fTools::equalZero(fCross))
-                    {
-                        // get scale to edge. Use bigger distance for numeric quality
-                        const double fScale(fabs(aEdge.getX()) > fabs(aEdge.getY())
-                            ? aVecB.getX() / aEdge.getX()
-                            : aVecB.getY() / aEdge.getY());
-
-                        // end point of vector in edge range? Caution: controlB is directed AGAINST edge
-                        if (fTools::betweenOrEqualEither(fScale, -1.0, 0.0))
-                        {
-                            bBIsTrivial = true;
-                        }
-                    }
-                }
-
-                // if both are/can be reduced, do it.
-                // Not possible if only one is/can be reduced (!)
-                if(bAIsTrivial && bBIsTrivial)
-                {
-                    maControlPointA = maStartPoint;
-                    maControlPointB = maEndPoint;
+                    bAIsTrivial = true;
                 }
             }
+        }
+
+        // if B is not zero, check if it could be, but only if A is already trivial;
+        // else solve to trivial will not be possible for whole edge
+        if(bAIsTrivial && !bBIsTrivial)
+        {
+            // parallel to edge? Check aVecB, aEdge
+            const double fCross(aVecB.cross(aEdge) * fInverseEdgeLength);
+
+            if(fTools::equalZero(fCross))
+            {
+                // get scale to edge. Use bigger distance for numeric quality
+                const double fScale(fabs(aEdge.getX()) > fabs(aEdge.getY())
+                    ? aVecB.getX() / aEdge.getX()
+                    : aVecB.getY() / aEdge.getY());
+
+                // end point of vector in edge range? Caution: controlB is directed AGAINST edge
+                if (fTools::betweenOrEqualEither(fScale, -1.0, 0.0))
+                {
+                    bBIsTrivial = true;
+                }
+            }
+        }
+
+        // if both are/can be reduced, do it.
+        // Not possible if only one is/can be reduced (!)
+        if(bAIsTrivial && bBIsTrivial)
+        {
+            maControlPointA = maStartPoint;
+            maControlPointB = maEndPoint;
         }
     }
 
@@ -551,7 +532,8 @@ namespace basegfx
         if(isBezier())
         {
             // use support method #i37443# and allow unsharpen the criteria
-            ImpSubDivAngleStart(maStartPoint, maControlPointA, maControlPointB, maEndPoint, rTarget, fAngleBound * F_PI180, true/*bAllowUnsharpen*/);
+            ImpSubDivAngleStart(maStartPoint, maControlPointA, maControlPointB, maEndPoint, rTarget,
+                                deg2rad(fAngleBound));
         }
         else
         {
@@ -668,7 +650,7 @@ namespace basegfx
         const sal_uInt32 nInitialDivisions(3);
         B2DPolygon aInitialPolygon;
 
-        // as start make a fix division, creates nInitialDivisions + 2L points
+        // as start make a fix division, creates nInitialDivisions + 2 points
         aInitialPolygon.append(getStartPoint());
         adaptiveSubdivideByCount(aInitialPolygon, nInitialDivisions);
 
@@ -692,8 +674,8 @@ namespace basegfx
         }
 
         // look right and left for even smaller distances
-        double fStepValue(1.0 / (double)((nPointCount - 1) * 2)); // half the edge step width
-        double fPosition((double)nSmallestIndex / (double)(nPointCount - 1));
+        double fStepValue(1.0 / static_cast<double>((nPointCount - 1) * 2)); // half the edge step width
+        double fPosition(static_cast<double>(nSmallestIndex) / static_cast<double>(nPointCount - 1));
 
         while(true)
         {
@@ -925,7 +907,7 @@ namespace basegfx
 
     namespace
     {
-        inline void impCheckExtremumResult(double fCandidate, std::vector< double >& rResult)
+        void impCheckExtremumResult(double fCandidate, std::vector< double >& rResult)
         {
             // check for range ]0.0 .. 1.0[ with excluding 1.0 and 0.0 clearly
             // by using the equalZero test, NOT ::more or ::less which will use the
@@ -1012,27 +994,27 @@ namespace basegfx
 
     void B2DCubicBezier::transform(const basegfx::B2DHomMatrix& rMatrix)
     {
-        if(!rMatrix.isIdentity())
-        {
-            if(maControlPointA == maStartPoint)
-            {
-                maControlPointA = maStartPoint = rMatrix * maStartPoint;
-            }
-            else
-            {
-                maStartPoint *= rMatrix;
-                maControlPointA *= rMatrix;
-            }
+        if(rMatrix.isIdentity())
+            return;
 
-            if(maControlPointB == maEndPoint)
-            {
-                maControlPointB = maEndPoint = rMatrix * maEndPoint;
-            }
-            else
-            {
-                maEndPoint *= rMatrix;
-                maControlPointB *= rMatrix;
-            }
+        if(maControlPointA == maStartPoint)
+        {
+            maControlPointA = maStartPoint = rMatrix * maStartPoint;
+        }
+        else
+        {
+            maStartPoint *= rMatrix;
+            maControlPointA *= rMatrix;
+        }
+
+        if(maControlPointB == maEndPoint)
+        {
+            maControlPointB = maEndPoint = rMatrix * maEndPoint;
+        }
+        else
+        {
+            maEndPoint *= rMatrix;
+            maControlPointB *= rMatrix;
         }
     }
 

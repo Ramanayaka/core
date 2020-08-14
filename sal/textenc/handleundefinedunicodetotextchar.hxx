@@ -10,14 +10,14 @@
 #ifndef INCLUDED_SAL_TEXTENC_HANDLEUNDEFINEDUNICODETOTEXTCHAR_HXX
 #define INCLUDED_SAL_TEXTENC_HANDLEUNDEFINEDUNICODETOTEXTCHAR_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "sal/saldllapi.h"
-#include "sal/types.h"
+#include <sal/saldllapi.h>
+#include <sal/types.h>
 
 // Internal, non-stable ABI
 
-namespace sal { namespace detail { namespace textenc {
+namespace sal::detail::textenc {
 
 // True means "continue," false means "break:"
 bool SAL_DLLPUBLIC handleUndefinedUnicodeToTextChar(
@@ -25,6 +25,6 @@ bool SAL_DLLPUBLIC handleUndefinedUnicodeToTextChar(
     char ** ppDestBuf, char const * pEndDestBuf, sal_uInt32 nFlags,
     sal_uInt32 * pInfo);
 
-} } }
+}
 
 #endif

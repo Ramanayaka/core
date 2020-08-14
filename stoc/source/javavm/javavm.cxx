@@ -24,8 +24,6 @@
 #include "jvmargs.hxx"
 
 #include <com/sun/star/beans/NamedValue.hpp>
-#include <com/sun/star/beans/PropertyState.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XContainer.hpp>
 #include <com/sun/star/java/JavaNotFoundException.hpp>
 #include <com/sun/star/java/InvalidJavaSettingsException.hpp>
@@ -36,7 +34,7 @@
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/registry/XSimpleRegistry.hpp>
@@ -49,7 +47,8 @@
 #include <com/sun/star/uno/XCurrentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/util/theMacroExpander.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
+#include <comphelper/propertysequence.hxx>
+#include <comphelper/SetFlagContextHelper.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -58,21 +57,15 @@
 #include <jvmaccess/classpath.hxx>
 #include <jvmaccess/unovirtualmachine.hxx>
 #include <jvmaccess/virtualmachine.hxx>
-#include <osl/file.hxx>
-#include <osl/thread.h>
-#include <rtl/bootstrap.hxx>
 #include <rtl/process.h>
-#include <rtl/string.h>
-#include <rtl/ustrbuf.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
-#include <rtl/uri.hxx>
 #include <sal/types.h>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 #include <uno/current_context.hxx>
-#include <uno/environment.h>
 #include <jvmfwk/framework.hxx>
 #include <i18nlangtag/languagetag.hxx>
-#include "jni.h"
+#include <jni.h>
 
 #include <stack>
 #include <string.h>
@@ -81,7 +74,7 @@
 #include <vector>
 
 // Properties of the javavm can be put
-// as a komma separated list in this
+// as a comma separated list in this
 // environment variable
 #ifdef UNIX
 #define TIMEZONE "MEZ"
@@ -115,111 +108,6 @@ namespace {
 class NoJavaIniException: public css::uno::Exception
 {
 };
-
-class SingletonFactory:
-    private cppu::WeakImplHelper< css::lang::XEventListener >
-{
-public:
-    static css::uno::Reference< css::uno::XInterface > getSingleton(
-        css::uno::Reference< css::uno::XComponentContext > const & rContext);
-
-private:
-    SingletonFactory() {}
-
-    virtual ~SingletonFactory() override {}
-
-    SingletonFactory(const SingletonFactory&) = delete;
-    SingletonFactory& operator=(const SingletonFactory&) = delete;
-
-    virtual void SAL_CALL disposing(css::lang::EventObject const &) override;
-
-    static void dispose();
-
-    // TODO ok to keep these static?
-    static osl::Mutex m_aMutex;
-    static css::uno::Reference< css::uno::XInterface > m_xSingleton;
-    static bool m_bDisposed;
-};
-
-css::uno::Reference< css::uno::XInterface > SingletonFactory::getSingleton(
-    css::uno::Reference< css::uno::XComponentContext > const & rContext)
-{
-    css::uno::Reference< css::uno::XInterface > xSingleton;
-    css::uno::Reference< css::lang::XComponent > xComponent;
-    {
-        osl::MutexGuard aGuard(m_aMutex);
-        if (!m_xSingleton.is())
-        {
-            if (m_bDisposed)
-                throw css::lang::DisposedException();
-            xComponent.set( rContext, css::uno::UNO_QUERY_THROW);
-            m_xSingleton = static_cast< cppu::OWeakObject * >(
-                new JavaVirtualMachine(rContext));
-        }
-        xSingleton = m_xSingleton;
-    }
-    if (xComponent.is())
-        try
-        {
-            xComponent->addEventListener(new SingletonFactory);
-        }
-        catch (...)
-        {
-            dispose();
-            throw;
-        }
-    return xSingleton;
-}
-
-void SAL_CALL SingletonFactory::disposing(css::lang::EventObject const &)
-{
-    dispose();
-}
-
-void SingletonFactory::dispose()
-{
-    css::uno::Reference< css::lang::XComponent > xComponent;
-    {
-        osl::MutexGuard aGuard(m_aMutex);
-        xComponent.set( m_xSingleton, css::uno::UNO_QUERY);
-        m_xSingleton.clear();
-        m_bDisposed = true;
-    }
-    if (xComponent.is())
-        xComponent->dispose();
-}
-
-osl::Mutex SingletonFactory::m_aMutex;
-css::uno::Reference< css::uno::XInterface > SingletonFactory::m_xSingleton;
-bool SingletonFactory::m_bDisposed = false;
-
-OUString serviceGetImplementationName()
-{
-    return OUString("com.sun.star.comp.stoc.JavaVirtualMachine");
-}
-
-css::uno::Sequence< OUString > serviceGetSupportedServiceNames()
-{
-    return css::uno::Sequence< OUString > { "com.sun.star.java.JavaVirtualMachine" };
-}
-
-css::uno::Reference< css::uno::XInterface > SAL_CALL serviceCreateInstance(
-    css::uno::Reference< css::uno::XComponentContext > const & rContext)
-{
-    // Only one single instance of this service is ever constructed, and is
-    // available until the component context used to create this instance is
-    // disposed.  Afterwards, this function throws a DisposedException (as do
-    // all relevant methods on the single service instance).
-    return SingletonFactory::getSingleton(rContext);
-}
-
-cppu::ImplementationEntry const aServiceImplementation[]
-    = { { serviceCreateInstance,
-          serviceGetImplementationName,
-          serviceGetSupportedServiceNames,
-          cppu::createSingleComponentFactory,
-          nullptr, 0 },
-        { nullptr, nullptr, nullptr, nullptr, nullptr, 0 } };
 
 typedef std::stack< jvmaccess::VirtualMachine::AttachGuard * > GuardStack;
 
@@ -481,20 +369,19 @@ void getJavaPropsFromSafetySettings(
             case 3: sVal = "none";
                 break;
             }
-            OUString sProperty("appletviewer.security.mode=");
-            sProperty= sProperty + sVal;
+            OUString sProperty = "appletviewer.security.mode=" + sVal;
             pjvm->pushProp(sProperty);
         }
         css::uno::Reference<css::registry::XRegistryKey> key_CheckSecurity= xRegistryRootKey->openKey(
             "VirtualMachine/Security");
         if( key_CheckSecurity.is())
         {
-            bool val = (bool) key_CheckSecurity->getLongValue();
+            bool val = static_cast<bool>(key_CheckSecurity->getLongValue());
             OUString sProperty("stardiv.security.disableSecurity=");
             if( val)
-                sProperty= sProperty + "false";
+                sProperty += "false";
             else
-                sProperty= sProperty + "true";
+                sProperty += "true";
             pjvm->pushProp( sProperty);
         }
     }
@@ -536,23 +423,23 @@ void initVMConfiguration(
     try {
         getINetPropsFromConfig(&jvm, xSMgr, xCtx);
     }
-    catch(const css::uno::Exception & exception) {
-        SAL_INFO("stoc", "can not get INETProps because of >" << exception.Message << "<");
+    catch(const css::uno::Exception &) {
+        TOOLS_INFO_EXCEPTION("stoc", "can not get INETProps");
     }
 
     try {
         getDefaultLocaleFromConfig(&jvm, xSMgr,xCtx);
     }
-    catch(const css::uno::Exception & exception) {
-        SAL_INFO("stoc", "can not get locale because of >" << exception.Message << "<");
+    catch(const css::uno::Exception &) {
+        TOOLS_INFO_EXCEPTION("stoc", "can not get locale");
     }
 
     try
     {
         getJavaPropsFromSafetySettings(&jvm, xSMgr, xCtx);
     }
-    catch(const css::uno::Exception & exception) {
-        SAL_INFO("stoc", "couldn't get safety settings because of >" << exception.Message << "<");
+    catch(const css::uno::Exception &) {
+        TOOLS_INFO_EXCEPTION("stoc", "couldn't get safety settings");
     }
 
     *pjvm= jvm;
@@ -584,15 +471,6 @@ private:
     JavaVM * m_jvm;
 };
 
-}
-
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL javavm_component_getFactory(sal_Char const * pImplName,
-                                                void * pServiceManager,
-                                                void * pRegistryKey)
-{
-    return cppu::component_getFactoryHelper(pImplName, pServiceManager,
-                                            pRegistryKey,
-                                            aServiceImplementation);
 }
 
 JavaVirtualMachine::JavaVirtualMachine(
@@ -641,9 +519,10 @@ JavaVirtualMachine::initialize(css::uno::Sequence< css::uno::Any > const &
             try {
                 m_xUnoVirtualMachine = new jvmaccess::UnoVirtualMachine(vm, nullptr);
             } catch (jvmaccess::UnoVirtualMachine::CreationException &) {
-                throw css::uno::RuntimeException(
+                css::uno::Any anyEx = cppu::getCaughtException();
+                throw css::lang::WrappedTargetRuntimeException(
                     "jvmaccess::UnoVirtualMachine::CreationException",
-                    static_cast< cppu::OWeakObject * >(this));
+                    static_cast< cppu::OWeakObject * >(this), anyEx );
             }
         }
     }
@@ -662,7 +541,7 @@ JavaVirtualMachine::initialize(css::uno::Sequence< css::uno::Any > const &
 
 OUString SAL_CALL JavaVirtualMachine::getImplementationName()
 {
-    return serviceGetImplementationName();
+    return "com.sun.star.comp.stoc.JavaVirtualMachine";
 }
 
 sal_Bool SAL_CALL
@@ -674,7 +553,7 @@ JavaVirtualMachine::supportsService(OUString const & rServiceName)
 css::uno::Sequence< OUString > SAL_CALL
 JavaVirtualMachine::getSupportedServiceNames()
 {
-    return serviceGetSupportedServiceNames();
+    return { "com.sun.star.java.JavaVirtualMachine" };
 }
 
 css::uno::Any SAL_CALL
@@ -708,7 +587,8 @@ JavaVirtualMachine::getJavaVM(css::uno::Sequence< sal_Int8 > const & rProcessId)
                             m_xContext);
         const std::vector<OUString> & props = aJvm.getProperties();
         std::vector<OUString> options;
-        for (auto const & i: props)
+        options.reserve(props.size());
+        for (auto const& i : props)
         {
             options.push_back(i.startsWith("-") ? i : "-D" + i);
         }
@@ -755,7 +635,7 @@ JavaVirtualMachine::getJavaVM(css::uno::Sequence< sal_Int8 > const & rProcessId)
                 //An unexpected error occurred
                 throw css::uno::RuntimeException(
                     "[JavaVirtualMachine]:An unexpected error occurred"
-                    " while searching for a Java!", nullptr);
+                    " while searching for a Java, " + OUString::number(errFind), nullptr);
             }
         }
         case JFW_E_INVALID_SETTINGS:
@@ -773,6 +653,9 @@ JavaVirtualMachine::getJavaVM(css::uno::Sequence< sal_Int8 > const & rProcessId)
         }
         case JFW_E_JAVA_DISABLED:
         {
+            if (comphelper::IsContextFlagActive("DontEnableJava"))
+                return css::uno::Any();
+
             //QueryBox:
             //%PRODUCTNAME requires a Java runtime environment (JRE) to perform
             //this task. However, use of a JRE has been disabled. Do you want to
@@ -869,9 +752,10 @@ JavaVirtualMachine::getJavaVM(css::uno::Sequence< sal_Int8 > const & rProcessId)
             jvmaccess::VirtualMachine::AttachGuard guard(m_xVirtualMachine);
             setUpUnoVirtualMachine(guard.getEnvironment());
         } catch (jvmaccess::VirtualMachine::AttachGuard::CreationException &) {
-            throw css::uno::RuntimeException(
+            css::uno::Any anyEx = cppu::getCaughtException();
+            throw css::lang::WrappedTargetRuntimeException(
                 "jvmaccess::VirtualMachine::AttachGuard::CreationException occurred",
-                static_cast< cppu::OWeakObject * >(this));
+                static_cast< cppu::OWeakObject * >(this), anyEx );
         }
     }
     switch (returnType) {
@@ -960,10 +844,11 @@ void SAL_CALL JavaVirtualMachine::registerThread()
     }
     catch (jvmaccess::VirtualMachine::AttachGuard::CreationException &)
     {
-        throw css::uno::RuntimeException(
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException(
             "JavaVirtualMachine::registerThread: jvmaccess::"
             "VirtualMachine::AttachGuard::CreationException",
-            static_cast< cppu::OWeakObject * >(this));
+            static_cast< cppu::OWeakObject * >(this), anyEx );
     }
 }
 
@@ -1120,123 +1005,121 @@ void SAL_CALL JavaVirtualMachine::elementReplaced(
             xVirtualMachine = m_xUnoVirtualMachine->getVirtualMachine();
         }
     }
-    if (xVirtualMachine.is())
+    if (!xVirtualMachine.is())
+        return;
+
+    try
     {
-        try
+        jvmaccess::VirtualMachine::AttachGuard aAttachGuard(
+            xVirtualMachine);
+        JNIEnv * pJNIEnv = aAttachGuard.getEnvironment();
+
+        // call java.lang.System.setProperty
+        // String setProperty( String key, String value)
+        jclass jcSystem= pJNIEnv->FindClass("java/lang/System");
+        if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:FindClass java/lang/System", nullptr);
+        jmethodID jmSetProps= pJNIEnv->GetStaticMethodID( jcSystem, "setProperty","(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+        if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetStaticMethodID java.lang.System.setProperty", nullptr);
+
+        jstring jsPropName= pJNIEnv->NewString( reinterpret_cast<jchar const *>(aPropertyName.getStr()), aPropertyName.getLength());
+        if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
+
+        // remove the property if it does not have a value ( user left the dialog field empty)
+        // or if the port is set to 0
+        aPropertyValue= aPropertyValue.trim();
+        if( aPropertyValue.isEmpty() ||
+           ( ( aPropertyName == "ftp.proxyPort" || aPropertyName == "http.proxyPort" /*|| aPropertyName == "socksProxyPort"*/ ) && aPropertyValue == "0" )
+          )
         {
-            jvmaccess::VirtualMachine::AttachGuard aAttachGuard(
-                xVirtualMachine);
-            JNIEnv * pJNIEnv = aAttachGuard.getEnvironment();
+            // call java.lang.System.getProperties
+            jmethodID jmGetProps= pJNIEnv->GetStaticMethodID( jcSystem, "getProperties","()Ljava/util/Properties;");
+            if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetStaticMethodID java.lang.System.getProperties", nullptr);
+            jobject joProperties= pJNIEnv->CallStaticObjectMethod( jcSystem, jmGetProps);
+            if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallStaticObjectMethod java.lang.System.getProperties", nullptr);
+            // call java.util.Properties.remove
+            jclass jcProperties= pJNIEnv->FindClass("java/util/Properties");
+            if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:FindClass java/util/Properties", nullptr);
+            jmethodID jmRemove= pJNIEnv->GetMethodID( jcProperties, "remove", "(Ljava/lang/Object;)Ljava/lang/Object;");
+            if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetMethodID java.util.Properties.remove", nullptr);
+            pJNIEnv->CallObjectMethod( joProperties, jmRemove, jsPropName);
 
-            // call java.lang.System.setProperty
-            // String setProperty( String key, String value)
-            jclass jcSystem= pJNIEnv->FindClass("java/lang/System");
-            if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:FindClass java/lang/System", nullptr);
-            jmethodID jmSetProps= pJNIEnv->GetStaticMethodID( jcSystem, "setProperty","(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
-            if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetStaticMethodID java.lang.System.setProperty", nullptr);
-
-            jstring jsPropName= pJNIEnv->NewString( reinterpret_cast<jchar const *>(aPropertyName.getStr()), aPropertyName.getLength());
-            if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
-
-            // remove the property if it does not have a value ( user left the dialog field empty)
-            // or if the port is set to 0
-            aPropertyValue= aPropertyValue.trim();
-            if( aPropertyValue.isEmpty() ||
-               ( ( aPropertyName == "ftp.proxyPort" || aPropertyName == "http.proxyPort" /*|| aPropertyName == "socksProxyPort"*/ ) && aPropertyValue == "0" )
-              )
+            // special case for ftp.nonProxyHosts and http.nonProxyHosts. The office only
+            // has a value for two java properties
+            if (!aPropertyName2.isEmpty())
             {
-                // call java.lang.System.getProperties
-                jmethodID jmGetProps= pJNIEnv->GetStaticMethodID( jcSystem, "getProperties","()Ljava/util/Properties;");
-                if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetStaticMethodID java.lang.System.getProperties", nullptr);
-                jobject joProperties= pJNIEnv->CallStaticObjectMethod( jcSystem, jmGetProps);
-                if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallStaticObjectMethod java.lang.System.getProperties", nullptr);
-                // call java.util.Properties.remove
-                jclass jcProperties= pJNIEnv->FindClass("java/util/Properties");
-                if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:FindClass java/util/Properties", nullptr);
-                jmethodID jmRemove= pJNIEnv->GetMethodID( jcProperties, "remove", "(Ljava/lang/Object;)Ljava/lang/Object;");
-                if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetMethodID java.util.Properties.remove", nullptr);
-                pJNIEnv->CallObjectMethod( joProperties, jmRemove, jsPropName);
-
-                // special case for ftp.nonProxyHosts and http.nonProxyHosts. The office only
-                // has a value for two java properties
-                if (!aPropertyName2.isEmpty())
-                {
-                    jstring jsPropName2= pJNIEnv->NewString( reinterpret_cast<jchar const *>(aPropertyName2.getStr()), aPropertyName2.getLength());
-                    if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
-                    pJNIEnv->CallObjectMethod( joProperties, jmRemove, jsPropName2);
-                }
-            }
-            else
-            {
-                // Change the Value of the property
-                jstring jsPropValue= pJNIEnv->NewString( reinterpret_cast<jchar const *>(aPropertyValue.getStr()), aPropertyValue.getLength());
+                jstring jsPropName2= pJNIEnv->NewString( reinterpret_cast<jchar const *>(aPropertyName2.getStr()), aPropertyName2.getLength());
                 if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
-                pJNIEnv->CallStaticObjectMethod( jcSystem, jmSetProps, jsPropName, jsPropValue);
-                if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallStaticObjectMethod java.lang.System.setProperty", nullptr);
-
-                // special case for ftp.nonProxyHosts and http.nonProxyHosts. The office only
-                // has a value for two java properties
-                if (!aPropertyName2.isEmpty())
-                {
-                    jstring jsPropName2= pJNIEnv->NewString( reinterpret_cast<jchar const *>(aPropertyName2.getStr()), aPropertyName2.getLength());
-                    if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
-                    jsPropValue= pJNIEnv->NewString( reinterpret_cast<jchar const *>(aPropertyValue.getStr()), aPropertyValue.getLength());
-                    if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
-                    pJNIEnv->CallStaticObjectMethod( jcSystem, jmSetProps, jsPropName2, jsPropValue);
-                    if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallStaticObjectMethod java.lang.System.setProperty", nullptr);
-                }
+                pJNIEnv->CallObjectMethod( joProperties, jmRemove, jsPropName2);
             }
+        }
+        else
+        {
+            // Change the Value of the property
+            jstring jsPropValue= pJNIEnv->NewString( reinterpret_cast<jchar const *>(aPropertyValue.getStr()), aPropertyValue.getLength());
+            if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
+            pJNIEnv->CallStaticObjectMethod( jcSystem, jmSetProps, jsPropName, jsPropValue);
+            if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallStaticObjectMethod java.lang.System.setProperty", nullptr);
 
-            // If the settings for Security and NetAccess changed then we have to notify the SandboxSecurity
-            // SecurityManager
-            // call System.getSecurityManager()
-            if (bSecurityChanged)
+            // special case for ftp.nonProxyHosts and http.nonProxyHosts. The office only
+            // has a value for two java properties
+            if (!aPropertyName2.isEmpty())
             {
-                jmethodID jmGetSecur= pJNIEnv->GetStaticMethodID( jcSystem,"getSecurityManager","()Ljava/lang/SecurityManager;");
-                if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetStaticMethodID java.lang.System.getSecurityManager", nullptr);
-                jobject joSecur= pJNIEnv->CallStaticObjectMethod( jcSystem, jmGetSecur);
-                if (joSecur != nullptr)
-                {
-                    // Make sure the SecurityManager is our SandboxSecurity
-                    // FindClass("com.sun.star.lib.sandbox.SandboxSecurityManager" only worked at the first time
-                    // this code was executed. Maybe it is a security feature. However, all attempts to debug the
-                    // SandboxSecurity class (maybe the VM invokes checkPackageAccess)  failed.
+                jstring jsPropName2= pJNIEnv->NewString( reinterpret_cast<jchar const *>(aPropertyName2.getStr()), aPropertyName2.getLength());
+                if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
+                jsPropValue= pJNIEnv->NewString( reinterpret_cast<jchar const *>(aPropertyValue.getStr()), aPropertyValue.getLength());
+                if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
+                pJNIEnv->CallStaticObjectMethod( jcSystem, jmSetProps, jsPropName2, jsPropValue);
+                if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallStaticObjectMethod java.lang.System.setProperty", nullptr);
+            }
+        }
+
+        // If the settings for Security and NetAccess changed then we have to notify the SandboxSecurity
+        // SecurityManager
+        // call System.getSecurityManager()
+        if (bSecurityChanged)
+        {
+            jmethodID jmGetSecur= pJNIEnv->GetStaticMethodID( jcSystem,"getSecurityManager","()Ljava/lang/SecurityManager;");
+            if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetStaticMethodID java.lang.System.getSecurityManager", nullptr);
+            jobject joSecur= pJNIEnv->CallStaticObjectMethod( jcSystem, jmGetSecur);
+            if (joSecur != nullptr)
+            {
+                // Make sure the SecurityManager is our SandboxSecurity
+                // FindClass("com.sun.star.lib.sandbox.SandboxSecurityManager" only worked at the first time
+                // this code was executed. Maybe it is a security feature. However, all attempts to debug the
+                // SandboxSecurity class (maybe the VM invokes checkPackageAccess)  failed.
 //                  jclass jcSandboxSec= pJNIEnv->FindClass("com.sun.star.lib.sandbox.SandboxSecurity");
 //                  if(pJNIEnv->ExceptionOccurred()) throw RuntimeException("JNI:FindClass com.sun.star.lib.sandbox.SandboxSecurity");
 //                  jboolean bIsSand= pJNIEnv->IsInstanceOf( joSecur, jcSandboxSec);
-                    // The SecurityManagers class Name must be com.sun.star.lib.sandbox.SandboxSecurity
-                    jclass jcSec= pJNIEnv->GetObjectClass( joSecur);
-                    jclass jcClass= pJNIEnv->FindClass("java/lang/Class");
-                    if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:FindClass java.lang.Class", nullptr);
-                    jmethodID jmName= pJNIEnv->GetMethodID( jcClass,"getName","()Ljava/lang/String;");
-                    if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetMethodID java.lang.Class.getName", nullptr);
-                    jstring jsClass= static_cast<jstring>(pJNIEnv->CallObjectMethod( jcSec, jmName));
-                    const jchar* jcharName= pJNIEnv->GetStringChars( jsClass, nullptr);
-                    OUString sName(reinterpret_cast<sal_Unicode const *>(jcharName));
-                    bool bIsSandbox;
-                    if ( sName == "com.sun.star.lib.sandbox.SandboxSecurity" )
-                        bIsSandbox= true;
-                    else
-                        bIsSandbox= false;
-                    pJNIEnv->ReleaseStringChars( jsClass, jcharName);
+                // The SecurityManagers class Name must be com.sun.star.lib.sandbox.SandboxSecurity
+                jclass jcSec= pJNIEnv->GetObjectClass( joSecur);
+                jclass jcClass= pJNIEnv->FindClass("java/lang/Class");
+                if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:FindClass java.lang.Class", nullptr);
+                jmethodID jmName= pJNIEnv->GetMethodID( jcClass,"getName","()Ljava/lang/String;");
+                if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetMethodID java.lang.Class.getName", nullptr);
+                jstring jsClass= static_cast<jstring>(pJNIEnv->CallObjectMethod( jcSec, jmName));
+                const jchar* jcharName= pJNIEnv->GetStringChars( jsClass, nullptr);
+                OUString sName(reinterpret_cast<sal_Unicode const *>(jcharName));
+                bool bIsSandbox;
+                bIsSandbox = sName == "com.sun.star.lib.sandbox.SandboxSecurity";
+                pJNIEnv->ReleaseStringChars( jsClass, jcharName);
 
-                    if (bIsSandbox)
-                    {
-                        // call SandboxSecurity.reset
-                        jmethodID jmReset= pJNIEnv->GetMethodID( jcSec,"reset","()V");
-                        if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetMethodID com.sun.star.lib.sandbox.SandboxSecurity.reset", nullptr);
-                        pJNIEnv->CallVoidMethod( joSecur, jmReset);
-                        if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallVoidMethod com.sun.star.lib.sandbox.SandboxSecurity.reset", nullptr);
-                    }
+                if (bIsSandbox)
+                {
+                    // call SandboxSecurity.reset
+                    jmethodID jmReset= pJNIEnv->GetMethodID( jcSec,"reset","()V");
+                    if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:GetMethodID com.sun.star.lib.sandbox.SandboxSecurity.reset", nullptr);
+                    pJNIEnv->CallVoidMethod( joSecur, jmReset);
+                    if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallVoidMethod com.sun.star.lib.sandbox.SandboxSecurity.reset", nullptr);
                 }
             }
         }
-        catch (jvmaccess::VirtualMachine::AttachGuard::CreationException &)
-        {
-            throw css::uno::RuntimeException(
-                "jvmaccess::VirtualMachine::AttachGuard::CreationException",
-                nullptr);
-        }
+    }
+    catch (jvmaccess::VirtualMachine::AttachGuard::CreationException &)
+    {
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException(
+            "jvmaccess::VirtualMachine::AttachGuard::CreationException",
+            static_cast< cppu::OWeakObject * >(this), anyEx );
     }
 }
 
@@ -1301,19 +1184,11 @@ void JavaVirtualMachine::registerConfigChangesListener()
         {
             // We register this instance as listener to changes in org.openoffice.Inet/Settings
             // arguments for ConfigurationAccess
-            css::uno::Sequence< css::uno::Any > aArguments(2);
-            aArguments[0] <<= css::beans::PropertyValue(
-                "nodepath",
-                0,
-                css::uno::makeAny(OUString("org.openoffice.Inet/Settings")),
-                css::beans::PropertyState_DIRECT_VALUE);
-            // depth: -1 means unlimited
-            aArguments[1] <<= css::beans::PropertyValue(
-                "depth",
-                0,
-                css::uno::makeAny( (sal_Int32)-1),
-                css::beans::PropertyState_DIRECT_VALUE);
-
+            css::uno::Sequence<css::uno::Any> aArguments(comphelper::InitAnyPropertySequence(
+            {
+                {"nodepath", css::uno::Any(OUString("org.openoffice.Inet/Settings"))},
+                {"depth", css::uno::Any(sal_Int32(-1))}
+            }));
             m_xInetConfiguration.set(
                     xConfigProvider->createInstanceWithArguments(
                         "com.sun.star.configuration.ConfigurationAccess",
@@ -1324,19 +1199,11 @@ void JavaVirtualMachine::registerConfigChangesListener()
                 m_xInetConfiguration->addContainerListener(this);
 
             // now register as listener to changes in org.openoffice.Java/VirtualMachine
-            css::uno::Sequence< css::uno::Any > aArguments2(2);
-            aArguments2[0] <<= css::beans::PropertyValue(
-                "nodepath",
-                0,
-                css::uno::makeAny(OUString("org.openoffice.Office.Java/VirtualMachine")),
-                css::beans::PropertyState_DIRECT_VALUE);
-            // depth: -1 means unlimited
-            aArguments2[1] <<= css::beans::PropertyValue(
-                "depth",
-                0,
-                css::uno::makeAny( (sal_Int32)-1),
-                css::beans::PropertyState_DIRECT_VALUE);
-
+            css::uno::Sequence<css::uno::Any> aArguments2(comphelper::InitAnyPropertySequence(
+            {
+                {"nodepath", css::uno::Any(OUString("org.openoffice.Office.Java/VirtualMachine"))},
+                {"depth", css::uno::Any(sal_Int32(-1))} // depth: -1 means unlimited
+            }));
             m_xJavaConfiguration.set(
                     xConfigProvider->createInstanceWithArguments(
                         "com.sun.star.configuration.ConfigurationAccess",
@@ -1346,9 +1213,9 @@ void JavaVirtualMachine::registerConfigChangesListener()
             if (m_xJavaConfiguration.is())
                 m_xJavaConfiguration->addContainerListener(this);
         }
-    }catch(const css::uno::Exception & e)
+    }catch(const css::uno::Exception &)
     {
-        SAL_INFO("stoc", "could not set up listener for Configuration because of >" << e.Message << "<");
+        TOOLS_INFO_EXCEPTION("stoc", "could not set up listener for Configuration");
     }
 }
 
@@ -1408,51 +1275,49 @@ void JavaVirtualMachine::setINetSettingsInVM(bool set_reset)
                 JVM jvm;
                 getINetPropsFromConfig( &jvm, m_xContext->getServiceManager(), m_xContext);
                 const ::std::vector< OUString> & Props = jvm.getProperties();
-                typedef ::std::vector< OUString >::const_iterator C_IT;
 
-                for( C_IT i= Props.begin(); i != Props.end(); ++i)
+                for( auto& prop : Props)
                 {
-                    OUString prop= *i;
                     sal_Int32 index= prop.indexOf( '=');
                     OUString propName= prop.copy( 0, index);
                     OUString propValue= prop.copy( index + 1);
 
-                    if( propName.equals( sFtpProxyHost))
+                    if( propName == sFtpProxyHost)
                     {
                         jstring jsVal= pJNIEnv->NewString( reinterpret_cast<jchar const *>(propValue.getStr()), propValue.getLength());
                         if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
                         pJNIEnv->CallStaticObjectMethod( jcSystem, jmSetProps, jsFtpProxyHost, jsVal);
                         if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallStaticObjectMethod java.lang.System.setProperty", nullptr);
                     }
-                    else if( propName.equals( sFtpProxyPort))
+                    else if( propName == sFtpProxyPort)
                     {
                         jstring jsVal= pJNIEnv->NewString( reinterpret_cast<jchar const *>(propValue.getStr()), propValue.getLength());
                         if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
                         pJNIEnv->CallStaticObjectMethod( jcSystem, jmSetProps, jsFtpProxyPort, jsVal);
                         if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallStaticObjectMethod java.lang.System.setProperty", nullptr);
                     }
-                    else if( propName.equals( sFtpNonProxyHosts))
+                    else if( propName == sFtpNonProxyHosts)
                     {
                         jstring jsVal= pJNIEnv->NewString( reinterpret_cast<jchar const *>(propValue.getStr()), propValue.getLength());
                         if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
                         pJNIEnv->CallStaticObjectMethod( jcSystem, jmSetProps, jsFtpNonProxyHosts, jsVal);
                         if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallStaticObjectMethod java.lang.System.setProperty", nullptr);
                     }
-                    else if( propName.equals( sHttpProxyHost))
+                    else if( propName == sHttpProxyHost)
                     {
                         jstring jsVal= pJNIEnv->NewString( reinterpret_cast<jchar const *>(propValue.getStr()), propValue.getLength());
                         if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
                         pJNIEnv->CallStaticObjectMethod( jcSystem, jmSetProps, jsHttpProxyHost, jsVal);
                         if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallStaticObjectMethod java.lang.System.setProperty", nullptr);
                     }
-                    else if( propName.equals( sHttpProxyPort))
+                    else if( propName == sHttpProxyPort)
                     {
                         jstring jsVal= pJNIEnv->NewString( reinterpret_cast<jchar const *>(propValue.getStr()), propValue.getLength());
                         if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
                         pJNIEnv->CallStaticObjectMethod( jcSystem, jmSetProps, jsHttpProxyPort, jsVal);
                         if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:CallStaticObjectMethod java.lang.System.setProperty", nullptr);
                     }
-                    else if( propName.equals( sHttpNonProxyHosts))
+                    else if( propName == sHttpNonProxyHosts)
                     {
                         jstring jsVal= pJNIEnv->NewString( reinterpret_cast<jchar const *>(propValue.getStr()), propValue.getLength());
                         if(pJNIEnv->ExceptionOccurred()) throw css::uno::RuntimeException("JNI:NewString", nullptr);
@@ -1491,9 +1356,10 @@ void JavaVirtualMachine::setUpUnoVirtualMachine(JNIEnv * environment) {
     try {
         baseUrl = exp->expandMacros("$URE_INTERNAL_JAVA_DIR/");
     } catch (css::lang::IllegalArgumentException &) {
-        throw css::uno::RuntimeException(
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException(
             "css::lang::IllegalArgumentException",
-            static_cast< cppu::OWeakObject * >(this));
+            static_cast< cppu::OWeakObject * >(this), anyEx );
     }
     OUString classPath;
     try {
@@ -1591,17 +1457,49 @@ void JavaVirtualMachine::setUpUnoVirtualMachine(JNIEnv * environment) {
         m_xUnoVirtualMachine = new jvmaccess::UnoVirtualMachine(
             m_xVirtualMachine, cl2);
     } catch (jvmaccess::UnoVirtualMachine::CreationException &) {
-        throw css::uno::RuntimeException(
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException(
             "jvmaccess::UnoVirtualMachine::CreationException",
-            static_cast< cppu::OWeakObject * >(this));
+            static_cast< cppu::OWeakObject * >(this), anyEx );
     }
 }
 
 void JavaVirtualMachine::handleJniException(JNIEnv * environment) {
+#if defined DBG_UTIL
+    environment->ExceptionDescribe();
+#else
     environment->ExceptionClear();
+#endif
     throw css::uno::RuntimeException(
         "JNI exception occurred",
         static_cast< cppu::OWeakObject * >(this));
 }
+
+
+static osl::Mutex m_aMutex;
+static rtl::Reference< JavaVirtualMachine > m_xSingleton;
+
+
+void JavaVirtualMachine::dispose() {
+    JavaVirtualMachine_Impl::dispose();
+    osl::MutexGuard aGuard(m_aMutex);
+    m_xSingleton.clear();
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+stoc_JavaVM_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    // Only one single instance of this service is ever constructed, and is
+    // available until the component context used to create this instance is
+    // disposed.  Afterwards, this function throws a DisposedException (as do
+    // all relevant methods on the single service instance).
+    osl::MutexGuard aGuard(m_aMutex);
+    if (!m_xSingleton.is())
+        m_xSingleton.set(new JavaVirtualMachine(context));
+    m_xSingleton->acquire();
+    return static_cast<cppu::OWeakObject*>(m_xSingleton.get());
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

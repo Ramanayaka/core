@@ -21,10 +21,7 @@
 #include <inputsequencechecker_hi.hxx>
 
 
-namespace com {
-namespace sun {
-namespace star {
-namespace i18n {
+namespace i18npool {
 
 InputSequenceChecker_hi::InputSequenceChecker_hi()
     : InputSequenceCheckerImpl("com.sun.star.i18n.InputSequenceChecker_hi")
@@ -57,7 +54,7 @@ InputSequenceChecker_hi::~InputSequenceChecker_hi()
 /*
  * Devanagari character type table
  */
-static const sal_uInt16 devaCT[128] = {
+const sal_uInt16 devaCT[128] = {
 /*         0,    1,    2,    3,    4,    5,    6,    7,
            8,    9,    A,    B,    C,    D,    E,    F, */
 /* 0900 */ ND_, UP_, UP_, NP_, ND_, IV_, IV_, IV_,
@@ -81,7 +78,7 @@ static const sal_uInt16 devaCT[128] = {
 /*
  * Devanagari character composition table
  */
-static const sal_uInt16 dev_cell_check[14][14] = {
+const sal_uInt16 dev_cell_check[14][14] = {
   /*        ND, UP, NP, IV, CN, CK, RC, NM, RM, IM, HL, NK, VD, HD, */
   /* 0  */ { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 }, /* ND */
   /* 1  */ { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 }, /* UP */
@@ -104,8 +101,10 @@ bool const DEV_Composible[2][2] = {
 /* Mode 1 */    {false, true}  // STRICT = 1
 };
 
-#define getCharType(x) \
-    ((x >= 0x0900 && x < 0x097f) ? devaCT[x - 0x0900] : ND_)
+static constexpr sal_uInt16 getCharType(sal_Unicode x)
+{
+    return (x >= 0x0900 && x < 0x097f) ? devaCT[x - 0x0900] : ND_;
+}
 
 sal_Bool SAL_CALL
 InputSequenceChecker_hi::checkInputSequence(const OUString& Text,
@@ -114,7 +113,7 @@ InputSequenceChecker_hi::checkInputSequence(const OUString& Text,
                                             sal_Int16       inputCheckMode)
 {
     sal_Unicode currentChar = Text[nStartPos];
-  sal_uInt16  ch1 = getCharType(inputChar);
+    sal_uInt16  ch1 = getCharType(inputChar);
     sal_uInt16  ch2 = getCharType(currentChar);
 
     return (DEV_Composible[inputCheckMode][dev_cell_check[ch2][ch1]]);
@@ -132,6 +131,6 @@ InputSequenceChecker_hi::correctInputSequence(OUString& Text,
         nStartPos=Text.getLength();
     return nStartPos;
 }
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

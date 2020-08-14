@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <connectivity/sdbcx/VIndexColumn.hxx>
+#include <sdbcx/VIndexColumn.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <cppuhelper/supportsservice.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
 using namespace connectivity;
 using namespace connectivity::sdbcx;
@@ -29,19 +30,13 @@ using namespace ::com::sun::star::uno;
 OUString SAL_CALL OIndexColumn::getImplementationName(  )
 {
     if(isNew())
-        return OUString("com.sun.star.sdbcx.VIndexColumnDescription");
-    return OUString("com.sun.star.sdbcx.VIndex");
+        return "com.sun.star.sdbcx.VIndexColumnDescriptor";
+    return "com.sun.star.sdbcx.VIndexColumn";
 }
 
 css::uno::Sequence< OUString > SAL_CALL OIndexColumn::getSupportedServiceNames(  )
 {
-    css::uno::Sequence< OUString > aSupported(1);
-    if(isNew())
-        aSupported[0] = "com.sun.star.sdbcx.IndexDescription";
-    else
-        aSupported[0] = "com.sun.star.sdbcx.Index";
-
-    return aSupported;
+    return { isNew()?OUString("com.sun.star.sdbcx.IndexColumnDescriptor"):OUString("com.sun.star.sdbcx.IndexColumn") };
 }
 
 sal_Bool SAL_CALL OIndexColumn::supportsService( const OUString& _rServiceName )

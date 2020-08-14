@@ -20,11 +20,9 @@
 #ifndef INCLUDED_CPPU_SOURCE_UNO_IDENTITYMAPPING_HXX
 #define INCLUDED_CPPU_SOURCE_UNO_IDENTITYMAPPING_HXX
 
-#include "uno/mapping.h"
+#include <uno/mapping.h>
 
-namespace com { namespace sun { namespace star { namespace uno {
-class Environment;
-}}}}
+namespace com::sun::star::uno { class Environment; }
 
 uno_Mapping * createIdentityMapping(const css::uno::Environment & rEnv);
 

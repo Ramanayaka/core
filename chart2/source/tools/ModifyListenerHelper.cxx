@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ModifyListenerHelper.hxx"
-#include "WeakListenerAdapter.hxx"
-#include "macros.hxx"
+#include <ModifyListenerHelper.hxx>
+#include <WeakListenerAdapter.hxx>
 
-#include <cppuhelper/interfacecontainer.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 
@@ -31,29 +30,29 @@ namespace
 {
 
 void lcl_fireModifyEvent(
-    ::cppu::OBroadcastHelper & rBroadcastHelper,
+    ::cppu::OBroadcastHelper const & rBroadcastHelper,
     const Reference< uno::XWeak > & xEventSource,
     const lang::EventObject * pEvent )
 {
     ::cppu::OInterfaceContainerHelper * pCntHlp = rBroadcastHelper.getContainer(
         cppu::UnoType<util::XModifyListener>::get());
-    if( pCntHlp )
+    if( !pCntHlp )
+        return;
+
+    lang::EventObject aEventToSend;
+    if( pEvent )
+        aEventToSend = *pEvent;
+    else
+        aEventToSend.Source.set( xEventSource );
+    OSL_ENSURE( aEventToSend.Source.is(), "Sending event without source" );
+
+    ::cppu::OInterfaceIteratorHelper aIt( *pCntHlp );
+
+    while( aIt.hasMoreElements())
     {
-        lang::EventObject aEventToSend;
-        if( pEvent )
-            aEventToSend = *pEvent;
-        else
-            aEventToSend.Source.set( xEventSource );
-        OSL_ENSURE( aEventToSend.Source.is(), "Sending event without source" );
-
-        ::cppu::OInterfaceIteratorHelper aIt( *pCntHlp );
-
-        while( aIt.hasMoreElements())
-        {
-            Reference< util::XModifyListener > xModListener( aIt.next(), uno::UNO_QUERY );
-            if( xModListener.is())
-                xModListener->modified( aEventToSend );
-        }
+        Reference< util::XModifyListener > xModListener( aIt.next(), uno::UNO_QUERY );
+        if( xModListener.is())
+            xModListener->modified( aEventToSend );
     }
 }
 
@@ -79,9 +78,7 @@ private:
 
 } //  anonymous namespace
 
-namespace chart
-{
-namespace ModifyListenerHelper
+namespace chart::ModifyListenerHelper
 {
 
 uno::Reference< util::XModifyListener > createModifyEventForwarder()
@@ -109,14 +106,14 @@ void ModifyEventForwarder::AddListener( const Reference< util::XModifyListener >
             // remember the helper class for later remove
             uno::WeakReference< util::XModifyListener > xWeakRef( aListener );
             xListenerToAdd.set( new WeakModifyListenerAdapter( xWeakRef ));
-            m_aListenerMap.push_back( tListenerMap::value_type( xWeakRef, xListenerToAdd ));
+            m_aListenerMap.emplace_back( xWeakRef, xListenerToAdd );
         }
 
         m_aModifyListeners.addListener( cppu::UnoType<decltype(xListenerToAdd)>::get(), xListenerToAdd );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception &  )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -137,9 +134,9 @@ void ModifyEventForwarder::RemoveListener( const Reference< util::XModifyListene
 
         m_aModifyListeners.removeListener( cppu::UnoType<decltype(aListener)>::get(), xListenerToRemove );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -181,7 +178,6 @@ void SAL_CALL ModifyEventForwarder::disposing()
     DisposeAndClear( this );
 }
 
-} //  namespace ModifyListenerHelper
-} //  namespace chart
+} //  namespace chart::ModifyListenerHelper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

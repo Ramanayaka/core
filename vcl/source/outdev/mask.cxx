@@ -19,13 +19,13 @@
 
 #include <cassert>
 
+#include <vcl/gdimtf.hxx>
+#include <vcl/metaact.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/window.hxx>
 
 #include <salgdi.hxx>
-#include <impbmp.hxx>
-#include <outdata.hxx>
+#include <salbmp.hxx>
 
 void OutputDevice::DrawMask( const Point& rDestPt,
                              const Bitmap& rBitmap, const Color& rMaskColor )
@@ -64,17 +64,17 @@ void OutputDevice::DrawMask( const Point& rDestPt, const Size& rDestSize,
     {
         switch( nAction )
         {
-            case( MetaActionType::MASK ):
+            case MetaActionType::MASK:
                 mpMetaFile->AddAction( new MetaMaskAction( rDestPt,
                     rBitmap, rMaskColor ) );
             break;
 
-            case( MetaActionType::MASKSCALE ):
+            case MetaActionType::MASKSCALE:
                 mpMetaFile->AddAction( new MetaMaskScaleAction( rDestPt,
                     rDestSize, rBitmap, rMaskColor ) );
             break;
 
-            case( MetaActionType::MASKSCALEPART ):
+            case MetaActionType::MASKSCALEPART:
                 mpMetaFile->AddAction( new MetaMaskScalePartAction( rDestPt, rDestSize,
                     rSrcPtPixel, rSrcSizePixel, rBitmap, rMaskColor ) );
             break;
@@ -86,9 +86,8 @@ void OutputDevice::DrawMask( const Point& rDestPt, const Size& rDestSize,
     if ( !IsDeviceOutputNecessary() )
         return;
 
-    if ( !mpGraphics )
-        if ( !AcquireGraphics() )
-            return;
+    if ( !mpGraphics && !AcquireGraphics() )
+        return;
 
     if ( mbInitClipRegion )
         InitClipRegion();
@@ -106,7 +105,7 @@ void OutputDevice::DrawDeviceMask( const Bitmap& rMask, const Color& rMaskColor,
 {
     assert(!is_double_buffered_window());
 
-    const std::shared_ptr<ImpBitmap>& xImpBmp = rMask.ImplGetImpBitmap();
+    const std::shared_ptr<SalBitmap>& xImpBmp = rMask.ImplGetSalBitmap();
     if (xImpBmp)
     {
         SalTwoRect aPosAry(rSrcPtPixel.X(), rSrcPtPixel.Y(), rSrcSizePixel.Width(), rSrcSizePixel.Height(),
@@ -115,7 +114,7 @@ void OutputDevice::DrawDeviceMask( const Bitmap& rMask, const Color& rMaskColor,
                            ImplLogicHeightToDevicePixel(rDestSize.Height()));
 
         // we don't want to mirror via coordinates
-        const BmpMirrorFlags nMirrFlags = AdjustTwoRect( aPosAry, xImpBmp->ImplGetSize() );
+        const BmpMirrorFlags nMirrFlags = AdjustTwoRect( aPosAry, xImpBmp->GetSize() );
 
         // check if output is necessary
         if( aPosAry.mnSrcWidth && aPosAry.mnSrcHeight && aPosAry.mnDestWidth && aPosAry.mnDestHeight )
@@ -125,32 +124,31 @@ void OutputDevice::DrawDeviceMask( const Bitmap& rMask, const Color& rMaskColor,
             {
                 Bitmap aTmp( rMask );
                 aTmp.Mirror( nMirrFlags );
-                mpGraphics->DrawMask( aPosAry, *aTmp.ImplGetImpBitmap()->ImplGetSalBitmap(),
-                                      ImplColorToSal( rMaskColor ) , this);
+                mpGraphics->DrawMask( aPosAry, *aTmp.ImplGetSalBitmap(),
+                                      rMaskColor, this);
             }
             else
-                mpGraphics->DrawMask( aPosAry, *xImpBmp->ImplGetSalBitmap(),
-                                      ImplColorToSal( rMaskColor ), this );
+                mpGraphics->DrawMask( aPosAry, *xImpBmp, rMaskColor, this );
 
         }
     }
 
     // TODO: Use mask here
-    if( mpAlphaVDev )
-    {
-        const Bitmap& rAlphaMask( rMask.CreateMask( rMaskColor ) );
+    if( !mpAlphaVDev )
+        return;
 
-        // #i25167# Restrict mask painting to _opaque_ areas
-        // of the mask, otherwise we spoil areas where no
-        // bitmap content was ever visible. Interestingly
-        // enough, this can be achieved by taking the mask as
-        // the transparency mask of itself
-        mpAlphaVDev->DrawBitmapEx( rDestPt,
-                                   rDestSize,
-                                   rSrcPtPixel,
-                                   rSrcSizePixel,
-                                   BitmapEx( rAlphaMask, rMask ) );
-    }
+    const Bitmap& rAlphaMask( rMask.CreateMask( rMaskColor ) );
+
+    // #i25167# Restrict mask painting to _opaque_ areas
+    // of the mask, otherwise we spoil areas where no
+    // bitmap content was ever visible. Interestingly
+    // enough, this can be achieved by taking the mask as
+    // the transparency mask of itself
+    mpAlphaVDev->DrawBitmapEx( rDestPt,
+                               rDestSize,
+                               rSrcPtPixel,
+                               rSrcSizePixel,
+                               BitmapEx( rAlphaMask, rMask ) );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

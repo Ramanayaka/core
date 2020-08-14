@@ -26,6 +26,7 @@
 #include <tools/ref.hxx>
 
 class SvStream;
+class ErrCode;
 
 // The following Macro defines four (five) necessary methods within a
 // SBX object. LoadPrivateData() and StorePrivateData() must be implemented.
@@ -72,7 +73,6 @@ public:
     virtual void        SetModified( bool );
 
     virtual SbxDataType GetType()  const;
-    virtual SbxClassType GetClass() const;
 
     virtual void    Clear() = 0;
 
@@ -80,14 +80,14 @@ public:
     bool            Store( SvStream& );
     virtual bool    LoadCompleted();
 
-    static ErrCode GetError();
+    static ErrCode const & GetError();
     static void SetError( ErrCode );
     static bool IsError();
     static void ResetError();
 
     // Set the factory for Load/Store/Create
     static void AddFactory( SbxFactory* );
-    static void RemoveFactory( SbxFactory* );
+    static void RemoveFactory( SbxFactory const * );
 
     static SbxBase* Create( sal_uInt16, sal_uInt32 );
     static SbxObject* CreateObject( const OUString& );

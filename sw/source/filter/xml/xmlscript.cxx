@@ -17,28 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 
 #include <xmloff/xmlscripti.hxx>
 #include "xmlimp.hxx"
-#include "xmlexp.hxx"
 
 using namespace ::com::sun::star;
 
-SvXMLImportContext *SwXMLImport::CreateScriptContext(
-                                       const OUString& rLocalName )
+SvXMLImportContext *SwXMLImport::CreateScriptContext()
 {
     SvXMLImportContext *pContext = nullptr;
 
     if( !(IsStylesOnlyMode() || IsInsertMode()) )
     {
-        pContext = new XMLScriptContext( *this, rLocalName, GetModel() );
+        pContext = new XMLScriptContext( *this, GetModel() );
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( *this, XML_NAMESPACE_OFFICE,
-                                            rLocalName );
 
     return pContext;
 }

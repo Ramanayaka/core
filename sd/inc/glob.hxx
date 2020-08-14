@@ -20,9 +20,6 @@
 #ifndef INCLUDED_SD_INC_GLOB_HXX
 #define INCLUDED_SD_INC_GLOB_HXX
 
-#include <rsc/rscsfx.hxx>
-#include <sal/types.h>
-
 #define SD_IF_SDAPP                     SFX_INTERFACE_SD_START + SfxInterfaceId(0)
 #define SD_IF_SDDRAWDOCSHELL            SFX_INTERFACE_SD_START + SfxInterfaceId(1)
 #define SD_IF_SDDRAWVIEWSHELL           SFX_INTERFACE_SD_START + SfxInterfaceId(3)
@@ -45,13 +42,7 @@
 
 // Object-Ids for StarDraw UserData
 #define SD_ANIMATIONINFO_ID 1
-#define SD_IMAPINFO_ID      2
-
-// FamilyId of presentation templates
-#define SD_STYLE_FAMILY_GRAPHICS        SfxStyleFamily::Para
-#define SD_STYLE_FAMILY_PSEUDO          SfxStyleFamily::Pseudo
-#define SD_STYLE_FAMILY_CELL            SfxStyleFamily::Frame
-#define SD_STYLE_FAMILY_MASTERPAGE      SfxStyleFamily::Page       // ex LT_FAMILY
+// SVX_IMAPINFO_ID = 2
 
 // Separator between layout name and template name of presentation templates
 #define SD_LT_SEPARATOR "~LT~"

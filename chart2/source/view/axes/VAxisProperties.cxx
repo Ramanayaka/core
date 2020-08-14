@@ -18,17 +18,18 @@
  */
 
 #include "VAxisProperties.hxx"
-#include "macros.hxx"
-#include "ViewDefines.hxx"
-#include "CommonConverters.hxx"
-#include "AxisHelper.hxx"
-#include "DiagramHelper.hxx"
-#include "ChartModelHelper.hxx"
+#include <ViewDefines.hxx>
+#include <AxisHelper.hxx>
+#include <ChartModelHelper.hxx>
+#include <ExplicitCategoriesProvider.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/chart/ChartAxisArrangeOrderType.hpp>
-#include <com/sun/star/drawing/LineStyle.hpp>
-#include <com/sun/star/text/WritingMode2.hpp>
+#include <com/sun/star/chart2/AxisType.hpp>
+#include <com/sun/star/chart2/XAxis.hpp>
+
+#include <tools/diagnose_ex.h>
+#include <rtl/math.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -40,7 +41,7 @@ AxisLabelAlignment::AxisLabelAlignment() :
     mfInnerTickDirection(1.0),
     meAlignment(LABEL_ALIGN_RIGHT_TOP) {}
 
-sal_Int32 lcl_calcTickLengthForDepth(sal_Int32 nDepth,sal_Int32 nTickmarkStyle)
+static sal_Int32 lcl_calcTickLengthForDepth(sal_Int32 nDepth,sal_Int32 nTickmarkStyle)
 {
     sal_Int32 const nWidth = AXIS2D_TICKLENGTH; //@maybefuturetodo this length could be offered by the model
     double fPercent = 1.0;
@@ -64,7 +65,7 @@ sal_Int32 lcl_calcTickLengthForDepth(sal_Int32 nDepth,sal_Int32 nTickmarkStyle)
     return static_cast<sal_Int32>(nWidth*fPercent);
 }
 
-double lcl_getTickOffset(sal_Int32 nLength,sal_Int32 nTickmarkStyle)
+static double lcl_getTickOffset(sal_Int32 nLength,sal_Int32 nTickmarkStyle)
 {
     double fPercent = 0.0; //0<=fPercent<=1
     //0.0: completely inner
@@ -173,41 +174,11 @@ AxisProperties::AxisProperties( const uno::Reference< XAxis >& xAxisModel
     , m_nAxisType(AxisType::REALNUMBER)
     , m_bComplexCategories(false)
     , m_pExplicitCategoriesProvider(pExplicitCategoriesProvider)
-    , m_xAxisTextProvider(nullptr)
+    , m_bLimitSpaceForLabels(false)
 {
 }
 
-AxisProperties::AxisProperties( const AxisProperties& rAxisProperties )
-    : m_xAxisModel( rAxisProperties.m_xAxisModel )
-    , m_nDimensionIndex( rAxisProperties.m_nDimensionIndex )
-    , m_bIsMainAxis( rAxisProperties.m_bIsMainAxis )
-    , m_bSwapXAndY( rAxisProperties.m_bSwapXAndY )
-    , m_eCrossoverType( rAxisProperties.m_eCrossoverType )
-    , m_eLabelPos( rAxisProperties.m_eLabelPos )
-    , m_eTickmarkPos( rAxisProperties.m_eTickmarkPos )
-    , m_bCrossingAxisHasReverseDirection( rAxisProperties.m_bCrossingAxisHasReverseDirection )
-    , m_bCrossingAxisIsCategoryAxes( rAxisProperties.m_bCrossingAxisIsCategoryAxes )
-    , maLabelAlignment( rAxisProperties.maLabelAlignment )
-    , m_bDisplayLabels( rAxisProperties.m_bDisplayLabels )
-    , m_bTryStaggeringFirst( rAxisProperties.m_bTryStaggeringFirst )
-    , m_nNumberFormatKey( rAxisProperties.m_nNumberFormatKey )
-    , m_nMajorTickmarks( rAxisProperties.m_nMajorTickmarks )
-    , m_nMinorTickmarks( rAxisProperties.m_nMinorTickmarks )
-    , m_aTickmarkPropertiesList( rAxisProperties.m_aTickmarkPropertiesList )
-    , m_aLineProperties( rAxisProperties.m_aLineProperties )
-    //for category axes
-    , m_nAxisType( rAxisProperties.m_nAxisType )
-    , m_bComplexCategories( rAxisProperties.m_bComplexCategories )
-    , m_pExplicitCategoriesProvider( rAxisProperties.m_pExplicitCategoriesProvider )
-    , m_xAxisTextProvider( rAxisProperties.m_xAxisTextProvider )
-{
-    if( rAxisProperties.m_pfMainLinePositionAtOtherAxis )
-        m_pfMainLinePositionAtOtherAxis.reset(*rAxisProperties.m_pfMainLinePositionAtOtherAxis);
-    if( rAxisProperties.m_pfExrtaLinePositionAtOtherAxis )
-        m_pfExrtaLinePositionAtOtherAxis.reset(*rAxisProperties.m_pfExrtaLinePositionAtOtherAxis);
-}
-
-LabelAlignment lcl_getLabelAlignmentForZAxis( const AxisProperties& rAxisProperties )
+static LabelAlignment lcl_getLabelAlignmentForZAxis( const AxisProperties& rAxisProperties )
 {
     LabelAlignment aRet( LABEL_ALIGN_RIGHT );
     if (rAxisProperties.maLabelAlignment.mfLabelDirection < 0)
@@ -215,7 +186,7 @@ LabelAlignment lcl_getLabelAlignmentForZAxis( const AxisProperties& rAxisPropert
     return aRet;
 }
 
-LabelAlignment lcl_getLabelAlignmentForYAxis( const AxisProperties& rAxisProperties )
+static LabelAlignment lcl_getLabelAlignmentForYAxis( const AxisProperties& rAxisProperties )
 {
     LabelAlignment aRet( LABEL_ALIGN_RIGHT );
     if (rAxisProperties.maLabelAlignment.mfLabelDirection < 0)
@@ -223,7 +194,7 @@ LabelAlignment lcl_getLabelAlignmentForYAxis( const AxisProperties& rAxisPropert
     return aRet;
 }
 
-LabelAlignment lcl_getLabelAlignmentForXAxis( const AxisProperties& rAxisProperties )
+static LabelAlignment lcl_getLabelAlignmentForXAxis( const AxisProperties& rAxisProperties )
 {
     LabelAlignment aRet( LABEL_ALIGN_BOTTOM );
     if (rAxisProperties.maLabelAlignment.mfLabelDirection < 0)
@@ -247,10 +218,10 @@ void AxisProperties::initAxisPositioning( const uno::Reference< beans::XProperty
 
                 if( m_bCrossingAxisIsCategoryAxes )
                     fValue = ::rtl::math::round(fValue);
-                m_pfMainLinePositionAtOtherAxis.reset(fValue);
+                m_pfMainLinePositionAtOtherAxis = fValue;
             }
             else if( m_eCrossoverType == css::chart::ChartAxisPosition_ZERO )
-                m_pfMainLinePositionAtOtherAxis.reset(0.0);
+                m_pfMainLinePositionAtOtherAxis = 0.0;
 
             xAxisProp->getPropertyValue("LabelPosition") >>= m_eLabelPos;
             xAxisProp->getPropertyValue("MarkPosition") >>= m_eTickmarkPos;
@@ -264,16 +235,16 @@ void AxisProperties::initAxisPositioning( const uno::Reference< beans::XProperty
             m_eTickmarkPos = css::chart::ChartAxisMarkPosition_AT_LABELS;
         }
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 }
 
 void AxisProperties::init( bool bCartesian )
 {
     uno::Reference< beans::XPropertySet > xProp =
-        uno::Reference<beans::XPropertySet>::query( this->m_xAxisModel );
+        uno::Reference<beans::XPropertySet>::query( m_xAxisModel );
     if( !xProp.is() )
         return;
 
@@ -347,16 +318,16 @@ void AxisProperties::init( bool bCartesian )
         else if(m_nMajorTickmarks!=0)
             nMaxDepth=1;
 
-        this->m_aTickmarkPropertiesList.clear();
+        m_aTickmarkPropertiesList.clear();
         for( sal_Int32 nDepth=0; nDepth<nMaxDepth; nDepth++ )
         {
-            TickmarkProperties aTickmarkProperties = this->makeTickmarkProperties( nDepth );
-            this->m_aTickmarkPropertiesList.push_back( aTickmarkProperties );
+            TickmarkProperties aTickmarkProperties = makeTickmarkProperties( nDepth );
+            m_aTickmarkPropertiesList.push_back( aTickmarkProperties );
         }
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 }
 
@@ -364,7 +335,7 @@ AxisLabelProperties::AxisLabelProperties()
                         : m_aFontReferenceSize( ChartModelHelper::getDefaultPageSize() )
                         , m_aMaximumSpaceForLabels( 0 , 0, m_aFontReferenceSize.Width, m_aFontReferenceSize.Height )
                         , nNumberFormatKey(0)
-                        , eStaggering( SIDE_BY_SIDE )
+                        , eStaggering( AxisLabelStaggering::SideBySide )
                         , bLineBreakAllowed( false )
                         , bOverlapAllowed( false )
                         , bStackCharacters( false )
@@ -378,50 +349,50 @@ void AxisLabelProperties::init( const uno::Reference< XAxis >& xAxisModel )
 {
     uno::Reference< beans::XPropertySet > xProp =
         uno::Reference<beans::XPropertySet>::query( xAxisModel );
-    if(xProp.is())
-    {
-        try
-        {
-            xProp->getPropertyValue( "TextBreak" ) >>= this->bLineBreakAllowed;
-            xProp->getPropertyValue( "TextOverlap" ) >>= this->bOverlapAllowed;
-            xProp->getPropertyValue( "StackCharacters" ) >>= this->bStackCharacters;
-            xProp->getPropertyValue( "TextRotation" ) >>= this->fRotationAngleDegree;
+    if(!xProp.is())
+        return;
 
-            css::chart::ChartAxisArrangeOrderType eArrangeOrder;
-            xProp->getPropertyValue( "ArrangeOrder" ) >>= eArrangeOrder;
-            switch(eArrangeOrder)
-            {
-                case css::chart::ChartAxisArrangeOrderType_SIDE_BY_SIDE:
-                    this->eStaggering = SIDE_BY_SIDE;
-                    break;
-                case css::chart::ChartAxisArrangeOrderType_STAGGER_EVEN:
-                    this->eStaggering = STAGGER_EVEN;
-                    break;
-                case css::chart::ChartAxisArrangeOrderType_STAGGER_ODD:
-                    this->eStaggering = STAGGER_ODD;
-                    break;
-                default:
-                    this->eStaggering = STAGGER_AUTO;
-                    break;
-            }
-        }
-        catch( const uno::Exception& e )
+    try
+    {
+        xProp->getPropertyValue( "TextBreak" ) >>= bLineBreakAllowed;
+        xProp->getPropertyValue( "TextOverlap" ) >>= bOverlapAllowed;
+        xProp->getPropertyValue( "StackCharacters" ) >>= bStackCharacters;
+        xProp->getPropertyValue( "TextRotation" ) >>= fRotationAngleDegree;
+
+        css::chart::ChartAxisArrangeOrderType eArrangeOrder;
+        xProp->getPropertyValue( "ArrangeOrder" ) >>= eArrangeOrder;
+        switch(eArrangeOrder)
         {
-            ASSERT_EXCEPTION( e );
+            case css::chart::ChartAxisArrangeOrderType_SIDE_BY_SIDE:
+                eStaggering = AxisLabelStaggering::SideBySide;
+                break;
+            case css::chart::ChartAxisArrangeOrderType_STAGGER_EVEN:
+                eStaggering = AxisLabelStaggering::StaggerEven;
+                break;
+            case css::chart::ChartAxisArrangeOrderType_STAGGER_ODD:
+                eStaggering = AxisLabelStaggering::StaggerOdd;
+                break;
+            default:
+                eStaggering = AxisLabelStaggering::StaggerAuto;
+                break;
         }
+    }
+    catch( const uno::Exception& )
+    {
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 }
 
 bool AxisLabelProperties::isStaggered() const
 {
-    return ( eStaggering == STAGGER_ODD || eStaggering == STAGGER_EVEN );
+    return ( eStaggering == AxisLabelStaggering::StaggerOdd || eStaggering == AxisLabelStaggering::StaggerEven );
 }
 
 void AxisLabelProperties::autoRotate45()
 {
     fRotationAngleDegree = 45;
     bLineBreakAllowed = false;
-    eStaggering = SIDE_BY_SIDE;
+    eStaggering = AxisLabelStaggering::SideBySide;
 }
 
 } //namespace chart

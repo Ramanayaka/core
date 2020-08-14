@@ -17,12 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "themebuffer.hxx"
+#include <themebuffer.hxx>
 
-#include "stylesbuffer.hxx"
+#include <stylesbuffer.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 
 ThemeBuffer::ThemeBuffer( const WorkbookHelper& rHelper ) :
@@ -38,19 +37,18 @@ ThemeBuffer::~ThemeBuffer()
 {
 }
 
-sal_Int32 ThemeBuffer::getColorByToken( sal_Int32 nToken ) const
+::Color ThemeBuffer::getColorByToken( sal_Int32 nToken ) const
 {
-    sal_Int32 nColor = 0;
+    ::Color nColor = 0;
     return getClrScheme().getColor( nToken, nColor ) ? nColor : API_RGB_TRANSPARENT;
 }
 
-sal_Int32 ThemeBuffer::getColorByIndex(size_t nIndex) const
+::Color ThemeBuffer::getColorByIndex(size_t nIndex) const
 {
-    sal_Int32 nColor = 0;
+    ::Color nColor = 0;
     return getClrScheme().getColorByIndex(nIndex, nColor) ? nColor : API_RGB_TRANSPARENT;
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

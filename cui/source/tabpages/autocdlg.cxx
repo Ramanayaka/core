@@ -18,42 +18,32 @@
  */
 
 #include <i18nutil/unicode.hxx>
-#include <vcl/builderfactory.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/field.hxx>
+#include <vcl/event.hxx>
 #include <vcl/keycodes.hxx>
 #include <vcl/settings.hxx>
-#include <sot/exchange.hxx>
-#include <svtools/transfer.hxx>
-#include <unotools/syslocale.hxx>
+#include <vcl/transfer.hxx>
+#include <sfx2/app.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/viewsh.hxx>
 #include <unotools/charclass.hxx>
 #include <unotools/collatorwrapper.hxx>
-#include <com/sun/star/i18n/CollatorOptions.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/string.hxx>
 #include <vcl/svapp.hxx>
 #include <sfx2/module.hxx>
-#include <sfx2/request.hxx>
-#include <sfx2/sfxsids.hrc>
 #include <svl/eitem.hxx>
 #include <svl/languageoptions.hxx>
-#include <svtools/svlbitm.hxx>
 #include <svx/SmartTagMgr.hxx>
 #include <com/sun/star/smarttags/XSmartTagRecognizer.hpp>
-#include <com/sun/star/smarttags/XSmartTagAction.hpp>
 #include <rtl/strbuf.hxx>
-#include <o3tl/make_unique.hxx>
+#include <osl/diagnose.h>
+#include <tools/debug.hxx>
 
-#include "autocdlg.hxx"
-#include "helpid.hrc"
+#include <autocdlg.hxx>
 #include <editeng/acorrcfg.hxx>
 #include <editeng/svxacorr.hxx>
-#include "cuicharmap.hxx"
-#include "cuires.hrc"
-#include <editeng/unolingu.hxx>
+#include <cui/cuicharmap.hxx>
+#include <strings.hrc>
 #include <dialmgr.hxx>
 #include <svx/svxids.hrc>
 
@@ -62,12 +52,11 @@ static LanguageType eLastDialogLanguage = LANGUAGE_SYSTEM;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star;
 
-OfaAutoCorrDlg::OfaAutoCorrDlg(vcl::Window* pParent, const SfxItemSet* _pSet )
-    : SfxTabDialog(pParent, "AutoCorrectDialog", "cui/ui/autocorrectdialog.ui", _pSet)
+OfaAutoCorrDlg::OfaAutoCorrDlg(weld::Window* pParent, const SfxItemSet* _pSet )
+    : SfxTabDialogController(pParent, "cui/ui/autocorrectdialog.ui", "AutoCorrectDialog", _pSet)
+    , m_xLanguageBox(m_xBuilder->weld_widget("langbox"))
+    , m_xLanguageLB(new SvxLanguageBox(m_xBuilder->weld_combo_box("lang")))
 {
-    get(m_pLanguageBox, "langbox");
-    get(m_pLanguageLB, "lang");
-
     bool bShowSWOptions = false;
     bool bOpenSmartTagOptions = false;
 
@@ -83,13 +72,13 @@ OfaAutoCorrDlg::OfaAutoCorrDlg(vcl::Window* pParent, const SfxItemSet* _pSet )
     }
 
     AddTabPage("options", OfaAutocorrOptionsPage::Create, nullptr);
-    AddTabPage("apply", OfaSwAutoFmtOptionsPage::Create, nullptr);
+    AddTabPage("applypage", OfaSwAutoFmtOptionsPage::Create, nullptr);
     AddTabPage("wordcompletion", OfaAutoCompleteTabPage::Create, nullptr);
     AddTabPage("smarttags", OfaSmartTagOptionsTabPage::Create, nullptr);
 
     if (!bShowSWOptions)
     {
-        RemoveTabPage("apply");
+        RemoveTabPage("applypage");
         RemoveTabPage("wordcompletion");
         RemoveTabPage("smarttags");
     }
@@ -97,15 +86,15 @@ OfaAutoCorrDlg::OfaAutoCorrDlg(vcl::Window* pParent, const SfxItemSet* _pSet )
     {
         // remove smart tag tab page if no extensions are installed
         SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
-        SvxSwAutoFormatFlags *pOpt = &pAutoCorrect->GetSwFlags();
-        if ( !pOpt || !pOpt->pSmartTagMgr || 0 == pOpt->pSmartTagMgr->NumberOfRecognizers() )
+        SvxSwAutoFormatFlags& rOpt = pAutoCorrect->GetSwFlags();
+        if (!rOpt.pSmartTagMgr || 0 == rOpt.pSmartTagMgr->NumberOfRecognizers())
             RemoveTabPage("smarttags");
 
         RemoveTabPage("options");
     }
 
-    m_nReplacePageId = AddTabPage("replace", OfaAutocorrReplacePage::Create, nullptr);
-    m_nExceptionsPageId = AddTabPage("exceptions",  OfaAutocorrExceptPage::Create, nullptr);
+    AddTabPage("replace", OfaAutocorrReplacePage::Create, nullptr);
+    AddTabPage("exceptions",  OfaAutocorrExceptPage::Create, nullptr);
     AddTabPage("localized", OfaQuoteTabPage::Create, nullptr);
 
     // initialize languages
@@ -117,23 +106,23 @@ OfaAutoCorrDlg::OfaAutoCorrDlg(vcl::Window* pParent, const SfxItemSet* _pSet )
         nLangList |= SvxLanguageListFlags::CTL;
     if( SvtLanguageOptions().IsCJKFontEnabled() )
         nLangList |= SvxLanguageListFlags::CJK;
-    m_pLanguageLB->SetLanguageList( nLangList, true, true );
-    m_pLanguageLB->SelectLanguage( LANGUAGE_NONE );
-    sal_Int32 nPos = m_pLanguageLB->GetSelectEntryPos();
-    DBG_ASSERT( LISTBOX_ENTRY_NOTFOUND != nPos, "listbox entry missing" );
-    m_pLanguageLB->SetEntryData( nPos, reinterpret_cast<void*>((sal_uInt16)LANGUAGE_UNDETERMINED) );
+    m_xLanguageLB->SetLanguageList( nLangList, true, true );
+    m_xLanguageLB->set_active_id( LANGUAGE_NONE );
+    int nPos = m_xLanguageLB->get_active();
+    DBG_ASSERT(nPos != -1, "listbox entry missing" );
+    m_xLanguageLB->set_id(nPos, LANGUAGE_UNDETERMINED);
 
     // Initializing doesn't work for static on linux - therefore here
-    if( LANGUAGE_SYSTEM == eLastDialogLanguage )
+    if (LANGUAGE_SYSTEM == eLastDialogLanguage)
         eLastDialogLanguage = Application::GetSettings().GetLanguageTag().getLanguageType();
 
     LanguageType nSelectLang = LANGUAGE_UNDETERMINED;
-    nPos = m_pLanguageLB->GetEntryPos( reinterpret_cast<void*>((sal_uInt16)eLastDialogLanguage) );
-    if (LISTBOX_ENTRY_NOTFOUND != nPos)
+    nPos = m_xLanguageLB->find_id(eLastDialogLanguage);
+    if (nPos != -1)
         nSelectLang = eLastDialogLanguage;
-    m_pLanguageLB->SelectLanguage( nSelectLang );
+    m_xLanguageLB->set_active_id(nSelectLang);
 
-    m_pLanguageLB->SetSelectHdl(LINK(this, OfaAutoCorrDlg, SelectLanguageHdl));
+    m_xLanguageLB->connect_changed(LINK(this, OfaAutoCorrDlg, SelectLanguageHdl));
 
     if ( bOpenSmartTagOptions )
         SetCurPageId("smarttags");
@@ -141,58 +130,55 @@ OfaAutoCorrDlg::OfaAutoCorrDlg(vcl::Window* pParent, const SfxItemSet* _pSet )
 
 OfaAutoCorrDlg::~OfaAutoCorrDlg()
 {
-    disposeOnce();
-}
-
-void OfaAutoCorrDlg::dispose()
-{
-    m_pLanguageBox.clear();
-    m_pLanguageLB.clear();
-    SfxTabDialog::dispose();
 }
 
 void OfaAutoCorrDlg::EnableLanguage(bool bEnable)
 {
-    m_pLanguageBox->Enable(bEnable);
+    m_xLanguageBox->set_sensitive(bEnable);
 }
 
-static bool lcl_FindEntry( ListBox& rLB, const OUString& rEntry,
-                    CollatorWrapper& rCmpClass )
+static bool lcl_FindEntry(weld::TreeView& rLB, const OUString& rEntry,
+                          CollatorWrapper const & rCmpClass)
 {
-    sal_Int32 nCount = rLB.GetEntryCount();
-    sal_Int32 nSelPos = rLB.GetSelectEntryPos();
-    sal_Int32 i;
-    for(i = 0; i < nCount; i++)
+    int nCount = rLB.n_children();
+    int nSelPos = rLB.get_selected_index();
+    for (int i = 0; i < nCount; i++)
     {
-        if( 0 == rCmpClass.compareString(rEntry, rLB.GetEntry(i) ))
+        if (0 == rCmpClass.compareString(rEntry, rLB.get_text(i)))
         {
-            rLB.SelectEntryPos(i);
+            rLB.select(i);
             return true;
         }
     }
-    if(LISTBOX_ENTRY_NOTFOUND != nSelPos)
-        rLB.SelectEntryPos(nSelPos, false);
+    if (nSelPos != -1)
+        rLB.unselect(nSelPos);
     return false;
 }
 
-IMPL_LINK(OfaAutoCorrDlg, SelectLanguageHdl, ListBox&, rBox, void)
+IMPL_LINK_NOARG(OfaAutoCorrDlg, SelectLanguageHdl, weld::ComboBox&, void)
 {
-    sal_Int32 nPos = rBox.GetSelectEntryPos();
-    void* pVoid = rBox.GetEntryData(nPos);
-    LanguageType eNewLang = LanguageType(reinterpret_cast<sal_IntPtr>(pVoid));
+    LanguageType eNewLang = m_xLanguageLB->get_active_id();
     // save old settings and fill anew
-    if(eNewLang != eLastDialogLanguage)
+    if(eNewLang == eLastDialogLanguage)
+        return;
+
+    OString sPageId = GetCurPageId();
+    if (sPageId == "replace")
     {
-        sal_uInt16  nPageId = GetCurPageId();
-        if (m_nReplacePageId == nPageId)
-            static_cast<OfaAutocorrReplacePage*>(GetTabPage( nPageId ))->SetLanguage(eNewLang);
-        else if (m_nExceptionsPageId == nPageId)
-            static_cast<OfaAutocorrExceptPage*>(GetTabPage( nPageId ))->SetLanguage(eNewLang);
+        OfaAutocorrReplacePage* pPage = static_cast<OfaAutocorrReplacePage*>(GetTabPage(sPageId));
+        assert(pPage);
+        pPage->SetLanguage(eNewLang);
+    }
+    else if (sPageId == "exceptions")
+    {
+        OfaAutocorrExceptPage* pPage = static_cast<OfaAutocorrExceptPage*>(GetTabPage(sPageId));
+        assert(pPage);
+        pPage->SetLanguage(eNewLang);
     }
 }
 
-OfaAutocorrOptionsPage::OfaAutocorrOptionsPage(vcl::Window* pParent, const SfxItemSet& rSet)
-    : SfxTabPage(pParent, "AutocorrectOptionsPage", "cui/ui/acoroptionspage.ui", &rSet)
+OfaAutocorrOptionsPage::OfaAutocorrOptionsPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
+    : SfxTabPage(pPage, pController, "cui/ui/acoroptionspage.ui", "AutocorrectOptionsPage", &rSet)
     , m_sInput(CuiResId(RID_SVXSTR_USE_REPLACE))
     , m_sDoubleCaps(CuiResId(RID_SVXSTR_CPTL_STT_WORD))
     , m_sStartCap(CuiResId(RID_SVXSTR_CPTL_STT_SENT))
@@ -201,41 +187,40 @@ OfaAutocorrOptionsPage::OfaAutocorrOptionsPage(vcl::Window* pParent, const SfxIt
     , m_sNoDblSpaces(CuiResId(RID_SVXSTR_NO_DBL_SPACES))
     , m_sDash(CuiResId(RID_SVXSTR_DASH))
     , m_sAccidentalCaps(CuiResId(RID_SVXSTR_CORRECT_ACCIDENTAL_CAPS_LOCK))
+    , m_xCheckLB(m_xBuilder->weld_tree_view("checklist"))
 {
-    get(m_pCheckLB, "checklist");
+    m_xCheckLB->enable_toggle_buttons(weld::ColumnToggleType::Check);
+    m_xCheckLB->set_size_request(-1, m_xCheckLB->get_height_rows(10));
 }
 
 OfaAutocorrOptionsPage::~OfaAutocorrOptionsPage()
 {
-    disposeOnce();
 }
 
-void OfaAutocorrOptionsPage::dispose()
+std::unique_ptr<SfxTabPage> OfaAutocorrOptionsPage::Create(weld::Container* pPage, weld::DialogController* pController,
+                                                           const SfxItemSet* rSet)
 {
-    m_pCheckLB.clear();
-    SfxTabPage::dispose();
+    return std::make_unique<OfaAutocorrOptionsPage>(pPage, pController, *rSet);
 }
 
-VclPtr<SfxTabPage> OfaAutocorrOptionsPage::Create( vcl::Window* pParent,
-                                                   const SfxItemSet* rSet)
-{
-    return VclPtr<OfaAutocorrOptionsPage>::Create(pParent, *rSet);
-}
+#define CBCOL_FIRST     0
+#define CBCOL_SECOND    1
+#define CBCOL_BOTH      2
 
 bool OfaAutocorrOptionsPage::FillItemSet( SfxItemSet* )
 {
     SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
-    long nFlags = pAutoCorrect->GetFlags();
+    ACFlags nFlags = pAutoCorrect->GetFlags();
 
-    sal_uLong nPos = 0;
-    pAutoCorrect->SetAutoCorrFlag(Autocorrect,          m_pCheckLB->IsChecked(nPos++));
-    pAutoCorrect->SetAutoCorrFlag(CapitalStartWord,     m_pCheckLB->IsChecked(nPos++));
-    pAutoCorrect->SetAutoCorrFlag(CapitalStartSentence, m_pCheckLB->IsChecked(nPos++));
-    pAutoCorrect->SetAutoCorrFlag(ChgWeightUnderl,      m_pCheckLB->IsChecked(nPos++));
-    pAutoCorrect->SetAutoCorrFlag(SetINetAttr,          m_pCheckLB->IsChecked(nPos++));
-    pAutoCorrect->SetAutoCorrFlag(ChgToEnEmDash,        m_pCheckLB->IsChecked(nPos++));
-    pAutoCorrect->SetAutoCorrFlag(IgnoreDoubleSpace,    m_pCheckLB->IsChecked(nPos++));
-    pAutoCorrect->SetAutoCorrFlag(CorrectCapsLock,      m_pCheckLB->IsChecked(nPos++));
+    int nPos = 0;
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::Autocorrect,          m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::CapitalStartWord,     m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::CapitalStartSentence, m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::ChgWeightUnderl,      m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::SetINetAttr,          m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::ChgToEnEmDash,        m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::IgnoreDoubleSpace,    m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::CorrectCapsLock,      m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
 
     bool bReturn = nFlags != pAutoCorrect->GetFlags();
     if(bReturn )
@@ -249,37 +234,45 @@ bool OfaAutocorrOptionsPage::FillItemSet( SfxItemSet* )
 
 void    OfaAutocorrOptionsPage::ActivatePage( const SfxItemSet& )
 {
-    static_cast<OfaAutoCorrDlg*>(GetTabDialog())->EnableLanguage(false);
+    static_cast<OfaAutoCorrDlg*>(GetDialogController())->EnableLanguage(false);
+}
+
+void OfaAutocorrOptionsPage::InsertEntry(const OUString& rTxt)
+{
+    m_xCheckLB->append();
+    const int nRow = m_xCheckLB->n_children() - 1;
+    m_xCheckLB->set_toggle(nRow, TRISTATE_FALSE);
+    m_xCheckLB->set_text(nRow, rTxt, 0);
 }
 
 void OfaAutocorrOptionsPage::Reset( const SfxItemSet* )
 {
     SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
-    const long nFlags = pAutoCorrect->GetFlags();
+    const ACFlags nFlags = pAutoCorrect->GetFlags();
 
-    m_pCheckLB->SetUpdateMode(false);
-    m_pCheckLB->Clear();
+    m_xCheckLB->freeze();
+    m_xCheckLB->clear();
 
-    m_pCheckLB->InsertEntry(m_sInput);
-    m_pCheckLB->InsertEntry(m_sDoubleCaps);
-    m_pCheckLB->InsertEntry(m_sStartCap);
-    m_pCheckLB->InsertEntry(m_sBoldUnderline);
-    m_pCheckLB->InsertEntry(m_sURL);
-    m_pCheckLB->InsertEntry(m_sDash);
-    m_pCheckLB->InsertEntry(m_sNoDblSpaces);
-    m_pCheckLB->InsertEntry(m_sAccidentalCaps);
+    InsertEntry(m_sInput);
+    InsertEntry(m_sDoubleCaps);
+    InsertEntry(m_sStartCap);
+    InsertEntry(m_sBoldUnderline);
+    InsertEntry(m_sURL);
+    InsertEntry(m_sDash);
+    InsertEntry(m_sNoDblSpaces);
+    InsertEntry(m_sAccidentalCaps);
 
-    sal_uLong nPos = 0;
-    m_pCheckLB->CheckEntryPos( nPos++, 0 != (nFlags & Autocorrect) );
-    m_pCheckLB->CheckEntryPos( nPos++, 0 != (nFlags & CapitalStartWord) );
-    m_pCheckLB->CheckEntryPos( nPos++, 0 != (nFlags & CapitalStartSentence) );
-    m_pCheckLB->CheckEntryPos( nPos++, 0 != (nFlags & ChgWeightUnderl) );
-    m_pCheckLB->CheckEntryPos( nPos++, 0 != (nFlags & SetINetAttr) );
-    m_pCheckLB->CheckEntryPos( nPos++, 0 != (nFlags & ChgToEnEmDash) );
-    m_pCheckLB->CheckEntryPos( nPos++, 0 != (nFlags & IgnoreDoubleSpace) );
-    m_pCheckLB->CheckEntryPos( nPos++, 0 != (nFlags & CorrectCapsLock) );
+    int nPos = 0;
+    m_xCheckLB->set_toggle( nPos++, bool(nFlags & ACFlags::Autocorrect) ? TRISTATE_TRUE : TRISTATE_FALSE );
+    m_xCheckLB->set_toggle( nPos++, bool(nFlags & ACFlags::CapitalStartWord) ? TRISTATE_TRUE : TRISTATE_FALSE );
+    m_xCheckLB->set_toggle( nPos++, bool(nFlags & ACFlags::CapitalStartSentence) ? TRISTATE_TRUE : TRISTATE_FALSE );
+    m_xCheckLB->set_toggle( nPos++, bool(nFlags & ACFlags::ChgWeightUnderl) ? TRISTATE_TRUE : TRISTATE_FALSE );
+    m_xCheckLB->set_toggle( nPos++, bool(nFlags & ACFlags::SetINetAttr) ? TRISTATE_TRUE : TRISTATE_FALSE );
+    m_xCheckLB->set_toggle( nPos++, bool(nFlags & ACFlags::ChgToEnEmDash) ? TRISTATE_TRUE : TRISTATE_FALSE );
+    m_xCheckLB->set_toggle( nPos++, bool(nFlags & ACFlags::IgnoreDoubleSpace) ? TRISTATE_TRUE : TRISTATE_FALSE );
+    m_xCheckLB->set_toggle( nPos++, bool(nFlags & ACFlags::CorrectCapsLock) ? TRISTATE_TRUE : TRISTATE_FALSE );
 
-    m_pCheckLB->SetUpdateMode(true);
+    m_xCheckLB->thaw();
 }
 
 /*********************************************************************/
@@ -287,6 +280,8 @@ void OfaAutocorrOptionsPage::Reset( const SfxItemSet* )
 /*  helping struct for dUserData of the Checklistbox                 */
 /*                                                                   */
 /*********************************************************************/
+
+namespace {
 
 struct ImpUserData
 {
@@ -304,89 +299,27 @@ struct ImpUserData
 /*                                                                   */
 /*********************************************************************/
 
-class OfaAutoFmtPrcntSet : public ModalDialog
+class OfaAutoFmtPrcntSet : public weld::GenericDialogController
 {
-    VclPtr<MetricField> m_pPrcntMF;
+    std::unique_ptr<weld::MetricSpinButton> m_xPrcntMF;
 public:
-    explicit OfaAutoFmtPrcntSet(vcl::Window* pParent)
-        : ModalDialog(pParent, "PercentDialog","cui/ui/percentdialog.ui")
+    explicit OfaAutoFmtPrcntSet(weld::Window* pParent)
+        : GenericDialogController(pParent, "cui/ui/percentdialog.ui", "PercentDialog")
+        , m_xPrcntMF(m_xBuilder->weld_metric_spin_button("margin", FieldUnit::PERCENT))
     {
-        get(m_pPrcntMF, "margin");
     }
-    virtual ~OfaAutoFmtPrcntSet() override { disposeOnce(); }
-    virtual void dispose() override { m_pPrcntMF.clear(); ModalDialog::dispose(); }
 
-    MetricField& GetPrcntFld()
+    weld::MetricSpinButton& GetPrcntFld()
     {
-        return *m_pPrcntMF;
+        return *m_xPrcntMF;
     }
 };
-
-/*********************************************************************/
-/*                                                                   */
-/*  changed LBoxString                                               */
-/*                                                                   */
-/*********************************************************************/
-
-class OfaImpBrwString : public SvLBoxString
-{
-public:
-
-    explicit OfaImpBrwString( const OUString& rStr ) : SvLBoxString(rStr){}
-
-    virtual void Paint(const Point& rPos, SvTreeListBox& rDev, vcl::RenderContext& rRenderContext,
-                       const SvViewDataEntry* pView, const SvTreeListEntry& rEntry) override;
-};
-
-void OfaImpBrwString::Paint(const Point& rPos, SvTreeListBox& /*rDev*/, vcl::RenderContext& rRenderContext,
-                            const SvViewDataEntry* /*pView*/, const SvTreeListEntry& rEntry)
-{
-    rRenderContext.DrawText(rPos, GetText());
-    if (rEntry.GetUserData())
-    {
-        ImpUserData* pUserData = static_cast<ImpUserData*>(rEntry.GetUserData());
-        Point aNewPos(rPos);
-        aNewPos.X() += rRenderContext.GetTextWidth(GetText());
-        vcl::Font aOldFont(rRenderContext.GetFont());
-        vcl::Font aFont(aOldFont);
-        if (pUserData->pFont)
-        {
-            aFont = *pUserData->pFont;
-            aFont.SetColor(aOldFont.GetColor());
-            aFont.SetFontSize(aOldFont.GetFontSize());
-        }
-        aFont.SetWeight(WEIGHT_BOLD);
-
-        bool bFett = true;
-        sal_Int32 nPos = 0;
-        do {
-            OUString sTxt(pUserData->pString->getToken(0, 1, nPos));
-
-            if (bFett)
-                rRenderContext.SetFont(aFont);
-
-            rRenderContext.DrawText(aNewPos, sTxt);
-
-            if (-1 != nPos)
-                aNewPos.X() += rRenderContext.GetTextWidth(sTxt);
-
-            if (bFett)
-                rRenderContext.SetFont(aOldFont);
-
-            bFett = !bFett;
-        } while(-1 != nPos);
-    }
-}
 
 /*********************************************************************/
 /*                                                                   */
 /*  use TabPage autoformat                                           */
 /*                                                                   */
 /*********************************************************************/
-
-#define CBCOL_FIRST     0
-#define CBCOL_SECOND    1
-#define CBCOL_BOTH      2
 
 enum OfaAutoFmtOptions
 {
@@ -410,9 +343,11 @@ enum OfaAutoFmtOptions
     MERGE_SINGLE_LINE_PARA
 };
 
-OfaSwAutoFmtOptionsPage::OfaSwAutoFmtOptionsPage( vcl::Window* pParent,
-                                const SfxItemSet& rSet )
-    : SfxTabPage(pParent, "ApplyAutoFmtPage", "cui/ui/applyautofmtpage.ui", &rSet)
+}
+
+OfaSwAutoFmtOptionsPage::OfaSwAutoFmtOptionsPage(weld::Container* pPage, weld::DialogController* pController,
+                                                 const SfxItemSet& rSet )
+    : SfxTabPage(pPage, pController, "cui/ui/applyautofmtpage.ui", "ApplyAutoFmtPage", &rSet)
     , sDeleteEmptyPara(CuiResId(RID_SVXSTR_DEL_EMPTY_PARA))
     , sUseReplaceTbl(CuiResId(RID_SVXSTR_USE_REPLACE))
     , sCapitalStartWord(CuiResId(RID_SVXSTR_CPTL_STT_WORD))
@@ -432,88 +367,43 @@ OfaSwAutoFmtOptionsPage::OfaSwAutoFmtOptionsPage( vcl::Window* pParent,
     , sDelSpaceAtSttEnd(CuiResId(RID_SVXSTR_DEL_SPACES_AT_STT_END))
     , sDelSpaceBetweenLines(CuiResId(RID_SVXSTR_DEL_SPACES_BETWEEN_LINES))
     , nPercent(50)
-    , pCheckButtonData(nullptr)
+    , m_xCheckLB(m_xBuilder->weld_tree_view("list"))
+    , m_xEditPB(m_xBuilder->weld_button("edit"))
 {
-    get(m_pEditPB, "edit");
+    m_xCheckLB->connect_changed(LINK(this, OfaSwAutoFmtOptionsPage, SelectHdl));
+    m_xCheckLB->connect_row_activated(LINK(this, OfaSwAutoFmtOptionsPage, DoubleClickEditHdl));
+    m_xCheckLB->enable_toggle_buttons(weld::ColumnToggleType::Check);
 
-    SvSimpleTableContainer* pCheckLBContainer(get<SvSimpleTableContainer>("list"));
-    Size aControlSize(248 , 149);
-    aControlSize = LogicToPixel(aControlSize, MapUnit::MapAppFont);
-    pCheckLBContainer->set_width_request(aControlSize.Width());
-    pCheckLBContainer->set_height_request(aControlSize.Height());
-    m_pCheckLB = VclPtr<OfaACorrCheckListBox>::Create(*pCheckLBContainer);
+    std::vector<int> aWidths;
+    aWidths.push_back(m_xCheckLB->get_pixel_size(m_xCheckLB->get_column_title(0)).Width() * 2);
+    aWidths.push_back(m_xCheckLB->get_pixel_size(m_xCheckLB->get_column_title(1)).Width() * 2);
+    m_xCheckLB->set_column_fixed_widths(aWidths);
 
-    m_pCheckLB->SetStyle(m_pCheckLB->GetStyle()|WB_HSCROLL| WB_VSCROLL);
-
-    m_pCheckLB->SetSelectHdl(LINK(this, OfaSwAutoFmtOptionsPage, SelectHdl));
-    m_pCheckLB->SetDoubleClickHdl(LINK(this, OfaSwAutoFmtOptionsPage, DoubleClickEditHdl));
-
-    static long aStaticTabs[]=
-    {
-        3, 0, 20, 40
-    };
-
-    m_pCheckLB->SvSimpleTable::SetTabs(aStaticTabs);
-    OUStringBuffer sHeader(get<vcl::Window>("m")->GetText());
-    sHeader.append('\t');
-    sHeader.append(get<vcl::Window>("t")->GetText());
-    sHeader.append('\t');
-    m_pCheckLB->InsertHeaderEntry(sHeader.makeStringAndClear(), HEADERBAR_APPEND,
-                        HeaderBarItemBits::CENTER | HeaderBarItemBits::VCENTER | HeaderBarItemBits::FIXEDPOS | HeaderBarItemBits::FIXED);
-
-    m_pEditPB->SetClickHdl(LINK(this, OfaSwAutoFmtOptionsPage, EditHdl));
+    m_xEditPB->connect_clicked(LINK(this, OfaSwAutoFmtOptionsPage, EditHdl));
 }
 
-SvTreeListEntry* OfaSwAutoFmtOptionsPage::CreateEntry(OUString& rTxt, sal_uInt16 nCol)
+void OfaSwAutoFmtOptionsPage::CreateEntry(const OUString& rTxt, sal_uInt16 nCol)
 {
-    SvTreeListEntry* pEntry = new SvTreeListEntry;
-
-    if ( !pCheckButtonData )
-    {
-        pCheckButtonData = new SvLBoxButtonData( m_pCheckLB );
-        m_pCheckLB->SetCheckButtonData( pCheckButtonData );
-    }
-
-    pEntry->AddItem(o3tl::make_unique<SvLBoxContextBmp>(Image(), Image(), false));
-
-    if (nCol == CBCOL_SECOND)
-        pEntry->AddItem(o3tl::make_unique<SvLBoxString>(""));
-    else
-        pEntry->AddItem(o3tl::make_unique<SvLBoxButton>(SvLBoxButtonKind::EnabledCheckbox, pCheckButtonData));
-
-    if (nCol == CBCOL_FIRST)
-        pEntry->AddItem(o3tl::make_unique<SvLBoxString>(""));
-    else
-        pEntry->AddItem(o3tl::make_unique<SvLBoxButton>(SvLBoxButtonKind::EnabledCheckbox, pCheckButtonData));
-    pEntry->AddItem(o3tl::make_unique<OfaImpBrwString>(rTxt));
-
-    return pEntry;
+    m_xCheckLB->append();
+    const int nRow = m_xCheckLB->n_children() - 1;
+    if (nCol == CBCOL_FIRST || nCol == CBCOL_BOTH)
+        m_xCheckLB->set_toggle(nRow, TRISTATE_FALSE, CBCOL_FIRST);
+    if (nCol == CBCOL_SECOND || nCol == CBCOL_BOTH)
+        m_xCheckLB->set_toggle(nRow, TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_text(nRow, rTxt, 2);
 }
 
 OfaSwAutoFmtOptionsPage::~OfaSwAutoFmtOptionsPage()
 {
-    disposeOnce();
+    delete reinterpret_cast<ImpUserData*>(m_xCheckLB->get_id(REPLACE_BULLETS).toInt64());
+    delete reinterpret_cast<ImpUserData*>(m_xCheckLB->get_id(APPLY_NUMBERING).toInt64());
+    delete reinterpret_cast<ImpUserData*>(m_xCheckLB->get_id(MERGE_SINGLE_LINE_PARA).toInt64());
 }
 
-void OfaSwAutoFmtOptionsPage::dispose()
+std::unique_ptr<SfxTabPage> OfaSwAutoFmtOptionsPage::Create(weld::Container* pPage, weld::DialogController* pController,
+                                                            const SfxItemSet* rAttrSet)
 {
-    if (m_pCheckLB)
-    {
-        delete static_cast<ImpUserData*>(m_pCheckLB->GetUserData( REPLACE_BULLETS ));
-        delete static_cast<ImpUserData*>(m_pCheckLB->GetUserData( APPLY_NUMBERING ));
-        delete static_cast<ImpUserData*>(m_pCheckLB->GetUserData( MERGE_SINGLE_LINE_PARA ));
-        delete pCheckButtonData;
-        pCheckButtonData = nullptr;
-    }
-    m_pCheckLB.disposeAndClear();
-    m_pEditPB.clear();
-    SfxTabPage::dispose();
-}
-
-VclPtr<SfxTabPage> OfaSwAutoFmtOptionsPage::Create( vcl::Window* pParent,
-                                                    const SfxItemSet* rAttrSet)
-{
-    return VclPtr<OfaSwAutoFmtOptionsPage>::Create(pParent, *rAttrSet);
+    return std::make_unique<OfaSwAutoFmtOptionsPage>(pPage, pController, *rAttrSet);
 }
 
 bool OfaSwAutoFmtOptionsPage::FillItemSet( SfxItemSet*  )
@@ -521,53 +411,53 @@ bool OfaSwAutoFmtOptionsPage::FillItemSet( SfxItemSet*  )
     bool bModified = false;
     SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
     SvxSwAutoFormatFlags *pOpt = &pAutoCorrect->GetSwFlags();
-    long nFlags = pAutoCorrect->GetFlags();
+    ACFlags nFlags = pAutoCorrect->GetFlags();
 
-    bool bCheck = m_pCheckLB->IsChecked(USE_REPLACE_TABLE);
+    bool bCheck = m_xCheckLB->get_toggle(USE_REPLACE_TABLE, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bAutoCorrect != bCheck;
     pOpt->bAutoCorrect = bCheck;
-    pAutoCorrect->SetAutoCorrFlag(Autocorrect,
-                        m_pCheckLB->IsChecked(USE_REPLACE_TABLE, CBCOL_SECOND));
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::Autocorrect,
+                        m_xCheckLB->get_toggle(USE_REPLACE_TABLE, CBCOL_SECOND) == TRISTATE_TRUE);
 
-    bCheck = m_pCheckLB->IsChecked(CORR_UPPER);
+    bCheck = m_xCheckLB->get_toggle(CORR_UPPER, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bCapitalStartWord != bCheck;
     pOpt->bCapitalStartWord = bCheck;
-    pAutoCorrect->SetAutoCorrFlag(CapitalStartWord,
-                        m_pCheckLB->IsChecked(CORR_UPPER, CBCOL_SECOND));
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::CapitalStartWord,
+                        m_xCheckLB->get_toggle(CORR_UPPER, CBCOL_SECOND) == TRISTATE_TRUE);
 
-    bCheck = m_pCheckLB->IsChecked(BEGIN_UPPER);
+    bCheck = m_xCheckLB->get_toggle(BEGIN_UPPER, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bCapitalStartSentence != bCheck;
     pOpt->bCapitalStartSentence = bCheck;
-    pAutoCorrect->SetAutoCorrFlag(CapitalStartSentence,
-                        m_pCheckLB->IsChecked(BEGIN_UPPER, CBCOL_SECOND));
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::CapitalStartSentence,
+                        m_xCheckLB->get_toggle(BEGIN_UPPER, CBCOL_SECOND) == TRISTATE_TRUE);
 
-    bCheck = m_pCheckLB->IsChecked(BOLD_UNDERLINE);
+    bCheck = m_xCheckLB->get_toggle(BOLD_UNDERLINE, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bChgWeightUnderl != bCheck;
     pOpt->bChgWeightUnderl = bCheck;
-    pAutoCorrect->SetAutoCorrFlag(ChgWeightUnderl,
-                        m_pCheckLB->IsChecked(BOLD_UNDERLINE, CBCOL_SECOND));
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::ChgWeightUnderl,
+                        m_xCheckLB->get_toggle(BOLD_UNDERLINE, CBCOL_SECOND) == TRISTATE_TRUE);
 
-    pAutoCorrect->SetAutoCorrFlag(IgnoreDoubleSpace,
-                        m_pCheckLB->IsChecked(IGNORE_DBLSPACE, CBCOL_SECOND));
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::IgnoreDoubleSpace,
+                        m_xCheckLB->get_toggle(IGNORE_DBLSPACE, CBCOL_SECOND) == TRISTATE_TRUE);
 
-    pAutoCorrect->SetAutoCorrFlag(CorrectCapsLock,
-                        m_pCheckLB->IsChecked(CORRECT_CAPS_LOCK, CBCOL_SECOND));
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::CorrectCapsLock,
+                        m_xCheckLB->get_toggle(CORRECT_CAPS_LOCK, CBCOL_SECOND) == TRISTATE_TRUE);
 
-    bCheck = m_pCheckLB->IsChecked(DETECT_URL);
+    bCheck = m_xCheckLB->get_toggle(DETECT_URL, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bSetINetAttr != bCheck;
     pOpt->bSetINetAttr = bCheck;
-    pAutoCorrect->SetAutoCorrFlag(SetINetAttr,
-                        m_pCheckLB->IsChecked(DETECT_URL, CBCOL_SECOND));
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::SetINetAttr,
+                        m_xCheckLB->get_toggle(DETECT_URL, CBCOL_SECOND) == TRISTATE_TRUE);
 
-    bCheck = m_pCheckLB->IsChecked(DEL_EMPTY_NODE);
+    bCheck = m_xCheckLB->get_toggle(DEL_EMPTY_NODE, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bDelEmptyNode != bCheck;
     pOpt->bDelEmptyNode = bCheck;
 
-    bCheck = m_pCheckLB->IsChecked(REPLACE_USER_COLL);
+    bCheck = m_xCheckLB->get_toggle(REPLACE_USER_COLL, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bChgUserColl != bCheck;
     pOpt->bChgUserColl = bCheck;
 
-    bCheck = m_pCheckLB->IsChecked(REPLACE_BULLETS);
+    bCheck = m_xCheckLB->get_toggle(REPLACE_BULLETS, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bChgEnumNum != bCheck;
     pOpt->bChgEnumNum = bCheck;
     bModified |= aBulletFont != pOpt->aBulletFont;
@@ -580,45 +470,45 @@ bool OfaSwAutoFmtOptionsPage::FillItemSet( SfxItemSet*  )
     pOpt->aByInputBulletFont = aByInputBulletFont;
     pOpt->cByInputBullet = sByInputBulletChar[0];
 
-    bCheck = m_pCheckLB->IsChecked(MERGE_SINGLE_LINE_PARA);
+    bCheck = m_xCheckLB->get_toggle(MERGE_SINGLE_LINE_PARA, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bRightMargin != bCheck;
     pOpt->bRightMargin = bCheck;
     bModified |= nPercent != pOpt->nRightMargin;
-    pOpt->nRightMargin = (sal_uInt8)nPercent;
+    pOpt->nRightMargin = static_cast<sal_uInt8>(nPercent);
 
-    bCheck = m_pCheckLB->IsChecked(APPLY_NUMBERING, CBCOL_SECOND);
+    bCheck = m_xCheckLB->get_toggle(APPLY_NUMBERING, CBCOL_SECOND) == TRISTATE_TRUE;
     bModified |= pOpt->bSetNumRule != bCheck;
     pOpt->bSetNumRule = bCheck;
 
-    bCheck = m_pCheckLB->IsChecked(INSERT_BORDER, CBCOL_SECOND);
+    bCheck = m_xCheckLB->get_toggle(INSERT_BORDER, CBCOL_SECOND) == TRISTATE_TRUE;
     bModified |= pOpt->bSetBorder != bCheck;
     pOpt->bSetBorder = bCheck;
 
-    bCheck = m_pCheckLB->IsChecked(CREATE_TABLE, CBCOL_SECOND);
+    bCheck = m_xCheckLB->get_toggle(CREATE_TABLE, CBCOL_SECOND) == TRISTATE_TRUE;
     bModified |= pOpt->bCreateTable != bCheck;
     pOpt->bCreateTable = bCheck;
 
-    bCheck = m_pCheckLB->IsChecked(REPLACE_STYLES, CBCOL_SECOND);
+    bCheck = m_xCheckLB->get_toggle(REPLACE_STYLES, CBCOL_SECOND) == TRISTATE_TRUE;
     bModified |= pOpt->bReplaceStyles != bCheck;
     pOpt->bReplaceStyles = bCheck;
 
-    bCheck = m_pCheckLB->IsChecked(REPLACE_DASHES);
+    bCheck = m_xCheckLB->get_toggle(REPLACE_DASHES, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bChgToEnEmDash != bCheck;
     pOpt->bChgToEnEmDash = bCheck;
-    pAutoCorrect->SetAutoCorrFlag(ChgToEnEmDash,
-                        m_pCheckLB->IsChecked(REPLACE_DASHES, CBCOL_SECOND));
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::ChgToEnEmDash,
+                        m_xCheckLB->get_toggle(REPLACE_DASHES, CBCOL_SECOND) == TRISTATE_TRUE);
 
-    bCheck = m_pCheckLB->IsChecked(DEL_SPACES_AT_STT_END);
+    bCheck = m_xCheckLB->get_toggle(DEL_SPACES_AT_STT_END, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bAFormatDelSpacesAtSttEnd != bCheck;
     pOpt->bAFormatDelSpacesAtSttEnd = bCheck;
-    bCheck = m_pCheckLB->IsChecked(DEL_SPACES_AT_STT_END, CBCOL_SECOND);
+    bCheck = m_xCheckLB->get_toggle(DEL_SPACES_AT_STT_END, CBCOL_SECOND) == TRISTATE_TRUE;
     bModified |= pOpt->bAFormatByInpDelSpacesAtSttEnd != bCheck;
     pOpt->bAFormatByInpDelSpacesAtSttEnd = bCheck;
 
-    bCheck = m_pCheckLB->IsChecked(DEL_SPACES_BETWEEN_LINES);
+    bCheck = m_xCheckLB->get_toggle(DEL_SPACES_BETWEEN_LINES, CBCOL_FIRST) == TRISTATE_TRUE;
     bModified |= pOpt->bAFormatDelSpacesBetweenLines != bCheck;
     pOpt->bAFormatDelSpacesBetweenLines = bCheck;
-    bCheck = m_pCheckLB->IsChecked(DEL_SPACES_BETWEEN_LINES, CBCOL_SECOND);
+    bCheck = m_xCheckLB->get_toggle(DEL_SPACES_BETWEEN_LINES, CBCOL_SECOND) == TRISTATE_TRUE;
     bModified |= pOpt->bAFormatByInpDelSpacesBetweenLines != bCheck;
     pOpt->bAFormatByInpDelSpacesBetweenLines = bCheck;
 
@@ -634,317 +524,212 @@ bool OfaSwAutoFmtOptionsPage::FillItemSet( SfxItemSet*  )
 
 void    OfaSwAutoFmtOptionsPage::ActivatePage( const SfxItemSet& )
 {
-    static_cast<OfaAutoCorrDlg*>(GetTabDialog())->EnableLanguage(false);
+    static_cast<OfaAutoCorrDlg*>(GetDialogController())->EnableLanguage(false);
 }
 
 void OfaSwAutoFmtOptionsPage::Reset( const SfxItemSet* )
 {
     SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
     SvxSwAutoFormatFlags *pOpt = &pAutoCorrect->GetSwFlags();
-    const long nFlags = pAutoCorrect->GetFlags();
-
-    m_pCheckLB->SetUpdateMode(false);
-    m_pCheckLB->Clear();
-
-    // The following entries have to be inserted in the same order
-    // as in the OfaAutoFmtOptions-enum!
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sUseReplaceTbl,     CBCOL_BOTH  ));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sCapitalStartWord,  CBCOL_BOTH  ));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sCapitalStartSentence, CBCOL_BOTH  ));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sBoldUnder,         CBCOL_BOTH  ));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sDetectURL,         CBCOL_BOTH  ));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sDash,              CBCOL_BOTH  ));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sDelSpaceAtSttEnd,  CBCOL_BOTH  ));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sDelSpaceBetweenLines, CBCOL_BOTH  ));
-
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sNoDblSpaces,       CBCOL_SECOND));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sCorrectCapsLock,   CBCOL_SECOND));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sNum,               CBCOL_SECOND));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sBorder,            CBCOL_SECOND));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sTable,             CBCOL_SECOND));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sReplaceTemplates,  CBCOL_SECOND));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sDeleteEmptyPara,   CBCOL_FIRST ));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sUserStyle,         CBCOL_FIRST ));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sBullet,            CBCOL_FIRST ));
-    m_pCheckLB->GetModel()->Insert(CreateEntry(sRightMargin,       CBCOL_FIRST ));
-
-    m_pCheckLB->CheckEntryPos( USE_REPLACE_TABLE,  CBCOL_FIRST,    pOpt->bAutoCorrect );
-    m_pCheckLB->CheckEntryPos( USE_REPLACE_TABLE,  CBCOL_SECOND,   0 != (nFlags & Autocorrect));
-    m_pCheckLB->CheckEntryPos( CORR_UPPER,         CBCOL_FIRST,    pOpt->bCapitalStartWord );
-    m_pCheckLB->CheckEntryPos( CORR_UPPER,         CBCOL_SECOND,   0 != (nFlags & CapitalStartWord) );
-    m_pCheckLB->CheckEntryPos( BEGIN_UPPER,        CBCOL_FIRST,    pOpt->bCapitalStartSentence );
-    m_pCheckLB->CheckEntryPos( BEGIN_UPPER,        CBCOL_SECOND,   0 != (nFlags & CapitalStartSentence) );
-    m_pCheckLB->CheckEntryPos( BOLD_UNDERLINE,     CBCOL_FIRST,    pOpt->bChgWeightUnderl );
-    m_pCheckLB->CheckEntryPos( BOLD_UNDERLINE,     CBCOL_SECOND,   0 != (nFlags & ChgWeightUnderl) );
-    m_pCheckLB->CheckEntryPos( IGNORE_DBLSPACE,    CBCOL_SECOND,   0 != (nFlags & IgnoreDoubleSpace) );
-    m_pCheckLB->CheckEntryPos( CORRECT_CAPS_LOCK,  CBCOL_SECOND,   0 != (nFlags & CorrectCapsLock) );
-    m_pCheckLB->CheckEntryPos( DETECT_URL,         CBCOL_FIRST,    pOpt->bSetINetAttr );
-    m_pCheckLB->CheckEntryPos( DETECT_URL,         CBCOL_SECOND,   0 != (nFlags & SetINetAttr) );
-    m_pCheckLB->CheckEntryPos( REPLACE_DASHES,     CBCOL_FIRST,    pOpt->bChgToEnEmDash );
-    m_pCheckLB->CheckEntryPos( REPLACE_DASHES,     CBCOL_SECOND,   0 != (nFlags & ChgToEnEmDash) );
-    m_pCheckLB->CheckEntryPos( DEL_SPACES_AT_STT_END,      CBCOL_FIRST,    pOpt->bAFormatDelSpacesAtSttEnd );
-    m_pCheckLB->CheckEntryPos( DEL_SPACES_AT_STT_END,      CBCOL_SECOND,   pOpt->bAFormatByInpDelSpacesAtSttEnd );
-    m_pCheckLB->CheckEntryPos( DEL_SPACES_BETWEEN_LINES,   CBCOL_FIRST,    pOpt->bAFormatDelSpacesBetweenLines );
-    m_pCheckLB->CheckEntryPos( DEL_SPACES_BETWEEN_LINES,   CBCOL_SECOND,   pOpt->bAFormatByInpDelSpacesBetweenLines );
-    m_pCheckLB->CheckEntryPos( DEL_EMPTY_NODE,     CBCOL_FIRST,    pOpt->bDelEmptyNode );
-    m_pCheckLB->CheckEntryPos( REPLACE_USER_COLL,  CBCOL_FIRST,    pOpt->bChgUserColl );
-    m_pCheckLB->CheckEntryPos( REPLACE_BULLETS,    CBCOL_FIRST,    pOpt->bChgEnumNum );
+    const ACFlags nFlags = pAutoCorrect->GetFlags();
 
     aBulletFont = pOpt->aBulletFont;
     sBulletChar = OUString(pOpt->cBullet);
-    ImpUserData* pUserData = new ImpUserData(&sBulletChar, &aBulletFont);
-    m_pCheckLB->SetUserData(  REPLACE_BULLETS, pUserData );
-
-    nPercent = pOpt->nRightMargin;
-    sMargin = " " +
-        unicode::formatPercent(nPercent, Application::GetSettings().GetUILanguageTag());
-    pUserData = new ImpUserData(&sMargin, nullptr);
-    m_pCheckLB->SetUserData( MERGE_SINGLE_LINE_PARA, pUserData );
-
-    m_pCheckLB->CheckEntryPos( APPLY_NUMBERING,    CBCOL_SECOND,   pOpt->bSetNumRule );
 
     aByInputBulletFont = pOpt->aByInputBulletFont;
     sByInputBulletChar = OUString( pOpt->cByInputBullet );
+
+    nPercent = pOpt->nRightMargin;
+    sMargin = unicode::formatPercent(nPercent, Application::GetSettings().GetUILanguageTag());
+
+    m_xCheckLB->freeze();
+    m_xCheckLB->clear();
+
+    // The following entries have to be inserted in the same order
+    // as in the OfaAutoFmtOptions-enum!
+    CreateEntry(sUseReplaceTbl,     CBCOL_BOTH  );
+    CreateEntry(sCapitalStartWord,  CBCOL_BOTH  );
+    CreateEntry(sCapitalStartSentence, CBCOL_BOTH  );
+    CreateEntry(sBoldUnder,         CBCOL_BOTH  );
+    CreateEntry(sDetectURL,         CBCOL_BOTH  );
+    CreateEntry(sDash,              CBCOL_BOTH  );
+    CreateEntry(sDelSpaceAtSttEnd,  CBCOL_BOTH  );
+    CreateEntry(sDelSpaceBetweenLines, CBCOL_BOTH  );
+
+    CreateEntry(sNoDblSpaces,       CBCOL_SECOND);
+    CreateEntry(sCorrectCapsLock,   CBCOL_SECOND);
+    CreateEntry(sNum.replaceFirst("%1", sBulletChar), CBCOL_SECOND);
+    CreateEntry(sBorder,            CBCOL_SECOND);
+    CreateEntry(sTable,             CBCOL_SECOND);
+    CreateEntry(sReplaceTemplates,  CBCOL_SECOND);
+    CreateEntry(sDeleteEmptyPara,   CBCOL_FIRST );
+    CreateEntry(sUserStyle,         CBCOL_FIRST );
+    CreateEntry(sBullet.replaceFirst("%1", sByInputBulletChar), CBCOL_FIRST);
+    CreateEntry(sRightMargin.replaceFirst("%1", sMargin), CBCOL_FIRST);
+
+    m_xCheckLB->set_toggle(USE_REPLACE_TABLE, pOpt->bAutoCorrect ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+    m_xCheckLB->set_toggle(USE_REPLACE_TABLE, bool(nFlags & ACFlags::Autocorrect) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(CORR_UPPER, pOpt->bCapitalStartWord ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+    m_xCheckLB->set_toggle(CORR_UPPER, bool(nFlags & ACFlags::CapitalStartWord) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(BEGIN_UPPER, pOpt->bCapitalStartSentence ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+    m_xCheckLB->set_toggle(BEGIN_UPPER, bool(nFlags & ACFlags::CapitalStartSentence) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(BOLD_UNDERLINE, pOpt->bChgWeightUnderl ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+    m_xCheckLB->set_toggle(BOLD_UNDERLINE, bool(nFlags & ACFlags::ChgWeightUnderl) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(DETECT_URL, pOpt->bSetINetAttr ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+    m_xCheckLB->set_toggle(DETECT_URL, bool(nFlags & ACFlags::SetINetAttr) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(REPLACE_DASHES, pOpt->bChgToEnEmDash ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+    m_xCheckLB->set_toggle(REPLACE_DASHES, bool(nFlags & ACFlags::ChgToEnEmDash) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(DEL_SPACES_AT_STT_END, pOpt->bAFormatDelSpacesAtSttEnd ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+    m_xCheckLB->set_toggle(DEL_SPACES_AT_STT_END, pOpt->bAFormatByInpDelSpacesAtSttEnd ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(DEL_SPACES_BETWEEN_LINES, pOpt->bAFormatDelSpacesBetweenLines ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+    m_xCheckLB->set_toggle(DEL_SPACES_BETWEEN_LINES, pOpt->bAFormatByInpDelSpacesBetweenLines ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(IGNORE_DBLSPACE, bool(nFlags & ACFlags::IgnoreDoubleSpace) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(CORRECT_CAPS_LOCK, bool(nFlags & ACFlags::CorrectCapsLock) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(APPLY_NUMBERING, pOpt->bSetNumRule ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(INSERT_BORDER, pOpt->bSetBorder ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(CREATE_TABLE, pOpt->bCreateTable ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(REPLACE_STYLES, pOpt->bReplaceStyles ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+    m_xCheckLB->set_toggle(DEL_EMPTY_NODE, pOpt->bDelEmptyNode ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+    m_xCheckLB->set_toggle(REPLACE_USER_COLL, pOpt->bChgUserColl ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+    m_xCheckLB->set_toggle(REPLACE_BULLETS, pOpt->bChgEnumNum ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+    m_xCheckLB->set_toggle(MERGE_SINGLE_LINE_PARA, pOpt->bRightMargin ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+
+    ImpUserData* pUserData = new ImpUserData(&sBulletChar, &aBulletFont);
+    OUString sId(OUString::number(reinterpret_cast<sal_Int64>(pUserData)));
+    m_xCheckLB->set_id(REPLACE_BULLETS, sId);
+
+    pUserData = new ImpUserData(&sMargin, nullptr);
+    sId = OUString::number(reinterpret_cast<sal_Int64>(pUserData));
+    m_xCheckLB->set_id(MERGE_SINGLE_LINE_PARA, sId);
+
     ImpUserData* pUserData2 = new ImpUserData(&sByInputBulletChar, &aByInputBulletFont);
-    m_pCheckLB->SetUserData( APPLY_NUMBERING , pUserData2 );
+    sId = OUString::number(reinterpret_cast<sal_Int64>(pUserData2));
+    m_xCheckLB->set_id(APPLY_NUMBERING, sId);
 
-    m_pCheckLB->CheckEntryPos( MERGE_SINGLE_LINE_PARA, CBCOL_FIRST, pOpt->bRightMargin );
-    m_pCheckLB->CheckEntryPos( INSERT_BORDER,      CBCOL_SECOND,   pOpt->bSetBorder );
-    m_pCheckLB->CheckEntryPos( CREATE_TABLE,       CBCOL_SECOND,   pOpt->bCreateTable );
-    m_pCheckLB->CheckEntryPos( REPLACE_STYLES,     CBCOL_SECOND,   pOpt->bReplaceStyles );
-
-    m_pCheckLB->SetUpdateMode(true);
+    m_xCheckLB->thaw();
 }
 
-IMPL_LINK(OfaSwAutoFmtOptionsPage, SelectHdl, SvTreeListBox*, pBox, void)
+IMPL_LINK(OfaSwAutoFmtOptionsPage, SelectHdl, weld::TreeView&, rBox, void)
 {
-    m_pEditPB->Enable(nullptr != pBox->FirstSelected()->GetUserData());
+    m_xEditPB->set_sensitive(rBox.get_selected_id().toInt64() != 0);
 }
 
-IMPL_LINK_NOARG(OfaSwAutoFmtOptionsPage, DoubleClickEditHdl, SvTreeListBox*, bool)
+IMPL_LINK_NOARG(OfaSwAutoFmtOptionsPage, DoubleClickEditHdl, weld::TreeView&, bool)
 {
-    EditHdl(nullptr);
-    return false;
+    EditHdl(*m_xEditPB);
+    return true;
 }
 
-IMPL_LINK_NOARG(OfaSwAutoFmtOptionsPage, EditHdl, Button*, void)
+IMPL_LINK_NOARG(OfaSwAutoFmtOptionsPage, EditHdl, weld::Button&, void)
 {
-    sal_uLong nSelEntryPos = m_pCheckLB->GetSelectEntryPos();
-    if( nSelEntryPos == REPLACE_BULLETS ||
-        nSelEntryPos == APPLY_NUMBERING)
+    int nSelEntryPos = m_xCheckLB->get_selected_index();
+    if (nSelEntryPos == REPLACE_BULLETS || nSelEntryPos == APPLY_NUMBERING)
     {
-        ScopedVclPtrInstance< SvxCharacterMap > pMapDlg(this);
-        ImpUserData* pUserData = static_cast<ImpUserData*>(m_pCheckLB->FirstSelected()->GetUserData());
-        pMapDlg->SetCharFont(*pUserData->pFont);
-        pMapDlg->SetChar( (*pUserData->pString)[0] );
-        if(RET_OK == pMapDlg->Execute())
+        SvxCharacterMap aMapDlg(GetFrameWeld(), nullptr, nullptr);
+        ImpUserData* pUserData = reinterpret_cast<ImpUserData*>(m_xCheckLB->get_id(nSelEntryPos).toInt64());
+        aMapDlg.SetCharFont(*pUserData->pFont);
+        aMapDlg.SetChar( (*pUserData->pString)[0] );
+        if (RET_OK == aMapDlg.run())
         {
-            vcl::Font aFont(pMapDlg->GetCharFont());
+            const vcl::Font& aFont(aMapDlg.GetCharFont());
             *pUserData->pFont = aFont;
-            sal_UCS4 aChar = pMapDlg->GetChar();
+            sal_UCS4 aChar = aMapDlg.GetChar();
             // using the UCS4 constructor
             OUString aOUStr( &aChar, 1 );
             *pUserData->pString = aOUStr;
+            if (nSelEntryPos == REPLACE_BULLETS)
+                m_xCheckLB->set_text(nSelEntryPos, sNum.replaceFirst("%1", aOUStr), 2);
+            else
+                m_xCheckLB->set_text(nSelEntryPos, sBullet.replaceFirst("%1", aOUStr), 2);
         }
     }
     else if( MERGE_SINGLE_LINE_PARA == nSelEntryPos )
     {
         // dialog for per cent settings
-        ScopedVclPtrInstance< OfaAutoFmtPrcntSet > aDlg(this);
-        aDlg->GetPrcntFld().SetValue(nPercent);
-        if(RET_OK == aDlg->Execute())
+        OfaAutoFmtPrcntSet aDlg(GetFrameWeld());
+        aDlg.GetPrcntFld().set_value(nPercent, FieldUnit::PERCENT);
+        if (aDlg.run() == RET_OK)
         {
-            nPercent = (sal_uInt16)aDlg->GetPrcntFld().GetValue();
-            sMargin = " " +
-                unicode::formatPercent(nPercent, Application::GetSettings().GetUILanguageTag());
+            nPercent = static_cast<sal_uInt16>(aDlg.GetPrcntFld().get_value(FieldUnit::PERCENT));
+            sMargin = unicode::formatPercent(nPercent, Application::GetSettings().GetUILanguageTag());
+            m_xCheckLB->set_text(nSelEntryPos, sRightMargin.replaceFirst("%1", sMargin), 2);
         }
     }
-    m_pCheckLB->Invalidate();
 }
 
-void OfaACorrCheckListBox::SetTabs()
-{
-    SvSimpleTable::SetTabs();
-    SvLBoxTabFlags nAdjust = SvLBoxTabFlags::ADJUST_RIGHT|SvLBoxTabFlags::ADJUST_LEFT|SvLBoxTabFlags::ADJUST_CENTER|SvLBoxTabFlags::ADJUST_NUMERIC|SvLBoxTabFlags::FORCE;
 
-    if( aTabs.size() > 1 )
-    {
-        SvLBoxTab* pTab = aTabs[1];
-        pTab->nFlags &= ~nAdjust;
-        pTab->nFlags |= SvLBoxTabFlags::PUSHABLE|SvLBoxTabFlags::ADJUST_CENTER|SvLBoxTabFlags::FORCE;
-    }
-    if( aTabs.size() > 2 )
-    {
-        SvLBoxTab* pTab = aTabs[2];
-        pTab->nFlags &= ~nAdjust;
-        pTab->nFlags |= SvLBoxTabFlags::PUSHABLE|SvLBoxTabFlags::ADJUST_CENTER|SvLBoxTabFlags::FORCE;
-    }
-}
-
-void OfaACorrCheckListBox::CheckEntryPos(sal_uLong nPos, sal_uInt16 nCol, bool bChecked)
-{
-    if ( nPos < GetEntryCount() )
-        SetCheckButtonState(
-            GetEntry(nPos),
-            nCol,
-            bChecked ? SvButtonState::Checked : SvButtonState::Unchecked );
-}
-
-bool OfaACorrCheckListBox::IsChecked(sal_uLong nPos, sal_uInt16 nCol)
-{
-    return GetCheckButtonState( GetEntry(nPos), nCol ) == SvButtonState::Checked;
-}
-
-void OfaACorrCheckListBox::SetCheckButtonState( SvTreeListEntry* pEntry, sal_uInt16 nCol, SvButtonState eState)
-{
-    SvLBoxButton& rItem = static_cast<SvLBoxButton&>(pEntry->GetItem(nCol + 1));
-
-    if (rItem.GetType() == SvLBoxItemType::Button)
-    {
-        switch( eState )
-        {
-            case SvButtonState::Checked:
-                rItem.SetStateChecked();
-                break;
-
-            case SvButtonState::Unchecked:
-                rItem.SetStateUnchecked();
-                break;
-
-            case SvButtonState::Tristate:
-                rItem.SetStateTristate();
-                break;
-        }
-        InvalidateEntry( pEntry );
-    }
-}
-
-SvButtonState OfaACorrCheckListBox::GetCheckButtonState( SvTreeListEntry* pEntry, sal_uInt16 nCol )
-{
-    SvButtonState eState = SvButtonState::Unchecked;
-    SvLBoxButton& rItem = static_cast<SvLBoxButton&>(pEntry->GetItem(nCol + 1));
-
-    if (rItem.GetType() == SvLBoxItemType::Button)
-    {
-        SvItemStateFlags nButtonFlags = rItem.GetButtonFlags();
-        eState = SvLBoxButtonData::ConvertToButtonState( nButtonFlags );
-    }
-
-    return eState;
-}
-
-void OfaACorrCheckListBox::HBarClick()
-{
-    // sorting is stopped by this override
-}
-
-void    OfaACorrCheckListBox::KeyInput( const KeyEvent& rKEvt )
-{
-    if(!rKEvt.GetKeyCode().GetModifier() &&
-        KEY_SPACE == rKEvt.GetKeyCode().GetCode())
-    {
-        sal_uLong nSelPos = GetSelectEntryPos();
-        sal_uInt16 nCol = GetCurrentTabPos() - 1;
-        if ( nCol < 2 )
-        {
-            CheckEntryPos( nSelPos, nCol, !IsChecked( nSelPos, nCol ) );
-            CallImplEventListeners( VclEventId::CheckboxToggle, static_cast<void*>(GetEntry( nSelPos )) );
-        }
-        else
-        {
-            sal_uInt16 nCheck = IsChecked(nSelPos, 1) ? 1 : 0;
-            if(IsChecked(nSelPos))
-                nCheck += 2;
-            nCheck--;
-            nCheck &= 3;
-            CheckEntryPos(nSelPos, 1, 0 != (nCheck & 1));
-            CheckEntryPos(nSelPos, 0, 0 != (nCheck & 2));
-        }
-    }
-    else
-        SvSimpleTable::KeyInput(rKEvt);
-}
-
-OfaAutocorrReplacePage::OfaAutocorrReplacePage( vcl::Window* pParent,
-                                                const SfxItemSet& rSet )
-    : SfxTabPage(pParent, "AcorReplacePage", "cui/ui/acorreplacepage.ui", &rSet)
+OfaAutocorrReplacePage::OfaAutocorrReplacePage(weld::Container* pPage, weld::DialogController* pController,
+                                               const SfxItemSet& rSet)
+    : SfxTabPage(pPage, pController, "cui/ui/acorreplacepage.ui", "AcorReplacePage", &rSet)
     , eLang(eLastDialogLanguage)
     , bHasSelectionText(false)
     , bFirstSelect(true)
     , bReplaceEditChanged(false)
     , bSWriter(true)
+    , m_xTextOnlyCB(m_xBuilder->weld_check_button("textonly"))
+    , m_xShortED(m_xBuilder->weld_entry("origtext"))
+    , m_xReplaceED(m_xBuilder->weld_entry("newtext"))
+    , m_xReplaceTLB(m_xBuilder->weld_tree_view("tabview"))
+    , m_xNewReplacePB(m_xBuilder->weld_button("new"))
+    , m_xReplacePB(m_xBuilder->weld_button("replace"))
+    , m_xDeleteReplacePB(m_xBuilder->weld_button("delete"))
+    , m_xButtonBox(m_xBuilder->weld_container("buttonbox"))
 {
-    get(m_pTextOnlyCB, "textonly");
-    get(m_pDeleteReplacePB, "delete");
-    get(m_pNewReplacePB, "new");
-    sNew = m_pNewReplacePB->GetText();
-    sModify = get<PushButton>("replace")->GetText();
-    get(m_pShortED, "origtext");
-    get(m_pReplaceED, "newtext");
-    get(m_pReplaceTLB, "tabview");
-    m_pReplaceTLB->set_height_request(16 * GetTextHeight());
+    sNew = m_xNewReplacePB->get_label();
+    sModify = m_xReplacePB->get_label();
+
+    // lock down the width of the button box to its max
+    // desired width
+    auto nMaxWidth = m_xButtonBox->get_preferred_size().Width();
+    m_xButtonBox->set_size_request(nMaxWidth, -1);
+    m_xReplacePB->hide();
+
+    // tdf#125348 set some small but fixed initial width size, final width will
+    // depend on the size of the entry boxes
+    m_xReplaceTLB->set_size_request(42, m_xReplaceTLB->get_height_rows(10));
 
     SfxModule *pMod = SfxApplication::GetModule(SfxToolsModule::Writer);
     bSWriter = pMod == SfxModule::GetActiveModule();
 
     LanguageTag aLanguageTag( eLastDialogLanguage );
-    pCompareClass = new CollatorWrapper( comphelper::getProcessComponentContext() );
+    pCompareClass.reset( new CollatorWrapper( comphelper::getProcessComponentContext() ) );
     pCompareClass->loadDefaultCollator( aLanguageTag.getLocale(), 0 );
-    pCharClass = new CharClass( aLanguageTag );
+    pCharClass.reset( new CharClass( aLanguageTag ) );
 
-    static long aTabs[] = { 2 /* Tab-Count */, 1, 61 };
-    m_pReplaceTLB->SetTabs( &aTabs[0] );
+    auto nColWidth = m_xReplaceTLB->get_approximate_digit_width() * 32;
+    m_aReplaceFixedWidths.push_back(nColWidth);
+    m_aReplaceFixedWidths.push_back(nColWidth);
 
-    m_pReplaceTLB->SetStyle( m_pReplaceTLB->GetStyle()|WB_HSCROLL|WB_CLIPCHILDREN );
-    m_pReplaceTLB->SetSelectHdl( LINK(this, OfaAutocorrReplacePage, SelectHdl) );
-    m_pNewReplacePB->SetClickHdl( LINK(this, OfaAutocorrReplacePage, NewDelButtonHdl) );
-    m_pDeleteReplacePB->SetClickHdl( LINK(this, OfaAutocorrReplacePage, NewDelButtonHdl) );
-    m_pShortED->SetModifyHdl( LINK(this, OfaAutocorrReplacePage, ModifyHdl) );
-    m_pReplaceED->SetModifyHdl( LINK(this, OfaAutocorrReplacePage, ModifyHdl) );
-    m_pShortED->SetActionHdl( LINK(this, OfaAutocorrReplacePage, NewDelActionHdl) );
-    m_pReplaceED->SetActionHdl( LINK(this, OfaAutocorrReplacePage, NewDelActionHdl) );
-
-    m_pReplaceED->SetSpaces(true);
-    m_pShortED->SetSpaces(true);
-
-    m_pShortED->ConnectColumn(m_pReplaceTLB, 0);
-    m_pReplaceED->ConnectColumn(m_pReplaceTLB, 1);
+    m_xReplaceTLB->connect_changed( LINK(this, OfaAutocorrReplacePage, SelectHdl) );
+    m_xNewReplacePB->connect_clicked( LINK(this, OfaAutocorrReplacePage, NewDelButtonHdl) );
+    m_xDeleteReplacePB->connect_clicked( LINK(this, OfaAutocorrReplacePage, NewDelButtonHdl) );
+    m_xShortED->connect_changed( LINK(this, OfaAutocorrReplacePage, ModifyHdl) );
+    m_xReplaceED->connect_changed( LINK(this, OfaAutocorrReplacePage, ModifyHdl) );
+    m_xShortED->connect_activate( LINK(this, OfaAutocorrReplacePage, NewDelActionHdl) );
+    m_xReplaceED->connect_activate( LINK(this, OfaAutocorrReplacePage, NewDelActionHdl) );
+    m_xShortED->connect_size_allocate(LINK(this, OfaAutocorrReplacePage, EntrySizeAllocHdl));
+    m_xReplaceED->connect_size_allocate(LINK(this, OfaAutocorrReplacePage, EntrySizeAllocHdl));
 }
 
 OfaAutocorrReplacePage::~OfaAutocorrReplacePage()
 {
-    disposeOnce();
-}
-
-void OfaAutocorrReplacePage::dispose()
-{
     aDoubleStringTable.clear();
     aChangesTable.clear();
 
-    delete pCompareClass;
-    pCompareClass = nullptr;
-    delete pCharClass;
-    pCharClass = nullptr;
-
-    m_pTextOnlyCB.clear();
-    m_pShortED.clear();
-    m_pReplaceED.clear();
-    m_pReplaceTLB.clear();
-    m_pNewReplacePB.clear();
-    m_pDeleteReplacePB.clear();
-    SfxTabPage::dispose();
+    pCompareClass.reset();
+    pCharClass.reset();
 }
 
-VclPtr<SfxTabPage> OfaAutocorrReplacePage::Create( vcl::Window* pParent, const SfxItemSet* rSet)
+std::unique_ptr<SfxTabPage> OfaAutocorrReplacePage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet)
 {
-    return VclPtr<OfaAutocorrReplacePage>::Create(pParent, *rSet);
+    return std::make_unique<OfaAutocorrReplacePage>(pPage, pController, *rSet);
 }
 
 void OfaAutocorrReplacePage::ActivatePage( const SfxItemSet& )
 {
     if(eLang != eLastDialogLanguage)
         SetLanguage(eLastDialogLanguage);
-    static_cast<OfaAutoCorrDlg*>(GetTabDialog())->EnableLanguage(true);
+    static_cast<OfaAutoCorrDlg*>(GetDialogController())->EnableLanguage(true);
 }
 
 DeactivateRC OfaAutocorrReplacePage::DeactivatePage( SfxItemSet*  )
@@ -963,13 +748,15 @@ bool OfaAutocorrReplacePage::FillItemSet( SfxItemSet* )
         std::vector<SvxAutocorrWord> aDeleteWords;
         std::vector<SvxAutocorrWord> aNewWords;
 
-        for (DoubleString & deleteEntry : rStringChangeList.aDeletedEntries)
+        aDeleteWords.reserve( rStringChangeList.aDeletedEntries.size() );
+        for (const DoubleString & deleteEntry : rStringChangeList.aDeletedEntries)
         {
             SvxAutocorrWord aDeleteWord( deleteEntry.sShort, deleteEntry.sLong );
             aDeleteWords.push_back( aDeleteWord );
         }
 
-        for (DoubleString & newEntry : rStringChangeList.aNewEntries)
+        aNewWords.reserve( rStringChangeList.aNewEntries.size() );
+        for (const DoubleString & newEntry : rStringChangeList.aNewEntries)
         {
             //fdo#67697 if the user data is set then we want to retain the
             //source formatting of the entry, so don't use the optimized
@@ -1013,143 +800,142 @@ void OfaAutocorrReplacePage::RefillReplaceBox(bool bFromReset,
             pArray = &aDoubleStringTable[eOldLanguage]; // create new array
         }
 
-        sal_uInt32 nListBoxCount = (sal_uInt32) m_pReplaceTLB->GetEntryCount();
-        sal_uInt32 i;
-        for(i = 0; i < nListBoxCount; i++)
-        {
+        m_xReplaceTLB->all_foreach([this, &pArray](weld::TreeIter& rIter) {
             pArray->push_back(DoubleString());
-            DoubleString& rDouble = (*pArray)[pArray->size() - 1];
-            SvTreeListEntry*  pEntry = m_pReplaceTLB->GetEntry( i );
-            rDouble.sShort = SvTabListBox::GetEntryText(pEntry, 0);
-            rDouble.sLong = SvTabListBox::GetEntryText(pEntry, 1);
-            rDouble.pUserData = pEntry->GetUserData();
-        }
+            DoubleString& rDouble = pArray->back();
+            rDouble.sShort = m_xReplaceTLB->get_text(rIter, 0);
+            rDouble.sLong = m_xReplaceTLB->get_text(rIter, 1);
+            rDouble.pUserData = reinterpret_cast<void*>(m_xReplaceTLB->get_id(rIter).toInt64());
+            return false;
+        });
     }
 
-    m_pReplaceTLB->Clear();
     if( !bSWriter )
         aFormatText.clear();
 
-    if( aDoubleStringTable.find(eLang) != aDoubleStringTable.end() )
+    if (aDoubleStringTable.find(eLang) != aDoubleStringTable.end())
     {
         DoubleStringArray& rArray = aDoubleStringTable[eNewLanguage];
-        for(DoubleString & rDouble : rArray)
-        {
+
+        m_xReplaceTLB->bulk_insert_for_each(rArray.size(), [this, &rArray](weld::TreeIter& rIter, int nIndex) {
+            DoubleString &rDouble = rArray[nIndex];
             bool bTextOnly = nullptr == rDouble.pUserData;
             // formatted text is only in Writer
-            if(bSWriter || bTextOnly)
+            if (bSWriter || bTextOnly)
             {
-                OUString sEntry = rDouble.sShort + "\t" + rDouble.sLong;
-                SvTreeListEntry* pEntry = m_pReplaceTLB->InsertEntry(sEntry);
-                m_pTextOnlyCB->Check(bTextOnly);
-                if(!bTextOnly)
-                    pEntry->SetUserData(rDouble.pUserData); // that means: with format info or even with selection text
+                if (!bTextOnly)
+                {
+                    // that means: with format info or even with selection text
+                    OUString sId = OUString::number(reinterpret_cast<sal_Int64>(rDouble.pUserData));
+                    m_xReplaceTLB->set_id(rIter, sId);
+                }
+                m_xReplaceTLB->set_text(rIter, rDouble.sShort, 0);
+                m_xReplaceTLB->set_text(rIter, rDouble.sLong, 1);
             }
             else
             {
                 aFormatText.insert(rDouble.sShort);
             }
-        }
+        }, &m_aReplaceFixedWidths);
     }
     else
     {
         SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
         SvxAutocorrWordList* pWordList = pAutoCorrect->LoadAutocorrWordList(eLang);
-        m_pReplaceTLB->SetUpdateMode(false);
-        SvxAutocorrWordList::Content aContent = pWordList->getSortedContent();
-        for( SvxAutocorrWordList::Content::const_iterator it = aContent.begin();
-             it != aContent.end(); ++it )
-        {
-            SvxAutocorrWord* pWordPtr = *it;
-            bool bTextOnly = pWordPtr->IsTextOnly();
+        const SvxAutocorrWordList::AutocorrWordSetType & rContent = pWordList->getSortedContent();
+        m_xReplaceTLB->bulk_insert_for_each(rContent.size(), [this, rContent](weld::TreeIter& rIter, int nIndex) {
+            auto const& elem = rContent[nIndex];
+            bool bTextOnly = elem.IsTextOnly();
             // formatted text is only in Writer
-            if(bSWriter || bTextOnly)
+            if (bSWriter || bTextOnly)
             {
-                OUString sEntry = pWordPtr->GetShort() + "\t" + pWordPtr->GetLong();
-                SvTreeListEntry* pEntry = m_pReplaceTLB->InsertEntry(sEntry);
-                m_pTextOnlyCB->Check(pWordPtr->IsTextOnly());
-                if(!bTextOnly)
-                    pEntry->SetUserData(m_pTextOnlyCB); // that means: with format info
+                if (!bTextOnly)
+                {
+                    // that means: with format info or even with selection text
+                    OUString sId = OUString::number(reinterpret_cast<sal_Int64>(m_xTextOnlyCB.get()));
+                    m_xReplaceTLB->set_id(rIter, sId);
+                }
+                m_xReplaceTLB->set_text(rIter, elem.GetShort(), 0);
+                m_xReplaceTLB->set_text(rIter, elem.GetLong(), 1);
             }
             else
             {
-                aFormatText.insert(pWordPtr->GetShort());
+                aFormatText.insert(elem.GetShort());
             }
-        }
-        m_pNewReplacePB->Enable(false);
-        m_pDeleteReplacePB->Enable(false);
-        m_pReplaceTLB->SetUpdateMode(true);
+        }, &m_aReplaceFixedWidths);
+        m_xNewReplacePB->set_sensitive(false);
+        m_xDeleteReplacePB->set_sensitive(false);
     }
 
     SfxViewShell* pViewShell = SfxViewShell::Current();
-    if( pViewShell && pViewShell->HasSelection() )
+    if (pViewShell && pViewShell->HasSelection())
     {
         bHasSelectionText = true;
         const OUString sSelection( pViewShell->GetSelectionText() );
-        m_pReplaceED->SetText( sSelection );
-        m_pTextOnlyCB->Check( !bSWriter );
-        m_pTextOnlyCB->Enable( bSWriter && !sSelection.isEmpty() );
+        m_xReplaceED->set_text(sSelection);
+        m_xTextOnlyCB->set_active(!bSWriter);
+        m_xTextOnlyCB->set_sensitive(bSWriter && !sSelection.isEmpty());
     }
     else
     {
-        m_pTextOnlyCB->Enable( false );
+        m_xTextOnlyCB->set_active(true);
+        m_xTextOnlyCB->set_sensitive(false);
     }
 }
 
 void OfaAutocorrReplacePage::Reset( const SfxItemSet* )
 {
     RefillReplaceBox(true, eLang, eLang);
-    m_pShortED->GrabFocus();
+    m_xShortED->grab_focus();
 }
 
 void OfaAutocorrReplacePage::SetLanguage(LanguageType eSet)
 {
-    //save old settings an refill
+    //save old settings and refill
     if(eSet != eLang)
     {
         RefillReplaceBox(false, eLang, eSet);
         eLastDialogLanguage = eSet;
-        delete pCompareClass;
-        delete pCharClass;
 
         LanguageTag aLanguageTag( eLastDialogLanguage );
-        pCompareClass = new CollatorWrapper( comphelper::getProcessComponentContext() );
+        pCompareClass.reset( new CollatorWrapper( comphelper::getProcessComponentContext() ) );
         pCompareClass->loadDefaultCollator( aLanguageTag.getLocale(), 0 );
-        pCharClass = new CharClass( aLanguageTag );
-        ModifyHdl(*m_pShortED);
+        pCharClass.reset( new CharClass( aLanguageTag ) );
+        ModifyHdl(*m_xShortED);
     }
 }
 
-IMPL_LINK(OfaAutocorrReplacePage, SelectHdl, SvTreeListBox*, pBox, void)
+IMPL_LINK(OfaAutocorrReplacePage, SelectHdl, weld::TreeView&, rBox, void)
 {
     if(!bFirstSelect || !bHasSelectionText)
     {
-        SvTreeListEntry* pEntry = pBox->FirstSelected();
-        OUString sTmpShort(SvTabListBox::GetEntryText(pEntry, 0));
+        int nEntry = rBox.get_selected_index();
+        OUString sTmpShort(rBox.get_text(nEntry, 0));
         // if the text is set via ModifyHdl, the cursor is always at the beginning
         // of a word, although you're editing here
-        bool bSameContent = 0 == pCompareClass->compareString( sTmpShort, m_pShortED->GetText() );
-        Selection aSel = m_pShortED->GetSelection();
-        if(m_pShortED->GetText() != sTmpShort)
+        bool bSameContent = 0 == pCompareClass->compareString(sTmpShort, m_xShortED->get_text());
+        int nStartPos, nEndPos;
+        m_xShortED->get_selection_bounds(nStartPos, nEndPos);
+        if (m_xShortED->get_text() != sTmpShort)
         {
-            m_pShortED->SetText(sTmpShort);
+            m_xShortED->set_text(sTmpShort);
             // if it was only a different notation, the selection has to be set again
-            if(bSameContent)
+            if (bSameContent)
             {
-                m_pShortED->SetSelection(aSel);
+                m_xShortED->select_region(nStartPos, nEndPos);
             }
         }
-        m_pReplaceED->SetText( SvTabListBox::GetEntryText(pEntry, 1) );
+        m_xReplaceED->set_text(rBox.get_text(nEntry, 1));
         // with UserData there is a Formatinfo
-        m_pTextOnlyCB->Check( pEntry->GetUserData() == nullptr);
+        m_xTextOnlyCB->set_active(rBox.get_id(nEntry).isEmpty());
     }
     else
     {
         bFirstSelect = false;
     }
 
-    m_pNewReplacePB->Enable(false);
-    m_pDeleteReplacePB->Enable();
+    m_xNewReplacePB->set_sensitive(false);
+    m_xDeleteReplacePB->set_sensitive(true);
 };
 
 void OfaAutocorrReplacePage::NewEntry(const OUString& sShort, const OUString& sLong, bool bKeepSourceFormatting)
@@ -1174,7 +960,7 @@ void OfaAutocorrReplacePage::NewEntry(const OUString& sShort, const OUString& sL
         }
     }
 
-    DoubleString aNewString = DoubleString();
+    DoubleString aNewString;
     aNewString.sShort = sShort;
     aNewString.sLong = sLong;
     rNewArray.push_back(aNewString);
@@ -1204,78 +990,91 @@ void OfaAutocorrReplacePage::DeleteEntry(const OUString& sShort, const OUString&
         }
     }
 
-    DoubleString aDeletedString = DoubleString();
+    DoubleString aDeletedString;
     aDeletedString.sShort = sShort;
     aDeletedString.sLong = sLong;
     rDeletedArray.push_back(aDeletedString);
 }
 
-IMPL_LINK(OfaAutocorrReplacePage, NewDelButtonHdl, Button*, pBtn, void)
+IMPL_LINK(OfaAutocorrReplacePage, NewDelButtonHdl, weld::Button&, rBtn, void)
 {
-    NewDelHdl(pBtn);
+    NewDelHdl(&rBtn);
 }
 
-IMPL_LINK(OfaAutocorrReplacePage, NewDelActionHdl, AutoCorrEdit&, rEdit, bool)
+IMPL_LINK(OfaAutocorrReplacePage, NewDelActionHdl, weld::Entry&, rEdit, bool)
 {
     return NewDelHdl(&rEdit);
 }
-bool OfaAutocorrReplacePage::NewDelHdl(void* pBtn)
+
+IMPL_LINK_NOARG(OfaAutocorrReplacePage, EntrySizeAllocHdl, const Size&, void)
 {
-    SvTreeListEntry* pEntry = m_pReplaceTLB->FirstSelected();
-    if( pBtn == m_pDeleteReplacePB )
+    m_aReplaceFixedWidths.clear();
+    int x, y, width, height;
+    if (m_xReplaceED->get_extents_relative_to(*m_xReplaceTLB, x, y, width, height))
     {
-        DBG_ASSERT( pEntry, "no entry selected" );
-        if( pEntry )
+        m_aReplaceFixedWidths.push_back(x);
+        m_aReplaceFixedWidths.push_back(width - 1);
+        m_xReplaceTLB->set_column_fixed_widths(m_aReplaceFixedWidths);
+    }
+}
+
+bool OfaAutocorrReplacePage::NewDelHdl(const weld::Widget* pBtn)
+{
+    int nEntry = m_xReplaceTLB->get_selected_index();
+    if (pBtn == m_xDeleteReplacePB.get())
+    {
+        DBG_ASSERT( nEntry != -1, "no entry selected" );
+        if (nEntry != -1)
         {
-            DeleteEntry(SvTabListBox::GetEntryText(pEntry, 0), SvTabListBox::GetEntryText(pEntry, 1));
-            m_pReplaceTLB->GetModel()->Remove(pEntry);
-            ModifyHdl(*m_pShortED);
+            DeleteEntry(m_xReplaceTLB->get_text(nEntry, 0), m_xReplaceTLB->get_text(nEntry, 1));
+            m_xReplaceTLB->remove(nEntry);
+            ModifyHdl(*m_xShortED);
             return false;
         }
     }
-    if(pBtn == m_pNewReplacePB || m_pNewReplacePB->IsEnabled())
+
+    if (pBtn == m_xNewReplacePB.get() || m_xNewReplacePB->get_sensitive())
     {
-        SvTreeListEntry* _pNewEntry = m_pReplaceTLB->FirstSelected();
-        OUString sEntry(m_pShortED->GetText());
-        if(!sEntry.isEmpty() && ( !m_pReplaceED->GetText().isEmpty() ||
+        OUString sEntry(m_xShortED->get_text());
+        if (!sEntry.isEmpty() && (!m_xReplaceED->get_text().isEmpty() ||
                 ( bHasSelectionText && bSWriter ) ))
         {
-            bool bKeepSourceFormatting = !bReplaceEditChanged && !m_pTextOnlyCB->IsChecked();
+            bool bKeepSourceFormatting = !bReplaceEditChanged && !m_xTextOnlyCB->get_active();
 
-            NewEntry(m_pShortED->GetText(), m_pReplaceED->GetText(), bKeepSourceFormatting);
-            m_pReplaceTLB->SetUpdateMode(false);
-            sal_uLong nPos = TREELIST_ENTRY_NOTFOUND;
-            sEntry += "\t" + m_pReplaceED->GetText();
-            if(_pNewEntry)
+            NewEntry(m_xShortED->get_text(), m_xReplaceED->get_text(), bKeepSourceFormatting);
+            m_xReplaceTLB->freeze();
+            int nPos = -1;
+            if (nEntry != -1)
             {
-                nPos = m_pReplaceTLB->GetModel()->GetAbsPos(_pNewEntry);
-                m_pReplaceTLB->GetModel()->Remove(_pNewEntry);
+                nPos = nEntry;
+                m_xReplaceTLB->remove(nEntry);
             }
             else
             {
-                sal_uLong j;
-                for( j = 0; j < m_pReplaceTLB->GetEntryCount(); j++ )
+                int j;
+                int nCount = m_xReplaceTLB->n_children();
+                for (j = 0; j < nCount; ++j)
                 {
-                    SvTreeListEntry* pReplaceEntry = m_pReplaceTLB->GetEntry(j);
-                    if( 0 >=  pCompareClass->compareString(sEntry, SvTabListBox::GetEntryText(pReplaceEntry, 0) ) )
+                    if (0 >= pCompareClass->compareString(sEntry, m_xReplaceTLB->get_text(j, 0)))
                         break;
                 }
                 nPos = j;
             }
-            SvTreeListEntry* pInsEntry = m_pReplaceTLB->InsertEntry(
-                                        sEntry, static_cast< SvTreeListEntry * >(nullptr), false,
-                                        nPos == TREELIST_ENTRY_NOTFOUND ? TREELIST_APPEND : nPos);
+
+            OUString sId;
             if (bKeepSourceFormatting)
             {
-                pInsEntry->SetUserData(&bHasSelectionText); // new formatted text
+                sId = OUString::number(reinterpret_cast<sal_Int64>(&bHasSelectionText)); // new formatted text
             }
 
-            m_pReplaceTLB->MakeVisible( pInsEntry );
-            m_pReplaceTLB->SetUpdateMode( true );
+            m_xReplaceTLB->insert(nPos, sEntry, &sId, nullptr, nullptr);
+            m_xReplaceTLB->set_text(nPos, m_xReplaceED->get_text(), 1);
+            m_xReplaceTLB->thaw();
+            m_xReplaceTLB->scroll_to_row(nPos);
             // if the request came from the ReplaceEdit, give focus to the ShortEdit
-            if(m_pReplaceED->HasFocus())
+            if (m_xReplaceED->has_focus())
             {
-                m_pShortED->GrabFocus();
+                m_xShortED->grab_focus();
             }
         }
     }
@@ -1285,17 +1084,18 @@ bool OfaAutocorrReplacePage::NewDelHdl(void* pBtn)
         // which means EndDialog() - has to be evaluated in KeyInput
         return false;
     }
-    ModifyHdl(*m_pShortED);
+    ModifyHdl(*m_xShortED);
     return true;
 }
 
-IMPL_LINK(OfaAutocorrReplacePage, ModifyHdl, Edit&, rEdt, void)
+IMPL_LINK(OfaAutocorrReplacePage, ModifyHdl, weld::Entry&, rEdt, void)
 {
-    SvTreeListEntry* pFirstSel = m_pReplaceTLB->FirstSelected();
-    bool bShort = &rEdt == m_pShortED;
-    const OUString rEntry = rEdt.GetText();
-    const OUString rRepString = m_pReplaceED->GetText();
-    OUString aWordStr( pCharClass->lowercase( rEntry ));
+    std::unique_ptr<weld::TreeIter> xFirstSel(m_xReplaceTLB->make_iterator());
+    bool bFirstSelIterSet = m_xReplaceTLB->get_selected(xFirstSel.get());
+    bool bShort = &rEdt == m_xShortED.get();
+    const OUString rEntry = rEdt.get_text();
+    const OUString rRepString = m_xReplaceED->get_text();
+    OUString aWordStr(pCharClass->lowercase(rEntry));
 
     if(bShort)
     {
@@ -1304,83 +1104,82 @@ IMPL_LINK(OfaAutocorrReplacePage, ModifyHdl, Edit&, rEdt, void)
             bool bFound = false;
             bool bTmpSelEntry=false;
 
-            for(sal_uLong i = 0; i < m_pReplaceTLB->GetEntryCount(); i++)
-            {
-                SvTreeListEntry*  pEntry = m_pReplaceTLB->GetEntry( i );
-                OUString aTestStr = SvTabListBox::GetEntryText(pEntry, 0);
+            m_xReplaceTLB->all_foreach([this, &rEntry, &rRepString, &bFound,
+                                        &bTmpSelEntry, &bFirstSelIterSet,
+                                        &xFirstSel, &aWordStr](weld::TreeIter& rIter){
+                OUString aTestStr = m_xReplaceTLB->get_text(rIter, 0);
                 if( pCompareClass->compareString(rEntry, aTestStr ) == 0 )
                 {
-                    if( !rRepString.isEmpty() )
-                    {
+                    if (!rRepString.isEmpty())
                         bFirstSelect = true;
-                    }
-                    m_pReplaceTLB->SetCurEntry(pEntry);
-                    pFirstSel = pEntry;
-                    m_pNewReplacePB->SetText(sModify);
+                    m_xReplaceTLB->set_cursor(rIter);
+                    m_xReplaceTLB->copy_iterator(rIter, *xFirstSel);
+                    bFirstSelIterSet = true;
+                    m_xNewReplacePB->set_label(sModify);
                     bFound = true;
-                    break;
+                    return true;
                 }
                 else
                 {
                     aTestStr = pCharClass->lowercase( aTestStr );
                     if( aTestStr.startsWith(aWordStr) && !bTmpSelEntry )
                     {
-                        m_pReplaceTLB->MakeVisible( pEntry );
+                        m_xReplaceTLB->scroll_to_row(rIter);
                         bTmpSelEntry = true;
                     }
                 }
-            }
+                return false;
+            });
             if( !bFound )
             {
-                m_pReplaceTLB->SelectAll( false );
-                pFirstSel = nullptr;
-                m_pNewReplacePB->SetText( sNew );
+                m_xReplaceTLB->select(-1);
+                bFirstSelIterSet = false;
+                m_xNewReplacePB->set_label(sNew);
                 if( bReplaceEditChanged )
-                    m_pTextOnlyCB->Enable(false);
+                    m_xTextOnlyCB->set_sensitive(false);
             }
-            m_pDeleteReplacePB->Enable( bFound );
+            m_xDeleteReplacePB->set_sensitive(bFound);
         }
-        else if( m_pReplaceTLB->GetEntryCount() > 0 )
+        else if (m_xReplaceTLB->n_children() > 0)
         {
-            SvTreeListEntry*  pEntry = m_pReplaceTLB->GetEntry( 0 );
-            m_pReplaceTLB->MakeVisible( pEntry );
+            m_xReplaceTLB->scroll_to_row(0);
         }
 
     }
     else if( !bShort )
     {
         bReplaceEditChanged = true;
-        if( pFirstSel )
+        if (bFirstSelIterSet)
         {
-            m_pNewReplacePB->SetText( sModify );
+            m_xNewReplacePB->set_label(sModify);
         }
     }
 
-    const OUString& rShortTxt = m_pShortED->GetText();
+    const OUString& rShortTxt = m_xShortED->get_text();
     bool bEnableNew = !rShortTxt.isEmpty() &&
                         ( !rRepString.isEmpty() ||
                                 ( bHasSelectionText && bSWriter )) &&
-                        ( !pFirstSel || rRepString !=
-                                SvTabListBox::GetEntryText( pFirstSel, 1 ) );
+                        ( !bFirstSelIterSet || rRepString !=
+                                m_xReplaceTLB->get_text(*xFirstSel, 1) );
     if( bEnableNew )
     {
-        for(std::set<OUString>::iterator i = aFormatText.begin(); i != aFormatText.end(); ++i)
+        for (auto const& elem : aFormatText)
         {
-            if((*i).equals(rShortTxt))
+            if(elem == rShortTxt)
             {
                 bEnableNew = false;
                 break;
             }
         }
     }
-    m_pNewReplacePB->Enable( bEnableNew );
+    m_xNewReplacePB->set_sensitive(bEnableNew);
 }
 
 static bool lcl_FindInArray(std::vector<OUString>& rStrings, const OUString& rString)
 {
-    for(std::vector<OUString>::iterator i = rStrings.begin(); i != rStrings.end(); ++i)
+    for (auto const& elem : rStrings)
     {
-        if((*i).equals(rString))
+        if(elem == rString)
         {
             return true;
         }
@@ -1388,77 +1187,61 @@ static bool lcl_FindInArray(std::vector<OUString>& rStrings, const OUString& rSt
     return false;
 }
 
-OfaAutocorrExceptPage::OfaAutocorrExceptPage(vcl::Window* pParent, const SfxItemSet& rSet)
-    : SfxTabPage(pParent, "AcorExceptPage", "cui/ui/acorexceptpage.ui", &rSet)
+OfaAutocorrExceptPage::OfaAutocorrExceptPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
+    : SfxTabPage(pPage, pController, "cui/ui/acorexceptpage.ui", "AcorExceptPage", &rSet)
     , eLang(eLastDialogLanguage)
+    , m_xAbbrevED(m_xBuilder->weld_entry("abbrev"))
+    , m_xAbbrevLB(m_xBuilder->weld_tree_view("abbrevlist"))
+    , m_xNewAbbrevPB(m_xBuilder->weld_button("newabbrev"))
+    , m_xDelAbbrevPB(m_xBuilder->weld_button("delabbrev"))
+    , m_xAutoAbbrevCB(m_xBuilder->weld_check_button("autoabbrev"))
+    , m_xDoubleCapsED(m_xBuilder->weld_entry("double"))
+    , m_xDoubleCapsLB(m_xBuilder->weld_tree_view("doublelist"))
+    , m_xNewDoublePB(m_xBuilder->weld_button("newdouble"))
+    , m_xDelDoublePB(m_xBuilder->weld_button("deldouble"))
+    , m_xAutoCapsCB(m_xBuilder->weld_check_button("autodouble"))
 {
-    get(m_pAbbrevED, "abbrev");
-    get(m_pAbbrevLB, "abbrevlist");
-    m_pAbbrevLB->SetStyle(m_pAbbrevLB->GetStyle() | WB_SORT);
-    m_pAbbrevLB->SetDropDownLineCount(7);
-    get(m_pNewAbbrevPB, "newabbrev");
-    get(m_pDelAbbrevPB, "delabbrev");
-    get(m_pAutoAbbrevCB, "autoabbrev");
+    m_xAbbrevLB->make_sorted();
+    m_xAbbrevLB->set_size_request(-1, m_xAbbrevLB->get_height_rows(6));
 
-    get(m_pDoubleCapsED, "double");
-    get(m_pDoubleCapsLB, "doublelist");
-    m_pDoubleCapsLB->SetStyle(m_pDoubleCapsLB->GetStyle() | WB_SORT);
-    m_pDoubleCapsLB->SetDropDownLineCount(7);
-    get(m_pNewDoublePB, "newdouble");
-    get(m_pDelDoublePB, "deldouble");
-    get(m_pAutoCapsCB, "autodouble");
+    m_xDoubleCapsLB->make_sorted();
+    m_xDoubleCapsLB->set_size_request(-1, m_xDoubleCapsLB->get_height_rows(6));
 
     css::lang::Locale aLcl( LanguageTag::convertToLocale(eLastDialogLanguage ));
-    pCompareClass = new CollatorWrapper( comphelper::getProcessComponentContext() );
+    pCompareClass.reset( new CollatorWrapper( comphelper::getProcessComponentContext() ) );
     pCompareClass->loadDefaultCollator( aLcl, 0 );
 
-    m_pNewAbbrevPB->SetClickHdl(LINK(this, OfaAutocorrExceptPage, NewDelButtonHdl));
-    m_pDelAbbrevPB->SetClickHdl(LINK(this, OfaAutocorrExceptPage, NewDelButtonHdl));
-    m_pNewDoublePB->SetClickHdl(LINK(this, OfaAutocorrExceptPage, NewDelButtonHdl));
-    m_pDelDoublePB->SetClickHdl(LINK(this, OfaAutocorrExceptPage, NewDelButtonHdl));
+    m_xNewAbbrevPB->connect_clicked(LINK(this, OfaAutocorrExceptPage, NewDelButtonHdl));
+    m_xDelAbbrevPB->connect_clicked(LINK(this, OfaAutocorrExceptPage, NewDelButtonHdl));
+    m_xNewDoublePB->connect_clicked(LINK(this, OfaAutocorrExceptPage, NewDelButtonHdl));
+    m_xDelDoublePB->connect_clicked(LINK(this, OfaAutocorrExceptPage, NewDelButtonHdl));
 
-    m_pAbbrevLB->SetSelectHdl(LINK(this, OfaAutocorrExceptPage, SelectHdl));
-    m_pDoubleCapsLB->SetSelectHdl(LINK(this, OfaAutocorrExceptPage, SelectHdl));
-    m_pAbbrevED->SetModifyHdl(LINK(this, OfaAutocorrExceptPage, ModifyHdl));
-    m_pDoubleCapsED->SetModifyHdl(LINK(this, OfaAutocorrExceptPage, ModifyHdl));
+    m_xAbbrevLB->connect_changed(LINK(this, OfaAutocorrExceptPage, SelectHdl));
+    m_xDoubleCapsLB->connect_changed(LINK(this, OfaAutocorrExceptPage, SelectHdl));
+    m_xAbbrevED->connect_changed(LINK(this, OfaAutocorrExceptPage, ModifyHdl));
+    m_xDoubleCapsED->connect_changed(LINK(this, OfaAutocorrExceptPage, ModifyHdl));
 
-    m_pAbbrevED->SetActionHdl(LINK(this, OfaAutocorrExceptPage, NewDelActionHdl));
-    m_pDoubleCapsED->SetActionHdl(LINK(this, OfaAutocorrExceptPage, NewDelActionHdl));
+    m_xAbbrevED->connect_activate(LINK(this, OfaAutocorrExceptPage, NewDelActionHdl));
+    m_xDoubleCapsED->connect_activate(LINK(this, OfaAutocorrExceptPage, NewDelActionHdl));
 }
 
 OfaAutocorrExceptPage::~OfaAutocorrExceptPage()
 {
-    disposeOnce();
-}
-
-void OfaAutocorrExceptPage::dispose()
-{
     aStringsTable.clear();
-    delete pCompareClass;
-    m_pAbbrevED.clear();
-    m_pAbbrevLB.clear();
-    m_pNewAbbrevPB.clear();
-    m_pDelAbbrevPB.clear();
-    m_pAutoAbbrevCB.clear();
-    m_pDoubleCapsED.clear();
-    m_pDoubleCapsLB.clear();
-    m_pNewDoublePB.clear();
-    m_pDelDoublePB.clear();
-    m_pAutoCapsCB.clear();
-    SfxTabPage::dispose();
+    pCompareClass.reset();
 }
 
-VclPtr<SfxTabPage> OfaAutocorrExceptPage::Create( vcl::Window* pParent,
-                                                  const SfxItemSet* rSet)
+std::unique_ptr<SfxTabPage> OfaAutocorrExceptPage::Create(weld::Container* pPage, weld::DialogController* pController,
+                                                 const SfxItemSet* rSet)
 {
-    return VclPtr<OfaAutocorrExceptPage>::Create(pParent, *rSet);
+    return std::make_unique<OfaAutocorrExceptPage>(pPage, pController, *rSet);
 }
 
 void    OfaAutocorrExceptPage::ActivatePage( const SfxItemSet& )
 {
     if(eLang != eLastDialogLanguage)
         SetLanguage(eLastDialogLanguage);
-    static_cast<OfaAutoCorrDlg*>(GetTabDialog())->EnableLanguage(true);
+    static_cast<OfaAutoCorrDlg*>(GetDialogController())->EnableLanguage(true);
 }
 
 DeactivateRC OfaAutocorrExceptPage::DeactivatePage( SfxItemSet* )
@@ -1491,9 +1274,9 @@ bool OfaAutocorrExceptPage::FillItemSet( SfxItemSet*  )
                     }
                 }
 
-                for(std::vector<OUString>::iterator it = rArrays.aDoubleCapsStrings.begin(); it != rArrays.aDoubleCapsStrings.end(); ++it)
+                for (auto const& elem : rArrays.aDoubleCapsStrings)
                 {
-                    pWrdList->insert(*it);
+                    pWrdList->insert(elem);
                 }
                 pAutoCorrect->SaveWrdSttExceptList(eCurLang);
             }
@@ -1513,9 +1296,9 @@ bool OfaAutocorrExceptPage::FillItemSet( SfxItemSet*  )
                     }
                 }
 
-                for(std::vector<OUString>::iterator it = rArrays.aAbbrevStrings.begin(); it != rArrays.aAbbrevStrings.end(); ++it)
+                for (auto const& elem : rArrays.aAbbrevStrings)
                 {
-                    pCplList->insert(*it);
+                    pCplList->insert(elem);
                 }
 
                 pAutoCorrect->SaveCplSttExceptList(eCurLang);
@@ -1533,15 +1316,15 @@ bool OfaAutocorrExceptPage::FillItemSet( SfxItemSet*  )
         for( i = nCount; i; )
         {
             OUString aString = (*pWrdList)[ --i ];
-            if( LISTBOX_ENTRY_NOTFOUND == m_pDoubleCapsLB->GetEntryPos(aString) )
+            if (m_xDoubleCapsLB->find_text(aString) == -1)
             {
                 pWrdList->erase(i);
             }
         }
-        nCount = m_pDoubleCapsLB->GetEntryCount();
+        nCount = m_xDoubleCapsLB->n_children();
         for( i = 0; i < nCount; ++i )
         {
-            pWrdList->insert( m_pDoubleCapsLB->GetEntry( i ) );
+            pWrdList->insert(m_xDoubleCapsLB->get_text(i));
         }
         pAutoCorrect->SaveWrdSttExceptList(eLang);
     }
@@ -1554,22 +1337,22 @@ bool OfaAutocorrExceptPage::FillItemSet( SfxItemSet*  )
         for( size_t i = nCount; i; )
         {
             OUString aString = (*pCplList)[ --i ];
-            if( LISTBOX_ENTRY_NOTFOUND == m_pAbbrevLB->GetEntryPos(aString) )
+            if (m_xAbbrevLB->find_text(aString) == -1)
             {
                 pCplList->erase(i);
             }
         }
-        sal_Int32 nAbbrevCount = m_pAbbrevLB->GetEntryCount();
+        sal_Int32 nAbbrevCount = m_xAbbrevLB->n_children();
         for( sal_Int32 ia = 0; ia < nAbbrevCount; ++ia )
         {
-            pCplList->insert( m_pAbbrevLB->GetEntry( ia ) );
+            pCplList->insert(m_xAbbrevLB->get_text(ia));
         }
         pAutoCorrect->SaveCplSttExceptList(eLang);
     }
-    if(m_pAutoAbbrevCB->IsValueChangedFromSaved())
-        pAutoCorrect->SetAutoCorrFlag( SaveWordCplSttLst, m_pAutoAbbrevCB->IsChecked());
-    if(m_pAutoCapsCB->IsValueChangedFromSaved())
-        pAutoCorrect->SetAutoCorrFlag( SaveWordWrdSttLst, m_pAutoCapsCB->IsChecked());
+    if (m_xAutoAbbrevCB->get_state_changed_from_saved())
+        pAutoCorrect->SetAutoCorrFlag( ACFlags::SaveWordCplSttLst, m_xAutoAbbrevCB->get_active());
+    if (m_xAutoCapsCB->get_state_changed_from_saved())
+        pAutoCorrect->SetAutoCorrFlag( ACFlags::SaveWordWrdSttLst, m_xAutoCapsCB->get_active());
     return false;
 }
 
@@ -1580,11 +1363,10 @@ void OfaAutocorrExceptPage::SetLanguage(LanguageType eSet)
         // save old settings and fill anew
         RefillReplaceBoxes(false, eLang, eSet);
         eLastDialogLanguage = eSet;
-        delete pCompareClass;
-        pCompareClass = new CollatorWrapper( comphelper::getProcessComponentContext() );
+        pCompareClass.reset( new CollatorWrapper( comphelper::getProcessComponentContext() ) );
         pCompareClass->loadDefaultCollator( LanguageTag::convertToLocale( eLastDialogLanguage ), 0 );
-        ModifyHdl(*m_pAbbrevED);
-        ModifyHdl(*m_pDoubleCapsED);
+        ModifyHdl(*m_xAbbrevED);
+        ModifyHdl(*m_xDoubleCapsED);
     }
 }
 
@@ -1611,27 +1393,29 @@ void OfaAutocorrExceptPage::RefillReplaceBoxes(bool bFromReset,
             pArrays = &aStringsTable[eOldLanguage]; // create new array
         }
 
-        sal_Int32 i;
-        for(i = 0; i < m_pAbbrevLB->GetEntryCount(); i++)
-            pArrays->aAbbrevStrings.push_back(m_pAbbrevLB->GetEntry(i));
+        sal_Int32 i, nCount;
+        nCount = m_xAbbrevLB->n_children();
+        for(i = 0; i < nCount; i++)
+            pArrays->aAbbrevStrings.push_back(m_xAbbrevLB->get_text(i));
 
-        for(i = 0; i < m_pDoubleCapsLB->GetEntryCount(); i++)
-            pArrays->aDoubleCapsStrings.push_back(m_pDoubleCapsLB->GetEntry(i));
+        nCount = m_xDoubleCapsLB->n_children();
+        for(i = 0; i < nCount; i++)
+            pArrays->aDoubleCapsStrings.push_back(m_xDoubleCapsLB->get_text(i));
     }
-    m_pDoubleCapsLB->Clear();
-    m_pAbbrevLB->Clear();
+    m_xDoubleCapsLB->clear();
+    m_xAbbrevLB->clear();
     OUString sTemp;
-    m_pAbbrevED->SetText(sTemp);
-    m_pDoubleCapsED->SetText(sTemp);
+    m_xAbbrevED->set_text(sTemp);
+    m_xDoubleCapsED->set_text(sTemp);
 
     if(aStringsTable.find(eLang) != aStringsTable.end())
     {
         StringsArrays& rArrays = aStringsTable[eLang];
-        for(std::vector<OUString>::iterator i = rArrays.aAbbrevStrings.begin(); i != rArrays.aAbbrevStrings.end(); ++i)
-            m_pAbbrevLB->InsertEntry(*i);
+        for (auto const& elem : rArrays.aAbbrevStrings)
+            m_xAbbrevLB->append_text(elem);
 
-        for(std::vector<OUString>::iterator i = rArrays.aDoubleCapsStrings.begin(); i != rArrays.aDoubleCapsStrings.end(); ++i)
-            m_pDoubleCapsLB->InsertEntry(*i);
+        for (auto const& elem : rArrays.aDoubleCapsStrings)
+            m_xDoubleCapsLB->append_text(elem);
     }
     else
     {
@@ -1641,11 +1425,11 @@ void OfaAutocorrExceptPage::RefillReplaceBoxes(bool bFromReset,
         size_t i;
         for( i = 0; i < pCplList->size(); i++ )
         {
-            m_pAbbrevLB->InsertEntry((*pCplList)[i]);
+            m_xAbbrevLB->append_text((*pCplList)[i]);
         }
         for( i = 0; i < pWrdList->size(); i++ )
         {
-            m_pDoubleCapsLB->InsertEntry((*pWrdList)[i]);
+            m_xDoubleCapsLB->append_text((*pWrdList)[i]);
         }
     }
 }
@@ -1654,196 +1438,138 @@ void OfaAutocorrExceptPage::Reset( const SfxItemSet* )
 {
     SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
     RefillReplaceBoxes(true, eLang, eLang);
-    m_pAutoAbbrevCB->  Check(  pAutoCorrect->IsAutoCorrFlag( SaveWordCplSttLst ));
-    m_pAutoCapsCB->    Check(  pAutoCorrect->IsAutoCorrFlag( SaveWordWrdSttLst ));
-    m_pAutoAbbrevCB->SaveValue();
-    m_pAutoCapsCB->SaveValue();
+    m_xAutoAbbrevCB->set_active(pAutoCorrect->IsAutoCorrFlag( ACFlags::SaveWordCplSttLst));
+    m_xAutoCapsCB->set_active(pAutoCorrect->IsAutoCorrFlag( ACFlags::SaveWordWrdSttLst));
+    m_xAutoAbbrevCB->save_state();
+    m_xAutoCapsCB->save_state();
 }
 
-IMPL_LINK(OfaAutocorrExceptPage, NewDelButtonHdl, Button*, pBtn, void)
+IMPL_LINK(OfaAutocorrExceptPage, NewDelButtonHdl, weld::Button&, rBtn, void)
 {
-    NewDelHdl(pBtn);
+    NewDelHdl(&rBtn);
 }
 
-IMPL_LINK(OfaAutocorrExceptPage, NewDelActionHdl, AutoCorrEdit&, rEdit, bool)
+IMPL_LINK(OfaAutocorrExceptPage, NewDelActionHdl, weld::Entry&, rEdit, bool)
 {
-    return NewDelHdl(&rEdit);
-}
-
-bool OfaAutocorrExceptPage::NewDelHdl(void* pBtn)
-{
-    if((pBtn == m_pNewAbbrevPB || pBtn == m_pAbbrevED.get() )
-        && !m_pAbbrevED->GetText().isEmpty())
-    {
-        m_pAbbrevLB->InsertEntry(m_pAbbrevED->GetText());
-        ModifyHdl(*m_pAbbrevED);
-    }
-    else if(pBtn == m_pDelAbbrevPB)
-    {
-        m_pAbbrevLB->RemoveEntry(m_pAbbrevED->GetText());
-        ModifyHdl(*m_pAbbrevED);
-    }
-    else if((pBtn == m_pNewDoublePB || pBtn == m_pDoubleCapsED.get() )
-            && !m_pDoubleCapsED->GetText().isEmpty())
-    {
-        m_pDoubleCapsLB->InsertEntry(m_pDoubleCapsED->GetText());
-        ModifyHdl(*m_pDoubleCapsED);
-    }
-    else if(pBtn == m_pDelDoublePB)
-    {
-        m_pDoubleCapsLB->RemoveEntry(m_pDoubleCapsED->GetText());
-        ModifyHdl(*m_pDoubleCapsED);
-    }
+    NewDelHdl(&rEdit);
     return false;
 }
 
-IMPL_LINK(OfaAutocorrExceptPage, SelectHdl, ListBox&, rBox, void)
+void OfaAutocorrExceptPage::NewDelHdl(const weld::Widget* pBtn)
 {
-    if (&rBox == m_pAbbrevLB)
+    if ((pBtn == m_xNewAbbrevPB.get() || pBtn == m_xAbbrevED.get())
+        && !m_xAbbrevED->get_text().isEmpty())
     {
-        m_pAbbrevED->SetText(rBox.GetSelectEntry());
-        m_pNewAbbrevPB->Enable(false);
-        m_pDelAbbrevPB->Enable();
+        m_xAbbrevLB->append_text(m_xAbbrevED->get_text());
+        ModifyHdl(*m_xAbbrevED);
     }
-    else
+    else if(pBtn == m_xDelAbbrevPB.get())
     {
-        m_pDoubleCapsED->SetText(rBox.GetSelectEntry());
-        m_pNewDoublePB->Enable(false);
-        m_pDelDoublePB->Enable();
+        m_xAbbrevLB->remove_text(m_xAbbrevED->get_text());
+        ModifyHdl(*m_xAbbrevED);
+    }
+    else if((pBtn == m_xNewDoublePB.get() || pBtn == m_xDoubleCapsED.get() )
+            && !m_xDoubleCapsED->get_text().isEmpty())
+    {
+        m_xDoubleCapsLB->append_text(m_xDoubleCapsED->get_text());
+        ModifyHdl(*m_xDoubleCapsED);
+    }
+    else if (pBtn == m_xDelDoublePB.get())
+    {
+        m_xDoubleCapsLB->remove_text(m_xDoubleCapsED->get_text());
+        ModifyHdl(*m_xDoubleCapsED);
     }
 }
 
-IMPL_LINK(OfaAutocorrExceptPage, ModifyHdl, Edit&, rEdt, void)
+IMPL_LINK(OfaAutocorrExceptPage, SelectHdl, weld::TreeView&, rBox, void)
 {
-//  sal_Bool bSame = pEdt->GetText() == ->GetSelectEntry();
-    const OUString& sEntry = rEdt.GetText();
+    if (&rBox == m_xAbbrevLB.get())
+    {
+        m_xAbbrevED->set_text(rBox.get_selected_text());
+        m_xNewAbbrevPB->set_sensitive(false);
+        m_xDelAbbrevPB->set_sensitive(true);
+    }
+    else
+    {
+        m_xDoubleCapsED->set_text(rBox.get_selected_text());
+        m_xNewDoublePB->set_sensitive(false);
+        m_xDelDoublePB->set_sensitive(true);
+    }
+}
+
+IMPL_LINK(OfaAutocorrExceptPage, ModifyHdl, weld::Entry&, rEdt, void)
+{
+    const OUString& sEntry = rEdt.get_text();
     bool bEntryLen = !sEntry.isEmpty();
-    if(&rEdt == m_pAbbrevED)
+    if (&rEdt == m_xAbbrevED.get())
     {
-        bool bSame = lcl_FindEntry(*m_pAbbrevLB, sEntry, *pCompareClass);
-        if(bSame && sEntry != m_pAbbrevLB->GetSelectEntry())
-            rEdt.SetText(m_pAbbrevLB->GetSelectEntry());
-        m_pNewAbbrevPB->Enable(!bSame && bEntryLen);
-        m_pDelAbbrevPB->Enable(bSame && bEntryLen);
+        bool bSame = lcl_FindEntry(*m_xAbbrevLB, sEntry, *pCompareClass);
+        if(bSame && sEntry != m_xAbbrevLB->get_selected_text())
+            rEdt.set_text(m_xAbbrevLB->get_selected_text());
+        m_xNewAbbrevPB->set_sensitive(!bSame && bEntryLen);
+        m_xDelAbbrevPB->set_sensitive(bSame && bEntryLen);
     }
     else
     {
-        bool bSame = lcl_FindEntry(*m_pDoubleCapsLB, sEntry, *pCompareClass);
-        if(bSame && sEntry != m_pDoubleCapsLB->GetSelectEntry())
-            rEdt.SetText(m_pDoubleCapsLB->GetSelectEntry());
-        m_pNewDoublePB->Enable(!bSame && bEntryLen);
-        m_pDelDoublePB->Enable(bSame && bEntryLen);
+        bool bSame = lcl_FindEntry(*m_xDoubleCapsLB, sEntry, *pCompareClass);
+        if(bSame && sEntry != m_xDoubleCapsLB->get_selected_text())
+            rEdt.set_text(m_xDoubleCapsLB->get_selected_text());
+        m_xNewDoublePB->set_sensitive(!bSame && bEntryLen);
+        m_xDelDoublePB->set_sensitive(bSame && bEntryLen);
     }
 }
 
-VCL_BUILDER_FACTORY(AutoCorrEdit)
-
-void AutoCorrEdit::dispose()
-{
-    m_xReplaceTLB.disposeAndClear();
-    Edit::dispose();
-}
-
-AutoCorrEdit::~AutoCorrEdit() {
-    disposeOnce();
-}
-
-void AutoCorrEdit::ConnectColumn(const VclPtr<SvTabListBox>& rTable, sal_Int32 nCol)
-{
-    m_xReplaceTLB = rTable;
-    m_nCol = nCol;
-}
-
-void AutoCorrEdit::KeyInput( const KeyEvent& rKEvt )
-{
-    const vcl::KeyCode aKeyCode = rKEvt.GetKeyCode();
-    const sal_uInt16 nModifier = aKeyCode.GetModifier();
-    if( aKeyCode.GetCode() == KEY_RETURN )
-    {
-        // if there's nothing done on enter, call the
-        // base class after all to close the dialog
-        if(!nModifier && !aActionLink.Call(*this))
-                 Edit::KeyInput(rKEvt);
-    }
-    else if(bSpaces || aKeyCode.GetCode() != KEY_SPACE)
-        Edit::KeyInput(rKEvt);
-}
-
-void AutoCorrEdit::Resize()
-{
-    Edit::Resize();
-    if (!m_xReplaceTLB)
-        return;
-    m_xReplaceTLB->SetTab(m_nCol, GetPosPixel().X(), MapUnit::MapPixel);
-}
+namespace {
 
 enum OfaQuoteOptions
 {
     ADD_NONBRK_SPACE,
-    REPLACE_1ST
+    REPLACE_1ST,
+    TRANSLITERATE_RTL,
+    REPLACE_ANGLE_QUOTES
 };
 
-SvTreeListEntry* OfaQuoteTabPage::CreateEntry(OUString& rTxt, sal_uInt16 nCol)
-{
-    SvTreeListEntry* pEntry = new SvTreeListEntry;
-
-    if ( !pCheckButtonData )
-    {
-        pCheckButtonData = new SvLBoxButtonData(m_pSwCheckLB);
-        m_pSwCheckLB->SetCheckButtonData(pCheckButtonData);
-    }
-
-    pEntry->AddItem(o3tl::make_unique<SvLBoxContextBmp>(Image(), Image(), false));
-
-    if (nCol == CBCOL_SECOND)
-        pEntry->AddItem(o3tl::make_unique<SvLBoxString>(""));
-    else
-        pEntry->AddItem(o3tl::make_unique<SvLBoxButton>(SvLBoxButtonKind::EnabledCheckbox, pCheckButtonData));
-
-    if (nCol == CBCOL_FIRST)
-        pEntry->AddItem(o3tl::make_unique<SvLBoxString>(""));
-    else
-        pEntry->AddItem(o3tl::make_unique<SvLBoxButton>(SvLBoxButtonKind::EnabledCheckbox, pCheckButtonData));
-
-    pEntry->AddItem(o3tl::make_unique<OfaImpBrwString>(rTxt));
-
-    return pEntry;
 }
 
-OfaQuoteTabPage::OfaQuoteTabPage(vcl::Window* pParent, const SfxItemSet& rSet)
-    : SfxTabPage(pParent, "ApplyLocalizedPage", "cui/ui/applylocalizedpage.ui", &rSet)
+void OfaQuoteTabPage::CreateEntry(weld::TreeView& rCheckLB, const OUString& rTxt, sal_uInt16 nCol, sal_uInt16 nTextCol)
+{
+    rCheckLB.append();
+    const int nRow = rCheckLB.n_children() - 1;
+    if (nCol == CBCOL_FIRST || nCol == CBCOL_BOTH)
+        rCheckLB.set_toggle(nRow, TRISTATE_FALSE, CBCOL_FIRST);
+    if (nCol == CBCOL_SECOND || nCol == CBCOL_BOTH)
+        rCheckLB.set_toggle(nRow, TRISTATE_FALSE, CBCOL_SECOND);
+    rCheckLB.set_text(nRow, rTxt, nTextCol);
+}
+
+OfaQuoteTabPage::OfaQuoteTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
+    : SfxTabPage(pPage, pController, "cui/ui/applylocalizedpage.ui", "ApplyLocalizedPage", &rSet)
     , sNonBrkSpace(CuiResId(RID_SVXSTR_NON_BREAK_SPACE))
     , sOrdinal(CuiResId(RID_SVXSTR_ORDINAL))
-    , pCheckButtonData(nullptr)
+    , sTransliterateRTL(CuiResId(RID_SVXSTR_OLD_HUNGARIAN))
+    , sAngleQuotes(CuiResId(RID_SVXSTR_ANGLE_QUOTES))
     , cSglStartQuote(0)
     , cSglEndQuote(0)
     , cStartQuote(0)
     , cEndQuote(0)
+    , m_xSingleTypoCB(m_xBuilder->weld_check_button("singlereplace"))
+    , m_xSglStartQuotePB(m_xBuilder->weld_button("startsingle"))
+    , m_xSglStartExFT(m_xBuilder->weld_label("singlestartex"))
+    , m_xSglEndQuotePB(m_xBuilder->weld_button("endsingle"))
+    , m_xSglEndExFT(m_xBuilder->weld_label("singleendex"))
+    , m_xSglStandardPB(m_xBuilder->weld_button("defaultsingle"))
+    , m_xDoubleTypoCB(m_xBuilder->weld_check_button("doublereplace"))
+    , m_xDblStartQuotePB(m_xBuilder->weld_button("startdouble"))
+    , m_xDblStartExFT(m_xBuilder->weld_label("doublestartex"))
+    , m_xDblEndQuotePB(m_xBuilder->weld_button("enddouble"))
+    , m_xDblEndExFT(m_xBuilder->weld_label("doubleendex"))
+    , m_xDblStandardPB(m_xBuilder->weld_button("defaultdouble"))
+    , m_sStandard(m_xSglStartExFT->get_label())
+    , m_xCheckLB(m_xBuilder->weld_tree_view("checklist"))
+    , m_xSwCheckLB(m_xBuilder->weld_tree_view("list"))
 {
-    get(m_pCheckLB, "checklist");
-
-    SvSimpleTableContainer *pListContainer = get<SvSimpleTableContainer>("list");
-    Size aControlSize(252 , 85);
-    aControlSize = LogicToPixel(aControlSize, MapUnit::MapAppFont);
-    pListContainer->set_width_request(aControlSize.Width());
-    pListContainer->set_height_request(aControlSize.Height());
-    m_pSwCheckLB = VclPtr<OfaACorrCheckListBox>::Create(*pListContainer);
-
-    get(m_pSingleTypoCB, "singlereplace");
-    get(m_pSglStartQuotePB, "startsingle");
-    get(m_pSglStartExFT, "singlestartex");
-    get(m_pSglEndQuotePB, "endsingle");
-    get(m_pSglEndExFT, "singleendex");
-    get(m_pSglStandardPB, "defaultsingle");
-
-    get(m_pDoubleTypoCB, "doublereplace");
-    get(m_pDblStartQuotePB, "startdouble");
-    get(m_pDblStartExFT, "doublestartex");
-    get(m_pDblEndQuotePB, "enddouble");
-    get(m_pDblEndExFT, "doubleendex");
-    get(m_pDblStandardPB, "defaultdouble");
-
-    m_sStandard = get<FixedText>("singlestartex")->GetText();
+    m_xSwCheckLB->set_size_request(m_xSwCheckLB->get_approximate_digit_width() * 50,
+                                   m_xSwCheckLB->get_height_rows(6));
 
     bool bShowSWOptions = false;
 
@@ -1853,97 +1579,84 @@ OfaQuoteTabPage::OfaQuoteTabPage(vcl::Window* pParent, const SfxItemSet& rSet)
 
     if ( bShowSWOptions )
     {
-        static long aStaticTabs[]=
-        {
-            3, 0, 20, 40
-        };
-
-        m_pSwCheckLB->SetStyle(m_pSwCheckLB->GetStyle() | WB_HSCROLL| WB_VSCROLL);
-
-        m_pSwCheckLB->SvSimpleTable::SetTabs(aStaticTabs);
-        OUString sHeader = get<vcl::Window>("m")->GetText() + "\t" + get<vcl::Window>("t")->GetText() + "\t";
-        m_pSwCheckLB->InsertHeaderEntry( sHeader, HEADERBAR_APPEND,
-                        HeaderBarItemBits::CENTER | HeaderBarItemBits::VCENTER | HeaderBarItemBits::FIXEDPOS | HeaderBarItemBits::FIXED);
-        m_pCheckLB->Hide();
+        m_xSwCheckLB->enable_toggle_buttons(weld::ColumnToggleType::Check);
+        std::vector<int> aWidths;
+        aWidths.push_back(m_xSwCheckLB->get_pixel_size(m_xSwCheckLB->get_column_title(0)).Width() * 2);
+        aWidths.push_back(m_xSwCheckLB->get_pixel_size(m_xSwCheckLB->get_column_title(1)).Width() * 2);
+        m_xSwCheckLB->set_column_fixed_widths(aWidths);
+        m_xCheckLB->hide();
     }
     else
     {
-        m_pSwCheckLB->HideTable();
+        m_xCheckLB->enable_toggle_buttons(weld::ColumnToggleType::Check);
+        m_xSwCheckLB->hide();
     }
 
-    m_pDblStartQuotePB->SetClickHdl(LINK(this,    OfaQuoteTabPage, QuoteHdl));
-    m_pDblEndQuotePB->SetClickHdl(LINK(this,      OfaQuoteTabPage, QuoteHdl));
-    m_pSglStartQuotePB->SetClickHdl(LINK(this, OfaQuoteTabPage, QuoteHdl));
-    m_pSglEndQuotePB->SetClickHdl(LINK(this,   OfaQuoteTabPage, QuoteHdl));
-    m_pDblStandardPB->SetClickHdl(LINK(this,   OfaQuoteTabPage, StdQuoteHdl));
-    m_pSglStandardPB->SetClickHdl(LINK(this,   OfaQuoteTabPage, StdQuoteHdl));
+    m_xDblStartQuotePB->connect_clicked(LINK(this, OfaQuoteTabPage, QuoteHdl));
+    m_xDblEndQuotePB->connect_clicked(LINK(this, OfaQuoteTabPage, QuoteHdl));
+    m_xSglStartQuotePB->connect_clicked(LINK(this, OfaQuoteTabPage, QuoteHdl));
+    m_xSglEndQuotePB->connect_clicked(LINK(this, OfaQuoteTabPage, QuoteHdl));
+    m_xDblStandardPB->connect_clicked(LINK(this, OfaQuoteTabPage, StdQuoteHdl));
+    m_xSglStandardPB->connect_clicked(LINK(this, OfaQuoteTabPage, StdQuoteHdl));
 }
 
 OfaQuoteTabPage::~OfaQuoteTabPage()
 {
-    disposeOnce();
 }
 
-void OfaQuoteTabPage::dispose()
+std::unique_ptr<SfxTabPage> OfaQuoteTabPage::Create(weld::Container* pPage, weld::DialogController* pController,
+                                                    const SfxItemSet* rAttrSet)
 {
-    delete pCheckButtonData;
-    pCheckButtonData = nullptr;
-    m_pSwCheckLB.disposeAndClear();
-    m_pCheckLB.disposeAndClear();
-    m_pSingleTypoCB.clear();
-    m_pSglStartQuotePB.clear();
-    m_pSglStartExFT.clear();
-    m_pSglEndQuotePB.clear();
-    m_pSglEndExFT.clear();
-    m_pSglStandardPB.clear();
-    m_pDoubleTypoCB.clear();
-    m_pDblStartQuotePB.clear();
-    m_pDblStartExFT.clear();
-    m_pDblEndQuotePB.clear();
-    m_pDblEndExFT.clear();
-    m_pDblStandardPB.clear();
-    SfxTabPage::dispose();
-}
-
-VclPtr<SfxTabPage> OfaQuoteTabPage::Create( vcl::Window* pParent,
-                                            const SfxItemSet* rAttrSet)
-{
-    return VclPtr<OfaQuoteTabPage>::Create(pParent, *rAttrSet);
+    return std::make_unique<OfaQuoteTabPage>(pPage, pController, *rAttrSet);
 }
 
 bool OfaQuoteTabPage::FillItemSet( SfxItemSet*  )
 {
     SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
 
-    long nFlags = pAutoCorrect->GetFlags();
+    ACFlags nFlags = pAutoCorrect->GetFlags();
 
-    if (m_pCheckLB->IsVisible())
+    if (m_xCheckLB->get_visible())
     {
-        sal_uLong nPos = 0;
-        pAutoCorrect->SetAutoCorrFlag(AddNonBrkSpace, m_pCheckLB->IsChecked(nPos++));
-        pAutoCorrect->SetAutoCorrFlag(ChgOrdinalNumber, m_pCheckLB->IsChecked(nPos++));
+        int nPos = 0;
+        pAutoCorrect->SetAutoCorrFlag(ACFlags::AddNonBrkSpace, m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
+        pAutoCorrect->SetAutoCorrFlag(ACFlags::ChgOrdinalNumber, m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
+        pAutoCorrect->SetAutoCorrFlag(ACFlags::TransliterateRTL, m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
+        pAutoCorrect->SetAutoCorrFlag(ACFlags::ChgAngleQuotes, m_xCheckLB->get_toggle(nPos++) == TRISTATE_TRUE);
     }
 
     bool bModified = false;
-    if (m_pSwCheckLB->IsVisible())
+    if (m_xSwCheckLB->get_visible())
     {
         SvxSwAutoFormatFlags *pOpt = &pAutoCorrect->GetSwFlags();
 
-        bool bCheck = m_pSwCheckLB->IsChecked(ADD_NONBRK_SPACE);
+        bool bCheck = m_xSwCheckLB->get_toggle(ADD_NONBRK_SPACE, CBCOL_FIRST) == TRISTATE_TRUE;
         bModified |= pOpt->bAddNonBrkSpace != bCheck;
         pOpt->bAddNonBrkSpace = bCheck;
-        pAutoCorrect->SetAutoCorrFlag(AddNonBrkSpace,
-                            m_pSwCheckLB->IsChecked(ADD_NONBRK_SPACE, CBCOL_SECOND));
+        pAutoCorrect->SetAutoCorrFlag(ACFlags::AddNonBrkSpace,
+                            m_xSwCheckLB->get_toggle(ADD_NONBRK_SPACE, CBCOL_SECOND) == TRISTATE_TRUE);
 
-        bCheck = m_pSwCheckLB->IsChecked(REPLACE_1ST);
+        bCheck = m_xSwCheckLB->get_toggle(REPLACE_1ST, CBCOL_FIRST) == TRISTATE_TRUE;
         bModified |= pOpt->bChgOrdinalNumber != bCheck;
         pOpt->bChgOrdinalNumber = bCheck;
-        pAutoCorrect->SetAutoCorrFlag(ChgOrdinalNumber,
-                        m_pSwCheckLB->IsChecked(REPLACE_1ST, CBCOL_SECOND));
+        pAutoCorrect->SetAutoCorrFlag(ACFlags::ChgOrdinalNumber,
+                        m_xSwCheckLB->get_toggle(REPLACE_1ST, CBCOL_SECOND) == TRISTATE_TRUE);
+
+        bCheck = m_xSwCheckLB->get_toggle(TRANSLITERATE_RTL, CBCOL_FIRST) == TRISTATE_TRUE;
+        bModified |= pOpt->bTransliterateRTL != bCheck;
+        pOpt->bTransliterateRTL = bCheck;
+        pAutoCorrect->SetAutoCorrFlag(ACFlags::TransliterateRTL,
+                        m_xSwCheckLB->get_toggle(TRANSLITERATE_RTL, CBCOL_SECOND) == TRISTATE_TRUE);
+
+        bCheck = m_xSwCheckLB->get_toggle(REPLACE_ANGLE_QUOTES, CBCOL_FIRST) == TRISTATE_TRUE;
+        bModified |= pOpt->bChgAngleQuotes != bCheck;
+        pOpt->bChgAngleQuotes = bCheck;
+        pAutoCorrect->SetAutoCorrFlag(ACFlags::ChgAngleQuotes,
+                        m_xSwCheckLB->get_toggle(REPLACE_ANGLE_QUOTES, CBCOL_SECOND) == TRISTATE_TRUE);
     }
 
-    pAutoCorrect->SetAutoCorrFlag(ChgQuotes, m_pDoubleTypoCB->IsChecked());
-    pAutoCorrect->SetAutoCorrFlag(ChgSglQuotes, m_pSingleTypoCB->IsChecked());
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::ChgQuotes, m_xDoubleTypoCB->get_active());
+    pAutoCorrect->SetAutoCorrFlag(ACFlags::ChgSglQuotes, m_xSingleTypoCB->get_active());
     bool bReturn = nFlags != pAutoCorrect->GetFlags();
     if(cStartQuote != pAutoCorrect->GetStartDoubleQuote())
     {
@@ -1981,64 +1694,77 @@ bool OfaQuoteTabPage::FillItemSet( SfxItemSet*  )
 
 void OfaQuoteTabPage::ActivatePage( const SfxItemSet& )
 {
-    static_cast<OfaAutoCorrDlg*>(GetTabDialog())->EnableLanguage(false);
+    static_cast<OfaAutoCorrDlg*>(GetDialogController())->EnableLanguage(false);
 }
 
 void OfaQuoteTabPage::Reset( const SfxItemSet* )
 {
     SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
-    const long nFlags = pAutoCorrect->GetFlags();
+    const ACFlags nFlags = pAutoCorrect->GetFlags();
 
     // Initialize the Sw options
-    if (m_pSwCheckLB->IsVisible())
+    if (m_xSwCheckLB->get_visible())
     {
         SvxSwAutoFormatFlags *pOpt = &pAutoCorrect->GetSwFlags();
 
-        m_pSwCheckLB->SetUpdateMode( false );
-        m_pSwCheckLB->Clear();
+        m_xSwCheckLB->freeze();
+        m_xSwCheckLB->clear();
 
-        m_pSwCheckLB->GetModel()->Insert(CreateEntry(sNonBrkSpace, CBCOL_BOTH ));
-        m_pSwCheckLB->GetModel()->Insert(CreateEntry(sOrdinal, CBCOL_BOTH ));
+        CreateEntry(*m_xSwCheckLB, sNonBrkSpace, CBCOL_BOTH, 2);
+        CreateEntry(*m_xSwCheckLB, sOrdinal, CBCOL_BOTH, 2);
+        CreateEntry(*m_xSwCheckLB, sTransliterateRTL, CBCOL_BOTH, 2);
+        CreateEntry(*m_xSwCheckLB, sAngleQuotes, CBCOL_BOTH, 2);
 
-        m_pSwCheckLB->CheckEntryPos( ADD_NONBRK_SPACE, CBCOL_FIRST,    pOpt->bAddNonBrkSpace );
-        m_pSwCheckLB->CheckEntryPos( ADD_NONBRK_SPACE, CBCOL_SECOND,   0 != (nFlags & AddNonBrkSpace) );
-        m_pSwCheckLB->CheckEntryPos( REPLACE_1ST, CBCOL_FIRST,    pOpt->bChgOrdinalNumber );
-        m_pSwCheckLB->CheckEntryPos( REPLACE_1ST, CBCOL_SECOND,   0 != (nFlags & ChgOrdinalNumber) );
+        m_xSwCheckLB->set_toggle(ADD_NONBRK_SPACE, pOpt->bAddNonBrkSpace ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+        m_xSwCheckLB->set_toggle(ADD_NONBRK_SPACE, bool(nFlags & ACFlags::AddNonBrkSpace) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+        m_xSwCheckLB->set_toggle(REPLACE_1ST, pOpt->bChgOrdinalNumber ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+        m_xSwCheckLB->set_toggle(REPLACE_1ST, bool(nFlags & ACFlags::ChgOrdinalNumber) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+        m_xSwCheckLB->set_toggle(TRANSLITERATE_RTL, pOpt->bTransliterateRTL ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+        m_xSwCheckLB->set_toggle(TRANSLITERATE_RTL, bool(nFlags & ACFlags::TransliterateRTL) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
+        m_xSwCheckLB->set_toggle(REPLACE_ANGLE_QUOTES, pOpt->bChgAngleQuotes ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_FIRST);
+        m_xSwCheckLB->set_toggle(REPLACE_ANGLE_QUOTES, bool(nFlags & ACFlags::ChgAngleQuotes) ? TRISTATE_TRUE : TRISTATE_FALSE, CBCOL_SECOND);
 
-        m_pSwCheckLB->SetUpdateMode( true );
+        m_xSwCheckLB->thaw();
     }
 
     // Initialize the non Sw options
-    if (m_pCheckLB->IsVisible())
+    if (m_xCheckLB->get_visible())
     {
-        m_pCheckLB->SetUpdateMode(false);
-        m_pCheckLB->Clear();
+        m_xCheckLB->freeze();
+        m_xCheckLB->clear();
 
-        m_pCheckLB->InsertEntry( sNonBrkSpace );
-        m_pCheckLB->InsertEntry( sOrdinal );
+        int nPos = 0;
+        m_xCheckLB->append();
+        m_xCheckLB->set_toggle(nPos, bool(nFlags & ACFlags::AddNonBrkSpace) ? TRISTATE_TRUE : TRISTATE_FALSE);
+        m_xCheckLB->set_text(nPos++, sNonBrkSpace, 0);
+        m_xCheckLB->append();
+        m_xCheckLB->set_toggle(nPos, bool(nFlags & ACFlags::ChgOrdinalNumber) ? TRISTATE_TRUE : TRISTATE_FALSE);
+        m_xCheckLB->set_text(nPos++, sOrdinal, 0);
+        m_xCheckLB->append();
+        m_xCheckLB->set_toggle(nPos, bool(nFlags & ACFlags::TransliterateRTL) ? TRISTATE_TRUE : TRISTATE_FALSE);
+        m_xCheckLB->set_text(nPos++, sTransliterateRTL, 0);
+        m_xCheckLB->append();
+        m_xCheckLB->set_toggle(nPos, bool(nFlags & ACFlags::ChgAngleQuotes) ? TRISTATE_TRUE : TRISTATE_FALSE);
+        m_xCheckLB->set_text(nPos++, sAngleQuotes, 0);
 
-        sal_uLong nPos = 0;
-        m_pCheckLB->CheckEntryPos( nPos++, 0 != (nFlags & AddNonBrkSpace) );
-        m_pCheckLB->CheckEntryPos( nPos++, 0 != (nFlags & ChgOrdinalNumber) );
-
-        m_pCheckLB->SetUpdateMode(true);
+        m_xCheckLB->thaw();
     }
 
     // Initialize the quote stuffs
-    m_pDoubleTypoCB->Check(0 != (nFlags & ChgQuotes));
-    m_pSingleTypoCB->Check(0 != (nFlags & ChgSglQuotes));
-    m_pDoubleTypoCB->SaveValue();
-    m_pSingleTypoCB->SaveValue();
+    m_xDoubleTypoCB->set_active(bool(nFlags & ACFlags::ChgQuotes));
+    m_xSingleTypoCB->set_active(bool(nFlags & ACFlags::ChgSglQuotes));
+    m_xDoubleTypoCB->save_state();
+    m_xSingleTypoCB->save_state();
 
     cStartQuote = pAutoCorrect->GetStartDoubleQuote();
     cEndQuote = pAutoCorrect->GetEndDoubleQuote();
     cSglStartQuote = pAutoCorrect->GetStartSingleQuote();
     cSglEndQuote = pAutoCorrect->GetEndSingleQuote();
 
-    m_pSglStartExFT->SetText(ChangeStringExt_Impl(cSglStartQuote));
-    m_pSglEndExFT->SetText(ChangeStringExt_Impl(cSglEndQuote));
-    m_pDblStartExFT->SetText(ChangeStringExt_Impl(cStartQuote));
-    m_pDblEndExFT->SetText(ChangeStringExt_Impl(cEndQuote));
+    m_xSglStartExFT->set_label(ChangeStringExt_Impl(cSglStartQuote));
+    m_xSglEndExFT->set_label(ChangeStringExt_Impl(cSglEndQuote));
+    m_xDblStartExFT->set_label(ChangeStringExt_Impl(cStartQuote));
+    m_xDblEndExFT->set_label(ChangeStringExt_Impl(cEndQuote));
 }
 
 #define SGL_START       0
@@ -2047,20 +1773,20 @@ void OfaQuoteTabPage::Reset( const SfxItemSet* )
 #define DBL_END         3
 
 
-IMPL_LINK( OfaQuoteTabPage, QuoteHdl, Button*, pBtn, void )
+IMPL_LINK(OfaQuoteTabPage, QuoteHdl, weld::Button&, rBtn, void)
 {
     sal_uInt16 nMode = SGL_START;
-    if (pBtn == m_pSglEndQuotePB)
+    if (&rBtn == m_xSglEndQuotePB.get())
         nMode = SGL_END;
-    else if (pBtn == m_pDblStartQuotePB)
+    else if (&rBtn == m_xDblStartQuotePB.get())
         nMode = DBL_START;
-    else if (pBtn == m_pDblEndQuotePB)
+    else if (&rBtn == m_xDblEndQuotePB.get())
         nMode = DBL_END;
     // start character selection dialog
-    ScopedVclPtrInstance< SvxCharacterMap > pMap( this, true );
-    pMap->SetCharFont( OutputDevice::GetDefaultFont(DefaultFontType::LATIN_TEXT,
+    SvxCharacterMap aMap(GetFrameWeld(), nullptr, nullptr);
+    aMap.SetCharFont( OutputDevice::GetDefaultFont(DefaultFontType::LATIN_TEXT,
                         LANGUAGE_ENGLISH_US, GetDefaultFontFlags::OnlyOne ));
-    pMap->SetText(nMode < SGL_END ? CuiResId(RID_SVXSTR_STARTQUOTE)  : CuiResId(RID_SVXSTR_ENDQUOTE) );
+    aMap.set_title(nMode < SGL_END ? CuiResId(RID_SVXSTR_STARTQUOTE)  : CuiResId(RID_SVXSTR_ENDQUOTE));
     sal_UCS4 cDlg;
     SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
     LanguageType eLang = Application::GetSettings().GetLanguageTag().getLanguageType();
@@ -2092,52 +1818,51 @@ IMPL_LINK( OfaQuoteTabPage, QuoteHdl, Button*, pBtn, void )
             break;
 
     }
-    pMap->SetChar(  cDlg );
-    pMap->DisableFontSelection();
-    if(pMap->Execute() == RET_OK)
+    aMap.SetChar(  cDlg );
+    aMap.DisableFontSelection();
+    if (aMap.run() != RET_OK)
+        return;
+
+    sal_UCS4 cNewChar = aMap.GetChar();
+    switch( nMode )
     {
-        sal_UCS4 cNewChar = pMap->GetChar();
-        switch( nMode )
-        {
-            case SGL_START:
-                cSglStartQuote = cNewChar;
-                m_pSglStartExFT->SetText(ChangeStringExt_Impl(cNewChar));
-            break;
-            case SGL_END:
-                cSglEndQuote = cNewChar;
-                m_pSglEndExFT->SetText(ChangeStringExt_Impl(cNewChar));
-            break;
-            case DBL_START:
-                cStartQuote = cNewChar;
-                m_pDblStartExFT->SetText(ChangeStringExt_Impl(cNewChar));
-            break;
-            case DBL_END:
-                cEndQuote = cNewChar;
-                m_pDblEndExFT->SetText(ChangeStringExt_Impl(cNewChar));
-            break;
-        }
+        case SGL_START:
+            cSglStartQuote = cNewChar;
+            m_xSglStartExFT->set_label(ChangeStringExt_Impl(cNewChar));
+        break;
+        case SGL_END:
+            cSglEndQuote = cNewChar;
+            m_xSglEndExFT->set_label(ChangeStringExt_Impl(cNewChar));
+        break;
+        case DBL_START:
+            cStartQuote = cNewChar;
+            m_xDblStartExFT->set_label(ChangeStringExt_Impl(cNewChar));
+        break;
+        case DBL_END:
+            cEndQuote = cNewChar;
+            m_xDblEndExFT->set_label(ChangeStringExt_Impl(cNewChar));
+        break;
     }
 }
 
-IMPL_LINK( OfaQuoteTabPage, StdQuoteHdl, Button*, pBtn, void )
+IMPL_LINK(OfaQuoteTabPage, StdQuoteHdl, weld::Button&, rBtn, void)
 {
-    if (pBtn == m_pDblStandardPB)
+    if (&rBtn == m_xDblStandardPB.get())
     {
         cStartQuote = 0;
-        m_pDblStartExFT->SetText(ChangeStringExt_Impl(0));
+        m_xDblStartExFT->set_label(ChangeStringExt_Impl(0));
         cEndQuote = 0;
-        m_pDblEndExFT->SetText(ChangeStringExt_Impl(0));
+        m_xDblEndExFT->set_label(ChangeStringExt_Impl(0));
 
     }
     else
     {
         cSglStartQuote = 0;
-        m_pSglStartExFT->SetText(ChangeStringExt_Impl(0));
+        m_xSglStartExFT->set_label(ChangeStringExt_Impl(0));
         cSglEndQuote = 0;
-        m_pSglEndExFT->SetText(ChangeStringExt_Impl(0));
+        m_xSglEndExFT->set_label(ChangeStringExt_Impl(0));
     }
 }
-
 
 OUString OfaQuoteTabPage::ChangeStringExt_Impl( sal_UCS4 cChar )
 {
@@ -2164,38 +1889,35 @@ OUString OfaQuoteTabPage::ChangeStringExt_Impl( sal_UCS4 cChar )
     return aOUStr;
 }
 
-OfaAutoCompleteTabPage::OfaAutoCompleteTabPage(vcl::Window* pParent,
+OfaAutoCompleteTabPage::OfaAutoCompleteTabPage(weld::Container* pPage, weld::DialogController* pController,
     const SfxItemSet& rSet)
-    : SfxTabPage(pParent, "WordCompletionPage",
-        "cui/ui/wordcompletionpage.ui", &rSet)
+    : SfxTabPage(pPage, pController, "cui/ui/wordcompletionpage.ui",
+                 "WordCompletionPage", &rSet)
     , m_pAutoCompleteList(nullptr)
     , m_nAutoCmpltListCnt(0)
+    , m_xCBActiv(m_xBuilder->weld_check_button("enablewordcomplete"))
+    , m_xCBAppendSpace(m_xBuilder->weld_check_button("appendspace"))
+    , m_xCBAsTip(m_xBuilder->weld_check_button("showastip"))
+    , m_xCBCollect(m_xBuilder->weld_check_button("collectwords"))
+    , m_xCBRemoveList(m_xBuilder->weld_check_button("whenclosing"))
+    , m_xDCBExpandKey(m_xBuilder->weld_combo_box("acceptwith"))
+    , m_xNFMinWordlen(m_xBuilder->weld_spin_button("minwordlen"))
+    , m_xNFMaxEntries(m_xBuilder->weld_spin_button("maxentries"))
+    , m_xLBEntries(m_xBuilder->weld_tree_view("entries"))
+    , m_xPBEntries(m_xBuilder->weld_button("delete"))
 {
-    get(m_pCBActiv, "enablewordcomplete");
-    get(m_pCBAppendSpace, "appendspace");
-    get(m_pCBAsTip, "showastip");
-    get(m_pCBCollect, "collectwords");
-    get(m_pCBRemoveList, "whenclosing");
-
     //fdo#65595, we need height-for-width support here, but for now we can
     //bodge it
-    Size aPrefSize(m_pCBRemoveList->get_preferred_size());
-    Size aSize(m_pCBRemoveList->CalcMinimumSize(32*approximate_char_width()));
-    if (aPrefSize.Width() > aSize.Width())
+    Size aPrefSize(m_xCBRemoveList->get_preferred_size());
+    int nMaxWidth = m_xCBRemoveList->get_approximate_digit_width() * 40;
+    if (aPrefSize.Width() > nMaxWidth)
     {
-        m_pCBRemoveList->set_width_request(aSize.Width());
-        m_pCBRemoveList->set_height_request(aSize.Height());
+        m_xCBRemoveList->set_label_line_wrap(true);
+        m_xCBRemoveList->set_size_request(nMaxWidth, -1);
     }
 
-    get(m_pDCBExpandKey, "acceptwith");
-    get(m_pNFMinWordlen, "minwordlen");
-    get(m_pNFMaxEntries, "maxentries");
-    get(m_pLBEntries, "entries");
-    m_pLBEntries->SetPage(this);
-    aSize = LogicToPixel(Size(121, 158), MapUnit::MapAppFont);
-    m_pLBEntries->set_width_request(aSize.Width());
-    m_pLBEntries->set_height_request(aSize.Height());
-    get(m_pPBEntries, "delete");
+    m_xLBEntries->set_size_request(m_xLBEntries->get_approximate_digit_width() * 30,
+                                   m_xLBEntries->get_height_rows(10));
 
     // the defined KEYs
     static const sal_uInt16 aKeyCodes[] = {
@@ -2209,42 +1931,26 @@ OfaAutoCompleteTabPage::OfaAutoCompleteTabPage(vcl::Window* pParent,
 
     for( const sal_uInt16* pKeys = aKeyCodes; *pKeys; ++pKeys )
     {
-        vcl::KeyCode aKCode( *pKeys );
-        sal_Int32 nPos = m_pDCBExpandKey->InsertEntry( aKCode.GetName() );
-        m_pDCBExpandKey->SetEntryData( nPos, reinterpret_cast<void*>(*pKeys) );
-        if( KEY_RETURN == *pKeys )      // default to RETURN
-            m_pDCBExpandKey->SelectEntryPos( nPos );
+        vcl::KeyCode aKCode(*pKeys);
+        m_xDCBExpandKey->append(OUString::number(static_cast<sal_Int32>(*pKeys)), aKCode.GetName());
+        if (KEY_RETURN == *pKeys)      // default to RETURN
+            m_xDCBExpandKey->set_active(std::distance(aKeyCodes, pKeys));
     }
 
-    m_pPBEntries->SetClickHdl(LINK(this, OfaAutoCompleteTabPage, DeleteHdl));
-    m_pCBActiv->SetToggleHdl(LINK(this, OfaAutoCompleteTabPage, CheckHdl));
-    m_pCBCollect->SetToggleHdl(LINK(this, OfaAutoCompleteTabPage, CheckHdl));
+    m_xPBEntries->connect_clicked(LINK(this, OfaAutoCompleteTabPage, DeleteHdl));
+    m_xCBActiv->connect_toggled(LINK(this, OfaAutoCompleteTabPage, CheckHdl));
+    m_xCBCollect->connect_toggled(LINK(this, OfaAutoCompleteTabPage, CheckHdl));
+    m_xLBEntries->connect_key_release(LINK(this, OfaAutoCompleteTabPage, KeyReleaseHdl));
 }
 
 OfaAutoCompleteTabPage::~OfaAutoCompleteTabPage()
 {
-    disposeOnce();
 }
 
-void OfaAutoCompleteTabPage::dispose()
+std::unique_ptr<SfxTabPage> OfaAutoCompleteTabPage::Create(weld::Container* pPage, weld::DialogController* pController,
+                                                  const SfxItemSet* rSet)
 {
-    m_pCBActiv.clear();
-    m_pCBAppendSpace.clear();
-    m_pCBAsTip.clear();
-    m_pCBCollect.clear();
-    m_pCBRemoveList.clear();
-    m_pDCBExpandKey.clear();
-    m_pNFMinWordlen.clear();
-    m_pNFMaxEntries.clear();
-    m_pLBEntries.clear();
-    m_pPBEntries.clear();
-    SfxTabPage::dispose();
-}
-
-VclPtr<SfxTabPage> OfaAutoCompleteTabPage::Create( vcl::Window* pParent,
-                                                   const SfxItemSet* rSet)
-{
-    return VclPtr<OfaAutoCompleteTabPage>::Create( pParent, *rSet );
+    return std::make_unique<OfaAutoCompleteTabPage>(pPage, pController, *rSet);
 }
 
 bool OfaAutoCompleteTabPage::FillItemSet( SfxItemSet* )
@@ -2254,39 +1960,39 @@ bool OfaAutoCompleteTabPage::FillItemSet( SfxItemSet* )
     SvxSwAutoFormatFlags *pOpt = &pAutoCorrect->GetSwFlags();
     sal_uInt16 nVal;
 
-    bCheck = m_pCBActiv->IsChecked();
+    bCheck = m_xCBActiv->get_active();
     bModified |= pOpt->bAutoCompleteWords != bCheck;
     pOpt->bAutoCompleteWords = bCheck;
-    bCheck = m_pCBCollect->IsChecked();
+    bCheck = m_xCBCollect->get_active();
     bModified |= pOpt->bAutoCmpltCollectWords != bCheck;
     pOpt->bAutoCmpltCollectWords = bCheck;
-    bCheck = !m_pCBRemoveList->IsChecked(); // inverted value!
+    bCheck = !m_xCBRemoveList->get_active(); // inverted value!
     bModified |= pOpt->bAutoCmpltKeepList != bCheck;
     pOpt->bAutoCmpltKeepList = bCheck;
-    bCheck = m_pCBAppendSpace->IsChecked();
+    bCheck = m_xCBAppendSpace->get_active();
     bModified |= pOpt->bAutoCmpltAppendBlanc != bCheck;
     pOpt->bAutoCmpltAppendBlanc = bCheck;
-    bCheck = m_pCBAsTip->IsChecked();
+    bCheck = m_xCBAsTip->get_active();
     bModified |= pOpt->bAutoCmpltShowAsTip != bCheck;
     pOpt->bAutoCmpltShowAsTip = bCheck;
 
-    nVal = (sal_uInt16)m_pNFMinWordlen->GetValue();
+    nVal = static_cast<sal_uInt16>(m_xNFMinWordlen->get_value());
     bModified |= nVal != pOpt->nAutoCmpltWordLen;
     pOpt->nAutoCmpltWordLen = nVal;
 
-    nVal = (sal_uInt16)m_pNFMaxEntries->GetValue();
+    nVal = static_cast<sal_uInt16>(m_xNFMaxEntries->get_value());
     bModified |= nVal != pOpt->nAutoCmpltListLen;
     pOpt->nAutoCmpltListLen = nVal;
 
-    const sal_Int32 nPos = m_pDCBExpandKey->GetSelectEntryPos();
-    if( nPos < m_pDCBExpandKey->GetEntryCount() )
+    const int nPos = m_xDCBExpandKey->get_active();
+    if (nPos != -1)
     {
-        sal_uLong nKey = reinterpret_cast<sal_uLong>(m_pDCBExpandKey->GetEntryData( nPos ));
+        sal_Int32 nKey = m_xDCBExpandKey->get_id(nPos).toInt32();
         bModified |= nKey != pOpt->nAutoCmpltExpandKey;
-        pOpt->nAutoCmpltExpandKey = (sal_uInt16)nKey;
+        pOpt->nAutoCmpltExpandKey = static_cast<sal_uInt16>(nKey);
     }
 
-    if (m_pAutoCompleteList && m_nAutoCmpltListCnt != m_pLBEntries->GetEntryCount())
+    if (m_pAutoCompleteList && m_nAutoCmpltListCnt != m_xLBEntries->n_children())
     {
         bModified = true;
         pOpt->m_pAutoCompleteList = m_pAutoCompleteList;
@@ -2305,27 +2011,29 @@ void OfaAutoCompleteTabPage::Reset( const SfxItemSet*  )
     SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
     SvxSwAutoFormatFlags *pOpt = &pAutoCorrect->GetSwFlags();
 
-    m_pCBActiv->Check( pOpt->bAutoCompleteWords );
-    m_pCBCollect->Check( pOpt->bAutoCmpltCollectWords );
-    m_pCBRemoveList->Check( !pOpt->bAutoCmpltKeepList ); //inverted value!
-    m_pCBAppendSpace->Check( pOpt->bAutoCmpltAppendBlanc );
-    m_pCBAsTip->Check( pOpt->bAutoCmpltShowAsTip );
+    m_xCBActiv->set_active( pOpt->bAutoCompleteWords );
+    m_xCBCollect->set_active( pOpt->bAutoCmpltCollectWords );
+    m_xCBRemoveList->set_active( !pOpt->bAutoCmpltKeepList ); //inverted value!
+    m_xCBAppendSpace->set_active( pOpt->bAutoCmpltAppendBlanc );
+    m_xCBAsTip->set_active( pOpt->bAutoCmpltShowAsTip );
 
-    m_pNFMinWordlen->SetValue( pOpt->nAutoCmpltWordLen );
-    m_pNFMaxEntries->SetValue( pOpt->nAutoCmpltListLen );
+    m_xNFMinWordlen->set_value( pOpt->nAutoCmpltWordLen );
+    m_xNFMaxEntries->set_value( pOpt->nAutoCmpltListLen );
 
     // select the specific KeyCode:
     {
-        sal_uLong nKey = pOpt->nAutoCmpltExpandKey;
-        for( sal_Int32 n = 0, nCnt = m_pDCBExpandKey->GetEntryCount(); n < nCnt; ++n )
-            if( nKey == reinterpret_cast<sal_uLong>(m_pDCBExpandKey->GetEntryData( n )))
+        sal_Int32 nKey = pOpt->nAutoCmpltExpandKey;
+        for (int n = 0, nCnt = m_xDCBExpandKey->get_count(); n < nCnt; ++n)
+        {
+            if (nKey == m_xDCBExpandKey->get_id(n).toInt32())
             {
-                m_pDCBExpandKey->SelectEntryPos( n );
+                m_xDCBExpandKey->set_active(n);
                 break;
             }
+        }
     }
 
-    if (pOpt->m_pAutoCompleteList && pOpt->m_pAutoCompleteList->size())
+    if (pOpt->m_pAutoCompleteList && !pOpt->m_pAutoCompleteList->empty())
     {
         m_pAutoCompleteList = const_cast<editeng::SortedAutoCompleteStrings*>(
                 pOpt->m_pAutoCompleteList);
@@ -2335,168 +2043,130 @@ void OfaAutoCompleteTabPage::Reset( const SfxItemSet*  )
         {
             const OUString* pStr =
                 &(*m_pAutoCompleteList)[n]->GetAutoCompleteString();
-            sal_Int32 nPos = m_pLBEntries->InsertEntry( *pStr );
-            m_pLBEntries->SetEntryData( nPos, const_cast<OUString *>(pStr) );
+            OUString sId(OUString::number(reinterpret_cast<sal_Int64>(pStr)));
+            m_xLBEntries->append(sId, *pStr);
         }
     }
     else
     {
-        m_pLBEntries->Disable();
-        m_pPBEntries->Disable();
+        m_xLBEntries->set_sensitive(false);
+        m_xPBEntries->set_sensitive(false);
     }
 
-    CheckHdl(*m_pCBActiv);
-    CheckHdl(*m_pCBCollect);
+    CheckHdl(*m_xCBActiv);
+    CheckHdl(*m_xCBCollect);
 }
 
 void OfaAutoCompleteTabPage::ActivatePage( const SfxItemSet& )
 {
-    static_cast<OfaAutoCorrDlg*>(GetTabDialog())->EnableLanguage( false );
+    static_cast<OfaAutoCorrDlg*>(GetDialogController())->EnableLanguage( false );
 }
 
-IMPL_LINK_NOARG(OfaAutoCompleteTabPage, DeleteHdl, Button*, void)
+IMPL_LINK_NOARG(OfaAutoCompleteTabPage, DeleteHdl, weld::Button&, void)
 {
-    sal_Int32 nSelCnt =
-        (m_pAutoCompleteList) ? m_pLBEntries->GetSelectEntryCount() : 0;
-    while( nSelCnt )
+    auto rows = m_xLBEntries->get_selected_rows();
+    std::sort(rows.begin(), rows.end());
+    while (!rows.empty())
     {
-        sal_Int32 nPos = m_pLBEntries->GetSelectEntryPos( --nSelCnt );
-        OUString* pStr = static_cast<OUString*>(m_pLBEntries->GetEntryData(nPos));
-        m_pLBEntries->RemoveEntry( nPos );
+        sal_Int32 nPos = rows.back();
+        OUString* pStr = reinterpret_cast<OUString*>(m_xLBEntries->get_id(nPos).toInt64());
+        m_xLBEntries->remove(nPos);
         editeng::IAutoCompleteString hack(*pStr); // UGLY
         m_pAutoCompleteList->erase(&hack);
+        rows.pop_back();
     }
 }
 
-IMPL_LINK( OfaAutoCompleteTabPage, CheckHdl, CheckBox&, rBox, void )
+IMPL_LINK(OfaAutoCompleteTabPage, CheckHdl, weld::ToggleButton&, rBox, void)
 {
-    bool bEnable = rBox.IsChecked();
-    if (&rBox == m_pCBActiv)
+    bool bEnable = rBox.get_active();
+    if (&rBox == m_xCBActiv.get())
     {
-        m_pCBAppendSpace->Enable( bEnable );
-        m_pCBAppendSpace->Enable( bEnable );
-        m_pCBAsTip->Enable( bEnable );
-        m_pDCBExpandKey->Enable( bEnable );
+        m_xCBAppendSpace->set_sensitive(bEnable);
+        m_xCBAppendSpace->set_sensitive(bEnable);
+        m_xCBAsTip->set_sensitive(bEnable);
+        m_xDCBExpandKey->set_sensitive(bEnable);
     }
-    else if (m_pCBCollect == &rBox)
-        m_pCBRemoveList->Enable( bEnable );
+    else if (&rBox == m_xCBCollect.get())
+        m_xCBRemoveList->set_sensitive(bEnable);
 }
 
 void OfaAutoCompleteTabPage::CopyToClipboard() const
 {
-    sal_Int32 nSelCnt = m_pLBEntries->GetSelectEntryCount();
-    if (m_pAutoCompleteList && nSelCnt)
+    auto rows = m_xLBEntries->get_selected_rows();
+    if (!(m_pAutoCompleteList && !rows.empty()))
+        return;
+
+    rtl::Reference<TransferDataContainer> pCntnr = new TransferDataContainer;
+
+    OStringBuffer sData;
+
+    rtl_TextEncoding nEncode = osl_getThreadTextEncoding();
+
+    for (auto a : rows)
     {
-        rtl::Reference<TransferDataContainer> pCntnr = new TransferDataContainer;
-
-        OStringBuffer sData;
-
-        rtl_TextEncoding nEncode = osl_getThreadTextEncoding();
-
-        for( sal_Int32 n = 0; n < nSelCnt; ++n )
-        {
-            sData.append(OUStringToOString(m_pLBEntries->GetSelectEntry(n),
-                nEncode));
+        sData.append(OUStringToOString(m_xLBEntries->get_text(a), nEncode));
 #if defined(_WIN32)
-            sData.append("\015\012");
+        sData.append("\015\012");
 #else
-            sData.append("\012");
+        sData.append("\012");
 #endif
-        }
-        pCntnr->CopyByteString( SotClipboardFormatId::STRING, sData.makeStringAndClear() );
-        pCntnr->CopyToClipboard( static_cast<vcl::Window*>(const_cast<OfaAutoCompleteTabPage *>(this)) );
     }
+    pCntnr->CopyByteString( SotClipboardFormatId::STRING, sData.makeStringAndClear() );
+    pCntnr->CopyToClipboard(GetSystemClipboard());
 }
 
-OfaAutoCompleteTabPage::AutoCompleteMultiListBox::~AutoCompleteMultiListBox()
+IMPL_LINK(OfaAutoCompleteTabPage, KeyReleaseHdl, const KeyEvent&, rEvent, bool)
 {
-    disposeOnce();
-}
-
-void OfaAutoCompleteTabPage::AutoCompleteMultiListBox::dispose()
-{
-    m_pPage.clear();
-    MultiListBox::dispose();
-}
-
-bool OfaAutoCompleteTabPage::AutoCompleteMultiListBox::PreNotify(
-            NotifyEvent& rNEvt )
-{
-    bool bHandled = MultiListBox::PreNotify( rNEvt );
-
-    if( !bHandled && MouseNotifyEvent::KEYUP == rNEvt.GetType() )
+    bool bHandled = false;
+    const vcl::KeyCode& rKeyCode = rEvent.GetKeyCode();
+    switch (rKeyCode.GetModifier() | rKeyCode.GetCode())
     {
-        const vcl::KeyCode& rKeyCode = rNEvt.GetKeyEvent()->GetKeyCode();
-        switch( rKeyCode.GetModifier() | rKeyCode.GetCode() )
-        {
         case KEY_DELETE:
-            m_pPage->DeleteHdl( nullptr );
+            DeleteHdl(*m_xPBEntries);
             bHandled = true;
             break;
-
         default:
-            if( KeyFuncType::COPY == rKeyCode.GetFunction() )
+            if (KeyFuncType::COPY == rKeyCode.GetFunction())
             {
-                m_pPage->CopyToClipboard();
+                CopyToClipboard();
                 bHandled = true;
             }
             break;
-        }
     }
     return bHandled;
 }
 
-VCL_BUILDER_DECL_FACTORY(AutoCompleteMultiListBox)
-{
-    WinBits nWinBits = WB_TABSTOP;
-
-    OUString sBorder = VclBuilder::extractCustomProperty(rMap);
-    if (!sBorder.isEmpty())
-       nWinBits |= WB_BORDER;
-
-    rRet = VclPtr<OfaAutoCompleteTabPage::AutoCompleteMultiListBox>::Create(pParent, nWinBits);
-}
-
 // class OfaSmartTagOptionsTabPage ---------------------------------------------
 
-OfaSmartTagOptionsTabPage::OfaSmartTagOptionsTabPage( vcl::Window* pParent,
-                                                      const SfxItemSet& rSet )
-    : SfxTabPage(pParent, "SmartTagOptionsPage", "cui/ui/smarttagoptionspage.ui", &rSet)
+OfaSmartTagOptionsTabPage::OfaSmartTagOptionsTabPage(weld::Container* pPage, weld::DialogController* pController,
+                                                     const SfxItemSet& rSet )
+    : SfxTabPage(pPage, pController, "cui/ui/smarttagoptionspage.ui", "SmartTagOptionsPage", &rSet)
+    , m_xMainCB(m_xBuilder->weld_check_button("main"))
+    , m_xSmartTagTypesLB(m_xBuilder->weld_tree_view("list"))
+    , m_xPropertiesPB(m_xBuilder->weld_button("properties"))
 {
-    get(m_pMainCB, "main");
-    get(m_pSmartTagTypesLB, "list");
-    get(m_pPropertiesPB, "properties");
+    m_xSmartTagTypesLB->set_size_request(m_xSmartTagTypesLB->get_approximate_digit_width() * 50,
+                                         m_xSmartTagTypesLB->get_height_rows(6));
 
-    // some options for the list box:
-    m_pSmartTagTypesLB->SetStyle( m_pSmartTagTypesLB->GetStyle() | WB_HSCROLL | WB_HIDESELECTION );
-    m_pSmartTagTypesLB->SetHighlightRange();
-    Size aControlSize(LogicToPixel(Size(172, 154), MapUnit::MapAppFont));
-    m_pSmartTagTypesLB->set_width_request(aControlSize.Width());
-    m_pSmartTagTypesLB->set_height_request(aControlSize.Height());
+    m_xSmartTagTypesLB->enable_toggle_buttons(weld::ColumnToggleType::Check);
 
     // set the handlers:
-    m_pMainCB->SetToggleHdl(LINK(this, OfaSmartTagOptionsTabPage, CheckHdl));
-    m_pPropertiesPB->SetClickHdl(LINK(this, OfaSmartTagOptionsTabPage, ClickHdl));
-    m_pSmartTagTypesLB->SetSelectHdl(LINK(this, OfaSmartTagOptionsTabPage, SelectHdl));
+    m_xMainCB->connect_toggled(LINK(this, OfaSmartTagOptionsTabPage, CheckHdl));
+    m_xPropertiesPB->connect_clicked(LINK(this, OfaSmartTagOptionsTabPage, ClickHdl));
+    m_xSmartTagTypesLB->connect_changed(LINK(this, OfaSmartTagOptionsTabPage, SelectHdl));
 }
 
 OfaSmartTagOptionsTabPage::~OfaSmartTagOptionsTabPage()
 {
-    disposeOnce();
 }
 
-void OfaSmartTagOptionsTabPage::dispose()
+std::unique_ptr<SfxTabPage> OfaSmartTagOptionsTabPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet)
 {
-    m_pMainCB.clear();
-    m_pSmartTagTypesLB.clear();
-    m_pPropertiesPB.clear();
-    SfxTabPage::dispose();
+    return std::make_unique<OfaSmartTagOptionsTabPage>(pPage, pController, *rSet);
 }
 
-VclPtr<SfxTabPage> OfaSmartTagOptionsTabPage::Create( vcl::Window* pParent, const SfxItemSet* rSet)
-{
-    return VclPtr<OfaSmartTagOptionsTabPage>::Create( pParent, *rSet );
-}
+namespace {
 
 /** This struct is used to associate list box entries with smart tag data
 */
@@ -2514,22 +2184,23 @@ struct ImplSmartTagLBUserData
         mnSmartTagIdx( nSmartTagIdx ) {}
 };
 
-/** Clears m_pSmartTagTypesLB
+}
+
+/** Clears m_xSmartTagTypesLB
 */
 void OfaSmartTagOptionsTabPage::ClearListBox()
 {
-    const sal_uLong nCount = m_pSmartTagTypesLB->GetEntryCount();
-    for ( sal_uLong i = 0; i < nCount; ++i )
+    const int nCount = m_xSmartTagTypesLB->n_children();
+    for (int i = 0; i < nCount; ++i)
     {
-        const SvTreeListEntry* pEntry = m_pSmartTagTypesLB->GetEntry(i);
-        const ImplSmartTagLBUserData* pUserData = static_cast< ImplSmartTagLBUserData* >(pEntry->GetUserData());
+        const ImplSmartTagLBUserData* pUserData = reinterpret_cast<ImplSmartTagLBUserData*>(m_xSmartTagTypesLB->get_id(i).toInt64());
         delete pUserData;
     }
 
-    m_pSmartTagTypesLB->Clear();
+    m_xSmartTagTypesLB->clear();
 }
 
-/** Inserts items into m_pSmartTagTypesLB
+/** Inserts items into m_xSmartTagTypesLB
 */
 void OfaSmartTagOptionsTabPage::FillListBox( const SmartTagMgr& rSmartTagMgr )
 {
@@ -2542,7 +2213,7 @@ void OfaSmartTagOptionsTabPage::FillListBox( const SmartTagMgr& rSmartTagMgr )
 
     for ( sal_uInt32 i = 0; i < nNumberOfRecognizers; ++i )
     {
-        uno::Reference< smarttags::XSmartTagRecognizer > xRec = rSmartTagMgr.GetRecognizer(i);
+        const uno::Reference< smarttags::XSmartTagRecognizer >& xRec = rSmartTagMgr.GetRecognizer(i);
 
         const OUString aName = xRec->getName( aLocale );
         const sal_Int32 nNumberOfSupportedSmartTags = xRec->getSmartTagCount();
@@ -2557,67 +2228,62 @@ void OfaSmartTagOptionsTabPage::FillListBox( const SmartTagMgr& rSmartTagMgr )
 
             const OUString aLBEntry = aSmartTagCaption + " (" + aName + ")";
 
-            SvTreeListEntry* pEntry = m_pSmartTagTypesLB->SvTreeListBox::InsertEntry( aLBEntry );
-            if ( pEntry )
-            {
-                const bool bCheck = rSmartTagMgr.IsSmartTagTypeEnabled( aSmartTagType );
-                m_pSmartTagTypesLB->SetCheckButtonState( pEntry, bCheck ? SvButtonState::Checked : SvButtonState::Unchecked );
-                pEntry->SetUserData(static_cast<void*>(new ImplSmartTagLBUserData( aSmartTagType, xRec, j ) ) );
-            }
+            m_xSmartTagTypesLB->append();
+            const int nRow = m_xSmartTagTypesLB->n_children() - 1;
+            const bool bCheck = rSmartTagMgr.IsSmartTagTypeEnabled( aSmartTagType );
+            m_xSmartTagTypesLB->set_toggle(nRow, bCheck ? TRISTATE_TRUE : TRISTATE_FALSE);
+            m_xSmartTagTypesLB->set_text(nRow, aLBEntry, 0);
+            m_xSmartTagTypesLB->set_id(nRow, OUString::number(reinterpret_cast<sal_Int64>(new ImplSmartTagLBUserData(aSmartTagType, xRec, j))));
         }
     }
 }
 
 /** Handler for the push button
 */
-IMPL_LINK_NOARG(OfaSmartTagOptionsTabPage, ClickHdl, Button*, void)
+IMPL_LINK_NOARG(OfaSmartTagOptionsTabPage, ClickHdl, weld::Button&, void)
 {
-    const sal_uLong nPos = m_pSmartTagTypesLB->GetSelectEntryPos();
-    const SvTreeListEntry* pEntry = m_pSmartTagTypesLB->GetEntry(nPos);
-    const ImplSmartTagLBUserData* pUserData = static_cast< ImplSmartTagLBUserData* >(pEntry->GetUserData());
+    const int nPos = m_xSmartTagTypesLB->get_selected_index();
+    const ImplSmartTagLBUserData* pUserData = reinterpret_cast<ImplSmartTagLBUserData*>(m_xSmartTagTypesLB->get_id(nPos).toInt64());
     uno::Reference< smarttags::XSmartTagRecognizer > xRec = pUserData->mxRec;
     const sal_Int32 nSmartTagIdx = pUserData->mnSmartTagIdx;
 
-     const lang::Locale aLocale( LanguageTag::convertToLocale( eLastDialogLanguage ) );
+    const lang::Locale aLocale( LanguageTag::convertToLocale( eLastDialogLanguage ) );
     if ( xRec->hasPropertyPage( nSmartTagIdx, aLocale ) )
         xRec->displayPropertyPage( nSmartTagIdx, aLocale );
 }
 
 /** Handler for the check box
 */
-IMPL_LINK_NOARG(OfaSmartTagOptionsTabPage, CheckHdl, CheckBox&, void)
+IMPL_LINK_NOARG(OfaSmartTagOptionsTabPage, CheckHdl, weld::ToggleButton&, void)
 {
-    const bool bEnable = m_pMainCB->IsChecked();
-    m_pSmartTagTypesLB->Enable( bEnable );
-    m_pSmartTagTypesLB->Invalidate();
-    m_pPropertiesPB->Enable( false );
+    const bool bEnable = m_xMainCB->get_active();
+    m_xSmartTagTypesLB->set_sensitive(bEnable);
+    m_xPropertiesPB->set_sensitive(false);
 
     // if the controls are currently enabled, we still have to check
     // if the properties button should be disabled because the currently
-    // seleted smart tag type does not have a properties dialog.
+    // selected smart tag type does not have a properties dialog.
     // We do this by calling SelectHdl:
-    if ( bEnable )
-        SelectHdl(m_pSmartTagTypesLB);
+    if (bEnable)
+        SelectHdl(*m_xSmartTagTypesLB);
 }
 
 /** Handler for the list box
 */
-IMPL_LINK_NOARG(OfaSmartTagOptionsTabPage, SelectHdl, SvTreeListBox*, void)
+IMPL_LINK_NOARG(OfaSmartTagOptionsTabPage, SelectHdl, weld::TreeView&, void)
 {
-    if ( m_pSmartTagTypesLB->GetEntryCount() < 1 )
+    const int nPos = m_xSmartTagTypesLB->get_selected_index();
+    if (nPos == -1)
         return;
-
-    const sal_uLong nPos = m_pSmartTagTypesLB->GetSelectEntryPos();
-    const SvTreeListEntry* pEntry = m_pSmartTagTypesLB->GetEntry(nPos);
-    const ImplSmartTagLBUserData* pUserData = static_cast< ImplSmartTagLBUserData* >(pEntry->GetUserData());
+    const ImplSmartTagLBUserData* pUserData = reinterpret_cast<ImplSmartTagLBUserData*>(m_xSmartTagTypesLB->get_id(nPos).toInt64());
     uno::Reference< smarttags::XSmartTagRecognizer > xRec = pUserData->mxRec;
     const sal_Int32 nSmartTagIdx = pUserData->mnSmartTagIdx;
 
     const lang::Locale aLocale( LanguageTag::convertToLocale( eLastDialogLanguage ) );
     if ( xRec->hasPropertyPage( nSmartTagIdx, aLocale ) )
-        m_pPropertiesPB->Enable();
+        m_xPropertiesPB->set_sensitive(true);
     else
-        m_pPropertiesPB->Enable( false );
+        m_xPropertiesPB->set_sensitive(false);
 }
 
 /** Propagates the current settings to the smart tag manager.
@@ -2635,13 +2301,12 @@ bool OfaSmartTagOptionsTabPage::FillItemSet( SfxItemSet* )
     bool bModifiedSmartTagTypes = false;
     std::vector< OUString > aDisabledSmartTagTypes;
 
-    const sal_uLong nCount = m_pSmartTagTypesLB->GetEntryCount();
+    const int nCount = m_xSmartTagTypesLB->n_children();
 
-    for ( sal_uLong i = 0; i < nCount; ++i )
+    for (int i = 0; i < nCount; ++i)
     {
-        const SvTreeListEntry* pEntry = m_pSmartTagTypesLB->GetEntry(i);
-        const ImplSmartTagLBUserData* pUserData = static_cast< ImplSmartTagLBUserData* >(pEntry->GetUserData());
-        const bool bChecked = m_pSmartTagTypesLB->IsChecked(i);
+        const ImplSmartTagLBUserData* pUserData = reinterpret_cast<ImplSmartTagLBUserData*>(m_xSmartTagTypesLB->get_id(i).toInt64());
+        const bool bChecked = m_xSmartTagTypesLB->get_toggle(i) == TRISTATE_TRUE;
         const bool bIsCurrentlyEnabled = pSmartTagMgr->IsSmartTagTypeEnabled( pUserData->maSmartTagType );
 
         bModifiedSmartTagTypes = bModifiedSmartTagTypes || ( !bChecked != !bIsCurrentlyEnabled );
@@ -2652,10 +2317,10 @@ bool OfaSmartTagOptionsTabPage::FillItemSet( SfxItemSet* )
         delete pUserData;
     }
 
-    const bool bModifiedRecognize = ( !m_pMainCB->IsChecked() != !pSmartTagMgr->IsLabelTextWithSmartTags() );
+    const bool bModifiedRecognize = ( !m_xMainCB->get_active() != !pSmartTagMgr->IsLabelTextWithSmartTags() );
     if ( bModifiedSmartTagTypes || bModifiedRecognize )
     {
-        bool bLabelTextWithSmartTags = m_pMainCB->IsChecked();
+        bool bLabelTextWithSmartTags = m_xMainCB->get_active();
         pSmartTagMgr->WriteConfiguration( bModifiedRecognize     ? &bLabelTextWithSmartTags : nullptr,
                                           bModifiedSmartTagTypes ? &aDisabledSmartTagTypes : nullptr );
     }
@@ -2675,15 +2340,15 @@ void OfaSmartTagOptionsTabPage::Reset( const SfxItemSet*  )
     if ( !pSmartTagMgr )
         return;
 
-    FillListBox( *pSmartTagMgr );
-    m_pSmartTagTypesLB->SelectEntryPos( 0 );
-    m_pMainCB->Check( pSmartTagMgr->IsLabelTextWithSmartTags() );
-    CheckHdl(*m_pMainCB);
+    FillListBox(*pSmartTagMgr);
+    m_xSmartTagTypesLB->select(0);
+    m_xMainCB->set_active(pSmartTagMgr->IsLabelTextWithSmartTags());
+    CheckHdl(*m_xMainCB);
 }
 
 void OfaSmartTagOptionsTabPage::ActivatePage( const SfxItemSet& )
 {
-    static_cast<OfaAutoCorrDlg*>(GetTabDialog())->EnableLanguage( false );
+    static_cast<OfaAutoCorrDlg*>(GetDialogController())->EnableLanguage( false );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

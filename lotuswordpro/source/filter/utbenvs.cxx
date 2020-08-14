@@ -53,7 +53,7 @@
  *
  *
  ************************************************************************/
-#include "first.hxx"
+#include "bento.hxx"
 #include <assert.h>
 namespace OpenStormBento
 {
@@ -65,11 +65,8 @@ namespace OpenStormBento
 */
 std::size_t LtcUtBenValueStream::GetData(void* pData, std::size_t nSize)
 {
-    //unsigned long AmtLeft;
-    unsigned long AmtRead;
-    //GetAmountLeft(&AmtLeft);
+    size_t AmtRead;
 
-    //unsigned long AmtShouldRead = UtMin(nSize, AmtLeft);
     /*BenError Err = */cpValue->ReadValueData(pData, cCurrentPosition, nSize,
       &AmtRead);
     cCurrentPosition += AmtRead;
@@ -127,11 +124,11 @@ void    LtcUtBenValueStream::FlushData()
 *   Construction
 */
 LtcUtBenValueStream::LtcUtBenValueStream(CBenValue * pValue)
-{
+  : cpValue(pValue),
     // Calculate the length of the whole value stream
-    cCurrentPosition = 0;
-    m_ulValueLength = pValue->GetValueSize();
-    cpValue = pValue;
+    cCurrentPosition(0),
+    m_ulValueLength(pValue->GetValueSize())
+{
 }
 
 LtcUtBenValueStream::~LtcUtBenValueStream()

@@ -19,43 +19,38 @@
 
 #include <com/sun/star/xml/sax/FastToken.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/container/XNamed.hpp>
 
-#include "oox/helper/attributelist.hxx"
-#include "oox/drawingml/shapegroupcontext.hxx"
-#include "oox/drawingml/connectorshapecontext.hxx"
-#include "oox/drawingml/graphicshapecontext.hxx"
-#include "drawingml/lineproperties.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
-#include "drawingml/customshapegeometry.hxx"
+#include <oox/helper/attributelist.hxx>
+#include <oox/drawingml/shapegroupcontext.hxx>
+#include <oox/drawingml/connectorshapecontext.hxx>
+#include <oox/drawingml/graphicshapecontext.hxx>
+#include <oox/drawingml/drawingmltypes.hxx>
 #include <drawingml/shapepropertiescontext.hxx>
-#include "drawingml/textbodycontext.hxx"
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
+#include <sal/log.hxx>
 
 using namespace oox::core;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-ShapeGroupContext::ShapeGroupContext( ContextHandler2Helper& rParent, ShapePtr const & pMasterShapePtr, ShapePtr const & pGroupShapePtr )
-: ContextHandler2( rParent )
+ShapeGroupContext::ShapeGroupContext( FragmentHandler2 const & rParent, ShapePtr const & pMasterShapePtr, ShapePtr const & pGroupShapePtr )
+: FragmentHandler2( rParent )
 , mpGroupShapePtr( pGroupShapePtr )
-, mpMasterShapePtr( pMasterShapePtr )
 {
     if( pMasterShapePtr )
         mpGroupShapePtr->setWps(pMasterShapePtr->getWps());
+    if( pMasterShapePtr && mpGroupShapePtr )
+        pMasterShapePtr->addChild( mpGroupShapePtr );
 }
 
 ShapeGroupContext::~ShapeGroupContext()
 {
-    if ( mpMasterShapePtr.get() && mpGroupShapePtr.get() )
-        mpMasterShapePtr->addChild( mpGroupShapePtr );
 }
 
 ContextHandlerRef ShapeGroupContext::onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs )
@@ -79,7 +74,7 @@ ContextHandlerRef ShapeGroupContext::onCreateContext( sal_Int32 aElementToken, c
     case XML_grpSpPr:
         return new ShapePropertiesContext( *this, *mpGroupShapePtr );
     case XML_nvGrpSpPr:
-        return nullptr;
+        return this;
     case XML_spPr:
         return new ShapePropertiesContext( *this, *mpGroupShapePtr );
 /*
@@ -88,7 +83,7 @@ ContextHandlerRef ShapeGroupContext::onCreateContext( sal_Int32 aElementToken, c
 */
     case XML_cxnSp:         // connector shape
         {
-            ShapePtr pShape(new Shape("com.sun.star.drawing.ConnectorShape"));
+            ShapePtr pShape = std::make_shared<Shape>("com.sun.star.drawing.ConnectorShape");
             pShape->setLockedCanvas(mpGroupShapePtr->getLockedCanvas());
             return new ConnectorShapeContext( *this, mpGroupShapePtr, pShape );
         }
@@ -116,6 +111,6 @@ ContextHandlerRef ShapeGroupContext::onCreateContext( sal_Int32 aElementToken, c
     return this;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

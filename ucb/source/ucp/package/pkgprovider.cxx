@@ -24,12 +24,16 @@
 
  *************************************************************************/
 
-#include <comphelper/processfactory.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/weak.hxx>
+#include <cppuhelper/queryinterface.hxx>
 #include <ucbhelper/contentidentifier.hxx>
+#include <ucbhelper/getcomponentcontext.hxx>
+#include <ucbhelper/macros.hxx>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/ucb/IllegalIdentifierException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include "pkgprovider.hxx"
 #include "pkgcontent.hxx"
 #include "pkguri.hxx"
@@ -41,15 +45,15 @@ namespace package_ucp
 {
 
 
-// class Package.
 
+namespace {
 
 class Package : public cppu::OWeakObject,
                 public container::XHierarchicalNameAccess
 {
-    friend class ContentProvider;
+    friend ContentProvider;
 
-    OUString                                        m_aName;
+    OUString                                             m_aName;
     uno::Reference< container::XHierarchicalNameAccess > m_xNA;
     ContentProvider*                                     m_pOwner;
 
@@ -80,17 +84,9 @@ public:
     { return m_xNA->hasByHierarchicalName( aName ); }
 };
 
+}
 
-// Packages.
-typedef std::unordered_map
-<
-    OUString,
-    Package*,
-    OUStringHash
->
-PackageMap;
-
-class Packages : public PackageMap {};
+class Packages : public std::unordered_map<OUString, Package*> {};
 
 }
 
@@ -100,8 +96,7 @@ using namespace package_ucp;
 // ContentProvider Implementation.
 ContentProvider::ContentProvider(
             const uno::Reference< uno::XComponentContext >& rxContext )
-: ::ucbhelper::ContentProviderImplHelper( rxContext ),
-  m_pPackages( nullptr )
+: ::ucbhelper::ContentProviderImplHelper( rxContext )
 {
 }
 
@@ -127,9 +122,9 @@ void SAL_CALL ContentProvider::release()
 css::uno::Any SAL_CALL ContentProvider::queryInterface( const css::uno::Type & rType )
 {
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< lang::XTypeProvider* >(this)),
-                                               (static_cast< lang::XServiceInfo* >(this)),
-                                               (static_cast< ucb::XContentProvider* >(this))
+                                               static_cast< lang::XTypeProvider* >(this),
+                                               static_cast< lang::XServiceInfo* >(this),
+                                               static_cast< ucb::XContentProvider* >(this)
                                                );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -145,28 +140,23 @@ XTYPEPROVIDER_IMPL_3( ContentProvider,
 
 // XServiceInfo methods.
 
-XSERVICEINFO_COMMOM_IMPL( ContentProvider,
-                          OUString( "com.sun.star.comp.ucb.PackageContentProvider" ) )
-/// @throws css::uno::Exception
-static css::uno::Reference< css::uno::XInterface > SAL_CALL
-ContentProvider_CreateInstance( const css::uno::Reference< css::lang::XMultiServiceFactory> & rSMgr )
+OUString
+ContentProvider::getImplementationName()
 {
-    css::lang::XServiceInfo* pX =
-        static_cast<css::lang::XServiceInfo*>(new ContentProvider( ucbhelper::getComponentContext(rSMgr) ));
-    return css::uno::Reference< css::uno::XInterface >::query( pX );
+    return "com.sun.star.comp.ucb.PackageContentProvider";
+}
+
+sal_Bool
+ContentProvider::supportsService(const OUString& s)
+{
+    return cppu::supportsService(this, s);
 }
 
 css::uno::Sequence< OUString >
-ContentProvider::getSupportedServiceNames_Static()
+ContentProvider::getSupportedServiceNames()
 {
-    css::uno::Sequence< OUString > aSNS { "com.sun.star.ucb.PackageContentProvider" };
-    return aSNS;
+    return { "com.sun.star.ucb.PackageContentProvider" };
 }
-
-// Service factory implementation.
-
-
-ONE_INSTANCE_SERVICE_FACTORY_IMPL( ContentProvider );
 
 
 // XContentProvider methods.
@@ -183,7 +173,7 @@ uno::Reference< ucb::XContent > SAL_CALL ContentProvider::queryContent(
     if ( !aUri.isValid() )
         throw ucb::IllegalIdentifierException();
 
-    // Create a new identifier for the mormalized URL returned by
+    // Create a new identifier for the normalized URL returned by
     // PackageUri::getUri().
     uno::Reference< ucb::XContentIdentifier > xId = new ::ucbhelper::ContentIdentifier( aUri.getUri() );
 
@@ -247,8 +237,9 @@ ContentProvider::createPackage( const PackageUri & rURI )
     }
     catch ( uno::Exception const & e )
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw css::lang::WrappedTargetRuntimeException(
-            e.Message, e.Context, css::uno::makeAny(e));
+            e.Message, e.Context, anyEx);
     }
 
     rtl::Reference< Package> xPackage = new Package( rURL, xNameAccess, this );
@@ -270,6 +261,15 @@ void ContentProvider::removePackage( const OUString & rName )
             return;
         }
     }
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_package_ContentProvider_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    static rtl::Reference<ContentProvider> g_Instance(new ContentProvider(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

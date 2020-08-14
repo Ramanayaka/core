@@ -17,72 +17,54 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/table/XCell.hpp>
-#include <com/sun/star/table/XColumnRowRange.hpp>
-#include <com/sun/star/beans/XIntrospection.hpp>
-#include <com/sun/star/beans/XIntrospectionAccess.hpp>
-#include <com/sun/star/reflection/XIdlMethod.hpp>
-#include <com/sun/star/beans/MethodConcept.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/xml/AttributeData.hpp>
 
 #include <ooo/vba/excel/XlColorIndex.hpp>
 #include <ooo/vba/excel/XlPattern.hpp>
 
-#include <comphelper/processfactory.hxx>
-#include <cppuhelper/queryinterface.hxx>
-
 #include <map>
 
 #include <sal/macros.h>
-#include <svx/xtable.hxx>
 
 #include "vbainterior.hxx"
 #include "vbapalette.hxx"
-#include "document.hxx"
+#include <document.hxx>
 
-#define COLORMAST 0xFFFFFF
-typedef std::map< sal_Int32, sal_Int32 >  PatternMap;
-typedef std::pair< sal_Int32, sal_Int32 > PatternPair;
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
 using namespace ::ooo::vba::excel::XlPattern;
-static const char BACKCOLOR[] = "CellBackColor";
-static const char PATTERN[] = "Pattern";
-static const char PATTERNCOLOR[] = "PatternColor";
 
-static PatternMap lcl_getPatternMap()
-{
-    PatternMap aPatternMap;
-    aPatternMap.insert( PatternPair( xlPatternAutomatic, 0 ) );
-    aPatternMap.insert( PatternPair( xlPatternChecker, 9 ) );
-    aPatternMap.insert( PatternPair( xlPatternCrissCross, 16 ) );
-    aPatternMap.insert( PatternPair( xlPatternDown, 7 ) );
-    aPatternMap.insert( PatternPair( xlPatternGray16, 17 ) );
-    aPatternMap.insert( PatternPair( xlPatternGray25, 4 ) );
-    aPatternMap.insert( PatternPair( xlPatternGray50, 2 ) );
-    aPatternMap.insert( PatternPair( xlPatternGray75, 3 ) );
-    aPatternMap.insert( PatternPair( xlPatternGray8, 18 ) );
-    aPatternMap.insert( PatternPair( xlPatternGrid, 15 ) );
-    aPatternMap.insert( PatternPair( xlPatternHorizontal, 5 ) );
-    aPatternMap.insert( PatternPair( xlPatternLightDown, 13 ) );
-    aPatternMap.insert( PatternPair( xlPatternLightHorizontal, 11 ) );
-    aPatternMap.insert( PatternPair( xlPatternLightUp, 14 ) );
-    aPatternMap.insert( PatternPair( xlPatternLightVertical, 12 ) );
-    aPatternMap.insert( PatternPair( xlPatternNone, 0 ) );
-    aPatternMap.insert( PatternPair( xlPatternSemiGray75, 10 ) );
-    aPatternMap.insert( PatternPair( xlPatternSolid, 0 ) );
-    aPatternMap.insert( PatternPair( xlPatternUp, 8 ) );
-    aPatternMap.insert( PatternPair( xlPatternVertical, 6 ) );
-    return aPatternMap;
-}
+const char BACKCOLOR[] = "CellBackColor";
+const char PATTERN[] = "Pattern";
+const char PATTERNCOLOR[] = "PatternColor";
 
-static PatternMap aPatternMap( lcl_getPatternMap() );
+static std::map< sal_Int32, sal_Int32 > aPatternMap {
+    { xlPatternAutomatic, 0 },
+    { xlPatternChecker, 9 },
+    { xlPatternCrissCross, 16 },
+    { xlPatternDown, 7 },
+    { xlPatternGray16, 17 },
+    { xlPatternGray25, 4 },
+    { xlPatternGray50, 2 },
+    { xlPatternGray75, 3 },
+    { xlPatternGray8, 18 },
+    { xlPatternGrid, 15 },
+    { xlPatternHorizontal, 5 },
+    { xlPatternLightDown, 13 },
+    { xlPatternLightHorizontal, 11 },
+    { xlPatternLightUp, 14 },
+    { xlPatternLightVertical, 12 },
+    { xlPatternNone, 0 },
+    { xlPatternSemiGray75, 10 },
+    { xlPatternSolid, 0 },
+    { xlPatternUp, 8 },
+    { xlPatternVertical, 6 }
+};
 
 ScVbaInterior::ScVbaInterior( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< beans::XPropertySet >&  xProps, ScDocument* pScDoc ) : ScVbaInterior_BASE( xParent, xContext ), m_xProps(xProps), m_pScDoc( pScDoc )
 {
     // auto color
-    m_aPattColor.SetColor( (sal_uInt32)0x0 );
+    m_aPattColor = Color(0);
     m_nPattern = 0;
     if ( !m_xProps.is() )
         throw lang::IllegalArgumentException("properties", uno::Reference< uno::XInterface >(), 2 );
@@ -91,8 +73,7 @@ ScVbaInterior::ScVbaInterior( const uno::Reference< XHelperInterface >& xParent,
 uno::Any
 ScVbaInterior::getColor()
 {
-    Color aBackColor( GetBackColor() );
-    return uno::makeAny( OORGBToXLRGB( aBackColor.GetColor() ) );
+    return uno::makeAny( OORGBToXLRGB( GetBackColor() ) );
 }
 
 void
@@ -121,23 +102,23 @@ ScVbaInterior::SetMixedColor()
     if( aPatternColor.hasValue() )
     {
         sal_uInt32 nPatternColor = GetAttributeData( aPatternColor );
-        m_aPattColor.SetColor( nPatternColor );
+        m_aPattColor = Color(nPatternColor);
     }
-    sal_Int32 nPatternColor = m_aPattColor.GetColor();
+    Color nPatternColor = m_aPattColor;
     // back color
     Color aBackColor( GetBackColor() );
     // set mixed color
     Color aMixedColor;
     if( nPattern > 0 )
-        aMixedColor = GetPatternColor( Color(nPatternColor), aBackColor, (sal_uInt32)nPattern );
+        aMixedColor = GetPatternColor( nPatternColor, aBackColor, static_cast<sal_uInt32>(nPattern) );
     else
-        aMixedColor = GetPatternColor( aBackColor, aBackColor, (sal_uInt32)nPattern );
-    sal_Int32 nMixedColor = aMixedColor.GetColor() & COLORMAST;
+        aMixedColor = GetPatternColor( aBackColor, aBackColor, static_cast<sal_uInt32>(nPattern) );
+    Color nMixedColor = aMixedColor.GetRGBColor();
     m_xProps->setPropertyValue( BACKCOLOR , uno::makeAny( nMixedColor ) );
 }
 
 uno::Reference< container::XIndexAccess >
-ScVbaInterior::getPalette()
+ScVbaInterior::getPalette() const
 {
     if ( !m_pScDoc )
         throw uno::RuntimeException();
@@ -259,7 +240,7 @@ ScVbaInterior::GetAttributeData( uno::Any const & aValue )
     {
         return aDataValue.Value.toInt32();
     }
-    return sal_Int32( 0 );
+    return 0;
 }
 uno::Any
 ScVbaInterior::SetAttributeData( sal_Int32 nValue )
@@ -272,7 +253,7 @@ ScVbaInterior::SetAttributeData( sal_Int32 nValue )
 uno::Any
 ScVbaInterior::GetUserDefinedAttributes( const OUString& sName )
 {
-    uno::Reference< container::XNameContainer > xNameContainer( GetAttributeContainer(), uno::UNO_QUERY_THROW );
+    uno::Reference< container::XNameContainer > xNameContainer( GetAttributeContainer(), uno::UNO_SET_THROW );
     if( xNameContainer->hasByName( sName ) )
     {
         return xNameContainer->getByName( sName );
@@ -284,7 +265,7 @@ ScVbaInterior::SetUserDefinedAttributes( const OUString& sName, const uno::Any& 
 {
     if( aValue.hasValue() )
     {
-        uno::Reference< container::XNameContainer > xNameContainer( GetAttributeContainer(), uno::UNO_QUERY_THROW );
+        uno::Reference< container::XNameContainer > xNameContainer( GetAttributeContainer(), uno::UNO_SET_THROW );
         if( xNameContainer->hasByName( sName ) )
             xNameContainer->removeByName( sName );
         xNameContainer->insertByName( sName, aValue );
@@ -304,13 +285,12 @@ ScVbaInterior::getPattern()
 void SAL_CALL
 ScVbaInterior::setPattern( const uno::Any& _pattern )
 {
-    if( _pattern >>= m_nPattern )
-    {
-        SetUserDefinedAttributes( PATTERN, SetAttributeData( m_nPattern ) );
-        SetMixedColor();
-    }
-    else
+    if( !(_pattern >>= m_nPattern) )
         throw uno::RuntimeException("Invalid Pattern index" );
+
+    SetUserDefinedAttributes( PATTERN, SetAttributeData( m_nPattern ) );
+    SetMixedColor();
+
 }
 Color
 ScVbaInterior::GetBackColor()
@@ -321,16 +301,15 @@ ScVbaInterior::GetBackColor()
     if( aColor.hasValue() )
     {
         nColor = GetAttributeData( aColor );
-        aBackColor.SetColor( nColor );
+        aBackColor = Color(nColor);
     }
     else
     {
-        uno::Any aAny;
-        aAny = OORGBToXLRGB( m_xProps->getPropertyValue( BACKCOLOR ) );
+        uno::Any aAny = OORGBToXLRGB( m_xProps->getPropertyValue( BACKCOLOR ) );
         if( aAny >>= nColor )
         {
             nColor = XLRGBToOORGB( nColor );
-            aBackColor.SetColor( nColor );
+            aBackColor = Color(nColor);
             SetUserDefinedAttributes( BACKCOLOR, SetAttributeData( nColor ) );
         }
     }
@@ -344,7 +323,7 @@ ScVbaInterior::getPatternColor()
     if( aPatternColor.hasValue() )
     {
         sal_uInt32 nPatternColor = GetAttributeData( aPatternColor );
-        return uno::makeAny( OORGBToXLRGB( nPatternColor ) );
+        return uno::makeAny( OORGBToXLRGB( Color(nPatternColor) ) );
     }
     return uno::makeAny( sal_Int32( 0 ) );
 }
@@ -352,13 +331,12 @@ void SAL_CALL
 ScVbaInterior::setPatternColor( const uno::Any& _patterncolor )
 {
     sal_Int32 nPattColor = 0;
-    if( _patterncolor >>= nPattColor )
-    {
-        SetUserDefinedAttributes( PATTERNCOLOR, SetAttributeData( XLRGBToOORGB( nPattColor ) ) );
-        SetMixedColor();
-    }
-    else
+    if( !(_patterncolor >>= nPattColor) )
         throw uno::RuntimeException("Invalid Pattern Color" );
+
+    SetUserDefinedAttributes( PATTERNCOLOR, SetAttributeData( XLRGBToOORGB( nPattColor ) ) );
+    SetMixedColor();
+
 }
 uno::Any SAL_CALL
 ScVbaInterior::getPatternColorIndex()
@@ -372,16 +350,15 @@ void SAL_CALL
 ScVbaInterior::setPatternColorIndex( const uno::Any& _patterncolorindex )
 {
     sal_Int32 nColorIndex = 0;
-    if( _patterncolorindex >>= nColorIndex )
-    {
-        if( nColorIndex == 0 )
-            return;
-        sal_Int32 nPattColor = 0;
-        GetIndexColor( nColorIndex ) >>= nPattColor;
-        setPatternColor( uno::makeAny( OORGBToXLRGB( nPattColor ) ) );
-    }
-    else
+    if( !(_patterncolorindex >>= nColorIndex) )
         throw uno::RuntimeException("Invalid Pattern Color" );
+
+    if( nColorIndex == 0 )
+        return;
+    Color nPattColor;
+    GetIndexColor( nColorIndex ) >>= nPattColor;
+    setPatternColor( uno::makeAny( OORGBToXLRGB( nPattColor ) ) );
+
 }
 
 uno::Any SAL_CALL ScVbaInterior::getThemeColor()
@@ -420,18 +397,16 @@ void SAL_CALL ScVbaInterior::setPatternTintAndShade(const uno::Any& /*rAny*/)
 OUString
 ScVbaInterior::getServiceImplName()
 {
-    return OUString("ScVbaInterior");
+    return "ScVbaInterior";
 }
 
 uno::Sequence< OUString >
 ScVbaInterior::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Interior";
-    }
+        "ooo.vba.excel.Interior"
+    };
     return aServiceNames;
 }
 

@@ -20,33 +20,31 @@
 #define INCLUDED_CHART2_SOURCE_MODEL_INC_XMLFILTER_HXX
 
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/document/XImporter.hpp>
 #include <com/sun/star/document/XExporter.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/io/XActiveDataSource.hpp>
-#include <com/sun/star/xml/sax/XWriter.hpp>
 #include <osl/mutex.hxx>
 #include <vcl/errcode.hxx>
 
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::xml::sax { class XWriter; }
+namespace com::sun::star::lang { class XMultiComponentFactory; }
 
-namespace com { namespace sun { namespace star {
-namespace embed
-{
-    class XStorage;
+namespace com::sun::star {
+    namespace embed {
+        class XStorage;
+    }
+    namespace xml::sax {
+        class XFastParser;
+    }
+    namespace document {
+        class XGraphicStorageHandler;
+    }
 }
-namespace xml { namespace sax
-{
-    class XParser;
-}}
-namespace document
-{
-    class XGraphicObjectResolver;
-}
-}}}
 
 namespace chart
 {
@@ -103,10 +101,9 @@ private:
         const OUString & rStreamName,
         const OUString & rServiceName,
         const css::uno::Reference< css::embed::XStorage > & xStorage,
-        const css::uno::Reference< css::xml::sax::XParser > & xParser,
         const css::uno::Reference< css::lang::XMultiComponentFactory > & xFactory,
-        const css::uno::Reference< css::document::XGraphicObjectResolver > & xGraphicObjectResolver,
-        css::uno::Reference< css::beans::XPropertySet >& xPropSet );
+        const css::uno::Reference<css::document::XGraphicStorageHandler> & xGraphicStorageHandler,
+        css::uno::Reference< css::beans::XPropertySet > const & xPropSet );
 
     /// @return a warning code, or 0 for successful operation
     ErrCode impl_Export( const css::uno::Reference< css::lang::XComponent > & xDocumentComp,
@@ -145,7 +142,7 @@ protected:
     virtual OUString SAL_CALL
         getImplementationName() override
     {
-        return OUString( "com.sun.star.comp.chart2.report.XMLFilter" );
+        return "com.sun.star.comp.chart2.report.XMLFilter";
     }
     // ____ XImporter ____
     virtual void SAL_CALL setTargetDocument(

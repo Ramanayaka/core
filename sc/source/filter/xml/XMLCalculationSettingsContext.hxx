@@ -20,11 +20,11 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLCALCULATIONSETTINGSCONTEXT_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLCALCULATIONSETTINGSCONTEXT_HXX
 
-#include <xmloff/xmlictxt.hxx>
 #include <unotools/textsearch.hxx>
 #include <com/sun/star/util/Date.hpp>
-#include "xmlimprt.hxx"
 #include "importcontext.hxx"
+
+namespace sax_fastparser { class FastAttributeList; }
 
 
 class ScXMLCalculationSettingsContext : public ScXMLImportContext
@@ -41,14 +41,13 @@ class ScXMLCalculationSettingsContext : public ScXMLImportContext
     bool bMatchWholeCell;
 
 public:
-    ScXMLCalculationSettingsContext( ScXMLImport& rImport, sal_Int32 nElement,
-                        const css::uno::Reference< css::xml::sax::XFastAttributeList>& xAttrList);
+    ScXMLCalculationSettingsContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList);
 
     virtual ~ScXMLCalculationSettingsContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
     void SetNullDate(const css::util::Date& aDate) { aNullDate = aDate; }
     void SetIterationStatus(const bool bValue) { bIsIterationEnabled = bValue; }
@@ -60,33 +59,19 @@ public:
 class ScXMLNullDateContext : public ScXMLImportContext
 {
 public:
-    ScXMLNullDateContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList, ScXMLCalculationSettingsContext* pCalcSet);
+    ScXMLNullDateContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList, ScXMLCalculationSettingsContext* pCalcSet);
 
     virtual ~ScXMLNullDateContext() override;
-
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
-
-    virtual void EndElement() override;
 };
 
 class ScXMLIterationContext : public ScXMLImportContext
 {
 public:
-    ScXMLIterationContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList, ScXMLCalculationSettingsContext* pCalcSet);
+    ScXMLIterationContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList, ScXMLCalculationSettingsContext* pCalcSet);
 
     virtual ~ScXMLIterationContext() override;
-
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
-
-    virtual void EndElement() override;
 };
 
 #endif

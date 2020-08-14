@@ -17,14 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "excelhandlers.hxx"
+#include <excelhandlers.hxx>
 
-#include <oox/core/filterbase.hxx>
+namespace oox::xls {
 
-namespace oox {
-namespace xls {
-
-using ::oox::core::FilterBase;
 using ::oox::core::FragmentHandler2;
 
 WorkbookFragmentBase::WorkbookFragmentBase(
@@ -41,7 +37,6 @@ WorksheetFragmentBase::WorksheetFragmentBase(
 {
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

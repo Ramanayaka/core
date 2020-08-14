@@ -25,16 +25,14 @@
 #include <rtl/ustring.hxx>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
-#include "DAVException.hxx"
-#include "DAVProperties.hxx"
 #include "DAVResource.hxx"
 #include "DAVSessionFactory.hxx"
 #include "DAVTypes.hxx"
 #include "DAVRequestEnvironment.hxx"
 
-namespace com { namespace sun { namespace star { namespace ucb {
+namespace com::sun::star::ucb {
     struct Lock;
-} } } }
+}
 
 namespace http_dav_ucp
 {
@@ -44,14 +42,14 @@ class DAVAuthListener;
 class DAVSession
 {
 public:
-    inline void acquire()
+    void acquire()
     {
-        osl_incrementInterlockedCount( &m_nRefCount );
+        osl_atomic_increment( &m_nRefCount );
     }
 
     void release()
     {
-        if ( osl_decrementInterlockedCount( &m_nRefCount ) == 0 )
+        if ( osl_atomic_decrement( &m_nRefCount ) == 0 )
         {
             m_xFactory->releaseElement( this );
             delete this;

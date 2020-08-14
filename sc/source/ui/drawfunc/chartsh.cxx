@@ -21,25 +21,17 @@
 #include <svx/svdobj.hxx>
 #include <svx/graphichelper.hxx>
 
-#include <svl/srchitem.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/objface.hxx>
-#include <sfx2/request.hxx>
 #include <vcl/EnumContext.hxx>
-#include <svl/whiter.hxx>
-#include <vcl/msgbox.hxx>
 
-#include "chartsh.hxx"
-#include "drwlayer.hxx"
-#include "sc.hrc"
-#include "viewdata.hxx"
-#include "document.hxx"
-#include "docpool.hxx"
-#include "drawview.hxx"
-#include "scresid.hxx"
+#include <chartsh.hxx>
+#include <sc.hrc>
+#include <viewdata.hxx>
+#include <drawview.hxx>
+#include <gridwin.hxx>
 
-#define ScChartShell
-#include "scslots.hxx"
+#define ShellClass_ScChartShell
+#include <scslots.hxx>
 
 using namespace css::uno;
 
@@ -53,7 +45,7 @@ void ScChartShell::InitInterface_Impl()
                                             SfxVisibilityFlags::Standard | SfxVisibilityFlags::Server,
                                             ToolbarId::Draw_Objectbar);
 
-    GetStaticInterface()->RegisterPopupMenu("chart");
+    GetStaticInterface()->RegisterPopupMenu("oleobject");
 }
 
 
@@ -77,9 +69,12 @@ void ScChartShell::GetExportAsGraphicState( SfxItemSet& rSet )
     {
         SdrObject* pObj = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
 
-        if( pObj && dynamic_cast<const SdrOle2Obj*>( pObj) !=  nullptr )
+        if( dynamic_cast<const SdrOle2Obj*>( pObj) )
             bEnable = true;
     }
+
+    if (GetObjectShell()->isExportLocked())
+        bEnable = false;
 
     if( !bEnable )
         rSet.DisableItem( SID_EXPORT_AS_GRAPHIC );
@@ -94,10 +89,11 @@ void ScChartShell::ExecuteExportAsGraphic( SfxRequest& )
     {
         SdrObject* pObject = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
 
-        if( pObject && dynamic_cast<const SdrOle2Obj*>( pObject) !=  nullptr )
+        if( dynamic_cast<const SdrOle2Obj*>( pObject) )
         {
+            vcl::Window* pWin = GetViewData()->GetActiveWin();
             Reference< drawing::XShape > xSourceDoc( pObject->getUnoShape(), UNO_QUERY_THROW );
-            GraphicHelper::SaveShapeAsGraphic( xSourceDoc );
+            GraphicHelper::SaveShapeAsGraphic(pWin ? pWin->GetFrameWeld() : nullptr, xSourceDoc);
         }
     }
 

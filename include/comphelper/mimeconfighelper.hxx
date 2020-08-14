@@ -21,16 +21,15 @@
 #define INCLUDED_COMPHELPER_MIMECONFIGHELPER_HXX
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XContainerQuery.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/embed/VerbDescriptor.hpp>
 #include <comphelper/comphelperdllapi.h>
 
+namespace com::sun::star::beans { struct NamedValue; }
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::container { class XContainerQuery; }
+namespace com::sun::star::container { class XNameAccess; }
+namespace com::sun::star::embed { struct VerbDescriptor; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 enum class SfxFilterFlags;
 

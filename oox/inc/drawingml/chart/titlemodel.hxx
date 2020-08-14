@@ -23,9 +23,7 @@
 #include <oox/drawingml/shape.hxx>
 #include <oox/drawingml/chart/datasourcemodel.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 struct TextModel
 {
@@ -57,25 +55,34 @@ struct TitleModel
                         ~TitleModel();
 };
 
+struct LegendEntryModel
+{
+    sal_Int32           mnLegendEntryIdx;   /// Legend entry index.
+    bool                mbLabelDeleted;     /// True = legend label deleted.
+
+                        LegendEntryModel();
+                        ~LegendEntryModel();
+};
+
 struct LegendModel
 {
-    typedef ModelRef< Shape >       ShapeRef;
-    typedef ModelRef< TextBody >    TextBodyRef;
-    typedef ModelRef< LayoutModel > LayoutRef;
+    typedef ModelVector< LegendEntryModel > LegendEntryVector;
+    typedef ModelRef< Shape >               ShapeRef;
+    typedef ModelRef< TextBody >            TextBodyRef;
+    typedef ModelRef< LayoutModel >         LayoutRef;
 
+    LegendEntryVector   maLegendEntries;    /// Legend entries formatting.
     ShapeRef            mxShapeProp;        /// Legend shape formatting.
     TextBodyRef         mxTextProp;         /// Legend text formatting.
     LayoutRef           mxLayout;           /// Layout/position of the legend.
     sal_Int32           mnPosition;         /// Legend position.
     bool                mbOverlay;          /// True = legend may overlay other objects.
 
-    explicit            LegendModel(bool bMSO2007Doc);
+    explicit            LegendModel();
                         ~LegendModel();
 };
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

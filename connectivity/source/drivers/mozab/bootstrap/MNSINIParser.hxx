@@ -20,11 +20,9 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MOZAB_BOOTSTRAP_MNSINIPARSER_HXX
 
 #include <rtl/ustring.hxx>
-#include <com/sun/star/io/IOException.hpp>
-#include <osl/process.h>
 
 #include <map>
-#include <list>
+#include <vector>
 
 struct ini_NameValue
 {
@@ -32,14 +30,13 @@ struct ini_NameValue
     OUString sValue;
 };
 
-typedef std::list<
+typedef std::vector<
     ini_NameValue
-> NameValueList;
+> NameValueVector;
 
 struct ini_Section
 {
-    OUString sName;
-    NameValueList lList;
+    NameValueVector vVector;
 };
 typedef std::map<OUString,
                 ini_Section

@@ -22,35 +22,32 @@
 #include <editeng/svxrtf.hxx>
 
 #include <editdoc.hxx>
-#include <impedit.hxx>
 
 class EditEngine;
 
-class EditRTFParser : public SvxRTFParser
+class EditRTFParser final : public SvxRTFParser
 {
 private:
     EditSelection       aCurSel;
     EditEngine*         mpEditEngine;
-    MapMode             aRTFMapMode;
     MapMode             aEditMapMode;
 
     sal_uInt16          nDefFont;
     bool                bLastActionInsertParaBreak;
 
-protected:
     virtual void        InsertPara() override;
     virtual void        InsertText() override;
     virtual void        MovePos( bool bForward = true ) override;
     virtual void        SetEndPrevPara( EditNodeIdx*& rpNodePos,
                                         sal_Int32& rCntPos ) override;
 
-    virtual void        UnknownAttrToken( int nToken, SfxItemSet* pSet ) override;
+    virtual void        UnknownAttrToken( int nToken ) override;
     virtual void        NextToken( int nToken ) override;
     virtual void        SetAttrInDoc( SvxRTFItemStackType &rSet ) override;
     virtual bool        IsEndPara( EditNodeIdx* pNd, sal_Int32 nCnt ) const override;
     virtual void        CalcValue() override;
     void                CreateStyleSheets();
-    SfxStyleSheet*      CreateStyleSheet( SvxRTFStyleType* pRTFStyle );
+    SfxStyleSheet*      CreateStyleSheet( SvxRTFStyleType const * pRTFStyle );
     SvxRTFStyleType*    FindStyleSheet( const OUString& rName );
     void                AddRTFDefaultValues( const EditPaM& rStart, const EditPaM& rEnd );
     void                ReadField();
@@ -62,7 +59,7 @@ public:
 
     virtual SvParserState   CallParser() override;
 
-    EditPaM         GetCurPaM() const                   { return aCurSel.Max(); }
+    EditPaM const &         GetCurPaM() const                   { return aCurSel.Max(); }
 };
 
 typedef tools::SvRef<EditRTFParser> EditRTFParserRef;

@@ -17,10 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_FILLHATCHPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_FILLHATCHPRIMITIVE2D_HXX
-
-#include <drawinglayer/drawinglayerdllapi.h>
+#pragma once
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <drawinglayer/primitive2d/primitivetools2d.hxx>
@@ -30,10 +27,8 @@
 
 // FillHatchPrimitive2D class
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** FillHatchPrimitive2D class
 
             This class defines a hatch filling for a rectangular area. The
@@ -48,7 +43,7 @@ namespace drawinglayer
 
             The decomposition will deliver the hatch lines.
          */
-        class DRAWINGLAYER_DLLPUBLIC FillHatchPrimitive2D : public DiscreteMetricDependentPrimitive2D
+        class FillHatchPrimitive2D final : public DiscreteMetricDependentPrimitive2D
         {
         private:
             /// the geometrically visible area
@@ -64,7 +59,6 @@ namespace drawinglayer
             /// hatch background color (if used)
             basegfx::BColor                         maBColor;
 
-        protected:
             /// local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
@@ -96,12 +90,8 @@ namespace drawinglayer
             virtual void get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
-
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_FILLHATCHPRIMITIVE2D_HXX
+} // end of namespace drawinglayer::primitive2d
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scenariobuffer.hxx"
+#include <scenariobuffer.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/sheet/XScenario.hpp>
 #include <com/sun/star/sheet/XScenarios.hpp>
 #include <com/sun/star/sheet/XScenariosSupplier.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
@@ -31,10 +30,10 @@
 #include <oox/helper/propertyset.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include "addressconverter.hxx"
+#include <addressconverter.hxx>
+#include <biffhelper.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::sheet;
@@ -106,11 +105,14 @@ void Scenario::finalizeImport()
 {
     AddressConverter& rAddrConv = getAddressConverter();
     ScRangeList aRanges;
-    for( ScenarioCellVector::iterator aIt = maCells.begin(), aEnd = maCells.end(); aIt != aEnd; ++aIt )
-        if( !aIt->mbDeleted && rAddrConv.checkCellAddress( aIt->maPos, true ) )
-            aRanges.Append( ScRange(aIt->maPos, aIt->maPos) );
+    for( const auto& rCell : maCells )
+        if( !rCell.mbDeleted && rAddrConv.checkCellAddress( rCell.maPos, true ) )
+            aRanges.push_back( ScRange(rCell.maPos, rCell.maPos) );
 
-    if( !aRanges.empty() && !maModel.maName.isEmpty() ) try
+    if( aRanges.empty() || maModel.maName.isEmpty() )
+        return;
+
+    try
     {
         /*  Find an unused name for the scenario (Calc stores scenario data in
             hidden sheets named after the scenario following the base sheet). */
@@ -124,13 +126,13 @@ void Scenario::finalizeImport()
 
         // write scenario cell values
         Reference< XSpreadsheet > xSheet( getSheetFromDoc( aScenName ), UNO_SET_THROW );
-        for( ScenarioCellVector::iterator aIt = maCells.begin(), aEnd = maCells.end(); aIt != aEnd; ++aIt )
+        for( const auto& rCell : maCells )
         {
-            if( !aIt->mbDeleted ) try
+            if( !rCell.mbDeleted ) try
             {
                 // use XCell::setFormula to auto-detect values and strings
-                Reference< XCell > xCell( xSheet->getCellByPosition( aIt->maPos.Col(), aIt->maPos.Row() ), UNO_SET_THROW );
-                xCell->setFormula( aIt->maValue );
+                Reference< XCell > xCell( xSheet->getCellByPosition( rCell.maPos.Col(), rCell.maPos.Row() ), UNO_SET_THROW );
+                xCell->setFormula( rCell.maValue );
             }
             catch( Exception& )
             {
@@ -179,8 +181,8 @@ void SheetScenarios::importScenarios( SequenceInputStream& rStrm )
 
 Scenario& SheetScenarios::createScenario()
 {
-    bool bIsActive = maScenarios.size() == (sal_uInt32) maModel.mnShown;
-    ScenarioVector::value_type xScenario( new Scenario( *this, mnSheet, bIsActive ) );
+    bool bIsActive = maScenarios.size() == static_cast<sal_uInt32>(maModel.mnShown);
+    ScenarioVector::value_type xScenario = std::make_shared<Scenario>( *this, mnSheet, bIsActive );
     maScenarios.push_back( xScenario );
     return *xScenario;
 }
@@ -199,7 +201,7 @@ SheetScenarios& ScenarioBuffer::createSheetScenarios( sal_Int16 nSheet )
 {
     SheetScenariosMap::mapped_type& rxSheetScens = maSheetScenarios[ nSheet ];
     if( !rxSheetScens )
-        rxSheetScens.reset( new SheetScenarios( *this, nSheet ) );
+        rxSheetScens = std::make_shared<SheetScenarios>( *this, nSheet );
     return *rxSheetScens;
 }
 
@@ -208,7 +210,6 @@ void ScenarioBuffer::finalizeImport()
     maSheetScenarios.forEachMem( &SheetScenarios::finalizeImport );
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

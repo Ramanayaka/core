@@ -21,10 +21,13 @@
 #define INCLUDED_SFX2_SIDEBAR_SIDEBAR_HXX
 
 #include <sfx2/dllapi.h>
-#include <com/sun/star/frame/XFrame.hpp>
+#include <rtl/ustring.hxx>
+
+namespace com::sun::star::frame { class XFrame; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 /** Accept requests for switching to certain panels or decks.
 */
@@ -39,7 +42,7 @@ public:
     */
     static void ShowPanel (
         const OUString& rsPanelId,
-        const css::uno::Reference<css::frame::XFrame>& rxFrame);
+        const css::uno::Reference<css::frame::XFrame>& rxFrame, bool bFocus = false);
 
     /** Switch to the deck that contains the specified panel and toggle
         the visibility of the panel (expanded and scrolled into the
@@ -56,7 +59,7 @@ public:
         const css::uno::Reference<css::frame::XFrame>& rxFrame);
 };
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

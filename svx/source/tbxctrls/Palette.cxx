@@ -20,7 +20,7 @@
 #include <svx/Palette.hxx>
 #include <tools/stream.hxx>
 
-#include "palettes.hxx"
+#include <palettes.hxx>
 
 Palette::~Palette()
 {
@@ -38,13 +38,13 @@ PaletteASE::PaletteASE( const OUString &rFPath, const OUString &rFName ) :
     LoadPalette();
 }
 
-void PaletteASE::LoadColorSet( SvxColorValueSet& rColorSet )
+void PaletteASE::LoadColorSet(SvxColorValueSet& rColorSet)
 {
     rColorSet.Clear();
     int nIx = 1;
-    for (ColorList::const_iterator it = maColors.begin(); it != maColors.end(); ++it)
+    for (const auto& rColor : maColors)
     {
-        rColorSet.InsertItem(nIx, it->first, it->second);
+        rColorSet.InsertItem(nIx, rColor.first, rColor.second);
         ++nIx;
     }
 }
@@ -83,7 +83,7 @@ void PaletteASE::LoadPalette()
     aFile.SetEndian(SvStreamEndian::BIG);
 
     // Verify magic first 4 characters
-    sal_Char cMagic[5] = {0};
+    char cMagic[5] = {0};
     if ((aFile.ReadBytes(cMagic, 4) != 4) || (strncmp(cMagic, "ASEF", 4) != 0))
     {
         mbValidPalette = false;
@@ -125,7 +125,7 @@ void PaletteASE::LoadPalette()
                 continue;
         }
 
-        sal_Char cColorModel[5] = {0};
+        char cColorModel[5] = {0};
         aFile.ReadBytes(cColorModel, 4);
         OString aColorModel(cColorModel);
         // r, g, and b are floats ranging from 0 to 1
@@ -164,7 +164,7 @@ void PaletteASE::LoadPalette()
 
         // Ignore color type
         aFile.SeekRel(2);
-        maColors.push_back(std::make_pair(Color(r * 255, g * 255, b * 255), aPaletteName));
+        maColors.emplace_back(Color(r * 255, g * 255, b * 255), aPaletteName);
     }
 
     mbValidPalette = true;
@@ -172,7 +172,7 @@ void PaletteASE::LoadPalette()
 
 // PaletteGPL ------------------------------------------------------------------
 
-OString lcl_getToken(const OString& rStr, sal_Int32& index);
+static OString lcl_getToken(const OString& rStr, sal_Int32& index);
 
 PaletteGPL::PaletteGPL( const OUString &rFPath, const OUString &rFName ) :
     mbLoadedPalette( false ),
@@ -197,15 +197,15 @@ const OUString& PaletteGPL::GetPath()
     return maFPath;
 }
 
-void PaletteGPL::LoadColorSet( SvxColorValueSet& rColorSet )
+void PaletteGPL::LoadColorSet(SvxColorValueSet& rColorSet)
 {
     LoadPalette();
 
     rColorSet.Clear();
     int nIx = 1;
-    for (ColorList::const_iterator it = maColors.begin(); it != maColors.end(); ++it)
+    for (const auto& rColor : maColors)
     {
-        rColorSet.InsertItem(nIx, it->first, it->second);
+        rColorSet.InsertItem(nIx, rColor.first, rColor.second);
         ++nIx;
     }
 }
@@ -278,16 +278,16 @@ void PaletteGPL::LoadPalette()
             if(nIndex != -1)
                 name = aLine.copy(nIndex);
 
-            maColors.push_back(std::make_pair(
+            maColors.emplace_back(
                 Color(r, g, b),
-                OStringToOUString(name, RTL_TEXTENCODING_ASCII_US)));
+                OStringToOUString(name, RTL_TEXTENCODING_ASCII_US));
         }
     } while (aFile.ReadLine(aLine));
 }
 
 // finds first token in rStr from index, separated by whitespace
 // returns position of next token in index
-OString lcl_getToken(const OString& rStr, sal_Int32& index)
+static OString lcl_getToken(const OString& rStr, sal_Int32& index)
 {
     sal_Int32 substart, toklen = 0;
     OUString aWhitespaceChars( " \n\t" );
@@ -343,7 +343,7 @@ const OUString& PaletteSOC::GetPath()
     return maFPath;
 }
 
-void PaletteSOC::LoadColorSet( SvxColorValueSet& rColorSet )
+void PaletteSOC::LoadColorSet(SvxColorValueSet& rColorSet)
 {
     if( !mbLoadedPalette )
     {

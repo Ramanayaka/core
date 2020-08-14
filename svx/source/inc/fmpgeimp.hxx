@@ -19,21 +19,17 @@
 #ifndef INCLUDED_SVX_SOURCE_INC_FMPGEIMP_HXX
 #define INCLUDED_SVX_SOURCE_INC_FMPGEIMP_HXX
 
+#include <config_options.h>
 #include <com/sun/star/sdbc/XDataSource.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/form/XFormComponent.hpp>
 #include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/form/XForms.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XMap.hpp>
 
 #include <tools/link.hxx>
-#include <comphelper/uno3.hxx>
 #include <cppuhelper/weakref.hxx>
 
-#include "svx/svxdllapi.h"
-#include <map>
+#include <svx/svxdllapi.h>
 
 class FmFormObj;
 class FmFormPage;
@@ -45,7 +41,7 @@ class SdrObject;
 // and when they have been removed
 
 
-class FmFormPageImpl
+class FmFormPageImpl final
 {
     css::uno::Reference< css::form::XForm >               xCurrentForm;
     css::uno::Reference< css::form::XForms >              m_xForms;
@@ -89,7 +85,7 @@ public:
 
     void        SetFormsCreationHdl( const Link<FmFormPageImpl&,void>& _rFormsCreationHdl ) { m_aFormsCreationHdl = _rFormsCreationHdl; }
 
-protected:
+private:
     /** finds a form with a given data source signature
         @param rForm
             the form to start the search with. This form, including all possible sub forms,
@@ -117,7 +113,7 @@ public:
 
     /** returns an object mapping from control models to drawing shapes.
     */
-    SVX_DLLPUBLIC css::uno::Reference< css::container::XMap > getControlToShapeMap();
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) css::uno::Reference< css::container::XMap > getControlToShapeMap();
 
 private:
     /** validates whether <member>xCurrentForm</member> is still valid and to be used
@@ -138,7 +134,6 @@ private:
     css::uno::Reference< css::container::XMap >
         impl_createControlShapeMap_nothrow();
 
-private:
     FmFormPageImpl( const FmFormPageImpl& ) = delete;
     FmFormPageImpl& operator=( const FmFormPageImpl& ) = delete;
 };

@@ -22,6 +22,7 @@
 
 #include <sal/config.h>
 
+#include <array>
 #include <list>
 #include <memory>
 
@@ -62,7 +63,6 @@ struct HBox
  */
         virtual bool Read(HWPFile &hwpf);
 
-        virtual hchar_string GetString();
     private:
         static int boxCount;
 };
@@ -81,14 +81,14 @@ struct DateCode;
 struct FieldCode : public HBox
 {
     uchar type[2];                    /* 2/0 - Formula, 3/0-document summary, 3/1 Personal Information, 3/2-creation date, 4/0-pressing mold */
-    char *reserved1;
+    std::array<char, 4> reserved1;
     unsigned short location_info;     /* 0 - End code, 1 - start code */
-    char *reserved2;
-    hchar *str1;
-    hchar *str2;
-    hchar *str3;
+    std::array<char, 22> reserved2;
+    std::unique_ptr<hchar[]> str1;
+    std::unique_ptr<hchar[]> str2;
+    std::unique_ptr<hchar[]> str3;
 
-    DateCode *m_pDate;
+    std::unique_ptr<DateCode> m_pDate;
 
     FieldCode();
     virtual ~FieldCode() override;
@@ -156,7 +156,7 @@ struct DateCode: public HBox
     DateCode();
     virtual bool Read(HWPFile &hwpf) override;
 
-    virtual hchar_string GetString() override;
+    hchar_string GetString();
 };
 
 /**
@@ -257,7 +257,7 @@ struct FBoxStyle
  * [0-2][] : out/in/cell margin
  * [][0-3] : left/right/top/bottom
  */
-    short     margin[3][4];                       // out : left, right, top, bottom
+    short     margin[3][4] = {};                  // out : left, right, top, bottom
 /**
  * Index of floating object
  */
@@ -280,7 +280,6 @@ struct FBoxStyle
         , cap_len(0)
         , cell(nullptr)
     {
-        memset(margin, 0, sizeof(margin));
     }
 };
 
@@ -353,21 +352,21 @@ struct TxtBox: public FBox
  */
     short     nCell;                              //:=1    offset 80
 /**
- * If value of protect is 1, size of cell cann't change.
+ * If value of protect is 1, size of cell can't change.
  */
     short     protect;                            //1=size lock
 
-    Cell      *cell;
+    std::unique_ptr<Cell[]> cell;
     Table *m_pTable;
 /**
  * Paragraph list
  */
-    std::vector<std::list<HWPPara*>> plists;
+    std::vector<std::vector<std::unique_ptr<HWPPara>>> plists;
 
 /**
  * Caption
  */
-    std::list<HWPPara*> caption;
+    std::vector<std::unique_ptr<HWPPara>> caption;
 
     TxtBox();
     virtual ~TxtBox() override;
@@ -509,15 +508,10 @@ struct TCell
 struct Table
 {
      Table() : box(nullptr) {};
-     ~Table() {
-          std::list<TCell*>::iterator it = cells.begin();
-          for( ; it != cells.end(); ++it)
-                delete *it;
-     };
 
      Columns columns;
      Rows    rows;
-     std::list<TCell*> cells;
+     std::vector<std::unique_ptr<TCell>> cells;
      TxtBox *box;
 };
 
@@ -554,12 +548,14 @@ struct PicDefOle
     void  *hwpole;
 };
 
+struct HWPDrawingObject;
+
 /**
  * @short Drawing object of hwp
  */
 struct PicDefDraw
 {
-    void      *hdo;
+    HWPDrawingObject *hdo;
     uint      zorder;
     ZZRect    vrect;
     int       mbrcnt;
@@ -622,14 +618,14 @@ struct Picture: public FBox
  * Ratio of magnification or reduction.
  */
     hunit     scale[2];
-    PicDef    picinfo;
+    PicDef    picinfo = {};
     char      reserved3[9];
 
-    std::list<HWPPara*> caption;
+    std::vector<std::unique_ptr<HWPPara>> caption;
 /**
  * It's for the Drawing object
  */
-    unsigned char *follow;                        /* When the type of image is drawing, gives additional information. */
+    std::vector<unsigned char> follow;                        /* When the type of image is drawing, gives additional information. */
 
     bool ishyper;
 
@@ -668,7 +664,7 @@ struct Hidden: public HBox
     hchar     dummy;
 
     unsigned char info[8];                        // h, next, dummy
-    std::list<HWPPara*> plist;
+    std::vector<std::unique_ptr<HWPPara>> plist;
 
     Hidden();
     virtual ~Hidden() override;
@@ -697,7 +693,7 @@ struct HeaderFooter: public HBox
 /**
  * Paragraph list of header or footer
  */
-    std::list<HWPPara*> plist;
+    std::vector<std::unique_ptr<HWPPara>> plist;
 
     HeaderFooter();
     virtual ~HeaderFooter() override;
@@ -730,7 +726,7 @@ struct Footnote: public HBox
 /**
  * Paragraph list of Footnote objects
  */
-    std::list<HWPPara*> plist;
+    std::vector<std::unique_ptr<HWPPara>> plist;
 
     Footnote();
     virtual ~Footnote() override;
@@ -830,13 +826,13 @@ struct PageNumCtrl: public HBox
  */
 struct MailMerge: public HBox
 {
-    unsigned char field_name[20];
+    unsigned char field_name[20] = {};
     hchar     dummy;
 
     MailMerge();
 
     virtual bool Read(HWPFile &hwpf) override;
-    virtual hchar_string GetString() override;
+    static hchar_string GetString();
 };
 
 // char composition(23)
@@ -895,8 +891,8 @@ struct TocMark: public HBox
  */
 struct IndexMark: public HBox
 {
-    hchar     keyword1[60];
-    hchar     keyword2[60];
+    hchar     keyword1[60] = {};
+    hchar     keyword2[60] = {};
     unsigned short pgno;
     hchar     dummy;
 

@@ -18,46 +18,52 @@
  */
 
 #include <memory>
-#include "xecontent.hxx"
+#include <xecontent.hxx>
 
-#include <list>
+#include <vector>
 #include <algorithm>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/sheet/XAreaLinks.hpp>
 #include <com/sun/star/sheet/XAreaLink.hpp>
-#include <comphelper/string.hxx>
+#include <com/sun/star/sheet/TableValidationVisibility.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <sfx2/objsh.hxx>
 #include <tools/urlobj.hxx>
-#include <svl/itemset.hxx>
 #include <formula/grammar.hxx>
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
+#include <scitems.hxx>
 #include <editeng/flditem.hxx>
-#include "document.hxx"
-#include "validat.hxx"
-#include "unonames.hxx"
-#include "convuno.hxx"
-#include "rangenam.hxx"
-#include "tokenarray.hxx"
-#include "stlpool.hxx"
-#include "patattr.hxx"
-#include "fapihelper.hxx"
-#include "xehelper.hxx"
-#include "xestyle.hxx"
-#include "xename.hxx"
+#include <document.hxx>
+#include <validat.hxx>
+#include <unonames.hxx>
+#include <convuno.hxx>
+#include <rangenam.hxx>
+#include <tokenarray.hxx>
+#include <stlpool.hxx>
+#include <patattr.hxx>
+#include <fapihelper.hxx>
+#include <xehelper.hxx>
+#include <xestyle.hxx>
+#include <xename.hxx>
+#include <xlcontent.hxx>
+#include <xltools.hxx>
+#include <xeformula.hxx>
 #include <rtl/uuid.h>
+#include <sal/log.hxx>
+#include <oox/export/utils.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/relationship.hxx>
 
 using namespace ::oox;
 
 using ::com::sun::star::uno::Reference;
-using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::UNO_QUERY;
 using ::com::sun::star::table::CellRangeAddress;
 using ::com::sun::star::sheet::XAreaLinks;
 using ::com::sun::star::sheet::XAreaLink;
 
 // Shared string table ========================================================
+
+namespace {
 
 /** A single string entry in the hash table. */
 struct XclExpHashEntry
@@ -75,6 +81,8 @@ struct XclExpHashEntrySWO
                             { return *rLeft.mpString < *rRight.mpString; }
 };
 
+}
+
 /** Implementation of the SST export.
     @descr  Stores all passed strings in a hash table and prevents repeated
     insertion of equal strings. */
@@ -91,12 +99,11 @@ public:
     void                SaveXml( XclExpXmlStream& rStrm );
 
 private:
-    typedef ::std::list< XclExpStringRef >      XclExpStringList;
     typedef ::std::vector< XclExpHashEntry >    XclExpHashVec;
-    typedef ::std::vector< XclExpHashVec >      XclExpHashTab;
 
-    XclExpStringList    maStringList;   /// List of unique strings (in SST ID order).
-    XclExpHashTab       maHashTab;      /// Hashed table that manages string pointers.
+    std::vector< XclExpStringRef > maStringVector;   /// List of unique strings (in SST ID order).
+    std::vector< XclExpHashVec >
+                        maHashTab;      /// Hashed table that manages string pointers.
     sal_uInt32          mnTotal;        /// Total count of strings (including doubles).
     sal_uInt32          mnSize;         /// Size of the SST (count of unique strings).
 };
@@ -112,8 +119,8 @@ XclExpSstImpl::XclExpSstImpl() :
 
 sal_uInt32 XclExpSstImpl::Insert( XclExpStringRef xString )
 {
-    OSL_ENSURE( xString.get(), "XclExpSstImpl::Insert - empty pointer not allowed" );
-    if( !xString.get() )
+    OSL_ENSURE( xString, "XclExpSstImpl::Insert - empty pointer not allowed" );
+    if( !xString )
         xString.reset( new XclExpString );
 
     ++mnTotal;
@@ -121,7 +128,7 @@ sal_uInt32 XclExpSstImpl::Insert( XclExpStringRef xString )
 
     // calculate hash value in range [0,EXC_SST_HASHTABLE_SIZE)
     sal_uInt16 nHash = xString->GetHash();
-    (nHash ^= (nHash / EXC_SST_HASHTABLE_SIZE)) %= EXC_SST_HASHTABLE_SIZE;
+    nHash = (nHash ^ (nHash / EXC_SST_HASHTABLE_SIZE)) % EXC_SST_HASHTABLE_SIZE;
 
     XclExpHashVec& rVec = maHashTab[ nHash ];
     XclExpHashEntry aEntry( xString.get(), mnSize );
@@ -129,7 +136,7 @@ sal_uInt32 XclExpSstImpl::Insert( XclExpStringRef xString )
     if( (aIt == rVec.end()) || (*aIt->mpString != *xString) )
     {
         nSstIndex = mnSize;
-        maStringList.push_back( xString );
+        maStringVector.push_back( xString );
         rVec.insert( aIt, aEntry );
         ++mnSize;
     }
@@ -143,7 +150,7 @@ sal_uInt32 XclExpSstImpl::Insert( XclExpStringRef xString )
 
 void XclExpSstImpl::Save( XclExpStream& rStrm )
 {
-    if( maStringList.empty() )
+    if( maStringVector.empty() )
         return;
 
     SvMemoryStream aExtSst( 8192 );
@@ -160,7 +167,7 @@ void XclExpSstImpl::Save( XclExpStream& rStrm )
     rStrm.StartRecord( EXC_ID_SST, 8 );
 
     rStrm << mnTotal << mnSize;
-    for( XclExpStringList::const_iterator aIt = maStringList.begin(), aEnd = maStringList.end(); aIt != aEnd; ++aIt )
+    for (auto const& elem : maStringVector)
     {
         if( !nBucketIndex )
         {
@@ -172,7 +179,7 @@ void XclExpSstImpl::Save( XclExpStream& rStrm )
                    .WriteUInt16( 0 );     // reserved
         }
 
-        rStrm << **aIt;
+        rStrm << *elem;
 
         if( ++nBucketIndex == nPerBucket )
             nBucketIndex = 0;
@@ -194,7 +201,7 @@ void XclExpSstImpl::Save( XclExpStream& rStrm )
 
 void XclExpSstImpl::SaveXml( XclExpXmlStream& rStrm )
 {
-    if( maStringList.empty() )
+    if( maStringVector.empty() )
         return;
 
     sax_fastparser::FSHelperPtr pSst = rStrm.CreateOutputStream(
@@ -202,19 +209,18 @@ void XclExpSstImpl::SaveXml( XclExpXmlStream& rStrm )
             "sharedStrings.xml",
             rStrm.GetCurrentStream()->getOutputStream(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml",
-            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" );
+            OUStringToOString(oox::getRelationship(Relationship::SHAREDSTRINGS), RTL_TEXTENCODING_UTF8).getStr());
     rStrm.PushStream( pSst );
 
     pSst->startElement( XML_sst,
-            XML_xmlns, XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(xls))).getStr(),
-            XML_count, OString::number(  mnTotal ).getStr(),
-            XML_uniqueCount, OString::number(  mnSize ).getStr(),
-            FSEND );
+            XML_xmlns, rStrm.getNamespaceURL(OOX_NS(xls)),
+            XML_count, OString::number(mnTotal),
+            XML_uniqueCount, OString::number(mnSize) );
 
-    for( XclExpStringList::const_iterator aIt = maStringList.begin(), aEnd = maStringList.end(); aIt != aEnd; ++aIt )
+    for (auto const& elem : maStringVector)
     {
-        pSst->startElement( XML_si, FSEND );
-        (*aIt)->WriteXml( rStrm );
+        pSst->startElement(XML_si);
+        elem->WriteXml( rStrm );
         pSst->endElement( XML_si );
     }
 
@@ -258,7 +264,7 @@ void XclExpMergedcells::AppendRange( const ScRange& rRange, sal_uInt32 nBaseXFId
 {
     if( GetBiff() == EXC_BIFF8 )
     {
-        maMergedRanges.Append( rRange );
+        maMergedRanges.push_back( rRange );
         maBaseXFIds.push_back( nBaseXFId );
     }
 }
@@ -270,8 +276,8 @@ sal_uInt32 XclExpMergedcells::GetBaseXFId( const ScAddress& rPos ) const
     ScRangeList& rNCRanges = const_cast< ScRangeList& >( maMergedRanges );
     for ( size_t i = 0, nRanges = rNCRanges.size(); i < nRanges; ++i, ++aIt )
     {
-        const ScRange* pScRange = rNCRanges[ i ];
-        if( pScRange->In( rPos ) )
+        const ScRange & rScRange = rNCRanges[ i ];
+        if( rScRange.In( rPos ) )
             return *aIt;
     }
     return EXC_XFID_NOTFOUND;
@@ -279,21 +285,21 @@ sal_uInt32 XclExpMergedcells::GetBaseXFId( const ScAddress& rPos ) const
 
 void XclExpMergedcells::Save( XclExpStream& rStrm )
 {
-    if( GetBiff() == EXC_BIFF8 )
+    if( GetBiff() != EXC_BIFF8 )
+        return;
+
+    XclRangeList aXclRanges;
+    GetAddressConverter().ConvertRangeList( aXclRanges, maMergedRanges, true );
+    size_t nFirstRange = 0;
+    size_t nRemainingRanges = aXclRanges.size();
+    while( nRemainingRanges > 0 )
     {
-        XclRangeList aXclRanges;
-        GetAddressConverter().ConvertRangeList( aXclRanges, maMergedRanges, true );
-        size_t nFirstRange = 0;
-        size_t nRemainingRanges = aXclRanges.size();
-        while( nRemainingRanges > 0 )
-        {
-            size_t nRangeCount = ::std::min< size_t >( nRemainingRanges, EXC_MERGEDCELLS_MAXCOUNT );
-            rStrm.StartRecord( EXC_ID_MERGEDCELLS, 2 + 8 * nRangeCount );
-            aXclRanges.WriteSubList( rStrm, nFirstRange, nRangeCount );
-            rStrm.EndRecord();
-            nFirstRange += nRangeCount;
-            nRemainingRanges -= nRangeCount;
-        }
+        size_t nRangeCount = ::std::min< size_t >( nRemainingRanges, EXC_MERGEDCELLS_MAXCOUNT );
+        rStrm.StartRecord( EXC_ID_MERGEDCELLS, 2 + 8 * nRangeCount );
+        aXclRanges.WriteSubList( rStrm, nFirstRange, nRangeCount );
+        rStrm.EndRecord();
+        nFirstRange += nRangeCount;
+        nRemainingRanges -= nRangeCount;
     }
 }
 
@@ -303,17 +309,12 @@ void XclExpMergedcells::SaveXml( XclExpXmlStream& rStrm )
     if( !nCount )
         return;
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
-    rWorksheet->startElement( XML_mergeCells,
-            XML_count,  OString::number(  nCount ).getStr(),
-            FSEND );
+    rWorksheet->startElement(XML_mergeCells, XML_count, OString::number(nCount));
     for( size_t i = 0; i < nCount; ++i )
     {
-        if( const ScRange* pRange = maMergedRanges[ i ] )
-        {
-            rWorksheet->singleElement( XML_mergeCell,
-                    XML_ref,    XclXmlUtils::ToOString( *pRange ).getStr(),
-                    FSEND );
-        }
+        const ScRange & rRange = maMergedRanges[ i ];
+        rWorksheet->singleElement(XML_mergeCell, XML_ref,
+            XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), rRange));
     }
     rWorksheet->endElement( XML_mergeCells );
 }
@@ -336,7 +337,7 @@ XclExpHyperlink::XclExpHyperlink( const XclExpRoot& rRoot, const SvxURLField& rU
     // description
     if( bWithRepr )
     {
-        XclExpString aDescr( rRepr, EXC_STR_FORCEUNICODE, 255 );
+        XclExpString aDescr( rRepr, XclStrFlags::ForceUnicode, 255 );
         aXclStrm << sal_uInt32( aDescr.Len() + 1 );     // string length + 1 trailing zero word
         aDescr.WriteBuffer( aXclStrm );                 // NO flags
         aXclStrm << sal_uInt16( 0 );
@@ -368,7 +369,7 @@ XclExpHyperlink::XclExpHyperlink( const XclExpRoot& rRoot, const SvxURLField& rU
 
         OString aAsciiLink(OUStringToOString(aFileName,
             rRoot.GetTextEncoding()));
-        XclExpString aLink( aFileName, EXC_STR_FORCEUNICODE, 255 );
+        XclExpString aLink( aFileName, XclStrFlags::ForceUnicode, 255 );
         aXclStrm    << XclTools::maGuidFileMoniker
                     << nLevel
                     << sal_uInt32( aAsciiLink.getLength() + 1 );      // string length + 1 trailing zero byte
@@ -385,13 +386,22 @@ XclExpHyperlink::XclExpHyperlink( const XclExpRoot& rRoot, const SvxURLField& rU
             m_Repr = aFileName;
 
         msTarget = XclXmlUtils::ToOUString( aLink );
-        // ooxml expects the file:/// part appended ( or at least
-        // ms2007 does, ms2010 is more tolerant )
-        msTarget = "file:///" + msTarget;
+
+        if( bRel )
+        {
+            for( int i = 0; i < nLevel; ++i )
+                msTarget = "../" + msTarget;
+        }
+        else
+        {
+            // ooxml expects the file:/// part appended ( or at least
+            // ms2007 does, ms2010 is more tolerant )
+            msTarget = "file:///" + msTarget;
+        }
     }
     else if( eProtocol != INetProtocol::NotValid )
     {
-        XclExpString aUrl( aUrlObj.GetURLNoMark(), EXC_STR_FORCEUNICODE, 255 );
+        XclExpString aUrl( aUrlObj.GetURLNoMark(), XclStrFlags::ForceUnicode, 255 );
         aXclStrm    << XclTools::maGuidUrlMoniker
                     << sal_uInt32( aUrl.GetBufferSize() + 2 );  // byte count + 1 trailing zero word
         aUrl.WriteBuffer( aXclStrm );                           // NO flags
@@ -407,11 +417,14 @@ XclExpHyperlink::XclExpHyperlink( const XclExpRoot& rRoot, const SvxURLField& rU
     {
         OUString aTextMark( rUrl.copy( 1 ) );
 
-        sal_Int32 nSepPos = aTextMark.lastIndexOf( '.' );
-        if(nSepPos != -1)
-            aTextMark = aTextMark.replaceAt( nSepPos, 1, "!" );
-        else
-            nSepPos = aTextMark.lastIndexOf( '!' );
+        sal_Int32 nSepPos = aTextMark.lastIndexOf( '!' );
+        sal_Int32 nPointPos = aTextMark.lastIndexOf( '.' );
+        // last dot is the separator, if there is no ! after it
+        if(nSepPos < nPointPos)
+        {
+           nSepPos = nPointPos;
+           aTextMark = aTextMark.replaceAt( nSepPos, 1, "!" );
+        }
 
         if(nSepPos != -1)
         {
@@ -423,20 +436,24 @@ XclExpHyperlink::XclExpHyperlink( const XclExpRoot& rRoot, const SvxURLField& rU
             }
         }
 
-        mxTextMark.reset( new XclExpString( aTextMark, EXC_STR_FORCEUNICODE, 255 ) );
+        mxTextMark.reset( new XclExpString( aTextMark, XclStrFlags::ForceUnicode, 255 ) );
     }
 
     // text mark
-    if( !mxTextMark.get() && aUrlObj.HasMark() )
-        mxTextMark.reset( new XclExpString( aUrlObj.GetMark(), EXC_STR_FORCEUNICODE, 255 ) );
+    if( !mxTextMark && aUrlObj.HasMark() )
+        mxTextMark.reset( new XclExpString( aUrlObj.GetMark(), XclStrFlags::ForceUnicode, 255 ) );
 
-    if( mxTextMark.get() )
+    if( mxTextMark )
     {
         aXclStrm    << sal_uInt32( mxTextMark->Len() + 1 );  // string length + 1 trailing zero word
         mxTextMark->WriteBuffer( aXclStrm );                 // NO flags
         aXclStrm    << sal_uInt16( 0 );
 
         mnFlags |= EXC_HLINK_MARK;
+
+        OUString location = XclXmlUtils::ToOUString(*mxTextMark);
+        if (!location.isEmpty() && msTarget.endsWith("#" + location))
+            msTarget = msTarget.copy(0, msTarget.getLength() - location.getLength() - 1);
     }
 
     SetRecSize( 32 + mxVarData->Tell() );
@@ -450,7 +467,8 @@ OUString XclExpHyperlink::BuildFileName(
         sal_uInt16& rnLevel, bool& rbRel, const OUString& rUrl, const XclExpRoot& rRoot, bool bEncoded )
 {
     INetURLObject aURLObject( rUrl );
-    OUString aDosName( bEncoded ? aURLObject.GetURLPath() : aURLObject.getFSysPath( FSysStyle::Dos ) );
+    OUString aDosName(bEncoded ? aURLObject.GetMainURL(INetURLObject::DecodeMechanism::ToIUri)
+                               : aURLObject.getFSysPath(FSysStyle::Dos));
     rnLevel = 0;
     rbRel = rRoot.IsRelUrl();
 
@@ -507,17 +525,15 @@ void XclExpHyperlink::SaveXml( XclExpXmlStream& rStrm )
     OUString sId = !msTarget.isEmpty() ? rStrm.addRelation( rStrm.GetCurrentStream()->getOutputStream(),
             oox::getRelationship(Relationship::HYPERLINK),
             msTarget, true ) : OUString();
+    std::optional<OString> sTextMark;
+    if (mxTextMark)
+        sTextMark = XclXmlUtils::ToOString(*mxTextMark);
     rStrm.GetCurrentStream()->singleElement( XML_hyperlink,
-            XML_ref,                XclXmlUtils::ToOString( maScPos ).getStr(),
-            FSNS( XML_r, XML_id ),  !sId.isEmpty()
-                                       ? XclXmlUtils::ToOString( sId ).getStr()
-                                       : nullptr,
-            XML_location,           mxTextMark.get() != nullptr
-                                        ? XclXmlUtils::ToOString( *mxTextMark ).getStr()
-                                        : nullptr,
+            XML_ref,                XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), maScPos),
+            FSNS( XML_r, XML_id ),  sax_fastparser::UseIf(sId, !sId.isEmpty()),
+            XML_location,           sTextMark,
             // OOXTODO: XML_tooltip,    from record HLinkTooltip 800h wzTooltip
-            XML_display,            XclXmlUtils::ToOString(m_Repr).getStr(),
-            FSEND );
+            XML_display,            m_Repr );
 }
 
 // Label ranges ===============================================================
@@ -531,9 +547,9 @@ XclExpLabelranges::XclExpLabelranges( const XclExpRoot& rRoot ) :
     // row labels only over 1 column (restriction of Excel97/2000/XP)
     for ( size_t i = 0, nRanges = maRowRanges.size(); i < nRanges; ++i )
     {
-        ScRange* pScRange = maRowRanges[ i ];
-        if( pScRange->aStart.Col() != pScRange->aEnd.Col() )
-            pScRange->aEnd.SetCol( pScRange->aStart.Col() );
+        ScRange & rScRange = maRowRanges[ i ];
+        if( rScRange.aStart.Col() != rScRange.aEnd.Col() )
+            rScRange.aEnd.SetCol( rScRange.aStart.Col() );
     }
     // col label ranges
     FillRangeList( maColRanges, rRoot.GetDoc().GetColNameRangesRef(), nScTab );
@@ -544,10 +560,10 @@ void XclExpLabelranges::FillRangeList( ScRangeList& rScRanges,
 {
     for ( size_t i = 0, nPairs = xLabelRangesRef->size(); i < nPairs; ++i )
     {
-        ScRangePair* pRangePair = (*xLabelRangesRef)[i];
-        const ScRange& rScRange = pRangePair->GetRange( 0 );
+        const ScRangePair & rRangePair = (*xLabelRangesRef)[i];
+        const ScRange& rScRange = rRangePair.GetRange( 0 );
         if( rScRange.aStart.Tab() == nScTab )
-            rScRanges.Append( rScRange );
+            rScRanges.push_back( rScRange );
     }
 }
 
@@ -571,7 +587,7 @@ void XclExpLabelranges::Save( XclExpStream& rStrm )
 class XclExpCFImpl : protected XclExpRoot
 {
 public:
-    explicit            XclExpCFImpl( const XclExpRoot& rRoot, const ScCondFormatEntry& rFormatEntry, sal_Int32 nPriority );
+    explicit            XclExpCFImpl( const XclExpRoot& rRoot, const ScCondFormatEntry& rFormatEntry, sal_Int32 nPriority, ScAddress aOrigin );
 
     /** Writes the body of the CF record. */
     void                WriteBody( XclExpStream& rStrm );
@@ -579,6 +595,7 @@ public:
 
 private:
     const ScCondFormatEntry& mrFormatEntry; /// Calc conditional format entry.
+    ScAddress           maOrigin;           /// Top left cell of the combined range
     XclFontData         maFontData;         /// Font formatting attributes.
     XclExpCellBorder    maBorder;           /// Border formatting attributes.
     XclExpCellArea      maArea;             /// Pattern formatting attributes.
@@ -600,9 +617,10 @@ private:
     bool                mbFormula2;
 };
 
-XclExpCFImpl::XclExpCFImpl( const XclExpRoot& rRoot, const ScCondFormatEntry& rFormatEntry, sal_Int32 nPriority ) :
+XclExpCFImpl::XclExpCFImpl( const XclExpRoot& rRoot, const ScCondFormatEntry& rFormatEntry, sal_Int32 nPriority, ScAddress aOrigin ) :
     XclExpRoot( rRoot ),
     mrFormatEntry( rFormatEntry ),
+    maOrigin( aOrigin ),
     mnFontColorId( 0 ),
     mnType( EXC_CF_TYPE_CELL ),
     mnOperator( EXC_CF_CMP_NONE ),
@@ -618,6 +636,10 @@ XclExpCFImpl::XclExpCFImpl( const XclExpRoot& rRoot, const ScCondFormatEntry& rF
     mbPattUsed( false ),
     mbFormula2(false)
 {
+    // Set correct tab for maOrigin from GetValidSrcPos() of the format-entry.
+    ScAddress aValidSrcPos = mrFormatEntry.GetValidSrcPos();
+    maOrigin.SetTab(aValidSrcPos.Tab());
+
     /*  Get formatting attributes here, and not in WriteBody(). This is needed to
         correctly insert all colors into the palette. */
 
@@ -649,43 +671,43 @@ XclExpCFImpl::XclExpCFImpl( const XclExpRoot& rRoot, const ScCondFormatEntry& rF
         // pattern
         mbPattUsed = ScfTools::CheckItem( rItemSet, ATTR_BACKGROUND, true );
         if( mbPattUsed )
-            maArea.FillFromItemSet( rItemSet, GetPalette(), GetBiff() );
+            maArea.FillFromItemSet( rItemSet, GetPalette(), true );
     }
 
     // *** mode and comparison operator ***
 
     switch( rFormatEntry.GetOperation() )
     {
-        case SC_COND_NONE:
+        case ScConditionMode::NONE:
             mnType = EXC_CF_TYPE_NONE;
         break;
-        case SC_COND_BETWEEN:
+        case ScConditionMode::Between:
             mnOperator = EXC_CF_CMP_BETWEEN;
             mbFormula2 = true;
         break;
-        case SC_COND_NOTBETWEEN:
+        case ScConditionMode::NotBetween:
             mnOperator = EXC_CF_CMP_NOT_BETWEEN;
             mbFormula2 = true;
         break;
-        case SC_COND_EQUAL:
+        case ScConditionMode::Equal:
             mnOperator = EXC_CF_CMP_EQUAL;
         break;
-        case SC_COND_NOTEQUAL:
+        case ScConditionMode::NotEqual:
             mnOperator = EXC_CF_CMP_NOT_EQUAL;
         break;
-        case SC_COND_GREATER:
+        case ScConditionMode::Greater:
             mnOperator = EXC_CF_CMP_GREATER;
         break;
-        case SC_COND_LESS:
+        case ScConditionMode::Less:
             mnOperator = EXC_CF_CMP_LESS;
         break;
-        case SC_COND_EQGREATER:
+        case ScConditionMode::EqGreater:
             mnOperator = EXC_CF_CMP_GREATER_EQUAL;
         break;
-        case SC_COND_EQLESS:
+        case ScConditionMode::EqLess:
             mnOperator = EXC_CF_CMP_LESS_EQUAL;
         break;
-        case SC_COND_DIRECT:
+        case ScConditionMode::Direct:
             mnType = EXC_CF_TYPE_FMLA;
         break;
         default:
@@ -706,7 +728,7 @@ void XclExpCFImpl::WriteBody( XclExpStream& rStrm )
 
     if (mbFormula2)
     {
-        xScTokArr.reset( mrFormatEntry.CreateFlatCopiedTokenArray( 1 ) );
+        xScTokArr = mrFormatEntry.CreateFlatCopiedTokenArray( 1 );
         mxTokArr2 = rFmlaComp.CreateFormula( EXC_FMLATYPE_CONDFMT, *xScTokArr );
     }
 
@@ -716,8 +738,8 @@ void XclExpCFImpl::WriteBody( XclExpStream& rStrm )
 
     // *** formula sizes ***
 
-    sal_uInt16 nFmlaSize1 = mxTokArr1.get() ? mxTokArr1->GetSize() : 0;
-    sal_uInt16 nFmlaSize2 = mxTokArr2.get() ? mxTokArr2->GetSize() : 0;
+    sal_uInt16 nFmlaSize1 = mxTokArr1 ? mxTokArr1->GetSize() : 0;
+    sal_uInt16 nFmlaSize2 = mxTokArr2 ? mxTokArr2->GetSize() : 0;
     rStrm << nFmlaSize1 << nFmlaSize2;
 
     // *** formatting blocks ***
@@ -794,9 +816,9 @@ void XclExpCFImpl::WriteBody( XclExpStream& rStrm )
 
     // *** formulas ***
 
-    if( mxTokArr1.get() )
+    if( mxTokArr1 )
         mxTokArr1->WriteArray( rStrm );
-    if( mxTokArr2.get() )
+    if( mxTokArr2 )
         mxTokArr2->WriteArray( rStrm );
 }
 
@@ -807,53 +829,53 @@ const char* GetOperatorString(ScConditionMode eMode, bool& bFrmla2)
     const char *pRet = nullptr;
     switch(eMode)
     {
-        case SC_COND_EQUAL:
+        case ScConditionMode::Equal:
             pRet = "equal";
             break;
-        case SC_COND_LESS:
+        case ScConditionMode::Less:
             pRet = "lessThan";
             break;
-        case SC_COND_GREATER:
+        case ScConditionMode::Greater:
             pRet = "greaterThan";
             break;
-        case SC_COND_EQLESS:
+        case ScConditionMode::EqLess:
             pRet = "lessThanOrEqual";
             break;
-        case SC_COND_EQGREATER:
+        case ScConditionMode::EqGreater:
             pRet = "greaterThanOrEqual";
             break;
-        case SC_COND_NOTEQUAL:
+        case ScConditionMode::NotEqual:
             pRet = "notEqual";
             break;
-        case SC_COND_BETWEEN:
+        case ScConditionMode::Between:
             bFrmla2 = true;
             pRet = "between";
             break;
-        case SC_COND_NOTBETWEEN:
+        case ScConditionMode::NotBetween:
             bFrmla2 = true;
             pRet = "notBetween";
             break;
-        case SC_COND_DUPLICATE:
+        case ScConditionMode::Duplicate:
             pRet = nullptr;
             break;
-        case SC_COND_NOTDUPLICATE:
+        case ScConditionMode::NotDuplicate:
             pRet = nullptr;
             break;
-        case SC_COND_BEGINS_WITH:
+        case ScConditionMode::BeginsWith:
             pRet = "beginsWith";
         break;
-        case SC_COND_ENDS_WITH:
+        case ScConditionMode::EndsWith:
             pRet = "endsWith";
         break;
-        case SC_COND_CONTAINS_TEXT:
+        case ScConditionMode::ContainsText:
             pRet = "containsText";
         break;
-        case SC_COND_NOT_CONTAINS_TEXT:
+        case ScConditionMode::NotContainsText:
             pRet = "notContains";
         break;
-        case SC_COND_DIRECT:
+        case ScConditionMode::Direct:
             break;
-        case SC_COND_NONE:
+        case ScConditionMode::NONE:
         default:
             break;
     }
@@ -864,33 +886,33 @@ const char* GetTypeString(ScConditionMode eMode)
 {
     switch(eMode)
     {
-        case SC_COND_DIRECT:
+        case ScConditionMode::Direct:
             return "expression";
-        case SC_COND_TOP10:
-        case SC_COND_TOP_PERCENT:
-        case SC_COND_BOTTOM10:
-        case SC_COND_BOTTOM_PERCENT:
+        case ScConditionMode::Top10:
+        case ScConditionMode::TopPercent:
+        case ScConditionMode::Bottom10:
+        case ScConditionMode::BottomPercent:
             return "top10";
-        case SC_COND_ABOVE_AVERAGE:
-        case SC_COND_BELOW_AVERAGE:
-        case SC_COND_ABOVE_EQUAL_AVERAGE:
-        case SC_COND_BELOW_EQUAL_AVERAGE:
+        case ScConditionMode::AboveAverage:
+        case ScConditionMode::BelowAverage:
+        case ScConditionMode::AboveEqualAverage:
+        case ScConditionMode::BelowEqualAverage:
             return "aboveAverage";
-        case SC_COND_NOTDUPLICATE:
+        case ScConditionMode::NotDuplicate:
             return "uniqueValues";
-        case SC_COND_DUPLICATE:
+        case ScConditionMode::Duplicate:
             return "duplicateValues";
-        case SC_COND_ERROR:
+        case ScConditionMode::Error:
             return "containsErrors";
-        case SC_COND_NOERROR:
+        case ScConditionMode::NoError:
             return "notContainsErrors";
-        case SC_COND_BEGINS_WITH:
+        case ScConditionMode::BeginsWith:
             return "beginsWith";
-        case SC_COND_ENDS_WITH:
+        case ScConditionMode::EndsWith:
             return "endsWith";
-        case SC_COND_CONTAINS_TEXT:
+        case ScConditionMode::ContainsText:
             return "containsText";
-        case SC_COND_NOT_CONTAINS_TEXT:
+        case ScConditionMode::NotContainsText:
             return "notContainsText";
         default:
             return "cellIs";
@@ -901,10 +923,10 @@ bool IsTopBottomRule(ScConditionMode eMode)
 {
     switch(eMode)
     {
-        case SC_COND_TOP10:
-        case SC_COND_BOTTOM10:
-        case SC_COND_TOP_PERCENT:
-        case SC_COND_BOTTOM_PERCENT:
+        case ScConditionMode::Top10:
+        case ScConditionMode::Bottom10:
+        case ScConditionMode::TopPercent:
+        case ScConditionMode::BottomPercent:
             return true;
         default:
             break;
@@ -917,10 +939,10 @@ bool IsTextRule(ScConditionMode eMode)
 {
     switch(eMode)
     {
-        case SC_COND_BEGINS_WITH:
-        case SC_COND_ENDS_WITH:
-        case SC_COND_CONTAINS_TEXT:
-        case SC_COND_NOT_CONTAINS_TEXT:
+        case ScConditionMode::BeginsWith:
+        case ScConditionMode::EndsWith:
+        case ScConditionMode::ContainsText:
+        case ScConditionMode::NotContainsText:
             return true;
         default:
             break;
@@ -929,26 +951,91 @@ bool IsTextRule(ScConditionMode eMode)
     return false;
 }
 
+bool RequiresFormula(ScConditionMode eMode)
+{
+    if (IsTopBottomRule(eMode))
+        return false;
+    else if (IsTextRule(eMode))
+        return false;
+
+    switch (eMode)
+    {
+        case ScConditionMode::NoError:
+        case ScConditionMode::Error:
+        case ScConditionMode::Duplicate:
+        case ScConditionMode::NotDuplicate:
+            return false;
+        default:
+        break;
+    }
+
+    return true;
+}
+
+bool RequiresFixedFormula(ScConditionMode eMode)
+{
+    switch(eMode)
+    {
+        case ScConditionMode::NoError:
+        case ScConditionMode::Error:
+        case ScConditionMode::BeginsWith:
+        case ScConditionMode::EndsWith:
+        case ScConditionMode::ContainsText:
+        case ScConditionMode::NotContainsText:
+            return true;
+        default:
+        break;
+    }
+
+    return false;
+}
+
+OString GetFixedFormula(ScConditionMode eMode, const ScAddress& rAddress, const OString& rText)
+{
+    OStringBuffer aBuffer;
+    XclXmlUtils::ToOString(aBuffer, rAddress);
+    OString aPos = aBuffer.makeStringAndClear();
+    switch (eMode)
+    {
+        case ScConditionMode::Error:
+            return OString("ISERROR(" + aPos + ")") ;
+        case ScConditionMode::NoError:
+            return OString("NOT(ISERROR(" + aPos + "))") ;
+        case ScConditionMode::BeginsWith:
+            return OString("LEFT(" + aPos + ",LEN(\"" + rText + "\"))=\"" + rText + "\"");
+        case ScConditionMode::EndsWith:
+            return OString("RIGHT(" + aPos +",LEN(\"" + rText + "\"))=\"" + rText + "\"");
+        case ScConditionMode::ContainsText:
+            return OString("NOT(ISERROR(SEARCH(\"" + rText + "\"," + aPos + ")))");
+        case ScConditionMode::NotContainsText:
+            return OString("ISERROR(SEARCH(\"" +  rText + "\"," + aPos + "))");
+        default:
+        break;
+    }
+
+    return "";
+}
+
 }
 
 void XclExpCFImpl::SaveXml( XclExpXmlStream& rStrm )
 {
     bool bFmla2 = false;
     ScConditionMode eOperation = mrFormatEntry.GetOperation();
-    bool bAboveAverage = eOperation == SC_COND_ABOVE_AVERAGE ||
-                                eOperation == SC_COND_ABOVE_EQUAL_AVERAGE;
-    bool bEqualAverage = eOperation == SC_COND_ABOVE_EQUAL_AVERAGE ||
-                                eOperation == SC_COND_BELOW_EQUAL_AVERAGE;
-    bool bBottom = eOperation == SC_COND_BOTTOM10
-        || eOperation == SC_COND_BOTTOM_PERCENT;
-    bool bPercent = eOperation == SC_COND_TOP_PERCENT ||
-        eOperation == SC_COND_BOTTOM_PERCENT;
-    OString aRank("0");
+    bool bAboveAverage = eOperation == ScConditionMode::AboveAverage ||
+                                eOperation == ScConditionMode::AboveEqualAverage;
+    bool bEqualAverage = eOperation == ScConditionMode::AboveEqualAverage ||
+                                eOperation == ScConditionMode::BelowEqualAverage;
+    bool bBottom = eOperation == ScConditionMode::Bottom10
+        || eOperation == ScConditionMode::BottomPercent;
+    bool bPercent = eOperation == ScConditionMode::TopPercent ||
+        eOperation == ScConditionMode::BottomPercent;
+    OUString aRank("0");
     if(IsTopBottomRule(eOperation))
     {
         // position and formula grammar are not important
         // we only store a number there
-        aRank = XclXmlUtils::ToOString(mrFormatEntry.GetExpression(ScAddress(0,0,0), 0));
+        aRank = mrFormatEntry.GetExpression(ScAddress(0,0,0), 0);
     }
     OString aText;
     if(IsTextRule(eOperation))
@@ -958,32 +1045,39 @@ void XclExpCFImpl::SaveXml( XclExpXmlStream& rStrm )
         // the token array for that
         std::unique_ptr<ScTokenArray> pTokenArray(mrFormatEntry.CreateFlatCopiedTokenArray(0));
         if(pTokenArray->GetLen())
-            aText = XclXmlUtils::ToOString(pTokenArray->FirstToken()->GetString().getString());
+            aText = pTokenArray->FirstToken()->GetString().getString().toUtf8();
     }
 
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_cfRule,
             XML_type, GetTypeString( mrFormatEntry.GetOperation() ),
-            XML_priority, OString::number( mnPriority + 1 ).getStr(),
+            XML_priority, OString::number(mnPriority + 1),
             XML_operator, GetOperatorString( mrFormatEntry.GetOperation(), bFmla2 ),
-            XML_aboveAverage, OString::number( int(bAboveAverage) ).getStr(),
-            XML_equalAverage, OString::number( int(bEqualAverage) ).getStr(),
-            XML_bottom, OString::number( int(bBottom) ).getStr(),
-            XML_percent, OString::number( int(bPercent) ).getStr(),
-            XML_rank, aRank.getStr(),
-            XML_text, aText.getStr(),
-            XML_dxfId, OString::number( GetDxfs().GetDxfId( mrFormatEntry.GetStyle() ) ).getStr(),
-            FSEND );
-    if(!IsTextRule(eOperation) && !IsTopBottomRule(eOperation))
+            XML_aboveAverage, ToPsz10(bAboveAverage),
+            XML_equalAverage, ToPsz10(bEqualAverage),
+            XML_bottom, ToPsz10(bBottom),
+            XML_percent, ToPsz10(bPercent),
+            XML_rank, aRank,
+            XML_text, aText,
+            XML_dxfId, OString::number(GetDxfs().GetDxfId(mrFormatEntry.GetStyle())) );
+
+    if (RequiresFixedFormula(eOperation))
     {
-        rWorksheet->startElement( XML_formula, FSEND );
+        rWorksheet->startElement(XML_formula);
+        OString aFormula = GetFixedFormula(eOperation, maOrigin, aText);
+        rWorksheet->writeEscaped(aFormula.getStr());
+        rWorksheet->endElement( XML_formula );
+    }
+    else if(RequiresFormula(eOperation))
+    {
+        rWorksheet->startElement(XML_formula);
         std::unique_ptr<ScTokenArray> pTokenArray(mrFormatEntry.CreateFlatCopiedTokenArray(0));
         rWorksheet->writeEscaped(XclXmlUtils::ToOUString( GetCompileFormulaContext(), mrFormatEntry.GetValidSrcPos(),
                     pTokenArray.get()));
         rWorksheet->endElement( XML_formula );
         if (bFmla2)
         {
-            rWorksheet->startElement( XML_formula, FSEND );
+            rWorksheet->startElement(XML_formula);
             std::unique_ptr<ScTokenArray> pTokenArray2(mrFormatEntry.CreateFlatCopiedTokenArray(1));
             rWorksheet->writeEscaped(XclXmlUtils::ToOUString( GetCompileFormulaContext(), mrFormatEntry.GetValidSrcPos(),
                         pTokenArray2.get()));
@@ -994,10 +1088,10 @@ void XclExpCFImpl::SaveXml( XclExpXmlStream& rStrm )
     rWorksheet->endElement( XML_cfRule );
 }
 
-XclExpCF::XclExpCF( const XclExpRoot& rRoot, const ScCondFormatEntry& rFormatEntry, sal_Int32 nPriority = 0 ) :
+XclExpCF::XclExpCF( const XclExpRoot& rRoot, const ScCondFormatEntry& rFormatEntry, sal_Int32 nPriority, ScAddress aOrigin ) :
     XclExpRecord( EXC_ID_CF ),
     XclExpRoot( rRoot ),
-    mxImpl( new XclExpCFImpl( rRoot, rFormatEntry, nPriority ) )
+    mxImpl( new XclExpCFImpl( rRoot, rFormatEntry, nPriority, aOrigin ) )
 {
 }
 
@@ -1071,10 +1165,9 @@ void XclExpDateFormat::SaveXml( XclExpXmlStream& rStrm )
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_cfRule,
             XML_type, "timePeriod",
-            XML_priority, OString::number( mnPriority + 1 ).getStr(),
+            XML_priority, OString::number(mnPriority + 1),
             XML_timePeriod, sTimePeriod,
-            XML_dxfId, OString::number( GetDxfs().GetDxfId( mrFormatEntry.GetStyleName() ) ).getStr(),
-            FSEND );
+            XML_dxfId, OString::number(GetDxfs().GetDxfId(mrFormatEntry.GetStyleName())) );
     rWorksheet->endElement( XML_cfRule);
 }
 
@@ -1134,9 +1227,8 @@ void XclExpCfvo::SaveXml( XclExpXmlStream& rStrm )
     }
 
     rWorksheet->startElement( XML_cfvo,
-            XML_type, getColorScaleType(mrEntry, mbFirst).getStr(),
-            XML_val, aValue.getStr(),
-            FSEND );
+            XML_type, getColorScaleType(mrEntry, mbFirst),
+            XML_val, aValue );
 
     rWorksheet->endElement( XML_cfvo );
 }
@@ -1156,9 +1248,7 @@ void XclExpColScaleCol::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
 
-    rWorksheet->startElement( XML_color,
-            XML_rgb, XclXmlUtils::ToOString( mrColor ).getStr(),
-            FSEND );
+    rWorksheet->startElement(XML_color, XML_rgb, XclXmlUtils::ToOString(mrColor));
 
     rWorksheet->endElement( XML_color );
 }
@@ -1169,7 +1259,7 @@ OString createHexStringFromDigit(sal_uInt8 nDigit)
 {
     OString aString = OString::number( nDigit, 16 );
     if(aString.getLength() == 1)
-        aString = aString + OString::number(0);
+        aString += OString::number(0);
     return aString;
 }
 
@@ -1203,76 +1293,86 @@ XclExpCondfmt::XclExpCondfmt( const XclExpRoot& rRoot, const ScConditionalFormat
 {
     const ScRangeList& aScRanges = rCondFormat.GetRange();
     GetAddressConverter().ConvertRangeList( maXclRanges, aScRanges, true );
-    if( !maXclRanges.empty() )
-    {
-        std::vector<XclExpExtCondFormatData> aExtEntries;
-        for( size_t nIndex = 0, nCount = rCondFormat.size(); nIndex < nCount; ++nIndex )
-            if( const ScFormatEntry* pFormatEntry = rCondFormat.GetEntry( nIndex ) )
-            {
-                if(pFormatEntry->GetType() == condformat::CONDITION)
-                    maCFList.AppendNewRecord( new XclExpCF( GetRoot(), static_cast<const ScCondFormatEntry&>(*pFormatEntry), ++rIndex ) );
-                else if(pFormatEntry->GetType() == condformat::COLORSCALE)
-                    maCFList.AppendNewRecord( new XclExpColorScale( GetRoot(), static_cast<const ScColorScaleFormat&>(*pFormatEntry), ++rIndex ) );
-                else if(pFormatEntry->GetType() == condformat::DATABAR)
-                {
-                    const ScDataBarFormat& rFormat = static_cast<const ScDataBarFormat&>(*pFormatEntry);
-                    XclExpExtCondFormatData aExtEntry;
-                    aExtEntry.nPriority = -1;
-                    aExtEntry.aGUID = generateGUIDString();
-                    aExtEntry.pEntry = &rFormat;
-                    aExtEntries.push_back(aExtEntry);
+    if( maXclRanges.empty() )
+        return;
 
-                    maCFList.AppendNewRecord( new XclExpDataBar( GetRoot(), rFormat, ++rIndex, aExtEntry.aGUID));
-                }
-                else if(pFormatEntry->GetType() == condformat::ICONSET)
-                {
-                    // don't export iconSet entries that are not in OOXML
-                    const ScIconSetFormat& rIconSet = static_cast<const ScIconSetFormat&>(*pFormatEntry);
-                    bool bNeedsExt = false;
-                    switch (rIconSet.GetIconSetData()->eIconSetType)
-                    {
-                        case IconSet_3Smilies:
-                        case IconSet_3ColorSmilies:
-                        case IconSet_3Stars:
-                        case IconSet_3Triangles:
-                        case IconSet_5Boxes:
-                        {
-                            bNeedsExt = true;
-                        }
-                        break;
-                        default:
-                            break;
-                    }
-
-                    bNeedsExt |= rIconSet.GetIconSetData()->mbCustom;
-
-                    if (bNeedsExt)
-                    {
-                        XclExpExtCondFormatData aExtEntry;
-                        aExtEntry.nPriority = ++rIndex;
-                        aExtEntry.aGUID = generateGUIDString();
-                        aExtEntry.pEntry = &rIconSet;
-                        aExtEntries.push_back(aExtEntry);
-                    }
-                    else
-                        maCFList.AppendNewRecord( new XclExpIconSet( GetRoot(), rIconSet, ++rIndex ) );
-                }
-                else if(pFormatEntry->GetType() == condformat::DATE)
-                    maCFList.AppendNewRecord( new XclExpDateFormat( GetRoot(), static_cast<const ScCondDateFormatEntry&>(*pFormatEntry), ++rIndex ) );
-            }
-        aScRanges.Format( msSeqRef, ScRefFlags::VALID, nullptr, formula::FormulaGrammar::CONV_XL_OOX, ' ' );
-
-        if(!aExtEntries.empty() && xExtLst.get())
+    std::vector<XclExpExtCondFormatData> aExtEntries;
+    ScAddress aOrigin = aScRanges.Combine().aStart;
+    for( size_t nIndex = 0, nCount = rCondFormat.size(); nIndex < nCount; ++nIndex )
+        if( const ScFormatEntry* pFormatEntry = rCondFormat.GetEntry( nIndex ) )
         {
-            XclExpExtRef pParent = xExtLst->GetItem( XclExpExtDataBarType );
-            if( !pParent.get() )
+            if(pFormatEntry->GetType() == ScFormatEntry::Type::Condition)
+                maCFList.AppendNewRecord( new XclExpCF( GetRoot(), static_cast<const ScCondFormatEntry&>(*pFormatEntry), ++rIndex, aOrigin ) );
+            else if(pFormatEntry->GetType() == ScFormatEntry::Type::ExtCondition)
             {
-                xExtLst->AddRecord( XclExpExtRef(new XclExpExtCondFormat( *xExtLst.get() )) );
-                pParent = xExtLst->GetItem( XclExpExtDataBarType );
+                const ScCondFormatEntry& rFormat = static_cast<const ScCondFormatEntry&>(*pFormatEntry);
+                XclExpExtCondFormatData aExtEntry;
+                aExtEntry.nPriority = ++rIndex;
+                aExtEntry.aGUID = generateGUIDString();
+                aExtEntry.pEntry = &rFormat;
+                aExtEntries.push_back(aExtEntry);
             }
-            static_cast<XclExpExtCondFormat*>(xExtLst->GetItem( XclExpExtDataBarType ).get())->AddRecord(
-                    std::make_shared<XclExpExtConditionalFormatting>( *pParent, aExtEntries, aScRanges));
+            else if(pFormatEntry->GetType() == ScFormatEntry::Type::Colorscale)
+                maCFList.AppendNewRecord( new XclExpColorScale( GetRoot(), static_cast<const ScColorScaleFormat&>(*pFormatEntry), ++rIndex ) );
+            else if(pFormatEntry->GetType() == ScFormatEntry::Type::Databar)
+            {
+                const ScDataBarFormat& rFormat = static_cast<const ScDataBarFormat&>(*pFormatEntry);
+                XclExpExtCondFormatData aExtEntry;
+                aExtEntry.nPriority = -1;
+                aExtEntry.aGUID = generateGUIDString();
+                aExtEntry.pEntry = &rFormat;
+                aExtEntries.push_back(aExtEntry);
+
+                maCFList.AppendNewRecord( new XclExpDataBar( GetRoot(), rFormat, ++rIndex, aExtEntry.aGUID));
+            }
+            else if(pFormatEntry->GetType() == ScFormatEntry::Type::Iconset)
+            {
+                // don't export iconSet entries that are not in OOXML
+                const ScIconSetFormat& rIconSet = static_cast<const ScIconSetFormat&>(*pFormatEntry);
+                bool bNeedsExt = false;
+                switch (rIconSet.GetIconSetData()->eIconSetType)
+                {
+                    case IconSet_3Smilies:
+                    case IconSet_3ColorSmilies:
+                    case IconSet_3Stars:
+                    case IconSet_3Triangles:
+                    case IconSet_5Boxes:
+                    {
+                        bNeedsExt = true;
+                    }
+                    break;
+                    default:
+                        break;
+                }
+
+                bNeedsExt |= rIconSet.GetIconSetData()->mbCustom;
+
+                if (bNeedsExt)
+                {
+                    XclExpExtCondFormatData aExtEntry;
+                    aExtEntry.nPriority = ++rIndex;
+                    aExtEntry.aGUID = generateGUIDString();
+                    aExtEntry.pEntry = &rIconSet;
+                    aExtEntries.push_back(aExtEntry);
+                }
+                else
+                    maCFList.AppendNewRecord( new XclExpIconSet( GetRoot(), rIconSet, ++rIndex ) );
+            }
+            else if(pFormatEntry->GetType() == ScFormatEntry::Type::Date)
+                maCFList.AppendNewRecord( new XclExpDateFormat( GetRoot(), static_cast<const ScCondDateFormatEntry&>(*pFormatEntry), ++rIndex ) );
         }
+    aScRanges.Format( msSeqRef, ScRefFlags::VALID, GetDoc(), formula::FormulaGrammar::CONV_XL_OOX, ' ', true );
+
+    if(!aExtEntries.empty() && xExtLst)
+    {
+        XclExpExt* pParent = xExtLst->GetItem( XclExpExtDataBarType );
+        if( !pParent )
+        {
+            xExtLst->AddRecord( new XclExpExtCondFormat( *xExtLst ) );
+            pParent = xExtLst->GetItem( XclExpExtDataBarType );
+        }
+        static_cast<XclExpExtCondFormat*>(xExtLst->GetItem( XclExpExtDataBarType ))->AddRecord(
+                new XclExpExtConditionalFormatting( *pParent, aExtEntries, aScRanges));
     }
 }
 
@@ -1322,9 +1422,9 @@ void XclExpCondfmt::SaveXml( XclExpXmlStream& rStrm )
 
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_conditionalFormatting,
-            XML_sqref, XclXmlUtils::ToOString( msSeqRef ).getStr(),
-            // OOXTODO: XML_pivot,
-            FSEND );
+            XML_sqref, msSeqRef
+            // OOXTODO: XML_pivot
+    );
 
     maCFList.SaveXml( rStrm );
 
@@ -1336,16 +1436,15 @@ XclExpColorScale::XclExpColorScale( const XclExpRoot& rRoot, const ScColorScaleF
     XclExpRoot( rRoot ),
     mnPriority( nPriority )
 {
-    const ScRange* pRange = rFormat.GetRange().front();
-    ScAddress aAddr = pRange->aStart;
-    for(ScColorScaleEntries::const_iterator itr = rFormat.begin();
-            itr != rFormat.end(); ++itr)
+    const ScRange & rRange = rFormat.GetRange().front();
+    ScAddress aAddr = rRange.aStart;
+    for(const auto& rxColorScaleEntry : rFormat)
     {
         // exact position is not important, we allow only absolute refs
 
-        XclExpCfvoList::RecordRefType xCfvo( new XclExpCfvo( GetRoot(), *itr[0], aAddr ) );
+        XclExpCfvoList::RecordRefType xCfvo( new XclExpCfvo( GetRoot(), *rxColorScaleEntry, aAddr ) );
         maCfvoList.AppendRecord( xCfvo );
-        XclExpColScaleColList::RecordRefType xClo( new XclExpColScaleCol( GetRoot(), itr[0]->GetColor() ) );
+        XclExpColScaleColList::RecordRefType xClo( new XclExpColScaleCol( GetRoot(), rxColorScaleEntry->GetColor() ) );
         maColList.AppendRecord( xClo );
     }
 }
@@ -1356,10 +1455,9 @@ void XclExpColorScale::SaveXml( XclExpXmlStream& rStrm )
 
     rWorksheet->startElement( XML_cfRule,
             XML_type, "colorScale",
-            XML_priority, OString::number( mnPriority + 1 ).getStr(),
-            FSEND );
+            XML_priority, OString::number(mnPriority + 1) );
 
-    rWorksheet->startElement( XML_colorScale, FSEND );
+    rWorksheet->startElement(XML_colorScale);
 
     maCfvoList.SaveXml(rStrm);
     maColList.SaveXml(rStrm);
@@ -1376,11 +1474,13 @@ XclExpDataBar::XclExpDataBar( const XclExpRoot& rRoot, const ScDataBarFormat& rF
     mnPriority( nPriority ),
     maGUID(rGUID)
 {
-    const ScRange* pRange = rFormat.GetRange().front();
-    ScAddress aAddr = pRange->aStart;
+    const ScRange & rRange = rFormat.GetRange().front();
+    ScAddress aAddr = rRange.aStart;
     // exact position is not important, we allow only absolute refs
-    mpCfvoLowerLimit.reset( new XclExpCfvo( GetRoot(), *mrFormat.GetDataBarData()->mpLowerLimit.get(), aAddr, true ) );
-    mpCfvoUpperLimit.reset( new XclExpCfvo( GetRoot(), *mrFormat.GetDataBarData()->mpUpperLimit.get(), aAddr, false ) );
+    mpCfvoLowerLimit.reset(
+        new XclExpCfvo(GetRoot(), *mrFormat.GetDataBarData()->mpLowerLimit, aAddr, true));
+    mpCfvoUpperLimit.reset(
+        new XclExpCfvo(GetRoot(), *mrFormat.GetDataBarData()->mpUpperLimit, aAddr, false));
 
     mpCol.reset( new XclExpColScaleCol( GetRoot(), mrFormat.GetDataBarData()->maPositiveColor ) );
 }
@@ -1391,14 +1491,12 @@ void XclExpDataBar::SaveXml( XclExpXmlStream& rStrm )
 
     rWorksheet->startElement( XML_cfRule,
             XML_type, "dataBar",
-            XML_priority, OString::number( mnPriority + 1 ).getStr(),
-            FSEND );
+            XML_priority, OString::number(mnPriority + 1) );
 
     rWorksheet->startElement( XML_dataBar,
-                                XML_showValue, OString::number(int(!mrFormat.GetDataBarData()->mbOnlyBar)),
-                                XML_minLength, OString::number(sal_uInt32(mrFormat.GetDataBarData()->mnMinLength)),
-                                XML_maxLength, OString::number(sal_uInt32(mrFormat.GetDataBarData()->mnMaxLength)),
-            FSEND );
+        XML_showValue, ToPsz10(!mrFormat.GetDataBarData()->mbOnlyBar),
+        XML_minLength, OString::number(sal_uInt32(mrFormat.GetDataBarData()->mnMinLength)),
+        XML_maxLength, OString::number(sal_uInt32(mrFormat.GetDataBarData()->mnMaxLength)) );
 
     mpCfvoLowerLimit->SaveXml(rStrm);
     mpCfvoUpperLimit->SaveXml(rStrm);
@@ -1407,14 +1505,13 @@ void XclExpDataBar::SaveXml( XclExpXmlStream& rStrm )
     rWorksheet->endElement( XML_dataBar );
 
     // extLst entries for Excel 2010 and 2013
-    rWorksheet->startElement( XML_extLst, FSEND );
-    rWorksheet->startElement( XML_ext,
-                                FSNS( XML_xmlns, XML_x14 ), XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(xls14Lst))).getStr(),
-                                XML_uri, "{B025F937-C7B1-47D3-B67F-A62EFF666E3E}",
-                                FSEND );
+    rWorksheet->startElement(XML_extLst);
+    rWorksheet->startElement(XML_ext,
+        FSNS(XML_xmlns, XML_x14), rStrm.getNamespaceURL(OOX_NS(xls14Lst)),
+        XML_uri, "{B025F937-C7B1-47D3-B67F-A62EFF666E3E}");
 
-    rWorksheet->startElementNS( XML_x14, XML_id, FSEND );
-    rWorksheet->write( maGUID.getStr() );
+    rWorksheet->startElementNS( XML_x14, XML_id );
+    rWorksheet->write(maGUID);
     rWorksheet->endElementNS( XML_x14, XML_id );
 
     rWorksheet->endElement( XML_ext );
@@ -1429,8 +1526,8 @@ XclExpIconSet::XclExpIconSet( const XclExpRoot& rRoot, const ScIconSetFormat& rF
     mrFormat( rFormat ),
     mnPriority( nPriority )
 {
-    const ScRange* pRange = rFormat.GetRange().front();
-    ScAddress aAddr = pRange->aStart;
+    const ScRange & rRange = rFormat.GetRange().front();
+    ScAddress aAddr = rRange.aStart;
     for (auto const& itr : rFormat)
     {
         // exact position is not important, we allow only absolute refs
@@ -1440,37 +1537,19 @@ XclExpIconSet::XclExpIconSet( const XclExpRoot& rRoot, const ScIconSetFormat& rF
     }
 }
 
-namespace {
-
-const char* getIconSetName( ScIconSetType eType )
-{
-    const ScIconSetMap* pMap = ScIconSetFormat::g_IconSetMap;
-    for(; pMap->pName; ++pMap)
-    {
-        if(pMap->eType == eType)
-            return pMap->pName;
-    }
-
-    return "";
-}
-
-}
-
 void XclExpIconSet::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
 
     rWorksheet->startElement( XML_cfRule,
             XML_type, "iconSet",
-            XML_priority, OString::number( mnPriority + 1 ).getStr(),
-            FSEND );
+            XML_priority, OString::number(mnPriority + 1) );
 
-    const char* pIconSetName = getIconSetName(mrFormat.GetIconSetData()->eIconSetType);
+    const char* pIconSetName = ScIconSetFormat::getIconSetName(mrFormat.GetIconSetData()->eIconSetType);
     rWorksheet->startElement( XML_iconSet,
             XML_iconSet, pIconSetName,
-            XML_showValue, mrFormat.GetIconSetData()->mbShowValue ? nullptr : "0",
-            XML_reverse, mrFormat.GetIconSetData()->mbReverse ? "1" : nullptr,
-            FSEND );
+            XML_showValue, sax_fastparser::UseIf("0", !mrFormat.GetIconSetData()->mbShowValue),
+            XML_reverse, sax_fastparser::UseIf("1", mrFormat.GetIconSetData()->mbReverse));
 
     maCfvoList.SaveXml( rStrm );
 
@@ -1484,10 +1563,9 @@ XclExpCondFormatBuffer::XclExpCondFormatBuffer( const XclExpRoot& rRoot, const X
     if( const ScConditionalFormatList* pCondFmtList = GetDoc().GetCondFormList(GetCurrScTab()) )
     {
         sal_Int32 nIndex = 0;
-        for( ScConditionalFormatList::const_iterator itr = pCondFmtList->begin();
-                        itr != pCondFmtList->end(); ++itr)
+        for( const auto& rxCondFmt : *pCondFmtList)
         {
-            XclExpCondfmtList::RecordRefType xCondfmtRec( new XclExpCondfmt( GetRoot(), **itr, xExtLst, nIndex ));
+            XclExpCondfmtList::RecordRefType xCondfmtRec( new XclExpCondfmt( GetRoot(), *rxCondFmt, xExtLst, nIndex ));
             if( xCondfmtRec->IsValidForXml() )
                 maCondfmtList.AppendRecord( xCondfmtRec );
         }
@@ -1609,15 +1687,15 @@ XclExpDV::XclExpDV( const XclExpRoot& rRoot, sal_uLong nScHandle ) :
 
         switch( pValData->GetOperation() )
         {
-            case SC_COND_NONE:
-            case SC_COND_EQUAL:         mnFlags |= EXC_DV_COND_EQUAL;       break;
-            case SC_COND_LESS:          mnFlags |= EXC_DV_COND_LESS;        break;
-            case SC_COND_GREATER:       mnFlags |= EXC_DV_COND_GREATER;     break;
-            case SC_COND_EQLESS:        mnFlags |= EXC_DV_COND_EQLESS;      break;
-            case SC_COND_EQGREATER:     mnFlags |= EXC_DV_COND_EQGREATER;   break;
-            case SC_COND_NOTEQUAL:      mnFlags |= EXC_DV_COND_NOTEQUAL;    break;
-            case SC_COND_BETWEEN:       mnFlags |= EXC_DV_COND_BETWEEN;     break;
-            case SC_COND_NOTBETWEEN:    mnFlags |= EXC_DV_COND_NOTBETWEEN;  break;
+            case ScConditionMode::NONE:
+            case ScConditionMode::Equal:         mnFlags |= EXC_DV_COND_EQUAL;       break;
+            case ScConditionMode::Less:          mnFlags |= EXC_DV_COND_LESS;        break;
+            case ScConditionMode::Greater:       mnFlags |= EXC_DV_COND_GREATER;     break;
+            case ScConditionMode::EqLess:        mnFlags |= EXC_DV_COND_EQLESS;      break;
+            case ScConditionMode::EqGreater:     mnFlags |= EXC_DV_COND_EQGREATER;   break;
+            case ScConditionMode::NotEqual:      mnFlags |= EXC_DV_COND_NOTEQUAL;    break;
+            case ScConditionMode::Between:       mnFlags |= EXC_DV_COND_BETWEEN;     break;
+            case ScConditionMode::NotBetween:    mnFlags |= EXC_DV_COND_NOTBETWEEN;  break;
             default:                    OSL_FAIL( "XclExpDV::XclExpDV - unknown condition" );
         }
         switch( eScErrorStyle )
@@ -1639,11 +1717,10 @@ XclExpDV::XclExpDV( const XclExpRoot& rRoot, sal_uLong nScHandle ) :
 
         // formulas
         XclExpFormulaCompiler& rFmlaComp = GetFormulaCompiler();
-        std::unique_ptr< ScTokenArray > xScTokArr;
 
         // first formula
-        xScTokArr.reset( pValData->CreateFlatCopiedTokenArray( 0 ) );
-        if( xScTokArr.get() )
+        std::unique_ptr< ScTokenArray > xScTokArr = pValData->CreateFlatCopiedTokenArray( 0 );
+        if (xScTokArr)
         {
             if( pValData->GetDataMode() == SC_VALID_LIST )
             {
@@ -1655,19 +1732,20 @@ XclExpDV::XclExpDV( const XclExpRoot& rRoot, sal_uLong nScHandle ) :
                     /*  Formula is a list of string tokens -> build the Excel string.
                         Data validity is BIFF8 only (important for the XclExpString object).
                         Excel uses the NUL character as string list separator. */
-                    mxString1.reset( new XclExpString( EXC_STR_8BITLENGTH ) );
-                    sal_Int32 nTokenCnt = comphelper::string::getTokenCount(aString, '\n');
-                    sal_Int32 nStringIx = 0;
-                    for( sal_Int32 nToken = 0; nToken < nTokenCnt; ++nToken )
+                    mxString1.reset( new XclExpString( XclStrFlags::EightBitLength ) );
+                    if (!aString.isEmpty())
                     {
-                        OUString aToken( aString.getToken( 0, '\n', nStringIx ) );
-                        if( nToken > 0 )
+                        sal_Int32 nStringIx = 0;
+                        for(;;)
                         {
+                            const OUString aToken( aString.getToken( 0, '\n', nStringIx ) );
+                            mxString1->Append( aToken );
+                            sFormulaBuf.append( aToken );
+                            if (nStringIx<0)
+                                break;
                             mxString1->Append(OUString(u'\0'));
                             sFormulaBuf.append( ',' );
                         }
-                        mxString1->Append( aToken );
-                        sFormulaBuf.append( aToken );
                     }
                     ::set_flag( mnFlags, EXC_DV_STRINGLIST );
 
@@ -1678,7 +1756,7 @@ XclExpDV::XclExpDV( const XclExpRoot& rRoot, sal_uLong nScHandle ) :
                         nLen = 256;
                         if( sFormulaBuf[nLen - 1] == ',' )
                             --nLen;
-                        sFormulaBuf = sFormulaBuf.copy(0, nLen);
+                        sFormulaBuf.truncate(nLen);
                     }
 
                     sFormulaBuf.append( '"' );
@@ -1714,8 +1792,8 @@ XclExpDV::XclExpDV( const XclExpRoot& rRoot, sal_uLong nScHandle ) :
         }
 
         // second formula
-        xScTokArr.reset( pValData->CreateFlatCopiedTokenArray( 1 ) );
-        if( xScTokArr.get() )
+        xScTokArr = pValData->CreateFlatCopiedTokenArray( 1 );
+        if (xScTokArr)
         {
             if(GetOutput() == EXC_OUTPUT_BINARY)
                 mxTokArr2 = rFmlaComp.CreateFormula( EXC_FMLATYPE_DATAVAL, *xScTokArr );
@@ -1751,7 +1829,7 @@ void XclExpDV::WriteBody( XclExpStream& rStrm )
     // flags and strings
     rStrm << mnFlags << maPromptTitle << maErrorTitle << maPromptText << maErrorText;
     // condition formulas
-    if( mxString1.get() )
+    if( mxString1 )
         lclWriteDvFormula( rStrm, *mxString1 );
     else
         lclWriteDvFormula( rStrm, mxTokArr1.get() );
@@ -1764,7 +1842,7 @@ void XclExpDV::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_dataValidation,
-            XML_allowBlank,         XclXmlUtils::ToPsz( ::get_flag( mnFlags, EXC_DV_IGNOREBLANK ) ),
+            XML_allowBlank,         ToPsz( ::get_flag( mnFlags, EXC_DV_IGNOREBLANK ) ),
             XML_error,              XESTRING_TO_PSZ( maErrorText ),
             // OOXTODO: XML_errorStyle,
             XML_errorTitle,         XESTRING_TO_PSZ( maErrorTitle ),
@@ -1773,21 +1851,20 @@ void XclExpDV::SaveXml( XclExpXmlStream& rStrm )
             XML_prompt,             XESTRING_TO_PSZ( maPromptText ),
             XML_promptTitle,        XESTRING_TO_PSZ( maPromptTitle ),
             // showDropDown should have been showNoDropDown - check oox/xlsx import for details
-            XML_showDropDown,       XclXmlUtils::ToPsz( ::get_flag( mnFlags, EXC_DV_SUPPRESSDROPDOWN ) ),
-            XML_showErrorMessage,   XclXmlUtils::ToPsz( ::get_flag( mnFlags, EXC_DV_SHOWERROR ) ),
-            XML_showInputMessage,   XclXmlUtils::ToPsz( ::get_flag( mnFlags, EXC_DV_SHOWPROMPT ) ),
-            XML_sqref,              XclXmlUtils::ToOString( maScRanges ).getStr(),
-            XML_type,               lcl_GetValidationType( mnFlags ),
-            FSEND );
+            XML_showDropDown,       ToPsz( ::get_flag( mnFlags, EXC_DV_SUPPRESSDROPDOWN ) ),
+            XML_showErrorMessage,   ToPsz( ::get_flag( mnFlags, EXC_DV_SHOWERROR ) ),
+            XML_showInputMessage,   ToPsz( ::get_flag( mnFlags, EXC_DV_SHOWPROMPT ) ),
+            XML_sqref,              XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), maScRanges),
+            XML_type,               lcl_GetValidationType(mnFlags) );
     if( !msFormula1.isEmpty() )
     {
-        rWorksheet->startElement( XML_formula1, FSEND );
+        rWorksheet->startElement(XML_formula1);
         rWorksheet->writeEscaped( msFormula1 );
         rWorksheet->endElement( XML_formula1 );
     }
     if( !msFormula2.isEmpty() )
     {
-        rWorksheet->startElement( XML_formula2, FSEND );
+        rWorksheet->startElement(XML_formula2);
         rWorksheet->writeEscaped( msFormula2 );
         rWorksheet->endElement( XML_formula2 );
     }
@@ -1840,11 +1917,11 @@ void XclExpDval::SaveXml( XclExpXmlStream& rStrm )
 
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_dataValidations,
-            XML_count, OString::number(  maDVList.GetSize() ).getStr(),
+            XML_count, OString::number(maDVList.GetSize())
             // OOXTODO: XML_disablePrompts,
             // OOXTODO: XML_xWindow,
-            // OOXTODO: XML_yWindow,
-            FSEND );
+            // OOXTODO: XML_yWindow
+    );
     maDVList.SaveXml( rStrm );
     rWorksheet->endElement( XML_dataValidations );
 }
@@ -1852,7 +1929,7 @@ void XclExpDval::SaveXml( XclExpXmlStream& rStrm )
 XclExpDV& XclExpDval::SearchOrCreateDv( sal_uLong nScHandle )
 {
     // test last found record
-    if( mxLastFoundDV.get() && (mxLastFoundDV->GetScHandle() == nScHandle) )
+    if( mxLastFoundDV && (mxLastFoundDV->GetScHandle() == nScHandle) )
         return *mxLastFoundDV;
 
     // binary search
@@ -1884,7 +1961,7 @@ XclExpDV& XclExpDval::SearchOrCreateDv( sal_uLong nScHandle )
     }
 
     // create new DV record
-    mxLastFoundDV.reset( new XclExpDV( *this, nScHandle ) );
+    mxLastFoundDV = new XclExpDV( *this, nScHandle );
     maDVList.InsertRecord( mxLastFoundDV, nCurrPos );
     return *mxLastFoundDV;
 }
@@ -1909,18 +1986,21 @@ XclExpWebQuery::XclExpWebQuery(
     mbEntireDoc( false )
 {
     // comma separated list of HTML table names or indexes
-    sal_Int32 nTokenCnt = comphelper::string::getTokenCount(rSource, ';');
     OUString aNewTables;
     OUString aAppendTable;
-    sal_Int32 nStringIx = 0;
     bool bExitLoop = false;
-    for( sal_Int32 nToken = 0; (nToken < nTokenCnt) && !bExitLoop; ++nToken )
+    if (!rSource.isEmpty())
     {
-        OUString aToken( rSource.getToken( 0, ';', nStringIx ) );
-        mbEntireDoc = ScfTools::IsHTMLDocName( aToken );
-        bExitLoop = mbEntireDoc || ScfTools::IsHTMLTablesName( aToken );
-        if( !bExitLoop && ScfTools::GetHTMLNameFromName( aToken, aAppendTable ) )
-            aNewTables = ScGlobal::addToken( aNewTables, aAppendTable, ',' );
+        sal_Int32 nStringIx = 0;
+        do
+        {
+            OUString aToken( rSource.getToken( 0, ';', nStringIx ) );
+            mbEntireDoc = ScfTools::IsHTMLDocName( aToken );
+            bExitLoop = mbEntireDoc || ScfTools::IsHTMLTablesName( aToken );
+            if( !bExitLoop && ScfTools::GetHTMLNameFromName( aToken, aAppendTable ) )
+                aNewTables = ScGlobal::addToken( aNewTables, aAppendTable, ',' );
+        }
+        while (nStringIx>0 && !bExitLoop);
     }
 
     if( !bExitLoop )    // neither HTML_all nor HTML_tables found
@@ -1938,7 +2018,7 @@ XclExpWebQuery::~XclExpWebQuery()
 
 void XclExpWebQuery::Save( XclExpStream& rStrm )
 {
-    OSL_ENSURE( !mbEntireDoc || !mxQryTables.get(), "XclExpWebQuery::Save - illegal mode" );
+    OSL_ENSURE( !mbEntireDoc || !mxQryTables, "XclExpWebQuery::Save - illegal mode" );
     sal_uInt16 nFlags;
 
     // QSI record
@@ -1978,7 +2058,7 @@ void XclExpWebQuery::Save( XclExpStream& rStrm )
     rStrm.EndRecord();
 
     // WEBQRYSETTINGS record
-    nFlags = mxQryTables.get() ? EXC_WQSETT_SPECTABLES : EXC_WQSETT_ALL;
+    nFlags = mxQryTables ? EXC_WQSETT_SPECTABLES : EXC_WQSETT_ALL;
     rStrm.StartRecord( EXC_ID_WQSETT, 28 );
     rStrm   << EXC_ID_WQSETT            // repeated record id ?!?
             << sal_uInt16( 0x0000 )
@@ -1993,7 +2073,7 @@ void XclExpWebQuery::Save( XclExpStream& rStrm )
     rStrm.EndRecord();
 
     // WEBQRYTABLES record
-    if( mxQryTables.get() )
+    if( mxQryTables )
     {
         rStrm.StartRecord( EXC_ID_WQTABLES, 4 + mxQryTables->GetSize() );
         rStrm   << EXC_ID_WQTABLES          // repeated record id ?!?

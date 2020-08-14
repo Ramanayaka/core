@@ -22,21 +22,21 @@
 
 #include <oox/core/contexthandler2.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 class Theme;
 
-class objectDefaultContext : public oox::core::ContextHandler2
+class objectDefaultContext final : public oox::core::ContextHandler2
 {
 public:
-    objectDefaultContext( ::oox::core::ContextHandler2Helper& rParent, Theme& rTheme );
+    objectDefaultContext( ::oox::core::ContextHandler2Helper const & rParent, Theme& rTheme );
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
-protected:
+private:
     Theme& mrTheme;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_OBJECTDEFAULTCONTEXT_HXX
 

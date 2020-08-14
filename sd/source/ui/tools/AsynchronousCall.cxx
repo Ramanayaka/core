@@ -18,11 +18,9 @@
  */
 
 #include <memory>
-#include "tools/AsynchronousCall.hxx"
+#include <tools/AsynchronousCall.hxx>
 
-#include "DrawViewShell.hxx"
-
-namespace sd { namespace tools {
+namespace sd::tools {
 
 AsynchronousCall::AsynchronousCall()
     : maTimer(),
@@ -54,6 +52,6 @@ IMPL_LINK(AsynchronousCall,TimerCallback,Timer*,pTimer,void)
     }
 }
 
-} } // end of namespace ::sd::tools
+} // end of namespace ::sd::tools
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

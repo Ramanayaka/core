@@ -20,10 +20,9 @@
 #include <sdr/primitive2d/sdrellipseprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <svx/sdr/primitive2d/sdrdecompositiontools.hxx>
-#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
-#include <basegfx/color/bcolor.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
 
@@ -31,10 +30,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void SdrEllipsePrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*aViewInformation*/) const
         {
             Primitive2DContainer aRetval;
@@ -43,11 +40,11 @@ namespace drawinglayer
             // Do use createPolygonFromUnitCircle, but let create from first quadrant to mimic old geometry creation.
             // This is needed to have the same look when stroke is used since the polygon start point defines the
             // stroke start, too.
-            basegfx::B2DPolygon aUnitOutline(basegfx::tools::createPolygonFromUnitCircle(1));
+            basegfx::B2DPolygon aUnitOutline(basegfx::utils::createPolygonFromUnitCircle(1));
 
             // scale and move UnitEllipse to UnitObject (-1,-1 1,1) -> (0,0 1,1)
             const basegfx::B2DHomMatrix aUnitCorrectionMatrix(
-                basegfx::tools::createScaleTranslateB2DHomMatrix(0.5, 0.5, 0.5, 0.5));
+                basegfx::utils::createScaleTranslateB2DHomMatrix(0.5, 0.5, 0.5, 0.5));
 
             // apply to the geometry
             aUnitOutline.transform(aUnitCorrectionMatrix);
@@ -97,7 +94,6 @@ namespace drawinglayer
                         getSdrLFSTAttribute().getText(),
                         getSdrLFSTAttribute().getLine(),
                         false,
-                        false,
                         false));
             }
 
@@ -114,7 +110,7 @@ namespace drawinglayer
 
         SdrEllipsePrimitive2D::SdrEllipsePrimitive2D(
             const basegfx::B2DHomMatrix& rTransform,
-            const attribute::SdrLineFillShadowTextAttribute& rSdrLFSTAttribute)
+            const attribute::SdrLineFillEffectsTextAttribute& rSdrLFSTAttribute)
         :   BufferedDecompositionPrimitive2D(),
             maTransform(rTransform),
             maSdrLFSTAttribute(rSdrLFSTAttribute)
@@ -137,20 +133,14 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(SdrEllipsePrimitive2D, PRIMITIVE2D_ID_SDRELLIPSEPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         void SdrEllipseSegmentPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*aViewInformation*/) const
         {
             Primitive2DContainer aRetval;
 
             // create unit outline polygon
-            basegfx::B2DPolygon aUnitOutline(basegfx::tools::createPolygonFromUnitEllipseSegment(mfStartAngle, mfEndAngle));
+            basegfx::B2DPolygon aUnitOutline(basegfx::utils::createPolygonFromUnitEllipseSegment(mfStartAngle, mfEndAngle));
 
             if(mbCloseSegment)
             {
@@ -158,7 +148,7 @@ namespace drawinglayer
                 {
                     // for compatibility, insert the center point at polygon start to get the same
                     // line stroking pattern as the old painting mechanisms.
-                    aUnitOutline.insert(0L, basegfx::B2DPoint(0.0, 0.0));
+                    aUnitOutline.insert(0, basegfx::B2DPoint(0.0, 0.0));
                 }
 
                 aUnitOutline.setClosed(true);
@@ -166,7 +156,7 @@ namespace drawinglayer
 
             // move and scale UnitEllipse to UnitObject (-1,-1 1,1) -> (0,0 1,1)
             const basegfx::B2DHomMatrix aUnitCorrectionMatrix(
-                basegfx::tools::createScaleTranslateB2DHomMatrix(0.5, 0.5, 0.5, 0.5));
+                basegfx::utils::createScaleTranslateB2DHomMatrix(0.5, 0.5, 0.5, 0.5));
 
             // apply to the geometry
             aUnitOutline.transform(aUnitCorrectionMatrix);
@@ -216,7 +206,6 @@ namespace drawinglayer
                         getSdrLFSTAttribute().getText(),
                         getSdrLFSTAttribute().getLine(),
                         false,
-                        false,
                         false));
             }
 
@@ -233,7 +222,7 @@ namespace drawinglayer
 
         SdrEllipseSegmentPrimitive2D::SdrEllipseSegmentPrimitive2D(
             const basegfx::B2DHomMatrix& rTransform,
-            const attribute::SdrLineFillShadowTextAttribute& rSdrLFSTAttribute,
+            const attribute::SdrLineFillEffectsTextAttribute& rSdrLFSTAttribute,
             double fStartAngle,
             double fEndAngle,
             bool bCloseSegment,
@@ -267,7 +256,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(SdrEllipseSegmentPrimitive2D, PRIMITIVE2D_ID_SDRELLIPSESEGMENTPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

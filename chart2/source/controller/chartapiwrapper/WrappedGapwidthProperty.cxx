@@ -18,17 +18,15 @@
  */
 
 #include "WrappedGapwidthProperty.hxx"
-#include "macros.hxx"
-#include "DiagramHelper.hxx"
+#include "Chart2ModelContact.hxx"
+#include <DiagramHelper.hxx>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Any;
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 const sal_Int32 DEFAULT_GAPWIDTH = 100;
@@ -70,39 +68,39 @@ void WrappedBarPositionProperty_Base::setPropertyValue( const Any& rOuterValue, 
     if( !xDiagram.is() )
         return;
 
-    if( m_nDimensionIndex==1 )
+    if( m_nDimensionIndex!=1 )
+        return;
+
+    const Sequence< Reference< chart2::XChartType > > aChartTypeList( DiagramHelper::getChartTypesFromDiagram( xDiagram ) );
+    for( Reference< chart2::XChartType > const & chartType : aChartTypeList )
     {
-        Sequence< Reference< chart2::XChartType > > aChartTypeList( DiagramHelper::getChartTypesFromDiagram( xDiagram ) );
-        for( sal_Int32 nN = 0; nN < aChartTypeList.getLength(); nN++ )
+        try
         {
-            try
+            Reference< beans::XPropertySet > xProp( chartType, uno::UNO_QUERY );
+            if( xProp.is() )
             {
-                Reference< beans::XPropertySet > xProp( aChartTypeList[nN], uno::UNO_QUERY );
-                if( xProp.is() )
+                Sequence< sal_Int32 > aBarPositionSequence;
+                xProp->getPropertyValue( m_InnerSequencePropertyName ) >>= aBarPositionSequence;
+
+                long nOldLength = aBarPositionSequence.getLength();
+                if( nOldLength <= m_nAxisIndex  )
                 {
-                    Sequence< sal_Int32 > aBarPositionSequence;
-                    xProp->getPropertyValue( m_InnerSequencePropertyName ) >>= aBarPositionSequence;
-
-                    long nOldLength = aBarPositionSequence.getLength();
-                    if( nOldLength <= m_nAxisIndex  )
+                    aBarPositionSequence.realloc( m_nAxisIndex+1 );
+                    for( sal_Int32 i=nOldLength; i<m_nAxisIndex; i++ )
                     {
-                        aBarPositionSequence.realloc( m_nAxisIndex+1 );
-                        for( sal_Int32 i=nOldLength; i<m_nAxisIndex; i++ )
-                        {
-                            aBarPositionSequence[i] = m_nDefaultValue;
-                        }
+                        aBarPositionSequence[i] = m_nDefaultValue;
                     }
-                    aBarPositionSequence[m_nAxisIndex] = nNewValue;
-
-                    xProp->setPropertyValue( m_InnerSequencePropertyName, uno::Any( aBarPositionSequence ) );
                 }
+                aBarPositionSequence[m_nAxisIndex] = nNewValue;
+
+                xProp->setPropertyValue( m_InnerSequencePropertyName, uno::Any( aBarPositionSequence ) );
             }
-            catch( uno::Exception& e )
-            {
-                //the above properties are not supported by all charttypes (only by column and bar)
-                //in that cases this exception is ok
-                e.Context.is();//to have debug information without compilation warnings
-            }
+        }
+        catch( uno::Exception& e )
+        {
+            //the above properties are not supported by all charttypes (only by column and bar)
+            //in that cases this exception is ok
+            e.Context.is();//to have debug information without compilation warnings
         }
     }
 }
@@ -168,7 +166,6 @@ WrappedBarOverlapProperty::~WrappedBarOverlapProperty()
 {
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const int MAXLINE = 1024*64;
+const int MAXLINE = 1024*64;
 
 using namespace std;
 
@@ -34,7 +34,6 @@ int main(int argc, char *argv[])
         multimap<string, size_t> entries;
         multimap<string,size_t>::iterator ret(entries.begin());
 
-        int line(1);
         cin.getline(inputBuffer, MAXLINE);
         const string encoding(inputBuffer);
         size_t currentOffset(encoding.size()+1);
@@ -70,7 +69,6 @@ int main(int argc, char *argv[])
                 {
                         cin.getline(inputBuffer, MAXLINE);
                         currentOffset += strlen(inputBuffer)+1;
-                        ++line;
                 }
         }
 
@@ -84,12 +82,9 @@ int main(int argc, char *argv[])
 
         outputStream << encoding << '\n' << entries.size() << '\n';
 
-        for (multimap<string, size_t>::const_iterator ii(entries.begin());
-                ii != entries.end();
-                ++ii
-        )
+        for (auto const& entry : entries)
         {
-                outputStream << ii->first << '|' << ii->second << '\n';
+                outputStream << entry.first << '|' << entry.second << '\n';
         }
 }
 

@@ -24,7 +24,7 @@
 #include <rtl/ustring.hxx>
 #include <svl/itemset.hxx>
 #include <svl/poolitem.hxx>
-#include <tools/stream.hxx>
+#include <tools/debug.hxx>
 
 SfxSetItem::SfxSetItem( sal_uInt16 which, const SfxItemSet &rSet) :
     SfxPoolItem(which),
@@ -42,7 +42,7 @@ SfxSetItem::SfxSetItem( sal_uInt16 which, std::unique_ptr<SfxItemSet> &&pS) :
 
 
 SfxSetItem::SfxSetItem( const SfxSetItem& rCopy, SfxItemPool *pPool ) :
-    SfxPoolItem(rCopy.Which()),
+    SfxPoolItem(rCopy),
     pSet(rCopy.pSet->Clone(true, pPool))
 {
 }
@@ -66,17 +66,10 @@ bool SfxSetItem::GetPresentation
     MapUnit                /*eCoreMetric*/,
     MapUnit                /*ePresentationMetric*/,
     OUString&              /*rText*/,
-    const IntlWrapper *
+    const IntlWrapper&
 )   const
 {
     return false;
-}
-
-
-SvStream& SfxSetItem::Store(SvStream& rStream, sal_uInt16) const
-{
-    GetItemSet().Store(rStream);
-    return rStream;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

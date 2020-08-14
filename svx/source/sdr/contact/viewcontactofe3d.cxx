@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/sdr/contact/viewcontactofe3d.hxx>
+#include <sdr/contact/viewcontactofe3d.hxx>
 #include <sdr/contact/viewobjectcontactofe3d.hxx>
 #include <svx/obj3d.hxx>
 #include <drawinglayer/primitive2d/embedded3dprimitive2d.hxx>
@@ -27,7 +27,6 @@
 #include <drawinglayer/attribute/sdrsceneattribute3d.hxx>
 #include <drawinglayer/attribute/sdrlightingattribute3d.hxx>
 #include <drawinglayer/attribute/sdrlightattribute3d.hxx>
-#include <drawinglayer/attribute/sdrlineattribute.hxx>
 
 namespace {
 
@@ -46,7 +45,7 @@ const sdr::contact::ViewContactOfE3dScene* tryToFindVCOfE3DScene(
 
         if(pSceneParentParent)
         {
-            // the parent scene of rCandidate is a in-between scene, call recursively and collect
+            // the parent scene of rCandidate is an in-between scene, call recursively and collect
             // the in-between scene's object transformation part in o_rInBetweenObjectTransform
             const basegfx::B3DHomMatrix& rSceneParentTransform = pSceneParent->GetE3dScene().GetTransform();
             o_rInBetweenObjectTransform = rSceneParentTransform * o_rInBetweenObjectTransform;
@@ -65,7 +64,7 @@ const sdr::contact::ViewContactOfE3dScene* tryToFindVCOfE3DScene(
 
 } // end of anonymous namespace
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 drawinglayer::primitive2d::Primitive2DContainer ViewContactOfE3d::impCreateWithGivenPrimitive3DContainer(
     const drawinglayer::primitive3d::Primitive3DContainer& rxContent3D) const
@@ -88,7 +87,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfE3d::impCreateWithG
             const basegfx::B3DRange& rAllContentRange = pVCOfE3DScene->getAllContentRange3D();
             drawinglayer::geometry::ViewInformation3D aViewInformation3D(pVCOfE3DScene->getViewInformation3D());
 
-            if(pVCOfE3DScene->getSdrLightingAttribute().getLightVector().size())
+            if(!pVCOfE3DScene->getSdrLightingAttribute().getLightVector().empty())
             {
                 // get light normal from first light and normalize
                 aLightNormal = pVCOfE3DScene->getSdrLightingAttribute().getLightVector()[0].getDirection();
@@ -191,6 +190,6 @@ ViewObjectContact& ViewContactOfE3d::CreateObjectSpecificViewObjectContact(Objec
     return *pRetval;
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

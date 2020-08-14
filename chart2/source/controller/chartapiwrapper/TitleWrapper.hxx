@@ -19,27 +19,24 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_TITLEWRAPPER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_TITLEWRAPPER_HXX
 
-#include "WrappedPropertySet.hxx"
+#include <WrappedPropertySet.hxx>
 #include "ReferenceSizePropertyProvider.hxx"
-#include "Chart2ModelContact.hxx"
-#include "TitleHelper.hxx"
+#include <TitleHelper.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/uno3.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
+#include <comphelper/interfacecontainer2.hxx>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/chart2/XTitle.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <memory>
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper { class Chart2ModelContact; }
+namespace com::sun::star::chart2 { class XTitle; }
+
+namespace chart::wrapper
 {
 
-class TitleWrapper : public ::cppu::ImplInheritanceHelper<
+class TitleWrapper final : public ::cppu::ImplInheritanceHelper<
                       WrappedPropertySet
                     , css::drawing::XShape
                     , css::lang::XComponent
@@ -62,7 +59,7 @@ public:
     virtual css::uno::Any getReferenceSize() override;
     virtual css::awt::Size getCurrentSizeForReference() override;
 
-protected:
+private:
     // ____ XShape ____
     virtual css::awt::Point SAL_CALL getPosition() override;
     virtual void SAL_CALL setPosition( const css::awt::Point& aPosition ) override;
@@ -97,22 +94,19 @@ protected:
     virtual css::uno::Reference< css::beans::XPropertySet > getInnerPropertySet() override;
 
     virtual const css::uno::Sequence< css::beans::Property >& getPropertySequence() override;
-    virtual const std::vector< WrappedProperty* > createWrappedProperties() override;
+    virtual std::vector< std::unique_ptr<WrappedProperty> > createWrappedProperties() override;
 
     css::uno::Reference< css::beans::XPropertySet > getFirstCharacterPropertySet();
 
-private:
     css::uno::Reference< css::chart2::XTitle > getTitleObject();
 
-private:
     std::shared_ptr< Chart2ModelContact >   m_spChart2ModelContact;
     ::comphelper::OInterfaceContainerHelper2           m_aEventListenerContainer;
 
     ::chart::TitleHelper::eTitleType        m_eTitleType;
 };
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_TITLEWRAPPER_HXX
 #endif

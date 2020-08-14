@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <breakhdl.hxx>
+#include "breakhdl.hxx"
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
+#include <xmloff/xmlement.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <com/sun/star/style/BreakType.hpp>
 #include <com/sun/star/uno/Any.hxx>
@@ -38,7 +39,6 @@ SvXMLEnumMapEntry<sal_uInt16> const pXML_BreakTypes[] =
 };
 
 
-// class XMLFmtBreakBeforePropHdl
 
 
 XMLFmtBreakBeforePropHdl::~XMLFmtBreakBeforePropHdl()
@@ -81,7 +81,7 @@ bool XMLFmtBreakBeforePropHdl::exportXML( OUString& rStrExpValue, const uno::Any
         if( !( rValue >>= nValue ) )
             return false;
 
-        eBreak = (style::BreakType) nValue;
+        eBreak = static_cast<style::BreakType>(nValue);
     }
 
     sal_uInt16 nEnum = 0;
@@ -108,7 +108,6 @@ bool XMLFmtBreakBeforePropHdl::exportXML( OUString& rStrExpValue, const uno::Any
 }
 
 
-// class XMLFmtBreakBeforePropHdl
 
 
 XMLFmtBreakAfterPropHdl::~XMLFmtBreakAfterPropHdl()
@@ -151,7 +150,7 @@ bool XMLFmtBreakAfterPropHdl::exportXML( OUString& rStrExpValue, const uno::Any&
         if( !( rValue >>= nValue ) )
             return false;
 
-        eBreak = (style::BreakType) nValue;
+        eBreak = static_cast<style::BreakType>(nValue);
     }
 
     sal_uInt16 nEnum = 0;

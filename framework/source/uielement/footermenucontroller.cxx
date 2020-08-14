@@ -19,22 +19,10 @@
 
 #include <uielement/footermenucontroller.hxx>
 
-#include "services.h"
-#include <classes/resource.hrc>
-#include <classes/fwkresid.hxx>
+#include <services.h>
 
-#include <com/sun/star/awt/XDevice.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/awt/MenuItemStyle.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-
-#include <vcl/menu.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/i18nhelp.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 //  Defines
 
@@ -48,11 +36,22 @@ using namespace com::sun::star::container;
 namespace framework
 {
 
-DEFINE_XSERVICEINFO_MULTISERVICE_2      (   FooterMenuController                    ,
-                                            OWeakObject                             ,
-                                            SERVICENAME_POPUPMENUCONTROLLER         ,
-                                            IMPLEMENTATIONNAME_FOOTERMENUCONTROLLER
-                                        )
+// XInterface, XTypeProvider, XServiceInfo
+
+OUString SAL_CALL FooterMenuController::getImplementationName()
+{
+    return "com.sun.star.comp.framework.FooterMenuController";
+}
+
+sal_Bool SAL_CALL FooterMenuController::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL FooterMenuController::getSupportedServiceNames()
+{
+    return { SERVICENAME_POPUPMENUCONTROLLER };
+}
 
 FooterMenuController::FooterMenuController( const css::uno::Reference< css::uno::XComponentContext >& xContext ) :
     HeaderMenuController( xContext,true )
@@ -62,6 +61,13 @@ FooterMenuController::FooterMenuController( const css::uno::Reference< css::uno:
 FooterMenuController::~FooterMenuController()
 {
 }
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_FooterMenuController_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::FooterMenuController(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

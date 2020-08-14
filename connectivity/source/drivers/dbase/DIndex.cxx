@@ -17,26 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbase/DIndex.hxx"
-#include "dbase/DIndexColumns.hxx"
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <connectivity/sdbcx/VColumn.hxx>
-#include <comphelper/sequence.hxx>
-#include "dbase/DTable.hxx"
-#include "dbase/DIndexIter.hxx"
+#include <dbase/DIndex.hxx>
+#include <dbase/DIndexColumns.hxx>
+#include <dbase/DTable.hxx>
+#include <dbase/DIndexIter.hxx>
 #include <osl/file.hxx>
+#include <sal/log.hxx>
 #include <tools/config.hxx>
 #include <connectivity/CommonTools.hxx>
-#include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbcx/XRowLocate.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
-#include <comphelper/extract.hxx>
 #include <unotools/ucbhelper.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
+#include <cppuhelper/typeprovider.hxx>
 #include <connectivity/dbexception.hxx>
-#include "dbase/DResultSet.hxx"
-#include "resource/dbase_res.hrc"
+#include <dbase/DResultSet.hxx>
+#include <strings.hrc>
 #include <unotools/sharedunocomponent.hxx>
 
 using namespace ::comphelper;
@@ -57,14 +54,12 @@ IMPLEMENT_SERVICE_INFO(ODbaseIndex,"com.sun.star.sdbcx.driver.dbase.Index","com.
 
 ODbaseIndex::ODbaseIndex(ODbaseTable* _pTable)
     : OIndex(true/*_pTable->getConnection()->getMetaData()->supportsMixedCaseQuotedIdentifiers()*/)
-    , m_pFileStream(nullptr)
     , m_nCurNode(NODE_NOTFOUND)
     , m_nPageCount(0)
     , m_nRootPage(0)
     , m_pTable(_pTable)
     , m_bUseCollector(false)
 {
-    memset(&m_aHeader, 0, sizeof(m_aHeader));
     construct();
 }
 
@@ -72,7 +67,6 @@ ODbaseIndex::ODbaseIndex(   ODbaseTable* _pTable,
                             const NDXHeader& _rHeader,
                             const OUString& _rName)
     : OIndex(_rName, OUString(), _rHeader.db_unique, false, false, true)
-    , m_pFileStream(nullptr)
     , m_aHeader(_rHeader)
     , m_nCurNode(NODE_NOTFOUND)
     , m_nPageCount(0)
@@ -92,7 +86,7 @@ void ODbaseIndex::refreshColumns()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
     if(!isNew())
     {
         OSL_ENSURE(m_pFileStream,"FileStream is not opened!");
@@ -103,10 +97,10 @@ void ODbaseIndex::refreshColumns()
     if(m_pColumns)
         m_pColumns->reFill(aVector);
     else
-        m_pColumns = new ODbaseIndexColumns(this,m_aMutex,aVector);
+        m_pColumns.reset(new ODbaseIndexColumns(this,m_aMutex,aVector));
 }
 
-Sequence< sal_Int8 > ODbaseIndex::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > ODbaseIndex::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -117,7 +111,7 @@ Sequence< sal_Int8 > ODbaseIndex::getUnoTunnelImplementationId()
 
 sal_Int64 ODbaseIndex::getSomething( const Sequence< sal_Int8 > & rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return (isUnoTunnelId<ODbaseIndex>(rId))
                 ? reinterpret_cast< sal_Int64 >( this )
                 : ODbaseIndex_BASE::getSomething(rId);
 }
@@ -134,40 +128,38 @@ ONDXPagePtr const & ODbaseIndex::getRoot()
     return m_aRoot;
 }
 
-bool ODbaseIndex::openIndexFile()
+void ODbaseIndex::openIndexFile()
 {
-    if(!m_pFileStream)
+    if(m_pFileStream)
+        return;
+
+    OUString sFile = getCompletePath();
+    if(UCBContentHelper::Exists(sFile))
     {
-        OUString sFile = getCompletePath();
-        if(UCBContentHelper::Exists(sFile))
+        m_pFileStream = OFileTable::createStream_simpleError(sFile, StreamMode::READWRITE | StreamMode::NOCREATE | StreamMode::SHARE_DENYWRITE);
+        if (!m_pFileStream)
+            m_pFileStream = OFileTable::createStream_simpleError(sFile, StreamMode::READ | StreamMode::NOCREATE | StreamMode::SHARE_DENYNONE);
+        if(m_pFileStream)
         {
-            m_pFileStream = OFileTable::createStream_simpleError(sFile, StreamMode::READWRITE | StreamMode::NOCREATE | StreamMode::SHARE_DENYWRITE);
-            if (!m_pFileStream)
-                m_pFileStream = OFileTable::createStream_simpleError(sFile, StreamMode::READ | StreamMode::NOCREATE | StreamMode::SHARE_DENYNONE);
-            if(m_pFileStream)
-            {
-                m_pFileStream->SetEndian(SvStreamEndian::LITTLE);
-                m_pFileStream->SetBufferSize(DINDEX_PAGE_SIZE);
-                (*m_pFileStream) >> *this;
-            }
-        }
-        if(!m_pFileStream)
-        {
-            const OUString sError( m_pTable->getConnection()->getResources().getResourceStringWithSubstitution(
-                STR_COULD_NOT_LOAD_FILE,
-                "$filename$", sFile
-             ) );
-            ::dbtools::throwGenericSQLException( sError, *this );
+            m_pFileStream->SetEndian(SvStreamEndian::LITTLE);
+            m_pFileStream->SetBufferSize(DINDEX_PAGE_SIZE);
+            (*m_pFileStream) >> *this;
         }
     }
-
-    return m_pFileStream != nullptr;
+    if(!m_pFileStream)
+    {
+        const OUString sError( m_pTable->getConnection()->getResources().getResourceStringWithSubstitution(
+            STR_COULD_NOT_LOAD_FILE,
+            "$filename$", sFile
+         ) );
+        ::dbtools::throwGenericSQLException( sError, *this );
+    }
 }
 
-OIndexIterator* ODbaseIndex::createIterator()
+std::unique_ptr<OIndexIterator> ODbaseIndex::createIterator()
 {
     openIndexFile();
-    return new OIndexIterator(this);
+    return std::make_unique<OIndexIterator>(this);
 }
 
 bool ODbaseIndex::ConvertToKey(ONDXKey* rKey, sal_uInt32 nRec, const ORowSetValue& rValue)
@@ -256,8 +248,6 @@ bool ODbaseIndex::Delete(sal_uInt32 nRec, const ORowSetValue& rValue)
     if (!ConvertToKey(&aKey, nRec, rValue) || !getRoot()->Find(aKey))
         return false;
 
-    ONDXNode aNewNode(aKey);
-
     // insert in the current leaf
     if (!m_aCurLeaf.Is())
         return false;
@@ -265,7 +255,8 @@ bool ODbaseIndex::Delete(sal_uInt32 nRec, const ORowSetValue& rValue)
     m_aRoot->PrintPage();
 #endif
 
-    return m_aCurLeaf->Delete(m_nCurNode);
+    m_aCurLeaf->Delete(m_nCurNode);
+    return true;
 }
 
 void ODbaseIndex::Collect(ONDXPage* pPage)
@@ -313,11 +304,7 @@ void ODbaseIndex::Release(bool bSave)
 
 void ODbaseIndex::closeImpl()
 {
-    if(m_pFileStream)
-    {
-        delete m_pFileStream;
-        m_pFileStream = nullptr;
-    }
+    m_pFileStream.reset();
 }
 
 ONDXPage* ODbaseIndex::CreatePage(sal_uInt32 nPagePos, ONDXPage* pParent, bool bLoad)
@@ -349,12 +336,12 @@ void connectivity::dbase::ReadHeader(
 #endif
     rStream.ReadUInt32(rHeader.db_rootpage);
     rStream.ReadUInt32(rHeader.db_pagecount);
-    rStream.ReadBytes(&rHeader.db_frei, 4);
+    rStream.ReadBytes(&rHeader.db_free, 4);
     rStream.ReadUInt16(rHeader.db_keylen);
     rStream.ReadUInt16(rHeader.db_maxkeys);
     rStream.ReadUInt16(rHeader.db_keytype);
     rStream.ReadUInt16(rHeader.db_keyrec);
-    rStream.ReadBytes(&rHeader.db_frei1, 3);
+    rStream.ReadBytes(&rHeader.db_free1, 3);
     rStream.ReadUChar(rHeader.db_unique);
     rStream.ReadBytes(&rHeader.db_name, 488);
     assert(rStream.GetError() || rStream.Tell() == nOldPos + DINDEX_PAGE_SIZE);
@@ -375,12 +362,12 @@ SvStream& connectivity::dbase::WriteODbaseIndex(SvStream &rStream, ODbaseIndex& 
     rStream.Seek(0);
     rStream.WriteUInt32(rIndex.m_aHeader.db_rootpage);
     rStream.WriteUInt32(rIndex.m_aHeader.db_pagecount);
-    rStream.WriteBytes(&rIndex.m_aHeader.db_frei, 4);
+    rStream.WriteBytes(&rIndex.m_aHeader.db_free, 4);
     rStream.WriteUInt16(rIndex.m_aHeader.db_keylen);
     rStream.WriteUInt16(rIndex.m_aHeader.db_maxkeys);
     rStream.WriteUInt16(rIndex.m_aHeader.db_keytype);
     rStream.WriteUInt16(rIndex.m_aHeader.db_keyrec);
-    rStream.WriteBytes(&rIndex.m_aHeader.db_frei1, 3);
+    rStream.WriteBytes(&rIndex.m_aHeader.db_free1, 3);
     rStream.WriteUChar(rIndex.m_aHeader.db_unique);
     rStream.WriteBytes(&rIndex.m_aHeader.db_name, 488);
     assert(rStream.GetError() || rStream.Tell() == DINDEX_PAGE_SIZE);
@@ -388,7 +375,7 @@ SvStream& connectivity::dbase::WriteODbaseIndex(SvStream &rStream, ODbaseIndex& 
     return rStream;
 }
 
-OUString ODbaseIndex::getCompletePath()
+OUString ODbaseIndex::getCompletePath() const
 {
     OUString sDir = m_pTable->getConnection()->getURL() +
         OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_DELIMITER) +
@@ -422,7 +409,7 @@ void ODbaseIndex::createINFEntry()
         for (sal_uInt16 i = 0; i < aInfFile.GetKeyCount(); i++)
         {
             aKeyName = aInfFile.GetKeyName(i);
-            if (bCase ? aKeyName.equals(aNewEntry) : aKeyName.equalsIgnoreAsciiCase(aNewEntry))
+            if (bCase ? aKeyName == aNewEntry : aKeyName.equalsIgnoreAsciiCase(aNewEntry))
             {
                 aNewEntry.clear();
                 break;
@@ -432,7 +419,7 @@ void ODbaseIndex::createINFEntry()
     aInfFile.WriteKey(aNewEntry, OUStringToOString(sEntry, m_pTable->getConnection()->getTextEncoding()));
 }
 
-bool ODbaseIndex::DropImpl()
+void ODbaseIndex::DropImpl()
 {
     closeImpl();
 
@@ -463,7 +450,7 @@ bool ODbaseIndex::DropImpl()
     {
         // References the Key to an Index-file?
         aKeyName = aInfFile.GetKeyName( nKey );
-        if (aKeyName.copy(0,3) == "NDX")
+        if (aKeyName.startsWith("NDX"))
         {
             if(sEntry == OStringToOUString(aInfFile.ReadKey(aKeyName),m_pTable->getConnection()->getTextEncoding()))
             {
@@ -472,18 +459,17 @@ bool ODbaseIndex::DropImpl()
             }
         }
     }
-    return true;
 }
 
-void ODbaseIndex::impl_killFileAndthrowError_throw(sal_uInt16 _nErrorId,const OUString& _sFile)
+void ODbaseIndex::impl_killFileAndthrowError_throw(const char* pErrorId, const OUString& _sFile)
 {
     closeImpl();
     if(UCBContentHelper::Exists(_sFile))
         UCBContentHelper::Kill(_sFile);
-    m_pTable->getConnection()->throwGenericSQLException(_nErrorId,*this);
+    m_pTable->getConnection()->throwGenericSQLException(pErrorId, *this);
 }
 
-bool ODbaseIndex::CreateImpl()
+void ODbaseIndex::CreateImpl()
 {
     // Create the Index
     const OUString sFile = getCompletePath();
@@ -547,12 +533,12 @@ bool ODbaseIndex::CreateImpl()
     memset(&m_aHeader,0,sizeof(m_aHeader));
     sal_Int32 nType = 0;
     ::rtl::Reference<OSQLColumns> aCols = m_pTable->getTableColumns();
-    const Reference< XPropertySet > xTableCol(*find(aCols->get().begin(),aCols->get().end(),aName,::comphelper::UStringMixEqual(isCaseSensitive())));
+    const Reference< XPropertySet > xTableCol(*find(aCols->begin(),aCols->end(),aName,::comphelper::UStringMixEqual(isCaseSensitive())));
 
     xTableCol->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TYPE)) >>= nType;
 
     m_aHeader.db_keytype = (nType == DataType::VARCHAR || nType == DataType::CHAR) ? 0 : 1;
-    m_aHeader.db_keylen  = (m_aHeader.db_keytype) ? 8 : (sal_uInt16)getINT32(xTableCol->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_PRECISION)));
+    m_aHeader.db_keylen  = (m_aHeader.db_keytype) ? 8 : static_cast<sal_uInt16>(getINT32(xTableCol->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_PRECISION))));
     m_aHeader.db_keylen = (( m_aHeader.db_keylen - 1) / 4 + 1) * 4;
     m_aHeader.db_maxkeys = (DINDEX_PAGE_SIZE - 4) / (8 + m_aHeader.db_keylen);
     if ( m_aHeader.db_maxkeys < 3 )
@@ -583,12 +569,12 @@ bool ODbaseIndex::CreateImpl()
     if(xSet->last())
     {
         Reference< XUnoTunnel> xTunnel(xSet, UNO_QUERY_THROW);
-        ODbaseResultSet* pDbaseRes = reinterpret_cast< ODbaseResultSet* >( xTunnel->getSomething(ODbaseResultSet::getUnoTunnelImplementationId()) );
+        ODbaseResultSet* pDbaseRes = reinterpret_cast< ODbaseResultSet* >( xTunnel->getSomething(ODbaseResultSet::getUnoTunnelId()) );
         assert(pDbaseRes); //"No dbase resultset found? What's going on here!
         nRowsLeft = xSet->getRow();
 
         xSet->beforeFirst();
-        ORowSetValue    atmpValue=ORowSetValue();
+        ORowSetValue atmpValue;
         ONDXKey aKey(atmpValue, nType, 0);
         ONDXKey aInsertKey(atmpValue, nType, 0);
         // Create the index structure
@@ -619,7 +605,6 @@ bool ODbaseIndex::CreateImpl()
     }
     Release();
     createINFEntry();
-    return true;
 }
 
 

@@ -19,18 +19,14 @@
 
 #include <svtools/popupmenucontrollerbase.hxx>
 
-#include <com/sun/star/awt/XDevice.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/awt/MenuItemStyle.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 
-#include <vcl/menu.hxx>
 #include <vcl/svapp.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <osl/mutex.hxx>
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace com::sun::star;
@@ -43,6 +39,8 @@ using namespace css::util;
 namespace svt
 {
 
+namespace {
+
 struct PopupMenuControllerBaseDispatchInfo
 {
     Reference< XDispatch > mxDispatch;
@@ -52,6 +50,8 @@ struct PopupMenuControllerBaseDispatchInfo
     PopupMenuControllerBaseDispatchInfo( const Reference< XDispatch >& xDispatch, const URL& rURL, const Sequence< PropertyValue >& rArgs )
         : mxDispatch( xDispatch ), maURL( rURL ), maArgs( rArgs ) {}
 };
+
+}
 
 PopupMenuControllerBase::PopupMenuControllerBase( const Reference< XComponentContext >& xContext ) :
     ::cppu::BaseMutex(),
@@ -74,7 +74,7 @@ void PopupMenuControllerBase::throwIfDisposed()
 }
 
 // protected function
-void PopupMenuControllerBase::resetPopupMenu( css::uno::Reference< css::awt::XPopupMenu >& rPopupMenu )
+void PopupMenuControllerBase::resetPopupMenu( css::uno::Reference< css::awt::XPopupMenu > const & rPopupMenu )
 {
     if ( rPopupMenu.is() && rPopupMenu->getItemCount() > 0 )
     {
@@ -139,7 +139,7 @@ void PopupMenuControllerBase::dispatchCommand( const OUString& sCommandURL,
         aURL.Complete = sCommandURL;
         m_xURLTransformer->parseStrict( aURL );
 
-        Reference< XDispatch > xDispatch( xDispatchProvider->queryDispatch( aURL, sTarget, 0 ), UNO_QUERY_THROW );
+        Reference< XDispatch > xDispatch( xDispatchProvider->queryDispatch( aURL, sTarget, 0 ), UNO_SET_THROW );
 
         Application::PostUserEvent( LINK(nullptr, PopupMenuControllerBase, ExecuteHdl_Impl), new PopupMenuControllerBaseDispatchInfo( xDispatch, aURL, rArgs ) );
 
@@ -167,14 +167,15 @@ void SAL_CALL PopupMenuControllerBase::itemDeactivated( const awt::MenuEvent& )
 
 void SAL_CALL PopupMenuControllerBase::updatePopupMenu()
 {
-    osl::ClearableMutexGuard aLock( m_aMutex );
-    throwIfDisposed();
-    aLock.clear();
+    {
+        osl::MutexGuard aLock(m_aMutex);
+        throwIfDisposed();
+    }
 
     updateCommand( m_aCommandURL );
 }
 
-void SAL_CALL PopupMenuControllerBase::updateCommand( const OUString& rCommandURL )
+void PopupMenuControllerBase::updateCommand( const OUString& rCommandURL )
 {
     osl::ClearableMutexGuard aLock( m_aMutex );
     Reference< XStatusListener > xStatusListener( static_cast< OWeakObject* >( this ), UNO_QUERY );
@@ -211,20 +212,18 @@ Sequence< Reference< XDispatch > > SAL_CALL PopupMenuControllerBase::queryDispat
 {
     // Create return list - which must have same size then the given descriptor
     // It's not allowed to pack it!
-    osl::ClearableMutexGuard aLock( m_aMutex );
-    throwIfDisposed();
-    aLock.clear();
+    {
+        osl::MutexGuard aLock(m_aMutex);
+        throwIfDisposed();
+    }
 
     sal_Int32                                                          nCount = lDescriptor.getLength();
     uno::Sequence< uno::Reference< frame::XDispatch > > lDispatcher( nCount );
 
     // Step over all descriptors and try to get any dispatcher for it.
-    for( sal_Int32 i=0; i<nCount; ++i )
-    {
-        lDispatcher[i] = queryDispatch( lDescriptor[i].FeatureURL  ,
-                                        lDescriptor[i].FrameName   ,
-                                        lDescriptor[i].SearchFlags );
-    }
+    std::transform(lDescriptor.begin(), lDescriptor.end(), lDispatcher.begin(),
+        [this](const DispatchDescriptor& rDesc) -> uno::Reference< frame::XDispatch > {
+            return queryDispatch(rDesc.FeatureURL, rDesc.FrameName, rDesc.SearchFlags); });
 
     return lDispatcher;
 }
@@ -303,32 +302,32 @@ void SAL_CALL PopupMenuControllerBase::initialize( const Sequence< Any >& aArgum
     osl::MutexGuard aLock( m_aMutex );
 
     bool bInitalized( m_bInitialized );
-    if ( !bInitalized )
+    if ( bInitalized )
+        return;
+
+    PropertyValue       aPropValue;
+    OUString       aCommandURL;
+    Reference< XFrame > xFrame;
+
+    for ( const auto& rArgument : aArguments )
     {
-        PropertyValue       aPropValue;
-        OUString       aCommandURL;
-        Reference< XFrame > xFrame;
-
-        for ( int i = 0; i < aArguments.getLength(); i++ )
+        if ( rArgument >>= aPropValue )
         {
-            if ( aArguments[i] >>= aPropValue )
-            {
-                if ( aPropValue.Name == "Frame" )
-                    aPropValue.Value >>= xFrame;
-                else if ( aPropValue.Name == "CommandURL" )
-                    aPropValue.Value >>= aCommandURL;
-                else if ( aPropValue.Name == "ModuleIdentifier" )
-                    aPropValue.Value >>= m_aModuleName;
-            }
+            if ( aPropValue.Name == "Frame" )
+                aPropValue.Value >>= xFrame;
+            else if ( aPropValue.Name == "CommandURL" )
+                aPropValue.Value >>= aCommandURL;
+            else if ( aPropValue.Name == "ModuleIdentifier" )
+                aPropValue.Value >>= m_aModuleName;
         }
+    }
 
-        if ( xFrame.is() && !aCommandURL.isEmpty() )
-        {
-            m_xFrame        = xFrame;
-            m_aCommandURL   = aCommandURL;
-            m_aBaseURL      = determineBaseURL( aCommandURL );
-            m_bInitialized  = true;
-        }
+    if ( xFrame.is() && !aCommandURL.isEmpty() )
+    {
+        m_xFrame        = xFrame;
+        m_aCommandURL   = aCommandURL;
+        m_aBaseURL      = determineBaseURL( aCommandURL );
+        m_bInitialized  = true;
     }
 }
 // XPopupMenuController
@@ -337,25 +336,25 @@ void SAL_CALL PopupMenuControllerBase::setPopupMenu( const Reference< awt::XPopu
     osl::MutexGuard aLock( m_aMutex );
     throwIfDisposed();
 
-    if ( m_xFrame.is() && !m_xPopupMenu.is() )
-    {
-        // Create popup menu on demand
-        SolarMutexGuard aSolarMutexGuard;
+    if ( !(m_xFrame.is() && !m_xPopupMenu.is()) )
+        return;
 
-        m_xPopupMenu = xPopupMenu;
-        m_xPopupMenu->addMenuListener( Reference< awt::XMenuListener >( static_cast<OWeakObject*>(this), UNO_QUERY ));
+    // Create popup menu on demand
+    SolarMutexGuard aSolarMutexGuard;
 
-        Reference< XDispatchProvider > xDispatchProvider( m_xFrame, UNO_QUERY );
+    m_xPopupMenu = xPopupMenu;
+    m_xPopupMenu->addMenuListener( Reference< awt::XMenuListener >( static_cast<OWeakObject*>(this), UNO_QUERY ));
 
-        URL aTargetURL;
-        aTargetURL.Complete = m_aCommandURL;
-        m_xURLTransformer->parseStrict( aTargetURL );
-        m_xDispatch = xDispatchProvider->queryDispatch( aTargetURL, OUString(), 0 );
+    Reference< XDispatchProvider > xDispatchProvider( m_xFrame, UNO_QUERY );
 
-        impl_setPopupMenu();
+    URL aTargetURL;
+    aTargetURL.Complete = m_aCommandURL;
+    m_xURLTransformer->parseStrict( aTargetURL );
+    m_xDispatch = xDispatchProvider->queryDispatch( aTargetURL, OUString(), 0 );
 
-        updatePopupMenu();
-    }
+    impl_setPopupMenu();
+
+    updatePopupMenu();
 }
 void PopupMenuControllerBase::impl_setPopupMenu()
 {

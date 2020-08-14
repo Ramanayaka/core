@@ -18,25 +18,20 @@
  */
 
 #include "xmlDatabaseDescription.hxx"
-#include "xmlLogin.hxx"
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
 #include "xmlEnums.hxx"
 #include "xmlFileBasedDatabase.hxx"
 #include "xmlServerDatabase.hxx"
-#include "xmlstrings.hrc"
-#include <tools/diagnose_ex.h>
 
 namespace dbaxml
 {
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::xml::sax;
 
-OXMLDatabaseDescription::OXMLDatabaseDescription( ODBFilter& rImport,
-                sal_uInt16 nPrfx, const OUString& _sLocalName) :
-    SvXMLImportContext( rImport, nPrfx, _sLocalName )
+OXMLDatabaseDescription::OXMLDatabaseDescription( ODBFilter& rImport ) :
+    SvXMLImportContext( rImport )
     ,m_bFoundOne(false)
 {
 }
@@ -46,36 +41,30 @@ OXMLDatabaseDescription::~OXMLDatabaseDescription()
 
 }
 
-SvXMLImportContext* OXMLDatabaseDescription::CreateChildContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const Reference< XAttributeList > & xAttrList )
+css::uno::Reference< css::xml::sax::XFastContextHandler > OXMLDatabaseDescription::createFastChildContext(
+            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList )
 {
     SvXMLImportContext *pContext = nullptr;
-    const SvXMLTokenMap&    rTokenMap   = GetOwnImport().GetDatabaseDescriptionElemTokenMap();
 
-    switch( rTokenMap.Get( nPrefix, rLocalName ) )
+    switch( nElement & TOKEN_MASK )
     {
-        case XML_TOK_FILE_BASED_DATABASE:
+        case XML_FILE_BASED_DATABASE:
             if ( !m_bFoundOne )
             {
                 m_bFoundOne = true;
                 GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-                pContext = new OXMLFileBasedDatabase( GetOwnImport(), nPrefix, rLocalName,xAttrList );
+                pContext = new OXMLFileBasedDatabase( GetOwnImport(), xAttrList );
             }
             break;
-        case XML_TOK_SERVER_DATABASE:
+        case XML_SERVER_DATABASE:
             if ( !m_bFoundOne )
             {
                 m_bFoundOne = true;
                 GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-                pContext = new OXMLServerDatabase( GetOwnImport(), nPrefix, rLocalName,xAttrList );
+                pContext = new OXMLServerDatabase( GetOwnImport(), xAttrList );
             }
             break;
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }

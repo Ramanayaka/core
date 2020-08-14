@@ -21,9 +21,8 @@
 
 #include <com/sun/star/report/XSection.hpp>
 #include "ReportDefines.hxx"
-#include "StartMarker.hxx"
+#include <o3tl/deleter.hxx>
 #include <svtools/ruler.hxx>
-#include <svx/svdedtv.hxx>
 #include <sfx2/zoomitem.hxx>
 
 #include <memory>
@@ -49,17 +48,16 @@ namespace rptui
         VclPtr<ODesignView>            m_pView;
         VclPtr<OScrollWindowHelper>    m_pParent;
         VclPtr<OViewsWindow>           m_aViewsWindow;
-        ::rtl::Reference< comphelper::OPropertyChangeMultiplexer>   m_pReportListener;
-        ::std::unique_ptr<DlgEdFactory>
-                                m_pObjFac;
+        rtl::Reference< comphelper::OPropertyChangeMultiplexer>   m_pReportListener;
+        std::unique_ptr<DlgEdFactory, o3tl::default_delete<DlgEdFactory>>  m_pObjFac;
 
         void ImplInitSettings();
 
         sal_Int32 GetTotalHeight() const;
         sal_Int32 impl_getRealPixelWidth() const;
 
-        OReportWindow(OReportWindow&) = delete;
-        void operator =(OReportWindow&) = delete;
+        OReportWindow(OReportWindow const &) = delete;
+        void operator =(OReportWindow const &) = delete;
     protected:
         virtual void DataChanged( const DataChangedEvent& rDCEvt ) override;
         // OPropertyChangeListener
@@ -77,7 +75,7 @@ namespace rptui
 
         void            SetMode( DlgEdMode m_eMode );
         void            SetInsertObj( sal_uInt16 eObj, const OUString& _sShapeType);
-        OUString        GetInsertObjString() const;
+        OUString const & GetInsertObjString() const;
         void            setGridSnap(bool bOn);
         void            setDragStripes(bool bOn);
 
@@ -104,7 +102,7 @@ namespace rptui
         */
         void SelectAll(const sal_uInt16 _nObjectType);
 
-        /** returns <TRUE/> when a object is marked
+        /** returns <TRUE/> when an object is marked
         */
         bool HasSelection() const;
 
@@ -173,7 +171,7 @@ namespace rptui
             @param  _pSectionView   the section where to set the marked flag
             @param  _bMark  the marked flag
         */
-        void            setMarked(OSectionView* _pSectionView, bool _bMark);
+        void            setMarked(OSectionView const * _pSectionView, bool _bMark);
         void            setMarked(const css::uno::Reference< css::report::XSection>& _xSection, bool _bMark);
         void            setMarked(const css::uno::Sequence< css::uno::Reference< css::report::XReportComponent> >& _xShape, bool _bMark);
 
@@ -189,11 +187,11 @@ namespace rptui
         */
         void fillCollapsedSections(::std::vector<sal_uInt16>& _rCollapsedPositions) const;
 
-        /** collpase all sections given by their position
+        /** collapse all sections given by their position
         *
-        * \param _aCollpasedSections The position of the sections which should be collapsed.
+        * \param _aCollapsedSections The position of the sections which should be collapsed.
         */
-        void collapseSections(const css::uno::Sequence< css::beans::PropertyValue>& _aCollpasedSections);
+        void collapseSections(const css::uno::Sequence< css::beans::PropertyValue>& _aCollapsedSections);
 
         /** align all marked objects in all sections
         */

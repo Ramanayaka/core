@@ -20,56 +20,43 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_BREAK_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_BREAK_HXX
 
-#include <svx/stddlg.hxx>
-
-#include <vcl/button.hxx>
-
-#include <vcl/fixed.hxx>
-
-#include <vcl/lstbox.hxx>
-
-#include <vcl/field.hxx>
-
-#include <boost/optional.hpp>
+#include <vcl/weld.hxx>
+#include <optional>
 
 class SwWrtShell;
 
-class SwBreakDlg: public SvxStandardDialog
+class SwBreakDlg : public weld::GenericDialogController
 {
-    SwWrtShell     &rSh;
-    VclPtr<RadioButton>    m_pLineBtn;
-    VclPtr<RadioButton>    m_pColumnBtn;
-    VclPtr<RadioButton>    m_pPageBtn;
-    VclPtr<FixedText>      m_pPageCollText;
-    VclPtr<ListBox>        m_pPageCollBox;
-    VclPtr<CheckBox>       m_pPageNumBox;
-    VclPtr<NumericField>   m_pPageNumEdit;
+    std::unique_ptr<weld::RadioButton> m_xLineBtn;
+    std::unique_ptr<weld::RadioButton> m_xColumnBtn;
+    std::unique_ptr<weld::RadioButton> m_xPageBtn;
+    std::unique_ptr<weld::Label> m_xPageCollText;
+    std::unique_ptr<weld::ComboBox> m_xPageCollBox;
+    std::unique_ptr<weld::CheckButton> m_xPageNumBox;
+    std::unique_ptr<weld::SpinButton> m_xPageNumEdit;
+    std::unique_ptr<weld::Button> m_xOkBtn;
 
-    OUString        aTemplate;
+    SwWrtShell     &rSh;
+    OUString        m_aTemplate;
     sal_uInt16      nKind;
-    ::boost::optional<sal_uInt16>      oPgNum;
+    ::std::optional<sal_uInt16>      oPgNum;
 
     bool            bHtmlMode;
 
-    DECL_LINK( ClickHdl, Button*, void );
-    DECL_LINK( SelectHdl, ListBox&, void );
-    DECL_LINK( PageNumHdl, Button*, void );
-    DECL_LINK(PageNumModifyHdl, Edit&, void);
-    DECL_LINK(OkHdl, Button*, void);
+    DECL_LINK(ToggleHdl, weld::ToggleButton&, void);
+    DECL_LINK(ChangeHdl, weld::ComboBox&, void);
+    DECL_LINK(PageNumHdl, weld::ToggleButton&, void);
+    DECL_LINK(PageNumModifyHdl, weld::SpinButton&, void);
+    DECL_LINK(OkHdl, weld::Button&, void);
 
     void CheckEnable();
-
-protected:
-    virtual void Apply() override;
+    void rememberResult();
 
 public:
-    SwBreakDlg( vcl::Window *pParent, SwWrtShell &rSh );
-    virtual ~SwBreakDlg() override;
-    virtual void dispose() override;
-
-    const OUString& GetTemplateName() { return aTemplate; }
-    sal_uInt16  GetKind() { return nKind; }
-    const ::boost::optional<sal_uInt16>&  GetPageNumber() { return oPgNum; }
+    SwBreakDlg(weld::Window *pParent, SwWrtShell &rSh);
+    const OUString& GetTemplateName() const { return m_aTemplate; }
+    sal_uInt16 GetKind() const { return nKind; }
+    const ::std::optional<sal_uInt16>&  GetPageNumber() const { return oPgNum; }
 };
 
 #endif

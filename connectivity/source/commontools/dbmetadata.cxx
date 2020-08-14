@@ -21,8 +21,8 @@
 #include <connectivity/dbmetadata.hxx>
 #include <connectivity/dbexception.hxx>
 #include <connectivity/DriversConfig.hxx>
-#include "resource/common_res.hrc"
-#include "resource/sharedresources.hxx"
+#include <strings.hrc>
+#include <resource/sharedresources.hxx>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/container/XChild.hpp>
@@ -36,9 +36,9 @@
 #include <tools/diagnose_ex.h>
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/processfactory.hxx>
-#include <sal/macros.h>
+#include <sal/log.hxx>
 
-#include <boost/optional.hpp>
+#include <optional>
 
 
 namespace dbtools
@@ -71,8 +71,8 @@ namespace dbtools
         Reference< XDatabaseMetaData >  xConnectionMetaData;
         ::connectivity::DriversConfig   aDriverConfig;
 
-        ::boost::optional< OUString >    sCachedIdentifierQuoteString;
-        ::boost::optional< OUString >    sCachedCatalogSeparator;
+        ::std::optional< OUString >    sCachedIdentifierQuoteString;
+        ::std::optional< OUString >    sCachedCatalogSeparator;
 
         DatabaseMetaData_Impl()
             :xConnection()
@@ -111,7 +111,7 @@ namespace dbtools
         }
 
 
-        bool lcl_getDriverSetting( const sal_Char* _asciiName, const DatabaseMetaData_Impl& _metaData, Any& _out_setting )
+        bool lcl_getDriverSetting( const char* _asciiName, const DatabaseMetaData_Impl& _metaData, Any& _out_setting )
         {
             lcl_checkConnected( _metaData );
             const ::comphelper::NamedValueCollection& rDriverMetaData = _metaData.aDriverConfig.getMetaData( _metaData.xConnectionMetaData->getURL() );
@@ -122,7 +122,7 @@ namespace dbtools
         }
 
 
-        bool lcl_getConnectionSetting( const sal_Char* _asciiName, const DatabaseMetaData_Impl& _metaData, Any& _out_setting )
+        bool lcl_getConnectionSetting( const char* _asciiName, const DatabaseMetaData_Impl& _metaData, Any& _out_setting )
         {
             try
             {
@@ -147,14 +147,14 @@ namespace dbtools
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("connectivity.commontools");
             }
             return false;
         }
 
 
         const OUString& lcl_getConnectionStringSetting(
-            const DatabaseMetaData_Impl& _metaData, ::boost::optional< OUString >& _cachedSetting,
+            const DatabaseMetaData_Impl& _metaData, ::std::optional< OUString >& _cachedSetting,
             OUString (SAL_CALL XDatabaseMetaData::*_getter)() )
         {
             if ( !_cachedSetting )
@@ -162,9 +162,9 @@ namespace dbtools
                 lcl_checkConnected( _metaData );
                 try
                 {
-                    _cachedSetting.reset( (_metaData.xConnectionMetaData.get()->*_getter)() );
+                    _cachedSetting = (_metaData.xConnectionMetaData.get()->*_getter)();
                 }
-                catch( const Exception& ) { DBG_UNHANDLED_EXCEPTION(); }
+                catch( const Exception& ) { DBG_UNHANDLED_EXCEPTION("connectivity.commontools"); }
             }
             return *_cachedSetting;
         }
@@ -187,7 +187,7 @@ namespace dbtools
     {
     }
 
-    DatabaseMetaData::DatabaseMetaData( DatabaseMetaData&& _copyFrom )
+    DatabaseMetaData::DatabaseMetaData(DatabaseMetaData&& _copyFrom) noexcept
         :m_pImpl(std::move(_copyFrom.m_pImpl))
     {
     }
@@ -201,7 +201,7 @@ namespace dbtools
         return *this;
     }
 
-    DatabaseMetaData& DatabaseMetaData::operator=( DatabaseMetaData&& _copyFrom )
+    DatabaseMetaData& DatabaseMetaData::operator=(DatabaseMetaData&& _copyFrom) noexcept
     {
         m_pImpl = std::move(_copyFrom.m_pImpl);
         return *this;
@@ -231,7 +231,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.commontools");
         }
         return bSupportsSubQueries;
     }
@@ -253,7 +253,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.commontools");
         }
         return bDoesSupportPrimaryKeys;
     }
@@ -278,7 +278,8 @@ namespace dbtools
         bool restrict( false );
         Any setting;
         if ( lcl_getConnectionSetting( "EnableSQL92Check", *m_pImpl, setting ) )
-            OSL_VERIFY( setting >>= restrict );
+            if( ! (setting >>= restrict) )
+                SAL_WARN("connectivity.commontools", "restrictIdentifiersToSQL92: unable to assign EnableSQL92Check");
         return restrict;
     }
 
@@ -288,7 +289,8 @@ namespace dbtools
         bool doGenerate( false );
         Any setting;
         if ( lcl_getConnectionSetting( "GenerateASBeforeCorrelationName", *m_pImpl, setting ) )
-            OSL_VERIFY( setting >>= doGenerate );
+            if( ! (setting >>= doGenerate) )
+                SAL_WARN("connectivity.commontools", "generateASBeforeCorrelationName: unable to assign GenerateASBeforeCorrelationName");
         return doGenerate;
     }
 
@@ -297,8 +299,19 @@ namespace dbtools
         bool doGenerate( true );
         Any setting;
         if ( lcl_getConnectionSetting( "EscapeDateTime", *m_pImpl, setting ) )
-            OSL_VERIFY( setting >>= doGenerate );
+            if( ! (setting >>= doGenerate) )
+                SAL_WARN("connectivity.commontools", "shouldEscapeDateTime: unable to assign EscapeDateTime");
         return doGenerate;
+    }
+
+    bool DatabaseMetaData::shouldSubstituteParameterNames() const
+    {
+        bool doSubstitute( true );
+        Any setting;
+        if ( lcl_getConnectionSetting( "ParameterNameSubstitution", *m_pImpl, setting ) )
+            if( ! (setting >>= doSubstitute) )
+                SAL_WARN("connectivity.commontools", "shouldSubstituteParameterNames: unable to assign ParameterNameSubstitution");
+        return doSubstitute;
     }
 
     bool DatabaseMetaData::isAutoIncrementPrimaryKey() const
@@ -306,7 +319,8 @@ namespace dbtools
         bool is( true );
         Any setting;
         if ( lcl_getDriverSetting( "AutoIncrementIsPrimaryKey", *m_pImpl, setting ) )
-            OSL_VERIFY( setting >>= is );
+            if( ! (setting >>= is) )
+                SAL_WARN("connectivity.commontools", "isAutoIncrementPrimaryKey: unable to assign AutoIncrementIsPrimaryKey");
         return is;
     }
 
@@ -315,7 +329,8 @@ namespace dbtools
         sal_Int32 mode( BooleanComparisonMode::EQUAL_INTEGER );
         Any setting;
         if ( lcl_getConnectionSetting( "BooleanComparisonMode", *m_pImpl, setting ) )
-            OSL_VERIFY( setting >>= mode );
+            if( ! (setting >>= mode) )
+                SAL_WARN("connectivity.commontools", "getBooleanComparisonMode: unable to assign BooleanComparisonMode");
         return mode;
     }
 
@@ -329,7 +344,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.commontools");
         }
         try
         {
@@ -341,7 +356,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.commontools");
         }
         return bSupport;
     }
@@ -352,7 +367,8 @@ namespace dbtools
         bool doGenerate( true );
         Any setting;
         if ( lcl_getConnectionSetting( "ColumnAliasInOrderBy", *m_pImpl, setting ) )
-            OSL_VERIFY( setting >>= doGenerate );
+            if( ! (setting >>= doGenerate) )
+                SAL_WARN("connectivity.commontools", "supportsColumnAliasInOrderBy: unable to assign ColumnAliasInOrderBy");
         return doGenerate;
     }
 
@@ -380,7 +396,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.commontools");
         }
         return isSupported;
     }
@@ -392,7 +408,8 @@ namespace dbtools
 #ifdef IMPLEMENTED_LATER
         Any setting;
         if ( lcl_getConnectionSetting( "DisplayEmptyTableFolders", *m_pImpl, setting ) )
-            OSL_VERIFY( setting >>= doDisplay );
+            if( ! (setting >>= doDisplay) )
+                SAL_WARN("connectivity.commontools", "displayEmptyTableFolders: unable to assign DisplayEmptyTableFolders");
 #else
         try
         {
@@ -402,7 +419,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.commontools");
         }
 #endif
         return doDisplay;
@@ -419,7 +436,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.commontools");
         }
         return bSupported;
     }

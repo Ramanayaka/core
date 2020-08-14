@@ -150,7 +150,7 @@ static void cpp_call(
     TYPELIB_DANGER_GET( &pReturnTypeDescr, pReturnTypeRef );
     assert(pReturnTypeDescr);
 
-    void * pCppReturn = 0; // if != 0 && != pUnoReturn, needs reconversion
+    void * pCppReturn = nullptr; // if != 0 && != pUnoReturn, needs reconversion
 
     if (pReturnTypeDescr)
     {
@@ -328,7 +328,7 @@ static void cpp_call(
 
 }
 
-namespace bridges { namespace cpp_uno { namespace shared {
+namespace bridges::cpp_uno::shared {
 
 void unoInterfaceProxyDispatch(
     uno_Interface * pUnoI, const typelib_TypeDescription * pMemberDescr,
@@ -439,7 +439,7 @@ void unoInterfaceProxyDispatch(
     default:
     {
         ::com::sun::star::uno::RuntimeException aExc(
-            OUString("illegal member type description!"),
+            "illegal member type description!",
             ::com::sun::star::uno::Reference< ::com::sun::star::uno::XInterface >() );
 
         Type const & rExcType = cppu::UnoType<decltype(aExc)>::get();
@@ -449,6 +449,6 @@ void unoInterfaceProxyDispatch(
     }
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

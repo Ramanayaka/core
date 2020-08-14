@@ -18,11 +18,13 @@
  */
 
 #include <memory>
-#include "markdata.hxx"
-#include "markarr.hxx"
-#include "markmulti.hxx"
-#include "rangelst.hxx"
-#include "segmenttree.hxx"
+#include <markdata.hxx>
+#include <markarr.hxx>
+#include <markmulti.hxx>
+#include <rangelst.hxx>
+#include <segmenttree.hxx>
+#include <sheetlimits.hxx>
+#include <document.hxx>
 #include <columnspanset.hxx>
 #include <fstalgorithm.hxx>
 #include <unordered_map>
@@ -30,56 +32,55 @@
 #include <osl/diagnose.h>
 
 #include <mdds/flat_segment_tree.hpp>
+#include <cassert>
 
 
-ScMarkData::ScMarkData() :
+ScMarkData::ScMarkData(const ScSheetLimits& rSheetLimits) :
     maTabMarked(),
-    aMultiSel()
+    aMultiSel(rSheetLimits),
+    mrSheetLimits(rSheetLimits)
 {
     ResetMark();
-}
-
-ScMarkData::ScMarkData(const ScMarkData& rData) :
-    maTabMarked( rData.maTabMarked ),
-    aMarkRange( rData.aMarkRange ),
-    aMultiRange( rData.aMultiRange ),
-    aMultiSel( rData.aMultiSel ),
-    aTopEnvelope( rData.aTopEnvelope ),
-    aBottomEnvelope( rData.aBottomEnvelope ),
-    aLeftEnvelope( rData.aLeftEnvelope ),
-    aRightEnvelope( rData.aRightEnvelope )
-{
-    bMarked      = rData.bMarked;
-    bMultiMarked = rData.bMultiMarked;
-    bMarking     = rData.bMarking;
-    bMarkIsNeg   = rData.bMarkIsNeg;
-}
-
-ScMarkData& ScMarkData::operator=(const ScMarkData& rData)
-{
-    if ( &rData == this )
-        return *this;
-
-    aMarkRange   = rData.aMarkRange;
-    aMultiRange  = rData.aMultiRange;
-    bMarked      = rData.bMarked;
-    bMultiMarked = rData.bMultiMarked;
-    bMarking     = rData.bMarking;
-    bMarkIsNeg   = rData.bMarkIsNeg;
-    aTopEnvelope = rData.aTopEnvelope;
-    aBottomEnvelope = rData.aBottomEnvelope;
-    aLeftEnvelope   = rData.aLeftEnvelope;
-    aRightEnvelope  = rData.aRightEnvelope;
-
-    maTabMarked = rData.maTabMarked;
-    aMultiSel = rData.aMultiSel;
-
-    return *this;
 }
 
 ScMarkData::~ScMarkData()
 {
 }
+
+ScMarkData& ScMarkData::operator=(const ScMarkData& rOther)
+{
+    maTabMarked = rOther.maTabMarked;
+    aMarkRange = rOther.aMarkRange;
+    aMultiRange = rOther.aMultiRange;
+    aMultiSel = rOther.aMultiSel;
+    aTopEnvelope = rOther.aTopEnvelope;
+    aBottomEnvelope = rOther.aBottomEnvelope;
+    aLeftEnvelope = rOther.aLeftEnvelope;
+    aRightEnvelope = rOther.aRightEnvelope;
+    bMarked = rOther.bMarked;
+    bMultiMarked = rOther.bMultiMarked;
+    bMarking = rOther.bMarking;
+    bMarkIsNeg = rOther.bMarkIsNeg;
+    return *this;
+}
+
+ScMarkData& ScMarkData::operator=(ScMarkData&& rOther)
+{
+    maTabMarked = std::move(rOther.maTabMarked);
+    aMarkRange = std::move(rOther.aMarkRange);
+    aMultiRange = std::move(rOther.aMultiRange);
+    aMultiSel = std::move(rOther.aMultiSel);
+    aTopEnvelope = std::move(rOther.aTopEnvelope);
+    aBottomEnvelope = std::move(rOther.aBottomEnvelope);
+    aLeftEnvelope = std::move(rOther.aLeftEnvelope);
+    aRightEnvelope = std::move(rOther.aRightEnvelope);
+    bMarked = rOther.bMarked;
+    bMultiMarked = rOther.bMultiMarked;
+    bMarking = rOther.bMarking;
+    bMarkIsNeg = rOther.bMarkIsNeg;
+    return *this;
+}
+
 
 void ScMarkData::ResetMark()
 {
@@ -198,7 +199,7 @@ SCTAB ScMarkData::GetSelectCount() const
 
 SCTAB ScMarkData::GetFirstSelected() const
 {
-    if (maTabMarked.size() > 0)
+    if (!maTabMarked.empty())
         return (*maTabMarked.begin());
 
     OSL_FAIL("GetFirstSelected: nothing selected");
@@ -207,7 +208,7 @@ SCTAB ScMarkData::GetFirstSelected() const
 
 SCTAB ScMarkData::GetLastSelected() const
 {
-    if (maTabMarked.size() > 0)
+    if (!maTabMarked.empty())
         return (*maTabMarked.rbegin());
 
     OSL_FAIL("GetLastSelected: nothing selected");
@@ -241,43 +242,43 @@ void ScMarkData::MarkToSimple()
     if ( bMultiMarked && bMarked )
         MarkToMulti();                  // may result in bMarked and bMultiMarked reset
 
-    if ( bMultiMarked )
+    if ( !bMultiMarked )
+        return;
+
+    ScRange aNew = aMultiRange;
+
+    bool bOk = false;
+    SCCOL nStartCol = aNew.aStart.Col();
+    SCCOL nEndCol   = aNew.aEnd.Col();
+
+    while ( nStartCol < nEndCol && !aMultiSel.HasMarks( nStartCol ) )
+        ++nStartCol;
+    while ( nStartCol < nEndCol && !aMultiSel.HasMarks( nEndCol ) )
+        --nEndCol;
+
+    // Rows are only taken from MarkArray
+    SCROW nStartRow, nEndRow;
+    if ( aMultiSel.HasOneMark( nStartCol, nStartRow, nEndRow ) )
     {
-        ScRange aNew = aMultiRange;
+        bOk = true;
+        SCROW nCmpStart, nCmpEnd;
+        for (SCCOL nCol=nStartCol+1; nCol<=nEndCol && bOk; nCol++)
+            if ( !aMultiSel.HasOneMark( nCol, nCmpStart, nCmpEnd )
+                    || nCmpStart != nStartRow || nCmpEnd != nEndRow )
+                bOk = false;
+    }
 
-        bool bOk = false;
-        SCCOL nStartCol = aNew.aStart.Col();
-        SCCOL nEndCol   = aNew.aEnd.Col();
+    if (bOk)
+    {
+        aNew.aStart.SetCol(nStartCol);
+        aNew.aStart.SetRow(nStartRow);
+        aNew.aEnd.SetCol(nEndCol);
+        aNew.aEnd.SetRow(nEndRow);
 
-        while ( nStartCol < nEndCol && !aMultiSel.HasMarks( nStartCol ) )
-            ++nStartCol;
-        while ( nStartCol < nEndCol && !aMultiSel.HasMarks( nEndCol ) )
-            --nEndCol;
-
-        // Rows are only taken from MarkArray
-        SCROW nStartRow, nEndRow;
-        if ( aMultiSel.HasOneMark( nStartCol, nStartRow, nEndRow ) )
-        {
-            bOk = true;
-            SCROW nCmpStart, nCmpEnd;
-            for (SCCOL nCol=nStartCol+1; nCol<=nEndCol && bOk; nCol++)
-                if ( !aMultiSel.HasOneMark( nCol, nCmpStart, nCmpEnd )
-                        || nCmpStart != nStartRow || nCmpEnd != nEndRow )
-                    bOk = false;
-        }
-
-        if (bOk)
-        {
-            aNew.aStart.SetCol(nStartCol);
-            aNew.aStart.SetRow(nStartRow);
-            aNew.aEnd.SetCol(nEndCol);
-            aNew.aEnd.SetRow(nEndRow);
-
-            ResetMark();
-            aMarkRange = aNew;
-            bMarked = true;
-            bMarkIsNeg = false;
-        }
+        ResetMark();
+        aMarkRange = aNew;
+        bMarked = true;
+        bMarkIsNeg = false;
     }
 }
 
@@ -305,10 +306,10 @@ bool ScMarkData::IsColumnMarked( SCCOL nCol ) const
 
     if ( bMarked && !bMarkIsNeg &&
                     aMarkRange.aStart.Col() <= nCol && aMarkRange.aEnd.Col() >= nCol &&
-                    aMarkRange.aStart.Row() == 0    && aMarkRange.aEnd.Row() == MAXROW )
+                    aMarkRange.aStart.Row() == 0    && aMarkRange.aEnd.Row() == mrSheetLimits.mnMaxRow )
         return true;
 
-    if ( bMultiMarked && aMultiSel.IsAllMarked( nCol, 0, MAXROW ) )
+    if ( bMultiMarked && aMultiSel.IsAllMarked( nCol, 0, mrSheetLimits.mnMaxRow ) )
         return true;
 
     return false;
@@ -320,7 +321,7 @@ bool ScMarkData::IsRowMarked( SCROW nRow ) const
     //TODO: GetMarkRowRanges for completely marked rows
 
     if ( bMarked && !bMarkIsNeg &&
-                    aMarkRange.aStart.Col() == 0    && aMarkRange.aEnd.Col() == MAXCOL &&
+                    aMarkRange.aStart.Col() == 0    && aMarkRange.aEnd.Col() == mrSheetLimits.mnMaxCol &&
                     aMarkRange.aStart.Row() <= nRow && aMarkRange.aEnd.Row() >= nRow )
         return true;
 
@@ -341,7 +342,7 @@ void ScMarkData::MarkFromRangeList( const ScRangeList& rList, bool bReset )
     size_t nCount = rList.size();
     if ( nCount == 1 && !bMarked && !bMultiMarked )
     {
-        const ScRange& rRange = *rList[ 0 ];
+        const ScRange& rRange = rList[ 0 ];
         SetMarkArea( rRange );
         SelectTable( rRange.aStart.Tab(), true );
     }
@@ -349,12 +350,39 @@ void ScMarkData::MarkFromRangeList( const ScRangeList& rList, bool bReset )
     {
         for (size_t i=0; i < nCount; i++)
         {
-            const ScRange& rRange = *rList[ i ];
+            const ScRange& rRange = rList[ i ];
             SetMultiMarkArea( rRange );
             SelectTable( rRange.aStart.Tab(), true );
         }
     }
 }
+
+/**
+  Optimise the case of constructing from a range list, speeds up import.
+*/
+ScMarkData::ScMarkData(const ScSheetLimits& rLimits, const ScRangeList& rList)
+    : aMultiSel(rLimits),
+      mrSheetLimits(rLimits)
+{
+    ResetMark();
+
+    for (const ScRange& rRange : rList)
+        maTabMarked.insert( rRange.aStart.Tab() );
+
+    if (rList.size() > 1)
+    {
+        bMultiMarked = true;
+        aMultiRange = rList.Combine();
+
+        aMultiSel.Set( rList );
+    }
+    else if (rList.size() == 1)
+    {
+        const ScRange& rRange = rList[ 0 ];
+        SetMarkArea( rRange );
+    }
+}
+
 
 void ScMarkData::FillRangeListWithMarks( ScRangeList* pList, bool bClear, SCTAB nForTab ) const
 {
@@ -405,13 +433,13 @@ void ScMarkData::FillRangeListWithMarks( ScRangeList* pList, bool bClear, SCTAB 
     if ( bMarked )
     {
         if (nForTab < 0)
-            pList->Append( aMarkRange );
+            pList->push_back( aMarkRange );
         else
         {
             ScRange aRange( aMarkRange );
             aRange.aStart.SetTab( nForTab );
             aRange.aEnd.SetTab( nForTab );
-            pList->Append( aRange );
+            pList->push_back( aRange );
         }
     }
 }
@@ -424,14 +452,13 @@ void ScMarkData::ExtendRangeListTables( ScRangeList* pList ) const
     ScRangeList aOldList(*pList);
     pList->RemoveAll();                 //TODO: or skip the existing below
 
-    std::set<SCTAB>::const_iterator it = maTabMarked.begin();
-    for (; it != maTabMarked.end(); ++it)
+    for (const auto& rTab : maTabMarked)
         for ( size_t i=0, nCount = aOldList.size(); i<nCount; i++)
         {
-            ScRange aRange = *aOldList[ i ];
-            aRange.aStart.SetTab(*it);
-            aRange.aEnd.SetTab(*it);
-            pList->Append( aRange );
+            ScRange aRange = aOldList[ i ];
+            aRange.aStart.SetTab(rTab);
+            aRange.aEnd.SetTab(rTab);
+            pList->push_back( aRange );
         }
 }
 
@@ -454,12 +481,12 @@ std::vector<sc::ColRowSpan> ScMarkData::GetMarkedRowSpans() const
     typedef mdds::flat_segment_tree<SCCOLROW, bool> SpansType;
 
     ScRangeList aRanges = GetMarkedRanges();
-    SpansType aSpans(0, MAXROW+1, false);
+    SpansType aSpans(0, mrSheetLimits.mnMaxRow+1, false);
     SpansType::const_iterator itPos = aSpans.begin();
 
     for (size_t i = 0, n = aRanges.size(); i < n; ++i)
     {
-        const ScRange& r = *aRanges[i];
+        const ScRange& r = aRanges[i];
         itPos = aSpans.insert(itPos, r.aStart.Row(), r.aEnd.Row()+1, true).first;
     }
 
@@ -477,7 +504,7 @@ std::vector<sc::ColRowSpan> ScMarkData::GetMarkedColSpans() const
         {
             // Use segment tree to merge marked with multi marked.
             typedef mdds::flat_segment_tree<SCCOLROW, bool> SpansType;
-            SpansType aSpans(0, MAXCOL+1, false);
+            SpansType aSpans(0, mrSheetLimits.mnMaxCol+1, false);
             SpansType::const_iterator itPos = aSpans.begin();
             do
             {
@@ -500,7 +527,7 @@ std::vector<sc::ColRowSpan> ScMarkData::GetMarkedColSpans() const
             while(false);
 
             // Merge marked.
-            itPos = aSpans.insert(itPos, aMarkRange.aStart.Col(), aMarkRange.aEnd.Col()+1, true).first;
+            aSpans.insert(itPos, aMarkRange.aStart.Col(), aMarkRange.aEnd.Col()+1, true);
 
             return sc::toSpanArray<SCCOLROW,sc::ColRowSpan>(aSpans);
         }
@@ -511,7 +538,7 @@ std::vector<sc::ColRowSpan> ScMarkData::GetMarkedColSpans() const
             std::vector<sc::ColRowSpan> aVec;
             if (aMultiSel.GetRowSelArray().HasMarks())
             {
-                aVec.push_back( sc::ColRowSpan( nStartCol, nEndCol));
+                aVec.emplace_back( nStartCol, nEndCol);
                 return aVec;    // all columns marked
             }
             sc::ColRowSpan aSpan( -1, -1);
@@ -545,7 +572,7 @@ std::vector<sc::ColRowSpan> ScMarkData::GetMarkedColSpans() const
     std::vector<sc::ColRowSpan> aVec;
     if (bMarked)
     {
-        aVec.push_back( sc::ColRowSpan( aMarkRange.aStart.Col(), aMarkRange.aEnd.Col()));
+        aVec.emplace_back( aMarkRange.aStart.Col(), aMarkRange.aEnd.Col());
     }
     return aVec;
 }
@@ -561,7 +588,7 @@ bool ScMarkData::IsAllMarked( const ScRange& rRange ) const
     SCROW nEndRow = rRange.aEnd.Row();
     bool bOk = true;
 
-    if ( nStartCol == 0 && nEndCol == MAXCOL )
+    if ( nStartCol == 0 && nEndCol == mrSheetLimits.mnMaxCol )
         return aMultiSel.IsRowRangeMarked( nStartRow, nEndRow );
 
     for (SCCOL nCol=nStartCol; nCol<=nEndCol && bOk; nCol++)
@@ -598,13 +625,12 @@ bool ScMarkData::HasAnyMultiMarks() const
 void ScMarkData::InsertTab( SCTAB nTab )
 {
     std::set<SCTAB> tabMarked;
-    for (auto itr = maTabMarked.begin(), itrEnd = maTabMarked.end();
-            itr != itrEnd; ++itr)
+    for (const auto& rTab : maTabMarked)
     {
-        if (*itr < nTab)
-            tabMarked.insert(*itr);
+        if (rTab < nTab)
+            tabMarked.insert(rTab);
         else
-            tabMarked.insert(*itr + 1);
+            tabMarked.insert(rTab + 1);
     }
     maTabMarked.swap(tabMarked);
 }
@@ -612,15 +638,41 @@ void ScMarkData::InsertTab( SCTAB nTab )
 void ScMarkData::DeleteTab( SCTAB nTab )
 {
     std::set<SCTAB> tabMarked;
-    for (auto itr = maTabMarked.begin(), itrEnd = maTabMarked.end();
-            itr != itrEnd; ++itr)
+    for (const auto& rTab : maTabMarked)
     {
-        if (*itr < nTab)
-            tabMarked.insert(*itr);
-        else if (*itr > nTab)
-            tabMarked.insert(*itr - 1);
+        if (rTab < nTab)
+            tabMarked.insert(rTab);
+        else if (rTab > nTab)
+            tabMarked.insert(rTab - 1);
     }
     maTabMarked.swap(tabMarked);
+}
+
+void ScMarkData::ShiftCols(const ScDocument* pDoc, SCCOL nStartCol, long nColOffset)
+{
+    if (bMarked)
+    {
+        aMarkRange.IncColIfNotLessThan(pDoc, nStartCol, nColOffset);
+    }
+    else if (bMultiMarked)
+    {
+        aMultiSel.ShiftCols(nStartCol, nColOffset);
+        aMultiRange.IncColIfNotLessThan(pDoc, nStartCol, nColOffset);
+    }
+}
+
+void ScMarkData::ShiftRows(const ScDocument* pDoc, SCROW nStartRow, long nRowOffset)
+{
+    if (bMarked)
+    {
+        aMarkRange.IncRowIfNotLessThan(pDoc, nStartRow, nRowOffset);
+    }
+    else if (bMultiMarked)
+    {
+        aMultiSel.ShiftRows(nStartRow, nRowOffset);
+        aMultiRange.IncRowIfNotLessThan(pDoc, nStartRow, nRowOffset);
+    }
+
 }
 
 static void lcl_AddRanges(ScRange& rRangeDest, const ScRange& rNewRange )
@@ -649,13 +701,13 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
         SCCOL nStartCol = aMultiRange.aStart.Col(), nEndCol = aMultiRange.aEnd.Col();
         PutInOrder( nStartCol, nEndCol );
         nStartCol = ( nStartCol == 0 ) ? nStartCol : nStartCol - 1;
-        nEndCol = ( nEndCol == MAXCOL ) ? nEndCol : nEndCol + 1;
+        nEndCol = ( nEndCol == mrSheetLimits.mnMaxCol ) ? nEndCol : nEndCol + 1;
         std::unique_ptr<ScFlatBoolRowSegments> pPrevColMarkedRows;
         std::unique_ptr<ScFlatBoolRowSegments> pCurColMarkedRows;
         std::unordered_map<SCROW,ScFlatBoolColSegments> aRowToColSegmentsInTopEnvelope;
         std::unordered_map<SCROW,ScFlatBoolColSegments> aRowToColSegmentsInBottomEnvelope;
-        ScFlatBoolRowSegments aNoRowsMarked;
-        aNoRowsMarked.setFalse( 0, MAXROW );
+        ScFlatBoolRowSegments aNoRowsMarked(mrSheetLimits.mnMaxRow);
+        aNoRowsMarked.setFalse( 0, mrSheetLimits.mnMaxRow );
 
         bool bPrevColUnMarked = false;
 
@@ -665,11 +717,15 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
             bool bCurColUnMarked = !aMultiSel.HasMarks( nCol );
             if ( !bCurColUnMarked )
             {
-                pCurColMarkedRows.reset( new ScFlatBoolRowSegments() );
-                pCurColMarkedRows->setFalse( 0, MAXROW );
+                pCurColMarkedRows.reset( new ScFlatBoolRowSegments(mrSheetLimits.mnMaxRow) );
+                pCurColMarkedRows->setFalse( 0, mrSheetLimits.mnMaxRow );
                 ScMultiSelIter aMultiIter( aMultiSel, nCol );
-                ScFlatBoolRowSegments::ForwardIterator aPrevItr ( pPrevColMarkedRows.get() ? *pPrevColMarkedRows : aNoRowsMarked ); // For finding left envelope
-                ScFlatBoolRowSegments::ForwardIterator aPrevItr1( pPrevColMarkedRows.get() ? *pPrevColMarkedRows : aNoRowsMarked ); // For finding right envelope
+                ScFlatBoolRowSegments::ForwardIterator aPrevItr(
+                    pPrevColMarkedRows ? *pPrevColMarkedRows
+                                       : aNoRowsMarked); // For finding left envelope
+                ScFlatBoolRowSegments::ForwardIterator aPrevItr1(
+                    pPrevColMarkedRows ? *pPrevColMarkedRows
+                                       : aNoRowsMarked); // For finding right envelope
                 SCROW nTopPrev = 0, nBottomPrev = 0; // For right envelope
                 while ( aMultiIter.Next( nTop, nBottom ) )
                 {
@@ -679,7 +735,7 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
                         ScRange aAddRange(nCol - 1, nTop, aMultiRange.aStart.Tab(),
                                           nCol - 1, nBottom, aMultiRange.aStart.Tab());
                         lcl_AddRanges( rRange, aAddRange ); // Left envelope
-                        aLeftEnvelope.Append( aAddRange );
+                        aLeftEnvelope.push_back( aAddRange );
                     }
                     else if( nCol > nStartCol )
                     {
@@ -687,7 +743,8 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
                         while( nTop1 <= nBottom && nBottom1 <= nBottom )
                         {
                             bool bRangeMarked = false;
-                            aPrevItr.getValue( nTop1, bRangeMarked );
+                            const bool bHasValue = aPrevItr.getValue( nTop1, bRangeMarked );
+                            assert(bHasValue); (void)bHasValue;
                             if( bRangeMarked )
                             {
                                 nTop1 = aPrevItr.getLastPos() + 1;
@@ -701,14 +758,15 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
                                 ScRange aAddRange( nCol - 1, nTop1, aMultiRange.aStart.Tab(),
                                                    nCol - 1, nBottom1, aMultiRange.aStart.Tab() );
                                 lcl_AddRanges( rRange, aAddRange ); // Left envelope
-                                aLeftEnvelope.Append( aAddRange );
+                                aLeftEnvelope.push_back( aAddRange );
                                 nTop1 = ++nBottom1;
                             }
                         }
                         while( nTopPrev <= nBottom && nBottomPrev <= nBottom )
                         {
                             bool bRangeMarked;
-                            aPrevItr1.getValue( nTopPrev, bRangeMarked );
+                            const bool bHasValue = aPrevItr1.getValue( nTopPrev, bRangeMarked );
+                            assert(bHasValue); (void)bHasValue;
                             if( bRangeMarked )
                             {
                                 nBottomPrev = aPrevItr1.getLastPos();
@@ -720,7 +778,7 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
                                         ScRange aAddRange( nCol, nTopPrev, aMultiRange.aStart.Tab(),
                                                            nCol, nBottomPrev, aMultiRange.aStart.Tab());
                                         lcl_AddRanges( rRange, aAddRange ); // Right envelope
-                                        aRightEnvelope.Append( aAddRange );
+                                        aRightEnvelope.push_back( aAddRange );
                                         nTopPrev = nBottomPrev = (nBottom + 1);
                                     }
                                     else
@@ -728,7 +786,7 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
                                         ScRange aAddRange( nCol, nTopPrev, aMultiRange.aStart.Tab(),
                                                            nCol, nBottomPrev, aMultiRange.aStart.Tab());
                                         lcl_AddRanges( rRange, aAddRange ); // Right envelope
-                                        aRightEnvelope.Append( aAddRange );
+                                        aRightEnvelope.push_back( aAddRange );
                                         nTopPrev = ++nBottomPrev;
                                     }
                                 }
@@ -747,28 +805,35 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
                         ScRange aAddRange( nCol, nTop - 1, aMultiRange.aStart.Tab(),
                                            nCol, nTop - 1, aMultiRange.aStart.Tab());
                         lcl_AddRanges( rRange, aAddRange ); // Top envelope
-                        aRowToColSegmentsInTopEnvelope[nTop - 1].setTrue( nCol, nCol );
+                        auto it = aRowToColSegmentsInTopEnvelope.find(nTop - 1);
+                        if (it == aRowToColSegmentsInTopEnvelope.end())
+                            it = aRowToColSegmentsInTopEnvelope.emplace(nTop - 1, ScFlatBoolColSegments(mrSheetLimits.mnMaxCol)).first;
+                        it->second.setTrue( nCol, nCol );
                     }
-                    if( nBottom < MAXROW )
+                    if( nBottom < mrSheetLimits.mnMaxRow )
                     {
                         ScRange aAddRange(nCol, nBottom + 1, aMultiRange.aStart.Tab(),
                                           nCol, nBottom + 1, aMultiRange.aStart.Tab());
                         lcl_AddRanges( rRange, aAddRange ); // Bottom envelope
-                        aRowToColSegmentsInBottomEnvelope[nBottom + 1].setTrue( nCol, nCol );
+                        auto it = aRowToColSegmentsInBottomEnvelope.find(nBottom + 1);
+                        if (it == aRowToColSegmentsInBottomEnvelope.end())
+                            it = aRowToColSegmentsInBottomEnvelope.emplace(nBottom + 1, ScFlatBoolColSegments(mrSheetLimits.mnMaxCol)).first;
+                        it->second.setTrue( nCol, nCol );
                     }
                 }
 
-                while( nTopPrev <= MAXROW && nBottomPrev <= MAXROW && ( nCol > nStartCol ) )
+                while( nTopPrev <= mrSheetLimits.mnMaxRow && nBottomPrev <= mrSheetLimits.mnMaxRow && ( nCol > nStartCol ) )
                 {
                     bool bRangeMarked;
-                    aPrevItr1.getValue( nTopPrev, bRangeMarked );
+                    const bool bHasValue = aPrevItr1.getValue( nTopPrev, bRangeMarked );
+                    assert(bHasValue); (void)bHasValue;
                     if( bRangeMarked )
                     {
                         nBottomPrev = aPrevItr1.getLastPos();
                         ScRange aAddRange(nCol, nTopPrev, aMultiRange.aStart.Tab(),
                                           nCol, nBottomPrev, aMultiRange.aStart.Tab());
                         lcl_AddRanges( rRange, aAddRange ); // Right envelope
-                        aRightEnvelope.Append( aAddRange );
+                        aRightEnvelope.push_back( aAddRange );
                         nTopPrev = ++nBottomPrev;
                     }
                     else
@@ -783,17 +848,19 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
                 bPrevColUnMarked = true;
                 SCROW nTopPrev = 0, nBottomPrev = 0;
                 bool bRangeMarked = false;
-                ScFlatBoolRowSegments::ForwardIterator aPrevItr( pPrevColMarkedRows.get() ? *pPrevColMarkedRows : aNoRowsMarked );
-                while( nTopPrev <= MAXROW && nBottomPrev <= MAXROW )
+                ScFlatBoolRowSegments::ForwardIterator aPrevItr(
+                    pPrevColMarkedRows ? *pPrevColMarkedRows : aNoRowsMarked);
+                while( nTopPrev <= mrSheetLimits.mnMaxRow && nBottomPrev <= mrSheetLimits.mnMaxRow )
                 {
-                    aPrevItr.getValue(nTopPrev, bRangeMarked);
+                    const bool bHasValue = aPrevItr.getValue(nTopPrev, bRangeMarked);
+                    assert(bHasValue); (void)bHasValue;
                     if( bRangeMarked )
                     {
                         nBottomPrev = aPrevItr.getLastPos();
                         ScRange aAddRange(nCol, nTopPrev, aMultiRange.aStart.Tab(),
                                           nCol, nBottomPrev, aMultiRange.aStart.Tab());
                         lcl_AddRanges( rRange, aAddRange ); // Right envelope
-                        aRightEnvelope.Append( aAddRange );
+                        aRightEnvelope.push_back( aAddRange );
                         nTopPrev = ++nBottomPrev;
                     }
                     else
@@ -804,7 +871,7 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
                 }
             }
             if ( bCurColUnMarked )
-                pPrevColMarkedRows.reset( nullptr );
+                pPrevColMarkedRows.reset();
             else
                 pPrevColMarkedRows = std::move( pCurColMarkedRows );
         }
@@ -817,7 +884,7 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
                 if( !rKV.second.getRangeData( nStart, aRange ) )
                     break;
                 if( aRange.mbValue ) // is marked
-                    aTopEnvelope.Append( ScRange( aRange.mnCol1, rKV.first, aMultiRange.aStart.Tab(),
+                    aTopEnvelope.push_back( ScRange( aRange.mnCol1, rKV.first, aMultiRange.aStart.Tab(),
                                                   aRange.mnCol2, rKV.first, aMultiRange.aStart.Tab() ) );
                 nStart = aRange.mnCol2 + 1;
             }
@@ -831,7 +898,7 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
                 if( !rKV.second.getRangeData( nStart, aRange ) )
                     break;
                 if( aRange.mbValue ) // is marked
-                    aBottomEnvelope.Append( ScRange( aRange.mnCol1, rKV.first, aMultiRange.aStart.Tab(),
+                    aBottomEnvelope.push_back( ScRange( aRange.mnCol1, rKV.first, aMultiRange.aStart.Tab(),
                                                      aRange.mnCol2, rKV.first, aMultiRange.aStart.Tab() ) );
                 nStart = aRange.mnCol2 + 1;
             }
@@ -851,22 +918,22 @@ void ScMarkData::GetSelectionCover( ScRange& rRange )
         // Each envelope will have zero or more ranges for single rectangle selection.
         if( nCol1 > 0 )
         {
-            aLeftEnvelope.Append( ScRange( nCol1 - 1, nRow1, nTab1, nCol1 - 1, nRow2, nTab2 ) );
+            aLeftEnvelope.push_back( ScRange( nCol1 - 1, nRow1, nTab1, nCol1 - 1, nRow2, nTab2 ) );
             --nCol1New;
         }
         if( nRow1 > 0 )
         {
-            aTopEnvelope.Append( ScRange( nCol1, nRow1 - 1, nTab1, nCol2, nRow1 - 1, nTab2 ) );
+            aTopEnvelope.push_back( ScRange( nCol1, nRow1 - 1, nTab1, nCol2, nRow1 - 1, nTab2 ) );
             --nRow1New;
         }
-        if( nCol2 < MAXCOL )
+        if( nCol2 < mrSheetLimits.mnMaxCol )
         {
-            aRightEnvelope.Append( ScRange( nCol2 + 1, nRow1, nTab1, nCol2 + 1, nRow2, nTab2 ) );
+            aRightEnvelope.push_back( ScRange( nCol2 + 1, nRow1, nTab1, nCol2 + 1, nRow2, nTab2 ) );
             ++nCol2New;
         }
-        if( nRow2 < MAXROW )
+        if( nRow2 < mrSheetLimits.mnMaxRow )
         {
-            aBottomEnvelope.Append( ScRange( nCol1, nRow2 + 1, nTab1, nCol2, nRow2 + 1, nTab2 ) );
+            aBottomEnvelope.push_back( ScRange( nCol1, nRow2 + 1, nTab1, nCol2, nRow2 + 1, nTab2 ) );
             ++nRow2New;
         }
         rRange = ScRange( nCol1New, nRow1New, nTab1, nCol2New, nRow2New, nTab2 );

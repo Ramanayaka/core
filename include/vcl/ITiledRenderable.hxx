@@ -11,21 +11,43 @@
 #ifndef INCLUDED_VCL_ITILEDRENDERABLE_HXX
 #define INCLUDED_VCL_ITILEDRENDERABLE_HXX
 
-#include <LibreOfficeKit/LibreOfficeKitTypes.h>
 #include <tools/gen.hxx>
-#include <vcl/pointr.hxx>
-#include <vcl/virdev.hxx>
-#include <com/sun/star/datatransfer/clipboard/XClipboardEx.hpp>
+#include <rtl/ustring.hxx>
+#include <vcl/dllapi.h>
+#include <vcl/ptrstyle.hxx>
+#include <vcl/vclptr.hxx>
+#include <map>
+#include <com/sun/star/datatransfer/XTransferable.hpp>
+
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::datatransfer::clipboard { class XClipboard; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
+namespace com::sun::star::uno { template <typename > class Sequence; }
+namespace vcl { class Window; }
+namespace tools { class JsonWriter; }
+
+class VirtualDevice;
 
 namespace vcl
 {
+    /*
+     * Map directly to css cursor styles to avoid further mapping in the client.
+     * Gtk (via gdk_cursor_new_from_name) also supports the same css cursor styles.
+     *
+     * This was created partially with help of the mappings in gtkdata.cxx.
+     * The list is incomplete as some cursor style simply aren't supported
+     * by css, it might turn out to be worth mapping some of these missing cursors
+     * to available cursors?
+     */
+    extern const std::map <PointerStyle, OString> gaLOKPointerMap;
+
 
 class VCL_DLLPUBLIC ITiledRenderable
 {
-protected:
-    int mnTilePixelWidth, mnTilePixelHeight;
-    int mnTileTwipWidth, mnTileTwipHeight;
 public:
+
+    typedef std::map<const OUString, OUString>  StringMap;
+
     virtual ~ITiledRenderable();
 
     /**
@@ -80,6 +102,11 @@ public:
     }
 
     /**
+     * Get the vcl::Window for the document being edited
+     */
+    virtual VclPtr<vcl::Window> getDocWindow() = 0;
+
+    /**
      * Get the hash of the currently displayed part, i.e. sheet in a spreadsheet
      * or slide in a presentation.
      */
@@ -116,11 +143,9 @@ public:
     virtual void setTextSelection(int nType, int nX, int nY) = 0;
 
     /**
-     * Gets the text selection.
-     *
-     * @see lok::Document::getTextSelection().
+     * Gets the selection as a transferable for later processing
      */
-    virtual OString getTextSelection(const char* pMimeType, OString& rUsedMimeType) = 0;
+    virtual css::uno::Reference<css::datatransfer::XTransferable> getSelection() = 0;
 
     /**
      * Adjusts the graphic selection.
@@ -148,24 +173,45 @@ public:
      * @param rRectangle - if not empty, then limit the output only to the area of this rectangle
      * @return a JSON describing position/content of rows/columns
      */
-    virtual OUString getRowColumnHeaders(const tools::Rectangle& /*rRectangle*/)
+    virtual void getRowColumnHeaders(const tools::Rectangle& /*rRectangle*/, tools::JsonWriter& /*rJsonWriter*/)
     {
-        return OUString();
     }
 
     /**
-     * Get position and size of cell cursor in Calc.
-     * (This could maybe also be used for tables in Writer/Impress in future?)
+     * Generates a serialization of the active (Calc document) sheet's geometry data.
+     *
+     * @param bColumns - if true, the column widths/hidden/filtered/groups data
+     *     are included depending on the settings of the flags bSizes, bHidden,
+     *     bFiltered and bGroups.
+     * @param bRows - if true, the row heights/hidden/filtered/groups data
+     *     are included depending on the settings of the flags bSizes, bHidden,
+     *     bFiltered and bGroups.
+     * @bSizes - if true, the column-widths and/or row-heights data (represented as a list of spans)
+     *     are included depending on the settings of the flags bColumns and bRows.
+     * @bHidden - if true, the hidden columns and/or rows data (represented as a list of spans)
+     *     are included depending on the settings of the flags bColumns and bRows.
+     * @bFiltered - if true, the filtered columns and/or rows data (represented as a list of spans)
+     *     are included depending on the settings of the flags bColumns and bRows.
+     * @bGroups - if true, the column grouping and/or row grouping data
+     *     are included depending on the settings of the flags bColumns and bRows.
+     * @return serialization of the active sheet's geometry data as OString.
      */
-    virtual OString getCellCursor(int /*nOutputWidth*/,
-                                  int /*nOutputHeight*/,
-                                  long /*nTileWidth*/,
-                                  long /*nTileHeight*/)
+    virtual OString getSheetGeometryData(bool /*bColumns*/, bool /*bRows*/, bool /*bSizes*/,
+                                         bool /*bHidden*/, bool /*bFiltered*/, bool /*bGroups*/)
     {
-        return OString();
+        return "";
     }
 
-    virtual Pointer getPointer() = 0;
+    /**
+     * Get position and size of cell cursor in Calc - as JSON in the
+     * current' views' co-ordinate system.
+     * (This could maybe also be used for tables in Writer/Impress in future?)
+     */
+    virtual void getCellCursor(tools::JsonWriter& /*rJsonWriter*/)
+    {
+    }
+
+    virtual PointerStyle getPointer() = 0;
 
     /// Sets the clipboard of the component.
     virtual void setClipboard(const css::uno::Reference<css::datatransfer::clipboard::XClipboard>& xClipboard) = 0;
@@ -192,36 +238,95 @@ public:
     {
     }
 
+    /**
+     * Show/Hide a single row/column header outline for Calc documents.
+     *
+     * @param bColumn - if we are dealing with a column or row group
+     * @param nLevel - the level to which the group belongs
+     * @param nIndex - the group entry index
+     * @param bHidden - the new group state (collapsed/expanded)
+     */
+    virtual void setOutlineState(bool /*bColumn*/, int /*nLevel*/, int /*nIndex*/, bool /*bHidden*/)
+    {
+        return;
+    }
+
     /// Implementation for
     /// lok::Document::getCommandValues(".uno:AcceptTrackedChanges") when there
     /// is no matching UNO API.
-    virtual OUString getTrackedChanges()
+    virtual void getTrackedChanges(tools::JsonWriter&)
     {
-        return OUString();
     }
 
     /// Implementation for
     /// lok::Document::getCommandValues(".uno:TrackedChangeAuthors").
-    virtual OUString getTrackedChangeAuthors()
+    virtual void getTrackedChangeAuthors(tools::JsonWriter& /*rJsonWriter*/)
     {
-        return OUString();
     }
 
     /// Implementation for
     /// lok::Document::getCommandValues(".uno:ViewAnnotations");
-    virtual OUString getPostIts()
+    virtual void getPostIts(tools::JsonWriter& /*rJsonWriter*/)
     {
-        return OUString();
     }
 
     /// Implementation for
     /// lok::Document::getCommandValues(".uno:ViewAnnotationsPosition");
-    virtual OUString getPostItsPos()
+    virtual void getPostItsPos(tools::JsonWriter& /*rJsonWriter*/)
+    {
+    }
+
+    /// Implementation for
+    /// lok::Document::getCommandValues(".uno:RulerState");
+    virtual void getRulerState(tools::JsonWriter& /*rJsonWriter*/)
+    {
+    }
+
+    /*
+     * Used for sheets in spreadsheet documents,
+     * and slides in presentation documents.
+     */
+    virtual OUString getPartInfo(int /*nPart*/)
     {
         return OUString();
     }
-};
 
+    /**
+     * Select/Unselect a document "part", i.e. slide for a slideshow, and
+     * tab for a spreadsheet(?).
+     * nSelect: 0 to deselect, 1 to select, and 2 to toggle.
+     */
+    virtual void selectPart(int /*nPart*/, int /*nSelect*/) {}
+
+    /**
+     * Move selected pages/slides to a new position.
+     * nPosition: the new position to move to.
+     * bDuplicate: to copy (true), or to move (false).
+     */
+    virtual void moveSelectedParts(int /*nPosition*/, bool /*bDuplicate*/) {}
+
+    /// @see lok::Document::completeFunction().
+    virtual void completeFunction(const OUString& /*rFunctionName*/)
+    {
+    }
+
+    /**
+     * It can happen that the underlying implementation is being disposed, but
+     * somebody is trying to access the data...
+     */
+    virtual bool isDisposed() const
+    {
+        return false;
+    }
+
+    /**
+     * Execute a form field event in the document.
+     * E.g. select an item from a drop down field's list.
+     */
+    virtual void executeFromFieldEvent(const StringMap&)
+    {
+    }
+};
 } // namespace vcl
 
 #endif // INCLUDED_VCL_ITILEDRENDERABLE_HXX

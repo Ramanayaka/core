@@ -23,10 +23,10 @@
 namespace {
 
 class StylePolice :
-    public RecursiveASTVisitor<StylePolice>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<StylePolice>
 {
 public:
-    explicit StylePolice(InstantiationData const & data): Plugin(data) {}
+    explicit StylePolice(InstantiationData const & data): FilteringPlugin(data) {}
 
     virtual void run() override { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
 
@@ -38,7 +38,7 @@ private:
 StringRef StylePolice::getFilename(SourceLocation loc)
 {
     SourceLocation spellingLocation = compiler.getSourceManager().getSpellingLoc(loc);
-    StringRef name { compiler.getSourceManager().getFilename(spellingLocation) };
+    StringRef name { getFilenameOfLocation(spellingLocation) };
     return name;
 }
 
@@ -111,7 +111,7 @@ bool StylePolice::VisitVarDecl(const VarDecl * varDecl)
     if (!qt->isPointerType() && !qt->isArrayType() && !qt->isFunctionPointerType() && !qt->isMemberPointerType()
         && matchPointerVar(name)
         && !startswith(typeName, "boost::intrusive_ptr")
-        && !startswith(typeName, "boost::optional")
+        && !startswith(typeName, "std::optional")
         && !startswith(typeName, "boost::shared_ptr")
         && !startswith(typeName, "com::sun::star::uno::Reference")
         && !startswith(typeName, "cppu::OInterfaceIteratorHelper")

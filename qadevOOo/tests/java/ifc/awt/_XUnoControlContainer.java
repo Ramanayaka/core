@@ -70,8 +70,8 @@ public class _XUnoControlContainer extends MultiMethodTest {
     /**
     * This tests removes the object relations <code>TABCONTROL1</code> and
     * <code>TABCONTROL1</code>.
-    * Has <b> OK </b> status if the sequenze of <code>XTabController[]</code>
-    * get before calling method is smaller then sequenze of
+    * Has <b> OK </b> status if the sequence of <code>XTabController[]</code>
+    * get before calling method is smaller then sequence of
     * <code>XTabController[]</code> get after calling method.<p>
     *
     * The following method tests are to be completed successfully before :
@@ -104,7 +104,7 @@ public class _XUnoControlContainer extends MultiMethodTest {
 
     /**
     * Test calls the method, then checks returned value.<p>
-    * Has <b> OK </b> status if method returns a value that greater then zerro.<p>
+    * Has <b> OK </b> status if method returns a value that greater than zero.<p>
     *
     * The following method tests are to be completed successfully before :
     * <ul>
@@ -119,8 +119,8 @@ public class _XUnoControlContainer extends MultiMethodTest {
 
     /**
     * Test calls the method with object relation 'TABCONTROL1' as a parameter.<p>
-    * Has <b> OK </b> status if the sequenze of <code>XTabController[]</code>
-    * get before calling method is smaller then sequenze of
+    * Has <b> OK </b> status if the sequence of <code>XTabController[]</code>
+    * get before calling method is smaller then sequence of
     * <code>XTabController[]</code> get after calling method.<p>
     */
     public void _addTabController() {
@@ -139,8 +139,8 @@ public class _XUnoControlContainer extends MultiMethodTest {
 
     /**
     * Test calls the method with object relation 'TABCONTROL2' as a parameter.<p>
-    * Has <b> OK </b> status if the sequenze of <code>XTabController[]</code>
-    * get before calling method is smaller then sequenze of
+    * Has <b> OK </b> status if the sequence of <code>XTabController[]</code>
+    * get before calling method is smaller then sequence of
     * <code>XTabController[]</code> get after calling method.<p>
     *
     * The following method tests are to be completed successfully before :

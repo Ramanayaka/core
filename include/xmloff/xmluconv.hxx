@@ -25,32 +25,31 @@
 #include <sal/types.h>
 
 #include <memory>
-#include <limits.h>
 
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <xmloff/xmlement.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <com/sun/star/util/Date.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/drawing/Position3D.hpp>
 
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <tools/fldunit.hxx>
-#include <tools/mapunit.hxx>
 
-namespace tools { class Time; }
-
-namespace com { namespace sun { namespace star {
-    namespace util { struct DateTime; }
+namespace com::sun::star {
     namespace text { class XNumberingTypeInfo; }
-}}}
+}
 
 namespace basegfx
 {
     class B3DVector;
 }
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::drawing { struct Position3D; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { template <class E> class Sequence; }
+namespace com::sun::star::util { struct Date; }
+template <typename EnumT> struct SvXMLEnumMapEntry;
+template <typename EnumT> struct SvXMLEnumStringMapEntry;
 
 class XMLOFF_DLLPUBLIC SvXMLTokenEnumerator
 {
@@ -81,7 +80,7 @@ private:
     SvXMLUnitConverter(const SvXMLUnitConverter&) = delete;
     SvXMLUnitConverter& operator=(const SvXMLUnitConverter&) = delete;
 
-    struct Impl;
+    struct SAL_DLLPRIVATE Impl;
     ::std::unique_ptr<Impl> m_pImpl;
 
 public:
@@ -119,6 +118,9 @@ public:
     /** convert measure to string: from meCoreMeasureUnit to meXMLMeasureUnit */
     void convertMeasureToXML( OUStringBuffer& rBuffer,
                          sal_Int32 nMeasure ) const;
+
+    /** convert measure to string: from meCoreMeasureUnit to meXMLMeasureUnit */
+    OUString convertMeasureToXML( sal_Int32 nMeasure ) const;
 
     /** convert string to enum using given enum map, if the enum is
         not found in the map, this method will return false */
@@ -216,13 +218,13 @@ public:
                               const css::drawing::Position3D& rVector );
 
 
-    /** convert num-forat and num-letter-sync values to NumberingType */
+    /** convert num-format and num-letter-sync values to NumberingType */
     bool convertNumFormat( sal_Int16& rType,
                            const OUString& rNumFormat,
                            const OUString& rNumLetterSync,
                            bool bNumberNone = false ) const;
 
-    /** convert NumberingType to num-forat and num-letter-sync values */
+    /** convert NumberingType to num-format and num-letter-sync values */
     void convertNumFormat( OUStringBuffer& rBuffer,
                            sal_Int16 nType ) const;
     static void convertNumLetterSync( OUStringBuffer& rBuffer,
@@ -230,7 +232,7 @@ public:
 
     static void convertPropertySet(css::uno::Sequence<css::beans::PropertyValue>& rProps,
                         const css::uno::Reference<css::beans::XPropertySet>& aProperties);
-    static void convertPropertySet(css::uno::Reference<css::beans::XPropertySet>& rProperties,
+    static void convertPropertySet(css::uno::Reference<css::beans::XPropertySet> const & rProperties,
                         const css::uno::Sequence<css::beans::PropertyValue>& aProps);
 
     OUString encodeStyleName( const OUString& rName,

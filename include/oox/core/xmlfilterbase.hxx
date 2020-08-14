@@ -24,7 +24,6 @@
 #include <vector>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <oox/core/filterbase.hxx>
 #include <oox/core/relations.hxx>
 #include <oox/dllapi.h>
@@ -32,7 +31,7 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace document { class XDocumentProperties; }
     namespace io { class XInputStream; }
     namespace io { class XOutputStream; }
@@ -41,17 +40,17 @@ namespace com { namespace sun { namespace star {
     namespace text { class XTextCursor; }
     namespace text { class XTextField; }
     namespace uno { class XComponentContext; }
-    namespace xml { namespace dom { class XDocument; } }
-    namespace xml { namespace sax { class XFastSAXSerializable; } }
-} } }
+    namespace xml::dom { class XDocument; }
+    namespace xml::sax { class XFastSAXSerializable; }
+}
 
 namespace oox {
     namespace drawingml { class Theme; }
-    namespace drawingml { namespace chart { class ChartConverter; } }
-    namespace drawingml { namespace table {
+    namespace drawingml::chart { class ChartConverter; }
+    namespace drawingml::table {
         class TableStyleList;
         typedef std::shared_ptr< TableStyleList > TableStyleListPtr;
-    } }
+    }
     namespace vml { class Drawing; }
 }
 
@@ -65,8 +64,7 @@ namespace sax_fastparser {
 
 namespace utl { class MediaDescriptor; }
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 class FragmentHandler;
 class FastParser;
@@ -90,8 +88,7 @@ public:
     virtual             ~XmlFilterBase() override;
 
     /** Has to be implemented by each filter, returns the current theme. */
-    virtual const ::oox::drawingml::Theme*
-                        getCurrentTheme() const = 0;
+    virtual const ::oox::drawingml::Theme* getCurrentTheme() const = 0;
 
     /** Has to be implemented by each filter to return the collection of VML shapes. */
     virtual ::oox::vml::Drawing* getVmlDrawing() = 0;
@@ -101,13 +98,13 @@ public:
     virtual ::oox::drawingml::chart::ChartConverter* getChartConverter() = 0;
 
     /** Helper to switch chart data table - specifically for xlsx imports */
-     virtual void useInternalChartDataTable( bool /*bInternal*/ ) { }
+    virtual void useInternalChartDataTable( bool /*bInternal*/ ) { }
 
     /** Has to be implemented by each filter to return the table style list. */
-    virtual const ::oox::drawingml::table::TableStyleListPtr getTableStyles() = 0;
+    virtual ::oox::drawingml::table::TableStyleListPtr getTableStyles() = 0;
 
 
-    OUString     getFragmentPathFromFirstTypeFromOfficeDoc( const OUString& rPart );
+    OUString getFragmentPathFromFirstTypeFromOfficeDoc( const OUString& rPart );
 
     /** Imports a fragment using the passed fragment handler, which contains
         the full path to the fragment stream.
@@ -225,9 +222,16 @@ public:
 
         @param xProperties  The document properties to export.
      */
-    void exportDocumentProperties( const css::uno::Reference< css::document::XDocumentProperties >& xProperties );
+    void exportDocumentProperties( const css::uno::Reference< css::document::XDocumentProperties >& xProperties, bool bSecurityOptOpenReadOnly );
 
+    /** Write the customXml entries we are preserving (xlsx and pptx only). */
+    void exportCustomFragments();
+
+    /** Read the document properties and also the customXml entries (xlsx and pptx only). */
     void importDocumentProperties();
+
+    static void putPropertiesToDocumentGrabBag(const css::uno::Reference<css::lang::XComponent>& xDstDoc,
+                                               const comphelper::SequenceAsHashMap& rProperties);
 
     static FastParser* createParser();
 
@@ -257,6 +261,8 @@ private:
     virtual StorageRef  implCreateStorage(
                             const css::uno::Reference< css::io::XStream >& rxOutStream ) const override;
 
+    void importCustomFragments(css::uno::Reference<css::embed::XStorage> const & xDocumentStorage);
+
 private:
     ::std::unique_ptr< XmlFilterBaseImpl > mxImpl;
     sal_Int32 mnRelId;
@@ -266,8 +272,7 @@ protected:
     bool mbMissingExtDrawing;
 };
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 #endif
 

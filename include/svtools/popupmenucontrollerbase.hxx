@@ -20,29 +20,27 @@
 #ifndef INCLUDED_SVTOOLS_POPUPMENUCONTROLLERBASE_HXX
 #define INCLUDED_SVTOOLS_POPUPMENUCONTROLLERBASE_HXX
 
+#include <config_options.h>
 #include <svtools/svtdllapi.h>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
 #include <com/sun/star/frame/XPopupMenuController.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
 
-#include <toolkit/awt/vclxmenu.hxx>
+#include <tools/link.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <cppuhelper/weak.hxx>
 #include <rtl/ustring.hxx>
+
+namespace com :: sun :: star :: frame { class XFrame; }
+namespace com :: sun :: star :: uno { class XComponentContext; }
+namespace com :: sun :: star :: util { class XURLTransformer; }
 
 namespace svt
 {
-    struct PopupMenuControllerBaseDispatchInfo;
 
     typedef cppu::WeakComponentImplHelper<
                         css::lang::XServiceInfo            ,
@@ -53,7 +51,7 @@ namespace svt
                         css::frame::XDispatchProvider      ,
                         css::frame::XDispatch > PopupMenuControllerBaseType;
 
-    class SVT_DLLPUBLIC PopupMenuControllerBase : protected ::cppu::BaseMutex,   // Struct for right initialization of mutex member! Must be first of baseclasses.
+    class UNLESS_MERGELIBS(SVT_DLLPUBLIC) PopupMenuControllerBase : protected ::cppu::BaseMutex,   // Struct for right initialization of mutex member! Must be first of baseclasses.
                                                   public PopupMenuControllerBaseType
     {
         public:
@@ -100,13 +98,13 @@ namespace svt
             void throwIfDisposed();
 
             /** helper method to cause statusChanged is called once for the given command url */
-            void SAL_CALL updateCommand( const OUString& rCommandURL );
+            void updateCommand( const OUString& rCommandURL );
 
             /** this function is called upon disposing the component
             */
             virtual void SAL_CALL disposing() override;
 
-            static void resetPopupMenu( css::uno::Reference< css::awt::XPopupMenu >& rPopupMenu );
+            static void resetPopupMenu( css::uno::Reference< css::awt::XPopupMenu > const & rPopupMenu );
             virtual void impl_setPopupMenu();
             static OUString determineBaseURL( const OUString& aURL );
 

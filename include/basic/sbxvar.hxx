@@ -21,11 +21,17 @@
 #define INCLUDED_BASIC_SBXVAR_HXX
 
 #include <rtl/ustring.hxx>
-#include <com/sun/star/bridge/oleautomation/Decimal.hpp>
 #include <basic/sbxcore.hxx>
 #include <basic/basicdllapi.h>
+
+#include <cstddef>
+#include <cstring>
 #include <memory>
 
+
+namespace com::sun::star::bridge::oleautomation { struct Decimal; }
+namespace com::sun::star::uno { class XInterface; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 class SbxDecimal;
 enum class SfxHintId;
@@ -71,6 +77,16 @@ struct SbxValues
     SbxValues(): pData( nullptr ), eType(SbxEMPTY) {}
     SbxValues( SbxDataType e ): eType(e) {}
     SbxValues( double _nDouble ): nDouble( _nDouble ), eType(SbxDOUBLE) {}
+
+    void clear(SbxDataType type) {
+        // A hacky way of zeroing the union value corresponding to the given type (even though the
+        // relevant zero value need not be represented by all-zero bits, in general) without evoking
+        // GCC 8 -Wclass-memaccess or loplugin:classmemaccess, and without having to turn the
+        // anonymous union into a non-anonymous one:
+        auto const p = static_cast<void *>(this);
+        std::memset(p, 0, offsetof(SbxValues, eType));
+        eType = type;
+    }
 };
 
 class BASIC_DLLPUBLIC SbxValue : public SbxBase
@@ -109,7 +125,6 @@ public:
     bool IsNumericRTL() const;  // #41692 Interface for Basic
     bool ImpIsNumeric( bool bOnlyIntntl ) const;    // Implementation
 
-    virtual SbxClassType GetClass() const override;
     virtual SbxDataType GetType() const override;
     SbxDataType GetFullType() const { return aData.eType;}
     bool SetType( SbxDataType );
@@ -161,7 +176,7 @@ public:
     void PutNull();
 
             // Special methods
-    void PutDecimal( css::bridge::oleautomation::Decimal& rAutomationDec );
+    void PutDecimal( css::bridge::oleautomation::Decimal const & rAutomationDec );
     bool PutDecimal( SbxDecimal* pDecimal ); // This function is needed for Windows build, don't remove
     void fillAutomationDecimal( css::bridge::oleautomation::Decimal& rAutomationDec ) const;
     bool PutCurrency( sal_Int64 );
@@ -176,7 +191,7 @@ public:
     bool Scan( const OUString&, sal_uInt16* );
     void Format( OUString&, const OUString* = nullptr ) const;
 
-    // The following operators are definied for easier handling.
+    // The following operators are defined for easier handling.
     // TODO: Ensure error conditions (overflow, conversions)
     // are taken into consideration in Compute and Compare
 
@@ -224,7 +239,7 @@ class BASIC_DLLPUBLIC SbxVariable : public SbxValue
     friend class SbMethod;
 
     std::unique_ptr<SbxVariableImpl> mpImpl; // Impl data
-    SfxBroadcaster*  pCst;              // Broadcaster, if needed
+    std::unique_ptr<SfxBroadcaster>  mpBroadcaster; // Broadcaster, if needed
     OUString         maName;            // Name, if available
     SbxArrayRef      mpPar;             // Parameter-Array, if set
     sal_uInt16       nHash;             // Hash-ID for search
@@ -257,7 +272,7 @@ public:
     void SetUserData( sal_uInt32 n ) { nUserData = n; }
 
     virtual SbxDataType  GetType()  const override;
-    virtual SbxClassType GetClass() const override;
+    virtual SbxClassType GetClass() const;
 
     // Parameter-Interface
     virtual SbxInfo* GetInfo();
@@ -268,7 +283,7 @@ public:
     // Sfx-Broadcasting-Support:
     // Due to data reduction and better DLL-hierarchy currently via casting
     SfxBroadcaster& GetBroadcaster();
-    bool IsBroadcaster() const { return pCst != nullptr; }
+    bool IsBroadcaster() const { return mpBroadcaster != nullptr; }
     virtual void Broadcast( SfxHintId nHintId ) override;
 
     const SbxObject* GetParent() const { return pParent; }
@@ -289,7 +304,7 @@ typedef tools::SvRef<SbxVariable> SbxVariableRef;
 
 //tdf#59222 SbxEnsureParentVariable is a SbxVariable which keeps a reference to
 //its parent, ensuring it always exists while this SbxVariable exists
-class BASIC_DLLPUBLIC SbxEnsureParentVariable : public SbxVariable
+class SbxEnsureParentVariable final : public SbxVariable
 {
     SbxObjectRef xParent;
 public:

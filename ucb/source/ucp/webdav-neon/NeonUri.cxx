@@ -26,13 +26,12 @@
  *
  ************************************************************************/
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include <string.h>
 #include <rtl/uri.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
-#include "ne_alloc.h"
+#include <ne_alloc.h>
 #include "NeonUri.hxx"
 #include "DAVException.hxx"
 
@@ -147,13 +146,10 @@ void NeonUri::init( const OString & rUri, const ne_uri * pUri )
     }
 }
 
-NeonUri::~NeonUri( )
-{
-}
-
 void NeonUri::calculateURI ()
 {
-    OUStringBuffer aBuf( mScheme );
+    OUStringBuffer aBuf( 256 );
+    aBuf.append( mScheme );
     aBuf.append( "://" );
     if ( !mUserInfo.isEmpty() )
     {
@@ -226,7 +222,7 @@ OUString NeonUri::GetPathBaseName () const
         return aTemp;
     }
     else
-        return OUString("/");
+        return "/";
 }
 
 bool NeonUri::operator== ( const NeonUri & rOther ) const

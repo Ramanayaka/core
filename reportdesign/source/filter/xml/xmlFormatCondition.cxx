@@ -19,20 +19,13 @@
 #include "xmlFormatCondition.hxx"
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmluconv.hxx>
-#include "xmlEnums.hxx"
+#include <xmloff/xmlnamespace.hxx>
 #include "xmlHelper.hxx"
-#include <comphelper/genericpropertyset.hxx>
-#include <com/sun/star/awt/FontDescriptor.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include "xmlstrings.hrc"
-#include "xmlStyleImport.hxx"
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 namespace rptxml
 {
-    using namespace ::comphelper;
     using namespace ::com::sun::star;
     using namespace ::com::sun::star::report;
     using namespace ::com::sun::star::uno;
@@ -40,40 +33,34 @@ namespace rptxml
     using namespace ::com::sun::star::beans;
 
 OXMLFormatCondition::OXMLFormatCondition( ORptFilter& rImport,
-                sal_uInt16 nPrfx, const OUString& rLName,
-                const Reference< XAttributeList > & _xAttrList
+                const Reference< XFastAttributeList > & _xAttrList
                 ,const Reference< XFormatCondition > & _xComponent ) :
-    SvXMLImportContext( rImport, nPrfx, rLName )
+    SvXMLImportContext( rImport )
 ,m_rImport(rImport)
 ,m_xComponent(_xComponent)
 {
 
     OSL_ENSURE(m_xComponent.is(),"Component is NULL!");
-    const SvXMLNamespaceMap& rMap = rImport.GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = rImport.GetFormatElemTokenMap();
     static const OUString s_sTRUE = ::xmloff::token::GetXMLToken(XML_TRUE);
-    const sal_Int16 nLength = (_xAttrList.is()) ? _xAttrList->getLength() : 0;
     try
     {
-        for(sal_Int16 i = 0; i < nLength; ++i)
+        for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
         {
-         OUString sLocalName;
-            const OUString sAttrName = _xAttrList->getNameByIndex( i );
-            const sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-            const OUString sValue = _xAttrList->getValueByIndex( i );
+            OUString sValue = aIter.toString();
 
-            switch( rTokenMap.Get( nPrefix, sLocalName ) )
+            switch( aIter.getToken() )
             {
-                case XML_TOK_ENABLED:
+                case XML_ELEMENT(REPORT, XML_ENABLED):
                     m_xComponent->setEnabled(sValue == s_sTRUE);
                     break;
-                case XML_TOK_FORMULA:
+                case XML_ELEMENT(REPORT, XML_FORMULA):
                     m_xComponent->setFormula(ORptFilter::convertFormula(sValue));
                     break;
-                case XML_TOK_FORMAT_STYLE_NAME:
+                case XML_ELEMENT(REPORT, XML_STYLE_NAME):
                     m_sStyleName = sValue;
                     break;
                 default:
+                    SAL_WARN("reportdesign", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << " = " << sValue);
                     break;
             }
         }
@@ -89,7 +76,7 @@ OXMLFormatCondition::~OXMLFormatCondition()
 {
 }
 
-void OXMLFormatCondition::EndElement()
+void OXMLFormatCondition::endFastElement(sal_Int32 )
 {
     OXMLHelper::copyStyleElements(m_rImport.isOldFormat(),m_sStyleName,GetImport().GetAutoStyles(),m_xComponent.get());
 }

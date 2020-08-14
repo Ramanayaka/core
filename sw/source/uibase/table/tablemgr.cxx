@@ -23,41 +23,35 @@
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/beans/PropertyState.hpp>
 #include <com/sun/star/embed/EmbedVerbs.hpp>
+#include <com/sun/star/embed/XComponentSupplier.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 
-#include <sot/storage.hxx>
 #include <comphelper/classids.hxx>
 #include <svx/charthelper.hxx>
+#include <svtools/embedhlp.hxx>
 
-#include "edtwin.hxx"
-#include "wrtsh.hxx"
-#include "cmdid.h"
-#include "frmatr.hxx"
-#include "view.hxx"
-#include "basesh.hxx"
-#include "swundo.hxx"
-#include "tablemgr.hxx"
-#include "frmfmt.hxx"
-#include "instable.hxx"
-#include "swerror.h"
-#include "table.hrc"
-#include "swabstdlg.hxx"
-#include "swcli.hxx"
-#include "docsh.hxx"
-#include "unotbl.hxx"
-#include "unochart.hxx"
-#include <memory>
+#include <edtwin.hxx>
+#include <wrtsh.hxx>
+#include <view.hxx>
+#include <swundo.hxx>
+#include <tablemgr.hxx>
+#include <frmfmt.hxx>
+#include <swabstdlg.hxx>
+#include <swcli.hxx>
+#include <docsh.hxx>
+#include <unotbl.hxx>
+#include <unochart.hxx>
+
+#include <comphelper/lok.hxx>
 
 using namespace ::com::sun::star;
 
 // Adjust line height (dialogue)
-void SwTableFUNC::ColWidthDlg( vcl::Window *pParent )
+void SwTableFUNC::ColWidthDlg(weld::Window *pParent)
 {
     InitTabCols();
     SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-    OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
-
     ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSwTableWidthDlg(pParent, *this));
-    OSL_ENSURE(pDlg, "Dialog creation failed!");
     pDlg->Execute();
 }
 
@@ -133,7 +127,7 @@ void SwTableFUNC::SetColWidth(sal_uInt16 nNum, SwTwips nNewWidth )
             bCurrentOnly = true;
         SwTwips nWidth = GetColWidth(nNum);
 
-        int nDiff = (int)(nNewWidth - nWidth);
+        int nDiff = static_cast<int>(nNewWidth - nWidth);
         if( !nNum )
             aCols[ GetRightSeparator(0) ] += nDiff;
         else if( nNum < GetColCount()  )
@@ -142,7 +136,7 @@ void SwTableFUNC::SetColWidth(sal_uInt16 nNum, SwTwips nNewWidth )
                 aCols[ GetRightSeparator(nNum) ] += nDiff;
             else
             {
-                int nDiffLeft = nDiff - (int)GetColWidth(nNum + 1) + (int)MINLAY;
+                int nDiffLeft = nDiff - static_cast<int>(GetColWidth(nNum + 1)) + int(MINLAY);
                 aCols[ GetRightSeparator(nNum) ] += (nDiff - nDiffLeft);
                 aCols[ GetRightSeparator(nNum - 1) ] -= nDiffLeft;
             }
@@ -190,7 +184,7 @@ void SwTableFUNC::UpdateChart()
 }
 
 uno::Reference< frame::XModel > SwTableFUNC::InsertChart(
-        uno::Reference< chart2::data::XDataProvider > &rxDataProvider,
+        uno::Reference< chart2::data::XDataProvider > const &rxDataProvider,
         bool bFillWithData,
         const OUString &rCellRange,
         SwFlyFrameFormat** ppFlyFrameFormat )
@@ -229,19 +223,15 @@ uno::Reference< frame::XModel > SwTableFUNC::InsertChart(
         if (ppFlyFrameFormat)
             *ppFlyFrameFormat = pTmp;
 
-        uno::Reference< embed::XComponentSupplier > xCompSupp( xObj, uno::UNO_QUERY );
-        if( xCompSupp.is())
+        xChartModel.set( xObj->getComponent(), uno::UNO_QUERY );
+        if( xChartModel.is() )
         {
-            xChartModel.set( xCompSupp->getComponent(), uno::UNO_QUERY );
-            if( xChartModel.is() )
-            {
-                // Create a default chart type.
-                uno::Reference<chart2::XChartDocument> xChartDoc(xChartModel, uno::UNO_QUERY);
-                if (xChartDoc.is())
-                    xChartDoc->createDefaultChart();
+            // Create a default chart type.
+            uno::Reference<chart2::XChartDocument> xChartDoc(xChartModel, uno::UNO_QUERY);
+            if (xChartDoc.is())
+                xChartDoc->createDefaultChart();
 
-                xChartModel->lockControllers(); //#i79578# don't request a new replacement image for charts to often - block change notifications
-            }
+            xChartModel->lockControllers(); //#i79578# don't request a new replacement image for charts to often - block change notifications
         }
 
         // set the table name at the OLE-node
@@ -250,9 +240,10 @@ uno::Reference< frame::XModel > SwTableFUNC::InsertChart(
     }
     pSh->EndAllAction();
 
-    if ( xObj.is() )
+    if (xObj.is() && !comphelper::LibreOfficeKit::isActive())
     {
-        // Let the chart be activated after the inserting
+        // Let the chart be activated after the inserting (unless
+        // via LibreOfficeKit)
         SfxInPlaceClient* pClient = pSh->GetView().FindIPClient( xObj, &pSh->GetView().GetEditWin() );
         if ( !pClient )
         {
@@ -347,7 +338,7 @@ sal_uInt16  SwTableFUNC::GetColCount() const
 
 int SwTableFUNC::GetRightSeparator(int nNum) const
 {
-    OSL_ENSURE( nNum < (int)GetColCount() ,"Index out of range");
+    OSL_ENSURE( nNum < static_cast<int>(GetColCount()) ,"Index out of range");
     int i = 0;
     while( nNum >= 0 )
     {

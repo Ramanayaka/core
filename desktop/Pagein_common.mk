@@ -19,16 +19,13 @@ $(eval $(call gb_Pagein_add_objects,common,\
     ) \
     lng \
     xo \
-    fwe \
     fwk \
-    fwi \
-    fwl \
     package2 \
     ucpfile1 \
     ucb1 \
     configmgr \
     vclplug_gen \
-    $(if $(findstring TRUE,$(ENABLE_GTK)),vclplug_gtk) \
+    $(if $(findstring TRUE,$(ENABLE_GTK3)),vclplug_gtk3) \
     basegfx \
     sot \
     xmlscript \

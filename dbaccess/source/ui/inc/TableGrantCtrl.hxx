@@ -24,10 +24,10 @@
 #include <map>
 
 #include <svtools/editbrowsebox.hxx>
+#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/sdbcx/XAuthorizable.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include "moduledbu.hxx"
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 class Edit;
 namespace dbaui
@@ -43,8 +43,6 @@ class OTableGrantControl : public ::svt::EditBrowseBox
 
     typedef std::map<OUString, TPrivileges> TTablePrivilegeMap;
 
-    OModuleClient        m_aModuleClient;
-
     css::uno::Reference< css::container::XNameAccess >    m_xUsers;
     css::uno::Reference< css::container::XNameAccess >    m_xTables;
     css::uno::Reference< css::uno::XComponentContext>     m_xContext;
@@ -53,13 +51,13 @@ class OTableGrantControl : public ::svt::EditBrowseBox
 
     mutable TTablePrivilegeMap  m_aPrivMap;
     OUString                    m_sUserName;
-    VclPtr< ::svt::CheckBoxControl>     m_pCheckCell;
-    VclPtr<Edit>                        m_pEdit;
+    VclPtr<::svt::CheckBoxControl> m_pCheckCell;
+    VclPtr<::svt::EditControl> m_pEdit;
     long                        m_nDataPos;
     ImplSVEvent *               m_nDeactivateEvent;
 
 public:
-    OTableGrantControl( vcl::Window* pParent, WinBits nBits);
+    OTableGrantControl(const css::uno::Reference<css::awt::XWindow> &rParent);
     virtual ~OTableGrantControl() override;
     virtual void dispose() override;
     void UpdateTables();

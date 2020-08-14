@@ -19,19 +19,18 @@
 #ifndef INCLUDED_I18NPOOL_INC_TEXTCONVERSION_HXX
 #define INCLUDED_I18NPOOL_INC_TEXTCONVERSION_HXX
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/i18n/XExtendedTextConversion.hpp>
-#include <com/sun/star/linguistic2/XConversionDictionary.hpp>
-#include <com/sun/star/linguistic2/XConversionDictionaryList.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <osl/module.h>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace com::sun::star::linguistic2 { class XConversionDictionary; }
+namespace com::sun::star::linguistic2 { class XConversionDictionaryList; }
+namespace com::sun::star::uno { class XComponentContext; }
+
+namespace i18npool {
 
 
-//  class TextConversionService
 
 class TextConversionService: public cppu::WeakImplHelper
 <
@@ -67,11 +66,11 @@ public:
     css::uno::Sequence< OUString > SAL_CALL
         getSupportedServiceNames() override;
 private:
-    const sal_Char* implementationName;
+    const char* implementationName;
 protected:
 #ifndef DISABLE_DYNLOADING
     oslModule hModule;
-    oslGenericFunction SAL_CALL getFunctionBySymbol(const sal_Char* func);
+    oslGenericFunction getFunctionBySymbol(const char* func);
 #endif
 };
 
@@ -83,9 +82,8 @@ typedef struct {
 } Hangul_Index;
 
 
-//  class TextConversion_ko
 
-class TextConversion_ko : public TextConversionService
+class TextConversion_ko final : public TextConversionService
 {
 public:
     TextConversion_ko( const css::uno::Reference < css::uno::XComponentContext >& rxContext );
@@ -115,12 +113,11 @@ private:
         css::uno::Reference < css::linguistic2::XConversionDictionaryList > xCDL;
         sal_Int32 maxLeftLength;
         sal_Int32 maxRightLength;
-        css::uno::Sequence< OUString > SAL_CALL
+        css::uno::Sequence< OUString >
             getCharConversions(const OUString& aText, sal_Int32 nStartPos, sal_Int32 nLength, bool toHanja);
 };
 
 
-//  class TextConversion_zh
 
 
 // for SChines/TChinese word conversion
@@ -128,7 +125,7 @@ typedef struct {
     sal_Int16 count;
 } STC_WordIndex;
 
-class TextConversion_zh : public TextConversionService
+class TextConversion_zh final : public TextConversionService
 {
 public:
     TextConversion_zh( const css::uno::Reference < css::uno::XComponentContext >& rxContext );
@@ -153,16 +150,13 @@ public:
 private:
         // user defined dictionary list
         css::uno::Reference < css::linguistic2::XConversionDictionaryList > xCDL;
-        OUString SAL_CALL getWordConversion(const OUString& aText,
+        OUString getWordConversion(const OUString& aText,
             sal_Int32 nStartPos, sal_Int32 nLength, bool toSChinese, sal_Int32 nConversionOptions, css::uno::Sequence <sal_Int32>& offset);
-        rtl:: OUString SAL_CALL getCharConversion(const rtl:: OUString& aText, sal_Int32 nStartPos, sal_Int32 nLength, bool toSChinese, sal_Int32 nConversionOptions);
+        rtl:: OUString getCharConversion(const rtl:: OUString& aText, sal_Int32 nStartPos, sal_Int32 nLength, bool toSChinese, sal_Int32 nConversionOptions);
         css::lang::Locale aLocale;
 };
 
-} // i18n
-} // star
-} // sun
-} // com
+} // i18npool
 
 #endif
 

@@ -20,15 +20,13 @@
 #ifndef INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERGEOMETRYHELPER_HXX
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERGEOMETRYHELPER_HXX
 
-#include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/rendering/XGraphicDevice.hpp>
 #include <com/sun/star/rendering/XPolyPolygon2D.hpp>
 #include <com/sun/star/geometry/RealRectangle2D.hpp>
 #include <vector>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 /** Collection of geometry related convenience functions.
 */
@@ -112,7 +110,7 @@ public:
     */
 };
 
-} }
+}
 
 #endif
 

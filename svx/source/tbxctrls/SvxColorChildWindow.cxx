@@ -18,11 +18,8 @@
  */
 
 #include <svx/SvxColorChildWindow.hxx>
-#include <sfx2/dockwin.hxx>
 #include <svx/svxids.hrc>
-#include <svx/dialogs.hrc>
-#include <svx/colrctrl.hxx>
-#include <svx/dialmgr.hxx>
+#include <colrctrl.hxx>
 
 SFX_IMPL_DOCKINGWINDOW_WITHID( SvxColorChildWindow, SID_COLOR_CONTROL )
 
@@ -38,7 +35,7 @@ SvxColorChildWindow::SvxColorChildWindow( vcl::Window* _pParent,
 
     SetWindow(pWin);
 
-    SetAlignment(SfxChildAlignment::BOTTOM);
+    SetAlignment(SfxChildAlignment::RIGHT);
 
     pWin->Initialize( pInfo );
 }

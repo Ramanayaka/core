@@ -10,8 +10,6 @@
 #include "Columns.hxx"
 #include "Column.hxx"
 
-#include <com/sun/star/sdbc/XRow.hpp>
-
 using namespace ::connectivity;
 using namespace ::connectivity::firebird;
 using namespace ::connectivity::sdbcx;
@@ -25,11 +23,12 @@ using namespace ::com::sun::star::uno;
 
 Columns::Columns(Table& rTable,
                  Mutex& rMutex,
-                 const TStringVector& rVector):
+                 const ::std::vector< OUString>& rVector):
     OColumnsHelper(rTable,
                    true, // TODO: is this case sensitivity?
                    rMutex,
-                   rVector)
+                   rVector,
+                   /*bUseHardRef*/true)
 {
     OColumnsHelper::setParent(&rTable);
 }

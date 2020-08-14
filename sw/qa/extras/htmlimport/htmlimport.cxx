@@ -13,19 +13,41 @@
 #include <com/sun/star/graphic/GraphicType.hpp>
 #include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/drawing/BitmapMode.hpp>
+#include <com/sun/star/document/XEmbeddedObjectSupplier2.hpp>
+#include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
+#include <com/sun/star/embed/XInplaceObject.hpp>
+#include <com/sun/star/text/XTextTable.hpp>
+
 #include <tools/datetime.hxx>
-#include <unotools/datetime.hxx>
-#include <vcl/GraphicNativeTransform.hxx>
 #include <sfx2/linkmgr.hxx>
+#include <comphelper/propertyvalue.hxx>
 
 #include <docsh.hxx>
 #include <editsh.hxx>
 #include <ndgrf.hxx>
+#include <ndtxt.hxx>
+#include <txatbase.hxx>
+#include <fmtflcnt.hxx>
+#include <fmtfsize.hxx>
+#include <frameformats.hxx>
+#include <unotxdoc.hxx>
 
 class HtmlImportTest : public SwModelTestBase
 {
     public:
         HtmlImportTest() : SwModelTestBase("sw/qa/extras/htmlimport/data/", "HTML (StarWriter)") {}
+    private:
+        std::unique_ptr<Resetter> preTest(const char* /*filename*/) override
+        {
+            if (getTestName().indexOf("ReqIf") != -1)
+            {
+                setImportFilterOptions("xhtmlns=reqif-xhtml");
+                // Bypass type detection, this is an XHTML fragment only.
+                setImportFilterName("HTML (StarWriter)");
+            }
+
+            return nullptr;
+        }
 };
 
 #define DECLARE_HTMLIMPORT_TEST(TestName, filename) DECLARE_SW_IMPORT_TEST(TestName, filename, nullptr, HtmlImportTest)
@@ -64,14 +86,9 @@ DECLARE_HTMLIMPORT_TEST(testInlinedImage, "inlined_image.html")
     uno::Reference<container::XNamed> const xNamed(xShape, uno::UNO_QUERY_THROW);
     CPPUNIT_ASSERT_EQUAL(OUString("Image1"), xNamed->getName());
 
-    uno::Reference<graphic::XGraphic> xGraphic =
-        getProperty< uno::Reference<graphic::XGraphic> >(xShape, "Graphic");
+    uno::Reference<graphic::XGraphic> xGraphic = getProperty< uno::Reference<graphic::XGraphic> >(xShape, "Graphic");
     CPPUNIT_ASSERT(xGraphic.is());
     CPPUNIT_ASSERT(xGraphic->getType() != graphic::GraphicType::EMPTY);
-
-    OUString sGraphicURL = getProperty< OUString >(xShape, "GraphicURL");
-    // Before it was "data:image/png;base64,<data>"
-    CPPUNIT_ASSERT(sGraphicURL.startsWith("vnd.sun.star.GraphicObject:"));
 
     for (int n = 0; ; n++)
     {
@@ -139,14 +156,12 @@ DECLARE_HTMLIMPORT_TEST(testListStyleType, "list-style.html")
     xLevels->getByIndex(0) >>= aProps; // 1st level
 
     bool bBulletFound=false;
-    for (int i = 0; i < aProps.getLength(); ++i)
+    for (beans::PropertyValue const & rProp : std::as_const(aProps))
     {
-        const beans::PropertyValue& rProp = aProps[i];
-
         if (rProp.Name == "BulletChar")
         {
             // should be 'o'.
-            CPPUNIT_ASSERT_EQUAL(OUString("\xEE\x80\x89", 3, RTL_TEXTENCODING_UTF8), rProp.Value.get<OUString>());
+            CPPUNIT_ASSERT_EQUAL(OUString(u"\uE009"), rProp.Value.get<OUString>());
             bBulletFound = true;
             break;
         }
@@ -160,10 +175,8 @@ DECLARE_HTMLIMPORT_TEST(testListStyleType, "list-style.html")
                 uno::UNO_QUERY);
     xLevels->getByIndex(0) >>= aProps; // 1st level
 
-    for (int i = 0; i < aProps.getLength(); ++i)
+    for (beans::PropertyValue const & rProp : std::as_const(aProps))
     {
-        const beans::PropertyValue& rProp = aProps[i];
-
         if (rProp.Name == "NumberingType")
         {
             printf("style is %d\n", rProp.Value.get<sal_Int16>());
@@ -194,6 +207,26 @@ DECLARE_HTMLIMPORT_TEST(testMetaIsoDates, "meta-ISO8601-dates.html")
 
     CPPUNIT_ASSERT_EQUAL(DateTime(Date(7, 5, 2017), tools::Time(12, 34, 3, 921000000)), aCreated);
     CPPUNIT_ASSERT_EQUAL(DateTime(Date(8, 5, 2017), tools::Time(12, 47, 0, 386000000)), aModified);
+}
+
+DECLARE_HTMLIMPORT_TEST(testImageWidthAuto, "image-width-auto.html")
+{
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument *>(mxComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+    SwTextAttr const*const pAttr(pTextDoc->GetDocShell()->GetDoc()->GetEditShell()->
+        GetCursor()->GetNode().GetTextNode()->GetTextAttrForCharAt(0, RES_TXTATR_FLYCNT));
+    CPPUNIT_ASSERT(pAttr);
+    SwFrameFormat const*const pFmt(pAttr->GetFlyCnt().GetFrameFormat());
+    SwFormatFrameSize const& rSize(pFmt->GetFormatAttr(RES_FRM_SIZE));
+    CPPUNIT_ASSERT_EQUAL(Size(1835, 560), rSize.GetSize());
+}
+
+DECLARE_HTMLIMPORT_TEST(testImageLazyRead, "image-lazy-read.html")
+{
+    auto xGraphic = getProperty<uno::Reference<graphic::XGraphic>>(getShape(1), "Graphic");
+    Graphic aGraphic(xGraphic);
+    // This failed, import loaded the graphic, it wasn't lazy-read.
+    CPPUNIT_ASSERT(!aGraphic.isAvailable());
 }
 
 DECLARE_HTMLIMPORT_TEST(testChangedby, "meta-changedby.html")
@@ -269,6 +302,154 @@ DECLARE_HTMLIMPORT_TEST(testTableBorder1px, "table_border_1px.html")
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Unexpected cell left border", sal_Int16(0), aBorder.InnerLineWidth);
     aBorder = getProperty<table::BorderLine2>(xCellB2, "RightBorder");
     CPPUNIT_ASSERT_MESSAGE("Missing cell right border", aBorder.InnerLineWidth > 0);
+}
+
+DECLARE_HTMLIMPORT_TEST(testOutlineLevel, "outline-level.html")
+{
+    // This was 0, HTML imported into Writer lost the outline numbering for
+    // Heading 1 styles.
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(1),
+                         getProperty<sal_Int32>(getParagraph(1), "OutlineLevel"));
+}
+
+DECLARE_HTMLIMPORT_TEST(testReqIfBr, "reqif-br.xhtml")
+{
+    // <reqif-xhtml:br/> was not recognized as a line break from a ReqIf file.
+    CPPUNIT_ASSERT(getParagraph(1)->getString().startsWith("aaa\nbbb"));
+}
+
+DECLARE_HTMLIMPORT_TEST(testTdf80194_subscript, "tdf80194_subscript.html")
+{
+    uno::Reference<text::XTextRange> xPara = getParagraph(1);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL( 0.f, getProperty<float>(getRun(xPara, 1), "CharEscapement"), 0);
+    // Most recently, the default subscript was 33%, which is much too large for a subscript.
+    // The original 8% (derived from a mathematical calculation) is much better in general,
+    // and for HTML was a better match when testing with firefox.
+    // DFLT_ESC_AUTO_SUB was tested, but HTML specs are pretty loose, and generally
+    // it exceeds the font ascent - so the formula-based-escapement is not appropriate.
+    CPPUNIT_ASSERT_DOUBLES_EQUAL( -8.f, getProperty<float>(getRun(xPara, 2, "p"), "CharEscapement"), 1);
+
+    xPara.set(getParagraph(2));
+    CPPUNIT_ASSERT_DOUBLES_EQUAL( 0.f, getProperty<float>(getRun(xPara, 1), "CharEscapement"), 0);
+    uno::Reference<text::XTextRange> xRun (getRun(xPara, 2, "L"));
+    CPPUNIT_ASSERT_DOUBLES_EQUAL( 33.f, getProperty<float>(xRun, "CharEscapement"), 1);
+    // HTML (although unspecified) tends to use a fairly large font. Definitely more than DFLT_ESC_PROP.
+    CPPUNIT_ASSERT( 70 < getProperty<sal_Int8>(xRun, "CharEscapementHeight"));
+}
+
+DECLARE_HTMLIMPORT_TEST(testReqIfTable, "reqif-table.xhtml")
+{
+    // to see this: soffice --infilter="HTML (StarWriter):xhtmlns=reqif-xhtml" sw/qa/extras/htmlimport/data/reqif-table.xhtml
+    // Load a table with xhtmlns=reqif-xhtml filter param.
+    uno::Reference<text::XTextTablesSupplier> xTablesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XIndexAccess> xTables(xTablesSupplier->getTextTables(),
+                                                    uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(3), xTables->getCount());
+    uno::Reference<text::XTextTable> xTable(xTables->getByIndex(0), uno::UNO_QUERY);
+    uno::Reference<text::XTextRange> xCell(xTable->getCellByName("A1"), uno::UNO_QUERY);
+    auto aBorder = getProperty<table::BorderLine2>(xCell, "TopBorder");
+    // This was 0, tables had no borders, even if the default autoformat has
+    // borders and the markup allows no custom borders.
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Top Border", static_cast<sal_uInt32>(18), aBorder.LineWidth);
+    aBorder = getProperty<table::BorderLine2>(xCell, "BottomBorder");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Bottom Border", static_cast<sal_uInt32>(18), aBorder.LineWidth);
+    aBorder = getProperty<table::BorderLine2>(xCell, "LeftBorder");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Left Border", static_cast<sal_uInt32>(18), aBorder.LineWidth);
+    aBorder = getProperty<table::BorderLine2>(xCell, "RightBorder");
+    // This was 0. Single column tables had no right border.  tdf#115576
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Right Border", static_cast<sal_uInt32>(18), aBorder.LineWidth);
+}
+
+DECLARE_HTMLIMPORT_TEST(testImageSize, "image-size.html")
+{
+    awt::Size aSize = getShape(1)->getSize();
+    OutputDevice* pDevice = Application::GetDefaultDevice();
+    Size aPixelSize(200, 400);
+    Size aExpected = pDevice->PixelToLogic(aPixelSize, MapMode(MapUnit::Map100thMM));
+
+    // This was 1997, i.e. a hardcoded default, we did not look at the image
+    // header when the HTML markup declared no size.
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(aExpected.getWidth()), aSize.Width);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(aExpected.getHeight()), aSize.Height);
+}
+
+DECLARE_HTMLIMPORT_TEST(testTdf122789, "tdf122789.html")
+{
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
+    const SwFrameFormats& rFormats = *pDoc->GetSpzFrameFormats();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rFormats.size());
+    // This failed, the image had an absolute size, not a relative one.
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt8>(70), rFormats[0]->GetAttrSet().GetFrameSize().GetWidthPercent());
+}
+
+DECLARE_HTMLIMPORT_TEST(testTdf118579, "tdf118579.html")
+{
+    //Without the fix in place, the file fails to load
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+}
+
+DECLARE_HTMLIMPORT_TEST(testReqIfPageStyle, "reqif-page-style.xhtml")
+{
+    // Without the accompanying fix in place, this test would have failed with
+    // 'Expected: Standard, Actual  : HTML'.
+    CPPUNIT_ASSERT_EQUAL(OUString("Standard"),
+                         getProperty<OUString>(getParagraph(1), "PageStyleName"));
+}
+
+/// HTML import to the sw doc model tests.
+class SwHtmlOptionsImportTest : public SwModelTestBase
+{
+};
+
+char const DATA_DIRECTORY[] = "/sw/qa/extras/htmlimport/data/";
+
+CPPUNIT_TEST_FIXTURE(SwHtmlOptionsImportTest, testAllowedRTFOLEMimeTypes)
+{
+    uno::Sequence<OUString> aTypes = { OUString("test/rtf") };
+    uno::Sequence<beans::PropertyValue> aLoadProperties = {
+        comphelper::makePropertyValue("FilterName", OUString("HTML (StarWriter)")),
+        comphelper::makePropertyValue("FilterOptions", OUString("xhtmlns=reqif-xhtml")),
+        comphelper::makePropertyValue("AllowedRTFOLEMimeTypes", aTypes),
+    };
+    OUString aURL
+        = m_directories.getURLFromSrc(DATA_DIRECTORY) + "allowed-rtf-ole-mime-types.xhtml";
+    mxComponent = loadFromDesktop(aURL, "com.sun.star.text.TextDocument", aLoadProperties);
+    uno::Reference<text::XTextEmbeddedObjectsSupplier> xSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XIndexAccess> xObjects(xSupplier->getEmbeddedObjects(),
+                                                     uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(1), xObjects->getCount());
+    uno::Reference<document::XEmbeddedObjectSupplier2> xObject(xObjects->getByIndex(0),
+                                                               uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xObject.is());
+    uno::Reference<embed::XInplaceObject> xEmbeddedObject(
+        xObject->getExtendedControlOverEmbeddedObject(), uno::UNO_QUERY);
+    // Without the accompanying fix in place, this test would have failed, because the returned
+    // embedded object was a dummy one, which does not support in-place editing.
+    CPPUNIT_ASSERT(xEmbeddedObject.is());
+}
+
+CPPUNIT_TEST_FIXTURE(SwHtmlOptionsImportTest, testHiddenTextframe)
+{
+    // Load HTML content into Writer, similar to HTML paste.
+    uno::Sequence<beans::PropertyValue> aLoadProperties = {
+        comphelper::makePropertyValue("FilterName", OUString("HTML (StarWriter)")),
+    };
+    OUString aURL
+        = m_directories.getURLFromSrc(DATA_DIRECTORY) + "hidden-textframe.html";
+    mxComponent = loadFromDesktop(aURL, "com.sun.star.text.TextDocument", aLoadProperties);
+
+    // Check the content of the draw page.
+    uno::Reference<drawing::XDrawPageSupplier> xSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> xDrawPage = xSupplier->getDrawPage();
+
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 0
+    // - Actual  : 1
+    // i.e. an unexpected text frame was created, covering the actual content.
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0), xDrawPage->getCount());
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

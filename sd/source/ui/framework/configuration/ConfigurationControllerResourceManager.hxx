@@ -20,16 +20,20 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_CONFIGURATIONCONTROLLERRESOURCEMANAGER_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_CONFIGURATIONCONTROLLERRESOURCEMANAGER_HXX
 
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
-#include <com/sun/star/drawing/framework/XResource.hpp>
-#include <com/sun/star/drawing/framework/XResourceFactory.hpp>
 #include <osl/mutex.hxx>
+
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <map>
 #include <memory>
 #include <vector>
 
-namespace sd { namespace framework {
+namespace com::sun::star::drawing::framework { class XConfiguration; }
+namespace com::sun::star::drawing::framework { class XResourceFactory; }
+namespace com::sun::star::drawing::framework { class XResource; }
+namespace com::sun::star::drawing::framework { class XResourceId; }
+
+namespace sd::framework {
 
 class ConfigurationControllerBroadcaster;
 class ResourceFactoryManager;
@@ -133,7 +137,7 @@ private:
         const css::uno::Reference<css::drawing::framework::XResourceId>& rxResourceId);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

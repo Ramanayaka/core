@@ -18,31 +18,22 @@
  */
 
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
 
-#include <cppcanvas/basegfxfactory.hxx>
+#include <cppcanvas/customsprite.hxx>
 
-#include <comphelper/make_shared_from_uno.hxx>
-
-#include <com/sun/star/rendering/XIntegerBitmap.hpp>
-#include <com/sun/star/rendering/IntegerBitmapLayout.hpp>
 #include <com/sun/star/animations/TransitionType.hpp>
 #include <com/sun/star/animations/TransitionSubType.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 #include "slidechangebase.hxx"
-#include "transitionfactory.hxx"
+#include <transitionfactory.hxx>
 #include "transitionfactorytab.hxx"
-#include "transitiontools.hxx"
 #include "parametricpolypolygonfactory.hxx"
-#include "animationfactory.hxx"
 #include "clippingfunctor.hxx"
 #include "combtransition.hxx"
-#include "tools.hxx"
+#include <tools.hxx>
 #include <memory>
 
 
@@ -54,8 +45,7 @@
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 namespace {
 
@@ -95,9 +85,8 @@ class PluginSlideChange: public SlideChangeBase
     UnoViewSharedPtr mpView;
 
     TransitionViewPair( uno::Reference<presentation::XTransition> const & xTransition, const UnoViewSharedPtr& rView )
+         : mxTransition(xTransition), mpView(rView)
     {
-        mxTransition = xTransition;
-        mpView = rView;
     }
 
     ~TransitionViewPair()
@@ -119,7 +108,8 @@ public:
     */
     PluginSlideChange( sal_Int16                                nTransitionType,
                        sal_Int16                                nTransitionSubType,
-                       boost::optional<SlideSharedPtr> const&   leavingSlide_,
+                       const RGBColor&                          rTransitionFadeColor,
+                       std::optional<SlideSharedPtr> const&   leavingSlide_,
                        const SlideSharedPtr&                    pEnteringSlide,
                        const UnoViewContainer&                  rViewContainer,
                        ScreenUpdater&                           rScreenUpdater,
@@ -137,6 +127,7 @@ public:
         mbSuccess( false ),
         mnTransitionType( nTransitionType ),
         mnTransitionSubType( nTransitionSubType ),
+        mnTransitionFadeColor( rTransitionFadeColor ),
         mxFactory( xFactory )
     {
         // create one transition per view
@@ -154,13 +145,6 @@ public:
     virtual ~PluginSlideChange() override
     {
         mxFactory.clear();
-
-        for( const auto& pCurrView : maTransitions )
-        {
-            delete pCurrView;
-        }
-
-        maTransitions.clear();
     }
 
     bool addTransition( const UnoViewSharedPtr& rView )
@@ -168,12 +152,13 @@ public:
         uno::Reference<presentation::XTransition> rTransition = mxFactory->createTransition(
             mnTransitionType,
             mnTransitionSubType,
+            RGBAColor2UnoColor( mnTransitionFadeColor.getIntegerColor()),
             rView->getUnoView(),
             getLeavingBitmap(ViewEntry(rView))->getXBitmap(),
             getEnteringBitmap(ViewEntry(rView))->getXBitmap() );
 
         if( rTransition.is() )
-            maTransitions.push_back( new TransitionViewPair( rTransition, rView ) );
+            maTransitions.emplace_back( new TransitionViewPair( rTransition, rView ) );
         else
             return false;
 
@@ -213,18 +198,12 @@ public:
         SAL_INFO("slideshow", "PluginSlideChange viewRemoved");
         SlideChangeBase::viewRemoved( rView );
 
-        ::std::vector< TransitionViewPair* >::const_iterator aEnd(maTransitions.end());
-        for( ::std::vector< TransitionViewPair* >::iterator aIter =maTransitions.begin();
-             aIter != aEnd;
-             ++aIter )
+        auto aIter = std::find_if(maTransitions.begin(), maTransitions.end(),
+            [&rView](const std::unique_ptr<TransitionViewPair>& rxTransition) { return rxTransition->mpView == rView; });
+        if (aIter != maTransitions.end())
         {
-            if( ( *aIter )->mpView == rView )
-            {
-                SAL_INFO("slideshow", "view removed" );
-                delete ( *aIter );
-                maTransitions.erase( aIter );
-                break;
-            }
+            SAL_INFO("slideshow", "view removed" );
+            maTransitions.erase( aIter );
         }
     }
 
@@ -264,13 +243,14 @@ public:
 
 private:
     // One transition object per view
-    std::vector< TransitionViewPair* > maTransitions;
+    std::vector< std::unique_ptr<TransitionViewPair> > maTransitions;
 
     // bool
     bool mbSuccess;
 
     sal_Int16 mnTransitionType;
     sal_Int16 mnTransitionSubType;
+    RGBColor mnTransitionFadeColor;
 
     uno::Reference<presentation::XTransitionFactory> mxFactory;
 };
@@ -294,7 +274,7 @@ public:
         SlideChangeBase(
             // leaving bitmap is empty, we're leveraging the fact that the
             // old slide is still displayed in the background:
-            boost::optional<SlideSharedPtr>(),
+            std::optional<SlideSharedPtr>(),
             pEnteringSlide,
             pSoundPlayer,
             rViewContainer,
@@ -355,9 +335,9 @@ public:
         entering slides, which applies a fade effect.
     */
     FadingSlideChange(
-        boost::optional<SlideSharedPtr> const & leavingSlide,
+        std::optional<SlideSharedPtr> const & leavingSlide,
         const SlideSharedPtr&                   pEnteringSlide,
-        boost::optional<RGBColor> const&        rFadeColor,
+        std::optional<RGBColor> const&        rFadeColor,
         const SoundPlayerSharedPtr&             pSoundPlayer,
         const UnoViewContainer&                 rViewContainer,
         ScreenUpdater&                          rScreenUpdater,
@@ -388,7 +368,7 @@ public:
         double                                     t ) override;
 
 private:
-    const boost::optional< RGBColor >               maFadeColor;
+    const std::optional< RGBColor >               maFadeColor;
 };
 
 void FadingSlideChange::prepareForRun(
@@ -453,7 +433,7 @@ public:
         entering slides, which applies a cut effect.
     */
     CutSlideChange(
-        boost::optional<SlideSharedPtr> const & leavingSlide,
+        std::optional<SlideSharedPtr> const & leavingSlide,
         const SlideSharedPtr&                   pEnteringSlide,
         const RGBColor&                          rFadeColor,
         const SoundPlayerSharedPtr&             pSoundPlayer,
@@ -557,7 +537,7 @@ public:
         final slide position. The vector must have unit length.
     */
     MovingSlideChange(
-        const boost::optional<SlideSharedPtr>& leavingSlide,
+        const std::optional<SlideSharedPtr>& leavingSlide,
         const SlideSharedPtr&                  pEnteringSlide,
         const SoundPlayerSharedPtr&            pSoundPlayer,
         const UnoViewContainer&                rViewContainer,
@@ -675,7 +655,7 @@ void MovingSlideChange::performOut(
 
 
 NumberAnimationSharedPtr createPushWipeTransition(
-    boost::optional<SlideSharedPtr> const &         leavingSlide_,
+    std::optional<SlideSharedPtr> const &         leavingSlide_,
     const SlideSharedPtr&                           pEnteringSlide,
     const UnoViewContainer&                         rViewContainer,
     ScreenUpdater&                                  rScreenUpdater,
@@ -685,8 +665,8 @@ NumberAnimationSharedPtr createPushWipeTransition(
     bool                                            /*bTransitionDirection*/,
     const SoundPlayerSharedPtr&                     pSoundPlayer )
 {
-    boost::optional<SlideSharedPtr> leavingSlide; // no bitmap
-    if (leavingSlide_ && (*leavingSlide_).get() != nullptr)
+    std::optional<SlideSharedPtr> leavingSlide; // no bitmap
+    if (leavingSlide_ && *leavingSlide_ != nullptr)
     {
         // opt: only page, if we've an
         // actual slide to move out here. We
@@ -753,32 +733,30 @@ NumberAnimationSharedPtr createPushWipeTransition(
 
     if( bComb )
     {
-        return NumberAnimationSharedPtr(
-            new CombTransition( leavingSlide,
+        return std::make_shared<CombTransition>( leavingSlide,
                                 pEnteringSlide,
                                 pSoundPlayer,
                                 rViewContainer,
                                 rScreenUpdater,
                                 rEventMultiplexer,
                                 aDirection,
-                                24 /* comb with 12 stripes */ ));
+                                24 /* comb with 12 stripes */ );
     }
     else
     {
-        return NumberAnimationSharedPtr(
-            new MovingSlideChange( leavingSlide,
+        return std::make_shared<MovingSlideChange>( leavingSlide,
                                    pEnteringSlide,
                                    pSoundPlayer,
                                    rViewContainer,
                                    rScreenUpdater,
                                    rEventMultiplexer,
                                    aDirection,
-                                   aDirection ));
+                                   aDirection );
     }
 }
 
 NumberAnimationSharedPtr createSlideWipeTransition(
-    boost::optional<SlideSharedPtr> const &         leavingSlide,
+    std::optional<SlideSharedPtr> const &         leavingSlide,
     const SlideSharedPtr&                           pEnteringSlide,
     const UnoViewContainer&                         rViewContainer,
     ScreenUpdater&                                  rScreenUpdater,
@@ -839,16 +817,15 @@ NumberAnimationSharedPtr createSlideWipeTransition(
         // the 'leaving' slide.
 
 
-        return NumberAnimationSharedPtr(
-            new MovingSlideChange(
-                boost::optional<SlideSharedPtr>() /* no slide */,
+        return std::make_shared<MovingSlideChange>(
+                std::optional<SlideSharedPtr>() /* no slide */,
                 pEnteringSlide,
                 pSoundPlayer,
                 rViewContainer,
                 rScreenUpdater,
                 rEventMultiplexer,
                 basegfx::B2DVector(),
-                aInDirection ));
+                aInDirection );
     }
     else
     {
@@ -857,22 +834,22 @@ NumberAnimationSharedPtr createSlideWipeTransition(
         // and the old one is moving off in the foreground.
 
 
-        return NumberAnimationSharedPtr(
-            new MovingSlideChange( leavingSlide,
+        return std::make_shared<MovingSlideChange>( leavingSlide,
                                    pEnteringSlide,
                                    pSoundPlayer,
                                    rViewContainer,
                                    rScreenUpdater,
                                    rEventMultiplexer,
                                    aInDirection,
-                                   basegfx::B2DVector() ));
+                                   basegfx::B2DVector() );
     }
 }
 
 NumberAnimationSharedPtr createPluginTransition(
     sal_Int16                                nTransitionType,
     sal_Int16                                nTransitionSubType,
-    boost::optional<SlideSharedPtr> const&   pLeavingSlide,
+    const RGBColor&                          rTransitionFadeColor,
+    std::optional<SlideSharedPtr> const&   pLeavingSlide,
     const SlideSharedPtr&                    pEnteringSlide,
     const UnoViewContainer&                  rViewContainer,
     ScreenUpdater&                           rScreenUpdater,
@@ -881,24 +858,22 @@ NumberAnimationSharedPtr createPluginTransition(
     const SoundPlayerSharedPtr&              pSoundPlayer,
     EventMultiplexer&                        rEventMultiplexer)
 {
-    std::unique_ptr<PluginSlideChange> pTransition(
-        new PluginSlideChange(
+    auto pTransition =
+        std::make_shared<PluginSlideChange>(
             nTransitionType,
             nTransitionSubType,
+            rTransitionFadeColor,
             pLeavingSlide,
             pEnteringSlide,
             rViewContainer,
             rScreenUpdater,
             xFactory,
             pSoundPlayer,
-            rEventMultiplexer ));
+            rEventMultiplexer );
 
-    if( pTransition->Success() )
-        return NumberAnimationSharedPtr( pTransition.release() );
-    else
-    {
-        return NumberAnimationSharedPtr();
-    }
+    if( !pTransition->Success() )
+        return nullptr;
+    return pTransition;
 }
 
 } // anon namespace
@@ -940,7 +915,8 @@ NumberAnimationSharedPtr TransitionFactory::createSlideTransition(
             createPluginTransition(
                 nTransitionType,
                 nTransitionSubType,
-                boost::make_optional(pLeavingSlide),
+                rTransitionFadeColor,
+                std::make_optional(pLeavingSlide),
                 pEnteringSlide,
                 rViewContainer,
                 rScreenUpdater,
@@ -948,7 +924,7 @@ NumberAnimationSharedPtr TransitionFactory::createSlideTransition(
                 pSoundPlayer,
                 rEventMultiplexer ));
 
-        if( pTransition.get() )
+        if( pTransition )
             return pTransition;
     }
 
@@ -976,15 +952,14 @@ NumberAnimationSharedPtr TransitionFactory::createSlideTransition(
                         nTransitionType, nTransitionSubType ) );
 
                 // create a clip transition from that
-                return NumberAnimationSharedPtr(
-                    new ClippedSlideChange( pEnteringSlide,
+                return std::make_shared<ClippedSlideChange>( pEnteringSlide,
                                             pPoly,
                                             *pTransitionInfo,
                                             rViewContainer,
                                             rScreenUpdater,
                                             rEventMultiplexer,
                                             bTransitionDirection,
-                                            pSoundPlayer ));
+                                            pSoundPlayer );
             }
 
             case TransitionInfo::TRANSITION_SPECIAL:
@@ -1035,7 +1010,7 @@ NumberAnimationSharedPtr TransitionFactory::createSlideTransition(
                     case animations::TransitionType::PUSHWIPE:
                     {
                         return createPushWipeTransition(
-                            boost::make_optional(pLeavingSlide),
+                            std::make_optional(pLeavingSlide),
                             pEnteringSlide,
                             rViewContainer,
                             rScreenUpdater,
@@ -1049,7 +1024,7 @@ NumberAnimationSharedPtr TransitionFactory::createSlideTransition(
                     case animations::TransitionType::SLIDEWIPE:
                     {
                         return createSlideWipeTransition(
-                            boost::make_optional(pLeavingSlide),
+                            std::make_optional(pLeavingSlide),
                             pEnteringSlide,
                             rViewContainer,
                             rScreenUpdater,
@@ -1064,8 +1039,8 @@ NumberAnimationSharedPtr TransitionFactory::createSlideTransition(
                     case animations::TransitionType::FADE:
                     {
                         // black page:
-                        boost::optional<SlideSharedPtr> leavingSlide;
-                        boost::optional<RGBColor> aFadeColor;
+                        std::optional<SlideSharedPtr> leavingSlide;
+                        std::optional<RGBColor> aFadeColor;
 
                         switch( nTransitionSubType )
                         {
@@ -1077,14 +1052,12 @@ NumberAnimationSharedPtr TransitionFactory::createSlideTransition(
 
                                 // TODO(F1): Implement toColor/fromColor fades
                             case animations::TransitionSubType::FADETOCOLOR:
-                                // FALLTHROUGH intended
                             case animations::TransitionSubType::FADEFROMCOLOR:
-                                // FALLTHROUGH intended
                             case animations::TransitionSubType::FADEOVERCOLOR:
                                 if (pLeavingSlide) {
                                     // only generate, if fade
                                     // effect really needs it.
-                                    leavingSlide.reset( pLeavingSlide );
+                                    leavingSlide = pLeavingSlide;
                                 }
                                 aFadeColor = rTransitionFadeColor;
                                 break;
@@ -1095,25 +1068,23 @@ NumberAnimationSharedPtr TransitionFactory::createSlideTransition(
                         }
 
                         if( nTransitionType == animations::TransitionType::FADE )
-                            return NumberAnimationSharedPtr(
-                                new FadingSlideChange(
+                            return std::make_shared<FadingSlideChange>(
                                     leavingSlide,
                                     pEnteringSlide,
                                     aFadeColor,
                                     pSoundPlayer,
                                     rViewContainer,
                                     rScreenUpdater,
-                                    rEventMultiplexer ));
+                                    rEventMultiplexer );
                         else
-                            return NumberAnimationSharedPtr(
-                                new CutSlideChange(
+                            return std::make_shared<CutSlideChange>(
                                     leavingSlide,
                                     pEnteringSlide,
                                     rTransitionFadeColor,
                                     pSoundPlayer,
                                     rViewContainer,
                                     rScreenUpdater,
-                                    rEventMultiplexer ));
+                                    rEventMultiplexer );
                     }
                 }
             }
@@ -1134,7 +1105,6 @@ NumberAnimationSharedPtr TransitionFactory::createSlideTransition(
     return NumberAnimationSharedPtr();
 }
 
-} // namespace internal
 } // namespace presentation
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

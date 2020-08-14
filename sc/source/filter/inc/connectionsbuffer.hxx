@@ -24,8 +24,10 @@
 #include <oox/helper/refvector.hxx>
 #include "workbookhelper.hxx"
 
-namespace oox {
-namespace xls {
+namespace oox { class AttributeList; }
+namespace oox { class SequenceInputStream; }
+
+namespace oox::xls {
 
 const sal_Int32 BIFF12_CONNECTION_UNKNOWN               = 0;
 const sal_Int32 BIFF12_CONNECTION_ODBC                  = 1;
@@ -51,7 +53,7 @@ struct WebPrModel
     bool                mbSourceData;       /// True = import XML source data referred by HTML table.
     bool                mbParsePre;         /// True = parse preformatted sections (<pre> tag).
     bool                mbConsecutive;      /// True = join consecutive delimiters.
-    bool                mbFirstRow;         /// True = use column withs of first row for entire <pre> tag.
+    bool                mbFirstRow;         /// True = use column widths of first row for entire <pre> tag.
     bool                mbXl97Created;      /// True = web query created with Excel 97.
     bool                mbTextDates;        /// True = read date values as text, false = parse dates.
     bool                mbXl2000Refreshed;  /// True = refreshed with Excel 2000 or newer.
@@ -101,7 +103,7 @@ public:
     /** Imports web query settings from the webPr element. */
     void                importWebPr( const AttributeList& rAttribs );
     /** Imports web query table settings from the tables element. */
-    void                importTables( const AttributeList& rAttribs );
+    void                importTables();
     /** Imports a web query table identifier from the m, s, or x element. */
     void                importTable( const AttributeList& rAttribs, sal_Int32 nElement );
 
@@ -154,8 +156,7 @@ private:
     sal_Int32           mnUnusedId;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

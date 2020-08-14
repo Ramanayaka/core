@@ -20,18 +20,15 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_MYSQL_YTABLES_HXX
 
 #include <connectivity/sdbcx/VCollection.hxx>
-#include <connectivity/SQLStatementHelper.hxx>
+#include <SQLStatementHelper.hxx>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-namespace connectivity
-{
-    namespace mysql
+namespace connectivity::mysql
     {
-        class OTables : public sdbcx::OCollection,
+        class OTables final : public sdbcx::OCollection,
             public ::dbtools::ISQLStatementHelper
         {
             css::uno::Reference< css::sdbc::XDatabaseMetaData >       m_xMetaData;
 
-        protected:
             virtual sdbcx::ObjectType createObject(const OUString& _rName) override;
             virtual void impl_refresh() override;
             virtual css::uno::Reference< css::beans::XPropertySet > createDescriptor() override;
@@ -42,12 +39,12 @@ namespace connectivity
             virtual OUString getNameForObject(const sdbcx::ObjectType& _xObject) override;
         public:
             OTables(const css::uno::Reference< css::sdbc::XDatabaseMetaData >& _rMetaData,::cppu::OWeakObject& _rParent, ::osl::Mutex& _rMutex,
-                const TStringVector &_rVector) : sdbcx::OCollection(_rParent, true, _rMutex, _rVector)
+                const ::std::vector< OUString> &_rVector) : sdbcx::OCollection(_rParent, true, _rMutex, _rVector)
                 ,m_xMetaData(_rMetaData)
             {}
 
             // only the name is identical to ::cppu::OComponentHelper
-            virtual void SAL_CALL disposing() override;
+            virtual void disposing() override;
 
             // XDrop
             void appendNew(const OUString& _rsNewTable);
@@ -60,7 +57,7 @@ namespace connectivity
             // ISQLStatementHelper
             virtual void addComment(const css::uno::Reference< css::beans::XPropertySet >& descriptor,OUStringBuffer& _rOut) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_MYSQL_YTABLES_HXX
 

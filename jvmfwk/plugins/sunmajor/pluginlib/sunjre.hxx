@@ -20,8 +20,7 @@
 #ifndef INCLUDED_JVMFWK_PLUGINS_SUNMAJOR_PLUGINLIB_SUNJRE_HXX
 #define INCLUDED_JVMFWK_PLUGINS_SUNMAJOR_PLUGINLIB_SUNJRE_HXX
 
-#include "vendorbase.hxx"
-#include "vendorlist.hxx"
+#include <vendorbase.hxx>
 
 namespace jfw_plugin
 {

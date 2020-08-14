@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cstddef>
 #include <fstream>
@@ -25,13 +25,19 @@
 #include <memory>
 #include <string>
 
-#include "po.hxx"
-#include "lngmerge.hxx"
+#include <po.hxx>
+#include <lngmerge.hxx>
 
 namespace {
 
-OString getBracketedContent(const OString& text) {
-    return text.getToken(1, '[').getToken(0, ']');
+bool lcl_isNextGroup(OString &sGroup_out, const OString &sLineTrim)
+{
+    if (sLineTrim.startsWith("[") && sLineTrim.endsWith("]"))
+    {
+        sGroup_out = sLineTrim.getToken(1, '[').getToken(0, ']').trim();
+        return true;
+    }
+    return false;
 }
 
 void lcl_RemoveUTF8ByteOrderMarker( OString &rString )
@@ -46,46 +52,39 @@ void lcl_RemoveUTF8ByteOrderMarker( OString &rString )
 }
 
 
-// class LngParser
 
 LngParser::LngParser(const OString &rLngFile)
-    : pLines( nullptr )
-    , sSource( rLngFile )
+    : sSource( rLngFile )
 {
-    pLines = new LngLineList;
     std::ifstream aStream(sSource.getStr());
-    if (aStream.is_open())
+    if (!aStream.is_open())
+        return;
+
+    bool bFirstLine = true;
+    std::string s;
+    std::getline(aStream, s);
+    while (!aStream.eof())
     {
-        bool bFirstLine = true;
-        std::string s;
-        std::getline(aStream, s);
-        while (!aStream.eof())
+        OString sLine(s.data(), s.length());
+
+        if( bFirstLine )
         {
-            OString sLine(s.data(), s.length());
-
-            if( bFirstLine )
-            {
-                // Always remove UTF8 BOM from the first line
-                lcl_RemoveUTF8ByteOrderMarker( sLine );
-                bFirstLine = false;
-            }
-
-            pLines->push_back( new OString(sLine) );
-            std::getline(aStream, s);
+            // Always remove UTF8 BOM from the first line
+            lcl_RemoveUTF8ByteOrderMarker( sLine );
+            bFirstLine = false;
         }
-        pLines->push_back( new OString() );
+
+        mvLines.push_back( sLine );
+        std::getline(aStream, s);
     }
+    mvLines.push_back( OString() );
 }
 
 LngParser::~LngParser()
 {
-    for ( size_t i = 0, n = pLines->size(); i < n; ++i )
-        delete (*pLines)[ i ];
-    pLines->clear();
-    delete pLines;
 }
 
-bool LngParser::CreatePO( const OString &rPOFile )
+void LngParser::CreatePO( const OString &rPOFile )
 {
     PoOfstream aPOStream( rPOFile, PoOfstream::APP );
     if (!aPOStream.isOpen()) {
@@ -98,12 +97,12 @@ bool LngParser::CreatePO( const OString &rPOFile )
     OStringHashMap Text;
     OString sID;
 
-    while( nPos < pLines->size() ) {
-        sLine = *(*pLines)[ nPos++ ];
-        while( nPos < pLines->size() && !isNextGroup( sGroup , sLine ) ) {
+    while( nPos < mvLines.size() ) {
+        sLine = mvLines[ nPos++ ];
+        while( nPos < mvLines.size() && !isNextGroup( sGroup , sLine ) ) {
             ReadLine( sLine , Text );
             sID = sGroup;
-            sLine = *(*pLines)[ nPos++ ];
+            sLine = mvLines[ nPos++ ];
         }
         if( bStart ) {
             bStart = false;
@@ -115,7 +114,6 @@ bool LngParser::CreatePO( const OString &rPOFile )
         Text.erase("x-comment");
     }
     aPOStream.close();
-    return true;
 }
 
 void LngParser::WritePO(PoOfstream &aPOStream,
@@ -129,13 +127,7 @@ void LngParser::WritePO(PoOfstream &aPOStream,
 
 bool LngParser::isNextGroup(OString &sGroup_out, const OString &sLine_in)
 {
-    const OString sLineTrim = sLine_in.trim();
-    if (sLineTrim.startsWith("[") && sLineTrim.endsWith("]"))
-    {
-        sGroup_out = getBracketedContent(sLineTrim).trim();
-        return true;
-    }
-    return false;
+    return lcl_isNextGroup(sGroup_out, sLine_in.trim());
 }
 
 void LngParser::ReadLine(const OString &rLine_in,
@@ -151,7 +143,7 @@ void LngParser::ReadLine(const OString &rLine_in,
     }
 }
 
-bool LngParser::Merge(
+void LngParser::Merge(
     const OString &rPOFile,
     const OString &rDestinationFile,
     const OString &rLanguage )
@@ -168,19 +160,10 @@ bool LngParser::Merge(
     OString sGroup;
 
     // seek to next group
-    while ( nPos < pLines->size() && !bGroup )
-    {
-        OString sLine( *(*pLines)[ nPos ] );
-        sLine = sLine.trim();
-        if ( sLine.startsWith("[") && sLine.endsWith("]") )
-        {
-            sGroup = getBracketedContent(sLine).trim();
-            bGroup = true;
-        }
-        nPos ++;
-    }
+    while ( nPos < mvLines.size() && !bGroup )
+        bGroup = lcl_isNextGroup(sGroup, mvLines[nPos++].trim());
 
-    while ( nPos < pLines->size()) {
+    while ( nPos < mvLines.size()) {
         OStringHashMap Text;
         OString sID( sGroup );
         std::size_t nLastLangPos = 0;
@@ -193,13 +176,11 @@ bool LngParser::Merge(
 
         OString sLanguagesDone;
 
-        while ( nPos < pLines->size() && !bGroup )
+        while ( nPos < mvLines.size() && !bGroup )
         {
-            OString sLine( *(*pLines)[ nPos ] );
-            sLine = sLine.trim();
-            if ( sLine.startsWith("[") && sLine.endsWith("]") )
+            const OString sLine{ mvLines[nPos].trim() };
+            if ( lcl_isNextGroup(sGroup, sLine) )
             {
-                sGroup = getBracketedContent(sLine).trim();
                 bGroup = true;
                 nPos ++;
                 sLanguagesDone = "";
@@ -216,33 +197,26 @@ bool LngParser::Merge(
                 {
                     sLang = sLang.trim();
 
-                    OString sSearch( ";" );
-                    sSearch += sLang;
-                    sSearch += ";";
+                    OString sSearch{ ";" + sLang + ";" };
 
-                    if (( sLanguagesDone.indexOf( sSearch ) != -1 )) {
-                        LngLineList::iterator it = pLines->begin();
-                        std::advance( it, nPos );
-                        pLines->erase( it );
+                    if ( sLanguagesDone.indexOf( sSearch ) != -1 ) {
+                        mvLines.erase( mvLines.begin() + nPos );
                     }
                     if( pEntrys )
                     {
                         if( !sLang.isEmpty() )
                         {
                             OString sNewText;
-                            pEntrys->GetText( sNewText, StringType::Text, sLang, true );
+                            pEntrys->GetText( sNewText, sLang, true );
                             if( sLang == "qtz" )
                                 continue;
 
                             if ( !sNewText.isEmpty()) {
-                                OString *pLine = (*pLines)[ nPos ];
-
-                                OString sText1( sLang );
-                                sText1 += " = \"";
-                                // escape quotes, unescape double escaped quotes fdo#56648
-                                sText1 += sNewText.replaceAll("\"","\\\"").replaceAll("\\\\\"","\\\"");
-                                sText1 += "\"";
-                                *pLine = sText1;
+                                mvLines[ nPos ] = sLang
+                                    + " = \""
+                                    // escape quotes, unescape double escaped quotes fdo#56648
+                                    + sNewText.replaceAll("\"","\\\"").replaceAll("\\\\\"","\\\"")
+                                    + "\"";
                                 Text[ sLang ] = sNewText;
                             }
                         }
@@ -268,27 +242,24 @@ bool LngParser::Merge(
                 {
 
                     OString sNewText;
-                    pEntrys->GetText( sNewText, StringType::Text, sCur, true );
+                    pEntrys->GetText( sNewText, sCur, true );
                     if( sCur == "qtz" )
                         continue;
                     if ( !sNewText.isEmpty() && sCur != "x-comment")
                     {
-                        OString sLine;
-                        sLine += sCur;
-                        sLine += " = \"";
-                        // escape quotes, unescape double escaped quotes fdo#56648
-                        sLine += sNewText.replaceAll("\"","\\\"").replaceAll("\\\\\"","\\\"");
-                        sLine += "\"";
+                        const OString sLine { sCur
+                            + " = \""
+                            // escape quotes, unescape double escaped quotes fdo#56648
+                            + sNewText.replaceAll("\"","\\\"").replaceAll("\\\\\"","\\\"")
+                            + "\"" };
 
                         nLastLangPos++;
                         nPos++;
 
-                        if ( nLastLangPos < pLines->size() ) {
-                            LngLineList::iterator it = pLines->begin();
-                            std::advance( it, nLastLangPos );
-                            pLines->insert( it, new OString(sLine) );
+                        if ( nLastLangPos < mvLines.size() ) {
+                            mvLines.insert( mvLines.begin() + nLastLangPos, sLine );
                         } else {
-                            pLines->push_back( new OString(sLine) );
+                            mvLines.push_back( sLine );
                         }
                     }
                 }
@@ -296,11 +267,10 @@ bool LngParser::Merge(
         }
     }
 
-    for ( size_t i = 0; i < pLines->size(); ++i )
-        aDestination << *(*pLines)[i] << '\n';
+    for ( size_t i = 0; i < mvLines.size(); ++i )
+        aDestination << mvLines[i] << '\n';
 
     aDestination.close();
-    return true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

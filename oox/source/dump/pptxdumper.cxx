@@ -17,18 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/dump/pptxdumper.hxx"
+#include <oox/dump/pptxdumper.hxx>
 
-#include "oox/dump/oledumper.hxx"
-#include "oox/dump/xlsbdumper.hxx"
-#include "oox/helper/zipstorage.hxx"
-#include "oox/ole/olestorage.hxx"
+#include <com/sun/star/io/XInputStream.hpp>
+#include <oox/dump/oledumper.hxx>
+#include <oox/dump/xlsbdumper.hxx>
+#include <oox/helper/zipstorage.hxx>
+#include <oox/ole/olestorage.hxx>
 
-#if OOX_INCLUDE_DUMPER
+#ifdef DBG_UTIL
 
-namespace oox {
-namespace dump {
-namespace pptx {
+namespace oox::dump::pptx {
 
 using namespace ::com::sun::star::io;
 //using namespace ::com::sun::star::lang;
@@ -81,17 +80,17 @@ void RootStorageObject::implDumpStream( const Reference< XInputStream >& rxStrm,
     {
         if( rStrgPath == "ppt" && rStrmName == "vbaProject.bin" )
         {
-            StorageRef xStrg( new ::oox::ole::OleStorage( getContext(), rxStrm, false ) );
+            StorageRef xStrg = std::make_shared<::oox::ole::OleStorage>( getContext(), rxStrm, false );
             VbaProjectStorageObject( *this, xStrg, rSysFileName ).dump();
         }
         else if ( rStrgPath == "ppt/embeddings" )
         {
-            StorageRef xStrg( new ::oox::ole::OleStorage( getContext(), rxStrm, false ) );
+            StorageRef xStrg = std::make_shared<::oox::ole::OleStorage>( getContext(), rxStrm, false );
             OleStorageObject( *this, xStrg, rSysFileName ).dump();
         }
         else if ( rStrgPath == "ppt/activeX" )
         {
-            StorageRef xStrg( new ::oox::ole::OleStorage( getContext(), rxStrm, true ) );
+            StorageRef xStrg = std::make_shared<::oox::ole::OleStorage>( getContext(), rxStrm, true );
             ActiveXStorageObject( *this, xStrg, rSysFileName ).dump();
         }
         else
@@ -105,7 +104,7 @@ void RootStorageObject::implDumpStream( const Reference< XInputStream >& rxStrm,
 
 Dumper::Dumper( const FilterBase& rFilter )
 {
-    ConfigRef xCfg( new Config( DUMP_PPTX_CONFIG_ENVVAR, rFilter ) );
+    ConfigRef xCfg = std::make_shared<Config>( DUMP_PPTX_CONFIG_ENVVAR, rFilter );
     DumperBase::construct( xCfg );
 }
 
@@ -113,8 +112,8 @@ Dumper::Dumper( const Reference< XComponentContext >& rxContext, const Reference
 {
     if( rxContext.is() && rxInStrm.is() )
     {
-        StorageRef xStrg( new ZipStorage( rxContext, rxInStrm ) );
-        ConfigRef xCfg( new Config( DUMP_PPTX_CONFIG_ENVVAR, rxContext, xStrg, rSysFileName ) );
+        StorageRef xStrg = std::make_shared<ZipStorage>( rxContext, rxInStrm );
+        ConfigRef xCfg = std::make_shared<Config>( DUMP_PPTX_CONFIG_ENVVAR, rxContext, xStrg, rSysFileName );
         DumperBase::construct( xCfg );
     }
 }
@@ -124,9 +123,7 @@ void Dumper::implDump()
     RootStorageObject( *this ).dump();
 }
 
-} // namespace pptx
-} // namespace dump
-} // namespace oox
+} // namespace oox::dump::pptx
 
 #endif
 

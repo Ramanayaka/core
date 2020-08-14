@@ -17,33 +17,37 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "comphelper/anytostring.hxx"
+#include <comphelper/anytostring.hxx>
 #include <comphelper/sequenceashashmap.hxx>
-#include "cppuhelper/exc_hlp.hxx"
-#include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <tools/multisel.hxx>
+#include <tools/diagnose_ex.h>
 
+#include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/drawing/XMasterPagesSupplier.hpp>
 #include <com/sun/star/drawing/XDrawPages.hpp>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/drawing/XMasterPageTarget.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/io/XInputStream.hpp>
+#include <com/sun/star/text/XTextField.hpp>
 #include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/xml/sax/XFastSAXSerializable.hpp>
-#include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
-#include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/presentation/XPresentationPage.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
 
-#include "oox/drawingml/theme.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
-#include "oox/drawingml/themefragmenthandler.hxx"
-#include "drawingml/textliststylecontext.hxx"
+#include <oox/drawingml/theme.hxx>
+#include <oox/drawingml/drawingmltypes.hxx>
+#include <oox/drawingml/themefragmenthandler.hxx>
+#include <drawingml/textliststylecontext.hxx>
 #include <oox/helper/attributelist.hxx>
-#include "oox/ppt/pptshape.hxx"
-#include "oox/ppt/presentationfragmenthandler.hxx"
-#include "oox/ppt/slidefragmenthandler.hxx"
-#include "oox/ppt/layoutfragmenthandler.hxx"
-#include "oox/ppt/pptimport.hxx"
+#include <oox/ole/olestorage.hxx>
+#include <oox/ole/vbaproject.hxx>
+#include <oox/ppt/pptshape.hxx>
+#include <oox/ppt/presentationfragmenthandler.hxx>
+#include <oox/ppt/slidefragmenthandler.hxx>
+#include <oox/ppt/layoutfragmenthandler.hxx>
+#include <oox/ppt/pptimport.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
@@ -59,20 +63,35 @@ using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::presentation;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-PresentationFragmentHandler::PresentationFragmentHandler( XmlFilterBase& rFilter, const OUString& rFragmentPath ) throw()
-: FragmentHandler2( rFilter, rFragmentPath )
-, mpTextListStyle( new TextListStyle )
-, mbCommentAuthorsRead(false)
+static std::map<PredefinedClrSchemeId, sal_Int32> PredefinedClrTokens =
 {
-    TextParagraphPropertiesVector& rParagraphDefaulsVector( mpTextListStyle->getListStyle() );
-    TextParagraphPropertiesVector::iterator aParagraphDefaultIter( rParagraphDefaulsVector.begin() );
-    while( aParagraphDefaultIter != rParagraphDefaulsVector.end() )
+    //{ dk1, XML_dk1 },
+    //{ lt1, XML_lt1 },
+    { dk2, XML_dk2 },
+    { lt2, XML_lt2 },
+    { accent1, XML_accent1 },
+    { accent2, XML_accent2 },
+    { accent3, XML_accent3 },
+    { accent4, XML_accent4 },
+    { accent5, XML_accent5 },
+    { accent6, XML_accent6 },
+    { hlink, XML_hlink },
+    { folHlink, XML_folHlink }
+};
+
+PresentationFragmentHandler::PresentationFragmentHandler(XmlFilterBase& rFilter, const OUString& rFragmentPath)
+    : FragmentHandler2( rFilter, rFragmentPath )
+    , mpTextListStyle( std::make_shared<TextListStyle>() )
+    , mbCommentAuthorsRead(false)
+{
+    TextParagraphPropertiesVector& rParagraphDefaultsVector( mpTextListStyle->getListStyle() );
+    for (auto const& elem : rParagraphDefaultsVector)
     {
         // ppt is having zero bottom margin per default, whereas OOo is 0,5cm,
         // so this attribute needs to be set always
-        (*aParagraphDefaultIter++)->getParaBottomMargin() = TextSpacing( 0 );
+        elem->getParaBottomMargin() = TextSpacing( 0 );
     }
 }
 
@@ -80,63 +99,130 @@ PresentationFragmentHandler::~PresentationFragmentHandler() throw()
 {
 }
 
-void ResolveTextFields( XmlFilterBase& rFilter )
+static void ResolveTextFields( XmlFilterBase const & rFilter )
 {
     const oox::core::TextFieldStack& rTextFields = rFilter.getTextFieldStack();
-    if ( !rTextFields.empty() )
-    {
-        Reference< frame::XModel > xModel( rFilter.getModel() );
-        oox::core::TextFieldStack::const_iterator aIter( rTextFields.begin() );
-        while( aIter != rTextFields.end() )
-        {
-            const OUString sURL = "URL";
-            Reference< drawing::XDrawPagesSupplier > xDPS( xModel, uno::UNO_QUERY_THROW );
-            Reference< drawing::XDrawPages > xDrawPages( xDPS->getDrawPages(), uno::UNO_QUERY_THROW );
+    if ( rTextFields.empty() )
+        return;
 
-            const oox::core::TextField& rTextField( *aIter++ );
-            Reference< XPropertySet > xPropSet( rTextField.xTextField, UNO_QUERY );
-            Reference< XPropertySetInfo > xPropSetInfo( xPropSet->getPropertySetInfo() );
-            if ( xPropSetInfo->hasPropertyByName( sURL ) )
+    const Reference< frame::XModel >& xModel( rFilter.getModel() );
+    for (auto const& textField : rTextFields)
+    {
+        const OUString sURL = "URL";
+        Reference< drawing::XDrawPagesSupplier > xDPS( xModel, uno::UNO_QUERY_THROW );
+        Reference< drawing::XDrawPages > xDrawPages( xDPS->getDrawPages(), uno::UNO_SET_THROW );
+
+        const oox::core::TextField& rTextField( textField );
+        Reference< XPropertySet > xPropSet( rTextField.xTextField, UNO_QUERY );
+        Reference< XPropertySetInfo > xPropSetInfo( xPropSet->getPropertySetInfo() );
+        if ( xPropSetInfo->hasPropertyByName( sURL ) )
+        {
+            OUString aURL;
+            if ( xPropSet->getPropertyValue( sURL ) >>= aURL )
             {
-                OUString aURL;
-                if ( xPropSet->getPropertyValue( sURL ) >>= aURL )
+                const OUString sSlide = "#Slide ";
+                const OUString sNotes = "#Notes ";
+                bool bNotes = false;
+                sal_Int32 nPageNumber = 0;
+                if ( aURL.match( sSlide ) )
+                    nPageNumber = aURL.copy( sSlide.getLength() ).toInt32();
+                else if ( aURL.match( sNotes ) )
                 {
-                    const OUString sSlide = "#Slide ";
-                    const OUString sNotes = "#Notes ";
-                    bool bNotes = false;
-                    sal_Int32 nPageNumber = 0;
-                    if ( aURL.match( sSlide ) )
-                        nPageNumber = aURL.copy( sSlide.getLength() ).toInt32();
-                    else if ( aURL.match( sNotes ) )
+                    nPageNumber = aURL.copy( sNotes.getLength() ).toInt32();
+                    bNotes = true;
+                }
+                if ( nPageNumber )
+                {
+                    try
                     {
-                        nPageNumber = aURL.copy( sNotes.getLength() ).toInt32();
-                        bNotes = true;
+                        Reference< XDrawPage > xDrawPage;
+                        xDrawPages->getByIndex( nPageNumber - 1 ) >>= xDrawPage;
+                        if ( bNotes )
+                        {
+                            Reference< css::presentation::XPresentationPage > xPresentationPage( xDrawPage, UNO_QUERY_THROW );
+                            xDrawPage = xPresentationPage->getNotesPage();
+                        }
+                        Reference< container::XNamed > xNamed( xDrawPage, UNO_QUERY_THROW );
+                        aURL = "#" + xNamed->getName();
+                        xPropSet->setPropertyValue( sURL, Any( aURL ) );
+                        Reference< text::XTextContent > xContent( rTextField.xTextField);
+                        Reference< text::XTextRange > xTextRange = rTextField.xTextCursor;
+                        rTextField.xText->insertTextContent( xTextRange, xContent, true );
                     }
-                    if ( nPageNumber )
+                    catch( uno::Exception& )
                     {
-                        try
-                        {
-                            Reference< XDrawPage > xDrawPage;
-                            xDrawPages->getByIndex( nPageNumber - 1 ) >>= xDrawPage;
-                            if ( bNotes )
-                            {
-                                Reference< css::presentation::XPresentationPage > xPresentationPage( xDrawPage, UNO_QUERY_THROW );
-                                xDrawPage = xPresentationPage->getNotesPage();
-                            }
-                            Reference< container::XNamed > xNamed( xDrawPage, UNO_QUERY_THROW );
-                            aURL = "#" + xNamed->getName();
-                            xPropSet->setPropertyValue( sURL, Any( aURL ) );
-                            Reference< text::XTextContent > xContent( rTextField.xTextField, UNO_QUERY);
-                            Reference< text::XTextRange > xTextRange( rTextField.xTextCursor, UNO_QUERY );
-                            rTextField.xText->insertTextContent( xTextRange, xContent, true );
-                        }
-                        catch( uno::Exception& )
-                        {
-                        }
                     }
                 }
             }
         }
+    }
+}
+
+void PresentationFragmentHandler::saveThemeToGrabBag(const oox::drawingml::ThemePtr& pThemePtr,
+                                                     sal_Int32 nThemeIdx)
+{
+    if (!pThemePtr)
+        return;
+
+    try
+    {
+        uno::Reference<beans::XPropertySet> xDocProps(getFilter().getModel(), uno::UNO_QUERY);
+        if (xDocProps.is())
+        {
+            uno::Reference<beans::XPropertySetInfo> xPropsInfo = xDocProps->getPropertySetInfo();
+
+            const OUString aGrabBagPropName = "InteropGrabBag";
+            if (xPropsInfo.is() && xPropsInfo->hasPropertyByName(aGrabBagPropName))
+            {
+                // get existing grab bag
+                comphelper::SequenceAsHashMap aGrabBag(xDocProps->getPropertyValue(aGrabBagPropName));
+
+                uno::Sequence<beans::PropertyValue> aTheme(2);
+                comphelper::SequenceAsHashMap aThemesHashMap;
+
+                // create current theme
+                uno::Sequence<beans::PropertyValue> aCurrentTheme(PredefinedClrSchemeId::Count);
+
+                ClrScheme rClrScheme = pThemePtr->getClrScheme();
+                for (int nId = PredefinedClrSchemeId::dk2; nId != PredefinedClrSchemeId::Count; nId++)
+                {
+                    sal_uInt32 nToken = PredefinedClrTokens[static_cast<PredefinedClrSchemeId>(nId)];
+                    const OUString& sName = PredefinedClrNames[static_cast<PredefinedClrSchemeId>(nId)];
+                    ::Color nColor;
+
+                    rClrScheme.getColor(nToken, nColor);
+                    const uno::Any& rColor = uno::makeAny(nColor);
+
+                    aCurrentTheme[nId].Name = sName;
+                    aCurrentTheme[nId].Value = rColor;
+                }
+
+
+                // add new theme to the sequence
+                // Export code uses the master slide's index to find the right theme
+                // so use the same index in the grabbag.
+                aTheme[0].Name = "ppt/theme/theme" + OUString::number(nThemeIdx) + ".xml";
+                const uno::Any& rCurrentTheme = makeAny(aCurrentTheme);
+                aTheme[0].Value = rCurrentTheme;
+
+                // store DOM fragment for SmartArt re-generation
+                aTheme[1].Name = "OOXTheme";
+                const uno::Any& rOOXTheme = makeAny(pThemePtr->getFragment());
+                aTheme[1].Value = rOOXTheme;
+
+                aThemesHashMap << aTheme;
+
+                // put the new items
+                aGrabBag.update(aThemesHashMap);
+
+                // put it back to the document
+                xDocProps->setPropertyValue(aGrabBagPropName, uno::Any(aGrabBag.getAsConstPropertyValueList()));
+            }
+        }
+    }
+    catch (const uno::Exception&)
+    {
+        SAL_WARN("oox", "oox::ppt::PresentationFragmentHandler::saveThemeToGrabBag, Failed to save grab bag");
     }
 }
 
@@ -149,7 +235,7 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
 
     // importing slide pages and its corresponding notes page
     Reference< drawing::XDrawPagesSupplier > xDPS( xModel, uno::UNO_QUERY_THROW );
-    Reference< drawing::XDrawPages > xDrawPages( xDPS->getDrawPages(), uno::UNO_QUERY_THROW );
+    Reference< drawing::XDrawPages > xDrawPages( xDPS->getDrawPages(), uno::UNO_SET_THROW );
 
     try {
 
@@ -162,8 +248,8 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
         if( !aSlideFragmentPath.isEmpty() )
         {
             SlidePersistPtr pMasterPersistPtr;
-            SlidePersistPtr pSlidePersistPtr( new SlidePersist( rFilter, false, false, xSlide,
-                                ShapePtr( new PPTShape( Slide, "com.sun.star.drawing.GroupShape" ) ), mpTextListStyle ) );
+            SlidePersistPtr pSlidePersistPtr = std::make_shared<SlidePersist>( rFilter, false, false, xSlide,
+                                std::make_shared<PPTShape>( Slide, "com.sun.star.drawing.GroupShape" ), mpTextListStyle );
 
             FragmentHandlerRef xSlideFragmentHandler( new SlideFragmentHandler( rFilter, aSlideFragmentPath, pSlidePersistPtr, Slide ) );
 
@@ -179,30 +265,35 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
                 {
                     // check if the corresponding masterpage+layout has already been imported
                     std::vector< SlidePersistPtr >& rMasterPages( rFilter.getMasterPages() );
-                    std::vector< SlidePersistPtr >::iterator aIter( rMasterPages.begin() );
-                    while( aIter != rMasterPages.end() )
+                    for (auto const& masterPage : rMasterPages)
                     {
-                        if ( ( (*aIter)->getPath() == aMasterFragmentPath ) && ( (*aIter)->getLayoutPath() == aLayoutFragmentPath ) )
+                        if ( ( masterPage->getPath() == aMasterFragmentPath ) && ( masterPage->getLayoutPath() == aLayoutFragmentPath ) )
                         {
-                            pMasterPersistPtr = *aIter;
+                            pMasterPersistPtr = masterPage;
                             break;
                         }
-                        ++aIter;
                     }
 
-                    if ( !pMasterPersistPtr.get() )
+                    if ( !pMasterPersistPtr )
                     {   // masterpersist not found, we have to load it
                         Reference< drawing::XDrawPage > xMasterPage;
                         Reference< drawing::XMasterPagesSupplier > xMPS( xModel, uno::UNO_QUERY_THROW );
-                        Reference< drawing::XDrawPages > xMasterPages( xMPS->getMasterPages(), uno::UNO_QUERY_THROW );
+                        Reference< drawing::XDrawPages > xMasterPages( xMPS->getMasterPages(), uno::UNO_SET_THROW );
 
+                        sal_Int32 nIndex;
                         if( rFilter.getMasterPages().empty() )
-                            xMasterPages->getByIndex( 0 ) >>= xMasterPage;
+                        {
+                            nIndex = 0;
+                            xMasterPages->getByIndex( nIndex ) >>= xMasterPage;
+                        }
                         else
-                            xMasterPage = xMasterPages->insertNewByIndex( xMasterPages->getCount() );
+                        {
+                            nIndex = xMasterPages->getCount();
+                            xMasterPage = xMasterPages->insertNewByIndex( nIndex );
+                        }
 
                         pMasterPersistPtr = std::make_shared<SlidePersist>( rFilter, true, false, xMasterPage,
-                            ShapePtr( new PPTShape( Master, "com.sun.star.drawing.GroupShape" ) ), mpTextListStyle );
+                            std::make_shared<PPTShape>( Master, "com.sun.star.drawing.GroupShape" ), mpTextListStyle );
                         pMasterPersistPtr->setLayoutPath( aLayoutFragmentPath );
                         rFilter.getMasterPages().push_back( pMasterPersistPtr );
                         rFilter.setActualSlidePersist( pMasterPersistPtr );
@@ -216,7 +307,7 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
                             std::map< OUString, oox::drawingml::ThemePtr >::iterator aIter2( rThemes.find( aThemeFragmentPath ) );
                             if( aIter2 == rThemes.end() )
                             {
-                                oox::drawingml::ThemePtr pThemePtr( new oox::drawingml::Theme() );
+                                oox::drawingml::ThemePtr pThemePtr = std::make_shared<oox::drawingml::Theme>();
                                 pMasterPersistPtr->setTheme( pThemePtr );
                                 Reference<xml::dom::XDocument> xDoc=
                                     rFilter.importFragment(aThemeFragmentPath);
@@ -229,6 +320,7 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
                                         UNO_QUERY_THROW));
                                 rThemes[ aThemeFragmentPath ] = pThemePtr;
                                 pThemePtr->setFragment(xDoc);
+                                saveThemeToGrabBag(pThemePtr, nIndex + 1);
                             }
                             else
                             {
@@ -244,7 +336,7 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
             }
 
             // importing slide page
-            if (pMasterPersistPtr.get()) {
+            if (pMasterPersistPtr) {
                 pSlidePersistPtr->setMasterPersist( pMasterPersistPtr );
                 pSlidePersistPtr->setTheme( pMasterPersistPtr->getTheme() );
                 Reference< drawing::XMasterPageTarget > xMasterPageTarget( pSlidePersistPtr->getPage(), UNO_QUERY );
@@ -269,8 +361,8 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
                         Reference< XDrawPage > xNotesPage( xPresentationPage->getNotesPage() );
                         if ( xNotesPage.is() )
                         {
-                            SlidePersistPtr pNotesPersistPtr( new SlidePersist( rFilter, false, true, xNotesPage,
-                                ShapePtr( new PPTShape( Slide, "com.sun.star.drawing.GroupShape" ) ), mpTextListStyle ) );
+                            SlidePersistPtr pNotesPersistPtr = std::make_shared<SlidePersist>( rFilter, false, true, xNotesPage,
+                                std::make_shared<PPTShape>( Slide, "com.sun.star.drawing.GroupShape" ), mpTextListStyle );
                             FragmentHandlerRef xNotesFragmentHandler( new SlideFragmentHandler( getFilter(), aNotesFragmentPath, pNotesPersistPtr, Slide ) );
                             rFilter.getNotesPages().push_back( pNotesPersistPtr );
                             rFilter.setActualSlidePersist( pNotesPersistPtr );
@@ -286,18 +378,16 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
             {
                 // Comments are present and commentAuthors.xml has still not been read
                 mbCommentAuthorsRead = true;
-                OUString aCommentAuthorsFragmentPath = "ppt/commentAuthors.xml";
                 Reference< XPresentationPage > xPresentationPage( xSlide, UNO_QUERY );
                 Reference< XDrawPage > xCommentAuthorsPage( xPresentationPage->getNotesPage() );
-                SlidePersistPtr pCommentAuthorsPersistPtr(
-                    new SlidePersist( rFilter, false, true, xCommentAuthorsPage,
-                                      ShapePtr(
-                                          new PPTShape(
-                                              Slide, "com.sun.star.drawing.GroupShape" ) ),
-                                      mpTextListStyle ) );
+                SlidePersistPtr pCommentAuthorsPersistPtr =
+                    std::make_shared<SlidePersist>( rFilter, false, true, xCommentAuthorsPage,
+                                      std::make_shared<PPTShape>(
+                                              Slide, "com.sun.star.drawing.GroupShape" ),
+                                      mpTextListStyle );
                 FragmentHandlerRef xCommentAuthorsFragmentHandler(
                     new SlideFragmentHandler( getFilter(),
-                                              aCommentAuthorsFragmentPath,
+                                              "ppt/commentAuthors.xml",
                                               pCommentAuthorsPersistPtr,
                                               Slide ) );
 
@@ -308,13 +398,12 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
             {
                 Reference< XPresentationPage > xPresentationPage( xSlide, UNO_QUERY );
                 Reference< XDrawPage > xCommentsPage( xPresentationPage->getNotesPage() );
-                SlidePersistPtr pCommentsPersistPtr(
-                    new SlidePersist(
+                SlidePersistPtr pCommentsPersistPtr =
+                    std::make_shared<SlidePersist>(
                         rFilter, false, true, xCommentsPage,
-                        ShapePtr(
-                            new PPTShape(
-                                Slide, "com.sun.star.drawing.GroupShape" ) ),
-                        mpTextListStyle ) );
+                        std::make_shared<PPTShape>(
+                                Slide, "com.sun.star.drawing.GroupShape" ),
+                        mpTextListStyle );
 
                 FragmentHandlerRef xCommentsFragmentHandler(
                     new SlideFragmentHandler(
@@ -330,6 +419,7 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
                     //set comment chars for last comment on slide
                     SlideFragmentHandler* comment_handler =
                         dynamic_cast<SlideFragmentHandler*>(xCommentsFragmentHandler.get());
+                    assert(comment_handler);
                     // some comments have no text -> set empty string as text to avoid
                     // crash (back() on empty vector is undefined) and losing other
                     // comment data that might be there (author, position, timestamp etc.)
@@ -363,8 +453,7 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
     }
     catch( uno::Exception& )
     {
-        SAL_WARN( "oox", "oox::ppt::PresentationFragmentHandler::EndDocument(), "
-                  "exception caught: " << comphelper::anyToString( cppu::getCaughtException() ) );
+        TOOLS_WARN_EXCEPTION( "oox", "oox::ppt::PresentationFragmentHandler::EndDocument()" );
     }
 }
 
@@ -392,10 +481,8 @@ void PresentationFragmentHandler::finalizeImport()
     }
 
     StringRangeEnumerator aRangeEnumerator( aPageRange, 0, nPageCount - 1 );
-    StringRangeEnumerator::Iterator aIter = aRangeEnumerator.begin();
-    StringRangeEnumerator::Iterator aEnd  = aRangeEnumerator.end();
-    if(aIter!=aEnd) {
-
+    if (aRangeEnumerator.size())
+    {
         // todo: localized progress bar text
         const Reference< task::XStatusIndicator >& rxStatusIndicator( getFilter().getStatusIndicator() );
         if ( rxStatusIndicator.is() )
@@ -404,25 +491,35 @@ void PresentationFragmentHandler::finalizeImport()
         try
         {
             int nPagesImported = 0;
-            while (aIter!=aEnd)
+            for (sal_Int32 elem : aRangeEnumerator)
             {
                 if ( rxStatusIndicator.is() )
                     rxStatusIndicator->setValue((nPagesImported * 10000) / aRangeEnumerator.size());
 
-                importSlide(*aIter, !nPagesImported, bImportNotesPages);
+                importSlide(elem, !nPagesImported, bImportNotesPages);
                 nPagesImported++;
-                ++aIter;
             }
             ResolveTextFields( rFilter );
         }
         catch( uno::Exception& )
         {
-            SAL_WARN( "oox", "oox::ppt::PresentationFragmentHandler::finalizeImport(), "
-                        "exception caught: " << comphelper::anyToString( cppu::getCaughtException() ) );
+            TOOLS_WARN_EXCEPTION( "oox", "oox::ppt::PresentationFragmentHandler::finalizeImport()" );
         }
         // todo error handling;
         if ( rxStatusIndicator.is() )
             rxStatusIndicator->end();
+    }
+
+    // open the VBA project storage
+    OUString aVbaFragmentPath = getFragmentPathFromFirstType(CREATE_MSOFFICE_RELATION_TYPE("vbaProject"));
+    if (!aVbaFragmentPath.isEmpty())
+    {
+        uno::Reference<io::XInputStream> xInStrm = getFilter().openInputStream(aVbaFragmentPath);
+        if (xInStrm.is())
+        {
+            StorageRef xPrjStrg = std::make_shared<oox::ole::OleStorage>(getFilter().getComponentContext(), xInStrm, false);
+            getFilter().getVbaProject().importVbaProject(*xPrjStrg);
+        }
     }
 }
 
@@ -464,15 +561,14 @@ void PresentationFragmentHandler::importSlide( const FragmentHandlerRef& rxSlide
 {
     Reference< drawing::XDrawPage > xSlide( rSlidePersistPtr->getPage() );
     SlidePersistPtr pMasterPersistPtr( rSlidePersistPtr->getMasterPersist() );
-    if ( pMasterPersistPtr.get() )
+    if ( pMasterPersistPtr )
     {
         // Setting "Layout" property adds extra title and outliner preset shapes to the master slide
         Reference< drawing::XDrawPage > xMasterSlide(pMasterPersistPtr->getPage());
         const int nCount = xMasterSlide->getCount();
 
-        const OUString sLayout = "Layout";
         uno::Reference< beans::XPropertySet > xSet( xSlide, uno::UNO_QUERY_THROW );
-        xSet->setPropertyValue( sLayout, Any( pMasterPersistPtr->getLayoutFromValueToken() ) );
+        xSet->setPropertyValue( "Layout", Any( pMasterPersistPtr->getLayoutFromValueToken() ) );
 
         while( nCount < xMasterSlide->getCount())
         {
@@ -514,6 +610,6 @@ void PresentationFragmentHandler::importSlide( const FragmentHandlerRef& rxSlide
     getFilter().importFragment( rxSlideFragmentHandler );
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

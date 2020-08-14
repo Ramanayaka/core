@@ -21,6 +21,8 @@
 #define  DECLARE_FN_POINTERS 1
 #include "EApi.h"
 static const char *eBookLibNames[] = {
+    "libebook-1.2.so.20", // evolution-data-server 3.33.2+
+    "libebook-1.2.so.19", // evolution-data-server 3.24+
     "libebook-1.2.so.16",
     "libebook-1.2.so.15",
     "libebook-1.2.so.14", // bumped again (evolution-3.6)
@@ -33,16 +35,21 @@ static const char *eBookLibNames[] = {
     "libebook.so.8"       // evolution-2.0
 };
 
-typedef void (*SymbolFunc) (void);
+typedef void (*SymbolFunc) ();
 
 #define SYM_MAP(a) { #a, reinterpret_cast<SymbolFunc *>(&a) }
+
+namespace {
+
 struct ApiMap
 {
     const char *sym_name;
     SymbolFunc *ref_value;
 };
 
-static const ApiMap aCommonApiMap[] =
+}
+
+const ApiMap aCommonApiMap[] =
 {
     SYM_MAP( eds_check_version ),
     SYM_MAP( e_contact_field_name ),
@@ -65,7 +72,7 @@ static const ApiMap aCommonApiMap[] =
 };
 
 //< 3.6 api
-static const ApiMap aOldApiMap[] =
+const ApiMap aOldApiMap[] =
 {
     SYM_MAP( e_book_get_addressbooks ),
     SYM_MAP( e_book_get_uri ),
@@ -78,7 +85,7 @@ static const ApiMap aOldApiMap[] =
 };
 
 //>= 3.6 api
-static const ApiMap aNewApiMap[] =
+const ApiMap aNewApiMap[] =
 {
     SYM_MAP( e_source_registry_list_sources ),
     SYM_MAP( e_source_registry_new_sync ),
@@ -95,13 +102,13 @@ static const ApiMap aNewApiMap[] =
 };
 
 //== indirect read access (3.6 only)
-static const ApiMap aClientApiMap36[] =
+const ApiMap aClientApiMap36[] =
 {
     SYM_MAP( e_book_client_new )
 };
 
 //>= direct read access API (>= 3.8)
-static const ApiMap aClientApiMap38[] =
+const ApiMap aClientApiMap38[] =
 {
     SYM_MAP( e_book_client_connect_direct_sync )
 };
@@ -172,9 +179,7 @@ bool EApiInit()
 
 ESourceRegistry *get_e_source_registry()
 {
-    static ESourceRegistry *theInstance;
-    if (!theInstance)
-        theInstance = e_source_registry_new_sync(nullptr, nullptr);
+    static ESourceRegistry *theInstance = e_source_registry_new_sync(nullptr, nullptr);
     return theInstance;
 }
 

@@ -18,7 +18,6 @@
  */
 
 
-#include "osl/thread.h"
 #include "otherjre.hxx"
 
 using namespace std;
@@ -44,7 +43,7 @@ char const* const* OtherInfo::getJavaExePaths(int * size)
         "jre/bin/java"
 #endif
     };
-        *size = SAL_N_ELEMENTS (ar);
+    *size = SAL_N_ELEMENTS (ar);
     return ar;
 }
 

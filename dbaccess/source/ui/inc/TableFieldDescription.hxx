@@ -26,6 +26,7 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <rtl/ref.hxx>
 #include <vcl/vclptr.hxx>
+#include <vcl/window.hxx>
 
 #include <salhelper/simplereferenceobject.hxx>
 
@@ -109,21 +110,21 @@ namespace dbaui
         sal_Int32 GetFunctionType() const { return m_eFunctionType; }
         sal_uInt16 GetColumnId() const { return m_nColumnId;}
 
-        bool isAggreateFunction() const { return (m_eFunctionType & FKT_AGGREGATE) == FKT_AGGREGATE; }
+        bool isAggregateFunction() const { return (m_eFunctionType & FKT_AGGREGATE) == FKT_AGGREGATE; }
         bool isOtherFunction() const { return (m_eFunctionType & FKT_OTHER) == FKT_OTHER; }
         bool isNumeric() const { return (m_eFunctionType & FKT_NUMERIC) == FKT_NUMERIC; }
         bool isNoneFunction() const { return m_eFunctionType == FKT_NONE; }
         bool isCondition() const { return (m_eFunctionType & FKT_CONDITION) == FKT_CONDITION;  }
-        bool isNumericOrAggreateFunction() const { return isNumeric() || isAggreateFunction(); }
+        bool isNumericOrAggregateFunction() const { return isNumeric() || isAggregateFunction(); }
 
         bool HasCriteria() const
         {
-            std::vector< OUString>::const_iterator aIter = m_aCriteria.begin();
-            std::vector< OUString>::const_iterator aEnd = m_aCriteria.end();
-            for(;aIter != aEnd;++aIter)
-                if(!aIter->isEmpty())
-                    break;
-            return aIter != aEnd;
+            for (auto const& criteria : m_aCriteria)
+            {
+                if(!criteria.isEmpty())
+                    return true;
+            }
+            return false;
         }
 
         const std::vector< OUString>&  GetCriteria() const { return m_aCriteria; }

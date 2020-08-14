@@ -18,16 +18,18 @@
  */
 #include "vbadocumentproperties.hxx"
 #include <cppuhelper/implbase.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/XPropertyContainer.hpp>
 #include <ooo/vba/word/WdBuiltInProperty.hpp>
 #include <ooo/vba/office/MsoDocProperties.hpp>
+#include <tools/diagnose_ex.h>
 #include <memory>
 #include "wordvbahelper.hxx"
-#include "fesh.hxx"
-#include "docsh.hxx"
+#include <fesh.hxx>
+#include <docsh.hxx>
 using namespace ::ooo::vba;
 using namespace css;
 
@@ -58,6 +60,8 @@ static sal_Int8 lcl_toMSOPropType( const uno::Type& aType )
     }
     return msoType;
 }
+
+namespace {
 
 class PropertGetSetHelper
 {
@@ -300,7 +304,7 @@ public:
         }
         catch (const uno::Exception&)
         {
-            SAL_WARN("sw", "Got exception");
+            TOOLS_WARN_EXCEPTION("sw.vba", "");
         }
         uno::Any aReturn;
         if ( rPropName == "LineCount" ) // special processing needed
@@ -319,18 +323,12 @@ public:
             uno::Sequence< beans::NamedValue > const stats(
                 m_xDocProps->getDocumentStatistics());
 
-            sal_Int32 nLen = stats.getLength();
-            bool bFound = false;
-            for ( sal_Int32 index = 0; index < nLen && !bFound ; ++index )
-            {
-                if ( rPropName.equals( stats[ index ].Name ) )
-                {
-                    aReturn = stats[ index ].Value;
-                    bFound = true;
-                }
-            }
-            if ( !bFound )
+            auto pStat = std::find_if(stats.begin(), stats.end(),
+                [&rPropName](const beans::NamedValue& rStat) { return rPropName == rStat.Name; });
+            if (pStat == stats.end())
                 throw uno::RuntimeException(); // bad Property
+
+            aReturn = pStat->Value;
         }
         return aReturn;
     }
@@ -340,15 +338,12 @@ public:
         uno::Sequence< beans::NamedValue > stats(
                 m_xDocProps->getDocumentStatistics());
 
-        sal_Int32 nLen = stats.getLength();
-        for ( sal_Int32 index = 0; index < nLen; ++index )
+        auto pStat = std::find_if(stats.begin(), stats.end(),
+            [&rPropName](const beans::NamedValue& rStat) { return rPropName == rStat.Name; });
+        if (pStat != stats.end())
         {
-            if ( rPropName.equals( stats[ index ].Name ) )
-            {
-                stats[ index ].Value = aValue;
-                m_xDocProps->setDocumentStatistics(stats);
-                break;
-            }
+            pStat->Value = aValue;
+            m_xDocProps->setDocumentStatistics(stats);
         }
     }
 };
@@ -360,7 +355,7 @@ public:
     OUString msOOOPropName;
     std::shared_ptr< PropertGetSetHelper > mpPropGetSetHelper;
 
-    static DocPropInfo createDocPropInfo( const OUString& sDesc, const OUString& sPropName, std::shared_ptr< PropertGetSetHelper >& rHelper )
+    static DocPropInfo createDocPropInfo( const OUString& sDesc, const OUString& sPropName, std::shared_ptr< PropertGetSetHelper > const & rHelper )
     {
         DocPropInfo aItem;
         aItem.msMSODesc = sDesc;
@@ -369,31 +364,35 @@ public:
         return aItem;
     }
 
-    static DocPropInfo createDocPropInfo( const sal_Char* sDesc, const sal_Char* sPropName, std::shared_ptr< PropertGetSetHelper >& rHelper )
+    static DocPropInfo createDocPropInfo( const char* sDesc, const char* sPropName, std::shared_ptr< PropertGetSetHelper > const & rHelper )
     {
         return createDocPropInfo( OUString::createFromAscii( sDesc ), OUString::createFromAscii( sPropName ), rHelper );
     }
     uno::Any getValue()
     {
-        if ( mpPropGetSetHelper.get() )
+        if ( mpPropGetSetHelper )
             return mpPropGetSetHelper->getPropertyValue( msOOOPropName );
         return uno::Any();
     }
     void setValue( const uno::Any& rValue )
     {
-        if ( mpPropGetSetHelper.get() )
+        if ( mpPropGetSetHelper )
             mpPropGetSetHelper->setPropertyValue( msOOOPropName, rValue );
     }
     uno::Reference< beans::XPropertySet > getUserDefinedProperties()
     {
         uno::Reference< beans::XPropertySet > xProps;
-        if ( mpPropGetSetHelper.get() )
+        if ( mpPropGetSetHelper )
             return mpPropGetSetHelper->getUserDefinedProperties();
         return xProps;
     }
 };
 
+}
+
 typedef std::unordered_map< sal_Int32, DocPropInfo > MSOIndexToOODocPropInfo;
+
+namespace {
 
 class BuiltInIndexHelper
 {
@@ -402,8 +401,8 @@ class BuiltInIndexHelper
 public:
     explicit BuiltInIndexHelper( const uno::Reference< frame::XModel >& xModel )
     {
-        std::shared_ptr< PropertGetSetHelper > aStandardHelper( new BuiltinPropertyGetSetHelper( xModel ) );
-        std::shared_ptr< PropertGetSetHelper > aUsingStatsHelper( new StatisticPropertyGetSetHelper( xModel ) );
+        auto aStandardHelper = std::make_shared<BuiltinPropertyGetSetHelper>( xModel );
+        auto aUsingStatsHelper = std::make_shared<StatisticPropertyGetSetHelper>( xModel );
 
         m_docPropInfoMap[ word::WdBuiltInProperty::wdPropertyTitle ] = DocPropInfo::createDocPropInfo( "Title", "Title", aStandardHelper );
         m_docPropInfoMap[ word::WdBuiltInProperty::wdPropertySubject ] = DocPropInfo::createDocPropInfo( "Subject", "Subject", aStandardHelper );
@@ -440,7 +439,11 @@ public:
     MSOIndexToOODocPropInfo& getDocPropInfoMap() { return m_docPropInfoMap; }
 };
 
+}
+
 typedef InheritedHelperInterfaceWeakImpl< ooo::vba::XDocumentProperty > SwVbaDocumentProperty_BASE;
+
+namespace {
 
 class SwVbaBuiltInDocumentProperty : public SwVbaDocumentProperty_BASE
 {
@@ -461,7 +464,7 @@ public:
     virtual OUString SAL_CALL getLinkSource(  ) override;
     virtual void SAL_CALL setLinkSource( const OUString& LinkSource ) override;
     //XDefaultProperty
-    virtual OUString SAL_CALL getDefaultPropertyName(  ) override { return OUString("Value"); }
+    virtual OUString SAL_CALL getDefaultPropertyName(  ) override { return "Value"; }
     // XHelperInterface
     virtual OUString getServiceImplName() override;
     virtual uno::Sequence<OUString> getServiceNames() override;
@@ -483,6 +486,8 @@ public:
     virtual void SAL_CALL setType( ::sal_Int8 Type ) override;
 
 };
+
+}
 
 SwVbaCustomDocumentProperty::SwVbaCustomDocumentProperty(  const uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const DocPropInfo& rInfo ) : SwVbaBuiltInDocumentProperty( xParent, xContext, rInfo )
 {
@@ -618,18 +623,16 @@ SwVbaBuiltInDocumentProperty::setLinkSource( const OUString& /*LinkSource*/ )
 OUString
 SwVbaBuiltInDocumentProperty::getServiceImplName()
 {
-    return OUString("SwVbaBuiltinDocumentProperty");
+    return "SwVbaBuiltinDocumentProperty";
 }
 
 uno::Sequence<OUString>
 SwVbaBuiltInDocumentProperty::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.DocumentProperty";
-    }
+        "ooo.vba.word.DocumentProperty"
+    };
     return aServiceNames;
 }
 typedef ::cppu::WeakImplHelper< css::container::XIndexAccess
@@ -638,6 +641,8 @@ typedef ::cppu::WeakImplHelper< css::container::XIndexAccess
         > PropertiesImpl_BASE;
 
 typedef std::unordered_map< sal_Int32, uno::Reference< XDocumentProperty > > DocProps;
+
+namespace {
 
 class DocPropEnumeration : public ::cppu::WeakImplHelper< css::container::XEnumeration >
 {
@@ -658,7 +663,11 @@ public:
     }
 };
 
-typedef std::unordered_map< OUString, uno::Reference< XDocumentProperty >, OUStringHash > DocPropsByName;
+}
+
+typedef std::unordered_map< OUString, uno::Reference< XDocumentProperty > > DocPropsByName;
+
+namespace {
 
 class BuiltInPropertiesImpl : public PropertiesImpl_BASE
 {
@@ -704,9 +713,11 @@ protected:
     {
         uno::Sequence< OUString > aNames( getCount() );
         OUString* pName = aNames.getArray();
-        DocPropsByName::iterator it_end = mNamedDocProps.end();
-        for(  DocPropsByName::iterator it = mNamedDocProps.begin(); it != it_end; ++it, ++pName )
-           *pName = it->first;
+        for (const auto& rEntry : mNamedDocProps)
+        {
+           *pName = rEntry.first;
+           ++pName;
+        }
         return aNames;
     }
 
@@ -731,6 +742,8 @@ protected:
         return new DocPropEnumeration( mDocProps );
     }
 };
+
+}
 
 SwVbaBuiltinDocumentProperties::SwVbaBuiltinDocumentProperties( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< frame::XModel >& xModel ) : SwVbaDocumentproperties_BASE( xParent, xContext,  uno::Reference< container::XIndexAccess >( new BuiltInPropertiesImpl( xParent, xContext, xModel ) ) )
 {
@@ -768,20 +781,20 @@ SwVbaBuiltinDocumentProperties::createCollectionObject( const uno::Any& aSource 
 OUString
 SwVbaBuiltinDocumentProperties::getServiceImplName()
 {
-    return OUString("SwVbaBuiltinDocumentProperties");
+    return "SwVbaBuiltinDocumentProperties";
 }
 
 uno::Sequence<OUString>
 SwVbaBuiltinDocumentProperties::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.DocumentProperties";
-    }
+        "ooo.vba.word.DocumentProperties"
+    };
     return aServiceNames;
 }
+
+namespace {
 
 class CustomPropertiesImpl : public PropertiesImpl_BASE
 {
@@ -794,7 +807,7 @@ public:
     CustomPropertiesImpl( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< frame::XModel >& xModel ) : m_xParent( xParent ), m_xContext( xContext ), m_xModel( xModel )
     {
         // suck in the document( custom ) properties
-        mpPropGetSetHelper.reset( new CustomPropertyGetSetHelper( m_xModel ) );
+        mpPropGetSetHelper = std::make_shared<CustomPropertyGetSetHelper>( m_xModel );
         mxUserDefinedProp.set(mpPropGetSetHelper->getUserDefinedProperties(),
                 uno::UNO_SET_THROW);
     };
@@ -827,17 +840,14 @@ public:
     {
         uno::Sequence< beans::Property > aProps = mxUserDefinedProp->getPropertySetInfo()->getProperties();
         uno::Sequence< OUString > aNames( aProps.getLength() );
-        OUString* pString = aNames.getArray();
-        OUString* pEnd = ( pString + aNames.getLength() );
-        beans::Property* pProp = aProps.getArray();
-        for ( ; pString != pEnd; ++pString, ++pProp )
-            *pString = pProp->Name;
+        std::transform(aProps.begin(), aProps.end(), aNames.begin(),
+            [](const beans::Property& rProp) -> OUString { return rProp.Name; });
         return aNames;
     }
 
     virtual sal_Bool SAL_CALL hasByName( const OUString& aName ) override
     {
-        SAL_INFO("sw", "hasByName(" << aName << ") returns " << mxUserDefinedProp->getPropertySetInfo()->hasPropertyByName( aName ) );
+        SAL_INFO("sw.vba", "hasByName(" << aName << ") returns " << mxUserDefinedProp->getPropertySetInfo()->hasPropertyByName( aName ) );
         return mxUserDefinedProp->getPropertySetInfo()->hasPropertyByName( aName );
     }
 
@@ -855,13 +865,13 @@ public:
     virtual uno::Reference< container::XEnumeration > SAL_CALL createEnumeration(  ) override
     {
         // create a map of properties ( the key doesn't matter )
-        SAL_INFO("sw", "Creating an enumeration");
+        SAL_INFO("sw.vba", "Creating an enumeration");
         sal_Int32 key = 0;
         sal_Int32 nElem =  getCount();
         DocProps simpleDocPropSnapShot;
         for ( ; key < nElem; ++key )
              simpleDocPropSnapShot[ key ].set( getByIndex( key ), uno::UNO_QUERY_THROW );
-        SAL_INFO("sw", "After creating the enumeration");
+        SAL_INFO("sw.vba", "After creating the enumeration");
         return  new DocPropEnumeration( simpleDocPropSnapShot );
     }
 
@@ -873,6 +883,8 @@ public:
     }
 
 };
+
+}
 
 SwVbaCustomDocumentProperties::SwVbaCustomDocumentProperties( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< frame::XModel >& xModel ) : SwVbaBuiltinDocumentProperties( xParent, xContext, xModel )
 {
@@ -904,7 +916,7 @@ SwVbaCustomDocumentProperties::Add( const OUString& Name, sal_Bool LinkToContent
 OUString
 SwVbaCustomDocumentProperties::getServiceImplName()
 {
-    return OUString("SwVbaCustomDocumentProperties");
+    return "SwVbaCustomDocumentProperties";
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

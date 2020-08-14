@@ -35,7 +35,7 @@ class EditEngine;
     case denotes the destination position, the two parameters the
     start and the end of the moved paragraph range.
  */
-class EDITENG_DLLPUBLIC SvxEditSourceHint : public TextHint
+class SAL_DLLPUBLIC_RTTI SvxEditSourceHint : public TextHint
 {
 private:
     sal_Int32   mnStart;
@@ -49,7 +49,7 @@ public:
     sal_Int32   GetStartValue() const { return mnStart;}
     sal_Int32   GetEndValue() const { return mnEnd;}
 };
-class SvxEditSourceHintEndPara :public SvxEditSourceHint
+class SvxEditSourceHintEndPara final : public SvxEditSourceHint
 {
 public:
     SvxEditSourceHintEndPara() : SvxEditSourceHint(SfxHintId::EditSourceSelectionChanged) {}
@@ -63,11 +63,11 @@ public:
     /** Translates EditEngine notifications into broadcastable hints
 
         @param aNotify
-        Notification object send by the EditEngine.
+        Notification object sent by the EditEngine.
 
         @return the translated hint
      */
-    static ::std::unique_ptr<SfxHint> EENotification2Hint( EENotify* aNotify );
+    static ::std::unique_ptr<SfxHint> EENotification2Hint( EENotify const * aNotify );
 
     /** Calculate attribute run for EditEngines
 
@@ -87,10 +87,8 @@ public:
 
         @param nIndex
         The character index from which the range of similar attributed characters is requested
-
-        @return true, if the range has been successfully determined
      */
-     static bool GetAttributeRun( sal_Int32& nStartIndex, sal_Int32& nEndIndex, const EditEngine& rEE, sal_Int32 nPara, sal_Int32 nIndex, bool bInCell = false);
+     static void GetAttributeRun( sal_Int32& nStartIndex, sal_Int32& nEndIndex, const EditEngine& rEE, sal_Int32 nPara, sal_Int32 nIndex, bool bInCell = false);
 
     /** Convert point from edit engine to user coordinate space
 

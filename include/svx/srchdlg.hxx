@@ -19,19 +19,13 @@
 #ifndef INCLUDED_SVX_SRCHDLG_HXX
 #define INCLUDED_SVX_SRCHDLG_HXX
 
-#include <vcl/combobox.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/button.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/group.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/dialog.hxx>
 #include <sfx2/childwin.hxx>
 #include <sfx2/basedlgs.hxx>
-#include <svtools/svmedit.hxx>
+#include <svl/poolitem.hxx>
 #include <svl/srchdefs.hxx>
+#include <svl/srchitem.hxx>
 #include <svx/svxdllapi.h>
+#include <vcl/timer.hxx>
 #include <memory>
 #include <vector>
 
@@ -39,18 +33,16 @@ class SvxSearchItem;
 class SfxStyleSheetBasePool;
 class SvxJSearchOptionsPage;
 class SvxSearchController;
+class VclAbstractDialog;
 struct SearchDlg_Impl;
 enum class ModifyFlags;
 enum class TransliterationFlags;
-
 
 struct SearchAttrItem
 {
     sal_uInt16          nSlot;
     SfxPoolItem*    pItem;
 };
-
-// class SearchAttrItemList ----------------------------------------------
 
 typedef std::vector<SearchAttrItem> SrchAttrItemList;
 
@@ -77,135 +69,76 @@ public:
     void Remove(size_t nPos);
 };
 
-
-// class SvxSearchDialogWrapper ------------------------------------------
-
 enum class SearchLabel
 {
     Empty,
     End,
     Start,
     EndSheet,
-    NotFound
+    NotFound,
+    StartWrapped,
+    EndWrapped,
+    NavElementNotFound,
+    ReminderStartWrapped,
+    ReminderEndWrapped
 };
 
 class SvxSearchDialog;
-class SVX_DLLPUBLIC SvxSearchDialogWrapper : public SfxChildWindow
+class SVX_DLLPUBLIC SvxSearchDialogWrapper final : public SfxChildWindow
 {
-    VclPtr<SvxSearchDialog> dialog;
+    std::shared_ptr<SvxSearchDialog> dialog;
 public:
     SvxSearchDialogWrapper( vcl::Window*pParent, sal_uInt16 nId,
-                            SfxBindings* pBindings, SfxChildWinInfo* pInfo );
+                            SfxBindings* pBindings, SfxChildWinInfo const * pInfo );
 
     virtual ~SvxSearchDialogWrapper () override;
-    SvxSearchDialog *getDialog () { return dialog;}
+    SvxSearchDialog *getDialog () { return dialog.get();}
     static void SetSearchLabel(const SearchLabel& rSL);
     static void SetSearchLabel(const OUString& sStr);
+    static OUString GetSearchLabel();
     SFX_DECL_CHILDWINDOW_WITHID(SvxSearchDialogWrapper);
 };
 
-// class SvxSearchDialog -------------------------------------------------
-/*
-    [Description]
+/**
     In this modeless dialog the attributes for a search are configured
     and a search is started from it. Several search types
     (search, search all, replace, replace all) are possible.
 
-    [Items]
-    <SvxSearchItem><SID_ATTR_SEARCH>
-*/
+ */
 
-class SvxSearchDialog : public SfxModelessDialog
+class SVX_DLLPUBLIC SvxSearchDialog : public SfxModelessDialogController
 {
 friend class SvxSearchController;
 friend class SvxSearchDialogWrapper;
 friend class SvxJSearchOptionsDialog;
 
 public:
-    SvxSearchDialog( vcl::Window* pParent, SfxChildWindow* pChildWin, SfxBindings& rBind );
+    SvxSearchDialog(weld::Window* pParent, SfxChildWindow* pChildWin, SfxBindings& rBind );
     virtual ~SvxSearchDialog() override;
-    virtual void dispose() override;
 
-    virtual bool    Close() override;
+    virtual void    ChildWinDispose() override;
+    virtual void    Close() override;
 
     // Window
     virtual void    Activate() override;
 
     const SearchAttrItemList*   GetSearchItemList() const
-                                    { return pSearchList; }
+                                    { return pSearchList.get(); }
     const SearchAttrItemList*   GetReplaceItemList() const
-                                    { return pReplaceList; }
+                                    { return pReplaceList.get(); }
 
     TransliterationFlags        GetTransliterationFlags() const;
 
-    void SetDocWin( vcl::Window* pDocWin ) { mpDocWin = pDocWin; }
-    vcl::Window* GetDocWin() { return mpDocWin; }
-    void SetSrchFlag( bool bSuccess ) { mbSuccess = bSuccess; }
-    bool GetSrchFlag() { return mbSuccess; }
-    virtual css::uno::Reference< css::awt::XWindowPeer >
-        GetComponentInterface( bool bCreate = true ) override;
-
     void            SetSaveToModule(bool b);
 
-    void SetSearchLabel(const OUString& rStr) { m_pSearchLabel->SetText(rStr); }
+    void SetSearchLabel(const OUString& rStr);
+
+    // bring this window back to the foreground
+    void Present();
 
 private:
-    VclPtr<vcl::Window>         mpDocWin;
-    bool            mbSuccess;
-
-    VclPtr<VclFrame>       m_pSearchFrame;
-    VclPtr<ComboBox>       m_pSearchLB;
-    VclPtr<ListBox>        m_pSearchTmplLB;
-    VclPtr<FixedText>      m_pSearchAttrText;
-    VclPtr<FixedText>      m_pSearchLabel;
-
-    VclPtr<VclFrame>       m_pReplaceFrame;
-    VclPtr<ComboBox>       m_pReplaceLB;
-    VclPtr<ListBox>        m_pReplaceTmplLB;
-    VclPtr<FixedText>      m_pReplaceAttrText;
-
-    VclPtr<PushButton>     m_pSearchBtn;
-    VclPtr<PushButton>     m_pBackSearchBtn;
-    VclPtr<PushButton>     m_pSearchAllBtn;
-    VclPtr<PushButton>     m_pReplaceBtn;
-    VclPtr<PushButton>     m_pReplaceAllBtn;
-
-    VclPtr<VclFrame>       m_pComponentFrame;
-    VclPtr<PushButton>     m_pSearchComponent1PB;
-    VclPtr<PushButton>     m_pSearchComponent2PB;
-
-    VclPtr<CheckBox>       m_pMatchCaseCB;
-    VclPtr<CheckBox>       m_pSearchFormattedCB;
-    VclPtr<CheckBox>       m_pWordBtn;
-
-    VclPtr<PushButton>     m_pCloseBtn;
-    VclPtr<CheckBox>       m_pIgnoreDiacritics;
-    VclPtr<CheckBox>       m_pIgnoreKashida;
-    VclPtr<CheckBox>       m_pSelectionBtn;
-    VclPtr<CheckBox>       m_pRegExpBtn;
-    VclPtr<CheckBox>       m_pWildcardBtn;
-    VclPtr<CheckBox>       m_pSimilarityBox;
-    VclPtr<PushButton>     m_pSimilarityBtn;
-    VclPtr<CheckBox>       m_pLayoutBtn;
-    VclPtr<CheckBox>       m_pNotesBtn;
-    VclPtr<CheckBox>       m_pJapMatchFullHalfWidthCB;
-    VclPtr<CheckBox>       m_pJapOptionsCB;
-    VclPtr<CheckBox>       m_pReplaceBackwardsCB;
-    VclPtr<PushButton>     m_pJapOptionsBtn;
-
-    VclPtr<PushButton>     m_pAttributeBtn;
-    VclPtr<PushButton>     m_pFormatBtn;
-    VclPtr<PushButton>     m_pNoFormatBtn;
-
-    VclPtr<VclContainer>   m_pCalcGrid;
-    VclPtr<FixedText>      m_pCalcSearchInFT;
-    VclPtr<ListBox>        m_pCalcSearchInLB;
-    VclPtr<FixedText>      m_pCalcSearchDirFT;
-    VclPtr<RadioButton>    m_pRowsBtn;
-    VclPtr<RadioButton>    m_pColumnsBtn;
-    VclPtr<CheckBox>       m_pAllSheetsCB;
-
     SfxBindings&    rBindings;
+    Timer           m_aPresentIdle;
     bool            bWriter;
     bool            bSearch;
     bool            bFormat;
@@ -219,54 +152,116 @@ private:
     OUString        aLayoutWriterStr;
     OUString        aLayoutCalcStr;
     OUString        aCalcStr;
+    sal_uInt16      nRememberSize;
 
     std::vector<OUString> aSearchStrings;
     std::vector<OUString> aReplaceStrings;
 
-    std::unique_ptr<SearchDlg_Impl>         pImpl;
-    SearchAttrItemList*     pSearchList;
-    SearchAttrItemList*     pReplaceList;
-    SvxSearchItem*          pSearchItem;
+    std::unique_ptr<SearchDlg_Impl>      pImpl;
+    std::unique_ptr<SearchAttrItemList>  pSearchList;
+    std::unique_ptr<SearchAttrItemList>  pReplaceList;
+    std::unique_ptr<SvxSearchItem>       pSearchItem;
 
-    SvxSearchController*    pSearchController;
-    SvxSearchController*    pOptionsController;
-    SvxSearchController*    pFamilyController;
+    std::unique_ptr<SvxSearchController> pSearchController;
+    std::unique_ptr<SvxSearchController> pOptionsController;
+    std::unique_ptr<SvxSearchController> pFamilyController;
 
     mutable TransliterationFlags
                             nTransliterationFlags;
 
-    DECL_LINK( ModifyHdl_Impl, Edit&, void );
-    DECL_LINK( FlagHdl_Impl, Button*, void );
-    DECL_LINK( CommandHdl_Impl, Button*, void );
-    DECL_LINK(TemplateHdl_Impl, Button*, void);
-    DECL_LINK( FocusHdl_Impl, Control&, void );
-    DECL_LINK( LBSelectHdl_Impl, ListBox&, void );
-    DECL_LINK(LoseFocusHdl_Impl, Control&, void);
-    DECL_LINK(FormatHdl_Impl, Button*, void);
-    DECL_LINK(NoFormatHdl_Impl, Button*, void);
-    DECL_LINK(AttributeHdl_Impl, Button*, void);
-    DECL_LINK( TimeoutHdl_Impl, Timer*, void );
-    void            ClickHdl_Impl(void* pCtrl);
+    bool m_executingSubDialog = false;
 
-    void            Construct_Impl();
-    void            InitControls_Impl();
-    void            ShowOptionalControls_Impl();
-    void            Init_Impl( bool bHasItemSet );
-    void            InitAttrList_Impl( const SfxItemSet* pSSet,
+    std::unique_ptr<weld::Frame> m_xSearchFrame;
+    std::unique_ptr<weld::ComboBox> m_xSearchLB;
+    std::unique_ptr<weld::ComboBox> m_xSearchTmplLB;
+    std::unique_ptr<weld::Label> m_xSearchAttrText;
+    std::unique_ptr<weld::Label> m_xSearchLabel;
+
+    std::unique_ptr<weld::Frame> m_xReplaceFrame;
+    std::unique_ptr<weld::ComboBox> m_xReplaceLB;
+    std::unique_ptr<weld::ComboBox> m_xReplaceTmplLB;
+    std::unique_ptr<weld::Label> m_xReplaceAttrText;
+
+    std::unique_ptr<weld::Button> m_xSearchBtn;
+    std::unique_ptr<weld::Button> m_xBackSearchBtn;
+    std::unique_ptr<weld::Button> m_xSearchAllBtn;
+    std::unique_ptr<weld::Button> m_xReplaceBtn;
+    std::unique_ptr<weld::Button> m_xReplaceAllBtn;
+
+    std::unique_ptr<weld::Frame> m_xComponentFrame;
+    std::unique_ptr<weld::Button> m_xSearchComponent1PB;
+    std::unique_ptr<weld::Button> m_xSearchComponent2PB;
+
+    std::unique_ptr<weld::CheckButton> m_xMatchCaseCB;
+    std::unique_ptr<weld::CheckButton> m_xSearchFormattedCB;
+    std::unique_ptr<weld::CheckButton> m_xWordBtn;
+
+    std::unique_ptr<weld::Button> m_xCloseBtn;
+    std::unique_ptr<weld::CheckButton> m_xIncludeDiacritics;
+    std::unique_ptr<weld::CheckButton> m_xIncludeKashida;
+    std::unique_ptr<weld::Expander> m_xOtherOptionsExpander;
+    std::unique_ptr<weld::CheckButton> m_xSelectionBtn;
+    std::unique_ptr<weld::CheckButton> m_xRegExpBtn;
+    std::unique_ptr<weld::CheckButton> m_xWildcardBtn;
+    std::unique_ptr<weld::CheckButton> m_xSimilarityBox;
+    std::unique_ptr<weld::Button> m_xSimilarityBtn;
+    std::unique_ptr<weld::CheckButton> m_xLayoutBtn;
+    std::unique_ptr<weld::CheckButton> m_xNotesBtn;
+    std::unique_ptr<weld::CheckButton> m_xJapMatchFullHalfWidthCB;
+    std::unique_ptr<weld::CheckButton> m_xJapOptionsCB;
+    std::unique_ptr<weld::CheckButton> m_xReplaceBackwardsCB;
+    std::unique_ptr<weld::Button> m_xJapOptionsBtn;
+
+    std::unique_ptr<weld::Button> m_xAttributeBtn;
+    std::unique_ptr<weld::Button> m_xFormatBtn;
+    std::unique_ptr<weld::Button> m_xNoFormatBtn;
+
+    std::unique_ptr<weld::Widget> m_xCalcGrid;
+    std::unique_ptr<weld::Label> m_xCalcSearchInFT;
+    std::unique_ptr<weld::ComboBox> m_xCalcSearchInLB;
+    std::unique_ptr<weld::Label> m_xCalcSearchDirFT;
+    std::unique_ptr<weld::RadioButton> m_xRowsBtn;
+    std::unique_ptr<weld::RadioButton> m_xColumnsBtn;
+    std::unique_ptr<weld::CheckButton> m_xAllSheetsCB;
+    std::unique_ptr<weld::Label> m_xCalcStrFT;
+
+    DECL_DLLPRIVATE_LINK( ModifyHdl_Impl, weld::ComboBox&, void );
+    DECL_DLLPRIVATE_LINK( FlagHdl_Impl, weld::Button&, void );
+    DECL_DLLPRIVATE_LINK( CommandHdl_Impl, weld::Button&, void );
+    DECL_DLLPRIVATE_LINK(TemplateHdl_Impl, weld::Button&, void);
+    DECL_DLLPRIVATE_LINK( FocusHdl_Impl, weld::Widget&, void );
+    DECL_DLLPRIVATE_LINK( LBSelectHdl_Impl, weld::ComboBox&, void );
+    DECL_DLLPRIVATE_LINK(LoseFocusHdl_Impl, weld::Widget&, void);
+    DECL_DLLPRIVATE_LINK(FormatHdl_Impl, weld::Button&, void);
+    DECL_DLLPRIVATE_LINK(NoFormatHdl_Impl, weld::Button&, void);
+    DECL_DLLPRIVATE_LINK(AttributeHdl_Impl, weld::Button&, void);
+    DECL_DLLPRIVATE_LINK( TimeoutHdl_Impl, Timer*, void );
+    SVX_DLLPRIVATE void ClickHdl_Impl(const weld::Widget* pCtrl);
+
+    SVX_DLLPRIVATE void Construct_Impl();
+    SVX_DLLPRIVATE void InitControls_Impl();
+    SVX_DLLPRIVATE void ShowOptionalControls_Impl();
+    SVX_DLLPRIVATE void Init_Impl( bool bHasItemSet );
+    SVX_DLLPRIVATE void InitAttrList_Impl( const SfxItemSet* pSSet,
                                        const SfxItemSet* pRSet );
-    void            Remember_Impl( const OUString &rStr, bool bSearch );
-    void            PaintAttrText_Impl();
-    OUString&       BuildAttrText_Impl( OUString& rStr, bool bSrchFlag ) const;
+    SVX_DLLPRIVATE void Remember_Impl( const OUString &rStr, bool bSearch );
+    SVX_DLLPRIVATE void PaintAttrText_Impl();
+    SVX_DLLPRIVATE OUString& BuildAttrText_Impl( OUString& rStr, bool bSrchFlag ) const;
 
-    void            TemplatesChanged_Impl( SfxStyleSheetBasePool& rPool );
-    void            EnableControls_Impl( const SearchOptionFlags nFlags );
-    void            EnableControl_Impl( Control* pCtrl );
-    void            SetItem_Impl( const SvxSearchItem* pItem );
+    SVX_DLLPRIVATE void TemplatesChanged_Impl( SfxStyleSheetBasePool& rPool );
+    SVX_DLLPRIVATE void EnableControls_Impl( const SearchOptionFlags nFlags );
+    SVX_DLLPRIVATE void EnableControl_Impl(const weld::Widget& rCtrl);
+    SVX_DLLPRIVATE void SetItem_Impl( const SvxSearchItem* pItem );
 
-    void            SetModifyFlag_Impl( const Control* pCtrl );
-    void            SaveToModule_Impl();
+    SVX_DLLPRIVATE void SetModifyFlag_Impl(const weld::Widget* pCtrl);
+    SVX_DLLPRIVATE void SaveToModule_Impl();
 
-    void            ApplyTransliterationFlags_Impl( TransliterationFlags nSettings );
+    SVX_DLLPRIVATE void ApplyTransliterationFlags_Impl( TransliterationFlags nSettings );
+    SVX_DLLPRIVATE bool IsOtherOptionsExpanded() const;
+
+    SVX_DLLPRIVATE short executeSubDialog(VclAbstractDialog * dialog);
+
+    DECL_DLLPRIVATE_LINK(PresentTimeoutHdl_Impl, Timer*, void);
 };
 
 #endif

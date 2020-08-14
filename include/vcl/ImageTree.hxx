@@ -23,7 +23,10 @@
 #include <memory>
 #include <sal/config.h>
 #include <vcl/dllapi.h>
-#include <vcl/bitmapex.hxx>
+#include <rtl/ustring.hxx>
+#include <o3tl/typed_flags_set.hxx>
+
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
 
 enum class ImageLoadFlags : sal_uInt16
 {
@@ -36,11 +39,13 @@ namespace o3tl {
 template<> struct typed_flags<ImageLoadFlags>: is_typed_flags<ImageLoadFlags, 0x3> {};
 }
 
-namespace com { namespace sun { namespace star { namespace container {
+namespace com::sun::star::container {
     class XNameAccess;
-}}}}
+}
 
 class ImplImageTree;
+class BitmapEx;
+class SvMemoryStream;
 
 class ImageTree
 {
@@ -55,18 +60,27 @@ public:
     VCL_DLLPUBLIC OUString getImageUrl(
         OUString const & name, OUString const & style, OUString const & lang);
 
+    VCL_DLLPUBLIC std::shared_ptr<SvMemoryStream> getImageStream(
+        OUString const & rName, OUString const & rStyle, OUString const & rLang);
+
     VCL_DLLPUBLIC bool loadImage(
         OUString const & name, OUString const & style,
         BitmapEx & bitmap, bool localized,
         const ImageLoadFlags eFlags = ImageLoadFlags::NONE);
 
-    VCL_DLLPUBLIC css::uno::Reference<css::container::XNameAccess> getNameAccess();
+    VCL_DLLPUBLIC bool loadImage(
+        OUString const & name, OUString const & style,
+        BitmapEx & bitmap, bool localized,
+        sal_Int32 nScalePercentage,
+        const ImageLoadFlags eFlags = ImageLoadFlags::NONE);
+
+    VCL_DLLPUBLIC css::uno::Reference<css::container::XNameAccess> const & getNameAccess();
 
 
     /** a crude form of life cycle control (called from DeInitVCL; otherwise,
      *  if the ImplImageTree singleton were destroyed during exit that would
      *  be too late for the destructors of the bitmaps in maIconCache)*/
-    void shutdown();
+    VCL_DLLPUBLIC void shutdown();
 };
 
 #endif

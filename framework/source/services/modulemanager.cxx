@@ -134,7 +134,7 @@ ModuleManager::ModuleManager(const css::uno::Reference< css::uno::XComponentCont
 
 OUString ModuleManager::getImplementationName()
 {
-    return OUString("com.sun.star.comp.framework.ModuleManager");
+    return "com.sun.star.comp.framework.ModuleManager";
 }
 
 sal_Bool ModuleManager::supportsService(OUString const & ServiceName)
@@ -229,17 +229,11 @@ void SAL_CALL ModuleManager::replaceByName(const OUString& sName ,
                 static_cast< cppu::OWeakObject * >(this));
     }
 
-    ::comphelper::SequenceAsHashMap::const_iterator pProp;
-    for (  pProp  = lProps.begin();
-           pProp != lProps.end()  ;
-         ++pProp                  )
+    for (auto const& prop : lProps)
     {
-        const OUString& sPropName  = pProp->first;
-        const css::uno::Any&   aPropValue = pProp->second;
-
         // let "NoSuchElementException" out ! We support the same API ...
         // and without a flush() at the end all changed data before will be ignored !
-        xModule->replaceByName(sPropName, aPropValue);
+        xModule->replaceByName(prop.first, prop.second);
     }
 
     ::comphelper::ConfigurationHelper::flush(xCfg);
@@ -262,9 +256,8 @@ css::uno::Any SAL_CALL ModuleManager::getByName(const OUString& sName)
     comphelper::SequenceAsHashMap lProps;
 
     lProps[OUString("ooSetupFactoryModuleIdentifier")] <<= sName;
-    for (sal_Int32 i = 0; i < lPropNames.getLength(); ++i)
+    for (const OUString& sPropName : lPropNames)
     {
-        const OUString& sPropName = lPropNames[i];
         lProps[sPropName] = xModule->getByName(sPropName);
     }
 
@@ -302,11 +295,11 @@ css::uno::Reference< css::container::XEnumeration > SAL_CALL ModuleManager::crea
     const css::uno::Sequence< OUString > lModules = getElementNames();
     ::std::vector< css::uno::Any > lResult;
 
-    for (sal_Int32 i = 0; i < lModules.getLength(); ++i)
+    for (const OUString& rModuleName : lModules)
     {
         try
         {
-            ::comphelper::SequenceAsHashMap lModuleProps = getByName(lModules[i]);
+            ::comphelper::SequenceAsHashMap lModuleProps = getByName(rModuleName);
             if (lModuleProps.match(lSearchProps))
                 lResult.push_back(css::uno::makeAny(lModuleProps.getAsConstPropertyValueList()));
         }
@@ -324,23 +317,23 @@ css::uno::Reference< css::container::XEnumeration > SAL_CALL ModuleManager::crea
 OUString ModuleManager::implts_identify(const css::uno::Reference< css::uno::XInterface >& xComponent)
 {
     // Search for an optional (!) interface XModule first.
-    // Its used to overrule an existing service name. Used e.g. by our database form designer
+    // It's used to overrule an existing service name. Used e.g. by our database form designer
     // which uses a writer module internally.
     css::uno::Reference< css::frame::XModule > xModule(xComponent, css::uno::UNO_QUERY);
     if (xModule.is())
         return xModule->getIdentifier();
 
-    // detect modules in a generic way ...
-    // comparing service names with configured entries ...
+    // detect modules in a generic way...
+    // comparing service names with configured entries...
     css::uno::Reference< css::lang::XServiceInfo > xInfo(xComponent, css::uno::UNO_QUERY);
     if (!xInfo.is())
         return OUString();
 
     const css::uno::Sequence< OUString > lKnownModules = getElementNames();
-    for (sal_Int32 i = 0; i < lKnownModules.getLength(); ++i)
+    for (const OUString& rName : lKnownModules)
     {
-        if (xInfo->supportsService(lKnownModules[i]))
-            return lKnownModules[i];
+        if (xInfo->supportsService(rName))
+            return rName;
     }
 
     return OUString();
@@ -363,7 +356,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_ModuleManager_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

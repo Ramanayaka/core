@@ -97,7 +97,7 @@ static inline void emit_ldarg( Emit::ILGenerator ^ code, ::System::Int32 index )
     {
     case 0:
 #pragma warning (push)
-#pragma warning (disable: 4538)
+#pragma warning (disable: 4538) // const/volatile qualifiers on this type are not supported
         code->Emit( Emit::OpCodes::Ldarg_0 );
 #pragma warning (pop)
         break;
@@ -217,7 +217,7 @@ System::String^ mapUnoPolymorphicName(System::String^ unoName)
         gcnew System::Text::StringBuilder(unoName->Substring(0, index +1 ));
 
     //Find the first occurrence of ','
-    //If the parameter is a polymorphic struct then we neede to ignore everything
+    //If the parameter is a polymorphic struct then we need to ignore everything
     //between the brackets because it can also contain commas
     //get the type list within < and >
     int endIndex = unoName->Length - 1;
@@ -273,7 +273,7 @@ Assembly ^ TypeEmitter::type_resolve(
     ::System::Object ^, ::System::ResolveEventArgs ^ args )
 {
     ::System::String ^ cts_name = args->Name;
-    ::System::Type ^ ret_type;
+    ::System::Type ^ ret_type = nullptr;
 
     iface_entry ^ entry = dynamic_cast< iface_entry ^ >(m_incomplete_ifaces[cts_name] );
     if (nullptr != entry)
@@ -475,7 +475,7 @@ Assembly ^ TypeEmitter::type_resolve(
     if (nullptr == ret_type)
     {
         Reference< reflection::XConstantTypeDescription > xConstant(
-            xType, UNO_QUERY_THROW );
+            xType, UNO_SET_THROW );
         ::System::Object ^ constant =
               to_cli_constant( xConstant->getConstantValue() );
         Emit::TypeBuilder ^ type_builder =
@@ -624,7 +624,7 @@ Assembly ^ TypeEmitter::type_resolve(
         }
     }
     ::System::String ^ cts_name = to_cts_name( uno_name );
-    // if the struct is an instantiated polymorpic struct then we create the simple struct name
+    // if the struct is an instantiated polymorphic struct then we create the simple struct name
     // For example:
     // void func ([in] PolyStruct<boolean> arg);
     //PolyStruct<boolean> will be converted to PolyStruct
@@ -660,7 +660,7 @@ Assembly ^ TypeEmitter::type_resolve(
     }
 
     //In case of an instantiated polymorphic struct we want to return a
-    //uno.PolymorphicType (inherits Type) rather then Type. This is neaded for constructing
+    //uno.PolymorphicType (inherits Type) rather than Type. This is needed for constructing
     //the service code. We can only do that if the struct is completed.
     if (m_generated_structs[cts_name])
     {
@@ -722,10 +722,12 @@ Assembly ^ TypeEmitter::type_resolve(
             array< ::System::Type^>^ base_interfaces =
                   gcnew array< ::System::Type^>( vecBaseTypes.size() );
 
-            typedef std::vector<Reference<reflection::XInterfaceTypeDescription2> >::const_iterator it;
             int index = 0;
-            for (it i = vecBaseTypes.begin(); i != vecBaseTypes.end(); ++i, ++index)
-                base_interfaces[ index ] = get_type( *i );
+            for (auto const & vecBaseType : vecBaseTypes)
+            {
+                base_interfaces[ index ] = get_type( vecBaseType );
+                ++index;
+            }
             type_builder = m_module_builder->DefineType(
                 cts_name, attr, nullptr, base_interfaces );
         }
@@ -824,7 +826,7 @@ Assembly ^ TypeEmitter::type_resolve(
     {
         for (int i = 0; i < seqBaseTypes.getLength(); i++)
         {
-            //make sure we get the interface rather then a typedef
+            //make sure we get the interface rather than a typedef
             Reference<reflection::XInterfaceTypeDescription2> aBaseType =
                 resolveInterfaceTypedef( seqBaseTypes[i]);
 
@@ -1448,7 +1450,7 @@ Assembly ^ TypeEmitter::type_resolve(
 //          arAny[2] = new Any(c.Type, c.Value);
 //          return (XWeak) factory.createInstanceWithArgumentsAndContext("service_specifier", arAny, ctx);
 //      }
-// Notice that a any parameter is NOT wrapped by another any. Instead the new any is created with the type and value
+// Notice that an any parameter is NOT wrapped by another any. Instead the new any is created with the type and value
 // of the parameter.
 
 //      public static XWeak constructor3(XComponentContext ctx, params Any[] c)
@@ -1778,7 +1780,7 @@ Assembly ^ TypeEmitter::type_resolve(
                 ilGen->Emit(Emit::OpCodes::Ldloc, arLocalAny[i]);
                 ilGen->Emit(Emit::OpCodes::Stobj, typeAny);
             }
-            // call createInstanceWithContextAndArguments
+            // call createInstanceWithArgumentsAndContext
             ilGen->Emit(Emit::OpCodes::Ldloc, local_factory);
             ilGen->Emit(Emit::OpCodes::Ldstr, ustring_to_String(xServiceType->getName()));
             ilGen->Emit(Emit::OpCodes::Ldloc, local_anyParams);
@@ -1842,7 +1844,7 @@ Assembly ^ TypeEmitter::type_resolve(
                                                   System::String::typeid};
             ilGen->Emit(Emit::OpCodes::Call,
                         System::String::typeid->GetMethod("Concat", arConcatParams));
-            //load contex argument
+            //load context argument
             ilGen->Emit(Emit::OpCodes::Ldarg_0);
             ilGen->Emit(Emit::OpCodes::Newobj, ctorDeploymentException);
             ilGen->Emit(Emit::OpCodes::Throw);//Exception(typeDeploymentExc);
@@ -1851,7 +1853,7 @@ Assembly ^ TypeEmitter::type_resolve(
         }
 
 
-        //Check if the service instance was create and throw a exception if not.
+        //Check if the service instance was created and threw an exception if not
         Emit::Label label_service_created = ilGen->DefineLabel();
         ilGen->Emit(Emit::OpCodes::Ldloc, local_return_val);
         ilGen->Emit(Emit::OpCodes::Brtrue_S, label_service_created);
@@ -2008,7 +2010,7 @@ Emit::CustomAttributeBuilder^ TypeEmitter::get_exception_attribute(
           ::uno::Any::typeid->GetMethod("hasValue");
     ilGen->Emit(Emit::OpCodes::Call, methodHasValue);
 
-    //If not, then throw an DeploymentException
+    //If not, then throw a DeploymentException
     Emit::Label label_singleton_exists = ilGen->DefineLabel();
     ilGen->Emit(Emit::OpCodes::Brtrue_S, label_singleton_exists);
     sBuilder = gcnew ::System::Text::StringBuilder(

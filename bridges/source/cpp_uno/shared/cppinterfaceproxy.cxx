@@ -17,62 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "cppinterfaceproxy.hxx"
+#include <cppinterfaceproxy.hxx>
 
-#include "guardedarray.hxx"
+#include <bridge.hxx>
+#include <vtablefactory.hxx>
 
-#include "bridge.hxx"
-#include "vtablefactory.hxx"
-
-#include "com/sun/star/uno/XInterface.hpp"
-#include "osl/getglobalmutex.hxx"
-#include "osl/interlck.h"
-#include "osl/mutex.hxx"
-#include "rtl/instance.hxx"
-#include "typelib/typedescription.h"
+#include <com/sun/star/uno/XInterface.hpp>
+#include <typelib/typedescription.h>
 
 #include <cstddef>
+#include <memory>
 #include <new>
 
-
-static bridges::cpp_uno::shared::VtableFactory * pInstance;
-
-#if defined(__GNUG__)
-extern "C" void dso_init() __attribute__((constructor));
-extern "C" void dso_exit() __attribute__((destructor));
-#endif
-
-void dso_init() {
-    if (!pInstance)
-        pInstance = new bridges::cpp_uno::shared::VtableFactory();
-}
-
-void dso_exit() {
-    if (pInstance)
-    {
-        delete pInstance;
-        pInstance = nullptr;
-    }
-}
-
-namespace {
-
-struct InitVtableFactory {
-    bridges::cpp_uno::shared::VtableFactory * operator()() {
-        return pInstance;
-    }
-};
-
-bridges::cpp_uno::shared::VtableFactory * getVtableFactory() {
-    return rtl_Instance<
-        bridges::cpp_uno::shared::VtableFactory, InitVtableFactory,
-        osl::MutexGuard, osl::GetGlobalMutex >::create(
-            InitVtableFactory(), osl::GetGlobalMutex());
-}
-
-}
-
-namespace bridges { namespace cpp_uno { namespace shared {
+namespace bridges::cpp_uno::shared {
 
 void freeCppInterfaceProxy(uno_ExtEnvironment * pEnv, void * pInterface)
 {
@@ -102,25 +59,26 @@ com::sun::star::uno::XInterface * CppInterfaceProxy::create(
 {
     typelib_typedescription_complete(
         reinterpret_cast< typelib_TypeDescription ** >(&pTypeDescr));
-    bridges::cpp_uno::shared::VtableFactory::Vtables aVtables(
-        getVtableFactory()->getVtables(pTypeDescr));
-    bridges::cpp_uno::shared::GuardedArray< char > pMemory(
+    static bridges::cpp_uno::shared::VtableFactory factory;
+    const bridges::cpp_uno::shared::VtableFactory::Vtables& rVtables(
+        factory.getVtables(pTypeDescr));
+    std::unique_ptr< char[] > pMemory(
         new char[
             sizeof (CppInterfaceProxy)
-            + (aVtables.count - 1) * sizeof (void **)]);
+            + (rVtables.count - 1) * sizeof (void **)]);
     new(pMemory.get()) CppInterfaceProxy(pBridge, pUnoI, pTypeDescr, rOId);
     CppInterfaceProxy * pProxy = reinterpret_cast< CppInterfaceProxy * >(
         pMemory.release());
-    for (sal_Int32 i = 0; i < aVtables.count; ++i) {
+    for (sal_Int32 i = 0; i < rVtables.count; ++i) {
         pProxy->vtables[i] = VtableFactory::mapBlockToVtable(
-            aVtables.blocks[i].start);
+            rVtables.blocks[i].start);
     }
     return castProxyToInterface(pProxy);
 }
 
 void CppInterfaceProxy::acquireProxy()
 {
-    if (osl_atomic_increment( &nRef ) == 1)
+    if (++nRef == 1)
     {
         // rebirth of proxy zombie
         // register at cpp env
@@ -134,7 +92,7 @@ void CppInterfaceProxy::acquireProxy()
 
 void CppInterfaceProxy::releaseProxy()
 {
-    if (! osl_atomic_decrement( &nRef )) // last release
+    if (! --nRef ) // last release
     {
         // revoke from cpp env
         (*pBridge->getCppEnv()->revokeInterface)(
@@ -151,7 +109,6 @@ CppInterfaceProxy::CppInterfaceProxy(
     , pTypeDescr( pTypeDescr_ )
     , oid( rOId_ )
 {
-    memset(vtables, 0, sizeof(vtables));
     pBridge->acquire();
     ::typelib_typedescription_acquire( &pTypeDescr->aBase );
     (*pUnoI->acquire)( pUnoI );
@@ -181,6 +138,6 @@ CppInterfaceProxy * CppInterfaceProxy::castInterfaceToProxy(void * pInterface)
         static_cast< char * >(pInterface) - offset);
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

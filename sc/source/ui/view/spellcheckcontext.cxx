@@ -7,16 +7,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "spellcheckcontext.hxx"
+#include <spellcheckcontext.hxx>
+#include <boost/functional/hash.hpp>
 
 namespace sc {
 
 size_t SpellCheckContext::CellPos::Hash::operator() (const CellPos& rPos) const
 {
-    size_t nVal = rPos.mnCol;
-    nVal = nVal << 4;
-    nVal += rPos.mnRow;
-    return nVal;
+    std::size_t seed = 0;
+    boost::hash_combine(seed, rPos.mnCol);
+    boost::hash_combine(seed, rPos.mnRow);
+    return seed;
 }
 
 SpellCheckContext::CellPos::CellPos() : mnCol(0), mnRow(0) {}
@@ -72,7 +73,7 @@ void SpellCheckContext::setMisspellRanges(
     if (pRanges)
     {
         if (it == maMisspellCells.end())
-            maMisspellCells.insert(CellMapType::value_type(aPos, *pRanges));
+            maMisspellCells.emplace(aPos, *pRanges);
         else
             it->second = *pRanges;
     }

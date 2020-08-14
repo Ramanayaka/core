@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "index.hxx"
+#include <index.hxx>
 
 #include <assert.h>
 #include <sal/log.hxx>
@@ -87,9 +87,13 @@ SwIndex& SwIndex::ChgValue( const SwIndex& rIdx, sal_Int32 nNewValue )
     SwIndex* pFnd = const_cast<SwIndex*>(&rIdx);
     if (rIdx.m_nIndex > nNewValue) // move forwards
     {
-        SwIndex* pPrv;
-        while ((nullptr != (pPrv = pFnd->m_pPrev)) && (pPrv->m_nIndex > nNewValue))
+        for (;;)
+        {
+            SwIndex* pPrv = pFnd->m_pPrev;
+            if (!pPrv || pPrv->m_nIndex <= nNewValue)
+                break;
             pFnd = pPrv;
+        }
 
         if( pFnd != this )
         {
@@ -107,9 +111,13 @@ SwIndex& SwIndex::ChgValue( const SwIndex& rIdx, sal_Int32 nNewValue )
     }
     else if (rIdx.m_nIndex < nNewValue)
     {
-        SwIndex* pNxt;
-        while ((nullptr != (pNxt = pFnd->m_pNext)) && (pNxt->m_nIndex < nNewValue))
+        for (;;)
+        {
+            SwIndex* pNxt = pFnd->m_pNext;
+            if (!pNxt || pNxt->m_nIndex >= nNewValue)
+                break;
             pFnd = pNxt;
+        }
 
         if( pFnd != this )
         {
@@ -278,19 +286,19 @@ void SwIndexReg::Update(
 
 void SwIndexReg::MoveTo( SwIndexReg& rArr )
 {
-    if (this != &rArr && m_pFirst)
+    if (!(this != &rArr && m_pFirst))
+        return;
+
+    SwIndex * pIdx = const_cast<SwIndex*>(m_pFirst);
+    SwIndex * pNext;
+    while( pIdx )
     {
-        SwIndex * pIdx = const_cast<SwIndex*>(m_pFirst);
-        SwIndex * pNext;
-        while( pIdx )
-        {
-            pNext = pIdx->m_pNext;
-            pIdx->Assign( &rArr, pIdx->GetIndex() );
-            pIdx = pNext;
-        }
-        m_pFirst = nullptr;
-        m_pLast = nullptr;
+        pNext = pIdx->m_pNext;
+        pIdx->Assign( &rArr, pIdx->GetIndex() );
+        pIdx = pNext;
     }
+    m_pFirst = nullptr;
+    m_pLast = nullptr;
 }
 
 #ifdef DBG_UTIL

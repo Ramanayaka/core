@@ -21,39 +21,25 @@
 
 #include <osl/diagnose.h>
 #include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/xml/crypto/sax/XSAXEventKeeper.hpp>
 #include <cppuhelper/supportsservice.hxx>
-#include "xmlsec/xmldocumentwrapper_xmlsecimpl.hxx"
-#include "xmlsec/xmlelementwrapper_xmlsecimpl.hxx"
+#include <xmlsec/xmldocumentwrapper_xmlsecimpl.hxx>
+#include "xmlelementwrapper_xmlsecimpl.hxx"
 
 #include <xmloff/attrlist.hxx>
-
-#include <stdlib.h>
-#include <string.h>
-
-#include <sys/types.h>
-#include <sys/stat.h>
-
-#include <vector>
 
 #ifdef UNX
 #define stricmp strcasecmp
 #endif
 
-namespace cssu = com::sun::star::uno;
-namespace cssl = com::sun::star::lang;
-namespace cssxc = com::sun::star::xml::crypto;
-namespace cssxcsax = com::sun::star::xml::csax;
-namespace cssxs = com::sun::star::xml::sax;
-namespace cssxw = com::sun::star::xml::wrapper;
-
-#define IMPLEMENTATION_NAME "com.sun.star.xml.security.bridge.xmlsec.XMLDocumentWrapper_XmlSecImpl"
+using namespace com::sun::star;
 
 #define STRXMLNS "xmlns"
 
 /* used by the recursiveDelete method */
 #define NODE_REMOVED    0
 #define NODE_NOTREMOVED 1
-#define NODE_STOPED     2
+#define NODE_STOPPED     2
 
 XMLDocumentWrapper_XmlSecImpl::XMLDocumentWrapper_XmlSecImpl()
     : m_nCurrentPosition(0)
@@ -67,7 +53,7 @@ XMLDocumentWrapper_XmlSecImpl::XMLDocumentWrapper_XmlSecImpl()
     /*
      * creates the virtual root element
      */
-    saxHelper.startElement("root", cssu::Sequence<cssxcsax::XMLAttribute>());
+    saxHelper.startElement("root", uno::Sequence<css::xml::csax::XMLAttribute>());
 
     m_pRootElement = saxHelper.getCurrentNode();
     m_pCurrentElement = m_pRootElement;
@@ -165,8 +151,8 @@ void XMLDocumentWrapper_XmlSecImpl::getNextSAXEvent()
 }
 
 void XMLDocumentWrapper_XmlSecImpl::sendStartElement(
-    const cssu::Reference< cssxs::XDocumentHandler >& xHandler,
-    const cssu::Reference< cssxs::XDocumentHandler >& xHandler2,
+    const uno::Reference< css::xml::sax::XDocumentHandler >& xHandler,
+    const uno::Reference< css::xml::sax::XDocumentHandler >& xHandler2,
     const xmlNodePtr pNode)
 /****** XMLDocumentWrapper_XmlSecImpl/sendStartElement ************************
  *
@@ -184,11 +170,11 @@ void XMLDocumentWrapper_XmlSecImpl::sendStartElement(
  *  xHandler2 - the second XDocumentHandler interface to receive the
  *          startElement SAX event. It can't be NULL.
  *  pNode -     the node on which the startElement should be generated.
- *          This node must be a element type.
+ *          This node must be an element type.
  ******************************************************************************/
 {
     SvXMLAttributeList* pAttributeList = new SvXMLAttributeList();
-    cssu::Reference < cssxs::XAttributeList > xAttrList(pAttributeList);
+    uno::Reference < css::xml::sax::XAttributeList > xAttrList(pAttributeList);
 
     xmlNsPtr pNsDef = pNode->nsDef;
 
@@ -253,17 +239,17 @@ void XMLDocumentWrapper_XmlSecImpl::sendStartElement(
 }
 
 void XMLDocumentWrapper_XmlSecImpl::sendEndElement(
-    const cssu::Reference< cssxs::XDocumentHandler >& xHandler,
-    const cssu::Reference< cssxs::XDocumentHandler >& xHandler2,
+    const uno::Reference< css::xml::sax::XDocumentHandler >& xHandler,
+    const uno::Reference< css::xml::sax::XDocumentHandler >& xHandler2,
     const xmlNodePtr pNode)
 /****** XMLDocumentWrapper_XmlSecImpl/sendEndElement **************************
  *
  *   NAME
- *  sendEndElement -- Constructs a endElement SAX event
+ *  sendEndElement -- Constructs an endElement SAX event
  *
  *   FUNCTION
  *  Used when converting the document into SAX event stream.
- *  This method constructs a endElement SAX event for a particular
+ *  This method constructs an endElement SAX event for a particular
  *  element, then calls the endElement methods of the XDocumentHandlers.
  *
  *   INPUTS
@@ -272,7 +258,7 @@ void XMLDocumentWrapper_XmlSecImpl::sendEndElement(
  *  xHandler2 - the second XDocumentHandler interface to receive the
  *          endElement SAX event. It can't be NULL.
  *  pNode -     the node on which the endElement should be generated.
- *          This node must be a element type.
+ *          This node must be an element type.
  ******************************************************************************/
 {
     OString sNodeName = getNodeQName(pNode);
@@ -286,8 +272,8 @@ void XMLDocumentWrapper_XmlSecImpl::sendEndElement(
 }
 
 void XMLDocumentWrapper_XmlSecImpl::sendNode(
-    const cssu::Reference< cssxs::XDocumentHandler >& xHandler,
-    const cssu::Reference< cssxs::XDocumentHandler >& xHandler2,
+    const uno::Reference< css::xml::sax::XDocumentHandler >& xHandler,
+    const uno::Reference< css::xml::sax::XDocumentHandler >& xHandler2,
     const xmlNodePtr pNode)
 /****** XMLDocumentWrapper_XmlSecImpl/sendNode ********************************
  *
@@ -359,14 +345,14 @@ OString XMLDocumentWrapper_XmlSecImpl::getNodeQName(const xmlNodePtr pNode)
         if (pNs->prefix != nullptr)
         {
             OString sPrefix(reinterpret_cast<const char*>(pNs->prefix));
-            sNodeName = sPrefix+OString(":")+sNodeName;
+            sNodeName = sPrefix + ":" + sNodeName;
         }
     }
 
     return sNodeName;
 }
 
-xmlNodePtr XMLDocumentWrapper_XmlSecImpl::checkElement( const cssu::Reference< cssxw::XXMLElementWrapper >& xXMLElement)
+xmlNodePtr XMLDocumentWrapper_XmlSecImpl::checkElement( const uno::Reference< css::xml::wrapper::XXMLElementWrapper >& xXMLElement)
 /****** XMLDocumentWrapper_XmlSecImpl/checkElement ****************************
  *
  *   NAME
@@ -374,7 +360,7 @@ xmlNodePtr XMLDocumentWrapper_XmlSecImpl::checkElement( const cssu::Reference< c
  *  interface
  *
  *   INPUTS
- *  xXMLElement -   the XXMLElementWrapper interface wraping a node
+ *  xXMLElement -   the XXMLElementWrapper interface wrapping a node
  *
  *   RESULT
  *  node - the node wrapped in the XXMLElementWrapper interface
@@ -384,15 +370,15 @@ xmlNodePtr XMLDocumentWrapper_XmlSecImpl::checkElement( const cssu::Reference< c
 
     if (xXMLElement.is())
     {
-        cssu::Reference< cssl::XUnoTunnel > xNodTunnel( xXMLElement, cssu::UNO_QUERY_THROW ) ;
+        uno::Reference< css::lang::XUnoTunnel > xNodTunnel( xXMLElement, uno::UNO_QUERY_THROW ) ;
         XMLElementWrapper_XmlSecImpl* pElement
             = reinterpret_cast<XMLElementWrapper_XmlSecImpl*>(
                 sal::static_int_cast<sal_uIntPtr>(
                     xNodTunnel->getSomething(
-                        XMLElementWrapper_XmlSecImpl::getUnoTunnelImplementationId() ))) ;
+                        XMLElementWrapper_XmlSecImpl::getUnoTunnelId() ))) ;
 
         if( pElement == nullptr ) {
-            throw cssu::RuntimeException() ;
+            throw uno::RuntimeException() ;
         }
 
         rc = pElement->getNativeElement();
@@ -423,7 +409,7 @@ sal_Int32 XMLDocumentWrapper_XmlSecImpl::recursiveDelete(
  *   RESULT
  *  result -    the result of the deletion process, can be one of following
  *          values:
- *          NODE_STOPED - the process is interrupted by meeting the
+ *          NODE_STOPPED - the process is interrupted by meeting the
  *              m_pStopAtNode
  *          NODE_NOTREMOVED - the pNode is not completely removed
  *              because there is its descendant in the
@@ -438,7 +424,7 @@ sal_Int32 XMLDocumentWrapper_XmlSecImpl::recursiveDelete(
 {
     if (pNode == m_pStopAtNode)
     {
-        return NODE_STOPED;
+        return NODE_STOPPED;
     }
 
     if (pNode != m_pCurrentReservedNode)
@@ -456,8 +442,8 @@ sal_Int32 XMLDocumentWrapper_XmlSecImpl::recursiveDelete(
 
             switch (nResult)
             {
-            case NODE_STOPED:
-                return NODE_STOPED;
+            case NODE_STOPPED:
+                return NODE_STOPPED;
             case NODE_NOTREMOVED:
                 bIsRemoved = false;
                 break;
@@ -465,7 +451,7 @@ sal_Int32 XMLDocumentWrapper_XmlSecImpl::recursiveDelete(
                 removeNode(pChild);
                 break;
             default:
-                throw cssu::RuntimeException();
+                throw uno::RuntimeException();
             }
 
             pChild = pNextSibling;
@@ -590,13 +576,13 @@ void XMLDocumentWrapper_XmlSecImpl::rebuildIDLink(xmlNodePtr pNode) const
 }
 
 /* XXMLDocumentWrapper */
-cssu::Reference< cssxw::XXMLElementWrapper > SAL_CALL XMLDocumentWrapper_XmlSecImpl::getCurrentElement(  )
+uno::Reference< css::xml::wrapper::XXMLElementWrapper > SAL_CALL XMLDocumentWrapper_XmlSecImpl::getCurrentElement(  )
 {
     XMLElementWrapper_XmlSecImpl* pElement = new XMLElementWrapper_XmlSecImpl(m_pCurrentElement);
-    return cssu::Reference< cssxw::XXMLElementWrapper >(pElement);
+    return uno::Reference< css::xml::wrapper::XXMLElementWrapper >(pElement);
 }
 
-void SAL_CALL XMLDocumentWrapper_XmlSecImpl::setCurrentElement( const cssu::Reference< cssxw::XXMLElementWrapper >& element )
+void SAL_CALL XMLDocumentWrapper_XmlSecImpl::setCurrentElement( const uno::Reference< css::xml::wrapper::XXMLElementWrapper >& element )
 {
     m_pCurrentElement = checkElement( element );
     saxHelper.setCurrentNode( m_pCurrentElement );
@@ -623,7 +609,7 @@ void SAL_CALL XMLDocumentWrapper_XmlSecImpl::removeCurrentElement(  )
     removeNode(pOldCurrentElement);
 }
 
-sal_Bool SAL_CALL XMLDocumentWrapper_XmlSecImpl::isCurrent( const cssu::Reference< cssxw::XXMLElementWrapper >& node )
+sal_Bool SAL_CALL XMLDocumentWrapper_XmlSecImpl::isCurrent( const uno::Reference< css::xml::wrapper::XXMLElementWrapper >& node )
 {
     xmlNodePtr pNode = checkElement(node);
     return (pNode == m_pCurrentElement);
@@ -641,16 +627,16 @@ sal_Bool SAL_CALL XMLDocumentWrapper_XmlSecImpl::isCurrentElementEmpty(  )
     return rc;
 }
 
-OUString SAL_CALL XMLDocumentWrapper_XmlSecImpl::getNodeName( const cssu::Reference< cssxw::XXMLElementWrapper >& node )
+OUString SAL_CALL XMLDocumentWrapper_XmlSecImpl::getNodeName( const uno::Reference< css::xml::wrapper::XXMLElementWrapper >& node )
 {
     xmlNodePtr pNode = checkElement(node);
     return OUString::fromUtf8(reinterpret_cast<char const *>(pNode->name));
 }
 
 void SAL_CALL XMLDocumentWrapper_XmlSecImpl::clearUselessData(
-    const cssu::Reference< cssxw::XXMLElementWrapper >& node,
-    const cssu::Sequence< cssu::Reference< cssxw::XXMLElementWrapper > >& reservedDescendants,
-    const cssu::Reference< cssxw::XXMLElementWrapper >& stopAtNode )
+    const uno::Reference< css::xml::wrapper::XXMLElementWrapper >& node,
+    const uno::Sequence< uno::Reference< css::xml::wrapper::XXMLElementWrapper > >& reservedDescendants,
+    const uno::Reference< css::xml::wrapper::XXMLElementWrapper >& stopAtNode )
 {
     xmlNodePtr pTargetNode = checkElement(node);
 
@@ -663,7 +649,7 @@ void SAL_CALL XMLDocumentWrapper_XmlSecImpl::clearUselessData(
     recursiveDelete(pTargetNode);
 }
 
-void SAL_CALL XMLDocumentWrapper_XmlSecImpl::collapse( const cssu::Reference< cssxw::XXMLElementWrapper >& node )
+void SAL_CALL XMLDocumentWrapper_XmlSecImpl::collapse( const uno::Reference< css::xml::wrapper::XXMLElementWrapper >& node )
 {
     xmlNodePtr pTargetNode = checkElement(node);
     xmlNodePtr pParent;
@@ -681,50 +667,50 @@ void SAL_CALL XMLDocumentWrapper_XmlSecImpl::collapse( const cssu::Reference< cs
     }
 }
 
-void SAL_CALL XMLDocumentWrapper_XmlSecImpl::getTree( const cssu::Reference< cssxs::XDocumentHandler >& handler )
+void SAL_CALL XMLDocumentWrapper_XmlSecImpl::getTree( const uno::Reference< css::xml::sax::XDocumentHandler >& handler )
 {
-    if (m_pRootElement != nullptr)
+    if (m_pRootElement == nullptr)
+        return;
+
+    xmlNodePtr pTempCurrentElement = m_pCurrentElement;
+    sal_Int32 nTempCurrentPosition = m_nCurrentPosition;
+
+    m_pCurrentElement = m_pRootElement;
+
+    m_nCurrentPosition = NODEPOSITION_STARTELEMENT;
+
+    while(true)
     {
-        xmlNodePtr pTempCurrentElement = m_pCurrentElement;
-        sal_Int32 nTempCurrentPosition = m_nCurrentPosition;
-
-        m_pCurrentElement = m_pRootElement;
-
-        m_nCurrentPosition = NODEPOSITION_STARTELEMENT;
-
-        while(true)
+        switch (m_nCurrentPosition)
         {
-            switch (m_nCurrentPosition)
-            {
-            case NODEPOSITION_STARTELEMENT:
-                sendStartElement(nullptr, handler, m_pCurrentElement);
-                break;
-            case NODEPOSITION_ENDELEMENT:
-                sendEndElement(nullptr, handler, m_pCurrentElement);
-                break;
-            case NODEPOSITION_NORMAL:
-                sendNode(nullptr, handler, m_pCurrentElement);
-                break;
-            }
-
-            if ( (m_pCurrentElement == m_pRootElement) && (m_nCurrentPosition == NODEPOSITION_ENDELEMENT ))
-            {
-                break;
-            }
-
-            getNextSAXEvent();
+        case NODEPOSITION_STARTELEMENT:
+            sendStartElement(nullptr, handler, m_pCurrentElement);
+            break;
+        case NODEPOSITION_ENDELEMENT:
+            sendEndElement(nullptr, handler, m_pCurrentElement);
+            break;
+        case NODEPOSITION_NORMAL:
+            sendNode(nullptr, handler, m_pCurrentElement);
+            break;
         }
 
-        m_pCurrentElement = pTempCurrentElement;
-        m_nCurrentPosition = nTempCurrentPosition;
+        if ( (m_pCurrentElement == m_pRootElement) && (m_nCurrentPosition == NODEPOSITION_ENDELEMENT ))
+        {
+            break;
+        }
+
+        getNextSAXEvent();
     }
+
+    m_pCurrentElement = pTempCurrentElement;
+    m_nCurrentPosition = nTempCurrentPosition;
 }
 
 void SAL_CALL XMLDocumentWrapper_XmlSecImpl::generateSAXEvents(
-    const cssu::Reference< cssxs::XDocumentHandler >& handler,
-    const cssu::Reference< cssxs::XDocumentHandler >& xEventKeeperHandler,
-    const cssu::Reference< cssxw::XXMLElementWrapper >& startNode,
-    const cssu::Reference< cssxw::XXMLElementWrapper >& endNode )
+    const uno::Reference< css::xml::sax::XDocumentHandler >& handler,
+    const uno::Reference< css::xml::sax::XDocumentHandler >& xEventKeeperHandler,
+    const uno::Reference< css::xml::wrapper::XXMLElementWrapper >& startNode,
+    const uno::Reference< css::xml::wrapper::XXMLElementWrapper >& endNode )
 {
         /*
          * The first SAX event is the startElement of the startNode
@@ -747,9 +733,9 @@ void SAL_CALL XMLDocumentWrapper_XmlSecImpl::generateSAXEvents(
 
     xmlNodePtr pEndNode = checkElement(endNode);
 
-    cssu::Reference < cssxc::sax::XSAXEventKeeper > xSAXEventKeeper( xEventKeeperHandler, cssu::UNO_QUERY );
+    uno::Reference < css::xml::crypto::sax::XSAXEventKeeper > xSAXEventKeeper( xEventKeeperHandler, uno::UNO_QUERY );
 
-    cssu::Reference< cssxs::XDocumentHandler > xHandler = handler;
+    uno::Reference< css::xml::sax::XDocumentHandler > xHandler = handler;
 
     while(true)
     {
@@ -765,7 +751,7 @@ void SAL_CALL XMLDocumentWrapper_XmlSecImpl::generateSAXEvents(
             sendNode(xHandler, xEventKeeperHandler, m_pCurrentElement);
             break;
         default:
-            throw cssu::RuntimeException();
+            throw uno::RuntimeException();
         }
 
         if (xSAXEventKeeper->isBlocking())
@@ -804,7 +790,7 @@ void SAL_CALL XMLDocumentWrapper_XmlSecImpl::rebuildIDLink(
 }
 
 
-/* cssxs::XDocumentHandler */
+/* css::xml::sax::XDocumentHandler */
 void SAL_CALL XMLDocumentWrapper_XmlSecImpl::startDocument(  )
 {
 }
@@ -813,15 +799,15 @@ void SAL_CALL XMLDocumentWrapper_XmlSecImpl::endDocument(  )
 {
 }
 
-void SAL_CALL XMLDocumentWrapper_XmlSecImpl::startElement( const OUString& aName, const cssu::Reference< cssxs::XAttributeList >& xAttribs )
+void SAL_CALL XMLDocumentWrapper_XmlSecImpl::startElement( const OUString& aName, const uno::Reference< css::xml::sax::XAttributeList >& xAttribs )
 {
     sal_Int32 nLength = xAttribs->getLength();
-    cssu::Sequence< cssxcsax::XMLAttribute > aAttributes (nLength);
+    uno::Sequence< css::xml::csax::XMLAttribute > aAttributes (nLength);
 
     for (int i = 0; i < nLength; ++i)
     {
-        aAttributes[i].sName = xAttribs->getNameByIndex((short)i);
-        aAttributes[i].sValue =xAttribs->getValueByIndex((short)i);
+        aAttributes[i].sName = xAttribs->getNameByIndex(static_cast<short>(i));
+        aAttributes[i].sValue =xAttribs->getValueByIndex(static_cast<short>(i));
     }
 
     compressedStartElement(aName, aAttributes);
@@ -848,7 +834,7 @@ void SAL_CALL XMLDocumentWrapper_XmlSecImpl::processingInstruction( const OUStri
     saxHelper.processingInstruction(aTarget, aData);
 }
 
-void SAL_CALL XMLDocumentWrapper_XmlSecImpl::setDocumentLocator( const cssu::Reference< cssxs::XLocator >& )
+void SAL_CALL XMLDocumentWrapper_XmlSecImpl::setDocumentLocator( const uno::Reference< css::xml::sax::XLocator >& )
 {
 }
 
@@ -861,7 +847,7 @@ void SAL_CALL XMLDocumentWrapper_XmlSecImpl::compressedEndDocument(  )
 {
 }
 
-void SAL_CALL XMLDocumentWrapper_XmlSecImpl::compressedStartElement( const OUString& aName, const cssu::Sequence< cssxcsax::XMLAttribute >& aAttributes )
+void SAL_CALL XMLDocumentWrapper_XmlSecImpl::compressedStartElement( const OUString& aName, const uno::Sequence< css::xml::csax::XMLAttribute >& aAttributes )
 {
     saxHelper.startElement(aName, aAttributes);
     m_pCurrentElement = saxHelper.getCurrentNode();
@@ -893,35 +879,28 @@ void SAL_CALL XMLDocumentWrapper_XmlSecImpl::compressedSetDocumentLocator( sal_I
 {
 }
 
-OUString XMLDocumentWrapper_XmlSecImpl_getImplementationName ()
-{
-    return OUString ( IMPLEMENTATION_NAME );
-}
-
-cssu::Sequence< OUString > SAL_CALL XMLDocumentWrapper_XmlSecImpl_getSupportedServiceNames(  )
-{
-    cssu::Sequence<OUString> aRet { "com.sun.star.xml.wrapper.XMLDocumentWrapper" };
-    return aRet;
-}
-
-cssu::Reference< cssu::XInterface > SAL_CALL XMLDocumentWrapper_XmlSecImpl_createInstance(
-    const cssu::Reference< cssu::XComponentContext > &)
-{
-    return static_cast<cppu::OWeakObject*>(new XMLDocumentWrapper_XmlSecImpl( ));
-}
-
 /* XServiceInfo */
 OUString SAL_CALL XMLDocumentWrapper_XmlSecImpl::getImplementationName(  )
 {
-    return XMLDocumentWrapper_XmlSecImpl_getImplementationName();
+    return "com.sun.star.xml.wrapper.XMLDocumentWrapper";
 }
+
 sal_Bool SAL_CALL XMLDocumentWrapper_XmlSecImpl::supportsService( const OUString& rServiceName )
 {
     return cppu::supportsService( this, rServiceName );
 }
-cssu::Sequence< OUString > SAL_CALL XMLDocumentWrapper_XmlSecImpl::getSupportedServiceNames(  )
+
+uno::Sequence< OUString > SAL_CALL XMLDocumentWrapper_XmlSecImpl::getSupportedServiceNames(  )
 {
-    return XMLDocumentWrapper_XmlSecImpl_getSupportedServiceNames();
+    uno::Sequence<OUString> aRet{ "com.sun.star.xml.wrapper.XMLDocumentWrapper" };
+    return aRet;
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_xml_wrapper_XMLDocumentWrapper_get_implementation(
+    uno::XComponentContext* /*pCtx*/, uno::Sequence<uno::Any> const& /*rSeq*/)
+{
+    return cppu::acquire(new XMLDocumentWrapper_XmlSecImpl());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

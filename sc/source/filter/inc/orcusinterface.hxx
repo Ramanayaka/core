@@ -10,8 +10,8 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_ORCUSINTERFACE_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_ORCUSINTERFACE_HXX
 
-#include "address.hxx"
-#include "documentimport.hxx"
+#include <address.hxx>
+#include <documentimport.hxx>
 
 #include <tools/color.hxx>
 #include <tools/fontenum.hxx>
@@ -19,12 +19,11 @@
 
 #include "sharedformulagroups.hxx"
 
-#include "conditio.hxx"
+#include <conditio.hxx>
 
 #include <rtl/strbuf.hxx>
 #include <editeng/borderline.hxx>
 
-#define __ORCUS_STATIC_LIB
 #include <orcus/spreadsheet/import_interface.hpp>
 
 #include <memory>
@@ -32,30 +31,60 @@
 #include <unordered_map>
 #include <vector>
 
-class ScDocumentImport;
 class ScOrcusSheet;
 class ScOrcusStyles;
 class ScOrcusFactory;
-class ScRangeData;
 class SfxItemSet;
-
-namespace com { namespace sun { namespace star { namespace task {
-
-class XStatusIndicator;
-
-}}}}
+namespace com::sun::star::task { class XStatusIndicator; }
 
 class ScOrcusGlobalSettings : public orcus::spreadsheet::iface::import_global_settings
 {
     ScDocumentImport& mrDoc;
+    formula::FormulaGrammar::Grammar meCalcGrammar;
+    orcus::spreadsheet::formula_grammar_t meOrcusGrammar;
+    rtl_TextEncoding mnTextEncoding;
 
 public:
     ScOrcusGlobalSettings(ScDocumentImport& rDoc);
 
     virtual void set_origin_date(int year, int month, int day) override;
+    virtual void set_character_set(orcus::character_set_t cs) override;
 
     virtual void set_default_formula_grammar(orcus::spreadsheet::formula_grammar_t grammar) override;
     virtual orcus::spreadsheet::formula_grammar_t get_default_formula_grammar() const override;
+
+    formula::FormulaGrammar::Grammar getCalcGrammar() const
+    {
+        return meCalcGrammar;
+    }
+
+    rtl_TextEncoding getTextEncoding() const
+    {
+        return mnTextEncoding;
+    }
+};
+
+class ScOrcusRefResolver : public orcus::spreadsheet::iface::import_reference_resolver
+{
+    const ScOrcusGlobalSettings& mrGlobalSettings;
+
+public:
+    ScOrcusRefResolver( const ScOrcusGlobalSettings& rGS );
+
+    orcus::spreadsheet::address_t resolve_address(const char* p, size_t n) override;
+    orcus::spreadsheet::range_t resolve_range(const char* p, size_t n) override;
+};
+
+class ScOrcusNamedExpression : public orcus::spreadsheet::iface::import_named_expression
+{
+    ScDocumentImport& mrDoc;
+    const ScOrcusGlobalSettings& mrGlobalSettings;
+    SCTAB mnTab; //< negative if global, else >= 0 for sheet-local named expressions.
+
+public:
+    ScOrcusNamedExpression( ScDocumentImport& rDoc, const ScOrcusGlobalSettings& rGS, SCTAB nTab = -1 );
+
+    virtual void define_name(const char* p_name, size_t n_name, const char* p_exp, size_t n_exp) override;
 };
 
 class ScOrcusSharedStrings : public orcus::spreadsheet::iface::import_shared_strings
@@ -142,17 +171,17 @@ private:
 
     std::unique_ptr<ScConditionalFormat> mpCurrentFormat;
 
-    condformat::ScFormatEntryType meEntryType;
+    ScFormatEntry::Type meEntryType;
 };
 
 class ScOrcusAutoFilter : public orcus::spreadsheet::iface::import_auto_filter
 {
 public:
-    ScOrcusAutoFilter(ScDocument& rDoc);
+    ScOrcusAutoFilter( const ScOrcusGlobalSettings& rGS );
 
     virtual ~ScOrcusAutoFilter() override;
 
-    virtual void set_range(const char* p_ref, size_t n_ref) override;
+    virtual void set_range(const orcus::spreadsheet::range_t& range) override;
 
     virtual void set_column(orcus::spreadsheet::col_t col) override;
 
@@ -163,6 +192,7 @@ public:
     virtual void commit() override;
 
 private:
+    const ScOrcusGlobalSettings& mrGlobalSettings;
     ScRange maRange;
 };
 
@@ -182,31 +212,106 @@ public:
 
     virtual void set_row_hidden(orcus::spreadsheet::row_t row, bool hidden) override;
 
-    virtual void set_merge_cell_range(const char* p_range, size_t n_range) override;
+    virtual void set_merge_cell_range(const orcus::spreadsheet::range_t& range) override;
+};
+
+class ScOrcusFormula : public orcus::spreadsheet::iface::import_formula
+{
+    enum class ResultType { NotSet, String, Value, Empty };
+
+    friend class ScOrcusSheet;
+
+    ScOrcusSheet& mrSheet;
+
+    SCCOL mnCol;
+    SCROW mnRow;
+    OUString maFormula;
+    formula::FormulaGrammar::Grammar meGrammar;
+    size_t mnSharedFormulaIndex;
+    bool mbShared;
+
+    ResultType meResType;
+    size_t mnResult; // result string index.
+    double mfResult;
+
+    void reset();
+
+public:
+    ScOrcusFormula( ScOrcusSheet& rSheet );
+    virtual ~ScOrcusFormula() override;
+
+    virtual void set_position(orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col) override;
+    virtual void set_formula(orcus::spreadsheet::formula_grammar_t grammar, const char* p, size_t n) override;
+    virtual void set_shared_formula_index(size_t index) override;
+    virtual void set_result_value(double value) override;
+    virtual void set_result_string(size_t sindex) override;
+    virtual void set_result_empty() override;
+    virtual void set_result_bool(bool value) override;
+    virtual void commit() override;
+};
+
+class ScOrcusArrayFormula : public orcus::spreadsheet::iface::import_array_formula
+{
+    friend class ScOrcusSheet;
+
+    ScOrcusSheet& mrSheet;
+
+    SCCOL mnCol;
+    SCROW mnRow;
+    uint32_t mnColRange;
+    uint32_t mnRowRange;
+    OUString maFormula;
+    formula::FormulaGrammar::Grammar meGrammar;
+
+    void reset();
+
+public:
+    ScOrcusArrayFormula( ScOrcusSheet& rSheet );
+    virtual ~ScOrcusArrayFormula() override;
+
+    virtual void set_range(const orcus::spreadsheet::range_t& range) override;
+    virtual void set_formula(orcus::spreadsheet::formula_grammar_t grammar, const char* p, size_t n) override;
+    virtual void set_result_value(orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, double value) override;
+    virtual void set_result_string(orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, size_t sindex) override;
+    virtual void set_result_empty(orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col) override;
+    virtual void set_result_bool(orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, bool value) override;
+    virtual void commit() override;
 };
 
 class ScOrcusSheet : public orcus::spreadsheet::iface::import_sheet
 {
+    friend class ScOrcusFormula;
+    friend class ScOrcusArrayFormula;
+
     ScDocumentImport& mrDoc;
     SCTAB mnTab;
     ScOrcusFactory& mrFactory;
     ScOrcusStyles& mrStyles;
     sc::SharedFormulaGroups maFormulaGroups;
+
     ScOrcusAutoFilter maAutoFilter;
     ScOrcusSheetProperties maProperties;
     ScOrcusConditionalFormat maConditionalFormat;
+    ScOrcusNamedExpression maNamedExpressions;
+    ScOrcusFormula maFormula;
+    ScOrcusArrayFormula maArrayFormula;
 
     int mnCellCount;
 
     void cellInserted();
 
+    ScDocumentImport& getDoc();
+
 public:
     ScOrcusSheet(ScDocumentImport& rDoc, SCTAB nTab, ScOrcusFactory& rFactory);
 
-    virtual orcus::spreadsheet::iface::import_auto_filter* get_auto_filter() override { return &maAutoFilter; }
+    virtual orcus::spreadsheet::iface::import_auto_filter* get_auto_filter() override;
     virtual orcus::spreadsheet::iface::import_table* get_table() override;
     virtual orcus::spreadsheet::iface::import_sheet_properties* get_sheet_properties() override;
     virtual orcus::spreadsheet::iface::import_conditional_format* get_conditional_format() override;
+    virtual orcus::spreadsheet::iface::import_named_expression* get_named_expression() override;
+    virtual orcus::spreadsheet::iface::import_formula* get_formula() override;
+    virtual orcus::spreadsheet::iface::import_array_formula* get_array_formula() override;
 
     // Orcus import interface
     virtual void set_auto(orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, const char* p, size_t n) override;
@@ -220,35 +325,21 @@ public:
     virtual void set_format(orcus::spreadsheet::row_t row_start, orcus::spreadsheet::col_t col_start,
             orcus::spreadsheet::row_t row_end, orcus::spreadsheet::col_t col_end, size_t xf_index) override;
 
-    virtual void set_formula(orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, orcus::spreadsheet::formula_grammar_t grammar, const char* p, size_t n) override;
-    virtual void set_formula_result(orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, const char* p, size_t n) override;
-    virtual void set_formula_result(orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, double val) override;
+    virtual orcus::spreadsheet::range_size_t get_sheet_size() const override;
 
-    virtual void set_shared_formula(
-        orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, orcus::spreadsheet::formula_grammar_t grammar, size_t sindex,
-        const char* p_formula, size_t n_formula) override;
-
-    virtual void set_shared_formula(
-        orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, orcus::spreadsheet::formula_grammar_t grammar, size_t sindex,
-        const char* p_formula, size_t n_formula, const char* p_range, size_t n_range) override;
-
-    virtual void set_shared_formula(orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, size_t sindex) override;
-
-    virtual void set_array_formula(
-        orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, orcus::spreadsheet::formula_grammar_t grammar,
-        const char* p, size_t n, orcus::spreadsheet::row_t array_rows, orcus::spreadsheet::col_t array_cols) override;
-
-    virtual void set_array_formula(
-        orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, orcus::spreadsheet::formula_grammar_t grammar,
-        const char* p, size_t n, const char* p_range, size_t n_range) override;
+    virtual void fill_down_cells(orcus::spreadsheet::row_t row, orcus::spreadsheet::col_t col, orcus::spreadsheet::row_t range_size) override;
 
     SCTAB getIndex() const { return mnTab; }
+
+    const sc::SharedFormulaGroups& getSharedFormulaGroups() const;
+    sc::SharedFormulaGroups& getSharedFormulaGroups();
+    ScOrcusFactory& getFactory();
 };
 
 class ScOrcusStyles : public orcus::spreadsheet::iface::import_styles
 {
 private:
-    ScDocument& mrDoc;
+    ScOrcusFactory& mrFactory;
 
     struct font
     {
@@ -277,7 +368,7 @@ private:
 
     struct fill
     {
-        OUString maPattern;
+        orcus::spreadsheet::fill_pattern_t mePattern;
         Color maFgColor;
         Color maBgColor;
 
@@ -295,7 +386,7 @@ private:
     {
         struct border_line
         {
-            SvxBorderLineStyle mestyle;
+            SvxBorderLineStyle meStyle;
             Color maColor;
             double mnWidth;
 
@@ -336,7 +427,7 @@ private:
         bool mbHasNumberFormatAttr;
 
         number_format();
-        void applyToItemSet(SfxItemSet& rSet, ScDocument& rDoc) const;
+        void applyToItemSet(SfxItemSet& rSet, const ScDocument& rDoc) const;
     };
 
     number_format maCurrentNumberFormat;
@@ -352,8 +443,10 @@ private:
         size_t mnStyleXf;
         bool mbAlignment;
 
-        SvxCellHorJustify meHor_alignment;
-        SvxCellVerJustify meVer_alignment;
+        SvxCellHorJustify meHorAlignment;
+        SvxCellVerJustify meVerAlignment;
+        SvxCellJustifyMethod meHorAlignMethod;
+        SvxCellJustifyMethod meVerAlignMethod;
 
         xf();
     };
@@ -377,7 +470,7 @@ private:
     void applyXfToItemSet(SfxItemSet& rSet, const xf& rXf);
 
 public:
-    ScOrcusStyles(ScDocument& rDoc);
+    ScOrcusStyles( ScOrcusFactory& rFactory, bool bSkipDefaultStyles=false );
 
     void applyXfToItemSet(SfxItemSet& rSet, size_t xfId);
 
@@ -409,7 +502,7 @@ public:
     // fill
 
     virtual void set_fill_count(size_t n) override;
-    virtual void set_fill_pattern_type(const char* s, size_t n) override;
+    virtual void set_fill_pattern_type(orcus::spreadsheet::fill_pattern_t fp) override;
     virtual void set_fill_fg_color(orcus::spreadsheet::color_elem_t alpha, orcus::spreadsheet::color_elem_t red, orcus::spreadsheet::color_elem_t green, orcus::spreadsheet::color_elem_t blue) override;
     virtual void set_fill_bg_color(orcus::spreadsheet::color_elem_t alpha, orcus::spreadsheet::color_elem_t red, orcus::spreadsheet::color_elem_t green, orcus::spreadsheet::color_elem_t blue) override;
     virtual size_t commit_fill() override;
@@ -417,7 +510,7 @@ public:
     // border
 
     virtual void set_border_count(size_t n) override;
-    virtual void set_border_style(orcus::spreadsheet::border_direction_t dir, const char* s, size_t n) override;
+
     virtual void set_border_style(orcus::spreadsheet::border_direction_t dir, orcus::spreadsheet::border_style_t style) override;
     virtual void set_border_color(orcus::spreadsheet::border_direction_t dir,
             orcus::spreadsheet::color_elem_t alpha,
@@ -478,26 +571,51 @@ public:
 
 class ScOrcusFactory : public orcus::spreadsheet::iface::import_factory
 {
-    struct StringCellCache
+    struct CellStoreToken
     {
-        ScAddress maPos;
-        size_t mnIndex;
+        enum class Type
+        {
+            Auto,
+            Numeric,
+            String,
+            Formula,
+            FormulaWithResult,
+            SharedFormula,
+            SharedFormulaWithResult,
+            Matrix,
+            FillDownCells
+        };
 
-        StringCellCache(const ScAddress& rPos, size_t nIndex);
+        ScAddress maPos;
+        Type meType;
+
+        OUString maStr1;
+        OUString maStr2;
+        double mfValue;
+
+        uint32_t mnIndex1;
+        uint32_t mnIndex2;
+        formula::FormulaGrammar::Grammar meGrammar;
+
+        CellStoreToken( const ScAddress& rPos, Type eType );
+        CellStoreToken( const ScAddress& rPos, double fValue );
+        CellStoreToken( const ScAddress& rPos, uint32_t nIndex );
+        CellStoreToken( const ScAddress& rPos, const OUString& rFormula, formula::FormulaGrammar::Grammar eGrammar );
     };
 
-    typedef std::unordered_map<OUString, size_t, OUStringHash> StringHashType;
-    typedef std::vector<StringCellCache> StringCellCaches;
+    typedef std::unordered_map<OUString, size_t> StringHashType;
+    typedef std::vector<CellStoreToken> CellStoreTokensType;
 
     ScDocumentImport maDoc;
 
     std::vector<OUString> maStrings;
     StringHashType maStringHash;
 
-    StringCellCaches maStringCells;
+    CellStoreTokensType maCellStoreTokens;
     ScOrcusGlobalSettings maGlobalSettings;
     ScOrcusSharedStrings maSharedStrings;
-    std::vector< std::unique_ptr<ScOrcusSheet> > maSheets;
+    ScOrcusNamedExpression maNamedExpressions;
+    std::vector<std::unique_ptr<ScOrcusSheet>> maSheets;
     ScOrcusStyles maStyles;
 
     int mnProgress;
@@ -505,24 +623,44 @@ class ScOrcusFactory : public orcus::spreadsheet::iface::import_factory
     css::uno::Reference<css::task::XStatusIndicator> mxStatusIndicator;
 
 public:
-    ScOrcusFactory(ScDocument& rDoc);
+    ScOrcusFactory(ScDocument& rDoc, bool bSkipDefaultStyles=false);
 
-    virtual orcus::spreadsheet::iface::import_sheet* append_sheet(const char *sheet_name, size_t sheet_name_length) override;
+    virtual orcus::spreadsheet::iface::import_sheet* append_sheet(
+        orcus::spreadsheet::sheet_t sheet_index, const char *sheet_name, size_t sheet_name_length) override;
     virtual orcus::spreadsheet::iface::import_sheet* get_sheet(const char *sheet_name, size_t sheet_name_length) override;
     virtual orcus::spreadsheet::iface::import_sheet* get_sheet(orcus::spreadsheet::sheet_t sheet_index) override;
     virtual orcus::spreadsheet::iface::import_global_settings* get_global_settings() override;
     virtual orcus::spreadsheet::iface::import_shared_strings* get_shared_strings() override;
+    virtual orcus::spreadsheet::iface::import_named_expression* get_named_expression() override;
     virtual orcus::spreadsheet::iface::import_styles* get_styles() override;
     virtual void finalize() override;
 
+    ScDocumentImport& getDoc();
+
     size_t appendString(const OUString& rStr);
     size_t addString(const OUString& rStr);
+    const OUString* getString(size_t nIndex) const;
 
-    void pushStringCell(const ScAddress& rPos, size_t nStrIndex);
+    void pushCellStoreAutoToken( const ScAddress& rPos, const OUString& rVal );
+    void pushCellStoreToken( const ScAddress& rPos, uint32_t nStrIndex );
+    void pushCellStoreToken( const ScAddress& rPos, double fValue );
+    void pushCellStoreToken(
+        const ScAddress& rPos, const OUString& rFormula, formula::FormulaGrammar::Grammar eGrammar );
+    void pushFillDownCellsToken( const ScAddress& rPos, uint32_t nFillSize );
+
+    void pushSharedFormulaToken( const ScAddress& rPos, uint32_t nIndex );
+    void pushMatrixFormulaToken(
+        const ScAddress& rPos, const OUString& rFormula, formula::FormulaGrammar::Grammar eGrammar,
+        uint32_t nRowRange, uint32_t nColRange );
+
+    void pushFormulaResult( const ScAddress& rPos, double fValue );
+    void pushFormulaResult( const ScAddress& rPos, const OUString& rValue );
 
     void incrementProgress();
 
     void setStatusIndicator(const css::uno::Reference<css::task::XStatusIndicator>& rIndicator);
+
+    const ScOrcusGlobalSettings& getGlobalSettings() const;
 };
 
 #endif

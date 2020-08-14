@@ -20,17 +20,14 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSPAGEOBJECTPAINTER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSPAGEOBJECTPAINTER_HXX
 
-#include "SlideSorter.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "view/SlsLayouter.hxx"
-#include "view/SlsTheme.hxx"
+#include <model/SlsSharedPageDescriptor.hxx>
+#include <view/SlsTheme.hxx>
 #include <memory>
 
-namespace sd { namespace slidesorter { namespace cache {
-class PageCache;
-} } }
+namespace sd::slidesorter::cache { class PageCache; }
+namespace sd::slidesorter { class SlideSorter; }
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 
 class Layouter;
 class PageObjectLayouter;
@@ -64,7 +61,7 @@ public:
         @return
             The returned bitmap may have a different size then the preview area.
     */
-    Bitmap GetPreviewBitmap (
+    BitmapEx GetPreviewBitmap (
         const model::SharedPageDescriptor& rpDescriptor,
         const OutputDevice* pReferenceDevice) const;
 
@@ -105,9 +102,9 @@ private:
         OutputDevice& rDevice,
         const model::SharedPageDescriptor& rpDescriptor) const;
 
-    static Bitmap CreateMarkedPreview(
+    static BitmapEx CreateMarkedPreview(
         const Size& rSize,
-        const Bitmap& rPreview,
+        const BitmapEx& rPreview,
         const BitmapEx& rOverlay,
         const OutputDevice* pReferenceDevice);
 
@@ -118,7 +115,7 @@ private:
     bool UpdatePageObjectLayouter();
 };
 
-} } } // end of namespace sd::slidesorter::view
+} // end of namespace sd::slidesorter::view
 
 #endif
 

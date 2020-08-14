@@ -24,28 +24,26 @@
 #include "vlcplayer.hxx"
 #include "vlcwindow.hxx"
 #include "vlcframegrabber.hxx"
-#include "wrapper/Instance.hxx"
+#include <wrapper/Instance.hxx>
 
 using namespace ::com::sun::star;
 
-namespace avmedia {
-namespace vlc {
+namespace avmedia::vlc {
 
 namespace
 {
-    const ::rtl::OUString AVMEDIA_VLC_PLAYER_IMPLEMENTATIONNAME = "com.sun.star.comp.avmedia.Player_VLC";
-    const ::rtl::OUString AVMEDIA_VLC_PLAYER_SERVICENAME = "com.sun.star.media.Player_VLC";
+    const OUStringLiteral AVMEDIA_VLC_PLAYER_IMPLEMENTATIONNAME = "com.sun.star.comp.avmedia.Player_VLC";
+    const OUStringLiteral AVMEDIA_VLC_PLAYER_SERVICENAME = "com.sun.star.media.Player_VLC";
 
     const int MS_IN_SEC = 1000; // Millisec in sec
 }
 
-VLCPlayer::VLCPlayer( const rtl::OUString& url,
+VLCPlayer::VLCPlayer( const OUString& url,
                       wrapper::Instance& instance,
                       wrapper::EventHandler& eh )
     : VLC_Base( m_aMutex )
-    , mInstance( instance )
     , mEventHandler( eh )
-    , mMedia( url, mInstance )
+    , mMedia( url, instance )
     , mPlayer( mMedia )
     , mEventManager( mPlayer, mEventHandler )
     , mUrl( url )
@@ -53,16 +51,6 @@ VLCPlayer::VLCPlayer( const rtl::OUString& url,
     , mPrevWinID( 0 )
 {
     mPlayer.setMouseHandling( false );
-}
-
-unsigned VLCPlayer::getWidth() const
-{
-    return mPlayer.getWidth();
-}
-
-unsigned VLCPlayer::getHeight() const
-{
-    return mPlayer.getHeight();
 }
 
 void SAL_CALL VLCPlayer::start()
@@ -90,12 +78,6 @@ double SAL_CALL VLCPlayer::getDuration()
 {
     ::osl::MutexGuard aGuard(m_aMutex);
     return static_cast<double>( mMedia.getDuration() ) / MS_IN_SEC;
-}
-
-void SAL_CALL VLCPlayer::setScale( float factor )
-{
-    ::osl::MutexGuard aGuard(m_aMutex);
-    mPlayer.setScale( factor );
 }
 
 void SAL_CALL VLCPlayer::setMediaTime( double fTime )
@@ -191,7 +173,7 @@ namespace
 
 #if defined MACOSX
         const intptr_t id = reinterpret_cast<intptr_t>( pEnvData->mpNSView );
-#elif defined WNT
+#elif defined _WIN32
         const intptr_t id = reinterpret_cast<intptr_t>( pEnvData->hWnd );
 #else
         const intptr_t id = static_cast<intptr_t>( pEnvData->aWindow );
@@ -201,7 +183,7 @@ namespace
     }
 }
 
-void SAL_CALL VLCPlayer::setWindowID( const intptr_t windowID )
+void VLCPlayer::setWindowID( const intptr_t windowID )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     mPlayer.stop();
@@ -249,22 +231,21 @@ uno::Reference< css::media::XFrameGrabber > SAL_CALL VLCPlayer::createFrameGrabb
     return mrFrameGrabber;
 }
 
-::rtl::OUString SAL_CALL VLCPlayer::getImplementationName()
+OUString SAL_CALL VLCPlayer::getImplementationName()
 {
     return AVMEDIA_VLC_PLAYER_IMPLEMENTATIONNAME;
 }
 
-sal_Bool SAL_CALL VLCPlayer::supportsService( const ::rtl::OUString& serviceName )
+sal_Bool SAL_CALL VLCPlayer::supportsService( const OUString& serviceName )
 {
     return cppu::supportsService(this, serviceName);
 }
 
-::uno::Sequence< ::rtl::OUString > SAL_CALL VLCPlayer::getSupportedServiceNames()
+::uno::Sequence< OUString > SAL_CALL VLCPlayer::getSupportedServiceNames()
 {
     return { AVMEDIA_VLC_PLAYER_SERVICENAME };
 }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

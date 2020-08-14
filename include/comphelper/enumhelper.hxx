@@ -20,14 +20,14 @@
 #ifndef INCLUDED_COMPHELPER_ENUMHELPER_HXX
 #define INCLUDED_COMPHELPER_ENUMHELPER_HXX
 
-#include <vector>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <osl/mutex.hxx>
 #include <comphelper/comphelperdllapi.h>
+
+namespace com::sun::star::container { class XIndexAccess; }
+namespace com::sun::star::container { class XNameAccess; }
 
 namespace comphelper
 {
@@ -38,17 +38,17 @@ struct OEnumerationLock
         ::osl::Mutex m_aLock;
 };
 
-/** provides an com.sun.star.container::XEnumeration access based
+/** provides a com.sun.star.container::XEnumeration access based
     on an object implementing the com.sun.star.container::XNameAccess interface
 */
-class COMPHELPER_DLLPUBLIC OEnumerationByName : private OEnumerationLock
+class COMPHELPER_DLLPUBLIC OEnumerationByName final : private OEnumerationLock
                          , public ::cppu::WeakImplHelper< css::container::XEnumeration ,
                                                           css::lang::XEventListener    >
 {
-    css::uno::Sequence< OUString >                m_aNames;
+    css::uno::Sequence< OUString > const                m_aNames;
+    css::uno::Reference< css::container::XNameAccess >  m_xAccess;
     sal_Int32                                           m_nPos;
-    css::uno::Reference< css::container::XNameAccess >    m_xAccess;
-    bool                                            m_bListening;
+    bool                                                m_bListening;
 
 public:
     OEnumerationByName(const css::uno::Reference< css::container::XNameAccess >& _rxAccess);
@@ -66,15 +66,15 @@ private:
     COMPHELPER_DLLPRIVATE void impl_stopDisposeListening();
 };
 
-/** provides an com.sun.star.container::XEnumeration access based
+/** provides a com.sun.star.container::XEnumeration access based
     on an object implementing the com.sun.star.container::XNameAccess interface
 */
-class COMPHELPER_DLLPUBLIC OEnumerationByIndex : private OEnumerationLock
+class COMPHELPER_DLLPUBLIC OEnumerationByIndex final : private OEnumerationLock
                           , public ::cppu::WeakImplHelper< css::container::XEnumeration ,
                                                            css::lang::XEventListener    >
 {
-    sal_Int32                                         m_nPos;
     css::uno::Reference< css::container::XIndexAccess > m_xAccess;
+    sal_Int32                                         m_nPos;
     bool                                          m_bListening;
 
 public:
@@ -95,11 +95,11 @@ private:
 class SAL_DLLPUBLIC_TEMPLATE OAnyEnumeration_BASE
     : public ::cppu::WeakImplHelper<css::container::XEnumeration> {};
 
-/** provides an com.sun.star.container::XEnumeration
+/** provides a com.sun.star.container::XEnumeration
     for an outside set vector of Any's.
 
 */
-class COMPHELPER_DLLPUBLIC OAnyEnumeration : private OEnumerationLock
+class COMPHELPER_DLLPUBLIC OAnyEnumeration final : private OEnumerationLock
                                            , public OAnyEnumeration_BASE
 {
     sal_Int32                         m_nPos;

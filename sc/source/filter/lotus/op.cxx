@@ -18,40 +18,37 @@
  */
 
 #include <rtl/math.hxx>
+#include <rtl/character.hxx>
 
 #include <string.h>
-#include <math.h>
-#include <stdlib.h>
 
-#include "scitems.hxx"
-#include "patattr.hxx"
-#include "docpool.hxx"
-#include <svx/algitem.hxx>
+#include <scitems.hxx>
+#include <patattr.hxx>
+#include <docpool.hxx>
 #include <editeng/postitem.hxx>
 #include <editeng/udlnitem.hxx>
 #include <editeng/wghtitem.hxx>
 #include <editeng/justifyitem.hxx>
+#include <unotools/configmgr.hxx>
 
-#include "formulacell.hxx"
-#include "rangenam.hxx"
-#include "document.hxx"
-#include "postit.hxx"
+#include <formulacell.hxx>
+#include <document.hxx>
+#include <postit.hxx>
 
-#include "op.h"
-#include "optab.h"
-#include "tool.h"
-#include "decl.h"
+#include <op.h>
+#include <optab.h>
+#include <tool.h>
 #include "lotfilter.hxx"
-#include "lotform.hxx"
-#include "lotrange.hxx"
-#include "root.hxx"
-#include "ftools.hxx"
+#include <lotform.hxx>
+#include <lotrange.hxx>
+#include <root.hxx>
+#include <ftools.hxx>
 
 #include <vector>
 #include <map>
 #include <memory>
 
-static sal_uInt16 nDefWidth = ( sal_uInt16 ) ( TWIPS_PER_CHAR * 10 );
+static sal_uInt16 nDefWidth = sal_uInt16( TWIPS_PER_CHAR * 10 );
 
 void NI(LotusContext& /*rContext*/, SvStream& r, sal_uInt16 n)
 {
@@ -77,12 +74,12 @@ void OP_Integer(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
     SCCOL nCol(static_cast<SCCOL>(nTmpCol));
     SCROW nRow(static_cast<SCROW>(nTmpRow));
 
-    if (ValidColRow(nCol, nRow))
+    if (rContext.pDoc->ValidColRow(nCol, nRow))
     {
         rContext.pDoc->EnsureTable(0);
         rContext.pDoc->SetValue(ScAddress(nCol, nRow, 0), static_cast<double>(nValue));
 
-        // 0 decimal places!
+        // 0 digits in fractional part!
         SetFormat(rContext, nCol, nRow, 0, nFormat, 0);
     }
 }
@@ -96,13 +93,13 @@ void OP_Number(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
     SCCOL nCol(static_cast<SCCOL>(nTmpCol));
     SCROW nRow(static_cast<SCROW>(nTmpRow));
 
-    if (ValidColRow(nCol, nRow))
+    if (rContext.pDoc->ValidColRow(nCol, nRow))
     {
         fValue = ::rtl::math::round( fValue, 15 );
         rContext.pDoc->EnsureTable(0);
         rContext.pDoc->SetValue(ScAddress(nCol, nRow, 0), fValue);
 
-        SetFormat(rContext, nCol, nRow, 0, nFormat, nDezFloat);
+        SetFormat(rContext, nCol, nRow, 0, nFormat, nFractionalFloat);
     }
 }
 
@@ -114,20 +111,20 @@ void OP_Label(LotusContext& rContext, SvStream& r, sal_uInt16 n)
     SCCOL nCol(static_cast<SCCOL>(nTmpCol));
     SCROW nRow(static_cast<SCROW>(nTmpRow));
 
-    n -= (n > 5) ? 5 : n;
+    n -= std::min<sal_uInt16>(n, 5);
 
-    std::unique_ptr<sal_Char[]> pText(new sal_Char[n + 1]);
+    std::unique_ptr<char[]> pText(new char[n + 1]);
     r.ReadBytes(pText.get(), n);
     pText[n] = 0;
 
-    if (ValidColRow(nCol, nRow))
+    if (rContext.pDoc->ValidColRow(nCol, nRow))
     {
         nFormat &= 0x80;    // don't change Bit 7
         nFormat |= 0x75;    // protected does not matter, special-text is set
 
         PutFormString(rContext, nCol, nRow, 0, pText.get());
 
-        SetFormat(rContext, nCol, nRow, 0, nFormat, nDezStd);
+        SetFormat(rContext, nCol, nRow, 0, nFormat, nFractionalStd);
     }
 }
 
@@ -143,24 +140,26 @@ void OP_Formula(LotusContext &rContext, SvStream& r, sal_uInt16 /*n*/)
     SCCOL nCol(static_cast<SCCOL>(nTmpCol));
     SCROW nRow(static_cast<SCROW>(nTmpRow));
 
-    const ScTokenArray* pErg;
+    std::unique_ptr<ScTokenArray> pResult;
     sal_Int32 nBytesLeft = nFormulaSize;
     ScAddress aAddress(nCol, nRow, 0);
 
-    svl::SharedStringPool& rSPool = rContext.pLotusRoot->pDoc->GetSharedStringPool();
-    LotusToSc aConv(rContext, r, rSPool, rContext.pLotusRoot->eCharsetQ, false);
+    svl::SharedStringPool& rSPool = rContext.pDoc->GetSharedStringPool();
+    LotusToSc aConv(rContext, r, rSPool, rContext.eCharset, false);
     aConv.Reset( aAddress );
-    aConv.Convert( pErg, nBytesLeft );
+    aConv.Convert( pResult, nBytesLeft );
+    if (!aConv.good())
+        return;
 
-    if (ValidColRow(nCol, nRow))
+    if (rContext.pDoc->ValidColRow(nCol, nRow))
     {
-        ScFormulaCell* pCell = new ScFormulaCell(rContext.pLotusRoot->pDoc, aAddress, *pErg);
+        ScFormulaCell* pCell = new ScFormulaCell(rContext.pDoc, aAddress, std::move(pResult));
         pCell->AddRecalcMode( ScRecalcMode::ONLOAD_ONCE );
         rContext.pDoc->EnsureTable(0);
         rContext.pDoc->SetFormulaCell(ScAddress(nCol, nRow, 0), pCell);
 
-        // nFormat = Default -> decimal places like Float
-        SetFormat(rContext, nCol, nRow, 0, nFormat, nDezFloat);
+        // nFormat = Default -> number of digits in fractional part like Float
+        SetFormat(rContext, nCol, nRow, 0, nFormat, nFractionalFloat);
     }
 }
 
@@ -171,22 +170,22 @@ void OP_ColumnWidth(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
     r.ReadUInt16(nTmpCol).ReadUChar(nWidthSpaces);
     SCCOL nCol(static_cast<SCCOL>(nTmpCol));
 
-    if (ValidCol(nCol))
+    if (!rContext.pDoc->ValidCol(nCol))
+        return;
+
+    nCol = rContext.pDoc->SanitizeCol(nCol);
+
+    sal_uInt16 nBreite;
+    if( nWidthSpaces )
+        // assuming 10cpi character set
+        nBreite = static_cast<sal_uInt16>( TWIPS_PER_CHAR * nWidthSpaces );
+    else
     {
-        nCol = SanitizeCol(nCol);
-
-        sal_uInt16 nBreite;
-        if( nWidthSpaces )
-            // assuming 10cpi character set
-            nBreite = ( sal_uInt16 ) ( TWIPS_PER_CHAR * nWidthSpaces );
-        else
-        {
-            rContext.pDoc->SetColHidden(nCol, nCol, 0, true);
-            nBreite = nDefWidth;
-        }
-
-        rContext.pDoc->SetColWidth(nCol, 0, nBreite);
+        rContext.pDoc->SetColHidden(nCol, nCol, 0, true);
+        nBreite = nDefWidth;
     }
+
+    rContext.pDoc->SetColWidth(nCol, 0, nBreite);
 }
 
 void OP_NamedRange(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
@@ -194,37 +193,37 @@ void OP_NamedRange(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
     // POST: don't save for invalid coordinates
     sal_uInt16              nColSt, nRowSt, nColEnd, nRowEnd;
 
-    sal_Char cPuffer[ 16+1 ];
-    r.ReadBytes(cPuffer, 16);
-    cPuffer[ 16 ] = 0;
+    char cBuffer[ 16+1 ];
+    r.ReadBytes(cBuffer, 16);
+    cBuffer[ 16 ] = 0;
 
     r.ReadUInt16( nColSt ).ReadUInt16( nRowSt ).ReadUInt16( nColEnd ).ReadUInt16( nRowEnd );
 
-    if (ValidColRow( static_cast<SCCOL>(nColSt), nRowSt) && ValidColRow( static_cast<SCCOL>(nColEnd), nRowEnd))
-    {
-        LotusRange*      pRange;
+    if (!(rContext.pDoc->ValidColRow( static_cast<SCCOL>(nColSt), nRowSt) && rContext.pDoc->ValidColRow( static_cast<SCCOL>(nColEnd), nRowEnd)))
+        return;
 
-        if( nColSt == nColEnd && nRowSt == nRowEnd )
-            pRange = new LotusRange( static_cast<SCCOL> (nColSt), static_cast<SCROW> (nRowSt) );
-        else
-            pRange = new LotusRange( static_cast<SCCOL> (nColSt), static_cast<SCROW> (nRowSt),
-                    static_cast<SCCOL> (nColEnd), static_cast<SCROW> (nRowEnd) );
+    std::unique_ptr<LotusRange> pRange;
 
-        sal_Char cBuf[sizeof(cPuffer)+1];
-        if( rtl::isAsciiDigit( static_cast<unsigned char>(*cPuffer) ) )
-        {  // first char in name is a number -> prepend 'A'
-            cBuf[0] = 'A';
-            strcpy( cBuf + 1, cPuffer );       // #100211# - checked
-        }
-        else
-            strcpy( cBuf, cPuffer );           // #100211# - checked
+    if( nColSt == nColEnd && nRowSt == nRowEnd )
+        pRange.reset(new LotusRange( static_cast<SCCOL> (nColSt), static_cast<SCROW> (nRowSt) ));
+    else
+        pRange.reset(new LotusRange( static_cast<SCCOL> (nColSt), static_cast<SCROW> (nRowSt),
+                static_cast<SCCOL> (nColEnd), static_cast<SCROW> (nRowEnd) ));
 
-        OUString      aTmp( cBuf, strlen(cBuf), rContext.pLotusRoot->eCharsetQ );
-
-        aTmp = ScfTools::ConvertToScDefinedName( aTmp );
-
-        rContext.pLotusRoot->maRangeNames.Append( pRange, aTmp );
+    char cBuf[sizeof(cBuffer)+1];
+    if( rtl::isAsciiDigit( static_cast<unsigned char>(*cBuffer) ) )
+    {  // first char in name is a number -> prepend 'A'
+        cBuf[0] = 'A';
+        strcpy( cBuf + 1, cBuffer );       // #100211# - checked
     }
+    else
+        strcpy( cBuf, cBuffer );           // #100211# - checked
+
+    OUString      aTmp( cBuf, strlen(cBuf), rContext.eCharset );
+
+    aTmp = ScfTools::ConvertToScDefinedName( aTmp );
+
+    rContext.maRangeNames.Append( rContext.pDoc, std::move(pRange) );
 }
 
 void OP_SymphNamedRange(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
@@ -233,36 +232,36 @@ void OP_SymphNamedRange(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
     sal_uInt16              nColSt, nRowSt, nColEnd, nRowEnd;
     sal_uInt8               nType;
 
-    sal_Char cPuffer[ 16+1 ];
-    r.ReadBytes(cPuffer, 16);
-    cPuffer[ 16 ] = 0;
+    char cBuffer[ 16+1 ];
+    r.ReadBytes(cBuffer, 16);
+    cBuffer[ 16 ] = 0;
 
     r.ReadUInt16( nColSt ).ReadUInt16( nRowSt ).ReadUInt16( nColEnd ).ReadUInt16( nRowEnd ).ReadUChar( nType );
 
-    if (ValidColRow( static_cast<SCCOL>(nColSt), nRowSt) && ValidColRow( static_cast<SCCOL>(nColEnd), nRowEnd))
-    {
-        LotusRange*      pRange;
+    if (!(rContext.pDoc->ValidColRow( static_cast<SCCOL>(nColSt), nRowSt) && rContext.pDoc->ValidColRow( static_cast<SCCOL>(nColEnd), nRowEnd)))
+        return;
 
-        if( nType )
-            pRange = new LotusRange( static_cast<SCCOL> (nColSt), static_cast<SCROW> (nRowSt) );
-        else
-            pRange = new LotusRange( static_cast<SCCOL> (nColSt), static_cast<SCROW> (nRowSt),
-                    static_cast<SCCOL> (nColEnd), static_cast<SCROW> (nRowEnd) );
+    std::unique_ptr<LotusRange> pRange;
 
-        sal_Char cBuf[sizeof(cPuffer)+1];
-        if( rtl::isAsciiDigit( static_cast<unsigned char>(*cPuffer) ) )
-        {  // first char in name is a number -> prepend 'A'
-            cBuf[0] = 'A';
-            strcpy( cBuf + 1, cPuffer );       // #100211# - checked
-        }
-        else
-            strcpy( cBuf, cPuffer );           // #100211# - checked
+    if( nType )
+        pRange.reset(new LotusRange( static_cast<SCCOL> (nColSt), static_cast<SCROW> (nRowSt) ));
+    else
+        pRange.reset(new LotusRange( static_cast<SCCOL> (nColSt), static_cast<SCROW> (nRowSt),
+                static_cast<SCCOL> (nColEnd), static_cast<SCROW> (nRowEnd) ));
 
-        OUString  aTmp( cBuf, strlen(cBuf), rContext.pLotusRoot->eCharsetQ );
-        aTmp = ScfTools::ConvertToScDefinedName( aTmp );
-
-        rContext.pLotusRoot->maRangeNames.Append( pRange, aTmp );
+    char cBuf[sizeof(cBuffer)+1];
+    if( rtl::isAsciiDigit( static_cast<unsigned char>(*cBuffer) ) )
+    {  // first char in name is a number -> prepend 'A'
+        cBuf[0] = 'A';
+        strcpy( cBuf + 1, cBuffer );       // #100211# - checked
     }
+    else
+        strcpy( cBuf, cBuffer );           // #100211# - checked
+
+    OUString  aTmp( cBuf, strlen(cBuf), rContext.eCharset );
+    aTmp = ScfTools::ConvertToScDefinedName( aTmp );
+
+    rContext.maRangeNames.Append( rContext.pDoc, std::move(pRange) );
 }
 
 void OP_Footer(LotusContext& /*rContext*/, SvStream& r, sal_uInt16 n)
@@ -284,22 +283,22 @@ void OP_HiddenCols(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
 {
     sal_uInt16      nByte, nBit;
     SCCOL       nCount;
-    sal_uInt8       nAkt;
+    sal_uInt8       nCurrent;
     nCount = 0;
 
     for( nByte = 0 ; nByte < 32 ; nByte++ ) // 32 Bytes with ...
     {
-        r.ReadUChar( nAkt );
+        r.ReadUChar( nCurrent );
         for( nBit = 0 ; nBit < 8 ; nBit++ ) // ...each 8 Bits = 256 Bits
         {
-            if( nAkt & 0x01 )   // is lowest Bit set?
+            if( nCurrent & 0x01 )   // is lowest Bit set?
             {
                 // -> Hidden Col
                 rContext.pDoc->SetColHidden(nCount, nCount, 0, true);
             }
 
             nCount++;
-            nAkt = nAkt / 2;    // the next please...
+            nCurrent = nCurrent / 2;    // the next please...
         }
     }
 }
@@ -314,14 +313,22 @@ void OP_Window1(LotusContext& rContext, SvStream& r, sal_uInt16 n)
     r.SeekRel( 1 );    // skip 'unused'
 
     r.ReadUInt16( nDefWidth );
+    if (!r.good())
+        return;
 
     r.SeekRel( n - 8 );  // skip the rest
 
-    nDefWidth = ( sal_uInt16 ) ( TWIPS_PER_CHAR * nDefWidth );
+    nDefWidth = static_cast<sal_uInt16>( TWIPS_PER_CHAR * nDefWidth );
+
+    const bool bFuzzing = utl::ConfigManager::IsFuzzing();
 
     // instead of default, set all Cols in SC by hand
-    for( SCCOL nCol = 0 ; nCol <= MAXCOL ; nCol++ )
+    for (SCCOL nCol = 0 ; nCol <= rContext.pDoc->MaxCol() ; nCol++)
+    {
         rContext.pDoc->SetColWidth( nCol, 0, nDefWidth );
+        if (bFuzzing)
+            break;
+    }
 }
 
 void OP_Blank(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
@@ -332,7 +339,7 @@ void OP_Blank(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
     SCCOL nCol(static_cast<SCCOL>(nTmpCol));
     SCROW nRow(static_cast<SCROW>(nTmpRow));
 
-    SetFormat(rContext, nCol, nRow, 0, nFormat, nDezFloat);
+    SetFormat(rContext, nCol, nRow, 0, nFormat, nFractionalFloat);
 }
 
 void OP_BOF123(LotusContext& /*rContext*/, SvStream& r, sal_uInt16 /*n*/)
@@ -354,9 +361,9 @@ void OP_Label123(LotusContext& rContext, SvStream& r, sal_uInt16 n)
     SCCOL nCol(static_cast<SCCOL>(nTmpCol));
     SCROW nRow(static_cast<SCROW>(nTmpRow));
 
-    n -= (n > 4) ? 4 : n;
+    n -= std::min<sal_uInt16>(n, 4);
 
-    std::unique_ptr<sal_Char[]> pText(new sal_Char[n + 1]);
+    std::unique_ptr<char[]> pText(new char[n + 1]);
     r.ReadBytes(pText.get(), n);
     pText[ n ] = 0;
 
@@ -373,7 +380,7 @@ void OP_Number123(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
     SCCOL nCol(static_cast<SCCOL>(nTmpCol));
     SCROW nRow(static_cast<SCROW>(nTmpRow));
 
-    if (ValidColRow(nCol, nRow) && nTab <= rContext.pDoc->GetMaxTableNumber())
+    if (rContext.pDoc->ValidColRow(nCol, nRow) && nTab <= rContext.pDoc->GetMaxTableNumber())
     {
         double fValue = Snum32ToDouble( nValue );
         rContext.pDoc->EnsureTable(nTab);
@@ -391,18 +398,20 @@ void OP_Formula123(LotusContext& rContext, SvStream& r, sal_uInt16 n)
     SCROW nRow(static_cast<SCROW>(nTmpRow));
     r.SeekRel( 8 );    // skip Result
 
-    const ScTokenArray* pErg;
+    std::unique_ptr<ScTokenArray> pResult;
     sal_Int32 nBytesLeft = (n > 12) ? n - 12 : 0;
     ScAddress aAddress( nCol, nRow, nTab );
 
-    svl::SharedStringPool& rSPool = rContext.pLotusRoot->pDoc->GetSharedStringPool();
-    LotusToSc aConv(rContext, r, rSPool, rContext.pLotusRoot->eCharsetQ, true);
+    svl::SharedStringPool& rSPool = rContext.pDoc->GetSharedStringPool();
+    LotusToSc aConv(rContext, r, rSPool, rContext.eCharset, true);
     aConv.Reset( aAddress );
-    aConv.Convert( pErg, nBytesLeft );
+    aConv.Convert( pResult, nBytesLeft );
+    if (!aConv.good())
+        return;
 
-    if (ValidColRow(nCol, nRow) && nTab <= rContext.pDoc->GetMaxTableNumber())
+    if (rContext.pDoc->ValidColRow(nCol, nRow) && nTab <= rContext.pDoc->GetMaxTableNumber())
     {
-        ScFormulaCell* pCell = new ScFormulaCell(rContext.pLotusRoot->pDoc, aAddress, *pErg);
+        ScFormulaCell* pCell = new ScFormulaCell(rContext.pDoc, aAddress, std::move(pResult));
         pCell->AddRecalcMode( ScRecalcMode::ONLOAD_ONCE );
         rContext.pDoc->EnsureTable(nTab);
         rContext.pDoc->SetFormulaCell(ScAddress(nCol,nRow,nTab), pCell);
@@ -419,7 +428,7 @@ void OP_IEEENumber123(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
     SCCOL nCol(static_cast<SCCOL>(nTmpCol));
     SCROW nRow(static_cast<SCROW>(nTmpRow));
 
-    if (ValidColRow(nCol, nRow) && nTab <= rContext.pDoc->GetMaxTableNumber())
+    if (rContext.pDoc->ValidColRow(nCol, nRow) && nTab <= rContext.pDoc->GetMaxTableNumber())
     {
         rContext.pDoc->EnsureTable(nTab);
         rContext.pDoc->SetValue(ScAddress(nCol,nRow,nTab), dValue);
@@ -435,13 +444,13 @@ void OP_Note123(LotusContext& rContext, SvStream& r, sal_uInt16 n)
     SCCOL nCol(static_cast<SCCOL>(nTmpCol));
     SCROW nRow(static_cast<SCROW>(nTmpRow));
 
-    n -= (n > 4) ? 4 : n;
+    n -= std::min<sal_uInt16>(n, 4);
 
-    std::unique_ptr<sal_Char[]> pText(new sal_Char[n + 1]);
+    std::unique_ptr<char[]> pText(new char[n + 1]);
     r.ReadBytes(pText.get(), n);
     pText[ n ] = 0;
 
-    OUString aNoteText(pText.get(), strlen(pText.get()), rContext.pLotusRoot->eCharsetQ);
+    OUString aNoteText(pText.get(), strlen(pText.get()), rContext.eCharset);
     pText.reset();
 
     ScAddress aPos(nCol, nRow, nTab);
@@ -493,19 +502,19 @@ void OP_VerAlign123(LotusContext& /*rContext*/, sal_uInt8 nAlignPattern, SfxItem
     switch (nAlignPattern)
     {
         case 0:
-            rPatternItemSet.Put( SvxVerJustifyItem(SVX_VER_JUSTIFY_STANDARD, ATTR_VER_JUSTIFY) );
+            rPatternItemSet.Put( SvxVerJustifyItem(SvxCellVerJustify::Standard, ATTR_VER_JUSTIFY) );
             break;
         case 1:
-            rPatternItemSet.Put( SvxVerJustifyItem(SVX_VER_JUSTIFY_TOP, ATTR_VER_JUSTIFY) );
+            rPatternItemSet.Put( SvxVerJustifyItem(SvxCellVerJustify::Top, ATTR_VER_JUSTIFY) );
             break;
         case 2:
-            rPatternItemSet.Put( SvxVerJustifyItem(SVX_VER_JUSTIFY_CENTER, ATTR_VER_JUSTIFY) );
+            rPatternItemSet.Put( SvxVerJustifyItem(SvxCellVerJustify::Center, ATTR_VER_JUSTIFY) );
             break;
         case 4:
-            rPatternItemSet.Put( SvxVerJustifyItem(SVX_VER_JUSTIFY_BOTTOM, ATTR_VER_JUSTIFY) );
+            rPatternItemSet.Put( SvxVerJustifyItem(SvxCellVerJustify::Bottom, ATTR_VER_JUSTIFY) );
             break;
         default:
-            rPatternItemSet.Put( SvxVerJustifyItem(SVX_VER_JUSTIFY_STANDARD, ATTR_VER_JUSTIFY) );
+            rPatternItemSet.Put( SvxVerJustifyItem(SvxCellVerJustify::Standard, ATTR_VER_JUSTIFY) );
             break;
     }
 }
@@ -518,7 +527,7 @@ void OP_CreatePattern123(LotusContext& rContext, SvStream& r, sal_uInt16 n)
     SfxItemSet& rItemSet = aPattern.GetItemSet();
 
     r.ReadUInt16( nCode );
-    n -= (n > 2) ? 2 : n;
+    n -= std::min<sal_uInt16>(n, 2);
 
     if ( nCode == 0x0fd2 )
     {
@@ -552,8 +561,8 @@ void OP_CreatePattern123(LotusContext& rContext, SvStream& r, sal_uInt16 n)
         r.ReadUChar( Ver_Align );
         OP_VerAlign123(rContext, Ver_Align, rItemSet );
 
-        rContext.aLotusPatternPool.insert( std::map<sal_uInt16, ScPatternAttr>::value_type( nPatternId, aPattern ) );
-        n -= (n > 20) ? 20 : n;
+        rContext.aLotusPatternPool.emplace( nPatternId, aPattern );
+        n -= std::min<sal_uInt16>(n, 20);
     }
     r.SeekRel(n);
 }
@@ -567,25 +576,26 @@ void OP_SheetName123(LotusContext& rContext, SvStream& rStream, sal_uInt16 nLeng
     }
 
     // B0 36 [sheet number (2 bytes?)] [sheet name (null terminated char array)]
+    rStream.SeekRel(2); // ignore the first 2 bytes (B0 36).
+    sal_uInt16 nSheetNum(0);
+    rStream.ReadUInt16(nSheetNum);
 
-    sal_uInt16 nDummy;
-    rStream.ReadUInt16( nDummy ); // ignore the first 2 bytes (B0 36).
-    rStream.ReadUInt16( nDummy );
-    SCTAB nSheetNum = static_cast<SCTAB>(nDummy);
-    rContext.pDoc->MakeTable(nSheetNum);
-
-    ::std::vector<sal_Char> sSheetName;
+    ::std::vector<char> sSheetName;
     sSheetName.reserve(nLength-4);
     for (sal_uInt16 i = 4; i < nLength; ++i)
     {
-        sal_Char c;
+        char c;
         rStream.ReadChar( c );
         sSheetName.push_back(c);
     }
 
+    if (!ValidTab(nSheetNum))
+        return;
+    // coverity[tainted_data : FALSE] - ValidTab has sanitized nSheetNum
+    rContext.pDoc->MakeTable(nSheetNum);
     if (!sSheetName.empty())
     {
-        OUString aName(&sSheetName[0], strlen(&sSheetName[0]), rContext.eCharVon);
+        OUString aName(sSheetName.data(), strlen(sSheetName.data()), rContext.eCharset);
         rContext.pDoc->RenameTab(nSheetNum, aName);
     }
 }
@@ -658,7 +668,7 @@ void OP_ApplyPatternArea123(LotusContext& rContext, SvStream& rStream)
                 break;
         }
     }
-    while( nLevel && !rStream.IsEof() );
+    while( nLevel && rStream.good() );
 
     rContext.aLotusPatternPool.clear();
 }

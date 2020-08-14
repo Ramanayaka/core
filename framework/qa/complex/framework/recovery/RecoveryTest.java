@@ -78,7 +78,7 @@ public class RecoveryTest extends ComplexTestCase {
      * @todo: hidden documents
      * @todo: running presentation
      * @todo: modular dialogs like Hpyerlink-Dialog
-     * @todo: sceond view of a document
+     * @todo: second view of a document
      * @todo: remove recovery data before start test
      * @todo: after a second start after the crash there should no documents recovered anymore
      * @todo: enable remove of recovery files
@@ -162,7 +162,7 @@ public class RecoveryTest extends ComplexTestCase {
         catch ( com.sun.star.container.NoSuchElementException e){}
         catch ( com.sun.star.lang.WrappedTargetException e){}
 
-        String msg ="The amount of documents to recover is different form the expected amount:\n";
+        String msg ="The amount of documents to recover is different from the expected amount:\n";
         msg += "\texpected:\t" + expectedDocumentCount + "\n";
         msg += "\tto recover:\t" + documentCount;
 
@@ -243,7 +243,7 @@ public class RecoveryTest extends ComplexTestCase {
             String[] documents = oUITools.getListBoxItems("The following files will be recovered");
             log.println("there are " + documents.length + " documents to save");
 
-            String msg ="The amount of documents to recover is different form the expected amount:\n";
+            String msg ="The amount of documents to recover is different from the expected amount:\n";
             msg += "\texpected:\t" + expectedDocumentCount + "\n";
             msg += "\tto recover:\t" + documents.length;
 
@@ -338,7 +338,7 @@ public class RecoveryTest extends ComplexTestCase {
                 log.println(documents[i]);
             }
 
-            String msg ="The amount of documents to recover is different form the expected amount:\n";
+            String msg ="The amount of documents to recover is different from the expected amount:\n";
             msg += "\texpected:\t" + expectedDocumentCount + "\n";
             msg += "\tto recover:\t" + documents.length;
 
@@ -530,7 +530,7 @@ public class RecoveryTest extends ComplexTestCase {
         int height = rand.nextInt(maxHeight + 1);
         int width = rand.nextInt((windowMaxSize.Width-posSize.Y) + 1);
 
-        // be sure that the new size his greater then the half of windowMaxSize
+        // be sure that the new size his greater than the half of windowMaxSize
         posSize.Height = (height < (maxHeight / 2)) ? height + (maxHeight / 2) : height;
         posSize.Width =  (width < (maxWidth / 2)) ? width + (maxWidth / 2) : width;
 

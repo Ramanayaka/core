@@ -20,15 +20,15 @@
 #ifndef INCLUDED_SC_INC_SHEETDATA_HXX
 #define INCLUDED_SC_INC_SHEETDATA_HXX
 
-#include <xmloff/maptype.hxx>
 #include <editeng/editdata.hxx>
+#include <map>
 #include <unordered_set>
 #include <vector>
 
 #include "address.hxx"
 
-class ScAddress;
 class SvXMLNamespaceMap;
+enum class XmlStyleFamily;
 
 struct ScStreamEntry
 {
@@ -104,7 +104,7 @@ struct ScLoadedNamespaceEntry
 
 class ScSheetSaveData
 {
-    std::unordered_set<OUString, OUStringHash>  maInitialPrefixes;
+    std::unordered_set<OUString>  maInitialPrefixes;
     std::vector<ScLoadedNamespaceEntry>              maLoadedNamespaces;
 
     std::vector<ScCellStyleEntry> maCellStyles;
@@ -135,7 +135,7 @@ public:
     void        AddTableStyle( const OUString& rName, const ScAddress& rCellPos );
 
     void        HandleNoteStyles( const OUString& rStyleName, const OUString& rTextName, const ScAddress& rCellPos );
-    void        AddNoteContentStyle( sal_uInt16 nFamily, const OUString& rName, const ScAddress& rCellPos, const ESelection& rSelection );
+    void        AddNoteContentStyle( XmlStyleFamily nFamily, const OUString& rName, const ScAddress& rCellPos, const ESelection& rSelection );
 
     void        AddTextStyle( const OUString& rName, const ScAddress& rCellPos, const ESelection& rSelection );
 

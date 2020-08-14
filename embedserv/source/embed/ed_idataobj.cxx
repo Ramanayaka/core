@@ -16,11 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifdef _MSC_VER
-#pragma warning(disable : 4917 4555)
-#endif
 
-#include "embeddoc.hxx"
+#include <embeddoc.hxx>
 
 #include <com/sun/star/uno/Any.h>
 #include <com/sun/star/uno/Exception.hpp>
@@ -67,7 +64,7 @@ sal_uInt64 EmbedDocument_Impl::getMetaFileHandle_Impl( bool isEnhMeta )
 
 // IDataObject
 
-STDMETHODIMP EmbedDocument_Impl::GetData( FORMATETC * pFormatetc, STGMEDIUM * pMedium )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetData( FORMATETC * pFormatetc, STGMEDIUM * pMedium )
 {
     if ( !pFormatetc )
         return DV_E_FORMATETC;
@@ -100,7 +97,7 @@ STDMETHODIMP EmbedDocument_Impl::GetData( FORMATETC * pFormatetc, STGMEDIUM * pM
     }
     else if ( pFormatetc->cfFormat == CF_METAFILEPICT )
     {
-          if ( !( pFormatetc->tymed & TYMED_MFPICT ) )
+        if ( !( pFormatetc->tymed & TYMED_MFPICT ) )
             return DV_E_TYMED;
 
         HGLOBAL hMeta = reinterpret_cast<HGLOBAL>( getMetaFileHandle_Impl( false ) );
@@ -118,8 +115,8 @@ STDMETHODIMP EmbedDocument_Impl::GetData( FORMATETC * pFormatetc, STGMEDIUM * pM
     }
     else
     {
-        CLIPFORMAT cf_embSource = (CLIPFORMAT)RegisterClipboardFormatA( "Embed Source" );
-        CLIPFORMAT cf_embObj = (CLIPFORMAT)RegisterClipboardFormatA( "Embedded Object" );
+        CLIPFORMAT cf_embSource = static_cast<CLIPFORMAT>(RegisterClipboardFormatW( L"Embed Source" ));
+        CLIPFORMAT cf_embObj = static_cast<CLIPFORMAT>(RegisterClipboardFormatW( L"Embedded Object" ));
         if ( pFormatetc->cfFormat == cf_embSource || pFormatetc->cfFormat == cf_embObj )
         {
             if ( !( pFormatetc->tymed & TYMED_ISTORAGE ) )
@@ -144,7 +141,7 @@ STDMETHODIMP EmbedDocument_Impl::GetData( FORMATETC * pFormatetc, STGMEDIUM * pM
     return DV_E_FORMATETC;
 }
 
-STDMETHODIMP EmbedDocument_Impl::GetDataHere( FORMATETC * pFormatetc, STGMEDIUM * pMedium )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetDataHere( FORMATETC * pFormatetc, STGMEDIUM * pMedium )
 {
     if ( !pFormatetc )
         return DV_E_FORMATETC;
@@ -157,8 +154,8 @@ STDMETHODIMP EmbedDocument_Impl::GetDataHere( FORMATETC * pFormatetc, STGMEDIUM 
       || pFormatetc->dwAspect == DVASPECT_DOCPRINT )
         return DV_E_DVASPECT;
 
-    CLIPFORMAT cf_embSource = (CLIPFORMAT)RegisterClipboardFormatA( "Embed Source" );
-    CLIPFORMAT cf_embObj = (CLIPFORMAT)RegisterClipboardFormatA( "Embedded Object" );
+    CLIPFORMAT cf_embSource = static_cast<CLIPFORMAT>(RegisterClipboardFormatW( L"Embed Source" ));
+    CLIPFORMAT cf_embObj = static_cast<CLIPFORMAT>(RegisterClipboardFormatW( L"Embedded Object" ));
 
     if ( pFormatetc->cfFormat == cf_embSource || pFormatetc->cfFormat == cf_embObj )
     {
@@ -179,7 +176,7 @@ STDMETHODIMP EmbedDocument_Impl::GetDataHere( FORMATETC * pFormatetc, STGMEDIUM 
     return DV_E_FORMATETC;
 }
 
-STDMETHODIMP EmbedDocument_Impl::QueryGetData( FORMATETC * pFormatetc )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::QueryGetData( FORMATETC * pFormatetc )
 {
     if ( pFormatetc )
     {
@@ -197,15 +194,15 @@ STDMETHODIMP EmbedDocument_Impl::QueryGetData( FORMATETC * pFormatetc )
         }
         else if ( pFormatetc->cfFormat == CF_METAFILEPICT )
         {
-              if ( !( pFormatetc->tymed & TYMED_MFPICT ) )
+            if ( !( pFormatetc->tymed & TYMED_MFPICT ) )
                 return DV_E_TYMED;
 
             return S_OK;
         }
         else
         {
-            CLIPFORMAT cf_embSource = (CLIPFORMAT)RegisterClipboardFormatA( "Embed Source" );
-            CLIPFORMAT cf_embObj = (CLIPFORMAT)RegisterClipboardFormatA( "Embedded Object" );
+            CLIPFORMAT cf_embSource = static_cast<CLIPFORMAT>(RegisterClipboardFormatW( L"Embed Source" ));
+            CLIPFORMAT cf_embObj = static_cast<CLIPFORMAT>(RegisterClipboardFormatW( L"Embedded Object" ));
             if ( pFormatetc->cfFormat == cf_embSource || pFormatetc->cfFormat == cf_embObj )
             {
                 if ( !( pFormatetc->tymed & TYMED_ISTORAGE ) )
@@ -220,7 +217,7 @@ STDMETHODIMP EmbedDocument_Impl::QueryGetData( FORMATETC * pFormatetc )
 
 }
 
-STDMETHODIMP EmbedDocument_Impl::GetCanonicalFormatEtc( FORMATETC * pFormatetcIn, FORMATETC * pFormatetcOut )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetCanonicalFormatEtc( FORMATETC * pFormatetcIn, FORMATETC * pFormatetcOut )
 {
     if ( !pFormatetcIn || !pFormatetcOut )
         return DV_E_FORMATETC;
@@ -236,13 +233,13 @@ STDMETHODIMP EmbedDocument_Impl::GetCanonicalFormatEtc( FORMATETC * pFormatetcIn
     }
     else if ( pFormatetcIn->cfFormat == CF_METAFILEPICT )
     {
-          pFormatetcOut->tymed = TYMED_MFPICT;
+        pFormatetcOut->tymed = TYMED_MFPICT;
         return S_OK;
     }
     else
     {
-        CLIPFORMAT cf_embSource = (CLIPFORMAT)RegisterClipboardFormatA( "Embed Source" );
-        CLIPFORMAT cf_embObj = (CLIPFORMAT)RegisterClipboardFormatA( "Embedded Object" );
+        CLIPFORMAT cf_embSource = static_cast<CLIPFORMAT>(RegisterClipboardFormatW( L"Embed Source" ));
+        CLIPFORMAT cf_embObj = static_cast<CLIPFORMAT>(RegisterClipboardFormatW( L"Embedded Object" ));
         if ( pFormatetcIn->cfFormat == cf_embSource || pFormatetcIn->cfFormat == cf_embObj )
         {
             pFormatetcOut->tymed = TYMED_ISTORAGE;
@@ -253,12 +250,12 @@ STDMETHODIMP EmbedDocument_Impl::GetCanonicalFormatEtc( FORMATETC * pFormatetcIn
     return DV_E_FORMATETC;
 }
 
-STDMETHODIMP EmbedDocument_Impl::SetData( FORMATETC * /*pFormatetc*/, STGMEDIUM * /*pMedium*/, BOOL /*fRelease*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::SetData( FORMATETC * /*pFormatetc*/, STGMEDIUM * /*pMedium*/, BOOL /*fRelease*/ )
 {
     return E_NOTIMPL;
 }
 
-STDMETHODIMP EmbedDocument_Impl::EnumFormatEtc( DWORD dwDirection, IEnumFORMATETC ** /*ppFormatetc*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::EnumFormatEtc( DWORD dwDirection, IEnumFORMATETC ** /*ppFormatetc*/ )
 {
     if ( dwDirection == DATADIR_GET )
         return OLE_S_USEREG;
@@ -266,7 +263,7 @@ STDMETHODIMP EmbedDocument_Impl::EnumFormatEtc( DWORD dwDirection, IEnumFORMATET
     return E_NOTIMPL;
 }
 
-STDMETHODIMP EmbedDocument_Impl::DAdvise( FORMATETC * pFormatetc, DWORD advf, IAdviseSink * pAdvSink, DWORD * pdwConnection )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::DAdvise( FORMATETC * pFormatetc, DWORD advf, IAdviseSink * pAdvSink, DWORD * pdwConnection )
 {
     if ( !m_pDAdviseHolder )
         if ( !SUCCEEDED( CreateDataAdviseHolder( &m_pDAdviseHolder ) ) || !m_pDAdviseHolder )
@@ -275,7 +272,7 @@ STDMETHODIMP EmbedDocument_Impl::DAdvise( FORMATETC * pFormatetc, DWORD advf, IA
     return m_pDAdviseHolder->Advise( static_cast<IDataObject*>(this), pFormatetc, advf, pAdvSink, pdwConnection );
 }
 
-STDMETHODIMP EmbedDocument_Impl::DUnadvise( DWORD dwConnection )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::DUnadvise( DWORD dwConnection )
 {
     if ( !m_pDAdviseHolder )
         if ( !SUCCEEDED( CreateDataAdviseHolder( &m_pDAdviseHolder ) ) || !m_pDAdviseHolder )
@@ -284,7 +281,7 @@ STDMETHODIMP EmbedDocument_Impl::DUnadvise( DWORD dwConnection )
     return m_pDAdviseHolder->Unadvise( dwConnection );
 }
 
-STDMETHODIMP EmbedDocument_Impl::EnumDAdvise( IEnumSTATDATA ** ppenumAdvise )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::EnumDAdvise( IEnumSTATDATA ** ppenumAdvise )
 {
     if ( !m_pDAdviseHolder )
         if ( !SUCCEEDED( CreateDataAdviseHolder( &m_pDAdviseHolder ) ) || !m_pDAdviseHolder )

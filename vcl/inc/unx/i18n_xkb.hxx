@@ -20,18 +20,16 @@
 #ifndef INCLUDED_VCL_INC_UNX_I18N_XKB_HXX
 #define INCLUDED_VCL_INC_UNX_I18N_XKB_HXX
 
-#include <sal/types.h>
+#include <X11/Xlib.h>
+
 #include <vclpluginapi.h>
 
-class VCLPLUG_GEN_PUBLIC SalI18N_KeyboardExtension
+class SalI18N_KeyboardExtension
 {
 private:
 
     bool                mbUseExtension;
-    sal_uInt32          mnDefaultGroup;
     int                 mnEventBase;
-    int                 mnErrorBase;
-    Display*            mpDisplay;
 
 public:
 

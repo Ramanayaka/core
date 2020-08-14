@@ -9,21 +9,22 @@
 
 #include <memory>
 #include "ucalc.hxx"
+#include "helper/qahelper.hxx"
 
-#include "conditio.hxx"
-#include "colorscale.hxx"
+#include <conditio.hxx>
+#include <colorscale.hxx>
 
-#include "clipparam.hxx"
-#include "globstr.hrc"
-#include "docfunc.hxx"
-#include "scitems.hxx"
-#include "attrib.hxx"
-#include "fillinfo.hxx"
-#include "compiler.hxx"
-#include "tokenarray.hxx"
+#include <clipparam.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <docfunc.hxx>
+#include <scitems.hxx>
+#include <attrib.hxx>
+#include <fillinfo.hxx>
+#include <compiler.hxx>
+#include <tokenarray.hxx>
 
 #include <svl/sharedstringpool.hxx>
-#include <o3tl/make_unique.hxx>
 
 void Test::testCopyPasteSkipEmptyConditionalFormatting()
 {
@@ -32,7 +33,7 @@ void Test::testCopyPasteSkipEmptyConditionalFormatting()
     ScRange aDestRange(0,0,0,1,2,0);
     ScRange aSrcRange(3,3,0,5,4,0);
 
-    ScMarkData aMark;
+    ScMarkData aMark(m_pDoc->GetSheetLimits());
     aMark.SetMarkArea(aDestRange);
 
     m_pDoc->SetValue(0,0,0,1);
@@ -45,9 +46,9 @@ void Test::testCopyPasteSkipEmptyConditionalFormatting()
     ScConditionalFormatList* pCondFormatList = new ScConditionalFormatList();
     m_pDoc->SetCondFormList(pCondFormatList, 0);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     pFormat->SetRange(aDestRange);
-    sal_uLong nCondFormatKey = m_pDoc->AddCondFormat(pFormat, 0);
+    sal_uLong nCondFormatKey = m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
     // Prepare a clipboard content interleaved with empty cells.
     ScDocument aClipDoc(SCDOCMODE_CLIP);
@@ -60,9 +61,9 @@ void Test::testCopyPasteSkipEmptyConditionalFormatting()
     aClipDoc.SetValue(3,5,0,2);
     aClipDoc.SetValue(4,5,0,2);
 
-    ScConditionalFormat* pClipFormat = new ScConditionalFormat(2, &aClipDoc);
+    auto pClipFormat = std::make_unique<ScConditionalFormat>(2, &aClipDoc);
     pClipFormat->SetRange(aSrcRange);
-    aClipDoc.AddCondFormat(pClipFormat, 0);
+    aClipDoc.AddCondFormat(std::move(pClipFormat), 0);
 
     // Create undo document.
     ScDocument* pUndoDoc = new ScDocument(SCDOCMODE_UNDO);
@@ -97,21 +98,22 @@ void Test::testCondFormatINSDEL()
     m_pDoc->InsertTab(0, "Test");
     ScConditionalFormatList* pList = m_pDoc->GetCondFormList(0);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     ScRangeList aRangeList(ScRange(0,0,0,0,3,0));
     pFormat->SetRange(aRangeList);
-    ScCondFormatEntry* pEntry = new ScCondFormatEntry(SC_COND_DIRECT,"=B2","",m_pDoc,ScAddress(0,0,0),ScGlobal::GetRscString(STR_STYLENAME_RESULT));
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct,"=B2","",m_pDoc,ScAddress(0,0,0),ScResId(STR_STYLENAME_RESULT));
     pFormat->AddEntry(pEntry);
 
     m_pDoc->AddCondFormatData(pFormat->GetRange(), 0, 1);
-    pList->InsertNew(pFormat);
+    auto pFormatTmp = pFormat.get();
+    pList->InsertNew(std::move(pFormat));
 
     m_pDoc->InsertCol(0,0,MAXROW,0,0,2);
-    const ScRangeList& rRange = pFormat->GetRange();
+    const ScRangeList& rRange = pFormatTmp->GetRange();
     CPPUNIT_ASSERT_EQUAL(static_cast<const ScRangeList&>(ScRange(2,0,0,2,3,0)), rRange);
 
     OUString aExpr = pEntry->GetExpression(ScAddress(2,0,0), 0);
-    CPPUNIT_ASSERT_EQUAL(aExpr, OUString("D2"));
+    CPPUNIT_ASSERT_EQUAL(OUString("D2"), aExpr);
 
     m_pDoc->DeleteTab(0);
 }
@@ -121,18 +123,19 @@ void Test::testCondFormatInsertCol()
     m_pDoc->InsertTab(0, "Test");
     ScConditionalFormatList* pList = m_pDoc->GetCondFormList(0);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     ScRangeList aRangeList(ScRange(0,0,0,3,3,0));
     pFormat->SetRange(aRangeList);
 
-    ScCondFormatEntry* pEntry = new ScCondFormatEntry(SC_COND_DIRECT,"=B2","",m_pDoc,ScAddress(0,0,0),ScGlobal::GetRscString(STR_STYLENAME_RESULT));
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct,"=B2","",m_pDoc,ScAddress(0,0,0),ScResId(STR_STYLENAME_RESULT));
     pFormat->AddEntry(pEntry);
 
     m_pDoc->AddCondFormatData(pFormat->GetRange(), 0, 1);
-    pList->InsertNew(pFormat);
+    auto pFormatTmp = pFormat.get();
+    pList->InsertNew(std::move(pFormat));
 
     m_pDoc->InsertCol(0,0,MAXROW,0,4,2);
-    const ScRangeList& rRange = pFormat->GetRange();
+    const ScRangeList& rRange = pFormatTmp->GetRange();
     CPPUNIT_ASSERT_EQUAL(ScRangeList(ScRange(0,0,0,5,3,0)), rRange);
 
     m_pDoc->DeleteTab(0);
@@ -143,18 +146,19 @@ void Test::testCondFormatInsertRow()
     m_pDoc->InsertTab(0, "Test");
     ScConditionalFormatList* pList = m_pDoc->GetCondFormList(0);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     ScRangeList aRangeList(ScRange(0,0,0,3,3,0));
     pFormat->SetRange(aRangeList);
 
-    ScCondFormatEntry* pEntry = new ScCondFormatEntry(SC_COND_DIRECT,"=B2","",m_pDoc,ScAddress(0,0,0),ScGlobal::GetRscString(STR_STYLENAME_RESULT));
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct,"=B2","",m_pDoc,ScAddress(0,0,0),ScResId(STR_STYLENAME_RESULT));
     pFormat->AddEntry(pEntry);
 
     m_pDoc->AddCondFormatData(pFormat->GetRange(), 0, 1);
-    pList->InsertNew(pFormat);
+    auto pFormatTmp = pFormat.get();
+    pList->InsertNew(std::move(pFormat));
 
     m_pDoc->InsertRow(0,0,MAXCOL,0,4,2);
-    const ScRangeList& rRange = pFormat->GetRange();
+    const ScRangeList& rRange = pFormatTmp->GetRange();
     CPPUNIT_ASSERT_EQUAL(ScRangeList(ScRange(0,0,0,3,5,0)), rRange);
 
     m_pDoc->DeleteTab(0);
@@ -165,29 +169,30 @@ void Test::testCondFormatInsertDeleteSheets()
     m_pDoc->InsertTab(0, "Test");
 
     // Add a conditional format to B2:B4.
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     pFormat->SetRange(ScRange(1,1,0,1,3,0));
 
-    sal_uLong nKey = m_pDoc->AddCondFormat(pFormat, 0);
+    auto pFormatTmp = pFormat.get();
+    sal_uLong nKey = m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
     // Add condition in which if the value equals 2, set the "Result" style.
     ScCondFormatEntry* pEntry = new ScCondFormatEntry(
-        SC_COND_EQUAL, "=2", "" , m_pDoc, ScAddress(0,0,0), ScGlobal::GetRscString(STR_STYLENAME_RESULT));
-    pFormat->AddEntry(pEntry);
+        ScConditionMode::Equal, "=2", "" , m_pDoc, ScAddress(0,0,0), ScResId(STR_STYLENAME_RESULT));
+    pFormatTmp->AddEntry(pEntry);
 
     // Apply the format to the range.
-    m_pDoc->AddCondFormatData(pFormat->GetRange(), 0, nKey);
+    m_pDoc->AddCondFormatData(pFormatTmp->GetRange(), 0, nKey);
 
     // Make sure this conditional format entry is really there.
     ScConditionalFormatList* pList = m_pDoc->GetCondFormList(0);
     CPPUNIT_ASSERT(pList);
     const ScConditionalFormat* pCheck = pList->GetFormat(nKey);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong conditional format instance.", pCheck, const_cast<const ScConditionalFormat*>(pFormat));
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong conditional format instance.", pCheck, const_cast<const ScConditionalFormat*>(pFormatTmp));
 
     // ... and its range is B2:B4.
     ScRangeList aCheckRange = pCheck->GetRange();
     CPPUNIT_ASSERT_EQUAL_MESSAGE("This should be a single range.", size_t(1), aCheckRange.size());
-    const ScRange* pRange = aCheckRange[0];
+    const ScRange* pRange = &aCheckRange[0];
     CPPUNIT_ASSERT(pRange);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Format should be applied to B2:B4.", ScRange(1,1,0,1,3,0), *pRange);
 
@@ -205,7 +210,7 @@ void Test::testCondFormatInsertDeleteSheets()
     // Make sure the range also got shifted.
     aCheckRange = pCheck->GetRange();
     CPPUNIT_ASSERT_EQUAL_MESSAGE("This should be a single range.", size_t(1), aCheckRange.size());
-    pRange = aCheckRange[0];
+    pRange = &aCheckRange[0];
     CPPUNIT_ASSERT(pRange);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Format should be applied to B2:B4 on the 2nd sheet after the sheet insertion.", ScRange(1,1,1,1,3,1), *pRange);
 
@@ -221,7 +226,7 @@ void Test::testCondFormatInsertDeleteSheets()
     // Make sure the range got shifted back.
     aCheckRange = pCheck->GetRange();
     CPPUNIT_ASSERT_EQUAL_MESSAGE("This should be a single range.", size_t(1), aCheckRange.size());
-    pRange = aCheckRange[0];
+    pRange = &aCheckRange[0];
     CPPUNIT_ASSERT(pRange);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Format should be applied to B2:B4 on the 1st sheet after the sheet removal.", ScRange(1,1,0,1,3,0), *pRange);
 
@@ -238,7 +243,7 @@ void Test::testCondFormatInsertDeleteSheets()
 
     aCheckRange = pCheck->GetRange();
     CPPUNIT_ASSERT_EQUAL_MESSAGE("This should be a single range.", size_t(1), aCheckRange.size());
-    pRange = aCheckRange[0];
+    pRange = &aCheckRange[0];
     CPPUNIT_ASSERT(pRange);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Format should be applied to B2:B4 on the 2nd sheet after the undo of the sheet removal.", ScRange(1,1,1,1,3,1), *pRange);
 
@@ -270,14 +275,14 @@ void Test::testCondCopyPaste()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     ScRange aCondFormatRange(0,0,0,3,3,0);
     ScRangeList aRangeList(aCondFormatRange);
     pFormat->SetRange(aRangeList);
 
-    ScCondFormatEntry* pEntry = new ScCondFormatEntry(SC_COND_DIRECT,"=B2","",m_pDoc,ScAddress(0,0,0),ScGlobal::GetRscString(STR_STYLENAME_RESULT));
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct,"=B2","",m_pDoc,ScAddress(0,0,0),ScResId(STR_STYLENAME_RESULT));
     pFormat->AddEntry(pEntry);
-    sal_uLong nIndex = m_pDoc->AddCondFormat(pFormat, 0);
+    sal_uLong nIndex = m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
     ScDocument aClipDoc(SCDOCMODE_CLIP);
     copyToClip(m_pDoc, aCondFormatRange, &aClipDoc);
@@ -288,14 +293,19 @@ void Test::testCondCopyPaste()
     ScConditionalFormat* pPastedFormat = m_pDoc->GetCondFormat(7,7,0);
     CPPUNIT_ASSERT(pPastedFormat);
 
-    CPPUNIT_ASSERT_EQUAL(ScRangeList(aTargetRange), pPastedFormat->GetRange());
-    CPPUNIT_ASSERT( nIndex != pPastedFormat->GetKey());
+    // Pasting the same conditional format must modify existing format, making its range
+    // combined of previous range and newly pasted range having the conditional format.
+    // No new conditional formats must be created.
+    CPPUNIT_ASSERT_EQUAL(size_t(1), m_pDoc->GetCondFormList(0)->size());
+    aRangeList.Join(aTargetRange);
+    CPPUNIT_ASSERT_EQUAL(aRangeList, pPastedFormat->GetRange());
+    CPPUNIT_ASSERT_EQUAL(sal_uInt32(nIndex), pPastedFormat->GetKey());
     const SfxPoolItem* pItem = m_pDoc->GetAttr( 7, 7, 0, ATTR_CONDITIONAL );
     const ScCondFormatItem* pCondFormatItem = static_cast<const ScCondFormatItem*>(pItem);
 
     CPPUNIT_ASSERT(pCondFormatItem);
     CPPUNIT_ASSERT_EQUAL(size_t(1), pCondFormatItem->GetCondFormatData().size());
-    CPPUNIT_ASSERT( nIndex != pCondFormatItem->GetCondFormatData().at(0) );
+    CPPUNIT_ASSERT_EQUAL(sal_uInt32(nIndex), pCondFormatItem->GetCondFormatData().front());
 
     m_pDoc->DeleteTab(0);
 }
@@ -304,14 +314,14 @@ void Test::testCondCopyPasteSingleCell()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     ScRange aCondFormatRange(0,0,0,3,3,0);
     ScRangeList aRangeList(aCondFormatRange);
     pFormat->SetRange(aRangeList);
 
-    ScCondFormatEntry* pEntry = new ScCondFormatEntry(SC_COND_DIRECT,"=B2","",m_pDoc,ScAddress(0,0,0),ScGlobal::GetRscString(STR_STYLENAME_RESULT));
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct,"=B2","",m_pDoc,ScAddress(0,0,0),ScResId(STR_STYLENAME_RESULT));
     pFormat->AddEntry(pEntry);
-    sal_uLong nIndex = m_pDoc->AddCondFormat(pFormat, 0);
+    sal_uLong nIndex = m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
     ScDocument aClipDoc(SCDOCMODE_CLIP);
     copyToClip(m_pDoc, ScRange(0,0,0,0,0,0), &aClipDoc);
@@ -322,14 +332,19 @@ void Test::testCondCopyPasteSingleCell()
     ScConditionalFormat* pPastedFormat = m_pDoc->GetCondFormat(4,4,0);
     CPPUNIT_ASSERT(pPastedFormat);
 
-    CPPUNIT_ASSERT_EQUAL(ScRangeList(aTargetRange), pPastedFormat->GetRange());
-    CPPUNIT_ASSERT( nIndex != pPastedFormat->GetKey());
+    // Pasting the same conditional format must modify existing format, making its range
+    // combined of previous range and newly pasted range having the conditional format.
+    // No new conditional formats must be created.
+    CPPUNIT_ASSERT_EQUAL(size_t(1), m_pDoc->GetCondFormList(0)->size());
+    aRangeList.Join(aTargetRange);
+    CPPUNIT_ASSERT_EQUAL(aRangeList, pPastedFormat->GetRange());
+    CPPUNIT_ASSERT_EQUAL(sal_uInt32(nIndex), pPastedFormat->GetKey());
     const SfxPoolItem* pItem = m_pDoc->GetAttr( 4, 4, 0, ATTR_CONDITIONAL );
     const ScCondFormatItem* pCondFormatItem = static_cast<const ScCondFormatItem*>(pItem);
 
     CPPUNIT_ASSERT(pCondFormatItem);
     CPPUNIT_ASSERT_EQUAL(size_t(1), pCondFormatItem->GetCondFormatData().size());
-    CPPUNIT_ASSERT( nIndex != pCondFormatItem->GetCondFormatData().at(0) );
+    CPPUNIT_ASSERT_EQUAL(sal_uInt32(nIndex), pCondFormatItem->GetCondFormatData().front() );
 
     m_pDoc->DeleteTab(0);
 }
@@ -338,21 +353,25 @@ void Test::testCondCopyPasteSingleCellToRange()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     ScRange aCondFormatRange(0,0,0,3,3,0);
     ScRangeList aRangeList(aCondFormatRange);
     pFormat->SetRange(aRangeList);
 
-    ScCondFormatEntry* pEntry = new ScCondFormatEntry(SC_COND_DIRECT,"=B2","",m_pDoc,ScAddress(0,0,0),ScGlobal::GetRscString(STR_STYLENAME_RESULT));
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct,"=B2","",m_pDoc,ScAddress(0,0,0),ScResId(STR_STYLENAME_RESULT));
     pFormat->AddEntry(pEntry);
-    sal_uLong nIndex = m_pDoc->AddCondFormat(pFormat, 0);
+    sal_uLong nIndex = m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
     ScDocument aClipDoc(SCDOCMODE_CLIP);
     copyToClip(m_pDoc, ScRange(0,0,0,0,0,0), &aClipDoc);
     ScRange aTargetRange(4,4,0,5,8,0);
     pasteOneCellFromClip(m_pDoc, aTargetRange, &aClipDoc);
 
-    std::set<sal_uLong> aCondFormatIndices;
+    // Pasting the same conditional format must modify existing format, making its range
+    // combined of previous range and newly pasted range having the conditional format.
+    // No new conditional formats must be created.
+    CPPUNIT_ASSERT_EQUAL(size_t(1), m_pDoc->GetCondFormList(0)->size());
+    aRangeList.Join(aTargetRange);
     for(SCROW nRow = 4; nRow <= 8; ++nRow)
     {
         for (SCCOL nCol = 4; nCol <= 5; ++nCol)
@@ -360,20 +379,54 @@ void Test::testCondCopyPasteSingleCellToRange()
             ScConditionalFormat* pPastedFormat = m_pDoc->GetCondFormat(nCol, nRow, 0);
             CPPUNIT_ASSERT(pPastedFormat);
 
-            CPPUNIT_ASSERT_EQUAL(ScRangeList(ScRange(nCol, nRow, 0)), pPastedFormat->GetRange());
+            CPPUNIT_ASSERT_EQUAL(aRangeList, pPastedFormat->GetRange());
             sal_uLong nPastedKey = pPastedFormat->GetKey();
-            CPPUNIT_ASSERT( nIndex != nPastedKey);
+            CPPUNIT_ASSERT_EQUAL(nIndex, nPastedKey);
             const SfxPoolItem* pItem = m_pDoc->GetAttr( nCol, nRow, 0, ATTR_CONDITIONAL );
             const ScCondFormatItem* pCondFormatItem = static_cast<const ScCondFormatItem*>(pItem);
 
             CPPUNIT_ASSERT(pCondFormatItem);
             CPPUNIT_ASSERT_EQUAL(size_t(1), pCondFormatItem->GetCondFormatData().size());
-            CPPUNIT_ASSERT( nIndex != pCondFormatItem->GetCondFormatData().at(0) );
-            auto itr = aCondFormatIndices.find(nPastedKey);
-            CPPUNIT_ASSERT(bool(itr == aCondFormatIndices.end()));
-            aCondFormatIndices.insert(nPastedKey);
+            CPPUNIT_ASSERT_EQUAL(sal_uInt32(nIndex), pCondFormatItem->GetCondFormatData().front() );
         }
     }
+
+    m_pDoc->DeleteTab(0);
+}
+
+void Test::testCondCopyPasteSingleCellIntoSameFormatRange()
+{
+    m_pDoc->InsertTab(0, "Test");
+
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
+    ScRange aCondFormatRange(0, 0, 0, 3, 3, 0);
+    ScRangeList aRangeList(aCondFormatRange);
+    pFormat->SetRange(aRangeList);
+
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct, "=B2", "", m_pDoc, ScAddress(0, 0, 0), ScResId(STR_STYLENAME_RESULT));
+    pFormat->AddEntry(pEntry);
+    sal_uLong nIndex = m_pDoc->AddCondFormat(std::move(pFormat), 0);
+
+    ScDocument aClipDoc(SCDOCMODE_CLIP);
+    copyToClip(m_pDoc, ScRange(1, 1, 0, 1, 1, 0), &aClipDoc);
+
+    ScRange aTargetRange(2, 2, 0, 2, 2, 0);
+    pasteFromClip(m_pDoc, aTargetRange, &aClipDoc);
+
+    ScConditionalFormat* pPastedFormat = m_pDoc->GetCondFormat(2, 2, 0);
+    CPPUNIT_ASSERT(pPastedFormat);
+
+    // Pasting the same conditional format into the same range must not modify existing format,
+    // since it already covers the pasted range. No new conditional formats must be created.
+    CPPUNIT_ASSERT_EQUAL(size_t(1), m_pDoc->GetCondFormList(0)->size());
+    CPPUNIT_ASSERT_EQUAL(aRangeList, pPastedFormat->GetRange());
+    CPPUNIT_ASSERT_EQUAL(sal_uInt32(nIndex), pPastedFormat->GetKey());
+    const SfxPoolItem* pItem = m_pDoc->GetAttr(2, 2, 0, ATTR_CONDITIONAL);
+    const ScCondFormatItem* pCondFormatItem = static_cast<const ScCondFormatItem*>(pItem);
+
+    CPPUNIT_ASSERT(pCondFormatItem);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), pCondFormatItem->GetCondFormatData().size());
+    CPPUNIT_ASSERT_EQUAL(sal_uInt32(nIndex), pCondFormatItem->GetCondFormatData().front());
 
     m_pDoc->DeleteTab(0);
 }
@@ -382,25 +435,24 @@ void Test::testCondCopyPasteSingleRowToRange()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     ScRange aCondFormatRange(0,0,0,0,0,0);
     ScRangeList aRangeList(aCondFormatRange);
     pFormat->SetRange(aRangeList);
 
-    ScCondFormatEntry* pEntry = new ScCondFormatEntry(SC_COND_DIRECT,"=B2","",m_pDoc,ScAddress(0,0,0),ScGlobal::GetRscString(STR_STYLENAME_RESULT));
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct,"=B2","",m_pDoc,ScAddress(0,0,0),ScResId(STR_STYLENAME_RESULT));
     pFormat->AddEntry(pEntry);
-    m_pDoc->AddCondFormat(pFormat, 0);
+    auto pFormatTmp = pFormat.get();
+    m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
     ScDocument aClipDoc(SCDOCMODE_CLIP);
     copyToClip(m_pDoc, ScRange(0,0,0,MAXCOL,0,0), &aClipDoc);
     ScRange aTargetRange(0,4,0,MAXCOL,4,0);
     pasteOneCellFromClip(m_pDoc, aTargetRange, &aClipDoc);
 
-    std::set<sal_uLong> aCondFormatIndices;
-
     ScConditionalFormat* pNewFormat = m_pDoc->GetCondFormat(0, 4, 0);
     CPPUNIT_ASSERT(pNewFormat);
-    CPPUNIT_ASSERT(pNewFormat->GetKey() != pFormat->GetKey());
+    CPPUNIT_ASSERT_EQUAL(pNewFormat->GetKey(), pFormatTmp->GetKey());
 
     for (SCCOL nCol = 1; nCol <= MAXCOL; ++nCol)
     {
@@ -415,21 +467,19 @@ void Test::testCondCopyPasteSingleRowToRange2()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     ScRange aCondFormatRange(0,0,0,0,0,0);
     ScRangeList aRangeList(aCondFormatRange);
     pFormat->SetRange(aRangeList);
 
-    ScCondFormatEntry* pEntry = new ScCondFormatEntry(SC_COND_DIRECT,"=B2","",m_pDoc,ScAddress(0,0,0),ScGlobal::GetRscString(STR_STYLENAME_RESULT));
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct,"=B2","",m_pDoc,ScAddress(0,0,0),ScResId(STR_STYLENAME_RESULT));
     pFormat->AddEntry(pEntry);
-    m_pDoc->AddCondFormat(pFormat, 0);
+    m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
     ScDocument aClipDoc(SCDOCMODE_CLIP);
     copyToClip(m_pDoc, ScRange(0,0,0,3,0,0), &aClipDoc);
     ScRange aTargetRange(0,4,0,MAXCOL,4,0);
     pasteOneCellFromClip(m_pDoc, aTargetRange, &aClipDoc);
-
-    std::set<sal_uLong> aCondFormatIndices;
 
     for (SCCOL nCol = 0; nCol <= MAXCOL; ++nCol)
     {
@@ -447,14 +497,14 @@ void Test::testCondCopyPasteSheetBetweenDoc()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     ScRange aCondFormatRange(0,0,0,3,3,0);
     ScRangeList aRangeList(aCondFormatRange);
     pFormat->SetRange(aRangeList);
 
-    ScCondFormatEntry* pEntry = new ScCondFormatEntry(SC_COND_DIRECT,"=B2","",m_pDoc,ScAddress(0,0,0),ScGlobal::GetRscString(STR_STYLENAME_RESULT));
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct,"=B2","",m_pDoc,ScAddress(0,0,0),ScResId(STR_STYLENAME_RESULT));
     pFormat->AddEntry(pEntry);
-    m_pDoc->AddCondFormat(pFormat, 0);
+    m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
     ScDocument aDoc;
     aDoc.TransferTab(m_pDoc, 0, 0);
@@ -469,14 +519,14 @@ void Test::testCondCopyPasteSheet()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     ScRange aCondFormatRange(0,0,0,3,3,0);
     ScRangeList aRangeList(aCondFormatRange);
     pFormat->SetRange(aRangeList);
 
-    ScCondFormatEntry* pEntry = new ScCondFormatEntry(SC_COND_DIRECT,"=B2","",m_pDoc,ScAddress(0,0,0),ScGlobal::GetRscString(STR_STYLENAME_RESULT));
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct,"=B2","",m_pDoc,ScAddress(0,0,0),ScResId(STR_STYLENAME_RESULT));
     pFormat->AddEntry(pEntry);
-    m_pDoc->AddCondFormat(pFormat, 0);
+    m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
     m_pDoc->CopyTab(0, SC_TAB_APPEND);
 
@@ -492,7 +542,7 @@ void Test::testCondCopyPasteSheet()
 
     CPPUNIT_ASSERT(pCondFormatItem);
     CPPUNIT_ASSERT_EQUAL(size_t(1), pCondFormatItem->GetCondFormatData().size());
-    CPPUNIT_ASSERT_EQUAL( nKey, pCondFormatItem->GetCondFormatData().at(0) );
+    CPPUNIT_ASSERT_EQUAL( nKey, pCondFormatItem->GetCondFormatData().front() );
 
     m_pDoc->DeleteTab(1);
     m_pDoc->DeleteTab(0);
@@ -503,23 +553,23 @@ void Test::testIconSet()
     m_pDoc->InsertTab(0, "Test");
     ScConditionalFormatList* pList = m_pDoc->GetCondFormList(0);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(1, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
     ScRangeList aRangeList(ScRange(0,0,0,0,0,0));
     pFormat->SetRange(aRangeList);
 
     ScIconSetFormat* pEntry = new ScIconSetFormat(m_pDoc);
     ScIconSetFormatData* pData = new ScIconSetFormatData;
-    pData->m_Entries.push_back(o3tl::make_unique<ScColorScaleEntry>(0, COL_BLUE));
-    pData->m_Entries.push_back(o3tl::make_unique<ScColorScaleEntry>(1, COL_GREEN));
-    pData->m_Entries.push_back(o3tl::make_unique<ScColorScaleEntry>(2, COL_RED));
+    pData->m_Entries.emplace_back(new ScColorScaleEntry(0, COL_BLUE));
+    pData->m_Entries.emplace_back(new ScColorScaleEntry(1, COL_GREEN));
+    pData->m_Entries.emplace_back(new ScColorScaleEntry(2, COL_RED));
     pEntry->SetIconSetData(pData);
 
     m_pDoc->AddCondFormatData(pFormat->GetRange(), 0, 1);
-    pList->InsertNew(pFormat);
+    pList->InsertNew(std::move(pFormat));
 
-    struct {
+    static struct {
         double nVal; sal_Int32 nIndex;
-    } aTests[] = {
+    } const aTests[] = {
         { -1.0, 0 },
         { 0.0, 0 },
         { 1.0, 1 },
@@ -529,9 +579,8 @@ void Test::testIconSet()
     for(size_t i = 0; i < SAL_N_ELEMENTS(aTests); ++i)
     {
         m_pDoc->SetValue(0,0,0,aTests[i].nVal);
-        ScIconSetInfo* pInfo = pEntry->GetIconSetInfo(ScAddress(0,0,0));
+        std::unique_ptr<ScIconSetInfo> pInfo = pEntry->GetIconSetInfo(ScAddress(0,0,0));
         CPPUNIT_ASSERT_EQUAL(aTests[i].nIndex, pInfo->nIconIndex);
-        delete pInfo;
     }
 
     delete pEntry;
@@ -546,7 +595,7 @@ struct ScDataBarLengthData
     double nLength;
 };
 
-void testDataBarLengthImpl(ScDocument* pDoc, ScDataBarLengthData* pData, const ScRange& rRange,
+void testDataBarLengthImpl(ScDocument* pDoc, const ScDataBarLengthData* pData, const ScRange& rRange,
         double nMinVal, ScColorScaleEntryType eMinType,
         double nMaxVal, ScColorScaleEntryType eMaxType,
         double nZeroPos, databar::ScAxisPosition eAxisPos)
@@ -579,7 +628,7 @@ void testDataBarLengthImpl(ScDocument* pDoc, ScDataBarLengthData* pData, const S
     for (size_t i = 0; pData[i].nLength != -200; ++i)
     {
         std::unique_ptr<ScDataBarInfo> xInfo(pDatabar->GetDataBarInfo(ScAddress(nCol, i, 0)));
-        CPPUNIT_ASSERT(xInfo.get());
+        CPPUNIT_ASSERT(xInfo);
         ASSERT_DOUBLES_EQUAL(pData[i].nLength, xInfo->mnLength);
         ASSERT_DOUBLES_EQUAL(nZeroPos, xInfo->mnZero);
     }
@@ -591,7 +640,7 @@ void Test::testDataBarLengthAutomaticAxis()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    ScDataBarLengthData aValues[] = {
+    static const ScDataBarLengthData aValues[] = {
         { 2, 0 },
         { 3, 0 },
         { 4, 25.0 },
@@ -606,7 +655,7 @@ void Test::testDataBarLengthAutomaticAxis()
     testDataBarLengthImpl(m_pDoc, aValues, ScRange(0,0,0,0,7,0),
             3, COLORSCALE_VALUE, 7, COLORSCALE_VALUE, 0.0, databar::AUTOMATIC);
 
-    ScDataBarLengthData aValues2[] = {
+    static const ScDataBarLengthData aValues2[] = {
         { -6, -100 },
         { -5, -100 },
         { -4, -100 },
@@ -628,7 +677,7 @@ void Test::testDataBarLengthAutomaticAxis()
     testDataBarLengthImpl(m_pDoc, aValues2, ScRange(1,0,0,1,15,0),
             -4, COLORSCALE_VALUE, 8, COLORSCALE_VALUE, 1.0/3.0 * 100, databar::AUTOMATIC);
 
-    ScDataBarLengthData aValues3[] = {
+    static const ScDataBarLengthData aValues3[] = {
         { 2, 0.0 },
         { 3, 25.0 },
         { 4, 50.0 },
@@ -638,7 +687,7 @@ void Test::testDataBarLengthAutomaticAxis()
     testDataBarLengthImpl(m_pDoc, aValues3, ScRange(2,0,0,2,3,0),
             0, COLORSCALE_MIN, 0, COLORSCALE_MAX, 0, databar::AUTOMATIC);
 
-    ScDataBarLengthData aValues4[] = {
+    static const ScDataBarLengthData aValues4[] = {
         { 2, 40.0 },
         { 3, 60.0 },
         { 4, 80.0 },
@@ -655,7 +704,7 @@ void Test::testDataBarLengthMiddleAxis()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    ScDataBarLengthData aValues[] = {
+    static const ScDataBarLengthData aValues[] = {
         { 1, 25.0 },
         { 2, 25.0 },
         { 3, 37.5 },
@@ -671,7 +720,7 @@ void Test::testDataBarLengthMiddleAxis()
     testDataBarLengthImpl(m_pDoc, aValues, ScRange(0,0,0,0,8,0),
             2, COLORSCALE_VALUE, 8, COLORSCALE_VALUE, 50.0, databar::MIDDLE);
 
-    ScDataBarLengthData aValues2[] = {
+    static const ScDataBarLengthData aValues2[] = {
         { -6, -50 },
         { -5, -50 },
         { -4, -50 },
@@ -700,7 +749,7 @@ void Test::testCondFormatEndsWithStr()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    ScConditionEntry aEntry(SC_COND_ENDS_WITH, "\"TestString\"", "", m_pDoc, ScAddress(),
+    ScConditionEntry aEntry(ScConditionMode::EndsWith, "\"TestString\"", "", m_pDoc, ScAddress(),
             "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
 
     svl::SharedStringPool& rStringPool = m_pDoc->GetSharedStringPool();
@@ -718,7 +767,7 @@ void Test::testCondFormatEndsWithVal()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    ScConditionEntry aEntry(SC_COND_ENDS_WITH, "2", "", m_pDoc, ScAddress(),
+    ScConditionEntry aEntry(ScConditionMode::EndsWith, "2", "", m_pDoc, ScAddress(),
             "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
 
     for (sal_Int32 i = 0; i < 15; ++i)
@@ -856,13 +905,14 @@ void Test::testCondFormatUpdateMoveTab()
     m_pDoc->InsertTab(0, "test");
     m_pDoc->InsertTab(1, "Test2");
 
-    ScConditionEntry* pEntry = new ScConditionEntry(SC_COND_EQUAL, "A1", "", m_pDoc, ScAddress(10, 10, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
+    ScConditionEntry* pEntry = new ScConditionEntry(ScConditionMode::Equal, "A1", "", m_pDoc, ScAddress(10, 10, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(0, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(0, m_pDoc);
     pFormat->SetRange(ScRange(10, 10, 0, 10, 12, 0));
-    m_pDoc->AddCondFormat(pFormat, 0);
+    auto pFormatTmp = pFormat.get();
+    m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
-    pFormat->AddEntry(pEntry);
+    pFormatTmp->AddEntry(pEntry);
 
     // the conditional format should listen to A1:A3
     for (SCROW nRow = 0; nRow < 3; ++nRow)
@@ -891,13 +941,14 @@ void Test::testCondFormatUpdateInsertTab()
 {
     m_pDoc->InsertTab(0, "test");
 
-    ScConditionEntry* pEntry = new ScConditionEntry(SC_COND_EQUAL, "A1", "", m_pDoc, ScAddress(10, 10, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
+    ScConditionEntry* pEntry = new ScConditionEntry(ScConditionMode::Equal, "A1", "", m_pDoc, ScAddress(10, 10, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(0, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(0, m_pDoc);
     pFormat->SetRange(ScRange(10, 10, 0, 10, 12, 0));
-    m_pDoc->AddCondFormat(pFormat, 0);
+    auto pFormatTmp = pFormat.get();
+    m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
-    pFormat->AddEntry(pEntry);
+    pFormatTmp->AddEntry(pEntry);
 
     // the conditional format should listen to A1:A3
     for (SCROW nRow = 0; nRow < 3; ++nRow)
@@ -930,13 +981,14 @@ void Test::testCondFormatUpdateDeleteTab()
     m_pDoc->InsertTab(0, "test");
     m_pDoc->InsertTab(1, "Test2");
 
-    ScConditionEntry* pEntry = new ScConditionEntry(SC_COND_EQUAL, "A1", "", m_pDoc, ScAddress(10, 10, 1), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
+    ScConditionEntry* pEntry = new ScConditionEntry(ScConditionMode::Equal, "A1", "", m_pDoc, ScAddress(10, 10, 1), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(0, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(0, m_pDoc);
     pFormat->SetRange(ScRange(10, 10, 1, 10, 12, 1));
-    m_pDoc->AddCondFormat(pFormat, 1);
+    auto pFormatTmp = pFormat.get();
+    m_pDoc->AddCondFormat(std::move(pFormat), 1);
 
-    pFormat->AddEntry(pEntry);
+    pFormatTmp->AddEntry(pEntry);
 
     // the conditional format should listen to A1:A3 on the second sheet
     for (SCROW nRow = 0; nRow < 3; ++nRow)
@@ -962,13 +1014,14 @@ void Test::testCondFormatUpdateReference()
     m_pDoc->InsertTab(0, "test");
     m_pDoc->InsertTab(1, "Test2");
 
-    ScConditionEntry* pEntry = new ScConditionEntry(SC_COND_EQUAL, "A1", "", m_pDoc, ScAddress(10, 10, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
+    ScConditionEntry* pEntry = new ScConditionEntry(ScConditionMode::Equal, "A1", "", m_pDoc, ScAddress(10, 10, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(0, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(0, m_pDoc);
     pFormat->SetRange(ScRange(10, 10, 0, 10, 12, 0));
-    m_pDoc->AddCondFormat(pFormat, 0);
+    auto pFormatTmp = pFormat.get();
+    m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
-    pFormat->AddEntry(pEntry);
+    pFormatTmp->AddEntry(pEntry);
 
     // the conditional format should listen to A1:A3
     for (SCROW nRow = 0; nRow < 3; ++nRow)
@@ -985,13 +1038,14 @@ void Test::testCondFormatUpdateReferenceDelRow()
 {
     m_pDoc->InsertTab(0, "test");
 
-    ScConditionEntry* pEntry = new ScConditionEntry(SC_COND_EQUAL, "B6", "", m_pDoc, ScAddress(0, 5, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
+    ScConditionEntry* pEntry = new ScConditionEntry(ScConditionMode::Equal, "B6", "", m_pDoc, ScAddress(0, 5, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(0, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(0, m_pDoc);
     pFormat->SetRange(ScRange(0, 5, 0, 0, 5, 0));
-    m_pDoc->AddCondFormat(pFormat, 0);
+    auto pFormatTmp = pFormat.get();
+    m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
-    pFormat->AddEntry(pEntry);
+    pFormatTmp->AddEntry(pEntry);
 
     m_pDoc->DeleteRow(0, 0, MAXCOL, 0, 4, 1);
 
@@ -1005,13 +1059,14 @@ void Test::testCondFormatUpdateReferenceInsRow()
 {
     m_pDoc->InsertTab(0, "test");
 
-    ScConditionEntry* pEntry = new ScConditionEntry(SC_COND_EQUAL, "B6", "", m_pDoc, ScAddress(0, 5, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
+    ScConditionEntry* pEntry = new ScConditionEntry(ScConditionMode::Equal, "B6", "", m_pDoc, ScAddress(0, 5, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(0, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(0, m_pDoc);
     pFormat->SetRange(ScRange(0, 5, 0, 0, 5, 0));
-    m_pDoc->AddCondFormat(pFormat, 0);
+    auto pFormatTmp = pFormat.get();
+    m_pDoc->AddCondFormat(std::move(pFormat), 0);
 
-    pFormat->AddEntry(pEntry);
+    pFormatTmp->AddEntry(pEntry);
 
     m_pDoc->InsertRow(0, 0, MAXCOL, 0, 4, 1);
 
@@ -1025,13 +1080,14 @@ void Test::testCondFormatUndoList()
 {
     m_pDoc->InsertTab(0, "test");
 
-    ScConditionEntry* pEntry = new ScConditionEntry(SC_COND_EQUAL, "B6", "", m_pDoc, ScAddress(0, 5, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
+    ScConditionEntry* pEntry = new ScConditionEntry(ScConditionMode::Equal, "B6", "", m_pDoc, ScAddress(0, 5, 0), "", "", formula::FormulaGrammar::GRAM_DEFAULT, formula::FormulaGrammar::GRAM_DEFAULT);
 
-    ScConditionalFormat* pFormat = new ScConditionalFormat(0, m_pDoc);
+    auto pFormat = std::make_unique<ScConditionalFormat>(0, m_pDoc);
     pFormat->AddEntry(pEntry);
     pFormat->SetRange(ScRange(0, 0, 0, 0, 5, 0));
-    m_pDoc->AddCondFormat(pFormat, 0);
-    m_pDoc->AddCondFormatData(pFormat->GetRange(), 0, pFormat->GetKey());
+    auto pFormatTmp = pFormat.get();
+    m_pDoc->AddCondFormat(std::move(pFormat), 0);
+    m_pDoc->AddCondFormatData(pFormatTmp->GetRange(), 0, pFormatTmp->GetKey());
 
     ScDocFunc& rFunc = getDocShell().GetDocFunc();
 
@@ -1058,6 +1114,160 @@ void Test::testCondFormatUndoList()
     CPPUNIT_ASSERT_EQUAL(size_t(0), m_pDoc->GetCondFormList(0)->size());
     for (SCROW nRow = 0; nRow <= 5; ++nRow)
         CPPUNIT_ASSERT(!m_pDoc->GetCondFormat(0, nRow, 0));
+
+    m_pDoc->DeleteTab(0);
+}
+
+namespace {
+
+sal_uInt32 addSingleCellCondFormat(ScDocument* pDoc, const ScAddress& rAddr, sal_uInt32 nKey, const OUString& rCondition)
+{
+    auto pFormat = std::make_unique<ScConditionalFormat>(nKey, pDoc);
+    ScRange aCondFormatRange(rAddr);
+    ScRangeList aRangeList(aCondFormatRange);
+    pFormat->SetRange(aRangeList);
+
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct, rCondition, "",
+            pDoc, ScAddress(0,0,0), ScResId(STR_STYLENAME_RESULT));
+    pFormat->AddEntry(pEntry);
+    return pDoc->AddCondFormat(std::move(pFormat), 0);
+}
+
+}
+
+void Test::testMultipleSingleCellCondFormatCopyPaste()
+{
+    m_pDoc->InsertTab(0, "Test");
+
+    sal_uInt32 nFirstCondFormatKey = addSingleCellCondFormat(m_pDoc, ScAddress(0, 0, 0), 1, "=A2");
+    sal_uInt32 nSecondCondFormatKey = addSingleCellCondFormat(m_pDoc, ScAddress(1, 0, 0), 2, "=B3");
+
+    ScDocument aClipDoc(SCDOCMODE_CLIP);
+    copyToClip(m_pDoc, ScRange(0,0,0,2,0,0), &aClipDoc);
+    ScRange aTargetRange(2,4,0,7,4,0);
+    pasteOneCellFromClip(m_pDoc, aTargetRange, &aClipDoc);
+
+    for (SCCOL nCol = 2; nCol <= 7; ++nCol)
+    {
+        ScConditionalFormat* pFormat = m_pDoc->GetCondFormat(nCol, 4, 0);
+        if (((nCol - 2) % 3) == 0)
+        {
+            CPPUNIT_ASSERT_EQUAL(pFormat->GetKey(), nFirstCondFormatKey);
+        }
+        else if (((nCol - 2) % 3) == 1)
+        {
+            CPPUNIT_ASSERT_EQUAL(pFormat->GetKey(), nSecondCondFormatKey);
+        }
+        else
+        {
+            CPPUNIT_ASSERT(!pFormat);
+        }
+    }
+
+    m_pDoc->DeleteTab(0);
+}
+
+void Test::testDeduplicateMultipleCondFormats()
+{
+    m_pDoc->InsertTab(0, "Test");
+
+    sal_uInt32 nFirstCondFormatKey = addSingleCellCondFormat(m_pDoc, ScAddress(0, 0, 0), 1, "=B2");
+    sal_uInt32 nSecondCondFormatKey = addSingleCellCondFormat(m_pDoc, ScAddress(1, 0, 0), 2, "=B2");
+
+    ScDocument aClipDoc(SCDOCMODE_CLIP);
+    copyToClip(m_pDoc, ScRange(0,0,0,2,0,0), &aClipDoc);
+    ScRange aTargetRange(2,4,0,7,4,0);
+    pasteOneCellFromClip(m_pDoc, aTargetRange, &aClipDoc);
+
+    for (SCCOL nCol = 2; nCol <= 7; ++nCol)
+    {
+        ScConditionalFormat* pFormat = m_pDoc->GetCondFormat(nCol, 4, 0);
+        if (((nCol - 2) % 3) == 0)
+        {
+            CPPUNIT_ASSERT_EQUAL(pFormat->GetKey(), nFirstCondFormatKey);
+        }
+        else if (((nCol - 2) % 3) == 1)
+        {
+            CPPUNIT_ASSERT_EQUAL(pFormat->GetKey(), nSecondCondFormatKey);
+        }
+        else
+        {
+            CPPUNIT_ASSERT(!pFormat);
+        }
+    }
+
+    m_pDoc->DeleteTab(0);
+}
+
+void Test::testCondFormatListenToOwnRange()
+{
+    m_pDoc->InsertTab(0, "Test");
+
+    ScConditionalFormatList* pList = m_pDoc->GetCondFormList(0);
+
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
+    ScRangeList aRangeList(ScRange(0,0,0,10,0,0));
+    pFormat->SetRange(aRangeList);
+
+    ScIconSetFormat* pEntry = new ScIconSetFormat(m_pDoc);
+    ScIconSetFormatData* pData = new ScIconSetFormatData;
+    pData->m_Entries.emplace_back(new ScColorScaleEntry(0, COL_BLUE));
+    pData->m_Entries.emplace_back(new ScColorScaleEntry(1, COL_GREEN));
+    pData->m_Entries.emplace_back(new ScColorScaleEntry(2, COL_RED));
+    pEntry->SetIconSetData(pData);
+    pEntry->SetParent(pFormat.get());
+
+    m_pDoc->AddCondFormatData(pFormat->GetRange(), 0, 1);
+    pFormat->AddEntry(pEntry);
+    pList->InsertNew(std::move(pFormat));
+
+    bool bFirstCallbackCalled = false;
+    std::function<void()> aFirstCallback = [&]() {bFirstCallbackCalled = true;};
+    pData->m_Entries[0]->SetType(COLORSCALE_PERCENT);
+    pData->m_Entries[0]->SetRepaintCallback(aFirstCallback);
+
+    m_pDoc->SetValue(0, 0, 0, -1.0);
+
+    CPPUNIT_ASSERT(bFirstCallbackCalled);
+
+    m_pDoc->DeleteTab(0);
+}
+
+void Test::testCondFormatVolatileFunctionRecalc()
+{
+    m_pDoc->InsertTab(0, "Test");
+
+    m_pDoc->SetValue(0, 0, 0, 0.5);
+
+    ScConditionalFormatList* pList = m_pDoc->GetCondFormList(0);
+
+    auto pFormat = std::make_unique<ScConditionalFormat>(1, m_pDoc);
+    ScRangeList aRangeList(ScRange(0,0,0,10,0,0));
+    pFormat->SetRange(aRangeList);
+
+    ScCondFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Greater,"RAND()","",m_pDoc,ScAddress(0,0,0),ScResId(STR_STYLENAME_RESULT));
+    pEntry->SetParent(pFormat.get());
+
+    m_pDoc->AddCondFormatData(pFormat->GetRange(), 0, 1);
+    pFormat->AddEntry(pEntry);
+    auto pFormatTmp = pFormat.get();
+    pList->InsertNew(std::move(pFormat));
+
+    ScRefCellValue aCell(*m_pDoc, ScAddress(0, 0, 0));
+    bool bValid = pEntry->IsCellValid(aCell, ScAddress(0, 0, 0));
+
+    bool bNewValid = bValid;
+    // chance of a random failure is 0.5^100, anyone hitting that will get a beer from me
+    for (size_t i = 0; i < 100; ++i)
+    {
+        pFormatTmp->CalcAll();
+        bNewValid = pEntry->IsCellValid(aCell, ScAddress(0, 0, 0));
+
+        if (bValid != bNewValid)
+            break;
+    }
+
+    CPPUNIT_ASSERT(bValid != bNewValid);
 
     m_pDoc->DeleteTab(0);
 }

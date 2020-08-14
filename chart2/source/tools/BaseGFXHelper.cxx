@@ -17,16 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "BaseGFXHelper.hxx"
-#include <com/sun/star/drawing/DoubleSequence.hpp>
+#include <BaseGFXHelper.hxx>
+#include <com/sun/star/drawing/PolyPolygonShape3D.hpp>
+#include <com/sun/star/awt/Rectangle.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::drawing;
 using namespace ::basegfx;
 
-namespace chart
-{
-namespace BaseGFXHelper
+namespace chart::BaseGFXHelper
 {
 
 ::basegfx::B3DRange getBoundVolume( const drawing::PolyPolygonShape3D& rPolyPoly )
@@ -194,7 +193,6 @@ void ReduceToRotationMatrix( ::basegfx::B3DHomMatrix & rB3DMatrix )
     rB3DMatrix = aRotationMatrix;
 }
 
-} //  namespace BaseGFXHelper
-} //  namespace chart
+} //  namespace chart::BaseGFXHelper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

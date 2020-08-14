@@ -20,42 +20,41 @@
 #define INCLUDED_UCBHELPER_CONTENT_HXX
 
 #include <rtl/ref.hxx>
-#include <com/sun/star/ucb/ContentCreationException.hpp>
-#include <com/sun/star/ucb/CommandAbortedException.hpp>
-#include <com/sun/star/io/XStream.hpp>
-#include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/uno/Sequence.h>
 #include <ucbhelper/ucbhelperdllapi.h>
 
-namespace com { namespace sun { namespace star { namespace beans {
+namespace com::sun::star::beans {
     class XPropertySetInfo;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace io {
+namespace com::sun::star::io {
     class XActiveDataSink;
     class XOutputStream;
     class XInputStream;
-} } } }
+    class XStream;
+}
 
-namespace com { namespace sun { namespace star { namespace sdbc {
+namespace com::sun::star::sdbc {
     class XResultSet;
     class XRow;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace ucb {
+namespace com::sun::star::ucb {
     class XCommandEnvironment;
     class XCommandInfo;
     class XContent;
-    class XContentIdentifier;
     class XDynamicResultSet;
     class XAnyCompareFactory;
     struct ContentInfo;
     struct NumberedSortingInfo;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-} } } }
+}
+
+namespace com::sun::star::uno { class Any; }
 
 namespace ucbhelper
 {
@@ -91,11 +90,10 @@ class Content_Impl;
   * convenient API for frequently used functionality then the "raw"
   * UCB-API does.
   */
-class UCBHELPER_DLLPUBLIC Content
+class UCBHELPER_DLLPUBLIC Content final
 {
     rtl::Reference< Content_Impl > m_xImpl;
 
-protected:
     /// @throws css::ucb::CommandAbortedException
     /// @throws css::uno::RuntimeException,
     /// @throws css::uno::Exception
@@ -146,7 +144,7 @@ public:
     /**
       * Move constructor.
       */
-    Content( Content&& rOther );
+    Content(Content&& rOther) noexcept;
 
     /**
       * Destructor.
@@ -163,7 +161,7 @@ public:
     /**
       * Move assignment operator.
       */
-    Content& operator=( Content&& rOther );
+    Content& operator=(Content&& rOther) noexcept;
 
     /**
       * Constructor. This method should be used, if the exception thrown
@@ -655,7 +653,7 @@ public:
       * @throws css::uno::RuntimeException
       * @throws css::uno::Exception
       */
-    bool
+    void
     transferContent( const Content& rSourceContent,
                      InsertOperation eOperation,
                      const OUString & rTitle,
@@ -664,7 +662,7 @@ public:
                      bool bMajorVersion = false,
                      const OUString & rCommentVersion = OUString( ),
                      OUString* pResultURL = nullptr,
-                     const OUString & rDocumentId = OUString( ) );
+                     const OUString & rDocumentId = OUString( ) ) const;
 
     /**
       *  This method lock the resource.

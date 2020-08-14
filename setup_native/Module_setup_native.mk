@@ -10,7 +10,6 @@
 $(eval $(call gb_Module_Module,setup_native))
 
 $(eval $(call gb_Module_add_targets,setup_native,\
-	$(if $(filter LINUX SOLARIS,$(OS)),Library_getuid) \
 	$(if $(filter MACOSX,$(OS)),CustomTarget_mac) \
 	CustomTarget_spell \
 	$(if $(filter WNT,$(OS)),Package_misc) \
@@ -24,7 +23,9 @@ $(eval $(call gb_Module_add_targets,setup_native,\
 ifeq ($(OS),WNT)
 $(eval $(call gb_Module_add_targets,setup_native,\
 	Library_instooofiltmsi \
+	Library_inst_msu_msi \
 	Library_qslnkmsi \
+	Library_reg_dlls \
 	Library_reg4allmsdoc \
 	Library_regactivex \
 	Library_sdqsmsi \

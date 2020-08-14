@@ -17,7 +17,7 @@ $(call wizards_Properties__Properties_impl,$(wizards_DIR)/resources_$(1).propert
 endef
 
 define wizards_Properties__Properties_impl
-$(1) : LANG := $(4)
+$(1) : LANGUAGE := $(4)
 $(1) : POFILE := $(3)
 $(1) : SOURCE := $(2)
 
@@ -36,23 +36,25 @@ $(wizards_DIR)/resources_%.properties : \
 		$(call gb_Executable_get_runtime_dependencies,propex) \
 		| $(wizards_DIR)/.dir
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),PRP,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),PRP)
 	$(call gb_Helper_abbreviate_dirs, \
-		$(if $(filter-out qtz,$(LANG)), \
+		$(if $(filter-out qtz,$(LANGUAGE)), \
 			MERGEINPUT=$(call var2file,$(shell $(gb_MKTEMP)),100,$(POFILE)) && \
 			$(call gb_Executable_get_command,propex) \
 				-i $(SOURCE) \
 				-o $@ \
 				-m $${MERGEINPUT} \
-				-l $(LANG) && \
+				-l $(LANGUAGE) && \
 			rm -rf $${MERGEINPUT} \
 			, \
 			$(call gb_Executable_get_command,propex) \
 				-i $(SOURCE) \
 				-o $@ \
 				-m \
-				-l $(LANG) \
+				-l $(LANGUAGE) \
 		) \
 	)
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),PRP)
 
 
 # vim:set shiftwidth=4 tabstop=4 noexpandtab:

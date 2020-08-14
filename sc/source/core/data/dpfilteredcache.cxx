@@ -17,18 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dpfilteredcache.hxx"
-#include "document.hxx"
-#include "address.hxx"
-#include "formulacell.hxx"
-#include "dptabdat.hxx"
-#include "dptabsrc.hxx"
-#include "dpobject.hxx"
-#include "queryparam.hxx"
-#include "queryentry.hxx"
-#include "dpitemdata.hxx"
-
+#include <dpcache.hxx>
+#include <dpfilteredcache.hxx>
+#include <address.hxx>
+#include <queryparam.hxx>
+#include <dpitemdata.hxx>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
+#include <algorithm>
 
 using ::std::vector;
 using ::com::sun::star::uno::Sequence;
@@ -55,14 +52,7 @@ ScDPFilteredCache::GroupFilter::GroupFilter()
 
 bool ScDPFilteredCache::GroupFilter::match(const ScDPItemData& rCellData) const
 {
-    vector<ScDPItemData>::const_iterator it = maItems.begin(), itEnd = maItems.end();
-    for (; it != itEnd; ++it)
-    {
-        bool bMatch = *it == rCellData;
-        if (bMatch)
-            return true;
-    }
-    return false;
+    return std::find(maItems.begin(), maItems.end(), rCellData) != maItems.end();
 }
 
 std::vector<ScDPItemData> ScDPFilteredCache::GroupFilter::getMatchValues() const
@@ -81,8 +71,7 @@ size_t ScDPFilteredCache::GroupFilter::getMatchItemCount() const
 }
 
 ScDPFilteredCache::Criterion::Criterion() :
-    mnFieldIndex(-1),
-    mpFilter(static_cast<FilterBase*>(nullptr))
+    mnFieldIndex(-1)
 {
 }
 
@@ -143,7 +132,7 @@ void ScDPFilteredCache::fillTable(
     // Build unique field entries.
     for (SCCOL nCol = 0; nCol < nColCount; ++nCol)
     {
-        maFieldEntries.push_back( vector<SCROW>() );
+        maFieldEntries.emplace_back( );
         SCROW nMemCount = getCache().GetDimMemberCount( nCol );
         if (!nMemCount)
             continue;
@@ -206,7 +195,7 @@ void ScDPFilteredCache::fillTable()
     // Data rows
     for (SCCOL nCol = 0; nCol < nColCount; ++nCol)
     {
-        maFieldEntries.push_back( vector<SCROW>() );
+        maFieldEntries.emplace_back( );
         SCROW nMemCount = getCache().GetDimMemberCount( nCol );
         if (!nMemCount)
             continue;
@@ -235,7 +224,7 @@ bool ScDPFilteredCache::isRowActive(sal_Int32 nRow, sal_Int32* pLastRow) const
     if (pLastRow)
     {
         // Return the last row of current segment.
-        *pLastRow = nLastRowFilter < nLastRowPage ? nLastRowFilter : nLastRowPage;
+        *pLastRow = std::min(nLastRowFilter, nLastRowPage);
         *pLastRow -= 1; // End position is not inclusive. Move back one.
     }
 
@@ -291,7 +280,7 @@ OUString ScDPFilteredCache::getFieldName(SCCOL nIndex) const
 
 const ::std::vector<SCROW>&  ScDPFilteredCache::getFieldEntries( sal_Int32 nColumn ) const
 {
-    if (nColumn < 0 || static_cast<size_t>(nColumn) >= maFieldEntries.size())
+    if (nColumn < 0 || o3tl::make_unsigned(nColumn) >= maFieldEntries.size())
     {
         // index out of bound.  Hopefully this code will never be reached.
         static const ::std::vector<SCROW> emptyEntries{};
@@ -318,8 +307,7 @@ void ScDPFilteredCache::filterTable(const vector<Criterion>& rCriteria, Sequence
     Sequence<Any> headerRow(nColSize);
     for (SCCOL  nCol = 0; nCol < nColSize; ++nCol)
     {
-        OUString str;
-        str = getFieldName( nCol);
+        OUString str = getFieldName( nCol);
         Any any;
         any <<= str;
         headerRow[nCol] = any;
@@ -382,18 +370,17 @@ bool ScDPFilteredCache::isRowQualified(sal_Int32 nRow, const vector<Criterion>& 
                                     const std::unordered_set<sal_Int32>& rRepeatIfEmptyDims) const
 {
     sal_Int32 nColSize = getColSize();
-    vector<Criterion>::const_iterator itrEnd = rCriteria.end();
-    for (vector<Criterion>::const_iterator itr = rCriteria.begin(); itr != itrEnd; ++itr)
+    for (const auto& rCriterion : rCriteria)
     {
-        if (itr->mnFieldIndex >= nColSize)
+        if (rCriterion.mnFieldIndex >= nColSize)
             // specified field is outside the source data columns.  Don't
             // use this criterion.
             continue;
 
         // Check if the 'repeat if empty' flag is set for this field.
-        bool bRepeatIfEmpty = rRepeatIfEmptyDims.count(itr->mnFieldIndex) > 0;
-        const ScDPItemData* pCellData = getCell(static_cast<SCCOL>(itr->mnFieldIndex), nRow, bRepeatIfEmpty);
-        if (!itr->mpFilter->match(*pCellData))
+        bool bRepeatIfEmpty = rRepeatIfEmptyDims.count(rCriterion.mnFieldIndex) > 0;
+        const ScDPItemData* pCellData = getCell(static_cast<SCCOL>(rCriterion.mnFieldIndex), nRow, bRepeatIfEmpty);
+        if (!rCriterion.mpFilter->match(*pCellData))
             return false;
     }
     return true;

@@ -20,7 +20,7 @@
 #ifndef INCLUDED_SD_SOURCE_CORE_PAGELISTWATCHER_HXX
 #define INCLUDED_SD_SOURCE_CORE_PAGELISTWATCHER_HXX
 
-#include "pres.hxx"
+#include <pres.hxx>
 #include <sal/types.h>
 #include <vector>
 
@@ -60,7 +60,7 @@ public:
     void Invalidate() { mbPageListValid = false; }
     SdPage* GetSdPage(PageKind ePgKind, sal_uInt32 nPgNum);
     sal_uInt32 GetSdPageCount(PageKind ePgKind);
-    sal_uInt32 GetVisibleSdPageCount();
+    sal_uInt32 GetVisibleSdPageCount() const;
 };
 
 class ImpDrawPageListWatcher : public ImpPageListWatcher

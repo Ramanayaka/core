@@ -17,12 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cassert>
 
-#include "rtl/textcvt.h"
-#include "sal/types.h"
+#include <rtl/character.hxx>
+#include <rtl/textcvt.h>
+#include <sal/types.h>
 
 #include "context.hxx"
 #include "convertbig5hkscs.hxx"
@@ -82,6 +83,7 @@ sal_Size ImplConvertBig5HkscsToUnicode(void const * pData,
     sal_Size nConverted = 0;
     sal_Unicode * pDestBufPtr = pDestBuf;
     sal_Unicode * pDestBufEnd = pDestBuf + nDestChars;
+    sal_Size startOfCurrentChar = 0;
 
     if (pContext)
         nRow = static_cast< ImplBig5HkscsToUnicodeContext * >(pContext)->m_nRow;
@@ -92,9 +94,10 @@ sal_Size ImplConvertBig5HkscsToUnicode(void const * pData,
         sal_uInt32 nChar = *reinterpret_cast<unsigned char const *>(pSrcBuf++);
         if (nRow == 0)
             if (nChar < 0x80)
-                if (pDestBufPtr != pDestBufEnd)
-                    *pDestBufPtr++ = (sal_Unicode) nChar;
-                else
+                if (pDestBufPtr != pDestBufEnd) {
+                    *pDestBufPtr++ = static_cast<sal_Unicode>(nChar);
+                    startOfCurrentChar = nConverted + 1;
+                } else
                     goto no_output;
             else if (nChar >= 0x81 && nChar <= 0xFE)
                 nRow = nChar;
@@ -198,17 +201,19 @@ sal_Size ImplConvertBig5HkscsToUnicode(void const * pData,
                     {
                         nOffset += nLast - nFirst + 1;
                         nFirst = pBig5Hkscs2001Data[nOffset++];
-                        *pDestBufPtr++ = (sal_Unicode) nUnicode;
+                        *pDestBufPtr++ = static_cast<sal_Unicode>(nUnicode);
                         *pDestBufPtr++
-                            = (sal_Unicode) pBig5Hkscs2001Data[
-                                                nOffset + (nChar - nFirst)];
+                            = static_cast<sal_Unicode>(pBig5Hkscs2001Data[
+                                                nOffset + (nChar - nFirst)]);
+                        startOfCurrentChar = nConverted + 1;
                     }
                     else
                         goto no_output;
                 else
-                    if (pDestBufPtr != pDestBufEnd)
-                        *pDestBufPtr++ = (sal_Unicode) nUnicode;
-                    else
+                    if (pDestBufPtr != pDestBufEnd) {
+                        *pDestBufPtr++ = static_cast<sal_Unicode>(nUnicode);
+                        startOfCurrentChar = nConverted + 1;
+                    } else
                         goto no_output;
                 nRow = 0;
             }
@@ -226,10 +231,16 @@ sal_Size ImplConvertBig5HkscsToUnicode(void const * pData,
         {
         case sal::detail::textenc::BAD_INPUT_STOP:
             nRow = 0;
+            if ((nFlags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) == 0) {
+                ++nConverted;
+            } else {
+                nConverted = startOfCurrentChar;
+            }
             break;
 
         case sal::detail::textenc::BAD_INPUT_CONTINUE:
             nRow = 0;
+            startOfCurrentChar = nConverted + 1;
             continue;
 
         case sal::detail::textenc::BAD_INPUT_NO_OUTPUT:
@@ -239,29 +250,33 @@ sal_Size ImplConvertBig5HkscsToUnicode(void const * pData,
 
     no_output:
         --pSrcBuf;
-        nInfo |= RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL;
+        nInfo |= RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL;
         break;
     }
 
     if (nRow != 0
         && (nInfo & (RTL_TEXTTOUNICODE_INFO_ERROR
-                         | RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL))
+                         | RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL))
                == 0)
     {
         if ((nFlags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) == 0)
-            nInfo |= RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL;
+            nInfo |= RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL;
         else
             switch (sal::detail::textenc::handleBadInputTextToUnicodeConversion(
                         false, true, 0, nFlags, &pDestBufPtr, pDestBufEnd,
                         &nInfo))
             {
             case sal::detail::textenc::BAD_INPUT_STOP:
+                if ((nFlags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) != 0) {
+                    nConverted = startOfCurrentChar;
+                }
+                [[fallthrough]];
             case sal::detail::textenc::BAD_INPUT_CONTINUE:
                 nRow = 0;
                 break;
 
             case sal::detail::textenc::BAD_INPUT_NO_OUTPUT:
-                nInfo |= RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL;
+                nInfo |= RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL;
                 break;
             }
     }
@@ -316,8 +331,13 @@ sal_Size ImplConvertUnicodeToBig5Hkscs(void const * pData,
         {
             if (ImplIsHighSurrogate(nChar))
             {
-                nHighSurrogate = (sal_Unicode) nChar;
+                nHighSurrogate = static_cast<sal_Unicode>(nChar);
                 continue;
+            }
+            else if (ImplIsLowSurrogate(nChar))
+            {
+                bUndefined = false;
+                goto bad_input;
             }
         }
         else if (ImplIsLowSurrogate(nChar))
@@ -328,11 +348,7 @@ sal_Size ImplConvertUnicodeToBig5Hkscs(void const * pData,
             goto bad_input;
         }
 
-        if (ImplIsLowSurrogate(nChar) || ImplIsNoncharacter(nChar))
-        {
-            bUndefined = false;
-            goto bad_input;
-        }
+        assert(rtl::isUnicodeScalarValue(nChar));
 
         if (nChar < 0x80)
             if (pDestBufPtr != pDestBufEnd)

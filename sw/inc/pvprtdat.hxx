@@ -20,47 +20,48 @@
 #ifndef INCLUDED_SW_INC_PVPRTDAT_HXX
 #define INCLUDED_SW_INC_PVPRTDAT_HXX
 
-#include <tools/solar.h>
+#include <sal/types.h>
 
 class SwPagePreviewPrtData
 {
-    sal_uLong nLeftSpace, nRightSpace, nTopSpace, nBottomSpace,
-            nHorzSpace, nVertSpace;
-    sal_uInt8 nRow, nCol;
-    bool bLandscape : 1;
+
+    sal_Int32 m_nLeftSpace, m_nRightSpace, m_nTopSpace, m_nBottomSpace,
+            m_nHorzSpace, m_nVertSpace;
+    sal_uInt8 m_nRow, m_nCol;
+    bool m_bLandscape : 1;
 public:
     SwPagePreviewPrtData()
-        : nLeftSpace(0), nRightSpace(0), nTopSpace(0), nBottomSpace(0),
-            nHorzSpace(0), nVertSpace(0), nRow(1), nCol(1),
-            bLandscape(false)
+        : m_nLeftSpace(0), m_nRightSpace(0), m_nTopSpace(0), m_nBottomSpace(0),
+            m_nHorzSpace(0), m_nVertSpace(0), m_nRow(1), m_nCol(1),
+            m_bLandscape(false)
     {}
 
-    sal_uLong GetLeftSpace() const          { return nLeftSpace; }
-    void SetLeftSpace( sal_uLong n )        { nLeftSpace = n; }
+    sal_Int32 GetLeftSpace() const          { return m_nLeftSpace; }
+    void SetLeftSpace( sal_Int32 n )        { m_nLeftSpace = n; }
 
-    sal_uLong GetRightSpace() const         { return nRightSpace; }
-    void SetRightSpace( sal_uLong n )       { nRightSpace = n; }
+    sal_Int32 GetRightSpace() const         { return m_nRightSpace; }
+    void SetRightSpace( sal_Int32 n )       { m_nRightSpace = n; }
 
-    sal_uLong GetTopSpace() const           { return nTopSpace; }
-    void SetTopSpace( sal_uLong n )         { nTopSpace = n; }
+    sal_Int32 GetTopSpace() const           { return m_nTopSpace; }
+    void SetTopSpace( sal_Int32 n )         { m_nTopSpace = n; }
 
-    sal_uLong GetBottomSpace() const        { return nBottomSpace; }
-    void SetBottomSpace( sal_uLong n )      { nBottomSpace = n; }
+    sal_Int32 GetBottomSpace() const        { return m_nBottomSpace; }
+    void SetBottomSpace(sal_Int32 n )       { m_nBottomSpace = n; }
 
-    sal_uLong GetHorzSpace() const          { return nHorzSpace; }
-    void SetHorzSpace( sal_uLong n )        { nHorzSpace = n; }
+    sal_Int32 GetHorzSpace() const          { return m_nHorzSpace; }
+    void SetHorzSpace( sal_Int32 n )        { m_nHorzSpace = n; }
 
-    sal_uLong GetVertSpace() const          { return nVertSpace; }
-    void SetVertSpace( sal_uLong n )        { nVertSpace = n; }
+    sal_Int32 GetVertSpace() const          { return m_nVertSpace; }
+    void SetVertSpace( sal_Int32 n )        { m_nVertSpace = n; }
 
-    sal_uInt8 GetRow() const                { return nRow; }
-    void SetRow(sal_uInt8 n )               { nRow = n; }
+    sal_uInt8 GetRow() const                { return m_nRow; }
+    void SetRow(sal_uInt8 n )               { m_nRow = n; }
 
-    sal_uInt8 GetCol() const                { return nCol; }
-    void SetCol( sal_uInt8 n )              { nCol = n; }
+    sal_uInt8 GetCol() const                { return m_nCol; }
+    void SetCol( sal_uInt8 n )              { m_nCol = n; }
 
-    bool GetLandscape() const               { return bLandscape; }
-    void SetLandscape( bool b )         { bLandscape = b; }
+    bool GetLandscape() const               { return m_bLandscape; }
+    void SetLandscape( bool b )         { m_bLandscape = b; }
 };
 
 #endif

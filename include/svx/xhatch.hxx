@@ -25,12 +25,10 @@
 #include <com/sun/star/drawing/HatchStyle.hpp>
 
 
-// class XHatch
 
 
-class SVX_DLLPUBLIC XHatch
+class SVXCORE_DLLPUBLIC XHatch final
 {
-protected:
     css::drawing::HatchStyle     eStyle;
     Color           aColor;
     long            nDistance;

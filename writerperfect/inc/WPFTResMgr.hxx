@@ -3,19 +3,9 @@
 #ifndef INCLUDED_WRITERPERFECT_INC_WPFTRESMGR_HXX
 #define INCLUDED_WRITERPERFECT_INC_WPFTRESMGR_HXX
 
-#include "writerperfectdllapi.h"
+#include <unotools/resmgr.hxx>
 
-#include <tools/resid.hxx>
-
-struct WRITERPERFECT_DLLPUBLIC WPFTResMgr
-{
-    static ResMgr &GetResMgr();
-};
-
-inline OUString WpResId(sal_uInt16 nId)
-{
-    return ResId(nId, WPFTResMgr::GetResMgr());
-}
+inline OUString WpResId(const char* pId) { return Translate::get(pId, Translate::Create("wpt")); }
 
 #endif
 

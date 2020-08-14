@@ -30,12 +30,8 @@
 
 
 #include <rtl/ref.hxx>
-#include <rtl/uri.hxx>
-#include <rtl/strbuf.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/bootstrap.hxx>
 #include <osl/diagnose.h>
-#include <osl/process.h>
 
 namespace container = css::container ;
 namespace deployment = css::deployment ;
@@ -132,16 +128,15 @@ checkForUpdates(
         if ( !aUpdateInfoEnumeration.is() )
             return false; // something went wrong ..
 
-        OUStringBuffer aBuffer;
-        aBuffer.append("/child::inst:description[inst:os=\'");
-        aBuffer.append( rOS );
-        aBuffer.append("\' and inst:arch=\'");
-        aBuffer.append( rArch );
-        aBuffer.append("\' and inst:gitid!=\'");
-        aBuffer.append( rGitID );
-        aBuffer.append("\']");
+        OUString aXPathExpression =
+            "/child::inst:description[inst:os=\'"+
+             rOS +
+            "\' and inst:arch=\'"+
+             rArch +
+            "\' and inst:gitid!=\'"+
+             rGitID +
+            "\']";
 
-        OUString aXPathExpression = aBuffer.makeStringAndClear();
 
         while( aUpdateInfoEnumeration->hasMoreElements() )
         {
@@ -211,12 +206,12 @@ checkForUpdates(
                     {
                         sal_Int32 pos = xRelNote->getAttribute("pos").toInt32();
 
-                        ReleaseNote aRelNote((sal_uInt8) pos, xRelNote->getAttribute("src"));
+                        ReleaseNote aRelNote(static_cast<sal_uInt8>(pos), xRelNote->getAttribute("src"));
 
                         if( xRelNote->hasAttribute("src2") )
                         {
                             pos = xRelNote->getAttribute("pos2").toInt32();
-                            aRelNote.Pos2 = (sal_Int8) pos;
+                            aRelNote.Pos2 = static_cast<sal_Int8>(pos);
                             aRelNote.URL2 = xRelNote->getAttribute("src2");
                         }
 

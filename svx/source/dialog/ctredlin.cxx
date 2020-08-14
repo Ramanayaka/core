@@ -17,155 +17,149 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <o3tl/make_unique.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/field.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/lstbox.hxx>
+#include <comphelper/processfactory.hxx>
+#include <comphelper/string.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <vcl/svapp.hxx>
-#include <sfx2/app.hxx>
-#include <sfx2/module.hxx>
+#include <vcl/settings.hxx>
+#include <vcl/weldutils.hxx>
+#include <svtools/ctrlbox.hxx>
 #include <unotools/textsearch.hxx>
-#include <svtools/svlbitm.hxx>
-#include "svtools/viewdataentry.hxx"
-#include <unotools/charclass.hxx>
 
-#include <editeng/unolingu.hxx>
-#include <svx/dialmgr.hxx>
-#include "svx/dialogs.hrc"
 #include <svx/ctredlin.hxx>
-#include "helpid.hrc"
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
 
 #define WRITER_DATE     2
 #define CALC_DATE       3
 
-RedlinData::RedlinData() : aDateTime(DateTime::EMPTY)
+RedlinData::RedlinData()
+    : aDateTime(DateTime::EMPTY)
+    , pData(nullptr)
+    , eType(RedlineType::Any)
+    , bDisabled(false)
 {
-    bDisabled=false;
-    pData=nullptr;
 }
 
 RedlinData::~RedlinData()
 {
 }
 
-SvxRedlinEntry::SvxRedlinEntry()
-    : SvTreeListEntry()
-{
-}
-
-SvxRedlinEntry::~SvxRedlinEntry()
-{
-    RedlinData* pRedDat=static_cast<RedlinData*>(GetUserData());
-    delete pRedDat;
-}
-
-SvLBoxColorString::SvLBoxColorString(const OUString& rStr, const Color& rCol)
-    : SvLBoxString(rStr)
-{
-    aPrivColor=rCol;
-    SetText( rStr );
-}
-
-SvLBoxColorString::SvLBoxColorString()
-: SvLBoxString()
-{
-}
-
-SvLBoxColorString::~SvLBoxColorString()
-{
-}
-
-SvLBoxItem* SvLBoxColorString::Create() const
-{
-    return new SvLBoxColorString;
-}
-
-void SvLBoxColorString::Paint(const Point& rPos, SvTreeListBox& rDev, vcl::RenderContext& rRenderContext,
-                              const SvViewDataEntry* pView, const SvTreeListEntry& rEntry)
-{
-    Color aColor = rRenderContext.GetTextColor();
-    if (!pView->IsSelected())
-    {
-        rRenderContext.SetTextColor(aPrivColor);
-    }
-    SvLBoxString::Paint(rPos, rDev, rRenderContext, pView, rEntry);
-    rRenderContext.SetTextColor(aColor);
-}
-
-SvxRedlinTable::SvxRedlinTable(SvSimpleTableContainer& rParent, WinBits nBits)
-    : SvSimpleTable(rParent,nBits)
+SvxRedlinTable::SvxRedlinTable(std::unique_ptr<weld::TreeView> xWriterControl,
+                               std::unique_ptr<weld::TreeView> xCalcControl)
+    : xSorter(new comphelper::string::NaturalStringSorter(::comphelper::getProcessComponentContext(),
+        Application::GetSettings().GetUILanguageTag().getLocale()))
+    , xWriterTreeView(std::move(xWriterControl))
+    , xCalcTreeView(std::move(xCalcControl))
+    , pTreeView(nullptr)
     , nDatePos(WRITER_DATE)
     , bAuthor(false)
     , bDate(false)
     , bComment(false)
+    , bSorted(false)
     , nDaTiMode(SvxRedlinDateMode::BEFORE)
     , aDaTiFirst( DateTime::EMPTY )
     , aDaTiLast( DateTime::EMPTY )
     , aDaTiFilterFirst( DateTime::EMPTY )
     , aDaTiFilterLast( DateTime::EMPTY )
-    , pCommentSearcher(nullptr)
 {
-    SetNodeDefaultImages();
+    if (xWriterTreeView)
+    {
+        xWriterTreeView->connect_column_clicked(LINK(this, SvxRedlinTable, HeaderBarClick));
+        xWriterTreeView->set_sort_func([this](const weld::TreeIter& rLeft, const weld::TreeIter& rRight){
+            return ColCompare(rLeft, rRight);
+        });
+        pTreeView = xWriterTreeView.get();
+    }
+    if (xCalcTreeView)
+    {
+        xCalcTreeView->connect_column_clicked(LINK(this, SvxRedlinTable, HeaderBarClick));
+        xCalcTreeView->set_sort_func([this](const weld::TreeIter& rLeft, const weld::TreeIter& rRight){
+            return ColCompare(rLeft, rRight);
+        });
+        pTreeView = xCalcTreeView.get();
+    }
+}
+
+void SvxRedlinTable::set_size_request(int nWidth, int nHeight)
+{
+    if (xWriterTreeView)
+        xWriterTreeView->set_size_request(nWidth, nHeight);
+    if (xCalcTreeView)
+        xCalcTreeView->set_size_request(nWidth, nHeight);
 }
 
 SvxRedlinTable::~SvxRedlinTable()
 {
-    disposeOnce();
 }
 
-void SvxRedlinTable::dispose()
+IMPL_LINK(SvxRedlinTable, HeaderBarClick, int, nColumn, void)
 {
-    delete pCommentSearcher;
-    pCommentSearcher = nullptr;
-    SvSimpleTable::dispose();
-}
-
-sal_Int32 SvxRedlinTable::ColCompare(SvTreeListEntry* pLeft,SvTreeListEntry* pRight)
-{
-    sal_Int32 nCompare = 0;
-
-    if(aColCompareLink.IsSet())
+    if (!bSorted)
     {
-        SvSortData aRedlinCompare;
-        aRedlinCompare.pLeft=pLeft;
-        aRedlinCompare.pRight=pRight;
-        nCompare = aColCompareLink.Call(&aRedlinCompare);
+        pTreeView->make_sorted();
+        bSorted = true;
+    }
+
+    bool bSortAtoZ = pTreeView->get_sort_order();
+
+    //set new arrow positions in headerbar
+    if (nColumn == pTreeView->get_sort_column())
+    {
+        bSortAtoZ = !bSortAtoZ;
+        pTreeView->set_sort_order(bSortAtoZ);
     }
     else
     {
-        if(nDatePos==GetSortedCol())
-        {
-            RedlinData *pLeftData=static_cast<RedlinData *>(pLeft->GetUserData());
-            RedlinData *pRightData=static_cast<RedlinData *>(pRight->GetUserData());
-
-            if(pLeftData!=nullptr && pRightData!=nullptr)
-            {
-                if(pLeftData->aDateTime < pRightData->aDateTime)
-                {
-                    nCompare = -1;
-                }
-                else if(pLeftData->aDateTime > pRightData->aDateTime)
-                {
-                    nCompare = 1;
-                }
-            }
-            else
-                nCompare = SvSimpleTable::ColCompare(pLeft,pRight);
-        }
-        else
-        {
-            nCompare = SvSimpleTable::ColCompare(pLeft,pRight);
-        }
-
+        pTreeView->set_sort_indicator(TRISTATE_INDET, pTreeView->get_sort_column());
+        pTreeView->set_sort_column(nColumn);
     }
 
-    return nCompare;
+    if (nColumn != -1)
+    {
+        //sort lists
+        pTreeView->set_sort_indicator(bSortAtoZ ? TRISTATE_TRUE : TRISTATE_FALSE, nColumn);
+    }
 }
 
-void SvxRedlinTable::SetCalcView()
+int SvxRedlinTable::ColCompare(const weld::TreeIter& rLeft, const weld::TreeIter& rRight)
 {
-    nDatePos=CALC_DATE;
+    sal_Int32 nCompare = 0;
+
+    int nSortCol = pTreeView->get_sort_column();
+
+    if (pTreeView == xWriterTreeView.get() && nSortCol == 0)
+    {
+        RedlinData *pLeftData = reinterpret_cast<RedlinData*>(pTreeView->get_id(rLeft).toInt64());
+        RedlinData *pRightData = reinterpret_cast<RedlinData*>(pTreeView->get_id(rRight).toInt64());
+
+        if (pLeftData && pRightData)
+        {
+            if (pLeftData->eType < pRightData->eType)
+                nCompare = -1;
+            else if (pLeftData->eType > pRightData->eType)
+                nCompare = 1;
+            return nCompare;
+        }
+    }
+
+    if (nSortCol == nDatePos)
+    {
+        RedlinData *pLeftData = reinterpret_cast<RedlinData*>(pTreeView->get_id(rLeft).toInt64());
+        RedlinData *pRightData = reinterpret_cast<RedlinData*>(pTreeView->get_id(rRight).toInt64());
+
+        if (pLeftData && pRightData)
+        {
+            if (pLeftData->aDateTime < pRightData->aDateTime)
+                nCompare = -1;
+            else if (pLeftData->aDateTime > pRightData->aDateTime)
+                nCompare = 1;
+            return nCompare;
+        }
+    }
+
+    return xSorter->compare(pTreeView->get_text(rLeft, nSortCol),
+                            pTreeView->get_text(rRight, nSortCol));
 }
 
 void SvxRedlinTable::UpdateFilterTest()
@@ -260,9 +254,7 @@ void SvxRedlinTable::SetCommentParams( const utl::SearchParam* pSearchPara )
 {
     if(pSearchPara!=nullptr)
     {
-        delete pCommentSearcher;
-
-        pCommentSearcher=new utl::TextSearch(*pSearchPara, LANGUAGE_SYSTEM );
+        pCommentSearcher.reset(new utl::TextSearch(*pSearchPara, LANGUAGE_SYSTEM ));
     }
 }
 
@@ -295,302 +287,275 @@ bool SvxRedlinTable::IsValidComment(const OUString &rCommentStr)
     return pCommentSearcher->SearchForward( rCommentStr, &nStartPos, &nEndPos);
 }
 
-SvTreeListEntry* SvxRedlinTable::InsertEntry(const OUString& rStr,
-        RedlinData *pUserData, SvTreeListEntry* pParent, sal_uIntPtr nPos)
+SvxTPage::~SvxTPage()
 {
-    const Color aColor = (pUserData && pUserData->bDisabled) ? Color(COL_GRAY) : GetTextColor();
-
-    return InsertEntry(rStr, pUserData, aColor, pParent, nPos);
 }
 
-SvTreeListEntry* SvxRedlinTable::InsertEntry(const OUString& rStr,
-        RedlinData *pUserData, const Color& rColor, SvTreeListEntry* pParent, sal_uIntPtr nPos)
+void SvxTPage::ActivatePage()
 {
-    maEntryColor = rColor;
-    maEntryImage = Image();
-
-    sal_Int32 nIndex = 0;
-    const OUString aFirstStr(rStr.getToken(0, '\t', nIndex));
-    maEntryString = nIndex > 0 ? rStr.copy(nIndex) : OUString();
-
-    return SvSimpleTable::InsertEntry(aFirstStr, pParent, false, nPos, pUserData);
 }
 
-SvTreeListEntry* SvxRedlinTable::InsertEntry(const Image &rRedlineType, const OUString& rStr,
-        RedlinData *pUserData, SvTreeListEntry* pParent, sal_uIntPtr nPos)
-{
-    maEntryColor = (pUserData && pUserData->bDisabled) ? Color(COL_GRAY) : GetTextColor();
-    maEntryImage = rRedlineType;
-    maEntryString = rStr;
-
-    return SvSimpleTable::InsertEntry(OUString(), pParent, false, nPos, pUserData);
-}
-
-SvTreeListEntry* SvxRedlinTable::CreateEntry() const
-{
-    return new SvxRedlinEntry;
-}
-
-void SvxRedlinTable::InitEntry(SvTreeListEntry* pEntry, const OUString& rStr,
-        const Image& rColl, const Image& rExp, SvLBoxButtonKind eButtonKind)
-{
-    if (nTreeFlags & SvTreeFlags::CHKBTN)
-    {
-        pEntry->AddItem(o3tl::make_unique<SvLBoxButton>(
-                eButtonKind, pCheckButtonData));
-    }
-
-    pEntry->AddItem(o3tl::make_unique<SvLBoxContextBmp>(
-                rColl, rExp, true));
-
-    // the type of the change
-    assert((rStr.isEmpty() && !!maEntryImage) || (!rStr.isEmpty() && !maEntryImage));
-
-    if (rStr.isEmpty())
-        pEntry->AddItem(o3tl::make_unique<SvLBoxContextBmp>(
-                        maEntryImage, maEntryImage, true));
-    else
-        pEntry->AddItem(o3tl::make_unique<SvLBoxColorString>(
-                    rStr, maEntryColor));
-
-    // the change tracking entries
-    sal_Int32 nIndex = 0;
-    const sal_uInt16 nCount = TabCount() - 1;
-    for (sal_uInt16 nToken = 0; nToken < nCount; nToken++)
-    {
-        const OUString aToken = GetToken(maEntryString, nIndex);
-        pEntry->AddItem(o3tl::make_unique<SvLBoxColorString>(
-                    aToken, maEntryColor));
-    }
-}
-
-SvxTPView::SvxTPView(vcl::Window *pParent, VclBuilderContainer *pTopLevel)
-    : TabPage(pParent, "RedlineViewPage", "svx/ui/redlineviewpage.ui")
+SvxTPView::SvxTPView(weld::Container* pParent, weld::Window* pDialog, weld::Builder* pTopLevel)
+    : SvxTPage(pParent, "svx/ui/redlineviewpage.ui", "RedlineViewPage")
     , bEnableAccept(true)
     , bEnableAcceptAll(true)
     , bEnableReject(true)
     , bEnableRejectAll(true)
     , bEnableUndo(true)
+    , bEnableClearFormat(false)
+    , bEnableClearFormatAll(false)
+    , m_pDialog(pDialog)
+    , m_xAccept(pTopLevel->weld_button("accept"))
+    , m_xReject(pTopLevel->weld_button("reject"))
+    , m_xAcceptAll(pTopLevel->weld_button("acceptall"))
+    , m_xRejectAll(pTopLevel->weld_button("rejectall"))
+    , m_xUndo(pTopLevel->weld_button("undo"))
+    , m_xViewData(new SvxRedlinTable(m_xBuilder->weld_tree_view("writerchanges"),
+                                     m_xBuilder->weld_tree_view("calcchanges")))
 {
-    pTopLevel->get(m_pAccept, "accept");
-    pTopLevel->get(m_pReject, "reject");
-    pTopLevel->get(m_pAcceptAll, "acceptall");
-    pTopLevel->get(m_pRejectAll, "rejectall");
-    pTopLevel->get(m_pUndo, "undo");
-
-    SvSimpleTableContainer* pTable = get<SvSimpleTableContainer>("changes");
     Size aControlSize(80, 65);
-    aControlSize = LogicToPixel(aControlSize, MapUnit::MapAppFont);
-    pTable->set_width_request(aControlSize.Width());
-    pTable->set_height_request(aControlSize.Height());
-    m_pViewData = VclPtr<SvxRedlinTable>::Create(*pTable, 0);
+    m_xViewData->set_size_request(aControlSize.Width(), aControlSize.Height());
 
-    Link<Button*,void> aLink=LINK( this, SvxTPView, PbClickHdl);
+    Link<weld::Button&,void> aLink=LINK( this, SvxTPView, PbClickHdl);
 
-    m_pAccept->SetClickHdl(aLink);
-    m_pAcceptAll->SetClickHdl(aLink);
-    m_pReject->SetClickHdl(aLink);
-    m_pRejectAll->SetClickHdl(aLink);
-    m_pUndo->SetClickHdl(aLink);
+    m_xAccept->connect_clicked(aLink);
+    m_xAcceptAll->connect_clicked(aLink);
+    m_xReject->connect_clicked(aLink);
+    m_xRejectAll->connect_clicked(aLink);
+    m_xUndo->connect_clicked(aLink);
 }
 
 void SvxTPView::ActivatePage()
 {
-    m_pAccept->Enable(bEnableAccept);
-    m_pReject->Enable(bEnableReject);
-    m_pAcceptAll->Enable(bEnableAcceptAll);
-    m_pRejectAll->Enable(bEnableRejectAll);
-    m_pUndo->Enable(bEnableUndo);
-    TabPage::ActivatePage();
+    m_xAccept->set_sensitive(bEnableAccept);
+    m_xReject->set_sensitive(bEnableReject);
+    m_xAcceptAll->set_sensitive(bEnableAcceptAll);
+    m_xRejectAll->set_sensitive(bEnableRejectAll);
+    m_xUndo->set_sensitive(bEnableUndo);
 }
 
 void SvxTPView::DeactivatePage()
 {
-    TabPage::DeactivatePage();
-    m_pAccept->Disable();
-    m_pReject->Disable();
-    m_pAcceptAll->Disable();
-    m_pRejectAll->Disable();
-    m_pUndo->Disable();
+    m_xAccept->set_sensitive(false);
+    m_xReject->set_sensitive(false);
+    m_xAcceptAll->set_sensitive(false);
+    m_xRejectAll->set_sensitive(false);
+    m_xUndo->set_sensitive(false);
 }
 
 SvxTPView::~SvxTPView()
 {
-    disposeOnce();
 }
 
-void SvxTPView::dispose()
+void SvxRedlinTable::SetWriterView()
 {
-    m_pViewData.disposeAndClear();
-    m_pAccept.clear();
-    m_pReject.clear();
-    m_pAcceptAll.clear();
-    m_pRejectAll.clear();
-    m_pUndo.clear();
-    TabPage::dispose();
+    nDatePos = WRITER_DATE;
+    if (xCalcTreeView)
+        xCalcTreeView->hide();
+    xWriterTreeView->show();
+    pTreeView = xWriterTreeView.get();
+
+    auto nDigitWidth = pTreeView->get_approximate_digit_width();
+    std::vector<int> aWidths;
+    aWidths.push_back(nDigitWidth * 10);
+    aWidths.push_back(nDigitWidth * 20);
+    aWidths.push_back(nDigitWidth * 20);
+    pTreeView->set_column_fixed_widths(aWidths);
 }
 
-void SvxTPView::InsertWriterHeader()
+void SvxRedlinTable::SetCalcView()
 {
-    const long pTabs[] = { 4 /* Length of rest of the array */, 10, 20, 70, 120 };
-    m_pViewData->SetTabs(pTabs);
+    nDatePos = CALC_DATE;
+    if (xWriterTreeView)
+        xWriterTreeView->hide();
+    xCalcTreeView->show();
+    pTreeView = xCalcTreeView.get();
 
-    OUString aStrTab('\t');
-    OUString aString = get<FixedText>("action")->GetText()
-                     + aStrTab
-                     + get<FixedText>("author")->GetText()
-                     + aStrTab
-                     + get<FixedText>("date")->GetText()
-                     + aStrTab
-                     + get<FixedText>("comment")->GetText();
-    m_pViewData->ClearHeader();
-    m_pViewData->InsertHeaderEntry(aString);
-}
-
-void SvxTPView::InsertCalcHeader()
-{
-    const long pTabs[] = { 5 /* Length of rest of the array */, 10, 65, 120, 170, 220 };
-    m_pViewData->SetTabs(pTabs);
-
-    OUString aStrTab('\t');
-    OUString aString = get<FixedText>("action")->GetText()
-                     + aStrTab
-                     + get<FixedText>("position")->GetText()
-                     + aStrTab
-                     + get<FixedText>("author")->GetText()
-                     + aStrTab
-                     + get<FixedText>("date")->GetText()
-                     + aStrTab
-                     + get<FixedText>("comment")->GetText();
-    m_pViewData->ClearHeader();
-    m_pViewData->InsertHeaderEntry(aString);
+    auto nDigitWidth = pTreeView->get_approximate_digit_width();
+    std::vector<int> aWidths;
+    aWidths.push_back(nDigitWidth * 20);
+    aWidths.push_back(nDigitWidth * 20);
+    aWidths.push_back(nDigitWidth * 20);
+    aWidths.push_back(nDigitWidth * 20);
+    pTreeView->set_column_fixed_widths(aWidths);
 }
 
 void SvxTPView::EnableAccept(bool bFlag)
 {
     bEnableAccept = bFlag;
-    m_pAccept->Enable(bFlag);
+    m_xAccept->set_sensitive(bFlag);
 }
 
 void SvxTPView::EnableAcceptAll(bool bFlag)
 {
     bEnableAcceptAll = bFlag;
-    m_pAcceptAll->Enable(bFlag);
+    m_xAcceptAll->set_sensitive(bFlag);
 }
 
 void SvxTPView::EnableReject(bool bFlag)
 {
     bEnableReject = bFlag;
-    m_pReject->Enable(bFlag);
+    m_xReject->set_sensitive(bFlag);
 }
 
 void SvxTPView::EnableRejectAll(bool bFlag)
 {
     bEnableRejectAll = bFlag;
-    m_pRejectAll->Enable(bFlag);
+    m_xRejectAll->set_sensitive(bFlag);
+}
+
+void SvxTPView::EnableClearFormatButton(weld::Button& rButton, bool bFlag)
+{
+    OUString sText = rButton.get_label();
+    OUString sClearFormat = SvxResId(RID_SVXSTR_CLEARFORM);
+    sal_Int32 nPos = sText.indexOf(sClearFormat);
+
+    // add or remove "Clear formatting" to get "Reject" or "Reject/Clear formatting"
+    if (bFlag)
+    {
+        if (nPos == -1)
+        {
+            rButton.set_label(sText + "/" + sClearFormat);
+        }
+    }
+    else
+    {
+        if (nPos > 0)
+        {
+            rButton.set_label(sText.copy(0, nPos - 1));
+        }
+    }
+
+    if (m_pDialog)
+    {
+        // tdf#127218 allow dialog to shrink
+        m_pDialog->resize_to_request();
+    }
+}
+
+void SvxTPView::EnableClearFormat(bool bFlag)
+{
+    if (bEnableClearFormat == bFlag)
+        return;
+    EnableClearFormatButton(*m_xReject, bFlag);
+    bEnableClearFormat = bFlag;
+}
+
+void SvxTPView::EnableClearFormatAll(bool bFlag)
+{
+    if (bEnableClearFormatAll == bFlag)
+        return;
+    EnableClearFormatButton(*m_xRejectAll, bFlag);
+    bEnableClearFormatAll = bFlag;
 }
 
 void SvxTPView::ShowUndo()
 {
-    m_pUndo->Show();
+    m_xUndo->show();
 }
 
 void SvxTPView::EnableUndo(bool bFlag)
 {
     bEnableUndo = bFlag;
-    m_pUndo->Enable(bFlag);
+    m_xUndo->set_sensitive(bFlag);
 }
 
-
-IMPL_LINK( SvxTPView, PbClickHdl, Button*, pButton, void )
+IMPL_LINK( SvxTPView, PbClickHdl, weld::Button&, rPushB, void)
 {
-    PushButton* pPushB = static_cast<PushButton*>(pButton);
-    if (pPushB == m_pAccept)
+    if (&rPushB == m_xAccept.get())
     {
         AcceptClickLk.Call(this);
     }
-    else if (pPushB == m_pAcceptAll)
+    else if (&rPushB == m_xAcceptAll.get())
     {
         AcceptAllClickLk.Call(this);
     }
-    else if (pPushB == m_pReject)
+    else if (&rPushB == m_xReject.get())
     {
         RejectClickLk.Call(this);
     }
-    else if (pPushB == m_pRejectAll)
+    else if (&rPushB == m_xRejectAll.get())
     {
         RejectAllClickLk.Call(this);
     }
-    else if (pPushB == m_pUndo)
+    else if (&rPushB == m_xUndo.get())
     {
         UndoClickLk.Call(this);
     }
 }
 
-SvxTPFilter::SvxTPFilter( vcl::Window * pParent)
-    : TabPage(pParent, "RedlineFilterPage", "svx/ui/redlinefilterpage.ui")
-    , pRedlinTable(nullptr)
-    , bModified(false)
+SvxTPage::SvxTPage(weld::Container* pParent, const OUString& rUIXMLDescription, const OString& rID)
+    : m_xBuilder(Application::CreateBuilder(pParent, rUIXMLDescription))
+    , m_xContainer(m_xBuilder->weld_container(rID))
 {
-    get(m_pCbDate, "date");
-    get(m_pLbDate, "datecond");
-    get(m_pDfDate, "startdate");
-    get(m_pTfDate, "starttime");
-    get(m_pIbClock, "startclock");
-    get(m_pFtDate2, "and");
-    get(m_pDfDate2, "enddate");
-    get(m_pTfDate2, "endtime");
-    get(m_pIbClock2, "endclock");
-    get(m_pCbAuthor, "author");
-    get(m_pLbAuthor, "authorlist");
-    get(m_pCbRange, "range");
-    get(m_pEdRange, "rangeedit");
-    get(m_pBtnRange, "dotdotdot");
-    get(m_pCbAction, "action");
-    get(m_pLbAction, "actionlist");
-    get(m_pCbComment, "comment");
-    get(m_pEdComment, "commentedit");
+}
 
-    m_pDfDate->SetShowDateCentury( true );
-    m_pDfDate2->SetShowDateCentury( true );
+SvxTPFilter::SvxTPFilter(weld::Container* pParent)
+    : SvxTPage(pParent, "svx/ui/redlinefilterpage.ui", "RedlineFilterPage")
+    , bModified(false)
+    , m_pRedlinTable(nullptr)
+    , m_xCbDate(m_xBuilder->weld_check_button("date"))
+    , m_xLbDate(m_xBuilder->weld_combo_box("datecond"))
+    , m_xDfDate(new SvtCalendarBox(m_xBuilder->weld_menu_button("startdate")))
+    , m_xTfDate(m_xBuilder->weld_formatted_spin_button("starttime"))
+    , m_xTfDateFormatter(new weld::TimeFormatter(*m_xTfDate))
+    , m_xIbClock(m_xBuilder->weld_button("startclock"))
+    , m_xFtDate2(m_xBuilder->weld_label("and"))
+    , m_xDfDate2(new SvtCalendarBox(m_xBuilder->weld_menu_button("enddate")))
+    , m_xTfDate2(m_xBuilder->weld_formatted_spin_button("endtime"))
+    , m_xTfDate2Formatter(new weld::TimeFormatter(*m_xTfDate2))
+    , m_xIbClock2(m_xBuilder->weld_button("endclock"))
+    , m_xCbAuthor(m_xBuilder->weld_check_button("author"))
+    , m_xLbAuthor(m_xBuilder->weld_combo_box("authorlist"))
+    , m_xCbRange(m_xBuilder->weld_check_button("range"))
+    , m_xEdRange(m_xBuilder->weld_entry("rangeedit"))
+    , m_xBtnRange(m_xBuilder->weld_button("dotdotdot"))
+    , m_xCbAction(m_xBuilder->weld_check_button("action"))
+    , m_xLbAction(m_xBuilder->weld_combo_box("actionlist"))
+    , m_xCbComment(m_xBuilder->weld_check_button("comment"))
+    , m_xEdComment(m_xBuilder->weld_entry("commentedit"))
+{
+    m_xTfDateFormatter->EnableEmptyField(false);
+    m_xTfDate2Formatter->EnableEmptyField(false);
 
-    m_pLbDate->SelectEntryPos(0);
-    m_pLbDate->SetSelectHdl( LINK( this, SvxTPFilter, SelDateHdl ) );
-    m_pIbClock->SetClickHdl( LINK( this, SvxTPFilter, TimeHdl) );
-    m_pIbClock2->SetClickHdl( LINK( this, SvxTPFilter,TimeHdl) );
-    m_pBtnRange->SetClickHdl( LINK( this, SvxTPFilter, RefHandle));
+    m_xLbDate->set_active(0);
+    m_xLbDate->connect_changed( LINK( this, SvxTPFilter, SelDateHdl ) );
+    m_xIbClock->connect_clicked( LINK( this, SvxTPFilter, TimeHdl) );
+    m_xIbClock2->connect_clicked( LINK( this, SvxTPFilter,TimeHdl) );
+    m_xBtnRange->connect_clicked( LINK( this, SvxTPFilter, RefHandle));
 
-    Link<Button*,void> aLink=LINK( this, SvxTPFilter, RowEnableHdl) ;
-    m_pCbDate->SetClickHdl(aLink);
-    m_pCbAuthor->SetClickHdl(aLink);
-    m_pCbRange->SetClickHdl(aLink);
-    m_pCbAction->SetClickHdl(aLink);
-    m_pCbComment->SetClickHdl(aLink);
+    Link<weld::Button&,void> aLink=LINK( this, SvxTPFilter, RowEnableHdl) ;
+    m_xCbDate->connect_clicked(aLink);
+    m_xCbAuthor->connect_clicked(aLink);
+    m_xCbRange->connect_clicked(aLink);
+    m_xCbAction->connect_clicked(aLink);
+    m_xCbComment->connect_clicked(aLink);
 
-    Link<Edit&,void> a2Link=LINK( this, SvxTPFilter, ModifyDate);
-    m_pDfDate->SetModifyHdl(a2Link);
-    m_pTfDate->SetModifyHdl(a2Link);
-    m_pDfDate2->SetModifyHdl(a2Link);
-    m_pTfDate2->SetModifyHdl(a2Link);
+    Link<SvtCalendarBox&,void> a2Link=LINK(this, SvxTPFilter, ModifyDate);
+    m_xDfDate->connect_activated(a2Link);
+    m_xDfDate2->connect_activated(a2Link);
 
-    Link<Edit&,void> a3Link=LINK( this, SvxTPFilter, ModifyHdl);
-    m_pEdRange->SetModifyHdl(a3Link);
-    m_pEdComment->SetModifyHdl(a3Link);
-    m_pLbAction->SetSelectHdl(LINK( this, SvxTPFilter, ModifyListBoxHdl));
-    m_pLbAuthor->SetSelectHdl(LINK( this, SvxTPFilter, ModifyListBoxHdl));
+    Link<weld::FormattedSpinButton&,void> a3Link=LINK(this, SvxTPFilter, ModifyTime);
+    m_xTfDate->connect_value_changed(a3Link);
+    m_xTfDate2->connect_value_changed(a3Link);
 
-    RowEnableHdl(m_pCbDate);
-    RowEnableHdl(m_pCbAuthor);
-    RowEnableHdl(m_pCbRange);
-    RowEnableHdl(m_pCbAction);
-    RowEnableHdl(m_pCbComment);
+    Link<weld::Entry&,void> a4Link=LINK( this, SvxTPFilter, ModifyHdl);
+    m_xEdRange->connect_changed(a4Link);
+    m_xEdComment->connect_changed(a4Link);
+    m_xLbAction->connect_changed(LINK( this, SvxTPFilter, ModifyListBoxHdl));
+    m_xLbAuthor->connect_changed(LINK( this, SvxTPFilter, ModifyListBoxHdl));
 
-    Date aDate( Date::SYSTEM );
-    tools::Time aTime( tools::Time::SYSTEM );
-    m_pDfDate->SetDate(aDate);
-    m_pTfDate->SetTime(aTime);
-    m_pDfDate2->SetDate(aDate);
-    m_pTfDate2->SetTime(aTime);
+    RowEnableHdl(*m_xCbDate);
+    RowEnableHdl(*m_xCbAuthor);
+    RowEnableHdl(*m_xCbRange);
+    RowEnableHdl(*m_xCbAction);
+    RowEnableHdl(*m_xCbComment);
+
+    DateTime aDateTime(DateTime::SYSTEM);
+    SetFirstDate(aDateTime);
+    SetLastDate(aDateTime);
+    SetFirstTime(aDateTime);
+    SetLastTime(aDateTime);
     HideRange();
     ShowAction();
     bModified=false;
@@ -598,249 +563,223 @@ SvxTPFilter::SvxTPFilter( vcl::Window * pParent)
 
 SvxTPFilter::~SvxTPFilter()
 {
-    disposeOnce();
-}
-
-void SvxTPFilter::dispose()
-{
-    pRedlinTable.clear();
-    m_pCbDate.clear();
-    m_pLbDate.clear();
-    m_pDfDate.clear();
-    m_pTfDate.clear();
-    m_pIbClock.clear();
-    m_pFtDate2.clear();
-    m_pDfDate2.clear();
-    m_pTfDate2.clear();
-    m_pIbClock2.clear();
-    m_pCbAuthor.clear();
-    m_pLbAuthor.clear();
-    m_pCbRange.clear();
-    m_pEdRange.clear();
-    m_pBtnRange.clear();
-    m_pCbAction.clear();
-    m_pLbAction.clear();
-    m_pCbComment.clear();
-    m_pEdComment.clear();
-    TabPage::dispose();
 }
 
 void SvxTPFilter::SetRedlinTable(SvxRedlinTable* pTable)
 {
-    pRedlinTable=pTable;
+    m_pRedlinTable = pTable;
 }
 
 void SvxTPFilter::EnableDateLine1(bool bFlag)
 {
-    if(bFlag && m_pCbDate->IsChecked())
+    if(bFlag && m_xCbDate->get_active())
     {
-        m_pDfDate->Enable();
-        m_pTfDate->Enable();
-        m_pIbClock->Enable();
+        m_xDfDate->set_sensitive(true);
+        m_xTfDate->set_sensitive(true);
+        m_xIbClock->set_sensitive(true);
     }
     else
     {
-        m_pDfDate->Disable();
-        m_pTfDate->Disable();
-        m_pIbClock->Disable();
+        m_xDfDate->set_sensitive(false);
+        m_xTfDate->set_sensitive(false);
+        m_xIbClock->set_sensitive(false);
     }
 }
 void SvxTPFilter::EnableDateLine2(bool bFlag)
 {
-    if(bFlag && m_pCbDate->IsChecked())
+    if(bFlag && m_xCbDate->get_active())
     {
-        m_pFtDate2->Enable();
-        m_pDfDate2->Enable();
-        m_pTfDate2->Enable();
-        m_pIbClock2->Enable();
+        m_xFtDate2->set_sensitive(true);
+        m_xDfDate2->set_sensitive(true);
+        m_xTfDate2->set_sensitive(true);
+        m_xIbClock2->set_sensitive(true);
     }
     else
     {
-        m_pFtDate2->Disable();
-        m_pDfDate2->Disable();
-        m_pDfDate2->SetText(OUString());
-        m_pTfDate2->Disable();
-        m_pTfDate2->SetText(OUString());
-        m_pIbClock2->Disable();
+        m_xFtDate2->set_sensitive(false);
+        m_xDfDate2->set_sensitive(false);
+        m_xDfDate2->set_label(OUString());
+        m_xTfDate2->set_sensitive(false);
+        m_xTfDate2->set_text(OUString());
+        m_xIbClock2->set_sensitive(false);
     }
 }
 
 Date SvxTPFilter::GetFirstDate() const
 {
-    return m_pDfDate->GetDate();
+    return m_xDfDate->get_date();
 }
 
 void SvxTPFilter::SetFirstDate(const Date &aDate)
 {
-    m_pDfDate->SetDate(aDate);
+    m_xDfDate->set_date(aDate);
 }
 
 tools::Time SvxTPFilter::GetFirstTime() const
 {
-    return m_pTfDate->GetTime();
+    return m_xTfDateFormatter->GetTime();
 }
 
 void SvxTPFilter::SetFirstTime(const tools::Time &aTime)
 {
-    m_pTfDate->SetTime(aTime);
+    m_xTfDateFormatter->SetTime(aTime);
 }
-
 
 Date SvxTPFilter::GetLastDate() const
 {
-    return m_pDfDate2->GetDate();
+    return m_xDfDate2->get_date();
 }
 
 void SvxTPFilter::SetLastDate(const Date &aDate)
 {
-    m_pDfDate2->SetDate(aDate);
+    m_xDfDate2->set_date(aDate);
 }
 
 tools::Time SvxTPFilter::GetLastTime() const
 {
-    return m_pTfDate2->GetTime();
+    return m_xTfDate2Formatter->GetTime();
 }
 
 void SvxTPFilter::SetLastTime(const tools::Time &aTime)
 {
-    m_pTfDate2->SetTime(aTime);
+    m_xTfDate2Formatter->SetTime(aTime);
 }
 
 void SvxTPFilter::SetDateMode(sal_uInt16 nMode)
 {
-    m_pLbDate->SelectEntryPos(nMode);
-    SelDateHdl(*m_pLbDate);
+    m_xLbDate->set_active(nMode);
+    SelDateHdl(*m_xLbDate);
 }
 
-SvxRedlinDateMode SvxTPFilter::GetDateMode()
+SvxRedlinDateMode SvxTPFilter::GetDateMode() const
 {
-    return static_cast<SvxRedlinDateMode>(m_pLbDate->GetSelectEntryPos());
+    return static_cast<SvxRedlinDateMode>(m_xLbDate->get_active());
 }
 void SvxTPFilter::ClearAuthors()
 {
-    m_pLbAuthor->Clear();
+    m_xLbAuthor->clear();
 }
 
 void SvxTPFilter::InsertAuthor( const OUString& rString)
 {
-    m_pLbAuthor->InsertEntry(rString);
+    m_xLbAuthor->append_text(rString);
 }
 
 OUString SvxTPFilter::GetSelectedAuthor() const
 {
-    return m_pLbAuthor->GetSelectEntry();
+    return m_xLbAuthor->get_active_text();
 }
 
 void SvxTPFilter::SelectedAuthorPos(sal_Int32 nPos)
 {
-    m_pLbAuthor->SelectEntryPos(nPos);
+    m_xLbAuthor->set_active(nPos);
 }
 
 sal_Int32 SvxTPFilter::SelectAuthor(const OUString& aString)
 {
-    m_pLbAuthor->SelectEntry(aString);
-    return m_pLbAuthor->GetSelectEntryPos();
+    m_xLbAuthor->set_active_text(aString);
+    return m_xLbAuthor->get_active();
 }
 
 void SvxTPFilter::SetRange(const OUString& rString)
 {
-    m_pEdRange->SetText(rString);
+    m_xEdRange->set_text(rString);
 }
 
 OUString SvxTPFilter::GetRange() const
 {
-    return m_pEdRange->GetText();
+    return m_xEdRange->get_text();
 }
 
 void SvxTPFilter::SetFocusToRange()
 {
-    m_pEdRange->GrabFocus();
+    m_xEdRange->grab_focus();
 }
 
 void SvxTPFilter::HideRange(bool bHide)
 {
     if (bHide)
     {
-        m_pCbRange->Hide();
-        m_pEdRange->Hide();
-        m_pBtnRange->Hide();
+        m_xCbRange->hide();
+        m_xEdRange->hide();
+        m_xBtnRange->hide();
     }
     else
     {
         ShowAction(false);
-        m_pCbRange->Show();
-        m_pEdRange->Show();
-        m_pBtnRange->Show();
+        m_xCbRange->show();
+        m_xEdRange->show();
+        m_xBtnRange->show();
     }
 }
 
 void SvxTPFilter::SetComment(const OUString &rComment)
 {
-    m_pEdComment->SetText(rComment);
+    m_xEdComment->set_text(rComment);
 }
 
 OUString SvxTPFilter::GetComment()const
 {
-    return m_pEdComment->GetText();
+    return m_xEdComment->get_text();
 }
 
-bool SvxTPFilter::IsDate()
+bool SvxTPFilter::IsDate() const
 {
-    return m_pCbDate->IsChecked();
+    return m_xCbDate->get_active();
 }
 
-bool SvxTPFilter::IsAuthor()
+bool SvxTPFilter::IsAuthor() const
 {
-    return m_pCbAuthor->IsChecked();
+    return m_xCbAuthor->get_active();
 }
 
-bool SvxTPFilter::IsRange()
+bool SvxTPFilter::IsRange() const
 {
-    return m_pCbRange->IsChecked();
+    return m_xCbRange->get_active();
 }
 
-bool SvxTPFilter::IsAction()
+bool SvxTPFilter::IsAction() const
 {
-    return m_pCbAction->IsChecked();
+    return m_xCbAction->get_active();
 }
 
-bool SvxTPFilter::IsComment()
+bool SvxTPFilter::IsComment() const
 {
-    return m_pCbComment->IsChecked();
+    return m_xCbComment->get_active();
 }
 
 void SvxTPFilter::CheckDate(bool bFlag)
 {
-    m_pCbDate->Check(bFlag);
-    RowEnableHdl(m_pCbDate);
+    m_xCbDate->set_active(bFlag);
+    RowEnableHdl(*m_xCbDate);
     bModified=false;
 }
 
 void SvxTPFilter::CheckAuthor(bool bFlag)
 {
-    m_pCbAuthor->Check(bFlag);
-    RowEnableHdl(m_pCbAuthor);
+    m_xCbAuthor->set_active(bFlag);
+    RowEnableHdl(*m_xCbAuthor);
     bModified=false;
 }
 
 void SvxTPFilter::CheckRange(bool bFlag)
 {
-    m_pCbRange->Check(bFlag);
-    RowEnableHdl(m_pCbRange);
+    m_xCbRange->set_active(bFlag);
+    RowEnableHdl(*m_xCbRange);
     bModified=false;
 }
 
 void SvxTPFilter::CheckAction(bool bFlag)
 {
-    m_pCbAction->Check(bFlag);
-    RowEnableHdl(m_pCbAction);
+    m_xCbAction->set_active(bFlag);
+    RowEnableHdl(*m_xCbAction);
     bModified=false;
 }
 
 void SvxTPFilter::CheckComment(bool bFlag)
 {
-    m_pCbComment->Check(bFlag);
-    RowEnableHdl(m_pCbComment);
+    m_xCbComment->set_active(bFlag);
+    RowEnableHdl(*m_xCbComment);
     bModified=false;
 }
 
@@ -848,249 +787,241 @@ void SvxTPFilter::ShowAction(bool bShow)
 {
     if(!bShow)
     {
-        m_pCbAction->Hide();
-        m_pLbAction->Hide();
+        m_xCbAction->hide();
+        m_xLbAction->hide();
     }
     else
     {
         HideRange();
-        m_pCbAction->Show();
-        m_pLbAction->Show();
+        m_xCbAction->show();
+        m_xLbAction->show();
     }
 }
 
-
-IMPL_LINK_NOARG( SvxTPFilter, SelDateHdl, ListBox&, void )
+IMPL_LINK_NOARG(SvxTPFilter, SelDateHdl, weld::ComboBox&, void)
 {
-    SvxRedlinDateMode nKind = static_cast<SvxRedlinDateMode>(m_pLbDate->GetSelectEntryPos());
+    SvxRedlinDateMode nKind = static_cast<SvxRedlinDateMode>(m_xLbDate->get_active());
     switch(nKind)
     {
         case SvxRedlinDateMode::BEFORE:
-                EnableDateLine1(true);
-                EnableDateLine2(false);
-                break;
+            EnableDateLine1(true);
+            EnableDateLine2(false);
+            break;
         case SvxRedlinDateMode::SINCE:
-                EnableDateLine1(true);
-                EnableDateLine2(false);
-                break;
+            EnableDateLine1(true);
+            EnableDateLine2(false);
+            break;
         case SvxRedlinDateMode::EQUAL:
-                EnableDateLine1(true);
-                m_pTfDate->Disable();
-                m_pTfDate->SetText(OUString());
-                EnableDateLine2(false);
-                break;
+            EnableDateLine1(true);
+            m_xTfDate->set_sensitive(false);
+            m_xTfDate->set_text(OUString());
+            EnableDateLine2(false);
+            break;
         case SvxRedlinDateMode::NOTEQUAL:
-                EnableDateLine1(true);
-                m_pTfDate->Disable();
-                m_pTfDate->SetText(OUString());
-                EnableDateLine2(false);
-                break;
+            EnableDateLine1(true);
+            m_xTfDate->set_sensitive(false);
+            m_xTfDate->set_text(OUString());
+            EnableDateLine2(false);
+            break;
         case SvxRedlinDateMode::BETWEEN:
-                EnableDateLine1(true);
-                EnableDateLine2(true);
-                break;
+            EnableDateLine1(true);
+            EnableDateLine2(true);
+            break;
         case SvxRedlinDateMode::SAVE:
-                EnableDateLine1(false);
-                EnableDateLine2(false);
-                break;
+            EnableDateLine1(false);
+            EnableDateLine2(false);
+            break;
         case SvxRedlinDateMode::NONE:
-                break;
+            break;
     }
-    bModified=true;
+    bModified = true;
 }
 
-IMPL_LINK( SvxTPFilter, RowEnableHdl, Button*, pButton, void )
+IMPL_LINK(SvxTPFilter, RowEnableHdl, weld::Button&, rCB, void)
 {
-    CheckBox* pCB = static_cast<CheckBox*>(pButton);
-    if (pCB == m_pCbDate)
+    if (&rCB == m_xCbDate.get())
     {
-        m_pLbDate->Enable(m_pCbDate->IsChecked());
-        m_pLbDate->Invalidate();
+        m_xLbDate->set_sensitive(m_xCbDate->get_active());
         EnableDateLine1(false);
         EnableDateLine2(false);
-        if(m_pCbDate->IsChecked()) SelDateHdl(*m_pLbDate);
+        if(m_xCbDate->get_active()) SelDateHdl(*m_xLbDate);
     }
-    else if (pCB == m_pCbAuthor)
+    else if (&rCB == m_xCbAuthor.get())
     {
-        m_pLbAuthor->Enable(m_pCbAuthor->IsChecked());
-        m_pLbAuthor->Invalidate();
+        m_xLbAuthor->set_sensitive(m_xCbAuthor->get_active());
     }
-    else if (pCB == m_pCbRange)
+    else if (&rCB == m_xCbRange.get())
     {
-        m_pEdRange->Enable(m_pCbRange->IsChecked());
-        m_pBtnRange->Enable(m_pCbRange->IsChecked());
+        m_xEdRange->set_sensitive(m_xCbRange->get_active());
+        m_xBtnRange->set_sensitive(m_xCbRange->get_active());
     }
-    else if (pCB == m_pCbAction)
+    else if (&rCB == m_xCbAction.get())
     {
-        m_pLbAction->Enable(m_pCbAction->IsChecked());
-        m_pLbAction->Invalidate();
+        m_xLbAction->set_sensitive(m_xCbAction->get_active());
     }
-    else if (pCB == m_pCbComment)
+    else if (&rCB == m_xCbComment.get())
     {
-        m_pEdComment->Enable(m_pCbComment->IsChecked());
-        m_pEdComment->Invalidate();
+        m_xEdComment->set_sensitive(m_xCbComment->get_active());
     }
-
-    if(pCB!=nullptr)
-        bModified=true;
+    bModified = true;
 }
 
-IMPL_LINK( SvxTPFilter, TimeHdl, Button*, pButton, void )
+IMPL_LINK(SvxTPFilter, TimeHdl, weld::Button&, rIB, void)
 {
-    ImageButton* pIB = static_cast<ImageButton*>(pButton);
-    Date aDate( Date::SYSTEM );
-    tools::Time aTime( tools::Time::SYSTEM );
-    if (pIB == m_pIbClock)
+    DateTime aDateTime( DateTime::SYSTEM );
+    if (&rIB == m_xIbClock.get())
     {
-        m_pDfDate->SetDate(aDate);
-        m_pTfDate->SetTime(aTime);
+        SetFirstDate(aDateTime);
+        SetFirstTime(aDateTime);
     }
-    else if (pIB == m_pIbClock2)
+    else if (&rIB == m_xIbClock2.get())
     {
-        m_pDfDate2->SetDate(aDate);
-        m_pTfDate2->SetTime(aTime);
+        SetLastDate(aDateTime);
+        SetLastTime(aDateTime);
     }
     bModified=true;
 }
-IMPL_LINK_NOARG( SvxTPFilter, ModifyHdl, Edit&, void)
+
+IMPL_LINK_NOARG(SvxTPFilter, ModifyHdl, weld::Entry&, void)
 {
     bModified=true;
 }
-IMPL_LINK_NOARG( SvxTPFilter, ModifyListBoxHdl, ListBox&, void)
+
+IMPL_LINK_NOARG(SvxTPFilter, ModifyListBoxHdl, weld::ComboBox&, void)
 {
     bModified=true;
 }
+
 void SvxTPFilter::DeactivatePage()
 {
     if(bModified)
     {
-        if(pRedlinTable!=nullptr)
+        if (m_pRedlinTable)
         {
-            pRedlinTable->SetFilterDate(IsDate());
-            pRedlinTable->SetDateTimeMode(GetDateMode());
-            pRedlinTable->SetFirstDate(m_pDfDate->GetDate());
-            pRedlinTable->SetLastDate(m_pDfDate2->GetDate());
-            pRedlinTable->SetFirstTime(m_pTfDate->GetTime());
-            pRedlinTable->SetLastTime(m_pTfDate2->GetTime());
-            pRedlinTable->SetFilterAuthor(IsAuthor());
-            pRedlinTable->SetAuthor(GetSelectedAuthor());
+            m_pRedlinTable->SetFilterDate(IsDate());
+            m_pRedlinTable->SetDateTimeMode(GetDateMode());
+            m_pRedlinTable->SetFirstDate(GetFirstDate());
+            m_pRedlinTable->SetLastDate(GetLastDate());
+            m_pRedlinTable->SetFirstTime(GetFirstTime());
+            m_pRedlinTable->SetLastTime(GetLastTime());
+            m_pRedlinTable->SetFilterAuthor(IsAuthor());
+            m_pRedlinTable->SetAuthor(GetSelectedAuthor());
 
-            pRedlinTable->SetFilterComment(IsComment());
+            m_pRedlinTable->SetFilterComment(IsComment());
 
-            utl::SearchParam aSearchParam( m_pEdComment->GetText(),
+            utl::SearchParam aSearchParam( m_xEdComment->get_text(),
                     utl::SearchParam::SearchType::Regexp,false );
 
-            pRedlinTable->SetCommentParams(&aSearchParam);
+            m_pRedlinTable->SetCommentParams(&aSearchParam);
 
-            pRedlinTable->UpdateFilterTest();
+            m_pRedlinTable->UpdateFilterTest();
         }
 
         aReadyLink.Call(this);
     }
     bModified=false;
-    TabPage::DeactivatePage();
 }
 
-void SvxTPFilter::Enable( bool bEnable)
+void SvxTPFilter::Enable(bool bEnable)
 {
-    TabPage::Enable(bEnable);
-    if(m_pCbDate->IsEnabled())
+    m_xContainer->set_sensitive(bEnable);
+    if (m_xCbDate->get_sensitive())
     {
-        RowEnableHdl(m_pCbDate);
-        RowEnableHdl(m_pCbAuthor);
-        RowEnableHdl(m_pCbRange);
-        RowEnableHdl(m_pCbComment);
+        RowEnableHdl(*m_xCbDate);
+        RowEnableHdl(*m_xCbAuthor);
+        RowEnableHdl(*m_xCbRange);
+        RowEnableHdl(*m_xCbComment);
     }
 }
-void SvxTPFilter::Disable()
-{
-    Enable( false );
-}
 
-IMPL_LINK( SvxTPFilter, ModifyDate, Edit&, rTF, void)
+IMPL_LINK(SvxTPFilter, ModifyDate, SvtCalendarBox&, rTF, void)
 {
     Date aDate( Date::SYSTEM );
+    if (m_xDfDate.get() == &rTF)
+    {
+        if (m_xDfDate->get_label().isEmpty())
+           m_xDfDate->set_date(aDate);
+
+        if(m_pRedlinTable!=nullptr)
+            m_pRedlinTable->SetFirstDate(m_xDfDate->get_date());
+    }
+    else if (m_xDfDate2.get() == &rTF)
+    {
+        if (m_xDfDate2->get_label().isEmpty())
+           m_xDfDate2->set_date(aDate);
+
+        if (m_pRedlinTable)
+            m_pRedlinTable->SetLastDate(m_xDfDate2->get_date());
+    }
+    bModified=true;
+}
+
+IMPL_LINK(SvxTPFilter, ModifyTime, weld::FormattedSpinButton&, rTF, void)
+{
     tools::Time aTime(0);
-    if (m_pDfDate==&rTF)
+    if (m_xTfDate.get() == &rTF)
     {
-        if(m_pDfDate->GetText().isEmpty())
-           m_pDfDate->SetDate(aDate);
+        if (m_xTfDate->get_text().isEmpty())
+            SetFirstTime(aTime);
 
-        if(pRedlinTable!=nullptr)
-            pRedlinTable->SetFirstDate(m_pDfDate->GetDate());
+        if (m_pRedlinTable!=nullptr)
+            m_pRedlinTable->SetFirstTime(GetFirstTime());
     }
-    else if (m_pDfDate2==&rTF)
+    else if (m_xTfDate2.get() == &rTF)
     {
-        if(m_pDfDate2->GetText().isEmpty())
-           m_pDfDate2->SetDate(aDate);
+        if (m_xTfDate2->get_text().isEmpty())
+            SetLastTime(aTime);
 
-        if(pRedlinTable!=nullptr)
-            pRedlinTable->SetLastDate(m_pDfDate2->GetDate());
-    }
-    else if (m_pTfDate==&rTF)
-    {
-        if(m_pTfDate->GetText().isEmpty())
-           m_pTfDate->SetTime(aTime);
-
-        if(pRedlinTable!=nullptr)
-            pRedlinTable->SetFirstTime(m_pTfDate->GetTime());
-    }
-    else if (m_pTfDate2==&rTF)
-    {
-        if(m_pTfDate2->GetText().isEmpty())
-           m_pTfDate2->SetTime(aTime);
-
-        if(pRedlinTable!=nullptr)
-            pRedlinTable->SetLastTime(m_pTfDate2->GetTime());
+        if (m_pRedlinTable!=nullptr)
+            m_pRedlinTable->SetLastTime(GetLastTime());
 
     }
-    ModifyHdl(*m_pDfDate);
+    bModified=true;
 }
 
-IMPL_LINK( SvxTPFilter, RefHandle, Button*, pRef, void )
+IMPL_LINK_NOARG(SvxTPFilter, RefHandle, weld::Button&, void)
 {
-    if(pRef!=nullptr)
-    {
-        aRefLink.Call(this);
-    }
+    aRefLink.Call(this);
 }
 
-SvxAcceptChgCtr::SvxAcceptChgCtr(vcl::Window* pParent, VclBuilderContainer* pTopLevel)
-    : TabControl(pParent, WB_TABSTOP | WB_DIALOGCONTROL)
+SvxAcceptChgCtr::SvxAcceptChgCtr(weld::Container* pParent, weld::Window* pDialog, weld::Builder* pTopLevel)
+    : m_xBuilder(Application::CreateBuilder(pParent, "svx/ui/redlinecontrol.ui"))
+    , m_xTabCtrl(m_xBuilder->weld_notebook("tabcontrol"))
 {
-    m_pUIBuilder.reset(new VclBuilder(this, getUIRootDir(), "svx/ui/redlinecontrol.ui", "RedlineControl"));
+    m_xTabCtrl->connect_enter_page(LINK(this, SvxAcceptChgCtr, ActivatePageHdl));
+    m_xTabCtrl->connect_leave_page(LINK(this, SvxAcceptChgCtr, DeactivatePageHdl));
 
-    pTPFilter = VclPtr<SvxTPFilter>::Create(this);
-    pTPView = VclPtr<SvxTPView>::Create(this, pTopLevel);
-
-    m_nViewPageId = GetPageId("view");
-    m_nFilterPageId = GetPageId("filter");
-    SetTabPage(m_nViewPageId, pTPView);
-    SetTabPage(m_nFilterPageId, pTPFilter);
-
-    pTPFilter->SetRedlinTable(pTPView->GetTableControl());
-
-    SetCurPageId(m_nViewPageId);
-
-    Show();
+    m_xTPFilter.reset(new SvxTPFilter(m_xTabCtrl->get_page("filter")));
+    m_xTPView.reset(new SvxTPView(m_xTabCtrl->get_page("view"), pDialog, pTopLevel));
+    m_xTPFilter->SetRedlinTable(m_xTPView->GetTableControl());
+    m_xTabCtrl->set_current_page("view");
+    m_xTabCtrl->show();
 }
 
 SvxAcceptChgCtr::~SvxAcceptChgCtr()
 {
-    disposeOnce();
-}
-
-void SvxAcceptChgCtr::dispose()
-{
-    disposeBuilder();
-    pTPView.disposeAndClear();
-    pTPFilter.disposeAndClear();
-    TabControl::dispose();
 }
 
 void SvxAcceptChgCtr::ShowFilterPage()
 {
-    SetCurPageId(m_nFilterPageId);
+    m_xTabCtrl->set_current_page("filter");
+}
+
+IMPL_LINK(SvxAcceptChgCtr, ActivatePageHdl, const OString&, rPage, void)
+{
+    if (rPage == "filter")
+        m_xTPFilter->ActivatePage();
+    else if (rPage == "view")
+        m_xTPView->ActivatePage();
+}
+
+IMPL_LINK(SvxAcceptChgCtr, DeactivatePageHdl, const OString&, rPage, bool)
+{
+    if (rPage == "filter")
+        m_xTPFilter->DeactivatePage();
+    else if (rPage == "view")
+        m_xTPView->DeactivatePage();
+    return true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

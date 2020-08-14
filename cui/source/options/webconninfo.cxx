@@ -18,17 +18,12 @@
  */
 
 #include "webconninfo.hxx"
-#include <dialmgr.hxx>
-#include <cuires.hrc>
-#include <sal/macros.h>
 #include <com/sun/star/task/InteractionHandler.hpp>
 #include <com/sun/star/task/PasswordContainer.hpp>
 #include <com/sun/star/task/UrlRecord.hpp>
 #include <com/sun/star/task/XPasswordContainer2.hpp>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/docpasswordrequest.hxx>
-#include "svtools/treelistentry.hxx"
-#include <vcl/layout.hxx>
 
 using namespace ::com::sun::star;
 
@@ -36,129 +31,48 @@ using namespace ::com::sun::star;
 namespace svx
 {
 
-
-// class PasswordTable ---------------------------------------------------
-
-PasswordTable::PasswordTable(SvSimpleTableContainer& rParent, WinBits nBits)
-    : SvSimpleTable(rParent, nBits | WB_NOINITIALSELECTION)
-{
-}
-
-void PasswordTable::InsertHeaderItem(sal_uInt16 nColumn, const OUString& rText, HeaderBarItemBits nBits)
-{
-    GetTheHeaderBar().InsertItem( nColumn, rText, 0, nBits );
-}
-
-void PasswordTable::Resort( bool bForced )
-{
-    sal_uInt16 nColumn = GetSelectedCol();
-    if ( 0 == nColumn || bForced ) // only the first column is sorted
-    {
-        HeaderBarItemBits nBits = GetTheHeaderBar().GetItemBits(1);
-        bool bUp = ( ( nBits & HeaderBarItemBits::UPARROW ) == HeaderBarItemBits::UPARROW );
-        SvSortMode eMode = SortAscending;
-
-        if ( bUp )
-        {
-            nBits &= ~HeaderBarItemBits::UPARROW;
-            nBits |= HeaderBarItemBits::DOWNARROW;
-            eMode = SortDescending;
-        }
-        else
-        {
-            nBits &= ~HeaderBarItemBits::DOWNARROW;
-            nBits |= HeaderBarItemBits::UPARROW;
-        }
-        GetTheHeaderBar().SetItemBits( 1, nBits );
-        SvTreeList* pListModel = GetModel();
-        pListModel->SetSortMode( eMode );
-        pListModel->Resort();
-    }
-}
-
-void PasswordTable::Resize()
-{
-    SvSimpleTable::Resize();
-    if (isInitialLayout(this))
-        setColWidths();
-}
-
-void PasswordTable::setColWidths()
-{
-    HeaderBar &rBar = GetTheHeaderBar();
-    if (rBar.GetItemCount() < 2)
-        return;
-    long nUserNameWidth = 12 +
-        std::max(rBar.GetTextWidth(rBar.GetItemText(2)),
-        GetTextWidth("XXXXXXXXXXXX"));
-    long nWebSiteWidth = std::max(
-        12 + rBar.GetTextWidth(rBar.GetItemText(1)),
-        GetSizePixel().Width() - nUserNameWidth);
-    long aStaticTabs[]= { 2, 0, 0 };
-    aStaticTabs[2] = nWebSiteWidth;
-    SvSimpleTable::SetTabs(aStaticTabs, MapUnit::MapPixel);
-}
-
 // class WebConnectionInfoDialog -----------------------------------------
 
-
-WebConnectionInfoDialog::WebConnectionInfoDialog(vcl::Window* pParent)
-    : ModalDialog(pParent, "StoredWebConnectionDialog", "cui/ui/storedwebconnectiondialog.ui")
+WebConnectionInfoDialog::WebConnectionInfoDialog(weld::Window* pParent)
+    : GenericDialogController(pParent, "cui/ui/storedwebconnectiondialog.ui", "StoredWebConnectionDialog")
     , m_nPos( -1 )
+    , m_xRemoveBtn(m_xBuilder->weld_button("remove"))
+    , m_xRemoveAllBtn(m_xBuilder->weld_button("removeall"))
+    , m_xChangeBtn(m_xBuilder->weld_button("change"))
+    , m_xPasswordsLB(m_xBuilder->weld_tree_view("logins"))
 {
-    get(m_pRemoveBtn, "remove");
-    get(m_pRemoveAllBtn, "removeall");
-    get(m_pChangeBtn, "change");
+    std::vector<int> aWidths;
+    aWidths.push_back(m_xPasswordsLB->get_approximate_digit_width() * 50);
+    m_xPasswordsLB->set_column_fixed_widths(aWidths);
+    m_xPasswordsLB->set_size_request(m_xPasswordsLB->get_approximate_digit_width() * 70,
+                                     m_xPasswordsLB->get_height_rows(8));
 
-    SvSimpleTableContainer *pPasswordsLBContainer = get<SvSimpleTableContainer>("logins");
-    m_pPasswordsLB = VclPtr<PasswordTable>::Create(*pPasswordsLBContainer, 0);
-
-    long aStaticTabs[]= { 2, 0, 0 };
-    m_pPasswordsLB->SetTabs( aStaticTabs );
-    m_pPasswordsLB->InsertHeaderItem( 1, get<FixedText>("website")->GetText(),
-        HeaderBarItemBits::LEFT | HeaderBarItemBits::VCENTER | HeaderBarItemBits::FIXEDPOS | HeaderBarItemBits::CLICKABLE | HeaderBarItemBits::UPARROW );
-    m_pPasswordsLB->InsertHeaderItem( 2, get<FixedText>("username")->GetText(),
-        HeaderBarItemBits::LEFT | HeaderBarItemBits::VCENTER | HeaderBarItemBits::FIXEDPOS );
-    pPasswordsLBContainer->set_height_request(m_pPasswordsLB->GetTextHeight()*8);
-
-    m_pPasswordsLB->SetHeaderBarClickHdl( LINK( this, WebConnectionInfoDialog, HeaderBarClickedHdl ) );
-    m_pRemoveBtn->SetClickHdl( LINK( this, WebConnectionInfoDialog, RemovePasswordHdl ) );
-    m_pRemoveAllBtn->SetClickHdl( LINK( this, WebConnectionInfoDialog, RemoveAllPasswordsHdl ) );
-    m_pChangeBtn->SetClickHdl( LINK( this, WebConnectionInfoDialog, ChangePasswordHdl ) );
-
+    m_xPasswordsLB->connect_column_clicked(LINK(this, WebConnectionInfoDialog, HeaderBarClickedHdl));
 
     FillPasswordList();
 
-    m_pRemoveBtn->SetClickHdl( LINK( this, WebConnectionInfoDialog, RemovePasswordHdl ) );
-    m_pRemoveAllBtn->SetClickHdl( LINK( this, WebConnectionInfoDialog, RemoveAllPasswordsHdl ) );
-    m_pChangeBtn->SetClickHdl( LINK( this, WebConnectionInfoDialog, ChangePasswordHdl ) );
-    m_pPasswordsLB->SetSelectHdl( LINK( this, WebConnectionInfoDialog, EntrySelectedHdl ) );
+    m_xRemoveBtn->connect_clicked( LINK( this, WebConnectionInfoDialog, RemovePasswordHdl ) );
+    m_xRemoveAllBtn->connect_clicked( LINK( this, WebConnectionInfoDialog, RemoveAllPasswordsHdl ) );
+    m_xChangeBtn->connect_clicked( LINK( this, WebConnectionInfoDialog, ChangePasswordHdl ) );
+    m_xPasswordsLB->connect_changed( LINK( this, WebConnectionInfoDialog, EntrySelectedHdl ) );
 
-    m_pRemoveBtn->Enable( false );
-    m_pChangeBtn->Enable( false );
+    m_xRemoveBtn->set_sensitive( false );
+    m_xChangeBtn->set_sensitive( false );
 
-    HeaderBarClickedHdl( nullptr );
+    m_xPasswordsLB->make_sorted();
 }
 
 WebConnectionInfoDialog::~WebConnectionInfoDialog()
 {
-    disposeOnce();
 }
 
-void WebConnectionInfoDialog::dispose()
+IMPL_LINK(WebConnectionInfoDialog, HeaderBarClickedHdl, int, nColumn, void)
 {
-    m_pPasswordsLB.disposeAndClear();
-    m_pRemoveBtn.clear();
-    m_pRemoveAllBtn.clear();
-    m_pChangeBtn.clear();
-    ModalDialog::dispose();
+    if (nColumn == 0) // only the first column is sorted
+    {
+        m_xPasswordsLB->set_sort_order(!m_xPasswordsLB->get_sort_order());
+    }
 }
-
-IMPL_LINK( WebConnectionInfoDialog, HeaderBarClickedHdl, SvSimpleTable*, pTable, void )
-{
-    m_pPasswordsLB->Resort( nullptr == pTable );
-}
-
 
 void WebConnectionInfoDialog::FillPasswordList()
 {
@@ -169,34 +83,32 @@ void WebConnectionInfoDialog::FillPasswordList()
 
         if ( xMasterPasswd->isPersistentStoringAllowed() )
         {
-            uno::Reference< task::XInteractionHandler > xInteractionHandler(
-                task::InteractionHandler::createWithParent(comphelper::getProcessComponentContext(), nullptr),
-                uno::UNO_QUERY);
+            uno::Reference< task::XInteractionHandler > xInteractionHandler =
+                task::InteractionHandler::createWithParent(comphelper::getProcessComponentContext(), nullptr);
 
-            uno::Sequence< task::UrlRecord > aURLEntries = xMasterPasswd->getAllPersistent( xInteractionHandler );
+            const uno::Sequence< task::UrlRecord > aURLEntries = xMasterPasswd->getAllPersistent( xInteractionHandler );
             sal_Int32 nCount = 0;
-            for ( sal_Int32 nURLInd = 0; nURLInd < aURLEntries.getLength(); nURLInd++ )
+            for ( task::UrlRecord const & urlEntry : aURLEntries )
             {
-                for ( sal_Int32 nUserInd = 0; nUserInd < aURLEntries[nURLInd].UserList.getLength(); nUserInd++ )
+                for ( auto const & user : urlEntry.UserList )
                 {
-                    SvTreeListEntry* pEntry = m_pPasswordsLB->InsertEntry(
-                        aURLEntries[nURLInd].Url  + "\t" +
-                        aURLEntries[nURLInd].UserList[nUserInd].UserName);
-                    pEntry->SetUserData( reinterpret_cast<void*>(nCount++) );
+                    m_xPasswordsLB->append(OUString::number(nCount), urlEntry.Url);
+                    m_xPasswordsLB->set_text(nCount, user.UserName, 1);
+                    ++nCount;
                 }
             }
 
             // remember pos of first url container entry.
             m_nPos = nCount;
 
-            uno::Sequence< OUString > aUrls
+            const uno::Sequence< OUString > aUrls
                 = xMasterPasswd->getUrls( true /* OnlyPersistent */ );
 
-            for ( sal_Int32 nURLIdx = 0; nURLIdx < aUrls.getLength(); nURLIdx++ )
+            for ( OUString const & url : aUrls )
             {
-                SvTreeListEntry* pEntry = m_pPasswordsLB->InsertEntry(
-                    aUrls[nURLIdx] + "\t*");
-                pEntry->SetUserData( reinterpret_cast<void*>(nCount++) );
+                m_xPasswordsLB->append(OUString::number(nCount), url);
+                m_xPasswordsLB->set_text(nCount, "*");
+                ++nCount;
             }
         }
     }
@@ -205,20 +117,20 @@ void WebConnectionInfoDialog::FillPasswordList()
 }
 
 
-IMPL_LINK_NOARG(WebConnectionInfoDialog, RemovePasswordHdl, Button*, void)
+IMPL_LINK_NOARG(WebConnectionInfoDialog, RemovePasswordHdl, weld::Button&, void)
 {
     try
     {
-        SvTreeListEntry* pEntry = m_pPasswordsLB->GetCurEntry();
-        if ( pEntry )
+        int nEntry = m_xPasswordsLB->get_selected_index();
+        if (nEntry != -1)
         {
-            OUString aURL = SvTabListBox::GetEntryText( pEntry, 0 );
-            OUString aUserName = SvTabListBox::GetEntryText( pEntry, 1 );
+            OUString aURL = m_xPasswordsLB->get_text(nEntry, 0);
+            OUString aUserName = m_xPasswordsLB->get_text(nEntry, 1);
 
             uno::Reference< task::XPasswordContainer2 > xPasswdContainer(
                 task::PasswordContainer::create(comphelper::getProcessComponentContext()));
 
-            sal_Int32 nPos = (sal_Int32)reinterpret_cast<sal_IntPtr>(pEntry->GetUserData());
+            int nPos = m_xPasswordsLB->get_id(nEntry).toInt32();
             if ( nPos < m_nPos )
             {
                 xPasswdContainer->removePersistent( aURL, aUserName );
@@ -227,15 +139,15 @@ IMPL_LINK_NOARG(WebConnectionInfoDialog, RemovePasswordHdl, Button*, void)
             {
                 xPasswdContainer->removeUrl( aURL );
             }
-            m_pPasswordsLB->RemoveEntry( pEntry );
+
+            m_xPasswordsLB->remove(nEntry);
         }
     }
     catch( uno::Exception& )
     {}
 }
 
-
-IMPL_LINK_NOARG(WebConnectionInfoDialog, RemoveAllPasswordsHdl, Button*, void)
+IMPL_LINK_NOARG(WebConnectionInfoDialog, RemoveAllPasswordsHdl, weld::Button&, void)
 {
     try
     {
@@ -245,35 +157,33 @@ IMPL_LINK_NOARG(WebConnectionInfoDialog, RemoveAllPasswordsHdl, Button*, void)
         // should the master password be requested before?
         xPasswdContainer->removeAllPersistent();
 
-        uno::Sequence< OUString > aUrls
+        const uno::Sequence< OUString > aUrls
             = xPasswdContainer->getUrls( true /* OnlyPersistent */ );
-        for ( sal_Int32 nURLIdx = 0; nURLIdx < aUrls.getLength(); nURLIdx++ )
-            xPasswdContainer->removeUrl( aUrls[ nURLIdx ] );
+        for ( OUString const & url : aUrls )
+            xPasswdContainer->removeUrl( url );
 
-        m_pPasswordsLB->Clear();
+        m_xPasswordsLB->clear();
     }
     catch( uno::Exception& )
     {}
 }
 
-
-IMPL_LINK_NOARG(WebConnectionInfoDialog, ChangePasswordHdl, Button*, void)
+IMPL_LINK_NOARG(WebConnectionInfoDialog, ChangePasswordHdl, weld::Button&, void)
 {
     try
     {
-        SvTreeListEntry* pEntry = m_pPasswordsLB->GetCurEntry();
-        if ( pEntry )
+        int nEntry = m_xPasswordsLB->get_selected_index();
+        if (nEntry != -1)
         {
-            OUString aURL = SvTabListBox::GetEntryText( pEntry, 0 );
-            OUString aUserName = SvTabListBox::GetEntryText( pEntry, 1 );
+            OUString aURL = m_xPasswordsLB->get_text(nEntry, 0);
+            OUString aUserName = m_xPasswordsLB->get_text(nEntry, 1);
 
             ::comphelper::SimplePasswordRequest* pPasswordRequest
                   = new ::comphelper::SimplePasswordRequest;
             uno::Reference< task::XInteractionRequest > rRequest( pPasswordRequest );
 
-            uno::Reference< task::XInteractionHandler > xInteractionHandler(
-                task::InteractionHandler::createWithParent(comphelper::getProcessComponentContext(), nullptr),
-                uno::UNO_QUERY );
+            uno::Reference< task::XInteractionHandler > xInteractionHandler =
+                task::InteractionHandler::createWithParent(comphelper::getProcessComponentContext(), m_xDialog->GetXWindow());
             xInteractionHandler->handle( rRequest );
 
             if ( pPasswordRequest->isPassword() )
@@ -293,27 +203,25 @@ IMPL_LINK_NOARG(WebConnectionInfoDialog, ChangePasswordHdl, Button*, void)
 }
 
 
-IMPL_LINK_NOARG(WebConnectionInfoDialog, EntrySelectedHdl, SvTreeListBox*, void)
+IMPL_LINK_NOARG(WebConnectionInfoDialog, EntrySelectedHdl, weld::TreeView&, void)
 {
-    SvTreeListEntry* pEntry = m_pPasswordsLB->GetCurEntry();
-    if ( !pEntry )
+    int nEntry = m_xPasswordsLB->get_selected_index();
+    if (nEntry == -1)
     {
-        m_pRemoveBtn->Enable( false );
-        m_pChangeBtn->Enable( false );
+        m_xRemoveBtn->set_sensitive(false);
+        m_xChangeBtn->set_sensitive(false);
     }
     else
     {
-        m_pRemoveBtn->Enable();
+        m_xRemoveBtn->set_sensitive(true);
 
         // url container entries (-> use system credentials) have
         // no password
-        sal_Int32 nPos = (sal_Int32)reinterpret_cast<sal_IntPtr>(pEntry->GetUserData());
-        m_pChangeBtn->Enable( nPos < m_nPos );
+        int nPos = m_xPasswordsLB->get_id(nEntry).toInt32();
+        m_xChangeBtn->set_sensitive(nPos < m_nPos);
     }
 }
 
-
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,22 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_XMLSCRIPT_SOURCE_XMLFLAT_IMEXP_XMLBAS_EXPORT_HXX
-#define INCLUDED_XMLSCRIPT_SOURCE_XMLFLAT_IMEXP_XMLBAS_EXPORT_HXX
+#pragma once
 
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/document/XXMLBasicExporter.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <osl/mutex.hxx>
 
 namespace xmlscript
 {
 
-    // class XMLBasicExporterBase
 
     typedef ::cppu::WeakImplHelper<
         css::lang::XServiceInfo,
@@ -45,7 +42,7 @@ namespace xmlscript
         ::osl::Mutex                                              m_aMutex;
         css::uno::Reference< css::xml::sax::XDocumentHandler >    m_xHandler;
         css::uno::Reference< css::frame::XModel >                 m_xModel;
-        bool                                                      m_bOasis;
+        bool const                                                m_bOasis;
 
     public:
         explicit XMLBasicExporterBase(bool bOasis);
@@ -65,7 +62,6 @@ namespace xmlscript
         virtual void SAL_CALL cancel() override;
     };
 
-    // class XMLBasicExporter
 
     class XMLBasicExporter : public XMLBasicExporterBase
     {
@@ -78,7 +74,6 @@ namespace xmlscript
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
     };
 
-    // class XMLOasisBasicExporter
 
     class XMLOasisBasicExporter : public XMLBasicExporterBase
     {
@@ -93,6 +88,5 @@ namespace xmlscript
 
 }   // namespace xmlscript
 
-#endif // INCLUDED_XMLSCRIPT_SOURCE_XMLFLAT_IMEXP_XMLBAS_EXPORT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

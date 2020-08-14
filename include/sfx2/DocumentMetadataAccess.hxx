@@ -24,9 +24,7 @@
 
 #include <sfx2/dllapi.h>
 
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/rdf/XDocumentMetadataAccess.hpp>
-#include <com/sun/star/rdf/XRepositorySupplier.hpp>
 
 #include <cppuhelper/implbase.hxx>
 
@@ -41,9 +39,15 @@
     protected externally.
  */
 
-namespace com { namespace sun { namespace star { namespace embed {
+namespace com::sun::star::embed {
     class XStorage;
-} } } }
+}
+namespace com::sun::star::frame {
+    class XModel;
+}
+
+namespace com::sun::star::uno { class XComponentContext; }
+
 class SfxObjectShell;
 
 namespace sfx2 {
@@ -52,7 +56,7 @@ namespace sfx2 {
 /** create a base URI for loading metadata from an ODF (sub)document.
 
     @param i_xContext   component context
-    @param i_xStorage   storage for the document; FileSystemStorage is allowed
+    @param i_xModel     model of the document (required if no URI is provided)
     @param i_rPkgURI    the URI for the package
     @param i_rSubDocument   (optional) path of the subdocument in package
 
@@ -60,15 +64,15 @@ namespace sfx2 {
  */
 css::uno::Reference< css::rdf::XURI> SFX2_DLLPUBLIC
 createBaseURI(
-    css::uno::Reference< css::uno::XComponentContext> const & i_xContext,
-    css::uno::Reference< css::embed::XStorage> const & i_xStorage,
+    css::uno::Reference<css::uno::XComponentContext> const & i_xContext,
+    css::uno::Reference<css::frame::XModel> const & i_xModel,
     OUString const & i_rPkgURI,
     OUString const & i_rSubDocument = OUString());
 
 
 struct DocumentMetadataAccess_Impl;
 
-class SFX2_DLLPUBLIC DocumentMetadataAccess :
+class DocumentMetadataAccess final :
     public cppu::WeakImplHelper<css::rdf::XDocumentMetadataAccess>
 {
     DocumentMetadataAccess(const DocumentMetadataAccess&) = delete;

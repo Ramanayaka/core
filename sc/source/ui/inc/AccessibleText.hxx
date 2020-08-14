@@ -20,8 +20,8 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_ACCESSIBLETEXT_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_ACCESSIBLETEXT_HXX
 
-#include "textuno.hxx"
-#include "global.hxx"
+#include <textuno.hxx>
+#include <address.hxx>
 #include "viewdata.hxx"
 #include <editeng/svxenum.hxx>
 #include <svl/SfxBroadcaster.hxx>
@@ -72,7 +72,7 @@ public:
     virtual void                UpdateData() override { ScCellTextData::UpdateData(); }
 };
 
-//  ScAccessibleCellTextData: shared data between sub objects of a accessible cell text object
+//  ScAccessibleCellTextData: shared data between sub objects of an accessible cell text object
 
 class ScAccessibleCellTextData : public ScAccessibleCellBaseTextData
 {
@@ -90,8 +90,7 @@ public:
     virtual SvxEditViewForwarder* GetEditViewForwarder( bool bCreate ) override;
 
 private:
-    ScViewForwarder* mpViewForwarder;
-    ScEditViewForwarder* mpEditViewForwarder;
+    std::unique_ptr<ScViewForwarder> mpViewForwarder;
     ScTabViewShell* mpViewShell;
     ScSplitPos meSplitPos;
     ScAccessibleCell* mpAccessibleCell;
@@ -104,7 +103,7 @@ class ScAccessibleEditObjectTextData : public ScAccessibleTextData
 {
 public:
     // Add a para to indicate whether the object is cloned
-    ScAccessibleEditObjectTextData(EditView* pEditView, vcl::Window* pWin, bool isClone = false);
+    ScAccessibleEditObjectTextData(EditView* pEditView, OutputDevice* pWin, bool isClone = false);
     virtual             ~ScAccessibleEditObjectTextData() override;
 
     virtual ScAccessibleTextData* Clone() const override;
@@ -119,19 +118,19 @@ public:
 
     DECL_LINK( NotifyHdl, EENotify&, void );
 protected:
-    ScEditObjectViewForwarder* mpViewForwarder;
-    ScEditViewForwarder*       mpEditViewForwarder;
+    std::unique_ptr<ScEditObjectViewForwarder> mpViewForwarder;
+    std::unique_ptr<ScEditViewForwarder>       mpEditViewForwarder;
     EditView*                  mpEditView;
     EditEngine*                mpEditEngine;
-    SvxEditEngineForwarder*    mpForwarder;
-    VclPtr<vcl::Window>        mpWindow;
+    std::unique_ptr<SvxEditEngineForwarder>    mpForwarder;
+    VclPtr<OutputDevice>       mpWindow;
     bool                       mbIsCloned;
 };
 
 class ScAccessibleEditLineTextData : public ScAccessibleEditObjectTextData
 {
 public:
-                        ScAccessibleEditLineTextData(EditView* pEditView, vcl::Window* pWin);
+                        ScAccessibleEditLineTextData(EditView* pEditView, OutputDevice* pWin);
     virtual             ~ScAccessibleEditLineTextData() override;
 
     virtual ScAccessibleTextData* Clone() const override;
@@ -165,7 +164,7 @@ public:
     virtual SvxEditViewForwarder* GetEditViewForwarder( bool /* bCreate */ ) override { return nullptr; }
 
 private:
-    ScPreviewViewForwarder* mpViewForwarder;
+    std::unique_ptr<ScPreviewViewForwarder> mpViewForwarder;
     ScPreviewShell* mpViewShell;
 
     using ScAccessibleCellBaseTextData::GetDocShell;
@@ -188,7 +187,7 @@ public:
     virtual SvxEditViewForwarder* GetEditViewForwarder( bool /* bCreate */ ) override { return nullptr; }
 
 private:
-    ScPreviewViewForwarder* mpViewForwarder;
+    std::unique_ptr<ScPreviewViewForwarder> mpViewForwarder;
     ScPreviewShell* mpViewShell;
     OUString        maText;
     bool            mbColHeader;
@@ -202,7 +201,7 @@ class ScAccessibleHeaderTextData : public ScAccessibleTextData
 {
 public:
                         ScAccessibleHeaderTextData(ScPreviewShell* pViewShell,
-                            const EditTextObject* pEditObj, bool bHeader, SvxAdjust eAdjust);
+                            const EditTextObject* pEditObj, SvxAdjust eAdjust);
     virtual             ~ScAccessibleHeaderTextData() override;
 
     virtual ScAccessibleTextData* Clone() const override;
@@ -217,11 +216,10 @@ public:
 private:
     ScPreviewViewForwarder* mpViewForwarder;
     ScPreviewShell*         mpViewShell;
-    ScEditEngineDefaulter*  mpEditEngine;
-    SvxEditEngineForwarder* mpForwarder;
+    std::unique_ptr<ScEditEngineDefaulter>  mpEditEngine;
+    std::unique_ptr<SvxEditEngineForwarder> mpForwarder;
     ScDocShell*             mpDocSh;
     const EditTextObject*   mpEditObj;
-    bool                    mbHeader;
     bool                    mbDataValid;
     SvxAdjust               meAdjust;
 };
@@ -245,8 +243,8 @@ public:
 private:
     ScPreviewViewForwarder* mpViewForwarder;
     ScPreviewShell*         mpViewShell;
-    ScEditEngineDefaulter*  mpEditEngine;
-    SvxEditEngineForwarder* mpForwarder;
+    std::unique_ptr<ScEditEngineDefaulter> mpEditEngine;
+    std::unique_ptr<SvxEditEngineForwarder> mpForwarder;
     ScDocShell*             mpDocSh;
     OUString                msText;
     ScAddress               maCellPos;
@@ -260,20 +258,18 @@ private:
     typedef ::std::unique_ptr< SvxTextForwarder > TextForwarderPtr;
     typedef ::std::unique_ptr< ScCsvViewForwarder > ViewForwarderPtr;
 
-    VclPtr<vcl::Window>         mpWindow;
+    VclPtr<OutputDevice>        mpWindow;
     EditEngine*                 mpEditEngine;
     TextForwarderPtr            mpTextForwarder;
     ViewForwarderPtr            mpViewForwarder;
     OUString                    maCellText;
-    tools::Rectangle                   maBoundBox;
     Size                        maCellSize;
 
 public:
     explicit                    ScAccessibleCsvTextData(
-                                    vcl::Window* pWindow,
+                                    OutputDevice* pWindow,
                                     EditEngine* pEditEngine,
                                     const OUString& rCellText,
-                                    const tools::Rectangle& rBoundBox,
                                     const Size& rCellSize );
     virtual                     ~ScAccessibleCsvTextData() override;
 

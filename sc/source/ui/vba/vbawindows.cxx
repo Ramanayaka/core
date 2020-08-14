@@ -23,9 +23,11 @@
 #include <com/sun/star/frame/Desktop.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/sequence.hxx>
+#include <o3tl/safeint.hxx>
+#include <rtl/ref.hxx>
 
 #include "vbawindow.hxx"
-#include "vbaglobals.hxx"
+#include "vbaworkbook.hxx"
 
 #include <unordered_map>
 
@@ -33,14 +35,14 @@ using namespace ::com::sun::star;
 using namespace ::ooo::vba;
 
 typedef  std::unordered_map< OUString,
-sal_Int32, OUStringHash > NameIndexHash;
+sal_Int32 > NameIndexHash;
 
 static uno::Reference< XHelperInterface > lcl_createWorkbookHIParent( const uno::Reference< frame::XModel >& xModel, const uno::Reference< uno::XComponentContext >& xContext, const uno::Any& aApplication )
 {
     return new ScVbaWorkbook( uno::Reference< XHelperInterface >( aApplication, uno::UNO_QUERY_THROW ), xContext,  xModel );
 }
 
-uno::Any ComponentToWindow( const uno::Any& aSource, uno::Reference< uno::XComponentContext > & xContext, const uno::Any& aApplication )
+static uno::Any ComponentToWindow( const uno::Any& aSource, const uno::Reference< uno::XComponentContext > & xContext, const uno::Any& aApplication )
 {
     uno::Reference< frame::XModel > xModel( aSource, uno::UNO_QUERY_THROW );
     // !! TODO !! iterate over all controllers
@@ -50,6 +52,9 @@ uno::Any ComponentToWindow( const uno::Any& aSource, uno::Reference< uno::XCompo
 }
 
 typedef std::vector < uno::Reference< sheet::XSpreadsheetDocument > > Components;
+
+namespace {
+
 // #TODO more or less the same as class in workwindows ( code sharing needed )
 class WindowComponentEnumImpl : public EnumerationHelper_BASE
 {
@@ -105,10 +110,14 @@ public:
     }
 };
 
+}
+
 typedef ::cppu::WeakImplHelper< container::XEnumerationAccess
     , css::container::XIndexAccess
     , css::container::XNameAccess
     > WindowsAccessImpl_BASE;
+
+namespace {
 
 class WindowsAccessImpl : public WindowsAccessImpl_BASE
 {
@@ -152,7 +161,7 @@ public:
     virtual uno::Any SAL_CALL getByIndex( ::sal_Int32 Index ) override
     {
         if ( Index < 0
-            || static_cast< Components::size_type >( Index ) >= m_windows.size() )
+            || o3tl::make_unsigned( Index ) >= m_windows.size() )
             throw lang::IndexOutOfBoundsException();
         return makeAny( m_windows[ Index ] ); // returns xspreadsheetdoc
     }
@@ -191,6 +200,8 @@ public:
 
 };
 
+}
+
 ScVbaWindows::ScVbaWindows( const uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext >& xContext ) : ScVbaWindows_BASE( xParent, xContext, uno::Reference< container::XIndexAccess > ( new WindowsAccessImpl( xContext ) ) )
 {
 }
@@ -221,18 +232,16 @@ ScVbaWindows::Arrange( ::sal_Int32 /*ArrangeStyle*/, const uno::Any& /*ActiveWor
 OUString
 ScVbaWindows::getServiceImplName()
 {
-    return OUString("ScVbaWindows");
+    return "ScVbaWindows";
 }
 
 css::uno::Sequence<OUString>
 ScVbaWindows::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.excel.Windows";
-    }
+        "ooo.vba.excel.Windows"
+    };
     return sNames;
 }
 

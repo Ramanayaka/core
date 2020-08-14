@@ -21,16 +21,11 @@
 #define INCLUDED_CONNECTIVITY_SDBCX_VDESCRIPTOR_HXX
 
 #include <comphelper/propertycontainer.hxx>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <cppuhelper/typeprovider.hxx>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <comphelper/stl_types.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
 
-namespace connectivity
-{
-    namespace sdbcx
+namespace connectivity::sdbcx
     {
 
         // = ODescriptor
@@ -75,15 +70,14 @@ namespace connectivity
 
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
-            static ODescriptor* getImplementation( const css::uno::Reference< css::uno::XInterface >& _rxSomeComp );
             // retrieves the ODescriptor implementation of a given UNO component, and returns its ->isNew flag
             static bool isNew( const css::uno::Reference< css::uno::XInterface >& _rxDescriptor );
         };
-    }
 
 }
+
 #endif // INCLUDED_CONNECTIVITY_SDBCX_VDESCRIPTOR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

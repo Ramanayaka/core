@@ -20,13 +20,10 @@
 #include <sal/config.h>
 
 #include <cassert>
-#include <cstddef>
 #include <set>
 
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
 #include <rtl/ref.hxx>
 #include <rtl/strbuf.hxx>
 #include <rtl/string.hxx>
@@ -58,56 +55,54 @@ void merge(
     assert(
         original.is() && update.is() && original->kind() == update->kind() &&
         update->getFinalized() == Data::NO_LAYER);
-    if (update->getLayer() >= original->getLayer() &&
-        update->getLayer() <= original->getFinalized())
-    {
-        switch (original->kind()) {
-        case Node::KIND_PROPERTY:
-        case Node::KIND_LOCALIZED_PROPERTY:
-        case Node::KIND_LOCALIZED_VALUE:
-            break; //TODO: merge certain parts?
-        case Node::KIND_GROUP:
-            for (NodeMap::const_iterator i2(update->getMembers().begin());
-                 i2 != update->getMembers().end(); ++i2)
-            {
-                NodeMap & members = original->getMembers();
-                NodeMap::iterator i1(members.find(i2->first));
-                if (i1 == members.end()) {
-                    if (i2->second->kind() == Node::KIND_PROPERTY &&
-                        static_cast< GroupNode * >(
-                            original.get())->isExtensible())
-                    {
-                        members.insert(*i2);
-                    }
-                } else if (i2->second->kind() == i1->second->kind()) {
-                    merge(i1->second, i2->second);
-                }
-            }
-            break;
-        case Node::KIND_SET:
-            for (NodeMap::const_iterator i2(update->getMembers().begin());
-                 i2 != update->getMembers().end(); ++i2)
-            {
-                NodeMap & members = original->getMembers();
-                NodeMap::iterator i1(members.find(i2->first));
-                if (i1 == members.end()) {
-                    if (static_cast< SetNode * >(original.get())->
-                        isValidTemplate(i2->second->getTemplateName()))
-                    {
-                        members.insert(*i2);
-                    }
-                } else if (i2->second->kind() == i1->second->kind() &&
-                           (i2->second->getTemplateName() ==
-                            i1->second->getTemplateName()))
+    if (update->getLayer() < original->getLayer() ||
+        update->getLayer() > original->getFinalized())
+        return;
+
+    switch (original->kind()) {
+    case Node::KIND_PROPERTY:
+    case Node::KIND_LOCALIZED_PROPERTY:
+    case Node::KIND_LOCALIZED_VALUE:
+        break; //TODO: merge certain parts?
+    case Node::KIND_GROUP:
+        for (auto const& updateMember : update->getMembers())
+        {
+            NodeMap & members = original->getMembers();
+            NodeMap::iterator i1(members.find(updateMember.first));
+            if (i1 == members.end()) {
+                if (updateMember.second->kind() == Node::KIND_PROPERTY &&
+                    static_cast< GroupNode * >(
+                        original.get())->isExtensible())
                 {
-                    merge(i1->second, i2->second);
+                    members.insert(updateMember);
                 }
+            } else if (updateMember.second->kind() == i1->second->kind()) {
+                merge(i1->second, updateMember.second);
             }
-            break;
-        case Node::KIND_ROOT:
-            assert(false); // this cannot happen
-            break;
         }
+        break;
+    case Node::KIND_SET:
+        for (auto const& updateMember : update->getMembers())
+        {
+            NodeMap & members = original->getMembers();
+            NodeMap::iterator i1(members.find(updateMember.first));
+            if (i1 == members.end()) {
+                if (static_cast< SetNode * >(original.get())->
+                    isValidTemplate(updateMember.second->getTemplateName()))
+                {
+                    members.insert(updateMember);
+                }
+            } else if (updateMember.second->kind() == i1->second->kind() &&
+                       (updateMember.second->getTemplateName() ==
+                        i1->second->getTemplateName()))
+            {
+                merge(i1->second, updateMember.second);
+            }
+        }
+        break;
+    case Node::KIND_ROOT:
+        assert(false); // this cannot happen
+        break;
     }
 }
 
@@ -132,7 +127,7 @@ bool XcsParser::startElement(
     }
     if (state_ == STATE_START) {
         if (nsId == ParseManager::NAMESPACE_OOR &&
-            name.equals("component-schema"))
+            name == "component-schema")
         {
             handleComponentSchema(reader);
             state_ = STATE_COMPONENT_SCHEMA;
@@ -145,8 +140,8 @@ bool XcsParser::startElement(
         // illegal content):
         if (ignoring_ > 0 ||
             (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-             (name.equals("info") || name.equals("import") ||
-              name.equals("uses") || name.equals("constraints"))))
+             (name == "info" || name == "import" ||
+              name == "uses" || name == "constraints")))
         {
             assert(ignoring_ < LONG_MAX);
             ++ignoring_;
@@ -155,15 +150,15 @@ bool XcsParser::startElement(
         switch (state_) {
         case STATE_COMPONENT_SCHEMA:
             if (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-                name.equals("templates"))
+                name == "templates")
             {
                 state_ = STATE_TEMPLATES;
                 return true;
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case STATE_TEMPLATES_DONE:
             if (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-                name.equals("component"))
+                name == "component")
             {
                 state_ = STATE_COMPONENT;
                 assert(elements_.empty());
@@ -177,27 +172,27 @@ bool XcsParser::startElement(
         case STATE_TEMPLATES:
             if (elements_.empty()) {
                 if (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-                    name.equals("group"))
+                    name == "group")
                 {
                     handleGroup(reader, true);
                     return true;
                 }
                 if (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-                    name.equals("set"))
+                    name == "set")
                 {
                     handleSet(reader, true);
                     return true;
                 }
                 break;
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case STATE_COMPONENT:
             assert(!elements_.empty());
             switch (elements_.top().node->kind()) {
             case Node::KIND_PROPERTY:
             case Node::KIND_LOCALIZED_PROPERTY:
                 if (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-                    name.equals("value"))
+                    name == "value")
                 {
                     handlePropValue(reader, elements_.top().node);
                     return true;
@@ -205,25 +200,25 @@ bool XcsParser::startElement(
                 break;
             case Node::KIND_GROUP:
                 if (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-                    name.equals("prop"))
+                    name == "prop")
                 {
                     handleProp(reader);
                     return true;
                 }
                 if (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-                    name.equals("node-ref"))
+                    name == "node-ref")
                 {
                     handleNodeRef(reader);
                     return true;
                 }
                 if (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-                    name.equals("group"))
+                    name == "group")
                 {
                     handleGroup(reader, false);
                     return true;
                 }
                 if (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-                    name.equals("set"))
+                    name == "set")
                 {
                     handleSet(reader, false);
                     return true;
@@ -231,7 +226,7 @@ bool XcsParser::startElement(
                 break;
             case Node::KIND_SET:
                 if (nsId == xmlreader::XmlReader::NAMESPACE_NONE &&
-                    name.equals("item"))
+                    name == "item")
                 {
                     handleSetItem(
                         reader,
@@ -262,31 +257,25 @@ void XcsParser::endElement(xmlreader::XmlReader const & reader) {
     if (ignoring_ > 0) {
         --ignoring_;
     } else if (!elements_.empty()) {
-        Element top(elements_.top());
+        Element top(std::move(elements_.top()));
         elements_.pop();
         if (top.node.is()) {
             if (elements_.empty()) {
                 switch (state_) {
                 case STATE_TEMPLATES:
                     {
-                        NodeMap::iterator i(data_.templates.find(top.name));
-                        if (i == data_.templates.end()) {
-                            data_.templates.insert(
-                                NodeMap::value_type(top.name, top.node));
-                        } else {
-                            merge(i->second, top.node);
+                        auto itPair = data_.templates.insert({top.name, top.node});
+                        if (!itPair.second) {
+                            merge(itPair.first->second, top.node);
                         }
                     }
                     break;
                 case STATE_COMPONENT:
                     {
                         NodeMap & components = data_.getComponents();
-                        NodeMap::iterator i(components.find(top.name));
-                        if (i == components.end()) {
-                            components.insert(
-                                NodeMap::value_type(top.name, top.node));
-                        } else {
-                            merge(i->second, top.node);
+                        auto itPair = components.insert({top.name, top.node});
+                        if (!itPair.second) {
+                            merge(itPair.first->second, top.node);
                         }
                         state_ = STATE_COMPONENT_DONE;
                     }
@@ -332,7 +321,7 @@ void XcsParser::characters(xmlreader::Span const & text) {
 
 void XcsParser::handleComponentSchema(xmlreader::XmlReader & reader) {
     //TODO: oor:version, xml:lang attributes
-    OStringBuffer buf;
+    OStringBuffer buf(256);
     buf.append('.');
     bool hasPackage = false;
     bool hasName = false;
@@ -342,7 +331,7 @@ void XcsParser::handleComponentSchema(xmlreader::XmlReader & reader) {
         if (!reader.nextAttribute(&attrNsId, &attrLn)) {
             break;
         }
-        if (attrNsId == ParseManager::NAMESPACE_OOR && attrLn.equals("package"))
+        if (attrNsId == ParseManager::NAMESPACE_OOR && attrLn == "package")
         {
             if (hasPackage) {
                 throw css::uno::RuntimeException(
@@ -353,7 +342,7 @@ void XcsParser::handleComponentSchema(xmlreader::XmlReader & reader) {
             xmlreader::Span s(reader.getAttributeValue(false));
             buf.insert(0, s.begin, s.length);
         } else if (attrNsId == ParseManager::NAMESPACE_OOR &&
-                   attrLn.equals("name"))
+                   attrLn == "name")
         {
             if (hasName) {
                 throw css::uno::RuntimeException(
@@ -389,15 +378,15 @@ void XcsParser::handleNodeRef(xmlreader::XmlReader & reader) {
         if (!reader.nextAttribute(&attrNsId, &attrLn)) {
             break;
         }
-        if (attrNsId == ParseManager::NAMESPACE_OOR && attrLn.equals("name")) {
+        if (attrNsId == ParseManager::NAMESPACE_OOR && attrLn == "name") {
             hasName = true;
             name = reader.getAttributeValue(false).convertFromUtf8();
         } else if (attrNsId == ParseManager::NAMESPACE_OOR &&
-                   attrLn.equals("component"))
+                   attrLn == "component")
         {
             component = reader.getAttributeValue(false).convertFromUtf8();
         } else if (attrNsId == ParseManager::NAMESPACE_OOR &&
-                   attrLn.equals("node-type"))
+                   attrLn == "node-type")
         {
             hasNodeType = true;
             nodeType = reader.getAttributeValue(false).convertFromUtf8();
@@ -435,20 +424,20 @@ void XcsParser::handleProp(xmlreader::XmlReader & reader) {
         if (!reader.nextAttribute(&attrNsId, &attrLn)) {
             break;
         }
-        if (attrNsId == ParseManager::NAMESPACE_OOR && attrLn.equals("name")) {
+        if (attrNsId == ParseManager::NAMESPACE_OOR && attrLn == "name") {
             hasName = true;
             name = reader.getAttributeValue(false).convertFromUtf8();
         } else if (attrNsId == ParseManager::NAMESPACE_OOR &&
-                   attrLn.equals("type"))
+                   attrLn == "type")
         {
             valueParser_.type_ = xmldata::parseType(
                 reader, reader.getAttributeValue(true));
         } else if (attrNsId == ParseManager::NAMESPACE_OOR &&
-                   attrLn.equals("localized"))
+                   attrLn == "localized")
         {
             localized = xmldata::parseBoolean(reader.getAttributeValue(true));
         } else if (attrNsId == ParseManager::NAMESPACE_OOR &&
-                   attrLn.equals("nillable"))
+                   attrLn == "nillable")
         {
             nillable = xmldata::parseBoolean(reader.getAttributeValue(true));
         }
@@ -485,7 +474,7 @@ void XcsParser::handlePropValue(
             break;
         }
         if (attrNsId == ParseManager::NAMESPACE_OOR &&
-            attrLn.equals("separator"))
+            attrLn == "separator")
         {
             attrSeparator = reader.getAttributeValue(false);
             if (attrSeparator.length == 0) {
@@ -509,11 +498,11 @@ void XcsParser::handleGroup(xmlreader::XmlReader & reader, bool isTemplate) {
         if (!reader.nextAttribute(&attrNsId, &attrLn)) {
             break;
         }
-        if (attrNsId == ParseManager::NAMESPACE_OOR && attrLn.equals("name")) {
+        if (attrNsId == ParseManager::NAMESPACE_OOR && attrLn == "name") {
             hasName = true;
             name = reader.getAttributeValue(false).convertFromUtf8();
         } else if (attrNsId == ParseManager::NAMESPACE_OOR &&
-                   attrLn.equals("extensible"))
+                   attrLn == "extensible")
         {
             extensible = xmldata::parseBoolean(reader.getAttributeValue(true));
         }
@@ -545,15 +534,15 @@ void XcsParser::handleSet(xmlreader::XmlReader & reader, bool isTemplate) {
         if (!reader.nextAttribute(&attrNsId, &attrLn)) {
             break;
         }
-        if (attrNsId == ParseManager::NAMESPACE_OOR && attrLn.equals("name")) {
+        if (attrNsId == ParseManager::NAMESPACE_OOR && attrLn == "name") {
             hasName = true;
             name = reader.getAttributeValue(false).convertFromUtf8();
         } else if (attrNsId == ParseManager::NAMESPACE_OOR &&
-                   attrLn.equals("component"))
+                   attrLn == "component")
         {
             component = reader.getAttributeValue(false).convertFromUtf8();
         } else if (attrNsId == ParseManager::NAMESPACE_OOR &&
-                   attrLn.equals("node-type"))
+                   attrLn == "node-type")
         {
             hasNodeType = true;
             nodeType = reader.getAttributeValue(false).convertFromUtf8();
@@ -587,11 +576,11 @@ void XcsParser::handleSetItem(xmlreader::XmlReader & reader, SetNode * set) {
             break;
         }
         if (attrNsId == ParseManager::NAMESPACE_OOR &&
-            attrLn.equals("component"))
+            attrLn == "component")
         {
             component = reader.getAttributeValue(false).convertFromUtf8();
         } else if (attrNsId == ParseManager::NAMESPACE_OOR &&
-                   attrLn.equals("node-type"))
+                   attrLn == "node-type")
         {
             hasNodeType = true;
             nodeType = reader.getAttributeValue(false).convertFromUtf8();

@@ -24,11 +24,7 @@
 
 #include <memory>
 
-namespace sd {
-class TemplateEntry;
-}
-
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 /** Show a list of all available master pages so that the user can assign
     them to the document.
@@ -79,7 +75,7 @@ private:
     using MasterPagesSelector::Fill;
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

@@ -20,19 +20,17 @@
 
 #include <tools/diagnose_ex.h>
 
-#include "drawshapesubsetting.hxx"
-#include "subsettableshapemanager.hxx"
-#include "eventqueue.hxx"
-#include "eventmultiplexer.hxx"
+#include <subsettableshapemanager.hxx>
+#include <eventqueue.hxx>
 #include "intrinsicanimationactivity.hxx"
-#include "intrinsicanimationeventhandler.hxx"
+#include <intrinsicanimationeventhandler.hxx>
 
 #include <memory>
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
+        namespace {
+
         /** Activity for intrinsic shape animations
 
             This is an Activity interface implementation for intrinsic
@@ -108,6 +106,7 @@ namespace slideshow
             IntrinsicAnimationActivity& mrActivity;
         };
 
+        }
 
         IntrinsicAnimationActivity::IntrinsicAnimationActivity( const SlideShowContext&         rContext,
                                                                 const DrawShapeSharedPtr&       rDrawShape,
@@ -117,7 +116,7 @@ namespace slideshow
             maContext( rContext ),
             mpDrawShape( rDrawShape ),
             mpWakeupEvent( rWakeupEvent ),
-            mpListener( new IntrinsicAnimationListener(*this) ),
+            mpListener( std::make_shared<IntrinsicAnimationListener>(*this) ),
             maTimeouts( rTimeouts ),
             mnCurrIndex(0),
             mnNumLoops(nNumLoops),
@@ -237,16 +236,14 @@ namespace slideshow
             const DrawShapeSharedPtr&       rDrawShape,
             const WakeupEventSharedPtr&     rWakeupEvent,
             const ::std::vector<double>&    rTimeouts,
-            ::std::size_t                   nNumLoops )
+            sal_uInt32                      nNumLoops)
         {
-            return ActivitySharedPtr(
-                new IntrinsicAnimationActivity(rContext,
+            return std::make_shared<IntrinsicAnimationActivity>(rContext,
                                                rDrawShape,
                                                rWakeupEvent,
                                                rTimeouts,
-                                               nNumLoops) );
+                                               nNumLoops);
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

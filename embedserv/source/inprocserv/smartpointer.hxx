@@ -64,6 +64,9 @@ public:
 
     ComSmart& operator=( const ComSmart<T>& rObj )
     {
+        if(this == &rObj)
+            return *this;
+
         OwnRelease();
 
         m_pInterface = rObj.m_pInterface;
@@ -86,7 +89,12 @@ public:
         return *this;
     }
 
-    operator T*() const
+    explicit operator bool() const
+    {
+        return m_pInterface != nullptr;
+    }
+
+    T* get() const
     {
         return m_pInterface;
     }
@@ -120,7 +128,7 @@ public:
         return ( m_pInterface != rObj.m_pInterface );
     }
 
-    BOOL operator==( const T* pInterface ) const
+    bool operator==( const T* pInterface ) const
     {
         return ( m_pInterface == pInterface );
     }

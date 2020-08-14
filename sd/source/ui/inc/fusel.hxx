@@ -22,14 +22,14 @@
 
 #include "fudraw.hxx"
 
-#include <com/sun/star/media/XPlayer.hpp>
+namespace com::sun::star::media { class XPlayer; }
 
 class SdrHdl;
 class SdrObject;
 
 namespace sd {
 
-class FuSelection
+class FuSelection final
     : public FuDraw
 {
 public:
@@ -48,21 +48,22 @@ public:
     virtual void SelectionHasChanged() override;
 
     void    SetEditMode(sal_uInt16 nMode);
-    sal_uInt16  GetEditMode() { return nEditMode; }
+    sal_uInt16  GetEditMode() const { return nEditMode; }
 
-    bool    AnimateObj(SdrObject* pObj, const Point& rPos);
+    bool HandleImageMapClick(const SdrObject* pObj, const Point& rPos);
 
     /** is called when the current function should be aborted. <p>
         This is used when a function gets a KEY_ESCAPE but can also
         be called directly.
 
-        @returns true if a active function was aborted
+        @returns true if an active function was aborted
     */
     virtual bool cancel() override;
 
     //let mouse cursor move
     virtual void ForcePointer(const MouseEvent* pMEvt = nullptr) override;
-protected:
+
+private:
     FuSelection (ViewShell* pViewSh,
         ::sd::Window* pWin,
         ::sd::View* pView,
@@ -77,10 +78,8 @@ protected:
     bool            bSuppressChangesOfSelection;
     bool            bMirrorSide0;
     sal_uInt16      nEditMode;
-    css::uno::Reference< css::media::XPlayer > mxPlayer;
 
-private:
-    /** This pointer stores a canidate for assigning a style in the water
+    /** This pointer stores a candidate for assigning a style in the water
         can mode between mouse button down and mouse button up.
     */
     SdrObject* pWaterCanCandidate;

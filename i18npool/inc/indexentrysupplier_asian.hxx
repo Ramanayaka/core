@@ -20,16 +20,15 @@
 #ifndef INCLUDED_I18NPOOL_INC_INDEXENTRYSUPPLIER_ASIAN_HXX
 #define INCLUDED_I18NPOOL_INC_INDEXENTRYSUPPLIER_ASIAN_HXX
 
-#include <indexentrysupplier_common.hxx>
+#include "indexentrysupplier_common.hxx"
 #include <osl/module.h>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 
-//  class IndexEntrySupplier_asian
 
 
-class IndexEntrySupplier_asian : public IndexEntrySupplier_Common {
+class IndexEntrySupplier_asian final : public IndexEntrySupplier_Common {
 public:
     IndexEntrySupplier_asian( const css::uno::Reference < css::uno::XComponentContext >& rxContext );
     virtual ~IndexEntrySupplier_asian() override;
@@ -51,7 +50,7 @@ private:
 #endif
 };
 
-} } } }
+}
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

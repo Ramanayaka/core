@@ -26,20 +26,28 @@ class SfxPoolItem;
 class SwCalc;
 class SwDoc;
 
-class SW_DLLPUBLIC SwUserFieldType : public SwValueFieldType
+/**
+ * The shared part of a user field.
+ *
+ * Tracks the value, but conversion between the float and string representation
+ * always happens with the system locale.
+ */
+class SW_DLLPUBLIC SwUserFieldType final : public SwValueFieldType
 {
-    bool    bValidValue : 1;
-    bool    bDeleted : 1;
-    double  nValue;
-    OUString  aName;
-    OUString  aContent;
-    sal_uInt16  nType;
+    bool    m_bValidValue : 1;
+    bool    m_bDeleted : 1;
+    /// Float value type.
+    double  m_nValue;
+    OUString  m_aName;
+    /// String value type.
+    OUString  m_aContent;
+    sal_uInt16  m_nType;
 
 public:
     SwUserFieldType( SwDoc* pDocPtr, const OUString& );
 
     virtual OUString        GetName() const override;
-    virtual SwFieldType*    Copy() const override;
+    virtual std::unique_ptr<SwFieldType> Copy() const override;
 
     OUString                Expand(sal_uInt32 nFormat, sal_uInt16 nSubType, LanguageType nLng);
 
@@ -55,43 +63,50 @@ public:
     inline sal_uInt16           GetType() const;
     inline void             SetType(sal_uInt16);
 
-    bool                    IsDeleted() const       { return bDeleted; }
-    void                    SetDeleted( bool b )    { bDeleted = b; }
+    bool                    IsDeleted() const       { return m_bDeleted; }
+    void                    SetDeleted( bool b )    { m_bDeleted = b; }
 
-    virtual bool        QueryValue( css::uno::Any& rVal, sal_uInt16 nMId ) const override;
-    virtual bool        PutValue( const css::uno::Any& rVal, sal_uInt16 nMId ) override;
+    virtual void        QueryValue( css::uno::Any& rVal, sal_uInt16 nMId ) const override;
+    virtual void        PutValue( const css::uno::Any& rVal, sal_uInt16 nMId ) override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
-protected:
+private:
     virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem* pNew ) override;
 };
 
 inline bool SwUserFieldType::IsValid() const
-    { return bValidValue; }
+    { return m_bValidValue; }
 
 inline double SwUserFieldType::GetValue() const
-    { return nValue; }
+    { return m_nValue; }
 
 inline void SwUserFieldType::SetValue(const double nVal)
-    { nValue = nVal; }
+    { m_nValue = nVal; }
 
 inline sal_uInt16 SwUserFieldType::GetType() const
-    { return nType; }
+    { return m_nType; }
 
 inline void SwUserFieldType::SetType(sal_uInt16 nSub)
 {
-    nType = nSub;
+    m_nType = nSub;
     EnableFormat(!(nSub & nsSwGetSetExpType::GSE_STRING));
 }
 
-class SW_DLLPUBLIC SwUserField : public SwValueField
+/**
+ * The non-shared part of a user field.
+ *
+ * Tracks the number format and the language, conversion between the float and
+ * string representation is independent from the system locale.
+ */
+class SwUserField final : public SwValueField
 {
-    sal_uInt16  nSubType;
+    sal_uInt16  m_nSubType;
 
-    virtual OUString        Expand() const override;
-    virtual SwField*        Copy() const override;
+    virtual OUString    ExpandImpl(SwRootFrame const* pLayout) const override;
+    virtual std::unique_ptr<SwField> Copy() const override;
 
 public:
-    SwUserField(SwUserFieldType*, sal_uInt16 nSub, sal_uInt32 nFormat = 0);
+    SwUserField(SwUserFieldType*, sal_uInt16 nSub, sal_uInt32 nFormat);
 
     virtual sal_uInt16      GetSubType() const override;
     virtual void            SetSubType(sal_uInt16 nSub) override;
@@ -109,6 +124,7 @@ public:
     virtual void            SetPar2(const OUString& rStr) override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt16 nWhichId ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt16 nWhichId ) override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif // INCLUDED_SW_INC_USRFLD_HXX

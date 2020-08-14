@@ -23,7 +23,6 @@
 #include <com/sun/star/sheet/XSolver.hpp>
 #include <com/sun/star/sheet/XSolverDescription.hpp>
 #include <com/sun/star/table/CellAddress.hpp>
-#include <com/sun/star/table/XCell.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/broadcasthelper.hxx>
@@ -32,7 +31,7 @@
 
 #include <unordered_map>
 
-class ResMgr;
+namespace com::sun::star::table { class XCell; }
 
 // hash map for the coefficients of a dependent cell (objective or constraint)
 // The size of each vector is the number of columns (variable cells) plus one, first entry is initial value.
@@ -66,8 +65,6 @@ class SolverComponent : public comphelper::OMutexAndBroadcastHelper,
                         public SolverComponent_Base
 {
 protected:
-    static ResMgr* pSolverResMgr;
-
     // settings
     css::uno::Reference< css::sheet::XSpreadsheetDocument > mxDoc;
     css::table::CellAddress                                 maObjective;
@@ -86,7 +83,7 @@ protected:
     css::uno::Sequence< double >                            maSolution;
     OUString                                                maStatus;
 
-    static OUString GetResourceString( sal_uInt32 nId );
+    static OUString GetResourceString(const char* pId);
     static css::uno::Reference<css::table::XCell> GetCell(
             const css::uno::Reference<css::sheet::XSpreadsheetDocument>& xDoc,
             const css::table::CellAddress& rPos );

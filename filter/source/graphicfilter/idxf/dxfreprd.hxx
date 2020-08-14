@@ -20,8 +20,9 @@
 #ifndef INCLUDED_FILTER_SOURCE_GRAPHICFILTER_IDXF_DXFREPRD_HXX
 #define INCLUDED_FILTER_SOURCE_GRAPHICFILTER_IDXF_DXFREPRD_HXX
 
-#include <dxfblkrd.hxx>
-#include <dxftblrd.hxx>
+#include "dxfblkrd.hxx"
+#include "dxftblrd.hxx"
+#include <array>
 
 
 //--------------------Other stuff---------------------------------------------
@@ -58,9 +59,9 @@ public:
     sal_uInt8 GetBlue(sal_uInt8 nIndex) const;
 
 private:
-    sal_uInt8 * pRed;
-    sal_uInt8 * pGreen;
-    sal_uInt8 * pBlue;
+    std::array<sal_uInt8, 256> pRed;
+    std::array<sal_uInt8, 256> pGreen;
+    std::array<sal_uInt8, 256> pBlue;
     void SetColor(sal_uInt8 nIndex, sal_uInt8 nRed, sal_uInt8 nGreen, sal_uInt8 nBlue);
 };
 

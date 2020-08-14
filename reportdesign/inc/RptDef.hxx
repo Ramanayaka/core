@@ -27,19 +27,16 @@
 
 #include "dllapi.h"
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <comphelper/uno3.hxx>
+#include <com/sun/star/style/XStyle.hpp>
 #include <svx/fmglob.hxx>
-#include <svx/svdobj.hxx>
+#include <svx/svdtypes.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace report {
         class XReportComponent;
         class XReportDefinition;
     }
-    namespace style {
-        class XStyle;
-    }
-}}}
+}
 
 namespace rptui
 {
@@ -50,12 +47,12 @@ constexpr SdrLayerID RPT_LAYER_HIDDEN (2);
 
 
 
-#define OBJ_DLG_FIXEDTEXT       ((sal_uInt16) OBJ_MAXI + 1)
+#define OBJ_DLG_FIXEDTEXT       (sal_uInt16(OBJ_MAXI) + 1)
 #define OBJ_DLG_IMAGECONTROL    OBJ_FM_IMAGECONTROL
-#define OBJ_DLG_FORMATTEDFIELD  ((sal_uInt16) OBJ_MAXI + 3)
-#define OBJ_DLG_HFIXEDLINE      ((sal_uInt16) OBJ_MAXI + 4)
-#define OBJ_DLG_VFIXEDLINE      ((sal_uInt16) OBJ_MAXI + 5)
-#define OBJ_DLG_SUBREPORT       ((sal_uInt16) OBJ_MAXI + 6)
+#define OBJ_DLG_FORMATTEDFIELD  (sal_uInt16(OBJ_MAXI) + 3)
+#define OBJ_DLG_HFIXEDLINE      (sal_uInt16(OBJ_MAXI) + 4)
+#define OBJ_DLG_VFIXEDLINE      (sal_uInt16(OBJ_MAXI) + 5)
+#define OBJ_DLG_SUBREPORT       (sal_uInt16(OBJ_MAXI) + 6)
 
 // allows the alignment and resizing of controls
 enum class ControlModification
@@ -73,7 +70,7 @@ enum class ControlModification
     HEIGHT_GREATEST    =     10,
 };
 
-class AnyConverter : public ::std::binary_function< OUString,css::uno::Any,css::uno::Any >
+class AnyConverter
 {
 public:
     virtual ~AnyConverter(){}

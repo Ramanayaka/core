@@ -20,13 +20,11 @@
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include "XMLTextFrameContext.hxx"
 #include "XMLTextFrameHyperlinkContext.hxx"
-
-#include <txtparaimphint.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::text;
@@ -103,7 +101,7 @@ void XMLTextFrameHyperlinkContext::EndElement()
 {
 }
 
-SvXMLImportContext *XMLTextFrameHyperlinkContext::CreateChildContext(
+SvXMLImportContextRef XMLTextFrameHyperlinkContext::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const Reference< XAttributeList > & xAttrList )
@@ -125,8 +123,6 @@ SvXMLImportContext *XMLTextFrameHyperlinkContext::CreateChildContext(
         pContext = pTextFrameContext;
         xFrameContext = pContext;
     }
-    else
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }

@@ -23,21 +23,18 @@
 #include <sal/config.h>
 
 #include <map>
-#include <set>
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/sdb/XDatabaseContext.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XDriver.hpp>
-#include "dsntypes.hxx"
+#include <dsntypes.hxx>
 #include <svl/itemset.hxx>
 #include <com/sun/star/frame/XModel.hpp>
 #include <svl/poolitem.hxx>
-#include <vcl/vclptr.hxx>
+#include <vcl/weld.hxx>
 
-namespace vcl { class Window; }
 namespace dbaui
 {
     namespace DataSourceInfoConverter
@@ -50,7 +47,7 @@ namespace dbaui
     };
     class IItemSetHelper;
     // ODbDataSourceAdministrationHelper
-    class ODbDataSourceAdministrationHelper
+    class ODbDataSourceAdministrationHelper final
     {
     public:
         typedef std::map<sal_Int32, OUString> MapInt2String;
@@ -64,18 +61,16 @@ namespace dbaui
         css::uno::Reference< css::frame::XModel >         m_xModel;
 
         css::uno::Any              m_aDataSourceOrName;
-        typedef std::set< OUString >   StringSet;
-        typedef StringSet::const_iterator       ConstStringSetIterator;
 
         MapInt2String           m_aDirectPropTranslator;    /// translating property id's into names (direct properties of a data source)
         MapInt2String           m_aIndirectPropTranslator;  /// translating property id's into names (indirect properties of a data source)
-        VclPtr<vcl::Window>     m_pParent;
+        weld::Window*           m_pParent;
         IItemSetHelper*         m_pItemSetHelper;
     public:
 
-        ODbDataSourceAdministrationHelper(const css::uno::Reference< css::uno::XComponentContext >& _xORB
-                                        ,vcl::Window* _pParent
-                                        ,IItemSetHelper* _pItemSetHelper);
+        ODbDataSourceAdministrationHelper(const css::uno::Reference< css::uno::XComponentContext >& _xORB,
+                                          weld::Window* pParent, weld::Window* pTopParent,
+                                          IItemSetHelper* _pItemSetHelper);
 
         /** translate the current dialog SfxItems into driver relevant PropertyValues
             @see successfullyConnected
@@ -94,7 +89,7 @@ namespace dbaui
 
         /** creates a new connection. The caller is responsible to dispose it !!!!
         */
-        std::pair< css::uno::Reference< css::sdbc::XConnection >,sal_Bool>      createConnection();
+        std::pair< css::uno::Reference< css::sdbc::XConnection >,bool>      createConnection();
 
         /** return the corresponding driver for the selected URL
         */
@@ -105,7 +100,7 @@ namespace dbaui
         */
         css::uno::Reference< css::beans::XPropertySet > const &  getCurrentDataSource();
         // returns the Url of a database document
-        static OUString        getDocumentUrl(SfxItemSet& _rDest);
+        static OUString        getDocumentUrl(SfxItemSet const & _rDest);
 
         void setDataSourceOrName( const css::uno::Any& _rDataSourceOrName );
 
@@ -125,7 +120,7 @@ namespace dbaui
 
         const MapInt2String& getIndirectProperties() const { return m_aIndirectPropTranslator; }
 
-        /** translates properties of an UNO data source into SfxItems
+        /** translates properties of a UNO data source into SfxItems
             @param  _rxSource
                 The data source
             @param  _rDest
@@ -135,7 +130,7 @@ namespace dbaui
                 const css::uno::Reference< css::beans::XPropertySet >& _rxSource,
                 SfxItemSet& _rDest);
 
-        /** translate SfxItems into properties of an UNO data source
+        /** translate SfxItems into properties of a UNO data source
             @param  _rSource
                 The item set to read from.
             @param  _rxDest
@@ -146,7 +141,7 @@ namespace dbaui
                 const css::uno::Reference< css::beans::XPropertySet >& _rxDest);
 
         bool saveChanges(const SfxItemSet& _rSource);
-    protected:
+    private:
         /** fill a data source info array with the settings from a given item set
         */
         void fillDatasourceInfo(const SfxItemSet& _rSource, css::uno::Sequence< css::beans::PropertyValue >& _rInfo);

@@ -24,26 +24,19 @@
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/connection/XAcceptor.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/bridge/XInstanceProvider.hpp>
 #include <com/sun/star/bridge/XBridgeFactory2.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/interfacecontainer.h>
 
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <comphelper/weakbag.hxx>
 #include <osl/mutex.hxx>
 #include <osl/conditn.hxx>
 #include <osl/thread.hxx>
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class XComponentContext;
-} } } }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace desktop {
 
@@ -76,27 +69,21 @@ public:
     void run();
 
     // XService info
-    static OUString impl_getImplementationName();
     virtual OUString SAL_CALL getImplementationName() override;
-    static css::uno::Sequence<OUString> impl_getSupportedServiceNames();
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& aName ) override;
 
     // XInitialize
     virtual void SAL_CALL initialize( const css::uno::Sequence<css::uno::Any>& aArguments ) override;
-
-    static css::uno::Reference<css::uno::XInterface> impl_getInstance( const css::uno::Reference< css::lang::XMultiServiceFactory >& aFactory );
 };
 
 class AccInstanceProvider : public ::cppu::WeakImplHelper<css::bridge::XInstanceProvider>
 {
 private:
     css::uno::Reference<css::uno::XComponentContext> m_rContext;
-    css::uno::Reference<css::connection::XConnection> m_rConnection;
 
 public:
-    AccInstanceProvider(const css::uno::Reference< css::uno::XComponentContext >& rxContext,
-                        const css::uno::Reference< css::connection::XConnection >& rConnection);
+    AccInstanceProvider(const css::uno::Reference< css::uno::XComponentContext >& rxContext);
     virtual ~AccInstanceProvider() override;
 
     // XInstanceProvider

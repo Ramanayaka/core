@@ -19,21 +19,15 @@
 #ifndef INCLUDED_IDLC_INC_ASTSEQUENCE_HXX
 #define INCLUDED_IDLC_INC_ASTSEQUENCE_HXX
 
-#include <asttype.hxx>
+#include "asttype.hxx"
 
-class AstSequence : public AstType
+class AstSequence final : public AstType
 {
 public:
     AstSequence(AstType const * pMemberType, AstScope* pScope)
-        : AstType(NT_sequence, OString("[]")+pMemberType->getScopedName(), pScope)
+        : AstType(NT_sequence, OStringLiteral("[]")+pMemberType->getScopedName(), pScope)
         , m_pMemberType(pMemberType)
-        , m_pRelativName(nullptr)
     {}
-    virtual ~AstSequence() override
-    {
-        if ( m_pRelativName )
-            delete m_pRelativName;
-    }
 
     AstType const * getMemberType() const
         { return m_pMemberType; }
@@ -41,10 +35,10 @@ public:
     virtual bool isUnsigned() const override
     { return m_pMemberType != nullptr && m_pMemberType->isUnsigned(); }
 
-    virtual const sal_Char* getRelativName() const override;
+    virtual const char* getRelativName() const override;
 private:
     AstType const * m_pMemberType;
-    mutable OString* m_pRelativName;
+    mutable std::optional<OString> m_xRelativName;
 };
 
 #endif // INCLUDED_IDLC_INC_ASTSEQUENCE_HXX

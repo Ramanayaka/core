@@ -27,9 +27,13 @@
 #include <rtl/instance.hxx>
 #include <com/sun/star/i18n/ScriptType.hpp>
 #include <unotools/syslocale.hxx>
-#include "officecfg/System.hxx"
+#include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Sequence.hxx>
 
 #ifdef _WIN32
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #endif
 
@@ -43,8 +47,8 @@ SvtLanguageOptions::SvtLanguageOptions( bool _bDontLoad )
     // Global access, must be guarded (multithreading)
     ::osl::MutexGuard aGuard( ALMutex::get() );
 
-    m_pCJKOptions = new SvtCJKOptions( _bDontLoad );
-    m_pCTLOptions = new SvtCTLOptions( _bDontLoad );
+    m_pCJKOptions.reset(new SvtCJKOptions( _bDontLoad ));
+    m_pCTLOptions.reset(new SvtCTLOptions( _bDontLoad ));
     m_pCTLOptions->AddListener(this);
     m_pCJKOptions->AddListener(this);
 }
@@ -56,8 +60,8 @@ SvtLanguageOptions::~SvtLanguageOptions()
     m_pCTLOptions->RemoveListener(this);
     m_pCJKOptions->RemoveListener(this);
 
-    delete m_pCJKOptions;
-    delete m_pCTLOptions;
+    m_pCJKOptions.reset();
+    m_pCTLOptions.reset();
 }
 // CJK options
 bool SvtLanguageOptions::IsCJKFontEnabled() const
@@ -195,7 +199,7 @@ SvtSystemLanguageOptions::SvtSystemLanguageOptions() :
     uno::Sequence< OUString > aPropertyNames { "SystemLocale" };
     uno::Sequence< uno::Any > aValues = GetProperties( aPropertyNames );
 
-    if ( aValues.getLength() )
+    if ( aValues.hasElements() )
     {
         aValues[0]>>= m_sWin16SystemLocale;
     }
@@ -236,7 +240,7 @@ bool SvtSystemLanguageOptions::isKeyboardLayoutTypeInstalled(sal_Int16 scriptTyp
 
             for(int i = 0; i < nLayouts; ++i)
             {
-                LCID lang = MAKELCID((WORD)(reinterpret_cast<DWORD_PTR>(lpList[i]) & 0xffff), SORT_DEFAULT);
+                LCID lang = MAKELCID(LOWORD(lpList[i]), SORT_DEFAULT);
                 if (MsLangId::getScriptType(LanguageType(lang)) == scriptType)
                 {
                     isInstalled = true;
@@ -253,41 +257,9 @@ bool SvtSystemLanguageOptions::isKeyboardLayoutTypeInstalled(sal_Int16 scriptTyp
     return isInstalled;
 }
 
-
 bool SvtSystemLanguageOptions::isCJKKeyboardLayoutInstalled() const
 {
     return isKeyboardLayoutTypeInstalled(css::i18n::ScriptType::ASIAN);
-}
-
-OUString getInstalledLocaleForLanguage(css::uno::Sequence<OUString> const & installed, OUString const & locale)
-{
-    if (locale.isEmpty())
-        return OUString();  // do not attempt to resolve anything
-
-    for (sal_Int32 i = 0; i != installed.getLength(); ++i) {
-        if (installed[i] == locale) {
-            return installed[i];
-        }
-    }
-    std::vector<OUString> fallbacks(LanguageTag(locale).getFallbackStrings(false));
-    for (OUString & rf : fallbacks) {
-        for (sal_Int32 i = 0; i != installed.getLength(); ++i) {
-            if (installed[i] == rf) {
-                return installed[i];
-            }
-        }
-    }
-    return OUString();
-}
-
-OUString getInstalledLocaleForSystemUILanguage(const css::uno::Sequence<OUString>& rLocaleElementNames)
-{
-    OUString locale = getInstalledLocaleForLanguage(rLocaleElementNames, officecfg::System::L10N::UILocale::get());
-    if (locale.isEmpty())
-        locale = getInstalledLocaleForLanguage(rLocaleElementNames, "en-US");
-    if (locale.isEmpty() && rLocaleElementNames.hasElements())
-        locale = rLocaleElementNames[0];
-    return locale;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

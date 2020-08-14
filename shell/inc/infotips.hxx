@@ -20,16 +20,10 @@
 #ifndef INCLUDED_SHELL_INC_INTERNAL_INFOTIPS_HXX
 #define INCLUDED_SHELL_INC_INTERNAL_INFOTIPS_HXX
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#pragma warning(disable:4917)
-#endif
 #include <objidl.h>
 #include <shlobj.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 #include <string>
+#include "filepath.hxx"
 
 class CInfoTip : public IQueryInfo, public IPersistFile
 {
@@ -53,9 +47,9 @@ public:
     // IQueryInfo methods
 
 
-    virtual HRESULT STDMETHODCALLTYPE GetInfoTip(DWORD dwFlags, wchar_t** ppwszTip) override;
+    virtual COM_DECLSPEC_NOTHROW HRESULT STDMETHODCALLTYPE GetInfoTip(DWORD dwFlags, PWSTR* ppwszTip) override;
 
-    virtual HRESULT STDMETHODCALLTYPE GetInfoFlags(DWORD *pdwFlags) override;
+    virtual COM_DECLSPEC_NOTHROW HRESULT STDMETHODCALLTYPE GetInfoFlags(DWORD *pdwFlags) override;
 
 
     // IPersist methods
@@ -84,9 +78,9 @@ public:
             /* [out] */ LPOLESTR __RPC_FAR *ppszFileName) override;
 
 private:
-    long         m_RefCnt;
-    char         m_szFileName[MAX_PATH];
-    std::wstring m_FileNameOnly;
+    long            m_RefCnt;
+    Filepath_char_t m_szFileName[MAX_PATH];
+    std::wstring    m_FileNameOnly;
 };
 
 #endif

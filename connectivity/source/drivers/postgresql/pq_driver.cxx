@@ -34,11 +34,9 @@
  *
  ************************************************************************/
 
-#include <comphelper/processfactory.hxx>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/compbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <com/sun/star/lang/XSingleComponentFactory.hpp>
+#include <rtl/ref.hxx>
 
 #include "pq_driver.hxx"
 
@@ -48,8 +46,6 @@ using com::sun::star::lang::XSingleComponentFactory;
 using com::sun::star::lang::XServiceInfo;
 using com::sun::star::lang::XComponent;
 
-using com::sun::star::uno::RuntimeException;
-using com::sun::star::uno::Exception;
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::XInterface;
@@ -67,16 +63,6 @@ using com::sun::star::sdbcx::XTablesSupplier;
 
 namespace pq_sdbc_driver
 {
-
-OUString DriverGetImplementationName()
-{
-    return OUString( "org.openoffice.comp.connectivity.pq.Driver.noext" );
-}
-
-Sequence< OUString > DriverGetSupportedServiceNames()
-{
-    return Sequence< OUString > { "com.sun.star.sdbc.Driver" };
-}
 
 Reference< XConnection > Driver::connect(
     const OUString& url,const Sequence< PropertyValue >& info )
@@ -119,7 +105,7 @@ sal_Int32 Driver::getMinorVersion(  )
     // XServiceInfo
 OUString SAL_CALL Driver::getImplementationName()
 {
-    return DriverGetImplementationName();
+    return "org.openoffice.comp.connectivity.pq.Driver.noext";
 }
 
 sal_Bool Driver::supportsService(const OUString& ServiceName)
@@ -129,7 +115,7 @@ sal_Bool Driver::supportsService(const OUString& ServiceName)
 
 Sequence< OUString > Driver::getSupportedServiceNames()
 {
-    return DriverGetSupportedServiceNames();
+    return { "com.sun.star.sdbc.Driver" };
 }
 
 // XComponent
@@ -151,164 +137,17 @@ Reference< XTablesSupplier > Driver::getDataDefinitionByURL(
     return Reference< XTablesSupplier > ( connect( url, info ), UNO_QUERY );
 }
 
-
-Reference< XInterface > DriverCreateInstance( const Reference < XComponentContext > & ctx )
-{
-    Reference< XInterface >  ret = * new Driver( ctx );
-    return ret;
 }
 
-
-class OOneInstanceComponentFactory :
-    public MutexHolder,
-    public cppu::WeakComponentImplHelper< XSingleComponentFactory, XServiceInfo >
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+connectivity_pq_sdbc_driver_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
 {
-public:
-    OOneInstanceComponentFactory(
-        const OUString & rImplementationName_,
-        cppu::ComponentFactoryFunc fptr,
-        const Sequence< OUString > & serviceNames,
-        const Reference< XComponentContext > & defaultContext) :
-        cppu::WeakComponentImplHelper< XSingleComponentFactory, XServiceInfo >( this->m_mutex ),
-        m_create( fptr ),
-        m_serviceNames( serviceNames ),
-        m_implName( rImplementationName_ ),
-        m_defaultContext( defaultContext )
-    {
-    }
+    static rtl::Reference<pq_sdbc_driver::Driver> g_Driver(new pq_sdbc_driver::Driver(context));
 
-    // XSingleComponentFactory
-    virtual Reference< XInterface > SAL_CALL createInstanceWithContext(
-        Reference< XComponentContext > const & xContext ) override;
-    virtual Reference< XInterface > SAL_CALL createInstanceWithArgumentsAndContext(
-        Sequence< Any > const & rArguments,
-        Reference< XComponentContext > const & xContext ) override;
-
-    // XServiceInfo
-    OUString SAL_CALL getImplementationName() override
-    {
-        return m_implName;
-    }
-    sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override
-    {
-        for( int i = 0 ; i < m_serviceNames.getLength() ; i ++ )
-            if( m_serviceNames[i] == ServiceName )
-                return true;
-        return false;
-    }
-    Sequence< OUString > SAL_CALL getSupportedServiceNames() override
-    {
-        return m_serviceNames;
-    }
-
-    // XComponent
-    virtual void SAL_CALL disposing() override;
-
-private:
-    cppu::ComponentFactoryFunc     m_create;
-    Sequence< OUString >           m_serviceNames;
-    OUString                       m_implName;
-    Reference< XInterface >        m_theInstance;
-    Reference< XComponentContext > m_defaultContext;
-};
-
-Reference< XInterface > OOneInstanceComponentFactory::createInstanceWithArgumentsAndContext(
-    Sequence< Any > const &, const Reference< XComponentContext > & ctx )
-{
-    return createInstanceWithContext( ctx );
+    g_Driver->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Driver.get());
 }
 
-Reference< XInterface > OOneInstanceComponentFactory::createInstanceWithContext(
-    const Reference< XComponentContext > & ctx )
-{
-    if( ! m_theInstance.is() )
-    {
-        // work around the problem in sdbc
-        Reference< XComponentContext > useCtx = ctx;
-        if( ! useCtx.is() )
-            useCtx = m_defaultContext;
-        Reference< XInterface > theInstance = m_create( useCtx );
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( ! m_theInstance.is () )
-        {
-            m_theInstance = theInstance;
-        }
-    }
-    return m_theInstance;
-}
-
-void OOneInstanceComponentFactory::disposing()
-{
-    Reference< XComponent > rComp;
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        rComp.set( m_theInstance, UNO_QUERY );
-        m_theInstance.clear();
-    }
-    if( rComp.is() )
-        rComp->dispose();
-}
-
-//  Reference< XSingleComponentFactory > createOneInstanceComponentFactory(
-//      cppu::ComponentFactoryFunc fptr,
-//      OUString const & rImplementationName,
-//      css::uno::Sequence< OUString > const & rServiceNames,
-//      rtl_ModuleCount * pModCount = 0 )
-//
-//  {
-//      return new OOneInstanceComponentFactory( rImplementationName, fptr , rServiceNames);
-//  }
-
-}
-
-static const struct cppu::ImplementationEntry g_entries[] =
-{
-    {
-        pq_sdbc_driver::DriverCreateInstance, pq_sdbc_driver::DriverGetImplementationName,
-        pq_sdbc_driver::DriverGetSupportedServiceNames, nullptr,
-        nullptr , 0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-};
-
-extern "C"
-{
-
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL postgresql_sdbc_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * )
-{
-    // need to extract the defaultcontext, because the way, sdbc
-    // bypasses the servicemanager, does not allow to use the
-    // XSingleComponentFactory interface ...
-    void * pRet = nullptr;
-    Reference< XSingleComponentFactory > xFactory;
-    Reference< css::lang::XMultiServiceFactory > xSmgr(
-        static_cast< XInterface * >(pServiceManager),
-        css::uno::UNO_QUERY_THROW );
-
-    for( sal_Int32 i = 0 ; g_entries[i].create ; i ++ )
-    {
-        OUString implName = g_entries[i].getImplementationName();
-        if( implName.equalsAscii( pImplName ) )
-        {
-            Reference< XComponentContext > defaultContext(
-                comphelper::getComponentContext( xSmgr ) );
-            xFactory = new pq_sdbc_driver::OOneInstanceComponentFactory(
-                implName,
-                g_entries[i].create,
-                g_entries[i].getSupportedServiceNames(),
-                defaultContext );
-        }
-    }
-
-    if( xFactory.is() )
-    {
-        xFactory->acquire();
-        pRet = xFactory.get();
-    }
-    return pRet;
-}
-
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

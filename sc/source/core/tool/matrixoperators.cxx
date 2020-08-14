@@ -8,35 +8,32 @@
  */
 
 #include <functional>
-#include "matrixoperators.hxx"
+#include <matrixoperators.hxx>
 
 
-namespace sc {
+namespace sc::op {
 
-namespace op {
-
-void Sum::operator()(double& rAccum, double fVal)
+void Sum::operator()(double& rAccum, double fVal) const
 {
     rAccum += fVal;
 }
 
 const double Sum::InitVal = 0.0;
 
-void SumSquare::operator()(double& rAccum, double fVal)
+void SumSquare::operator()(double& rAccum, double fVal) const
 {
     rAccum += fVal * fVal;
 }
 
 const double SumSquare::InitVal = 0.0;
 
-void Product::operator()(double& rAccum, double fVal)
+void Product::operator()(double& rAccum, double fVal) const
 {
     rAccum *= fVal;
 }
 
 const double Product::InitVal = 1.0;
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

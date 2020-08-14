@@ -21,15 +21,17 @@
 #define INCLUDED_SD_SOURCE_UI_INC_TOOLS_CONFIGURATIONACCESS_HXX
 
 #include <rtl/ustring.hxx>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/uno/XInterface.hpp>
 
 #include <vector>
 #include <functional>
 
-namespace sd { namespace tools {
+namespace com::sun::star::container { class XHierarchicalNameAccess; }
+namespace com::sun::star::container { class XNameAccess; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+namespace com::sun::star::uno { class XComponentContext; }
+
+namespace sd::tools {
 
 /** This class gives access to the configuration.  Create an object of this
     class for one node of the configuration.  This will be the root node.
@@ -102,7 +104,7 @@ public:
             This can be a node returned by GetConfigurationNode().
         @param rArguments
             The functor is called with arguments that are children of each
-            element of the container.  The set of children is specified  this
+            element of the container.  The set of children is specified in this
             list.
         @param rFunctor
             The functor to be executed for some or all of the elements in
@@ -138,7 +140,7 @@ private:
         const WriteMode eMode);
 };
 
-} } // end of namespace sd::tools
+} // end of namespace sd::tools
 
 #endif
 

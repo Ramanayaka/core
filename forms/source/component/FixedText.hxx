@@ -20,7 +20,7 @@
 #ifndef INCLUDED_FORMS_SOURCE_COMPONENT_FIXEDTEXT_HXX
 #define INCLUDED_FORMS_SOURCE_COMPONENT_FIXEDTEXT_HXX
 
-#include "FormComponent.hxx"
+#include <FormComponent.hxx>
 
 
 namespace frm
@@ -34,7 +34,7 @@ public:
 
 // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OFixedTextModel"); }
+    { return "com.sun.star.form.OFixedTextModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 

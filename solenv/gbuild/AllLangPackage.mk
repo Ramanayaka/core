@@ -19,11 +19,12 @@ $(dir $(call gb_AllLangPackage_get_target,%)).dir :
 
 $(call gb_AllLangPackage_get_target,%) :
 	$(call gb_Output_announce,$*,$(true),ALP,3)
+	$(call gb_Trace_MakeMark,$*,ALP)
 	touch $@
 
 .PHONY : $(call gb_AllLangPackage_get_clean_target,%)
 $(call gb_AllLangPackage_get_clean_target,%) :
-	$(call gb_Output_announce,$*,$(true),ALP,3)
+	$(call gb_Output_announce,$*,$(false),ALP,3)
 	rm -f $(call gb_AllLangPackage_get_target,$*)
 
 # Define a new package group.
@@ -63,15 +64,15 @@ endef
 
 # Add a file to one of the child packages.
 #
-# The language is taken from the first component of the file name. The
+# If 'lang' is empty, the language is taken from the first component of the 'source' file name. The
 # file is only added if there is a package defined for the language
 # (i.e., if we are building with the language).
 #
-# gb_AllLangPackage_add_file target destination source
+# gb_AllLangPackage_add_file target destination source lang
 gb_AllLangPackage_ALLDIRS :=
 define gb_AllLangPackage_add_file
 gb_AllLangPackage_ALLDIRS := $(sort $(gb_AllLangPackage_ALLDIRS) $(patsubst %$(3),%,$(2)))
-$(call gb_AllLangPackage__add_file,$(1),$(2),$(3),$(firstword $(subst /, ,$(3))))
+$(call gb_AllLangPackage__add_file,$(1),$(2),$(3),$(or $(4),$(firstword $(subst /, ,$(3)))))
 
 endef
 
@@ -81,6 +82,13 @@ endef
 define gb_AllLangPackage_add_files
 $(if $(strip $(2)),,$(call gb_Output_error,gb_AllLangPackage_add_files: destination dir cannot be empty))
 $(foreach file,$(3),$(call gb_AllLangPackage_add_file,$(1),$(2)/$(file),$(file)))
+
+endef
+
+# gb_AllLangPackage_add_files_for_lang target lang destination-dir file(s)
+define gb_AllLangPackage_add_files_for_lang
+$(if $(strip $(3)),,$(call gb_Output_error,gb_AllLangPackage_add_files: destination dir cannot be empty))
+$(foreach file,$(4),$(call gb_AllLangPackage_add_file,$(1),$(3)/$(file),$(file),$(2)))
 
 endef
 
@@ -105,6 +113,11 @@ endef
 # gb_AllLangPackage_add_dependency target unpacked
 define gb_AllLangPackage_use_unpacked
 $(foreach lang,$(gb_AllLangPackage_LANGS),$(call gb_Package_use_unpacked,$(1)_$(lang),$(2)))
+
+endef
+
+define gb_AllLangPackage_use_customtarget
+$(foreach lang,$(gb_AllLangPackage_LANGS),$(call gb_Package_use_customtarget,$(1)_$(lang),$(2)))
 
 endef
 

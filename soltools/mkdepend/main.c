@@ -56,6 +56,7 @@ typedef _W64 int   ssize_t;
 #endif
 
 #include "def.h"
+#include <assert.h>
 #include <string.h>
 #ifdef hpux
 #define sigvec sigvector
@@ -85,7 +86,7 @@ typedef _W64 int   ssize_t;
 int _debugmask;
 #endif
 
-char *ProgramName;
+static char *ProgramName;
 
 #define OBJSUFFIX ".obj"
 #define INCLUDEDIR "."
@@ -115,21 +116,18 @@ char    *directives[] = {
 
 /*******   function declarations ********/
 /*******   added by -Wall project *******/
-void redirect(char * makefile);
+static void redirect(char * makefile);
 
-struct  inclist inclist[ MAXFILES ],
-                *inclistp = inclist;
+struct  inclist inclist[ MAXFILES ];
+struct  inclist *inclistp = inclist;
 
 static struct symhash *maininclist = NULL;
 
-char    *filelist[ MAXFILES ];
+static char    *filelist[ MAXFILES ];
 char    *includedirs[ MAXDIRS + 1 ];
-char    *notdotdot[ MAXDIRS ];
 char    *objprefix = "";
 char    *objsuffix = OBJSUFFIX;
 static char    *startat = "# DO NOT DELETE";
-static int width = 78;
-static boolean append = FALSE;
 boolean printed = FALSE;
 boolean verbose = FALSE;
 boolean show_where_not = FALSE;
@@ -158,7 +156,7 @@ catch (int sig)
 #define sa_mask sv_mask
 #define sa_flags sv_flags
 #endif
-struct sigaction sig_act;
+static struct sigaction sig_act;
 #endif /* USGISH */
 
 static boolean native_win_slashes = FALSE;
@@ -228,7 +226,7 @@ int main(int argc, char    **argv)
         argc = 1;
         for (p = args; argc < nargc; p += strlen(p) + 1)
             if (*p) nargv[argc++] = p;
-                argv = nargv;
+        argv = nargv;
     }
     for(argc--, argv++; argc; argc--, argv++) {
             /* if looking for endmarker then check before parsing */
@@ -274,17 +272,13 @@ int main(int argc, char    **argv)
             break;
         /* do not use if endmarker processing */
         case 'a':
-            if (endmarker) break;
-            append = TRUE;
             break;
         case 'w':
             if (endmarker) break;
             if (argv[0][2] == '\0') {
                 argv++;
                 argc--;
-                width = atoi(argv[0]);
-            } else
-                width = atoi(argv[0]+2);
+            }
             break;
         case 'n':
             // Use "-n" switch to generate dependencies with windows-native slash style
@@ -525,15 +519,15 @@ void freefile(struct filepointer *fp)
     free(fp);
 }
 
-char *copy(char *str)
+char *copy(char const *str)
 {
     char   *p = (char *)malloc(strlen(str) + 1);
-
+    assert(p); // Don't handle OOM conditions
     strcpy(p, str);
     return p;
 }
 
-int match(char *str, char **list)
+int match(char const *str, char **list)
 {
     int    i;
 
@@ -660,6 +654,9 @@ void redirect(char *makefile)
         fatalerr("cannot open \"%s\"\n", makefile ? makefile : "<NULL>");
 }
 
+#if defined __GNUC__
+__attribute__ ((format (printf, 1, 2)))
+#endif
 void fatalerr(char *msg, ...)
 {
     va_list args;
@@ -670,7 +667,10 @@ void fatalerr(char *msg, ...)
     exit (1);
 }
 
-void warning(char *msg, ...)
+#if defined __GNUC__
+__attribute__ ((format (printf, 1, 2)))
+#endif
+void warning(char const *msg, ...)
 {
 #ifdef DEBUG_MKDEPEND
     va_list args;
@@ -683,7 +683,10 @@ void warning(char *msg, ...)
 #endif /* DEBUG_MKDEPEND */
 }
 
-void warning1(char *msg, ...)
+#if defined __GNUC__
+__attribute__ ((format (printf, 1, 2)))
+#endif
+void warning1(char const *msg, ...)
 {
 #ifdef DEBUG_MKDEPEND
     va_list args;
@@ -724,6 +727,7 @@ char* append_slash(char *path)
         new_string = path;
     } else {
         new_string = (char*)malloc(sizeof(char) * (strlen(path) + 2));
+        assert(new_string); // Don't handle OOM conditions
         strcpy(new_string, path);
         if (native_win_slashes)
             strcat(new_string, "\\");

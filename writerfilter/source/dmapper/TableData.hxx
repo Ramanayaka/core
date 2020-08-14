@@ -20,20 +20,19 @@
 #ifndef INCLUDED_WRITERFILTER_SOURCE_DMAPPER_TABLEDATA_HXX
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_TABLEDATA_HXX
 
-#include <dmapper/resourcemodel.hxx>
+#include <com/sun/star/text/XTextRange.hpp>
+
+#include "PropertyMap.hxx"
 
 #include <vector>
-#include <memory>
 
-namespace writerfilter
-{
-namespace dmapper
+namespace writerfilter::dmapper
 {
 
 /**
    Class containing the data to describe a table cell.
  */
-class CellData final
+class CellData final : public virtual SvRefBase
 {
     /**
        Handle to start of cell.
@@ -52,11 +51,14 @@ class CellData final
 
     bool mbOpen;
 
+    sal_uInt32 m_nGridSpan; ///< number of grid columns in the parent table's table grid which this cell defines
+
 public:
-    typedef std::shared_ptr<CellData> Pointer_t;
+    typedef tools::SvRef<CellData> Pointer_t;
 
     CellData(css::uno::Reference<css::text::XTextRange> const & start, TablePropertyMapPtr pProps)
     : mStart(start), mEnd(start), mpProps(pProps), mbOpen(true)
+        , m_nGridSpan(1)
     {
     }
 
@@ -74,8 +76,8 @@ public:
      */
     void insertProperties(TablePropertyMapPtr pProps)
     {
-        if( mpProps.get() )
-            mpProps->InsertProps(pProps);
+        if( mpProps )
+            mpProps->InsertProps(pProps.get());
         else
             mpProps = pProps;
     }
@@ -83,25 +85,28 @@ public:
     /**
        Return start handle of the cell.
      */
-    const css::uno::Reference<css::text::XTextRange>& getStart() { return mStart; }
+    const css::uno::Reference<css::text::XTextRange>& getStart() const { return mStart; }
 
     /**
        Return end handle of the cell.
     */
-    const css::uno::Reference<css::text::XTextRange>& getEnd() { return mEnd; }
+    const css::uno::Reference<css::text::XTextRange>& getEnd() const { return mEnd; }
 
     /**
        Return properties of the cell.
      */
-    const TablePropertyMapPtr& getProperties() { return mpProps; }
+    const TablePropertyMapPtr& getProperties() const { return mpProps; }
 
     bool isOpen() const { return mbOpen; }
+
+    sal_uInt32 getGridSpan() { return m_nGridSpan; }
+    void setGridSpan( sal_uInt32 nSpan ) { m_nGridSpan = nSpan; }
 };
 
 /**
    Class to handle data of a table row.
  */
-class RowData final
+class RowData final : public virtual SvRefBase
 {
     typedef ::std::vector<CellData::Pointer_t> Cells;
 
@@ -115,13 +120,22 @@ class RowData final
     */
     mutable TablePropertyMapPtr mpProperties;
 
-public:
-    typedef std::shared_ptr<RowData> Pointer_t;
+    sal_uInt32 m_nGridBefore; ///< number of grid columns in the parent table's table grid which must be skipped before the contents of this table row are added to the parent table
+    sal_uInt32 m_nGridAfter; ///< number of grid columns in the parent table's table grid which shall be left after the last cell in the table row
 
-    RowData() {}
+public:
+    typedef tools::SvRef<RowData> Pointer_t;
+
+    RowData()
+        : m_nGridBefore(0)
+        , m_nGridAfter(0)
+    {
+    }
 
     RowData(const RowData& rRowData)
-    : mCells(rRowData.mCells), mpProperties(rRowData.mpProperties)
+    : SvRefBase(), mCells(rRowData.mCells), mpProperties(rRowData.mpProperties)
+        , m_nGridBefore(rRowData.m_nGridBefore)
+        , m_nGridAfter(rRowData.m_nGridAfter)
     {
     }
 
@@ -131,11 +145,18 @@ public:
        @param start     the start handle of the cell
        @param end       the end handle of the cell
        @param pProps    the properties of the cell
+       @param bAddBefore true: add an empty cell at beginning of the row for gridBefore
      */
-    void addCell(const css::uno::Reference<css::text::XTextRange>& start, TablePropertyMapPtr pProps)
+    void addCell(const css::uno::Reference<css::text::XTextRange>& start, TablePropertyMapPtr pProps, bool bAddBefore = false)
     {
         CellData::Pointer_t pCellData(new CellData(start, pProps));
-        mCells.push_back(pCellData);
+        if (bAddBefore)
+        {
+            mCells.insert(mCells.begin(), pCellData);
+            mCells[0]->setEnd(start);
+        }
+        else
+            mCells.push_back(pCellData);
     }
 
     void endCell(const css::uno::Reference<css::text::XTextRange>& end)
@@ -156,24 +177,13 @@ public:
      */
     void insertProperties(TablePropertyMapPtr pProperties)
     {
-        if( pProperties.get() )
+        if( pProperties )
         {
-            if( !mpProperties.get() )
+            if( !mpProperties )
                 mpProperties = pProperties;
             else
-                mpProperties->InsertProps(pProperties);
+                mpProperties->InsertProps(pProperties.get());
         }
-    }
-
-    /**
-       Add properties to a cell of the row.
-
-       @param i          index of the cell
-       @param pProps     the properties to add
-     */
-    void insertCellProperties(unsigned int i, TablePropertyMapPtr pProps)
-    {
-        mCells[i]->insertProperties(pProps);
     }
 
     /**
@@ -188,7 +198,7 @@ public:
     /**
        Return number of cells in the row.
     */
-    unsigned int getCellCount()
+    unsigned int getCellCount() const
     {
         return mCells.size();
     }
@@ -218,7 +228,7 @@ public:
 
        @param i      index of the cell
      */
-    TablePropertyMapPtr getCellProperties(unsigned int i) const
+    TablePropertyMapPtr const & getCellProperties(unsigned int i) const
     {
         return mCells[i]->getProperties();
     }
@@ -226,16 +236,39 @@ public:
     /**
        Return properties of the row.
      */
-    const TablePropertyMapPtr& getProperties()
+    const TablePropertyMapPtr& getProperties() const
     {
         return mpProperties;
+    }
+
+    sal_uInt32 getGridBefore() { return m_nGridBefore; }
+    void setGridBefore(sal_uInt32 nSkipGrids) { m_nGridBefore = nSkipGrids; }
+    sal_uInt32 getGridAfter() { return m_nGridAfter; }
+    void setGridAfter(sal_uInt32 nSkipGrids) { m_nGridAfter = nSkipGrids; }
+    sal_uInt32 getGridSpan(sal_uInt32 i) { return mCells[i]->getGridSpan(); }
+    std::vector< sal_uInt32 > getGridSpans()
+    {
+        std::vector< sal_uInt32 > nRet;
+        for (auto const& aCell: mCells)
+            nRet.push_back(aCell->getGridSpan());
+        return nRet;
+    }
+    void setCurrentGridSpan(sal_uInt32 nSpan, bool bFirstCell = false)
+    {
+        if ( mCells.size() )
+        {
+            if ( bFirstCell )
+                mCells.front()->setGridSpan(nSpan);
+            else
+                mCells.back()->setGridSpan(nSpan);
+        }
     }
 };
 
 /**
    Class that holds the data of a table.
  */
-class TableData
+class TableData : public virtual SvRefBase
 {
     typedef RowData::Pointer_t RowPointer_t;
     typedef ::std::vector<RowPointer_t> Rows;
@@ -261,7 +294,7 @@ class TableData
     void newRow() { mpRow = RowPointer_t(new RowData()); }
 
 public:
-    typedef std::shared_ptr<TableData> Pointer_t;
+    typedef tools::SvRef<TableData> Pointer_t;
 
     explicit TableData(unsigned int nDepth) : mnDepth(nDepth) { newRow(); }
 
@@ -321,20 +354,9 @@ public:
     }
 
     /**
-       Add properties to a cell of the current row.
-
-       @param i       index of the cell
-       @param pProps  properties to add
-     */
-    void insertCellProperties(unsigned int i, TablePropertyMapPtr pProps)
-    {
-        mpRow->insertCellProperties(i, pProps);
-    }
-
-    /**
        Return number of rows in the table.
      */
-    unsigned int getRowCount()
+    unsigned int getRowCount() const
     {
         return mRows.size();
     }
@@ -342,7 +364,7 @@ public:
     /**
        Return depth of table in surrounding table hierarchy.
     */
-    unsigned int getDepth()
+    unsigned int getDepth() const
     {
         return mnDepth;
     }
@@ -352,7 +374,7 @@ public:
 
        @param i     index of the row
     */
-    const RowPointer_t getRow(unsigned int i) const
+    RowPointer_t const & getRow(unsigned int i) const
     {
         return mRows[i];
     }
@@ -364,7 +386,7 @@ public:
 };
 
 }
-}
+
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_DMAPPER_RESOURCEMODEL_TABLEDATA_HXX
 

@@ -20,20 +20,16 @@
 #include <sal/config.h>
 
 #include <cassert>
-#include <memory>
 #include <set>
 
 #include <com/sun/star/configuration/XUpdate.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/weak.hxx>
 #include <osl/mutex.hxx>
 #include <rtl/ref.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
@@ -42,18 +38,15 @@
 #include "lock.hxx"
 #include "modifications.hxx"
 #include "rootaccess.hxx"
-#include "update.hxx"
 
-namespace configmgr { namespace update {
+namespace configmgr::update {
 
 namespace {
 
 std::set< OUString > seqToSet(
     css::uno::Sequence< OUString > const & sequence)
 {
-    return std::set< OUString >(
-        sequence.getConstArray(),
-        sequence.getConstArray() + sequence.getLength());
+    return std::set< OUString >( sequence.begin(), sequence.end() );
 }
 
 class Service:
@@ -145,21 +138,13 @@ void Service::insertModificationXcuFile(
 }
 
 }
+}
 
-css::uno::Reference< css::uno::XInterface > create(
-    css::uno::Reference< css::uno::XComponentContext > const & context)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_configuration_Update_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    return static_cast< cppu::OWeakObject * >(new Service(context));
+    return cppu::acquire(static_cast< cppu::OWeakObject * >(new configmgr::update::Service(context)));
 }
-
-OUString getImplementationName() {
-    return OUString("com.sun.star.comp.configuration.Update");
-}
-
-css::uno::Sequence< OUString > getSupportedServiceNames() {
-    return css::uno::Sequence< OUString > { "com.sun.star.configuration.Update_Service" };
-}
-
-} }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

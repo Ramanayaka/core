@@ -21,10 +21,8 @@
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpSdrSceneAttribute
         {
         public:
@@ -98,36 +96,20 @@ namespace drawinglayer
         {
         }
 
-        SdrSceneAttribute::SdrSceneAttribute(const SdrSceneAttribute& rCandidate)
-        :   mpSdrSceneAttribute(rCandidate.mpSdrSceneAttribute)
-        {
-        }
+        SdrSceneAttribute::SdrSceneAttribute(const SdrSceneAttribute&) = default;
 
-        SdrSceneAttribute::SdrSceneAttribute(SdrSceneAttribute&& rCandidate)
-        :   mpSdrSceneAttribute(std::move(rCandidate.mpSdrSceneAttribute))
-        {
-        }
+        SdrSceneAttribute::SdrSceneAttribute(SdrSceneAttribute&&) = default;
 
-        SdrSceneAttribute::~SdrSceneAttribute()
-        {
-        }
+        SdrSceneAttribute::~SdrSceneAttribute() = default;
 
         bool SdrSceneAttribute::isDefault() const
         {
             return mpSdrSceneAttribute.same_object(theGlobalDefault::get());
         }
 
-        SdrSceneAttribute& SdrSceneAttribute::operator=(const SdrSceneAttribute& rCandidate)
-        {
-            mpSdrSceneAttribute = rCandidate.mpSdrSceneAttribute;
-            return *this;
-        }
+        SdrSceneAttribute& SdrSceneAttribute::operator=(const SdrSceneAttribute&) = default;
 
-        SdrSceneAttribute& SdrSceneAttribute::operator=(SdrSceneAttribute&& rCandidate)
-        {
-            mpSdrSceneAttribute = std::move(rCandidate.mpSdrSceneAttribute);
-            return *this;
-        }
+        SdrSceneAttribute& SdrSceneAttribute::operator=(SdrSceneAttribute&&)  = default;
 
         bool SdrSceneAttribute::operator==(const SdrSceneAttribute& rCandidate) const
         {
@@ -158,7 +140,6 @@ namespace drawinglayer
             return mpSdrSceneAttribute->getTwoSidedLighting();
         }
 
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

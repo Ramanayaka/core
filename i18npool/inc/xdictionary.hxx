@@ -20,24 +20,23 @@
 #define INCLUDED_I18NPOOL_INC_XDICTIONARY_HXX
 
 #include <sal/types.h>
-#include <osl/module.h>
 
 #include <com/sun/star/i18n/Boundary.hpp>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 #define CACHE_MAX 32        // max cache structure number
 #define DEFAULT_SIZE 256    // for boundary size, to avoid alloc and release memory
 
 // cache structure.
 struct WordBreakCache {
-    sal_Int32 length;       // contents length saved here.
     sal_Unicode *contents;      // separated segment contents.
     sal_Int32* wordboundary;        // word boundaries in segments.
+    sal_Int32 length;       // contents length saved here.
     sal_Int32 size;         // size of wordboundary
 
     WordBreakCache();
-    bool equals(const sal_Unicode *str, Boundary& boundary);    // checking cached string
+    bool equals(const sal_Unicode *str, css::i18n::Boundary const & boundary);    // checking cached string
 };
 
 struct xdictionarydata
@@ -61,31 +60,31 @@ class xdictionary
 {
 private:
     xdictionarydata data;
-    void initDictionaryData(const sal_Char *lang);
+    void initDictionaryData(const char *lang);
 
-    Boundary boundary;
+    css::i18n::Boundary boundary;
     bool japaneseWordBreak;
 
 public:
-    xdictionary(const sal_Char *lang);
+    xdictionary(const char *lang);
     ~xdictionary();
-    Boundary nextWord( const OUString& rText, sal_Int32 nPos, sal_Int16 wordType);
-    Boundary previousWord( const OUString& rText, sal_Int32 nPos, sal_Int16 wordType);
-    Boundary const & getWordBoundary( const OUString& rText, sal_Int32 nPos, sal_Int16 wordType, bool bDirection );
+    css::i18n::Boundary nextWord( const OUString& rText, sal_Int32 nPos, sal_Int16 wordType);
+    css::i18n::Boundary previousWord( const OUString& rText, sal_Int32 nPos, sal_Int16 wordType);
+    css::i18n::Boundary const & getWordBoundary( const OUString& rText, sal_Int32 nPos, sal_Int16 wordType, bool bDirection );
     void setJapaneseWordBreak();
 
 private:
     WordBreakCache cache[CACHE_MAX];
     OUString segmentCachedString;
-    Boundary segmentCachedBoundary;
+    css::i18n::Boundary segmentCachedBoundary;
 
-    bool        seekSegment(const OUString& rText, sal_Int32 pos, Boundary& boundary);
-    WordBreakCache& getCache(const sal_Unicode *text, Boundary& boundary);
+    bool        seekSegment(const OUString& rText, sal_Int32 pos, css::i18n::Boundary& boundary);
+    WordBreakCache& getCache(const sal_Unicode *text, css::i18n::Boundary const & boundary);
     bool        exists(const sal_uInt32 u);
-    sal_Int32       getLongestMatch(const sal_Unicode *text, sal_Int32 len);
+    sal_Int32   getLongestMatch(const sal_Unicode *text, sal_Int32 len);
 };
 
-} } } }
+}
 
 #endif
 

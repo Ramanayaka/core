@@ -28,10 +28,10 @@
 
 #include <memory>
 
-#define RET_ALL     10
+#define RET_ALL     100
 
 // we only need forward decl here
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
 
     namespace beans     { class XPropertySet;}
     namespace container
@@ -46,6 +46,7 @@ namespace com { namespace sun { namespace star {
     namespace awt
     {
         struct FontDescriptor;
+        class XWindow;
     }
     namespace sdbc
     {
@@ -59,8 +60,7 @@ namespace com { namespace sun { namespace star {
     }
     namespace ucb { class XContent; }
     namespace uno { class XComponentContext; }
-
-}}}
+}
 
 namespace svt
 {
@@ -68,6 +68,10 @@ namespace svt
 }
 
 namespace vcl { class Window; }
+namespace weld {
+    class Widget;
+    class Window;
+}
 class ToolBox;
 namespace vcl { class Font; }
 class SvNumberFormatter;
@@ -88,7 +92,7 @@ namespace dbaui
                                     const OUString& _rsDataSourceName,
                                     const css::uno::Reference< css::container::XNameAccess >& _xDatabaseContext,
                                     const css::uno::Reference< css::uno::XComponentContext >& _rxContext,
-                                    css::uno::Reference< css::lang::XEventListener>& _rEvtLst,
+                                    css::uno::Reference< css::lang::XEventListener> const & _rEvtLst,
                                     css::uno::Reference< css::sdbc::XConnection>& _rOUTConnection );
     /** creates a new connection and appends the eventlistener
         @param  _xDataSource            the datasource
@@ -100,17 +104,8 @@ namespace dbaui
     ::dbtools::SQLExceptionInfo createConnection(
                                     const css::uno::Reference< css::beans::XPropertySet >& _xDataSource,
                                     const css::uno::Reference< css::uno::XComponentContext >& _rxContext,
-                                    css::uno::Reference< css::lang::XEventListener>& _rEvtLst,
+                                    css::uno::Reference< css::lang::XEventListener> const & _rEvtLst,
                                     css::uno::Reference< css::sdbc::XConnection>& _rOUTConnection );
-
-    /**  creates a error dialog which displays the SQLExceptionInfo. Also it supports a "more" button where detailed information are available
-        @param  _rInfo                  the error which should be shown, if the info is not valid no error dialog will appear
-        @param  _pParent                the parent of the error dialog
-        @param  _rxContext              need to create the dialog
-    */
-    void showError( const ::dbtools::SQLExceptionInfo& _rInfo,
-                    vcl::Window* _pParent,
-                    const css::uno::Reference< css::uno::XComponentContext >& _rxContext);
 
     /** fills a map and a vector with localized type names
         @param  _rxConnection   the connection to access the metadata
@@ -165,7 +160,7 @@ namespace dbaui
     css::uno::Reference< css::sdbc::XDataSource >
         getDataSourceByName(
                 const OUString& _rDataSourceName,
-                vcl::Window* _pErrorMessageParent,
+                weld::Window* _pErrorMessageParent,
                 const css::uno::Reference< css::uno::XComponentContext >& _rxContext,
                 ::dbtools::SQLExceptionInfo* _pErrorInfo
             );
@@ -189,27 +184,27 @@ namespace dbaui
     void callColumnFormatDialog(const css::uno::Reference< css::beans::XPropertySet>& _xAffectedCol,
                                 const css::uno::Reference< css::beans::XPropertySet>& _xField,
                                 SvNumberFormatter* _pFormatter,
-                                vcl::Window* _pParent);
+                                weld::Widget* _pParent);
 
     /** second variant of the function before
     */
-    bool callColumnFormatDialog(vcl::Window* _pParent,
+    bool callColumnFormatDialog(weld::Widget* _pParent,
                                     SvNumberFormatter* _pFormatter,
                                     sal_Int32 _nDataType,
                                     sal_Int32& _nFormatKey,
                                     SvxCellHorJustify& _eJustify,
                                     bool  _bHasFormat);
     /** append a name to tablefilter of a datasource
-        @param  _xConnection    the connection is need to get the datasource
-        @param  _sName          the name which should be appended
-        @param  _rxContext      needed to check if datasource is available
-        @param  _pParent        needed when an error must be shown
+        @param  xConnection    the connection is need to get the datasource
+        @param  rName          the name which should be appended
+        @param  rxContext      needed to check if datasource is available
+        @param  pParent        needed when an error must be shown
         @return false when datsource is not available otherwise true
     */
-    bool appendToFilter(const css::uno::Reference< css::sdbc::XConnection>& _xConnection,
-                            const OUString& _sName,
-                            const css::uno::Reference< css::uno::XComponentContext >& _rxContext,
-                            vcl::Window* _pParent);
+    bool appendToFilter(const css::uno::Reference< css::sdbc::XConnection>& xConnection,
+                        const OUString& rName,
+                        const css::uno::Reference< css::uno::XComponentContext >& rxContext,
+                        weld::Window* pParent);
 
     /** notifySystemWindow adds or remove the given window _pToRegister at the Systemwindow found when search _pWindow.
         @param  _pWindow
@@ -222,15 +217,9 @@ namespace dbaui
             ::comphelper::mem_fun(&TaskPaneList::AddWindow)
             ::comphelper::mem_fun(&TaskPaneList::RemoveWindow)
     */
-    void notifySystemWindow(vcl::Window* _pWindow,
+    void notifySystemWindow(vcl::Window const * _pWindow,
                             vcl::Window* _pToRegister,
                             const ::comphelper::mem_fun1_t<TaskPaneList,vcl::Window*>& _rMemFunc);
-
-    /** adjustToolBoxSize checks if the size of the ToolBox is still valid. If not it will be resized.
-        @param  _pToolBox
-            The Toolbox which should be resized.
-    */
-    void adjustToolBoxSize(ToolBox* _pToolBox);
 
     void adjustBrowseBoxColumnWidth( ::svt::EditBrowseBox* _pBox, sal_uInt16 _nColId );
 
@@ -281,7 +270,7 @@ namespace dbaui
     /** set the evaluation flag at the number formatter
         @param  _rxFormatter
     */
-    void setEvalDateFormatForFormatter(css::uno::Reference< css::util::XNumberFormatter >& _rxFormatter);
+    void setEvalDateFormatForFormatter(css::uno::Reference< css::util::XNumberFormatter > const & _rxFormatter);
 
     /** query for a type info which can be used to create a primary key column
         @param  _rTypeInfo
@@ -307,21 +296,21 @@ namespace dbaui
     */
 
     /** returns the result of the user action when view the query dialog.
-        @param  _pParent
+        @param  pParent
             The parent of the dialog
-        @param  _nTitle
+        @param  pTitle
             A string resource id for the text which will be displayed as title.
-        @param  _nText
+        @param  pText
             A string resource id for the text which will be displayed above the buttons.
             When the string contains a #1. This will be replaced by the name.
-        @param  _bAll
+        @param  bAll
             When set to <TRUE/>, the all button will be appended.
-        @param  _sName
+        @param  rName
             The name of the object to ask for.
         @return
             RET_YES, RET_NO, RET_ALL
     */
-    sal_Int32 askForUserAction(vcl::Window* _pParent,sal_uInt16 _nTitle,sal_uInt16 _nText,bool _bAll,const OUString& _sName);
+    sal_Int32 askForUserAction(weld::Window* pParent, const char* pTitle, const char* pText, bool bAll, const OUString& rName);
 
     /** creates a new view from a query or table
         @param  _sName
@@ -357,7 +346,7 @@ namespace dbaui
                                             ,OUString& _rsDatabaseName);
 
     /** returns the standard database filter
-        @retrun
+        @return
             the filter
     */
     std::shared_ptr<const SfxFilter> getStandardDatabaseFilter();
@@ -380,10 +369,10 @@ namespace dbaui
         @param  _bMove
                 if <TRUE/> the name of the content must be inserted without any change, otherwise not.
         @return
-            <TRUE/> if the insert opertions was successful, otherwise <FALSE/>.
+            <TRUE/> if the insert operation was successful, otherwise <FALSE/>.
     */
     bool insertHierachyElement(
-                vcl::Window* _pParent,
+                weld::Window* pParent,
                 const css::uno::Reference< css::uno::XComponentContext >& _rxContext,
                 const css::uno::Reference< css::container::XHierarchicalNameContainer>& _xNames,
                 const OUString& _sParentFolder,

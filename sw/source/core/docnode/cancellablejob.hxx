@@ -26,7 +26,7 @@
 
 #include <rtl/ref.hxx>
 
-class ObservableThread;
+#include <observablethread.hxx>
 
 class CancellableJob : public ::cppu::WeakImplHelper<css::util::XCancellable>
 {
@@ -37,8 +37,8 @@ public:
     virtual void SAL_CALL cancel() override;
 
 private:
-    CancellableJob( CancellableJob& ) = delete;
-    void operator =( CancellableJob& ) = delete;
+    CancellableJob( CancellableJob const & ) = delete;
+    void operator =( CancellableJob const & ) = delete;
 
     ::rtl::Reference< ObservableThread > mrThread;
 };

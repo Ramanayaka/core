@@ -19,13 +19,11 @@
 #ifndef INCLUDED_CHART2_SOURCE_MODEL_MAIN_AXIS_HXX
 #define INCLUDED_CHART2_SOURCE_MODEL_MAIN_AXIS_HXX
 
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include "MutexContainer.hxx"
-#include "OPropertySet.hxx"
+#include <MutexContainer.hxx>
+#include <OPropertySet.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/uno3.hxx>
 
-#include "ModifyListenerHelper.hxx"
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/chart2/XAxis.hpp>
 #include <com/sun/star/chart2/XTitled.hpp>
@@ -48,13 +46,13 @@ typedef ::cppu::WeakImplHelper<
     Axis_Base;
 }
 
-class Axis :
+class Axis final :
     public MutexContainer,
     public impl::Axis_Base,
     public ::property::OPropertySet
 {
 public:
-    explicit Axis( css::uno::Reference< css::uno::XComponentContext > const & xContext );
+    explicit Axis();
     virtual ~Axis() override;
 
     /// XServiceInfo declarations
@@ -67,7 +65,7 @@ public:
     /// merge XTypeProvider implementations
      DECLARE_XTYPEPROVIDER()
 
-protected:
+private:
     explicit Axis( const Axis & rOther );
 
     // late initialization to call after copy-constructing
@@ -119,10 +117,7 @@ protected:
 
     void fireModifyEvent();
 
-private: //methods
     void AllocateSubGrids();
-
-private: //member
 
     css::uno::Reference< css::util::XModifyListener >   m_xModifyEventForwarder;
 

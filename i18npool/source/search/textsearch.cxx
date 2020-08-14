@@ -19,11 +19,9 @@
 
 #include "textsearch.hxx"
 #include "levdis.hxx"
-#include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/i18n/BreakIterator.hpp>
-#include <com/sun/star/i18n/UnicodeType.hpp>
 #include <com/sun/star/util/SearchAlgorithms2.hpp>
 #include <com/sun/star/util/SearchFlags.hpp>
 #include <com/sun/star/i18n/WordType.hpp>
@@ -32,7 +30,6 @@
 #include <com/sun/star/i18n/CharacterClassification.hpp>
 #include <com/sun/star/i18n/KCharacterType.hpp>
 #include <com/sun/star/i18n/Transliteration.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/weak.hxx>
@@ -40,14 +37,7 @@
 #include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 
-#ifdef _MSC_VER
-// get rid of that dumb compiler warning
-// identifier was truncated to '255' characters in the debug information
-// for STL template usage, if .pdb files are to be created
-#pragma warning( disable: 4786 )
-#endif
-
-#include <string.h>
+#include <unicode/regex.h>
 
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::uno;
@@ -110,10 +100,6 @@ bool isSimpleRegexTrans( TransliterationFlags n )
 
 TextSearch::TextSearch(const Reference < XComponentContext > & rxContext)
         : m_xContext( rxContext )
-        , pJumpTable( nullptr )
-        , pJumpTable2( nullptr )
-        , pRegexMatcher( nullptr )
-        , pWLD( nullptr )
 {
     SearchOptions2 aOpt;
     aOpt.AlgorithmType2 = SearchAlgorithms2::ABSOLUTE;
@@ -125,27 +111,35 @@ TextSearch::TextSearch(const Reference < XComponentContext > & rxContext)
 
 TextSearch::~TextSearch()
 {
-    delete pRegexMatcher;
-    delete pWLD;
-    delete pJumpTable;
-    delete pJumpTable2;
+    pRegexMatcher.reset();
+    pWLD.reset();
+    pJumpTable.reset();
+    pJumpTable2.reset();
 }
 
 void TextSearch::setOptions2( const SearchOptions2& rOptions )
 {
+    osl::MutexGuard g(m_aMutex);
+
     aSrchPara = rOptions;
 
-    delete pRegexMatcher;
-    pRegexMatcher = nullptr;
-    delete pWLD;
-    pWLD = nullptr;
-    delete pJumpTable;
-    pJumpTable = nullptr;
-    delete pJumpTable2;
-    pJumpTable2 = nullptr;
+    pRegexMatcher.reset();
+    pWLD.reset();
+    pJumpTable.reset();
+    pJumpTable2.reset();
     maWildcardReversePattern.clear();
     maWildcardReversePattern2.clear();
-    TransliterationFlags transliterateFlags = (TransliterationFlags) aSrchPara.transliterateFlags;
+    TransliterationFlags transliterateFlags = static_cast<TransliterationFlags>(aSrchPara.transliterateFlags);
+    if (aSrchPara.AlgorithmType2 == SearchAlgorithms2::REGEXP)
+    {
+        // RESrchPrepare will consider aSrchPara.transliterateFlags when
+        // picking the actual regex pattern
+        // (sSrchStr|sSrchStr2|SearchOptions2::searchString) and setting
+        // case-insensitivity. Create transliteration instance, if any, without
+        // ignore-case so later in TextSearch::searchForward() the string to
+        // match is not case-altered, leave case-(in)sensitive to regex engine.
+        transliterateFlags &= ~TransliterationFlags::IGNORE_CASE;
+    }
 
     // Create Transliteration class
     if( isSimpleTrans( transliterateFlags) )
@@ -153,7 +147,7 @@ void TextSearch::setOptions2( const SearchOptions2& rOptions )
         if( !xTranslit.is() )
             xTranslit.set( Transliteration::create( m_xContext ) );
         xTranslit->loadModule(
-             (TransliterationModules)maskSimpleTrans(transliterateFlags),
+             static_cast<TransliterationModules>(maskSimpleTrans(transliterateFlags)),
              aSrchPara.Locale);
     }
     else if( xTranslit.is() )
@@ -166,7 +160,7 @@ void TextSearch::setOptions2( const SearchOptions2& rOptions )
             xTranslit2.set( Transliteration::create( m_xContext ) );
         // Load transliteration module
         xTranslit2->loadModule(
-             (TransliterationModules) maskComplexTrans(transliterateFlags),
+             static_cast<TransliterationModules>(maskComplexTrans(transliterateFlags)),
              aSrchPara.Locale);
     }
 
@@ -188,7 +182,7 @@ void TextSearch::setOptions2( const SearchOptions2& rOptions )
                 if (xTranslitPattern.is())
                 {
                     xTranslitPattern->loadModule(
-                            (TransliterationModules) maskSimpleRegexTrans(transliterateFlags),
+                            static_cast<TransliterationModules>(maskSimpleRegexTrans(transliterateFlags)),
                             aSrchPara.Locale);
                     sSrchStr = xTranslitPattern->transliterateString2String(
                             aSrchPara.searchString, 0, aSrchPara.searchString.getLength());
@@ -237,9 +231,9 @@ void TextSearch::setOptions2( const SearchOptions2& rOptions )
             fnForward = &TextSearch::ApproxSrchFrwrd;
             fnBackward = &TextSearch::ApproxSrchBkwrd;
 
-            pWLD = new WLevDistance( sSrchStr.getStr(), aSrchPara.changedChars,
+            pWLD.reset( new WLevDistance( sSrchStr.getStr(), aSrchPara.changedChars,
                     aSrchPara.insertedChars, aSrchPara.deletedChars,
-                    0 != (SearchFlags::LEV_RELAXED & aSrchPara.searchFlag ) );
+                    0 != (SearchFlags::LEV_RELAXED & aSrchPara.searchFlag ) ) );
 
             nLimit = pWLD->GetLimit();
             break;
@@ -253,7 +247,7 @@ void TextSearch::setOptions2( const SearchOptions2& rOptions )
 
         default:
             SAL_WARN("i18npool","TextSearch::setOptions2 - default what?");
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case SearchAlgorithms2::ABSOLUTE:
             fnForward = &TextSearch::NSrchFrwrd;
             fnBackward = &TextSearch::NSrchBkwrd;
@@ -263,6 +257,8 @@ void TextSearch::setOptions2( const SearchOptions2& rOptions )
 
 void TextSearch::setOptions( const SearchOptions& rOptions )
 {
+    osl::MutexGuard g(m_aMutex);
+
     sal_Int16 nAlgorithmType2;
     switch (rOptions.algorithmType)
     {
@@ -274,13 +270,13 @@ void TextSearch::setOptions( const SearchOptions& rOptions )
             break;
         default:
             SAL_WARN("i18npool","TextSearch::setOptions - default what?");
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case SearchAlgorithms_ABSOLUTE:
             nAlgorithmType2 = SearchAlgorithms2::ABSOLUTE;
             break;
     }
     // It would be nice if an inherited struct had a ctor that takes an
-    // instance of the object the struct derived from..
+    // instance of the object the struct derived from...
     SearchOptions2 aOptions2(
             rOptions.algorithmType,
             rOptions.searchFlag,
@@ -292,16 +288,16 @@ void TextSearch::setOptions( const SearchOptions& rOptions )
             rOptions.insertedChars,
             rOptions.transliterateFlags,
             nAlgorithmType2,
-            0   // no wildcard search, no escape character..
+            0   // no wildcard search, no escape character...
             );
     setOptions2( aOptions2);
 }
 
-sal_Int32 FindPosInSeq_Impl( const Sequence <sal_Int32>& rOff, sal_Int32 nPos )
+static sal_Int32 FindPosInSeq_Impl( const Sequence <sal_Int32>& rOff, sal_Int32 nPos )
 {
-    sal_Int32 nRet = 0, nEnd = rOff.getLength();
-    while( nRet < nEnd && nPos > rOff[ nRet ] ) ++nRet;
-    return nRet;
+    auto pOff = std::find_if(rOff.begin(), rOff.end(),
+        [nPos](const sal_Int32 nOff) { return nOff >= nPos; });
+    return static_cast<sal_Int32>(std::distance(rOff.begin(), pOff));
 }
 
 bool TextSearch::isCellStart(const OUString& searchStr, sal_Int32 nPos)
@@ -313,6 +309,8 @@ bool TextSearch::isCellStart(const OUString& searchStr, sal_Int32 nPos)
 
 SearchResult TextSearch::searchForward( const OUString& searchStr, sal_Int32 startPos, sal_Int32 endPos )
 {
+    osl::MutexGuard g(m_aMutex);
+
     SearchResult sres;
 
     OUString in_str(searchStr);
@@ -322,8 +320,29 @@ SearchResult TextSearch::searchForward( const OUString& searchStr, sal_Int32 sta
     if ( xTranslit.is() )
     {
         // apply normal transliteration (1<->1, 1<->0)
-        css::uno::Sequence<sal_Int32> offset(endPos - startPos);
-        in_str = xTranslit->transliterate( searchStr, startPos, endPos - startPos, offset );
+
+        sal_Int32 nInStartPos = startPos;
+        if (pRegexMatcher && startPos > 0)
+        {
+            // tdf#89665, tdf#75806: An optimization to avoid transliterating the whole string, yet
+            // transliterate enough of the leading text to allow sensible look-behind assertions.
+            // 100 is chosen arbitrarily in the hope that look-behind assertions would largely fit.
+            // See http://userguide.icu-project.org/strings/regexp for look-behind assertion syntax.
+            // When search regex doesn't start with an assertion, 3 is to allow startPos to be in
+            // the middle of a surrogate pair, preceded by another surrogate pair.
+            const sal_Int32 nMaxLeadingLen = aSrchPara.searchString.startsWith("(?") ? 100 : 3;
+            nInStartPos -= std::min(nMaxLeadingLen, startPos);
+        }
+        sal_Int32 nInEndPos = endPos;
+        if (pRegexMatcher && endPos < searchStr.getLength())
+        {
+            // tdf#65038: ditto for look-ahead assertions
+            const sal_Int32 nMaxTrailingLen = aSrchPara.searchString.endsWith(")") ? 100 : 3;
+            nInEndPos += std::min(nMaxTrailingLen, searchStr.getLength() - endPos);
+        }
+
+        css::uno::Sequence<sal_Int32> offset(nInEndPos - nInStartPos);
+        in_str = xTranslit->transliterate(searchStr, nInStartPos, nInEndPos - nInStartPos, offset);
 
         // JP 20.6.2001: also the start and end positions must be corrected!
         sal_Int32 newStartPos =
@@ -332,19 +351,6 @@ SearchResult TextSearch::searchForward( const OUString& searchStr, sal_Int32 sta
         sal_Int32 newEndPos = (endPos < searchStr.getLength())
             ? FindPosInSeq_Impl( offset, endPos )
             : in_str.getLength();
-
-        sal_Int32 nExtraOffset = 0;
-        if (pRegexMatcher && startPos > 0)
-        {
-            // avoid matching ^ here - in_str omits a prefix of the searchStr
-            // this is a really lame way to do it, but ICU only offers
-            // useAnchoringBounds() to disable *both* bounds but what is needed
-            // here is to disable only one bound and respect the other
-            in_str = "X" + in_str;
-            nExtraOffset = 1;
-            newStartPos += nExtraOffset;
-            newEndPos += nExtraOffset;
-        }
 
         sres = (this->*fnForward)( in_str, newStartPos, newEndPos );
 
@@ -357,7 +363,7 @@ SearchResult TextSearch::searchForward( const OUString& searchStr, sal_Int32 sta
             const sal_Int32 nGroups = sres.startOffset.getLength();
             for ( sal_Int32 k = 0; k < nGroups; k++ )
             {
-                const sal_Int32 nStart = sres.startOffset[k] - nExtraOffset;
+                const sal_Int32 nStart = sres.startOffset[k];
                 // Result offsets are negative (-1) if a group expression was
                 // not matched.
                 if (nStart >= 0)
@@ -366,7 +372,7 @@ SearchResult TextSearch::searchForward( const OUString& searchStr, sal_Int32 sta
                 //               the position of the next character - return the
                 //               next position behind the last found character!
                 //               "a b c" find "b" must return 2,3 and not 2,4!!!
-                const sal_Int32 nStop = sres.endOffset[k] - nExtraOffset;
+                const sal_Int32 nStop = sres.endOffset[k];
                 if (nStop >= 0)
                 {
                     if (nStop > 0)
@@ -428,6 +434,8 @@ SearchResult TextSearch::searchForward( const OUString& searchStr, sal_Int32 sta
 
 SearchResult TextSearch::searchBackward( const OUString& searchStr, sal_Int32 startPos, sal_Int32 endPos )
 {
+    osl::MutexGuard g(m_aMutex);
+
     SearchResult sres;
 
     OUString in_str(searchStr);
@@ -555,16 +563,15 @@ bool TextSearch::IsDelimiter( const OUString& rStr, sal_Int32 nPos ) const
 void TextSearch::MakeForwardTab()
 {
     // create the jumptable for the search text
-    if( pJumpTable )
+
+    if( pJumpTable && bIsForwardTab )
     {
-        if( bIsForwardTab )
-            return ;                                        // the jumpTable is ok
-        delete pJumpTable;
+        return; // the jumpTable is ok
     }
     bIsForwardTab = true;
 
     sal_Int32 n, nLen = sSrchStr.getLength();
-    pJumpTable = new TextSearchJumpTable;
+    pJumpTable.reset( new TextSearchJumpTable );
 
     for( n = 0; n < nLen - 1; ++n )
     {
@@ -582,16 +589,14 @@ void TextSearch::MakeForwardTab()
 void TextSearch::MakeForwardTab2()
 {
     // create the jumptable for the search text
-    if( pJumpTable2 )
+    if( pJumpTable2 && bIsForwardTab )
     {
-        if( bIsForwardTab )
-            return ;                                        // the jumpTable is ok
-        delete pJumpTable2;
+        return;        // the jumpTable is ok
     }
     bIsForwardTab = true;
 
     sal_Int32 n, nLen = sSrchStr2.getLength();
-    pJumpTable2 = new TextSearchJumpTable;
+    pJumpTable2.reset( new TextSearchJumpTable );
 
     for( n = 0; n < nLen - 1; ++n )
     {
@@ -609,16 +614,14 @@ void TextSearch::MakeForwardTab2()
 void TextSearch::MakeBackwardTab()
 {
     // create the jumptable for the search text
-    if( pJumpTable )
+    if( pJumpTable && !bIsForwardTab)
     {
-        if( !bIsForwardTab )
-            return ;                                        // the jumpTable is ok
-        delete pJumpTable;
+        return;   // the jumpTable is ok
     }
     bIsForwardTab = false;
 
     sal_Int32 n, nLen = sSrchStr.getLength();
-    pJumpTable = new TextSearchJumpTable;
+    pJumpTable.reset( new TextSearchJumpTable );
 
     for( n = nLen-1; n > 0; --n )
     {
@@ -634,16 +637,14 @@ void TextSearch::MakeBackwardTab()
 void TextSearch::MakeBackwardTab2()
 {
     // create the jumptable for the search text
-    if( pJumpTable2 )
+    if( pJumpTable2 && !bIsForwardTab )
     {
-        if( !bIsForwardTab )
-            return ;                                        // the jumpTable is ok
-        delete pJumpTable2;
+        return;    // the jumpTable is ok
     }
     bIsForwardTab = false;
 
     sal_Int32 n, nLen = sSrchStr2.getLength();
-    pJumpTable2 = new TextSearchJumpTable;
+    pJumpTable2.reset( new TextSearchJumpTable );
 
     for( n = nLen-1; n > 0; --n )
     {
@@ -662,10 +663,10 @@ sal_Int32 TextSearch::GetDiff( const sal_Unicode cChr ) const
     OUString sSearchKey;
 
     if ( bUsePrimarySrchStr ) {
-        pJump = pJumpTable;
+        pJump = pJumpTable.get();
         sSearchKey = sSrchStr;
     } else {
-        pJump = pJumpTable2;
+        pJump = pJumpTable2.get();
         sSearchKey = sSrchStr2;
     }
 
@@ -684,15 +685,15 @@ SearchResult TextSearch::NSrchFrwrd( const OUString& searchStr, sal_Int32 startP
     OUString sSearchKey = bUsePrimarySrchStr ? sSrchStr : sSrchStr2;
 
     sal_Int32 nSuchIdx = searchStr.getLength();
-    sal_Int32 nEnde = endPos;
+    sal_Int32 nEnd = endPos;
     if( !nSuchIdx || !sSearchKey.getLength() || sSearchKey.getLength() > nSuchIdx )
         return aRet;
 
 
-    if( nEnde < sSearchKey.getLength() )  // position inside the search region ?
+    if( nEnd < sSearchKey.getLength() )   // position inside the search region ?
         return aRet;
 
-    nEnde -= sSearchKey.getLength();
+    nEnd -= sSearchKey.getLength();
 
     if (bUsePrimarySrchStr)
       MakeForwardTab();                   // create the jumptable
@@ -700,7 +701,7 @@ SearchResult TextSearch::NSrchFrwrd( const OUString& searchStr, sal_Int32 startP
       MakeForwardTab2();
 
     for (sal_Int32 nCmpIdx = startPos; // start position for the search
-            nCmpIdx <= nEnde;
+            nCmpIdx <= nEnd;
             nCmpIdx += GetDiff( searchStr[nCmpIdx + sSearchKey.getLength()-1]))
     {
         // if the match would be the completed cells, skip it.
@@ -754,7 +755,7 @@ SearchResult TextSearch::NSrchBkwrd( const OUString& searchStr, sal_Int32 startP
     OUString sSearchKey = bUsePrimarySrchStr ? sSrchStr : sSrchStr2;
 
     sal_Int32 nSuchIdx = searchStr.getLength();
-    sal_Int32 nEnde = endPos;
+    sal_Int32 nEnd = endPos;
     if( nSuchIdx == 0 || sSearchKey.isEmpty() || sSearchKey.getLength() > nSuchIdx)
         return aRet;
 
@@ -763,14 +764,14 @@ SearchResult TextSearch::NSrchBkwrd( const OUString& searchStr, sal_Int32 startP
     else
         MakeBackwardTab2();
 
-    if( nEnde == nSuchIdx )                 // end position for the search
-        nEnde = sSearchKey.getLength();
+    if( nEnd == nSuchIdx )                  // end position for the search
+        nEnd = sSearchKey.getLength();
     else
-        nEnde += sSearchKey.getLength();
+        nEnd += sSearchKey.getLength();
 
     sal_Int32 nCmpIdx = startPos;          // start position for the search
 
-    while (nCmpIdx >= nEnde)
+    while (nCmpIdx >= nEnd)
     {
         // if the match would be the completed cells, skip it.
         if ( (!checkCTLStart || isCellStart( searchStr, nCmpIdx -
@@ -829,7 +830,7 @@ SearchResult TextSearch::NSrchBkwrd( const OUString& searchStr, sal_Int32 startP
 
 void TextSearch::RESrchPrepare( const css::util::SearchOptions2& rOptions)
 {
-    TransliterationFlags transliterateFlags = (TransliterationFlags)rOptions.transliterateFlags;
+    TransliterationFlags transliterateFlags = static_cast<TransliterationFlags>(rOptions.transliterateFlags);
     // select the transliterated pattern string
     const OUString& rPatternStr =
         (isSimpleTrans(transliterateFlags) ? sSrchStr
@@ -855,37 +856,36 @@ void TextSearch::RESrchPrepare( const css::util::SearchOptions2& rOptions)
     // - by replacing \< with "word-break followed by a look-ahead word-char"
     static const IcuUniString aChevronPatternB( "\\\\<", -1, IcuUniString::kInvariant);
     static const IcuUniString aChevronReplaceB( "\\\\b(?=\\\\w)", -1, IcuUniString::kInvariant);
-    static RegexMatcher aChevronMatcherB( aChevronPatternB, 0, nIcuErr);
+    static icu::RegexMatcher aChevronMatcherB( aChevronPatternB, 0, nIcuErr);
     aChevronMatcherB.reset( aIcuSearchPatStr);
     aIcuSearchPatStr = aChevronMatcherB.replaceAll( aChevronReplaceB, nIcuErr);
     aChevronMatcherB.reset();
     // - by replacing \> with "look-behind word-char followed by a word-break"
     static const IcuUniString aChevronPatternE( "\\\\>", -1, IcuUniString::kInvariant);
     static const IcuUniString aChevronReplaceE( "(?<=\\\\w)\\\\b", -1, IcuUniString::kInvariant);
-    static RegexMatcher aChevronMatcherE( aChevronPatternE, 0, nIcuErr);
+    static icu::RegexMatcher aChevronMatcherE( aChevronPatternE, 0, nIcuErr);
     aChevronMatcherE.reset( aIcuSearchPatStr);
     aIcuSearchPatStr = aChevronMatcherE.replaceAll( aChevronReplaceE, nIcuErr);
     aChevronMatcherE.reset();
 #endif
-    pRegexMatcher = new RegexMatcher( aIcuSearchPatStr, nIcuSearchFlags, nIcuErr);
+    pRegexMatcher.reset( new icu::RegexMatcher( aIcuSearchPatStr, nIcuSearchFlags, nIcuErr) );
     if (nIcuErr)
     {
         SAL_INFO( "i18npool", "TextSearch::RESrchPrepare UErrorCode " << nIcuErr);
-        delete pRegexMatcher;
-        pRegexMatcher = nullptr;
+        pRegexMatcher.reset();
     }
     else
     {
         // Pathological patterns may result in exponential run time making the
         // application appear to be frozen. Limit that. Documentation for this
         // call says
-        // https://ssl.icu-project.org/apiref/icu4c/classicu_1_1RegexMatcher.html#a6ebcfcab4fe6a38678c0291643a03a00
+        // https://unicode-org.github.io/icu-docs/apidoc/released/icu4c/classicu_1_1RegexMatcher.html#a6ebcfcab4fe6a38678c0291643a03a00
         // "The units of the limit are steps of the match engine.
         // Correspondence with actual processor time will depend on the speed
         // of the processor and the details of the specific pattern, but will
         // typically be on the order of milliseconds."
         // Just what is a good value? 42 is always an answer ... the 23 enigma
-        // as well.. which on the dev's machine is roughly 50 seconds with the
+        // as well... which on the dev's machine is roughly 50 seconds with the
         // pattern of fdo#70627.
         /* TODO: make this a configuration settable value and possibly take
          * complexity of expression into account and maybe even length of text
@@ -896,9 +896,15 @@ void TextSearch::RESrchPrepare( const css::util::SearchOptions2& rOptions)
 }
 
 
-static bool lcl_findRegex( RegexMatcher * pRegexMatcher, sal_Int32 nStartPos, UErrorCode & rIcuErr )
+static bool lcl_findRegex(std::unique_ptr<icu::RegexMatcher> const& pRegexMatcher,
+                          sal_Int32 nStartPos, sal_Int32 nEndPos, UErrorCode& rIcuErr)
 {
-    if (!pRegexMatcher->find( nStartPos, rIcuErr))
+    pRegexMatcher->region(nStartPos, nEndPos, rIcuErr);
+    pRegexMatcher->useAnchoringBounds(false); // use whole text's anchoring bounds, not region's
+    pRegexMatcher->useTransparentBounds(true); // take text outside of the region into account for
+                                               // look-ahead/behind assertions
+
+    if (!pRegexMatcher->find(rIcuErr))
     {
         /* TODO: future versions could pass the UErrorCode or translations
          * thereof to the caller, for example to inform the user of
@@ -924,12 +930,13 @@ SearchResult TextSearch::RESrchFrwrd( const OUString& searchStr,
 
     // use the ICU RegexMatcher to find the matches
     UErrorCode nIcuErr = U_ZERO_ERROR;
-    const IcuUniString aSearchTargetStr( reinterpret_cast<const UChar*>(searchStr.getStr()), endPos);
+    const IcuUniString aSearchTargetStr(false, reinterpret_cast<const UChar*>(searchStr.getStr()),
+                                        searchStr.getLength());
     pRegexMatcher->reset( aSearchTargetStr);
     // search until there is a valid match
     for(;;)
     {
-        if (!lcl_findRegex( pRegexMatcher, startPos, nIcuErr))
+        if (!lcl_findRegex( pRegexMatcher, startPos, endPos, nIcuErr))
             return aRet;
 
         // #i118887# ignore zero-length matches e.g. "a*" in "bc"
@@ -978,9 +985,10 @@ SearchResult TextSearch::RESrchBkwrd( const OUString& searchStr,
     // TODO: use ICU's backward searching once it becomes available
     //       as its replacement using forward search is not as good as the real thing
     UErrorCode nIcuErr = U_ZERO_ERROR;
-    const IcuUniString aSearchTargetStr( reinterpret_cast<const UChar*>(searchStr.getStr()), startPos);
+    const IcuUniString aSearchTargetStr(false, reinterpret_cast<const UChar*>(searchStr.getStr()),
+                                        searchStr.getLength());
     pRegexMatcher->reset( aSearchTargetStr);
-    if (!lcl_findRegex( pRegexMatcher, endPos, nIcuErr))
+    if (!lcl_findRegex( pRegexMatcher, endPos, startPos, nIcuErr))
         return aRet;
 
     // find the last match
@@ -1002,7 +1010,7 @@ SearchResult TextSearch::RESrchBkwrd( const OUString& searchStr,
         bFirst = false;
         if( nFoundEnd == nLastPos)
             ++nFoundEnd;
-    } while( lcl_findRegex( pRegexMatcher, nFoundEnd, nIcuErr));
+    } while( lcl_findRegex( pRegexMatcher, nFoundEnd, startPos, nIcuErr));
 
     // Ignore all zero-length matches except "$" anchor on first match.
     if (nGoodPos == nGoodEnd)
@@ -1014,7 +1022,7 @@ SearchResult TextSearch::RESrchBkwrd( const OUString& searchStr,
     }
 
     // find last match again to get its details
-    lcl_findRegex( pRegexMatcher, nGoodPos, nIcuErr);
+    lcl_findRegex( pRegexMatcher, nGoodPos, startPos, nIcuErr);
 
     // fill in the details of the last match
     const int nGroupCount = pRegexMatcher->groupCount();
@@ -1054,7 +1062,7 @@ SearchResult TextSearch::ApproxSrchFrwrd( const OUString& searchStr,
         if( aWBnd.startPos >= endPos )
             break;
         nStt = aWBnd.startPos < startPos ? startPos : aWBnd.startPos;
-        nEnd = aWBnd.endPos > endPos ? endPos : aWBnd.endPos;
+        nEnd = std::min(aWBnd.endPos, endPos);
 
         if( nStt < nEnd &&
                 pWLD->WLD( searchStr.getStr() + nStt, nEnd - nStt ) <= nLimit )
@@ -1098,7 +1106,7 @@ SearchResult TextSearch::ApproxSrchBkwrd( const OUString& searchStr,
         if( aWBnd.endPos <= endPos )
             break;
         nStt = aWBnd.startPos < endPos ? endPos : aWBnd.startPos;
-        nEnd = aWBnd.endPos > startPos ? startPos : aWBnd.endPos;
+        nEnd = std::min(aWBnd.endPos, startPos);
 
         if( nStt < nEnd &&
                 pWLD->WLD( searchStr.getStr() + nStt, nEnd - nStt ) <= nLimit )
@@ -1142,7 +1150,7 @@ SearchResult TextSearch::WildcardSrchFrwrd( const OUString& searchStr, sal_Int32
 
     // Forward nStartPos inclusive, nEndPos exclusive, but allow for empty
     // string match with [0,0).
-    if (nStartPos < 0 || nEndPos > nStringLen || nEndPos < nStartPos || nStartPos > nStringLen ||
+    if (nStartPos < 0 || nEndPos > nStringLen || nEndPos < nStartPos ||
             (nStartPos == nStringLen && (nStringLen != 0 || nStartPos != nEndPos)))
         return aRes;
 
@@ -1314,7 +1322,7 @@ SearchResult TextSearch::WildcardSrchBkwrd( const OUString& searchStr, sal_Int32
 
     // Backward nStartPos exclusive, nEndPos inclusive, but allow for empty
     // string match with (0,0].
-    if (nStartPos > nStringLen || nEndPos < 0 || nStartPos < nEndPos || nEndPos > nStringLen ||
+    if (nStartPos > nStringLen || nEndPos < 0 || nStartPos < nEndPos ||
             (nEndPos == nStringLen && (nStringLen != 0 || nStartPos != nEndPos)))
         return aRes;
 
@@ -1366,7 +1374,7 @@ SearchResult TextSearch::WildcardSrchBkwrd( const OUString& searchStr, sal_Int32
                     {
                         // Copy the escape character code units first in the
                         // unlikely case that it would not be of BMP.
-                        assert(nIndex - nOld == 2);  // it's UTF-16, so..
+                        assert(nIndex - nOld == 2);  // it's UTF-16, so...
                         sal_Unicode buf[2];
                         buf[0] = rPattern[nOld];
                         buf[1] = rPattern[nOld+1];
@@ -1532,25 +1540,10 @@ SearchResult TextSearch::WildcardSrchBkwrd( const OUString& searchStr, sal_Int32
 }
 
 
-static const sal_Char cSearchImpl[] = "com.sun.star.util.TextSearch_i18n";
-
-static uno::Sequence< OUString > getServiceName_Static()
-{
-    uno::Sequence< OUString > aRet(2);
-    aRet[0] = "com.sun.star.util.TextSearch";
-    aRet[1] = "com.sun.star.util.TextSearch2";
-    return aRet;
-}
-
-static OUString getImplementationName_Static()
-{
-    return OUString( cSearchImpl );
-}
-
 OUString SAL_CALL
 TextSearch::getImplementationName()
 {
-    return getImplementationName_Static();
+    return "com.sun.star.util.TextSearch_i18n";
 }
 
 sal_Bool SAL_CALL TextSearch::supportsService(const OUString& rServiceName)
@@ -1561,53 +1554,14 @@ sal_Bool SAL_CALL TextSearch::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 TextSearch::getSupportedServiceNames()
 {
-    Sequence< OUString > aRet { getServiceName_Static() };
-    return aRet;
+    return { "com.sun.star.util.TextSearch", "com.sun.star.util.TextSearch2" };
 }
 
-css::uno::Reference< css::uno::XInterface >
-SAL_CALL TextSearch_CreateInstance(
-        const css::uno::Reference<
-        css::lang::XMultiServiceFactory >& rxMSF )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+i18npool_TextSearch_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
 {
-    return css::uno::Reference<
-        css::uno::XInterface >(
-                static_cast<cppu::OWeakObject*>(new TextSearch(
-                        comphelper::getComponentContext( rxMSF ) )) );
+    return cppu::acquire(new TextSearch(context));
 }
-
-extern "C"
-{
-SAL_DLLPUBLIC_EXPORT void* SAL_CALL
-i18nsearch_component_getFactory( const sal_Char* sImplementationName,
-                                 void* _pServiceManager,
-                                 SAL_UNUSED_PARAMETER void* )
-{
-    void* pRet = nullptr;
-
-    css::lang::XMultiServiceFactory* pServiceManager =
-        static_cast< css::lang::XMultiServiceFactory* >
-            ( _pServiceManager );
-    css::uno::Reference<
-            css::lang::XSingleServiceFactory > xFactory;
-
-    if ( 0 == rtl_str_compare( sImplementationName, cSearchImpl) )
-    {
-        css::uno::Sequence< OUString > aServiceNames { getServiceName_Static() };
-        xFactory = ::cppu::createSingleFactory(
-                pServiceManager, getImplementationName_Static(),
-                &TextSearch_CreateInstance, aServiceNames );
-    }
-
-    if ( xFactory.is() )
-    {
-        xFactory->acquire();
-        pRet = xFactory.get();
-    }
-
-    return pRet;
-}
-
-} // extern "C"
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

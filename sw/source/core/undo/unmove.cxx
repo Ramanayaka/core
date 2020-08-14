@@ -19,7 +19,6 @@
 
 #include <UndoSplitMove.hxx>
 #include <doc.hxx>
-#include <IDocumentUndoRedo.hxx>
 #include <pam.hxx>
 #include <swundo.hxx>
 #include <ndtxt.hxx>
@@ -30,95 +29,94 @@
 SwUndoMove::SwUndoMove( const SwPaM& rRange, const SwPosition& rMvPos )
     : SwUndo( SwUndoId::MOVE, rRange.GetDoc() )
     , SwUndRng( rRange )
-    , nDestSttNode(0)
-    , nDestEndNode(0)
-    , nInsPosNode(0)
-    , nMvDestNode(rMvPos.nNode.GetIndex())
-    , nDestSttContent(0)
-    , nDestEndContent(0)
-    , nInsPosContent(0)
-    , nMvDestContent(rMvPos.nContent.GetIndex())
-    , bJoinNext(false)
-    , bJoinPrev(false)
-    , bMoveRange(false)
-    , bMoveRedlines(false)
+    , m_nDestStartNode(0)
+    , m_nDestEndNode(0)
+    , m_nInsPosNode(0)
+    , m_nMoveDestNode(rMvPos.nNode.GetIndex())
+    , m_nDestStartContent(0)
+    , m_nDestEndContent(0)
+    , m_nInsPosContent(0)
+    , m_nMoveDestContent(rMvPos.nContent.GetIndex())
+    , m_bJoinNext(false)
+    , m_bMoveRange(false)
+    , m_bMoveRedlines(false)
 {
     // get StartNode from footnotes before delete!
     SwDoc* pDoc = rRange.GetDoc();
-    SwTextNode* pTextNd = pDoc->GetNodes()[ nSttNode ]->GetTextNode();
-    SwTextNode* pEndTextNd = pDoc->GetNodes()[ nEndNode ]->GetTextNode();
+    SwTextNode* pTextNd = pDoc->GetNodes()[ m_nSttNode ]->GetTextNode();
+    SwTextNode* pEndTextNd = pDoc->GetNodes()[ m_nEndNode ]->GetTextNode();
 
-    pHistory.reset( new SwHistory );
+    m_pHistory.reset( new SwHistory );
 
     if( pTextNd )
     {
-        pHistory->Add( pTextNd->GetTextColl(), nSttNode, SwNodeType::Text );
+        m_pHistory->Add( pTextNd->GetTextColl(), m_nSttNode, SwNodeType::Text );
         if ( pTextNd->GetpSwpHints() )
         {
-            pHistory->CopyAttr( pTextNd->GetpSwpHints(), nSttNode,
+            m_pHistory->CopyAttr( pTextNd->GetpSwpHints(), m_nSttNode,
                                 0, pTextNd->GetText().getLength(), false );
         }
         if( pTextNd->HasSwAttrSet() )
-            pHistory->CopyFormatAttr( *pTextNd->GetpSwAttrSet(), nSttNode );
+            m_pHistory->CopyFormatAttr( *pTextNd->GetpSwAttrSet(), m_nSttNode );
     }
     if( pEndTextNd && pEndTextNd != pTextNd )
     {
-        pHistory->Add( pEndTextNd->GetTextColl(), nEndNode, SwNodeType::Text );
+        m_pHistory->Add( pEndTextNd->GetTextColl(), m_nEndNode, SwNodeType::Text );
         if ( pEndTextNd->GetpSwpHints() )
         {
-            pHistory->CopyAttr( pEndTextNd->GetpSwpHints(), nEndNode,
+            m_pHistory->CopyAttr( pEndTextNd->GetpSwpHints(), m_nEndNode,
                                 0, pEndTextNd->GetText().getLength(), false );
         }
         if( pEndTextNd->HasSwAttrSet() )
-            pHistory->CopyFormatAttr( *pEndTextNd->GetpSwAttrSet(), nEndNode );
+            m_pHistory->CopyFormatAttr( *pEndTextNd->GetpSwAttrSet(), m_nEndNode );
     }
 
     pTextNd = rMvPos.nNode.GetNode().GetTextNode();
     if (nullptr != pTextNd)
     {
-        pHistory->Add( pTextNd->GetTextColl(), nMvDestNode, SwNodeType::Text );
+        m_pHistory->Add( pTextNd->GetTextColl(), m_nMoveDestNode, SwNodeType::Text );
         if ( pTextNd->GetpSwpHints() )
         {
-            pHistory->CopyAttr( pTextNd->GetpSwpHints(), nMvDestNode,
+            m_pHistory->CopyAttr( pTextNd->GetpSwpHints(), m_nMoveDestNode,
                                 0, pTextNd->GetText().getLength(), false );
         }
         if( pTextNd->HasSwAttrSet() )
-            pHistory->CopyFormatAttr( *pTextNd->GetpSwAttrSet(), nMvDestNode );
+            m_pHistory->CopyFormatAttr( *pTextNd->GetpSwAttrSet(), m_nMoveDestNode );
     }
 
-    nFootnoteStt = pHistory->Count();
+    m_nFootnoteStart = m_pHistory->Count();
     DelFootnote( rRange );
 
-    if( pHistory && !pHistory->Count() )
-        pHistory.reset();
+    if( m_pHistory && !m_pHistory->Count() )
+        m_pHistory.reset();
 }
 
 SwUndoMove::SwUndoMove( SwDoc* pDoc, const SwNodeRange& rRg,
                         const SwNodeIndex& rMvPos )
     : SwUndo(SwUndoId::MOVE, pDoc)
-    , nDestSttNode(0)
-    , nDestEndNode(0)
-    , nInsPosNode(0)
-    , nMvDestNode(rMvPos.GetIndex())
-    , nDestSttContent(0)
-    , nDestEndContent(0)
-    , nInsPosContent(0)
-    , bMoveRedlines(false)
+    , m_nDestStartNode(0)
+    , m_nDestEndNode(0)
+    , m_nInsPosNode(0)
+    , m_nMoveDestNode(rMvPos.GetIndex())
+    , m_nDestStartContent(0)
+    , m_nDestEndContent(0)
+    , m_nInsPosContent(0)
+    , m_bMoveRedlines(false)
 {
-    bMoveRange = true;
-    bJoinNext = bJoinPrev = false;
+    m_bMoveRange = true;
+    m_bJoinNext = false;
 
-    nSttContent = nEndContent = nMvDestContent = COMPLETE_STRING;
+    m_nSttContent = m_nEndContent = m_nMoveDestContent = COMPLETE_STRING;
 
-    nSttNode = rRg.aStart.GetIndex();
-    nEndNode = rRg.aEnd.GetIndex();
+    m_nSttNode = rRg.aStart.GetIndex();
+    m_nEndNode = rRg.aEnd.GetIndex();
 
 //  DelFootnote( rRange );
 // FIXME: duplication of the method body of DelFootnote below
 
     // is the current move from ContentArea into the special section?
     sal_uLong nContentStt = pDoc->GetNodes().GetEndOfAutotext().GetIndex();
-    if( nMvDestNode < nContentStt && rRg.aStart.GetIndex() > nContentStt )
+    if( m_nMoveDestNode < nContentStt && rRg.aStart.GetIndex() > nContentStt )
     {
         // delete all footnotes since they are undesired there
         SwPosition aPtPos( rRg.aEnd );
@@ -126,61 +124,33 @@ SwUndoMove::SwUndoMove( SwDoc* pDoc, const SwNodeRange& rRg,
         if( pCNd )
             aPtPos.nContent.Assign( pCNd, pCNd->Len() );
         SwPosition aMkPos( rRg.aStart );
-        if( nullptr != ( pCNd = aMkPos.nNode.GetNode().GetContentNode() ))
+        pCNd = aMkPos.nNode.GetNode().GetContentNode();
+        if( nullptr != pCNd )
             aMkPos.nContent.Assign( pCNd, 0 );
 
         DelContentIndex( aMkPos, aPtPos, DelContentType::Ftn );
 
-        if( pHistory && !pHistory->Count() )
-            pHistory.reset();
+        if( m_pHistory && !m_pHistory->Count() )
+            m_pHistory.reset();
     }
 
-    nFootnoteStt = 0;
-}
-
-void SwUndoMove::SetDestRange( const SwPaM& rRange,
-                                const SwPosition& rInsPos,
-                                bool bJoin, bool bCorrPam )
-{
-    const SwPosition *pStt = rRange.Start(),
-                    *pEnd = rRange.GetPoint() == pStt
-                        ? rRange.GetMark()
-                        : rRange.GetPoint();
-
-    nDestSttNode    = pStt->nNode.GetIndex();
-    nDestSttContent   = pStt->nContent.GetIndex();
-    nDestEndNode    = pEnd->nNode.GetIndex();
-    nDestEndContent   = pEnd->nContent.GetIndex();
-
-    nInsPosNode     = rInsPos.nNode.GetIndex();
-    nInsPosContent    = rInsPos.nContent.GetIndex();
-
-    if( bCorrPam )
-    {
-        nDestSttNode--;
-        nDestEndNode--;
-    }
-
-    bJoinNext = nDestSttNode != nDestEndNode &&
-                pStt->nNode.GetNode().GetTextNode() &&
-                pEnd->nNode.GetNode().GetTextNode();
-    bJoinPrev = bJoin;
+    m_nFootnoteStart = 0;
 }
 
 void SwUndoMove::SetDestRange( const SwNodeIndex& rStt,
                                 const SwNodeIndex& rEnd,
                                 const SwNodeIndex& rInsPos )
 {
-    nDestSttNode = rStt.GetIndex();
-    nDestEndNode = rEnd.GetIndex();
-    if( nDestSttNode > nDestEndNode )
+    m_nDestStartNode = rStt.GetIndex();
+    m_nDestEndNode = rEnd.GetIndex();
+    if( m_nDestStartNode > m_nDestEndNode )
     {
-        nDestSttNode = nDestEndNode;
-        nDestEndNode = rStt.GetIndex();
+        m_nDestStartNode = m_nDestEndNode;
+        m_nDestEndNode = rStt.GetIndex();
     }
-    nInsPosNode  = rInsPos.GetIndex();
+    m_nInsPosNode  = rInsPos.GetIndex();
 
-    nDestSttContent = nDestEndContent = nInsPosContent = COMPLETE_STRING;
+    m_nDestStartContent = m_nDestEndContent = m_nInsPosContent = COMPLETE_STRING;
 }
 
 void SwUndoMove::UndoImpl(::sw::UndoRedoContext & rContext)
@@ -190,14 +160,14 @@ void SwUndoMove::UndoImpl(::sw::UndoRedoContext & rContext)
     // Block so that we can jump out of it
     do {
         // create index position and section based on the existing values
-        SwNodeIndex aIdx( pDoc->GetNodes(), nDestSttNode );
+        SwNodeIndex aIdx( pDoc->GetNodes(), m_nDestStartNode );
 
-        if( bMoveRange )
+        if( m_bMoveRange )
         {
             // only a move with SwRange
             SwNodeRange aRg( aIdx, aIdx );
-            aRg.aEnd = nDestEndNode;
-            aIdx = nInsPosNode;
+            aRg.aEnd = m_nDestEndNode;
+            aIdx = m_nInsPosNode;
             bool bSuccess = pDoc->getIDocumentContentOperations().MoveNodeRange( aRg, aIdx,
                     SwMoveFlags::DEFAULT );
             if (!bSuccess)
@@ -205,17 +175,17 @@ void SwUndoMove::UndoImpl(::sw::UndoRedoContext & rContext)
         }
         else
         {
-            SwPaM aPam( aIdx.GetNode(), nDestSttContent,
-                        *pDoc->GetNodes()[ nDestEndNode ], nDestEndContent );
+            SwPaM aPam( aIdx.GetNode(), m_nDestStartContent,
+                        *pDoc->GetNodes()[ m_nDestEndNode ], m_nDestEndContent );
 
             // #i17764# if redlines are to be moved, we may not remove them
             // before pDoc->Move gets a chance to handle them
-            if( ! bMoveRedlines )
+            if( ! m_bMoveRedlines )
                 RemoveIdxFromRange( aPam, false );
 
-            SwPosition aPos( *pDoc->GetNodes()[ nInsPosNode] );
+            SwPosition aPos( *pDoc->GetNodes()[ m_nInsPosNode] );
             SwContentNode* pCNd = aPos.nNode.GetNode().GetContentNode();
-            aPos.nContent.Assign( pCNd, nInsPosContent );
+            aPos.nContent.Assign( pCNd, m_nInsPosContent );
 
             if( pCNd->HasSwAttrSet() )
                 pCNd->ResetAllAttr();
@@ -224,7 +194,7 @@ void SwUndoMove::UndoImpl(::sw::UndoRedoContext & rContext)
                 static_cast<SwTextNode*>(pCNd)->ClearSwpHintsArr( false );
 
             // first delete all attributes at InsertPos
-            const bool bSuccess = pDoc->getIDocumentContentOperations().MoveRange( aPam, aPos, (bMoveRedlines)
+            const bool bSuccess = pDoc->getIDocumentContentOperations().MoveRange( aPam, aPos, m_bMoveRedlines
                         ? SwMoveFlags::REDLINES
                         : SwMoveFlags::DEFAULT );
             if (!bSuccess)
@@ -238,7 +208,7 @@ void SwUndoMove::UndoImpl(::sw::UndoRedoContext & rContext)
         }
 
         SwTextNode* pTextNd = aIdx.GetNode().GetTextNode();
-        if( bJoinNext )
+        if( m_bJoinNext )
         {
             {
                 RemoveIdxRel( aIdx.GetIndex() + 1, SwPosition( aIdx,
@@ -248,29 +218,18 @@ void SwUndoMove::UndoImpl(::sw::UndoRedoContext & rContext)
             pTextNd->JoinNext();
         }
 
-        if( bJoinPrev && pTextNd->CanJoinPrev( &aIdx ) )
-        {
-            // Are there any Pams in the next TextNode?
-            pTextNd = aIdx.GetNode().GetTextNode();
-            {
-                RemoveIdxRel( aIdx.GetIndex() + 1, SwPosition( aIdx,
-                        SwIndex( pTextNd, pTextNd->GetText().getLength())));
-            }
-            pTextNd->JoinNext();
-        }
-
     } while( false );
 
-    if( pHistory )
+    if( m_pHistory )
     {
-        if( nFootnoteStt != pHistory->Count() )
-            pHistory->Rollback( pDoc, nFootnoteStt );
-        pHistory->TmpRollback( pDoc, 0 );
-        pHistory->SetTmpEnd( pHistory->Count() );
+        if( m_nFootnoteStart != m_pHistory->Count() )
+            m_pHistory->Rollback( pDoc, m_nFootnoteStart );
+        m_pHistory->TmpRollback( pDoc, 0 );
+        m_pHistory->SetTmpEnd( m_pHistory->Count() );
     }
 
     // set the cursor onto Undo area
-    if( !bMoveRange )
+    if( !m_bMoveRange )
     {
         AddUndoRedoPaM(rContext);
     }
@@ -282,13 +241,13 @@ void SwUndoMove::RedoImpl(::sw::UndoRedoContext & rContext)
     SwDoc& rDoc = rContext.GetDoc();
 
     SwNodes& rNds = rDoc.GetNodes();
-    SwNodeIndex aIdx( rNds, nMvDestNode );
+    SwNodeIndex aIdx( rNds, m_nMoveDestNode );
 
-    if( bMoveRange )
+    if( m_bMoveRange )
     {
         // only a move with SwRange
-        SwNodeRange aRg( rNds, nSttNode, rNds, nEndNode );
-        rDoc.getIDocumentContentOperations().MoveNodeRange( aRg, aIdx, (bMoveRedlines)
+        SwNodeRange aRg( rNds, m_nSttNode, rNds, m_nEndNode );
+        rDoc.getIDocumentContentOperations().MoveNodeRange( aRg, aIdx, m_bMoveRedlines
                 ? SwMoveFlags::REDLINES
                 : SwMoveFlags::DEFAULT );
     }
@@ -297,7 +256,7 @@ void SwUndoMove::RedoImpl(::sw::UndoRedoContext & rContext)
         SwPaM aPam(*rPam.GetPoint());
         SetPaM( aPam );
         SwPosition aMvPos( aIdx, SwIndex( aIdx.GetNode().GetContentNode(),
-                                        nMvDestContent ));
+                                        m_nMoveDestContent ));
 
         DelFootnote( aPam );
         RemoveIdxFromRange( aPam, false );
@@ -309,7 +268,7 @@ void SwUndoMove::RedoImpl(::sw::UndoRedoContext & rContext)
         rDoc.getIDocumentContentOperations().MoveRange( aPam, aMvPos,
             SwMoveFlags::DEFAULT );
 
-        if( nSttNode != nEndNode && bJoinText )
+        if( m_nSttNode != m_nEndNode && bJoinText )
         {
             ++aIdx;
             SwTextNode * pTextNd = aIdx.GetNode().GetTextNode();
@@ -333,16 +292,16 @@ void SwUndoMove::DelFootnote( const SwPaM& rRange )
     // is the current move from ContentArea into the special section?
     SwDoc* pDoc = rRange.GetDoc();
     sal_uLong nContentStt = pDoc->GetNodes().GetEndOfAutotext().GetIndex();
-    if( nMvDestNode < nContentStt &&
+    if( m_nMoveDestNode < nContentStt &&
         rRange.GetPoint()->nNode.GetIndex() >= nContentStt )
     {
         // delete all footnotes since they are undesired there
         DelContentIndex( *rRange.GetMark(), *rRange.GetPoint(),
                             DelContentType::Ftn );
 
-        if( pHistory && !pHistory->Count() )
+        if( m_pHistory && !m_pHistory->Count() )
         {
-            pHistory.reset();
+            m_pHistory.reset();
         }
     }
 }

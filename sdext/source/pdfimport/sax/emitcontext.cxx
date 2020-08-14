@@ -18,15 +18,14 @@
  */
 
 
-#include "saxemitter.hxx"
+#include <saxemitter.hxx>
 #include "emitcontext.hxx"
 #include "saxattrlist.hxx"
 
 #include <rtl/strbuf.hxx>
 #include <osl/diagnose.h>
-#include <cppuhelper/exc_hlp.hxx>
 #include <com/sun/star/xml/sax/SAXException.hpp>
-#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
+#include <xmloff/xmlimp.hxx>
 
 #if OSL_DEBUG_LEVEL > 0
 #include <osl/file.hxx>
@@ -43,6 +42,8 @@ SaxEmitter::SaxEmitter( const uno::Reference< xml::sax::XDocumentHandler >& xDoc
     m_xDocHdl( xDocHdl )
 {
     OSL_PRECOND(m_xDocHdl.is(), "SaxEmitter(): invalid doc handler");
+    if (SvXMLImport *pFastHandler = dynamic_cast<SvXMLImport*>(m_xDocHdl.get()))
+        m_xDocHdl.set( new SvXMLLegacyToFastDocHandler( pFastHandler ) );
     try
     {
         m_xDocHdl->startDocument();
@@ -57,10 +58,7 @@ SaxEmitter::SaxEmitter( const uno::Reference< xml::sax::XDocumentHandler >& xDoc
         OUString aStr( OStringToOUString( pDir, RTL_TEXTENCODING_UTF8 ) );
         OUString aFileURL;
         osl_getFileURLFromSystemPath( aStr.pData, &aFileURL.pData );
-        OUStringBuffer aBuf( 256 );
-        aBuf.append( aFileURL );
-        aBuf.append( "/pdfimport.xml" );
-        pStream = new osl::File( aBuf.makeStringAndClear() );
+        pStream = new osl::File( aFileURL + "/pdfimport.xml" );
         if( pStream->open( osl_File_OpenFlag_Write | osl_File_OpenFlag_Create ) )
         {
             pStream->open( osl_File_OpenFlag_Write );
@@ -104,27 +102,27 @@ void SaxEmitter::beginTag( const char* pTag, const PropertyMap& rProperties )
     {
     }
 #if OSL_DEBUG_LEVEL > 0
-    if( pStream )
-    {
-        sal_uInt64 nWritten = 0;
-        for( int i = 0; i < nIndent; i++ )
-            pStream->write( "    ", 4, nWritten );
+    if( !pStream )
+        return;
 
-        OStringBuffer aBuf( 1024 );
-        aBuf.append( '<' );
-        aBuf.append( pTag );
-        for( PropertyMap::const_iterator it = rProperties.begin(); it != rProperties.end(); ++it )
-        {
-            aBuf.append( ' ' );
-            aBuf.append( OUStringToOString( it->first, RTL_TEXTENCODING_UTF8 ) );
-            aBuf.append( "=\"" );
-            aBuf.append( OUStringToOString( it->second, RTL_TEXTENCODING_UTF8 ) );
-            aBuf.append( "\"" );
-        }
-        aBuf.append( ">\n" );
-        pStream->write( aBuf.getStr(), aBuf.getLength(), nWritten );
-        nIndent++;
+    sal_uInt64 nWritten = 0;
+    for( int i = 0; i < nIndent; i++ )
+        pStream->write( "    ", 4, nWritten );
+
+    OStringBuffer aBuf( 1024 );
+    aBuf.append( '<' );
+    aBuf.append( pTag );
+    for( const auto& rProperty : rProperties )
+    {
+        aBuf.append( ' ' );
+        aBuf.append( OUStringToOString( rProperty.first, RTL_TEXTENCODING_UTF8 ) );
+        aBuf.append( "=\"" );
+        aBuf.append( OUStringToOString( rProperty.second, RTL_TEXTENCODING_UTF8 ) );
+        aBuf.append( "\"" );
     }
+    aBuf.append( ">\n" );
+    pStream->write( aBuf.getStr(), aBuf.getLength(), nWritten );
+    nIndent++;
 #endif
 }
 
@@ -158,25 +156,22 @@ void SaxEmitter::endTag( const char* pTag )
     {
     }
 #if OSL_DEBUG_LEVEL > 0
-    if( pStream )
-    {
-        sal_uInt64 nWritten = 0;
-        for( int i = 0; i < nIndent; i++ )
-            pStream->write( "    ", 4, nWritten );
+    if( !pStream )
+        return;
 
-        OStringBuffer aBuf( 1024 );
-        aBuf.append( "</" );
-        aBuf.append( pTag );
-        aBuf.append( ">\n" );
-        pStream->write( aBuf.getStr(), aBuf.getLength(), nWritten );
-        nIndent--;
-    }
+    sal_uInt64 nWritten = 0;
+    for( int i = 0; i < nIndent; i++ )
+        pStream->write( "    ", 4, nWritten );
+
+    OString aBuf = "</" + rtl::OStringView(pTag) + ">\n";
+    pStream->write( aBuf.getStr(), aBuf.getLength(), nWritten );
+    nIndent--;
 #endif
 }
 
 XmlEmitterSharedPtr createSaxEmitter( const uno::Reference< xml::sax::XDocumentHandler >& xDocHdl )
 {
-    return XmlEmitterSharedPtr(new SaxEmitter(xDocHdl));
+    return std::make_shared<SaxEmitter>(xDocHdl);
 }
 
 }

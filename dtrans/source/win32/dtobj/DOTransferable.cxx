@@ -20,10 +20,11 @@
 #include <sal/types.h>
 #include <rtl/process.h>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 #include "DOTransferable.hxx"
 #include "../misc/ImplHelper.hxx"
-#include "WinClip.hxx"
+#include <WinClip.hxx>
 #include "DTransHelper.hxx"
 #include "TxtCnvtHlp.hxx"
 #include "MimeAttrib.hxx"
@@ -34,7 +35,6 @@
 #include <com/sun/star/datatransfer/UnsupportedFlavorException.hpp>
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <comphelper/processfactory.hxx>
 
 using namespace std;
 using namespace osl;
@@ -50,7 +50,6 @@ namespace
     const Type CPPUTYPE_SEQINT8  = cppu::UnoType<Sequence< sal_Int8 >>::get();
     const Type CPPUTYPE_OUSTRING = cppu::UnoType<OUString>::get();
 
-    inline
     bool isValidFlavor( const DataFlavor& aFlavor )
     {
         return ( aFlavor.MimeType.getLength( ) &&
@@ -61,6 +60,7 @@ namespace
 void clipDataToByteStream( CLIPFORMAT cf, STGMEDIUM stgmedium, CDOTransferable::ByteSequence_t& aByteSequence )
 {
     CStgTransferHelper memTransferHelper;
+    LPSTREAM pStream = nullptr;
 
     switch( stgmedium.tymed )
     {
@@ -77,7 +77,7 @@ void clipDataToByteStream( CLIPFORMAT cf, STGMEDIUM stgmedium, CDOTransferable::
         break;
 
     case TYMED_ISTREAM:
-        //TODO: Has to be implemented
+        pStream = stgmedium.pstm;
         break;
 
     default:
@@ -85,19 +85,55 @@ void clipDataToByteStream( CLIPFORMAT cf, STGMEDIUM stgmedium, CDOTransferable::
         break;
     }
 
+    if (pStream)
+    {
+        // We have a stream, read from it.
+        STATSTG aStat;
+        HRESULT hr = pStream->Stat(&aStat, STATFLAG_NONAME);
+        if (FAILED(hr))
+        {
+            SAL_WARN("dtrans", "clipDataToByteStream: Stat() failed");
+            return;
+        }
+
+        size_t nMemSize = aStat.cbSize.QuadPart;
+        aByteSequence.realloc(nMemSize);
+        LARGE_INTEGER li;
+        li.QuadPart = 0;
+        hr = pStream->Seek(li, STREAM_SEEK_SET, nullptr);
+        if (FAILED(hr))
+        {
+            SAL_WARN("dtrans", "clipDataToByteStream: Seek() failed");
+        }
+
+        ULONG nRead = 0;
+        hr = pStream->Read(aByteSequence.getArray(), nMemSize, &nRead);
+        if (FAILED(hr))
+        {
+            SAL_WARN("dtrans", "clipDataToByteStream: Read() failed");
+        }
+        if (nRead < nMemSize)
+        {
+            SAL_WARN("dtrans", "clipDataToByteStream: Read() was partial");
+        }
+
+        return;
+    }
+
     int nMemSize = memTransferHelper.memSize( cf );
     aByteSequence.realloc( nMemSize );
     memTransferHelper.read( aByteSequence.getArray( ), nMemSize );
 }
 
-inline
 OUString byteStreamToOUString( CDOTransferable::ByteSequence_t& aByteStream )
 {
     sal_Int32 nWChars;
     sal_Int32 nMemSize = aByteStream.getLength( );
 
     // if there is a trailing L"\0" subtract 1 from length
-    if ( 0 == aByteStream[ aByteStream.getLength( ) - 2 ] &&
+    // for unknown reason, the sequence may sometimes arrive empty
+    if ( aByteStream.getLength( ) > 1 &&
+         0 == aByteStream[ aByteStream.getLength( ) - 2 ] &&
          0 == aByteStream[ aByteStream.getLength( ) - 1 ] )
         nWChars = static_cast< sal_Int32 >( nMemSize / sizeof( sal_Unicode ) ) - 1;
     else
@@ -106,7 +142,6 @@ OUString byteStreamToOUString( CDOTransferable::ByteSequence_t& aByteStream )
     return OUString( reinterpret_cast< sal_Unicode* >( aByteStream.getArray( ) ), nWChars );
 }
 
-inline
 Any byteStreamToAny( CDOTransferable::ByteSequence_t& aByteStream, const Type& aRequestedDataType )
 {
     Any aAny;
@@ -114,6 +149,8 @@ Any byteStreamToAny( CDOTransferable::ByteSequence_t& aByteStream, const Type& a
     if ( aRequestedDataType == CPPUTYPE_OUSTRING )
     {
         OUString str = byteStreamToOUString( aByteStream );
+        if (str.isEmpty())
+            throw RuntimeException();
         aAny <<= str;
     }
     else
@@ -122,13 +159,13 @@ Any byteStreamToAny( CDOTransferable::ByteSequence_t& aByteStream, const Type& a
     return aAny;
 }
 
-bool SAL_CALL cmpFullMediaType(
+bool cmpFullMediaType(
     const Reference< XMimeContentType >& xLhs, const Reference< XMimeContentType >& xRhs )
 {
     return xLhs->getFullMediaType().equalsIgnoreAsciiCase( xRhs->getFullMediaType( ) );
 }
 
-bool SAL_CALL cmpAllContentTypeParameter(
+bool cmpAllContentTypeParameter(
     const Reference< XMimeContentType >& xLhs, const Reference< XMimeContentType >& xRhs )
 {
     Sequence< OUString > xLhsFlavors = xLhs->getParameters( );
@@ -171,7 +208,7 @@ bool SAL_CALL cmpAllContentTypeParameter(
 
 } // end namespace
 
-Reference< XTransferable > SAL_CALL CDOTransferable::create( const Reference< XComponentContext >& rxContext,
+Reference< XTransferable > CDOTransferable::create( const Reference< XComponentContext >& rxContext,
                                                                                      IDataObjectPtr pIDataObject )
 {
     CDOTransferable* pTransf = new CDOTransferable(rxContext, pIDataObject);
@@ -230,14 +267,8 @@ Any SAL_CALL CDOTransferable::getTransferData( const DataFlavor& aFlavor )
             // check CF_DIB availability as an alternative
             fetc.setClipformat(CF_DIB);
 
-            try
-            {
-                clipDataStream = getClipboardData( fetc );
-            }
-            catch( UnsupportedFlavorException& )
-            {
-                throw; // pass through, tried all possibilities
-            }
+            clipDataStream = getClipboardData( fetc );
+                // pass UnsupportedFlavorException out, tried all possibilities
         }
         else
             throw; // pass through exception
@@ -263,8 +294,8 @@ sal_Bool SAL_CALL CDOTransferable::isDataFlavorSupported( const DataFlavor& aFla
 {
     OSL_ASSERT( isValidFlavor( aFlavor ) );
 
-    for ( sal_Int32 i = 0; i < m_FlavorList.getLength( ); i++ )
-        if ( compareDataFlavors( aFlavor, m_FlavorList[i] ) )
+    for ( DataFlavor const & df : std::as_const(m_FlavorList) )
+        if ( compareDataFlavors( aFlavor, df ) )
             return true;
 
     return false;
@@ -273,13 +304,13 @@ sal_Bool SAL_CALL CDOTransferable::isDataFlavorSupported( const DataFlavor& aFla
 // the list of dataflavors currently on the clipboard will be initialized
 // only once; if the client of this Transferable will hold a reference
 // to it and the underlying clipboard content changes, the client does
-// possible operate on a invalid list
+// possible operate on an invalid list
 // if there is only text on the clipboard we will also offer unicode text
 // an synthesize this format on the fly if requested, to accomplish this
 // we save the first offered text format which we will later use for the
 // conversion
 
-void SAL_CALL CDOTransferable::initFlavorList( )
+void CDOTransferable::initFlavorList( )
 {
     sal::systools::COMReference<IEnumFORMATETC> pEnumFormatEtc;
     HRESULT hr = m_rDataObject->EnumFormatEtc( DATADIR_GET, &pEnumFormatEtc );
@@ -288,7 +319,7 @@ void SAL_CALL CDOTransferable::initFlavorList( )
         pEnumFormatEtc->Reset( );
 
         FORMATETC fetc;
-        while ( S_FALSE != pEnumFormatEtc->Next( 1, &fetc, nullptr ) )
+        while ( S_OK == pEnumFormatEtc->Next( 1, &fetc, nullptr ) )
         {
             // we use locales only to determine the
             // charset if there is text on the cliboard
@@ -327,7 +358,7 @@ void SAL_CALL CDOTransferable::initFlavorList( )
 }
 
 inline
-void SAL_CALL CDOTransferable::addSupportedFlavor( const DataFlavor& aFlavor )
+void CDOTransferable::addSupportedFlavor( const DataFlavor& aFlavor )
 {
     // we ignore all formats that couldn't be translated
     if ( aFlavor.MimeType.getLength( ) )
@@ -339,11 +370,11 @@ void SAL_CALL CDOTransferable::addSupportedFlavor( const DataFlavor& aFlavor )
     }
 }
 
-DataFlavor SAL_CALL CDOTransferable::formatEtcToDataFlavor( const FORMATETC& aFormatEtc )
+DataFlavor CDOTransferable::formatEtcToDataFlavor( const FORMATETC& aFormatEtc )
 {
     LCID lcid = 0;
 
-    // for non-unicode text format we must provid a locale to get
+    // for non-unicode text format we must provide a locale to get
     // the character-set of the text, if there is no locale on the
     // clipboard we assume the text is in a charset appropriate for
     // the current thread locale
@@ -356,7 +387,7 @@ DataFlavor SAL_CALL CDOTransferable::formatEtcToDataFlavor( const FORMATETC& aFo
 // returns the current locale on clipboard; if there is no locale on
 // clipboard the function returns the current thread locale
 
-LCID SAL_CALL CDOTransferable::getLocaleFromClipboard( )
+LCID CDOTransferable::getLocaleFromClipboard( )
 {
     LCID lcid = GetThreadLocale( );
 
@@ -364,7 +395,7 @@ LCID SAL_CALL CDOTransferable::getLocaleFromClipboard( )
     {
         CFormatEtc fetc = CDataFormatTranslator::getFormatEtcForClipformat( CF_LOCALE );
         ByteSequence_t aLCIDSeq = getClipboardData( fetc );
-        lcid = *(reinterpret_cast<LCID*>( aLCIDSeq.getArray( ) ) );
+        lcid = *reinterpret_cast<LCID*>( aLCIDSeq.getArray( ) );
 
         // because of a Win95/98 Bug; there the high word
         // of a locale has the same value as the
@@ -384,7 +415,7 @@ LCID SAL_CALL CDOTransferable::getLocaleFromClipboard( )
 // in case of failures because nothing should have been
 // allocated etc.
 
-CDOTransferable::ByteSequence_t SAL_CALL CDOTransferable::getClipboardData( CFormatEtc& aFormatEtc )
+CDOTransferable::ByteSequence_t CDOTransferable::getClipboardData( CFormatEtc& aFormatEtc )
 {
     STGMEDIUM stgmedium;
     HRESULT hr = m_rDataObject->GetData( aFormatEtc, &stgmedium );
@@ -397,6 +428,14 @@ CDOTransferable::ByteSequence_t SAL_CALL CDOTransferable::getClipboardData( CFor
         CFormatEtc aTempFormat( aFormatEtc );
         aTempFormat.setTymed( TYMED_HGLOBAL );
         hr = m_rDataObject->GetData( aTempFormat, &stgmedium );
+    }
+
+    if (FAILED(hr) && aFormatEtc.getTymed() == TYMED_HGLOBAL)
+    {
+        // Handle type is not memory, try stream.
+        CFormatEtc aTempFormat(aFormatEtc);
+        aTempFormat.setTymed(TYMED_ISTREAM);
+        hr = m_rDataObject->GetData(aTempFormat, &stgmedium);
     }
 
     if ( FAILED( hr ) )
@@ -458,7 +497,7 @@ CDOTransferable::ByteSequence_t SAL_CALL CDOTransferable::getClipboardData( CFor
     return byteStream;
 }
 
-OUString SAL_CALL CDOTransferable::synthesizeUnicodeText( )
+OUString CDOTransferable::synthesizeUnicodeText( )
 {
     ByteSequence_t aTextSequence;
     CFormatEtc     fetc;
@@ -499,7 +538,7 @@ OUString SAL_CALL CDOTransferable::synthesizeUnicodeText( )
     return OUString(pWChar);
 }
 
-bool SAL_CALL CDOTransferable::compareDataFlavors(
+bool CDOTransferable::compareDataFlavors(
     const DataFlavor& lhs, const DataFlavor& rhs )
 {
     if ( !m_rXMimeCntFactory.is( ) )

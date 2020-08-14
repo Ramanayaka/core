@@ -26,14 +26,10 @@
 #include <vector>
 #include <memory>
 
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
-
-#include <svtools/embedhlp.hxx>
-
-#include <bparr.hxx>
-#include <ndtyp.hxx>
+#include "bparr.hxx"
+#include "ndtyp.hxx"
+#include <rtl/ustring.hxx>
 #include <o3tl/sorted_vector.hxx>
-#include <ring.hxx>
 
 class Graphic;
 class GraphicObject;
@@ -43,12 +39,10 @@ class SwContentNode;
 class SwDoc;
 class SwGrfFormatColl;
 class SwGrfNode;
-class SwHistory;
 class SwNode;
 class SwNodeIndex;
 class SwNodeRange;
 class SwOLENode;
-class SwOutlineNodes;
 class SwPaM;
 class SwSectionData;
 class SwSectionFormat;
@@ -67,8 +61,8 @@ class SwUndoTextToTable;
 struct SwPosition;
 
 namespace sw { class DocumentContentOperationsManager; }
+namespace svt { class EmbeddedObjectRef; }
 
-// class SwNodes
 
 typedef SwNode * SwNodePtr;
 typedef bool (*FnForEach_SwNodes)( const SwNodePtr&, void* pArgs );
@@ -90,7 +84,7 @@ public:
 struct SwTableToTextSave;
 using SwTableToTextSaves = std::vector<std::unique_ptr<SwTableToTextSave>>;
 
-class SW_DLLPUBLIC SwNodes
+class SW_DLLPUBLIC SwNodes final
     : private BigPtrArray
 {
     friend class SwDoc;
@@ -110,10 +104,10 @@ class SW_DLLPUBLIC SwNodes
     SwDoc* m_pMyDoc;                      ///< This Doc contains the nodes-array.
 
     SwNode *m_pEndOfPostIts, *m_pEndOfInserts,  ///< These are the fixed ranges.
-           *m_pEndOfAutotext, *m_pEndOfRedlines,
-           *m_pEndOfContent;
+           *m_pEndOfAutotext, *m_pEndOfRedlines;
+    std::unique_ptr<SwNode> m_pEndOfContent;
 
-    mutable SwOutlineNodes* m_pOutlineNodes;        ///< Array of all outline nodes.
+    mutable std::unique_ptr<SwOutlineNodes> m_pOutlineNodes;        ///< Array of all outline nodes.
 
     bool m_bInNodesDel : 1;           /**< In Case of recursive calling.
                                            Do not update Num/Outline. */
@@ -123,7 +117,7 @@ class SW_DLLPUBLIC SwNodes
     static void SectionUpDown( const SwNodeIndex & aStart, const SwNodeIndex & aEnd );
     void DelNodes( const SwNodeIndex& rStart, sal_uLong nCnt = 1 );
 
-    void ChgNode( SwNodeIndex& rDelPos, sal_uLong nSize,
+    void ChgNode( SwNodeIndex const & rDelPos, sal_uLong nSize,
                   SwNodeIndex& rInsPos, bool bNewFrames );
 
     void UpdateOutlineIdx( const SwNode& );   ///< Update all OutlineNodes starting from Node.
@@ -135,7 +129,6 @@ class SW_DLLPUBLIC SwNodes
     SwNodes(SwNodes const&) = delete;
     SwNodes& operator=(SwNodes const&) = delete;
 
-protected:
     SwNodes( SwDoc* pDoc );
 
 public:
@@ -157,7 +150,7 @@ public:
 
     /// A still empty section.
     SwNode& GetEndOfPostIts() const     { return *m_pEndOfPostIts; }
-    /// Section fpr all footnotes.
+    /// Section for all footnotes.
     SwNode& GetEndOfInserts() const     { return *m_pEndOfInserts; }
     /// Section for all Flys/Header/Footers.
     SwNode& GetEndOfAutotext() const    { return *m_pEndOfAutotext; }
@@ -187,8 +180,6 @@ public:
     void SectionUp( SwNodeRange *);
     void SectionDown( SwNodeRange *pRange, SwStartNodeType = SwNormalStartNode );
 
-    bool CheckNodesRange( const SwNodeIndex& rStt, const SwNodeIndex& rEnd ) const;
-
     static void GoStartOfSection(SwNodeIndex *);
     static void GoEndOfSection(SwNodeIndex *);
 
@@ -210,7 +201,8 @@ public:
 
     /// Implementations of "Make...Node" are in the given .cxx-files.
     SwTextNode *MakeTextNode( const SwNodeIndex & rWhere,
-                            SwTextFormatColl *pColl ); ///< in ndtxt.cxx
+                            SwTextFormatColl *pColl,
+                            bool bNewFrames = true); ///< in ndtxt.cxx
     SwStartNode* MakeTextSection( const SwNodeIndex & rWhere,
                             SwStartNodeType eSttNdTyp,
                             SwTextFormatColl *pColl );
@@ -220,8 +212,7 @@ public:
                             const OUString& rFltName,
                             const Graphic* pGraphic,
                             SwGrfFormatColl *pColl,
-                            SwAttrSet* pAutoAttr = nullptr,
-                            bool bDelayed = false );    ///< in ndgrf.cxx
+                            SwAttrSet const * pAutoAttr = nullptr );    ///< in ndgrf.cxx
 
     static SwGrfNode *MakeGrfNode( const SwNodeIndex & rWhere,
                             const GraphicObject& rGrfObj,
@@ -234,7 +225,7 @@ public:
                             const OUString &rName,
                             sal_Int64 nAspect,
                             SwGrfFormatColl *pColl,
-                            SwAttrSet* pAutoAttr ); ///< in ndole.cxx
+                            SwAttrSet const * pAutoAttr ); ///< in ndole.cxx
 
     /// Array of all OutlineNodes.
     const SwOutlineNodes& GetOutLineNds() const { return *m_pOutlineNodes;}
@@ -254,7 +245,7 @@ public:
                         sal_uInt16 nBoxes, SwTextFormatColl* pContentTextColl,
                         sal_uInt16 nLines, sal_uInt16 nRepeat,
                         SwTextFormatColl* pHeadlineTextColl,
-                        const SwAttrSet * pAttrSet = nullptr);
+                        const SwAttrSet * pAttrSet);
 
     /// Create balanced table from selected range.
     SwTableNode* TextToTable( const SwNodeRange& rRange, sal_Unicode cCh,
@@ -264,7 +255,7 @@ public:
                                 SwTextFormatColl* pTextColl,
                                 SwUndoTextToTable* pUndo );
 
-    SwNodeRange * ExpandRangeForTableBox(const SwNodeRange & rRange);
+    std::unique_ptr<SwNodeRange> ExpandRangeForTableBox(const SwNodeRange & rRange);
 
     /// create a table from a vector of NodeRanges - API support
     SwTableNode* TextToTable( const TableRanges_t& rTableNodes,
@@ -303,7 +294,7 @@ public:
                                 SwSectionFormat& rSectionFormat,
                                 SwSectionData const&,
                                 SwTOXBase const*const pTOXBase,
-                                SwNodeIndex const*const pEnde,
+                                SwNodeIndex const*const pEnd,
                                 bool const bInsAtStart = true,
                                 bool const bCreateFrames = true);
 
@@ -323,7 +314,6 @@ public:
 
     /**
      * Dumps the entire nodes structure to the given destination (file nodes.xml in the current directory by default)
-     * @since 3.5
      */
     void dumpAsXml( xmlTextWriterPtr pWriter ) const;
 };

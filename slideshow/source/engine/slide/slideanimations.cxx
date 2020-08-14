@@ -20,18 +20,13 @@
 
 #include <tools/diagnose_ex.h>
 
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
-
 #include "slideanimations.hxx"
-#include "animationnodefactory.hxx"
+#include <animationnodefactory.hxx>
 
 using namespace ::com::sun::star;
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         SlideAnimations::SlideAnimations( const SlideShowContext&     rContext,
                                           const ::basegfx::B2DVector& rSlideSize ) :
             maContext( rContext ),
@@ -42,20 +37,20 @@ namespace slideshow
                               "SlideAnimations::SlideAnimations(): Invalid SlideShowContext" );
         }
 
-        SlideAnimations::~SlideAnimations()
+        SlideAnimations::~SlideAnimations() COVERITY_NOEXCEPT_FALSE
         {
-            if( mpRootNode )
-            {
-                SHOW_NODE_TREE( mpRootNode );
+            if( !mpRootNode )
+                return;
 
-                try
-                {
-                    mpRootNode->dispose();
-                }
-                catch (uno::Exception &)
-                {
-                    SAL_WARN( "slideshow", comphelper::anyToString(cppu::getCaughtException() ) );
-                }
+            SHOW_NODE_TREE( mpRootNode );
+
+            try
+            {
+                mpRootNode->dispose();
+            }
+            catch (uno::Exception &)
+            {
+                TOOLS_WARN_EXCEPTION( "slideshow", "" );
             }
         }
 
@@ -106,7 +101,6 @@ namespace slideshow
             mpRootNode->end();
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

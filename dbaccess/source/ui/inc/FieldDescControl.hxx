@@ -19,7 +19,8 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_FIELDDESCCONTROL_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_FIELDDESCCONTROL_HXX
 
-#include <vcl/tabpage.hxx>
+#include <vcl/weld.hxx>
+#include "IClipBoardTest.hxx"
 #include "QEnumTypes.hxx"
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 #include <com/sun/star/util/XNumberFormatter.hpp>
@@ -62,91 +63,76 @@ namespace dbaui
     class OFieldDescription;
     class OPropColumnEditCtrl;
 
-    class OFieldDescControl : public TabPage
+    class OFieldDescControl : public IClipboardTest
     {
     private:
-        VclPtr<OTableDesignHelpBar>    pHelp;
-        VclPtr<vcl::Window>            pLastFocusWindow;
-        VclPtr<vcl::Window>            m_pActFocusWindow;
+        std::unique_ptr<weld::Builder> m_xBuilder;
+        std::unique_ptr<weld::Container> m_xContainer;
 
-        VclPtr<FixedText>              pDefaultText;
-        VclPtr<FixedText>              pRequiredText;
-        VclPtr<FixedText>              pAutoIncrementText;
-        VclPtr<FixedText>              pTextLenText;
-        VclPtr<FixedText>              pNumTypeText;
-        VclPtr<FixedText>              pLengthText;
-        VclPtr<FixedText>              pScaleText;
-        VclPtr<FixedText>              pFormatText;
-        VclPtr<FixedText>              pBoolDefaultText;
-        VclPtr<FixedText>              m_pColumnNameText;
-        VclPtr<FixedText>              m_pTypeText;
-        VclPtr<FixedText>              m_pAutoIncrementValueText;
+        OTableDesignHelpBar* m_pHelp;
+        weld::Widget* m_pLastFocusWindow;
+        weld::Widget* m_pActFocusWindow;
 
-        VclPtr<OPropListBoxCtrl>       pRequired;
-        VclPtr<OPropListBoxCtrl>       pNumType;
-        VclPtr<OPropListBoxCtrl>       pAutoIncrement;
-        VclPtr<OPropEditCtrl>          pDefault;
-        VclPtr<OPropNumericEditCtrl>   pTextLen;
-        VclPtr<OPropNumericEditCtrl>   pLength;
-        VclPtr<OPropNumericEditCtrl>   pScale;
-        VclPtr<OPropEditCtrl>          pFormatSample;
-        VclPtr<OPropListBoxCtrl>       pBoolDefault;
-        VclPtr<OPropColumnEditCtrl>    m_pColumnName;
-        VclPtr<OPropListBoxCtrl>       m_pType;
-        VclPtr<OPropEditCtrl>          m_pAutoIncrementValue;
+        std::unique_ptr<weld::Label>   m_xDefaultText;
+        std::unique_ptr<weld::Label>   m_xRequiredText;
+        std::unique_ptr<weld::Label>   m_xAutoIncrementText;
+        std::unique_ptr<weld::Label>   m_xTextLenText;
+        std::unique_ptr<weld::Label>   m_xNumTypeText;
+        std::unique_ptr<weld::Label>   m_xLengthText;
+        std::unique_ptr<weld::Label>   m_xScaleText;
+        std::unique_ptr<weld::Label>   m_xFormatText;
+        std::unique_ptr<weld::Label>   m_xBoolDefaultText;
+        std::unique_ptr<weld::Label>   m_xColumnNameText;
+        std::unique_ptr<weld::Label>   m_xTypeText;
+        std::unique_ptr<weld::Label>   m_xAutoIncrementValueText;
 
-        VclPtr<PushButton>             pFormat;
+        std::unique_ptr<OPropListBoxCtrl> m_xRequired;
+        std::unique_ptr<OPropListBoxCtrl> m_xNumType;
+        std::unique_ptr<OPropListBoxCtrl> m_xAutoIncrement;
+        std::unique_ptr<OPropEditCtrl> m_xDefault;
+        std::unique_ptr<OPropNumericEditCtrl> m_xTextLen;
+        std::unique_ptr<OPropNumericEditCtrl> m_xLength;
+        std::unique_ptr<OPropNumericEditCtrl> m_xScale;
+        std::unique_ptr<OPropEditCtrl> m_xFormatSample;
+        std::unique_ptr<OPropListBoxCtrl> m_xBoolDefault;
+        std::unique_ptr<OPropColumnEditCtrl> m_xColumnName;
+        std::unique_ptr<OPropListBoxCtrl> m_xType;
+        std::unique_ptr<OPropEditCtrl> m_xAutoIncrementValue;
 
-        VclPtr<ScrollBar>              m_pVertScroll;
-        VclPtr<ScrollBar>              m_pHorzScroll;
+        std::unique_ptr<weld::Button>  m_xFormat;
+
+        Link<weld::Widget&, void> m_aControlFocusIn;
 
         TOTypeInfoSP            m_pPreviousType;
         short                   m_nPos;
         OUString                aYes;
         OUString                aNo;
 
-        long                    m_nOldVThumb;
-        long                    m_nOldHThumb;
-        sal_Int32               m_nWidth;
-
-        bool                m_bAdded;
-        bool                    m_bRightAligned;
+        sal_Int32               m_nEditWidth;
 
         OFieldDescription*      pActFieldDescr;
 
-        DECL_LINK( OnScroll, ScrollBar*, void);
-
-        DECL_LINK( FormatClickHdl, Button *, void );
-        DECL_LINK( ChangeHdl, ListBox&, void );
+        DECL_LINK(FormatClickHdl, weld::Button&, void);
+        DECL_LINK(ChangeHdl, weld::ComboBox&, void);
 
         // used by ActivatePropertyField
-        DECL_LINK( OnControlFocusLost, Control&, void );
-        DECL_LINK( OnControlFocusGot, Control&, void );
+        DECL_LINK( OnControlFocusLost, weld::Widget&, void );
+        DECL_LINK( OnControlFocusGot, weld::Widget&, void );
 
-        void                UpdateFormatSample(OFieldDescription* pFieldDescr);
-        void                ArrangeAggregates();
-
-        void                SetPosSize( VclPtr<Control>& rControl, long nRow, sal_uInt16 nCol );
-
-        static void         ScrollAggregate(Control* pText, Control* pInput, Control* pButton, long nDeltaX, long nDeltaY);
-        void                ScrollAllAggregates();
+        void                UpdateFormatSample(OFieldDescription const * pFieldDescr);
 
         bool                isTextFormat(const OFieldDescription* _pFieldDescr,sal_uInt32& _nFormatKey) const;
-        void                Contruct();
-        VclPtr<OPropNumericEditCtrl> CreateNumericControl(sal_uInt16 _nHelpStr,short _nProperty,const OString& _sHelpId);
-        VclPtr<FixedText>   CreateText(sal_uInt16 _nTextRes);
-        void                InitializeControl(Control* _pControl,const OString& _sHelpId,bool _bAddChangeHandler);
+        std::unique_ptr<OPropNumericEditCtrl> CreateNumericControl(const OString& rId, const char* pHelpId, short _nProperty, const OString& _sHelpId);
+        void                InitializeControl(weld::Widget* _pControl,const OString& _sHelpId);
+        void                InitializeControl(OPropListBoxCtrl* _pControl,const OString& _sHelpId,bool _bAddChangeHandler);
 
+        bool                IsFocusInEditableWidget() const;
+
+        void                dispose();
     protected:
-        void    setRightAligned()       { m_bRightAligned = true; }
-        bool    isRightAligned() const  { return m_bRightAligned; }
-
         void                saveCurrentFieldDescData() { SaveData( pActFieldDescr ); }
         OFieldDescription*  getCurrentFieldDescData() { return pActFieldDescr; }
         void                setCurrentFieldDescData( OFieldDescription* _pDesc ) { pActFieldDescr = _pDesc; }
-
-        sal_uInt16          CountActiveAggregates() const;
-        sal_Int32           GetMaxControlHeight() const;
 
         virtual void        ActivateAggregate( EControlType eType );
         virtual void        DeactivateAggregate( EControlType eType );
@@ -168,14 +154,13 @@ namespace dbaui
         OUString                                BoolStringPersistent(const OUString& rUIString) const;
         OUString                                BoolStringUI(const OUString& rPersistentString) const;
 
-        const OPropColumnEditCtrl*              getColumnCtrl() const { return m_pColumnName; }
+        const OPropColumnEditCtrl*              getColumnCtrl() const { return m_xColumnName.get(); }
 
-        void    implFocusLost(vcl::Window* _pWhich);
+        void    implFocusLost(weld::Widget* _pWhich);
 
     public:
-        OFieldDescControl( vcl::Window* pParent, OTableDesignHelpBar* pHelpBar);
-        virtual ~OFieldDescControl() override;
-        virtual void        dispose() override;
+        OFieldDescControl(weld::Container* pPage, OTableDesignHelpBar* pHelpBar);
+        virtual ~OFieldDescControl();
 
         void                DisplayData(OFieldDescription* pFieldDescr );
 
@@ -184,27 +169,33 @@ namespace dbaui
         void                SetControlText( sal_uInt16 nControlId, const OUString& rText );
         void                SetReadOnly( bool bReadOnly );
 
-        // when resize is called
-        void                CheckScrollBars();
-        bool                isCutAllowed();
-        bool                isCopyAllowed();
-        bool                isPasteAllowed();
+        void                Enable(bool bEnable) { m_xContainer->set_sensitive(bEnable); }
+        void                SetHelpId(const OString& rId) { m_xContainer->set_help_id(rId); }
 
-        void                cut();
-        void                copy();
-        void                paste();
+        virtual bool        isCutAllowed() override;
+        virtual bool        isCopyAllowed() override;
+        virtual bool        isPasteAllowed() override;
 
-        void                Init();
-        virtual void        GetFocus() override;
-        virtual void        LoseFocus() override;
-        virtual void        Resize() override;
+        virtual void        cut() override;
+        virtual void        copy() override;
+        virtual void        paste() override;
+
+        void connect_focus_in(const Link<weld::Widget&, void>& rLink)
+        {
+            m_aControlFocusIn = rLink;
+        }
+
+        void Init();
+
+        void GetFocus();
+        void LoseFocus();
 
         virtual css::uno::Reference< css::sdbc::XDatabaseMetaData> getMetaData() = 0;
         virtual css::uno::Reference< css::sdbc::XConnection> getConnection() = 0;
 
         OUString            getControlDefault( const OFieldDescription* _pFieldDescr, bool _bCheck = true) const;
 
-        void setEditWidth(sal_Int32 _nWidth) { m_nWidth = _nWidth; }
+        void setEditWidth(sal_Int32 _nWidth) { m_nEditWidth = _nWidth; }
     };
 }
 #endif

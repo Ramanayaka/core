@@ -29,10 +29,10 @@ using namespace ::ooo::vba::excel::XlAxisCrosses;
 using namespace ::ooo::vba::excel::XlAxisType;
 using namespace ::ooo::vba::excel::XlScaleType;
 
-const OUString ORIGIN("Origin");
-const OUString AUTOORIGIN("AutoOrigin");
-const OUString VBA_MIN("Max");
-const OUString VBA_MAX("Min");
+const OUStringLiteral ORIGIN("Origin");
+const OUStringLiteral AUTOORIGIN("AutoOrigin");
+const OUStringLiteral VBA_MIN("Max");
+const OUStringLiteral VBA_MAX("Min");
 ScVbaChart*
 ScVbaAxis::getChartPtr()
 {
@@ -568,7 +568,7 @@ ScVbaAxis::setScaleType( ::sal_Int32 _nScaleType )
                     mxPropertySet->setPropertyValue("Logarithmic", uno::makeAny( true ) );
                     break;
                 default:
-                    // According to MS the paramenter is ignored and no Error is thrown
+                    // According to MS the parameter is ignored and no Error is thrown
                     break;
             }
         }
@@ -640,18 +640,16 @@ void SAL_CALL ScVbaAxis::setLeft( double left )
 OUString
 ScVbaAxis::getServiceImplName()
 {
-    return OUString("ScVbaAxis");
+    return "ScVbaAxis";
 }
 
 uno::Sequence< OUString >
 ScVbaAxis::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Axis";
-    }
+        "ooo.vba.excel.Axis"
+    };
     return aServiceNames;
 }
 

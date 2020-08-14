@@ -18,18 +18,17 @@
  */
 
 #include <com/sun/star/document/XImporter.hpp>
-#include <com/sun/star/util/XModifiable.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XModifiable2.hpp>
 #include <tools/globname.hxx>
 #include <comphelper/classids.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlerror.hxx>
 #include <xmloff/attrlist.hxx>
 #include <xmloff/XMLFilterServiceNames.h>
-#include "XMLEmbeddedObjectImportContext.hxx"
+#include <XMLEmbeddedObjectImportContext.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::util;
@@ -38,6 +37,8 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::xmloff::token;
+
+namespace {
 
 class XMLEmbeddedObjectImportContext_Impl : public SvXMLImportContext
 {
@@ -49,7 +50,7 @@ public:
                                     const OUString& rLName,
     const css::uno::Reference< css::xml::sax::XDocumentHandler >& rHandler );
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                    const OUString& rLocalName,
                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
 
@@ -60,6 +61,7 @@ public:
     virtual void Characters( const OUString& rChars ) override;
 };
 
+}
 
 XMLEmbeddedObjectImportContext_Impl::XMLEmbeddedObjectImportContext_Impl(
         SvXMLImport& rImport, sal_uInt16 nPrfx,
@@ -70,7 +72,7 @@ XMLEmbeddedObjectImportContext_Impl::XMLEmbeddedObjectImportContext_Impl(
 {
 }
 
-SvXMLImportContext *XMLEmbeddedObjectImportContext_Impl::CreateChildContext(
+SvXMLImportContextRef XMLEmbeddedObjectImportContext_Impl::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const Reference< XAttributeList >& )
@@ -100,8 +102,7 @@ void XMLEmbeddedObjectImportContext_Impl::Characters( const OUString& rChars )
 }
 
 
-void XMLEmbeddedObjectImportContext::SetComponent(
-        Reference< XComponent >& rComp )
+void XMLEmbeddedObjectImportContext::SetComponent( Reference< XComponent > const & rComp )
 {
     if( !rComp.is() || sFilterService.isEmpty() )
         return;
@@ -116,6 +117,9 @@ void XMLEmbeddedObjectImportContext::SetComponent(
 
     if( !xHandler.is() )
         return;
+
+    if (SvXMLImport *pFastHandler = dynamic_cast<SvXMLImport*>(xHandler.get()))
+        xHandler.set( new SvXMLLegacyToFastDocHandler( pFastHandler ) );
 
     try
     {
@@ -222,7 +226,7 @@ XMLEmbeddedObjectImportContext::~XMLEmbeddedObjectImportContext()
 {
 }
 
-SvXMLImportContext *XMLEmbeddedObjectImportContext::CreateChildContext(
+SvXMLImportContextRef XMLEmbeddedObjectImportContext::CreateChildContext(
         sal_uInt16 nPrefix, const OUString& rLocalName,
         const Reference< XAttributeList >& )
 {
@@ -230,44 +234,44 @@ SvXMLImportContext *XMLEmbeddedObjectImportContext::CreateChildContext(
         return new XMLEmbeddedObjectImportContext_Impl( GetImport(),
                                                         nPrefix, rLocalName,
                                                         xHandler );
-    else
-        return new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
+    return nullptr;
 }
 
 void XMLEmbeddedObjectImportContext::StartElement(
         const Reference< XAttributeList >& rAttrList )
 {
-    if( xHandler.is() )
+    if( !xHandler.is() )
+        return;
+
+    xHandler->startDocument();
+    // #i34042: copy namepspace declarations
+    SvXMLAttributeList *pAttrList = new SvXMLAttributeList( rAttrList );
+    Reference< XAttributeList > xAttrList( pAttrList );
+    const SvXMLNamespaceMap& rNamespaceMap = GetImport().GetNamespaceMap();
+    sal_uInt16 nPos = rNamespaceMap.GetFirstKey();
+    while( USHRT_MAX != nPos )
     {
-        xHandler->startDocument();
-        // #i34042: copy namepspace declarations
-        SvXMLAttributeList *pAttrList = new SvXMLAttributeList( rAttrList );
-        Reference< XAttributeList > xAttrList( pAttrList );
-        const SvXMLNamespaceMap& rNamespaceMap = GetImport().GetNamespaceMap();
-        sal_uInt16 nPos = rNamespaceMap.GetFirstKey();
-        while( USHRT_MAX != nPos )
+        OUString aAttrName( rNamespaceMap.GetAttrNameByKey( nPos ) );
+        if( xAttrList->getValueByName( aAttrName ).isEmpty() )
         {
-            OUString aAttrName( rNamespaceMap.GetAttrNameByKey( nPos ) );
-            if( xAttrList->getValueByName( aAttrName ).isEmpty() )
-            {
-                pAttrList->AddAttribute( aAttrName,
-                                          rNamespaceMap.GetNameByKey( nPos ) );
-            }
-            nPos = rNamespaceMap.GetNextKey( nPos );
+            pAttrList->AddAttribute( aAttrName,
+                                      rNamespaceMap.GetNameByKey( nPos ) );
         }
-        xHandler->startElement( GetImport().GetNamespaceMap().GetQNameByKey(
-                                    GetPrefix(), GetLocalName() ),
-                                xAttrList );
+        nPos = rNamespaceMap.GetNextKey( nPos );
     }
+    xHandler->startElement( GetImport().GetNamespaceMap().GetQNameByKey(
+                                GetPrefix(), GetLocalName() ),
+                            xAttrList );
 }
 
 void XMLEmbeddedObjectImportContext::EndElement()
 {
-    if( xHandler.is() )
-    {
-        xHandler->endElement( GetImport().GetNamespaceMap().GetQNameByKey(
-                                    GetPrefix(), GetLocalName() ) );
-        xHandler->endDocument();
+    if( !xHandler.is() )
+        return;
+
+    xHandler->endElement( GetImport().GetNamespaceMap().GetQNameByKey(
+                                GetPrefix(), GetLocalName() ) );
+    xHandler->endDocument();
 
     try
     {
@@ -277,7 +281,6 @@ void XMLEmbeddedObjectImportContext::EndElement()
     }
     catch( Exception& )
     {
-    }
     }
 }
 

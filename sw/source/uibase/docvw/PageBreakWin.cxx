@@ -7,12 +7,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <globals.hrc>
-#include <utlui.hrc>
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
 
 #include <cmdid.h>
 #include <cntfrm.hxx>
+#include <txtfrm.hxx>
+#include <notxtfrm.hxx>
+#include <ndtxt.hxx>
 #include <DashedLine.hxx>
 #include <doc.hxx>
 #include <edtwin.hxx>
@@ -29,18 +30,22 @@
 #include <wrtsh.hxx>
 
 #include <basegfx/color/bcolortools.hxx>
-#include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/range/b2drectangle.hxx>
 #include <drawinglayer/primitive2d/discretebitmapprimitive2d.hxx>
 #include <drawinglayer/primitive2d/modifiedcolorprimitive2d.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonHairlinePrimitive2D.hxx>
+#include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processorfromoutputdevice.hxx>
 #include <editeng/formatbreakitem.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <svl/stritem.hxx>
+#include <vcl/canvastools.hxx>
+#include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <memory>
@@ -50,7 +55,7 @@
 #define ARROW_WIDTH 9
 
 using namespace basegfx;
-using namespace basegfx::tools;
+using namespace basegfx::utils;
 
 namespace
 {
@@ -85,22 +90,20 @@ namespace
 
         if ( !rMEvt.IsSynthetic() && !m_pWin->IsVisible() )
         {
-            Point* pPtr = new Point( rMEvt.GetPosPixel() );
-            m_pWin->UpdatePosition( pPtr );
+            m_pWin->UpdatePosition( rMEvt.GetPosPixel() );
         }
     }
 }
 
 SwPageBreakWin::SwPageBreakWin( SwEditWin* pEditWin, const SwFrame *pFrame ) :
     SwFrameMenuButtonBase( pEditWin, pFrame ),
-    m_aBuilder(nullptr, VclBuilderContainer::getUIRootDir(), "modules/swriter/ui/pagebreakmenu.ui", ""),
+    m_aBuilder(nullptr, AllSettings::GetUIRootDir(), "modules/swriter/ui/pagebreakmenu.ui", ""),
     m_pPopupMenu(m_aBuilder.get_menu("menu")),
     m_pLine( nullptr ),
     m_bIsAppearing( false ),
     m_nFadeRate( 100 ),
     m_nDelayAppearing( 0 ),
-    m_bDestroyed( false ),
-    m_pMousePt( nullptr )
+    m_bDestroyed( false )
 {
     // Use pixels for the rest of the drawing
     SetMapMode( MapMode ( MapUnit::MapPixel ) );
@@ -130,9 +133,6 @@ void SwPageBreakWin::dispose()
     m_pPopupMenu.clear();
     m_aBuilder.disposeBuilder();
 
-    delete m_pMousePt;
-    m_pMousePt = nullptr;
-
     SwFrameMenuButtonBase::dispose();
 }
 
@@ -161,8 +161,7 @@ void SwPageBreakWin::Paint(vcl::RenderContext& rRenderContext, const ::tools::Re
     bool bRtl = AllSettings::GetLayoutRTL();
 
     drawinglayer::primitive2d::Primitive2DContainer aSeq(3);
-    B2DRectangle aBRect(double(aRect.Left()), double(aRect.Top()),
-                        double(aRect.Right()), double(aRect.Bottom()));
+    B2DRectangle aBRect = vcl::unotools::b2DRectangleFromRectangle(aRect);
     B2DPolygon aPolygon = createPolygonFromRect(aBRect, 3.0 / BUTTON_WIDTH, 3.0 / BUTTON_HEIGHT);
 
     // Create the polygon primitives
@@ -192,19 +191,19 @@ void SwPageBreakWin::Paint(vcl::RenderContext& rRenderContext, const ::tools::Re
     aTriangle.append(B2DPoint((nLeft + nRight) / 2.0, nBottom));
     aTriangle.setClosed(true);
 
-    BColor aTriangleColor = Color(COL_BLACK).getBColor();
+    BColor aTriangleColor = COL_BLACK.getBColor();
     if (Application::GetSettings().GetStyleSettings().GetHighContrastMode())
-        aTriangleColor = Color(COL_WHITE).getBColor();
+        aTriangleColor = COL_WHITE.getBColor();
 
-    aSeq.resize(aSeq.size() + 1);
-    aSeq[aSeq.size() - 1].set( new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
+    aSeq.emplace_back();
+    aSeq.back().set( new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
                                         B2DPolyPolygon(aTriangle), aTriangleColor));
 
     drawinglayer::primitive2d::Primitive2DContainer aGhostedSeq(1);
     double nFadeRate = double(m_nFadeRate) / 100.0;
-    const basegfx::BColorModifierSharedPtr aBColorModifier(
-                new basegfx::BColorModifier_interpolate(Color(COL_WHITE).getBColor(),
-                                                        1.0 - nFadeRate));
+    const basegfx::BColorModifierSharedPtr aBColorModifier =
+                std::make_shared<basegfx::BColorModifier_interpolate>(COL_WHITE.getBColor(),
+                                                        1.0 - nFadeRate);
     aGhostedSeq[0].set( new drawinglayer::primitive2d::ModifiedColorPrimitive2D(
                             aSeq, aBColorModifier));
 
@@ -218,7 +217,7 @@ void SwPageBreakWin::Paint(vcl::RenderContext& rRenderContext, const ::tools::Re
 
 void SwPageBreakWin::Select()
 {
-    SwFrameControlPtr pThis = GetEditWin()->GetFrameControlsManager( ).GetControl( PageBreak, GetFrame() );
+    SwFrameControlPtr pThis = GetEditWin()->GetFrameControlsManager( ).GetControl( FrameControlType::PageBreak, GetFrame() );
 
     OString sIdent = GetCurItemIdent();
     if (sIdent == "edit")
@@ -241,7 +240,9 @@ void SwPageBreakWin::Select()
                 rSh.ClearMark();
 
                 SwContentFrame *pCnt = const_cast< SwContentFrame* >( pBodyFrame->ContainsContent() );
-                SwContentNode* pNd = pCnt->GetNode();
+                SwContentNode* pNd = pCnt->IsTextFrame()
+                    ? static_cast<SwTextFrame*>(pCnt)->GetTextNodeFirst()
+                    : static_cast<SwNoTextFrame*>(pCnt)->GetNode();
                 rSh.SetSelection( *pNd );
 
                 SfxStringItem aItem(pEditWin->GetView().GetPool().GetWhich(FN_FORMAT_TABLE_DLG), "textflow");
@@ -255,7 +256,9 @@ void SwPageBreakWin::Select()
             else
             {
                 SwContentFrame *pCnt = const_cast< SwContentFrame* >( pBodyFrame->ContainsContent() );
-                SwContentNode* pNd = pCnt->GetNode();
+                SwContentNode* pNd = pCnt->IsTextFrame()
+                    ? static_cast<SwTextFrame*>(pCnt)->GetTextNodeFirst()
+                    : static_cast<SwNoTextFrame*>(pCnt)->GetNode();
 
                 SwPaM aPaM( *pNd );
                 SwPaMItem aPaMItem( pEditWin->GetView().GetPool( ).GetWhich( FN_PARAM_PAM ), &aPaM );
@@ -277,8 +280,11 @@ void SwPageBreakWin::Select()
 
         if ( pBodyFrame )
         {
+
             SwContentFrame *pCnt = const_cast< SwContentFrame* >( pBodyFrame->ContainsContent() );
-            SwContentNode* pNd = pCnt->GetNode();
+            SwContentNode* pNd = pCnt->IsTextFrame()
+                ? static_cast<SwTextFrame*>(pCnt)->GetTextNodeFirst()
+                : static_cast<SwNoTextFrame*>(pCnt)->GetNode();
 
             pNd->GetDoc()->GetIDocumentUndoRedo( ).StartUndo( SwUndoId::UI_DELETE_PAGE_BREAK, nullptr );
 
@@ -289,7 +295,8 @@ void SwPageBreakWin::Select()
             aSet.Put( SwFormatPageDesc( nullptr ) );
 
             SwPaM aPaM( *pNd );
-            pNd->GetDoc()->getIDocumentContentOperations().InsertItemSet( aPaM, aSet );
+            pNd->GetDoc()->getIDocumentContentOperations().InsertItemSet(
+                aPaM, aSet, SetAttrMode::DEFAULT, GetPageFrame()->getRootFrame());
 
             pNd->GetDoc()->GetIDocumentUndoRedo( ).EndUndo( SwUndoId::UI_DELETE_PAGE_BREAK, nullptr );
         }
@@ -320,14 +327,13 @@ void SwPageBreakWin::Activate( )
     MenuButton::Activate();
 }
 
-void SwPageBreakWin::UpdatePosition( const Point* pEvtPt )
+void SwPageBreakWin::UpdatePosition(const std::optional<Point>& xEvtPt)
 {
-    if ( pEvtPt != nullptr )
+    if ( xEvtPt )
     {
-        if ( pEvtPt == m_pMousePt )
+        if ( xEvtPt == m_xMousePt )
             return;
-        delete m_pMousePt;
-        m_pMousePt = pEvtPt;
+        m_xMousePt = xEvtPt;
     }
 
     const SwPageFrame* pPageFrame = GetPageFrame();
@@ -336,16 +342,16 @@ void SwPageBreakWin::UpdatePosition( const Point* pEvtPt )
     {
         pPrevPage = pPrevPage->GetPrev();
     }
-    while ( pPrevPage && ( ( pPrevPage->Frame().Top( ) == pPageFrame->Frame().Top( ) )
+    while ( pPrevPage && ( ( pPrevPage->getFrameArea().Top( ) == pPageFrame->getFrameArea().Top( ) )
                 || static_cast< const SwPageFrame* >( pPrevPage )->IsEmptyPage( ) ) );
 
     ::tools::Rectangle aBoundRect = GetEditWin()->LogicToPixel( pPageFrame->GetBoundRect(GetEditWin()).SVRect() );
-    ::tools::Rectangle aFrameRect = GetEditWin()->LogicToPixel( pPageFrame->Frame().SVRect() );
+    ::tools::Rectangle aFrameRect = GetEditWin()->LogicToPixel( pPageFrame->getFrameArea().SVRect() );
 
     long nYLineOffset = ( aBoundRect.Top() + aFrameRect.Top() ) / 2;
     if ( pPrevPage )
     {
-        ::tools::Rectangle aPrevFrameRect = GetEditWin()->LogicToPixel( pPrevPage->Frame().SVRect() );
+        ::tools::Rectangle aPrevFrameRect = GetEditWin()->LogicToPixel( pPrevPage->getFrameArea().SVRect() );
         nYLineOffset = ( aPrevFrameRect.Bottom() + aFrameRect.Top() ) / 2;
     }
 
@@ -372,9 +378,9 @@ void SwPageBreakWin::UpdatePosition( const Point* pEvtPt )
     long nLineRight = std::min( nPgRight, aVisArea.Right() );
     long nBtnLeft = nLineLeft;
 
-    if ( m_pMousePt )
+    if ( m_xMousePt )
     {
-        nBtnLeft = nLineLeft + m_pMousePt->X() - aBtnSize.getWidth() / 2;
+        nBtnLeft = nLineLeft + m_xMousePt->X() - aBtnSize.getWidth() / 2;
 
         if ( nBtnLeft < nLineLeft )
             nBtnLeft = nLineLeft;

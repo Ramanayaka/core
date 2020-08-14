@@ -17,15 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbastrings.hrc"
-#include "FilteredContainer.hxx"
-#include "RefreshListener.hxx"
-#include "sdbcoretools.hxx"
+#include <strings.hxx>
+#include <FilteredContainer.hxx>
+#include <RefreshListener.hxx>
+#include <sdbcoretools.hxx>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
+#include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
 #include <tools/wldcrd.hxx>
 #include <tools/diagnose_ex.h>
-#include <boost/optional.hpp>
+#include <optional>
+#include <sal/log.hxx>
 
 namespace dbaccess
 {
@@ -43,9 +46,9 @@ namespace dbaccess
     using namespace ::cppu;
     using namespace ::connectivity::sdbcx;
 
-/** creates a vector of WildCards and reduce the _rTableFilter of the length of WildsCards
+/** creates a vector of WildCards and reduce the _rTableFilter of the length of WildCards
 */
-sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector< WildCard >& _rOut)
+static sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector< WildCard >& _rOut)
 {
     // for wildcard search : remove all table filters which are a wildcard expression and build a WildCard
     // for them
@@ -56,7 +59,7 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
     {
         if (pTableFilters->indexOf('%') != -1)
         {
-            _rOut.push_back(WildCard(pTableFilters->replace('%', '*')));
+            _rOut.emplace_back(pTableFilters->replace('%', '*'));
         }
         else
         {
@@ -72,7 +75,7 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
     return nShiftPos;
 }
 
-    bool lcl_isElementAllowed(  const OUString& _rName,
+    static bool lcl_isElementAllowed(  const OUString& _rName,
                                 const Sequence< OUString >& _rTableFilter,
                                 const std::vector< WildCard >& _rWCSearch )
     {
@@ -84,17 +87,21 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
         // the table is allowed to "pass" if we had no filters at all or any of the non-wildcard filters matches
         if (!bFilterMatch && !_rWCSearch.empty())
         {   // or if one of the wildcard expression matches
-            for (   std::vector< WildCard >::const_iterator aLoop = _rWCSearch.begin();
-                    aLoop != _rWCSearch.end() && !bFilterMatch;
-                    ++aLoop
-                )
-                bFilterMatch = aLoop->Matches( _rName );
+            for (auto const& elem : _rWCSearch)
+            {
+                bFilterMatch = elem.Matches( _rName );
+                if (bFilterMatch)
+                    break;
+            }
         }
 
         return bFilterMatch;
     }
 
-    typedef ::boost::optional< OUString >    OptionalString;
+    typedef ::std::optional< OUString >    OptionalString;
+
+    namespace {
+
     struct TableInfo
     {
         OptionalString  sComposedName;
@@ -118,9 +125,12 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
         {
         }
     };
+
+    }
+
     typedef std::vector< TableInfo >    TableInfos;
 
-    void lcl_ensureComposedName( TableInfo& _io_tableInfo, const Reference< XDatabaseMetaData >& _metaData )
+    static void lcl_ensureComposedName( TableInfo& _io_tableInfo, const Reference< XDatabaseMetaData >& _metaData )
     {
         if ( !_metaData.is() )
             throw RuntimeException();
@@ -136,7 +146,7 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
         }
     }
 
-    void lcl_ensureType( TableInfo& _io_tableInfo, const Reference< XDatabaseMetaData >& _metaData, const Reference< XNameAccess >& _masterContainer )
+    static void lcl_ensureType( TableInfo& _io_tableInfo, const Reference< XDatabaseMetaData >& _metaData, const Reference< XNameAccess >& _masterContainer )
     {
         if ( !!_io_tableInfo.sType )
             return;
@@ -154,12 +164,12 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
         _io_tableInfo.sType = OptionalString( sTypeName );
     }
 
-    connectivity::TStringVector lcl_filter( const TableInfos& _unfilteredTables,
+    static ::std::vector< OUString> lcl_filter( const TableInfos& _unfilteredTables,
         const Sequence< OUString >& _tableFilter, const Sequence< OUString >& _tableTypeFilter,
         const Reference< XDatabaseMetaData >& _metaData, const Reference< XNameAccess >& _masterContainer )
     {
@@ -183,15 +193,12 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
             TableInfos aUnfilteredTables( _unfilteredTables );
             aUnfilteredTables.reserve( nTableFilterCount + ( aWildCardTableFilter.size() * 10 ) );
 
-            for (   TableInfos::iterator table = aUnfilteredTables.begin();
-                    table != aUnfilteredTables.end();
-                    ++table
-                )
+            for (auto & unfilteredTable : aUnfilteredTables)
             {
-                lcl_ensureComposedName( *table, _metaData );
+                lcl_ensureComposedName(unfilteredTable, _metaData);
 
-                if ( lcl_isElementAllowed( *table->sComposedName, aNonWildCardTableFilter, aWildCardTableFilter ) )
-                    aFilteredTables.push_back( *table );
+                if ( lcl_isElementAllowed( *unfilteredTable.sComposedName, aNonWildCardTableFilter, aWildCardTableFilter ) )
+                    aFilteredTables.push_back(unfilteredTable);
             }
         }
 
@@ -208,27 +215,21 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
             const OUString* pTableTypeFilterBegin = _tableTypeFilter.getConstArray();
             const OUString* pTableTypeFilterEnd = pTableTypeFilterBegin + _tableTypeFilter.getLength();
 
-            for (   TableInfos::iterator table = aUnfilteredTables.begin();
-                    table != aUnfilteredTables.end();
-                    ++table
-                )
+            for (auto & unfilteredTable : aUnfilteredTables)
             {
                 // ensure that we know the table type
-                lcl_ensureType( *table, _metaData, _masterContainer );
+                lcl_ensureType( unfilteredTable, _metaData, _masterContainer );
 
-                if ( std::find( pTableTypeFilterBegin, pTableTypeFilterEnd, *table->sType ) != pTableTypeFilterEnd )
-                    aFilteredTables.push_back( *table );
+                if ( std::find( pTableTypeFilterBegin, pTableTypeFilterEnd, *unfilteredTable.sType ) != pTableTypeFilterEnd )
+                    aFilteredTables.push_back(unfilteredTable);
             }
         }
 
-        connectivity::TStringVector aReturn;
-        for (   TableInfos::iterator table = aFilteredTables.begin();
-                table != aFilteredTables.end();
-                ++table
-            )
+        ::std::vector< OUString> aReturn;
+        for (auto & filteredTable : aFilteredTables)
         {
-            lcl_ensureComposedName( *table, _metaData );
-            aReturn.push_back( *table->sComposedName );
+            lcl_ensureComposedName(filteredTable, _metaData);
+            aReturn.push_back(*filteredTable.sComposedName);
         }
         return aReturn;
     }
@@ -239,7 +240,7 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
                                  const Reference< XConnection >& _xCon,
                                  bool _bCase,
                                  IRefreshListener*  _pRefreshListener,
-                                 oslInterlockedCount& _nInAppend)
+                                 std::atomic<std::size_t>& _nInAppend)
         :OCollection(_rParent,_bCase,_rMutex,std::vector< OUString>())
         ,m_bConstructed(false)
         ,m_pRefreshListener(_pRefreshListener)
@@ -260,7 +261,7 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
         }
         catch(SQLException&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
 
         m_xMasterContainer = _rxMasterContainer;
@@ -275,7 +276,7 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
             const OUString*  name = aNames.getConstArray();
             const OUString*  nameEnd = name + aNames.getLength();
             for ( ; name != nameEnd; ++name )
-                aUnfilteredTables.push_back( TableInfo( *name ) );
+                aUnfilteredTables.emplace_back( *name );
 
             reFill( lcl_filter( aUnfilteredTables,
                 _rTableFilter, _rTableTypeFilter, m_xMetaData, m_xMasterContainer ) );
@@ -303,14 +304,14 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
             Reference< XConnection > xCon( m_xConnection, UNO_SET_THROW );
             m_xMetaData.set( xCon->getMetaData(), UNO_SET_THROW );
 
-            // create a table table filter suitable for the XDatabaseMetaData::getTables call,
+            // create a table filter suitable for the XDatabaseMetaData::getTables call,
             // taking into account both the externally-provided table type filter, and any
             // table type restriction which is inherent to the container
             Sequence< OUString > aTableTypeFilter;
             OUString sInherentTableTypeRestriction( getTableTypeRestriction() );
             if ( !sInherentTableTypeRestriction.isEmpty() )
             {
-                if ( _rTableTypeFilter.getLength() != 0 )
+                if ( _rTableTypeFilter.hasElements() )
                 {
                     const OUString* tableType    = _rTableTypeFilter.getConstArray();
                     const OUString* tableTypeEnd = tableType + _rTableTypeFilter.getLength();
@@ -332,7 +333,7 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
             else
             {
                 // no container-inherent restriction for the table types
-                if ( _rTableTypeFilter.getLength() == 0 )
+                if ( !_rTableTypeFilter.hasElements() )
                 {   // no externally-provided table type filter => use the default filter
                     getAllTableTypeFilter( aTableTypeFilter );
                 }
@@ -356,7 +357,7 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
                 sName       = xCurrentRow->getString(3);
                 sType       = xCurrentRow->getString(4);
 
-                aUnfilteredTables.push_back( TableInfo( sCatalog, sSchema, sName, sType ) );
+                aUnfilteredTables.emplace_back( sCatalog, sSchema, sName, sType );
             }
 
             reFill( lcl_filter( aUnfilteredTables,
@@ -366,7 +367,7 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
         }
         catch (const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
             disposing();
             return;
         }
@@ -402,7 +403,7 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
     OUString OFilteredContainer::getNameForObject(const ObjectType& _xObject)
     {
         OSL_ENSURE( _xObject.is(), "OFilteredContainer::getNameForObject: Object is NULL!" );
-        return ::dbtools::composeTableName( m_xMetaData, _xObject, ::dbtools::EComposeRule::InDataManipulation, false, false, false );
+        return ::dbtools::composeTableName( m_xMetaData, _xObject, ::dbtools::EComposeRule::InDataManipulation, false );
     }
 
     // multiple to obtain all tables from XDatabaseMetaData::getTables, via passing a particular
@@ -439,7 +440,7 @@ sal_Int32 createWildCardVector(Sequence< OUString >& _rTableFilter, std::vector<
         {
         default:
             SAL_WARN("dbaccess",  "OTableContainer::getAllTableTypeFilter: unknown TableTypeFilterMode!" );
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case FILTER_MODE_MIX_ALL:
             _rFilter.realloc( 3 );
             _rFilter[0] = sView;

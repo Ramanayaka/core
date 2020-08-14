@@ -1,13 +1,13 @@
 Run LO with OpenGL enabled
 --------------------------
-SAL_USE_VCLPLUGIN=gtk SAL_FORCEGL=1 ./soffice
+SAL_USE_VCLPLUGIN=gen SAL_FORCEGL=1 ./soffice
 
 Environment variables used:
 
 SAL_USE_VCLPLUGIN - use the specified VCL plugin (GTK2 in this case - currently
 needed on Linux because the default GTK3 doesn't support OpenGL yet)
 
-SAL_FORCEGL - enable OpenGL even if the card is blacklisted.
+SAL_FORCEGL - enable OpenGL even if the card would be excluded.
 
 Other variables:
 
@@ -23,4 +23,4 @@ APItrace. The path is the default used in Fedora 21+.
 Run VCLDemo
 -----------
 
-SAL_USE_VCLPLUGIN=gtk SAL_FORCEGL=1 ./bin/run vcldemo
+SAL_USE_VCLPLUGIN=gen SAL_FORCEGL=1 ./bin/run vcldemo

@@ -57,15 +57,13 @@
  * @file
  * Tool for sax writer.
  ************************************************************************/
-#include "xfsaxstream.hxx"
+#include <xfilter/xfsaxstream.hxx>
 #include "xfsaxattrlist.hxx"
 
 #include <cppuhelper/factory.hxx>
 
 #include <com/sun/star/document/XFilter.hpp>
-#include <com/sun/star/document/XImporter.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 
 using namespace ::cppu;
@@ -77,7 +75,7 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::uno;
 
-XFSaxStream::XFSaxStream(Reference<XDocumentHandler>& xHandler)
+XFSaxStream::XFSaxStream(Reference<XDocumentHandler> const & xHandler)
 {
     m_aHandler = xHandler;
     m_pAttrList.reset(new XFSaxAttrList );

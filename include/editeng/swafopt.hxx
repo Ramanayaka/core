@@ -20,6 +20,8 @@
 #ifndef INCLUDED_EDITENG_SWAFOPT_HXX
 #define INCLUDED_EDITENG_SWAFOPT_HXX
 
+#include <sal/config.h>
+
 #include <editeng/editengdllapi.h>
 #include <o3tl/sorted_vector.hxx>
 #include <rtl/ustring.hxx>
@@ -52,8 +54,20 @@ struct CompareAutoCompleteString
 class SortedAutoCompleteStrings
   : public o3tl::sorted_vector<IAutoCompleteString*, CompareAutoCompleteString>
 {
+    bool owning_;
+
+    SortedAutoCompleteStrings& operator =(SortedAutoCompleteStrings const &) = delete;
+
+    // For createNonOwningCopy only:
+    SortedAutoCompleteStrings(SortedAutoCompleteStrings const & other):
+        sorted_vector(other), owning_(false) {}
+
 public:
-    ~SortedAutoCompleteStrings() { DeleteAndDestroyAll(); }
+    SortedAutoCompleteStrings(): owning_(true) {}
+
+    ~SortedAutoCompleteStrings() { if (owning_) DeleteAndDestroyAll(); }
+
+    SortedAutoCompleteStrings createNonOwningCopy() const { return *this; }
 };
 
 } // namespace editeng
@@ -78,7 +92,6 @@ struct EDITENG_DLLPUBLIC SvxSwAutoFormatFlags
     bool bAutoCorrect : 1;
     bool bCapitalStartSentence : 1;
     bool bCapitalStartWord : 1;
-    bool bChkFontAttr : 1;
 
     bool bChgUserColl : 1;
     bool bChgEnumNum : 1;
@@ -90,13 +103,14 @@ struct EDITENG_DLLPUBLIC SvxSwAutoFormatFlags
     bool bChgOrdinalNumber : 1;
     bool bChgToEnEmDash : 1;
     bool bAddNonBrkSpace : 1;
+    bool bTransliterateRTL : 1;
+    bool bChgAngleQuotes : 1;
     bool bChgWeightUnderl : 1;
     bool bSetINetAttr : 1;
 
     bool bSetBorder : 1;
     bool bCreateTable : 1;
     bool bReplaceStyles : 1;
-    bool bDummy : 1;
 
     bool bWithRedlining : 1;
 
@@ -116,15 +130,7 @@ struct EDITENG_DLLPUBLIC SvxSwAutoFormatFlags
 
     bool bAutoCmpltKeepList : 1;
 
-    // some dummies for any new options
-    bool bDummy6 : 1,
-         bDummy7 : 1,
-         bDummy8 : 1
-         ;
-
     SvxSwAutoFormatFlags();
-    SvxSwAutoFormatFlags( const SvxSwAutoFormatFlags& rAFFlags ) { *this = rAFFlags; }
-    SvxSwAutoFormatFlags& operator=( const SvxSwAutoFormatFlags& );
 };
 
 #endif

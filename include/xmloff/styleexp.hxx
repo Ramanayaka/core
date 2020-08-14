@@ -21,13 +21,14 @@
 
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
-#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
-#include <com/sun/star/uno/Reference.h>
 
 #include <salhelper/simplereferenceobject.hxx>
 
-namespace com { namespace sun { namespace star
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
+namespace rtl { template <class reference_type> class Reference; }
+
+namespace com::sun::star
 {
     namespace style
     {
@@ -42,21 +43,16 @@ namespace com { namespace sun { namespace star
         class XNameAccess;
     }
 
-} } }
+}
 
-class XMLPropertySetMapper;
 class SvXMLExportPropertyMapper;
 class SvXMLAutoStylePoolP;
 class SvXMLExport;
+enum class XmlStyleFamily;
 
 class XMLOFF_DLLPUBLIC XMLStyleExport : public salhelper::SimpleReferenceObject
 {
     SvXMLExport& rExport;
-    const OUString sIsPhysical;
-    const OUString sIsAutoUpdate;
-    const OUString sFollowStyle;
-    const OUString sNumberingStyleName;
-    const OUString sOutlineLevel;
     SvXMLAutoStylePoolP *pAutoStylePool;
 
 protected:
@@ -85,15 +81,15 @@ public:
 //      const OUString& rFamily, const OUString& rXMLFamily,
 //      const rtl::Reference < XMLPropertySetMapper >& rPropMapper,
 //      bool bUsed, sal_uInt16 nFamily = 0,
-//      const OUString* pPrefix = 0L);
+//      const OUString* pPrefix = 0);
 
 //  void exportStyleFamily(
-//      const sal_Char *pFamily, const OUString& rXMLFamily,
+//      const char *pFamily, const OUString& rXMLFamily,
 //      const rtl::Reference < XMLPropertySetMapper >& rPropMapper,
 //      bool bUsed, sal_uInt16 nFamily = 0,
-//      const OUString* pPrefix = 0L);
+//      const OUString* pPrefix = 0);
 
-    bool exportDefaultStyle(
+    void exportDefaultStyle(
         const css::uno::Reference< css::beans::XPropertySet > & xPropSet,
         const OUString& rXMLFamily,
         const rtl::Reference < SvXMLExportPropertyMapper >& rPropMapper );
@@ -101,13 +97,13 @@ public:
     void exportStyleFamily(
         const OUString& rFamily, const OUString& rXMLFamily,
         const rtl::Reference < SvXMLExportPropertyMapper >& rPropMapper,
-        bool bUsed, sal_uInt16 nFamily,
+        bool bUsed, XmlStyleFamily nFamily,
         const OUString* pPrefix = nullptr);
 
     void exportStyleFamily(
-        const sal_Char *pFamily, const OUString& rXMLFamily,
+        const char *pFamily, const OUString& rXMLFamily,
         const rtl::Reference < SvXMLExportPropertyMapper >& rPropMapper,
-        bool bUsed, sal_uInt16 nFamily,
+        bool bUsed, XmlStyleFamily nFamily,
         const OUString* pPrefix = nullptr);
 };
 

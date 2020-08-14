@@ -17,13 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FORMS_SOURCE_COMPONENT_BUTTON_HXX
-#define INCLUDED_FORMS_SOURCE_COMPONENT_BUTTON_HXX
+#pragma once
 
 #include "clickableimage.hxx"
-#include "togglestate.hxx"
-#include "formnavigation.hxx"
-#include "resettable.hxx"
+#include <togglestate.hxx>
+#include <formnavigation.hxx>
+#include <resettable.hxx>
 
 #include <com/sun/star/awt/MouseEvent.hpp>
 #include <com/sun/star/lang/EventObject.hpp>
@@ -56,7 +55,7 @@ public:
 
 // css::lang::XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OButtonModel"); }
+    { return "com.sun.star.form.OButtonModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -132,7 +131,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OButtonControl"); }
+    { return "com.sun.star.form.OButtonControl"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -191,8 +190,5 @@ private:
 
 
 }   // namespace frm
-
-
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_BUTTON_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

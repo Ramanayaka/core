@@ -30,35 +30,27 @@
     This item describes a logical variable "keep paragraphs together?".
 */
 
-class EDITENG_DLLPUBLIC SvxFormatKeepItem : public SfxBoolItem
+class EDITENG_DLLPUBLIC SvxFormatKeepItem final : public SfxBoolItem
 {
 public:
     static SfxPoolItem* CreateDefault();
 
     inline SvxFormatKeepItem( const bool bKeep /*= false*/,
                            const sal_uInt16 _nWhich  );
-    inline SvxFormatKeepItem& operator=( const SvxFormatKeepItem& rSplit );
+    SvxFormatKeepItem(SvxFormatKeepItem const &) = default; // SfxPoolItem copy function dichotomy
 
     // "pure virtual Methods" from SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream&, sal_uInt16 ) const override;
-    virtual SvStream&       Store( SvStream& , sal_uInt16 nItemVersion ) const override;
+    virtual SvxFormatKeepItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 inline SvxFormatKeepItem::SvxFormatKeepItem( const bool bKeep, const sal_uInt16 _nWhich ) :
     SfxBoolItem( _nWhich, bKeep )
 {}
-
-inline SvxFormatKeepItem& SvxFormatKeepItem::operator=( const SvxFormatKeepItem& rKeep )
-{
-    SetValue( rKeep.GetValue() );
-    return *this;
-}
 
 #endif
 

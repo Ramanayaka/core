@@ -21,8 +21,7 @@
 #ifndef INCLUDED_SVX_ACCESSIBLESHAPE_HXX
 #define INCLUDED_SVX_ACCESSIBLESHAPE_HXX
 
-#include <exception>
-
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/TextSegment.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <com/sun/star/accessibility/XAccessibleExtendedAttributes.hpp>
@@ -31,16 +30,14 @@
 #include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/document/XEventListener.hpp>
+#include <com/sun/star/document/XShapeEventListener.hpp>
 #include <com/sun/star/lang/EventObject.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Type.hxx>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <editeng/AccessibleContextBase.hxx>
 #include <editeng/AccessibleComponentBase.hxx>
 #include <rtl/ustring.hxx>
@@ -48,8 +45,9 @@
 #include <svx/AccessibleShapeTreeInfo.hxx>
 #include <svx/IAccessibleViewForwarderListener.hxx>
 #include <svx/svxdllapi.h>
+#include <memory>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace accessibility { class XAccessible; }
     namespace accessibility { class XAccessibleEventListener; }
     namespace accessibility { class XAccessibleHyperlink; }
@@ -59,7 +57,7 @@ namespace com { namespace sun { namespace star {
     namespace document { struct EventObject; }
     namespace drawing { class XShape; }
     namespace uno { class XInterface; }
-} } }
+}
 
 class SdrObject;
 
@@ -69,7 +67,6 @@ class AccessibleShapeInfo;
 class AccessibleTextHelper;
 class ChildrenManager;
 class IAccessibleParent;
-class IAccessibleViewForwarder;
 
 /** This base class provides a base implementation for all shapes.  For more
     detailed documentation about the methods refer to the descriptions of
@@ -80,7 +77,7 @@ class IAccessibleViewForwarder;
 
     <p>The children of a shape can stem from two sources which, in case of
     SVX and SD shapes, are mutually exclusive.  This implementation,
-    however, handles both simultaniously to cope with future extensions or
+    however, handles both simultaneously to cope with future extensions or
     shapes from other projects.
     <ul>
         <li>If this shape is a group shape, i.e. a
@@ -103,7 +100,7 @@ class SVX_DLLPUBLIC AccessibleShape
         public css::accessibility::XAccessibleGroupPosition,
         public css::accessibility::XAccessibleHypertext,
         public IAccessibleViewForwarderListener,
-        public css::document::XEventListener,
+        public css::document::XShapeEventListener,
         public css::lang::XUnoTunnel
 {
 public:
@@ -116,7 +113,7 @@ public:
             and the accessible object that will become the parent of the new
             object.
         @param rShapeTreeInfo
-            Bundel of information passed to this shape and all of its desendants.
+            Bundle of information passed to this shape and all of its descendants.
         @attention
             Always call the <member>init</member> method after creating a
             new accessible shape.  This is one way to overcome the potential
@@ -316,25 +313,20 @@ public:
     //=====  IAccessibleViewForwarderListener  ================================
     virtual void ViewForwarderChanged() override;
 
-    //=====  lang::XEventListener  ============================================
-
     /** Listen for disposing events of the model.  The accessible shape
         remains functional when this happens.
     */
-    virtual void SAL_CALL
-        disposing (const css::lang::EventObject& Source) override;
+    void disposing (const css::lang::EventObject& Source);
 
-    //=====  document::XEventListener  ========================================
+    //=====  document::XShapeEventListener  ========================================
 
     virtual void SAL_CALL
-        notifyEvent (const css::document::EventObject& rEventObject) override;
+        notifyShapeEvent (const css::document::EventObject& rEventObject) override;
 
 
     //===== XUnoTunnel ========================================================
 
-    static const css::uno::Sequence< sal_Int8 >&   getUnoTunnelImplementationId() throw();
-    static AccessibleShape*                                     getImplementation( const css::uno::Reference< css::uno::XInterface >& _rxIFace ) throw();
-    sal_Int64                                                   SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& _rIdentifier ) override;
+    UNO3_GETIMPLEMENTATION_DECL(AccessibleShape)
 
     //===== XAccessibleHypertext ========================================================
     virtual sal_Int32 SAL_CALL getHyperLinkCount() override;
@@ -359,11 +351,12 @@ public:
         virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+        virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
     //===== Misc ========================================================
 
     const css::uno::Reference< css::drawing::XShape >&
-        GetXShape() { return mxShape; }
+        GetXShape() const { return mxShape; }
 
     /** set the index _nIndex at the accessible shape
         @param  _nIndex
@@ -373,7 +366,7 @@ public:
 
 protected:
     /// Children manager. May be empty if there are no children.
-    ChildrenManager* mpChildrenManager;
+    std::unique_ptr<ChildrenManager> mpChildrenManager;
 
     /// Reference to the actual shape.
     css::uno::Reference<
@@ -383,18 +376,13 @@ protected:
     */
     AccessibleShapeTreeInfo maShapeTreeInfo;
 
-    /** Index that is appended to the object's name to disambiguate between
-        different names with the otherwise same name.
-    */
-    long mnIndex;
-
     /** the index in parent.
     */
     sal_Int32 m_nIndexInParent;
 
     /** The accessible text engine.  May be NULL if it can not be created.
     */
-    AccessibleTextHelper* mpText;
+    std::unique_ptr<AccessibleTextHelper> mpText;
 
     /** This object can be used to modify the child list of our parent.
     */
@@ -422,9 +410,6 @@ protected:
     virtual OUString
         CreateAccessibleName() override;
 
-    /// Create a description string that contains the accessible description.
-    virtual OUString
-        CreateAccessibleDescription() override;
     /// @throws css::uno::RuntimeException
     OUString
        GetFullAccessibleName(AccessibleShape *shape);

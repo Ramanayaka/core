@@ -19,10 +19,8 @@
 
 
 #include <memory>
-#include <vcl/wrkwin.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/msgbox.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 
 #include <editeng/lspcitem.hxx>
 #include <editeng/lrspitem.hxx>
@@ -49,17 +47,17 @@
 #include <editeng/charreliefitem.hxx>
 #include <editeng/frmdiritem.hxx>
 
-#include <impedit.hxx>
+#include "impedit.hxx"
 #include <editeng/editeng.hxx>
 #include <editeng/editview.hxx>
 #include <editdoc.hxx>
-#include <editdbg.hxx>
 
 #include <rtl/strbuf.hxx>
+#include <osl/diagnose.h>
 
 #if defined( DBG_UTIL ) || ( OSL_DEBUG_LEVEL > 1 )
 
-OString DbgOutItem(const SfxItemPool& rPool, const SfxPoolItem& rItem)
+static OString DbgOutItem(const SfxItemPool& rPool, const SfxPoolItem& rItem)
 {
     OStringBuffer aDebStr;
     switch ( rItem.Which() )
@@ -71,7 +69,7 @@ OString DbgOutItem(const SfxItemPool& rPool, const SfxPoolItem& rItem)
         case EE_PARA_OUTLLRSPACE:
         case EE_PARA_LRSPACE:
             aDebStr.append("FI=");
-            aDebStr.append(static_cast<sal_Int32>(static_cast<const SvxLRSpaceItem&>(rItem).GetTextFirstLineOfst()));
+            aDebStr.append(static_cast<sal_Int32>(static_cast<const SvxLRSpaceItem&>(rItem).GetTextFirstLineOffset()));
             aDebStr.append(", LI=");
             aDebStr.append(static_cast<sal_Int32>(static_cast<const SvxLRSpaceItem&>(rItem).GetTextLeft()));
             aDebStr.append(", RI=");
@@ -88,9 +86,9 @@ OString DbgOutItem(const SfxItemPool& rPool, const SfxPoolItem& rItem)
                 if ( pFmt )
                 {
                     aDebStr.append('(');
-                    aDebStr.append(static_cast<sal_Int32>(pFmt->GetFirstLineOffset()));
+                    aDebStr.append(pFmt->GetFirstLineOffset());
                     aDebStr.append(',');
-                    aDebStr.append(static_cast<sal_Int32>(pFmt->GetAbsLSpace()));
+                    aDebStr.append(pFmt->GetAbsLSpace());
                     aDebStr.append(',');
                     if ( pFmt->GetNumberingType() == SVX_NUM_BITMAP )
                         aDebStr.append("Bitmap");
@@ -165,7 +163,7 @@ OString DbgOutItem(const SfxItemPool& rPool, const SfxPoolItem& rItem)
         case EE_CHAR_LANGUAGE_CJK:
         case EE_CHAR_LANGUAGE_CTL:
             aDebStr.append("Language=");
-            aDebStr.append((sal_Int32)static_cast<sal_uInt16>(static_cast<const SvxLanguageItem&>(rItem).GetLanguage()));
+            aDebStr.append(static_cast<sal_Int32>(static_cast<sal_uInt16>(static_cast<const SvxLanguageItem&>(rItem).GetLanguage())));
         break;
         case EE_CHAR_COLOR:
         {
@@ -276,7 +274,7 @@ OString DbgOutItem(const SfxItemPool& rPool, const SfxPoolItem& rItem)
         {
             aDebStr.append("Kerning=");
             aDebStr.append(static_cast<sal_Int32>(static_cast<const SvxKerningItem&>(rItem).GetValue()));
-            Size aSz( 0, (short)static_cast<const SvxKerningItem&>(rItem).GetValue() );
+            Size aSz( 0, static_cast<short>(static_cast<const SvxKerningItem&>(rItem).GetValue()) );
             MapUnit eUnit = rPool.GetMetric( rItem.Which() );
             MapMode aItemMapMode(eUnit);
             MapMode aPntMap( MapUnit::MapPoint );
@@ -296,7 +294,7 @@ OString DbgOutItem(const SfxItemPool& rPool, const SfxPoolItem& rItem)
     return aDebStr.makeStringAndClear();
 }
 
-void DbgOutItemSet( FILE* fp, const SfxItemSet& rSet, bool bSearchInParent, bool bShowALL )
+static void DbgOutItemSet(FILE* fp, const SfxItemSet& rSet, bool bSearchInParent, bool bShowALL)
 {
     for ( sal_uInt16 nWhich = EE_PARA_START; nWhich <= EE_CHAR_END; nWhich++ )
     {
@@ -317,13 +315,12 @@ void DbgOutItemSet( FILE* fp, const SfxItemSet& rSet, bool bSearchInParent, bool
     }
 }
 
-void EditDbg::ShowEditEngineData( EditEngine* pEE, bool bInfoBox )
+void EditEngine::DumpData(const EditEngine* pEE, bool bInfoBox)
 {
-#if defined UNX
-    FILE* fp = fopen( "/tmp/debug.log", "w" );
-#else
-    FILE* fp = fopen( "d:\\debug.log", "w" );
-#endif
+    if (!pEE)
+        return;
+
+    FILE* fp = fopen( "editenginedump.log", "w" );
     if ( fp == nullptr )
     {
         OSL_FAIL( "Log file could not be created!" );
@@ -374,7 +371,7 @@ void EditDbg::ShowEditEngineData( EditEngine* pEE, bool bInfoBox )
 
         const sal_Int32 nTextPortions = pPPortion->GetTextPortions().Count();
         OStringBuffer aPortionStr("\nText portions: #");
-        aPortionStr.append(static_cast<sal_Int32>(nTextPortions));
+        aPortionStr.append(nTextPortions);
         aPortionStr.append(" \nA");
         aPortionStr.append(nPortion);
         aPortionStr.append(": Paragraph Length = ");
@@ -427,12 +424,12 @@ void EditDbg::ShowEditEngineData( EditEngine* pEE, bool bInfoBox )
 
     if ( pEE->pImpEditEngine->GetStyleSheetPool() )
     {
-        sal_uInt16 nStyles = pEE->pImpEditEngine->GetStyleSheetPool() ? pEE->pImpEditEngine->GetStyleSheetPool()->Count() : 0;
+        SfxStyleSheetIterator aIter( pEE->pImpEditEngine->GetStyleSheetPool(), SfxStyleFamily::All );
+        sal_uInt16 nStyles = aIter.Count();
         fprintf( fp, "\n\n================================================================================" );
         fprintf( fp, "\n==================   Stylesheets   =============================================" );
         fprintf( fp, "\n================================================================================" );
         fprintf( fp, "\n#Template:   %" SAL_PRIuUINT32 "\n", sal_uInt32(nStyles) );
-        SfxStyleSheetIterator aIter( pEE->pImpEditEngine->GetStyleSheetPool(), SfxStyleFamily::All );
         SfxStyleSheetBase* pStyle = aIter.First();
         while ( pStyle )
         {
@@ -482,7 +479,12 @@ void EditDbg::ShowEditEngineData( EditEngine* pEE, bool bInfoBox )
     }
     fclose( fp );
     if ( bInfoBox )
-        ScopedVclPtrInstance<InfoBox>(nullptr, OUString( "D:\\DEBUG.LOG !" ) )->Execute();
+    {
+        std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(nullptr,
+                                                      VclMessageType::Info, VclButtonsType::Ok,
+                                                      "Dumped editenginedump.log!" ));
+        xInfoBox->run();
+    }
 }
 #endif
 
@@ -497,13 +499,15 @@ bool ParaPortion::DbgCheckTextPortions(ParaPortion const& rPara)
     }
     return nXLen == rPara.pNode->Len();
 }
+#endif
 
-void CheckOrderedList(const CharAttribList::AttribsType& rAttribs, bool bStart)
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
+void CheckOrderedList(const CharAttribList::AttribsType& rAttribs)
 {
     sal_Int32 nPrev = 0;
     for (const std::unique_ptr<EditCharAttrib>& rAttr : rAttribs)
     {
-        sal_Int32 const nCur = bStart ? rAttr->GetStart() : rAttr->GetEnd();
+        sal_Int32 const nCur = rAttr->GetStart();
         assert(nCur >= nPrev);
         nPrev = nCur;
     }

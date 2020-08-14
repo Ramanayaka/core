@@ -20,12 +20,13 @@
 #include "EventOASISTContext.hxx"
 #include "EventMap.hxx"
 #include "MutableAttrList.hxx"
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include "ActionMapTypesOASIS.hxx"
 #include "AttrTransformerAction.hxx"
 #include "TransformerActions.hxx"
 #include "TransformerBase.hxx"
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 // Used to parse Scripting Framework URLs
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
@@ -43,29 +44,29 @@ class XMLTransformerOASISEventMap_Impl:
                             NameHash_Impl, NameHash_Impl >
 {
 public:
-    explicit XMLTransformerOASISEventMap_Impl( XMLTransformerEventMapEntry *pInit );
+    explicit XMLTransformerOASISEventMap_Impl( XMLTransformerEventMapEntry const *pInit );
 };
 
-XMLTransformerOASISEventMap_Impl::XMLTransformerOASISEventMap_Impl( XMLTransformerEventMapEntry *pInit )
+XMLTransformerOASISEventMap_Impl::XMLTransformerOASISEventMap_Impl( XMLTransformerEventMapEntry const *pInit )
 {
-    if( pInit )
+    if( !pInit )
+        return;
+
+    XMLTransformerOASISEventMap_Impl::key_type aKey;
+    XMLTransformerOASISEventMap_Impl::mapped_type aData;
+    while( pInit->m_pOASISName )
     {
-        XMLTransformerOASISEventMap_Impl::key_type aKey;
-        XMLTransformerOASISEventMap_Impl::mapped_type aData;
-        while( pInit->m_pOASISName )
-        {
-            aKey.m_nPrefix = pInit->m_nOASISPrefix;
-            aKey.m_aLocalName = OUString::createFromAscii(pInit->m_pOASISName);
+        aKey.m_nPrefix = pInit->m_nOASISPrefix;
+        aKey.m_aLocalName = OUString::createFromAscii(pInit->m_pOASISName);
 
-            OSL_ENSURE( find( aKey ) == end(), "duplicate event map entry" );
+        OSL_ENSURE( find( aKey ) == end(), "duplicate event map entry" );
 
-            aData = OUString::createFromAscii(pInit->m_pOOoName);
+        aData = OUString::createFromAscii(pInit->m_pOOoName);
 
-            XMLTransformerOASISEventMap_Impl::value_type aVal( aKey, aData );
+        XMLTransformerOASISEventMap_Impl::value_type aVal( aKey, aData );
 
-            insert( aVal );
-            ++pInit;
-        }
+        insert( aVal );
+        ++pInit;
     }
 }
 
@@ -110,7 +111,7 @@ OUString XMLEventOASISTransformerContext::GetEventName(
     {
         XMLTransformerOASISEventMap_Impl::const_iterator aIter =
             pMap2->find( aKey );
-        if( !(aIter == pMap2->end()) )
+        if( aIter != pMap2->end() )
             return (*aIter).second;
     }
 
@@ -121,7 +122,7 @@ OUString XMLEventOASISTransformerContext::GetEventName(
         return (*aIter).second;
 }
 
-bool ParseURL(
+static bool ParseURL(
     const OUString& rAttrValue,
     OUString* pName, OUString* pLocation )
 {
@@ -184,7 +185,7 @@ void XMLEventOASISTransformerContext::StartElement(
         XMLTransformerActions::key_type aKey( nPrefix, aLocalName );
         XMLTransformerActions::const_iterator aIter =
             pActions->find( aKey );
-        if( !(aIter == pActions->end() ) )
+        if( aIter != pActions->end() )
         {
             if( !pMutableAttrList )
             {

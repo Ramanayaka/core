@@ -25,6 +25,7 @@
 #include <sal/main.h>
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
+#include <rtl/ustrbuf.hxx>
 
 #define MAX_ADDRESS 0x30000
 #define MAX_INDEX MAX_ADDRESS/0x100
@@ -47,11 +48,12 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
     sal_Int32 i, j, k;
     sal_Int32 address[MAX_ADDRESS];
     for (i=0; i<MAX_ADDRESS; i++) address[i]=-1;
-    OUString sep=OUString('|');
-    OUString result=sep;
+    OUString sep('|');
+    OUStringBuffer result(64*1024);
+    result.append(sep);
     sal_Int32 max=0;
 
-    sal_Char str[1024];
+    char str[1024];
     while (fgets(str, 1024, fp)) {
         // don't convert last new line character to Ostr.
         sal_Int32 len = strlen(str) - 1;
@@ -60,7 +62,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
             continue;
 
         // input file is in UTF-8 encoding
-        OUString Ostr = OUString(str, len, RTL_TEXTENCODING_UTF8);
+        OUString Ostr(str, len, RTL_TEXTENCODING_UTF8);
         len = Ostr.getLength();
         if (len == 0)
             continue; // skip empty line.
@@ -78,7 +80,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
             address[nChar]=idx;
         } else {
             address[nChar]=result.getLength();
-            result+=key;
+            result.append(key);
         }
     }
     fclose(fp);
@@ -93,7 +95,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
     fprintf(fp, " * Copyright(c) 1999 - 2006, Sun Microsystems, Inc.\n");
     fprintf(fp, " * All Rights Reserved.\n");
     fprintf(fp, " */\n\n");
-    fprintf(fp, "/* !!!The file is generated automatically. DONOT edit the file manually!!! */\n\n");
+    fprintf(fp, "/* !!!The file is generated automatically. DO NOT edit the file manually!!! */\n\n");
     fprintf(fp, "#include <sal/types.h>\n");
     fprintf(fp, "\nextern \"C\" {\n");
 
@@ -119,7 +121,6 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
     fprintf(fp, "\n};\n\n");
 
     sal_Int32 len=result.getLength();
-    const sal_Unicode *ustr=result.getStr();
     fprintf(fp, "\nstatic const sal_uInt16 idx2[] = {");
     for (i = k = 0; i <= max_index; i++) {
         if (index[i] != 0xFFFF) {
@@ -129,7 +130,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
                 fprintf(
                     fp, "0x%04lx, ",
                     sal::static_int_cast< unsigned long >(
-                        ad == -1 ? 0 : max == 2 ? ustr[ad] : ad));
+                        ad == -1 ? 0 : max == 2 ? result[ad] : ad));
             }
             fprintf(fp, "\n\t");
         }
@@ -142,7 +143,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         fprintf(fp, "\nstatic const sal_uInt16 idx3[] = {");
         for (i = k = 0; i < len;  i++) {
             if (k++ % 16 == 0) fprintf(fp, "\n\t");
-            fprintf(fp, "0x%04x, ", (sep.toChar() == ustr[i]) ? 0 : ustr[i]);
+            fprintf(fp, "0x%04x, ", (sep.toChar() == result[i]) ? 0 : result[i]);
         }
         fprintf(fp, "\n};\n\n");
     }

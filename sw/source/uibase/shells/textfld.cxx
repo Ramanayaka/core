@@ -19,17 +19,14 @@
 
 #include <AnnotationWin.hxx>
 #include <comphelper/lok.hxx>
-#include <chrdlgmodes.hxx>
 #include <hintids.hxx>
 #include <IDocumentFieldsAccess.hxx>
-#include <editeng/eeitem.hxx>
-#include <editeng/kernitem.hxx>
-#include <editeng/outliner.hxx>
+#include <sfx2/bindings.hxx>
 #include <sfx2/lnkbase.hxx>
 #include <fmtfld.hxx>
-#include <vcl/msgbox.hxx>
+#include <txtfld.hxx>
 #include <svl/itempool.hxx>
-#include <unotools/useroptions.hxx>
+#include <tools/lineend.hxx>
 #include <svl/whiter.hxx>
 #include <svl/eitem.hxx>
 #include <svl/macitem.hxx>
@@ -38,41 +35,33 @@
 #include <svx/postattr.hxx>
 #include <svx/hlnkitem.hxx>
 #include <svx/svxdlg.hxx>
-#include <sfx2/linkmgr.hxx>
-#include <unotools/localedatawrapper.hxx>
-#include <sfx2/dispatch.hxx>
 #include <fmtinfmt.hxx>
 #include <fldwrap.hxx>
 #include <redline.hxx>
 #include <view.hxx>
 #include <viewopt.hxx>
 #include <wrtsh.hxx>
-#include <basesh.hxx>
-#include <flddat.hxx>
-#include <numrule.hxx>
 #include <textsh.hxx>
-#include <docsh.hxx>
 #include <docufld.hxx>
-#include <usrfld.hxx>
 #include <ddefld.hxx>
-#include <expfld.hxx>
 #include <fldmgr.hxx>
 #include <uitool.hxx>
 #include <cmdid.h>
-#include <shells.hrc>
-#include <sfx2/app.hxx>
-#include <svx/dialogs.hrc>
-#include "swabstdlg.hxx"
-#include "dialog.hrc"
-#include <fldui.hrc>
+#include <strings.hrc>
+#include <sfx2/event.hxx>
+#include <swabstdlg.hxx>
 #include <doc.hxx>
-#include <app.hrc>
-#include <edtwin.hxx>
 #include <PostItMgr.hxx>
-#include <calbck.hxx>
-#include <cstddef>
-#include <memory>
 #include <swmodule.hxx>
+#include <xmloff/odffields.hxx>
+#include <IDocumentContentOperations.hxx>
+#include <IDocumentUndoRedo.hxx>
+#include <svl/zforlist.hxx>
+#include <svl/zformat.hxx>
+#include <IMark.hxx>
+#include <officecfg/Office/Compatibility.hxx>
+#include <ndtxt.hxx>
+
 
 using namespace nsSwDocInfoSubType;
 
@@ -80,30 +69,30 @@ static OUString lcl_BuildTitleWithRedline( const SwRangeRedline *pRedline )
 {
     const OUString sTitle(SwResId(STR_REDLINE_COMMENT));
 
-    sal_uInt16 nResId = 0;
+    const char* pResId = nullptr;
     switch( pRedline->GetType() )
     {
-        case nsRedlineType_t::REDLINE_INSERT:
-            nResId = STR_REDLINE_INSERTED;
+        case RedlineType::Insert:
+            pResId = STR_REDLINE_INSERTED;
             break;
-        case nsRedlineType_t::REDLINE_DELETE:
-            nResId = STR_REDLINE_DELETED;
+        case RedlineType::Delete:
+            pResId = STR_REDLINE_DELETED;
             break;
-        case nsRedlineType_t::REDLINE_FORMAT:
-        case nsRedlineType_t::REDLINE_PARAGRAPH_FORMAT:
-            nResId = STR_REDLINE_FORMATED;
+        case RedlineType::Format:
+        case RedlineType::ParagraphFormat:
+            pResId = STR_REDLINE_FORMATTED;
             break;
-        case nsRedlineType_t::REDLINE_TABLE:
-            nResId = STR_REDLINE_TABLECHG;
+        case RedlineType::Table:
+            pResId = STR_REDLINE_TABLECHG;
             break;
-        case nsRedlineType_t::REDLINE_FMTCOLL:
-            nResId = STR_REDLINE_FMTCOLLSET;
+        case RedlineType::FmtColl:
+            pResId = STR_REDLINE_FMTCOLLSET;
             break;
         default:
             return sTitle;
     }
 
-    return sTitle + SwResId( nResId );
+    return sTitle + SwResId(pResId);
 }
 
 void SwTextShell::ExecField(SfxRequest &rReq)
@@ -116,12 +105,11 @@ void SwTextShell::ExecField(SfxRequest &rReq)
     if(pArgs)
         pArgs->GetItemState(GetPool().GetWhich(nSlot), false, &pItem);
 
-    vcl::Window *pMDI = &GetView().GetViewFrame()->GetWindow();
     bool bMore = false;
     bool bIsText = true;
-    sal_uInt16 nInsertType = 0;
+    SwFieldTypesEnum nInsertType = SwFieldTypesEnum::Date;
     sal_uInt16 nInsertSubType = 0;
-    sal_uLong nInsertFormat = 0;
+    sal_uInt32 nInsertFormat = 0;
 
     switch(nSlot)
     {
@@ -132,28 +120,22 @@ void SwTextShell::ExecField(SfxRequest &rReq)
             {
                 switch ( pField->GetTypeId() )
                 {
-                    case TYP_DDEFLD:
+                    case SwFieldTypesEnum::DDE:
                     {
                         ::sfx2::SvBaseLink& rLink = static_cast<SwDDEFieldType*>(pField->GetTyp())->
                                                 GetBaseLink();
                         if(rLink.IsVisible())
                         {
                             SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                            ScopedVclPtr<SfxAbstractLinksDialog> pDlg(pFact->CreateLinksDialog( pMDI, &rSh.GetLinkManager(), false, &rLink ));
-                            if ( pDlg )
-                            {
-                                pDlg->Execute();
-                            }
+                            ScopedVclPtr<SfxAbstractLinksDialog> pDlg(pFact->CreateLinksDialog(GetView().GetFrameWeld(), &rSh.GetLinkManager(), false, &rLink));
+                            pDlg->Execute();
                         }
                         break;
                     }
                     default:
                     {
                         SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                        assert(pFact && "SwAbstractDialogFactory fail!");
-
                         ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateSwFieldEditDlg( GetView() ));
-                        assert(pDlg && "Dialog creation failed!");
                         pDlg->Execute();
                     }
                 }
@@ -191,7 +173,9 @@ void SwTextShell::ExecField(SfxRequest &rReq)
                             bAddSetExpressionFields ) )
                 {
                     rSh.ClearMark();
-                    if ( dynamic_cast<SwInputField*>(rSh.GetCurField( true )) != nullptr )
+                    if (!rSh.IsMultiSelection()
+                        && (nullptr != dynamic_cast<const SwTextInputField*>(
+                               SwCursorShell::GetTextFieldAtCursor(rSh.GetCursor(), true))))
                     {
                         rSh.SttSelect();
                         rSh.SelectText(
@@ -200,7 +184,7 @@ void SwTextShell::ExecField(SfxRequest &rReq)
                     }
                     else
                     {
-                        rSh.StartInputFieldDlg( rSh.GetCurField( true ), false );
+                        rSh.StartInputFieldDlg(rSh.GetCurField(true), false, false, GetView().GetFrameWeld());
                     }
                     bRet = true;
                 }
@@ -212,94 +196,96 @@ void SwTextShell::ExecField(SfxRequest &rReq)
         default:
             bMore = true;
     }
-    if(bMore)
+    if(!bMore)
+        return;
+
+    // Here come the slots with FieldMgr.
+    SwFieldMgr aFieldMgr(GetShellPtr());
+    switch(nSlot)
     {
-        // Here come the slots with FieldMgr.
-        SwFieldMgr aFieldMgr(GetShellPtr());
-        switch(nSlot)
+        case FN_INSERT_DBFIELD:
         {
-            case FN_INSERT_DBFIELD:
+            bool bRes = false;
+            if( pItem )
             {
-                bool bRes = false;
-                if( pItem )
-                {
-                    sal_uLong  nFormat = 0;
-                    sal_uInt16 nType = 0;
-                    OUString aPar1 = static_cast<const SfxStringItem *>(pItem)->GetValue();
-                    OUString aPar2;
-                    sal_Int32 nCommand = 0;
+                sal_uInt32 nFormat = 0;
+                SwFieldTypesEnum nType = SwFieldTypesEnum::Date;
+                OUString aPar1 = static_cast<const SfxStringItem *>(pItem)->GetValue();
+                OUString aPar2;
+                sal_Int32 nCommand = 0;
 
-                    if( SfxItemState::SET == pArgs->GetItemState( FN_PARAM_FIELD_TYPE,
-                                                                false, &pItem ))
-                        nType = static_cast<const SfxUInt16Item *>(pItem)->GetValue();
-                    aPar1 += OUStringLiteral1(DB_DELIM);
-                    if( SfxItemState::SET == pArgs->GetItemState(
-                                        FN_PARAM_1, false, &pItem ))
-                    {
-                        aPar1 += static_cast<const SfxStringItem *>(pItem)->GetValue();
-                    }
-                    if( SfxItemState::SET == pArgs->GetItemState(
-                                        FN_PARAM_3, false, &pItem ))
-                        nCommand = static_cast<const SfxInt32Item*>(pItem)->GetValue();
-                    aPar1 += OUStringLiteral1(DB_DELIM)
-                        + OUString::number(nCommand)
-                        + OUStringLiteral1(DB_DELIM);
-                    if( SfxItemState::SET == pArgs->GetItemState(
-                                        FN_PARAM_2, false, &pItem ))
-                    {
-                        aPar1 += static_cast<const SfxStringItem *>(pItem)->GetValue();
-                    }
-                    if( SfxItemState::SET == pArgs->GetItemState(
-                                        FN_PARAM_FIELD_CONTENT, false, &pItem ))
-                        aPar2 = static_cast<const SfxStringItem *>(pItem)->GetValue();
-                    if( SfxItemState::SET == pArgs->GetItemState(
-                                        FN_PARAM_FIELD_FORMAT, false, &pItem ))
-                        nFormat = static_cast<const SfxUInt32Item *>(pItem)->GetValue();
-                    OSL_FAIL("Command is not yet used");
-                    SwInsertField_Data aData(nType, 0, aPar1, aPar2, nFormat, GetShellPtr(), ' '/*separator*/ );
-                    bRes = aFieldMgr.InsertField(aData);
+                if( SfxItemState::SET == pArgs->GetItemState( FN_PARAM_FIELD_TYPE,
+                                                            false, &pItem ))
+                    nType = static_cast<SwFieldTypesEnum>(static_cast<const SfxUInt16Item *>(pItem)->GetValue());
+                aPar1 += OUStringChar(DB_DELIM);
+                if( SfxItemState::SET == pArgs->GetItemState(
+                                    FN_PARAM_1, false, &pItem ))
+                {
+                    aPar1 += static_cast<const SfxStringItem *>(pItem)->GetValue();
                 }
-                rReq.SetReturnValue(SfxBoolItem( nSlot, bRes ));
+                if( SfxItemState::SET == pArgs->GetItemState(
+                                    FN_PARAM_3, false, &pItem ))
+                    nCommand = static_cast<const SfxInt32Item*>(pItem)->GetValue();
+                aPar1 += OUStringChar(DB_DELIM)
+                    + OUString::number(nCommand)
+                    + OUStringChar(DB_DELIM);
+                if( SfxItemState::SET == pArgs->GetItemState(
+                                    FN_PARAM_2, false, &pItem ))
+                {
+                    aPar1 += static_cast<const SfxStringItem *>(pItem)->GetValue();
+                }
+                if( SfxItemState::SET == pArgs->GetItemState(
+                                    FN_PARAM_FIELD_CONTENT, false, &pItem ))
+                    aPar2 = static_cast<const SfxStringItem *>(pItem)->GetValue();
+                if( SfxItemState::SET == pArgs->GetItemState(
+                                    FN_PARAM_FIELD_FORMAT, false, &pItem ))
+                    nFormat = static_cast<const SfxUInt32Item *>(pItem)->GetValue();
+                OSL_FAIL("Command is not yet used");
+                SwInsertField_Data aData(nType, 0, aPar1, aPar2, nFormat, GetShellPtr(), ' '/*separator*/ );
+                bRes = aFieldMgr.InsertField(aData);
             }
-            break;
-            case FN_INSERT_FIELD_CTRL:
-            case FN_INSERT_FIELD:
+            rReq.SetReturnValue(SfxBoolItem( nSlot, bRes ));
+        }
+        break;
+        case FN_INSERT_FIELD_CTRL:
+        case FN_INSERT_FIELD:
+        {
+            bool bRes = false;
+            if( pItem && nSlot != FN_INSERT_FIELD_CTRL)
             {
-                bool bRes = false;
-                if( pItem && nSlot != FN_INSERT_FIELD_CTRL)
-                {
-                    sal_uLong  nFormat = 0;
-                    sal_uInt16 nType = 0;
-                    sal_uInt16 nSubType = 0;
-                    OUString aPar1 = static_cast<const SfxStringItem *>(pItem)->GetValue();
-                    OUString aPar2;
-                    sal_Unicode cSeparator = ' ';
+                sal_uInt32 nFormat = 0;
+                SwFieldTypesEnum nType = SwFieldTypesEnum::Date;
+                sal_uInt16 nSubType = 0;
+                OUString aPar1 = static_cast<const SfxStringItem *>(pItem)->GetValue();
+                OUString aPar2;
+                sal_Unicode cSeparator = ' ';
 
-                    if( SfxItemState::SET == pArgs->GetItemState( FN_PARAM_FIELD_TYPE,
-                                                                false, &pItem ))
-                        nType = static_cast<const SfxUInt16Item *>(pItem)->GetValue();
-                    if( SfxItemState::SET == pArgs->GetItemState( FN_PARAM_FIELD_SUBTYPE,
-                                                                false, &pItem ))
-                        nSubType = static_cast<const SfxUInt16Item *>(pItem)->GetValue();
-                    if( SfxItemState::SET == pArgs->GetItemState(
-                                        FN_PARAM_FIELD_CONTENT, false, &pItem ))
-                        aPar2 = static_cast<const SfxStringItem *>(pItem)->GetValue();
-                    if( SfxItemState::SET == pArgs->GetItemState(
-                                        FN_PARAM_FIELD_FORMAT, false, &pItem ))
-                        nFormat = static_cast<const SfxUInt32Item *>(pItem)->GetValue();
-                    if( SfxItemState::SET == pArgs->GetItemState(
-                                        FN_PARAM_3, false, &pItem ))
-                    {
-                        OUString sTmp = static_cast<const SfxStringItem *>(pItem)->GetValue();
-                        if(!sTmp.isEmpty())
-                            cSeparator = sTmp[0];
-                    }
-                    SwInsertField_Data aData(nType, nSubType, aPar1, aPar2, nFormat, GetShellPtr(), cSeparator );
-                    bRes = aFieldMgr.InsertField( aData );
+                if( SfxItemState::SET == pArgs->GetItemState( FN_PARAM_FIELD_TYPE,
+                                                            false, &pItem ))
+                    nType = static_cast<SwFieldTypesEnum>(static_cast<const SfxUInt16Item *>(pItem)->GetValue());
+                if( SfxItemState::SET == pArgs->GetItemState( FN_PARAM_FIELD_SUBTYPE,
+                                                            false, &pItem ))
+                    nSubType = static_cast<const SfxUInt16Item *>(pItem)->GetValue();
+                if( SfxItemState::SET == pArgs->GetItemState(
+                                    FN_PARAM_FIELD_CONTENT, false, &pItem ))
+                    aPar2 = static_cast<const SfxStringItem *>(pItem)->GetValue();
+                if( SfxItemState::SET == pArgs->GetItemState(
+                                    FN_PARAM_FIELD_FORMAT, false, &pItem ))
+                    nFormat = static_cast<const SfxUInt32Item *>(pItem)->GetValue();
+                if( SfxItemState::SET == pArgs->GetItemState(
+                                    FN_PARAM_3, false, &pItem ))
+                {
+                    OUString sTmp = static_cast<const SfxStringItem *>(pItem)->GetValue();
+                    if(!sTmp.isEmpty())
+                        cSeparator = sTmp[0];
                 }
-                else
-                        //#i5788# prevent closing of the field dialog while a modal dialog ( Input field dialog ) is active
-                        if(!GetView().GetViewFrame()->IsInModalMode())
+                SwInsertField_Data aData(nType, nSubType, aPar1, aPar2, nFormat, GetShellPtr(), cSeparator );
+                bRes = aFieldMgr.InsertField( aData );
+            }
+            else
+            {
+                //#i5788# prevent closing of the field dialog while a modal dialog ( Input field dialog ) is active
+                if(!GetView().GetViewFrame()->IsInModalMode())
                 {
                     SfxViewFrame* pVFrame = GetView().GetViewFrame();
                     pVFrame->ToggleChildWindow(FN_INSERT_FIELD);
@@ -308,429 +294,461 @@ void SwTextShell::ExecField(SfxRequest &rReq)
                     Invalidate(FN_INSERT_FIELD_CTRL);
                     rReq.Ignore();
                 }
-                rReq.SetReturnValue(SfxBoolItem( nSlot, bRes ));
             }
-            break;
+            rReq.SetReturnValue(SfxBoolItem( nSlot, bRes ));
+        }
+        break;
 
-            case FN_INSERT_REF_FIELD:
-            {
-                SfxViewFrame* pVFrame = GetView().GetViewFrame();
-                if (!pVFrame->HasChildWindow(FN_INSERT_FIELD))
-                    pVFrame->ToggleChildWindow(FN_INSERT_FIELD);    // Show dialog
+        case FN_INSERT_REF_FIELD:
+        {
+            SfxViewFrame* pVFrame = GetView().GetViewFrame();
+            if (!pVFrame->HasChildWindow(FN_INSERT_FIELD))
+                pVFrame->ToggleChildWindow(FN_INSERT_FIELD);    // Show dialog
 
-                // Switch Fielddlg at a new TabPage
-                sal_uInt16 nId = SwFieldDlgWrapper::GetChildWindowId();
-                SwFieldDlgWrapper *pWrp = static_cast<SwFieldDlgWrapper*>(pVFrame->GetChildWindow(nId));
-                if (pWrp)
-                    pWrp->ShowReferencePage();
-                rReq.Ignore();
-            }
-            break;
-            case FN_DELETE_COMMENT:
+            // Switch Fielddlg at a new TabPage
+            sal_uInt16 nId = SwFieldDlgWrapper::GetChildWindowId();
+            SwFieldDlgWrapper *pWrp = static_cast<SwFieldDlgWrapper*>(pVFrame->GetChildWindow(nId));
+            if (pWrp)
+                pWrp->ShowReferencePage();
+            rReq.Ignore();
+        }
+        break;
+        case FN_DELETE_COMMENT:
+        {
+            const SvxPostItIdItem* pIdItem = rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_ID);
+            if (pIdItem && !pIdItem->GetValue().isEmpty() && GetView().GetPostItMgr())
             {
-                const SvxPostItIdItem* pIdItem = rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_ID);
-                if (pIdItem && !pIdItem->GetValue().isEmpty() && GetView().GetPostItMgr())
+                GetView().GetPostItMgr()->Delete(pIdItem->GetValue().toUInt32());
+            }
+            else if ( GetView().GetPostItMgr() &&
+                      GetView().GetPostItMgr()->HasActiveSidebarWin() )
+            {
+                GetView().GetPostItMgr()->DeleteActiveSidebarWin();
+            }
+        }
+        break;
+        case FN_RESOLVE_NOTE:
+        {
+            const SvxPostItIdItem* pIdItem = rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_ID);
+            if (pIdItem && !pIdItem->GetValue().isEmpty() && GetView().GetPostItMgr())
+            {
+                GetView().GetPostItMgr()->ToggleResolvedForThread(pIdItem->GetValue().toUInt32());
+            }
+        }
+        break;
+        case FN_DELETE_ALL_NOTES:
+            if ( GetView().GetPostItMgr() )
+                GetView().GetPostItMgr()->Delete();
+        break;
+        case FN_FORMAT_ALL_NOTES:
+        {
+            SwPostItMgr* pPostItMgr = GetView().GetPostItMgr();
+            if (pPostItMgr)
+                pPostItMgr->ExecuteFormatAllDialog(GetView());
+        }
+        break;
+        case FN_DELETE_NOTE_AUTHOR:
+        {
+            const SfxStringItem* pNoteItem = rReq.GetArg<SfxStringItem>(nSlot);
+            if ( pNoteItem && GetView().GetPostItMgr() )
+                GetView().GetPostItMgr()->Delete( pNoteItem->GetValue() );
+        }
+        break;
+        case FN_HIDE_NOTE:
+            if ( GetView().GetPostItMgr() &&
+                 GetView().GetPostItMgr()->HasActiveSidebarWin() )
+            {
+                GetView().GetPostItMgr()->HideActiveSidebarWin();
+            }
+        break;
+        case FN_HIDE_ALL_NOTES:
+            if ( GetView().GetPostItMgr() )
+                GetView().GetPostItMgr()->Hide();
+        break;
+        case FN_HIDE_NOTE_AUTHOR:
+        {
+            const SfxStringItem* pNoteItem = rReq.GetArg<SfxStringItem>(nSlot);
+            if ( pNoteItem && GetView().GetPostItMgr() )
+                GetView().GetPostItMgr()->Hide( pNoteItem->GetValue() );
+        }
+        break;
+        case FN_REPLY:
+        {
+            const SvxPostItIdItem* pIdItem = rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_ID);
+            if (pIdItem && !pIdItem->GetValue().isEmpty())
+            {
+                SwFieldType* pType = rSh.GetDoc()->getIDocumentFieldsAccess().GetFieldType(SwFieldIds::Postit, OUString(), false);
+                if(pType->FindFormatForPostItId(pIdItem->GetValue().toUInt32()))
                 {
-                    GetView().GetPostItMgr()->Delete(pIdItem->GetValue().toUInt32());
-                }
-                else if ( GetView().GetPostItMgr() &&
-                          GetView().GetPostItMgr()->HasActiveSidebarWin() )
-                {
-                    GetView().GetPostItMgr()->DeleteActiveSidebarWin();
-                }
-            }
-            break;
-            case FN_DELETE_ALL_NOTES:
-                if ( GetView().GetPostItMgr() )
-                    GetView().GetPostItMgr()->Delete();
-            break;
-            case FN_FORMAT_ALL_NOTES:
-            {
-                SwPostItMgr* pPostItMgr = GetView().GetPostItMgr();
-                if (pPostItMgr)
-                    pPostItMgr->ExecuteFormatAllDialog(GetView());
-            }
-            break;
-            case FN_DELETE_NOTE_AUTHOR:
-            {
-                const SfxStringItem* pNoteItem = rReq.GetArg<SfxStringItem>(nSlot);
-                if ( pNoteItem && GetView().GetPostItMgr() )
-                    GetView().GetPostItMgr()->Delete( pNoteItem->GetValue() );
-            }
-            break;
-            case FN_HIDE_NOTE:
-                if ( GetView().GetPostItMgr() &&
-                     GetView().GetPostItMgr()->HasActiveSidebarWin() )
-                {
-                    GetView().GetPostItMgr()->HideActiveSidebarWin();
-                }
-            break;
-            case FN_HIDE_ALL_NOTES:
-                if ( GetView().GetPostItMgr() )
-                    GetView().GetPostItMgr()->Hide();
-            break;
-            case FN_HIDE_NOTE_AUTHOR:
-            {
-                const SfxStringItem* pNoteItem = rReq.GetArg<SfxStringItem>(nSlot);
-                if ( pNoteItem && GetView().GetPostItMgr() )
-                    GetView().GetPostItMgr()->Hide( pNoteItem->GetValue() );
-            }
-            break;
-            case FN_REPLY:
-            {
-                const SvxPostItIdItem* pIdItem = rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_ID);
-                if (pIdItem && !pIdItem->GetValue().isEmpty())
-                {
-                    SwFieldType* pType = rSh.GetDoc()->getIDocumentFieldsAccess().GetFieldType(SwFieldIds::Postit, OUString(), false);
-                    SwIterator<SwFormatField,SwFieldType> aIter( *pType );
-                    SwFormatField* pSwFormatField = aIter.First();
-                    while( pSwFormatField )
+                    auto pMgr = GetView().GetPostItMgr();
+                    auto pWin = pMgr->GetAnnotationWin(pIdItem->GetValue().toUInt32());
+                    if(pWin)
                     {
-                        if ( static_cast<SwPostItField*>(pSwFormatField->GetField())->GetPostItId() == pIdItem->GetValue().toUInt32() )
-                        {
-                            sw::annotation::SwAnnotationWin* pWin = GetView().GetPostItMgr()->GetAnnotationWin(pIdItem->GetValue().toUInt32());
-                            if (pWin)
-                            {
-                                const SvxPostItTextItem* pTextItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_TEXT);
-                                OUString sText;
-                                if ( pTextItem )
-                                    sText = pTextItem->GetValue();
-
-                                GetView().GetPostItMgr()->RegisterAnswerText(sText);
-                                pWin->ExecuteCommand(nSlot);
-                            }
-
-                            break;
-                        }
-                        pSwFormatField = aIter.Next();
+                        OUString sText;
+                        if(const auto pTextItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_TEXT))
+                            sText = pTextItem->GetValue();
+                        pMgr->RegisterAnswerText(sText);
+                        pWin->ExecuteCommand(nSlot);
                     }
                 }
             }
-            break;
-            case FN_POSTIT:
+        }
+        break;
+        case FN_POSTIT:
+        {
+            rSh.InsertPostIt(aFieldMgr, rReq);
+        }
+        break;
+        case SID_EDIT_POSTIT:
+        {
+            const SvxPostItIdItem* pIdItem = rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_ID);
+            if (pIdItem && !pIdItem->GetValue().isEmpty())
             {
-                SwPostItField* pPostIt = dynamic_cast<SwPostItField*>(aFieldMgr.GetCurField());
-                bool bNew = !(pPostIt && pPostIt->GetTyp()->Which() == SwFieldIds::Postit);
-                if (bNew || GetView().GetPostItMgr()->IsAnswer())
+                const SvxPostItTextItem* pTextItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_TEXT);
+                OUString sText;
+                if ( pTextItem )
+                    sText = pTextItem->GetValue();
+
+                sw::annotation::SwAnnotationWin* pAnnotationWin = GetView().GetPostItMgr()->GetAnnotationWin(pIdItem->GetValue().toUInt32());
+                if (pAnnotationWin)
                 {
-                    const SvxPostItAuthorItem* pAuthorItem = rReq.GetArg<SvxPostItAuthorItem>(SID_ATTR_POSTIT_AUTHOR);
-                    OUString sAuthor;
-                    if ( pAuthorItem )
-                        sAuthor = pAuthorItem->GetValue();
-                    else
-                    {
-                        std::size_t nAuthor = SW_MOD()->GetRedlineAuthor();
-                        sAuthor = SW_MOD()->GetRedlineAuthor(nAuthor);
-                    }
+                    pAnnotationWin->UpdateText(sText);
 
-                    const SvxPostItTextItem* pTextItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_TEXT);
-                    OUString sText;
-                    if ( pTextItem )
-                        sText = pTextItem->GetValue();
-
-                    // If we have a text already registered for answer, use that
-                    if (GetView().GetPostItMgr()->IsAnswer() && !GetView().GetPostItMgr()->GetAnswerText().isEmpty())
-                    {
-                        sText = GetView().GetPostItMgr()->GetAnswerText();
-                        GetView().GetPostItMgr()->RegisterAnswerText(OUString());
-                    }
-
-                    if ( rSh.HasSelection() && !rSh.IsTableMode() )
-                    {
-                        rSh.KillPams();
-                    }
-
-                    // #i120513# Inserting a comment into an autocompletion crashes
-                    // --> suggestion has to be removed before
-                    GetView().GetEditWin().StopQuickHelp();
-
-                    SwInsertField_Data aData(TYP_POSTITFLD, 0, sAuthor, sText, 0);
-                    aFieldMgr.InsertField( aData );
-
-                    rSh.Push();
-                    rSh.SwCursorShell::Left(1, CRSR_SKIP_CHARS);
-                    pPostIt = static_cast<SwPostItField*>(aFieldMgr.GetCurField());
-                    rSh.Pop(SwCursorShell::PopMode::DeleteCurrent); // Restore cursor position
+                    // explicit state update to get the Undo state right
+                    GetView().AttrChangedNotify(nullptr);
                 }
+            }
+        }
+        break;
+        case FN_REDLINE_COMMENT:
+        {
+            /*  this code can be used once we want redline comments in the margin, all other stuff can
+                then be deleted
+            String sComment;
+            const SwRangeRedline *pRedline = rSh.GetCurrRedline();
 
-                // Client has disabled annotations rendering, no need to
-                // focus the postit field
-                if (comphelper::LibreOfficeKit::isActive() && !comphelper::LibreOfficeKit::isTiledAnnotations())
+            if (pRedline)
+            {
+                sComment = pRedline->GetComment();
+                if ( !sComment.Len() )
+                    GetView().GetDocShell()->Broadcast(SwRedlineHint(pRedline,SWREDLINE_INSERTED));
+                const_cast<SwRangeRedline*>(pRedline)->Broadcast(SwRedlineHint(pRedline,SWREDLINE_FOCUS,&GetView()));
+            }
+            */
+
+            const SwRangeRedline *pRedline = rSh.GetCurrRedline();
+            SwDoc *pDoc = rSh.GetDoc();
+            // If index is specified, goto and select the appropriate redline
+            if (pArgs && pArgs->GetItemState(nSlot, false, &pItem) == SfxItemState::SET)
+            {
+                const sal_uInt32 nChangeId = static_cast<const SfxUInt32Item*>(pItem)->GetValue();
+                const SwRedlineTable& rRedlineTable = pDoc->getIDocumentRedlineAccess().GetRedlineTable();
+                for (SwRedlineTable::size_type nRedline = 0; nRedline < rRedlineTable.size(); ++nRedline)
+                {
+                    if (nChangeId == rRedlineTable[nRedline]->GetId())
+                        pRedline = rSh.GotoRedline(nRedline, true);
+                }
+            }
+
+            OUString sCommentText;
+            const SfxStringItem* pTextItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_TEXT);
+            if (pTextItem)
+                sCommentText = pTextItem->GetValue();
+
+            if (pRedline)
+            {
+                // In case of LOK and comment text is already provided, skip
+                // dialog creation and just change the redline comment directly
+                if (comphelper::LibreOfficeKit::isActive() && !sCommentText.isEmpty())
+                {
+                    rSh.SetRedlineComment(sCommentText);
+                    GetView().AttrChangedNotify(nullptr);
+                    MaybeNotifyRedlineModification(const_cast<SwRangeRedline*>(pRedline), pRedline->GetDoc());
                     break;
-
-                if (pPostIt)
-                {
-                    SwFieldType* pType = rSh.GetDoc()->getIDocumentFieldsAccess().GetFieldType(SwFieldIds::Postit, OUString(), false);
-                    SwIterator<SwFormatField,SwFieldType> aIter( *pType );
-                    SwFormatField* pSwFormatField = aIter.First();
-                    while( pSwFormatField )
-                    {
-                        if ( pSwFormatField->GetField() == pPostIt )
-                        {
-                            pSwFormatField->Broadcast( SwFormatFieldHint( nullptr, SwFormatFieldHintWhich::FOCUS, &GetView() ) );
-                            break;
-                        }
-                        pSwFormatField = aIter.Next();
-                    }
-                }
-            }
-            break;
-            case SID_EDIT_POSTIT:
-            {
-                const SvxPostItIdItem* pIdItem = rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_ID);
-                if (pIdItem && !pIdItem->GetValue().isEmpty())
-                {
-                    const SvxPostItTextItem* pTextItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_TEXT);
-                    OUString sText;
-                    if ( pTextItem )
-                        sText = pTextItem->GetValue();
-
-                    sw::annotation::SwAnnotationWin* pAnnotationWin = GetView().GetPostItMgr()->GetAnnotationWin(pIdItem->GetValue().toUInt32());
-                    if (pAnnotationWin)
-                    {
-                        pAnnotationWin->UpdateText(sText);
-
-                        // explicit state update to get the Undo state right
-                        GetView().AttrChangedNotify(GetShellPtr());
-                    }
-                }
-            }
-            break;
-            case FN_REDLINE_COMMENT:
-            {
-                /*  this code can be used once we want redline comments in the margin, all other stuff can
-                    then be deleted
-                String sComment;
-                const SwRangeRedline *pRedline = rSh.GetCurrRedline();
-
-                if (pRedline)
-                {
-                    sComment = pRedline->GetComment();
-                    if ( !sComment.Len() )
-                        GetView().GetDocShell()->Broadcast(SwRedlineHint(pRedline,SWREDLINE_INSERTED));
-                    const_cast<SwRangeRedline*>(pRedline)->Broadcast(SwRedlineHint(pRedline,SWREDLINE_FOCUS,&GetView()));
-                }
-                */
-
-                const SwRangeRedline *pRedline = rSh.GetCurrRedline();
-                SwDoc *pDoc = rSh.GetDoc();
-                // If index is specified, goto and select the appropriate redline
-                if (pArgs && pArgs->GetItemState(nSlot, false, &pItem) == SfxItemState::SET)
-                {
-                    const sal_uInt32 nChangeId = static_cast<const SfxUInt32Item*>(pItem)->GetValue();
-                    const SwRedlineTable& rRedlineTable = pDoc->getIDocumentRedlineAccess().GetRedlineTable();
-                    for (SwRedlineTable::size_type nRedline = 0; nRedline < rRedlineTable.size(); ++nRedline)
-                    {
-                        if (nChangeId == rRedlineTable[nRedline]->GetId())
-                            pRedline = rSh.GotoRedline(nRedline, true);
-                    }
                 }
 
-                OUString sCommentText;
-                const SfxStringItem* pTextItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_TEXT);
-                if (pTextItem)
-                    sCommentText = pTextItem->GetValue();
+                OUString sComment = convertLineEnd(pRedline->GetComment(), GetSystemLineEnd());
 
-                if (pRedline)
-                {
-                    // In case of LOK and comment text is already provided, skip
-                    // dialog creation and just change the redline comment directly
-                    if (comphelper::LibreOfficeKit::isActive() && !sCommentText.isEmpty())
-                    {
-                        rSh.SetRedlineComment(sCommentText);
-                        GetView().AttrChangedNotify(GetShellPtr());
-                        const_cast<SwRangeRedline*>(pRedline)->MaybeNotifyModification();
-                        break;
-                    }
+                bool bTravel = false;
 
-                    OUString sComment = convertLineEnd(pRedline->GetComment(), GetSystemLineEnd());
+                SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
+                ::DialogGetRanges fnGetRange = pFact->GetDialogGetRangesFunc();
+                SfxItemSet aSet(GetPool(), fnGetRange());
+                aSet.Put(SvxPostItTextItem(sComment, SID_ATTR_POSTIT_TEXT));
+                aSet.Put(SvxPostItAuthorItem(pRedline->GetAuthorString(), SID_ATTR_POSTIT_AUTHOR));
 
-                    bool bTravel = false;
+                aSet.Put( SvxPostItDateItem( GetAppLangDateTimeString(
+                            pRedline->GetRedlineData().GetTimeStamp() ),
+                            SID_ATTR_POSTIT_DATE ));
 
-                    SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                    assert(pFact && "Dialog creation failed!");
-                    ::DialogGetRanges fnGetRange = pFact->GetDialogGetRangesFunc();
-                    assert(fnGetRange && "Dialog creation failed! GetRanges()");
-                    SfxItemSet aSet(GetPool(), fnGetRange());
-                    aSet.Put(SvxPostItTextItem(sComment, SID_ATTR_POSTIT_TEXT));
-                    aSet.Put(SvxPostItAuthorItem(pRedline->GetAuthorString(), SID_ATTR_POSTIT_AUTHOR));
+                // Traveling only if more than one field.
+                rSh.StartAction();
 
-                    aSet.Put( SvxPostItDateItem( GetAppLangDateTimeString(
-                                pRedline->GetRedlineData().GetTimeStamp() ),
-                                SID_ATTR_POSTIT_DATE ));
+                rSh.Push();
+                const SwRangeRedline *pActRed = rSh.SelPrevRedline();
 
-                    // Traveling only if more than one field.
-                    rSh.StartAction();
-
+                if (pActRed == pRedline)
+                {   // New cursor is at the beginning of the current redlines.
+                    rSh.Pop();  // Throw old cursor away
                     rSh.Push();
-                    const SwRangeRedline *pActRed = rSh.SelPrevRedline();
+                    pActRed = rSh.SelPrevRedline();
+                }
 
-                    if (pActRed == pRedline)
-                    {   // New cursor is at the beginning of the current redlines.
-                        rSh.Pop();  // Throw old cursor away
-                        rSh.Push();
-                        pActRed = rSh.SelPrevRedline();
-                    }
+                bool bPrev = pActRed != nullptr;
+                rSh.Pop(SwCursorShell::PopMode::DeleteCurrent);
+                rSh.EndAction();
 
-                    bool bPrev = pActRed != nullptr;
-                    rSh.Pop(SwCursorShell::PopMode::DeleteCurrent);
-                    rSh.EndAction();
+                rSh.ClearMark();
+                // Select current redline.
+                pActRed = rSh.SelNextRedline();
+                if (pActRed != pRedline)
+                    rSh.SelPrevRedline();
 
-                    rSh.ClearMark();
-                    rSh.SelNextRedline();   // Select current redline.
+                rSh.StartAction();
+                rSh.Push();
+                pActRed = rSh.SelNextRedline();
+                bool bNext = pActRed != nullptr;
+                rSh.Pop(SwCursorShell::PopMode::DeleteCurrent); // Restore cursor position
 
-                    rSh.StartAction();
-                    rSh.Push();
-                    pActRed = rSh.SelNextRedline();
-                    bool bNext = pActRed != nullptr;
-                    rSh.Pop(SwCursorShell::PopMode::DeleteCurrent); // Restore cursor position
+                if( rSh.IsCursorPtAtEnd() )
+                    rSh.SwapPam();
 
-                    if( rSh.IsCursorPtAtEnd() )
-                        rSh.SwapPam();
+                rSh.EndAction();
 
-                    rSh.EndAction();
+                bTravel |= bNext || bPrev;
 
-                    bTravel |= bNext || bPrev;
+                SvxAbstractDialogFactory* pFact2 = SvxAbstractDialogFactory::Create();
+                ScopedVclPtr<AbstractSvxPostItDialog> pDlg(pFact2->CreateSvxPostItDialog(GetView().GetFrameWeld(), aSet, bTravel));
+                pDlg->HideAuthor();
 
-                    SvxAbstractDialogFactory* pFact2 = SvxAbstractDialogFactory::Create();
-                    assert(pFact2 && "Dialog creation failed!");
-                    ScopedVclPtr<AbstractSvxPostItDialog> pDlg(pFact2->CreateSvxPostItDialog( pMDI, aSet, bTravel ));
-                    assert(pDlg && "Dialog creation failed!");
-                    pDlg->HideAuthor();
+                pDlg->SetText(lcl_BuildTitleWithRedline(pRedline));
 
-                    pDlg->SetText(lcl_BuildTitleWithRedline(pRedline));
+                if (bTravel)
+                {
+                    pDlg->EnableTravel(bNext, bPrev);
+                    pDlg->SetPrevHdl(LINK(this, SwTextShell, RedlinePrevHdl));
+                    pDlg->SetNextHdl(LINK(this, SwTextShell, RedlineNextHdl));
+                }
 
-                    if (bTravel)
-                    {
-                        pDlg->EnableTravel(bNext, bPrev);
-                        pDlg->SetPrevHdl(LINK(this, SwTextShell, RedlinePrevHdl));
-                        pDlg->SetNextHdl(LINK(this, SwTextShell, RedlineNextHdl));
-                    }
+                SwViewShell::SetCareDialog(pDlg->GetDialog());
+                g_bNoInterrupt = true;
 
-                    SwViewShell::SetCareWin(pDlg->GetWindow());
-                    g_bNoInterrupt = true;
+                if ( pDlg->Execute() == RET_OK )
+                {
+                    const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
+                    OUString sMsg(pOutSet->Get(SID_ATTR_POSTIT_TEXT).GetValue());
 
-                    if ( pDlg->Execute() == RET_OK )
-                    {
-                        const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
-                        OUString sMsg(static_cast<const SvxPostItTextItem&>(pOutSet->Get(SID_ATTR_POSTIT_TEXT)).GetValue());
+                    // Insert or change a comment
+                    rSh.SetRedlineComment(sMsg);
+                }
 
-                        // Insert or change a comment
-                        rSh.SetRedlineComment(sMsg);
-                    }
+                SwViewShell::SetCareDialog(nullptr);
+                pDlg.disposeAndClear();
+                g_bNoInterrupt = false;
+                rSh.ClearMark();
+                GetView().AttrChangedNotify(nullptr);
+            }
+        }
+        break;
 
-                    pDlg.disposeAndClear();
-                    SwViewShell::SetCareWin(nullptr);
-                    g_bNoInterrupt = false;
-                    rSh.ClearMark();
-                    GetView().AttrChangedNotify(GetShellPtr());
+        case FN_JAVAEDIT:
+        {
+            OUString aType, aText;
+            bool bIsUrl=false;
+            bool bNew=false;
+            bool bUpdate = false;
+            SwFieldMgr aMgr;
+            if ( pItem )
+            {
+                aText = static_cast<const SfxStringItem*>(pItem)->GetValue();
+                const SfxStringItem* pType = rReq.GetArg<SfxStringItem>(FN_PARAM_2);
+                const SfxBoolItem* pIsUrl = rReq.GetArg<SfxBoolItem>(FN_PARAM_1);
+                if ( pType )
+                    aType = pType->GetValue();
+                if ( pIsUrl )
+                    bIsUrl = pIsUrl->GetValue();
+
+                SwScriptField* pField = static_cast<SwScriptField*>(aMgr.GetCurField());
+                bNew = !pField || (pField->GetTyp()->Which() != SwFieldIds::Script);
+                bUpdate = pField && ( bIsUrl != static_cast<bool>(pField->GetFormat()) || pField->GetPar2() != aType || pField->GetPar1() != aText );
+            }
+            else
+            {
+                SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
+                ScopedVclPtr<AbstractJavaEditDialog> pDlg(pFact->CreateJavaEditDialog(GetView().GetFrameWeld(), &rSh));
+                if ( pDlg->Execute() )
+                {
+                    aType = pDlg->GetScriptType();
+                    aText = pDlg->GetScriptText();
+                    bIsUrl = pDlg->IsUrl();
+                    bNew = pDlg->IsNew();
+                    bUpdate = pDlg->IsUpdate();
+                    rReq.AppendItem( SfxStringItem( FN_JAVAEDIT, aText ) );
+                    rReq.AppendItem( SfxStringItem( FN_PARAM_2, aType ) );
+                    rReq.AppendItem( SfxBoolItem( FN_PARAM_1, bIsUrl ) );
                 }
             }
-            break;
 
-            case FN_JAVAEDIT:
+            if( bNew )
             {
-                OUString aType, aText;
-                bool bIsUrl=false;
-                bool bNew=false;
-                bool bUpdate = false;
-                SwFieldMgr aMgr;
-                if ( pItem )
-                {
-                    aText = static_cast<const SfxStringItem*>(pItem)->GetValue();
-                    const SfxStringItem* pType = rReq.GetArg<SfxStringItem>(FN_PARAM_2);
-                    const SfxBoolItem* pIsUrl = rReq.GetArg<SfxBoolItem>(FN_PARAM_1);
-                    if ( pType )
-                        aType = pType->GetValue();
-                    if ( pIsUrl )
-                        bIsUrl = pIsUrl->GetValue();
-
-                    SwScriptField* pField = static_cast<SwScriptField*>(aMgr.GetCurField());
-                    bNew = !pField || !(pField->GetTyp()->Which() == SwFieldIds::Script);
-                    bUpdate = pField && ( bIsUrl != (bool)pField->GetFormat() || pField->GetPar2() != aType || pField->GetPar1() != aText );
-                }
-                else
-                {
-                    SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                    assert(pFact && "Dialog creation failed!");
-                    ScopedVclPtr<AbstractJavaEditDialog> pDlg(pFact->CreateJavaEditDialog(pMDI, &rSh));
-                    assert(pDlg && "Dialog creation failed!");
-                    if ( pDlg->Execute() )
-                    {
-                        aType = pDlg->GetScriptType();
-                        aText = pDlg->GetScriptText();
-                        bIsUrl = pDlg->IsUrl();
-                        bNew = pDlg->IsNew();
-                        bUpdate = pDlg->IsUpdate();
-                        rReq.AppendItem( SfxStringItem( FN_JAVAEDIT, aText ) );
-                        rReq.AppendItem( SfxStringItem( FN_PARAM_2, aType ) );
-                        rReq.AppendItem( SfxBoolItem( FN_PARAM_1, bIsUrl ) );
-                    }
-                }
-
-                if( bNew )
-                {
-                    SwInsertField_Data aData(TYP_SCRIPTFLD, 0, aType, aText, bIsUrl ? 1 : 0);
-                    aMgr.InsertField(aData);
-                    rReq.Done();
-                }
-                else if( bUpdate )
-                {
-                    aMgr.UpdateCurField( bIsUrl ? 1 : 0, aType, aText );
-                    rSh.SetUndoNoResetModified();
-                    rReq.Done();
-                }
-                else
-                    rReq.Ignore();
-            }
-            break;
-
-            case FN_INSERT_FLD_DATE    :
-                nInsertType = TYP_DATEFLD;
-                bIsText = false;
-                goto FIELD_INSERT;
-            case FN_INSERT_FLD_TIME    :
-                nInsertType = TYP_TIMEFLD;
-                bIsText = false;
-                goto FIELD_INSERT;
-            case FN_INSERT_FLD_PGNUMBER:
-                nInsertType = TYP_PAGENUMBERFLD;
-                nInsertFormat = SVX_NUM_PAGEDESC; // Like page template
-                bIsText = false;
-                goto FIELD_INSERT;
-            case FN_INSERT_FLD_PGCOUNT :
-                nInsertType = TYP_DOCSTATFLD;
-                nInsertSubType = 0;
-                bIsText = false;
-                nInsertFormat = SVX_NUM_PAGEDESC;
-                goto FIELD_INSERT;
-            case FN_INSERT_FLD_TOPIC   :
-                nInsertType = TYP_DOCINFOFLD;
-                nInsertSubType = DI_THEMA;
-                goto FIELD_INSERT;
-            case FN_INSERT_FLD_TITLE   :
-                nInsertType = TYP_DOCINFOFLD;
-                nInsertSubType = DI_TITEL;
-                goto FIELD_INSERT;
-            case FN_INSERT_FLD_AUTHOR  :
-                nInsertType = TYP_DOCINFOFLD;
-                nInsertSubType = DI_CREATE|DI_SUB_AUTHOR;
-
-FIELD_INSERT:
-            {
-                //format conversion should only be done for number formatter formats
-                if(!nInsertFormat)
-                    nInsertFormat = aFieldMgr.GetDefaultFormat(nInsertType, bIsText, rSh.GetNumberFormatter());
-                SwInsertField_Data aData(nInsertType, nInsertSubType,
-                                    OUString(), OUString(), nInsertFormat);
-                aFieldMgr.InsertField(aData);
+                SwInsertField_Data aData(SwFieldTypesEnum::Script, 0, aType, aText, bIsUrl ? 1 : 0);
+                aMgr.InsertField(aData);
                 rReq.Done();
             }
-            break;
-            default:
-                OSL_FAIL("wrong dispatcher");
-                return;
+            else if( bUpdate )
+            {
+                aMgr.UpdateCurField( bIsUrl ? 1 : 0, aType, aText );
+                rSh.SetUndoNoResetModified();
+                rReq.Done();
+            }
+            else
+                rReq.Ignore();
         }
+        break;
+
+        case FN_INSERT_FLD_DATE    :
+        {
+            nInsertType = SwFieldTypesEnum::Date;
+            bIsText = false;
+            // use long date format for Hungarian
+            SwPaM* pCursorPos = rSh.GetCursor();
+            if( pCursorPos )
+            {
+                LanguageType nLang = pCursorPos->GetPoint()->nNode.GetNode().GetTextNode()->GetLang(pCursorPos->GetPoint()->nContent.GetIndex());
+                if (nLang == LANGUAGE_HUNGARIAN)
+                    nInsertFormat = rSh.GetNumberFormatter()->GetFormatIndex(NF_DATE_SYSTEM_LONG, nLang);
+            }
+            goto FIELD_INSERT;
+        }
+        case FN_INSERT_FLD_TIME    :
+            nInsertType = SwFieldTypesEnum::Time;
+            bIsText = false;
+            goto FIELD_INSERT;
+        case FN_INSERT_FLD_PGNUMBER:
+            nInsertType = SwFieldTypesEnum::PageNumber;
+            nInsertFormat = SVX_NUM_PAGEDESC; // Like page template
+            bIsText = false;
+            goto FIELD_INSERT;
+        case FN_INSERT_FLD_PGCOUNT :
+            nInsertType = SwFieldTypesEnum::DocumentStatistics;
+            nInsertSubType = 0;
+            bIsText = false;
+            nInsertFormat = SVX_NUM_PAGEDESC;
+            goto FIELD_INSERT;
+        case FN_INSERT_FLD_TOPIC   :
+            nInsertType = SwFieldTypesEnum::DocumentInfo;
+            nInsertSubType = DI_SUBJECT;
+            goto FIELD_INSERT;
+        case FN_INSERT_FLD_TITLE   :
+            nInsertType = SwFieldTypesEnum::DocumentInfo;
+            nInsertSubType = DI_TITLE;
+            goto FIELD_INSERT;
+        case FN_INSERT_FLD_AUTHOR  :
+            nInsertType = SwFieldTypesEnum::DocumentInfo;
+            nInsertSubType = DI_CREATE|DI_SUB_AUTHOR;
+
+FIELD_INSERT:
+        {
+            //format conversion should only be done for number formatter formats
+            if(!nInsertFormat)
+                nInsertFormat = aFieldMgr.GetDefaultFormat(nInsertType, bIsText, rSh.GetNumberFormatter());
+            SwInsertField_Data aData(nInsertType, nInsertSubType,
+                                OUString(), OUString(), nInsertFormat);
+            aFieldMgr.InsertField(aData);
+            rReq.Done();
+        }
+        break;
+
+        case FN_INSERT_TEXT_FORMFIELD:
+        {
+            rSh.GetDoc()->GetIDocumentUndoRedo().StartUndo(SwUndoId::INSERT_FORM_FIELD, nullptr);
+
+            SwPaM* pCursorPos = rSh.GetCursor();
+            if(pCursorPos)
+            {
+                // Insert five En Space into the text field so the field has extent
+                static const sal_Unicode vEnSpaces[ODF_FORMFIELD_DEFAULT_LENGTH] = {8194, 8194, 8194, 8194, 8194};
+                bool bSuccess = rSh.GetDoc()->getIDocumentContentOperations().InsertString(*pCursorPos, OUString(vEnSpaces, ODF_FORMFIELD_DEFAULT_LENGTH));
+                if(bSuccess)
+                {
+                    IDocumentMarkAccess* pMarksAccess = rSh.GetDoc()->getIDocumentMarkAccess();
+                    SwPaM aFieldPam(pCursorPos->GetPoint()->nNode, pCursorPos->GetPoint()->nContent.GetIndex() - ODF_FORMFIELD_DEFAULT_LENGTH,
+                                    pCursorPos->GetPoint()->nNode, pCursorPos->GetPoint()->nContent.GetIndex());
+                    pMarksAccess->makeFieldBookmark(aFieldPam, OUString(), ODF_FORMTEXT,
+                            aFieldPam.Start());
+                }
+            }
+
+            rSh.GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::INSERT_FORM_FIELD, nullptr);
+            rSh.GetView().GetViewFrame()->GetBindings().Invalidate( SID_UNDO );
+        }
+        break;
+        case FN_INSERT_CHECKBOX_FORMFIELD:
+        {
+            rSh.GetDoc()->GetIDocumentUndoRedo().StartUndo(SwUndoId::INSERT_FORM_FIELD, nullptr);
+
+            SwPaM* pCursorPos = rSh.GetCursor();
+            if(pCursorPos)
+            {
+                IDocumentMarkAccess* pMarksAccess = rSh.GetDoc()->getIDocumentMarkAccess();
+                pMarksAccess->makeNoTextFieldBookmark(*pCursorPos, OUString(), ODF_FORMCHECKBOX);
+            }
+
+            rSh.GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::INSERT_FORM_FIELD, nullptr);
+            rSh.GetView().GetViewFrame()->GetBindings().Invalidate( SID_UNDO );
+        }
+        break;
+        case FN_INSERT_DROPDOWN_FORMFIELD:
+        {
+            rSh.GetDoc()->GetIDocumentUndoRedo().StartUndo(SwUndoId::INSERT_FORM_FIELD, nullptr);
+
+            SwPaM* pCursorPos = rSh.GetCursor();
+            if(pCursorPos)
+            {
+                IDocumentMarkAccess* pMarksAccess = rSh.GetDoc()->getIDocumentMarkAccess();
+                pMarksAccess->makeNoTextFieldBookmark(*pCursorPos, OUString(), ODF_FORMDROPDOWN);
+            }
+
+            rSh.GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::INSERT_FORM_FIELD, nullptr);
+            rSh.GetView().GetViewFrame()->GetBindings().Invalidate( SID_UNDO );
+        }
+        break;
+    case FN_INSERT_DATE_FORMFIELD:
+    {
+        rSh.GetDoc()->GetIDocumentUndoRedo().StartUndo(SwUndoId::INSERT_FORM_FIELD, nullptr);
+
+        SwPaM* pCursorPos = rSh.GetCursor();
+        if(pCursorPos)
+        {
+            // Insert five enspaces into the text field so the field has extent
+            sal_Unicode vEnSpaces[ODF_FORMFIELD_DEFAULT_LENGTH] = {8194, 8194, 8194, 8194, 8194};
+            bool bSuccess = rSh.GetDoc()->getIDocumentContentOperations().InsertString(*pCursorPos, OUString(vEnSpaces, ODF_FORMFIELD_DEFAULT_LENGTH));
+            if(bSuccess)
+            {
+                IDocumentMarkAccess* pMarksAccess = rSh.GetDoc()->getIDocumentMarkAccess();
+                SwPaM aFieldPam(pCursorPos->GetPoint()->nNode, pCursorPos->GetPoint()->nContent.GetIndex() - ODF_FORMFIELD_DEFAULT_LENGTH,
+                                pCursorPos->GetPoint()->nNode, pCursorPos->GetPoint()->nContent.GetIndex());
+                sw::mark::IFieldmark* pFieldBM = pMarksAccess->makeFieldBookmark(aFieldPam, OUString(), ODF_FORMDATE,
+                            aFieldPam.Start());
+
+                // Use a default date format and language
+                sw::mark::IFieldmark::parameter_map_t* pParameters = pFieldBM->GetParameters();
+                SvNumberFormatter* pFormatter = rSh.GetDoc()->GetNumberFormatter();
+                sal_uInt32 nStandardFormat = pFormatter->GetStandardFormat(SvNumFormatType::DATE);
+                const SvNumberformat* pFormat = pFormatter->GetEntry(nStandardFormat);
+
+                (*pParameters)[ODF_FORMDATE_DATEFORMAT] <<= pFormat->GetFormatstring();
+                (*pParameters)[ODF_FORMDATE_DATEFORMAT_LANGUAGE] <<= LanguageTag(pFormat->GetLanguage()).getBcp47();
+            }
+        }
+
+        rSh.GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::INSERT_FORM_FIELD, nullptr);
+        rSh.GetView().GetViewFrame()->GetBindings().Invalidate( SID_UNDO );
+    }
+    break;
+        default:
+            OSL_FAIL("wrong dispatcher");
+            return;
     }
 }
 
@@ -847,12 +865,16 @@ void SwTextShell::StateField( SfxItemSet &rSet )
             break;
 
         case FN_REPLY:
+            if (!comphelper::LibreOfficeKit::isActive())
+                rSet.DisableItem(nWhich);
+            break;
+
         case FN_POSTIT :
         case FN_JAVAEDIT :
             {
                 bool bCurField = false;
                 pField = rSh.GetCurField();
-                if(nWhich == FN_POSTIT || nWhich == FN_REPLY)
+                if(nWhich == FN_POSTIT)
                     bCurField = pField && pField->GetTyp()->Which() == SwFieldIds::Postit;
                 else
                     bCurField = pField && pField->GetTyp()->Which() == SwFieldIds::Script;
@@ -862,6 +884,11 @@ void SwTextShell::StateField( SfxItemSet &rSet )
                     rSet.DisableItem(nWhich);
                 }
                 else if ( rSh.CursorInsideInputField() )
+                {
+                    rSet.DisableItem(nWhich);
+                }
+                // tdf#86188 Allow disabling comment insertion on footnote/endnote for better OOXML interoperability
+                else if ( rSh.IsCursorInFootnote() && !officecfg::Office::Compatibility::View::AllowCommentsInFootnotes::get() )
                 {
                     rSet.DisableItem(nWhich);
                 }
@@ -883,6 +910,34 @@ void SwTextShell::StateField( SfxItemSet &rSet )
             }
             break;
 
+        case FN_INSERT_TEXT_FORMFIELD:
+        case FN_INSERT_CHECKBOX_FORMFIELD:
+        case FN_INSERT_DROPDOWN_FORMFIELD:
+        case FN_INSERT_DATE_FORMFIELD:
+            if ( rSh.CursorInsideInputField() )
+            {
+                rSet.DisableItem(nWhich);
+            }
+            else
+            {
+                // Check whether we are in a text form field
+                SwPosition aCursorPos(*rSh.GetCursor()->GetPoint());
+                sw::mark::IFieldmark* pFieldBM = GetShell().getIDocumentMarkAccess()->getFieldmarkFor(aCursorPos);
+                if ((!pFieldBM || pFieldBM->GetFieldname() != ODF_FORMTEXT)
+                    && aCursorPos.nContent.GetIndex() > 0)
+                {
+                    SwPosition aPos(aCursorPos);
+                    --aPos.nContent;
+                    pFieldBM = GetShell().getIDocumentMarkAccess()->getFieldmarkFor(aPos);
+                }
+                if (pFieldBM && pFieldBM->GetFieldname() == ODF_FORMTEXT &&
+                    (aCursorPos > pFieldBM->GetMarkStart() && aCursorPos < pFieldBM->GetMarkEnd() ))
+                {
+                    rSet.DisableItem(nWhich);
+                }
+            }
+            break;
+
         }
         nWhich = aIter.NextWhich();
     }
@@ -893,59 +948,59 @@ void SwTextShell::InsertHyperlink(const SvxHyperlinkItem& rHlnkItem)
     const OUString& rName   = rHlnkItem.GetName();
     const OUString& rURL    = rHlnkItem.GetURL();
     const OUString& rTarget = rHlnkItem.GetTargetFrame();
-    sal_uInt16 nType =  (sal_uInt16)rHlnkItem.GetInsertMode();
+    sal_uInt16 nType =  static_cast<sal_uInt16>(rHlnkItem.GetInsertMode());
     nType &= ~HLINK_HTMLMODE;
     const SvxMacroTableDtor* pMacroTable = rHlnkItem.GetMacroTable();
 
     SwWrtShell& rSh = GetShell();
 
-    if( rSh.GetSelectionType() & SelectionType::Text )
+    if( !(rSh.GetSelectionType() & SelectionType::Text) )
+        return;
+
+    rSh.StartAction();
+    SfxItemSet aSet(GetPool(), svl::Items<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT>{});
+    rSh.GetCurAttr( aSet );
+
+    const SfxPoolItem* pItem;
+    if(SfxItemState::SET == aSet.GetItemState(RES_TXTATR_INETFMT, false, &pItem))
     {
-        rSh.StartAction();
-        SfxItemSet aSet(GetPool(), svl::Items<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT>{});
-        rSh.GetCurAttr( aSet );
-
-        const SfxPoolItem* pItem;
-        if(SfxItemState::SET == aSet.GetItemState(RES_TXTATR_INETFMT, false, &pItem))
-        {
-            // Select links
-            rSh.SwCursorShell::SelectTextAttr(RES_TXTATR_INETFMT, false);
-        }
-        switch (nType)
-        {
-        case HLINK_DEFAULT:
-        case HLINK_FIELD:
-            {
-                SwFormatINetFormat aINetFormat( rURL, rTarget );
-                aINetFormat.SetName(rHlnkItem.GetIntName());
-                if(pMacroTable)
-                {
-                    const SvxMacro *pMacro = pMacroTable->Get( SFX_EVENT_MOUSEOVER_OBJECT );
-                    if( pMacro )
-                        aINetFormat.SetMacro(SFX_EVENT_MOUSEOVER_OBJECT, *pMacro);
-                    pMacro = pMacroTable->Get( SFX_EVENT_MOUSECLICK_OBJECT );
-                    if( pMacro )
-                        aINetFormat.SetMacro(SFX_EVENT_MOUSECLICK_OBJECT, *pMacro);
-                    pMacro = pMacroTable->Get( SFX_EVENT_MOUSEOUT_OBJECT );
-                    if( pMacro )
-                        aINetFormat.SetMacro(SFX_EVENT_MOUSEOUT_OBJECT, *pMacro);
-                }
-                rSh.SttSelect();
-                rSh.InsertURL( aINetFormat, rName, true );
-                rSh.EndSelect();
-            }
-            break;
-
-        case HLINK_BUTTON:
-            bool bSel = rSh.HasSelection();
-            if(bSel)
-                rSh.DelRight();
-            InsertURLButton( rURL, rTarget, rName );
-            rSh.EnterStdMode();
-            break;
-        }
-        rSh.EndAction();
+        // Select links
+        rSh.SwCursorShell::SelectTextAttr(RES_TXTATR_INETFMT, false);
     }
+    switch (nType)
+    {
+    case HLINK_DEFAULT:
+    case HLINK_FIELD:
+        {
+            SwFormatINetFormat aINetFormat( rURL, rTarget );
+            aINetFormat.SetName(rHlnkItem.GetIntName());
+            if(pMacroTable)
+            {
+                const SvxMacro *pMacro = pMacroTable->Get( SvMacroItemId::OnMouseOver );
+                if( pMacro )
+                    aINetFormat.SetMacro(SvMacroItemId::OnMouseOver, *pMacro);
+                pMacro = pMacroTable->Get( SvMacroItemId::OnClick );
+                if( pMacro )
+                    aINetFormat.SetMacro(SvMacroItemId::OnClick, *pMacro);
+                pMacro = pMacroTable->Get( SvMacroItemId::OnMouseOut );
+                if( pMacro )
+                    aINetFormat.SetMacro(SvMacroItemId::OnMouseOut, *pMacro);
+            }
+            rSh.SttSelect();
+            rSh.InsertURL( aINetFormat, rName, true );
+            rSh.EndSelect();
+        }
+        break;
+
+    case HLINK_BUTTON:
+        bool bSel = rSh.HasSelection();
+        if(bSel)
+            rSh.DelRight();
+        InsertURLButton( rURL, rTarget, rName );
+        rSh.EnterStdMode();
+        break;
+    }
+    rSh.EndAction();
 }
 
 IMPL_LINK( SwTextShell, RedlineNextHdl, AbstractSvxPostItDialog&, rDlg, void )
@@ -957,42 +1012,43 @@ IMPL_LINK( SwTextShell, RedlineNextHdl, AbstractSvxPostItDialog&, rDlg, void )
 
     const SwRangeRedline *pRedline = pSh->GetCurrRedline();
 
-    if (pRedline)
+    if (!pRedline)
+        return;
+
+    // Traveling only if more than one field.
+    if( !pSh->IsCursorPtAtEnd() )
+        pSh->SwapPam(); // Move the cursor behind the Redline.
+
+    pSh->Push();
+    const SwRangeRedline *pActRed = pSh->SelNextRedline();
+    pSh->Pop((pActRed != nullptr) ? SwCursorShell::PopMode::DeleteStack : SwCursorShell::PopMode::DeleteCurrent);
+
+    bool bEnable = false;
+
+    if (pActRed)
     {
-        // Traveling only if more than one field.
-        if( !pSh->IsCursorPtAtEnd() )
-            pSh->SwapPam(); // Move the cursor behind the Redline.
-
+        pSh->StartAction();
         pSh->Push();
-        const SwRangeRedline *pActRed = pSh->SelNextRedline();
-        pSh->Pop((pActRed != nullptr) ? SwCursorShell::PopMode::DeleteStack : SwCursorShell::PopMode::DeleteCurrent);
-
-        bool bEnable = false;
-
-        if (pActRed)
-        {
-            pSh->StartAction();
-            pSh->Push();
-            bEnable = pSh->SelNextRedline() != nullptr;
-            pSh->Pop(SwCursorShell::PopMode::DeleteCurrent);
-            pSh->EndAction();
-        }
-
-        rDlg.EnableTravel(bEnable, true);
-
-        if( pSh->IsCursorPtAtEnd() )
-            pSh->SwapPam();
-
-        pRedline = pSh->GetCurrRedline();
-        OUString sComment = convertLineEnd(pRedline->GetComment(), GetSystemLineEnd());
-
-        rDlg.SetNote(sComment);
-        rDlg.ShowLastAuthor( pRedline->GetAuthorString(),
-                    GetAppLangDateTimeString(
-                                pRedline->GetRedlineData().GetTimeStamp() ));
-
-        rDlg.SetText(lcl_BuildTitleWithRedline(pRedline));
+        bEnable = pSh->SelNextRedline() != nullptr;
+        pSh->Pop(SwCursorShell::PopMode::DeleteCurrent);
+        pSh->EndAction();
     }
+
+    rDlg.EnableTravel(bEnable, true);
+
+    if( pSh->IsCursorPtAtEnd() )
+        pSh->SwapPam();
+
+    pRedline = pSh->GetCurrRedline();
+    OUString sComment = convertLineEnd(pRedline->GetComment(), GetSystemLineEnd());
+
+    rDlg.SetNote(sComment);
+    rDlg.ShowLastAuthor( pRedline->GetAuthorString(),
+                GetAppLangDateTimeString(
+                            pRedline->GetRedlineData().GetTimeStamp() ));
+
+    rDlg.SetText(lcl_BuildTitleWithRedline(pRedline));
+
 }
 
 IMPL_LINK( SwTextShell, RedlinePrevHdl, AbstractSvxPostItDialog&, rDlg, void )
@@ -1004,36 +1060,37 @@ IMPL_LINK( SwTextShell, RedlinePrevHdl, AbstractSvxPostItDialog&, rDlg, void )
 
     const SwRangeRedline *pRedline = pSh->GetCurrRedline();
 
-    if (pRedline)
+    if (!pRedline)
+        return;
+
+    // Traveling only if more than one field.
+    pSh->Push();
+    const SwRangeRedline *pActRed = pSh->SelPrevRedline();
+    pSh->Pop((pActRed != nullptr) ? SwCursorShell::PopMode::DeleteStack : SwCursorShell::PopMode::DeleteCurrent);
+
+    bool bEnable = false;
+
+    if (pActRed)
     {
-        // Traveling only if more than one field.
+        pSh->StartAction();
         pSh->Push();
-        const SwRangeRedline *pActRed = pSh->SelPrevRedline();
-        pSh->Pop((pActRed != nullptr) ? SwCursorShell::PopMode::DeleteStack : SwCursorShell::PopMode::DeleteCurrent);
-
-        bool bEnable = false;
-
-        if (pActRed)
-        {
-            pSh->StartAction();
-            pSh->Push();
-            bEnable = pSh->SelPrevRedline() != nullptr;
-            pSh->Pop(SwCursorShell::PopMode::DeleteCurrent);
-            pSh->EndAction();
-        }
-
-        rDlg.EnableTravel(true, bEnable);
-
-        pRedline = pSh->GetCurrRedline();
-        OUString sComment = convertLineEnd(pRedline->GetComment(), GetSystemLineEnd());
-
-        rDlg.SetNote(sComment);
-        rDlg.ShowLastAuthor(pRedline->GetAuthorString(),
-                GetAppLangDateTimeString(
-                                pRedline->GetRedlineData().GetTimeStamp() ));
-
-        rDlg.SetText(lcl_BuildTitleWithRedline(pRedline));
+        bEnable = pSh->SelPrevRedline() != nullptr;
+        pSh->Pop(SwCursorShell::PopMode::DeleteCurrent);
+        pSh->EndAction();
     }
+
+    rDlg.EnableTravel(true, bEnable);
+
+    pRedline = pSh->GetCurrRedline();
+    OUString sComment = convertLineEnd(pRedline->GetComment(), GetSystemLineEnd());
+
+    rDlg.SetNote(sComment);
+    rDlg.ShowLastAuthor(pRedline->GetAuthorString(),
+            GetAppLangDateTimeString(
+                            pRedline->GetRedlineData().GetTimeStamp() ));
+
+    rDlg.SetText(lcl_BuildTitleWithRedline(pRedline));
+
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

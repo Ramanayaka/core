@@ -24,10 +24,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::processor3d
 {
-    namespace processor3d
-    {
         void BaseProcessor3D::processBasePrimitive3D(const primitive3d::BasePrimitive3D& /*rCandidate*/)
         {
         }
@@ -43,35 +41,35 @@ namespace drawinglayer
 
         void BaseProcessor3D::process(const primitive3d::Primitive3DContainer& rSource)
         {
-            if(!rSource.empty())
+            if(rSource.empty())
+                return;
+
+            const size_t nCount(rSource.size());
+
+            for(size_t a(0); a < nCount; a++)
             {
-                const size_t nCount(rSource.size());
+                // get reference
+                const primitive3d::Primitive3DReference xReference(rSource[a]);
 
-                for(size_t a(0L); a < nCount; a++)
+                if(xReference.is())
                 {
-                    // get reference
-                    const primitive3d::Primitive3DReference xReference(rSource[a]);
+                    // try to cast to BasePrimitive3D implementation
+                    const primitive3d::BasePrimitive3D* pBasePrimitive = dynamic_cast< const primitive3d::BasePrimitive3D* >(xReference.get());
 
-                    if(xReference.is())
+                    if(pBasePrimitive)
                     {
-                        // try to cast to BasePrimitive3D implementation
-                        const primitive3d::BasePrimitive3D* pBasePrimitive = dynamic_cast< const primitive3d::BasePrimitive3D* >(xReference.get());
-
-                        if(pBasePrimitive)
-                        {
-                            processBasePrimitive3D(*pBasePrimitive);
-                        }
-                        else
-                        {
-                            // unknown implementation, use UNO API call instead and process recursively
-                            const uno::Sequence< beans::PropertyValue >& rViewParameters(getViewInformation3D().getViewInformationSequence());
-                            process(comphelper::sequenceToContainer<primitive3d::Primitive3DContainer>(xReference->getDecomposition(rViewParameters)));
-                        }
+                        processBasePrimitive3D(*pBasePrimitive);
+                    }
+                    else
+                    {
+                        // unknown implementation, use UNO API call instead and process recursively
+                        const uno::Sequence< beans::PropertyValue >& rViewParameters(getViewInformation3D().getViewInformationSequence());
+                        process(comphelper::sequenceToContainer<primitive3d::Primitive3DContainer>(xReference->getDecomposition(rViewParameters)));
                     }
                 }
             }
         }
-    } // end of namespace processor3d
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

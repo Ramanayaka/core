@@ -20,25 +20,23 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_FACTORIES_BASICPANEFACTORY_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_FACTORIES_BASICPANEFACTORY_HXX
 
-#include "MutexOwner.hxx"
-
 #include <com/sun/star/drawing/framework/XResourceFactory.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 
 #include <memory>
+
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace sd {
 
 class ViewShellBase;
 }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::lang::XInitialization,
@@ -94,7 +92,6 @@ private:
     css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
     css::uno::WeakReference<css::drawing::framework::XConfigurationController>
         mxConfigurationControllerWeak;
-    css::uno::WeakReference<css::frame::XController> mxControllerWeak;
     ViewShellBase* mpViewShellBase;
     class PaneDescriptor;
     class PaneContainer;
@@ -131,7 +128,7 @@ private:
     void ThrowIfDisposed() const;
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

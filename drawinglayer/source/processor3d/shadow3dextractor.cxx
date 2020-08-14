@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <drawinglayer/processor3d/shadow3dextractor.hxx>
-#include <drawinglayer/primitive3d/shadowprimitive3d.hxx>
+#include <processor3d/shadow3dextractor.hxx>
+#include <primitive3d/shadowprimitive3d.hxx>
 #include <drawinglayer/primitive2d/shadowprimitive2d.hxx>
 #include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
 #include <drawinglayer/primitive3d/transformprimitive3d.hxx>
@@ -27,17 +27,15 @@
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <drawinglayer/primitive3d/polypolygonprimitive3d.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::processor3d
 {
-    namespace processor3d
-    {
         // as tooling, the process() implementation takes over API handling and calls this
         // virtual render method when the primitive implementation is BasePrimitive3D-based.
         void Shadow3DExtractingProcessor::processBasePrimitive3D(const primitive3d::BasePrimitive3D& rCandidate)
@@ -76,6 +74,7 @@ namespace drawinglayer
                     primitive2d::BasePrimitive2D* pNew = new primitive2d::ShadowPrimitive2D(
                         rPrimitive.getShadowTransform(),
                         rPrimitive.getShadowColor(),
+                        0,  // shadow3d doesn't have rPrimitive.getShadowBlur() yet.
                         aNewSubList);
 
                     if(basegfx::fTools::more(rPrimitive.getShadowTransparence(), 0.0))
@@ -147,7 +146,7 @@ namespace drawinglayer
                         }
                         else
                         {
-                            a2DHairline = basegfx::tools::createB2DPolygonFromB3DPolygon(rPrimitive.getB3DPolygon(), getViewInformation3D().getObjectToView());
+                            a2DHairline = basegfx::utils::createB2DPolygonFromB3DPolygon(rPrimitive.getB3DPolygon(), getViewInformation3D().getObjectToView());
                         }
 
                         if(a2DHairline.count())
@@ -156,7 +155,7 @@ namespace drawinglayer
                             mpPrimitive2DSequence->push_back(
                                 new primitive2d::PolygonHairlinePrimitive2D(
                                     a2DHairline,
-                                    maPrimitiveColor));
+                                    basegfx::BColor()));
                         }
                     }
                     break;
@@ -178,7 +177,7 @@ namespace drawinglayer
                         }
                         else
                         {
-                            a2DFill = basegfx::tools::createB2DPolyPolygonFromB3DPolyPolygon(rPrimitive.getB3DPolyPolygon(), getViewInformation3D().getObjectToView());
+                            a2DFill = basegfx::utils::createB2DPolyPolygonFromB3DPolyPolygon(rPrimitive.getB3DPolyPolygon(), getViewInformation3D().getObjectToView());
                         }
 
                         if(a2DFill.count())
@@ -187,7 +186,7 @@ namespace drawinglayer
                             mpPrimitive2DSequence->push_back(
                                 new primitive2d::PolyPolygonColorPrimitive2D(
                                     a2DFill,
-                                    maPrimitiveColor));
+                                    basegfx::BColor()));
                         }
                     }
                     break;
@@ -217,7 +216,6 @@ namespace drawinglayer
             maShadowPlaneNormal(),
             maPlanePoint(),
             mfLightPlaneScalar(0.0),
-            maPrimitiveColor(),
             mbShadowProjectionIsValid(false),
             mbConvert(false),
             mbUseProjection(false)
@@ -229,27 +227,27 @@ namespace drawinglayer
             mfLightPlaneScalar = maLightNormal.scalar(maShadowPlaneNormal);
 
             // use only when scalar is > 0.0, so the light is in front of the object
-            if(basegfx::fTools::more(mfLightPlaneScalar, 0.0))
-            {
-                // prepare buffered WorldToEye and EyeToView
-                maWorldToEye = getViewInformation3D().getOrientation() * getViewInformation3D().getObjectTransformation();
-                maEyeToView = getViewInformation3D().getDeviceToView() * getViewInformation3D().getProjection();
+            if(!basegfx::fTools::more(mfLightPlaneScalar, 0.0))
+                return;
 
-                // calculate range to get front edge around which to rotate the shadow's projection
-                basegfx::B3DRange aContained3DRange(rContained3DRange);
-                aContained3DRange.transform(getWorldToEye());
-                maPlanePoint.setX(maShadowPlaneNormal.getX() < 0.0 ? aContained3DRange.getMinX() : aContained3DRange.getMaxX());
-                maPlanePoint.setY(maShadowPlaneNormal.getY() > 0.0 ? aContained3DRange.getMinY() : aContained3DRange.getMaxY());
-                maPlanePoint.setZ(aContained3DRange.getMinZ() - (aContained3DRange.getDepth() / 8.0));
+            // prepare buffered WorldToEye and EyeToView
+            maWorldToEye = getViewInformation3D().getOrientation() * getViewInformation3D().getObjectTransformation();
+            maEyeToView = getViewInformation3D().getDeviceToView() * getViewInformation3D().getProjection();
 
-                // set flag that shadow projection is prepared and allowed
-                mbShadowProjectionIsValid = true;
-            }
+            // calculate range to get front edge around which to rotate the shadow's projection
+            basegfx::B3DRange aContained3DRange(rContained3DRange);
+            aContained3DRange.transform(getWorldToEye());
+            maPlanePoint.setX(maShadowPlaneNormal.getX() < 0.0 ? aContained3DRange.getMinX() : aContained3DRange.getMaxX());
+            maPlanePoint.setY(maShadowPlaneNormal.getY() > 0.0 ? aContained3DRange.getMinY() : aContained3DRange.getMaxY());
+            maPlanePoint.setZ(aContained3DRange.getMinZ() - (aContained3DRange.getDepth() / 8.0));
+
+            // set flag that shadow projection is prepared and allowed
+            mbShadowProjectionIsValid = true;
         }
 
         Shadow3DExtractingProcessor::~Shadow3DExtractingProcessor()
         {
-            OSL_ENSURE(0 == maPrimitive2DSequence.size(),
+            OSL_ENSURE(maPrimitive2DSequence.empty(),
                 "OOps, someone used Shadow3DExtractingProcessor, but did not fetch the results (!)");
         }
 
@@ -257,7 +255,7 @@ namespace drawinglayer
         {
             basegfx::B2DPolygon aRetval;
 
-            for(sal_uInt32 a(0L); a < rSource.count(); a++)
+            for(sal_uInt32 a(0); a < rSource.count(); a++)
             {
                 // get point, transform to eye coordinate system
                 basegfx::B3DPoint aCandidate(rSource.getB3DPoint(a));
@@ -286,7 +284,7 @@ namespace drawinglayer
         {
             basegfx::B2DPolyPolygon aRetval;
 
-            for(sal_uInt32 a(0L); a < rSource.count(); a++)
+            for(sal_uInt32 a(0); a < rSource.count(); a++)
             {
                 aRetval.append(impDoShadowProjection(rSource.getB3DPolygon(a)));
             }
@@ -299,7 +297,6 @@ namespace drawinglayer
             return maPrimitive2DSequence;
         }
 
-    } // end of namespace processor3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

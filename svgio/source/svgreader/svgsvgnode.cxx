@@ -26,17 +26,15 @@
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <drawinglayer/primitive2d/hiddengeometryprimitive2d.hxx>
+#include <svgdocument.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgSvgNode::SvgSvgNode(
             SvgDocument& rDocument,
             SvgNode* pParent)
         :   SvgNode(SVGTokenSvg, rDocument, pParent),
             maSvgStyleAttributes(*this),
-            mpViewBox(nullptr),
             maSvgAspectRatio(),
             maX(),
             maY(),
@@ -50,58 +48,58 @@ namespace svgio
         // #i125258#
         void SvgSvgNode::initializeStyleAttributes()
         {
-            if(!mbStyleAttributesInitialized)
+            if(mbStyleAttributesInitialized)
+                return;
+
+            // #i125258# determine if initial values need to be initialized with hard values
+            // for the case that this is the outmost SVG statement and it has no parent
+            // stale (CssStyle for svg may be defined)
+            bool bSetInitialValues(true);
+
+            if(getParent())
             {
-                // #i125258# determine if initial values need to be initialized with hard values
-                // for the case that this is the outmost SVG statement and it has no parent
-                // stale (CssStyle for svg may be defined)
-                bool bSetInitialValues(true);
-
-                if(getParent())
-                {
-                    // #i125258# no initial values when it's a SVG element embedded in SVG
-                    bSetInitialValues = false;
-                }
-
-                if(bSetInitialValues)
-                {
-                    const SvgStyleAttributes* pStyles = getSvgStyleAttributes();
-
-                    if(pStyles && pStyles->getParentStyle())
-                    {
-                        // SVG has a parent style (probably CssStyle), check if fill is set there anywhere
-                        // already. If yes, do not set the default fill (black)
-                        bool bFillSet(false);
-                        const SvgStyleAttributes* pParentStyle = pStyles->getParentStyle();
-
-                        while(pParentStyle && !bFillSet)
-                        {
-                            bFillSet = pParentStyle->isFillSet();
-                            pParentStyle = pParentStyle->getParentStyle();
-                        }
-
-                        if(bFillSet)
-                        {
-                            // #125258# no initial values when SVG has a parent style at which a fill
-                            // is already set
-                            bSetInitialValues = false;
-                        }
-                    }
-                }
-
-                if(bSetInitialValues)
-                {
-                    // #i125258# only set if not yet initialized (SvgSvgNode::parseAttribute is already done,
-                    // just setting may revert an already set valid value)
-                    if(!maSvgStyleAttributes.isFillSet())
-                    {
-                        // #i125258# initial fill is black (see SVG1.1 spec)
-                        maSvgStyleAttributes.setFill(SvgPaint(basegfx::BColor(0.0, 0.0, 0.0), true, true));
-                    }
-                }
-
-                mbStyleAttributesInitialized = true;
+                // #i125258# no initial values when it's a SVG element embedded in SVG
+                bSetInitialValues = false;
             }
+
+            if(bSetInitialValues)
+            {
+                const SvgStyleAttributes* pStyles = getSvgStyleAttributes();
+
+                if(pStyles && pStyles->getParentStyle())
+                {
+                    // SVG has a parent style (probably CssStyle), check if fill is set there anywhere
+                    // already. If yes, do not set the default fill (black)
+                    bool bFillSet(false);
+                    const SvgStyleAttributes* pParentStyle = pStyles->getParentStyle();
+
+                    while(pParentStyle && !bFillSet)
+                    {
+                        bFillSet = pParentStyle->isFillSet();
+                        pParentStyle = pParentStyle->getParentStyle();
+                    }
+
+                    if(bFillSet)
+                    {
+                        // #125258# no initial values when SVG has a parent style at which a fill
+                        // is already set
+                        bSetInitialValues = false;
+                    }
+                }
+            }
+
+            if(bSetInitialValues)
+            {
+                // #i125258# only set if not yet initialized (SvgSvgNode::parseAttribute is already done,
+                // just setting may revert an already set valid value)
+                if(!maSvgStyleAttributes.isFillSet())
+                {
+                    // #i125258# initial fill is black (see SVG1.1 spec)
+                    maSvgStyleAttributes.setFill(SvgPaint(basegfx::BColor(0.0, 0.0, 0.0), true, true));
+                }
+            }
+
+            mbStyleAttributesInitialized = true;
         }
 
         SvgSvgNode::~SvgSvgNode()
@@ -310,7 +308,7 @@ namespace svgio
                 if(getParent())
                 {
                     // #i122594# if width/height is not given, it's 100% (see 5.1.2 The 'svg' element in SVG1.1 spec).
-                    // If it is relative, the question is to what. The previous implementatin assumed relative to the
+                    // If it is relative, the question is to what. The previous implementation assumed relative to the
                     // local ViewBox which is implied by (4.2 Basic data types):
 
                     // "Note that the non-property <length> definition also allows a percentage unit identifier.
@@ -350,13 +348,20 @@ namespace svgio
                         seekReferenceWidth(fWReference, bHasFoundWidth);
                         if (!bHasFoundWidth)
                         {
-                            // Even outermost svg has not all information to resolve relative values,
-                            // I use content itself as fallback to set missing values for viewport
-                            // Any better idea for such ill structured svg documents?
-                            const basegfx::B2DRange aChildRange(
-                                        aSequence.getB2DRange(
-                                            drawinglayer::geometry::ViewInformation2D()));
-                            fWReference = aChildRange.getWidth();
+                            if (getViewBox())
+                            {
+                                fWReference = getViewBox()->getWidth();
+                            }
+                            else
+                            {
+                                // Even outermost svg has not all information to resolve relative values,
+                                // I use content itself as fallback to set missing values for viewport
+                                // Any better idea for such ill structured svg documents?
+                                const basegfx::B2DRange aChildRange(
+                                            aSequence.getB2DRange(
+                                                drawinglayer::geometry::ViewInformation2D()));
+                                fWReference = aChildRange.getWidth();
+                            }
                         }
                         // referenced values are already in 'user unit'
                         if (!bXIsAbsolute)
@@ -377,13 +382,20 @@ namespace svgio
                         seekReferenceHeight(fHReference, bHasFoundHeight);
                         if (!bHasFoundHeight)
                         {
+                            if (getViewBox())
+                            {
+                                fHReference = getViewBox()->getHeight();
+                            }
+                            else
+                            {
                             // Even outermost svg has not all information to resolve relative values,
-                            // I use content itself as fallback to set missing values for viewport
-                            // Any better idea for such ill structured svg documents?
-                            const basegfx::B2DRange aChildRange(
-                                    aSequence.getB2DRange(
-                                        drawinglayer::geometry::ViewInformation2D()));
-                            fHReference = aChildRange.getHeight();
+                                // I use content itself as fallback to set missing values for viewport
+                                // Any better idea for such ill structured svg documents?
+                                const basegfx::B2DRange aChildRange(
+                                        aSequence.getB2DRange(
+                                            drawinglayer::geometry::ViewInformation2D()));
+                                fHReference = aChildRange.getHeight();
+                            }
                         }
 
                         // referenced values are already in 'user unit'
@@ -439,7 +451,7 @@ namespace svgio
                                     // need to embed in MaskPrimitive2D, too
                                     const drawinglayer::primitive2d::Primitive2DReference xMask(
                                         new drawinglayer::primitive2d::MaskPrimitive2D(
-                                            basegfx::B2DPolyPolygon(basegfx::tools::createPolygonFromRect(aTarget)),
+                                            basegfx::B2DPolyPolygon(basegfx::utils::createPolygonFromRect(aTarget)),
                                             drawinglayer::primitive2d::Primitive2DContainer { xRef }));
 
                                     rTarget.push_back(xMask);
@@ -457,7 +469,7 @@ namespace svgio
                                 // embed in transform
                                 const drawinglayer::primitive2d::Primitive2DReference xRef(
                                     new drawinglayer::primitive2d::TransformPrimitive2D(
-                                        basegfx::tools::createTranslateB2DHomMatrix(fX, fY),
+                                        basegfx::utils::createTranslateB2DHomMatrix(fX, fY),
                                         aSequence));
 
                                 aSequence = drawinglayer::primitive2d::Primitive2DContainer { xRef, };
@@ -467,7 +479,7 @@ namespace svgio
                             const drawinglayer::primitive2d::Primitive2DReference xMask(
                                 new drawinglayer::primitive2d::MaskPrimitive2D(
                                     basegfx::B2DPolyPolygon(
-                                        basegfx::tools::createPolygonFromRect(
+                                        basegfx::utils::createPolygonFromRect(
                                             basegfx::B2DRange(fX, fY, fX + fW, fY + fH))),
                                     aSequence));
 
@@ -487,12 +499,12 @@ namespace svgio
                         basegfx::B2DRange aSvgCanvasRange; // viewport
                         double fW = 0.0; // dummy values
                         double fH = 0.0;
-                        if(getViewBox())
+                        if (const basegfx::B2DRange* pBox = getViewBox())
                         {
                             // SVG 1.1 defines in section 7.7 that a negative value for width or height
                             // in viewBox is an error and that 0.0 disables rendering
-                            const double fViewBoxWidth = getViewBox()->getWidth();
-                            const double fViewBoxHeight = getViewBox()->getHeight();
+                            const double fViewBoxWidth = pBox->getWidth();
+                            const double fViewBoxHeight = pBox->getHeight();
                             if(basegfx::fTools::more(fViewBoxWidth,0.0) && basegfx::fTools::more(fViewBoxHeight,0.0))
                             {
                                 // The intrinsic aspect ratio of the svg element is given by absolute values of svg width and svg height
@@ -527,13 +539,11 @@ namespace svgio
                                     // by the viewBox. No mapping.
                                     // We get viewport >= content, therefore no clipping.
                                     bNeedsMapping = false;
-                                    const basegfx::B2DRange aChildRange(
-                                        aSequence.getB2DRange(
-                                            drawinglayer::geometry::ViewInformation2D()));
-                                    const double fChildWidth(aChildRange.getWidth());
-                                    const double fChildHeight(aChildRange.getHeight());
-                                    const double fLeft(aChildRange.getMinX());
-                                    const double fTop(aChildRange.getMinY());
+
+                                    const double fChildWidth(pBox->getWidth());
+                                    const double fChildHeight(pBox->getHeight());
+                                    const double fLeft(pBox->getMinX());
+                                    const double fTop(pBox->getMinY());
                                     if ( fChildWidth / fViewBoxWidth > fChildHeight / fViewBoxHeight )
                                     {  // expand y
                                         fW = fChildWidth;
@@ -547,7 +557,6 @@ namespace svgio
                                     aSvgCanvasRange = basegfx::B2DRange(fLeft, fTop, fLeft + fW, fTop + fH);
                                 }
 
-
                                 if (bNeedsMapping)
                                 {
                                     // create mapping
@@ -556,8 +565,7 @@ namespace svgio
                                     SvgAspectRatio aRatioDefault(Align_xMidYMid,true);
                                     const SvgAspectRatio& rRatio = getSvgAspectRatio().isSet()? getSvgAspectRatio() : aRatioDefault;
 
-                                    basegfx::B2DHomMatrix aViewBoxMapping;
-                                    aViewBoxMapping = rRatio.createMapping(aSvgCanvasRange, *getViewBox());
+                                    basegfx::B2DHomMatrix aViewBoxMapping = rRatio.createMapping(aSvgCanvasRange, *pBox);
                                     // no need to check ratio here for slice, the outermost Svg will
                                     // be clipped anyways (see below)
 
@@ -622,7 +630,7 @@ namespace svgio
                             // real life size
                             const drawinglayer::primitive2d::Primitive2DReference xLine(
                                 new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(
-                                    basegfx::tools::createPolygonFromRect(
+                                    basegfx::utils::createPolygonFromRect(
                                         aSvgCanvasRange),
                                     basegfx::BColor(0.0, 0.0, 0.0)));
                             const drawinglayer::primitive2d::Primitive2DReference xHidden(
@@ -641,7 +649,7 @@ namespace svgio
                             const drawinglayer::primitive2d::Primitive2DReference xMask(
                                 new drawinglayer::primitive2d::MaskPrimitive2D(
                                     basegfx::B2DPolyPolygon(
-                                        basegfx::tools::createPolygonFromRect(
+                                        basegfx::utils::createPolygonFromRect(
                                             aSvgCanvasRange)),
                                     aSequence));
 
@@ -655,21 +663,41 @@ namespace svgio
 
                         if(!aSequence.empty())
                         {
-                            // embed in transform primitive to scale to 1/100th mm
-                            // where 1 inch == 25.4 mm to get from Svg coordinates (px) to
-                            // drawinglayer coordinates
-                            const double fScaleTo100thmm(25.4 * 100.0 / F_SVG_PIXEL_PER_INCH);
-                            const basegfx::B2DHomMatrix aTransform(
-                                basegfx::tools::createScaleB2DHomMatrix(
-                                    fScaleTo100thmm,
-                                    fScaleTo100thmm));
+                            // Another correction:
+                            // If no Width/Height is set (usually done in
+                            // <svg ... width="215.9mm" height="279.4mm" >) which
+                            // is the case for own-Impress-exports, assume that
+                            // the Units are already 100ThMM.
+                            // Maybe only for own-Impress-exports, thus may need to be
+                            // &&ed with getDocument().findSvgNodeById("ooo:meta_slides"),
+                            // but does not need to be.
+                            bool bEmbedInFinalTransformPxTo100ThMM(true);
 
-                            const drawinglayer::primitive2d::Primitive2DReference xTransform(
-                                new drawinglayer::primitive2d::TransformPrimitive2D(
-                                    aTransform,
-                                    aSequence));
+                            if(getDocument().findSvgNodeById("ooo:meta_slides")
+                                && !getWidth().isSet()
+                                && !getHeight().isSet())
+                            {
+                                bEmbedInFinalTransformPxTo100ThMM = false;
+                            }
 
-                            aSequence = drawinglayer::primitive2d::Primitive2DContainer { xTransform };
+                            if(bEmbedInFinalTransformPxTo100ThMM)
+                            {
+                                // embed in transform primitive to scale to 1/100th mm
+                                // where 1 inch == 25.4 mm to get from Svg coordinates (px) to
+                                // drawinglayer coordinates
+                                const double fScaleTo100thmm(25.4 * 100.0 / F_SVG_PIXEL_PER_INCH);
+                                const basegfx::B2DHomMatrix aTransform(
+                                    basegfx::utils::createScaleB2DHomMatrix(
+                                        fScaleTo100thmm,
+                                        fScaleTo100thmm));
+
+                                const drawinglayer::primitive2d::Primitive2DReference xTransform(
+                                    new drawinglayer::primitive2d::TransformPrimitive2D(
+                                        aTransform,
+                                        aSequence));
+
+                                aSequence = drawinglayer::primitive2d::Primitive2DContainer { xTransform };
+                            }
 
                             // append to result
                             rTarget.append(aSequence);
@@ -677,9 +705,26 @@ namespace svgio
                     }
                 }
             }
+
+            if(!(aSequence.empty() && !getParent() && getViewBox()))
+                return;
+
+            // tdf#118232 No geometry, Outermost SVG element and we have a ViewBox.
+            // Create a HiddenGeometry Primitive containing an expanded
+            // hairline geometry to have the size contained
+            const drawinglayer::primitive2d::Primitive2DReference xLine(
+                new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(
+                    basegfx::utils::createPolygonFromRect(
+                        *getViewBox()),
+                    basegfx::BColor(0.0, 0.0, 0.0)));
+            const drawinglayer::primitive2d::Primitive2DReference xHidden(
+                new drawinglayer::primitive2d::HiddenGeometryPrimitive2D(
+                    drawinglayer::primitive2d::Primitive2DContainer { xLine }));
+
+            rTarget.push_back(xHidden);
         }
 
-        const basegfx::B2DRange SvgSvgNode::getCurrentViewPort() const
+        basegfx::B2DRange SvgSvgNode::getCurrentViewPort() const
         {
             if(getViewBox())
             {
@@ -782,7 +827,6 @@ namespace svgio
             }
         }
 
-    } // end of namespace svgreader
 } // end of namespace svgio
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

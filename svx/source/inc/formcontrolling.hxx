@@ -21,7 +21,6 @@
 #define INCLUDED_SVX_SOURCE_INC_FORMCONTROLLING_HXX
 
 #include <com/sun/star/form/runtime/XFormController.hpp>
-#include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/form/runtime/FeatureState.hpp>
 #include <com/sun/star/form/runtime/XFormOperations.hpp>
 #include <com/sun/star/sdb/XSQLErrorListener.hpp>
@@ -67,11 +66,10 @@ namespace svx
     };
 
     class FormControllerHelper;
-    /** easier access to an FormControllerHelper instance
+    /** easier access to a FormControllerHelper instance
     */
-    class ControllerFeatures
+    class ControllerFeatures final
     {
-    protected:
         IControllerFeatureInvalidation* m_pInvalidationCallback;    // necessary as long as m_pImpl is not yet constructed
         rtl::Reference<FormControllerHelper>  m_pImpl;
 

@@ -18,12 +18,11 @@
  */
 
 
-#include "fmdocumentclassification.hxx"
+#include <fmdocumentclassification.hxx>
 
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/xforms/XFormsSupplier.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/frame/XModule.hpp>
 
 #include <tools/diagnose_ex.h>
@@ -71,7 +70,6 @@ namespace svxform
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::xforms;
     using namespace ::com::sun::star::container;
-    using namespace ::com::sun::star::sdbc;
 
 
     namespace
@@ -79,8 +77,8 @@ namespace svxform
 
         struct ModuleInfo
         {
-            const sal_Char* pAsciiModuleOrServiceName;
-            DocumentType    eType;
+            const char*  pAsciiModuleOrServiceName;
+            DocumentType eType;
         };
 
 
@@ -139,7 +137,7 @@ namespace svxform
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
 
         return eType;
@@ -159,7 +157,7 @@ namespace svxform
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "DocumentClassification::classifyHostDocument: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "svx", "DocumentClassification::classifyHostDocument" );
         }
 
         return eType;

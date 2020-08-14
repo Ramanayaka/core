@@ -17,18 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cstdarg>
-
-#include <osl/process.h>
-
 #include <rtl/process.h>
-#include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 
 #include <uno/environment.h>
 #include <uno/lbnames.h>
 #include <uno/mapping.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
+#include <cppuhelper/exc_hlp.hxx>
+#include <tools/diagnose_ex.h>
 
 #ifdef LINUX
 #undef minor
@@ -37,9 +35,7 @@
 
 #include <com/sun/star/java/XJavaVM.hpp>
 
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
-
-#include "jni.h"
+#include <jni.h>
 
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implementationentry.hxx>
@@ -48,13 +44,14 @@
 #include <cppuhelper/supportsservice.hxx>
 
 #include <com/sun/star/loader/XImplementationLoader.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <jvmaccess/unovirtualmachine.hxx>
 #include <jvmaccess/virtualmachine.hxx>
+
+namespace com::sun::star::registry { class XRegistryKey; }
 
 using namespace css::java;
 using namespace css::lang;
@@ -67,20 +64,7 @@ using namespace ::osl;
 
 namespace stoc_javaloader {
 
-static Mutex & getInitMutex();
-
-static Sequence< OUString > loader_getSupportedServiceNames()
-{
-    Sequence< OUString > seqNames(2);
-    seqNames.getArray()[0] = "com.sun.star.loader.Java";
-    seqNames.getArray()[1] = "com.sun.star.loader.Java2";
-    return seqNames;
-}
-
-static OUString loader_getImplementationName()
-{
-    return OUString( "com.sun.star.comp.stoc.JavaComponentLoader" );
-}
+namespace {
 
 class JavaComponentLoader : public WeakImplHelper<XImplementationLoader, XServiceInfo>
 {
@@ -88,7 +72,7 @@ class JavaComponentLoader : public WeakImplHelper<XImplementationLoader, XServic
     /** Do not use m_javaLoader directly. Instead use getJavaLoader.
      */
     css::uno::Reference<XImplementationLoader> m_javaLoader;
-    /** The retured Reference contains a null pointer if the office is not configured
+    /** The returned Reference contains a null pointer if the office is not configured
         to run java.
 
         @exception css::uno::RuntimeException
@@ -117,9 +101,12 @@ public:
         const OUString& implementationLoaderUrl, const OUString& locationUrl) override;
 };
 
+}
+
 const css::uno::Reference<XImplementationLoader> & JavaComponentLoader::getJavaLoader()
 {
-    MutexGuard aGuard(getInitMutex());
+    static Mutex ourMutex;
+    MutexGuard aGuard(ourMutex);
 
     if (m_javaLoader.is())
         return m_javaLoader;
@@ -252,15 +239,17 @@ const css::uno::Reference<XImplementationLoader> & JavaComponentLoader::getJavaL
         }
         catch (jvmaccess::VirtualMachine::AttachGuard::CreationException &)
         {
-            throw RuntimeException("jvmaccess::VirtualMachine::AttachGuard::CreationException");
+            css::uno::Any anyEx = cppu::getCaughtException();
+            throw css::lang::WrappedTargetRuntimeException(
+                "jvmaccess::VirtualMachine::AttachGuard::CreationException",
+                static_cast< cppu::OWeakObject * >(this), anyEx );
         }
 
         // set the service manager at the javaloader
         css::uno::Reference<XInitialization> javaLoader_XInitialization(m_javaLoader, UNO_QUERY_THROW);
 
         Any any;
-        any <<= css::uno::Reference<XMultiComponentFactory>(
-            m_xComponentContext->getServiceManager());
+        any <<= m_xComponentContext->getServiceManager();
 
         javaLoader_XInitialization->initialize(Sequence<Any>(&any, 1));
     }
@@ -290,7 +279,7 @@ JavaComponentLoader::JavaComponentLoader(const css::uno::Reference<XComponentCon
 // XServiceInfo
 OUString SAL_CALL JavaComponentLoader::getImplementationName()
 {
-    return loader_getImplementationName();
+    return "com.sun.star.comp.stoc.JavaComponentLoader";
 }
 
 sal_Bool SAL_CALL JavaComponentLoader::supportsService(const OUString & ServiceName)
@@ -300,7 +289,7 @@ sal_Bool SAL_CALL JavaComponentLoader::supportsService(const OUString & ServiceN
 
 Sequence<OUString> SAL_CALL JavaComponentLoader::getSupportedServiceNames()
 {
-    return loader_getSupportedServiceNames();
+    return { "com.sun.star.loader.Java", "com.sun.star.loader.Java2" };
 }
 
 
@@ -310,10 +299,9 @@ sal_Bool SAL_CALL JavaComponentLoader::writeRegistryInfo(
     const OUString & rLibName)
 {
     const css::uno::Reference<XImplementationLoader> & loader = getJavaLoader();
-    if (loader.is())
-        return loader->writeRegistryInfo(xKey, blabla, rLibName);
-    else
+    if (!loader.is())
         throw CannotRegisterImplementationException("Could not create Java implementation loader");
+    return loader->writeRegistryInfo(xKey, blabla, rLibName);
 }
 
 
@@ -322,71 +310,26 @@ css::uno::Reference<XInterface> SAL_CALL JavaComponentLoader::activate(
     const css::uno::Reference<XRegistryKey> & xKey)
 {
     const css::uno::Reference<XImplementationLoader> & loader = getJavaLoader();
-    if (loader.is())
-        return loader->activate(rImplName, blabla, rLibName, xKey);
-    else
+    if (!loader.is())
         throw CannotActivateFactoryException("Could not create Java implementation loader");
+    return loader->activate(rImplName, blabla, rLibName, xKey);
 }
 
-static Mutex & getInitMutex()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+stoc_JavaComponentLoader_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    static Mutex ourMutex;
-
-    return ourMutex;
-}
-
-/// @throws Exception
-css::uno::Reference<XInterface> SAL_CALL JavaComponentLoader_CreateInstance(const css::uno::Reference<XComponentContext> & xCtx)
-{
-    css::uno::Reference<XInterface> xRet;
-
     try {
-        MutexGuard guard( getInitMutex() );
-        // The javaloader is never destroyed and there can be only one!
-        // Note that the first context wins ....
-        static css::uno::Reference< XInterface > xStaticRef;
-        if( xStaticRef.is() )
-        {
-            xRet = xStaticRef;
-        }
-        else
-        {
-            xRet = *new JavaComponentLoader(xCtx);
-            xStaticRef = xRet;
-        }
+        return cppu::acquire(new JavaComponentLoader(context));
     }
-    catch(const RuntimeException & runtimeException) {
-        SAL_INFO(
-            "stoc",
-            "could not init javaloader due to " << runtimeException.Message);
+    catch(const RuntimeException &) {
+        TOOLS_INFO_EXCEPTION("stoc", "could not init javaloader");
         throw;
     }
-
-    return xRet;
 }
 
 } //end namespace
 
 
-using namespace stoc_javaloader;
-
-static const struct ImplementationEntry g_entries[] =
-{
-    {
-        JavaComponentLoader_CreateInstance, loader_getImplementationName,
-        loader_getSupportedServiceNames, createSingleComponentFactory,
-        nullptr , 0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-};
-
-extern "C"
-{
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL javaloader_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
-{
-    return component_getFactoryHelper( pImplName, pServiceManager, pRegistryKey , g_entries );
-}
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

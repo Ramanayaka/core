@@ -16,8 +16,9 @@ $(eval $(call gb_ExternalProject_register_targets,raptor,\
 ))
 
 $(call gb_ExternalProject_get_state_target,raptor,build):
+	$(call gb_Trace_StartRange,raptor,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
-		$(if $(filter IOS,$(OS)),LIBS="-liconv") \
+		$(if $(filter iOS,$(OS)),LIBS="-liconv") \
 		CFLAGS="$(CFLAGS) $(if $(debug),-g,-O) $(if $(filter TRUE,$(DISABLE_DYNLOADING)),-fvisibility=hidden) \
 			$(if $(filter GCCLINUXPOWERPC64,$(COM)$(OS)$(CPUNAME)),-mminimal-toc)" \
 		LDFLAGS=" \
@@ -36,8 +37,9 @@ $(call gb_ExternalProject_get_state_target,raptor,build):
 			, \
 				--enable-shared --disable-static \
 			) \
-			$(if $(SYSTEM_LIBXML),,--with-xml2-config=$(call gb_UnpackedTarball_get_dir,xml2)/xml2-config) \
+			$(if $(SYSTEM_LIBXML),$(if $(filter-out MACOSX,$(OS)),--without-xml2-config),--with-xml2-config=$(call gb_UnpackedTarball_get_dir,libxml2)/xml2-config) \
 		&& $(MAKE) \
 	)
+	$(call gb_Trace_EndRange,raptor,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

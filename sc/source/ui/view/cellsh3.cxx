@@ -17,33 +17,37 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
+#include <scitems.hxx>
 #include <editeng/editview.hxx>
 #include <editeng/editeng.hxx>
+#include <formula/formulahelper.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/request.hxx>
 #include <svl/stritem.hxx>
-#include <vcl/msgbox.hxx>
-#include <sfx2/app.hxx>
-#include "globstr.hrc"
-#include "scmod.hxx"
-#include "appoptio.hxx"
-#include "tabvwsh.hxx"
-#include "document.hxx"
-#include "sc.hrc"
-#include "docsh.hxx"
-#include "reffact.hxx"
-#include "uiitems.hxx"
-#include "autoform.hxx"
-#include "autofmt.hxx"
-#include "cellsh.hxx"
-#include "inputhdl.hxx"
-#include "editable.hxx"
-#include "markdata.hxx"
-#include "scabstdlg.hxx"
-#include "columnspanset.hxx"
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <scmod.hxx>
+#include <appoptio.hxx>
+#include <tabvwsh.hxx>
+#include <document.hxx>
+#include <sc.hrc>
+#include <reffact.hxx>
+#include <uiitems.hxx>
+#include <autoform.hxx>
+#include <cellsh.hxx>
+#include <inputhdl.hxx>
+#include <editable.hxx>
+#include <funcdesc.hxx>
+#include <markdata.hxx>
+#include <scabstdlg.hxx>
+#include <columnspanset.hxx>
+#include <comphelper/lok.hxx>
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <sfx2/lokhelper.hxx>
 
 #include <memory>
 
@@ -51,6 +55,103 @@
 
 using sc::HMMToTwips;
 using sc::TwipsToEvenHMM;
+
+namespace
+{
+/// Rid ourselves of unwanted " quoted json characters.
+OString escapeJSON(const OUString &aStr)
+{
+    OUString aEscaped = aStr;
+    aEscaped = aEscaped.replaceAll("\n", " ");
+    aEscaped = aEscaped.replaceAll("\"", "'");
+    return OUStringToOString(aEscaped, RTL_TEXTENCODING_UTF8);
+}
+
+void lcl_lokGetWholeFunctionList()
+{
+    const SfxViewShell* pViewShell = SfxViewShell::Current();
+    if (!(comphelper::LibreOfficeKit::isActive()
+        && pViewShell && pViewShell->isLOKMobilePhone()))
+        return;
+
+    const ScFunctionList* pFuncList = ScGlobal::GetStarCalcFunctionList();
+    sal_uInt32 nListCount = pFuncList->GetCount();
+    std::set<OUString> aFuncNameOrderedSet;
+    for(sal_uInt32 i = 0; i < nListCount; ++i)
+    {
+        const ScFuncDesc* pDesc = pFuncList->GetFunction( i );
+        if ( pDesc->mxFuncName )
+        {
+            aFuncNameOrderedSet.insert(*pDesc->mxFuncName);
+        }
+    }
+    ScFunctionMgr* pFuncManager = ScGlobal::GetStarCalcFunctionMgr();
+    if (!(pFuncManager && aFuncNameOrderedSet.size()))
+        return;
+
+    OStringBuffer aPayload;
+    aPayload.append("{ \"wholeList\": true, ");
+    aPayload.append("\"categories\": [ ");
+
+    formula::FormulaHelper aHelper(pFuncManager);
+    sal_uInt32 nCategoryCount = pFuncManager->getCount();
+    for (sal_uInt32 i = 0; i < nCategoryCount; ++i)
+    {
+        OUString sCategoryName = ScFunctionMgr::GetCategoryName(i);
+        aPayload.append("{");
+        aPayload.append("\"name\": \"");
+        aPayload.append(escapeJSON(sCategoryName));
+        aPayload.append("\"}, ");
+    }
+    sal_Int32 nLen = aPayload.getLength();
+    aPayload[nLen - 2] = ' ';
+    aPayload[nLen - 1] = ']';
+    aPayload.append(", ");
+
+    OUString aDescFuncNameStr;
+    aPayload.append("\"functions\": [ ");
+    sal_uInt32 nCurIndex = 0;
+    for (const OUString& aFuncNameStr : aFuncNameOrderedSet)
+    {
+        aDescFuncNameStr = aFuncNameStr + "()";
+        sal_Int32 nNextFStart = 0;
+        const formula::IFunctionDescription* ppFDesc;
+        ::std::vector< OUString > aArgs;
+        OUString eqPlusFuncName = "=" + aDescFuncNameStr;
+        if ( aHelper.GetNextFunc( eqPlusFuncName, false, nNextFStart, nullptr, &ppFDesc, &aArgs ) )
+        {
+            if ( ppFDesc && !ppFDesc->getFunctionName().isEmpty() )
+            {
+                if (ppFDesc->getCategory())
+                {
+                    aPayload.append("{");
+                    aPayload.append("\"index\": ");
+                    aPayload.append(OString::number(nCurIndex));
+                    aPayload.append(", ");
+                    aPayload.append("\"category\": ");
+                    aPayload.append(OString::number(ppFDesc->getCategory()->getNumber()));
+                    aPayload.append(", ");
+                    aPayload.append("\"signature\": \"");
+                    aPayload.append(escapeJSON(ppFDesc->getSignature()));
+                    aPayload.append("\", ");
+                    aPayload.append("\"description\": \"");
+                    aPayload.append(escapeJSON(ppFDesc->getDescription()));
+                    aPayload.append("\"}, ");
+                }
+            }
+        }
+        ++nCurIndex;
+    }
+    nLen = aPayload.getLength();
+    aPayload[nLen - 2] = ' ';
+    aPayload[nLen - 1] = ']';
+    aPayload.append(" }");
+
+    OString s = aPayload.makeStringAndClear();
+    pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_CALC_FUNCTION_LIST, s.getStr());
+}
+
+} // end namespace
 
 void ScCellShell::Execute( SfxRequest& rReq )
 {
@@ -74,7 +175,7 @@ void ScCellShell::Execute( SfxRequest& rReq )
                     //! cannot always be switched ????
                     if (!pTabViewShell->GetViewFrame()->GetFrame().IsInPlace())
                         pTabViewShell->SetDontSwitch(true);         // do not switch off EditShell
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
 
             case FID_CELL_FORMAT:
             case SID_ENABLE_HYPHENATION:
@@ -165,6 +266,19 @@ void ScCellShell::Execute( SfxRequest& rReq )
             {
                 if ( pReqArgs )
                 {
+                    // In the LOK case, we want to set the document modified state
+                    // right away at the start of the edit, so that the content is
+                    // saved even when the user leaves the document before hitting
+                    // Enter
+                    // NOTE: This also means we want to set the modified state
+                    // regardless of the DontCommit parameter's value.
+                    if (comphelper::LibreOfficeKit::isActive() && !GetViewData()->GetDocShell()->IsModified())
+                    {
+                        GetViewData()->GetDocShell()->SetModified();
+                        rBindings.Invalidate(SID_SAVEDOC);
+                        rBindings.Invalidate(SID_DOC_MODIFIED);
+                    }
+
                     OUString aStr( static_cast<const SfxStringItem&>(pReqArgs->
                                     Get( SID_ENTER_STRING )).GetValue() );
                     const SfxPoolItem* pDontCommitItem;
@@ -180,7 +294,7 @@ void ScCellShell::Execute( SfxRequest& rReq )
                                                   GetViewData()->GetTabNo(),
                                                   aStr );
                     }
-                    else
+                    else if (pHdl)
                     {
                         SC_MOD()->SetInputMode(SC_INPUT_TABLE);
 
@@ -234,8 +348,8 @@ void ScCellShell::Execute( SfxRequest& rReq )
                     = static_cast<const ScInputStatusItem*>(&pReqArgs->
                             Get( FID_INPUTLINE_STATUS ));
 
-                ScAddress aCursorPos = pStatusItem->GetPos();
-                OUString aString = pStatusItem->GetString();
+                const ScAddress& aCursorPos = pStatusItem->GetPos();
+                const OUString& aString = pStatusItem->GetString();
                 const EditTextObject* pData = pStatusItem->GetEditData();
 
                 if (pData)
@@ -303,11 +417,23 @@ void ScCellShell::Execute( SfxRequest& rReq )
 
         case SID_OPENDLG_FUNCTION:
             {
-                sal_uInt16 nId = SID_OPENDLG_FUNCTION;
-                SfxViewFrame* pViewFrm = pTabViewShell->GetViewFrame();
-                SfxChildWindow* pWnd = pViewFrm->GetChildWindow( nId );
-
-                pScMod->SetRefDialog( nId, pWnd == nullptr );
+                const SfxViewShell* pViewShell = SfxViewShell::Current();
+                if (comphelper::LibreOfficeKit::isActive()
+                    && pViewShell && pViewShell->isLOKMobilePhone())
+                {
+                    // not set the dialog id in the mobile case or we would
+                    // not be able to get cell address pasted in the edit view
+                    // by just tapping on them
+                    lcl_lokGetWholeFunctionList();
+                }
+                else
+                {
+                    sal_uInt16 nId = SID_OPENDLG_FUNCTION;
+                    SfxViewFrame* pViewFrm = pTabViewShell->GetViewFrame();
+                    SfxChildWindow* pWnd = pViewFrm->GetChildWindow( nId );
+                    bool bVis = comphelper::LibreOfficeKit::isActive() || pWnd == nullptr;
+                    pScMod->SetRefDialog( nId, bVis );
+                }
                 rReq.Ignore();
             }
             break;
@@ -417,11 +543,18 @@ void ScCellShell::Execute( SfxRequest& rReq )
                     rMark.MarkToMulti();
                     if ( rMark.IsMultiMarked() )
                     {
-                        if (   rReq.IsAPI()
-                            || RET_YES ==
-                               ScopedVclPtrInstance<QueryBox>( pTabViewShell->GetDialogParent(), WinBits(WB_YES_NO | WB_DEF_YES),
-                                         ScGlobal::GetRscString(STR_UPDATE_SCENARIO) )->
-                                        Execute() )
+
+                        bool bExtend = rReq.IsAPI();
+                        if (!bExtend)
+                        {
+                            std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(pTabViewShell->GetFrameWeld(),
+                                                                           VclMessageType::Question, VclButtonsType::YesNo,
+                                                                           ScResId(STR_UPDATE_SCENARIO)));
+                            xQueryBox->set_default_response(RET_YES);
+                            bExtend = xQueryBox->run() == RET_YES;
+                        }
+
+                        if (bExtend)
                         {
                             pTabViewShell->ExtendScenario();
                             rReq.Done();
@@ -429,9 +562,10 @@ void ScCellShell::Execute( SfxRequest& rReq )
                     }
                     else if( ! rReq.IsAPI() )
                     {
-                        ScopedVclPtrInstance<MessageDialog> aErrorBox(pTabViewShell->GetDialogParent(),
-                                            ScGlobal::GetRscString(STR_NOAREASELECTED));
-                        aErrorBox->Execute();
+                        std::unique_ptr<weld::MessageDialog> xErrorBox(Application::CreateMessageDialog(pTabViewShell->GetFrameWeld(),
+                                                                       VclMessageType::Warning, VclButtonsType::Ok,
+                                                                       ScResId(STR_NOAREASELECTED)));
+                        xErrorBox->run();
                     }
                 }
                 else
@@ -448,7 +582,7 @@ void ScCellShell::Execute( SfxRequest& rReq )
 
                         OUString aTmp;
                         pDoc->GetName(nTab, aTmp);
-                        aBaseName = aTmp + "_" + ScGlobal::GetRscString(STR_SCENARIO) + "_";
+                        aBaseName = aTmp + "_" + ScResId(STR_SCENARIO) + "_";
 
                         //  first test, if the prefix is recognised as valid,
                         //  else avoid only doubles
@@ -481,7 +615,7 @@ void ScCellShell::Execute( SfxRequest& rReq )
                             if ( pReqArgs->GetItemState( SID_NEW_TABLENAME, true, &pItem ) == SfxItemState::SET )
                                 aArgComment = static_cast<const SfxStringItem*>(pItem)->GetValue();
 
-                            aColor = Color( COL_LIGHTGRAY );        // Default
+                            aColor = COL_LIGHTGRAY;        // Default
                             nFlags = ScScenarioFlags::NONE;         // not TwoWay
 
                             pTabViewShell->MakeScenario( aArgName, aArgComment, aColor, nFlags );
@@ -492,10 +626,8 @@ void ScCellShell::Execute( SfxRequest& rReq )
                         {
                             bool bSheetProtected = pDoc->IsTabProtected(nTab);
                             ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                            OSL_ENSURE(pFact, "ScAbstractFactory create fail!");
 
-                            ScopedVclPtr<AbstractScNewScenarioDlg> pNewDlg(pFact->CreateScNewScenarioDlg(pTabViewShell->GetDialogParent(), aName, false, bSheetProtected));
-                            OSL_ENSURE(pNewDlg, "Dialog create fail!");
+                            ScopedVclPtr<AbstractScNewScenarioDlg> pNewDlg(pFact->CreateScNewScenarioDlg(pTabViewShell->GetFrameWeld(), aName, false, bSheetProtected));
                             if ( pNewDlg->Execute() == RET_OK )
                             {
                                 pNewDlg->GetScenarioData( aName, aComment, aColor, nFlags );
@@ -526,13 +658,14 @@ void ScCellShell::Execute( SfxRequest& rReq )
             {
                 const SfxPoolItem* pRow;
                 const SfxPoolItem* pHeight;
+                sal_uInt16 nHeight;
 
-                if ( pReqArgs && pReqArgs->HasItem( FN_PARAM_1, &pRow ) &&
-                                 pReqArgs->HasItem( FN_PARAM_2, &pHeight ) )
+                if ( pReqArgs && pReqArgs->HasItem( FID_ROW_HEIGHT, &pHeight ) &&
+                                 pReqArgs->HasItem( FN_PARAM_1, &pRow ) )
                 {
                     std::vector<sc::ColRowSpan> aRanges;
                     SCCOLROW nRow = static_cast<const SfxInt32Item*>(pRow)->GetValue() - 1;
-                    sal_uInt16 nHeight = static_cast<const SfxUInt16Item*>(pHeight)->GetValue();
+                    nHeight = static_cast<const SfxUInt16Item*>(pHeight)->GetValue();
                     ScMarkData& rMark = GetViewData()->GetMarkData();
 
                     if ( rMark.IsRowMarked( static_cast<SCROW>(nRow) ) )
@@ -541,18 +674,18 @@ void ScCellShell::Execute( SfxRequest& rReq )
                     }
                     else
                     {
-                        aRanges.push_back(sc::ColRowSpan(nRow, nRow));
+                        aRanges.emplace_back(nRow, nRow);
                     }
 
-                    pTabViewShell->SetWidthOrHeight(false, aRanges, SC_SIZE_DIRECT, nHeight);
+                    pTabViewShell->SetWidthOrHeight(false, aRanges, SC_SIZE_DIRECT, HMMToTwips(nHeight));
                 }
-                else if ( pReqArgs )
+                else if ( pReqArgs && pReqArgs->HasItem( FID_ROW_HEIGHT, &pHeight ) )
                 {
-                    const SfxUInt16Item&  rUInt16Item = static_cast<const SfxUInt16Item&>(pReqArgs->Get( FID_ROW_HEIGHT ));
+                    nHeight = static_cast<const SfxUInt16Item*>(pHeight)->GetValue();
 
                     // #101390#; the value of the macro is in HMM so use HMMToTwips to convert
                     pTabViewShell->SetMarkedWidthOrHeight( false, SC_SIZE_DIRECT,
-                                    sal::static_int_cast<sal_uInt16>( HMMToTwips(rUInt16Item.GetValue()) ) );
+                                    sal::static_int_cast<sal_uInt16>( HMMToTwips(nHeight) ) );
                     if( ! rReq.IsAPI() )
                         rReq.Done();
                 }
@@ -564,21 +697,18 @@ void ScCellShell::Execute( SfxRequest& rReq )
                                                 GetRowHeight( pData->GetCurY(),
                                                               pData->GetTabNo() );
                     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                    assert(pFact); //ScAbstractFactory create fail!
-
                     ScopedVclPtr<AbstractScMetricInputDlg> pDlg(pFact->CreateScMetricInputDlg(
-                        pTabViewShell->GetDialogParent(), "RowHeightDialog",
+                        pTabViewShell->GetFrameWeld(), "RowHeightDialog",
                         nCurHeight, ScGlobal::nStdRowHeight,
                         eMetric, 2, MAX_ROW_HEIGHT));
-                    assert(pDlg); //Dialog create fail
 
                     if ( pDlg->Execute() == RET_OK )
                     {
                         long nVal = pDlg->GetInputValue();
-                        pTabViewShell->SetMarkedWidthOrHeight( false, SC_SIZE_DIRECT, (sal_uInt16)nVal );
+                        pTabViewShell->SetMarkedWidthOrHeight( false, SC_SIZE_DIRECT, static_cast<sal_uInt16>(nVal) );
 
                         // #101390#; the value of the macro should be in HMM so use TwipsToEvenHMM to convert
-                        rReq.AppendItem( SfxUInt16Item( FID_ROW_HEIGHT, (sal_uInt16)TwipsToEvenHMM(nVal) ) );
+                        rReq.AppendItem( SfxUInt16Item( FID_ROW_HEIGHT, static_cast<sal_uInt16>(TwipsToEvenHMM(nVal)) ) );
                         rReq.Done();
 
                     }
@@ -605,21 +735,17 @@ void ScCellShell::Execute( SfxRequest& rReq )
                     FieldUnit eMetric = SC_MOD()->GetAppOptions().GetAppMetric();
 
                     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                    assert(pFact); //ScAbstractFactory create fail!
-
                     ScopedVclPtr<AbstractScMetricInputDlg> pDlg(pFact->CreateScMetricInputDlg(
-                        pTabViewShell->GetDialogParent(), "OptimalRowHeightDialog",
+                        pTabViewShell->GetFrameWeld(), "OptimalRowHeightDialog",
                         ScGlobal::nLastRowHeightExtra, 0, eMetric, 1, MAX_EXTRA_HEIGHT));
-                    assert(pDlg); //Dialog create fail!
-
                     if ( pDlg->Execute() == RET_OK )
                     {
                         long nVal = pDlg->GetInputValue();
-                        pTabViewShell->SetMarkedWidthOrHeight( false, SC_SIZE_OPTIMAL, (sal_uInt16)nVal );
+                        pTabViewShell->SetMarkedWidthOrHeight( false, SC_SIZE_OPTIMAL, static_cast<sal_uInt16>(nVal) );
                         ScGlobal::nLastRowHeightExtra = nVal;
 
                         // #101390#; the value of the macro should be in HMM so use TwipsToEvenHMM to convert
-                        rReq.AppendItem( SfxUInt16Item( FID_ROW_OPT_HEIGHT, (sal_uInt16)TwipsToEvenHMM(nVal) ) );
+                        rReq.AppendItem( SfxUInt16Item( FID_ROW_OPT_HEIGHT, static_cast<sal_uInt16>(TwipsToEvenHMM(nVal)) ) );
                         rReq.Done();
 
                     }
@@ -631,13 +757,14 @@ void ScCellShell::Execute( SfxRequest& rReq )
             {
                 const SfxPoolItem* pColumn;
                 const SfxPoolItem* pWidth;
+                sal_uInt16 nWidth;
 
-                if ( pReqArgs && pReqArgs->HasItem( FN_PARAM_1, &pColumn ) &&
-                                 pReqArgs->HasItem( FN_PARAM_2, &pWidth ) )
+                if ( pReqArgs && pReqArgs->HasItem( FID_COL_WIDTH, &pWidth ) &&
+                                 pReqArgs->HasItem( FN_PARAM_1, &pColumn ) )
                 {
                     std::vector<sc::ColRowSpan> aRanges;
                     SCCOLROW nColumn = static_cast<const SfxUInt16Item*>(pColumn)->GetValue() - 1;
-                    sal_uInt16 nWidth = static_cast<const SfxUInt16Item*>(pWidth)->GetValue();
+                    nWidth = static_cast<const SfxUInt16Item*>(pWidth)->GetValue();
                     ScMarkData& rMark = GetViewData()->GetMarkData();
 
                     if ( rMark.IsColumnMarked( static_cast<SCCOL>(nColumn) ) )
@@ -646,18 +773,18 @@ void ScCellShell::Execute( SfxRequest& rReq )
                     }
                     else
                     {
-                        aRanges.push_back(sc::ColRowSpan(nColumn, nColumn));
+                        aRanges.emplace_back(nColumn, nColumn);
                     }
 
-                    pTabViewShell->SetWidthOrHeight(true, aRanges, SC_SIZE_DIRECT, nWidth);
+                    pTabViewShell->SetWidthOrHeight(true, aRanges, SC_SIZE_DIRECT, HMMToTwips(nWidth));
                 }
-                else if ( pReqArgs )
+                else if ( pReqArgs && pReqArgs->HasItem( FID_COL_WIDTH, &pWidth ) )
                 {
-                    const SfxUInt16Item&  rUInt16Item = static_cast<const SfxUInt16Item&>(pReqArgs->Get( FID_COL_WIDTH ));
+                    nWidth = static_cast<const SfxUInt16Item*>(pWidth)->GetValue();
 
                     // #101390#; the value of the macro is in HMM so use HMMToTwips to convert
                     pTabViewShell->SetMarkedWidthOrHeight( true, SC_SIZE_DIRECT,
-                                    sal::static_int_cast<sal_uInt16>( HMMToTwips(rUInt16Item.GetValue()) ) );
+                                    sal::static_int_cast<sal_uInt16>( HMMToTwips(nWidth) ) );
                     if( ! rReq.IsAPI() )
                         rReq.Done();
                 }
@@ -669,20 +796,16 @@ void ScCellShell::Execute( SfxRequest& rReq )
                                                 GetColWidth( pData->GetCurX(),
                                                              pData->GetTabNo() );
                     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                    assert(pFact); //ScAbstractFactory create fail!
-
                     ScopedVclPtr<AbstractScMetricInputDlg> pDlg(pFact->CreateScMetricInputDlg(
-                        pTabViewShell->GetDialogParent(), "ColWidthDialog", nCurHeight,
+                        pTabViewShell->GetFrameWeld(), "ColWidthDialog", nCurHeight,
                         STD_COL_WIDTH, eMetric, 2, MAX_COL_WIDTH));
-                    assert(pDlg); //Dialog create fail!
-
                     if ( pDlg->Execute() == RET_OK )
                     {
                         long nVal = pDlg->GetInputValue();
-                        pTabViewShell->SetMarkedWidthOrHeight( true, SC_SIZE_DIRECT, (sal_uInt16)nVal );
+                        pTabViewShell->SetMarkedWidthOrHeight( true, SC_SIZE_DIRECT, static_cast<sal_uInt16>(nVal) );
 
                         // #101390#; the value of the macro should be in HMM so use TwipsToEvenHMM to convert
-                        rReq.AppendItem( SfxUInt16Item( FID_COL_WIDTH, (sal_uInt16)TwipsToEvenHMM(nVal)) );
+                        rReq.AppendItem( SfxUInt16Item( FID_COL_WIDTH, static_cast<sal_uInt16>(TwipsToEvenHMM(nVal))) );
                         rReq.Done();
 
                     }
@@ -709,20 +832,17 @@ void ScCellShell::Execute( SfxRequest& rReq )
                     FieldUnit eMetric = SC_MOD()->GetAppOptions().GetAppMetric();
 
                     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                    assert(pFact); //ScAbstractFactory create fail!
-
                     ScopedVclPtr<AbstractScMetricInputDlg> pDlg(pFact->CreateScMetricInputDlg(
-                        pTabViewShell->GetDialogParent(), "OptimalColWidthDialog",
+                        pTabViewShell->GetFrameWeld(), "OptimalColWidthDialog",
                         ScGlobal::nLastColWidthExtra, STD_EXTRA_WIDTH, eMetric, 1, MAX_EXTRA_WIDTH));
-                    assert(pDlg); //Dialog create fail!
                     if ( pDlg->Execute() == RET_OK )
                     {
                         long nVal = pDlg->GetInputValue();
-                        pTabViewShell->SetMarkedWidthOrHeight( true, SC_SIZE_OPTIMAL, (sal_uInt16)nVal );
+                        pTabViewShell->SetMarkedWidthOrHeight( true, SC_SIZE_OPTIMAL, static_cast<sal_uInt16>(nVal) );
                         ScGlobal::nLastColWidthExtra = nVal;
 
                         // #101390#; the value of the macro should be in HMM so use TwipsToEvenHMM to convert
-                        rReq.AppendItem( SfxUInt16Item( FID_COL_OPT_WIDTH, (sal_uInt16)TwipsToEvenHMM(nVal) ) );
+                        rReq.AppendItem( SfxUInt16Item( FID_COL_OPT_WIDTH, static_cast<sal_uInt16>(TwipsToEvenHMM(nVal)) ) );
                         rReq.Done();
                     }
                 }
@@ -794,7 +914,7 @@ void ScCellShell::Execute( SfxRequest& rReq )
                     if ( pReqArgs &&
                         pReqArgs->GetItemState(nSlot, true, &pItem) == SfxItemState::SET )
                     {
-                        OSL_ENSURE(pItem && dynamic_cast<const SfxBoolItem*>( pItem) !=  nullptr, "wrong item");
+                        OSL_ENSURE(dynamic_cast<const SfxBoolItem*>( pItem), "wrong item");
                         bMoveContents = static_cast<const SfxBoolItem*>(pItem)->GetValue();
                     }
 
@@ -822,7 +942,7 @@ void ScCellShell::Execute( SfxRequest& rReq )
 
         case SID_AUTOFORMAT:
             {
-                vcl::Window* pDlgParent = pTabViewShell->GetDialogParent();
+                weld::Window* pDlgParent = pTabViewShell->GetFrameWeld();
                 SCCOL nStartCol;
                 SCROW nStartRow;
                 SCTAB nStartTab;
@@ -842,7 +962,7 @@ void ScCellShell::Execute( SfxRequest& rReq )
                 {
                     if ( pReqArgs )
                     {
-                        const SfxStringItem& rNameItem = static_cast<const SfxStringItem&>(pReqArgs->Get( SID_AUTOFORMAT ));
+                        const SfxStringItem& rNameItem = pReqArgs->Get( SID_AUTOFORMAT );
                         ScAutoFormat* pFormat = ScGlobal::GetOrCreateAutoFormat();
                         ScAutoFormat::const_iterator it = pFormat->find(rNameItem.GetValue());
                         ScAutoFormat::const_iterator itBeg = pFormat->begin();
@@ -858,10 +978,8 @@ void ScCellShell::Execute( SfxRequest& rReq )
                         ScGlobal::ClearAutoFormat();
                         std::unique_ptr<ScAutoFormatData> pNewEntry(pTabViewShell->CreateAutoFormatData());
                         ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                        OSL_ENSURE(pFact, "ScAbstractFactory create fail!");
 
                         ScopedVclPtr<AbstractScAutoFormatDlg> pDlg(pFact->CreateScAutoFormatDlg(pDlgParent, ScGlobal::GetOrCreateAutoFormat(), pNewEntry.get(), GetViewData()));
-                        OSL_ENSURE(pDlg, "Dialog create fail!");
 
                         if ( pDlg->Execute() == RET_OK )
                         {
@@ -881,8 +999,12 @@ void ScCellShell::Execute( SfxRequest& rReq )
                     }
                 }
                 else
-                    ScopedVclPtrInstance<MessageDialog>(pDlgParent,
-                              ScGlobal::GetRscString(STR_INVALID_AFAREA) )->Execute();
+                {
+                    std::unique_ptr<weld::MessageDialog> xErrorBox(Application::CreateMessageDialog(pDlgParent,
+                                                                   VclMessageType::Warning, VclButtonsType::Ok,
+                                                                   ScResId(STR_INVALID_AFAREA)));
+                    xErrorBox->run();
+                }
             }
             break;
 

@@ -22,15 +22,15 @@
 #include <sfx2/shell.hxx>
 #include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
+#include <svl/poolitem.hxx>
 #include <sfx2/dllapi.h>
 #include <o3tl/typed_flags_set.hxx>
 #include <sfx2/groupid.hxx>
 #include <functional>
 
+#include <climits>
+
 class SfxItemPool;
-class SfxItemSet;
-class SfxPoolItem;
-class SfxRequest;
 
 enum class SfxSlotMode {
     NONE            =    0x0000L, // default
@@ -108,8 +108,8 @@ struct SfxType
     SfxTypeAttrib   aAttrib[1]; // variable length
 
     const std::type_info* Type() const{return pType;}
-    SfxPoolItem*    CreateItem() const
-                    { return createSfxPoolItemFunc(); }
+    std::unique_ptr<SfxPoolItem> CreateItem() const
+                    { return std::unique_ptr<SfxPoolItem>(createSfxPoolItemFunc()); }
 };
 
 struct SfxType0
@@ -175,8 +175,8 @@ struct SfxFormalArgument
     const char*     pName;    // Name of the sParameters
     sal_uInt16      nSlotId;  // Slot-Id for identification of the Parameters
 
-    SfxPoolItem*            CreateItem() const
-                            { return pType->createSfxPoolItemFunc(); }
+    std::unique_ptr<SfxPoolItem> CreateItem() const
+                            { return pType->CreateItem(); }
 };
 
 

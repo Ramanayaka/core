@@ -18,10 +18,12 @@
  */
 
 #include "Time.hxx"
-#include <tools/time.hxx>
+#include <property.hxx>
+#include <services.hxx>
 #include <connectivity/dbconversion.hxx>
 #include <com/sun/star/sdbc/DataType.hpp>
-#include <comphelper/processfactory.hxx>
+#include <com/sun/star/util/DateTime.hpp>
+#include <com/sun/star/form/FormComponentType.hpp>
 
 using namespace dbtools;
 
@@ -32,7 +34,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -138,7 +139,7 @@ IMPLEMENT_DEFAULT_CLONING( OTimeModel )
 
 OUString SAL_CALL OTimeModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_TIMEFIELD); // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_TIMEFIELD; // old (non-sun) name for compatibility !
 }
 
 // XPropertySet
@@ -195,18 +196,18 @@ void OTimeModel::onConnectedDbColumn( const Reference< XInterface >& _rxForm )
 {
     OBoundControlModel::onConnectedDbColumn( _rxForm );
     Reference<XPropertySet> xField = getField();
-    if (xField.is())
+    if (!xField.is())
+        return;
+
+    m_bDateTimeField = false;
+    try
     {
-        m_bDateTimeField = false;
-        try
-        {
-            sal_Int32 nFieldType = 0;
-            xField->getPropertyValue(PROPERTY_FIELDTYPE) >>= nFieldType;
-            m_bDateTimeField = (nFieldType == DataType::TIMESTAMP);
-        }
-        catch(const Exception&)
-        {
-        }
+        sal_Int32 nFieldType = 0;
+        xField->getPropertyValue(PROPERTY_FIELDTYPE) >>= nFieldType;
+        m_bDateTimeField = (nFieldType == DataType::TIMESTAMP);
+    }
+    catch(const Exception&)
+    {
     }
 }
 
@@ -235,6 +236,8 @@ bool OTimeModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
                 else
                 {
                     util::DateTime aDateTime = m_xColumn->getTimestamp();
+                    if (aDateTime.Year == 0 && aDateTime.Month == 0 && aDateTime.Day == 0)
+                        aDateTime = ::com::sun::star::util::DateTime(0,0,0,0,30,12,1899, false);
                     aDateTime.NanoSeconds = aTime.NanoSeconds;
                     aDateTime.Seconds = aTime.Seconds;
                     aDateTime.Minutes = aTime.Minutes;
@@ -303,14 +306,14 @@ Sequence< Type > OTimeModel::getSupportedBindingTypes()
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OTimeModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::OTimeModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OTimeControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

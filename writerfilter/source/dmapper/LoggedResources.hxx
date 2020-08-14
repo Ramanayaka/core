@@ -21,13 +21,12 @@
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_LOGGEDRESOURCES_HXX
 
 #include <dmapper/resourcemodel.hxx>
-#include "TagLogger.hxx"
 
 
 namespace writerfilter
 {
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
 class LoggedResourcesHelper final
 {
 public:
@@ -35,7 +34,7 @@ public:
     ~LoggedResourcesHelper();
 
     void startElement(const std::string & sElement);
-    static void endElement(const std::string & sElement);
+    static void endElement();
     static void chars(const OUString & rChars);
     static void chars(const std::string & rChars);
     static void attribute(const std::string & rName, const std::string & rValue);
@@ -50,7 +49,7 @@ class LoggedStream : public Stream
 {
 public:
     explicit LoggedStream(const std::string & sPrefix);
-    virtual ~LoggedStream();
+    virtual ~LoggedStream() override;
 
     void startSectionGroup() override;
     void endSectionGroup() override;
@@ -90,11 +89,10 @@ protected:
     virtual void lcl_props(writerfilter::Reference<Properties>::Pointer_t ref) = 0;
     virtual void lcl_table(Id name, writerfilter::Reference<Table>::Pointer_t ref) = 0;
     virtual void lcl_substream(Id name, writerfilter::Reference<Stream>::Pointer_t ref) = 0;
-    virtual void lcl_info(const std::string & info) = 0;
     virtual void lcl_startGlossaryEntry() { }
     virtual void lcl_endGlossaryEntry() { }
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     LoggedResourcesHelper mHelper;
 #endif
 };
@@ -103,7 +101,7 @@ class LoggedProperties : public Properties
 {
 public:
     explicit LoggedProperties(const std::string & sPrefix);
-    virtual ~LoggedProperties();
+    virtual ~LoggedProperties() override;
 
     void attribute(Id name, Value & val) override;
     void sprm(Sprm & sprm) override;
@@ -112,7 +110,7 @@ protected:
     virtual void lcl_attribute(Id name, Value & val) = 0;
     virtual void lcl_sprm(Sprm & sprm) = 0;
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     LoggedResourcesHelper mHelper;
 #endif
 };
@@ -121,14 +119,14 @@ class LoggedTable : public Table
 {
 public:
     explicit LoggedTable(const std::string & sPrefix);
-    virtual ~LoggedTable();
+    virtual ~LoggedTable() override;
 
     void entry(int pos, writerfilter::Reference<Properties>::Pointer_t ref) override;
 
 protected:
-    virtual void lcl_entry(int pos, writerfilter::Reference<Properties>::Pointer_t ref) = 0;
+    virtual void lcl_entry(writerfilter::Reference<Properties>::Pointer_t ref) = 0;
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     LoggedResourcesHelper mHelper;
 #endif
 };

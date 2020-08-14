@@ -21,6 +21,7 @@
 #define INCLUDED_SVTOOLS_POPUPWINDOWCONTROLLER_HXX
 
 #include <memory>
+#include <o3tl/deleter.hxx>
 #include <svtools/svtdllapi.h>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -31,20 +32,34 @@
 
 namespace vcl { class Window; }
 
+class InterimToolbarPopup;
+class ToolbarPopupContainer;
+class WeldToolbarPopup;
+
 namespace svt
 {
 class PopupWindowControllerImpl;
 
-class SVT_DLLPUBLIC PopupWindowController : public cppu::ImplInheritanceHelper< svt::ToolboxController,
-                                                                                css::lang::XServiceInfo >
+//HACK to avoid duplicate ImplInheritanceHelper symbols with MSVC:
+class SAL_DLLPUBLIC_TEMPLATE PopupWindowController_Base:
+    public cppu::ImplInheritanceHelper<svt::ToolboxController, css::lang::XServiceInfo>
+{
+    using ImplInheritanceHelper::ImplInheritanceHelper;
+};
+
+class SVT_DLLPUBLIC PopupWindowController : public PopupWindowController_Base
 {
 public:
     PopupWindowController( const css::uno::Reference< css::uno::XComponentContext >& rxContext,
                            const css::uno::Reference< css::frame::XFrame >& xFrame,
                            const OUString& aCommandURL );
+
     virtual ~PopupWindowController() override;
 
-    virtual VclPtr<vcl::Window> createPopupWindow( vcl::Window* pParent ) = 0;
+    void EndPopupMode();
+
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) = 0;
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow();
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override = 0;
@@ -59,9 +74,14 @@ public:
 
     // XToolbarController
     virtual css::uno::Reference< css::awt::XWindow > SAL_CALL createPopupWindow() override;
+    virtual void SAL_CALL click() override;
+
+protected:
+    std::unique_ptr<ToolbarPopupContainer> mxPopoverContainer;
+    VclPtr<InterimToolbarPopup> mxInterimPopover;
 
 private:
-    std::unique_ptr< PopupWindowControllerImpl >  mxImpl;
+    std::unique_ptr<PopupWindowControllerImpl, o3tl::default_delete<PopupWindowControllerImpl>>  mxImpl;
 };
 
 } // namespace svt

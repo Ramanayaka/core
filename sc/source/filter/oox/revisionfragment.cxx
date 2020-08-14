@@ -29,12 +29,13 @@
 #include <formulacell.hxx>
 #include <chgviset.hxx>
 #include <richstringcontext.hxx>
+#include <tokenarray.hxx>
 
 #include <com/sun/star/util/DateTime.hpp>
 
 using namespace com::sun::star;
 
-namespace oox { namespace xls {
+namespace oox::xls {
 
 namespace {
 
@@ -73,7 +74,7 @@ protected:
     {
         if (nElement == XLS_TOKEN(is))
         {
-            mxRichString.reset(new RichString(*this));
+            mxRichString = std::make_shared<RichString>(*this);
             return new RichStringContext(*this, mxRichString);
         }
 
@@ -118,11 +119,11 @@ protected:
                 // formula string
                 ScDocument& rDoc = getScDocument();
                 ScCompiler aComp(&rDoc, mrPos, formula::FormulaGrammar::GRAM_OOXML);
-                ScTokenArray* pArray = aComp.CompileString(rChars);
+                std::unique_ptr<ScTokenArray> pArray = aComp.CompileString(rChars);
                 if (!pArray)
                     break;
 
-                mrCellValue.set(new ScFormulaCell(&rDoc, mrPos, pArray));
+                mrCellValue.set(new ScFormulaCell(&rDoc, mrPos, std::move(pArray)));
             }
             break;
             default:
@@ -141,12 +142,12 @@ protected:
                 {
                     // The value is a rich text string.
                     ScDocument& rDoc = getScDocument();
-                    EditTextObject* pTextObj = mxRichString->convert(rDoc.GetEditEngine(), nullptr);
+                    std::unique_ptr<EditTextObject> pTextObj = mxRichString->convert(rDoc.GetEditEngine(), nullptr);
                     if (pTextObj)
                     {
                         svl::SharedStringPool& rPool = rDoc.GetSharedStringPool();
                         pTextObj->NormalizeString(rPool);
-                        mrCellValue.set(pTextObj);
+                        mrCellValue.set(pTextObj.release());
                     }
                 }
             }
@@ -163,7 +164,7 @@ private:
         OUString aRefStr = rAttribs.getString(XML_r, OUString());
         if (!aRefStr.isEmpty())
         {
-            mrPos.Parse(aRefStr, nullptr, formula::FormulaGrammar::CONV_XL_OOX);
+            mrPos.Parse(aRefStr, &getScDocument(), formula::FormulaGrammar::CONV_XL_OOX);
             if (mnSheetIndex != -1)
                 mrPos.SetTab(mnSheetIndex-1);
         }
@@ -182,11 +183,9 @@ struct RevisionMetadata
 
 }
 
-typedef std::map<OUString, RevisionMetadata> RevDataType;
-
 struct RevisionHeadersFragment::Impl
 {
-    RevDataType maRevData;
+    std::map<OUString, RevisionMetadata> maRevData;
 
     Impl() {}
 };
@@ -251,15 +250,13 @@ void RevisionHeadersFragment::finalizeImport()
     pCT->SetUseFixDateTime(true);
 
     const oox::core::Relations& rRels = getRelations();
-    RevDataType::const_iterator it = mpImpl->maRevData.begin(), itEnd = mpImpl->maRevData.end();
-    for (; it != itEnd; ++it)
+    for (const auto& [rRelId, rData] : mpImpl->maRevData)
     {
-        OUString aPath = rRels.getFragmentPathFromRelId(it->first);
+        OUString aPath = rRels.getFragmentPathFromRelId(rRelId);
         if (aPath.isEmpty())
             continue;
 
         // Parse each revision log fragment.
-        const RevisionMetadata& rData = it->second;
         pCT->SetUser(rData.maUserName);
         pCT->SetFixDateTimeLocal(rData.maDateTime);
         std::unique_ptr<oox::core::FastParser> xParser(oox::core::XmlFilterBase::createParser());
@@ -269,7 +266,7 @@ void RevisionHeadersFragment::finalizeImport()
 
     pCT->SetUser(aSelfUser); // set the default user to the document owner.
     pCT->SetUseFixDateTime(false);
-    rDoc.SetChangeTrack(pCT.release());
+    rDoc.SetChangeTrack(std::move(pCT));
 
     // Turn on visibility of tracked changes.
     ScChangeViewSettings aSettings;
@@ -289,7 +286,7 @@ void RevisionHeadersFragment::importHeader( const AttributeList& rAttribs )
     if (!aDateTimeStr.isEmpty())
     {
         util::DateTime aDateTime;
-        sax::Converter::parseDateTime(aDateTime, nullptr, aDateTimeStr);
+        sax::Converter::parseDateTime(aDateTime, aDateTimeStr);
         Date aDate(aDateTime);
         tools::Time aTime(aDateTime);
         aMetadata.maDateTime.SetDate(aDate.GetDate());
@@ -298,7 +295,7 @@ void RevisionHeadersFragment::importHeader( const AttributeList& rAttribs )
 
     aMetadata.maUserName = rAttribs.getString(XML_userName, OUString());
 
-    mpImpl->maRevData.insert(RevDataType::value_type(aRId, aMetadata));
+    mpImpl->maRevData.emplace(aRId, aMetadata);
 }
 
 struct RevisionLogFragment::Impl
@@ -421,7 +418,7 @@ void RevisionLogFragment::importRrc( const AttributeList& rAttribs )
     {
         case XML_insertRow:
             mpImpl->meType = REV_INSERTROW;
-            mpImpl->maRange.aEnd.SetCol(MAXCOL);
+            mpImpl->maRange.aEnd.SetCol(getScDocument().MaxCol());
             mpImpl->maRange.aStart.SetTab(mpImpl->mnSheetIndex-1);
             mpImpl->maRange.aEnd.SetTab(mpImpl->mnSheetIndex-1);
         break;
@@ -449,6 +446,6 @@ void RevisionLogFragment::pushRevision()
     }
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

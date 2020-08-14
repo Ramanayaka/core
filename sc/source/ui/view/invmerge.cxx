@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/window.hxx>
+#include <osl/diagnose.h>
 
-#include "invmerge.hxx"
+#include <invmerge.hxx>
 
 ScInvertMerger::ScInvertMerger( ::std::vector< tools::Rectangle >* pRectangles ) :
     pRects( pRectangles )
@@ -39,46 +39,45 @@ void ScInvertMerger::Flush()
 
     OSL_ENSURE( aLineRect.IsEmpty() && aTotalRect.IsEmpty(), "Flush: not empty" );
 
-    if ( pRects )
+    if ( !pRects )
+        return;
+
+    // also join vertically if there are non-adjacent columns involved
+
+    size_t nComparePos = 0;
+    while ( nComparePos < pRects->size() )
     {
+        tools::Rectangle aCompRect = (*pRects)[nComparePos];
+        sal_Int32 nBottom = aCompRect.Bottom();
+        size_t nOtherPos = nComparePos + 1;
 
-        // also join vertically if there are non-adjacent columns involved
-
-        size_t nComparePos = 0;
-        while ( nComparePos < pRects->size() )
+        while ( nOtherPos < pRects->size() )
         {
-            tools::Rectangle aCompRect = (*pRects)[nComparePos];
-            sal_Int32 nBottom = aCompRect.Bottom();
-            size_t nOtherPos = nComparePos + 1;
-
-            while ( nOtherPos < pRects->size() )
+            tools::Rectangle aOtherRect = (*pRects)[nOtherPos];
+            if ( aOtherRect.Top() > nBottom + 1 )
             {
-                tools::Rectangle aOtherRect = (*pRects)[nOtherPos];
-                if ( aOtherRect.Top() > nBottom + 1 )
-                {
-                    // rectangles are sorted, so we can stop searching
-                    break;
-                }
-                if ( aOtherRect.Top() == nBottom + 1 &&
-                     aOtherRect.Left() == aCompRect.Left() &&
-                     aOtherRect.Right() == aCompRect.Right() )
-                {
-                    // extend first rectangle
-                    nBottom = aOtherRect.Bottom();
-                    aCompRect.Bottom() = nBottom;
-                    (*pRects)[nComparePos].Bottom() = nBottom;
-
-                    // remove second rectangle
-                    pRects->erase( pRects->begin() + nOtherPos );
-
-                    // continue at unmodified nOtherPos
-                }
-                else
-                    ++nOtherPos;
+                // rectangles are sorted, so we can stop searching
+                break;
             }
+            if ( aOtherRect.Top() == nBottom + 1 &&
+                 aOtherRect.Left() == aCompRect.Left() &&
+                 aOtherRect.Right() == aCompRect.Right() )
+            {
+                // extend first rectangle
+                nBottom = aOtherRect.Bottom();
+                aCompRect.SetBottom( nBottom );
+                (*pRects)[nComparePos].SetBottom( nBottom );
 
-            ++nComparePos;
+                // remove second rectangle
+                pRects->erase( pRects->begin() + nOtherPos );
+
+                // continue at unmodified nOtherPos
+            }
+            else
+                ++nOtherPos;
         }
+
+        ++nComparePos;
     }
 }
 
@@ -109,7 +108,7 @@ void ScInvertMerger::FlushLine()
              aLineRect.Top()   == aTotalRect.Bottom() + 1 )
         {
             // extend total rect
-            aTotalRect.Bottom() = aLineRect.Bottom();
+            aTotalRect.SetBottom( aLineRect.Bottom() );
         }
         else
         {
@@ -126,8 +125,8 @@ void ScInvertMerger::AddRect( const tools::Rectangle& rRect )
     tools::Rectangle aJustified = rRect;
     if ( rRect.Left() > rRect.Right() )     // switch for RTL layout
     {
-        aJustified.Left() = rRect.Right();
-        aJustified.Right() = rRect.Left();
+        aJustified.SetLeft( rRect.Right() );
+        aJustified.SetRight( rRect.Left() );
     }
 
     if ( aLineRect.IsEmpty() )
@@ -143,12 +142,12 @@ void ScInvertMerger::AddRect( const tools::Rectangle& rRect )
             // try to extend line rect
             if ( aJustified.Left() == aLineRect.Right() + 1 )
             {
-                aLineRect.Right() = aJustified.Right();
+                aLineRect.SetRight( aJustified.Right() );
                 bDone = true;
             }
             else if ( aJustified.Right() + 1 == aLineRect.Left() )  // for RTL layout
             {
-                aLineRect.Left() = aJustified.Left();
+                aLineRect.SetLeft( aJustified.Left() );
                 bDone = true;
             }
         }

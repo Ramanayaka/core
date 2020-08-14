@@ -21,11 +21,12 @@
 #define INCLUDED_CONFIGMGR_SOURCE_TYPE_HXX
 
 #include <sal/config.h>
+#include <sal/types.h>
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class Any;
     class Type;
-} } } }
+}
 
 namespace configmgr {
 
@@ -39,7 +40,7 @@ bool isListType(Type type);
 
 Type elementType(Type type);
 
-css::uno::Type mapType(Type type);
+css::uno::Type const & mapType(Type type);
 
 Type getDynamicType(css::uno::Any const & value);
 

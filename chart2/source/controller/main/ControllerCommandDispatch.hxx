@@ -20,11 +20,13 @@
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_CONTROLLERCOMMANDDISPATCH_HXX
 
 #include "CommandDispatch.hxx"
-#include <com/sun/star/view/XSelectionSupplier.hpp>
+#include <com/sun/star/view/XSelectionChangeListener.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
 
 #include <memory>
+
+namespace com::sun::star::view { class XSelectionSupplier; }
 
 namespace chart
 {
@@ -63,6 +65,8 @@ public:
     // late initialisation, especially for adding as listener
     virtual void initialize() override;
 
+    bool commandAvailable( const OUString & rCommand );
+
 protected:
     // ____ XDispatch ____
     virtual void SAL_CALL dispatch(
@@ -94,7 +98,6 @@ private:
         const OUString & rURL,
         const css::uno::Reference< css::frame::XStatusListener > & xSingleListener );
 
-    bool commandAvailable( const OUString & rCommand );
     void updateCommandAvailability();
 
     bool isShapeControllerCommandAvailable( const OUString& rCommand );

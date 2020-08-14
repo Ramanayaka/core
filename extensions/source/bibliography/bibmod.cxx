@@ -17,15 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <tools/resmgr.hxx>
-#include <svl/urihelper.hxx>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/util/XLocalizedAliases.hpp>
-#include <com/sun/star/lang/XLocalizable.hpp>
+#include <unotools/resmgr.hxx>
 
 #include "bibmod.hxx"
-#include "bibprop.hrc"
-#include "bibview.hxx"
+#include "bibprop.hxx"
 #include "bibresid.hxx"
 #include "datman.hxx"
 #include "bibconfig.hxx"
@@ -60,21 +55,20 @@ void CloseBibModul(HdlBibModul ppBibModul)
     }
 }
 
-OUString BibResId(sal_uInt16 nId)
+OUString BibResId(const char* pId)
 {
-    return ResId(nId, *pBibModul->GetResMgr());
+    return Translate::get(pId, pBibModul->GetResLocale());
 }
 
 BibConfig* BibModul::pBibConfig = nullptr;
 
 BibModul::BibModul()
+    : m_aResLocale(Translate::Create("pcr"))
 {
-    pResMgr = ResMgr::CreateResMgr( "bib" );
 }
 
 BibModul::~BibModul()
 {
-    delete pResMgr;
     if (pBibConfig && pBibConfig->IsModified())
         pBibConfig->Commit();
     delete pBibConfig;
@@ -95,16 +89,15 @@ BibConfig*  BibModul::GetConfig()
 
 
 // PropertyNames
-#define STATIC_USTRING(a,b) OUString a(b)
-STATIC_USTRING(FM_PROP_LABEL,"Label");
-STATIC_USTRING(FM_PROP_CONTROLSOURCE,"DataField");
-STATIC_USTRING(FM_PROP_NAME,"Name");
-STATIC_USTRING(FM_PROP_FORMATKEY,"FormatKey");
-STATIC_USTRING(FM_PROP_EDITMODE,"RecordMode");
-STATIC_USTRING(FM_PROP_CURSORSOURCETYPE,"DataSelectionType");
-STATIC_USTRING(FM_PROP_CURSORSOURCE,"DataSelection");
-STATIC_USTRING(FM_PROP_DATASOURCE, "DataSource");
-STATIC_USTRING(FM_PROP_VALUE,"Value");
-STATIC_USTRING(FM_PROP_TEXT,"Text");
+const OUStringLiteral FM_PROP_LABEL = "Label";
+const OUStringLiteral FM_PROP_CONTROLSOURCE = "DataField";
+const OUStringLiteral FM_PROP_NAME = "Name";
+const OUStringLiteral FM_PROP_FORMATKEY = "FormatKey";
+const OUStringLiteral FM_PROP_EDITMODE = "RecordMode";
+const OUStringLiteral FM_PROP_CURSORSOURCETYPE = "DataSelectionType";
+const OUStringLiteral FM_PROP_CURSORSOURCE = "DataSelection";
+const OUStringLiteral FM_PROP_DATASOURCE = "DataSource";
+const OUStringLiteral FM_PROP_VALUE = "Value";
+const OUStringLiteral FM_PROP_TEXT = "Text";
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

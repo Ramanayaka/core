@@ -21,14 +21,11 @@
 #define INCLUDED_FRAMEWORK_SOURCE_INC_ACCELERATORS_PRESETHANDLER_HXX
 
 #include <accelerators/storageholder.hxx>
-#include <general.h>
-#include <stdtypes.h>
 
 #include <com/sun/star/embed/XStorage.hpp>
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <i18nlangtag/languagetag.hxx>
 
 namespace framework
@@ -76,22 +73,6 @@ class PresetHandler
          */
         EConfigType m_eConfigType;
 
-        /** @short  specify the type of resource, which configuration sets
-                    must be provided here.
-
-            @descr  e.g. menubars, toolbars, accelerators
-         */
-        OUString m_sResourceType;
-
-        /** @short  specify the application module for a module
-                    dependent configuration.
-
-            @descr  Will be used only, if m_sResourceType is set to
-                    "module". Further it must be a valid module identifier
-                    then ...
-         */
-        OUString m_sModule;
-
         /** @short  if we run in document mode, we can't use the global root storages!
                     We have to use a special document storage explicitly. */
         StorageHolder m_lDocumentStorages;
@@ -124,24 +105,8 @@ class PresetHandler
          */
         css::uno::Reference< css::embed::XStorage > m_xWorkingStorageUser;
 
-        /** @short  knows the names of all presets inside the current
-                    working storage of the share layer. */
-        std::vector<OUString> m_lPresets;
-
-        /** @short  knows the names of all targets inside the current
-                    working storage of the user layer. */
-        std::vector<OUString> m_lTargets;
-
-        /** @short  it's the current office locale and will be used
-                    to handle localized presets.
-
-            @descr  Default is "x-no-translate" which disable any
-                    localized handling inside this class! */
-        LanguageTag m_aLanguageTag;
-
         /** @short  knows the relative path from the root. */
         OUString m_sRelPathShare;
-        OUString m_sRelPathNoLang;
         OUString m_sRelPathUser;
 
     // native interface
@@ -151,7 +116,7 @@ class PresetHandler
         /** @short  does nothing real.
 
             @param  xContext
-                    points to an uno service manager, which is used internally
+                    points to a uno service manager, which is used internally
                     to create own needed uno resources.
          */
         PresetHandler(const css::uno::Reference< css::uno::XComponentContext >& xContext);
@@ -190,8 +155,7 @@ class PresetHandler
             @return css::embed::XStorage
                     which the current working storage.
          */
-        css::uno::Reference< css::embed::XStorage > getWorkingStorageShare();
-        css::uno::Reference< css::embed::XStorage > getWorkingStorageUser();
+        css::uno::Reference< css::embed::XStorage > getWorkingStorageUser() const;
 
         /** @short  check if there is a parent storage well known for
                     the specified child storage and return it.
@@ -202,8 +166,8 @@ class PresetHandler
             @return css::embed::XStorage
                     A valid storage if a paranet exists. NULL otherwise.
          */
-        css::uno::Reference< css::embed::XStorage > getParentStorageShare(const css::uno::Reference< css::embed::XStorage >& xChild);
-        css::uno::Reference< css::embed::XStorage > getParentStorageUser (const css::uno::Reference< css::embed::XStorage >& xChild);
+        css::uno::Reference< css::embed::XStorage > getParentStorageShare();
+        css::uno::Reference< css::embed::XStorage > getParentStorageUser ();
 
         /** @short  free all internal structures and let this handler
                     work on a new type of configuration sets.
@@ -221,7 +185,7 @@ class PresetHandler
             @param  xDocumentRoot
                     if sResourceType is set to E_DOCUMENT, this value points to the
                     root storage inside the document, where we can save our
-                    configuration files. Note: Thats not the real root of the document ...
+                    configuration files. Note: that's not the real root of the document...
                     its only a sub storage. But we interpret it as our root storage.
 
             @param  rLanguageTag
@@ -295,7 +259,7 @@ class PresetHandler
                     the ALIAS name of the target.
 
             @return The opened target stream ... or NULL if the target does not exists
-                    or couldnt be created as new one.
+                    or couldn't be created as new one.
          */
         css::uno::Reference< css::io::XStream > openTarget(
                 const OUString& sTarget, sal_Int32 nMode);
@@ -330,7 +294,7 @@ class PresetHandler
             @param  bShare
                     force using of the share layer instead of the user layer.
 
-            @return An opened storage in case method was successfully - null otherwise.
+            @return An opened storage in case method was successful - null otherwise.
          */
         css::uno::Reference< css::embed::XStorage > impl_openPathIgnoringErrors(const OUString& sPath ,
                                                                                       sal_Int32        eMode ,
@@ -338,7 +302,7 @@ class PresetHandler
 
         /** @short  try to find the specified locale inside list of possible ones.
 
-            @descr  The lits of possible locale values was e.g. retrieved from the system
+            @descr  The list of possible locale values was e.g. retrieved from the system
                     (configuration, directory listing etcpp). The locale normally represent
                     the current office locale. This method search for a suitable item by using
                     different algorithm.
@@ -371,8 +335,8 @@ class PresetHandler
 
             @param  sPath
                     the configuration path, which should be opened.
-                    Its further used as out parameter too, so we can return the localized
-                    path to the calli!
+                    It's further used as out parameter too, so we can return the localized
+                    path!
 
             @param  eMode
                     the open mode (READ/READWRITE)
@@ -387,7 +351,7 @@ class PresetHandler
             @param  bAllowFallback
                     enable/disable fallback handling for locales
 
-            @return An opened storage in case method was successfully - null otherwise.
+            @return An opened storage in case method was successful - null otherwise.
          */
         css::uno::Reference< css::embed::XStorage > impl_openLocalizedPathIgnoringErrors(OUString&      sPath         ,
                                                                                          sal_Int32             eMode         ,

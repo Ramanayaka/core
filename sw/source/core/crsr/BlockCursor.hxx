@@ -19,11 +19,13 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_CRSR_BLOCKCURSOR_HXX
 #define INCLUDED_SW_SOURCE_CORE_CRSR_BLOCKCURSOR_HXX
 
-#include <crsrsh.hxx>
+#include <optional>
+#include <tools/gen.hxx>
+
+#include <viscrs.hxx>
 
 class SwCursorShell;
 struct SwPosition;
-class Point;
 
  /** Access to the block cursor
 
@@ -36,13 +38,13 @@ class Point;
 */
 class SwBlockCursor
 {
-    SwShellCursor aCursor;
-    Point *pStartPt;
-    Point *pEndPt;
+    SwShellCursor maCursor;
+    std::optional<Point> maStartPt;
+    std::optional<Point> maEndPt;
 
 public:
     SwBlockCursor( const SwCursorShell& rCursorSh, const SwPosition &rPos ) :
-        aCursor( rCursorSh, rPos ), pStartPt(nullptr), pEndPt(nullptr) {}
+        maCursor( rCursorSh, rPos ) {}
     /** Access to the shell cursor
 
         @return SwShellCursor& which represents the start and end position of the
@@ -55,31 +57,31 @@ public:
         rPt should contain the document coordinates of the mouse cursor when
         the block selection starts (MouseButtonDown)
     */
-    void setStartPoint( const Point &rPt );
+    void setStartPoint( const Point &rPt ) { maStartPt = rPt; }
     /** Defines the ending vertex of the block selection
 
         @param rPt
         rPt should contain the document coordinates of the mouse cursor when
         the block selection has started and the mouse has been moved (MouseMove)
     */
-    void setEndPoint( const Point &rPt );
+    void setEndPoint( const Point &rPt ) { maEndPt = rPt; }
     /** The document coordinates where the block selection has been started
 
         @return 0, if no start point has been set
     */
-    const Point* getStartPoint() const;
+    std::optional<Point> const & getStartPoint() const { return maStartPt; }
     /** The document coordinates where the block selection ends (at the moment)
 
         @return 0, if no end point has been set
     */
-    const Point* getEndPoint() const;
+    std::optional<Point> const & getEndPoint() const { return maEndPt; }
     /** Deletion of the mouse created rectangle
 
         When start and end points exist, the block cursor depends on this. If the
         cursor is moved by cursor keys (e.g. up/down, home/end) the mouse rectangle
         is obsolete and has to be deleted.
     */
-    void clearPoints();
+    void clearPoints() { maStartPt.reset(); maEndPt.reset(); }
     ~SwBlockCursor();
 };
 

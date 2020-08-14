@@ -23,11 +23,8 @@
 #include <vector>
 #include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
-#include <ucbhelper/macros.hxx>
 #include <com/sun/star/uno/Type.hxx>
-#include <cppuhelper/weak.hxx>
-#include <com/sun/star/uno/XInterface.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/util/XChangesNotifier.hpp>
@@ -36,6 +33,7 @@
 #include <com/sun/star/deployment/XPackage.hpp>
 #include <com/sun/star/ucb/XSimpleFileAccess3.hpp>
 #include <cppuhelper/implbase.hxx>
+#include <memory>
 
 namespace treeview {
 
@@ -46,7 +44,7 @@ namespace treeview {
             PRODUCTNAME, PRODUCTVERSION, VENDORNAME, VENDORVERSION,
             VENDORSHORT };
         ConfigData();
-        int                    m_vAdd[5];
+        int                    m_vAdd[5] = {};
         OUString          m_vReplacement[5];
         OUString          prodName,prodVersion,vendName,vendVersion,vendShort;
 
@@ -55,7 +53,7 @@ namespace treeview {
         OUString locale,system;
         OUString appendix;
 
-        void SAL_CALL replaceName( OUString& oustring ) const;
+        void replaceName( OUString& oustring ) const;
     };
 
     class TVDom;
@@ -137,7 +135,7 @@ namespace treeview {
 
     }; // end class TVBase
 
-    class TVRead
+    class TVRead final
         : public TVBase
     {
         friend class TVChildTarget;
@@ -227,7 +225,7 @@ namespace treeview {
 
         static void subst( OUString& instpath );
 
-        bool SearchAndInsert(TVDom* p, TVDom* tvDom);
+        std::unique_ptr<TVDom> SearchAndInsert(std::unique_ptr<TVDom> p, TVDom* tvDom);
 
         void Check(TVDom* tvDom);
 
@@ -241,18 +239,17 @@ namespace treeview {
         EndReached
     };
 
-    class ExtensionIteratorBase
+    class TreeFileIterator
     {
     public:
-        ExtensionIteratorBase( const OUString& aLanguage );
-        void init();
+        TreeFileIterator( const OUString& aLanguage );
+        OUString nextTreeFile( sal_Int32& rnFileSize );
 
     private:
         static css::uno::Reference< css::deployment::XPackage > implGetHelpPackageFromPackage
             ( const css::uno::Reference< css::deployment::XPackage >& xPackage,
               css::uno::Reference< css::deployment::XPackage >& o_xParentPackageBundle );
 
-    protected:
         css::uno::Reference< css::deployment::XPackage > implGetNextUserHelpPackage
             ( css::uno::Reference< css::deployment::XPackage >& o_xParentPackageBundle );
         css::uno::Reference< css::deployment::XPackage > implGetNextSharedHelpPackage
@@ -286,18 +283,6 @@ namespace treeview {
         int                                                                         m_iSharedPackage;
         int                                                                         m_iBundledPackage;
 
-    }; // end class ExtensionIteratorBase
-
-    class TreeFileIterator : public ExtensionIteratorBase
-    {
-    public:
-        TreeFileIterator( const OUString& aLanguage )
-            : ExtensionIteratorBase( aLanguage )
-        {}
-
-        OUString nextTreeFile( sal_Int32& rnFileSize );
-
-    private:
         OUString expandURL( const OUString& aURL );
         OUString implGetTreeFileFromPackage( sal_Int32& rnFileSize,
             const css::uno::Reference< css::deployment::XPackage >& xPackage );

@@ -20,18 +20,13 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SIDEBAR_MASTERPAGECONTAINER_HXX
 #define INCLUDED_SD_SOURCE_UI_SIDEBAR_MASTERPAGECONTAINER_HXX
 
-#include "MasterPageContainerProviders.hxx"
-
 #include <vcl/image.hxx>
-#include "PreviewRenderer.hxx"
-#include <vcl/timer.hxx>
-#include "tools/SdGlobalResourceContainer.hxx"
 
 #include <memory>
 
 class SdPage;
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 class MasterPageDescriptor;
 class MasterPageContainerChangeEvent;
@@ -78,7 +73,7 @@ public:
 
     /** Return the preview size in pixels.
     */
-    Size GetPreviewSizePixel() const;
+    Size const & GetPreviewSizePixel() const;
 
     enum PreviewState { PS_AVAILABLE, PS_CREATABLE, PS_PREPARING, PS_NOT_AVAILABLE };
     PreviewState GetPreviewState (Token aToken);
@@ -188,7 +183,7 @@ public:
     MasterPageContainer::Token maChildToken;
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

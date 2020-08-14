@@ -22,23 +22,21 @@
 
 #include <com/sun/star/beans/IllegalTypeException.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/Property.hpp>
 
 #include <comphelper/namedvaluecollection.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <cppuhelper/exc_hlp.hxx>
-#include <osl/thread.h>
 
 #include <algorithm>
-#include <functional>
 #include <iterator>
 
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_comphelper_OPropertyBag (
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)
@@ -86,22 +84,14 @@ namespace comphelper
            && (_rArguments[1] >>= AllowEmptyPropertyName)
            && (_rArguments[2] >>= AutomaticAddition))
         {
-            std::copy(
-                aTypes.getConstArray(),
-                aTypes.getConstArray() + aTypes.getLength(),
-                std::insert_iterator< TypeBag >( m_aAllowedTypes, m_aAllowedTypes.begin() )
-            );
+            m_aAllowedTypes.insert(aTypes.begin(), aTypes.end());
             m_bAutoAddProperties = AutomaticAddition;
 
         } else {
             ::comphelper::NamedValueCollection aArguments( _rArguments );
 
             if ( aArguments.get_ensureType( "AllowedTypes", aTypes ) )
-                std::copy(
-                    aTypes.getConstArray(),
-                    aTypes.getConstArray() + aTypes.getLength(),
-                    std::insert_iterator< TypeBag >( m_aAllowedTypes, m_aAllowedTypes.begin() )
-                );
+                m_aAllowedTypes.insert( aTypes.begin(), aTypes.end());
 
             aArguments.get_ensureType( "AutomaticAddition", m_bAutoAddProperties );
             aArguments.get_ensureType( "AllowEmptyPropertyName",
@@ -115,7 +105,7 @@ namespace comphelper
 
     OUString SAL_CALL OPropertyBag::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.comphelper.OPropertyBag" );
+        return "com.sun.star.comp.comphelper.OPropertyBag";
     }
 
     sal_Bool SAL_CALL OPropertyBag::supportsService( const OUString& rServiceName )
@@ -146,19 +136,20 @@ namespace comphelper
             ::osl::MutexGuard aGuard( m_aMutex );
             m_isModified = bModified;
         }
-        if (bModified) {
-            try {
-                Reference<XInterface> xThis(*this);
-                EventObject event(xThis);
-                m_NotifyListeners.notifyEach(
-                    &XModifyListener::modified, event);
-            } catch (RuntimeException &) {
-                if (!bIgnoreRuntimeExceptionsWhileFiring) {
-                    throw;
-                }
-            } catch (Exception &) {
-                // ignore
+        if (!bModified)
+            return;
+
+        try {
+            Reference<XInterface> xThis(*this);
+            EventObject event(xThis);
+            m_NotifyListeners.notifyEach(
+                &XModifyListener::modified, event);
+        } catch (RuntimeException &) {
+            if (!bIgnoreRuntimeExceptionsWhileFiring) {
+                throw;
             }
+        } catch (Exception &) {
+            // ignore
         }
     }
 
@@ -209,21 +200,21 @@ namespace comphelper
         if ( !( _element >>= aProperty ) )
             throw IllegalArgumentException( OUString(), *this, 1 );
 
-        ::osl::ClearableMutexGuard g( m_aMutex );
+        {
+            osl::MutexGuard g(m_aMutex);
 
-        // check whether the type is allowed, everything else will be checked
-        // by m_aDynamicProperties
-        if  (   !m_aAllowedTypes.empty()
-            &&  m_aAllowedTypes.find( aProperty.Type ) == m_aAllowedTypes.end()
-            )
-            throw IllegalArgumentException( OUString(), *this, 1 );
+            // check whether the type is allowed, everything else will be checked
+            // by m_aDynamicProperties
+            if (!m_aAllowedTypes.empty()
+                && m_aAllowedTypes.find(aProperty.Type) == m_aAllowedTypes.end())
+                throw IllegalArgumentException(OUString(), *this, 1);
 
-        m_aDynamicProperties.addVoidProperty( aProperty.Name, aProperty.Type, findFreeHandle(), aProperty.Attributes );
+            m_aDynamicProperties.addVoidProperty(aProperty.Name, aProperty.Type, findFreeHandle(),
+                                                 aProperty.Attributes);
 
-        // our property info is dirty
-        m_pArrayHelper.reset();
-
-        g.clear();
+            // our property info is dirty
+            m_pArrayHelper.reset();
+        }
         setModified(true);
     }
 
@@ -278,7 +269,7 @@ namespace comphelper
 
     ::cppu::IPropertyArrayHelper& SAL_CALL OPropertyBag::getInfoHelper()
     {
-        if ( !m_pArrayHelper.get() )
+        if (!m_pArrayHelper)
         {
             Sequence< Property > aProperties;
             m_aDynamicProperties.describeProperties( aProperties );
@@ -313,44 +304,43 @@ namespace comphelper
 
     void SAL_CALL OPropertyBag::addProperty( const OUString& _rName, ::sal_Int16 _nAttributes, const Any& _rInitialValue )
     {
-        ::osl::ClearableMutexGuard g( m_aMutex );
+        {
+            osl::MutexGuard g(m_aMutex);
 
-        // check whether the type is allowed, everything else will be checked
-        // by m_aDynamicProperties
-        const Type& aPropertyType = _rInitialValue.getValueType();
-        if  (   _rInitialValue.hasValue()
-            &&  !m_aAllowedTypes.empty()
-            &&  m_aAllowedTypes.find( aPropertyType ) == m_aAllowedTypes.end()
-            )
-            throw IllegalTypeException( OUString(), *this );
+            // check whether the type is allowed, everything else will be checked
+            // by m_aDynamicProperties
+            const Type& aPropertyType = _rInitialValue.getValueType();
+            if (_rInitialValue.hasValue() && !m_aAllowedTypes.empty()
+                && m_aAllowedTypes.find(aPropertyType) == m_aAllowedTypes.end())
+                throw IllegalTypeException(OUString(), *this);
 
-        m_aDynamicProperties.addProperty( _rName, findFreeHandle(), _nAttributes, _rInitialValue );
+            m_aDynamicProperties.addProperty(_rName, findFreeHandle(), _nAttributes,
+                                             _rInitialValue);
 
-        // our property info is dirty
-        m_pArrayHelper.reset();
-
-        g.clear();
+            // our property info is dirty
+            m_pArrayHelper.reset();
+        }
         setModified(true);
     }
 
 
     void SAL_CALL OPropertyBag::removeProperty( const OUString& _rName )
     {
-        ::osl::ClearableMutexGuard g( m_aMutex );
+        {
+            osl::MutexGuard g(m_aMutex);
 
-        m_aDynamicProperties.removeProperty( _rName );
+            m_aDynamicProperties.removeProperty(_rName);
 
-        // our property info is dirty
-        m_pArrayHelper.reset();
-
-        g.clear();
+            // our property info is dirty
+            m_pArrayHelper.reset();
+        }
         setModified(true);
     }
 
 
     namespace
     {
-        struct ComparePropertyValueByName : public std::binary_function< PropertyValue, PropertyValue, bool >
+        struct ComparePropertyValueByName
         {
             bool operator()( const PropertyValue& _rLHS, const PropertyValue& _rRHS )
             {
@@ -388,8 +378,8 @@ namespace comphelper
         // their names
         Sequence< OUString > aNames( aProperties.getLength() );
         std::transform(
-            aProperties.getConstArray(),
-            aProperties.getConstArray() + aProperties.getLength(),
+            aProperties.begin(),
+            aProperties.end(),
             aNames.getArray(),
             TransformPropertyToName< Property >()
         );
@@ -437,16 +427,16 @@ namespace comphelper
         // sort (the XMultiPropertySet interface requires this)
         Sequence< PropertyValue > aProperties( _rProps );
         std::sort(
-            aProperties.getArray(),
-            aProperties.getArray() + aProperties.getLength(),
+            aProperties.begin(),
+            aProperties.end(),
             ComparePropertyValueByName()
         );
 
         // a sequence of names
         Sequence< OUString > aNames( aProperties.getLength() );
         std::transform(
-            aProperties.getConstArray(),
-            aProperties.getConstArray() + aProperties.getLength(),
+            aProperties.begin(),
+            aProperties.end(),
             aNames.getArray(),
             TransformPropertyToName< PropertyValue >()
         );
@@ -490,8 +480,8 @@ namespace comphelper
             // a sequence of values
             Sequence< Any > aValues( aProperties.getLength() );
             std::transform(
-                aProperties.getConstArray(),
-                aProperties.getConstArray() + aProperties.getLength(),
+                aProperties.begin(),
+                aProperties.end(),
                 aValues.getArray(),
                 ExtractPropertyValue()
             );

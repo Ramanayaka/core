@@ -14,26 +14,27 @@ $(eval $(call gb_Library_set_include,slideshow,\
     -I$(SRCDIR)/slideshow/source/inc \
 ))
 
-$(eval $(call gb_Library_add_defs,slideshow,\
-    -DBOOST_SPIRIT_USE_OLD_NAMESPACE \
-))
-
 ifneq ($(strip $(debug)$(DEBUG)),)
 $(eval $(call gb_Library_add_defs,slideshow,\
     -DBOOST_SP_ENABLE_DEBUG_HOOKS \
 ))
 endif
 
-$(eval $(call gb_Library_set_precompiled_header,slideshow,$(SRCDIR)/slideshow/inc/pch/precompiled_slideshow))
+$(eval $(call gb_Library_set_precompiled_header,slideshow,slideshow/inc/pch/precompiled_slideshow))
 
 $(eval $(call gb_Library_use_externals,slideshow,\
 	boost_headers \
+	box2d \
 ))
-ifeq ($(ENABLE_HEADLESS),)
+ifeq ($(DISABLE_GUI),)
 $(eval $(call gb_Library_use_externals,slideshow,\
      epoxy \
  ))
 endif
+
+$(eval $(call gb_Library_use_custom_headers,slideshow,\
+	officecfg/registry \
+))
 
 $(eval $(call gb_Library_use_sdk_api,slideshow))
 
@@ -46,7 +47,10 @@ $(eval $(call gb_Library_use_libraries,slideshow,\
     cppu \
     cppuhelper \
     sal \
+    salhelper \
+    svl \
     svt \
+    svxcore \
     tl \
     utl \
     vcl \
@@ -71,6 +75,7 @@ $(eval $(call gb_Library_add_exception_objects,slideshow,\
     slideshow/source/engine/animationnodes/animationnodefactory \
     slideshow/source/engine/animationnodes/animationpathmotionnode \
     slideshow/source/engine/animationnodes/animationsetnode \
+    slideshow/source/engine/animationnodes/animationphysicsnode \
     slideshow/source/engine/animationnodes/animationtransformnode \
     slideshow/source/engine/animationnodes/animationtransitionfilternode \
     slideshow/source/engine/animationnodes/basecontainernode \
@@ -81,6 +86,7 @@ $(eval $(call gb_Library_add_exception_objects,slideshow,\
     slideshow/source/engine/animationnodes/propertyanimationnode \
     slideshow/source/engine/animationnodes/sequentialtimecontainer \
     slideshow/source/engine/attributemap \
+    slideshow/source/engine/box2dtools \
     slideshow/source/engine/color \
     slideshow/source/engine/delayevent \
     slideshow/source/engine/effectrewinder \

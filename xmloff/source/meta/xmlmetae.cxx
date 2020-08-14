@@ -19,24 +19,24 @@
 
 #include <i18nlangtag/languagetag.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 #include <xmloff/xmlmetae.hxx>
 #include <xmloff/xmlexp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 
 #include <com/sun/star/beans/XPropertyAccess.hpp>
 #include <com/sun/star/beans/StringPair.hpp>
+#include <com/sun/star/document/XDocumentProperties.hpp>
+#include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/Duration.hpp>
-#include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/xml/sax/XSAXSerializable.hpp>
 
 #include <sax/tools/converter.hxx>
 
 #include <comphelper/sequence.hxx>
 #include <unotools/docinfohelper.hxx>
-
-#include <string.h>
 
 using namespace com::sun::star;
 using namespace ::xmloff::token;
@@ -54,7 +54,7 @@ SvXMLMetaExport::GetISODateTimeString( const util::DateTime& rDateTime )
     //  return ISO date string "YYYY-MM-DDThh:mm:ss"
 
     OUStringBuffer sTmp;
-    sTmp.append( (sal_Int32) rDateTime.Year );
+    sTmp.append( static_cast<sal_Int32>(rDateTime.Year) );
     sTmp.append( '-' );
     lcl_AddTwoDigits( sTmp, rDateTime.Month );
     sTmp.append( '-' );
@@ -133,10 +133,10 @@ void SvXMLMetaExport::MExport_()
 
     //  keywords
     const uno::Sequence< OUString > keywords = mxDocProps->getKeywords();
-    for (sal_Int32 i = 0; i < keywords.getLength(); ++i) {
+    for (const auto& rKeyword : keywords) {
         SvXMLElementExport aKwElem( mrExport, XML_NAMESPACE_META, XML_KEYWORD,
                                     true, false );
-        mrExport.Characters( keywords[i] );
+        mrExport.Characters( rKeyword );
     }
 
     //  document language
@@ -233,14 +233,14 @@ void SvXMLMetaExport::MExport_()
         mxDocProps->getUserDefinedProperties(), uno::UNO_QUERY_THROW);
     const uno::Sequence< beans::PropertyValue > props =
         xUserDefined->getPropertyValues();
-    for (sal_Int32 i = 0; i < props.getLength(); ++i) {
+    for (const auto& rProp : props) {
         OUStringBuffer sValueBuffer;
         OUStringBuffer sType;
-        if (!::sax::Converter::convertAny(sValueBuffer, sType, props[i].Value))
+        if (!::sax::Converter::convertAny(sValueBuffer, sType, rProp.Value))
         {
             continue;
         }
-        mrExport.AddAttribute( XML_NAMESPACE_META, XML_NAME, props[i].Name );
+        mrExport.AddAttribute( XML_NAMESPACE_META, XML_NAME, rProp.Name );
         mrExport.AddAttribute( XML_NAMESPACE_META, XML_VALUE_TYPE,
                               sType.makeStringAndClear() );
         SvXMLElementExport aElem( mrExport, XML_NAMESPACE_META,
@@ -251,53 +251,53 @@ void SvXMLMetaExport::MExport_()
     const uno::Sequence< beans::NamedValue > aDocStatistic =
             mxDocProps->getDocumentStatistics();
     // write document statistic if there is any provided
-    if ( aDocStatistic.getLength() )
+    if ( !aDocStatistic.hasElements() )
+        return;
+
+    for ( const auto& rDocStat : aDocStatistic )
     {
-        for ( sal_Int32 nInd = 0; nInd < aDocStatistic.getLength(); nInd++ )
+        sal_Int32 nValue = 0;
+        if ( rDocStat.Value >>= nValue )
         {
-            sal_Int32 nValue = 0;
-            if ( aDocStatistic[nInd].Value >>= nValue )
+            OUString aValue = OUString::number( nValue );
+            if ( rDocStat.Name == "TableCount" )
+                mrExport.AddAttribute(
+                    XML_NAMESPACE_META, XML_TABLE_COUNT, aValue );
+            else if ( rDocStat.Name == "ObjectCount" )
+                mrExport.AddAttribute(
+                    XML_NAMESPACE_META, XML_OBJECT_COUNT, aValue );
+            else if ( rDocStat.Name == "ImageCount" )
+                mrExport.AddAttribute(
+                    XML_NAMESPACE_META, XML_IMAGE_COUNT, aValue );
+            else if ( rDocStat.Name == "PageCount" )
+                mrExport.AddAttribute(
+                    XML_NAMESPACE_META, XML_PAGE_COUNT, aValue );
+            else if ( rDocStat.Name == "ParagraphCount" )
+                mrExport.AddAttribute(
+                    XML_NAMESPACE_META, XML_PARAGRAPH_COUNT, aValue );
+            else if ( rDocStat.Name == "WordCount" )
+                mrExport.AddAttribute(
+                    XML_NAMESPACE_META, XML_WORD_COUNT, aValue );
+            else if ( rDocStat.Name == "CharacterCount" )
+                mrExport.AddAttribute(
+                    XML_NAMESPACE_META, XML_CHARACTER_COUNT, aValue );
+            else if ( rDocStat.Name == "CellCount" )
+                mrExport.AddAttribute(
+                    XML_NAMESPACE_META, XML_CELL_COUNT, aValue );
+            else
             {
-                OUString aValue = OUString::number( nValue );
-                if ( aDocStatistic[nInd].Name == "TableCount" )
-                    mrExport.AddAttribute(
-                        XML_NAMESPACE_META, XML_TABLE_COUNT, aValue );
-                else if ( aDocStatistic[nInd].Name == "ObjectCount" )
-                    mrExport.AddAttribute(
-                        XML_NAMESPACE_META, XML_OBJECT_COUNT, aValue );
-                else if ( aDocStatistic[nInd].Name == "ImageCount" )
-                    mrExport.AddAttribute(
-                        XML_NAMESPACE_META, XML_IMAGE_COUNT, aValue );
-                else if ( aDocStatistic[nInd].Name == "PageCount" )
-                    mrExport.AddAttribute(
-                        XML_NAMESPACE_META, XML_PAGE_COUNT, aValue );
-                else if ( aDocStatistic[nInd].Name == "ParagraphCount" )
-                    mrExport.AddAttribute(
-                        XML_NAMESPACE_META, XML_PARAGRAPH_COUNT, aValue );
-                else if ( aDocStatistic[nInd].Name == "WordCount" )
-                    mrExport.AddAttribute(
-                        XML_NAMESPACE_META, XML_WORD_COUNT, aValue );
-                else if ( aDocStatistic[nInd].Name == "CharacterCount" )
-                    mrExport.AddAttribute(
-                        XML_NAMESPACE_META, XML_CHARACTER_COUNT, aValue );
-                else if ( aDocStatistic[nInd].Name == "CellCount" )
-                    mrExport.AddAttribute(
-                        XML_NAMESPACE_META, XML_CELL_COUNT, aValue );
-                else
-                {
-                    SAL_WARN("xmloff", "Unknown statistic value!");
-                }
+                SAL_WARN("xmloff", "Unknown statistic value!");
             }
         }
-        SvXMLElementExport aElem( mrExport,
-            XML_NAMESPACE_META, XML_DOCUMENT_STATISTIC, true, true );
     }
+    SvXMLElementExport aElem( mrExport,
+        XML_NAMESPACE_META, XML_DOCUMENT_STATISTIC, true, true );
 }
 
-static const char s_xmlns[] = "xmlns";
-static const char s_xmlns2[] = "xmlns:";
-static const char s_meta[] = "meta:";
-static const char s_href[] = "xlink:href";
+const char s_xmlns[] = "xmlns";
+const char s_xmlns2[] = "xmlns:";
+const char s_meta[] = "meta:";
+const char s_href[] = "xlink:href";
 
 SvXMLMetaExport::SvXMLMetaExport(
         SvXMLExport& i_rExp,
@@ -375,14 +375,14 @@ SvXMLMetaExport::startElement(const OUString & i_rName,
                 const SvXMLNamespaceMap & rNsMap(mrExport.GetNamespaceMap());
                 for (sal_uInt16 key = rNsMap.GetFirstKey();
                      key != USHRT_MAX; key = rNsMap.GetNextKey(key)) {
-                    if (name.equals(rNsMap.GetAttrNameByKey(key))) {
+                    if (name == rNsMap.GetAttrNameByKey(key)) {
                         found = true;
                         break;
                     }
                 }
                 if (!found) {
-                    m_preservedNSs.push_back(beans::StringPair(name,
-                        i_xAttribs->getValueByIndex(i)));
+                    m_preservedNSs.emplace_back(name,
+                        i_xAttribs->getValueByIndex(i));
                 }
             }
         }
@@ -393,21 +393,20 @@ SvXMLMetaExport::startElement(const OUString & i_rName,
 
     if (m_level == 1) {
         // attach preserved namespace decls from root node here
-        for (std::vector<beans::StringPair>::const_iterator iter =
-                m_preservedNSs.begin(); iter != m_preservedNSs.end(); ++iter) {
-            const OUString ns(iter->First);
+        for (const auto& rPreservedNS : m_preservedNSs) {
+            const OUString ns(rPreservedNS.First);
             bool found(false);
             // but only if it is not already there
             const sal_Int16 nCount = i_xAttribs->getLength();
             for (sal_Int16 i = 0; i < nCount; ++i) {
                 const OUString name(i_xAttribs->getNameByIndex(i));
-                if (ns.equals(name)) {
+                if (ns == name) {
                     found = true;
                     break;
                 }
             }
             if (!found) {
-                mrExport.AddAttribute(ns, iter->Second);
+                mrExport.AddAttribute(ns, rPreservedNS.Second);
             }
         }
     }

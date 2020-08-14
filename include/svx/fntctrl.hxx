@@ -20,40 +20,28 @@
 #define INCLUDED_SVX_FNTCTRL_HXX
 
 #include <memory>
-#include <vcl/window.hxx>
 #include <editeng/svxfont.hxx>
-#include <svx/svxdllapi.h>
-
 #include <rtl/ustring.hxx>
+#include <svx/svxdllapi.h>
+#include <vcl/customweld.hxx>
 
 class SfxItemSet;
 class FontPrevWin_Impl;
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxFontPrevWindow : public vcl::Window
+class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxFontPrevWindow final : public weld::CustomWidgetController
 {
-    using OutputDevice::SetFont;
 private:
     std::unique_ptr<FontPrevWin_Impl> pImpl;
-    bool mbResetForeground : 1;
-    bool mbResetBackground : 1;
 
-    SVX_DLLPRIVATE void ResetSettings(bool bForeground, bool bBackground);
-    SVX_DLLPRIVATE void ApplySettings(vcl::RenderContext& rRenderContext) override;
-    SVX_DLLPRIVATE void Init ();
+    SVX_DLLPRIVATE static void ApplySettings(vcl::RenderContext& rRenderContext);
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
     SVX_DLLPRIVATE static void SetFontSize(const SfxItemSet& rSet, sal_uInt16 nSlot, SvxFont& rFont);
     SVX_DLLPRIVATE static void SetFontLang(const SfxItemSet& rSet, sal_uInt16 nSlot, SvxFont& rFont);
 
 public:
-                        SvxFontPrevWindow(vcl::Window* pParent, WinBits nStyle);
+                        SvxFontPrevWindow();
     virtual             ~SvxFontPrevWindow() override;
-    virtual void        dispose() override;
 
-    virtual void        StateChanged( StateChangedType nStateChange ) override;
-    virtual void        DataChanged( const DataChangedEvent& rDCEvt ) override;
-
-    void                Init( const SfxItemSet& rSet );
-
-    // for reasons of efficiency not const
     SvxFont&            GetFont();
     const SvxFont&      GetFont() const;
     void                SetFont( const SvxFont& rNormalFont, const SvxFont& rCJKFont, const SvxFont& rCTLFont );
@@ -62,7 +50,8 @@ public:
     void                SetColor( const Color& rColor );
     void                ResetColor();
     void                SetBackColor( const Color& rColor );
-    void                UseResourceText();
+    void                SetTextLineColor(const Color& rColor);
+    void                SetOverlineColor(const Color& rColor);
     void                Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& ) override;
 
     bool                IsTwoLines() const;
@@ -77,15 +66,8 @@ public:
     void                SetPreviewText( const OUString& rString );
     void                SetFontNameAsPreviewText();
 
-    static void         SetFont( const SfxItemSet& rSet, sal_uInt16 nSlot, SvxFont& rFont );
-    static void         SetFontStyle( const SfxItemSet& rSet, sal_uInt16 nSlotPosture, sal_uInt16 nSlotWeight, SvxFont& rFont ); // posture/weight
-    void                SetFontWidthScale( const SfxItemSet& rSet );
-    void                SetFontEscapement( sal_uInt8 nProp, sal_uInt8 nEscProp, short nEsc );
-
     void                SetFromItemSet( const SfxItemSet &rSet,
                                         bool bPreviewBackgroundToCharacter );
-
-    virtual Size GetOptimalSize() const override;
 };
 
 #endif // INCLUDED_SVX_FNTCTRL_HXX

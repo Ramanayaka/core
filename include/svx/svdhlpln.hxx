@@ -21,14 +21,15 @@
 #define INCLUDED_SVX_SVDHLPLN_HXX
 
 #include <sal/types.h>
-#include <tools/color.hxx>
 #include <tools/gen.hxx>
 
-#include <vcl/pointr.hxx>
 #include <svx/svxdllapi.h>
 
-class OutputDevice;
+#include <vector>
+#include <memory>
 
+class OutputDevice;
+enum class PointerStyle;
 
 enum class SdrHelpLineKind { Point, Vertical, Horizontal };
 
@@ -49,7 +50,7 @@ public:
     void            SetPos(const Point& rPnt)         { aPos=rPnt; }
     const Point&    GetPos() const                    { return aPos; }
 
-    Pointer         GetPointer() const;
+    PointerStyle    GetPointer() const;
     bool            IsHit(const Point& rPnt, sal_uInt16 nTolLog, const OutputDevice& rOut) const;
     // OutputDevice is required because capture points have a fixed pixel size
     tools::Rectangle       GetBoundRect(const OutputDevice& rOut) const;
@@ -57,35 +58,30 @@ public:
 
 #define SDRHELPLINE_NOTFOUND 0xFFFF
 
-class SVX_DLLPUBLIC SdrHelpLineList {
-    std::vector<SdrHelpLine*> aList;
-protected:
-    SdrHelpLine* GetObject(sal_uInt16 i) const { return aList[i]; }
+class SVXCORE_DLLPUBLIC SdrHelpLineList {
+    std::vector<std::unique_ptr<SdrHelpLine>> aList;
+
 public:
-    SdrHelpLineList(): aList() {}
-    SdrHelpLineList(const SdrHelpLineList& rSrcList): aList()      { *this=rSrcList; }
-    ~SdrHelpLineList()                                                     { Clear(); }
-    void               Clear();
+    SdrHelpLineList() {}
+    SdrHelpLineList(const SdrHelpLineList& rSrcList) { *this=rSrcList; }
     SdrHelpLineList&   operator=(const SdrHelpLineList& rSrcList);
     bool operator==(const SdrHelpLineList& rCmp) const;
     bool operator!=(const SdrHelpLineList& rCmp) const                 { return !operator==(rCmp); }
     sal_uInt16         GetCount() const                                    { return sal_uInt16(aList.size()); }
-    void               Insert(const SdrHelpLine& rHL)                          { aList.push_back(new SdrHelpLine(rHL)); }
+    void               Insert(const SdrHelpLine& rHL)                          { aList.emplace_back(new SdrHelpLine(rHL)); }
     void               Insert(const SdrHelpLine& rHL, sal_uInt16 nPos)
     {
         if(nPos==0xFFFF)
-            aList.push_back(new SdrHelpLine(rHL));
+            aList.emplace_back(new SdrHelpLine(rHL));
         else
-            aList.insert(aList.begin() + nPos, new SdrHelpLine(rHL));
+            aList.emplace(aList.begin() + nPos, new SdrHelpLine(rHL));
     }
     void               Delete(sal_uInt16 nPos)
     {
-        SdrHelpLine* p = aList[nPos];
-        delete p;
         aList.erase(aList.begin() + nPos);
     }
-    SdrHelpLine&       operator[](sal_uInt16 nPos)                             { return *GetObject(nPos); }
-    const SdrHelpLine& operator[](sal_uInt16 nPos) const                       { return *GetObject(nPos); }
+    SdrHelpLine&       operator[](sal_uInt16 nPos)                             { return *aList[nPos]; }
+    const SdrHelpLine& operator[](sal_uInt16 nPos) const                       { return *aList[nPos]; }
     sal_uInt16             HitTest(const Point& rPnt, sal_uInt16 nTolLog, const OutputDevice& rOut) const;
 };
 

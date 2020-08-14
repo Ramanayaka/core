@@ -57,7 +57,7 @@
    http://msdn.microsoft.com/en-us/library/ms776294.aspx
 
  ! Hey, yet another list, maybe this one will not move around? It seems to be
- ! quite complete..
+ ! quite complete...
  ! Language Identifier Constants and Strings (Windows)
  ! http://msdn.microsoft.com/en-us/library/dd318693.aspx
  !
@@ -65,8 +65,8 @@
 
  ! BUT, you can download a PDF document from
  ! http://msdn.microsoft.com/library/cc233965.aspx
- ! that has YET MORE definitions, sigh.. didn't cross-check if any are missing
- ! from that.. however, it also contains a few MS-reserved definitions that use
+ ! that has YET MORE definitions, sigh... didn't cross-check if any are missing
+ ! from that... however, it also contains a few MS-reserved definitions that use
  ! ISO 639-3 codes reserved for local use, such as 'qps-ploc' and 'qps-ploca'
  ! (sic!), or strange things like 'ar-Ploc-SA' and 'ja-Ploc-JP' ('Ploc'??).
  !
@@ -80,19 +80,11 @@
    http://support.microsoft.com/default.aspx?scid=KB;en-us;q221435
  */
 
-
-/* It must be safe to include this file in plain C code, so only C style
- * comments are used. Do NOT use // C++ style comments. */
-
-/* disable typedef for usage in svtools/source/misc/langtab.src */
-#ifdef __RSC
-#define LanguageType(x) (x)
-#else
 #include <sal/types.h>
 #include <o3tl/strong_int.hxx>
 #include <ostream>
-struct LanguageTypeTag {};
-typedef o3tl::strong_int<sal_uInt16, LanguageTypeTag> LanguageType;
+
+typedef o3tl::strong_int<sal_uInt16, struct LanguageTypeTag> LanguageType;
 inline std::ostream& operator<<(std::ostream& os, LanguageType const & lt) { os << sal_uInt16(lt); return os; }
 constexpr LanguageType primary(LanguageType lt) { return LanguageType(sal_uInt16(lt) & 0x03ff); }
 
@@ -104,10 +96,7 @@ namespace o3tl
     template<> template<> constexpr strong_int<unsigned short,LanguageTypeTag>::strong_int(short, std::enable_if<std::is_integral<short>::value, int>::type) = delete;
 }
 
-#endif
-
 #define LANGUAGE_MASK_PRIMARY 0x03ff
-
 
 #define LANGUAGE_DONTKNOW                   LanguageType(0x03FF)  /* yes, the mask */
 #define LANGUAGE_NONE                       LanguageType(0x00FF)
@@ -155,7 +144,7 @@ namespace o3tl
 #define LANGUAGE_ARABIC_TUNISIA             LanguageType(0x1C01)
 #define LANGUAGE_ARABIC_UAE                 LanguageType(0x3801)
 #define LANGUAGE_ARABIC_YEMEN               LanguageType(0x2401)
-#define LANGUAGE_ARMENIAN                   LanguageType(0x042B)
+#define LANGUAGE_ARMENIAN                   LanguageType(0x042B)  /* Eastern Armenian */
 #define LANGUAGE_ASSAMESE                   LanguageType(0x044D)
 #define LANGUAGE_AZERI_CYRILLIC             LanguageType(0x082C)
 #define LANGUAGE_AZERI_CYRILLIC_LSO         LanguageType(0x742C)
@@ -204,7 +193,7 @@ namespace o3tl
 #define LANGUAGE_ENGLISH_BAHRAIN            LanguageType(0x5009)
 #define LANGUAGE_ENGLISH_BELIZE             LanguageType(0x2809)
 #define LANGUAGE_ENGLISH_CAN                LanguageType(0x1009)
-#define LANGUAGE_ENGLISH_CARRIBEAN          LanguageType(0x2409)
+#define LANGUAGE_ENGLISH_CARIBBEAN          LanguageType(0x2409)
 #define LANGUAGE_ENGLISH_EGYPT              LanguageType(0x5409)
 #define LANGUAGE_ENGLISH_EIRE               LanguageType(0x1809)
 #define LANGUAGE_ENGLISH_HONG_KONG_SAR      LanguageType(0x3C09)
@@ -286,6 +275,9 @@ namespace o3tl
 #define LANGUAGE_KASHMIRI                   LanguageType(0x0460)
 #define LANGUAGE_KASHMIRI_INDIA             LanguageType(0x0860)
 #define LANGUAGE_KAZAKH                     LanguageType(0x043F)
+#define LANGUAGE_KAZAKH_LATIN               LanguageType(0x083F)
+#define LANGUAGE_KAZAKH_CYRILLIC_LSO        LanguageType(0x783F)
+#define LANGUAGE_KAZAKH_LATIN_LSO           LanguageType(0x7C3F)
 #define LANGUAGE_KHMER                      LanguageType(0x0453)
 #define LANGUAGE_KICHE_GUATEMALA            LanguageType(0x0486)  /* AKA K'iche', West Central Quiche,  */
 #define LANGUAGE_KINYARWANDA_RWANDA         LanguageType(0x0487)  /* obsoletes LANGUAGE_USER_KINYARWANDA 0x0621 */
@@ -481,6 +473,10 @@ namespace o3tl
 #define LANGUAGE_Neither_defined_nor_reserved_0x1C0C LanguageType(0x1C0C)
 #define LANGUAGE_Neither_defined_nor_reserved_0x2008 LanguageType(0x2008)
 
+/* MS defines these as reserved, whatever that might imply... */
+#define LANGUAGE_reserved_0xEEEE            LanguageType(0xEEEE)  /* primary 0x2ee, sub 0x3b */
+#define LANGUAGE_reserved_0xF2EE            LanguageType(0xF2EE)  /* primary 0x2ee, sub 0x3c */
+
 /*! use only for import/export of MS documents, number formatter maps it to
  *! LANGUAGE_SYSTEM and then to effective system language */
 #define LANGUAGE_SYSTEM_DEFAULT             LanguageType(0x0800)
@@ -488,6 +484,14 @@ namespace o3tl
 /*! use only for import/export of MS documents, number formatter maps it to
  *! LANGUAGE_SYSTEM and then to effective system language */
 #define LANGUAGE_PROCESS_OR_USER_DEFAULT    LanguageType(0x0400)
+
+/* Number format code modifier attribute for system time.
+ * Primary language 0x000, sublanguage 0x3D. */
+#define LANGUAGE_NF_SYSTEM_TIME             LanguageType(0xF400)
+
+/* Number format code modifier attribute for system date.
+ * Primary language 0x000, sublanguage 0x3E. */
+#define LANGUAGE_NF_SYSTEM_DATE             LanguageType(0xF800)
 
 
 /* And now the extensions we define,
@@ -737,6 +741,26 @@ namespace o3tl
 #define LANGUAGE_USER_MANCHU                LanguageType(0x069A)
 #define LANGUAGE_USER_XIBE                  LanguageType(0x069B)
 #define LANGUAGE_USER_KITUBA_DRCONGO        LanguageType(0x069C)
+#define LANGUAGE_USER_FON                   LanguageType(0x069D)
+#define LANGUAGE_USER_PLAUTDIETSCH          LanguageType(0x069E)
+#define LANGUAGE_USER_ARMENIAN_RUSSIA       LanguageType(0x802B)  /* makeLangID( 0x20, getPrimaryLanguage( LANGUAGE_ARMENIAN)) */
+#define LANGUAGE_USER_ARMENIAN_IRAN         LanguageType(0x842B)  /* makeLangID( 0x21, getPrimaryLanguage( LANGUAGE_ARMENIAN)) */
+#define LANGUAGE_USER_ARMENIAN_WESTERN      LanguageType(0x069F)
+#define LANGUAGE_USER_ARMENIAN_CLASSICAL    LanguageType(0x06A0)
+#define LANGUAGE_USER_MALAY_ARABIC_MALAYSIA LanguageType(0x803E)  /* makeLangID( 0x20, getPrimaryLanguage( LANGUAGE_MALAY_MALAYSIA)) */
+#define LANGUAGE_USER_MALAY_ARABIC_BRUNEI   LanguageType(0x843E)  /* makeLangID( 0x21, getPrimaryLanguage( LANGUAGE_MALAY_BRUNEI_DARUSSALAM)) */
+#define LANGUAGE_USER_JUHOAN                LanguageType(0x06A1)
+#define LANGUAGE_USER_NARO                  LanguageType(0x06A2)
+#define LANGUAGE_USER_ILOKO                 LanguageType(0x06A3)
+#define LANGUAGE_USER_ENGLISH_ZAMBIA        LanguageType(0xA009)  /* makeLangID( 0x28, getPrimaryLanguage( LANGUAGE_ENGLISH_UK)) */
+#define LANGUAGE_USER_ENGLISH_SRI_LANKA     LanguageType(0xA409)  /* makeLangID( 0x29, getPrimaryLanguage( LANGUAGE_ENGLISH_UK)) */
+#define LANGUAGE_USER_ENGLISH_NIGERIA       LanguageType(0xA809)  /* makeLangID( 0x2A, getPrimaryLanguage( LANGUAGE_ENGLISH_UK)) */
+#define LANGUAGE_USER_KABARDIAN             LanguageType(0x06A4)
+#define LANGUAGE_USER_GUADELOUPEAN_CREOLE_FRENCH    LanguageType(0x06A5)
+#define LANGUAGE_USER_LIGURIAN              LanguageType(0x06A6)
+#define LANGUAGE_USER_MINANGKABAU           LanguageType(0x06A7)
+#define LANGUAGE_USER_SUNDANESE             LanguageType(0x06A8)
+#define LANGUAGE_USER_YAKA_DRCONGO          LanguageType(0x06A9)
 
 
 /* XXX Add new user defined LCIDs ^^^ there.

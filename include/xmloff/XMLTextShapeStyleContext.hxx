@@ -23,15 +23,11 @@
 #include <xmloff/dllapi.h>
 #include <xmloff/XMLShapeStyleContext.hxx>
 
-class XMLOFF_DLLPUBLIC XMLTextShapeStyleContext : public XMLShapeStyleContext
+class XMLOFF_DLLPUBLIC XMLTextShapeStyleContext final : public XMLShapeStyleContext
 {
-    const OUString        sIsAutoUpdate;
-
     bool                  bAutoUpdate : 1;
 
-    SvXMLImportContextRef xEventContext;
-
-protected:
+    rtl::Reference<XMLEventsImportContext> xEventContext;
 
     virtual void SetAttribute( sal_uInt16 nPrefixKey,
                                const OUString& rLocalName,
@@ -43,10 +39,10 @@ public:
     XMLTextShapeStyleContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
             const OUString& rLName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-            SvXMLStylesContext& rStyles, sal_uInt16 nFamily );
+            SvXMLStylesContext& rStyles, XmlStyleFamily nFamily );
     virtual ~XMLTextShapeStyleContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 nPrefix,
             const OUString& rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;

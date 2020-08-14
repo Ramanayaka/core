@@ -19,12 +19,13 @@
 
 #include <viewlayoutctrl.hxx>
 
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <vcl/event.hxx>
 #include <vcl/status.hxx>
 #include <vcl/image.hxx>
-#include <svl/eitem.hxx>
 #include <svx/viewlayoutitem.hxx>
-#include <utlui.hrc>
-#include "bitmaps.hlst"
+#include <strings.hrc>
+#include <bitmaps.hlst>
 #include <swtypes.hxx>
 
 SFX_IMPL_STATUSBAR_CONTROL( SwViewLayoutControl, SvxViewLayoutItem );
@@ -46,12 +47,12 @@ SwViewLayoutControl::SwViewLayoutControl( sal_uInt16 _nSlotId, sal_uInt16 _nId, 
 {
     mpImpl->mnState = 1;
 
-    mpImpl->maImageSingleColumn         = Image(BitmapEx(RID_BMP_VIEWLAYOUT_SINGLECOLUMN));
-    mpImpl->maImageSingleColumn_Active  = Image(BitmapEx(RID_BMP_VIEWLAYOUT_SINGLECOLUMN_ACTIVE));
-    mpImpl->maImageAutomatic            = Image(BitmapEx(RID_BMP_VIEWLAYOUT_AUTOMATIC));
-    mpImpl->maImageAutomatic_Active     = Image(BitmapEx(RID_BMP_VIEWLAYOUT_AUTOMATIC_ACTIVE));
-    mpImpl->maImageBookMode             = Image(BitmapEx(RID_BMP_VIEWLAYOUT_BOOKMODE));
-    mpImpl->maImageBookMode_Active      = Image(BitmapEx(RID_BMP_VIEWLAYOUT_BOOKMODE_ACTIVE));
+    mpImpl->maImageSingleColumn         = Image(StockImage::Yes, RID_BMP_VIEWLAYOUT_SINGLECOLUMN);
+    mpImpl->maImageSingleColumn_Active  = Image(StockImage::Yes, RID_BMP_VIEWLAYOUT_SINGLECOLUMN_ACTIVE);
+    mpImpl->maImageAutomatic            = Image(StockImage::Yes, RID_BMP_VIEWLAYOUT_AUTOMATIC);
+    mpImpl->maImageAutomatic_Active     = Image(StockImage::Yes, RID_BMP_VIEWLAYOUT_AUTOMATIC_ACTIVE);
+    mpImpl->maImageBookMode             = Image(StockImage::Yes, RID_BMP_VIEWLAYOUT_BOOKMODE);
+    mpImpl->maImageBookMode_Active      = Image(StockImage::Yes, RID_BMP_VIEWLAYOUT_BOOKMODE_ACTIVE);
 }
 
 SwViewLayoutControl::~SwViewLayoutControl()
@@ -81,8 +82,7 @@ void SwViewLayoutControl::StateChanged( sal_uInt16 /*nSID*/, SfxItemState eState
             mpImpl->mnState = 3;
     }
 
-    if ( GetStatusBar().AreItemsVisible() )
-        GetStatusBar().SetItemData( GetId(), nullptr );    // force repaint
+    GetStatusBar().SetItemData( GetId(), nullptr );    // force repaint
 }
 
 void SwViewLayoutControl::Paint( const UserDrawEvent& rUsrEvt )
@@ -103,18 +103,18 @@ void SwViewLayoutControl::Paint( const UserDrawEvent& rUsrEvt )
     const long nXOffset = (aRect.GetWidth() - nImageWidthSum) / 2;
     const long nYOffset = (aControlRect.GetHeight() - mpImpl->maImageSingleColumn.GetSizePixel().Height()) / 2;
 
-    aRect.Left() = aRect.Left() + nXOffset;
-    aRect.Top()  = aRect.Top() + nYOffset;
+    aRect.AdjustLeft( nXOffset );
+    aRect.AdjustTop( nYOffset );
 
     // draw single column image:
     pDev->DrawImage( aRect.TopLeft(), bSingleColumn ? mpImpl->maImageSingleColumn_Active : mpImpl->maImageSingleColumn );
 
     // draw automatic image:
-    aRect.Left() += mpImpl->maImageSingleColumn.GetSizePixel().Width();
+    aRect.AdjustLeft(mpImpl->maImageSingleColumn.GetSizePixel().Width() );
     pDev->DrawImage( aRect.TopLeft(), bAutomatic ? mpImpl->maImageAutomatic_Active       : mpImpl->maImageAutomatic );
 
     // draw bookmode image:
-    aRect.Left() += mpImpl->maImageAutomatic.GetSizePixel().Width();
+    aRect.AdjustLeft(mpImpl->maImageAutomatic.GetSizePixel().Width() );
     pDev->DrawImage( aRect.TopLeft(), bBookMode ? mpImpl->maImageBookMode_Active         : mpImpl->maImageBookMode );
 }
 

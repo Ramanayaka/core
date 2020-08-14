@@ -17,24 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "osl/diagnose.h"
-#include "rtl/bootstrap.hxx"
-#include "rtl/ustring.h"
-#include "rtl/ustring.hxx"
+#include <osl/diagnose.h>
+#include <rtl/bootstrap.hxx>
+#include <rtl/ustring.hxx>
 
 #include "getargument.hxx"
 
-namespace test {
-
-namespace detail {
+namespace test::detail {
 
 bool getArgument(OUString const & name, OUString * value) {
     OSL_ASSERT(value != nullptr);
     return rtl::Bootstrap::get("arg-" + name, *value);
-}
-
 }
 
 }

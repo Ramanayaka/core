@@ -18,62 +18,58 @@
  */
 
 #include "Chart2ModelContact.hxx"
-#include "ChartModelHelper.hxx"
-#include "LegendHelper.hxx"
-#include "CommonConverters.hxx"
-#include "macros.hxx"
-#include "servicenames.hxx"
-#include "ObjectIdentifier.hxx"
-#include "chartview/ExplicitValueProvider.hxx"
-#include "chartview/DrawModelWrapper.hxx"
-#include "AxisHelper.hxx"
-#include "DiagramHelper.hxx"
+#include <ChartModelHelper.hxx>
+#include <LegendHelper.hxx>
+#include <CommonConverters.hxx>
+#include <servicenames.hxx>
+#include <ObjectIdentifier.hxx>
+#include <chartview/ExplicitValueProvider.hxx>
+#include <chartview/DrawModelWrapper.hxx>
+#include <AxisHelper.hxx>
+#include <DiagramHelper.hxx>
 
-#include "ChartModel.hxx"
+#include <ChartModel.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 
 using ::com::sun::star::uno::Reference;
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 Chart2ModelContact::Chart2ModelContact(
     const Reference< uno::XComponentContext > & xContext ) :
         m_xContext( xContext ),
         m_xChartModel( nullptr ),
-        mpModel( nullptr ),
-        m_xChartView(nullptr)
+        mpModel( nullptr )
 {
 }
 
 Chart2ModelContact::~Chart2ModelContact()
 {
-    this->clear();
+    clear();
 }
 
 void Chart2ModelContact::setModel( const css::uno::Reference< css::frame::XModel >& xChartModel )
 {
-    this->clear();
+    clear();
     m_xChartModel = xChartModel;
     mpModel = dynamic_cast<ChartModel*>(xChartModel.get());
     uno::Reference< lang::XMultiServiceFactory > xTableFactory( xChartModel, uno::UNO_QUERY );
-    if( xTableFactory.is() )
-    {
-        uno::Reference< container::XNameContainer > xDashTable( xTableFactory->createInstance("com.sun.star.drawing.DashTable"), uno::UNO_QUERY );
-        uno::Reference< container::XNameContainer > xGradientTable( xTableFactory->createInstance("com.sun.star.drawing.GradientTable"), uno::UNO_QUERY );
-        uno::Reference< container::XNameContainer > xHatchTable( xTableFactory->createInstance("com.sun.star.drawing.HatchTable"), uno::UNO_QUERY );
-        uno::Reference< container::XNameContainer > xBitmapTable( xTableFactory->createInstance("com.sun.star.drawing.BitmapTable"), uno::UNO_QUERY );
-        uno::Reference< container::XNameContainer > xTransparencyGradientTable( xTableFactory->createInstance("com.sun.star.drawing.TransparencyGradientTable"), uno::UNO_QUERY );
-        m_aTableMap["LineDashName"] = xDashTable;
-        m_aTableMap["FillGradientName"] = xGradientTable;
-        m_aTableMap["FillHatchName"] = xHatchTable;
-        m_aTableMap["FillBitmapName"] = xBitmapTable;
-        m_aTableMap["FillTransparenceGradientName"] = xTransparencyGradientTable;
-    }
+    if( !xTableFactory.is() )
+        return;
+
+    uno::Reference< container::XNameContainer > xDashTable( xTableFactory->createInstance("com.sun.star.drawing.DashTable"), uno::UNO_QUERY );
+    uno::Reference< container::XNameContainer > xGradientTable( xTableFactory->createInstance("com.sun.star.drawing.GradientTable"), uno::UNO_QUERY );
+    uno::Reference< container::XNameContainer > xHatchTable( xTableFactory->createInstance("com.sun.star.drawing.HatchTable"), uno::UNO_QUERY );
+    uno::Reference< container::XNameContainer > xBitmapTable( xTableFactory->createInstance("com.sun.star.drawing.BitmapTable"), uno::UNO_QUERY );
+    uno::Reference< container::XNameContainer > xTransparencyGradientTable( xTableFactory->createInstance("com.sun.star.drawing.TransparencyGradientTable"), uno::UNO_QUERY );
+    m_aTableMap["LineDashName"] = xDashTable;
+    m_aTableMap["FillGradientName"] = xGradientTable;
+    m_aTableMap["FillHatchName"] = xHatchTable;
+    m_aTableMap["FillBitmapName"] = xBitmapTable;
+    m_aTableMap["FillTransparenceGradientName"] = xTransparencyGradientTable;
 }
 
 void Chart2ModelContact::clear()
@@ -95,7 +91,7 @@ Reference< chart2::XChartDocument > Chart2ModelContact::getChart2Document() cons
 
 Reference< chart2::XDiagram > Chart2ModelContact::getChart2Diagram() const
 {
-    return ChartModelHelper::findDiagram( this->getChartModel() );
+    return ChartModelHelper::findDiagram( getChartModel() );
 }
 
 uno::Reference< lang::XUnoTunnel > const & Chart2ModelContact::getChartView() const
@@ -123,7 +119,7 @@ ExplicitValueProvider* Chart2ModelContact::getExplicitValueProvider() const
     return pProvider;
 }
 
-uno::Reference< drawing::XDrawPage > Chart2ModelContact::getDrawPage()
+uno::Reference< drawing::XDrawPage > Chart2ModelContact::getDrawPage() const
 {
     uno::Reference< drawing::XDrawPage > xResult;
     ExplicitValueProvider* pProvider( getExplicitValueProvider() );
@@ -162,11 +158,7 @@ sal_Int32 Chart2ModelContact::getExplicitNumberFormatKeyForSeries(
             const Reference< chart2::XDataSeries >& xSeries )
 {
     return ExplicitValueProvider::getExplicitNumberFormatKeyForDataLabel(
-        uno::Reference< beans::XPropertySet >( xSeries, uno::UNO_QUERY ),
-        xSeries,
-        -1 /*-1 for whole series*/,
-        ChartModelHelper::findDiagram( m_xChartModel )
-        );
+        uno::Reference< beans::XPropertySet >( xSeries, uno::UNO_QUERY ));
 }
 
 awt::Size Chart2ModelContact::GetPageSize() const
@@ -176,8 +168,8 @@ awt::Size Chart2ModelContact::GetPageSize() const
 
 awt::Rectangle Chart2ModelContact::SubstractAxisTitleSizes( const awt::Rectangle& rPositionRect )
 {
-    awt::Rectangle aRect = ExplicitValueProvider::substractAxisTitleSizes(
-        *mpModel, getChartView(), rPositionRect );
+    awt::Rectangle aRect = ExplicitValueProvider::AddSubtractAxisTitleSizes(
+        *mpModel, getChartView(), rPositionRect, true );
     return aRect;
 }
 
@@ -186,8 +178,8 @@ awt::Rectangle Chart2ModelContact::GetDiagramRectangleIncludingTitle() const
     awt::Rectangle aRect( GetDiagramRectangleIncludingAxes() );
 
     //add axis title sizes to the diagram size
-    aRect = ExplicitValueProvider::addAxisTitleSizes(
-        *mpModel, getChartView(), aRect );
+    aRect = ExplicitValueProvider::AddSubtractAxisTitleSizes(
+        *mpModel, getChartView(), aRect, false );
 
     return aRect;
 }
@@ -298,7 +290,6 @@ awt::Point Chart2ModelContact::GetAxisPosition( const uno::Reference< css::chart
     return aPoint;
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

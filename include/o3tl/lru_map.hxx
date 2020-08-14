@@ -11,6 +11,7 @@
 #ifndef INCLUDED_O3TL_LRU_MAP_HXX
 #define INCLUDED_O3TL_LRU_MAP_HXX
 
+#include <cassert>
 #include <list>
 #include <unordered_map>
 
@@ -30,16 +31,18 @@ namespace o3tl
  * for most of the operations with a combination unordered map and linked list.
  *
  **/
-template<typename Key, typename Value, class KeyHash = std::hash<Key>>
+template<typename Key, typename Value, class KeyHash = std::hash<Key>, class KeyEqual = std::equal_to<Key>>
 class lru_map final
 {
-private:
+public:
     typedef typename std::pair<Key, Value> key_value_pair_t;
+
+private:
     typedef std::list<key_value_pair_t> list_t;
     typedef typename list_t::iterator list_iterator_t;
     typedef typename list_t::const_iterator list_const_iterator_t;
 
-    typedef std::unordered_map<Key, list_iterator_t, KeyHash> map_t;
+    typedef std::unordered_map<Key, list_iterator_t, KeyHash, KeyEqual> map_t;
     typedef typename map_t::iterator map_iterator_t;
     typedef typename map_t::const_iterator map_const_iterator_t;
 
@@ -57,13 +60,23 @@ private:
             mLruList.pop_back();
         }
     }
+
 public:
     typedef list_iterator_t iterator;
     typedef list_const_iterator_t const_iterator;
 
+    // a size of 0 effectively disables the LRU cleanup code
     lru_map(size_t nMaxSize)
-        : mMaxSize(nMaxSize)
+        : mMaxSize(nMaxSize ? nMaxSize : std::min(mLruMap.max_size(), mLruList.max_size()))
     {}
+    ~lru_map()
+    {
+        // Some code .e.g. SalBitmap likes to remove itself from a cache during it's destructor, which means we
+        // get calls into lru_map while we are in destruction, so use the swap-and-clear idiom to avoid those problems.
+        mLruMap.clear();
+        list_t aLruListTemp;
+        aLruListTemp.swap(mLruList);
+    }
 
     void insert(key_value_pair_t& rPair)
     {
@@ -74,7 +87,8 @@ public:
             // add to front of the list
             mLruList.push_front(rPair);
             // add the list position (iterator) to the map
-            mLruMap[rPair.first] = mLruList.begin();
+            auto it = mLruList.begin();
+            mLruMap[it->first] = it;
             checkLRU();
         }
         else // already exists -> replace value
@@ -95,7 +109,8 @@ public:
             // add to front of the list
             mLruList.push_front(std::move(rPair));
             // add the list position (iterator) to the map
-            mLruMap[rPair.first] = mLruList.begin();
+            auto it = mLruList.begin();
+            mLruMap[it->first] = it;
             checkLRU();
         }
         else // already exists -> replace value
@@ -107,7 +122,7 @@ public:
         }
     }
 
-    const list_const_iterator_t find(const Key& key)
+    list_const_iterator_t find(const Key& key)
     {
         const map_iterator_t i = mLruMap.find(key);
         if (i == mLruMap.cend()) // can't find entry for the key
@@ -123,14 +138,43 @@ public:
         }
     }
 
-    const list_const_iterator_t end() const
+    // reverse-iterates the list removing all items matching the predicate
+    template<class UnaryPredicate>
+    void remove_if(UnaryPredicate pred)
     {
-        return mLruList.end();
+        auto it = mLruList.rbegin();
+        while (it != mLruList.rend())
+        {
+            if (pred(*it))
+            {
+                mLruMap.erase(it->first);
+                it = decltype(it){ mLruList.erase(std::next(it).base()) };
+            }
+            else
+                ++it;
+        }
+    }
+
+    list_const_iterator_t begin() const
+    {
+        return mLruList.cbegin();
+    }
+
+    list_const_iterator_t end() const
+    {
+        return mLruList.cend();
     }
 
     size_t size() const
     {
-        return mLruList.size();
+        assert(mLruMap.size() == mLruList.size());
+        return mLruMap.size();
+    }
+
+    void clear()
+    {
+        mLruMap.clear();
+        mLruList.clear();
     }
 };
 

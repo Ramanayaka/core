@@ -10,13 +10,12 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_TABLES_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_TABLES_HXX
 
-#include "DatabaseMetaData.hxx"
+#include <com/sun/star/sdbc/XConnection.hpp>
+#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 
 #include <connectivity/sdbcx/VCollection.hxx>
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
 
         /**
@@ -34,7 +33,7 @@ namespace connectivity
             // OCollection
             virtual void impl_refresh() override;
             virtual ::connectivity::sdbcx::ObjectType createObject(
-                                                const ::rtl::OUString& rName) override;
+                                                const OUString& rName) override;
             virtual css::uno::Reference< css::beans::XPropertySet >
                     createDescriptor() override;
             virtual ::connectivity::sdbcx::ObjectType appendObject(
@@ -45,18 +44,17 @@ namespace connectivity
             Tables(const css::uno::Reference< css::sdbc::XDatabaseMetaData >& rMetaData,
                    ::cppu::OWeakObject& rParent,
                    ::osl::Mutex& rMutex,
-                   ::connectivity::TStringVector& rNames) : sdbcx::OCollection(rParent, true, rMutex, rNames), m_xMetaData(rMetaData) {}
+                   ::std::vector< OUString> const & rNames) : sdbcx::OCollection(rParent, true, rMutex, rNames), m_xMetaData(rMetaData) {}
 
             // TODO: we should also implement XDataDescriptorFactory, XRefreshable,
             // XAppend,  etc., but all are optional.
 
             // XDrop
-            virtual void dropObject(sal_Int32 nPosition, const ::rtl::OUString& rName) override;
+            virtual void dropObject(sal_Int32 nPosition, const OUString& rName) override;
 
         };
 
-    } // namespace firebird
-} // namespace connectivity
+} // namespace connectivity::firebird
 
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_TABLES_HXX

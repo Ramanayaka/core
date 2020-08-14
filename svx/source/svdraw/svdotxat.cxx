@@ -24,46 +24,25 @@
 #include <svx/svdoutl.hxx>
 #include <svx/svdorect.hxx>
 #include <svx/svdocapt.hxx>
-#include <svx/svdetc.hxx>
-#include <editeng/writingmodeitem.hxx>
 #include <editeng/editdata.hxx>
-#include <editeng/editeng.hxx>
-#include <editeng/eeitem.hxx>
-#include <editeng/flditem.hxx>
 #include <svx/sdtfchim.hxx>
 
 
-#include <editeng/editview.hxx>
-#include <svl/whiter.hxx>
 #include <editeng/outlobj.hxx>
 #include <editeng/outliner.hxx>
 #include <editeng/editobj.hxx>
-#include <editeng/fhgtitem.hxx>
-
-#include <editeng/charscaleitem.hxx>
-#include <svl/itemiter.hxx>
-#include <editeng/lrspitem.hxx>
-#include <svl/itempool.hxx>
-#include <editeng/numitem.hxx>
-#include <editeng/postitem.hxx>
-
-#include <set>
 
 namespace {
 // The style family which is appended to the style names is padded to this many characters.
 const short PADDING_LENGTH_FOR_STYLE_FAMILY = 5;
 // this character will be used to pad the style families when they are appended to the style names
-const sal_Char PADDING_CHARACTER_FOR_STYLE_FAMILY = ' ';
+const char PADDING_CHARACTER_FOR_STYLE_FAMILY = ' ';
 }
 
 bool SdrTextObj::AdjustTextFrameWidthAndHeight( tools::Rectangle& rR, bool bHgt, bool bWdt ) const
 {
     if (!bTextFrame)
         // Not a text frame.  Bail out.
-        return false;
-
-    if (!pModel)
-        // Model doesn't exist.  Bail out.
         return false;
 
     if (rR.IsEmpty())
@@ -92,15 +71,15 @@ bool SdrTextObj::AdjustTextFrameWidthAndHeight( tools::Rectangle& rR, bool bHgt,
     long nWdt = 0, nMinWdt = 0, nMaxWdt = 0;
 
     Size aNewSize = rR.GetSize();
-    aNewSize.Width()--; aNewSize.Height()--;
+    aNewSize.AdjustWidth( -1 ); aNewSize.AdjustHeight( -1 );
 
     Size aMaxSiz(100000, 100000);
-    Size aTmpSiz = pModel->GetMaxObjSize();
+    Size aTmpSiz(getSdrModelFromSdrObject().GetMaxObjSize());
 
     if (aTmpSiz.Width())
-        aMaxSiz.Width() = aTmpSiz.Width();
+        aMaxSiz.setWidth( aTmpSiz.Width() );
     if (aTmpSiz.Height())
-        aMaxSiz.Height() = aTmpSiz.Height();
+        aMaxSiz.setHeight( aTmpSiz.Height() );
 
     if (bWdtGrow)
     {
@@ -111,7 +90,7 @@ bool SdrTextObj::AdjustTextFrameWidthAndHeight( tools::Rectangle& rR, bool bHgt,
         if (nMinWdt <= 0)
             nMinWdt = 1;
 
-        aNewSize.Width() = nMaxWdt;
+        aNewSize.setWidth( nMaxWdt );
     }
 
     if (bHgtGrow)
@@ -123,25 +102,25 @@ bool SdrTextObj::AdjustTextFrameWidthAndHeight( tools::Rectangle& rR, bool bHgt,
         if (nMinHgt <= 0)
             nMinHgt = 1;
 
-        aNewSize.Height() = nMaxHgt;
+        aNewSize.setHeight( nMaxHgt );
     }
 
     long nHDist = GetTextLeftDistance() + GetTextRightDistance();
     long nVDist = GetTextUpperDistance() + GetTextLowerDistance();
-    aNewSize.Width() -= nHDist;
-    aNewSize.Height() -= nVDist;
+    aNewSize.AdjustWidth( -nHDist );
+    aNewSize.AdjustHeight( -nVDist );
 
     if (aNewSize.Width() < 2)
-        aNewSize.Width() = 2;
+        aNewSize.setWidth( 2 );
     if (aNewSize.Height() < 2)
-        aNewSize.Height() = 2;
+        aNewSize.setHeight( 2 );
 
     if (!IsInEditMode())
     {
         if (bHScroll)
-            aNewSize.Width() = 0x0FFFFFFF; // don't break ticker text
+            aNewSize.setWidth( 0x0FFFFFFF ); // don't break ticker text
         if (bVScroll)
-            aNewSize.Height() = 0x0FFFFFFF;
+            aNewSize.setHeight( 0x0FFFFFFF );
     }
 
     if (pEdtOutl)
@@ -169,7 +148,7 @@ bool SdrTextObj::AdjustTextFrameWidthAndHeight( tools::Rectangle& rR, bool bHgt,
         if (pOutlinerParaObject)
         {
             rOutliner.SetText(*pOutlinerParaObject);
-            rOutliner.SetFixedCellHeight(static_cast<const SdrTextFixedCellHeightItem&>(GetMergedItem(SDRATTR_TEXT_USEFIXEDCELLHEIGHT)).GetValue());
+            rOutliner.SetFixedCellHeight(GetMergedItem(SDRATTR_TEXT_USEFIXEDCELLHEIGHT).GetValue());
         }
 
         if (bWdtGrow)
@@ -216,14 +195,14 @@ bool SdrTextObj::AdjustTextFrameWidthAndHeight( tools::Rectangle& rR, bool bHgt,
         SdrTextHorzAdjust eHAdj = GetTextHorizontalAdjust();
 
         if (eHAdj == SDRTEXTHORZADJUST_LEFT)
-            rR.Right() += nWdtGrow;
+            rR.AdjustRight(nWdtGrow );
         else if (eHAdj == SDRTEXTHORZADJUST_RIGHT)
-            rR.Left() -= nWdtGrow;
+            rR.AdjustLeft( -nWdtGrow );
         else
         {
             long nWdtGrow2 = nWdtGrow / 2;
-            rR.Left() -= nWdtGrow2;
-            rR.Right() = rR.Left() + nWdt;
+            rR.AdjustLeft( -nWdtGrow2 );
+            rR.SetRight( rR.Left() + nWdt );
         }
     }
 
@@ -232,14 +211,14 @@ bool SdrTextObj::AdjustTextFrameWidthAndHeight( tools::Rectangle& rR, bool bHgt,
         SdrTextVertAdjust eVAdj = GetTextVerticalAdjust();
 
         if (eVAdj == SDRTEXTVERTADJUST_TOP)
-            rR.Bottom() += nHgtGrow;
+            rR.AdjustBottom(nHgtGrow );
         else if (eVAdj == SDRTEXTVERTADJUST_BOTTOM)
-            rR.Top() -= nHgtGrow;
+            rR.AdjustTop( -nHgtGrow );
         else
         {
             long nHgtGrow2 = nHgtGrow / 2;
-            rR.Top() -= nHgtGrow2;
-            rR.Bottom() = rR.Top() + nHgt;
+            rR.AdjustTop( -nHgtGrow2 );
+            rR.SetBottom( rR.Top() + nHgt );
         }
     }
 
@@ -275,11 +254,11 @@ bool SdrTextObj::NbcAdjustTextFrameWidthAndHeight(bool bHgt, bool bWdt)
 
 bool SdrTextObj::AdjustTextFrameWidthAndHeight()
 {
-    tools::Rectangle aNeuRect(maRect);
-    bool bRet=AdjustTextFrameWidthAndHeight(aNeuRect);
+    tools::Rectangle aNewRect(maRect);
+    bool bRet=AdjustTextFrameWidthAndHeight(aNewRect);
     if (bRet) {
         tools::Rectangle aBoundRect0; if (pUserCall!=nullptr) aBoundRect0=GetLastBoundRect();
-        maRect = aNeuRect;
+        maRect = aNewRect;
         SetRectsDirty();
         if (dynamic_cast<const SdrRectObj *>(this) != nullptr) { // this is a hack
             static_cast<SdrRectObj*>(this)->SetXPolyDirty();
@@ -287,8 +266,24 @@ bool SdrTextObj::AdjustTextFrameWidthAndHeight()
         if (dynamic_cast<const SdrCaptionObj *>(this) != nullptr) { // this is a hack
             static_cast<SdrCaptionObj*>(this)->ImpRecalcTail();
         }
-        SetChanged();
-        BroadcastObjectChange();
+
+        // to not slow down EditView visualization on Overlay (see
+        // TextEditOverlayObject) it is necessary to suppress the
+        // Invalidates for the deep repaint when the size of the
+        // TextFrame changed (AdjustTextFrameWidthAndHeight returned
+        // true). The ObjectChanges are valid, invalidate will be
+        // done on EndTextEdit anyways
+        const bool bSuppressChangeWhenEditOnOverlay(
+            IsInEditMode() &&
+            GetTextEditOutliner() &&
+            GetTextEditOutliner()->hasEditViewCallbacks());
+
+        if (!bSuppressChangeWhenEditOnOverlay)
+        {
+            SetChanged();
+            BroadcastObjectChange();
+        }
+
         SendUserCall(SdrUserCallType::Resize,aBoundRect0);
     }
     return bRet;
@@ -296,79 +291,78 @@ bool SdrTextObj::AdjustTextFrameWidthAndHeight()
 
 void SdrTextObj::ImpSetTextStyleSheetListeners()
 {
-    SfxStyleSheetBasePool* pStylePool=pModel!=nullptr ? pModel->GetStyleSheetPool() : nullptr;
-    if (pStylePool!=nullptr)
+    SfxStyleSheetBasePool* pStylePool(getSdrModelFromSdrObject().GetStyleSheetPool());
+    if (pStylePool==nullptr)
+        return;
+
+    std::vector<OUString> aStyleNames;
+    OutlinerParaObject* pOutlinerParaObject = GetOutlinerParaObject();
+    if (pOutlinerParaObject!=nullptr)
     {
-        std::vector<OUString> aStyleNames;
-        OutlinerParaObject* pOutlinerParaObject = GetOutlinerParaObject();
-        if (pOutlinerParaObject!=nullptr)
+        // First, we collect all stylesheets contained in the ParaObject in
+        // the container aStyles. The Family is always appended to the name
+        // of the stylesheet.
+        const EditTextObject& rTextObj=pOutlinerParaObject->GetTextObject();
+        OUString aStyleName;
+        SfxStyleFamily eStyleFam;
+        sal_Int32 nParaCnt=rTextObj.GetParagraphCount();
+
+
+        for(sal_Int32 nParaNum(0); nParaNum < nParaCnt; nParaNum++)
         {
-            // First, we collect all stylesheets contained in the ParaObject in
-            // the container aStyles. The Family is always appended to the name
-            // of the stylesheet.
-            const EditTextObject& rTextObj=pOutlinerParaObject->GetTextObject();
-            OUString aStyleName;
-            SfxStyleFamily eStyleFam;
-            sal_Int32 nParaAnz=rTextObj.GetParagraphCount();
+            rTextObj.GetStyleSheet(nParaNum, aStyleName, eStyleFam);
 
-
-            for(sal_Int32 nParaNum(0); nParaNum < nParaAnz; nParaNum++)
+            if (!aStyleName.isEmpty())
             {
-                rTextObj.GetStyleSheet(nParaNum, aStyleName, eStyleFam);
+                AppendFamilyToStyleName(aStyleName, eStyleFam);
 
-                if (!aStyleName.isEmpty())
+                bool bFnd(false);
+                sal_uInt32 nNum(aStyleNames.size());
+
+                while(!bFnd && nNum > 0)
                 {
-                    AppendFamilyToStyleName(aStyleName, eStyleFam);
+                    // we don't want duplicate stylesheets
+                    nNum--;
+                    bFnd = aStyleName == aStyleNames[nNum];
+                }
 
-                    bool bFnd(false);
-                    sal_uInt32 nNum(aStyleNames.size());
-
-                    while(!bFnd && nNum > 0)
-                    {
-                        // we don't want duplicate stylesheets
-                        nNum--;
-                        bFnd = aStyleName == aStyleNames[nNum];
-                    }
-
-                    if(!bFnd)
-                    {
-                        aStyleNames.push_back(aStyleName);
-                    }
+                if(!bFnd)
+                {
+                    aStyleNames.push_back(aStyleName);
                 }
             }
         }
+    }
 
-        // now convert the strings in the vector from names to StyleSheet*
-        std::set<SfxStyleSheet*> aStyleSheets;
-        while (!aStyleNames.empty()) {
-            OUString aName = aStyleNames.back();
-            aStyleNames.pop_back();
+    // now convert the strings in the vector from names to StyleSheet*
+    o3tl::sorted_vector<SfxStyleSheet*> aStyleSheets;
+    while (!aStyleNames.empty()) {
+        OUString aName = aStyleNames.back();
+        aStyleNames.pop_back();
 
-            SfxStyleFamily eFam = ReadFamilyFromStyleName(aName);
-            SfxStyleSheetBase* pStyleBase = pStylePool->Find(aName,eFam);
-            SfxStyleSheet* pStyle = dynamic_cast<SfxStyleSheet*>( pStyleBase );
-            if (pStyle!=nullptr && pStyle!=GetStyleSheet()) {
-                aStyleSheets.insert(pStyle);
+        SfxStyleFamily eFam = ReadFamilyFromStyleName(aName);
+        SfxStyleSheetBase* pStyleBase = pStylePool->Find(aName,eFam);
+        SfxStyleSheet* pStyle = dynamic_cast<SfxStyleSheet*>( pStyleBase );
+        if (pStyle!=nullptr && pStyle!=GetStyleSheet()) {
+            aStyleSheets.insert(pStyle);
+        }
+    }
+    // now remove all superfluous stylesheets
+    sal_uInt16 nNum=GetBroadcasterCount();
+    while (nNum>0) {
+        nNum--;
+        SfxBroadcaster* pBroadcast=GetBroadcasterJOE(nNum);
+        SfxStyleSheet* pStyle=dynamic_cast<SfxStyleSheet*>( pBroadcast );
+        if (pStyle!=nullptr && pStyle!=GetStyleSheet()) { // special case for stylesheet of the object
+            if (aStyleSheets.find(pStyle)==aStyleSheets.end()) {
+                EndListening(*pStyle);
             }
         }
-        // now remove all superfluous stylesheets
-        sal_uIntPtr nNum=GetBroadcasterCount();
-        while (nNum>0) {
-            nNum--;
-            SfxBroadcaster* pBroadcast=GetBroadcasterJOE((sal_uInt16)nNum);
-            SfxStyleSheet* pStyle=dynamic_cast<SfxStyleSheet*>( pBroadcast );
-            if (pStyle!=nullptr && pStyle!=GetStyleSheet()) { // special case for stylesheet of the object
-                if (aStyleSheets.find(pStyle)==aStyleSheets.end()) {
-                    EndListening(*pStyle);
-                }
-            }
-        }
-        // and finally, merge all stylesheets that are contained in aStyles with previous broadcasters
-        for(std::set<SfxStyleSheet*>::const_iterator it = aStyleSheets.begin(); it != aStyleSheets.end(); ++it) {
-            SfxStyleSheet* pStyle=*it;
-            // let StartListening see for itself if there's already a listener registered
-            StartListening(*pStyle,true);
-        }
+    }
+    // and finally, merge all stylesheets that are contained in aStyles with previous broadcasters
+    for(SfxStyleSheet* pStyle : aStyleSheets) {
+        // let StartListening see for itself if there's already a listener registered
+        StartListening(*pStyle, DuplicateHandling::Prevent);
     }
 }
 
@@ -399,18 +393,17 @@ void SdrTextObj::RemoveOutlinerCharacterAttribs( const std::vector<sal_uInt16>& 
             }
 
             ESelection aSelAll( 0, 0, EE_PARA_ALL, EE_TEXTPOS_ALL );
-            std::vector<sal_uInt16>::const_iterator aIter( rCharWhichIds.begin() );
-            while( aIter != rCharWhichIds.end() )
+            for( const auto& rWhichId : rCharWhichIds )
             {
-                pOutliner->RemoveAttribs( aSelAll, false, (*aIter++) );
+                pOutliner->RemoveAttribs( aSelAll, false, rWhichId );
             }
 
             if(!pEdtOutl || (pText != getActiveText()) )
             {
                 const sal_Int32 nParaCount = pOutliner->GetParagraphCount();
-                OutlinerParaObject* pTemp = pOutliner->CreateParaObject(0, nParaCount);
+                std::unique_ptr<OutlinerParaObject> pTemp = pOutliner->CreateParaObject(0, nParaCount);
                 pOutliner->Clear();
-                NbcSetOutlinerParaObjectForText(pTemp, pText);
+                NbcSetOutlinerParaObjectForText(std::move(pTemp), pText);
             }
         }
     }

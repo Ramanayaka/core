@@ -19,8 +19,10 @@
 #ifndef INCLUDED_CHART2_SOURCE_VIEW_AXES_TICKMARKS_EQUIDISTANT_HXX
 #define INCLUDED_CHART2_SOURCE_VIEW_AXES_TICKMARKS_EQUIDISTANT_HXX
 
-#include <memory>
 #include "Tickmarks.hxx"
+#include <memory>
+
+#include <o3tl/safeint.hxx>
 
 namespace chart
 {
@@ -57,7 +59,11 @@ private: //methods
                     if(m_pSimpleTicks)
                         return (*m_pSimpleTicks)[nDepth][nIndex];
                     else
+                    {
+                        if ((*m_pInfoTicks)[nDepth].size() <= o3tl::make_unsigned(nIndex))
+                            return std::numeric_limits<double>::max();
                         return (((*m_pInfoTicks)[nDepth])[nIndex]).fScaledTickValue;
+                    }
                 }
     sal_Int32   getTickCount( sal_Int32 nDepth ) const
                 {
@@ -80,10 +86,13 @@ private: //member
     const ExplicitIncrementData& m_rIncrement;
     sal_Int32   m_nMaxDepth;
     sal_Int32   m_nTickCount;
-    sal_Int32*  m_pnPositions; //current positions in the different sequences
-    sal_Int32*  m_pnPreParentCount; //the tickmarks do not start with a major tick always,
+    std::unique_ptr<sal_Int32[]>
+                m_pnPositions; //current positions in the different sequences
+    std::unique_ptr<sal_Int32[]>
+                m_pnPreParentCount; //the tickmarks do not start with a major tick always,
                                     //the PreParentCount states for each depth how many subtickmarks are available in front of the first parent tickmark
-    bool*       m_pbIntervalFinished;
+    std::unique_ptr<bool[]>
+                m_pbIntervalFinished;
     sal_Int32   m_nCurrentDepth;
     sal_Int32   m_nCurrentPos;
     double      m_fCurrentValue;

@@ -26,7 +26,7 @@
 
 /** this set of constants describes different writing directions
 
-    <p>In addition to numerous explicit writing directions, it allows allows to specify to take the writing
+    <p>In addition to numerous explicit writing directions, it allows to specify to take the writing
     direction from the object's context.</p>
  */
 published constants WritingMode2
@@ -76,6 +76,13 @@ published constants WritingMode2
     /** obtain actual writing mode from the context of the object.
     */
     const short CONTEXT = 4;
+
+    /** text within a line is written bottom-to-top. Lines and blocks are
+        placed left-to-right.
+
+        @since LibreOffice 6.3
+     */
+    const short BT_LR = 5;
 };
 
 

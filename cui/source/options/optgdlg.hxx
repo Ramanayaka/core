@@ -19,10 +19,6 @@
 #ifndef INCLUDED_CUI_SOURCE_OPTIONS_OPTGDLG_HXX
 #define INCLUDED_CUI_SOURCE_OPTIONS_OPTGDLG_HXX
 #include <memory>
-#include <vcl/lstbox.hxx>
-#include <vcl/group.hxx>
-#include <vcl/field.hxx>
-#include <vcl/fixed.hxx>
 #include <sfx2/tabdlg.hxx>
 #include <svx/langbox.hxx>
 
@@ -34,42 +30,47 @@ namespace vcl {
 }
 
 namespace svt {
-    class OpenGLCfg;
+    class SkiaCfg;
 }
 
 class OfaMiscTabPage : public SfxTabPage
 {
-    using TabPage::DeactivatePage;
 private:
-    VclPtr<CheckBox>     m_pExtHelpCB;
+    OUString             m_aStrDateInfo;
 
-    VclPtr<FixedImage>   m_pFileDlgROImage;
-    VclPtr<CheckBox>     m_pFileDlgCB;
+    std::unique_ptr<weld::CheckButton> m_xExtHelpCB;
+    std::unique_ptr<weld::CheckButton> m_xPopUpNoHelpCB;
+    std::unique_ptr<weld::CheckButton> m_xShowTipOfTheDay;
+    std::unique_ptr<weld::Widget> m_xFileDlgFrame;
+    std::unique_ptr<weld::Widget> m_xPrintDlgFrame;
+    std::unique_ptr<weld::Widget> m_xFileDlgROImage;
+    std::unique_ptr<weld::CheckButton> m_xFileDlgCB;
+    std::unique_ptr<weld::CheckButton> m_xPrintDlgCB;
+    std::unique_ptr<weld::CheckButton> m_xDocStatusCB;
+    std::unique_ptr<weld::Widget> m_xYearFrame;
+    std::unique_ptr<weld::SpinButton> m_xYearValueField;
+    std::unique_ptr<weld::Label> m_xToYearFT;
+    std::unique_ptr<weld::CheckButton> m_xCollectUsageInfo;
+    std::unique_ptr<weld::CheckButton> m_xCrashReport;
+    std::unique_ptr<weld::Widget> m_xQuickStarterFrame;
+    std::unique_ptr<weld::CheckButton> m_xQuickLaunchCB;
+#if defined(_WIN32)
+    std::unique_ptr<weld::Widget> m_xFileAssocFrame;
+    std::unique_ptr<weld::Button> m_xFileAssocBtn;
+#endif
 
-    VclPtr<CheckBox>     m_pPrintDlgCB;
-
-    VclPtr<CheckBox>     m_pDocStatusCB;
-
-    VclPtr<VclContainer> m_pYearFrame;
-    VclPtr<NumericField> m_pYearValueField;
-    VclPtr<FixedText>    m_pToYearFT;
-
-    OUString      m_aStrDateInfo;
-
-    VclPtr<CheckBox>     m_pCollectUsageInfo;
-
-    DECL_LINK( TwoFigureHdl, Edit&, void );
-    DECL_LINK( TwoFigureConfigHdl, SpinField&, void );
-    DECL_LINK( TwoFigureConfigFocusHdl, Control&, void );
+    DECL_LINK(TwoFigureHdl, weld::SpinButton&, void);
+#if defined(_WIN32)
+    DECL_STATIC_LINK(OfaMiscTabPage, FileAssocClick, weld::Button&, void);
+#endif
 protected:
     virtual DeactivateRC   DeactivatePage( SfxItemSet* pSet ) override;
 
 public:
-    OfaMiscTabPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    OfaMiscTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~OfaMiscTabPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rAttrSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
@@ -80,54 +81,56 @@ class SvtTabAppearanceCfg;
 class OfaViewTabPage : public SfxTabPage
 {
 private:
-    VclPtr<ListBox>        m_pIconSizeLB;
-    VclPtr<ListBox>        m_pSidebarIconSizeLB;
-    VclPtr<ListBox>        m_pNotebookbarIconSizeLB;
-    VclPtr<ListBox>        m_pIconStyleLB;
-
-    VclPtr<CheckBox>       m_pFontAntiAliasing;
-    VclPtr<FixedText>      m_pAAPointLimitLabel;
-    VclPtr<MetricField>    m_pAAPointLimit;
-
-    VclPtr<ListBox>        m_pMenuIconsLB;
-    VclPtr<ListBox>        m_pContextMenuShortcutsLB;
-
-    VclPtr<CheckBox>       m_pFontShowCB;
-
-    VclPtr<CheckBox>       m_pUseHardwareAccell;
-    VclPtr<CheckBox>       m_pUseAntiAliase;
-    VclPtr<CheckBox>       m_pUseOpenGL;
-    VclPtr<CheckBox>       m_pForceOpenGL;
-
-    VclPtr<FixedText>      m_pOpenGLStatusEnabled;
-    VclPtr<FixedText>      m_pOpenGLStatusDisabled;
-
-    VclPtr<ListBox>        m_pMousePosLB;
-    VclPtr<ListBox>        m_pMouseMiddleLB;
-
     sal_Int32      nSizeLB_InitialSelection;
     sal_Int32      nSidebarSizeLB_InitialSelection;
     sal_Int32      nNotebookbarSizeLB_InitialSelection;
     sal_Int32      nStyleLB_InitialSelection;
 
-    SvtTabAppearanceCfg*    pAppearanceCfg;
-    CanvasSettings*         pCanvasSettings;
-    SvtOptionsDrawinglayer* mpDrawinglayerOpt;
-    std::unique_ptr<svt::OpenGLCfg> mpOpenGLConfig;
+    std::unique_ptr<SvtTabAppearanceCfg>    pAppearanceCfg;
+    std::unique_ptr<CanvasSettings>         pCanvasSettings;
+    std::unique_ptr<SvtOptionsDrawinglayer> mpDrawinglayerOpt;
+    std::unique_ptr<svt::SkiaCfg> mpSkiaConfig;
 
     std::vector<vcl::IconThemeInfo> mInstalledIconThemes;
 
-#if defined( UNX )
-    DECL_LINK( OnAntialiasingToggled, CheckBox&, void );
-#endif
-    void UpdateOGLStatus();
+    std::unique_ptr<weld::ComboBox> m_xIconSizeLB;
+    std::unique_ptr<weld::ComboBox> m_xSidebarIconSizeLB;
+    std::unique_ptr<weld::ComboBox> m_xNotebookbarIconSizeLB;
+    std::unique_ptr<weld::ComboBox> m_xIconStyleLB;
+
+    std::unique_ptr<weld::CheckButton> m_xFontAntiAliasing;
+    std::unique_ptr<weld::Label> m_xAAPointLimitLabel;
+    std::unique_ptr<weld::MetricSpinButton> m_xAAPointLimit;
+
+    std::unique_ptr<weld::Widget> m_xMenuIconBox;
+    std::unique_ptr<weld::ComboBox> m_xMenuIconsLB;
+
+    std::unique_ptr<weld::ComboBox> m_xContextMenuShortcutsLB;
+
+    std::unique_ptr<weld::CheckButton> m_xFontShowCB;
+
+    std::unique_ptr<weld::CheckButton> m_xUseHardwareAccell;
+    std::unique_ptr<weld::CheckButton> m_xUseAntiAliase;
+    std::unique_ptr<weld::CheckButton> m_xUseSkia;
+    std::unique_ptr<weld::CheckButton> m_xForceSkia;
+    std::unique_ptr<weld::CheckButton> m_xForceSkiaRaster;
+
+    std::unique_ptr<weld::Label> m_xSkiaStatusEnabled;
+    std::unique_ptr<weld::Label> m_xSkiaStatusDisabled;
+
+    std::unique_ptr<weld::ComboBox> m_xMousePosLB;
+    std::unique_ptr<weld::ComboBox> m_xMouseMiddleLB;
+
+    DECL_LINK(OnAntialiasingToggled, weld::ToggleButton&, void);
+    DECL_LINK(OnForceSkiaToggled, weld::ToggleButton&, void);
+    DECL_LINK(OnForceSkiaRasterToggled, weld::ToggleButton&, void);
+    void UpdateSkiaStatus();
 
 public:
-    OfaViewTabPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    OfaViewTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~OfaViewTabPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rAttrSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
@@ -137,43 +140,43 @@ struct LanguageConfig_Impl;
 
 class OfaLanguagesTabPage : public SfxTabPage
 {
-    VclPtr<ListBox>        m_pUserInterfaceLB;
-    VclPtr<FixedText>      m_pLocaleSettingFT;
-    VclPtr<SvxLanguageBox> m_pLocaleSettingLB;
-    VclPtr<CheckBox>       m_pDecimalSeparatorCB;
-    VclPtr<FixedText>      m_pCurrencyFT;
-    VclPtr<ListBox>        m_pCurrencyLB;
-    VclPtr<FixedText>      m_pDatePatternsFT;
-    VclPtr<Edit>           m_pDatePatternsED;
-
-    VclPtr<SvxLanguageBox> m_pWesternLanguageLB;
-    VclPtr<FixedText>      m_pWesternLanguageFT;
-    VclPtr<SvxLanguageBox> m_pAsianLanguageLB;
-    VclPtr<SvxLanguageBox> m_pComplexLanguageLB;
-    VclPtr<CheckBox>       m_pCurrentDocCB;
-    VclPtr<CheckBox>       m_pAsianSupportCB;
-    VclPtr<CheckBox>       m_pCTLSupportCB;
-    VclPtr<CheckBox>       m_pIgnoreLanguageChangeCB;
-
     bool        m_bOldAsian;
     bool        m_bOldCtl;
-    LanguageConfig_Impl*    pLangConfig;
+    std::unique_ptr<LanguageConfig_Impl> pLangConfig;
 
     OUString        m_sUserLocaleValue;
     OUString        m_sSystemDefaultString;
+    OUString        m_sDecimalSeparatorLabel;
 
     bool            m_bDatePatternsValid;
 
-    DECL_LINK(  SupportHdl, Button*, void ) ;
-    DECL_LINK(  LocaleSettingHdl, ListBox&, void ) ;
-    DECL_LINK(  DatePatternsHdl, Edit&, void ) ;
+    std::unique_ptr<weld::ComboBox> m_xUserInterfaceLB;
+    std::unique_ptr<weld::Label> m_xLocaleSettingFT;
+    std::unique_ptr<SvxLanguageBox> m_xLocaleSettingLB;
+    std::unique_ptr<weld::CheckButton> m_xDecimalSeparatorCB;
+    std::unique_ptr<weld::Label> m_xCurrencyFT;
+    std::unique_ptr<weld::ComboBox> m_xCurrencyLB;
+    std::unique_ptr<weld::Label> m_xDatePatternsFT;
+    std::unique_ptr<weld::Entry> m_xDatePatternsED;
+
+    std::unique_ptr<SvxLanguageBox> m_xWesternLanguageLB;
+    std::unique_ptr<weld::Label> m_xWesternLanguageFT;
+    std::unique_ptr<SvxLanguageBox> m_xAsianLanguageLB;
+    std::unique_ptr<SvxLanguageBox> m_xComplexLanguageLB;
+    std::unique_ptr<weld::CheckButton> m_xCurrentDocCB;
+    std::unique_ptr<weld::CheckButton> m_xAsianSupportCB;
+    std::unique_ptr<weld::CheckButton> m_xCTLSupportCB;
+    std::unique_ptr<weld::CheckButton> m_xIgnoreLanguageChangeCB;
+
+    DECL_LINK(SupportHdl, weld::ToggleButton&, void);
+    DECL_LINK(LocaleSettingHdl, weld::ComboBox&, void);
+    DECL_LINK(DatePatternsHdl, weld::Entry&, void);
 
 public:
-    OfaLanguagesTabPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    OfaLanguagesTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~OfaLanguagesTabPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rAttrSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;

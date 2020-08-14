@@ -18,12 +18,13 @@
  */
 
 #include <tools/multisel.hxx>
+#include <osl/diagnose.h>
 
-#include "pfuncache.hxx"
-#include "printfun.hxx"
-#include "docsh.hxx"
-#include "markdata.hxx"
-#include "prevloc.hxx"
+#include <pfuncache.hxx>
+#include <printfun.hxx>
+#include <docsh.hxx>
+#include <markdata.hxx>
+#include <prevloc.hxx>
 
 ScPrintFuncCache::ScPrintFuncCache( ScDocShell* pD, const ScMarkData& rMark,
                                     const ScPrintSelectionStatus& rStatus ) :
@@ -96,10 +97,10 @@ void ScPrintFuncCache::InitLocations( const ScMarkData& rMark, OutputDevice* pDe
 
     ScDocument& rDoc = pDocSh->GetDocument();
     SCTAB nTabCount = rDoc.GetTableCount();
-    ScMarkData::const_iterator itr = rMark.begin(), itrEnd = rMark.end();
-    for (; itr != itrEnd && (*itr) < nTabCount; ++itr)
+    for (SCTAB nTab : rMark)
     {
-        SCTAB nTab = *itr;
+        if (nTab >= nTabCount)
+            break;
         ScPrintFunc aFunc( pDev, pDocSh, nTab, nFirstAttr[nTab], nTotalPages, pSelRange, &aSelection.GetOptions() );
         aFunc.SetRenderFlag( true );
 
@@ -118,7 +119,7 @@ void ScPrintFuncCache::InitLocations( const ScMarkData& rMark, OutputDevice* pDe
             ScRange aCellRange;
             tools::Rectangle aPixRect;
             if ( aLocData.GetMainCellRange( aCellRange, aPixRect ) )
-                aLocations.push_back( ScPrintPageLocation( nRenderer, aCellRange, aPixRect ) );
+                aLocations.emplace_back( nRenderer, aCellRange, aPixRect );
 
             ++nRenderer;
         }
@@ -131,14 +132,12 @@ void ScPrintFuncCache::InitLocations( const ScMarkData& rMark, OutputDevice* pDe
 
 bool ScPrintFuncCache::FindLocation( const ScAddress& rCell, ScPrintPageLocation& rLocation ) const
 {
-    for ( std::vector<ScPrintPageLocation>::const_iterator aIter(aLocations.begin()), aEnd(aLocations.end());
-          aIter != aEnd; ++aIter )
+    auto aIter = std::find_if(aLocations.begin(), aLocations.end(),
+        [&rCell](const ScPrintPageLocation& rLoc) { return rLoc.aCellRange.In(rCell); });
+    if (aIter != aLocations.end())
     {
-        if ( aIter->aCellRange.In( rCell ) )
-        {
-            rLocation = *aIter;
-            return true;
-        }
+        rLocation = *aIter;
+        return true;
     }
     return false;   // not found
 }
@@ -163,7 +162,8 @@ SCTAB ScPrintFuncCache::GetTabForPage( long nPage ) const
 long ScPrintFuncCache::GetTabStart( SCTAB nTab ) const
 {
     long nRet = 0;
-    for ( SCTAB i=0; i<nTab&& i < static_cast<SCTAB>(nPages.size()); i++ )
+    const SCTAB maxIndex = std::min(nTab, static_cast<SCTAB>(nPages.size()));
+    for ( SCTAB i=0; i<maxIndex; i++ )
         nRet += nPages[i];
     return nRet;
 }

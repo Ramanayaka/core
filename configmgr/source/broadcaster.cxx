@@ -33,9 +33,7 @@
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/util/XChangesListener.hpp>
 #include <cppuhelper/exc_hlp.hxx>
-#include <rtl/string.h>
 #include <rtl/ustrbuf.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 
 #include "broadcaster.hxx"
@@ -57,39 +55,35 @@ void Broadcaster::addDisposeNotification(
     css::uno::Reference< css::lang::XEventListener > const & listener,
     css::lang::EventObject const & event)
 {
-    disposeNotifications_.push_back(DisposeNotification(listener, event));
+    disposeNotifications_.emplace_back(listener, event);
 }
 
 void Broadcaster::addContainerElementReplacedNotification(
     css::uno::Reference< css::container::XContainerListener > const & listener,
     css::container::ContainerEvent const & event)
 {
-    containerElementReplacedNotifications_.push_back(
-        ContainerNotification(listener, event));
+    containerElementReplacedNotifications_.emplace_back(listener, event);
 }
 
 void Broadcaster::addContainerElementInsertedNotification(
     css::uno::Reference< css::container::XContainerListener > const & listener,
     css::container::ContainerEvent const & event)
 {
-    containerElementInsertedNotifications_.push_back(
-        ContainerNotification(listener, event));
+    containerElementInsertedNotifications_.emplace_back(listener, event);
 }
 
 void Broadcaster::addContainerElementRemovedNotification(
     css::uno::Reference< css::container::XContainerListener > const & listener,
     css::container::ContainerEvent const & event)
 {
-    containerElementRemovedNotifications_.push_back(
-        ContainerNotification(listener, event));
+    containerElementRemovedNotifications_.emplace_back(listener, event);
 }
 
 void Broadcaster::addPropertyChangeNotification(
     css::uno::Reference< css::beans::XPropertyChangeListener > const & listener,
     css::beans::PropertyChangeEvent const & event)
 {
-    propertyChangeNotifications_.push_back(
-        PropertyChangeNotification(listener, event));
+    propertyChangeNotifications_.emplace_back(listener, event);
 }
 
 void Broadcaster::addPropertiesChangeNotification(
@@ -97,94 +91,81 @@ void Broadcaster::addPropertiesChangeNotification(
         listener,
     css::uno::Sequence< css::beans::PropertyChangeEvent > const & event)
 {
-    propertiesChangeNotifications_.push_back(
-        PropertiesChangeNotification(listener, event));
+    propertiesChangeNotifications_.emplace_back(listener, event);
 }
 
 void Broadcaster::addChangesNotification(
     css::uno::Reference< css::util::XChangesListener > const & listener,
     css::util::ChangesEvent const & event)
 {
-    changesNotifications_.push_back(ChangesNotification(listener, event));
+    changesNotifications_.emplace_back(listener, event);
 }
 
 void Broadcaster::send() {
     css::uno::Any exception;
     OUStringBuffer messages;
-    for (DisposeNotifications::iterator i(disposeNotifications_.begin());
-         i != disposeNotifications_.end(); ++i) {
+    for (auto& rNotification : disposeNotifications_) {
         try {
-            i->listener->disposing(i->event);
+            rNotification.listener->disposing(rNotification.event);
         } catch (css::lang::DisposedException &) {
         } catch (css::uno::Exception & e) {
             exception = cppu::getCaughtException();
             appendMessage(messages, e);
         }
     }
-    for (ContainerNotifications::iterator i(
-             containerElementInsertedNotifications_.begin());
-         i != containerElementInsertedNotifications_.end(); ++i)
+    for (auto& rNotification : containerElementInsertedNotifications_)
     {
         try {
-            i->listener->elementInserted(i->event);
+            rNotification.listener->elementInserted(rNotification.event);
         } catch (css::lang::DisposedException &) {
         } catch (css::uno::Exception & e) {
             exception = cppu::getCaughtException();
             appendMessage(messages, e);
         }
     }
-    for (ContainerNotifications::iterator i(
-             containerElementRemovedNotifications_.begin());
-         i != containerElementRemovedNotifications_.end(); ++i)
+    for (auto& rNotification : containerElementRemovedNotifications_)
     {
         try {
-            i->listener->elementRemoved(i->event);
+            rNotification.listener->elementRemoved(rNotification.event);
         } catch (css::lang::DisposedException &) {
         } catch (css::uno::Exception & e) {
             exception = cppu::getCaughtException();
             appendMessage(messages, e);
         }
     }
-    for (ContainerNotifications::iterator i(
-             containerElementReplacedNotifications_.begin());
-         i != containerElementReplacedNotifications_.end(); ++i)
+    for (auto& rNotification : containerElementReplacedNotifications_)
     {
         try {
-            i->listener->elementReplaced(i->event);
+            rNotification.listener->elementReplaced(rNotification.event);
         } catch (css::lang::DisposedException &) {
         } catch (css::uno::Exception & e) {
             exception = cppu::getCaughtException();
             appendMessage(messages, e);
         }
     }
-    for (PropertyChangeNotifications::iterator i(
-             propertyChangeNotifications_.begin());
-         i != propertyChangeNotifications_.end(); ++i)
+    for (auto& rNotification : propertyChangeNotifications_)
     {
         try {
-            i->listener->propertyChange(i->event);
+            rNotification.listener->propertyChange(rNotification.event);
         } catch (css::lang::DisposedException &) {
         } catch (css::uno::Exception & e) {
             exception = cppu::getCaughtException();
             appendMessage(messages, e);
         }
     }
-    for (PropertiesChangeNotifications::iterator i(
-             propertiesChangeNotifications_.begin());
-         i != propertiesChangeNotifications_.end(); ++i)
+    for (auto& rNotification : propertiesChangeNotifications_)
     {
         try {
-            i->listener->propertiesChange(i->event);
+            rNotification.listener->propertiesChange(rNotification.event);
         } catch (css::lang::DisposedException &) {
         } catch (css::uno::Exception & e) {
             exception = cppu::getCaughtException();
             appendMessage(messages, e);
         }
     }
-    for (ChangesNotifications::iterator i(changesNotifications_.begin());
-         i != changesNotifications_.end(); ++i) {
+    for (auto& rNotification : changesNotifications_) {
         try {
-            i->listener->changesOccurred(i->event);
+            rNotification.listener->changesOccurred(rNotification.event);
         } catch (css::lang::DisposedException &) {
         } catch (css::uno::Exception & e) {
             exception = cppu::getCaughtException();

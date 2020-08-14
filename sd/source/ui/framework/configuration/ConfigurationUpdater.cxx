@@ -21,11 +21,14 @@
 #include "ConfigurationTracer.hxx"
 #include "ConfigurationClassifier.hxx"
 #include "ConfigurationControllerBroadcaster.hxx"
-#include "framework/Configuration.hxx"
-#include "framework/FrameworkHelper.hxx"
+#include "ConfigurationControllerResourceManager.hxx"
+#include <framework/Configuration.hxx>
+#include <framework/FrameworkHelper.hxx>
 
+#include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <comphelper/scopeguard.hxx>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 
 using namespace ::com::sun::star;
@@ -35,14 +38,14 @@ using ::sd::framework::FrameworkHelper;
 using ::std::vector;
 
 namespace {
-static const sal_Int32 snShortTimeout (100);
-static const sal_Int32 snNormalTimeout (1000);
-static const sal_Int32 snLongTimeout (10000);
-static const sal_Int32 snShortTimeoutCountThreshold (1);
-static const sal_Int32 snNormalTimeoutCountThreshold (5);
+const sal_Int32 snShortTimeout (100);
+const sal_Int32 snNormalTimeout (1000);
+const sal_Int32 snLongTimeout (10000);
+const sal_Int32 snShortTimeoutCountThreshold (1);
+const sal_Int32 snNormalTimeoutCountThreshold (5);
 }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 //===== ConfigurationUpdaterLock ==============================================
 
@@ -112,7 +115,7 @@ void ConfigurationUpdater::RequestUpdate (
     }
 }
 
-bool ConfigurationUpdater::IsUpdatePossible()
+bool ConfigurationUpdater::IsUpdatePossible() const
 {
     return ! mbUpdateBeingProcessed
         && mxControllerManager.is()
@@ -179,7 +182,7 @@ void ConfigurationUpdater::UpdateConfiguration()
     }
     catch(const RuntimeException &)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sd");
     }
 
     SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": ConfigurationUpdater::UpdateConfiguration)");
@@ -188,20 +191,19 @@ void ConfigurationUpdater::UpdateConfiguration()
 
 void ConfigurationUpdater::CleanRequestedConfiguration()
 {
-    if (mxControllerManager.is())
+    if (!mxControllerManager.is())
+        return;
+
+    // Request the deactivation of pure anchors that have no child.
+    vector<Reference<XResourceId> > aResourcesToDeactivate;
+    CheckPureAnchors(mxRequestedConfiguration, aResourcesToDeactivate);
+    if (!aResourcesToDeactivate.empty())
     {
-        // Request the deactivation of pure anchors that have no child.
-        vector<Reference<XResourceId> > aResourcesToDeactivate;
-        CheckPureAnchors(mxRequestedConfiguration, aResourcesToDeactivate);
-        if (!aResourcesToDeactivate.empty())
-        {
-            Reference<XConfigurationController> xCC (
-                mxControllerManager->getConfigurationController());
-            vector<Reference<XResourceId> >::iterator iId;
-            for (iId=aResourcesToDeactivate.begin(); iId!=aResourcesToDeactivate.end(); ++iId)
-                if (iId->is())
-                    xCC->requestResourceDeactivation(*iId);
-        }
+        Reference<XConfigurationController> xCC (
+            mxControllerManager->getConfigurationController());
+        for (const auto& rxId : aResourcesToDeactivate)
+            if (rxId.is())
+                xCC->requestResourceDeactivation(rxId);
     }
 }
 
@@ -263,7 +265,7 @@ void ConfigurationUpdater::UpdateCore (const ConfigurationClassifier& rClassifie
     }
     catch(const RuntimeException&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sd");
     }
 }
 
@@ -371,6 +373,6 @@ IMPL_LINK_NOARG(ConfigurationUpdater, TimeoutHandler, Timer *, void)
     }
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

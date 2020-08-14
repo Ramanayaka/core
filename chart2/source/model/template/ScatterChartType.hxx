@@ -20,19 +20,14 @@
 #define INCLUDED_CHART2_SOURCE_MODEL_TEMPLATE_SCATTERCHARTTYPE_HXX
 
 #include "ChartType.hxx"
-#include <com/sun/star/chart2/CurveStyle.hpp>
 
 namespace chart
 {
 
-class ScatterChartType : public ChartType
+class ScatterChartType final : public ChartType
 {
 public:
-    ScatterChartType(
-        css::uno::Reference< css::uno::XComponentContext > const & xContext,
-        css::chart2::CurveStyle eCurveStyle =  css::chart2::CurveStyle_LINES,
-        sal_Int32 nResolution = 20,
-        sal_Int32 nOrder = 3 );
+    ScatterChartType();
     virtual ~ScatterChartType() override;
 
     virtual OUString SAL_CALL
@@ -42,7 +37,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL
         getSupportedServiceNames() override;
 
-protected:
+private:
     explicit ScatterChartType( const ScatterChartType & rOther );
 
     // ____ XChartType ____

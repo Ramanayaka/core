@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -17,6 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+#include <cmath>
+
+#include <string_view>
+
 #include "Connection.hxx"
 #include "PreparedStatement.hxx"
 #include "ResultSet.hxx"
@@ -25,13 +30,11 @@
 
 #include <comphelper/sequence.hxx>
 #include <connectivity/dbexception.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <propertyids.hxx>
-#include <time.h>
 #include <connectivity/dbtools.hxx>
+#include <sal/log.hxx>
 
 #include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 
 using namespace connectivity::firebird;
 
@@ -178,10 +181,10 @@ void SAL_CALL OPreparedStatement::disposing()
 }
 
 void SAL_CALL OPreparedStatement::setString(sal_Int32 nParameterIndex,
-                                            const OUString& x)
+                                            const OUString& sInput)
 {
     SAL_INFO("connectivity.firebird",
-             "setString(" << nParameterIndex << " , " << x << ")");
+             "setString(" << nParameterIndex << " , " << sInput << ")");
 
     MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
@@ -190,7 +193,7 @@ void SAL_CALL OPreparedStatement::setString(sal_Int32 nParameterIndex,
     checkParameterIndex(nParameterIndex);
     setParameterNull(nParameterIndex, false);
 
-    OString str = OUStringToOString(x , RTL_TEXTENCODING_UTF8 );
+    OString str = OUStringToOString(sInput , RTL_TEXTENCODING_UTF8 );
 
     XSQLVAR* pVar = m_pInSqlda->sqlvar + (nParameterIndex - 1);
 
@@ -208,7 +211,7 @@ void SAL_CALL OPreparedStatement::setString(sal_Int32 nParameterIndex,
         {
             str = str.copy(0, max_varchar_len);
         }
-        const short nLength = str.getLength();
+        const auto nLength = str.getLength();
         memcpy(pVar->sqldata, &nLength, 2);
         // Actual data
         memcpy(pVar->sqldata + 2, str.getStr(), str.getLength());
@@ -219,6 +222,24 @@ void SAL_CALL OPreparedStatement::setString(sal_Int32 nParameterIndex,
         // Fill remainder with spaces
         memset(pVar->sqldata + str.getLength(), ' ', pVar->sqllen - str.getLength());
         break;
+    case SQL_BLOB: // Clob
+        assert( pVar->sqlsubtype == static_cast<short>(BlobSubtype::Clob) );
+        setClob(nParameterIndex, sInput );
+        break;
+    case SQL_SHORT:
+    {
+        sal_Int32 int32Value = sInput.toInt32();
+        if ( (int32Value < std::numeric_limits<sal_Int16>::min()) ||
+             (int32Value > std::numeric_limits<sal_Int16>::max()) )
+        {
+            ::dbtools::throwSQLException(
+                "Value out of range for SQL_SHORT type",
+                ::dbtools::StandardSQLState::INVALID_SQL_DATA_TYPE,
+                *this);
+        }
+        setShort(nParameterIndex, int32Value);
+        break;
+    }
     default:
         ::dbtools::throwSQLException(
             "Incorrect type for setString",
@@ -258,9 +279,13 @@ sal_Bool SAL_CALL OPreparedStatement::execute()
                                        &m_aStatementHandle,
                                        DSQL_close);
         if (aErr)
-            evaluateStatusVector(m_statusVector,
-                                 "isc_dsql_free_statement: close cursor",
-                                 *this);
+        {
+            // Do not throw error. Trying to close a closed cursor is not a
+            // critical mistake.
+            OUString sErrMsg  = StatusVectorToString(m_statusVector,
+                    "isc_dsql_free_statement: close cursor");
+            SAL_WARN("connectivity.firebird", sErrMsg);
+        }
     }
 
     aErr = isc_dsql_execute(m_statusVector,
@@ -325,9 +350,9 @@ sal_Int64 toNumericWithoutDecimalPlace(const OUString& sSource)
         OUStringBuffer sBuffer(15);
         if(nDotIndex > 0)
         {
-            sBuffer.append(sNumber.copy(0, nDotIndex));
+            sBuffer.append(std::u16string_view(sNumber).substr(0, nDotIndex));
         }
-        sBuffer.append(sNumber.copy(nDotIndex + 1));
+        sBuffer.append(std::u16string_view(sNumber).substr(nDotIndex + 1));
         return sBuffer.makeStringAndClear().toInt64();
     }
 }
@@ -341,6 +366,7 @@ void SAL_CALL OPreparedStatement::setNull(sal_Int32 nIndex, sal_Int32 /*nSqlType
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
     ensurePrepared();
 
+    checkParameterIndex(nIndex);
     setParameterNull(nIndex);
 }
 
@@ -350,7 +376,7 @@ void SAL_CALL OPreparedStatement::setBoolean(sal_Int32 nIndex, sal_Bool bValue)
 }
 
 template <typename T>
-void OPreparedStatement::setValue(sal_Int32 nIndex, T& nValue, ISC_SHORT nType)
+void OPreparedStatement::setValue(sal_Int32 nIndex, const T& nValue, ISC_SHORT nType)
 {
     MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
@@ -372,9 +398,11 @@ void OPreparedStatement::setValue(sal_Int32 nIndex, T& nValue, ISC_SHORT nType)
     memcpy(pVar->sqldata, &nValue, sizeof(nValue));
 }
 
-void SAL_CALL OPreparedStatement::setByte(sal_Int32 /*nIndex*/, sal_Int8 /*nValue*/)
+void SAL_CALL OPreparedStatement::setByte(sal_Int32 nIndex, sal_Int8 nValue)
 {
-    ::dbtools::throwFunctionNotSupportedSQLException("XParameters::setByte", *this);
+    // there's no TINYINT or equivalent on Firebird,
+    // so do the same as setShort
+    setValue< sal_Int16 >(nIndex, nValue, SQL_SHORT);
 }
 
 void SAL_CALL OPreparedStatement::setShort(sal_Int32 nIndex, sal_Int16 nValue)
@@ -399,7 +427,52 @@ void SAL_CALL OPreparedStatement::setFloat(sal_Int32 nIndex, float nValue)
 
 void SAL_CALL OPreparedStatement::setDouble(sal_Int32 nIndex, double nValue)
 {
-    setValue< double >(nIndex, nValue, SQL_DOUBLE); // TODO: SQL_D_FLOAT?
+    MutexGuard aGuard( m_aMutex );
+    checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
+    ensurePrepared();
+
+    XSQLVAR* pVar = m_pInSqlda->sqlvar + (nIndex - 1);
+    short dType = (pVar->sqltype & ~1); // drop flag bit for now
+    short dSubType = pVar->sqlsubtype;
+    // Assume it is a sub type of a number.
+    if(dSubType < 0 || dSubType > 2)
+    {
+        ::dbtools::throwSQLException(
+            "Incorrect number sub type",
+            ::dbtools::StandardSQLState::INVALID_SQL_DATA_TYPE,
+            *this);
+    }
+    // firebird stores scale as a negative number
+    ColumnTypeInfo columnType{ dType, dSubType,
+        static_cast<short>(-pVar->sqlscale) };
+
+    // Caller might try to set an integer type here. It makes sense to convert
+    // it instead of throwing an error.
+    switch(columnType.getSdbcType())
+    {
+        case DataType::SMALLINT:
+            setValue< sal_Int16 >(nIndex,
+                    static_cast<sal_Int16>(nValue),
+                    dType);
+            break;
+        case DataType::INTEGER:
+            setValue< sal_Int32 >(nIndex,
+                    static_cast<sal_Int32>(nValue),
+                    dType);
+            break;
+        case DataType::BIGINT:
+            setValue< sal_Int64 >(nIndex,
+                    static_cast<sal_Int64>(nValue),
+                    dType);
+            break;
+        case DataType::NUMERIC:
+        case DataType::DECIMAL:
+            // take decimal places into account, later on they are removed in makeNumericString
+            setObjectWithInfo(nIndex,Any{nValue}, columnType.getSdbcType(), columnType.getScale());
+            break;
+        default:
+            setValue< double >(nIndex, nValue, SQL_DOUBLE); // TODO: SQL_D_FLOAT?
+    }
 }
 
 void SAL_CALL OPreparedStatement::setDate(sal_Int32 nIndex, const Date& rDate)
@@ -425,6 +498,10 @@ void SAL_CALL OPreparedStatement::setTime( sal_Int32 nIndex, const css::util::Ti
     ISC_TIME aISCTime;
     isc_encode_sql_time(&aCTime, &aISCTime);
 
+    // Here we "know" that ISC_TIME is simply in units of seconds/ISC_TIME_SECONDS_PRECISION with no
+    // other funkiness, so we can simply add the fraction of a second.
+    aISCTime += rTime.NanoSeconds / (1000000000 / ISC_TIME_SECONDS_PRECISION);
+
     setValue< ISC_TIME >(nIndex, aISCTime, SQL_TYPE_TIME);
 }
 
@@ -441,11 +518,14 @@ void SAL_CALL OPreparedStatement::setTimestamp(sal_Int32 nIndex, const DateTime&
     ISC_TIMESTAMP aISCTimestamp;
     isc_encode_timestamp(&aCTime, &aISCTimestamp);
 
+    // As in previous function
+    aISCTimestamp.timestamp_time += rTimestamp.NanoSeconds / (1000000000 / ISC_TIME_SECONDS_PRECISION);
+
     setValue< ISC_TIMESTAMP >(nIndex, aISCTimestamp, SQL_TIMESTAMP);
 }
 
 
-// void OPreaparedStatement::set
+// void OPreparedStatement::set
 void OPreparedStatement::openBlobForWriting(isc_blob_handle& rBlobHandle, ISC_QUAD& rBlobId)
 {
     ISC_STATUS aErr;
@@ -472,27 +552,19 @@ void OPreparedStatement::closeBlobAfterWriting(isc_blob_handle& rBlobHandle)
     ISC_STATUS aErr;
 
     aErr = isc_close_blob(m_statusVector,
-                          &rBlobHandle);
+            &rBlobHandle);
     if (aErr)
     {
         evaluateStatusVector(m_statusVector,
-                             "isc_close_blob failed",
-                             *this);
+                "isc_close_blob failed",
+                *this);
         assert(false);
     }
 }
 
-void SAL_CALL OPreparedStatement::setClob( sal_Int32, const Reference< XClob >& )
+void SAL_CALL OPreparedStatement::setClob(sal_Int32 nParameterIndex, const Reference< XClob >& xClob )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
-    checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
-
-}
-
-void SAL_CALL OPreparedStatement::setBlob(sal_Int32 nParameterIndex,
-                                          const Reference< XBlob >& xBlob)
-{
-    ::osl::MutexGuard aGuard(m_aMutex);
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
 
 #if SAL_TYPES_SIZEOFPOINTER == 8
@@ -504,27 +576,122 @@ void SAL_CALL OPreparedStatement::setBlob(sal_Int32 nParameterIndex,
 
     openBlobForWriting(aBlobHandle, aBlobId);
 
-    // Max segment size is 2^16 == SAL_MAX_UINT16
-    // LEM TODO: SAL_MAX_UINT16 is 2^16-1; this mixup is probably innocuous; to be checked
-    sal_uInt64 nDataWritten = 0;
-    ISC_STATUS aErr = 0;
-    while (xBlob->length() - nDataWritten > 0)
-    {
-        sal_uInt64 nDataRemaining = xBlob->length() - nDataWritten;
-        sal_uInt16 nWriteSize = (nDataRemaining > SAL_MAX_UINT16) ? SAL_MAX_UINT16 : nDataRemaining;
-        aErr = isc_put_segment(m_statusVector,
-                               &aBlobHandle,
-                               nWriteSize,
-                               reinterpret_cast<const char*>(xBlob->getBytes(nDataWritten, nWriteSize).getConstArray()));
-        nDataWritten += nWriteSize;
 
+    // Max segment size is 2^16 == SAL_MAX_UINT16
+    // SAL_MAX_UINT16 / 4 is surely enough for UTF-8
+    // TODO apply max segment size to character encoding
+    sal_Int64 nCharWritten = 1; // XClob is indexed from 1
+    ISC_STATUS aErr = 0;
+    sal_Int64 nLen = xClob->length();
+    while ( nLen > nCharWritten )
+    {
+        sal_Int64 nCharRemain = nLen - nCharWritten;
+        constexpr sal_uInt16 MAX_SIZE = SAL_MAX_UINT16 / 4;
+        sal_uInt16 nWriteSize = std::min<sal_Int64>(nCharRemain, MAX_SIZE);
+        OString sData = OUStringToOString(
+                xClob->getSubString(nCharWritten, nWriteSize),
+                RTL_TEXTENCODING_UTF8);
+        aErr = isc_put_segment( m_statusVector,
+                &aBlobHandle,
+                sData.getLength(),
+                sData.getStr() );
+        nCharWritten += nWriteSize;
 
         if (aErr)
             break;
-
     }
 
-    // We need to make sure we close the Blob even if their are errors, hence evaluate
+    // We need to make sure we close the Blob even if there are errors, hence evaluate
+    // errors after closing.
+    closeBlobAfterWriting(aBlobHandle);
+
+    if (aErr)
+    {
+        evaluateStatusVector(m_statusVector,
+                "isc_put_segment failed",
+                *this);
+        assert(false);
+    }
+
+    setValue< ISC_QUAD >(nParameterIndex, aBlobId, SQL_BLOB);
+}
+
+void OPreparedStatement::setClob( sal_Int32 nParameterIndex, const OUString& rStr )
+{
+    ::osl::MutexGuard aGuard( m_aMutex );
+    checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
+    checkParameterIndex(nParameterIndex);
+
+#if SAL_TYPES_SIZEOFPOINTER == 8
+    isc_blob_handle aBlobHandle = 0;
+#else
+    isc_blob_handle aBlobHandle = nullptr;
+#endif
+    ISC_QUAD aBlobId;
+
+    openBlobForWriting(aBlobHandle, aBlobId);
+
+    OString sData = OUStringToOString(
+            rStr,
+            RTL_TEXTENCODING_UTF8);
+    ISC_STATUS aErr = isc_put_segment( m_statusVector,
+                            &aBlobHandle,
+                            sData.getLength(),
+                            sData.getStr() );
+
+    // We need to make sure we close the Blob even if there are errors, hence evaluate
+    // errors after closing.
+    closeBlobAfterWriting(aBlobHandle);
+
+    if (aErr)
+    {
+        evaluateStatusVector(m_statusVector,
+                             "isc_put_segment failed",
+                             *this);
+        assert(false);
+    }
+
+    setValue< ISC_QUAD >(nParameterIndex, aBlobId, SQL_BLOB);
+}
+
+void SAL_CALL OPreparedStatement::setBlob(sal_Int32 nParameterIndex,
+                                          const Reference< XBlob >& xBlob)
+{
+    ::osl::MutexGuard aGuard(m_aMutex);
+    checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
+    checkParameterIndex(nParameterIndex);
+
+#if SAL_TYPES_SIZEOFPOINTER == 8
+    isc_blob_handle aBlobHandle = 0;
+#else
+    isc_blob_handle aBlobHandle = nullptr;
+#endif
+    ISC_QUAD aBlobId;
+
+    openBlobForWriting(aBlobHandle, aBlobId);
+
+    ISC_STATUS aErr = 0;
+    const sal_Int64 nBlobLen = xBlob->length();
+    if (nBlobLen > 0)
+    {
+        // Max write size is 0xFFFF == SAL_MAX_UINT16
+        sal_uInt64 nDataWritten = 0;
+        while (sal::static_int_cast<sal_uInt64>(nBlobLen) > nDataWritten)
+        {
+            sal_uInt64 nDataRemaining = nBlobLen - nDataWritten;
+            sal_uInt16 nWriteSize = std::min(nDataRemaining, sal_uInt64(SAL_MAX_UINT16));
+            aErr = isc_put_segment(m_statusVector,
+                                   &aBlobHandle,
+                                   nWriteSize,
+                                   reinterpret_cast<const char*>(xBlob->getBytes(nDataWritten, nWriteSize).getConstArray()));
+            nDataWritten += nWriteSize;
+
+            if (aErr)
+                break;
+        }
+    }
+
+    // We need to make sure we close the Blob even if there are errors, hence evaluate
     // errors after closing.
     closeBlobAfterWriting(aBlobHandle);
 
@@ -540,19 +707,19 @@ void SAL_CALL OPreparedStatement::setBlob(sal_Int32 nParameterIndex,
 }
 
 
-void SAL_CALL OPreparedStatement::setArray( sal_Int32, const Reference< XArray >& )
+void SAL_CALL OPreparedStatement::setArray( sal_Int32 nIndex, const Reference< XArray >& )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
-
+    checkParameterIndex(nIndex);
 }
 
 
-void SAL_CALL OPreparedStatement::setRef( sal_Int32, const Reference< XRef >& )
+void SAL_CALL OPreparedStatement::setRef( sal_Int32 nIndex, const Reference< XRef >& )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
-
+    checkParameterIndex(nIndex);
 }
 
 
@@ -570,25 +737,26 @@ void SAL_CALL OPreparedStatement::setObjectWithInfo( sal_Int32 parameterIndex, c
 
     if(sqlType == DataType::DECIMAL || sqlType == DataType::NUMERIC)
     {
-        double myDouble=0.0;
-        OUString myString;
-        if( x >>= myDouble )
+        double dbValue =0.0;
+        OUString sValue;
+        if( x >>= dbValue )
         {
-            myString = OUString::number( myDouble );
+            // truncate and round to 'scale' number of decimal places
+            sValue = OUString::number( std::floor((dbValue * pow10Integer(scale)) + .5) / pow10Integer(scale) );
         }
         else
         {
-            x >>= myString;
+            x >>= sValue;
         }
 
         // fill in the number with nulls in fractional part.
         // We need this because  e.g. 0.450 != 0.045 despite
         // their scale is equal
         OUStringBuffer sBuffer(15);
-        sBuffer.append(myString);
-        if(myString.indexOf('.') != -1) // there is a dot
+        sBuffer.append(sValue);
+        if(sValue.indexOf('.') != -1) // there is a dot
         {
-            for(sal_Int32 i=myString.copy(myString.indexOf('.')+1).getLength(); i<scale;i++)
+            for(sal_Int32 i=sValue.copy(sValue.indexOf('.')+1).getLength(); i<scale;i++)
             {
                 sBuffer.append('0');
             }
@@ -600,30 +768,24 @@ void SAL_CALL OPreparedStatement::setObjectWithInfo( sal_Int32 parameterIndex, c
                 sBuffer.append('0');
             }
         }
-        myString = sBuffer.makeStringAndClear();
-        // set value depending on type
-        sal_Int16 n16Value = 0;
-        sal_Int32 n32Value = 0;
-        sal_Int64 n64Value = 0;
+
+        sValue = sBuffer.makeStringAndClear();
         switch(dType)
         {
             case SQL_SHORT:
-                n16Value = (sal_Int16) toNumericWithoutDecimalPlace(myString);
                 setValue< sal_Int16 >(parameterIndex,
-                        n16Value,
+                        static_cast<sal_Int16>( toNumericWithoutDecimalPlace(sValue) ),
                         dType);
                 break;
             case SQL_LONG:
-            case SQL_DOUBLE: // TODO FIXME 32 bits
-                n32Value = (sal_Int32) toNumericWithoutDecimalPlace(myString);
+            case SQL_DOUBLE:
                 setValue< sal_Int32 >(parameterIndex,
-                        n32Value,
+                        static_cast<sal_Int32>( toNumericWithoutDecimalPlace(sValue) ),
                         dType);
                 break;
             case SQL_INT64:
-                n64Value = toNumericWithoutDecimalPlace(myString);
                 setValue< sal_Int64 >(parameterIndex,
-                        n64Value,
+                        toNumericWithoutDecimalPlace(sValue),
                         dType);
                 break;
             default:
@@ -640,19 +802,19 @@ void SAL_CALL OPreparedStatement::setObjectWithInfo( sal_Int32 parameterIndex, c
 }
 
 
-void SAL_CALL OPreparedStatement::setObjectNull( sal_Int32, sal_Int32, const ::rtl::OUString& )
+void SAL_CALL OPreparedStatement::setObjectNull( sal_Int32 nIndex, sal_Int32, const OUString& )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
-
+    checkParameterIndex(nIndex);
 }
 
 
-void SAL_CALL OPreparedStatement::setObject( sal_Int32, const Any& )
+void SAL_CALL OPreparedStatement::setObject( sal_Int32 nIndex, const Any& )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
-
+    checkParameterIndex(nIndex);
 }
 
 void SAL_CALL OPreparedStatement::setBytes(sal_Int32 nParameterIndex,
@@ -660,62 +822,109 @@ void SAL_CALL OPreparedStatement::setBytes(sal_Int32 nParameterIndex,
 {
     ::osl::MutexGuard aGuard(m_aMutex);
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
+    checkParameterIndex(nParameterIndex);
 
-#if SAL_TYPES_SIZEOFPOINTER == 8
-    isc_blob_handle aBlobHandle = 0;
-#else
-    isc_blob_handle aBlobHandle = nullptr;
-#endif
-    ISC_QUAD aBlobId;
+    XSQLVAR* pVar = m_pInSqlda->sqlvar + (nParameterIndex - 1);
+    int dType = (pVar->sqltype & ~1); // drop flag bit for now
 
-    openBlobForWriting(aBlobHandle, aBlobId);
-
-    // Max segment size is 2^16 == SAL_MAX_UINT16
-    sal_uInt64 nDataWritten = 0;
-    ISC_STATUS aErr = 0;
-    while (xBytes.getLength() - nDataWritten > 0)
+    if( dType == SQL_BLOB )
     {
-        sal_uInt64 nDataRemaining = xBytes.getLength() - nDataWritten;
-        sal_uInt16 nWriteSize = (nDataRemaining > SAL_MAX_UINT16) ? SAL_MAX_UINT16 : nDataRemaining;
-        aErr = isc_put_segment(m_statusVector,
-                               &aBlobHandle,
-                               nWriteSize,
-                               reinterpret_cast<const char*>(xBytes.getConstArray()) + nDataWritten);
-        nDataWritten += nWriteSize;
+#if SAL_TYPES_SIZEOFPOINTER == 8
+        isc_blob_handle aBlobHandle = 0;
+#else
+        isc_blob_handle aBlobHandle = nullptr;
+#endif
+        ISC_QUAD aBlobId;
+
+        openBlobForWriting(aBlobHandle, aBlobId);
+
+        ISC_STATUS aErr = 0;
+        const sal_Int32 nBytesLen = xBytes.getLength();
+        if (nBytesLen > 0)
+        {
+            // Max write size is 0xFFFF == SAL_MAX_UINT16
+            sal_uInt32 nDataWritten = 0;
+            while (sal::static_int_cast<sal_uInt32>(nBytesLen) > nDataWritten)
+            {
+                sal_uInt32 nDataRemaining = nBytesLen - nDataWritten;
+                sal_uInt16 nWriteSize = std::min(nDataRemaining, sal_uInt32(SAL_MAX_UINT16));
+                aErr = isc_put_segment(m_statusVector,
+                                       &aBlobHandle,
+                                       nWriteSize,
+                                       reinterpret_cast<const char*>(xBytes.getConstArray()) + nDataWritten);
+                nDataWritten += nWriteSize;
+
+                if (aErr)
+                    break;
+            }
+        }
+
+        // We need to make sure we close the Blob even if there are errors, hence evaluate
+        // errors after closing.
+        closeBlobAfterWriting(aBlobHandle);
 
         if (aErr)
-            break;
+        {
+            evaluateStatusVector(m_statusVector,
+                                 "isc_put_segment failed",
+                                 *this);
+            assert(false);
+        }
+
+        setValue< ISC_QUAD >(nParameterIndex, aBlobId, SQL_BLOB);
     }
-
-    // We need to make sure we close the Blob even if their are errors, hence evaluate
-    // errors after closing.
-    closeBlobAfterWriting(aBlobHandle);
-
-    if (aErr)
+    else if( dType == SQL_VARYING )
     {
-        evaluateStatusVector(m_statusVector,
-                             "isc_put_segment failed",
-                             *this);
-        assert(false);
+            setParameterNull(nParameterIndex, false);
+            const sal_Int32 nMaxSize = 0xFFFF;
+            Sequence<sal_Int8> xBytesCopy(xBytes);
+            if (xBytesCopy.getLength() > nMaxSize)
+            {
+                xBytesCopy.realloc( nMaxSize );
+            }
+            const auto nSize = xBytesCopy.getLength();
+            // 8000 corresponds to value from lcl_addDefaultParameters
+            // in dbaccess/source/filter/hsqldb/createparser.cxx
+            if (nSize > 8000)
+            {
+                free(pVar->sqldata);
+                pVar->sqldata = static_cast<char *>(malloc(sizeof(char) * nSize + 2));
+            }
+            // First 2 bytes indicate string size
+            memcpy(pVar->sqldata, &nSize, 2);
+            // Actual data
+            memcpy(pVar->sqldata + 2, xBytesCopy.getConstArray(), nSize);
     }
-
-    setValue< ISC_QUAD >(nParameterIndex, aBlobId, SQL_BLOB);
+    else if( dType == SQL_TEXT )
+    {
+            setParameterNull(nParameterIndex, false);
+            memcpy(pVar->sqldata, xBytes.getConstArray(), xBytes.getLength() );
+            // Fill remainder with spaces
+            memset(pVar->sqldata + xBytes.getLength(), 0, pVar->sqllen - xBytes.getLength());
+    }
+    else
+    {
+        ::dbtools::throwSQLException(
+            "Incorrect type for setBytes",
+            ::dbtools::StandardSQLState::INVALID_SQL_DATA_TYPE,
+            *this);
+    }
 }
 
 
-void SAL_CALL OPreparedStatement::setCharacterStream( sal_Int32, const Reference< css::io::XInputStream >&, sal_Int32 )
+void SAL_CALL OPreparedStatement::setCharacterStream( sal_Int32 nIndex, const Reference< css::io::XInputStream >&, sal_Int32 )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
-
+    checkParameterIndex(nIndex);
 }
 
 
-void SAL_CALL OPreparedStatement::setBinaryStream( sal_Int32, const Reference< css::io::XInputStream >&, sal_Int32 )
+void SAL_CALL OPreparedStatement::setBinaryStream( sal_Int32 nIndex, const Reference< css::io::XInputStream >&, sal_Int32 )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
-
+    checkParameterIndex(nIndex);
 }
 
 

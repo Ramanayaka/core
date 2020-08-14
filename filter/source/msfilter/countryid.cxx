@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "filter/msfilter/countryid.hxx"
+#include <filter/msfilter/countryid.hxx>
 
 #include <algorithm>
 #include <sal/macros.h>
@@ -71,7 +71,7 @@ struct CountryEntry
 
     For now all entries are sorted by country ID, but this is not required.
  */
-static const CountryEntry pTable[] =
+const CountryEntry pTable[] =
 {
     { COUNTRY_USA,                  LANGUAGE_ENGLISH_US,                    false   },
     { COUNTRY_DOMINICAN_REPUBLIC,   LANGUAGE_SPANISH_DOMINICAN_REPUBLIC,    true    },
@@ -121,7 +121,7 @@ static const CountryEntry pTable[] =
     { COUNTRY_GERMANY,              LANGUAGE_SORBIAN,                       false   },
     { COUNTRY_PERU,                 LANGUAGE_SPANISH_PERU,                  true    },
     { COUNTRY_MEXICO,               LANGUAGE_SPANISH_MEXICAN,               true    },
-    { COUNTRY_ARGENTINIA,           LANGUAGE_SPANISH_ARGENTINA,             true    },
+    { COUNTRY_ARGENTINA,            LANGUAGE_SPANISH_ARGENTINA,             true    },
     { COUNTRY_BRAZIL,               LANGUAGE_PORTUGUESE_BRAZILIAN,          true    },
     { COUNTRY_CHILE,                LANGUAGE_SPANISH_CHILE,                 true    },
     { COUNTRY_COLOMBIA,             LANGUAGE_SPANISH_COLOMBIA,              true    },
@@ -268,10 +268,10 @@ struct CountryEntryPred_Language
     explicit             CountryEntryPred_Language( LanguageType eLanguage ) :
                                     meLanguage( eLanguage ) {}
 
-    inline bool                 operator()( const CountryEntry& rCmp ) const;
+    bool                 operator()( const CountryEntry& rCmp ) const;
 };
 
-inline bool CountryEntryPred_Language::operator()( const CountryEntry& rCmp ) const
+bool CountryEntryPred_Language::operator()( const CountryEntry& rCmp ) const
 {
     //  rCmp.mbUseSubLang==true  -> compare full language type
     //  rCmp.mbUseSubLang==false -> compare primary language only

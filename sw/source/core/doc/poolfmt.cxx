@@ -17,59 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <memory>
 #include <hintids.hxx>
 #include <i18nlangtag/mslangid.hxx>
-#include <unotools/localedatawrapper.hxx>
-#include <editeng/paperinf.hxx>
-#include <editeng/wghtitem.hxx>
-#include <editeng/fontitem.hxx>
-#include <editeng/fhgtitem.hxx>
-#include <editeng/tstpitem.hxx>
-#include <editeng/lrspitem.hxx>
-#include <editeng/ulspitem.hxx>
-#include <editeng/lspcitem.hxx>
-#include <editeng/adjustitem.hxx>
-#include <editeng/postitem.hxx>
-#include <editeng/keepitem.hxx>
-#include <editeng/opaqitem.hxx>
 #include <editeng/boxitem.hxx>
-#include <editeng/cmapitem.hxx>
-#include <editeng/udlnitem.hxx>
-#include <editeng/colritem.hxx>
-#include <editeng/protitem.hxx>
-#include <editeng/escapementitem.hxx>
-#include <editeng/langitem.hxx>
-#include <editeng/charrotateitem.hxx>
 #include <editeng/frmdiritem.hxx>
-#include <editeng/emphasismarkitem.hxx>
-#include <editeng/scriptspaceitem.hxx>
-#include <viewopt.hxx>
+#include <osl/diagnose.h>
 #include <doc.hxx>
-#include <IDocumentUndoRedo.hxx>
-#include <DocumentSettingManager.hxx>
 #include <IDocumentState.hxx>
 #include <IDocumentStylePoolAccess.hxx>
-#include <fmtanchr.hxx>
-#include <fmtornt.hxx>
-#include <fmtsrnd.hxx>
-#include <fmtfsize.hxx>
 #include <poolfmt.hxx>
-#include <paratr.hxx>
 #include <pagedesc.hxx>
-#include <frmtool.hxx>
-#include <charfmt.hxx>
-#include <docary.hxx>
 #include <fmtcol.hxx>
-#include <ndtxt.hxx>
-#include <fmtline.hxx>
-#include <poolfmt.hrc>
-#include <GetMetricVal.hxx>
 #include <numrule.hxx>
 #include <swtable.hxx>
 #include <tblafmt.hxx>
-#include <svx/xdef.hxx>
-#include <svx/xfillit0.hxx>
+#include <hints.hxx>
 
 using namespace ::editeng;
 using namespace ::com::sun::star;
@@ -103,15 +65,9 @@ void SetAllScriptItem( SfxItemSet& rSet, const SfxPoolItem& rItem )
     }
 
     if( nWhCJK )
-    {
-        std::unique_ptr<SfxPoolItem> pNewItem(rItem.CloneSetWhich(nWhCJK));
-        rSet.Put( *pNewItem );
-    }
+        rSet.Put( rItem.CloneSetWhich(nWhCJK) );
     if( nWhCTL )
-    {
-        std::unique_ptr<SfxPoolItem> pNewItem(rItem.CloneSetWhich(nWhCTL));
-        rSet.Put( *pNewItem );
-    }
+        rSet.Put( rItem.CloneSetWhich(nWhCTL) );
 }
 
 /// Return the AutoCollection by its Id. If it doesn't
@@ -151,7 +107,8 @@ bool SwDoc::IsUsed( const SwTableAutoFormat& rTableAutoFormat) const
 bool SwDoc::IsUsed( const SwNumRule& rRule )
 {
     bool bUsed = rRule.GetTextNodeListSize() > 0 ||
-                     rRule.GetParagraphStyleListSize() > 0;
+                     rRule.GetParagraphStyleListSize() > 0 ||
+                     rRule.IsUsedByRedline();
 
     return bUsed;
 }
@@ -164,7 +121,7 @@ const OUString* SwDoc::GetDocPattern(size_t const nPos) const
 }
 
 // Look for the style name's position. If it doesn't exist,
-// insert a anew
+// insert an anew
 size_t SwDoc::SetDocPattern(const OUString& rPatternName)
 {
     OSL_ENSURE( !rPatternName.isEmpty(), "no Document style name" );
@@ -238,11 +195,11 @@ sal_uInt16 GetPoolParent( sal_uInt16 nId )
         case COLL_LISTS_BITS:
             switch( nId )
             {
-            case RES_POOLCOLL_NUMBUL_BASE:
+            case RES_POOLCOLL_NUMBER_BULLET_BASE:
                     nRet = RES_POOLCOLL_TEXT;                   break;
 
             default:
-                nRet = RES_POOLCOLL_NUMBUL_BASE;                break;
+                nRet = RES_POOLCOLL_NUMBER_BULLET_BASE;                break;
             }
             break;
 
@@ -250,7 +207,7 @@ sal_uInt16 GetPoolParent( sal_uInt16 nId )
             switch( nId )
             {
             case RES_POOLCOLL_TABLE_HDLN:
-                    nRet = RES_POOLCOLL_TABLE;                  break;
+                    nRet = RES_POOLCOLL_TABLE;                 break;
 
             case RES_POOLCOLL_FRAME:
             case RES_POOLCOLL_TABLE:
@@ -258,19 +215,25 @@ sal_uInt16 GetPoolParent( sal_uInt16 nId )
             case RES_POOLCOLL_ENDNOTE:
             case RES_POOLCOLL_JAKETADRESS:
             case RES_POOLCOLL_SENDADRESS:
+            case RES_POOLCOLL_HEADERFOOTER:
+            case RES_POOLCOLL_LABEL:
+                    nRet = RES_POOLCOLL_STANDARD;              break;        
             case RES_POOLCOLL_HEADER:
+                    nRet = RES_POOLCOLL_HEADERFOOTER;          break;
             case RES_POOLCOLL_HEADERL:
             case RES_POOLCOLL_HEADERR:
+                    nRet = RES_POOLCOLL_HEADER;                break;
             case RES_POOLCOLL_FOOTER:
+                    nRet = RES_POOLCOLL_HEADERFOOTER;          break;
             case RES_POOLCOLL_FOOTERL:
             case RES_POOLCOLL_FOOTERR:
-            case RES_POOLCOLL_LABEL:
-                    nRet = RES_POOLCOLL_STANDARD;               break;
+                    nRet = RES_POOLCOLL_FOOTER;                break;
 
             case RES_POOLCOLL_LABEL_ABB:
             case RES_POOLCOLL_LABEL_TABLE:
             case RES_POOLCOLL_LABEL_FRAME:
             case RES_POOLCOLL_LABEL_DRAWING:
+            case RES_POOLCOLL_LABEL_FIGURE:
                     nRet = RES_POOLCOLL_LABEL;                  break;
             }
             break;
@@ -281,14 +244,16 @@ sal_uInt16 GetPoolParent( sal_uInt16 nId )
             case RES_POOLCOLL_REGISTER_BASE:
                     nRet = RES_POOLCOLL_STANDARD;               break;
 
+            case RES_POOLCOLL_TOX_IDXH:
+                    nRet = RES_POOLCOLL_HEADLINE_BASE;          break;
+
             case RES_POOLCOLL_TOX_USERH:
             case RES_POOLCOLL_TOX_CNTNTH:
-            case RES_POOLCOLL_TOX_IDXH:
             case RES_POOLCOLL_TOX_ILLUSH:
             case RES_POOLCOLL_TOX_OBJECTH:
             case RES_POOLCOLL_TOX_TABLESH:
             case RES_POOLCOLL_TOX_AUTHORITIESH:
-                    nRet = RES_POOLCOLL_HEADLINE_BASE;          break;
+                    nRet = RES_POOLCOLL_TOX_IDXH;               break;
 
             default:
                     nRet = RES_POOLCOLL_REGISTER_BASE;          break;
@@ -310,7 +275,7 @@ sal_uInt16 GetPoolParent( sal_uInt16 nId )
 
 void SwDoc::RemoveAllFormatLanguageDependencies()
 {
-    /* Restore the language independ pool defaults and styles. */
+    /* Restore the language independent pool defaults and styles. */
     GetAttrPool().ResetPoolDefaultItem( RES_PARATR_ADJUST );
 
     SwTextFormatColl * pTextFormatColl = getIDocumentStylePoolAccess().GetTextCollFromPool( RES_POOLCOLL_STANDARD );

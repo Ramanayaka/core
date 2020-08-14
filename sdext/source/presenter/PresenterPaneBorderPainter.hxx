@@ -23,15 +23,12 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/drawing/framework/XPaneBorderPainter.hpp>
-#include <com/sun/star/graphic/XGraphicProvider.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
-#include <com/sun/star/util/XMacroExpander.hpp>
-#include <com/sun/star/awt/XGraphics.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <memory>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 class PresenterPane;
 class PresenterTheme;
@@ -134,7 +131,7 @@ private:
     void ThrowIfDisposed() const;
 };
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 #endif
 

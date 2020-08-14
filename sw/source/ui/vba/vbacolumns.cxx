@@ -18,15 +18,12 @@
  */
 #include "vbacolumns.hxx"
 #include "vbacolumn.hxx"
-#include <com/sun/star/text/HoriOrientation.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
-#include <ooo/vba/word/WdConstants.hpp>
-#include <ooo/vba/word/WdRulerStyle.hpp>
-#include "wordvbahelper.hxx"
 #include "vbatablehelper.hxx"
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
+
+namespace {
 
 class ColumnsEnumWrapper : public EnumerationHelper_BASE
 {
@@ -39,7 +36,7 @@ class ColumnsEnumWrapper : public EnumerationHelper_BASE
 public:
     ColumnsEnumWrapper( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< text::XTextTable >& xTextTable ) : mxParent( xParent ), mxContext( xContext ), mxTextTable( xTextTable ), nIndex( 0 )
     {
-        mxIndexAccess.set( mxTextTable->getColumns(), uno::UNO_QUERY );
+        mxIndexAccess = mxTextTable->getColumns();
     }
     virtual sal_Bool SAL_CALL hasMoreElements(  ) override
     {
@@ -55,6 +52,8 @@ public:
         throw container::NoSuchElementException();
     }
 };
+
+}
 
 SwVbaColumns::SwVbaColumns( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< text::XTextTable >& xTextTable, const uno::Reference< table::XTableColumns >& xTableColumns ) : SwVbaColumns_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >( xTableColumns, uno::UNO_QUERY_THROW ) ), mxTextTable( xTextTable )
 {
@@ -100,7 +99,7 @@ void SAL_CALL SwVbaColumns::Select(  )
 uno::Any SAL_CALL SwVbaColumns::Item( const uno::Any& Index1, const uno::Any& /*not processed in this base class*/ )
 {
     sal_Int32 nIndex = 0;
-    if( ( Index1 >>= nIndex ) )
+    if( Index1 >>= nIndex )
     {
         if( nIndex <= 0 || nIndex > getCount() )
         {
@@ -132,18 +131,16 @@ SwVbaColumns::createCollectionObject( const uno::Any& aSource )
 OUString
 SwVbaColumns::getServiceImplName()
 {
-    return OUString("SwVbaColumns");
+    return "SwVbaColumns";
 }
 
 uno::Sequence<OUString>
 SwVbaColumns::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Columns";
-    }
+        "ooo.vba.word.Columns"
+    };
     return sNames;
 }
 

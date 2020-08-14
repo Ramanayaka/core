@@ -19,12 +19,12 @@
 #include "tabvwsh.hxx"
 
 template <sal_Int16 WindowID>
-class ChildWindowWrapper : public SfxChildWindow
+class ChildControllerWrapper : public SfxChildWindow
 {
 public:
-    ChildWindowWrapper( vcl::Window* pParentP, sal_uInt16 nId,
-                  SfxBindings* pBindings, SfxChildWinInfo* pInfo ) :
-        SfxChildWindow(pParentP, nId)
+    ChildControllerWrapper(vcl::Window* pParentP, sal_uInt16 nId,
+                           SfxBindings* pBindings, const SfxChildWinInfo* pInfo)
+        : SfxChildWindow(pParentP, nId)
     {
         ScTabViewShell* pViewShell = getTabViewShell( pBindings );
         if (!pViewShell)
@@ -32,20 +32,17 @@ public:
         OSL_ENSURE(pViewShell, "Missing view shell!");
 
         if (pViewShell)
-            SetWindow( pViewShell->CreateRefDialog( pBindings, this, pInfo, pParentP, WindowID ) );
-        else
-            SetWindow( nullptr );
+            SetController(pViewShell->CreateRefDialogController(pBindings, this, pInfo, pParentP->GetFrameWeld(), WindowID));
 
-        if (pViewShell && !GetWindow())
+        if (pViewShell && !GetController())
             pViewShell->GetViewFrame()->SetChildWindow( nId, false );
     }
 
-    static SfxChildWindow* CreateImpl(
+    static std::unique_ptr<SfxChildWindow> CreateImpl(
                 vcl::Window *pParent, sal_uInt16 nId,
                 SfxBindings *pBindings, SfxChildWinInfo* pInfo )
     {
-        SfxChildWindow* pWindow = new ChildWindowWrapper(pParent, nId, pBindings, pInfo);
-        return pWindow;
+        return std::make_unique<ChildControllerWrapper>(pParent, nId, pBindings, pInfo);
     }
 
     static void RegisterChildWindow (
@@ -53,17 +50,10 @@ public:
                     SfxModule* pModule  = nullptr,
                     SfxChildWindowFlags nFlags = SfxChildWindowFlags::NONE)
     {
-        SfxChildWinFactory* pFactory = new SfxChildWinFactory(ChildWindowWrapper::CreateImpl, WindowID, CHILDWIN_NOPOS );
+        auto pFactory = std::make_unique<SfxChildWinFactory>(ChildControllerWrapper::CreateImpl, WindowID, CHILDWIN_NOPOS );
         pFactory->aInfo.nFlags |= nFlags;
         pFactory->aInfo.bVisible = bVisible;
-        SfxChildWindow::RegisterChildWindow(pModule, pFactory);
-    }
-
-    virtual SfxChildWinInfo GetInfo() const override
-    {
-        SfxChildWinInfo aInfo = SfxChildWindow::GetInfo();
-        static_cast<SfxModelessDialog*>(GetWindow())->FillInfo( aInfo );
-        return aInfo;
+        SfxChildWindow::RegisterChildWindow(pModule, std::move(pFactory));
     }
 
     static sal_uInt16 GetChildWindowId()
@@ -72,7 +62,7 @@ public:
     }
 
 private:
-    static ScTabViewShell* getTabViewShell( SfxBindings *pBindings )
+    static ScTabViewShell* getTabViewShell( const SfxBindings *pBindings )
     {
         if( !pBindings )
             return nullptr;

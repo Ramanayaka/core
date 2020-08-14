@@ -20,16 +20,20 @@
 #ifndef INCLUDED_FRAMEWORK_FRAMELISTANALYZER_HXX
 #define INCLUDED_FRAMEWORK_FRAMELISTANALYZER_HXX
 
-#include <com/sun/star/frame/XFrame.hpp>
-#include <framework/fwedllapi.h>
+#include <config_options.h>
+#include <framework/fwkdllapi.h>
 #include <o3tl/typed_flags_set.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <vector>
+
+namespace com::sun::star::frame { class XFrame; }
+namespace com::sun::star::frame { class XFramesSupplier; }
 
 /** These enums can be combined as flags to enable/disable
     special search algorithm during analyze phase.
     see impl_analyze() for further information.
-    But note: To be useable as flags, these enums
+    But note: To be usable as flags, these enums
     must be values of range [2^n]! */
 enum class FrameAnalyzerFlags
 {
@@ -54,7 +58,7 @@ namespace framework{
     to switch into the backing mode, close the current active frame only or
     exit the whole application explicitly or implicitly.
  */
-class FWE_DLLPUBLIC FrameListAnalyzer final
+class UNLESS_MERGELIBS(FWK_DLLPUBLIC) FrameListAnalyzer final
 {
 
     // types

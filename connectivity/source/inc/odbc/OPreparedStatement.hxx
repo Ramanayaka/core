@@ -20,8 +20,8 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ODBC_OPREPAREDSTATEMENT_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ODBC_OPREPAREDSTATEMENT_HXX
 
-#include "odbc/odbcbasedllapi.hxx"
-#include "odbc/OStatement.hxx"
+#include <odbc/odbcbasedllapi.hxx>
+#include <odbc/OStatement.hxx>
 #include <com/sun/star/sdbc/XPreparedStatement.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
@@ -29,9 +29,7 @@
 #include <com/sun/star/io/XInputStream.hpp>
 #include <cppuhelper/implbase5.hxx>
 
-namespace connectivity
-{
-    namespace odbc
+namespace connectivity::odbc
     {
 
         class OBoundParam;
@@ -41,18 +39,17 @@ namespace connectivity
                                         css::sdbc::XResultSetMetaDataSupplier,
                                         css::lang::XServiceInfo> OPreparedStatement_BASE;
 
-        class OOO_DLLPUBLIC_ODBCBASE OPreparedStatement :
+        class OOO_DLLPUBLIC_ODBCBASE OPreparedStatement final :
                                     public  OStatement_BASE2,
                                     public  OPreparedStatement_BASE
         {
-        protected:
             static const short invalid_scale = -1;
 
             // Data attributes
 
             SQLSMALLINT     numParams;      // Number of parameter markers for the prepared statement
 
-            OBoundParam*    boundParams;
+            std::unique_ptr<OBoundParam[]>  boundParams;
                             // Array of bound parameter objects. Each parameter marker will have a
                             // corresponding object to hold bind information, and resulting data.
             css::uno::Reference< css::sdbc::XResultSetMetaData >  m_xMetaData;
@@ -87,13 +84,15 @@ namespace connectivity
             */
             virtual OResultSet* createResulSet() override;
 
-        protected:
             virtual void SAL_CALL setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,
                                                                    const css::uno::Any& rValue) override;
         public:
             DECLARE_SERVICE_INFO();
             // A ctor, needed to return the object
             OPreparedStatement( OConnection* _pConnection,const OUString& sql);
+            virtual ~OPreparedStatement() override;
+            OPreparedStatement& operator=( OPreparedStatement const & ) = delete; // MSVC2015 workaround
+            OPreparedStatement( OPreparedStatement const & ) = delete; // MSVC2015 workaround
 
             //XInterface
             virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
@@ -145,7 +144,7 @@ namespace connectivity
             using OStatement_Base::executeUpdate;
             using OStatement_Base::execute;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ODBC_OPREPAREDSTATEMENT_HXX
 

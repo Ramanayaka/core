@@ -18,15 +18,9 @@
  */
 
 #include <accelerators/acceleratorconfiguration.hxx>
-#include <accelerators/presethandler.hxx>
-#include "helper/mischelper.hxx"
+#include <helper/mischelper.hxx>
 
-#include <acceleratorconst.h>
-
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/embed/ElementModes.hpp>
 
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/sequenceashashmap.hxx>
@@ -35,7 +29,6 @@
 #include <com/sun/star/util/XChangesNotifier.hpp>
 
 #include <cppuhelper/implbase.hxx>
-#include <rtl/ref.hxx>
 
 using namespace framework;
 
@@ -55,14 +48,13 @@ private:
     /** identify the application module, where this accelerator
         configuration cache should work on. */
     OUString m_sModule;
-    OUString m_sLocale;
 
 public:
 
     /** initialize this instance and fill the internal cache.
 
         @param  xSMGR
-                reference to an uno service manager, which is used internally.
+                reference to a uno service manager, which is used internally.
      */
     ModuleAcceleratorConfiguration(
             const css::uno::Reference< css::uno::XComponentContext >& xContext,
@@ -70,7 +62,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.ModuleAcceleratorConfiguration");
+        return "com.sun.star.comp.framework.ModuleAcceleratorConfiguration";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -84,7 +76,7 @@ public:
     }
 
     /// This has to be called after when the instance is acquire()'d.
-    void SAL_CALL fillCache();
+    void fillCache();
 
 private:
     /** helper to listen for configuration changes without ownership cycle problems */
@@ -106,7 +98,7 @@ ModuleAcceleratorConfiguration::ModuleAcceleratorConfiguration(
     {
         ::comphelper::SequenceAsHashMap lArgs(lArguments);
         m_sModule = lArgs.getUnpackedValueOrDefault("ModuleIdentifier", OUString());
-        m_sLocale = lArgs.getUnpackedValueOrDefault("Locale", OUString("x-default"));
+        // OUString sLocale = lArgs.getUnpackedValueOrDefault("Locale", OUString("x-default"));
     }
 
     if (m_sModule.isEmpty())
@@ -149,7 +141,7 @@ void ModuleAcceleratorConfiguration::fillCache()
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_ModuleAcceleratorConfiguration_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &arguments)

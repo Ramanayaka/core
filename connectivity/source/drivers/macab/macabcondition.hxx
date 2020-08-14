@@ -23,13 +23,10 @@
 #include "MacabHeader.hxx"
 #include "MacabRecord.hxx"
 
-#include <comphelper/types.hxx>
 #include <connectivity/dbexception.hxx>
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
 
 class MacabCondition
 {
@@ -160,7 +157,6 @@ class MacabConditionAnd : public MacabConditionBoolean
         virtual bool eval(const MacabRecord *aRecord) const override;
 };
 
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABCONDITION_HXX

@@ -38,7 +38,7 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_POSTGRESQL_PQ_DRIVER_HXX
 
 #include <osl/mutex.hxx>
-
+#include <sal/macros.h>
 #include <cppuhelper/compbase.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -51,11 +51,9 @@
 namespace pq_sdbc_driver
 {
 
-#define MY_STRINGIFY( x ) #x
-
-#define PQ_SDBC_DRIVER_VERSION MY_STRINGIFY(PQ_SDBC_MAJOR) "."  \
-                               MY_STRINGIFY(PQ_SDBC_MINOR) "." \
-                               MY_STRINGIFY(PQ_SDBC_MICRO)
+#define PQ_SDBC_DRIVER_VERSION SAL_STRINGIFY(PQ_SDBC_MAJOR) "."  \
+                               SAL_STRINGIFY(PQ_SDBC_MINOR) "." \
+                               SAL_STRINGIFY(PQ_SDBC_MICRO)
 
 struct MutexHolder { osl::Mutex m_mutex; };
 // use this to switch off sdbc support !
@@ -74,7 +72,7 @@ class Driver : public MutexHolder, public DriverBase
 
 public:
     explicit Driver ( const css::uno::Reference < css::uno::XComponentContext > & ctx )
-        : DriverBase( this->m_mutex ),
+        : DriverBase( m_mutex ),
           m_ctx( ctx ),
           m_smgr( ctx->getServiceManager() )
     {}
@@ -93,14 +91,14 @@ public: // XDriver
     virtual sal_Int32 SAL_CALL getMajorVersion(  ) override;
     virtual sal_Int32 SAL_CALL getMinorVersion(  ) override;
 
-public: // XServiceInfo
+public:
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
 
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-public: // XDataDefinitionSupplier
+    // XDataDefinitionSupplier
     virtual css::uno::Reference< css::sdbcx::XTablesSupplier > SAL_CALL
     getDataDefinitionByConnection(
         const css::uno::Reference< css::sdbc::XConnection >& connection ) override;

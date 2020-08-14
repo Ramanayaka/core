@@ -9,6 +9,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sc_html_export_test))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sc_html_export_test))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sc_html_export_test, \
     sc/qa/extras/htmlexporttest \
 ))
@@ -57,7 +59,11 @@ $(eval $(call gb_CppunitTest_set_include,sc_html_export_test,\
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sc_html_export_test))
+$(eval $(call gb_CppunitTest_use_api,sc_html_export_test,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sc_html_export_test))
 $(eval $(call gb_CppunitTest_use_vcl,sc_html_export_test))
@@ -102,6 +108,7 @@ $(eval $(call gb_CppunitTest_use_components,sc_html_export_test,\
     unoxml/source/rdf/unordf \
     unoxml/source/service/unoxml \
     uui/util/uui \
+    vcl/vcl.common \
     vbahelper/util/msforms \
     xmloff/util/xo \
 ))

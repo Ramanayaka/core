@@ -78,22 +78,22 @@ private:
 
     virtual ~Provider() {}
 
-    virtual rtl::OUString SAL_CALL getImplementationName() SAL_OVERRIDE
+    virtual rtl::OUString SAL_CALL getImplementationName() override
     { return static_getImplementationName(); }
 
-    virtual sal_Bool SAL_CALL supportsService(rtl::OUString const & ServiceName) SAL_OVERRIDE
+    virtual sal_Bool SAL_CALL supportsService(rtl::OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
 
     virtual css::uno::Sequence< rtl::OUString > SAL_CALL
-    getSupportedServiceNames() SAL_OVERRIDE
+    getSupportedServiceNames() override
     { return static_getSupportedServiceNames(); }
 
     virtual css::uno::Reference< css::frame::XDispatch > SAL_CALL queryDispatch(
-        css::util::URL const &, rtl::OUString const &, sal_Int32) SAL_OVERRIDE;
+        css::util::URL const &, rtl::OUString const &, sal_Int32) override;
 
     virtual css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > >
     SAL_CALL queryDispatches(
-        css::uno::Sequence< css::frame::DispatchDescriptor > const & Requests) SAL_OVERRIDE;
+        css::uno::Sequence< css::frame::DispatchDescriptor > const & Requests) override;
 
     css::uno::Reference< css::uno::XComponentContext > context_;
 };
@@ -133,7 +133,7 @@ Provider::queryDispatches(
 {
     css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > s(
         Requests.getLength());
-    for (sal_Int32 i = 0; i < s.getLength(); ++i) {
+    for (sal_Int32 i = 0; i < s.(); ++i) {
         s[i] = queryDispatch(
             Requests[i].FeatureURL, Requests[i].FrameName,
             Requests[i].SearchFlags);
@@ -166,28 +166,28 @@ private:
 
     virtual ~Dispatch() {}
 
-    virtual rtl::OUString SAL_CALL getImplementationName() SAL_OVERRIDE
+    virtual rtl::OUString SAL_CALL getImplementationName() override
     { return static_getImplementationName(); }
 
-    virtual sal_Bool SAL_CALL supportsService(rtl::OUString const & ServiceName) SAL_OVERRIDE
+    virtual sal_Bool SAL_CALL supportsService(rtl::OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
 
     virtual css::uno::Sequence< rtl::OUString > SAL_CALL
-    getSupportedServiceNames() SAL_OVERRIDE
+    getSupportedServiceNames() override
     { return static_getSupportedServiceNames(); }
 
     virtual void SAL_CALL dispatch(
         css::util::URL const &,
-        css::uno::Sequence< css::beans::PropertyValue > const &) SAL_OVERRIDE;
+        css::uno::Sequence< css::beans::PropertyValue > const &) override;
 
     virtual void SAL_CALL addStatusListener(
         css::uno::Reference< css::frame::XStatusListener > const &,
-        css::util::URL const &) SAL_OVERRIDE
+        css::util::URL const &) override
     {}
 
     virtual void SAL_CALL removeStatusListener(
         css::uno::Reference< css::frame::XStatusListener > const &,
-        css::util::URL const &) SAL_OVERRIDE
+        css::util::URL const &) override
     {}
 
     css::uno::Reference< css::uno::XComponentContext > context_;
@@ -231,14 +231,14 @@ static cppu::ImplementationEntry const services[] = {
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL component_getFactory(
+extern "C" SAL_DLLPUBLIC_EXPORT void * component_getFactory(
     char const * pImplName, void * pServiceManager, void * pRegistryKey)
 {
     return cppu::component_getFactoryHelper(
         pImplName, pServiceManager, pRegistryKey, services);
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT void SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT void
 component_getImplementationEnvironment(
     char const ** ppEnvTypeName, uno_Environment **)
 {

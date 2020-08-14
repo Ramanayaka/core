@@ -19,22 +19,21 @@
 
 #include <sal/config.h>
 
-#include "uiservices.hxx"
 #include "unoDirectSql.hxx"
-#include "dbu_reghelper.hxx"
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/connection/XConnection.hpp>
-#include <com/sun/star/container/XNamed.hpp>
-#include "directsql.hxx"
-#include "dbustrings.hrc"
-#include "datasourceconnector.hxx"
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <directsql.hxx>
+#include <datasourceconnector.hxx>
 #include <tools/diagnose_ex.h>
 #include <comphelper/processfactory.hxx>
+#include <vcl/svapp.hxx>
 
-extern "C" void SAL_CALL createRegistryInfo_ODirectSQLDialog()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_sdb_DirectSQLDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static ::dbaui::OMultiInstanceAutoRegistration< ::dbaui::ODirectSQLDialog > aAutoRegistration;
+    return cppu::acquire(new ::dbaui::ODirectSQLDialog(context));
 }
 
 namespace dbaui
@@ -46,7 +45,6 @@ namespace dbaui
     using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::sdbcx;
     using namespace ::com::sun::star::sdbc;
-    using namespace ::com::sun::star::sdb;
 
     // ODirectSQLDialog
     ODirectSQLDialog::ODirectSQLDialog(const Reference< XComponentContext >& _rxORB)
@@ -65,41 +63,45 @@ namespace dbaui
         return css::uno::Sequence<sal_Int8>();
     }
 
-    IMPLEMENT_SERVICE_INFO_IMPLNAME_STATIC(ODirectSQLDialog, "com.sun.star.comp.sdb.DirectSQLDialog")
-    IMPLEMENT_SERVICE_INFO_SUPPORTS(ODirectSQLDialog)
-    IMPLEMENT_SERVICE_INFO_GETSUPPORTED1_STATIC(ODirectSQLDialog, SERVICE_SDB_DIRECTSQLDIALOG)
-
-    css::uno::Reference< css::uno::XInterface >
-        SAL_CALL ODirectSQLDialog::Create(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxORB)
+    OUString SAL_CALL ODirectSQLDialog::getImplementationName()
     {
-        return static_cast< XServiceInfo* >(new ODirectSQLDialog( comphelper::getComponentContext(_rxORB)));
+        return "com.sun.star.comp.sdb.DirectSQLDialog";
+    }
+    IMPLEMENT_SERVICE_INFO_SUPPORTS(ODirectSQLDialog)
+    css::uno::Sequence< OUString > SAL_CALL ODirectSQLDialog::getSupportedServiceNames(  )
+    {
+        return { SERVICE_SDB_DIRECTSQLDIALOG };
     }
 
     IMPLEMENT_PROPERTYCONTAINER_DEFAULTS( ODirectSQLDialog )
 
-    VclPtr<Dialog> ODirectSQLDialog::createDialog(vcl::Window* _pParent)
+    std::unique_ptr<weld::DialogController> ODirectSQLDialog::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
     {
         // obtain all the objects needed for the dialog
         Reference< XConnection > xConnection = m_xActiveConnection;
+        weld::Window* pParent = Application::GetFrameWeld(rParent);
         if ( !xConnection.is() )
         {
             try
             {
                 // the connection the row set is working with
-                ODatasourceConnector aDSConnector(m_aContext, _pParent);
+                ODatasourceConnector aDSConnector(m_aContext, pParent);
                 xConnection = aDSConnector.connect( m_sInitialSelection, nullptr );
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
         }
-        if ( !xConnection.is() )
+        if (!xConnection.is())
+        {
             // can't create the dialog if I have improper settings
             return nullptr;
+        }
 
-        return VclPtr<DirectSQLDialog>::Create( _pParent, xConnection );
+        return std::make_unique<DirectSQLDialog>(pParent, xConnection);
     }
+
     void ODirectSQLDialog::implInitialize(const Any& _rValue)
     {
         PropertyValue aProperty;

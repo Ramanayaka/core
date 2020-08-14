@@ -23,20 +23,17 @@
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 
 
-namespace drawinglayer
-{
-    namespace processor2d
+namespace drawinglayer::processor2d
     {
         /** ContourExtractor2D class
 
-            A processor who extracts the contour of the primtives feeded to it
+            A processor who extracts the contour of the primitives fed to it
             in the single local PolyPolygon
          */
-        class DRAWINGLAYER_DLLPUBLIC ContourExtractor2D : public BaseProcessor2D
+        class DRAWINGLAYER_DLLPUBLIC ContourExtractor2D final : public BaseProcessor2D
         {
         private:
             /// the extracted contour
@@ -56,8 +53,8 @@ namespace drawinglayer
 
             const basegfx::B2DPolyPolygonVector& getExtractedContour() const { return maExtractedContour; }
         };
-    } // end of namespace processor2d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::processor2d
 
 
 #endif // INCLUDED_DRAWINGLAYER_PROCESSOR2D_CONTOUREXTRACTOR2D_HXX

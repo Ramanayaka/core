@@ -25,19 +25,12 @@
 #include <RptObject.hxx>
 #include <RptModel.hxx>
 #include <RptPage.hxx>
-#include <ViewsWindow.hxx>
 #include <ReportSection.hxx>
 #include <ReportController.hxx>
-#include <uistrings.hrc>
-#include <reportformula.hxx>
-#include <toolkit/helper/property.hxx>
+#include <strings.hxx>
 
 #include <tools/color.hxx>
-#include <svtools/extcolorcfg.hxx>
-#include <unotools/confignode.hxx>
 
-// DBG_*
-#include <tools/debug.hxx>
 // DBG_UNHANDLED_EXCEPTION
 #include <tools/diagnose_ex.h>
 
@@ -75,12 +68,12 @@ namespace rptui
         }
         catch (uno::Exception const&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
         }
     }
 
 
-    void FixedTextColor::setPropertyTextColor(const uno::Reference< awt::XVclWindowPeer >& _xVclWindowPeer, sal_Int32 _nTextColor)
+    void FixedTextColor::setPropertyTextColor(const uno::Reference< awt::XVclWindowPeer >& _xVclWindowPeer, Color _nTextColor)
     {
         _xVclWindowPeer->setProperty(PROPERTY_TEXTCOLOR, uno::makeAny(_nTextColor));
     }
@@ -103,8 +96,8 @@ namespace rptui
         try
         {
             bool bIsDark = false;
-            const sal_Int32 nBackColor( xFixedText->getControlBackground() );
-            if ((sal_uInt32)nBackColor == COL_TRANSPARENT)
+            const Color nBackColor( xFixedText->getControlBackground() );
+            if (nBackColor == COL_TRANSPARENT)
             {
                 uno::Reference <report::XSection> xSection(xFixedText->getParent(), uno::UNO_QUERY_THROW);
 
@@ -134,18 +127,18 @@ namespace rptui
             {
                 const StyleSettings& aStyleSettings = Application::GetSettings().GetStyleSettings();
                 Color aLabelTextColor  = aStyleSettings.GetLabelTextColor();
-                setPropertyTextColor(xVclWindowPeer, aLabelTextColor.GetColor());
+                setPropertyTextColor(xVclWindowPeer, aLabelTextColor);
             }
             else
             {
                 util::Color aLabelColor = xFixedText->getCharColor();
-                setPropertyTextColor(xVclWindowPeer, aLabelColor);
+                setPropertyTextColor(xVclWindowPeer, ::Color(aLabelColor));
             }
 
         }
         catch( const uno::Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
         }
     }
 

@@ -18,14 +18,14 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <rtl/math.hxx>
 #include <tools/diagnose_ex.h>
 
 #include <canvas/canvastools.hxx>
+#include <cairo.h>
 
 #include "cairo_canvascustomsprite.hxx"
 #include "cairo_spritecanvas.hxx"
@@ -42,7 +42,7 @@ namespace cairocanvas
         maSize( ::canvas::tools::roundUp( rSpriteSize.Width ),
                 ::canvas::tools::roundUp( rSpriteSize.Height ) )
     {
-        ENSURE_OR_THROW( rRefDevice.get(),
+        ENSURE_OR_THROW( rRefDevice,
                           "CanvasCustomSprite::CanvasCustomSprite(): Invalid sprite canvas" );
 
         SAL_INFO( "canvas.cairo", "sprite size: " << ::canvas::tools::roundUp( rSpriteSize.Width ) << ", " << ::canvas::tools::roundUp( rSpriteSize.Height ));
@@ -134,7 +134,7 @@ namespace cairocanvas
 
     OUString SAL_CALL CanvasCustomSprite::getImplementationName()
     {
-        return OUString( "CairoCanvas.CanvasCustomSprite" );
+        return "CairoCanvas.CanvasCustomSprite";
     }
 
     sal_Bool SAL_CALL CanvasCustomSprite::supportsService( const OUString& ServiceName )

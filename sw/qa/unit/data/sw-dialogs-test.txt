@@ -13,7 +13,7 @@
 # workdir/screenshots using the pattern of the ui-file name.
 #
 # Syntax:
-# - emty lines are allowed
+# - empty lines are allowed
 # - lines starting with '#' are treated as comment
 # - all other lines should contain a *.ui filename in the same
 #   notation as in the dialog constructors (see code)
@@ -65,7 +65,6 @@ modules/swriter/ui/businessdatapage.ui
 modules/swriter/ui/cannotsavelabeldialog.ui
 modules/swriter/ui/captiondialog.ui
 modules/swriter/ui/captionoptions.ui
-modules/swriter/ui/cardformatpage.ui
 modules/swriter/ui/cardmediumpage.ui
 modules/swriter/ui/ccdialog.ui
 modules/swriter/ui/characterproperties.ui
@@ -164,7 +163,6 @@ modules/swriter/ui/querycontinueenddialog.ui
 modules/swriter/ui/querydefaultcompatdialog.ui
 modules/swriter/ui/queryrotateintostandarddialog.ui
 modules/swriter/ui/querysavelabeldialog.ui
-modules/swriter/ui/queryshowchangesdialog.ui
 modules/swriter/ui/renameautotextdialog.ui
 modules/swriter/ui/renameentrydialog.ui
 modules/swriter/ui/renameobjectdialog.ui
@@ -177,7 +175,6 @@ modules/swriter/ui/selectautotextdialog.ui
 modules/swriter/ui/selectblockdialog.ui
 modules/swriter/ui/selectindexdialog.ui
 modules/swriter/ui/selecttabledialog.ui
-modules/swriter/ui/sidebarpage.ui
 modules/swriter/ui/sidebarstylepresets.ui
 modules/swriter/ui/sidebartheme.ui
 modules/swriter/ui/sidebarwrap.ui

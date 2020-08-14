@@ -20,25 +20,19 @@
 #ifndef INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERPANEBASE_HXX
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERPANEBASE_HXX
 
-#include "PresenterTheme.hxx"
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <com/sun/star/awt/Point.hpp>
-#include <com/sun/star/awt/XMouseListener.hpp>
-#include <com/sun/star/awt/XMouseMotionListener.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/drawing/framework/XPane.hpp>
 #include <com/sun/star/drawing/framework/XPaneBorderPainter.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/Color.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
 #include <rtl/ref.hxx>
 
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 class PresenterController;
 
@@ -70,11 +64,9 @@ public:
     virtual void SAL_CALL disposing() override;
 
     const css::uno::Reference<css::awt::XWindow>& GetBorderWindow() const;
-    void SetBackground (const SharedBitmapDescriptor& rpBackground);
     void SetTitle (const OUString& rsTitle);
     const OUString& GetTitle() const;
     const css::uno::Reference<css::drawing::framework::XPaneBorderPainter>& GetPaneBorderPainter() const;
-    const css::awt::Point& GetCalloutAnchor() const;
 
     // XInitialization
 
@@ -112,15 +104,11 @@ protected:
     css::uno::Reference<css::drawing::XPresenterHelper> mxPresenterHelper;
     OUString msTitle;
     css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
-    SharedBitmapDescriptor mpViewBackground;
-    css::awt::Point maCalloutAnchor;
 
     virtual void CreateCanvases (
-        const css::uno::Reference<css::awt::XWindow>& rxParentWindow,
         const css::uno::Reference<css::rendering::XSpriteCanvas>& rxParentCanvas) = 0;
 
     void CreateWindows (
-        const css::uno::Reference<css::awt::XWindow>& rxParentWindow,
         const bool bIsWindowVisibleOnCreation);
     void PaintBorder (const css::awt::Rectangle& rUpdateRectangle);
     void ToTop();
@@ -133,7 +121,7 @@ protected:
     void ThrowIfDisposed();
 };
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 #endif
 

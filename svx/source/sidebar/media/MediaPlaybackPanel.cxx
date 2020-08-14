@@ -17,19 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include "MediaPlaybackPanel.hxx"
-#include <vcl/outdev.hxx>
-#include <avmedia/mediawindow.hxx>
-#include <avmedia/mediaplayer.hxx>
-#include <svtools/miscopt.hxx>
 #include <avmedia/mediaitem.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <sfx2/dispatch.hxx>
 #include <avmedia/MediaControlBase.hxx>
 
-using ::rtl::OUString;
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+
 using namespace avmedia;
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 MediaPlaybackPanel::MediaPlaybackPanel (
     vcl::Window* pParent,
@@ -41,12 +38,13 @@ MediaPlaybackPanel::MediaPlaybackPanel (
     maIdle("MediaPlaybackPanel"),
     mpBindings(pBindings)
 {
-    get(mpTimeEdit, "timeedit");
-    get(mpPlayToolBox, "playtoolbox");
-    get(mpMuteToolBox, "mutetoolbox");
-    get(mpTimeSlider, "timeslider");
-    get(mpVolumeSlider, "volumeslider");
-    get(mpZoomListBox, "zoombox");
+    mxTimeEdit = m_xBuilder->weld_entry("timeedit");
+    mxPlayToolBox = m_xBuilder->weld_toolbar("playtoolbox");
+    mxMuteToolBox = m_xBuilder->weld_toolbar("mutetoolbox");
+    mxTimeSlider = m_xBuilder->weld_scale("timeslider");
+    mxVolumeSlider = m_xBuilder->weld_scale("volumeslider");
+    mxZoomListBox = m_xBuilder->weld_combo_box("zoombox");
+
     Initialize();
 }
 
@@ -76,10 +74,10 @@ MediaPlaybackPanel::~MediaPlaybackPanel()
 void MediaPlaybackPanel::Initialize()
 {
     InitializeWidgets();
-    mpVolumeSlider->SetSlideHdl(LINK(this, MediaPlaybackPanel, VolumeSlideHdl));
-    mpPlayToolBox->SetSelectHdl(LINK(this, MediaPlaybackPanel, PlayToolBoxSelectHdl));
-    mpMuteToolBox->SetSelectHdl(LINK(this, MediaPlaybackPanel, PlayToolBoxSelectHdl));
-    mpTimeSlider->SetSlideHdl(LINK(this, MediaPlaybackPanel, SeekHdl));
+    mxVolumeSlider->connect_value_changed(LINK(this, MediaPlaybackPanel, VolumeSlideHdl));
+    mxPlayToolBox->connect_clicked(LINK(this, MediaPlaybackPanel, PlayToolBoxSelectHdl));
+    mxMuteToolBox->connect_clicked(LINK(this, MediaPlaybackPanel, PlayToolBoxSelectHdl));
+    mxTimeSlider->connect_value_changed(LINK(this, MediaPlaybackPanel, SeekHdl));
 
     maIdle.SetPriority( TaskPriority::HIGHEST );
     maIdle.SetInvokeHandler( LINK( this, MediaPlaybackPanel, TimeoutHdl ) );
@@ -89,15 +87,14 @@ void MediaPlaybackPanel::Initialize()
 
 void MediaPlaybackPanel::dispose()
 {
-    mpTimeEdit.disposeAndClear();
+    disposeWidgets();
     PanelLayout::dispose();
 }
 
 void MediaPlaybackPanel::NotifyItemUpdate(
     const sal_uInt16 nSID,
     const SfxItemState eState,
-    const SfxPoolItem* pState,
-    const bool /*bIsEnabled*/)
+    const SfxPoolItem* pState)
 {
     if( nSID == SID_AVMEDIA_TOOLBOX )
     {
@@ -109,10 +106,10 @@ void MediaPlaybackPanel::NotifyItemUpdate(
     }
 }
 
-void MediaPlaybackPanel::UpdateToolBoxes(MediaItem aMediaItem)
+void MediaPlaybackPanel::UpdateToolBoxes(const MediaItem& rMediaItem)
 {
-    mpPlayToolBox->Disable();
-    avmedia::MediaControlBase::UpdateToolBoxes(aMediaItem);
+    mxPlayToolBox->set_sensitive(false);
+    avmedia::MediaControlBase::UpdateToolBoxes(rMediaItem);
 }
 
 void MediaPlaybackPanel::Update()
@@ -126,20 +123,20 @@ void MediaPlaybackPanel::Update()
     }
 }
 
-IMPL_LINK_NOARG( MediaPlaybackPanel, VolumeSlideHdl, Slider*, void)
+IMPL_LINK_NOARG( MediaPlaybackPanel, VolumeSlideHdl, weld::Scale&, void)
 {
     MediaItem aItem(SID_AVMEDIA_TOOLBOX);
-    aItem.setVolumeDB( static_cast< sal_Int16 > (mpVolumeSlider->GetThumbPos()));
+    aItem.setVolumeDB(mxVolumeSlider->get_value());
     mpBindings->GetDispatcher()->ExecuteList(SID_AVMEDIA_TOOLBOX, SfxCallMode::RECORD, { &aItem });
 }
 
-IMPL_LINK_NOARG( MediaPlaybackPanel, SeekHdl, Slider*, void)
+IMPL_LINK_NOARG( MediaPlaybackPanel, SeekHdl, weld::Scale&, void)
 {
     MediaItem aItem(SID_AVMEDIA_TOOLBOX);
     aItem.setState( MediaState::Pause );
     double nTime = 0;
     if (mpMediaItem)
-        nTime = mpTimeSlider->GetThumbPos() * mpMediaItem->getDuration() / AVMEDIA_TIME_RANGE;
+        nTime = mxTimeSlider->get_value() * mpMediaItem->getDuration() / AVMEDIA_TIME_RANGE;
     aItem.setTime(nTime);
     mpBindings->GetDispatcher()->ExecuteList(SID_AVMEDIA_TOOLBOX, SfxCallMode::RECORD, { &aItem });
     mpBindings->Invalidate(SID_AVMEDIA_TOOLBOX);
@@ -150,48 +147,37 @@ IMPL_LINK_NOARG( MediaPlaybackPanel, TimeoutHdl, Timer*, void)
     mpBindings->Invalidate(SID_AVMEDIA_TOOLBOX);
 }
 
-IMPL_LINK( MediaPlaybackPanel, PlayToolBoxSelectHdl, ToolBox*, pControl, void)
+IMPL_LINK( MediaPlaybackPanel, PlayToolBoxSelectHdl, const OString&, rId, void)
 {
     MediaItem aItem(SID_AVMEDIA_TOOLBOX);
-    switch(pControl->GetCurItemId())
+
+    if (rId == "play")
     {
-        case AVMEDIA_TOOLBOXITEM_PLAY:
-        {
-            aItem.setState( MediaState::Play );
+        aItem.setState( MediaState::Play );
 
-            if( !mpMediaItem || (mpMediaItem->getTime() == mpMediaItem->getDuration() ))
-                aItem.setTime( 0.0 );
-            else
-                aItem.setTime( mpMediaItem->getTime());
-        }
-        break;
-
-        case AVMEDIA_TOOLBOXITEM_PAUSE:
-        {
-            aItem.setState( MediaState::Pause );
-        }
-        break;
-
-        case AVMEDIA_TOOLBOXITEM_STOP:
-        {
-            aItem.setState( MediaState::Stop );
+        if( !mpMediaItem || (mpMediaItem->getTime() == mpMediaItem->getDuration() ))
             aItem.setTime( 0.0 );
-        }
-        break;
-
-        case AVMEDIA_TOOLBOXITEM_MUTE:
-        {
-            aItem.setMute( !mpMuteToolBox->IsItemChecked( AVMEDIA_TOOLBOXITEM_MUTE ) );
-        }
-        break;
-
-        case AVMEDIA_TOOLBOXITEM_LOOP:
-        {
-            aItem.setLoop( !mpPlayToolBox->IsItemChecked( AVMEDIA_TOOLBOXITEM_LOOP ) );
-        }
-        break;
-        default: break;
+        else
+            aItem.setTime( mpMediaItem->getTime());
     }
+    else if (rId == "pause")
+    {
+        aItem.setState( MediaState::Pause );
+    }
+    else if (rId == "stop")
+    {
+        aItem.setState( MediaState::Stop );
+        aItem.setTime( 0.0 );
+    }
+    else if (rId == "mute")
+    {
+        aItem.setMute( mxMuteToolBox->get_item_active("mute") );
+    }
+    else if (rId == "loop")
+    {
+        aItem.setLoop( mxPlayToolBox->get_item_active("loop") );
+    }
+
     if(aItem.getMaskSet() != AVMediaSetMask::NONE)
     {
         mpBindings->GetDispatcher()->ExecuteList(SID_AVMEDIA_TOOLBOX, SfxCallMode::RECORD, { &aItem } );
@@ -199,6 +185,6 @@ IMPL_LINK( MediaPlaybackPanel, PlayToolBoxSelectHdl, ToolBox*, pControl, void)
     }
 }
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

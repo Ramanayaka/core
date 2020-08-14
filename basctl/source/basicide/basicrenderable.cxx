@@ -18,12 +18,12 @@
  */
 
 #include "basicrenderable.hxx"
-#include "bastypes.hxx"
-#include "basidesh.hrc"
+#include <bastypes.hxx>
+#include <iderid.hxx>
+#include <strings.hrc>
 
 #include <toolkit/awt/vclxdevice.hxx>
 #include <tools/multisel.hxx>
-#include <tools/resary.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/propertysequence.hxx>
 
@@ -37,39 +37,50 @@ Renderable::Renderable (BaseWindow* pWin)
 : cppu::WeakComponentImplHelper< css::view::XRenderable >( maMutex )
 , mpWindow( pWin )
 {
-    m_aUIProperties.resize( 3 );
+    m_aUIProperties.resize( 4 );
 
     // show Subgroup for print range
     vcl::PrinterOptionsHelper::UIControlOptions aPrintRangeOpt;
     aPrintRangeOpt.maGroupHint = "PrintRange" ;
     aPrintRangeOpt.mbInternalOnly = true;
+
     m_aUIProperties[0].Value = setSubgroupControlOpt("printrange",
-        IDEResId( RID_STR_PRINTDLG_RANGE ), OUString(), aPrintRangeOpt);
+        IDEResId( RID_STR_PRINTDLG_PAGES ), OUString(), aPrintRangeOpt);
 
     // create a choice for the range to print
     OUString aPrintContentName( "PrintContent" );
-    const Sequence<OUString> aChoices{IDEResId(RID_STR_PRINTDLG_ALLPAGES),
-                                      IDEResId(RID_STR_PRINTDLG_PAGES)};
+    const Sequence<OUString> aChoices{IDEResId(RID_STR_PRINTDLG_PRINTALLPAGES),
+                                      IDEResId(RID_STR_PRINTDLG_PRINTPAGES)};
     const Sequence<OUString> aHelpIds{".HelpID:vcl:PrintDialog:PrintContent:RadioButton:0",
                                       ".HelpID:vcl:PrintDialog:PrintContent:RadioButton:1"};
-    const Sequence<OUString> aWidgetIds{"printallpages",
-                                        "printpages"};
+    const Sequence<OUString> aWidgetIds{"rbAllPages",
+                                        "rbRangePages"};
     m_aUIProperties[1].Value = setChoiceRadiosControlOpt(aWidgetIds, OUString(),
                                                    aHelpIds, aPrintContentName,
                                                    aChoices, 0);
 
-    // create a an Edit dependent on "Pages" selected
+    // create an Edit dependent on "Pages" selected
     vcl::PrinterOptionsHelper::UIControlOptions aPageRangeOpt(aPrintContentName, 1, true);
     m_aUIProperties[2].Value = setEditControlOpt("pagerange", OUString(),
                                                  OUString(), "PageRange",
                                                  OUString(), aPageRangeOpt);
+
+    vcl::PrinterOptionsHelper::UIControlOptions aEvenOddOpt(aPrintContentName, 0, true);
+    m_aUIProperties[3].Value = setChoiceListControlOpt("evenoddbox",
+                                                        OUString(),
+                                                        uno::Sequence<OUString>(),
+                                                        "EvenOdd",
+                                                        uno::Sequence<OUString>(),
+                                                        0,
+                                                        uno::Sequence< sal_Bool >(),
+                                                        aEvenOddOpt);
 }
 
 Renderable::~Renderable()
 {
 }
 
-VclPtr< Printer > Renderable::getPrinter()
+VclPtr< Printer > Renderable::getPrinter() const
 {
     VclPtr< Printer > pPrinter;
     Any aValue( getValue( "RenderDevice" ) );
@@ -77,11 +88,23 @@ VclPtr< Printer > Renderable::getPrinter()
 
     if( aValue >>= xRenderDevice )
     {
-        VCLXDevice* pDevice = VCLXDevice::GetImplementation(xRenderDevice);
+        VCLXDevice* pDevice = comphelper::getUnoTunnelImplementation<VCLXDevice>(xRenderDevice);
         VclPtr< OutputDevice > pOut = pDevice ? pDevice->GetOutputDevice() : VclPtr< OutputDevice >();
         pPrinter = dynamic_cast<Printer*>(pOut.get());
     }
     return pPrinter;
+}
+
+bool Renderable::isPrintOddPages() const
+{
+    sal_Int64 nContent = getIntValue( "PrintContent", -1 );
+    return nContent != 2;
+}
+
+bool Renderable::isPrintEvenPages() const
+{
+    sal_Int64 nContent = getIntValue( "PrintContent", -1 );
+    return nContent != 3;
 }
 
 sal_Int32 SAL_CALL Renderable::getRendererCount (
@@ -90,27 +113,41 @@ sal_Int32 SAL_CALL Renderable::getRendererCount (
 {
     processProperties( i_xOptions );
 
+    maValidPages.clear();
+
     sal_Int32 nCount = 0;
     if( mpWindow )
     {
-        if (VclPtr<Printer> pPrinter = getPrinter())
+        VclPtr<Printer> pPrinter = getPrinter();
+        if (!pPrinter)
+            throw lang::IllegalArgumentException();
+
+        nCount = mpWindow->countPages( pPrinter );
+
+        for (sal_Int32 nPage = 1; nPage <= nCount; nPage++)
         {
-            nCount = mpWindow->countPages( pPrinter );
-            sal_Int64 nContent = getIntValue( "PrintContent", -1 );
-            if( nContent == 1 )
+            if ( (isPrintEvenPages() && isOnEvenPage( nPage ))
+                || (isPrintOddPages() && !isOnEvenPage( nPage )) )
             {
-                OUString aPageRange( getStringValue( "PageRange" ) );
-                if( !aPageRange.isEmpty() )
-                {
-                    StringRangeEnumerator aRangeEnum( aPageRange, 0, nCount-1 );
-                    sal_Int32 nSelCount = aRangeEnum.size();
-                    if( nSelCount >= 0 )
-                        nCount = nSelCount;
-                }
+                maValidPages.push_back( nPage-1 );
             }
         }
-        else
-            throw lang::IllegalArgumentException();
+
+        sal_Int64 nContent = getIntValue( "PrintContent", -1 );
+        sal_Int64 nEOContent = getIntValue ("EvenOdd", -1);
+        if( nContent == 1 )
+        {
+            OUString aPageRange( getStringValue( "PageRange" ) );
+            if( !aPageRange.isEmpty() )
+            {
+                StringRangeEnumerator aRangeEnum( aPageRange, 0, nCount-1 );
+                sal_Int32 nSelCount = aRangeEnum.size();
+                if( nSelCount >= 0 )
+                    nCount = nSelCount;
+            }
+        }
+        else if ( nEOContent == 1 || nEOContent == 2 ) // even/odd pages
+            return static_cast<sal_Int32>( maValidPages.size() );
     }
 
     return nCount;
@@ -150,34 +187,33 @@ void SAL_CALL Renderable::render (
 {
     processProperties( i_xOptions );
 
-    if( mpWindow )
-    {
-        if (VclPtr<Printer> pPrinter = getPrinter())
-        {
-            sal_Int64 nContent = getIntValue( "PrintContent", -1 );
-            if( nContent == 1 )
-            {
-                OUString aPageRange( getStringValue( "PageRange" ) );
-                if( !aPageRange.isEmpty() )
-                {
-                    sal_Int32 nPageCount = mpWindow->countPages( pPrinter );
-                    StringRangeEnumerator aRangeEnum( aPageRange, 0, nPageCount-1 );
-                    StringRangeEnumerator::Iterator it = aRangeEnum.begin();
-                    for( ; it != aRangeEnum.end() && nRenderer; --nRenderer )
-                        ++it;
+    if( !mpWindow )
+        return;
 
-                    sal_Int32 nPage = ( it != aRangeEnum.end() ) ? *it : nRenderer;
-                    mpWindow->printPage( nPage, pPrinter );
-                }
-                else
-                    mpWindow->printPage( nRenderer, pPrinter );
-            }
-            else
-                mpWindow->printPage( nRenderer, pPrinter );
+    VclPtr<Printer> pPrinter = getPrinter();
+    if (!pPrinter)
+        throw lang::IllegalArgumentException();
+
+    sal_Int64 nContent = getIntValue( "PrintContent", -1 );
+    if( nContent == 1 )
+    {
+        OUString aPageRange( getStringValue( "PageRange" ) );
+        if( !aPageRange.isEmpty() )
+        {
+            sal_Int32 nPageCount = mpWindow->countPages( pPrinter );
+            StringRangeEnumerator aRangeEnum( aPageRange, 0, nPageCount-1 );
+            StringRangeEnumerator::Iterator it = aRangeEnum.begin();
+            for( ; it != aRangeEnum.end() && nRenderer; --nRenderer )
+                ++it;
+
+            sal_Int32 nPage = ( it != aRangeEnum.end() ) ? *it : nRenderer;
+            mpWindow->printPage( nPage, pPrinter );
         }
         else
-            throw lang::IllegalArgumentException();
+            mpWindow->printPage( nRenderer, pPrinter );
     }
+    else
+        mpWindow->printPage( maValidPages.at( nRenderer ), pPrinter );
 }
 
 } // namespace basctl

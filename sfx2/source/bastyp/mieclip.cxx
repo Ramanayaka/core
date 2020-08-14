@@ -17,13 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <o3tl/safeint.hxx>
 #include <tools/stream.hxx>
 
-#include <sot/storage.hxx>
-#include <sot/formats.hxx>
-
 #include <sfx2/mieclip.hxx>
-#include <sfx2/sfxuno.hxx>
 
 MSE40HTMLClipFormatObj::~MSE40HTMLClipFormatObj()
 {
@@ -60,7 +59,7 @@ SvStream* MSE40HTMLClipFormatObj::IsValid( SvStream& rStream )
                 sBaseURL = OStringToOUString( sLine.copy(nIndex), RTL_TEXTENCODING_UTF8 );
 
             if (nEnd >= 0 && nStt >= 0 &&
-                (!sBaseURL.isEmpty() || rStream.Tell() >= static_cast<sal_uInt64>(nStt)))
+                (!sBaseURL.isEmpty() || rStream.Tell() >= o3tl::make_unsigned(nStt)))
             {
                 bRet = true;
                 break;
@@ -76,14 +75,14 @@ SvStream* MSE40HTMLClipFormatObj::IsValid( SvStream& rStream )
                                         ? nEnd - nStt + 32
                                         : 0 )) );
         pStrm->WriteStream( rStream );
-        pStrm->SetStreamSize( nEnd - nStt + 1L );
+        pStrm->SetStreamSize( nEnd - nStt + 1 );
         pStrm->Seek( STREAM_SEEK_TO_BEGIN );
         return pStrm.get();
     }
 
     if (nFragStart > 0 && nFragEnd > 0 && nFragEnd > nFragStart)
     {
-        sal_uIntPtr nSize = static_cast<sal_uIntPtr>(nFragEnd - nFragStart + 1);
+        size_t nSize = nFragEnd - nFragStart + 1;
         if (nSize < 0x10000L)
         {
             rStream.Seek(nFragStart);

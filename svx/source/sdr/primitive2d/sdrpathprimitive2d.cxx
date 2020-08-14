@@ -18,9 +18,7 @@
  */
 
 #include <sdr/primitive2d/sdrpathprimitive2d.hxx>
-#include <svx/sdr/primitive2d/sdrdecompositiontools.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
+#include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
 
@@ -28,10 +26,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void SdrPathPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*aViewInformation*/) const
         {
             Primitive2DContainer aRetval;
@@ -43,13 +39,31 @@ namespace drawinglayer
                 // #i108255# no need to use correctOrientations here; target is
                 // straight visualisation
                 basegfx::B2DPolyPolygon aTransformed(getUnitPolyPolygon());
-
                 aTransformed.transform(getTransform());
-                aRetval.push_back(
-                    createPolyPolygonFillPrimitive(
-                        aTransformed,
-                        getSdrLFSTAttribute().getFill(),
-                        getSdrLFSTAttribute().getFillFloatTransGradient()));
+
+                // OperationSmiley: Check if a UnitDefinitionPolyPolygon is set
+                if(getUnitDefinitionPolyPolygon().count()
+                    && getUnitDefinitionPolyPolygon() != getUnitPolyPolygon())
+                {
+                    // if yes, use the B2DRange of it's transformed form
+                    basegfx::B2DPolyPolygon aTransformedDefinition(getUnitDefinitionPolyPolygon());
+                    aTransformedDefinition.transform(getTransform());
+
+                    aRetval.push_back(
+                        createPolyPolygonFillPrimitive(
+                            aTransformed,
+                            aTransformedDefinition.getB2DRange(),
+                            getSdrLFSTAttribute().getFill(),
+                            getSdrLFSTAttribute().getFillFloatTransGradient()));
+                }
+                else
+                {
+                    aRetval.push_back(
+                        createPolyPolygonFillPrimitive(
+                            aTransformed,
+                            getSdrLFSTAttribute().getFill(),
+                            getSdrLFSTAttribute().getFillFloatTransGradient()));
+                }
             }
 
             // add line
@@ -90,7 +104,6 @@ namespace drawinglayer
                         getSdrLFSTAttribute().getText(),
                         getSdrLFSTAttribute().getLine(),
                         false,
-                        false,
                         false));
             }
 
@@ -107,12 +120,14 @@ namespace drawinglayer
 
         SdrPathPrimitive2D::SdrPathPrimitive2D(
             const basegfx::B2DHomMatrix& rTransform,
-            const attribute::SdrLineFillShadowTextAttribute& rSdrLFSTAttribute,
-            const basegfx::B2DPolyPolygon& rUnitPolyPolygon)
+            const attribute::SdrLineFillEffectsTextAttribute& rSdrLFSTAttribute,
+            const basegfx::B2DPolyPolygon& rUnitPolyPolygon,
+            const basegfx::B2DPolyPolygon& rUnitDefinitionPolyPolygon)
         :   BufferedDecompositionPrimitive2D(),
             maTransform(rTransform),
             maSdrLFSTAttribute(rSdrLFSTAttribute),
-            maUnitPolyPolygon(rUnitPolyPolygon)
+            maUnitPolyPolygon(rUnitPolyPolygon),
+            maUnitDefinitionPolyPolygon(rUnitDefinitionPolyPolygon)
         {
         }
 
@@ -123,6 +138,7 @@ namespace drawinglayer
                 const SdrPathPrimitive2D& rCompare = static_cast<const SdrPathPrimitive2D&>(rPrimitive);
 
                 return (getUnitPolyPolygon() == rCompare.getUnitPolyPolygon()
+                    && getUnitDefinitionPolyPolygon() == rCompare.getUnitDefinitionPolyPolygon()
                     && getTransform() == rCompare.getTransform()
                     && getSdrLFSTAttribute() == rCompare.getSdrLFSTAttribute());
             }
@@ -133,7 +149,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(SdrPathPrimitive2D, PRIMITIVE2D_ID_SDRPATHPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

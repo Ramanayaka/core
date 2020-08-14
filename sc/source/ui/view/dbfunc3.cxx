@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbfunc.hxx"
-#include "scitems.hxx"
-#include <sfx2/bindings.hxx>
+#include <dbfunc.hxx>
+#include <scitems.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/waitobj.hxx>
+#include <vcl/weld.hxx>
 #include <svl/zforlist.hxx>
 #include <sfx2/app.hxx>
+#include <unotools/collatorwrapper.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/sheet/DataPilotFieldFilter.hpp>
@@ -36,43 +35,40 @@
 #include <com/sun/star/sheet/XDimensionsSupplier.hpp>
 #include <com/sun/star/sheet/XDrillDownDataSupplier.hpp>
 
-#include "global.hxx"
-#include "globstr.hrc"
-#include "sc.hrc"
-#include "undotab.hxx"
-#include "undodat.hxx"
-#include "dbdata.hxx"
-#include "rangenam.hxx"
-#include "rangeutl.hxx"
-#include "docsh.hxx"
-#include "olinetab.hxx"
-#include "consoli.hxx"
-#include "olinefun.hxx"
-#include "dpobject.hxx"
-#include "dpsave.hxx"
-#include "dpdimsave.hxx"
-#include "dbdocfun.hxx"
-#include "dpoutput.hxx"
-#include "dptabsrc.hxx"
-#include "dpshttab.hxx"
-#include "dpsdbtab.hxx"
-#include "editable.hxx"
-#include "docpool.hxx"
-#include "patattr.hxx"
-#include "unonames.hxx"
-#include "formulacell.hxx"
-#include "userlist.hxx"
-#include "queryentry.hxx"
-#include "markdata.hxx"
-#include "stringutil.hxx"
-#include "tabvwsh.hxx"
-#include "generalfunction.hxx"
+#include <global.hxx>
+#include <scresid.hxx>
+#include <globstr.hrc>
+#include <undotab.hxx>
+#include <undodat.hxx>
+#include <dbdata.hxx>
+#include <rangenam.hxx>
+#include <docsh.hxx>
+#include <olinetab.hxx>
+#include <olinefun.hxx>
+#include <dpobject.hxx>
+#include <dpsave.hxx>
+#include <dpdimsave.hxx>
+#include <dbdocfun.hxx>
+#include <dpoutput.hxx>
+#include <editable.hxx>
+#include <docpool.hxx>
+#include <patattr.hxx>
+#include <unonames.hxx>
+#include <userlist.hxx>
+#include <queryentry.hxx>
+#include <markdata.hxx>
+#include <tabvwsh.hxx>
+#include <generalfunction.hxx>
+#include <sortparam.hxx>
 
-#include <list>
+#include <comphelper/lok.hxx>
+
 #include <memory>
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
+#include <set>
+#include <algorithm>
 
 using namespace com::sun::star;
 using ::com::sun::star::uno::Any;
@@ -82,7 +78,6 @@ using ::com::sun::star::uno::UNO_QUERY;
 using ::com::sun::star::beans::XPropertySet;
 using ::com::sun::star::container::XNameAccess;
 using ::com::sun::star::sheet::XDimensionsSupplier;
-using ::std::list;
 using ::std::vector;
 
 //          outliner
@@ -97,6 +92,12 @@ void ScDBFunc::MakeOutline( bool bColumns, bool bRecord )
         ScDocShell* pDocSh = GetViewData().GetDocShell();
         ScOutlineDocFunc aFunc(*pDocSh);
         aFunc.MakeOutline( aRange, bColumns, bRecord, false );
+
+        ScTabViewShell::notifyAllViewsHeaderInvalidation(GetViewData().GetViewShell(), bColumns ? COLUMN_HEADER : ROW_HEADER, GetViewData().GetTabNo());
+        ScTabViewShell::notifyAllViewsSheetGeomInvalidation(GetViewData().GetViewShell(),
+                                                            bColumns, !bColumns, false /* bSizes*/,
+                                                            false /* bHidden */, false /* bFiltered */,
+                                                            true /* bGroups */, GetViewData().GetTabNo());
     }
     else
         ErrorMessage(STR_NOMULTISELECT);
@@ -112,6 +113,12 @@ void ScDBFunc::RemoveOutline( bool bColumns, bool bRecord )
         ScDocShell* pDocSh = GetViewData().GetDocShell();
         ScOutlineDocFunc aFunc(*pDocSh);
         aFunc.RemoveOutline( aRange, bColumns, bRecord, false );
+
+        ScTabViewShell::notifyAllViewsHeaderInvalidation(GetViewData().GetViewShell(), bColumns ? COLUMN_HEADER : ROW_HEADER, GetViewData().GetTabNo());
+        ScTabViewShell::notifyAllViewsSheetGeomInvalidation(GetViewData().GetViewShell(),
+                                                            bColumns, !bColumns, false /* bSizes*/,
+                                                            true /* bHidden */, true /* bFiltered */,
+                                                            true /* bGroups */, GetViewData().GetTabNo());
     }
     else
         ErrorMessage(STR_NOMULTISELECT);
@@ -137,8 +144,8 @@ void ScDBFunc::TestRemoveOutline( bool& rCol, bool& rRow )
             ScOutlineEntry* pEntry;
             SCCOLROW nStart;
             SCCOLROW nEnd;
-            bool bColMarked = ( nStartRow == 0 && nEndRow == MAXROW );
-            bool bRowMarked = ( nStartCol == 0 && nEndCol == MAXCOL );
+            bool bColMarked = ( nStartRow == 0 && nEndRow == pDoc->MaxRow() );
+            bool bRowMarked = ( nStartCol == 0 && nEndCol == pDoc->MaxCol() );
 
             // columns
 
@@ -146,8 +153,11 @@ void ScDBFunc::TestRemoveOutline( bool& rCol, bool& rRow )
             {
                 ScOutlineArray& rArray = pTable->GetColArray();
                 ScSubOutlineIterator aColIter( &rArray );
-                while ((pEntry=aColIter.GetNext()) != nullptr && !bColFound)
+                while (!bColFound)
                 {
+                    pEntry=aColIter.GetNext();
+                    if (!pEntry)
+                        break;
                     nStart = pEntry->GetStart();
                     nEnd   = pEntry->GetEnd();
                     if ( nStartCol<=static_cast<SCCOL>(nEnd) && nEndCol>=static_cast<SCCOL>(nStart) )
@@ -161,8 +171,11 @@ void ScDBFunc::TestRemoveOutline( bool& rCol, bool& rRow )
             {
                 ScOutlineArray& rArray = pTable->GetRowArray();
                 ScSubOutlineIterator aRowIter( &rArray );
-                while ((pEntry=aRowIter.GetNext()) != nullptr && !bRowFound)
+                while (!bRowFound)
                 {
+                    pEntry=aRowIter.GetNext();
+                    if (!pEntry)
+                        break;
                     nStart = pEntry->GetStart();
                     nEnd   = pEntry->GetEnd();
                     if ( nStartRow<=nEnd && nEndRow>=nStart )
@@ -185,15 +198,22 @@ void ScDBFunc::RemoveAllOutlines( bool bRecord )
     bool bOk = aFunc.RemoveAllOutlines( nTab, bRecord );
 
     if (bOk)
-        UpdateScrollBars();
+    {
+        ScTabViewShell::notifyAllViewsSheetGeomInvalidation(GetViewData().GetViewShell(),
+                                                            true /* bColumns */, true /* bRows */, false /* bSizes*/,
+                                                            true /* bHidden */, true /* bFiltered */,
+                                                            true /* bGroups */, nTab);
+        UpdateScrollBars(BOTH_HEADERS);
+    }
 }
 
 // auto outlines
 
 void ScDBFunc::AutoOutline( )
 {
+    ScDocument* pDoc = GetViewData().GetDocument();
     SCTAB nTab = GetViewData().GetTabNo();
-    ScRange aRange( 0,0,nTab, MAXCOL,MAXROW,nTab );     // the complete sheet, if nothing is marked
+    ScRange aRange( 0,0,nTab, pDoc->MaxCol(),pDoc->MaxRow(),nTab );     // the complete sheet, if nothing is marked
     ScMarkData& rMark = GetViewData().GetMarkData();
     if ( rMark.IsMarked() || rMark.IsMultiMarked() )
     {
@@ -217,10 +237,30 @@ void ScDBFunc::SelectLevel( bool bColumns, sal_uInt16 nLevel, bool bRecord )
     bool bOk = aFunc.SelectLevel( nTab, bColumns, nLevel, bRecord, true/*bPaint*/ );
 
     if (bOk)
-        UpdateScrollBars();
+    {
+        ScTabViewShell::notifyAllViewsSheetGeomInvalidation(GetViewData().GetViewShell(),
+                                                            bColumns, !bColumns, false /* bSizes*/,
+                                                            true /* bHidden */, true /* bFiltered */,
+                                                            true /* bGroups */, nTab);
+        UpdateScrollBars(bColumns ? COLUMN_HEADER : ROW_HEADER);
+    }
 }
 
 // show individual outline groups
+
+void ScDBFunc::SetOutlineState( bool bColumns, sal_uInt16 nLevel, sal_uInt16 nEntry, bool bHidden)
+{
+    const sal_uInt16 nHeadEntry = static_cast< sal_uInt16 >( -1 );
+    if ( nEntry ==  nHeadEntry)
+        SelectLevel( bColumns, sal::static_int_cast<sal_uInt16>(nLevel) );
+    else
+    {
+        if ( !bHidden )
+            ShowOutline( bColumns, sal::static_int_cast<sal_uInt16>(nLevel), sal::static_int_cast<sal_uInt16>(nEntry) );
+        else
+            HideOutline( bColumns, sal::static_int_cast<sal_uInt16>(nLevel), sal::static_int_cast<sal_uInt16>(nEntry) );
+    }
+}
 
 void ScDBFunc::ShowOutline( bool bColumns, sal_uInt16 nLevel, sal_uInt16 nEntry, bool bRecord, bool bPaint )
 {
@@ -228,10 +268,16 @@ void ScDBFunc::ShowOutline( bool bColumns, sal_uInt16 nLevel, sal_uInt16 nEntry,
     ScDocShell* pDocSh = GetViewData().GetDocShell();
     ScOutlineDocFunc aFunc(*pDocSh);
 
-    bool bOk = aFunc.ShowOutline( nTab, bColumns, nLevel, nEntry, bRecord, bPaint );
+    aFunc.ShowOutline( nTab, bColumns, nLevel, nEntry, bRecord, bPaint );
 
-    if ( bOk && bPaint )
-        UpdateScrollBars();
+    if ( bPaint )
+    {
+        ScTabViewShell::notifyAllViewsSheetGeomInvalidation(GetViewData().GetViewShell(),
+                                                            bColumns, !bColumns, false /* bSizes*/,
+                                                            true /* bHidden */, true /* bFiltered */,
+                                                            true /* bGroups */, nTab);
+        UpdateScrollBars(bColumns ? COLUMN_HEADER : ROW_HEADER);
+    }
 }
 
 // hide individual outline groups
@@ -245,7 +291,13 @@ void ScDBFunc::HideOutline( bool bColumns, sal_uInt16 nLevel, sal_uInt16 nEntry,
     bool bOk = aFunc.HideOutline( nTab, bColumns, nLevel, nEntry, bRecord, bPaint );
 
     if ( bOk && bPaint )
-        UpdateScrollBars();
+    {
+        ScTabViewShell::notifyAllViewsSheetGeomInvalidation(GetViewData().GetViewShell(),
+                                                            bColumns, !bColumns, false /* bSizes*/,
+                                                            true /* bHidden */, true /* bFiltered */,
+                                                            true /* bGroups */, nTab);
+        UpdateScrollBars(bColumns ? COLUMN_HEADER : ROW_HEADER);
+    }
 }
 
 // menu status: show/hide marked range
@@ -268,7 +320,6 @@ bool ScDBFunc::OutlinePossible(bool bHide)
         ScOutlineTable* pTable = pDoc->GetOutlineTable( nTab );
         if (pTable)
         {
-            ScOutlineEntry* pEntry;
             SCCOLROW nStart;
             SCCOLROW nEnd;
 
@@ -276,8 +327,11 @@ bool ScDBFunc::OutlinePossible(bool bHide)
 
             ScOutlineArray& rColArray = pTable->GetColArray();
             ScSubOutlineIterator aColIter( &rColArray );
-            while ((pEntry=aColIter.GetNext()) != nullptr && !bEnable)
+            while (!bEnable)
             {
+                ScOutlineEntry* pEntry = aColIter.GetNext();
+                if (!pEntry)
+                    break;
                 nStart = pEntry->GetStart();
                 nEnd   = pEntry->GetEnd();
                 if ( bHide )
@@ -298,8 +352,11 @@ bool ScDBFunc::OutlinePossible(bool bHide)
 
             ScOutlineArray& rRowArray = pTable->GetRowArray();
             ScSubOutlineIterator aRowIter( &rRowArray );
-            while ((pEntry=aRowIter.GetNext()) != nullptr)
+            for (;;)
             {
+                ScOutlineEntry* pEntry = aRowIter.GetNext();
+                if (!pEntry)
+                    break;
                 nStart = pEntry->GetStart();
                 nEnd   = pEntry->GetEnd();
                 if ( bHide )
@@ -332,7 +389,13 @@ void ScDBFunc::ShowMarkedOutlines( bool bRecord )
         ScOutlineDocFunc aFunc(*pDocSh);
         bool bDone = aFunc.ShowMarkedOutlines( aRange, bRecord );
         if (bDone)
+        {
+            ScTabViewShell::notifyAllViewsSheetGeomInvalidation(
+                GetViewData().GetViewShell(), true, true,
+                false /* bSizes*/, true /* bHidden */, true /* bFiltered */,
+                true /* bGroups */, GetViewData().GetTabNo());
             UpdateScrollBars();
+        }
     }
     else
         ErrorMessage(STR_NOMULTISELECT);
@@ -349,7 +412,13 @@ void ScDBFunc::HideMarkedOutlines( bool bRecord )
         ScOutlineDocFunc aFunc(*pDocSh);
         bool bDone = aFunc.HideMarkedOutlines( aRange, bRecord );
         if (bDone)
+        {
+            ScTabViewShell::notifyAllViewsSheetGeomInvalidation(
+                GetViewData().GetViewShell(), true, true,
+                false /* bSizes*/, true /* bHidden */, true /* bFiltered */,
+                true /* bGroups */, GetViewData().GetTabNo());
             UpdateScrollBars();
+        }
     }
     else
         ErrorMessage(STR_NOMULTISELECT);
@@ -377,7 +446,7 @@ void ScDBFunc::DoSubTotals( const ScSubTotalParam& rParam, bool bRecord,
         return;
     }
 
-    ScEditableTester aTester( &rDoc, nTab, 0,rParam.nRow1+1, MAXCOL,MAXROW );
+    ScEditableTester aTester( &rDoc, nTab, 0,rParam.nRow1+1, rDoc.MaxCol(),rDoc.MaxRow() );
     if (!aTester.IsEditable())
     {
         ErrorMessage(aTester.GetMessageId());
@@ -391,140 +460,143 @@ void ScDBFunc::DoSubTotals( const ScSubTotalParam& rParam, bool bRecord,
         return;
     }
 
-    WaitObject aWait( GetViewData().GetDialogParent() );
+    weld::WaitObject aWait(GetViewData().GetDialogParent());
     bool bOk = true;
     if (rParam.bReplace)
+    {
         if (rDoc.TestRemoveSubTotals( nTab, rParam ))
         {
-            bOk = ( ScopedVclPtrInstance<MessBox>( GetViewData().GetDialogParent(), WinBits(WB_YES_NO | WB_DEF_YES),
-                // "StarCalc" "delete data?"
-                ScGlobal::GetRscString( STR_MSSG_DOSUBTOTALS_0 ),
-                ScGlobal::GetRscString( STR_MSSG_DOSUBTOTALS_1 ) )->Execute()
-                == RET_YES );
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetViewData().GetDialogParent(),
+                                                      VclMessageType::Question, VclButtonsType::YesNo,
+                                                      ScResId(STR_MSSG_DOSUBTOTALS_1))); // "delete data?"
+            xBox->set_title(ScResId(STR_MSSG_DOSUBTOTALS_0)); // "StarCalc"
+            xBox->set_default_response(RET_YES);
+            bOk = xBox->run() == RET_YES;
         }
-
-    if (bOk)
-    {
-        ScDocShellModificator aModificator( *pDocSh );
-
-        ScSubTotalParam aNewParam( rParam );        // change end of range
-        ScDocument*     pUndoDoc = nullptr;
-        ScOutlineTable* pUndoTab = nullptr;
-        ScRangeName*    pUndoRange = nullptr;
-        ScDBCollection* pUndoDB = nullptr;
-
-        if (bRecord)                                        // record old data
-        {
-            bool bOldFilter = bDo && rParam.bDoSort;
-            SCTAB nTabCount = rDoc.GetTableCount();
-            pUndoDoc = new ScDocument( SCDOCMODE_UNDO );
-            ScOutlineTable* pTable = rDoc.GetOutlineTable( nTab );
-            if (pTable)
-            {
-                pUndoTab = new ScOutlineTable( *pTable );
-
-                SCCOLROW nOutStartCol;                          // row/column status
-                SCCOLROW nOutStartRow;
-                SCCOLROW nOutEndCol;
-                SCCOLROW nOutEndRow;
-                pTable->GetColArray().GetRange( nOutStartCol, nOutEndCol );
-                pTable->GetRowArray().GetRange( nOutStartRow, nOutEndRow );
-
-                pUndoDoc->InitUndo( &rDoc, nTab, nTab, true, true );
-                rDoc.CopyToDocument( static_cast<SCCOL>(nOutStartCol), 0, nTab, static_cast<SCCOL>(nOutEndCol), MAXROW, nTab, InsertDeleteFlags::NONE, false, *pUndoDoc );
-                rDoc.CopyToDocument( 0, nOutStartRow, nTab, MAXCOL, nOutEndRow, nTab, InsertDeleteFlags::NONE, false, *pUndoDoc );
-            }
-            else
-                pUndoDoc->InitUndo( &rDoc, nTab, nTab, false, bOldFilter );
-
-            // record data range - including filter results
-            rDoc.CopyToDocument( 0,rParam.nRow1+1,nTab, MAXCOL,rParam.nRow2,nTab,
-                                    InsertDeleteFlags::ALL, false, *pUndoDoc );
-
-            // all formulas for reference
-            rDoc.CopyToDocument( 0,0,0, MAXCOL,MAXROW,nTabCount-1,
-                                        InsertDeleteFlags::FORMULA, false, *pUndoDoc );
-
-            // data base and othe ranges
-            ScRangeName* pDocRange = rDoc.GetRangeName();
-            if (!pDocRange->empty())
-                pUndoRange = new ScRangeName( *pDocRange );
-            ScDBCollection* pDocDB = rDoc.GetDBCollection();
-            if (!pDocDB->empty())
-                pUndoDB = new ScDBCollection( *pDocDB );
-        }
-
-        ScOutlineTable* pOut = rDoc.GetOutlineTable( nTab );
-        if (pOut)
-        {
-            // Remove all existing outlines in the specified range.
-            ScOutlineArray& rRowArray = pOut->GetRowArray();
-            sal_uInt16 nDepth = rRowArray.GetDepth();
-            for (sal_uInt16 i = 0; i < nDepth; ++i)
-            {
-                bool bSize;
-                rRowArray.Remove(aNewParam.nRow1, aNewParam.nRow2, bSize);
-            }
-        }
-
-        if (rParam.bReplace)
-            rDoc.RemoveSubTotals( nTab, aNewParam );
-        bool bSuccess = true;
-        if (bDo)
-        {
-            // Sort
-            if ( rParam.bDoSort || pForceNewSort )
-            {
-                pDBData->SetArea( nTab, aNewParam.nCol1,aNewParam.nRow1, aNewParam.nCol2,aNewParam.nRow2 );
-
-                // set subtotal fields before sorting
-                // (duplicate values are dropped, so that they can be called again)
-
-                ScSortParam aOldSort;
-                pDBData->GetSortParam( aOldSort );
-                ScSortParam aSortParam( aNewParam, pForceNewSort ? *pForceNewSort : aOldSort );
-                Sort( aSortParam, false, false );
-            }
-
-            bSuccess = rDoc.DoSubTotals( nTab, aNewParam );
-        }
-        ScRange aDirtyRange( aNewParam.nCol1, aNewParam.nRow1, nTab,
-            aNewParam.nCol2, aNewParam.nRow2, nTab );
-        rDoc.SetDirty( aDirtyRange, true );
-
-        if (bRecord)
-        {
-            pDocSh->GetUndoManager()->AddUndoAction(
-                new ScUndoSubTotals( pDocSh, nTab,
-                                        rParam, aNewParam.nRow2,
-                                        pUndoDoc, pUndoTab, // pUndoDBData,
-                                        pUndoRange, pUndoDB ) );
-        }
-
-        if (!bSuccess)
-        {
-            // "Can not insert any rows"
-            ErrorMessage(STR_MSSG_DOSUBTOTALS_2);
-        }
-
-                                                    // store
-        pDBData->SetSubTotalParam( aNewParam );
-        pDBData->SetArea( nTab, aNewParam.nCol1,aNewParam.nRow1, aNewParam.nCol2,aNewParam.nRow2 );
-        rDoc.CompileDBFormula();
-
-        DoneBlockMode();
-        InitOwnBlockMode();
-        rMark.SetMarkArea( ScRange( aNewParam.nCol1,aNewParam.nRow1,nTab,
-                                    aNewParam.nCol2,aNewParam.nRow2,nTab ) );
-        MarkDataChanged();
-
-        pDocSh->PostPaint(ScRange(0, 0, nTab, MAXCOL, MAXROW, nTab),
-                          PaintPartFlags::Grid | PaintPartFlags::Left | PaintPartFlags::Top | PaintPartFlags::Size);
-
-        aModificator.SetDocumentModified();
-
-        SelectionChanged();
     }
+
+    if (!bOk)
+        return;
+
+    ScDocShellModificator aModificator( *pDocSh );
+
+    ScSubTotalParam aNewParam( rParam );        // change end of range
+    ScDocumentUniquePtr pUndoDoc;
+    std::unique_ptr<ScOutlineTable> pUndoTab;
+    std::unique_ptr<ScRangeName> pUndoRange;
+    std::unique_ptr<ScDBCollection> pUndoDB;
+
+    if (bRecord)                                        // record old data
+    {
+        bool bOldFilter = bDo && rParam.bDoSort;
+        SCTAB nTabCount = rDoc.GetTableCount();
+        pUndoDoc.reset(new ScDocument( SCDOCMODE_UNDO ));
+        ScOutlineTable* pTable = rDoc.GetOutlineTable( nTab );
+        if (pTable)
+        {
+            pUndoTab.reset(new ScOutlineTable( *pTable ));
+
+            SCCOLROW nOutStartCol;                          // row/column status
+            SCCOLROW nOutStartRow;
+            SCCOLROW nOutEndCol;
+            SCCOLROW nOutEndRow;
+            pTable->GetColArray().GetRange( nOutStartCol, nOutEndCol );
+            pTable->GetRowArray().GetRange( nOutStartRow, nOutEndRow );
+
+            pUndoDoc->InitUndo( &rDoc, nTab, nTab, true, true );
+            rDoc.CopyToDocument( static_cast<SCCOL>(nOutStartCol), 0, nTab, static_cast<SCCOL>(nOutEndCol), rDoc.MaxRow(), nTab, InsertDeleteFlags::NONE, false, *pUndoDoc );
+            rDoc.CopyToDocument( 0, nOutStartRow, nTab, rDoc.MaxCol(), nOutEndRow, nTab, InsertDeleteFlags::NONE, false, *pUndoDoc );
+        }
+        else
+            pUndoDoc->InitUndo( &rDoc, nTab, nTab, false, bOldFilter );
+
+        // record data range - including filter results
+        rDoc.CopyToDocument( 0,rParam.nRow1+1,nTab, rDoc.MaxCol(),rParam.nRow2,nTab,
+                                InsertDeleteFlags::ALL, false, *pUndoDoc );
+
+        // all formulas for reference
+        rDoc.CopyToDocument( 0,0,0, rDoc.MaxCol(),rDoc.MaxRow(),nTabCount-1,
+                                    InsertDeleteFlags::FORMULA, false, *pUndoDoc );
+
+        // database and other ranges
+        ScRangeName* pDocRange = rDoc.GetRangeName();
+        if (!pDocRange->empty())
+            pUndoRange.reset(new ScRangeName( *pDocRange ));
+        ScDBCollection* pDocDB = rDoc.GetDBCollection();
+        if (!pDocDB->empty())
+            pUndoDB.reset(new ScDBCollection( *pDocDB ));
+    }
+
+    ScOutlineTable* pOut = rDoc.GetOutlineTable( nTab );
+    if (pOut)
+    {
+        // Remove all existing outlines in the specified range.
+        ScOutlineArray& rRowArray = pOut->GetRowArray();
+        sal_uInt16 nDepth = rRowArray.GetDepth();
+        for (sal_uInt16 i = 0; i < nDepth; ++i)
+        {
+            bool bSize;
+            rRowArray.Remove(aNewParam.nRow1, aNewParam.nRow2, bSize);
+        }
+    }
+
+    if (rParam.bReplace)
+        rDoc.RemoveSubTotals( nTab, aNewParam );
+    bool bSuccess = true;
+    if (bDo)
+    {
+        // Sort
+        if ( rParam.bDoSort || pForceNewSort )
+        {
+            pDBData->SetArea( nTab, aNewParam.nCol1,aNewParam.nRow1, aNewParam.nCol2,aNewParam.nRow2 );
+
+            // set subtotal fields before sorting
+            // (duplicate values are dropped, so that they can be called again)
+
+            ScSortParam aOldSort;
+            pDBData->GetSortParam( aOldSort );
+            ScSortParam aSortParam( aNewParam, pForceNewSort ? *pForceNewSort : aOldSort );
+            Sort( aSortParam, false, false );
+        }
+
+        bSuccess = rDoc.DoSubTotals( nTab, aNewParam );
+    }
+    ScRange aDirtyRange( aNewParam.nCol1, aNewParam.nRow1, nTab,
+        aNewParam.nCol2, aNewParam.nRow2, nTab );
+    rDoc.SetDirty( aDirtyRange, true );
+
+    if (bRecord)
+    {
+        pDocSh->GetUndoManager()->AddUndoAction(
+            std::make_unique<ScUndoSubTotals>( pDocSh, nTab,
+                                    rParam, aNewParam.nRow2,
+                                    std::move(pUndoDoc), std::move(pUndoTab), // pUndoDBData,
+                                    std::move(pUndoRange), std::move(pUndoDB) ) );
+    }
+
+    if (!bSuccess)
+    {
+        // "Can not insert any rows"
+        ErrorMessage(STR_MSSG_DOSUBTOTALS_2);
+    }
+
+                                                // store
+    pDBData->SetSubTotalParam( aNewParam );
+    pDBData->SetArea( nTab, aNewParam.nCol1,aNewParam.nRow1, aNewParam.nCol2,aNewParam.nRow2 );
+    rDoc.CompileDBFormula();
+
+    DoneBlockMode();
+    InitOwnBlockMode();
+    rMark.SetMarkArea( ScRange( aNewParam.nCol1,aNewParam.nRow1,nTab,
+                                aNewParam.nCol2,aNewParam.nRow2,nTab ) );
+    MarkDataChanged();
+
+    pDocSh->PostPaint(ScRange(0, 0, nTab, rDoc.MaxCol(), rDoc.MaxRow(), nTab),
+                      PaintPartFlags::Grid | PaintPartFlags::Left | PaintPartFlags::Top | PaintPartFlags::Size);
+
+    aModificator.SetDocumentModified();
+
+    SelectionChanged();
 }
 
 // consolidate
@@ -566,7 +638,7 @@ bool ScDBFunc::MakePivotTable(
     {
         SCTAB nSrcTab = GetViewData().GetTabNo();
 
-        OUString aName( ScGlobal::GetRscString(STR_PIVOT_TABLE) );
+        OUString aName( ScResId(STR_PIVOT_TABLE) );
         OUString aStr;
 
         pDoc->GetName( nSrcTab, aStr );
@@ -582,7 +654,7 @@ bool ScDBFunc::MakePivotTable(
         if (bUndo)
         {
             pDocSh->GetUndoManager()->AddUndoAction(
-                        new ScUndoInsertTab( pDocSh, nNewTab, bAppend, lcl_MakePivotTabName( aName, i ) ));
+                        std::make_unique<ScUndoInsertTab>( pDocSh, nNewTab, bAppend, lcl_MakePivotTabName( aName, i ) ));
         }
 
         GetViewData().InsertTab( nNewTab );
@@ -685,12 +757,12 @@ void ScDBFunc::GetSelectedMemberList(ScDPUniqueStringSet& rEntries, long& rDimen
 
     for (size_t nRangePos=0; nRangePos < nRangeCount && bContinue; nRangePos++)
     {
-        ScRange aRange = *(*xRanges)[nRangePos];
-        SCCOL nStartCol = aRange.aStart.Col();
-        SCROW nStartRow = aRange.aStart.Row();
-        SCCOL nEndCol = aRange.aEnd.Col();
-        SCROW nEndRow = aRange.aEnd.Row();
-        SCTAB nTab = aRange.aStart.Tab();
+        ScRange const & rRange = (*xRanges)[nRangePos];
+        SCCOL nStartCol = rRange.aStart.Col();
+        SCROW nStartRow = rRange.aStart.Row();
+        SCCOL nEndCol = rRange.aEnd.Col();
+        SCROW nEndRow = rRange.aEnd.Row();
+        SCTAB nTab = rRange.aStart.Tab();
 
         for (SCROW nRow=nStartRow; nRow<=nEndRow && bContinue; nRow++)
             for (SCCOL nCol=nStartCol; nCol<=nEndCol && bContinue; nCol++)
@@ -821,10 +893,10 @@ bool ScDBFunc::HasSelectionForDateGroup( ScDPNumGroupInfo& rOldInfo, sal_Int32& 
                     SCTAB nSelTab = aSelRange.aStart.Tab();
                     if ( pDoc->HasValueData( nSelCol, nSelRow, nSelTab ) )
                     {
-                        sal_uLong nIndex = static_cast<const SfxUInt32Item*>(pDoc->GetAttr(
-                                        nSelCol, nSelRow, nSelTab, ATTR_VALUE_FORMAT))->GetValue();
-                        short nType = pDoc->GetFormatTable()->GetType(nIndex);
-                        if ( nType == css::util::NumberFormat::DATE || nType == css::util::NumberFormat::TIME || nType == css::util::NumberFormat::DATETIME )
+                        sal_uLong nIndex = pDoc->GetAttr(
+                                        nSelCol, nSelRow, nSelTab, ATTR_VALUE_FORMAT)->GetValue();
+                        SvNumFormatType nType = pDoc->GetFormatTable()->GetType(nIndex);
+                        if ( nType == SvNumFormatType::DATE || nType == SvNumFormatType::TIME || nType == SvNumFormatType::DATETIME )
                         {
                             bFound = true;
                             // use currently selected value for automatic limits
@@ -946,7 +1018,6 @@ void ScDBFunc::DateGroupDataPilot( const ScDPNumGroupInfo& rInfo, sal_Int32 nPar
     {
         // create date group dimensions
 
-        ScDPNumGroupInfo aEmpty;
         bool bFirst = true;
         sal_Int32 nMask = 1;
         for (sal_uInt16 nBit=0; nBit<32; nBit++)
@@ -1088,10 +1159,8 @@ void ScDBFunc::GroupDataPilot()
     // (empty groups are removed, too)
     if ( pGroupDimension )
     {
-        ScDPUniqueStringSet::const_iterator it = aEntries.begin(), itEnd = aEntries.end();
-        for (; it != itEnd; ++it)
+        for (const OUString& aEntryName : aEntries)
         {
-            const OUString& aEntryName = *it;
             if ( pBaseGroupDim )
             {
                 // for each selected (intermediate) group, remove all its items
@@ -1107,15 +1176,15 @@ void ScDBFunc::GroupDataPilot()
         }
     }
 
-    ScDPSaveGroupDimension* pNewGroupDim = nullptr;
+    std::unique_ptr<ScDPSaveGroupDimension> pNewGroupDim;
     if ( !pGroupDimension )
     {
         // create a new group dimension
         OUString aGroupDimName =
             pDimData->CreateGroupDimName(aBaseDimName, *pDPObj, false, nullptr);
-        pNewGroupDim = new ScDPSaveGroupDimension( aBaseDimName, aGroupDimName );
+        pNewGroupDim.reset(new ScDPSaveGroupDimension( aBaseDimName, aGroupDimName ));
 
-        pGroupDimension = pNewGroupDim;     // make changes to the new dim if none existed
+        pGroupDimension = pNewGroupDim.get();     // make changes to the new dim if none existed
 
         if ( pBaseGroupDim )
         {
@@ -1143,12 +1212,10 @@ void ScDBFunc::GroupDataPilot()
     }
     OUString aGroupDimName = pGroupDimension->GetGroupDimName();
 
-    OUString aGroupName = pGroupDimension->CreateGroupName(ScGlobal::GetRscString(STR_PIVOT_GROUP));
+    OUString aGroupName = pGroupDimension->CreateGroupName(ScResId(STR_PIVOT_GROUP));
     ScDPSaveGroupItem aGroup( aGroupName );
-    ScDPUniqueStringSet::const_iterator it = aEntries.begin(), itEnd = aEntries.end();
-    for (; it != itEnd; ++it)
+    for (const OUString& aEntryName : aEntries)
     {
-        const OUString& aEntryName = *it;
         if ( pBaseGroupDim )
         {
             // for each selected (intermediate) group, add all its items
@@ -1167,10 +1234,10 @@ void ScDBFunc::GroupDataPilot()
     if ( pNewGroupDim )
     {
         pDimData->AddGroupDimension( *pNewGroupDim );
-        delete pNewGroupDim;        // AddGroupDimension copies the object
+        pNewGroupDim.reset();        // AddGroupDimension copies the object
         // don't access pGroupDimension after here
     }
-    pGroupDimension = pNewGroupDim = nullptr;
+    pGroupDimension = nullptr;
 
     // set orientation
     ScDPSaveDimension* pSaveDimension = aData.GetDimensionByName( aGroupDimName );
@@ -1228,9 +1295,8 @@ void ScDBFunc::UngroupDataPilot()
 
     if ( pGroupDim )
     {
-        ScDPUniqueStringSet::const_iterator it = aEntries.begin(), itEnd = aEntries.end();
-        for (; it != itEnd; ++it)
-            pGroupDim->RemoveGroup(*it);
+        for (const auto& rEntry : aEntries)
+            pGroupDim->RemoveGroup(rEntry);
 
         // remove group dimension if empty
         bool bEmptyDim = pGroupDim->IsEmpty();
@@ -1277,7 +1343,7 @@ static OUString lcl_replaceMemberNameInSubtotal(const OUString& rSubtotal, const
         if (c == ' ')
         {
             OUString aWord = aWordBuf.makeStringAndClear();
-            if (aWord.equals(rMemberName))
+            if (aWord == rMemberName)
                 aBuf.append('?');
             else
                 aBuf.append(aWord);
@@ -1302,7 +1368,7 @@ static OUString lcl_replaceMemberNameInSubtotal(const OUString& rSubtotal, const
     if (!aWordBuf.isEmpty())
     {
         OUString aWord = aWordBuf.makeStringAndClear();
-        if (aWord.equals(rMemberName))
+        if (aWord == rMemberName)
             aBuf.append('?');
         else
             aBuf.append(aWord);
@@ -1328,11 +1394,12 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
         return;
     }
 
-    sal_uInt16 nErrorId = 0;
+    const char* pErrorId = nullptr;
 
     pDPObj->BuildAllDimensionMembers();
     ScDPSaveData aData( *pDPObj->GetSaveData() );
     bool bChange = false;
+    bool bNeedReloadGroups = false;
 
     DataPilotFieldOrientation nOrient = DataPilotFieldOrientation_HIDDEN;
     long nField = pDPObj->GetHeaderDim( rPos, nOrient );
@@ -1359,7 +1426,7 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
                     bChange = true;
                 }
                 else
-                    nErrorId = STR_INVALIDNAME;
+                    pErrorId = STR_INVALIDNAME;
             }
         }
         else if (nOrient == DataPilotFieldOrientation_COLUMN || nOrient == DataPilotFieldOrientation_ROW)
@@ -1382,10 +1449,10 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
                         bChange = true;
                     }
                     else
-                        nErrorId = STR_INVALIDNAME;
+                        pErrorId = STR_INVALIDNAME;
                 }
                 else
-                    nErrorId = STR_INVALIDNAME;
+                    pErrorId = STR_INVALIDNAME;
             }
         }
     }
@@ -1408,10 +1475,10 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
                     bChange = true;
                 }
                 else
-                    nErrorId = STR_INVALIDNAME;
+                    pErrorId = STR_INVALIDNAME;
             }
             else
-                nErrorId = STR_INVALIDNAME;
+                pErrorId = STR_INVALIDNAME;
         }
     }
     else
@@ -1453,12 +1520,13 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
                             pSaveMember->SetName( rString );
 
                         bChange = true;
+                        bNeedReloadGroups = true;
                     }
                     else
-                        nErrorId = STR_INVALIDNAME;
+                        pErrorId = STR_INVALIDNAME;
                  }
             }
-            else if ((aPosData.Flags & MemberResultFlags::GRANDTOTAL))
+            else if (aPosData.Flags & MemberResultFlags::GRANDTOTAL)
             {
                 aData.SetGrandTotalName(rString);
                 bChange = true;
@@ -1472,7 +1540,7 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
                     // data dimension
                     do
                     {
-                        if ((aPosData.Flags & MemberResultFlags::SUBTOTAL))
+                        if (aPosData.Flags & MemberResultFlags::SUBTOTAL)
                             break;
 
                         ScDPSaveDimension* pDim = aData.GetDimensionByName(aPosData.MemberName);
@@ -1481,7 +1549,7 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
 
                         if (rString.isEmpty())
                         {
-                            nErrorId = STR_INVALIDNAME;
+                            pErrorId = STR_INVALIDNAME;
                             break;
                         }
 
@@ -1496,7 +1564,7 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
                             bChange = true;
                         }
                         else
-                            nErrorId = STR_INVALIDNAME;
+                            pErrorId = STR_INVALIDNAME;
                     }
                     while (false);
                 }
@@ -1513,7 +1581,7 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
                         if (!pMem)
                             break;
 
-                        if ((aPosData.Flags & MemberResultFlags::SUBTOTAL))
+                        if (aPosData.Flags & MemberResultFlags::SUBTOTAL)
                         {
                             // Change subtotal only when the table has one data dimension.
                             if (aData.GetDataDimensionCount() > 1)
@@ -1526,7 +1594,7 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
                             if (pDim->GetSubTotalFunc(0) != ScGeneralFunction::AUTO)
                                 break;
 
-                            const OUString* pLayoutName = pMem->GetLayoutName();
+                            const std::optional<OUString> & pLayoutName = pMem->GetLayoutName();
                             OUString aMemberName;
                             if (pLayoutName)
                                 aMemberName = *pLayoutName;
@@ -1554,10 +1622,10 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
                                     bChange = true;
                                 }
                                 else
-                                    nErrorId = STR_INVALIDNAME;
+                                    pErrorId = STR_INVALIDNAME;
                             }
                             else
-                                nErrorId = STR_INVALIDNAME;
+                                pErrorId = STR_INVALIDNAME;
                         }
                     }
                     while (false);
@@ -1571,28 +1639,40 @@ void ScDBFunc::DataPilotInput( const ScAddress& rPos, const OUString& rString )
         // apply changes
         ScDBDocFunc aFunc( *GetViewData().GetDocShell() );
         pDPObj->SetSaveData( aData );
+        if (bNeedReloadGroups)
+        {
+            ScDPCollection* pDPs = pDoc->GetDPCollection();
+            if (pDPs)
+            {
+                std::set<ScDPObject*> aRefs;
+                // tdf#111305: Reload groups in cache after modifications.
+                pDPs->ReloadGroupsInCache(pDPObj, aRefs);
+            } // pDPs
+        } // bNeedReloadGroups
         aFunc.UpdatePivotTable(*pDPObj, true, false);
     }
     else
     {
-        if ( !nErrorId )
-            nErrorId = STR_ERR_DATAPILOT_INPUT;
-        ErrorMessage( nErrorId );
+        if (!pErrorId)
+            pErrorId = STR_ERR_DATAPILOT_INPUT;
+        ErrorMessage(pErrorId);
     }
 }
 
 static void lcl_MoveToEnd( ScDPSaveDimension& rDim, const OUString& rItemName )
 {
-    ScDPSaveMember* pNewMember = nullptr;
+    std::unique_ptr<ScDPSaveMember> pNewMember;
     const ScDPSaveMember* pOldMember = rDim.GetExistingMemberByName( rItemName );
     if ( pOldMember )
-        pNewMember = new ScDPSaveMember( *pOldMember );
+        pNewMember.reset(new ScDPSaveMember( *pOldMember ));
     else
-        pNewMember = new ScDPSaveMember( rItemName );
-    rDim.AddMember( pNewMember );
+        pNewMember.reset(new ScDPSaveMember( rItemName ));
+    rDim.AddMember( std::move(pNewMember) );
     // AddMember takes ownership of the new pointer,
     // puts it to the end of the list even if it was in the list before.
 }
+
+namespace {
 
 struct ScOUStringCollate
 {
@@ -1605,6 +1685,8 @@ struct ScOUStringCollate
         return ( mpCollator->compareString(rStr1, rStr2) < 0 );
     }
 };
+
+}
 
 void ScDBFunc::DataPilotSort(ScDPObject* pDPObj, long nDimIndex, bool bAscending, const sal_uInt16* pUserListId)
 {
@@ -1635,13 +1717,11 @@ void ScDBFunc::DataPilotSort(ScDPObject* pDPObj, long nDimIndex, bool bAscending
     {
         typedef ScDPSaveDimension::MemberList MemList;
         const MemList& rDimMembers = pSaveDim->GetMembers();
-        list<OUString> aMembers;
-        std::unordered_set<OUString, OUStringHash> aMemberSet;
+        vector<OUString> aMembers;
+        std::unordered_set<OUString> aMemberSet;
         size_t nMemberCount = 0;
-        for (MemList::const_iterator itr = rDimMembers.begin(), itrEnd = rDimMembers.end();
-              itr != itrEnd; ++itr)
+        for (ScDPSaveMember* pMem : rDimMembers)
         {
-            ScDPSaveMember* pMem = *itr;
             aMembers.push_back(pMem->GetName());
             aMemberSet.insert(pMem->GetName());
             ++nMemberCount;
@@ -1649,48 +1729,43 @@ void ScDBFunc::DataPilotSort(ScDPObject* pDPObj, long nDimIndex, bool bAscending
 
         // Sort the member list in ascending order.
         ScOUStringCollate aCollate( ScGlobal::GetCollator() );
-        aMembers.sort(aCollate);
+        std::stable_sort(aMembers.begin(), aMembers.end(), aCollate);
 
         // Collect and rank those custom sort strings that also exist in the member name list.
 
-        typedef std::unordered_map<OUString, sal_uInt16, OUStringHash> UserSortMap;
+        typedef std::unordered_map<OUString, sal_uInt16> UserSortMap;
         UserSortMap aSubStrs;
         sal_uInt16 nSubCount = 0;
-        if (pUserListId)
+        ScUserList* pUserList = ScGlobal::GetUserList();
+        if (!pUserList)
+            return;
+
         {
-            ScUserList* pUserList = ScGlobal::GetUserList();
-            if (!pUserList)
+            size_t n = pUserList->size();
+            if (!n || *pUserListId >= static_cast<sal_uInt16>(n))
                 return;
+        }
 
-            {
-                size_t n = pUserList->size();
-                if (!n || *pUserListId >= static_cast<sal_uInt16>(n))
-                    return;
-            }
+        const ScUserListData& rData = (*pUserList)[*pUserListId];
+        sal_uInt16 n = rData.GetSubCount();
+        for (sal_uInt16 i = 0; i < n; ++i)
+        {
+            OUString aSub = rData.GetSubStr(i);
+            if (!aMemberSet.count(aSub))
+                // This string doesn't exist in the member name set.  Don't add this.
+                continue;
 
-            const ScUserListData& rData = (*pUserList)[*pUserListId];
-            sal_uInt16 n = rData.GetSubCount();
-            for (sal_uInt16 i = 0; i < n; ++i)
-            {
-                OUString aSub = rData.GetSubStr(i);
-                if (!aMemberSet.count(aSub))
-                    // This string doesn't exist in the member name set.  Don't add this.
-                    continue;
-
-                aSubStrs.insert(UserSortMap::value_type(aSub, nSubCount++));
-            }
+            aSubStrs.emplace(aSub, nSubCount++);
         }
 
         // Rank all members.
 
         vector<OUString> aRankedNames(nMemberCount);
         sal_uInt16 nCurStrId = 0;
-        for (list<OUString>::const_iterator itr = aMembers.begin(), itrEnd = aMembers.end();
-              itr != itrEnd; ++itr)
+        for (auto const& aMemberName : aMembers)
         {
-            OUString aName = *itr;
             sal_uInt16 nRank = 0;
-            UserSortMap::const_iterator itrSub = aSubStrs.find(aName);
+            UserSortMap::const_iterator itrSub = aSubStrs.find(aMemberName);
             if (itrSub == aSubStrs.end())
                 nRank = nSubCount + nCurStrId++;
             else
@@ -1699,21 +1774,18 @@ void ScDBFunc::DataPilotSort(ScDPObject* pDPObj, long nDimIndex, bool bAscending
             if (!bAscending)
                 nRank = static_cast< sal_uInt16 >( nMemberCount - nRank - 1 );
 
-            aRankedNames[nRank] = aName;
+            aRankedNames[nRank] = aMemberName;
         }
 
         // Re-order ScDPSaveMember instances with the new ranks.
-
-        for (vector<OUString>::const_iterator itr = aRankedNames.begin(), itrEnd = aRankedNames.end();
-              itr != itrEnd; ++itr)
+        for (auto const& aRankedName : aRankedNames)
         {
-            const ScDPSaveMember* pOldMem = pSaveDim->GetExistingMemberByName(*itr);
+            const ScDPSaveMember* pOldMem = pSaveDim->GetExistingMemberByName(aRankedName);
             if (!pOldMem)
                 // All members are supposed to be present.
                 continue;
 
-            ScDPSaveMember* pNewMem = new ScDPSaveMember(*pOldMem);
-            pSaveDim->AddMember(pNewMem);
+            pSaveDim->AddMember(std::unique_ptr<ScDPSaveMember>(new ScDPSaveMember(*pOldMem)));
         }
 
         // Set the sorting mode to manual for now.  We may introduce a new sorting
@@ -1754,7 +1826,7 @@ bool ScDBFunc::DataPilotMove( const ScRange& rSource, const ScAddress& rDest )
         bool bValid = ( aDestData.Dimension >= 0 );        // dropping onto a field
 
         // look through the source range
-        std::unordered_set< OUString, OUStringHash > aMembersSet;   // for lookup
+        std::unordered_set< OUString > aMembersSet;   // for lookup
         std::vector< OUString > aMembersVector;  // members in original order, for inserting
         aMembersVector.reserve( std::max( static_cast<SCSIZE>( rSource.aEnd.Col() - rSource.aStart.Col() + 1 ),
                                           static_cast<SCSIZE>( rSource.aEnd.Row() - rSource.aStart.Row() + 1 ) ) );
@@ -1765,9 +1837,8 @@ bool ScDBFunc::DataPilotMove( const ScRange& rSource, const ScAddress& rDest )
                 pDPObj->GetHeaderPositionData( ScAddress( nCol, nRow, rSource.aStart.Tab() ), aSourceData );
                 if ( aSourceData.Dimension == aDestData.Dimension && !aSourceData.MemberName.isEmpty() )
                 {
-                    if ( aMembersSet.find( aSourceData.MemberName ) == aMembersSet.end() )
+                    if ( aMembersSet.insert( aSourceData.MemberName ).second )
                     {
-                        aMembersSet.insert( aSourceData.MemberName );
                         aMembersVector.push_back( aSourceData.MemberName );
                     }
                     // duplicates are ignored
@@ -1791,17 +1862,13 @@ bool ScDBFunc::DataPilotMove( const ScRange& rSource, const ScAddress& rDest )
 
                 bool bInserted = false;
 
-                sal_Int32 nMemberCount = aMemberNames.getLength();
-                for (sal_Int32 nMemberPos=0; nMemberPos<nMemberCount; ++nMemberPos)
+                for (const OUString& aMemberStr : std::as_const(aMemberNames))
                 {
-                    OUString aMemberStr( aMemberNames[nMemberPos] );
-
-                    if ( !bInserted && aMemberNames[nMemberPos] == aDestData.MemberName )
+                    if ( !bInserted && aMemberStr == aDestData.MemberName )
                     {
                         // insert dragged items before this item
-                        for ( std::vector<OUString>::const_iterator aIter = aMembersVector.begin();
-                              aIter != aMembersVector.end(); ++aIter )
-                            lcl_MoveToEnd( *pDim, *aIter );
+                        for ( const auto& rMember : aMembersVector )
+                            lcl_MoveToEnd( *pDim, rMember );
                         bInserted = true;
                     }
 
@@ -1810,9 +1877,8 @@ bool ScDBFunc::DataPilotMove( const ScRange& rSource, const ScAddress& rDest )
                 }
                 // insert dragged item at end if dest wasn't found (for example, empty)
                 if ( !bInserted )
-                    for ( std::vector<OUString>::const_iterator aIter = aMembersVector.begin();
-                          aIter != aMembersVector.end(); ++aIter )
-                        lcl_MoveToEnd( *pDim, *aIter );
+                    for ( const auto& rMember : aMembersVector )
+                        lcl_MoveToEnd( *pDim, rMember );
 
                 // Items that were in SaveData, but not in the source, end up at the start of the list.
 
@@ -1879,89 +1945,86 @@ void ScDBFunc::SetDataPilotDetails(bool bShow, const OUString* pNewDimensionName
 {
     ScDPObject* pDPObj = GetViewData().GetDocument()->GetDPAtCursor( GetViewData().GetCurX(),
                                         GetViewData().GetCurY(), GetViewData().GetTabNo() );
-    if ( pDPObj )
+    if ( !pDPObj )
+        return;
+
+    ScDPUniqueStringSet aEntries;
+    long nSelectDimension = -1;
+    GetSelectedMemberList( aEntries, nSelectDimension );
+
+    if (aEntries.empty())
+        return;
+
+    bool bIsDataLayout;
+    OUString aDimName = pDPObj->GetDimName( nSelectDimension, bIsDataLayout );
+    if ( bIsDataLayout )
+        return;
+
+    ScDPSaveData aData( *pDPObj->GetSaveData() );
+    ScDPSaveDimension* pDim = aData.GetDimensionByName( aDimName );
+
+    if ( bShow && pNewDimensionName )
     {
-        ScDPUniqueStringSet aEntries;
-        long nSelectDimension = -1;
-        GetSelectedMemberList( aEntries, nSelectDimension );
+        //  add the new dimension with the same orientation, at the end
 
-        if (!aEntries.empty())
+        ScDPSaveDimension* pNewDim = aData.GetDimensionByName( *pNewDimensionName );
+        ScDPSaveDimension* pDuplicated = nullptr;
+        if ( pNewDim->GetOrientation() == sheet::DataPilotFieldOrientation_DATA )
         {
-            bool bIsDataLayout;
-            OUString aDimName = pDPObj->GetDimName( nSelectDimension, bIsDataLayout );
-            if ( !bIsDataLayout )
-            {
-                ScDPSaveData aData( *pDPObj->GetSaveData() );
-                ScDPSaveDimension* pDim = aData.GetDimensionByName( aDimName );
+            // Need to duplicate the dimension, create column/row in addition to data:
+            // The duplicated dimension inherits the existing settings, pNewDim is modified below.
+            pDuplicated = aData.DuplicateDimension( *pNewDimensionName );
+        }
 
-                if ( bShow && pNewDimensionName )
-                {
-                    //  add the new dimension with the same orientation, at the end
+        css::sheet::DataPilotFieldOrientation nOrientation = pDim->GetOrientation();
+        pNewDim->SetOrientation( nOrientation );
 
-                    ScDPSaveDimension* pNewDim = aData.GetDimensionByName( *pNewDimensionName );
-                    ScDPSaveDimension* pDuplicated = nullptr;
-                    if ( pNewDim->GetOrientation() == sheet::DataPilotFieldOrientation_DATA )
-                    {
-                        // Need to duplicate the dimension, create column/row in addition to data:
-                        // The duplicated dimension inherits the existing settings, pNewDim is modified below.
-                        pDuplicated = aData.DuplicateDimension( *pNewDimensionName );
-                    }
+        long nPosition = LONG_MAX;
+        aData.SetPosition( pNewDim, nPosition );
 
-                    css::sheet::DataPilotFieldOrientation nOrientation = pDim->GetOrientation();
-                    pNewDim->SetOrientation( nOrientation );
+        ScDPSaveDimension* pDataLayout = aData.GetDataLayoutDimension();
+        if ( pDataLayout->GetOrientation() == nOrientation &&
+             aData.GetDataDimensionCount() <= 1 )
+        {
+            // If there is only one data dimension, the data layout dimension
+            // must still be the last one in its orientation.
+            aData.SetPosition( pDataLayout, nPosition );
+        }
 
-                    long nPosition = LONG_MAX;
-                    aData.SetPosition( pNewDim, nPosition );
+        if ( pDuplicated )
+        {
+            // The duplicated (data) dimension needs to be behind the original dimension
+            aData.SetPosition( pDuplicated, nPosition );
+        }
 
-                    ScDPSaveDimension* pDataLayout = aData.GetDataLayoutDimension();
-                    if ( pDataLayout->GetOrientation() == nOrientation &&
-                         aData.GetDataDimensionCount() <= 1 )
-                    {
-                        // If there is only one data dimension, the data layout dimension
-                        // must still be the last one in its orientation.
-                        aData.SetPosition( pDataLayout, nPosition );
-                    }
+        //  Hide details for all visible members (selected are changed below).
+        //! Use all members from source level instead (including non-visible)?
 
-                    if ( pDuplicated )
-                    {
-                        // The duplicated (data) dimension needs to be behind the original dimension
-                        aData.SetPosition( pDuplicated, nPosition );
-                    }
+        ScDPUniqueStringSet aVisibleEntries;
+        pDPObj->GetMemberResultNames( aVisibleEntries, nSelectDimension );
 
-                    //  Hide details for all visible members (selected are changed below).
-                    //! Use all members from source level instead (including non-visible)?
-
-                    ScDPUniqueStringSet aVisibleEntries;
-                    pDPObj->GetMemberResultNames( aVisibleEntries, nSelectDimension );
-
-                    ScDPUniqueStringSet::const_iterator it = aVisibleEntries.begin(), itEnd = aVisibleEntries.end();
-                    for (; it != itEnd; ++it)
-                    {
-                        const OUString& aVisName = *it;
-                        ScDPSaveMember* pMember = pDim->GetMemberByName( aVisName );
-                        pMember->SetShowDetails( false );
-                    }
-                }
-
-                ScDPUniqueStringSet::const_iterator it = aEntries.begin(), itEnd = aEntries.end();
-                for (; it != itEnd; ++it)
-                {
-                    ScDPSaveMember* pMember = pDim->GetMemberByName(*it);
-                    pMember->SetShowDetails( bShow );
-                }
-
-                // apply changes
-                ScDBDocFunc aFunc( *GetViewData().GetDocShell() );
-                std::unique_ptr<ScDPObject> pNewObj(new ScDPObject( *pDPObj ));
-                pNewObj->SetSaveData( aData );
-                aFunc.DataPilotUpdate( pDPObj, pNewObj.get(), true, false );
-                pNewObj.reset();
-
-                // unmark cell selection
-                Unmark();
-            }
+        for (const OUString& aVisName : aVisibleEntries)
+        {
+            ScDPSaveMember* pMember = pDim->GetMemberByName( aVisName );
+            pMember->SetShowDetails( false );
         }
     }
+
+    for (const auto& rEntry : aEntries)
+    {
+        ScDPSaveMember* pMember = pDim->GetMemberByName(rEntry);
+        pMember->SetShowDetails( bShow );
+    }
+
+    // apply changes
+    ScDBDocFunc aFunc( *GetViewData().GetDocShell() );
+    std::unique_ptr<ScDPObject> pNewObj(new ScDPObject( *pDPObj ));
+    pNewObj->SetSaveData( aData );
+    aFunc.DataPilotUpdate( pDPObj, pNewObj.get(), true, false );
+    pNewObj.reset();
+
+    // unmark cell selection
+    Unmark();
 }
 
 void ScDBFunc::ShowDataPilotSourceData( ScDPObject& rDPObj, const Sequence<sheet::DataPilotFieldFilter>& rFilters )
@@ -1989,7 +2052,7 @@ void ScDBFunc::ShowDataPilotSourceData( ScDPObject& rDPObj, const Sequence<sheet
 
     SCTAB nNewTab = GetViewData().GetTabNo();
 
-    std::unique_ptr<ScDocument> pInsDoc(new ScDocument(SCDOCMODE_CLIP));
+    ScDocumentUniquePtr pInsDoc(new ScDocument(SCDOCMODE_CLIP));
     pInsDoc->ResetClip( pDoc, nNewTab );
     for (SCROW nRow = 0; nRow < nRowSize; ++nRow)
     {
@@ -2000,8 +2063,6 @@ void ScDBFunc::ShowDataPilotSourceData( ScDPObject& rDPObj, const Sequence<sheet
             double fVal;
             if (rAny >>= aStr)
             {
-                ScSetStringParam aParam;
-                aParam.setTextInput();
                 pInsDoc->SetString(ScAddress(nCol,nRow,nNewTab), aStr);
             }
             else if (rAny >>= fVal)
@@ -2035,8 +2096,8 @@ void ScDBFunc::ShowDataPilotSourceData( ScDPObject& rDPObj, const Sequence<sheet
     pInsDoc->GetCellArea( nNewTab, nEndCol, nEndRow );
     pInsDoc->SetClipArea( ScRange( 0, 0, nNewTab, nEndCol, nEndRow, nNewTab ) );
 
-    ::svl::IUndoManager* pMgr = GetViewData().GetDocShell()->GetUndoManager();
-    OUString aUndo = ScGlobal::GetRscString( STR_UNDO_DOOUTLINE );
+    SfxUndoManager* pMgr = GetViewData().GetDocShell()->GetUndoManager();
+    OUString aUndo = ScResId( STR_UNDO_DOOUTLINE );
     pMgr->EnterListAction( aUndo, aUndo, 0, GetViewData().GetViewShell()->GetViewShellId() );
 
     OUString aNewTabName;
@@ -2096,19 +2157,19 @@ void ScDBFunc::RepeatDB( bool bRecord )
 
         //! undo only needed data ?
 
-        ScDocument* pUndoDoc = nullptr;
-        ScOutlineTable* pUndoTab = nullptr;
-        ScRangeName* pUndoRange = nullptr;
-        ScDBCollection* pUndoDB = nullptr;
+        ScDocumentUniquePtr pUndoDoc;
+        std::unique_ptr<ScOutlineTable> pUndoTab;
+        std::unique_ptr<ScRangeName> pUndoRange;
+        std::unique_ptr<ScDBCollection> pUndoDB;
 
         if (bRecord)
         {
             SCTAB nTabCount = pDoc->GetTableCount();
-            pUndoDoc = new ScDocument( SCDOCMODE_UNDO );
+            pUndoDoc.reset(new ScDocument( SCDOCMODE_UNDO ));
             ScOutlineTable* pTable = pDoc->GetOutlineTable( nTab );
             if (pTable)
             {
-                pUndoTab = new ScOutlineTable( *pTable );
+                pUndoTab.reset(new ScOutlineTable( *pTable ));
 
                 SCCOLROW nOutStartCol;                          // row/column status
                 SCCOLROW nOutStartRow;
@@ -2118,43 +2179,43 @@ void ScDBFunc::RepeatDB( bool bRecord )
                 pTable->GetRowArray().GetRange( nOutStartRow, nOutEndRow );
 
                 pUndoDoc->InitUndo( pDoc, nTab, nTab, true, true );
-                pDoc->CopyToDocument( static_cast<SCCOL>(nOutStartCol), 0, nTab, static_cast<SCCOL>(nOutEndCol), MAXROW, nTab, InsertDeleteFlags::NONE, false, *pUndoDoc );
-                pDoc->CopyToDocument( 0, nOutStartRow, nTab, MAXCOL, nOutEndRow, nTab, InsertDeleteFlags::NONE, false, *pUndoDoc );
+                pDoc->CopyToDocument( static_cast<SCCOL>(nOutStartCol), 0, nTab, static_cast<SCCOL>(nOutEndCol), pDoc->MaxRow(), nTab, InsertDeleteFlags::NONE, false, *pUndoDoc );
+                pDoc->CopyToDocument( 0, nOutStartRow, nTab, pDoc->MaxCol(), nOutEndRow, nTab, InsertDeleteFlags::NONE, false, *pUndoDoc );
             }
             else
                 pUndoDoc->InitUndo( pDoc, nTab, nTab, false, true );
 
             // Record data range - including filter results
-            pDoc->CopyToDocument( 0,nStartRow,nTab, MAXCOL,nEndRow,nTab, InsertDeleteFlags::ALL, false, *pUndoDoc );
+            pDoc->CopyToDocument( 0,nStartRow,nTab, pDoc->MaxCol(),nEndRow,nTab, InsertDeleteFlags::ALL, false, *pUndoDoc );
 
             // all formulas for reference
-            pDoc->CopyToDocument( 0,0,0, MAXCOL,MAXROW,nTabCount-1, InsertDeleteFlags::FORMULA, false, *pUndoDoc );
+            pDoc->CopyToDocument( 0,0,0, pDoc->MaxCol(),pDoc->MaxRow(),nTabCount-1, InsertDeleteFlags::FORMULA, false, *pUndoDoc );
 
             // data base and other ranges
             ScRangeName* pDocRange = pDoc->GetRangeName();
             if (!pDocRange->empty())
-                pUndoRange = new ScRangeName( *pDocRange );
+                pUndoRange.reset(new ScRangeName( *pDocRange ));
             ScDBCollection* pDocDB = pDoc->GetDBCollection();
             if (!pDocDB->empty())
-                pUndoDB = new ScDBCollection( *pDocDB );
+                pUndoDB.reset(new ScDBCollection( *pDocDB ));
         }
 
         if (bSort && bSubTotal)
         {
             // sort without subtotals
 
-            aSubTotalParam.bRemoveOnly = true;      // is resetted below
+            aSubTotalParam.bRemoveOnly = true;      // is reset below
             DoSubTotals( aSubTotalParam, false );
         }
 
         if (bSort)
         {
-            pDBData->GetSortParam( aSortParam );            // range may have chaged
+            pDBData->GetSortParam( aSortParam );            // range may have changed
             Sort( aSortParam, false, false);
         }
         if (bQuery)
         {
-            pDBData->GetQueryParam( aQueryParam );          // range may have chaged
+            pDBData->GetQueryParam( aQueryParam );          // range may have changed
             ScRange aAdvSource;
             if (pDBData->GetAdvancedQuerySource(aAdvSource))
             {
@@ -2170,7 +2231,7 @@ void ScDBFunc::RepeatDB( bool bRecord )
         }
         if (bSubTotal)
         {
-            pDBData->GetSubTotalParam( aSubTotalParam );    // range may have chaged
+            pDBData->GetSubTotalParam( aSubTotalParam );    // range may have changed
             aSubTotalParam.bRemoveOnly = false;
             DoSubTotals( aSubTotalParam, false );
         }
@@ -2197,21 +2258,49 @@ void ScDBFunc::RepeatDB( bool bRecord )
             }
 
             GetViewData().GetDocShell()->GetUndoManager()->AddUndoAction(
-                new ScUndoRepeatDB( GetViewData().GetDocShell(), nTab,
+                std::make_unique<ScUndoRepeatDB>( GetViewData().GetDocShell(), nTab,
                                         nStartCol, nStartRow, nEndCol, nEndRow,
                                         nNewEndRow,
                                         nCurX, nCurY,
-                                        pUndoDoc, pUndoTab,
-                                        pUndoRange, pUndoDB,
+                                        std::move(pUndoDoc), std::move(pUndoTab),
+                                        std::move(pUndoRange), std::move(pUndoDB),
                                         pOld, pNew ) );
         }
 
         GetViewData().GetDocShell()->PostPaint(
-            ScRange(0, 0, nTab, MAXCOL, MAXROW, nTab),
+            ScRange(0, 0, nTab, pDoc->MaxCol(), pDoc->MaxRow(), nTab),
             PaintPartFlags::Grid | PaintPartFlags::Left | PaintPartFlags::Top | PaintPartFlags::Size);
     }
     else        // "no not execute any operations"
         ErrorMessage(STR_MSSG_REPEATDB_0);
+}
+
+void ScDBFunc::OnLOKShowHideColRow(bool bColumns, SCCOLROW nStart)
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return;
+
+    SCTAB nCurrentTabIndex = GetViewData().GetTabNo();
+    SfxViewShell* pThisViewShell = GetViewData().GetViewShell();
+    SfxViewShell* pViewShell = SfxViewShell::GetFirst();
+    while (pViewShell)
+    {
+        ScTabViewShell* pTabViewShell = dynamic_cast<ScTabViewShell*>(pViewShell);
+        if (pTabViewShell && pTabViewShell->GetDocId() == pThisViewShell->GetDocId())
+        {
+            if (bColumns)
+                pTabViewShell->GetViewData().GetLOKWidthHelper(nCurrentTabIndex)->invalidateByIndex(nStart);
+            else
+                pTabViewShell->GetViewData().GetLOKHeightHelper(nCurrentTabIndex)->invalidateByIndex(nStart);
+
+            if (pTabViewShell->getPart() == nCurrentTabIndex)
+            {
+                pTabViewShell->ShowCursor();
+                pTabViewShell->MarkDataChanged();
+            }
+        }
+        pViewShell = SfxViewShell::GetNext(*pViewShell);
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

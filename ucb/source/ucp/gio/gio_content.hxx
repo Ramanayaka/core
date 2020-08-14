@@ -29,9 +29,9 @@
 #include <ucbhelper/contenthelper.hxx>
 #include <gio/gio.h>
 
-#include <list>
+#include <vector>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans {
         struct Property;
         struct PropertyValue;
@@ -39,7 +39,7 @@ namespace com { namespace sun { namespace star {
     namespace sdbc {
         class XRow;
     }
-}}}
+}
 namespace ucbhelper
 {
     class Content;
@@ -82,7 +82,7 @@ private:
             const css::uno::Reference< css::ucb::XCommandEnvironment >& xEnv );
 private:
     typedef rtl::Reference< Content > ContentRef;
-    typedef std::list< ContentRef > ContentRefList;
+    typedef std::vector< ContentRef > ContentRefList;
 
     void queryChildren( ContentRefList& rChildren );
 
@@ -112,10 +112,13 @@ private:
             const css::uno::Reference<
             css::ucb::XCommandEnvironment >& xEnv );
 
-    bool feedSink( const css::uno::Reference< css::uno::XInterface>& aSink,
-        const css::uno::Reference< css::ucb::XCommandEnvironment >& xEnv );
+    bool feedSink( const css::uno::Reference< css::uno::XInterface>& aSink );
 
     bool exchangeIdentity(const css::uno::Reference< css::ucb::XContentIdentifier >&  xNewId);
+
+    void getFileInfo(
+        css::uno::Reference<css::ucb::XCommandEnvironment> const & env, GFileInfo ** info,
+        bool fail);
 
 public:
     /// @throws css::ucb::ContentCreationException
@@ -130,11 +133,6 @@ public:
         bool bIsFolder);
 
     virtual ~Content() override;
-
-    css::uno::Reference< css::sdbc::XRow > getPropertyValuesFromGFileInfo(
-        GFileInfo *pInfo, const css::uno::Reference< css::uno::XComponentContext >& rxContext,
-        const css::uno::Reference< css::ucb::XCommandEnvironment > & xEnv,
-        const css::uno::Sequence< css::beans::Property >& rProperties);
 
     virtual css::uno::Sequence< css::beans::Property >
         getProperties( const css::uno::Reference<

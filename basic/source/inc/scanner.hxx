@@ -20,7 +20,8 @@
 #ifndef INCLUDED_BASIC_SOURCE_INC_SCANNER_HXX
 #define INCLUDED_BASIC_SOURCE_INC_SCANNER_HXX
 
-#include <basic/sberrors.hxx>
+#include <basic/sbxdef.hxx>
+#include <vcl/errcode.hxx>
 
 // The scanner is stand-alone, i. e. it can be used from everywhere.
 // A BASIC-instance is necessary for error messages. Without BASIC
@@ -33,8 +34,8 @@ class SbiScanner
 {
     OUString   aBuf;             // input buffer
     OUString   aLine;
-    const sal_Unicode* pLine;
-    const sal_Unicode* pSaveLine;
+    sal_Int32 nLineIdx;
+    sal_Int32 nSaveLineIdx;
     StarBASIC* pBasic;                  // instance for error callbacks
 
     void scanAlphanumeric();
@@ -66,29 +67,28 @@ protected:
     void   GenError( ErrCode );
 public:
     SbiScanner( const OUString&, StarBASIC* = nullptr );
-   ~SbiScanner();
 
     void  EnableErrors()            { bError = false; }
-    bool  IsHash()                  { return bHash;   }
-    bool  IsCompatible()            { return bCompatible; }
+    bool  IsHash() const            { return bHash;   }
+    bool  IsCompatible() const      { return bCompatible; }
     void  SetCompatible( bool b )   { bCompatible = b; }        // #118206
-    bool  IsVBASupportOn()          { return bVBASupportOn; }
+    bool  IsVBASupportOn() const    { return bVBASupportOn; }
     bool  WhiteSpace()              { return bSpaces; }
-    sal_Int32 GetErrors()           { return nErrors; }
-    sal_Int32 GetLine()             { return nLine;   }
-    sal_Int32 GetCol1()             { return nCol1;   }
+    sal_Int32 GetErrors() const     { return nErrors; }
+    sal_Int32 GetLine() const       { return nLine;   }
+    sal_Int32 GetCol1() const       { return nCol1;   }
     void  SetCol1( sal_Int32 n )    { nCol1 = n;      }
     StarBASIC* GetBasic()           { return pBasic;  }
-    void  SaveLine()            { pSaveLine = pLine; }
-    void  RestoreLine()         { pLine = pSaveLine; }
+    void  SaveLine()                { nSaveLineIdx = nLineIdx; }
+    void  RestoreLine()             { nLineIdx = nSaveLineIdx; }
     void  LockColumn();
     void  UnlockColumn();
     bool  DoesColonFollow();
 
     bool NextSym();
-    const OUString& GetSym() { return aSym;  }
-    SbxDataType GetType()           { return eScanType; }
-    double    GetDbl()              { return nVal;  }
+    const OUString& GetSym() const  { return aSym;  }
+    SbxDataType GetType() const     { return eScanType; }
+    double    GetDbl() const        { return nVal;  }
 };
 
 #endif

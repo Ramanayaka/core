@@ -23,9 +23,7 @@
 #include <svl/poolitem.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
-class EDITENG_DLLPUBLIC SvxTwoLinesItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxTwoLinesItem final : public SfxPoolItem
 {
     sal_Unicode cStartBracket, cEndBracket;
     bool bOn;
@@ -34,41 +32,30 @@ public:
                      sal_Unicode nStartBracket /*= 0*/,
                      sal_Unicode nEndBracket /*= 0*/,
                      sal_uInt16 nId  );
-    SvxTwoLinesItem( const SvxTwoLinesItem& rAttr );
     virtual ~SvxTwoLinesItem() override;
+
+    SvxTwoLinesItem(SvxTwoLinesItem const &) = default;
+    SvxTwoLinesItem(SvxTwoLinesItem &&) = default;
+    SvxTwoLinesItem & operator =(SvxTwoLinesItem const &) = delete; // due to SfxPoolItem
+    SvxTwoLinesItem & operator =(SvxTwoLinesItem &&) = delete; // due to SfxPoolItem
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16 nVer) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nIVer) const override;
+    virtual SvxTwoLinesItem* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual sal_uInt16          GetVersion( sal_uInt16 nFFVer ) const override;
-
-    SvxTwoLinesItem&        operator=( const SvxTwoLinesItem& rCpy )
-    {
-        SetValue( rCpy.GetValue() );
-        SetStartBracket( rCpy.GetStartBracket() );
-        SetEndBracket( rCpy.GetEndBracket() );
-        return *this;
-    }
-
     bool GetValue() const                       { return bOn; }
-    void SetValue( bool bFlag )                 { bOn = bFlag; }
 
     sal_Unicode GetStartBracket() const         { return cStartBracket; }
-    void SetStartBracket( sal_Unicode c )       { cStartBracket = c; }
 
     sal_Unicode GetEndBracket() const           { return cEndBracket; }
-    void SetEndBracket( sal_Unicode c )         { cEndBracket = c; }
 };
 
 #endif

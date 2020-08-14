@@ -22,17 +22,18 @@
 
 #include <cppuhelper/implbase.hxx>
 
-#ifdef MACOSX
 #include <premac.h>
+#ifdef MACOSX
 #include <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
-#include <postmac.h>
+#else
+#include <UIKit/UIKit.h>
 #endif
+#include <postmac.h>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceDisplayName.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/PropertyValues.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/linguistic2/XSpellChecker.hpp>
 #include <com/sun/star/linguistic2/XLinguServiceEventBroadcaster.hpp>
@@ -63,12 +64,13 @@ class MacSpellChecker :
     Locale *                aDLocs;
     OUString *              aDNames;
     sal_Int32               numdict;
-    NSSpellChecker *        macSpell;
+#ifdef MACOSX
     int                     macTag;   // unique tag for this doc
-
+#else
+    UITextChecker *         pChecker;
+#endif
     ::comphelper::OInterfaceContainerHelper2       aEvtListeners;
-    Reference< XPropertyChangeListener >    xPropHelper;
-    linguistic::PropertyHelper_Spell *      pPropHelper;
+    rtl::Reference< linguistic::PropertyHelper_Spell >    xPropHelper;
     bool                                    bDisposing;
 
     MacSpellChecker(const MacSpellChecker &) = delete;
@@ -77,7 +79,7 @@ class MacSpellChecker :
     linguistic::PropertyHelper_Spell &  GetPropHelper_Impl();
     linguistic::PropertyHelper_Spell &  GetPropHelper()
     {
-        return pPropHelper ? *pPropHelper : GetPropHelper_Impl();
+        return xPropHelper.is() ? *xPropHelper : GetPropHelper_Impl();
     }
 
     sal_Int16   GetSpellFailure( const OUString &rWord, const Locale &rLocale );
@@ -92,8 +94,8 @@ public:
     virtual sal_Bool SAL_CALL hasLocale( const Locale& rLocale ) override;
 
     // XSpellChecker
-    virtual sal_Bool SAL_CALL isValid( const OUString& rWord, const Locale& rLocale, const PropertyValues& rProperties ) override;
-    virtual Reference< XSpellAlternatives > SAL_CALL spell( const OUString& rWord, const Locale& rLocale, const PropertyValues& rProperties ) override;
+    virtual sal_Bool SAL_CALL isValid( const OUString& rWord, const Locale& rLocale, const css::uno::Sequence<PropertyValue>& rProperties ) override;
+    virtual Reference< XSpellAlternatives > SAL_CALL spell( const OUString& rWord, const Locale& rLocale, const css::uno::Sequence<PropertyValue>& rProperties ) override;
 
     // XLinguServiceEventBroadcaster
     virtual sal_Bool SAL_CALL addLinguServiceEventListener( const Reference< XLinguServiceEventListener >& rxLstnr ) override;
@@ -114,18 +116,7 @@ public:
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& rServiceName ) override;
     virtual Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    static inline OUString  getImplementationName_Static() throw();
-    static Sequence< OUString > getSupportedServiceNames_Static() throw();
 };
-
-inline OUString MacSpellChecker::getImplementationName_Static() throw()
-{
-    return OUString( "org.openoffice.lingu.MacOSXSpellChecker" );
-}
-
-void * SAL_CALL MacSpellChecker_getFactory(
-    char const * pImplName, XMultiServiceFactory * pServiceManager, void *);
 
 #endif
 

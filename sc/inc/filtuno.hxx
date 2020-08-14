@@ -24,20 +24,19 @@
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
 #include <com/sun/star/document/XImporter.hpp>
 #include <com/sun/star/document/XExporter.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
-#include "scdllapi.h"
 
-namespace com { namespace sun { namespace star { namespace io {
-    class XInputStream;
-} } } }
+namespace com::sun::star::io { class XInputStream; }
+namespace com::sun::star::awt { class XWindow; }
 
-class ScFilterOptionsObj : public ::cppu::WeakImplHelper<
+class ScFilterOptionsObj final : public ::cppu::WeakImplHelper<
                             css::beans::XPropertyAccess,
                             css::ui::dialogs::XExecutableDialog,
                             css::document::XImporter,
                             css::document::XExporter,
+                            css::lang::XInitialization,
                             css::lang::XServiceInfo >
 {
 private:
@@ -45,6 +44,7 @@ private:
     OUString     aFilterName;
     OUString     aFilterOptions;
     css::uno::Reference< css::io::XInputStream > xInputStream;
+    css::uno::Reference< css::awt::XWindow > xDialogParent;
     bool         bExport;
 
 public:
@@ -66,6 +66,9 @@ public:
 
                             // XExporter
     virtual void SAL_CALL   setSourceDocument( const css::uno::Reference< css::lang::XComponent >& xDoc ) override;
+
+                            // XInitialization
+    virtual void SAL_CALL   initialize(const css::uno::Sequence<css::uno::Any>& rArguments) override;
 
                             // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;

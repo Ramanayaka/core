@@ -20,19 +20,21 @@
 
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 #include <sax/tools/documenthandleradapter.hxx>
 
+#include <osl/diagnose.h>
 #include <osl/time.h>
 #include <osl/conditn.hxx>
-#include <rtl/strbuf.hxx>
 #include <tools/urlobj.hxx>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 #include <comphelper/interaction.hxx>
-#include <comphelper/processfactory.hxx>
 
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/EventObject.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 
 #include <com/sun/star/uno/Any.hxx>
 
@@ -43,7 +45,6 @@
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
 #include <com/sun/star/xml/sax/XFastParser.hpp>
-#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
 #include <com/sun/star/xml/XImportFilter.hpp>
 #include <com/sun/star/xml/XExportFilter.hpp>
@@ -54,8 +55,6 @@
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/io/XActiveDataSource.hpp>
-#include <com/sun/star/io/XActiveDataSink.hpp>
-#include <com/sun/star/io/XActiveDataControl.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
 #include <com/sun/star/io/XStreamListener.hpp>
 #include <com/sun/star/util/PathSubstitution.hpp>
@@ -67,9 +66,7 @@
 #include <com/sun/star/xml/xslt/XSLT2Transformer.hpp>
 #include <com/sun/star/xml/xslt/XSLTTransformer.hpp>
 
-#include <xmloff/attrlist.hxx>
-
-#include <LibXSLTTransformer.hxx>
+#include "LibXSLTTransformer.hxx"
 
 #define TRANSFORMATION_TIMEOUT_SEC 60
 
@@ -88,6 +85,8 @@ using namespace ::com::sun::star::task;
 
 namespace XSLT
 {
+    namespace {
+
     /*
      * XSLTFilter reads flat XML streams from the XML filter framework and passes
      * them to an XSLT transformation service. XSLT transformation errors are
@@ -99,7 +98,7 @@ namespace XSLT
      * service must support com.sun.star.xml.xslt.XSLT2Transformer.
      */
     class XSLTFilter : public WeakImplHelper<XImportFilter, XExportFilter,
-            XStreamListener, ExtendedDocumentHandlerAdapter>
+            XStreamListener, ExtendedDocumentHandlerAdapter, XServiceInfo>
     {
     private:
 
@@ -128,6 +127,11 @@ namespace XSLT
 
         // ctor...
         explicit XSLTFilter(const css::uno::Reference<XComponentContext> &r);
+
+        //  XServiceInfo
+        virtual sal_Bool SAL_CALL supportsService(const OUString& sServiceName) override;
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
         // XStreamListener
         virtual void SAL_CALL
@@ -159,6 +163,8 @@ namespace XSLT
         endDocument() override;
     };
 
+    }
+
     XSLTFilter::XSLTFilter(const css::uno::Reference<XComponentContext> &r):
         m_xContext(r), m_bTerminated(false), m_bError(false)
     {}
@@ -166,6 +172,20 @@ namespace XSLT
     void
     XSLTFilter::disposing(const EventObject&)
     {
+    }
+
+    //  XServiceInfo
+    sal_Bool XSLTFilter::supportsService(const OUString& sServiceName)
+    {
+        return cppu::supportsService(this, sServiceName);
+    }
+    OUString XSLTFilter::getImplementationName()
+    {
+        return "com.sun.star.comp.documentconversion.XSLTFilter";
+    }
+    css::uno::Sequence< OUString > XSLTFilter::getSupportedServiceNames()
+    {
+        return { "com.sun.star.documentconversion.XSLTFilter" };
     }
 
     OUString
@@ -230,11 +250,7 @@ namespace XSLT
     void
     XSLTFilter::error(const Any& a)
     {
-        Exception e;
-        if (a >>= e)
-        {
-            SAL_WARN("filter.xslt", "XSLTFilter::error was called: " << e.Message);
-        }
+        SAL_WARN("filter.xslt", "XSLTFilter::error was called: " << exceptionToString(a));
         m_bError = true;
         m_cTransformed.set();
     }
@@ -280,7 +296,7 @@ namespace XSLT
         // is most important here since we need to supply it to
         // the sax parser that drives the supplied document handler
         sal_Int32 nLength = aSourceData.getLength();
-        OUString aName, aFileName, aURL;
+        OUString aName, aURL;
         css::uno::Reference<XInputStream> xInputStream;
         css::uno::Reference<XInteractionHandler> xInterActionHandler;
         for (sal_Int32 i = 0; i < nLength; i++)
@@ -289,8 +305,6 @@ namespace XSLT
                 Any value = aSourceData[i].Value;
                 if ( aName == "InputStream" )
                     value >>= xInputStream;
-                else if ( aName == "FileName" )
-                    value >>= aFileName;
                 else if ( aName == "URL" )
                     value >>= aURL;
                 else if ( aName == "InteractionHandler" )
@@ -331,24 +345,20 @@ namespace XSLT
                         if (xSeek.is())
                             xSeek->seek(0);
 
-                        // we want to be notfied when the processing is done...
+                        // we want to be notified when the processing is done...
                         m_tcontrol->addListener(css::uno::Reference<XStreamListener> (
                                 this));
 
                         // connect input to transformer
-                        css::uno::Reference<XActiveDataSink> tsink(m_tcontrol, UNO_QUERY);
-                        tsink->setInputStream(xInputStream);
+                        m_tcontrol->setInputStream(xInputStream);
 
                         // create pipe
-                        css::uno::Reference<XOutputStream> pipeout(
-                                        Pipe::create(m_xContext),
-                                        UNO_QUERY);
+                        css::uno::Reference<XOutputStream> pipeout =
+                                        Pipe::create(m_xContext);
                         css::uno::Reference<XInputStream> pipein(pipeout, UNO_QUERY);
 
                         //connect transformer to pipe
-                        css::uno::Reference<XActiveDataSource> tsource(m_tcontrol,
-                                UNO_QUERY);
-                        tsource->setOutputStream(pipeout);
+                        m_tcontrol->setOutputStream(pipeout);
 
                         // connect pipe to sax parser
                         InputSource aInput;
@@ -399,10 +409,10 @@ namespace XSLT
                         m_tcontrol->terminate();
                         return !m_bError;
                     }
-                catch( const Exception& exc)
+                catch( const Exception& )
                     {
                         // something went wrong
-                        SAL_WARN("filter.xslt", exc.Message);
+                        TOOLS_WARN_EXCEPTION("filter.xslt", "");
                         return false;
                     }
             }
@@ -427,18 +437,15 @@ namespace XSLT
         // since that is where our xml-writer will push the data
         // from its data-source interface
         OUString aName, sURL;
-        bool bIndent = false;
         OUString aDoctypePublic;
         // css::uno::Reference<XOutputStream> rOutputStream;
         sal_Int32 nLength = aSourceData.getLength();
         for (sal_Int32 i = 0; i < nLength; i++)
             {
                 aName = aSourceData[i].Name;
-                if ( aName == "Indent" )
-                    aSourceData[i].Value >>= bIndent;
                 if ( aName == "DocType_Public" )
                     aSourceData[i].Value >>= aDoctypePublic;
-                if ( aName == "OutputStream" )
+                else if ( aName == "OutputStream" )
                     aSourceData[i].Value >>= m_rOutputStream;
                 else if ( aName == "URL" )
                     aSourceData[i].Value >>= sURL;
@@ -477,13 +484,12 @@ namespace XSLT
         OSL_ASSERT(m_tcontrol.is());
         if (m_tcontrol.is() && m_rOutputStream.is())
             {
-                // we want to be notfied when the processing is done...
+                // we want to be notified when the processing is done...
                 m_tcontrol->addListener(css::uno::Reference<XStreamListener> (this));
 
                 // create pipe
-                css::uno::Reference<XOutputStream> pipeout(
-                                Pipe::create(m_xContext),
-                                UNO_QUERY);
+                css::uno::Reference<XOutputStream> pipeout =
+                                Pipe::create(m_xContext);
                 css::uno::Reference<XInputStream> pipein(pipeout, UNO_QUERY);
 
                 // connect sax writer to pipe
@@ -492,12 +498,10 @@ namespace XSLT
                 xmlsource->setOutputStream(pipeout);
 
                 // connect pipe to transformer
-                css::uno::Reference<XActiveDataSink> tsink(m_tcontrol, UNO_QUERY);
-                tsink->setInputStream(pipein);
+                m_tcontrol->setInputStream(pipein);
 
                 // connect transformer to output
-                css::uno::Reference<XActiveDataSource> tsource(m_tcontrol, UNO_QUERY);
-                tsource->setOutputStream(m_rOutputStream);
+                m_tcontrol->setOutputStream(m_rOutputStream);
 
                 // we will start receiving events after returning 'true'.
                 // we will start the transformation as soon as we receive the startDocument
@@ -527,92 +531,20 @@ namespace XSLT
         // wait for the transformer to finish
         m_cTransformed.wait();
         m_tcontrol->terminate();
-        if (!m_bError && !m_bTerminated)
-            {
-                return;
-            }
-        else
-            {
-                throw RuntimeException();
-            }
-
+        if (m_bError || m_bTerminated)
+            throw RuntimeException();
     }
 
-
-    // Component management
-
-#define FILTER_SERVICE_NAME "com.sun.star.documentconversion.XSLTFilter"
-#define FILTER_IMPL_NAME "com.sun.star.comp.documentconversion.XSLTFilter"
-#define TRANSFORMER_SERVICE_NAME "com.sun.star.xml.xslt.XSLTTransformer"
-#define TRANSFORMER_IMPL_NAME "com.sun.star.comp.documentconversion.LibXSLTTransformer"
-
-    static css::uno::Reference<XInterface> SAL_CALL
-    CreateTransformerInstance(const css::uno::Reference<XMultiServiceFactory> &r)
-    {
-        return css::uno::Reference<XInterface> (static_cast<OWeakObject *>(new LibXSLTTransformer( comphelper::getComponentContext(r) )));
-    }
-
-    static css::uno::Reference<XInterface> SAL_CALL
-    CreateFilterInstance(const css::uno::Reference<XMultiServiceFactory> &r)
-    {
-        return css::uno::Reference<XInterface> (static_cast<OWeakObject *>(new XSLTFilter( comphelper::getComponentContext(r) )));
-    }
 
 }
 
-using namespace XSLT;
+// Component management
 
-extern "C"
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_XSLTFilter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    SAL_DLLPUBLIC_EXPORT void * SAL_CALL xsltfilter_component_getFactory(const sal_Char * pImplName,
-            void * pServiceManager, void * /* pRegistryKey */)
-    {
-        void * pRet = nullptr;
-
-        if (pServiceManager)
-            {
-                if (rtl_str_compare(pImplName, FILTER_IMPL_NAME) == 0)
-                    {
-                        Sequence<OUString> serviceNames { FILTER_SERVICE_NAME };
-
-                        css::uno::Reference<XSingleServiceFactory>
-                                xFactory(
-                                        createSingleFactory(
-                                                static_cast<XMultiServiceFactory *> (pServiceManager),
-                                                OUString::createFromAscii(
-                                                        pImplName),
-                                                CreateFilterInstance,
-                                                serviceNames));
-
-                        if (xFactory.is())
-                            {
-                                xFactory->acquire();
-                                pRet = xFactory.get();
-                            }
-                    }
-                else if (rtl_str_compare(pImplName, TRANSFORMER_IMPL_NAME) == 0)
-                    {
-                        Sequence<OUString> serviceNames { TRANSFORMER_SERVICE_NAME };
-                        css::uno::Reference<XSingleServiceFactory>
-                                xFactory(
-                                        createSingleFactory(
-                                                static_cast<XMultiServiceFactory *> (pServiceManager),
-                                                OUString::createFromAscii(
-                                                        pImplName),
-                                                CreateTransformerInstance,
-                                                serviceNames));
-
-                        if (xFactory.is())
-                            {
-                                xFactory->acquire();
-                                pRet = xFactory.get();
-                            }
-
-                    }
-            }
-        return pRet;
-    }
-
-} // extern "C"
+    return cppu::acquire(new XSLT::XSLTFilter(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

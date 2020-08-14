@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hsqldb/HTools.hxx"
+#include <hsqldb/HTools.hxx>
 
 
-namespace connectivity { namespace hsqldb
+namespace connectivity::hsqldb
 {
 
     void HTools::appendTableFilterCrit( OUStringBuffer& _inout_rBuffer, const OUString& _rCatalog,
@@ -47,7 +47,7 @@ namespace connectivity { namespace hsqldb
     }
 
 
-} } // namespace connectivity::hsqldb
+} // namespace connectivity::hsqldb
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

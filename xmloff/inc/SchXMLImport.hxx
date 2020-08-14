@@ -21,10 +21,7 @@
 
 #include <xmloff/SchXMLImportHelper.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmlictxt.hxx>
-#include <xmloff/prhdlfac.hxx>
-#include <xmloff/families.hxx>
 
 /*
    these enums are used for the
@@ -76,6 +73,7 @@ enum SchXMLPlotAreaElemTokenMap
 enum SchXMLSeriesElemTokenMap
 {
     XML_TOK_SERIES_DATA_POINT,
+    XML_TOK_SERIES_DATA_LABEL,
     XML_TOK_SERIES_DOMAIN,
     XML_TOK_SERIES_MEAN_VALUE_LINE,
     XML_TOK_SERIES_REGRESSION_CURVE,
@@ -136,7 +134,8 @@ enum SchXMLSeriesAttrMap
     XML_TOK_SERIES_LABEL_STRING,
     XML_TOK_SERIES_ATTACHED_AXIS,
     XML_TOK_SERIES_STYLE_NAME,
-    XML_TOK_SERIES_CHART_CLASS
+    XML_TOK_SERIES_CHART_CLASS,
+    XML_TOK_SERIES_HIDE_LEGEND
 };
 
 enum SchXMLRegEquationAttrMap
@@ -148,31 +147,26 @@ enum SchXMLRegEquationAttrMap
     XML_TOK_REGEQ_POS_Y
 };
 
-class SchXMLImport : public SvXMLImport
+class SchXMLImport final : public SvXMLImport
 {
 private:
-    css::uno::Reference< css::task::XStatusIndicator > mxStatusIndicator;
-
     rtl::Reference<SchXMLImportHelper> maImportHelper;
 
-protected:
-    virtual SvXMLImportContext *CreateContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
+    virtual SvXMLImportContext* CreateFastContext(
+        sal_Int32 nElement,
+        const ::css::uno::Reference<::css::xml::sax::XFastAttributeList>& xAttrList) override;
 
 public:
-    SchXMLImport(
-        const css::uno::Reference< css::uno::XComponentContext >& xContext,
-        OUString const & implementationName, SvXMLImportFlags nImportFlags );
+    SchXMLImport(const css::uno::Reference<css::uno::XComponentContext>& xContext,
+                 OUString const& implementationName, SvXMLImportFlags nImportFlags);
 
-    virtual ~SchXMLImport() throw () override;
+    virtual ~SchXMLImport() throw() override;
 
-    SvXMLImportContext* CreateStylesContext( const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList );
+    SvXMLImportContext* CreateStylesContext();
 
     // XImporter
-    virtual void SAL_CALL setTargetDocument( const css::uno::Reference< css::lang::XComponent >& xDoc ) override;
+    virtual void SAL_CALL
+    setTargetDocument(const css::uno::Reference<css::lang::XComponent>& xDoc) override;
 };
 
 #endif // INCLUDED_XMLOFF_INC_SCHXMLIMPORT_HXX

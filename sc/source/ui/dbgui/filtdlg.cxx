@@ -17,28 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rangelst.hxx>
 #include <sfx2/dispatch.hxx>
-#include <vcl/waitobj.hxx>
+#include <sal/log.hxx>
 
-#include "uiitems.hxx"
-#include "dbdata.hxx"
-#include "reffact.hxx"
-#include "viewdata.hxx"
-#include "document.hxx"
-#include "docsh.hxx"
-#include "scresid.hxx"
-#include "queryentry.hxx"
+#include <uiitems.hxx>
+#include <reffact.hxx>
+#include <viewdata.hxx>
+#include <document.hxx>
+#include <docsh.hxx>
+#include <scresid.hxx>
+#include <queryentry.hxx>
 
-#include "foptmgr.hxx"
+#include <foptmgr.hxx>
 
-#include "globstr.hrc"
+#include <globstr.hrc>
+#include <strings.hrc>
 
-#include "filtdlg.hxx"
-#include <vcl/layout.hxx>
+#include <filtdlg.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <svl/sharedstringpool.hxx>
-
-#include <o3tl/make_unique.hxx>
 
 #include <limits>
 
@@ -48,118 +46,75 @@
 ScFilterDlg::EntryList::EntryList() :
     mnHeaderPos(INVALID_HEADER_POS) {}
 
-ScFilterDlg::ScFilterDlg(SfxBindings* pB, SfxChildWindow* pCW, vcl::Window* pParent,
+ScFilterDlg::ScFilterDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent,
     const SfxItemSet& rArgSet)
-    : ScAnyRefDlg ( pB, pCW, pParent, "StandardFilterDialog",
-        "modules/scalc/ui/standardfilterdialog.ui" )
+    : ScAnyRefDlgController(pB, pCW, pParent,
+        "modules/scalc/ui/standardfilterdialog.ui", "StandardFilterDialog")
     , aStrUndefined(ScResId(SCSTR_UNDEFINED))
     , aStrNone(ScResId(SCSTR_NONE))
     , aStrEmpty(ScResId(SCSTR_FILTER_EMPTY))
     , aStrNotEmpty(ScResId(SCSTR_FILTER_NOTEMPTY))
     , aStrColumn(ScResId(SCSTR_COLUMN))
-    , pOptionsMgr(nullptr)
     , nWhichQuery(rArgSet.GetPool()->GetWhich(SID_QUERY))
     , theQueryData(static_cast<const ScQueryItem&>(rArgSet.Get(nWhichQuery)).GetQueryData())
-    , pOutItem(nullptr)
     , pViewData(nullptr)
     , pDoc(nullptr)
     , nSrcTab(0)
     , bRefInputMode(false)
-    , pTimer(nullptr)
+    , m_xLbConnect1(m_xBuilder->weld_combo_box("connect1"))
+    , m_xLbField1(m_xBuilder->weld_combo_box("field1"))
+    , m_xLbCond1(m_xBuilder->weld_combo_box("cond1"))
+    , m_xEdVal1(m_xBuilder->weld_combo_box("val1"))
+    , m_xLbConnect2(m_xBuilder->weld_combo_box("connect2"))
+    , m_xLbField2(m_xBuilder->weld_combo_box("field2"))
+    , m_xLbCond2(m_xBuilder->weld_combo_box("cond2"))
+    , m_xEdVal2(m_xBuilder->weld_combo_box("val2"))
+    , m_xLbConnect3(m_xBuilder->weld_combo_box("connect3"))
+    , m_xLbField3(m_xBuilder->weld_combo_box("field3"))
+    , m_xLbCond3(m_xBuilder->weld_combo_box("cond3"))
+    , m_xEdVal3(m_xBuilder->weld_combo_box("val3"))
+    , m_xLbConnect4(m_xBuilder->weld_combo_box("connect4"))
+    , m_xLbField4(m_xBuilder->weld_combo_box("field4"))
+    , m_xLbCond4(m_xBuilder->weld_combo_box("cond4"))
+    , m_xEdVal4(m_xBuilder->weld_combo_box("val4"))
+    , m_xContents(m_xBuilder->weld_widget("grid"))
+    , m_xScrollBar(m_xBuilder->weld_scrolled_window("scrollbar"))
+    , m_xExpander(m_xBuilder->weld_expander("more"))
+    , m_xBtnClear(m_xBuilder->weld_button("clear"))
+    , m_xBtnOk(m_xBuilder->weld_button("ok"))
+    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
+    , m_xBtnCase(m_xBuilder->weld_check_button("case"))
+    , m_xBtnRegExp(m_xBuilder->weld_check_button("regexp"))
+    , m_xBtnHeader(m_xBuilder->weld_check_button("header"))
+    , m_xBtnUnique(m_xBuilder->weld_check_button("unique"))
+    , m_xBtnCopyResult(m_xBuilder->weld_check_button("copyresult"))
+    , m_xLbCopyArea(m_xBuilder->weld_combo_box("lbcopyarea"))
+    , m_xEdCopyArea(new formula::RefEdit(m_xBuilder->weld_entry("edcopyarea")))
+    , m_xRbCopyArea(new formula::RefButton(m_xBuilder->weld_button("rbcopyarea")))
+    , m_xBtnDestPers(m_xBuilder->weld_check_button("destpers"))
+    , m_xFtDbAreaLabel(m_xBuilder->weld_label("dbarealabel"))
+    , m_xFtDbArea(m_xBuilder->weld_label("dbarea"))
 {
-    get(pLbConnect1,"connect1");
-    get(pLbField1,"field1");
-    get(pLbCond1,"cond1");
-    get(pEdVal1,"val1");
-    get(pLbConnect2,"connect2");
-    get(pLbField2,"field2");
-    get(pLbCond2,"cond2");
-    get(pEdVal2,"val2");
-    get(pLbConnect3,"connect3");
-    get(pLbField3,"field3");
-    get(pLbCond3,"cond3");
-    get(pEdVal3,"val3");
-    get(pLbConnect4,"connect4");
-    get(pLbField4,"field4");
-    get(pLbCond4,"cond4");
-    get(pEdVal4,"val4");
-    get(pScrollBar,"scrollbar");
-    get(pExpander,"more");
-    pExpander->SetExpandedHdl(LINK(this, ScFilterDlg, MoreExpandedHdl));
-    get(pBtnOk,"ok");
-    get(pBtnCancel,"cancel");
-    get(pBtnCase,"case");
-    get(pBtnRegExp,"regexp");
-    get(pBtnHeader,"header");
-    get(pBtnUnique,"unique");
-    get(pBtnCopyResult,"copyresult");
-    get(pLbCopyArea,"lbcopyarea");
-    get(pEdCopyArea,"edcopyarea");
-    pEdCopyArea->SetReferences(this, pBtnCopyResult);
-    get(pRbCopyArea,"rbcopyarea");
-    pRbCopyArea->SetReferences(this, pEdCopyArea);
-    get(pBtnDestPers,"destpers");
-    get(pFtDbAreaLabel,"dbarealabel");
-    get(pFtDbArea,"dbarea");
+    m_xExpander->connect_expanded(LINK(this, ScFilterDlg, MoreExpandedHdl));
+    m_xEdCopyArea->SetReferences(this, m_xFtDbAreaLabel.get());
+    m_xRbCopyArea->SetReferences(this, m_xEdCopyArea.get());
 
     Init( rArgSet );
 
     // Hack: RefInput control
-    pTimer = new Timer("ScFilterTimer");
+    pTimer.reset( new Timer("ScFilterTimer") );
     pTimer->SetTimeout( 50 ); // Wait 50ms
     pTimer->SetInvokeHandler( LINK( this, ScFilterDlg, TimeOutHdl ) );
 }
 
 ScFilterDlg::~ScFilterDlg()
 {
-    disposeOnce();
-}
-
-void ScFilterDlg::dispose()
-{
-    delete pOptionsMgr;
-    delete pOutItem;
+    pOptionsMgr.reset();
+    pOutItem.reset();
 
     // Hack: RefInput control
     pTimer->Stop();
-    delete pTimer;
-
-    pLbConnect1.clear();
-    pLbField1.clear();
-    pLbCond1.clear();
-    pEdVal1.clear();
-    pLbConnect2.clear();
-    pLbField2.clear();
-    pLbCond2.clear();
-    pEdVal2.clear();
-    pLbConnect3.clear();
-    pLbField3.clear();
-    pLbCond3.clear();
-    pEdVal3.clear();
-    pLbConnect4.clear();
-    pLbField4.clear();
-    pLbCond4.clear();
-    pEdVal4.clear();
-    pScrollBar.clear();
-    pExpander.clear();
-    pBtnOk.clear();
-    pBtnCancel.clear();
-    pBtnCase.clear();
-    pBtnRegExp.clear();
-    pBtnHeader.clear();
-    pBtnUnique.clear();
-    pBtnCopyResult.clear();
-    pLbCopyArea.clear();
-    pEdCopyArea.clear();
-    pRbCopyArea.clear();
-    pBtnDestPers.clear();
-    pFtDbAreaLabel.clear();
-    pFtDbArea.clear();
-    maValueEdArr.clear();
-    maFieldLbArr.clear();
-    maCondLbArr.clear();
-    maConnLbArr.clear();
-    ScAnyRefDlg::dispose();
+    pTimer.reset();
 }
 
 void ScFilterDlg::Init( const SfxItemSet& rArgSet )
@@ -167,29 +122,35 @@ void ScFilterDlg::Init( const SfxItemSet& rArgSet )
     const ScQueryItem& rQueryItem = static_cast<const ScQueryItem&>(
                                     rArgSet.Get( nWhichQuery ));
 
-    pBtnOk->SetClickHdl      ( LINK( this, ScFilterDlg, EndDlgHdl ) );
-    pBtnCancel->SetClickHdl  ( LINK( this, ScFilterDlg, EndDlgHdl ) );
-    pBtnHeader->SetClickHdl  ( LINK( this, ScFilterDlg, CheckBoxHdl ) );
-    pBtnCase->SetClickHdl    ( LINK( this, ScFilterDlg, CheckBoxHdl ) );
+    m_xBtnClear->connect_clicked   ( LINK( this, ScFilterDlg, BtnClearHdl ) );
+    m_xBtnOk->connect_clicked      ( LINK( this, ScFilterDlg, EndDlgHdl ) );
+    m_xBtnCancel->connect_clicked  ( LINK( this, ScFilterDlg, EndDlgHdl ) );
+    m_xBtnHeader->connect_clicked  ( LINK( this, ScFilterDlg, CheckBoxHdl ) );
+    m_xBtnCase->connect_clicked    ( LINK( this, ScFilterDlg, CheckBoxHdl ) );
 
-    pLbField1->SetSelectHdl  ( LINK( this, ScFilterDlg, LbSelectHdl ) );
-    pLbField2->SetSelectHdl  ( LINK( this, ScFilterDlg, LbSelectHdl ) );
-    pLbField3->SetSelectHdl  ( LINK( this, ScFilterDlg, LbSelectHdl ) );
-    pLbField4->SetSelectHdl  ( LINK( this, ScFilterDlg, LbSelectHdl ) );
-    pLbConnect1->SetSelectHdl( LINK( this, ScFilterDlg, LbSelectHdl ) );
-    pLbConnect2->SetSelectHdl( LINK( this, ScFilterDlg, LbSelectHdl ) );
-    pLbConnect3->SetSelectHdl( LINK( this, ScFilterDlg, LbSelectHdl ) );
-    pLbConnect4->SetSelectHdl( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbField1->connect_changed  ( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbField2->connect_changed  ( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbField3->connect_changed  ( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbField4->connect_changed  ( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbConnect1->connect_changed( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbConnect2->connect_changed( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbConnect3->connect_changed( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbConnect4->connect_changed( LINK( this, ScFilterDlg, LbSelectHdl ) );
 
-    pLbField1->setMaxWidthChars(10);
-    pLbField2->setMaxWidthChars(10);
-    pLbField3->setMaxWidthChars(10);
-    pLbField4->setMaxWidthChars(10);
+    m_xLbField1->append_text("0000000000");
+    m_xLbField1->set_active(0);
+    auto nPrefWidth = m_xLbField1->get_preferred_size().Width();
+    m_xLbField1->clear();
 
-    pLbCond1->SetSelectHdl( LINK( this, ScFilterDlg, LbSelectHdl ) );
-    pLbCond2->SetSelectHdl( LINK( this, ScFilterDlg, LbSelectHdl ) );
-    pLbCond3->SetSelectHdl( LINK( this, ScFilterDlg, LbSelectHdl ) );
-    pLbCond4->SetSelectHdl( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbField1->set_size_request(nPrefWidth, -1);
+    m_xLbField2->set_size_request(nPrefWidth, -1);
+    m_xLbField3->set_size_request(nPrefWidth, -1);
+    m_xLbField4->set_size_request(nPrefWidth, -1);
+
+    m_xLbCond1->connect_changed( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbCond2->connect_changed( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbCond3->connect_changed( LINK( this, ScFilterDlg, LbSelectHdl ) );
+    m_xLbCond4->connect_changed( LINK( this, ScFilterDlg, LbSelectHdl ) );
 
     pViewData   = rQueryItem.GetViewData();
     pDoc        = pViewData ? pViewData->GetDocument() : nullptr;
@@ -197,42 +158,42 @@ void ScFilterDlg::Init( const SfxItemSet& rArgSet )
 
     // for easier access:
     maFieldLbArr.reserve(QUERY_ENTRY_COUNT);
-    maFieldLbArr.push_back(pLbField1);
-    maFieldLbArr.push_back(pLbField2);
-    maFieldLbArr.push_back(pLbField3);
-    maFieldLbArr.push_back(pLbField4);
+    maFieldLbArr.push_back(m_xLbField1.get());
+    maFieldLbArr.push_back(m_xLbField2.get());
+    maFieldLbArr.push_back(m_xLbField3.get());
+    maFieldLbArr.push_back(m_xLbField4.get());
     maValueEdArr.reserve(QUERY_ENTRY_COUNT);
-    maValueEdArr.push_back(pEdVal1);
-    maValueEdArr.push_back(pEdVal2);
-    maValueEdArr.push_back(pEdVal3);
-    maValueEdArr.push_back(pEdVal4);
+    maValueEdArr.push_back(m_xEdVal1.get());
+    maValueEdArr.push_back(m_xEdVal2.get());
+    maValueEdArr.push_back(m_xEdVal3.get());
+    maValueEdArr.push_back(m_xEdVal4.get());
     maCondLbArr.reserve(QUERY_ENTRY_COUNT);
-    maCondLbArr.push_back(pLbCond1);
-    maCondLbArr.push_back(pLbCond2);
-    maCondLbArr.push_back(pLbCond3);
-    maCondLbArr.push_back(pLbCond4);
+    maCondLbArr.push_back(m_xLbCond1.get());
+    maCondLbArr.push_back(m_xLbCond2.get());
+    maCondLbArr.push_back(m_xLbCond3.get());
+    maCondLbArr.push_back(m_xLbCond4.get());
     maConnLbArr.reserve(QUERY_ENTRY_COUNT);
-    maConnLbArr.push_back(pLbConnect1);
-    maConnLbArr.push_back(pLbConnect2);
-    maConnLbArr.push_back(pLbConnect3);
-    maConnLbArr.push_back(pLbConnect4);
+    maConnLbArr.push_back(m_xLbConnect1.get());
+    maConnLbArr.push_back(m_xLbConnect2.get());
+    maConnLbArr.push_back(m_xLbConnect3.get());
+    maConnLbArr.push_back(m_xLbConnect4.get());
 
     // Option initialization:
-    pOptionsMgr  = new ScFilterOptionsMgr(
+    pOptionsMgr.reset( new ScFilterOptionsMgr(
                             pViewData,
                             theQueryData,
-                            pBtnCase,
-                            pBtnRegExp,
-                            pBtnHeader,
-                            pBtnUnique,
-                            pBtnCopyResult,
-                            pBtnDestPers,
-                            pLbCopyArea,
-                            pEdCopyArea,
-                            pRbCopyArea,
-                            pFtDbAreaLabel,
-                            pFtDbArea,
-                            aStrUndefined );
+                            m_xBtnCase.get(),
+                            m_xBtnRegExp.get(),
+                            m_xBtnHeader.get(),
+                            m_xBtnUnique.get(),
+                            m_xBtnCopyResult.get(),
+                            m_xBtnDestPers.get(),
+                            m_xLbCopyArea.get(),
+                            m_xEdCopyArea.get(),
+                            m_xRbCopyArea.get(),
+                            m_xFtDbAreaLabel.get(),
+                            m_xFtDbArea.get(),
+                            aStrUndefined ) );
     // Read in field lists and select entries
 
     FillFieldLists();
@@ -252,12 +213,12 @@ void ScFilterDlg::Init( const SfxItemSet& rArgSet )
             if (rEntry.IsQueryByEmpty())
             {
                 aValStr = aStrEmpty;
-                maCondLbArr[i]->Disable();
+                maCondLbArr[i]->set_sensitive(false);
             }
             else if (rEntry.IsQueryByNonEmpty())
             {
                 aValStr = aStrNotEmpty;
-                maCondLbArr[i]->Disable();
+                maCondLbArr[i]->set_sensitive(false);
             }
             else
             {
@@ -277,7 +238,7 @@ void ScFilterDlg::Init( const SfxItemSet& rArgSet )
                         {
                             SvNumberFormatter* pFormatter = pDoc->GetFormatTable();
                             pFormatter->GetInputLineString(rItem.mfVal,
-                                                           pFormatter->GetStandardFormat( css::util::NumberFormat::DATE), aValStr);
+                                                           pFormatter->GetStandardFormat( SvNumFormatType::DATE), aValStr);
                         }
                     }
                     else
@@ -306,105 +267,106 @@ void ScFilterDlg::Init( const SfxItemSet& rArgSet )
             maRefreshExceptQuery[i] = true;
 
         }
-        maFieldLbArr[i]->SelectEntryPos( nFieldSelPos );
-        maCondLbArr [i]->SelectEntryPos( nCondPos );
-        maValueEdArr[i]->SetText( aValStr );
-        maValueEdArr[i]->EnableAutocomplete( false );
-        maValueEdArr[i]->SetModifyHdl( LINK( this, ScFilterDlg, ValModifyHdl ) );
+        maFieldLbArr[i]->set_active( nFieldSelPos );
+        maCondLbArr [i]->set_active( nCondPos );
+        maValueEdArr[i]->set_entry_text( aValStr );
+        maValueEdArr[i]->set_entry_completion(false);
+        maValueEdArr[i]->connect_changed( LINK( this, ScFilterDlg, ValModifyHdl ) );
         UpdateValueList(i+1);
     }
 
-    pScrollBar->SetEndScrollHdl( LINK( this, ScFilterDlg, ScrollHdl ) );
-    pScrollBar->SetScrollHdl( LINK( this, ScFilterDlg, ScrollHdl ) );
+    m_xScrollBar->set_user_managed_scrolling();
+    m_xScrollBar->connect_vadjustment_changed( LINK( this, ScFilterDlg, ScrollHdl ) );
+    m_xScrollBar->vadjustment_configure(0, 0, 8, 1, 3, 4);
+    Size aSize(m_xContents->get_preferred_size());
+    m_xContents->set_size_request(aSize.Width(), aSize.Height());
 
-    pScrollBar->SetRange( Range( 0, 4 ) );
-    pScrollBar->SetLineSize( 1 );
-    pLbConnect1->Hide();
+    m_xLbConnect1->hide();
     // Disable/Enable Logic:
 
-       (pLbField1->GetSelectEntryPos() != 0)
-    && (pLbField2->GetSelectEntryPos() != 0)
-        ? pLbConnect2->SelectEntryPos( (sal_uInt16)theQueryData.GetEntry(1).eConnect )
-        : pLbConnect2->SetNoSelection();
+    (m_xLbField1->get_active() != 0)
+    && (m_xLbField2->get_active() != 0)
+        ? m_xLbConnect2->set_active( static_cast<sal_uInt16>(theQueryData.GetEntry(1).eConnect) )
+        : m_xLbConnect2->set_active(-1);
 
-       (pLbField2->GetSelectEntryPos() != 0)
-    && (pLbField3->GetSelectEntryPos() != 0)
-        ? pLbConnect3->SelectEntryPos( (sal_uInt16)theQueryData.GetEntry(2).eConnect )
-        : pLbConnect3->SetNoSelection();
+    (m_xLbField2->get_active() != 0)
+    && (m_xLbField3->get_active() != 0)
+        ? m_xLbConnect3->set_active( static_cast<sal_uInt16>(theQueryData.GetEntry(2).eConnect) )
+        : m_xLbConnect3->set_active(-1);
 
-       (pLbField3->GetSelectEntryPos() != 0)
-    && (pLbField4->GetSelectEntryPos() != 0)
-        ? pLbConnect4->SelectEntryPos( (sal_uInt16)theQueryData.GetEntry(3).eConnect )
-        : pLbConnect4->SetNoSelection();
-    if ( pLbField1->GetSelectEntryPos() == 0 )
+    (m_xLbField3->get_active() != 0)
+    && (m_xLbField4->get_active() != 0)
+        ? m_xLbConnect4->set_active( static_cast<sal_uInt16>(theQueryData.GetEntry(3).eConnect) )
+        : m_xLbConnect4->set_active(-1);
+    if ( m_xLbField1->get_active() == 0 )
     {
-        pLbConnect2->Disable();
-        pLbField2->Disable();
-        pLbCond2->Disable();
-        pEdVal2->Disable();
+        m_xLbConnect2->set_sensitive(false);
+        m_xLbField2->set_sensitive(false);
+        m_xLbCond2->set_sensitive(false);
+        m_xEdVal2->set_sensitive(false);
     }
-    else if ( pLbConnect2->GetSelectEntryCount() == 0 )
+    else if ( m_xLbConnect2->get_active() == -1 )
     {
-        pLbField2->Disable();
-        pLbCond2->Disable();
-        pEdVal2->Disable();
-    }
-
-    if ( pLbField2->GetSelectEntryPos() == 0 )
-    {
-        pLbConnect3->Disable();
-        pLbField3->Disable();
-        pLbCond3->Disable();
-        pEdVal3->Disable();
-    }
-    else if ( pLbConnect3->GetSelectEntryCount() == 0 )
-    {
-        pLbField3->Disable();
-        pLbCond3->Disable();
-        pEdVal3->Disable();
-    }
-    if ( pLbField3->GetSelectEntryPos() == 0 )
-    {
-        pLbConnect4->Disable();
-        pLbField4->Disable();
-        pLbCond4->Disable();
-        pEdVal4->Disable();
-    }
-    else if ( pLbConnect4->GetSelectEntryCount() == 0 )
-    {
-        pLbField4->Disable();
-        pLbCond4->Disable();
-        pEdVal4->Disable();
+        m_xLbField2->set_sensitive(false);
+        m_xLbCond2->set_sensitive(false);
+        m_xEdVal2->set_sensitive(false);
     }
 
-    pEdVal1->setMaxWidthChars(10);
-    pEdVal2->setMaxWidthChars(10);
-    pEdVal3->setMaxWidthChars(10);
-    pEdVal4->setMaxWidthChars(10);
+    if ( m_xLbField2->get_active() == 0 )
+    {
+        m_xLbConnect3->set_sensitive(false);
+        m_xLbField3->set_sensitive(false);
+        m_xLbCond3->set_sensitive(false);
+        m_xEdVal3->set_sensitive(false);
+    }
+    else if ( m_xLbConnect3->get_active() == -1 )
+    {
+        m_xLbField3->set_sensitive(false);
+        m_xLbCond3->set_sensitive(false);
+        m_xEdVal3->set_sensitive(false);
+    }
+    if ( m_xLbField3->get_active() == 0 )
+    {
+        m_xLbConnect4->set_sensitive(false);
+        m_xLbField4->set_sensitive(false);
+        m_xLbCond4->set_sensitive(false);
+        m_xEdVal4->set_sensitive(false);
+    }
+    else if ( m_xLbConnect4->get_active() == -1 )
+    {
+        m_xLbField4->set_sensitive(false);
+        m_xLbCond4->set_sensitive(false);
+        m_xEdVal4->set_sensitive(false);
+    }
+
+    m_xEdVal1->set_entry_width_chars(10);
+    m_xEdVal2->set_entry_width_chars(10);
+    m_xEdVal3->set_entry_width_chars(10);
+    m_xEdVal4->set_entry_width_chars(10);
 
     if (pDoc != nullptr && pDoc->GetChangeTrack() != nullptr)
-        pBtnCopyResult->Disable();
+        m_xBtnCopyResult->set_sensitive(false);
 }
 
-bool ScFilterDlg::Close()
+void ScFilterDlg::Close()
 {
     if (pViewData)
         pViewData->GetDocShell()->CancelAutoDBRange();
 
-    return DoClose( ScFilterDlgWrapper::GetChildWindowId() );
+    DoClose( ScFilterDlgWrapper::GetChildWindowId() );
 }
 
 // Mouse-selected cell area becomes the new selection and is shown in the
 // reference text box
 
-void ScFilterDlg::SetReference( const ScRange& rRef, ScDocument* pDocP )
+void ScFilterDlg::SetReference( const ScRange& rRef, ScDocument& rDocP )
 {
     if ( bRefInputMode )    // Only possible if in reference edit mode
     {
         if ( rRef.aStart != rRef.aEnd )
-            RefInputStart( pEdCopyArea );
-        OUString aRefStr(rRef.aStart.Format(ScRefFlags::ADDR_ABS_3D, pDocP, pDocP->GetAddressConvention()));
-        pEdCopyArea->SetRefString( aRefStr );
+            RefInputStart( m_xEdCopyArea.get() );
+        OUString aRefStr(rRef.aStart.Format(ScRefFlags::ADDR_ABS_3D, &rDocP, rDocP.GetAddressConvention()));
+        m_xEdCopyArea->SetRefString( aRefStr );
     }
 }
 
@@ -412,25 +374,30 @@ void ScFilterDlg::SetActive()
 {
     if ( bRefInputMode )
     {
-        pEdCopyArea->GrabFocus();
-        pEdCopyArea->GetModifyHdl().Call( *pEdCopyArea );
+        m_xEdCopyArea->GrabFocus();
+        m_xEdCopyArea->GetModifyHdl().Call( *m_xEdCopyArea );
     }
     else
-        GrabFocus();
+        m_xDialog->grab_focus();
 
     RefInputDone();
 }
 
 void ScFilterDlg::FillFieldLists()
 {
-    pLbField1->Clear();
-    pLbField2->Clear();
-    pLbField3->Clear();
-    pLbField4->Clear();
-    pLbField1->InsertEntry( aStrNone, 0 );
-    pLbField2->InsertEntry( aStrNone, 0 );
-    pLbField3->InsertEntry( aStrNone, 0 );
-    pLbField4->InsertEntry( aStrNone, 0 );
+    m_xLbField1->freeze();
+    m_xLbField2->freeze();
+    m_xLbField3->freeze();
+    m_xLbField4->freeze();
+
+    m_xLbField1->clear();
+    m_xLbField2->clear();
+    m_xLbField3->clear();
+    m_xLbField4->clear();
+    m_xLbField1->append_text( aStrNone );
+    m_xLbField2->append_text( aStrNone );
+    m_xLbField3->append_text( aStrNone );
+    m_xLbField4->append_text( aStrNone );
 
     if ( pDoc )
     {
@@ -440,42 +407,44 @@ void ScFilterDlg::FillFieldLists()
         SCROW   nFirstRow   = theQueryData.nRow1;
         SCCOL   nMaxCol     = theQueryData.nCol2;
         SCCOL   col = 0;
-        sal_uInt16  i=1;
 
         for ( col=nFirstCol; col<=nMaxCol; col++ )
         {
             aFieldName = pDoc->GetString(col, nFirstRow, nTab);
-            if (!pBtnHeader->IsChecked() || aFieldName.isEmpty())
+            if (!m_xBtnHeader->get_active() || aFieldName.isEmpty())
             {
                 aFieldName = ScGlobal::ReplaceOrAppend( aStrColumn, "%1", ScColToAlpha( col ));
             }
-            pLbField1->InsertEntry( aFieldName, i );
-            pLbField2->InsertEntry( aFieldName, i );
-            pLbField3->InsertEntry( aFieldName, i );
-            pLbField4->InsertEntry( aFieldName, i );
-            i++;
+            m_xLbField1->append_text( aFieldName );
+            m_xLbField2->append_text( aFieldName );
+            m_xLbField3->append_text( aFieldName );
+            m_xLbField4->append_text( aFieldName );
         }
     }
+
+    m_xLbField4->thaw();
+    m_xLbField3->thaw();
+    m_xLbField2->thaw();
+    m_xLbField1->thaw();
 }
 
 void ScFilterDlg::UpdateValueList( size_t nList )
 {
-    bool bCaseSens = pBtnCase->IsChecked();
+    bool bCaseSens = m_xBtnCase->get_active();
 
     if (pDoc && nList > 0 && nList <= QUERY_ENTRY_COUNT)
     {
-        ComboBox*   pValList        = maValueEdArr[nList-1].get();
-        const sal_Int32 nFieldSelPos = maFieldLbArr[nList-1]->GetSelectEntryPos();
-        sal_Int32 nListPos = 0;
-        OUString aCurValue = pValList->GetText();
+        weld::ComboBox* pValList = maValueEdArr[nList-1];
+        const sal_Int32 nFieldSelPos = maFieldLbArr[nList-1]->get_active();
+        OUString aCurValue = pValList->get_active_text();
 
-        pValList->Clear();
-        pValList->InsertEntry( aStrNotEmpty, nListPos++ );
-        pValList->InsertEntry( aStrEmpty, nListPos++ );
+        pValList->clear();
+        pValList->append_text(aStrNotEmpty);
+        pValList->append_text(aStrEmpty);
 
         if ( nFieldSelPos )
         {
-            WaitObject aWaiter( this );     // even if only the list box has content
+            weld::WaitObject aWaiter(m_xDialog.get());     // even if only the list box has content
 
             SCCOL nColumn = theQueryData.nCol1 + static_cast<SCCOL>(nFieldSelPos) - 1;
             EntryList* pList = nullptr;
@@ -491,7 +460,7 @@ void ScFilterDlg::UpdateValueList( size_t nList )
 
                 // first without the first line
                 std::pair<EntryListsMap::iterator, bool> r =
-                    m_EntryLists.insert(std::make_pair(nColumn, o3tl::make_unique<EntryList>()));
+                    m_EntryLists.insert(std::make_pair(nColumn, std::make_unique<EntryList>()));
                 if (!r.second)
                     // insertion failed.
                     return;
@@ -499,35 +468,33 @@ void ScFilterDlg::UpdateValueList( size_t nList )
                 pList = r.first->second.get();
                 pDoc->GetFilterEntriesArea(
                     nColumn, nFirstRow+1, nLastRow,
-                    nTab, bCaseSens, pList->maList, maHasDates[nOffset+nList-1] );
+                    nTab, bCaseSens, pList->maFilterEntries);
+                maHasDates[nOffset+nList-1] = pList->maFilterEntries.mbHasDates;
 
                 // Entry for the first line
                 //! Entry (pHdrEntry) doesn't generate collection?
 
                 pList->mnHeaderPos = INVALID_HEADER_POS;
-                std::vector<ScTypedStrData> aHdrColl;
-                bool bDummy = false;
+                ScFilterEntries aHdrColl;
                 pDoc->GetFilterEntriesArea(
-                    nColumn, nFirstRow, nFirstRow, nTab, true, aHdrColl, bDummy );
+                    nColumn, nFirstRow, nFirstRow, nTab, true, aHdrColl );
                 if (!aHdrColl.empty())
                 {
                     // See if the header value is already in the list.
-                    std::vector<ScTypedStrData>::iterator itBeg = pList->maList.begin(), itEnd = pList->maList.end();
-                    std::vector<ScTypedStrData>::iterator it = std::find_if(
-                        itBeg, itEnd, FindTypedStrData(aHdrColl.front(), bCaseSens));
-                    if (it == itEnd)
+                    std::vector<ScTypedStrData>::iterator itBeg = pList->maFilterEntries.begin(), itEnd = pList->maFilterEntries.end();
+                    if (std::none_of(itBeg, itEnd, FindTypedStrData(aHdrColl.front(), bCaseSens)))
                     {
                         // Not in the list. Insert it.
-                        pList->maList.push_back(aHdrColl.front());
+                        pList->maFilterEntries.push_back(aHdrColl.front());
                         if (bCaseSens)
-                            std::sort(pList->maList.begin(), pList->maList.end(), ScTypedStrData::LessCaseSensitive());
+                            std::sort(pList->maFilterEntries.begin(), pList->maFilterEntries.end(), ScTypedStrData::LessCaseSensitive());
                         else
-                            std::sort(pList->maList.begin(), pList->maList.end(), ScTypedStrData::LessCaseInsensitive());
+                            std::sort(pList->maFilterEntries.begin(), pList->maFilterEntries.end(), ScTypedStrData::LessCaseInsensitive());
 
                         // Record its position.
-                        itBeg = pList->maList.begin();
-                        itEnd = pList->maList.end();
-                        it = std::find_if(itBeg, itEnd, FindTypedStrData(aHdrColl.front(), bCaseSens));
+                        itBeg = pList->maFilterEntries.begin();
+                        itEnd = pList->maFilterEntries.end();
+                        auto it = std::find_if(itBeg, itEnd, FindTypedStrData(aHdrColl.front(), bCaseSens));
                         pList->mnHeaderPos = std::distance(itBeg, it);
                     }
                 }
@@ -535,16 +502,16 @@ void ScFilterDlg::UpdateValueList( size_t nList )
             else
                 pList = m_EntryLists[nColumn].get();
 
-            OSL_ASSERT(pList);
+            assert(pList);
 
-            std::vector<ScTypedStrData>::const_iterator it = pList->maList.begin(), itEnd = pList->maList.end();
-            for (; it != itEnd; ++it)
+            pValList->freeze();
+            for (const auto& rEntry : pList->maFilterEntries)
             {
-                pValList->InsertEntry(it->GetString(), nListPos++);
+                pValList->append_text(rEntry.GetString());
             }
+            pValList->thaw();
         }
-        pValList->SetText( aCurValue );
-        pValList->EnableDDAutoWidth(false);
+        pValList->set_entry_text(aCurValue);
     }
 
     UpdateHdrInValueList( nList );
@@ -560,7 +527,7 @@ void ScFilterDlg::UpdateHdrInValueList( size_t nList )
     if (nList == 0 || nList > QUERY_ENTRY_COUNT)
         return;
 
-    size_t nFieldSelPos = maFieldLbArr[nList-1]->GetSelectEntryPos();
+    size_t nFieldSelPos = maFieldLbArr[nList-1]->get_active();
     if (!nFieldSelPos)
         return;
 
@@ -575,24 +542,24 @@ void ScFilterDlg::UpdateHdrInValueList( size_t nList )
     if (nPos == INVALID_HEADER_POS)
         return;
 
-    ComboBox* pValList = maValueEdArr[nList-1].get();
-    size_t nListPos = nPos + 2;                 // for "empty" and "non-empty"
+    weld::ComboBox* pValList = maValueEdArr[nList-1];
+    int nListPos = nPos + 2;                 // for "empty" and "non-empty"
 
-    const ScTypedStrData& rHdrEntry = m_EntryLists[nColumn]->maList[nPos];
+    const ScTypedStrData& rHdrEntry = m_EntryLists[nColumn]->maFilterEntries.maStrData[nPos];
 
     const OUString& aHdrStr = rHdrEntry.GetString();
-    bool bWasThere = aHdrStr.equals(pValList->GetEntry(nListPos));
-    bool bInclude = !pBtnHeader->IsChecked();
+    bool bWasThere = nListPos < pValList->get_count() && aHdrStr == pValList->get_text(nListPos);
+    bool bInclude = !m_xBtnHeader->get_active();
 
     if (bInclude)           // Include entry
     {
         if (!bWasThere)
-            pValList->InsertEntry(aHdrStr, nListPos);
+            pValList->insert_text(nListPos, aHdrStr);
     }
     else                    // Omit entry
     {
         if (bWasThere)
-            pValList->RemoveEntryAt(nListPos);
+            pValList->remove(nListPos);
     }
 }
 
@@ -600,11 +567,11 @@ void ScFilterDlg::ClearValueList( size_t nList )
 {
     if (nList > 0 && nList <= QUERY_ENTRY_COUNT)
     {
-        ComboBox* pValList = maValueEdArr[nList-1].get();
-        pValList->Clear();
-        pValList->InsertEntry( aStrNotEmpty, 0 );
-        pValList->InsertEntry( aStrEmpty, 1 );
-        pValList->SetText( EMPTY_OUSTRING );
+        weld::ComboBox* pValList = maValueEdArr[nList-1];
+        pValList->clear();
+        pValList->append_text( aStrNotEmpty );
+        pValList->append_text( aStrEmpty );
+        pValList->set_entry_text( EMPTY_OUSTRING );
     }
 }
 
@@ -622,14 +589,14 @@ ScQueryItem* ScFilterDlg::GetOutputItem()
     ScQueryParam    theParam( theQueryData );
     bool            bCopyPosOk = false;
 
-    if ( pBtnCopyResult->IsChecked() )
+    if ( m_xBtnCopyResult->get_active() )
     {
         ScRefFlags nResult = theCopyPos.Parse(
-            pEdCopyArea->GetText(), pDoc, pDoc->GetAddressConvention());
+            m_xEdCopyArea->GetText(), pDoc, pDoc->GetAddressConvention());
         bCopyPosOk = (nResult & ScRefFlags::VALID) == ScRefFlags::VALID;
     }
 
-    if ( pBtnCopyResult->IsChecked() && bCopyPosOk )
+    if ( m_xBtnCopyResult->get_active() && bCopyPosOk )
     {
         theParam.bInplace   = false;
         theParam.nDestTab   = theCopyPos.Tab();
@@ -644,19 +611,18 @@ ScQueryItem* ScFilterDlg::GetOutputItem()
         theParam.nDestRow   = 0;
     }
 
-    theParam.bHasHeader     = pBtnHeader->IsChecked();
+    theParam.bHasHeader     = m_xBtnHeader->get_active();
     theParam.bByRow         = true;
-    theParam.bDuplicate     = !pBtnUnique->IsChecked();
-    theParam.bCaseSens      = pBtnCase->IsChecked();
-    theParam.eSearchType    = pBtnRegExp->IsChecked() ? utl::SearchParam::SearchType::Regexp : utl::SearchParam::SearchType::Normal;
-    theParam.bDestPers      = pBtnDestPers->IsChecked();
+    theParam.bDuplicate     = !m_xBtnUnique->get_active();
+    theParam.bCaseSens      = m_xBtnCase->get_active();
+    theParam.eSearchType    = m_xBtnRegExp->get_active() ? utl::SearchParam::SearchType::Regexp : utl::SearchParam::SearchType::Normal;
+    theParam.bDestPers      = m_xBtnDestPers->get_active();
 
     // only set the three - reset everything else
 
-    DELETEZ( pOutItem );
-    pOutItem = new ScQueryItem( nWhichQuery, &theParam );
+    pOutItem.reset( new ScQueryItem( nWhichQuery, &theParam ) );
 
-    return pOutItem;
+    return pOutItem.get();
 }
 
 bool ScFilterDlg::IsRefInputMode() const
@@ -666,21 +632,79 @@ bool ScFilterDlg::IsRefInputMode() const
 
 // Handler:
 
-IMPL_LINK( ScFilterDlg, EndDlgHdl, Button*, pBtn, void )
+IMPL_LINK( ScFilterDlg, BtnClearHdl, weld::Button&, rBtn, void )
 {
-    if ( pBtn == pBtnOk )
+    if ( &rBtn != m_xBtnClear.get() )
+        return;
+
+    // scroll to the top
+    m_xScrollBar->vadjustment_set_value(0);
+    size_t nOffset = 0;
+    RefreshEditRow( nOffset);
+
+    // clear all conditions
+    m_xLbConnect1->set_active(-1);
+    m_xLbConnect2->set_active(-1);
+    m_xLbConnect3->set_active(-1);
+    m_xLbConnect4->set_active(-1);
+    m_xLbField1->set_active(0);
+    m_xLbField2->set_active(0);
+    m_xLbField3->set_active(0);
+    m_xLbField4->set_active(0);
+    m_xLbCond1->set_active(0);
+    m_xLbCond2->set_active(0);
+    m_xLbCond3->set_active(0);
+    m_xLbCond4->set_active(0);
+    ClearValueList( 1 );
+    ClearValueList( 2 );
+    ClearValueList( 3 );
+    ClearValueList( 4 );
+
+    // disable fields for second row onward
+    m_xLbConnect2->set_sensitive(false);
+    m_xLbConnect3->set_sensitive(false);
+    m_xLbConnect4->set_sensitive(false);
+    m_xLbField2->set_sensitive(false);
+    m_xLbField3->set_sensitive(false);
+    m_xLbField4->set_sensitive(false);
+    m_xLbCond2->set_sensitive(false);
+    m_xLbCond3->set_sensitive(false);
+    m_xLbCond4->set_sensitive(false);
+    m_xEdVal2->set_sensitive(false);
+    m_xEdVal3->set_sensitive(false);
+    m_xEdVal4->set_sensitive(false);
+
+    // clear query data objects
+    SCSIZE nCount = theQueryData.GetEntryCount();
+    if (maRefreshExceptQuery.size() < nCount + 1)
+        maRefreshExceptQuery.resize(nCount + 1, false);
+    for (SCSIZE i = 0; i < nCount; ++i)
+    {
+        theQueryData.GetEntry(i).bDoQuery = false;
+        maRefreshExceptQuery[i] = false;
+        theQueryData.GetEntry(i).nField = static_cast<SCCOL>(0);
+    }
+    maRefreshExceptQuery[0] = true;
+}
+
+IMPL_LINK( ScFilterDlg, EndDlgHdl, weld::Button&, rBtn, void )
+{
+    if ( &rBtn == m_xBtnOk.get() )
     {
         bool bAreaInputOk = true;
 
-        if ( pBtnCopyResult->IsChecked() )
+        if ( m_xBtnCopyResult->get_active() )
         {
-            if ( !pOptionsMgr->VerifyPosStr( pEdCopyArea->GetText() ) )
+            if ( !pOptionsMgr->VerifyPosStr( m_xEdCopyArea->GetText() ) )
             {
-                if (!pExpander->get_expanded())
-                  pExpander->set_expanded(true);
+                if (!m_xExpander->get_expanded())
+                  m_xExpander->set_expanded(true);
 
-                ScopedVclPtrInstance<MessageDialog>(this, ScGlobal::GetRscString(STR_INVALID_TABREF))->Execute();
-                pEdCopyArea->GrabFocus();
+                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(),
+                                                          VclMessageType::Warning, VclButtonsType::Ok,
+                                                          ScResId(STR_INVALID_TABREF)));
+                xBox->run();
+                m_xEdCopyArea->GrabFocus();
                 bAreaInputOk = false;
             }
         }
@@ -692,18 +716,18 @@ IMPL_LINK( ScFilterDlg, EndDlgHdl, Button*, pBtn, void )
             GetBindings().GetDispatcher()->ExecuteList(FID_FILTER_OK,
                                       SfxCallMode::SLOT | SfxCallMode::RECORD,
                                       { GetOutputItem() });
-            Close();
+            response(RET_OK);
         }
     }
-    else if ( pBtn == pBtnCancel )
+    else if ( &rBtn == m_xBtnCancel.get() )
     {
-        Close();
+        response(RET_CANCEL);
     }
 }
 
-IMPL_LINK_NOARG(ScFilterDlg, MoreExpandedHdl, VclExpander&, void)
+IMPL_LINK_NOARG(ScFilterDlg, MoreExpandedHdl, weld::Expander&, void)
 {
-    if ( pExpander->get_expanded() )
+    if ( m_xExpander->get_expanded() )
         pTimer->Start();
     else
     {
@@ -717,105 +741,103 @@ IMPL_LINK_NOARG(ScFilterDlg, MoreExpandedHdl, VclExpander&, void)
 IMPL_LINK( ScFilterDlg, TimeOutHdl, Timer*, _pTimer, void )
 {
     // Check if RefInputMode is still true every 50ms
+    if (_pTimer == pTimer.get() && m_xDialog->has_toplevel_focus())
+        bRefInputMode = (m_xEdCopyArea->GetWidget()->has_focus() || m_xRbCopyArea->GetWidget()->has_focus());
 
-    if( _pTimer == pTimer && IsActive() )
-        bRefInputMode = (pEdCopyArea->HasFocus() || pRbCopyArea->HasFocus());
-
-    if ( pExpander->get_expanded() )
+    if ( m_xExpander->get_expanded() )
         pTimer->Start();
 }
 
-IMPL_LINK( ScFilterDlg, LbSelectHdl, ListBox&, rLb, void )
+IMPL_LINK(ScFilterDlg, LbSelectHdl, weld::ComboBox&, rLb, void)
 {
     /*
      * Handle enable/disable logic depending on which ListBox was selected
      */
     sal_uInt16 nOffset = GetSliderPos();
 
-    if ( &rLb == pLbConnect1 )
+    if ( &rLb == m_xLbConnect1.get() )
     {
-        pLbField1->Enable();
-        pLbCond1->Enable();
-        pEdVal1->Enable();
+        m_xLbField1->set_sensitive(true);
+        m_xLbCond1->set_sensitive(true);
+        m_xEdVal1->set_sensitive(true);
 
-        const sal_Int32 nConnect1 = pLbConnect1->GetSelectEntryPos();
+        const sal_Int32 nConnect1 = m_xLbConnect1->get_active();
         size_t nQE = nOffset;
-        theQueryData.GetEntry(nQE).eConnect =(ScQueryConnect)nConnect1;
+        theQueryData.GetEntry(nQE).eConnect =static_cast<ScQueryConnect>(nConnect1);
         if (maRefreshExceptQuery.size() < nQE + 1)
             maRefreshExceptQuery.resize(nQE + 1, false);
         maRefreshExceptQuery[nQE] = true;
     }
-
-    else if ( &rLb == pLbConnect2 )
+    else if ( &rLb == m_xLbConnect2.get() )
     {
-        pLbField2->Enable();
-        pLbCond2->Enable();
-        pEdVal2->Enable();
+        m_xLbField2->set_sensitive(true);
+        m_xLbCond2->set_sensitive(true);
+        m_xEdVal2->set_sensitive(true);
 
-        const sal_Int32 nConnect2 = pLbConnect2->GetSelectEntryPos();
+        const sal_Int32 nConnect2 = m_xLbConnect2->get_active();
         size_t nQE = 1+nOffset;
-        theQueryData.GetEntry(nQE).eConnect =(ScQueryConnect)nConnect2;
+        theQueryData.GetEntry(nQE).eConnect =static_cast<ScQueryConnect>(nConnect2);
         if (maRefreshExceptQuery.size() < nQE + 1)
             maRefreshExceptQuery.resize(nQE + 1, false);
         maRefreshExceptQuery[nQE]=true;
     }
-    else if ( &rLb == pLbConnect3 )
+    else if ( &rLb == m_xLbConnect3.get() )
     {
-        pLbField3->Enable();
-        pLbCond3->Enable();
-        pEdVal3->Enable();
+        m_xLbField3->set_sensitive(true);
+        m_xLbCond3->set_sensitive(true);
+        m_xEdVal3->set_sensitive(true);
 
-        const sal_Int32 nConnect3 = pLbConnect3->GetSelectEntryPos();
+        const sal_Int32 nConnect3 = m_xLbConnect3->get_active();
         size_t nQE = 2 + nOffset;
-        theQueryData.GetEntry(nQE).eConnect = (ScQueryConnect)nConnect3;
+        theQueryData.GetEntry(nQE).eConnect = static_cast<ScQueryConnect>(nConnect3);
         if (maRefreshExceptQuery.size() < nQE + 1)
             maRefreshExceptQuery.resize(nQE + 1, false);
         maRefreshExceptQuery[nQE] = true;
 
     }
-    else if ( &rLb == pLbConnect4 )
+    else if ( &rLb == m_xLbConnect4.get() )
     {
-        pLbField4->Enable();
-        pLbCond4->Enable();
-        pEdVal4->Enable();
+        m_xLbField4->set_sensitive(true);
+        m_xLbCond4->set_sensitive(true);
+        m_xEdVal4->set_sensitive(true);
 
-        const sal_Int32 nConnect4 = pLbConnect4->GetSelectEntryPos();
+        const sal_Int32 nConnect4 = m_xLbConnect4->get_active();
         size_t nQE = 3 + nOffset;
-        theQueryData.GetEntry(nQE).eConnect = (ScQueryConnect)nConnect4;
+        theQueryData.GetEntry(nQE).eConnect = static_cast<ScQueryConnect>(nConnect4);
         if (maRefreshExceptQuery.size() < nQE + 1)
             maRefreshExceptQuery.resize(nQE + 1, false);
         maRefreshExceptQuery[nQE] = true;
     }
-    else if ( &rLb == pLbField1 )
+    else if ( &rLb == m_xLbField1.get() )
     {
-        if ( pLbField1->GetSelectEntryPos() == 0 )
+        if ( m_xLbField1->get_active() == 0 )
         {
-            pLbConnect2->SetNoSelection();
-            pLbConnect3->SetNoSelection();
-            pLbConnect4->SetNoSelection();
-            pLbField2->SelectEntryPos( 0 );
-            pLbField3->SelectEntryPos( 0 );
-            pLbField4->SelectEntryPos( 0 );
-            pLbCond2->SelectEntryPos( 0 );
-            pLbCond3->SelectEntryPos( 0 );
-            pLbCond4->SelectEntryPos( 0 );
+            m_xLbConnect2->set_active(-1);
+            m_xLbConnect3->set_active(-1);
+            m_xLbConnect4->set_active(-1);
+            m_xLbField2->set_active( 0 );
+            m_xLbField3->set_active( 0 );
+            m_xLbField4->set_active( 0 );
+            m_xLbCond2->set_active( 0 );
+            m_xLbCond3->set_active( 0 );
+            m_xLbCond4->set_active( 0 );
             ClearValueList( 1 );
             ClearValueList( 2 );
             ClearValueList( 3 );
             ClearValueList( 4 );
 
-            pLbConnect2->Disable();
-            pLbConnect3->Disable();
-            pLbConnect4->Disable();
-            pLbField2->Disable();
-            pLbField3->Disable();
-            pLbField4->Disable();
-            pLbCond2->Disable();
-            pLbCond3->Disable();
-            pLbCond4->Disable();
-            pEdVal2->Disable();
-            pEdVal3->Disable();
-            pEdVal4->Disable();
+            m_xLbConnect2->set_sensitive(false);
+            m_xLbConnect3->set_sensitive(false);
+            m_xLbConnect4->set_sensitive(false);
+            m_xLbField2->set_sensitive(false);
+            m_xLbField3->set_sensitive(false);
+            m_xLbField4->set_sensitive(false);
+            m_xLbCond2->set_sensitive(false);
+            m_xLbCond3->set_sensitive(false);
+            m_xLbCond4->set_sensitive(false);
+            m_xEdVal2->set_sensitive(false);
+            m_xEdVal3->set_sensitive(false);
+            m_xEdVal4->set_sensitive(false);
             SCSIZE nCount = theQueryData.GetEntryCount();
             if (maRefreshExceptQuery.size() < nCount + 1)
                 maRefreshExceptQuery.resize(nCount + 1, false);
@@ -830,37 +852,37 @@ IMPL_LINK( ScFilterDlg, LbSelectHdl, ListBox&, rLb, void )
         else
         {
             UpdateValueList( 1 );
-            if ( !pLbConnect2->IsEnabled() )
+            if ( !m_xLbConnect2->get_sensitive() )
             {
-                pLbConnect2->Enable();
+                m_xLbConnect2->set_sensitive(true);
             }
             theQueryData.GetEntry(nOffset).bDoQuery = true;
-            const sal_Int32 nField  = rLb.GetSelectEntryPos();
+            const sal_Int32 nField  = rLb.get_active();
             theQueryData.GetEntry(nOffset).nField = theQueryData.nCol1 + static_cast<SCCOL>(nField) - 1 ;
         }
     }
-    else if ( &rLb == pLbField2 )
+    else if ( &rLb == m_xLbField2.get() )
     {
-        if ( pLbField2->GetSelectEntryPos() == 0 )
+        if ( m_xLbField2->get_active() == 0 )
         {
-            pLbConnect3->SetNoSelection();
-            pLbConnect4->SetNoSelection();
-            pLbField3->SelectEntryPos( 0 );
-            pLbField4->SelectEntryPos( 0 );
-            pLbCond3->SelectEntryPos( 0 );
-            pLbCond4->SelectEntryPos( 0 );
+            m_xLbConnect3->set_active(-1);
+            m_xLbConnect4->set_active(-1);
+            m_xLbField3->set_active( 0 );
+            m_xLbField4->set_active( 0 );
+            m_xLbCond3->set_active( 0 );
+            m_xLbCond4->set_active( 0 );
             ClearValueList( 2 );
             ClearValueList( 3 );
             ClearValueList( 4 );
 
-            pLbConnect3->Disable();
-            pLbConnect4->Disable();
-            pLbField3->Disable();
-            pLbField4->Disable();
-            pLbCond3->Disable();
-            pLbCond4->Disable();
-            pEdVal3->Disable();
-            pEdVal4->Disable();
+            m_xLbConnect3->set_sensitive(false);
+            m_xLbConnect4->set_sensitive(false);
+            m_xLbField3->set_sensitive(false);
+            m_xLbField4->set_sensitive(false);
+            m_xLbCond3->set_sensitive(false);
+            m_xLbCond4->set_sensitive(false);
+            m_xEdVal3->set_sensitive(false);
+            m_xEdVal4->set_sensitive(false);
 
             sal_uInt16 nTemp=nOffset+1;
             SCSIZE nCount = theQueryData.GetEntryCount();
@@ -877,30 +899,30 @@ IMPL_LINK( ScFilterDlg, LbSelectHdl, ListBox&, rLb, void )
         else
         {
             UpdateValueList( 2 );
-            if ( !pLbConnect3->IsEnabled() )
+            if ( !m_xLbConnect3->get_sensitive() )
             {
-                pLbConnect3->Enable();
+                m_xLbConnect3->set_sensitive(true);
             }
-            const sal_Int32 nField = rLb.GetSelectEntryPos();
+            const sal_Int32 nField = rLb.get_active();
             sal_uInt16 nQ=1+nOffset;
             theQueryData.GetEntry(nQ).bDoQuery = true;
             theQueryData.GetEntry(nQ).nField = theQueryData.nCol1 + static_cast<SCCOL>(nField) - 1 ;
         }
     }
-    else if ( &rLb == pLbField3 )
+    else if ( &rLb == m_xLbField3.get() )
     {
-        if ( pLbField3->GetSelectEntryPos() == 0 )
+        if ( m_xLbField3->get_active() == 0 )
         {
-            pLbConnect4->SetNoSelection();
-            pLbField4->SelectEntryPos( 0 );
-            pLbCond4->SelectEntryPos( 0 );
+            m_xLbConnect4->set_active(-1);
+            m_xLbField4->set_active( 0 );
+            m_xLbCond4->set_active( 0 );
             ClearValueList( 3 );
             ClearValueList( 4 );
 
-            pLbConnect4->Disable();
-            pLbField4->Disable();
-            pLbCond4->Disable();
-            pEdVal4->Disable();
+            m_xLbConnect4->set_sensitive(false);
+            m_xLbField4->set_sensitive(false);
+            m_xLbCond4->set_sensitive(false);
+            m_xEdVal4->set_sensitive(false);
 
             sal_uInt16 nTemp=nOffset+2;
             SCSIZE nCount = theQueryData.GetEntryCount();
@@ -917,21 +939,21 @@ IMPL_LINK( ScFilterDlg, LbSelectHdl, ListBox&, rLb, void )
         else
         {
             UpdateValueList( 3 );
-            if ( !pLbConnect4->IsEnabled() )
+            if ( !m_xLbConnect4->get_sensitive() )
             {
-                pLbConnect4->Enable();
+                m_xLbConnect4->set_sensitive(true);
             }
 
-            const sal_Int32 nField = rLb.GetSelectEntryPos();
+            const sal_Int32 nField = rLb.get_active();
             sal_uInt16 nQ=2+nOffset;
             theQueryData.GetEntry(nQ).bDoQuery = true;
             theQueryData.GetEntry(nQ).nField = theQueryData.nCol1 + static_cast<SCCOL>(nField) - 1 ;
 
         }
     }
-    else if ( &rLb == pLbField4 )
+    else if ( &rLb == m_xLbField4.get() )
     {
-        if ( pLbField4->GetSelectEntryPos() == 0 )
+        if ( m_xLbField4->get_active() == 0 )
         {
             ClearValueList( 4 );
             sal_uInt16 nTemp=nOffset+3;
@@ -949,35 +971,35 @@ IMPL_LINK( ScFilterDlg, LbSelectHdl, ListBox&, rLb, void )
         else
         {
             UpdateValueList( 4 );
-            const sal_Int32 nField = rLb.GetSelectEntryPos();
+            const sal_Int32 nField = rLb.get_active();
             sal_uInt16 nQ=3+nOffset;
             theQueryData.GetEntry(nQ).bDoQuery = true;
             theQueryData.GetEntry(nQ).nField = theQueryData.nCol1 + static_cast<SCCOL>(nField) - 1 ;
         }
 
     }
-    else if ( &rLb == pLbCond1)
+    else if ( &rLb == m_xLbCond1.get())
     {
-        theQueryData.GetEntry(nOffset).eOp=(ScQueryOp)rLb.GetSelectEntryPos();
+        theQueryData.GetEntry(nOffset).eOp=static_cast<ScQueryOp>(rLb.get_active());
     }
-    else if ( &rLb == pLbCond2)
+    else if ( &rLb == m_xLbCond2.get())
     {
         sal_uInt16 nQ=1+nOffset;
-        theQueryData.GetEntry(nQ).eOp=(ScQueryOp)rLb.GetSelectEntryPos();
+        theQueryData.GetEntry(nQ).eOp=static_cast<ScQueryOp>(rLb.get_active());
     }
-    else if ( &rLb == pLbCond3)
+    else if ( &rLb == m_xLbCond3.get())
     {
         sal_uInt16 nQ=2+nOffset;
-        theQueryData.GetEntry(nQ).eOp=(ScQueryOp)rLb.GetSelectEntryPos();
+        theQueryData.GetEntry(nQ).eOp=static_cast<ScQueryOp>(rLb.get_active());
     }
     else
     {
         sal_uInt16 nQ=3+nOffset;
-        theQueryData.GetEntry(nQ).eOp=(ScQueryOp)rLb.GetSelectEntryPos();
+        theQueryData.GetEntry(nQ).eOp=static_cast<ScQueryOp>(rLb.get_active());
     }
 }
 
-IMPL_LINK( ScFilterDlg, CheckBoxHdl, Button*, pBox, void )
+IMPL_LINK( ScFilterDlg, CheckBoxHdl, weld::Button&, rBox, void )
 {
     //  Column headers:
     //      Field list: Columnxx <-> column header string
@@ -985,17 +1007,17 @@ IMPL_LINK( ScFilterDlg, CheckBoxHdl, Button*, pBox, void )
     //  Upper/lower case:
     //      Value list: completely new
 
-    if ( pBox == pBtnHeader )              // Field list and value list
+    if ( &rBox == m_xBtnHeader.get() )              // Field list and value list
     {
-        const sal_Int32 nCurSel1 = pLbField1->GetSelectEntryPos();
-        const sal_Int32 nCurSel2 = pLbField2->GetSelectEntryPos();
-        const sal_Int32 nCurSel3 = pLbField3->GetSelectEntryPos();
-        const sal_Int32 nCurSel4 = pLbField4->GetSelectEntryPos();
+        const sal_Int32 nCurSel1 = m_xLbField1->get_active();
+        const sal_Int32 nCurSel2 = m_xLbField2->get_active();
+        const sal_Int32 nCurSel3 = m_xLbField3->get_active();
+        const sal_Int32 nCurSel4 = m_xLbField4->get_active();
         FillFieldLists();
-        pLbField1->SelectEntryPos( nCurSel1 );
-        pLbField2->SelectEntryPos( nCurSel2 );
-        pLbField3->SelectEntryPos( nCurSel3 );
-        pLbField4->SelectEntryPos( nCurSel4 );
+        m_xLbField1->set_active( nCurSel1 );
+        m_xLbField2->set_active( nCurSel2 );
+        m_xLbField3->set_active( nCurSel3 );
+        m_xLbField4->set_active( nCurSel4 );
 
         UpdateHdrInValueList( 1 );
         UpdateHdrInValueList( 2 );
@@ -1003,7 +1025,7 @@ IMPL_LINK( ScFilterDlg, CheckBoxHdl, Button*, pBox, void )
         UpdateHdrInValueList( 4 );
     }
 
-    if ( pBox == pBtnCase )            // Complete value list
+    if ( &rBox == m_xBtnCase.get() )            // Complete value list
     {
         m_EntryLists.clear();
         UpdateValueList( 1 );       // current text is recorded
@@ -1013,43 +1035,43 @@ IMPL_LINK( ScFilterDlg, CheckBoxHdl, Button*, pBox, void )
     }
 }
 
-IMPL_LINK( ScFilterDlg, ValModifyHdl, Edit&, rEd, void )
+IMPL_LINK( ScFilterDlg, ValModifyHdl, weld::ComboBox&, rEd, void )
 {
     size_t nOffset = GetSliderPos();
     size_t i = 0;
     size_t nQE = i + nOffset;
-    OUString aStrVal = rEd.GetText();
-    ListBox*  pLbCond   = pLbCond1;
-    ListBox*  pLbField  = pLbField1;
-    if ( &rEd == pEdVal2 )
+    OUString aStrVal = rEd.get_active_text();
+    weld::ComboBox*  pLbCond   = m_xLbCond1.get();
+    weld::ComboBox*  pLbField  = m_xLbField1.get();
+    if ( &rEd == m_xEdVal2.get() )
     {
-        pLbCond  = pLbCond2;
-        pLbField = pLbField2;
+        pLbCond  = m_xLbCond2.get();
+        pLbField = m_xLbField2.get();
         i=1;
         nQE=i+nOffset;
     }
-    if ( &rEd == pEdVal3 )
+    if ( &rEd == m_xEdVal3.get() )
     {
-        pLbCond = pLbCond3;
-        pLbField = pLbField3;
+        pLbCond = m_xLbCond3.get();
+        pLbField = m_xLbField3.get();
         i=2;
         nQE=i+nOffset;
     }
-    if ( &rEd == pEdVal4 )
+    if ( &rEd == m_xEdVal4.get() )
     {
-        pLbCond = pLbCond4;
-        pLbField = pLbField4;
+        pLbCond = m_xLbCond4.get();
+        pLbField = m_xLbField4.get();
         i=3;
         nQE=i+nOffset;
     }
 
-    if ( aStrEmpty.equals(aStrVal) || aStrNotEmpty.equals(aStrVal) )
+    if ( aStrEmpty == aStrVal || aStrNotEmpty == aStrVal )
     {
-        pLbCond->SelectEntry(OUString('='));
-        pLbCond->Disable();
+        pLbCond->set_active_text(OUString('='));
+        pLbCond->set_sensitive(false);
     }
     else
-        pLbCond->Enable();
+        pLbCond->set_sensitive(true);
 
     if (maHasDates.size() < nQE + 1)
         maHasDates.resize(nQE + 1, false);
@@ -1058,45 +1080,45 @@ IMPL_LINK( ScFilterDlg, ValModifyHdl, Edit&, rEd, void )
 
     ScQueryEntry& rEntry = theQueryData.GetEntry( nQE );
     ScQueryEntry::Item& rItem = rEntry.GetQueryItem();
-    bool bDoThis = (pLbField->GetSelectEntryPos() != 0);
+    bool bDoThis = (pLbField->get_active() != 0);
     rEntry.bDoQuery = bDoThis;
 
-    if ( rEntry.bDoQuery || maRefreshExceptQuery[nQE] )
+    if ( !(rEntry.bDoQuery || maRefreshExceptQuery[nQE]) )
+        return;
+
+    bool bByEmptyOrNotByEmpty = false;
+    if ( aStrEmpty == aStrVal )
     {
-        bool bByEmptyOrNotByEmpty = false;
-        if ( aStrEmpty.equals(aStrVal) )
-        {
-            bByEmptyOrNotByEmpty = true;
-            rEntry.SetQueryByEmpty();
-        }
-        else if ( aStrNotEmpty.equals(aStrVal) )
-        {
-            bByEmptyOrNotByEmpty = true;
-            rEntry.SetQueryByNonEmpty();
-        }
-        else
-        {
-            rItem.maString = pDoc->GetSharedStringPool().intern(aStrVal);
-            rItem.mfVal = 0.0;
-
-            sal_uInt32 nIndex = 0;
-            bool bNumber = pDoc->GetFormatTable()->IsNumberFormat(
-                rItem.maString.getString(), nIndex, rItem.mfVal);
-            rItem.meType = bNumber ? ScQueryEntry::ByValue : ScQueryEntry::ByString;
-        }
-
-        const sal_Int32 nField = pLbField->GetSelectEntryPos();
-        rEntry.nField = nField ? (theQueryData.nCol1 +
-            static_cast<SCCOL>(nField) - 1) : static_cast<SCCOL>(0);
-
-        ScQueryOp eOp  = (ScQueryOp)pLbCond->GetSelectEntryPos();
-        rEntry.eOp     = eOp;
-        if (maHasDates[nQE] && !bByEmptyOrNotByEmpty)
-            rItem.meType = ScQueryEntry::ByDate;
+        bByEmptyOrNotByEmpty = true;
+        rEntry.SetQueryByEmpty();
     }
+    else if ( aStrNotEmpty == aStrVal )
+    {
+        bByEmptyOrNotByEmpty = true;
+        rEntry.SetQueryByNonEmpty();
+    }
+    else
+    {
+        rItem.maString = pDoc->GetSharedStringPool().intern(aStrVal);
+        rItem.mfVal = 0.0;
+
+        sal_uInt32 nIndex = 0;
+        bool bNumber = pDoc->GetFormatTable()->IsNumberFormat(
+            rItem.maString.getString(), nIndex, rItem.mfVal);
+        rItem.meType = bNumber ? ScQueryEntry::ByValue : ScQueryEntry::ByString;
+    }
+
+    const sal_Int32 nField = pLbField->get_active();
+    rEntry.nField = nField ? (theQueryData.nCol1 +
+        static_cast<SCCOL>(nField) - 1) : static_cast<SCCOL>(0);
+
+    ScQueryOp eOp  = static_cast<ScQueryOp>(pLbCond->get_active());
+    rEntry.eOp     = eOp;
+    if (maHasDates[nQE] && !bByEmptyOrNotByEmpty)
+        rItem.meType = ScQueryEntry::ByDate;
 }
 
-IMPL_LINK_NOARG(ScFilterDlg, ScrollHdl, ScrollBar*, void)
+IMPL_LINK_NOARG(ScFilterDlg, ScrollHdl, weld::ScrolledWindow&, void)
 {
     SliderMoved();
 }
@@ -1107,17 +1129,17 @@ void ScFilterDlg::SliderMoved()
     RefreshEditRow( nOffset);
 }
 
-size_t ScFilterDlg::GetSliderPos()
+size_t ScFilterDlg::GetSliderPos() const
 {
-    return static_cast<size_t>(pScrollBar->GetThumbPos());
+    return static_cast<size_t>(m_xScrollBar->vadjustment_get_value());
 }
 
 void ScFilterDlg::RefreshEditRow( size_t nOffset )
 {
     if (nOffset==0)
-        maConnLbArr[0]->Hide();
+        maConnLbArr[0]->hide();
     else
-        maConnLbArr[0]->Show();
+        maConnLbArr[0]->show();
 
     for (size_t i = 0; i < QUERY_ENTRY_COUNT; ++i)
     {
@@ -1141,51 +1163,51 @@ void ScFilterDlg::RefreshEditRow( size_t nOffset )
             if (rEntry.IsQueryByEmpty())
             {
                 aValStr = aStrEmpty;
-                maCondLbArr[i]->Disable();
+                maCondLbArr[i]->set_sensitive(false);
             }
             else if (rEntry.IsQueryByNonEmpty())
             {
                 aValStr = aStrNotEmpty;
-                maCondLbArr[i]->Disable();
+                maCondLbArr[i]->set_sensitive(false);
             }
             else
             {
                 aValStr = aQueryStr;
-                maCondLbArr[i]->Enable();
+                maCondLbArr[i]->set_sensitive(true);
             }
-            maFieldLbArr[i]->Enable();
-            maValueEdArr[i]->Enable();
+            maFieldLbArr[i]->set_sensitive(true);
+            maValueEdArr[i]->set_sensitive(true);
 
             if (nOffset==0)
             {
                 if (i<3)
                 {
                     if(rEntry.bDoQuery)
-                        maConnLbArr[i+1]->Enable();
+                        maConnLbArr[i+1]->set_sensitive(true);
                     else
-                        maConnLbArr[i+1]->Disable();
+                        maConnLbArr[i+1]->set_sensitive(false);
                     size_t nQENext = nQE + 1;
                     if (maRefreshExceptQuery.size() < nQENext + 1)
                         maRefreshExceptQuery.resize(nQENext + 1, false);
                     if (theQueryData.GetEntry(nQENext).bDoQuery || maRefreshExceptQuery[nQENext])
-                        maConnLbArr[i+1]->SelectEntryPos( (sal_uInt16) theQueryData.GetEntry(nQENext).eConnect );
+                        maConnLbArr[i+1]->set_active( static_cast<sal_uInt16>(theQueryData.GetEntry(nQENext).eConnect) );
                     else
-                        maConnLbArr[i+1]->SetNoSelection();
+                        maConnLbArr[i+1]->set_active(-1);
                 }
             }
             else
             {
                 if(theQueryData.GetEntry( nQE-1).bDoQuery)
-                    maConnLbArr[i]->Enable();
+                    maConnLbArr[i]->set_sensitive(true);
                 else
-                    maConnLbArr[i]->Disable();
+                    maConnLbArr[i]->set_sensitive(false);
 
                 if (maRefreshExceptQuery.size() < nQE + 1)
                     maRefreshExceptQuery.resize(nQE + 1, false);
                 if(rEntry.bDoQuery || maRefreshExceptQuery[nQE])
-                    maConnLbArr[i]->SelectEntryPos( (sal_uInt16) rEntry.eConnect );
+                    maConnLbArr[i]->set_active( static_cast<sal_uInt16>(rEntry.eConnect) );
                 else
-                    maConnLbArr[i]->SetNoSelection();
+                    maConnLbArr[i]->set_active(-1);
             }
 
         }
@@ -1195,25 +1217,25 @@ void ScFilterDlg::RefreshEditRow( size_t nOffset )
             {
                 if(i<3)
                 {
-                    maConnLbArr[i+1]->SetNoSelection();
-                    maConnLbArr[i+1]->Disable();
+                    maConnLbArr[i+1]->set_active(-1);
+                    maConnLbArr[i+1]->set_sensitive(false);
                 }
             }
             else
             {
                 if(theQueryData.GetEntry( nQE-1).bDoQuery)
-                    maConnLbArr[i]->Enable();
+                    maConnLbArr[i]->set_sensitive(true);
                 else
-                    maConnLbArr[i]->Disable();
-                maConnLbArr[i]->SetNoSelection();
+                    maConnLbArr[i]->set_sensitive(false);
+                maConnLbArr[i]->set_active(-1);
             }
-            maFieldLbArr[i]->Disable();
-            maCondLbArr[i]->Disable();
-            maValueEdArr[i]->Disable();
+            maFieldLbArr[i]->set_sensitive(false);
+            maCondLbArr[i]->set_sensitive(false);
+            maValueEdArr[i]->set_sensitive(false);
         }
-        maFieldLbArr[i]->SelectEntryPos( nFieldSelPos );
-        maCondLbArr [i]->SelectEntryPos( nCondPos );
-        maValueEdArr[i]->SetText( aValStr );
+        maFieldLbArr[i]->set_active( nFieldSelPos );
+        maCondLbArr [i]->set_active( nCondPos );
+        maValueEdArr[i]->set_entry_text( aValStr );
         UpdateValueList(i+1);
     }
 }

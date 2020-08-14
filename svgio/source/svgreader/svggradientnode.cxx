@@ -21,10 +21,8 @@
 #include <svgdocument.hxx>
 #include <svggradientstopnode.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         void SvgGradientNode::tryToFindLink()
         {
             if(!mpXLink && !maXLink.isEmpty())
@@ -50,7 +48,7 @@ namespace svgio
             maFy(),
             maGradientUnits(objectBoundingBox),
             maSpreadMethod(drawinglayer::primitive2d::SpreadMethod::Pad),
-            mpaGradientTransform(nullptr),
+            mbResolvingLink(false),
             maXLink(),
             mpXLink(nullptr)
         {
@@ -246,9 +244,11 @@ namespace svgio
             {
                 const_cast< SvgGradientNode* >(this)->tryToFindLink();
 
-                if(mpXLink)
+                if (mpXLink && !mbResolvingLink)
                 {
+                    mbResolvingLink = true;
                     mpXLink->collectGradientEntries(aVector);
+                    mbResolvingLink = false;
                 }
             }
             else
@@ -257,7 +257,7 @@ namespace svgio
 
                 for(sal_uInt32 a(0); a < nCount; a++)
                 {
-                    const SvgGradientStopNode* pCandidate = dynamic_cast< const SvgGradientStopNode* >(getChildren()[a]);
+                    const SvgGradientStopNode* pCandidate = dynamic_cast< const SvgGradientStopNode* >(getChildren()[a].get());
 
                     if(pCandidate)
                     {
@@ -289,11 +289,10 @@ namespace svgio
                                 fOffset = 1.0;
                             }
 
-                            aVector.push_back(
-                                drawinglayer::primitive2d::SvgGradientEntry(
+                            aVector.emplace_back(
                                     fOffset,
                                     pStyle->getStopColor(),
-                                    pStyle->getStopOpacity().solve(*this)));
+                                    pStyle->getStopOpacity().solve(*this));
                         }
                         else
                         {
@@ -304,7 +303,7 @@ namespace svgio
             }
         }
 
-        const SvgNumber SvgGradientNode::getX1() const
+        SvgNumber SvgGradientNode::getX1() const
         {
             if(maX1.isSet())
             {
@@ -313,16 +312,19 @@ namespace svgio
 
             const_cast< SvgGradientNode* >(this)->tryToFindLink();
 
-            if(mpXLink)
+            if (mpXLink && !mbResolvingLink)
             {
-                return mpXLink->getX1();
+                mbResolvingLink = true;
+                auto ret = mpXLink->getX1();
+                mbResolvingLink = false;
+                return ret;
             }
 
             // default is 0%
             return SvgNumber(0.0, Unit_percent);
         }
 
-        const SvgNumber SvgGradientNode::getY1() const
+        SvgNumber SvgGradientNode::getY1() const
         {
             if(maY1.isSet())
             {
@@ -331,16 +333,19 @@ namespace svgio
 
             const_cast< SvgGradientNode* >(this)->tryToFindLink();
 
-            if(mpXLink)
+            if (mpXLink && !mbResolvingLink)
             {
-                return mpXLink->getY1();
+                mbResolvingLink = true;
+                auto ret = mpXLink->getY1();
+                mbResolvingLink = false;
+                return ret;
             }
 
             // default is 0%
             return SvgNumber(0.0, Unit_percent);
         }
 
-        const SvgNumber SvgGradientNode::getX2() const
+        SvgNumber SvgGradientNode::getX2() const
         {
             if(maX2.isSet())
             {
@@ -349,16 +354,19 @@ namespace svgio
 
             const_cast< SvgGradientNode* >(this)->tryToFindLink();
 
-            if(mpXLink)
+            if (mpXLink && !mbResolvingLink)
             {
-                return mpXLink->getX2();
+                mbResolvingLink = true;
+                auto ret = mpXLink->getX2();
+                mbResolvingLink = false;
+                return ret;
             }
 
             // default is 100%
             return SvgNumber(100.0, Unit_percent);
         }
 
-        const SvgNumber SvgGradientNode::getY2() const
+        SvgNumber SvgGradientNode::getY2() const
         {
             if(maY2.isSet())
             {
@@ -367,16 +375,19 @@ namespace svgio
 
             const_cast< SvgGradientNode* >(this)->tryToFindLink();
 
-            if(mpXLink)
+            if (mpXLink && !mbResolvingLink)
             {
-                return mpXLink->getY2();
+                mbResolvingLink = true;
+                auto ret = mpXLink->getY2();
+                mbResolvingLink = false;
+                return ret;
             }
 
             // default is 0%
             return SvgNumber(0.0, Unit_percent);
         }
 
-        const SvgNumber SvgGradientNode::getCx() const
+        SvgNumber SvgGradientNode::getCx() const
         {
             if(maCx.isSet())
             {
@@ -385,16 +396,19 @@ namespace svgio
 
             const_cast< SvgGradientNode* >(this)->tryToFindLink();
 
-            if(mpXLink)
+            if (mpXLink && !mbResolvingLink)
             {
-                return mpXLink->getCx();
+                mbResolvingLink = true;
+                auto ret = mpXLink->getCx();
+                mbResolvingLink = false;
+                return ret;
             }
 
             // default is 50%
             return SvgNumber(50.0, Unit_percent);
         }
 
-        const SvgNumber SvgGradientNode::getCy() const
+        SvgNumber SvgGradientNode::getCy() const
         {
             if(maCy.isSet())
             {
@@ -403,16 +417,19 @@ namespace svgio
 
             const_cast< SvgGradientNode* >(this)->tryToFindLink();
 
-            if(mpXLink)
+            if (mpXLink && !mbResolvingLink)
             {
-                return mpXLink->getCy();
+                mbResolvingLink = true;
+                auto ret = mpXLink->getCy();
+                mbResolvingLink = false;
+                return ret;
             }
 
             // default is 50%
             return SvgNumber(50.0, Unit_percent);
         }
 
-        const SvgNumber SvgGradientNode::getR() const
+        SvgNumber SvgGradientNode::getR() const
         {
             if(maR.isSet())
             {
@@ -421,9 +438,12 @@ namespace svgio
 
             const_cast< SvgGradientNode* >(this)->tryToFindLink();
 
-            if(mpXLink)
+            if (mpXLink && !mbResolvingLink)
             {
-                return mpXLink->getR();
+                mbResolvingLink = true;
+                auto ret = mpXLink->getR();
+                mbResolvingLink = false;
+                return ret;
             }
 
             // default is 50%
@@ -439,9 +459,12 @@ namespace svgio
 
             const_cast< SvgGradientNode* >(this)->tryToFindLink();
 
-            if(mpXLink)
+            if (mpXLink && !mbResolvingLink)
             {
-                return mpXLink->getFx();
+                mbResolvingLink = true;
+                auto ret = mpXLink->getFx();
+                mbResolvingLink = false;
+                return ret;
             }
 
             return nullptr;
@@ -456,9 +479,12 @@ namespace svgio
 
             const_cast< SvgGradientNode* >(this)->tryToFindLink();
 
-            if(mpXLink)
+            if (mpXLink && !mbResolvingLink)
             {
-                return mpXLink->getFy();
+                mbResolvingLink = true;
+                auto ret = mpXLink->getFy();
+                mbResolvingLink = false;
+                return ret;
             }
 
             return nullptr;
@@ -473,9 +499,12 @@ namespace svgio
 
             const_cast< SvgGradientNode* >(this)->tryToFindLink();
 
-            if(mpXLink)
+            if (mpXLink && !mbResolvingLink)
             {
-                return mpXLink->getGradientTransform();
+                mbResolvingLink = true;
+                auto ret = mpXLink->getGradientTransform();
+                mbResolvingLink = false;
+                return ret;
             }
 
             return nullptr;
@@ -491,7 +520,6 @@ namespace svgio
             }
         }
 
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

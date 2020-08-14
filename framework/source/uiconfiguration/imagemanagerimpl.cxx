@@ -19,13 +19,12 @@
 
 #include "imagemanagerimpl.hxx"
 #include <xml/imagesconfiguration.hxx>
+#include <uiconfiguration/imagetype.hxx>
 #include <uiconfiguration/graphicnameaccess.hxx>
-#include <services.h>
 
-#include "properties.h"
+#include <properties.h>
 
 #include <com/sun/star/frame/theUICommandDescription.hpp>
-#include <com/sun/star/ui/UIElementType.hpp>
 #include <com/sun/star/ui/ConfigurationEvent.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/IllegalAccessException.hpp>
@@ -37,27 +36,22 @@
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/io/XStream.hpp>
 #include <com/sun/star/ui/ImageType.hpp>
-
+#include <vcl/graph.hxx>
 #include <vcl/svapp.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <o3tl/enumrange.hxx>
 #include <osl/mutex.hxx>
 #include <comphelper/sequence.hxx>
-#include <tools/urlobj.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <vcl/pngread.hxx>
 #include <vcl/pngwrite.hxx>
 #include <rtl/instance.hxx>
-#include <svtools/miscopt.hxx>
 #include <memory>
 
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::XInterface;
-using ::com::sun::star::uno::Exception;
 using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::uno::UNO_QUERY;
 using ::com::sun::star::uno::Any;
-using ::com::sun::star::uno::makeAny;
 using ::com::sun::star::graphic::XGraphic;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::io;
@@ -70,17 +64,17 @@ using namespace ::cppu;
 
 const sal_Int16 MAX_IMAGETYPE_VALUE       = css::ui::ImageType::SIZE_32;
 
-static const char   IMAGE_FOLDER[]        = "images";
-static const char   BITMAPS_FOLDER[]      = "Bitmaps";
+const char   IMAGE_FOLDER[]        = "images";
+const char   BITMAPS_FOLDER[]      = "Bitmaps";
 
-static const o3tl::enumarray<vcl::ImageType, const char*> IMAGELIST_XML_FILE =
+const o3tl::enumarray<vcl::ImageType, const char*> IMAGELIST_XML_FILE =
 {
     "sc_imagelist.xml",
     "lc_imagelist.xml",
     "xc_imagelist.xml"
 };
 
-static const o3tl::enumarray<vcl::ImageType, const char*> BITMAP_FILE_NAMES =
+const o3tl::enumarray<vcl::ImageType, const char*> BITMAP_FILE_NAMES =
 {
     "sc_userimages.png",
     "lc_userimages.png",
@@ -91,8 +85,6 @@ namespace framework
 {
 
 static GlobalImageList*     pGlobalImageList = nullptr;
-
-typedef GraphicNameAccess CmdToXGraphicNameAccess;
 
 namespace
 {
@@ -128,48 +120,48 @@ CmdImageList::~CmdImageList()
 
 void CmdImageList::initialize()
 {
-    if (!m_bInitialized)
+    if (m_bInitialized)
+        return;
+
+    const OUString aCommandImageList(UICOMMANDDESCRIPTION_NAMEACCESS_COMMANDIMAGELIST);
+
+    Sequence<OUString> aCommandImageSeq;
+    uno::Reference<XNameAccess> xCommandDesc = frame::theUICommandDescription::get(m_xContext);
+
+    if (!m_aModuleIdentifier.isEmpty())
     {
-        const OUString aCommandImageList(UICOMMANDDESCRIPTION_NAMEACCESS_COMMANDIMAGELIST);
-
-        Sequence<OUString> aCommandImageSeq;
-        uno::Reference<XNameAccess> xCommandDesc = frame::theUICommandDescription::get(m_xContext);
-
-        if (!m_aModuleIdentifier.isEmpty())
+        // If we have a module identifier - use to retrieve the command image name list from it.
+        // Otherwise we will use the global command image list
+        try
         {
-            // If we have a module identifier - use to retrieve the command image name list from it.
-            // Otherwise we will use the global command image list
-            try
-            {
-                xCommandDesc->getByName(m_aModuleIdentifier) >>= xCommandDesc;
-                if (xCommandDesc.is())
-                    xCommandDesc->getByName(aCommandImageList) >>= aCommandImageSeq;
-            }
-            catch (const NoSuchElementException&)
-            {
-                // Module unknown we will work with an empty command image list!
-                return;
-            }
-        }
-
-        if (xCommandDesc.is())
-        {
-            try
-            {
+            xCommandDesc->getByName(m_aModuleIdentifier) >>= xCommandDesc;
+            if (xCommandDesc.is())
                 xCommandDesc->getByName(aCommandImageList) >>= aCommandImageSeq;
-            }
-            catch (const NoSuchElementException&)
-            {
-            }
-            catch (const WrappedTargetException&)
-            {
-            }
         }
-
-        m_aResolver.registerCommands(aCommandImageSeq);
-
-        m_bInitialized = true;
+        catch (const NoSuchElementException&)
+        {
+            // Module unknown we will work with an empty command image list!
+            return;
+        }
     }
+
+    if (xCommandDesc.is())
+    {
+        try
+        {
+            xCommandDesc->getByName(aCommandImageList) >>= aCommandImageSeq;
+        }
+        catch (const NoSuchElementException&)
+        {
+        }
+        catch (const WrappedTargetException&)
+        {
+        }
+    }
+
+    m_aResolver.registerCommands(aCommandImageSeq);
+
+    m_bInitialized = true;
 }
 
 
@@ -273,45 +265,45 @@ ImageList* ImageManagerImpl::implts_getUserImageList( vcl::ImageType nImageType 
     if ( !m_pUserImageList[nImageType] )
         implts_loadUserImages( nImageType, m_xUserImageStorage, m_xUserBitmapsStorage );
 
-    return m_pUserImageList[nImageType];
+    return m_pUserImageList[nImageType].get();
 }
 
 void ImageManagerImpl::implts_initialize()
 {
     // Initialize the top-level structures with the storage data
-    if ( m_xUserConfigStorage.is() )
-    {
-        long nModes = m_bReadOnly ? ElementModes::READ : ElementModes::READWRITE;
+    if ( !m_xUserConfigStorage.is() )
+        return;
 
-        try
+    long nModes = m_bReadOnly ? ElementModes::READ : ElementModes::READWRITE;
+
+    try
+    {
+        m_xUserImageStorage = m_xUserConfigStorage->openStorageElement( IMAGE_FOLDER,
+                                                                        nModes );
+        if ( m_xUserImageStorage.is() )
         {
-            m_xUserImageStorage = m_xUserConfigStorage->openStorageElement( IMAGE_FOLDER,
-                                                                            nModes );
-            if ( m_xUserImageStorage.is() )
-            {
-                m_xUserBitmapsStorage = m_xUserImageStorage->openStorageElement( BITMAPS_FOLDER,
-                                                                                 nModes );
-            }
+            m_xUserBitmapsStorage = m_xUserImageStorage->openStorageElement( BITMAPS_FOLDER,
+                                                                             nModes );
         }
-        catch ( const css::container::NoSuchElementException& )
-        {
-        }
-        catch ( const css::embed::InvalidStorageException& )
-        {
-        }
-        catch ( const css::lang::IllegalArgumentException& )
-        {
-        }
-        catch ( const css::io::IOException& )
-        {
-        }
-        catch ( const css::embed::StorageWrappedTargetException& )
-        {
-        }
+    }
+    catch ( const css::container::NoSuchElementException& )
+    {
+    }
+    catch ( const css::embed::InvalidStorageException& )
+    {
+    }
+    catch ( const css::lang::IllegalArgumentException& )
+    {
+    }
+    catch ( const css::io::IOException& )
+    {
+    }
+    catch ( const css::embed::StorageWrappedTargetException& )
+    {
     }
 }
 
-bool ImageManagerImpl::implts_loadUserImages(
+void ImageManagerImpl::implts_loadUserImages(
     vcl::ImageType nImageType,
     const uno::Reference< XStorage >& xUserImageStorage,
     const uno::Reference< XStorage >& xUserBitmapsStorage )
@@ -326,21 +318,19 @@ bool ImageManagerImpl::implts_loadUserImages(
                                                                                       ElementModes::READ );
             uno::Reference< XInputStream > xInputStream = xStream->getInputStream();
 
-            ImageListsDescriptor aUserImageListInfo;
+            ImageItemDescriptorList aUserImageListInfo;
             ImagesConfiguration::LoadImages( m_xContext,
                                              xInputStream,
                                              aUserImageListInfo );
-            if (( aUserImageListInfo.pImageList != nullptr ) &&
-                ( !aUserImageListInfo.pImageList->empty() ))
+            if ( !aUserImageListInfo.empty() )
             {
-                ImageListItemDescriptor* pList = aUserImageListInfo.pImageList->front().get();
-                sal_Int32 nCount = pList->pImageItemList->size();
+                sal_Int32 nCount = aUserImageListInfo.size();
                 std::vector< OUString > aUserImagesVector;
                 aUserImagesVector.reserve(nCount);
                 for ( sal_Int32 i=0; i < nCount; i++ )
                 {
-                    const ImageItemDescriptor* pItem = (*pList->pImageItemList)[i].get();
-                    aUserImagesVector.push_back( pItem->aCommandURL );
+                    const ImageItemDescriptor& rItem = aUserImageListInfo[i];
+                    aUserImagesVector.push_back( rItem.aCommandURL );
                 }
 
                 uno::Reference< XStream > xBitmapStream = xUserBitmapsStorage->openStreamElement(
@@ -357,11 +347,10 @@ bool ImageManagerImpl::implts_loadUserImages(
                     }
 
                     // Delete old image list and create a new one from the read bitmap
-                    delete m_pUserImageList[nImageType];
-                    m_pUserImageList[nImageType] = new ImageList();
+                    m_pUserImageList[nImageType].reset(new ImageList());
                     m_pUserImageList[nImageType]->InsertFromHorizontalStrip
                         ( aUserBitmap, aUserImagesVector );
-                    return true;
+                    return;
                 }
             }
         }
@@ -383,10 +372,7 @@ bool ImageManagerImpl::implts_loadUserImages(
     }
 
     // Destroy old image list - create a new empty one
-    delete m_pUserImageList[nImageType];
-    m_pUserImageList[nImageType] = new ImageList;
-
-    return true;
+    m_pUserImageList[nImageType].reset(new ImageList);
 }
 
 bool ImageManagerImpl::implts_storeUserImages(
@@ -401,22 +387,14 @@ bool ImageManagerImpl::implts_storeUserImages(
         ImageList* pImageList = implts_getUserImageList( nImageType );
         if ( pImageList->GetImageCount() > 0 )
         {
-            ImageListsDescriptor aUserImageListInfo;
-            aUserImageListInfo.pImageList = new ImageListDescriptor;
+            ImageItemDescriptorList aUserImageListInfo;
 
-            ImageListItemDescriptor* pList = new ImageListItemDescriptor;
-            aUserImageListInfo.pImageList->push_back( std::unique_ptr<ImageListItemDescriptor>(pList) );
-
-            pList->pImageItemList.reset( new ImageItemListDescriptor );
             for ( sal_uInt16 i=0; i < pImageList->GetImageCount(); i++ )
             {
-                ImageItemDescriptor* pItem = new ImageItemDescriptor;
-                pItem->nIndex = i;
-                pItem->aCommandURL = pImageList->GetImageName( i );
-                pList->pImageItemList->push_back( std::unique_ptr<ImageItemDescriptor>(pItem) );
+                ImageItemDescriptor aItem;
+                aItem.aCommandURL = pImageList->GetImageName( i );
+                aUserImageListInfo.push_back( aItem );
             }
-
-            pList->aURL = "Bitmaps/" + OUString::createFromAscii(BITMAP_FILE_NAMES[nImageType]);
 
             uno::Reference< XTransactedObject > xTransaction;
             uno::Reference< XOutputStream >     xOutputStream;
@@ -506,15 +484,14 @@ CmdImageList* ImageManagerImpl::implts_getDefaultImageList()
     SolarMutexGuard g;
 
     if ( !m_pDefaultImageList )
-        m_pDefaultImageList = new CmdImageList( m_xContext, m_aModuleIdentifier );
+        m_pDefaultImageList.reset(new CmdImageList( m_xContext, m_aModuleIdentifier ));
 
-    return m_pDefaultImageList;
+    return m_pDefaultImageList.get();
 }
 
 ImageManagerImpl::ImageManagerImpl( const uno::Reference< uno::XComponentContext >& rxContext,::cppu::OWeakObject* pOwner,bool _bUseGlobal ) :
     m_xContext( rxContext )
     , m_pOwner(pOwner)
-    , m_pDefaultImageList( nullptr )
     , m_aResourceString( "private:resource/images/moduleimages" )
     , m_aListenerContainer( m_mutex )
     , m_bUseGlobal(_bUseGlobal)
@@ -550,13 +527,11 @@ void ImageManagerImpl::dispose()
         m_bDisposed = true;
 
         // delete user and default image list on dispose
-        for (ImageList*& n : m_pUserImageList)
+        for (auto& n : m_pUserImageList)
         {
-            delete n;
-            n = nullptr;
+            n.reset();
         }
-        delete m_pDefaultImageList;
-        m_pDefaultImageList = nullptr;
+        m_pDefaultImageList.reset();
     }
 
 }
@@ -584,43 +559,43 @@ void ImageManagerImpl::initialize( const Sequence< Any >& aArguments )
 {
     SolarMutexGuard g;
 
-    if ( !m_bInitialized )
+    if ( m_bInitialized )
+        return;
+
+    for ( const Any& rArg : aArguments )
     {
-        for ( sal_Int32 n = 0; n < aArguments.getLength(); n++ )
+        PropertyValue aPropValue;
+        if ( rArg >>= aPropValue )
         {
-            PropertyValue aPropValue;
-            if ( aArguments[n] >>= aPropValue )
+            if ( aPropValue.Name == "UserConfigStorage" )
             {
-                if ( aPropValue.Name == "UserConfigStorage" )
-                {
-                    aPropValue.Value >>= m_xUserConfigStorage;
-                }
-                else if ( aPropValue.Name == "ModuleIdentifier" )
-                {
-                    aPropValue.Value >>= m_aModuleIdentifier;
-                }
-                else if ( aPropValue.Name == "UserRootCommit" )
-                {
-                    aPropValue.Value >>= m_xUserRootCommit;
-                }
+                aPropValue.Value >>= m_xUserConfigStorage;
+            }
+            else if ( aPropValue.Name == "ModuleIdentifier" )
+            {
+                aPropValue.Value >>= m_aModuleIdentifier;
+            }
+            else if ( aPropValue.Name == "UserRootCommit" )
+            {
+                aPropValue.Value >>= m_xUserRootCommit;
             }
         }
-
-        if ( m_xUserConfigStorage.is() )
-        {
-            uno::Reference< XPropertySet > xPropSet( m_xUserConfigStorage, UNO_QUERY );
-            if ( xPropSet.is() )
-            {
-                long nOpenMode = 0;
-                if ( xPropSet->getPropertyValue("OpenMode") >>= nOpenMode )
-                    m_bReadOnly = !( nOpenMode & ElementModes::WRITE );
-            }
-        }
-
-        implts_initialize();
-
-        m_bInitialized = true;
     }
+
+    if ( m_xUserConfigStorage.is() )
+    {
+        uno::Reference< XPropertySet > xPropSet( m_xUserConfigStorage, UNO_QUERY );
+        if ( xPropSet.is() )
+        {
+            long nOpenMode = 0;
+            if ( xPropSet->getPropertyValue("OpenMode") >>= nOpenMode )
+                m_bReadOnly = !( nOpenMode & ElementModes::WRITE );
+        }
+    }
+
+    implts_initialize();
+
+    m_bInitialized = true;
 }
 
 // XImageManagerImpl
@@ -670,12 +645,12 @@ Sequence< OUString > ImageManagerImpl::getAllImageNames( ::sal_Int16 nImageType 
         const std::vector< OUString >& rGlobalImageNameVector = rGlobalImageList->getImageCommandNames();
         const sal_uInt32 nGlobalCount = rGlobalImageNameVector.size();
         for ( i = 0; i < nGlobalCount; i++ )
-            aImageCmdNameMap.insert( ImageNameMap::value_type( rGlobalImageNameVector[i], true ));
+            aImageCmdNameMap.emplace( rGlobalImageNameVector[i], true );
 
         const std::vector< OUString >& rModuleImageNameVector = implts_getDefaultImageList()->getImageCommandNames();
         const sal_uInt32 nModuleCount = rModuleImageNameVector.size();
         for ( i = 0; i < nModuleCount; i++ )
-            aImageCmdNameMap.insert( ImageNameMap::value_type( rModuleImageNameVector[i], true ));
+            aImageCmdNameMap.emplace( rModuleImageNameVector[i], true );
     }
 
     ImageList* pImageList = implts_getUserImageList(nIndex);
@@ -683,7 +658,7 @@ Sequence< OUString > ImageManagerImpl::getAllImageNames( ::sal_Int16 nImageType 
     pImageList->GetImageNames( rUserImageNames );
     const sal_uInt32 nUserCount = rUserImageNames.size();
     for ( i = 0; i < nUserCount; i++ )
-        aImageCmdNameMap.insert( ImageNameMap::value_type( rUserImageNames[i], true ));
+        aImageCmdNameMap.emplace( rUserImageNames[i], true );
 
     return comphelper::mapKeysToSequence( aImageCmdNameMap );
 }
@@ -722,7 +697,7 @@ namespace
 {
     css::uno::Reference< css::graphic::XGraphic > GetXGraphic(const Image &rImage)
     {
-        return Graphic(rImage.GetBitmapEx()).GetXGraphic();
+        return Graphic(rImage).GetXGraphic();
     }
 }
 
@@ -741,8 +716,6 @@ Sequence< uno::Reference< XGraphic > > ImageManagerImpl::getImages(
 
     Sequence< uno::Reference< XGraphic > > aGraphSeq( aCommandURLSequence.getLength() );
 
-    const OUString* aStrArray = aCommandURLSequence.getConstArray();
-
     vcl::ImageType                    nIndex            = implts_convertImageTypeToIndex( nImageType );
     rtl::Reference< GlobalImageList > rGlobalImageList;
     CmdImageList*                     pDefaultImageList = nullptr;
@@ -757,17 +730,18 @@ Sequence< uno::Reference< XGraphic > > ImageManagerImpl::getImages(
     // 1. user image list (read/write)
     // 2. module image list (read)
     // 3. global image list (read)
-    for ( sal_Int32 n = 0; n < aCommandURLSequence.getLength(); n++ )
+    sal_Int32 n = 0;
+    for ( const OUString& rURL : aCommandURLSequence )
     {
-        Image aImage = pUserImageList->GetImage( aStrArray[n] );
+        Image aImage = pUserImageList->GetImage( rURL );
         if ( !aImage && m_bUseGlobal )
         {
-            aImage = pDefaultImageList->getImageFromCommandURL( nIndex, aStrArray[n] );
+            aImage = pDefaultImageList->getImageFromCommandURL( nIndex, rURL );
             if ( !aImage )
-                aImage = rGlobalImageList->getImageFromCommandURL( nIndex, aStrArray[n] );
+                aImage = rGlobalImageList->getImageFromCommandURL( nIndex, rURL );
         }
 
-        aGraphSeq[n] = GetXGraphic(aImage);
+        aGraphSeq[n++] = GetXGraphic(aImage);
     }
 
     return aGraphSeq;
@@ -778,8 +752,8 @@ void ImageManagerImpl::replaceImages(
     const Sequence< OUString >& aCommandURLSequence,
     const Sequence< uno::Reference< XGraphic > >& aGraphicsSequence )
 {
-    CmdToXGraphicNameAccess* pInsertedImages( nullptr );
-    CmdToXGraphicNameAccess* pReplacedImages( nullptr );
+    GraphicNameAccess* pInsertedImages( nullptr );
+    GraphicNameAccess* pReplacedImages( nullptr );
 
     {
         SolarMutexGuard g;
@@ -810,14 +784,14 @@ void ImageManagerImpl::replaceImages(
             {
                 pImageList->AddImage(aCommandURLSequence[i], Image(xGraphic));
                 if ( !pInsertedImages )
-                    pInsertedImages = new CmdToXGraphicNameAccess();
+                    pInsertedImages = new GraphicNameAccess();
                 pInsertedImages->addElement( aCommandURLSequence[i], xGraphic );
             }
             else
             {
                 pImageList->ReplaceImage(aCommandURLSequence[i], Image(xGraphic));
                 if ( !pReplacedImages )
-                    pReplacedImages = new CmdToXGraphicNameAccess();
+                    pReplacedImages = new GraphicNameAccess();
                 pReplacedImages->addElement( aCommandURLSequence[i], xGraphic );
             }
         }
@@ -858,8 +832,8 @@ void ImageManagerImpl::replaceImages(
 
 void ImageManagerImpl::removeImages( ::sal_Int16 nImageType, const Sequence< OUString >& aCommandURLSequence )
 {
-    CmdToXGraphicNameAccess* pRemovedImages( nullptr );
-    CmdToXGraphicNameAccess* pReplacedImages( nullptr );
+    GraphicNameAccess* pRemovedImages( nullptr );
+    GraphicNameAccess* pReplacedImages( nullptr );
 
     {
         SolarMutexGuard g;
@@ -885,9 +859,9 @@ void ImageManagerImpl::removeImages( ::sal_Int16 nImageType, const Sequence< OUS
         ImageList*                        pImageList        = implts_getUserImageList(nIndex);
         uno::Reference<XGraphic> xEmptyGraphic;
 
-        for ( sal_Int32 i = 0; i < aCommandURLSequence.getLength(); i++ )
+        for ( const OUString& rURL : aCommandURLSequence )
         {
-            sal_uInt16 nPos = pImageList->GetImagePos( aCommandURLSequence[i] );
+            sal_uInt16 nPos = pImageList->GetImagePos( rURL );
             if ( nPos != IMAGELIST_IMAGE_NOTFOUND )
             {
                 sal_uInt16 nId   = pImageList->GetImageId( nPos );
@@ -895,29 +869,29 @@ void ImageManagerImpl::removeImages( ::sal_Int16 nImageType, const Sequence< OUS
 
                 if ( m_bUseGlobal )
                 {
-                    // Check, if we have a image in our module/global image list. If we find one =>
+                    // Check, if we have an image in our module/global image list. If we find one =>
                     // this is a replace instead of a remove operation!
-                    Image aNewImage = pDefaultImageList->getImageFromCommandURL( nIndex, aCommandURLSequence[i] );
+                    Image aNewImage = pDefaultImageList->getImageFromCommandURL( nIndex, rURL );
                     if ( !aNewImage )
-                        aNewImage = rGlobalImageList->getImageFromCommandURL( nIndex, aCommandURLSequence[i] );
+                        aNewImage = rGlobalImageList->getImageFromCommandURL( nIndex, rURL );
                     if ( !aNewImage )
                     {
                         if ( !pRemovedImages )
-                            pRemovedImages = new CmdToXGraphicNameAccess();
-                        pRemovedImages->addElement( aCommandURLSequence[i], xEmptyGraphic );
+                            pRemovedImages = new GraphicNameAccess();
+                        pRemovedImages->addElement( rURL, xEmptyGraphic );
                     }
                     else
                     {
                         if ( !pReplacedImages )
-                            pReplacedImages = new CmdToXGraphicNameAccess();
-                        pReplacedImages->addElement(aCommandURLSequence[i], GetXGraphic(aNewImage));
+                            pReplacedImages = new GraphicNameAccess();
+                        pReplacedImages->addElement(rURL, GetXGraphic(aNewImage));
                     }
                 } // if ( m_bUseGlobal )
                 else
                 {
                     if ( !pRemovedImages )
-                        pRemovedImages = new CmdToXGraphicNameAccess();
-                    pRemovedImages->addElement( aCommandURLSequence[i], xEmptyGraphic );
+                        pRemovedImages = new GraphicNameAccess();
+                    pRemovedImages->addElement( rURL, xEmptyGraphic );
                 }
             }
         }
@@ -972,141 +946,138 @@ void ImageManagerImpl::reload()
     CommandMap                   aOldUserCmdImageSet;
     std::vector< OUString > aNewUserCmdImageSet;
 
-    if ( m_bModified )
+    if ( !m_bModified )
+        return;
+
+    for ( vcl::ImageType i : o3tl::enumrange<vcl::ImageType>() )
     {
-        for ( vcl::ImageType i : o3tl::enumrange<vcl::ImageType>() )
+        if ( !m_bDisposed && m_bUserImageListModified[i] )
         {
-            if ( !m_bDisposed && m_bUserImageListModified[i] )
+            std::vector< OUString > aOldUserCmdImageVector;
+            ImageList* pImageList = implts_getUserImageList(i);
+            pImageList->GetImageNames( aOldUserCmdImageVector );
+
+            // Fill hash map to speed up search afterwards
+            sal_uInt32 j( 0 );
+            const sal_uInt32 nOldCount = aOldUserCmdImageVector.size();
+            for ( j = 0; j < nOldCount; j++ )
+                aOldUserCmdImageSet.emplace( aOldUserCmdImageVector[j], false );
+
+            // Attention: This can make the old image list pointer invalid!
+            implts_loadUserImages( i, m_xUserImageStorage, m_xUserBitmapsStorage );
+            pImageList = implts_getUserImageList(i);
+            pImageList->GetImageNames( aNewUserCmdImageSet );
+
+            GraphicNameAccess* pInsertedImages( nullptr );
+            GraphicNameAccess* pReplacedImages( nullptr );
+            GraphicNameAccess* pRemovedImages( nullptr );
+
+            for (auto const& newUserCmdImage : aNewUserCmdImageSet)
             {
-                std::vector< OUString > aOldUserCmdImageVector;
-                ImageList* pImageList = implts_getUserImageList(i);
-                pImageList->GetImageNames( aOldUserCmdImageVector );
-
-                // Fill hash map to speed up search afterwards
-                sal_uInt32 j( 0 );
-                const sal_uInt32 nOldCount = aOldUserCmdImageVector.size();
-                for ( j = 0; j < nOldCount; j++ )
-                    aOldUserCmdImageSet.insert( CommandMap::value_type( aOldUserCmdImageVector[j], false ));
-
-                // Attention: This can make the old image list pointer invalid!
-                implts_loadUserImages( i, m_xUserImageStorage, m_xUserBitmapsStorage );
-                pImageList = implts_getUserImageList(i);
-                pImageList->GetImageNames( aNewUserCmdImageSet );
-
-                CmdToXGraphicNameAccess* pInsertedImages( nullptr );
-                CmdToXGraphicNameAccess* pReplacedImages( nullptr );
-                CmdToXGraphicNameAccess* pRemovedImages( nullptr );
-
-                const sal_uInt32 nNewCount = aNewUserCmdImageSet.size();
-                for ( j = 0; j < nNewCount; j++ )
+                CommandMap::iterator pIter = aOldUserCmdImageSet.find(newUserCmdImage);
+                if ( pIter != aOldUserCmdImageSet.end() )
                 {
-                    CommandMap::iterator pIter = aOldUserCmdImageSet.find( aNewUserCmdImageSet[j] );
-                    if ( pIter != aOldUserCmdImageSet.end() )
-                    {
-                        pIter->second = true; // mark entry as replaced
-                        if ( !pReplacedImages )
-                            pReplacedImages = new CmdToXGraphicNameAccess();
-                        pReplacedImages->addElement( aNewUserCmdImageSet[j],
-                                                     GetXGraphic(pImageList->GetImage(aNewUserCmdImageSet[j])) );
-                    }
-                    else
-                    {
-                        if ( !pInsertedImages )
-                            pInsertedImages = new CmdToXGraphicNameAccess();
-                        pInsertedImages->addElement( aNewUserCmdImageSet[j],
-                                                     GetXGraphic(pImageList->GetImage(aNewUserCmdImageSet[j])) );
-                    }
+                    pIter->second = true; // mark entry as replaced
+                    if ( !pReplacedImages )
+                        pReplacedImages = new GraphicNameAccess();
+                    pReplacedImages->addElement( newUserCmdImage,
+                                                 GetXGraphic(pImageList->GetImage(newUserCmdImage)) );
                 }
-
-                // Search map for unmarked entries => they have been removed from the user list
-                // through this reload operation.
-                // We have to search the module and global image list!
-                rtl::Reference< GlobalImageList > rGlobalImageList;
-                CmdImageList*                     pDefaultImageList = nullptr;
-                if ( m_bUseGlobal )
+                else
                 {
-                    rGlobalImageList  = implts_getGlobalImageList();
-                    pDefaultImageList = implts_getDefaultImageList();
+                    if ( !pInsertedImages )
+                        pInsertedImages = new GraphicNameAccess();
+                    pInsertedImages->addElement( newUserCmdImage,
+                                                 GetXGraphic(pImageList->GetImage(newUserCmdImage)) );
                 }
-                uno::Reference<XGraphic> xEmptyGraphic;
-                CommandMap::const_iterator pIter = aOldUserCmdImageSet.begin();
-                while ( pIter != aOldUserCmdImageSet.end() )
+            }
+
+            // Search map for unmarked entries => they have been removed from the user list
+            // through this reload operation.
+            // We have to search the module and global image list!
+            rtl::Reference< GlobalImageList > rGlobalImageList;
+            CmdImageList*                     pDefaultImageList = nullptr;
+            if ( m_bUseGlobal )
+            {
+                rGlobalImageList  = implts_getGlobalImageList();
+                pDefaultImageList = implts_getDefaultImageList();
+            }
+            uno::Reference<XGraphic> xEmptyGraphic;
+            for (auto const& oldUserCmdImage : aOldUserCmdImageSet)
+            {
+                if ( !oldUserCmdImage.second )
                 {
-                    if ( !pIter->second )
+                    if ( m_bUseGlobal )
                     {
-                        if ( m_bUseGlobal )
+                        Image aImage = pDefaultImageList->getImageFromCommandURL( i, oldUserCmdImage.first );
+                        if ( !aImage )
+                            aImage = rGlobalImageList->getImageFromCommandURL( i, oldUserCmdImage.first );
+
+                        if ( !aImage )
                         {
-                            Image aImage = pDefaultImageList->getImageFromCommandURL( i, pIter->first );
-                            if ( !aImage )
-                                aImage = rGlobalImageList->getImageFromCommandURL( i, pIter->first );
-
-                            if ( !aImage )
-                            {
-                                // No image in the module/global image list => remove user image
-                                if ( !pRemovedImages )
-                                    pRemovedImages = new CmdToXGraphicNameAccess();
-                                pRemovedImages->addElement( pIter->first, xEmptyGraphic );
-                            }
-                            else
-                            {
-                                // Image has been found in the module/global image list => replace user image
-                                if ( !pReplacedImages )
-                                    pReplacedImages = new CmdToXGraphicNameAccess();
-                                pReplacedImages->addElement(pIter->first, GetXGraphic(aImage));
-                            }
-                        } // if ( m_bUseGlobal )
+                            // No image in the module/global image list => remove user image
+                            if ( !pRemovedImages )
+                                pRemovedImages = new GraphicNameAccess();
+                            pRemovedImages->addElement( oldUserCmdImage.first, xEmptyGraphic );
+                        }
                         else
                         {
-                            // No image in the user image list => remove user image
-                            if ( !pRemovedImages )
-                                pRemovedImages = new CmdToXGraphicNameAccess();
-                            pRemovedImages->addElement( pIter->first, xEmptyGraphic );
+                            // Image has been found in the module/global image list => replace user image
+                            if ( !pReplacedImages )
+                                pReplacedImages = new GraphicNameAccess();
+                            pReplacedImages->addElement(oldUserCmdImage.first, GetXGraphic(aImage));
                         }
+                    } // if ( m_bUseGlobal )
+                    else
+                    {
+                        // No image in the user image list => remove user image
+                        if ( !pRemovedImages )
+                            pRemovedImages = new GraphicNameAccess();
+                        pRemovedImages->addElement( oldUserCmdImage.first, xEmptyGraphic );
                     }
-                    ++pIter;
                 }
-
-                aGuard.clear();
-
-                // Now notify our listeners. Unlock mutex to prevent deadlocks
-                uno::Reference< uno::XInterface > xOwner(m_pOwner);
-                if ( pInsertedImages != nullptr )
-                {
-                    ConfigurationEvent aInsertEvent;
-                    aInsertEvent.aInfo           <<=(sal_uInt16)i;
-                    aInsertEvent.Accessor        <<= xOwner;
-                    aInsertEvent.Source          = xOwner;
-                    aInsertEvent.ResourceURL     = m_aResourceString;
-                    aInsertEvent.Element         <<= uno::Reference< XNameAccess >(
-                                                       static_cast< OWeakObject *>( pInsertedImages ), UNO_QUERY );
-                    implts_notifyContainerListener( aInsertEvent, NotifyOp_Insert );
-                }
-                if ( pReplacedImages != nullptr )
-                {
-                    ConfigurationEvent aReplaceEvent;
-                    aReplaceEvent.aInfo           <<= (sal_uInt16)i;
-                    aReplaceEvent.Accessor        <<= xOwner;
-                    aReplaceEvent.Source          = xOwner;
-                    aReplaceEvent.ResourceURL     = m_aResourceString;
-                    aReplaceEvent.ReplacedElement = Any();
-                    aReplaceEvent.Element         <<= uno::Reference< XNameAccess >(
-                                                    static_cast< OWeakObject *>( pReplacedImages ), UNO_QUERY );
-                    implts_notifyContainerListener( aReplaceEvent, NotifyOp_Replace );
-                }
-                if ( pRemovedImages != nullptr )
-                {
-                    ConfigurationEvent aRemoveEvent;
-                    aRemoveEvent.aInfo           <<= (sal_uInt16)i;
-                    aRemoveEvent.Accessor        <<= xOwner;
-                    aRemoveEvent.Source          = xOwner;
-                    aRemoveEvent.ResourceURL     = m_aResourceString;
-                    aRemoveEvent.Element         <<= uno::Reference< XNameAccess >(
-                                                        static_cast< OWeakObject *>( pRemovedImages ), UNO_QUERY );
-                    implts_notifyContainerListener( aRemoveEvent, NotifyOp_Remove );
-                }
-
-                aGuard.clear();
             }
+
+            aGuard.clear();
+
+            // Now notify our listeners. Unlock mutex to prevent deadlocks
+            uno::Reference< uno::XInterface > xOwner(m_pOwner);
+            if ( pInsertedImages != nullptr )
+            {
+                ConfigurationEvent aInsertEvent;
+                aInsertEvent.aInfo           <<=static_cast<sal_uInt16>(i);
+                aInsertEvent.Accessor        <<= xOwner;
+                aInsertEvent.Source          = xOwner;
+                aInsertEvent.ResourceURL     = m_aResourceString;
+                aInsertEvent.Element         <<= uno::Reference< XNameAccess >(
+                                                   static_cast< OWeakObject *>( pInsertedImages ), UNO_QUERY );
+                implts_notifyContainerListener( aInsertEvent, NotifyOp_Insert );
+            }
+            if ( pReplacedImages != nullptr )
+            {
+                ConfigurationEvent aReplaceEvent;
+                aReplaceEvent.aInfo           <<= static_cast<sal_uInt16>(i);
+                aReplaceEvent.Accessor        <<= xOwner;
+                aReplaceEvent.Source          = xOwner;
+                aReplaceEvent.ResourceURL     = m_aResourceString;
+                aReplaceEvent.ReplacedElement = Any();
+                aReplaceEvent.Element         <<= uno::Reference< XNameAccess >(
+                                                static_cast< OWeakObject *>( pReplacedImages ), UNO_QUERY );
+                implts_notifyContainerListener( aReplaceEvent, NotifyOp_Replace );
+            }
+            if ( pRemovedImages != nullptr )
+            {
+                ConfigurationEvent aRemoveEvent;
+                aRemoveEvent.aInfo           <<= static_cast<sal_uInt16>(i);
+                aRemoveEvent.Accessor        <<= xOwner;
+                aRemoveEvent.Source          = xOwner;
+                aRemoveEvent.ResourceURL     = m_aResourceString;
+                aRemoveEvent.Element         <<= uno::Reference< XNameAccess >(
+                                                    static_cast< OWeakObject *>( pRemovedImages ), UNO_QUERY );
+                implts_notifyContainerListener( aRemoveEvent, NotifyOp_Remove );
+            }
+
+            aGuard.clear();
         }
     }
 }
@@ -1118,29 +1089,29 @@ void ImageManagerImpl::store()
     if ( m_bDisposed )
         throw DisposedException();
 
-    if ( m_bModified )
+    if ( !m_bModified )
+        return;
+
+    bool bWritten( false );
+    for ( vcl::ImageType i : o3tl::enumrange<vcl::ImageType>() )
     {
-        bool bWritten( false );
-        for ( vcl::ImageType i : o3tl::enumrange<vcl::ImageType>() )
-        {
-            bool bSuccess = implts_storeUserImages(i, m_xUserImageStorage, m_xUserBitmapsStorage );
-            if ( bSuccess )
-                bWritten = true;
-            m_bUserImageListModified[i] = false;
-        }
-
-        if ( bWritten &&
-             m_xUserConfigStorage.is() )
-        {
-            uno::Reference< XTransactedObject > xUserConfigStorageCommit( m_xUserConfigStorage, UNO_QUERY );
-            if ( xUserConfigStorageCommit.is() )
-                xUserConfigStorageCommit->commit();
-            if ( m_xUserRootCommit.is() )
-                m_xUserRootCommit->commit();
-        }
-
-        m_bModified = false;
+        bool bSuccess = implts_storeUserImages(i, m_xUserImageStorage, m_xUserBitmapsStorage );
+        if ( bSuccess )
+            bWritten = true;
+        m_bUserImageListModified[i] = false;
     }
+
+    if ( bWritten &&
+         m_xUserConfigStorage.is() )
+    {
+        uno::Reference< XTransactedObject > xUserConfigStorageCommit( m_xUserConfigStorage, UNO_QUERY );
+        if ( xUserConfigStorageCommit.is() )
+            xUserConfigStorageCommit->commit();
+        if ( m_xUserRootCommit.is() )
+            m_xUserRootCommit->commit();
+    }
+
+    m_bModified = false;
 }
 
 void ImageManagerImpl::storeToStorage( const uno::Reference< XStorage >& Storage )
@@ -1150,36 +1121,36 @@ void ImageManagerImpl::storeToStorage( const uno::Reference< XStorage >& Storage
     if ( m_bDisposed )
         throw DisposedException();
 
-    if ( m_bModified && Storage.is() )
+    if ( !(m_bModified && Storage.is()) )
+        return;
+
+    long nModes = ElementModes::READWRITE;
+
+    uno::Reference< XStorage > xUserImageStorage = Storage->openStorageElement( IMAGE_FOLDER,
+                                                                                nModes );
+    if ( !xUserImageStorage.is() )
+        return;
+
+    uno::Reference< XStorage > xUserBitmapsStorage = xUserImageStorage->openStorageElement( BITMAPS_FOLDER,
+                                                                                            nModes );
+    for ( vcl::ImageType i : o3tl::enumrange<vcl::ImageType>() )
     {
-        long nModes = ElementModes::READWRITE;
-
-        uno::Reference< XStorage > xUserImageStorage = Storage->openStorageElement( IMAGE_FOLDER,
-                                                                                    nModes );
-        if ( xUserImageStorage.is() )
-        {
-            uno::Reference< XStorage > xUserBitmapsStorage = xUserImageStorage->openStorageElement( BITMAPS_FOLDER,
-                                                                                                    nModes );
-            for ( vcl::ImageType i : o3tl::enumrange<vcl::ImageType>() )
-            {
-                implts_getUserImageList(i);
-                implts_storeUserImages( i, xUserImageStorage, xUserBitmapsStorage );
-            }
-
-            uno::Reference< XTransactedObject > xTransaction( Storage, UNO_QUERY );
-            if ( xTransaction.is() )
-                xTransaction->commit();
-        }
+        implts_getUserImageList(i);
+        implts_storeUserImages( i, xUserImageStorage, xUserBitmapsStorage );
     }
+
+    uno::Reference< XTransactedObject > xTransaction( Storage, UNO_QUERY );
+    if ( xTransaction.is() )
+        xTransaction->commit();
 }
 
-bool ImageManagerImpl::isModified()
+bool ImageManagerImpl::isModified() const
 {
     SolarMutexGuard g;
     return m_bModified;
 }
 
-bool ImageManagerImpl::isReadOnly()
+bool ImageManagerImpl::isReadOnly() const
 {
     SolarMutexGuard g;
     return m_bReadOnly;
@@ -1208,30 +1179,30 @@ void ImageManagerImpl::implts_notifyContainerListener( const ConfigurationEvent&
 {
     ::cppu::OInterfaceContainerHelper* pContainer = m_aListenerContainer.getContainer(
                                         cppu::UnoType<css::ui::XUIConfigurationListener>::get());
-    if ( pContainer != nullptr )
+    if ( pContainer == nullptr )
+        return;
+
+    ::cppu::OInterfaceIteratorHelper pIterator( *pContainer );
+    while ( pIterator.hasMoreElements() )
     {
-        ::cppu::OInterfaceIteratorHelper pIterator( *pContainer );
-        while ( pIterator.hasMoreElements() )
+        try
         {
-            try
+            switch ( eOp )
             {
-                switch ( eOp )
-                {
-                    case NotifyOp_Replace:
-                        static_cast< css::ui::XUIConfigurationListener*>(pIterator.next())->elementReplaced( aEvent );
-                        break;
-                    case NotifyOp_Insert:
-                        static_cast< css::ui::XUIConfigurationListener*>(pIterator.next())->elementInserted( aEvent );
-                        break;
-                    case NotifyOp_Remove:
-                        static_cast< css::ui::XUIConfigurationListener*>(pIterator.next())->elementRemoved( aEvent );
-                        break;
-                }
+                case NotifyOp_Replace:
+                    static_cast< css::ui::XUIConfigurationListener*>(pIterator.next())->elementReplaced( aEvent );
+                    break;
+                case NotifyOp_Insert:
+                    static_cast< css::ui::XUIConfigurationListener*>(pIterator.next())->elementInserted( aEvent );
+                    break;
+                case NotifyOp_Remove:
+                    static_cast< css::ui::XUIConfigurationListener*>(pIterator.next())->elementRemoved( aEvent );
+                    break;
             }
-            catch( const css::uno::RuntimeException& )
-            {
-                pIterator.remove();
-            }
+        }
+        catch( const css::uno::RuntimeException& )
+        {
+            pIterator.remove();
         }
     }
 }
@@ -1239,10 +1210,9 @@ void ImageManagerImpl::clear()
 {
     SolarMutexGuard g;
 
-    for (ImageList* & n : m_pUserImageList)
+    for (auto & n : m_pUserImageList)
     {
-        delete n;
-        n = nullptr;
+        n.reset();
     }
 }
 } // namespace framework

@@ -20,13 +20,13 @@
 #ifndef INCLUDED_SC_SOURCE_CORE_INC_JUMPMATRIX_HXX
 #define INCLUDED_SC_SOURCE_CORE_INC_JUMPMATRIX_HXX
 
-#include <formula/token.hxx>
-#include <formula/errorcodes.hxx>
 #include <limits.h>
 #include <vector>
-#include "types.hxx"
-#include "address.hxx"
-#include "token.hxx"
+#include <types.hxx>
+#include <address.hxx>
+#include <token.hxx>
+
+namespace formula { class FormulaToken; }
 
 typedef ::std::vector< const formula::FormulaToken*> ScTokenVec;
 
@@ -60,13 +60,14 @@ class ScJumpMatrix
     std::vector<ScJumpMatrixEntry> mvJump;      // the jumps
     ScMatrixRef         pMat;       // the results
     ScRefList           mvRefList;  // array of references result, if any
-    ScTokenVec*         pParams;    // parameter stack
+    ScTokenVec          mvParams;    // parameter stack
     SCSIZE              nCols;
     SCSIZE              nRows;
     SCSIZE              nCurCol;
     SCSIZE              nCurRow;
     SCSIZE              nResMatCols;
     SCSIZE              nResMatRows;
+    OpCode              meOp;
     bool                bStarted;
 
     // Buffer result ranges to be able to set a range of identically typed
@@ -96,14 +97,14 @@ class ScJumpMatrix
     ScJumpMatrix& operator=( const ScJumpMatrix& ) = delete;
 
 public:
-    ScJumpMatrix( SCSIZE nColsP, SCSIZE nRowsP );
+    ScJumpMatrix( OpCode eOp, SCSIZE nColsP, SCSIZE nRowsP );
     ~ScJumpMatrix();
     void GetDimensions( SCSIZE& rCols, SCSIZE& rRows ) const;
     void SetJump( SCSIZE nCol, SCSIZE nRow, double fBool, short nStart, short nNext );
     void GetJump( SCSIZE nCol, SCSIZE nRow, double& rBool, short& rStart, short& rNext, short& rStop ) const;
     void SetAllJumps( double fBool, short nStart, short nNext, short nStop = SHRT_MAX );
-    void SetJumpParameters( ScTokenVec* p );
-    const ScTokenVec* GetJumpParameters() const { return pParams;}
+    void SetJumpParameters( ScTokenVec&& p );
+    const ScTokenVec & GetJumpParameters() const { return mvParams;}
     bool HasResultMatrix() const;
     ScMatrix* GetResultMatrix();        ///< also applies pending buffered values
     void GetPos( SCSIZE& rCol, SCSIZE& rRow ) const;
@@ -111,6 +112,7 @@ public:
     void GetResMatDimensions( SCSIZE& rCols, SCSIZE& rRows );
     void SetNewResMat( SCSIZE nNewCols, SCSIZE nNewRows );
     ScRefList& GetRefList();
+    OpCode GetOpCode() const { return meOp; }
 
     void PutResultDouble( double fVal, SCSIZE nC, SCSIZE nR );
     void PutResultString( const svl::SharedString& rStr, SCSIZE nC, SCSIZE nR );

@@ -60,7 +60,6 @@ void SAL_CALL VCLStatusIndicator::start(const OUString& sText ,
     pParentWindow->Invalidate(InvalidateFlags::Children);
     pParentWindow->Flush();
 
-    m_sText  = sText;
     m_nRange = nRange;
     m_nValue = 0;
 }
@@ -79,7 +78,6 @@ void SAL_CALL VCLStatusIndicator::end()
 {
     SolarMutexGuard aSolarGuard;
 
-    m_sText.clear();
     m_nRange = 0;
     m_nValue = 0;
 
@@ -95,7 +93,6 @@ void SAL_CALL VCLStatusIndicator::end()
 void SAL_CALL VCLStatusIndicator::setText(const OUString& sText)
 {
     SolarMutexGuard aSolarGuard;
-    m_sText = sText;
     if (m_pStatusBar)
         m_pStatusBar->SetText(sText);
 }
@@ -115,14 +112,14 @@ void SAL_CALL VCLStatusIndicator::setValue(sal_Int32 nValue)
     // normalize value to fit the range of 0-100%
     sal_uInt16 nPercent = sal::static_int_cast< sal_uInt16 >(
         ::std::min(
-            ((nValue*100) / ::std::max(nRange,(sal_Int32)1)), (sal_Int32)100));
+            ((nValue*100) / ::std::max(nRange,sal_Int32(1))), sal_Int32(100)));
 
     if (m_pStatusBar)
         m_pStatusBar->SetProgressValue(nPercent);
 }
 
 void VCLStatusIndicator::impl_recalcLayout(vcl::Window* pStatusBar   ,
-                                           vcl::Window* pParentWindow)
+                                           vcl::Window const * pParentWindow)
 {
     if (
         (!pStatusBar   ) ||

@@ -43,7 +43,7 @@ public:
 
     ~NamedValueByNameAccess();
 
-    css::uno::Any getValue(const sal_Char * pName);
+    css::uno::Any getValue(const char * pName);
 };
 
 
@@ -65,7 +65,7 @@ public:
 
 private:
 
-    OUString getStringValue(const sal_Char *) const;
+    OUString getStringValue(const char *) const;
 
     NamedValueByNameAccess& m_aNameAccess;
 };
@@ -89,9 +89,6 @@ class UpdateCheckConfig : public ::cppu::WeakImplHelper<
     virtual ~UpdateCheckConfig() override;
 
 public:
-
-    static css::uno::Sequence< OUString > getServiceNames();
-    static OUString getImplName();
 
     static ::rtl::Reference< UpdateCheckConfig > get(
         const css::uno::Reference< css::uno::XComponentContext >& xContext,
@@ -137,8 +134,8 @@ public:
     // Stores the bool value for manually paused downloads
     void storeDownloadPaused(bool paused);
 
-    // Returns the directory that acts as the user's desktop
-    static OUString getDesktopDirectory();
+    // Returns the directory for downloaded files
+    static OUString getDownloadsDirectory();
 
     // Returns a directory accessible for all users
     static OUString getAllUsersDirectory();
@@ -184,19 +181,19 @@ private:
 
 /// @throws css::uno::RuntimeException
 template <typename T>
-T getValue( const css::uno::Sequence< css::beans::NamedValue >& rNamedValues, const sal_Char * pszName )
+T getValue( const css::uno::Sequence< css::beans::NamedValue >& rNamedValues, const char * pszName )
 {
-    for( sal_Int32 n=0; n < rNamedValues.getLength(); n++ )
+    for( css::beans::NamedValue const & nv : rNamedValues )
     {
         // Unfortunately gcc-3.3 does not like Any.get<T>();
-        if( rNamedValues[n].Name.equalsAscii( pszName ) )
+        if( nv.Name.equalsAscii( pszName ) )
         {
             T value = T();
-            if( ! (rNamedValues[n].Value >>= value) )
+            if( ! (nv.Value >>= value) )
                 throw css::uno::RuntimeException(
                     OUString(
                         cppu_Any_extraction_failure_msg(
-                            &rNamedValues[n].Value,
+                            &nv.Value,
                             ::cppu::getTypeFavourUnsigned(&value).getTypeLibType() ),
                             SAL_NO_ACQUIRE ),
                     css::uno::Reference< css::uno::XInterface >() );

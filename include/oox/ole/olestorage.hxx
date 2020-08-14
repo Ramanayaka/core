@@ -27,21 +27,20 @@
 #include <oox/helper/storagebase.hxx>
 #include <rtl/ustring.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XNameContainer; }
     namespace embed { class XStorage; }
     namespace io { class XInputStream; }
     namespace io { class XOutputStream; }
     namespace io { class XStream; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 
 /** Implements stream access for binary OLE storages. */
-class OOX_DLLPUBLIC OleStorage : public StorageBase
+class OOX_DLLPUBLIC OleStorage final : public StorageBase
 {
 public:
     explicit            OleStorage(
@@ -109,8 +108,7 @@ private:
 };
 
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 #endif
 

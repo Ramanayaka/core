@@ -24,13 +24,16 @@
 #include <tools/link.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/vclptr.hxx>
+#include <rtl/ustring.hxx>
+#include <memory>
 
 class Timer;
 struct ImplCursorData;
+class OutputDevice;
 namespace vcl { class Window; }
 
 // Cursor styles
-#define CURSOR_SHADOW                   ((sal_uInt16)0x0001)
+#define CURSOR_SHADOW                   (sal_uInt16(0x0001))
 
 enum class CursorDirection
 {
@@ -43,9 +46,8 @@ namespace vcl
 class VCL_DLLPUBLIC Cursor
 {
 private:
-    ImplCursorData* mpData;
+    std::unique_ptr<ImplCursorData> mpData;
     VclPtr<vcl::Window> mpWindow;           // only for shadow cursor
-    long            mnSlant;
     Size            maSize;
     Point           maPos;
     short           mnOrientation;
@@ -94,7 +96,11 @@ public:
     bool            operator!=( const Cursor& rCursor ) const
                         { return !(Cursor::operator==( rCursor )); }
 
+    void            DrawToDevice(OutputDevice& rRenderContext);
+
 private:
+    void LOKNotify( vcl::Window* pWindow, const OUString& rAction );
+    bool ImplPrepForDraw(const OutputDevice* pDevice, ImplCursorData& rData);
     void ImplRestore();
     void ImplDoShow( bool bDrawDirect, bool bRestore );
     bool ImplDoHide( bool bStop );

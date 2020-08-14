@@ -19,11 +19,9 @@
 #ifndef INCLUDED_EDITENG_POSTITEM_HXX
 #define INCLUDED_EDITENG_POSTITEM_HXX
 
-#include <vcl/vclenum.hxx>
 #include <svl/eitem.hxx>
 #include <editeng/editengdllapi.h>
-
-class SvXMLUnitConverter;
+#include <tools/fontenum.hxx>
 
 // class SvxPostureItem --------------------------------------------------
 
@@ -32,7 +30,7 @@ class SvXMLUnitConverter;
     This item describes the font setting (Italic)
 */
 
-class EDITENG_DLLPUBLIC SvxPostureItem : public SfxEnumItem<FontItalic>
+class EDITENG_DLLPUBLIC SvxPostureItem final : public SfxEnumItem<FontItalic>
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -44,12 +42,10 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
-    virtual OUString        GetValueTextByPos( sal_uInt16 nPos ) const override;
+    virtual SvxPostureItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    static OUString         GetValueTextByPos( sal_uInt16 nPos );
     virtual sal_uInt16      GetValueCount() const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
@@ -59,16 +55,11 @@ public:
     virtual bool            GetBoolValue() const override;
     virtual void            SetBoolValue( bool bVal ) override;
 
-    SvxPostureItem& operator=(const SvxPostureItem& rPost) {
-        SetValue( rPost.GetValue() );
-        return *this;
-    }
-
     // enum cast
     FontItalic              GetPosture() const
                                 { return GetValue(); }
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif // INCLUDED_EDITENG_POSTITEM_HXX

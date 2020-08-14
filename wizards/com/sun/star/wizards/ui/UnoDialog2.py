@@ -18,6 +18,7 @@
 from .UnoDialog import UnoDialog, UIConsts
 from ..common.Desktop import Desktop
 from ..common.PropertyNames import PropertyNames
+from ..common.SystemDialog import SystemDialog
 from .event.CommonListener import ItemListenerProcAdapter, \
     ActionListenerProcAdapter, TextListenerProcAdapter, \
     AdjustmentListenerProcAdapter
@@ -45,18 +46,6 @@ class UnoDialog2(UnoDialog):
 
     def insertButton(
         self, sName, actionPerformed, sPropNames, oPropValues, listener):
-        xButton = self.insertControlModel(
-            "com.sun.star.awt.UnoControlButtonModel",
-            sName, sPropNames, oPropValues)
-        if actionPerformed is not None:
-            actionPerformed = getattr(listener, actionPerformed)
-            xButton.addActionListener(
-                ActionListenerProcAdapter(actionPerformed))
-
-        return xButton
-
-    def insertImageButton(
-            self, sName, actionPerformed, sPropNames, oPropValues, listener):
         xButton = self.insertControlModel(
             "com.sun.star.awt.UnoControlButtonModel",
             sName, sPropNames, oPropValues)
@@ -124,12 +113,6 @@ class UnoDialog2(UnoDialog):
 
         return xRadioButton
 
-    def insertTitledBox(self, sName, sPropNames, oPropValues):
-        oTitledBox = self.insertControlModel(
-            "com.sun.star.awt.UnoControlGroupBoxModel",
-            sName, sPropNames, oPropValues)
-        return oTitledBox
-
     def insertTextField(
         self, sName, sTextChanged, sPropNames, oPropValues, listener):
         return self.insertEditField(
@@ -169,19 +152,6 @@ class UnoDialog2(UnoDialog):
             xField.addTextListener(TextListenerProcAdapter(sTextChanged))
         return xField
 
-    def insertFileControl(
-        self, sName, sTextChanged, sPropNames, oPropValues, listener):
-        return self.insertEditField(sName, sTextChanged,
-            "com.sun.star.awt.UnoControlFileControlModel",
-            sPropNames, oPropValues, listener)
-
-    def insertCurrencyField(
-        self, sName, sTextChanged, sPropNames, oPropValues, listener):
-        return self.insertEditField(
-            sName, sTextChanged,
-            "com.sun.star.awt.UnoControlCurrencyFieldModel",
-            sPropNames, oPropValues, listener)
-
     def insertDateField(
         self, sName, sTextChanged, sPropNames, oPropValues, listener):
         return self.insertEditField(
@@ -201,19 +171,6 @@ class UnoDialog2(UnoDialog):
         return self.insertEditField(
             sName, sTextChanged,
             "com.sun.star.awt.UnoControlTimeFieldModel",
-            sPropNames, oPropValues, listener)
-
-    def insertPatternField(
-        self, sName, sTextChanged, oPropValues, listener):
-        return self.insertEditField(sName, sTextChanged,
-            "com.sun.star.awt.UnoControlPatternFieldModel",
-            sPropNames, oPropValues, listener)
-
-    def insertFormattedField(
-        self, sName, sTextChanged, sPropNames, oPropValues, listener):
-        return self.insertEditField(
-            sName, sTextChanged,
-            "com.sun.star.awt.UnoControlFormattedFieldModel",
             sPropNames, oPropValues, listener)
 
     def insertFixedLine(self, sName, sPropNames, oPropValues):
@@ -241,19 +198,7 @@ class UnoDialog2(UnoDialog):
             self.ControlList[sName] = iControlKey
         return oScrollBar
 
-    def insertProgressBar(self, sName, sPropNames, oPropValues):
-        oProgressBar = self.insertControlModel(
-            "com.sun.star.awt.UnoControlProgressBarModel",
-            sName, sPropNames, oPropValues)
-        return oProgressBar
-
-    def insertGroupBox(self, sName, sPropNames, oPropValues):
-        oGroupBox = self.insertControlModel(
-            "com.sun.star.awt.UnoControlGroupBoxModel",
-            sName, sPropNames, oPropValues)
-        return oGroupBox
-
     def showMessageBox(self, windowServiceName, windowAttribute, MessageText):
         return SystemDialog.showMessageBox(
-            xMSF, self.xControl.Peer,
+            super().xMSF, self.xControl.Peer,
             windowServiceName, windowAttribute, MessageText)

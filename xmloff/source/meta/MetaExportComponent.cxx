@@ -17,23 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "MetaExportComponent.hxx"
-#include "facreg.hxx"
+#include <MetaExportComponent.hxx>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/util/MeasureUnit.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <comphelper/genericpropertyset.hxx>
-#include <comphelper/processfactory.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <comphelper/propertysetinfo.hxx>
+#include <osl/diagnose.h>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlmetae.hxx>
-#include "PropertySetMerger.hxx"
+#include <PropertySetMerger.hxx>
 
 #include <unotools/docinfohelper.hxx>
 
@@ -44,7 +44,7 @@ using namespace ::xmloff::token;
 XMLMetaExportComponent::XMLMetaExportComponent(
     const css::uno::Reference< css::uno::XComponentContext >& xContext,
     OUString const & implementationName, SvXMLExportFlags nFlags )
-:   SvXMLExport( util::MeasureUnit::CM, xContext, implementationName, XML_TEXT, nFlags )
+:   SvXMLExport( xContext, implementationName, util::MeasureUnit::CM, XML_TEXT, nFlags )
 {
 }
 
@@ -131,18 +131,7 @@ ErrCode XMLMetaExportComponent::exportDoc( enum XMLTokenEnum )
             nPos = GetNamespaceMap().GetNextKey( nPos );
         }
 
-        const sal_Char* pVersion = nullptr;
-        switch( getDefaultVersion() )
-        {
-        case SvtSaveOptions::ODFVER_LATEST: pVersion = "1.2"; break;
-        case SvtSaveOptions::ODFVER_012_EXT_COMPAT: pVersion = "1.2"; break;
-        case SvtSaveOptions::ODFVER_012: pVersion = "1.2"; break;
-        case SvtSaveOptions::ODFVER_011: pVersion = "1.1"; break;
-        case SvtSaveOptions::ODFVER_010: break;
-
-        default:
-            OSL_FAIL("xmloff::XMLMetaExportComponent::exportDoc(), unexpected odf default version!");
-        }
+        const char*const pVersion = GetODFVersionAttributeValue();
 
         if( pVersion )
             AddAttribute( XML_NAMESPACE_OFFICE, XML_VERSION,
@@ -176,13 +165,7 @@ void XMLMetaExportComponent::ExportAutoStyles_() {}
 void XMLMetaExportComponent::ExportMasterStyles_() {}
 void XMLMetaExportComponent::ExportContent_() {}
 
-uno::Sequence< OUString > SAL_CALL XMLMetaExportOOO_getSupportedServiceNames()
-    throw()
-{
-    return uno::Sequence< OUString > { "com.sun.star.document.XMLMetaExporter" };
-}
-
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 XMLMetaExportComponent_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -190,15 +173,12 @@ XMLMetaExportComponent_get_implementation(
     return cppu::acquire(new XMLMetaExportComponent(context, "XMLMetaExportComponent", SvXMLExportFlags::META|SvXMLExportFlags::OASIS));
 }
 
-OUString SAL_CALL XMLMetaExportOOO_getImplementationName() throw()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+XMLMetaExportOOo_get_implementation(css::uno::XComponentContext* context,
+                                    css::uno::Sequence<css::uno::Any> const&)
 {
-    return OUString( "XMLMetaExportOOo" );
-}
-
-uno::Reference< uno::XInterface > SAL_CALL XMLMetaExportOOO_createInstance(
-        const uno::Reference< lang::XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new XMLMetaExportComponent( comphelper::getComponentContext(rSMgr), XMLMetaExportOOO_getImplementationName(), SvXMLExportFlags::META));
+    return cppu::acquire(
+        new XMLMetaExportComponent(context, "XMLMetaExportOOo", SvXMLExportFlags::META));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

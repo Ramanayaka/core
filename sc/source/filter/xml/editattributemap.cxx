@@ -10,8 +10,8 @@
 #include "editattributemap.hxx"
 
 #include <editeng/eeitem.hxx>
-#include <editeng/memberids.hrc>
-#include <xmloff/xmlnmspe.hxx>
+#include <editeng/memberids.h>
+#include <xmloff/xmlnamespace.hxx>
 
 ScXMLEditAttributeMap::Entry const aEntries[] = {
 
@@ -69,12 +69,10 @@ ScXMLEditAttributeMap::ScXMLEditAttributeMap()
 {
     for (size_t i = 0; i < SAL_N_ELEMENTS(aEntries); ++i)
     {
-        maAPIEntries.insert(
-            StrToEntriesType::value_type(
-                OUString::createFromAscii(aEntries[i].mpAPIName), &aEntries[i]));
+        maAPIEntries.emplace(
+                OUString::createFromAscii(aEntries[i].mpAPIName), &aEntries[i]);
 
-        maItemIDEntries.insert(
-            IndexToEntriesType::value_type(aEntries[i].mnItemID, &aEntries[i]));
+        maItemIDEntries.emplace(aEntries[i].mnItemID, &aEntries[i]);
     }
 }
 

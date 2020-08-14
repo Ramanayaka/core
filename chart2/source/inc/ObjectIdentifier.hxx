@@ -19,20 +19,22 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_OBJECTIDENTIFIER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_OBJECTIDENTIFIER_HXX
 
-#include <com/sun/star/chart2/XChartType.hpp>
-#include <com/sun/star/chart2/XDiagram.hpp>
-#include <com/sun/star/chart2/XCoordinateSystem.hpp>
-#include <com/sun/star/chart2/XDataSeries.hpp>
-#include <com/sun/star/chart2/XChartDocument.hpp>
 #include "TitleHelper.hxx"
 #include "charttoolsdllapi.hxx"
-#include "ChartModel.hxx"
 
 #include <rtl/ustring.hxx>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/awt/Point.hpp>
-#include <com/sun/star/drawing/XShape.hpp>
+
+namespace chart { class ChartModel; }
+namespace com::sun::star::awt { struct Point; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::chart2 { class XAxis; }
+namespace com::sun::star::chart2 { class XChartDocument; }
+namespace com::sun::star::chart2 { class XCoordinateSystem; }
+namespace com::sun::star::chart2 { class XDataSeries; }
+namespace com::sun::star::chart2 { class XDiagram; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::uno { class XInterface; }
 
 namespace chart
 {
@@ -92,7 +94,6 @@ public:
     ObjectIdentifier( const css::uno::Reference< css::drawing::XShape >& rxShape );
     ObjectIdentifier( const css::uno::Any& rAny );
 
-    ObjectIdentifier( const ObjectIdentifier& rOID );
     bool operator==( const ObjectIdentifier& rOID ) const;
     bool operator!=( const ObjectIdentifier& rOID ) const;
     bool operator<( const ObjectIdentifier& rOID ) const;
@@ -119,13 +120,7 @@ public:
         , const css::uno::Reference< css::frame::XModel >& xChartModel
         , sal_Int32 nSubIndex = -1 );//-1: main grid, 0: first subgrid etc
 
-    SAL_DLLPRIVATE static OUString createParticleForDiagram(
-          const css::uno::Reference< css::chart2::XDiagram >& xDiagram
-        , ChartModel& rModel);
-
-    SAL_DLLPRIVATE static OUString createParticleForDiagram(
-          const css::uno::Reference< css::chart2::XDiagram >& xDiagram
-        , const css::uno::Reference< css::frame::XModel >& xChartModel );
+    SAL_DLLPRIVATE static OUString createParticleForDiagram();
 
     static OUString createParticleForCoordinateSystem(
           const css::uno::Reference< css::chart2::XCoordinateSystem >& xCooSys
@@ -144,13 +139,10 @@ public:
     static OUString createParticleForSeries( sal_Int32 nDiagramIndex, sal_Int32 nCooSysIndex
             , sal_Int32 nChartTypeIndex, sal_Int32 nSeriesIndex );
 
-    static OUString createParticleForLegend(
-          const css::uno::Reference< css::chart2::XLegend >& xLegend
-        , ChartModel& rModel );
+    static OUString createParticleForLegend( ChartModel& rModel );
 
     static OUString createParticleForLegend(
-          const css::uno::Reference< css::chart2::XLegend >& xLegend
-        , const css::uno::Reference< css::frame::XModel >& xChartModel );
+        const css::uno::Reference< css::frame::XModel >& xChartModel );
 
     static OUString addChildParticle( const OUString& rParticle, const OUString& rChildParticle );
     static OUString createChildParticleWithIndex( ObjectType eObjectType, sal_Int32 nIndex );
@@ -172,7 +164,7 @@ public:
     static OUString getDragMethodServiceName( const OUString& rClassifiedIdentifier );
     static OUString getDragParameterString( const OUString& rCID );
     static bool isDragableObject( const OUString& rClassifiedIdentifier );
-    bool isDragableObject();
+    bool isDragableObject() const;
     static bool isRotateableObject( const OUString& rClassifiedIdentifier );
     static bool isMultiClickObject( const OUString& rClassifiedIdentifier );
     static bool areSiblings( const OUString& rCID1, const OUString& rCID2 );//identical object is no sibling
@@ -180,7 +172,7 @@ public:
 
     static OUString getStringForType( ObjectType eObjectType );
     static ObjectType    getObjectType( const OUString& rCID );
-    ObjectType getObjectType();
+    ObjectType getObjectType() const;
 
     static OUString createSeriesSubObjectStub( ObjectType eSubObjectType
                     , const OUString& rSeriesParticle

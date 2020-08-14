@@ -19,10 +19,11 @@
 
 #include "ParaSpacingWindow.hxx"
 #include <editeng/editids.hrc>
+#include <editeng/lrspitem.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/app.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <svl/itempool.hxx>
-#include <svl/intitem.hxx>
-#include <vcl/builderfactory.hxx>
 
 using namespace svx;
 
@@ -34,23 +35,22 @@ using namespace svx;
 
 // ParaULSpacingWindow
 
-ParaULSpacingWindow::ParaULSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame)
-    : VclVBox(pParent)
+ParaULSpacingWindow::ParaULSpacingWindow(vcl::Window* pParent)
+    : InterimItemWindow(pParent, "svx/ui/paraulspacing.ui", "ParaULSpacingWindow")
     , m_eUnit(MapUnit::MapTwip)
 {
-    m_pUIBuilder.reset(new VclBuilder(this, getUIRootDir(),
-                                  "svx/ui/paraulspacing.ui",
-                                  "ParaULSpacingWindow",
-                                  xFrame));
+    m_xAboveSpacing = std::make_unique<SvxRelativeField>(m_xBuilder->weld_metric_spin_button("aboveparaspacing", FieldUnit::CM));
+    m_xBelowSpacing = std::make_unique<SvxRelativeField>(m_xBuilder->weld_metric_spin_button("belowparaspacing", FieldUnit::CM));
+    m_xAboveContainer = m_xBuilder->weld_container("above");
+    m_xBelowContainer = m_xBuilder->weld_container("below");
 
-    get(m_pAboveSpacing, "aboveparaspacing");
-    get(m_pBelowSpacing, "belowparaspacing");
-    get(m_pAboveContainer, "above");
-    get(m_pBelowContainer, "below");
+    Link<weld::MetricSpinButton&,void> aLink = LINK(this, ParaULSpacingWindow, ModifySpacingHdl);
+    m_xAboveSpacing->connect_value_changed(aLink);
+    m_xBelowSpacing->connect_value_changed(aLink);
 
-    Link<Edit&,void> aLink = LINK(this, ParaULSpacingWindow, ModifySpacingHdl);
-    m_pAboveSpacing->SetModifyHdl(aLink);
-    m_pBelowSpacing->SetModifyHdl(aLink);
+    /// set the initial values of max width
+    m_xAboveSpacing->set_max(m_xAboveSpacing->normalize(MAX_DURCH), FieldUnit::CM);
+    m_xBelowSpacing->set_max(m_xBelowSpacing->normalize(MAX_DURCH), FieldUnit::CM);
 }
 
 ParaULSpacingWindow::~ParaULSpacingWindow()
@@ -60,91 +60,95 @@ ParaULSpacingWindow::~ParaULSpacingWindow()
 
 void ParaULSpacingWindow::dispose()
 {
-    m_pAboveSpacing.clear();
-    m_pBelowSpacing.clear();
-    m_pAboveContainer.clear();
-    m_pBelowContainer.clear();
+    m_xAboveSpacing.reset();
+    m_xBelowSpacing.reset();
+    m_xAboveContainer.reset();
+    m_xBelowContainer.reset();
 
-    disposeBuilder();
-    VclVBox::dispose();
+    InterimItemWindow::dispose();
 }
 
 void ParaULSpacingWindow::SetUnit(FieldUnit eUnit)
 {
-    SetFieldUnit(*m_pAboveSpacing, eUnit);
-    SetFieldUnit(*m_pBelowSpacing, eUnit);
+    m_xAboveSpacing->SetFieldUnit(eUnit);
+    m_xBelowSpacing->SetFieldUnit(eUnit);
 
     SfxItemPool &rPool = SfxGetpApp()->GetPool();
     sal_uInt16 nWhich = rPool.GetWhich(SID_ATTR_PARA_ULSPACE);
     m_eUnit = rPool.GetMetric(nWhich);
 
-    m_pAboveSpacing->SetMax(m_pAboveSpacing->Normalize(MAX_DURCH), MapToFieldUnit(m_eUnit));
-    m_pBelowSpacing->SetMax(m_pBelowSpacing->Normalize(MAX_DURCH), MapToFieldUnit(m_eUnit));
+    m_xAboveSpacing->set_max(m_xAboveSpacing->normalize(MAX_DURCH), MapToFieldUnit(m_eUnit));
+    m_xBelowSpacing->set_max(m_xBelowSpacing->normalize(MAX_DURCH), MapToFieldUnit(m_eUnit));
 }
 
 void ParaULSpacingWindow::SetValue(const SvxULSpaceItem* pItem)
 {
     sal_Int64 nVal = pItem->GetUpper();
-    nVal = m_pAboveSpacing->Normalize(nVal);
-    m_pAboveSpacing->SetValue(nVal, FUNIT_100TH_MM);
+    nVal = m_xAboveSpacing->normalize(nVal);
+    m_xAboveSpacing->set_value(nVal, FieldUnit::MM_100TH);
 
     nVal = pItem->GetLower();
-    nVal = m_pBelowSpacing->Normalize(nVal);
-    m_pBelowSpacing->SetValue(nVal, FUNIT_100TH_MM);
+    nVal = m_xBelowSpacing->normalize(nVal);
+    m_xBelowSpacing->set_value(nVal, FieldUnit::MM_100TH);
 }
 
-IMPL_LINK_NOARG(ParaULSpacingWindow, ModifySpacingHdl, Edit&, void)
+IMPL_LINK_NOARG(ParaULSpacingWindow, ModifySpacingHdl, weld::MetricSpinButton&, void)
 {
     SfxDispatcher* pDisp = SfxViewFrame::Current()->GetBindings().GetDispatcher();
     if(pDisp)
     {
         SvxULSpaceItem aMargin(SID_ATTR_PARA_ULSPACE);
-        aMargin.SetUpper((sal_uInt16)GetCoreValue(*m_pAboveSpacing, m_eUnit));
-        aMargin.SetLower((sal_uInt16)GetCoreValue(*m_pBelowSpacing, m_eUnit));
+        aMargin.SetUpper(m_xAboveSpacing->GetCoreValue(m_eUnit));
+        aMargin.SetLower(m_xBelowSpacing->GetCoreValue(m_eUnit));
         pDisp->ExecuteList(SID_ATTR_PARA_ULSPACE, SfxCallMode::RECORD, {&aMargin});
     }
 }
 
 // ParaAboveSpacingWindow
-
-ParaAboveSpacingWindow::ParaAboveSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame)
-    : ParaULSpacingWindow(pParent, xFrame)
+ParaAboveSpacingWindow::ParaAboveSpacingWindow(vcl::Window* pParent)
+    : ParaULSpacingWindow(pParent)
 {
-    m_pAboveContainer->Show();
-    m_pBelowContainer->Hide();
+    InitControlBase(&m_xAboveSpacing->get_widget());
+
+    m_xAboveContainer->show();
+    m_xBelowContainer->hide();
+
+    SetSizePixel(get_preferred_size());
 }
 
 // ParaBelowSpacingWindow
-
-ParaBelowSpacingWindow::ParaBelowSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame)
-    : ParaULSpacingWindow(pParent, xFrame)
+ParaBelowSpacingWindow::ParaBelowSpacingWindow(vcl::Window* pParent)
+    : ParaULSpacingWindow(pParent)
 {
-    m_pAboveContainer->Hide();
-    m_pBelowContainer->Show();
+    InitControlBase(&m_xBelowSpacing->get_widget());
+
+    m_xAboveContainer->hide();
+    m_xBelowContainer->show();
+
+    SetSizePixel(get_preferred_size());
 }
 
 // ParaLRSpacingWindow
-
-ParaLRSpacingWindow::ParaLRSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame)
-    : VclVBox(pParent)
+ParaLRSpacingWindow::ParaLRSpacingWindow(vcl::Window* pParent)
+    : InterimItemWindow(pParent, "svx/ui/paralrspacing.ui", "ParaLRSpacingWindow")
     , m_eUnit(MapUnit::MapTwip)
 {
-    m_pUIBuilder.reset(new VclBuilder(this, getUIRootDir(),
-                                  "svx/ui/paralrspacing.ui",
-                                  "ParaLRSpacingWindow",
-                                  xFrame));
+    m_xBeforeSpacing = std::make_unique<SvxRelativeField>(m_xBuilder->weld_metric_spin_button("beforetextindent", FieldUnit::CM));
+    m_xAfterSpacing = std::make_unique<SvxRelativeField>(m_xBuilder->weld_metric_spin_button("aftertextindent", FieldUnit::CM));
+    m_xFLSpacing = std::make_unique<SvxRelativeField>(m_xBuilder->weld_metric_spin_button("firstlineindent", FieldUnit::CM));
+    m_xBeforeContainer = m_xBuilder->weld_container("before");
+    m_xAfterContainer = m_xBuilder->weld_container("after");
+    m_xFirstLineContainer = m_xBuilder->weld_container("firstline");
 
-    get(m_pBeforeSpacing, "beforetextindent");
-    get(m_pAfterSpacing, "aftertextindent");
-    get(m_pFLSpacing, "firstlineindent");
-    get(m_pBeforeContainer, "before");
-    get(m_pAfterContainer, "after");
-    get(m_pFirstLineContainer, "firstline");
+    Link<weld::MetricSpinButton&,void> aLink = LINK(this, ParaLRSpacingWindow, ModifySpacingHdl);
+    m_xBeforeSpacing->connect_value_changed(aLink);
+    m_xAfterSpacing->connect_value_changed(aLink);
+    m_xFLSpacing->connect_value_changed(aLink);
 
-    Link<Edit&,void> aLink = LINK(this, ParaLRSpacingWindow, ModifySpacingHdl);
-    m_pBeforeSpacing->SetModifyHdl(aLink);
-    m_pAfterSpacing->SetModifyHdl(aLink);
-    m_pFLSpacing->SetModifyHdl(aLink);
+    /// set the initial values of max width
+    m_xBeforeSpacing->set_min(NEGA_MAXVALUE, FieldUnit::MM_100TH);
+    m_xAfterSpacing->set_min(NEGA_MAXVALUE, FieldUnit::MM_100TH);
+    m_xFLSpacing->set_min(NEGA_MAXVALUE, FieldUnit::MM_100TH);
 }
 
 ParaLRSpacingWindow::~ParaLRSpacingWindow()
@@ -154,15 +158,14 @@ ParaLRSpacingWindow::~ParaLRSpacingWindow()
 
 void ParaLRSpacingWindow::dispose()
 {
-    m_pBeforeSpacing.clear();
-    m_pAfterSpacing.clear();
-    m_pFLSpacing.clear();
-    m_pBeforeContainer.clear();
-    m_pAfterContainer.clear();
-    m_pFirstLineContainer.clear();
+    m_xBeforeSpacing.reset();
+    m_xAfterSpacing.reset();
+    m_xFLSpacing.reset();
+    m_xBeforeContainer.reset();
+    m_xAfterContainer.reset();
+    m_xFirstLineContainer.reset();
 
-    disposeBuilder();
-    VclVBox::dispose();
+    InterimItemWindow::dispose();
 }
 
 void ParaLRSpacingWindow::SetContext(const vcl::EnumContext& eContext)
@@ -184,43 +187,43 @@ void ParaLRSpacingWindow::SetValue(SfxItemState eState, const SfxPoolItem* pStat
     case CombinedEnumContext(Application::DrawImpress, Context::Graphic):
     case CombinedEnumContext(Application::DrawImpress, Context::Table):
         {
-            m_pBeforeSpacing->SetMin(DEFAULT_VALUE);
-            m_pAfterSpacing->SetMin(DEFAULT_VALUE);
-            m_pFLSpacing->SetMin(DEFAULT_VALUE);
+            m_xBeforeSpacing->set_min(DEFAULT_VALUE, FieldUnit::NONE);
+            m_xAfterSpacing->set_min(DEFAULT_VALUE, FieldUnit::NONE);
+            m_xFLSpacing->set_min(DEFAULT_VALUE, FieldUnit::NONE);
         }
         break;
     case CombinedEnumContext(Application::WriterVariants, Context::Default):
     case CombinedEnumContext(Application::WriterVariants, Context::Text):
     case CombinedEnumContext(Application::WriterVariants, Context::Table):
         {
-            m_pBeforeSpacing->SetMin(NEGA_MAXVALUE, FUNIT_100TH_MM);
-            m_pAfterSpacing->SetMin(NEGA_MAXVALUE, FUNIT_100TH_MM);
-            m_pFLSpacing->SetMin(NEGA_MAXVALUE, FUNIT_100TH_MM);
+            m_xBeforeSpacing->set_min(NEGA_MAXVALUE, FieldUnit::MM_100TH);
+            m_xAfterSpacing->set_min(NEGA_MAXVALUE, FieldUnit::MM_100TH);
+            m_xFLSpacing->set_min(NEGA_MAXVALUE, FieldUnit::MM_100TH);
         }
         break;
     }
 
     if(pState && eState >= SfxItemState::DEFAULT)
     {
-        m_pBeforeSpacing-> Enable();
-        m_pAfterSpacing->Enable();
-        m_pFLSpacing->Enable();
+        m_xBeforeSpacing->set_sensitive(true);
+        m_xAfterSpacing->set_sensitive(true);
+        m_xFLSpacing->set_sensitive(true);
 
         const SvxLRSpaceItem* pSpace = static_cast<const SvxLRSpaceItem*>(pState);
         long aTxtLeft = pSpace->GetTextLeft();
         long aTxtRight = pSpace->GetRight();
-        long aTxtFirstLineOfst = pSpace->GetTextFirstLineOfst();
+        long aTxtFirstLineOfst = pSpace->GetTextFirstLineOffset();
 
-        aTxtLeft = (long)m_pBeforeSpacing->Normalize(aTxtLeft);
+        aTxtLeft = m_xBeforeSpacing->normalize(aTxtLeft);
 
         if(m_aContext.GetCombinedContext_DI() != CombinedEnumContext(Application::WriterVariants, Context::Text)
              && m_aContext.GetCombinedContext_DI() != CombinedEnumContext(Application::WriterVariants, Context::Default)
              && m_aContext.GetCombinedContext_DI() != CombinedEnumContext(Application::WriterVariants, Context::Table))
         {
-            m_pFLSpacing->SetMin(aTxtLeft*(-1), FUNIT_100TH_MM);
+            m_xFLSpacing->set_min(aTxtLeft*-1, FieldUnit::MM_100TH);
         }
 
-        aTxtRight = (long)m_pAfterSpacing->Normalize(aTxtRight);
+        aTxtRight = m_xAfterSpacing->normalize(aTxtRight);
 
         switch(m_aContext.GetCombinedContext_DI())
         {
@@ -230,9 +233,9 @@ void ParaLRSpacingWindow::SetValue(SfxItemState eState, const SfxPoolItem* pStat
         case CombinedEnumContext(Application::WriterVariants, Context::Table):
         case CombinedEnumContext(Application::WriterVariants, Context::Annotation):
             {
-                m_pBeforeSpacing->SetMax(MAX_SW - aTxtRight, FUNIT_100TH_MM);
-                m_pAfterSpacing->SetMax(MAX_SW - aTxtLeft, FUNIT_100TH_MM);
-                m_pFLSpacing->SetMax(MAX_SW - aTxtLeft - aTxtRight, FUNIT_100TH_MM);
+                m_xBeforeSpacing->set_max(MAX_SW - aTxtRight, FieldUnit::MM_100TH);
+                m_xAfterSpacing->set_max(MAX_SW - aTxtLeft, FieldUnit::MM_100TH);
+                m_xFLSpacing->set_max(MAX_SW - aTxtLeft - aTxtRight, FieldUnit::MM_100TH);
             }
             break;
         case CombinedEnumContext(Application::DrawImpress, Context::DrawText):
@@ -241,85 +244,94 @@ void ParaLRSpacingWindow::SetValue(SfxItemState eState, const SfxPoolItem* pStat
         case CombinedEnumContext(Application::DrawImpress, Context::TextObject):
         case CombinedEnumContext(Application::DrawImpress, Context::Graphic):
             {
-                m_pBeforeSpacing->SetMax(MAX_SC_SD - aTxtRight, FUNIT_100TH_MM);
-                m_pAfterSpacing->SetMax(MAX_SC_SD - aTxtLeft, FUNIT_100TH_MM);
-                m_pFLSpacing->SetMax(MAX_SC_SD - aTxtLeft - aTxtRight, FUNIT_100TH_MM);
+                m_xBeforeSpacing->set_max(MAX_SC_SD - aTxtRight, FieldUnit::MM_100TH);
+                m_xAfterSpacing->set_max(MAX_SC_SD - aTxtLeft, FieldUnit::MM_100TH);
+                m_xFLSpacing->set_max(MAX_SC_SD - aTxtLeft - aTxtRight, FieldUnit::MM_100TH);
             }
         }
 
-        m_pBeforeSpacing->SetValue(aTxtLeft, FUNIT_100TH_MM);
-        m_pAfterSpacing->SetValue(aTxtRight, FUNIT_100TH_MM);
+        m_xBeforeSpacing->set_value(aTxtLeft, FieldUnit::MM_100TH);
+        m_xAfterSpacing->set_value(aTxtRight, FieldUnit::MM_100TH);
 
-        aTxtFirstLineOfst = (long)m_pFLSpacing->Normalize(aTxtFirstLineOfst);
-        m_pFLSpacing->SetValue(aTxtFirstLineOfst, FUNIT_100TH_MM);
+        aTxtFirstLineOfst = m_xFLSpacing->normalize(aTxtFirstLineOfst);
+        m_xFLSpacing->set_value(aTxtFirstLineOfst, FieldUnit::MM_100TH);
     }
     else if(eState == SfxItemState::DISABLED)
     {
-        m_pBeforeSpacing-> Disable();
-        m_pAfterSpacing->Disable();
-        m_pFLSpacing->Disable();
+        m_xBeforeSpacing->set_sensitive(false);
+        m_xAfterSpacing->set_sensitive(false);
+        m_xFLSpacing->set_sensitive(false);
     }
     else
     {
-        m_pBeforeSpacing->SetEmptyFieldValue();
-        m_pAfterSpacing->SetEmptyFieldValue();
-        m_pFLSpacing->SetEmptyFieldValue();
+        m_xBeforeSpacing->set_text("");
+        m_xAfterSpacing->set_text("");
+        m_xFLSpacing->set_text("");
     }
 }
 
 void ParaLRSpacingWindow::SetUnit(FieldUnit eUnit)
 {
-    SetFieldUnit(*m_pBeforeSpacing, eUnit);
-    SetFieldUnit(*m_pAfterSpacing, eUnit);
-    SetFieldUnit(*m_pFLSpacing, eUnit);
+    m_xBeforeSpacing->SetFieldUnit(eUnit);
+    m_xAfterSpacing->SetFieldUnit(eUnit);
+    m_xFLSpacing->SetFieldUnit(eUnit);
 
     SfxItemPool &rPool = SfxGetpApp()->GetPool();
     sal_uInt16 nWhich = rPool.GetWhich(SID_ATTR_PARA_LRSPACE);
     m_eUnit = rPool.GetMetric(nWhich);
 }
 
-IMPL_LINK_NOARG(ParaLRSpacingWindow, ModifySpacingHdl, Edit&, void)
+IMPL_LINK_NOARG(ParaLRSpacingWindow, ModifySpacingHdl, weld::MetricSpinButton&, void)
 {
     SfxDispatcher* pDisp = SfxViewFrame::Current()->GetBindings().GetDispatcher();
     if(pDisp)
     {
         SvxLRSpaceItem aMargin(SID_ATTR_PARA_LRSPACE);
-        aMargin.SetTextLeft(GetCoreValue(*m_pBeforeSpacing, m_eUnit));
-        aMargin.SetRight(GetCoreValue(*m_pAfterSpacing, m_eUnit));
-        aMargin.SetTextFirstLineOfst((short)GetCoreValue(*m_pFLSpacing, m_eUnit));
+        aMargin.SetTextLeft(m_xBeforeSpacing->GetCoreValue(m_eUnit));
+        aMargin.SetRight(m_xAfterSpacing->GetCoreValue(m_eUnit));
+        aMargin.SetTextFirstLineOffset(m_xFLSpacing->GetCoreValue(m_eUnit));
 
         pDisp->ExecuteList(SID_ATTR_PARA_LRSPACE, SfxCallMode::RECORD, {&aMargin});
     }
 }
 
 // ParaLeftSpacingWindow
-
-ParaLeftSpacingWindow::ParaLeftSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame)
-    : ParaLRSpacingWindow(pParent, xFrame)
+ParaLeftSpacingWindow::ParaLeftSpacingWindow(vcl::Window* pParent)
+    : ParaLRSpacingWindow(pParent)
 {
-    m_pBeforeContainer->Show();
-    m_pAfterContainer->Hide();
-    m_pFirstLineContainer->Hide();
+    InitControlBase(&m_xBeforeSpacing->get_widget());
+
+    m_xBeforeContainer->show();
+    m_xAfterContainer->hide();
+    m_xFirstLineContainer->hide();
+
+    SetSizePixel(get_preferred_size());
 }
 
 // ParaRightSpacingWindow
-
-ParaRightSpacingWindow::ParaRightSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame)
-    : ParaLRSpacingWindow(pParent, xFrame)
+ParaRightSpacingWindow::ParaRightSpacingWindow(vcl::Window* pParent)
+    : ParaLRSpacingWindow(pParent)
 {
-    m_pBeforeContainer->Hide();
-    m_pAfterContainer->Show();
-    m_pFirstLineContainer->Hide();
+    InitControlBase(&m_xAfterSpacing->get_widget());
+
+    m_xBeforeContainer->hide();
+    m_xAfterContainer->show();
+    m_xFirstLineContainer->hide();
+
+    SetSizePixel(get_preferred_size());
 }
 
 // ParaFirstLineSpacingWindow
-
-ParaFirstLineSpacingWindow::ParaFirstLineSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame)
-    : ParaLRSpacingWindow(pParent, xFrame)
+ParaFirstLineSpacingWindow::ParaFirstLineSpacingWindow(vcl::Window* pParent)
+    : ParaLRSpacingWindow(pParent)
 {
-    m_pBeforeContainer->Hide();
-    m_pAfterContainer->Hide();
-    m_pFirstLineContainer->Show();
+    InitControlBase(&m_xFLSpacing->get_widget());
+
+    m_xBeforeContainer->hide();
+    m_xAfterContainer->hide();
+    m_xFirstLineContainer->show();
+
+    SetSizePixel(get_preferred_size());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

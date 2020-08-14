@@ -20,40 +20,37 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDAXISANDGRIDEXISTENCEPROPERTIES_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDAXISANDGRIDEXISTENCEPROPERTIES_HXX
 
-#include "WrappedProperty.hxx"
-#include "Chart2ModelContact.hxx"
-
 #include <memory>
 #include <vector>
 
-namespace chart
-{
-namespace wrapper
+namespace chart { class WrappedProperty; }
+namespace chart::wrapper { class Chart2ModelContact; }
+
+namespace chart::wrapper
 {
 
 class WrappedAxisAndGridExistenceProperties
 {
 public:
-    static void addWrappedProperties( std::vector< WrappedProperty* >& rList
+    static void addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList
         , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact );
 };
 
 class WrappedAxisTitleExistenceProperties
 {
 public:
-    static void addWrappedProperties( std::vector< WrappedProperty* >& rList
+    static void addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList
         , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact );
 };
 
 class WrappedAxisLabelExistenceProperties
 {
 public:
-   static void addWrappedProperties( std::vector< WrappedProperty* >& rList
+   static void addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList
        , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact );
 };
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 #endif // INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDAXISANDGRIDEXISTENCEPROPERTIES_HXX
 

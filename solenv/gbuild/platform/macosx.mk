@@ -17,17 +17,12 @@
 #   the License at http://www.apache.org/licenses/LICENSE-2.0 .
 #
 
-# to avoid flashing windows during tests
-export VCL_HIDE_WINDOWS=1
-
 gb_SDKDIR := $(MACOSX_SDK_PATH)
-
-gb_COMPILEROPTFLAGS := -O1
 
 include $(GBUILDDIR)/platform/com_GCC_defs.mk
 
 # Darwin mktemp -t expects a prefix, not a pattern
-gb_MKTEMP ?= /usr/bin/mktemp -t gbuild.
+gb_MKTEMP ?= /usr/bin/mktemp -t gbuild
 
 gb_OSDEFS := \
 	-D$(OS) \
@@ -38,7 +33,6 @@ gb_OSDEFS := \
 	-DNO_PTHREAD_PRIORITY \
 	-DMAC_OS_X_VERSION_MIN_REQUIRED=$(MAC_OS_X_VERSION_MIN_REQUIRED) \
 	-DMAC_OS_X_VERSION_MAX_ALLOWED=$(MAC_OS_X_VERSION_MAX_ALLOWED) \
-	-DMACOSX_SDK_VERSION=$(MACOSX_SDK_VERSION) \
 	$(LFS_CFLAGS) \
 
 
@@ -96,24 +90,16 @@ $(if $(filter Executable,$(1)),\
 	$$(call gb_Library_get_layer,$(2)))
 endef
 
-# We sign executables right after linking below. But not dylibs,
-# because many of them are built by ad-hoc or 3rd-party mechanisms. So
-# as we would need to sign those separately anyway, we do it for the
-# gbuild-built ones, too, after an app bundle has been constructed, in
-# the solenv/bin/macosx-codesign-app-bundle script.
+# We cannot sign executables early since Mojave/Catalina would treat them as
+# restricted binary and ignore any DYLD_LIBRARY_PATH setting - So all
+# signing is handled by the solenv/bin/macosx-codesign-app-bundle script.
 # And the soffice executable needs to be signed last in
 # macosx-codesign-app-bundle, as codesign would fail complaining that other
 # parts of the app have not yet been signed:
 
 define gb_LinkTarget__command_dynamiclink
 $(call gb_Helper_abbreviate_dirs,\
-	$(if $(CXXOBJECTS)$(OBJCXXOBJECTS)$(GENCXXOBJECTS)$(EXTRAOBJECTLISTS),$(gb_CXX),$(gb_CC)) \
-		$(if $(filter Executable,$(TARGETTYPE)),$(gb_Executable_TARGETTYPEFLAGS)) \
-		$(if $(filter Bundle,$(TARGETTYPE)),$(gb_Bundle_TARGETTYPEFLAGS)) \
-		$(if $(filter Library CppunitTest,$(TARGETTYPE)),$(gb_Library_TARGETTYPEFLAGS)) \
-		$(subst \d,$$,$(RPATH)) \
-		$(T_LDFLAGS) \
-		$(patsubst lib%.dylib,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib))))) \
+	FILELIST=$(call var2file,$(shell $(gb_MKTEMP)),100, \
 		$(foreach object,$(COBJECTS),$(call gb_CObject_get_target,$(object))) \
 		$(foreach object,$(CXXOBJECTS),$(call gb_CxxObject_get_target,$(object))) \
 		$(foreach object,$(ASMOBJECTS),$(call gb_AsmObject_get_target,$(object))) \
@@ -121,19 +107,26 @@ $(call gb_Helper_abbreviate_dirs,\
 		$(foreach object,$(OBJCXXOBJECTS),$(call gb_ObjCxxObject_get_target,$(object))) \
 		$(foreach object,$(GENCOBJECTS),$(call gb_GenCObject_get_target,$(object))) \
 		$(foreach object,$(GENCXXOBJECTS),$(call gb_GenCxxObject_get_target,$(object))) \
-		$(foreach extraobjectlist,$(EXTRAOBJECTLISTS),`cat $(extraobjectlist)`) \
+		$(foreach extraobjectlist,$(EXTRAOBJECTLISTS),$(shell cat $(extraobjectlist)))) && \
+	cat $${FILELIST} | tr "[:space:]" "\n" | grep -v '^$$' > $${FILELIST}.1 && \
+	mv $${FILELIST}.1 $${FILELIST} && \
+	$(if $(CXXOBJECTS)$(OBJCXXOBJECTS)$(GENCXXOBJECTS)$(EXTRAOBJECTLISTS),$(gb_CXX),$(gb_CC)) \
+		$(if $(filter Executable,$(TARGETTYPE)),$(gb_Executable_TARGETTYPEFLAGS)) \
+		$(if $(filter Bundle,$(TARGETTYPE)),$(gb_Bundle_TARGETTYPEFLAGS)) \
+		$(if $(filter Library CppunitTest,$(TARGETTYPE)),$(gb_Library_TARGETTYPEFLAGS)) \
+		$(subst \d,$$,$(RPATH)) \
+		$(T_USE_LD) $(T_LDFLAGS) \
+		$(patsubst lib%.dylib,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib))))) \
+		-Wl$(COMMA)-filelist$(COMMA)$${FILELIST} \
 		$(T_LIBS) \
 		$(foreach lib,$(LINKED_STATIC_LIBS),$(call gb_StaticLibrary_get_target,$(lib))) \
 		-o $(1) && \
+	rm -f $${FILELIST} && \
 	$(if $(SOVERSIONSCRIPT),ln -sf $(1) $(ILIBTARGET),:) && \
 	$(if $(filter Executable,$(TARGETTYPE)), \
 		$(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl app $(LAYER) $(1) &&) \
 	$(if $(filter Library Bundle CppunitTest,$(TARGETTYPE)),\
 		$(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl $(LAYER) $(1) &&) \
-	$(if $(MACOSX_CODESIGNING_IDENTITY), \
-		$(if $(filter Executable,$(TARGETTYPE)), \
-			$(if $(filter-out $(call gb_Executable_get_target,soffice_bin),$(1)), \
-				codesign --identifier=$(MACOSX_BUNDLE_IDENTIFIER).$(notdir $(1)) --sign $(MACOSX_CODESIGNING_IDENTITY) --force $(1) &&))) \
 	$(if $(filter Library,$(TARGETTYPE)),\
 		otool -l $(1) | grep -A 5 LC_ID_DYLIB \
 			> $(WORKDIR)/LinkTarget/$(2).exports.tmp && \
@@ -162,8 +155,10 @@ endef
 
 define gb_LinkTarget__command
 $(call gb_Output_announce,$(2),$(true),LNK,4)
+	$(call gb_Trace_StartRange,$(2),LNK)
 $(if $(filter Library Bundle CppunitTest Executable,$(TARGETTYPE)),$(call gb_LinkTarget__command_dynamiclink,$(1),$(2)))
 $(if $(filter StaticLibrary,$(TARGETTYPE)),$(call gb_LinkTarget__command_staticlink,$(1)))
+	$(call gb_Trace_EndRange,$(2),LNK)
 endef
 
 define gb_LinkTarget_use_system_darwin_frameworks
@@ -266,6 +261,7 @@ gb_CppunitTest_CPPTESTPRECOMMAND := \
 	$(call gb_Helper_extend_ld_path,$(gb_Library_DLLDIR):$(WORKDIR)/UnpackedTarball/cppunit/src/cppunit/.libs)
 gb_CppunitTest_get_filename = libtest_$(1).dylib
 gb_CppunitTest_get_ilibfilename = $(gb_CppunitTest_get_filename)
+gb_CppunitTest_malloc_check := MallocScribble=1 MallocPreScribble=1
 
 define gb_CppunitTest_CppunitTest_platform
 $(call gb_LinkTarget_get_target,$(2)) : RPATH :=
@@ -303,6 +299,10 @@ ifneq ($(LIBO_LIB_FOLDER),$(LIBO_URE_LIB_FOLDER))
 gb_PythonTest_PRECOMMAND := $(gb_PythonTest_PRECOMMAND):$(INSTROOT)/$(LIBO_LIB_FOLDER)
 endif
 gb_PythonTest_PRECOMMAND := $(gb_PythonTest_PRECOMMAND):$(WORKDIR)/UnpackedTarball/cppunit/src/cppunit/.libs
+
+# UITest class
+
+gb_UITest_DEPS := $(call gb_GeneratedPackage_get_target,python3)
 
 # Module class
 
@@ -352,7 +352,9 @@ endif
 
 define gb_UIMenubarTarget__command
 $(call gb_Output_announce,$(2),$(true),UIM,1)
+$(call gb_Trace_StartRange,$(2),UIM)
 $(call gb_ExternalExecutable_get_command,xsltproc) --nonet -o $(1) $(UI_MENUBAR_XSLT) $(3)
+$(call gb_Trace_EndRange,$(2),UIM)
 
 endef
 
@@ -364,7 +366,7 @@ $(call gb_UIMenubarTarget_get_target,$(1)) :| $(call gb_ExternalExecutable_get_d
 endef
 
 # Python
-gb_Python_PRECOMMAND :=
+gb_Python_PRECOMMAND := PYTHONPATH="$$PYPATH"
 gb_Python_INSTALLED_EXECUTABLE := $(INSTROOT)/$(LIBO_LIB_FOLDER)/LibreOfficePython.framework/Versions/$(PYTHON_VERSION_MAJOR).$(PYTHON_VERSION_MINOR)/Resources/Python.app/Contents/MacOS/LibreOfficePython
 # this is passed to gdb as executable when running tests
 gb_Python_INSTALLED_EXECUTABLE_GDB := $(gb_Python_INSTALLED_EXECUTABLE)

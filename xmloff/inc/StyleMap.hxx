@@ -21,16 +21,20 @@
 #define INCLUDED_XMLOFF_INC_STYLEMAP_HXX
 
 #include <com/sun/star/lang/XUnoTunnel.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <boost/functional/hash.hpp>
 #include <unordered_map>
+
+enum class XmlStyleFamily;
 
 struct StyleNameKey_Impl
 {
-    sal_uInt16 m_nFamily;
-    OUString m_aName;
+    XmlStyleFamily m_nFamily;
+    OUString       m_aName;
 
-    StyleNameKey_Impl( sal_uInt16 nFamily,
-                               const OUString& rName ) :
+    StyleNameKey_Impl( XmlStyleFamily nFamily,
+                       const OUString& rName ) :
         m_nFamily( nFamily ),
         m_aName( rName )
     {
@@ -46,8 +50,10 @@ struct StyleNameHash_Impl
 
 inline size_t StyleNameHash_Impl::operator()( const StyleNameKey_Impl& r ) const
 {
-    return static_cast< size_t >( r.m_nFamily ) +
-           static_cast< size_t >( r.m_aName.hashCode() );
+    std::size_t seed = 0;
+    boost::hash_combine(seed, r.m_nFamily);
+    boost::hash_combine(seed, r.m_aName.hashCode());
+    return seed;
 }
 
 inline bool StyleNameHash_Impl::operator()(
@@ -57,7 +63,7 @@ inline bool StyleNameHash_Impl::operator()(
     return r1.m_nFamily == r2.m_nFamily && r1.m_aName == r2.m_aName;
 }
 
-class StyleMap :
+class StyleMap final :
     public ::cppu::WeakImplHelper< css::lang::XUnoTunnel>,
     public std::unordered_map< StyleNameKey_Impl, OUString,
                             StyleNameHash_Impl, StyleNameHash_Impl >
@@ -68,13 +74,8 @@ public:
     StyleMap();
     virtual ~StyleMap() override;
 
-    static const css::uno::Sequence< sal_Int8 > & getUnoTunnelId() throw();
-    static StyleMap* getImplementation(
-            const css::uno::Reference< css::uno::XInterface >& ) throw();
-
     // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething(
-                const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
+    UNO3_GETIMPLEMENTATION_DECL(StyleMap)
 };
 
 #endif // INCLUDED_XMLOFF_INC_STYLEMAP_HXX

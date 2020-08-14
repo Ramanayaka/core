@@ -20,7 +20,6 @@
 /**
  * @file sft.hxx
  * @brief Sun Font Tools
- * @author Alexander Gelfenbain
  */
 
 /*
@@ -41,15 +40,12 @@
 #ifndef INCLUDED_VCL_INC_SFT_HXX
 #define INCLUDED_VCL_INC_SFT_HXX
 
-#ifdef UNX
-#include <sys/types.h>
-#include <unistd.h>
-#endif
-
 #include <vcl/dllapi.h>
 #include <vcl/fontcapabilities.hxx>
 #include <i18nlangtag/lang.h>
 
+#include <array>
+#include <memory>
 #include <vector>
 #include <cstdint>
 
@@ -57,21 +53,19 @@ namespace vcl
 {
 
 /*@{*/
-    typedef sal_Int16       F2Dot14;            /**< fixed: 2.14 */
     typedef sal_Int32       F16Dot16;           /**< fixed: 16.16 */
 /*@}*/
 
 /** Return value of OpenTTFont() and CreateT3FromTTGlyphs() */
-    enum SFErrCodes {
-        SF_OK,                              /**< no error                                     */
-        SF_BADFILE,                         /**< file not found                               */
-        SF_FILEIO,                          /**< file I/O error                               */
-        SF_MEMORY,                          /**< memory allocation error                      */
-        SF_GLYPHNUM,                        /**< incorrect number of glyphs                   */
-        SF_BADARG,                          /**< incorrect arguments                          */
-        SF_TTFORMAT,                        /**< incorrect TrueType font format               */
-        SF_TABLEFORMAT,                     /**< incorrect format of a TrueType table         */
-        SF_FONTNO                           /**< incorrect logical font number of a TTC font  */
+    enum class SFErrCodes {
+        Ok,                              /**< no error                                     */
+        BadFile,                         /**< file not found                               */
+        FileIo,                          /**< file I/O error                               */
+        Memory,                          /**< memory allocation error                      */
+        GlyphNum,                        /**< incorrect number of glyphs                   */
+        BadArg,                          /**< incorrect arguments                          */
+        TtFormat,                        /**< incorrect TrueType font format               */
+        FontNo                           /**< incorrect logical font number of a TTC font  */
     };
 
 #ifndef FW_THIN /* WIN32 compilation would conflict */
@@ -102,13 +96,6 @@ namespace vcl
         FWIDTH_ULTRA_EXPANDED = 9           /**< 200% of normal                     */
     };
 
-/** Type of the 'kern' table, stored in TrueTypeFont::kerntype */
-    enum KernType {
-        KT_NONE         = 0,                /**< no kern table                      */
-        KT_APPLE_NEW    = 1,                /**< new Apple kern table               */
-        KT_MICROSOFT    = 2                 /**< Microsoft table                    */
-    };
-
 /** Composite glyph flags definition */
     enum CompositeFlags {
         ARG_1_AND_2_ARE_WORDS     = 1,
@@ -123,7 +110,7 @@ namespace vcl
         OVERLAP_COMPOUND          = 1<<10
     };
 
-/** Structure used by GetTTSimpleGlyphMetrics() and GetTTSimpleCharMetrics() functions */
+/** Structure used by GetTTSimpleCharMetrics() functions */
     typedef struct {
         sal_uInt16 adv;                         /**< advance width or height            */
         sal_Int16 sb;                           /**< left or top sidebearing            */
@@ -182,19 +169,9 @@ namespace vcl
         int   winDescent;         /**< descender metric for Windows                            */
         bool  symbolEncoded;      /**< true: MS symbol encoded */
         sal_uInt8  panose[10];    /**< PANOSE classification number                            */
-        sal_uInt32 typeFlags;     /**< type flags (copyright bits + PS-OpenType flag)       */
+        sal_uInt32 typeFlags;     /**< type flags (copyright bits)                             */
         sal_uInt16 fsSelection;   /**< OS/2 fsSelection */
     } TTGlobalFontInfo;
-
-#define TYPEFLAG_INVALID        0x8000000
-#define TYPEFLAG_COPYRIGHT_MASK 0x000000E
-#define TYPEFLAG_PS_OPENTYPE    0x0010000
-
-/** Structure used by KernGlyphs()      */
-    typedef struct {
-        int x;                    /**< positive: right, negative: left                        */
-        int y;                    /**< positive: up, negative: down                           */
-    } KernData;
 
 /** ControlPoint structure used by GetTTGlyphPoints() */
     typedef struct {
@@ -207,6 +184,270 @@ namespace vcl
     } ControlPoint;
 
     struct TrueTypeFont;
+
+/*
+  Some table OS/2 consts
+  quick history:
+  OpenType has been created from TrueType
+  - original TrueType had an OS/2 table with a length of 68 bytes
+  (cf https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6OS2.html)
+  - There have been 6 versions (from version 0 to 5)
+  (cf https://docs.microsoft.com/en-us/typography/opentype/otspec140/os2ver0)
+
+  For the record:
+  // From Initial TrueType version
+  TYPE       NAME                       FROM BYTE
+  uint16     version                    0
+  int16      xAvgCharWidth              2
+  uint16     usWeightClass              4
+  uint16     usWidthClass               6
+  uint16     fsType                     8
+  int16      ySubscriptXSize           10
+  int16      ySubscriptYSize           12
+  int16      ySubscriptXOffset         14
+  int16      ySubscriptYOffset         16
+  int16      ySuperscriptXSize         18
+  int16      ySuperscriptYSize         20
+  int16      ySuperscriptXOffset       22
+  int16      ySuperscriptYOffset       24
+  int16      yStrikeoutSize            26
+  int16      yStrikeoutPosition        28
+  int16      sFamilyClass              30
+  uint8      panose[10]                32
+  uint32     ulUnicodeRange1           42
+  uint32     ulUnicodeRange2           46
+  uint32     ulUnicodeRange3           50
+  uint32     ulUnicodeRange4           54
+  Tag        achVendID                 58
+  uint16     fsSelection               62
+  uint16     usFirstCharIndex          64
+  uint16     usLastCharIndex           66
+
+  // From Version 0 of OpenType
+  int16      sTypoAscender             68
+  int16      sTypoDescender            70
+  int16      sTypoLineGap              72
+  uint16     usWinAscent               74
+  uint16     usWinDescent              76
+
+  => length for OpenType version 0 = 78 bytes
+
+  // From Version 1 of OpenType
+  uint32     ulCodePageRange1          78
+  uint32     ulCodePageRange2          82
+
+  => length for OpenType version 1 = 86 bytes
+
+  // From Version 2 of OpenType
+  // (idem for Versions 3 and 4)
+  int16      sxHeight                  86
+  int16      sCapHeight                88
+  uint16     usDefaultChar             90
+  uint16     usBreakChar               92
+  uint16     usMaxContext              94
+
+  => length for OpenType version 2, 3 and 4 = 96 bytes
+
+  // From Version 5 of OpenType
+  uint16     usLowerOpticalPointSize   96
+  uint16     usUpperOpticalPointSize   98
+  END                                 100
+
+  => length for OS/2 table version 5 = 100 bytes
+
+*/
+constexpr int OS2_Legacy_length = 68;
+constexpr int OS2_V0_length = 78;
+constexpr int OS2_V1_length = 86;
+
+constexpr int OS2_usWeightClass_offset = 4;
+constexpr int OS2_usWidthClass_offset = 6;
+constexpr int OS2_fsType_offset = 8;
+constexpr int OS2_panose_offset = 32;
+constexpr int OS2_panoseNbBytes_offset = 10;
+constexpr int OS2_ulUnicodeRange1_offset = 42;
+constexpr int OS2_ulUnicodeRange2_offset = 46;
+constexpr int OS2_ulUnicodeRange3_offset = 50;
+constexpr int OS2_ulUnicodeRange4_offset = 54;
+constexpr int OS2_fsSelection_offset = 62;
+constexpr int OS2_typoAscender_offset = 68;
+constexpr int OS2_typoDescender_offset = 70;
+constexpr int OS2_typoLineGap_offset = 72;
+constexpr int OS2_winAscent_offset = 74;
+constexpr int OS2_winDescent_offset = 76;
+constexpr int OS2_ulCodePageRange1_offset = 78;
+constexpr int OS2_ulCodePageRange2_offset = 82;
+
+/*
+  Some table hhea consts
+  cf https://docs.microsoft.com/fr-fr/typography/opentype/spec/hhea
+  TYPE       NAME                       FROM BYTE
+  uint16     majorVersion               0
+  uint16     minorVersion               2
+  FWORD      ascender                   4
+  FWORD      descender                  6
+  FWORD      lineGap                    8
+  UFWORD     advanceWidthMax           10
+  FWORD      minLeftSideBearing        12
+  FWORD      minRightSideBearing       14
+  FWORD      xMaxExtent                16
+  int16      caretSlopeRise            18
+  int16      caretSlopeRun             20
+  int16      caretOffset               22
+  int16      (reserved)                24
+  int16      (reserved)                26
+  int16      (reserved)                28
+  int16      (reserved)                30
+  int16      metricDataFormat          32
+  uint16     numberOfHMetrics          34
+  END                                  36
+
+  => length for hhea table = 36 bytes
+
+*/
+constexpr int HHEA_Length = 36;
+
+constexpr int HHEA_ascender_offset = 4;
+constexpr int HHEA_descender_offset = 6;
+constexpr int HHEA_lineGap_offset = 8;
+constexpr int HHEA_caretSlopeRise_offset = 18;
+constexpr int HHEA_caretSlopeRun_offset = 20;
+
+/*
+  Some table post consts
+  cf https://docs.microsoft.com/fr-fr/typography/opentype/spec/post
+  TYPE       NAME                       FROM BYTE
+  Fixed      version                    0
+  Fixed      italicAngle                4
+  FWord      underlinePosition          8
+  FWord      underlineThickness        10
+  uint32     isFixedPitch              12
+  ...
+
+*/
+constexpr int POST_italicAngle_offset = 4;
+constexpr int POST_underlinePosition_offset = 8;
+constexpr int POST_underlineThickness_offset = 10;
+constexpr int POST_isFixedPitch_offset = 12;
+
+/*
+  Some table head consts
+  cf https://docs.microsoft.com/fr-fr/typography/opentype/spec/head
+  TYPE       NAME                       FROM BYTE
+  uit16      majorVersion               0
+  uit16      minorVersion               2
+  Fixed      fontRevision               4
+  uint32     checkSumAdjustment         8
+  uint32     magicNumber               12 (= 0x5F0F3CF5)
+  uint16     flags                     16
+  uint16     unitsPerEm                18
+  LONGDATETIME created                 20
+  LONGDATETIME modified                28
+  int16      xMin                      36
+  int16      yMin                      38
+  int16      xMax                      40
+  int16      yMax                      42
+  uint16     macStyle                  44
+  uint16     lowestRecPPEM             46
+  int16      fontDirectionHint         48
+  int16      indexToLocFormat          50
+  int16      glyphDataFormat           52
+
+  END                                  54
+
+  => length head table = 54 bytes
+*/
+constexpr int HEAD_Length = 54;
+
+constexpr int HEAD_majorVersion_offset = 0;
+constexpr int HEAD_fontRevision_offset = 4;
+constexpr int HEAD_magicNumber_offset = 12;
+constexpr int HEAD_flags_offset = 16;
+constexpr int HEAD_unitsPerEm_offset = 18;
+constexpr int HEAD_created_offset = 20;
+constexpr int HEAD_xMin_offset = 36;
+constexpr int HEAD_yMin_offset = 38;
+constexpr int HEAD_xMax_offset = 40;
+constexpr int HEAD_yMax_offset = 42;
+constexpr int HEAD_macStyle_offset = 44;
+constexpr int HEAD_lowestRecPPEM_offset = 46;
+constexpr int HEAD_fontDirectionHint_offset = 48;
+constexpr int HEAD_indexToLocFormat_offset = 50;
+constexpr int HEAD_glyphDataFormat_offset = 52;
+
+/*
+  Some table maxp consts
+  cf https://docs.microsoft.com/fr-fr/typography/opentype/spec/maxp
+  For 0.5 version
+  TYPE       NAME                       FROM BYTE
+  Fixed      version                    0
+  uint16     numGlyphs                  4
+
+  For 1.0 Version
+  Fixed      version                    0
+  uint16     numGlyphs                  4
+  uint16     maxPoints                  6
+  uint16     maxContours                8
+  uint16     maxCompositePoints        10
+  uint16     maxCompositeContours      12
+  ...
+
+*/
+constexpr int MAXP_Version1Length = 32;
+
+constexpr int MAXP_numGlyphs_offset = 4;
+constexpr int MAXP_maxPoints_offset = 6;
+constexpr int MAXP_maxContours_offset = 8;
+constexpr int MAXP_maxCompositePoints_offset = 10;
+constexpr int MAXP_maxCompositeContours_offset = 12;
+
+/*
+  Some table glyf consts
+  cf https://docs.microsoft.com/fr-fr/typography/opentype/spec/glyf
+  For 0.5 version
+  TYPE       NAME                       FROM BYTE
+  int16      numberOfContours           0
+  int16      xMin                       2
+  int16      yMin                       4
+  int16      xMax                       6
+  int16      yMax                       8
+
+  END                                  10
+
+  => length glyf table = 10 bytes
+
+*/
+constexpr int GLYF_Length = 10;
+
+constexpr int GLYF_numberOfContours_offset = 0;
+constexpr int GLYF_xMin_offset = 2;
+constexpr int GLYF_yMin_offset = 4;
+constexpr int GLYF_xMax_offset = 6;
+constexpr int GLYF_yMax_offset = 8;
+
+constexpr sal_uInt32 T_true = 0x74727565;        /* 'true' */
+constexpr sal_uInt32 T_ttcf = 0x74746366;        /* 'ttcf' */
+constexpr sal_uInt32 T_otto = 0x4f54544f;        /* 'OTTO' */
+
+// standard TrueType table tags
+constexpr sal_uInt32 T_maxp = 0x6D617870;
+constexpr sal_uInt32 T_glyf = 0x676C7966;
+constexpr sal_uInt32 T_head = 0x68656164;
+constexpr sal_uInt32 T_loca = 0x6C6F6361;
+constexpr sal_uInt32 T_name = 0x6E616D65;
+constexpr sal_uInt32 T_hhea = 0x68686561;
+constexpr sal_uInt32 T_hmtx = 0x686D7478;
+constexpr sal_uInt32 T_cmap = 0x636D6170;
+constexpr sal_uInt32 T_vhea = 0x76686561;
+constexpr sal_uInt32 T_vmtx = 0x766D7478;
+constexpr sal_uInt32 T_OS2  = 0x4F532F32;
+constexpr sal_uInt32 T_post = 0x706F7374;
+constexpr sal_uInt32 T_cvt  = 0x63767420;
+constexpr sal_uInt32 T_prep = 0x70726570;
+constexpr sal_uInt32 T_fpgm = 0x6670676D;
+constexpr sal_uInt32 T_gsub = 0x47535542;
+constexpr sal_uInt32 T_CFF  = 0x43464620;
+
 
 /**
  * @defgroup sft Sun Font Tools Exported Functions
@@ -231,7 +472,7 @@ namespace vcl
  * @return value of SFErrCodes enum
  * @ingroup sft
  */
-    int VCL_DLLPUBLIC OpenTTFontBuffer(const void* pBuffer, sal_uInt32 nLen, sal_uInt32 facenum, TrueTypeFont** ttf);
+    SFErrCodes VCL_DLLPUBLIC OpenTTFontBuffer(const void* pBuffer, sal_uInt32 nLen, sal_uInt32 facenum, TrueTypeFont** ttf);
 #if !defined(_WIN32)
 /**
  * TrueTypeFont constructor.
@@ -244,12 +485,12 @@ namespace vcl
  * @return value of SFErrCodes enum
  * @ingroup sft
  */
-    int VCL_DLLPUBLIC OpenTTFontFile(const char *fname, sal_uInt32 facenum, TrueTypeFont** ttf);
+    SFErrCodes VCL_DLLPUBLIC OpenTTFontFile(const char *fname, sal_uInt32 facenum, TrueTypeFont** ttf);
 #endif
 
-    bool getTTCoverage(
-        boost::optional<std::bitset<UnicodeCoverage::MAX_UC_ENUM>> & rUnicodeCoverage,
-        boost::optional<std::bitset<CodePageCoverage::MAX_CP_ENUM>> & rCodePageCoverage,
+    bool VCL_DLLPUBLIC getTTCoverage(
+        std::optional<std::bitset<UnicodeCoverage::MAX_UC_ENUM>> & rUnicodeCoverage,
+        std::optional<std::bitset<CodePageCoverage::MAX_CP_ENUM>> & rCodePageCoverage,
         const unsigned char* pTable, size_t nLength);
 
 /**
@@ -315,7 +556,7 @@ namespace vcl
  * @ingroup sft
  */
 
-    int GetTTNameRecords(TrueTypeFont *ttf, NameRecord **nr);
+    int GetTTNameRecords(TrueTypeFont const *ttf, NameRecord **nr);
 
 /**
  * Deallocates previously allocated array of NameRecords.
@@ -344,7 +585,7 @@ namespace vcl
  * @ingroup sft
  *
  */
-    int  CreateT3FromTTGlyphs(TrueTypeFont *ttf, FILE *outf, const char *fname, sal_uInt16 *glyphArray, sal_uInt8 *encoding, int nGlyphs, int wmode);
+    SFErrCodes CreateT3FromTTGlyphs(TrueTypeFont *ttf, FILE *outf, const char *fname, sal_uInt16 const *glyphArray, sal_uInt8 *encoding, int nGlyphs, int wmode);
 
 /**
  * Generates a new TrueType font and dumps it to <b>outf</b> file.
@@ -357,22 +598,17 @@ namespace vcl
  *                    the glyphID glyphArray[i]. Character code 0 usually points to a default
  *                    glyph (glyphID 0)
  * @param nGlyphs     number of glyph IDs in glyphArray and encoding values in encoding
- * @param nNameRecs   number of NameRecords for the font, if 0 the name table from the
- *                    original font will be used
- * @param nr          array of NameRecords
  * @param flags       or'ed TTCreationFlags
  * @return            return the value of SFErrCodes enum
  * @see               SFErrCodes
  * @ingroup sft
  *
  */
-    int  CreateTTFromTTGlyphs(TrueTypeFont  *ttf,
+    VCL_DLLPUBLIC SFErrCodes CreateTTFromTTGlyphs(TrueTypeFont  *ttf,
                               const char    *fname,
-                              sal_uInt16    *glyphArray,
-                              sal_uInt8     *encoding,
-                              int            nGlyphs,
-                              int            nNameRecs,
-                              NameRecord    *nr);
+                              sal_uInt16 const *glyphArray,
+                              sal_uInt8 const *encoding,
+                              int            nGlyphs);
 
 /**
  * Generates a new PostScript Type42 font and dumps it to <b>outf</b> file.
@@ -386,23 +622,23 @@ namespace vcl
  *                    the glyphID glyphArray[i]. Character code 0 usually points to a default
  *                    glyph (glyphID 0)
  * @param nGlyphs     number of glyph IDs in glyphArray and encoding values in encoding
- * @return            SF_OK - no errors
- *                    SF_GLYPHNUM - too many glyphs (> 255)
- *                    SF_TTFORMAT - corrupted TrueType fonts
+ * @return            SFErrCodes::Ok - no errors
+ *                    SFErrCodes::GlyphNum - too many glyphs (> 255)
+ *                    SFErrCodes::TtFormat - corrupted TrueType fonts
  *
  * @see               SFErrCodes
  * @ingroup sft
  *
  */
-    int  CreateT42FromTTGlyphs(TrueTypeFont  *ttf,
+    SFErrCodes CreateT42FromTTGlyphs(TrueTypeFont  *ttf,
                                FILE          *outf,
                                const char    *psname,
-                               sal_uInt16        *glyphArray,
+                               sal_uInt16 const *glyphArray,
                                sal_uInt8          *encoding,
                                int            nGlyphs);
 
 /**
- * Queries glyph metrics. Allocates an array of TTSimpleGlyphMetrics structs and returns it.
+ * Queries glyph metrics. Allocates an array of advance width/height values and returns it.
  *
  * @param ttf         pointer to the TrueTypeFont structure
  * @param glyphArray  pointer to an array of glyphs that are to be extracted from ttf
@@ -411,7 +647,7 @@ namespace vcl
  * @ingroup sft
  *
  */
-    TTSimpleGlyphMetrics *GetTTSimpleGlyphMetrics(TrueTypeFont *ttf, const sal_uInt16 *glyphArray, int nGlyphs, bool vertical);
+    VCL_DLLPUBLIC std::unique_ptr<sal_uInt16[]> GetTTSimpleGlyphMetrics(TrueTypeFont const *ttf, const sal_uInt16 *glyphArray, int nGlyphs, bool vertical);
 
 #if defined(_WIN32) || defined(MACOSX) || defined(IOS)
 /**
@@ -423,7 +659,7 @@ namespace vcl
  * @return glyph ID, if the character is missing in the font, the return value is 0.
  * @ingroup sft
  */
-    sal_uInt16 MapChar(TrueTypeFont *ttf, sal_uInt16 ch);
+    VCL_DLLPUBLIC sal_uInt16 MapChar(TrueTypeFont const *ttf, sal_uInt16 ch);
 #endif
 
 /**
@@ -435,7 +671,7 @@ namespace vcl
  * @ingroup sft
  *
  */
-    void GetTTGlobalFontInfo(TrueTypeFont *ttf, TTGlobalFontInfo *info);
+    VCL_DLLPUBLIC void GetTTGlobalFontInfo(TrueTypeFont *ttf, TTGlobalFontInfo *info);
 
 /**
  * Returns fonts metrics.
@@ -447,22 +683,42 @@ namespace vcl
  * @ingroup sft
  *
  */
- void GetTTFontMterics(const std::vector<uint8_t>& hhea,
-                       const std::vector<uint8_t>& os2,
+ void GetTTFontMetrics(const uint8_t *pHhea, size_t nHhea,
+                       const uint8_t *pOs2, size_t nOs2,
                        TTGlobalFontInfo *info);
 
 /**
  * returns the number of glyphs in a font
  */
- int GetTTGlyphCount( TrueTypeFont* ttf );
+ VCL_DLLPUBLIC int GetTTGlyphCount( TrueTypeFont const * ttf );
 
 /**
  * provide access to the raw data of a SFNT-container's subtable
  */
- bool GetSfntTable( TrueTypeFont* ttf, int nSubtableIndex,
+ bool GetSfntTable( TrueTypeFont const * ttf, int nSubtableIndex,
      const sal_uInt8** ppRawBytes, int* pRawLength );
 
 /*- private definitions */
+
+/* indexes into TrueTypeFont::tables[] and TrueTypeFont::tlens[] */
+constexpr int O_maxp = 0;
+constexpr int O_glyf = 1;    /* 'glyf' */
+constexpr int O_head = 2;    /* 'head' */
+constexpr int O_loca = 3;    /* 'loca' */
+constexpr int O_name = 4;    /* 'name' */
+constexpr int O_hhea = 5;    /* 'hhea' */
+constexpr int O_hmtx = 6;    /* 'hmtx' */
+constexpr int O_cmap = 7;    /* 'cmap' */
+constexpr int O_vhea = 8;    /* 'vhea' */
+constexpr int O_vmtx = 9;    /* 'vmtx' */
+constexpr int O_OS2  = 10;   /* 'OS/2' */
+constexpr int O_post = 11;   /* 'post' */
+constexpr int O_cvt  = 12;   /* 'cvt_' - only used in TT->TT generation */
+constexpr int O_prep = 13;   /* 'prep' - only used in TT->TT generation */
+constexpr int O_fpgm = 14;   /* 'fpgm' - only used in TT->TT generation */
+constexpr int O_gsub = 15;   /* 'GSUB' */
+constexpr int O_CFF = 16;   /* 'CFF' */
+constexpr int NUM_TAGS = 17;
 
     struct TrueTypeFont {
         char        *fname;
@@ -484,32 +740,10 @@ namespace vcl
         const sal_uInt8* cmap;
         int         cmapType;
         sal_uInt32 (*mapper)(const sal_uInt8 *, sal_uInt32, sal_uInt32); /* character to glyphID translation function                          */
-        const sal_uInt8   **tables;                        /* array of pointers to raw subtables in SFNT file                    */
-        sal_uInt32  *tlens;                                /* array of table lengths                                             */
-        sal_uInt32  nkern;                                 /* number of kern subtables                                           */
-        const sal_uInt8** kerntables;                      /* array of pointers to kern subtables                                */
+        std::array<const sal_uInt8 *, NUM_TAGS> tables;                  /* array of pointers to raw subtables in SFNT file                    */
+        std::array<sal_uInt32, NUM_TAGS>  tlens;                         /* array of table lengths                                             */
     };
 
-/* indexes into TrueTypeFont::tables[] and TrueTypeFont::tlens[] */
-#define O_maxp 0     /* 'maxp' */
-#define O_glyf 1     /* 'glyf' */
-#define O_head 2     /* 'head' */
-#define O_loca 3     /* 'loca' */
-#define O_name 4     /* 'name' */
-#define O_hhea 5     /* 'hhea' */
-#define O_hmtx 6     /* 'hmtx' */
-#define O_cmap 7     /* 'cmap' */
-#define O_vhea 8     /* 'vhea' */
-#define O_vmtx 9     /* 'vmtx' */
-#define O_OS2  10    /* 'OS/2' */
-#define O_post 11    /* 'post' */
-#define O_kern 12    /* 'kern' */
-#define O_cvt  13    /* 'cvt_' - only used in TT->TT generation */
-#define O_prep 14    /* 'prep' - only used in TT->TT generation */
-#define O_fpgm 15    /* 'fpgm' - only used in TT->TT generation */
-#define O_gsub 16    /* 'GSUB' */
-#define O_CFF  17    /* 'CFF' */
-#define NUM_TAGS 18
 
 } // namespace vcl
 

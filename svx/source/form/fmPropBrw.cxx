@@ -20,26 +20,23 @@
 
 #include <sal/macros.h>
 
-#include "fmhelp.hrc"
-#include "fmprop.hrc"
-#include "fmPropBrw.hxx"
-#include "svx/fmresids.hrc"
-#include "fmservs.hxx"
-#include "fmshimp.hxx"
-#include "fmpgeimp.hxx"
+#include <fmprop.hxx>
+#include <fmPropBrw.hxx>
+#include <svx/strings.hrc>
+#include <fmservs.hxx>
+#include <fmshimp.hxx>
+#include <fmpgeimp.hxx>
 
-#include "svx/dialmgr.hxx"
-#include "svx/fmpage.hxx"
-#include "svx/fmshell.hxx"
-#include "svx/sdrpagewindow.hxx"
-#include "svx/svdpagv.hxx"
-#include "svx/svxids.hrc"
+#include <svx/dialmgr.hxx>
+#include <svx/fmpage.hxx>
+#include <svx/fmshell.hxx>
+#include <svx/fmview.hxx>
+#include <svx/sdrpagewindow.hxx>
+#include <svx/svdpagv.hxx>
+#include <svx/svxids.hrc>
 
-#include <com/sun/star/awt/XLayoutConstrains.hpp>
 #include <com/sun/star/awt/XControlContainer.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/container/XChild.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/form/inspection/DefaultFormComponentInspectorModel.hpp>
@@ -47,25 +44,25 @@
 #include <com/sun/star/inspection/ObjectInspector.hpp>
 #include <com/sun/star/inspection/XObjectInspectorUI.hpp>
 #include <com/sun/star/inspection/DefaultHelpProvider.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/util/VetoException.hpp>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/property.hxx>
 #include <comphelper/sequence.hxx>
+#include <comphelper/types.hxx>
 #include <cppuhelper/component_context.hxx>
+#include <o3tl/deleter.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/childwin.hxx>
-#include <sfx2/dispatch.hxx>
 #include <sfx2/objitem.hxx>
 #include <sfx2/objsh.hxx>
-#include <sfx2/viewfrm.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 #include <unotools/confignode.hxx>
 #include <vcl/stdtext.hxx>
-
-#include <algorithm>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
+#include <vcl/weldutils.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
@@ -81,30 +78,21 @@ using namespace ::svxform;
 using ::com::sun::star::awt::XWindow;
 
 //= FmPropBrwMgr
-
-
-SFX_IMPL_FLOATINGWINDOW(FmPropBrwMgr, SID_FM_SHOW_PROPERTIES)
-
+SFX_IMPL_MODELESSDIALOGCONTOLLER(FmPropBrwMgr, SID_FM_SHOW_PROPERTIES)
 
 FmPropBrwMgr::FmPropBrwMgr( vcl::Window* _pParent, sal_uInt16 _nId,
                             SfxBindings* _pBindings, SfxChildWinInfo* _pInfo)
               :SfxChildWindow(_pParent, _nId)
 {
-    SetWindow( VclPtr<FmPropBrw>::Create( ::comphelper::getProcessComponentContext(), _pBindings, this, _pParent, _pInfo ) );
-    static_cast<SfxFloatingWindow*>(GetWindow())->Initialize( _pInfo );
+    std::shared_ptr<FmPropBrw> xControl(new FmPropBrw(::comphelper::getProcessComponentContext(), _pBindings,
+                                                         this, _pParent->GetFrameWeld(), _pInfo), o3tl::default_delete<FmPropBrw>());
+    SetController(std::move(xControl));
+    static_cast<FmPropBrw*>(GetController().get())->Initialize( _pInfo );
 }
 
-
-const long STD_WIN_SIZE_X = 300;
-const long STD_WIN_SIZE_Y = 350;
-
-const long STD_MIN_SIZE_X = 250;
-const long STD_MIN_SIZE_Y = 250;
-
-
-OUString GetUIHeadlineName(sal_Int16 nClassId, const Any& aUnoObj)
+static OUString GetUIHeadlineName(sal_Int16 nClassId, const Any& aUnoObj)
 {
-    sal_uInt16 nClassNameResourceId = 0;
+    const char* pClassNameResourceId = nullptr;
 
     switch ( nClassId )
     {
@@ -112,12 +100,12 @@ OUString GetUIHeadlineName(sal_Int16 nClassId, const Any& aUnoObj)
         {
             Reference< XInterface >  xIFace;
             aUnoObj >>= xIFace;
-            nClassNameResourceId = RID_STR_PROPTITLE_EDIT;
+            pClassNameResourceId = RID_STR_PROPTITLE_EDIT;
             if (xIFace.is())
             {   // we have a chance to check if it's a formatted field model
                 Reference< XServiceInfo >  xInfo(xIFace, UNO_QUERY);
                 if (xInfo.is() && (xInfo->supportsService(FM_SUN_COMPONENT_FORMATTEDFIELD)))
-                    nClassNameResourceId = RID_STR_PROPTITLE_FORMATTED;
+                    pClassNameResourceId = RID_STR_PROPTITLE_FORMATTED;
                 else if (!xInfo.is())
                 {
                     // couldn't distinguish between formatted and edit with the service name, so try with the properties
@@ -126,7 +114,7 @@ OUString GetUIHeadlineName(sal_Int16 nClassId, const Any& aUnoObj)
                     {
                         Reference< XPropertySetInfo >  xPropsInfo = xProps->getPropertySetInfo();
                         if (xPropsInfo.is() && xPropsInfo->hasPropertyByName(FM_PROP_FORMATSSUPPLIER))
-                            nClassNameResourceId = RID_STR_PROPTITLE_FORMATTED;
+                            pClassNameResourceId = RID_STR_PROPTITLE_FORMATTED;
                     }
                 }
             }
@@ -134,126 +122,93 @@ OUString GetUIHeadlineName(sal_Int16 nClassId, const Any& aUnoObj)
         break;
 
         case FormComponentType::COMMANDBUTTON:
-            nClassNameResourceId = RID_STR_PROPTITLE_PUSHBUTTON; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_PUSHBUTTON; break;
         case FormComponentType::RADIOBUTTON:
-            nClassNameResourceId = RID_STR_PROPTITLE_RADIOBUTTON; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_RADIOBUTTON; break;
         case FormComponentType::CHECKBOX:
-            nClassNameResourceId = RID_STR_PROPTITLE_CHECKBOX; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_CHECKBOX; break;
         case FormComponentType::LISTBOX:
-            nClassNameResourceId = RID_STR_PROPTITLE_LISTBOX; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_LISTBOX; break;
         case FormComponentType::COMBOBOX:
-            nClassNameResourceId = RID_STR_PROPTITLE_COMBOBOX; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_COMBOBOX; break;
         case FormComponentType::GROUPBOX:
-            nClassNameResourceId = RID_STR_PROPTITLE_GROUPBOX; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_GROUPBOX; break;
         case FormComponentType::IMAGEBUTTON:
-            nClassNameResourceId = RID_STR_PROPTITLE_IMAGEBUTTON; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_IMAGEBUTTON; break;
         case FormComponentType::FIXEDTEXT:
-            nClassNameResourceId = RID_STR_PROPTITLE_FIXEDTEXT; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_FIXEDTEXT; break;
         case FormComponentType::GRIDCONTROL:
-            nClassNameResourceId = RID_STR_PROPTITLE_DBGRID; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_DBGRID; break;
         case FormComponentType::FILECONTROL:
-            nClassNameResourceId = RID_STR_PROPTITLE_FILECONTROL; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_FILECONTROL; break;
         case FormComponentType::DATEFIELD:
-            nClassNameResourceId = RID_STR_PROPTITLE_DATEFIELD; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_DATEFIELD; break;
         case FormComponentType::TIMEFIELD:
-            nClassNameResourceId = RID_STR_PROPTITLE_TIMEFIELD; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_TIMEFIELD; break;
         case FormComponentType::NUMERICFIELD:
-            nClassNameResourceId = RID_STR_PROPTITLE_NUMERICFIELD; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_NUMERICFIELD; break;
         case FormComponentType::CURRENCYFIELD:
-            nClassNameResourceId = RID_STR_PROPTITLE_CURRENCYFIELD; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_CURRENCYFIELD; break;
         case FormComponentType::PATTERNFIELD:
-            nClassNameResourceId = RID_STR_PROPTITLE_PATTERNFIELD; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_PATTERNFIELD; break;
         case FormComponentType::IMAGECONTROL:
-            nClassNameResourceId = RID_STR_PROPTITLE_IMAGECONTROL; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_IMAGECONTROL; break;
         case FormComponentType::HIDDENCONTROL:
-            nClassNameResourceId = RID_STR_PROPTITLE_HIDDEN; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_HIDDEN; break;
         case FormComponentType::SCROLLBAR:
-            nClassNameResourceId = RID_STR_PROPTITLE_SCROLLBAR; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_SCROLLBAR; break;
         case FormComponentType::SPINBUTTON:
-            nClassNameResourceId = RID_STR_PROPTITLE_SPINBUTTON; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_SPINBUTTON; break;
         case FormComponentType::NAVIGATIONBAR:
-            nClassNameResourceId = RID_STR_PROPTITLE_NAVBAR; break;
+            pClassNameResourceId = RID_STR_PROPTITLE_NAVBAR; break;
         case FormComponentType::CONTROL:
         default:
-            nClassNameResourceId = RID_STR_CONTROL; break;
+            pClassNameResourceId = RID_STR_CONTROL; break;
     }
 
-    return SvxResId(nClassNameResourceId);
+    return SvxResId(pClassNameResourceId);
 }
 
-FmPropBrw::FmPropBrw( const Reference< XComponentContext >& _xORB, SfxBindings* _pBindings,
-            SfxChildWindow* _pMgr, vcl::Window* _pParent, const SfxChildWinInfo* _pInfo )
-    :SfxFloatingWindow(_pBindings, _pMgr, _pParent, WinBits(WB_STDMODELESS|WB_SIZEABLE|WB_3DLOOK|WB_ROLLABLE) )
-    ,SfxControllerItem(SID_FM_PROPERTY_CONTROL, *_pBindings)
-    ,m_bInitialStateChange(true)
-    ,m_xORB(_xORB)
+FmPropBrw::FmPropBrw(const Reference< XComponentContext >& _xORB, SfxBindings* _pBindings,
+                     SfxChildWindow* _pMgr, weld::Window* _pParent, const SfxChildWinInfo* _pInfo)
+    : SfxModelessDialogController(_pBindings, _pMgr, _pParent, "svx/ui/formpropertydialog.ui", "FormPropertyDialog")
+    , SfxControllerItem(SID_FM_PROPERTY_CONTROL, *_pBindings)
+    , m_bInitialStateChange(true)
+    , m_pParent(_pParent)
+    , m_nAsyncGetFocusId(nullptr)
+    , m_xContainer(m_xBuilder->weld_container("container"))
+    , m_xORB(_xORB)
 {
-
-    ::Size aPropWinSize(STD_WIN_SIZE_X,STD_WIN_SIZE_Y);
-    SetMinOutputSizePixel(::Size(STD_MIN_SIZE_X,STD_MIN_SIZE_Y));
-    SetOutputSizePixel(aPropWinSize);
+    m_xContainer->set_size_request(m_xContainer->get_approximate_digit_width() * 72, m_xContainer->get_text_height() * 20);
 
     try
     {
         // create a frame wrapper for myself
         m_xMeAsFrame = Frame::create(m_xORB);
 
-        // create an intermediate window, which is to be the container window of the frame
-        // Do *not* use |this| as container window for the frame, this would result in undefined
-        // responsibility for this window (as soon as we initialize a frame with a window, the frame
-        // is responsible for its life time, but |this| is controlled by the belonging SfxChildWindow)
-        // #i34249#
-        VclPtr<vcl::Window> pContainerWindow = VclPtr<vcl::Window>::Create( this );
-        pContainerWindow->Show();
-        m_xFrameContainerWindow = VCLUnoHelper::GetInterface ( pContainerWindow );
-
-        m_xMeAsFrame->initialize( m_xFrameContainerWindow );
+        // transport the container area of this dialog to be the container window of the frame
+        css::uno::Reference<css::awt::XWindow> xFrameContainerWindow(new weld::TransportAsXWindow(m_xContainer.get()));
+        m_xMeAsFrame->initialize(xFrameContainerWindow);
         m_xMeAsFrame->setName("form property browser");
     }
-    catch (Exception&)
+    catch (const Exception&)
     {
         OSL_FAIL("FmPropBrw::FmPropBrw: could not create/initialize my frame!");
         m_xMeAsFrame.clear();
     }
 
-    if (m_xMeAsFrame.is())
-        _pMgr->SetFrame( Reference<XFrame>(m_xMeAsFrame,UNO_QUERY_THROW) );
-
-
-    if ( m_xBrowserComponentWindow.is() )
-        m_xBrowserComponentWindow->setVisible( true );
-
     if ( _pInfo )
         m_sLastActivePage = _pInfo->aExtraString;
 }
 
-
-void FmPropBrw::Resize()
-{
-    SfxFloatingWindow::Resize();
-
-    if ( m_xFrameContainerWindow.is() )
-    {
-        try
-        {
-            ::Size aOutputSize( GetOutputSizePixel() );
-            m_xFrameContainerWindow->setPosSize( 0, 0, aOutputSize.Width(), aOutputSize.Height(), awt::PosSize::POSSIZE );
-        }
-        catch( const Exception& )
-        {
-            OSL_FAIL( "FmPropBrw::Resize: caught an exception!" );
-        }
-    }
-}
-
-
 FmPropBrw::~FmPropBrw()
 {
-    disposeOnce();
-}
+    if (m_nAsyncGetFocusId)
+    {
+        Application::RemoveUserEvent(m_nAsyncGetFocusId);
+        m_nAsyncGetFocusId = nullptr;
+    }
 
-void FmPropBrw::dispose()
-{
     if (m_xBrowserController.is())
         implDetachController();
     try
@@ -274,12 +229,10 @@ void FmPropBrw::dispose()
     }
     catch (const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
     ::SfxControllerItem::dispose();
-    SfxFloatingWindow::dispose();
 }
-
 
 OUString FmPropBrw::getCurrentPage() const
 {
@@ -301,7 +254,6 @@ OUString FmPropBrw::getCurrentPage() const
     return sCurrentPage;
 }
 
-
 void FmPropBrw::implDetachController()
 {
     m_sLastActivePage = getCurrentPage();
@@ -322,15 +274,16 @@ void FmPropBrw::implDetachController()
 
     // we attached a frame to the controller manually, so we need to manually tell it that it's detached, too
     if ( m_xBrowserController.is() )
+    {
         m_xBrowserController->attachFrame( nullptr );
+    }
 
     m_xBrowserController.clear();
     m_xInspectorModel.clear();
     m_xMeAsFrame.clear();
 }
 
-
-bool FmPropBrw::Close()
+void FmPropBrw::Close()
 {
     // suspend the controller (it is allowed to veto)
     if ( m_xMeAsFrame.is() )
@@ -339,7 +292,7 @@ bool FmPropBrw::Close()
         {
             Reference< XController > xController( m_xMeAsFrame->getController() );
             if ( xController.is() && !xController->suspend( true ) )
-                return false;
+                return;
         }
         catch( const Exception& )
         {
@@ -349,25 +302,16 @@ bool FmPropBrw::Close()
 
     implDetachController();
 
-    if( IsRollUp() )
-        RollDown();
-
     // remember our bindings: while we're closed, we're deleted, too, so accessing the bindings after this
     // would be deadly
     // 10/19/00 - 79321 - FS
     SfxBindings& rBindings = SfxControllerItem::GetBindings();
 
-    bool bClose = SfxFloatingWindow::Close();
+    SfxModelessDialogController::Close();
 
-    if (bClose)
-    {
-        rBindings.Invalidate(SID_FM_CTL_PROPERTIES);
-        rBindings.Invalidate(SID_FM_PROPERTIES);
-    }
-
-    return bClose;
+    rBindings.Invalidate(SID_FM_CTL_PROPERTIES);
+    rBindings.Invalidate(SID_FM_PROPERTIES);
 }
-
 
 bool FmPropBrw::implIsReadOnlyModel() const
 {
@@ -379,7 +323,7 @@ bool FmPropBrw::implIsReadOnlyModel() const
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
     return true;
 }
@@ -387,90 +331,59 @@ bool FmPropBrw::implIsReadOnlyModel() const
 
 void FmPropBrw::implSetNewSelection( const InterfaceBag& _rSelection )
 {
-    if ( m_xBrowserController.is() )
+    if ( !m_xBrowserController.is() )
+        return;
+
+    try
     {
-        try
-        {
-            Reference< XObjectInspector > xInspector( m_xBrowserController, UNO_QUERY_THROW );
+        Reference< XObjectInspector > xInspector( m_xBrowserController, UNO_QUERY_THROW );
 
-            // tell it the objects to inspect
-            xInspector->inspect( comphelper::containerToSequence(_rSelection) );
-        }
-        catch( const VetoException& )
-        {
-            return;
-        }
-        catch( const Exception& )
-        {
-            OSL_FAIL( "FmPropBrw::implSetNewSelection: caught an unexpected exception!" );
-            return;
-        }
-
-        // set the new title according to the selected object
-        OUString sTitle;
-
-        if ( _rSelection.empty() )
-        {
-            sTitle = SvxResId(RID_STR_NO_PROPERTIES);
-        }
-        else if ( _rSelection.size() > 1 )
-        {
-            // no form component and (no form or no name) -> Multiselection
-            sTitle = SvxResId(RID_STR_PROPERTIES_CONTROL);
-            sTitle += SvxResId(RID_STR_PROPTITLE_MULTISELECT);
-        }
-        else
-        {
-            Reference< XPropertySet > xSingleSelection( *_rSelection.begin(), UNO_QUERY);
-            if  ( ::comphelper::hasProperty( FM_PROP_CLASSID, xSingleSelection ) )
-            {
-                sal_Int16 nClassID = FormComponentType::CONTROL;
-                xSingleSelection->getPropertyValue( FM_PROP_CLASSID ) >>= nClassID;
-
-                sTitle = SvxResId(RID_STR_PROPERTIES_CONTROL);
-                sTitle += GetUIHeadlineName(nClassID, makeAny(xSingleSelection));
-            }
-            else if ( Reference< XForm >( xSingleSelection, UNO_QUERY ).is() )
-                sTitle = SvxResId(RID_STR_PROPERTIES_FORM);
-        }
-
-        if ( implIsReadOnlyModel() )
-            sTitle += SvxResId(RID_STR_READONLY_VIEW);
-
-        SetText( sTitle );
-
-        Reference< css::awt::XLayoutConstrains > xLayoutConstrains( m_xBrowserController, UNO_QUERY );
-        if( xLayoutConstrains.is() )
-        {
-            ::Size aConstrainedSize;
-            css::awt::Size aMinSize = xLayoutConstrains->getMinimumSize();
-
-            sal_Int32 nLeft(0), nTop(0), nRight(0), nBottom(0);
-            GetBorder( nLeft, nTop, nRight, nBottom );
-            aMinSize.Width += nLeft + nRight + 8;
-            aMinSize.Height += nTop + nBottom + 8;
-
-            aConstrainedSize.setHeight( aMinSize.Height );
-            aConstrainedSize.setWidth( aMinSize.Width );
-            SetMinOutputSizePixel( aConstrainedSize );
-            aConstrainedSize = GetOutputSizePixel();
-            bool bResize = false;
-            if( aConstrainedSize.Width() < aMinSize.Width )
-            {
-                aConstrainedSize.setWidth( aMinSize.Width );
-                bResize = true;
-            }
-            if( aConstrainedSize.Height() < aMinSize.Height )
-            {
-                aConstrainedSize.setHeight( aMinSize.Height );
-                bResize = true;
-            }
-            if( bResize )
-                SetOutputSizePixel( aConstrainedSize );
-        }
+        // tell it the objects to inspect
+        xInspector->inspect( comphelper::containerToSequence(_rSelection) );
     }
-}
+    catch( const VetoException& )
+    {
+        return;
+    }
+    catch( const Exception& )
+    {
+        OSL_FAIL( "FmPropBrw::implSetNewSelection: caught an unexpected exception!" );
+        return;
+    }
 
+    // set the new title according to the selected object
+    OUString sTitle;
+
+    if ( _rSelection.empty() )
+    {
+        sTitle = SvxResId(RID_STR_NO_PROPERTIES);
+    }
+    else if ( _rSelection.size() > 1 )
+    {
+        // no form component and (no form or no name) -> Multiselection
+        sTitle = SvxResId(RID_STR_PROPERTIES_CONTROL) +
+            SvxResId(RID_STR_PROPTITLE_MULTISELECT);
+    }
+    else
+    {
+        Reference< XPropertySet > xSingleSelection( *_rSelection.begin(), UNO_QUERY);
+        if  ( ::comphelper::hasProperty( FM_PROP_CLASSID, xSingleSelection ) )
+        {
+            sal_Int16 nClassID = FormComponentType::CONTROL;
+            xSingleSelection->getPropertyValue( FM_PROP_CLASSID ) >>= nClassID;
+
+            sTitle = SvxResId(RID_STR_PROPERTIES_CONTROL) +
+                GetUIHeadlineName(nClassID, makeAny(xSingleSelection));
+        }
+        else if ( Reference< XForm >( xSingleSelection, UNO_QUERY ).is() )
+            sTitle = SvxResId(RID_STR_PROPERTIES_FORM);
+    }
+
+    if ( implIsReadOnlyModel() )
+        sTitle += SvxResId(RID_STR_READONLY_VIEW);
+
+    m_xDialog->set_title(sTitle);
+}
 
 void FmPropBrw::FillInfo( SfxChildWinInfo& rInfo ) const
 {
@@ -478,13 +391,10 @@ void FmPropBrw::FillInfo( SfxChildWinInfo& rInfo ) const
     rInfo.aExtraString = getCurrentPage();
 }
 
-
 IMPL_LINK_NOARG( FmPropBrw, OnAsyncGetFocus, void*, void )
 {
-    if (m_xBrowserComponentWindow.is())
-        m_xBrowserComponentWindow->setFocus();
+    m_nAsyncGetFocusId = nullptr;
 }
-
 
 namespace
 {
@@ -516,7 +426,7 @@ void FmPropBrw::impl_createPropertyBrowser_throw( FmFormShell* _pFormShell )
 
         if(pPageView)
         {
-            SdrPageWindow* pPageWindow = pPageView->GetPageWindow(0L);
+            SdrPageWindow* pPageWindow = pPageView->GetPageWindow(0);
 
             if(pPageWindow)
             {
@@ -526,7 +436,7 @@ void FmPropBrw::impl_createPropertyBrowser_throw( FmFormShell* _pFormShell )
     }
 
     // the default parent window for message boxes
-    Reference< XWindow > xParentWindow( VCLUnoHelper::GetInterface ( this ) );
+    Reference< XWindow > xParentWindow(m_xDialog->GetXWindow());
 
     // the mapping from control models to control shapes
     Reference< XMap > xControlMap;
@@ -557,27 +467,25 @@ void FmPropBrw::impl_createPropertyBrowser_throw( FmFormShell* _pFormShell )
         :   DefaultFormComponentInspectorModel::createDefault( m_xInspectorContext );
 
     // an object inspector
-    m_xBrowserController.set(
+    m_xBrowserController =
         ObjectInspector::createWithModel(
             m_xInspectorContext, m_xInspectorModel
-        ), css::uno::UNO_QUERY);
+        );
 
     if ( !m_xBrowserController.is() )
     {
-        ShowServiceNotAvailableError( GetParent(), "com.sun.star.inspection.ObjectInspector", true );
+        ShowServiceNotAvailableError(m_pParent, "com.sun.star.inspection.ObjectInspector", true);
     }
     else
     {
         m_xBrowserController->attachFrame( Reference<XFrame>(m_xMeAsFrame,UNO_QUERY_THROW) );
-        m_xBrowserComponentWindow = m_xMeAsFrame->getComponentWindow();
-        DBG_ASSERT( m_xBrowserComponentWindow.is(), "FmPropBrw::impl_createPropertyBrowser_throw: attached the controller, but have no component window!" );
     }
 
     if ( bEnableHelpSection )
     {
         Reference< XObjectInspector > xInspector( m_xBrowserController, UNO_QUERY_THROW );
         Reference< XObjectInspectorUI > xInspectorUI( xInspector->getInspectorUI() );
-        Reference< XInterface > xDefaultHelpProvider( DefaultHelpProvider::create( m_xInspectorContext, xInspectorUI ) );
+        DefaultHelpProvider::create( m_xInspectorContext, xInspectorUI );
     }
 }
 
@@ -602,14 +510,13 @@ void FmPropBrw::impl_ensurePropertyBrowser_nothrow( FmFormShell* _pFormShell )
             ::comphelper::disposeComponent( m_xBrowserController );
         m_xBrowserController.clear();
         m_xInspectorModel.clear();
-        m_xBrowserComponentWindow.clear();
 
         // and create a new one
         impl_createPropertyBrowser_throw( _pFormShell );
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
     m_xLastKnownDocument = xDocument;
 }
@@ -627,7 +534,7 @@ void FmPropBrw::StateChanged(sal_uInt16 nSID, SfxItemState eState, const SfxPool
             FmFormShell* pShell = dynamic_cast<FmFormShell*>( static_cast<const SfxObjectItem*>(pState)->GetShell() );
             InterfaceBag aSelection;
             if ( pShell )
-                pShell->GetImpl()->getCurrentSelection( aSelection );
+                pShell->GetImpl()->getCurrentSelection_Lock(aSelection);
 
             impl_ensurePropertyBrowser_nothrow( pShell );
 
@@ -638,7 +545,7 @@ void FmPropBrw::StateChanged(sal_uInt16 nSID, SfxItemState eState, const SfxPool
             if ( m_bInitialStateChange )
             {
                 // if we're just newly created, we want to have the focus
-                PostUserEvent( LINK( this, FmPropBrw, OnAsyncGetFocus ), nullptr, true );
+                m_nAsyncGetFocusId = Application::PostUserEvent(LINK(this, FmPropBrw, OnAsyncGetFocus));
 
                 // and additionally, we want to show the page which was active during
                 // our previous incarnation

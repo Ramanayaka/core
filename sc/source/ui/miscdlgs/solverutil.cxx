@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "solverutil.hxx"
+#include <solverutil.hxx>
 
 #include <com/sun/star/container/XContentEnumerationAccess.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -29,6 +29,8 @@
 
 #include <osl/diagnose.h>
 #include <comphelper/processfactory.hxx>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace com::sun::star;
 
@@ -45,48 +47,48 @@ void ScSolverUtil::GetImplementations( uno::Sequence<OUString>& rImplNames,
 
     uno::Reference<container::XContentEnumerationAccess> xEnAc(
             xCtx->getServiceManager(), uno::UNO_QUERY );
-    if ( xEnAc.is() )
+    if ( !xEnAc.is() )
+        return;
+
+    uno::Reference<container::XEnumeration> xEnum =
+                    xEnAc->createContentEnumeration( SCSOLVER_SERVICE );
+    if ( !xEnum.is() )
+        return;
+
+    sal_Int32 nCount = 0;
+    while ( xEnum->hasMoreElements() )
     {
-        uno::Reference<container::XEnumeration> xEnum =
-                        xEnAc->createContentEnumeration( SCSOLVER_SERVICE );
-        if ( xEnum.is() )
+        uno::Any aAny = xEnum->nextElement();
+        uno::Reference<lang::XServiceInfo> xInfo;
+        aAny >>= xInfo;
+        if ( xInfo.is() )
         {
-            sal_Int32 nCount = 0;
-            while ( xEnum->hasMoreElements() )
+            uno::Reference<lang::XSingleComponentFactory> xCFac( xInfo, uno::UNO_QUERY );
+            if ( xCFac.is() )
             {
-                uno::Any aAny = xEnum->nextElement();
-                uno::Reference<lang::XServiceInfo> xInfo;
-                aAny >>= xInfo;
-                if ( xInfo.is() )
+                OUString sName = xInfo->getImplementationName();
+                OUString sDescription;
+
+                try
                 {
-                    uno::Reference<lang::XSingleComponentFactory> xCFac( xInfo, uno::UNO_QUERY );
-                    if ( xCFac.is() )
-                    {
-                        OUString sName = xInfo->getImplementationName();
-                        OUString sDescription;
+                    uno::Reference<sheet::XSolver> xSolver(
+                            xCFac->createInstanceWithContext(xCtx), uno::UNO_QUERY );
+                    uno::Reference<sheet::XSolverDescription> xDesc( xSolver, uno::UNO_QUERY );
+                    if ( xDesc.is() )
+                        sDescription = xDesc->getComponentDescription();
 
-                        try
-                        {
-                            uno::Reference<sheet::XSolver> xSolver(
-                                    xCFac->createInstanceWithContext(xCtx), uno::UNO_QUERY );
-                            uno::Reference<sheet::XSolverDescription> xDesc( xSolver, uno::UNO_QUERY );
-                            if ( xDesc.is() )
-                                sDescription = xDesc->getComponentDescription();
+                    if ( sDescription.isEmpty() )
+                        sDescription = sName;          // use implementation name if no description available
 
-                            if ( sDescription.isEmpty() )
-                                sDescription = sName;          // use implementation name if no description available
-
-                            rImplNames.realloc( nCount+1 );
-                            rImplNames[nCount] = sName;
-                            rDescriptions.realloc( nCount+1 );
-                            rDescriptions[nCount] = sDescription;
-                            ++nCount;
-                        }
-                        catch (const css::uno::Exception& e)
-                        {
-                            SAL_INFO("sc.ui", "ScSolverUtil::GetImplementations: cannot instantiate: " << sName << ", because: " << e.Message);
-                        }
-                    }
+                    rImplNames.realloc( nCount+1 );
+                    rImplNames[nCount] = sName;
+                    rDescriptions.realloc( nCount+1 );
+                    rDescriptions[nCount] = sDescription;
+                    ++nCount;
+                }
+                catch (const css::uno::Exception&)
+                {
+                    TOOLS_INFO_EXCEPTION("sc.ui", "ScSolverUtil::GetImplementations: cannot instantiate: " << sName);
                 }
             }
         }
@@ -150,13 +152,12 @@ uno::Sequence<beans::PropertyValue> ScSolverUtil::GetDefaults( const OUString& r
     if ( !xInfo.is() )
         return aDefaults;
 
-    uno::Sequence<beans::Property> aPropSeq = xInfo->getProperties();
+    const uno::Sequence<beans::Property> aPropSeq = xInfo->getProperties();
     const sal_Int32 nSize = aPropSeq.getLength();
     aDefaults.realloc(nSize);
     sal_Int32 nValid = 0;
-    for (sal_Int32 nPos=0; nPos<nSize; ++nPos)
+    for (const beans::Property& rProp : aPropSeq)
     {
-        const beans::Property& rProp = aPropSeq[nPos];
         uno::Any aValue = xPropSet->getPropertyValue( rProp.Name );
         uno::TypeClass eClass = aValue.getValueTypeClass();
         // only use properties of supported types

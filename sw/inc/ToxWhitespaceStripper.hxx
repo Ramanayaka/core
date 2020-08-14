@@ -11,8 +11,7 @@
 #ifndef TOXWHITESPACESTRIPPER_HXX_
 #define TOXWHITESPACESTRIPPER_HXX_
 
-#include "rtl/ustring.hxx"
-#include <swdllapi.h>
+#include <rtl/ustring.hxx>
 #include <vector>
 
 namespace sw {

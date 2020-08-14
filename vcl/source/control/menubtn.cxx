@@ -17,14 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/decoview.hxx>
+#include <vcl/dockwin.hxx>
 #include <vcl/event.hxx>
 #include <vcl/floatwin.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/menubtn.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/uitest/uiobject.hxx>
 
 void MenuButton::ImplInit( vcl::Window* pParent, WinBits nStyle )
 {
@@ -37,10 +37,15 @@ void MenuButton::ImplInit( vcl::Window* pParent, WinBits nStyle )
 
 void MenuButton::ExecuteMenu()
 {
+    mbStartingMenu = true;
+
     Activate();
 
     if (!mpMenu && !mpFloatingWindow)
+    {
+        mbStartingMenu = false;
         return;
+    }
 
     Size aSize = GetSizePixel();
     SetPressed( true );
@@ -49,33 +54,81 @@ void MenuButton::ExecuteMenu()
     {
         Point aPos(0, 1);
         tools::Rectangle aRect(aPos, aSize );
-        mnCurItemId = mpMenu->Execute(this, aRect, PopupMenuFlags::ExecuteDown);
+        mpMenu->Execute(this, aRect, PopupMenuFlags::ExecuteDown);
+
+        if (IsDisposed())
+            return;
+
+        mnCurItemId = mpMenu->GetCurItemId();
+        msCurItemIdent = mpMenu->GetCurItemIdent();
     }
     else
     {
         Point aPos(GetParent()->OutputToScreenPixel(GetPosPixel()));
         tools::Rectangle aRect(aPos, aSize );
-        mpFloatingWindow->StartPopupMode(aRect, FloatWinPopupFlags::Down | FloatWinPopupFlags::GrabFocus);
+        FloatWinPopupFlags nFlags = FloatWinPopupFlags::Down | FloatWinPopupFlags::GrabFocus;
+        if (mpFloatingWindow->GetType() == WindowType::FLOATINGWINDOW)
+            static_cast<FloatingWindow*>(mpFloatingWindow.get())->StartPopupMode(aRect, nFlags);
+        else
+        {
+            mpFloatingWindow->EnableDocking();
+            vcl::Window::GetDockingManager()->StartPopupMode(mpFloatingWindow, aRect, nFlags);
+        }
     }
+
+    mbStartingMenu = false;
+
     SetPressed(false);
     if (mnCurItemId)
     {
         Select();
         mnCurItemId = 0;
+        msCurItemIdent.clear();
     }
 }
 
-OString MenuButton::GetCurItemIdent() const
+void MenuButton::CancelMenu()
 {
-    return (mnCurItemId && mpMenu) ?
-        mpMenu->GetItemIdent(mnCurItemId) : OString();
+    if (!mpMenu && !mpFloatingWindow)
+        return;
+
+    if (mpMenu)
+    {
+        mpMenu->EndExecute();
+    }
+    else
+    {
+        if (mpFloatingWindow->GetType() == WindowType::FLOATINGWINDOW)
+            static_cast<FloatingWindow*>(mpFloatingWindow.get())->EndPopupMode();
+        else
+            vcl::Window::GetDockingManager()->EndPopupMode(mpFloatingWindow);
+    }
+}
+
+bool MenuButton::InPopupMode() const
+{
+    if (mbStartingMenu)
+        return true;
+
+    if (!mpMenu && !mpFloatingWindow)
+        return false;
+
+    if (mpMenu)
+       return PopupMenu::GetActivePopupMenu() == mpMenu;
+    else
+    {
+        if (mpFloatingWindow->GetType() == WindowType::FLOATINGWINDOW)
+            return static_cast<const FloatingWindow*>(mpFloatingWindow.get())->IsInPopupMode();
+        else
+            return vcl::Window::GetDockingManager()->IsInPopupMode(mpFloatingWindow);
+    }
 }
 
 MenuButton::MenuButton( vcl::Window* pParent, WinBits nWinBits )
     : PushButton(WindowType::MENUBUTTON)
-    , mpMenuTimer(nullptr)
     , mnCurItemId(0)
     , mbDelayMenu(false)
+    , mbStartingMenu(false)
 {
     mnDDStyle = PushButtonDropdownStyle::MenuButton;
     ImplInit(pParent, nWinBits);
@@ -88,7 +141,7 @@ MenuButton::~MenuButton()
 
 void MenuButton::dispose()
 {
-    delete mpMenuTimer;
+    mpMenuTimer.reset();
     mpFloatingWindow.clear();
     mpMenu.clear();
     PushButton::dispose();
@@ -111,16 +164,15 @@ void MenuButton::MouseButtonDown( const MouseEvent& rMEvt )
     if (mbDelayMenu)
     {
         // If the separated dropdown symbol is not hit, delay the popup execution
-        if( mnDDStyle == PushButtonDropdownStyle::Toolbox || // no separator at all
-            rMEvt.GetPosPixel().X() <= ImplGetSeparatorX() )
+        if( rMEvt.GetPosPixel().X() <= ImplGetSeparatorX() )
         {
             if ( !mpMenuTimer )
             {
-                mpMenuTimer = new Timer("MenuTimer");
+                mpMenuTimer.reset(new Timer("MenuTimer"));
                 mpMenuTimer->SetInvokeHandler( LINK( this, MenuButton, ImplMenuTimeoutHdl ) );
             }
 
-            mpMenuTimer->SetTimeout( GetSettings().GetMouseSettings().GetActionDelay() );
+            mpMenuTimer->SetTimeout( MouseSettings::GetActionDelay() );
             mpMenuTimer->Start();
 
             PushButton::MouseButtonDown( rMEvt );
@@ -170,12 +222,23 @@ void MenuButton::SetPopupMenu(PopupMenu* pNewMenu)
     mpMenu = pNewMenu;
 }
 
-void MenuButton::SetPopover(FloatingWindow* pFloatingWindow)
+void MenuButton::SetPopover(Window* pWindow)
 {
-    if (pFloatingWindow == mpFloatingWindow)
+    if (pWindow == mpFloatingWindow)
         return;
 
-    mpFloatingWindow = pFloatingWindow;
+    mpFloatingWindow = pWindow;
+}
+
+
+FactoryFunction MenuButton::GetUITestFactory() const
+{
+    return MenuButtonUIObject::create;
+}
+
+void MenuButton::SetCurItemId(){
+    mnCurItemId = mpMenu->GetCurItemId();
+    msCurItemIdent = mpMenu->GetCurItemIdent();
 }
 
 //class MenuToggleButton ----------------------------------------------------

@@ -21,16 +21,15 @@
 #define INCLUDED_SVL_URIHELPER_HXX
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <rtl/textenc.h>
 #include <svl/svldllapi.h>
 #include <tools/link.hxx>
 #include <tools/urlobj.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno { class XComponentContext; }
     namespace uri { class XUriReference; }
-} } }
+}
 
 class CharClass;
 
@@ -57,12 +56,11 @@ SVL_DLLPUBLIC OUString SmartRel2Abs(INetURLObject const & rTheBaseURIRef,
                                     INetURLObject::EncodeMechanism eEncodeMechanism = INetURLObject::EncodeMechanism::WasEncoded,
                                     INetURLObject::DecodeMechanism eDecodeMechanism = INetURLObject::DecodeMechanism::ToIUri,
                                     rtl_TextEncoding eCharset = RTL_TEXTENCODING_UTF8,
-                                    bool bRelativeNonURIs = false,
                                     FSysStyle eStyle = FSysStyle::Detect);
 
 SVL_DLLPUBLIC void SetMaybeFileHdl(Link<OUString *, bool> const & rTheMaybeFileHdl);
 
-SVL_DLLPUBLIC Link<OUString *, bool> GetMaybeFileHdl();
+SVL_DLLPUBLIC Link<OUString *, bool> const & GetMaybeFileHdl();
 
 /**
    Converts a URI reference to a relative one, ignoring certain differences (for
@@ -148,7 +146,7 @@ SVL_DLLPUBLIC OUString FindFirstURLInText(OUString const & rText,
     @return  The input URI with any password component removed.
  */
 SVL_DLLPUBLIC OUString removePassword(OUString const & rURI,
-                                      INetURLObject::EncodeMechanism eEncodeMechanism = INetURLObject::EncodeMechanism::WasEncoded,
+                                      INetURLObject::EncodeMechanism eEncodeMechanism,
                                       INetURLObject::DecodeMechanism eDecodeMechanism = INetURLObject::DecodeMechanism::ToIUri,
                                       rtl_TextEncoding eCharset = RTL_TEXTENCODING_UTF8);
 

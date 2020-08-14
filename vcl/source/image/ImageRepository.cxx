@@ -18,18 +18,18 @@
  */
 
 #include <vcl/bitmapex.hxx>
-#include <vcl/imagerepository.hxx>
+#include <imagerepository.hxx>
 #include <vcl/ImageTree.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
 
 namespace vcl
 {
-    bool ImageRepository::loadImage( const OUString& _rName, BitmapEx& _out_rImage, bool _bSearchLanguageDependent )
+    bool ImageRepository::loadImage( const OUString& _rName, BitmapEx& _out_rImage )
     {
         OUString sIconTheme = Application::GetSettings().GetStyleSettings().DetermineIconTheme();
 
-        return ImageTree::get().loadImage( _rName, sIconTheme, _out_rImage, _bSearchLanguageDependent );
+        return ImageTree::get().loadImage( _rName, sIconTheme, _out_rImage, false/*_bSearchLanguageDependent*/ );
     }
 
 } // namespace vcl

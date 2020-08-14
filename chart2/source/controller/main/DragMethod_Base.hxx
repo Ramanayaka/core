@@ -19,10 +19,12 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_DRAGMETHOD_BASE_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_DRAGMETHOD_BASE_HXX
 
-#include "DrawViewWrapper.hxx"
 #include <svx/ActionDescriptionProvider.hxx>
 #include <svx/svddrgmt.hxx>
 #include <cppuhelper/weakref.hxx>
+
+namespace chart { class DrawViewWrapper; }
+namespace com::sun::star::frame { class XModel; }
 
 namespace chart
 {
@@ -37,8 +39,8 @@ public:
 
     OUString getUndoDescription() const;
 
-    virtual void TakeSdrDragComment(OUString& rStr) const override;
-    virtual Pointer GetSdrDragPointer() const override;
+    virtual OUString GetSdrDragComment() const override;
+    virtual PointerStyle GetSdrDragPointer() const override;
 
 protected:
     css::uno::Reference< css::frame::XModel > getChartModel() const;

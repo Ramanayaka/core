@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "odbc/ODriver.hxx"
-#include "odbc/OConnection.hxx"
-#include "odbc/OFunctions.hxx"
-#include "odbc/OTools.hxx"
+#include <odbc/ODriver.hxx>
+#include <odbc/OConnection.hxx>
+#include <odbc/OTools.hxx>
 #include <connectivity/dbexception.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "resource/common_res.hrc"
-#include "resource/sharedresources.hxx"
+#include <strings.hrc>
+#include <resource/sharedresources.hxx>
 
 using namespace connectivity::odbc;
 using namespace com::sun::star::uno;
@@ -32,9 +31,9 @@ using namespace com::sun::star::lang;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::sdbc;
 
-ODBCDriver::ODBCDriver(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory)
+ODBCDriver::ODBCDriver(const css::uno::Reference< css::uno::XComponentContext >& _rxContext)
     :ODriver_BASE(m_aMutex)
-    ,m_xORB(_rxFactory)
+    ,m_xContext(_rxContext)
     ,m_pDriverHandle(SQL_NULL_HANDLE)
 {
 }
@@ -44,9 +43,9 @@ void ODBCDriver::disposing()
     ::osl::MutexGuard aGuard(m_aMutex);
 
 
-    for (OWeakRefArray::iterator i = m_xConnections.begin(); m_xConnections.end() != i; ++i)
+    for (auto const& connection : m_xConnections)
     {
-        Reference< XComponent > xComp(i->get(), UNO_QUERY);
+        Reference< XComponent > xComp(connection.get(), UNO_QUERY);
         if (xComp.is())
             xComp->dispose();
     }
@@ -57,35 +56,23 @@ void ODBCDriver::disposing()
 
 // static ServiceInfo
 
-OUString ODBCDriver::getImplementationName_Static(  )
+OUString ODBCDriver::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.sdbc.ODBCDriver");
+    return "com.sun.star.comp.sdbc.ODBCDriver";
         // this name is referenced in the configuration and in the odbc.xml
         // Please take care when changing it.
 }
 
 
-Sequence< OUString > ODBCDriver::getSupportedServiceNames_Static(  )
+Sequence< OUString > ODBCDriver::getSupportedServiceNames(  )
 {
-    Sequence<OUString> aSNS { "com.sun.star.sdbc.Driver" };
-    return aSNS;
+    return { "com.sun.star.sdbc.Driver" };
 }
 
-
-OUString SAL_CALL ODBCDriver::getImplementationName(  )
-{
-    return getImplementationName_Static();
-}
 
 sal_Bool SAL_CALL ODBCDriver::supportsService( const OUString& _rServiceName )
 {
     return cppu::supportsService(this, _rServiceName);
-}
-
-
-Sequence< OUString > SAL_CALL ODBCDriver::getSupportedServiceNames(  )
-{
-    return getSupportedServiceNames_Static();
 }
 
 
@@ -187,7 +174,7 @@ Sequence< DriverPropertyInfo > SAL_CALL ODBCDriver::getPropertyInfo( const OUStr
                 ,aBooleanValues)
                 );
 
-        return Sequence< DriverPropertyInfo >(&aDriverInfo[0],aDriverInfo.size());
+        return Sequence< DriverPropertyInfo >(aDriverInfo.data(),aDriverInfo.size());
     }
     ::connectivity::SharedResources aResources;
     const OUString sMessage = aResources.getResourceString(STR_URI_SYNTAX_ERROR);

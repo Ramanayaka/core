@@ -27,10 +27,7 @@
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
 // helper classes
 #include <cppuhelper/implbase.hxx>
@@ -40,8 +37,10 @@
 #include <vector>
 #include <map>
 
-#include "MutexContainer.hxx"
-#include "OPropertySet.hxx"
+#include <MutexContainer.hxx>
+#include <OPropertySet.hxx>
+
+namespace com::sun::star::beans { class XPropertySet; }
 
 namespace chart
 {
@@ -60,7 +59,7 @@ typedef ::cppu::WeakImplHelper<
     DataSeries_Base;
 }
 
-class DataSeries :
+class DataSeries final :
     public MutexContainer,
     public impl::DataSeries_Base,
     public ::property::OPropertySet
@@ -79,7 +78,7 @@ public:
     /// merge XTypeProvider implementations
     DECLARE_XTYPEPROVIDER()
 
-protected:
+private:
     explicit DataSeries( const DataSeries & rOther );
 
     // late initialization to call after copy-constructing
@@ -150,7 +149,6 @@ protected:
 
     void fireModifyEvent();
 
-private:
     typedef std::vector< css::uno::Reference< css::chart2::data::XLabeledDataSequence > > tDataSequenceContainer;
     tDataSequenceContainer        m_aDataSequences;
 

@@ -1,4 +1,6 @@
-Visual Components Library is responsible for the widgets (windowing, buttons, controls, file-pickers etc.) operating system abstraction, including basic rendering (e.g. the output device).
+Visual Class Library is responsible for the widgets (windowing, buttons, controls, file-pickers etc.), operating system abstraction, including basic rendering (e.g. the output device).
+
+It should not be confused with Borland's Visual Component Library, which is entirely unrelated.
 
 VCL provides a graphical toolkit similar to gtk+, Qt, SWING etc.
 
@@ -15,32 +17,33 @@ android/
 	+ Android backend
 
 osx/
-	+ OS X backend
+	+ macOS backend
 
 ios/
 	+ iOS backend
 
 quartz/
-	+ code common to OS X and iOS
+	+ code common to macOS and iOS
 
 win/
 	+ Windows backend
 
+qt5/
+	+ Qt5 (under construction)
+
 unx/
 	+ X11 backend and its sub-platforms
-
-	plugadapt/
-		+ pluggable framework to select correct unx backend
-	gtk/
-		+ GTK2 support
 	gtk3/
-		+ GTK3.2+ support
-	kde/
-		+ KDE3 support
-	kde4/
-		+ KDE4 support
+		+ GTK3 support
+	kf5/
+		+ KF5 support (based on qt5 VCL plugin mentioned above)
+	gtk3_kde5/
+		+ GTK3 support with KDE5 file pickers (alternative to native kf5 one)
 	generic/
 		+ raw X11 support
+
+		plugadapt/
+			+ pluggable framework to select correct unx backend
 
 		dtrans/
 			+ "data transfer" - clipboard handling
@@ -72,7 +75,7 @@ LibreOffice (and OpenOffice).
 == COM threading ==
 
 The way COM is used in LO generally:
-- vcl InitSalData() puts main thread into Single-threaded Apartment (STA)
+- vcl puts main thread into Single-threaded Apartment (STA)
 - oslWorkerWrapperFunction() puts every thread spawned via oslCreateThread()
   into MTA (free-threaded)
 
@@ -82,13 +85,9 @@ GDIMetafile is a vector drawing representation that corresponds directly
 to the SVM (StarView Metafile) format; it is extremely important as
 an intermediate format in all sorts of drawing and printing operations.
 
-There is a class MetafileXmlDump in include/test/mtfxmldump.hxx that
+There is a class MetafileXmlDump in include/vcl/mtfxmldump.hxx that
 can store a GDIMetafile as XML, which makes debugging much easier
 since you can just use "diff" to see changes.
-
-To use it you need to link against "test" library and then (because
-"test" is not part of the installation) run with:
-LD_LIBRARY_PATH=workdir/LinkTarget/Library:workdir/UnpackedTarball/cppunit/src/cppunit/.libs instdir/program/soffice
 
 == EMF+ ==
 
@@ -108,7 +107,7 @@ emf/wmf is translated to GDIMetafile in import filter
 vcl/source/filter/wmf and so special handling ends here
 
 emf+ is encapsulated into GDIMetafile inside comment records and
-parsed/rendered later, when it reaches cppcanvas. it is parsed and
+parsed/rendered later, when it reaches cppcanvas. It is parsed and
 rendered in cppcanvas/source/mtfrenderer. also note that there are
 emf+-only and emf+-dual files. dual files contains both types of
 records (emf and emf+) for rendering the images. these can used also
@@ -189,14 +188,12 @@ On-screen display differs in step 1 and 2:
 
 === Debugging PDF export ===
 
-Debugging the PDF export becomes much easier in higher debug-levels, where
+Debugging the PDF export becomes much easier when
 compression is disabled (so the PDF file is directly readable) and
 the MARK function puts comments into the PDF file about which method
 generated the following PDF content.
 
-touch vcl/source/gdi/pdfwriter* && make vcl dbglevel=3
-
-The compression can be disabled even using a env. var:
+The compression can be disabled even using an env. var:
 
 export VCL_DEBUG_DISABLE_PDFCOMPRESSION=1
 
@@ -204,3 +201,42 @@ To de-compress the contents of a PDF file written by a release build or
 other programs, use the "pdfunzip" tool:
 
 bin/run pdfunzip input.pdf output.pdf
+
+=== SolarMutexGuard ===
+
+The solar mutex is the "big kernel lock" of LibreOffice, a global one. It's a
+recursive mutex, so it's allowed to take the lock on the same thread multiple
+times, and only the last unlock will actually release the mutex.
+
+UNO methods on components can be called from multiple threads, while the
+majority of the codebase is not prepared for multi-threading. One way to get
+around this mismatch is to create a SolarMutexGuard instance at the start of
+each & every UNO method implementation, but only when it is necessary:
+
+- Only acquire the SolarMutex if you actually need it (e.g., not in functions
+  that return static information).
+
+- Only around the code that actually needs it (i.e., never call out with it
+  locked).
+
+This way you ensure that code (not prepared for multithreading) is still
+executed only on a single thread.
+
+In case you expect that your caller takes the solar mutex, then you can use
+the DBG_TESTSOLARMUTEX() macro to assert that in dbgutil builds.
+
+Event listeners are a special (but frequent) case of the "never call out with
+a mutex (SolarMutex or other) locked" fundamental rule:
+
+- UNO methods can be called from multiple threads, so most implementations
+  take the solar mutex as their first action when necessary.
+
+- This can be problematic if later calling out (an event handler is called),
+  where the called function may be an UNO method implementation as well and
+  may be invoked on a different thread.
+
+- So we try to not own the solar mutex, whenever we call out (invoke event
+  listeners).
+
+In short, never hold any mutex unless necessary, especially not when calling
+out.

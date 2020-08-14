@@ -23,16 +23,11 @@
 #include <rtl/ref.hxx>
 #include <vcl/virdev.hxx>
 #include <svx/svxdllapi.h>
+#include <memory>
 
 class SdrPaintView;
+namespace sdr::overlay { class OverlayManager; }
 
-namespace sdr
-{
-    namespace overlay
-    {
-        class OverlayManager;
-    }
-}
 
 #ifdef _MSC_VER // broken msvc template instantiation
 #include <svx/sdr/overlay/overlaymanager.hxx>
@@ -40,8 +35,8 @@ namespace sdr
 
 /// paint the transparent children of rWin that overlap rPixelRect
 /// (for example, transparent form controls like check boxes)
-void SVX_DLLPUBLIC
-PaintTransparentChildren(vcl::Window & rWindow, tools::Rectangle const& rPixelRect);
+void SVXCORE_DLLPUBLIC
+PaintTransparentChildren(vcl::Window const & rWindow, tools::Rectangle const& rPixelRect);
 
 class SdrPreRenderDevice
 {
@@ -58,10 +53,10 @@ public:
     void PreparePreRenderDevice();
     void OutputPreRenderDevice(const vcl::Region& rExpandedRegion);
 
-    OutputDevice& GetPreRenderDevice() { return *mpPreRenderDevice.get(); }
+    OutputDevice& GetPreRenderDevice() { return *mpPreRenderDevice; }
 };
 
-class SVX_DLLPUBLIC SdrPaintWindow
+class SVXCORE_DLLPUBLIC SdrPaintWindow
 {
 private:
     // the OutputDevice this window represents
@@ -78,13 +73,18 @@ private:
     rtl::Reference< sdr::overlay::OverlayManager >    mxOverlayManager;
 
     // The PreRenderDevice for PreRendering
-    SdrPreRenderDevice*                                 mpPreRenderDevice;
+    std::unique_ptr<SdrPreRenderDevice>               mpPreRenderDevice;
 
     // The RedrawRegion used for rendering
     vcl::Region                                              maRedrawRegion;
 
     // #i72889# flag if this is only a temporary target for repaint, default is false
     bool                                                mbTemporaryTarget : 1;
+
+    bool                                                mbOutputToWindow : 1;
+
+    // ref to patched
+    SdrPaintWindow*                                     mpPatched;
 
     // helpers
     void impCreateOverlayManager();
@@ -93,9 +93,12 @@ public:
     SdrPaintWindow(SdrPaintView& rNewPaintView, OutputDevice& rOut, vcl::Window* pWindow = nullptr);
     ~SdrPaintWindow();
 
+    // allow reference to patched, see patchPaintWindow/unpatchPaintWindow
+    void setPatched(SdrPaintWindow* pPaintWindow) { mpPatched = pPaintWindow; }
+    SdrPaintWindow* getPatched() const { return mpPatched; }
+
     // data read accesses
-    SdrPaintView& GetPaintView() const { return mrPaintView; }
-    OutputDevice& GetOutputDevice() const { return *mpOutputDevice.get(); }
+    OutputDevice& GetOutputDevice() const { return *mpOutputDevice; }
     vcl::Window* GetWindow() const { return mpWindow; }
 
     // OVERLAYMANAGER
@@ -111,10 +114,9 @@ public:
     bool OutputToPrinter() const { return (OUTDEV_PRINTER == mpOutputDevice->GetOutDevType()); }
 
     // Is OutDev a window?
-    bool OutputToWindow() const { return (OUTDEV_WINDOW == mpOutputDevice->GetOutDevType()); }
+    bool OutputToWindow() const { return mbOutputToWindow; }
 
-    // Is OutDev a VirtualDevice?
-    bool OutputToVirtualDevice() const { return (OUTDEV_VIRDEV == mpOutputDevice->GetOutDevType()); }
+    void SetOutputToWindow(bool bOutputToWindow) { mbOutputToWindow = bOutputToWindow; }
 
     // Is OutDev a recording MetaFile?
     bool OutputToRecordingMetaFile() const;
@@ -123,22 +125,19 @@ public:
     void PreparePreRenderDevice();
     void DestroyPreRenderDevice();
     void OutputPreRenderDevice(const vcl::Region& rExpandedRegion);
-    SdrPreRenderDevice* GetPreRenderDevice() const { return mpPreRenderDevice; }
+    SdrPreRenderDevice* GetPreRenderDevice() const { return mpPreRenderDevice.get(); }
 
     // RedrawRegion
     const vcl::Region& GetRedrawRegion() const { return maRedrawRegion;}
     void SetRedrawRegion(const vcl::Region& rNew);
 
     // #i72889# read/write access to TemporaryTarget
-    bool getTemporaryTarget() const { return (bool)mbTemporaryTarget; }
+    bool getTemporaryTarget() const { return mbTemporaryTarget; }
     void setTemporaryTarget(bool bNew) { mbTemporaryTarget = bNew; }
 
     // #i72889# get target output device, take into account output buffering
-    OutputDevice& GetTargetOutputDevice() { if(mpPreRenderDevice) return mpPreRenderDevice->GetPreRenderDevice(); else return *mpOutputDevice.get(); }
+    OutputDevice& GetTargetOutputDevice() { if(mpPreRenderDevice) return mpPreRenderDevice->GetPreRenderDevice(); else return *mpOutputDevice; }
 };
-
-// typedefs for a list of SdrPaintWindows
-typedef ::std::vector< SdrPaintWindow* > SdrPaintWindowVector;
 
 #endif // INCLUDED_SVX_SDRPAINTWINDOW_HXX
 

@@ -33,9 +33,9 @@
 #include <tools/stream.hxx>
 #include <vcl/graphicfilter.hxx>
 
-#include <graphconvert.hxx>
+#include "graphconvert.hxx"
 #include "mtnotification.hxx"
-#include "oleembobj.hxx"
+#include <oleembobj.hxx>
 
 
 using namespace ::com::sun::star;
@@ -56,7 +56,7 @@ bool ConvertBufferToFormat( void* pBuf,
         if (rFilter.CanImportGraphic(OUString(), aMemoryStream, GRFILTER_FORMAT_DONTKNOW, &nRetFormat) == ERRCODE_NONE &&
                 rFilter.GetImportFormatMediaType(nRetFormat) == aMimeType)
         {
-            aResult <<= uno::Sequence< sal_Int8 >( static_cast< const sal_Int8* >( aMemoryStream.GetData() ), aMemoryStream.Seek( STREAM_SEEK_TO_END ) );
+            aResult <<= uno::Sequence< sal_Int8 >( static_cast< const sal_Int8* >( aMemoryStream.GetData() ), aMemoryStream.TellEnd() );
             return true;
         }
 
@@ -80,7 +80,7 @@ bool ConvertBufferToFormat( void* pBuf,
                 aOutMediaProperties[1].Value <<= aMimeType;
 
                 xGraphicProvider->storeGraphic( xGraphic, aOutMediaProperties );
-                aResult <<= uno::Sequence< sal_Int8 >( static_cast< const sal_Int8* >( aNewStream.GetData() ), aNewStream.Seek( STREAM_SEEK_TO_END ) );
+                aResult <<= uno::Sequence< sal_Int8 >( static_cast< const sal_Int8* >( aNewStream.GetData() ), aNewStream.TellEnd() );
                 return true;
             }
         }

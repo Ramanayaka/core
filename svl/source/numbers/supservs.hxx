@@ -24,22 +24,24 @@
 #include <svl/zforlist.hxx>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <memory>
 
 /**
  * SvNumberFormatsSupplierServiceObject - a number formats supplier which
- * - can be instantiated as an service
+ * - can be instantiated as a service
  * - works with its own SvNumberFormatter instance
  * - can be initialized (css::lang::XInitialization)
  * with a specific language (i.e. css::lang::Locale)
  */
-class SvNumberFormatsSupplierServiceObject
+class SvNumberFormatsSupplierServiceObject final
             :public SvNumberFormatsSupplierObj
             ,public css::lang::XInitialization
             ,public css::lang::XServiceInfo
 {
-protected:
-    SvNumberFormatter*                                  m_pOwnFormatter;
+    std::unique_ptr<SvNumberFormatter>                  m_pOwnFormatter;
     css::uno::Reference< css::uno::XComponentContext >  m_xORB;
+
+    void implEnsureFormatter();
 
 public:
     explicit SvNumberFormatsSupplierServiceObject(const css::uno::Reference< css::uno::XComponentContext >& _rxORB);
@@ -68,11 +70,8 @@ public:
     virtual css::uno::Reference< css::util::XNumberFormats > SAL_CALL
                 getNumberFormats() override;
 
-    // XUnoTunnler
+    // XUnoTunneler
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-
-protected:
-    void implEnsureFormatter();
 };
 
 

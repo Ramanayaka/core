@@ -19,14 +19,14 @@
 #ifndef INCLUDED_TYPELIB_TYPEDESCRIPTION_HXX
 #define INCLUDED_TYPELIB_TYPEDESCRIPTION_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cstddef>
 
-#include <rtl/alloc.h>
-#include <rtl/ustring.hxx>
-#include <com/sun/star/uno/Type.h>
-#include <typelib/typedescription.h>
+#include "rtl/alloc.h"
+#include "rtl/ustring.hxx"
+#include "com/sun/star/uno/Type.h"
+#include "typelib/typedescription.h"
 
 
 namespace com
@@ -83,7 +83,7 @@ public:
     */
     inline TypeDescription( const TypeDescription & rDescr );
 #if defined LIBO_INTERNAL_ONLY
-    TypeDescription(TypeDescription && other): _pTypeDescr(other._pTypeDescr)
+    TypeDescription(TypeDescription && other) noexcept : _pTypeDescr(other._pTypeDescr)
     { other._pTypeDescr = nullptr; }
 #endif
     /** Constructor:
@@ -115,7 +115,7 @@ public:
         { return this->operator =( rTypeDescr.get() ); }
 
 #if defined LIBO_INTERNAL_ONLY
-    TypeDescription & operator =(TypeDescription && other) {
+    TypeDescription & operator =(TypeDescription && other) noexcept {
         if (_pTypeDescr != nullptr) {
             typelib_typedescription_release(_pTypeDescr);
         }

@@ -17,10 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ViewShell.hxx"
-#include "smarttag.hxx"
-#include "Window.hxx"
-#include "View.hxx"
+#include <vcl/commandevent.hxx>
+
+#include <ViewShell.hxx>
+#include <smarttag.hxx>
+#include <Window.hxx>
+#include <View.hxx>
 
 namespace sd
 {
@@ -44,12 +46,6 @@ bool SmartTag::MouseButtonDown( const MouseEvent&, SmartHdl&  )
 
 /** returns true if the SmartTag consumes this event. */
 bool SmartTag::KeyInput( const KeyEvent& /*rKEvt*/ )
-{
-    return false;
-}
-
-/** returns true if the SmartTag consumes this event. */
-bool SmartTag::RequestHelp( const HelpEvent& /*rHEvt*/ )
 {
     return false;
 }
@@ -85,12 +81,12 @@ bool SmartTag::getContext( SdrViewContext& /*rContext*/ )
     return false;
 }
 
-sal_uLong SmartTag::GetMarkablePointCount() const
+sal_Int32 SmartTag::GetMarkablePointCount() const
 {
     return 0;
 }
 
-sal_uLong SmartTag::GetMarkedPointCount() const
+sal_Int32 SmartTag::GetMarkedPointCount() const
 {
     return 0;
 }
@@ -148,8 +144,8 @@ void SmartTagSet::Dispose()
 {
     std::set< SmartTagReference > aSet;
     aSet.swap( maSet );
-    for( std::set< SmartTagReference >::iterator aIter( aSet.begin() ); aIter != aSet.end(); )
-        (*aIter++)->Dispose();
+    for( auto& rxItem : aSet )
+        rxItem->Dispose();
     mrView.InvalidateAllWin();
     mxMouseOverTag.clear();
     mxSelectedTag.clear();
@@ -157,19 +153,19 @@ void SmartTagSet::Dispose()
 
 void SmartTagSet::select( const SmartTagReference& xTag )
 {
-    if( mxSelectedTag != xTag )
-    {
-        if( mxSelectedTag.is() )
-            mxSelectedTag->deselect();
+    if( mxSelectedTag == xTag )
+        return;
 
-        mxSelectedTag = xTag;
-        mxSelectedTag->select();
-        mrView.SetPossibilitiesDirty();
-        if( mrView.GetMarkedObjectCount() > 0 )
-            mrView.UnmarkAllObj();
-        else
-            mrView.updateHandles();
-    }
+    if( mxSelectedTag.is() )
+        mxSelectedTag->deselect();
+
+    mxSelectedTag = xTag;
+    mxSelectedTag->select();
+    mrView.SetPossibilitiesDirty();
+    if( mrView.GetMarkedObjectCount() > 0 )
+        mrView.UnmarkAllObj();
+    else
+        mrView.updateHandles();
 }
 
 void SmartTagSet::deselect()
@@ -217,28 +213,9 @@ bool SmartTagSet::KeyInput( const KeyEvent& rKEvt )
         if( pSmartHdl )
         {
             const_cast< SdrHdlList& >( mrView.GetHdlList() ).ResetFocusHdl();
-            SmartTagReference xTag( pSmartHdl->getTag() );
+            const SmartTagReference& xTag( pSmartHdl->getTag() );
             select( xTag );
             return true;
-        }
-    }
-
-    return false;
-}
-
-bool SmartTagSet::RequestHelp( const HelpEvent& rHEvt )
-{
-    Point aMDPos( mrView.GetViewShell()->GetActiveWindow()->PixelToLogic( rHEvt.GetMousePosPixel() ) );
-    SdrHdl* pHdl = mrView.PickHandle(aMDPos);
-
-    if( pHdl )
-    {
-        // if a smart tag handle is hit, forward event to its smart tag
-        SmartHdl* pSmartHdl = dynamic_cast< SmartHdl* >( pHdl );
-        if(pSmartHdl && pSmartHdl->getTag().is() )
-        {
-            SmartTagReference xTag( pSmartHdl->getTag() );
-            return xTag->RequestHelp( rHEvt );
         }
     }
 
@@ -259,7 +236,7 @@ bool SmartTagSet::Command( const CommandEvent& rCEvt )
             SmartHdl* pSmartHdl = dynamic_cast< SmartHdl* >( pHdl );
             if(pSmartHdl && pSmartHdl->getTag().is() )
             {
-                SmartTagReference xTag( pSmartHdl->getTag() );
+                const SmartTagReference& xTag( pSmartHdl->getTag() );
                 return xTag->Command( rCEvt );
             }
         }
@@ -276,11 +253,8 @@ bool SmartTagSet::Command( const CommandEvent& rCEvt )
 
 void SmartTagSet::addCustomHandles( SdrHdlList& rHandlerList )
 {
-    if( !maSet.empty() )
-    {
-        for( std::set< SmartTagReference >::iterator aIter( maSet.begin() ); aIter != maSet.end(); )
-            (*aIter++)->addCustomHandles( rHandlerList );
-    }
+    for( auto& rxItem : maSet )
+        rxItem->addCustomHandles( rHandlerList );
 }
 
 /** returns true if the currently selected smart tag has
@@ -320,13 +294,6 @@ sal_uLong SmartTagSet::GetMarkedPointCount() const
         return 0;
 }
 
-bool SmartTagSet::IsPointMarkable(const SdrHdl& rHdl)
-{
-    const SmartHdl* pSmartHdl = dynamic_cast< const SmartHdl* >( &rHdl );
-
-    return pSmartHdl && pSmartHdl->isMarkable();
-}
-
 bool SmartTagSet::MarkPoint(SdrHdl& rHdl, bool bUnmark )
 {
     if( mxSelectedTag.is() )
@@ -350,20 +317,15 @@ void SmartTagSet::CheckPossibilities()
 
 SmartHdl::SmartHdl( const SmartTagReference& xTag, SdrObject* pObject, const Point& rPnt, SdrHdlKind eNewKind /*=SdrHdlKind::Move*/ )
 : SdrHdl( rPnt, eNewKind )
-, mxTag( xTag )
+, mxSmartTag( xTag )
 {
     SetObj( pObject );
 }
 
 SmartHdl::SmartHdl( const SmartTagReference& xTag, const Point& rPnt, SdrHdlKind eNewKind /*=SdrHdlKind::Move*/ )
 : SdrHdl( rPnt, eNewKind )
-, mxTag( xTag )
+, mxSmartTag( xTag )
 {
-}
-
-bool SmartHdl::isMarkable() const
-{
-    return false;
 }
 
 } // end of namespace sd

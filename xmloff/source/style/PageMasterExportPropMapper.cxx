@@ -18,13 +18,17 @@
  */
 
 #include "PageMasterExportPropMapper.hxx"
+#include <xmloff/xmlprmap.hxx>
 #include <xmloff/xmltoken.hxx>
+#include <xmloff/xmlexp.hxx>
 #include <comphelper/types.hxx>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/table/BorderLine2.hpp>
-#include <xmloff/PageMasterStyleMap.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <com/sun/star/drawing/FillStyle.hpp>
+#include <com/sun/star/drawing/BitmapMode.hpp>
+#include <PageMasterStyleMap.hxx>
+#include <rtl/ref.hxx>
 #include <comphelper/extract.hxx>
-#include <xmloff/txtprmap.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -32,7 +36,7 @@ using namespace ::com::sun::star::beans;
 using namespace ::comphelper;
 using namespace ::xmloff::token;
 
-static inline bool lcl_HasSameLineWidth( const table::BorderLine2& rLine1, const table::BorderLine2& rLine2 )
+static bool lcl_HasSameLineWidth( const table::BorderLine2& rLine1, const table::BorderLine2& rLine2 )
 {
     return  (rLine1.InnerLineWidth == rLine2.InnerLineWidth) &&
             (rLine1.OuterLineWidth == rLine2.OuterLineWidth) &&
@@ -40,7 +44,7 @@ static inline bool lcl_HasSameLineWidth( const table::BorderLine2& rLine1, const
             (rLine1.LineWidth == rLine2.LineWidth);
 }
 
-static inline void lcl_RemoveState( XMLPropertyState* pState )
+static void lcl_RemoveState( XMLPropertyState* pState )
 {
     pState->mnIndex = -1;
     pState->maValue.clear();
@@ -56,10 +60,12 @@ static void lcl_RemoveStateIfZero16( XMLPropertyState* pState )
 static void lcl_AddState(::std::vector< XMLPropertyState >& rPropState, sal_Int32 nIndex, const OUString& rProperty, const uno::Reference< beans::XPropertySet >& xProps)
 {
     if(::cppu::any2bool(xProps->getPropertyValue(rProperty)))
-        rPropState.push_back(XMLPropertyState (nIndex, css::uno::Any(true)));
+        rPropState.emplace_back(nIndex, css::uno::Any(true));
 }
 
 // helper struct to handle equal XMLPropertyState's for page, header and footer
+
+namespace {
 
 struct XMLPropertyStateBuffer
 {
@@ -86,6 +92,8 @@ struct XMLPropertyStateBuffer
                             XMLPropertyStateBuffer();
     void                    ContextFilter( ::std::vector< XMLPropertyState >& rPropState );
 };
+
+}
 
 XMLPropertyStateBuffer::XMLPropertyStateBuffer()
     :   pPMMarginAll( nullptr )
@@ -169,30 +177,30 @@ void XMLPropertyStateBuffer::ContextFilter( ::std::vector< XMLPropertyState >& )
             lcl_RemoveState( pPMBorderWidthAll );
     }
 
-    if( pPMPaddingAll )
+    if( !pPMPaddingAll )
+        return;
+
+    if( pPMPaddingTop && pPMPaddingBottom && pPMPaddingLeft && pPMPaddingRight )
     {
-        if( pPMPaddingTop && pPMPaddingBottom && pPMPaddingLeft && pPMPaddingRight )
+        sal_Int32 nTop = 0, nBottom = 0, nLeft = 0, nRight = 0;
+
+        pPMPaddingTop->maValue >>= nTop;
+        pPMPaddingBottom->maValue >>= nBottom;
+        pPMPaddingLeft->maValue >>= nLeft;
+        pPMPaddingRight->maValue >>= nRight;
+
+        if( (nTop == nBottom) && (nBottom == nLeft) && (nLeft == nRight) )
         {
-            sal_Int32 nTop = 0, nBottom = 0, nLeft = 0, nRight = 0;
-
-            pPMPaddingTop->maValue >>= nTop;
-            pPMPaddingBottom->maValue >>= nBottom;
-            pPMPaddingLeft->maValue >>= nLeft;
-            pPMPaddingRight->maValue >>= nRight;
-
-            if( (nTop == nBottom) && (nBottom == nLeft) && (nLeft == nRight) )
-            {
-                lcl_RemoveState( pPMPaddingTop );
-                lcl_RemoveState( pPMPaddingBottom );
-                lcl_RemoveState( pPMPaddingLeft );
-                lcl_RemoveState( pPMPaddingRight );
-            }
-            else
-                lcl_RemoveState( pPMPaddingAll );
+            lcl_RemoveState( pPMPaddingTop );
+            lcl_RemoveState( pPMPaddingBottom );
+            lcl_RemoveState( pPMPaddingLeft );
+            lcl_RemoveState( pPMPaddingRight );
         }
         else
             lcl_RemoveState( pPMPaddingAll );
     }
+    else
+        lcl_RemoveState( pPMPaddingAll );
 }
 
 XMLPageMasterExportPropMapper::XMLPageMasterExportPropMapper(
@@ -323,15 +331,32 @@ void XMLPageMasterExportPropMapper::ContextFilter(
     XMLPropertyState* pFooterRepeatOffsetX = nullptr;
     XMLPropertyState* pFooterRepeatOffsetY = nullptr;
 
+    XMLPropertyState* pFill = nullptr;
+    XMLPropertyState* pFillBitmapMode = nullptr;
+
     rtl::Reference < XMLPropertySetMapper > aPropMapper(getPropertySetMapper());
 
-    for( ::std::vector< XMLPropertyState >::iterator aIter = rPropState.begin(); aIter != rPropState.end(); ++aIter )
+    // distinguish 2 cases: drawing-page export has CTF_PM_FILL, page-layout-properties export does not
+    bool const isDrawingPageExport(aPropMapper->FindEntryIndex(CTF_PM_FILL) != -1);
+
+    for( auto& rProp : rPropState )
     {
-        XMLPropertyState *pProp = &(*aIter);
+        XMLPropertyState *pProp = &rProp;
         sal_Int16 nContextId    = aPropMapper->GetEntryContextId( pProp->mnIndex );
         sal_Int16 nFlag         = nContextId & CTF_PM_FLAGMASK;
         sal_Int16 nSimpleId     = nContextId & (~CTF_PM_FLAGMASK | XML_PM_CTF_START);
         sal_Int16 nPrintId      = nContextId & CTF_PM_PRINTMASK;
+
+
+        // tdf#103602 don't export draw:fill attributes on page-layout-properties in strict ODF
+        if (!isDrawingPageExport
+            && aPropMapper->GetEntryAPIName(rProp.mnIndex).startsWith("Fill")
+            && ((aBackgroundImageExport.GetExport().getSaneDefaultVersion()
+                & SvtSaveOptions::ODFSVER_EXTENDED) == 0))
+        {
+            lcl_RemoveState(&rProp);
+            continue;
+        }
 
         XMLPropertyStateBuffer* pBuffer;
         switch( nFlag )
@@ -343,6 +368,20 @@ void XMLPageMasterExportPropMapper::ContextFilter(
 
         switch( nSimpleId )
         {
+            case CTF_PM_FILL: // tdf#103602: add background-size attribute to ODT
+                if (nFlag != CTF_PM_HEADERFLAG && nFlag != CTF_PM_FOOTERFLAG
+                    && rProp.maValue.hasValue())
+                {
+                    pFill = &rProp;
+                }
+                break;
+            case CTF_PM_FILLBITMAPMODE:
+                if (nFlag != CTF_PM_HEADERFLAG && nFlag != CTF_PM_FOOTERFLAG
+                    && rProp.maValue.hasValue())
+                {
+                    pFillBitmapMode = &rProp;
+                }
+                break;
             case CTF_PM_MARGINALL:          pBuffer->pPMMarginAll           = pProp;    break;
             case CTF_PM_BORDERALL:          pBuffer->pPMBorderAll           = pProp;    break;
             case CTF_PM_BORDERTOP:          pBuffer->pPMBorderTop           = pProp;    break;
@@ -418,7 +457,7 @@ void XMLPageMasterExportPropMapper::ContextFilter(
             case CTF_PM_FOOTERFILLBITMAPNAME:
             case CTF_PM_FOOTERFILLTRANSNAME:
             {
-                rtl::OUString aStr;
+                OUString aStr;
 
                 if( (pProp->maValue >>= aStr) && 0 == aStr.getLength() )
                 {
@@ -537,6 +576,48 @@ void XMLPageMasterExportPropMapper::ContextFilter(
         lcl_AddState(rPropState, aPropMapper->FindEntryIndex(CTF_PM_PRINT_HEADERS), "PrintHeaders", rPropSet);
         lcl_AddState(rPropState, aPropMapper->FindEntryIndex(CTF_PM_PRINT_OBJECTS), "PrintObjects", rPropSet);
         lcl_AddState(rPropState, aPropMapper->FindEntryIndex(CTF_PM_PRINT_ZEROVALUES), "PrintZeroValues", rPropSet);
+    }
+
+    if (pFill)
+    {   // note: only drawing-page export should write this, because CTF_PM_FILL
+        uno::Any backgroundSize;
+        switch (pFill->maValue.get<drawing::FillStyle>())
+        {
+            case drawing::FillStyle_NONE:
+                break;
+            case drawing::FillStyle_SOLID:
+            case drawing::FillStyle_GRADIENT:
+            case drawing::FillStyle_HATCH:
+                backgroundSize <<= true;
+                break;
+            case drawing::FillStyle_BITMAP:
+                if (pFillBitmapMode)
+                {
+                    switch (pFillBitmapMode->maValue.get<drawing::BitmapMode>())
+                    {
+                        case drawing::BitmapMode_REPEAT:
+                            backgroundSize <<= true;
+                            break;
+                        case drawing::BitmapMode_STRETCH:
+                        case drawing::BitmapMode_NO_REPEAT:
+                            backgroundSize <<= false;
+                            break;
+                        default:
+                            assert(false);
+                    }
+                }
+                // else: leave it ambiguous if not explicitly defined
+                break;
+            default:
+                assert(false);
+        }
+
+        if (backgroundSize.hasValue())
+        {
+            auto const nIndex(aPropMapper->FindEntryIndex(CTF_PM_BACKGROUNDSIZE));
+            assert(0 <= nIndex);
+            rPropState.emplace_back(nIndex, backgroundSize);
+        }
     }
 
     SvXMLExportPropertyMapper::ContextFilter(bEnableFoFontFamily, rPropState, rPropSet);

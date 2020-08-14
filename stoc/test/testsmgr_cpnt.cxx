@@ -64,13 +64,8 @@ using namespace cppu;
 
 Reference<XMultiServiceFactory> getProcessServiceManager()
 {
-    Reference<XMultiServiceFactory > s_x;
-    if (! s_x.is())
-    {
-        MutexGuard aGuard( Mutex::getGlobalMutex() );
-        if (! s_x.is())
-            s_x = createRegistryServiceFactory( OUString("stoctest.rdb"), sal_False );
-    }
+    static Reference<XMultiServiceFactory> s_x(
+        createRegistryServiceFactory(OUString("stoctest.rdb"), sal_False));
     return s_x;
 }
 
@@ -153,10 +148,7 @@ Sequence< OUString > Test_Manager_Impl::getSupportedServiceNames() throw ()
 
 Sequence< OUString > Test_Manager_Impl::getSupportedServiceNames_Static() throw ()
 {
-    Sequence< OUString > aSNS( 2 );
-    aSNS.getArray()[0] = SERVICE_NAME;
-    aSNS.getArray()[1] = "com.sun.star.bridge.Bridge";
-    return aSNS;
+    return { SERVICE_NAME, "com.sun.star.bridge.Bridge" };
 }
 
 
@@ -210,7 +202,7 @@ extern "C" void SAL_CALL test_ServiceManager()
     }
     OSL_ENSURE( nLen == 8, "more than 6 factories" );
 
-    // try to get an instance for a unknown service
+    // try to get an instance for an unknown service
     OSL_VERIFY( !xSMgr->createInstance("bla.blup.Q").is() );
 
 
@@ -283,7 +275,7 @@ sal_Bool SAL_CALL component_writeInfo(
 }
 
 SAL_DLLPUBLIC_EXPORT void * SAL_CALL component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * /*pRegistryKey*/ )
+    const char * pImplName, void * pServiceManager, void * /*pRegistryKey*/ )
 {
     void * pRet = 0;
 

@@ -23,25 +23,22 @@
 #include <memory>
 
 #include <xmloff/xmlictxt.hxx>
-#include <com/sun/star/drawing/XShapes.hpp>
-
-class AnimImpImpl;
+#include <com/sun/star/beans/XPropertySet.hpp>
 
 // presentations:animations
 
-class XMLAnimationsContext : public SvXMLImportContext
+class XMLAnimationsContext final : public SvXMLImportContext
 {
-    std::shared_ptr<AnimImpImpl> mpImpl;
-
 public:
+    css::uno::Reference< css::beans::XPropertySet > mxLastShape;
+    OUString maLastShapeId;
 
-    XMLAnimationsContext( SvXMLImport& rImport,
-        sal_uInt16 nPrfx,
-        const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList);
+    XMLAnimationsContext( SvXMLImport& rImport);
 
-    virtual SvXMLImportContext * CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual void SAL_CALL startFastElement( sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
 };
 
 #endif // INCLUDED_XMLOFF_INC_ANIMIMP_HXX

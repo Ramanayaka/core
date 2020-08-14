@@ -22,11 +22,12 @@
 
 #include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 
-namespace sd { namespace presenter {
+namespace com::sun::star::uno { class XComponentContext; }
+
+namespace sd::presenter {
 
 typedef ::cppu::WeakComponentImplHelper<
     css::lang::XInitialization,
@@ -90,7 +91,7 @@ private:
     css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
 };
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 #endif
 

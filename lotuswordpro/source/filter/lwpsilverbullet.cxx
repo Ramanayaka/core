@@ -59,17 +59,18 @@
  ************************************************************************/
 
 #include <memory>
-#include "lwpglobalmgr.hxx"
+#include <lwpglobalmgr.hxx>
 #include "lwpsilverbullet.hxx"
 #include "lwpdoc.hxx"
 #include "lwpdivinfo.hxx"
-#include "lwpfoundry.hxx"
+#include "lwpfribheader.hxx"
+#include <lwpfoundry.hxx>
 #include "lwpstory.hxx"
 #include "lwppara.hxx"
-#include "xfilter/xfliststyle.hxx"
-#include "xfilter/xfstylemanager.hxx"
+#include <xfilter/xfliststyle.hxx>
+#include <xfilter/xfstylemanager.hxx>
 
-LwpSilverBullet::LwpSilverBullet(LwpObjectHeader& objHdr, LwpSvStream* pStrm)
+LwpSilverBullet::LwpSilverBullet(LwpObjectHeader const & objHdr, LwpSvStream* pStrm)
     : LwpDLNFVList(objHdr, pStrm)
     , m_nFlags(0)
     , m_nUseCount(0)
@@ -178,7 +179,7 @@ void LwpSilverBullet::RegisterStyle()
     }
 
     //add style-list to style manager.
-    m_strStyleName = pXFStyleManager->AddStyle(xListStyle.release()).m_pStyle->GetStyleName();
+    m_strStyleName = pXFStyleManager->AddStyle(std::move(xListStyle)).m_pStyle->GetStyleName();
 }
 
 /**
@@ -215,7 +216,7 @@ OUString LwpSilverBullet::GetBulletFontName()
  * @descr:
  * @return:  An UChar32 bullet character.
  */
-OUString LwpSilverBullet::GetBulletChar()
+OUString const & LwpSilverBullet::GetBulletChar() const
 {
     return m_xBulletPara->GetBulletChar();
 }
@@ -246,7 +247,7 @@ LwpPara* LwpSilverBullet::GetBulletPara()
  *          includes numbering prefix, format and suffix.
  * @return:  An OUString object which store the numbering character.
  */
-OUString LwpSilverBullet::GetNumCharByStyleID(LwpFribParaNumber* pParaNumber)
+OUString LwpSilverBullet::GetNumCharByStyleID(LwpFribParaNumber const * pParaNumber)
 {
     if (!pParaNumber)
     {
@@ -281,19 +282,19 @@ OUString LwpSilverBullet::GetNumCharByStyleID(LwpFribParaNumber* pParaNumber)
         break;
     case NUMCHAR_Chinese1:
         {
-        sal_Unicode sBuf[13] = {0x58f9,0x002c,0x0020,0x8d30,0x002c,0x0020,0x53c1,0x002c,0x0020,0x002e,0x002e,0x002e,0x0};
+        sal_Unicode const sBuf[13] = {0x58f9,0x002c,0x0020,0x8d30,0x002c,0x0020,0x53c1,0x002c,0x0020,0x002e,0x002e,0x002e,0x0};
         strNumChar = OUString(sBuf);
         }
         break;
     case NUMCHAR_Chinese2:
         {
-        sal_Unicode sBuf[13] = {0x4e00,0x002c,0x0020,0x4e8c,0x002c,0x0020,0x4e09,0x002c,0x0020,0x002e,0x002e,0x002e,0x0};
+        sal_Unicode const sBuf[13] = {0x4e00,0x002c,0x0020,0x4e8c,0x002c,0x0020,0x4e09,0x002c,0x0020,0x002e,0x002e,0x002e,0x0};
         strNumChar = OUString(sBuf);
         }
         break;
     case NUMCHAR_Chinese3:
         {
-        sal_Unicode sBuf[13] = {0x7532,0x002c,0x0020,0x4e59,0x002c,0x0020,0x4e19,0x002c,0x0020,0x002e,0x002e,0x002e,0x0};
+        sal_Unicode const sBuf[13] = {0x7532,0x002c,0x0020,0x4e59,0x002c,0x0020,0x4e19,0x002c,0x0020,0x002e,0x002e,0x002e,0x0};
         strNumChar = OUString(sBuf);
         }
         break;
@@ -428,7 +429,7 @@ OUString LwpSilverBullet::GetDivisionName()
     return aRet;
 }
 
-OUString LwpSilverBullet::GetSectionName()
+OUString LwpSilverBullet::GetSectionName() const
 {
     LwpStory* pStory = dynamic_cast<LwpStory*>(m_aStory.obj(VO_STORY).get());
     if (!pStory)

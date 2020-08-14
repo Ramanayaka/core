@@ -19,13 +19,7 @@
 
 #include <editeng/AccessibleComponentBase.hxx>
 
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-#include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/drawing/XShapeDescriptor.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
 #include <tools/color.hxx>
 
@@ -108,13 +102,13 @@ void SAL_CALL AccessibleComponentBase::grabFocus()
 
 sal_Int32 SAL_CALL AccessibleComponentBase::getForeground()
 {
-    return Color(COL_BLACK).GetColor();
+    return sal_Int32(COL_BLACK);
 }
 
 
 sal_Int32 SAL_CALL AccessibleComponentBase::getBackground()
 {
-    return Color(COL_WHITE).GetColor();
+    return sal_Int32(COL_WHITE);
 }
 
 
@@ -140,19 +134,12 @@ OUString SAL_CALL AccessibleComponentBase::getToolTipText()
 
 // XTypeProvider
 
-uno::Sequence<uno::Type> SAL_CALL
+uno::Sequence<uno::Type>
     AccessibleComponentBase::getTypes()
 {
-    // Get list of types from the context base implementation...
-    uno::Sequence<uno::Type> aTypeList (2);
-    // ...and add the additional type for the component.
-    const uno::Type aComponentType =
-         cppu::UnoType<XAccessibleComponent>::get();
-    const uno::Type aExtendedComponentType =
-        cppu::UnoType<XAccessibleExtendedComponent>::get();
-    aTypeList[0] = aComponentType;
-    aTypeList[1] = aExtendedComponentType;
-
+    static const uno::Sequence aTypeList {
+         cppu::UnoType<XAccessibleComponent>::get(),
+        cppu::UnoType<XAccessibleExtendedComponent>::get() };
     return aTypeList;
 }
 

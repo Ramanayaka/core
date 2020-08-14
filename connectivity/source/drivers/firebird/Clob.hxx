@@ -18,9 +18,7 @@
 #include <com/sun/star/sdbc/XClob.hpp>
 #include <rtl/ref.hxx>
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
         typedef ::cppu::WeakComponentImplHelper< css::sdbc::XClob >
             Clob_BASE;
@@ -38,20 +36,22 @@ namespace connectivity
              */
             rtl::Reference<connectivity::firebird::Blob> m_aBlob;
 
+            sal_Int64 m_nCharCount;
+
         public:
             Clob(isc_db_handle* pDatabaseHandle,
                  isc_tr_handle* pTransactionHandle,
-                 ISC_QUAD& aBlobID);
+                 ISC_QUAD const & aBlobID);
 
             // ---- XClob ----------------------------------------------------
             virtual sal_Int64 SAL_CALL
                 length() override;
-            virtual ::rtl::OUString SAL_CALL
+            virtual OUString SAL_CALL
                 getSubString(sal_Int64 aPosition, sal_Int32 aLength) override;
             virtual css::uno::Reference< css::io::XInputStream > SAL_CALL
                 getCharacterStream() override;
             virtual sal_Int64 SAL_CALL
-                position(const ::rtl::OUString& rPattern,
+                position(const OUString& rPattern,
                          sal_Int32 aStart) override;
             virtual sal_Int64 SAL_CALL
                 positionOfClob(const ::css::uno::Reference< ::css::sdbc::XClob >& rPattern,
@@ -59,7 +59,6 @@ namespace connectivity
             // ---- OComponentHelper ------------------------------------------
             virtual void SAL_CALL disposing() override;
         };
-    }
 
 }
 

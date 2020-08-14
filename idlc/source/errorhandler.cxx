@@ -20,7 +20,7 @@
 #include <errorhandler.hxx>
 #include <astinterface.hxx>
 
-static const sal_Char* errorCodeToMessage(ErrorCode eCode)
+static const char* errorCodeToMessage(ErrorCode eCode)
 {
     switch (eCode)
     {
@@ -121,7 +121,7 @@ static const sal_Char* errorCodeToMessage(ErrorCode eCode)
     return "unknown error";
 }
 
-static const sal_Char* warningCodeToMessage(WarningCode wCode)
+static const char* warningCodeToMessage(WarningCode wCode)
 {
     switch (wCode)
     {
@@ -131,7 +131,7 @@ static const sal_Char* warningCodeToMessage(WarningCode wCode)
     return "unknown warning";
 }
 
-static const sal_Char* parseStateToMessage(ParseState state)
+static const char* parseStateToMessage(ParseState state)
 {
     switch (state)
     {
@@ -172,7 +172,7 @@ static const sal_Char* parseStateToMessage(ParseState state)
     case PS_ServiceIFHeadSeen:
         return "Illegal syntax following header of an interface member";
     case PS_ServiceSHeadSeen:
-        return "Illegal syntax following header of an service member";
+        return "Illegal syntax following header of a service member";
     case PS_ModuleSeen:
         return "Missing module identifier following MODULE keyword";
     case PS_ModuleIDSeen:
@@ -444,7 +444,7 @@ void ErrorHandler::error2(
     idlc()->incErrorCount();
 }
 
-void ErrorHandler::error3(ErrorCode e, AstDeclaration* d1, AstDeclaration* d2, AstDeclaration* d3)
+void ErrorHandler::error3(ErrorCode e, AstDeclaration const * d1, AstDeclaration const * d2, AstDeclaration const * d3)
 {
     errorHeader(e);
     fprintf(stderr, "'%s', '%s', '%s'\n", d1->getScopedName().getStr(),
@@ -452,7 +452,7 @@ void ErrorHandler::error3(ErrorCode e, AstDeclaration* d1, AstDeclaration* d2, A
     idlc()->incErrorCount();
 }
 
-void ErrorHandler::warning0(WarningCode w, const sal_Char* warningmsg)
+void ErrorHandler::warning0(WarningCode w, const char* warningmsg)
 {
     if ( idlc()->getOptions()->isValid("-w") || idlc()->getOptions()->isValid("-we") ) {
         warningHeader(w);
@@ -465,7 +465,7 @@ void ErrorHandler::warning0(WarningCode w, const sal_Char* warningmsg)
         idlc()->incWarningCount();
 }
 
-void ErrorHandler::syntaxError(ParseState ps, sal_Int32 lineNumber, const sal_Char* errmsg)
+void ErrorHandler::syntaxError(ParseState ps, sal_Int32 lineNumber, const char* errmsg)
 {
     errorHeader(ErrorCode::SyntaxError, lineNumber);
     fprintf(stderr, "%s: %s\n", parseStateToMessage(ps), errmsg);
@@ -487,7 +487,7 @@ void ErrorHandler::lookupError(const OString& n)
     idlc()->incErrorCount();
 }
 
-void ErrorHandler::lookupError(ErrorCode e, const OString& n, AstDeclaration* pScope)
+void ErrorHandler::lookupError(ErrorCode e, const OString& n, AstDeclaration const * pScope)
 {
     errorHeader(e);
     fprintf(stderr, "'%s' in '%s'\n", n.getStr(), pScope->getFullName().getStr());
@@ -528,11 +528,11 @@ char const * nodeTypeName(NodeType nodeType) {
 
 }
 
-void ErrorHandler::inheritanceError(NodeType nodeType, const OString* name, AstDeclaration* pDecl)
+void ErrorHandler::inheritanceError(NodeType nodeType, const OString* name, AstDeclaration const * pDecl)
 {
     if ( nodeType == NT_interface &&
          (pDecl->getNodeType() == NT_interface) &&
-         !(static_cast<AstInterface*>(pDecl)->isDefined()) )
+         !(static_cast<AstInterface const *>(pDecl)->isDefined()) )
     {
         errorHeader(ErrorCode::CannotInheritFromForward);
         fprintf(stderr, "interface '%s' cannot inherit from forward declared interface '%s'\n",
@@ -556,7 +556,7 @@ void ErrorHandler::forwardLookupError(const AstDeclaration* pForward,
     idlc()->incErrorCount();
 }
 
-void ErrorHandler::constantExpected(AstDeclaration* pDecl,
+void ErrorHandler::constantExpected(AstDeclaration const * pDecl,
                                     const OString& name)
 {
     errorHeader(ErrorCode::ExpectedConstant);

@@ -25,6 +25,8 @@
 #include <basic/basicdllapi.h>
 #include <o3tl/typed_flags_set.hxx>
 
+class ErrCode;
+
 // Returns type name for Basic type, array flag is ignored
 // implementation: basic/source/runtime/methods.cxx
 BASIC_DLLPUBLIC OUString getBasicTypeName( SbxDataType eType );
@@ -66,6 +68,10 @@ enum class PropertyMode
     Let,
     Set
 };
+
+BASIC_DLLPUBLIC extern std::pair<const char*, ErrCode> const RID_BASIC_START[];
+BASIC_DLLPUBLIC std::locale BasResLocale();
+OUString BasResId(const char* pId);
 
 #endif
 

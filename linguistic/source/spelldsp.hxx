@@ -20,17 +20,12 @@
 #ifndef INCLUDED_LINGUISTIC_SOURCE_SPELLDSP_HXX
 #define INCLUDED_LINGUISTIC_SOURCE_SPELLDSP_HXX
 
-#include "lngopt.hxx"
-#include "linguistic/misc.hxx"
-#include "iprcache.hxx"
+#include "defs.hxx"
+#include <linguistic/misc.hxx>
+#include <iprcache.hxx>
 
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XServiceDisplayName.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyValues.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/linguistic2/XSpellChecker1.hpp>
 #include <com/sun/star/linguistic2/XSpellChecker.hpp>
 #include <com/sun/star/linguistic2/XSearchableDictionaryList.hpp>
@@ -58,8 +53,8 @@ class SpellCheckerDispatcher :
     css::uno::Reference< css::linguistic2::XSearchableDictionaryList >  m_xDicList;
 
     LngSvcMgr                       &m_rMgr;
-    mutable linguistic::SpellCache  *m_pCache; // Spell Cache (holds known words)
-    CharClass                       *m_pCharClass;
+    mutable std::unique_ptr<linguistic::SpellCache> m_pCache; // Spell Cache (holds known words)
+    std::unique_ptr<CharClass>       m_pCharClass;
 
     SpellCheckerDispatcher(const SpellCheckerDispatcher &) = delete;
     SpellCheckerDispatcher & operator = (const SpellCheckerDispatcher &) = delete;
@@ -70,8 +65,6 @@ class SpellCheckerDispatcher :
             GetPropSet();
     inline css::uno::Reference< css::linguistic2::XSearchableDictionaryList >
             GetDicList();
-
-    void    ClearSvcList();
 
     /// @throws css::uno::RuntimeException
     /// @throws css::lang::IllegalArgumentException
@@ -94,8 +87,8 @@ public:
     virtual sal_Bool SAL_CALL hasLocale( const css::lang::Locale& aLocale ) override;
 
     // XSpellChecker
-    virtual sal_Bool SAL_CALL isValid( const OUString& aWord, const css::lang::Locale& aLocale, const css::beans::PropertyValues& aProperties ) override;
-    virtual css::uno::Reference< css::linguistic2::XSpellAlternatives > SAL_CALL spell( const OUString& aWord, const css::lang::Locale& aLocale, const css::beans::PropertyValues& aProperties ) override;
+    virtual sal_Bool SAL_CALL isValid( const OUString& aWord, const css::lang::Locale& aLocale, const css::uno::Sequence< ::css::beans::PropertyValue >& aProperties ) override;
+    virtual css::uno::Reference< css::linguistic2::XSpellAlternatives > SAL_CALL spell( const OUString& aWord, const css::lang::Locale& aLocale, const css::uno::Sequence< ::css::beans::PropertyValue >& aProperties ) override;
 
     // XSupportedLanguages
     virtual css::uno::Sequence< ::sal_Int16 > SAL_CALL getLanguages(  ) override;
@@ -113,14 +106,14 @@ public:
 
 private:
     void setCharClass(const LanguageTag& rLanguageTag);
-    static OUString SAL_CALL makeLowerCase(const OUString&, CharClass *);
+    static OUString makeLowerCase(const OUString&, CharClass const *);
 
 };
 
 inline linguistic::SpellCache & SpellCheckerDispatcher::GetCache() const
 {
     if (!m_pCache)
-        m_pCache = new linguistic::SpellCache();
+        m_pCache.reset(new linguistic::SpellCache());
     return *m_pCache;
 }
 
@@ -128,16 +121,18 @@ inline linguistic::SpellCache & SpellCheckerDispatcher::GetCache() const
 inline css::uno::Reference< css::linguistic2::XLinguProperties >
         SpellCheckerDispatcher::GetPropSet()
 {
-    return m_xPropSet.is() ?
-        m_xPropSet : m_xPropSet = linguistic::GetLinguProperties();
+    if (!m_xPropSet.is())
+        m_xPropSet = linguistic::GetLinguProperties();
+    return m_xPropSet;
 }
 
 
 inline css::uno::Reference< css::linguistic2::XSearchableDictionaryList >
         SpellCheckerDispatcher::GetDicList()
 {
-    return m_xDicList.is() ?
-        m_xDicList : m_xDicList = linguistic::GetDictionaryList();
+    if (!m_xDicList.is())
+        m_xDicList = linguistic::GetDictionaryList();
+    return m_xDicList;
 }
 
 

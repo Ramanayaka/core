@@ -19,7 +19,7 @@
 #ifndef INCLUDED_BRIDGES_SOURCE_CPP_UNO_GCC3_MACOSX_X86_64_SHARE_HXX
 #define INCLUDED_BRIDGES_SOURCE_CPP_UNO_GCC3_MACOSX_X86_64_SHARE_HXX
 
-#include "uno/mapping.h"
+#include <uno/mapping.h>
 
 #include <typeinfo>
 #include <exception>
@@ -68,6 +68,21 @@ typedef unsigned _Unwind_Ptr __attribute__((__mode__(__pointer__)));
 struct __cxa_exception
 {
 #if __LP64__
+#if 0
+    // This is a new field added with LLVM 10
+    // <https://github.com/llvm/llvm-project/commit/674ec1eb16678b8addc02a4b0534ab383d22fa77>
+    // "[libcxxabi] Insert padding in __cxa_exception struct for compatibility".  The HACK in
+    // fillUnoException (bridges/source/cpp_uno/gcc3_macosx_x86-64/except.cxx) tries to find out at
+    // runtime whether a __cxa_exception has this member.  Once we can be sure that we only run
+    // against new libcxxabi that has this member, we can drop the "#if 0" here and drop the hack
+    // in fillUnoException.
+
+    // Now _Unwind_Exception is marked with __attribute__((aligned)),
+    // which implies __cxa_exception is also aligned. Insert padding
+    // in the beginning of the struct, rather than before unwindHeader.
+    void *reserve;
+#endif
+
     // This is a new field to support C++ 0x exception_ptr.
     // For binary compatibility it is at the start of this
     // struct which is prepended to the object thrown in
@@ -80,7 +95,7 @@ struct __cxa_exception
 
   // The C++ standard has entertaining rules wrt calling set_terminate
   // and set_unexpected in the middle of the exception cleanup process.
-  std::unexpected_handler unexpectedHandler;
+  void (*unexpectedHandler)(); // std::unexpected_handler dropped from C++17
   std::terminate_handler terminateHandler;
 
   // The caught exception stack threads through here.
@@ -136,8 +151,7 @@ namespace CPPU_CURRENT_NAMESPACE
 void raiseException(
     uno_Any * pUnoExc, uno_Mapping * pUno2Cpp );
 
-void fillUnoException(
-    __cxa_exception * header, uno_Any *, uno_Mapping * pCpp2Uno );
+void fillUnoException(uno_Any *, uno_Mapping * pCpp2Uno);
 }
 
 #endif

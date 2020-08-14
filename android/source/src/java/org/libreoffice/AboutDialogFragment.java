@@ -20,6 +20,9 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.v4.app.DialogFragment;
+import android.text.Html;
+import android.text.Spanned;
+import android.text.method.LinkMovementMethod;
 import android.view.View;
 import android.widget.TextView;
 
@@ -38,13 +41,13 @@ public class AboutDialogFragment extends DialogFragment {
 
         // When linking text, force to always use default color. This works
         // around a pressed color state bug.
-        TextView textView = (TextView) messageView.findViewById(R.id.about_credits);
+        TextView textView = messageView.findViewById(R.id.about_credits);
         int defaultColor = textView.getTextColors().getDefaultColor();
         textView.setTextColor(defaultColor);
 
         // Take care of placeholders in the version and vendor text views.
-        TextView versionView = (TextView)messageView.findViewById(R.id.about_version);
-        TextView vendorView = (TextView)messageView.findViewById(R.id.about_vendor);
+        TextView versionView = messageView.findViewById(R.id.about_version);
+        TextView vendorView = messageView.findViewById(R.id.about_vendor);
         try
         {
             String versionName = getActivity().getPackageManager()
@@ -52,12 +55,14 @@ public class AboutDialogFragment extends DialogFragment {
             String[] tokens = versionName.split("/");
             if (tokens.length == 3)
             {
-                String version = versionView.getText().toString();
+                String version = String.format(versionView.getText().toString().replace("\n", "<br/>"),
+                        tokens[0], "<a href=\"https://hub.libreoffice.org/git-core/" + tokens[1] + "\">" + tokens[1] + "</a>");
+                @SuppressWarnings("deprecation") // since 24 with additional option parameter
+                Spanned versionString = Html.fromHtml(version);
+                versionView.setText(versionString);
+                versionView.setMovementMethod(LinkMovementMethod.getInstance());
                 String vendor = vendorView.getText().toString();
-                version = version.replace("$VERSION", tokens[0]);
-                version = version.replace("$BUILDID", tokens[1]);
                 vendor = vendor.replace("$VENDOR", tokens[2]);
-                versionView.setText(version);
                 vendorView.setText(vendor);
             }
             else

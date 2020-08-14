@@ -20,11 +20,9 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_FLAT_ETABLES_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_FLAT_ETABLES_HXX
 
-#include "file/FTables.hxx"
+#include <file/FTables.hxx>
 
-namespace connectivity
-{
-    namespace flat
+namespace connectivity::flat
     {
         typedef file::OTables OFlatTables_BASE;
 
@@ -34,10 +32,10 @@ namespace connectivity
             virtual sdbcx::ObjectType createObject(const OUString& _rName) override;
         public:
             OFlatTables(const css::uno::Reference< css::sdbc::XDatabaseMetaData >& _rMetaData,::cppu::OWeakObject& _rParent, ::osl::Mutex& _rMutex,
-                const TStringVector &_rVector) : OFlatTables_BASE(_rMetaData,_rParent,_rMutex,_rVector)
+                const ::std::vector< OUString> &_rVector) : OFlatTables_BASE(_rMetaData,_rParent,_rMutex,_rVector)
             {}
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_FLAT_ETABLES_HXX
 

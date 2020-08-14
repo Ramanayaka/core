@@ -21,7 +21,6 @@
 #define INCLUDED_UNOXML_SOURCE_DOM_ENTITY_HXX
 
 #include <libxml/tree.h>
-#include <libxml/entities.h>
 
 #include <sal/types.h>
 
@@ -41,10 +40,8 @@ namespace DOM
     private:
         friend class CDocument;
 
-    private:
         xmlEntityPtr m_aEntityPtr;
 
-    protected:
         CEntity(CDocument const& rDocument, ::osl::Mutex const& rMutex,
                 xmlEntityPtr const pEntity);
 

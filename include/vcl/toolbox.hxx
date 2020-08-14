@@ -20,30 +20,32 @@
 #ifndef INCLUDED_VCL_TOOLBOX_HXX
 #define INCLUDED_VCL_TOOLBOX_HXX
 
-#include <vcl/vclstatuslistener.hxx>
-#include <rsc/rsc-vcl-shared-types.hxx>
+#include <vcl/vclenum.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/dockwin.hxx>
 #include <vcl/image.hxx>
+#include <vcl/keycod.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 #include <limits>
+#include <memory>
 #include <vector>
 
-#include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/frame/FeatureStateEvent.hpp>
+namespace com::sun::star::frame { class XFrame; }
+namespace com::sun::star::frame { struct FeatureStateEvent; }
+template <class T> class VclStatusListener;
 
 class Timer;
-class UserDrawEvent;
 struct ImplToolItem;
 struct ImplToolBoxPrivateData;
-class  ImplTrackRect;
 class  PopupMenu;
+class VclMenuEvent;
+class StyleSettings;
 
-#define TOOLBOX_STYLE_FLAT          ((sal_uInt16)0x0004)
+constexpr sal_uInt16 TOOLBOX_STYLE_FLAT = 0x0004;
 
 // item ids in the custom menu may not exceed this constant
-#define TOOLBOX_MENUITEM_START      ((sal_uInt16)0x1000)
+constexpr sal_uInt16 TOOLBOX_MENUITEM_START = 0x1000;
 
 // defines for the menubutton
 enum class ToolBoxMenuType {
@@ -56,21 +58,13 @@ namespace o3tl
     template<> struct typed_flags<ToolBoxMenuType> : is_typed_flags<ToolBoxMenuType, 0x0003> {};
 }
 
-// small, large, size32 force an exact toolbox size for proper alignemnt
-// dontcare will let the toolbox decide about its size
-enum class ToolBoxButtonSize
+enum class ToolBoxLayoutMode
 {
-    DontCare,
-    Small,
-    Large,
-    Size32,
+    Normal,  // traditional layout, items are centered in the toolbar
+    Locked   // horizontal positions of all items remain unchanged,
+             // vertical positions of items smaller than first item are aligned to first item's vertical center,
+             // vertical positions of items larger than first item remain unchanged
 };
-
-// ToolBoxLayoutMode::Normal   - traditional layout, items are centered in the toolbar
-// ToolBoxLayoutMode::LockVert - special mode (currently used for calc input/formula
-//                       bar) where item's vertical position is locked, e.g.
-//                       toolbox is prevented from centering the items
-enum class ToolBoxLayoutMode { Normal, LockVert };
 
 // Position of the text when icon and text are painted
 enum class ToolBoxTextPosition { Right, Bottom };
@@ -83,6 +77,10 @@ class VCL_DLLPUBLIC ToolBox : public DockingWindow
 
 public:
     using ImplToolItems = std::vector<ImplToolItem>;
+
+    virtual FactoryFunction GetUITestFactory() const override;
+
+    void SetCurItemId( sal_uInt16 CurID )   { mnCurItemId=CurID; }
 
     static constexpr auto APPEND
         = std::numeric_limits<ImplToolItems::size_type>::max();
@@ -98,16 +96,13 @@ private:
         ImplToolItems::size_type mnLines;
     };
 
-    ImplToolBoxPrivateData*   mpData;
+    std::unique_ptr<ImplToolBoxPrivateData>   mpData;
     std::vector<ImplToolSize> maFloatSizes;
-    Idle               *mpIdle;
+    std::unique_ptr<Idle>      mpIdle;
     tools::Rectangle           maUpperRect;
     tools::Rectangle           maLowerRect;
-    tools::Rectangle           maOutDockRect;
-    tools::Rectangle           maInDockRect;
     tools::Rectangle           maPaintRect;
     VclPtr<FloatingWindow> mpFloatWin;
-    sal_uInt16          mnKeyModifier;
     long                mnDX;
     long                mnDY;
     long                mnMaxItemWidth;    // max item width
@@ -134,7 +129,6 @@ private:
     ImplToolItems::size_type mnDockLines;
     sal_uInt16          mnMouseModifier;
     bool                mbDrag:1,
-                        mbSelection:1,
                         mbUpper:1,
                         mbLower:1,
                         mbIn:1,
@@ -148,7 +142,9 @@ private:
                         mbDragging:1,
                         mbIsKeyEvent:1,
                         mbChangingHighlight:1,
-                        mbImagesMirrored:1;
+                        mbImagesMirrored:1,
+                        mbLineSpacing:1,
+                        mbIsArranged:1;
     WindowAlign         meAlign;
     WindowAlign         meDockAlign;
     ButtonType          meButtonType;
@@ -191,9 +187,9 @@ private:
     SAL_DLLPRIVATE void            ImplUpdateItem( ImplToolItems::size_type nIndex = ITEM_NOTFOUND );
     SAL_DLLPRIVATE bool            ImplHandleMouseMove( const MouseEvent& rMEvt, bool bRepeat = false );
     SAL_DLLPRIVATE bool            ImplHandleMouseButtonUp( const MouseEvent& rMEvt, bool bCancel = false );
-    SAL_DLLPRIVATE void            ImplChangeHighlight( ImplToolItem* pItem, bool bNoGrabFocus = false );
+    SAL_DLLPRIVATE void            ImplChangeHighlight( ImplToolItem const * pItem, bool bNoGrabFocus = false );
     SAL_DLLPRIVATE bool            ImplChangeHighlightUpDn( bool bUp, bool bNoCycle = false );
-    SAL_DLLPRIVATE ImplToolItems::size_type ImplGetItemLine( ImplToolItem* pCurrentItem );
+    SAL_DLLPRIVATE ImplToolItems::size_type ImplGetItemLine( ImplToolItem const * pCurrentItem );
     SAL_DLLPRIVATE ImplToolItem*   ImplGetFirstValidItem( ImplToolItems::size_type nLine );
     SAL_DLLPRIVATE bool            ImplOpenItem( vcl::KeyCode aKeyCode );
     SAL_DLLPRIVATE bool            ImplActivateItem( vcl::KeyCode aKeyCode );
@@ -208,9 +204,8 @@ private:
     SAL_DLLPRIVATE const OUString& ImplGetHelpText( sal_uInt16 nItemId ) const;
     SAL_DLLPRIVATE Size            ImplGetOptimalFloatingSize();
     SAL_DLLPRIVATE bool            ImplHasExternalMenubutton();
-    SAL_DLLPRIVATE void            ImplDrawFloatwinBorder(vcl::RenderContext& rRenderContext, ImplToolItem* pItem );
+    SAL_DLLPRIVATE void            ImplDrawFloatwinBorder(vcl::RenderContext& rRenderContext, ImplToolItem const * pItem );
 
-    DECL_DLLPRIVATE_LINK(    ImplCallExecuteCustomMenu, void*, void );
     DECL_DLLPRIVATE_LINK(    ImplUpdateHdl, Timer*, void );
     DECL_DLLPRIVATE_LINK(    ImplCustomMenuListener, VclMenuEvent&, void );
     DECL_DLLPRIVATE_LINK(    ImplDropdownLongClickHdl, Timer*, void );
@@ -252,18 +247,17 @@ public:
     SAL_DLLPRIVATE ImplToolItems::size_type ImplCalcLines( long nToolSize ) const;
     SAL_DLLPRIVATE sal_uInt16 ImplTestLineSize( const Point& rPos ) const;
     SAL_DLLPRIVATE void ImplLineSizing( const Point& rPos, tools::Rectangle& rRect, sal_uInt16 nLineMode );
-    static SAL_DLLPRIVATE ImplToolItems::size_type ImplFindItemPos( const ImplToolItem* pItem, const ImplToolItems& rList );
+    SAL_DLLPRIVATE static ImplToolItems::size_type ImplFindItemPos( const ImplToolItem* pItem, const ImplToolItems& rList );
     SAL_DLLPRIVATE void ImplDrawMenuButton(vcl::RenderContext& rRenderContext, bool bHighlight);
     SAL_DLLPRIVATE void ImplDrawButton(vcl::RenderContext& rRenderContext, const tools::Rectangle &rRect, sal_uInt16 highlight, bool bChecked, bool bEnabled, bool bIsWindow);
     SAL_DLLPRIVATE ImplToolItems::size_type ImplCountLineBreaks() const;
-    SAL_DLLPRIVATE ImplToolBoxPrivateData* ImplGetToolBoxPrivateData() const { return mpData; }
+    SAL_DLLPRIVATE ImplToolBoxPrivateData* ImplGetToolBoxPrivateData() const { return mpData.get(); }
+
+    SAL_DLLPRIVATE void ApplyBackgroundSettings(vcl::RenderContext&, const StyleSettings&);
+    SAL_DLLPRIVATE void ApplyForegroundSettings(vcl::RenderContext&, const StyleSettings&);
 
 protected:
     virtual void ApplySettings(vcl::RenderContext& rRenderContext) override;
-    void SetCurItemId(sal_uInt16 nSet)
-    {
-        mnCurItemId = nSet;
-    }
 
 public:
     ToolBox(vcl::Window* pParent, WinBits nStyle = 0);
@@ -301,6 +295,7 @@ public:
     virtual void        Resizing( Size& rSize ) override;
     virtual Size        GetOptimalSize() const override;
     virtual void        doDeferredInit(WinBits nBits) override;
+    virtual void        queue_resize(StateChangedType eReason = StateChangedType::Layout) override;
 
     /// Insert a command (like '.uno:Save').
     virtual void        InsertItem( const OUString& rCommand,
@@ -328,7 +323,7 @@ public:
     void                CopyItem( const ToolBox& rToolBox, sal_uInt16 nItemId );
     void                Clear();
 
-    void                SetButtonType( ButtonType eNewType = ButtonType::SYMBOLONLY );
+    void                SetButtonType( ButtonType eNewType );
     ButtonType          GetButtonType() const { return meButtonType; }
 
     // sets a fixed button size (small, large or dontcare (==autosize))
@@ -343,9 +338,6 @@ public:
     void                SetLineCount( ImplToolItems::size_type nNewLines );
     void                ShowLine( bool bNext );
 
-    // Used to enable/disable scrolling one page at a time for toolbar
-    void                SetPageScroll( bool b );
-
     ImplToolItems::size_type GetItemCount() const;
     ToolBoxItemType     GetItemType( ImplToolItems::size_type nPos ) const;
     ImplToolItems::size_type GetItemPos( sal_uInt16 nItemId ) const;
@@ -356,7 +348,7 @@ public:
     sal_uInt16          GetItemId( const OUString& rCommand ) const;
     tools::Rectangle           GetItemRect( sal_uInt16 nItemId );
     tools::Rectangle           GetItemPosRect( ImplToolItems::size_type nPos );
-    tools::Rectangle           GetOverflowRect() const;
+    tools::Rectangle const &   GetOverflowRect() const;
 
     /// Returns size of the bitmap / text that is inside this toolbox item.
     Size                GetItemContentSize( sal_uInt16 nItemId );
@@ -364,12 +356,14 @@ public:
     sal_uInt16          GetCurItemId() const { return mnCurItemId; }
     sal_uInt16          GetDownItemId() const { return mnDownItemId; }
     sal_uInt16          GetModifier() const { return mnMouseModifier; }
-    sal_uInt16          GetKeyModifier() const { return mnKeyModifier; }
 
     void                SetItemBits( sal_uInt16 nItemId, ToolBoxItemBits nBits );
     ToolBoxItemBits     GetItemBits( sal_uInt16 nItemId ) const;
 
     void                SetItemExpand( sal_uInt16 nItemId, bool bExpand );
+    // e.g. a label used as an itemwindow
+    void                SetItemWindowNonInteractive(sal_uInt16 nItemId, bool bNonInteractive);
+
 
     void                SetItemData( sal_uInt16 nItemId, void* pNewData );
     void*               GetItemData( sal_uInt16 nItemId ) const;
@@ -383,7 +377,6 @@ public:
     vcl::Window*        GetItemWindow( sal_uInt16 nItemId ) const;
     sal_uInt16          GetHighlightItemId() const { return mnHighItemId; }
 
-    void                StartSelection();
     void                EndSelection();
 
     void                SetItemDown( sal_uInt16 nItemId, bool bDown );
@@ -410,7 +403,7 @@ public:
     bool                IsItemReallyVisible( sal_uInt16 nItemId ) const;
 
     void                SetItemCommand( sal_uInt16 nItemId, const OUString& rCommand );
-    const OUString      GetItemCommand( sal_uInt16 nItemId ) const;
+    OUString            GetItemCommand( sal_uInt16 nItemId ) const;
 
     using Window::SetQuickHelpText;
     void                SetQuickHelpText( sal_uInt16 nItemId, const OUString& rText );
@@ -421,7 +414,6 @@ public:
     const OUString&     GetHelpText( sal_uInt16 nItemId ) const;
 
     void                SetHelpId( sal_uInt16 nItemId, const OString& rHelpId );
-    OString             GetHelpId( sal_uInt16 nItemId ) const;
 
     //  window size according to current alignment, floating state and number of lines
     Size                CalcWindowSizePixel();
@@ -453,7 +445,7 @@ public:
     sal_uInt16          GetOutStyle() const { return mnOutStyle; }
 
     void                EnableCustomize( bool bEnable = true );
-    bool                IsCustomize() { return mbCustomize; }
+    bool                IsCustomize() const { return mbCustomize; }
 
     using DockingWindow::SetHelpText;
     using DockingWindow::GetHelpText;
@@ -466,7 +458,6 @@ public:
     void                SetActivateHdl( const Link<ToolBox *, void>& rLink ) { maActivateHdl = rLink; }
     void                SetDeactivateHdl( const Link<ToolBox *, void>& rLink ) { maDeactivateHdl = rLink; }
     void                SetSelectHdl( const Link<ToolBox *, void>& rLink ) { maSelectHdl = rLink; }
-    const Link<ToolBox *, void>& GetSelectHdl() const { return maSelectHdl; }
     void                SetStateChangedHdl( const Link<StateChangedType const *, void>& aLink ) { maStateChangedHandler = aLink; }
     void                SetDataChangedHdl( const Link<DataChangedEvent const *, void>& aLink ) { maDataChangedHandler = aLink; }
     void                SetMenuButtonHdl( const Link<ToolBox *, void>& rLink ) { maMenuButtonHdl = rLink; }
@@ -476,7 +467,7 @@ public:
     //       clipped toolbox items, so you should only touch
     //       items that you added by yourself
     //       the private toolbox items will only use item ids starting from TOOLBOX_MENUITEM_START
-    // to allow for customization of the menu the coresponding handler is called
+    // to allow for customization of the menu the corresponding handler is called
     // when the menu button was clicked and before the menu is executed
     void                SetMenuType( ToolBoxMenuType aType = ToolBoxMenuType::Customize );
     ToolBoxMenuType     GetMenuType() const;
@@ -511,15 +502,20 @@ public:
     Size                GetDefaultImageSize() const;
     void                ChangeHighlight( ImplToolItems::size_type nPos );
 
+
     void SetToolbarLayoutMode( ToolBoxLayoutMode eLayout );
     void statusChanged(const css::frame::FeatureStateEvent& rEvent);
 
     void SetToolBoxTextPosition( ToolBoxTextPosition ePosition );
+
+    void SetLineSpacing(bool b) { mbLineSpacing = b; }
+
+    virtual void DumpAsPropertyTree(tools::JsonWriter&) override;
 };
 
 inline void ToolBox::CheckItem( sal_uInt16 nItemId, bool bCheck )
 {
-    SetItemState( nItemId, (bCheck) ? TRISTATE_TRUE : TRISTATE_FALSE );
+    SetItemState( nItemId, bCheck ? TRISTATE_TRUE : TRISTATE_FALSE );
 }
 
 inline bool ToolBox::IsItemChecked( sal_uInt16 nItemId ) const

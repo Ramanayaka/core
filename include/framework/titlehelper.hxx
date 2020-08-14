@@ -21,15 +21,8 @@
 #define INCLUDED_FRAMEWORK_TITLEHELPER_HXX
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/XInterface.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/frame/XUntitledNumbers.hpp>
 #include <com/sun/star/frame/XTitle.hpp>
 #include <com/sun/star/frame/XTitleChangeBroadcaster.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XFrameActionListener.hpp>
 #include <com/sun/star/document/XDocumentEventListener.hpp>
 
@@ -40,7 +33,14 @@
 
 #include <rtl/ustrbuf.hxx>
 
-#include <framework/fwedllapi.h>
+#include <framework/fwkdllapi.h>
+
+namespace com::sun::star::frame { class XController; }
+namespace com::sun::star::frame { class XFrame; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::frame { class XUntitledNumbers; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { class XInterface; }
 
 
 namespace framework{
@@ -50,7 +50,7 @@ namespace framework{
 
     @threadsafe
  */
-class FWE_DLLPUBLIC TitleHelper : private ::cppu::BaseMutex
+class FWK_DLLPUBLIC TitleHelper final : private ::cppu::BaseMutex
                   , public  ::cppu::WeakImplHelper< css::frame::XTitle                 ,
                                                      css::frame::XTitleChangeBroadcaster,
                                                      css::frame::XTitleChangeListener   ,

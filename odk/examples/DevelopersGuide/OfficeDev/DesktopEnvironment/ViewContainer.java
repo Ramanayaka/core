@@ -71,7 +71,7 @@ public class ViewContainer extends Thread
     /**
      * ctor
      * It's private - because nobody should create any instance
-     * expect the only global one, which wil be created by ourself!
+     * expect the only global one, which will be created by ourself!
      */
     private ViewContainer()
     {
@@ -87,7 +87,7 @@ public class ViewContainer extends Thread
      * This register a new view inside this global container
      * (if it doesn't already exist).
      *
-     * @param   aView       view which wish to be registered inside this container
+     * @param   aView       view which wishes to be registered inside this container
      */
     public void addView(Object aView)
     {
@@ -109,7 +109,7 @@ public class ViewContainer extends Thread
      * visible frame anymore.
      *
      * @param aView
-     *          view object which wish to be deregistered
+     *          view object which wishes to be deregistered
      */
     public void removeView(Object aView)
     {
@@ -162,7 +162,7 @@ public class ViewContainer extends Thread
 
 
     /**
-     * add/remove listener for possibe shutdown events
+     * add/remove listener for possible shutdown events
      */
     public void addListener( IShutdownListener rListener )
     {

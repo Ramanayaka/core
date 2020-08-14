@@ -21,7 +21,7 @@ $(eval $(call gb_ExternalProject_register_targets,curl,\
 ifneq ($(OS),WNT)
 
 curl_CPPFLAGS :=
-curl_LDFLAGS := $(if $(filter LINUX FREEBSD,$(OS)),"-Wl$(COMMA)-z$(COMMA)origin -Wl$(COMMA)-rpath$(COMMA)\\"\$$\$$ORIGIN)
+curl_LDFLAGS := $(if $(filter LINUX FREEBSD,$(OS)),-Wl$(COMMA)-z$(COMMA)origin -Wl$(COMMA)-rpath$(COMMA)\$$$$ORIGIN)
 
 ifneq ($(OS),ANDROID)
 ifneq ($(SYSBASE),)
@@ -35,39 +35,60 @@ ifeq ($(SYSTEM_NSS),)
 curl_CPPFLAGS += -I$(call gb_UnpackedTarball_get_dir,nss)/dist/public/nss
 endif
 
-# use --with-darwinssl on Mac OS X >10.5 and iOS to get a native UI for SSL certs for CMIS usage
-# use --with-nss only on platforms other than Mac OS X and iOS
+# use --with-darwinssl on macOS >10.5 and iOS to get a native UI for SSL certs for CMIS usage
+# use --with-nss only on platforms other than macOS and iOS
 $(call gb_ExternalProject_get_state_target,curl,build):
+	$(call gb_Trace_StartRange,curl,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
-		CPPFLAGS="$(curl_CPPFLAGS)" \
-		LDFLAGS=$(curl_LDFLAGS) \
 		./configure \
-			$(if $(filter IOS MACOSX,$(OS)),\
+			$(if $(filter iOS MACOSX,$(OS)),\
 				--with-darwinssl,\
 				$(if $(ENABLE_NSS),--with-nss$(if $(SYSTEM_NSS),,="$(call gb_UnpackedTarball_get_dir,nss)/dist/out"),--without-nss)) \
-			--without-ssl --without-gnutls --without-polarssl --without-cyassl --without-axtls \
-			--without-libidn --enable-ftp --enable-ipv6 --enable-http --disable-gopher \
-			--disable-file --disable-ldap --disable-telnet --disable-dict --without-libssh2 \
-			--without-librtmp --disable-ldaps --disable-tftp --disable-pop3 \
-			--disable-imap --disable-smtp --disable-manual --without-metalink \
-			--without-nghttp2 \
+			--without-ssl --without-gnutls --without-polarssl --without-cyassl --without-axtls --without-mbedtls \
+			--enable-ftp --enable-http --enable-ipv6 \
+			--without-libidn2 --without-libpsl --without-librtmp \
+			--without-libssh2 --without-metalink --without-nghttp2 \
+			--without-libssh --without-brotli \
+			--without-ngtcp2 --without-quiche \
+			--disable-ares \
+			--disable-dict --disable-file --disable-gopher --disable-imap \
+			--disable-ldap --disable-ldaps --disable-manual --disable-pop3 \
+			--disable-rtsp --disable-smb --disable-smtp --disable-telnet  \
+			--disable-tftp  \
 			$(if $(filter LINUX,$(OS)),--without-ca-bundle --without-ca-path) \
 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
 			$(if $(filter TRUE,$(DISABLE_DYNLOADING)),--disable-shared,--disable-static) \
 			$(if $(ENABLE_DEBUG),--enable-debug) \
+			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
 			$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
+			$(if $(filter MACOSX,$(OS)),CFLAGS='$(CFLAGS) \
+				-mmacosx-version-min=$(MACOSX_DEPLOYMENT_TARGET)') \
+			CPPFLAGS='$(curl_CPPFLAGS)' \
+			LDFLAGS='$(curl_LDFLAGS)' \
+			ZLIB_CFLAGS='$(ZLIB_CFLAGS)' ZLIB_LIBS='$(ZLIB_LIBS)' \
 		&& cd lib \
 		&& $(MAKE) \
 	)
+	$(call gb_Trace_EndRange,curl,EXTERNAL)
 
 else ifeq ($(COM),MSC)
 
+$(eval $(call gb_ExternalProject_use_nmake,curl,build))
+
 $(call gb_ExternalProject_get_state_target,curl,build):
+	$(call gb_Trace_StartRange,curl,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
-		MAKEFLAGS= LIB="$(ILIB)" nmake -f Makefile.vc12 \
-			cfg=$(if $(MSVC_USE_DEBUG_RUNTIME),debug-dll,release-dll) \
-			EXCFLAGS="/EHs /D_CRT_SECURE_NO_DEPRECATE /DUSE_WINDOWS_SSPI $(SOLARINC)" $(if $(filter X86_64,$(CPUNAME)),MACHINE=X64) \
-	,lib)
+		nmake -f Makefile.vc \
+			mode=dll \
+			VC=12 \
+			$(if $(filter X86_64,$(CPUNAME)),MACHINE=x64,MACHINE=x86) \
+			GEN_PDB=$(if $(call gb_Module__symbols_enabled,curl),yes,no) \
+			DEBUG=$(if $(MSVC_USE_DEBUG_RUNTIME),yes,no) \
+			ENABLE_IPV6=yes \
+			ENABLE_SSPI=yes \
+			ENABLE_WINSSL=yes \
+	,winbuild)
+	$(call gb_Trace_EndRange,curl,EXTERNAL)
 
 endif
 

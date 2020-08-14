@@ -27,10 +27,6 @@
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 
-#include <vcl/svapp.hxx>
-
-#include <officecfg/Office/TabBrowse.hxx>
-
 namespace framework{
 
 /*-****************************************************************************************************
@@ -57,36 +53,25 @@ TaskCreator::~TaskCreator()
 /*-****************************************************************************************************
     TODO document me
 *//*-*****************************************************************************************************/
-css::uno::Reference< css::frame::XFrame > TaskCreator::createTask( const OUString& sName )
+css::uno::Reference< css::frame::XFrame > TaskCreator::createTask( const OUString& sName, const utl::MediaDescriptor& rDescriptor )
 {
     css::uno::Reference< css::lang::XSingleServiceFactory > xCreator;
-    OUString sCreator = IMPLEMENTATIONNAME_FWK_TASKCREATOR;
 
     try
     {
-        if (
-            ( TargetHelper::matchSpecialTarget(sName, TargetHelper::ESpecialTarget::Blank  ) ) ||
-            ( TargetHelper::matchSpecialTarget(sName, TargetHelper::ESpecialTarget::Default) )
-           )
-        {
-
-            boost::optional<OUString> x(officecfg::Office::TabBrowse::TaskCreatorService::ImplementationName::get(m_xContext));
-            if (x) sCreator = x.get();
-        }
-
-        xCreator.set( m_xContext->getServiceManager()->createInstanceWithContext(sCreator, m_xContext), css::uno::UNO_QUERY_THROW);
+        xCreator.set( m_xContext->getServiceManager()->createInstanceWithContext(IMPLEMENTATIONNAME_FWK_TASKCREATOR, m_xContext), css::uno::UNO_QUERY_THROW);
     }
     catch(const css::uno::Exception&)
     {}
 
-    // no catch here ... without an task creator service we can't open ANY document window within the office.
-    // Thats IMHO not a good idea. Then we should accept the stacktrace showing us the real problem.
+    // no catch here ... without a task creator service we can't open ANY document window within the office.
+    // That's IMHO not a good idea. Then we should accept the stacktrace showing us the real problem.
     // BTW: The used fallback creator service (IMPLEMENTATIONNAME_FWK_TASKCREATOR) is implemented in the same
     // library then these class here ... Why we should not be able to create it ?
     if ( ! xCreator.is())
         xCreator = css::frame::TaskCreator::create(m_xContext);
 
-    css::uno::Sequence< css::uno::Any > lArgs(5);
+    css::uno::Sequence< css::uno::Any > lArgs(6);
     css::beans::NamedValue              aArg;
 
     aArg.Name    = ARGUMENT_PARENTFRAME;
@@ -108,6 +93,12 @@ css::uno::Reference< css::frame::XFrame > TaskCreator::createTask( const OUStrin
     aArg.Name    = ARGUMENT_FRAMENAME;
     aArg.Value <<= sName;
     lArgs[4]   <<= aArg;
+
+    bool bHidden
+        = rDescriptor.getUnpackedValueOrDefault("HiddenForConversion", false);
+    aArg.Name = "HiddenForConversion";
+    aArg.Value <<= bHidden;
+    lArgs[5] <<= aArg;
 
     css::uno::Reference< css::frame::XFrame > xTask(xCreator->createInstanceWithArguments(lArgs), css::uno::UNO_QUERY_THROW);
     return xTask;

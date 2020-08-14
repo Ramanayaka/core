@@ -17,7 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
 
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/style/ParagraphStyleCategory.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
@@ -25,11 +27,12 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/style/XStyle.hpp>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/families.hxx>
 #include <xmloff/txtparae.hxx>
 #include <xmloff/xmlnume.hxx>
 #include <xmloff/xmlexp.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
 #include "XMLSectionExport.hxx"
 #include "XMLLineNumberingExport.hxx"
 #include "txtexppr.hxx"
@@ -50,10 +53,10 @@ void XMLTextParagraphExport::exportStyleAttributes(
     Reference< XPropertySet > xPropSet( rStyle, UNO_QUERY );
     Reference< XPropertySetInfo > xPropSetInfo(
             xPropSet->getPropertySetInfo());
-    if( xPropSetInfo->hasPropertyByName( sCategory ) )
+    if( xPropSetInfo->hasPropertyByName( gsCategory ) )
     {
         sal_Int16 nCategory = 0;
-        xPropSet->getPropertyValue( sCategory ) >>= nCategory;
+        xPropSet->getPropertyValue( gsCategory ) >>= nCategory;
         enum XMLTokenEnum eValue = XML_TOKEN_INVALID;
         if( -1 != nCategory )
         {
@@ -82,15 +85,15 @@ void XMLTextParagraphExport::exportStyleAttributes(
         if( eValue != XML_TOKEN_INVALID )
             GetExport().AddAttribute( XML_NAMESPACE_STYLE, XML_CLASS, eValue);
     }
-    if( xPropSetInfo->hasPropertyByName( sPageDescName ) )
+    if( xPropSetInfo->hasPropertyByName( gsPageDescName ) )
     {
         Reference< XPropertyState > xPropState( xPropSet, uno::UNO_QUERY );
         if( PropertyState_DIRECT_VALUE ==
-                xPropState->getPropertyState( sPageDescName  ) )
+                xPropState->getPropertyState( gsPageDescName  ) )
         {
-            xPropSet->getPropertyValue( sPageDescName ) >>= sName;
+            xPropSet->getPropertyValue( gsPageDescName ) >>= sName;
             // fix for #i5551#  if( sName.getLength() > 0 )
-                GetExport().AddAttribute( XML_NAMESPACE_STYLE,
+            GetExport().AddAttribute( XML_NAMESPACE_STYLE,
                                           XML_MASTER_PAGE_NAME,
                                           GetExport().EncodeStyleName( sName ) );
         }
@@ -98,7 +101,7 @@ void XMLTextParagraphExport::exportStyleAttributes(
     if( bProgress )
     {
         ProgressBarHelper *pProgress = GetExport().GetProgressBarHelper();
-            pProgress->SetValue( pProgress->GetValue()+2 );
+        pProgress->SetValue( pProgress->GetValue()+2 );
     }
 }
 
@@ -139,13 +142,13 @@ void XMLTextParagraphExport::exportTextStyles( bool bUsed, bool bProg )
         }
     }
     exportStyleFamily( "ParagraphStyles", GetXMLToken(XML_PARAGRAPH), GetParaPropMapper(),
-                       bUsed, XML_STYLE_FAMILY_TEXT_PARAGRAPH);
+                       bUsed, XmlStyleFamily::TEXT_PARAGRAPH);
     exportStyleFamily( "CharacterStyles", GetXMLToken(XML_TEXT), GetTextPropMapper(),
-                       bUsed, XML_STYLE_FAMILY_TEXT_TEXT );
+                       bUsed, XmlStyleFamily::TEXT_TEXT );
     // get shape export to make sure the frame family is added correctly.
     GetExport().GetShapeExport();
     exportStyleFamily( "FrameStyles", OUString(XML_STYLE_FAMILY_SD_GRAPHICS_NAME), xFramePropMapper,
-                       bUsed, XML_STYLE_FAMILY_TEXT_FRAME);
+                       bUsed, XmlStyleFamily::TEXT_FRAME);
     exportNumStyles( bUsed );
     if( !IsBlockMode() )
     {

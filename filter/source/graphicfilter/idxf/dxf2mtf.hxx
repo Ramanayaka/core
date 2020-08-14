@@ -23,12 +23,8 @@
 #include "dxfreprd.hxx"
 #include <vcl/font.hxx>
 #include <vcl/lineinfo.hxx>
-
-enum PenStyle { PEN_NULL, PEN_SOLID, PEN_DOT, PEN_DASH, PEN_DASHDOT };
-enum BrushStyle { BRUSH_NULL, BRUSH_SOLID, BRUSH_HORZ, BRUSH_VERT,
-                  BRUSH_CROSS, BRUSH_DIAGCROSS, BRUSH_UPDIAG, BRUSH_DOWNDIAG,
-                  BRUSH_25, BRUSH_50, BRUSH_75 };
-
+#include <vcl/vclptr.hxx>
+#include <vcl/virdev.hxx>
 
 class DXF2GDIMetaFile {
 private:
@@ -39,10 +35,10 @@ private:
 
     sal_uInt16 OptPointsPerCircle;
 
-    sal_uLong nMinPercent;
-    sal_uLong nMaxPercent;
-    sal_uLong nLastPercent;
-    sal_uLong nMainEntitiesCount;
+    sal_uInt16 nMinPercent;
+    sal_uInt16 nMaxPercent;
+    sal_uInt16 nLastPercent;
+    sal_uInt16 nMainEntitiesCount;
 
     long        nBlockColor;
     DXFLineInfo aBlockDXFLineInfo;
@@ -51,8 +47,9 @@ private:
     Color       aActLineColor;
     Color       aActFillColor;
     vcl::Font   aActFont;
+    const LineInfo aDefaultLineInfo; // to share between lines to reduce memory
 
-    static sal_uLong CountEntities(const DXFEntities & rEntities);
+    static sal_uInt64 CountEntities(const DXFEntities & rEntities);
 
     Color ConvertColor(sal_uInt8 nColor);
 
@@ -99,6 +96,8 @@ private:
 
     void DrawEntities(const DXFEntities & rEntities,
                       const DXFTransform & rTransform);
+
+    void DrawLine(const Point& rA, const Point& rB);
 
 public:
 

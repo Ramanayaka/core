@@ -22,23 +22,17 @@
 
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XContainerQuery.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/frame/XModuleManager2.hpp>
 
-#include <comphelper/sequenceashashmap.hxx>
 #include <sfx2/signaturestate.hxx>
 
 
-namespace com { namespace sun { namespace star {
-    namespace document {
-        class XDocumentProperties;
-    }
-} } }
+namespace com::sun::star::document { class XDocumentProperties; }
 
-namespace vcl { class Window; }
+namespace weld { class Window; }
 class ModelData_Impl;
 
 class SfxStoringHelper
@@ -71,8 +65,7 @@ public:
 
     static void SetDocInfoState(
         const css::uno::Reference< css::frame::XModel >& xModel,
-        const css::uno::Reference< css::document::XDocumentProperties>& i_xOldDocInfo,
-        bool bNoModify );
+        const css::uno::Reference< css::document::XDocumentProperties>& i_xOldDocInfo );
 
     static bool WarnUnacceptableFormat(
                                     const css::uno::Reference< css::frame::XModel >& xModel,
@@ -80,7 +73,8 @@ public:
                                     const OUString& aDefExtension,
                                     bool rDefaultIsAlien );
 
-    static vcl::Window* GetModelWindow( const css::uno::Reference< css::frame::XModel >& xModel );
+    static css::uno::Reference<css::awt::XWindow> GetModelXWindow(const css::uno::Reference<css::frame::XModel>& rModel);
+    static weld::Window* GetModelWindow( const css::uno::Reference< css::frame::XModel >& xModel );
 
 };
 

@@ -17,23 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/XPropertyTable.hxx"
+#include <XPropertyTable.hxx>
 
 #include <vcl/virdev.hxx>
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 #include <svx/dialmgr.hxx>
 #include <svx/xtable.hxx>
 
+#include <rtl/ustrbuf.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
 #include <drawinglayer/attribute/fillgradientattribute.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonGradientPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
+#include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processor2dtools.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <memory>
-#include <o3tl/make_unique.hxx>
 
 using namespace com::sun::star;
 
@@ -65,27 +66,27 @@ uno::Reference< container::XNameContainer > XGradientList::createInstance()
 
 bool XGradientList::Create()
 {
-    rtl::OUStringBuffer aStr(SvxResId(RID_SVXSTR_GRADIENT));
+    OUStringBuffer aStr(SvxResId(RID_SVXSTR_GRADIENT));
     aStr.append(" 1");
     sal_Int32 nLen = aStr.getLength() - 1;
-    Insert(o3tl::make_unique<XGradientEntry>(XGradient(RGB_Color(COL_BLACK  ),RGB_Color(COL_WHITE  ),css::awt::GradientStyle_LINEAR    ,    0,10,10, 0,100,100),aStr.toString()));
+    Insert(std::make_unique<XGradientEntry>(XGradient(COL_BLACK,   COL_WHITE, css::awt::GradientStyle_LINEAR    ,    0,10,10, 0,100,100),aStr.toString()));
     aStr[nLen] = '2';
-    Insert(o3tl::make_unique<XGradientEntry>(XGradient(RGB_Color(COL_BLUE   ),RGB_Color(COL_RED    ),css::awt::GradientStyle_AXIAL     ,  300,20,20,10,100,100),aStr.toString()));
+    Insert(std::make_unique<XGradientEntry>(XGradient(COL_BLUE,    COL_RED,   css::awt::GradientStyle_AXIAL     ,  300,20,20,10,100,100),aStr.toString()));
     aStr[nLen] = '3';
-    Insert(o3tl::make_unique<XGradientEntry>(XGradient(RGB_Color(COL_RED    ),RGB_Color(COL_YELLOW ),css::awt::GradientStyle_RADIAL    ,  600,30,30,20,100,100),aStr.toString()));
+    Insert(std::make_unique<XGradientEntry>(XGradient(COL_RED,     COL_YELLOW,css::awt::GradientStyle_RADIAL    ,  600,30,30,20,100,100),aStr.toString()));
     aStr[nLen] = '4';
-    Insert(o3tl::make_unique<XGradientEntry>(XGradient(RGB_Color(COL_YELLOW ),RGB_Color(COL_GREEN  ),css::awt::GradientStyle_ELLIPTICAL,  900,40,40,30,100,100),aStr.toString()));
+    Insert(std::make_unique<XGradientEntry>(XGradient(COL_YELLOW , COL_GREEN, css::awt::GradientStyle_ELLIPTICAL,  900,40,40,30,100,100),aStr.toString()));
     aStr[nLen] = '5';
-    Insert(o3tl::make_unique<XGradientEntry>(XGradient(RGB_Color(COL_GREEN  ),RGB_Color(COL_MAGENTA),css::awt::GradientStyle_SQUARE    , 1200,50,50,40,100,100),aStr.toString()));
+    Insert(std::make_unique<XGradientEntry>(XGradient(COL_GREEN  , COL_MAGENTA,css::awt::GradientStyle_SQUARE    , 1200,50,50,40,100,100),aStr.toString()));
     aStr[nLen] = '6';
-    Insert(o3tl::make_unique<XGradientEntry>(XGradient(RGB_Color(COL_MAGENTA),RGB_Color(COL_YELLOW ),css::awt::GradientStyle_RECT      , 1900,60,60,50,100,100),aStr.toString()));
+    Insert(std::make_unique<XGradientEntry>(XGradient(COL_MAGENTA, COL_YELLOW ,css::awt::GradientStyle_RECT      , 1900,60,60,50,100,100),aStr.toString()));
 
     return true;
 }
 
-Bitmap XGradientList::CreateBitmap( long nIndex, const Size& rSize ) const
+BitmapEx XGradientList::CreateBitmap( long nIndex, const Size& rSize ) const
 {
-    Bitmap aRetval;
+    BitmapEx aRetval;
 
     OSL_ENSURE(nIndex < Count(), "OOps, access out of range (!)");
 
@@ -94,7 +95,7 @@ Bitmap XGradientList::CreateBitmap( long nIndex, const Size& rSize ) const
         const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
         // prepare polygon geometry for rectangle
         const basegfx::B2DPolygon aRectangle(
-            basegfx::tools::createPolygonFromRect(
+            basegfx::utils::createPolygonFromRect(
                 basegfx::B2DRange(0.0, 0.0, rSize.Width(), rSize.Height())));
 
         const XGradient& rGradient = GetGradient(nIndex)->GetGradient();
@@ -104,7 +105,7 @@ Bitmap XGradientList::CreateBitmap( long nIndex, const Size& rSize ) const
         if(nStartIntens != 100)
         {
             const basegfx::BColor aBlack;
-            aStart = interpolate(aBlack, aStart, (double)nStartIntens * 0.01);
+            aStart = interpolate(aBlack, aStart, static_cast<double>(nStartIntens) * 0.01);
         }
 
         const sal_uInt16 nEndIntens(rGradient.GetEndIntens());
@@ -113,7 +114,7 @@ Bitmap XGradientList::CreateBitmap( long nIndex, const Size& rSize ) const
         if(nEndIntens != 100)
         {
             const basegfx::BColor aBlack;
-            aEnd = interpolate(aBlack, aEnd, (double)nEndIntens * 0.01);
+            aEnd = interpolate(aBlack, aEnd, static_cast<double>(nEndIntens) * 0.01);
         }
 
         drawinglayer::attribute::GradientStyle aGradientStyle(drawinglayer::attribute::GradientStyle::Rect);
@@ -155,10 +156,10 @@ Bitmap XGradientList::CreateBitmap( long nIndex, const Size& rSize ) const
         const sal_uInt16 nSteps((rSize.Width() + rSize.Height()) / 3);
         const drawinglayer::attribute::FillGradientAttribute aFillGradient(
             aGradientStyle,
-            (double)rGradient.GetBorder() * 0.01,
-            (double)rGradient.GetXOffset() * 0.01,
-            (double)rGradient.GetYOffset() * 0.01,
-            (double)rGradient.GetAngle() * F_PI1800,
+            static_cast<double>(rGradient.GetBorder()) * 0.01,
+            static_cast<double>(rGradient.GetXOffset()) * 0.01,
+            static_cast<double>(rGradient.GetYOffset()) * 0.01,
+            static_cast<double>(rGradient.GetAngle()) * F_PI1800,
             aStart,
             aEnd,
             nSteps);
@@ -185,7 +186,7 @@ Bitmap XGradientList::CreateBitmap( long nIndex, const Size& rSize ) const
 
         // create processor and draw primitives
         std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor2D(drawinglayer::processor2d::createPixelProcessor2DFromOutputDevice(
-            *pVirtualDevice.get(),
+            *pVirtualDevice,
             aNewViewInformation2D));
 
         if(pProcessor2D)
@@ -200,20 +201,20 @@ Bitmap XGradientList::CreateBitmap( long nIndex, const Size& rSize ) const
         }
 
         // get result bitmap and scale
-        aRetval = pVirtualDevice->GetBitmap(Point(0, 0), pVirtualDevice->GetOutputSizePixel());
+        aRetval = pVirtualDevice->GetBitmapEx(Point(0, 0), pVirtualDevice->GetOutputSizePixel());
     }
 
     return aRetval;
 }
 
-Bitmap XGradientList::CreateBitmapForUI(long nIndex)
+BitmapEx XGradientList::CreateBitmapForUI(long nIndex)
 {
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
     const Size& rSize = rStyleSettings.GetListBoxPreviewDefaultPixelSize();
     return CreateBitmap(nIndex, rSize);
 }
 
-Bitmap XGradientList::GetBitmapForPreview(long nIndex, const Size& rSize)
+BitmapEx XGradientList::GetBitmapForPreview(long nIndex, const Size& rSize)
 {
     return CreateBitmap(nIndex, rSize);
 }

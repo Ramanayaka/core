@@ -26,6 +26,7 @@
 #include <com/sun/star/gallery/XGalleryItem.hpp>
 #include <comphelper/propertysethelper.hxx>
 #include <comphelper/propertysetinfo.hxx>
+#include <cppuhelper/weakagg.hxx>
 
 class GalleryTheme;
 struct GalleryObject;
@@ -34,7 +35,7 @@ namespace unogallery { class GalleryTheme; }
 namespace unogallery {
 
 
-class GalleryItem : public ::cppu::OWeakAggObject,
+class GalleryItem final : public ::cppu::OWeakAggObject,
                     public css::lang::XServiceInfo,
                     public css::lang::XTypeProvider,
                     public css::gallery::XGalleryItem,
@@ -49,7 +50,7 @@ public:
 
     bool    isValid() const;
 
-protected:
+private:
 
     // XInterface
     virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type & rType ) override;
@@ -73,20 +74,16 @@ protected:
     virtual void _setPropertyValues( const comphelper::PropertyMapEntry** ppEntries, const css::uno::Any* pValues ) override;
     virtual void _getPropertyValues( const comphelper::PropertyMapEntry** ppEntries, css::uno::Any* pValue ) override;
 
-protected:
-
     static rtl::Reference<::comphelper::PropertySetInfo> createPropertySetInfo();
-
-private:
-
-    ::unogallery::GalleryTheme* mpTheme;
-    const ::GalleryObject*      mpGalleryObject;
 
     const ::GalleryObject*      implGetObject() const { return mpGalleryObject;}
     void                        implSetInvalid();
 
                                 GalleryItem( const GalleryItem& ) = delete;
                                 GalleryItem& operator=( const GalleryItem& ) = delete;
+
+    ::unogallery::GalleryTheme* mpTheme;
+    const ::GalleryObject*      mpGalleryObject;
 };
 
 

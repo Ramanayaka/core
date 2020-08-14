@@ -17,28 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/style/NumberingType.hpp>
-#include <hintids.hxx>
 #include <svtools/htmltokn.h>
 #include <svtools/htmlkywd.hxx>
 #include <svtools/htmlout.hxx>
-#include <svl/urihelper.hxx>
-#include <editeng/brushitem.hxx>
-#include <editeng/lrspitem.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
 #include <numrule.hxx>
 #include <doc.hxx>
-#include <docary.hxx>
-#include <poolfmt.hxx>
 #include <ndtxt.hxx>
-#include <paratr.hxx>
+#include <pam.hxx>
 
 #include "htmlnum.hxx"
 #include "wrthtml.hxx"
 
-#include <SwNodeNum.hxx>
-#include <rtl/strbuf.hxx>
+#include <osl/diagnose.h>
 
 using namespace css;
 
@@ -47,15 +37,15 @@ void SwHTMLWriter::FillNextNumInfo()
 {
     m_pNextNumRuleInfo = nullptr;
 
-    sal_uLong nPos = pCurPam->GetPoint()->nNode.GetIndex() + 1;
+    sal_uLong nPos = m_pCurrentPam->GetPoint()->nNode.GetIndex() + 1;
 
     bool bTable = false;
     do
     {
-        const SwNode* pNd = pDoc->GetNodes()[nPos];
+        const SwNode* pNd = m_pDoc->GetNodes()[nPos];
         if( pNd->IsTextNode() )
         {
-            m_pNextNumRuleInfo = new SwHTMLNumRuleInfo( *pNd->GetTextNode() );
+            m_pNextNumRuleInfo.reset( new SwHTMLNumRuleInfo( *pNd->GetTextNode() ) );
 
             // Before a table we keep the old level if the same numbering is
             // continued after the table and no new numbering is started.
@@ -77,7 +67,7 @@ void SwHTMLWriter::FillNextNumInfo()
         else
         {
             // In all other case the numbering is over.
-            m_pNextNumRuleInfo = new SwHTMLNumRuleInfo;
+            m_pNextNumRuleInfo.reset(new SwHTMLNumRuleInfo);
         }
     }
     while( !m_pNextNumRuleInfo );
@@ -85,11 +75,15 @@ void SwHTMLWriter::FillNextNumInfo()
 
 void SwHTMLWriter::ClearNextNumInfo()
 {
-    delete m_pNextNumRuleInfo;
-    m_pNextNumRuleInfo = nullptr;
+    m_pNextNumRuleInfo.reset();
 }
 
-Writer& OutHTML_NumBulListStart( SwHTMLWriter& rWrt,
+void SwHTMLWriter::SetNextNumInfo( std::unique_ptr<SwHTMLNumRuleInfo> pNxt )
+{
+    m_pNextNumRuleInfo = std::move(pNxt);
+}
+
+Writer& OutHTML_NumberBulletListStart( SwHTMLWriter& rWrt,
                                  const SwHTMLNumRuleInfo& rInfo )
 {
     SwHTMLNumRuleInfo& rPrevInfo = rWrt.GetNumInfo();
@@ -118,10 +112,10 @@ Writer& OutHTML_NumBulListStart( SwHTMLWriter& rWrt,
                 if( rInfo.GetDepth() > 1 )
                 {
                     sal_uLong nPos =
-                        rWrt.pCurPam->GetPoint()->nNode.GetIndex() + 1;
+                        rWrt.m_pCurrentPam->GetPoint()->nNode.GetIndex() + 1;
                     do
                     {
-                        const SwNode* pNd = rWrt.pDoc->GetNodes()[nPos];
+                        const SwNode* pNd = rWrt.m_pDoc->GetNodes()[nPos];
                         if( pNd->IsTextNode() )
                         {
                             const SwTextNode *pTextNd = pNd->GetTextNode();
@@ -180,7 +174,7 @@ Writer& OutHTML_NumBulListStart( SwHTMLWriter& rWrt,
         rWrt.OutNewLine(); // <OL>/<UL> in a new row
 
         rWrt.m_aBulletGrfs[i].clear();
-        OString sOut = "<";
+        OString sOut = "<" + rWrt.GetNamespace();
         const SwNumFormat& rNumFormat = rInfo.GetNumRule()->Get( i );
         sal_Int16 eType = rNumFormat.GetNumberingType();
         if( SVX_NUM_CHAR_SPECIAL == eType )
@@ -189,7 +183,7 @@ Writer& OutHTML_NumBulListStart( SwHTMLWriter& rWrt,
             sOut += OString(OOO_STRING_SVTOOLS_HTML_unorderlist);
 
             // determine the type by the bullet character
-            const sal_Char *pStr = nullptr;
+            const char *pStr = nullptr;
             switch( rNumFormat.GetBulletChar() )
             {
             case HTML_BULLETCHAR_DISC:
@@ -205,7 +199,7 @@ Writer& OutHTML_NumBulListStart( SwHTMLWriter& rWrt,
 
             if( pStr )
             {
-                sOut += " " OOO_STRING_SVTOOLS_HTML_O_type "=\"" + OString(pStr) + "\"";
+                sOut += OStringLiteral(" " OOO_STRING_SVTOOLS_HTML_O_type "=\"") + pStr + "\"";
             }
         }
         else if( SVX_NUM_BITMAP == eType )
@@ -224,7 +218,7 @@ Writer& OutHTML_NumBulListStart( SwHTMLWriter& rWrt,
             sOut += OString(OOO_STRING_SVTOOLS_HTML_orderlist);
 
             // determine the type by the format
-            sal_Char cType = 0;
+            char cType = 0;
             switch( eType )
             {
                 case SVX_NUM_CHARS_UPPER_LETTER:
@@ -244,20 +238,20 @@ Writer& OutHTML_NumBulListStart( SwHTMLWriter& rWrt,
             }
             if( cType )
             {
-                sOut += " " OOO_STRING_SVTOOLS_HTML_O_type "=\"" + OString(cType) + "\"";
+                sOut += " " OOO_STRING_SVTOOLS_HTML_O_type "=\"" + OStringChar(cType) + "\"";
             }
 
             sal_uInt16 nStartVal = rNumFormat.GetStart();
             if( bStartValue && 1 == nStartVal && i == rInfo.GetDepth()-1 )
             {
-                if ( rWrt.pCurPam->GetNode().GetTextNode()->GetNum() )
+                if ( rWrt.m_pCurrentPam->GetNode().GetTextNode()->GetNum() )
                 {
-                    nStartVal = static_cast< sal_uInt16 >( rWrt.pCurPam->GetNode()
+                    nStartVal = static_cast< sal_uInt16 >( rWrt.m_pCurrentPam->GetNode()
                                 .GetTextNode()->GetNumberVector()[i] );
                 }
                 else
                 {
-                    OSL_FAIL( "<OutHTML_NumBulListStart(..) - text node has no number." );
+                    OSL_FAIL( "<OutHTML_NumberBulletListStart(..) - text node has no number." );
                 }
             }
             if( nStartVal != 1 )
@@ -270,7 +264,7 @@ Writer& OutHTML_NumBulListStart( SwHTMLWriter& rWrt,
             rWrt.Strm().WriteOString( sOut );
 
         if( rWrt.m_bCfgOutStyles )
-            OutCSS1_NumBulListStyleOpt( rWrt, *rInfo.GetNumRule(), (sal_uInt8)i );
+            OutCSS1_NumberBulletListStyleOpt( rWrt, *rInfo.GetNumRule(), static_cast<sal_uInt8>(i) );
 
         rWrt.Strm().WriteChar( '>' );
 
@@ -280,13 +274,23 @@ Writer& OutHTML_NumBulListStart( SwHTMLWriter& rWrt,
     return rWrt;
 }
 
-Writer& OutHTML_NumBulListEnd( SwHTMLWriter& rWrt,
+Writer& OutHTML_NumberBulletListEnd( SwHTMLWriter& rWrt,
                                const SwHTMLNumRuleInfo& rNextInfo )
 {
     SwHTMLNumRuleInfo& rInfo = rWrt.GetNumInfo();
     bool bSameRule = rNextInfo.GetNumRule() == rInfo.GetNumRule();
-    if( bSameRule && rNextInfo.GetDepth() >= rInfo.GetDepth() &&
-        !rNextInfo.IsRestart() )
+    bool bListEnd = !bSameRule || rNextInfo.GetDepth() < rInfo.GetDepth() || rNextInfo.IsRestart();
+
+    if (rWrt.mbXHTML)
+    {
+        if (bListEnd || (!bListEnd && rNextInfo.IsNumbered()))
+        {
+            HTMLOutFuncs::Out_AsciiTag(rWrt.Strm(),
+                                       rWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_li, false);
+        }
+    }
+
+    if (!bListEnd)
     {
         return rWrt;
     }
@@ -305,12 +309,12 @@ Writer& OutHTML_NumBulListEnd( SwHTMLWriter& rWrt,
 
         // a list is started or ended:
         sal_Int16 eType = rInfo.GetNumRule()->Get( i-1 ).GetNumberingType();
-        const sal_Char *pStr;
+        OString aTag;
         if( SVX_NUM_CHAR_SPECIAL == eType || SVX_NUM_BITMAP == eType)
-            pStr = OOO_STRING_SVTOOLS_HTML_unorderlist;
+            aTag = OOO_STRING_SVTOOLS_HTML_unorderlist;
         else
-            pStr = OOO_STRING_SVTOOLS_HTML_orderlist;
-        HTMLOutFuncs::Out_AsciiTag( rWrt.Strm(), pStr, false );
+            aTag = OOO_STRING_SVTOOLS_HTML_orderlist;
+        HTMLOutFuncs::Out_AsciiTag( rWrt.Strm(), rWrt.GetNamespace() + aTag, false );
         rWrt.m_bLFPossible = true;
     }
 

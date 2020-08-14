@@ -18,32 +18,30 @@
  */
 
 #include <memory>
-#include "VSeriesPlotter.hxx"
-#include "AbstractShapeFactory.hxx"
-#include "chartview/ExplicitValueProvider.hxx"
-#include <svl/zformat.hxx>
+#include <VSeriesPlotter.hxx>
+#include <BaseGFXHelper.hxx>
+#include <VLineProperties.hxx>
+#include <ShapeFactory.hxx>
 
-#include "CommonConverters.hxx"
-#include "macros.hxx"
-#include "ViewDefines.hxx"
-#include "ObjectIdentifier.hxx"
-#include "StatisticsHelper.hxx"
-#include "PlottingPositionHelper.hxx"
-#include "LabelPositionHelper.hxx"
-#include "ChartTypeHelper.hxx"
-#include "Clipping.hxx"
-#include "servicenames_charttypes.hxx"
-#include "NumberFormatterWrapper.hxx"
-#include "DataSeriesHelper.hxx"
-#include "RegressionCurveHelper.hxx"
-#include "VLegendSymbolFactory.hxx"
-#include "FormattedStringHelper.hxx"
-#include "ResId.hxx"
-#include "Strings.hrc"
-#include "RelativePositionHelper.hxx"
-#include "DateHelper.hxx"
-#include "DiagramHelper.hxx"
-#include "defines.hxx"
+#include <CommonConverters.hxx>
+#include <ExplicitCategoriesProvider.hxx>
+#include <ObjectIdentifier.hxx>
+#include <StatisticsHelper.hxx>
+#include <PlottingPositionHelper.hxx>
+#include <LabelPositionHelper.hxx>
+#include <ChartTypeHelper.hxx>
+#include <Clipping.hxx>
+#include <servicenames_charttypes.hxx>
+#include <NumberFormatterWrapper.hxx>
+#include <DataSeriesHelper.hxx>
+#include <RegressionCurveHelper.hxx>
+#include <VLegendSymbolFactory.hxx>
+#include <FormattedStringHelper.hxx>
+#include <RelativePositionHelper.hxx>
+#include <DateHelper.hxx>
+#include <DiagramHelper.hxx>
+#include <defines.hxx>
+#include <ChartModel.hxx>
 
 //only for creation: @todo remove if all plotter are uno components and instantiated via servicefactory
 #include "BarChart.hxx"
@@ -55,35 +53,31 @@
 #include <unonames.hxx>
 #include <SpecialCharacters.hxx>
 
+#include <com/sun/star/chart2/DataPointLabel.hpp>
 #include <com/sun/star/chart/ErrorBarStyle.hpp>
 #include <com/sun/star/chart/TimeUnit.hpp>
+#include <com/sun/star/chart2/XDataPointCustomLabelField.hpp>
 #include <com/sun/star/chart2/XRegressionCurveContainer.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
 #include <editeng/unoprnms.hxx>
 #include <tools/color.hxx>
-#include <o3tl/make_unique.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/math.hxx>
 #include <basegfx/vector/b2dvector.hxx>
 #include <com/sun/star/drawing/LineStyle.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
+#include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
 
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/container/XEnumeration.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/text/XText.hpp>
-#include <com/sun/star/text/XSimpleText.hpp>
-#include <com/sun/star/text/XTextContent.hpp>
-#include <com/sun/star/text/XTextRange.hpp>
-#include <com/sun/star/text/XTextCursor.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
-#include <com/sun/star/drawing/TextFitToSizeType.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
 
-#include <svx/unoshape.hxx>
+#include <unotools/localedatawrapper.hxx>
 #include <comphelper/sequence.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 #include <functional>
 #include <map>
@@ -93,6 +87,7 @@
 namespace chart {
 
 using namespace ::com::sun::star;
+using namespace ::com::sun::star::chart;
 using namespace ::com::sun::star::chart2;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
@@ -104,11 +99,20 @@ VDataSeriesGroup::CachedYValues::CachedYValues()
 {
 }
 
-VDataSeriesGroup::VDataSeriesGroup( VDataSeries* pSeries )
-        : m_aSeriesVector(1,pSeries)
+VDataSeriesGroup::VDataSeriesGroup( std::unique_ptr<VDataSeries> pSeries )
+        : m_aSeriesVector(1)
         , m_bMaxPointCountDirty(true)
         , m_nMaxPointCount(0)
         , m_aListOfCachedYValues()
+{
+    m_aSeriesVector[0] = std::move(pSeries);
+}
+
+VDataSeriesGroup::VDataSeriesGroup(VDataSeriesGroup&& other) noexcept
+        : m_aSeriesVector( std::move(other.m_aSeriesVector) )
+        , m_bMaxPointCountDirty( other.m_bMaxPointCountDirty )
+        , m_nMaxPointCount( other.m_nMaxPointCount )
+        , m_aListOfCachedYValues( std::move(other.m_aListOfCachedYValues) )
 {
 }
 
@@ -119,16 +123,12 @@ VDataSeriesGroup::~VDataSeriesGroup()
 void VDataSeriesGroup::deleteSeries()
 {
     //delete all data series help objects:
-    for (VDataSeries* pSeries : m_aSeriesVector)
-    {
-        delete pSeries;
-    }
     m_aSeriesVector.clear();
 }
 
-void VDataSeriesGroup::addSeries( VDataSeries* pSeries )
+void VDataSeriesGroup::addSeries( std::unique_ptr<VDataSeries> pSeries )
 {
-    m_aSeriesVector.push_back(pSeries);
+    m_aSeriesVector.push_back(std::move(pSeries));
     m_bMaxPointCountDirty=true;
 }
 
@@ -150,6 +150,7 @@ VSeriesPlotter::VSeriesPlotter( const uno::Reference<XChartType>& xChartTypeMode
         , m_xColorScheme()
         , m_pExplicitCategoriesProvider(nullptr)
         , m_bPointsWereSkipped(false)
+        , m_bPieLabelsAllowToMove(false)
 {
     SAL_WARN_IF(!m_xChartTypeModel.is(),"chart2","no XChartType available in view, fallback to default values may be wrong");
 }
@@ -167,20 +168,12 @@ VSeriesPlotter::~VSeriesPlotter()
     }
     m_aZSlots.clear();
 
-    tSecondaryPosHelperMap::iterator aPosIt = m_aSecondaryPosHelperMap.begin();
-    while( aPosIt != m_aSecondaryPosHelperMap.end() )
-    {
-        PlottingPositionHelper* pPosHelper = aPosIt->second;
-        delete pPosHelper;
-
-        ++aPosIt;
-    }
     m_aSecondaryPosHelperMap.clear();
 
     m_aSecondaryValueScales.clear();
 }
 
-void VSeriesPlotter::addSeries( VDataSeries* pSeries, sal_Int32 zSlot, sal_Int32 xSlot, sal_Int32 ySlot )
+void VSeriesPlotter::addSeries( std::unique_ptr<VDataSeries> pSeries, sal_Int32 zSlot, sal_Int32 xSlot, sal_Int32 ySlot )
 {
     //take ownership of pSeries
 
@@ -205,8 +198,8 @@ void VSeriesPlotter::addSeries( VDataSeries* pSeries, sal_Int32 zSlot, sal_Int32
     {
         //new z slot
         std::vector< VDataSeriesGroup > aZSlot;
-        aZSlot.push_back( VDataSeriesGroup(pSeries) );
-        m_aZSlots.push_back( aZSlot );
+        aZSlot.emplace_back( std::move(pSeries) );
+        m_aZSlots.push_back( std::move(aZSlot) );
     }
     else
     {
@@ -216,7 +209,7 @@ void VSeriesPlotter::addSeries( VDataSeries* pSeries, sal_Int32 zSlot, sal_Int32
         if(xSlot<0 || xSlot>=static_cast<sal_Int32>(rXSlots.size()))
         {
             //append the series to already existing x series
-            rXSlots.push_back( VDataSeriesGroup(pSeries) );
+            rXSlots.emplace_back( std::move(pSeries) );
         }
         else
         {
@@ -235,7 +228,7 @@ void VSeriesPlotter::addSeries( VDataSeries* pSeries, sal_Int32 zSlot, sal_Int32
             else if( ySlot == -1 || ySlot >= nYSlotCount)
             {
                 //append the series to already existing y series
-                rYSlots.addSeries(pSeries);
+                rYSlots.addSeries( std::move(pSeries) );
             }
             else
             {
@@ -271,7 +264,7 @@ void VSeriesPlotter::releaseShapes()
         for (VDataSeriesGroup const & rGroup : rGroupVector)
         {
             //iterate through all series in this x slot
-            for (VDataSeries* pSeries : rGroup.m_aSeriesVector)
+            for (std::unique_ptr<VDataSeries> const & pSeries : rGroup.m_aSeriesVector)
             {
                 pSeries->releaseShapes();
             }
@@ -299,9 +292,9 @@ uno::Reference< drawing::XShapes > VSeriesPlotter::getSeriesGroupShapeFrontChild
     if(!xShapes.is())
     {
         //ensure that the series group shape is already created
-        uno::Reference< drawing::XShapes > xSeriesShapes( this->getSeriesGroupShape( pDataSeries, xTarget ) );
+        uno::Reference< drawing::XShapes > xSeriesShapes( getSeriesGroupShape( pDataSeries, xTarget ) );
         //ensure that the back child is created first
-        this->getSeriesGroupShapeBackChild( pDataSeries, xTarget );
+        getSeriesGroupShapeBackChild( pDataSeries, xTarget );
         //use series group shape as parent for the new created front group shape
         xShapes = createGroupShape( xSeriesShapes );
         pDataSeries->m_xFrontSubGroupShape = xShapes;
@@ -316,7 +309,7 @@ uno::Reference< drawing::XShapes > VSeriesPlotter::getSeriesGroupShapeBackChild(
     if(!xShapes.is())
     {
         //ensure that the series group shape is already created
-        uno::Reference< drawing::XShapes > xSeriesShapes( this->getSeriesGroupShape( pDataSeries, xTarget ) );
+        uno::Reference< drawing::XShapes > xSeriesShapes( getSeriesGroupShape( pDataSeries, xTarget ) );
         //use series group shape as parent for the new created back group shape
         xShapes = createGroupShape( xSeriesShapes );
         pDataSeries->m_xBackSubGroupShape = xShapes;
@@ -350,21 +343,21 @@ uno::Reference< drawing::XShapes > VSeriesPlotter::getErrorBarsGroupShape( VData
     if(!xShapes.is())
     {
         //create a group shape for this series and add to logic target:
-        xShapes = this->createGroupShape( xTarget,rDataSeries.getErrorBarsCID(bYError) );
+        xShapes = createGroupShape( xTarget,rDataSeries.getErrorBarsCID(bYError) );
         rShapeGroup = xShapes;
     }
     return xShapes;
 
 }
 
-OUString VSeriesPlotter::getLabelTextForValue( VDataSeries& rDataSeries
+OUString VSeriesPlotter::getLabelTextForValue( VDataSeries const & rDataSeries
                 , sal_Int32 nPointIndex
                 , double fValue
                 , bool bAsPercentage )
 {
     OUString aNumber;
 
-    if( m_apNumberFormatterWrapper.get())
+    if (m_apNumberFormatterWrapper)
     {
         sal_Int32 nNumberFormatKey = 0;
         if( rDataSeries.hasExplicitNumberFormat(nPointIndex,bAsPercentage) )
@@ -377,15 +370,12 @@ OUString VSeriesPlotter::getLabelTextForValue( VDataSeries& rDataSeries
         }
         else
         {
-            if( rDataSeries.shouldLabelNumberFormatKeyBeDetectedFromYAxis() && m_aAxesNumberFormats.hasFormat(1,rDataSeries.getAttachedAxisIndex()) ) //y-axis
-                nNumberFormatKey = m_aAxesNumberFormats.getFormat(1,rDataSeries.getAttachedAxisIndex());
-            else
-                nNumberFormatKey = rDataSeries.detectNumberFormatKey( nPointIndex );
+            nNumberFormatKey = rDataSeries.detectNumberFormatKey( nPointIndex );
         }
         if(nNumberFormatKey<0)
             nNumberFormatKey=0;
 
-        sal_Int32 nLabelCol = 0;
+        Color nLabelCol;
         bool bColChanged;
         aNumber = m_apNumberFormatterWrapper->getFormattedString(
                 nNumberFormatKey, fValue, nLabelCol, bColChanged );
@@ -396,7 +386,7 @@ OUString VSeriesPlotter::getLabelTextForValue( VDataSeries& rDataSeries
         const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
         const OUString& aNumDecimalSep = rLocaleDataWrapper.getNumDecimalSep();
         assert(aNumDecimalSep.getLength() > 0);
-        sal_Unicode cDecSeparator = aNumDecimalSep.getStr()[0];
+        sal_Unicode cDecSeparator = aNumDecimalSep[0];
         aNumber = ::rtl::math::doubleToUString( fValue, rtl_math_StringFormat_G /*rtl_math_StringFormat*/
             , 3/*DecPlaces*/ , cDecSeparator );
     }
@@ -414,9 +404,21 @@ uno::Reference< drawing::XShape > VSeriesPlotter::createDataLabel( const uno::Re
                     , sal_Int32 nTextWidth )
 {
     uno::Reference< drawing::XShape > xTextShape;
+    Sequence<uno::Reference<XDataPointCustomLabelField>> aCustomLabels;
 
     try
     {
+        const uno::Reference< css::beans::XPropertySet >& xPropertySet(
+            rDataSeries.getPropertiesOfPoint( nPointIndex ) );
+        if( xPropertySet.is() )
+        {
+            uno::Any aAny = xPropertySet->getPropertyValue( CHART_UNONAME_CUSTOM_LABEL_FIELDS );
+            if( aAny.hasValue() )
+            {
+                aAny >>= aCustomLabels;
+            }
+        }
+
         awt::Point aScreenPosition2D(rScreenPosition2D);
         if(eAlignment==LABEL_ALIGN_LEFT)
             aScreenPosition2D.X -= nOffset;
@@ -490,32 +492,91 @@ uno::Reference< drawing::XShape > VSeriesPlotter::createDataLabel( const uno::Re
                 xPointProps->getPropertyValue( "TextRotation" ) >>= fRotationDegrees;
             }
         }
-        catch( const uno::Exception& e )
+        catch( const uno::Exception& )
         {
-            ASSERT_EXCEPTION( e );
+            TOOLS_WARN_EXCEPTION("chart2", "" );
         }
 
         sal_Int32 nLineCountForSymbolsize = 0;
-        Sequence< OUString > aTextList(3);
+        sal_uInt32 nTextListLength = 3;
+        sal_uInt32 nCustomLabelsCount = aCustomLabels.getLength();
+        Sequence< OUString > aTextList( nTextListLength );
+
+        bool bUseCustomLabel = nCustomLabelsCount > 0;
+        if( bUseCustomLabel )
         {
-            if(pLabel->ShowCategoryName)
+            nTextListLength = ( nCustomLabelsCount > 3 ) ? nCustomLabelsCount : 3;
+            aSeparator = "";
+            aTextList = Sequence< OUString >( nTextListLength );
+            for( sal_uInt32 i = 0; i < nCustomLabelsCount; ++i )
             {
-                if( m_pExplicitCategoriesProvider )
+                switch( aCustomLabels[i]->getFieldType() )
                 {
-                    Sequence< OUString > aCategories( m_pExplicitCategoriesProvider->getSimpleCategories() );
-                    if( nPointIndex >= 0 && nPointIndex < aCategories.getLength() )
+                    case DataPointCustomLabelFieldType_VALUE:
                     {
-                        aTextList[0] = aCategories[nPointIndex];
+                        aTextList[i] = getLabelTextForValue( rDataSeries, nPointIndex, fValue, false );
+                        break;
                     }
+                    case DataPointCustomLabelFieldType_CATEGORYNAME:
+                    {
+                        aTextList[i] = getCategoryName( nPointIndex );
+                        break;
+                    }
+                    case DataPointCustomLabelFieldType_SERIESNAME:
+                    {
+                        OUString aRole;
+                        if ( m_xChartTypeModel )
+                            aRole = m_xChartTypeModel->getRoleOfSequenceForSeriesLabel();
+                        const uno::Reference< XDataSeries >& xSeries( rDataSeries.getModel() );
+                        aTextList[i] = DataSeriesHelper::getDataSeriesLabel( xSeries, aRole );
+                        break;
+                    }
+                    case DataPointCustomLabelFieldType_PERCENTAGE:
+                    {
+                        if(fSumValue == 0.0)
+                           fSumValue = 1.0;
+                        fValue /= fSumValue;
+                        if(fValue < 0)
+                           fValue *= -1.0;
+
+                        aTextList[i] = getLabelTextForValue(rDataSeries, nPointIndex, fValue, true);
+                        break;
+                    }
+                    case DataPointCustomLabelFieldType_CELLREF:
+                    {
+                        // TODO: for now doesn't show placeholder
+                        aTextList[i] = OUString();
+                        break;
+                    }
+                    case DataPointCustomLabelFieldType_TEXT:
+                    {
+                        aTextList[i] = aCustomLabels[i]->getString();
+                        break;
+                    }
+                    case DataPointCustomLabelFieldType_NEWLINE:
+                    {
+                        aTextList[i] = "\n";
+                        break;
+                    }
+                    default:
+                    break;
                 }
+                aCustomLabels[i]->setString( aTextList[i] );
+            }
+        }
+        else
+        {
+            if( pLabel->ShowCategoryName )
+            {
+                aTextList[0] = getCategoryName( nPointIndex );
             }
 
-            if(pLabel->ShowNumber)
+            if( pLabel->ShowNumber )
             {
                 aTextList[1] = getLabelTextForValue(rDataSeries, nPointIndex, fValue, false);
             }
 
-            if(pLabel->ShowNumberInPercent)
+            if( pLabel->ShowNumberInPercent )
             {
                 if(fSumValue==0.0)
                     fSumValue=1.0;
@@ -525,13 +586,13 @@ uno::Reference< drawing::XShape > VSeriesPlotter::createDataLabel( const uno::Re
 
                 aTextList[2] = getLabelTextForValue(rDataSeries, nPointIndex, fValue, true);
             }
+        }
 
-            for( sal_Int32 nN = 0; nN < 3; ++nN)
+        for( auto const & line : std::as_const(aTextList) )
+        {
+            if( !line.isEmpty() )
             {
-                if( !aTextList[nN].isEmpty() )
-                {
-                    ++nLineCountForSymbolsize;
-                }
+                ++nLineCountForSymbolsize;
             }
         }
 
@@ -550,33 +611,24 @@ uno::Reference< drawing::XShape > VSeriesPlotter::createDataLabel( const uno::Re
         // a multi-line label.
         bool bMultiLineLabel = ( aSeparator == "\n" );
 
-        if( bMultiLineLabel )
+        if( bUseCustomLabel )
         {
-            // prepare properties for each paragraph
-            // we want to have the value and percent value centered respect
-            // with the category name
-            Sequence< tNameSequence > aParaPropNames(3);
-            aParaPropNames[1].realloc(1);
-            aParaPropNames[1][0] = "ParaAdjust";
-            aParaPropNames[2].realloc(1);
-            aParaPropNames[2][0] = "ParaAdjust";
+            Sequence< uno::Reference< XFormattedString > > aFormattedLabels( aCustomLabels.getLength() );
+            for( int i = 0; i < aFormattedLabels.getLength(); i++ )
+            {
+                aFormattedLabels[i] = aCustomLabels[i];
+            }
 
-            Sequence< tAnySequence > aParaPropValues(3);
-            aParaPropValues[1].realloc(1);
-            aParaPropValues[1][0] <<= style::ParagraphAdjust_CENTER;
-            aParaPropValues[2].realloc(1);
-            aParaPropValues[2][0] <<= style::ParagraphAdjust_CENTER;
-
-            //create text shape
-            xTextShape = AbstractShapeFactory::getOrCreateShapeFactory(m_xShapeFactory)->
-                createText( xTarget_, aTextList, aParaPropNames, aParaPropValues
-                            , *pPropNames, *pPropValues, AbstractShapeFactory::makeTransformation( aScreenPosition2D ) );
+            // create text shape
+            xTextShape = ShapeFactory::getOrCreateShapeFactory( m_xShapeFactory )->
+                createText( xTarget_, aFormattedLabels, *pPropNames, *pPropValues,
+                    ShapeFactory::makeTransformation( aScreenPosition2D ) );
         }
         else
         {
             // join text list elements
             OUStringBuffer aText;
-            for( sal_Int32 nN = 0; nN < 3; ++nN)
+            for( sal_uInt32 nN = 0; nN < nTextListLength; ++nN)
             {
                 if( !aTextList[nN].isEmpty() )
                 {
@@ -589,9 +641,9 @@ uno::Reference< drawing::XShape > VSeriesPlotter::createDataLabel( const uno::Re
             }
 
             //create text shape
-            xTextShape = AbstractShapeFactory::getOrCreateShapeFactory(m_xShapeFactory)->
-                createText( xTarget_, aText.makeStringAndClear()
-                            , *pPropNames, *pPropValues, AbstractShapeFactory::makeTransformation( aScreenPosition2D ) );
+            xTextShape = ShapeFactory::getOrCreateShapeFactory(m_xShapeFactory)->
+                createText( xTarget_, aText.makeStringAndClear(), *pPropNames, *pPropValues,
+                    ShapeFactory::makeTransformation( aScreenPosition2D ) );
         }
 
         if( !xTextShape.is() )
@@ -634,18 +686,61 @@ uno::Reference< drawing::XShape > VSeriesPlotter::createDataLabel( const uno::Re
 
         // in case text is rotated, the transformation property of the text
         // shape is modified.
-        const awt::Point aUnrotatedTextPos( xTextShape->getPosition() );
         if( fRotationDegrees != 0.0 )
         {
-            const double fDegreesPi( fRotationDegrees * ( F_PI / -180.0 ) );
+            const double fDegreesPi( -basegfx::deg2rad(fRotationDegrees) );
             uno::Reference< beans::XPropertySet > xProp( xTextShape, uno::UNO_QUERY );
             if( xProp.is() )
-                xProp->setPropertyValue( "Transformation", AbstractShapeFactory::makeTransformation( aScreenPosition2D, fDegreesPi ) );
+                xProp->setPropertyValue( "Transformation", ShapeFactory::makeTransformation( aScreenPosition2D, fDegreesPi ) );
             LabelPositionHelper::correctPositionForRotation( xTextShape, eAlignment, fRotationDegrees, true /*bRotateAroundCenter*/ );
+        }
+
+        awt::Point aTextShapePos(xTextShape->getPosition());
+        if( m_bPieLabelsAllowToMove && rDataSeries.isLabelCustomPos(nPointIndex) )
+        {
+            awt::Point aRelPos = rDataSeries.getLabelPosition(aTextShapePos, nPointIndex);
+            if( aRelPos.X != -1 )
+            {
+                xTextShape->setPosition(aRelPos);
+                if( !m_xChartTypeModel->getChartType().equalsIgnoreAsciiCase(CHART2_SERVICE_NAME_CHARTTYPE_PIE) )
+                {
+                    sal_Int32 nX1 = rScreenPosition2D.X;
+                    sal_Int32 nY1 = rScreenPosition2D.Y;
+                    sal_Int32 nX2 = nX1;
+                    sal_Int32 nY2 = nY1;
+                    ::basegfx::B2IRectangle aRect(BaseGFXHelper::makeRectangle(aRelPos, xTextShape->getSize()));
+                    if (nX1 < aRelPos.X)
+                        nX2 = aRelPos.X;
+                    else if (nX1 > aRect.getMaxX())
+                        nX2 = aRect.getMaxX();
+
+                    if (nY1 < aRect.getMinY())
+                        nY2 = aRect.getMinY();
+                    else if (nY1 > aRect.getMaxY())
+                        nY2 = aRect.getMaxY();
+
+                    //when the line is very short compared to the page size don't create one
+                    ::basegfx::B2DVector aLength(nX1 - nX2, nY1 - nY2);
+                    double fPageDiagonaleLength = sqrt(double(m_aPageReferenceSize.Width)*double(m_aPageReferenceSize.Width) + double(m_aPageReferenceSize.Height)*double(m_aPageReferenceSize.Height));
+                    if ((aLength.getLength() / fPageDiagonaleLength) >= 0.01)
+                    {
+                        drawing::PointSequenceSequence aPoints(1);
+                        aPoints[0].realloc(2);
+                        aPoints[0][0].X = nX1;
+                        aPoints[0][0].Y = nY1;
+                        aPoints[0][1].X = nX2;
+                        aPoints[0][1].Y = nY2;
+
+                        VLineProperties aVLineProperties;
+                        m_pShapeFactory->createLine2D(xTarget, aPoints, &aVLineProperties);
+                    }
+                }
+            }
         }
 
         // in case legend symbol has to be displayed, text shape position is
         // slightly changed.
+        const awt::Point aUnrotatedTextPos(xTextShape->getPosition());
         if( xSymbol.is() )
         {
             const awt::Point aOldTextPos( xTextShape->getPosition() );
@@ -684,9 +779,9 @@ uno::Reference< drawing::XShape > VSeriesPlotter::createDataLabel( const uno::Re
             xTextShape->setPosition( aNewTextPos );
         }
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 
     return xTextShape;
@@ -724,8 +819,8 @@ double lcl_getErrorBarLogicLength(
                                              : OUString("NegativeError") ) >>= fPercent )
                 {
                     if( nIndex >=0 && nIndex < rData.getLength() &&
-                        ! ::rtl::math::isNan( rData[nIndex] ) &&
-                        ! ::rtl::math::isNan( fPercent ))
+                        ! std::isnan( rData[nIndex] ) &&
+                        ! std::isnan( fPercent ))
                     {
                         fResult = rData[nIndex] * fPercent / 100.0;
                     }
@@ -747,14 +842,13 @@ double lcl_getErrorBarLogicLength(
                 {
                     double fMaxValue;
                     ::rtl::math::setInf(&fMaxValue, true);
-                    const double* pValues = rData.getConstArray();
-                    for(sal_Int32 i=0; i<rData.getLength(); ++i, ++pValues)
+                    for(double d : rData)
                     {
-                        if(fMaxValue<*pValues)
-                            fMaxValue=*pValues;
+                        if(fMaxValue < d)
+                            fMaxValue = d;
                     }
-                    if( ::rtl::math::isFinite( fMaxValue ) &&
-                        ::rtl::math::isFinite( fPercent ))
+                    if( std::isfinite( fMaxValue ) &&
+                        std::isfinite( fPercent ))
                     {
                         fResult = fMaxValue * fPercent / 100.0;
                     }
@@ -774,9 +868,9 @@ double lcl_getErrorBarLogicLength(
             break;
         }
     }
-    catch( const uno::Exception & e )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 
     return fResult;
@@ -802,12 +896,12 @@ void lcl_AddErrorBottomLine( const drawing::Position3D& rPosition, ::basegfx::B2
 ::basegfx::B2DVector lcl_getErrorBarMainDirection(
               const drawing::Position3D& rStart
             , const drawing::Position3D& rBottomEnd
-            , PlottingPositionHelper* pPosHelper
+            , PlottingPositionHelper const * pPosHelper
             , const drawing::Position3D& rUnscaledLogicPosition
             , bool bYError )
 {
-    ::basegfx::B2DVector aMainDirection = ::basegfx::B2DVector( rStart.PositionX - rBottomEnd.PositionX
-                                              , rStart.PositionY - rBottomEnd.PositionY );
+    ::basegfx::B2DVector aMainDirection( rStart.PositionX - rBottomEnd.PositionX
+                                         , rStart.PositionY - rBottomEnd.PositionY );
     if( !aMainDirection.getLength() )
     {
         //get logic clip values:
@@ -843,14 +937,13 @@ void lcl_AddErrorBottomLine( const drawing::Position3D& rPosition, ::basegfx::B2
     return aMainDirection;
 }
 
-drawing::Position3D lcl_transformMixedToScene( PlottingPositionHelper* pPosHelper
-    , double fX /*scaled*/, double fY /*unscaled*/, double fZ /*unscaled*/, bool bClip )
+drawing::Position3D lcl_transformMixedToScene( PlottingPositionHelper const * pPosHelper
+    , double fX /*scaled*/, double fY /*unscaled*/, double fZ /*unscaled*/ )
 {
     if(!pPosHelper)
         return drawing::Position3D(0,0,0);
     pPosHelper->doLogicScaling( nullptr,&fY,&fZ );
-    if(bClip)
-        pPosHelper->clipScaledLogicValues( &fX,&fY,&fZ );
+    pPosHelper->clipScaledLogicValues( &fX,&fY,&fZ );
     return pPosHelper->transformScaledLogicToScene( fX, fY, fZ, false );
 }
 
@@ -912,7 +1005,7 @@ void VSeriesPlotter::createErrorBar(
         else
             m_pPosHelper->doLogicScaling( &fScaledX, nullptr, nullptr );
 
-        aMiddle = lcl_transformMixedToScene( m_pPosHelper, fScaledX, fY, fZ, true );
+        aMiddle = lcl_transformMixedToScene( m_pPosHelper, fScaledX, fY, fZ );
 
         drawing::Position3D aNegative(aMiddle);
         drawing::Position3D aPositive(aMiddle);
@@ -922,14 +1015,14 @@ void VSeriesPlotter::createErrorBar(
         if( bShowPositive )
         {
             double fLength = lcl_getErrorBarLogicLength( aData, xErrorBarProperties, nErrorBarStyle, nIndex, true, bYError );
-            if( ::rtl::math::isFinite( fLength ) )
+            if( std::isfinite( fLength ) )
             {
                 double fLocalX = fX;
                 double fLocalY = fY;
                 if( bYError )
                 {
                     fLocalY+=fLength;
-                    aPositive = lcl_transformMixedToScene( m_pPosHelper, fScaledX, fLocalY, fZ, true );
+                    aPositive = lcl_transformMixedToScene( m_pPosHelper, fScaledX, fLocalY, fZ );
                 }
                 else
                 {
@@ -945,14 +1038,14 @@ void VSeriesPlotter::createErrorBar(
         if( bShowNegative )
         {
             double fLength = lcl_getErrorBarLogicLength( aData, xErrorBarProperties, nErrorBarStyle, nIndex, false, bYError );
-            if( ::rtl::math::isFinite( fLength ) )
+            if( std::isfinite( fLength ) )
             {
                 double fLocalX = fX;
                 double fLocalY = fY;
                 if( bYError )
                 {
                     fLocalY-=fLength;
-                    aNegative = lcl_transformMixedToScene( m_pPosHelper, fScaledX, fLocalY, fZ, true );
+                    aNegative = lcl_transformMixedToScene( m_pPosHelper, fScaledX, fLocalY, fZ );
                 }
                 else
                 {
@@ -993,11 +1086,172 @@ void VSeriesPlotter::createErrorBar(
         uno::Reference< drawing::XShape > xShape = m_pShapeFactory->createLine2D( xTarget, PolyToPointSequence( aPoly) );
         setMappedProperties( xShape, xErrorBarProperties, PropertyMapper::getPropertyNameMapForLineProperties() );
     }
-    catch( const uno::Exception & e )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 
+}
+
+void VSeriesPlotter::addErrorBorder(
+      const drawing::Position3D& rPos0
+     ,const drawing::Position3D& rPos1
+     ,const uno::Reference< drawing::XShapes >& rTarget
+     ,const uno::Reference< beans::XPropertySet >& rErrorBorderProp )
+{
+    drawing::PolyPolygonShape3D aPoly;
+    sal_Int32 nSequenceIndex = 0;
+    AddPointToPoly( aPoly, rPos0, nSequenceIndex );
+    AddPointToPoly( aPoly, rPos1, nSequenceIndex );
+    uno::Reference< drawing::XShape > xShape = m_pShapeFactory->createLine2D(
+                    rTarget, PolyToPointSequence( aPoly) );
+    setMappedProperties( xShape, rErrorBorderProp,
+                    PropertyMapper::getPropertyNameMapForLineProperties() );
+}
+
+void VSeriesPlotter::createErrorRectangle(
+      const drawing::Position3D& rUnscaledLogicPosition
+     ,VDataSeries& rVDataSeries
+     ,sal_Int32 nIndex
+     ,const uno::Reference< drawing::XShapes >& rTarget
+     ,bool bUseXErrorData
+     ,bool bUseYErrorData )
+{
+    if ( m_nDimension != 2 )
+        return;
+
+    // error border properties
+    Reference< beans::XPropertySet > xErrorBorderPropX, xErrorBorderPropY;
+    if ( bUseXErrorData )
+    {
+        xErrorBorderPropX = rVDataSeries.getXErrorBarProperties( nIndex );
+        if ( !xErrorBorderPropX.is() )
+            return;
+    }
+    uno::Reference< drawing::XShapes > xErrorBorder_ShapesX(
+        getErrorBarsGroupShape( rVDataSeries, rTarget, false ) );
+
+    if ( bUseYErrorData )
+    {
+        xErrorBorderPropY = rVDataSeries.getYErrorBarProperties( nIndex );
+        if ( !xErrorBorderPropY.is() )
+            return;
+    }
+    uno::Reference< drawing::XShapes > xErrorBorder_ShapesY(
+        getErrorBarsGroupShape( rVDataSeries, rTarget, true ) );
+
+    if( !ChartTypeHelper::isSupportingStatisticProperties( m_xChartTypeModel, m_nDimension ) )
+        return;
+
+    try
+    {
+        bool bShowXPositive = false;
+        bool bShowXNegative = false;
+        bool bShowYPositive = false;
+        bool bShowYNegative = false;
+
+        sal_Int32 nErrorBorderStyleX = css::chart::ErrorBarStyle::VARIANCE;
+        sal_Int32 nErrorBorderStyleY = css::chart::ErrorBarStyle::VARIANCE;
+
+        if ( bUseXErrorData )
+        {
+            xErrorBorderPropX->getPropertyValue( "ErrorBarStyle" ) >>= nErrorBorderStyleX;
+            xErrorBorderPropX->getPropertyValue( "ShowPositiveError") >>= bShowXPositive;
+            xErrorBorderPropX->getPropertyValue( "ShowNegativeError") >>= bShowXNegative;
+        }
+        if ( bUseYErrorData )
+        {
+            xErrorBorderPropY->getPropertyValue( "ErrorBarStyle" ) >>= nErrorBorderStyleY;
+            xErrorBorderPropY->getPropertyValue( "ShowPositiveError") >>= bShowYPositive;
+            xErrorBorderPropY->getPropertyValue( "ShowNegativeError") >>= bShowYNegative;
+        }
+
+        if ( bUseXErrorData && nErrorBorderStyleX == css::chart::ErrorBarStyle::NONE )
+            bUseXErrorData = false;
+        if ( bUseYErrorData && nErrorBorderStyleY == css::chart::ErrorBarStyle::NONE )
+            bUseYErrorData = false;
+
+        if ( !bShowXPositive && !bShowXNegative && !bShowYPositive && !bShowYNegative )
+            return;
+
+        if ( !m_pPosHelper )
+            return;
+
+        drawing::Position3D aUnscaledLogicPosition( rUnscaledLogicPosition );
+        if ( bUseXErrorData && nErrorBorderStyleX == css::chart::ErrorBarStyle::STANDARD_DEVIATION )
+            aUnscaledLogicPosition.PositionX = rVDataSeries.getXMeanValue();
+        if ( bUseYErrorData && nErrorBorderStyleY == css::chart::ErrorBarStyle::STANDARD_DEVIATION )
+            aUnscaledLogicPosition.PositionY = rVDataSeries.getYMeanValue();
+
+        const double fX = aUnscaledLogicPosition.PositionX;
+        const double fY = aUnscaledLogicPosition.PositionY;
+        const double fZ = aUnscaledLogicPosition.PositionZ;
+        double fScaledX = fX;
+        m_pPosHelper->doLogicScaling( &fScaledX, nullptr, nullptr );
+
+        uno::Sequence< double > aDataX( rVDataSeries.getAllX() );
+        uno::Sequence< double > aDataY( rVDataSeries.getAllY() );
+
+        double fPosX = 0.0;
+        double fPosY = 0.0;
+        double fNegX = 0.0;
+        double fNegY = 0.0;
+        if ( bUseXErrorData )
+        {
+            if ( bShowXPositive )
+                fPosX = lcl_getErrorBarLogicLength( aDataX, xErrorBorderPropX,
+                                nErrorBorderStyleX, nIndex, true, false );
+            if ( bShowXNegative )
+                fNegX = lcl_getErrorBarLogicLength( aDataX, xErrorBorderPropX,
+                                nErrorBorderStyleX, nIndex, false, false );
+        }
+
+        if ( bUseYErrorData )
+        {
+            if ( bShowYPositive )
+                fPosY = lcl_getErrorBarLogicLength( aDataY, xErrorBorderPropY,
+                                nErrorBorderStyleY, nIndex, true, true );
+            if ( bShowYNegative )
+                fNegY = lcl_getErrorBarLogicLength( aDataY, xErrorBorderPropY,
+                                nErrorBorderStyleY, nIndex, false, true );
+        }
+
+        if ( !( std::isfinite( fPosX ) &&
+                std::isfinite( fPosY ) &&
+                std::isfinite( fNegX ) &&
+                std::isfinite( fNegY ) ) )
+            return;
+
+        drawing::Position3D aBottomLeft( lcl_transformMixedToScene( m_pPosHelper,
+                                             fX - fNegX, fY - fNegY, fZ ) );
+        drawing::Position3D aTopLeft( lcl_transformMixedToScene( m_pPosHelper,
+                                             fX - fNegX, fY + fPosY, fZ ) );
+        drawing::Position3D aTopRight( lcl_transformMixedToScene( m_pPosHelper,
+                                             fX + fPosX, fY + fPosY, fZ ) );
+        drawing::Position3D aBottomRight( lcl_transformMixedToScene( m_pPosHelper,
+                                             fX + fPosX, fY - fNegY, fZ ) );
+        if ( bUseXErrorData )
+        {
+            // top border
+            addErrorBorder( aTopLeft, aTopRight, xErrorBorder_ShapesX, xErrorBorderPropX );
+
+            // bottom border
+            addErrorBorder( aBottomRight, aBottomLeft, xErrorBorder_ShapesX, xErrorBorderPropX );
+        }
+
+        if ( bUseYErrorData )
+        {
+            // left border
+            addErrorBorder( aBottomLeft, aTopLeft, xErrorBorder_ShapesY, xErrorBorderPropY );
+
+            // right border
+            addErrorBorder( aTopRight, aBottomRight, xErrorBorder_ShapesY, xErrorBorderPropY );
+        }
+    }
+    catch( const uno::Exception & )
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2", "Exception in createErrorRectangle(). ");
+    }
 }
 
 void VSeriesPlotter::createErrorBar_X( const drawing::Position3D& rUnscaledLogicPosition
@@ -1011,7 +1265,7 @@ void VSeriesPlotter::createErrorBar_X( const drawing::Position3D& rUnscaledLogic
     if( xErrorBarProp.is())
     {
         uno::Reference< drawing::XShapes > xErrorBarsGroup_Shapes(
-            this->getErrorBarsGroupShape(rVDataSeries, xTarget, false) );
+            getErrorBarsGroupShape(rVDataSeries, xTarget, false) );
 
         createErrorBar( xErrorBarsGroup_Shapes
             , rUnscaledLogicPosition, xErrorBarProp
@@ -1024,7 +1278,7 @@ void VSeriesPlotter::createErrorBar_X( const drawing::Position3D& rUnscaledLogic
 void VSeriesPlotter::createErrorBar_Y( const drawing::Position3D& rUnscaledLogicPosition
                             , VDataSeries& rVDataSeries, sal_Int32 nPointIndex
                             , const uno::Reference< drawing::XShapes >& xTarget
-                            , double* pfScaledLogicX )
+                            , double const * pfScaledLogicX )
 {
     if(m_nDimension!=2)
         return;
@@ -1033,7 +1287,7 @@ void VSeriesPlotter::createErrorBar_Y( const drawing::Position3D& rUnscaledLogic
     if( xErrorBarProp.is())
     {
         uno::Reference< drawing::XShapes > xErrorBarsGroup_Shapes(
-            this->getErrorBarsGroupShape(rVDataSeries, xTarget, true) );
+            getErrorBarsGroupShape(rVDataSeries, xTarget, true) );
 
         createErrorBar( xErrorBarsGroup_Shapes
             , rUnscaledLogicPosition, xErrorBarProp
@@ -1043,7 +1297,7 @@ void VSeriesPlotter::createErrorBar_Y( const drawing::Position3D& rUnscaledLogic
     }
 }
 
-void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries& rVDataSeries,
+void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries const & rVDataSeries,
                             const uno::Reference< drawing::XShapes >& xTarget,
                             const uno::Reference< drawing::XShapes >& xEquationTarget,
                             bool bMaySkipPoints )
@@ -1102,6 +1356,8 @@ void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries& rVDataSeries,
             fMinX -= aExtrapolateBackward;
 
             fPointScale = (fMaxX - fMinX) / (fChartMaxX - fChartMinX);
+            // sanitize the value, tdf#119922
+            fPointScale = std::min(fPointScale, 1000.0);
         }
 
         xCalculator->setRegressionProperties(aDegree, bForceIntercept, aInterceptValue, aPeriod);
@@ -1120,7 +1376,7 @@ void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries& rVDataSeries,
             xScalingY.set( aScales[1].Scaling );
         }
 
-        uno::Sequence< geometry::RealPoint2D > aCalculatedPoints(
+        const uno::Sequence< geometry::RealPoint2D > aCalculatedPoints(
             xCalculator->getCurveValues(
                             fMinX, fMaxX, nPointCount,
                             xScalingX, xScalingY, bMaySkipPoints ));
@@ -1137,19 +1393,19 @@ void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries& rVDataSeries,
 
         sal_Int32 nRealPointCount = 0;
 
-        for(sal_Int32 nP = 0; nP < aCalculatedPoints.getLength(); ++nP)
+        for(geometry::RealPoint2D const & p : aCalculatedPoints)
         {
-            double fLogicX = aCalculatedPoints[nP].X;
-            double fLogicY = aCalculatedPoints[nP].Y;
+            double fLogicX = p.X;
+            double fLogicY = p.Y;
             double fLogicZ = 0.0; //dummy
 
             // fdo#51656: don't scale mean value lines
             if(!bAverageLine)
                 m_pPosHelper->doLogicScaling( &fLogicX, &fLogicY, &fLogicZ );
 
-            if(!rtl::math::isNan(fLogicX) && !rtl::math::isInf(fLogicX) &&
-               !rtl::math::isNan(fLogicY) && !rtl::math::isInf(fLogicY) &&
-               !rtl::math::isNan(fLogicZ) && !rtl::math::isInf(fLogicZ) )
+            if(!std::isnan(fLogicX) && !std::isinf(fLogicX) &&
+               !std::isnan(fLogicY) && !std::isinf(fLogicY) &&
+               !std::isnan(fLogicZ) && !std::isinf(fLogicZ) )
             {
                 aRegressionPoly.SequenceX[0][nRealPointCount] = fLogicX;
                 aRegressionPoly.SequenceY[0][nRealPointCount] = fLogicY;
@@ -1166,7 +1422,7 @@ void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries& rVDataSeries,
         m_pPosHelper->transformScaledLogicToScene( aRegressionPoly );
 
         awt::Point aDefaultPos;
-        if( aRegressionPoly.SequenceX.getLength() && aRegressionPoly.SequenceX[0].getLength() )
+        if( aRegressionPoly.SequenceX.hasElements() && aRegressionPoly.SequenceX[0].hasElements() )
         {
             VLineProperties aVLineProperties;
             aVLineProperties.initFromPropertySet( xProperties );
@@ -1176,7 +1432,7 @@ void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries& rVDataSeries,
                 createGroupShape( xTarget, rVDataSeries.getDataCurveCID( nN, bAverageLine ) );
             uno::Reference< drawing::XShape > xShape = m_pShapeFactory->createLine2D(
                 xRegressionGroupShapes, PolyToPointSequence( aRegressionPoly ), &aVLineProperties );
-            AbstractShapeFactory::setShapeName( xShape, "MarkHandles" );
+            ShapeFactory::setShapeName( xShape, "MarkHandles" );
             aDefaultPos = xShape->getPosition();
         }
 
@@ -1192,7 +1448,7 @@ void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries& rVDataSeries,
     }
 }
 
-sal_Int32 lcl_getOUStringMaxLineLength ( OUStringBuffer& aString )
+static sal_Int32 lcl_getOUStringMaxLineLength ( OUStringBuffer const & aString )
 {
     const sal_Int32 nStringLength = aString.getLength();
     sal_Int32 nMaxLineLength = 0;
@@ -1224,130 +1480,129 @@ void VSeriesPlotter::createRegressionCurveEquationShapes(
 
     bool bShowEquation = false;
     bool bShowCorrCoeff = false;
-    if(( xEquationProperties->getPropertyValue( "ShowEquation") >>= bShowEquation ) &&
-       ( xEquationProperties->getPropertyValue( "ShowCorrelationCoefficient") >>= bShowCorrCoeff ))
+    if(!(( xEquationProperties->getPropertyValue( "ShowEquation") >>= bShowEquation ) &&
+       ( xEquationProperties->getPropertyValue( "ShowCorrelationCoefficient") >>= bShowCorrCoeff )))
+        return;
+
+    if( ! (bShowEquation || bShowCorrCoeff))
+        return;
+
+    OUStringBuffer aFormula;
+    sal_Int32 nNumberFormatKey = 0;
+    sal_Int32 nFormulaWidth = 0;
+    xEquationProperties->getPropertyValue(CHART_UNONAME_NUMFMT) >>= nNumberFormatKey;
+    bool bResizeEquation = true;
+    sal_Int32 nMaxIteration = 2;
+    if ( bShowEquation )
     {
-        if( ! (bShowEquation || bShowCorrCoeff))
-            return;
+        OUString aXName, aYName;
+        if ( !(xEquationProperties->getPropertyValue( "XName" ) >>= aXName) )
+            aXName = OUString( "x" );
+        if ( !(xEquationProperties->getPropertyValue( "YName" ) >>= aYName) )
+            aYName = OUString( "f(x)" );
+        xRegressionCurveCalculator->setXYNames( aXName, aYName );
+    }
 
-        OUStringBuffer aFormula;
-        sal_Int32 nNumberFormatKey = 0;
-        sal_Int32 nFormulaWidth = 0;
-        xEquationProperties->getPropertyValue(CHART_UNONAME_NUMFMT) >>= nNumberFormatKey;
-        bool bResizeEquation = true;
-        sal_Int32 nMaxIteration = 2;
-        if ( bShowEquation )
+    for ( sal_Int32 nCountIteration = 0; bResizeEquation && nCountIteration < nMaxIteration ; nCountIteration++ )
+    {
+        bResizeEquation = false;
+        if( bShowEquation )
         {
-            OUString aXName, aYName;
-            if ( !(xEquationProperties->getPropertyValue( "XName" ) >>= aXName) )
-                aXName = OUString( "x" );
-            if ( !(xEquationProperties->getPropertyValue( "YName" ) >>= aYName) )
-                aYName = OUString( "f(x)" );
-            xRegressionCurveCalculator->setXYNames( aXName, aYName );
-        }
-
-        for ( sal_Int32 nCountIteration = 0; bResizeEquation && nCountIteration < nMaxIteration ; nCountIteration++ )
-        {
-            bResizeEquation = false;
-            if( bShowEquation )
-            {
-                if( m_apNumberFormatterWrapper.get())
-                {   // iteration 0: default representation (no wrap)
-                    // iteration 1: expected width (nFormulaWidth) is calculated
-                    aFormula = xRegressionCurveCalculator->getFormattedRepresentation(
-                        m_apNumberFormatterWrapper->getNumberFormatsSupplier(),
-                        nNumberFormatKey, nFormulaWidth );
-                    nFormulaWidth = lcl_getOUStringMaxLineLength( aFormula );
-                }
-                else
-                {
-                    aFormula = xRegressionCurveCalculator->getRepresentation();
-                }
-
-                if( bShowCorrCoeff )
-                {
-                    aFormula.append( "\n" );
-                }
-            }
-            if( bShowCorrCoeff )
-            {
-                aFormula.append( "R" + OUStringLiteral1( aSuperscriptFigures[2] ) + " = " );
-                double fR( xRegressionCurveCalculator->getCorrelationCoefficient());
-                if( m_apNumberFormatterWrapper.get())
-                {
-                    sal_Int32 nLabelCol = 0;
-                    bool bColChanged;
-                    aFormula.append(
-                        m_apNumberFormatterWrapper->getFormattedString(
-                            nNumberFormatKey, fR*fR, nLabelCol, bColChanged ));
-                    //@todo: change color of label if bColChanged is true
-                }
-                else
-                {
-                    const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
-                    const OUString& aNumDecimalSep = rLocaleDataWrapper.getNumDecimalSep();
-                    assert(aNumDecimalSep.getLength() > 0);
-                    sal_Unicode aDecimalSep = aNumDecimalSep.getStr()[0];
-                    aFormula.append( ::rtl::math::doubleToUString(
-                                        fR*fR, rtl_math_StringFormat_G, 4, aDecimalSep, true ));
-                }
-            }
-
-            awt::Point aScreenPosition2D;
-            chart2::RelativePosition aRelativePosition;
-            if( xEquationProperties->getPropertyValue( "RelativePosition") >>= aRelativePosition )
-            {
-                //@todo decide whether x is primary or secondary
-                double fX = aRelativePosition.Primary*m_aPageReferenceSize.Width;
-                double fY = aRelativePosition.Secondary*m_aPageReferenceSize.Height;
-                aScreenPosition2D.X = static_cast< sal_Int32 >( ::rtl::math::round( fX ));
-                aScreenPosition2D.Y = static_cast< sal_Int32 >( ::rtl::math::round( fY ));
+            if (m_apNumberFormatterWrapper)
+            {   // iteration 0: default representation (no wrap)
+                // iteration 1: expected width (nFormulaWidth) is calculated
+                aFormula = xRegressionCurveCalculator->getFormattedRepresentation(
+                    m_apNumberFormatterWrapper->getNumberFormatsSupplier(),
+                    nNumberFormatKey, nFormulaWidth );
+                nFormulaWidth = lcl_getOUStringMaxLineLength( aFormula );
             }
             else
-                aScreenPosition2D = aDefaultPos;
-
-            if( !aFormula.isEmpty())
             {
-                // set fill and line properties on creation
-                tNameSequence aNames;
-                tAnySequence  aValues;
-                PropertyMapper::getPreparedTextShapePropertyLists( xEquationProperties, aNames, aValues );
+                aFormula = xRegressionCurveCalculator->getRepresentation();
+            }
 
-                uno::Reference< drawing::XShape > xTextShape = m_pShapeFactory->createText(
-                    xEquationTarget, aFormula.makeStringAndClear(),
-                    aNames, aValues, AbstractShapeFactory::makeTransformation( aScreenPosition2D ));
+            if( bShowCorrCoeff )
+            {
+                aFormula.append( "\n" );
+            }
+        }
+        if( bShowCorrCoeff )
+        {
+            aFormula.append( "R" ).append( OUStringChar( aSuperscriptFigures[2] ) ).append( " = " );
+            double fR( xRegressionCurveCalculator->getCorrelationCoefficient());
+            if (m_apNumberFormatterWrapper)
+            {
+                Color nLabelCol;
+                bool bColChanged;
+                aFormula.append(
+                    m_apNumberFormatterWrapper->getFormattedString(
+                        nNumberFormatKey, fR*fR, nLabelCol, bColChanged ));
+                //@todo: change color of label if bColChanged is true
+            }
+            else
+            {
+                const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
+                const OUString& aNumDecimalSep = rLocaleDataWrapper.getNumDecimalSep();
+                sal_Unicode aDecimalSep = aNumDecimalSep[0];
+                aFormula.append( ::rtl::math::doubleToUString(
+                                    fR*fR, rtl_math_StringFormat_G, 4, aDecimalSep, true ));
+            }
+        }
 
-                OSL_ASSERT( xTextShape.is());
-                if( xTextShape.is())
+        awt::Point aScreenPosition2D;
+        chart2::RelativePosition aRelativePosition;
+        if( xEquationProperties->getPropertyValue( "RelativePosition") >>= aRelativePosition )
+        {
+            //@todo decide whether x is primary or secondary
+            double fX = aRelativePosition.Primary*m_aPageReferenceSize.Width;
+            double fY = aRelativePosition.Secondary*m_aPageReferenceSize.Height;
+            aScreenPosition2D.X = static_cast< sal_Int32 >( ::rtl::math::round( fX ));
+            aScreenPosition2D.Y = static_cast< sal_Int32 >( ::rtl::math::round( fY ));
+        }
+        else
+            aScreenPosition2D = aDefaultPos;
+
+        if( !aFormula.isEmpty())
+        {
+            // set fill and line properties on creation
+            tNameSequence aNames;
+            tAnySequence  aValues;
+            PropertyMapper::getPreparedTextShapePropertyLists( xEquationProperties, aNames, aValues );
+
+            uno::Reference< drawing::XShape > xTextShape = m_pShapeFactory->createText(
+                xEquationTarget, aFormula.makeStringAndClear(),
+                aNames, aValues, ShapeFactory::makeTransformation( aScreenPosition2D ));
+
+            OSL_ASSERT( xTextShape.is());
+            if( xTextShape.is())
+            {
+                ShapeFactory::setShapeName( xTextShape, rEquationCID );
+                awt::Size aSize( xTextShape->getSize() );
+                awt::Point aPos( RelativePositionHelper::getUpperLeftCornerOfAnchoredObject(
+                    aScreenPosition2D, aSize, aRelativePosition.Anchor ) );
+                //ensure that the equation is fully placed within the page (if possible)
+                if( (aPos.X + aSize.Width) > m_aPageReferenceSize.Width )
+                    aPos.X = m_aPageReferenceSize.Width - aSize.Width;
+                if( aPos.X < 0 )
                 {
-                    AbstractShapeFactory::setShapeName( xTextShape, rEquationCID );
-                    awt::Size aSize( xTextShape->getSize() );
-                    awt::Point aPos( RelativePositionHelper::getUpperLeftCornerOfAnchoredObject(
-                        aScreenPosition2D, aSize, aRelativePosition.Anchor ) );
-                    //ensure that the equation is fully placed within the page (if possible)
-                    if( (aPos.X + aSize.Width) > m_aPageReferenceSize.Width )
-                        aPos.X = m_aPageReferenceSize.Width - aSize.Width;
-                    if( aPos.X < 0 )
+                    aPos.X = 0;
+                    if ( nFormulaWidth > 0 )
                     {
-                        aPos.X = 0;
-                        if ( nFormulaWidth > 0 )
-                        {
-                            bResizeEquation = true;
-                            if ( nCountIteration < nMaxIteration-1 )
-                                xEquationTarget->remove( xTextShape );  // remove equation
-                            nFormulaWidth *= m_aPageReferenceSize.Width / static_cast< double >(aSize.Width);
-                            nFormulaWidth -= nCountIteration;
-                            if ( nFormulaWidth < 0 )
-                                nFormulaWidth = 0;
-                        }
+                        bResizeEquation = true;
+                        if ( nCountIteration < nMaxIteration-1 )
+                            xEquationTarget->remove( xTextShape );  // remove equation
+                        nFormulaWidth *= m_aPageReferenceSize.Width / static_cast< double >(aSize.Width);
+                        nFormulaWidth -= nCountIteration;
+                        if ( nFormulaWidth < 0 )
+                            nFormulaWidth = 0;
                     }
-                    if( (aPos.Y + aSize.Height) > m_aPageReferenceSize.Height )
-                        aPos.Y = m_aPageReferenceSize.Height - aSize.Height;
-                    if( aPos.Y < 0 )
-                        aPos.Y = 0;
-                    if ( !bResizeEquation || nCountIteration == nMaxIteration-1 )
-                        xTextShape->setPosition(aPos);  // if equation was not removed
                 }
+                if( (aPos.Y + aSize.Height) > m_aPageReferenceSize.Height )
+                    aPos.Y = m_aPageReferenceSize.Height - aSize.Height;
+                if( aPos.Y < 0 )
+                    aPos.Y = 0;
+                if ( !bResizeEquation || nCountIteration == nMaxIteration-1 )
+                    xTextShape->setPosition(aPos);  // if equation was not removed
             }
         }
     }
@@ -1357,7 +1612,7 @@ void VSeriesPlotter::setMappedProperties(
           const uno::Reference< drawing::XShape >& xTargetShape
         , const uno::Reference< beans::XPropertySet >& xSource
         , const tPropertyNameMap& rMap
-        , tPropertyNameValueMap* pOverwriteMap )
+        , tPropertyNameValueMap const * pOverwriteMap )
 {
     uno::Reference< beans::XPropertySet > xTargetProp( xTargetShape, uno::UNO_QUERY );
     PropertyMapper::setMappedProperties(xTargetProp,xSource,rMap,pOverwriteMap);
@@ -1373,36 +1628,46 @@ void VSeriesPlotter::setTimeResolutionOnXAxis( long TimeResolution, const Date& 
 long VSeriesPlotter::calculateTimeResolutionOnXAxis()
 {
     long nRet = css::chart::TimeUnit::YEAR;
-    if( m_pExplicitCategoriesProvider )
+    if (!m_pExplicitCategoriesProvider)
+        return nRet;
+
+    const std::vector<double>& rDateCategories = m_pExplicitCategoriesProvider->getDateCategories();
+    if (rDateCategories.empty())
+        return nRet;
+
+    std::vector<double>::const_iterator aIt = rDateCategories.begin(), aEnd = rDateCategories.end();
+
+    aIt = std::find_if(aIt, aEnd, [](const double& rDateCategory) { return !std::isnan(rDateCategory); });
+    if (aIt == aEnd)
+        return nRet;
+
+    Date aNullDate(30,12,1899);
+    if (m_apNumberFormatterWrapper)
+        aNullDate = m_apNumberFormatterWrapper->getNullDate();
+
+    Date aPrevious(aNullDate); aPrevious.AddDays(rtl::math::approxFloor(*aIt));
+    ++aIt;
+    for(;aIt!=aEnd;++aIt)
     {
-        const std::vector< double >&  rDateCategories = m_pExplicitCategoriesProvider->getDateCategories();
-        std::vector< double >::const_iterator aIt = rDateCategories.begin(), aEnd = rDateCategories.end();
-        Date aNullDate(30,12,1899);
-        if( m_apNumberFormatterWrapper.get() )
-            aNullDate = m_apNumberFormatterWrapper->getNullDate();
-        if( aIt!=aEnd )
+        if (std::isnan(*aIt))
+            continue;
+
+        Date aCurrent(aNullDate); aCurrent.AddDays(rtl::math::approxFloor(*aIt));
+        if( nRet == css::chart::TimeUnit::YEAR )
         {
-            Date aPrevious(aNullDate); aPrevious+=static_cast<long>(rtl::math::approxFloor(*aIt));
-            ++aIt;
-            for(;aIt!=aEnd;++aIt)
-            {
-                Date aCurrent(aNullDate); aCurrent+=static_cast<long>(rtl::math::approxFloor(*aIt));
-                if( nRet == css::chart::TimeUnit::YEAR )
-                {
-                    if( DateHelper::IsInSameYear( aPrevious, aCurrent ) )
-                        nRet = css::chart::TimeUnit::MONTH;
-                }
-                if( nRet == css::chart::TimeUnit::MONTH )
-                {
-                    if( DateHelper::IsInSameMonth( aPrevious, aCurrent ) )
-                        nRet = css::chart::TimeUnit::DAY;
-                }
-                if( nRet == css::chart::TimeUnit::DAY )
-                    break;
-                aPrevious=aCurrent;
-            }
+            if( DateHelper::IsInSameYear( aPrevious, aCurrent ) )
+                nRet = css::chart::TimeUnit::MONTH;
         }
+        if( nRet == css::chart::TimeUnit::MONTH )
+        {
+            if( DateHelper::IsInSameMonth( aPrevious, aCurrent ) )
+                nRet = css::chart::TimeUnit::DAY;
+        }
+        if( nRet == css::chart::TimeUnit::DAY )
+            break;
+        aPrevious=aCurrent;
     }
+
     return nRet;
 }
 double VSeriesPlotter::getMinimumX()
@@ -1423,7 +1688,7 @@ double VSeriesPlotter::getMinimumYInRange( double fMinimumX, double fMaximumX, s
     if( !m_bCategoryXAxis || ( m_pExplicitCategoriesProvider && m_pExplicitCategoriesProvider->isDateAxis() ) )
     {
         double fMinY, fMaxY;
-        this->getMinimumAndMaximiumYInContinuousXRange( fMinY, fMaxY, fMinimumX, fMaximumX, nAxisIndex );
+        getMinimumAndMaximiumYInContinuousXRange( fMinY, fMaxY, fMinimumX, fMaximumX, nAxisIndex );
         return fMinY;
     }
 
@@ -1446,7 +1711,7 @@ double VSeriesPlotter::getMinimumYInRange( double fMinimumX, double fMaximumX, s
                 fMinimum=fLocalMinimum;
         }
     }
-    if(::rtl::math::isInf(fMinimum))
+    if(std::isinf(fMinimum))
         ::rtl::math::setNan(&fMinimum);
     return fMinimum;
 }
@@ -1456,7 +1721,7 @@ double VSeriesPlotter::getMaximumYInRange( double fMinimumX, double fMaximumX, s
     if( !m_bCategoryXAxis || ( m_pExplicitCategoriesProvider && m_pExplicitCategoriesProvider->isDateAxis() ) )
     {
         double fMinY, fMaxY;
-        this->getMinimumAndMaximiumYInContinuousXRange( fMinY, fMaxY, fMinimumX, fMaximumX, nAxisIndex );
+        getMinimumAndMaximiumYInContinuousXRange( fMinY, fMaxY, fMinimumX, fMaximumX, nAxisIndex );
         return fMaxY;
     }
 
@@ -1479,19 +1744,19 @@ double VSeriesPlotter::getMaximumYInRange( double fMinimumX, double fMaximumX, s
                 fMinimum=fLocalMinimum;
         }
     }
-    if(::rtl::math::isInf(fMaximum))
+    if(std::isinf(fMaximum))
         ::rtl::math::setNan(&fMaximum);
     return fMaximum;
 }
 
 double VSeriesPlotter::getMinimumZ()
 {
-    //this is the default for all charts without a meaningfull z axis
+    //this is the default for all charts without a meaningful z axis
     return 1.0;
 }
 double VSeriesPlotter::getMaximumZ()
 {
-    if( m_nDimension!=3 || !m_aZSlots.size() )
+    if( m_nDimension!=3 || m_aZSlots.empty() )
         return getMinimumZ()+1;
     return m_aZSlots.size();
 }
@@ -1541,25 +1806,21 @@ void VSeriesPlotter::getMinimumAndMaximiumX( double& rfMinimum, double& rfMaximu
     ::rtl::math::setInf(&rfMinimum, false);
     ::rtl::math::setInf(&rfMaximum, true);
 
-    std::vector< std::vector< VDataSeriesGroup > >::const_iterator       aZSlotIter = m_aZSlots.begin();
-    const std::vector< std::vector< VDataSeriesGroup > >::const_iterator  aZSlotEnd = m_aZSlots.end();
-    for( ; aZSlotIter != aZSlotEnd; ++aZSlotIter )
+    for (auto const& ZSlot : m_aZSlots)
     {
-        std::vector< VDataSeriesGroup >::const_iterator      aXSlotIter = aZSlotIter->begin();
-        const std::vector< VDataSeriesGroup >::const_iterator aXSlotEnd = aZSlotIter->end();
-        for( ; aXSlotIter != aXSlotEnd; ++aXSlotIter )
+        for (auto const& XSlot : ZSlot)
         {
             double fLocalMinimum, fLocalMaximum;
-            aXSlotIter->getMinimumAndMaximiumX( fLocalMinimum, fLocalMaximum );
-            if( !::rtl::math::isNan(fLocalMinimum) && fLocalMinimum< rfMinimum )
+            XSlot.getMinimumAndMaximiumX( fLocalMinimum, fLocalMaximum );
+            if( !std::isnan(fLocalMinimum) && fLocalMinimum< rfMinimum )
                 rfMinimum = fLocalMinimum;
-            if( !::rtl::math::isNan(fLocalMaximum) && fLocalMaximum> rfMaximum )
+            if( !std::isnan(fLocalMaximum) && fLocalMaximum> rfMaximum )
                 rfMaximum = fLocalMaximum;
         }
     }
-    if(::rtl::math::isInf(rfMinimum))
+    if(std::isinf(rfMinimum))
         ::rtl::math::setNan(&rfMinimum);
-    if(::rtl::math::isInf(rfMaximum))
+    if(std::isinf(rfMaximum))
         ::rtl::math::setNan(&rfMaximum);
 }
 
@@ -1568,25 +1829,21 @@ void VSeriesPlotter::getMinimumAndMaximiumYInContinuousXRange( double& rfMinY, d
     ::rtl::math::setInf(&rfMinY, false);
     ::rtl::math::setInf(&rfMaxY, true);
 
-    std::vector< std::vector< VDataSeriesGroup > >::const_iterator       aZSlotIter = m_aZSlots.begin();
-    const std::vector< std::vector< VDataSeriesGroup > >::const_iterator  aZSlotEnd = m_aZSlots.end();
-    for( ; aZSlotIter != aZSlotEnd; ++aZSlotIter )
+    for (auto const& ZSlot : m_aZSlots)
     {
-        std::vector< VDataSeriesGroup >::const_iterator      aXSlotIter = aZSlotIter->begin();
-        const std::vector< VDataSeriesGroup >::const_iterator aXSlotEnd = aZSlotIter->end();
-        for( ; aXSlotIter != aXSlotEnd; ++aXSlotIter )
+        for (auto const& XSlot : ZSlot)
         {
             double fLocalMinimum, fLocalMaximum;
-            aXSlotIter->getMinimumAndMaximiumYInContinuousXRange( fLocalMinimum, fLocalMaximum, fMinX, fMaxX, nAxisIndex );
-            if( !::rtl::math::isNan(fLocalMinimum) && fLocalMinimum< rfMinY )
+            XSlot.getMinimumAndMaximiumYInContinuousXRange( fLocalMinimum, fLocalMaximum, fMinX, fMaxX, nAxisIndex );
+            if( !std::isnan(fLocalMinimum) && fLocalMinimum< rfMinY )
                 rfMinY = fLocalMinimum;
-            if( !::rtl::math::isNan(fLocalMaximum) && fLocalMaximum> rfMaxY )
+            if( !std::isnan(fLocalMaximum) && fLocalMaximum> rfMaxY )
                 rfMaxY = fLocalMaximum;
         }
     }
-    if(::rtl::math::isInf(rfMinY))
+    if(std::isinf(rfMinY))
         ::rtl::math::setNan(&rfMinY);
-    if(::rtl::math::isInf(rfMaxY))
+    if(std::isinf(rfMaxY))
         ::rtl::math::setNan(&rfMaxY);
 }
 
@@ -1594,17 +1851,11 @@ sal_Int32 VSeriesPlotter::getPointCount() const
 {
     sal_Int32 nRet = 0;
 
-    std::vector< std::vector< VDataSeriesGroup > >::const_iterator       aZSlotIter = m_aZSlots.begin();
-    const std::vector< std::vector< VDataSeriesGroup > >::const_iterator aZSlotEnd = m_aZSlots.end();
-
-    for( ; aZSlotIter != aZSlotEnd; ++aZSlotIter )
+    for (auto const& ZSlot : m_aZSlots)
     {
-        std::vector< VDataSeriesGroup >::const_iterator       aXSlotIter = aZSlotIter->begin();
-        const std::vector< VDataSeriesGroup >::const_iterator aXSlotEnd = aZSlotIter->end();
-
-        for( ; aXSlotIter != aXSlotEnd; ++aXSlotIter )
+        for (auto const& XSlot : ZSlot)
         {
-            sal_Int32 nPointCount = aXSlotIter->getPointCount();
+            sal_Int32 nPointCount = XSlot.getPointCount();
             if( nPointCount>nRet )
                 nRet = nPointCount;
         }
@@ -1635,7 +1886,7 @@ sal_Int32 VDataSeriesGroup::getPointCount() const
 
     sal_Int32 nRet = 0;
 
-    for (VDataSeries* pSeries : m_aSeriesVector)
+    for (std::unique_ptr<VDataSeries> const & pSeries : m_aSeriesVector)
     {
         sal_Int32 nPointCount = pSeries->getTotalPointCount();
         if( nPointCount>nRet )
@@ -1652,10 +1903,8 @@ sal_Int32 VDataSeriesGroup::getAttachedAxisIndexForFirstSeries() const
 {
     sal_Int32 nRet = 0;
 
-    std::vector<VDataSeries*>::const_iterator aSeriesIter = m_aSeriesVector.begin();
-
-    if (aSeriesIter != m_aSeriesVector.end())
-        nRet = (*aSeriesIter)->getAttachedAxisIndex();
+    if (!m_aSeriesVector.empty())
+        nRet = m_aSeriesVector[0]->getAttachedAxisIndex();
 
     return nRet;
 }
@@ -1666,13 +1915,13 @@ void VDataSeriesGroup::getMinimumAndMaximiumX( double& rfMinimum, double& rfMaxi
     ::rtl::math::setInf(&rfMinimum, false);
     ::rtl::math::setInf(&rfMaximum, true);
 
-    for (VDataSeries* pSeries : m_aSeriesVector)
+    for (std::unique_ptr<VDataSeries> const & pSeries : m_aSeriesVector)
     {
         sal_Int32 nPointCount = pSeries->getTotalPointCount();
         for(sal_Int32 nN=0;nN<nPointCount;nN++)
         {
             double fX = pSeries->getXValue( nN );
-            if( ::rtl::math::isNan(fX) )
+            if( std::isnan(fX) )
                 continue;
             if(rfMaximum<fX)
                 rfMaximum=fX;
@@ -1680,9 +1929,9 @@ void VDataSeriesGroup::getMinimumAndMaximiumX( double& rfMinimum, double& rfMaxi
                 rfMinimum=fX;
         }
     }
-    if(::rtl::math::isInf(rfMinimum))
+    if(std::isinf(rfMinimum))
         ::rtl::math::setNan(&rfMinimum);
-    if(::rtl::math::isInf(rfMaximum))
+    if(std::isinf(rfMaximum))
         ::rtl::math::setNan(&rfMaximum);
 }
 
@@ -1778,15 +2027,13 @@ private:
             double fX = it.first;
 
             const SeriesMinMaxType& rSeries = *it.second;
-            SeriesMinMaxType::const_iterator itSeries = rSeries.begin(), itSeriesEnd = rSeries.end();
-            for (; itSeries != itSeriesEnd; ++itSeries)
+            for (auto const& series : rSeries)
             {
-                double fYMin = itSeries->second.first, fYMax = itSeries->second.second;
+                double fYMin = series.second.first, fYMax = series.second.second;
                 TotalStoreType::iterator itr = aStore.find(fX);
                 if (itr == aStore.end())
                     // New min-max pair for give X value.
-                    aStore.insert(
-                        TotalStoreType::value_type(fX, std::pair<double,double>(fYMin,fYMax)));
+                    aStore.emplace(fX, std::pair<double,double>(fYMin,fYMax));
                 else
                 {
                     MinMaxType& r = itr->second;
@@ -1806,7 +2053,7 @@ private:
         if (it == m_SeriesGroup.end())
         {
             std::pair<GroupMinMaxType::iterator,bool> r =
-                m_SeriesGroup.insert(std::make_pair(fX, o3tl::make_unique<SeriesMinMaxType>()));
+                m_SeriesGroup.insert(std::make_pair(fX, std::make_unique<SeriesMinMaxType>()));
 
             if (!r.second)
                 // insertion failed.
@@ -1832,7 +2079,7 @@ void VDataSeriesGroup::getMinimumAndMaximiumYInContinuousXRange(
         return;
 
     PerXMinMaxCalculator aRangeCalc;
-    for (const VDataSeries* pSeries : m_aSeriesVector)
+    for (const std::unique_ptr<VDataSeries> & pSeries : m_aSeriesVector)
     {
         if (!pSeries)
             continue;
@@ -1843,7 +2090,7 @@ void VDataSeriesGroup::getMinimumAndMaximiumYInContinuousXRange(
                 continue;
 
             double fX = pSeries->getXValue(i);
-            if (rtl::math::isNan(fX))
+            if (std::isnan(fX))
                 continue;
 
             if (fX < fMinX || fX > fMaxX)
@@ -1851,7 +2098,7 @@ void VDataSeriesGroup::getMinimumAndMaximiumYInContinuousXRange(
                 continue;
 
             double fY = pSeries->getYValue(i);
-            if (::rtl::math::isNan(fY))
+            if (std::isnan(fY))
                 continue;
 
             aRangeCalc.setValue(fX, fY);
@@ -1893,7 +2140,7 @@ void VDataSeriesGroup::calculateYMinAndMaxForCategory( sal_Int32 nCategoryIndex
 
     if( bSeparateStackingForDifferentSigns )
     {
-        for (const VDataSeries* pSeries: m_aSeriesVector)
+        for (const std::unique_ptr<VDataSeries> & pSeries: m_aSeriesVector)
         {
             if( nAxisIndex != pSeries->getAttachedAxisIndex() )
                 continue;
@@ -1903,25 +2150,25 @@ void VDataSeriesGroup::calculateYMinAndMaxForCategory( sal_Int32 nCategoryIndex
 
             if( fValueMaxY >= 0 )
             {
-                if( ::rtl::math::isNan( fPositiveSum ) )
+                if( std::isnan( fPositiveSum ) )
                     fPositiveSum = fFirstPositiveY = fValueMaxY;
                 else
                     fPositiveSum += fValueMaxY;
             }
             if( fValueMinY < 0 )
             {
-                if(::rtl::math::isNan( fNegativeSum ))
+                if(std::isnan( fNegativeSum ))
                     fNegativeSum = fFirstNegativeY = fValueMinY;
                 else
                     fNegativeSum += fValueMinY;
             }
         }
-        rfMinimumY = ::rtl::math::isNan( fNegativeSum ) ? fFirstPositiveY : fNegativeSum;
-        rfMaximumY = ::rtl::math::isNan( fPositiveSum ) ? fFirstNegativeY : fPositiveSum;
+        rfMinimumY = std::isnan( fNegativeSum ) ? fFirstPositiveY : fNegativeSum;
+        rfMaximumY = std::isnan( fPositiveSum ) ? fFirstNegativeY : fPositiveSum;
     }
     else
     {
-        for (const VDataSeries* pSeries: m_aSeriesVector)
+        for (const std::unique_ptr<VDataSeries> & pSeries: m_aSeriesVector)
         {
             if( nAxisIndex != pSeries->getAttachedAxisIndex() )
                 continue;
@@ -1929,7 +2176,7 @@ void VDataSeriesGroup::calculateYMinAndMaxForCategory( sal_Int32 nCategoryIndex
             double fValueMinY = pSeries->getMinimumofAllDifferentYValues( nCategoryIndex );
             double fValueMaxY = pSeries->getMaximumofAllDifferentYValues( nCategoryIndex );
 
-            if( ::rtl::math::isNan( fTotalSum ) )
+            if( std::isnan( fTotalSum ) )
             {
                 rfMinimumY = fValueMinY;
                 rfMaximumY = fTotalSum = fValueMaxY;
@@ -1975,7 +2222,7 @@ void VDataSeriesGroup::calculateYMinAndMaxForCategoryRange(
         double fMinimumY; ::rtl::math::setNan(&fMinimumY);
         double fMaximumY; ::rtl::math::setNan(&fMaximumY);
 
-        this->calculateYMinAndMaxForCategory( nCatIndex
+        calculateYMinAndMaxForCategory( nCatIndex
             , bSeparateStackingForDifferentSigns, fMinimumY, fMaximumY, nAxisIndex );
 
         if(rfMinimumY > fMinimumY)
@@ -2010,15 +2257,15 @@ PlottingPositionHelper& VSeriesPlotter::getPlottingPositionHelper( sal_Int32 nAx
         tSecondaryPosHelperMap::const_iterator aPosIt = m_aSecondaryPosHelperMap.find( nAxisIndex );
         if( aPosIt != m_aSecondaryPosHelperMap.end() )
         {
-            pRet = aPosIt->second;
+            pRet = aPosIt->second.get();
         }
         else if (m_pPosHelper)
         {
             tSecondaryValueScales::const_iterator aScaleIt = m_aSecondaryValueScales.find( nAxisIndex );
             if( aScaleIt != m_aSecondaryValueScales.end() )
             {
-                pRet = m_pPosHelper->createSecondaryPosHelper( aScaleIt->second );
-                m_aSecondaryPosHelperMap[nAxisIndex] = pRet;
+                m_aSecondaryPosHelperMap[nAxisIndex] = m_pPosHelper->createSecondaryPosHelper( aScaleIt->second );
+                pRet = m_aSecondaryPosHelperMap[nAxisIndex].get();
             }
         }
     }
@@ -2037,21 +2284,30 @@ VDataSeries* VSeriesPlotter::getFirstSeries() const
 {
     for (std::vector<VDataSeriesGroup> const & rGroup : m_aZSlots)
     {
-        std::vector<VDataSeriesGroup>::const_iterator       aXSlotIter = rGroup.begin();
-        const std::vector<VDataSeriesGroup>::const_iterator aXSlotEnd  = rGroup.end();
-
-        if (aXSlotIter != aXSlotEnd)
+        if (!rGroup.empty())
         {
-            VDataSeriesGroup aSeriesGroup(*aXSlotIter);
-            if (aSeriesGroup.m_aSeriesVector.size())
+            if (!rGroup[0].m_aSeriesVector.empty())
             {
-                VDataSeries* pSeries = aSeriesGroup.m_aSeriesVector[0];
+                VDataSeries* pSeries = rGroup[0].m_aSeriesVector[0].get();
                 if (pSeries)
                     return pSeries;
             }
         }
     }
     return nullptr;
+}
+
+OUString VSeriesPlotter::getCategoryName( sal_Int32 nPointIndex ) const
+{
+    if (m_pExplicitCategoriesProvider)
+    {
+        Sequence< OUString > aCategories(m_pExplicitCategoriesProvider->getSimpleCategories());
+        if (nPointIndex >= 0 && nPointIndex < aCategories.getLength())
+        {
+            return aCategories[nPointIndex];
+        }
+    }
+    return OUString();
 }
 
 uno::Sequence< OUString > VSeriesPlotter::getSeriesNames() const
@@ -2062,13 +2318,22 @@ uno::Sequence< OUString > VSeriesPlotter::getSeriesNames() const
     if( m_xChartTypeModel.is() )
         aRole = m_xChartTypeModel->getRoleOfSequenceForSeriesLabel();
 
-
-    VDataSeries* pFirstSeries = getFirstSeries();
-    uno::Reference<XDataSeries> xSeries(pFirstSeries ? pFirstSeries->getModel() : nullptr);
-    if (xSeries.is())
+    for (auto const& rGroup : m_aZSlots)
     {
-        OUString aSeriesName(DataSeriesHelper::getDataSeriesLabel(xSeries, aRole));
-        aRetVector.push_back(aSeriesName);
+        if (!rGroup.empty())
+        {
+            VDataSeriesGroup const & rSeriesGroup(rGroup[0]);
+            if (!rSeriesGroup.m_aSeriesVector.empty())
+            {
+                VDataSeries const * pSeries = rSeriesGroup.m_aSeriesVector[0].get();
+                uno::Reference< XDataSeries > xSeries( pSeries ? pSeries->getModel() : nullptr );
+                if( xSeries.is() )
+                {
+                    OUString aSeriesName( DataSeriesHelper::getDataSeriesLabel( xSeries, aRole ) );
+                    aRetVector.push_back( aSeriesName );
+                }
+            }
+        }
     }
     return comphelper::containerToSequence( aRetVector );
 }
@@ -2079,14 +2344,14 @@ void VSeriesPlotter::setPageReferenceSize( const css::awt::Size & rPageRefSize )
 
     // set reference size also at all data series
 
-    std::vector<VDataSeriesGroup> aSeriesGroups(FlattenVector(m_aZSlots));
-    for (VDataSeriesGroup const & rGroup : aSeriesGroups)
-    {
-        for (VDataSeries* pSeries : rGroup.m_aSeriesVector)
+    for (auto const & outer : m_aZSlots)
+        for (VDataSeriesGroup const & rGroup : outer)
         {
-            pSeries->setPageReferenceSize(m_aPageReferenceSize);
+            for (std::unique_ptr<VDataSeries> const & pSeries : rGroup.m_aSeriesVector)
+            {
+                pSeries->setPageReferenceSize(m_aPageReferenceSize);
+            }
         }
-    }
 }
 
 //better performance for big data
@@ -2107,17 +2372,31 @@ bool VSeriesPlotter::shouldSnapRectToUsedArea()
 
 std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntries(
               const awt::Size& rEntryKeyAspectRatio
-            , css::chart::ChartLegendExpansion eLegendExpansion
+            , LegendPosition eLegendPosition
             , const Reference< beans::XPropertySet >& xTextProperties
             , const Reference< drawing::XShapes >& xTarget
             , const Reference< lang::XMultiServiceFactory >& xShapeFactory
             , const Reference< uno::XComponentContext >& xContext
+            , ChartModel& rModel
             )
 {
     std::vector< ViewLegendEntry > aResult;
 
     if( xTarget.is() )
     {
+        uno::Reference< XCoordinateSystemContainer > xCooSysCnt( rModel.getFirstDiagram(), uno::UNO_QUERY );
+        Reference< chart2::XCoordinateSystem > xCooSys(xCooSysCnt->getCoordinateSystems()[0]);
+        Reference< beans::XPropertySet > xProp( xCooSys, uno::UNO_QUERY );
+        bool bSwapXAndY = false;
+
+        if( xProp.is()) try
+        {
+            xProp->getPropertyValue( "SwapXAndYAxis" ) >>= bSwapXAndY;
+        }
+        catch( const uno::Exception& )
+        {
+        }
+
         //iterate through all series
         bool bBreak = false;
         bool bFirstSeries = true;
@@ -2127,13 +2406,18 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntries(
         {
             for (VDataSeriesGroup const & rGroup : rGroupVector)
             {
-                for (VDataSeries* pSeries : rGroup.m_aSeriesVector)
+                for (std::unique_ptr<VDataSeries> const & pSeries : rGroup.m_aSeriesVector)
                 {
                     if (!pSeries)
                         continue;
 
+                    if (!pSeries->getPropertiesOfSeries()->getPropertyValue("ShowLegendEntry").get<sal_Bool>())
+                    {
+                        continue;
+                    }
+
                     std::vector<ViewLegendEntry> aSeriesEntries(
-                            this->createLegendEntriesForSeries(
+                            createLegendEntriesForSeries(
                                         rEntryKeyAspectRatio, *pSeries, xTextProperties,
                                         xTarget, xShapeFactory, xContext));
 
@@ -2144,16 +2428,19 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntries(
                         bBreak = true;
                     bFirstSeries = false;
 
-                    // add entries reverse if chart is stacked in y-direction and the legend is not wide.
-                    // If the legend is wide and we have a stacked bar-chart the normal order
-                    // is the correct one
+                    // add entries reverse if chart is stacked in y-direction and the legend position is right or left.
+                    // If the legend is top or bottom and we have a stacked bar-chart the normal order
+                    // is the correct one, unless the chart type is horizontal bar-chart.
                     bool bReverse = false;
-                    if( eLegendExpansion != css::chart::ChartLegendExpansion_WIDE )
+                    if ( bSwapXAndY )
+                    {
+                        StackingDirection eStackingDirection( pSeries->getStackingDirection() );
+                        bReverse = ( eStackingDirection != StackingDirection_Y_STACKING );
+                    }
+                    else if ( eLegendPosition == LegendPosition_LINE_START || eLegendPosition == LegendPosition_LINE_END )
                     {
                         StackingDirection eStackingDirection( pSeries->getStackingDirection() );
                         bReverse = ( eStackingDirection == StackingDirection_Y_STACKING );
-
-                        //todo: respect direction of axis in future
                     }
 
                     if (bReverse)
@@ -2177,8 +2464,8 @@ std::vector<VDataSeries*> VSeriesPlotter::getAllSeries()
     {
         for(VDataSeriesGroup const & rGroup : rXSlot)
         {
-            std::vector<VDataSeries*> aSeriesList = rGroup.m_aSeriesVector;
-            aAllSeries.insert(aAllSeries.end(), aSeriesList.begin(), aSeriesList.end());
+            for (std::unique_ptr<VDataSeries> const & p : rGroup.m_aSeriesVector)
+                aAllSeries.push_back(p.get());
         }
     }
     return aAllSeries;
@@ -2223,7 +2510,7 @@ bool lcl_HasRegressionCurves( const VDataSeries& rSeries, bool& rbHasDashedLine 
 }
 LegendSymbolStyle VSeriesPlotter::getLegendSymbolStyle()
 {
-    return LegendSymbolStyle_BOX;
+    return LegendSymbolStyle::Box;
 }
 
 awt::Size VSeriesPlotter::getPreferredLegendKeyAspectRatio()
@@ -2232,7 +2519,7 @@ awt::Size VSeriesPlotter::getPreferredLegendKeyAspectRatio()
     if( m_nDimension==3 )
         return aRet;
 
-    bool bSeriesAllowsLines = (getLegendSymbolStyle() == LegendSymbolStyle_LINE);
+    bool bSeriesAllowsLines = (getLegendSymbolStyle() == LegendSymbolStyle::Line);
     bool bHasLines = false;
     bool bHasDashedLines = false;
     //iterate through all series
@@ -2284,8 +2571,8 @@ Reference< drawing::XShape > VSeriesPlotter::createLegendSymbolForSeries(
                 , const Reference< lang::XMultiServiceFactory >& xShapeFactory )
 {
 
-    LegendSymbolStyle eLegendSymbolStyle = this->getLegendSymbolStyle();
-    uno::Any aExplicitSymbol( this->getExplicitSymbol( rSeries, -1 ) );
+    LegendSymbolStyle eLegendSymbolStyle = getLegendSymbolStyle();
+    uno::Any aExplicitSymbol( getExplicitSymbol( rSeries, -1 ) );
 
     VLegendSymbolFactory::PropertyType ePropType =
         VLegendSymbolFactory::PropertyType::FilledSeries;
@@ -2294,12 +2581,12 @@ Reference< drawing::XShape > VSeriesPlotter::createLegendSymbolForSeries(
     // legend-symbol type
     switch( eLegendSymbolStyle )
     {
-        case LegendSymbolStyle_LINE:
+        case LegendSymbolStyle::Line:
             ePropType = VLegendSymbolFactory::PropertyType::LineSeries;
             break;
         default:
             break;
-    };
+    }
     Reference< drawing::XShape > xShape( VLegendSymbolFactory::createSymbol( rEntryKeyAspectRatio,
         xTarget, eLegendSymbolStyle, xShapeFactory
             , rSeries.getPropertiesOfSeries(), ePropType, aExplicitSymbol ));
@@ -2315,8 +2602,8 @@ Reference< drawing::XShape > VSeriesPlotter::createLegendSymbolForPoint(
                 , const Reference< lang::XMultiServiceFactory >& xShapeFactory )
 {
 
-    LegendSymbolStyle eLegendSymbolStyle = this->getLegendSymbolStyle();
-    uno::Any aExplicitSymbol( this->getExplicitSymbol(rSeries,nPointIndex) );
+    LegendSymbolStyle eLegendSymbolStyle = getLegendSymbolStyle();
+    uno::Any aExplicitSymbol( getExplicitSymbol(rSeries,nPointIndex) );
 
     VLegendSymbolFactory::PropertyType ePropType =
         VLegendSymbolFactory::PropertyType::FilledSeries;
@@ -2325,12 +2612,12 @@ Reference< drawing::XShape > VSeriesPlotter::createLegendSymbolForPoint(
     // legend-symbol type
     switch( eLegendSymbolStyle )
     {
-        case LegendSymbolStyle_LINE:
+        case LegendSymbolStyle::Line:
             ePropType = VLegendSymbolFactory::PropertyType::LineSeries;
             break;
         default:
             break;
-    };
+    }
 
     // the default properties for the data point are the data series properties.
     // If a data point has own attributes overwrite them
@@ -2339,7 +2626,7 @@ Reference< drawing::XShape > VSeriesPlotter::createLegendSymbolForPoint(
     if( rSeries.isAttributedDataPoint( nPointIndex ) )
         xPointSet.set( rSeries.getPropertiesOfPoint( nPointIndex ));
 
-    // if a data point has no own color use a color fom the diagram's color scheme
+    // if a data point has no own color use a color from the diagram's color scheme
     if( ! rSeries.hasPointOwnColor( nPointIndex ))
     {
         Reference< util::XCloneable > xCloneable( xPointSet,uno::UNO_QUERY );
@@ -2386,14 +2673,33 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
             Sequence< OUString > aCategoryNames;
             if( m_pExplicitCategoriesProvider )
                 aCategoryNames = m_pExplicitCategoriesProvider->getSimpleCategories();
-
+            Sequence<sal_Int32> deletedLegendEntries;
+            try
+            {
+                rSeries.getPropertiesOfSeries()->getPropertyValue("DeletedLegendEntries") >>= deletedLegendEntries;
+            }
+            catch (const uno::Exception&)
+            {
+            }
             for( sal_Int32 nIdx=0; nIdx<aCategoryNames.getLength(); ++nIdx )
             {
+                bool deletedLegendEntry = false;
+                for (auto& deletedLegendEntryIdx : deletedLegendEntries)
+                {
+                    if (nIdx == deletedLegendEntryIdx)
+                    {
+                        deletedLegendEntry = true;
+                        break;
+                    }
+                }
+                if (deletedLegendEntry)
+                    continue;
+
                 // symbol
-                uno::Reference< drawing::XShapes > xSymbolGroup( AbstractShapeFactory::getOrCreateShapeFactory(xShapeFactory)->createGroup2D( xTarget ));
+                uno::Reference< drawing::XShapes > xSymbolGroup( ShapeFactory::getOrCreateShapeFactory(xShapeFactory)->createGroup2D( xTarget ));
 
                 // create the symbol
-                Reference< drawing::XShape > xShape( this->createLegendSymbolForPoint( rEntryKeyAspectRatio,
+                Reference< drawing::XShape > xShape( createLegendSymbolForPoint( rEntryKeyAspectRatio,
                     rSeries, nIdx, xSymbolGroup, xShapeFactory ) );
 
                 // set CID to symbol for selection
@@ -2404,7 +2710,7 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
                     OUString aChildParticle( ObjectIdentifier::createChildParticleWithIndex( OBJECTTYPE_DATA_POINT, nIdx ) );
                     aChildParticle = ObjectIdentifier::addChildParticle( aChildParticle, ObjectIdentifier::createChildParticleWithIndex( OBJECTTYPE_LEGEND_ENTRY, 0 ) );
                     OUString aCID = ObjectIdentifier::createClassifiedIdentifierForParticles( rSeries.getSeriesParticle(), aChildParticle );
-                    AbstractShapeFactory::setShapeName( xShape, aCID );
+                    ShapeFactory::setShapeName( xShape, aCID );
                 }
 
                 // label
@@ -2419,10 +2725,10 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
         else
         {
             // symbol
-            uno::Reference< drawing::XShapes > xSymbolGroup( AbstractShapeFactory::getOrCreateShapeFactory(xShapeFactory)->createGroup2D( xTarget ));
+            uno::Reference< drawing::XShapes > xSymbolGroup( ShapeFactory::getOrCreateShapeFactory(xShapeFactory)->createGroup2D( xTarget ));
 
             // create the symbol
-            Reference< drawing::XShape > xShape( this->createLegendSymbolForSeries(
+            Reference< drawing::XShape > xShape( createLegendSymbolForSeries(
                 rEntryKeyAspectRatio, rSeries, xSymbolGroup, xShapeFactory ) );
 
             // set CID to symbol for selection
@@ -2432,11 +2738,11 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
 
                 OUString aChildParticle( ObjectIdentifier::createChildParticleWithIndex( OBJECTTYPE_LEGEND_ENTRY, 0 ) );
                 OUString aCID = ObjectIdentifier::createClassifiedIdentifierForParticles( rSeries.getSeriesParticle(), aChildParticle );
-                AbstractShapeFactory::setShapeName( xShape, aCID );
+                ShapeFactory::setShapeName( xShape, aCID );
             }
 
             // label
-            aLabelText = ( DataSeriesHelper::getDataSeriesLabel( rSeries.getModel(), m_xChartTypeModel.is() ? m_xChartTypeModel->getRoleOfSequenceForSeriesLabel() : "values-y") );
+            aLabelText = DataSeriesHelper::getDataSeriesLabel( rSeries.getModel(), m_xChartTypeModel.is() ? m_xChartTypeModel->getRoleOfSequenceForSeriesLabel() : "values-y");
             aEntry.aLabel = FormattedStringHelper::createFormattedStringSequence( xContext, aLabelText, xTextProperties );
 
             aResult.push_back(aEntry);
@@ -2462,11 +2768,11 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
                     aEntry.aLabel = FormattedStringHelper::createFormattedStringSequence( xContext, aResStr, xTextProperties );
 
                     // symbol
-                    uno::Reference< drawing::XShapes > xSymbolGroup( AbstractShapeFactory::getOrCreateShapeFactory(xShapeFactory)->createGroup2D( xTarget ));
+                    uno::Reference< drawing::XShapes > xSymbolGroup( ShapeFactory::getOrCreateShapeFactory(xShapeFactory)->createGroup2D( xTarget ));
 
                     // create the symbol
                     Reference< drawing::XShape > xShape( VLegendSymbolFactory::createSymbol( rEntryKeyAspectRatio,
-                        xSymbolGroup, LegendSymbolStyle_LINE, xShapeFactory,
+                        xSymbolGroup, LegendSymbolStyle::Line, xShapeFactory,
                         Reference< beans::XPropertySet >( aCurves[i], uno::UNO_QUERY ),
                         VLegendSymbolFactory::PropertyType::Line, uno::Any() ));
 
@@ -2480,7 +2786,7 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
                         OUString aChildParticle( ObjectIdentifier::createChildParticleWithIndex( eObjectType, i ) );
                         aChildParticle = ObjectIdentifier::addChildParticle( aChildParticle, ObjectIdentifier::createChildParticleWithIndex( OBJECTTYPE_LEGEND_ENTRY, 0 ) );
                         OUString aCID = ObjectIdentifier::createClassifiedIdentifierForParticles( rSeries.getSeriesParticle(), aChildParticle );
-                        AbstractShapeFactory::setShapeName( xShape, aCID );
+                        ShapeFactory::setShapeName( xShape, aCID );
                     }
 
                     aResult.push_back(aEntry);
@@ -2488,9 +2794,9 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2" );
     }
     return aResult;
 }
@@ -2521,9 +2827,9 @@ VSeriesPlotter* VSeriesPlotter::createSeriesPlotter(
     else if( aChartType.equalsIgnoreAsciiCase(CHART2_SERVICE_NAME_CHARTTYPE_PIE) )
         pRet = new PieChart(xChartTypeModel,nDimensionCount, bExcludingPositioning );
     else if( aChartType.equalsIgnoreAsciiCase(CHART2_SERVICE_NAME_CHARTTYPE_NET) )
-        pRet = new NetChart(xChartTypeModel,nDimensionCount,true,new PolarPlottingPositionHelper());
+        pRet = new NetChart(xChartTypeModel,nDimensionCount,true,std::make_unique<PolarPlottingPositionHelper>());
     else if( aChartType.equalsIgnoreAsciiCase(CHART2_SERVICE_NAME_CHARTTYPE_FILLED_NET) )
-        pRet = new NetChart(xChartTypeModel,nDimensionCount,false,new PolarPlottingPositionHelper());
+        pRet = new NetChart(xChartTypeModel,nDimensionCount,false,std::make_unique<PolarPlottingPositionHelper>());
     else if( aChartType.equalsIgnoreAsciiCase(CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK) )
         pRet = new CandleStickChart(xChartTypeModel,nDimensionCount);
     else

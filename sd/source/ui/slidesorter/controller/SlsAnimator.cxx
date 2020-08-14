@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "controller/SlsAnimator.hxx"
-#include "view/SlideSorterView.hxx"
-#include "View.hxx"
+#include <controller/SlsAnimator.hxx>
+#include <view/SlideSorterView.hxx>
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 /** Handle one animation function by using a timer for frequent calls to
     the animations operator().
@@ -46,7 +45,7 @@ public:
         animation is marked as expired to prevent another run.
     */
     void Expire();
-    bool IsExpired() { return mbIsExpired;}
+    bool IsExpired() const { return mbIsExpired;}
 
     Animator::AnimationFunctor maAnimation;
     Animator::FinishFunctor maFinishFunctor;
@@ -84,9 +83,8 @@ void Animator::Dispose()
     mbIsDisposed = true;
 
     AnimationList aCopy (maAnimations);
-    AnimationList::const_iterator iAnimation;
-    for (iAnimation=aCopy.begin(); iAnimation!=aCopy.end(); ++iAnimation)
-        (*iAnimation)->Expire();
+    for (const auto& rxAnimation : aCopy)
+        rxAnimation->Expire();
 
     maIdle.Stop();
     if (mpDrawLock)
@@ -106,14 +104,14 @@ Animator::AnimationId Animator::AddAnimation (
     if (mbIsDisposed)
         return -1;
 
-    std::shared_ptr<Animation> pAnimation (
-        new Animation(
+    std::shared_ptr<Animation> pAnimation =
+        std::make_shared<Animation>(
             rAnimation,
             0,
             300 / 1000.0,
             maElapsedTime.getElapsedTime(),
             ++mnNextAnimationId,
-            rFinishFunctor));
+            rFinishFunctor);
     maAnimations.push_back(pAnimation);
 
     RequestNextFrame();
@@ -171,10 +169,9 @@ bool Animator::ProcessAnimations (const double nTime)
         return bExpired;
 
     AnimationList aCopy (maAnimations);
-    AnimationList::const_iterator iAnimation;
-    for (iAnimation=aCopy.begin(); iAnimation!=aCopy.end(); ++iAnimation)
+    for (const auto& rxAnimation : aCopy)
     {
-        bExpired |= (*iAnimation)->Run(nTime);
+        bExpired |= rxAnimation->Run(nTime);
     }
 
     return bExpired;
@@ -188,11 +185,10 @@ void Animator::CleanUpAnimationList()
 
     AnimationList aActiveAnimations;
 
-    AnimationList::const_iterator iAnimation;
-    for (iAnimation=maAnimations.begin(); iAnimation!=maAnimations.end(); ++iAnimation)
+    for (const auto& rxAnimation : maAnimations)
     {
-        if ( ! (*iAnimation)->IsExpired())
-            aActiveAnimations.push_back(*iAnimation);
+        if ( ! rxAnimation->IsExpired())
+            aActiveAnimations.push_back(rxAnimation);
     }
 
     maAnimations.swap(aActiveAnimations);
@@ -281,6 +277,6 @@ void Animator::Animation::Expire()
     }
 }
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

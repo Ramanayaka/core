@@ -23,21 +23,26 @@
 #include <cellatr.hxx>
 #include <checkit.hxx>
 #include <cmdid.h>
-#include <fesh.hxx>
 #include <comphelper/processfactory.hxx>
 #include <doc.hxx>
 #include <editeng/acorrcfg.hxx>
 #include <editeng/autokernitem.hxx>
 #include <editeng/blinkitem.hxx>
+#include <editeng/boxitem.hxx>
+#include <editeng/brushitem.hxx>
 #include <editeng/formatbreakitem.hxx>
 #include <editeng/charhiddenitem.hxx>
 #include <editeng/charreliefitem.hxx>
 #include <editeng/charrotateitem.hxx>
 #include <editeng/charscaleitem.hxx>
 #include <editeng/cmapitem.hxx>
-#include <editeng/charsetcoloritem.hxx>
+#include <editeng/colritem.hxx>
+#include <editeng/contouritem.hxx>
+#include <editeng/crossedoutitem.hxx>
 #include <editeng/emphasismarkitem.hxx>
 #include <editeng/escapementitem.hxx>
+#include <editeng/fontitem.hxx>
+#include <editeng/fhgtitem.hxx>
 #include <editeng/forbiddenruleitem.hxx>
 #include <editeng/frmdiritem.hxx>
 #include <editeng/hngpnctitem.hxx>
@@ -48,7 +53,6 @@
 #include <editeng/lrspitem.hxx>
 #include <editeng/lspcitem.hxx>
 #include <editeng/nhypitem.hxx>
-#include <editeng/nlbkitem.hxx>
 #include <editeng/opaqitem.hxx>
 #include <editeng/orphitem.hxx>
 #include <editeng/paravertalignitem.hxx>
@@ -56,18 +60,20 @@
 #include <editeng/pgrditem.hxx>
 #include <editeng/prntitem.hxx>
 #include <editeng/protitem.hxx>
-#include <editeng/prszitem.hxx>
+#include <editeng/postitem.hxx>
 #include <editeng/rsiditem.hxx>
 #include <svl/grabbagitem.hxx>
 #include <editeng/scriptspaceitem.hxx>
 #include <editeng/shaditem.hxx>
+#include <editeng/shdditem.hxx>
 #include <editeng/spltitem.hxx>
 #include <editeng/svxacorr.hxx>
 #include <editeng/swafopt.hxx>
 #include <editeng/tstpitem.hxx>
 #include <editeng/twolinesitem.hxx>
 #include <editeng/ulspitem.hxx>
-#include <editeng/unolingu.hxx>
+#include <editeng/udlnitem.hxx>
+#include <editeng/wghtitem.hxx>
 #include <editeng/widwitem.hxx>
 #include <editeng/wrlmitem.hxx>
 #include <editeng/xmlcnitm.hxx>
@@ -105,14 +111,11 @@
 #include <hfspacingitem.hxx>
 #include <hintids.hxx>
 #include <init.hxx>
-#include <pam.hxx>
 #include <paratr.hxx>
 #include <proofreadingiterator.hxx>
+#include <editeng/editids.hrc>
 #include <rtl/instance.hxx>
 #include <svl/macitem.hxx>
-#include <svx/dialogs.hrc>
-#include <svx/xfillit0.hxx>
-#include <svx/xflgrit.hxx>
 #include <svx/sdtaitm.hxx>
 #include <swcalwrp.hxx>
 #include <SwStyleNameMapper.hxx>
@@ -123,11 +126,11 @@
 #include <unotools/charclass.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/collatorwrapper.hxx>
-#include <unotools/syslocale.hxx>
 #include <unotools/transliterationwrapper.hxx>
 #include <vcl/mapmod.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <salhelper/singletonref.hxx>
 #include <viscrs.hxx>
 
 using namespace ::com::sun::star;
@@ -135,7 +138,7 @@ using namespace ::com::sun::star;
 // some ranges for sets in collections/ nodes
 
 // AttrSet range for the 2 break attributes
-sal_uInt16 aBreakSetRange[] = {
+sal_uInt16 const aBreakSetRange[] = {
     RES_PAGEDESC, RES_BREAK,
     0
 };
@@ -143,7 +146,7 @@ sal_uInt16 aBreakSetRange[] = {
 // AttrSet range for TextFormatColl
 // list attributes ( RES_PARATR_LIST_BEGIN - RES_PARATR_LIST_END ) are not
 // included in the paragraph style's itemset.
-sal_uInt16 aTextFormatCollSetRange[] = {
+sal_uInt16 const aTextFormatCollSetRange[] = {
     RES_FRMATR_BEGIN, RES_FRMATR_END-1,
     RES_CHRATR_BEGIN, RES_CHRATR_END-1,
     RES_PARATR_BEGIN, RES_PARATR_END-1,
@@ -156,7 +159,7 @@ sal_uInt16 aTextFormatCollSetRange[] = {
 };
 
 // AttrSet range for GrfFormatColl
-sal_uInt16 aGrfFormatCollSetRange[] = {
+sal_uInt16 const aGrfFormatCollSetRange[] = {
     RES_FRMATR_BEGIN, RES_FRMATR_END-1,
     RES_GRFATR_BEGIN, RES_GRFATR_END-1,
     RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END-1,
@@ -164,7 +167,7 @@ sal_uInt16 aGrfFormatCollSetRange[] = {
 };
 
 // AttrSet range for TextNode
-sal_uInt16 aTextNodeSetRange[] = {
+sal_uInt16 const aTextNodeSetRange[] = {
     RES_FRMATR_BEGIN, RES_FRMATR_END-1,
     RES_CHRATR_BEGIN, RES_CHRATR_END-1,
     RES_PARATR_BEGIN, RES_PARATR_END-1,
@@ -178,14 +181,14 @@ sal_uInt16 aTextNodeSetRange[] = {
 };
 
 // AttrSet range for NoTextNode
-sal_uInt16 aNoTextNodeSetRange[] = {
+sal_uInt16 const aNoTextNodeSetRange[] = {
     RES_FRMATR_BEGIN, RES_FRMATR_END-1,
     RES_GRFATR_BEGIN, RES_GRFATR_END-1,
     RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END-1,
     0
 };
 
-sal_uInt16 aTableSetRange[] = {
+sal_uInt16 const aTableSetRange[] = {
     RES_FILL_ORDER,     RES_FRM_SIZE,
     RES_LR_SPACE,       RES_BREAK,
     RES_BACKGROUND,     RES_SHADOW,
@@ -201,7 +204,7 @@ sal_uInt16 aTableSetRange[] = {
     0
 };
 
-sal_uInt16 aTableLineSetRange[] = {
+sal_uInt16 const aTableLineSetRange[] = {
     RES_FILL_ORDER,     RES_FRM_SIZE,
     RES_LR_SPACE,       RES_UL_SPACE,
     RES_BACKGROUND,     RES_SHADOW,
@@ -213,7 +216,7 @@ sal_uInt16 aTableLineSetRange[] = {
     0
 };
 
-sal_uInt16 aTableBoxSetRange[] = {
+sal_uInt16 const aTableBoxSetRange[] = {
     RES_FILL_ORDER,     RES_FRM_SIZE,
     RES_LR_SPACE,       RES_UL_SPACE,
     RES_BACKGROUND,     RES_SHADOW,
@@ -227,7 +230,7 @@ sal_uInt16 aTableBoxSetRange[] = {
 };
 
 // AttrSet range for SwFrameFormat
-sal_uInt16 aFrameFormatSetRange[] = {
+sal_uInt16 const aFrameFormatSetRange[] = {
     RES_FRMATR_BEGIN, RES_FRMATR_END-1,
     RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END-1,
 
@@ -238,14 +241,14 @@ sal_uInt16 aFrameFormatSetRange[] = {
 };
 
 // AttrSet range for SwCharFormat
-sal_uInt16 aCharFormatSetRange[] = {
+sal_uInt16 const aCharFormatSetRange[] = {
     RES_CHRATR_BEGIN, RES_CHRATR_END-1,
     RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END-1,
     0
 };
 
 // AttrSet range for character autostyles
-sal_uInt16 aCharAutoFormatSetRange[] = {
+sal_uInt16 const aCharAutoFormatSetRange[] = {
     RES_CHRATR_BEGIN, RES_CHRATR_END-1,
     RES_TXTATR_UNKNOWN_CONTAINER, RES_TXTATR_UNKNOWN_CONTAINER,
     RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END-1,
@@ -253,7 +256,7 @@ sal_uInt16 aCharAutoFormatSetRange[] = {
 };
 
 // AttrSet range for SwPageDescFormat
-sal_uInt16 aPgFrameFormatSetRange[] = {
+sal_uInt16 const aPgFrameFormatSetRange[] = {
     RES_FRMATR_BEGIN, RES_FRMATR_END-1,
     RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END-1,
     0
@@ -275,14 +278,14 @@ SfxItemInfo aSlotTab[] =
     { SID_ATTR_CHAR_KERNING, true },       // RES_CHRATR_KERNING
     { SID_ATTR_CHAR_LANGUAGE, true },      // RES_CHRATR_LANGUAGE
     { SID_ATTR_CHAR_POSTURE, true },       // RES_CHRATR_POSTURE
-    { SID_ATTR_CHAR_PROPSIZE, true },      // RES_CHRATR_PROPORTIONALFONTSIZE
+    { 0, true },                           // RES_CHRATR_UNUSED1
     { SID_ATTR_CHAR_SHADOWED, true },      // RES_CHRATR_SHADOWED
     { SID_ATTR_CHAR_UNDERLINE, true },     // RES_CHRATR_UNDERLINE
     { SID_ATTR_CHAR_WEIGHT, true },        // RES_CHRATR_WEIGHT
     { SID_ATTR_CHAR_WORDLINEMODE, true },  // RES_CHRATR_WORDLINEMODE
     { SID_ATTR_CHAR_AUTOKERN, true },      // RES_CHRATR_AUTOKERN
     { SID_ATTR_FLASH, true },              // RES_CHRATR_BLINK
-    { 0, true },                           // RES_CHRATR_NOLINEBREAK
+    { 0, true },                           // RES_CHRATR_UNUSED2
     { 0, true },                           // RES_CHRATR_NOHYPHEN
     { SID_ATTR_BRUSH_CHAR, true },         // RES_CHRATR_BACKGROUND
     { SID_ATTR_CHAR_CJK_FONT, true },      // RES_CHRATR_CJK_FONT
@@ -303,8 +306,8 @@ SfxItemInfo aSlotTab[] =
     { SID_ATTR_CHAR_HIDDEN, true },        // RES_CHRATR_HIDDEN
     { SID_ATTR_CHAR_OVERLINE, true },      // RES_CHRATR_OVERLINE
     { 0, true },                           // RES_CHRATR_RSID
-    { 0, true },                           // RES_CHRATR_BOX
-    { 0, true },                           // RES_CHRATR_SHADOW
+    { SID_ATTR_CHAR_BOX, true },           // RES_CHRATR_BOX
+    { SID_ATTR_CHAR_SHADOW, true },        // RES_CHRATR_SHADOW
     { 0, true },                           // RES_CHRATR_HIGHLIGHT
     { SID_ATTR_CHAR_GRABBAG, true },       // RES_CHRATR_GRABBAG
     { 0, true },                           // RES_CHRATR_BIDIRTL
@@ -349,12 +352,13 @@ SfxItemInfo aSlotTab[] =
 
     { SID_ATTR_PARA_OUTLINE_LEVEL, true }, // RES_PARATR_OUTLINELEVEL //#outline level
     { 0, true },                           // RES_PARATR_RSID
-    { 0, true },                           // RES_PARATR_GRABBAG
+    { SID_ATTR_PARA_GRABBAG, true },       // RES_PARATR_GRABBAG
     { 0, true },                           // RES_PARATR_LIST_ID
     { 0, true },                           // RES_PARATR_LIST_LEVEL
     { 0, true },                           // RES_PARATR_LIST_ISRESTART
     { 0, true },                           // RES_PARATR_LIST_RESTARTVALUE
     { 0, true },                           // RES_PARATR_LIST_ISCOUNTED
+    { 0, true },                           // RES_PARATR_LIST_AUTOFMT
 
     { 0, true },                           // RES_FILL_ORDER
     { 0, true },                           // RES_FRM_SIZE
@@ -431,18 +435,9 @@ SfxItemInfo aSlotTab[] =
     { 0, true }                            // RES_UNKNOWNATR_CONTAINER
 };
 
-sal_uInt16* SwAttrPool::pVersionMap1 = nullptr;
-sal_uInt16* SwAttrPool::pVersionMap2 = nullptr;
-sal_uInt16* SwAttrPool::pVersionMap3 = nullptr;
-sal_uInt16* SwAttrPool::pVersionMap4 = nullptr;
-// #i18732#
-sal_uInt16* SwAttrPool::pVersionMap5 = nullptr;
-sal_uInt16* SwAttrPool::pVersionMap6 = nullptr;
-sal_uInt16* SwAttrPool::pVersionMap7 = nullptr;
+std::vector<SvGlobalName> *pGlobalOLEExcludeList = nullptr;
 
-std::vector<SvGlobalName*> *pGlobalOLEExcludeList = nullptr;
-
-SwAutoCompleteWord* SwDoc::mpACmpltWords = nullptr;
+SwAutoCompleteWord* SwDoc::s_pAutoCompleteWords = nullptr;
 
 SwCheckIt* pCheckIt = nullptr;
 static CharClass* pAppCharClass = nullptr;
@@ -461,7 +456,7 @@ void InitCore()
     SfxPoolItem* pItem;
 
     aAttrTab[ RES_CHRATR_CASEMAP- POOLATTR_BEGIN ] =        new SvxCaseMapItem( SvxCaseMap::NotMapped, RES_CHRATR_CASEMAP);
-    aAttrTab[ RES_CHRATR_CHARSETCOLOR- POOLATTR_BEGIN ] =   new SvxCharSetColorItem(RES_CHRATR_CHARSETCOLOR);
+    aAttrTab[ RES_CHRATR_CHARSETCOLOR- POOLATTR_BEGIN ] =   new SvxColorItem(RES_CHRATR_CHARSETCOLOR);
     aAttrTab[ RES_CHRATR_COLOR- POOLATTR_BEGIN ] =          new SvxColorItem(RES_CHRATR_COLOR);
     aAttrTab[ RES_CHRATR_CONTOUR- POOLATTR_BEGIN ] =        new SvxContourItem( false, RES_CHRATR_CONTOUR );
     aAttrTab[ RES_CHRATR_CROSSEDOUT- POOLATTR_BEGIN ] =     new SvxCrossedOutItem( STRIKEOUT_NONE, RES_CHRATR_CROSSEDOUT );
@@ -472,7 +467,7 @@ void InitCore()
     aAttrTab[ RES_CHRATR_KERNING- POOLATTR_BEGIN ] =        new SvxKerningItem( 0, RES_CHRATR_KERNING );
     aAttrTab[ RES_CHRATR_LANGUAGE- POOLATTR_BEGIN ] =       new SvxLanguageItem(LANGUAGE_DONTKNOW, RES_CHRATR_LANGUAGE );
     aAttrTab[ RES_CHRATR_POSTURE- POOLATTR_BEGIN ] =        new SvxPostureItem( ITALIC_NONE, RES_CHRATR_POSTURE );
-    aAttrTab[ RES_CHRATR_PROPORTIONALFONTSIZE- POOLATTR_BEGIN ] = new SvxPropSizeItem( 100, RES_CHRATR_PROPORTIONALFONTSIZE );
+    aAttrTab[ RES_CHRATR_UNUSED1- POOLATTR_BEGIN ] =        new SfxVoidItem( RES_CHRATR_UNUSED1 );
     aAttrTab[ RES_CHRATR_SHADOWED- POOLATTR_BEGIN ] =       new SvxShadowedItem( false, RES_CHRATR_SHADOWED );
     aAttrTab[ RES_CHRATR_UNDERLINE- POOLATTR_BEGIN ] =      new SvxUnderlineItem( LINESTYLE_NONE, RES_CHRATR_UNDERLINE );
     aAttrTab[ RES_CHRATR_WEIGHT- POOLATTR_BEGIN ] =         new SvxWeightItem( WEIGHT_NORMAL, RES_CHRATR_WEIGHT );
@@ -480,8 +475,8 @@ void InitCore()
     aAttrTab[ RES_CHRATR_WORDLINEMODE- POOLATTR_BEGIN ] =   new SvxWordLineModeItem( false, RES_CHRATR_WORDLINEMODE );
     aAttrTab[ RES_CHRATR_AUTOKERN- POOLATTR_BEGIN ] =       new SvxAutoKernItem( false, RES_CHRATR_AUTOKERN );
     aAttrTab[ RES_CHRATR_BLINK - POOLATTR_BEGIN ] =         new SvxBlinkItem( false, RES_CHRATR_BLINK );
-    aAttrTab[ RES_CHRATR_NOHYPHEN - POOLATTR_BEGIN ] =      new SvxNoHyphenItem( true, RES_CHRATR_NOHYPHEN );
-    aAttrTab[ RES_CHRATR_NOLINEBREAK- POOLATTR_BEGIN ] =    new SvxNoLinebreakItem( true, RES_CHRATR_NOLINEBREAK );
+    aAttrTab[ RES_CHRATR_NOHYPHEN - POOLATTR_BEGIN ] =      new SvxNoHyphenItem( RES_CHRATR_NOHYPHEN );
+    aAttrTab[ RES_CHRATR_UNUSED2- POOLATTR_BEGIN ] =        new SfxVoidItem( RES_CHRATR_UNUSED2 );
     aAttrTab[ RES_CHRATR_BACKGROUND - POOLATTR_BEGIN ] =    new SvxBrushItem( RES_CHRATR_BACKGROUND );
 
     // CJK-Attributes
@@ -566,6 +561,7 @@ void InitCore()
     aAttrTab[ RES_PARATR_LIST_ISRESTART - POOLATTR_BEGIN ] = new SfxBoolItem( RES_PARATR_LIST_ISRESTART, false );
     aAttrTab[ RES_PARATR_LIST_RESTARTVALUE - POOLATTR_BEGIN ] = new SfxInt16Item( RES_PARATR_LIST_RESTARTVALUE, 1 );
     aAttrTab[ RES_PARATR_LIST_ISCOUNTED - POOLATTR_BEGIN ] = new SfxBoolItem( RES_PARATR_LIST_ISCOUNTED, true );
+    aAttrTab[ RES_PARATR_LIST_AUTOFMT - POOLATTR_BEGIN ] = new SwFormatAutoFormat(RES_PARATR_LIST_AUTOFMT);//new SfxSetItem(RES_PARATR_LIST_AUTOFMT, std::make_unique<SfxItemSet>(aCharAutoFormatSetRange));
 
     aAttrTab[ RES_FILL_ORDER- POOLATTR_BEGIN ] =            new SwFormatFillOrder;
     aAttrTab[ RES_FRM_SIZE- POOLATTR_BEGIN ] =              new SwFormatFrameSize;
@@ -649,82 +645,6 @@ void InitCore()
                        *static_cast<SvxFontItem*>(aAttrTab[ RES_CHRATR_CJK_FONT - POOLATTR_BEGIN ]),
                        *static_cast<SvxFontItem*>(aAttrTab[ RES_CHRATR_CTL_FONT - POOLATTR_BEGIN ]) );
 
-    // 1. version - new attributes:
-    //      - RES_CHRATR_BLINK
-    //      - RES_CHRATR_NOHYPHEN
-    //      - RES_CHRATR_NOLINEBREAK
-    //      - RES_PARATR_REGISTER
-    //      + 2 dummies for the "ranges"
-    SwAttrPool::pVersionMap1 = new sal_uInt16[ 60 ];
-    sal_uInt16 i;
-    for( i = 1; i <= 17; i++ )
-        SwAttrPool::pVersionMap1[ i-1 ] = i;
-    for ( i = 18; i <= 27; ++i )
-        SwAttrPool::pVersionMap1[ i-1 ] = i + 5;
-    for ( i = 28; i <= 35; ++i )
-        SwAttrPool::pVersionMap1[ i-1 ] = i + 7;
-    for ( i = 36; i <= 58; ++i )
-        SwAttrPool::pVersionMap1[ i-1 ] = i + 10;
-    for ( i = 59; i <= 60; ++i )
-        SwAttrPool::pVersionMap1[ i-1 ] = i + 12;
-
-    // 2. version - new attributes:
-    //      10 dummies for the frame "range"
-    SwAttrPool::pVersionMap2 = new sal_uInt16[ 75 ];
-    for( i = 1; i <= 70; i++ )
-        SwAttrPool::pVersionMap2[ i-1 ] = i;
-    for ( i = 71; i <= 75; ++i )
-        SwAttrPool::pVersionMap2[ i-1 ] = i + 10;
-
-    // 3. version:
-    //      new attributes and dummies for the CJK version and
-    //      new graphics attributes
-    SwAttrPool::pVersionMap3 = new sal_uInt16[ 86 ];
-    for( i = 1; i <= 21; i++ )
-        SwAttrPool::pVersionMap3[ i-1 ] = i;
-    for ( i = 22; i <= 27; ++i )
-        SwAttrPool::pVersionMap3[ i-1 ] = i + 15;
-    for ( i = 28; i <= 82; ++i )
-        SwAttrPool::pVersionMap3[ i-1 ] = i + 20;
-    for ( i = 83; i <= 86; ++i )
-        SwAttrPool::pVersionMap3[ i-1 ] = i + 35;
-
-    // 4. version:
-    //      new paragraph attributes for CJK version
-    SwAttrPool::pVersionMap4 = new sal_uInt16[ 121 ];
-    for( i = 1; i <= 65; i++ )
-        SwAttrPool::pVersionMap4[ i-1 ] = i;
-    for ( i = 66; i <= 121; ++i )
-        SwAttrPool::pVersionMap4[ i-1 ] = i + 9;
-
-    // 5. version
-    // #i18732# - setup new version map due to extension of
-    // the frame attributes (RES_FRMATR_*) for binary filters.
-    SwAttrPool::pVersionMap5 = new sal_uInt16[ 130 ];
-    for( i = 1; i <= 109; i++ )
-        SwAttrPool::pVersionMap5[ i-1 ] = i;
-    for ( i = 110; i <= 130; ++i )
-        SwAttrPool::pVersionMap5[ i-1 ] = i + 6;
-
-    // 6. version:
-    //      RES_CHARATR_OVERLINE
-    //      new character attribute for overlining plus 2 dummies
-    //      1. dummy -> RES_CHRATR_RSID
-    //      2. dummy -> RES_CHRATR_BOX
-    SwAttrPool::pVersionMap6 = new sal_uInt16[ 136 ];
-    for( i = 1; i <= 37; i++ )
-        SwAttrPool::pVersionMap6[ i-1 ] = i;
-    for ( i = 38; i <= 136; ++i )
-        SwAttrPool::pVersionMap6[ i-1 ] = i + 3;
-
-    // 7. version:
-    // New character attribute for character box shadow plus 3 dummies
-    SwAttrPool::pVersionMap7 = new sal_uInt16[ 144 ];
-    for( i = 1; i <= 40; ++i )
-        SwAttrPool::pVersionMap7[ i-1 ] = i;
-    for ( i = 41; i <= 144; ++i )
-        SwAttrPool::pVersionMap7[ i-1 ] = i + 4;
-
     SwBreakIt::Create_( ::comphelper::getProcessComponentContext() );
     pCheckIt = nullptr;
 
@@ -734,17 +654,17 @@ void InitCore()
     SwSelPaintRects::s_pMapMode = new MapMode;
     SwFntObj::pPixMap = new MapMode;
 
-    pGlobalOLEExcludeList = new std::vector<SvGlobalName*>;
+    pGlobalOLEExcludeList = new std::vector<SvGlobalName>;
 
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
     {
         const SvxSwAutoFormatFlags& rAFlags = SvxAutoCorrCfg::Get().GetAutoCorrect()->GetSwFlags();
-        SwDoc::mpACmpltWords = new SwAutoCompleteWord( rAFlags.nAutoCmpltListLen,
+        SwDoc::s_pAutoCompleteWords = new SwAutoCompleteWord( rAFlags.nAutoCmpltListLen,
                                             rAFlags.nAutoCmpltWordLen );
     }
     else
     {
-        SwDoc::mpACmpltWords = new SwAutoCompleteWord( 0, 0 );
+        SwDoc::s_pAutoCompleteWords = new SwAutoCompleteWord( 0, 0 );
     }
 }
 
@@ -761,7 +681,7 @@ void FinitCore()
     delete pCaseCollator;
 
     // destroy default TableAutoFormat
-    delete SwTableAutoFormat::pDfltBoxAutoFormat;
+    delete SwTableAutoFormat::s_pDefaultBoxAutoFormat;
 
     delete SwSelPaintRects::s_pMapMode;
     delete SwFntObj::pPixMap;
@@ -773,45 +693,7 @@ void FinitCore()
     if ( aAttrTab[0]->GetRefCount() )
         SfxItemPool::ReleaseDefaults( &aAttrTab );
 #endif
-    delete SwDoc::mpACmpltWords;
-
-    delete SwStyleNameMapper::s_pTextUINameArray;
-    delete SwStyleNameMapper::s_pListsUINameArray;
-    delete SwStyleNameMapper::s_pExtraUINameArray;
-    delete SwStyleNameMapper::s_pRegisterUINameArray;
-    delete SwStyleNameMapper::s_pDocUINameArray;
-    delete SwStyleNameMapper::s_pHTMLUINameArray;
-    delete SwStyleNameMapper::s_pFrameFormatUINameArray;
-    delete SwStyleNameMapper::s_pChrFormatUINameArray;
-    delete SwStyleNameMapper::s_pHTMLChrFormatUINameArray;
-    delete SwStyleNameMapper::s_pPageDescUINameArray;
-    delete SwStyleNameMapper::s_pNumRuleUINameArray;
-
-    // Delete programmatic name arrays also
-    delete SwStyleNameMapper::s_pTextProgNameArray;
-    delete SwStyleNameMapper::s_pListsProgNameArray;
-    delete SwStyleNameMapper::s_pExtraProgNameArray;
-    delete SwStyleNameMapper::s_pRegisterProgNameArray;
-    delete SwStyleNameMapper::s_pDocProgNameArray;
-    delete SwStyleNameMapper::s_pHTMLProgNameArray;
-    delete SwStyleNameMapper::s_pFrameFormatProgNameArray;
-    delete SwStyleNameMapper::s_pChrFormatProgNameArray;
-    delete SwStyleNameMapper::s_pHTMLChrFormatProgNameArray;
-    delete SwStyleNameMapper::s_pPageDescProgNameArray;
-    delete SwStyleNameMapper::s_pNumRuleProgNameArray;
-
-    // And finally, any hash tables that we used
-    delete SwStyleNameMapper::s_pParaUIMap;
-    delete SwStyleNameMapper::s_pCharUIMap;
-    delete SwStyleNameMapper::s_pPageUIMap;
-    delete SwStyleNameMapper::s_pFrameUIMap;
-    delete SwStyleNameMapper::s_pNumRuleUIMap;
-
-    delete SwStyleNameMapper::s_pParaProgMap;
-    delete SwStyleNameMapper::s_pCharProgMap;
-    delete SwStyleNameMapper::s_pPageProgMap;
-    delete SwStyleNameMapper::s_pFrameProgMap;
-    delete SwStyleNameMapper::s_pNumRuleProgMap;
+    delete SwDoc::s_pAutoCompleteWords;
 
     // delete all default attributes
     for(SfxPoolItem* pHt : aAttrTab)
@@ -819,19 +701,6 @@ void FinitCore()
         delete pHt;
     }
 
-    ::ClearFEShellTabCols();
-
-    delete[] SwAttrPool::pVersionMap1;
-    delete[] SwAttrPool::pVersionMap2;
-    delete[] SwAttrPool::pVersionMap3;
-    delete[] SwAttrPool::pVersionMap4;
-    // #i18732#
-    delete[] SwAttrPool::pVersionMap5;
-    delete[] SwAttrPool::pVersionMap6;
-    delete[] SwAttrPool::pVersionMap7;
-
-    for (SvGlobalName* p : *pGlobalOLEExcludeList)
-        delete p;
     delete pGlobalOLEExcludeList;
 }
 
@@ -849,13 +718,16 @@ CharClass& GetAppCharClass()
 
 void SwCalendarWrapper::LoadDefaultCalendar( LanguageType eLang )
 {
-    if( eLang != nLang )
-        loadDefaultCalendar( LanguageTag::convertToLocale( nLang = eLang ));
+    if( eLang != m_nLang )
+    {
+        m_nLang = eLang;
+        loadDefaultCalendar( LanguageTag::convertToLocale( m_nLang ));
+    }
 }
 
 LanguageType GetAppLanguage()
 {
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
         return Application::GetSettings().GetLanguageTag().getLanguageType();
     return LANGUAGE_ENGLISH_US;
 }
@@ -894,22 +766,22 @@ namespace
     class TransWrp
     {
     private:
-        std::unique_ptr<utl::TransliterationWrapper> xTransWrp;
+        std::unique_ptr<utl::TransliterationWrapper> m_xTransWrp;
     public:
         TransWrp()
         {
             uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
 
-            xTransWrp.reset(new ::utl::TransliterationWrapper( xContext,
+            m_xTransWrp.reset(new ::utl::TransliterationWrapper( xContext,
                     TransliterationFlags::IGNORE_CASE |
                     TransliterationFlags::IGNORE_KANA |
                     TransliterationFlags::IGNORE_WIDTH ));
 
-            xTransWrp->loadModuleIfNeeded( GetAppLanguage() );
+            m_xTransWrp->loadModuleIfNeeded( GetAppLanguage() );
         }
         const ::utl::TransliterationWrapper& getTransliterationWrapper() const
         {
-            return *xTransWrp;
+            return *m_xTransWrp;
         }
     };
 

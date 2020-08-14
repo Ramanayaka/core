@@ -13,18 +13,17 @@
 #include <memory>
 #include <vcl/uitest/uiobject.hxx>
 
-class SmElementsControl;
-class SmElement;
+#include <ElementsDockingWindow.hxx>
 
 class ElementUIObject : public UIObject
 {
 private:
-    VclPtr<SmElementsControl> mxElementsSelector;
-    OUString maID;
+    SmElementsControl* mpElementsSelector;
+    OUString           maID;
 
 public:
 
-    ElementUIObject(const VclPtr<SmElementsControl>& xElementSelector,
+    ElementUIObject(SmElementsControl* pElementSelector,
             const OUString& rID);
 
     virtual StringMap get_state() override;
@@ -39,11 +38,11 @@ private:
 class ElementSelectorUIObject : public WindowUIObject
 {
 private:
-    VclPtr<SmElementsControl> mxElementsSelector;
+    SmElementsControl* mpElementsSelector;
 
 public:
 
-    explicit ElementSelectorUIObject(const VclPtr<SmElementsControl>& xElementSelector);
+    explicit ElementSelectorUIObject(vcl::Window* pElementSelectorWindow, SmElementsControl* pElementSelector);
 
     virtual StringMap get_state() override;
 

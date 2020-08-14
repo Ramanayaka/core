@@ -21,6 +21,7 @@
 
 #include <svl/poolitem.hxx>
 #include <svl/svldllapi.h>
+#include <tools/debug.hxx>
 
 class SvStream;
 
@@ -31,26 +32,23 @@ class SVL_DLLPUBLIC SfxFlagItem: public SfxPoolItem
 public:
 
     explicit                 SfxFlagItem( sal_uInt16 nWhich = 0, sal_uInt16 nValue = 0 );
-                             SfxFlagItem( const SfxFlagItem& );
 
     virtual sal_uInt8        GetFlagCount() const;
 
     virtual bool             operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16 nVersion) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion) const override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SfxFlagItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString & rText,
-                                  const IntlWrapper * = nullptr ) const override;
+                                  const IntlWrapper& ) const override;
             sal_uInt16           GetValue() const { return nVal; }
             void             SetValue( sal_uInt16 nNewVal ) {
                                  DBG_ASSERT( GetRefCount() == 0, "SetValue() with pooled item" );
                                  nVal = nNewVal;
                              }
-            bool             GetFlag( sal_uInt8 nFlag ) const { return ( (nVal & ( 1<<nFlag))); }
+            bool             GetFlag( sal_uInt8 nFlag ) const { return (nVal & ( 1<<nFlag)); }
 };
 
 #endif

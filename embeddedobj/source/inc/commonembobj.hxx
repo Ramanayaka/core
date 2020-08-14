@@ -26,22 +26,18 @@
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/document/XStorageBasedDocument.hpp>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
-#include <com/sun/star/embed/XVisualObject.hpp>
 #include <com/sun/star/embed/XEmbedPersist2.hpp>
 #include <com/sun/star/embed/XLinkageSupport.hpp>
-#include <com/sun/star/embed/XClassifiedObject.hpp>
-#include <com/sun/star/embed/XComponentSupplier.hpp>
 #include <com/sun/star/embed/XInplaceObject.hpp>
-#include <com/sun/star/embed/XStateChangeBroadcaster.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/document/XEventBroadcaster.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
 #include <com/sun/star/chart2/XDefaultSizeTransmitter.hpp>
 #include <cppuhelper/weak.hxx>
 #include <rtl/ref.hxx>
+#include <map>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace embed {
         class XStorage;
     }
@@ -55,7 +51,7 @@ namespace com { namespace sun { namespace star {
         struct PropertyValue;
         struct NamedValue;
     }
-}}}
+}
 
 namespace cppu {
     class OMultiTypeInterfaceContainerHelper;
@@ -72,6 +68,10 @@ namespace comphelper {
 
 class Interceptor;
 
+/**
+ * Represents an OLE object that has native data and we loaded that data into a
+ * document model successfully.
+ */
 class OCommonEmbeddedObject : public css::embed::XEmbeddedObject
                             , public css::embed::XEmbedPersist2
                             , public css::embed::XLinkageSupport
@@ -112,7 +112,7 @@ protected:
 
     css::uno::Sequence< sal_Int32 > m_aAcceptedStates;
     css::uno::Sequence< sal_Int32 > m_pIntermediateStatesSeqs[NUM_SUPPORTED_STATES][NUM_SUPPORTED_STATES];
-    css::uno::Sequence< css::uno::Sequence< sal_Int32 > > m_aVerbTable;
+    std::map< sal_Int32, sal_Int32 > m_aVerbTable;
 
     css::uno::Reference< css::embed::XEmbeddedClient > m_xClientSite;
 
@@ -152,7 +152,7 @@ protected:
     bool m_bHasClonedSize; // the object has cached size
     css::awt::Size m_aClonedSize;
     sal_Int32 m_nClonedMapUnit;
-    css::awt::Size m_aDefaultSizeForChart_In_100TH_MM;//#i103460# charts do not necessaryly have an own size within ODF files, in this case they need to use the size settings from the surrounding frame, which is made available with this member
+    css::awt::Size m_aDefaultSizeForChart_In_100TH_MM;//#i103460# charts do not necessarily have an own size within ODF files, in this case they need to use the size settings from the surrounding frame, which is made available with this member
 
 private:
     void CommonInit_Impl( const css::uno::Sequence< css::beans::NamedValue >& aObjectProps );
@@ -248,6 +248,7 @@ public:
     // not a real listener and should not be
     void PostEvent_Impl( const OUString& aEventName );
 
+    OUString const & getContainerName() const { return m_aContainerName; }
 // XInterface
 
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& rType ) override ;
@@ -391,7 +392,7 @@ public:
     virtual void SAL_CALL setParent( const css::uno::Reference< css::uno::XInterface >& Parent ) override;
 
     // XDefaultSizeTransmitter
-    //#i103460# charts do not necessaryly have an own size within ODF files, in this case they need to use the size settings from the surrounding frame, which is made available with this method
+    //#i103460# charts do not necessarily have an own size within ODF files, in this case they need to use the size settings from the surrounding frame, which is made available with this method
     virtual void SAL_CALL setDefaultSize( const css::awt::Size& rSize_100TH_MM ) override;
 };
 

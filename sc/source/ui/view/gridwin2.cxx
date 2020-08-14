@@ -17,31 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <vcl/msgbox.hxx>
+#include <scitems.hxx>
 #include <vcl/settings.hxx>
 #include <comphelper/lok.hxx>
 
-#include "gridwin.hxx"
-#include "tabvwsh.hxx"
-#include "docsh.hxx"
-#include "viewdata.hxx"
-#include "pivot.hxx"
-#include "uiitems.hxx"
-#include "scresid.hxx"
-#include "sc.hrc"
-#include "globstr.hrc"
-#include "pagedata.hxx"
-#include "dpobject.hxx"
-#include "dpsave.hxx"
-#include "dpoutput.hxx"
-#include "dpshttab.hxx"
-#include "dbdocfun.hxx"
-#include "checklistmenu.hxx"
-#include "dpcontrol.hxx"
-#include "userlist.hxx"
-#include "scabstdlg.hxx"
-#include "spellcheckcontext.hxx"
+#include <gridwin.hxx>
+#include <tabvwsh.hxx>
+#include <docsh.hxx>
+#include <viewdata.hxx>
+#include <pivot.hxx>
+#include <uiitems.hxx>
+#include <scresid.hxx>
+#include <globstr.hrc>
+#include <strings.hrc>
+#include <pagedata.hxx>
+#include <dpobject.hxx>
+#include <dpsave.hxx>
+#include <dpshttab.hxx>
+#include <dbdocfun.hxx>
+#include <checklistmenu.hxx>
+#include <dpcontrol.hxx>
+#include <userlist.hxx>
+#include <scabstdlg.hxx>
 
 #include <com/sun/star/sheet/DataPilotFieldOrientation.hpp>
 
@@ -114,7 +111,7 @@ bool ScGridWindow::DoAutoFilterButton( SCCOL nCol, SCROW nRow, const MouseEvent&
     aDiffPix -= aScrPos;
     bool bLayoutRTL = pDoc->IsLayoutRTL( nTab );
     if ( bLayoutRTL )
-        aDiffPix.X() = -aDiffPix.X();
+        aDiffPix.setX( -aDiffPix.X() );
 
     long nSizeX, nSizeY;
     pViewData->GetMergeSizePixel( nCol, nRow, nSizeX, nSizeY );
@@ -123,7 +120,7 @@ bool ScGridWindow::DoAutoFilterButton( SCCOL nCol, SCROW nRow, const MouseEvent&
     Size aScrSize(nSizeX-1, nSizeY-1);
 
     // Check if the mouse cursor is clicking on the popup arrow box.
-    mpFilterButton.reset(new ScDPFieldButton(this, &GetSettings().GetStyleSettings(), &pViewData->GetZoomX(), &pViewData->GetZoomY(), pDoc));
+    mpFilterButton.reset(new ScDPFieldButton(this, &GetSettings().GetStyleSettings(), &pViewData->GetZoomY(), pDoc));
     mpFilterButton->setBoundingBox(aScrPos, aScrSize, bLayoutRTL);
     mpFilterButton->setPopupLeft(bLayoutRTL);   // #i114944# AutoFilter button is left-aligned in RTL
     Point aPopupPos;
@@ -203,12 +200,10 @@ void ScGridWindow::DoPushPivotButton( SCCOL nCol, SCROW nRow, const MouseEvent& 
             aArgSet.Put( ScQueryItem( SCITEM_QUERYDATA, pViewData, &aQueryParam ) );
 
             ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-            OSL_ENSURE(pFact, "ScAbstractFactory create fail!");
 
             ScopedVclPtr<AbstractScPivotFilterDlg> pDlg(
                 pFact->CreateScPivotFilterDlg(
-                    pViewData->GetViewShell()->GetDialogParent(), aArgSet, nSrcTab));
-            OSL_ENSURE(pDlg, "Dialog create fail!");
+                    pViewData->GetViewShell()->GetFrameWeld(), aArgSet, nSrcTab));
             if ( pDlg->Execute() == RET_OK )
             {
                 ScSheetSourceDesc aNewDesc(pDoc);
@@ -375,14 +370,14 @@ bool ScGridWindow::DPTestFieldPopupArrow(
 
 namespace {
 
-struct DPFieldPopupData : public ScCheckListMenuWindow::ExtendedData
+struct DPFieldPopupData : public ScCheckListMenuControl::ExtendedData
 {
     ScDPLabelData   maLabels;
     ScDPObject*     mpDPObj;
     long            mnDim;
 };
 
-class DPFieldPopupOKAction : public ScMenuFloatingWindow::Action
+class DPFieldPopupOKAction : public ScCheckListMenuControl::Action
 {
 public:
     explicit DPFieldPopupOKAction(ScGridWindow* p) :
@@ -396,7 +391,7 @@ private:
     VclPtr<ScGridWindow> mpGridWindow;
 };
 
-class PopupSortAction : public ScMenuFloatingWindow::Action
+class PopupSortAction : public ScCheckListMenuControl::Action
 {
 public:
     enum SortType { ASCENDING, DESCENDING, CUSTOM };
@@ -463,6 +458,8 @@ void ScGridWindow::DPLaunchFieldPopupMenu(const Point& rScrPos, const Size& rScr
         // This should never happen.
         return;
 
+    bool bDimOrientNotPage = pDim->GetOrientation() != DataPilotFieldOrientation_PAGE;
+
     // We need to get the list of field members.
     pDPObj->FillLabelData(pDPData->mnDim, pDPData->maLabels);
     pDPData->mpDPObj = pDPObj;
@@ -470,28 +467,28 @@ void ScGridWindow::DPLaunchFieldPopupMenu(const Point& rScrPos, const Size& rScr
     const ScDPLabelData& rLabelData = pDPData->maLabels;
 
     mpDPFieldPopup.disposeAndClear();
-    mpDPFieldPopup.reset(VclPtr<ScCheckListMenuWindow>::Create(this, pViewData->GetDocument()));
-    mpDPFieldPopup->setName("DataPilot field member popup");
-    mpDPFieldPopup->setExtendedData(pDPData.release());
-    mpDPFieldPopup->setOKAction(new DPFieldPopupOKAction(this));
+    mpDPFieldPopup.reset(VclPtr<ScCheckListMenuWindow>::Create(this, pViewData->GetDocument(), bDimOrientNotPage));
+
+    ScCheckListMenuControl& rControl = mpDPFieldPopup->get_widget();
+    rControl.setExtendedData(std::move(pDPData));
+    rControl.setOKAction(new DPFieldPopupOKAction(this));
     {
         // Populate field members.
         size_t n = rLabelData.maMembers.size();
-        mpDPFieldPopup->setMemberSize(n);
+        rControl.setMemberSize(n);
         for (size_t i = 0; i < n; ++i)
         {
             const ScDPLabelData::Member& rMem = rLabelData.maMembers[i];
             OUString aName = rMem.getDisplayName();
             if (aName.isEmpty())
                 // Use special string for an empty name.
-                mpDPFieldPopup->addMember(ScGlobal::GetRscString(STR_EMPTYDATA), rMem.mbVisible);
+                rControl.addMember(ScResId(STR_EMPTYDATA), rMem.mbVisible);
             else
-                mpDPFieldPopup->addMember(rMem.getDisplayName(), rMem.mbVisible);
+                rControl.addMember(rMem.getDisplayName(), rMem.mbVisible);
         }
-        mpDPFieldPopup->initMembers();
     }
 
-    if (pDim->GetOrientation() != DataPilotFieldOrientation_PAGE)
+    if (bDimOrientNotPage)
     {
         vector<OUString> aUserSortNames;
         ScUserList* pUserList = ScGlobal::GetUserList();
@@ -508,45 +505,50 @@ void ScGridWindow::DPLaunchFieldPopupMenu(const Point& rScrPos, const Size& rScr
 
         // Populate the menus.
         ScTabViewShell* pViewShell = pViewData->GetViewShell();
-        mpDPFieldPopup->addMenuItem(
+        rControl.addMenuItem(
             ScResId(STR_MENU_SORT_ASC),
             new PopupSortAction(pDPObj, nDimIndex, PopupSortAction::ASCENDING, 0, pViewShell));
-        mpDPFieldPopup->addMenuItem(
+        rControl.addMenuItem(
             ScResId(STR_MENU_SORT_DESC),
             new PopupSortAction(pDPObj, nDimIndex, PopupSortAction::DESCENDING, 0, pViewShell));
-        ScMenuFloatingWindow* pSubMenu = mpDPFieldPopup->addSubMenuItem(
-            ScResId(STR_MENU_SORT_CUSTOM), !aUserSortNames.empty());
 
-        if (pSubMenu && !aUserSortNames.empty())
+        ScCheckListMenuWindow* pSubMenu = rControl.addSubMenuItem(ScResId(STR_MENU_SORT_CUSTOM), !aUserSortNames.empty());
+        if (pSubMenu)
         {
+            ScCheckListMenuControl& rSubMenu = pSubMenu->get_widget();
             size_t n = aUserSortNames.size();
             for (size_t i = 0; i < n; ++i)
             {
-                pSubMenu->addMenuItem(
-                    aUserSortNames[i],
-                    new PopupSortAction(pDPObj, nDimIndex, PopupSortAction::CUSTOM, sal_uInt16(i), pViewShell));
+                rSubMenu.addMenuItem(aUserSortNames[i],
+                                     new PopupSortAction(pDPObj, nDimIndex, PopupSortAction::CUSTOM, sal_uInt16(i), pViewShell));
             }
+            rSubMenu.resizeToFitMenuItems();
         }
     }
 
+    rControl.initMembers();
+
     tools::Rectangle aCellRect(rScrPos, rScrSize);
 
-    mpDPFieldPopup->SetPopupModeEndHdl( LINK(this, ScGridWindow, PopupModeEndHdl) );
-    ScCheckListMenuWindow::Config aConfig;
+    ScCheckListMenuControl::Config aConfig;
     aConfig.mbAllowEmptySet = false;
     aConfig.mbRTL = pViewData->GetDocument()->IsLayoutRTL(pViewData->GetTabNo());
-    mpDPFieldPopup->setConfig(aConfig);
-    mpDPFieldPopup->launch(aCellRect);
+    rControl.setConfig(aConfig);
+    if (IsMouseCaptured())
+        ReleaseMouse();
+    rControl.launch(aCellRect);
 }
 
 void ScGridWindow::UpdateDPFromFieldPopupMenu()
 {
-    typedef std::unordered_map<OUString, OUString, OUStringHash> MemNameMapType;
+    typedef std::unordered_map<OUString, OUString> MemNameMapType;
 
     if (!mpDPFieldPopup)
         return;
 
-    DPFieldPopupData* pDPData = static_cast<DPFieldPopupData*>(mpDPFieldPopup->getExtendedData());
+    ScCheckListMenuControl& rControl = mpDPFieldPopup->get_widget();
+
+    DPFieldPopupData* pDPData = static_cast<DPFieldPopupData*>(rControl.getExtendedData());
     if (!pDPData)
         return;
 
@@ -562,37 +564,31 @@ void ScGridWindow::UpdateDPFromFieldPopupMenu()
     // Build a map of layout names to original names.
     const ScDPLabelData& rLabelData = pDPData->maLabels;
     MemNameMapType aMemNameMap;
-    for (vector<ScDPLabelData::Member>::const_iterator itr = rLabelData.maMembers.begin(), itrEnd = rLabelData.maMembers.end();
-           itr != itrEnd; ++itr)
-        aMemNameMap.insert(MemNameMapType::value_type(itr->maLayoutName, itr->maName));
+    for (const auto& rMember : rLabelData.maMembers)
+        aMemNameMap.emplace(rMember.maLayoutName, rMember.maName);
 
     // The raw result may contain a mixture of layout names and original names.
-    ScCheckListMenuWindow::ResultType aRawResult;
-    mpDPFieldPopup->getResult(aRawResult);
+    ScCheckListMenuControl::ResultType aRawResult;
+    rControl.getResult(aRawResult);
 
-    std::unordered_map<OUString, bool, OUStringHash> aResult;
-    ScCheckListMenuWindow::ResultType::const_iterator itr = aRawResult.begin(), itrEnd = aRawResult.end();
-    for (; itr != itrEnd; ++itr)
+    std::unordered_map<OUString, bool> aResult;
+    for (const auto& rItem : aRawResult)
     {
-        MemNameMapType::const_iterator itrNameMap = aMemNameMap.find(itr->aName);
+        MemNameMapType::const_iterator itrNameMap = aMemNameMap.find(rItem.aName);
         if (itrNameMap == aMemNameMap.end())
         {
             // This is an original member name.  Use it as-is.
-            OUString aName = itr->aName;
-            if (aName.equals(ScGlobal::GetRscString(STR_EMPTYDATA)))
+            OUString aName = rItem.aName;
+            if (aName == ScResId(STR_EMPTYDATA))
                 // Translate the special empty name into an empty string.
                 aName.clear();
 
-            aResult.insert(
-                std::unordered_map<OUString, bool, OUStringHash>::value_type(
-                    aName, itr->bValid));
+            aResult.emplace(aName, rItem.bValid);
         }
         else
         {
             // This is a layout name.  Get the original member name and use it.
-            aResult.insert(
-                std::unordered_map<OUString, bool, OUStringHash>::value_type(
-                    itrNameMap->second, itr->bValid));
+            aResult.emplace(itrNameMap->second, rItem.bValid);
         }
     }
     pDim->UpdateMemberVisibility(aResult);
@@ -601,38 +597,43 @@ void ScGridWindow::UpdateDPFromFieldPopupMenu()
     aFunc.UpdatePivotTable(*pDPObj, true, false);
 }
 
+namespace {
+
+template <typename T>
+inline
+T lcl_getValidValue(T value, T defvalue)
+{
+    return (value <0) ? defvalue : value;
+}
+
+} // anonymous namespace
+
 bool ScGridWindow::UpdateVisibleRange()
 {
-    ScDocument& rDoc = pViewData->GetDocShell()->GetDocument();
-
+    ScDocument const& rDoc = *pViewData->GetDocument();
     SCCOL nPosX = 0;
     SCROW nPosY = 0;
-    SCCOL nXRight = MAXCOL;
-    SCROW nYBottom = MAXROW;
+    SCCOL nXRight = rDoc.MaxCol();
+    SCROW nYBottom = rDoc.MaxRow();
 
     if (comphelper::LibreOfficeKit::isActive())
     {
-        // entire table in the tiled rendering case
-        SCTAB nTab = pViewData->GetTabNo();
-        SCCOL nEndCol = 0;
-        SCROW nEndRow = 0;
-
-        if (rDoc.GetPrintArea(nTab, nEndCol, nEndRow, false))
-        {
-            nXRight = nEndCol;
-            nYBottom = nEndRow;
-        }
+        ScTabViewShell* pViewShell = pViewData->GetViewShell();
+        nPosX = lcl_getValidValue(pViewShell->GetLOKStartHeaderCol(), nPosX);
+        nPosY = lcl_getValidValue(pViewShell->GetLOKStartHeaderRow(), nPosY);
+        nXRight = lcl_getValidValue(pViewShell->GetLOKEndHeaderCol(), nXRight);
+        nYBottom = lcl_getValidValue(pViewShell->GetLOKEndHeaderRow(), nYBottom);
     }
     else
     {
         nPosX = pViewData->GetPosX(eHWhich);
         nPosY = pViewData->GetPosY(eVWhich);
         nXRight = nPosX + pViewData->VisibleCellsX(eHWhich);
-        if (nXRight > MAXCOL)
-            nXRight = MAXCOL;
+        if (nXRight > rDoc.MaxCol())
+            nXRight = rDoc.MaxCol();
         nYBottom = nPosY + pViewData->VisibleCellsY(eVWhich);
-        if (nYBottom > MAXROW)
-            nYBottom = MAXROW;
+        if (nYBottom > rDoc.MaxRow())
+            nYBottom = rDoc.MaxRow();
     }
 
     // Store the current visible range.
@@ -654,7 +655,7 @@ void ScGridWindow::DPMouseButtonUp( const MouseEvent& rMEvt )
     ReleaseMouse();
 
     DPTestMouse( rMEvt, false );
-    SetPointer( Pointer( PointerStyle::Arrow ) );
+    SetPointer( PointerStyle::Arrow );
 }
 
 void ScGridWindow::UpdateDragRect( bool bShowRange, const tools::Rectangle& rPosRect )
@@ -975,7 +976,7 @@ void ScGridWindow::PagebreakMove( const MouseEvent& rMEvt, bool bUp )
             {
                 if (bUndo)
                 {
-                    OUString aUndo = ScGlobal::GetRscString( STR_UNDO_DRAG_BREAK );
+                    OUString aUndo = ScResId( STR_UNDO_DRAG_BREAK );
                     pDocSh->GetUndoManager()->EnterListAction( aUndo, aUndo, 0, pViewData->GetViewShell()->GetViewShellId() );
                 }
 
@@ -994,7 +995,7 @@ void ScGridWindow::PagebreakMove( const MouseEvent& rMEvt, bool bUp )
                     }
                     if ( bGrow )
                     {
-                        // change last break to hard, and change scaleing
+                        // change last break to hard, and change scaling
                         bool bManualBreak(rDoc.HasColBreak(static_cast<SCCOL>(nPagebreakPrev), nTab) & ScBreakType::Manual);
                         if ( static_cast<SCCOL>(nPagebreakPrev) > aPagebreakSource.aStart.Col() && !bManualBreak )
                         {
@@ -1021,7 +1022,7 @@ void ScGridWindow::PagebreakMove( const MouseEvent& rMEvt, bool bUp )
                     }
                     if ( bGrow )
                     {
-                        // change last break to hard, and change scaleing
+                        // change last break to hard, and change scaling
                         bool bManualBreak(rDoc.HasRowBreak(nPagebreakPrev, nTab) & ScBreakType::Manual);
                         if ( nPagebreakPrev > aPagebreakSource.aStart.Row() && !bManualBreak )
                         {
@@ -1062,9 +1063,9 @@ void ScGridWindow::PagebreakMove( const MouseEvent& rMEvt, bool bUp )
                     {
                         OUString aTemp;
                         if ( *pOld != aPagebreakSource )
-                            aTemp = pOld->Format(ScRefFlags::VALID);
+                            aTemp = pOld->Format(rDoc, ScRefFlags::VALID);
                         else if ( !bHide )
-                            aTemp = aPagebreakDrag.Format(ScRefFlags::VALID);
+                            aTemp = aPagebreakDrag.Format(rDoc, ScRefFlags::VALID);
                         if (!aTemp.isEmpty())
                         {
                             if ( !aNewRanges.isEmpty() )
@@ -1075,7 +1076,7 @@ void ScGridWindow::PagebreakMove( const MouseEvent& rMEvt, bool bUp )
                 }
             }
             else if (!bHide)
-                aNewRanges = aPagebreakDrag.Format(ScRefFlags::VALID);
+                aNewRanges = aPagebreakDrag.Format(rDoc, ScRefFlags::VALID);
 
             pViewFunc->SetPrintRanges( rDoc.IsPrintEntireSheet( nTab ), &aNewRanges, nullptr, nullptr, false );
         }

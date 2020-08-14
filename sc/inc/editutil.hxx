@@ -22,11 +22,10 @@
 
 #include <memory>
 #include "scdllapi.h"
-#include "address.hxx"
+#include "types.hxx"
 #include <editeng/editeng.hxx>
 #include <svx/pageitem.hxx>
-#include <tools/date.hxx>
-#include <tools/time.hxx>
+#include <tools/datetime.hxx>
 #include <tools/gen.hxx>
 #include <tools/fract.hxx>
 #include <vcl/outdev.hxx>
@@ -41,12 +40,13 @@ class ScEditUtil
     SCCOL           nCol;
     SCROW           nRow;
     SCTAB           nTab;
-    Point           aScrPos;
+    Point           aCellPos;
     VclPtr<OutputDevice> pDev; // MapMode has to be set
     double          nPPTX;
     double          nPPTY;
     Fraction        aZoomX;
     Fraction        aZoomY;
+    bool            bInPrintTwips;
 
 public:
     static OUString ModifyDelimiters( const OUString& rOld );
@@ -67,28 +67,27 @@ public:
      */
     SC_DLLPUBLIC static OUString GetString( const EditTextObject& rEditText, const ScDocument* pDoc );
 
-    static EditTextObject* CreateURLObjectFromURL(
+    static std::unique_ptr<EditTextObject> CreateURLObjectFromURL(
         ScDocument& rDoc, const OUString& rURL, const OUString& rText );
 
     static void RemoveCharAttribs( EditTextObject& rEditText, const ScPatternAttr& rAttr );
 
-    static EditTextObject* Clone( const EditTextObject& rSrc, ScDocument& rDestDoc );
+    static std::unique_ptr<EditTextObject> Clone( const EditTextObject& rSrc, ScDocument& rDestDoc );
 
     static OUString GetCellFieldValue(
-        const SvxFieldData& rFieldData, const ScDocument* pDoc, Color** ppTextColor );
+        const SvxFieldData& rFieldData, const ScDocument* pDoc, std::optional<Color>* ppTextColor );
 
 public:
                 ScEditUtil( ScDocument* pDocument, SCCOL nX, SCROW nY, SCTAB nZ,
-                            const Point& rScrPosPixel,
+                            const Point& rCellPos,
                             OutputDevice* pDevice, double nScaleX, double nScaleY,
-                            const Fraction& rX, const Fraction& rY );
+                            const Fraction& rX, const Fraction& rY, bool bPrintTwips = false );
 
     tools::Rectangle   GetEditArea( const ScPatternAttr* pPattern, bool bForceToTop );
 };
 
 class ScEditAttrTester
 {
-    ScEditEngineDefaulter* pEngine;
     std::unique_ptr<SfxItemSet> pEditAttrs;
     bool        bNeedsObject;
     bool        bNeedsCellAttr;
@@ -135,7 +134,7 @@ public:
     void            SetDefaults( const SfxItemSet& rDefaults, bool bRememberCopy = true );
 
                     /// Becomes the owner of the SfxItemSet
-    void            SetDefaults( SfxItemSet* pDefaults );
+    void            SetDefaults( std::unique_ptr<SfxItemSet> pDefaults );
 
                     /// Set the item in the default ItemSet which is created
                     /// if it doesn't exist yet.
@@ -145,23 +144,23 @@ public:
                     /// Returns the stored defaults, used to find non-default character attributes
     const SfxItemSet& GetDefaults();
 
-                    /// Overwritten method to be able to apply defaults already set
-    void            SetText( const EditTextObject& rTextObject );
+                    /// SetText and apply defaults already set
+    void            SetTextCurrentDefaults( const EditTextObject& rTextObject );
                     /// Current defaults are not applied, new defaults are applied
     void            SetTextNewDefaults( const EditTextObject& rTextObject,
                         const SfxItemSet& rDefaults, bool bRememberCopy = true );
                     /// Current defaults are not applied, new defaults are applied
     void            SetTextNewDefaults( const EditTextObject& rTextObject,
-                        SfxItemSet* pDefaults );
+                        std::unique_ptr<SfxItemSet> pDefaults );
 
-                    /// Overwritten method to be able to apply defaults already set
-    void            SetText( const OUString& rText );
+                    /// SetText and apply defaults already set
+    void            SetTextCurrentDefaults( const OUString& rText );
                     /// Current defaults are not applied, new defaults are applied
     void            SetTextNewDefaults( const OUString& rText,
                         const SfxItemSet& rDefaults );
                     /// Current defaults are not applied, new defaults are applied
     void            SetTextNewDefaults( const OUString& rText,
-                        SfxItemSet* pDefaults );
+                        std::unique_ptr<SfxItemSet> pDefaults );
 
                     /// Paragraph attributes that are not defaults are copied to
                     /// character attributes and all paragraph attributes reset
@@ -170,33 +169,6 @@ public:
                     /// Re-apply existing defaults if set, same as in SetText,
                     /// but without EnableUndo/SetUpdateMode.
     void            RepeatDefaults();
-};
-
-// 1/100 mm
-class SC_DLLPUBLIC ScTabEditEngine : public ScEditEngineDefaulter
-{
-private:
-    void    Init(const ScPatternAttr& rPattern);
-public:
-    ScTabEditEngine( ScDocument* pDoc );            // Default
-    ScTabEditEngine( const ScPatternAttr& rPattern,
-                    SfxItemPool* pEnginePool,
-                    SfxItemPool* pTextObjectPool = nullptr );
-};
-
-struct ScHeaderFieldData
-{
-    OUString    aTitle;             // title or file name (if no title)
-    OUString    aLongDocName;       // path and file name
-    OUString    aShortDocName;      // pure file name
-    OUString    aTabName;
-    Date        aDate;
-    tools::Time aTime;
-    long        nPageNo;
-    long        nTotalPages;
-    SvxNumType  eNumType;
-
-    ScHeaderFieldData();
 };
 
 // for field commands (or just fields?) in a table
@@ -213,26 +185,52 @@ public:
 
     void SetExecuteURL(bool bSet)    { bExecuteURL = bSet; }
 
-    virtual void    FieldClicked( const SvxFieldItem& rField, sal_Int32, sal_Int32 ) override;
-    virtual OUString CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rTxtColor, Color*& rFldColor ) override;
+    virtual void    FieldClicked( const SvxFieldItem& rField ) override;
+    virtual OUString CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rTxtColor, std::optional<Color>& rFldColor ) override;
+};
+
+// 1/100 mm
+class SC_DLLPUBLIC ScTabEditEngine final : public ScFieldEditEngine
+{
+private:
+    void    Init(const ScPatternAttr& rPattern);
+public:
+    ScTabEditEngine( ScDocument* pDoc );            // Default
+    ScTabEditEngine(const ScPatternAttr& rPattern,
+                    SfxItemPool *pEngineItemPool, ScDocument *pDoc,
+                    SfxItemPool* pTextObjectPool = nullptr );
+};
+
+struct ScHeaderFieldData
+{
+    OUString    aTitle;             // title or file name (if no title)
+    OUString    aLongDocName;       // path and file name
+    OUString    aShortDocName;      // pure file name
+    OUString    aTabName;
+    DateTime    aDateTime;
+    long        nPageNo;
+    long        nTotalPages;
+    SvxNumType  eNumType;
+
+    ScHeaderFieldData();
 };
 
 // for headers/footers with fields
-class SC_DLLPUBLIC ScHeaderEditEngine : public ScEditEngineDefaulter
+class SC_DLLPUBLIC ScHeaderEditEngine final : public ScEditEngineDefaulter
 {
 private:
     ScHeaderFieldData   aData;
 
 public:
     ScHeaderEditEngine( SfxItemPool* pEnginePool );
-    virtual OUString CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rTxtColor, Color*& rFldColor ) override;
+    virtual OUString CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rTxtColor, std::optional<Color>& rFldColor ) override;
 
     void SetNumType(SvxNumType eNew)                { aData.eNumType = eNew; }
     void SetData(const ScHeaderFieldData& rNew)     { aData = rNew; }
 };
 
 // for Note text objects.
-class ScNoteEditEngine : public ScEditEngineDefaulter
+class ScNoteEditEngine final : public ScEditEngineDefaulter
 {
 
 public:

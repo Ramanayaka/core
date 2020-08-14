@@ -22,15 +22,10 @@
 
 #include "metainforeader.hxx"
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#endif
 #include <shlobj.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 #include <string>
 #include <memory>
+#include "filepath.hxx"
 
 class CPropertySheet : public IShellExtInit, public IShellPropSheetExt
 {
@@ -56,21 +51,21 @@ public:
 
 
     virtual HRESULT STDMETHODCALLTYPE Initialize(
-        LPCITEMIDLIST pidlFolder, LPDATAOBJECT lpdobj, HKEY hkeyProgID) override;
+        LPCITEMIDLIST pidlFolder, IDataObject * lpdobj, HKEY hkeyProgID) override;
 
 
     // IShellPropSheetExt
 
 
-    virtual HRESULT STDMETHODCALLTYPE AddPages(LPFNADDPROPSHEETPAGE lpfnAddPage, LPARAM lParam) override;
+    virtual HRESULT STDMETHODCALLTYPE AddPages(LPFNSVADDPROPSHEETPAGE lpfnAddPage, LPARAM lParam) override;
 
     virtual HRESULT STDMETHODCALLTYPE ReplacePage(
-        UINT uPageID, LPFNADDPROPSHEETPAGE lpfnReplaceWith, LPARAM lParam) override;
+        EXPPS uPageID, LPFNSVADDPROPSHEETPAGE lpfnReplaceWith, LPARAM lParam) override;
 
 private:
     // Windows callback functions
     static UINT CALLBACK PropPageSummaryCallback(HWND hwnd, UINT uMsg, LPPROPSHEETPAGE ppsp);
-    static BOOL CALLBACK PropPageSummaryProc(HWND hwnd, UINT uiMsg, WPARAM wParam, LPARAM lParam);
+    static bool CALLBACK PropPageSummaryProc(HWND hwnd, UINT uiMsg, WPARAM wParam, LPARAM lParam);
     static BOOL CALLBACK PropPageStatisticsProc(HWND hwnd, UINT uiMsg, WPARAM wParam, LPARAM lParam);
 
 
@@ -80,7 +75,7 @@ private:
 
 private:
     long m_RefCnt;
-    char m_szFileName[MAX_PATH];
+    Filepath_char_t m_szFileName[MAX_PATH];
 };
 
 #endif

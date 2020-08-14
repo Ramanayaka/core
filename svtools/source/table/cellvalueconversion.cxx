@@ -27,12 +27,13 @@
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
 #include <com/sun/star/util/NumberFormat.hpp>
-#include <rtl/strbuf.hxx>
 #include <rtl/math.hxx>
+#include <sal/log.hxx>
 #include <tools/date.hxx>
 #include <tools/time.hxx>
 #include <tools/diagnose_ex.h>
 #include <unotools/syslocale.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <comphelper/processfactory.hxx>
 
 #include <memory>
@@ -60,7 +61,7 @@ namespace svt
     namespace
     {
 
-        double lcl_convertDateToDays( long const i_day, long const i_month, long const i_year )
+        double lcl_convertDateToDays( sal_uInt16 const i_day, sal_uInt16 const i_month, sal_Int16 const i_year )
         {
             long const nNullDateDays = ::Date::DateToDays( 1, 1, 1900 );
             long const nValueDateDays = ::Date::DateToDays( i_day, i_month, i_year );
@@ -73,14 +74,15 @@ namespace svt
         {
             return tools::Time( i_hours, i_minutes, i_seconds, i_100thSeconds ).GetTimeInDays();
         }
-    }
-
 
     //= CellValueConversion_Data
     class StandardFormatNormalizer;
+
+    }
+
     struct CellValueConversion_Data
     {
-        typedef std::unordered_map< OUString, std::shared_ptr< StandardFormatNormalizer >, OUStringHash >    NormalizerCache;
+        typedef std::unordered_map< OUString, std::shared_ptr< StandardFormatNormalizer > >    NormalizerCache;
 
         Reference< XNumberFormatter >           xNumberFormatter;
         bool                                    bAttemptedFormatterCreation;
@@ -96,6 +98,8 @@ namespace svt
 
 
     //= StandardFormatNormalizer
+
+    namespace {
 
     class StandardFormatNormalizer
     {
@@ -124,7 +128,7 @@ namespace svt
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("svtools.table");
             }
         }
 
@@ -284,9 +288,6 @@ namespace svt
 
     //= operations
 
-    namespace
-    {
-
         bool lcl_ensureNumberFormatter( CellValueConversion_Data & io_data )
         {
             if ( io_data.bAttemptedFormatterCreation )
@@ -318,7 +319,7 @@ namespace svt
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("svtools.table");
             }
 
             return io_data.xNumberFormatter.is();
@@ -337,27 +338,27 @@ namespace svt
                 OUString const sTypeName( i_valueType.getTypeName() );
                 TypeClass const eTypeClass = i_valueType.getTypeClass();
 
-                if ( sTypeName.equals( ::cppu::UnoType< DateTime >::get().getTypeName() ) )
+                if ( sTypeName == ::cppu::UnoType< DateTime >::get().getTypeName() )
                 {
-                    o_formatter.reset( new DateTimeNormalization( io_data.xNumberFormatter ) );
+                    o_formatter = std::make_shared<DateTimeNormalization>( io_data.xNumberFormatter );
                 }
-                else if ( sTypeName.equals( ::cppu::UnoType< css::util::Date >::get().getTypeName() ) )
+                else if ( sTypeName == ::cppu::UnoType< css::util::Date >::get().getTypeName() )
                 {
-                    o_formatter.reset( new DateNormalization( io_data.xNumberFormatter ) );
+                    o_formatter = std::make_shared<DateNormalization>( io_data.xNumberFormatter );
                 }
-                else if ( sTypeName.equals( ::cppu::UnoType< css::util::Time >::get().getTypeName() ) )
+                else if ( sTypeName == ::cppu::UnoType< css::util::Time >::get().getTypeName() )
                 {
-                    o_formatter.reset( new TimeNormalization( io_data.xNumberFormatter ) );
+                    o_formatter = std::make_shared<TimeNormalization>( io_data.xNumberFormatter );
                 }
-                else if ( sTypeName.equals( ::cppu::UnoType< sal_Bool >::get().getTypeName() ) )
+                else if ( sTypeName == ::cppu::UnoType< sal_Bool >::get().getTypeName() )
                 {
-                    o_formatter.reset( new BooleanNormalization( io_data.xNumberFormatter ) );
+                    o_formatter = std::make_shared<BooleanNormalization>( io_data.xNumberFormatter );
                 }
-                else if (   sTypeName.equals( ::cppu::UnoType< double >::get().getTypeName() )
-                        ||  sTypeName.equals( ::cppu::UnoType< float >::get().getTypeName() )
+                else if (   sTypeName == ::cppu::UnoType< double >::get().getTypeName()
+                        ||  sTypeName == ::cppu::UnoType< float >::get().getTypeName()
                         )
                 {
-                    o_formatter.reset( new DoubleNormalization( io_data.xNumberFormatter ) );
+                    o_formatter = std::make_shared<DoubleNormalization>( io_data.xNumberFormatter );
                 }
                 else if (   ( eTypeClass == TypeClass_BYTE )
                         ||  ( eTypeClass == TypeClass_SHORT )
@@ -367,7 +368,7 @@ namespace svt
                         ||  ( eTypeClass == TypeClass_HYPER )
                         )
                 {
-                    o_formatter.reset( new IntegerNormalization( io_data.xNumberFormatter ) );
+                    o_formatter = std::make_shared<IntegerNormalization>( io_data.xNumberFormatter );
                 }
                 else
                 {
@@ -378,7 +379,7 @@ namespace svt
             else
                 o_formatter = pos->second;
 
-            return !!o_formatter;
+            return bool(o_formatter);
         }
     }
 
@@ -419,7 +420,7 @@ namespace svt
                     }
                     catch( const Exception& )
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("svtools.table");
                     }
                 }
             }

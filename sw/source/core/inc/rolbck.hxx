@@ -19,12 +19,12 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_ROLBCK_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_ROLBCK_HXX
 
+#include <o3tl/deleter.hxx>
 #include <svl/itemset.hxx>
 #include <tools/solar.h>
 #include <vcl/keycod.hxx>
 #include <tox.hxx>
 
-#include <SwNumberTreeTypes.hxx>
 #include <IDocumentMarkAccess.hxx>
 
 #include <memory>
@@ -54,6 +54,7 @@ class SwFormatChain;
 class SwNode;
 class SwCharFormat;
 enum class SwFieldIds : sal_uInt16;
+typedef struct _xmlTextWriter* xmlTextWriterPtr;
 
 enum HISTORY_HINT {
     HSTRY_SETFMTHNT,
@@ -71,6 +72,8 @@ enum HISTORY_HINT {
     HSTRY_CHGFLYANCHOR,
     HSTRY_CHGFLYCHAIN,
     HSTRY_CHGCHARFMT,
+    HSTRY_NOTEXTFIELDMARK,
+    HSTRY_TEXTFIELDMARK,
 };
 
 class SwHistoryHint
@@ -83,6 +86,7 @@ public:
     virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) = 0;
     HISTORY_HINT Which() const                     { return m_eWhichId; }
     virtual OUString GetDescription() const;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 class SwHistorySetFormat : public SwHistoryHint
@@ -96,6 +100,7 @@ public:
     virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
     virtual OUString GetDescription() const override;
 
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 class SwHistoryResetFormat : public SwHistoryHint
@@ -137,7 +142,7 @@ class SwHistorySetTextField : public SwHistoryHint
     SwFieldIds m_nFieldWhich;
 
 public:
-    SwHistorySetTextField( SwTextField* pTextField, sal_uLong nNode );
+    SwHistorySetTextField( const SwTextField* pTextField, sal_uLong nNode );
     virtual ~SwHistorySetTextField() override;
     virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
 
@@ -153,7 +158,7 @@ class SwHistorySetRefMark : public SwHistoryHint
     const sal_Int32 m_nEnd;
 
 public:
-    SwHistorySetRefMark( SwTextRefMark* pTextHt, sal_uLong nNode );
+    SwHistorySetRefMark( const SwTextRefMark* pTextHt, sal_uLong nNode );
     virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
 
 };
@@ -168,7 +173,7 @@ class SwHistorySetTOXMark : public SwHistoryHint
     const sal_Int32 m_nEnd;
 
 public:
-    SwHistorySetTOXMark( SwTextTOXMark* pTextHt, sal_uLong nNode );
+    SwHistorySetTOXMark( const SwTextTOXMark* pTextHt, sal_uLong nNode );
     virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
     bool IsEqual( const SwTOXMark& rCmp ) const;
 
@@ -194,7 +199,7 @@ public:
 
 class SwHistorySetFootnote : public SwHistoryHint
 {
-    const std::unique_ptr<SwUndoSaveSection> m_pUndo;
+    const std::unique_ptr<SwUndoSaveSection, o3tl::default_delete<SwUndoSaveSection>> m_pUndo;
     const OUString m_FootnoteNumber;
     sal_uLong m_nNodeIndex;
     const sal_Int32 m_nStart;
@@ -232,6 +237,7 @@ public:
     virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
     SwUndoDelLayFormat* GetUDelLFormat() { return m_pUndo.get(); }
 
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 class SwHistoryBookmark : public SwHistoryHint
@@ -247,6 +253,8 @@ class SwHistoryBookmark : public SwHistoryHint
     private:
         const OUString m_aName;
         OUString m_aShortName;
+        bool m_bHidden;
+        OUString m_aHideCondition;
         vcl::KeyCode m_aKeycode;
         const sal_uLong m_nNode;
         const sal_uLong m_nOtherNode;
@@ -257,6 +265,41 @@ class SwHistoryBookmark : public SwHistoryHint
         const bool m_bHadOtherPos;
         const IDocumentMarkAccess::MarkType m_eBkmkType;
         std::shared_ptr< ::sfx2::MetadatableUndo > m_pMetadataUndo;
+};
+
+/// History object containing all information used during undo / redo
+/// of checkbox and drop-down form field insertion.
+class SwHistoryNoTextFieldmark : public SwHistoryHint
+{
+    public:
+        SwHistoryNoTextFieldmark(const ::sw::mark::IFieldmark& rFieldMark);
+        virtual void SetInDoc(SwDoc* pDoc, bool) override;
+        void ResetInDoc(SwDoc* pDoc);
+
+    private:
+        const OUString m_sType;
+        const sal_uLong m_nNode;
+        const sal_Int32 m_nContent;
+};
+
+/// History object containing all information used during undo / redo
+/// of text form field insertion.
+class SwHistoryTextFieldmark : public SwHistoryHint
+{
+    public:
+        SwHistoryTextFieldmark(const ::sw::mark::IFieldmark& rFieldMark);
+        virtual void SetInDoc(SwDoc* pDoc, bool) override;
+        void ResetInDoc(SwDoc* pDoc);
+
+    private:
+        const OUString m_sName;
+        const OUString m_sType;
+        const sal_uLong m_nStartNode;
+        const sal_Int32 m_nStartContent;
+        const sal_uLong m_nEndNode;
+        const sal_Int32 m_nEndContent;
+        /*const*/ sal_uLong m_nSepNode;
+        /*const*/ sal_Int32 m_nSepContent;
 };
 
 class SwHistorySetAttrSet : public SwHistoryHint
@@ -310,16 +353,13 @@ class SwHistory
     friend class SwDoc;         // actually only SwDoc::DelUndoObj may access
     friend class SwRegHistory;  // for inserting History attributes
 
-    std::vector<SwHistoryHint*> m_SwpHstry;
+    std::vector<std::unique_ptr<SwHistoryHint>> m_SwpHstry;
     sal_uInt16 m_nEndDiff;
 
 public:
-    typedef std::vector<SwHistoryHint*>::iterator SwpHstry_iterator;
     SwHistory();
     ~SwHistory();
 
-    // delete History
-    void Delete();
     // call and delete all objects between nStart and array end
     bool Rollback( SwDoc* pDoc, sal_uInt16 nStart = 0 );
     // call all objects between nStart and TmpEnd; store nStart as TmpEnd
@@ -330,39 +370,42 @@ public:
     void Add( SwTextAttr* pTextHt, sal_uLong nNodeIdx, bool bNewAttr );
     void Add( SwFormatColl*, sal_uLong nNodeIdx, SwNodeType nWhichNd );
     void Add( const ::sw::mark::IMark&, bool bSavePos, bool bSaveOtherPos );
-    void Add( SwFrameFormat& rFormat );
-    void Add( SwFlyFrameFormat&, sal_uInt16& rSetPos );
+    void AddChangeFlyAnchor( SwFrameFormat& rFormat );
+    void AddDeleteFly( SwFrameFormat&, sal_uInt16& rSetPos );
     void Add( const SwTextFootnote& );
     void Add( const SfxItemSet & rSet, const SwCharFormat & rCharFormat);
 
     sal_uInt16 Count() const { return m_SwpHstry.size(); }
     sal_uInt16 GetTmpEnd() const { return m_SwpHstry.size() - m_nEndDiff; }
     sal_uInt16 SetTmpEnd( sal_uInt16 nTmpEnd );        // return previous value
-    SwHistoryHint      * operator[]( sal_uInt16 nPos ) { return m_SwpHstry[nPos]; }
+    SwHistoryHint      * operator[]( sal_uInt16 nPos ) { return m_SwpHstry[nPos].get(); }
     SwHistoryHint const* operator[]( sal_uInt16 nPos ) const
-        { return m_SwpHstry[nPos]; }
+        { return m_SwpHstry[nPos].get(); }
 
     // for SwUndoDelete::Undo/Redo
     void Move( sal_uInt16 nPos, SwHistory *pIns,
                sal_uInt16 const nStart = 0)
     {
-        SwpHstry_iterator itSourceBegin = pIns->m_SwpHstry.begin() + nStart;
-        SwpHstry_iterator itSourceEnd = pIns->m_SwpHstry.end();
-        if (itSourceBegin == itSourceEnd) return;
-        m_SwpHstry.insert(m_SwpHstry.begin() + nPos, itSourceBegin, itSourceEnd);
+        auto itSourceBegin = pIns->m_SwpHstry.begin() + nStart;
+        auto itSourceEnd = pIns->m_SwpHstry.end();
+        if (itSourceBegin == itSourceEnd)
+            return;
+        m_SwpHstry.insert(m_SwpHstry.begin() + nPos, std::make_move_iterator(itSourceBegin), std::make_move_iterator(itSourceEnd));
         pIns->m_SwpHstry.erase( itSourceBegin, itSourceEnd );
     }
 
     // helper methods for recording attribute in History
     // used by Undo classes (Delete/Overwrite/Inserts)
     void CopyAttr(
-        SwpHints* pHts,
+        SwpHints const * pHts,
         const sal_uLong nNodeIdx,
         const sal_Int32 nStart,
         const sal_Int32 nEnd,
         const bool bCopyFields );
 
     void CopyFormatAttr( const SfxItemSet& rSet, sal_uLong nNodeIdx );
+
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 class SwRegHistory : public SwClient
@@ -385,7 +428,8 @@ public:
     /// @return true if at least 1 item was inserted
     bool InsertItems( const SfxItemSet& rSet,
         sal_Int32 const nStart, sal_Int32 const nEnd,
-        SetAttrMode const nFlags );
+        SetAttrMode const nFlags,
+        SwTextAttr **ppNewTextAttr );
 
     void AddHint( SwTextAttr* pHt, const bool bNew );
 

@@ -20,12 +20,14 @@
 #include <sal/config.h>
 
 #include <algorithm>
+#include <cstring>
 
 #include <osl/nlsupport.h>
 #include <osl/diagnose.h>
 #include <osl/process.h>
 #include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 #include "nlsupport.hxx"
 
@@ -243,8 +245,8 @@ static rtl_Locale * parse_locale( const char * locale )
 /*
  * _nl_language_list[] is an array list of supported encodings. Because
  * we are using a binary search, the list has to be in ascending order.
- * We are comparing the encodings case insensitiv, so the list has
- * to be completely upper- , or lowercase.
+ * We are comparing the encodings case insensitive, so the list has
+ * to be completely upper or lowercase.
  */
 
 #if defined(__sun)
@@ -292,7 +294,7 @@ static const Pair nl_language_list[] = {
 
 #elif defined(LINUX)
 
-static const Pair nl_language_list[] = {
+const Pair nl_language_list[] = {
     { "ANSI_X3.110-1983",           RTL_TEXTENCODING_DONTKNOW   },  /* ISO-IR-99 NAPLPS */
     { "ANSI_X3.4-1968",             RTL_TEXTENCODING_ISO_8859_1 },  /* fake: ASCII_US */
     { "ASMO_449",                   RTL_TEXTENCODING_DONTKNOW },    /* ISO_9036 ARABIC7 */
@@ -637,6 +639,7 @@ void imp_getProcessLocale( rtl_Locale ** ppLocale )
             }
         }
     }
+    // coverity[overrun-buffer-val : FALSE] - coverity gets this very wrong
     *ppLocale = parse_locale(locale);
 }
 
@@ -647,7 +650,7 @@ void imp_getProcessLocale( rtl_Locale ** ppLocale )
  * from the ISO language codes.
  */
 
-static const Pair full_locale_list[] = {
+const Pair full_locale_list[] = {
     { "ja_JP.eucJP",  RTL_TEXTENCODING_EUC_JP      },
     { "ja_JP.EUC",    RTL_TEXTENCODING_EUC_JP      },
     { "ko_KR.EUC",    RTL_TEXTENCODING_EUC_KR      },
@@ -655,7 +658,7 @@ static const Pair full_locale_list[] = {
     { "zh_TW.EUC",    RTL_TEXTENCODING_EUC_TW      }
 };
 
-static const Pair locale_extension_list[] = {
+const Pair locale_extension_list[] = {
     { "big5",         RTL_TEXTENCODING_BIG5        },
     { "big5hk",       RTL_TEXTENCODING_BIG5_HKSCS  },
     { "gb18030",      RTL_TEXTENCODING_GB_18030    },
@@ -684,7 +687,7 @@ static const Pair locale_extension_list[] = {
     { "utf-8",        RTL_TEXTENCODING_UTF8        }
 };
 
-static const Pair iso_language_list[] = {
+const Pair iso_language_list[] = {
     { "af",  RTL_TEXTENCODING_ISO_8859_1 },
     { "ar",  RTL_TEXTENCODING_ISO_8859_6 },
     { "az",  RTL_TEXTENCODING_ISO_8859_9 },
@@ -805,8 +808,8 @@ rtl_TextEncoding osl_getTextEncodingFromLocale( rtl_Locale * pLocale )
 
 void imp_getProcessLocale( rtl_Locale ** ppLocale )
 {
-    rtl::OUString loc16(macosx_getLocale());
-    rtl::OString locale;
+    OUString loc16(macosx_getLocale());
+    OString locale;
     if (!loc16.convertToString(
             &locale, RTL_TEXTENCODING_UTF8,
             (RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR
@@ -833,10 +836,6 @@ void imp_getProcessLocale( rtl_Locale ** ppLocale )
 
     /* return the locale */
     *ppLocale = parse_locale( locale.getStr() );
-
-    setenv( "LC_ALL", locale.getStr(), 1);
-    setenv("LC_CTYPE", locale.getStr(), 1 );
-    setenv("LANG", locale.getStr(), 1 );
 }
 #else
 /*****************************************************************************

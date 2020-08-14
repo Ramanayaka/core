@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vector>
-#include <sortdynres.hxx>
+#include "sortdynres.hxx"
 #include <comphelper/interfacecontainer2.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/ucb/ContentResultSetCapability.hpp>
 #include <com/sun/star/ucb/ListActionType.hpp>
+#include <com/sun/star/ucb/ListenerAlreadySetException.hpp>
 #include <com/sun/star/ucb/ServiceNotFoundException.hpp>
 #include <com/sun/star/ucb/WelcomeDynamicResultSetStruct.hpp>
 #include <com/sun/star/ucb/CachedDynamicResultSetStubFactory.hpp>
@@ -73,7 +73,7 @@ SortedDynamicResultSet::~SortedDynamicResultSet()
     mxOwnListener->impl_OwnerDies();
     mxOwnListener.clear();
 
-    delete mpDisposeEventListeners;
+    mpDisposeEventListeners.reset();
 
     mxOne.clear();
     mxTwo.clear();
@@ -84,7 +84,7 @@ SortedDynamicResultSet::~SortedDynamicResultSet()
 
 OUString SAL_CALL SortedDynamicResultSet::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.ucb.SortedDynamicResultSet" );
+    return "com.sun.star.comp.ucb.SortedDynamicResultSet";
 }
 
 sal_Bool SAL_CALL SortedDynamicResultSet::supportsService( const OUString& ServiceName )
@@ -94,7 +94,7 @@ sal_Bool SAL_CALL SortedDynamicResultSet::supportsService( const OUString& Servi
 
 css::uno::Sequence< OUString > SAL_CALL SortedDynamicResultSet::getSupportedServiceNames()
 {
-    return { DYNAMIC_RESULTSET_SERVICE_NAME };
+    return { "com.sun.star.ucb.SortedDynamicResultSet" };
 }
 
 // XComponent methods.
@@ -123,8 +123,8 @@ void SAL_CALL SortedDynamicResultSet::addEventListener(
     osl::Guard< osl::Mutex > aGuard( maMutex );
 
     if ( !mpDisposeEventListeners )
-        mpDisposeEventListeners =
-                    new OInterfaceContainerHelper2( getContainerMutex() );
+        mpDisposeEventListeners.reset(
+                    new OInterfaceContainerHelper2( getContainerMutex() ) );
 
     mpDisposeEventListeners->addInterface( Listener );
 }
@@ -287,9 +287,8 @@ void SortedDynamicResultSet::impl_notify( const ListEvent& Changes )
     aRet >>= bWasFinal;
 
     // handle the actions in the list
-    for ( long i=0; i<Changes.Changes.getLength(); i++ )
+    for ( const ListAction& aAction : Changes.Changes )
     {
-        const ListAction aAction = Changes.Changes[i];
         switch ( aAction.ListActionType )
         {
             case ListActionType::WELCOME:
@@ -307,13 +306,13 @@ void SortedDynamicResultSet::impl_notify( const ListEvent& Changes )
                         aWelcome.Old = mxTwo.get();
                         aWelcome.New = mxOne.get();
 
-                        ListAction *pWelcomeAction = new ListAction;
+                        std::unique_ptr<ListAction> pWelcomeAction(new ListAction);
                         pWelcomeAction->ActionInfo <<= aWelcome;
                         pWelcomeAction->Position = 0;
                         pWelcomeAction->Count = 0;
                         pWelcomeAction->ListActionType = ListActionType::WELCOME;
 
-                        maActions.Insert( pWelcomeAction );
+                        maActions.Insert( std::move(pWelcomeAction) );
                     }
                     else
                     {
@@ -380,14 +379,14 @@ void SortedDynamicResultSet::impl_disposing()
 
 void SortedDynamicResultSet::SendNotify()
 {
-    long nCount = maActions.Count();
+    sal_Int32 nCount = maActions.Count();
 
     if ( nCount && mxListener.is() )
     {
         Sequence< ListAction > aActionList( maActions.Count() );
         ListAction *pActionList = aActionList.getArray();
 
-        for ( long i=0; i<nCount; i++ )
+        for ( sal_Int32 i=0; i<nCount; i++ )
         {
             pActionList[ i ] = *(maActions.GetAction( i ));
         }
@@ -420,12 +419,7 @@ SortedDynamicResultSetFactory::~SortedDynamicResultSetFactory()
 
 OUString SAL_CALL SortedDynamicResultSetFactory::getImplementationName()
 {
-    return getImplementationName_Static();
-}
-
-OUString SortedDynamicResultSetFactory::getImplementationName_Static()
-{
-    return OUString( "com.sun.star.comp.ucb.SortedDynamicResultSetFactory" );
+    return "com.sun.star.comp.ucb.SortedDynamicResultSetFactory";
 }
 
 sal_Bool SAL_CALL SortedDynamicResultSetFactory::supportsService( const OUString& ServiceName )
@@ -435,36 +429,17 @@ sal_Bool SAL_CALL SortedDynamicResultSetFactory::supportsService( const OUString
 
 css::uno::Sequence< OUString > SAL_CALL SortedDynamicResultSetFactory::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-/// @throws css::uno::Exception
-static css::uno::Reference< css::uno::XInterface > SAL_CALL
-SortedDynamicResultSetFactory_CreateInstance( const css::uno::Reference<
-                                              css::lang::XMultiServiceFactory> & rSMgr )
-{
-    css::lang::XServiceInfo* pX = static_cast<css::lang::XServiceInfo*>(
-        new SortedDynamicResultSetFactory( ucbhelper::getComponentContext(rSMgr) ));
-    return css::uno::Reference< css::uno::XInterface >::query( pX );
-}
-
-css::uno::Sequence< OUString > SortedDynamicResultSetFactory::getSupportedServiceNames_Static()
-{
-    css::uno::Sequence<OUString> aSNS { DYNAMIC_RESULTSET_FACTORY_NAME };
-    return aSNS;
+    return { "com.sun.star.ucb.SortedDynamicResultSetFactory" };
 }
 
 
-// Service factory implementation.
-css::uno::Reference< css::lang::XSingleServiceFactory >
-SortedDynamicResultSetFactory::createServiceFactory( const css::uno::Reference< css::lang::XMultiServiceFactory >& rxServiceMgr )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_SortedDynamicResultSetFactory_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return css::uno::Reference< css::lang::XSingleServiceFactory >(
-            cppu::createOneInstanceFactory(
-                    rxServiceMgr,
-                    SortedDynamicResultSetFactory::getImplementationName_Static(),
-                    SortedDynamicResultSetFactory_CreateInstance,
-                    SortedDynamicResultSetFactory::getSupportedServiceNames_Static() ) );
+    static rtl::Reference<SortedDynamicResultSetFactory> g_Instance(new SortedDynamicResultSetFactory(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 // SortedDynamicResultSetFactory methods.
@@ -475,8 +450,7 @@ SortedDynamicResultSetFactory::createSortedDynamicResultSet(
                 const Sequence< NumberedSortingInfo > & Info,
                 const Reference< XAnyCompareFactory > & CompareFactory )
 {
-    Reference< XDynamicResultSet > xRet;
-    xRet = new SortedDynamicResultSet( Source, Info, CompareFactory, m_xContext );
+    Reference< XDynamicResultSet > xRet = new SortedDynamicResultSet( Source, Info, CompareFactory, m_xContext );
     return xRet;
 }
 
@@ -484,22 +458,17 @@ SortedDynamicResultSetFactory::createSortedDynamicResultSet(
 
 void EventList::Clear()
 {
-    for (ListAction* p : maData)
-    {
-        delete p;
-    }
-
     maData.clear();
 }
 
 void EventList::AddEvent( sal_IntPtr nType, sal_IntPtr nPos )
 {
-    ListAction *pAction = new ListAction;
+    std::unique_ptr<ListAction> pAction(new ListAction);
     pAction->Position = nPos;
     pAction->Count = 1;
     pAction->ListActionType = nType;
 
-    Insert( pAction );
+    Insert( std::move(pAction) );
 }
 
 // SortedDynamicResultSetListener
@@ -540,7 +509,7 @@ SortedDynamicResultSetListener::notify( const ListEvent& Changes )
 
 // own methods:
 
-void SAL_CALL
+void
 SortedDynamicResultSetListener::impl_OwnerDies()
 {
     osl::Guard< osl::Mutex > aGuard( maMutex );

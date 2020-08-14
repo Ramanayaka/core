@@ -24,14 +24,13 @@
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <rtl/ref.hxx>
-#include <collatorImpl.hxx>
 
-#include <memory>
+namespace com::sun::star::uno { class XComponentContext; }
+namespace i18npool { class CollatorImpl; }
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 
-//  class IndexEntrySupplier_Common
 
 
 class IndexEntrySupplier_Common : public cppu::WeakImplHelper
@@ -79,7 +78,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
 protected:
-    const sal_Char *   implementationName;
+    const char *       implementationName;
     bool               usePhonetic;
     rtl::Reference<CollatorImpl>
                        collator;
@@ -87,11 +86,11 @@ protected:
     OUString           aAlgorithm;
 
     /// @throws css::uno::RuntimeException
-    const OUString& SAL_CALL getEntry( const OUString& IndexEntry,
+    const OUString& getEntry( const OUString& IndexEntry,
         const OUString& PhoneticEntry, const css::lang::Locale& rLocale );
 };
 
-} } } }
+}
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

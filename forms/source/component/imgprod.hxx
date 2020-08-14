@@ -21,20 +21,17 @@
 #define INCLUDED_FORMS_SOURCE_COMPONENT_IMGPROD_HXX
 
 #include <tools/link.hxx>
-#include <com/sun/star/awt/ImageStatus.hpp>
 #include <com/sun/star/awt/XImageConsumer.hpp>
 #include <com/sun/star/awt/XImageProducer.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <cppuhelper/weak.hxx>
+#include <memory>
 #include <vector>
 
 
 class SvStream;
 class Graphic;
-
-namespace com { namespace sun { namespace star { namespace io {
-    class XInputStream;
-}}}}
+namespace com::sun::star::io { class XInputStream; }
 
 
 class ImageProducer :   public css::awt::XImageProducer,
@@ -47,8 +44,10 @@ private:
 
     OUString        maURL;
     ConsumerList_t  maConsList;
-    Graphic*        mpGraphic;
-    SvStream*       mpStm;
+    std::unique_ptr<Graphic>
+                    mpGraphic;
+    std::unique_ptr<SvStream>
+                    mpStm;
     sal_uInt32      mnTransIndex;
     bool            mbConsInit;
     Link<Graphic*,void> maDoneHdl;
@@ -76,7 +75,7 @@ public:
     void            SAL_CALL release() throw() override  { OWeakObject::release(); }
 
     // MT: ???
-    void            setImage( css::uno::Reference< css::io::XInputStream > & rStmRef );
+    void            setImage( css::uno::Reference< css::io::XInputStream > const & rStmRef );
 
     // css::awt::XImageProducer
     void SAL_CALL addConsumer( const css::uno::Reference< css::awt::XImageConsumer >& rxConsumer ) override;

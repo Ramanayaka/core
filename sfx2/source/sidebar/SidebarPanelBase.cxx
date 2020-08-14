@@ -21,20 +21,19 @@
 #include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <sfx2/sidebar/IContextChangeReceiver.hxx>
 #include <sfx2/sidebar/SidebarModelUpdate.hxx>
-#include <vcl/ctrl.hxx>
 #include <vcl/layout.hxx>
 #include <comphelper/processfactory.hxx>
-
+#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/ui/ContextChangeEventMultiplexer.hpp>
 #include <com/sun/star/ui/UIElementType.hpp>
 
 using namespace css;
 using namespace css::uno;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 Reference<ui::XUIElement> SidebarPanelBase::Create (
-    const ::rtl::OUString& rsResourceURL,
+    const OUString& rsResourceURL,
     const css::uno::Reference<css::frame::XFrame>& rxFrame,
     vcl::Window* pWindow,
     const css::ui::LayoutSize& rLayoutSize)
@@ -49,7 +48,7 @@ Reference<ui::XUIElement> SidebarPanelBase::Create (
 }
 
 SidebarPanelBase::SidebarPanelBase (
-    const ::rtl::OUString& rsResourceURL,
+    const OUString& rsResourceURL,
     const css::uno::Reference<css::frame::XFrame>& rxFrame,
     vcl::Window* pWindow,
     const css::ui::LayoutSize& rLayoutSize)
@@ -118,7 +117,7 @@ css::uno::Reference<css::frame::XFrame> SAL_CALL SidebarPanelBase::getFrame()
     return mxFrame;
 }
 
-::rtl::OUString SAL_CALL SidebarPanelBase::getResourceURL()
+OUString SAL_CALL SidebarPanelBase::getResourceURL()
 {
     return msResourceURL;
 }
@@ -157,15 +156,14 @@ ui::LayoutSize SAL_CALL SidebarPanelBase::getHeightForWidth (const sal_Int32 nWi
     else
     {
         ILayoutableWindow* pLayoutableWindow = dynamic_cast<ILayoutableWindow*>(mpControl.get());
-
-        if (isLayoutEnabled(mpControl))
+        if (pLayoutableWindow)
+            return pLayoutableWindow->GetHeightForWidth(nWidth);
+        else if (isLayoutEnabled(mpControl))
         {
             // widget layout-based sidebar
             Size aSize(mpControl->get_preferred_size());
             return ui::LayoutSize(aSize.Height(), aSize.Height(), aSize.Height());
         }
-        else if (pLayoutableWindow != nullptr)
-            return pLayoutableWindow->GetHeightForWidth(nWidth);
         else if (mpControl != nullptr)
         {
             const sal_Int32 nHeight (mpControl->GetSizePixel().Height());
@@ -196,6 +194,6 @@ void SAL_CALL SidebarPanelBase::updateModel(const css::uno::Reference<css::frame
     pModelUpdate->updateModel(xModel);
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

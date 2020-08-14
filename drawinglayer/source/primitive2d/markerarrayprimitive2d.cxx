@@ -20,53 +20,52 @@
 #include <drawinglayer/primitive2d/markerarrayprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/bitmapprimitive2d.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void MarkerArrayPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const
         {
             const std::vector< basegfx::B2DPoint >& rPositions = getPositions();
             const sal_uInt32 nMarkerCount(rPositions.size());
 
-            if(nMarkerCount && !getMarker().IsEmpty())
+            if(!(nMarkerCount && !getMarker().IsEmpty()))
+                return;
+
+            // get pixel size
+            Size aBitmapSize(getMarker().GetSizePixel());
+
+            if(!(aBitmapSize.Width() && aBitmapSize.Height()))
+                return;
+
+            // get logic half pixel size
+            basegfx::B2DVector aLogicHalfSize(rViewInformation.getInverseObjectToViewTransformation() *
+                basegfx::B2DVector(aBitmapSize.getWidth() - 1.0, aBitmapSize.getHeight() - 1.0));
+
+            // use half size for expand
+            aLogicHalfSize *= 0.5;
+
+            for(sal_uInt32 a(0); a < nMarkerCount; a++)
             {
-                // get pixel size
-                Size aBitmapSize(getMarker().GetSizePixel());
+                const basegfx::B2DPoint& rPosition(rPositions[a]);
+                const basegfx::B2DRange aRange(rPosition - aLogicHalfSize, rPosition + aLogicHalfSize);
+                basegfx::B2DHomMatrix aTransform;
 
-                if(aBitmapSize.Width() && aBitmapSize.Height())
-                {
-                    // get logic half pixel size
-                    basegfx::B2DVector aLogicHalfSize(rViewInformation.getInverseObjectToViewTransformation() *
-                        basegfx::B2DVector(aBitmapSize.getWidth() - 1.0, aBitmapSize.getHeight() - 1.0));
+                aTransform.set(0, 0, aRange.getWidth());
+                aTransform.set(1, 1, aRange.getHeight());
+                aTransform.set(0, 2, aRange.getMinX());
+                aTransform.set(1, 2, aRange.getMinY());
 
-                    // use half size for expand
-                    aLogicHalfSize *= 0.5;
-
-                    for(sal_uInt32 a(0); a < nMarkerCount; a++)
-                    {
-                        const basegfx::B2DPoint& rPosition(rPositions[a]);
-                        const basegfx::B2DRange aRange(rPosition - aLogicHalfSize, rPosition + aLogicHalfSize);
-                        basegfx::B2DHomMatrix aTransform;
-
-                        aTransform.set(0, 0, aRange.getWidth());
-                        aTransform.set(1, 1, aRange.getHeight());
-                        aTransform.set(0, 2, aRange.getMinX());
-                        aTransform.set(1, 2, aRange.getMinY());
-
-                        rContainer.push_back(new BitmapPrimitive2D(getMarker(), aTransform));
-                    }
-                }
+                rContainer.push_back(
+                    new BitmapPrimitive2D(
+                        VCLUnoHelper::CreateVCLXBitmap(getMarker()),
+                        aTransform));
             }
         }
 
@@ -96,12 +95,12 @@ namespace drawinglayer
         {
             basegfx::B2DRange aRetval;
 
-            if(getPositions().size())
+            if(!getPositions().empty())
             {
                 // get the basic range from the position vector
-                for(std::vector< basegfx::B2DPoint >::const_iterator aIter(getPositions().begin()), aEnd(getPositions().end()); aIter != aEnd; ++aIter)
+                for (auto const& pos : getPositions())
                 {
-                    aRetval.expand(*aIter);
+                    aRetval.expand(pos);
                 }
 
                 if(!getMarker().IsEmpty())
@@ -131,7 +130,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(MarkerArrayPrimitive2D, PRIMITIVE2D_ID_MARKERARRAYPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

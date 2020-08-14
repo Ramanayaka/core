@@ -17,25 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cassert>
 #include <utility>
 #include <vector>
 
-#include "codemaker/global.hxx"
-#include "codemaker/typemanager.hxx"
-#include "codemaker/unotype.hxx"
+#include <codemaker/global.hxx>
+#include <codemaker/typemanager.hxx>
+#include <codemaker/unotype.hxx>
 
-#include "rtl/ref.hxx"
-#include "rtl/string.hxx"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
-#include "unoidl/unoidl.hxx"
+#include <rtl/ref.hxx>
+#include <rtl/string.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
+#include <unoidl/unoidl.hxx>
 
 #include "dependencies.hxx"
 
-namespace codemaker { namespace cppumaker {
+namespace codemaker::cppumaker {
 
 Dependencies::Dependencies(
     rtl::Reference< TypeManager > const & manager, OUString const & name):
@@ -43,8 +43,7 @@ Dependencies::Dependencies(
     m_byteDependency(false), m_shortDependency(false),
     m_unsignedShortDependency(false), m_longDependency(false),
     m_unsignedLongDependency(false), m_hyperDependency(false),
-    m_unsignedHyperDependency(false), m_floatDependency(false),
-    m_doubleDependency(false), m_charDependency(false),
+    m_unsignedHyperDependency(false), m_charDependency(false),
     m_stringDependency(false), m_typeDependency(false), m_anyDependency(false),
     m_sequenceDependency(false)
 {
@@ -168,10 +167,8 @@ Dependencies::Dependencies(
                     m_unsignedHyperDependency = true;
                     break;
                 case unoidl::ConstantValue::TYPE_FLOAT:
-                    m_floatDependency = true;
                     break;
                 case unoidl::ConstantValue::TYPE_DOUBLE:
-                    m_doubleDependency = true;
                     break;
                 }
             }
@@ -251,10 +248,8 @@ void Dependencies::insert(OUString const & name, Kind kind) {
         m_unsignedHyperDependency = true;
         break;
     case UnoType::Sort::Float:
-        m_floatDependency = true;
         break;
     case UnoType::Sort::Double:
-        m_doubleDependency = true;
         break;
     case UnoType::Sort::Char:
         m_charDependency = true;
@@ -273,7 +268,7 @@ void Dependencies::insert(OUString const & name, Kind kind) {
         {
             insert(b2u(arg), KIND_NORMAL);
         }
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case UnoType::Sort::Sequence:
     case UnoType::Sort::Enum:
     case UnoType::Sort::PlainStruct:
@@ -282,8 +277,7 @@ void Dependencies::insert(OUString const & name, Kind kind) {
     case UnoType::Sort::Typedef:
         {
             std::pair< Map::iterator, bool > i(
-                m_map.insert(
-                    Map::value_type(n, kind)));
+                m_map.emplace(n, kind));
             if (!i.second && kind == KIND_BASE) {
                 assert(i.first->second != KIND_EXCEPTION);
                 i.first->second = KIND_BASE;
@@ -297,6 +291,6 @@ void Dependencies::insert(OUString const & name, Kind kind) {
     }
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

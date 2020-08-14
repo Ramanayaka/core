@@ -22,7 +22,10 @@
 #include <com/sun/star/beans/NamedValue.hpp>
 #include "extension.hxx"
 #include "xpathlib.hxx"
-#include "services.hxx"
+
+namespace com::sun::star::uno {
+    class XComponentContext;
+}
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
@@ -35,8 +38,8 @@ Libxml2ExtensionHandle SAL_CALL CLibxml2XFormsExtension::getLibxml2ExtensionHand
     Libxml2ExtensionHandle aHandle;
     aHandle.functionLookupFunction = reinterpret_cast< sal_Int64 >( &xforms_lookupFunc );
     aHandle.functionData = reinterpret_cast< sal_Int64 >( this );
-    aHandle.variableLookupFunction = (sal_Int64)0;
-    aHandle.variableData = (sal_Int64)0;
+    aHandle.variableLookupFunction = sal_Int64(0);
+    aHandle.variableData = sal_Int64(0);
     return aHandle;
 }
 
@@ -50,9 +53,9 @@ void SAL_CALL CLibxml2XFormsExtension::initialize(const Sequence< Any >& aSequen
     }
 
     NamedValue aValue;
-    for (sal_Int32 i = 0; i < aSequence.getLength(); i++)
+    for (const Any& rArg : aSequence)
     {
-        if (! (aSequence[i] >>= aValue))
+        if (! (rArg >>= aValue))
             throw RuntimeException();
         if ( aValue.Name == "Model" )
             aValue.Value >>= m_aModel;
@@ -62,7 +65,7 @@ void SAL_CALL CLibxml2XFormsExtension::initialize(const Sequence< Any >& aSequen
 }
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_xml_xpath_XFormsExtension_get_implementation(css::uno::XComponentContext*,
         css::uno::Sequence<css::uno::Any> const &)
 {

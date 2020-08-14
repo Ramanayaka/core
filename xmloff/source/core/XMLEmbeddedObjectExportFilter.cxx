@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <xmloff/XMLEmbeddedObjectExportFilter.hxx>
+#include <XMLEmbeddedObjectExportFilter.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace ::com::sun::star::uno;
@@ -116,16 +116,13 @@ void SAL_CALL XMLEmbeddedObjectExportFilter::unknown( const OUString& rString )
 void SAL_CALL XMLEmbeddedObjectExportFilter::initialize(
         const Sequence< Any >& aArguments )
 {
-    const sal_Int32 nAnyCount = aArguments.getLength();
-    const Any* pAny = aArguments.getConstArray();
-
-    for( sal_Int32 nIndex = 0; nIndex < nAnyCount; nIndex++, pAny++ )
+    for( const auto& rAny : aArguments )
     {
-        if( pAny->getValueType() ==
+        if( rAny.getValueType() ==
                 cppu::UnoType<XDocumentHandler>::get())
         {
-            *pAny >>= xHandler;
-            *pAny >>= xExtHandler;
+            rAny >>= xHandler;
+            rAny >>= xExtHandler;
         }
     }
 }
@@ -133,8 +130,7 @@ void SAL_CALL XMLEmbeddedObjectExportFilter::initialize(
 // XServiceInfo
 OUString SAL_CALL XMLEmbeddedObjectExportFilter::getImplementationName()
 {
-    OUString aStr;
-    return aStr;
+    return OUString();
 }
 
 sal_Bool SAL_CALL XMLEmbeddedObjectExportFilter::supportsService( const OUString& ServiceName )

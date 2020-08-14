@@ -19,8 +19,8 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_SORTEDOBJS_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_SORTEDOBJS_HXX
 
-#include <sal/types.h>
 #include <vector>
+#include <swdllapi.h>
 
 class SwAnchoredObject;
 
@@ -45,7 +45,7 @@ class SwAnchoredObject;
     If one of the sort criteria attributes of an anchored object changes,
     the sorting has to be updated - use method <Update(..)>
 */
-class SwSortedObjs
+class SW_DLLPUBLIC SwSortedObjs
 {
     private:
         std::vector< SwAnchoredObject* > maSortedObjLst;
@@ -70,7 +70,7 @@ class SwSortedObjs
 
         bool Insert( SwAnchoredObject& _rAnchoredObj );
 
-        bool Remove( SwAnchoredObject& _rAnchoredObj );
+        void Remove( SwAnchoredObject& _rAnchoredObj );
 
         bool Contains( const SwAnchoredObject& _rAnchoredObj ) const;
 
@@ -79,7 +79,7 @@ class SwSortedObjs
 
             @return boolean, indicating success of the update.
         */
-        bool Update(SwAnchoredObject& _rAnchoredObj);
+        void Update(SwAnchoredObject& _rAnchoredObj);
         void UpdateAll();
 
         /** Position of object <_rAnchoredObj> in sorted list

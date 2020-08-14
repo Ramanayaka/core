@@ -14,8 +14,14 @@ $(eval $(call gb_UnpackedTarball_set_tarball,libgpg-error,$(LIBGPGERROR_TARBALL)
 $(eval $(call gb_UnpackedTarball_set_patchlevel,libgpg-error,0))
 
 $(eval $(call gb_UnpackedTarball_add_patches,libgpg-error, \
-    external/libgpg-error/fix-autoconf-macros.patch \
-    external/libgpg-error/disable-rpath-option.patch \
+	$(if $(filter MSC,$(COM)),external/libgpg-error/w32-build-fixes.patch) \
+	$(if $(filter MSC,$(COM)),external/libgpg-error/w32-build-fixes-2.patch.1) \
+	$(if $(filter MSC,$(COM)),external/libgpg-error/w32-build-fixes-3.patch.1) \
+	$(if $(filter MSC,$(COM)),external/libgpg-error/w32-disable-dllinit.patch.1) \
+	external/libgpg-error/w32-build-fixes-4.patch \
+	$(if $(filter MSC,$(COM)),external/libgpg-error/w32-build-fixes-5.patch) \
+	$(if $(filter LINUX,$(OS)),external/libgpg-error/libgpgerror-bundled-soname.patch.1) \
+	external/libgpg-error/clang-cl.patch \
 ))
 
 # vim: set noet sw=4 ts=4:

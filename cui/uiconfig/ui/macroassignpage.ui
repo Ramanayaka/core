@@ -1,11 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.16.0 on Thu Jan 23 10:25:37 2014 -->
-<interface>
-  <!-- interface-requires gtk+ 3.0 -->
-  <!-- interface-requires LibreOffice 1.0 -->
+<!-- Generated with glade 3.22.1 -->
+<interface domain="cui">
+  <requires lib="gtk+" version="3.18"/>
+  <object class="GtkTreeStore" id="liststore3">
+    <columns>
+      <!-- column-name text -->
+      <column type="gchararray"/>
+      <!-- column-name image -->
+      <column type="GdkPixbuf"/>
+      <!-- column-name text2 -->
+      <column type="gchararray"/>
+      <!-- column-name id -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
   <object class="GtkGrid" id="MacroAssignPage">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
+    <property name="hexpand">True</property>
+    <property name="vexpand">True</property>
     <property name="row_spacing">12</property>
     <property name="column_spacing">12</property>
     <child>
@@ -25,64 +38,63 @@
             <property name="top_padding">6</property>
             <property name="left_padding">12</property>
             <child>
-              <object class="GtkGrid" id="grid1">
+              <object class="GtkScrolledWindow">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
+                <property name="can_focus">True</property>
                 <property name="hexpand">True</property>
                 <property name="vexpand">True</property>
+                <property name="shadow_type">in</property>
                 <child>
-                  <object class="cuilo-MacroEventListBox" id="assignments:border">
+                  <object class="GtkTreeView" id="assignments">
                     <property name="visible">True</property>
-                    <property name="can_focus">False</property>
+                    <property name="can_focus">True</property>
+                    <property name="receives_default">True</property>
                     <property name="hexpand">True</property>
                     <property name="vexpand">True</property>
-                  </object>
-                  <packing>
-                    <property name="left_attach">0</property>
-                    <property name="top_attach">1</property>
-                    <property name="width">1</property>
-                    <property name="height">1</property>
-                  </packing>
-                </child>
-                <child>
-                  <object class="GtkGrid" id="grid2">
-                    <property name="can_focus">False</property>
-                    <property name="no_show_all">True</property>
-                    <property name="hexpand">True</property>
-                    <property name="column_homogeneous">True</property>
-                    <child>
-                      <object class="GtkLabel" id="eventft">
-                        <property name="visible">True</property>
-                        <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">Event</property>
-                      </object>
-                      <packing>
-                        <property name="left_attach">0</property>
-                        <property name="top_attach">0</property>
-                        <property name="width">1</property>
-                        <property name="height">1</property>
-                      </packing>
+                    <property name="model">liststore3</property>
+                    <property name="search_column">0</property>
+                    <property name="show_expanders">False</property>
+                    <child internal-child="selection">
+                      <object class="GtkTreeSelection" id="Macro Library List-selection2"/>
                     </child>
                     <child>
-                      <object class="GtkLabel" id="assignft">
-                        <property name="visible">True</property>
-                        <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">Assigned Action</property>
+                      <object class="GtkTreeViewColumn" id="treeviewcolumn3">
+                        <property name="resizable">True</property>
+                        <property name="spacing">6</property>
+                        <property name="title" translatable="yes" context="macroassignpage|eventft">Event</property>
+                        <child>
+                          <object class="GtkCellRendererText" id="cellrenderer1"/>
+                          <attributes>
+                            <attribute name="text">0</attribute>
+                          </attributes>
+                        </child>
                       </object>
-                      <packing>
-                        <property name="left_attach">1</property>
-                        <property name="top_attach">0</property>
-                        <property name="width">1</property>
-                        <property name="height">1</property>
-                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn" id="treeviewcolumn2">
+                        <property name="spacing">6</property>
+                        <child>
+                          <object class="GtkCellRendererPixbuf" id="cellrenderertext4"/>
+                          <attributes>
+                            <attribute name="pixbuf">1</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn" id="treeviewcolumn4">
+                        <property name="resizable">True</property>
+                        <property name="spacing">6</property>
+                        <property name="title" translatable="yes" context="macroassignpage|assignft">Assigned Action</property>
+                        <child>
+                          <object class="GtkCellRendererText" id="cellrenderer2"/>
+                          <attributes>
+                            <attribute name="text">2</attribute>
+                          </attributes>
+                        </child>
+                      </object>
                     </child>
                   </object>
-                  <packing>
-                    <property name="left_attach">0</property>
-                    <property name="top_attach">0</property>
-                    <property name="width">1</property>
-                    <property name="height">1</property>
-                  </packing>
                 </child>
               </object>
             </child>
@@ -92,7 +104,7 @@
           <object class="GtkLabel" id="libraryft1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Assignments</property>
+            <property name="label" translatable="yes" context="macroassignpage|libraryft1">Assignments</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -102,8 +114,6 @@
       <packing>
         <property name="left_attach">0</property>
         <property name="top_attach">0</property>
-        <property name="width">1</property>
-        <property name="height">1</property>
       </packing>
     </child>
     <child>
@@ -127,7 +137,7 @@
                 <property name="layout_style">start</property>
                 <child>
                   <object class="GtkButton" id="assign">
-                    <property name="label" translatable="yes">M_acro...</property>
+                    <property name="label" translatable="yes" context="macroassignpage|assign">M_acro...</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
@@ -141,7 +151,7 @@
                 </child>
                 <child>
                   <object class="GtkButton" id="component">
-                    <property name="label" translatable="yes">Com_ponent...</property>
+                    <property name="label" translatable="yes" context="macroassignpage|component">Com_ponent...</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
@@ -155,7 +165,7 @@
                 </child>
                 <child>
                   <object class="GtkButton" id="delete">
-                    <property name="label" translatable="yes">Remove</property>
+                    <property name="label" translatable="yes" context="macroassignpage|delete">Remove</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
@@ -167,44 +177,6 @@
                     <property name="position">2</property>
                   </packing>
                 </child>
-                <child>
-                  <object class="GtkGrid" id="grid3">
-                    <property name="can_focus">False</property>
-                    <property name="no_show_all">True</property>
-                    <property name="halign">center</property>
-                    <child>
-                      <object class="GtkImage" id="macroimg">
-                        <property name="visible">True</property>
-                        <property name="can_focus">False</property>
-                        <property name="pixbuf">svx/res/id018.png</property>
-                      </object>
-                      <packing>
-                        <property name="left_attach">0</property>
-                        <property name="top_attach">0</property>
-                        <property name="width">1</property>
-                        <property name="height">1</property>
-                      </packing>
-                    </child>
-                    <child>
-                      <object class="GtkImage" id="componentimg">
-                        <property name="visible">True</property>
-                        <property name="can_focus">False</property>
-                        <property name="pixbuf">res/component_16.png</property>
-                      </object>
-                      <packing>
-                        <property name="left_attach">1</property>
-                        <property name="top_attach">0</property>
-                        <property name="width">1</property>
-                        <property name="height">1</property>
-                      </packing>
-                    </child>
-                  </object>
-                  <packing>
-                    <property name="expand">False</property>
-                    <property name="fill">True</property>
-                    <property name="position">3</property>
-                  </packing>
-                </child>
               </object>
             </child>
           </object>
@@ -213,7 +185,7 @@
           <object class="GtkLabel" id="label1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Assign</property>
+            <property name="label" translatable="yes" context="macroassignpage|label1">Assign</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -223,8 +195,6 @@
       <packing>
         <property name="left_attach">1</property>
         <property name="top_attach">0</property>
-        <property name="width">1</property>
-        <property name="height">1</property>
       </packing>
     </child>
   </object>

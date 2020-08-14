@@ -9,40 +9,32 @@
 
 #undef SC_DLLIMPLEMENTATION
 
-#include "tpdefaults.hxx"
-#include "sc.hrc"
-#include "scresid.hxx"
-#include "scmod.hxx"
-#include "defaultsoptions.hxx"
-#include "document.hxx"
+#include <tpdefaults.hxx>
+#include <sc.hrc>
+#include <defaultsoptions.hxx>
+#include <document.hxx>
+#include <svtools/miscopt.hxx>
 
-ScTpDefaultsOptions::ScTpDefaultsOptions(vcl::Window *pParent, const SfxItemSet &rCoreSet) :
-    SfxTabPage(pParent, "OptDefaultPage", "modules/scalc/ui/optdefaultpage.ui", &rCoreSet)
-
+ScTpDefaultsOptions::ScTpDefaultsOptions(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rCoreSet)
+    : SfxTabPage(pPage, pController, "modules/scalc/ui/optdefaultpage.ui", "OptDefaultPage", &rCoreSet)
+    , m_xEdNSheets(m_xBuilder->weld_spin_button("sheetsnumber"))
+    , m_xEdSheetPrefix(m_xBuilder->weld_entry("sheetprefix"))
+    , m_xEdJumboSheets(m_xBuilder->weld_check_button("jumbo_sheets"))
 {
-    get( m_pEdNSheets, "sheetsnumber");
-    get( m_pEdSheetPrefix, "sheetprefix");
-
-    m_pEdNSheets->SetModifyHdl( LINK(this, ScTpDefaultsOptions, NumModifiedHdl) );
-    m_pEdSheetPrefix->SetModifyHdl( LINK(this, ScTpDefaultsOptions, PrefixModifiedHdl) );
-    m_pEdSheetPrefix->SetGetFocusHdl( LINK(this, ScTpDefaultsOptions, PrefixEditOnFocusHdl) );
+    m_xEdNSheets->connect_changed( LINK(this, ScTpDefaultsOptions, NumModifiedHdl) );
+    m_xEdSheetPrefix->connect_changed( LINK(this, ScTpDefaultsOptions, PrefixModifiedHdl) );
+    m_xEdSheetPrefix->connect_focus_in( LINK(this, ScTpDefaultsOptions, PrefixEditOnFocusHdl) );
+    if (!SvtMiscOptions().IsExperimentalMode())
+        m_xEdJumboSheets->hide();
 }
 
 ScTpDefaultsOptions::~ScTpDefaultsOptions()
 {
-    disposeOnce();
 }
 
-void ScTpDefaultsOptions::dispose()
+std::unique_ptr<SfxTabPage> ScTpDefaultsOptions::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *rCoreAttrs)
 {
-    m_pEdNSheets.clear();
-    m_pEdSheetPrefix.clear();
-    SfxTabPage::dispose();
-}
-
-VclPtr<SfxTabPage> ScTpDefaultsOptions::Create(vcl::Window *pParent, const SfxItemSet *rCoreAttrs)
-{
-    return VclPtr<ScTpDefaultsOptions>::Create(pParent, *rCoreAttrs);
+    return std::make_unique<ScTpDefaultsOptions>(pPage, pController, *rCoreAttrs);
 }
 
 bool ScTpDefaultsOptions::FillItemSet(SfxItemSet *rCoreSet)
@@ -50,14 +42,17 @@ bool ScTpDefaultsOptions::FillItemSet(SfxItemSet *rCoreSet)
     bool bRet = false;
     ScDefaultsOptions aOpt;
 
-    SCTAB nTabCount = static_cast<SCTAB>(m_pEdNSheets->GetValue());
-    OUString aSheetPrefix = m_pEdSheetPrefix->GetText();
+    SCTAB nTabCount = static_cast<SCTAB>(m_xEdNSheets->get_value());
+    OUString aSheetPrefix = m_xEdSheetPrefix->get_text();
+    bool bJumboSheets = m_xEdJumboSheets->get_state();
 
-    if ( m_pEdNSheets->IsValueChangedFromSaved()
-         || m_pEdSheetPrefix->GetSavedValue() != aSheetPrefix )
+    if ( m_xEdNSheets->get_value_changed_from_saved()
+         || m_xEdSheetPrefix->get_saved_value() != aSheetPrefix
+         || m_xEdJumboSheets->get_saved_state() != (bJumboSheets ? TRISTATE_TRUE : TRISTATE_FALSE) )
     {
         aOpt.SetInitTabCount( nTabCount );
         aOpt.SetInitTabPrefix( aSheetPrefix );
+        aOpt.SetInitJumboSheets( bJumboSheets );
 
         rCoreSet->Put( ScTpDefaultsItem( aOpt ) );
         bRet = true;
@@ -73,10 +68,12 @@ void ScTpDefaultsOptions::Reset(const SfxItemSet* rCoreSet)
     if(SfxItemState::SET == rCoreSet->GetItemState(SID_SCDEFAULTSOPTIONS, false , &pItem))
         aOpt = static_cast<const ScTpDefaultsItem*>(pItem)->GetDefaultsOptions();
 
-    m_pEdNSheets->SetValue( static_cast<sal_uInt16>( aOpt.GetInitTabCount()) );
-    m_pEdSheetPrefix->SetText( aOpt.GetInitTabPrefix() );
-    m_pEdNSheets->SaveValue();
-    m_pEdSheetPrefix->SaveValue();
+    m_xEdNSheets->set_value(aOpt.GetInitTabCount());
+    m_xEdSheetPrefix->set_text( aOpt.GetInitTabPrefix() );
+    m_xEdJumboSheets->set_state( aOpt.GetInitJumboSheets() ? TRISTATE_TRUE : TRISTATE_FALSE );
+    m_xEdNSheets->save_value();
+    m_xEdSheetPrefix->save_value();
+    m_xEdJumboSheets->save_state();
 }
 
 DeactivateRC ScTpDefaultsOptions::DeactivatePage(SfxItemSet* /*pSet*/)
@@ -86,55 +83,49 @@ DeactivateRC ScTpDefaultsOptions::DeactivatePage(SfxItemSet* /*pSet*/)
 
 void ScTpDefaultsOptions::CheckNumSheets()
 {
-    sal_Int64 nVal = m_pEdNSheets->GetValue();
+    auto nVal = m_xEdNSheets->get_value();
     if (nVal > MAXINITTAB)
-        m_pEdNSheets->SetValue(MAXINITTAB);
+        m_xEdNSheets->set_value(MAXINITTAB);
     if (nVal < MININITTAB)
-        m_pEdNSheets->SetValue(MININITTAB);
+        m_xEdNSheets->set_value(MININITTAB);
 }
 
-void ScTpDefaultsOptions::CheckPrefix(Edit* pEdit)
+void ScTpDefaultsOptions::CheckPrefix()
 {
-    if (!pEdit)
-        return;
+    OUString aSheetPrefix = m_xEdSheetPrefix->get_text();
 
-    OUString aSheetPrefix = pEdit->GetText();
-
-    if ( !aSheetPrefix.isEmpty() && !ScDocument::ValidTabName( aSheetPrefix ) )
+    if (!aSheetPrefix.isEmpty() && !ScDocument::ValidTabName(aSheetPrefix))
     {
         // Revert to last good Prefix and also select it to
         // indicate something illegal was typed
-        Selection aSel( 0,  maOldPrefixValue.getLength() );
-        pEdit->SetText( maOldPrefixValue, aSel );
+        m_xEdSheetPrefix->set_text(maOldPrefixValue);
+        m_xEdSheetPrefix->select_region(0, -1);
     }
     else
     {
-        OnFocusPrefixInput(pEdit);
+        OnFocusPrefixInput();
     }
 }
 
-void ScTpDefaultsOptions::OnFocusPrefixInput(Edit* pEdit)
+void ScTpDefaultsOptions::OnFocusPrefixInput()
 {
-    if (!pEdit)
-        return;
-
     // Store Prefix in case we need to revert
-    maOldPrefixValue = pEdit->GetText();
+    maOldPrefixValue = m_xEdSheetPrefix->get_text();
 }
 
-IMPL_LINK_NOARG(ScTpDefaultsOptions, NumModifiedHdl, Edit&, void)
+IMPL_LINK_NOARG(ScTpDefaultsOptions, NumModifiedHdl, weld::Entry&, void)
 {
     CheckNumSheets();
 }
 
-IMPL_LINK( ScTpDefaultsOptions, PrefixModifiedHdl, Edit&, rEdit, void )
+IMPL_LINK_NOARG(ScTpDefaultsOptions, PrefixModifiedHdl, weld::Entry&, void)
 {
-    CheckPrefix(&rEdit);
+    CheckPrefix();
 }
 
-IMPL_LINK( ScTpDefaultsOptions, PrefixEditOnFocusHdl, Control&, rControl, void )
+IMPL_LINK_NOARG(ScTpDefaultsOptions, PrefixEditOnFocusHdl, weld::Widget&, void)
 {
-    OnFocusPrefixInput(static_cast<Edit*>(&rControl));
+    OnFocusPrefixInput();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,19 +21,14 @@
 
 #include <sfx2/sidebar/ControllerItem.hxx>
 #include <sfx2/sidebar/IContextChangeReceiver.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
-#include <vcl/floatwin.hxx>
-#include <memory>
+#include <sfx2/sidebar/PanelLayout.hxx>
+#include "CellBorderStyleControl.hxx"
+#include "CellLineStyleControl.hxx"
 
-namespace sc { namespace sidebar {
-    class CellBorderUpdater;
-}}
-class ToolBox;
+class ToolbarUnoDispatcher;
+class ToolbarPopupContainer;
 
-namespace sc { namespace sidebar {
-
-class CellBorderStylePopup;
-class CellLineStylePopup;
+namespace sc::sidebar {
 
 class CellAppearancePropertyPanel
 :   public PanelLayout,
@@ -59,8 +54,11 @@ public:
     virtual void NotifyItemUpdate(
         const sal_uInt16 nSId,
         const SfxItemState eState,
-        const SfxPoolItem* pState,
-        const bool bIsEnabled) override;
+        const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
 
     SfxBindings* GetBindings() { return mpBindings;}
 
@@ -75,10 +73,17 @@ public:
 private:
     //ui controls
 
-    VclPtr<ToolBox>                                mpTBCellBorder;
-    VclPtr<ToolBox>                                mpTBLineStyle;
-    VclPtr<ToolBox>                                mpTBLineColor;
-    std::unique_ptr< CellBorderUpdater > mpCellBorderUpdater;
+    std::unique_ptr<ToolbarPopupContainer> mxCellBorderPopoverContainer;
+    std::unique_ptr<weld::Toolbar> mxTBCellBorder;
+    std::unique_ptr<weld::Toolbar> mxTBCellBackground;
+    std::unique_ptr<ToolbarUnoDispatcher> mxBackColorDispatch;
+    std::unique_ptr<ToolbarPopupContainer> mxLinePopoverContainer;
+    std::unique_ptr<weld::Toolbar> mxTBLineStyle;
+    std::unique_ptr<weld::Toolbar> mxTBLineColor;
+    std::unique_ptr<ToolbarUnoDispatcher> mxLineColorDispatch;
+
+    bool mbCellBorderPopoverCreated;
+    bool mbLinePopoverCreated;
 
     ::sfx2::sidebar::ControllerItem         maLineStyleControl;
     ::sfx2::sidebar::ControllerItem         maBorderOuterControl;
@@ -89,26 +94,27 @@ private:
 
     // images
     Image                                   maIMGCellBorder;
-    Image                                   maIMGLineStyle1;
-    Image                                   maIMGLineStyle2;
-    Image                                   maIMGLineStyle3;
-    Image                                   maIMGLineStyle4;
-    Image                                   maIMGLineStyle5;
-    Image                                   maIMGLineStyle6;
-    Image                                   maIMGLineStyle7;
-    Image                                   maIMGLineStyle8;
-    Image                                   maIMGLineStyle9;
+    OUString                                msIMGCellBorder;
+    OUString                                msIMGLineStyle1;
+    OUString                                msIMGLineStyle2;
+    OUString                                msIMGLineStyle3;
+    OUString                                msIMGLineStyle4;
+    OUString                                msIMGLineStyle5;
+    OUString                                msIMGLineStyle6;
+    OUString                                msIMGLineStyle7;
+    OUString                                msIMGLineStyle8;
+    OUString                                msIMGLineStyle9;
 
     // BorderStyle defines
-    sal_uInt16                              mnIn;
-    sal_uInt16                              mnOut;
-    sal_uInt16                              mnDis;
-    sal_uInt16                              mnTLBRIn;
-    sal_uInt16                              mnTLBROut;
-    sal_uInt16                              mnTLBRDis;
-    sal_uInt16                              mnBLTRIn;
-    sal_uInt16                              mnBLTROut;
-    sal_uInt16                              mnBLTRDis;
+    sal_uInt16                              mnInWidth;
+    sal_uInt16                              mnOutWidth;
+    sal_uInt16                              mnDistance;
+    sal_uInt16                              mnDiagTLBRInWidth;
+    sal_uInt16                              mnDiagTLBROutWidth;
+    sal_uInt16                              mnDiagTLBRDistance;
+    sal_uInt16                              mnDiagBLTRInWidth;
+    sal_uInt16                              mnDiagBLTROutWidth;
+    sal_uInt16                              mnDiagBLTRDistance;
 
     bool                                    mbBorderStyleAvailable : 1;
 
@@ -123,25 +129,24 @@ private:
     bool                                    mbOuterBorder : 1; // mbLeft || mbRight || mbTop || mbBottom
     bool                                    mbInnerBorder : 1; // mbVer || mbHor || bLeft || bRight || bTop || bBottom
 
-    bool                                    mbTLBR : 1;
-    bool                                    mbBLTR : 1;
-
-    // popups
-    VclPtr<CellLineStylePopup>              mxCellLineStylePopup;
-    VclPtr<CellBorderStylePopup>            mxCellBorderStylePopup;
+    bool                                    mbDiagTLBR : 1;
+    bool                                    mbDiagBLTR : 1;
 
     vcl::EnumContext                        maContext;
     SfxBindings*                            mpBindings;
 
-    DECL_LINK(TbxCellBorderSelectHdl, ToolBox*, void);
-    DECL_LINK(TbxLineStyleSelectHdl, ToolBox*, void);
+    DECL_LINK(TbxCellBorderSelectHdl, const OString&, void);
+    DECL_LINK(TbxCellBorderMenuHdl, const OString&, void);
+    DECL_LINK(TbxLineStyleSelectHdl, const OString&, void);
+    DECL_LINK(TbxLineStyleMenuHdl, const OString&, void);
 
     void Initialize();
     void SetStyleIcon();
     void UpdateControlState();
+    void UpdateCellBorder(bool bTop, bool bBot, bool bLeft, bool bRight, bool bVer, bool bHor);
 };
 
-} } // end of namespace ::sc::sidebar
+} // end of namespace ::sc::sidebar
 
 #endif
 

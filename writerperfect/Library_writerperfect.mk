@@ -29,6 +29,7 @@ $(eval $(call gb_Library_set_include,writerperfect, \
 ))
 
 $(eval $(call gb_Library_use_externals,writerperfect,\
+	boost_headers \
 	odfgen \
 	revenge \
 ))
@@ -53,7 +54,6 @@ $(eval $(call gb_Library_add_exception_objects,writerperfect,\
 	writerperfect/source/common/DirectoryStream \
 	writerperfect/source/common/DocumentHandler \
 	writerperfect/source/common/WPFTEncodingDialog \
-	writerperfect/source/common/WPFTResMgr \
 	writerperfect/source/common/WPXSvInputStream \
 ))
 

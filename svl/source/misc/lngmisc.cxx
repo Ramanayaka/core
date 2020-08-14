@@ -38,8 +38,8 @@ namespace linguistic
     bool RemoveHyphens(OUString &rTxt)
     {
         sal_Int32 n = rTxt.getLength();
-        rTxt = rTxt.replaceAll(OUStringLiteral1(SVT_SOFT_HYPHEN), "");
-        rTxt = rTxt.replaceAll(OUStringLiteral1(SVT_HARD_HYPHEN), "");
+        rTxt = rTxt.replaceAll(OUStringChar(SVT_SOFT_HYPHEN), "");
+        rTxt = rTxt.replaceAll(OUStringChar(SVT_HARD_HYPHEN), "");
         return n != rTxt.getLength();
     }
 
@@ -64,7 +64,7 @@ namespace linguistic
     bool ReplaceControlChars(OUString &rTxt)
     {
         // non breaking field character
-        static const sal_Char CH_TXTATR_INWORD = static_cast<sal_Char>(0x02);
+        static const char CH_TXTATR_INWORD = static_cast<char>(0x02);
 
         // the resulting string looks like this:
         // 1. non breaking field characters get removed

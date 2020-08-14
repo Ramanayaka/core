@@ -24,8 +24,8 @@
 
 #include <math.h>
 
-#include "bezierclip.hxx"
-#include "gauss.hxx"
+#include <bezierclip.hxx>
+#include <gauss.hxx>
 
 // what to test
 #define WITH_ASSERTIONS
@@ -215,7 +215,7 @@ bool Impl_calcSafeParams( double&           t1,
             {
                 // r_y is virtually zero, thus we've got a horizontal
                 // line. Now check whether we maybe coincide with lower or
-                // upper horizonal bound line.
+                // upper horizontal bound line.
                 if( tolEqual(p0.y, lowerYBound) ||
                     tolEqual(p0.y, upperYBound) )
                 {
@@ -570,7 +570,7 @@ bool Impl_calcClipRange( double&        t1,
         // determine clip positions on c2. Can use original c1 (which
         // is necessary anyway, to get the t's on the original curve),
         // since the distance calculations work directly in the
-        // Bernstein polynom parameter domain.
+        // Bernstein polynomial parameter domain.
         if( Impl_calcSafeParams_clip( t1, t2, bounds_c2,
                                       calcLineDistance( bounds_c2.a,
                                                         bounds_c2.b,

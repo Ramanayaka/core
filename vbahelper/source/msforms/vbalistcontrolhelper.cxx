@@ -17,13 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vbalistcontrolhelper.hxx>
+#include "vbalistcontrolhelper.hxx"
 #include <vector>
 #include <vbahelper/vbapropvalue.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <comphelper/sequence.hxx>
 
 using namespace com::sun::star;
 using namespace ooo::vba;
+
+namespace {
 
 class ListPropListener : public PropListener
 {
@@ -38,6 +41,8 @@ public:
     virtual void setValueEvent( const css::uno::Any& value ) override;
     virtual css::uno::Any getValueEvent() override;
 };
+
+}
 
 ListPropListener::ListPropListener( const uno::Reference< beans::XPropertySet >& xProps, const uno::Any& pvargIndex, const uno::Any& pvarColumn ) : m_xProps( xProps ), m_pvargIndex( pvargIndex ), m_pvarColumn( pvarColumn )
 {
@@ -80,91 +85,79 @@ uno::Any ListPropListener::getValueEvent()
     return aRet;
 }
 
-void SAL_CALL
+void
 ListControlHelper::AddItem( const uno::Any& pvargItem, const uno::Any& pvargIndex )
 {
-    if ( pvargItem.hasValue()  )
+    if ( !pvargItem.hasValue()  )
+        return;
+
+    uno::Sequence< OUString > sList;
+    m_xProps->getPropertyValue( "StringItemList" ) >>= sList;
+
+    sal_Int32 nIndex = sList.getLength();
+
+    if ( pvargIndex.hasValue() )
+        pvargIndex >>= nIndex;
+
+    OUString sString = getAnyAsString( pvargItem );
+
+    // if no index specified or item is to be appended to end of
+    // list just realloc the array and set the last item
+    if ( nIndex  == sList.getLength() )
     {
-        uno::Sequence< OUString > sList;
-        m_xProps->getPropertyValue( "StringItemList" ) >>= sList;
-
-        sal_Int32 nIndex = sList.getLength();
-
-        if ( pvargIndex.hasValue() )
-            pvargIndex >>= nIndex;
-
-        OUString sString = getAnyAsString( pvargItem );
-
-        // if no index specified or item is to be appended to end of
-        // list just realloc the array and set the last item
-        if ( nIndex  == sList.getLength() )
-        {
-            sal_Int32 nOldSize = sList.getLength();
-            sList.realloc( nOldSize + 1 );
-            sList[ nOldSize ] = sString;
-        }
-        else
-        {
-            // just copy those elements above the one to be inserted
-            std::vector< OUString > sVec;
-            // reserve just the amount we need to copy
-            sVec.reserve( sList.getLength() - nIndex );
-
-            // point at first element to copy
-            OUString* pString = sList.getArray() + nIndex;
-            const OUString* pEndString = sList.getArray() + sList.getLength();
-            // insert the new element
-            sVec.push_back( sString );
-            // copy elements
-            for ( ; pString != pEndString; ++pString )
-                sVec.push_back( *pString );
-
-            sList.realloc(  sList.getLength() + 1 );
-
-            // point at first element to be overwritten
-            pString = sList.getArray() + nIndex;
-            pEndString = sList.getArray() + sList.getLength();
-            std::vector< OUString >::iterator it = sVec.begin();
-            for ( ; pString != pEndString; ++pString, ++it)
-                *pString = *it;
-
-        }
-
-        m_xProps->setPropertyValue( "StringItemList", uno::makeAny( sList ) );
-
+        sal_Int32 nOldSize = sList.getLength();
+        sList.realloc( nOldSize + 1 );
+        sList[ nOldSize ] = sString;
     }
+    else
+    {
+        // just copy those elements above the one to be inserted
+        std::vector< OUString > sVec;
+        // reserve just the amount we need to copy
+        sVec.reserve( sList.getLength() - nIndex + 1);
+
+        // insert the new element
+        sVec.push_back( sString );
+
+        // point at first element to copy
+        sVec.insert( sVec.end(), std::next(sList.begin(), nIndex), sList.end() );
+
+        sList.realloc(  sList.getLength() + 1 );
+
+        // point at first element to be overwritten
+        std::copy(sVec.begin(), sVec.end(), std::next(sList.begin(), nIndex));
+    }
+
+    m_xProps->setPropertyValue( "StringItemList", uno::makeAny( sList ) );
 }
 
-void SAL_CALL
+void
 ListControlHelper::removeItem( const uno::Any& index )
 {
     sal_Int32 nIndex = 0;
     // for int index
-    if ( index >>= nIndex  )
+    if ( !(index >>= nIndex)  )
+        return;
+
+    uno::Sequence< OUString > sList;
+    m_xProps->getPropertyValue( "StringItemList" ) >>= sList;
+    if( nIndex < 0 || nIndex > ( sList.getLength() - 1 ) )
+        throw uno::RuntimeException( "Invalid index" , uno::Reference< uno::XInterface > () );
+    if( sList.hasElements() )
     {
-        uno::Sequence< OUString > sList;
-        m_xProps->getPropertyValue( "StringItemList" ) >>= sList;
-        if( nIndex < 0 || nIndex > ( sList.getLength() - 1 ) )
-            throw uno::RuntimeException( "Invalid index" , uno::Reference< uno::XInterface > () );
-        if( sList.hasElements() )
+        if( sList.getLength() == 1 )
         {
-            if( sList.getLength() == 1 )
-            {
-                Clear();
-                return;
-            }
-            for( sal_Int32 i = nIndex; i < ( sList.getLength()-1 ); i++ )
-            {
-                sList[i] = sList[i+1];
-            }
-            sList.realloc(  sList.getLength() - 1 );
+            Clear();
+            return;
         }
 
-        m_xProps->setPropertyValue( "StringItemList", uno::makeAny( sList ) );
+        comphelper::removeElementAt(sList, nIndex);
     }
+
+    m_xProps->setPropertyValue( "StringItemList", uno::makeAny( sList ) );
 }
 
-void SAL_CALL
+void
 ListControlHelper::Clear(  )
 {
     // urk, setValue doesn't seem to work !!
@@ -172,14 +165,14 @@ ListControlHelper::Clear(  )
     m_xProps->setPropertyValue( "StringItemList", uno::makeAny( uno::Sequence< OUString >() ) );
 }
 
-void SAL_CALL
+void
 ListControlHelper::setRowSource( const OUString& _rowsource )
 {
     if ( _rowsource.isEmpty() )
         Clear();
 }
 
-sal_Int32 SAL_CALL
+sal_Int32
 ListControlHelper::getListCount()
 {
     uno::Sequence< OUString > sList;
@@ -187,7 +180,7 @@ ListControlHelper::getListCount()
     return sList.getLength();
 }
 
-uno::Any SAL_CALL
+uno::Any
 ListControlHelper::List( const ::uno::Any& pvargIndex, const uno::Any& pvarColumn )
 {
     return uno::makeAny( uno::Reference< XPropValue > ( new ScVbaPropValue( new ListPropListener( m_xProps, pvargIndex, pvarColumn ) ) ) );

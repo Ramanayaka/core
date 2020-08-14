@@ -28,7 +28,6 @@
 #include <docsh.hxx>
 #include <wrtsh.hxx>
 #include <swtypes.hxx>
-#include <ndtxt.hxx>
 #include <svl/hint.hxx>
 #include <viewsh.hxx>
 #include <view.hxx>
@@ -37,15 +36,15 @@
 #include <fmtanchr.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/fhgtitem.hxx>
-#include <svx/svdmodel.hxx>
 #include <svx/svdlayer.hxx>
 #include <svx/svdoutl.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdotext.hxx>
+#include <svx/svdview.hxx>
 #include <svl/srchitem.hxx>
-#include <tools/link.hxx>
 #include <unotools/configmgr.hxx>
+#include <sal/log.hxx>
 
 class SdrOutliner;
 
@@ -54,7 +53,6 @@ namespace sw
 
 DocumentDrawModelManager::DocumentDrawModelManager(SwDoc& i_rSwdoc)
     : m_rDoc(i_rSwdoc)
-    , mpDrawModel(nullptr)
     , mnHeaven(0)
     , mnHell(0)
     , mnControls(0)
@@ -79,7 +77,7 @@ void DocumentDrawModelManager::InitDrawModel()
 
     SAL_INFO( "sw.doc", "before create DrawDocument" );
     // The document owns the SwDrawModel. We always have two layers and one page.
-    mpDrawModel = new SwDrawModel( &m_rDoc );
+    mpDrawModel.reset( new SwDrawModel( &m_rDoc ) );
 
     mpDrawModel->EnableUndo( m_rDoc.GetIDocumentUndoRedo().DoesUndo() );
 
@@ -92,6 +90,7 @@ void DocumentDrawModelManager::InitDrawModel()
 
     sLayerNm = "Controls";
     mnControls = mpDrawModel->GetLayerAdmin().NewLayer( sLayerNm )->GetID();
+    mpDrawModel->GetLayerAdmin().SetControlLayerName(sLayerNm);
 
     // add invisible layers corresponding to the visible ones.
     {
@@ -109,7 +108,7 @@ void DocumentDrawModelManager::InitDrawModel()
     mpDrawModel->InsertPage( pMasterPage );
     SAL_INFO( "sw.doc", "after create DrawDocument" );
     SdrOutliner& rOutliner = mpDrawModel->GetDrawOutliner();
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
     {
         SAL_INFO( "sw.doc", "before create Spellchecker/Hyphenator" );
         css::uno::Reference< css::linguistic2::XSpellChecker1 > xSpell = ::GetSpellChecker();
@@ -130,23 +129,23 @@ void DocumentDrawModelManager::InitDrawModel()
     if ( pRefDev )
         mpDrawModel->SetRefDevice( pRefDev );
 
-    mpDrawModel->SetNotifyUndoActionHdl( LINK( &m_rDoc, SwDoc, AddDrawUndo ));
+    mpDrawModel->SetNotifyUndoActionHdl( std::bind( &SwDoc::AddDrawUndo, &m_rDoc, std::placeholders::_1 ));
     SwViewShell* const pSh = m_rDoc.getIDocumentLayoutAccess().GetCurrentViewShell();
-    if ( pSh )
+    if ( !pSh )
+        return;
+
+    for(const SwViewShell& rViewSh : pSh->GetRingContainer())
     {
-        for(SwViewShell& rViewSh : pSh->GetRingContainer())
+        SwRootFrame* pRoot =  rViewSh.GetLayout();
+        if( pRoot && !pRoot->GetDrawPage() )
         {
-            SwRootFrame* pRoot =  rViewSh.GetLayout();
-            if( pRoot && !pRoot->GetDrawPage() )
-            {
-                // Disable "multiple layout" for the moment:
-                // use pMasterPage instead of a new created SdrPage
-                // mpDrawModel->AllocPage( FALSE );
-                // mpDrawModel->InsertPage( pDrawPage );
-                SdrPage* pDrawPage = pMasterPage;
-                pRoot->SetDrawPage( pDrawPage );
-                pDrawPage->SetSize( pRoot->Frame().SSize() );
-            }
+            // Disable "multiple layout" for the moment:
+            // use pMasterPage instead of a new created SdrPage
+            // mpDrawModel->AllocPage( FALSE );
+            // mpDrawModel->InsertPage( pDrawPage );
+            SdrPage* pDrawPage = pMasterPage;
+            pRoot->SetDrawPage( pDrawPage );
+            pDrawPage->SetSize( pRoot->getFrameArea().SSize() );
         }
     }
 }
@@ -154,22 +153,19 @@ void DocumentDrawModelManager::InitDrawModel()
 
 void DocumentDrawModelManager::ReleaseDrawModel()
 {
-    if ( mpDrawModel )
-    {
-        // !! Also maintain the code in the sw3io for inserting documents!!
-        delete mpDrawModel; mpDrawModel = nullptr;
-    }
+    // !! Also maintain the code in the sw3io for inserting documents!!
+    mpDrawModel.reset();
 }
 
 
 const SwDrawModel* DocumentDrawModelManager::GetDrawModel() const
 {
-    return mpDrawModel;
+    return mpDrawModel.get();
 }
 
 SwDrawModel* DocumentDrawModelManager::GetDrawModel()
 {
-    return mpDrawModel;
+    return mpDrawModel.get();
 }
 
 SwDrawModel* DocumentDrawModelManager::MakeDrawModel_()
@@ -189,7 +185,7 @@ SwDrawModel* DocumentDrawModelManager::MakeDrawModel_()
             m_rDoc.GetDocShell()->Broadcast( aHint );
         }
     }
-    return mpDrawModel;
+    return mpDrawModel.get();
 }
 
 SwDrawModel* DocumentDrawModelManager::GetOrCreateDrawModel()
@@ -352,7 +348,7 @@ bool DocumentDrawModelManager::Search(const SwPaM& rPaM, const SvxSearchItem& rS
 
 void DocumentDrawModelManager::DrawNotifyUndoHdl()
 {
-    mpDrawModel->SetNotifyUndoActionHdl( Link<SdrUndoAction*,void>() );
+    mpDrawModel->SetNotifyUndoActionHdl( nullptr );
 }
 
 }

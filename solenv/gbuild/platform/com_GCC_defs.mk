@@ -8,7 +8,6 @@
 #
 
 gb_AWK := awk
-gb_YACC := bison
 
 gb_CLASSPATHSEP := :
 gb_LICENSE := LICENSE
@@ -35,6 +34,9 @@ else
 gb_AR := $(shell $(CC) -print-prog-name=ar)
 endif
 
+# shell setup (env.vars) for the compiler
+gb_COMPILER_SETUP :=
+
 ifeq ($(strip $(gb_COMPILEROPTFLAGS)),)
 gb_COMPILEROPTFLAGS := -O2
 endif
@@ -54,10 +56,15 @@ gb_CFLAGS_COMMON := \
 	-Wextra \
 	-Wstrict-prototypes \
 	-Wundef \
-	-Wunused-macros \
+	-Wunreachable-code \
+	$(if $(and $(COM_IS_CLANG),$(or $(findstring icecc,$(CC)),$(findstring icecc,$(CCACHE_PREFIX)))),,-Wunused-macros) \
+	$(if $(COM_IS_CLANG),-Wembedded-directive) \
+	-finput-charset=UTF-8 \
 	-fmessage-length=0 \
 	-fno-common \
 	-pipe \
+	-fstack-protector-strong \
+	$(if $(gb_COLOR),-fdiagnostics-color=always) \
 
 gb_CXXFLAGS_COMMON := \
 	-Wall \
@@ -66,10 +73,25 @@ gb_CXXFLAGS_COMMON := \
 	-Wendif-labels \
 	-Wextra \
 	-Wundef \
-	-Wunused-macros \
+	-Wunreachable-code \
+	$(if $(and $(COM_IS_CLANG),$(or $(findstring icecc,$(CC)),$(findstring icecc,$(CCACHE_PREFIX)))),,-Wunused-macros) \
+	$(if $(COM_IS_CLANG),-Wembedded-directive) \
+	-finput-charset=UTF-8 \
 	-fmessage-length=0 \
 	-fno-common \
 	-pipe \
+	-fstack-protector-strong \
+	$(if $(gb_COLOR),-fdiagnostics-color=always) \
+
+ifeq ($(HAVE_WDEPRECATED_COPY_DTOR),TRUE)
+gb_CXXFLAGS_COMMON += -Wdeprecated-copy-dtor
+endif
+
+gb_CXXFLAGS_DISABLE_WARNINGS = -w
+
+ifeq ($(HAVE_BROKEN_GCC_WMAYBE_UNINITIALIZED),TRUE)
+gb_CXXFLAGS_COMMON += -Wno-maybe-uninitialized
+endif
 
 gb_CXXFLAGS_Wundef = -Wno-undef
 
@@ -80,7 +102,18 @@ gb_LinkTarget_LDFLAGS += -fprofile-arcs -lgcov
 gb_COMPILEROPTFLAGS := -O0
 endif
 
-ifeq ($(shell expr '$(GCC_VERSION)' '>=' 600),1)
+ifeq ($(DISABLE_DYNLOADING),TRUE)
+gb_CFLAGS_COMMON += -ffunction-sections -fdata-sections
+gb_CXXFLAGS_COMMON += -ffunction-sections -fdata-sections
+gb_LinkTarget_LDFLAGS += -Wl,--gc-sections
+endif
+
+ifeq ($(COM_IS_CLANG),TRUE)
+gb_CXXFLAGS_COMMON += \
+	-Wimplicit-fallthrough \
+	-Wunused-exception-parameter \
+	-Wrange-loop-analysis
+else
 gb_CFLAGS_COMMON += \
     -Wduplicated-cond \
     -Wlogical-op \
@@ -92,37 +125,42 @@ gb_CXXFLAGS_COMMON += \
     -Wunused-const-variable=1
 endif
 
-ifeq ($(COM_IS_CLANG),TRUE)
-gb_CXXFLAGS_COMMON += -Wimplicit-fallthrough
+# GCC 8 -Wcast-function-type (included in -Wextra) unhelpfully even warns on reinterpret_cast
+# between incompatible function types:
+ifeq ($(shell expr '$(GCC_VERSION)' '>=' 800),1)
+gb_CXXFLAGS_COMMON += \
+    -Wno-cast-function-type
 endif
-
 
 # If CC or CXX already include -fvisibility=hidden, don't duplicate it
 ifeq (,$(filter -fvisibility=hidden,$(CC)))
 gb_VISIBILITY_FLAGS := -fvisibility=hidden
-ifeq ($(COM_IS_CLANG),TRUE)
-ifneq ($(filter -fsanitize=%,$(CC)),)
-gb_VISIBILITY_FLAGS := -fvisibility-ms-compat
-endif
-endif
 endif
 gb_VISIBILITY_FLAGS_CXX := -fvisibility-inlines-hidden
 gb_CXXFLAGS_COMMON += $(gb_VISIBILITY_FLAGS_CXX)
 
-ifeq ($(HAVE_GCC_STACK_PROTECTOR_STRONG),TRUE)
-gb_CFLAGS_COMMON += -fstack-protector-strong
-gb_CXXFLAGS_COMMON += -fstack-protector-strong
 gb_LinkTarget_LDFLAGS += -fstack-protector-strong
-endif
 
-ifeq ($(ENABLE_PCH),TRUE)
-ifneq ($(COM_IS_CLANG),TRUE)
+ifneq ($(gb_ENABLE_PCH),)
+ifeq ($(COM_IS_CLANG),TRUE)
+# Clang by default includes in the PCH timestamps of the files it was
+# generated from, which would make the PCH be a "new" file for ccache
+# even if the file has not actually changed. Disabling the timestamp
+# prevents this at the cost of risking using an outdated PCH (which
+# should be unlikely, given that gbuild has dependencies set up
+# for our includes and system includes are unlikely to change).
+gb_NO_PCH_TIMESTAMP := -Xclang -fno-pch-timestamp
+else
 gb_CFLAGS_COMMON += -fpch-preprocess -Winvalid-pch
 gb_CXXFLAGS_COMMON += -fpch-preprocess -Winvalid-pch
+gb_NO_PCH_TIMESTAMP :=
 endif
 endif
 
 gb_CFLAGS_WERROR = $(if $(ENABLE_WERROR),-Werror)
+ifeq ($(ENABLE_OPTIMIZED)-$(COM_IS_CLANG),TRUE-)
+gb_CFLAGS_WERROR += -Wno-stringop-overflow
+endif
 
 # This is the default in non-C++11 mode
 ifeq ($(COM_IS_CLANG),TRUE)
@@ -142,7 +180,7 @@ ifeq ($(COM_IS_CLANG),TRUE)
 gb_LTOFLAGS := -flto
 gb_LTOPLUGINFLAGS := --plugin LLVMgold.so
 else
-gb_LTOFLAGS := -flto=$(PARALLELISM) -fuse-linker-plugin -O2
+gb_LTOFLAGS := -flto$(if $(filter-out 0,$(PARALLELISM)),=$(PARALLELISM)) -fuse-linker-plugin -O2
 endif
 endif
 
@@ -155,6 +193,7 @@ ifeq ($(gb_ENABLE_DBGUTIL),$(false))
 ifeq ($(HAVE_GCC_FNO_ENFORCE_EH_SPECS),TRUE)
 gb_LinkTarget_EXCEPTIONFLAGS += \
 	-fno-enforce-eh-specs
+gb_FilterOutClangCFLAGS += -fno-enforce-eh-specs
 endif
 endif
 
@@ -162,56 +201,64 @@ gb_PrecompiledHeader_EXCEPTIONFLAGS := $(gb_LinkTarget_EXCEPTIONFLAGS)
 
 # optimization level
 gb_COMPILERNOOPTFLAGS := -O0 -fstrict-aliasing -fstrict-overflow
+gb_COMPILERDEBUGOPTFLAGS := -Og
 
+ifeq ($(OS),ANDROID)
+gb_DEBUGINFO_FLAGS=-glldb
 # Clang does not know -ggdb2 or some other options
-ifeq ($(HAVE_GCC_GGDB2),TRUE)
+else ifeq ($(HAVE_GCC_GGDB2),TRUE)
 gb_DEBUGINFO_FLAGS=-ggdb2
 else
 gb_DEBUGINFO_FLAGS=-g2
 endif
+gb_LINKER_DEBUGINFO_FLAGS=
 
-ifeq ($(HAVE_GCC_FINLINE_LIMIT),TRUE)
-FINLINE_LIMIT0=-finline-limit=0
+ifeq ($(HAVE_GCC_SPLIT_DWARF),TRUE)
+gb_DEBUGINFO_FLAGS+=-gsplit-dwarf
 endif
 
-ifeq ($(HAVE_GCC_FNO_INLINE),TRUE)
-FNO_INLINE=-fno-inline
+ifeq ($(HAVE_CLANG_DEBUG_INFO_KIND_CONSTRUCTOR),TRUE)
+gb_DEBUGINFO_FLAGS+=-Xclang -debug-info-kind=constructor
 endif
 
-ifeq ($(HAVE_GCC_FNO_DEFAULT_INLINE),TRUE)
-FNO_DEFAULT_INLINE=-fno-default-inline
+ifeq ($(ENABLE_GDB_INDEX),TRUE)
+gb_LINKER_DEBUGINFO_FLAGS += -Wl,--gdb-index
+gb_DEBUGINFO_FLAGS += -ggnu-pubnames
 endif
-
-gb_DEBUG_CFLAGS := $(FINLINE_LIMIT0) $(FNO_INLINE)
-gb_DEBUG_CXXFLAGS := $(FNO_DEFAULT_INLINE)
-
 
 gb_LinkTarget_INCLUDE :=\
-    $(subst -I. , ,$(SOLARINC)) \
+    $(SOLARINC) \
     -I$(BUILDDIR)/config_$(gb_Side) \
 
 ifeq ($(COM_IS_CLANG),TRUE)
 gb_COMPILER_TEST_FLAGS := -Xclang -plugin-arg-loplugin -Xclang --unit-test-mode
 ifeq ($(COMPILER_PLUGIN_TOOL),)
-gb_COMPILER_PLUGINS := -Xclang -load -Xclang $(BUILDDIR)/compilerplugins/obj/plugin.so -Xclang -add-plugin -Xclang loplugin
+gb_COMPILER_PLUGINS := -Xclang -load -Xclang $(BUILDDIR)/compilerplugins/clang/plugin.so -Xclang -add-plugin -Xclang loplugin
 ifneq ($(COMPILER_PLUGIN_WARNINGS_ONLY),)
 gb_COMPILER_PLUGINS += -Xclang -plugin-arg-loplugin -Xclang \
     --warnings-only='$(COMPILER_PLUGIN_WARNINGS_ONLY)'
 endif
 else
-gb_COMPILER_PLUGINS := -Xclang -load -Xclang $(BUILDDIR)/compilerplugins/obj/plugin.so -Xclang -plugin -Xclang loplugin $(foreach plugin,$(COMPILER_PLUGIN_TOOL), -Xclang -plugin-arg-loplugin -Xclang $(plugin))
+gb_COMPILER_PLUGINS := -Xclang -load -Xclang $(BUILDDIR)/compilerplugins/clang/plugin.so -Xclang -plugin -Xclang loplugin $(foreach plugin,$(COMPILER_PLUGIN_TOOL), -Xclang -plugin-arg-loplugin -Xclang $(plugin))
 ifneq ($(UPDATE_FILES),)
 gb_COMPILER_PLUGINS += -Xclang -plugin-arg-loplugin -Xclang --scope=$(UPDATE_FILES)
 endif
 endif
+ifeq ($(COMPILER_PLUGINS_DEBUG),TRUE)
+gb_COMPILER_PLUGINS += -Xclang -plugin-arg-loplugin -Xclang --debug
+endif
 # set CCACHE_CPP2=1 to prevent clang generating spurious warnings
-gb_COMPILER_SETUP := CCACHE_CPP2=1
+gb_COMPILER_SETUP += CCACHE_CPP2=1
 gb_COMPILER_PLUGINS_SETUP := ICECC_EXTRAFILES=$(SRCDIR)/include/sal/log-areas.dox CCACHE_EXTRAFILES=$(SRCDIR)/include/sal/log-areas.dox
 gb_COMPILER_PLUGINS_WARNINGS_AS_ERRORS := \
     -Xclang -plugin-arg-loplugin -Xclang --warnings-as-errors
 else
+# Set CCACHE_CPP2 to prevent GCC -Werror=implicit-fallthrough= when ccache strips comments from C
+# code (which still needs /*fallthrough*/-style comments to silence that warning):
+ifeq ($(ENABLE_WERROR),TRUE)
+gb_COMPILER_SETUP += CCACHE_CPP2=1
+endif
 gb_COMPILER_TEST_FLAGS :=
-gb_COMPILER_SETUP :=
 gb_COMPILER_PLUGINS :=
 gb_COMPILER_PLUGINS_SETUP :=
 gb_COMPILER_PLUGINS_WARNINGS_AS_ERRORS :=
@@ -231,6 +278,8 @@ else ifeq ($(OS_FOR_BUILD),WNT)
 # In theory possible if cross-compiling to some Unix from Windows,
 # in practice strongly discouraged to even try that
 gb_Helper_LIBRARY_PATH_VAR := PATH
+else ifeq ($(OS_FOR_BUILD),HAIKU)
+gb_Helper_LIBRARY_PATH_VAR := LIBRARY_PATH
 else
 gb_Helper_LIBRARY_PATH_VAR := LD_LIBRARY_PATH
 endif
@@ -248,5 +297,24 @@ file://$(strip $(1))
 endef
 
 gb_Helper_get_rcfile = $(1)rc
+
+ifneq ($(gb_ENABLE_PCH),)
+# Enable use of .sum files for PCHs.
+gb_COMPILER_SETUP += CCACHE_PCH_EXTSUM=1
+# CCACHE_SLOPPINESS should contain pch_defines,time_macros for PCHs.
+gb_CCACHE_SLOPPINESS :=
+ifeq ($(shell test -z "$$CCACHE_SLOPPINESS" && echo 1),1)
+gb_CCACHE_SLOPPINESS := CCACHE_SLOPPINESS=pch_defines,time_macros
+else
+ifeq ($(shell echo "$$CCACHE_SLOPPINESS" | grep -q pch_defines | grep -q time_macros && echo 1),1)
+gb_CCACHE_SLOPPINESS := CCACHE_SLOPPINESS=$CCACHE_SLOPPINESS:pch_defines,time_macros
+endif
+endif
+gb_COMPILER_SETUP += $(gb_CCACHE_SLOPPINESS)
+endif
+
+ifneq ($(CCACHE_DEPEND_MODE),)
+gb_COMPILER_SETUP += CCACHE_DEPEND=1
+endif
 
 # vim: set noet sw=4:

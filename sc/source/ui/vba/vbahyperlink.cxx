@@ -19,13 +19,14 @@
 
 #include <sal/config.h>
 
-#include "service.hxx"
 #include "vbahyperlink.hxx"
-#include <vbahelper/helperdecl.hxx>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XTextFieldsSupplier.hpp>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <ooo/vba/office/MsoHyperlinkType.hpp>
 #include <ooo/vba/msforms/XShape.hpp>
 #include "vbarange.hxx"
@@ -224,14 +225,12 @@ void ScVbaHyperlink::setUrlComponents( const UrlComponents& rUrlComp )
     mxTextField->setPropertyValue("URL", uno::Any( aUrl.makeStringAndClear() ) );
 }
 
-namespace hyperlink
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Calc_ScVbaHyperlink_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
 {
-namespace sdecl = comphelper::service_decl;
-sdecl::vba_service_class_<ScVbaHyperlink, sdecl::with_args<true> > const serviceImpl;
-sdecl::ServiceDecl const serviceDecl(
-    serviceImpl,
-    "ScVbaHyperlink",
-    "ooo.vba.excel.Hyperlink" );
+    return cppu::acquire(new ScVbaHyperlink(args, context));
 }
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

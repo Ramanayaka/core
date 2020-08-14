@@ -18,35 +18,36 @@
  */
 
 #include <rtl/random.h>
+#include <sal/log.hxx>
 #include <sfx2/docfile.hxx>
-#include <sfx2/request.hxx>
 #include <sfx2/frame.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <unotools/saveopt.hxx>
 #include <svl/itemset.hxx>
 #include <svl/stritem.hxx>
-#include <svl/intitem.hxx>
-#include <svl/eitem.hxx>
-#include "xecontent.hxx"
-#include "xltracer.hxx"
-#include "xeescher.hxx"
-#include "xeformula.hxx"
-#include "xehelper.hxx"
-#include "xelink.hxx"
-#include "xename.hxx"
-#include "xepivot.hxx"
-#include "xestyle.hxx"
-#include "xeroot.hxx"
+#include <xecontent.hxx>
+#include <xeescher.hxx>
+#include <xeformula.hxx>
+#include <xehelper.hxx>
+#include <xelink.hxx>
+#include <xename.hxx>
+#include <xepivot.hxx>
+#include <xestyle.hxx>
+#include <xeroot.hxx>
 #include <xepivotxml.hxx>
-#include "xedbdata.hxx"
+#include <xedbdata.hxx>
+#include <xlcontent.hxx>
+#include <xlname.hxx>
+#include <xllink.hxx>
 
-#include "excrecds.hxx"
-#include "tabprotection.hxx"
-#include "document.hxx"
-#include "scextopt.hxx"
+#include <excrecds.hxx>
+#include <tabprotection.hxx>
+#include <document.hxx>
 
-#include "formulabase.hxx"
+#include <formulabase.hxx>
 #include <com/sun/star/sheet/FormulaOpCodeMapEntry.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 using namespace ::com::sun::star;
 
@@ -181,10 +182,10 @@ XclExpTablesManager& XclExpRoot::GetTablesManager()
 
 void XclExpRoot::InitializeConvert()
 {
-    mrExpData.mxTabInfo.reset( new XclExpTabInfo( GetRoot() ) );
-    mrExpData.mxAddrConv.reset( new XclExpAddressConverter( GetRoot() ) );
-    mrExpData.mxFmlaComp.reset( new XclExpFormulaCompiler( GetRoot() ) );
-    mrExpData.mxProgress.reset( new XclExpProgressBar( GetRoot() ) );
+    mrExpData.mxTabInfo = std::make_shared<XclExpTabInfo>( GetRoot() );
+    mrExpData.mxAddrConv = std::make_shared<XclExpAddressConverter>( GetRoot() );
+    mrExpData.mxFmlaComp = std::make_shared<XclExpFormulaCompiler>( GetRoot() );
+    mrExpData.mxProgress = std::make_shared<XclExpProgressBar>( GetRoot() );
 
     GetProgressBar().Initialize();
 }
@@ -195,29 +196,29 @@ void XclExpRoot::InitializeGlobals()
 
     if( GetBiff() >= EXC_BIFF5 )
     {
-        mrExpData.mxPalette.reset( new XclExpPalette( GetRoot() ) );
-        mrExpData.mxFontBfr.reset( new XclExpFontBuffer( GetRoot() ) );
-        mrExpData.mxNumFmtBfr.reset( new XclExpNumFmtBuffer( GetRoot() ) );
-        mrExpData.mxXFBfr.reset( new XclExpXFBuffer( GetRoot() ) );
-        mrExpData.mxGlobLinkMgr.reset( new XclExpLinkManager( GetRoot() ) );
-        mrExpData.mxNameMgr.reset( new XclExpNameManager( GetRoot() ) );
+        mrExpData.mxPalette = new XclExpPalette( GetRoot() );
+        mrExpData.mxFontBfr = new XclExpFontBuffer( GetRoot() );
+        mrExpData.mxNumFmtBfr = new XclExpNumFmtBuffer( GetRoot() );
+        mrExpData.mxXFBfr = new XclExpXFBuffer( GetRoot() );
+        mrExpData.mxGlobLinkMgr = new XclExpLinkManager( GetRoot() );
+        mrExpData.mxNameMgr = new XclExpNameManager( GetRoot() );
     }
 
     if( GetBiff() == EXC_BIFF8 )
     {
-        mrExpData.mxSst.reset( new XclExpSst );
-        mrExpData.mxObjMgr.reset( new XclExpObjectManager( GetRoot() ) );
-        mrExpData.mxFilterMgr.reset( new XclExpFilterManager( GetRoot() ) );
-        mrExpData.mxPTableMgr.reset( new XclExpPivotTableManager( GetRoot() ) );
+        mrExpData.mxSst = new XclExpSst();
+        mrExpData.mxObjMgr = std::make_shared<XclExpObjectManager>( GetRoot() );
+        mrExpData.mxFilterMgr = std::make_shared<XclExpFilterManager>( GetRoot() );
+        mrExpData.mxPTableMgr = std::make_shared<XclExpPivotTableManager>( GetRoot() );
         // BIFF8: only one link manager for all sheets
         mrExpData.mxLocLinkMgr = mrExpData.mxGlobLinkMgr;
-        mrExpData.mxDxfs.reset( new XclExpDxfs( GetRoot() ) );
+        mrExpData.mxDxfs = new XclExpDxfs( GetRoot() );
     }
 
     if( GetOutput() == EXC_OUTPUT_XML_2007 )
     {
-        mrExpData.mxXmlPTableMgr.reset(new XclExpXmlPivotTableManager(GetRoot()));
-        mrExpData.mxTablesMgr.reset(new XclExpTablesManager(GetRoot()));
+        mrExpData.mxXmlPTableMgr = std::make_shared<XclExpXmlPivotTableManager>(GetRoot());
+        mrExpData.mxTablesMgr = std::make_shared<XclExpTablesManager>(GetRoot());
 
         do
         {
@@ -233,7 +234,7 @@ void XclExpRoot::InitializeGlobals()
                 SAL_WARN( "sc", "XclExpRoot::InitializeGlobals - no object shell");
                 break;
             }
-            uno::Reference< lang::XComponent > xComponent( pShell->GetModel(), uno::UNO_QUERY);
+            uno::Reference< lang::XComponent > xComponent = pShell->GetModel();
             if (!xComponent.is())
             {
                 SAL_WARN( "sc", "XclExpRoot::InitializeGlobals - no component");
@@ -266,7 +267,7 @@ void XclExpRoot::InitializeTable( SCTAB nScTab )
     if( GetBiff() == EXC_BIFF5 )
     {
         // local link manager per sheet
-        mrExpData.mxLocLinkMgr.reset( new XclExpLinkManager( GetRoot() ) );
+        mrExpData.mxLocLinkMgr = new XclExpLinkManager( GetRoot() );
     }
 }
 
@@ -301,11 +302,8 @@ bool XclExpRoot::IsDocumentEncrypted() const
     if (pDocProt && pDocProt->isProtected() && pDocProt->isOptionEnabled(ScDocProtection::STRUCTURE))
         return true;
 
-    if ( GetEncryptionData().getLength() > 0 )
-        // Password is entered directly into the save dialog.
-        return true;
-
-    return false;
+    // Whether password is entered directly into the save dialog.
+    return GetEncryptionData().hasElements();
 }
 
 uno::Sequence< beans::NamedValue > XclExpRoot::GenerateEncryptionData( const OUString& aPass )
@@ -314,18 +312,13 @@ uno::Sequence< beans::NamedValue > XclExpRoot::GenerateEncryptionData( const OUS
 
     if ( !aPass.isEmpty() && aPass.getLength() < 16 )
     {
-        TimeValue aTime;
-        osl_getSystemTime( &aTime );
         rtlRandomPool aRandomPool = rtl_random_createPool ();
-        rtl_random_addBytes ( aRandomPool, &aTime, 8 );
-
         sal_uInt8 pnDocId[16];
         rtl_random_getBytes( aRandomPool, pnDocId, 16 );
 
         rtl_random_destroyPool( aRandomPool );
 
-        sal_uInt16 pnPasswd[16];
-        memset( pnPasswd, 0, sizeof( pnPasswd ) );
+        sal_uInt16 pnPasswd[16] = {};
         for( sal_Int32 nChar = 0; nChar < aPass.getLength(); ++nChar )
             pnPasswd[nChar] = aPass[nChar];
 
@@ -354,13 +347,9 @@ uno::Sequence< beans::NamedValue > XclExpRoot::GetEncryptionData() const
     return aEncryptionData;
 }
 
-uno::Sequence< beans::NamedValue > XclExpRoot::GenerateDefaultEncryptionData() const
+uno::Sequence< beans::NamedValue > XclExpRoot::GenerateDefaultEncryptionData()
 {
-    uno::Sequence< beans::NamedValue > aEncryptionData;
-    if ( !GetDefaultPassword().isEmpty() )
-        aEncryptionData = GenerateEncryptionData( GetDefaultPassword() );
-
-    return aEncryptionData;
+    return GenerateEncryptionData( GetDefaultPassword() );
 }
 
 XclExpRootData::XclExpLinkMgrRef const & XclExpRoot::GetLocalLinkMgrRef() const

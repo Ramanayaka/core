@@ -18,7 +18,7 @@
  */
 
 #include <cppuhelper/supportsservice.hxx>
-#include <X11_selection.hxx>
+#include "X11_selection.hxx"
 
 using namespace x11;
 using namespace com::sun::star::uno;
@@ -47,28 +47,28 @@ DropTarget::~DropTarget()
 
 void DropTarget::initialize( const Sequence< Any >& arguments )
 {
-    if( arguments.getLength() > 1 )
+    if( arguments.getLength() <= 1 )
+        return;
+
+    OUString aDisplayName;
+    Reference< XDisplayConnection > xConn;
+    arguments.getConstArray()[0] >>= xConn;
+    if( xConn.is() )
     {
-        OUString aDisplayName;
-        Reference< XDisplayConnection > xConn;
-        arguments.getConstArray()[0] >>= xConn;
-        if( xConn.is() )
-        {
-            Any aIdentifier;
-            aIdentifier >>= aDisplayName;
-        }
+        Any aIdentifier;
+        aIdentifier >>= aDisplayName;
+    }
 
-        m_xSelectionManager = &SelectionManager::get( aDisplayName );
-        m_xSelectionManager->initialize( arguments );
+    m_xSelectionManager = &SelectionManager::get( aDisplayName );
+    m_xSelectionManager->initialize( arguments );
 
-        if( m_xSelectionManager->getDisplay() ) // #136582# sanity check
-        {
-            sal_IntPtr aWindow = None;
-            arguments.getConstArray()[1] >>= aWindow;
-            m_xSelectionManager->registerDropTarget( aWindow, this );
-            m_aTargetWindow = aWindow;
-            m_bActive = true;
-        }
+    if( m_xSelectionManager->getDisplay() ) // #136582# sanity check
+    {
+        sal_IntPtr aWindow = None;
+        arguments.getConstArray()[1] >>= aWindow;
+        m_xSelectionManager->registerDropTarget( aWindow, this );
+        m_aTargetWindow = aWindow;
+        m_bActive = true;
     }
 }
 
@@ -83,7 +83,7 @@ void DropTarget::removeDropTargetListener( const Reference< XDropTargetListener 
 {
     ::osl::Guard< ::osl::Mutex > aGuard( m_aMutex );
 
-    m_aListeners.remove( xListener );
+    m_aListeners.erase( std::remove(m_aListeners.begin(), m_aListeners.end(), xListener), m_aListeners.end() );
 }
 
 sal_Bool DropTarget::isActive()
@@ -113,55 +113,55 @@ void DropTarget::setDefaultActions( sal_Int8 actions )
 void DropTarget::drop( const DropTargetDropEvent& dtde ) throw()
 {
     osl::ClearableGuard< ::osl::Mutex > aGuard( m_aMutex );
-    std::list< Reference< XDropTargetListener > > aListeners( m_aListeners );
+    std::vector< Reference< XDropTargetListener > > aListeners( m_aListeners );
     aGuard.clear();
 
-    for( std::list< Reference< XDropTargetListener > >::iterator it = aListeners.begin(); it!= aListeners.end(); ++it )
+    for (auto const& listener : aListeners)
     {
-        (*it)->drop( dtde );
+        listener->drop(dtde);
     }
 }
 
 void DropTarget::dragEnter( const DropTargetDragEnterEvent& dtde ) throw()
 {
     osl::ClearableGuard< ::osl::Mutex > aGuard( m_aMutex );
-    std::list< Reference< XDropTargetListener > > aListeners( m_aListeners );
+    std::vector< Reference< XDropTargetListener > > aListeners( m_aListeners );
     aGuard.clear();
 
-    for( std::list< Reference< XDropTargetListener > >::iterator it = aListeners.begin(); it!= aListeners.end(); ++it )
+    for (auto const& listener : aListeners)
     {
-        (*it)->dragEnter( dtde );
+        listener->dragEnter(dtde);
     }
 }
 
 void DropTarget::dragExit( const DropTargetEvent& dte ) throw()
 {
     osl::ClearableGuard< ::osl::Mutex > aGuard( m_aMutex );
-    std::list< Reference< XDropTargetListener > > aListeners( m_aListeners );
+    std::vector< Reference< XDropTargetListener > > aListeners( m_aListeners );
     aGuard.clear();
 
-    for( std::list< Reference< XDropTargetListener > >::iterator it = aListeners.begin(); it!= aListeners.end(); ++it )
+    for (auto const& listener : aListeners)
     {
-        (*it)->dragExit( dte );
+        listener->dragExit(dte);
     }
 }
 
 void DropTarget::dragOver( const DropTargetDragEvent& dtde ) throw()
 {
     osl::ClearableGuard< ::osl::Mutex > aGuard( m_aMutex );
-    std::list< Reference< XDropTargetListener > > aListeners( m_aListeners );
+    std::vector< Reference< XDropTargetListener > > aListeners( m_aListeners );
     aGuard.clear();
 
-    for( std::list< Reference< XDropTargetListener > >::iterator it = aListeners.begin(); it!= aListeners.end(); ++it )
+    for (auto const& listener : aListeners)
     {
-        (*it)->dragOver( dtde );
+        listener->dragOver(dtde);
     }
 }
 
 // XServiceInfo
 OUString DropTarget::getImplementationName()
 {
-    return OUString(XDND_DROPTARGET_IMPLEMENTATION_NAME);
+    return "com.sun.star.datatransfer.dnd.XdndDropTarget";
 }
 
 sal_Bool DropTarget::supportsService( const OUString& ServiceName )

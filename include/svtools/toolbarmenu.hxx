@@ -20,128 +20,89 @@
 #ifndef INCLUDED_SVTOOLS_TOOLBARMENU_HXX
 #define INCLUDED_SVTOOLS_TOOLBARMENU_HXX
 
+#include <config_options.h>
 #include <svtools/svtdllapi.h>
 
-#include <com/sun/star/frame/FeatureStateEvent.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/frame/XFrame.hpp>
-
 #include <memory>
-#include <vector>
 
 #include <rtl/ref.hxx>
-
-#include <vcl/ctrl.hxx>
-#include <vcl/menu.hxx>
 #include <vcl/dockwin.hxx>
+#include <vcl/weld.hxx>
 
-class ValueSet;
+namespace com :: sun :: star :: frame { class XFrame; }
+namespace com :: sun :: star :: frame { struct FeatureStateEvent; }
 namespace svt { class FrameStatusListener; }
 
-namespace svtools {
-
-class ToolbarMenuEntry;
-struct ToolbarMenu_Impl;
-
-class SVT_DLLPUBLIC ToolbarPopup : public DockingWindow
+class SVT_DLLPUBLIC WeldToolbarPopup
 {
-    friend class ToolbarPopupStatusListener;
-public:
-    ToolbarPopup(const css::uno::Reference<css::frame::XFrame>& rFrame,
-                 vcl::Window* pParentWindow,
-                 WinBits nBits );
-    virtual ~ToolbarPopup() override;
-    virtual void dispose() override;
+private:
+    DECL_LINK(FocusHdl, weld::Widget&, void);
 
 protected:
-    void AddStatusListener( const OUString& rCommandURL );
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Container> m_xTopLevel;
+    std::unique_ptr<weld::Container> m_xContainer;
+    css::uno::Reference<css::frame::XFrame> m_xFrame;
+    rtl::Reference<svt::FrameStatusListener> m_xStatusListener;
 
-    bool IsInPopupMode();
-    void EndPopupMode();
+public:
+    WeldToolbarPopup(const css::uno::Reference<css::frame::XFrame>& rFrame,
+                     weld::Widget* pParent, const OUString& rUIFile, const OString& rId);
+    virtual ~WeldToolbarPopup();
+    weld::Container* getTopLevel() { return m_xTopLevel.get(); }
+    weld::Container* getContainer() { return m_xContainer.get(); }
+    void AddStatusListener(const OUString& rCommandURL);
 
     // Forwarded from XStatusListener (subclasses must override this one to get the status updates):
     /// @throws css::uno::RuntimeException
-    virtual void statusChanged(const css::frame::FeatureStateEvent& Event );
-
-private:
-    css::uno::Reference< css::frame::XFrame >  mxFrame;
-    rtl::Reference< svt::FrameStatusListener > mxStatusListener;
+    virtual void statusChanged(const css::frame::FeatureStateEvent& Event);
+    virtual void GrabFocus() = 0;
 };
 
-class SVT_DLLPUBLIC ToolbarMenu : public ToolbarPopup
+// we want to create WeldToolbarPopup on-demand when a toolbar dropdown is
+// clicked, but the widget to be shown must exist before the dropdown
+// is activated, so ToolbarPopupContainer is that widget and the
+// contents of the on-demand created WeldToolbarPopup is placed
+// within the ToolbarPopupContainer
+class SVT_DLLPUBLIC ToolbarPopupContainer final
 {
-    friend struct ToolbarMenu_Impl;
-public:
-    ToolbarMenu(const css::uno::Reference<css::frame::XFrame>& rFrame,
-                vcl::Window* pParentWindow,
-                WinBits nBits );
-
-    virtual ~ToolbarMenu() override;
-    virtual void dispose() override;
-
-    virtual void    MouseMove( const MouseEvent& rMEvt ) override;
-    virtual void    MouseButtonDown( const MouseEvent& rMEvt ) override;
-    virtual void    MouseButtonUp( const MouseEvent& rMEvt ) override;
-    virtual void    KeyInput( const KeyEvent& rKEvent ) override;
-    virtual void    Command( const CommandEvent& rCEvt ) override;
-    virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual void    GetFocus() override;
-    virtual void    LoseFocus() override;
-
-    void            appendEntry( int nEntryId, const OUString& rStr, MenuItemBits nItemBits = MenuItemBits::NONE );
-    void            appendEntry( int nEntryId, const OUString& rStr, const Image& rImage );
-    void            appendEntry( int nEntryId, Control* pControl );
-    void            appendSeparator();
-
-    /** creates an empty ValueSet that is initialized and can be inserted with appendEntry. */
-    VclPtr<ValueSet> createEmptyValueSetControl();
-
-    void            checkEntry( int nEntryId, bool bCheck );
-
-    void            enableEntry( int nEntryId, bool bEnable );
-
-    void            setEntryText( int nEntryId, const OUString& rStr );
-
-    void            setEntryImage( int nEntryId, const Image& rImage );
-
-    const Size&     getMenuSize() const;
-
-    void            SetSelectHdl( const Link<ToolbarMenu*,void>& rLink );
-
-    int             getSelectedEntryId() const;
-    int             getHighlightedEntryId() const;
-
-protected:
-    virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
-
-    void            StateChanged( StateChangedType nType ) override;
-    void            DataChanged( const DataChangedEvent& rDCEvt ) override;
-
 private:
-    DECL_LINK( HighlightHdl, ValueSet*, void );
+    DECL_LINK(FocusHdl, weld::Widget&, void);
 
-    void            initWindow();
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Container> m_xTopLevel;
+    std::unique_ptr<weld::Container> m_xContainer;
+    std::unique_ptr<WeldToolbarPopup> m_xPopup;
+public:
+    ToolbarPopupContainer(weld::Widget* pParent);
+    ~ToolbarPopupContainer();
+    weld::Container* getTopLevel() { return m_xTopLevel.get(); }
+    weld::Container* getContainer() { return m_xContainer.get(); }
 
-    Size            implCalcSize();
-
-    void            appendEntry(std::unique_ptr<ToolbarMenuEntry> pEntry);
-
-    void            implPaint(vcl::RenderContext& rRenderContext, ToolbarMenuEntry* pThisOnly = nullptr, bool bHighlight = false);
-
-    void            implHighlightEntry(vcl::RenderContext& rRenderContext, int nHighlightEntry);
-    void            implHighlightAtPosition(const MouseEvent& rMEvt);
-
-    void            implChangeHighlightEntry( int nEntry );
-    void            implSelectEntry( int nSelectedEntry );
-
-    ToolbarMenuEntry*   implCursorUpDown( bool bUp, bool bHomeEnd );
-    ToolbarMenuEntry*   implGetEntry( int nEntry ) const;
-    ToolbarMenuEntry*   implSearchEntry( int nEntryId ) const;
-
-    std::unique_ptr<ToolbarMenu_Impl>   mpImpl;
+    void setPopover(std::unique_ptr<WeldToolbarPopup> xPopup);
+    WeldToolbarPopup* getPopover() const { return m_xPopup.get(); }
+    void unsetPopover();
 };
 
-} // namespace svtools
+class SVT_DLLPUBLIC InterimToolbarPopup final : public DockingWindow
+{
+private:
+    VclPtr<vcl::Window> m_xBox;
+    css::uno::Reference<css::frame::XFrame> m_xFrame;
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Container> m_xContainer;
+    std::unique_ptr<WeldToolbarPopup> m_xPopup;
+public:
+    InterimToolbarPopup(const css::uno::Reference<css::frame::XFrame>& rFrame, vcl::Window* pParent,
+                        std::unique_ptr<WeldToolbarPopup> xPopup);
+    weld::Container* getContainer() { return m_xContainer.get(); }
+    virtual void dispose() override;
+    virtual ~InterimToolbarPopup() override;
+
+    virtual void GetFocus() override;
+
+    void EndPopupMode();
+};
 
 #endif
 

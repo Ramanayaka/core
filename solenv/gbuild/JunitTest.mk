@@ -36,11 +36,12 @@ ifneq ($(gb_SUPPRESS_TESTS),)
 	@true
 else
 	$(call gb_Output_announce,$*,$(true),JUT,2)
+	$(call gb_Trace_StartRange,$*,JUT)
 	$(call gb_Helper_abbreviate_dirs,\
         rm -rf $(call gb_JunitTest_get_userdir,$*) && \
 		mkdir -p $(call gb_JunitTest_get_userdir,$*)/user && \
 		cp $(SRCDIR)/qadevOOo/qa/registrymodifications.xcu $(call gb_JunitTest_get_userdir,$*)/user/ && \
-        ($(gb_JunitTest_JAVACOMMAND) \
+        ($(gb_TEST_ENV_VARS) $(ICECREAM_RUN) $(gb_JunitTest_JAVACOMMAND) \
             -classpath "$(T_CP)" \
             $(DEFS) \
             org.junit.runner.JUnitCore \
@@ -56,6 +57,7 @@ else
 		&& echo \
 		&& false)))
 	$(CLEAN_CMD)
+	$(call gb_Trace_EndRange,$*,JUT)
 endif
 
 define gb_JunitTest_JunitTest
@@ -117,6 +119,12 @@ $(call gb_JunitTest_get_target,$(1)) : T_CP := $$(T_CP)$$(gb_CLASSPATHSEP)$(call
 
 endef
 
+define gb_JunitTest_add_classpath
+$(call gb_JavaClassSet_add_classpath,$(call gb_JunitTest_get_classsetname,$(1)),$(2))
+$(call gb_JunitTest_get_target,$(1)) : T_CP := $$(T_CP)$$(gb_CLASSPATHSEP)$(2)
+
+endef
+
 define gb_JunitTest_use_system_jar
 $(call gb_JavaClassSet_use_system_jar,$(call gb_JunitTest_get_classsetname,$(1)),$(2))
 
@@ -149,6 +157,46 @@ endef
 
 define gb_JunitTest_use_customtargets
 $(foreach dependency,$(2),$(call gb_JunitTest_use_customtarget,$(1),$(dependency)))
+
+endef
+
+define gb_JunitTest_use_unoapi_jars
+$(eval $(call gb_JunitTest_use_jars,$(1),\
+    OOoRunner \
+    libreoffice \
+    test \
+))
+
+endef
+
+define gb_JunitTest_use_unoapi_test_class
+$(eval $(call gb_JunitTest_add_classes,$(1),\
+    org.openoffice.test.UnoApiTest \
+))
+
+endef
+
+# To be used by gb_JunitTest_set_unoapi_test_defaults
+# <module>_unoapi_1 => <module>_1 => <module> => <module>/qa/unoapi
+gb_JunitTest__unoapi_iter = $(subst _unoapi,,$(1))
+gb_JunitTest__unoapi_module = $(firstword $(subst _, ,$(gb_JunitTest__unoapi_iter)))
+gb_JunitTest__unoapi_dir = $(if $(2),$(2),$(gb_JunitTest__unoapi_module)/qa/unoapi)
+
+# $(1) = test name (prefer <module>_unoapi for defaults, example <module>_unoapi_1)
+# $(2) = test directory base (def: <module>_unoapi_1 => <module>_1/qa/unoapi)
+# $(3) = SCE file (def: <module>_1.sce)
+# $(4) = XCL file (def: knownissues.xcl)
+# $(5) = test document directory (def: testdocuments; use . for base)
+define gb_JunitTest_set_unoapi_test_defaults
+$(eval $(call gb_JunitTest_set_defs,$(1),\
+    $$(DEFS) \
+    -Dorg.openoffice.test.arg.sce=$(SRCDIR)/$(gb_JunitTest__unoapi_dir)/$(if $(3),$(3),$(gb_JunitTest__unoapi_iter).sce) \
+    -Dorg.openoffice.test.arg.xcl=$(SRCDIR)/$(gb_JunitTest__unoapi_dir)/$(if $(4),$(4),knownissues.xcl) \
+    -Dorg.openoffice.test.arg.tdoc=$(SRCDIR)/$(gb_JunitTest__unoapi_dir)/$(if $(5),$(5),testdocuments) \
+))
+
+$(eval $(call gb_JunitTest_use_unoapi_jars,$(1)))
+$(eval $(call gb_JunitTest_use_unoapi_test_class,$(1)))
 
 endef
 

@@ -20,7 +20,6 @@
 #define INCLUDED_SW_INC_POOLFMT_HXX
 
 #include <limits.h>
-#include <tools/solar.h>
 #include <editeng/frmdir.hxx>
 #include <i18nlangtag/lang.h>
 
@@ -117,7 +116,7 @@ RES_POOLCHR_PAGENO,                                 ///< Pages/field.
 RES_POOLCHR_LABEL,                                  ///< Label.
 RES_POOLCHR_DROPCAPS,                               ///< Dropcaps.
 RES_POOLCHR_NUM_LEVEL,                              ///< Numbering symbols
-RES_POOLCHR_BUL_LEVEL,                              ///< Bullets.
+RES_POOLCHR_BULLET_LEVEL,                           ///< Bullets.
 
 RES_POOLCHR_INET_NORMAL,                            ///< Internet normal.
 RES_POOLCHR_INET_VISIT,                             ///< Internet visited.
@@ -187,11 +186,11 @@ RES_POOLPAGE_END
 enum RES_POOL_NUMRULE_TYPE
 {
 RES_POOLNUMRULE_BEGIN = POOLGRP_NUMRULE,
-RES_POOLNUMRULE_NUM1 = RES_POOLNUMRULE_BEGIN,       ///< NumRule Numbering 1.
-RES_POOLNUMRULE_NUM2,                               ///< NumRule Numbering 2.
-RES_POOLNUMRULE_NUM3,                               ///< NumRule Numbering 3.
-RES_POOLNUMRULE_NUM4,                               ///< NumRule Numbering 4.
-RES_POOLNUMRULE_NUM5,                               ///< NumRule Numbering 5.
+RES_POOLNUMRULE_NUM1 = RES_POOLNUMRULE_BEGIN,       ///< NumRule Numbering 123.
+RES_POOLNUMRULE_NUM2,                               ///< NumRule Numbering ABC.
+RES_POOLNUMRULE_NUM3,                               ///< NumRule Numbering abc.
+RES_POOLNUMRULE_NUM4,                               ///< NumRule Numbering IVX.
+RES_POOLNUMRULE_NUM5,                               ///< NumRule Numbering ivx.
 RES_POOLNUMRULE_BUL1,                               ///< NumRule Bullets 1.
 RES_POOLNUMRULE_BUL2,                               ///< NumRule Bullets 2.
 RES_POOLNUMRULE_BUL3,                               ///< NumRule Bullets 3.
@@ -201,10 +200,11 @@ RES_POOLNUMRULE_END
 };
 
 // IDs for table styles.
-enum RES_POOL_TABSTYLE_TYPE
+enum RES_POOL_TABLESTYLE_TYPE
 {
-RES_POOLTABSTYLE_BEGIN = POOLGRP_TABSTYLE,
-RES_POOLTABSTYLE_DEFAULT = RES_POOLTABSTYLE_BEGIN,
+RES_POOLTABLESTYLE_BEGIN = POOLGRP_TABSTYLE,
+RES_POOLTABLESTYLE_DEFAULT = RES_POOLTABLESTYLE_BEGIN,
+// 16 old styles
 RES_POOLTABLESTYLE_3D,
 RES_POOLTABLESTYLE_BLACK1,
 RES_POOLTABLESTYLE_BLACK2,
@@ -221,7 +221,18 @@ RES_POOLTABLESTYLE_LAVENDER,
 RES_POOLTABLESTYLE_RED,
 RES_POOLTABLESTYLE_TURQUOISE,
 RES_POOLTABLESTYLE_YELLOW,
-RES_POOLTABSTYLE_END
+// 10 new styles since LibreOffice 6.0
+RES_POOLTABLESTYLE_LO6_ACADEMIC,
+RES_POOLTABLESTYLE_LO6_BOX_LIST_BLUE,
+RES_POOLTABLESTYLE_LO6_BOX_LIST_GREEN,
+RES_POOLTABLESTYLE_LO6_BOX_LIST_RED,
+RES_POOLTABLESTYLE_LO6_BOX_LIST_YELLOW,
+RES_POOLTABLESTYLE_LO6_ELEGANT,
+RES_POOLTABLESTYLE_LO6_FINANCIAL,
+RES_POOLTABLESTYLE_LO6_SIMPLE_GRID_COLUMNS,
+RES_POOLTABLESTYLE_LO6_SIMPLE_GRID_ROWS,
+RES_POOLTABLESTYLE_LO6_SIMPLE_LIST_SHADED,
+RES_POOLTABLESTYLE_END
 };
 
 enum RES_POOL_CELLSTYLE_TYPE
@@ -264,7 +275,7 @@ RES_POOLCOLL_TEXT_END,
 /// Group lists.
 RES_POOLCOLL_LISTS_BEGIN = COLL_LISTS_BITS,
 
-RES_POOLCOLL_NUMBUL_BASE = RES_POOLCOLL_LISTS_BEGIN,    ///< Base list.
+RES_POOLCOLL_NUMBER_BULLET_BASE = RES_POOLCOLL_LISTS_BEGIN,    ///< Base list.
 
 /// Subgroup numberings.
 RES_POOLCOLL_NUM_LEVEL1S,                               ///< Start 1st level.
@@ -289,26 +300,26 @@ RES_POOLCOLL_NUM_LEVEL5E,                               ///< End 5th level.
 RES_POOLCOLL_NUM_NONUM5,                                ///< No numbering.
 
 ///Subgroup bullets.
-RES_POOLCOLL_BUL_LEVEL1S,                               ///< Start 1st level.
-RES_POOLCOLL_BUL_LEVEL1,                                ///< 1st level.
-RES_POOLCOLL_BUL_LEVEL1E,                               ///< End 1st level
-RES_POOLCOLL_BUL_NONUM1,                                ///< No numbering.
-RES_POOLCOLL_BUL_LEVEL2S,                               ///< Start 2nd level.
-RES_POOLCOLL_BUL_LEVEL2,                                ///< 2nd level.
-RES_POOLCOLL_BUL_LEVEL2E,                               ///< End 2nd level.
-RES_POOLCOLL_BUL_NONUM2,                                ///< No numbering.
-RES_POOLCOLL_BUL_LEVEL3S,                               ///< Start 3rd level.
-RES_POOLCOLL_BUL_LEVEL3,                                ///< 3rd Level.
-RES_POOLCOLL_BUL_LEVEL3E,                               ///< End 3rd level.
-RES_POOLCOLL_BUL_NONUM3,                                ///< No numbering.
-RES_POOLCOLL_BUL_LEVEL4S,                               ///< Start 4th level.
-RES_POOLCOLL_BUL_LEVEL4,                                ///< 4th level.
-RES_POOLCOLL_BUL_LEVEL4E,                               ///< End 4th level.
-RES_POOLCOLL_BUL_NONUM4,                                ///< No numbering.
-RES_POOLCOLL_BUL_LEVEL5S,                               ///< Start 5th level.
-RES_POOLCOLL_BUL_LEVEL5,                                ///< 5th level.
-RES_POOLCOLL_BUL_LEVEL5E,                               ///< End 5th Level.
-RES_POOLCOLL_BUL_NONUM5,                                ///< No numbering.
+RES_POOLCOLL_BULLET_LEVEL1S,                               ///< Start 1st level.
+RES_POOLCOLL_BULLET_LEVEL1,                                ///< 1st level.
+RES_POOLCOLL_BULLET_LEVEL1E,                               ///< End 1st level
+RES_POOLCOLL_BULLET_NONUM1,                                ///< No numbering.
+RES_POOLCOLL_BULLET_LEVEL2S,                               ///< Start 2nd level.
+RES_POOLCOLL_BULLET_LEVEL2,                                ///< 2nd level.
+RES_POOLCOLL_BULLET_LEVEL2E,                               ///< End 2nd level.
+RES_POOLCOLL_BULLET_NONUM2,                                ///< No numbering.
+RES_POOLCOLL_BULLET_LEVEL3S,                               ///< Start 3rd level.
+RES_POOLCOLL_BULLET_LEVEL3,                                ///< 3rd Level.
+RES_POOLCOLL_BULLET_LEVEL3E,                               ///< End 3rd level.
+RES_POOLCOLL_BULLET_NONUM3,                                ///< No numbering.
+RES_POOLCOLL_BULLET_LEVEL4S,                               ///< Start 4th level.
+RES_POOLCOLL_BULLET_LEVEL4,                                ///< 4th level.
+RES_POOLCOLL_BULLET_LEVEL4E,                               ///< End 4th level.
+RES_POOLCOLL_BULLET_NONUM4,                                ///< No numbering.
+RES_POOLCOLL_BULLET_LEVEL5S,                               ///< Start 5th level.
+RES_POOLCOLL_BULLET_LEVEL5,                                ///< 5th level.
+RES_POOLCOLL_BULLET_LEVEL5E,                               ///< End 5th Level.
+RES_POOLCOLL_BULLET_NONUM5,                                ///< No numbering.
 
 RES_POOLCOLL_LISTS_END,
 
@@ -316,7 +327,8 @@ RES_POOLCOLL_LISTS_END,
 RES_POOLCOLL_EXTRA_BEGIN = COLL_EXTRA_BITS,
 
 /// Subgroup header.
-RES_POOLCOLL_HEADER = RES_POOLCOLL_EXTRA_BEGIN,         ///< Header Left&Right.
+RES_POOLCOLL_HEADERFOOTER = RES_POOLCOLL_EXTRA_BEGIN,   ///< Header and Footer.
+RES_POOLCOLL_HEADER,                                    ///< Header Left&Right.
 RES_POOLCOLL_HEADERL,                                   ///< Header Left.
 RES_POOLCOLL_HEADERR,                                   ///< Header Right.
 
@@ -334,6 +346,7 @@ RES_POOLCOLL_LABEL,                                     ///< Base labels.
 RES_POOLCOLL_LABEL_ABB,                                 ///< Label illustration.
 RES_POOLCOLL_LABEL_TABLE,                               ///< Label table.
 RES_POOLCOLL_LABEL_FRAME,                               ///< Label frame.
+RES_POOLCOLL_LABEL_FIGURE,                              ///< Label figure
 
 /// Other stuff.
 RES_POOLCOLL_FRAME,                                     ///< Frames.
@@ -407,8 +420,9 @@ RES_POOLCOLL_REGISTER_END,
 /// Group chapter / document.
 RES_POOLCOLL_DOC_BEGIN = COLL_DOC_BITS,
 
-RES_POOLCOLL_DOC_TITEL = RES_POOLCOLL_DOC_BEGIN,        ///< Doc. title.
-RES_POOLCOLL_DOC_SUBTITEL,                              ///< Doc. subtitle.
+RES_POOLCOLL_DOC_TITLE = RES_POOLCOLL_DOC_BEGIN,        ///< Doc. title.
+RES_POOLCOLL_DOC_SUBTITLE,                              ///< Doc. subtitle.
+RES_POOLCOLL_DOC_APPENDIX,                              ///< Doc. appendix.
 
 RES_POOLCOLL_DOC_END,
 

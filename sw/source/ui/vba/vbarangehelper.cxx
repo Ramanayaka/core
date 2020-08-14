@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include "vbarangehelper.hxx"
+#include <vbahelper/vbahelper.hxx>
 #include <com/sun/star/text/ControlCharacter.hpp>
 #include <com/sun/star/text/XTextRangeCompare.hpp>
 #include <com/sun/star/text/XBookmarksSupplier.hpp>
@@ -60,7 +61,7 @@ uno::Reference< text::XTextRange > SwVbaRangeHelper::getRangeByPosition( const u
     return xRange;
 }
 
-void SwVbaRangeHelper::insertString( uno::Reference< text::XTextRange >& rTextRange, uno::Reference< text::XText >& rText, const OUString& rStr, bool _bAbsorb )
+void SwVbaRangeHelper::insertString( uno::Reference< text::XTextRange > const & rTextRange, uno::Reference< text::XText > const & rText, const OUString& rStr, bool _bAbsorb )
 {
     sal_Int32 nlastIndex = 0;
     sal_Int32 nIndex = 0;

@@ -21,21 +21,21 @@
 #define INCLUDED_SVTOOLS_EMBEDTRANSFER_HXX
 
 #include <svtools/svtdllapi.h>
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
+#include <memory>
+
+namespace com :: sun :: star :: embed { class XEmbeddedObject; }
 
 class Graphic;
-class SVT_DLLPUBLIC SvEmbedTransferHelper : public TransferableHelper
+class SVT_DLLPUBLIC SvEmbedTransferHelper final : public TransferableHelper
 {
 private:
 
     css::uno::Reference< css::embed::XEmbeddedObject > m_xObj;
-    Graphic* m_pGraphic;
+    std::unique_ptr<Graphic> m_pGraphic;
     sal_Int64 m_nAspect;
 
     OUString maParentShellID;
-
-protected:
 
     virtual void        AddSupportedFormats() override;
     virtual bool        GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;

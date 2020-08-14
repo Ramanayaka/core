@@ -17,26 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/polygn3d.hxx>
-#include <svx/svdpage.hxx>
-#include "svx/globl3d.hxx"
+#include <polygn3d.hxx>
+#include <svx/globl3d.hxx>
 #include <basegfx/point/b3dpoint.hxx>
 #include <sdr/contact/viewcontactofe3dpolygon.hxx>
 #include <basegfx/polygon/b3dpolygon.hxx>
 #include <basegfx/polygon/b3dpolygontools.hxx>
 
-
 // DrawContact section
-
-sdr::contact::ViewContact* E3dPolygonObj::CreateObjectSpecificViewContact()
+std::unique_ptr<sdr::contact::ViewContact> E3dPolygonObj::CreateObjectSpecificViewContact()
 {
-    return new sdr::contact::ViewContactOfE3dPolygon(*this);
+    return std::make_unique<sdr::contact::ViewContactOfE3dPolygon>(*this);
 }
 
 E3dPolygonObj::E3dPolygonObj(
-    E3dDefaultAttributes& rDefault,
+    SdrModel& rSdrModel,
     const basegfx::B3DPolyPolygon& rPolyPoly3D)
-:   E3dCompoundObject(rDefault),
+:   E3dCompoundObject(rSdrModel),
     bLineOnly(true)
 {
     // Set geometry
@@ -49,9 +46,9 @@ E3dPolygonObj::E3dPolygonObj(
     CreateDefaultTexture();
 }
 
-E3dPolygonObj::E3dPolygonObj()
-:   E3dCompoundObject(),
-    bLineOnly(false) // added missing initialisation
+E3dPolygonObj::E3dPolygonObj(SdrModel& rSdrModel)
+:   E3dCompoundObject(rSdrModel),
+    bLineOnly(false)
 {
     // Create no geometry
 }
@@ -61,7 +58,7 @@ void E3dPolygonObj::CreateDefaultNormals()
     basegfx::B3DPolyPolygon aPolyNormals;
 
     // Create a complete tools::PolyPolygon with the plane normal
-    for(sal_uInt32 a(0L); a < aPolyPoly3D.count(); a++)
+    for(sal_uInt32 a(0); a < aPolyPoly3D.count(); a++)
     {
         // Find source polygon
         const basegfx::B3DPolygon aPolygon(aPolyPoly3D.getB3DPolygon(a));
@@ -73,7 +70,7 @@ void E3dPolygonObj::CreateDefaultNormals()
         basegfx::B3DVector aNormal(-aPolygon.getNormal());
 
         // Fill new polygon
-        for(sal_uInt32 b(0L); b < aPolygon.count(); b++)
+        for(sal_uInt32 b(0); b < aPolygon.count(); b++)
         {
             aNormals.append(aNormal);
         }
@@ -92,13 +89,13 @@ void E3dPolygonObj::CreateDefaultTexture()
     // Create a complete tools::PolyPolygon with the texture coordinates
     // The texture coordinates extend over X,Y and Z
     // on the whole extreme values in the range 0.0 .. 1.0
-    for(sal_uInt32 a(0L); a < aPolyPoly3D.count(); a++)
+    for(sal_uInt32 a(0); a < aPolyPoly3D.count(); a++)
     {
         // Find source polygon
         const basegfx::B3DPolygon& aPolygon(aPolyPoly3D.getB3DPolygon(a));
 
         // Determine the total size of the object
-        basegfx::B3DRange aVolume(basegfx::tools::getRange(aPolygon));
+        basegfx::B3DRange aVolume(basegfx::utils::getRange(aPolygon));
 
         // Get normal
         basegfx::B3DVector aNormal(aPolygon.getNormal());
@@ -110,7 +107,7 @@ void E3dPolygonObj::CreateDefaultTexture()
         sal_uInt16 nSourceMode = 0;
 
         // Determine the greatest degree of freedom
-        if(!(aNormal.getX() > aNormal.getY() && aNormal.getX() > aNormal.getZ()))
+        if(aNormal.getX() <= aNormal.getY() || aNormal.getX() <= aNormal.getZ())
         {
             if(aNormal.getY() > aNormal.getZ())
             {
@@ -128,7 +125,7 @@ void E3dPolygonObj::CreateDefaultTexture()
         basegfx::B2DPolygon aTexture;
 
         // Fill new polygon
-        for(sal_uInt32 b(0L); b < aPolygon.count(); b++)
+        for(sal_uInt32 b(0); b < aPolygon.count(); b++)
         {
             basegfx::B2DPoint aTex;
             const basegfx::B3DPoint aCandidate(aPolygon.getB3DPoint(b));
@@ -215,14 +212,28 @@ void E3dPolygonObj::SetPolyTexture2D(const basegfx::B2DPolyPolygon& rNewPolyText
 
 // Convert the object into a group object consisting of 6 polygons
 
-SdrObject *E3dPolygonObj::DoConvertToPolyObj(bool /*bBezier*/, bool /*bAddText*/) const
+SdrObjectUniquePtr E3dPolygonObj::DoConvertToPolyObj(bool /*bBezier*/, bool /*bAddText*/) const
 {
     return nullptr;
 }
 
-E3dPolygonObj* E3dPolygonObj::Clone() const
+E3dPolygonObj* E3dPolygonObj::CloneSdrObject(SdrModel& rTargetModel) const
 {
-    return CloneHelper< E3dPolygonObj >();
+    return CloneHelper< E3dPolygonObj >(rTargetModel);
+}
+
+E3dPolygonObj& E3dPolygonObj::operator=(const E3dPolygonObj& rObj)
+{
+    if( this == &rObj )
+        return *this;
+    E3dCompoundObject::operator=(rObj);
+
+    aPolyPoly3D = rObj.aPolyPoly3D;
+    aPolyNormals3D = rObj.aPolyNormals3D;
+    aPolyTexture2D = rObj.aPolyTexture2D;
+    bLineOnly = rObj.bLineOnly;
+
+    return *this;
 }
 
 void E3dPolygonObj::SetLineOnly(bool bNew)

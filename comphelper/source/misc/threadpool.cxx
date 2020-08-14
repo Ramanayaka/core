@@ -10,19 +10,33 @@
 #include <comphelper/threadpool.hxx>
 
 #include <com/sun/star/uno/Exception.hpp>
+#include <config_options.h>
 #include <sal/config.h>
+#include <sal/log.hxx>
 #include <rtl/instance.hxx>
-#include <rtl/string.hxx>
 #include <salhelper/thread.hxx>
 #include <algorithm>
 #include <memory>
 #include <thread>
 #include <chrono>
+#include <comphelper/debuggerinfo.hxx>
+
+#if defined HAVE_VALGRIND_HEADERS
+#include <valgrind/memcheck.h>
+#endif
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#elif defined UNX
+#include <unistd.h>
+#include <fcntl.h>
+#endif
 
 namespace comphelper {
 
 /** prevent waiting for a task from inside a task */
-#if defined DBG_UTIL && defined LINUX
+#if defined DBG_UTIL && (defined LINUX || defined _WIN32)
 static thread_local bool gbIsWorkerThread;
 #endif
 
@@ -55,19 +69,20 @@ public:
 
     virtual void execute() override
     {
-#if defined DBG_UTIL && defined LINUX
+#if defined DBG_UTIL && (defined LINUX || defined _WIN32)
         gbIsWorkerThread = true;
 #endif
         std::unique_lock< std::mutex > aGuard( mpPool->maMutex );
 
         while( !mpPool->mbTerminate )
         {
-            ThreadTask *pTask = mpPool->popWorkLocked( aGuard, true );
+            std::unique_ptr<ThreadTask> pTask = mpPool->popWorkLocked( aGuard, true );
             if( pTask )
             {
                 aGuard.unlock();
 
-                pTask->execAndDelete();
+                pTask->exec();
+                pTask.reset();
 
                 aGuard.lock();
             }
@@ -91,6 +106,8 @@ ThreadPool::~ThreadPool()
     assert(maTasks.empty());
 }
 
+namespace {
+
 struct ThreadPoolStatic : public rtl::StaticWithInit< std::shared_ptr< ThreadPool >,
                                                       ThreadPoolStatic >
 {
@@ -100,39 +117,39 @@ struct ThreadPoolStatic : public rtl::StaticWithInit< std::shared_ptr< ThreadPoo
     };
 };
 
+}
+
 ThreadPool& ThreadPool::getSharedOptimalPool()
 {
-    return *ThreadPoolStatic::get().get();
+    return *ThreadPoolStatic::get();
 }
 
 sal_Int32 ThreadPool::getPreferredConcurrency()
 {
-    static sal_Int32 ThreadCount = 0;
-    if (ThreadCount == 0)
+    static sal_Int32 ThreadCount = [&]()
     {
         const sal_Int32 nHardThreads = std::max(std::thread::hardware_concurrency(), 1U);
         sal_Int32 nThreads = nHardThreads;
         const char *pEnv = getenv("MAX_CONCURRENCY");
         if (pEnv != nullptr)
         {
-            // Override with user/admin preferrence.
+            // Override with user/admin preference.
             nThreads = rtl_str_toInt32(pEnv, 10);
         }
 
         nThreads = std::min(nHardThreads, nThreads);
-        ThreadCount = std::max<sal_Int32>(nThreads, 1);
-    }
+        return std::max<sal_Int32>(nThreads, 1);
+    }();
 
     return ThreadCount;
 }
 
-// FIXME: there should be no need for this as/when our baseline
-// is >VS2015 and drop WinXP; the sorry details are here:
-// https://connect.microsoft.com/VisualStudio/feedback/details/1282596
+// Used to order shutdown, and to ensure there are no lingering
+// threads after LibreOfficeKit pre-init.
 void ThreadPool::shutdown()
 {
-    if (mbTerminate)
-        return;
+//    if (mbTerminate)
+//        return;
 
     std::unique_lock< std::mutex > aGuard( maMutex );
     shutdownLocked(aGuard);
@@ -142,9 +159,9 @@ void ThreadPool::shutdownLocked(std::unique_lock<std::mutex>& aGuard)
 {
     if( maWorkers.empty() )
     { // no threads at all -> execute the work in-line
-        ThreadTask *pTask;
+        std::unique_ptr<ThreadTask> pTask;
         while ( ( pTask = popWorkLocked(aGuard, false) ) )
-            pTask->execAndDelete();
+            pTask->exec();
     }
     else
     {
@@ -153,7 +170,7 @@ void ThreadPool::shutdownLocked(std::unique_lock<std::mutex>& aGuard)
     }
     assert( maTasks.empty() );
 
-    // coverity[missing_lock]
+    // coverity[missing_lock] - on purpose
     mbTerminate = true;
 
     maTasksChanged.notify_all();
@@ -175,9 +192,9 @@ void ThreadPool::shutdownLocked(std::unique_lock<std::mutex>& aGuard)
     }
 }
 
-void ThreadPool::pushTask( ThreadTask *pTask )
+void ThreadPool::pushTask( std::unique_ptr<ThreadTask> pTask )
 {
-    std::unique_lock< std::mutex > aGuard( maMutex );
+    std::scoped_lock< std::mutex > aGuard( maMutex );
 
     mbTerminate = false;
 
@@ -188,18 +205,18 @@ void ThreadPool::pushTask( ThreadTask *pTask )
     }
 
     pTask->mpTag->onTaskPushed();
-    maTasks.insert( maTasks.begin(), pTask );
+    maTasks.insert( maTasks.begin(), std::move(pTask) );
 
     maTasksChanged.notify_one();
 }
 
-ThreadTask *ThreadPool::popWorkLocked( std::unique_lock< std::mutex > & rGuard, bool bWait )
+std::unique_ptr<ThreadTask> ThreadPool::popWorkLocked( std::unique_lock< std::mutex > & rGuard, bool bWait )
 {
     do
     {
         if( !maTasks.empty() )
         {
-            ThreadTask *pTask = maTasks.back();
+            std::unique_ptr<ThreadTask> pTask = std::move(maTasks.back());
             maTasks.pop_back();
             return pTask;
         }
@@ -213,9 +230,9 @@ ThreadTask *ThreadPool::popWorkLocked( std::unique_lock< std::mutex > & rGuard, 
     return nullptr;
 }
 
-void ThreadPool::waitUntilDone(const std::shared_ptr<ThreadTaskTag>& rTag)
+void ThreadPool::waitUntilDone(const std::shared_ptr<ThreadTaskTag>& rTag, bool bJoinAll)
 {
-#if defined DBG_UTIL && defined LINUX
+#if defined DBG_UTIL && (defined LINUX || defined _WIN32)
     assert(!gbIsWorkerThread && "cannot wait for tasks from inside a task");
 #endif
     {
@@ -223,21 +240,28 @@ void ThreadPool::waitUntilDone(const std::shared_ptr<ThreadTaskTag>& rTag)
 
         if( maWorkers.empty() )
         { // no threads at all -> execute the work in-line
-            ThreadTask *pTask;
-            while (!rTag->isDone() &&
-                   ( pTask = popWorkLocked(aGuard, false) ) )
-                pTask->execAndDelete();
+            while (!rTag->isDone())
+            {
+                std::unique_ptr<ThreadTask> pTask = popWorkLocked(aGuard, false);
+                if (!pTask)
+                    break;
+                pTask->exec();
+            }
         }
     }
 
     rTag->waitUntilDone();
 
+    if (bJoinAll)
+        joinAll();
+}
+
+void ThreadPool::joinAll()
+{
+    std::unique_lock< std::mutex > aGuard( maMutex );
+    if (maTasks.empty()) // check if there are still tasks from another tag
     {
-        std::unique_lock< std::mutex > aGuard( maMutex );
-        if (maTasks.empty()) // check if there are still tasks from another tag
-        {
-            shutdownLocked(aGuard);
-        }
+        shutdownLocked(aGuard);
     }
 }
 
@@ -256,7 +280,7 @@ ThreadTask::ThreadTask(const std::shared_ptr<ThreadTaskTag>& pTag)
 {
 }
 
-void ThreadTask::execAndDelete()
+void ThreadTask::exec()
 {
     std::shared_ptr<ThreadTaskTag> pTag(mpTag);
     try {
@@ -268,10 +292,9 @@ void ThreadTask::execAndDelete()
     }
     catch (const css::uno::Exception &e)
     {
-        SAL_WARN("comphelper", "exception in thread worker while calling doWork(): " << e.Message);
+        SAL_WARN("comphelper", "exception in thread worker while calling doWork(): " << e);
     }
 
-    delete this;
     pTag->onTaskWorkerDone();
 }
 
@@ -281,14 +304,14 @@ ThreadTaskTag::ThreadTaskTag() : mnTasksWorking(0)
 
 void ThreadTaskTag::onTaskPushed()
 {
-    std::unique_lock< std::mutex > aGuard( maMutex );
+    std::scoped_lock< std::mutex > aGuard( maMutex );
     mnTasksWorking++;
     assert( mnTasksWorking < 65536 ); // sanity checking
 }
 
 void ThreadTaskTag::onTaskWorkerDone()
 {
-    std::unique_lock< std::mutex > aGuard( maMutex );
+    std::scoped_lock< std::mutex > aGuard( maMutex );
     mnTasksWorking--;
     assert(mnTasksWorking >= 0);
     if (mnTasksWorking == 0)
@@ -297,7 +320,7 @@ void ThreadTaskTag::onTaskWorkerDone()
 
 bool ThreadTaskTag::isDone()
 {
-    std::unique_lock< std::mutex > aGuard( maMutex );
+    std::scoped_lock< std::mutex > aGuard( maMutex );
     return mnTasksWorking == 0;
 }
 
@@ -306,10 +329,22 @@ void ThreadTaskTag::waitUntilDone()
     std::unique_lock< std::mutex > aGuard( maMutex );
     while( mnTasksWorking > 0 )
     {
-#ifdef DBG_UTIL
-        // 3 minute timeout in debug mode so our tests fail sooner rather than later
+#if defined DBG_UTIL && !defined NDEBUG
+        // 10 minute timeout in debug mode, unless the code is built with
+        // sanitizers or debugged in valgrind or gdb, in which case the threads
+        // should not time out in the middle of a debugging session
+        int maxTimeout = 10 * 60;
+#if !ENABLE_RUNTIME_OPTIMIZATIONS
+        maxTimeout = 30 * 60;
+#endif
+#if defined HAVE_VALGRIND_HEADERS
+        if( RUNNING_ON_VALGRIND )
+            maxTimeout = 30 * 60;
+#endif
+        if( isDebuggerAttached())
+            maxTimeout = 300 * 60;
         std::cv_status result = maTasksComplete.wait_for(
-            aGuard, std::chrono::seconds( 3 * 60 ));
+            aGuard, std::chrono::seconds( maxTimeout ));
         assert(result != std::cv_status::timeout);
 #else
         // 10 minute timeout in production so the app eventually throws some kind of error

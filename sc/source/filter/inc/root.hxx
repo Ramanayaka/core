@@ -20,14 +20,8 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_ROOT_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_ROOT_HXX
 
-#include "global.hxx"
-#include "address.hxx"
+#include <address.hxx>
 #include "flttypes.hxx"
-#include "filter.hxx"
-#include "excdefs.hxx"
-#include "lotattr.hxx"
-#include "lotfntbf.hxx"
-#include "lotrange.hxx"
 #include <memory>
 
 class ScRangeName;
@@ -52,17 +46,17 @@ class XclExpRoot;
 
 struct RootData     // -> incarnation in each case in the ImportExcel object!
 {
-    BiffTyp             eDateiTyp;              // fine differentiation
-    ExtSheetBuffer*     pExtSheetBuff;
-    SharedFormulaBuffer*      pShrfmlaBuff;
-    ExtNameBuff*        pExtNameBuff;
+    BiffTyp             eDateiTyp;           // fine differentiation
+    std::unique_ptr<ExtSheetBuffer>         pExtSheetBuff;
+    std::unique_ptr<SharedFormulaBuffer>    pShrfmlaBuff;
+    std::unique_ptr<ExtNameBuff>            pExtNameBuff;
     ExcelToSc*          pFmlaConverter;
     XclImpColRowSettings* pColRowBuff;        // col/row settings 1 table
 
     // Biff8
-    XclImpAutoFilterBuffer* pAutoFilterBuffer;      // ranges for autofilter and advanced filter
-    ScRangeListTabs*       pPrintRanges;
-    ScRangeListTabs*       pPrintTitles;
+    std::unique_ptr<XclImpAutoFilterBuffer> pAutoFilterBuffer;      // ranges for autofilter and advanced filter
+    std::unique_ptr<ScRangeListTabs>        pPrintRanges;
+    std::unique_ptr<ScRangeListTabs>        pPrintTitles;
 
     // extensions for export
     XclExpChTrTabId*        pTabId;             // pointer to rec list, do not destroy
@@ -81,25 +75,6 @@ protected:
     RootData*       pExcRoot;
     ExcRoot( RootData* pNexExcRoot ) : pExcRoot( pNexExcRoot ) {}
     ExcRoot( const ExcRoot& rCopy ) : pExcRoot( rCopy.pExcRoot ) {}
-};
-
-// Lotus Imp~/Exp~ -
-
-struct LOTUS_ROOT
-{
-    ScDocument*         pDoc;
-    LotusRangeList      maRangeNames;
-    ScRangeName*        pScRangeName;
-    rtl_TextEncoding    eCharsetQ;
-    Lotus123Typ         eFirstType;
-    Lotus123Typ         eActType;
-    ScRange             aActRange;
-    std::unique_ptr<RangeNameBufferWK3> pRngNmBffWK3;
-    LotusFontBuffer     maFontBuff;
-    LotAttrTable        maAttrTable;
-
-                        LOTUS_ROOT( ScDocument* pDocP, rtl_TextEncoding eQ );
-                        ~LOTUS_ROOT();
 };
 
 #endif

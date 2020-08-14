@@ -21,7 +21,8 @@
 
 #include <algorithm>
 
-#include "refdata.hxx"
+#include <refdata.hxx>
+#include <document.hxx>
 
 void ScSingleRefData::InitAddress( const ScAddress& rAdr )
 {
@@ -36,23 +37,23 @@ void ScSingleRefData::InitAddress( SCCOL nColP, SCROW nRowP, SCTAB nTabP )
     mnTab = nTabP;
 }
 
-void ScSingleRefData::InitAddressRel( const ScAddress& rAdr, const ScAddress& rPos )
+void ScSingleRefData::InitAddressRel( const ScDocument* pDoc, const ScAddress& rAdr, const ScAddress& rPos )
 {
     InitFlags();
     SetColRel(true);
     SetRowRel(true);
     SetTabRel(true);
-    SetAddress(rAdr, rPos);
+    SetAddress(pDoc->GetSheetLimits(), rAdr, rPos);
 }
 
-void ScSingleRefData::InitFromRefAddress( const ScRefAddress& rRef, const ScAddress& rPos )
+void ScSingleRefData::InitFromRefAddress( const ScDocument* pDoc, const ScRefAddress& rRef, const ScAddress& rPos )
 {
     InitFlags();
     SetColRel( rRef.IsRelCol());
     SetRowRel( rRef.IsRelRow());
     SetTabRel( rRef.IsRelTab());
     SetFlag3D( rRef.Tab() != rPos.Tab());
-    SetAddress( rRef.GetAddress(), rPos);
+    SetAddress( pDoc->GetSheetLimits(), rRef.GetAddress(), rPos);
 }
 
 void ScSingleRefData::SetAbsCol( SCCOL nVal )
@@ -126,37 +127,37 @@ bool ScSingleRefData::IsDeleted() const
     return IsColDeleted() || IsRowDeleted() || IsTabDeleted();
 }
 
-bool ScSingleRefData::Valid() const
+bool ScSingleRefData::Valid(const ScDocument* pDoc) const
 {
-    return ColValid() && RowValid() && TabValid();
+    return ColValid(pDoc) && RowValid(pDoc) && TabValid();
 }
 
-bool ScSingleRefData::ColValid() const
+bool ScSingleRefData::ColValid(const ScDocument* pDoc) const
 {
     if (Flags.bColRel)
     {
-        if (mnCol < -MAXCOL || MAXCOL < mnCol)
+        if (mnCol < -pDoc->MaxCol() || pDoc->MaxCol() < mnCol)
             return false;
     }
     else
     {
-        if (mnCol < 0 || MAXCOL < mnCol)
+        if (mnCol < 0 || pDoc->MaxCol() < mnCol)
             return false;
     }
 
     return true;
 }
 
-bool ScSingleRefData::RowValid() const
+bool ScSingleRefData::RowValid(const ScDocument* pDoc) const
 {
     if (Flags.bRowRel)
     {
-        if (mnRow < -MAXROW || MAXROW < mnRow)
+        if (mnRow < -pDoc->MaxRow() || pDoc->MaxRow() < mnRow)
             return false;
     }
     else
     {
-        if (mnRow < 0 || MAXROW < mnRow)
+        if (mnRow < 0 || pDoc->MaxRow() < mnRow)
             return false;
     }
 
@@ -179,12 +180,17 @@ bool ScSingleRefData::TabValid() const
     return true;
 }
 
-bool ScSingleRefData::ValidExternal() const
+bool ScSingleRefData::ValidExternal(const ScDocument* pDoc) const
 {
-    return ColValid() && RowValid() && mnTab == -1;
+    return ColValid(pDoc) && RowValid(pDoc) && mnTab >= -1;
 }
 
-ScAddress ScSingleRefData::toAbs( const ScAddress& rPos ) const
+ScAddress ScSingleRefData::toAbs( const ScDocument* pDoc, const ScAddress& rPos ) const
+{
+    return toAbs(pDoc->GetSheetLimits(), rPos);
+}
+
+ScAddress ScSingleRefData::toAbs( ScSheetLimits& rLimits, const ScAddress& rPos ) const
 {
     SCCOL nRetCol = Flags.bColRel ? mnCol + rPos.Col() : mnCol;
     SCROW nRetRow = Flags.bRowRel ? mnRow + rPos.Row() : mnRow;
@@ -192,10 +198,10 @@ ScAddress ScSingleRefData::toAbs( const ScAddress& rPos ) const
 
     ScAddress aAbs(ScAddress::INITIALIZE_INVALID);
 
-    if (ValidCol(nRetCol))
+    if (rLimits.ValidCol(nRetCol))
         aAbs.SetCol(nRetCol);
 
-    if (ValidRow(nRetRow))
+    if (rLimits.ValidRow(nRetRow))
         aAbs.SetRow(nRetRow);
 
     if (ValidTab(nRetTab))
@@ -204,14 +210,14 @@ ScAddress ScSingleRefData::toAbs( const ScAddress& rPos ) const
     return aAbs;
 }
 
-void ScSingleRefData::SetAddress( const ScAddress& rAddr, const ScAddress& rPos )
+void ScSingleRefData::SetAddress( ScSheetLimits& rLimits, const ScAddress& rAddr, const ScAddress& rPos )
 {
     if (Flags.bColRel)
         mnCol = rAddr.Col() - rPos.Col();
     else
         mnCol = rAddr.Col();
 
-    if (!ValidCol(rAddr.Col()))
+    if (!rLimits.ValidCol(rAddr.Col()))
         SetColDeleted(true);
 
     if (Flags.bRowRel)
@@ -219,7 +225,7 @@ void ScSingleRefData::SetAddress( const ScAddress& rAddr, const ScAddress& rPos 
     else
         mnRow = rAddr.Row();
 
-    if (!ValidRow(rAddr.Row()))
+    if (!rLimits.ValidRow(rAddr.Row()))
         SetRowDeleted(true);
 
     if (Flags.bTabRel)
@@ -371,7 +377,7 @@ void ScSingleRefData::Dump( int nIndent ) const
 }
 #endif
 
-void ScComplexRefData::InitFromRefAddresses( const ScRefAddress& rRef1, const ScRefAddress& rRef2, const ScAddress& rPos )
+void ScComplexRefData::InitFromRefAddresses( const ScDocument* pDoc, const ScRefAddress& rRef1, const ScRefAddress& rRef2, const ScAddress& rPos )
 {
     InitFlags();
     Ref1.SetColRel( rRef1.IsRelCol());
@@ -382,13 +388,13 @@ void ScComplexRefData::InitFromRefAddresses( const ScRefAddress& rRef1, const Sc
     Ref2.SetRowRel( rRef2.IsRelRow());
     Ref2.SetTabRel( rRef2.IsRelTab());
     Ref2.SetFlag3D( rRef1.Tab() != rRef2.Tab());
-    SetRange( ScRange( rRef1.GetAddress(), rRef2.GetAddress()), rPos);
+    SetRange( pDoc->GetSheetLimits(), ScRange( rRef1.GetAddress(), rRef2.GetAddress()), rPos);
 }
 
-ScComplexRefData& ScComplexRefData::Extend( const ScSingleRefData & rRef, const ScAddress & rPos )
+ScComplexRefData& ScComplexRefData::Extend( ScSheetLimits& rLimits, const ScSingleRefData & rRef, const ScAddress & rPos )
 {
     bool bInherit3D = (Ref1.IsFlag3D() && !Ref2.IsFlag3D() && !rRef.IsFlag3D());
-    ScRange aAbsRange = toAbs(rPos);
+    ScRange aAbsRange = toAbs(rLimits, rPos);
 
     ScSingleRefData aRef = rRef;
     // If no sheet was given in the extending part, let it point to the same
@@ -402,7 +408,7 @@ ScComplexRefData& ScComplexRefData::Extend( const ScSingleRefData & rRef, const 
         else
             aRef.SetAbsTab( Ref2.Tab());
     }
-    ScAddress aAbs = aRef.toAbs(rPos);
+    ScAddress aAbs = aRef.toAbs(rLimits, rPos);
 
     if (aAbs.Col() < aAbsRange.aStart.Col())
         aAbsRange.aStart.SetCol(aAbs.Col());
@@ -459,35 +465,40 @@ ScComplexRefData& ScComplexRefData::Extend( const ScSingleRefData & rRef, const 
     if (rRef.IsRelName())
         Ref2.SetRelName(true);
 
-    SetRange(aAbsRange, rPos);
+    SetRange(rLimits, aAbsRange, rPos);
 
     return *this;
 }
 
-ScComplexRefData& ScComplexRefData::Extend( const ScComplexRefData & rRef, const ScAddress & rPos )
+ScComplexRefData& ScComplexRefData::Extend( ScSheetLimits& rLimits, const ScComplexRefData & rRef, const ScAddress & rPos )
 {
-    return Extend( rRef.Ref1, rPos).Extend( rRef.Ref2, rPos);
+    return Extend( rLimits, rRef.Ref1, rPos).Extend( rLimits, rRef.Ref2, rPos);
 }
 
-bool ScComplexRefData::Valid() const
+bool ScComplexRefData::Valid(const ScDocument* pDoc) const
 {
-    return Ref1.Valid() && Ref2.Valid();
+    return Ref1.Valid(pDoc) && Ref2.Valid(pDoc);
 }
 
-bool ScComplexRefData::ValidExternal() const
+bool ScComplexRefData::ValidExternal(const ScDocument* pDoc) const
 {
-    return Ref1.ValidExternal() && Ref2.ColValid() && Ref2.RowValid() && Ref1.Tab() <= Ref2.Tab();
+    return Ref1.ValidExternal(pDoc) && Ref2.ColValid(pDoc) && Ref2.RowValid(pDoc) && Ref1.Tab() <= Ref2.Tab();
 }
 
-ScRange ScComplexRefData::toAbs( const ScAddress& rPos ) const
+ScRange ScComplexRefData::toAbs( const ScDocument* pDoc, const ScAddress& rPos ) const
 {
-    return ScRange(Ref1.toAbs(rPos), Ref2.toAbs(rPos));
+    return toAbs(pDoc->GetSheetLimits(), rPos);
 }
 
-void ScComplexRefData::SetRange( const ScRange& rRange, const ScAddress& rPos )
+ScRange ScComplexRefData::toAbs( ScSheetLimits& rLimits, const ScAddress& rPos ) const
 {
-    Ref1.SetAddress(rRange.aStart, rPos);
-    Ref2.SetAddress(rRange.aEnd, rPos);
+    return ScRange(Ref1.toAbs(rLimits, rPos), Ref2.toAbs(rLimits, rPos));
+}
+
+void ScComplexRefData::SetRange( ScSheetLimits& rLimits, const ScRange& rRange, const ScAddress& rPos )
+{
+    Ref1.SetAddress(rLimits, rRange.aStart, rPos);
+    Ref2.SetAddress(rLimits, rRange.aEnd, rPos);
 }
 
 void ScComplexRefData::PutInOrder( const ScAddress& rPos )
@@ -495,7 +506,7 @@ void ScComplexRefData::PutInOrder( const ScAddress& rPos )
     ScSingleRefData::PutInOrder( Ref1, Ref2, rPos);
 }
 
-bool ScComplexRefData::IncEndColSticky( SCCOL nDelta, const ScAddress& rPos )
+bool ScComplexRefData::IncEndColSticky( const ScDocument* pDoc, SCCOL nDelta, const ScAddress& rPos )
 {
     SCCOL nCol1 = Ref1.IsColRel() ? Ref1.Col() + rPos.Col() : Ref1.Col();
     SCCOL nCol2 = Ref2.IsColRel() ? Ref2.Col() + rPos.Col() : Ref2.Col();
@@ -506,25 +517,25 @@ bool ScComplexRefData::IncEndColSticky( SCCOL nDelta, const ScAddress& rPos )
         return true;
     }
 
-    if (nCol2 == MAXCOL)
+    if (nCol2 == pDoc->MaxCol())
         // already sticky
         return false;
 
-    if (nCol2 < MAXCOL)
+    if (nCol2 < pDoc->MaxCol())
     {
-        SCCOL nCol = ::std::min( static_cast<SCCOL>(nCol2 + nDelta), MAXCOL);
+        SCCOL nCol = ::std::min( static_cast<SCCOL>(nCol2 + nDelta), pDoc->MaxCol());
         if (Ref2.IsColRel())
             Ref2.SetRelCol( nCol - rPos.Col());
         else
             Ref2.SetAbsCol( nCol);
     }
     else
-        Ref2.IncCol( nDelta);   // was greater than MAXCOL, caller should know..
+        Ref2.IncCol( nDelta);   // was greater than pDoc->.MaxCol(), caller should know...
 
     return true;
 }
 
-bool ScComplexRefData::IncEndRowSticky( SCROW nDelta, const ScAddress& rPos )
+bool ScComplexRefData::IncEndRowSticky( const ScDocument* pDoc, SCROW nDelta, const ScAddress& rPos )
 {
     SCROW nRow1 = Ref1.IsRowRel() ? Ref1.Row() + rPos.Row() : Ref1.Row();
     SCROW nRow2 = Ref2.IsRowRel() ? Ref2.Row() + rPos.Row() : Ref2.Row();
@@ -535,20 +546,20 @@ bool ScComplexRefData::IncEndRowSticky( SCROW nDelta, const ScAddress& rPos )
         return true;
     }
 
-    if (nRow2 == MAXROW)
+    if (nRow2 == pDoc->MaxRow())
         // already sticky
         return false;
 
-    if (nRow2 < MAXROW)
+    if (nRow2 < pDoc->MaxRow())
     {
-        SCROW nRow = ::std::min( static_cast<SCROW>(nRow2 + nDelta), MAXROW);
+        SCROW nRow = ::std::min( static_cast<SCROW>(nRow2 + nDelta), pDoc->MaxRow());
         if (Ref2.IsRowRel())
             Ref2.SetRelRow( nRow - rPos.Row());
         else
             Ref2.SetAbsRow( nRow);
     }
     else
-        Ref2.IncRow( nDelta);   // was greater than MAXROW, caller should know..
+        Ref2.IncRow( nDelta);   // was greater than pDoc->.MaxRow(), caller should know...
 
     return true;
 }

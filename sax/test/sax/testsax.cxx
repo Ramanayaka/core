@@ -40,7 +40,7 @@ using namespace ::com::sun::star::registry;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::xml::sax;
 
-// test szenarios
+// test scenarios
 
 namespace sax_test {
 
@@ -236,9 +236,8 @@ class TestDocumentHandler :
 {
 public:
     TestDocumentHandler( const Reference < XMultiServiceFactory >  &r , sal_Bool bPrint )
+      : m_bPrint(bPrint), m_xSMgr(r)
     {
-        m_xSMgr = r;
-        m_bPrint = bPrint;
     }
 
     // Error handler
@@ -757,7 +756,7 @@ sal_Bool SAL_CALL component_writeInfo(
 }
 
 SAL_DLLPUBLIC_EXPORT void * SAL_CALL component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
+    const char * pImplName, void * pServiceManager, void * pRegistryKey )
 {
     void * pRet = 0;
 

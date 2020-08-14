@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/dbcharsethelper.hxx"
+#include <dbcharsethelper.hxx>
 
-#include <connectivity/dbtools.hxx>
 #include <connectivity/dbcharset.hxx>
 
 using namespace ::dbtools;
 
-namespace svxform { namespace charset_helper
+namespace svxform::charset_helper
 {
 
     sal_Int32 getSupportedTextEncodings( ::std::vector< rtl_TextEncoding >& _rEncs )
@@ -43,7 +42,6 @@ namespace svxform { namespace charset_helper
         return _rEncs.size();
     }
 
-}
 }
 
 

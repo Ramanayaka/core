@@ -20,19 +20,19 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_EXCDOC_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_EXCDOC_HXX
 
-#include "excrecds.hxx"
 #include "xeroot.hxx"
-#include "root.hxx"
-#include "xeescher.hxx"
+#include "xerecord.hxx"
+#include "excrecds.hxx"
 #include <memory>
 
 // Forwards -
 
 class SvStream;
-
+class XclExpNote;
+class XclExpStream;
+class XclExpXmlStream;
 class XclExpChangeTrack;
 
-// class ExcTable -
 
 class XclExpCellTable;
 
@@ -40,9 +40,9 @@ class ExcTable : public XclExpRecordBase, public XclExpRoot
 {
 private:
     typedef XclExpRecordList< ExcBundlesheetBase >  ExcBoundsheetList;
-    typedef std::shared_ptr< XclExpCellTable >    XclExpCellTableRef;
-    typedef XclExpRecordList< XclExpNote >      XclExpNoteList;
-    typedef std::shared_ptr< XclExpNoteList >     XclExpNoteListRef;
+    typedef rtl::Reference< XclExpCellTable >       XclExpCellTableRef;
+    typedef XclExpRecordList< XclExpNote >          XclExpNoteList;
+    typedef rtl::Reference< XclExpNoteList >        XclExpNoteListRef;
 
     XclExpRecordList<>          aRecList;
     XclExpCellTableRef          mxCellTable;
@@ -78,7 +78,6 @@ friend class ExcTable;
 
 private:
     typedef XclExpRecordList< ExcTable >            ExcTableList;
-    typedef ExcTableList::RecordRefType             ExcTableRef;
     typedef XclExpRecordList< ExcBundlesheetBase >  ExcBoundsheetList;
     typedef ExcBoundsheetList::RecordRefType        ExcBoundsheetRef;
 

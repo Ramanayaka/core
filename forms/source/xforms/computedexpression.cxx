@@ -19,12 +19,9 @@
 
 
 #include "computedexpression.hxx"
-#include "unohelper.hxx"
 #include "evaluationcontext.hxx"
-#include "NameContainer.hxx"
 
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/xml/dom/NodeType.hpp>
 #include <com/sun/star/xml/xpath/XPathAPI.hpp>
 #include <com/sun/star/xml/xpath/XPathExtension.hpp>
 #include <com/sun/star/util/SearchAlgorithms2.hpp>
@@ -69,7 +66,7 @@ void ComputedExpression::setExpression( const OUString& rExpression )
 }
 
 
-bool ComputedExpression::_checkExpression( const sal_Char* pExpression ) const
+bool ComputedExpression::_checkExpression( const char* pExpression ) const
 {
     assert(pExpression && "no expression?");
 

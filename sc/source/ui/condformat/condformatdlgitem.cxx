@@ -10,8 +10,8 @@
 
 #include <utility>
 
-#include "scitems.hxx"
-#include "condformatdlgitem.hxx"
+#include <scitems.hxx>
+#include <condformatdlgitem.hxx>
 
 ScCondFormatDlgItem::ScCondFormatDlgItem(std::shared_ptr<ScConditionalFormatList> pCondFormats,
         sal_Int32 nItem, bool bManaged):
@@ -27,19 +27,15 @@ ScCondFormatDlgItem::~ScCondFormatDlgItem()
 {
 }
 
-bool ScCondFormatDlgItem::operator==(const SfxPoolItem& /*rItem*/) const
+bool ScCondFormatDlgItem::operator==(const SfxPoolItem& rItem) const
 {
+    assert(SfxPoolItem::operator==(rItem)); (void)rItem;
     return false;
 }
 
-SfxPoolItem* ScCondFormatDlgItem::Clone(SfxItemPool* /*pPool*/) const
+ScCondFormatDlgItem* ScCondFormatDlgItem::Clone(SfxItemPool* /*pPool*/) const
 {
     return new ScCondFormatDlgItem(*this);
-}
-
-SfxPoolItem* ScCondFormatDlgItem::Create(SvStream& /*rStrm*/, sal_uInt16 /*nVer*/) const
-{
-    return nullptr;
 }
 
 bool ScCondFormatDlgItem::IsManaged() const

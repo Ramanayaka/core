@@ -20,15 +20,12 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DCONNECTION_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DCONNECTION_HXX
 
-#include "file/FConnection.hxx"
+#include <file/FConnection.hxx>
 
-namespace connectivity
-{
-    namespace dbase
+namespace connectivity::dbase
     {
         class ODriver;
-        typedef file::OConnection ODbaseConnection_Base;
-        class ODbaseConnection : public ODbaseConnection_Base
+        class ODbaseConnection : public file::OConnection
         {
         protected:
             virtual ~ODbaseConnection() override;
@@ -44,7 +41,7 @@ namespace connectivity
             virtual css::uno::Reference< css::sdbc::XPreparedStatement > SAL_CALL prepareStatement( const OUString& sql ) override;
             virtual css::uno::Reference< css::sdbc::XPreparedStatement > SAL_CALL prepareCall( const OUString& sql ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DCONNECTION_HXX
 

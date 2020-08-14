@@ -15,15 +15,17 @@
 #include <sal/log.hxx>
 #include <assert.h>
 #include <time.h>
+#include <mutex>
 #include <random>
 #include <stdexcept>
+#if defined HAVE_VALGRIND_HEADERS
+#include <valgrind/memcheck.h>
+#endif
 
 // this is nothing but a simple wrapper around
 // the std::random generators
 
-namespace comphelper
-{
-namespace rng
+namespace comphelper::rng
 {
 
 // underlying random number generator
@@ -34,12 +36,21 @@ namespace rng
 // http://en.wikipedia.org/wiki/Mersenne_twister
 #define STD_RNG_ALGO  std::mt19937
 
+namespace {
+
 struct RandomNumberGenerator
 {
+    std::mutex mutex;
     STD_RNG_ALGO global_rng;
     RandomNumberGenerator()
     {
         bool bRepeatable = (getenv("SAL_RAND_REPEATABLE") != nullptr);
+        // valgrind on some platforms (e.g.Ubuntu16.04) does not support the new Intel RDRAND instructions,
+        // which leads to "Illegal Opcode" errors, so just turn off randomness.
+#if defined HAVE_VALGRIND_HEADERS
+        if (RUNNING_ON_VALGRIND)
+            bRepeatable = true;
+#endif
         if (bRepeatable)
         {
             global_rng.seed(42);
@@ -66,25 +77,33 @@ struct RandomNumberGenerator
 
 class theRandomNumberGenerator : public rtl::Static<RandomNumberGenerator, theRandomNumberGenerator> {};
 
+}
+
 // uniform ints [a,b] distribution
 int uniform_int_distribution(int a, int b)
 {
     std::uniform_int_distribution<int> dist(a, b);
-    return dist(theRandomNumberGenerator::get().global_rng);
+    auto & gen = theRandomNumberGenerator::get();
+    std::scoped_lock<std::mutex> g(gen.mutex);
+    return dist(gen.global_rng);
 }
 
 // uniform ints [a,b] distribution
 unsigned int uniform_uint_distribution(unsigned int a, unsigned int b)
 {
     std::uniform_int_distribution<unsigned int> dist(a, b);
-    return dist(theRandomNumberGenerator::get().global_rng);
+    auto & gen = theRandomNumberGenerator::get();
+    std::scoped_lock<std::mutex> g(gen.mutex);
+    return dist(gen.global_rng);
 }
 
 // uniform size_t [a,b] distribution
 size_t uniform_size_distribution(size_t a, size_t b)
 {
     std::uniform_int_distribution<size_t> dist(a, b);
-    return dist(theRandomNumberGenerator::get().global_rng);
+    auto & gen = theRandomNumberGenerator::get();
+    std::scoped_lock<std::mutex> g(gen.mutex);
+    return dist(gen.global_rng);
 }
 
 // uniform size_t [a,b) distribution
@@ -92,10 +111,11 @@ double uniform_real_distribution(double a, double b)
 {
     assert(a < b);
     std::uniform_real_distribution<double> dist(a, b);
-    return dist(theRandomNumberGenerator::get().global_rng);
+    auto & gen = theRandomNumberGenerator::get();
+    std::scoped_lock<std::mutex> g(gen.mutex);
+    return dist(gen.global_rng);
 }
 
-} // namespace
 } // namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

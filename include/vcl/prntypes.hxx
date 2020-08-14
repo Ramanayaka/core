@@ -20,8 +20,7 @@
 #ifndef INCLUDED_VCL_PRNTYPES_HXX
 #define INCLUDED_VCL_PRNTYPES_HXX
 
-#include <tools/solar.h>
-#include <i18nutil/paper.hxx>
+#include <sal/types.h>
 #include <o3tl/typed_flags_set.hxx>
 
 
@@ -66,7 +65,7 @@ namespace o3tl
     template<> struct typed_flags<PrintQueueFlags> : is_typed_flags<PrintQueueFlags, 0x01ffffff> {};
 }
 
-#define QUEUE_JOBS_DONTKNOW             ((sal_uLong)0xFFFFFFFF)
+constexpr inline sal_uInt32 QUEUE_JOBS_DONTKNOW = 0xFFFFFFFF;
 
 
 enum class PrinterCapType
@@ -81,6 +80,12 @@ enum class PrinterCapType
     PDF                = 9,
     ExternalDialog     = 10,
     UsePullModel       = 12,
+};
+
+enum class PrinterSetupMode
+{
+    SingleJob = 0,
+    DocumentGlobal = 1
 };
 
 #endif // INCLUDED_VCL_PRNTYPES_HXX

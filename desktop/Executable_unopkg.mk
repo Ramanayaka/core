@@ -16,8 +16,14 @@ $(eval $(call gb_Executable_use_static_libraries,unopkg,\
     winloader \
 ))
 
-$(eval $(call gb_Executable_add_exception_objects,unopkg,\
-    desktop/win32/source/guiloader/genericloader \
+$(eval $(call gb_Executable_use_system_win32_libs,unopkg,\
+    shell32 \
 ))
+
+$(eval $(call gb_Executable_add_exception_objects,unopkg,\
+    desktop/win32/source/officeloader/unopkg_exe \
+))
+
+$(eval $(call gb_Executable_add_default_nativeres,unopkg))
 
 # vim: set ts=4 sw=4 et:

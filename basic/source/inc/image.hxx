@@ -20,9 +20,9 @@
 #ifndef INCLUDED_BASIC_SOURCE_INC_IMAGE_HXX
 #define INCLUDED_BASIC_SOURCE_INC_IMAGE_HXX
 
-#include "sbintern.hxx"
+#include <basic/sbx.hxx>
 #include <rtl/ustring.hxx>
-#include <filefmt.hxx>
+#include "filefmt.hxx"
 #include <o3tl/typed_flags_set.hxx>
 
 // This class reads in the image that's been produced by the compiler
@@ -46,13 +46,12 @@ class SbiImage {
 
     SbxArrayRef    rTypes;          // User defined types
     SbxArrayRef    rEnums;          // Enum types
-    sal_uInt32*    pStringOff;      // StringId-Offsets
-    sal_Unicode*   pStrings;        // StringPool
-    char*          pCode;           // Code-Image
-    char*          pLegacyPCode;        // Code-Image
+    std::vector<sal_uInt32>  mvStringOffsets; // StringId-Offsets
+    std::unique_ptr<sal_Unicode[]> pStrings;        // StringPool
+    std::unique_ptr<char[]>        pCode;           // Code-Image
+    std::unique_ptr<char[]>        pLegacyPCode;        // Code-Image
     bool           bError;
     SbiImageFlags  nFlags;
-    short          nStrings;
     sal_uInt32     nStringSize;
     sal_uInt32     nCodeSize;
     sal_uInt16     nLegacyCodeSize;
@@ -64,8 +63,8 @@ class SbiImage {
                                     // routines for the compiler:
     void MakeStrings( short );      // establish StringPool
     void AddString( const OUString& );
-    void AddCode( char*, sal_uInt32 );
-    void AddType(SbxObject *);
+    void AddCode( std::unique_ptr<char[]>, sal_uInt32 );
+    void AddType(SbxObject const *);
     void AddEnum(SbxObject *);
 
 public:
@@ -82,15 +81,15 @@ public:
                             // nVer is set to version
                             // of image
     bool Save( SvStream&, sal_uInt32 = B_CURVERSION );
-    bool IsError()                  { return bError;    }
+    bool IsError() const            { return bError;    }
 
-    const char* GetCode() const     { return pCode;     }
+    const char* GetCode() const     { return pCode.get();     }
     sal_uInt32  GetCodeSize() const { return nCodeSize; }
     sal_uInt16  GetBase() const     { return nDimBase;  }
     OUString    GetString( short nId ) const;
     const SbxObject* FindType (const OUString& aTypeName) const;
 
-    const SbxArrayRef& GetEnums()          { return rEnums; }
+    const SbxArrayRef& GetEnums() const { return rEnums; }
 
     void        SetFlag( SbiImageFlags n ) { nFlags |= n;      }
     bool        IsFlag( SbiImageFlags n ) const { return bool(nFlags & n); }

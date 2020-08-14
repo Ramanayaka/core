@@ -22,11 +22,13 @@
 
 #include <memory>
 #include <ucbhelper/providerhelper.hxx>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include "pkguri.hxx"
 
-namespace com { namespace sun { namespace star { namespace container {
+namespace com::sun::star::container {
     class XHierarchicalNameAccess;
-} } } }
+}
 
 namespace package_ucp {
 
@@ -67,13 +69,6 @@ public:
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    static OUString getImplementationName_Static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-
-    static css::uno::Reference< css::lang::XSingleServiceFactory >
-    createServiceFactory( const css::uno::Reference<
-                          css::lang::XMultiServiceFactory >& rxServiceMgr );
 
     // XContentProvider
     virtual css::uno::Reference< css::ucb::XContent > SAL_CALL

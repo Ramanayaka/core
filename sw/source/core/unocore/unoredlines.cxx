@@ -22,17 +22,17 @@
 #include <cppuhelper/supportsservice.hxx>
 
 #include <vcl/svapp.hxx>
+#include <o3tl/safeint.hxx>
+#include <osl/diagnose.h>
 
 #include <unoredlines.hxx>
 #include <unoredline.hxx>
-#include <unomid.h>
 #include <pagedesc.hxx>
-#include "poolfmt.hxx"
+#include <poolfmt.hxx>
 #include <doc.hxx>
 #include <IDocumentStylePoolAccess.hxx>
 #include <docary.hxx>
 #include <redline.hxx>
-#include <calbck.hxx>
 
 using namespace ::com::sun::star;
 
@@ -60,15 +60,11 @@ uno::Any SwXRedlines::getByIndex(sal_Int32 nIndex)
     if(!IsValid())
         throw uno::RuntimeException();
     const SwRedlineTable& rRedTable = GetDoc()->getIDocumentRedlineAccess().GetRedlineTable();
-    uno::Any aRet;
-    if ((rRedTable.size() > static_cast<size_t>(nIndex)) && (nIndex >= 0))
-    {
-        uno::Reference <beans::XPropertySet> xRet = SwXRedlines::GetObject( *rRedTable[nIndex], *GetDoc() );
-        aRet <<= xRet;
-    }
-    else
+    if ((nIndex < 0) || (rRedTable.size() <= o3tl::make_unsigned(nIndex)))
         throw lang::IndexOutOfBoundsException();
-    return aRet;
+
+    uno::Reference <beans::XPropertySet> xRet = SwXRedlines::GetObject( *rRedTable[nIndex], *GetDoc() );
+    return uno::Any(xRet);
 }
 
 uno::Reference< container::XEnumeration >  SwXRedlines::createEnumeration()
@@ -90,12 +86,12 @@ sal_Bool SwXRedlines::hasElements(  )
     if(!IsValid())
         throw uno::RuntimeException();
     const SwRedlineTable& rRedTable = GetDoc()->getIDocumentRedlineAccess().GetRedlineTable();
-    return rRedTable.size() > 0;
+    return !rRedTable.empty();
 }
 
 OUString SwXRedlines::getImplementationName()
 {
-    return OUString("SwXRedlines");
+    return "SwXRedlines";
 }
 
 sal_Bool SwXRedlines::supportsService(const OUString& ServiceName)
@@ -109,27 +105,19 @@ uno::Sequence< OUString > SwXRedlines::getSupportedServiceNames()
     return uno::Sequence< OUString >();
 }
 
-beans::XPropertySet*    SwXRedlines::GetObject( SwRangeRedline& rRedline, SwDoc& rDoc )
+beans::XPropertySet* SwXRedlines::GetObject( SwRangeRedline& rRedline, SwDoc& rDoc )
 {
-    SwPageDesc* pStdDesc = rDoc.getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD);
-    SwIterator<SwXRedline,SwPageDesc> aIter(*pStdDesc);
-    SwXRedline* pxRedline = aIter.First();
-    while(pxRedline)
-    {
-        if(pxRedline->GetRedline() == &rRedline)
-            break;
-        pxRedline = aIter.Next();
-    }
-    if( !pxRedline )
-        pxRedline = new SwXRedline(rRedline, rDoc);
-    return pxRedline;
+    SwXRedline* pXRedline(nullptr);
+    sw::FindRedlineHint aHint(rRedline, &pXRedline);
+    rDoc.getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->GetNotifier().Broadcast(aHint);
+    return pXRedline ? pXRedline : new SwXRedline(rRedline, rDoc);
 }
 
 SwXRedlineEnumeration::SwXRedlineEnumeration(SwDoc& rDoc) :
     pDoc(&rDoc),
     nCurrentIndex(0)
 {
-    pDoc->getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->Add(this);
+    StartListening(pDoc->getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->GetNotifier());
 }
 
 SwXRedlineEnumeration::~SwXRedlineEnumeration()
@@ -158,7 +146,7 @@ uno::Any SwXRedlineEnumeration::nextElement()
 
 OUString SwXRedlineEnumeration::getImplementationName()
 {
-    return OUString("SwXRedlineEnumeration");
+    return "SwXRedlineEnumeration";
 }
 
 sal_Bool SwXRedlineEnumeration::supportsService(const OUString& ServiceName)
@@ -171,10 +159,9 @@ uno::Sequence< OUString > SwXRedlineEnumeration::getSupportedServiceNames()
     return uno::Sequence< OUString >();
 }
 
-void SwXRedlineEnumeration::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew)
+void SwXRedlineEnumeration::Notify( const SfxHint& rHint )
 {
-    ClientModify(this, pOld, pNew);
-    if(!GetRegisteredIn())
+    if(rHint.GetId() == SfxHintId::Dying)
         pDoc = nullptr;
 }
 

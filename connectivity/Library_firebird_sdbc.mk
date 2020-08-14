@@ -17,12 +17,13 @@ $(eval $(call gb_Library_use_externals,firebird_sdbc,\
 ))
 
 $(eval $(call gb_Library_set_include,firebird_sdbc,\
+	-I$(SRCDIR)/connectivity/inc \
 	-I$(SRCDIR)/connectivity/source/inc \
 	$$(INCLUDE) \
 	-I$(WORKDIR)/YaccTarget/connectivity/source/parse \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,firebird_sdbc,$(SRCDIR)/connectivity/inc/pch/precompiled_firebird_sdbc))
+$(eval $(call gb_Library_set_precompiled_header,firebird_sdbc,connectivity/inc/pch/precompiled_firebird_sdbc))
 
 $(eval $(call gb_Library_use_libraries,firebird_sdbc, \
     comphelper \
@@ -33,6 +34,7 @@ $(eval $(call gb_Library_use_libraries,firebird_sdbc, \
     salhelper \
     utl \
     svt \
+    tl \
     vcl \
 ))
 
@@ -52,7 +54,6 @@ $(eval $(call gb_Library_add_exception_objects,firebird_sdbc,\
     connectivity/source/drivers/firebird/PreparedStatement \
     connectivity/source/drivers/firebird/ResultSet \
     connectivity/source/drivers/firebird/ResultSetMetaData \
-    connectivity/source/drivers/firebird/Services \
     connectivity/source/drivers/firebird/Statement \
     connectivity/source/drivers/firebird/StatementCommonBase \
     connectivity/source/drivers/firebird/Table \

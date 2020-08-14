@@ -27,28 +27,23 @@
 #include <comphelper/processfactory.hxx>
 #include <comphelper/string.hxx>
 #include <rtl/ustring.hxx>
-#include <svl/inettype.hxx>
 #include <svtools/DocumentInfoPreview.hxx>
-#include <svtools/imagemgr.hxx>
-#include <svtools/svmedit2.hxx>
-#include <vcl/builder.hxx>
+#include <svmedit2.hxx>
 #include <vcl/txtattr.hxx>
 #include <vcl/settings.hxx>
-#include <vcl/builderfactory.hxx>
+#include <vcl/svapp.hxx>
 #include <tools/datetime.hxx>
-#include <tools/urlobj.hxx>
-#include <unotools/ucbhelper.hxx>
+#include <tools/diagnose_ex.h>
+#include <unotools/localedatawrapper.hxx>
 
-#include "fileview.hxx"
-#include "templwin.hrc"
+#include <templwin.hrc>
 #include "templwin.hxx"
 
 namespace svtools {
 
-ODocumentInfoPreview::ODocumentInfoPreview(vcl::Window * pParent, WinBits nBits):
-    Window(pParent, WB_DIALOGCONTROL),
-    m_pEditWin( VclPtr<ExtMultiLineEdit>::Create(this, nBits) ),
-    m_xInfoTable(new SvtDocInfoTable_Impl)
+ODocumentInfoPreview::ODocumentInfoPreview(vcl::Window * pParent, WinBits nBits)
+    : Window(pParent, WB_DIALOGCONTROL)
+    , m_pEditWin( VclPtr<ExtMultiLineEdit>::Create(this, nBits) )
 {
     m_pEditWin->SetLeftMargin(10);
     m_pEditWin->Show();
@@ -65,8 +60,6 @@ void ODocumentInfoPreview::dispose()
     m_pEditWin.disposeAndClear();
     Window::dispose();
 }
-
-VCL_BUILDER_FACTORY_ARGS(ODocumentInfoPreview, WB_BORDER | WB_READONLY)
 
 void ODocumentInfoPreview::Resize() {
     m_pEditWin->SetPosSizePixel(Point(0, 0), GetOutputSize());
@@ -101,9 +94,9 @@ void ODocumentInfoPreview::fill(
         xDocProps->getUserDefinedProperties(), css::uno::UNO_QUERY_THROW);
     css::uno::Reference< css::beans::XPropertySetInfo > info(
         user->getPropertySetInfo());
-    css::uno::Sequence< css::beans::Property > props(info->getProperties());
-    for (sal_Int32 i = 0; i < props.getLength(); ++i) {
-        OUString name(props[i].Name);
+    const css::uno::Sequence< css::beans::Property > props(info->getProperties());
+    for (const auto& rProp : props) {
+        OUString name(rProp.Name);
         css::uno::Any aAny(user->getPropertyValue(name));
         css::uno::Reference< css::script::XTypeConverter > conv(
             css::script::Converter::create(
@@ -112,8 +105,8 @@ void ODocumentInfoPreview::fill(
         try {
             value = conv->convertToSimpleType(aAny, css::uno::TypeClass_STRING).
                 get< OUString >();
-        } catch (css::script::CannotConvertException & e) {
-            SAL_INFO("svtools.contnr", "ignored CannotConvertException " << e.Message);
+        } catch (css::script::CannotConvertException &) {
+            TOOLS_INFO_EXCEPTION("svtools.contnr", "ignored");
         }
         if (!value.isEmpty()) {
             insertEntry(name, value);
@@ -141,7 +134,7 @@ void ODocumentInfoPreview::insertEntry(
 void ODocumentInfoPreview::insertNonempty(long id, OUString const & value)
 {
     if (!value.isEmpty()) {
-        insertEntry(m_xInfoTable->GetString(id), value);
+        insertEntry(SvtDocInfoTable_Impl::GetString(id), value);
     }
 }
 
@@ -157,7 +150,7 @@ void ODocumentInfoPreview::insertDateTime(
         OUStringBuffer buf(rLocaleWrapper.getDate(aToolsDT));
         buf.append(", ");
         buf.append(rLocaleWrapper.getTime(aToolsDT));
-        insertEntry(m_xInfoTable->GetString(id), buf.makeStringAndClear());
+        insertEntry(SvtDocInfoTable_Impl::GetString(id), buf.makeStringAndClear());
     }
 }
 

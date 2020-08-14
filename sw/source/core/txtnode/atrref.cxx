@@ -22,7 +22,6 @@
 #include <hintids.hxx>
 #include <hints.hxx>
 #include <txtrfmrk.hxx>
-#include <swfont.hxx>
 
 SwFormatRefMark::~SwFormatRefMark( )
 {
@@ -30,27 +29,28 @@ SwFormatRefMark::~SwFormatRefMark( )
 
 SwFormatRefMark::SwFormatRefMark( const OUString& rName )
     : SfxPoolItem(RES_TXTATR_REFMARK)
-    , SwModify(nullptr)
-    , pTextAttr(nullptr)
-    , aRefName(rName)
+    , SwModify()
+    , m_pTextAttr(nullptr)
+    , m_aRefName(rName)
 {
 }
 
 SwFormatRefMark::SwFormatRefMark( const SwFormatRefMark& rAttr )
     : SfxPoolItem(RES_TXTATR_REFMARK)
-    , SwModify(nullptr)
-    , pTextAttr(nullptr)
-    , aRefName(rAttr.aRefName)
+    , SwModify()
+    , BroadcasterMixin()
+    , m_pTextAttr(nullptr)
+    , m_aRefName(rAttr.m_aRefName)
 {
 }
 
 bool SwFormatRefMark::operator==( const SfxPoolItem& rAttr ) const
 {
     assert(SfxPoolItem::operator==(rAttr));
-    return aRefName == static_cast<const SwFormatRefMark&>(rAttr).aRefName;
+    return m_aRefName == static_cast<const SwFormatRefMark&>(rAttr).m_aRefName;
 }
 
-SfxPoolItem* SwFormatRefMark::Clone( SfxItemPool* ) const
+SwFormatRefMark* SwFormatRefMark::Clone( SfxItemPool* ) const
 {
     return new SwFormatRefMark( *this );
 }
@@ -80,7 +80,7 @@ SwTextRefMark::SwTextRefMark( SwFormatRefMark& rAttr,
     , m_pTextNode( nullptr )
     , m_pEnd( nullptr )
 {
-    rAttr.pTextAttr = this;
+    rAttr.m_pTextAttr = this;
     if ( pEnd )
     {
         m_nEnd = *pEnd;
@@ -94,9 +94,16 @@ SwTextRefMark::SwTextRefMark( SwFormatRefMark& rAttr,
     SetOverlapAllowedAttr( true );
 }
 
-sal_Int32* SwTextRefMark::GetEnd()
+const sal_Int32* SwTextRefMark::GetEnd() const
 {
     return m_pEnd;
+}
+
+void SwTextRefMark::SetEnd(sal_Int32 n)
+{
+    *m_pEnd = n;
+    if (m_pHints)
+        m_pHints->EndPosChanged();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

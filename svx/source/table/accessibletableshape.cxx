@@ -21,15 +21,19 @@
 #include <com/sun/star/table/XMergeableCell.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
-#include <comphelper/accessiblewrapper.hxx>
 #include <vcl/svapp.hxx>
 
 #include <AccessibleTableShape.hxx>
 #include <svx/sdr/table/tablecontroller.hxx>
 #include "accessiblecell.hxx"
+#include <cell.hxx>
 
 #include <algorithm>
+#include <unordered_map>
 
 #include <cppuhelper/implbase.hxx>
 #include <svx/svdotable.hxx>
@@ -50,15 +54,7 @@ using namespace ::com::sun::star::container;
 namespace accessibility
 {
 
-struct hash
-{
-    std::size_t operator()( const Reference< XCell >& xCell ) const
-    {
-        return std::size_t( xCell.get() );
-    }
-};
-
-typedef std::unordered_map< Reference< XCell >, rtl::Reference< AccessibleCell >, hash > AccessibleCellMap;
+typedef std::unordered_map< Reference< XCell >, rtl::Reference< AccessibleCell > > AccessibleCellMap;
 
 class AccessibleTableShapeImpl : public cppu::WeakImplHelper< XModifyListener >
 {
@@ -126,9 +122,9 @@ void AccessibleTableShapeImpl::dispose()
     if( mxTable.is() )
     {
         //remove all the cell's acc object in table's dispose.
-        for( AccessibleCellMap::iterator iter( maChildMap.begin() ); iter != maChildMap.end(); ++iter )
+        for( auto& rEntry : maChildMap )
         {
-            (*iter).second->dispose();
+            rEntry.second->dispose();
         }
         maChildMap.clear();
         Reference< XModifyListener > xListener( this );
@@ -225,7 +221,10 @@ void AccessibleTableShapeImpl::getColumnAndRow( sal_Int32 nChildIndex, sal_Int32
 // XModifyListener
 void SAL_CALL AccessibleTableShapeImpl::modified( const EventObject& /*aEvent*/ )
 {
-    if( mxTable.is() ) try
+    if( !mxTable.is() )
+        return;
+
+    try
     {
         // structural changes may have happened to the table, validate all accessible cell instances
         AccessibleCellMap aTempChildMap;
@@ -302,9 +301,9 @@ void SAL_CALL AccessibleTableShapeImpl::modified( const EventObject& /*aEvent*/ 
         // all accessible cell instances still left in aTempChildMap must be disposed
         // as they are no longer part of the table
 
-        for( AccessibleCellMap::iterator iter( aTempChildMap.begin() ); iter != aTempChildMap.end(); ++iter )
+        for( auto& rEntry : aTempChildMap )
         {
-            (*iter).second->dispose();
+            rEntry.second->dispose();
         }
         //notify bridge to update the acc cache.
         AccessibleTableShape *pAccTable = dynamic_cast <AccessibleTableShape *> (mxAccessible.get());
@@ -397,13 +396,13 @@ void SAL_CALL AccessibleTableShape::release(  ) throw ()
 
 OUString SAL_CALL AccessibleTableShape::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.accessibility.AccessibleTableShape" );
+    return "com.sun.star.comp.accessibility.AccessibleTableShape";
 }
 
 
 OUString AccessibleTableShape::CreateAccessibleBaseName()
 {
-    return OUString("TableShape");
+    return "TableShape";
 }
 
 
@@ -710,20 +709,20 @@ void SAL_CALL AccessibleTableShape::selectAccessibleChild( sal_Int32 nChildIndex
 
     // todo, select table shape?!?
     SvxTableController* pController = getTableController();
-    if( pController )
-    {
-        CellPos aFirstPos( aPos ), aLastPos( aPos );
-        if( pController->hasSelectedCells() )
-        {
-            pController->getSelectedCells( aFirstPos, aLastPos );
+    if( !pController )
+        return;
 
-            aFirstPos.mnRow = std::min( aFirstPos.mnRow, aPos.mnRow );
-            aFirstPos.mnCol = std::min( aFirstPos.mnCol, aPos.mnCol );
-            aLastPos.mnRow = std::max( aLastPos.mnRow, aPos.mnRow );
-            aLastPos.mnCol = std::max( aLastPos.mnCol, aPos.mnCol );
-        }
-        pController->setSelectedCells( aFirstPos, aLastPos );
+    CellPos aFirstPos( aPos ), aLastPos( aPos );
+    if( pController->hasSelectedCells() )
+    {
+        pController->getSelectedCells( aFirstPos, aLastPos );
+
+        aFirstPos.mnRow = std::min( aFirstPos.mnRow, aPos.mnRow );
+        aFirstPos.mnCol = std::min( aFirstPos.mnCol, aPos.mnCol );
+        aLastPos.mnRow = std::max( aLastPos.mnRow, aPos.mnRow );
+        aLastPos.mnCol = std::max( aLastPos.mnCol, aPos.mnCol );
     }
+    pController->setSelectedCells( aFirstPos, aLastPos );
 }
 
 
@@ -739,7 +738,7 @@ sal_Bool SAL_CALL AccessibleTableShape::isAccessibleChildSelected( sal_Int32 nCh
 
 void SAL_CALL AccessibleTableShape::clearAccessibleSelection()
 {
-   SolarMutexGuard aSolarGuard;
+    SolarMutexGuard aSolarGuard;
 
     SvxTableController* pController = getTableController();
     if( pController )
@@ -749,7 +748,7 @@ void SAL_CALL AccessibleTableShape::clearAccessibleSelection()
 
 void SAL_CALL AccessibleTableShape::selectAllAccessibleChildren()
 {
-   SolarMutexGuard aSolarGuard;
+    SolarMutexGuard aSolarGuard;
 
    // todo: force selection of shape?
     SvxTableController* pController = getTableController();
@@ -768,8 +767,8 @@ sal_Int32 SAL_CALL AccessibleTableShape::getSelectedAccessibleChildCount()
         CellPos aFirstPos, aLastPos;
         pController->getSelectedCells( aFirstPos, aLastPos );
 
-        const sal_Int32 nSelectedColumns = std::max( (sal_Int32)0, aLastPos.mnCol - aFirstPos.mnCol ) + 1;
-        const sal_Int32 nSelectedRows = std::max( (sal_Int32)0, aLastPos.mnRow - aFirstPos.mnRow ) + 1;
+        const sal_Int32 nSelectedColumns = std::max( sal_Int32(0), aLastPos.mnCol - aFirstPos.mnCol ) + 1;
+        const sal_Int32 nSelectedRows = std::max( sal_Int32(0), aLastPos.mnRow - aFirstPos.mnRow ) + 1;
         return nSelectedRows * nSelectedColumns;
     }
 
@@ -800,29 +799,29 @@ Reference< XAccessible > SAL_CALL AccessibleTableShape::getSelectedAccessibleChi
 
 void SAL_CALL AccessibleTableShape::deselectAccessibleChild( sal_Int32 nChildIndex )
 {
-   SolarMutexGuard aSolarGuard;
+    SolarMutexGuard aSolarGuard;
     CellPos aPos;
     mxImpl->getColumnAndRow( nChildIndex, aPos.mnCol, aPos.mnRow );
 
     // todo, select table shape?!?
     SvxTableController* pController = getTableController();
-    if( pController && pController->hasSelectedCells() )
-    {
-        CellPos aFirstPos, aLastPos;
-        pController->getSelectedCells( aFirstPos, aLastPos );
+    if( !(pController && pController->hasSelectedCells()) )
+        return;
 
-        // create a selection where aPos is not part of anymore
-        aFirstPos.mnRow = std::min( aFirstPos.mnRow, aPos.mnRow+1 );
-        aFirstPos.mnCol = std::min( aFirstPos.mnCol, aPos.mnCol+1 );
-        aLastPos.mnRow = std::max( aLastPos.mnRow, aPos.mnRow-1 );
-        aLastPos.mnCol = std::max( aLastPos.mnCol, aPos.mnCol-1 );
+    CellPos aFirstPos, aLastPos;
+    pController->getSelectedCells( aFirstPos, aLastPos );
 
-        // new selection may be invalid (child to deselect is not at a border of the selection but in between)
-        if( (aFirstPos.mnRow > aLastPos.mnRow) || (aFirstPos.mnCol > aLastPos.mnCol) )
-            pController->clearSelection(); // if selection is invalid, clear all
-        else
-            pController->setSelectedCells( aFirstPos, aLastPos );
-    }
+    // create a selection where aPos is not part of anymore
+    aFirstPos.mnRow = std::min( aFirstPos.mnRow, aPos.mnRow+1 );
+    aFirstPos.mnCol = std::min( aFirstPos.mnCol, aPos.mnCol+1 );
+    aLastPos.mnRow = std::max( aLastPos.mnRow, aPos.mnRow-1 );
+    aLastPos.mnCol = std::max( aLastPos.mnCol, aPos.mnCol-1 );
+
+    // new selection may be invalid (child to deselect is not at a border of the selection but in between)
+    if( (aFirstPos.mnRow > aLastPos.mnRow) || (aFirstPos.mnCol > aLastPos.mnCol) )
+        pController->clearSelection(); // if selection is invalid, clear all
+    else
+        pController->setSelectedCells( aFirstPos, aLastPos );
 }
 
 // XAccessibleTableSelection
@@ -868,7 +867,7 @@ sal_Int32 AccessibleTableShape::GetIndexOfSelectedChild(
     sal_Int32 nChildren = const_cast<AccessibleTableShape*>(this)->getAccessibleChildCount();
 
     if( nSelectedChildIndex >= nChildren )
-        return -1L;
+        return -1;
 
     sal_Int32 n = 0;
     while( n < nChildren )
@@ -883,7 +882,7 @@ sal_Int32 AccessibleTableShape::GetIndexOfSelectedChild(
         ++n;
     }
 
-    return n < nChildren ? n : -1L;
+    return n < nChildren ? n : -1;
 }
 void AccessibleTableShape::getColumnAndRow( sal_Int32 nChildIndex, sal_Int32& rnColumn, sal_Int32& rnRow )
 {
@@ -900,32 +899,32 @@ void  SAL_CALL AccessibleTableShape::selectionChanged (const EventObject& rEvent
 {
     //sdr::table::CellRef xCellRef = static_cast< sdr::table::CellRef > (rEvent.Source);
     Reference< XCell > xCell(rEvent.Source, UNO_QUERY);
-    if (xCell.is())
+    if (!xCell.is())
+        return;
+
+    rtl::Reference< AccessibleCell > xAccCell = mxImpl->getAccessibleCell( xCell );
+    if (!xAccCell.is())
+        return;
+
+    sal_Int32 nIndex = xAccCell->getAccessibleIndexInParent(),
+        nCount = getSelectedAccessibleChildCount();
+    bool bSelected = isAccessibleChildSelected(nIndex);
+    if (mnPreviousSelectionCount == 0 && nCount > 0 && bSelected)
     {
-        rtl::Reference< AccessibleCell > xAccCell = mxImpl->getAccessibleCell( xCell );
-        if (xAccCell.is())
-        {
-            sal_Int32 nIndex = xAccCell->getAccessibleIndexInParent(),
-                nCount = getSelectedAccessibleChildCount();
-            bool bSelected = isAccessibleChildSelected(nIndex);
-            if (mnPreviousSelectionCount == 0 && nCount > 0 && bSelected)
-            {
-                xAccCell->SetState(AccessibleStateType::SELECTED);
-                xAccCell->CommitChange(AccessibleEventId::SELECTION_CHANGED, Any(), Any());
-            }
-            else if (bSelected)
-            {
-                xAccCell->SetState(AccessibleStateType::SELECTED);
-                xAccCell->CommitChange(AccessibleEventId::SELECTION_CHANGED_ADD, Any(), Any());
-            }
-            else
-            {
-                xAccCell->ResetState(AccessibleStateType::SELECTED);
-                xAccCell->CommitChange(AccessibleEventId::SELECTION_CHANGED_REMOVE, Any(), Any());
-            }
-            mnPreviousSelectionCount = nCount;
-        }
+        xAccCell->SetState(AccessibleStateType::SELECTED);
+        xAccCell->CommitChange(AccessibleEventId::SELECTION_CHANGED, Any(), Any());
     }
+    else if (bSelected)
+    {
+        xAccCell->SetState(AccessibleStateType::SELECTED);
+        xAccCell->CommitChange(AccessibleEventId::SELECTION_CHANGED_ADD, Any(), Any());
+    }
+    else
+    {
+        xAccCell->ResetState(AccessibleStateType::SELECTED);
+        xAccCell->CommitChange(AccessibleEventId::SELECTION_CHANGED_REMOVE, Any(), Any());
+    }
+    mnPreviousSelectionCount = nCount;
 }
 // Get the currently active cell which is text editing
 AccessibleCell* AccessibleTableShape::GetActiveAccessibleCell()
@@ -938,7 +937,7 @@ AccessibleCell* AccessibleTableShape::GetActiveAccessibleCell()
         sdr::table::SdrTableObj* pTableObj = pController->GetTableObj();
         if ( pTableObj )
         {
-            sdr::table::CellRef xCellRef (pTableObj->getActiveCell());
+            const sdr::table::CellRef& xCellRef (pTableObj->getActiveCell());
             if ( xCellRef.is() )
             {
                 try

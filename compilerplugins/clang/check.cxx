@@ -9,10 +9,20 @@
 
 #include <cassert>
 
+#include <clang/AST/DeclCXX.h>
+#include <clang/AST/DeclTemplate.h>
+
 #include "check.hxx"
-#include "compat.hxx"
 
 namespace loplugin {
+
+TypeCheck TypeCheck::NonConst() const {
+    return !type_.isNull() && !type_.isConstQualified()
+        ? *this : TypeCheck();
+        // returning TypeCheck(type_.getUnqualifiedType()) instead of *this
+        // may look tempting, but could remove sugar we might be interested in
+        // checking for
+}
 
 TypeCheck TypeCheck::NonConstVolatile() const {
     return
@@ -54,6 +64,16 @@ TypeCheck TypeCheck::ConstVolatile() const {
         // checking for
 }
 
+TypeCheck TypeCheck::ConstNonVolatile() const {
+    return
+        (!type_.isNull() && type_.isConstQualified()
+         && !type_.isVolatileQualified())
+        ? *this : TypeCheck();
+        // returning TypeCheck(type_.getUnqualifiedType()) instead of *this
+        // may look tempting, but could remove sugar we might be interested in
+        // checking for
+}
+
 TerminalCheck TypeCheck::Void() const {
     return TerminalCheck(
         !type_.isNull()
@@ -80,7 +100,7 @@ TerminalCheck TypeCheck::AnyBoolean() const {
         n == "sal_Bool" || n == "BOOL" || n == "Boolean" || n == "FT_Bool"
         || n == "FcBool" || n == "GLboolean" || n == "NPBool" || n == "TW_BOOL"
         || n == "UBool" || n == "boolean" || n == "dbus_bool_t"
-        || n == "gboolean" || n == "hb_bool_t" || n == "jboolean");
+        || n == "gboolean" || n == "hb_bool_t" || n == "jboolean" || n == "my_bool");
 }
 
 TypeCheck TypeCheck::LvalueReference() const {
@@ -122,6 +142,21 @@ TypeCheck TypeCheck::Typedef() const {
     return TypeCheck();
 }
 
+DeclCheck TypeCheck::TemplateSpecializationClass() const {
+    if (!type_.isNull()) {
+        if (auto const t = type_->getAs<clang::TemplateSpecializationType>()) {
+            if (!t->isTypeAlias()) {
+                if (auto const d = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
+                        t->getTemplateName().getAsTemplateDecl()))
+                {
+                    return DeclCheck(d->getTemplatedDecl());
+                }
+            }
+        }
+    }
+    return DeclCheck();
+}
+
 TypeCheck TypeCheck::NotSubstTemplateTypeParmType() const {
     return
         (!type_.isNull()
@@ -142,17 +177,44 @@ ContextCheck DeclCheck::MemberFunction() const {
     return ContextCheck(m == nullptr ? nullptr : m->getParent());
 }
 
+namespace {
+
+bool isGlobalNamespace(clang::DeclContext const * context) {
+    assert(context != nullptr);
+    return (context->isLookupContext() ? context : context->getLookupParent())->isTranslationUnit();
+}
+
+}
+
 TerminalCheck ContextCheck::GlobalNamespace() const {
-    return TerminalCheck(
-        context_ != nullptr
-        && ((compat::isLookupContext(*context_)
-             ? context_ : context_->getLookupParent())
-            ->isTranslationUnit()));
+    return TerminalCheck(context_ != nullptr && isGlobalNamespace(context_));
 }
 
 TerminalCheck ContextCheck::StdNamespace() const {
     return TerminalCheck(
-        context_ != nullptr && compat::isStdNamespace(*context_));
+        context_ != nullptr && context_->isStdNamespace());
+}
+
+namespace {
+
+bool isStdOrNestedNamespace(clang::DeclContext const * context) {
+    assert(context != nullptr);
+    if (!context->isNamespace()) {
+        return false;
+    }
+    if (isGlobalNamespace(context)) {
+        return false;
+    }
+    if (context->isStdNamespace()) {
+        return true;
+    }
+    return isStdOrNestedNamespace(context->getParent());
+}
+
+}
+
+TerminalCheck ContextCheck::StdOrNestedNamespace() const {
+    return TerminalCheck(context_ != nullptr && isStdOrNestedNamespace(context_));
 }
 
 ContextCheck ContextCheck::AnonymousNamespace() const {
@@ -163,13 +225,7 @@ ContextCheck ContextCheck::AnonymousNamespace() const {
 
 namespace {
 
-bool BaseCheckNotSomethingInterestingSubclass(
-    const clang::CXXRecordDecl *BaseDefinition
-#if CLANG_VERSION < 30800
-    , void *
-#endif
-    )
-{
+bool BaseCheckNotSomethingInterestingSubclass(const clang::CXXRecordDecl *BaseDefinition) {
     if (BaseDefinition) {
         auto tc = TypeCheck(BaseDefinition);
         if (tc.Class("Dialog").GlobalNamespace() || tc.Class("SfxPoolItem").GlobalNamespace()) {
@@ -193,7 +249,7 @@ bool isDerivedFromSomethingInteresting(const clang::CXXRecordDecl *decl) {
     if (// not sure what hasAnyDependentBases() does,
         // but it avoids classes we don't want, e.g. WeakAggComponentImplHelper1
         !decl->hasAnyDependentBases() &&
-        !compat::forallBases(*decl, BaseCheckNotSomethingInterestingSubclass, nullptr, true)) {
+        !decl->forallBases(BaseCheckNotSomethingInterestingSubclass)) {
         return true;
     }
     return false;
@@ -206,32 +262,116 @@ bool isExtraWarnUnusedType(clang::QualType type) {
     if (rec == nullptr) {
         return false;
     }
-    if (rec->hasAttrs()) {
-        // Clang currently has no support for custom attributes, but the
-        // annotate attribute comes close, so check for
-        // __attribute__((annotate("lo_warn_unused"))):
-        for (auto i = rec->specific_attr_begin<clang::AnnotateAttr>(),
-                 e = rec->specific_attr_end<clang::AnnotateAttr>();
-             i != e; ++i) {
-            if ((*i)->getAnnotation() == "lo_warn_unused") {
-                return true;
-            }
-        }
-    }
     auto const tc = TypeCheck(rec);
     // Check some common non-LO types:
-    if (tc.Class("string").Namespace("std").GlobalNamespace()
-        || tc.Class("basic_string").Namespace("std").GlobalNamespace()
-        || tc.Class("list").Namespace("std").GlobalNamespace()
-        || (tc.Class("list").Namespace("__debug").Namespace("std")
-            .GlobalNamespace())
-        || tc.Class("vector").Namespace("std").GlobalNamespace()
-        || (tc.Class("vector" ).Namespace("__debug").Namespace("std")
-            .GlobalNamespace()))
+    if (tc.Class("basic_string").StdNamespace()
+        || tc.Class("deque").StdNamespace()
+        || tc.Class("list").StdNamespace()
+        || tc.Class("map").StdNamespace()
+        || tc.Class("pair").StdNamespace()
+        || tc.Class("queue").StdNamespace()
+        || tc.Class("set").StdNamespace()
+        || tc.Class("stack").StdNamespace()
+        || tc.Class("unordered_map").StdNamespace()
+        || tc.Class("unordered_set").StdNamespace()
+        || tc.Class("vector").StdNamespace())
     {
         return true;
     }
     return isDerivedFromSomethingInteresting(rec);
+}
+
+namespace {
+
+// Make sure Foo and ::Foo are considered equal:
+bool areSameSugaredType(clang::QualType type1, clang::QualType type2) {
+    auto t1 = type1.getLocalUnqualifiedType();
+    if (auto const et = llvm::dyn_cast<clang::ElaboratedType>(t1)) {
+        t1 = et->getNamedType();
+    }
+    auto t2 = type2.getLocalUnqualifiedType();
+    if (auto const et = llvm::dyn_cast<clang::ElaboratedType>(t2)) {
+        t2 = et->getNamedType();
+    }
+    return t1 == t2;
+}
+
+bool isArithmeticOp(clang::Expr const * expr) {
+    expr = expr->IgnoreParenImpCasts();
+    if (auto const e = llvm::dyn_cast<clang::BinaryOperator>(expr)) {
+        switch (e->getOpcode()) {
+        case clang::BO_Mul:
+        case clang::BO_Div:
+        case clang::BO_Rem:
+        case clang::BO_Add:
+        case clang::BO_Sub:
+        case clang::BO_Shl:
+        case clang::BO_Shr:
+        case clang::BO_And:
+        case clang::BO_Xor:
+        case clang::BO_Or:
+            return true;
+        case clang::BO_Comma:
+            return isArithmeticOp(e->getRHS());
+        default:
+            return false;
+        }
+    }
+    return llvm::isa<clang::UnaryOperator>(expr)
+        || llvm::isa<clang::AbstractConditionalOperator>(expr);
+}
+
+}
+
+bool isOkToRemoveArithmeticCast(
+    clang::ASTContext & context, clang::QualType t1, clang::QualType t2, const clang::Expr* subExpr)
+{
+    // Don't warn if the types are arithmetic (in the C++ meaning), and: either
+    // at least one is a typedef or decltype (and if both are, they're different),
+    // or the sub-expression involves some operation that is likely to change
+    // types through promotion, or the sub-expression is an integer literal (so
+    // its type generally depends on its value and suffix if any---even with a
+    // suffix like L it could still be either long or long long):
+    if ((t1->isIntegralType(context)
+         || t1->isRealFloatingType())
+        && ((!areSameSugaredType(t1, t2)
+             && (loplugin::TypeCheck(t1).Typedef()
+                 || loplugin::TypeCheck(t2).Typedef()
+                 || llvm::isa<clang::DecltypeType>(t1) || llvm::isa<clang::DecltypeType>(t2)))
+            || isArithmeticOp(subExpr)
+            || llvm::isa<clang::IntegerLiteral>(subExpr->IgnoreParenImpCasts())))
+    {
+        return false;
+    }
+    return true;
+}
+
+
+static bool BaseCheckNotSubclass(const clang::CXXRecordDecl *BaseDefinition, void *p) {
+    if (!BaseDefinition)
+        return true;
+    auto const & base = *static_cast<const DeclChecker *>(p);
+    if (base(BaseDefinition)) {
+        return false;
+    }
+    return true;
+}
+
+bool isDerivedFrom(const clang::CXXRecordDecl *decl, DeclChecker base) {
+    if (!decl)
+        return false;
+    if (base(decl))
+        return true;
+    if (!decl->hasDefinition()) {
+        return false;
+    }
+    if (!decl->forallBases(
+            [&base](const clang::CXXRecordDecl *BaseDefinition) -> bool
+                { return BaseCheckNotSubclass(BaseDefinition, &base); }))
+    {
+        return true;
+    }
+    return false;
 }
 
 }

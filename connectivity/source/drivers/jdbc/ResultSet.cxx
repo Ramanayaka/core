@@ -17,33 +17,34 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "java/lang/String.hxx"
-#include "java/lang/Boolean.hxx"
-#include "java/sql/ResultSet.hxx"
-#include "java/math/BigDecimal.hxx"
-#include "java/sql/JStatement.hxx"
-#include "java/sql/SQLWarning.hxx"
-#include "java/sql/Timestamp.hxx"
-#include "java/sql/Array.hxx"
-#include "java/sql/Ref.hxx"
-#include "java/sql/Clob.hxx"
-#include "java/sql/Blob.hxx"
-#include "java/sql/ResultSetMetaData.hxx"
-#include "java/io/InputStream.hxx"
-#include "java/io/Reader.hxx"
-#include "java/tools.hxx"
+#include <java/lang/String.hxx>
+#include <java/lang/Boolean.hxx>
+#include <java/sql/ResultSet.hxx>
+#include <java/math/BigDecimal.hxx>
+#include <java/sql/JStatement.hxx>
+#include <java/sql/SQLWarning.hxx>
+#include <java/sql/Timestamp.hxx>
+#include <java/sql/Array.hxx>
+#include <java/sql/Ref.hxx>
+#include <java/sql/Clob.hxx>
+#include <java/sql/Blob.hxx>
+#include <java/sql/ResultSetMetaData.hxx>
+#include <java/io/InputStream.hxx>
+#include <java/io/Reader.hxx>
+#include <java/tools.hxx>
 #include <comphelper/property.hxx>
 #include <connectivity/CommonTools.hxx>
 #include <cppuhelper/typeprovider.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <comphelper/sequence.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/dbexception.hxx>
-#include "resource/common_res.hrc"
-#include "resource/sharedresources.hxx"
-#include "java/LocalRef.hxx"
+#include <strings.hrc>
+#include <resource/sharedresources.hxx>
+#include <java/LocalRef.hxx>
 
 #include <string.h>
 #include <memory>
@@ -729,7 +730,8 @@ void SAL_CALL java_sql_ResultSet::updateBinaryStream( sal_Int32 columnIndex, con
     }
     catch(const Exception&)
     {
-        ::dbtools::throwFeatureNotImplementedSQLException( "XRowUpdate::updateBinaryStream", *this );
+        Any anyEx = ::cppu::getCaughtException();
+        ::dbtools::throwFeatureNotImplementedSQLException( "XRowUpdate::updateBinaryStream", *this, anyEx );
     }
 }
 
@@ -760,7 +762,8 @@ void SAL_CALL java_sql_ResultSet::updateCharacterStream( sal_Int32 columnIndex, 
     }
     catch(const Exception&)
     {
-        ::dbtools::throwFeatureNotImplementedSQLException( "XRowUpdate::updateCharacterStream", *this );
+        Any anyEx = ::cppu::getCaughtException();
+        ::dbtools::throwFeatureNotImplementedSQLException( "XRowUpdate::updateCharacterStream", *this, anyEx );
     }
 }
 
@@ -933,7 +936,7 @@ void java_sql_ResultSet::setFastPropertyValue_NoBroadcast(
         case PROPERTY_ID_CURSORNAME:
         case PROPERTY_ID_RESULTSETCONCURRENCY:
         case PROPERTY_ID_RESULTSETTYPE:
-            throw css::uno::Exception();
+            throw css::uno::Exception("cannot set prop " + OUString::number(nHandle), nullptr);
         case PROPERTY_ID_FETCHDIRECTION:
             setFetchDirection(comphelper::getINT32(rValue));
             break;

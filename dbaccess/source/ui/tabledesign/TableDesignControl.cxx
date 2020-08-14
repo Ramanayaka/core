@@ -17,15 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableDesignControl.hxx"
-#include "dbu_tbl.hrc"
-#include "TableDesignView.hxx"
-#include "TableController.hxx"
-#include "browserids.hxx"
+#include <TableDesignControl.hxx>
+#include <TableDesignView.hxx>
+#include <TableController.hxx>
 #include <com/sun/star/util/URL.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <vcl/builder.hxx>
-#include "dbaccess_helpid.hrc"
+#include <vcl/commandevent.hxx>
+#include <vcl/menu.hxx>
+#include <helpids.h>
 
 using namespace ::dbaui;
 using namespace ::svt;
@@ -45,7 +45,7 @@ OTableRowView::OTableRowView(vcl::Window* pParent)
     , m_nCurUndoActId(0)
 {
     SetHelpId(HID_TABDESIGN_BACKGROUND);
-    SetSizePixel(LogicToPixel(Size(40, 12), MapUnit::MapAppFont));
+    SetSizePixel(LogicToPixel(Size(40, 12), MapMode(MapUnit::MapAppFont)));
 }
 
 void OTableRowView::Init()
@@ -72,7 +72,7 @@ void OTableRowView::Init()
 
 void OTableRowView::KeyInput( const KeyEvent& rEvt )
 {
-    if (IsDeleteAllowed(0))
+    if (IsDeleteAllowed())
     {
         if (rEvt.GetKeyCode().GetCode() == KEY_DELETE &&    // Delete rows
             !rEvt.GetKeyCode().IsShift() &&
@@ -104,12 +104,12 @@ void OTableRowView::Command(const CommandEvent& rEvt)
                 return;
             }
 
-            sal_uInt16 nColId = GetColumnAtXPosPixel(rEvt.GetMousePosPixel().X());
+            sal_uInt16 nColId = GetColumnId(GetColumnAtXPosPixel(rEvt.GetMousePosPixel().X()));
             long   nRow = GetRowAtYPosPixel(rEvt.GetMousePosPixel().Y());
 
             if ( nColId == HANDLE_ID )
             {
-                VclBuilder aBuilder(nullptr, VclBuilderContainer::getUIRootDir(), "dbaccess/ui/querycolmenu.ui", "");
+                VclBuilder aBuilder(nullptr, AllSettings::GetUIRootDir(), "dbaccess/ui/querycolmenu.ui", "");
                 VclPtr<PopupMenu> aContextMenu(aBuilder.get_menu("menu"));
                 long nSelectRowCount = GetSelectRowCount();
                 aContextMenu->EnableItem(aContextMenu->GetItemId("cut"), nSelectRowCount != 0);
@@ -142,7 +142,7 @@ void OTableRowView::Command(const CommandEvent& rEvt)
                 return;
             }
 
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         }
         default:
             EditBrowseBox::Command(rEvt);

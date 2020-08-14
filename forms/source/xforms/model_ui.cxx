@@ -27,6 +27,7 @@
 #include "resourcehelper.hxx"
 #include "xmlhelper.hxx"
 #include "convert.hxx"
+#include <strings.hrc>
 
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
@@ -67,7 +68,7 @@ using namespace com::sun::star::xml::xpath;
 // implement XFormsUIHelper1
 
 
-OUString Model::getDefaultServiceNameForNode( const XNode_t& xNode )
+OUString Model::getDefaultServiceNameForNode( const css::uno::Reference<css::xml::dom::XNode>& xNode )
 {
     // determine service for control. string/text field is default.
     OUString sService = "com.sun.star.form.component.TextField";
@@ -169,32 +170,32 @@ static void lcl_OutInstance( OUStringBuffer& rBuffer,
 {
     Reference<XDocument> xDoc = xNode->getOwnerDocument();
 
-    if( xDoc != pModel->getDefaultInstance() )
+    if( xDoc == pModel->getDefaultInstance() )
+        return;
+
+    rBuffer.insert( 0, "')" );
+
+    // iterate over instances, and find the right one
+    OUString sInstanceName;
+    Reference<XEnumeration> xEnum =
+        pModel->getInstances()->createEnumeration();
+    while( sInstanceName.isEmpty() && xEnum->hasMoreElements() )
     {
-        rBuffer.insert( 0, "')" );
+        Sequence<PropertyValue> aValues;
+        xEnum->nextElement() >>= aValues;
 
-        // iterate over instances, and find the right one
-        OUString sInstanceName;
-        Reference<XEnumeration> xEnum =
-            pModel->getInstances()->createEnumeration();
-        while( sInstanceName.isEmpty() && xEnum->hasMoreElements() )
-        {
-            Sequence<PropertyValue> aValues;
-            xEnum->nextElement() >>= aValues;
+        // get ID and instance
+        OUString sId;
+        Reference<XDocument> xInstance;
+        getInstanceData( aValues, &sId, &xInstance, nullptr, nullptr );
 
-            // get ID and instance
-            OUString sId;
-            Reference<XDocument> xInstance;
-            getInstanceData( aValues, &sId, &xInstance, nullptr, nullptr );
-
-            // now check whether this was our instance:
-            if( xInstance == xDoc )
-                sInstanceName = sId;
-        }
-
-        rBuffer.insert( 0, sInstanceName );
-        rBuffer.insert( 0, "instance('" );
+        // now check whether this was our instance:
+        if( xInstance == xDoc )
+            sInstanceName = sId;
     }
+
+    rBuffer.insert( 0, sInstanceName );
+    rBuffer.insert( 0, "instance('" );
 }
 
 OUString Model::getDefaultBindingExpressionForNode(
@@ -248,7 +249,7 @@ OUString Model::getDefaultBindingExpressionForNode(
 }
 
 
-OUString Model::getDefaultBindingExpressionForNode( const XNode_t& xNode )
+OUString Model::getDefaultBindingExpressionForNode( const css::uno::Reference<css::xml::dom::XNode>& xNode )
 {
     return getDefaultBindingExpressionForNode( xNode, getEvaluationContext() );
 }
@@ -270,7 +271,7 @@ static bool lcl_isWhitespace( const OUString& rString )
     return bWhitespace;
 }
 
-OUString Model::getNodeDisplayName( const XNode_t& xNode,
+OUString Model::getNodeDisplayName( const css::uno::Reference<css::xml::dom::XNode>& xNode,
                                     sal_Bool bDetail )
 {
     OUStringBuffer aBuffer;
@@ -286,7 +287,7 @@ OUString Model::getNodeDisplayName( const XNode_t& xNode,
             OUString sContent = xNode->getNodeValue();
             if( bDetail || ! lcl_isWhitespace( sContent ) )
             {
-                aBuffer.append("\"" + Convert::collapseWhitespace( sContent ) + "\"");
+                aBuffer.append("\"").append(Convert::collapseWhitespace( sContent )).append("\"");
             }
         }
         break;
@@ -312,7 +313,7 @@ OUString Model::getNodeDisplayName( const XNode_t& xNode,
     return aBuffer.makeStringAndClear();
 }
 
-OUString Model::getNodeName( const XNode_t& xNode )
+OUString Model::getNodeName( const css::uno::Reference<css::xml::dom::XNode>& xNode )
 {
     OUStringBuffer aBuffer;
 
@@ -334,7 +335,7 @@ OUString Model::getNodeName( const XNode_t& xNode )
     return aBuffer.makeStringAndClear();
 }
 
-OUString Model::getBindingName( const XPropertySet_t& xBinding,
+OUString Model::getBindingName( const css::uno::Reference< ::css::beans::XPropertySet >& xBinding,
                                 sal_Bool /*bDetail*/ )
 {
     OUString sID;
@@ -353,7 +354,7 @@ OUString Model::getBindingName( const XPropertySet_t& xBinding,
     return sRet;
 }
 
-OUString Model::getSubmissionName( const XPropertySet_t& xSubmission,
+OUString Model::getSubmissionName( const css::uno::Reference< ::css::beans::XPropertySet >& xSubmission,
                                    sal_Bool /*bDetail*/ )
 {
     OUString sID;
@@ -361,7 +362,7 @@ OUString Model::getSubmissionName( const XPropertySet_t& xSubmission,
     return sID;
 }
 
-Model::XPropertySet_t Model::cloneBindingAsGhost( const XPropertySet_t &xBinding )
+css::uno::Reference< ::css::beans::XPropertySet > Model::cloneBindingAsGhost( const css::uno::Reference< ::css::beans::XPropertySet > &xBinding )
 {
     // Create a new binding instance first...
     Binding *pBinding = new Binding();
@@ -377,9 +378,9 @@ Model::XPropertySet_t Model::cloneBindingAsGhost( const XPropertySet_t &xBinding
     return xNewBinding;
 }
 
-void Model::removeBindingIfUseless( const XPropertySet_t& xBinding )
+void Model::removeBindingIfUseless( const css::uno::Reference< ::css::beans::XPropertySet >& xBinding )
 {
-    Binding* pBinding = Binding::getBinding( xBinding );
+    Binding* pBinding = comphelper::getUnoTunnelImplementation<Binding>( xBinding );
     if( pBinding != nullptr )
     {
         if( ! pBinding->isUseful() )
@@ -442,38 +443,38 @@ void Model::renameInstance( const OUString& sFrom,
                             sal_Bool bURLOnce )
 {
     sal_Int32 nPos = lcl_findInstance( mxInstances.get(), sFrom );
-    if( nPos != -1 )
+    if( nPos == -1 )
+        return;
+
+    Sequence<PropertyValue> aSeq = mxInstances->getItem( nPos );
+    PropertyValue* pSeq = aSeq.getArray();
+    sal_Int32 nLength = aSeq.getLength();
+
+    sal_Int32 nProp = lcl_findProp( pSeq, nLength, "ID" );
+    if( nProp == -1 )
     {
-        Sequence<PropertyValue> aSeq = mxInstances->getItem( nPos );
-        PropertyValue* pSeq = aSeq.getArray();
-        sal_Int32 nLength = aSeq.getLength();
-
-        sal_Int32 nProp = lcl_findProp( pSeq, nLength, "ID" );
-        if( nProp == -1 )
-        {
-            // add name property
-            aSeq.realloc( nLength + 1 );
-            pSeq = aSeq.getArray();
-            pSeq[ nLength ].Name = "ID";
-            nProp = nLength;
-        }
-
-        // change name
-        pSeq[ nProp ].Value <<= sTo;
-
-        // change url
-        nProp = lcl_findProp( pSeq, nLength, "URL" );
-        if(nProp != -1)
-            pSeq[ nProp ].Value <<= sURL;
-
-        // change urlonce
-        nProp = lcl_findProp( pSeq, nLength, "URLOnce" );
-        if(nProp != -1)
-            pSeq[ nProp ].Value <<= bURLOnce;
-
-        // set instance
-        mxInstances->setItem( nPos, aSeq );
+        // add name property
+        aSeq.realloc( nLength + 1 );
+        pSeq = aSeq.getArray();
+        pSeq[ nLength ].Name = "ID";
+        nProp = nLength;
     }
+
+    // change name
+    pSeq[ nProp ].Value <<= sTo;
+
+    // change url
+    nProp = lcl_findProp( pSeq, nLength, "URL" );
+    if(nProp != -1)
+        pSeq[ nProp ].Value <<= sURL;
+
+    // change urlonce
+    nProp = lcl_findProp( pSeq, nLength, "URLOnce" );
+    if(nProp != -1)
+        pSeq[ nProp ].Value <<= bURLOnce;
+
+    // set instance
+    mxInstances->setItem( nPos, aSeq );
 }
 
 void Model::removeInstance( const OUString& sName )
@@ -542,7 +543,7 @@ void Model::removeModel( const Reference<css::frame::XModel>& xCmp,
     }
 }
 
-Model::XNode_t Model::createElement( const XNode_t& xParent,
+css::uno::Reference<css::xml::dom::XNode> Model::createElement( const css::uno::Reference<css::xml::dom::XNode>& xParent,
                                      const OUString& sName )
 {
     Reference<XNode> xNode;
@@ -550,13 +551,12 @@ Model::XNode_t Model::createElement( const XNode_t& xParent,
         && isValidXMLName( sName ) )
     {
         // TODO: implement proper namespace handling
-        xNode.set( xParent->getOwnerDocument()->createElement( sName ),
-                   UNO_QUERY );
+        xNode = xParent->getOwnerDocument()->createElement( sName );
     }
     return xNode;
 }
 
-Model::XNode_t Model::createAttribute( const XNode_t& xParent,
+css::uno::Reference<css::xml::dom::XNode> Model::createAttribute( const css::uno::Reference<css::xml::dom::XNode>& xParent,
                                        const OUString& sName )
 {
     Reference<XNode> xNode;
@@ -575,13 +575,12 @@ Model::XNode_t Model::createAttribute( const XNode_t& xParent,
         }
 
         // TODO: implement proper namespace handling
-        xNode.set( xParent->getOwnerDocument()->createAttribute( sUniqueName ),
-                   UNO_QUERY );
+        xNode = xParent->getOwnerDocument()->createAttribute( sUniqueName );
     }
     return xNode;
 }
 
-Model::XNode_t Model::renameNode( const XNode_t& xNode,
+css::uno::Reference<css::xml::dom::XNode> Model::renameNode( const css::uno::Reference<css::xml::dom::XNode>& xNode,
                                   const OUString& sName )
 {
     // early out if we don't have to change the name
@@ -603,7 +602,7 @@ Model::XNode_t Model::renameNode( const XNode_t& xNode,
     if( xNode->getNodeType() == NodeType_ELEMENT_NODE )
     {
         Reference<XElement> xElem = xDoc->createElement( sName );
-        xNew.set( xElem, UNO_QUERY );
+        xNew = xElem;
 
         // iterate over all attributes and append them to the new element
         Reference<XElement> xOldElem( xNode, UNO_QUERY );
@@ -651,7 +650,7 @@ Model::XNode_t Model::renameNode( const XNode_t& xNode,
             getDefaultBindingExpressionForNode( xNew );
         for( sal_Int32 n = 0; n < mxBindings->countItems(); n++ )
         {
-            Binding* pBinding = Binding::getBinding(
+            Binding* pBinding = comphelper::getUnoTunnelImplementation<Binding>(
                 mxBindings->Collection<XPropertySet_t>::getItem( n ) );
 
             if( pBinding->getBindingExpression()
@@ -664,7 +663,7 @@ Model::XNode_t Model::renameNode( const XNode_t& xNode,
     return xNew.is() ? xNew : xNode;
 }
 
-Model::XPropertySet_t Model::getBindingForNode( const XNode_t& xNode,
+css::uno::Reference< ::css::beans::XPropertySet > Model::getBindingForNode( const css::uno::Reference<css::xml::dom::XNode>& xNode,
                                                 sal_Bool bCreate )
 {
     OSL_ENSURE( xNode.is(), "no node?" );
@@ -678,7 +677,7 @@ Model::XPropertySet_t Model::getBindingForNode( const XNode_t& xNode,
 
     for( sal_Int32 n = 0; n < mxBindings->countItems(); n++ )
     {
-        Binding* pBinding = Binding::getBinding(
+        Binding* pBinding = comphelper::getUnoTunnelImplementation<Binding>(
             mxBindings->Collection<XPropertySet_t>::getItem( n ) );
 
         OSL_ENSURE( pBinding != nullptr, "no binding?" );
@@ -720,7 +719,7 @@ Model::XPropertySet_t Model::getBindingForNode( const XNode_t& xNode,
     return pBestBinding;
 }
 
-void Model::removeBindingForNode( const XNode_t& )
+void Model::removeBindingForNode( const css::uno::Reference<css::xml::dom::XNode>& )
 {
     // determine whether suitable binding is still used
 }
@@ -736,14 +735,14 @@ static OUString lcl_serializeForDisplay( const Reference< XAttr >& _rxAttrNode )
         if ( sValue.indexOf( nQuote ) >= 0 )
             nQuote = '\'';
 
-        sResult = _rxAttrNode->getName() + "=" + OUStringLiteral1(nQuote) + sValue + OUStringLiteral1(nQuote) + " ";
+        sResult = _rxAttrNode->getName() + "=" + OUStringChar(nQuote) + sValue + OUStringChar(nQuote) + " ";
     }
     return sResult;
 }
 
 static OUString lcl_serializeForDisplay( const Reference<XNodeList>& xNodes )
 {
-    OUString sResult;
+    OUStringBuffer sResult;
 
     // create document fragment
     Reference<XDocument> xDocument( getDocumentBuilder()->newDocument() );
@@ -770,7 +769,7 @@ static OUString lcl_serializeForDisplay( const Reference<XNodeList>& xNodes )
             Reference< XAttr > xAttr( xCurrent, UNO_QUERY );
             if ( xAttr.is() )
             {
-                sResult += lcl_serializeForDisplay( xAttr );
+                sResult.append(lcl_serializeForDisplay( xAttr ));
                 ++nAttributeNodes;
             }
         }
@@ -787,7 +786,7 @@ static OUString lcl_serializeForDisplay( const Reference<XNodeList>& xNodes )
         "lcl_serializeForDisplay: mixed attribute and non-attribute nodes?" );
     if ( nAttributeNodes )
         // had only attribute nodes
-        return sResult;
+        return sResult.makeStringAndClear();
 
     // serialize fragment
     CSerializationAppXML aSerialization;
@@ -808,20 +807,19 @@ static OUString lcl_serializeForDisplay( const Reference<XNodeList>& xNodes )
 
     // well, the serialization prepends XML header(s) that we need to
     // remove first.
-    OUStringBuffer aBuffer;
+    sResult.setLength(0);
     while( ! xTextInputStream->isEOF() )
     {
         OUString sLine = xTextInputStream->readLine();
         if( !sLine.isEmpty()
             && !sLine.startsWith( "<?xml" ) )
         {
-            aBuffer.append( sLine );
-            aBuffer.append( '\n' );
+            sResult.append( sLine );
+            sResult.append( '\n' );
         }
     }
-    sResult = aBuffer.makeStringAndClear();
 
-    return sResult;
+    return sResult.makeStringAndClear();
 }
 
 static OUString lcl_serializeForDisplay( const Reference<XXPathObject>& xResult )
@@ -858,11 +856,11 @@ static OUString lcl_serializeForDisplay( const Reference<XXPathObject>& xResult 
 }
 
 OUString Model::getResultForExpression(
-    const XPropertySet_t& xBinding,
+    const css::uno::Reference< ::css::beans::XPropertySet >& xBinding,
     sal_Bool bIsBindingExpression,
     const OUString& sExpression )
 {
-    Binding* pBinding = Binding::getBinding( xBinding );
+    Binding* pBinding = comphelper::getUnoTunnelImplementation<Binding>( xBinding );
     if( pBinding == nullptr )
         throw RuntimeException();
 
@@ -881,11 +879,9 @@ OUString Model::getResultForExpression(
         // MIP (not binding): iterate over bindings contexts
         std::vector<EvaluationContext> aContext =
             pBinding->getMIPEvaluationContexts();
-        for( std::vector<EvaluationContext>::iterator aIter = aContext.begin();
-             aIter != aContext.end();
-             ++aIter )
+        for (auto const& elem : aContext)
         {
-            aExpression.evaluate( *aIter );
+            aExpression.evaluate(elem);
             aBuffer.append( lcl_serializeForDisplay(aExpression.getXPath()) );
             aBuffer.append( '\n' );
         }
@@ -904,7 +900,7 @@ sal_Bool Model::isValidPrefixName( const OUString& sName )
 }
 
 void Model::setNodeValue(
-    const XNode_t& xNode,
+    const css::uno::Reference< ::css::xml::dom::XNode >& xNode,
     const OUString& sValue )
 {
     setSimpleContent( xNode, sValue );

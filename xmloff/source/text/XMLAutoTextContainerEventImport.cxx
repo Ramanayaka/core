@@ -22,8 +22,7 @@
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/container/XNameReplace.hpp>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/XMLEventsImportContext.hxx>
 
@@ -39,10 +38,8 @@ using ::xmloff::token::XML_EVENT_LISTENERS;
 
 XMLAutoTextContainerEventImport::XMLAutoTextContainerEventImport(
     SvXMLImport& rImport,
-    sal_uInt16 nPrfx,
-    const OUString& rLName,
     const Reference<XNameReplace> & rEvnts ) :
-        SvXMLImportContext(rImport, nPrfx, rLName),
+        SvXMLImportContext(rImport),
         rEvents(rEvnts)
 {
 }
@@ -51,7 +48,7 @@ XMLAutoTextContainerEventImport::~XMLAutoTextContainerEventImport()
 {
 }
 
-SvXMLImportContext* XMLAutoTextContainerEventImport::CreateChildContext(
+SvXMLImportContextRef XMLAutoTextContainerEventImport::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList> & )
@@ -62,8 +59,7 @@ SvXMLImportContext* XMLAutoTextContainerEventImport::CreateChildContext(
         return new XMLEventsImportContext(GetImport(), nPrefix, rLocalName,
                                           rEvents);
     }
-    else
-        return new SvXMLImportContext(GetImport(), nPrefix, rLocalName);
+    return nullptr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

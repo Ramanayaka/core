@@ -20,14 +20,14 @@
 #ifndef INCLUDED_FORMS_SOURCE_COMPONENT_REFVALUECOMPONENT_HXX
 #define INCLUDED_FORMS_SOURCE_COMPONENT_REFVALUECOMPONENT_HXX
 
-#include "FormComponent.hxx"
-#include "togglestate.hxx"
+#include <FormComponent.hxx>
+#include <togglestate.hxx>
 
 
 namespace frm
 {
 
-    /** a OBoundControlModel which features the exchange of a reference value
+    /** an OBoundControlModel which features the exchange of a reference value
     */
     class OReferenceValueComponent : public OBoundControlModel
     {

@@ -9,9 +9,9 @@
 
 #include <string>
 #include <set>
+#include <iostream>
 
 #include "check.hxx"
-#include "compat.hxx"
 #include "plugin.hxx"
 
 // Find places where various things are passed by value.
@@ -28,10 +28,10 @@
 namespace {
 
 class PassStuffByRef:
-    public RecursiveASTVisitor<PassStuffByRef>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<PassStuffByRef>
 {
 public:
-    explicit PassStuffByRef(InstantiationData const & data): Plugin(data), mbInsideFunctionDecl(false), mbFoundDisqualifier(false) {}
+    explicit PassStuffByRef(loplugin::InstantiationData const & data): FilteringPlugin(data), mbInsideFunctionDecl(false), mbFoundReturnValueDisqualifier(false) {}
 
     virtual void run() override { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
 
@@ -59,12 +59,11 @@ private:
         T * decl, bool (RecursiveASTVisitor::* fn)(T *));
     void checkParams(const FunctionDecl * functionDecl);
     void checkReturnValue(const FunctionDecl * functionDecl, const CXXMethodDecl * methodDecl);
-    bool isFat(QualType type);
     bool isPrimitiveConstRef(QualType type);
     bool isReturnExprDisqualified(const Expr* expr);
 
     bool mbInsideFunctionDecl;
-    bool mbFoundDisqualifier;
+    bool mbFoundReturnValueDisqualifier;
 
     struct FDecl {
         std::set<ParmVarDecl const *> parms;
@@ -185,51 +184,6 @@ void PassStuffByRef::checkParams(const FunctionDecl * functionDecl) {
     if (!functionDecl->doesThisDeclarationHaveABody()) {
         return;
     }
-    auto cxxConstructorDecl = dyn_cast<CXXConstructorDecl>(functionDecl);
-    unsigned n = functionDecl->getNumParams();
-    for (unsigned i = 0; i != n; ++i) {
-        const ParmVarDecl * pvDecl = functionDecl->getParamDecl(i);
-        auto const t = pvDecl->getType();
-        if (!isFat(t)) {
-            continue;
-        }
-        // Ignore cases where the parameter is std::move'd.
-        // This is a fairly simple check, might need some more complexity if the parameter is std::move'd
-        // somewhere else in the constructor.
-        bool bFoundMove = false;
-        if (cxxConstructorDecl) {
-            for (CXXCtorInitializer const * cxxCtorInitializer : cxxConstructorDecl->inits()) {
-                if (cxxCtorInitializer->isMemberInitializer())
-                {
-                    auto cxxConstructExpr = dyn_cast<CXXConstructExpr>(cxxCtorInitializer->getInit()->IgnoreParenImpCasts());
-                    if (cxxConstructExpr && cxxConstructExpr->getNumArgs() == 1)
-                    {
-                        if (auto callExpr = dyn_cast<CallExpr>(cxxConstructExpr->getArg(0)->IgnoreParenImpCasts())) {
-                            if (loplugin::DeclCheck(callExpr->getCalleeDecl()).Function("move").StdNamespace()) {
-                                bFoundMove = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if (bFoundMove) {
-            continue;
-        }
-        report(
-            DiagnosticsEngine::Warning,
-            ("passing %0 by value, rather pass by const lvalue reference"),
-            pvDecl->getLocation())
-            << t << pvDecl->getSourceRange();
-        auto can = functionDecl->getCanonicalDecl();
-        if (can->getLocation() != functionDecl->getLocation()) {
-            report(
-                DiagnosticsEngine::Note, "function is declared here:",
-                can->getLocation())
-                << can->getSourceRange();
-        }
-    }
     // ignore stuff that forms part of the stable URE interface
     if (isInUnoIncludeFile(functionDecl)) {
         return;
@@ -241,6 +195,7 @@ void PassStuffByRef::checkParams(const FunctionDecl * functionDecl) {
     {
         return;
     }
+    unsigned n = functionDecl->getNumParams();
     assert(!functionDecls_.empty());
     functionDecls_.back().check = true;
     for (unsigned i = 0; i != n; ++i) {
@@ -257,15 +212,16 @@ static bool startswith(const std::string& rStr, const char* pSubStr) {
 }
 
 void PassStuffByRef::checkReturnValue(const FunctionDecl * functionDecl, const CXXMethodDecl * methodDecl) {
-
     if (methodDecl && (methodDecl->isVirtual() || methodDecl->hasAttr<OverrideAttr>())) {
         return;
     }
-    if( !functionDecl->doesThisDeclarationHaveABody()) {
+    if( !functionDecl->doesThisDeclarationHaveABody()
+        || functionDecl->isLateTemplateParsed())
+    {
         return;
     }
 
-    const QualType type = compat::getReturnType(*functionDecl).getDesugaredType(compiler.getASTContext());
+    const QualType type = functionDecl->getReturnType().getDesugaredType(compiler.getASTContext());
     if (type->isReferenceType() || type->isIntegralOrEnumerationType() || type->isPointerType()
         || type->isTemplateTypeParmType() || type->isDependentType() || type->isBuiltinType()
         || type->isScalarType())
@@ -273,10 +229,15 @@ void PassStuffByRef::checkReturnValue(const FunctionDecl * functionDecl, const C
         return;
     }
 
+    // not sure if it's possible to modify these
+    if (isa<CXXConversionDecl>(functionDecl))
+        return;
+
     // ignore stuff that forms part of the stable URE interface
     if (isInUnoIncludeFile(functionDecl)) {
         return;
     }
+
     loplugin::DeclCheck dc(functionDecl);
     // function is passed as parameter to another function
     if (dc.Function("ImplColMonoFnc").Class("GDIMetaFile").GlobalNamespace()
@@ -288,7 +249,10 @@ void PassStuffByRef::checkReturnValue(const FunctionDecl * functionDecl, const C
             .GlobalNamespace())
         || (dc.MemberFunction().Class("Submission").Namespace("xforms")
             .GlobalNamespace())
-        || (dc.Function("TopLeft").Class("SwRect").GlobalNamespace()))
+        || (dc.Function("TopLeft").Class("SwRect").GlobalNamespace())
+        || (dc.Function("ConvDicList_CreateInstance").GlobalNamespace())
+        || (dc.Function("Create").Class("OUnoAutoPilot").Namespace("dbp").GlobalNamespace())
+        || (dc.Function("Size_").Class("SwRect").GlobalNamespace()))
     {
         return;
     }
@@ -307,32 +271,52 @@ void PassStuffByRef::checkReturnValue(const FunctionDecl * functionDecl, const C
         .GlobalNamespace()) {
         return;
     }
+    // hides a constructor
+    if (dc.Function("createNonOwningCopy").Class("SortedAutoCompleteStrings").Namespace("editeng")
+        .GlobalNamespace()) {
+        return;
+    }
+    // template function
+    if (dc.Function("convertItems").Class("ValueParser").Namespace("configmgr").GlobalNamespace()
+        || dc.Function("parseListValue").AnonymousNamespace().Namespace("configmgr").GlobalNamespace()
+        || dc.Function("parseSingleValue").AnonymousNamespace().Namespace("configmgr").GlobalNamespace()
+        || dc.Function("Create").Class("HandlerComponentBase").Namespace("pcr").GlobalNamespace()) {
+        return;
+    }
     if (startswith(type.getAsString(), "struct o3tl::strong_int")) {
         return;
     }
+    // extremely simple class, might as well pass by value
+    if (loplugin::TypeCheck(functionDecl->getReturnType()).Class("Color")) {
+        return;
+    }
+
+    // functionDecl->dump();
+
     mbInsideFunctionDecl = true;
-    mbFoundDisqualifier = false;
+    mbFoundReturnValueDisqualifier = false;
     TraverseStmt(functionDecl->getBody());
     mbInsideFunctionDecl = false;
 
-    if (mbFoundDisqualifier)
+    if (mbFoundReturnValueDisqualifier)
         return;
 
-    report(
-            DiagnosticsEngine::Warning,
-            "rather return %0 from function %1 by const& than by value, to avoid unnecessary copying",
+    report( DiagnosticsEngine::Warning,
+            "rather return %0 by const& than by value, to avoid unnecessary copying",
             functionDecl->getSourceRange().getBegin())
-        << type.getAsString() << functionDecl->getQualifiedNameAsString() << functionDecl->getSourceRange();
+        << type.getAsString() << functionDecl->getSourceRange();
 
     // display the location of the class member declaration so I don't have to search for it by hand
-    if (functionDecl->getSourceRange().getBegin() != functionDecl->getCanonicalDecl()->getSourceRange().getBegin())
+    auto canonicalDecl = functionDecl->getCanonicalDecl();
+    if (functionDecl != canonicalDecl)
     {
-        report(
-                DiagnosticsEngine::Note,
+        report( DiagnosticsEngine::Note,
                 "decl here",
-                functionDecl->getCanonicalDecl()->getSourceRange().getBegin())
-            << functionDecl->getCanonicalDecl()->getSourceRange();
+                canonicalDecl->getSourceRange().getBegin())
+            << canonicalDecl->getSourceRange();
     }
+
+    //functionDecl->dump();
 }
 
 bool PassStuffByRef::VisitReturnStmt(const ReturnStmt * returnStmt)
@@ -341,50 +325,123 @@ bool PassStuffByRef::VisitReturnStmt(const ReturnStmt * returnStmt)
         return true;
     const Expr* expr = dyn_cast<Expr>(*returnStmt->child_begin())->IgnoreParenCasts();
 
-    if (isReturnExprDisqualified(expr)) {
-        mbFoundDisqualifier = true;
-        return true;
-    }
+    if (isReturnExprDisqualified(expr))
+        mbFoundReturnValueDisqualifier = true;
+
     return true;
 }
 
+/**
+ * Does a return expression disqualify this method from doing return by const & ?
+ */
 bool PassStuffByRef::isReturnExprDisqualified(const Expr* expr)
 {
-    if (isa<ExprWithCleanups>(expr)) {
-        return true;
-    }
-    if (const CXXConstructExpr* constructExpr = dyn_cast<CXXConstructExpr>(expr)) {
-        if (constructExpr->getNumArgs()==1) {
-            expr = constructExpr->getArg(0)->IgnoreParenCasts();
+    while (true)
+    {
+        expr = expr->IgnoreParens();
+        if (auto implicitCast = dyn_cast<ImplicitCastExpr>(expr)) {
+            expr = implicitCast->getSubExpr();
+            continue;
         }
-    }
-    if (isa<CXXConstructExpr>(expr)) {
-        return true;
-    }
-    if (const ArraySubscriptExpr* childExpr = dyn_cast<ArraySubscriptExpr>(expr)) {
-        expr = childExpr->getLHS();
-    }
-    if (const MemberExpr* memberExpr = dyn_cast<MemberExpr>(expr)) {
-        expr = memberExpr->getBase();
-    }
-    if (const DeclRefExpr* declRef = dyn_cast<DeclRefExpr>(expr)) {
-        const VarDecl* varDecl = dyn_cast<VarDecl>(declRef->getDecl());
-        if (varDecl) {
-            if (varDecl->getStorageDuration() == SD_Automatic
-                || varDecl->getStorageDuration() == SD_FullExpression ) {
+        if (auto exprWithCleanups = dyn_cast<ExprWithCleanups>(expr)) {
+            expr = exprWithCleanups->getSubExpr();
+            continue;
+        }
+        if (auto constructExpr = dyn_cast<CXXConstructExpr>(expr))
+        {
+            if (constructExpr->getNumArgs()==1
+                && constructExpr->getConstructor()->isCopyOrMoveConstructor())
+            {
+                expr = constructExpr->getArg(0);
+                continue;
+            }
+            else
+                return true;
+        }
+        if (isa<CXXFunctionalCastExpr>(expr)) {
+            return true;
+        }
+        if (isa<MaterializeTemporaryExpr>(expr)) {
+            return true;
+        }
+        if (isa<CXXBindTemporaryExpr>(expr)) {
+            return true;
+        }
+        if (isa<InitListExpr>(expr)) {
+            return true;
+        }
+        expr = expr->IgnoreParenCasts();
+        if (auto childExpr = dyn_cast<ArraySubscriptExpr>(expr)) {
+            expr = childExpr->getLHS();
+            continue;
+        }
+        if (auto memberExpr = dyn_cast<MemberExpr>(expr)) {
+            expr = memberExpr->getBase();
+            continue;
+        }
+        if (auto declRef = dyn_cast<DeclRefExpr>(expr)) {
+            // a param might be a temporary
+            if (isa<ParmVarDecl>(declRef->getDecl()))
+                return true;
+            const VarDecl* varDecl = dyn_cast<VarDecl>(declRef->getDecl());
+            if (varDecl) {
+                if (varDecl->getStorageDuration() == SD_Thread
+                    || varDecl->getStorageDuration() == SD_Static ) {
+                    return false;
+                }
                 return true;
             }
-            return false;
         }
+        if (auto condOper = dyn_cast<ConditionalOperator>(expr)) {
+            return isReturnExprDisqualified(condOper->getTrueExpr())
+                || isReturnExprDisqualified(condOper->getFalseExpr());
+        }
+        if (auto unaryOp = dyn_cast<UnaryOperator>(expr)) {
+            expr = unaryOp->getSubExpr();
+            continue;
+        }
+        if (auto operatorCallExpr = dyn_cast<CXXOperatorCallExpr>(expr)) {
+            // TODO could improve this, but sometimes it means we're returning a copy of a temporary.
+            // Same logic as CXXOperatorCallExpr::isAssignmentOp(), which our supported clang
+            // doesn't have yet.
+            auto Opc = operatorCallExpr->getOperator();
+            if (Opc == OO_Equal || Opc == OO_StarEqual ||
+                Opc == OO_SlashEqual || Opc == OO_PercentEqual ||
+                Opc == OO_PlusEqual || Opc == OO_MinusEqual ||
+                Opc == OO_LessLessEqual || Opc == OO_GreaterGreaterEqual ||
+                Opc == OO_AmpEqual || Opc == OO_CaretEqual ||
+                Opc == OO_PipeEqual)
+                return true;
+            if (Opc == OO_Subscript)
+            {
+                if (isReturnExprDisqualified(operatorCallExpr->getArg(0)))
+                    return true;
+                // otherwise fall through to the checking below
+            }
+        }
+        if (auto memberCallExpr = dyn_cast<CXXMemberCallExpr>(expr)) {
+            if (isReturnExprDisqualified(memberCallExpr->getImplicitObjectArgument()))
+                return true;
+            // otherwise fall through to the checking in CallExpr
+        }
+        if (auto callExpr = dyn_cast<CallExpr>(expr)) {
+            FunctionDecl const * calleeFunctionDecl = callExpr->getDirectCallee();
+            if (!calleeFunctionDecl)
+                return true;
+            // TODO anything takes a non-integral param is suspect because it might return the param by ref.
+            // we could tighten this to only reject functions that have a param of the same type
+            // as the return type. Or we could check for such functions and disallow them.
+            // Or we could force such functions to be annotated somehow.
+            for (unsigned i = 0; i != calleeFunctionDecl->getNumParams(); ++i) {
+                if (!calleeFunctionDecl->getParamDecl(i)->getType()->isIntegralOrEnumerationType())
+                    return true;
+            }
+            auto tc = loplugin::TypeCheck(calleeFunctionDecl->getReturnType());
+            if (!tc.LvalueReference() && !tc.Pointer())
+                return true;
+        }
+        return false;
     }
-    if (const ConditionalOperator* condOper = dyn_cast<ConditionalOperator>(expr)) {
-        return isReturnExprDisqualified(condOper->getTrueExpr())
-            || isReturnExprDisqualified(condOper->getFalseExpr());
-    }
-    if (const CallExpr* callExpr = dyn_cast<CallExpr>(expr)) {
-        return !loplugin::TypeCheck(callExpr->getType()).Const().LvalueReference();
-    }
-    return true;
 }
 
 bool PassStuffByRef::VisitVarDecl(const VarDecl * varDecl)
@@ -394,72 +451,18 @@ bool PassStuffByRef::VisitVarDecl(const VarDecl * varDecl)
     // things guarded by locking are probably best left alone
     loplugin::TypeCheck dc(varDecl->getType());
     if (dc.Class("Guard").Namespace("osl").GlobalNamespace())
-        mbFoundDisqualifier = true;
+        mbFoundReturnValueDisqualifier = true;
     if (dc.Class("ClearableGuard").Namespace("osl").GlobalNamespace())
-        mbFoundDisqualifier = true;
+        mbFoundReturnValueDisqualifier = true;
     if (dc.Class("ResettableGuard").Namespace("osl").GlobalNamespace())
-        mbFoundDisqualifier = true;
+        mbFoundReturnValueDisqualifier = true;
     else if (dc.Class("SolarMutexGuard").GlobalNamespace())
-        mbFoundDisqualifier = true;
+        mbFoundReturnValueDisqualifier = true;
     else if (dc.Class("SfxModelGuard").GlobalNamespace())
-        mbFoundDisqualifier = true;
+        mbFoundReturnValueDisqualifier = true;
     else if (dc.Class("ReadWriteGuard").Namespace("utl").GlobalNamespace())
-        mbFoundDisqualifier = true;
+        mbFoundReturnValueDisqualifier = true;
     return true;
-}
-
-// Would produce a wrong recommendation for
-//
-//   PresenterFrameworkObserver::RunOnUpdateEnd(
-//       xCC,
-//       [pSelf](bool){ return pSelf->ShutdownPresenterScreen(); });
-//
-// in PresenterScreen::RequestShutdownPresenterScreen
-// (sdext/source/presenter/PresenterScreen.cxx), with no obvious way to work
-// around it:
-//
-// bool PassStuffByRef::VisitLambdaExpr(const LambdaExpr * expr) {
-//     if (ignoreLocation(expr)) {
-//         return true;
-//     }
-//     for (auto i(expr->capture_begin()); i != expr->capture_end(); ++i) {
-//         if (i->getCaptureKind() == LambdaCaptureKind::LCK_ByCopy) {
-//             auto const t = i->getCapturedVar()->getType();
-//             if (isFat(t)) {
-//                 report(
-//                     DiagnosticsEngine::Warning,
-//                     ("%0 capture of %1 variable by copy, rather use capture"
-//                      " by reference---UNLESS THE LAMBDA OUTLIVES THE VARIABLE"),
-//                     i->getLocation())
-//                     << (i->isImplicit() ? "implicit" : "explicit") << t
-//                     << expr->getSourceRange();
-//             }
-//         }
-//     }
-//     return true;
-// }
-
-bool PassStuffByRef::isFat(QualType type) {
-    if (!type->isRecordType()) {
-        return false;
-    }
-    loplugin::TypeCheck tc(type);
-    if ((tc.Class("Reference").Namespace("uno").Namespace("star")
-            .Namespace("sun").Namespace("com").GlobalNamespace())
-        || (tc.Class("Sequence").Namespace("uno").Namespace("star")
-            .Namespace("sun").Namespace("com").GlobalNamespace())
-        || tc.Class("OString").Namespace("rtl").GlobalNamespace()
-        || tc.Class("OUString").Namespace("rtl").GlobalNamespace()
-        || tc.Class("Reference").Namespace("rtl").GlobalNamespace())
-    {
-        return true;
-    }
-    if (type->isIncompleteType()) {
-        return false;
-    }
-    Type const * t2 = type.getTypePtrOrNull();
-    return t2 != nullptr
-        && compiler.getASTContext().getTypeSizeInChars(t2).getQuantity() > 64;
 }
 
 bool PassStuffByRef::isPrimitiveConstRef(QualType type) {
@@ -483,7 +486,7 @@ bool PassStuffByRef::isPrimitiveConstRef(QualType type) {
 }
 
 
-loplugin::Plugin::Registration< PassStuffByRef > X("passstuffbyref");
+loplugin::Plugin::Registration< PassStuffByRef > X("passstuffbyref", false);
 
 }
 

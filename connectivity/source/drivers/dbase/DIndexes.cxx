@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbase/DIndexes.hxx"
-#include "dbase/DIndex.hxx"
+#include <dbase/DIndexes.hxx>
+#include <dbase/DIndex.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <connectivity/dbexception.hxx>
 #include <unotools/ucbhelper.hxx>
-#include <comphelper/types.hxx>
-#include "resource/dbase_res.hrc"
+#include <strings.hrc>
 
 using namespace ::comphelper;
 
@@ -52,7 +52,7 @@ sdbcx::ObjectType ODbaseIndexes::createObject(const OUString& _rName)
     }
 
     sdbcx::ObjectType xRet;
-    SvStream* pFileStream = ::connectivity::file::OFileTable::createStream_simpleError(sFile, StreamMode::READ | StreamMode::NOCREATE | StreamMode::SHARE_DENYWRITE);
+    std::unique_ptr<SvStream> pFileStream = ::connectivity::file::OFileTable::createStream_simpleError(sFile, StreamMode::READ | StreamMode::NOCREATE | StreamMode::SHARE_DENYWRITE);
     if(pFileStream)
     {
         pFileStream->SetEndian(SvStreamEndian::LITTLE);
@@ -61,7 +61,7 @@ sdbcx::ObjectType ODbaseIndexes::createObject(const OUString& _rName)
 
         pFileStream->Seek(0);
         ReadHeader(*pFileStream, aHeader);
-        delete pFileStream;
+        pFileStream.reset();
 
         ODbaseIndex* pIndex = new ODbaseIndex(m_pTable,aHeader,_rName);
         xRet = pIndex;
@@ -95,9 +95,10 @@ sdbcx::ObjectType ODbaseIndexes::appendObject( const OUString& _rForName, const 
     Reference<XUnoTunnel> xTunnel(descriptor,UNO_QUERY);
     if(xTunnel.is())
     {
-        ODbaseIndex* pIndex = reinterpret_cast< ODbaseIndex* >( xTunnel->getSomething(ODbaseIndex::getUnoTunnelImplementationId()) );
-        if(!pIndex || !pIndex->CreateImpl())
+        ODbaseIndex* pIndex = reinterpret_cast< ODbaseIndex* >( xTunnel->getSomething(ODbaseIndex::getUnoTunnelId()) );
+        if(!pIndex)
             throw SQLException();
+        pIndex->CreateImpl();
     }
 
     return createObject( _rForName );
@@ -106,14 +107,9 @@ sdbcx::ObjectType ODbaseIndexes::appendObject( const OUString& _rForName, const 
 // XDrop
 void ODbaseIndexes::dropObject(sal_Int32 _nPos, const OUString& /*_sElementName*/)
 {
-    Reference< XUnoTunnel> xTunnel(getObject(_nPos),UNO_QUERY);
-    if ( xTunnel.is() )
-    {
-        ODbaseIndex* pIndex = reinterpret_cast< ODbaseIndex* >( xTunnel->getSomething(ODbaseIndex::getUnoTunnelImplementationId()) );
-        if ( pIndex )
-            pIndex->DropImpl();
-    }
-
+    auto pIndex = comphelper::getUnoTunnelImplementation<ODbaseIndex>(getObject(_nPos));
+    if ( pIndex )
+        pIndex->DropImpl();
 }
 
 

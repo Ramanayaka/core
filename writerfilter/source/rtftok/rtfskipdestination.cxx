@@ -7,19 +7,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <rtfskipdestination.hxx>
+#include "rtfskipdestination.hxx"
 #include <osl/diagnose.h>
 #include <sal/log.hxx>
+#include "rtflistener.hxx"
 
-namespace writerfilter
+namespace writerfilter::rtftok
 {
-namespace rtftok
-{
-
 RTFSkipDestination::RTFSkipDestination(RTFListener& rImport)
-    : m_rImport(rImport),
-      m_bParsed(true),
-      m_bReset(true)
+    : m_rImport(rImport)
+    , m_bParsed(true)
+    , m_bReset(true)
 {
 }
 
@@ -36,17 +34,10 @@ RTFSkipDestination::~RTFSkipDestination()
     }
 }
 
-void RTFSkipDestination::setParsed(bool bParsed)
-{
-    m_bParsed = bParsed;
-}
+void RTFSkipDestination::setParsed(bool bParsed) { m_bParsed = bParsed; }
 
-void RTFSkipDestination::setReset(bool bReset)
-{
-    m_bReset = bReset;
-}
+void RTFSkipDestination::setReset(bool bReset) { m_bReset = bReset; }
 
-} // namespace rtftok
-} // namespace writerfilter
+} // namespace writerfilter::rtftok
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

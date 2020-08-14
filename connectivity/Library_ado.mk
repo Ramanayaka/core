@@ -13,6 +13,7 @@ $(eval $(call gb_Library_Library,ado))
 $(eval $(call gb_Library_set_componentfile,ado,connectivity/source/drivers/ado/ado))
 
 $(eval $(call gb_Library_set_include,ado,\
+	-I$(SRCDIR)/connectivity/inc \
 	-I$(SRCDIR)/connectivity/source/inc \
 	$$(INCLUDE) \
 	-I$(WORKDIR)/YaccTarget/connectivity/source/parse \
@@ -20,7 +21,7 @@ $(eval $(call gb_Library_set_include,ado,\
 
 $(eval $(call gb_Library_use_external,ado,boost_headers))
 
-$(eval $(call gb_Library_set_precompiled_header,ado,$(SRCDIR)/connectivity/inc/pch/precompiled_ado))
+$(eval $(call gb_Library_set_precompiled_header,ado,connectivity/inc/pch/precompiled_ado))
 
 $(eval $(call gb_Library_use_sdk_api,ado))
 
@@ -73,7 +74,6 @@ $(eval $(call gb_Library_add_exception_objects,ado,\
 	connectivity/source/drivers/ado/APreparedStatement \
 	connectivity/source/drivers/ado/AResultSetMetaData \
 	connectivity/source/drivers/ado/ADriver \
-	connectivity/source/drivers/ado/Aservices \
 	connectivity/source/drivers/ado/Awrapado \
 	connectivity/source/drivers/ado/adoimp \
 ))

@@ -7,11 +7,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <sal/config.h>
+
+#include <o3tl/cppunittraitshelper.hxx>
 #include <sal/types.h>
-#include "cppunit/TestAssert.h"
-#include "cppunit/TestFixture.h"
-#include "cppunit/extensions/HelperMacros.h"
-#include "cppunit/plugin/TestPlugIn.h"
+#include <cppunit/TestAssert.h>
+#include <cppunit/TestFixture.h>
+#include <cppunit/extensions/HelperMacros.h>
+#include <cppunit/plugin/TestPlugIn.h>
 
 #include <svl/lngmisc.hxx>
 
@@ -42,11 +45,7 @@ namespace
     OUString str1("");
     OUString str2("a-b--c---");
 
-    OUStringBuffer str3Buf;
-    str3Buf.append(SVT_SOFT_HYPHEN);
-    str3Buf.append(SVT_HARD_HYPHEN);
-    str3Buf.append(SVT_HARD_HYPHEN);
-    OUString str3(str3Buf.makeStringAndClear());
+    OUString str3 = OUStringChar(SVT_SOFT_HYPHEN) + OUStringChar(SVT_HARD_HYPHEN) + OUStringChar(SVT_HARD_HYPHEN);
 
     OUString str4("asdf");
 
@@ -134,37 +133,30 @@ namespace
 
   void LngMiscTest::testGetThesaurusReplaceText()
   {
-    const OUString str1("");
     const OUString str2("asdf");
-    const OUString str3("asdf (abc)");
-    const OUString str4("asdf*");
-    const OUString str5("asdf * ");
-    const OUString str6("asdf (abc) *");
-    const OUString str7("asdf asdf * (abc)");
-    const OUString str8(" * (abc) asdf *");
 
-    OUString r = linguistic::GetThesaurusReplaceText(str1);
+    OUString r = linguistic::GetThesaurusReplaceText("");
     CPPUNIT_ASSERT(r.isEmpty());
 
     r = linguistic::GetThesaurusReplaceText(str2);
     CPPUNIT_ASSERT_EQUAL(str2, r);
 
-    r = linguistic::GetThesaurusReplaceText(str3);
+    r = linguistic::GetThesaurusReplaceText("asdf (abc)");
     CPPUNIT_ASSERT_EQUAL(str2, r);
 
-    r = linguistic::GetThesaurusReplaceText(str4);
+    r = linguistic::GetThesaurusReplaceText("asdf*");
     CPPUNIT_ASSERT_EQUAL(str2, r);
 
-    r = linguistic::GetThesaurusReplaceText(str5);
+    r = linguistic::GetThesaurusReplaceText("asdf * ");
     CPPUNIT_ASSERT_EQUAL(str2, r);
 
-    r = linguistic::GetThesaurusReplaceText(str6);
+    r = linguistic::GetThesaurusReplaceText("asdf (abc) *");
     CPPUNIT_ASSERT_EQUAL(str2, r);
 
-    r = linguistic::GetThesaurusReplaceText(str7);
+    r = linguistic::GetThesaurusReplaceText("asdf asdf * (abc)");
     CPPUNIT_ASSERT_EQUAL(OUString("asdf asdf"), r);
 
-    r = linguistic::GetThesaurusReplaceText(str8);
+    r = linguistic::GetThesaurusReplaceText(" * (abc) asdf *");
     CPPUNIT_ASSERT(r.isEmpty());
   }
 

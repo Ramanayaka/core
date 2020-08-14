@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/customshapeproperties.hxx"
-#include "oox/helper/propertymap.hxx"
-#include "oox/helper/propertyset.hxx"
+#include <drawingml/customshapeproperties.hxx>
+#include <oox/helper/propertymap.hxx>
+#include <oox/helper/propertyset.hxx>
 #include <oox/token/properties.hxx>
-#include "oox/token/tokenmap.hxx"
+#include <oox/token/tokenmap.hxx>
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/beans/PropertyValues.hpp>
@@ -31,13 +31,14 @@
 #include <com/sun/star/drawing/XEnhancedCustomShapeDefaulter.hpp>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <comphelper/sequence.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::drawing;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 CustomShapeProperties::CustomShapeProperties()
 : mnShapePresetType ( -1 )
@@ -45,10 +46,8 @@ CustomShapeProperties::CustomShapeProperties()
 , mbMirroredX   ( false )
 , mbMirroredY   ( false )
 , mnTextRotateAngle ( 0 )
+, mnTextCameraZRotateAngle ( 0 )
 , mnArcNum ( 0 )
-{
-}
-CustomShapeProperties::~CustomShapeProperties()
 {
 }
 
@@ -149,25 +148,26 @@ void CustomShapeProperties::pushToPropSet(
         aPropertyMap.setProperty( PROP_MirroredX, mbMirroredX );
         aPropertyMap.setProperty( PROP_MirroredY, mbMirroredY );
         aPropertyMap.setProperty( PROP_TextPreRotateAngle, mnTextRotateAngle );
-        aPropertyMap.setProperty( PROP_IsPostRotateAngle, true); // For OpenXML Imports
+        aPropertyMap.setProperty( PROP_TextCameraZRotateAngle, mnTextCameraZRotateAngle );
         Sequence< PropertyValue > aSeq = aPropertyMap.makePropertyValueSequence();
         aPropSet.setProperty( PROP_CustomShapeGeometry, aSeq );
 
         const OUString sCustomShapeGeometry("CustomShapeGeometry");
+        const OUString sAdjustmentValues("AdjustmentValues");
         uno::Any aGeoPropSet = xPropSet->getPropertyValue( sCustomShapeGeometry );
         uno::Sequence< beans::PropertyValue > aGeoPropSeq;
 
-        sal_Int32 i, nCount = 0;
+        // ToDo: Using sAdjustmentValues in this "if" looks nonsense.
+        // It was introduced in revision acd2c909, which introduced the property "PresetTextWarp"
+        // for interoperability with Word.
         if (aGeoPropSet >>= aGeoPropSeq)
         {
-            nCount = aGeoPropSeq.getLength();
-            for ( i = 0; i < nCount; i++ )
+            for ( const auto& rGeoProp : std::as_const(aGeoPropSeq) )
             {
-                const OUString sAdjustmentValues("AdjustmentValues");
-                if ( aGeoPropSeq[ i ].Name.equals( sAdjustmentValues ) )
+                if ( rGeoProp.Name == sAdjustmentValues )
                 {
                     OUString presetTextWarp;
-                    if ( aGeoPropSeq[ i ].Value >>= presetTextWarp )
+                    if ( rGeoProp.Value >>= presetTextWarp )
                     {
                         aPropertyMap.setProperty( PROP_PresetTextWarp, presetTextWarp );
                     }
@@ -175,53 +175,54 @@ void CustomShapeProperties::pushToPropSet(
             }
         }
 
-        if ( maAdjustmentGuideList.size() )
+        if ( !maAdjustmentGuideList.empty() )
         {
             const OUString sType = "Type";
             if ( aGeoPropSet >>= aGeoPropSeq )
             {
-                nCount = aGeoPropSeq.getLength();
-                for ( i = 0; i < nCount; i++ )
+                for ( auto& rGeoProp : aGeoPropSeq )
                 {
-                    const OUString sAdjustmentValues("AdjustmentValues");
-                    if ( aGeoPropSeq[ i ].Name.equals( sAdjustmentValues ) )
+                    if ( rGeoProp.Name == sAdjustmentValues )
                     {
                         uno::Sequence< css::drawing::EnhancedCustomShapeAdjustmentValue > aAdjustmentSeq;
-                        if ( aGeoPropSeq[ i ].Value >>= aAdjustmentSeq )
+                        if ( rGeoProp.Value >>= aAdjustmentSeq )
                         {
                             int nIndex=0;
-                            for (std::vector< CustomShapeGuide >::const_iterator aIter( maAdjustmentGuideList.begin() ), aEnd(maAdjustmentGuideList.end());
-                             aIter != aEnd; ++aIter)
+                            for (auto const& adjustmentGuide : maAdjustmentGuideList)
                             {
-                                if ( (*aIter).maName.getLength() > 3 )
+                                if ( adjustmentGuide.maName.getLength() > 3 )
                                 {
-                                    sal_Int32 nAdjustmentIndex = (*aIter).maName.copy( 3 ).toInt32() - 1;
+                                    sal_Int32 nAdjustmentIndex = adjustmentGuide.maName.copy( 3 ).toInt32() - 1;
                                     if ( ( nAdjustmentIndex >= 0 ) && ( nAdjustmentIndex < aAdjustmentSeq.getLength() ) )
                                     {
                                         EnhancedCustomShapeAdjustmentValue aAdjustmentVal;
-                                        aAdjustmentVal.Value <<= (*aIter).maFormula.toInt32();
+                                        aAdjustmentVal.Value <<= adjustmentGuide.maFormula.toInt32();
                                         aAdjustmentVal.State = PropertyState_DIRECT_VALUE;
-                                        aAdjustmentVal.Name = (*aIter).maName;
+                                        aAdjustmentVal.Name = adjustmentGuide.maName;
                                         aAdjustmentSeq[ nAdjustmentIndex ] = aAdjustmentVal;
                                     }
-                                } else if ( aAdjustmentSeq.getLength() > 0 ) {
+                                } else if ( aAdjustmentSeq.hasElements() ) {
                                     EnhancedCustomShapeAdjustmentValue aAdjustmentVal;
-                                    aAdjustmentVal.Value <<= (*aIter).maFormula.toInt32();
+                                    aAdjustmentVal.Value <<= adjustmentGuide.maFormula.toInt32();
                                     aAdjustmentVal.State = PropertyState_DIRECT_VALUE;
-                                    aAdjustmentVal.Name = (*aIter).maName;
-                                    aAdjustmentSeq[ nIndex++ ] = aAdjustmentVal;
+                                    aAdjustmentVal.Name = adjustmentGuide.maName;
+                                    if (nIndex < aAdjustmentSeq.getLength())
+                                    {
+                                        aAdjustmentSeq[nIndex] = aAdjustmentVal;
+                                        ++nIndex;
+                                    }
                                 }
                             }
-                            aGeoPropSeq[ i ].Value <<= aAdjustmentSeq;
+                            rGeoProp.Value <<= aAdjustmentSeq;
                             xPropSet->setPropertyValue( sCustomShapeGeometry, Any( aGeoPropSeq ) );
                         }
                     }
-                    else if ( aGeoPropSeq[ i ].Name.equals( sType ) )
+                    else if ( rGeoProp.Name == sType )
                     {
                         if ( sConnectorShapeType.getLength() > 0 )
-                            aGeoPropSeq[ i ].Value <<= sConnectorShapeType;
+                            rGeoProp.Value <<= sConnectorShapeType;
                         else
-                            aGeoPropSeq[ i ].Value <<= OUString( "ooxml-CustomShape" );
+                            rGeoProp.Value <<= OUString( "ooxml-CustomShape" );
                     }
                 }
             }
@@ -233,12 +234,14 @@ void CustomShapeProperties::pushToPropSet(
         aPropertyMap.setProperty( PROP_Type, OUString( "ooxml-non-primitive" ));
         aPropertyMap.setProperty( PROP_MirroredX, mbMirroredX );
         aPropertyMap.setProperty( PROP_MirroredY, mbMirroredY );
+        if( mnTextRotateAngle )
+            aPropertyMap.setProperty( PROP_TextPreRotateAngle, mnTextRotateAngle );
         // Note 1: If Equations are defined - they are processed using internal div by 360 coordinates
         // while if they are not, standard ooxml coordinates are used.
         // This size specifically affects scaling.
         // Note 2: Width and Height are set to 0 to force scaling to 1.
         awt::Rectangle aViewBox( 0, 0, aSize.Width, aSize.Height );
-        if( maGuideList.size() )
+        if( !maGuideList.empty() )
             aViewBox = awt::Rectangle( 0, 0, 0, 0 );
         aPropertyMap.setProperty( PROP_ViewBox, aViewBox);
 
@@ -277,7 +280,7 @@ void CustomShapeProperties::pushToPropSet(
                 aParameterPairs[ k++ ] = j;
         aPath.setProperty( PROP_Coordinates, aParameterPairs);
 
-        if ( maPath2DList.size() )
+        if ( !maPath2DList.empty() )
         {
             bool bAllZero = true;
             for ( auto const & i: maPath2DList )
@@ -401,6 +404,6 @@ void CustomShapeProperties::pushToPropSet(
     }
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

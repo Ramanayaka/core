@@ -20,6 +20,9 @@
 #ifndef INCLUDED_SVL_SOURCE_SVDDE_DDEIMP_HXX
 #define INCLUDED_SVL_SOURCE_SVDDE_DDEIMP_HXX
 
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <ddeml.h>
 
@@ -33,8 +36,6 @@ struct Conversation
     HCONV       hConv;
     DdeTopic*   pTopic;
 };
-
-typedef ::std::vector< Conversation* > ConvList;
 
 
 class DdeInternal
@@ -65,9 +66,9 @@ public:
                 DdeString( DWORD, const OUString& );
                 ~DdeString();
 
-    bool        operator==( HSZ );
+    bool        operator==( HSZ ) const;
     HSZ getHSZ();
-    OUString toOUString() const { return m_aString; }
+    const OUString & toOUString() const { return m_aString; }
 };
 
 

@@ -17,11 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
+#include <sal/log.hxx>
 
-#include "com/sun/star/io/BufferSizeExceededException.hpp"
-#include "java/io/InputStream.hxx"
-#include "java/tools.hxx"
+#include <com/sun/star/io/BufferSizeExceededException.hpp>
+#include <java/io/InputStream.hxx>
+#include <osl/diagnose.h>
 
 #include <string.h>
 

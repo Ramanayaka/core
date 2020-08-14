@@ -8,21 +8,22 @@
  */
 
 #include <memory>
-#include "condformatuno.hxx"
+#include <condformatuno.hxx>
 
-#include "document.hxx"
-#include "conditio.hxx"
-#include "colorscale.hxx"
-#include "docsh.hxx"
-#include "miscuno.hxx"
-#include "compiler.hxx"
-#include "tokenarray.hxx"
+#include <document.hxx>
+#include <conditio.hxx>
+#include <colorscale.hxx>
+#include <docsh.hxx>
+#include <compiler.hxx>
+#include <tokenarray.hxx>
 
-#include "cellsuno.hxx"
-#include "convuno.hxx"
+#include <cellsuno.hxx>
+#include <convuno.hxx>
 
+#include <o3tl/safeint.hxx>
 #include <vcl/svapp.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 #include <com/sun/star/sheet/DataBarAxis.hpp>
 #include <com/sun/star/sheet/IconSetType.hpp>
@@ -45,9 +46,9 @@ const SfxItemPropertyMapEntry* getCondFormatPropset()
 {
     static const SfxItemPropertyMapEntry aCondFormatPropertyMap_Impl[] =
     {
-        {OUString("ID"), ID, cppu::UnoType<sal_Int32>::get(), 0, 0},
-        {OUString("Range"), CondFormat_Range, cppu::UnoType<sheet::XSheetCellRanges>::get(), 0, 0},
-        {OUString(), 0, css::uno::Type(), 0, 0}
+        {"ID", ID, cppu::UnoType<sal_Int32>::get(), 0, 0},
+        {"Range", CondFormat_Range, cppu::UnoType<sheet::XSheetCellRanges>::get(), 0, 0},
+        {"", 0, css::uno::Type(), 0, 0}
     };
     return aCondFormatPropertyMap_Impl;
 }
@@ -64,11 +65,11 @@ const SfxItemPropertyMapEntry* getConditionEntryrPropSet()
 {
     static const SfxItemPropertyMapEntry aConditionEntryPropertyMap_Impl[] =
     {
-        {OUString("StyleName"), StyleName, cppu::UnoType<OUString>::get(), 0, 0},
-        {OUString("Formula1"), Formula1, cppu::UnoType<OUString>::get(), 0, 0},
-        {OUString("Formula2"), Formula2, cppu::UnoType<OUString>::get(), 0, 0},
-        {OUString("Operator"), Operator, cppu::UnoType<decltype(sheet::ConditionFormatOperator::EQUAL)>::get(), 0, 0 },
-        {OUString(), 0, css::uno::Type(), 0, 0}
+        {"StyleName", StyleName, cppu::UnoType<OUString>::get(), 0, 0},
+        {"Formula1", Formula1, cppu::UnoType<OUString>::get(), 0, 0},
+        {"Formula2", Formula2, cppu::UnoType<OUString>::get(), 0, 0},
+        {"Operator", Operator, cppu::UnoType<decltype(sheet::ConditionFormatOperator::EQUAL)>::get(), 0, 0 },
+        {"", 0, css::uno::Type(), 0, 0}
     };
     return aConditionEntryPropertyMap_Impl;
 }
@@ -79,34 +80,34 @@ struct ConditionEntryApiMap
     sal_Int32 nApiMode;
 };
 
-ConditionEntryApiMap aConditionEntryMap[] =
+ConditionEntryApiMap const aConditionEntryMap[] =
 {
-    {SC_COND_EQUAL, sheet::ConditionFormatOperator::EQUAL},
-    {SC_COND_LESS, sheet::ConditionFormatOperator::LESS},
-    {SC_COND_GREATER, sheet::ConditionFormatOperator::GREATER},
-    {SC_COND_EQLESS, sheet::ConditionFormatOperator::LESS_EQUAL},
-    {SC_COND_EQGREATER, sheet::ConditionFormatOperator::GREATER_EQUAL},
-    {SC_COND_NOTEQUAL, sheet::ConditionFormatOperator::NOT_EQUAL},
-    {SC_COND_BETWEEN, sheet::ConditionFormatOperator::BETWEEN},
-    {SC_COND_NOTBETWEEN, sheet::ConditionFormatOperator::NOT_BETWEEN},
-    {SC_COND_DUPLICATE, sheet::ConditionFormatOperator::DUPLICATE},
-    {SC_COND_NOTDUPLICATE, sheet::ConditionFormatOperator::UNIQUE},
-    {SC_COND_DIRECT, sheet::ConditionFormatOperator::EXPRESSION},
-    {SC_COND_TOP10, sheet::ConditionFormatOperator::TOP_N_ELEMENTS},
-    {SC_COND_BOTTOM10, sheet::ConditionFormatOperator::BOTTOM_N_ELEMENTS},
-    {SC_COND_TOP_PERCENT, sheet::ConditionFormatOperator::TOP_N_PERCENT},
-    {SC_COND_BOTTOM_PERCENT, sheet::ConditionFormatOperator::BOTTOM_N_PERCENT},
-    {SC_COND_ABOVE_AVERAGE, sheet::ConditionFormatOperator::ABOVE_AVERAGE},
-    {SC_COND_BELOW_AVERAGE, sheet::ConditionFormatOperator::BELOW_AVERAGE},
-    {SC_COND_ABOVE_EQUAL_AVERAGE, sheet::ConditionFormatOperator::ABOVE_EQUAL_AVERAGE},
-    {SC_COND_BELOW_EQUAL_AVERAGE, sheet::ConditionFormatOperator::BELOW_EQUAL_AVERAGE},
-    {SC_COND_ERROR, sheet::ConditionFormatOperator::ERROR},
-    {SC_COND_NOERROR, sheet::ConditionFormatOperator::NO_ERROR},
-    {SC_COND_BEGINS_WITH, sheet::ConditionFormatOperator::BEGINS_WITH},
-    {SC_COND_ENDS_WITH, sheet::ConditionFormatOperator::ENDS_WITH},
-    {SC_COND_CONTAINS_TEXT, sheet::ConditionFormatOperator::CONTAINS},
-    {SC_COND_NOT_CONTAINS_TEXT, sheet::ConditionFormatOperator::NOT_CONTAINS},
-    {SC_COND_NONE, sheet::ConditionFormatOperator::EQUAL},
+    {ScConditionMode::Equal, sheet::ConditionFormatOperator::EQUAL},
+    {ScConditionMode::Less, sheet::ConditionFormatOperator::LESS},
+    {ScConditionMode::Greater, sheet::ConditionFormatOperator::GREATER},
+    {ScConditionMode::EqLess, sheet::ConditionFormatOperator::LESS_EQUAL},
+    {ScConditionMode::EqGreater, sheet::ConditionFormatOperator::GREATER_EQUAL},
+    {ScConditionMode::NotEqual, sheet::ConditionFormatOperator::NOT_EQUAL},
+    {ScConditionMode::Between, sheet::ConditionFormatOperator::BETWEEN},
+    {ScConditionMode::NotBetween, sheet::ConditionFormatOperator::NOT_BETWEEN},
+    {ScConditionMode::Duplicate, sheet::ConditionFormatOperator::DUPLICATE},
+    {ScConditionMode::NotDuplicate, sheet::ConditionFormatOperator::UNIQUE},
+    {ScConditionMode::Direct, sheet::ConditionFormatOperator::EXPRESSION},
+    {ScConditionMode::Top10, sheet::ConditionFormatOperator::TOP_N_ELEMENTS},
+    {ScConditionMode::Bottom10, sheet::ConditionFormatOperator::BOTTOM_N_ELEMENTS},
+    {ScConditionMode::TopPercent, sheet::ConditionFormatOperator::TOP_N_PERCENT},
+    {ScConditionMode::BottomPercent, sheet::ConditionFormatOperator::BOTTOM_N_PERCENT},
+    {ScConditionMode::AboveAverage, sheet::ConditionFormatOperator::ABOVE_AVERAGE},
+    {ScConditionMode::BelowAverage, sheet::ConditionFormatOperator::BELOW_AVERAGE},
+    {ScConditionMode::AboveEqualAverage, sheet::ConditionFormatOperator::ABOVE_EQUAL_AVERAGE},
+    {ScConditionMode::BelowEqualAverage, sheet::ConditionFormatOperator::BELOW_EQUAL_AVERAGE},
+    {ScConditionMode::Error, sheet::ConditionFormatOperator::ERROR},
+    {ScConditionMode::NoError, sheet::ConditionFormatOperator::NO_ERROR},
+    {ScConditionMode::BeginsWith, sheet::ConditionFormatOperator::BEGINS_WITH},
+    {ScConditionMode::EndsWith, sheet::ConditionFormatOperator::ENDS_WITH},
+    {ScConditionMode::ContainsText, sheet::ConditionFormatOperator::CONTAINS},
+    {ScConditionMode::NotContainsText, sheet::ConditionFormatOperator::NOT_CONTAINS},
+    {ScConditionMode::NONE, sheet::ConditionFormatOperator::EQUAL},
 };
 
 enum ColorScaleProperties
@@ -118,8 +119,8 @@ const SfxItemPropertyMapEntry* getColorScalePropSet()
 {
     static const SfxItemPropertyMapEntry aColorScalePropertyMap_Impl[] =
     {
-        {OUString("ColorScaleEntries"), ColorScaleEntries, cppu::UnoType<uno::Sequence< sheet::XColorScaleEntry >>::get(), 0, 0 },
-        {OUString(), 0, css::uno::Type(), 0, 0}
+        {"ColorScaleEntries", ColorScaleEntries, cppu::UnoType<uno::Sequence< sheet::XColorScaleEntry >>::get(), 0, 0 },
+        {"", 0, css::uno::Type(), 0, 0}
     };
     return aColorScalePropertyMap_Impl;
 }
@@ -130,7 +131,7 @@ struct ColorScaleEntryTypeApiMap
     sal_Int32 nApiType;
 };
 
-ColorScaleEntryTypeApiMap aColorScaleEntryTypeMap[] =
+ColorScaleEntryTypeApiMap const aColorScaleEntryTypeMap[] =
 {
     { COLORSCALE_MIN, sheet::ColorScaleEntryType::COLORSCALE_MIN },
     { COLORSCALE_MAX, sheet::ColorScaleEntryType::COLORSCALE_MAX },
@@ -158,17 +159,17 @@ const SfxItemPropertyMapEntry* getDataBarPropSet()
 {
     static const SfxItemPropertyMapEntry aDataBarPropertyMap_Impl[] =
     {
-        {OUString("AxisPosition"), AxisPosition, cppu::UnoType<decltype(sheet::DataBarAxis::AXIS_AUTOMATIC)>::get(), 0, 0 },
-        {OUString("UseGradient"), UseGradient, cppu::UnoType<bool>::get(), 0, 0 },
-        {OUString("UseNegativeColor"), UseNegativeColor, cppu::UnoType<bool>::get(), 0, 0 },
-        {OUString("ShowValue"), DataBar_ShowValue, cppu::UnoType<bool>::get(), 0, 0 },
-        {OUString("Color"), DataBar_Color, cppu::UnoType<sal_Int32>::get(), 0, 0},
-        {OUString("AxisColor"), AxisColor, cppu::UnoType<sal_Int32>::get(), 0, 0},
-        {OUString("NegativeColor"), NegativeColor, cppu::UnoType<sal_Int32>::get(), 0, 0},
-        {OUString("DataBarEntries"), DataBarEntries, cppu::UnoType<uno::Sequence< sheet::XDataBarEntry >>::get(), 0, 0 },
-        {OUString("MinimumLength"), MinimumLength, cppu::UnoType<double>::get(), 0, 0 },
-        {OUString("MaximumLength"), MaximumLength, cppu::UnoType<double>::get(), 0, 0 },
-        {OUString(), 0, css::uno::Type(), 0, 0}
+        {"AxisPosition", AxisPosition, cppu::UnoType<decltype(sheet::DataBarAxis::AXIS_AUTOMATIC)>::get(), 0, 0 },
+        {"UseGradient", UseGradient, cppu::UnoType<bool>::get(), 0, 0 },
+        {"UseNegativeColor", UseNegativeColor, cppu::UnoType<bool>::get(), 0, 0 },
+        {"ShowValue", DataBar_ShowValue, cppu::UnoType<bool>::get(), 0, 0 },
+        {"Color", DataBar_Color, cppu::UnoType<sal_Int32>::get(), 0, 0},
+        {"AxisColor", AxisColor, cppu::UnoType<sal_Int32>::get(), 0, 0},
+        {"NegativeColor", NegativeColor, cppu::UnoType<sal_Int32>::get(), 0, 0},
+        {"DataBarEntries", DataBarEntries, cppu::UnoType<uno::Sequence< sheet::XDataBarEntry >>::get(), 0, 0 },
+        {"MinimumLength", MinimumLength, cppu::UnoType<double>::get(), 0, 0 },
+        {"MaximumLength", MaximumLength, cppu::UnoType<double>::get(), 0, 0 },
+        {"", 0, css::uno::Type(), 0, 0}
     };
     return aDataBarPropertyMap_Impl;
 }
@@ -179,7 +180,7 @@ struct DataBarAxisApiMap
     sal_Int32 nApiPos;
 };
 
-DataBarAxisApiMap aDataBarAxisMap[] =
+DataBarAxisApiMap const aDataBarAxisMap[] =
 {
     { databar::NONE, sheet::DataBarAxis::AXIS_NONE },
     { databar::AUTOMATIC, sheet::DataBarAxis::AXIS_AUTOMATIC },
@@ -192,7 +193,7 @@ struct DataBarEntryTypeApiMap
     sal_Int32 nApiType;
 };
 
-DataBarEntryTypeApiMap aDataBarEntryTypeMap[] =
+DataBarEntryTypeApiMap const aDataBarEntryTypeMap[] =
 {
     { COLORSCALE_AUTO, sheet::DataBarEntryType::DATABAR_AUTO },
     { COLORSCALE_MIN, sheet::DataBarEntryType::DATABAR_MIN },
@@ -215,11 +216,11 @@ const SfxItemPropertyMapEntry* getIconSetPropSet()
 {
     static const SfxItemPropertyMapEntry aIconSetPropertyMap_Impl[] =
     {
-        {OUString("Icons"), Icons, cppu::UnoType<decltype(sheet::IconSetType::ICONSET_3SYMBOLS)>::get(), 0, 0 },
-        {OUString("Reverse"), Reverse, cppu::UnoType<bool>::get(), 0, 0 },
-        {OUString("ShowValue"), ShowValue, cppu::UnoType<bool>::get(), 0, 0 },
-        {OUString("IconSetEntries"), IconSetEntries, cppu::UnoType<uno::Sequence< sheet::XIconSetEntry >>::get(), 0, 0 },
-        {OUString(), 0, css::uno::Type(), 0, 0}
+        {"Icons", Icons, cppu::UnoType<decltype(sheet::IconSetType::ICONSET_3SYMBOLS)>::get(), 0, 0 },
+        {"Reverse", Reverse, cppu::UnoType<bool>::get(), 0, 0 },
+        {"ShowValue", ShowValue, cppu::UnoType<bool>::get(), 0, 0 },
+        {"IconSetEntries", IconSetEntries, cppu::UnoType<uno::Sequence< sheet::XIconSetEntry >>::get(), 0, 0 },
+        {"", 0, css::uno::Type(), 0, 0}
     };
     return aIconSetPropertyMap_Impl;
 }
@@ -259,7 +260,7 @@ struct IconSetEntryTypeApiMap
     sal_Int32 nApiType;
 };
 
-IconSetEntryTypeApiMap aIconSetEntryTypeMap[] =
+IconSetEntryTypeApiMap const aIconSetEntryTypeMap[] =
 {
     { COLORSCALE_MIN, sheet::IconSetFormatEntry::ICONSET_MIN },
     { COLORSCALE_VALUE, sheet::IconSetFormatEntry::ICONSET_VALUE },
@@ -278,9 +279,9 @@ const SfxItemPropertyMapEntry* getCondDatePropSet()
 {
     static const SfxItemPropertyMapEntry aCondDatePropertyMap_Impl[] =
     {
-        {OUString("StyleName"), StyleName, cppu::UnoType<OUString>::get(), 0, 0},
-        {OUString("DateType"), Icons, cppu::UnoType<decltype(sheet::DateType::TODAY)>::get(), 0, 0 },
-        {OUString(), 0, css::uno::Type(), 0, 0}
+        {"StyleName", StyleName, cppu::UnoType<OUString>::get(), 0, 0},
+        {"DateType", Icons, cppu::UnoType<decltype(sheet::DateType::TODAY)>::get(), 0, 0 },
+        {"", 0, css::uno::Type(), 0, 0}
     };
     return aCondDatePropertyMap_Impl;
 }
@@ -291,7 +292,7 @@ struct DateTypeApiMap
     sal_Int32 nApiType;
 };
 
-DateTypeApiMap aDateTypeApiMap[] =
+DateTypeApiMap const aDateTypeApiMap[] =
 {
     { condformat::TODAY, sheet::DateType::TODAY },
     { condformat::YESTERDAY, sheet::DateType::YESTERDAY },
@@ -340,25 +341,25 @@ sal_Int32 ScCondFormatsObj::createByRange(const uno::Reference< sheet::XSheetCel
     if (!xRanges.is())
         throw lang::IllegalArgumentException();
 
-    uno::Sequence<table::CellRangeAddress> aRanges =
+    const uno::Sequence<table::CellRangeAddress> aRanges =
         xRanges->getRangeAddresses();
 
     ScRangeList aCoreRange;
-    for (sal_Int32 i = 0, n = aRanges.getLength(); i < n; ++i)
+    for (const auto& rRange : aRanges)
     {
         ScRange aRange;
-        ScUnoConversion::FillScRange(aRange, aRanges[i]);
+        ScUnoConversion::FillScRange(aRange, rRange);
         aCoreRange.Join(aRange);
     }
 
     if (aCoreRange.empty())
         throw lang::IllegalArgumentException();
 
-    SCTAB nTab = aCoreRange[0]->aStart.Tab();
+    SCTAB nTab = aCoreRange[0].aStart.Tab();
 
-    ScConditionalFormat* pNewFormat = new ScConditionalFormat(0, &mpDocShell->GetDocument());
+    auto pNewFormat = std::make_unique<ScConditionalFormat>(0, &mpDocShell->GetDocument());
     pNewFormat->SetRange(aCoreRange);
-    return mpDocShell->GetDocument().AddCondFormat(pNewFormat, nTab);
+    return mpDocShell->GetDocument().AddCondFormat(std::move(pNewFormat), nTab);
 }
 
 void ScCondFormatsObj::removeByID(const sal_Int32 nID)
@@ -375,9 +376,11 @@ uno::Sequence<uno::Reference<sheet::XConditionalFormat> > ScCondFormatsObj::getC
     size_t n = pFormatList->size();
     uno::Sequence<uno::Reference<sheet::XConditionalFormat> > aCondFormats(n);
     sal_Int32 i = 0;
-    for (ScConditionalFormatList::const_iterator itr = pFormatList->begin(); itr != pFormatList->end(); ++itr, ++i) {
-        uno::Reference<sheet::XConditionalFormat> xCondFormat(new ScCondFormatObj(mpDocShell, this, (*itr)->GetKey()));
+    for (const auto& rFormat : *pFormatList)
+    {
+        uno::Reference<sheet::XConditionalFormat> xCondFormat(new ScCondFormatObj(mpDocShell, this, rFormat->GetKey()));
         aCondFormats[i] = xCondFormat;
+        ++i;
     }
 
     return aCondFormats;
@@ -409,23 +412,24 @@ uno::Reference<beans::XPropertySet> createConditionEntry(const ScFormatEntry* pE
 {
     switch (pEntry->GetType())
     {
-        case condformat::CONDITION:
+        case ScFormatEntry::Type::Condition:
+        case ScFormatEntry::Type::ExtCondition:
             return new ScConditionEntryObj(xParent,
                     static_cast<const ScCondFormatEntry*>(pEntry));
         break;
-        case condformat::COLORSCALE:
+        case ScFormatEntry::Type::Colorscale:
             return new ScColorScaleFormatObj(xParent,
                     static_cast<const ScColorScaleFormat*>(pEntry));
         break;
-        case condformat::DATABAR:
+        case ScFormatEntry::Type::Databar:
             return new ScDataBarFormatObj(xParent,
                     static_cast<const ScDataBarFormat*>(pEntry));
         break;
-        case condformat::ICONSET:
+        case ScFormatEntry::Type::Iconset:
             return new ScIconSetFormatObj(xParent,
                     static_cast<const ScIconSetFormat*>(pEntry));
         break;
-        case condformat::DATE:
+        case ScFormatEntry::Type::Date:
             return new ScCondDateFormatObj(xParent,
                     static_cast<const ScCondDateFormatEntry*>(pEntry));
         break;
@@ -477,7 +481,7 @@ void ScCondFormatObj::createEntry(const sal_Int32 nType, const sal_Int32 nPos)
     switch (nType)
     {
         case sheet::ConditionEntryType::CONDITION:
-            pNewEntry = new ScCondFormatEntry(SC_COND_EQUAL, "", "",
+            pNewEntry = new ScCondFormatEntry(ScConditionMode::Equal, "", "",
                     pDoc, pFormat->GetRange().GetTopLeftCorner(), "");
         break;
         case sheet::ConditionEntryType::COLORSCALE:
@@ -506,7 +510,7 @@ void ScCondFormatObj::createEntry(const sal_Int32 nType, const sal_Int32 nPos)
 void ScCondFormatObj::removeByIndex(const sal_Int32 nIndex)
 {
     SolarMutexGuard aGuard;
-    if (getCoreObject()->size() >= size_t(nIndex))
+    if (getCoreObject()->size() >= o3tl::make_unsigned(nIndex))
         throw lang::IllegalArgumentException();
 
     getCoreObject()->RemoveEntry(nIndex);
@@ -535,7 +539,7 @@ sal_Int32 ScCondFormatObj::getCount()
 uno::Any ScCondFormatObj::getByIndex(sal_Int32 nIndex)
 {
     SolarMutexGuard aGuard;
-    if (getCoreObject()->size() <= size_t(nIndex))
+    if (getCoreObject()->size() <= o3tl::make_unsigned(nIndex))
         throw lang::IllegalArgumentException();
 
     const ScFormatEntry* pEntry = getCoreObject()->GetEntry(nIndex);
@@ -560,7 +564,7 @@ void SAL_CALL ScCondFormatObj::setPropertyValue(
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     switch(pEntry->nWID)
     {
@@ -573,13 +577,13 @@ void SAL_CALL ScCondFormatObj::setPropertyValue(
             if (aValue >>= xRange)
             {
                 ScConditionalFormat* pFormat = getCoreObject();
-                uno::Sequence<table::CellRangeAddress> aRanges =
+                const uno::Sequence<table::CellRangeAddress> aRanges =
                     xRange->getRangeAddresses();
                 ScRangeList aTargetRange;
-                for (size_t i = 0, n = aRanges.getLength(); i < n; ++i)
+                for (const auto& rRange : aRanges)
                 {
                     ScRange aRange;
-                    ScUnoConversion::FillScRange(aRange, aRanges[i]);
+                    ScUnoConversion::FillScRange(aRange, rRange);
                     aTargetRange.Join(aRange);
                 }
                 pFormat->SetRange(aTargetRange);
@@ -598,7 +602,7 @@ uno::Any SAL_CALL ScCondFormatObj::getPropertyValue( const OUString& aPropertyNa
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     uno::Any aAny;
     switch(pEntry->nWID)
@@ -646,7 +650,7 @@ void SAL_CALL ScCondFormatObj::removeVetoableChangeListener( const OUString&,
 
 namespace {
 
-bool isObjectStillAlive(ScConditionalFormat* pFormat, const ScFormatEntry* pEntry)
+bool isObjectStillAlive(const ScConditionalFormat* pFormat, const ScFormatEntry* pEntry)
 {
     for(size_t i = 0, n= pFormat->size(); i < n; ++i)
     {
@@ -700,7 +704,7 @@ void SAL_CALL ScConditionEntryObj::setPropertyValue(
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     switch(pEntry->nWID)
     {
@@ -740,7 +744,7 @@ void SAL_CALL ScConditionEntryObj::setPropertyValue(
             sal_Int32 nVal;
             if (aValue >>= nVal)
             {
-                for (ConditionEntryApiMap & rEntry : aConditionEntryMap)
+                for (ConditionEntryApiMap const & rEntry : aConditionEntryMap)
                 {
                     if (rEntry.nApiMode == nVal)
                     {
@@ -763,7 +767,7 @@ uno::Any SAL_CALL ScConditionEntryObj::getPropertyValue( const OUString& aProper
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     uno::Any aAny;
     switch(pEntry->nWID)
@@ -788,7 +792,7 @@ uno::Any SAL_CALL ScConditionEntryObj::getPropertyValue( const OUString& aProper
         case Operator:
         {
             ScConditionMode eMode = getCoreObject()->GetOperation();
-            for (ConditionEntryApiMap & rEntry : aConditionEntryMap)
+            for (ConditionEntryApiMap const & rEntry : aConditionEntryMap)
             {
                 if (rEntry.eMode == eMode)
                 {
@@ -868,7 +872,7 @@ void setColorScaleEntry(ScColorScaleEntry* pEntry, uno::Reference<sheet::XColorS
     ScColorScaleEntryType eType = ScColorScaleEntryType();
     sal_Int32 nApiType = xEntry->getType();
     bool bFound = false;
-    for (ColorScaleEntryTypeApiMap & rEntry : aColorScaleEntryTypeMap)
+    for (ColorScaleEntryTypeApiMap const & rEntry : aColorScaleEntryTypeMap)
     {
         if (rEntry.nApiType == nApiType)
         {
@@ -882,7 +886,7 @@ void setColorScaleEntry(ScColorScaleEntry* pEntry, uno::Reference<sheet::XColorS
         throw lang::IllegalArgumentException();
 
     pEntry->SetType(eType);
-    pEntry->SetColor(xEntry->getColor());
+    pEntry->SetColor(Color(xEntry->getColor()));
     switch (eType)
     {
         case COLORSCALE_FORMULA:
@@ -907,27 +911,26 @@ void SAL_CALL ScColorScaleFormatObj::setPropertyValue(
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     switch(pEntry->nWID)
     {
         case ColorScaleEntries:
         {
             uno::Sequence<uno::Reference<sheet::XColorScaleEntry> > aEntries;
-            if (aValue >>= aEntries)
-            {
-                if (aEntries.getLength() < 2)
-                    throw lang::IllegalArgumentException();
-
-                // TODO: we need to make sure that there are enough entries
-                size_t n = size_t(aEntries.getLength());
-                for (size_t i = 0; i < n; ++i)
-                {
-                    setColorScaleEntry(getCoreObject()->GetEntry(i), aEntries[i]);
-                }
-            }
-            else
+            if (!(aValue >>= aEntries))
                 throw lang::IllegalArgumentException();
+
+            if (aEntries.getLength() < 2)
+                throw lang::IllegalArgumentException();
+
+            // TODO: we need to make sure that there are enough entries
+            size_t n = size_t(aEntries.getLength());
+            for (size_t i = 0; i < n; ++i)
+            {
+                setColorScaleEntry(getCoreObject()->GetEntry(i), aEntries[i]);
+            }
+
         }
         break;
         default:
@@ -942,7 +945,7 @@ uno::Any SAL_CALL ScColorScaleFormatObj::getPropertyValue( const OUString& aProp
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     uno::Any aAny;
 
@@ -1009,13 +1012,13 @@ ScColorScaleEntry* ScColorScaleEntryObj::getCoreObject()
     return pFormat->GetEntry(mnPos);
 }
 
-util::Color ScColorScaleEntryObj::getColor()
+sal_Int32 ScColorScaleEntryObj::getColor()
 {
     Color aColor = getCoreObject()->GetColor();
-    return aColor.GetColor();
+    return sal_Int32(aColor);
 }
 
-void ScColorScaleEntryObj::setColor(util::Color aColor)
+void ScColorScaleEntryObj::setColor(sal_Int32 aColor)
 {
     getCoreObject()->SetColor(Color(aColor));
 }
@@ -1023,7 +1026,7 @@ void ScColorScaleEntryObj::setColor(util::Color aColor)
 sal_Int32 ScColorScaleEntryObj::getType()
 {
     ScColorScaleEntry* pEntry = getCoreObject();
-    for (ColorScaleEntryTypeApiMap & rEntry : aColorScaleEntryTypeMap)
+    for (ColorScaleEntryTypeApiMap const & rEntry : aColorScaleEntryTypeMap)
     {
         if (rEntry.eType == pEntry->GetType())
         {
@@ -1037,7 +1040,7 @@ sal_Int32 ScColorScaleEntryObj::getType()
 void ScColorScaleEntryObj::setType(sal_Int32 nType)
 {
     ScColorScaleEntry* pEntry = getCoreObject();
-    for (ColorScaleEntryTypeApiMap & rEntry : aColorScaleEntryTypeMap)
+    for (ColorScaleEntryTypeApiMap const & rEntry : aColorScaleEntryTypeMap)
     {
         if (rEntry.nApiType == nType)
         {
@@ -1120,7 +1123,7 @@ void setDataBarEntry(ScColorScaleEntry* pEntry, uno::Reference<sheet::XDataBarEn
     ScColorScaleEntryType eType = ScColorScaleEntryType();
     sal_Int32 nApiType = xEntry->getType();
     bool bFound = false;
-    for (DataBarEntryTypeApiMap & rEntry : aDataBarEntryTypeMap)
+    for (DataBarEntryTypeApiMap const & rEntry : aDataBarEntryTypeMap)
     {
         if (rEntry.nApiType == nApiType)
         {
@@ -1158,7 +1161,7 @@ void SAL_CALL ScDataBarFormatObj::setPropertyValue(
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     switch(pEntry->nWID)
     {
@@ -1167,7 +1170,7 @@ void SAL_CALL ScDataBarFormatObj::setPropertyValue(
             sal_Int32 nVal;
             if (aValue >>= nVal)
             {
-                for (DataBarAxisApiMap & rEntry : aDataBarAxisMap)
+                for (DataBarAxisApiMap const & rEntry : aDataBarAxisMap)
                 {
                     if (rEntry.nApiPos == nVal)
                     {
@@ -1212,68 +1215,64 @@ void SAL_CALL ScDataBarFormatObj::setPropertyValue(
         break;
         case DataBar_Color:
         {
-            sal_Int32 nColor = COL_AUTO;
+            Color nColor = COL_AUTO;
             if (aValue >>= nColor)
             {
-                getCoreObject()->GetDataBarData()->maPositiveColor.SetColor(nColor);
+                getCoreObject()->GetDataBarData()->maPositiveColor = nColor;
             }
         }
         break;
         case AxisColor:
         {
-            sal_Int32 nAxisColor = COL_AUTO;
+            Color nAxisColor = COL_AUTO;
             if (aValue >>= nAxisColor)
             {
-                getCoreObject()->GetDataBarData()->maAxisColor.SetColor(nAxisColor);
+                getCoreObject()->GetDataBarData()->maAxisColor = nAxisColor;
             }
         }
         break;
         case NegativeColor:
         {
-            sal_Int32 nNegativeColor = COL_AUTO;
-            if ((aValue >>= nNegativeColor) && getCoreObject()->GetDataBarData()->mbNeg)
-            {
-                getCoreObject()->GetDataBarData()->mpNegativeColor->SetColor(nNegativeColor);
-            }
-            else
+            Color nNegativeColor = COL_AUTO;
+            if (!(aValue >>= nNegativeColor) || !getCoreObject()->GetDataBarData()->mbNeg)
                 throw lang::IllegalArgumentException();
+
+            (*getCoreObject()->GetDataBarData()->mpNegativeColor) = nNegativeColor;
+
         }
         break;
         case DataBarEntries:
         {
             uno::Sequence<uno::Reference<sheet::XDataBarEntry> > aEntries;
-            if (aValue >>= aEntries)
-            {
-                if (aEntries.getLength() != 2)
-                    throw lang::IllegalArgumentException();
-
-                setDataBarEntry(getCoreObject()->GetDataBarData()->mpLowerLimit.get(),
-                        aEntries[0]);
-                setDataBarEntry(getCoreObject()->GetDataBarData()->mpUpperLimit.get(),
-                        aEntries[1]);
-            }
-            else
+            if (!(aValue >>= aEntries))
                 throw lang::IllegalArgumentException();
+
+            if (aEntries.getLength() != 2)
+                throw lang::IllegalArgumentException();
+
+            setDataBarEntry(getCoreObject()->GetDataBarData()->mpLowerLimit.get(),
+                    aEntries[0]);
+            setDataBarEntry(getCoreObject()->GetDataBarData()->mpUpperLimit.get(),
+                    aEntries[1]);
+
         }
         break;
         case MinimumLength:
         {
             double nLength = 0;
-            if ((aValue >>= nLength) && nLength < 100 && nLength >= 0)
-            {
-                getCoreObject()->GetDataBarData()->mnMinLength = nLength;
-            }
-            else throw lang::IllegalArgumentException();
+            if (!(aValue >>= nLength) || nLength >= 100 || nLength < 0)
+                throw lang::IllegalArgumentException();
+            getCoreObject()->GetDataBarData()->mnMinLength = nLength;
+
         }
         break;
         case MaximumLength:
         {
             double nLength = 0;
-            if ((aValue >>= nLength) && nLength <= 100 && nLength > 0)
-            {
-                getCoreObject()->GetDataBarData()->mnMaxLength = nLength;
-            }
-            else throw lang::IllegalArgumentException();
+            if (!(aValue >>= nLength) || nLength > 100 || nLength <= 0)
+                throw lang::IllegalArgumentException();
+            getCoreObject()->GetDataBarData()->mnMaxLength = nLength;
+
         }
         break;
     }
@@ -1286,7 +1285,7 @@ uno::Any SAL_CALL ScDataBarFormatObj::getPropertyValue( const OUString& aPropert
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     uno::Any aAny;
     switch(pEntry->nWID)
@@ -1295,7 +1294,7 @@ uno::Any SAL_CALL ScDataBarFormatObj::getPropertyValue( const OUString& aPropert
         {
             databar::ScAxisPosition ePos = getCoreObject()->GetDataBarData()->meAxisPosition;
             sal_Int32 nApiPos = sheet::DataBarAxis::AXIS_NONE;
-            for (DataBarAxisApiMap & rEntry : aDataBarAxisMap)
+            for (DataBarAxisApiMap const & rEntry : aDataBarAxisMap)
             {
                 if (rEntry.ePos == ePos)
                 {
@@ -1323,22 +1322,19 @@ uno::Any SAL_CALL ScDataBarFormatObj::getPropertyValue( const OUString& aPropert
         break;
         case DataBar_Color:
         {
-            sal_Int32 nColor = getCoreObject()->GetDataBarData()->maPositiveColor.GetColor();
-            aAny <<= nColor;
+            aAny <<= getCoreObject()->GetDataBarData()->maPositiveColor;
         }
         break;
         case AxisColor:
         {
-            sal_Int32 nAxisColor = getCoreObject()->GetDataBarData()->maAxisColor.GetColor();
-            aAny <<= nAxisColor;
+            aAny <<= getCoreObject()->GetDataBarData()->maAxisColor;
         }
         break;
         case NegativeColor:
         {
             if (getCoreObject()->GetDataBarData()->mbNeg && getCoreObject()->GetDataBarData()->mpNegativeColor)
             {
-                sal_Int32 nNegativeColor = getCoreObject()->GetDataBarData()->mpNegativeColor->GetColor();
-                aAny <<= nNegativeColor;
+                aAny <<= *getCoreObject()->GetDataBarData()->mpNegativeColor;
             }
         }
         break;
@@ -1404,7 +1400,7 @@ ScColorScaleEntry* ScDataBarEntryObj::getCoreObject()
 sal_Int32 ScDataBarEntryObj::getType()
 {
     ScColorScaleEntry* pEntry = getCoreObject();
-    for (DataBarEntryTypeApiMap & rEntry : aDataBarEntryTypeMap)
+    for (DataBarEntryTypeApiMap const & rEntry : aDataBarEntryTypeMap)
     {
         if (rEntry.eType == pEntry->GetType())
         {
@@ -1418,7 +1414,7 @@ sal_Int32 ScDataBarEntryObj::getType()
 void ScDataBarEntryObj::setType(sal_Int32 nType)
 {
     ScColorScaleEntry* pEntry = getCoreObject();
-    for (DataBarEntryTypeApiMap & rEntry : aDataBarEntryTypeMap)
+    for (DataBarEntryTypeApiMap const & rEntry : aDataBarEntryTypeMap)
     {
         if (rEntry.nApiType == nType)
         {
@@ -1502,7 +1498,7 @@ void setIconSetEntry(ScIconSetFormat* pFormat, uno::Reference<sheet::XIconSetEnt
     ScColorScaleEntryType eType = ScColorScaleEntryType();
     sal_Int32 nApiType = xEntry->getType();
     bool bFound = false;
-    for (IconSetEntryTypeApiMap & rEntry : aIconSetEntryTypeMap)
+    for (IconSetEntryTypeApiMap const & rEntry : aIconSetEntryTypeMap)
     {
         if (rEntry.nApiType == nApiType)
         {
@@ -1540,7 +1536,7 @@ void SAL_CALL ScIconSetFormatObj::setPropertyValue(
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     switch(pEntry->nWID)
     {
@@ -1586,18 +1582,17 @@ void SAL_CALL ScIconSetFormatObj::setPropertyValue(
         case IconSetEntries:
         {
             uno::Sequence<uno::Reference<sheet::XIconSetEntry> > aEntries;
-            if (aValue >>= aEntries)
-            {
-                // TODO: we need to check that the number of entries
-                // corresponds to the icon type
-                sal_Int32 nLength = aEntries.getLength();
-                for (size_t i = 0; i < size_t(nLength); ++i)
-                {
-                    setIconSetEntry(getCoreObject(), aEntries[i], i);
-                }
-            }
-            else
+            if (!(aValue >>= aEntries))
                 throw lang::IllegalArgumentException();
+
+            // TODO: we need to check that the number of entries
+            // corresponds to the icon type
+            sal_Int32 nLength = aEntries.getLength();
+            for (size_t i = 0; i < o3tl::make_unsigned(nLength); ++i)
+            {
+                setIconSetEntry(getCoreObject(), aEntries[i], i);
+            }
+
         }
         break;
         default:
@@ -1612,7 +1607,7 @@ uno::Any SAL_CALL ScIconSetFormatObj::getPropertyValue( const OUString& aPropert
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     uno::Any aAny;
 
@@ -1639,9 +1634,9 @@ uno::Any SAL_CALL ScIconSetFormatObj::getPropertyValue( const OUString& aPropert
         break;
         case IconSetEntries:
         {
-            uno::Sequence<uno::Reference<sheet::XIconSetEntry> > aEntries(getCoreObject()->size());
-            size_t i = 0;
-            for (auto it = getCoreObject()->begin(), itEnd = getCoreObject()->end(); it != itEnd; ++it, ++i)
+            size_t nSize = getCoreObject()->size();
+            uno::Sequence<uno::Reference<sheet::XIconSetEntry> > aEntries(nSize);
+            for (size_t i = 0; i < nSize; ++i)
             {
                 aEntries[i] = new ScIconSetEntryObj(this, i);
             }
@@ -1705,7 +1700,7 @@ sal_Int32 ScIconSetEntryObj::getType()
     if (mnPos == 0)
         return sheet::IconSetFormatEntry::ICONSET_MIN;
 
-    for (IconSetEntryTypeApiMap & rEntry : aIconSetEntryTypeMap)
+    for (IconSetEntryTypeApiMap const & rEntry : aIconSetEntryTypeMap)
     {
         if (rEntry.eType == pEntry->GetType())
         {
@@ -1723,7 +1718,7 @@ void ScIconSetEntryObj::setType(sal_Int32 nType)
         return;
 
     ScColorScaleEntry* pEntry = getCoreObject();
-    for (IconSetEntryTypeApiMap & rEntry : aIconSetEntryTypeMap)
+    for (IconSetEntryTypeApiMap const & rEntry : aIconSetEntryTypeMap)
     {
         if (rEntry.nApiType == nType)
         {
@@ -1806,19 +1801,18 @@ void SAL_CALL ScCondDateFormatObj::setPropertyValue(
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     switch(pEntry->nWID)
     {
         case Date_StyleName:
         {
             OUString aStyleName;
-            if (aValue >>= aStyleName)
-            {
-                getCoreObject()->SetStyleName(aStyleName);
-            }
-            else
+            if (!(aValue >>= aStyleName))
                 throw lang::IllegalArgumentException();
+
+            getCoreObject()->SetStyleName(aStyleName);
+
         }
         break;
         case DateType:
@@ -1827,7 +1821,7 @@ void SAL_CALL ScCondDateFormatObj::setPropertyValue(
             if (!(aValue >>= nApiType))
                 throw lang::IllegalArgumentException();
 
-            for (DateTypeApiMap & rEntry : aDateTypeApiMap)
+            for (DateTypeApiMap const & rEntry : aDateTypeApiMap)
             {
                 if (rEntry.nApiType == nApiType)
                 {
@@ -1849,7 +1843,7 @@ uno::Any SAL_CALL ScCondDateFormatObj::getPropertyValue( const OUString& aProper
     const SfxItemPropertyMap& rPropertyMap = maPropSet.getPropertyMap();     // from derived class
     const SfxItemPropertySimpleEntry* pEntry = rPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     uno::Any aAny;
 
@@ -1864,7 +1858,7 @@ uno::Any SAL_CALL ScCondDateFormatObj::getPropertyValue( const OUString& aProper
         case DateType:
         {
             condformat::ScCondFormatDateType eType = getCoreObject()->GetDateType();
-            for (DateTypeApiMap & rEntry : aDateTypeApiMap)
+            for (DateTypeApiMap const & rEntry : aDateTypeApiMap)
             {
                 if (rEntry.eType == eType)
                 {

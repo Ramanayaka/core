@@ -9,6 +9,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sc_database_functions_test))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sc_database_functions_test))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sc_database_functions_test, \
     sc/qa/unit/functions_database \
 ))
@@ -60,6 +62,7 @@ $(eval $(call gb_CppunitTest_set_include,sc_database_functions_test,\
 $(eval $(call gb_CppunitTest_use_api,sc_database_functions_test,\
     offapi \
     udkapi \
+    oovbaapi \
 ))
 
 $(eval $(call gb_CppunitTest_use_ure,sc_database_functions_test))
@@ -106,6 +109,7 @@ $(eval $(call gb_CppunitTest_use_components,sc_database_functions_test,\
     unoxml/source/rdf/unordf \
     unoxml/source/service/unoxml \
     uui/util/uui \
+    vcl/vcl.common \
     xmloff/util/xo \
 	xmlscript/util/xmlscript \
 ))

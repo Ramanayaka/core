@@ -19,7 +19,7 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_INPUTWIN_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_INPUTWIN_HXX
 
-#include <vcl/edit.hxx>
+#include <vcl/InterimItemWindow.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/toolbox.hxx>
 
@@ -30,29 +30,119 @@ class SwWrtShell;
 class SwView;
 class SfxDispatcher;
 
-class InputEdit : public Edit
+class InputEdit final : public InterimItemWindow
 {
+private:
+    std::unique_ptr<weld::Entry> m_xWidget;
+
+    DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
+    DECL_LINK(ActivateHdl, weld::Entry&, bool);
 public:
-                    InputEdit(vcl::Window* pParent, WinBits nStyle) :
-                        Edit(pParent , nStyle){}
+    InputEdit(vcl::Window* pParent)
+        : InterimItemWindow(pParent, "modules/swriter/ui/inputeditbox.ui", "InputEditBox")
+        , m_xWidget(m_xBuilder->weld_entry("entry"))
+    {
+        InitControlBase(m_xWidget.get());
 
-    void            UpdateRange(const OUString& aSel,
-                                const OUString& aTableName );
+        m_xWidget->connect_key_press(LINK(this, InputEdit, KeyInputHdl));
+        m_xWidget->connect_activate(LINK(this, InputEdit, ActivateHdl));
+        SetSizePixel(m_xWidget->get_preferred_size());
+    }
 
-protected:
-    virtual void    KeyInput( const KeyEvent&  ) override;
+    void UpdateRange(const OUString& rSel, const OUString& rTableName);
+
+    virtual void dispose() override
+    {
+        m_xWidget.reset();
+        InterimItemWindow::dispose();
+    }
+
+    void set_text(const OUString& rText)
+    {
+        m_xWidget->set_text(rText);
+    }
+
+    OUString get_text() const
+    {
+        return m_xWidget->get_text();
+    }
+
+    void set_accessible_name(const OUString& rName)
+    {
+        m_xWidget->set_accessible_name(rName);
+    }
+
+    void replace_selection(const OUString& rText)
+    {
+        m_xWidget->replace_selection(rText);
+    }
+
+    void select_region(int nStartPos, int nEndPos)
+    {
+        m_xWidget->select_region(nStartPos, nEndPos);
+    }
+
+    void connect_changed(const Link<weld::Entry&, void>& rLink)
+    {
+        m_xWidget->connect_changed(rLink);
+    }
+
+    virtual ~InputEdit() override
+    {
+        disposeOnce();
+    }
 };
 
-class SwInputWindow : public ToolBox
+
+class PosEdit final : public InterimItemWindow
+{
+private:
+    std::unique_ptr<weld::Entry> m_xWidget;
+
+    DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
+public:
+    PosEdit(vcl::Window* pParent)
+        : InterimItemWindow(pParent, "modules/swriter/ui/poseditbox.ui", "PosEditBox")
+        , m_xWidget(m_xBuilder->weld_entry("entry"))
+    {
+        InitControlBase(m_xWidget.get());
+
+        m_xWidget->connect_key_press(LINK(this, PosEdit, KeyInputHdl));
+        SetSizePixel(m_xWidget->get_preferred_size());
+    }
+
+    virtual void dispose() override
+    {
+        m_xWidget.reset();
+        InterimItemWindow::dispose();
+    }
+
+    void set_text(const OUString& rText)
+    {
+        m_xWidget->set_text(rText);
+    }
+
+    void set_accessible_name(const OUString& rName)
+    {
+        m_xWidget->set_accessible_name(rName);
+    }
+
+    virtual ~PosEdit() override
+    {
+        disposeOnce();
+    }
+};
+
+class SwInputWindow final : public ToolBox
 {
 friend class InputEdit;
 
-    VclPtr<Edit>        aPos;
-    VclPtr<InputEdit>   aEdit;
-    SwFieldMgr*     pMgr;
+    VclPtr<PosEdit> mxPos;
+    VclPtr<InputEdit> mxEdit;
+    std::unique_ptr<SwFieldMgr> pMgr;
     SwWrtShell*     pWrtShell;
     SwView*         pView;
-    OUString        aAktTableName, sOldFormula;
+    OUString        aCurrentTableName, sOldFormula;
 
     bool            bFirst : 1;  // initialisations at first call
     bool            bIsTable : 1;
@@ -64,11 +154,10 @@ friend class InputEdit;
     void CleanupUglyHackWithUndo();
 
     void DelBoxContent();
-    DECL_LINK( ModifyHdl, Edit&, void );
+    DECL_LINK(ModifyHdl, weld::Entry&, void);
 
     using Window::IsActive;
 
-protected:
     virtual void    Resize() override;
     virtual void    Click() override;
     DECL_LINK( MenuHdl, Menu *, bool );
@@ -77,7 +166,7 @@ protected:
     void            CancelFormula();
 
 public:
-    SwInputWindow(vcl::Window* pParent, SfxDispatcher* pDispatcher);
+    SwInputWindow(vcl::Window* pParent, SfxDispatcher const * pDispatcher);
     virtual         ~SwInputWindow() override;
     virtual void    dispose() override;
 
@@ -95,7 +184,7 @@ class SwInputChild : public SfxChildWindow
 public:
     SwInputChild( vcl::Window* ,
                         sal_uInt16 nId,
-                        SfxBindings*,
+                        SfxBindings const *,
                         SfxChildWinInfo*  );
     virtual ~SwInputChild() override;
     SFX_DECL_CHILDWINDOW_WITHID( SwInputChild );

@@ -24,7 +24,7 @@
 #include <vcl/timer.hxx>
 #include <memory>
 
-namespace sd { namespace slidesorter { namespace cache {
+namespace sd::slidesorter::cache {
 
 class BitmapCache;
 
@@ -75,7 +75,7 @@ protected:
     virtual void Run() = 0;
 
 private:
-    /** This timer is used to collect calles to RequestCompaction() and
+    /** This timer is used to collect calls to RequestCompaction() and
         eventually call Run().
     */
     Timer maCompactionTimer;
@@ -83,7 +83,7 @@ private:
     DECL_LINK(CompactionCallback, Timer *, void);
 };
 
-} } } // end of namespace ::sd::slidesorter::cache
+} // end of namespace ::sd::slidesorter::cache
 
 #endif
 

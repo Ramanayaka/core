@@ -22,13 +22,12 @@
 
 #include <drawingml/textrun.hxx>
 #include <drawingml/textparagraphproperties.hxx>
-#include <memory>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 struct TextCharacterProperties;
 
-class TextField
+class TextField final
     : public TextRun
 {
 public:
@@ -38,7 +37,9 @@ public:
     const TextParagraphProperties& getTextParagraphProperties() const { return maTextParagraphProperties; }
 
     void setType( const OUString& sType ) { msType = sType; }
+    const OUString& getType() const { return msType; }
     void setUuid( const OUString & sUuid ) { msUuid = sUuid; }
+    const OUString& getUuid() const { return msUuid; }
 
     virtual sal_Int32    insertAt(
                         const ::oox::core::XmlFilterBase& rFilterBase,
@@ -53,7 +54,7 @@ private:
     OUString msUuid;
 };
 
-} }
+}
 
 #endif
 

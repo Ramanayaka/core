@@ -23,9 +23,48 @@
 #include <swcache.hxx>
 #include <swfntcch.hxx>
 #include <tools/debug.hxx>
+#include <sal/log.hxx>
+#include <algorithm>
+
+namespace sw
+{
+    bool ListenerEntry::GetInfo(SfxPoolItem& rInfo) const
+        { return m_pToTell == nullptr || m_pToTell->GetInfo( rInfo ); }
+    void ListenerEntry::Modify(const SfxPoolItem *const pOldValue,
+                               const SfxPoolItem *const pNewValue)
+    {
+        SwClientNotify(*GetRegisteredIn(), sw::LegacyModifyHint(pOldValue, pNewValue));
+    }
+    void ListenerEntry::SwClientNotify(const SwModify& rModify, const SfxHint& rHint)
+    {
+        if (auto pLegacyHint = dynamic_cast<const sw::LegacyModifyHint*>(&rHint))
+        {
+            if (pLegacyHint->m_pNew && pLegacyHint->m_pNew->Which() == RES_OBJECTDYING)
+            {
+                auto pModifyChanged = CheckRegistration(pLegacyHint->m_pOld);
+                if (pModifyChanged)
+                    m_pToTell->SwClientNotify(rModify, *pModifyChanged);
+            }
+            else if (m_pToTell)
+                m_pToTell->SwClientNotifyCall(rModify, rHint);
+        }
+        else if (m_pToTell)
+            m_pToTell->SwClientNotifyCall(rModify, rHint);
+    }
+}
 
 sw::LegacyModifyHint::~LegacyModifyHint() {}
+sw::ModifyChangedHint::~ModifyChangedHint() {}
 
+SwClient::SwClient(SwClient&& o) noexcept
+    : m_pRegisteredIn(nullptr)
+{
+    if(o.m_pRegisteredIn)
+    {
+        o.m_pRegisteredIn->Add(this);
+        o.EndListeningAll();
+    }
+}
 
 SwClient::~SwClient()
 {
@@ -36,28 +75,34 @@ SwClient::~SwClient()
         m_pRegisteredIn->Remove( this );
 }
 
-void SwClient::CheckRegistration( const SfxPoolItem* pOld )
+std::unique_ptr<sw::ModifyChangedHint> SwClient::CheckRegistration( const SfxPoolItem* pOld )
 {
     DBG_TESTSOLARMUTEX();
     // this method only handles notification about dying SwModify objects
-    if( (!pOld || pOld->Which() != RES_OBJECTDYING) )
-        return;
+    if( !pOld || pOld->Which() != RES_OBJECTDYING )
+        return nullptr;
 
+    assert(dynamic_cast<const SwPtrMsgPoolItem*>(pOld));
     const SwPtrMsgPoolItem* pDead = static_cast<const SwPtrMsgPoolItem*>(pOld);
-    if(pDead && pDead->pObject == m_pRegisteredIn)
+    if(pDead->pObject != m_pRegisteredIn)
     {
-        // I've got a notification from the object I know
-        SwModify* pAbove = m_pRegisteredIn->GetRegisteredIn();
-        if(pAbove)
-        {
-            // if the dying object itself was listening at an SwModify, I take over
-            // adding myself to pAbove will automatically remove me from my current pRegisteredIn
-            pAbove->Add(this);
-            return;
-        }
-        // destroy connection
-        m_pRegisteredIn->Remove(this);
+        // we should only care received death notes from objects we are following
+        return nullptr;
     }
+    // I've got a notification from the object I know
+    SwModify* pAbove = m_pRegisteredIn->GetRegisteredIn();
+    if(pAbove)
+    {
+        // if the dying object itself was listening at an SwModify, I take over
+        // adding myself to pAbove will automatically remove me from my current pRegisteredIn
+        pAbove->Add(this);
+    }
+    else
+    {
+        // destroy connection
+        EndListeningAll();
+    }
+    return std::unique_ptr<sw::ModifyChangedHint>(new sw::ModifyChangedHint(pAbove));
 }
 
 void SwClient::SwClientNotify(const SwModify&, const SfxHint& rHint)
@@ -67,6 +112,20 @@ void SwClient::SwClientNotify(const SwModify&, const SfxHint& rHint)
         Modify(pLegacyHint->m_pOld, pLegacyHint->m_pNew);
     }
 };
+
+void SwClient::StartListeningToSameModifyAs(const SwClient& other)
+{
+    if(other.m_pRegisteredIn)
+        other.m_pRegisteredIn->Add(this);
+    else
+        EndListeningAll();
+}
+
+void SwClient::EndListeningAll()
+{
+    if(m_pRegisteredIn)
+        m_pRegisteredIn->Remove(this);
+}
 
 void SwClient::Modify(SfxPoolItem const*const pOldValue, SfxPoolItem const*const /*pNewValue*/)
 {
@@ -160,41 +219,41 @@ void SwModify::Add( SwClient* pDepend )
     DBG_TESTSOLARMUTEX();
     OSL_ENSURE( !m_bLockClientList, "Client inserted while in Modify" );
 
-    if(pDepend->m_pRegisteredIn != this )
-    {
+    if(pDepend->m_pRegisteredIn == this )
+        return;
+
 #if OSL_DEBUG_LEVEL > 0
-        if(sw::ClientIteratorBase::our_pClientIters)
+    if(sw::ClientIteratorBase::s_pClientIters)
+    {
+        for(auto& rIter : sw::ClientIteratorBase::s_pClientIters->GetRingContainer())
         {
-            for(auto& rIter : sw::ClientIteratorBase::our_pClientIters->GetRingContainer())
-            {
-                SAL_WARN_IF(&rIter.m_rRoot == m_pWriterListeners, "sw.core", "a " << typeid(*pDepend).name() << " client added as listener to a " << typeid(*this).name() << " during client iteration.");
-            }
+            SAL_WARN_IF(&rIter.m_rRoot == m_pWriterListeners, "sw.core", "a " << typeid(*pDepend).name() << " client added as listener to a " << typeid(*this).name() << " during client iteration.");
         }
-#endif
-        // deregister new client in case it is already registered elsewhere
-        if( pDepend->m_pRegisteredIn != nullptr )
-            pDepend->m_pRegisteredIn->Remove( pDepend );
-
-        if( !m_pWriterListeners )
-        {
-            // first client added
-            m_pWriterListeners = pDepend;
-            m_pWriterListeners->m_pLeft = nullptr;
-            m_pWriterListeners->m_pRight = nullptr;
-        }
-        else
-        {
-            // append client
-            pDepend->m_pRight = m_pWriterListeners->m_pRight;
-            m_pWriterListeners->m_pRight = pDepend;
-            pDepend->m_pLeft = m_pWriterListeners;
-            if( pDepend->m_pRight )
-                pDepend->m_pRight->m_pLeft = pDepend;
-        }
-
-        // connect client to me
-        pDepend->m_pRegisteredIn = this;
     }
+#endif
+    // deregister new client in case it is already registered elsewhere
+    if( pDepend->m_pRegisteredIn != nullptr )
+        pDepend->m_pRegisteredIn->Remove( pDepend );
+
+    if( !m_pWriterListeners )
+    {
+        // first client added
+        m_pWriterListeners = pDepend;
+        m_pWriterListeners->m_pLeft = nullptr;
+        m_pWriterListeners->m_pRight = nullptr;
+    }
+    else
+    {
+        // append client
+        pDepend->m_pRight = m_pWriterListeners->m_pRight;
+        m_pWriterListeners->m_pRight = pDepend;
+        pDepend->m_pLeft = m_pWriterListeners;
+        if( pDepend->m_pRight )
+            pDepend->m_pRight->m_pLeft = pDepend;
+    }
+
+    // connect client to me
+    pDepend->m_pRegisteredIn = this;
 }
 
 SwClient* SwModify::Remove( SwClient* pDepend )
@@ -215,16 +274,16 @@ SwClient* SwModify::Remove( SwClient* pDepend )
         pR->m_pLeft = pL;
 
     // update ClientIterators
-    if(sw::ClientIteratorBase::our_pClientIters)
+    if(sw::ClientIteratorBase::s_pClientIters)
     {
-        for(auto& rIter : sw::ClientIteratorBase::our_pClientIters->GetRingContainer())
+        for(auto& rIter : sw::ClientIteratorBase::s_pClientIters->GetRingContainer())
         {
             if (&rIter.m_rRoot == this &&
                 (rIter.m_pCurrent == pDepend || rIter.m_pPosition == pDepend))
             {
                 // if object being removed is the current or next object in an
                 // iterator, advance this iterator
-                rIter.m_pPosition = static_cast<SwClient*>(pR);
+                rIter.m_pPosition = pR;
             }
         }
     }
@@ -248,7 +307,7 @@ void SwModify::CheckCaching( const sal_uInt16 nWhich )
         case RES_FMT_CHG:
         case RES_ATTRSET_CHG:
             SetInSwFntCache( false );
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case RES_UL_SPACE:
         case RES_LR_SPACE:
         case RES_BOX:
@@ -266,5 +325,57 @@ void SwModify::CheckCaching( const sal_uInt16 nWhich )
     }
 }
 
-sw::ClientIteratorBase* sw::ClientIteratorBase::our_pClientIters = nullptr;
+sw::WriterMultiListener::WriterMultiListener(SwClient& rToTell)
+    : m_rToTell(rToTell)
+{}
+
+sw::WriterMultiListener::~WriterMultiListener()
+{}
+
+void sw::WriterMultiListener::StartListening(SwModify* pDepend)
+{
+    EndListening(nullptr);
+    m_vDepends.emplace_back(ListenerEntry(&m_rToTell, pDepend));
+}
+
+
+bool sw::WriterMultiListener::IsListeningTo(const SwModify* const pBroadcaster) const
+{
+    return std::any_of(m_vDepends.begin(), m_vDepends.end(),
+        [&pBroadcaster](const ListenerEntry& aListener)
+        {
+            return aListener.GetRegisteredIn() == pBroadcaster;
+        });
+}
+
+void sw::WriterMultiListener::EndListening(SwModify* pBroadcaster)
+{
+    m_vDepends.erase(
+        std::remove_if( m_vDepends.begin(), m_vDepends.end(),
+            [&pBroadcaster](const ListenerEntry& aListener)
+            {
+                return aListener.GetRegisteredIn() == nullptr || aListener.GetRegisteredIn() == pBroadcaster;
+            }),
+        m_vDepends.end());
+}
+
+void sw::WriterMultiListener::EndListeningAll()
+{
+    m_vDepends.clear();
+}
+
+sw::ClientIteratorBase* sw::ClientIteratorBase::s_pClientIters = nullptr;
+
+void SwModify::CallSwClientNotify( const SfxHint& rHint ) const
+{
+    SwIterator<SwClient,SwModify> aIter(*this);
+    for(SwClient* pClient = aIter.First(); pClient; pClient = aIter.Next())
+        pClient->SwClientNotify( *this, rHint );
+}
+
+void sw::BroadcastingModify::CallSwClientNotify(const SfxHint& rHint) const
+{
+    SwModify::CallSwClientNotify(rHint);
+    const_cast<BroadcastingModify*>(this)->GetNotifier().Broadcast(rHint);
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

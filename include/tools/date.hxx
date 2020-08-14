@@ -20,9 +20,12 @@
 #define INCLUDED_TOOLS_DATE_HXX
 
 #include <tools/toolsdllapi.h>
+
+#include <ostream>
+
 #include <com/sun/star/util/Date.hpp>
-#include <com/sun/star/util/DateTime.hpp>
-#include <sal/log.hxx>
+
+namespace com::sun::star::util { struct DateTime; }
 
 enum DayOfWeek { MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY,
                  SATURDAY, SUNDAY };
@@ -121,9 +124,13 @@ public:
 
     /** Add months skipping year 0 and truncating at limits. If the original
         date was on Feb-29 or day 31 and the resulting date is not a leap year
-        or a month with less days, the result is adjusted to Feb-28 or day 30.
+        or a month with fewer days, the result is adjusted to Feb-28 or day 30.
     */
     void            AddMonths( sal_Int32 nAddMonths );
+
+    /** Add days skipping year 0 and truncating at limits.
+     */
+    void            AddDays( sal_Int32 nAddDays );
 
     /** Obtain the day of the week for the date.
 
@@ -190,10 +197,8 @@ public:
         This may be necessary after Date ctors or if the SetDate(), SetDay(),
         SetMonth(), SetYear() methods set individual non-matching values.
         Adding/subtracting to/from dates never produces invalid dates.
-
-        @returns TRUE if the date was normalized, i.e. not valid before.
      */
-    bool            Normalize();
+    void            Normalize();
 
     bool            IsBetween( const Date& rFrom, const Date& rTo ) const
                         { return ((mnDate >= rFrom.mnDate) &&
@@ -216,8 +221,6 @@ public:
                         { mnDate = rDate.mnDate; return *this; }
     Date&           operator =( const css::util::Date& rUDate )
                         { setDateFromDMY( rUDate.Day, rUDate.Month, rUDate.Year); return *this; }
-    Date&           operator +=( sal_Int32 nDays );
-    Date&           operator -=( sal_Int32 nDays );
     Date&           operator ++();
     Date&           operator --();
 
@@ -243,6 +246,8 @@ public:
     /// An accelerated form of DateToDays on this date
     sal_Int32 GetAsNormalizedDays() const;
 };
+
+TOOLS_DLLPUBLIC std::ostream& operator<<(std::ostream& os, const Date& rDate);
 
 #endif
 

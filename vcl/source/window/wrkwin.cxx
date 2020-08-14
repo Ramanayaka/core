@@ -18,6 +18,7 @@
  */
 
 
+#include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wrkwin.hxx>
 // declare system types in sysdata.hxx
@@ -60,8 +61,9 @@ void WorkWindow::ImplInit( vcl::Window* pParent, WinBits nStyle, SystemParentDat
     if ( nStyle & WB_APP )
     {
         ImplSVData* pSVData = ImplGetSVData();
-        SAL_WARN_IF( pSVData->maWinData.mpAppWin, "vcl", "WorkWindow::WorkWindow(): More than one window with style WB_APP" );
-        pSVData->maWinData.mpAppWin = this;
+        SAL_WARN_IF(pSVData->maFrameData.mpAppWin, "vcl",
+                    "WorkWindow::WorkWindow(): More than one window with style WB_APP");
+        pSVData->maFrameData.mpAppWin = this;
     }
 
     SetActivateMode( ActivateModeFlags::GrabFocus );
@@ -119,9 +121,9 @@ WorkWindow::~WorkWindow()
 void WorkWindow::dispose()
 {
     ImplSVData* pSVData = ImplGetSVData();
-    if ( pSVData->maWinData.mpAppWin == this )
+    if (pSVData->maFrameData.mpAppWin == this)
     {
-        pSVData->maWinData.mpAppWin = nullptr;
+        pSVData->maFrameData.mpAppWin = nullptr;
         Application::Quit();
     }
     SystemWindow::dispose();
@@ -138,21 +140,21 @@ void WorkWindow::ShowFullScreenMode( bool bFullScreenMode, sal_Int32 nDisplayScr
         return;
 
     mbFullScreenMode = bFullScreenMode;
-    if ( !mbSysChild )
-    {
-        // Dispose of the canvas implementation, which might rely on
-        // screen-specific system data.
-        css::uno::Reference< css::rendering::XCanvas > xCanvas( mpWindowImpl->mxCanvas );
-        if( xCanvas.is() )
-        {
-            css::uno::Reference< css::lang::XComponent >  xCanvasComponent( xCanvas, css::uno::UNO_QUERY );
-            if( xCanvasComponent.is() )
-                xCanvasComponent->dispose();
-        }
+    if ( mbSysChild )
+        return;
 
-        mpWindowImpl->mpFrameWindow->mpWindowImpl->mbWaitSystemResize = true;
-        ImplGetFrame()->ShowFullScreen( bFullScreenMode, nDisplayScreen );
+    // Dispose of the canvas implementation, which might rely on
+    // screen-specific system data.
+    css::uno::Reference< css::rendering::XCanvas > xCanvas( mpWindowImpl->mxCanvas );
+    if( xCanvas.is() )
+    {
+        css::uno::Reference< css::lang::XComponent >  xCanvasComponent( xCanvas, css::uno::UNO_QUERY );
+        if( xCanvasComponent.is() )
+            xCanvasComponent->dispose();
     }
+
+    mpWindowImpl->mpFrameWindow->mpWindowImpl->mbWaitSystemResize = true;
+    ImplGetFrame()->ShowFullScreen( bFullScreenMode, nDisplayScreen );
 }
 
 void WorkWindow::StartPresentationMode( PresentationFlags nFlags )
@@ -160,7 +162,7 @@ void WorkWindow::StartPresentationMode( PresentationFlags nFlags )
     return StartPresentationMode( false/*bPresentation*/, nFlags, GetScreenNumber());
 }
 
-void WorkWindow::StartPresentationMode( bool bPresentation, PresentationFlags nFlags, sal_uInt32 nDisplayScreen )
+void WorkWindow::StartPresentationMode( bool bPresentation, PresentationFlags nFlags, sal_Int32 nDisplayScreen )
 {
     if ( !bPresentation == !mbPresentationMode )
         return;
@@ -172,19 +174,16 @@ void WorkWindow::StartPresentationMode( bool bPresentation, PresentationFlags nF
         mbPresentationFull      = mbFullScreenMode;
         mnPresentationFlags     = nFlags;
 
-        if ( !(mnPresentationFlags & PresentationFlags::NoFullScreen) )
-            ShowFullScreenMode( true, nDisplayScreen );
+        ShowFullScreenMode( true, nDisplayScreen );
         if ( !mbSysChild )
         {
             if ( mnPresentationFlags & PresentationFlags::HideAllApps )
                 mpWindowImpl->mpFrame->SetAlwaysOnTop( true );
-            if ( !(mnPresentationFlags & PresentationFlags::NoAutoShow) )
-                ToTop();
+            ToTop();
             mpWindowImpl->mpFrame->StartPresentation( true );
         }
 
-        if ( !(mnPresentationFlags & PresentationFlags::NoAutoShow) )
-            Show();
+        Show();
     }
     else
     {
@@ -214,7 +213,7 @@ bool WorkWindow::IsMinimized() const
         return false;
 }
 
-bool WorkWindow::SetPluginParent( SystemParentData* pParent )
+void WorkWindow::SetPluginParent( SystemParentData* pParent )
 {
     SAL_WARN_IF( mbPresentationMode || mbFullScreenMode, "vcl", "SetPluginParent in fullscreen or presentation mode !" );
 
@@ -222,13 +221,11 @@ bool WorkWindow::SetPluginParent( SystemParentData* pParent )
 
     bool bShown = IsVisible();
     Show( false );
-    bool bRet = mpWindowImpl->mpFrame->SetPluginParent( pParent );
+    mpWindowImpl->mpFrame->SetPluginParent( pParent );
     Show( bShown );
 
     if( bWasDnd )
         Window::ImplStartDnd();
-
-    return bRet;
 }
 
 void WorkWindow::ImplSetFrameState( WindowStateState aFrameState )
@@ -254,7 +251,7 @@ bool WorkWindow::Close()
     bool bCanClose = SystemWindow::Close();
 
     // if it's the application window then close the application
-    if ( bCanClose && ( ImplGetSVData()->maWinData.mpAppWin == this ) )
+    if (bCanClose && (ImplGetSVData()->maFrameData.mpAppWin == this))
         Application::Quit();
 
     return bCanClose;

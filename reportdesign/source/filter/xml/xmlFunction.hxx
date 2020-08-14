@@ -20,7 +20,6 @@
 #define INCLUDED_REPORTDESIGN_SOURCE_FILTER_XML_XMLFUNCTION_HXX
 
 #include <xmloff/xmlictxt.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/report/XFunctionsSupplier.hpp>
 #include <com/sun/star/report/XFunctions.hpp>
 
@@ -28,9 +27,8 @@
 namespace rptxml
 {
     class ORptFilter;
-    class OXMLFunction : public SvXMLImportContext
+    class OXMLFunction final : public SvXMLImportContext
     {
-    protected:
         css::uno::Reference< css::report::XFunctions >    m_xFunctions;
         css::uno::Reference< css::report::XFunction >     m_xFunction;
         bool                                              m_bAddToReport;
@@ -42,15 +40,16 @@ namespace rptxml
     public:
 
         OXMLFunction( ORptFilter& rImport
-                    , sal_uInt16 nPrfx
-                    ,const OUString& rLName
-                    ,const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList
+                    ,const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList
                     ,const css::uno::Reference< css::report::XFunctionsSupplier >&    _xFunctions
                     ,bool _bAddToReport = false
                     );
         virtual ~OXMLFunction() override;
 
-        virtual void EndElement() override;
+        virtual void SAL_CALL startFastElement(
+                sal_Int32 /*nElement*/,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ ) override {}
+        virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
     };
 
 } // namespace rptxml

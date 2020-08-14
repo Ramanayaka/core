@@ -20,6 +20,7 @@
 #include "settingsimport.hxx"
 
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 #include <sax/tools/converter.hxx>
 #include <xmloff/xmltoken.hxx>
 
@@ -138,8 +139,7 @@ namespace dbaccess
         o_rValue.clear();
 
         // the characters building up th evalue
-        OUStringBuffer aCharacters( getAccumulatedCharacters() );
-        const OUString sValue = aCharacters.makeStringAndClear();
+        const OUString sValue = getAccumulatedCharacters().toString();
 
         const OUString& rItemType( getItemType() );
         ENSURE_OR_RETURN_VOID( !rItemType.isEmpty(), "no item type -> no item value" );

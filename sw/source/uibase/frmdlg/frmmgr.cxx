@@ -17,45 +17,51 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "cmdid.h"
-#include "hintids.hxx"
+#include <cmdid.h>
+#include <hintids.hxx>
 
 #include <svl/stritem.hxx>
-#include <editeng/protitem.hxx>
 #include <editeng/boxitem.hxx>
-#include <editeng/opaqitem.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/shaditem.hxx>
 #include <svx/swframevalidation.hxx>
 #include <svx/xdef.hxx>
+#include <tools/globname.hxx>
+#include <comphelper/classids.hxx>
 #include <fmtclds.hxx>
-#include "wrtsh.hxx"
-#include "view.hxx"
-#include "viewopt.hxx"
-#include "uitool.hxx"
-#include "frmmgr.hxx"
-#include "format.hxx"
-#include "mdiexp.hxx"
-#include "poolfmt.hxx"
+#include <wrtsh.hxx>
+#include <view.hxx>
+#include <viewopt.hxx>
+#include <uitool.hxx>
+#include <frmmgr.hxx>
+#include <format.hxx>
+#include <mdiexp.hxx>
+#include <poolfmt.hxx>
 #include <com/sun/star/text/HoriOrientation.hpp>
 #include <com/sun/star/text/VertOrientation.hpp>
 #include <com/sun/star/text/RelOrientation.hpp>
+#include <grfatr.hxx>
 
 using namespace ::com::sun::star;
 
 static sal_uInt16 aFrameMgrRange[] = {
-                            RES_FRMATR_BEGIN, RES_FRMATR_END-1,
+                            RES_FRMATR_BEGIN, RES_FRMATR_END-1, // 87-129
+
+                            // RotGrfFlyFrame: Support here, but seems not to be
+                            // added in range of m_pOwnSh->GetFlyFrameAttr result
+                            // (see below). Tried to find, but could not identify
+                            RES_GRFATR_ROTATION, RES_GRFATR_ROTATION, // 132
 
                             // FillAttribute support
-                            XATTR_FILL_FIRST, XATTR_FILL_LAST,
+                            XATTR_FILL_FIRST, XATTR_FILL_LAST, // 1014-1033
 
                             SID_ATTR_BORDER_INNER, SID_ATTR_BORDER_INNER,
                             FN_SET_FRM_NAME, FN_SET_FRM_NAME,
                             0};
 
 // determine frame attributes via Shell
-SwFlyFrameAttrMgr::SwFlyFrameAttrMgr( bool bNew, SwWrtShell* pSh, Frmmgr_Type nType ) :
+SwFlyFrameAttrMgr::SwFlyFrameAttrMgr( bool bNew, SwWrtShell* pSh, Frmmgr_Type nType, const SvGlobalName* pName ) :
     m_aSet( static_cast<SwAttrPool&>(pSh->GetAttrPool()), aFrameMgrRange ),
     m_pOwnSh( pSh ),
     m_bAbsPos( false ),
@@ -75,9 +81,18 @@ SwFlyFrameAttrMgr::SwFlyFrameAttrMgr( bool bNew, SwWrtShell* pSh, Frmmgr_Type nT
             default:    nId=0; break;
         }
         m_aSet.SetParent( &m_pOwnSh->GetFormatFromPool( nId )->GetAttrSet());
-        m_aSet.Put( SwFormatFrameSize( ATT_MIN_SIZE, DFLT_WIDTH, DFLT_HEIGHT ));
+        m_aSet.Put( SwFormatFrameSize( SwFrameSize::Minimum, DFLT_WIDTH, DFLT_HEIGHT ));
         if ( 0 != ::GetHtmlMode(pSh->GetView().GetDocShell()) )
             m_aSet.Put( SwFormatHoriOrient( 0, text::HoriOrientation::LEFT, text::RelOrientation::PRINT_AREA ) );
+
+        if (nType == Frmmgr_Type::GRF || nType == Frmmgr_Type::OLE)
+        {
+            if (!pName || *pName != SvGlobalName( SO3_SM_CLASSID ))
+            {
+                // Default anchor for new graphics and objects is at-char, except for Math objects.
+                m_aSet.Put(SwFormatAnchor(RndStdIds::FLY_AT_CHAR));
+            }
+        }
     }
     else if ( nType == Frmmgr_Type::NONE )
     {
@@ -133,28 +148,28 @@ void SwFlyFrameAttrMgr::UpdateFlyFrame()
     OSL_ENSURE( m_pOwnSh->IsFrameSelected(),
         "no frame selected or no shell, update not possible");
 
-    if( m_pOwnSh->IsFrameSelected() )
-    {
-        //JP 6.8.2001: set never an invalid anchor into the core.
-        const SfxPoolItem *pGItem, *pItem;
-        if( SfxItemState::SET == m_aSet.GetItemState( RES_ANCHOR, false, &pItem ))
-        {
-            SfxItemSet aGetSet( *m_aSet.GetPool(), svl::Items<RES_ANCHOR, RES_ANCHOR>{} );
-            if( m_pOwnSh->GetFlyFrameAttr( aGetSet ) && 1 == aGetSet.Count() &&
-                SfxItemState::SET == aGetSet.GetItemState( RES_ANCHOR, false, &pGItem )
-                && static_cast<const SwFormatAnchor*>(pGItem)->GetAnchorId() ==
-                   static_cast<const SwFormatAnchor*>(pItem)->GetAnchorId() )
-                m_aSet.ClearItem( RES_ANCHOR );
-        }
+    if( !m_pOwnSh->IsFrameSelected() )
+        return;
 
-        // return wg. BASIC
-        if( m_aSet.Count() )
-        {
-            m_pOwnSh->StartAllAction();
-            m_pOwnSh->SetFlyFrameAttr( m_aSet );
-            UpdateFlyFrame_();
-            m_pOwnSh->EndAllAction();
-        }
+    //JP 6.8.2001: set never an invalid anchor into the core.
+    const SfxPoolItem *pGItem, *pItem;
+    if( SfxItemState::SET == m_aSet.GetItemState( RES_ANCHOR, false, &pItem ))
+    {
+        SfxItemSet aGetSet( *m_aSet.GetPool(), svl::Items<RES_ANCHOR, RES_ANCHOR>{} );
+        if( m_pOwnSh->GetFlyFrameAttr( aGetSet ) && 1 == aGetSet.Count() &&
+            SfxItemState::SET == aGetSet.GetItemState( RES_ANCHOR, false, &pGItem )
+            && static_cast<const SwFormatAnchor*>(pGItem)->GetAnchorId() ==
+               static_cast<const SwFormatAnchor*>(pItem)->GetAnchorId() )
+            m_aSet.ClearItem( RES_ANCHOR );
+    }
+
+    // return wg. BASIC
+    if( m_aSet.Count() )
+    {
+        m_pOwnSh->StartAllAction();
+        m_pOwnSh->SetFlyFrameAttr( m_aSet );
+        UpdateFlyFrame_();
+        m_pOwnSh->EndAllAction();
     }
 }
 
@@ -248,7 +263,7 @@ void SwFlyFrameAttrMgr::ValidateMetrics( SvxSwFrameValidation& rVal,
     // OD 18.09.2003 #i18732# - adjustment for allowing vertical position
     //      aligned to page for fly frame anchored to paragraph or to character.
     const RndStdIds eAnchorType = rVal.nAnchorType;
-    const SwFormatFrameSize& rSize = static_cast<const SwFormatFrameSize&>(m_aSet.Get(RES_FRM_SIZE));
+    const SwFormatFrameSize& rSize = m_aSet.Get(RES_FRM_SIZE);
     m_pOwnSh->CalcBoundRect( aBoundRect, eAnchorType,
                            rVal.nHRelOrient,
                            rVal.nVRelOrient,
@@ -265,12 +280,12 @@ void SwFlyFrameAttrMgr::ValidateMetrics( SvxSwFrameValidation& rVal,
     {
         Point aPos(aBoundRect.Pos());
         long nTmp = aPos.X();
-        aPos.X() = aPos.Y();
-        aPos.Y() = nTmp;
+        aPos.setX( aPos.Y() );
+        aPos.setY( nTmp );
         Size aSize(aBoundRect.SSize());
         nTmp = aSize.Width();
-        aSize.Width() = aSize.Height();
-        aSize.Height() = nTmp;
+        aSize.setWidth( aSize.Height() );
+        aSize.setHeight( nTmp );
         aBoundRect.Chg( aPos, aSize );
         //exchange width/height to enable correct values
         nTmp = rVal.nWidth;
@@ -329,8 +344,8 @@ void SwFlyFrameAttrMgr::ValidateMetrics( SvxSwFrameValidation& rVal,
     // aligned at character or top of line in a special case
     else if ((eAnchorType == RndStdIds::FLY_AT_PARA) ||
                 ((eAnchorType == RndStdIds::FLY_AT_CHAR) &&
-                !(rVal.nVRelOrient == text::RelOrientation::CHAR) &&
-                !(rVal.nVRelOrient == text::RelOrientation::TEXT_LINE) ) )
+                (rVal.nVRelOrient != text::RelOrientation::CHAR) &&
+                (rVal.nVRelOrient != text::RelOrientation::TEXT_LINE) ) )
     {
         if (rVal.nHPos + rVal.nWidth > aBoundRect.Right())
         {
@@ -510,9 +525,9 @@ void SwFlyFrameAttrMgr::DelAttr( sal_uInt16 nId )
 
 void SwFlyFrameAttrMgr::SetLRSpace( long nLeft, long nRight )
 {
-    OSL_ENSURE( LONG_MAX != nLeft && LONG_MAX != nRight, "Welchen Raend setzen?" );
+    OSL_ENSURE( LONG_MAX != nLeft && LONG_MAX != nRight, "Which border to set?" );
 
-    SvxLRSpaceItem aTmp( static_cast<const SvxLRSpaceItem&>(m_aSet.Get( RES_LR_SPACE )) );
+    SvxLRSpaceItem aTmp( m_aSet.Get( RES_LR_SPACE ) );
     if( LONG_MAX != nLeft )
         aTmp.SetLeft( sal_uInt16(nLeft) );
     if( LONG_MAX != nRight )
@@ -522,9 +537,9 @@ void SwFlyFrameAttrMgr::SetLRSpace( long nLeft, long nRight )
 
 void SwFlyFrameAttrMgr::SetULSpace( long nTop, long nBottom )
 {
-    OSL_ENSURE(LONG_MAX != nTop && LONG_MAX != nBottom, "Welchen Raend setzen?" );
+    OSL_ENSURE(LONG_MAX != nTop && LONG_MAX != nBottom, "Which border to set?" );
 
-    SvxULSpaceItem aTmp( static_cast<const SvxULSpaceItem&>(m_aSet.Get( RES_UL_SPACE )) );
+    SvxULSpaceItem aTmp( m_aSet.Get( RES_UL_SPACE ) );
     if( LONG_MAX != nTop )
         aTmp.SetUpper( sal_uInt16(nTop) );
     if( LONG_MAX != nBottom )
@@ -566,6 +581,20 @@ void SwFlyFrameAttrMgr::SetHeightSizeType( SwFrameSize eType )
     SwFormatFrameSize aSize( GetFrameSize() );
     aSize.SetHeightSizeType( eType );
     m_aSet.Put( aSize );
+}
+
+void SwFlyFrameAttrMgr::SetRotation(sal_uInt16 nOld, sal_uInt16 nNew, const Size& rUnrotatedSize)
+{
+    // RotGrfFlyFrame: Central handling of real change of rotation here, all adaptations use this.
+    // Adaptation of pos/size may be wanted in the future. Already tried to keep last Size in
+    // UnrotatedSize in the SwRotationGrf Item, but this will lead to various problems. Also tried
+    // to use m_aSet.Put(...) as in other methods (also tried read methods for Rotation/UnrotatedSize) but
+    // somehow the needed ID (RES_GRFATR_ROTATION) is *not* in the SfxItemSet of the Frame, so for
+    // now set directly. Undo/Redo is preserved by AttributeChange
+    if(nOld != nNew)
+    {
+        m_pOwnSh->SetAttrItem(SwRotationGrf(nNew, rUnrotatedSize));
+    }
 }
 
 void SwFlyFrameAttrMgr::SetSize( const Size& rSize )

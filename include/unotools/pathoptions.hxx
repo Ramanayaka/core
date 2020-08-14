@@ -31,7 +31,7 @@ class SvtPathOptions_Impl;
 
   All path functions return URLs!
 */
-class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtPathOptions : public utl::detail::Options
+class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtPathOptions final : public utl::detail::Options
 {
 private:
     std::shared_ptr<SvtPathOptions_Impl>    pImpl;
@@ -52,6 +52,7 @@ public:
         PATH_GALLERY,
         PATH_GRAPHIC,
         PATH_HELP,
+        PATH_ICONSET,
         PATH_LINGUISTIC,
         PATH_MODULE,
         PATH_PALETTE,
@@ -64,6 +65,7 @@ public:
         PATH_CLASSIFICATION,
         PATH_UICONFIG,
         PATH_FINGERPRINT,
+        PATH_NUMBERTEXT,
         PATH_COUNT // should always be the last element
     };
 
@@ -86,6 +88,7 @@ public:
     const OUString& GetHelpPath() const;
     const OUString& GetLinguisticPath() const;
     const OUString& GetModulePath() const;
+    const OUString& GetIconsetPath() const;
     const OUString& GetPalettePath() const;
     const OUString& GetPluginPath() const;
     const OUString& GetStoragePath() const;
@@ -94,6 +97,7 @@ public:
     const OUString& GetUserConfigPath() const;
     const OUString& GetWorkPath() const;
     const OUString& GetFingerprintPath() const;
+    const OUString& GetNumbertextPath() const;
     const OUString& GetClassificationPath() const;
 
     // set the paths

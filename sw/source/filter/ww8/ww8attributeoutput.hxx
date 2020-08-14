@@ -22,6 +22,8 @@
 
 #include "attributeoutputbase.hxx"
 #include "wrtww8.hxx"
+#include <editeng/boxitem.hxx>
+#include <sfx2/docfile.hxx>
 
 class WW8AttributeOutput : public AttributeOutputBase
 {
@@ -49,14 +51,14 @@ public:
 
     /// Start of the text run.
     ///
-    virtual void StartRun( const SwRedlineData* pRedlineData, bool bSingleEmptyRun = false ) override;
+    virtual void StartRun( const SwRedlineData* pRedlineData, sal_Int32 nPos, bool bSingleEmptyRun = false ) override;
 
     virtual void OnTOXEnding() override;
 
     /// End of the text run.
     ///
     /// No-op for binary filters.
-    virtual void EndRun() override {}
+    virtual void EndRun(const SwTextNode* pNode, sal_Int32 nPos, bool bLastRun = false) override;
 
     /// Before we start outputting the attributes.
     virtual void StartRunProperties() override;
@@ -74,7 +76,7 @@ public:
     virtual void StartRuby( const SwTextNode& rNode, sal_Int32 nPos, const SwFormatRuby& rRuby ) override;
 
     /// Output ruby end.
-    virtual void EndRuby() override;
+    virtual void EndRuby(const SwTextNode& rNode, sal_Int32 nPos) override;
 
     /// Output URL start.
     virtual bool StartURL( const OUString &rUrl, const OUString &rTarget ) override;
@@ -145,13 +147,16 @@ public:
 
     /// Write a section break
     /// msword::ColumnBreak or msword::PageBreak
-    virtual void SectionBreak( sal_uInt8 nC, const WW8_SepInfo* pSectionInfo = nullptr ) override;
+    virtual void SectionBreak( sal_uInt8 nC, bool bBreakAfter, const WW8_SepInfo* pSectionInfo = nullptr ) override;
 
     // preserve DOC page vertical alignment
-    virtual void TextVerticalAdjustment( const css::drawing::TextVerticalAdjust ) SAL_OVERRIDE;
+    virtual void TextVerticalAdjustment( const css::drawing::TextVerticalAdjust ) override;
 
     /// Start of the section properties.
     virtual void StartSection() override;
+
+    // footnote / endnote section properties
+    virtual void SectFootnoteEndnotePr() override;
 
     /// End of the section properties.
     ///
@@ -175,7 +180,7 @@ public:
 
     /// The style of the page numbers.
     ///
-    virtual void SectionPageNumbering( sal_uInt16 nNumType, const ::boost::optional<sal_uInt16>& oPageRestartNumber ) override;
+    virtual void SectionPageNumbering( sal_uInt16 nNumType, const ::std::optional<sal_uInt16>& oPageRestartNumber ) override;
 
     /// The type of breaking.
     virtual void SectionType( sal_uInt8 nBreakCode ) override;
@@ -427,6 +432,8 @@ protected:
 
     virtual bool AnalyzeURL( const OUString& rURL, const OUString& rTarget, OUString* pLinkURL, OUString* pMark ) override;
 
+    virtual void WriteBookmarkInActParagraph( const OUString& rName, sal_Int32 nFirstRunPos, sal_Int32 nLastRunPos ) override;
+
     /// Reference to the export, where to get the data from
     WW8Export &m_rWW8Export;
 
@@ -455,9 +462,14 @@ protected:
 
     bool mbOnTOXEnding;
 
+    /// Bookmarks of the current paragraph
+    std::multimap<sal_Int32, OUString> m_aBookmarksOfParagraphStart;
+    std::multimap<sal_Int32, OUString> m_aBookmarksOfParagraphEnd;
+
 public:
     explicit WW8AttributeOutput( WW8Export &rWW8Export )
-        : AttributeOutputBase()
+        : AttributeOutputBase(rWW8Export.GetWriter().GetMedia()->GetURLObject().GetMainURL(
+            INetURLObject::DecodeMechanism::NONE))
         , m_rWW8Export(rWW8Export)
         , nPOPosStdLen1(0)
         , nPOPosStdLen2(0)
@@ -481,6 +493,11 @@ protected:
 
     void TableCellBorders(
         ww8::WW8TableNodeInfoInner::Pointer_t const & pTableTextNodeInfoInner );
+
+private:
+
+    editeng::WordPageMargins m_pageMargins;
+    bool m_bFromEdge = false;
 
 };
 

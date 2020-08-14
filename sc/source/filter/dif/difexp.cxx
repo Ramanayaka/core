@@ -17,23 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/math.hxx>
-
-#include "dif.hxx"
-#include "filter.hxx"
-#include "document.hxx"
-#include "formulacell.hxx"
-#include "globstr.hrc"
-#include "global.hxx"
-#include "progress.hxx"
+#include <dif.hxx>
+#include <document.hxx>
+#include <formulacell.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <global.hxx>
+#include <progress.hxx>
 #include <rtl/tencinfo.h>
-#include "ftools.hxx"
-#include "cellvalue.hxx"
+#include <ftools.hxx>
+#include <cellvalue.hxx>
 #include <rtl/strbuf.hxx>
 #include <osl/diagnose.h>
 #include <formula/errorcodes.hxx>
+#include <tools/stream.hxx>
 
-void ScFormatFilterPlugin::ScExportDif( SvStream& rStream, ScDocument* pDoc,
+void ScFormatFilterPluginImpl::ScExportDif( SvStream& rStream, ScDocument* pDoc,
     const ScAddress& rOutPos, const rtl_TextEncoding eNach )
 {
     SCCOL       nEndCol;
@@ -47,7 +46,7 @@ void ScFormatFilterPlugin::ScExportDif( SvStream& rStream, ScDocument* pDoc,
     ScExportDif( rStream, pDoc, ScRange( aStart, aEnd ), eNach );
 }
 
-void ScFormatFilterPlugin::ScExportDif( SvStream& rOut, ScDocument* pDoc,
+void ScFormatFilterPluginImpl::ScExportDif( SvStream& rOut, ScDocument* pDoc,
     const ScRange&rRange, const rtl_TextEncoding eCharSet )
 {
     OSL_ENSURE( rRange.aStart <= rRange.aEnd, "*ScExportDif(): Range not sorted!" );
@@ -84,12 +83,12 @@ void ScFormatFilterPlugin::ScExportDif( SvStream& rOut, ScDocument* pDoc,
             bContextOrNotAsciiEncoding = false;
     }
 
-    const sal_Char p2DoubleQuotes_LF[] = "\"\"\n";
-    const sal_Char pSpecDataType_LF[] = "-1,0\n";
-    const sal_Char pEmptyData[] = "1,0\n\"\"\n";
-    const sal_Char pStringData[] = "1,0\n";
-    const sal_Char pNumData[] = "0,";
-    const sal_Char pNumDataERROR[] = "0,0\nERROR\n";
+    const char p2DoubleQuotes_LF[] = "\"\"\n";
+    const char pSpecDataType_LF[] = "-1,0\n";
+    const char pEmptyData[] = "1,0\n\"\"\n";
+    const char pStringData[] = "1,0\n";
+    const char pNumData[] = "0,";
+    const char pNumDataERROR[] = "0,0\nERROR\n";
 
     OUStringBuffer aOS;
     OUString       aString;
@@ -99,7 +98,7 @@ void ScFormatFilterPlugin::ScExportDif( SvStream& rOut, ScDocument* pDoc,
     SCROW               nNumRows = nEndRow - rRange.aStart.Row() + 1;
     SCTAB               nTab = rRange.aStart.Tab();
 
-    ScProgress          aPrgrsBar( pDoc->GetDocumentShell(), ScGlobal::GetRscString( STR_LOAD_DOC ), nNumRows, true );
+    ScProgress          aPrgrsBar( pDoc->GetDocumentShell(), ScResId( STR_LOAD_DOC ), nNumRows, true );
 
     aPrgrsBar.SetState( 0 );
 
@@ -141,14 +140,14 @@ void ScFormatFilterPlugin::ScExportDif( SvStream& rOut, ScDocument* pDoc,
 
     for( nRowCnt = rRange.aStart.Row() ; nRowCnt <= nEndRow ; nRowCnt++ )
     {
-        OSL_ASSERT(aOS.getLength() == 0);
+        assert( aOS.isEmpty() && "aOS should be empty");
         aOS.append(pSpecDataType_LF);
         aOS.append(pKeyBOT);
         aOS.append('\n');
         rOut.WriteUnicodeOrByteText(aOS.makeStringAndClear());
         for( nColCnt = rRange.aStart.Col() ; nColCnt <= nEndCol ; nColCnt++ )
         {
-            OSL_ASSERT(aOS.getLength() == 0);
+            assert( aOS.isEmpty() && "aOS should be empty");
             bool bWriteStringData = false;
             ScRefCellValue aCell(*pDoc, ScAddress(nColCnt, nRowCnt, nTab));
 
@@ -195,8 +194,8 @@ void ScFormatFilterPlugin::ScExportDif( SvStream& rOut, ScDocument* pDoc,
                 // for an explanation why this complicated, see
                 // sc/source/ui/docsh.cxx:ScDocShell::AsciiSave()
                 // In fact we should create a common method if this would be
-                // needed just one more time..
-                OSL_ASSERT(aOS.getLength() == 0);
+                // needed just one more time...
+                assert( aOS.isEmpty() && "aOS should be empty");
                 OUString aTmpStr = aString;
                 aOS.append(pStringData);
                 rOut.WriteUnicodeOrByteText(aOS.makeStringAndClear(), eCharSet);
@@ -257,7 +256,7 @@ void ScFormatFilterPlugin::ScExportDif( SvStream& rOut, ScDocument* pDoc,
         aPrgrsBar.SetState( nRowCnt );
     }
 
-    OSL_ASSERT(aOS.getLength() == 0);
+    assert( aOS.isEmpty() && "aOS should be empty");
     aOS.append(pSpecDataType_LF);
     aOS.append(pKeyEOD);
     aOS.append('\n');

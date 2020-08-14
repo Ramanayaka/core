@@ -23,12 +23,8 @@
 #include <sal/config.h>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <sal/types.h>
 
-namespace com { namespace sun { namespace star { namespace lang {
-    class XSingleComponentFactory;
-} } } }
-namespace rtl { class OUString; }
+namespace com::sun::star::lang { class XSingleComponentFactory; }
 
 namespace cppuhelper {
 
@@ -49,7 +45,7 @@ namespace detail {
  * If uriReference is a vnd.sun.star.expand URL reference that contains unknown
  * macros.
  */
-::rtl::OUString expandMacros(rtl::OUString const & text);
+OUString expandMacros(OUString const & text);
 
 css::uno::Reference< css::lang::XSingleComponentFactory >
 create_bootstrap_macro_expander_factory();

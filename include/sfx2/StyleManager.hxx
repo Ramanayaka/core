@@ -12,12 +12,13 @@
 
 #include <sfx2/dllapi.h>
 
-#include <vcl/outdev.hxx>
+#include <svl/style.hxx>
 
-#include <sfx2/StylePreviewRenderer.hxx>
-#include <rsc/rscsfx.hxx>
+#include <memory>
 
-#include <sfx2/objsh.hxx>
+class OutputDevice;
+class SfxObjectShell;
+namespace sfx2 { class StylePreviewRenderer; }
 
 namespace sfx2
 {
@@ -37,7 +38,7 @@ public:
 
     SfxStyleSheetBase* Search(const OUString& rStyleName, SfxStyleFamily eFamily);
 
-    virtual StylePreviewRenderer* CreateStylePreviewRenderer(
+    virtual std::unique_ptr<StylePreviewRenderer> CreateStylePreviewRenderer(
                     OutputDevice& rOutputDev, SfxStyleSheetBase* pStyle,
                     long nMaxHeight) = 0;
 };

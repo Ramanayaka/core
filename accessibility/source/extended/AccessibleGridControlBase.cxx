@@ -18,15 +18,18 @@
  */
 
 #include <extended/AccessibleGridControlBase.hxx>
-#include <svtools/accessibletable.hxx>
-#include <comphelper/servicehelper.hxx>
+#include <toolkit/helper/convert.hxx>
+#include <vcl/accessibletable.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/window.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <sal/types.h>
 
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/IllegalAccessibleComponentStateException.hpp>
 #include <unotools/accessiblerelationsethelper.hxx>
+#include <sal/log.hxx>
 
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Any;
@@ -34,8 +37,8 @@ using ::com::sun::star::uno::Any;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 using namespace ::comphelper;
-using namespace ::svt;
-using namespace ::svt::table;
+using namespace ::vcl;
+using namespace ::vcl::table;
 
 
 namespace accessibility {
@@ -45,8 +48,8 @@ using namespace com::sun::star::accessibility::AccessibleStateType;
 
 AccessibleGridControlBase::AccessibleGridControlBase(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::table::IAccessibleTable& rTable,
-        ::svt::table::AccessibleTableControlObjType      eObjType ) :
+        ::vcl::table::IAccessibleTable& rTable,
+        ::vcl::table::AccessibleTableControlObjType      eObjType ) :
     AccessibleGridControlImplHelper( m_aMutex ),
     m_xParent( rxParent ),
     m_aTable( rTable),
@@ -110,21 +113,21 @@ sal_Int32 SAL_CALL AccessibleGridControlBase::getAccessibleIndexInParent()
             xParentContext( m_xParent->getAccessibleContext() );
         if( xParentContext.is() )
         {
-        css::uno::Reference< uno::XInterface > xChild;
+            css::uno::Reference< uno::XInterface > xChild;
 
             sal_Int32 nChildCount = xParentContext->getAccessibleChildCount();
             for( sal_Int32 nChild = 0; nChild < nChildCount; ++nChild )
             {
-            xChild.set(xParentContext->getAccessibleChild( nChild ), css::uno::UNO_QUERY);
-            if ( xMeMyselfAndI.get() == xChild.get() )
-            {
-                nRet = nChild;
-                break;
+                xChild.set(xParentContext->getAccessibleChild( nChild ), css::uno::UNO_QUERY);
+                if ( xMeMyselfAndI.get() == xChild.get() )
+                {
+                    nRet = nChild;
+                    break;
+                }
             }
         }
-        }
-   }
-   return nRet;
+    }
+    return nRet;
 }
 
 OUString SAL_CALL AccessibleGridControlBase::getAccessibleDescription()
@@ -172,7 +175,7 @@ lang::Locale SAL_CALL AccessibleGridControlBase::getLocale()
         css::uno::Reference< css::accessibility::XAccessibleContext >
             xParentContext( m_xParent->getAccessibleContext() );
         if( xParentContext.is() )
-        return xParentContext->getLocale();
+            return xParentContext->getLocale();
     }
     throw IllegalAccessibleComponentStateException();
 }
@@ -223,11 +226,12 @@ void SAL_CALL AccessibleGridControlBase::addAccessibleEventListener(
 void SAL_CALL AccessibleGridControlBase::removeAccessibleEventListener(
         const css::uno::Reference< css::accessibility::XAccessibleEventListener>& _rxListener )
 {
-    if( _rxListener.is() && getClientId( ) )
-    {
-        SolarMutexGuard g;
+    if( !(_rxListener.is() && getClientId( )) )
+        return;
 
-        sal_Int32 nListenerCount = AccessibleEventNotifier::removeEventListener( getClientId( ), _rxListener );
+    SolarMutexGuard g;
+
+    sal_Int32 nListenerCount = AccessibleEventNotifier::removeEventListener( getClientId( ), _rxListener );
     if ( !nListenerCount )
     {
         // no listeners anymore
@@ -237,7 +241,6 @@ void SAL_CALL AccessibleGridControlBase::removeAccessibleEventListener(
         AccessibleEventNotifier::TClientId nId( getClientId( ) );
         setClientId( 0 );
         AccessibleEventNotifier::revokeClient( nId );
-    }
     }
 }
 
@@ -392,23 +395,23 @@ sal_Int32 SAL_CALL AccessibleGridControlBase::getForeground(  )
 
     ensureIsAlive();
 
-    sal_Int32 nColor = 0;
+    Color nColor;
     vcl::Window* pInst = m_aTable.GetWindowInstance();
     if ( pInst )
     {
         if ( pInst->IsControlForeground() )
-            nColor = pInst->GetControlForeground().GetColor();
-    else
-    {
-        vcl::Font aFont;
-        if ( pInst->IsControlFont() )
-            aFont = pInst->GetControlFont();
+            nColor = pInst->GetControlForeground();
         else
-            aFont = pInst->GetFont();
-        nColor = aFont.GetColor().GetColor();
+        {
+            vcl::Font aFont;
+            if ( pInst->IsControlFont() )
+                aFont = pInst->GetControlFont();
+            else
+                aFont = pInst->GetFont();
+            nColor = aFont.GetColor();
+        }
     }
-    }
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 sal_Int32 SAL_CALL AccessibleGridControlBase::getBackground(  )
@@ -416,22 +419,22 @@ sal_Int32 SAL_CALL AccessibleGridControlBase::getBackground(  )
     SolarMutexGuard aSolarGuard;
 
     ensureIsAlive();
-    sal_Int32 nColor = 0;
+    Color nColor;
     vcl::Window* pInst = m_aTable.GetWindowInstance();
     if ( pInst )
     {
         if ( pInst->IsControlBackground() )
-            nColor = pInst->GetControlBackground().GetColor();
-    else
-            nColor = pInst->GetBackground().GetColor().GetColor();
+            nColor = pInst->GetControlBackground();
+        else
+            nColor = pInst->GetBackground().GetColor();
     }
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 
 GridControlAccessibleElement::GridControlAccessibleElement( const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-                        ::svt::table::IAccessibleTable& rTable,
-                        ::svt::table::AccessibleTableControlObjType  eObjType )
+                        ::vcl::table::IAccessibleTable& rTable,
+                        ::vcl::table::AccessibleTableControlObjType  eObjType )
     :AccessibleGridControlBase( rxParent, rTable, eObjType )
 {
 }

@@ -17,18 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "CachedDataSequence.hxx"
-#include "macros.hxx"
-#include "PropertyHelper.hxx"
-#include "CommonFunctors.hxx"
-#include "ModifyListenerHelper.hxx"
+#include <CachedDataSequence.hxx>
+#include <CommonFunctors.hxx>
+#include <ModifyListenerHelper.hxx>
 
 #include <comphelper/sequenceashashmap.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <rtl/math.hxx>
 
 using namespace ::com::sun::star;
 
@@ -45,7 +42,7 @@ using ::chart::impl::CachedDataSequence_Base;
 
 namespace
 {
-static const char lcl_aServiceName[] = "com.sun.star.comp.chart.CachedDataSequence";
+const char lcl_aServiceName[] = "com.sun.star.comp.chart.CachedDataSequence";
 
 enum
 {
@@ -227,7 +224,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( CachedDataSequence, CachedDataSequence_Base, O
 // ____ XPropertySet ____
 Reference< beans::XPropertySetInfo > SAL_CALL CachedDataSequence::getPropertySetInfo()
 {
-    return Reference< beans::XPropertySetInfo >( createPropertySetInfo( getInfoHelper() ) );
+    return createPropertySetInfo( getInfoHelper() );
 }
 
 // ____ ::comphelper::OPropertySetHelper ____
@@ -248,7 +245,7 @@ Reference< beans::XPropertySetInfo > SAL_CALL CachedDataSequence::getPropertySet
 
 OUString SAL_CALL CachedDataSequence::getImplementationName()
 {
-    return OUString(lcl_aServiceName);
+    return lcl_aServiceName;
 }
 
 sal_Bool SAL_CALL CachedDataSequence::supportsService( const OUString& rServiceName )
@@ -325,9 +322,9 @@ void SAL_CALL CachedDataSequence::addModifyListener( const Reference< util::XMod
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -338,9 +335,9 @@ void SAL_CALL CachedDataSequence::removeModifyListener( const Reference< util::X
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -349,24 +346,24 @@ void SAL_CALL CachedDataSequence::initialize(const uno::Sequence< uno::Any > & _
 {
     ::comphelper::SequenceAsHashMap aMap(_aArguments);
     m_aNumericalSequence = aMap.getUnpackedValueOrDefault( "DataSequence" ,m_aNumericalSequence);
-    if ( m_aNumericalSequence.getLength() )
+    if ( m_aNumericalSequence.hasElements() )
         m_eCurrentDataType = NUMERICAL;
     else
     {
         m_aTextualSequence = aMap.getUnpackedValueOrDefault( "DataSequence" ,m_aTextualSequence);
-        if ( m_aTextualSequence.getLength() )
+        if ( m_aTextualSequence.hasElements() )
             m_eCurrentDataType = TEXTUAL;
         else
         {
             m_aMixedSequence = aMap.getUnpackedValueOrDefault( "DataSequence" ,m_aMixedSequence);
-            if ( m_aMixedSequence.getLength() )
+            if ( m_aMixedSequence.hasElements() )
                 m_eCurrentDataType = MIXED;
         }
     }
 }
 }  // namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart_CachedDataSequence_get_implementation(css::uno::XComponentContext *context,
         css::uno::Sequence<css::uno::Any> const &)
 {

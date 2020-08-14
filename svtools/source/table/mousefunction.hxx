@@ -17,18 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_SOURCE_TABLE_MOUSEFUNCTION_HXX
-#define INCLUDED_SVTOOLS_SOURCE_TABLE_MOUSEFUNCTION_HXX
+#pragma once
 
-#include <svtools/table/tabletypes.hxx>
+#include <table/tabletypes.hxx>
 
-#include <rtl/ref.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 
 class MouseEvent;
 
 
-namespace svt { namespace table
+namespace svt::table
 {
 
 
@@ -127,9 +125,8 @@ namespace svt { namespace table
     };
 
 
-} } // namespace svt::table
+} // namespace svt::table
 
 
-#endif // INCLUDED_SVTOOLS_SOURCE_TABLE_MOUSEFUNCTION_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

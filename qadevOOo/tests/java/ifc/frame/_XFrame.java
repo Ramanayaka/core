@@ -60,7 +60,7 @@ import lib.TestEnvironment;
 *  to find other frame than itself.</li>
 *
 *  <li> <code>'Desktop'</code> (of type <code>Object</code>):
-*  if exsists, then desktop component is tested</li>
+*  if exists, then desktop component is tested</li>
 * </ul> <p>
 * Test is <b> NOT </b> multithread compliant. <p>
 * @see com.sun.star.frame.XFrame
@@ -406,7 +406,7 @@ public class _XFrame extends MultiMethodTest {
         TestFrameActionListener listener = new TestFrameActionListener();
 
         if (tEnv.getTestCase().getObjectName().equals("Desktop")) {
-            log.println("Desktop cann't change context");
+            log.println("Desktop can't change context");
             tRes.tested("contextChanged()", true) ;
             return;
         }
@@ -433,7 +433,7 @@ public class _XFrame extends MultiMethodTest {
 
 
     /**
-    * Test calls the method. Remembered old creater is restored at the end. <p>
+    * Test calls the method. Remembered old creator is restored at the end. <p>
     * Has <b> OK </b> status if the method successfully set new value to (XFrame)
     * oObj object.
     */

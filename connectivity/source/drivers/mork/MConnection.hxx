@@ -10,40 +10,34 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MCONNECTION_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MCONNECTION_HXX
 
-#include <connectivity/OSubComponent.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 #include "MColumnAlias.hxx"
+
+#include <rtl/ref.hxx>
 
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 
 // do we want here namespace too?
 class MorkParser;
 
-namespace connectivity
-{
-    namespace mork
+namespace connectivity::mork
     {
         class MorkDriver;
         class ErrorDescriptor;
 
         typedef connectivity::OMetaConnection OConnection_BASE; // implements basics and text encoding
 
-        class OConnection : public OConnection_BASE,
-                            public connectivity::OSubComponent<OConnection, OConnection_BASE>
+        class OConnection final : public OConnection_BASE
         {
-            friend class connectivity::OSubComponent<OConnection, OConnection_BASE>;
-
-        protected:
-
             // Data attributes
 
             rtl::Reference<MorkDriver> m_xDriver;              //  Pointer to the owning
                                                                //  driver object
             OColumnAlias    m_aColumnAlias;
             // Mork Parser (abook)
-            MorkParser* m_pBook;
+            std::unique_ptr<MorkParser> m_pBook;
             // Mork Parser (history)
-            MorkParser* m_pHistory;
+            std::unique_ptr<MorkParser> m_pHistory;
             // Store Catalog
             css::uno::Reference< css::sdbcx::XTablesSupplier> m_xCatalog;
 
@@ -53,13 +47,11 @@ namespace connectivity
             explicit OConnection(MorkDriver* const driver);
             virtual ~OConnection() override;
 
-            const rtl::Reference<MorkDriver>& getDriver() {return m_xDriver;};
-            MorkParser* getMorkParser(const OString& t) {return t == "CollectedAddressBook" ? m_pHistory : m_pBook;};
+            const rtl::Reference<MorkDriver>& getDriver() const {return m_xDriver;};
+            MorkParser* getMorkParser(const OString& t) {return t == "CollectedAddressBook" ? m_pHistory.get() : m_pBook.get();};
 
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
-            // XInterface
-            virtual void SAL_CALL release() throw() override;
 
             // XServiceInfo
             DECLARE_SERVICE_INFO();
@@ -94,12 +86,12 @@ namespace connectivity
 
             // Added to enable me to use SQLInterpreter which requires an
             // XNameAccess i/f to access tables.
-            css::uno::Reference< css::sdbcx::XTablesSupplier > SAL_CALL createCatalog();
+            css::uno::Reference< css::sdbcx::XTablesSupplier > createCatalog();
 
             void throwSQLException( const ErrorDescriptor& _rError, const css::uno::Reference< css::uno::XInterface >& _rxContext );
-            void throwSQLException( const sal_uInt16 _nErrorResourceId, const css::uno::Reference< css::uno::XInterface >& _rxContext );
+            void throwSQLException( const char* pErrorResourceId, const css::uno::Reference< css::uno::XInterface >& _rxContext );
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MCONNECTION_HXX
 

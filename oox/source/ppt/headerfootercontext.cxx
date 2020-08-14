@@ -18,16 +18,16 @@
  */
 
 #include "headerfootercontext.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/tokens.hxx>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-    HeaderFooterContext::HeaderFooterContext( FragmentHandler2& rParent,
+    HeaderFooterContext::HeaderFooterContext( FragmentHandler2 const & rParent,
         const AttributeList& rAttribs, HeaderFooter& rHeaderFooter )
         : FragmentHandler2( rParent )
     {
@@ -53,6 +53,6 @@ namespace oox { namespace ppt {
     {
     }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

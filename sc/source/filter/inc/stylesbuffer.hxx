@@ -31,18 +31,18 @@
 #include <oox/helper/refmap.hxx>
 #include <oox/helper/refvector.hxx>
 #include "numberformatsbuffer.hxx"
-#include "patattr.hxx"
-#include "stlsheet.hxx"
 #include <editeng/svxenum.hxx>
 #include <editeng/frmdir.hxx>
-#include "attarray.hxx"
-#include <list>
+#include <attarray.hxx>
+#include <vector>
+
+namespace oox { class SequenceInputStream; }
 
 namespace oox { class PropertySet;
-                class PropertyMap; }
+                class PropertyMap;
+                class AttributeList; }
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 const sal_Int32 OOX_COLOR_WINDOWTEXT3       = 24;       /// System window text color (BIFF3-BIFF4).
 const sal_Int32 OOX_COLOR_WINDOWBACK3       = 25;       /// System window background color (BIFF3-BIFF4).
@@ -78,9 +78,9 @@ public:
     explicit            ExcelGraphicHelper( const WorkbookHelper& rHelper );
 
     /** Derived classes may implement to resolve a scheme color from the passed XML token identifier. */
-    virtual sal_Int32   getSchemeColor( sal_Int32 nToken ) const override;
+    virtual ::Color     getSchemeColor( sal_Int32 nToken ) const override;
     /** Derived classes may implement to resolve a palette index to an RGB color. */
-    virtual sal_Int32   getPaletteColor( sal_Int32 nPaletteIdx ) const override;
+    virtual ::Color     getPaletteColor( sal_Int32 nPaletteIdx ) const override;
 };
 
 class Color : public ::oox::drawingml::Color
@@ -89,7 +89,7 @@ public:
     /** Sets the color to automatic. */
     void                setAuto();
     /** Sets the color to the passed RGB value. */
-    void                setRgb( sal_Int32 nRgbValue, double fTint = 0.0 );
+    void                setRgb( ::Color nRgbValue, double fTint = 0.0 );
     /** Sets the color to the passed theme index. */
     void                setTheme( sal_Int32 nThemeIdx, double fTint = 0.0 );
     /** Sets the color to the passed palette index. */
@@ -122,14 +122,14 @@ public:
     void                importPaletteColor( SequenceInputStream& rStrm );
 
     /** Returns the RGB value of the color with the passed index. */
-    sal_Int32           getColor( sal_Int32 nPaletteIdx ) const;
+    ::Color             getColor( sal_Int32 nPaletteIdx ) const;
 
 private:
     /** Appends the passed color. */
-    void                appendColor( sal_Int32 nRGBValue );
+    void                appendColor( ::Color nRGBValue );
 
 private:
-    ::std::vector< sal_Int32 > maColors;    /// List of RGB values.
+    ::std::vector< ::Color > maColors;    /// List of RGB values.
     size_t              mnAppendIndex;      /// Index to append a new color.
 };
 
@@ -194,7 +194,7 @@ struct ApiFontData
     ApiScriptFontName        maAsianFont;        /// Font name for east-asian scripts.
     ApiScriptFontName        maCmplxFont;        /// Font name for complex scripts.
     css::awt::FontDescriptor maDesc;             /// Font descriptor (height in twips, weight in %).
-    sal_Int32                mnColor;            /// Font color.
+    ::Color                  mnColor;            /// Font color.
     sal_Int16                mnEscapement;       /// Escapement style.
     sal_Int8                 mnEscapeHeight;     /// Escapement font height.
     bool                     mbOutline;          /// True = outlined characters.
@@ -242,7 +242,7 @@ public:
     const css::awt::FontDescriptor& getFontDescriptor() const { return maApiData.maDesc;}
     /** Returns true, if the font requires rich text formatting in Calc.
         @descr  Example: Font escapement is a cell attribute in Excel, but Calc
-        needs an rich text cell for this attribute. */
+        needs a rich text cell for this attribute. */
     bool                needsRichTextFormat() const;
 
     void                fillToItemSet( SfxItemSet& rItemSet, bool bEditEngineText, bool bSkipPoolDefs = false ) const;
@@ -503,7 +503,7 @@ struct GradientFillModel
 /** Contains API fill attributes. */
 struct ApiSolidFillData
 {
-    sal_Int32           mnColor;            /// Fill color.
+    ::Color             mnColor;            /// Fill color.
     bool                mbTransparent;      /// True = transparent area.
     bool                mbUsed;             /// True = fill data is valid.
 
@@ -591,7 +591,7 @@ class Xf : public WorkbookHelper
 public:
     struct AttrList
     {
-        std::list<ScAttrEntry> maAttrs;
+        std::vector<ScAttrEntry> maAttrs;
         bool mbLatinNumFmtOnly;
         const ScPatternAttr* mpDefPattern;
 
@@ -632,7 +632,7 @@ private:
     typedef ::std::unique_ptr< ::ScPatternAttr > ScPatternAttrPtr;
 
     ScPatternAttrPtr    mpPattern;          /// Calc item set.
-    sal_uLong           mnScNumFmt;         /// Calc number format.
+    sal_uInt32          mnScNumFmt;         /// Calc number format.
 
     XfModel             maModel;            /// Cell XF or style XF model data.
     Alignment           maAlignment;        /// Cell alignment data.
@@ -712,7 +712,7 @@ public:
 
     /** Creates the style sheet in the document described by this cell style object. */
     void                createCellStyle();
-    /** Stores tha passed final style name and creates the cell style, if it is
+    /** Stores the passed final style name and creates the cell style, if it is
         user-defined or modified built-in. */
     void                finalizeImport( const OUString& rFinalName );
 
@@ -802,6 +802,7 @@ public:
     XfRef               createStyleXf();
     /** Creates a new empty differential formatting object. */
     DxfRef              createDxf();
+    DxfRef              createExtDxf();
 
     /** Appends a new color to the color palette. */
     void                importPaletteColor( const AttributeList& rAttribs );
@@ -821,7 +822,7 @@ public:
     void                finalizeImport();
 
     /** Returns the palette color with the specified index. */
-    sal_Int32           getPaletteColor( sal_Int32 nIndex ) const;
+    ::Color             getPaletteColor( sal_Int32 nIndex ) const;
     /** Returns the specified font object. */
     FontRef             getFont( sal_Int32 nFontId ) const;
     /** Returns the specified border object. */
@@ -850,9 +851,10 @@ public:
     ::ScStyleSheet*     getCellStyleSheet( sal_Int32 nXfId ) const;
     /** Creates the style sheet described by the DXF with the passed identifier. */
     OUString     createDxfStyle( sal_Int32 nDxfId ) const;
+    OUString     createExtDxfStyle( sal_Int32 nDxfId ) const;
 
     void                writeFontToItemSet( SfxItemSet& rItemSet, sal_Int32 nFontId, bool bSkipPoolDefs ) const;
-    sal_uLong           writeNumFmtToItemSet( SfxItemSet& rItemSet, sal_Int32 nNumFmtId, bool bSkipPoolDefs ) const;
+    sal_uInt32          writeNumFmtToItemSet( SfxItemSet& rItemSet, sal_uInt32 nNumFmtId, bool bSkipPoolDefs ) const;
     /** Writes the specified number format to the passed property map. */
     void                writeBorderToItemSet( SfxItemSet& rItemSet, sal_Int32 nBorderId, bool bSkipPoolDefs ) const;
     /** Writes the fill attributes of the specified fill data to the passed property map. */
@@ -860,6 +862,7 @@ public:
 
     /** Writes the cell formatting attributes of the specified XF to the passed property set. */
     void                writeCellXfToDoc( ScDocumentImport& rDoc, const ScRange& rRange, sal_Int32 nXfId ) const;
+    const RefVector< Dxf >& getExtDxfs() const { return maExtDxfs; }
 
 private:
     typedef RefVector< Font >                           FontVector;
@@ -878,11 +881,11 @@ private:
     XfVector            maStyleXfs;         /// List of cell styles.
     CellStyleBuffer     maCellStyles;       /// All built-in and user defined cell styles.
     DxfVector           maDxfs;             /// List of differential cell styles.
+    DxfVector           maExtDxfs;          /// List of differential extlst cell styles.
     mutable DxfStyleMap maDxfStyles;        /// Maps DXF identifiers to Calc style sheet names.
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

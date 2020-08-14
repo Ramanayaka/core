@@ -42,7 +42,7 @@ public:
 };
 
 
-void SAL_CALL
+void
 Interceptor::addEventListener(
     const uno::Reference<lang::XEventListener >& Listener )
 {
@@ -56,7 +56,7 @@ Interceptor::addEventListener(
 }
 
 
-void SAL_CALL
+void
 Interceptor::removeEventListener(
     const uno::Reference< lang::XEventListener >& Listener )
 {
@@ -67,7 +67,7 @@ Interceptor::removeEventListener(
 }
 
 
-void SAL_CALL Interceptor::dispose()
+void Interceptor::dispose()
 {
     lang::EventObject aEvt;
     aEvt.Source = static_cast< frame::XDispatch* >( this );
@@ -226,27 +226,26 @@ void Interceptor::generateFeatureStateEvent()
 
                 aStateEvent.FeatureURL.Complete = m_aInterceptedURL[0];
                 aStateEvent.FeatureDescriptor = "Update";
-                aStateEvent.State <<= ("($1) " + aTitle);
+                aStateEvent.State <<= "($1) " + aTitle;
 
             }
             else if ( i == 5 )
             {
                 aStateEvent.FeatureURL.Complete = m_aInterceptedURL[5];
                 aStateEvent.FeatureDescriptor = "SaveCopyTo";
-                aStateEvent.State <<= (OUString("($3)"));
+                aStateEvent.State <<= OUString("($3)");
             }
             else
             {
                 aStateEvent.FeatureURL.Complete = m_aInterceptedURL[i];
                 aStateEvent.FeatureDescriptor = "Close and Return";
-                aStateEvent.State <<= ("($2) " + aTitle);
+                aStateEvent.State <<= "($2) " + aTitle;
 
             }
 
-            for(sal_Int32 k = 0; k < aSeq.getLength(); ++k)
+            for(uno::Reference<uno::XInterface> const & k : std::as_const(aSeq))
             {
-                uno::Reference<frame::XStatusListener>
-                    Control(aSeq[k],uno::UNO_QUERY);
+                uno::Reference<frame::XStatusListener> Control(k,uno::UNO_QUERY);
                 if(Control.is())
                     Control->statusChanged(aStateEvent);
 
@@ -285,7 +284,7 @@ Interceptor::addStatusListener(
         aStateEvent.FeatureDescriptor = "Update";
         aStateEvent.IsEnabled = true;
         aStateEvent.Requery = false;
-        aStateEvent.State <<= ("($1) " + aTitle );
+        aStateEvent.State <<= "($1) " + aTitle;
         Control->statusChanged(aStateEvent);
 
         {
@@ -323,7 +322,7 @@ Interceptor::addStatusListener(
         aStateEvent.FeatureDescriptor = "Close and Return";
         aStateEvent.IsEnabled = true;
         aStateEvent.Requery = false;
-        aStateEvent.State <<= ("($2) " + aTitle );
+        aStateEvent.State <<= "($2) " + aTitle;
         Control->statusChanged(aStateEvent);
 
 
@@ -345,7 +344,7 @@ Interceptor::addStatusListener(
         aStateEvent.FeatureDescriptor = "SaveCopyTo";
         aStateEvent.IsEnabled = true;
         aStateEvent.Requery = false;
-        aStateEvent.State <<= (OUString("($3)"));
+        aStateEvent.State <<= OUString("($3)");
         Control->statusChanged(aStateEvent);
 
         {

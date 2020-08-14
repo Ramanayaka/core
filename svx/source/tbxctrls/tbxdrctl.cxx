@@ -18,18 +18,11 @@
  */
 
 
-#include <string>
-
-#include <svl/aeitem.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/viewsh.hxx>
-#include <sfx2/viewfrm.hxx>
+#include <svl/eitem.hxx>
 #include <vcl/toolbox.hxx>
 
-#include <svx/dialmgr.hxx>
-#include <svx/dialogs.hrc>
-#include "svx/tbxctl.hxx"
-#include "svx/tbxcolor.hxx"
+#include <svx/tbxctl.hxx>
+
 #include <com/sun/star/frame/XLayoutManager.hpp>
 
 SFX_IMPL_TOOLBOX_CONTROL(SvxTbxCtlDraw, SfxBoolItem);
@@ -78,23 +71,23 @@ void SvxTbxCtlDraw::StateChanged( sal_uInt16 nSID, SfxItemState eState,
 void SvxTbxCtlDraw::toggleToolbox()
 {
     Reference< XLayoutManager > xLayoutMgr = getLayoutManager();
-    if ( xLayoutMgr.is() )
-    {
-        bool bCheck = false;
-        if ( xLayoutMgr->isElementVisible( m_sToolboxName ) )
-        {
-            xLayoutMgr->hideElement( m_sToolboxName );
-            xLayoutMgr->destroyElement( m_sToolboxName );
-        }
-        else
-        {
-            bCheck = true;
-            xLayoutMgr->createElement( m_sToolboxName );
-            xLayoutMgr->showElement( m_sToolboxName );
-        }
+    if ( !xLayoutMgr.is() )
+        return;
 
-        GetToolBox().CheckItem( GetId(), bCheck );
+    bool bCheck = false;
+    if ( xLayoutMgr->isElementVisible( m_sToolboxName ) )
+    {
+        xLayoutMgr->hideElement( m_sToolboxName );
+        xLayoutMgr->destroyElement( m_sToolboxName );
     }
+    else
+    {
+        bCheck = true;
+        xLayoutMgr->createElement( m_sToolboxName );
+        xLayoutMgr->showElement( m_sToolboxName );
+    }
+
+    GetToolBox().CheckItem( GetId(), bCheck );
 }
 
 

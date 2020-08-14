@@ -17,15 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <algorithm>
 #include <memory>
-#include <config_features.h>
+#include <config_java.h>
 
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
+#include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <comphelper/string.hxx>
+#include <o3tl/safeint.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <sfx2/sfx.hrc>
 #include <svx/svxids.hrc>
 #if OSL_DEBUG_LEVEL > 0
 #include <stdlib.h>
@@ -34,14 +38,14 @@
 
 #include <vcl/errinf.hxx>
 #include <svl/stritem.hxx>
-#include <svtools/imap.hxx>
+#include <vcl/imap.hxx>
 #include <svtools/htmltokn.h>
 #include <svtools/htmlkywd.hxx>
 #include <svtools/ctrltool.hxx>
+#include <unotools/configmgr.hxx>
 #include <unotools/pathoptions.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
-#include <sfx2/fcontnr.hxx>
+#include <sfx2/event.hxx>
 #include <sfx2/docfile.hxx>
 
 #include <svtools/htmlcfg.hxx>
@@ -69,7 +73,6 @@
 #include <charatr.hxx>
 #include <fmtfld.hxx>
 #include <fmtpdsc.hxx>
-#include <txtfld.hxx>
 #include <fmtanchr.hxx>
 #include <fmtsrnd.hxx>
 #include <fmtfsize.hxx>
@@ -77,8 +80,8 @@
 #include <fchrfmt.hxx>
 #include <fmtinfmt.hxx>
 #include <fmtfollowtextflow.hxx>
+#include <fmtornt.hxx>
 #include <docary.hxx>
-#include <docstat.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <IDocumentSettingAccess.hxx>
@@ -92,27 +95,35 @@
 #include <pam.hxx>
 #include <ndtxt.hxx>
 #include <mdiexp.hxx>
-#include <expfld.hxx>
 #include <poolfmt.hxx>
 #include <pagedesc.hxx>
 #include <IMark.hxx>
 #include <docsh.hxx>
 #include <editsh.hxx>
 #include <docufld.hxx>
-#include <swcss1.hxx>
+#include "swcss1.hxx"
 #include <fltini.hxx>
 #include <htmltbl.hxx>
-#include <htmlnum.hxx>
-#include <swhtml.hxx>
+#include "htmlnum.hxx"
+#include "swhtml.hxx"
+#include "wrthtml.hxx"
 #include <linkenum.hxx>
 #include <breakit.hxx>
 #include <SwAppletImpl.hxx>
+#include <swdll.hxx>
+#include <txatbase.hxx>
 
 #include <sfx2/viewfrm.hxx>
+#include <svx/svdobj.hxx>
+#include <officecfg/Office/Writer.hxx>
+#include <comphelper/sequenceashashmap.hxx>
+#include <comphelper/sequence.hxx>
 
-#include <statstr.hrc>
 #include <swerror.h>
-#include <css1atr.hxx>
+#include <ndole.hxx>
+#include <unoframe.hxx>
+#include "css1atr.hxx"
+#include <frameformats.hxx>
 
 #define FONTSIZE_MASK           7
 
@@ -127,8 +138,8 @@
 using editeng::SvxBorderLine;
 using namespace ::com::sun::star;
 
-// <P ALIGN=xxx>, <Hn ALIGN=xxx>, <TD ALIGN=xxx> usw.
-HTMLOptionEnum<SvxAdjust> aHTMLPAlignTable[] =
+// <P ALIGN=xxx>, <Hn ALIGN=xxx>, <TD ALIGN=xxx> etc.
+HTMLOptionEnum<SvxAdjust> const aHTMLPAlignTable[] =
 {
     { OOO_STRING_SVTOOLS_HTML_AL_left,    SvxAdjust::Left     },
     { OOO_STRING_SVTOOLS_HTML_AL_center,  SvxAdjust::Center   },
@@ -136,11 +147,11 @@ HTMLOptionEnum<SvxAdjust> aHTMLPAlignTable[] =
     { OOO_STRING_SVTOOLS_HTML_AL_right,   SvxAdjust::Right    },
     { OOO_STRING_SVTOOLS_HTML_AL_justify, SvxAdjust::Block    },
     { OOO_STRING_SVTOOLS_HTML_AL_char,    SvxAdjust::Left     },
-    { nullptr,                            (SvxAdjust)0        }
+    { nullptr,                            SvxAdjust(0)        }
 };
 
 // <SPACER TYPE=...>
-static HTMLOptionEnum<sal_uInt16> aHTMLSpacerTypeTable[] =
+HTMLOptionEnum<sal_uInt16> const aHTMLSpacerTypeTable[] =
 {
     { OOO_STRING_SVTOOLS_HTML_SPTYPE_block,      HTML_SPTYPE_BLOCK       },
     { OOO_STRING_SVTOOLS_HTML_SPTYPE_horizontal, HTML_SPTYPE_HORI        },
@@ -150,11 +161,15 @@ static HTMLOptionEnum<sal_uInt16> aHTMLSpacerTypeTable[] =
 
 HTMLReader::HTMLReader()
 {
-    bTmplBrowseMode = true;
+    m_bTemplateBrowseMode = true;
 }
 
-OUString HTMLReader::GetTemplateName() const
+OUString HTMLReader::GetTemplateName(SwDoc& rDoc) const
 {
+    if (!rDoc.getIDocumentSettingAccess().get(DocumentSettingId::HTML_MODE))
+        // HTML import into Writer, avoid loading the Writer/Web template.
+        return OUString();
+
     const OUString sTemplateWithoutExt("internal/html");
     SvtPathOptions aPathOpt;
 
@@ -177,11 +192,11 @@ OUString HTMLReader::GetTemplateName() const
 
 bool HTMLReader::SetStrmStgPtr()
 {
-    OSL_ENSURE( pMedium, "Where is the medium??" );
+    OSL_ENSURE( m_pMedium, "Where is the medium??" );
 
-    if( pMedium->IsRemote() || !pMedium->IsStorage() )
+    if( m_pMedium->IsRemote() || !m_pMedium->IsStorage() )
     {
-        pStrm = pMedium->GetInStream();
+        m_pStream = m_pMedium->GetInStream();
         return true;
     }
     return false;
@@ -191,19 +206,21 @@ bool HTMLReader::SetStrmStgPtr()
 // Call for the general Reader-Interface
 ErrCode HTMLReader::Read( SwDoc &rDoc, const OUString& rBaseURL, SwPaM &rPam, const OUString & rName )
 {
-    if( !pStrm )
+    SetupFilterOptions();
+
+    if( !m_pStream )
     {
-        OSL_ENSURE( pStrm, "HTML-Read without stream" );
+        OSL_ENSURE( m_pStream, "HTML-Read without stream" );
         return ERR_SWG_READ_ERROR;
     }
 
-    if( !bInsertMode )
+    if( !m_bInsertMode )
     {
         Reader::ResetFrameFormats( rDoc );
 
         // Set the HTML page style, when it isn't a HTML document,
         // otherwise it's already set.
-        if( !rDoc.getIDocumentSettingAccess().get(DocumentSettingId::HTML_MODE) )
+        if( !rDoc.getIDocumentSettingAccess().get(DocumentSettingId::HTML_MODE) && m_aNamespace != "reqif-xhtml" )
         {
             rDoc.getIDocumentContentOperations().InsertPoolItem( rPam, SwFormatPageDesc(
                 rDoc.getIDocumentStylePoolAccess().GetPageDescFromPool( RES_POOLPAGE_HTML, false )) );
@@ -211,21 +228,21 @@ ErrCode HTMLReader::Read( SwDoc &rDoc, const OUString& rBaseURL, SwPaM &rPam, co
     }
 
     // so nobody steals the document!
-    rDoc.acquire();
+    rtl::Reference<SwDoc> xHoldAlive(&rDoc);
     ErrCode nRet = ERRCODE_NONE;
-    tools::SvRef<SwHTMLParser> xParser = new SwHTMLParser( &rDoc, rPam, *pStrm,
-                                            rName, rBaseURL, !bInsertMode, pMedium,
+    tools::SvRef<SwHTMLParser> xParser = new SwHTMLParser( &rDoc, rPam, *m_pStream,
+                                            rName, rBaseURL, !m_bInsertMode, m_pMedium,
                                             IsReadUTF8(),
-                                            bIgnoreHTMLComments );
+                                            m_bIgnoreHTMLComments, m_aNamespace );
 
     SvParserState eState = xParser->CallParser();
 
     if( SvParserState::Pending == eState )
-        pStrm->ResetError();
+        m_pStream->ResetError();
     else if( SvParserState::Accepted != eState )
     {
-        const OUString sErr(OUString::number((sal_Int32)xParser->GetLineNr())
-            + "," + OUString::number((sal_Int32)xParser->GetLinePos()));
+        const OUString sErr(OUString::number(static_cast<sal_Int32>(xParser->GetLineNr()))
+            + "," + OUString::number(static_cast<sal_Int32>(xParser->GetLinePos())));
 
         // use the stream as transport for error number
         nRet = *new StringErrorInfo( ERR_FORMAT_ROWCOL, sErr,
@@ -240,25 +257,19 @@ SwHTMLParser::SwHTMLParser( SwDoc* pD, SwPaM& rCursor, SvStream& rIn,
                             const OUString& rBaseURL,
                             bool bReadNewDoc,
                             SfxMedium* pMed, bool bReadUTF8,
-                            bool bNoHTMLComments )
+                            bool bNoHTMLComments,
+                            const OUString& rNamespace )
     : SfxHTMLParser( rIn, bReadNewDoc, pMed ),
-    SwClient( nullptr ),
     m_aPathToFile( rPath ),
     m_sBaseURL( rBaseURL ),
-    m_pAppletImpl( nullptr ),
-    m_pCSS1Parser( nullptr ),
+    m_xAttrTab(std::make_shared<HTMLAttrTable>()),
     m_pNumRuleInfo( new SwHTMLNumRuleInfo ),
-    m_pPendStack( nullptr ),
     m_xDoc( pD ),
     m_pActionViewShell( nullptr ),
     m_pSttNdIdx( nullptr ),
-    m_pTable(nullptr),
     m_pFormImpl( nullptr ),
     m_pMarquee( nullptr ),
-    m_pField( nullptr ),
     m_pImageMap( nullptr ),
-    m_pImageMaps(nullptr),
-    m_pFootEndNoteImpl( nullptr ),
     m_nBaseFontStMin( 0 ),
     m_nFontStMin( 0 ),
     m_nDefListDeep( 0 ),
@@ -271,7 +282,7 @@ SwHTMLParser::SwHTMLParser( SwDoc* pD, SwPaM& rCursor, SvStream& rIn,
     m_nContextStAttrMin( 0 ),
     m_nSelectEntryCnt( 0 ),
     m_nOpenParaToken( HtmlTokenId::NONE ),
-    m_eJumpTo( JUMPTO_NONE ),
+    m_eJumpTo( JumpToMarks::NONE ),
 #ifdef DBG_UTIL
     m_nContinue( 0 ),
 #endif
@@ -296,8 +307,17 @@ SwHTMLParser::SwHTMLParser( SwDoc* pD, SwPaM& rCursor, SvStream& rIn,
     m_bInFootEndNoteSymbol( false ),
     m_bIgnoreHTMLComments( bNoHTMLComments ),
     m_bRemoveHidden( false ),
+    m_bBodySeen( false ),
+    m_bReadingHeaderOrFooter( false ),
+    m_bNotifyMacroEventRead( false ),
+    m_isInTableStructure(false),
+    m_nTableDepth( 0 ),
     m_pTempViewFrame(nullptr)
 {
+    // If requested explicitly, then force ignoring of comments (don't create postits for them).
+    if (!utl::ConfigManager::IsFuzzing() && officecfg::Office::Writer::Filter::Import::HTML::IgnoreComments::get())
+        m_bIgnoreHTMLComments = true;
+
     m_nEventId = nullptr;
     m_bUpperSpace = m_bViewCreated = m_bChkJumpMark = false;
 
@@ -305,7 +325,7 @@ SwHTMLParser::SwHTMLParser( SwDoc* pD, SwPaM& rCursor, SvStream& rIn,
 
     rCursor.DeleteMark();
     m_pPam = &rCursor; // re-use existing cursor: avoids spurious ~SwIndexReg assert
-    memset( &m_aAttrTab, 0, sizeof( HTMLAttrTable ));
+    memset(m_xAttrTab.get(), 0, sizeof(HTMLAttrTable));
 
     // Read the font sizes 1-7 from the INI file
     SvxHtmlOptions& rHtmlOptions = SvxHtmlOptions::Get();
@@ -339,7 +359,7 @@ SwHTMLParser::SwHTMLParser( SwDoc* pD, SwPaM& rCursor, SvStream& rIn,
     m_bOldIsHTMLMode = m_xDoc->getIDocumentSettingAccess().get(DocumentSettingId::HTML_MODE);
     m_xDoc->getIDocumentSettingAccess().set(DocumentSettingId::HTML_MODE, true);
 
-    m_pCSS1Parser = new SwCSS1Parser( m_xDoc.get(), m_aFontHeights, m_sBaseURL, IsNewDoc() );
+    m_pCSS1Parser.reset(new SwCSS1Parser(m_xDoc.get(), *this, m_aFontHeights, m_sBaseURL, IsNewDoc()));
     m_pCSS1Parser->SetIgnoreFontFamily( rHtmlOptions.IsIgnoreFontFamily() );
 
     if( bReadUTF8 )
@@ -368,7 +388,7 @@ SwHTMLParser::SwHTMLParser( SwDoc* pD, SwPaM& rCursor, SvStream& rIn,
             m_sJmpMark = pMed->GetURLObject().GetMark();
             if( !m_sJmpMark.isEmpty() )
             {
-                m_eJumpTo = JUMPTO_MARK;
+                m_eJumpTo = JumpToMarks::Mark;
                 sal_Int32 nLastPos = m_sJmpMark.lastIndexOf( cMarkSeparator );
                 sal_Int32 nPos =  nLastPos != -1 ? nLastPos : 0;
 
@@ -382,15 +402,15 @@ SwHTMLParser::SwHTMLParser( SwDoc* pD, SwPaM& rCursor, SvStream& rIn,
                 {
                     sCmp = sCmp.toAsciiLowerCase();
                     if( sCmp == "region" )
-                        m_eJumpTo = JUMPTO_REGION;
+                        m_eJumpTo = JumpToMarks::Region;
                     else if( sCmp == "table" )
-                        m_eJumpTo = JUMPTO_TABLE;
+                        m_eJumpTo = JumpToMarks::Table;
                     else if( sCmp == "graphic" )
-                        m_eJumpTo = JUMPTO_GRAPHIC;
+                        m_eJumpTo = JumpToMarks::Graphic;
                     else if( sCmp == "outline" ||
                             sCmp == "text" ||
                             sCmp == "frame" )
-                        m_eJumpTo = JUMPTO_NONE;  // this is nothing valid!
+                        m_eJumpTo = JumpToMarks::NONE;  // this is nothing valid!
                     else
                         // otherwise this is a normal (book)mark
                         nPos = -1;
@@ -401,10 +421,35 @@ SwHTMLParser::SwHTMLParser( SwDoc* pD, SwPaM& rCursor, SvStream& rIn,
                 if( nPos != -1 )
                     m_sJmpMark = m_sJmpMark.copy( 0, nPos );
                 if( m_sJmpMark.isEmpty() )
-                    m_eJumpTo = JUMPTO_NONE;
+                    m_eJumpTo = JumpToMarks::NONE;
             }
         }
     }
+
+    if (!rNamespace.isEmpty())
+    {
+        SetNamespace(rNamespace);
+        m_bXHTML = true;
+        if (rNamespace == "reqif-xhtml")
+            m_bReqIF = true;
+    }
+
+    // Extract load parameters which are specific to this filter.
+    if (!pMed)
+    {
+        return;
+    }
+
+    comphelper::SequenceAsHashMap aLoadMap(pMed->GetArgs());
+    auto it = aLoadMap.find("AllowedRTFOLEMimeTypes");
+    if (it == aLoadMap.end())
+    {
+        return;
+    }
+
+    uno::Sequence<OUString> aTypes;
+    it->second >>= aTypes;
+    m_aAllowedRTFOLEMimeTypes = comphelper::sequenceToContainer<std::set<OUString>>(aTypes);
 }
 
 SwHTMLParser::~SwHTMLParser()
@@ -412,6 +457,16 @@ SwHTMLParser::~SwHTMLParser()
 #ifdef DBG_UTIL
     OSL_ENSURE( !m_nContinue, "DTOR in continue!" );
 #endif
+
+    OSL_ENSURE(m_aContexts.empty(), "There are still contexts on the stack");
+    OSL_ENSURE(!m_nContextStMin, "There are protected contexts");
+    m_nContextStMin = 0;
+    while (!m_aContexts.empty())
+    {
+        std::unique_ptr<HTMLAttrContext> xCntxt(PopContext());
+        ClearContext(xCntxt.get());
+    }
+
     bool bAsync = m_xDoc->IsInLoadAsynchron();
     m_xDoc->SetInLoadAsynchron( false );
     m_xDoc->getIDocumentSettingAccess().set(DocumentSettingId::HTML_MODE, m_bOldIsHTMLMode);
@@ -440,29 +495,22 @@ SwHTMLParser::~SwHTMLParser()
     if( !m_aSetAttrTab.empty() )
     {
         OSL_ENSURE( m_aSetAttrTab.empty(),"There are still attributes on the stack" );
-        for ( HTMLAttrs::const_iterator it = m_aSetAttrTab.begin();
-              it != m_aSetAttrTab.end(); ++it )
-            delete *it;
+        for ( const auto& rpAttr : m_aSetAttrTab )
+            delete rpAttr;
         m_aSetAttrTab.clear();
     }
 
-    delete m_pCSS1Parser;
-    delete m_pNumRuleInfo;
+    m_pCSS1Parser.reset();
+    m_pNumRuleInfo.reset();
     DeleteFormImpl();
-    DeleteFootEndNoteImpl();
+    m_pFootEndNoteImpl.reset();
 
-    OSL_ENSURE( !m_pTable, "It exists still a open table" );
-    delete m_pImageMaps;
+    OSL_ENSURE(!m_xTable, "It exists still an open table");
+    m_pImageMaps.reset();
 
-    OSL_ENSURE( !m_pPendStack,
+    OSL_ENSURE( m_vPendingStack.empty(),
             "SwHTMLParser::~SwHTMLParser: Here should not be Pending-Stack anymore" );
-    while( m_pPendStack )
-    {
-        SwPendingStack* pTmp = m_pPendStack;
-        m_pPendStack = m_pPendStack->pNext;
-        delete pTmp->pData;
-        delete pTmp;
-    }
+    m_vPendingStack.clear();
 
     m_xDoc.clear();
 
@@ -531,22 +579,27 @@ SvParserState SwHTMLParser::CallParser()
             m_nEventId = nullptr;
         }
     }
-
-    // show progress bar
-    else if( !GetMedium() || !GetMedium()->IsRemote() )
+    else // show progress bar
     {
         rInput.Seek(STREAM_SEEK_TO_END);
         rInput.ResetError();
-        ::StartProgress( STR_STATSTR_W4WREAD, 0, rInput.Tell(),
-                         m_xDoc->GetDocShell() );
+
+        m_xProgress.reset(new ImportProgress(m_xDoc->GetDocShell(), 0, rInput.Tell()));
+
         rInput.Seek(STREAM_SEEK_TO_BEGIN);
         rInput.ResetError();
     }
 
-    m_xDoc->GetPageDesc( 0 ).Add( this );
+    StartListening(m_xDoc->GetPageDesc( 0 ).GetNotifier());
 
     SvParserState eRet = HTMLParser::CallParser();
     return eRet;
+}
+
+bool SwHTMLParser::CanRemoveNode(sal_uLong nNodeIdx) const
+{
+    const SwNode *pPrev = m_xDoc->GetNodes()[nNodeIdx - 1];
+    return pPrev->IsContentNode() || (pPrev->IsEndNode() && pPrev->StartOfSectionNode()->IsSectionNode());
 }
 
 void SwHTMLParser::Continue( HtmlTokenId nToken )
@@ -606,20 +659,20 @@ void SwHTMLParser::Continue( HtmlTokenId nToken )
     // of NextToken.
     if( SvParserState::Error == eState )
     {
-        OSL_ENSURE( !m_pPendStack || m_pPendStack->nToken != HtmlTokenId::NONE,
+        OSL_ENSURE( m_vPendingStack.empty() || m_vPendingStack.back().nToken != HtmlTokenId::NONE,
                 "SwHTMLParser::Continue: Pending-Stack without Token" );
-        if( m_pPendStack && m_pPendStack->nToken != HtmlTokenId::NONE )
-            NextToken( m_pPendStack->nToken );
-        OSL_ENSURE( !m_pPendStack,
+        if( !m_vPendingStack.empty() && m_vPendingStack.back().nToken != HtmlTokenId::NONE )
+            NextToken( m_vPendingStack.back().nToken );
+        OSL_ENSURE( m_vPendingStack.empty(),
                 "SwHTMLParser::Continue: There is again a Pending-Stack" );
     }
     else
     {
-        HTMLParser::Continue( m_pPendStack ? m_pPendStack->nToken : nToken );
+        HTMLParser::Continue( !m_vPendingStack.empty() ? m_vPendingStack.back().nToken : nToken );
     }
 
     // disable progress bar again
-    EndProgress( m_xDoc->GetDocShell() );
+    m_xProgress.reset();
 
     bool bLFStripped = false;
     if( SvParserState::Pending != GetStatus() )
@@ -650,22 +703,27 @@ void SwHTMLParser::Continue( HtmlTokenId nToken )
 
             // close still open numbering
             while( GetNumInfo().GetNumRule() )
-                EndNumBulList();
+                EndNumberBulletList();
 
             OSL_ENSURE( !m_nContextStMin, "There are protected contexts" );
-            m_nContextStMin = 0;
-            while( m_aContexts.size() )
+            // try this twice, first normally to let m_nContextStMin decrease
+            // naturally and get contexts popped in desired order, and if that
+            // fails force it
+            for (int i = 0; i < 2; ++i)
             {
-                HTMLAttrContext *pCntxt = PopContext();
-                if( pCntxt )
+                while (m_aContexts.size() > m_nContextStMin)
                 {
-                    EndContext( pCntxt );
-                    delete pCntxt;
+                    std::unique_ptr<HTMLAttrContext> xCntxt(PopContext());
+                    if (xCntxt)
+                        EndContext(xCntxt.get());
                 }
+                if (!m_nContextStMin)
+                    break;
+                OSL_ENSURE(!m_nContextStMin, "There are still protected contexts");
+                m_nContextStMin = 0;
             }
 
-            if( !m_aParaAttrs.empty() )
-                m_aParaAttrs.clear();
+            m_aParaAttrs.clear();
 
             SetAttr( false );
 
@@ -690,23 +748,23 @@ void SwHTMLParser::Continue( HtmlTokenId nToken )
 
 #if OSL_DEBUG_LEVEL > 0
 // !!! shouldn't be possible, or ??
-OSL_ENSURE( m_pSttNdIdx->GetIndex()+1 != m_pPam->GetBound().nNode.GetIndex(),
-            "Pam.Bound1 is still in the node" );
-OSL_ENSURE( m_pSttNdIdx->GetIndex()+1 != m_pPam->GetBound( false ).nNode.GetIndex(),
-            "Pam.Bound2 is still in the node" );
+                OSL_ENSURE( m_pSttNdIdx->GetIndex()+1 != m_pPam->GetBound().nNode.GetIndex(),
+                    "Pam.Bound1 is still in the node" );
+                OSL_ENSURE( m_pSttNdIdx->GetIndex()+1 != m_pPam->GetBound( false ).nNode.GetIndex(),
+                    "Pam.Bound2 is still in the node" );
 
-if( m_pSttNdIdx->GetIndex()+1 == m_pPam->GetBound().nNode.GetIndex() )
-{
-    const sal_Int32 nCntPos = m_pPam->GetBound().nContent.GetIndex();
-    m_pPam->GetBound().nContent.Assign( pTextNode,
-                    pTextNode->GetText().getLength() + nCntPos );
-}
-if( m_pSttNdIdx->GetIndex()+1 == m_pPam->GetBound( false ).nNode.GetIndex() )
-{
-    const sal_Int32 nCntPos = m_pPam->GetBound( false ).nContent.GetIndex();
-    m_pPam->GetBound( false ).nContent.Assign( pTextNode,
-                    pTextNode->GetText().getLength() + nCntPos );
-}
+                if( m_pSttNdIdx->GetIndex()+1 == m_pPam->GetBound().nNode.GetIndex() )
+                {
+                    const sal_Int32 nCntPos = m_pPam->GetBound().nContent.GetIndex();
+                    m_pPam->GetBound().nContent.Assign( pTextNode,
+                                    pTextNode->GetText().getLength() + nCntPos );
+                }
+                if( m_pSttNdIdx->GetIndex()+1 == m_pPam->GetBound( false ).nNode.GetIndex() )
+                {
+                    const sal_Int32 nCntPos = m_pPam->GetBound( false ).nContent.GetIndex();
+                    m_pPam->GetBound( false ).nContent.Assign( pTextNode,
+                                    pTextNode->GetText().getLength() + nCntPos );
+                }
 #endif
                 // Keep character attribute!
                 SwTextNode* pDelNd = aNxtIdx.GetNode().GetTextNode();
@@ -732,7 +790,7 @@ if( m_pSttNdIdx->GetIndex()+1 == m_pPam->GetBound( false ).nNode.GetIndex() )
         SwPosition* pPos = m_pPam->GetPoint();
         if( !pPos->nContent.GetIndex() && !bLFStripped )
         {
-            SwTextNode* pAktNd;
+            SwTextNode* pCurrentNd;
             sal_uLong nNodeIdx = pPos->nNode.GetIndex();
 
             bool bHasFlysOrMarks =
@@ -740,20 +798,14 @@ if( m_pSttNdIdx->GetIndex()+1 == m_pPam->GetBound( false ).nNode.GetIndex() )
 
             if( IsNewDoc() )
             {
-                const SwNode *pPrev = m_xDoc->GetNodes()[nNodeIdx -1];
-                if( !m_pPam->GetPoint()->nContent.GetIndex() &&
-                    ( pPrev->IsContentNode() ||
-                      (pPrev->IsEndNode() &&
-                      pPrev->StartOfSectionNode()->IsSectionNode()) ) )
+                if (!m_pPam->GetPoint()->nContent.GetIndex() && CanRemoveNode(nNodeIdx))
                 {
                     SwContentNode* pCNd = m_pPam->GetContentNode();
                     if( pCNd && pCNd->StartOfSectionIndex()+2 <
                         pCNd->EndOfSectionIndex() && !bHasFlysOrMarks )
                     {
                         SwViewShell *pVSh = CheckActionViewShell();
-                        SwCursorShell *pCursorSh = pVSh && dynamic_cast< const SwCursorShell *>( pVSh ) !=  nullptr
-                                        ? static_cast < SwCursorShell * >( pVSh )
-                                        : nullptr;
+                        SwCursorShell *pCursorSh = dynamic_cast<SwCursorShell *>( pVSh );
                         if( pCursorSh &&
                             pCursorSh->GetCursor()->GetPoint()
                                    ->nNode.GetIndex() == nNodeIdx )
@@ -768,16 +820,16 @@ if( m_pSttNdIdx->GetIndex()+1 == m_pPam->GetBound( false ).nNode.GetIndex() )
                     }
                 }
             }
-            else if( nullptr != ( pAktNd = m_xDoc->GetNodes()[ nNodeIdx ]->GetTextNode()) && !bHasFlysOrMarks )
+            else if( nullptr != ( pCurrentNd = m_xDoc->GetNodes()[ nNodeIdx ]->GetTextNode()) && !bHasFlysOrMarks )
             {
-                if( pAktNd->CanJoinNext( &pPos->nNode ))
+                if( pCurrentNd->CanJoinNext( &pPos->nNode ))
                 {
                     SwTextNode* pNextNd = pPos->nNode.GetNode().GetTextNode();
                     pPos->nContent.Assign( pNextNd, 0 );
                     m_pPam->SetMark(); m_pPam->DeleteMark();
                     pNextNd->JoinPrev();
                 }
-                else if (pAktNd->GetText().isEmpty())
+                else if (pCurrentNd->GetText().isEmpty())
                 {
                     pPos->nContent.Assign( nullptr, 0 );
                     m_pPam->SetMark(); m_pPam->DeleteMark();
@@ -820,7 +872,7 @@ if( m_pSttNdIdx->GetIndex()+1 == m_pPam->GetBound( false ).nNode.GetIndex() )
         }
 
         // adjust AutoLoad in DocumentProperties
-        if( IsNewDoc() )
+        if (!utl::ConfigManager::IsFuzzing() && IsNewDoc())
         {
             SwDocShell *pDocShell(m_xDoc->GetDocShell());
             OSL_ENSURE(pDocShell, "no SwDocShell");
@@ -892,18 +944,12 @@ if( m_pSttNdIdx->GetIndex()+1 == m_pPam->GetBound( false ).nNode.GetIndex() )
 #endif
 }
 
-void SwHTMLParser::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew )
+void SwHTMLParser::Notify(const SfxHint& rHint)
 {
-    switch( pOld ? pOld->Which() : pNew ? pNew->Which() : 0 )
+    if(rHint.GetId() == SfxHintId::Dying)
     {
-    case RES_OBJECTDYING:
-        if (pOld && static_cast<const SwPtrMsgPoolItem *>(pOld)->pObject == GetRegisteredIn())
-        {
-            // then we kill ourself
-            GetRegisteredInNonConst()->Remove( this );
-            ReleaseRef();                   // otherwise we're done!
-        }
-        break;
+        EndListeningAll();
+        ReleaseRef();
     }
 }
 
@@ -934,14 +980,14 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
         // Was the import cancelled by SFX? If a pending stack
         // exists, clean it.
         eState = SvParserState::Error;
-        OSL_ENSURE( !m_pPendStack || m_pPendStack->nToken != HtmlTokenId::NONE,
+        OSL_ENSURE( m_vPendingStack.empty() || m_vPendingStack.back().nToken != HtmlTokenId::NONE,
                 "SwHTMLParser::NextToken: Pending-Stack without token" );
-        if( 1 == m_xDoc->getReferenceCount() || !m_pPendStack )
+        if( 1 == m_xDoc->getReferenceCount() || m_vPendingStack.empty() )
             return ;
     }
 
 #if OSL_DEBUG_LEVEL > 0
-    if( m_pPendStack )
+    if( !m_vPendingStack.empty() )
     {
         switch( nToken )
         {
@@ -957,7 +1003,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
         case HtmlTokenId::SELECT_OFF:
             break;
         default:
-            OSL_ENSURE( !m_pPendStack, "Unknown token for Pending-Stack" );
+            OSL_ENSURE( m_vPendingStack.empty(), "Unknown token for Pending-Stack" );
             break;
         }
     }
@@ -966,14 +1012,16 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
     // The following special cases have to be treated before the
     // filter detection, because Netscape doesn't reference the content
     // of the title for filter detection either.
-    if( !m_pPendStack )
+    if( m_vPendingStack.empty() )
     {
         if( m_bInTitle )
         {
             switch( nToken )
             {
             case HtmlTokenId::TITLE_OFF:
-                if( IsNewDoc() && !m_sTitle.isEmpty() )
+            {
+                OUString sTitle = m_sTitle.makeStringAndClear();
+                if( IsNewDoc() && !sTitle.isEmpty() )
                 {
                     if( m_xDoc->GetDocShell() ) {
                         uno::Reference<document::XDocumentPropertiesSupplier>
@@ -983,39 +1031,39 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
                             xDPS->getDocumentProperties());
                         OSL_ENSURE(xDocProps.is(), "no DocumentProperties");
                         if (xDocProps.is()) {
-                            xDocProps->setTitle(m_sTitle);
+                            xDocProps->setTitle(sTitle);
                         }
 
-                        m_xDoc->GetDocShell()->SetTitle( m_sTitle );
+                        m_xDoc->GetDocShell()->SetTitle(sTitle);
                     }
                 }
                 m_bInTitle = false;
-                m_sTitle.clear();
                 break;
+            }
 
             case HtmlTokenId::NONBREAKSPACE:
-                m_sTitle += " ";
+                m_sTitle.append(" ");
                 break;
 
             case HtmlTokenId::SOFTHYPH:
-                m_sTitle += "-";
+                m_sTitle.append("-");
                 break;
 
             case HtmlTokenId::TEXTTOKEN:
-                m_sTitle += aToken;
+                m_sTitle.append(aToken);
                 break;
 
             default:
-                m_sTitle += "<";
+                m_sTitle.append("<");
                 if( (nToken >= HtmlTokenId::ONOFF_START) && isOffToken(nToken) )
-                    m_sTitle += "/";
-                m_sTitle += sSaveToken;
+                    m_sTitle.append("/");
+                m_sTitle.append(sSaveToken);
                 if( !aToken.isEmpty() )
                 {
-                    m_sTitle += " ";
-                    m_sTitle += aToken;
+                    m_sTitle.append(" ");
+                    m_sTitle.append(aToken);
                 }
-                m_sTitle += ">";
+                m_sTitle.append(">");
                 break;
             }
 
@@ -1035,7 +1083,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
 
     // The following special cases may or have to be treated after the
     // filter detection
-    if( !m_pPendStack )
+    if( m_vPendingStack.empty() )
     {
         if( m_bInFloatingFrame )
         {
@@ -1213,8 +1261,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
                 // if there are temporary paragraph attributes and the
                 // paragraph isn't empty then the paragraph attributes
                 // are final.
-                if( !m_aParaAttrs.empty() )
-                    m_aParaAttrs.clear();
+                m_aParaAttrs.clear();
 
                 SetAttr();
             }
@@ -1226,7 +1273,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
             case HtmlTokenId::UNKNOWNCONTROL_OFF:
                 if( m_aUnknownToken != sSaveToken )
                     return;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case HtmlTokenId::FRAMESET_ON:
             case HtmlTokenId::HEAD_OFF:
             case HtmlTokenId::BODY_ON:
@@ -1245,25 +1292,29 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
     switch( nToken )
     {
     case HtmlTokenId::BODY_ON:
-        if( !m_aStyleSource.isEmpty() )
+        if (!m_bBodySeen)
         {
-            m_pCSS1Parser->ParseStyleSheet( m_aStyleSource );
-            m_aStyleSource.clear();
-        }
-        if( IsNewDoc() )
-        {
-            InsertBodyOptions();
-            // If there is a template for the first or the right page,
-            // it is set here.
-            const SwPageDesc *pPageDesc = nullptr;
-            if( m_pCSS1Parser->IsSetFirstPageDesc() )
-                pPageDesc = m_pCSS1Parser->GetFirstPageDesc();
-            else if( m_pCSS1Parser->IsSetRightPageDesc() )
-                pPageDesc = m_pCSS1Parser->GetRightPageDesc();
-
-            if( pPageDesc )
+            m_bBodySeen = true;
+            if( !m_aStyleSource.isEmpty() )
             {
-                m_xDoc->getIDocumentContentOperations().InsertPoolItem( *m_pPam, SwFormatPageDesc( pPageDesc ) );
+                m_pCSS1Parser->ParseStyleSheet( m_aStyleSource );
+                m_aStyleSource.clear();
+            }
+            if( IsNewDoc() )
+            {
+                InsertBodyOptions();
+                // If there is a template for the first or the right page,
+                // it is set here.
+                const SwPageDesc *pPageDesc = nullptr;
+                if( m_pCSS1Parser->IsSetFirstPageDesc() )
+                    pPageDesc = m_pCSS1Parser->GetFirstPageDesc();
+                else if( m_pCSS1Parser->IsSetRightPageDesc() )
+                    pPageDesc = m_pCSS1Parser->GetRightPageDesc();
+
+                if( pPageDesc )
+                {
+                    m_xDoc->getIDocumentContentOperations().InsertPoolItem( *m_pPam, SwFormatPageDesc( pPageDesc ) );
+                }
             }
         }
         break;
@@ -1375,22 +1426,33 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
         break;
 
     case HtmlTokenId::OBJECT_ON:
+        if (m_bXHTML)
+        {
+            if (!InsertEmbed())
+                InsertImage();
+            break;
+        }
 #if HAVE_FEATURE_JAVA
         NewObject();
-        m_bCallNextToken = m_pAppletImpl!=nullptr && m_pTable!=nullptr;
+        m_bCallNextToken = m_pAppletImpl!=nullptr && m_xTable;
 #endif
+        break;
+
+    case HtmlTokenId::OBJECT_OFF:
+        if (!m_aEmbeds.empty())
+            m_aEmbeds.pop();
         break;
 
     case HtmlTokenId::APPLET_ON:
 #if HAVE_FEATURE_JAVA
         InsertApplet();
-        m_bCallNextToken = m_pAppletImpl!=nullptr && m_pTable!=nullptr;
+        m_bCallNextToken = m_pAppletImpl!=nullptr && m_xTable;
 #endif
         break;
 
     case HtmlTokenId::IFRAME_ON:
         InsertFloatingFrame();
-        m_bCallNextToken = m_bInFloatingFrame && m_pTable!=nullptr;
+        m_bCallNextToken = m_bInFloatingFrame && m_xTable;
         break;
 
     case HtmlTokenId::LINEBREAK:
@@ -1402,7 +1464,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
         else
             bGetIDOption = true;
             // <BR>s in <PRE> resemble true LFs, hence no break
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
 
     case HtmlTokenId::NEWPARA:
         // CR in PRE/LISTING/XMP
@@ -1415,8 +1477,8 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
                 SetTextCollAttrs();
             }
             // progress bar
-            if( !GetMedium() || !GetMedium()->IsRemote() )
-                ::SetProgressState( rInput.Tell(), m_xDoc->GetDocShell() );
+            if (m_xProgress)
+                m_xProgress->Update(rInput.Tell());
         }
         break;
 
@@ -1431,10 +1493,10 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
     case HtmlTokenId::LINEFEEDCHAR:
         if( m_pPam->GetPoint()->nContent.GetIndex() )
             AppendTextNode();
-        if( !m_pTable && !m_xDoc->IsInHeaderFooter( m_pPam->GetPoint()->nNode ) )
+        if (!m_xTable && !m_xDoc->IsInHeaderFooter(m_pPam->GetPoint()->nNode))
         {
-            NewAttr( &m_aAttrTab.pBreak, SvxFormatBreakItem(SvxBreak::PageBefore, RES_BREAK) );
-            EndAttr( m_aAttrTab.pBreak, false );
+            NewAttr(m_xAttrTab, &m_xAttrTab->pBreak, SvxFormatBreakItem(SvxBreak::PageBefore, RES_BREAK));
+            EndAttr( m_xAttrTab->pBreak, false );
         }
         break;
 
@@ -1443,10 +1505,10 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
         if( !aToken.isEmpty() && ' '==aToken[0] && !IsReadPRE() )
         {
             sal_Int32 nPos = m_pPam->GetPoint()->nContent.GetIndex();
-            if( nPos )
+            const SwTextNode* pTextNode = nPos ? m_pPam->GetPoint()->nNode.GetNode().GetTextNode() : nullptr;
+            if (pTextNode)
             {
-                const OUString& rText =
-                    m_pPam->GetPoint()->nNode.GetNode().GetTextNode()->GetText();
+                const OUString& rText = pTextNode->GetText();
                 sal_Unicode cLast = rText[--nPos];
                 if( ' ' == cLast || '\x0a' == cLast)
                     aToken = aToken.copy(1);
@@ -1465,13 +1527,29 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
         {
             if( !m_bDocInitalized )
                 DocumentDetected();
+
+            if (!m_aEmbeds.empty())
+            {
+                // The text token is inside an OLE object, which means
+                // alternate text.
+                SwOLENode* pOLENode = m_aEmbeds.top();
+                if (SwFlyFrameFormat* pFormat
+                    = dynamic_cast<SwFlyFrameFormat*>(pOLENode->GetFlyFormat()))
+                {
+                    if (SdrObject* pObject = SwXFrame::GetOrCreateSdrObject(*pFormat))
+                    {
+                        pObject->SetTitle(pObject->GetTitle() + aToken);
+                        break;
+                    }
+                }
+            }
+
             m_xDoc->getIDocumentContentOperations().InsertString( *m_pPam, aToken );
 
             // if there are temporary paragraph attributes and the
             // paragraph isn't empty then the paragraph attributes
             // are final.
-            if( !m_aParaAttrs.empty() )
-                m_aParaAttrs.clear();
+            m_aParaAttrs.clear();
 
             SetAttr();
         }
@@ -1501,7 +1579,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
 
     case HtmlTokenId::NOEMBED_ON:
         m_bInNoEmbed = true;
-        m_bCallNextToken = m_pTable!=nullptr;
+        m_bCallNextToken = bool(m_xTable);
         ReadRawData( OOO_STRING_SVTOOLS_HTML_noembed );
         break;
 
@@ -1536,26 +1614,32 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
     // divisions
     case HtmlTokenId::DIVISION_ON:
     case HtmlTokenId::CENTER_ON:
-        if( m_nOpenParaToken != HtmlTokenId::NONE )
+        if (!m_isInTableStructure)
         {
-            if( IsReadPRE() )
-                m_nOpenParaToken = HtmlTokenId::NONE;
-            else
-                EndPara();
+            if (m_nOpenParaToken != HtmlTokenId::NONE)
+            {
+                if (IsReadPRE())
+                    m_nOpenParaToken = HtmlTokenId::NONE;
+                else
+                    EndPara();
+            }
+            NewDivision( nToken );
         }
-        NewDivision( nToken );
         break;
 
     case HtmlTokenId::DIVISION_OFF:
     case HtmlTokenId::CENTER_OFF:
-        if( m_nOpenParaToken != HtmlTokenId::NONE )
+        if (!m_isInTableStructure)
         {
-            if( IsReadPRE() )
-                m_nOpenParaToken = HtmlTokenId::NONE;
-            else
-                EndPara();
+            if (m_nOpenParaToken != HtmlTokenId::NONE)
+            {
+                if (IsReadPRE())
+                    m_nOpenParaToken = HtmlTokenId::NONE;
+                else
+                    EndPara();
+            }
+            EndDivision();
         }
-        EndDivision();
         break;
 
     case HtmlTokenId::MULTICOL_ON:
@@ -1572,7 +1656,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
 
     case HtmlTokenId::MARQUEE_ON:
         NewMarquee();
-        m_bCallNextToken = m_pMarquee!=nullptr && m_pTable!=nullptr;
+        m_bCallNextToken = m_pMarquee!=nullptr && m_xTable;
         break;
 
     case HtmlTokenId::FORM_ON:
@@ -1663,14 +1747,14 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
         break;
 
     case HtmlTokenId::TABLE_ON:
-        if( m_pPendStack )
+        if( !m_vPendingStack.empty() )
             BuildTable( SvxAdjust::End );
         else
         {
             if( m_nOpenParaToken != HtmlTokenId::NONE )
                 EndPara();
-            OSL_ENSURE( !m_pTable, "table in table not allowed here" );
-            if( !m_pTable && (IsNewDoc() || !m_pPam->GetNode().FindTableNode()) &&
+            OSL_ENSURE(!m_xTable, "table in table not allowed here");
+            if( !m_xTable && (IsNewDoc() || !m_pPam->GetNode().FindTableNode()) &&
                 (m_pPam->GetPoint()->nNode.GetIndex() >
                             m_xDoc->GetNodes().GetEndOfExtras().GetIndex() ||
                 !m_pPam->GetNode().FindFootnoteStartNode() ) )
@@ -1678,8 +1762,8 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
                 if ( m_nParaCnt < 5 )
                     Show();     // show what we have up to here
 
-                SvxAdjust eAdjust = m_aAttrTab.pAdjust
-                    ? static_cast<const SvxAdjustItem&>(m_aAttrTab.pAdjust->GetItem()).
+                SvxAdjust eAdjust = m_xAttrTab->pAdjust
+                    ? static_cast<const SvxAdjustItem&>(m_xAttrTab->pAdjust->GetItem()).
                                              GetAdjust()
                     : SvxAdjust::End;
                 BuildTable( eAdjust );
@@ -1696,7 +1780,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
     case HtmlTokenId::UNORDERLIST_ON:
         if( m_nOpenParaToken != HtmlTokenId::NONE )
             EndPara();
-        NewNumBulList( nToken );
+        NewNumberBulletList( nToken );
         break;
 
     case HtmlTokenId::DIRLIST_OFF:
@@ -1705,8 +1789,8 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
     case HtmlTokenId::UNORDERLIST_OFF:
         if( m_nOpenParaToken != HtmlTokenId::NONE )
             EndPara();
-        EndNumBulListItem( HtmlTokenId::NONE, true );
-        EndNumBulList( nToken );
+        EndNumberBulletListItem( HtmlTokenId::NONE, true );
+        EndNumberBulletList( nToken );
         break;
 
     case HtmlTokenId::LI_ON:
@@ -1719,13 +1803,13 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
             EndPara();
         }
 
-        EndNumBulListItem( HtmlTokenId::NONE, false );// close <LI>/<LH> and don't set a template
-        NewNumBulListItem( nToken );
+        EndNumberBulletListItem( HtmlTokenId::NONE, false );// close <LI>/<LH> and don't set a template
+        NewNumberBulletListItem( nToken );
         break;
 
     case HtmlTokenId::LI_OFF:
     case HtmlTokenId::LISTHEADER_OFF:
-        EndNumBulListItem( nToken, false );
+        EndNumberBulletListItem( nToken, false );
         break;
 
     // Attribute :
@@ -1735,9 +1819,9 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
             SvxPostureItem aPostureCJK( ITALIC_NORMAL, RES_CHRATR_CJK_POSTURE );
             SvxPostureItem aPostureCTL( ITALIC_NORMAL, RES_CHRATR_CTL_POSTURE );
             NewStdAttr( HtmlTokenId::ITALIC_ON,
-                           &m_aAttrTab.pItalic, aPosture,
-                           &m_aAttrTab.pItalicCJK, &aPostureCJK,
-                           &m_aAttrTab.pItalicCTL, &aPostureCTL );
+                           &m_xAttrTab->pItalic, aPosture,
+                           &m_xAttrTab->pItalicCJK, &aPostureCJK,
+                           &m_xAttrTab->pItalicCTL, &aPostureCTL );
         }
         break;
 
@@ -1747,44 +1831,44 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
             SvxWeightItem aWeightCJK( WEIGHT_BOLD, RES_CHRATR_CJK_WEIGHT );
             SvxWeightItem aWeightCTL( WEIGHT_BOLD, RES_CHRATR_CTL_WEIGHT );
             NewStdAttr( HtmlTokenId::BOLD_ON,
-                        &m_aAttrTab.pBold, aWeight,
-                        &m_aAttrTab.pBoldCJK, &aWeightCJK,
-                        &m_aAttrTab.pBoldCTL, &aWeightCTL );
+                        &m_xAttrTab->pBold, aWeight,
+                        &m_xAttrTab->pBoldCJK, &aWeightCJK,
+                        &m_xAttrTab->pBoldCTL, &aWeightCTL );
         }
         break;
 
     case HtmlTokenId::STRIKE_ON:
     case HtmlTokenId::STRIKETHROUGH_ON:
         {
-            NewStdAttr( HtmlTokenId::STRIKE_ON, &m_aAttrTab.pStrike,
+            NewStdAttr( HtmlTokenId::STRIKE_ON, &m_xAttrTab->pStrike,
                         SvxCrossedOutItem(STRIKEOUT_SINGLE, RES_CHRATR_CROSSEDOUT) );
         }
         break;
 
     case HtmlTokenId::UNDERLINE_ON:
         {
-            NewStdAttr( HtmlTokenId::UNDERLINE_ON, &m_aAttrTab.pUnderline,
+            NewStdAttr( HtmlTokenId::UNDERLINE_ON, &m_xAttrTab->pUnderline,
                         SvxUnderlineItem(LINESTYLE_SINGLE, RES_CHRATR_UNDERLINE) );
         }
         break;
 
     case HtmlTokenId::SUPERSCRIPT_ON:
         {
-            NewStdAttr( HtmlTokenId::SUPERSCRIPT_ON, &m_aAttrTab.pEscapement,
+            NewStdAttr( HtmlTokenId::SUPERSCRIPT_ON, &m_xAttrTab->pEscapement,
                         SvxEscapementItem(HTML_ESC_SUPER,HTML_ESC_PROP, RES_CHRATR_ESCAPEMENT) );
         }
         break;
 
     case HtmlTokenId::SUBSCRIPT_ON:
         {
-            NewStdAttr( HtmlTokenId::SUBSCRIPT_ON, &m_aAttrTab.pEscapement,
+            NewStdAttr( HtmlTokenId::SUBSCRIPT_ON, &m_xAttrTab->pEscapement,
                         SvxEscapementItem(HTML_ESC_SUB,HTML_ESC_PROP, RES_CHRATR_ESCAPEMENT) );
         }
         break;
 
     case HtmlTokenId::BLINK_ON:
         {
-            NewStdAttr( HtmlTokenId::BLINK_ON, &m_aAttrTab.pBlink,
+            NewStdAttr( HtmlTokenId::BLINK_ON, &m_xAttrTab->pBlink,
                         SvxBlinkItem( true, RES_CHRATR_BLINK ) );
         }
         break;
@@ -1848,7 +1932,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
 
     case HtmlTokenId::SDFIELD_ON:
         NewField();
-        m_bCallNextToken = m_bInField && m_pTable!=nullptr;
+        m_bCallNextToken = m_bInField && m_xTable;
         break;
 
     case HtmlTokenId::EMPHASIS_OFF:
@@ -1915,12 +1999,12 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
 
     case HtmlTokenId::TEXTAREA_ON:
         NewTextArea();
-        m_bCallNextToken = m_bTextArea && m_pTable!=nullptr;
+        m_bCallNextToken = m_bTextArea && m_xTable;
         break;
 
     case HtmlTokenId::SELECT_ON:
         NewSelect();
-        m_bCallNextToken = m_bSelect && m_pTable!=nullptr;
+        m_bCallNextToken = m_bSelect && m_xTable;
         break;
 
     case HtmlTokenId::ANCHOR_ON:
@@ -1945,9 +2029,8 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
             }
             else
             {
-                OUStringBuffer aComment;
-                aComment.append('<').append(aToken).append('>');
-                InsertComment( aComment.makeStringAndClear() );
+                OUString aComment = "<" + aToken + ">";
+                InsertComment( aComment );
             }
         }
         break;
@@ -1961,7 +2044,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
         if( ParseMapOptions( m_pImageMap) )
         {
             if (!m_pImageMaps)
-                m_pImageMaps = new ImageMaps;
+                m_pImageMaps.reset( new ImageMaps );
             m_pImageMaps->push_back(std::unique_ptr<ImageMap>(m_pImageMap));
         }
         else
@@ -1979,8 +2062,8 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
 
     case HtmlTokenId::AREA:
         if( m_pImageMap )
-            ParseAreaOptions( m_pImageMap, m_sBaseURL, SFX_EVENT_MOUSEOVER_OBJECT,
-                                         SFX_EVENT_MOUSEOUT_OBJECT );
+            ParseAreaOptions( m_pImageMap, m_sBaseURL, SvMacroItemId::OnMouseOver,
+                                         SvMacroItemId::OnMouseOut );
         break;
 
     case HtmlTokenId::FRAMESET_ON:
@@ -2002,7 +2085,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
             !sSaveToken.isEmpty() && '!' != sSaveToken[0] &&
             '%' != sSaveToken[0] )
             m_aUnknownToken = sSaveToken;
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
 
     default:
         bInsertUnknown = m_bKeepUnknown;
@@ -2014,17 +2097,17 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
 
     if( bInsertUnknown )
     {
-        OUString aComment("HTML: <");
+        OUStringBuffer aComment("HTML: <");
         if( (nToken >= HtmlTokenId::ONOFF_START) && isOffToken(nToken) )
-            aComment += "/";
-        aComment += sSaveToken;
+            aComment.append("/");
+        aComment.append(sSaveToken);
         if( !aToken.isEmpty() )
         {
             UnescapeToken();
-            (aComment += " ") += aToken;
+            aComment.append(" ").append(aToken);
         }
-        aComment += ">";
-        InsertComment( aComment );
+        aComment.append(">");
+        InsertComment( aComment.makeStringAndClear() );
     }
 
     // if there are temporary paragraph attributes and the
@@ -2034,14 +2117,12 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
 }
 
 static void lcl_swhtml_getItemInfo( const HTMLAttr& rAttr,
-                                 bool& rScriptDependent, bool& rFont,
+                                 bool& rScriptDependent,
                                  sal_uInt16& rScriptType )
 {
     switch( rAttr.GetItem().Which() )
     {
     case RES_CHRATR_FONT:
-        rFont = true;
-        SAL_FALLTHROUGH;
     case RES_CHRATR_FONTSIZE:
     case RES_CHRATR_LANGUAGE:
     case RES_CHRATR_POSTURE:
@@ -2050,8 +2131,6 @@ static void lcl_swhtml_getItemInfo( const HTMLAttr& rAttr,
         rScriptDependent = true;
         break;
     case RES_CHRATR_CJK_FONT:
-        rFont = true;
-        SAL_FALLTHROUGH;
     case RES_CHRATR_CJK_FONTSIZE:
     case RES_CHRATR_CJK_LANGUAGE:
     case RES_CHRATR_CJK_POSTURE:
@@ -2060,8 +2139,6 @@ static void lcl_swhtml_getItemInfo( const HTMLAttr& rAttr,
         rScriptDependent = true;
         break;
     case RES_CHRATR_CTL_FONT:
-        rFont = true;
-        SAL_FALLTHROUGH;
     case RES_CHRATR_CTL_FONTSIZE:
     case RES_CHRATR_CTL_LANGUAGE:
     case RES_CHRATR_CTL_POSTURE:
@@ -2071,7 +2148,6 @@ static void lcl_swhtml_getItemInfo( const HTMLAttr& rAttr,
         break;
     default:
         rScriptDependent = false;
-        rFont = false;
         break;
     }
 }
@@ -2085,14 +2161,13 @@ bool SwHTMLParser::AppendTextNode( SwHTMLAppendMode eMode, bool bUpdateNum )
         eMode = AM_SPACE;
 
     // the hard attributes of this paragraph will never be invalid again
-    if( !m_aParaAttrs.empty() )
-        m_aParaAttrs.clear();
+    m_aParaAttrs.clear();
 
-    if( AM_SPACE==eMode || AM_NOSPACE==eMode )
+    SwTextNode *pTextNode = (AM_SPACE==eMode || AM_NOSPACE==eMode) ?
+        m_pPam->GetPoint()->nNode.GetNode().GetTextNode() : nullptr;
+
+    if (pTextNode)
     {
-        SwTextNode *pTextNode =
-            m_pPam->GetPoint()->nNode.GetNode().GetTextNode();
-
         const SvxULSpaceItem& rULSpace =
             static_cast<const SvxULSpaceItem&>(pTextNode->SwContentNode::GetAttr( RES_UL_SPACE ));
 
@@ -2132,7 +2207,7 @@ bool SwHTMLParser::AppendTextNode( SwHTMLAppendMode eMode, bool bUpdateNum )
     const sal_Int32 nEndCnt = aOldPos.nContent.GetIndex();
     const SwPosition& rPos = *m_pPam->GetPoint();
 
-    HTMLAttr** pHTMLAttributes = reinterpret_cast<HTMLAttr**>(&m_aAttrTab);
+    HTMLAttr** pHTMLAttributes = reinterpret_cast<HTMLAttr**>(m_xAttrTab.get());
     for (auto nCnt = sizeof(HTMLAttrTable) / sizeof(HTMLAttr*); nCnt--; ++pHTMLAttributes)
     {
         HTMLAttr *pAttr = *pHTMLAttributes;
@@ -2152,14 +2227,14 @@ bool SwHTMLParser::AppendTextNode( SwHTMLAppendMode eMode, bool bUpdateNum )
                         pAttr->GetSttPara() == rEndIdx &&
                         pAttr->GetSttCnt() == 0;
 
-                    sal_Int32 nStt = pAttr->nSttContent;
-                    bool bScript = false, bFont = false;
+                    sal_Int32 nStt = pAttr->m_nStartContent;
+                    bool bScript = false;
                     sal_uInt16 nScriptItem;
                     bool bInsert = true;
-                       lcl_swhtml_getItemInfo( *pAttr, bScript, bFont,
+                    lcl_swhtml_getItemInfo( *pAttr, bScript,
                                             nScriptItem );
                         // set previous part
-                    if( bInsert && bScript )
+                    if( bScript )
                     {
                         const SwTextNode *pTextNd =
                             pAttr->GetSttPara().GetNode().GetTextNode();
@@ -2178,11 +2253,11 @@ bool SwHTMLParser::AppendTextNode( SwHTMLAppendMode eMode, bool bUpdateNum )
                                 {
                                     HTMLAttr *pSetAttr =
                                         pAttr->Clone( rEndIdx, nScriptEnd );
-                                    pSetAttr->nSttContent = nStt;
+                                    pSetAttr->m_nStartContent = nStt;
                                     pSetAttr->ClearPrev();
                                     if( !pNext || bWholePara )
                                     {
-                                        if (pSetAttr->bInsAtStart)
+                                        if (pSetAttr->m_bInsAtStart)
                                             m_aSetAttrTab.push_front( pSetAttr );
                                         else
                                             m_aSetAttrTab.push_back( pSetAttr );
@@ -2203,7 +2278,7 @@ bool SwHTMLParser::AppendTextNode( SwHTMLAppendMode eMode, bool bUpdateNum )
                     {
                         HTMLAttr *pSetAttr =
                             pAttr->Clone( rEndIdx, nEndCnt );
-                        pSetAttr->nSttContent = nStt;
+                        pSetAttr->m_nStartContent = nStt;
 
                         // When the attribute is for the whole paragraph, the outer
                         // attributes aren't effective anymore. Hence it may not be inserted
@@ -2211,7 +2286,7 @@ bool SwHTMLParser::AppendTextNode( SwHTMLAppendMode eMode, bool bUpdateNum )
                         // set. That leads to shifting when fields are used.
                         if( !pNext || bWholePara )
                         {
-                            if (pSetAttr->bInsAtStart)
+                            if (pSetAttr->m_bInsAtStart)
                                 m_aSetAttrTab.push_front( pSetAttr );
                             else
                                 m_aSetAttrTab.push_back( pSetAttr );
@@ -2227,7 +2302,7 @@ bool SwHTMLParser::AppendTextNode( SwHTMLAppendMode eMode, bool bUpdateNum )
                             // the previous attributes must be set anyway
                             if( !pNext || bWholePara )
                             {
-                                if (pPrev->bInsAtStart)
+                                if (pPrev->m_bInsAtStart)
                                     m_aSetAttrTab.push_front( pPrev );
                                 else
                                     m_aSetAttrTab.push_back( pPrev );
@@ -2271,7 +2346,7 @@ bool SwHTMLParser::AppendTextNode( SwHTMLAppendMode eMode, bool bUpdateNum )
         // If we find a hint that starts before the current end position,
         // we have to set it. If we find a hint that start behind or at
         // that position, we have to take the hint value into account.
-        // If it is equal to the style, or in fact the paragarph value
+        // If it is equal to the style, or in fact the paragraph value
         // for that hint, the hint is removed. Otherwise its end position
         // is remembered.
         sal_Int32 aEndPos[15] =
@@ -2374,7 +2449,7 @@ bool SwHTMLParser::AppendTextNode( SwHTMLAppendMode eMode, bool bUpdateNum )
         }
     }
 
-    if( !m_pTable && !--m_nParaCnt )
+    if (!m_xTable && !--m_nParaCnt)
         Show();
 
     return bRet;
@@ -2396,64 +2471,64 @@ void SwHTMLParser::AddParSpace()
 
     SvxULSpaceItem rULSpace =
         static_cast<const SvxULSpaceItem&>(pTextNode->SwContentNode::GetAttr( RES_UL_SPACE ));
-    if( !rULSpace.GetLower() )
+    if( rULSpace.GetLower() )
+        return;
+
+    const SvxULSpaceItem& rCollULSpace =
+        pTextNode->GetAnyFormatColl().GetULSpace();
+    if( rCollULSpace.GetLower() &&
+        rCollULSpace.GetUpper() == rULSpace.GetUpper() )
     {
-        const SvxULSpaceItem& rCollULSpace =
-            pTextNode->GetAnyFormatColl().GetULSpace();
-        if( rCollULSpace.GetLower() &&
-            rCollULSpace.GetUpper() == rULSpace.GetUpper() )
+        pTextNode->ResetAttr( RES_UL_SPACE );
+    }
+    else
+    {
+        //What I do here, is that I examine the attributes, and if
+        //I find out, that it's CJK/CTL, then I set the paragraph space
+        //to the value set in HTML_CJK_PARSPACE/HTML_CTL_PARSPACE.
+
+        bool bIsCJK = false;
+        bool bIsCTL = false;
+
+        const size_t nCntAttr = pTextNode->GetpSwpHints()
+                        ? pTextNode->GetSwpHints().Count() : 0;
+
+        for(size_t i = 0; i < nCntAttr; ++i)
         {
-            pTextNode->ResetAttr( RES_UL_SPACE );
+            SwTextAttr *const pHt = pTextNode->GetSwpHints().Get(i);
+            sal_uInt16 const nWhich = pHt->Which();
+            if (RES_CHRATR_CJK_FONT == nWhich ||
+                RES_CHRATR_CJK_FONTSIZE == nWhich ||
+                RES_CHRATR_CJK_LANGUAGE == nWhich ||
+                RES_CHRATR_CJK_POSTURE == nWhich ||
+                RES_CHRATR_CJK_WEIGHT == nWhich)
+            {
+                bIsCJK = true;
+                break;
+            }
+            if (RES_CHRATR_CTL_FONT == nWhich ||
+                RES_CHRATR_CTL_FONTSIZE == nWhich ||
+                RES_CHRATR_CTL_LANGUAGE == nWhich ||
+                RES_CHRATR_CTL_POSTURE == nWhich ||
+                RES_CHRATR_CTL_WEIGHT == nWhich)
+            {
+                bIsCTL = true;
+                break;
+            }
         }
-        else
+
+        if( bIsCTL )
         {
-            //What I do here, is that I examine the attributes, and if
-            //I find out, that it's CJK/CTL, then I set the paragraph space
-            //to the value set in HTML_CJK_PARSPACE/HTML_CTL_PARSPACE.
-
-            bool bIsCJK = false;
-            bool bIsCTL = false;
-
-            const size_t nCntAttr = (pTextNode  && pTextNode->GetpSwpHints())
-                            ? pTextNode->GetSwpHints().Count() : 0;
-
-            for(size_t i = 0; i < nCntAttr; ++i)
-            {
-                SwTextAttr *const pHt = pTextNode->GetSwpHints().Get(i);
-                sal_uInt16 const nWhich = pHt->Which();
-                if (RES_CHRATR_CJK_FONT == nWhich ||
-                    RES_CHRATR_CJK_FONTSIZE == nWhich ||
-                    RES_CHRATR_CJK_LANGUAGE == nWhich ||
-                    RES_CHRATR_CJK_POSTURE == nWhich ||
-                    RES_CHRATR_CJK_WEIGHT == nWhich)
-                {
-                    bIsCJK = true;
-                    break;
-                }
-                if (RES_CHRATR_CTL_FONT == nWhich ||
-                    RES_CHRATR_CTL_FONTSIZE == nWhich ||
-                    RES_CHRATR_CTL_LANGUAGE == nWhich ||
-                    RES_CHRATR_CTL_POSTURE == nWhich ||
-                    RES_CHRATR_CTL_WEIGHT == nWhich)
-                {
-                    bIsCTL = true;
-                    break;
-                }
-            }
-
-            if( bIsCTL )
-            {
-                pTextNode->SetAttr(
-                    SvxULSpaceItem( rULSpace.GetUpper(), HTML_CTL_PARSPACE, RES_UL_SPACE )  );
-            }
-            else if( bIsCJK )
-            {
-                pTextNode->SetAttr(
-                    SvxULSpaceItem( rULSpace.GetUpper(), HTML_CJK_PARSPACE, RES_UL_SPACE )  );
-            } else {
-                pTextNode->SetAttr(
-                    SvxULSpaceItem( rULSpace.GetUpper(), HTML_PARSPACE, RES_UL_SPACE )  );
-            }
+            pTextNode->SetAttr(
+                SvxULSpaceItem( rULSpace.GetUpper(), HTML_CTL_PARSPACE, RES_UL_SPACE )  );
+        }
+        else if( bIsCJK )
+        {
+            pTextNode->SetAttr(
+                SvxULSpaceItem( rULSpace.GetUpper(), HTML_CJK_PARSPACE, RES_UL_SPACE )  );
+        } else {
+            pTextNode->SetAttr(
+                SvxULSpaceItem( rULSpace.GetUpper(), HTML_PARSPACE, RES_UL_SPACE )  );
         }
     }
 }
@@ -2499,9 +2574,9 @@ void SwHTMLParser::ShowStatline()
     OSL_ENSURE( SvParserState::Working==eState, "ShowStatLine not in working state - That can go wrong" );
 
     // scroll bar
-    if( !GetMedium() || !GetMedium()->IsRemote() )
+    if (m_xProgress)
     {
-        ::SetProgressState( rInput.Tell(), m_xDoc->GetDocShell() );
+        m_xProgress->Update(rInput.Tell());
         CheckActionViewShell();
     }
     else
@@ -2622,7 +2697,7 @@ SwViewShell *SwHTMLParser::CheckActionViewShell()
 }
 
 void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
-                             HTMLAttrs *pPostIts )
+                             std::deque<std::unique_ptr<HTMLAttr>> *pPostIts )
 {
     std::unique_ptr<SwPaM> pAttrPam( new SwPaM( *m_pPam->GetPoint() ) );
     const SwNodeIndex& rEndIdx = m_pPam->GetPoint()->nNode;
@@ -2630,12 +2705,12 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
     HTMLAttr* pAttr;
     SwContentNode* pCNd;
 
-    HTMLAttrs aFields;
+    std::vector<std::unique_ptr<HTMLAttr>> aFields;
 
     for( auto n = m_aSetAttrTab.size(); n; )
     {
         pAttr = m_aSetAttrTab[ --n ];
-        sal_uInt16 nWhich = pAttr->pItem->Which();
+        sal_uInt16 nWhich = pAttr->m_pItem->Which();
 
         sal_uLong nEndParaIdx = pAttr->GetEndParaIdx();
         bool bSetAttr;
@@ -2684,7 +2759,7 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
             while( pAttr )
             {
                 HTMLAttr *pPrev = pAttr->GetPrev();
-                if( !pAttr->bValid )
+                if( !pAttr->m_bValid )
                 {
                     // invalid attributes can be deleted
                     delete pAttr;
@@ -2692,7 +2767,7 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
                     continue;
                 }
 
-                pCNd = pAttr->nSttPara.GetNode().GetContentNode();
+                pCNd = pAttr->m_nStartPara.GetNode().GetContentNode();
                 if( !pCNd )
                 {
                     // because of the awful deleting of nodes an index can also
@@ -2706,9 +2781,9 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
                         pAttr = pPrev;
                         continue;
                     }
-                    pCNd = m_xDoc->GetNodes().GoNext( &(pAttr->nSttPara) );
+                    pCNd = m_xDoc->GetNodes().GoNext( &(pAttr->m_nStartPara) );
                     if( pCNd )
-                        pAttr->nSttContent = 0;
+                        pAttr->m_nStartContent = 0;
                     else
                     {
                         OSL_ENSURE( false, "SetAttr: GoNext() failed!" );
@@ -2717,24 +2792,24 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
                         continue;
                     }
                 }
-                pAttrPam->GetPoint()->nNode = pAttr->nSttPara;
+                pAttrPam->GetPoint()->nNode = pAttr->m_nStartPara;
 
                 // because of the deleting of BRs the start index can also
                 // point behind the end the text
-                if( pAttr->nSttContent > pCNd->Len() )
-                    pAttr->nSttContent = pCNd->Len();
-                pAttrPam->GetPoint()->nContent.Assign( pCNd, pAttr->nSttContent );
+                if( pAttr->m_nStartContent > pCNd->Len() )
+                    pAttr->m_nStartContent = pCNd->Len();
+                pAttrPam->GetPoint()->nContent.Assign( pCNd, pAttr->m_nStartContent );
 
                 pAttrPam->SetMark();
                 if ( (pAttr->GetSttPara() != pAttr->GetEndPara()) &&
                          !isTXTATR_NOEND(nWhich) )
                 {
-                    pCNd = pAttr->nEndPara.GetNode().GetContentNode();
+                    pCNd = pAttr->m_nEndPara.GetNode().GetContentNode();
                     if( !pCNd )
                     {
-                        pCNd = SwNodes::GoPrevious( &(pAttr->nEndPara) );
+                        pCNd = SwNodes::GoPrevious( &(pAttr->m_nEndPara) );
                         if( pCNd )
-                            pAttr->nEndContent = pCNd->Len();
+                            pAttr->m_nEndContent = pCNd->Len();
                         else
                         {
                             OSL_ENSURE( false, "SetAttr: GoPrevious() failed!" );
@@ -2745,19 +2820,19 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
                         }
                     }
 
-                    pAttrPam->GetPoint()->nNode = pAttr->nEndPara;
+                    pAttrPam->GetPoint()->nNode = pAttr->m_nEndPara;
                 }
                 else if( pAttr->IsLikePara() )
                 {
-                    pAttr->nEndContent = pCNd->Len();
+                    pAttr->m_nEndContent = pCNd->Len();
                 }
 
                 // because of the deleting of BRs the start index can also
                 // point behind the end the text
-                if( pAttr->nEndContent > pCNd->Len() )
-                    pAttr->nEndContent = pCNd->Len();
+                if( pAttr->m_nEndContent > pCNd->Len() )
+                    pAttr->m_nEndContent = pCNd->Len();
 
-                pAttrPam->GetPoint()->nContent.Assign( pCNd, pAttr->nEndContent );
+                pAttrPam->GetPoint()->nContent.Assign( pCNd, pAttr->m_nEndContent );
                 if( bBeforeTable &&
                     pAttrPam->GetPoint()->nNode.GetIndex() ==
                         rEndIdx.GetIndex() )
@@ -2789,23 +2864,24 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
                 {
                 case RES_FLTR_BOOKMARK: // insert bookmark
                     {
-                        const OUString sName( static_cast<SfxStringItem*>(pAttr->pItem.get())->GetValue() );
+                        const OUString sName( static_cast<SfxStringItem*>(pAttr->m_pItem.get())->GetValue() );
                         IDocumentMarkAccess* const pMarkAccess = m_xDoc->getIDocumentMarkAccess();
                         IDocumentMarkAccess::const_iterator_t ppBkmk = pMarkAccess->findMark( sName );
                         if( ppBkmk != pMarkAccess->getAllMarksEnd() &&
-                            ppBkmk->get()->GetMarkStart() == *pAttrPam->GetPoint() )
+                            (*ppBkmk)->GetMarkStart() == *pAttrPam->GetPoint() )
                             break; // do not generate duplicates on this position
                         pAttrPam->DeleteMark();
                         const ::sw::mark::IMark* const pNewMark = pMarkAccess->makeMark(
                             *pAttrPam,
                             sName,
-                            IDocumentMarkAccess::MarkType::BOOKMARK );
+                            IDocumentMarkAccess::MarkType::BOOKMARK,
+                            ::sw::mark::InsertMode::New);
 
                         // jump to bookmark
-                        if( JUMPTO_MARK == m_eJumpTo && pNewMark->GetName() == m_sJmpMark )
+                        if( JumpToMarks::Mark == m_eJumpTo && pNewMark->GetName() == m_sJmpMark )
                         {
                             m_bChkJumpMark = true;
-                            m_eJumpTo = JUMPTO_NONE;
+                            m_eJumpTo = JumpToMarks::NONE;
                         }
                     }
                     break;
@@ -2815,16 +2891,16 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
                     {
                         SwFieldIds nFieldWhich =
                             pPostIts
-                            ? static_cast<const SwFormatField *>(pAttr->pItem.get())->GetField()->GetTyp()->Which()
+                            ? static_cast<const SwFormatField *>(pAttr->m_pItem.get())->GetField()->GetTyp()->Which()
                             : SwFieldIds::Database;
                         if( pPostIts && (SwFieldIds::Postit == nFieldWhich ||
                                          SwFieldIds::Script == nFieldWhich) )
                         {
-                            pPostIts->push_front( pAttr );
+                            pPostIts->emplace_front( pAttr );
                         }
                         else
                         {
-                            aFields.push_back( pAttr);
+                            aFields.emplace_back( pAttr);
                         }
                     }
                     pAttrPam->DeleteMark();
@@ -2833,16 +2909,15 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
 
                 case RES_LR_SPACE:
                     if( pAttrPam->GetPoint()->nNode.GetIndex() ==
-                        pAttrPam->GetMark()->nNode.GetIndex() &&
-                        pCNd )
+                        pAttrPam->GetMark()->nNode.GetIndex())
                     {
                         // because of numbering set this attribute directly at node
-                        pCNd->SetAttr( *pAttr->pItem );
+                        pCNd->SetAttr( *pAttr->m_pItem );
                         break;
                     }
                     OSL_ENSURE( false,
                             "LRSpace set over multiple paragraphs!" );
-                    SAL_FALLTHROUGH; // (shouldn't reach this point anyway)
+                    [[fallthrough]]; // (shouldn't reach this point anyway)
 
                 // tdf#94088 expand RES_BACKGROUND to the new fill attribute
                 // definitions in the range [XATTR_FILL_FIRST .. XATTR_FILL_LAST].
@@ -2850,7 +2925,7 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
                 // may be handled more directly in HTML import to handle them.
                 case RES_BACKGROUND:
                 {
-                    const SvxBrushItem& rBrush = static_cast< SvxBrushItem& >(*pAttr->pItem);
+                    const SvxBrushItem& rBrush = static_cast< SvxBrushItem& >(*pAttr->m_pItem);
                     SfxItemSet aNewSet(m_xDoc->GetAttrPool(), svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST>{});
 
                     setSvxBrushItemAsFillAttributesToTargetSet(rBrush, aNewSet);
@@ -2861,14 +2936,14 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
 
                     // maybe jump to a bookmark
                     if( RES_TXTATR_INETFMT == nWhich &&
-                        JUMPTO_MARK == m_eJumpTo &&
-                        m_sJmpMark == static_cast<SwFormatINetFormat*>(pAttr->pItem.get())->GetName() )
+                        JumpToMarks::Mark == m_eJumpTo &&
+                        m_sJmpMark == static_cast<SwFormatINetFormat*>(pAttr->m_pItem.get())->GetName() )
                     {
                         m_bChkJumpMark = true;
-                        m_eJumpTo = JUMPTO_NONE;
+                        m_eJumpTo = JumpToMarks::NONE;
                     }
 
-                    m_xDoc->getIDocumentContentOperations().InsertPoolItem( *pAttrPam, *pAttr->pItem, SetAttrMode::DONTREPLACE );
+                    m_xDoc->getIDocumentContentOperations().InsertPoolItem( *pAttrPam, *pAttr->m_pItem, SetAttrMode::DONTREPLACE );
                 }
                 pAttrPam->DeleteMark();
 
@@ -2932,13 +3007,11 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
             m_aMoveFlyCnts.erase( m_aMoveFlyCnts.begin() + n );
         }
     }
-    while( !aFields.empty() )
+    for (auto & field : aFields)
     {
-        pAttr = aFields[0];
-
-        pCNd = pAttr->nSttPara.GetNode().GetContentNode();
-        pAttrPam->GetPoint()->nNode = pAttr->nSttPara;
-        pAttrPam->GetPoint()->nContent.Assign( pCNd, pAttr->nSttContent );
+        pCNd = field->m_nStartPara.GetNode().GetContentNode();
+        pAttrPam->GetPoint()->nNode = field->m_nStartPara;
+        pAttrPam->GetPoint()->nContent.Assign( pCNd, field->m_nStartContent );
 
         if( bBeforeTable &&
             pAttrPam->GetPoint()->nNode.GetIndex() == rEndIdx.GetIndex() )
@@ -2950,14 +3023,14 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
             pAttrPam->Move( fnMoveBackward );
         }
 
-        m_xDoc->getIDocumentContentOperations().InsertPoolItem( *pAttrPam, *pAttr->pItem );
+        m_xDoc->getIDocumentContentOperations().InsertPoolItem( *pAttrPam, *field->m_pItem );
 
-        aFields.pop_front();
-        delete pAttr;
+        field.reset();
     }
+    aFields.clear();
 }
 
-void SwHTMLParser::NewAttr( HTMLAttr **ppAttr, const SfxPoolItem& rItem )
+void SwHTMLParser::NewAttr(const std::shared_ptr<HTMLAttrTable>& rAttrTable, HTMLAttr **ppAttr, const SfxPoolItem& rItem )
 {
     // Font height and font colour as well as escape attributes may not be
     // combined. Therefore they're saved in a list and in it the last opened
@@ -2965,13 +3038,12 @@ void SwHTMLParser::NewAttr( HTMLAttr **ppAttr, const SfxPoolItem& rItem )
     // attributes count is just incremented.
     if( *ppAttr )
     {
-        HTMLAttr *pAttr = new HTMLAttr( *m_pPam->GetPoint(), rItem,
-                                            ppAttr );
+        HTMLAttr *pAttr = new HTMLAttr(*m_pPam->GetPoint(), rItem, ppAttr, rAttrTable);
         pAttr->InsertNext( *ppAttr );
         (*ppAttr) = pAttr;
     }
     else
-        (*ppAttr) = new HTMLAttr( *m_pPam->GetPoint(), rItem, ppAttr );
+        (*ppAttr) = new HTMLAttr(*m_pPam->GetPoint(), rItem, ppAttr, rAttrTable);
 }
 
 bool SwHTMLParser::EndAttr( HTMLAttr* pAttr, bool bChkEmpty )
@@ -2979,7 +3051,7 @@ bool SwHTMLParser::EndAttr( HTMLAttr* pAttr, bool bChkEmpty )
     bool bRet = true;
 
     // The list header is saved in the attribute.
-    HTMLAttr **ppHead = pAttr->ppHead;
+    HTMLAttr **ppHead = pAttr->m_ppHead;
 
     OSL_ENSURE( ppHead, "No list header attribute found!" );
 
@@ -3004,7 +3076,7 @@ bool SwHTMLParser::EndAttr( HTMLAttr* pAttr, bool bChkEmpty )
     }
 
     bool bMoveBack = false;
-    sal_uInt16 nWhich = pAttr->pItem->Which();
+    sal_uInt16 nWhich = pAttr->m_pItem->Which();
     if( !nEndCnt && RES_PARATR_BEGIN <= nWhich &&
         *pEndIdx != pAttr->GetSttPara() )
     {
@@ -3029,8 +3101,7 @@ bool SwHTMLParser::EndAttr( HTMLAttr* pAttr, bool bChkEmpty )
         // We do some optimization for script dependent attributes here.
         if( *pEndIdx == pAttr->GetSttPara() )
         {
-            bool bFont = false;
-            lcl_swhtml_getItemInfo( *pAttr, bScript, bFont, nScriptItem );
+            lcl_swhtml_getItemInfo( *pAttr, bScript, nScriptItem );
         }
     }
     else
@@ -3038,11 +3109,12 @@ bool SwHTMLParser::EndAttr( HTMLAttr* pAttr, bool bChkEmpty )
         bInsert = false;
     }
 
-    if( bInsert && bScript )
+    const SwTextNode *pTextNd = (bInsert && bScript) ?
+        pAttr->GetSttPara().GetNode().GetTextNode() :
+        nullptr;
+
+    if (pTextNd)
     {
-        const SwTextNode *pTextNd = pAttr->GetSttPara().GetNode()
-                                            .GetTextNode();
-        OSL_ENSURE( pTextNd, "No text node" );
         const OUString& rText = pTextNd->GetText();
         sal_uInt16 nScriptText = g_pBreakIt->GetBreakIter()->getScriptType(
                         rText, pAttr->GetSttCnt() );
@@ -3058,13 +3130,13 @@ bool SwHTMLParser::EndAttr( HTMLAttr* pAttr, bool bChkEmpty )
                     pNext->InsertPrev( pSetAttr );
                 else
                 {
-                    if (pSetAttr->bInsAtStart)
+                    if (pSetAttr->m_bInsAtStart)
                         m_aSetAttrTab.push_front( pSetAttr );
                     else
                         m_aSetAttrTab.push_back( pSetAttr );
                 }
             }
-            pAttr->nSttContent = nScriptEnd;
+            pAttr->m_nStartContent = nScriptEnd;
             nScriptText = g_pBreakIt->GetBreakIter()->getScriptType(
                             rText, nScriptEnd );
             nScriptEnd = g_pBreakIt->GetBreakIter()
@@ -3074,9 +3146,9 @@ bool SwHTMLParser::EndAttr( HTMLAttr* pAttr, bool bChkEmpty )
     }
     if( bInsert )
     {
-        pAttr->nEndPara = *pEndIdx;
-        pAttr->nEndContent = nEndCnt;
-        pAttr->bInsAtStart = RES_TXTATR_INETFMT != nWhich &&
+        pAttr->m_nEndPara = *pEndIdx;
+        pAttr->m_nEndContent = nEndCnt;
+        pAttr->m_bInsAtStart = RES_TXTATR_INETFMT != nWhich &&
                              RES_TXTATR_CHARFMT != nWhich;
 
         if( !pNext )
@@ -3084,7 +3156,7 @@ bool SwHTMLParser::EndAttr( HTMLAttr* pAttr, bool bChkEmpty )
             // No open attributes of that type exists any longer, so all
             // can be set. Except they depend on another attribute, then
             // they're appended there.
-            if (pAttr->bInsAtStart)
+            if (pAttr->m_bInsAtStart)
                 m_aSetAttrTab.push_front( pAttr );
             else
                 m_aSetAttrTab.push_back( pAttr );
@@ -3114,7 +3186,7 @@ bool SwHTMLParser::EndAttr( HTMLAttr* pAttr, bool bChkEmpty )
                 pNext->InsertPrev( pPrev );
             else
             {
-                if (pPrev->bInsAtStart)
+                if (pPrev->m_bInsAtStart)
                     m_aSetAttrTab.push_front( pPrev );
                 else
                     m_aSetAttrTab.push_back( pPrev );
@@ -3126,7 +3198,7 @@ bool SwHTMLParser::EndAttr( HTMLAttr* pAttr, bool bChkEmpty )
     // If the first attribute of the list was set, then the list header
     // must be corrected as well.
     if( pLast )
-        pLast->pNext = pNext;
+        pLast->m_pNext = pNext;
     else if( ppHead )
         *ppHead = pNext;
 
@@ -3142,11 +3214,10 @@ void SwHTMLParser::DeleteAttr( HTMLAttr* pAttr )
     // be set here and then the pointers become invalid!
     OSL_ENSURE(m_aParaAttrs.empty(),
         "Danger: there are non-final paragraph attributes");
-    if( !m_aParaAttrs.empty() )
-        m_aParaAttrs.clear();
+    m_aParaAttrs.clear();
 
     // The list header is saved in the attribute
-    HTMLAttr **ppHead = pAttr->ppHead;
+    HTMLAttr **ppHead = pAttr->m_ppHead;
 
     OSL_ENSURE( ppHead, "no list header attribute found!" );
 
@@ -3169,6 +3240,8 @@ void SwHTMLParser::DeleteAttr( HTMLAttr* pAttr )
     // now delete the attribute
     HTMLAttr *pNext = pAttr->GetNext();
     HTMLAttr *pPrev = pAttr->GetPrev();
+    //hold ref to xAttrTab until end of scope to ensure *ppHead validity
+    std::shared_ptr<HTMLAttrTable> xKeepAlive(pAttr->m_xAttrTab);
     delete pAttr;
 
     if( pPrev )
@@ -3178,7 +3251,7 @@ void SwHTMLParser::DeleteAttr( HTMLAttr* pAttr )
             pNext->InsertPrev( pPrev );
         else
         {
-            if (pPrev->bInsAtStart)
+            if (pPrev->m_bInsAtStart)
                 m_aSetAttrTab.push_front( pPrev );
             else
                 m_aSetAttrTab.push_back( pPrev );
@@ -3188,22 +3261,21 @@ void SwHTMLParser::DeleteAttr( HTMLAttr* pAttr )
     // If the first attribute of the list was deleted, then the list header
     // must be corrected as well.
     if( pLast )
-        pLast->pNext = pNext;
+        pLast->m_pNext = pNext;
     else if( ppHead )
         *ppHead = pNext;
 }
 
-void SwHTMLParser::SaveAttrTab( HTMLAttrTable& rNewAttrTab )
+void SwHTMLParser::SaveAttrTab(std::shared_ptr<HTMLAttrTable> const & rNewAttrTab)
 {
     // preliminary paragraph attributes are not allowed here, they could
     // be set here and then the pointers become invalid!
     OSL_ENSURE(m_aParaAttrs.empty(),
             "Danger: there are non-final paragraph attributes");
-    if( !m_aParaAttrs.empty() )
-        m_aParaAttrs.clear();
+    m_aParaAttrs.clear();
 
-    HTMLAttr** pHTMLAttributes = reinterpret_cast<HTMLAttr**>(&m_aAttrTab);
-    HTMLAttr** pSaveAttributes = reinterpret_cast<HTMLAttr**>(&rNewAttrTab);
+    HTMLAttr** pHTMLAttributes = reinterpret_cast<HTMLAttr**>(m_xAttrTab.get());
+    HTMLAttr** pSaveAttributes = reinterpret_cast<HTMLAttr**>(rNewAttrTab.get());
 
     for (auto nCnt = sizeof(HTMLAttrTable) / sizeof(HTMLAttr*); nCnt--; ++pHTMLAttributes, ++pSaveAttributes)
     {
@@ -3212,7 +3284,7 @@ void SwHTMLParser::SaveAttrTab( HTMLAttrTable& rNewAttrTab )
         HTMLAttr *pAttr = *pSaveAttributes;
         while (pAttr)
         {
-            pAttr->SetHead(pSaveAttributes);
+            pAttr->SetHead(pSaveAttributes, rNewAttrTab);
             pAttr = pAttr->GetNext();
         }
 
@@ -3220,22 +3292,21 @@ void SwHTMLParser::SaveAttrTab( HTMLAttrTable& rNewAttrTab )
     }
 }
 
-void SwHTMLParser::SplitAttrTab( HTMLAttrTable& rNewAttrTab,
+void SwHTMLParser::SplitAttrTab( std::shared_ptr<HTMLAttrTable> const & rNewAttrTab,
                                  bool bMoveEndBack )
 {
     // preliminary paragraph attributes are not allowed here, they could
     // be set here and then the pointers become invalid!
     OSL_ENSURE(m_aParaAttrs.empty(),
             "Danger: there are non-final paragraph attributes");
-    if( !m_aParaAttrs.empty() )
-        m_aParaAttrs.clear();
+    m_aParaAttrs.clear();
 
     const SwNodeIndex& nSttIdx = m_pPam->GetPoint()->nNode;
     SwNodeIndex nEndIdx( nSttIdx );
 
     // close all still open attributes and re-open them after the table
-    HTMLAttr** pHTMLAttributes = reinterpret_cast<HTMLAttr**>(&m_aAttrTab);
-    HTMLAttr** pSaveAttributes = reinterpret_cast<HTMLAttr**>(&rNewAttrTab);
+    HTMLAttr** pHTMLAttributes = reinterpret_cast<HTMLAttr**>(m_xAttrTab.get());
+    HTMLAttr** pSaveAttributes = reinterpret_cast<HTMLAttr**>(rNewAttrTab.get());
     bool bSetAttr = true;
     const sal_Int32 nSttCnt = m_pPam->GetPoint()->nContent.GetIndex();
     sal_Int32 nEndCnt = nSttCnt;
@@ -3280,7 +3351,7 @@ void SwHTMLParser::SplitAttrTab( HTMLAttrTable& rNewAttrTab,
                     pNext->InsertPrev( pSetAttr );
                 else
                 {
-                    if (pSetAttr->bInsAtStart)
+                    if (pSetAttr->m_bInsAtStart)
                         m_aSetAttrTab.push_front( pSetAttr );
                     else
                         m_aSetAttrTab.push_back( pSetAttr );
@@ -3294,7 +3365,7 @@ void SwHTMLParser::SplitAttrTab( HTMLAttrTable& rNewAttrTab,
                     pNext->InsertPrev( pPrev );
                 else
                 {
-                    if (pPrev->bInsAtStart)
+                    if (pPrev->m_bInsAtStart)
                         m_aSetAttrTab.push_front( pPrev );
                     else
                         m_aSetAttrTab.push_back( pPrev );
@@ -3302,7 +3373,7 @@ void SwHTMLParser::SplitAttrTab( HTMLAttrTable& rNewAttrTab,
             }
 
             // set the start of the attribute anew and break link
-            pAttr->Reset(nSttIdx, nSttCnt, pSaveAttributes);
+            pAttr->Reset(nSttIdx, nSttCnt, pSaveAttributes, rNewAttrTab);
 
             if (*pSaveAttributes)
             {
@@ -3321,17 +3392,16 @@ void SwHTMLParser::SplitAttrTab( HTMLAttrTable& rNewAttrTab,
     }
 }
 
-void SwHTMLParser::RestoreAttrTab( HTMLAttrTable& rNewAttrTab )
+void SwHTMLParser::RestoreAttrTab(std::shared_ptr<HTMLAttrTable> const & rNewAttrTab)
 {
     // preliminary paragraph attributes are not allowed here, they could
     // be set here and then the pointers become invalid!
     OSL_ENSURE(m_aParaAttrs.empty(),
             "Danger: there are non-final paragraph attributes");
-    if( !m_aParaAttrs.empty() )
-        m_aParaAttrs.clear();
+    m_aParaAttrs.clear();
 
-    HTMLAttr** pHTMLAttributes = reinterpret_cast<HTMLAttr**>(&m_aAttrTab);
-    HTMLAttr** pSaveAttributes = reinterpret_cast<HTMLAttr**>(&rNewAttrTab);
+    HTMLAttr** pHTMLAttributes = reinterpret_cast<HTMLAttr**>(m_xAttrTab.get());
+    HTMLAttr** pSaveAttributes = reinterpret_cast<HTMLAttr**>(rNewAttrTab.get());
 
     for (auto nCnt = sizeof(HTMLAttrTable) / sizeof(HTMLAttr*); nCnt--; ++pHTMLAttributes, ++pSaveAttributes)
     {
@@ -3342,9 +3412,9 @@ void SwHTMLParser::RestoreAttrTab( HTMLAttrTable& rNewAttrTab )
         HTMLAttr *pAttr = *pHTMLAttributes;
         while (pAttr)
         {
-            OSL_ENSURE( !pAttr->GetPrev() || !pAttr->GetPrev()->ppHead,
+            OSL_ENSURE( !pAttr->GetPrev() || !pAttr->GetPrev()->m_ppHead,
                     "Previous attribute has still a header" );
-            pAttr->SetHead(pHTMLAttributes);
+            pAttr->SetHead(pHTMLAttributes, m_xAttrTab);
             pAttr = pAttr->GetNext();
         }
 
@@ -3354,22 +3424,20 @@ void SwHTMLParser::RestoreAttrTab( HTMLAttrTable& rNewAttrTab )
 
 void SwHTMLParser::InsertAttr( const SfxPoolItem& rItem, bool bInsAtStart )
 {
-    HTMLAttr* pTmp = new HTMLAttr( *m_pPam->GetPoint(),
-                                     rItem );
+    HTMLAttr* pTmp = new HTMLAttr(*m_pPam->GetPoint(), rItem, nullptr, std::shared_ptr<HTMLAttrTable>());
     if (bInsAtStart)
         m_aSetAttrTab.push_front( pTmp );
     else
         m_aSetAttrTab.push_back( pTmp );
 }
 
-void SwHTMLParser::InsertAttrs( HTMLAttrs& rAttrs )
+void SwHTMLParser::InsertAttrs( std::deque<std::unique_ptr<HTMLAttr>> rAttrs )
 {
     while( !rAttrs.empty() )
     {
-        HTMLAttr *pAttr = rAttrs.front();
+        std::unique_ptr<HTMLAttr> pAttr = std::move(rAttrs.front());
         InsertAttr( pAttr->GetItem(), false );
         rAttrs.pop_front();
-        delete pAttr;
     }
 }
 
@@ -3404,7 +3472,7 @@ void SwHTMLParser::NewStdAttr( HtmlTokenId nToken )
     }
 
     // create a new context
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( nToken );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(nToken));
 
     // parse styles
     if( HasStyleOptions( aStyle, aId, aClass, &aLang, &aDir ) )
@@ -3415,14 +3483,14 @@ void SwHTMLParser::NewStdAttr( HtmlTokenId nToken )
         if( ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo, &aLang, &aDir ) )
         {
             if( HtmlTokenId::SPAN_ON != nToken || aClass.isEmpty() ||
-                !CreateContainer( aClass, aItemSet, aPropInfo, pCntxt ) )
-                DoPositioning( aItemSet, aPropInfo, pCntxt );
-            InsertAttrs( aItemSet, aPropInfo, pCntxt, true );
+                !CreateContainer( aClass, aItemSet, aPropInfo, xCntxt.get() ) )
+                DoPositioning( aItemSet, aPropInfo, xCntxt.get() );
+            InsertAttrs( aItemSet, aPropInfo, xCntxt.get(), true );
         }
     }
 
     // save the context
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 }
 
 void SwHTMLParser::NewStdAttr( HtmlTokenId nToken,
@@ -3458,7 +3526,7 @@ void SwHTMLParser::NewStdAttr( HtmlTokenId nToken,
     }
 
     // create a new context
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( nToken );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(nToken));
 
     // parse styles
     if( HasStyleOptions( aStyle, aId, aClass, &aLang, &aDir ) )
@@ -3473,38 +3541,37 @@ void SwHTMLParser::NewStdAttr( HtmlTokenId nToken,
             aItemSet.Put( *pItem3 );
 
         if( ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo, &aLang, &aDir ) )
-            DoPositioning( aItemSet, aPropInfo, pCntxt );
+            DoPositioning( aItemSet, aPropInfo, xCntxt.get() );
 
-        InsertAttrs( aItemSet, aPropInfo, pCntxt, true );
+        InsertAttrs( aItemSet, aPropInfo, xCntxt.get(), true );
     }
     else
     {
-        InsertAttr( ppAttr ,rItem, pCntxt );
+        InsertAttr( ppAttr ,rItem, xCntxt.get() );
         if( pItem2 )
         {
             OSL_ENSURE( ppAttr2, "missing table entry for item2" );
-            InsertAttr( ppAttr2, *pItem2, pCntxt );
+            InsertAttr( ppAttr2, *pItem2, xCntxt.get() );
         }
         if( pItem3 )
         {
             OSL_ENSURE( ppAttr3, "missing table entry for item3" );
-            InsertAttr( ppAttr3, *pItem3, pCntxt );
+            InsertAttr( ppAttr3, *pItem3, xCntxt.get() );
         }
     }
 
     // save the context
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 }
 
 void SwHTMLParser::EndTag( HtmlTokenId nToken )
 {
     // fetch context
-    HTMLAttrContext *pCntxt = PopContext( getOnToken(nToken) );
-    if( pCntxt )
+    std::unique_ptr<HTMLAttrContext> xCntxt(PopContext(getOnToken(nToken)));
+    if (xCntxt)
     {
         // and maybe end the attributes
-        EndContext( pCntxt );
-        delete pCntxt;
+        EndContext(xCntxt.get());
     }
 }
 
@@ -3520,7 +3587,7 @@ void SwHTMLParser::NewBasefontAttr()
         switch( rOption.GetToken() )
         {
         case HtmlOptionId::SIZE:
-            nSize = (sal_uInt16)rOption.GetNumber();
+            nSize = static_cast<sal_uInt16>(rOption.GetNumber());
             break;
         case HtmlOptionId::ID:
             aId = rOption.GetString();
@@ -3548,7 +3615,7 @@ void SwHTMLParser::NewBasefontAttr()
         nSize = 7;
 
     // create a new context
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( HtmlTokenId::BASEFONT_ON );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(HtmlTokenId::BASEFONT_ON));
 
     // parse styles
     if( HasStyleOptions( aStyle, aId, aClass, &aLang, &aDir ) )
@@ -3568,22 +3635,22 @@ void SwHTMLParser::NewBasefontAttr()
         aItemSet.Put( aFontHeightCTL );
 
         if( ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo, &aLang, &aDir ) )
-            DoPositioning( aItemSet, aPropInfo, pCntxt );
+            DoPositioning( aItemSet, aPropInfo, xCntxt.get() );
 
-        InsertAttrs( aItemSet, aPropInfo, pCntxt, true );
+        InsertAttrs( aItemSet, aPropInfo, xCntxt.get(), true );
     }
     else
     {
         SvxFontHeightItem aFontHeight( m_aFontHeights[nSize-1], 100, RES_CHRATR_FONTSIZE );
-        InsertAttr( &m_aAttrTab.pFontHeight, aFontHeight, pCntxt );
+        InsertAttr( &m_xAttrTab->pFontHeight, aFontHeight, xCntxt.get() );
         SvxFontHeightItem aFontHeightCJK( m_aFontHeights[nSize-1], 100, RES_CHRATR_CJK_FONTSIZE );
-        InsertAttr( &m_aAttrTab.pFontHeightCJK, aFontHeightCJK, pCntxt );
+        InsertAttr( &m_xAttrTab->pFontHeightCJK, aFontHeightCJK, xCntxt.get() );
         SvxFontHeightItem aFontHeightCTL( m_aFontHeights[nSize-1], 100, RES_CHRATR_CTL_FONTSIZE );
-        InsertAttr( &m_aAttrTab.pFontHeightCTL, aFontHeightCTL, pCntxt );
+        InsertAttr( &m_xAttrTab->pFontHeightCTL, aFontHeightCTL, xCntxt.get() );
     }
 
     // save the context
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 
     // save the font size
     m_aBaseFontStack.push_back( nSize );
@@ -3627,16 +3694,16 @@ void SwHTMLParser::NewFontAttr( HtmlTokenId nToken )
                 sal_Int32 nSSize;
                 if( '+' == rOption.GetString()[0] ||
                     '-' == rOption.GetString()[0] )
-                    nSSize = nBaseSize + rOption.GetSNumber();
+                    nSSize = o3tl::saturating_add<sal_Int32>(nBaseSize, rOption.GetSNumber());
                 else
-                    nSSize = (sal_Int32)rOption.GetNumber();
+                    nSSize = static_cast<sal_Int32>(rOption.GetNumber());
 
                 if( nSSize < 1 )
                     nSSize = 1;
                 else if( nSSize > 7 )
                     nSSize = 7;
 
-                nSize = (sal_uInt16)nSSize;
+                nSize = static_cast<sal_uInt16>(nSSize);
                 nFontHeight = m_aFontHeights[nSize-1];
             }
             break;
@@ -3676,9 +3743,10 @@ void SwHTMLParser::NewFontAttr( HtmlTokenId nToken )
 
         // In headings the current heading sets the font height
         // and not BASEFONT.
-        sal_uInt16 nPoolId = GetCurrFormatColl()->GetPoolFormatId();
-        if( (nPoolId>=RES_POOLCOLL_HEADLINE1 &&
-             nPoolId<=RES_POOLCOLL_HEADLINE6) )
+        const SwFormatColl *pColl = GetCurrFormatColl();
+        sal_uInt16 nPoolId = pColl ? pColl->GetPoolFormatId() : 0;
+        if( nPoolId>=RES_POOLCOLL_HEADLINE1 &&
+            nPoolId<=RES_POOLCOLL_HEADLINE6 )
         {
             // If the font height in the heading wasn't changed yet,
             // then take the one from the style.
@@ -3752,7 +3820,7 @@ void SwHTMLParser::NewFontAttr( HtmlTokenId nToken )
     }
 
     // create a new context
-    HTMLAttrContext *pCntxt = new HTMLAttrContext(nToken );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(nToken));
 
     // parse styles
     if( HasStyleOptions( aStyle, aId, aClass, &aLang, &aDir ) )
@@ -3782,36 +3850,36 @@ void SwHTMLParser::NewFontAttr( HtmlTokenId nToken )
         }
 
         if( ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo, &aLang, &aDir ) )
-            DoPositioning( aItemSet, aPropInfo, pCntxt );
+            DoPositioning( aItemSet, aPropInfo, xCntxt.get() );
 
-        InsertAttrs( aItemSet, aPropInfo, pCntxt, true );
+        InsertAttrs( aItemSet, aPropInfo, xCntxt.get(), true );
     }
     else
     {
         if( nFontHeight )
         {
             SvxFontHeightItem aFontHeight( nFontHeight, 100, RES_CHRATR_FONTSIZE );
-            InsertAttr( &m_aAttrTab.pFontHeight, aFontHeight, pCntxt );
+            InsertAttr( &m_xAttrTab->pFontHeight, aFontHeight, xCntxt.get() );
             SvxFontHeightItem aFontHeightCJK( nFontHeight, 100, RES_CHRATR_CJK_FONTSIZE );
-            InsertAttr( &m_aAttrTab.pFontHeight, aFontHeightCJK, pCntxt );
+            InsertAttr( &m_xAttrTab->pFontHeight, aFontHeightCJK, xCntxt.get() );
             SvxFontHeightItem aFontHeightCTL( nFontHeight, 100, RES_CHRATR_CTL_FONTSIZE );
-            InsertAttr( &m_aAttrTab.pFontHeight, aFontHeightCTL, pCntxt );
+            InsertAttr( &m_xAttrTab->pFontHeight, aFontHeightCTL, xCntxt.get() );
         }
         if( bColor )
-            InsertAttr( &m_aAttrTab.pFontColor, SvxColorItem(aColor, RES_CHRATR_COLOR), pCntxt );
+            InsertAttr( &m_xAttrTab->pFontColor, SvxColorItem(aColor, RES_CHRATR_COLOR), xCntxt.get() );
         if( !aFontName.isEmpty() )
         {
             SvxFontItem aFont( eFamily, aFontName, aStyleName, ePitch, eEnc, RES_CHRATR_FONT );
-            InsertAttr( &m_aAttrTab.pFont, aFont, pCntxt );
+            InsertAttr( &m_xAttrTab->pFont, aFont, xCntxt.get() );
             SvxFontItem aFontCJK( eFamily, aFontName, aStyleName, ePitch, eEnc, RES_CHRATR_CJK_FONT );
-            InsertAttr( &m_aAttrTab.pFont, aFontCJK, pCntxt );
+            InsertAttr( &m_xAttrTab->pFont, aFontCJK, xCntxt.get() );
             SvxFontItem aFontCTL( eFamily, aFontName, aStyleName, ePitch, eEnc, RES_CHRATR_CTL_FONT );
-            InsertAttr( &m_aAttrTab.pFont, aFontCTL, pCntxt );
+            InsertAttr( &m_xAttrTab->pFont, aFontCTL, xCntxt.get() );
         }
     }
 
     // save the context
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 
     m_aFontStack.push_back( nSize );
 }
@@ -3864,46 +3932,46 @@ void SwHTMLParser::NewPara()
     }
 
     // create a new context
-    HTMLAttrContext *pCntxt =
+    std::unique_ptr<HTMLAttrContext> xCntxt(
         !aClass.isEmpty() ? new HTMLAttrContext( HtmlTokenId::PARABREAK_ON,
                                              RES_POOLCOLL_TEXT, aClass )
-                     : new HTMLAttrContext( HtmlTokenId::PARABREAK_ON );
+                     : new HTMLAttrContext( HtmlTokenId::PARABREAK_ON ));
 
     // parse styles (Don't consider class. This is only possible as long as none of
     // the CSS1 properties of the class must be formatted hard!!!)
-    if( HasStyleOptions( aStyle, aId, aEmptyOUStr, &aLang, &aDir ) )
+    if (HasStyleOptions(aStyle, aId, OUString(), &aLang, &aDir))
     {
         SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
         SvxCSS1PropertyInfo aPropInfo;
 
-        if( ParseStyleOptions( aStyle, aId, aEmptyOUStr, aItemSet, aPropInfo, &aLang, &aDir ) )
+        if (ParseStyleOptions(aStyle, aId, OUString(), aItemSet, aPropInfo, &aLang, &aDir))
         {
             OSL_ENSURE( aClass.isEmpty() || !m_pCSS1Parser->GetClass( aClass ),
                     "Class is not considered" );
-            DoPositioning( aItemSet, aPropInfo, pCntxt );
-            InsertAttrs( aItemSet, aPropInfo, pCntxt );
+            DoPositioning( aItemSet, aPropInfo, xCntxt.get() );
+            InsertAttrs( aItemSet, aPropInfo, xCntxt.get() );
         }
     }
 
     if( SvxAdjust::End != m_eParaAdjust )
-        InsertAttr( &m_aAttrTab.pAdjust, SvxAdjustItem(m_eParaAdjust, RES_PARATR_ADJUST), pCntxt );
+        InsertAttr( &m_xAttrTab->pAdjust, SvxAdjustItem(m_eParaAdjust, RES_PARATR_ADJUST), xCntxt.get() );
 
     // and push on stack
-    PushContext( pCntxt );
+    PushContext( xCntxt );
 
     // set the current style or its attributes
-    SetTextCollAttrs( !aClass.isEmpty() ? pCntxt : nullptr );
+    SetTextCollAttrs( !aClass.isEmpty() ? m_aContexts.back().get() : nullptr );
 
     // progress bar
     ShowStatline();
 
-    OSL_ENSURE( m_nOpenParaToken == HtmlTokenId::NONE, "Now a open paragraph element will be lost." );
+    OSL_ENSURE( m_nOpenParaToken == HtmlTokenId::NONE, "Now an open paragraph element will be lost." );
     m_nOpenParaToken = HtmlTokenId::PARABREAK_ON;
 }
 
 void SwHTMLParser::EndPara( bool bReal )
 {
-    if( HtmlTokenId::LI_ON==m_nOpenParaToken && m_pTable )
+    if (HtmlTokenId::LI_ON==m_nOpenParaToken && m_xTable)
     {
 #if OSL_DEBUG_LEVEL > 0
         const SwNumRule *pNumRule = m_pPam->GetNode().GetTextNode()->GetNumRule();
@@ -3920,7 +3988,7 @@ void SwHTMLParser::EndPara( bool bReal )
             AddParSpace();
     }
 
-    // If a DD or DT was open, its an implied definition list,
+    // If a DD or DT was open, it's an implied definition list,
     // which must be closed now.
     if( (m_nOpenParaToken == HtmlTokenId::DT_ON || m_nOpenParaToken == HtmlTokenId::DD_ON) &&
         m_nDefListDeep)
@@ -3930,15 +3998,15 @@ void SwHTMLParser::EndPara( bool bReal )
 
     // Pop the context of the stack. It can also be from an
     // implied opened definition list.
-    HTMLAttrContext *pCntxt =
-        PopContext( m_nOpenParaToken != HtmlTokenId::NONE ? getOnToken(m_nOpenParaToken) : HtmlTokenId::PARABREAK_ON );
+    std::unique_ptr<HTMLAttrContext> xCntxt(
+        PopContext( m_nOpenParaToken != HtmlTokenId::NONE ? getOnToken(m_nOpenParaToken) : HtmlTokenId::PARABREAK_ON ));
 
     // close attribute
-    if( pCntxt )
+    if (xCntxt)
     {
-        EndContext( pCntxt );
+        EndContext(xCntxt.get());
         SetAttr();  // because of JavaScript set paragraph attributes as fast as possible
-        delete pCntxt;
+        xCntxt.reset();
     }
 
     // reset the existing style
@@ -4002,31 +4070,31 @@ void SwHTMLParser::NewHeading( HtmlTokenId nToken )
     }
 
     // create the context
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( nToken, nTextColl, aClass );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(nToken, nTextColl, aClass));
 
     // parse styles (regarding class see also NewPara)
-    if( HasStyleOptions( aStyle, aId, aEmptyOUStr, &aLang, &aDir ) )
+    if (HasStyleOptions(aStyle, aId, OUString(), &aLang, &aDir))
     {
         SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
         SvxCSS1PropertyInfo aPropInfo;
 
-        if( ParseStyleOptions( aStyle, aId, aEmptyOUStr, aItemSet, aPropInfo, &aLang, &aDir ) )
+        if (ParseStyleOptions(aStyle, aId, OUString(), aItemSet, aPropInfo, &aLang, &aDir))
         {
             OSL_ENSURE( aClass.isEmpty() || !m_pCSS1Parser->GetClass( aClass ),
                     "Class is not considered" );
-            DoPositioning( aItemSet, aPropInfo, pCntxt );
-            InsertAttrs( aItemSet, aPropInfo, pCntxt );
+            DoPositioning( aItemSet, aPropInfo, xCntxt.get() );
+            InsertAttrs( aItemSet, aPropInfo, xCntxt.get() );
         }
     }
 
     if( SvxAdjust::End != m_eParaAdjust )
-        InsertAttr( &m_aAttrTab.pAdjust, SvxAdjustItem(m_eParaAdjust, RES_PARATR_ADJUST), pCntxt );
+        InsertAttr( &m_xAttrTab->pAdjust, SvxAdjustItem(m_eParaAdjust, RES_PARATR_ADJUST), xCntxt.get() );
 
     // and push on stack
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 
     // set the current style or its attributes
-    SetTextCollAttrs( pCntxt );
+    SetTextCollAttrs(m_aContexts.back().get());
 
     m_nFontStHeadStart = m_aFontStack.size();
 
@@ -4043,9 +4111,9 @@ void SwHTMLParser::EndHeading()
         AddParSpace();
 
     // search context matching the token and fetch it from stack
-    HTMLAttrContext *pCntxt = nullptr;
+    std::unique_ptr<HTMLAttrContext> xCntxt;
     auto nPos = m_aContexts.size();
-    while( !pCntxt && nPos>m_nContextStMin )
+    while( !xCntxt && nPos>m_nContextStMin )
     {
         switch( m_aContexts[--nPos]->GetToken() )
         {
@@ -4055,7 +4123,7 @@ void SwHTMLParser::EndHeading()
         case HtmlTokenId::HEAD4_ON:
         case HtmlTokenId::HEAD5_ON:
         case HtmlTokenId::HEAD6_ON:
-            pCntxt = m_aContexts[nPos];
+            xCntxt = std::move(m_aContexts[nPos]);
             m_aContexts.erase( m_aContexts.begin() + nPos );
             break;
         default: break;
@@ -4063,11 +4131,11 @@ void SwHTMLParser::EndHeading()
     }
 
     // and now end attributes
-    if( pCntxt )
+    if (xCntxt)
     {
-        EndContext( pCntxt );
+        EndContext(xCntxt.get());
         SetAttr();  // because of JavaScript set paragraph attributes as fast as possible
-        delete pCntxt;
+        xCntxt.reset();
     }
 
     // reset existing style
@@ -4114,8 +4182,8 @@ void SwHTMLParser::NewTextFormatColl( HtmlTokenId nToken, sal_uInt16 nColl )
         // These both tags will be mapped to the PRE style. For the case that a
         // a CLASS exists we will delete it so that we don't get the CLASS of
         // the PRE style.
-        aClass = aEmptyOUStr;
-        SAL_FALLTHROUGH;
+        aClass.clear();
+        [[fallthrough]];
     case HtmlTokenId::BLOCKQUOTE_ON:
     case HtmlTokenId::BLOCKQUOTE30_ON:
     case HtmlTokenId::PREFORMTXT_ON:
@@ -4138,27 +4206,27 @@ void SwHTMLParser::NewTextFormatColl( HtmlTokenId nToken, sal_uInt16 nColl )
         AddParSpace();
 
     // ... and save in a context
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( nToken, nColl, aClass );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(nToken, nColl, aClass));
 
     // parse styles (regarding class see also NewPara)
-    if( HasStyleOptions( aStyle, aId, aEmptyOUStr, &aLang, &aDir ) )
+    if (HasStyleOptions(aStyle, aId, OUString(), &aLang, &aDir))
     {
         SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
         SvxCSS1PropertyInfo aPropInfo;
 
-        if( ParseStyleOptions( aStyle, aId, aEmptyOUStr, aItemSet, aPropInfo, &aLang, &aDir ) )
+        if (ParseStyleOptions(aStyle, aId, OUString(), aItemSet, aPropInfo, &aLang, &aDir))
         {
             OSL_ENSURE( aClass.isEmpty() || !m_pCSS1Parser->GetClass( aClass ),
                     "Class is not considered" );
-            DoPositioning( aItemSet, aPropInfo, pCntxt );
-            InsertAttrs( aItemSet, aPropInfo, pCntxt );
+            DoPositioning( aItemSet, aPropInfo, xCntxt.get() );
+            InsertAttrs( aItemSet, aPropInfo, xCntxt.get() );
         }
     }
 
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 
     // set the new style
-    SetTextCollAttrs( pCntxt );
+    SetTextCollAttrs(m_aContexts.back().get());
 
     // update progress bar
     ShowStatline();
@@ -4191,14 +4259,14 @@ void SwHTMLParser::EndTextFormatColl( HtmlTokenId nToken )
         AddParSpace();
 
     // pop current context of stack
-    HTMLAttrContext *pCntxt = PopContext( getOnToken(nToken) );
+    std::unique_ptr<HTMLAttrContext> xCntxt(PopContext(getOnToken(nToken)));
 
     // and now end attributes
-    if( pCntxt )
+    if (xCntxt)
     {
-        EndContext( pCntxt );
+        EndContext(xCntxt.get());
         SetAttr();  // because of JavaScript set paragraph attributes as fast as possible
-        delete pCntxt;
+        xCntxt.reset();
     }
 
     // reset existing style
@@ -4266,7 +4334,7 @@ void SwHTMLParser::NewDefList()
     }
 
     // ... and save in a context
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( HtmlTokenId::DEFLIST_ON );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(HtmlTokenId::DEFLIST_ON));
 
     // in it save also the margins
     sal_uInt16 nLeft=0, nRight=0;
@@ -4281,12 +4349,12 @@ void SwHTMLParser::NewDefList()
 
         // and the one of the DT-style of the current level
         SvxLRSpaceItem rLRSpace =
-            m_pCSS1Parser->GetTextFormatColl( RES_POOLCOLL_HTML_DD, aEmptyOUStr )
+            m_pCSS1Parser->GetTextFormatColl(RES_POOLCOLL_HTML_DD, OUString())
                        ->GetLRSpace();
         nLeft = nLeft + static_cast< sal_uInt16 >(rLRSpace.GetTextLeft());
     }
 
-    pCntxt->SetMargins( nLeft, nRight, nIndent );
+    xCntxt->SetMargins( nLeft, nRight, nIndent );
 
     // parse styles
     if( HasStyleOptions( aStyle, aId, aClass, &aLang, &aDir ) )
@@ -4296,16 +4364,16 @@ void SwHTMLParser::NewDefList()
 
         if( ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo, &aLang, &aDir ) )
         {
-            DoPositioning( aItemSet, aPropInfo, pCntxt );
-            InsertAttrs( aItemSet, aPropInfo, pCntxt );
+            DoPositioning( aItemSet, aPropInfo, xCntxt.get() );
+            InsertAttrs( aItemSet, aPropInfo, xCntxt.get() );
         }
     }
 
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 
     // set the attributes of the new style
     if( m_nDefListDeep > 1 )
-        SetTextCollAttrs( pCntxt );
+        SetTextCollAttrs(m_aContexts.back().get());
 }
 
 void SwHTMLParser::EndDefList()
@@ -4321,14 +4389,14 @@ void SwHTMLParser::EndDefList()
         m_nDefListDeep--;
 
     // pop current context of stack
-    HTMLAttrContext *pCntxt = PopContext( HtmlTokenId::DEFLIST_ON );
+    std::unique_ptr<HTMLAttrContext> xCntxt(PopContext(HtmlTokenId::DEFLIST_ON));
 
     // and now end attributes
-    if( pCntxt )
+    if (xCntxt)
     {
-        EndContext( pCntxt );
+        EndContext(xCntxt.get());
         SetAttr();  // because of JavaScript set paragraph attributes as fast as possible
-        delete pCntxt;
+        xCntxt.reset();
     }
 
     // and set style
@@ -4379,9 +4447,9 @@ void SwHTMLParser::EndDefListItem( HtmlTokenId nToken )
 
     // search context matching the token and fetch it from stack
     nToken = getOnToken(nToken);
-    HTMLAttrContext *pCntxt = nullptr;
+    std::unique_ptr<HTMLAttrContext> xCntxt;
     auto nPos = m_aContexts.size();
-    while( !pCntxt && nPos>m_nContextStMin )
+    while( !xCntxt && nPos>m_nContextStMin )
     {
         HtmlTokenId nCntxtToken = m_aContexts[--nPos]->GetToken();
         switch( nCntxtToken )
@@ -4390,7 +4458,7 @@ void SwHTMLParser::EndDefListItem( HtmlTokenId nToken )
         case HtmlTokenId::DT_ON:
             if( nToken == HtmlTokenId::NONE || nToken == nCntxtToken  )
             {
-                pCntxt = m_aContexts[nPos];
+                xCntxt = std::move(m_aContexts[nPos]);
                 m_aContexts.erase( m_aContexts.begin() + nPos );
             }
             break;
@@ -4408,11 +4476,10 @@ void SwHTMLParser::EndDefListItem( HtmlTokenId nToken )
     }
 
     // and now end attributes
-    if( pCntxt )
+    if (xCntxt)
     {
-        EndContext( pCntxt );
+        EndContext(xCntxt.get());
         SetAttr();  // because of JavaScript set paragraph attributes as fast as possible
-        delete pCntxt;
     }
 }
 
@@ -4494,7 +4561,7 @@ bool SwHTMLParser::HasCurrentParaFlys( bool bNoSurroundOnly,
 const SwFormatColl *SwHTMLParser::GetCurrFormatColl() const
 {
     const SwContentNode* pCNd = m_pPam->GetContentNode();
-    return &pCNd->GetAnyFormatColl();
+    return pCNd ? &pCNd->GetAnyFormatColl() : nullptr;
 }
 
 void SwHTMLParser::SetTextCollAttrs( HTMLAttrContext *pContext )
@@ -4502,7 +4569,7 @@ void SwHTMLParser::SetTextCollAttrs( HTMLAttrContext *pContext )
     SwTextFormatColl *pCollToSet = nullptr; // the style to set
     SfxItemSet *pItemSet = nullptr;         // set of hard attributes
     sal_uInt16 nTopColl = pContext ? pContext->GetTextFormatColl() : 0;
-    const OUString& rTopClass = pContext ? pContext->GetClass() : aEmptyOUStr;
+    const OUString rTopClass = pContext ? pContext->GetClass() : OUString();
     sal_uInt16 nDfltColl = RES_POOLCOLL_TEXT;
 
     bool bInPRE=false;                          // some context info
@@ -4512,7 +4579,7 @@ void SwHTMLParser::SetTextCollAttrs( HTMLAttrContext *pContext )
 
     for( auto i = m_nContextStAttrMin; i < m_aContexts.size(); ++i )
     {
-        const HTMLAttrContext *pCntxt = m_aContexts[i];
+        const HTMLAttrContext *pCntxt = m_aContexts[i].get();
 
         sal_uInt16 nColl = pCntxt->GetTextFormatColl();
         if( nColl )
@@ -4624,13 +4691,13 @@ void SwHTMLParser::SetTextCollAttrs( HTMLAttrContext *pContext )
 
             sal_Int32 nLeft = pLRItem->GetTextLeft();
             sal_Int32 nRight = pLRItem->GetRight();
-            nFirstLineIndent = pLRItem->GetTextFirstLineOfst();
+            nFirstLineIndent = pLRItem->GetTextFirstLineOffset();
 
             // In Definition lists the margins also contain the margins from the previous levels
             if( RES_POOLCOLL_HTML_DD == nTopColl )
             {
                 const SvxLRSpaceItem& rDTLRSpace = m_pCSS1Parser
-                    ->GetTextFormatColl( RES_POOLCOLL_HTML_DT, aEmptyOUStr )
+                    ->GetTextFormatColl(RES_POOLCOLL_HTML_DT, OUString())
                     ->GetLRSpace();
                 nLeft -= rDTLRSpace.GetTextLeft();
                 nRight -= rDTLRSpace.GetRight();
@@ -4666,27 +4733,21 @@ void SwHTMLParser::SetTextCollAttrs( HTMLAttrContext *pContext )
         if( !nRightMargin )
             nRightMargin = static_cast< sal_uInt16 >(rLRItem.GetRight());
         if( !nFirstLineIndent )
-            nFirstLineIndent = rLRItem.GetTextFirstLineOfst();
+            nFirstLineIndent = rLRItem.GetTextFirstLineOffset();
     }
 
     // remove previous hard attribution of paragraph
-    if( !m_aParaAttrs.empty() )
-    {
-        for( auto pParaAttr : m_aParaAttrs )
-            pParaAttr->Invalidate();
-
-        m_aParaAttrs.clear();
-    }
+    for( auto pParaAttr : m_aParaAttrs )
+        pParaAttr->Invalidate();
+    m_aParaAttrs.clear();
 
     // set the style
     m_xDoc->SetTextFormatColl( *m_pPam, pCollToSet );
 
     // if applicable correct the paragraph indent
     const SvxLRSpaceItem& rLRItem = pCollToSet->GetLRSpace();
-    bool bSetLRSpace;
-
-           bSetLRSpace = nLeftMargin != rLRItem.GetTextLeft() ||
-                      nFirstLineIndent != rLRItem.GetTextFirstLineOfst() ||
+    bool bSetLRSpace = nLeftMargin != rLRItem.GetTextLeft() ||
+                      nFirstLineIndent != rLRItem.GetTextFirstLineOffset() ||
                       nRightMargin != rLRItem.GetRight();
 
     if( bSetLRSpace )
@@ -4694,15 +4755,15 @@ void SwHTMLParser::SetTextCollAttrs( HTMLAttrContext *pContext )
         SvxLRSpaceItem aLRItem( rLRItem );
         aLRItem.SetTextLeft( nLeftMargin );
         aLRItem.SetRight( nRightMargin );
-        aLRItem.SetTextFirstLineOfst( nFirstLineIndent );
+        aLRItem.SetTextFirstLineOffset( nFirstLineIndent );
         if( pItemSet )
             pItemSet->Put( aLRItem );
         else
         {
-            NewAttr( &m_aAttrTab.pLRSpace, aLRItem );
-            m_aAttrTab.pLRSpace->SetLikePara();
-            m_aParaAttrs.push_back( m_aAttrTab.pLRSpace );
-            EndAttr( m_aAttrTab.pLRSpace, false );
+            NewAttr(m_xAttrTab, &m_xAttrTab->pLRSpace, aLRItem);
+            m_xAttrTab->pLRSpace->SetLikePara();
+            m_aParaAttrs.push_back( m_xAttrTab->pLRSpace );
+            EndAttr( m_xAttrTab->pLRSpace, false );
         }
     }
 
@@ -4745,46 +4806,45 @@ void SwHTMLParser::NewCharFormat( HtmlTokenId nToken )
     }
 
     // create a new context
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( nToken );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(nToken));
 
     // set the style and save it in the context
     SwCharFormat* pCFormat = m_pCSS1Parser->GetChrFormat( nToken, aClass );
     OSL_ENSURE( pCFormat, "No character format found for token" );
 
     // parse styles (regarding class see also NewPara)
-    if( HasStyleOptions( aStyle, aId, aEmptyOUStr, &aLang, &aDir ) )
+    if (HasStyleOptions(aStyle, aId, OUString(), &aLang, &aDir))
     {
         SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
         SvxCSS1PropertyInfo aPropInfo;
 
-        if( ParseStyleOptions( aStyle, aId, aEmptyOUStr, aItemSet, aPropInfo, &aLang, &aDir ) )
+        if (ParseStyleOptions(aStyle, aId, OUString(), aItemSet, aPropInfo, &aLang, &aDir))
         {
             OSL_ENSURE( aClass.isEmpty() || !m_pCSS1Parser->GetClass( aClass ),
                     "Class is not considered" );
-            DoPositioning( aItemSet, aPropInfo, pCntxt );
-            InsertAttrs( aItemSet, aPropInfo, pCntxt, true );
+            DoPositioning( aItemSet, aPropInfo, xCntxt.get() );
+            InsertAttrs( aItemSet, aPropInfo, xCntxt.get(), true );
         }
     }
 
     // Character formats are stored in their own stack and can never be inserted
     // by styles. Therefore the attribute doesn't exist in CSS1-Which-Range.
     if( pCFormat )
-        InsertAttr( &m_aAttrTab.pCharFormats, SwFormatCharFormat( pCFormat ), pCntxt );
+        InsertAttr( &m_xAttrTab->pCharFormats, SwFormatCharFormat( pCFormat ), xCntxt.get() );
 
     // save the context
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 }
 
 void SwHTMLParser::InsertSpacer()
 {
     // and if applicable change it via the options
-    OUString aId;
     sal_Int16 eVertOri = text::VertOrientation::TOP;
     sal_Int16 eHoriOri = text::HoriOrientation::NONE;
     Size aSize( 0, 0);
     long nSize = 0;
-    bool bPrcWidth = false;
-    bool bPrcHeight = false;
+    bool bPercentWidth = false;
+    bool bPercentHeight = false;
     sal_uInt16 nType = HTML_SPTYPE_HORI;
 
     const HTMLOptions& rHTMLOptions = GetOptions();
@@ -4793,9 +4853,6 @@ void SwHTMLParser::InsertSpacer()
         const HTMLOption& rOption = rHTMLOptions[--i];
         switch( rOption.GetToken() )
         {
-        case HtmlOptionId::ID:
-            aId = rOption.GetString();
-            break;
         case HtmlOptionId::TYPE:
             rOption.GetEnum( nType, aHTMLSpacerTypeTable );
             break;
@@ -4809,13 +4866,13 @@ void SwHTMLParser::InsertSpacer()
             break;
         case HtmlOptionId::WIDTH:
             // First only save as pixel value!
-            bPrcWidth = (rOption.GetString().indexOf('%') != -1);
-            aSize.Width() = (long)rOption.GetNumber();
+            bPercentWidth = (rOption.GetString().indexOf('%') != -1);
+            aSize.setWidth( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::HEIGHT:
             // First only save as pixel value!
-            bPrcHeight = (rOption.GetString().indexOf('%') != -1);
-            aSize.Height() = (long)rOption.GetNumber();
+            bPercentHeight = (rOption.GetString().indexOf('%') != -1);
+            aSize.setHeight( static_cast<long>(rOption.GetNumber()) );
             break;
         case HtmlOptionId::SIZE:
             // First only save as pixel value!
@@ -4847,8 +4904,8 @@ void SwHTMLParser::InsertSpacer()
                                  m_pCSS1Parser->GetWhichMap() );
             SvxCSS1PropertyInfo aDummyPropInfo;
 
-            SetFixSize( aSize, aDfltSz, bPrcWidth, bPrcHeight,
-                        aDummyItemSet, aDummyPropInfo, aFrameSet );
+            SetFixSize( aSize, aDfltSz, bPercentWidth, bPercentHeight,
+                        aDummyPropInfo, aFrameSet );
             SetSpace( aSpace, aDummyItemSet, aDummyPropInfo, aFrameSet );
 
             // protect the content
@@ -4858,7 +4915,7 @@ void SwHTMLParser::InsertSpacer()
 
             // create the frame
             RndStdIds eAnchorId =
-                static_cast<const SwFormatAnchor &>(aFrameSet.Get(RES_ANCHOR)).GetAnchorId();
+                aFrameSet.Get(RES_ANCHOR).GetAnchorId();
             SwFrameFormat *pFlyFormat = m_xDoc->MakeFlySection( eAnchorId,
                                             m_pPam->GetPoint(), &aFrameSet );
             // Possibly create frames and register auto-bound frames.
@@ -4868,7 +4925,7 @@ void SwHTMLParser::InsertSpacer()
     case HTML_SPTYPE_VERT:
         if( nSize > 0 )
         {
-            if( nSize && Application::GetDefaultDevice() )
+            if (Application::GetDefaultDevice())
             {
                 nSize = Application::GetDefaultDevice()
                             ->PixelToLogic( Size(0,nSize),
@@ -4898,13 +4955,13 @@ void SwHTMLParser::InsertSpacer()
             {
                 SvxULSpaceItem aULSpace( static_cast<const SvxULSpaceItem&>(pTextNode
                     ->SwContentNode::GetAttr( RES_UL_SPACE )) );
-                aULSpace.SetLower( aULSpace.GetLower() + (sal_uInt16)nSize );
+                aULSpace.SetLower( aULSpace.GetLower() + static_cast<sal_uInt16>(nSize) );
                 pTextNode->SetAttr( aULSpace );
             }
             else
             {
-                NewAttr( &m_aAttrTab.pULSpace, SvxULSpaceItem( 0, (sal_uInt16)nSize, RES_UL_SPACE ) );
-                EndAttr( m_aAttrTab.pULSpace, false );
+                NewAttr(m_xAttrTab, &m_xAttrTab->pULSpace, SvxULSpaceItem(0, static_cast<sal_uInt16>(nSize), RES_UL_SPACE));
+                EndAttr( m_xAttrTab->pULSpace, false );
 
                 AppendTextNode();    // Don't change spacing!
             }
@@ -4916,7 +4973,7 @@ void SwHTMLParser::InsertSpacer()
             // If the paragraph is still empty, set first line
             // indentation, otherwise apply letter spacing over a space.
 
-            if( nSize && Application::GetDefaultDevice() )
+            if (Application::GetDefaultDevice())
             {
                 nSize = Application::GetDefaultDevice()
                             ->PixelToLogic( Size(nSize,0),
@@ -4928,23 +4985,22 @@ void SwHTMLParser::InsertSpacer()
                 sal_uInt16 nLeft=0, nRight=0;
                 short nIndent = 0;
 
-                GetMarginsFromContextWithNumBul( nLeft, nRight, nIndent );
-                nIndent = nIndent + (short)nSize;
+                GetMarginsFromContextWithNumberBullet( nLeft, nRight, nIndent );
+                nIndent = nIndent + static_cast<short>(nSize);
 
                 SvxLRSpaceItem aLRItem( RES_LR_SPACE );
                 aLRItem.SetTextLeft( nLeft );
                 aLRItem.SetRight( nRight );
-                aLRItem.SetTextFirstLineOfst( nIndent );
+                aLRItem.SetTextFirstLineOffset( nIndent );
 
-                NewAttr( &m_aAttrTab.pLRSpace, aLRItem );
-                EndAttr( m_aAttrTab.pLRSpace, false );
+                NewAttr(m_xAttrTab, &m_xAttrTab->pLRSpace, aLRItem);
+                EndAttr( m_xAttrTab->pLRSpace, false );
             }
             else
             {
-                NewAttr( &m_aAttrTab.pKerning, SvxKerningItem( (short)nSize, RES_CHRATR_KERNING ) );
-                OUString aTmp( ' ' );
-                m_xDoc->getIDocumentContentOperations().InsertString( *m_pPam, aTmp );
-                EndAttr( m_aAttrTab.pKerning );
+                NewAttr(m_xAttrTab, &m_xAttrTab->pKerning, SvxKerningItem( static_cast<short>(nSize), RES_CHRATR_KERNING ));
+                m_xDoc->getIDocumentContentOperations().InsertString( *m_pPam, " " );
+                EndAttr( m_xAttrTab->pKerning );
             }
         }
     }
@@ -4956,7 +5012,7 @@ sal_uInt16 SwHTMLParser::ToTwips( sal_uInt16 nPixel )
     {
         long nTwips = Application::GetDefaultDevice()->PixelToLogic(
                     Size( nPixel, nPixel ), MapMode( MapUnit::MapTwip ) ).Width();
-        return nTwips <= USHRT_MAX ? (sal_uInt16)nTwips : USHRT_MAX;
+        return static_cast<sal_uInt16>(std::min(nTwips, SwTwips(SAL_MAX_UINT16)));
     }
     else
         return nPixel;
@@ -4977,11 +5033,11 @@ SwTwips SwHTMLParser::GetCurrentBrowseWidth()
         const SvxULSpaceItem& rUL = rPgFormat.GetULSpace();
         const SwFormatCol& rCol = rPgFormat.GetCol();
 
-        m_aHTMLPageSize.Width() = rSz.GetWidth() - rLR.GetLeft() - rLR.GetRight();
-        m_aHTMLPageSize.Height() = rSz.GetHeight() - rUL.GetUpper() - rUL.GetLower();
+        m_aHTMLPageSize.setWidth( rSz.GetWidth() - rLR.GetLeft() - rLR.GetRight() );
+        m_aHTMLPageSize.setHeight( rSz.GetHeight() - rUL.GetUpper() - rUL.GetLower() );
 
         if( 1 < rCol.GetNumCols() )
-            m_aHTMLPageSize.Width() /= rCol.GetNumCols();
+            m_aHTMLPageSize.setWidth( m_aHTMLPageSize.Width() / ( rCol.GetNumCols()) );
     }
 
     return m_aHTMLPageSize.Width();
@@ -5109,7 +5165,7 @@ void SwHTMLParser::InsertLineBreak()
     }
 
     // parse styles
-    SvxFormatBreakItem aBreakItem( SvxBreak::NONE, RES_BREAK );
+    std::shared_ptr<SvxFormatBreakItem> aBreakItem(std::make_shared<SvxFormatBreakItem>(SvxBreak::NONE, RES_BREAK));
     bool bBreakItem = false;
     if( HasStyleOptions( aStyle, aId, aClass ) )
     {
@@ -5120,7 +5176,7 @@ void SwHTMLParser::InsertLineBreak()
         {
             if( m_pCSS1Parser->SetFormatBreak( aItemSet, aPropInfo ) )
             {
-                aBreakItem = static_cast<const SvxFormatBreakItem &>(aItemSet.Get( RES_BREAK ));
+                aBreakItem.reset(aItemSet.Get(RES_BREAK).Clone());
                 bBreakItem = true;
             }
             if( !aPropInfo.m_aId.isEmpty() )
@@ -5128,17 +5184,16 @@ void SwHTMLParser::InsertLineBreak()
         }
     }
 
-    if( bBreakItem && SvxBreak::PageAfter==aBreakItem.GetBreak() )
+    if( bBreakItem && SvxBreak::PageAfter == aBreakItem->GetBreak() )
     {
-        NewAttr( &m_aAttrTab.pBreak, aBreakItem );
-        EndAttr( m_aAttrTab.pBreak, false );
+        NewAttr(m_xAttrTab, &m_xAttrTab->pBreak, *aBreakItem);
+        EndAttr( m_xAttrTab->pBreak, false );
     }
 
     if( !bCleared && !bBreakItem )
     {
         // If no CLEAR could or should be executed, a line break will be inserted
-        OUString sTmp( u'\x000a' );   // make the Mac happy :-)
-        m_xDoc->getIDocumentContentOperations().InsertString( *m_pPam, sTmp );
+        m_xDoc->getIDocumentContentOperations().InsertString( *m_pPam, "\x0A" );
     }
     else if( m_pPam->GetPoint()->nContent.GetIndex() )
     {
@@ -5149,10 +5204,10 @@ void SwHTMLParser::InsertLineBreak()
         // (>Netscape). That's why we don't do it.
         AppendTextNode( AM_NOSPACE );
     }
-    if( bBreakItem && SvxBreak::PageBefore==aBreakItem.GetBreak() )
+    if( bBreakItem && SvxBreak::PageBefore == aBreakItem->GetBreak() )
     {
-        NewAttr( &m_aAttrTab.pBreak, aBreakItem );
-        EndAttr( m_aAttrTab.pBreak, false );
+        NewAttr(m_xAttrTab, &m_xAttrTab->pBreak, *aBreakItem);
+        EndAttr( m_xAttrTab->pBreak, false );
     }
 }
 
@@ -5163,7 +5218,7 @@ void SwHTMLParser::InsertHorzRule()
 
     SvxAdjust eAdjust = SvxAdjust::End;
 
-    bool bPrcWidth = false;
+    bool bPercentWidth = false;
     bool bNoShade = false;
     bool bColor = false;
 
@@ -5181,16 +5236,16 @@ void SwHTMLParser::InsertHorzRule()
             aId = rOption.GetString();
             break;
         case HtmlOptionId::SIZE:
-            nSize = (sal_uInt16)rOption.GetNumber();
+            nSize = static_cast<sal_uInt16>(rOption.GetNumber());
             break;
         case HtmlOptionId::WIDTH:
-            bPrcWidth = (rOption.GetString().indexOf('%') != -1);
-            nWidth = (sal_uInt16)rOption.GetNumber();
-            if( bPrcWidth && nWidth>=100 )
+            bPercentWidth = (rOption.GetString().indexOf('%') != -1);
+            nWidth = static_cast<sal_uInt16>(rOption.GetNumber());
+            if( bPercentWidth && nWidth>=100 )
             {
                 // the default case are 100% lines (no attributes necessary)
                 nWidth = 0;
-                bPrcWidth = false;
+                bPercentWidth = false;
             }
             break;
         case HtmlOptionId::ALIGN:
@@ -5215,29 +5270,28 @@ void SwHTMLParser::InsertHorzRule()
     m_pPam->Move( fnMoveBackward );
 
     // ...and save in a context
-    HTMLAttrContext *pCntxt =
-        new HTMLAttrContext( HtmlTokenId::HORZRULE, RES_POOLCOLL_HTML_HR, aEmptyOUStr );
+    std::unique_ptr<HTMLAttrContext> xCntxt(
+        new HTMLAttrContext(HtmlTokenId::HORZRULE, RES_POOLCOLL_HTML_HR, OUString()));
 
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 
     // set the new style
-    SetTextCollAttrs( pCntxt );
+    SetTextCollAttrs(m_aContexts.back().get());
 
     // the hard attributes of the current paragraph will never become invalid
-    if( !m_aParaAttrs.empty() )
-        m_aParaAttrs.clear();
+    m_aParaAttrs.clear();
 
     if( nSize>0 || bColor || bNoShade )
     {
         // set line colour and/or width
         if( !bColor )
-            aColor.SetColor( COL_GRAY );
+            aColor = COL_GRAY;
 
         SvxBorderLine aBorderLine( &aColor );
         if( nSize )
         {
             long nPWidth = 0;
-            long nPHeight = (long)nSize;
+            long nPHeight = static_cast<long>(nSize);
             SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
             if ( !bNoShade )
             {
@@ -5257,7 +5311,7 @@ void SwHTMLParser::InsertHorzRule()
 
         SvxBoxItem aBoxItem(RES_BOX);
         aBoxItem.SetLine( &aBorderLine, SvxBoxItemLine::BOTTOM );
-        HTMLAttr* pTmp = new HTMLAttr( *m_pPam->GetPoint(), aBoxItem );
+        HTMLAttr* pTmp = new HTMLAttr(*m_pPam->GetPoint(), aBoxItem, nullptr, std::shared_ptr<HTMLAttrTable>());
         m_aSetAttrTab.push_back( pTmp );
     }
     if( nWidth )
@@ -5266,38 +5320,38 @@ void SwHTMLParser::InsertHorzRule()
         // paragraph indents. That makes little sense in a table. In order to
         // avoid that the line is considered during the width calculation, it
         // still gets an appropriate LRSpace-Item.
-        if( !m_pTable )
+        if (!m_xTable)
         {
             // fake length and alignment of line above paragraph indents
             long nBrowseWidth = GetCurrentBrowseWidth();
-            nWidth = bPrcWidth ? (sal_uInt16)((nWidth*nBrowseWidth) / 100)
-                               : ToTwips( (sal_uInt16)nBrowseWidth );
+            nWidth = bPercentWidth ? static_cast<sal_uInt16>((nWidth*nBrowseWidth) / 100)
+                               : ToTwips( static_cast<sal_uInt16>(nBrowseWidth) );
             if( nWidth < MINLAY )
                 nWidth = MINLAY;
 
-            if( (long)nWidth < nBrowseWidth )
+            const SwFormatColl *pColl = (static_cast<long>(nWidth) < nBrowseWidth) ? GetCurrFormatColl() : nullptr;
+            if (pColl)
             {
-                const SwFormatColl *pColl = GetCurrFormatColl();
                 SvxLRSpaceItem aLRItem( pColl->GetLRSpace() );
                 long nDist = nBrowseWidth - nWidth;
 
                 switch( eAdjust )
                 {
                 case SvxAdjust::Right:
-                    aLRItem.SetTextLeft( (sal_uInt16)nDist );
+                    aLRItem.SetTextLeft( static_cast<sal_uInt16>(nDist) );
                     break;
                 case SvxAdjust::Left:
-                    aLRItem.SetRight( (sal_uInt16)nDist );
+                    aLRItem.SetRight( static_cast<sal_uInt16>(nDist) );
                     break;
                 case SvxAdjust::Center:
                 default:
                     nDist /= 2;
-                    aLRItem.SetTextLeft( (sal_uInt16)nDist );
-                    aLRItem.SetRight( (sal_uInt16)nDist );
+                    aLRItem.SetTextLeft( static_cast<sal_uInt16>(nDist) );
+                    aLRItem.SetRight( static_cast<sal_uInt16>(nDist) );
                     break;
                 }
 
-                HTMLAttr* pTmp = new HTMLAttr( *m_pPam->GetPoint(), aLRItem );
+                HTMLAttr* pTmp = new HTMLAttr(*m_pPam->GetPoint(), aLRItem, nullptr, std::shared_ptr<HTMLAttrTable>());
                 m_aSetAttrTab.push_back( pTmp );
             }
         }
@@ -5308,9 +5362,8 @@ void SwHTMLParser::InsertHorzRule()
         InsertBookmark( aId );
 
     // pop current context of stack
-    HTMLAttrContext *pPoppedContext = PopContext( HtmlTokenId::HORZRULE );
-    OSL_ENSURE( pPoppedContext==pCntxt, "Where does the HR context come from?" );
-    delete pPoppedContext;
+    std::unique_ptr<HTMLAttrContext> xPoppedContext(PopContext(HtmlTokenId::HORZRULE));
+    xPoppedContext.reset();
 
     m_pPam->Move( fnMoveForward );
 
@@ -5386,40 +5439,42 @@ void SwHTMLParser::ParseMoreMetaOptions()
 
     SwPostItField aPostItField(
         static_cast<SwPostItFieldType*>(m_xDoc->getIDocumentFieldsAccess().GetSysFieldType( SwFieldIds::Postit )),
-        aEmptyOUStr, sText.makeStringAndClear(), aEmptyOUStr, aEmptyOUStr, DateTime( DateTime::SYSTEM ) );
+        OUString(), sText.makeStringAndClear(), OUString(), OUString(), DateTime(DateTime::SYSTEM));
     SwFormatField aFormatField( aPostItField );
     InsertAttr( aFormatField,  false );
 }
 
 HTMLAttr::HTMLAttr( const SwPosition& rPos, const SfxPoolItem& rItem,
-                      HTMLAttr **ppHd ) :
-    nSttPara( rPos.nNode ),
-    nEndPara( rPos.nNode ),
-    nSttContent( rPos.nContent.GetIndex() ),
-    nEndContent(rPos.nContent.GetIndex() ),
-    bInsAtStart( true ),
-    bLikePara( false ),
-    bValid( true ),
-    pItem( rItem.Clone() ),
-    pNext( nullptr ),
-    pPrev( nullptr ),
-    ppHead( ppHd )
+                      HTMLAttr **ppHd, const std::shared_ptr<HTMLAttrTable>& rAttrTab ) :
+    m_nStartPara( rPos.nNode ),
+    m_nEndPara( rPos.nNode ),
+    m_nStartContent( rPos.nContent.GetIndex() ),
+    m_nEndContent(rPos.nContent.GetIndex() ),
+    m_bInsAtStart( true ),
+    m_bLikePara( false ),
+    m_bValid( true ),
+    m_pItem( rItem.Clone() ),
+    m_xAttrTab( rAttrTab ),
+    m_pNext( nullptr ),
+    m_pPrev( nullptr ),
+    m_ppHead( ppHd )
 {
 }
 
 HTMLAttr::HTMLAttr( const HTMLAttr &rAttr, const SwNodeIndex &rEndPara,
-                      sal_Int32 nEndCnt, HTMLAttr **ppHd ) :
-    nSttPara( rAttr.nSttPara ),
-    nEndPara( rEndPara ),
-    nSttContent( rAttr.nSttContent ),
-    nEndContent( nEndCnt ),
-    bInsAtStart( rAttr.bInsAtStart ),
-    bLikePara( rAttr.bLikePara ),
-    bValid( rAttr.bValid ),
-    pItem( rAttr.pItem->Clone() ),
-    pNext( nullptr ),
-    pPrev( nullptr ),
-    ppHead( ppHd )
+                      sal_Int32 nEndCnt, HTMLAttr **ppHd, const std::shared_ptr<HTMLAttrTable>& rAttrTab ) :
+    m_nStartPara( rAttr.m_nStartPara ),
+    m_nEndPara( rEndPara ),
+    m_nStartContent( rAttr.m_nStartContent ),
+    m_nEndContent( nEndCnt ),
+    m_bInsAtStart( rAttr.m_bInsAtStart ),
+    m_bLikePara( rAttr.m_bLikePara ),
+    m_bValid( rAttr.m_bValid ),
+    m_pItem( rAttr.m_pItem->Clone() ),
+    m_xAttrTab( rAttrTab ),
+    m_pNext( nullptr ),
+    m_pPrev( nullptr ),
+    m_ppHead( ppHd )
 {
 }
 
@@ -5430,44 +5485,45 @@ HTMLAttr::~HTMLAttr()
 HTMLAttr *HTMLAttr::Clone(const SwNodeIndex& rEndPara, sal_Int32 nEndCnt) const
 {
     // create the attribute anew with old start position
-    HTMLAttr *pNew = new HTMLAttr( *this, rEndPara, nEndCnt, ppHead );
+    HTMLAttr *pNew = new HTMLAttr( *this, rEndPara, nEndCnt, m_ppHead, m_xAttrTab );
 
     // The Previous-List must be taken over, the Next-List not!
-    pNew->pPrev = pPrev;
+    pNew->m_pPrev = m_pPrev;
 
     return pNew;
 }
 
 void HTMLAttr::Reset(const SwNodeIndex& rSttPara, sal_Int32 nSttCnt,
-                       HTMLAttr **ppHd)
+                     HTMLAttr **ppHd, const std::shared_ptr<HTMLAttrTable>& rAttrTab)
 {
     // reset the start (and the end)
-    nSttPara = rSttPara;
-    nSttContent = nSttCnt;
-    nEndPara = rSttPara;
-    nEndContent = nSttCnt;
+    m_nStartPara = rSttPara;
+    m_nStartContent = nSttCnt;
+    m_nEndPara = rSttPara;
+    m_nEndContent = nSttCnt;
 
     // correct the head and nullify link
-    pNext = nullptr;
-    pPrev = nullptr;
-    ppHead = ppHd;
+    m_pNext = nullptr;
+    m_pPrev = nullptr;
+    m_ppHead = ppHd;
+    m_xAttrTab = rAttrTab;
 }
 
 void HTMLAttr::InsertPrev( HTMLAttr *pPrv )
 {
-    OSL_ENSURE( !pPrv->pNext || pPrv->pNext == this,
+    OSL_ENSURE( !pPrv->m_pNext || pPrv->m_pNext == this,
             "HTMLAttr::InsertPrev: pNext wrong" );
-    pPrv->pNext = nullptr;
+    pPrv->m_pNext = nullptr;
 
-    OSL_ENSURE( nullptr == pPrv->ppHead || ppHead == pPrv->ppHead,
+    OSL_ENSURE( nullptr == pPrv->m_ppHead || m_ppHead == pPrv->m_ppHead,
             "HTMLAttr::InsertPrev: ppHead wrong" );
-    pPrv->ppHead = nullptr;
+    pPrv->m_ppHead = nullptr;
 
     HTMLAttr *pAttr = this;
     while( pAttr->GetPrev() )
         pAttr = pAttr->GetPrev();
 
-    pAttr->pPrev = pPrv;
+    pAttr->m_pPrev = pPrv;
 }
 
 bool SwHTMLParser::ParseMetaOptions(
@@ -5496,6 +5552,74 @@ void SwHTMLParser::AddMetaUserDefined( OUString const & i_rMetaName )
     {
         (*pName) = i_rMetaName;
     }
+}
+
+void HTMLReader::SetupFilterOptions()
+{
+    // Reset state from previous Read() invocation.
+    m_aNamespace.clear();
+
+    if (!m_pMedium)
+        return;
+
+    const SfxItemSet* pItemSet = m_pMedium->GetItemSet();
+    if (!pItemSet)
+        return;
+
+    auto pItem = pItemSet->GetItem<SfxStringItem>(SID_FILE_FILTEROPTIONS);
+    if (!pItem)
+        return;
+
+    OUString aFilterOptions = pItem->GetValue();
+    const OUString aXhtmlNsKey("xhtmlns=");
+    if (aFilterOptions.startsWith(aXhtmlNsKey))
+    {
+        OUString aNamespace = aFilterOptions.copy(aXhtmlNsKey.getLength());
+        m_aNamespace = aNamespace;
+    }
+}
+
+namespace
+{
+    class FontCacheGuard
+    {
+    public:
+        ~FontCacheGuard()
+        {
+            FlushFontCache();
+        }
+    };
+}
+
+bool TestImportHTML(SvStream &rStream)
+{
+    FontCacheGuard aFontCacheGuard;
+    std::unique_ptr<Reader> xReader(new HTMLReader);
+    xReader->m_pStream = &rStream;
+
+    SwGlobals::ensure();
+
+    SfxObjectShellLock xDocSh(new SwDocShell(SfxObjectCreateMode::INTERNAL));
+    xDocSh->DoInitNew();
+    SwDoc *pD =  static_cast<SwDocShell*>((&xDocSh))->GetDoc();
+
+    SwNodeIndex aIdx(pD->GetNodes().GetEndOfContent(), -1);
+    SwPaM aPaM(aIdx);
+    pD->SetInReading(true);
+    bool bRet = false;
+    try
+    {
+        bRet = xReader->Read(*pD, OUString(), aPaM, OUString()) == ERRCODE_NONE;
+    }
+    catch (const std::runtime_error&)
+    {
+    }
+    catch (const std::out_of_range&)
+    {
+    }
+    pD->SetInReading(false);
+
+    return bRet;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

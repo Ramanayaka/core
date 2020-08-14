@@ -20,9 +20,9 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLCELLRANGESOURCECONTEXT_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLCELLRANGESOURCECONTEXT_HXX
 
-#include <xmloff/xmlimp.hxx>
-#include "xmlimprt.hxx"
 #include "importcontext.hxx"
+
+namespace sax_fastparser { class FastAttributeList; }
 
 
 struct ScMyImpCellRangeSource
@@ -43,19 +43,10 @@ class ScXMLCellRangeSourceContext : public ScXMLImportContext
 public:
                                 ScXMLCellRangeSourceContext(
                                     ScXMLImport& rImport,
-                                    sal_uInt16 nPrfx,
-                                    const OUString& rLName,
-                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList,
+                                    const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                                     ScMyImpCellRangeSource* pCellRangeSource
                                     );
     virtual                     ~ScXMLCellRangeSourceContext() override;
-
-    virtual SvXMLImportContext* CreateChildContext(
-                                    sal_uInt16 nPrefix,
-                                    const OUString& rLocalName,
-                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList
-                                    ) override;
-    virtual void                EndElement() override;
 };
 
 #endif

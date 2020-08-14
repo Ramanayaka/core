@@ -26,7 +26,6 @@
 #include <com/sun/star/system/XSimpleMailMessage2.hpp>
 
 
-// class declaration
 
 
 class CSmplMailMsg : public cppu::WeakImplHelper< css::system::XSimpleMailMessage2 >
@@ -34,9 +33,9 @@ class CSmplMailMsg : public cppu::WeakImplHelper< css::system::XSimpleMailMessag
 public:
     CSmplMailMsg( );
 
-    virtual void SAL_CALL setBody( const ::rtl::OUString& aBody ) override;
+    virtual void SAL_CALL setBody( const OUString& aBody ) override;
 
-    virtual ::rtl::OUString SAL_CALL getBody(  ) override;
+    virtual OUString SAL_CALL getBody(  ) override;
 
 
     virtual void SAL_CALL setRecipient( const OUString& aRecipient ) override;

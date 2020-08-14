@@ -35,26 +35,83 @@
 
             </android.support.design.widget.AppBarLayout>
 
-            <RelativeLayout
-                android:id="@+id/gecko_layout"
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical">
+                android:layout_height="wrap_content">
 
-                <org.mozilla.gecko.gfx.LayerView
-                    android:id="@+id/layer_view"
+                <EditText
+                    android:id="@+id/calc_address"
+                    android:layout_width="@dimen/calc_address_bar_width"
+                    android:layout_height="@dimen/calc_toolbar_height"
+                    android:layout_weight="0"
+                    android:inputType="textNoSuggestions"
+                    android:imeOptions="actionDone|actionGo"
+                    android:visibility="gone"/>
+
+                <EditText
+                    android:id="@+id/calc_formula"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/calc_toolbar_height"
+                    android:layout_weight="1"
+                    android:inputType="text"
+                    android:imeOptions="actionDone|actionGo"
+                    android:visibility="gone"/>
+
+            </LinearLayout>
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <View
+                    android:id="@+id/calc_header_top_left"
+                    android:layout_width="@dimen/calc_header_width"
+                    android:layout_height="@dimen/calc_header_height"
+                    android:visibility="gone"/>
+
+                <org.libreoffice.overlay.CalcHeadersView
+                    android:id="@+id/calc_header_column"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"/>
+                    android:layout_height="@dimen/calc_header_height"
+                    android:layout_toRightOf="@+id/calc_header_top_left"
+                    android:layout_toEndOf="@+id/calc_header_top_left"
+                    android:visibility="gone"/>
 
-                <org.libreoffice.overlay.DocumentOverlayView
-                    android:id="@+id/text_cursor_view"
-                    android:layout_width="fill_parent"
-                    android:layout_height="fill_parent"/>
+                <org.libreoffice.overlay.CalcHeadersView
+                    android:id="@+id/calc_header_row"
+                    android:layout_width="@dimen/calc_header_width"
+                    android:layout_height="match_parent"
+                    android:layout_below="@+id/calc_header_top_left"
+                    android:visibility="gone"/>
+
+                <RelativeLayout
+                    android:id="@+id/gecko_layout"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:layout_toRightOf="@+id/calc_header_row"
+                    android:layout_toEndOf="@+id/calc_header_row"
+                    android:layout_below="@+id/calc_header_column">
+
+                    <org.mozilla.gecko.gfx.LayerView
+                        android:id="@+id/layer_view"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"/>
+
+                    <org.libreoffice.overlay.DocumentOverlayView
+                        android:id="@+id/text_cursor_view"
+                        android:layout_width="fill_parent"
+                        android:layout_height="fill_parent"/>
+
+                </RelativeLayout>
 
             </RelativeLayout>
+
         </LinearLayout>
 
         <include layout="@layout/toolbar_bottom"/>
+        <include android:id="@+id/toolbar_back_color_picker" layout="@layout/toolbar_color_picker"/>
+        <include android:id="@+id/toolbar_color_picker" layout="@layout/toolbar_color_picker"/>
 
         <RelativeLayout
             android:id="@+id/loadingPanel"

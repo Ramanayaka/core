@@ -112,15 +112,21 @@
       </prop>
       <prop oor:name="MsWordCompTrailingBlanks" oor:type="xs:boolean" oor:nillable="false">
         <info>
-          <desc>MS Word-compatible trailing blanks</desc>
+          <desc>Word-compatible trailing blanks</desc>
         </info>
         <value>false</value>
       </prop>
       <prop oor:name="SubtractFlysAnchoredAtFlys" oor:type="xs:boolean" oor:nillable="false">
         <info>
-          <desc>Use LibreOffice 4.3 anchoring paint order</desc>
+          <desc>Tolerate white lines of PDF page backgrounds for compatibility with old documents (Use LibreOffice 4.3 anchoring paint order)</desc>
         </info>
         <value>false</value>
+      </prop>
+      <prop oor:name="EmptyDbFieldHidesPara" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Hide paragraphs of database fields (e.g., mail merge) with an empty value</desc>
+        </info>
+        <value>true</value>
       </prop>
     </group>
   </templates>
@@ -143,6 +149,35 @@
           <label>OOo version 1.1.</label>
         </info>
         <value/>
+      </prop>
+    </group>
+    <group oor:name="View">
+      <info>
+        <desc>Compatibility options affecting GUI</desc>
+      </info>
+      <prop oor:name="MSCompatibleFormsMenu" oor:type="xs:boolean" oor:nillable="false">
+        <!-- UIHints: Tools - Options - Writer - Compatibility - Global Options -->
+        <info>
+          <desc>Specifies whether Form menu should be customized for an MSO workflow. The MS compatible Form menu contains only MS compatible form controls.</desc>
+          <label>Reorganize Form menu to have it MS compatible.</label>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="AllowCommentsInFootnotes" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+            <!-- See tdf#86188 for rationale -->
+            <desc>Specifies whether adding comments to footnotes is allowed. This is allowed for ODF but not in OOXML and can result in invalid docx files being saved.</desc>
+            <label>Allow adding comments to footnotes. Disable for better OOXML interoperability.</label>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="ReverseSeriesOrderAreaAndNetChart" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <!-- See tdf#127813 for rationale -->
+          <desc>Specifies the data series order of filled net and normal area charts.</desc>
+          <label>Reverse the data series order of filled net and normal area charts. Disable for better OOXML interoperability.</label>
+        </info>
+        <value>true</value>
       </prop>
     </group>
   </component>

@@ -17,22 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_EPSPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_EPSPRIMITIVE2D_HXX
-
-#include <drawinglayer/drawinglayerdllapi.h>
+#pragma once
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <vcl/gfxlink.hxx>
 #include <vcl/gdimtf.hxx>
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** EpsPrimitive2D class */
-        class DRAWINGLAYER_DLLPUBLIC EpsPrimitive2D : public BufferedDecompositionPrimitive2D
+        class EpsPrimitive2D final : public BufferedDecompositionPrimitive2D
         {
         private:
             /// the geometry definition
@@ -44,7 +39,6 @@ namespace drawinglayer
             /// the replacement content definition
             GDIMetaFile                                 maMetaFile;
 
-        protected:
             /// create local decomposition
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
@@ -67,11 +61,9 @@ namespace drawinglayer
             virtual basegfx::B2DRange getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_EPSPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

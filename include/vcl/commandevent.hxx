@@ -24,9 +24,10 @@
 #include <tools/gen.hxx>
 #include <tools/solar.h>
 #include <vcl/dllapi.h>
-#include <vcl/keycod.hxx>
-#include <vcl/font.hxx>
+#include <vcl/keycodes.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <rtl/ustring.hxx>
+#include <vcl/GestureEvent.hxx>
 
 class CommandExtTextInputData;
 class CommandWheelData;
@@ -37,6 +38,8 @@ class CommandMediaData;
 class CommandSelectionChangeData;
 class CommandSwipeData;
 class CommandLongPressData;
+class CommandGestureData;
+
 enum class CommandEventId;
 
 enum class ExtTextInputAttr {
@@ -55,8 +58,8 @@ namespace o3tl
     template<> struct typed_flags<ExtTextInputAttr> : is_typed_flags<ExtTextInputAttr, 0xff00> {};
 }
 
-#define EXTTEXTINPUT_CURSOR_INVISIBLE           ((sal_uInt16)0x0001)
-#define EXTTEXTINPUT_CURSOR_OVERWRITE           ((sal_uInt16)0x0002)
+#define EXTTEXTINPUT_CURSOR_INVISIBLE           (sal_uInt16(0x0001))
+#define EXTTEXTINPUT_CURSOR_OVERWRITE           (sal_uInt16(0x0002))
 
 
 class VCL_DLLPUBLIC CommandEvent
@@ -86,6 +89,7 @@ public:
     const CommandSelectionChangeData*   GetSelectionChangeData() const;
     const CommandSwipeData*             GetSwipeData() const;
     const CommandLongPressData*         GetLongPressData() const;
+    const CommandGestureData*           GetGestureData() const;
 };
 
 class VCL_DLLPUBLIC CommandExtTextInputData
@@ -117,11 +121,6 @@ public:
 
 class VCL_DLLPUBLIC CommandInputContextData
 {
-private:
-    LanguageType    meLanguage;
-
-public:
-                    CommandInputContextData( LanguageType eLang );
 };
 
 enum class CommandWheelMode
@@ -133,7 +132,7 @@ enum class CommandWheelMode
 };
 
 // Magic value used in mnLines field in CommandWheelData
-#define COMMAND_WHEEL_PAGESCROLL        ((sal_uLong)0xFFFFFFFF)
+#define COMMAND_WHEEL_PAGESCROLL        (sal_uLong(0xFFFFFFFF))
 
 class VCL_DLLPUBLIC CommandWheelData
 {
@@ -171,7 +170,7 @@ public:
                         { return ((mnCode & KEY_MOD2) != 0); }
 };
 
-class VCL_DLLPUBLIC CommandScrollData
+class CommandScrollData
 {
 private:
     long            mnDeltaX;
@@ -184,7 +183,7 @@ public:
     long            GetDeltaY() const { return mnDeltaY; }
 };
 
-class VCL_DLLPUBLIC CommandModKeyData
+class CommandModKeyData
 {
 private:
     bool            mbDown;
@@ -257,7 +256,7 @@ public:
     bool GetPassThroughToOS() const { return m_bPassThroughToOS; }
 };
 
-class VCL_DLLPUBLIC CommandSelectionChangeData
+class CommandSelectionChangeData
 {
 private:
     sal_uLong          mnStart;
@@ -305,6 +304,25 @@ public:
     double getY() const { return mnY; }
 };
 
+class VCL_DLLPUBLIC CommandGestureData
+{
+public:
+    double const mfX;
+    double const mfY;
+    GestureEventType const meEventType;
+
+    double const mfOffset;
+    PanningOrientation const meOrientation;
+
+    CommandGestureData(double fX, double fY, GestureEventType eEventType, double fOffset, PanningOrientation eOrientation)
+        : mfX(fX)
+        , mfY(fY)
+        , meEventType(eEventType)
+        , mfOffset(fOffset)
+        , meOrientation(eOrientation)
+    {}
+};
+
 enum class CommandEventId
 {
     NONE                    = 0,
@@ -328,6 +346,7 @@ enum class CommandEventId
     QueryCharPosition       = 20,
     Swipe                   = 21,
     LongPress               = 22,
+    Gesture                 = 23,
 };
 
 #endif // INCLUDED_VCL_COMMANDEVENT_HXX

@@ -8,21 +8,11 @@
  *
  */
 
-#include <sfx2/dispatch.hxx>
-#include <svl/zforlist.hxx>
-#include <svl/undo.hxx>
-
-#include "formulacell.hxx"
-#include "rangelst.hxx"
-#include "scitems.hxx"
-#include "docsh.hxx"
-#include "document.hxx"
-#include "uiitems.hxx"
-#include "reffact.hxx"
-#include "docfunc.hxx"
-#include "TableFillingAndNavigationTools.hxx"
-
-#include "MatrixComparisonGenerator.hxx"
+#include <rangelst.hxx>
+#include <TableFillingAndNavigationTools.hxx>
+#include <MatrixComparisonGenerator.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
 
 namespace
 {
@@ -38,8 +28,8 @@ namespace
                 if (j >= i)
                 {
                     aTemplate.setTemplate(aTemplateString);
-                    aTemplate.applyRange("%VAR1%", *aRangeList[i]);
-                    aTemplate.applyRange("%VAR2%", *aRangeList[j]);
+                    aTemplate.applyRange("%VAR1%", aRangeList[i]);
+                    aTemplate.applyRange("%VAR2%", aRangeList[j]);
                     aOutput.writeFormula(aTemplate.getTemplate());
                 }
                 aOutput.nextRow();
@@ -51,24 +41,25 @@ namespace
 
 ScMatrixComparisonGenerator::ScMatrixComparisonGenerator(
                                     SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
-                                    vcl::Window* pParent, ScViewData* pViewData, const OUString& rID,
-                                    const OUString& rUiXmlDescription) :
-    ScStatisticsInputOutputDialog(pSfxBindings, pChildWindow, pParent, pViewData, rID, rUiXmlDescription)
+                                    weld::Window* pParent, ScViewData* pViewData,
+                                    const OUString& rUiXmlDescription,
+                                    const OString& rID)
+    : ScStatisticsInputOutputDialog(pSfxBindings, pChildWindow, pParent, pViewData, rUiXmlDescription, rID)
 {}
 
 ScMatrixComparisonGenerator::~ScMatrixComparisonGenerator()
 {}
 
-sal_Int16 ScMatrixComparisonGenerator::GetUndoNameId()
+const char* ScMatrixComparisonGenerator::GetUndoNameId()
 {
     return STR_CORRELATION_UNDO_NAME;
 }
 
 ScRange ScMatrixComparisonGenerator::ApplyOutput(ScDocShell* pDocShell)
 {
-    AddressWalkerWriter output(mOutputAddress, pDocShell, mDocument,
+    AddressWalkerWriter output(mOutputAddress, pDocShell, &mDocument,
             formula::FormulaGrammar::mergeToGrammar( formula::FormulaGrammar::GRAM_ENGLISH, mAddressDetails.eConv));
-    FormulaTemplate aTemplate(mDocument);
+    FormulaTemplate aTemplate(&mDocument);
 
     SCTAB inTab = mInputRange.aStart.Tab();
 

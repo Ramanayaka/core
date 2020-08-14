@@ -19,29 +19,23 @@
 #ifndef INCLUDED_SC_SOURCE_UI_VBA_VBAWORKSHEET_HXX
 #define INCLUDED_SC_SOURCE_UI_VBA_VBAWORKSHEET_HXX
 
-#include <comphelper/unwrapargs.hxx>
-
-#include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <ooo/vba/excel/XWorksheet.hpp>
-#include <ooo/vba/excel/XComments.hpp>
-#include <ooo/vba/excel/XRange.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <ooo/vba/excel/XOutline.hpp>
-#include <ooo/vba/excel/XPageSetup.hpp>
-#include <ooo/vba/excel/XHPageBreaks.hpp>
-#include <ooo/vba/excel/XVPageBreaks.hpp>
-#include <com/sun/star/container/XNamed.hpp>
 #include <rtl/ref.hxx>
 
 #include <vbahelper/vbahelperinterface.hxx>
-#include "address.hxx"
+#include <types.hxx>
 
-namespace ooo { namespace vba { namespace excel {
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::sheet { class XSpreadsheet; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace ooo::vba::excel { class XOutline; }
+namespace ooo::vba::excel { class XPageSetup; }
+namespace ooo::vba::excel { class XRange; }
+
+namespace ooo::vba::excel {
     class XChartObjects;
     class XHyperlinks;
-} } }
+}
 
 class ScVbaSheetObjectsBase;
 
@@ -53,7 +47,7 @@ class ScVbaWorksheet : public WorksheetImpl_BASE
     css::uno::Reference< css::frame::XModel > mxModel;
     css::uno::Reference< ov::excel::XChartObjects > mxCharts;
     css::uno::Reference< ov::excel::XHyperlinks > mxHlinks;
-    ::rtl::Reference< ScVbaSheetObjectsBase > mxButtons;
+    ::rtl::Reference< ScVbaSheetObjectsBase > mxButtons[2];
     bool mbVeryHidden;
 
     /// @throws css::uno::RuntimeException
@@ -61,8 +55,10 @@ class ScVbaWorksheet : public WorksheetImpl_BASE
     /// @throws css::uno::RuntimeException
     css::uno::Reference< ov::excel::XRange > getSheetRange();
 
-    css::uno::Reference< css::container::XNameAccess > getFormControls();
+    css::uno::Reference< css::container::XNameAccess > getFormControls() const;
     css::uno::Any getControlShape( const OUString& sName );
+
+    css::uno::Any getButtons( const css::uno::Any &rIndex, bool bOptionButtons );
 
 public:
     /// @throws css::uno::RuntimeException
@@ -76,9 +72,9 @@ public:
 
     virtual ~ScVbaWorksheet() override;
 
-    const css::uno::Reference< css::frame::XModel >& getModel()
+    const css::uno::Reference< css::frame::XModel >& getModel() const
     { return mxModel; }
-    const css::uno::Reference< css::sheet::XSpreadsheet >& getSheet()
+    const css::uno::Reference< css::sheet::XSpreadsheet >& getSheet() const
     { return mxSheet; }
     static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
     css::uno::Reference< ov::excel::XWorksheet > createSheetCopyInNewDoc( const OUString& );
@@ -159,7 +155,7 @@ public:
     // CodeName
     virtual OUString SAL_CALL getCodeName() override;
     /// @throws css::uno::RuntimeException
-    sal_Int16 getSheetID();
+    sal_Int16 getSheetID() const;
 
     virtual void SAL_CALL PrintOut( const css::uno::Any& From, const css::uno::Any& To, const css::uno::Any& Copies, const css::uno::Any& Preview, const css::uno::Any& ActivePrinter, const css::uno::Any& PrintToFile, const css::uno::Any& Collate, const css::uno::Any& PrToFileName, const css::uno::Any& IgnorePrintAreas ) override;
     // XHelperInterface

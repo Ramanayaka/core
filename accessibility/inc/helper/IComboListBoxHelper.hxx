@@ -16,17 +16,16 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_ACCESSIBILITY_INC_HELPER_ICOMBOLISTBOXHELPER_HXX
-#define INCLUDED_ACCESSIBILITY_INC_HELPER_ICOMBOLISTBOXHELPER_HXX
+#pragma once
 
 #include <com/sun/star/uno/Reference.hxx>
 
 #include <rtl/ustring.hxx>
 #include <tools/wintypes.hxx>
 
-namespace com { namespace sun { namespace star { namespace datatransfer { namespace clipboard {
+namespace com::sun::star::datatransfer::clipboard {
     class XClipboard;
-} } } } }
+}
 
 class Point;
 namespace tools { class Rectangle; }
@@ -53,9 +52,9 @@ namespace accessibility
         virtual sal_Int32       GetEntryCount() const = 0;
         virtual void            Select() = 0;
         virtual void            SelectEntryPos( sal_Int32  nPos, bool bSelect = true ) = 0;
-        virtual sal_Int32       GetSelectEntryCount() const = 0;
+        virtual sal_Int32       GetSelectedEntryCount() const = 0;
         virtual void            SetNoSelection() = 0;
-        virtual sal_Int32       GetSelectEntryPos( sal_Int32  nSelIndex ) const = 0;
+        virtual sal_Int32       GetSelectedEntryPos( sal_Int32  nSelIndex ) const = 0;
         virtual bool            IsInDropDown() const = 0;
         virtual tools::Rectangle       GetEntryCharacterBounds( const sal_Int32 _nEntryPos, const sal_Int32 _nCharacterIndex ) const = 0;
         virtual long            GetIndexForPoint( const Point& rPoint, sal_Int32 & nPos ) const = 0;
@@ -63,7 +62,6 @@ namespace accessibility
                                 GetClipboard() = 0;
     };
 }
-#endif // INCLUDED_ACCESSIBILITY_INC_HELPER_ICOMBOLISTBOXHELPER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 

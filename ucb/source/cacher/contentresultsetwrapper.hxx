@@ -22,7 +22,6 @@
 
 #include <rtl/ustring.hxx>
 #include <rtl/ref.hxx>
-#include <ucbhelper/macros.hxx>
 #include <osl/mutex.hxx>
 #include <cppuhelper/weak.hxx>
 #include <com/sun/star/lang/XComponent.hpp>
@@ -32,9 +31,9 @@
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/ucb/XContentAccess.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <cppuhelper/interfacecontainer.hxx>
+#include <cppuhelper/interfacecontainer.h>
 #include <comphelper/interfacecontainer2.hxx>
+#include <memory>
 
 
 class ContentResultSetWrapperListener;
@@ -87,21 +86,23 @@ private:
     bool                m_bDisposed; ///Dispose call ready.
     bool                m_bInDispose;///In dispose call
     osl::Mutex              m_aContainerMutex;
-    comphelper::OInterfaceContainerHelper2*
+    std::unique_ptr<comphelper::OInterfaceContainerHelper2>
                             m_pDisposeEventListeners;
-    PropertyChangeListenerContainer_Impl*
+    std::unique_ptr<PropertyChangeListenerContainer_Impl>
                             m_pPropertyChangeListeners;
-    PropertyChangeListenerContainer_Impl*
+    std::unique_ptr<PropertyChangeListenerContainer_Impl>
                             m_pVetoableChangeListeners;
 
 
     //methods:
 private:
-    void SAL_CALL
+    void
     impl_getPropertyChangeListenerContainer();
 
-    void SAL_CALL
+    void
     impl_getVetoableChangeListenerContainer();
+
+    void verifyGet();
 
 protected:
 
@@ -110,35 +111,35 @@ protected:
 
     virtual ~ContentResultSetWrapper() override;
 
-    void SAL_CALL impl_init();
-    void SAL_CALL impl_deinit();
+    void impl_init();
+    void impl_deinit();
 
     //--
 
-    void SAL_CALL impl_init_xRowOrigin();
-    void SAL_CALL impl_init_xContentAccessOrigin();
-    void SAL_CALL impl_init_xPropertySetOrigin();
+    void impl_init_xRowOrigin();
+    void impl_init_xContentAccessOrigin();
+    void impl_init_xPropertySetOrigin();
 
     //--
 
-    virtual void SAL_CALL impl_initPropertySetInfo(); //helping XPropertySet
+    virtual void impl_initPropertySetInfo(); //helping XPropertySet
 
     /// @throws css::lang::DisposedException
     /// @throws css::uno::RuntimeException
-    void SAL_CALL
+    void
     impl_EnsureNotDisposed();
 
-    void SAL_CALL
+    void
     impl_notifyPropertyChangeListeners(
             const css::beans::PropertyChangeEvent& rEvt );
 
     /// @throws css::beans::PropertyVetoException
     /// @throws css::uno::RuntimeException
-    void SAL_CALL
+    void
     impl_notifyVetoableChangeListeners(
             const css::beans::PropertyChangeEvent& rEvt );
 
-    bool SAL_CALL impl_isForwardOnly();
+    bool impl_isForwardOnly();
 
 public:
 
@@ -205,16 +206,16 @@ public:
     // own methods
 
     /// @throws css::uno::RuntimeException
-    virtual void SAL_CALL
+    virtual void
         impl_disposing( const css::lang::EventObject& Source );
 
     /// @throws css::uno::RuntimeException
-    virtual void SAL_CALL
+    virtual void
     impl_propertyChange( const css::beans::PropertyChangeEvent& evt );
 
     /// @throws css::beans::PropertyVetoException
     /// @throws css::uno::RuntimeException
-    virtual void SAL_CALL
+    virtual void
     impl_vetoableChange( const css::beans::PropertyChangeEvent& aEvent );
 
 
@@ -341,7 +342,6 @@ class ContentResultSetWrapperListener
         , public css::beans::XPropertyChangeListener
         , public css::beans::XVetoableChangeListener
 {
-protected:
     ContentResultSetWrapper*    m_pOwner;
 
 public:
@@ -376,7 +376,7 @@ public:
 
 
     // own methods:
-    void SAL_CALL impl_OwnerDies();
+    void impl_OwnerDies();
 };
 
 #endif

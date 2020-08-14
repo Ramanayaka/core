@@ -18,43 +18,20 @@
  */
 
 #include <hintids.hxx>
-#include <uitool.hxx>
 #include <comphelper/string.hxx>
-#include <svl/urihelper.hxx>
-#include <svl/PasswordHelper.hxx>
-#include <vcl/msgbox.hxx>
 #include <svl/stritem.hxx>
 #include <svl/eitem.hxx>
-#include <sot/formats.hxx>
-#include <sfx2/passwd.hxx>
-#include <sfx2/docfilt.hxx>
 #include <sfx2/request.hxx>
-#include <sfx2/docfile.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <editeng/sizeitem.hxx>
-#include <svtools/htmlcfg.hxx>
 #include <section.hxx>
-#include <docary.hxx>
-#include <regionsw.hxx>
 #include <basesh.hxx>
-#include <wdocsh.hxx>
 #include <view.hxx>
-#include <swmodule.hxx>
 #include <wrtsh.hxx>
-#include <swundo.hxx>
-#include <column.hxx>
+#include <fmtclds.hxx>
 #include <fmtfsize.hxx>
-#include <shellio.hxx>
-#include <helpid.h>
 #include <cmdid.h>
-#include <regionsw.hrc>
-#include <comcore.hrc>
-#include <globals.hrc>
-#include <sfx2/bindings.hxx>
-#include <sfx2/htmlmode.hxx>
-#include <svx/dlgutil.hxx>
-#include "swabstdlg.hxx"
-#include <memory>
+#include <swabstdlg.hxx>
 
 void SwBaseShell::InsertRegionDialog(SfxRequest& rReq)
 {
@@ -69,6 +46,7 @@ void SwBaseShell::InsertRegionDialog(SfxRequest& rReq)
             RES_BACKGROUND, RES_BACKGROUND,
             RES_COL, RES_COL,
             RES_FTN_AT_TXTEND, RES_FRAMEDIR,
+            XATTR_FILL_FIRST, XATTR_FILL_LAST,
             SID_ATTR_PAGE_SIZE, SID_ATTR_PAGE_SIZE>{});
 
     if (!pSet || pSet->Count()==0)
@@ -77,16 +55,16 @@ void SwBaseShell::InsertRegionDialog(SfxRequest& rReq)
         rSh.CalcBoundRect(aRect, RndStdIds::FLY_AS_CHAR);
 
         long nWidth = aRect.Width();
-        aSet.Put(SwFormatFrameSize(ATT_VAR_SIZE, nWidth));
+        aSet.Put(SwFormatFrameSize(SwFrameSize::Variable, nWidth));
 
         // height=width for more consistent preview (analog to edit region)
         aSet.Put(SvxSizeItem(SID_ATTR_PAGE_SIZE, Size(nWidth, nWidth)));
         SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-        OSL_ENSURE(pFact, "Dialog creation failed!");
-        ScopedVclPtr<AbstractInsertSectionTabDialog> aTabDlg(pFact->CreateInsertSectionTabDialog(
-            &GetView().GetViewFrame()->GetWindow(), aSet , rSh));
-        OSL_ENSURE(aTabDlg, "Dialog creation failed!");
-        aTabDlg->Execute();
+        VclPtr<AbstractInsertSectionTabDialog> aTabDlg(pFact->CreateInsertSectionTabDialog(
+            GetView().GetFrameWeld(), aSet , rSh));
+        aTabDlg->StartExecuteAsync([aTabDlg](sal_Int32 /*nResult*/){
+            aTabDlg->disposeOnce();
+        });
         rReq.Ignore();
     }
     else
@@ -102,7 +80,7 @@ void SwBaseShell::InsertRegionDialog(SfxRequest& rReq)
         else
             aTmpStr = rSh.GetUniqueSectionName();
 
-        SwSectionData aSection(CONTENT_SECTION, aTmpStr);
+        SwSectionData aSection(SectionType::Content, aTmpStr);
         rReq.SetReturnValue(SfxStringItem(FN_INSERT_REGION, aTmpStr));
 
         aSet.Put( *pSet );
@@ -154,8 +132,8 @@ void SwBaseShell::InsertRegionDialog(SfxRequest& rReq)
 
         if(!aFile.isEmpty() || !aSub.isEmpty())
         {
-            OUString sLinkFileName = OUStringLiteral1(sfx2::cTokenSeparator)
-                + OUStringLiteral1(sfx2::cTokenSeparator);
+            OUString sLinkFileName = OUStringChar(sfx2::cTokenSeparator)
+                + OUStringChar(sfx2::cTokenSeparator);
             sLinkFileName = comphelper::string::setToken(sLinkFileName, 0, sfx2::cTokenSeparator, aFile);
 
             if(SfxItemState::SET ==
@@ -166,7 +144,7 @@ void SwBaseShell::InsertRegionDialog(SfxRequest& rReq)
             }
 
             sLinkFileName += aSub;
-            aSection.SetType( FILE_LINK_SECTION );
+            aSection.SetType( SectionType::FileLink );
             aSection.SetLinkFileName(sLinkFileName);
         }
         rSh.InsertSection(aSection, aSet.Count() ? &aSet : nullptr);
@@ -174,36 +152,32 @@ void SwBaseShell::InsertRegionDialog(SfxRequest& rReq)
     }
 }
 
-IMPL_LINK( SwWrtShell, InsertRegionDialog, void*, p, void )
+void SwWrtShell::StartInsertRegionDialog(const SwSectionData& rSectionData)
 {
-    SwSectionData* pSect = static_cast<SwSectionData*>(p);
-    std::unique_ptr<SwSectionData> xSectionData(pSect);
-    if (xSectionData.get())
-    {
-        SfxItemSet aSet(
-            GetView().GetPool(),
-            svl::Items<
-                RES_FRM_SIZE, RES_FRM_SIZE,
-                RES_BACKGROUND, RES_BACKGROUND,
-                RES_COL, RES_COL,
-                SID_ATTR_PAGE_SIZE, SID_ATTR_PAGE_SIZE>{});
-        SwRect aRect;
-        CalcBoundRect(aRect, RndStdIds::FLY_AS_CHAR);
-        long nWidth = aRect.Width();
-        aSet.Put(SwFormatFrameSize(ATT_VAR_SIZE, nWidth));
-        // height=width for more consistent preview (analog to edit region)
-        aSet.Put(SvxSizeItem(SID_ATTR_PAGE_SIZE, Size(nWidth, nWidth)));
-        SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-        OSL_ENSURE(pFact, "Dialog creation failed!");
-        ScopedVclPtr<AbstractInsertSectionTabDialog> aTabDlg(pFact->CreateInsertSectionTabDialog(
-            &GetView().GetViewFrame()->GetWindow(),aSet , *this));
-        OSL_ENSURE(aTabDlg, "Dialog creation failed!");
-        aTabDlg->SetSectionData(*xSectionData);
-        aTabDlg->Execute();
-    }
+    SfxItemSet aSet(
+        GetView().GetPool(),
+        svl::Items<
+            RES_FRM_SIZE, RES_FRM_SIZE,
+            RES_BACKGROUND, RES_BACKGROUND,
+            RES_COL, RES_COL,
+            XATTR_FILL_FIRST, XATTR_FILL_LAST,
+            SID_ATTR_PAGE_SIZE, SID_ATTR_PAGE_SIZE>{});
+    SwRect aRect;
+    CalcBoundRect(aRect, RndStdIds::FLY_AS_CHAR);
+    long nWidth = aRect.Width();
+    aSet.Put(SwFormatFrameSize(SwFrameSize::Variable, nWidth));
+    // height=width for more consistent preview (analog to edit region)
+    aSet.Put(SvxSizeItem(SID_ATTR_PAGE_SIZE, Size(nWidth, nWidth)));
+    SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
+    VclPtr<AbstractInsertSectionTabDialog> aTabDlg(pFact->CreateInsertSectionTabDialog(
+        GetView().GetFrameWeld(), aSet, *this));
+    aTabDlg->SetSectionData(rSectionData);
+    aTabDlg->StartExecuteAsync([aTabDlg](sal_Int32 /*nResult*/){
+        aTabDlg->disposeOnce();
+    });
 }
 
-void SwBaseShell::EditRegionDialog(SfxRequest& rReq)
+void SwBaseShell::EditRegionDialog(SfxRequest const & rReq)
 {
     const SfxItemSet* pArgs = rReq.GetArgs();
     sal_uInt16 nSlot = rReq.GetSlot();
@@ -217,15 +191,13 @@ void SwBaseShell::EditRegionDialog(SfxRequest& rReq)
         case FN_EDIT_REGION:
         case FN_EDIT_CURRENT_REGION:
         {
-            vcl::Window* pParentWin = &GetView().GetViewFrame()->GetWindow();
+            weld::Window* pParentWin = GetView().GetFrameWeld();
             {
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                OSL_ENSURE(pFact, "Dialog creation failed!");
                 ScopedVclPtr<AbstractEditRegionDlg> pEditRegionDlg(pFact->CreateEditRegionDlg(pParentWin, rWrtShell));
-                OSL_ENSURE(pEditRegionDlg, "Dialog creation failed!");
-                if(pItem && dynamic_cast< const SfxStringItem *>( pItem ) !=  nullptr)
+                if(auto pStringItem = dynamic_cast< const SfxStringItem *>( pItem ))
                 {
-                    pEditRegionDlg->SelectSection(static_cast<const SfxStringItem*>(pItem)->GetValue());
+                    pEditRegionDlg->SelectSection(pStringItem->GetValue());
                 }
                 pEditRegionDlg->Execute();
             }

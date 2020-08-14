@@ -17,37 +17,38 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "AccessibleDocumentViewBase.hxx"
-#include <com/sun/star/drawing/XDrawPage.hpp>
+#include <AccessibleDocumentViewBase.hxx>
 #include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/document/XEventBroadcaster.hpp>
+#include <com/sun/star/document/XShapeEventBroadcaster.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <rtl/ustring.h>
+#include <rtl/ustrbuf.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <sfx2/objsh.hxx>
-#include <svx/AccessibleShape.hxx>
+#include <tools/debug.hxx>
 
+#include <cppuhelper/queryinterface.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/svdmodel.hxx>
-#include <svx/unoapi.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include "Window.hxx"
+#include <Window.hxx>
 #include <vcl/svapp.hxx>
-#include "OutlineViewShell.hxx"
+#include <OutlineViewShell.hxx>
 
 #include <svx/svdlayer.hxx>
 #include <editeng/editobj.hxx>
-#include "LayerTabBar.hxx"
+#include <LayerTabBar.hxx>
 #include <svtools/colorcfg.hxx>
-#include "ViewShell.hxx"
-#include "View.hxx"
+#include <ViewShell.hxx>
+#include <View.hxx>
+#include <drawdoc.hxx>
+#include <editeng/outlobj.hxx>
+#include <sdpage.hxx>
+#include <DrawViewShell.hxx>
+#include <PresentationViewShell.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
@@ -67,7 +68,6 @@ AccessibleDocumentViewBase::AccessibleDocumentViewBase (
                                      AccessibleRole::DOCUMENT),
       mpWindow (pSdWindow),
       mxController (rxController),
-      mxModel (nullptr),
       maViewForwarder (
         static_cast<SdrPaintView*>(pViewShell->GetView()),
         *pSdWindow)
@@ -77,11 +77,11 @@ AccessibleDocumentViewBase::AccessibleDocumentViewBase (
 
     // Fill the shape tree info.
     maShapeTreeInfo.SetModelBroadcaster (
-        uno::Reference<document::XEventBroadcaster>(
-            mxModel, uno::UNO_QUERY));
+        uno::Reference<document::XShapeEventBroadcaster>(
+            mxModel, uno::UNO_QUERY_THROW));
     maShapeTreeInfo.SetController (mxController);
     maShapeTreeInfo.SetSdrView (pViewShell->GetView());
-    maShapeTreeInfo.SetWindow (pSdWindow);
+    maShapeTreeInfo.SetDevice (pSdWindow);
     maShapeTreeInfo.SetViewForwarder (&maViewForwarder);
 
     mxWindow = ::VCLUnoHelper::GetInterface (pSdWindow);
@@ -112,7 +112,7 @@ void AccessibleDocumentViewBase::Init()
     uno::Reference<drawing::XShapes> xShapeList;
     uno::Reference<drawing::XDrawView> xView (mxController, uno::UNO_QUERY);
     if (xView.is())
-        xShapeList.set( xView->getCurrentPage(), uno::UNO_QUERY);
+        xShapeList = xView->getCurrentPage();
 
     // Register this object as dispose event listener at the model.
     if (mxModel.is())
@@ -166,7 +166,7 @@ IMPL_LINK(AccessibleDocumentViewBase, WindowChildEventListener,
         {
             case VclEventId::ObjectDying:
             {
-                // Window is dying.  Unregister from VCL Window.
+                // Window is dying. Unregister from VCL Window.
                 // This is also attempted in the disposing() method.
                 vcl::Window* pWindow = maShapeTreeInfo.GetWindow();
                 vcl::Window* pDyingWindow = rEvent.GetWindow();
@@ -382,7 +382,6 @@ uno::Any SAL_CALL
             static_cast<awt::XWindowListener*>(this),
             static_cast<awt::XFocusListener*>(this)
            ,static_cast<XAccessibleExtendedAttributes*>(this)
-           ,static_cast<XAccessibleGetAccFlowTo*>(this)
             );
     return aReturn;
 }
@@ -406,7 +405,7 @@ void SAL_CALL
 OUString SAL_CALL
     AccessibleDocumentViewBase::getImplementationName()
 {
-    return OUString("AccessibleDocumentViewBase");
+    return "AccessibleDocumentViewBase";
 }
 
 css::uno::Sequence< OUString> SAL_CALL
@@ -423,40 +422,18 @@ css::uno::Sequence< css::uno::Type> SAL_CALL
 {
     ThrowIfDisposed ();
 
-    // Get list of types from the context base implementation, ...
-    uno::Sequence<uno::Type> aTypeList (AccessibleContextBase::getTypes());
-    // ... get list of types from component base implementation, ...
-    uno::Sequence<uno::Type> aComponentTypeList (AccessibleComponentBase::getTypes());
-
-    // ...and add the additional type for the component, ...
-    const uno::Type aLangEventListenerType =
-         cppu::UnoType<lang::XEventListener>::get();
-    const uno::Type aPropertyChangeListenerType =
-         cppu::UnoType<beans::XPropertyChangeListener>::get();
-    const uno::Type aWindowListenerType =
-         cppu::UnoType<awt::XWindowListener>::get();
-    const uno::Type aFocusListenerType =
-         cppu::UnoType<awt::XFocusListener>::get();
-    const uno::Type aEventBroadcaster =
-         cppu::UnoType<XAccessibleEventBroadcaster>::get();
-
-    // ... and merge them all into one list.
-    sal_Int32 nTypeCount (aTypeList.getLength()),
-        nComponentTypeCount (aComponentTypeList.getLength()),
-        i;
-
-    aTypeList.realloc (nTypeCount + nComponentTypeCount + 5);
-
-    for (i=0; i<nComponentTypeCount; i++)
-        aTypeList[nTypeCount + i] = aComponentTypeList[i];
-
-    aTypeList[nTypeCount + i++ ] = aLangEventListenerType;
-    aTypeList[nTypeCount + i++] = aPropertyChangeListenerType;
-    aTypeList[nTypeCount + i++] = aWindowListenerType;
-    aTypeList[nTypeCount + i++] = aFocusListenerType;
-    aTypeList[nTypeCount + i++] = aEventBroadcaster;
-
-    return aTypeList;
+    return comphelper::concatSequences(
+        // Get list of types from the context base implementation, ...
+        AccessibleContextBase::getTypes(),
+        // ... get list of types from component base implementation, ...
+        AccessibleComponentBase::getTypes(),
+        // ...and add the additional type for the component, ...
+        css::uno::Sequence {
+         cppu::UnoType<lang::XEventListener>::get(),
+         cppu::UnoType<beans::XPropertyChangeListener>::get(),
+         cppu::UnoType<awt::XWindowListener>::get(),
+         cppu::UnoType<awt::XFocusListener>::get(),
+         cppu::UnoType<XAccessibleEventBroadcaster>::get() });
 }
 
 void AccessibleDocumentViewBase::impl_dispose()
@@ -482,7 +459,7 @@ void AccessibleDocumentViewBase::impl_dispose()
         mxWindow = nullptr;
     }
 
-    // Unregister form the model.
+    // Unregister from the model.
     if (mxModel.is())
         mxModel->removeEventListener (
             static_cast<awt::XWindowListener*>(this));
@@ -604,31 +581,7 @@ void SAL_CALL AccessibleDocumentViewBase::disposing()
 OUString
     AccessibleDocumentViewBase::CreateAccessibleName()
 {
-    return OUString ("AccessibleDocumentViewBase");
-}
-
-/** Create a description for this view.  Use the model's description or URL
-    if a description is not available.
-*/
-OUString
-    AccessibleDocumentViewBase::CreateAccessibleDescription()
-{
-    OUString sDescription;
-
-    uno::Reference<lang::XServiceInfo> xInfo (mxController, uno::UNO_QUERY);
-    if (xInfo.is())
-    {
-        OUString sFirstService = xInfo->getSupportedServiceNames()[0];
-        if ( sFirstService == "com.sun.star.drawing.DrawingDocumentDrawView" )
-        {
-            sDescription = "Draw Document";
-        }
-        else
-            sDescription = sFirstService;
-    }
-    else
-        sDescription = "Accessible Draw Document";
-    return sDescription;
+    return "AccessibleDocumentViewBase";
 }
 
 void AccessibleDocumentViewBase::Activated()
@@ -701,7 +654,7 @@ uno::Any SAL_CALL AccessibleDocumentViewBase::getExtendedAttributes()
     ::osl::MutexGuard aGuard (maMutex);
 
     uno::Any anyAtrribute;
-    OUString sValue;
+    OUStringBuffer sValue;
     if (nullptr != dynamic_cast<const ::sd::DrawViewShell* > (mpViewShell))
     {
         ::sd::DrawViewShell* pDrViewSh = static_cast< ::sd::DrawViewShell*>(mpViewShell);
@@ -717,30 +670,28 @@ uno::Any SAL_CALL AccessibleDocumentViewBase::getExtendedAttributes()
         sDisplay = sDisplay.replaceFirst( ",", "\\," );
         sDisplay = sDisplay.replaceFirst( ":", "\\:" );
         sValue = sName + sDisplay ;
-        sName = ";page-number:";
-        sValue += sName;
-        sValue += OUString::number((sal_Int16)((sal_uInt16)((pDrViewSh->getCurrentPage()->GetPageNum()-1)>>1) + 1)) ;
-        sName = ";total-pages:";
-        sValue += sName;
-        sValue += OUString::number(pDrViewSh->GetPageTabControl().GetPageCount()) ;
-        sValue += ";";
+        sValue.append(";page-number:");
+        sValue.append(OUString::number(static_cast<sal_Int16>(static_cast<sal_uInt16>((pDrViewSh->getCurrentPage()->GetPageNum()-1)>>1) + 1)) );
+        sValue.append(";total-pages:");
+        sValue.append(OUString::number(pDrViewSh->GetPageTabControl().GetPageCount()) );
+        sValue.append(";");
         if(pDrViewSh->IsLayerModeActive() && pDrViewSh->GetLayerTabControl()) // #i87182#
         {
             sName = "page-name:";
             sValue = sName;
+            OUString sLayerName(pDrViewSh->GetLayerTabControl()->GetLayerName(pDrViewSh->GetLayerTabControl()->GetCurPageId()) );
             sDisplay = pDrViewSh->GetLayerTabControl()->GetPageText(pDrViewSh->GetLayerTabControl()->GetCurPageId());
             if( pDoc )
             {
                 SdrLayerAdmin& rLayerAdmin = pDoc->GetLayerAdmin();
-                SdrLayer* aSdrLayer = rLayerAdmin.GetLayer(sDisplay);
+                SdrLayer* aSdrLayer = rLayerAdmin.GetLayer(sLayerName);
                 if( aSdrLayer )
                 {
-                    OUString layerAltText = aSdrLayer->GetTitle();
+                    const OUString& layerAltText = aSdrLayer->GetTitle();
                     if (!layerAltText.isEmpty())
                     {
                         sName = " ";
-                        sDisplay = sDisplay + sName;
-                        sDisplay += layerAltText;
+                        sDisplay += sName + layerAltText;
                     }
                 }
             }
@@ -749,14 +700,12 @@ uno::Any SAL_CALL AccessibleDocumentViewBase::getExtendedAttributes()
             sDisplay = sDisplay.replaceFirst( ";", "\\;" );
             sDisplay = sDisplay.replaceFirst( ",", "\\," );
             sDisplay = sDisplay.replaceFirst( ":", "\\:" );
-            sValue +=  sDisplay;
-            sName = ";page-number:";
-            sValue += sName;
-            sValue += OUString::number(pDrViewSh->GetActiveTabLayerIndex()+1) ;
-            sName = ";total-pages:";
-            sValue += sName;
-            sValue += OUString::number(pDrViewSh->GetLayerTabControl()->GetPageCount()) ;
-            sValue += ";";
+            sValue.append(sDisplay);
+            sValue.append(";page-number:");
+            sValue.append(OUString::number(pDrViewSh->GetActiveTabLayerIndex()+1) );
+            sValue.append(";total-pages:");
+            sValue.append(OUString::number(pDrViewSh->GetLayerTabControl()->GetPageCount()) );
+            sValue.append(";");
         }
     }
     if (dynamic_cast<const ::sd::PresentationViewShell* >(mpViewShell) !=  nullptr )
@@ -767,13 +716,13 @@ uno::Any SAL_CALL AccessibleDocumentViewBase::getExtendedAttributes()
         SdPage* pNotesPge = pDoc->GetSdPage((pCurrPge->GetPageNum()-1)>>1, PageKind::Notes);
         if (pNotesPge)
         {
-            SdrObject* pNotesObj = pNotesPge->GetPresObj(PRESOBJ_NOTES);
+            SdrObject* pNotesObj = pNotesPge->GetPresObj(PresObjKind::Notes);
             if (pNotesObj)
             {
                 OutlinerParaObject* pPara = pNotesObj->GetOutlinerParaObject();
                 if (pPara)
                 {
-                    sValue += "note:";
+                    sValue.append("note:");
                     const EditTextObject& rEdit = pPara->GetTextObject();
                     for (sal_Int32 i=0;i<rEdit.GetParagraphCount();i++)
                     {
@@ -783,8 +732,8 @@ uno::Any SAL_CALL AccessibleDocumentViewBase::getExtendedAttributes()
                         strNote = strNote.replaceFirst( ";", "\\;" );
                         strNote = strNote.replaceFirst( ",", "\\," );
                         strNote = strNote.replaceFirst( ":", "\\:" );
-                        sValue += strNote;
-                        sValue += ";";//to divide each paragraph
+                        sValue.append(strNote);
+                        sValue.append(";");//to divide each paragraph
                     }
                 }
             }
@@ -792,51 +741,39 @@ uno::Any SAL_CALL AccessibleDocumentViewBase::getExtendedAttributes()
     }
     if (dynamic_cast<const ::sd::OutlineViewShell* >(mpViewShell ) !=  nullptr )
     {
-        OUString sName;
         OUString sDisplay;
         SdPage* pCurrPge = mpViewShell->GetActualPage();
         SdDrawDocument* pDoc = mpViewShell->GetDoc();
         if(pCurrPge && pDoc)
         {
-            sName = "page-name:";
             sDisplay = pCurrPge->GetName();
             sDisplay = sDisplay.replaceFirst( "=", "\\=" );
             sDisplay = sDisplay.replaceFirst( ";", "\\;" );
             sDisplay = sDisplay.replaceFirst( ",", "\\," );
             sDisplay = sDisplay.replaceFirst( ":", "\\:" );
-            sValue = sName + sDisplay ;
-            sName = ";page-number:";
-            sValue += sName;
-            sValue += OUString::number((sal_Int16)((sal_uInt16)((pCurrPge->GetPageNum()-1)>>1) + 1)) ;
-            sName = ";total-pages:";
-            sValue += sName;
-            sValue += OUString::number(pDoc->GetSdPageCount(PageKind::Standard)) ;
-            sValue += ";";
+            sValue = "page-name:" + sDisplay;
+            sValue.append(";page-number:");
+            sValue.append(OUString::number(static_cast<sal_Int16>(static_cast<sal_uInt16>((pCurrPge->GetPageNum()-1)>>1) + 1)) );
+            sValue.append(";total-pages:");
+            sValue.append(OUString::number(pDoc->GetSdPageCount(PageKind::Standard)) );
+            sValue.append(";");
         }
     }
     if (sValue.getLength())
-        anyAtrribute <<= sValue;
+        anyAtrribute <<= sValue.makeStringAndClear();
     return anyAtrribute;
-}
-
-css::uno::Sequence< css::uno::Any >
-        SAL_CALL AccessibleDocumentViewBase::getAccFlowTo(const css::uno::Any&, sal_Int32 )
-{
-    css::uno::Sequence< uno::Any> aRet;
-
-    return aRet;
 }
 
 sal_Int32 SAL_CALL AccessibleDocumentViewBase::getForeground(  )
 {
-    return COL_BLACK;
+    return sal_Int32(COL_BLACK);
 }
 
 sal_Int32 SAL_CALL AccessibleDocumentViewBase::getBackground(  )
 {
-     ThrowIfDisposed ();
+    ThrowIfDisposed ();
     ::osl::MutexGuard aGuard (maMutex);
-    return mpViewShell->GetView()->getColorConfig().GetColorValue( ::svtools::DOCCOLOR ).nColor;
+    return sal_Int32(mpViewShell->GetView()->getColorConfig().GetColorValue( ::svtools::DOCCOLOR ).nColor);
 }
 } // end of namespace accessibility
 

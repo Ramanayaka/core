@@ -23,37 +23,33 @@
 #include <svl/metitem.hxx>
 #include <svx/svxdllapi.h>
 
-class SVX_DLLPUBLIC XFillBmpSizeXItem : public SfxMetricItem
+class SVXCORE_DLLPUBLIC XFillBmpSizeXItem final : public SfxMetricItem
 {
 public:
                             XFillBmpSizeXItem( long nSizeX = 0 );
-                            SVX_DLLPRIVATE XFillBmpSizeXItem( SvStream& rIn );
 
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    SVX_DLLPRIVATE virtual XFillBmpSizeXItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     SVX_DLLPRIVATE virtual bool GetPresentation( SfxItemPresentation ePres,
                                                  MapUnit eCoreMetric,
                                                  MapUnit ePresMetric,
-                                                 OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                                 OUString &rText, const IntlWrapper& ) const override;
     // This item records both metrical and percentage quotation (negative);
     // We have to consider that.
     SVX_DLLPRIVATE virtual bool HasMetrics() const override;
 };
 
-class SVX_DLLPUBLIC XFillBmpSizeYItem : public SfxMetricItem
+class SVXCORE_DLLPUBLIC XFillBmpSizeYItem final : public SfxMetricItem
 {
 public:
                             XFillBmpSizeYItem( long nSizeY = 0 );
-                            SVX_DLLPRIVATE XFillBmpSizeYItem( SvStream& rIn );
 
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    SVX_DLLPRIVATE virtual XFillBmpSizeYItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     SVX_DLLPRIVATE virtual bool GetPresentation( SfxItemPresentation ePres,
                                                  MapUnit eCoreMetric,
                                                  MapUnit ePresMetric,
-                                                 OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                                 OUString &rText, const IntlWrapper& ) const override;
     // This item records both metrical and percentage quotation (negative);
     // We have to consider that.
     SVX_DLLPRIVATE virtual bool HasMetrics() const override;

@@ -18,27 +18,30 @@
  */
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
-#include "oox/ppt/timenode.hxx"
-#include "oox/ppt/pptshape.hxx"
-#include "oox/ppt/slidepersist.hxx"
-#include "drawingml/fillproperties.hxx"
-#include "oox/drawingml/shapepropertymap.hxx"
-#include "oox/helper/propertymap.hxx"
-#include "oox/helper/propertyset.hxx"
-#include "oox/vml/vmldrawing.hxx"
+#include <com/sun/star/frame/XModel.hpp>
+#include <oox/ppt/timenode.hxx>
+#include <oox/ppt/pptshape.hxx>
+#include <oox/ppt/pptimport.hxx>
+#include <oox/ppt/slidepersist.hxx>
+#include <drawingml/fillproperties.hxx>
+#include <oox/drawingml/shapepropertymap.hxx>
+#include <oox/helper/propertymap.hxx>
+#include <oox/helper/propertyset.hxx>
+#include <oox/vml/vmldrawing.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include "oox/core/xmlfilterbase.hxx"
-#include "drawingml/textliststyle.hxx"
-#include "drawingml/textparagraphproperties.hxx"
+#include <oox/core/xmlfilterbase.hxx>
+#include <drawingml/textliststyle.hxx>
+#include <drawingml/textparagraphproperties.hxx>
+#include <drawingml/textbody.hxx>
 
 #include <osl/diagnose.h>
 
 #include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/animations/XAnimationNodeSupplier.hpp>
 
 using namespace ::com::sun::star;
@@ -48,22 +51,25 @@ using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::animations;
 
-namespace oox { namespace ppt {
+
+namespace oox::ppt {
+
+std::vector< PPTShape* > PowerPointImport::maPPTShapes;
 
 SlidePersist::SlidePersist( XmlFilterBase& rFilter, bool bMaster, bool bNotes,
     const css::uno::Reference< css::drawing::XDrawPage >& rxPage,
         oox::drawingml::ShapePtr const & pShapesPtr, const drawingml::TextListStylePtr & pDefaultTextStyle )
-: mpDrawingPtr( new oox::vml::Drawing( rFilter, rxPage, oox::vml::VMLDRAWING_POWERPOINT ) )
+: mpDrawingPtr( std::make_shared<oox::vml::Drawing>( rFilter, rxPage, oox::vml::VMLDRAWING_POWERPOINT ) )
 , mxPage( rxPage )
 , maShapesPtr( pShapesPtr )
 , mnLayoutValueToken( 0 )
 , mbMaster( bMaster )
 , mbNotes ( bNotes )
 , maDefaultTextStylePtr( pDefaultTextStyle )
-, maTitleTextStylePtr( new oox::drawingml::TextListStyle )
-, maBodyTextStylePtr( new oox::drawingml::TextListStyle )
-, maNotesTextStylePtr( new oox::drawingml::TextListStyle )
-, maOtherTextStylePtr( new oox::drawingml::TextListStyle )
+, maTitleTextStylePtr( std::make_shared<oox::drawingml::TextListStyle>() )
+, maBodyTextStylePtr( std::make_shared<oox::drawingml::TextListStyle>() )
+, maNotesTextStylePtr( std::make_shared<oox::drawingml::TextListStyle>() )
+, maOtherTextStylePtr( std::make_shared<oox::drawingml::TextListStyle>() )
 {
 #if OSL_DEBUG_LEVEL > 0
     mxDebugPage = mxPage;
@@ -78,7 +84,7 @@ SlidePersist::~SlidePersist()
 {
 }
 
-sal_Int16 SlidePersist::getLayoutFromValueToken()
+sal_Int16 SlidePersist::getLayoutFromValueToken() const
 {
     sal_Int16 nLayout = 20;     // 20 == blanc (so many magic numbers :-( the description at com.sun.star.presentation.DrawPage.Layout does not help)
     switch( mnLayoutValueToken )
@@ -126,43 +132,67 @@ sal_Int16 SlidePersist::getLayoutFromValueToken()
     return nLayout;
 }
 
+static bool hasSameSubTypeIndex(sal_Int32 checkSubTypeIndex)
+{
+    sal_Int32 nSubTypeIndex = -1;
+    for(PPTShape* pPPTShape : PowerPointImport::maPPTShapes)
+    {
+        if(!pPPTShape->getSubTypeIndex().has())
+            continue;
+
+        nSubTypeIndex = pPPTShape->getSubTypeIndex().get();
+
+        if( nSubTypeIndex == checkSubTypeIndex )
+            return true;
+    }
+    return false;
+}
 void SlidePersist::createXShapes( XmlFilterBase& rFilterBase )
 {
     applyTextStyles( rFilterBase );
 
-    Reference< XShapes > xShapes( getPage(), UNO_QUERY );
-
+    Reference< XShapes > xShapes( getPage() );
     std::vector< oox::drawingml::ShapePtr >& rShapes( maShapesPtr->getChildren() );
-    const std::vector< oox::drawingml::ShapePtr >::const_iterator aShapesEnd( rShapes.end() );
-    for (std::vector< oox::drawingml::ShapePtr >::const_iterator aShapesIter( rShapes.begin() );
-         aShapesIter != aShapesEnd ; ++aShapesIter)
+    bool bhasSameSubTypeIndex = false;
+    sal_Int32 nNumCol = 1;
+
+    for (auto const& shape : rShapes)
     {
-        std::vector< oox::drawingml::ShapePtr >& rChildren( (*aShapesIter)->getChildren() );
-        const std::vector< oox::drawingml::ShapePtr >::const_iterator aChildEnd( rChildren.end() );
-        for (std::vector< oox::drawingml::ShapePtr >::const_iterator aChildIter( rChildren.begin() );
-             aChildIter != aChildEnd ; ++aChildIter)
+        std::vector< oox::drawingml::ShapePtr >& rChildren( shape->getChildren() );
+        for (auto const& child : rChildren)
         {
-            PPTShape* pPPTShape = dynamic_cast< PPTShape* >( (*aChildIter).get() );
+            PPTShape* pPPTShape = dynamic_cast< PPTShape* >( child.get() );
             basegfx::B2DHomMatrix aTransformation;
             if ( pPPTShape )
-                pPPTShape->addShape( rFilterBase, *this, getTheme().get(), xShapes, aTransformation, &getShapeMap() );
+            {
+                bhasSameSubTypeIndex = hasSameSubTypeIndex( pPPTShape->getSubTypeIndex().get());
+
+                if(pPPTShape->getTextBody())
+                    nNumCol = pPPTShape->getTextBody()->getTextProperties().mnNumCol;
+
+                if(pPPTShape->getSubTypeIndex().has() && nNumCol > 1 )
+                    PowerPointImport::maPPTShapes.push_back(pPPTShape);
+
+                pPPTShape->addShape( rFilterBase, *this, getTheme().get(), xShapes, aTransformation, &getShapeMap(), bhasSameSubTypeIndex );
+            }
             else
-                (*aChildIter)->addShape( rFilterBase, getTheme().get(), xShapes, aTransformation, maShapesPtr->getFillProperties(), &getShapeMap() );
+                child->addShape( rFilterBase, getTheme().get(), xShapes, aTransformation, maShapesPtr->getFillProperties(), &getShapeMap() );
         }
     }
 
     Reference< XAnimationNodeSupplier > xNodeSupplier( getPage(), UNO_QUERY);
-    if( xNodeSupplier.is() )
-    {
-        Reference< XAnimationNode > xNode( xNodeSupplier->getAnimationNode() );
-        if( xNode.is() && !maTimeNodeList.empty() )
-        {
-            SlidePersistPtr pSlidePtr( shared_from_this() );
-            TimeNodePtr pNode(maTimeNodeList.front());
-            OSL_ENSURE( pNode, "pNode" );
+    if( !xNodeSupplier.is() )
+        return;
 
-            pNode->setNode( rFilterBase, xNode, pSlidePtr );
-        }
+    Reference< XAnimationNode > xNode( xNodeSupplier->getAnimationNode() );
+    if( xNode.is() && !maTimeNodeList.empty() )
+    {
+        SlidePersistPtr pSlidePtr( shared_from_this() );
+        TimeNodePtr pNode(maTimeNodeList.front());
+        OSL_ENSURE( pNode, "pNode" );
+
+        Reference<XAnimationNode> xDummy;
+        pNode->setNode(rFilterBase, xNode, pSlidePtr, xDummy);
     }
 }
 
@@ -170,20 +200,20 @@ void SlidePersist::createBackground( const XmlFilterBase& rFilterBase )
 {
     if ( mpBackgroundPropertiesPtr )
     {
-        sal_Int32 nPhClr = maBackgroundColor.isUsed() ?
+        ::Color nPhClr = maBackgroundColor.isUsed() ?
             maBackgroundColor.getColor( rFilterBase.getGraphicHelper() ) : API_RGB_TRANSPARENT;
 
-        oox::drawingml::ShapePropertyIds aPropertyIds = (oox::drawingml::ShapePropertyInfo::DEFAULT).mrPropertyIds;
+        oox::drawingml::ShapePropertyIds aPropertyIds = oox::drawingml::ShapePropertyInfo::DEFAULT.mrPropertyIds;
         aPropertyIds[oox::drawingml::ShapeProperty::FillGradient] = PROP_FillGradientName;
-        oox::drawingml::ShapePropertyInfo aPropInfo( aPropertyIds, true, false, true, false );
+        oox::drawingml::ShapePropertyInfo aPropInfo( aPropertyIds, true, false, true, false, false );
         oox::drawingml::ShapePropertyMap aPropMap( rFilterBase.getModelObjectHelper(), aPropInfo );
         mpBackgroundPropertiesPtr->pushToPropMap( aPropMap, rFilterBase.getGraphicHelper(), 0, nPhClr );
         PropertySet( mxPage ).setProperty( PROP_Background, aPropMap.makePropertySet() );
     }
 }
 
-void setTextStyle( Reference< beans::XPropertySet >& rxPropSet, const XmlFilterBase& rFilter,
-    oox::drawingml::TextListStylePtr& pTextListStylePtr, int nLevel )
+static void setTextStyle( Reference< beans::XPropertySet > const & rxPropSet, const XmlFilterBase& rFilter,
+    oox::drawingml::TextListStylePtr const & pTextListStylePtr, int nLevel )
 {
     ::oox::drawingml::TextParagraphPropertiesPtr pTextParagraphPropertiesPtr( pTextListStylePtr->getListStyle()[ nLevel ] );
     if( pTextParagraphPropertiesPtr == nullptr )
@@ -201,96 +231,96 @@ void setTextStyle( Reference< beans::XPropertySet >& rxPropSet, const XmlFilterB
 
 void SlidePersist::applyTextStyles( const XmlFilterBase& rFilterBase )
 {
-    if ( mbMaster )
+    if ( !mbMaster )
+        return;
+
+    try
     {
-        try
+        Reference< style::XStyleFamiliesSupplier > aXStyleFamiliesSupplier( rFilterBase.getModel(), UNO_QUERY_THROW );
+        Reference< container::XNameAccess > aXNameAccess( aXStyleFamiliesSupplier->getStyleFamilies() );
+        Reference< container::XNamed > aXNamed( mxPage, UNO_QUERY_THROW );
+
+        if ( aXNameAccess.is() )
         {
-            Reference< style::XStyleFamiliesSupplier > aXStyleFamiliesSupplier( rFilterBase.getModel(), UNO_QUERY_THROW );
-            Reference< container::XNameAccess > aXNameAccess( aXStyleFamiliesSupplier->getStyleFamilies() );
-            Reference< container::XNamed > aXNamed( mxPage, UNO_QUERY_THROW );
+            oox::drawingml::TextListStylePtr pTextListStylePtr;
+            OUString aStyle;
+            OUString aFamily;
 
-            if ( aXNameAccess.is() && aXNamed.is() )
+            const OUString sOutline( "outline1" );
+            const OUString sTitle( "title" );
+            const OUString sStandard( "standard" );
+            const OUString sSubtitle( "subtitle" );
+
+            for( int i = 0; i < 4; i++ )    // todo: aggregation of bodystyle (subtitle)
             {
-                oox::drawingml::TextListStylePtr pTextListStylePtr;
-                OUString aStyle;
-                OUString aFamily;
-
-                const OUString sOutline( "outline1" );
-                const OUString sTitle( "title" );
-                const OUString sStandard( "standard" );
-                const OUString sSubtitle( "subtitle" );
-
-                for( int i = 0; i < 4; i++ )    // todo: aggregation of bodystyle (subtitle)
+                switch( i )
                 {
-                    switch( i )
+                    case 0 :    // title style
                     {
-                        case 0 :    // title style
-                        {
-                            pTextListStylePtr = maTitleTextStylePtr;
-                            aStyle = sTitle;
-                            aFamily= aXNamed->getName();
-                            break;
-                        }
-                        case 1 :    // body style
-                        {
-                            pTextListStylePtr = maBodyTextStylePtr;
-                            aStyle = sOutline;
-                            aFamily= aXNamed->getName();
-                            break;
-                        }
-                        case 3 :    // notes style
-                        {
-                            pTextListStylePtr = maNotesTextStylePtr;
-                            aStyle = sTitle;
-                            aFamily= aXNamed->getName();
-                            break;
-                        }
-                        case 4 :    // standard style
-                        {
-                            pTextListStylePtr = maOtherTextStylePtr;
-                            aStyle = sStandard;
-                            aFamily = "graphics";
-                            break;
-                        }
-                        case 5 :    // subtitle
-                        {
-                            pTextListStylePtr = maBodyTextStylePtr;
-                            aStyle = sSubtitle;
-                            aFamily = aXNamed->getName();
-                            break;
-                        }
+                        pTextListStylePtr = maTitleTextStylePtr;
+                        aStyle = sTitle;
+                        aFamily= aXNamed->getName();
+                        break;
                     }
-                    Reference< container::XNameAccess > xFamilies;
-                    if ( aXNameAccess->hasByName( aFamily ) )
+                    case 1 :    // body style
                     {
-                        if( aXNameAccess->getByName( aFamily ) >>= xFamilies )
+                        pTextListStylePtr = maBodyTextStylePtr;
+                        aStyle = sOutline;
+                        aFamily= aXNamed->getName();
+                        break;
+                    }
+                    case 3 :    // notes style
+                    {
+                        pTextListStylePtr = maNotesTextStylePtr;
+                        aStyle = sTitle;
+                        aFamily= aXNamed->getName();
+                        break;
+                    }
+                    case 4 :    // standard style
+                    {
+                        pTextListStylePtr = maOtherTextStylePtr;
+                        aStyle = sStandard;
+                        aFamily = "graphics";
+                        break;
+                    }
+                    case 5 :    // subtitle
+                    {
+                        pTextListStylePtr = maBodyTextStylePtr;
+                        aStyle = sSubtitle;
+                        aFamily = aXNamed->getName();
+                        break;
+                    }
+                }
+                Reference< container::XNameAccess > xFamilies;
+                if ( aXNameAccess->hasByName( aFamily ) )
+                {
+                    if( aXNameAccess->getByName( aFamily ) >>= xFamilies )
+                    {
+                        if ( xFamilies->hasByName( aStyle ) )
                         {
-                            if ( xFamilies->hasByName( aStyle ) )
+                            Reference< style::XStyle > aXStyle;
+                            if ( xFamilies->getByName( aStyle ) >>= aXStyle )
                             {
-                                Reference< style::XStyle > aXStyle;
-                                if ( xFamilies->getByName( aStyle ) >>= aXStyle )
+                                Reference< beans::XPropertySet > xPropSet( aXStyle, UNO_QUERY_THROW );
+                                setTextStyle( xPropSet, rFilterBase, maDefaultTextStylePtr, 0 );
+                                setTextStyle( xPropSet, rFilterBase, pTextListStylePtr, 0 );
+                                if ( i == 1 /* BodyStyle */ )
                                 {
-                                    Reference< beans::XPropertySet > xPropSet( aXStyle, UNO_QUERY_THROW );
-                                    setTextStyle( xPropSet, rFilterBase, maDefaultTextStylePtr, 0 );
-                                    setTextStyle( xPropSet, rFilterBase, pTextListStylePtr, 0 );
-                                    if ( i == 1 /* BodyStyle */ )
+                                    for ( int nLevel = 1; nLevel < 5; nLevel++ )
                                     {
-                                        for ( int nLevel = 1; nLevel < 5; nLevel++ )
                                         {
+                                            char pOutline[ 9 ] = "outline1";
+                                            pOutline[ 7 ] = static_cast< char >( '0' + nLevel );
+                                            OUString sOutlineStyle( OUString::createFromAscii( pOutline ) );
+                                            if ( xFamilies->hasByName( sOutlineStyle ) )
                                             {
-                                                sal_Char pOutline[ 9 ] = "outline1";
-                                                pOutline[ 7 ] = static_cast< sal_Char >( '0' + nLevel );
-                                                OUString sOutlineStyle( OUString::createFromAscii( pOutline ) );
-                                                if ( xFamilies->hasByName( sOutlineStyle ) )
-                                                {
-                                                    xFamilies->getByName( sOutlineStyle ) >>= aXStyle;
-                                                    if( aXStyle.is() )
-                                                        xPropSet.set( aXStyle, UNO_QUERY_THROW );
-                                                }
+                                                xFamilies->getByName( sOutlineStyle ) >>= aXStyle;
+                                                if( aXStyle.is() )
+                                                    xPropSet.set( aXStyle, UNO_QUERY_THROW );
                                             }
-                                            setTextStyle( xPropSet, rFilterBase, maDefaultTextStylePtr, nLevel );
-                                            setTextStyle( xPropSet, rFilterBase, pTextListStylePtr, nLevel );
                                         }
+                                        setTextStyle( xPropSet, rFilterBase, maDefaultTextStylePtr, nLevel );
+                                        setTextStyle( xPropSet, rFilterBase, pTextListStylePtr, nLevel );
                                     }
                                 }
                             }
@@ -299,32 +329,38 @@ void SlidePersist::applyTextStyles( const XmlFilterBase& rFilterBase )
                 }
             }
         }
-        catch( const Exception& )
-        {
-        }
+    }
+    catch( const Exception& )
+    {
     }
 }
 
 void SlidePersist::hideShapesAsMasterShapes()
 {
     std::vector< oox::drawingml::ShapePtr >& rShapes( maShapesPtr->getChildren() );
-    std::vector< oox::drawingml::ShapePtr >::iterator aShapesIter( rShapes.begin() );
-    while( aShapesIter != rShapes.end() )
+    for (auto const& shape : rShapes)
     {
-        while( aShapesIter != rShapes.end() )
+        std::vector< oox::drawingml::ShapePtr >& rChildren( shape->getChildren() );
+        for (auto const& child : rChildren)
         {
-            std::vector< oox::drawingml::ShapePtr >& rChildren( (*aShapesIter++)->getChildren() );
-            std::vector< oox::drawingml::ShapePtr >::iterator aChildIter( rChildren.begin() );
-            while( aChildIter != rChildren.end() ) {
-                PPTShape* pPPTShape = dynamic_cast< PPTShape* >( (*aChildIter++).get() );
-                if (!pPPTShape)
-                    continue;
-                pPPTShape->setHiddenMasterShape( true );
-            }
+            PPTShape* pPPTShape = dynamic_cast< PPTShape* >( child.get() );
+            if (!pPPTShape)
+                continue;
+            pPPTShape->setHiddenMasterShape( true );
         }
     }
 }
 
-} }
+Reference<XAnimationNode> SlidePersist::getAnimationNode(const OUString& sId) const
+{
+    const auto& pIter = maAnimNodesMap.find(sId);
+    if (pIter != maAnimNodesMap.end())
+        return pIter->second;
+
+    Reference<XAnimationNode> aResult;
+    return aResult;
+}
+
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

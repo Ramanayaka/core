@@ -20,19 +20,20 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_FACTORIES_CHILDWINDOWPANE_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_FACTORIES_CHILDWINDOWPANE_HXX
 
-#include "framework/Pane.hxx"
-#include "PaneShells.hxx"
+#include <framework/Pane.hxx>
 
 #include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/uno3.hxx>
 #include <memory>
 
-namespace sd { class ViewShellBase; }
+class SfxShell;
 
-namespace sd { namespace framework {
+namespace sd { class ViewShellBase; }
+namespace com::sun::star::awt { class XWindow; }
+namespace com::sun::star::drawing::framework { class XResourceId; }
+
+namespace sd::framework {
 
 typedef ::cppu::ImplInheritanceHelper <
     ::sd::framework::Pane,
@@ -96,7 +97,7 @@ private:
     bool mbHasBeenActivated;
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

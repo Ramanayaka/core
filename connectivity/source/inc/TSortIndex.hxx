@@ -47,8 +47,8 @@ namespace connectivity
     class OOO_DLLPUBLIC_DBTOOLS OSortIndex
     {
     public:
-        typedef std::vector< std::pair<sal_Int32,OKeyValue*> >  TIntValuePairVector;
-        typedef std::vector<OKeyType>                             TKeyTypeVector;
+        typedef std::vector<std::pair<sal_Int32, std::unique_ptr<OKeyValue>>> TIntValuePairVector;
+        typedef std::vector<OKeyType> TKeyTypeVector;
 
     private:
         TIntValuePairVector             m_aKeyValues;
@@ -60,18 +60,10 @@ namespace connectivity
 
         OSortIndex( const std::vector<OKeyType>& _aKeyType,
                     const std::vector<TAscendingOrder>& _aAscending);
+        OSortIndex(OSortIndex const &) = delete; // MSVC2015 workaround
+        OSortIndex& operator=(OSortIndex const &) = delete; // MSVC2015 workaround
 
         ~OSortIndex();
-
-        static void * SAL_CALL operator new( size_t nSize )
-            { return ::rtl_allocateMemory( nSize ); }
-        static void * SAL_CALL operator new( size_t,void* _pHint )
-            { return _pHint; }
-        static void SAL_CALL operator delete( void * pMem )
-            { ::rtl_freeMemory( pMem ); }
-        static void SAL_CALL operator delete( void *,void* )
-            {  }
-
 
         /**
             AddKeyValue appends a new value.
@@ -79,7 +71,7 @@ namespace connectivity
                 pKeyValue   the keyvalue to be appended
             ATTENTION: when the sortindex is already frozen the parameter will be deleted
         */
-        void AddKeyValue(OKeyValue * pKeyValue);
+        void AddKeyValue(std::unique_ptr<OKeyValue> pKeyValue);
 
         /**
             Freeze freezes the sortindex so that new values could only be appended by their value
@@ -97,17 +89,19 @@ namespace connectivity
 
     };
 
+    // MSVC hack to avoid multiply defined std::vector-related symbols:
+    class OKeySet_Base: public ORefVector<sal_Int32> {};
+
     /**
         The class OKeySet is a refcountable vector which also has a state.
         This state gives information about if the keyset is fixed.
     */
-    class OOO_DLLPUBLIC_DBTOOLS OKeySet : public ORefVector<sal_Int32>
+    class OOO_DLLPUBLIC_DBTOOLS OKeySet : public OKeySet_Base
     {
         bool m_bFrozen;
     public:
         OKeySet()
-            : ORefVector<sal_Int32>()
-            , m_bFrozen(false){}
+            : m_bFrozen(false){}
 
         bool    isFrozen() const   { return m_bFrozen; }
         void    setFrozen()        { m_bFrozen = true; }

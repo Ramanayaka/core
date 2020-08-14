@@ -7,6 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef LO_CLANG_SHARED_PLUGINS
+
 #include <cassert>
 
 #include "check.hxx"
@@ -15,15 +17,19 @@
 namespace {
 
 class BadStatics
-    : public clang::RecursiveASTVisitor<BadStatics>
-    , public loplugin::Plugin
+    : public loplugin::FilteringPlugin<BadStatics>
 {
 
 public:
-    explicit BadStatics(InstantiationData const& rData) : Plugin(rData) {}
+    explicit BadStatics(loplugin::InstantiationData const& rData):
+        FilteringPlugin(rData) {}
+
+    bool preRun() override {
+        return compiler.getLangOpts().CPlusPlus; // no non-trivial dtors in C
+    }
 
     void run() override {
-        if (compiler.getLangOpts().CPlusPlus) { // no non-trivial dtors in C
+        if (preRun()) {
             TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
         }
     }
@@ -111,7 +117,7 @@ public:
             || type.Class("weak_ptr").StdNamespace() // not owning
             || type.Class("ImplWallpaper").GlobalNamespace() // very odd static instance here
             || type.Class("Application").GlobalNamespace() // numerous odd subclasses in vclmain::createApplication()
-            || type.Class("DemoMtfApp").GlobalNamespace() // one of these Application with own VclPtr
+            || type.Class("DemoMtfApp").AnonymousNamespace().GlobalNamespace() // one of these Application with own VclPtr
            )
         {
             return std::make_pair(false, std::vector<FieldDecl const*>());
@@ -153,8 +159,7 @@ public:
             && pVarDecl->isThisDeclarationADefinition())
         {
             auto const name(pVarDecl->getName());
-            if (   name == "g_pI18NStatusInstance" // I18NStatus::free()
-                || name == "s_pPreviousView" // not a owning pointer
+            if (   name == "s_pPreviousView" // not an owning pointer
                 || name == "s_pDefCollapsed" // SvImpLBox::~SvImpLBox()
                 || name == "s_pDefExpanded"  // SvImpLBox::~SvImpLBox()
                 || name == "g_pDDSource" // SvTreeListBox::dispose()
@@ -167,15 +172,11 @@ public:
                 || name == "s_pVout" // FrameFinit()
                 || name == "s_pPaintQueue" // SwPaintQueue::Remove()
                 || name == "gProp" // only owned (VclPtr) member cleared again
-                || name == "g_pColumnCacheLastTabFrame" // not owning
-                || name == "g_pColumnCacheLastCellFrame" // not owning
-                || name == "g_pRowCacheLastTabFrame" // not owning
-                || name == "g_pRowCacheLastCellFrame" // not owning
                 || name == "g_OszCtrl" // SwCrsrOszControl::Exit()
                 || name == "g_pSpellIter" // SwEditShell::SpellEnd()
                 || name == "g_pConvIter" // SwEditShell::SpellEnd()
                 || name == "g_pHyphIter" // SwEditShell::HyphEnd()
-                || name == "pFieldEditEngine" // ScGlobal::Clear()
+                || name == "xFieldEditEngine" // ScGlobal::Clear()
                 || name == "xDrawClipDocShellRef" // ScGlobal::Clear()
                 || name == "s_ImageTree"
                     // ImageTree::get(), ImageTree::shutDown()
@@ -196,10 +197,27 @@ public:
                     // sc/source/core/tool/adiasync.cxx, would leak
                     // ScAddInAsync* keys if that set is not empty at exit
                 || name == "g_aWindowList"
-                    //vcl/unx/gtk/a11y/atkutil.cxx, asserted empty at exit
+                    //vcl/unx/gtk3/a11y/gtk3atkutil.cxx, asserted empty at exit
+                || name == "gFontPreviewVirDevs"
+                    //svtools/source/control/ctrlbox.cxx, empty at exit
                 || name == "aLogger" // FormulaLogger& FormulaLogger::get() in sc/source/core/tool/formulalogger.cxx
+                || name == "m_aUncommittedRegistrations" // sw/source/uibase/dbui/dbmgr.cxx
                 || (loplugin::DeclCheck(pVarDecl).Var("aAllListeners")
                     .Class("ScAddInListener").GlobalNamespace()) // not owning
+                || (loplugin::DeclCheck(pVarDecl).Var("maThreadSpecific")
+                    .Class("ScDocument").GlobalNamespace()) // not owning
+                || name == "s_aLOKWindowsMap" // LOK only, guarded by assert, and LOK never tries to perform a VCL cleanup
+                || name == "s_aLOKWeldBuildersMap" // LOK only, similar case as above
+                || name == "m_pNotebookBarWeldedWrapper" // LOK only, warning about map's key, no VCL cleanup performed
+                || name == "gStaticManager" // vcl/source/graphic/Manager.cxx - stores non-owning pointers
+                || name == "aThreadedInterpreterPool"    // ScInterpreterContext(Pool), not owning
+                || name == "aNonThreadedInterpreterPool" // ScInterpreterContext(Pool), not owning
+                || name == "lcl_parserContext" // getParserContext(), the chain from this to a VclPtr is not owning
+                || name == "aReaderWriter" // /home/noel/libo/sw/source/filter/basflt/fltini.cxx, non-owning
+                || name == "aTwain"
+                   // Windows-only extensions/source/scanner/scanwin.cxx, problematic
+                   // Twain::mpThread -> ShimListenerThread::mxTopWindow released via Twain::Reset
+                   // clearing mpThread
                ) // these variables appear unproblematic
             {
                 return true;
@@ -224,11 +242,14 @@ public:
                         "bad static variable causes crash on shutdown",
                         pVarDecl->getLocation())
                     << pVarDecl->getSourceRange();
-                for (auto i: ret.second) {
-                    report(DiagnosticsEngine::Note,
-                            "... due to this member of %0",
-                            i->getLocation())
-                        << i->getParent() << i->getSourceRange();
+                if (!isUnitTestMode())
+                {
+                    for (auto i: ret.second) {
+                        report(DiagnosticsEngine::Note,
+                                "... due to this member of %0",
+                                i->getLocation())
+                            << i->getParent() << i->getSourceRange();
+                    }
                 }
             }
         }
@@ -238,8 +259,10 @@ public:
 
 };
 
-loplugin::Plugin::Registration<BadStatics> X("badstatics");
+loplugin::Plugin::Registration<BadStatics> badstatics("badstatics");
 
 } // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

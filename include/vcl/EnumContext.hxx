@@ -23,8 +23,6 @@
 
 #include <rtl/ustring.hxx>
 
-#include <vector>
-
 
 namespace vcl {
 
@@ -43,6 +41,8 @@ public:
         Chart,
         Draw,
         Impress,
+        Formula,
+        Base,
 
         // For your convenience to avoid duplicate code in the common
         // case that Draw and Impress use identical context configurations.
@@ -88,6 +88,7 @@ public:
         OLE,
         OutlineText,
         Pivot,
+        Printpreview,
         Series,
         SlidesorterPage,
         Table,
@@ -114,9 +115,6 @@ public:
     EnumContext (
         const Application eApplication,
         const Context eContext);
-    EnumContext (
-        const ::rtl::OUString& rsApplicationName,
-        const ::rtl::OUString& rsContextName);
 
     /** This variant of the GetCombinedContext() method treats some
         application names as identical to each other.  Replacements
@@ -129,22 +127,22 @@ public:
 
     Application GetApplication_DI() const;
 
-    bool operator == (const EnumContext& rOther);
-    bool operator != (const EnumContext& rOther);
+    bool operator == (const EnumContext& rOther) const;
+    bool operator != (const EnumContext& rOther) const;
 
-    /** When two contexts are matched against each other then
+    /** When two contexts are matched against each other, then
         application or context name may have the wildcard value 'any'.
         In order to prefer matches without wildcards over matches with
-        wildcards we introduce a integer evaluation for matches.
+        wildcards we introduce an integer evaluation for matches.
     */
     const static sal_Int32 NoMatch;
     const static sal_Int32 OptimalMatch;
 
-    static Application GetApplicationEnum (const ::rtl::OUString& rsApplicationName);
-    static const ::rtl::OUString& GetApplicationName (const Application eApplication);
+    static Application GetApplicationEnum (const OUString& rsApplicationName);
+    static const OUString& GetApplicationName (const Application eApplication);
 
-    static Context GetContextEnum (const ::rtl::OUString& rsContextName);
-    static const ::rtl::OUString& GetContextName (const Context eContext);
+    static Context GetContextEnum (const OUString& rsContextName);
+    static const OUString& GetContextName (const Context eContext);
 
 private:
     Application meApplication;
@@ -152,8 +150,8 @@ private:
 
     static void ProvideApplicationContainers();
     static void ProvideContextContainers();
-    static void AddEntry (const ::rtl::OUString& rsName, const Application eApplication);
-    static void AddEntry (const ::rtl::OUString& rsName, const Context eContext);
+    static void AddEntry (const OUString& rsName, const Application eApplication);
+    static void AddEntry (const OUString& rsName, const Context eContext);
 };
 
 

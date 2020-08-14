@@ -20,23 +20,26 @@
 #ifndef INCLUDED_RTL_STRING_HXX
 #define INCLUDED_RTL_STRING_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cassert>
 #include <cstddef>
 #include <new>
 #include <ostream>
+#include <utility>
 #include <string.h>
 
-#include <rtl/textenc.h>
-#include <rtl/string.h>
-#include <rtl/stringutils.hxx>
-
-#ifdef LIBO_INTERNAL_ONLY // "RTL_FAST_STRING"
-#include <rtl/stringconcat.hxx>
+#if defined LIBO_INTERNAL_ONLY
+#include <string_view>
 #endif
 
-#include <sal/log.hxx>
+#include "rtl/textenc.h"
+#include "rtl/string.h"
+#include "rtl/stringutils.hxx"
+
+#ifdef LIBO_INTERNAL_ONLY // "RTL_FAST_STRING"
+#include "rtl/stringconcat.hxx"
+#endif
 
 #ifdef RTL_STRING_UNITTEST
 extern bool rtl_string_unittest_const_literal;
@@ -65,26 +68,59 @@ namespace rtl
 #endif
 /// @endcond
 
+#ifdef LIBO_INTERNAL_ONLY // "RTL_FAST_STRING"
+/**
+A simple wrapper around string literal. It is usually not necessary to use, can
+be mostly used to force OString operator+ working with operands that otherwise would
+not trigger it.
+
+This class is not part of public API and is meant to be used only in LibreOffice code.
+@since LibreOffice 4.0
+*/
+struct SAL_WARN_UNUSED OStringLiteral
+{
+    template< int N >
+    explicit OStringLiteral( const char (&str)[ N ] ) : size( N - 1 ), data( str ) { assert( strlen( str ) == N - 1 ); }
+#if defined __cpp_char8_t
+    template< int N >
+    explicit OStringLiteral( const char8_t (&str)[ N ] ) : size( N - 1 ), data( reinterpret_cast<char const *>(str) ) { assert( strlen( data ) == N - 1 ); }
+#endif
+
+    int size;
+    const char* data;
+
+    /** So we can use this in some places interchangeably with OUString.
+     * @since LibreOffice 7.1
+     */
+    constexpr sal_Int32 getLength() const { return size; }
+
+    /** So we can use this in some places interchangeably with OString.
+     * @since LibreOffice 7.1
+     */
+    constexpr const char* getStr() const { return data; }
+};
+#endif
+
 /* ======================================================================= */
 
 /**
   This String class provide base functionality for C++ like 8-Bit
   character array handling. The advantage of this class is, that it
-  handle all the memory managament for you - and it do it
+  handle all the memory management for you - and it do it
   more efficient. If you assign a string to another string, the
   data of both strings are shared (without any copy operation or
   memory allocation) as long as you do not change the string. This class
   stores also the length of the string, so that many operations are
   faster as the C-str-functions.
 
-  This class provide only readonly string handling. So you could create
+  This class provides only readonly string handling. So you could create
   a string and you could only query the content from this string.
-  It provide also functionality to change the string, but this results
+  It provides also functionality to change the string, but this results
   in every case in a new string instance (in the most cases with an
   memory allocation). You don't have functionality to change the
-  content of the string. If you want change the string content, than
-  you should us the OStringBuffer class, which provide these
-  functionality and avoid to much memory allocation.
+  content of the string. If you want to change the string content, then
+  you should use the OStringBuffer class, which provides these
+  functionalities and avoid too much memory allocation.
 
   The design of this class is similar to the string classes in Java
   and so more people should have fewer understanding problems when they
@@ -110,7 +146,7 @@ public:
     /**
       New string from OString.
 
-      @param    str         a OString.
+      @param    str         an OString.
     */
     OString( const OString & str )
     {
@@ -118,27 +154,25 @@ public:
         rtl_string_acquire( pData );
     }
 
-#ifndef _MSC_VER // TODO?
 #if defined LIBO_INTERNAL_ONLY
     /**
       Move constructor.
 
-      @param    str         a OString.
+      @param    str         an OString.
       @since LibreOffice 5.2
     */
-    OString( OString && str )
+    OString( OString && str ) noexcept
     {
         pData = str.pData;
         str.pData = nullptr;
         rtl_string_new( &str.pData );
     }
 #endif
-#endif
 
     /**
       New string from OString data.
 
-      @param    str         a OString data.
+      @param    str         an OString data.
     */
     OString( rtl_String * str )
     {
@@ -151,7 +185,7 @@ public:
         The SAL_NO_ACQUIRE dummy parameter is only there to distinguish this
         from other constructors.
 
-      @param    str         a OString data.
+      @param    str         an OString data.
     */
     OString( rtl_String * str, __sal_NoAcquire )
     {
@@ -235,6 +269,29 @@ public:
         rtl_string_newFromStr_WithLength( &pData, value, length );
     }
 
+#ifdef LIBO_INTERNAL_ONLY // "RTL_FAST_STRING"
+    /// @cond INTERNAL
+    /**
+      New string from an 8-Bit string literal.
+
+      This constructor is similar to the "direct template" one, but can be
+      useful in cases where the latter does not work, like in
+
+        OString(flag ? "a" : "bb")
+
+      written as
+
+        OString(flag ? OStringLiteral("a") : OStringLiteral("bb"))
+
+      @since LibreOffice 7.1
+    */
+    OString(OStringLiteral literal): pData(NULL) {
+        rtl_string_newFromLiteral(&pData, literal.data, literal.size, 0);
+    }
+    /// @endcond
+#endif
+
+
     /**
       New string from a Unicode character buffer array.
 
@@ -266,7 +323,7 @@ public:
      @internal
     */
     template< typename T1, typename T2 >
-    OString( const OStringConcat< T1, T2 >& c )
+    OString( OStringConcat< T1, T2 >&& c )
     {
         const sal_Int32 l = c.length();
         pData = rtl_string_alloc( l );
@@ -277,6 +334,15 @@ public:
             *end = '\0';
         }
     }
+
+    /**
+     @overload
+     @internal
+    */
+    template< typename T >
+    OString( OStringNumber< T >&& n )
+        : OString( n.buf, n.length )
+    {}
 #endif
 
 #ifdef LIBO_INTERNAL_ONLY
@@ -294,7 +360,7 @@ public:
     /**
       Assign a new string.
 
-      @param    str         a OString.
+      @param    str         an OString.
     */
     OString & operator=( const OString & str )
     {
@@ -302,15 +368,14 @@ public:
         return *this;
     }
 
-#ifndef _MSC_VER // TODO?
 #if defined LIBO_INTERNAL_ONLY
     /**
       Move assign a new string.
 
-      @param    str         a OString.
+      @param    str         an OString.
       @since LibreOffice 5.2
     */
-    OString & operator=( OString && str )
+    OString & operator=( OString && str ) noexcept
     {
         rtl_string_release( pData );
         pData = str.pData;
@@ -318,7 +383,6 @@ public:
         rtl_string_new( &str.pData );
         return *this;
     }
-#endif
 #endif
 
     /**
@@ -347,7 +411,7 @@ public:
     /**
       Append a string to this string.
 
-      @param    str         a OString.
+      @param    str         an OString.
     */
     OString & operator+=( const OString & str )
 #if defined LIBO_INTERNAL_ONLY
@@ -367,7 +431,7 @@ public:
      @internal
     */
     template< typename T1, typename T2 >
-    OString& operator+=( const OStringConcat< T1, T2 >& c ) & {
+    OString& operator+=( OStringConcat< T1, T2 >&& c ) & {
         sal_Int32 l = c.length();
         if( l == 0 )
             return *this;
@@ -379,7 +443,26 @@ public:
         return *this;
     }
     template<typename T1, typename T2> void operator +=(
-        OStringConcat<T1, T2> const &) && = delete;
+        OStringConcat<T1, T2> &&) && = delete;
+
+    /**
+     @overload
+     @internal
+    */
+    template< typename T >
+    OString& operator+=( OStringNumber< T >&& n ) & {
+        sal_Int32 l = n.length;
+        if( l == 0 )
+            return *this;
+        l += pData->length;
+        rtl_string_ensureCapacity( &pData, l );
+        char* end = addDataHelper( pData->buffer + pData->length, n.buf, n.length );
+        *end = '\0';
+        pData->length = l;
+        return *this;
+    }
+    template<typename T> void operator +=(
+        OStringNumber<T> &&) && = delete;
 #endif
 
     /**
@@ -543,7 +626,7 @@ public:
     }
 
     /**
-      Perform a ASCII lowercase comparison of two strings.
+      Perform an ASCII lowercase comparison of two strings.
 
       The result is true if and only if second string
       represents the same sequence of characters as the first string,
@@ -567,7 +650,7 @@ public:
     }
 
     /**
-      Perform a ASCII lowercase comparison of two strings.
+      Perform an ASCII lowercase comparison of two strings.
 
       The result is true if and only if second string
       represents the same sequence of characters as the first string,
@@ -622,7 +705,7 @@ public:
     }
 
     /**
-      Perform a ASCII lowercase comparison of two strings.
+      Perform an ASCII lowercase comparison of two strings.
 
       The result is true if and only if second string
       represents the same sequence of characters as the first string,
@@ -657,7 +740,7 @@ public:
       This function can't be used for language specific comparison.
 
       @param    str         the object (substring) to be compared.
-      @param    fromIndex   the index to start the comparion from.
+      @param    fromIndex   the index to start the comparison from.
                             The index must be greater or equal than 0
                             and less or equal as the string length.
       @return   true if str match with the characters in the string
@@ -735,7 +818,7 @@ public:
       This function can't be used for language specific comparison.
 
       @param    str         the object (substring) to be compared.
-      @param    fromIndex   the index to start the comparion from.
+      @param    fromIndex   the index to start the comparison from.
                             The index must be greater or equal than 0
                             and less or equal as the string length.
       @return   true if str match with the characters in the string
@@ -1248,9 +1331,7 @@ public:
     */
     SAL_WARN_UNUSED_RESULT OString copy( sal_Int32 beginIndex ) const
     {
-        rtl_String *pNew = NULL;
-        rtl_string_newFromSubString( &pNew, pData, beginIndex, getLength() - beginIndex );
-        return OString( pNew, SAL_NO_ACQUIRE );
+        return copy(beginIndex, getLength() - beginIndex);
     }
 
     /**
@@ -1599,6 +1680,41 @@ public:
         return rtl_str_toDouble( pData->buffer );
     }
 
+#ifdef LIBO_INTERNAL_ONLY // "RTL_FAST_STRING"
+
+    static OStringNumber< int > number( int i, sal_Int16 radix = 10 )
+    {
+        return OStringNumber< int >( i, radix );
+    }
+    static OStringNumber< long long > number( long long ll, sal_Int16 radix = 10 )
+    {
+        return OStringNumber< long long >( ll, radix );
+    }
+    static OStringNumber< unsigned long long > number( unsigned long long ll, sal_Int16 radix = 10 )
+    {
+        return OStringNumber< unsigned long long >( ll, radix );
+    }
+    static OStringNumber< unsigned long long > number( unsigned int i, sal_Int16 radix = 10 )
+    {
+        return number( static_cast< unsigned long long >( i ), radix );
+    }
+    static OStringNumber< long long > number( long i, sal_Int16 radix = 10)
+    {
+        return number( static_cast< long long >( i ), radix );
+    }
+    static OStringNumber< unsigned long long > number( unsigned long i, sal_Int16 radix = 10 )
+    {
+        return number( static_cast< unsigned long long >( i ), radix );
+    }
+    static OStringNumber< float > number( float f )
+    {
+        return OStringNumber< float >( f );
+    }
+    static OStringNumber< double > number( double d )
+    {
+        return OStringNumber< double >( d );
+    }
+#else
     /**
       Returns the string representation of the integer argument.
 
@@ -1611,7 +1727,8 @@ public:
     */
     static OString number( int i, sal_Int16 radix = 10 )
     {
-        return number( static_cast< long long >( i ), radix );
+        sal_Char aBuf[RTL_STR_MAX_VALUEOFINT32];
+        return OString(aBuf, rtl_str_valueOfInt32(aBuf, i, radix));
     }
     /// @overload
     /// @since LibreOffice 4.1
@@ -1636,18 +1753,14 @@ public:
     static OString number( long long ll, sal_Int16 radix = 10 )
     {
         sal_Char aBuf[RTL_STR_MAX_VALUEOFINT64];
-        rtl_String* pNewData = NULL;
-        rtl_string_newFromStr_WithLength( &pNewData, aBuf, rtl_str_valueOfInt64( aBuf, ll, radix ) );
-        return OString( pNewData, SAL_NO_ACQUIRE );
+        return OString(aBuf, rtl_str_valueOfInt64(aBuf, ll, radix));
     }
     /// @overload
     /// @since LibreOffice 4.1
     static OString number( unsigned long long ll, sal_Int16 radix = 10 )
     {
         sal_Char aBuf[RTL_STR_MAX_VALUEOFUINT64];
-        rtl_String* pNewData = NULL;
-        rtl_string_newFromStr_WithLength( &pNewData, aBuf, rtl_str_valueOfUInt64( aBuf, ll, radix ) );
-        return OString( pNewData, SAL_NO_ACQUIRE );
+        return OString(aBuf, rtl_str_valueOfUInt64(aBuf, ll, radix));
     }
 
     /**
@@ -1656,15 +1769,13 @@ public:
       This function can't be used for language specific conversion.
 
       @param    f           a float.
-      @return   a string with the string representation of the argument.
+      @return   a string with the decimal representation of the argument.
       @since LibreOffice 4.1
     */
     static OString number( float f )
     {
         sal_Char aBuf[RTL_STR_MAX_VALUEOFFLOAT];
-        rtl_String* pNewData = NULL;
-        rtl_string_newFromStr_WithLength( &pNewData, aBuf, rtl_str_valueOfFloat( aBuf, f ) );
-        return OString( pNewData, SAL_NO_ACQUIRE );
+        return OString(aBuf, rtl_str_valueOfFloat(aBuf, f));
     }
 
     /**
@@ -1673,16 +1784,15 @@ public:
       This function can't be used for language specific conversion.
 
       @param    d           a double.
-      @return   a string with the string representation of the argument.
+      @return   a string with the decimal representation of the argument.
       @since LibreOffice 4.1
     */
     static OString number( double d )
     {
         sal_Char aBuf[RTL_STR_MAX_VALUEOFDOUBLE];
-        rtl_String* pNewData = NULL;
-        rtl_string_newFromStr_WithLength( &pNewData, aBuf, rtl_str_valueOfDouble( aBuf, d ) );
-        return OString( pNewData, SAL_NO_ACQUIRE );
+        return OString(aBuf, rtl_str_valueOfDouble(aBuf, d));
     }
+#endif
 
     /**
       Returns the string representation of the sal_Bool argument.
@@ -1714,9 +1824,7 @@ public:
     static OString boolean( bool b )
     {
         sal_Char aBuf[RTL_STR_MAX_VALUEOFBOOLEAN];
-        rtl_String* pNewData = NULL;
-        rtl_string_newFromStr_WithLength( &pNewData, aBuf, rtl_str_valueOfBoolean( aBuf, b ) );
-        return OString( pNewData, SAL_NO_ACQUIRE );
+        return OString(aBuf, rtl_str_valueOfBoolean(aBuf, b));
     }
 
     /**
@@ -1789,26 +1897,14 @@ public:
         return number(d);
     }
 
+#if defined LIBO_INTERNAL_ONLY
+    operator std::string_view() const { return {getStr(), sal_uInt32(getLength())}; }
+#endif
 };
 
 /* ======================================================================= */
 
 #ifdef LIBO_INTERNAL_ONLY // "RTL_FAST_STRING"
-/**
-A simple wrapper around string literal. It is usually not necessary to use, can
-be mostly used to force OString operator+ working with operands that otherwise would
-not trigger it.
-
-This class is not part of public API and is meant to be used only in LibreOffice code.
-@since LibreOffice 4.0
-*/
-struct SAL_WARN_UNUSED OStringLiteral
-{
-    template< int N >
-    explicit OStringLiteral( const char (&str)[ N ] ) : size( N - 1 ), data( str ) { assert( strlen( str ) == N - 1 ); }
-    int size;
-    const char* data;
-};
 
 /**
  @internal
@@ -1816,7 +1912,7 @@ struct SAL_WARN_UNUSED OStringLiteral
 template<>
 struct ToStringHelper< OString >
     {
-    static int length( const OString& s ) { return s.getLength(); }
+    static std::size_t length( const OString& s ) { return s.getLength(); }
     static char* addData( char* buffer, const OString& s ) { return addDataHelper( buffer, s.getStr(), s.getLength()); }
     static const bool allowOStringConcat = true;
     static const bool allowOUStringConcat = false;
@@ -1828,7 +1924,7 @@ struct ToStringHelper< OString >
 template<>
 struct ToStringHelper< OStringLiteral >
     {
-    static int length( const OStringLiteral& str ) { return str.size; }
+    static std::size_t length( const OStringLiteral& str ) { return str.size; }
     static char* addData( char* buffer, const OStringLiteral& str ) { return addDataHelper( buffer, str.data, str.size ); }
     static const bool allowOStringConcat = true;
     static const bool allowOUStringConcat = false;
@@ -1839,9 +1935,9 @@ struct ToStringHelper< OStringLiteral >
 */
 template< typename charT, typename traits, typename T1, typename T2 >
 inline std::basic_ostream<charT, traits> & operator <<(
-    std::basic_ostream<charT, traits> & stream, const OStringConcat< T1, T2 >& concat)
+    std::basic_ostream<charT, traits> & stream, OStringConcat< T1, T2 >&& concat)
 {
-    return stream << OString( concat );
+    return stream << OString( std::move(concat) );
 }
 #endif
 
@@ -1863,7 +1959,7 @@ struct OStringHash
         persistently, as its computation may change in later revisions.
      */
     size_t operator()( const OString& rString ) const
-        { return (size_t)rString.hashCode(); }
+        { return static_cast<size_t>(rString.hashCode()); }
 };
 
 /** Equality functor for classic c-strings (i.e., null-terminated char* strings). */
@@ -1908,9 +2004,31 @@ typedef rtlunittest::OString OString;
 
 #if defined LIBO_INTERNAL_ONLY && !defined RTL_STRING_UNITTEST
 using ::rtl::OString;
+using ::rtl::OStringChar;
 using ::rtl::OStringHash;
 using ::rtl::OStringLiteral;
 #endif
+
+/// @cond INTERNAL
+/**
+  Make OString hashable by default for use in STL containers.
+
+  @since LibreOffice 6.0
+*/
+#if defined LIBO_INTERNAL_ONLY
+namespace std {
+
+template<>
+struct hash<::rtl::OString>
+{
+    std::size_t operator()(::rtl::OString const & s) const
+    { return std::size_t(s.hashCode()); }
+};
+
+}
+
+#endif
+/// @endcond
 
 #endif // INCLUDED_RTL_STRING_HXX
 

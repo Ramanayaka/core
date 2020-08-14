@@ -18,19 +18,13 @@
  */
 
 #include <sdr/overlay/overlayline.hxx>
-#include <vcl/outdev.hxx>
-#include <basegfx/vector/b2dvector.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         drawinglayer::primitive2d::Primitive2DContainer OverlayLineStriped::createOverlayObjectPrimitive2DSequence()
         {
             drawinglayer::primitive2d::Primitive2DContainer aRetval;
@@ -67,7 +61,7 @@ namespace sdr
         OverlayLineStriped::OverlayLineStriped(
             const basegfx::B2DPoint& rBasePos,
             const basegfx::B2DPoint& rSecondPos)
-        :   OverlayObjectWithBasePosition(rBasePos, Color(COL_BLACK)),
+        :   OverlayObjectWithBasePosition(rBasePos, COL_BLACK),
             maSecondPosition(rSecondPos)
         {
         }
@@ -75,7 +69,6 @@ namespace sdr
         OverlayLineStriped::~OverlayLineStriped()
         {
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

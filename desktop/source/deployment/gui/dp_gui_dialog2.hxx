@@ -20,31 +20,22 @@
 #ifndef INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_GUI_DP_GUI_DIALOG2_HXX
 #define INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_GUI_DP_GUI_DIALOG2_HXX
 
-#include <config_extension_update.h>
-
-#include <vcl/dialog.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/fixedhyper.hxx>
-#include <vcl/prgsbar.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
+#include <vcl/waitobj.hxx>
+#include <vcl/customweld.hxx>
+#include <vcl/weld.hxx>
 
-#include <svtools/svmedit.hxx>
-
-#include <osl/conditn.hxx>
 #include <osl/mutex.hxx>
 
-#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
 
 #include <cppuhelper/implbase.hxx>
 
-#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/deployment/XPackage.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
-#include <com/sun/star/util/XModifyListener.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 
 namespace dp_gui {
 
@@ -57,17 +48,17 @@ class TheExtensionManager;
 class DialogHelper
 {
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
-    VclPtr<Dialog>  m_pVCLWindow;
+    weld::Window*   m_pWindow;
     ImplSVEvent *   m_nEventID;
-    bool            m_bIsBusy;
+    TopLevelWindowLocker m_aBusy;
 
 public:
-                    DialogHelper( const css::uno::Reference< css::uno::XComponentContext > &,
-                                  Dialog *pWindow );
+                    DialogHelper(const css::uno::Reference< css::uno::XComponentContext > &,
+                                 weld::Window* pWindow);
     virtual        ~DialogHelper();
 
-    void            openWebBrowser( const OUString & sURL, const OUString & sTitle ) const;
-    Dialog*         getWindow() const { return m_pVCLWindow; };
+    void            openWebBrowser(const OUString& rURL, const OUString& rTitle);
+    weld::Window*   getFrameWeld() const { return m_pWindow; }
     void            PostUserEvent( const Link<void*,void>& rLink, void* pCaller );
     void            clearEventID() { m_nEventID = nullptr; }
 
@@ -83,38 +74,22 @@ public:
     virtual void    prepareChecking() = 0;
     virtual void    checkEntries() = 0;
 
-    static ResId    getResId( sal_uInt16 nId );
-    static OUString getResourceString( sal_uInt16 id );
     static bool     IsSharedPkgMgr( const css::uno::Reference< css::deployment::XPackage > &);
-    static bool     continueOnSharedExtension( const css::uno::Reference< css::deployment::XPackage > &,
-                                               vcl::Window *pParent,
-                                               const sal_uInt16 nResID,
+           bool     continueOnSharedExtension( const css::uno::Reference< css::deployment::XPackage > &,
+                                               weld::Widget* pParent,
+                                               const char* pResID,
                                                bool &bHadWarning );
 
-    void            setBusy( const bool bBusy ) { m_bIsBusy = bBusy; }
-    bool            isBusy() const { return m_bIsBusy; }
-    bool            installExtensionWarn( const OUString &rExtensionURL ) const;
-    bool            installForAllUsers( bool &bInstallForAll ) const;
+    void            incBusy() { m_aBusy.incBusy(m_pWindow); }
+    void            decBusy() { m_aBusy.decBusy(); }
+    bool            isBusy() const { return m_aBusy.isBusy(); }
+    bool            installExtensionWarn(const OUString &rExtensionURL);
+    bool            installForAllUsers(bool &bInstallForAll);
 };
 
-
-class ExtMgrDialog : public ModelessDialog,
-                     public DialogHelper
+class ExtMgrDialog : public weld::GenericDialogController
+                   , public DialogHelper
 {
-    VclPtr<ExtBoxWithBtns_Impl> m_pExtensionBox;
-    VclPtr<PushButton>          m_pOptionsBtn;
-    VclPtr<PushButton>          m_pAddBtn;
-    VclPtr<PushButton>          m_pRemoveBtn;
-    VclPtr<PushButton>          m_pEnableBtn;
-    VclPtr<PushButton>          m_pUpdateBtn;
-    VclPtr<CloseButton>         m_pCloseBtn;
-    VclPtr<CheckBox>            m_pBundledCbx;
-    VclPtr<CheckBox>            m_pSharedCbx;
-    VclPtr<CheckBox>            m_pUserCbx;
-    VclPtr<FixedHyperlink>      m_pGetExtensions;
-    VclPtr<FixedText>           m_pProgressText;
-    VclPtr<ProgressBar>         m_pProgressBar;
-    VclPtr<CancelButton>        m_pCancelBtn;
     const OUString       m_sAddPackages;
     OUString             m_sProgressText;
     OUString             m_sLastFolderURL;
@@ -133,27 +108,38 @@ class ExtMgrDialog : public ModelessDialog,
 
     css::uno::Reference< css::task::XAbortChannel > m_xAbortChannel;
 
-    bool removeExtensionWarn( const OUString &rExtensionTitle ) const;
+    std::unique_ptr<ExtBoxWithBtns_Impl> m_xExtensionBox;
+    std::unique_ptr<weld::CustomWeld> m_xExtensionBoxWnd;
+    std::unique_ptr<weld::Button> m_xOptionsBtn;
+    std::unique_ptr<weld::Button> m_xAddBtn;
+    std::unique_ptr<weld::Button> m_xRemoveBtn;
+    std::unique_ptr<weld::Button> m_xEnableBtn;
+    std::unique_ptr<weld::Button> m_xUpdateBtn;
+    std::unique_ptr<weld::Button> m_xCloseBtn;
+    std::unique_ptr<weld::CheckButton> m_xBundledCbx;
+    std::unique_ptr<weld::CheckButton> m_xSharedCbx;
+    std::unique_ptr<weld::CheckButton> m_xUserCbx;
+    std::unique_ptr<weld::LinkButton> m_xGetExtensions;
+    std::unique_ptr<weld::Label> m_xProgressText;
+    std::unique_ptr<weld::ProgressBar> m_xProgressBar;
+    std::unique_ptr<weld::Button> m_xCancelBtn;
 
-    DECL_LINK( HandleOptionsBtn, Button*, void );
-    DECL_LINK( HandleAddBtn, Button*, void );
-    DECL_LINK( HandleRemoveBtn, Button*, void );
-    DECL_LINK( HandleEnableBtn, Button*, void );
-    DECL_LINK( HandleUpdateBtn, Button*, void );
-    DECL_LINK( HandleCancelBtn, Button*, void );
-    DECL_LINK( HandleCloseBtn, Button*, void );
-    DECL_LINK( HandleExtTypeCbx, Button*, void );
-    DECL_LINK(TimeOutHdl, Timer *, void);
+    bool removeExtensionWarn(const OUString &rExtensionTitle);
+
+    DECL_LINK( HandleOptionsBtn, weld::Button&, void );
+    DECL_LINK( HandleAddBtn, weld::Button&, void );
+    DECL_LINK( HandleRemoveBtn, weld::Button&, void );
+    DECL_LINK( HandleEnableBtn, weld::Button&, void );
+    DECL_LINK( HandleUpdateBtn, weld::Button&, void );
+    DECL_LINK( HandleCancelBtn, weld::Button&, void );
+    DECL_LINK( HandleCloseBtn, weld::Button&, void );
+    DECL_LINK( HandleExtTypeCbx, weld::Button&, void );
+    DECL_LINK( TimeOutHdl, Timer *, void );
     DECL_LINK( startProgress, void *, void );
-    DECL_STATIC_LINK( ExtMgrDialog, Restart, void *, void );
 
 public:
-                    ExtMgrDialog( vcl::Window * pParent, TheExtensionManager *pManager, Dialog::InitFlag eFlag = Dialog::InitFlag::Default );
-    virtual        ~ExtMgrDialog() override;
-    virtual void    dispose() override;
-
-    virtual bool    EventNotify( NotifyEvent& rNEvt ) override;
-    virtual bool    Close() override;
+    ExtMgrDialog(weld::Window * pParent, TheExtensionManager *pManager);
+    virtual ~ExtMgrDialog() override;
 
     virtual void    showProgress( bool bStart ) override;
     virtual void    updateProgress( const OUString &rText,
@@ -165,11 +151,13 @@ public:
     void            setGetExtensionsURL( const OUString &rURL );
     virtual void    addPackageToList( const css::uno::Reference< css::deployment::XPackage > &,
                                       bool bLicenseMissing = false ) override;
-    bool enablePackage(const css::uno::Reference< css::deployment::XPackage > &xPackage,
+    void enablePackage(const css::uno::Reference< css::deployment::XPackage > &xPackage,
                         bool bEnable );
-    bool removePackage(const css::uno::Reference< css::deployment::XPackage > &xPackage );
-    bool updatePackage(const css::uno::Reference< css::deployment::XPackage > &xPackage );
+    void removePackage(const css::uno::Reference< css::deployment::XPackage > &xPackage );
+    void updatePackage(const css::uno::Reference< css::deployment::XPackage > &xPackage );
     bool acceptLicense(const css::uno::Reference< css::deployment::XPackage > &xPackage );
+
+    void Close();
 
     TheExtensionManager*    getExtensionManager() const { return m_pManager; }
 
@@ -189,16 +177,9 @@ public:
 };
 
 
-class UpdateRequiredDialog : public ModalDialog,
-                             public DialogHelper
+class UpdateRequiredDialog : public weld::GenericDialogController
+                           , public DialogHelper
 {
-    VclPtr<ExtensionBox_Impl>   m_pExtensionBox;
-    VclPtr<FixedText>           m_pUpdateNeeded;
-    VclPtr<PushButton>          m_pUpdateBtn;
-    VclPtr<PushButton>          m_pCloseBtn;
-    VclPtr<CancelButton>        m_pCancelBtn;
-    VclPtr<FixedText>           m_pProgressText;
-    VclPtr<ProgressBar>         m_pProgressBar;
     const OUString       m_sCloseText;
     OUString             m_sProgressText;
     ::osl::Mutex         m_aMutex;
@@ -213,10 +194,19 @@ class UpdateRequiredDialog : public ModalDialog,
 
     css::uno::Reference< css::task::XAbortChannel > m_xAbortChannel;
 
-    DECL_LINK( HandleUpdateBtn, Button*, void );
-    DECL_LINK( HandleCloseBtn, Button*, void );
-    DECL_LINK( HandleCancelBtn, Button*, void );
-    DECL_LINK(TimeOutHdl, Timer *, void);
+    std::unique_ptr<ExtensionBox_Impl> m_xExtensionBox;
+    std::unique_ptr<weld::CustomWeld> m_xExtensionBoxWnd;
+    std::unique_ptr<weld::Label> m_xUpdateNeeded;
+    std::unique_ptr<weld::Button> m_xUpdateBtn;
+    std::unique_ptr<weld::Button> m_xCloseBtn;
+    std::unique_ptr<weld::Button> m_xCancelBtn;
+    std::unique_ptr<weld::Label> m_xProgressText;
+    std::unique_ptr<weld::ProgressBar> m_xProgressBar;
+
+    DECL_LINK( HandleUpdateBtn, weld::Button&, void );
+    DECL_LINK( HandleCloseBtn, weld::Button&, void );
+    DECL_LINK( HandleCancelBtn, weld::Button&, void );
+    DECL_LINK( TimeOutHdl, Timer *, void );
     DECL_LINK( startProgress, void *, void );
 
     static bool     isEnabled( const css::uno::Reference< css::deployment::XPackage > &xPackage );
@@ -225,12 +215,10 @@ class UpdateRequiredDialog : public ModalDialog,
     void            disableAllEntries();
 
 public:
-                    UpdateRequiredDialog( vcl::Window * pParent, TheExtensionManager *pManager );
+    UpdateRequiredDialog(weld::Window * pParent, TheExtensionManager *pManager);
     virtual        ~UpdateRequiredDialog() override;
-    virtual void    dispose() override;
 
-    virtual short   Execute() override;
-    virtual bool    Close() override;
+    virtual short   run() override;
 
     virtual void    showProgress( bool bStart ) override;
     virtual void    updateProgress( const OUString &rText,
@@ -247,22 +235,25 @@ public:
 };
 
 
-class ShowLicenseDialog : public ModalDialog
+class ShowLicenseDialog : public weld::GenericDialogController
 {
-    VclPtr<VclMultiLineEdit> m_pLicenseText;
+    std::unique_ptr<weld::TextView> m_xLicenseText;
 public:
-    ShowLicenseDialog(vcl::Window * pParent, const css::uno::Reference< css::deployment::XPackage > &xPackage);
+    ShowLicenseDialog(weld::Window * pParent, const css::uno::Reference< css::deployment::XPackage > &xPackage);
     virtual ~ShowLicenseDialog() override;
-    virtual void dispose() override;
 };
 
-
-class UpdateRequiredDialogService : public ::cppu::WeakImplHelper< css::ui::dialogs::XExecutableDialog >
+class UpdateRequiredDialogService : public ::cppu::WeakImplHelper< css::ui::dialogs::XExecutableDialog, css::lang::XServiceInfo >
 {
     css::uno::Reference< css::uno::XComponentContext > const m_xComponentContext;
 public:
     UpdateRequiredDialogService( css::uno::Sequence< css::uno::Any > const & args,
                                  css::uno::Reference< css::uno::XComponentContext> const & xComponentContext );
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
     // XExecutableDialog
     virtual void SAL_CALL         setTitle( OUString const & title ) override;

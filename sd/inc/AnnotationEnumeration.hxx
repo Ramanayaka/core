@@ -22,11 +22,11 @@
 
 #include <sal/config.h>
 
-#include <sdpage.hxx>
+#include "sdpage.hxx"
 
-namespace com { namespace sun { namespace star { namespace office {
+namespace com::sun::star::office {
     class XAnnotationEnumeration;
-} } } }
+}
 
 namespace sd {
 

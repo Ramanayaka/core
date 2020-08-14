@@ -19,27 +19,26 @@
 #ifndef INCLUDED_SVX_GRIDCTRL_HXX
 #define INCLUDED_SVX_GRIDCTRL_HXX
 
-#include <com/sun/star/sdbc/XRowSet.hpp>
-#include <com/sun/star/sdbc/XRowSetListener.hpp>
-#include <com/sun/star/sdb/XRowsChangeListener.hpp>
-#include <com/sun/star/beans/PropertyChangeEvent.hpp>
-#include <com/sun/star/util/XNumberFormatter.hpp>
 #include <com/sun/star/util/Date.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <vcl/fixed.hxx>
-#include <vcl/field.hxx>
 
-#include <vcl/button.hxx>
 #include <tools/ref.hxx>
 #include <svtools/editbrowsebox.hxx>
+#include <svtools/recorditemwindow.hxx>
 #include <osl/mutex.hxx>
-#include <comphelper/propmultiplex.hxx>
-#include <svtools/transfer.hxx>
 #include <svx/svxdllapi.h>
+#include <vcl/menu.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <memory>
 #include <vector>
 
-class DbGridControl;
+namespace comphelper { class OPropertyChangeMultiplexer; }
+namespace com::sun::star::beans { struct PropertyChangeEvent; }
+namespace com::sun::star::container { class XIndexAccess; }
+namespace com::sun::star::sdbc { class XRowSet; }
+namespace com::sun::star::sdb { class XRowsChangeListener; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::util { class XNumberFormatter; }
+
 class CursorWrapper;
 
 bool CompareBookmark(const css::uno::Any& aLeft, const css::uno::Any& aRight);
@@ -61,17 +60,17 @@ enum class GridRowStatus
 // DbGridRow, description of rows
 
 
-class DbGridRow : public SvRefBase
+class SAL_DLLPUBLIC_RTTI DbGridRow final : public SvRefBase
 {
     css::uno::Any  m_aBookmark;        // Bookmark of the row, can be set
-    ::std::vector< ::svxform::DataColumn* >
+    ::std::vector< std::unique_ptr<::svxform::DataColumn> >
                                 m_aVariants;
     GridRowStatus               m_eStatus;
     bool                        m_bIsNew;
                                                     // row is no longer valid
                                                     // is removed on the next positioning
 public:
-    DbGridRow():m_eStatus(GridRowStatus::Clean), m_bIsNew(true) { }
+    DbGridRow();
     DbGridRow(CursorWrapper* pCur, bool bPaintCursor);
     void SetState(CursorWrapper* pCur, bool bPaintCursor);
 
@@ -97,8 +96,6 @@ typedef tools::SvRef<DbGridRow> DbGridRowRef;
 // DbGridControl
 
 class DbGridColumn;
-typedef ::std::vector< DbGridColumn* > DbGridColumns;
-
 
 class FmGridListener
 {
@@ -162,7 +159,71 @@ enum class DbGridControlNavigationBarState
 
 class FmXGridSourcePropListener;
 class DisposeListenerGridBridge;
-class SVX_DLLPUBLIC DbGridControl : public svt::EditBrowseBox
+
+// NavigationBar
+class NavigationBar final : public InterimItemWindow
+{
+    class AbsolutePos final : public RecordItemWindowBase
+    {
+    public:
+        AbsolutePos(std::unique_ptr<weld::Entry> xEntry, NavigationBar* pBar);
+
+        virtual bool DoKeyInput(const KeyEvent& rEvt) override;
+        virtual void PositionFired(sal_Int64 nRecord) override;
+
+        weld::Entry* GetWidget() { return m_xWidget.get(); }
+    private:
+        VclPtr<NavigationBar> m_xParent;
+    };
+
+    friend class NavigationBar::AbsolutePos;
+
+    //  additional controls
+    std::unique_ptr<weld::Label> m_xRecordText;
+    std::unique_ptr<AbsolutePos> m_xAbsolute;         // absolute positioning
+    std::unique_ptr<weld::Label> m_xRecordOf;
+    std::unique_ptr<weld::Label> m_xRecordCount;
+
+    std::unique_ptr<weld::Button> m_xFirstBtn;        // Button for 'go to the first record'
+    std::unique_ptr<weld::Button> m_xPrevBtn;         // Button for 'go to the previous record'
+    std::unique_ptr<weld::Button> m_xNextBtn;         // Button for 'go to the next record'
+    std::unique_ptr<weld::Button> m_xLastBtn;         // Button for 'go to the last record'
+    std::unique_ptr<weld::Button> m_xNewBtn;          // Button for 'go to a new record'
+
+    AutoTimer m_aNextRepeat;
+    AutoTimer m_aPrevRepeat;
+
+    sal_Int32            m_nCurrentPos;
+
+    bool                 m_bPositioning;     // protect PositionDataSource against recursion
+
+public:
+    NavigationBar(vcl::Window* pParent);
+    virtual ~NavigationBar() override;
+    virtual void dispose() override;
+
+    // Status methods for Controls
+    void InvalidateAll(sal_Int32 nCurrentPos, bool bAll = false);
+    void InvalidateState(DbGridControlNavigationBarState nWhich) {SetState(nWhich);}
+    void SetState(DbGridControlNavigationBarState nWhich);
+    bool GetState(DbGridControlNavigationBarState nWhich) const;
+    sal_uInt16 ArrangeControls();
+
+private:
+
+    DECL_LINK(OnClick, weld::Button&, void);
+
+    DECL_LINK(PrevMousePressHdl, const MouseEvent&, bool);
+    DECL_LINK(PrevMouseReleaseHdl, const MouseEvent&, bool);
+    DECL_LINK(NextMousePressHdl, const MouseEvent&, bool);
+    DECL_LINK(NextMouseReleaseHdl, const MouseEvent&, bool);
+    DECL_LINK(PrevRepeatTimerHdl, Timer*, void);
+    DECL_LINK(NextRepeatTimerHdl, Timer*, void);
+
+    void PositionDataSource(sal_Int32 nRecord);
+};
+
+class SVXCORE_DLLPUBLIC DbGridControl : public svt::EditBrowseBox
 {
     friend class FmXGridSourcePropListener;
     friend class GridFieldValueListener;
@@ -170,60 +231,7 @@ class SVX_DLLPUBLIC DbGridControl : public svt::EditBrowseBox
 
 public:
 
-    // NavigationBar
-
-    class NavigationBar: public Control
-    {
-        class AbsolutePos : public NumericField
-        {
-        public:
-            AbsolutePos(vcl::Window* pParent, WinBits nStyle);
-
-            virtual void KeyInput(const KeyEvent& rEvt) override;
-            virtual void LoseFocus() override;
-        };
-
-        friend class NavigationBar::AbsolutePos;
-
-        //  additional controls
-        VclPtr<FixedText>    m_aRecordText;
-        VclPtr<AbsolutePos>  m_aAbsolute;            // absolute positioning
-        VclPtr<FixedText>    m_aRecordOf;
-        VclPtr<FixedText>    m_aRecordCount;
-
-        VclPtr<ImageButton>  m_aFirstBtn;            // ImageButton for 'go to the first record'
-        VclPtr<ImageButton>  m_aPrevBtn;         // ImageButton for 'go to the previous record'
-        VclPtr<ImageButton>  m_aNextBtn;         // ImageButton for 'go to the next record'
-        VclPtr<ImageButton>  m_aLastBtn;         // ImageButton for 'go to the last record'
-        VclPtr<ImageButton>  m_aNewBtn;          // ImageButton for 'go to a new record'
-        sal_Int32            m_nCurrentPos;
-
-        bool                 m_bPositioning;     // protect PositionDataSource against recursion
-
-    public:
-        NavigationBar(vcl::Window* pParent);
-        virtual ~NavigationBar() override;
-        virtual void dispose() override;
-
-        // Status methods for Controls
-        void InvalidateAll(sal_Int32 nCurrentPos, bool bAll = false);
-        void InvalidateState(DbGridControlNavigationBarState nWhich) {SetState(nWhich);}
-        void SetState(DbGridControlNavigationBarState nWhich);
-        bool GetState(DbGridControlNavigationBarState nWhich) const;
-        sal_uInt16 ArrangeControls();
-
-    protected:
-        virtual void Resize() override;
-        virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
-        virtual void StateChanged( StateChangedType nType ) override;
-
-    private:
-        DECL_LINK(OnClick, Button*, void);
-
-        void PositionDataSource(sal_Int32 nRecord);
-    };
-
-    friend class DbGridControl::NavigationBar;
+    friend class NavigationBar;
 
 private:
     Link<DbGridControlNavigationBarState,int>    m_aMasterStateProvider;
@@ -232,7 +240,7 @@ private:
     css::uno::Reference< css::util::XNumberFormatter >    m_xFormatter;
     css::uno::Reference< css::uno::XComponentContext >    m_xContext;
 
-    DbGridColumns   m_aColumns;         // Column description
+    std::vector< std::unique_ptr<DbGridColumn> > m_aColumns;         // Column description
     VclPtr<NavigationBar>   m_aBar;
     DbGridRowRef    m_xDataRow;         // Row which can be modified
                                         // comes from the data cursor
@@ -254,16 +262,16 @@ private:
     void*                                           m_pFieldListeners;
         // property listeners for field values
 
-    DisposeListenerGridBridge*                      m_pCursorDisposeListener;
-        // need to know about the diposing of the seek cursor
+    std::unique_ptr<DisposeListenerGridBridge>      m_pCursorDisposeListener;
+        // need to know about the disposing of the seek cursor
         // construct analogous to the data source proplistener/multiplexer above :
         // DisposeListenerGridBridge is a bridge from FmXDisposeListener which I don't want to be derived from
 
     FmGridListener*                                 m_pGridListener;
 
 protected:
-    CursorWrapper*  m_pDataCursor;      // Cursor for Updates
-    CursorWrapper*  m_pSeekCursor;      // Cursor for Seeking
+    std::unique_ptr<CursorWrapper> m_pDataCursor;      // Cursor for Updates
+    std::unique_ptr<CursorWrapper> m_pSeekCursor;      // Cursor for Seeking
 
 private:
     // iteration variables
@@ -280,7 +288,7 @@ private:
 
     BrowserMode         m_nMode;
     sal_Int32           m_nCurrentPos;      // Current position;
-    ImplSVEvent *       m_nDeleteEvent;     // EventId for asychronous deletion of rows
+    ImplSVEvent *       m_nDeleteEvent;     // EventId for asynchronous deletion of rows
     DbGridControlOptions m_nOptions;        // What is the able to do (Insert, Update, Delete)
                                             // default readonly
     DbGridControlOptions m_nOptionMask;     // the mask of options to be enabled in setDataSource
@@ -325,9 +333,9 @@ protected:
     virtual bool SaveModified() override;
     virtual bool IsModified() const override;
 
-    virtual sal_uInt16 AppendColumn(const OUString& rName, sal_uInt16 nWidth, sal_uInt16 nPos = HEADERBAR_APPEND, sal_uInt16 nId = (sal_uInt16)-1) override;
+    virtual sal_uInt16 AppendColumn(const OUString& rName, sal_uInt16 nWidth, sal_uInt16 nPos = HEADERBAR_APPEND, sal_uInt16 nId = sal_uInt16(-1)) override;
     void RemoveColumn(sal_uInt16 nId);
-    DbGridColumn* CreateColumn(sal_uInt16 nId) const;
+    std::unique_ptr<DbGridColumn> CreateColumn(sal_uInt16 nId);
     virtual void ColumnMoved(sal_uInt16 nId) override;
     virtual bool SaveRow() override;
     virtual bool IsTabAllowed(bool bForward) const override;
@@ -401,8 +409,8 @@ public:
         DbGridControlOptions nOpts = DbGridControlOptions::Insert | DbGridControlOptions::Update | DbGridControlOptions::Delete);
     virtual void Dispatch(sal_uInt16 nId) override;
 
-    CursorWrapper* getDataSource() const {return m_pDataCursor;}
-    const DbGridColumns& GetColumns() const {return m_aColumns;}
+    CursorWrapper* getDataSource() const {return m_pDataCursor.get();}
+    const std::vector< std::unique_ptr<DbGridColumn> >& GetColumns() const {return m_aColumns;}
 
     void EnableHandle(bool bEnable);
     bool HasHandle() const {return m_bHandle;}
@@ -418,7 +426,7 @@ public:
 
     // the number of columns in the model
     sal_uInt16 GetViewColCount() const { return ColCount() - 1; }
-    sal_uInt16 GetModelColCount() const { return (sal_uInt16)m_aColumns.size(); }
+    sal_uInt16 GetModelColCount() const { return static_cast<sal_uInt16>(m_aColumns.size()); }
     // reverse to GetViewColumnPos: Id of position, the first non-handle column has position 0
     sal_uInt16 GetColumnIdFromViewPos( sal_uInt16 nPos ) const { return GetColumnId(nPos + 1); }
     sal_uInt16 GetColumnIdFromModelPos( sal_uInt16 nPos ) const;
@@ -435,7 +443,7 @@ public:
     bool HasNavigationBar() const {return m_bNavigationBar;}
 
     DbGridControlOptions GetOptions() const {return m_nOptions;}
-    NavigationBar& GetNavigationBar() {return *m_aBar.get();}
+    NavigationBar& GetNavigationBar() {return *m_aBar;}
     DbGridControlOptions SetOptions(DbGridControlOptions nOpt);
         // The new options are interpreted with respect to the current data source. If it is unable
         // to update, to insert or to restore, the according options are ignored. If the grid isn't
@@ -512,18 +520,17 @@ public:
     void                        setGridListener( FmGridListener* _pListener ) { m_pGridListener = _pListener; }
 
     // helper class to grant access to selected methods from within the DbCellControl class
-    struct GrantControlAccess
+    struct GrantControlAccess final
     {
         friend class DbCellControl;
         friend class RowSetEventListener;
-    protected:
         GrantControlAccess() { }
     };
 
     /// called when a controller needs to be re-initialized
     void refreshController(sal_uInt16 _nColId, GrantControlAccess _aAccess);
 
-    CursorWrapper* GetSeekCursor(GrantControlAccess /*_aAccess*/) const    { return m_pSeekCursor; }
+    CursorWrapper* GetSeekCursor(GrantControlAccess /*_aAccess*/) const    { return m_pSeekCursor.get(); }
     const DbGridRowRef& GetSeekRow(GrantControlAccess /*_aAccess*/) const  { return m_xSeekRow;    }
     void  SetSeekPos(sal_Int32 nPos,GrantControlAccess /*_aAccess*/) {m_nSeekPos = nPos;}
 
@@ -560,7 +567,7 @@ protected:
     sal_Int32 AlignSeekCursor();
     bool SetCurrent(long nNewRow);
 
-    OUString GetCurrentRowCellText(DbGridColumn* pCol,const DbGridRowRef& _rRow) const;
+    OUString GetCurrentRowCellText(DbGridColumn const * pCol,const DbGridRowRef& _rRow) const;
     virtual void DeleteSelectedRows();
     static bool IsValid(const DbGridRowRef& _xRow) { return _xRow.is() && _xRow->IsValid(); }
 

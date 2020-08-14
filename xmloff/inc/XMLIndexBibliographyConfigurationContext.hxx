@@ -25,15 +25,14 @@
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 #include <rtl/ustring.hxx>
 
 
 #include <vector>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
-} } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
+}
 
 
 /**
@@ -41,19 +40,8 @@ namespace com { namespace sun { namespace star {
  *
  * Little cheat: Cover all child elements in CreateChildContext.
  */
-class XMLIndexBibliographyConfigurationContext : public SvXMLStyleContext
+class XMLIndexBibliographyConfigurationContext final : public SvXMLStyleContext
 {
-    const OUString sFieldMaster_Bibliography;
-    const OUString sBracketBefore;
-    const OUString sBracketAfter;
-    const OUString sIsNumberEntries;
-    const OUString sIsSortByPosition;
-    const OUString sSortKeys;
-    const OUString sSortKey;
-    const OUString sIsSortAscending;
-    const OUString sSortAlgorithm;
-    const OUString sLocale;
-
     OUString sSuffix;
     OUString sPrefix;
     OUString sAlgorithm;
@@ -74,22 +62,18 @@ public:
 
     virtual ~XMLIndexBibliographyConfigurationContext() override;
 
-protected:
+private:
 
-    virtual void StartElement(
-        const css::uno::Reference< css::xml::sax::XAttributeList> & xAttrList) override;
+    virtual void SetAttribute( sal_uInt16 nPrefixKey,
+                               const OUString& rLocalName,
+                               const OUString& rValue ) override;
 
     virtual void CreateAndInsert( bool bOverwrite ) override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList> & xAttrList ) override;
-
-    void ProcessAttribute(
-        sal_uInt16 nPrefix,
-        const OUString& sLocalName,
-        const OUString& sValue);
 };
 
 #endif

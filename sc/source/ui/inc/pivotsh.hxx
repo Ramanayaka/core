@@ -20,13 +20,13 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_PIVOTSH_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_PIVOTSH_HXX
 
-#include <sfx2/module.hxx>
 #include <sfx2/shell.hxx>
 
-#include "shellids.hxx"
+#include <shellids.hxx>
 
 class ScTabViewShell;
 class ScDPObject;
+class SfxModule;
 
 class ScPivotShell : public SfxShell
 {
@@ -41,13 +41,13 @@ public:
     ScPivotShell(ScTabViewShell* pView);
     virtual ~ScPivotShell() override;
 
-    void Execute(SfxRequest& rReq);
+    void Execute(const SfxRequest& rReq);
     void GetState(SfxItemSet& rSet);
 
 private:
     ScTabViewShell* pViewShell;
 
-    ScDPObject*     GetCurrDPObject();
+    ScDPObject* GetCurrDPObject();
 };
 
 #endif

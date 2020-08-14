@@ -9,10 +9,10 @@
 
 #include <sal/config.h>
 #include <test/screenshot_test.hxx>
-#include <rtl/strbuf.hxx>
-#include <osl/file.hxx>
-#include <sfx2/app.hxx>
 #include <vcl/abstdlg.hxx>
+#include <vcl/scheduler.hxx>
+#include <vcl/wrkwin.hxx>
+#include <svtools/valueset.hxx>
 
 using namespace ::com::sun::star;
 

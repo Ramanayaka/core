@@ -10,8 +10,9 @@
 #include <cppunit/plugin/TestPlugIn.h>
 #include <cppunit/extensions/HelperMacros.h>
 #include <cppunit/TestFixture.h>
-
+#include <osl/file.hxx>
 #include <oox/ole/vbaexport.hxx>
+#include <rtl/bootstrap.hxx>
 #include <tools/stream.hxx>
 #include <unotest/directories.hxx>
 #include <algorithm>
@@ -19,7 +20,6 @@
 class TestVbaCompression : public CppUnit::TestFixture
 {
 public:
-
     // just a sequence of bytes that should not be compressed at all
     void testSimple1();
 
@@ -52,6 +52,21 @@ public:
     CPPUNIT_TEST_SUITE_END();
 
 private:
+    static OUString const & getDebugDirUrl() {
+        struct DebugDirUrl {
+            DebugDirUrl() : url("$UserInstallation/debug/") {
+                rtl::Bootstrap::expandMacros(url);
+                    //TODO: provide an OUString -> OUString expansion function, and which throws on
+                    // failure
+                auto e = osl::Directory::create(url);
+                CPPUNIT_ASSERT_EQUAL(osl::FileBase::E_None, e);
+            }
+            OUString url;
+        };
+        static DebugDirUrl url;
+        return url.url;
+    }
+
     test::Directories m_directories;
 };
 
@@ -86,7 +101,7 @@ void TestVbaCompression::testSimple1()
     SvMemoryStream aOutputMemoryStream(4096, 4096);
     SvMemoryStream aReferenceMemoryStream(4096, 4096);
     ReadFiles(aTestFile, aReference, aOutputMemoryStream,
-            aReferenceMemoryStream, "/tmp/vba_debug.bin");
+            aReferenceMemoryStream, getDebugDirUrl() + "vba_debug.bin");
 
     CPPUNIT_ASSERT_EQUAL(aReferenceMemoryStream.GetSize(), aOutputMemoryStream.GetSize());
 
@@ -97,7 +112,7 @@ void TestVbaCompression::testSimple1()
             aOutputMemoryStream.GetSize());
     for (sal_uInt64 i = 0; i < nSize; ++i)
     {
-        CPPUNIT_ASSERT_EQUAL((int)pReferenceData[i], (int)pData[i]);
+        CPPUNIT_ASSERT_EQUAL(static_cast<int>(pReferenceData[i]), static_cast<int>(pData[i]));
     }
 }
 
@@ -108,7 +123,7 @@ void TestVbaCompression::testSimple2()
 
     SvMemoryStream aOutputMemoryStream(4096, 4096);
     SvMemoryStream aReferenceMemoryStream(4096, 4096);
-    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, "/tmp/vba_debug2.bin");
+    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, getDebugDirUrl() + "vba_debug2.bin");
 
     CPPUNIT_ASSERT_EQUAL(aReferenceMemoryStream.GetSize(), aOutputMemoryStream.GetSize());
 
@@ -119,7 +134,7 @@ void TestVbaCompression::testSimple2()
             aOutputMemoryStream.GetSize());
     for (sal_uInt64 i = 0; i < nSize; ++i)
     {
-        CPPUNIT_ASSERT_EQUAL((int)pReferenceData[i], (int)pData[i]);
+        CPPUNIT_ASSERT_EQUAL(static_cast<int>(pReferenceData[i]), static_cast<int>(pData[i]));
     }
 }
 
@@ -130,7 +145,7 @@ void TestVbaCompression::testSimple3()
 
     SvMemoryStream aOutputMemoryStream(4096, 4096);
     SvMemoryStream aReferenceMemoryStream(4096, 4096);
-    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, "/tmp/vba_debug3.bin");
+    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, getDebugDirUrl() + "vba_debug3.bin");
 
     CPPUNIT_ASSERT_EQUAL(aReferenceMemoryStream.GetSize(), aOutputMemoryStream.GetSize());
 
@@ -141,7 +156,7 @@ void TestVbaCompression::testSimple3()
             aOutputMemoryStream.GetSize());
     for (sal_uInt64 i = 0; i < nSize; ++i)
     {
-        CPPUNIT_ASSERT_EQUAL((int)pReferenceData[i], (int)pData[i]);
+        CPPUNIT_ASSERT_EQUAL(static_cast<int>(pReferenceData[i]), static_cast<int>(pData[i]));
     }
 }
 
@@ -152,7 +167,7 @@ void TestVbaCompression::testComplex1()
 
     SvMemoryStream aOutputMemoryStream(4096, 4096);
     SvMemoryStream aReferenceMemoryStream(4096, 4096);
-    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, "/tmp/vba_debug_complex1.bin");
+    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, getDebugDirUrl() + "vba_debug_complex1.bin");
 
     CPPUNIT_ASSERT_EQUAL(aReferenceMemoryStream.GetSize(), aOutputMemoryStream.GetSize());
 
@@ -163,7 +178,7 @@ void TestVbaCompression::testComplex1()
             aOutputMemoryStream.GetSize());
     for (sal_uInt64 i = 0; i < nSize; ++i)
     {
-        CPPUNIT_ASSERT_EQUAL((int)pReferenceData[i], (int)pData[i]);
+        CPPUNIT_ASSERT_EQUAL(static_cast<int>(pReferenceData[i]), static_cast<int>(pData[i]));
     }
 }
 
@@ -174,7 +189,7 @@ void TestVbaCompression::testSpec321()
 
     SvMemoryStream aOutputMemoryStream(4096, 4096);
     SvMemoryStream aReferenceMemoryStream(4096, 4096);
-    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, "/tmp/vba_debug_spec321.bin");
+    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, getDebugDirUrl() + "vba_debug_spec321.bin");
 
     CPPUNIT_ASSERT_EQUAL(aReferenceMemoryStream.GetSize(), aOutputMemoryStream.GetSize());
 
@@ -185,7 +200,7 @@ void TestVbaCompression::testSpec321()
             aOutputMemoryStream.GetSize());
     for (sal_uInt64 i = 0; i < nSize; ++i)
     {
-        CPPUNIT_ASSERT_EQUAL((int)pReferenceData[i], (int)pData[i]);
+        CPPUNIT_ASSERT_EQUAL(static_cast<int>(pReferenceData[i]), static_cast<int>(pData[i]));
     }
 }
 
@@ -196,7 +211,7 @@ void TestVbaCompression::testSpec322()
 
     SvMemoryStream aOutputMemoryStream(4096, 4096);
     SvMemoryStream aReferenceMemoryStream(4096, 4096);
-    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, "/tmp/vba_debug_spec322.bin");
+    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, getDebugDirUrl() + "vba_debug_spec322.bin");
 
     CPPUNIT_ASSERT_EQUAL(aReferenceMemoryStream.GetSize(), aOutputMemoryStream.GetSize());
 
@@ -207,7 +222,7 @@ void TestVbaCompression::testSpec322()
             aOutputMemoryStream.GetSize());
     for (sal_uInt64 i = 0; i < nSize; ++i)
     {
-        CPPUNIT_ASSERT_EQUAL((int)pReferenceData[i], (int)pData[i]);
+        CPPUNIT_ASSERT_EQUAL(static_cast<int>(pReferenceData[i]), static_cast<int>(pData[i]));
     }
 }
 
@@ -218,7 +233,7 @@ void TestVbaCompression::testSpec323()
 
     SvMemoryStream aOutputMemoryStream(4096, 4096);
     SvMemoryStream aReferenceMemoryStream(4096, 4096);
-    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, "/tmp/vba_debug_spec323.bin");
+    ReadFiles(aTestFile, aReference, aOutputMemoryStream, aReferenceMemoryStream, getDebugDirUrl() + "vba_debug_spec323.bin");
 
     CPPUNIT_ASSERT_EQUAL(aReferenceMemoryStream.GetSize(), aOutputMemoryStream.GetSize());
 
@@ -229,7 +244,7 @@ void TestVbaCompression::testSpec323()
             aOutputMemoryStream.GetSize());
     for (sal_uInt64 i = 0; i < nSize; ++i)
     {
-        CPPUNIT_ASSERT_EQUAL((int)pReferenceData[i], (int)pData[i]);
+        CPPUNIT_ASSERT_EQUAL(static_cast<int>(pReferenceData[i]), static_cast<int>(pData[i]));
     }
 }
 

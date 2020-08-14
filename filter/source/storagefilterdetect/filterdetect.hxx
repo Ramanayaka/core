@@ -53,14 +53,6 @@ public:
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 };
 
-OUString StorageFilterDetect_getImplementationName();
-
-bool StorageFilterDetect_supportsService(const OUString& ServiceName);
-
-css::uno::Sequence<OUString> StorageFilterDetect_getSupportedServiceNames();
-
-css::uno::Reference<css::uno::XInterface>
-StorageFilterDetect_createInstance(const css::uno::Reference<css::uno::XComponentContext>& rCxt);
 
 #endif
 

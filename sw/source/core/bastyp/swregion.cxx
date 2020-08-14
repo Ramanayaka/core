@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "swrect.hxx"
-#include "swregion.hxx"
-#include "swtypes.hxx"
+#include <swrect.hxx>
+#include <swregion.hxx>
+#include <swtypes.hxx>
 
 SwRegionRects::SwRegionRects( const SwRect &rStartRect, sal_uInt16 nInit ) :
     SwRects(),
@@ -74,8 +74,8 @@ void SwRegionRects::operator-=( const SwRect &rRect )
 
             // now split; only those rectangles should be left over that are in
             // the "old" but not in the "new" area; hence, not in intersection.
-            long nTmp;
-            if ( 0 < (nTmp = aInter.Top() - aTmp.Top()) )
+            long nTmp = aInter.Top() - aTmp.Top();
+            if ( 0 < nTmp )
             {
                 const long nOldVal = aTmp.Height();
                 aTmp.Height(nTmp);
@@ -89,7 +89,8 @@ void SwRegionRects::operator-=( const SwRect &rRect )
 
             aTmp.Top( aInter.Top() );
             aTmp.Bottom( aInter.Bottom() );
-            if ( 0 < (nTmp = aInter.Left() - aTmp.Left()) )
+            nTmp = aInter.Left() - aTmp.Left();
+            if ( 0 < nTmp )
             {
                 const long nOldVal = aTmp.Width();
                 aTmp.Width( nTmp );
@@ -135,7 +136,7 @@ void SwRegionRects::Invert()
     swap( aInvRegion );
 }
 
-inline SwTwips CalcArea( const SwRect &rRect )
+static SwTwips CalcArea( const SwRect &rRect )
 {
     return rRect.Width() * rRect.Height();
 }
@@ -169,7 +170,7 @@ void SwRegionRects::Compress()
                 // For combining as much as possible (and for having less single
                 // paints), the area of the union can be a little bit larger:
                 // ( 9622 * 141.5 = 1361513 ~= a quarter (1/4) centimeter wider
-                // than the width of a A4 page
+                // than the width of an A4 page
                 const long nFuzzy = 1361513;
                 SwRect aUnion( (*this)[i] );
                 aUnion.Union( (*this)[j] );
@@ -186,7 +187,7 @@ void SwRegionRects::Compress()
                 }
             }
         }
-        i = (bRestart) ? 0 : i+1;
+        i = bRestart ? 0 : i+1;
     }
 }
 

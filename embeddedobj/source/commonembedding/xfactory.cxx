@@ -19,9 +19,9 @@
 
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/EntryInitModes.hpp>
-#include <com/sun/star/document/XTypeDetection.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/io/IOException.hpp>
 #include <comphelper/processfactory.hxx>
@@ -29,31 +29,12 @@
 #include <comphelper/documentconstants.hxx>
 
 #include "xfactory.hxx"
-#include "commonembobj.hxx"
-#include "specialobject.hxx"
-#include "oleembobj.hxx"
+#include <commonembobj.hxx>
+#include <specialobject.hxx>
 
 
 using namespace ::com::sun::star;
 
-uno::Sequence< OUString > SAL_CALL OOoEmbeddedObjectFactory::impl_staticGetSupportedServiceNames()
-{
-    uno::Sequence< OUString > aRet(2);
-    aRet[0] = "com.sun.star.embed.OOoEmbeddedObjectFactory";
-    aRet[1] = "com.sun.star.comp.embed.OOoEmbeddedObjectFactory";
-    return aRet;
-}
-
-OUString SAL_CALL OOoEmbeddedObjectFactory::impl_staticGetImplementationName()
-{
-    return OUString("com.sun.star.comp.embed.OOoEmbeddedObjectFactory");
-}
-
-uno::Reference< uno::XInterface > SAL_CALL OOoEmbeddedObjectFactory::impl_staticCreateSelfInstance(
-            const uno::Reference< lang::XMultiServiceFactory >& xServiceManager )
-{
-    return uno::Reference< uno::XInterface >( *new OOoEmbeddedObjectFactory( comphelper::getComponentContext(xServiceManager) ) );
-}
 
 uno::Reference< uno::XInterface > SAL_CALL OOoEmbeddedObjectFactory::createInstanceInitFromEntry(
                                                                     const uno::Reference< embed::XStorage >& xStorage,
@@ -78,52 +59,48 @@ uno::Reference< uno::XInterface > SAL_CALL OOoEmbeddedObjectFactory::createInsta
         throw container::NoSuchElementException();
 
     uno::Reference< uno::XInterface > xResult;
-    if ( xStorage->isStorageElement( sEntName ) )
-    {
-        // the object must be based on storage
-        uno::Reference< embed::XStorage > xSubStorage =
-                xStorage->openStorageElement( sEntName, embed::ElementModes::READ );
-
-        uno::Reference< beans::XPropertySet > xPropSet( xSubStorage, uno::UNO_QUERY_THROW );
-
-        OUString aMediaType;
-        try {
-            uno::Any aAny = xPropSet->getPropertyValue("MediaType");
-            aAny >>= aMediaType;
-        }
-        catch ( const uno::Exception& )
-        {
-        }
-
-        try {
-            uno::Reference< lang::XComponent > xComp( xSubStorage, uno::UNO_QUERY );
-            if ( xComp.is() )
-                xComp->dispose();
-        }
-        catch ( const uno::Exception& )
-        {
-        }
-        xSubStorage.clear();
-
-        uno::Sequence< beans::NamedValue > aObject = m_aConfigHelper.GetObjectPropsByMediaType( aMediaType );
-
-        // If the sequence is empty, fall back to the FileFormatVersion=6200 filter, Base only has that.
-        if (!aObject.hasElements() && aMediaType == MIMETYPE_OASIS_OPENDOCUMENT_DATABASE_ASCII)
-            aObject = m_aConfigHelper.GetObjectPropsByMediaType(MIMETYPE_VND_SUN_XML_BASE_ASCII);
-
-        if ( !aObject.getLength() )
-            throw io::IOException(); // unexpected mimetype of the storage
-
-        xResult.set(static_cast< ::cppu::OWeakObject* > ( new OCommonEmbeddedObject(
-                                                m_xContext,
-                                                aObject ) ),
-                    uno::UNO_QUERY );
-    }
-    else
+    if ( !xStorage->isStorageElement( sEntName ) )
     {
         // the object must be OOo embedded object, if it is not an exception must be thrown
         throw io::IOException(); // TODO:
     }
+    // the object must be based on storage
+    uno::Reference< embed::XStorage > xSubStorage =
+            xStorage->openStorageElement( sEntName, embed::ElementModes::READ );
+
+    uno::Reference< beans::XPropertySet > xPropSet( xSubStorage, uno::UNO_QUERY_THROW );
+
+    OUString aMediaType;
+    try {
+        uno::Any aAny = xPropSet->getPropertyValue("MediaType");
+        aAny >>= aMediaType;
+    }
+    catch ( const uno::Exception& )
+    {
+    }
+
+    try {
+        if ( xSubStorage.is() )
+            xSubStorage->dispose();
+    }
+    catch ( const uno::Exception& )
+    {
+    }
+    xSubStorage.clear();
+
+    uno::Sequence< beans::NamedValue > aObject = m_aConfigHelper.GetObjectPropsByMediaType( aMediaType );
+
+    // If the sequence is empty, fall back to the FileFormatVersion=6200 filter, Base only has that.
+    if (!aObject.hasElements() && aMediaType == MIMETYPE_OASIS_OPENDOCUMENT_DATABASE_ASCII)
+        aObject = m_aConfigHelper.GetObjectPropsByMediaType(MIMETYPE_VND_SUN_XML_BASE_ASCII);
+
+    if ( !aObject.hasElements() )
+        throw io::IOException(); // unexpected mimetype of the storage
+
+    xResult.set(static_cast< ::cppu::OWeakObject* > ( new OCommonEmbeddedObject(
+                                            m_xContext,
+                                            aObject ) ),
+                uno::UNO_QUERY );
 
     uno::Reference< embed::XEmbedPersist > xPersist( xResult, uno::UNO_QUERY_THROW );
 
@@ -160,23 +137,20 @@ uno::Reference< uno::XInterface > SAL_CALL OOoEmbeddedObjectFactory::createInsta
     uno::Reference< uno::XInterface > xResult;
 
     // find document service name
-    if ( !aFilterName.isEmpty() )
-    {
-        uno::Sequence< beans::NamedValue > aObject = m_aConfigHelper.GetObjectPropsByFilter( aFilterName );
-        if ( !aObject.getLength() )
-            throw io::IOException(); // unexpected mimetype of the storage
-
-
-        xResult.set(static_cast< ::cppu::OWeakObject* > ( new OCommonEmbeddedObject(
-                                            m_xContext,
-                                            aObject ) ),
-                    uno::UNO_QUERY );
-    }
-    else
+    if ( aFilterName.isEmpty() )
     {
         // the object must be OOo embedded object, if it is not an exception must be thrown
         throw io::IOException(); // TODO:
     }
+    uno::Sequence< beans::NamedValue > aObject = m_aConfigHelper.GetObjectPropsByFilter( aFilterName );
+    if ( !aObject.hasElements() )
+        throw io::IOException(); // unexpected mimetype of the storage
+
+
+    xResult.set(static_cast< ::cppu::OWeakObject* > ( new OCommonEmbeddedObject(
+                                        m_xContext,
+                                        aObject ) ),
+                uno::UNO_QUERY );
 
     uno::Reference< embed::XEmbedPersist > xPersist( xResult, uno::UNO_QUERY_THROW );
 
@@ -209,7 +183,7 @@ uno::Reference< uno::XInterface > SAL_CALL OOoEmbeddedObjectFactory::createInsta
                                             4 );
 
     uno::Sequence< beans::NamedValue > aObject = m_aConfigHelper.GetObjectPropsByClassID( aClassID );
-    if ( !aObject.getLength() )
+    if ( !aObject.hasElements() )
         throw io::IOException(); // unexpected mimetype of the storage
 
     xResult.set( static_cast< ::cppu::OWeakObject* > ( new OCommonEmbeddedObject(
@@ -250,7 +224,7 @@ uno::Reference< uno::XInterface > SAL_CALL OOoEmbeddedObjectFactory::createInsta
                                             2 );
 
     uno::Sequence< beans::NamedValue > aObject = m_aConfigHelper.GetObjectPropsByClassID( aClassID );
-    if ( !aObject.getLength() )
+    if ( !aObject.hasElements() )
         throw io::IOException(); // unexpected mimetype of the storage
 
     uno::Sequence< beans::PropertyValue > aTempMedDescr( lArguments );
@@ -290,9 +264,9 @@ uno::Reference< uno::XInterface > SAL_CALL OOoEmbeddedObjectFactory::createInsta
 
     // check if there is URL, URL must exist
     OUString aURL;
-    for ( sal_Int32 nInd = 0; nInd < aTempMedDescr.getLength(); nInd++ )
-        if ( aTempMedDescr[nInd].Name == "URL" )
-            aTempMedDescr[nInd].Value >>= aURL;
+    for ( beans::PropertyValue const & prop : std::as_const(aTempMedDescr) )
+        if ( prop.Name == "URL" )
+            prop.Value >>= aURL;
 
     if ( aURL.isEmpty() )
         throw lang::IllegalArgumentException( "No URL for the link is provided!",
@@ -301,25 +275,22 @@ uno::Reference< uno::XInterface > SAL_CALL OOoEmbeddedObjectFactory::createInsta
 
     OUString aFilterName = m_aConfigHelper.UpdateMediaDescriptorWithFilterName( aTempMedDescr, false );
 
-    if ( !aFilterName.isEmpty() )
-    {
-        uno::Sequence< beans::NamedValue > aObject = m_aConfigHelper.GetObjectPropsByFilter( aFilterName );
-        if ( !aObject.getLength() )
-            throw io::IOException(); // unexpected mimetype of the storage
-
-
-        xResult.set(static_cast< ::cppu::OWeakObject* > ( new OCommonEmbeddedObject(
-                                            m_xContext,
-                                            aObject,
-                                            aTempMedDescr,
-                                            lObjArgs ) ),
-                    uno::UNO_QUERY );
-    }
-    else
+    if ( aFilterName.isEmpty() )
     {
         // the object must be OOo embedded object, if it is not an exception must be thrown
         throw io::IOException(); // TODO:
     }
+    uno::Sequence< beans::NamedValue > aObject = m_aConfigHelper.GetObjectPropsByFilter( aFilterName );
+    if ( !aObject.hasElements() )
+        throw io::IOException(); // unexpected mimetype of the storage
+
+
+    xResult.set(static_cast< ::cppu::OWeakObject* > ( new OCommonEmbeddedObject(
+                                        m_xContext,
+                                        aObject,
+                                        aTempMedDescr,
+                                        lObjArgs ) ),
+                uno::UNO_QUERY );
 
     return xResult;
 }
@@ -348,9 +319,9 @@ uno::Reference< uno::XInterface > SAL_CALL OOoEmbeddedObjectFactory::createInsta
     uno::Sequence< beans::PropertyValue > aTempMedDescr( lArguments );
 
     OUString aURL;
-    for ( sal_Int32 nInd = 0; nInd < aTempMedDescr.getLength(); nInd++ )
-        if ( aTempMedDescr[nInd].Name == "URL" )
-            aTempMedDescr[nInd].Value >>= aURL;
+    for ( beans::PropertyValue const & prop : std::as_const(aTempMedDescr) )
+        if ( prop.Name == "URL" )
+            prop.Value >>= aURL;
 
     if ( aURL.isEmpty() )
         throw lang::IllegalArgumentException( "No URL for the link is provided!",
@@ -358,33 +329,30 @@ uno::Reference< uno::XInterface > SAL_CALL OOoEmbeddedObjectFactory::createInsta
                                         3 );
 
     uno::Sequence< beans::NamedValue > aObject = m_aConfigHelper.GetObjectPropsByClassID( aClassID );
-    if ( !aObject.getLength() )
+    if ( !aObject.hasElements() )
         throw io::IOException(); // unexpected mimetype of the storage
 
     OUString aFilterName = m_aConfigHelper.UpdateMediaDescriptorWithFilterName( aTempMedDescr, aObject );
 
-    if ( !aFilterName.isEmpty() )
-    {
-
-        xResult.set(static_cast< ::cppu::OWeakObject* > ( new OCommonEmbeddedObject(
-                                            m_xContext,
-                                            aObject,
-                                            aTempMedDescr,
-                                            lObjArgs ) ),
-                    uno::UNO_QUERY );
-    }
-    else
+    if ( aFilterName.isEmpty() )
     {
         // the object must be OOo embedded object, if it is not an exception must be thrown
         throw io::IOException(); // TODO:
     }
+
+    xResult.set(static_cast< ::cppu::OWeakObject* > ( new OCommonEmbeddedObject(
+                                        m_xContext,
+                                        aObject,
+                                        aTempMedDescr,
+                                        lObjArgs ) ),
+                uno::UNO_QUERY );
 
     return xResult;
 }
 
 OUString SAL_CALL OOoEmbeddedObjectFactory::getImplementationName()
 {
-    return impl_staticGetImplementationName();
+    return "com.sun.star.comp.embed.OOoEmbeddedObjectFactory";
 }
 
 sal_Bool SAL_CALL OOoEmbeddedObjectFactory::supportsService( const OUString& ServiceName )
@@ -394,27 +362,18 @@ sal_Bool SAL_CALL OOoEmbeddedObjectFactory::supportsService( const OUString& Ser
 
 uno::Sequence< OUString > SAL_CALL OOoEmbeddedObjectFactory::getSupportedServiceNames()
 {
-    return impl_staticGetSupportedServiceNames();
+    return { "com.sun.star.embed.OOoEmbeddedObjectFactory", "com.sun.star.comp.embed.OOoEmbeddedObjectFactory" };
 }
 
-uno::Sequence< OUString > SAL_CALL OOoSpecialEmbeddedObjectFactory::impl_staticGetSupportedServiceNames()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+embeddedobj_OOoEmbeddedObjectFactory_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    uno::Sequence< OUString > aRet(2);
-    aRet[0] = "com.sun.star.embed.OOoSpecialEmbeddedObjectFactory";
-    aRet[1] = "com.sun.star.comp.embed.OOoSpecialEmbeddedObjectFactory";
-    return aRet;
+    static rtl::Reference<OOoEmbeddedObjectFactory> g_Instance(new OOoEmbeddedObjectFactory(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
-OUString SAL_CALL OOoSpecialEmbeddedObjectFactory::impl_staticGetImplementationName()
-{
-    return OUString("com.sun.star.comp.embed.OOoSpecialEmbeddedObjectFactory");
-}
-
-uno::Reference< uno::XInterface > SAL_CALL OOoSpecialEmbeddedObjectFactory::impl_staticCreateSelfInstance(
-            const uno::Reference< lang::XMultiServiceFactory >& xServiceManager )
-{
-    return uno::Reference< uno::XInterface >( *new OOoSpecialEmbeddedObjectFactory( comphelper::getComponentContext(xServiceManager) ) );
-}
 
 uno::Reference< uno::XInterface > SAL_CALL OOoSpecialEmbeddedObjectFactory::createInstanceUserInit(
             const uno::Sequence< sal_Int8 >& aClassID,
@@ -426,7 +385,7 @@ uno::Reference< uno::XInterface > SAL_CALL OOoSpecialEmbeddedObjectFactory::crea
             const uno::Sequence< beans::PropertyValue >& /*lObjArgs*/ )
 {
     uno::Sequence< beans::NamedValue > aObject = m_aConfigHelper.GetObjectPropsByClassID( aClassID );
-    if ( !aObject.getLength() )
+    if ( !aObject.hasElements() )
         throw io::IOException(); // unexpected mimetype of the storage
 
     uno::Reference< uno::XInterface > xResult(
@@ -439,7 +398,7 @@ uno::Reference< uno::XInterface > SAL_CALL OOoSpecialEmbeddedObjectFactory::crea
 
 OUString SAL_CALL OOoSpecialEmbeddedObjectFactory::getImplementationName()
 {
-    return impl_staticGetImplementationName();
+    return "com.sun.star.comp.embed.OOoSpecialEmbeddedObjectFactory";
 }
 
 sal_Bool SAL_CALL OOoSpecialEmbeddedObjectFactory::supportsService( const OUString& ServiceName )
@@ -449,7 +408,15 @@ sal_Bool SAL_CALL OOoSpecialEmbeddedObjectFactory::supportsService( const OUStri
 
 uno::Sequence< OUString > SAL_CALL OOoSpecialEmbeddedObjectFactory::getSupportedServiceNames()
 {
-    return impl_staticGetSupportedServiceNames();
+    return { "com.sun.star.embed.OOoSpecialEmbeddedObjectFactory", "com.sun.star.comp.embed.OOoSpecialEmbeddedObjectFactory" };
 }
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+embeddedobj_OOoSpecialEmbeddedObjectFactory_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    static rtl::Reference<OOoSpecialEmbeddedObjectFactory> g_Instance(new OOoSpecialEmbeddedObjectFactory(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

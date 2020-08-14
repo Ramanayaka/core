@@ -22,9 +22,8 @@
 
 #include <cppuhelper/compbase2.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <com/sun/star/accessibility/XAccessibleContext.hpp>
+#include <com/sun/star/accessibility/XAccessibleContext2.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <comphelper/comphelperdllapi.h>
 #include <comphelper/solarmutex.hxx>
 #include <memory>
@@ -38,7 +37,7 @@ namespace comphelper
 
 
     class OContextHelper_Impl;
-    typedef ::cppu::WeakAggComponentImplHelper2 <   css::accessibility::XAccessibleContext,
+    typedef ::cppu::WeakAggComponentImplHelper2 <   css::accessibility::XAccessibleContext2,
                                                     css::accessibility::XAccessibleEventBroadcaster
                                                 >   OAccessibleContextHelper_Base;
 
@@ -48,6 +47,7 @@ namespace comphelper
                 :public ::cppu::BaseMutex
                 ,public OAccessibleContextHelper_Base
     {
+        friend class OContextEntryGuard;
     private:
         std::unique_ptr<OContextHelper_Impl>    m_pImpl;
 
@@ -91,6 +91,9 @@ namespace comphelper
         virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL getAccessibleRelationSet(  ) override = 0;
         virtual css::uno::Reference< css::accessibility::XAccessibleStateSet > SAL_CALL getAccessibleStateSet(  ) override = 0;
 
+        // XAccessibleContext2 - default implementation
+        virtual OUString SAL_CALL getAccessibleId(  ) override;
+
         // XAccessibleContext - default implementations
         /** default implementation for retrieving the index of this object within the parent
             <p>This basic implementation here returns the index <code>i</code> of the child for which
@@ -102,21 +105,6 @@ namespace comphelper
             as retrieved via getAccessibleParent()->getAccessibleContext.</p>
         */
         virtual css::lang::Locale SAL_CALL getLocale(  ) override;
-
-    public:
-        // helper struct for granting selective access rights
-        struct OAccessControl
-        {
-            friend class OContextEntryGuard;
-            friend class OContextHelper_Impl;
-            friend class OExternalLockGuard;
-        private:
-            OAccessControl() { }
-        };
-
-        // ensures that the object is alive
-        inline  void            ensureAlive( const OAccessControl& ) const;
-        inline  ::osl::Mutex&   GetMutex( const OAccessControl& );
 
     protected:
         // OComponentHelper
@@ -162,26 +150,13 @@ namespace comphelper
     };
 
 
-    inline  void OAccessibleContextHelper::ensureAlive( const OAccessControl& ) const
-    {
-        ensureAlive();
-    }
-
-
-    inline  ::osl::Mutex& OAccessibleContextHelper::GetMutex( const OAccessControl& )
-    {
-        return GetMutex();
-    }
-
-
     //= OContextEntryGuard
 
-    typedef ::osl::ClearableMutexGuard  OContextEntryGuard_Base;
     /** helper class for guarding the entry into OAccessibleContextHelper methods.
 
         <p>The class has two responsibilities:
         <ul><li>it locks the mutex of an OAccessibleContextHelper instance, as long as the guard lives</li>
-            <li>it checks if an given OAccessibleContextHelper instance is alive, else an exception is thrown
+            <li>it checks if a given OAccessibleContextHelper instance is alive, else an exception is thrown
                 our of the constructor of the guard</li>
         </ul>
         <br/>
@@ -189,7 +164,7 @@ namespace comphelper
         you derived class.
         </p>
     */
-    class OContextEntryGuard : public OContextEntryGuard_Base
+    class OContextEntryGuard : public ::osl::ClearableMutexGuard
     {
     public:
         /** constructs the guard
@@ -206,9 +181,9 @@ namespace comphelper
 
 
     inline OContextEntryGuard::OContextEntryGuard( OAccessibleContextHelper* _pContext  )
-        :OContextEntryGuard_Base( _pContext->GetMutex( OAccessibleContextHelper::OAccessControl() ) )
+        : ::osl::ClearableMutexGuard( _pContext->GetMutex() )
     {
-        _pContext->ensureAlive( OAccessibleContextHelper::OAccessControl() );
+        _pContext->ensureAlive();
     }
 
 

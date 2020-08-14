@@ -20,11 +20,9 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_TRANSITIONS_COMBTRANSITION_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_TRANSITIONS_COMBTRANSITION_HXX
 
-#include <basegfx/polygon/b2dpolypolygon.hxx>
 #include "slidechangebase.hxx"
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /** Comb transition class.
 
@@ -39,7 +37,7 @@ public:
         @param nNumStripes
         Number of comb-like stripes to show in this effect
     */
-    CombTransition( ::boost::optional<SlideSharedPtr> const & leavingSlide,
+    CombTransition( ::std::optional<SlideSharedPtr> const & leavingSlide,
                     const SlideSharedPtr&                     pEnteringSlide,
                     const SoundPlayerSharedPtr&               pSoundPlayer,
                     const UnoViewContainer&                   rViewContainer,
@@ -58,8 +56,7 @@ private:
     void renderComb( double t, const ViewEntry& rViewEntry ) const;
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_TRANSITIONS_COMBTRANSITION_HXX
 

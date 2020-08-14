@@ -54,7 +54,7 @@ policy.1.0.cli_cppuhelper.dll
 policy.1.0.cli_ootypes.dll (build in unoil)
 
 After deinstalling the offices, there should none of them remain in the GAC. If there are some, then 
-try to remove them by clicking on them an choose uninstall from the context menu of the mouse.
+try to remove them by clicking on them and choosing uninstall.
 
 Step 2: Install the office of the last release (respin when using staroffice)
 
@@ -75,7 +75,7 @@ CLI_URETYPES_POLICY_VERSION refers to the policy assembly for cli_uretypes which
 policy.1.0.cli_uretypes.dll
 
 The versions may already have been incremented because someone has changed code after the 
-last release. So if a version from version.txt is greater then the one of the respective 
+last release. So if a version from version.txt is greater than the one of the respective 
 assembly in the GAC then leave it at that.
 
 The values have to be adjusted as follows:

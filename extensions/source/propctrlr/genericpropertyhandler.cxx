@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include "enumrepresentation.hxx"
 #include "genericpropertyhandler.hxx"
-#include "formmetadata.hxx"
 #include "handlerhelper.hxx"
-#include "pcrservices.hxx"
+#include "modulepcr.hxx"
 
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/lang/NullPointerException.hpp>
@@ -37,15 +37,12 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/extract.hxx>
+#include <comphelper/sequence.hxx>
+#include <comphelper/types.hxx>
 #include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
-#include <o3tl/functional.hxx>
-
-extern "C" void SAL_CALL createRegistryInfo_GenericPropertyHandler()
-{
-    ::pcr::OAutoRegistration< ::pcr::GenericPropertyHandler > aAutoRegistration;
-}
 
 namespace pcr
 {
@@ -62,6 +59,8 @@ namespace pcr
     using ::com::sun::star::awt::XActionListener;
     using ::com::sun::star::awt::ActionEvent;
 
+    namespace {
+
     class EnumRepresentation : public IPropertyEnumRepresentation
     {
     private:
@@ -75,13 +74,15 @@ namespace pcr
 
         // IPropertyEnumRepresentation implementqation
         virtual std::vector< OUString >
-                                    SAL_CALL getDescriptions() const override;
-        virtual void                SAL_CALL getValueFromDescription( const OUString& _rDescription, css::uno::Any& _out_rValue ) const override;
-        virtual OUString            SAL_CALL getDescriptionForValue( const css::uno::Any& _rEnumValue ) const override;
+                                    getDescriptions() const override;
+        virtual void                getValueFromDescription( const OUString& _rDescription, css::uno::Any& _out_rValue ) const override;
+        virtual OUString            getDescriptionForValue( const css::uno::Any& _rEnumValue ) const override;
 
     private:
         void            impl_getValues( Sequence< sal_Int32 >& _out_rValues ) const;
     };
+
+    }
 
     EnumRepresentation::EnumRepresentation( const Reference< XComponentContext >& _rxContext, const Type& _rEnumType )
         :m_aEnumType( _rEnumType )
@@ -99,7 +100,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EnumRepresentation::EnumRepresentation: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EnumRepresentation::EnumRepresentation" );
         }
     }
 
@@ -113,7 +114,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EnumRepresentation::getDescriptions: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EnumRepresentation::getDescriptions" );
         }
 
         return std::vector< OUString >( aNames.begin(), aNames.end() );
@@ -129,7 +130,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EnumRepresentation::impl_getValues: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EnumRepresentation::impl_getValues" );
         }
     }
 
@@ -165,7 +166,7 @@ namespace pcr
         sal_Int32 index = std::find( aValues.begin(), aValues.end(), nAsInt ) - aValues.begin();
 
         std::vector< OUString > aDescriptions( getDescriptions() );
-        if ( ( index >= 0 ) && ( index < (sal_Int32)aDescriptions.size() ) )
+        if ( ( index >= 0 ) && ( index < static_cast<sal_Int32>(aDescriptions.size()) ) )
             sDescription = aDescriptions[ index ];
         else
         {
@@ -176,6 +177,9 @@ namespace pcr
 
     typedef ::cppu::WeakImplHelper <   XActionListener
                                     >   UrlClickHandler_Base;
+
+    namespace {
+
     class UrlClickHandler : public UrlClickHandler_Base
     {
         Reference<XComponentContext>    m_xContext;
@@ -195,6 +199,7 @@ namespace pcr
         void impl_dispatch_throw( const OUString& _rURL );
     };
 
+    }
 
     UrlClickHandler::UrlClickHandler( const Reference<XComponentContext>& _rContext, const Reference< XHyperlinkControl >& _rxControl )
         :m_xContext( _rContext )
@@ -242,7 +247,7 @@ namespace pcr
         xTransformer->parseStrict( aURL );
 
         Reference< XDesktop2 > xDispProv = Desktop::create( m_xContext );
-        Reference< XDispatch > xDispatch( xDispProv->queryDispatch( aURL, OUString(), 0 ), UNO_QUERY_THROW );
+        Reference< XDispatch > xDispatch( xDispProv->queryDispatch( aURL, OUString(), 0 ), UNO_SET_THROW );
 
         Sequence< PropertyValue > aDispatchArgs(1);
         aDispatchArgs[0].Name   = "URL";
@@ -267,7 +272,7 @@ namespace pcr
 
     OUString SAL_CALL GenericPropertyHandler::getImplementationName(  )
     {
-        return getImplementationName_static();
+        return "com.sun.star.comp.extensions.GenericPropertyHandler";
     }
 
     sal_Bool SAL_CALL GenericPropertyHandler::supportsService( const OUString& ServiceName )
@@ -277,23 +282,7 @@ namespace pcr
 
     Sequence< OUString > SAL_CALL GenericPropertyHandler::getSupportedServiceNames(  )
     {
-        return getSupportedServiceNames_static();
-    }
-
-    OUString SAL_CALL GenericPropertyHandler::getImplementationName_static(  )
-    {
-        return OUString( "com.sun.star.comp.extensions.GenericPropertyHandler" );
-    }
-
-    Sequence< OUString > SAL_CALL GenericPropertyHandler::getSupportedServiceNames_static(  )
-    {
-        Sequence<OUString> aSupported { "com.sun.star.inspection.GenericPropertyHandler" };
-        return aSupported;
-    }
-
-    Reference< XInterface > SAL_CALL GenericPropertyHandler::Create( const Reference< XComponentContext >& _rxContext )
-    {
-        return *( new GenericPropertyHandler( _rxContext ) );
+        return { "com.sun.star.inspection.GenericPropertyHandler" };
     }
 
     void SAL_CALL GenericPropertyHandler::inspect( const Reference< XInterface >& _rxIntrospectee )
@@ -337,7 +326,7 @@ namespace pcr
     {
         ::osl::MutexGuard aGuard( m_aMutex );
         if ( !m_xComponent.is() )
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(_rPropertyName);
 
         return m_xComponent->getPropertyValue( _rPropertyName );
     }
@@ -346,7 +335,7 @@ namespace pcr
     {
         ::osl::MutexGuard aGuard( m_aMutex );
         if ( !m_xComponent.is() )
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(_rPropertyName);
 
         m_xComponent->setPropertyValue( _rPropertyName, _rValue );
     }
@@ -366,7 +355,7 @@ namespace pcr
 
         PropertyMap::const_iterator pos = m_aProperties.find( _rPropertyName );
         if ( pos == m_aProperties.end() )
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(_rPropertyName);
 
         Any aPropertyValue;
         if ( !_rControlValue.hasValue() )
@@ -392,7 +381,7 @@ namespace pcr
 
         PropertyMap::const_iterator pos = m_aProperties.find( _rPropertyName );
         if ( pos == m_aProperties.end() )
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(_rPropertyName);
 
         Any aControlValue;
         if ( !_rPropertyValue.hasValue() )
@@ -456,68 +445,65 @@ namespace pcr
 
     void GenericPropertyHandler::impl_ensurePropertyMap()
     {
-        if ( !m_bPropertyMapInitialized )
+        if ( m_bPropertyMapInitialized )
+            return;
+
+        m_bPropertyMapInitialized = true;
+        try
         {
-            m_bPropertyMapInitialized = true;
-            try
+            Reference< XPropertySetInfo > xPSI;
+            if ( m_xComponent.is() )
+                xPSI = m_xComponent->getPropertySetInfo();
+            Sequence< Property > aProperties;
+            if ( xPSI.is() )
+                aProperties = xPSI->getProperties();
+            DBG_ASSERT( aProperties.hasElements(), "GenericPropertyHandler::getSupportedProperties: no properties!" );
+
+            for ( auto const & property : std::as_const(aProperties) )
             {
-                Reference< XPropertySetInfo > xPSI;
-                if ( m_xComponent.is() )
-                    xPSI = m_xComponent->getPropertySetInfo();
-                Sequence< Property > aProperties;
-                if ( xPSI.is() )
-                    aProperties = xPSI->getProperties();
-                DBG_ASSERT( aProperties.getLength(), "GenericPropertyHandler::getSupportedProperties: no properties!" );
-
-                for ( const Property* pProperties = aProperties.getConstArray();
-                      pProperties != aProperties.getConstArray() + aProperties.getLength();
-                      ++pProperties
-                    )
+                switch ( property.Type.getTypeClass() )
                 {
-                    switch ( pProperties->Type.getTypeClass() )
-                    {
-                    case TypeClass_BOOLEAN:
-                    case TypeClass_BYTE:
-                    case TypeClass_SHORT:
-                    case TypeClass_UNSIGNED_SHORT:
-                    case TypeClass_LONG:
-                    case TypeClass_UNSIGNED_LONG:
-                    case TypeClass_HYPER:
-                    case TypeClass_UNSIGNED_HYPER:
-                    case TypeClass_FLOAT:
-                    case TypeClass_DOUBLE:
-                    case TypeClass_ENUM:
-                    case TypeClass_STRING:
-                        // allowed, we can handle this type
-                        break;
-
-                    case TypeClass_SEQUENCE:
-                    {
-                        TypeClass eElementTypeClass = ::comphelper::getSequenceElementType( pProperties->Type ).getTypeClass();
-                        if  (   ( eElementTypeClass != TypeClass_STRING )
-                            &&  ( eElementTypeClass != TypeClass_BYTE )
-                            &&  ( eElementTypeClass != TypeClass_SHORT )
-                            &&  ( eElementTypeClass != TypeClass_UNSIGNED_SHORT )
-                            &&  ( eElementTypeClass != TypeClass_LONG )
-                            &&  ( eElementTypeClass != TypeClass_UNSIGNED_LONG )
-                            )
-                            // can only handle the above
-                            continue;
-                    }
+                case TypeClass_BOOLEAN:
+                case TypeClass_BYTE:
+                case TypeClass_SHORT:
+                case TypeClass_UNSIGNED_SHORT:
+                case TypeClass_LONG:
+                case TypeClass_UNSIGNED_LONG:
+                case TypeClass_HYPER:
+                case TypeClass_UNSIGNED_HYPER:
+                case TypeClass_FLOAT:
+                case TypeClass_DOUBLE:
+                case TypeClass_ENUM:
+                case TypeClass_STRING:
+                    // allowed, we can handle this type
                     break;
 
-                    default:
-                        // next property, we don't support this type
+                case TypeClass_SEQUENCE:
+                {
+                    TypeClass eElementTypeClass = ::comphelper::getSequenceElementType( property.Type ).getTypeClass();
+                    if  (   ( eElementTypeClass != TypeClass_STRING )
+                        &&  ( eElementTypeClass != TypeClass_BYTE )
+                        &&  ( eElementTypeClass != TypeClass_SHORT )
+                        &&  ( eElementTypeClass != TypeClass_UNSIGNED_SHORT )
+                        &&  ( eElementTypeClass != TypeClass_LONG )
+                        &&  ( eElementTypeClass != TypeClass_UNSIGNED_LONG )
+                        )
+                        // can only handle the above
                         continue;
-                    }
-
-                    m_aProperties.insert( PropertyMap::value_type( pProperties->Name, *pProperties ) );
                 }
+                break;
+
+                default:
+                    // next property, we don't support this type
+                    continue;
+                }
+
+                m_aProperties.emplace( property.Name, property );
             }
-            catch( const Exception& )
-            {
-                OSL_FAIL( "GenericPropertyHandler::impl_ensurePropertyMap: caught an exception!" );
-            }
+        }
+        catch( const Exception& )
+        {
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "GenericPropertyHandler::impl_ensurePropertyMap" );
         }
     }
 
@@ -533,7 +519,7 @@ namespace pcr
     {
         // no superseded properties at all. This handler offers the very basic PropertyHandler
         // functionality, so it's much more likely that other handlers want to supersede
-        // *our* properties ....
+        // *our* properties...
         return Sequence< OUString >( );
     }
 
@@ -555,7 +541,7 @@ namespace pcr
 
         PropertyMap::const_iterator pos = m_aProperties.find( _rPropertyName );
         if ( pos == m_aProperties.end() )
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(_rPropertyName);
 
         LineDescriptor aDescriptor;
         aDescriptor.DisplayName = _rPropertyName;
@@ -577,7 +563,7 @@ namespace pcr
                     PropertyControlType::HyperlinkField, PropertyHandlerHelper::requiresReadOnlyControl( pos->second.Attributes ) );
 
                 Reference< XHyperlinkControl > xControl( aDescriptor.Control, UNO_QUERY_THROW );
-                Reference< XActionListener > xEnsureDelete( new UrlClickHandler( m_xContext, xControl ) );
+                new UrlClickHandler( m_xContext, xControl );
             }
         }
         break;
@@ -623,5 +609,12 @@ namespace pcr
     IMPLEMENT_FORWARD_XCOMPONENT( GenericPropertyHandler, GenericPropertyHandler_Base );
 
 }   // namespace pcr
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_GenericPropertyHandler_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new pcr::GenericPropertyHandler(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

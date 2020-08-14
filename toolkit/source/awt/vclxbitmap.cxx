@@ -17,38 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <toolkit/awt/vclxbitmap.hxx>
+#include <awt/vclxbitmap.hxx>
 #include <toolkit/helper/macros.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <tools/stream.hxx>
-#include <rtl/uuid.h>
 #include <vcl/dibtools.hxx>
+#include <vcl/BitmapTools.hxx>
 
 
-//  class VCLXBitmap
 
-
-// css::uno::XInterface
-css::uno::Any VCLXBitmap::queryInterface( const css::uno::Type & rType )
-{
-    css::uno::Any aRet = ::cppu::queryInterface( rType,
-                                        (static_cast< css::awt::XBitmap* >(this)),
-                                        (static_cast< css::awt::XDisplayBitmap* >(this)),
-                                        (static_cast< css::lang::XUnoTunnel* >(this)),
-                                        (static_cast< css::lang::XTypeProvider* >(this)) );
-    return (aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType ));
-}
 
 // css::lang::XUnoTunnel
-IMPL_XUNOTUNNEL( VCLXBitmap )
-
-// css::lang::XTypeProvider
-IMPL_XTYPEPROVIDER_START( VCLXBitmap )
-    cppu::UnoType<css::awt::XBitmap>::get(),
-    cppu::UnoType<css::awt::XDisplayBitmap>::get()
-IMPL_XTYPEPROVIDER_END
-
+UNO3_GETIMPLEMENTATION_IMPL( VCLXBitmap );
 
 // css::awt::XBitmap
 css::awt::Size VCLXBitmap::getSize()
@@ -72,9 +52,14 @@ css::uno::Sequence< sal_Int8 > VCLXBitmap::getMaskDIB()
 {
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
 
-    SvMemoryStream aMem;
-    WriteDIB(maBitmap.GetMask(), aMem, false, true);
-    return css::uno::Sequence<sal_Int8>( static_cast<sal_Int8 const *>(aMem.GetData()), aMem.Tell() );
+    return vcl::bitmap::GetMaskDIB(maBitmap);
+}
+
+sal_Int64 SAL_CALL VCLXBitmap::estimateUsage()
+{
+    ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
+
+    return maBitmap.GetSizeBytes();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

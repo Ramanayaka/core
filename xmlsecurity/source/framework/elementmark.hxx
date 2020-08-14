@@ -20,7 +20,6 @@
 #ifndef INCLUDED_XMLSECURITY_SOURCE_FRAMEWORK_ELEMENTMARK_HXX
 #define INCLUDED_XMLSECURITY_SOURCE_FRAMEWORK_ELEMENTMARK_HXX
 
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/xml/crypto/sax/ElementMarkType.hpp>
 
 class BufferNode;
@@ -44,11 +43,11 @@ protected:
     sal_Int32 m_nSecurityId;
 
     /* the buffer Id */
-    sal_Int32 m_nBufferId;
+    sal_Int32 const m_nBufferId;
 
     /*
      * the type value, is one of following values:
-     * TYPEOFELEMENTMARK - the default value, represents an blocker if
+     * TYPEOFELEMENTMARK - the default value, represents a blocker if
      *                     not changed
      * TYPEOFELEMENTCOLLECTOR - represents an ElementCollector
      */

@@ -13,105 +13,115 @@
  manual changes will be rewritten by the next run of update_pch.sh (which presumably
  also fixes all possible problems, so it's usually better to use it).
 
- Generated on 2015-11-14 14:16:43 using:
+ Generated on 2020-08-12 11:07:14 using:
  ./bin/update_pch xmloff xo --cutoff=7 --exclude:system --include:module --include:local
 
  If after updating build fails, use the following command to locate conflicting headers:
- ./bin/update_pch_bisect ./xmloff/inc/pch/precompiled_xo.hxx "/opt/lo/bin/make xmloff.build" --find-conflicts
+ ./bin/update_pch_bisect ./xmloff/inc/pch/precompiled_xo.hxx "make xmloff.build" --find-conflicts
 */
 
+#if PCH_LEVEL >= 1
 #include <algorithm>
 #include <cassert>
-#include <config_global.h>
-#include <config_typesizes.h>
+#include <cmath>
 #include <cstddef>
-#include <cstdlib>
-#include <exception>
 #include <float.h>
 #include <functional>
-#include <list>
+#include <initializer_list>
+#include <limits.h>
+#include <limits>
 #include <map>
+#include <math.h>
 #include <memory>
 #include <new>
 #include <ostream>
 #include <set>
-#include <sstream>
-#include <tuple>
 #include <stddef.h>
 #include <string.h>
-#include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <boost/functional/hash.hpp>
+#include <boost/property_tree/ptree_fwd.hpp>
+#endif // PCH_LEVEL >= 1
+#if PCH_LEVEL >= 2
 #include <osl/diagnose.h>
 #include <osl/doublecheckedlocking.h>
 #include <osl/endian.h>
 #include <osl/file.hxx>
 #include <osl/getglobalmutex.hxx>
 #include <osl/interlck.h>
+#include <osl/mutex.h>
 #include <osl/mutex.hxx>
 #include <osl/thread.h>
 #include <rtl/alloc.h>
 #include <rtl/character.hxx>
+#include <rtl/digest.h>
 #include <rtl/instance.hxx>
+#include <rtl/locale.h>
+#include <rtl/math.h>
 #include <rtl/math.hxx>
 #include <rtl/ref.hxx>
 #include <rtl/strbuf.hxx>
 #include <rtl/string.h>
 #include <rtl/textcvt.h>
 #include <rtl/textenc.h>
-#include <rtl/unload.h>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <rtl/uuid.h>
 #include <sal/config.h>
-#include <sal/detail/log.h>
 #include <sal/log.hxx>
 #include <sal/macros.h>
 #include <sal/saldllapi.h>
 #include <sal/types.h>
 #include <sal/typesizes.h>
-#include <salhelper/salhelperdllapi.h>
-#include <salhelper/simplereferenceobject.hxx>
-#include <PropertySetMerger.hxx>
-#include <XMLStringBufferImportContext.hxx>
+#include <vcl/Scanline.hxx>
+#include <vcl/alpha.hxx>
+#include <vcl/bitmap.hxx>
+#include <vcl/bitmapex.hxx>
+#include <vcl/checksum.hxx>
+#include <vcl/dllapi.h>
+#include <vcl/mapmod.hxx>
+#include <vcl/region.hxx>
+#include <vcl/scopedbitmapaccess.hxx>
+#endif // PCH_LEVEL >= 2
+#if PCH_LEVEL >= 3
 #include <basegfx/basegfxdllapi.h>
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/point/b2ipoint.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
+#include <basegfx/polygon/b2dpolygon.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/range/basicrange.hxx>
 #include <basegfx/tuple/b2dtuple.hxx>
 #include <basegfx/tuple/b2ituple.hxx>
 #include <basegfx/tuple/b3dtuple.hxx>
+#include <basegfx/utils/common.hxx>
 #include <basegfx/vector/b2dvector.hxx>
 #include <basegfx/vector/b2enums.hxx>
 #include <basegfx/vector/b2ivector.hxx>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/beans/XTolerantMultiPropertySet.hpp>
+#include <com/sun/star/chart/XChartDocument.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/container/XIndexReplace.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/XNameReplace.hpp>
 #include <com/sun/star/container/XNamed.hpp>
+#include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/i18n/LocaleItem.hpp>
-#include <com/sun/star/i18n/XLocaleData4.hpp>
-#include <com/sun/star/i18n/reservedWords.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
@@ -120,30 +130,34 @@
 #include <com/sun/star/style/NumberingType.hpp>
 #include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
+#include <com/sun/star/text/VertOrientation.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XTextContent.hpp>
+#include <com/sun/star/uno/Any.h>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Type.h>
-#include <com/sun/star/uno/Type.hxx>
 #include <com/sun/star/uno/TypeClass.hdl>
 #include <com/sun/star/uno/XAggregation.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/uno/XWeak.hpp>
+#include <com/sun/star/uno/genfunc.h>
+#include <com/sun/star/uno/genfunc.hxx>
 #include <com/sun/star/util/Date.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/Duration.hpp>
 #include <com/sun/star/util/MeasureUnit.hpp>
 #include <com/sun/star/util/Time.hpp>
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
-#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
+#include <comphelper/base64.hxx>
 #include <comphelper/comphelperdllapi.h>
 #include <comphelper/extract.hxx>
-#include <comphelper/fileformat.h>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/sequence.hxx>
 #include <cppu/cppudllapi.h>
 #include <cppu/unotype.hxx>
 #include <cppuhelper/cppuhelperdllapi.h>
@@ -152,41 +166,48 @@
 #include <cppuhelper/implbase_ex_post.hxx>
 #include <cppuhelper/implbase_ex_pre.hxx>
 #include <cppuhelper/weak.hxx>
-#include <cppuhelper/weakagg.hxx>
 #include <cppuhelper/weakref.hxx>
-#include <facreg.hxx>
 #include <i18nlangtag/i18nlangtagdllapi.h>
 #include <i18nlangtag/lang.h>
 #include <i18nlangtag/languagetag.hxx>
+#include <o3tl/any.hxx>
 #include <o3tl/cow_wrapper.hxx>
+#include <o3tl/safeint.hxx>
+#include <o3tl/strong_int.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <o3tl/underlyingenumvalue.hxx>
+#include <salhelper/salhelperdllapi.h>
+#include <salhelper/simplereferenceobject.hxx>
 #include <sax/tools/converter.hxx>
 #include <svl/svldllapi.h>
 #include <tools/color.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include <tools/fontenum.hxx>
+#include <tools/gen.hxx>
+#include <tools/link.hxx>
+#include <tools/mapunit.hxx>
 #include <tools/solar.h>
 #include <tools/toolsdllapi.h>
 #include <typelib/typeclass.h>
 #include <typelib/typedescription.h>
 #include <typelib/uik.h>
+#include <uno/any2.h>
 #include <uno/data.h>
 #include <uno/sequence2.h>
-#include <unotools/localedatawrapper.hxx>
-#include <unotools/readwritemutexguard.hxx>
 #include <unotools/unotoolsdllapi.h>
+#endif // PCH_LEVEL >= 3
+#if PCH_LEVEL >= 4
+#include <PageMasterStyleMap.hxx>
+#include <XMLStringBufferImportContext.hxx>
 #include <xexptran.hxx>
-#include <xmloff/NamedBoolPropertyHdl.hxx>
-#include <xmloff/PageMasterStyleMap.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
 #include <xmloff/XMLBase64ImportContext.hxx>
 #include <xmloff/XMLEventsImportContext.hxx>
 #include <xmloff/attrlist.hxx>
 #include <xmloff/dllapi.h>
 #include <xmloff/families.hxx>
 #include <xmloff/maptype.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/prhdlfac.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/prstylei.hxx>
 #include <xmloff/txtimp.hxx>
 #include <xmloff/txtprmap.hxx>
@@ -195,12 +216,10 @@
 #include <xmloff/xmlerror.hxx>
 #include <xmloff/xmlevent.hxx>
 #include <xmloff/xmlexp.hxx>
-#include <xmloff/xmlexppr.hxx>
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlimppr.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/xmlnume.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlnumi.hxx>
 #include <xmloff/xmlprhdl.hxx>
 #include <xmloff/xmlprmap.hxx>
@@ -209,5 +228,7 @@
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmltypes.hxx>
 #include <xmloff/xmluconv.hxx>
+#include <xmlsdtypes.hxx>
+#endif // PCH_LEVEL >= 4
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

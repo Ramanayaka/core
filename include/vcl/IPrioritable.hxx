@@ -10,6 +10,8 @@
 #ifndef INCLUDED_VCL_IPRIORITABLE_HXX
 #define INCLUDED_VCL_IPRIORITABLE_HXX
 
+#include <vcl/dllapi.h>
+
 #define VCL_PRIORITY_DEFAULT -1
 
 namespace vcl
@@ -39,6 +41,7 @@ public:
 
     virtual void HideContent() = 0;
     virtual void ShowContent() = 0;
+    virtual bool IsHidden() = 0;
 
 private:
     int m_nPriority;

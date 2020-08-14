@@ -21,16 +21,14 @@
 #define INCLUDED_SVGIO_INC_SVGDOCUMENTHANDLER_HXX
 
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <svgdocument.hxx>
+#include "svgdocument.hxx"
 #include <cppuhelper/implbase.hxx>
 
-namespace svgio { namespace svgreader { class SvgCharacterNode; }}
+namespace svgio::svgreader { class SvgCharacterNode; }
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
-        class SvgDocHdl : public cppu::WeakImplHelper< css::xml::sax::XDocumentHandler >
+        class SvgDocHdl final : public cppu::WeakImplHelper< css::xml::sax::XDocumentHandler >
         {
         private:
             // the complete SVG Document
@@ -60,8 +58,8 @@ namespace svgio
 
             const SvgDocument& getSvgDocument() const { return maDocument; }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGDOCUMENTHANDLER_HXX
 

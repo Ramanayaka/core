@@ -9,13 +9,10 @@
 
 #include "effectpropertiescontext.hxx"
 #include "effectproperties.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
-#include "drawingml/misccontexts.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <drawingml/colorchoicecontext.hxx>
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
-
-#include <o3tl/make_unique.hxx>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
@@ -23,9 +20,9 @@ using namespace ::com::sun::star::xml::sax;
 
 // CT_EffectProperties
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-EffectPropertiesContext::EffectPropertiesContext( ContextHandler2Helper& rParent,
+EffectPropertiesContext::EffectPropertiesContext( ContextHandler2Helper const& rParent,
     EffectProperties& rEffectProperties ) throw()
 : ContextHandler2( rParent )
 , mrEffectProperties( rEffectProperties )
@@ -75,7 +72,7 @@ void EffectPropertiesContext::saveUnsupportedAttribs( Effect& rEffect, const Att
 ContextHandlerRef EffectPropertiesContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
 {
     sal_Int32 nPos = mrEffectProperties.m_Effects.size();
-    mrEffectProperties.m_Effects.push_back(o3tl::make_unique<Effect>());
+    mrEffectProperties.m_Effects.push_back(std::make_unique<Effect>());
     switch( nElement )
     {
         case A_TOKEN( outerShdw ):
@@ -85,6 +82,9 @@ ContextHandlerRef EffectPropertiesContext::onCreateContext( sal_Int32 nElement, 
 
             mrEffectProperties.maShadow.moShadowDist = rAttribs.getInteger( XML_dist, 0 );
             mrEffectProperties.maShadow.moShadowDir = rAttribs.getInteger( XML_dir, 0 );
+            mrEffectProperties.maShadow.moShadowSx = rAttribs.getInteger( XML_sx, 0 );
+            mrEffectProperties.maShadow.moShadowSy = rAttribs.getInteger( XML_sy, 0 );
+            mrEffectProperties.maShadow.moShadowBlur = rAttribs.getInteger( XML_blurRad, 0 );
             return new ColorContext(*this, mrEffectProperties.m_Effects[nPos]->moColor);
         }
         break;
@@ -99,15 +99,22 @@ ContextHandlerRef EffectPropertiesContext::onCreateContext( sal_Int32 nElement, 
         }
         break;
         case A_TOKEN( glow ):
+        {
+            mrEffectProperties.maGlow.moGlowRad = rAttribs.getInteger( XML_rad, 0 );
+            // undo push_back to effects
+            mrEffectProperties.m_Effects.pop_back();
+            return new ColorContext(*this, mrEffectProperties.maGlow.moGlowColor);
+
+        }
         case A_TOKEN( softEdge ):
+        {
+            mrEffectProperties.maSoftEdge.moRad = rAttribs.getInteger(XML_rad, 0);
+            return this; // no inner elements
+        }
         case A_TOKEN( reflection ):
         case A_TOKEN( blur ):
         {
-            if( nElement == A_TOKEN( glow ) )
-                mrEffectProperties.m_Effects[nPos]->msName = "glow";
-            else if( nElement == A_TOKEN( softEdge ) )
-                mrEffectProperties.m_Effects[nPos]->msName = "softEdge";
-            else if( nElement == A_TOKEN( reflection ) )
+            if (nElement == A_TOKEN(reflection))
                 mrEffectProperties.m_Effects[nPos]->msName = "reflection";
             else if( nElement == A_TOKEN( blur ) )
                 mrEffectProperties.m_Effects[nPos]->msName = "blur";
@@ -121,6 +128,6 @@ ContextHandlerRef EffectPropertiesContext::onCreateContext( sal_Int32 nElement, 
     return nullptr;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

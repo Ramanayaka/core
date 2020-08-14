@@ -20,6 +20,9 @@
 #include <unotools/accessiblestatesethelper.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <sal/log.hxx>
+#include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
 #include <svtools/valueset.hxx>
 #include "valueimp.hxx"
 #include <comphelper/servicehelper.hxx>
@@ -48,19 +51,384 @@ ValueSetItem::~ValueSetItem()
 {
     if( mxAcc.is() )
     {
-        static_cast< ValueItemAcc* >( mxAcc.get() )->ParentDestroyed();
+        mxAcc->ParentDestroyed();
     }
 }
 
-
-uno::Reference< accessibility::XAccessible > const & ValueSetItem::GetAccessible( bool bIsTransientChildrenDisabled )
+uno::Reference< accessibility::XAccessible > ValueSetItem::GetAccessible( bool bIsTransientChildrenDisabled )
 {
     if( !mxAcc.is() )
         mxAcc = new ValueItemAcc( this, bIsTransientChildrenDisabled );
 
-    return mxAcc;
+    return mxAcc.get();
 }
 
+ValueItemAcc::ValueItemAcc( ValueSetItem* pParent, bool bIsTransientChildrenDisabled ) :
+    mpParent( pParent ),
+    mbIsTransientChildrenDisabled( bIsTransientChildrenDisabled )
+{
+}
+
+ValueItemAcc::~ValueItemAcc()
+{
+}
+
+void ValueItemAcc::ParentDestroyed()
+{
+    const ::osl::MutexGuard aGuard( maMutex );
+    mpParent = nullptr;
+}
+
+namespace
+{
+    class theValueItemAccUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theValueItemAccUnoTunnelId > {};
+}
+
+const uno::Sequence< sal_Int8 >& ValueItemAcc::getUnoTunnelId()
+{
+    return theValueItemAccUnoTunnelId::get().getSeq();
+}
+
+
+ValueItemAcc* ValueItemAcc::getImplementation( const uno::Reference< uno::XInterface >& rxData )
+    throw()
+{
+    try
+    {
+        return comphelper::getUnoTunnelImplementation<ValueItemAcc>(rxData);
+    }
+    catch(const css::uno::Exception&)
+    {
+        return nullptr;
+    }
+}
+
+
+uno::Reference< accessibility::XAccessibleContext > SAL_CALL ValueItemAcc::getAccessibleContext()
+{
+    return this;
+}
+
+
+sal_Int32 SAL_CALL ValueItemAcc::getAccessibleChildCount()
+{
+    return 0;
+}
+
+
+uno::Reference< accessibility::XAccessible > SAL_CALL ValueItemAcc::getAccessibleChild( sal_Int32 )
+{
+    throw lang::IndexOutOfBoundsException();
+}
+
+
+uno::Reference< accessibility::XAccessible > SAL_CALL ValueItemAcc::getAccessibleParent()
+{
+    const SolarMutexGuard aSolarGuard;
+    uno::Reference< accessibility::XAccessible >    xRet;
+
+    if( mpParent )
+        xRet = mpParent->mrParent.mxAccessible;
+
+    return xRet;
+}
+
+
+sal_Int32 SAL_CALL ValueItemAcc::getAccessibleIndexInParent()
+{
+    const SolarMutexGuard aSolarGuard;
+    // The index defaults to -1 to indicate the child does not belong to its
+    // parent.
+    sal_Int32 nIndexInParent = -1;
+
+    if( mpParent )
+    {
+        bool bDone = false;
+
+        sal_uInt16 nCount = mpParent->mrParent.ImplGetVisibleItemCount();
+        ValueSetItem* pItem;
+        for (sal_uInt16 i=0; i<nCount && !bDone; i++)
+        {
+            // Guard the retrieval of the i-th child with a try/catch block
+            // just in case the number of children changes in the meantime.
+            try
+            {
+                pItem = mpParent->mrParent.ImplGetItem(i);
+            }
+            catch (const lang::IndexOutOfBoundsException&)
+            {
+                pItem = nullptr;
+            }
+
+            // Do not create an accessible object for the test.
+            if (pItem != nullptr && pItem->mxAcc.is())
+                if (pItem->GetAccessible( mbIsTransientChildrenDisabled ).get() == this )
+                {
+                    nIndexInParent = i;
+                    bDone = true;
+                }
+        }
+    }
+
+    //if this valueset contain a none field(common value is default), then we should increase the real index and set the noitem index value equal 0.
+    if ( mpParent && ( (mpParent->mrParent.GetStyle() & WB_NONEFIELD) != 0 ) )
+    {
+        ValueSetItem* pFirstItem = mpParent->mrParent.ImplGetItem (VALUESET_ITEM_NONEITEM);
+        if( pFirstItem && pFirstItem ->GetAccessible(mbIsTransientChildrenDisabled).get() == this )
+            nIndexInParent = 0;
+        else
+            nIndexInParent++;
+    }
+    return nIndexInParent;
+}
+
+
+sal_Int16 SAL_CALL ValueItemAcc::getAccessibleRole()
+{
+    return accessibility::AccessibleRole::LIST_ITEM;
+}
+
+
+OUString SAL_CALL ValueItemAcc::getAccessibleDescription()
+{
+    return OUString();
+}
+
+
+OUString SAL_CALL ValueItemAcc::getAccessibleName()
+{
+    const SolarMutexGuard aSolarGuard;
+
+    if( mpParent )
+    {
+        if (mpParent->maText.isEmpty())
+            return "Item " +  OUString::number(static_cast<sal_Int32>(mpParent->mnId));
+        else
+            return mpParent->maText;
+    }
+
+    return OUString();
+}
+
+
+uno::Reference< accessibility::XAccessibleRelationSet > SAL_CALL ValueItemAcc::getAccessibleRelationSet()
+{
+    return uno::Reference< accessibility::XAccessibleRelationSet >();
+}
+
+
+uno::Reference< accessibility::XAccessibleStateSet > SAL_CALL ValueItemAcc::getAccessibleStateSet()
+{
+    const SolarMutexGuard aSolarGuard;
+    ::utl::AccessibleStateSetHelper*    pStateSet = new ::utl::AccessibleStateSetHelper;
+
+    if( mpParent )
+    {
+        pStateSet->AddState (accessibility::AccessibleStateType::ENABLED);
+        pStateSet->AddState (accessibility::AccessibleStateType::SENSITIVE);
+        pStateSet->AddState (accessibility::AccessibleStateType::SHOWING);
+        pStateSet->AddState (accessibility::AccessibleStateType::VISIBLE);
+        if ( !mbIsTransientChildrenDisabled )
+            pStateSet->AddState (accessibility::AccessibleStateType::TRANSIENT);
+
+        // SELECTABLE
+        pStateSet->AddState( accessibility::AccessibleStateType::SELECTABLE );
+        //      pStateSet->AddState( accessibility::AccessibleStateType::FOCUSABLE );
+
+        // SELECTED
+        if( mpParent->mrParent.GetSelectedItemId() == mpParent->mnId )
+        {
+            pStateSet->AddState( accessibility::AccessibleStateType::SELECTED );
+            //              pStateSet->AddState( accessibility::AccessibleStateType::FOCUSED );
+        }
+    }
+
+    return pStateSet;
+}
+
+
+lang::Locale SAL_CALL ValueItemAcc::getLocale()
+{
+    const SolarMutexGuard aSolarGuard;
+    uno::Reference< accessibility::XAccessible >    xParent( getAccessibleParent() );
+    lang::Locale                                    aRet( "", "", "" );
+
+    if( xParent.is() )
+    {
+        uno::Reference< accessibility::XAccessibleContext > xParentContext( xParent->getAccessibleContext() );
+
+        if( xParentContext.is() )
+            aRet = xParentContext->getLocale();
+    }
+
+    return aRet;
+}
+
+
+void SAL_CALL ValueItemAcc::addAccessibleEventListener( const uno::Reference< accessibility::XAccessibleEventListener >& rxListener )
+{
+    const ::osl::MutexGuard aGuard( maMutex );
+
+    if( !rxListener.is() )
+           return;
+
+    bool bFound = false;
+
+    for (auto const& eventListener : mxEventListeners)
+    {
+        if(eventListener == rxListener)
+        {
+            bFound = true;
+            break;
+        }
+    }
+
+    if (!bFound)
+        mxEventListeners.push_back( rxListener );
+}
+
+
+void SAL_CALL ValueItemAcc::removeAccessibleEventListener( const uno::Reference< accessibility::XAccessibleEventListener >& rxListener )
+{
+    const ::osl::MutexGuard aGuard( maMutex );
+
+    if( rxListener.is() )
+    {
+        ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >::iterator aIter =
+            std::find(mxEventListeners.begin(), mxEventListeners.end(), rxListener);
+
+        if (aIter != mxEventListeners.end())
+            mxEventListeners.erase(aIter);
+    }
+}
+
+
+sal_Bool SAL_CALL ValueItemAcc::containsPoint( const awt::Point& aPoint )
+{
+    const awt::Rectangle    aRect( getBounds() );
+    const Point             aSize( aRect.Width, aRect.Height );
+    const Point             aNullPoint, aTestPoint( aPoint.X, aPoint.Y );
+
+    return tools::Rectangle( aNullPoint, aSize ).IsInside( aTestPoint );
+}
+
+uno::Reference< accessibility::XAccessible > SAL_CALL ValueItemAcc::getAccessibleAtPoint( const awt::Point& )
+{
+    uno::Reference< accessibility::XAccessible > xRet;
+    return xRet;
+}
+
+awt::Rectangle SAL_CALL ValueItemAcc::getBounds()
+{
+    const SolarMutexGuard aSolarGuard;
+    awt::Rectangle      aRet;
+
+    if( mpParent )
+    {
+        tools::Rectangle   aRect( mpParent->mrParent.GetItemRect(mpParent->mnId) );
+        tools::Rectangle   aParentRect( Point(), mpParent->mrParent.GetOutputSizePixel() );
+
+        aRect.Intersection( aParentRect );
+
+        aRet.X = aRect.Left();
+        aRet.Y = aRect.Top();
+        aRet.Width = aRect.GetWidth();
+        aRet.Height = aRect.GetHeight();
+    }
+
+    return aRet;
+}
+
+awt::Point SAL_CALL ValueItemAcc::getLocation()
+{
+    const awt::Rectangle    aRect( getBounds() );
+    awt::Point              aRet;
+
+    aRet.X = aRect.X;
+    aRet.Y = aRect.Y;
+
+    return aRet;
+}
+
+awt::Point SAL_CALL ValueItemAcc::getLocationOnScreen()
+{
+    const SolarMutexGuard aSolarGuard;
+    awt::Point          aRet;
+
+    if( mpParent )
+    {
+        const Point aPos = mpParent->mrParent.GetItemRect(mpParent->mnId).TopLeft();
+        const Point aScreenPos( mpParent->mrParent.GetDrawingArea()->get_accessible_location() );
+
+        aRet.X = aPos.X() + aScreenPos.X();
+        aRet.Y = aPos.Y() + aScreenPos.Y();
+    }
+
+    return aRet;
+}
+
+awt::Size SAL_CALL ValueItemAcc::getSize()
+{
+    const awt::Rectangle    aRect( getBounds() );
+    awt::Size               aRet;
+
+    aRet.Width = aRect.Width;
+    aRet.Height = aRect.Height;
+
+    return aRet;
+}
+
+void SAL_CALL ValueItemAcc::grabFocus()
+{
+    // nothing to do
+}
+
+sal_Int32 SAL_CALL ValueItemAcc::getForeground(  )
+{
+    Color nColor = Application::GetSettings().GetStyleSettings().GetWindowTextColor();
+    return static_cast<sal_Int32>(nColor);
+}
+
+sal_Int32 SAL_CALL ValueItemAcc::getBackground(  )
+{
+    Color nColor;
+    if (mpParent && mpParent->meType == VALUESETITEM_COLOR)
+        nColor = mpParent->maColor;
+    else
+        nColor = Application::GetSettings().GetStyleSettings().GetWindowColor();
+    return static_cast<sal_Int32>(nColor);
+}
+
+sal_Int64 SAL_CALL ValueItemAcc::getSomething( const uno::Sequence< sal_Int8 >& rId )
+{
+    sal_Int64 nRet;
+
+    if( isUnoTunnelId<ValueItemAcc>(rId) )
+        nRet = reinterpret_cast< sal_Int64 >( this );
+    else
+        nRet = 0;
+
+    return nRet;
+}
+
+void ValueItemAcc::FireAccessibleEvent( short nEventId, const uno::Any& rOldValue, const uno::Any& rNewValue )
+{
+    if( !nEventId )
+        return;
+
+    ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >                  aTmpListeners( mxEventListeners );
+    accessibility::AccessibleEventObject                                                        aEvtObject;
+
+    aEvtObject.EventId = nEventId;
+    aEvtObject.Source = static_cast<uno::XWeak*>(this);
+    aEvtObject.NewValue = rNewValue;
+    aEvtObject.OldValue = rOldValue;
+
+    for (auto const& tmpListener : aTmpListeners)
+    {
+        tmpListener->notifyEvent( aEvtObject );
+    }
+}
 
 ValueSetAcc::ValueSetAcc( ValueSet* pParent ) :
     ValueSetAccComponentBase (m_aMutex),
@@ -77,26 +445,25 @@ ValueSetAcc::~ValueSetAcc()
 
 void ValueSetAcc::FireAccessibleEvent( short nEventId, const uno::Any& rOldValue, const uno::Any& rNewValue )
 {
-    if( nEventId )
+    if( !nEventId )
+        return;
+
+    ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >                  aTmpListeners( mxEventListeners );
+    accessibility::AccessibleEventObject                                                        aEvtObject;
+
+    aEvtObject.EventId = nEventId;
+    aEvtObject.Source = static_cast<uno::XWeak*>(this);
+    aEvtObject.NewValue = rNewValue;
+    aEvtObject.OldValue = rOldValue;
+
+    for (auto const& tmpListener : aTmpListeners)
     {
-        ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >                  aTmpListeners( mxEventListeners );
-        accessibility::AccessibleEventObject                                                        aEvtObject;
-
-        aEvtObject.EventId = nEventId;
-        aEvtObject.Source = static_cast<uno::XWeak*>(this);
-        aEvtObject.NewValue = rNewValue;
-        aEvtObject.OldValue = rOldValue;
-
-        for (::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >::const_iterator aIter( aTmpListeners.begin() );
-            aIter != aTmpListeners.end() ; ++aIter)
+        try
         {
-            try
-            {
-                (*aIter)->notifyEvent( aEvtObject );
-            }
-            catch(const uno::Exception&)
-            {
-            }
+            tmpListener->notifyEvent( aEvtObject );
+        }
+        catch(const uno::Exception&)
+        {
         }
     }
 }
@@ -117,8 +484,7 @@ ValueSetAcc* ValueSetAcc::getImplementation( const uno::Reference< uno::XInterfa
 {
     try
     {
-        uno::Reference< lang::XUnoTunnel > xUnoTunnel( rxData, uno::UNO_QUERY );
-        return( xUnoTunnel.is() ? reinterpret_cast<ValueSetAcc*>(sal::static_int_cast<sal_IntPtr>(xUnoTunnel->getSomething( ValueSetAcc::getUnoTunnelId() ))) : nullptr );
+        return comphelper::getUnoTunnelImplementation<ValueSetAcc>(rxData);
     }
     catch(const css::uno::Exception&)
     {
@@ -176,56 +542,57 @@ uno::Reference< accessibility::XAccessible > SAL_CALL ValueSetAcc::getAccessible
 {
     ThrowIfDisposed();
     const SolarMutexGuard aSolarGuard;
-    uno::Reference< accessibility::XAccessible >    xRet;
     ValueSetItem* pItem = getItem (sal::static_int_cast< sal_uInt16 >(i));
 
-    if( pItem )
-        xRet = pItem->GetAccessible( false/*bIsTransientChildrenDisabled*/ );
-    else
+    if( !pItem )
         throw lang::IndexOutOfBoundsException();
 
+    uno::Reference< accessibility::XAccessible >  xRet = pItem->GetAccessible( false/*bIsTransientChildrenDisabled*/ );
     return xRet;
 }
-
 
 uno::Reference< accessibility::XAccessible > SAL_CALL ValueSetAcc::getAccessibleParent()
 {
     ThrowIfDisposed();
     const SolarMutexGuard aSolarGuard;
-    vcl::Window*                                         pParent = mpParent->GetParent();
-    uno::Reference< accessibility::XAccessible >    xRet;
-
-    if( pParent )
-        xRet = pParent->GetAccessible();
-
-    return xRet;
+    return mpParent->GetDrawingArea()->get_accessible_parent();
 }
-
 
 sal_Int32 SAL_CALL ValueSetAcc::getAccessibleIndexInParent()
 {
     ThrowIfDisposed();
     const SolarMutexGuard aSolarGuard;
-    vcl::Window*                 pParent = mpParent->GetParent();
-    sal_Int32               nRet = 0;
 
-    if( pParent )
+    // -1 for child not found/no parent (according to specification)
+    sal_Int32 nRet = -1;
+
+    uno::Reference<accessibility::XAccessible> xParent(getAccessibleParent());
+    if (!xParent)
+        return nRet;
+
+    try
     {
-        bool bFound = false;
+        uno::Reference<accessibility::XAccessibleContext> xParentContext(xParent->getAccessibleContext());
 
-        for( sal_uInt16 i = 0, nCount = pParent->GetChildCount(); ( i < nCount ) && !bFound; i++ )
+        //  iterate over parent's children and search for this object
+        if ( xParentContext.is() )
         {
-            if( pParent->GetChild( i ) == mpParent )
+            sal_Int32 nChildCount = xParentContext->getAccessibleChildCount();
+            for ( sal_Int32 nChild = 0; ( nChild < nChildCount ) && ( -1 == nRet ); ++nChild )
             {
-                nRet = i;
-                bFound = true;
+                uno::Reference<XAccessible> xChild(xParentContext->getAccessibleChild(nChild));
+                if ( xChild.get() == this )
+                    nRet = nChild;
             }
         }
+    }
+    catch (const uno::Exception&)
+    {
+        TOOLS_WARN_EXCEPTION( "svtools", "OAccessibleContextHelper::getAccessibleIndexInParent" );
     }
 
     return nRet;
 }
-
 
 sal_Int16 SAL_CALL ValueSetAcc::getAccessibleRole()
 {
@@ -237,7 +604,15 @@ sal_Int16 SAL_CALL ValueSetAcc::getAccessibleRole()
 OUString SAL_CALL ValueSetAcc::getAccessibleDescription()
 {
     ThrowIfDisposed();
-    return OUString( "ValueSet" );
+    const SolarMutexGuard aSolarGuard;
+    OUString              aRet;
+
+    if (mpParent)
+    {
+        aRet = mpParent->GetAccessibleDescription();
+    }
+
+    return aRet;
 }
 
 
@@ -250,50 +625,17 @@ OUString SAL_CALL ValueSetAcc::getAccessibleName()
     if (mpParent)
     {
         aRet = mpParent->GetAccessibleName();
-
-        if ( aRet.isEmpty() )
-        {
-            vcl::Window* pLabel = mpParent->GetAccessibleRelationLabeledBy();
-            if ( pLabel && pLabel != mpParent )
-                aRet = OutputDevice::GetNonMnemonicString( pLabel->GetText() );
-
-            if (aRet.isEmpty())
-                 aRet = mpParent->GetQuickHelpText();
-        }
     }
 
     return aRet;
 }
 
-
 uno::Reference< accessibility::XAccessibleRelationSet > SAL_CALL ValueSetAcc::getAccessibleRelationSet()
 {
     ThrowIfDisposed();
     SolarMutexGuard g;
-    uno::Reference< accessibility::XAccessibleRelationSet > xRelSet;
-    vcl::Window* pWindow = static_cast<vcl::Window*>(mpParent);
-    if ( pWindow )
-    {
-        utl::AccessibleRelationSetHelper* pRelationSet = new utl::AccessibleRelationSetHelper;
-        xRelSet = pRelationSet;
-
-        vcl::Window *pLabeledBy = pWindow->GetAccessibleRelationLabeledBy();
-        if ( pLabeledBy && pLabeledBy != pWindow )
-        {
-            uno::Sequence< uno::Reference< uno::XInterface > > aSequence { pLabeledBy->GetAccessible() };
-            pRelationSet->AddRelation( accessibility::AccessibleRelation( accessibility::AccessibleRelationType::LABELED_BY, aSequence ) );
-        }
-
-        vcl::Window* pMemberOf = pWindow->GetAccessibleRelationMemberOf();
-        if ( pMemberOf && pMemberOf != pWindow )
-        {
-            uno::Sequence< uno::Reference< uno::XInterface > > aSequence { pMemberOf->GetAccessible() };
-            pRelationSet->AddRelation( accessibility::AccessibleRelation( accessibility::AccessibleRelationType::MEMBER_OF, aSequence ) );
-        }
-    }
-    return xRelSet;
+    return mpParent->GetDrawingArea()->get_accessible_relation_set();
 }
-
 
 uno::Reference< accessibility::XAccessibleStateSet > SAL_CALL ValueSetAcc::getAccessibleStateSet()
 {
@@ -338,22 +680,22 @@ void SAL_CALL ValueSetAcc::addAccessibleEventListener( const uno::Reference< acc
     ThrowIfDisposed();
     ::osl::MutexGuard aGuard (m_aMutex);
 
-    if( rxListener.is() )
+    if( !rxListener.is() )
+           return;
+
+    bool bFound = false;
+
+    for (auto const& eventListener : mxEventListeners)
     {
-           ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >::const_iterator aIter = mxEventListeners.begin();
-        bool bFound = false;
-
-        while( !bFound && ( aIter != mxEventListeners.end() ) )
+        if(eventListener == rxListener)
         {
-            if( *aIter == rxListener )
-                bFound = true;
-            else
-                ++aIter;
+            bFound = true;
+            break;
         }
-
-        if (!bFound)
-            mxEventListeners.push_back( rxListener );
     }
+
+    if (!bFound)
+        mxEventListeners.push_back( rxListener );
 }
 
 
@@ -397,7 +739,7 @@ uno::Reference< accessibility::XAccessible > SAL_CALL ValueSetAcc::getAccessible
 
         if( VALUESET_ITEM_NONEITEM != nItemPos )
         {
-            ValueSetItem *const pItem = mpParent->mItemList[nItemPos];
+            ValueSetItem *const pItem = mpParent->mItemList[nItemPos].get();
             xRet = pItem->GetAccessible( false/*bIsTransientChildrenDisabled*/ );
         }
     }
@@ -410,7 +752,7 @@ awt::Rectangle SAL_CALL ValueSetAcc::getBounds()
 {
     ThrowIfDisposed();
     const SolarMutexGuard aSolarGuard;
-    const Point         aOutPos( mpParent->GetPosPixel() );
+    const Point         aOutPos;
     const Size          aOutSize( mpParent->GetOutputSizePixel() );
     awt::Rectangle      aRet;
 
@@ -421,7 +763,6 @@ awt::Rectangle SAL_CALL ValueSetAcc::getBounds()
 
     return aRet;
 }
-
 
 awt::Point SAL_CALL ValueSetAcc::getLocation()
 {
@@ -435,20 +776,29 @@ awt::Point SAL_CALL ValueSetAcc::getLocation()
     return aRet;
 }
 
-
 awt::Point SAL_CALL ValueSetAcc::getLocationOnScreen()
 {
     ThrowIfDisposed();
     const SolarMutexGuard aSolarGuard;
-    const Point         aScreenPos( mpParent->OutputToAbsoluteScreenPixel( Point() ) );
-    awt::Point          aRet;
+    awt::Point aScreenLoc(0, 0);
 
-    aRet.X = aScreenPos.X();
-    aRet.Y = aScreenPos.Y();
+    uno::Reference<accessibility::XAccessible> xParent(getAccessibleParent());
+    if (xParent)
+    {
+        uno::Reference<accessibility::XAccessibleContext> xParentContext(xParent->getAccessibleContext());
+        uno::Reference<accessibility::XAccessibleComponent> xParentComponent(xParentContext, css::uno::UNO_QUERY);
+        OSL_ENSURE( xParentComponent.is(), "ValueSetAcc::getLocationOnScreen: no parent component!" );
+        if ( xParentComponent.is() )
+        {
+            awt::Point aParentScreenLoc( xParentComponent->getLocationOnScreen() );
+            awt::Point aOwnRelativeLoc( getLocation() );
+            aScreenLoc.X = aParentScreenLoc.X + aOwnRelativeLoc.X;
+            aScreenLoc.Y = aParentScreenLoc.Y + aOwnRelativeLoc.Y;
+        }
+    }
 
-    return aRet;
+    return aScreenLoc;
 }
-
 
 awt::Size SAL_CALL ValueSetAcc::getSize()
 {
@@ -472,14 +822,14 @@ void SAL_CALL ValueSetAcc::grabFocus()
 sal_Int32 SAL_CALL ValueSetAcc::getForeground(  )
 {
     ThrowIfDisposed();
-    sal_uInt32 nColor = Application::GetSettings().GetStyleSettings().GetWindowTextColor().GetColor();
+    Color nColor = Application::GetSettings().GetStyleSettings().GetWindowTextColor();
     return static_cast<sal_Int32>(nColor);
 }
 
 sal_Int32 SAL_CALL ValueSetAcc::getBackground(  )
 {
     ThrowIfDisposed();
-    sal_uInt32 nColor = Application::GetSettings().GetStyleSettings().GetWindowColor().GetColor();
+    Color nColor = Application::GetSettings().GetStyleSettings().GetWindowColor();
     return static_cast<sal_Int32>(nColor);
 }
 
@@ -489,13 +839,10 @@ void SAL_CALL ValueSetAcc::selectAccessibleChild( sal_Int32 nChildIndex )
     const SolarMutexGuard aSolarGuard;
     ValueSetItem* pItem = getItem (sal::static_int_cast< sal_uInt16 >(nChildIndex));
 
-    if(pItem != nullptr)
-    {
-        mpParent->SelectItem( pItem->mnId );
-        mpParent->Select ();
-    }
-    else
+    if(pItem == nullptr)
         throw lang::IndexOutOfBoundsException();
+
+    mpParent->SelectItem( pItem->mnId );
 }
 
 
@@ -504,13 +851,11 @@ sal_Bool SAL_CALL ValueSetAcc::isAccessibleChildSelected( sal_Int32 nChildIndex 
     ThrowIfDisposed();
     const SolarMutexGuard aSolarGuard;
     ValueSetItem* pItem = getItem (sal::static_int_cast< sal_uInt16 >(nChildIndex));
-    bool            bRet = false;
 
-    if (pItem != nullptr)
-        bRet = mpParent->IsItemSelected( pItem->mnId );
-    else
+    if (pItem == nullptr)
         throw lang::IndexOutOfBoundsException();
 
+    bool  bRet = mpParent->IsItemSelected( pItem->mnId );
     return bRet;
 }
 
@@ -581,7 +926,7 @@ sal_Int64 SAL_CALL ValueSetAcc::getSomething( const uno::Sequence< sal_Int8 >& r
 {
     sal_Int64 nRet;
 
-    if( ( rId.getLength() == 16 ) && ( 0 == memcmp( ValueSetAcc::getUnoTunnelId().getConstArray(), rId.getConstArray(), 16 ) ) )
+    if( isUnoTunnelId<ValueSetAcc>(rId) )
         nRet = reinterpret_cast< sal_Int64 >( this );
     else
         nRet = 0;
@@ -598,8 +943,7 @@ void SAL_CALL ValueSetAcc::disposing()
         // Make a copy of the list and clear the original.
         const SolarMutexGuard aSolarGuard;
         ::osl::MutexGuard aGuard (m_aMutex);
-        aListenerListCopy = mxEventListeners;
-        mxEventListeners.clear();
+        aListenerListCopy.swap(mxEventListeners);
 
         // Reset the pointer to the parent.  It has to be the one who has
         // disposed us because he is dying.
@@ -607,21 +951,17 @@ void SAL_CALL ValueSetAcc::disposing()
     }
 
     // Inform all listeners that this objects is disposing.
-    ::std::vector<uno::Reference<accessibility::XAccessibleEventListener> >::const_iterator
-          aListenerIterator (aListenerListCopy.begin());
     lang::EventObject aEvent (static_cast<accessibility::XAccessible*>(this));
-    while (aListenerIterator != aListenerListCopy.end())
+    for (auto const& listenerCopy : aListenerListCopy)
     {
         try
         {
-            (*aListenerIterator)->disposing (aEvent);
+            listenerCopy->disposing (aEvent);
         }
         catch(const uno::Exception&)
         {
             // Ignore exceptions.
         }
-
-        ++aListenerIterator;
     }
 }
 
@@ -635,7 +975,6 @@ sal_uInt16 ValueSetAcc::getItemCount() const
         nCount += 1;
     return nCount;
 }
-
 
 ValueSetItem* ValueSetAcc::getItem (sal_uInt16 nIndex) const
 {
@@ -676,382 +1015,6 @@ bool ValueSetAcc::HasNoneField() const
 {
     assert(mpParent && "ValueSetAcc::HasNoneField called with mpParent==NULL");
     return ((mpParent->GetStyle() & WB_NONEFIELD) != 0);
-}
-
-ValueItemAcc::ValueItemAcc( ValueSetItem* pParent, bool bIsTransientChildrenDisabled ) :
-    mpParent( pParent ),
-    mbIsTransientChildrenDisabled( bIsTransientChildrenDisabled )
-{
-}
-
-ValueItemAcc::~ValueItemAcc()
-{
-}
-
-void ValueItemAcc::FireAccessibleEvent( short nEventId, const uno::Any& rOldValue, const uno::Any& rNewValue )
-{
-    if( nEventId )
-    {
-        ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >                  aTmpListeners( mxEventListeners );
-        accessibility::AccessibleEventObject                                                        aEvtObject;
-
-        aEvtObject.EventId = nEventId;
-        aEvtObject.Source = static_cast<uno::XWeak*>(this);
-        aEvtObject.NewValue = rNewValue;
-        aEvtObject.OldValue = rOldValue;
-
-        for (::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >::const_iterator aIter( aTmpListeners.begin() );
-             aIter != aTmpListeners.end() ; ++aIter)
-        {
-            (*aIter)->notifyEvent( aEvtObject );
-        }
-    }
-}
-
-
-void ValueItemAcc::ParentDestroyed()
-{
-    const ::osl::MutexGuard aGuard( maMutex );
-    mpParent = nullptr;
-}
-
-namespace
-{
-    class theValueItemAccUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theValueItemAccUnoTunnelId > {};
-}
-
-const uno::Sequence< sal_Int8 >& ValueItemAcc::getUnoTunnelId()
-{
-    return theValueItemAccUnoTunnelId::get().getSeq();
-}
-
-
-ValueItemAcc* ValueItemAcc::getImplementation( const uno::Reference< uno::XInterface >& rxData )
-    throw()
-{
-    try
-    {
-        uno::Reference< lang::XUnoTunnel > xUnoTunnel( rxData, uno::UNO_QUERY );
-        return( xUnoTunnel.is() ? reinterpret_cast<ValueItemAcc*>(sal::static_int_cast<sal_IntPtr>(xUnoTunnel->getSomething( ValueItemAcc::getUnoTunnelId() ))) : nullptr );
-    }
-    catch(const css::uno::Exception&)
-    {
-        return nullptr;
-    }
-}
-
-
-uno::Reference< accessibility::XAccessibleContext > SAL_CALL ValueItemAcc::getAccessibleContext()
-{
-    return this;
-}
-
-
-sal_Int32 SAL_CALL ValueItemAcc::getAccessibleChildCount()
-{
-    return 0;
-}
-
-
-uno::Reference< accessibility::XAccessible > SAL_CALL ValueItemAcc::getAccessibleChild( sal_Int32 )
-{
-    throw lang::IndexOutOfBoundsException();
-}
-
-
-uno::Reference< accessibility::XAccessible > SAL_CALL ValueItemAcc::getAccessibleParent()
-{
-    const SolarMutexGuard aSolarGuard;
-    uno::Reference< accessibility::XAccessible >    xRet;
-
-    if( mpParent )
-        xRet = mpParent->mrParent.GetAccessible();
-
-    return xRet;
-}
-
-
-sal_Int32 SAL_CALL ValueItemAcc::getAccessibleIndexInParent()
-{
-    const SolarMutexGuard aSolarGuard;
-    // The index defaults to -1 to indicate the child does not belong to its
-    // parent.
-    sal_Int32 nIndexInParent = -1;
-
-    if( mpParent )
-    {
-        bool bDone = false;
-
-        sal_uInt16 nCount = mpParent->mrParent.ImplGetVisibleItemCount();
-        ValueSetItem* pItem;
-        for (sal_uInt16 i=0; i<nCount && !bDone; i++)
-        {
-            // Guard the retrieval of the i-th child with a try/catch block
-            // just in case the number of children changes in the mean time.
-            try
-            {
-                pItem = mpParent->mrParent.ImplGetItem(i);
-            }
-            catch (const lang::IndexOutOfBoundsException&)
-            {
-                pItem = nullptr;
-            }
-
-            // Do not create an accessible object for the test.
-            if (pItem != nullptr && pItem->mxAcc.is())
-                if (pItem->GetAccessible( mbIsTransientChildrenDisabled ).get() == this )
-                {
-                    nIndexInParent = i;
-                    bDone = true;
-                }
-        }
-    }
-
-    //if this valueset contain a none field(common value is default), then we should increase the real index and set the noitem index value equal 0.
-    if ( mpParent && ( (mpParent->mrParent.GetStyle() & WB_NONEFIELD) != 0 ) )
-    {
-        ValueSetItem* pFirstItem = mpParent->mrParent.ImplGetItem (VALUESET_ITEM_NONEITEM);
-        if( pFirstItem && pFirstItem ->GetAccessible(mbIsTransientChildrenDisabled).get() == this )
-            nIndexInParent = 0;
-        else
-            nIndexInParent++;
-    }
-    return nIndexInParent;
-}
-
-
-sal_Int16 SAL_CALL ValueItemAcc::getAccessibleRole()
-{
-    return accessibility::AccessibleRole::LIST_ITEM;
-}
-
-
-OUString SAL_CALL ValueItemAcc::getAccessibleDescription()
-{
-    return OUString();
-}
-
-
-OUString SAL_CALL ValueItemAcc::getAccessibleName()
-{
-    const SolarMutexGuard aSolarGuard;
-    OUString aRet;
-
-    if( mpParent )
-    {
-        aRet = mpParent->maText;
-
-        if( aRet.isEmpty() )
-        {
-            OUStringBuffer aBuffer("Item ");
-            aBuffer.append(static_cast<sal_Int32>(mpParent->mnId));
-            aRet = aBuffer.makeStringAndClear();
-        }
-    }
-
-    return aRet;
-}
-
-
-uno::Reference< accessibility::XAccessibleRelationSet > SAL_CALL ValueItemAcc::getAccessibleRelationSet()
-{
-    return uno::Reference< accessibility::XAccessibleRelationSet >();
-}
-
-
-uno::Reference< accessibility::XAccessibleStateSet > SAL_CALL ValueItemAcc::getAccessibleStateSet()
-{
-    const SolarMutexGuard aSolarGuard;
-    ::utl::AccessibleStateSetHelper*    pStateSet = new ::utl::AccessibleStateSetHelper;
-
-    if( mpParent )
-    {
-        pStateSet->AddState (accessibility::AccessibleStateType::ENABLED);
-        pStateSet->AddState (accessibility::AccessibleStateType::SENSITIVE);
-        pStateSet->AddState (accessibility::AccessibleStateType::SHOWING);
-        pStateSet->AddState (accessibility::AccessibleStateType::VISIBLE);
-        if ( !mbIsTransientChildrenDisabled )
-            pStateSet->AddState (accessibility::AccessibleStateType::TRANSIENT);
-
-        // SELECTABLE
-        pStateSet->AddState( accessibility::AccessibleStateType::SELECTABLE );
-        //      pStateSet->AddState( accessibility::AccessibleStateType::FOCUSABLE );
-
-        // SELECTED
-        if( mpParent->mrParent.GetSelectItemId() == mpParent->mnId )
-        {
-            pStateSet->AddState( accessibility::AccessibleStateType::SELECTED );
-            //              pStateSet->AddState( accessibility::AccessibleStateType::FOCUSED );
-        }
-    }
-
-    return pStateSet;
-}
-
-
-lang::Locale SAL_CALL ValueItemAcc::getLocale()
-{
-    const SolarMutexGuard aSolarGuard;
-    uno::Reference< accessibility::XAccessible >    xParent( getAccessibleParent() );
-    lang::Locale                                    aRet( "", "", "" );
-
-    if( xParent.is() )
-    {
-        uno::Reference< accessibility::XAccessibleContext > xParentContext( xParent->getAccessibleContext() );
-
-        if( xParentContext.is() )
-            aRet = xParentContext->getLocale();
-    }
-
-    return aRet;
-}
-
-
-void SAL_CALL ValueItemAcc::addAccessibleEventListener( const uno::Reference< accessibility::XAccessibleEventListener >& rxListener )
-{
-    const ::osl::MutexGuard aGuard( maMutex );
-
-    if( rxListener.is() )
-    {
-           ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >::const_iterator aIter = mxEventListeners.begin();
-        bool bFound = false;
-
-        while( !bFound && ( aIter != mxEventListeners.end() ) )
-        {
-            if( *aIter == rxListener )
-                bFound = true;
-            else
-                ++aIter;
-        }
-
-        if (!bFound)
-            mxEventListeners.push_back( rxListener );
-    }
-}
-
-
-void SAL_CALL ValueItemAcc::removeAccessibleEventListener( const uno::Reference< accessibility::XAccessibleEventListener >& rxListener )
-{
-    const ::osl::MutexGuard aGuard( maMutex );
-
-    if( rxListener.is() )
-    {
-        ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >::iterator aIter =
-            std::find(mxEventListeners.begin(), mxEventListeners.end(), rxListener);
-
-        if (aIter != mxEventListeners.end())
-            mxEventListeners.erase(aIter);
-    }
-}
-
-
-sal_Bool SAL_CALL ValueItemAcc::containsPoint( const awt::Point& aPoint )
-{
-    const awt::Rectangle    aRect( getBounds() );
-    const Point             aSize( aRect.Width, aRect.Height );
-    const Point             aNullPoint, aTestPoint( aPoint.X, aPoint.Y );
-
-    return tools::Rectangle( aNullPoint, aSize ).IsInside( aTestPoint );
-}
-
-uno::Reference< accessibility::XAccessible > SAL_CALL ValueItemAcc::getAccessibleAtPoint( const awt::Point& )
-{
-    uno::Reference< accessibility::XAccessible > xRet;
-    return xRet;
-}
-
-awt::Rectangle SAL_CALL ValueItemAcc::getBounds()
-{
-    const SolarMutexGuard aSolarGuard;
-    awt::Rectangle      aRet;
-
-    if( mpParent )
-    {
-        tools::Rectangle   aRect( mpParent->mrParent.GetItemRect(mpParent->mnId) );
-        Point       aOrigin;
-        tools::Rectangle   aParentRect( aOrigin, mpParent->mrParent.GetOutputSizePixel() );
-
-        aRect.Intersection( aParentRect );
-
-        aRet.X = aRect.Left();
-        aRet.Y = aRect.Top();
-        aRet.Width = aRect.GetWidth();
-        aRet.Height = aRect.GetHeight();
-    }
-
-    return aRet;
-}
-
-awt::Point SAL_CALL ValueItemAcc::getLocation()
-{
-    const awt::Rectangle    aRect( getBounds() );
-    awt::Point              aRet;
-
-    aRet.X = aRect.X;
-    aRet.Y = aRect.Y;
-
-    return aRet;
-}
-
-awt::Point SAL_CALL ValueItemAcc::getLocationOnScreen()
-{
-    const SolarMutexGuard aSolarGuard;
-    awt::Point          aRet;
-
-    if( mpParent )
-    {
-        const Point aPos = mpParent->mrParent.GetItemRect(mpParent->mnId).TopLeft();
-        const Point aScreenPos( mpParent->mrParent.OutputToAbsoluteScreenPixel( aPos ) );
-
-        aRet.X = aScreenPos.X();
-        aRet.Y = aScreenPos.Y();
-    }
-
-    return aRet;
-}
-
-awt::Size SAL_CALL ValueItemAcc::getSize()
-{
-    const awt::Rectangle    aRect( getBounds() );
-    awt::Size               aRet;
-
-    aRet.Width = aRect.Width;
-    aRet.Height = aRect.Height;
-
-    return aRet;
-}
-
-void SAL_CALL ValueItemAcc::grabFocus()
-{
-    // nothing to do
-}
-
-sal_Int32 SAL_CALL ValueItemAcc::getForeground(  )
-{
-    sal_uInt32 nColor = Application::GetSettings().GetStyleSettings().GetWindowTextColor().GetColor();
-    return static_cast<sal_Int32>(nColor);
-}
-
-sal_Int32 SAL_CALL ValueItemAcc::getBackground(  )
-{
-    sal_uInt32 nColor;
-    if (mpParent && mpParent->meType == VALUESETITEM_COLOR)
-        nColor = mpParent->maColor.GetColor();
-    else
-        nColor = Application::GetSettings().GetStyleSettings().GetWindowColor().GetColor();
-    return static_cast<sal_Int32>(nColor);
-}
-
-sal_Int64 SAL_CALL ValueItemAcc::getSomething( const uno::Sequence< sal_Int8 >& rId )
-{
-    sal_Int64 nRet;
-
-    if( ( rId.getLength() == 16 ) && ( 0 == memcmp( ValueItemAcc::getUnoTunnelId().getConstArray(), rId.getConstArray(), 16 ) ) )
-        nRet = reinterpret_cast< sal_Int64 >( this );
-    else
-        nRet = 0;
-
-    return nRet;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

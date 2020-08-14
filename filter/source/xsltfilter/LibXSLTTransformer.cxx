@@ -9,14 +9,11 @@
  */
 
 #include <algorithm>
-#include <cstdio>
 #include <cstring>
-#include <list>
 #include <map>
+#include <utility>
 #include <vector>
-#include <iostream>
 #include <libxml/parser.h>
-#include <libxml/tree.h>
 #include <libxml/xmlIO.h>
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
@@ -28,23 +25,17 @@
 #include <libexslt/exslt.h>
 
 #include <cppuhelper/factory.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
-#include <osl/module.h>
 #include <osl/file.hxx>
-#include <osl/process.h>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
-#include <com/sun/star/io/XActiveDataSink.hpp>
-#include <com/sun/star/io/XActiveDataControl.hpp>
 #include <com/sun/star/io/XStreamListener.hpp>
 
-#include <LibXSLTTransformer.hxx>
-#include <OleHandler.hxx>
+#include "LibXSLTTransformer.hxx"
+#include "OleHandler.hxx"
 #include <memory>
 
 using namespace ::cppu;
@@ -54,8 +45,6 @@ using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::registry;
-using ::std::list;
-using ::std::map;
 using ::std::pair;
 
 namespace XSLT
@@ -71,6 +60,8 @@ namespace XSLT
     const sal_Int32 Reader::OUTPUT_BUFFER_SIZE = 4096;
 
     const sal_Int32 Reader::INPUT_BUFFER_SIZE = 4096;
+
+    namespace {
 
     /**
      * ParserInputBufferCallback forwards IO call-backs to libxml stream IO.
@@ -104,7 +95,8 @@ namespace XSLT
         on_close(void * context)
         {
             Reader * tmp = static_cast<Reader*> (context);
-            return tmp->closeOutput();
+            tmp->closeOutput();
+            return 0;
         }
     };
     /**
@@ -154,7 +146,8 @@ namespace XSLT
             xmlXPathObjectPtr streamName = valuePop(ctxt);
             streamName = ensureStringValue(streamName, ctxt);
 
-            oh->insertByName(OUString::createFromAscii(reinterpret_cast<char*>(streamName->stringval)), OString(reinterpret_cast<char*>(value->stringval)));
+            oh->insertByName(OStringToOUString(reinterpret_cast<char*>(streamName->stringval), RTL_TEXTENCODING_UTF8),
+                             OString(reinterpret_cast<char*>(value->stringval)));
             valuePush(ctxt, xmlXPathNewCString(""));
         }
 
@@ -195,11 +188,13 @@ namespace XSLT
             OleHandler * oh = static_cast<OleHandler*> (data);
             xmlXPathObjectPtr streamName = valuePop(ctxt);
             streamName = ensureStringValue(streamName, ctxt);
-            const OString content = oh->getByName(OUString::createFromAscii(reinterpret_cast<char*>(streamName->stringval)));
+            const OString content = oh->getByName(OStringToOUString(reinterpret_cast<char*>(streamName->stringval), RTL_TEXTENCODING_UTF8));
             valuePush(ctxt, xmlXPathNewCString(content.getStr()));
             xmlXPathFreeObject(streamName);
         }
     };
+
+    }
 
     Reader::Reader(LibXSLTTransformer* transformer) :
         Thread("LibXSLTTransformer"), m_transformer(transformer),
@@ -215,10 +210,10 @@ namespace XSLT
     {
         //        const char *ptr = (const char *) context;
         if (buffer == nullptr || len < 0)
-            return (-1);
+            return -1;
         sal_Int32 n;
         css::uno::Reference<XInputStream> xis = m_transformer->getInputStream();
-        n = xis.get()->readBytes(m_readBuf, len);
+        n = xis->readBytes(m_readBuf, len);
         if (n > 0)
             {
                 memcpy(buffer, m_readBuf.getArray(), n);
@@ -244,7 +239,7 @@ namespace XSLT
                 m_writeBuf.realloc(n);
                 memcpy(m_writeBuf.getArray(), memPtr,
                         static_cast<size_t> (n));
-                xos.get()->writeBytes(m_writeBuf);
+                xos->writeBytes(m_writeBuf);
                 memPtr += n;
                 writeLen -= n;
             }
@@ -252,17 +247,16 @@ namespace XSLT
         return len;
     }
 
-    int
+    void
     Reader::closeOutput()
     {
         css::uno::Reference<XOutputStream> xos = m_transformer->getOutputStream();
         if (xos.is())
         {
-            xos.get()->flush();
-            xos.get()->closeOutput();
+            xos->flush();
+            xos->closeOutput();
         }
         m_transformer->done();
-        return 0;
     }
 
     void
@@ -272,14 +266,13 @@ namespace XSLT
         OSL_ASSERT(m_transformer->getInputStream().is());
         OSL_ASSERT(m_transformer->getOutputStream().is());
         OSL_ASSERT(!m_transformer->getStyleSheetURL().isEmpty());
-        ::std::map<const char*, OString>::iterator pit;
         ::std::map<const char*, OString> pmap = m_transformer->getParameters();
         ::std::vector< const char* > params( pmap.size() * 2 + 1 ); // build parameters
         int paramIndex = 0;
-        for (pit = pmap.begin(); pit != pmap.end(); ++pit)
+        for (auto const& elem : pmap)
         {
-            params[paramIndex++] = (*pit).first;
-            params[paramIndex++] = (*pit).second.getStr();
+            params[paramIndex++] = elem.first;
+            params[paramIndex++] = elem.second.getStr();
         }
         params[paramIndex] = nullptr;
         xmlDocPtr doc = xmlReadIO(&ParserInputBufferCallback::on_read,
@@ -297,9 +290,14 @@ namespace XSLT
         std::unique_ptr<OleHandler> oh(new OleHandler(m_transformer->getComponentContext()));
         if (styleSheet)
         {
-            m_tcontext = xsltNewTransformContext(styleSheet, doc);
+            xsltTransformContextPtr tcontext = xsltNewTransformContext(
+                styleSheet, doc);
+            {
+                std::scoped_lock<std::mutex> g(m_mutex);
+                m_tcontext = tcontext;
+            }
             oh->registercontext(m_tcontext);
-            xsltQuoteUserParams(m_tcontext, &params[0]);
+            xsltQuoteUserParams(m_tcontext, params.data());
             result = xsltApplyStylesheetUser(styleSheet, doc, nullptr, nullptr, nullptr,
                                              m_tcontext);
         }
@@ -313,14 +311,14 @@ namespace XSLT
             outBuf->writecallback = &ParserOutputBufferCallback::on_write;
             outBuf->closecallback = &ParserOutputBufferCallback::on_close;
             xsltSaveResultTo(outBuf, result, styleSheet);
-            xmlOutputBufferClose(outBuf);
+            (void)xmlOutputBufferClose(outBuf);
         }
         else
         {
             xmlErrorPtr lastErr = xmlGetLastError();
             OUString msg;
             if (lastErr)
-                msg = OUString::createFromAscii(lastErr->message);
+                msg = OStringToOUString(lastErr->message, RTL_TEXTENCODING_UTF8);
             else
                 msg = "Unknown XSLT transformation error";
 
@@ -329,8 +327,12 @@ namespace XSLT
         closeOutput();
         oh.reset();
         xsltFreeStylesheet(styleSheet);
-        xsltFreeTransformContext(m_tcontext);
-        m_tcontext = nullptr;
+        xsltTransformContextPtr tcontext = nullptr;
+        {
+            std::scoped_lock<std::mutex> g(m_mutex);
+            std::swap(m_tcontext, tcontext);
+        }
+        xsltFreeTransformContext(tcontext);
         xmlFreeDoc(doc);
         xmlFreeDoc(result);
     }
@@ -353,6 +355,7 @@ namespace XSLT
 
     void Reader::forceStateStopped()
     {
+        std::scoped_lock<std::mutex> g(m_mutex);
         if (!m_tcontext)
             return;
         //tdf#100057 If we force a cancel, libxslt will of course just keep on going unless something
@@ -369,6 +372,20 @@ namespace XSLT
             const css::uno::Reference<XComponentContext> & rxContext) :
         m_xContext(rxContext)
     {
+    }
+
+    //  XServiceInfo
+    sal_Bool LibXSLTTransformer::supportsService(const OUString& sServiceName)
+    {
+        return cppu::supportsService(this, sServiceName);
+    }
+    OUString LibXSLTTransformer::getImplementationName()
+    {
+        return "com.sun.star.comp.documentconversion.XSLTFilter";
+    }
+    css::uno::Sequence< OUString > LibXSLTTransformer::getSupportedServiceNames()
+    {
+        return { "com.sun.star.documentconversion.XSLTFilter" };
     }
 
     void
@@ -400,25 +417,22 @@ namespace XSLT
     void
     LibXSLTTransformer::addListener(const css::uno::Reference<XStreamListener>& listener)
     {
-        m_listeners.insert(m_listeners.begin(), listener);
+        m_listeners.push_front(listener);
     }
 
     void
     LibXSLTTransformer::removeListener(
             const css::uno::Reference<XStreamListener>& listener)
     {
-        m_listeners.remove(listener);
+        m_listeners.erase( std::remove(m_listeners.begin(), m_listeners.end(), listener ), m_listeners.end() );
     }
 
     void
     LibXSLTTransformer::start()
     {
-        ListenerList::iterator it;
-        ListenerList* l = &m_listeners;
-        for (it = l->begin(); it != l->end(); ++it)
+        for (const css::uno::Reference<XStreamListener>& xl : m_listeners)
         {
-            css::uno::Reference<XStreamListener> xl = *it;
-            xl.get()->started();
+            xl->started();
         }
         OSL_ENSURE(!m_Reader.is(), "Somebody forgot to call terminate *and* holds a reference to this LibXSLTTransformer instance");
         m_Reader = new Reader(this);
@@ -428,15 +442,13 @@ namespace XSLT
     void
     LibXSLTTransformer::error(const OUString& msg)
     {
-        ListenerList* l = &m_listeners;
         Any arg;
         arg <<= Exception(msg, *this);
-        for (ListenerList::iterator it = l->begin(); it != l->end(); ++it)
+        for (const css::uno::Reference<XStreamListener>& xl : m_listeners)
         {
-            css::uno::Reference<XStreamListener> xl = *it;
             if (xl.is())
             {
-                xl.get()->error(arg);
+                xl->error(arg);
             }
         }
     }
@@ -444,13 +456,11 @@ namespace XSLT
     void
     LibXSLTTransformer::done()
     {
-        ListenerList* l = &m_listeners;
-        for (ListenerList::iterator it = l->begin(); it != l->end(); ++it)
+        for (const css::uno::Reference<XStreamListener>& xl : m_listeners)
         {
-            css::uno::Reference<XStreamListener> xl = *it;
             if (xl.is())
             {
-                xl.get()->closed();
+                xl->closed();
             }
         }
     }
@@ -478,10 +488,10 @@ namespace XSLT
         }
         xmlSubstituteEntitiesDefault(0);
         m_parameters.clear();
-        for (int i = 0; i < params.getLength(); i++)
+        for (const Any& p : std::as_const(params))
         {
             NamedValue nv;
-            params[i] >>= nv;
+            p >>= nv;
             OString nameUTF8 = OUStringToOString(nv.Name,
                     RTL_TEXTENCODING_UTF8);
             OUString value;
@@ -496,31 +506,31 @@ namespace XSLT
                 // ignore non-string parameters
                 continue;
             }
-            if (nameUTF8.equals("StylesheetURL"))
+            if (nameUTF8 == "StylesheetURL")
             {
                 m_styleSheetURL = valueUTF8;
             }
-            else if (nameUTF8.equals("SourceURL"))
+            else if (nameUTF8 == "SourceURL")
             {
                 m_parameters.insert(pair<const char*, OString> (
                         PARAM_SOURCE_URL, valueUTF8));
             }
-            else if (nameUTF8.equals("SourceBaseURL"))
+            else if (nameUTF8 == "SourceBaseURL")
             {
                 m_parameters.insert(pair<const char*, OString> (
                         PARAM_SOURCE_BASE_URL, valueUTF8));
             }
-            else if (nameUTF8.equals("TargetURL"))
+            else if (nameUTF8 == "TargetURL")
             {
                 m_parameters.insert(pair<const char*, OString> (
                         PARAM_TARGET_URL, valueUTF8));
             }
-            else if (nameUTF8.equals("TargetBaseURL"))
+            else if (nameUTF8 == "TargetBaseURL")
             {
                 m_parameters.insert(pair<const char*, OString> (
                         PARAM_TARGET_BASE_URL, valueUTF8));
             }
-            else if (nameUTF8.equals("DoctypePublic"))
+            else if (nameUTF8 == "DoctypePublic")
             {
                 m_parameters.insert(pair<const char*, OString> (
                         PARAM_DOCTYPE_PUBLIC, valueUTF8));
@@ -528,5 +538,13 @@ namespace XSLT
         }
     }
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_LibXSLTTransformer_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new XSLT::LibXSLTTransformer(context));
+}
+
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 

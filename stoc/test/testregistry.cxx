@@ -215,7 +215,7 @@ void test_SimpleRegistry(
         xSubKey->setAsciiValue(OUString( "I'm an ascii value" ));
 
         xSubKey = xKey->createKey(OUString( "ThirdSubKey" ));
-        xSubKey->setStringValue(OUString( "I'm an Unicode value" ));
+        xSubKey->setStringValue(OUString( "I'm a Unicode value" ));
 
         xSubKey = xKey->createKey(OUString( "FourthSubKey" ));
         Sequence<sal_Int8> aSeq((sal_Int8*)"I'm a binary value", 25);
@@ -242,7 +242,7 @@ void test_SimpleRegistry(
             } else
             if (name == "/FirstKey/ThirdSubKey" )
             {
-                OSL_ENSURE( xSubKey->getStringValue() == "I'm an Unicode value",
+                OSL_ENSURE( xSubKey->getStringValue() == "I'm a Unicode value",
                             "test_SimpleRegistry error 12" );
             } else
             if (name == "/FirstKey/FourthSubKey" )
@@ -275,9 +275,9 @@ void test_SimpleRegistry(
 
         xKey = xRootKey->createKey(OUString( "ThirdKey" ));
         OUString pAscii[3];
-        pAscii[0] = "Hallo";
-        pAscii[1] = "jetzt komm";
-        pAscii[2] = "ich";
+        pAscii[0] = "Hello";
+        pAscii[1] = "here I";
+        pAscii[2] = "come";
 
         Sequence<OUString> seqAscii(pAscii, 3);
         xKey->setAsciiListValue(seqAscii);
@@ -285,15 +285,15 @@ void test_SimpleRegistry(
         Sequence<OUString> seqAscii2;
         seqAscii2 = xKey->getAsciiListValue();
         OSL_ENSURE( seqAscii2.getLength() == 3, "test_SimpleRegistry error 18" );
-        OSL_ENSURE( seqAscii2.getArray()[0] == "Hallo", "test_SimpleRegistry error 19");
-        OSL_ENSURE( seqAscii2.getArray()[1] == "jetzt komm", "test_SimpleRegistry error 20");
-        OSL_ENSURE( seqAscii2.getArray()[2] == "ich", "test_SimpleRegistry error 21");
+        OSL_ENSURE( seqAscii2.getArray()[0] == "Hello", "test_SimpleRegistry error 19");
+        OSL_ENSURE( seqAscii2.getArray()[1] == "here I", "test_SimpleRegistry error 20");
+        OSL_ENSURE( seqAscii2.getArray()[2] == "come", "test_SimpleRegistry error 21");
 
         xKey = xRootKey->createKey(OUString( "FourthKey" ));
         OUString pUnicode[3];
-        pUnicode[0] = "Hallo";
-        pUnicode[1] = "jetzt komm";
-        pUnicode[2] = "ich als unicode";
+        pUnicode[0] = "Hello";
+        pUnicode[1] = "here I";
+        pUnicode[2] = "come as unicode";
 
         Sequence<OUString> seqUnicode(pUnicode, 3);
         xKey->setStringListValue(seqUnicode);
@@ -301,9 +301,9 @@ void test_SimpleRegistry(
         Sequence<OUString> seqUnicode2;
         seqUnicode2 = xKey->getStringListValue();
         OSL_ENSURE( seqUnicode2.getLength() == 3, "test_SimpleRegistry error 22" );
-        OSL_ENSURE( seqUnicode2.getArray()[0] == "Hallo", "test_SimpleRegistry error 23");
-        OSL_ENSURE( seqUnicode2.getArray()[1] == "jetzt komm", "test_SimpleRegistry error 24");
-        OSL_ENSURE( seqUnicode2.getArray()[2] == "ich als unicode", "test_SimpleRegistry error 25");
+        OSL_ENSURE( seqUnicode2.getArray()[0] == "Hello", "test_SimpleRegistry error 23");
+        OSL_ENSURE( seqUnicode2.getArray()[1] == "here I", "test_SimpleRegistry error 24");
+        OSL_ENSURE( seqUnicode2.getArray()[2] == "come as unicode", "test_SimpleRegistry error 25");
 
 
         xReg->open(testreg2, sal_False, sal_True);
@@ -506,11 +506,11 @@ void test_DefaultRegistry(
             Sequence<OUString> seqValue = xKey->getAsciiListValue();
 
             OSL_ENSURE( seqValue.getLength() == 3, "test_DefaultRegistry error 10" );
-            OSL_ENSURE( seqValue.getArray()[0] == "Hallo",
+            OSL_ENSURE( seqValue.getArray()[0] == "Hello",
                           "test_DefaultRegistry error 11" );
-            OSL_ENSURE( seqValue.getArray()[1] == "jetzt komm",
+            OSL_ENSURE( seqValue.getArray()[1] == "here I",
                           "test_DefaultRegistry error 12" );
-            OSL_ENSURE( seqValue.getArray()[2] == "ich",
+            OSL_ENSURE( seqValue.getArray()[2] == "come",
                           "test_DefaultRegistry error 13" );
 
             Sequence<sal_Int32> seqLong(3);
@@ -636,7 +636,7 @@ void test_DefaultRegistry(
 
     // shutdown
     Reference< css::lang::XComponent > xComp( rSMgr, UNO_QUERY );
-    OSL_ENSURE( xComp.is(), "### serivce manager has to implement XComponent!" );
+    OSL_ENSURE( xComp.is(), "### service manager has to implement XComponent!" );
     xComp->dispose();
 
     printf("Test DefaultRegistry, OK!\n");

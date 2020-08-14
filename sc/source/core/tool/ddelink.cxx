@@ -17,22 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <comphelper/fileformat.h>
 #include <comphelper/string.hxx>
 #include <osl/thread.h>
+#include <sot/exchange.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <sfx2/bindings.hxx>
 #include <svl/zforlist.hxx>
 #include <svl/sharedstringpool.hxx>
 
-#include "ddelink.hxx"
-#include "brdcst.hxx"
-#include "document.hxx"
-#include "scmatrix.hxx"
-#include "patattr.hxx"
-#include "rechead.hxx"
-#include "rangeseq.hxx"
-#include "sc.hrc"
-#include "hints.hxx"
+#include <ddelink.hxx>
+#include <brdcst.hxx>
+#include <document.hxx>
+#include <scmatrix.hxx>
+#include <patattr.hxx>
+#include <rechead.hxx>
+#include <rangeseq.hxx>
+#include <sc.hrc>
+#include <hints.hxx>
 
 
 #define DDE_TXT_ENCODING    osl_getThreadTextEncoding()
@@ -89,7 +91,7 @@ ScDdeLink::ScDdeLink( ScDocument* pD, SvStream& rStream, ScMultipleReadHeader& r
     bool bHasValue;
     rStream.ReadCharAsBool( bHasValue );
     if ( bHasValue )
-        pResult = new ScFullMatrix(0, 0);
+        pResult = new ScMatrix(0, 0);
 
     if (rHdr.BytesLeft())       // new in 388b and the 364w (RealTime Client) version
         rStream.ReadUChar( nMode );
@@ -155,7 +157,7 @@ sfx2::SvBaseLink::UpdateResult ScDdeLink::DataChanged(
     else                                // split data
     {
         //  always newly re-create matrix, so that bIsString doesn't get mixed up
-        pResult = new ScFullMatrix(nCols, nRows, 0.0);
+        pResult = new ScMatrix(nCols, nRows, 0.0);
 
         SvNumberFormatter* pFormatter = pDoc->GetFormatTable();
         svl::SharedStringPool& rPool = pDoc->GetSharedStringPool();
@@ -177,10 +179,10 @@ sfx2::SvBaseLink::UpdateResult ScDdeLink::DataChanged(
         OUString aEntry;
         for (SCSIZE nR=0; nR<nRows; nR++)
         {
-            aLine = aLinkStr.getToken( (sal_Int32) nR, '\n' );
+            aLine = aLinkStr.getToken( static_cast<sal_Int32>(nR), '\n' );
             for (SCSIZE nC=0; nC<nCols; nC++)
             {
-                aEntry = aLine.getToken( (sal_Int32) nC, '\t' );
+                aEntry = aLine.getToken( static_cast<sal_Int32>(nC), '\t' );
                 sal_uInt32 nIndex = nStdFormat;
                 double fVal = double();
                 if ( nMode != SC_DDE_TEXT && pFormatter->IsNumberFormat( aEntry, nIndex, fVal ) )
@@ -211,7 +213,7 @@ sfx2::SvBaseLink::UpdateResult ScDdeLink::DataChanged(
         //  must be after TrackFormulas
         //TODO: do this asynchronously?
         ScLinkRefreshedHint aHint;
-        aHint.SetDdeLink( aAppl, aTopic, aItem, nMode );
+        aHint.SetDdeLink( aAppl, aTopic, aItem );
         pDoc->BroadcastUno( aHint );
     }
 

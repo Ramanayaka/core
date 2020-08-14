@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -34,14 +33,14 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <algorithm>
-#include <list>
-#include <vcl/svapp.hxx>
+#include <osl/diagnose.h>
+#include <rtl/ref.hxx>
 #include <svtools/unoevent.hxx>
 #include <svtools/unoimap.hxx>
-#include <svtools/imap.hxx>
-#include <svtools/imapcirc.hxx>
-#include <svtools/imaprect.hxx>
-#include <svtools/imappoly.hxx>
+#include <vcl/imap.hxx>
+#include <vcl/imapcirc.hxx>
+#include <vcl/imaprect.hxx>
+#include <vcl/imappoly.hxx>
 
 using namespace comphelper;
 using namespace cppu;
@@ -64,6 +63,8 @@ const sal_Int32 HANDLE_RADIUS = 8;
 const sal_Int32 HANDLE_BOUNDARY = 9;
 const sal_Int32 HANDLE_TITLE = 10;
 
+namespace {
+
 class SvUnoImageMapObject : public OWeakAggObject,
                             public XEventsSupplier,
                             public XServiceInfo,
@@ -77,7 +78,7 @@ public:
 
     UNO3_GETIMPLEMENTATION_DECL( SvUnoImageMapObject )
 
-    IMapObject* createIMapObject() const;
+    std::unique_ptr<IMapObject> createIMapObject() const;
 
     rtl::Reference<SvMacroTableEventDescriptor> mxEvents;
 
@@ -120,6 +121,8 @@ private:
     sal_Int32 mnRadius;
     PointSequence maPolygon;
 };
+
+}
 
 UNO3_GETIMPLEMENTATION_IMPL( SvUnoImageMapObject );
 
@@ -215,7 +218,7 @@ SvUnoImageMapObject::SvUnoImageMapObject( const IMapObject& rMapObject, const Sv
         break;
     case IMAP_OBJ_CIRCLE:
         {
-            mnRadius = (sal_Int32)static_cast<const IMapCircleObject*>(&rMapObject)->GetRadius(false);
+            mnRadius = static_cast<sal_Int32>(static_cast<const IMapCircleObject*>(&rMapObject)->GetRadius(false));
             const Point aPoint( static_cast<const IMapCircleObject*>(&rMapObject)->GetCenter(false) );
 
             maCenter.X = aPoint.X();
@@ -245,7 +248,7 @@ SvUnoImageMapObject::SvUnoImageMapObject( const IMapObject& rMapObject, const Sv
     mxEvents = new SvMacroTableEventDescriptor( rMapObject.GetMacroTable(), pSupportedMacroItems );
 }
 
-IMapObject* SvUnoImageMapObject::createIMapObject() const
+std::unique_ptr<IMapObject> SvUnoImageMapObject::createIMapObject() const
 {
     const OUString aURL( maURL );
     const OUString aAltText( maAltText );
@@ -253,28 +256,28 @@ IMapObject* SvUnoImageMapObject::createIMapObject() const
     const OUString aTarget( maTarget );
     const OUString aName( maName );
 
-    IMapObject* pNewIMapObject;
+    std::unique_ptr<IMapObject> pNewIMapObject;
 
     switch( mnType )
     {
     case IMAP_OBJ_RECTANGLE:
         {
             const tools::Rectangle aRect( maBoundary.X, maBoundary.Y, maBoundary.X + maBoundary.Width - 1, maBoundary.Y + maBoundary.Height - 1 );
-            pNewIMapObject = new IMapRectangleObject( aRect, aURL, aAltText, aDesc, aTarget, aName, mbIsActive, false );
+            pNewIMapObject.reset(new IMapRectangleObject( aRect, aURL, aAltText, aDesc, aTarget, aName, mbIsActive, false ));
         }
         break;
 
     case IMAP_OBJ_CIRCLE:
         {
             const Point aCenter( maCenter.X, maCenter.Y );
-            pNewIMapObject = new IMapCircleObject( aCenter, mnRadius, aURL, aAltText, aDesc, aTarget, aName, mbIsActive, false );
+            pNewIMapObject.reset(new IMapCircleObject( aCenter, mnRadius, aURL, aAltText, aDesc, aTarget, aName, mbIsActive, false ));
         }
         break;
 
     case IMAP_OBJ_POLYGON:
     default:
         {
-            const sal_uInt16 nCount = (sal_uInt16)maPolygon.getLength();
+            const sal_uInt16 nCount = static_cast<sal_uInt16>(maPolygon.getLength());
 
             tools::Polygon aPoly( nCount );
             for( sal_uInt16 nPoint = 0; nPoint < nCount; nPoint++ )
@@ -284,7 +287,7 @@ IMapObject* SvUnoImageMapObject::createIMapObject() const
             }
 
             aPoly.Optimize( PolyOptimizeFlags::CLOSE );
-            pNewIMapObject = new IMapPolygonObject( aPoly, aURL, aAltText, aDesc, aTarget, aName, mbIsActive, false );
+            pNewIMapObject.reset(new IMapPolygonObject( aPoly, aURL, aAltText, aDesc, aTarget, aName, mbIsActive, false ));
         }
         break;
     }
@@ -337,17 +340,14 @@ void SAL_CALL SvUnoImageMapObject::release() throw()
 
 uno::Sequence< uno::Type > SAL_CALL SvUnoImageMapObject::getTypes()
 {
-    uno::Sequence< uno::Type > aTypes( 7 );
-    uno::Type* pTypes = aTypes.getArray();
-
-    *pTypes++ = cppu::UnoType<XAggregation>::get();
-    *pTypes++ = cppu::UnoType<XEventsSupplier>::get();
-    *pTypes++ = cppu::UnoType<XServiceInfo>::get();
-    *pTypes++ = cppu::UnoType<XPropertySet>::get();
-    *pTypes++ = cppu::UnoType<XMultiPropertySet>::get();
-    *pTypes++ = cppu::UnoType<XTypeProvider>::get();
-    *pTypes++ = cppu::UnoType<XUnoTunnel>::get();
-
+    static const uno::Sequence< uno::Type > aTypes {
+        cppu::UnoType<XAggregation>::get(),
+        cppu::UnoType<XEventsSupplier>::get(),
+        cppu::UnoType<XServiceInfo>::get(),
+        cppu::UnoType<XPropertySet>::get(),
+        cppu::UnoType<XMultiPropertySet>::get(),
+        cppu::UnoType<XTypeProvider>::get(),
+        cppu::UnoType<XUnoTunnel>::get() };
     return aTypes;
 }
 
@@ -388,11 +388,11 @@ OUString SAL_CALL SvUnoImageMapObject::getImplementationName()
     {
     case IMAP_OBJ_POLYGON:
     default:
-        return OUString("org.openoffice.comp.svt.ImageMapPolygonObject");
+        return "org.openoffice.comp.svt.ImageMapPolygonObject";
     case IMAP_OBJ_CIRCLE:
-        return OUString("org.openoffice.comp.svt.ImageMapCircleObject");
+        return "org.openoffice.comp.svt.ImageMapCircleObject";
     case IMAP_OBJ_RECTANGLE:
-        return OUString("org.openoffice.comp.svt.ImageMapRectangleObject");
+        return "org.openoffice.comp.svt.ImageMapRectangleObject";
     }
 }
 
@@ -500,6 +500,7 @@ Reference< XNameReplace > SAL_CALL SvUnoImageMapObject::getEvents()
     return mxEvents.get();
 }
 
+namespace {
 
 class SvUnoImageMap : public WeakImplHelper< XIndexContainer, XServiceInfo, XUnoTunnel >
 {
@@ -507,7 +508,7 @@ public:
     explicit SvUnoImageMap();
     SvUnoImageMap( const ImageMap& rMap, const SvEventDescription* pSupportedMacroItems );
 
-    bool fillImageMap( ImageMap& rMap ) const;
+    void fillImageMap( ImageMap& rMap ) const;
     /// @throws IllegalArgumentException
     static SvUnoImageMapObject* getObject( const Any& aElement );
 
@@ -536,8 +537,10 @@ public:
 private:
     OUString maName;
 
-    std::list< rtl::Reference<SvUnoImageMapObject> > maObjectList;
+    std::vector< rtl::Reference<SvUnoImageMapObject> > maObjectList;
 };
+
+}
 
 UNO3_GETIMPLEMENTATION_IMPL( SvUnoImageMap );
 
@@ -563,7 +566,7 @@ SvUnoImageMapObject* SvUnoImageMap::getObject( const Any& aElement )
     Reference< XInterface > xObject;
     aElement >>= xObject;
 
-    SvUnoImageMapObject* pObject = SvUnoImageMapObject::getImplementation( xObject );
+    SvUnoImageMapObject* pObject = comphelper::getUnoTunnelImplementation<SvUnoImageMapObject>( xObject );
     if( nullptr == pObject )
         throw IllegalArgumentException();
 
@@ -579,7 +582,7 @@ void SAL_CALL SvUnoImageMap::insertByIndex( sal_Int32 nIndex, const Any& Element
         throw IndexOutOfBoundsException();
 
     if( nIndex == nCount )
-        maObjectList.push_back( pObject );
+        maObjectList.emplace_back(pObject );
     else
     {
         auto aIter = maObjectList.begin();
@@ -652,7 +655,7 @@ sal_Bool SAL_CALL SvUnoImageMap::hasElements(  )
 // XSerivceInfo
 OUString SAL_CALL SvUnoImageMap::getImplementationName(  )
 {
-    return OUString( "org.openoffice.comp.svt.SvUnoImageMap" );
+    return "org.openoffice.comp.svt.SvUnoImageMap";
 }
 
 sal_Bool SAL_CALL SvUnoImageMap::supportsService( const OUString& ServiceName )
@@ -662,28 +665,20 @@ sal_Bool SAL_CALL SvUnoImageMap::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL SvUnoImageMap::getSupportedServiceNames(  )
 {
-    const OUString aSN( "com.sun.star.image.ImageMap" );
-    return Sequence< OUString >( &aSN, 1 );
+    return { "com.sun.star.image.ImageMap" };
 }
 
-bool SvUnoImageMap::fillImageMap( ImageMap& rMap ) const
+void SvUnoImageMap::fillImageMap( ImageMap& rMap ) const
 {
     rMap.ClearImageMap();
 
     rMap.SetName( maName );
 
-    auto aIter = maObjectList.begin();
-    auto const aEnd = maObjectList.end();
-    while( aIter != aEnd )
+    for (auto const& elem : maObjectList)
     {
-        IMapObject* pNewMapObject = (*aIter)->createIMapObject();
-        rMap.InsertIMapObject( *pNewMapObject );
-        delete pNewMapObject;
-
-        ++aIter;
+        std::unique_ptr<IMapObject> pNewMapObject = elem->createIMapObject();
+        rMap.InsertIMapObject( std::move(pNewMapObject) );
     }
-
-    return true;
 }
 
 
@@ -717,11 +712,12 @@ Reference< XInterface > SvUnoImageMap_createInstance( const ImageMap& rMap, cons
 
 bool SvUnoImageMap_fillImageMap( const Reference< XInterface >& xImageMap, ImageMap& rMap )
 {
-    SvUnoImageMap* pUnoImageMap = SvUnoImageMap::getImplementation( xImageMap );
+    SvUnoImageMap* pUnoImageMap = comphelper::getUnoTunnelImplementation<SvUnoImageMap>( xImageMap );
     if( nullptr == pUnoImageMap )
         return false;
 
-    return pUnoImageMap->fillImageMap( rMap );
+    pUnoImageMap->fillImageMap( rMap );
+    return true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

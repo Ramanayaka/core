@@ -26,22 +26,22 @@
 // forward declarations
 
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace dom {
+namespace com::sun::star {
+    namespace xml::dom {
         class XNode;
         class XDocument;
-    } }
-    namespace xml { namespace sax {
+    }
+    namespace xml::sax {
         class XAttributeList;
-    } }
-} } }
+    }
+}
 class SvXMLImport;
 class SvXMLImportContext;
 
 /**
  * DomBuilderContext creates a DOM tree suitable for in-memory processing of
  * XML data from a sequence of SAX events */
-class DomBuilderContext : public SvXMLImportContext
+class DomBuilderContext final : public SvXMLImportContext
 {
     css::uno::Reference<css::xml::dom::XNode> mxNode;
 
@@ -56,7 +56,7 @@ public:
     DomBuilderContext( SvXMLImport& rImport,
                        sal_uInt16 nPrefix,
                        const OUString& rLocalName,
-                       css::uno::Reference<css::xml::dom::XNode>& );
+                       css::uno::Reference<css::xml::dom::XNode> const & );
 
     virtual ~DomBuilderContext() override;
 
@@ -71,7 +71,7 @@ public:
     // implement SvXMLImportContext methods:
 
 
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList >& xAttrList ) override;

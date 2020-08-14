@@ -20,19 +20,20 @@
 #ifndef INCLUDED_SVX_GALMISC_HXX
 #define INCLUDED_SVX_GALMISC_HXX
 
-#include <sot/formats.hxx>
-#include <tools/urlobj.hxx>
-#include <svtools/imap.hxx>
+#include <vcl/imap.hxx>
 #include <svl/hint.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
+#include <vcl/salctype.hxx>
 #include <svx/svdobj.hxx>
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/awt/XProgressMonitor.hpp>
 #include <svx/svxdllapi.h>
 #include <tools/date.hxx>
 #include <tools/time.hxx>
-#include <tools/resid.hxx>
+#include <memory>
 
+namespace com::sun::star::awt { class XProgressBar; }
+
+class INetURLObject;
 class GalleryTheme;
 class SotStorageStream;
 
@@ -63,15 +64,6 @@ enum class SgaObjKind
 
 #define ID_IMAPINFO             2
 
-class ResMgr;
-
-SVX_DLLPUBLIC ResMgr* GetGalleryResMgr();
-
-inline OUString GalResId(sal_uInt16 nId)
-{
-    return ResId(nId, *GetGalleryResMgr());
-}
-
 #define STREAMBUF_SIZE          16384L
 
 enum class GalleryGraphicImportRet
@@ -88,13 +80,11 @@ enum class GalleryGraphicImportRet
 class SvStream;
 class Graphic;
 class FmFormModel;
-class ImageMap;
-class Gallery;
 
-GalleryGraphicImportRet  GalleryGraphicImport( const INetURLObject& rURL, Graphic& rGraphic, OUString& rFilterName, bool bShowProgress = false );
+GalleryGraphicImportRet  GalleryGraphicImport( const INetURLObject& rURL, Graphic& rGraphic, OUString& rFilterName );
 bool                GallerySvDrawImport( SvStream& rIStm, SdrModel& rModel );
 bool                CreateIMapGraphic( const FmFormModel& rModel, Graphic& rGraphic, ImageMap& rImageMap );
-SVX_DLLPUBLIC OUString
+SVXCORE_DLLPUBLIC OUString
                     GetReducedString( const INetURLObject& rURL, sal_Int32 nMaxLen );
 OUString            GetSvDrawStreamNameFromURL( const INetURLObject& rSvDrawObjURL );
 
@@ -102,9 +92,8 @@ bool                FileExists( const INetURLObject& rURL );
 bool                CreateDir(  const INetURLObject& rURL );
 bool                CopyFile(  const INetURLObject& rSrcURL, const INetURLObject& rDstURL );
 bool                KillFile( const INetURLObject& rURL );
-BitmapEx            GalleryResGetBitmapEx(const OUString& rId);
 
-class SgaIMapInfo : public SdrObjUserData, public SfxListener
+class SgaIMapInfo final : public SdrObjUserData, public SfxListener
 {
     ImageMap                aImageMap;
 
@@ -115,74 +104,61 @@ public:
                                 SdrObjUserData( SdrInventor::SgaImap, ID_IMAPINFO ),
                                 aImageMap( rImageMap ) {};
 
-    virtual SdrObjUserData* Clone( SdrObject* ) const override
+    virtual std::unique_ptr<SdrObjUserData> Clone( SdrObject* ) const override
                             {
                                 SgaIMapInfo* pInfo = new SgaIMapInfo;
                                 pInfo->aImageMap = aImageMap;
-                                return pInfo;
+                                return std::unique_ptr<SdrObjUserData>(pInfo);
                             }
 
     const ImageMap&         GetImageMap() const { return aImageMap; }
 };
 
-class SgaUserDataFactory
-{
-public:
-    SgaUserDataFactory() { SdrObjFactory::InsertMakeUserDataHdl( LINK(this,SgaUserDataFactory,MakeUserData) ); }
-    ~SgaUserDataFactory() { SdrObjFactory::RemoveMakeUserDataHdl( LINK(this,SgaUserDataFactory,MakeUserData) ); }
-
-    DECL_STATIC_LINK( SgaUserDataFactory, MakeUserData, SdrObjUserDataCreatorParams, SdrObjUserData* );
-};
-
 class GraphicFilter;
 
-class SVX_DLLPUBLIC GalleryProgress
+class SVXCORE_DLLPUBLIC GalleryProgress
 {
     css::uno::Reference< css::awt::XProgressBar > mxProgressBar;
-    GraphicFilter*                                                          mpFilter;
 
     public:
 
-                                    GalleryProgress( GraphicFilter* pFilter = nullptr );
+                                    GalleryProgress( const GraphicFilter* pFilter = nullptr );
                                     ~GalleryProgress();
 
-    void                            Update( sal_uIntPtr nVal, sal_uIntPtr nMaxVal );
+    void                            Update( sal_Int32 nVal, sal_Int32 nMaxVal );
 };
 
-class Gallery;
 class GalleryTheme;
 class GraphicObject;
 
-class GalleryTransferable : public TransferableHelper
+class GalleryTransferable final : public TransferDataContainer
 {
 friend class GalleryTheme;
 using TransferableHelper::CopyToClipboard;
 
-private:
-
     GalleryTheme*                   mpTheme;
     SgaObjKind                      meObjectKind;
     sal_uInt32                      mnObjectPos;
-    tools::SvRef<SotStorageStream>             mxModelStream;
-    GraphicObject*                  mpGraphicObject;
-    ImageMap*                       mpImageMap;
-    INetURLObject*                  mpURL;
-
-protected:
-
-                                    GalleryTransferable( GalleryTheme* pTheme, sal_uIntPtr nObjectPos, bool bLazy );
-                                    virtual ~GalleryTransferable() override;
+    tools::SvRef<SotStorageStream>  mxModelStream;
+    std::unique_ptr<GraphicObject>  mpGraphicObject;
+    std::unique_ptr<INetURLObject>  mpURL;
 
     void                            InitData( bool bLazy );
+
+public:
+                                    GalleryTransferable( GalleryTheme* pTheme, sal_uInt32 nObjectPos, bool bLazy );
+                                    virtual ~GalleryTransferable() override;
+
+    void                            SelectObject(sal_uInt32 nObjectPos);
 
     // TransferableHelper
     virtual void                    AddSupportedFormats() override;
     virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
-    virtual bool                    WriteObject( tools::SvRef<SotStorageStream>& rxOStm, void* pUserObject, SotClipboardFormatId nUserObjectId, const css::datatransfer::DataFlavor& rFlavor ) override;
+    virtual bool                    WriteObject( tools::SvRef<SotStorageStream>& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId, const css::datatransfer::DataFlavor& rFlavor ) override;
     virtual void                    DragFinished( sal_Int8 nDropAction ) override;
     virtual void                    ObjectReleased() override;
 
-    void                            StartDrag( vcl::Window* pWindow, sal_Int8 nDragSourceActions );
+    bool                            StartDrag();
 };
 
 enum class GalleryHintType
@@ -192,32 +168,35 @@ enum class GalleryHintType
     THEME_RENAMED,
     THEME_CREATED,
     THEME_UPDATEVIEW,
-    CLOSE_OBJECT,
-    OBJECT_REMOVED,
+    CLOSE_OBJECT
 };
 
-class GalleryHint : public SfxHint
+class GalleryHint final : public SfxHint
 {
 private:
 
     GalleryHintType     mnType;
     OUString            maThemeName;
     OUString            maStringData;
-    sal_uIntPtr         mnData1;
+    void*               mnData1;
 
 public:
 
-                     GalleryHint( GalleryHintType nType, const OUString& rThemeName, sal_uIntPtr nData1 = 0UL ) :
+                     GalleryHint( GalleryHintType nType, const OUString& rThemeName, void* nData1 = nullptr ) :
                         mnType( nType ), maThemeName( rThemeName ), mnData1( nData1 ) {}
 
-                     GalleryHint( GalleryHintType nType, const OUString& rThemeName, const OUString& rStringData, sal_uIntPtr nData1 = 0UL ) :
-                        mnType( nType ), maThemeName( rThemeName ), maStringData( rStringData ), mnData1( nData1 ) {}
+                     GalleryHint( GalleryHintType nType, const OUString& rThemeName, const OUString& rStringData ) :
+                        mnType( nType ), maThemeName( rThemeName ), maStringData( rStringData ), mnData1( nullptr ) {}
 
     GalleryHintType  GetType() const { return mnType; }
     const OUString&  GetThemeName() const { return maThemeName; }
     const OUString&  GetStringData() const { return maStringData; }
-    sal_uIntPtr      GetData1() const { return mnData1; }
+    void*            GetData1() const { return mnData1; }
 };
+
+struct GalleryObject;
+
+INetURLObject ImplGetURL(const GalleryObject* pObject);
 
 #endif
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

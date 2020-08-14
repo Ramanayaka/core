@@ -18,7 +18,7 @@
  */
 
 
-#include "commandimageprovider.hxx"
+#include <commandimageprovider.hxx>
 
 #include <com/sun/star/ui/XImageManager.hpp>
 #include <com/sun/star/ui/XUIConfigurationManagerSupplier.hpp>
@@ -52,27 +52,7 @@ namespace frm
 
     namespace ImageType = ::com::sun::star::ui::ImageType;
 
-    class DocumentCommandImageProvider : public ICommandImageProvider
-    {
-    public:
-        DocumentCommandImageProvider( const Reference<XComponentContext>& _rContext, const Reference< XModel >& _rxDocument )
-        {
-            impl_init_nothrow( _rContext, _rxDocument );
-        }
-
-        // ICommandImageProvider
-        virtual CommandImages getCommandImages( const css::uno::Sequence< OUString >& _rCommandURLs, const bool _bLarge ) const override;
-
-    private:
-        void    impl_init_nothrow( const Reference<XComponentContext>& _rContext, const Reference< XModel >& _rxDocument );
-
-    private:
-        Reference< XImageManager >    m_xDocumentImageManager;
-        Reference< XImageManager >    m_xModuleImageManager;
-    };
-
-
-    void DocumentCommandImageProvider::impl_init_nothrow( const Reference<XComponentContext>& _rContext, const Reference< XModel >& _rxDocument )
+    DocumentCommandImageProvider::DocumentCommandImageProvider( const Reference<XComponentContext>& _rContext, const Reference< XModel >& _rxDocument )
     {
         OSL_ENSURE( _rxDocument.is(), "DocumentCommandImageProvider::impl_init_nothrow: no document => no images!" );
         if ( !_rxDocument.is() )
@@ -82,12 +62,12 @@ namespace frm
         try
         {
             Reference< XUIConfigurationManagerSupplier > xSuppUIConfig( _rxDocument, UNO_QUERY_THROW );
-            Reference< XUIConfigurationManager > xUIConfig( xSuppUIConfig->getUIConfigurationManager(), UNO_QUERY );
+            Reference< XUIConfigurationManager > xUIConfig = xSuppUIConfig->getUIConfigurationManager();
             m_xDocumentImageManager.set( xUIConfig->getImageManager(), UNO_QUERY_THROW );
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.helper");
         }
 
         // obtain the image manager or the module
@@ -104,15 +84,15 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.helper");
         }
     }
 
 
-    CommandImages DocumentCommandImageProvider::getCommandImages( const css::uno::Sequence< OUString >& _rCommandURLs, const bool _bLarge ) const
+    std::vector<Image> DocumentCommandImageProvider::getCommandImages( const css::uno::Sequence< OUString >& _rCommandURLs, const bool _bLarge ) const
     {
         const size_t nCommandCount = _rCommandURLs.getLength();
-        CommandImages aImages( nCommandCount );
+        std::vector<Image> aImages( nCommandCount );
         try
         {
             const sal_Int16 nImageType = ImageType::COLOR_NORMAL
@@ -129,8 +109,8 @@ namespace frm
             if ( m_xModuleImageManager.is() )
                 aModImages = m_xModuleImageManager->getImages( nImageType, _rCommandURLs );
 
-            ENSURE_OR_THROW( (size_t)aDocImages.getLength() == nCommandCount, "illegal array size returned by getImages (document image manager)" );
-            ENSURE_OR_THROW( (size_t)aModImages.getLength() == nCommandCount, "illegal array size returned by getImages (module image manager)" );
+            ENSURE_OR_THROW( static_cast<size_t>(aDocImages.getLength()) == nCommandCount, "illegal array size returned by getImages (document image manager)" );
+            ENSURE_OR_THROW( static_cast<size_t>(aModImages.getLength()) == nCommandCount, "illegal array size returned by getImages (module image manager)" );
 
             for ( size_t i=0; i<nCommandCount; ++i )
             {
@@ -142,19 +122,10 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.helper");
         }
         return aImages;
     }
-
-
-    PCommandImageProvider createDocumentCommandImageProvider(
-        const Reference<XComponentContext>& _rContext, const Reference< XModel >& _rxDocument )
-    {
-        PCommandImageProvider pImageProvider( new DocumentCommandImageProvider( _rContext, _rxDocument ) );
-        return pImageProvider;
-    }
-
 
 } // namespace frm
 

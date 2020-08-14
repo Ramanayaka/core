@@ -66,8 +66,9 @@
 
 **********************************************************************************************************************/
 
-#include "lwpidxmgr.hxx"
-#include "lwptools.hxx"
+#include <lwpidxmgr.hxx>
+#include <lwpobjhdr.hxx>
+#include <lwptools.hxx>
 #include <memory>
 
 const sal_uInt8 LwpIndexManager::MAXOBJECTIDS = 255;
@@ -231,11 +232,11 @@ void LwpIndexManager::ReadObjIndex( LwpSvStream *pStrm )
     std::unique_ptr<LwpObjectStream> pObjStrm( new LwpObjectStream(pStrm, ObjHdr.IsCompressed(),
             static_cast<sal_uInt16>(ObjHdr.GetSize()) ) );
 
-    if( (sal_uInt32)VO_OBJINDEX == ObjHdr.GetTag() )
+    if( sal_uInt32(VO_OBJINDEX) == ObjHdr.GetTag() )
     {
         ReadObjIndexData( pObjStrm.get() );
     }
-    else if( (sal_uInt32)VO_LEAFOBJINDEX == ObjHdr.GetTag() )
+    else if( sal_uInt32(VO_LEAFOBJINDEX) == ObjHdr.GetTag() )
     {
         ReadLeafData( pObjStrm.get() );
     }

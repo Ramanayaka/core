@@ -17,20 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "NavigatorChildWindow.hxx"
-#include "navigatr.hxx"
-#include "app.hrc"
-#include <sfx2/app.hxx>
+#include <NavigatorChildWindow.hxx>
+#include <navigatr.hxx>
+#include <app.hrc>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/navigat.hxx>
+#include <sfx2/sfxsids.hrc>
 #include <svl/eitem.hxx>
 
 namespace sd {
 
 SFX_IMPL_CHILDWINDOWCONTEXT(NavigatorChildWindow, SID_NAVIGATOR)
 
-void RequestNavigatorUpdate (SfxBindings* pBindings)
+static void RequestNavigatorUpdate (SfxBindings const * pBindings)
 {
     if (pBindings != nullptr
         && pBindings->GetDispatcher() != nullptr)

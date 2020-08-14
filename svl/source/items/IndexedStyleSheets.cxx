@@ -15,8 +15,6 @@
 #include <algorithm>
 #include <utility>
 
-using rtl::OUString;
-
 
 namespace {
 const size_t NUMBER_OF_FAMILIES = 7;
@@ -49,7 +47,7 @@ namespace svl {
 IndexedStyleSheets::IndexedStyleSheets()
 {
     for (size_t i = 0; i < NUMBER_OF_FAMILIES; i++) {
-        mStyleSheetPositionsByFamily.push_back(std::vector<unsigned>());
+        mStyleSheetPositionsByFamily.emplace_back();
     }
 ;}
 
@@ -69,13 +67,12 @@ IndexedStyleSheets::Reindex()
     mPositionsByName.clear();
     mStyleSheetPositionsByFamily.clear();
     for (size_t i = 0; i < NUMBER_OF_FAMILIES; i++) {
-        mStyleSheetPositionsByFamily.push_back(std::vector<unsigned>());
+        mStyleSheetPositionsByFamily.emplace_back();
     }
 
     unsigned i = 0;
-    for (VectorType::const_iterator it = mStyleSheets.begin();
-                                    it != mStyleSheets.end(); ++it) {
-        SfxStyleSheetBase* p = it->get();
+    for (const auto& rxStyleSheet : mStyleSheets) {
+        SfxStyleSheetBase* p = rxStyleSheet.get();
         Register(*p, i);
         ++i;
     }
@@ -100,28 +97,22 @@ IndexedStyleSheets::AddStyleSheet(const rtl::Reference< SfxStyleSheetBase >& sty
 bool
 IndexedStyleSheets::RemoveStyleSheet(const rtl::Reference< SfxStyleSheetBase >& style)
 {
-    rtl::OUString styleName = style->GetName();
-    std::vector<unsigned> positions = FindPositionsByName(styleName);
-    bool found = false;
-    unsigned stylePosition = 0;
-    for (std::vector<unsigned>::const_iterator it = positions.begin();
-                                               it != positions.end(); ++it) {
-        if (mStyleSheets.at(*it) == style) {
-            found = true;
-            stylePosition = *it;
-            break;
+    std::pair<MapType::const_iterator, MapType::const_iterator> range = mPositionsByName.equal_range(style->GetName());
+    for (MapType::const_iterator it = range.first; it != range.second; ++it)
+    {
+        unsigned pos = it->second;
+        if (mStyleSheets.at(pos) == style)
+        {
+            mStyleSheets.erase(mStyleSheets.begin() + pos);
+            Reindex();
+            return true;
         }
     }
-
-    if (found) {
-        mStyleSheets.erase(mStyleSheets.begin() + stylePosition);
-        Reindex();
-    }
-    return found;
+    return false;
 }
 
 std::vector<unsigned>
-IndexedStyleSheets::FindPositionsByName(const rtl::OUString& name) const
+IndexedStyleSheets::FindPositionsByName(const OUString& name) const
 {
     std::vector<unsigned> r;
     std::pair<MapType::const_iterator, MapType::const_iterator> range = mPositionsByName.equal_range(name);
@@ -132,12 +123,12 @@ IndexedStyleSheets::FindPositionsByName(const rtl::OUString& name) const
 }
 
 std::vector<unsigned>
-IndexedStyleSheets::FindPositionsByNameAndPredicate(const rtl::OUString& name,
+IndexedStyleSheets::FindPositionsByNameAndPredicate(const OUString& name,
         StyleSheetPredicate& predicate, SearchBehavior behavior) const
 {
     std::vector<unsigned> r;
-    MapType::const_iterator it = mPositionsByName.find(name);
-    for (/**/; it != mPositionsByName.end(); ++it) {
+    auto range = mPositionsByName.equal_range(name);
+    for (auto it = range.first; it != range.second; ++it) {
         unsigned pos = it->second;
         SfxStyleSheetBase *ssheet = mStyleSheets.at(pos).get();
         if (predicate.Check(*ssheet)) {
@@ -154,29 +145,26 @@ IndexedStyleSheets::FindPositionsByNameAndPredicate(const rtl::OUString& name,
 unsigned
 IndexedStyleSheets::GetNumberOfStyleSheetsWithPredicate(StyleSheetPredicate& predicate) const
 {
-    unsigned r = 0;
-    for (VectorType::const_iterator it = mStyleSheets.begin(); it != mStyleSheets.end(); ++it) {
-        const SfxStyleSheetBase *ssheet = it->get();
-        if (predicate.Check(*ssheet)) {
-            ++r;
-        }
-    }
-    return r;
+    return std::count_if(mStyleSheets.begin(), mStyleSheets.end(),
+        [&predicate](const rtl::Reference<SfxStyleSheetBase>& rxStyleSheet) {
+            const SfxStyleSheetBase *ssheet = rxStyleSheet.get();
+            return predicate.Check(*ssheet);
+        });
 }
 
-rtl::Reference<SfxStyleSheetBase>
+SfxStyleSheetBase*
 IndexedStyleSheets::GetNthStyleSheetThatMatchesPredicate(
         unsigned n,
         StyleSheetPredicate& predicate,
         unsigned startAt)
 {
-    rtl::Reference<SfxStyleSheetBase> retval;
+    SfxStyleSheetBase* retval = nullptr;
     unsigned matching = 0;
     for (VectorType::const_iterator it = mStyleSheets.begin()+startAt; it != mStyleSheets.end(); ++it) {
         SfxStyleSheetBase *ssheet = it->get();
         if (predicate.Check(*ssheet)) {
             if (matching == n) {
-                retval = *it;
+                retval = it->get();
                 break;
             }
             ++matching;
@@ -198,8 +186,8 @@ IndexedStyleSheets::FindStyleSheetPosition(const SfxStyleSheetBase& style) const
 void
 IndexedStyleSheets::Clear(StyleSheetDisposer& disposer)
 {
-    for (VectorType::iterator it = mStyleSheets.begin(); it != mStyleSheets.end(); ++it) {
-        disposer.Dispose(*it);
+    for (const auto& rxStyleSheet : mStyleSheets) {
+        disposer.Dispose(rxStyleSheet);
     }
     mStyleSheets.clear();
     mPositionsByName.clear();
@@ -212,30 +200,28 @@ IndexedStyleSheets::~IndexedStyleSheets()
 bool
 IndexedStyleSheets::HasStyleSheet(const rtl::Reference< SfxStyleSheetBase >& style) const
 {
-    rtl::OUString styleName = style->GetName();
-    std::vector<unsigned> positions = FindPositionsByName(styleName);
-    for (std::vector<unsigned>::const_iterator it = positions.begin();
-                                               it != positions.end(); ++it) {
-        if (mStyleSheets.at(*it) == style) {
+    std::pair<MapType::const_iterator, MapType::const_iterator> range = mPositionsByName.equal_range(style->GetName());
+    for (MapType::const_iterator it = range.first; it != range.second; ++it)
+    {
+        if (mStyleSheets.at(it->second) == style)
             return true;
-        }
     }
     return false;
 }
 
-rtl::Reference< SfxStyleSheetBase >
+SfxStyleSheetBase*
 IndexedStyleSheets::GetStyleSheetByPosition(unsigned pos)
 {
     if( pos < mStyleSheets.size() )
-        return mStyleSheets.at(pos);
+        return mStyleSheets.at(pos).get();
     return nullptr;
 }
 
 void
 IndexedStyleSheets::ApplyToAllStyleSheets(StyleSheetCallback& callback) const
 {
-    for (VectorType::const_iterator it = mStyleSheets.begin(); it != mStyleSheets.end(); ++it) {
-        callback.DoIt(**it);
+    for (const auto& rxStyleSheet : mStyleSheets) {
+        callback.DoIt(*rxStyleSheet);
     }
 }
 

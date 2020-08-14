@@ -20,16 +20,14 @@
 #define INCLUDED_XMLOFF_INC_XMLBASE64EXPORT_HXX
 
 #include <com/sun/star/uno/Reference.h>
+#include <xmloff/xmltoken.hxx>
 
-namespace com { namespace sun { namespace star { namespace io {
-    class XInputStream; } } } }
+namespace com::sun::star::io { class XInputStream; }
 class SvXMLExport;
 
 class XMLBase64Export
 {
     SvXMLExport&        rExport;
-
-protected:
 
     SvXMLExport& GetExport() { return rExport; }
 

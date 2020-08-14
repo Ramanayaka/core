@@ -19,21 +19,16 @@
 
 #include <sdr/contact/viewcontactofgroup.hxx>
 #include <svx/svdogrp.hxx>
-#include <svx/svdpage.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
 #include <sdr/contact/viewobjectcontactofgroup.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/color/bcolor.hxx>
-#include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
+#include <tools/debug.hxx>
+#include <vcl/canvastools.hxx>
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
-        // Create a Object-Specific ViewObjectContact, set ViewContact and
+        // Create an Object-Specific ViewObjectContact, set ViewContact and
         // ObjectContact. Always needs to return something.
         ViewObjectContact& ViewContactOfGroup::CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact)
         {
@@ -63,7 +58,7 @@ namespace sdr
                 for(sal_uInt32 a(0); a < nObjectCount; a++)
                 {
                     const ViewContact& rCandidate(GetViewContact(a));
-                    const drawinglayer::primitive2d::Primitive2DContainer aCandSeq(rCandidate.getViewIndependentPrimitive2DContainer());
+                    const drawinglayer::primitive2d::Primitive2DContainer& aCandSeq(rCandidate.getViewIndependentPrimitive2DContainer());
 
                     xRetval.insert(xRetval.end(), aCandSeq.begin(), aCandSeq.end());
                 }
@@ -71,14 +66,7 @@ namespace sdr
             else
             {
                 // append an invisible outline for the cases where no visible content exists
-                tools::Rectangle aCurrentBoundRect(GetSdrObjGroup().GetLastBoundRect());
-                // Hack for calc, transform position of object according
-                // to current zoom so as objects relative position to grid
-                // appears stable
-                aCurrentBoundRect += GetSdrObjGroup().GetGridOffset();
-                const basegfx::B2DRange aCurrentRange(
-                    aCurrentBoundRect.Left(), aCurrentBoundRect.Top(),
-                    aCurrentBoundRect.Right(), aCurrentBoundRect.Bottom());
+                const basegfx::B2DRange aCurrentRange = vcl::unotools::b2DRectangleFromRectangle(GetSdrObjGroup().GetLastBoundRect());
 
                 const drawinglayer::primitive2d::Primitive2DReference xReference(
                     drawinglayer::primitive2d::createHiddenGeometryPrimitives2D(
@@ -89,7 +77,7 @@ namespace sdr
 
             return xRetval;
         }
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

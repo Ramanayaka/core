@@ -23,7 +23,10 @@
 #include "MasterPageContainer.hxx"
 #include <memory>
 
-namespace sd { namespace sidebar {
+namespace sd { class PreviewRenderer; }
+class SdDrawDocument;
+
+namespace sd::sidebar {
 
 class PageObjectProvider;
 class PreviewProvider;
@@ -46,8 +49,6 @@ public:
         const bool bIsPrecious,
         const std::shared_ptr<PageObjectProvider>& rpPageObjectProvider,
         const std::shared_ptr<PreviewProvider>& rpPreviewProvider);
-    MasterPageDescriptor (const MasterPageDescriptor& rDescriptor);
-    ~MasterPageDescriptor();
 
     void SetToken (MasterPageContainer::Token aToken);
 
@@ -226,7 +227,7 @@ public:
 
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

@@ -20,10 +20,8 @@
 #ifndef INCLUDED_FRAMEWORK_SOURCE_INC_ACCELERATORS_KEYMAPPING_HXX
 #define INCLUDED_FRAMEWORK_SOURCE_INC_ACCELERATORS_KEYMAPPING_HXX
 
-#include <general.h>
-#include <stdtypes.h>
-
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <rtl/ustring.hxx>
+#include <unordered_map>
 
 // definition
 
@@ -52,7 +50,7 @@ class KeyMapping
         };
 
         /** @short  hash structure to map identifier to key codes. */
-        typedef std::unordered_map<OUString, sal_Int16, OUStringHash> Identifier2CodeHash;
+        typedef std::unordered_map<OUString, sal_Int16> Identifier2CodeHash;
 
         /** @short  hash structure to map key codes to identifier. */
         typedef std::unordered_map<sal_Int16, OUString> Code2IdentifierHash;
@@ -61,7 +59,7 @@ class KeyMapping
 
     private:
 
-        static KeyIdentifierInfo KeyIdentifierMap[];
+        static KeyIdentifierInfo const KeyIdentifierMap[];
 
         /** @short  hash to map identifier to key codes. */
         Identifier2CodeHash m_lIdentifierHash;
@@ -118,7 +116,7 @@ class KeyMapping
                     if this method returns sal_True!
 
             @return [boolean]
-                    sal_True if conversion was successfully.
+                    sal_True if conversion was successful.
           */
         bool impl_st_interpretIdentifierAsPureKeyCode(const OUString& sIdentifier,
                                                                 sal_uInt16&      rCode      );

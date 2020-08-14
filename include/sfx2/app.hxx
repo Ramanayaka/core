@@ -25,37 +25,23 @@
 #include <sal/types.h>
 #include <vcl/errcode.hxx>
 #include <svl/poolitem.hxx>
-#include <vcl/image.hxx>
-#include <com/sun/star/script/XLibraryContainer.hpp>
-#include <com/sun/star/task/XStatusIndicator.hpp>
-
-// too many files including sfx2/app.hxx use VCL Application class but don't include the
-// header file because in former times SfxApplication was derived from it
-#include <vcl/svapp.hxx>
+#include <vcl/bitmapex.hxx>
+#include <tools/link.hxx>
 
 #include <sfx2/shell.hxx>
 
-class Timer;
-class WorkWindow;
-class ISfxTemplateCommon;
+namespace com::sun::star::script { class XLibraryContainer; }
+
+namespace weld { class Window; }
+
 class BasicManager;
 class DdeService;
-class PrinterDialog;
-class Point;
-namespace tools { class Rectangle; }
-class AppSettings;
 struct SfxChildWinContextFactory;
 class SfxAppData_Impl;
-class SfxBindings;
 class SfxChildWinFactArr_Impl;
-class SfxChildWindow;
 class SfxDispatcher;
-class SfxEventConfiguration;
 class SfxEventHint;
 class SfxItemSet;
-class SfxMedium;
-class SfxMenuCtrlFactArr_Impl;
-class SfxNewFileDialog;
 class SfxObjectShell;
 class SfxObjectShellArr_Impl;
 class SfxObjectShellLock;
@@ -65,7 +51,6 @@ class SfxStbCtrlFactArr_Impl;
 class SfxTbxCtrlFactArr_Impl;
 class SfxViewFrame;
 class SfxViewFrameArr_Impl;
-class SfxViewShell;
 class SfxViewShellArr_Impl;
 class StarBASIC;
 class SfxWorkWindow;
@@ -75,14 +60,11 @@ namespace vcl { class Window; }
 struct SfxChildWinFactory;
 struct SfxStbCtrlFactory;
 struct SfxTbxCtrlFactory;
-class SimpleResMgr;
-class ModalDialog;
 class SbxArray;
 class SbxValue;
 
 namespace sfx2
 {
-    class SvLinkSource;
     namespace sidebar {
         class Theme;
     }
@@ -98,22 +80,24 @@ enum class SfxToolsModule
     LAST = Basic
 };
 
-class SFX2_DLLPUBLIC SfxLinkItem : public SfxPoolItem
+class SFX2_DLLPUBLIC SfxLinkItem final : public SfxPoolItem
 {
-    Link<SfxPoolItem*, void> aLink;
+    Link<SfxPoolItem const *, void> aLink;
 public:
-    SfxLinkItem( sal_uInt16 nWhichId, const Link<SfxPoolItem*, void>& rValue ) : SfxPoolItem( nWhichId )
+    SfxLinkItem( sal_uInt16 nWhichId, const Link<SfxPoolItem const *, void>& rValue ) : SfxPoolItem( nWhichId )
     {   aLink = rValue; }
 
-    virtual SfxPoolItem*     Clone( SfxItemPool* = nullptr ) const override
+    virtual SfxLinkItem*     Clone( SfxItemPool* = nullptr ) const override
     {   return new SfxLinkItem( *this ); }
     virtual bool             operator==( const SfxPoolItem& rL) const override
     {   return static_cast<const SfxLinkItem&>(rL).aLink == aLink; }
-    const Link<SfxPoolItem*, void>&
+    const Link<SfxPoolItem const *, void>&
                              GetValue() const { return aLink; }
 };
 
-class SFX2_DLLPUBLIC SfxApplication: public SfxShell
+// This is a singleton class. Sad that there apparently is no other
+// way than a comment like this to indicate that to the code reader.
+class SFX2_DLLPUBLIC SfxApplication final : public SfxShell
 {
     std::unique_ptr<SfxAppData_Impl>            pImpl;
 
@@ -134,9 +118,6 @@ public:
     static SfxApplication*      GetOrCreate();
     static SfxApplication*      Get();
 
-    // Resource Manager
-    static ResMgr*              GetSfxResManager();
-
     // DDE
 #if defined(_WIN32)
     static long                 DdeExecute( const OUString& rCmd );
@@ -147,13 +128,13 @@ public:
 #if defined(_WIN32)
     void                        AddDdeTopic( SfxObjectShell* );
 #endif
-    void                        RemoveDdeTopic( SfxObjectShell* );
+    void                        RemoveDdeTopic( SfxObjectShell const * );
 
     // "static" methods
     /**
     * @param pArgs Takes ownership
     */
-    ErrCode                     LoadTemplate( SfxObjectShellLock& xDoc, const OUString& rFileName, SfxItemSet* pArgs );
+    ErrCode                     LoadTemplate( SfxObjectShellLock& xDoc, const OUString& rFileName, std::unique_ptr<SfxItemSet> pArgs );
     vcl::Window*                GetTopWindow() const;
 
     // members
@@ -164,11 +145,11 @@ public:
 
     // Basic/Scripting
     static bool                 IsXScriptURL( const OUString& rScriptURL );
-    static OUString             ChooseScript();
-    static void                 MacroOrganizer( sal_Int16 nTabId );
+    static OUString             ChooseScript(weld::Window *pParent);
+    static void                 MacroOrganizer(weld::Window* pParent, sal_Int16 nTabId);
     static ErrCode              CallBasic( const OUString&, BasicManager*, SbxArray *pArgs, SbxValue *pRet );
-    static ErrCode              CallAppBasic( const OUString& i_macroName, SbxArray* i_args = nullptr )
-                                { return CallBasic( i_macroName, SfxApplication::GetBasicManager(), i_args, nullptr ); }
+    static ErrCode              CallAppBasic( const OUString& i_macroName )
+                                { return CallBasic( i_macroName, SfxApplication::GetBasicManager(), nullptr, nullptr ); }
     static BasicManager*        GetBasicManager();
     css::script::XLibraryContainer * GetDialogContainer();
     css::script::XLibraryContainer * GetBasicContainer();
@@ -192,8 +173,8 @@ public:
     SAL_DLLPRIVATE SfxAppData_Impl* Get_Impl() const { return pImpl.get(); }
 
     // Object-Factories/global arrays
-    SAL_DLLPRIVATE void         RegisterChildWindow_Impl(SfxModule*, SfxChildWinFactory*);
-    SAL_DLLPRIVATE void         RegisterChildWindowContext_Impl(SfxModule*, sal_uInt16, SfxChildWinContextFactory*);
+    SAL_DLLPRIVATE void         RegisterChildWindow_Impl(SfxModule*, std::unique_ptr<SfxChildWinFactory>);
+    SAL_DLLPRIVATE void         RegisterChildWindowContext_Impl(SfxModule*, sal_uInt16, std::unique_ptr<SfxChildWinContextFactory>);
     SAL_DLLPRIVATE void         RegisterStatusBarControl_Impl(SfxModule*, const SfxStbCtrlFactory&);
     SAL_DLLPRIVATE void         RegisterToolBoxControl_Impl( SfxModule*, const SfxTbxCtrlFactory&);
     SAL_DLLPRIVATE SfxTbxCtrlFactArr_Impl& GetTbxCtrlFactories_Impl() const;
@@ -207,13 +188,14 @@ public:
     // Slot Methods
     // TODO/CLEANUP: still needed?
     SAL_DLLPRIVATE void         NewDocDirectExec_Impl(SfxRequest &);
+    SAL_DLLPRIVATE static void  NewDocDirectState_Impl(SfxItemSet &);
     SAL_DLLPRIVATE void         NewDocExec_Impl(SfxRequest &);
     SAL_DLLPRIVATE void         OpenDocExec_Impl(SfxRequest &);
     SAL_DLLPRIVATE void         OpenRemoteExec_Impl(SfxRequest &);
     SAL_DLLPRIVATE void         SignPDFExec_Impl(SfxRequest&);
     SAL_DLLPRIVATE void         MiscExec_Impl(SfxRequest &);
     SAL_DLLPRIVATE void         MiscState_Impl(SfxItemSet &);
-    SAL_DLLPRIVATE static void  PropExec_Impl(SfxRequest &);
+    SAL_DLLPRIVATE static void  PropExec_Impl(SfxRequest const &);
     SAL_DLLPRIVATE static void  PropState_Impl(SfxItemSet &);
     SAL_DLLPRIVATE void         OfaExec_Impl(SfxRequest &);
     SAL_DLLPRIVATE static void  OfaState_Impl(SfxItemSet &);

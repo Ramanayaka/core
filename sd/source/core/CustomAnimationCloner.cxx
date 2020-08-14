@@ -32,15 +32,14 @@
 
 #include <map>
 
-#include "comphelper/anytostring.hxx"
-#include "cppuhelper/exc_hlp.hxx"
-#include "rtl/ref.hxx"
+#include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
 #include <animations/animationnodehelper.hxx>
 
 #include <svx/svditer.hxx>
 
-#include "CustomAnimationCloner.hxx"
-#include "sdpage.hxx"
+#include <CustomAnimationCloner.hxx>
+#include <sdpage.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::animations;
@@ -52,6 +51,8 @@ using ::com::sun::star::beans::NamedValue;
 
 namespace sd
 {
+    namespace {
+
     class CustomAnimationClonerImpl
     {
     public:
@@ -69,6 +70,8 @@ namespace sd
         std::vector< Reference< XAnimationNode > > maSourceNodeVector;
         std::vector< Reference< XAnimationNode > > maCloneNodeVector;
     };
+
+    }
 
     CustomAnimationClonerImpl::CustomAnimationClonerImpl()
     {
@@ -91,8 +94,8 @@ namespace sd
             // create a dictionary to map source to cloned shapes
             if( pSourcePage && pTargetPage )
             {
-                SdrObjListIter aSourceIter( *pSourcePage, SdrIterMode::DeepWithGroups );
-                SdrObjListIter aTargetIter( *pTargetPage, SdrIterMode::DeepWithGroups );
+                SdrObjListIter aSourceIter( pSourcePage, SdrIterMode::DeepWithGroups );
+                SdrObjListIter aTargetIter( pTargetPage, SdrIterMode::DeepWithGroups );
 
                 while( aSourceIter.IsMore() && aTargetIter.IsMore() )
                 {
@@ -121,8 +124,7 @@ namespace sd
         }
         catch( Exception& )
         {
-            SAL_WARN( "sd", "sd::CustomAnimationClonerImpl::Clone(), "
-                      "exception caught: " <<  comphelper::anyToString( cppu::getCaughtException() ) );
+            TOOLS_WARN_EXCEPTION( "sd", "sd::CustomAnimationClonerImpl::Clone()" );
             Reference< XAnimationNode > xEmpty;
             return xEmpty;
         }
@@ -142,13 +144,13 @@ namespace sd
             {
                 Reference< XIterateContainer > xIter( xNode, UNO_QUERY_THROW );
                 xIter->setTarget( transformValue( xIter->getTarget() ) );
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             }
             case AnimationNodeType::PAR:
             case AnimationNodeType::SEQ:
             {
                 Reference< XEnumerationAccess > xEnumerationAccess( xNode, UNO_QUERY_THROW );
-                Reference< XEnumeration > xEnumeration( xEnumerationAccess->createEnumeration(), UNO_QUERY_THROW );
+                Reference< XEnumeration > xEnumeration( xEnumerationAccess->createEnumeration(), UNO_SET_THROW );
                 while( xEnumeration->hasMoreElements() )
                 {
                     Reference< XAnimationNode > xChildNode( xEnumeration->nextElement(), UNO_QUERY_THROW );
@@ -187,12 +189,9 @@ namespace sd
             Sequence< NamedValue > aUserData( xNode->getUserData() );
             if( aUserData.hasElements() )
             {
-                NamedValue* pValue = aUserData.getArray();
-                const sal_Int32 nLength = aUserData.getLength();
-                sal_Int32 nElement;
-                for( nElement = 0; nElement < nLength; nElement++, pValue++ )
+                for( NamedValue & namedValue : aUserData )
                 {
-                    pValue->Value = transformValue( pValue->Value );
+                    namedValue.Value = transformValue( namedValue.Value );
                 }
 
                 xNode->setUserData( aUserData );
@@ -200,9 +199,7 @@ namespace sd
         }
         catch( Exception& )
         {
-            SAL_WARN( "sd", "sd::CustomAnimationClonerImpl::transformNode(), "
-                      "exception caught: "
-                      << comphelper::anyToString( cppu::getCaughtException() ) );
+            TOOLS_WARN_EXCEPTION( "sd", "sd::CustomAnimationClonerImpl::transformNode()" );
         }
     }
 
@@ -225,12 +222,8 @@ namespace sd
                 Sequence<Any> aSequence;
                 rValue >>= aSequence;
 
-                const sal_Int32 nLength = aSequence.getLength();
-                sal_Int32 nElement;
-                Any* pAny = aSequence.getArray();
-
-                for( nElement = 0; nElement < nLength; nElement++, pAny++ )
-                    *pAny = transformValue( *pAny );
+                for( Any& rAny : aSequence )
+                    rAny = transformValue( rAny );
 
                 return makeAny( aSequence );
             }
@@ -271,9 +264,7 @@ namespace sd
         }
         catch( Exception& )
         {
-            SAL_WARN( "sd", "sd::CustomAnimationClonerImpl::transformValue(), "
-                      "exception caught: "
-                      << comphelper::anyToString( cppu::getCaughtException() ) );
+            TOOLS_WARN_EXCEPTION( "sd", "sd::CustomAnimationClonerImpl::transformValue()" );
         }
 
         return rValue;
@@ -295,9 +286,13 @@ namespace sd
 
     Reference< XAnimationNode > CustomAnimationClonerImpl::getClonedNode( const Reference< XAnimationNode >& xSource ) const
     {
-        sal_Int32 nNode, nNodeCount = maSourceNodeVector.size();
+        std::size_t nNodeCount = maSourceNodeVector.size();
+        std::size_t nCloneNodeCount = maCloneNodeVector.size();
 
-        for( nNode = 0; nNode < nNodeCount; nNode++ )
+        if (nNodeCount != nCloneNodeCount)
+            SAL_WARN("sd.core", "Sizes of maSourceNodeVector and maCloneNodeVector mismatch!");
+
+        for( std::size_t nNode = 0; nNode < nNodeCount && nNode < nCloneNodeCount; ++nNode )
         {
             if( maSourceNodeVector[nNode] == xSource )
                 return maCloneNodeVector[nNode];

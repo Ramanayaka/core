@@ -22,14 +22,13 @@
 
 #include <com/sun/star/task/XInteractionRequest.hpp>
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
 
-namespace com { namespace sun { namespace star { namespace task {
+namespace com::sun::star::task {
     class XInteractionContinuation;
-} } } }
+}
 
 namespace stoc_javavm {
 
@@ -50,7 +49,7 @@ public:
 private:
     class RetryContinuation;
 
-    InteractionRequest(InteractionRequest &) = delete;
+    InteractionRequest(InteractionRequest const &) = delete;
     void operator =(const InteractionRequest&) = delete;
 
     virtual ~InteractionRequest() override;

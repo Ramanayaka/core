@@ -27,12 +27,12 @@
 #include <cppuhelper/weak.hxx>
 #include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <framework/fwedllapi.h>
+#include <framework/fwkdllapi.h>
 
 namespace framework
 {
 
-class FWE_DLLPUBLIC PropertySetContainer : public css::container::XIndexContainer    ,
+class PropertySetContainer : public css::container::XIndexContainer    ,
                              public ::cppu::OWeakObject
 {
     public:

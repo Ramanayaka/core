@@ -25,11 +25,9 @@
 #include <svx/svxdllapi.h>
 #include <basegfx/range/b2irectangle.hxx>
 
-namespace sdr
-{
-    namespace contact
+namespace sdr::contact
     {
-        class SVX_DLLPUBLIC DisplayInfo final
+        class SVXCORE_DLLPUBLIC DisplayInfo final
         {
             // The Layers which shall be processed (visible)
             SdrLayerIDSet                                       maProcessLayers;
@@ -70,9 +68,6 @@ namespace sdr
             // basic constructor.
             DisplayInfo();
 
-            // destructor
-            ~DisplayInfo();
-
             // access to ProcessLayers
             void SetProcessLayers(const SdrLayerIDSet& rSet);
             const SdrLayerIDSet& GetProcessLayers() const { return maProcessLayers; }
@@ -101,8 +96,8 @@ namespace sdr
             bool GetSubContentActive() const { return mbSubContentActive; }
             void SetSubContentActive(bool bNew);
         };
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace sdr::contact
 
 
 #endif // INCLUDED_SVX_SDR_CONTACT_DISPLAYINFO_HXX

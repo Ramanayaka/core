@@ -9,13 +9,18 @@
 
 #include "Util.hxx"
 #include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
+
+#include <com/sun/star/sdbc/DataType.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 
 using namespace ::connectivity;
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::uno;
+
+using namespace firebird;
 
 OUString firebird::sanitizeIdentifier(const OUString& rIdentifier)
 {
@@ -64,41 +69,80 @@ void firebird::evaluateStatusVector(const ISC_STATUS_ARRAY& rStatusVector,
     }
 }
 
-sal_Int32 firebird::getColumnTypeFromFBType(short aType, short aSubType, short aScale)
+static sal_Int32 lcl_getNumberType( short aType, NumberSubType aSubType )
 {
-    aType &= ~1; // Remove last bit -- it is used to denote whether column
-                 // can store Null, not needed for type determination
+    switch(aSubType)
+    {
+        case NumberSubType::Numeric:
+            return DataType::NUMERIC;
+        case NumberSubType::Decimal:
+            return DataType::DECIMAL;
+        default:
+            switch(aType)
+            {
+                case SQL_SHORT:
+                    return DataType::SMALLINT;
+                case SQL_LONG:
+                    return DataType::INTEGER;
+                case SQL_DOUBLE:
+                    return DataType::DOUBLE;
+                case SQL_INT64:
+                    return DataType::BIGINT;
+                default:
+                    assert(false); // not a number
+                    return 0;
+            }
+    }
+}
+static sal_Int32 lcl_getCharColumnType( short aType, const OUString& sCharset )
+{
+    switch(aType)
+    {
+        case SQL_TEXT:
+            if( sCharset == "OCTETS")
+                return DataType::BINARY;
+            else
+                return DataType::CHAR;
+        case SQL_VARYING:
+            if( sCharset == "OCTETS")
+                return DataType::VARBINARY;
+            else
+                return DataType::VARCHAR;
+        default:
+            assert(false);
+            return 0;
+    }
+}
 
-    // if scale is set without subtype then imply numeric
-    if(aSubType == 0 && aScale < 0)
-        aSubType = 1;
+sal_Int32 firebird::ColumnTypeInfo::getSdbcType() const
+{
+    short aType = m_aType & ~1; // Remove last bit -- it is used to denote whether column
+                 // can store Null, not needed for type determination
+    short aSubType = m_aSubType;
+    if( m_nScale > 0 )
+    {
+        // numeric / decimal
+        if(aType == SQL_SHORT || aType == SQL_LONG || aType == SQL_DOUBLE
+                || aType == SQL_INT64)
+        {
+            // if scale is set without subtype then imply numeric
+            if( static_cast<NumberSubType>(aSubType) == NumberSubType::Other )
+                aSubType = static_cast<short>(NumberSubType::Numeric);
+        }
+    }
 
     switch (aType)
     {
     case SQL_TEXT:
-        return DataType::CHAR;
     case SQL_VARYING:
-        return DataType::VARCHAR;
+        return lcl_getCharColumnType(aType, m_sCharsetName);
     case SQL_SHORT:
-        if(aSubType == 1)
-            return DataType::NUMERIC;
-        if(aSubType == 2)
-            return DataType::DECIMAL;
-        return DataType::SMALLINT;
     case SQL_LONG:
-        if(aSubType == 1)
-            return DataType::NUMERIC;
-        if(aSubType == 2)
-            return DataType::DECIMAL;
-        return DataType::INTEGER;
+    case SQL_DOUBLE:
+    case SQL_INT64:
+        return lcl_getNumberType(aType, static_cast<NumberSubType>(aSubType) );
     case SQL_FLOAT:
         return DataType::FLOAT;
-    case SQL_DOUBLE:
-        if(aSubType == 1)
-            return DataType::NUMERIC;
-        if(aSubType == 2)
-            return DataType::DECIMAL;
-        return DataType::DOUBLE;
     case SQL_D_FLOAT:
         return DataType::DOUBLE;
     case SQL_TIMESTAMP:
@@ -110,6 +154,8 @@ sal_Int32 firebird::getColumnTypeFromFBType(short aType, short aSubType, short a
                 return DataType::BLOB;
             case BlobSubtype::Clob:
                 return DataType::CLOB;
+            case BlobSubtype::Image:
+                return DataType::LONGVARBINARY;
             default:
                 SAL_WARN("connectivity.firebird", "Unknown subtype for Blob type: " << aSubType);
                 assert(!"Unknown subtype for Blob type"); // Should never happen
@@ -121,12 +167,6 @@ sal_Int32 firebird::getColumnTypeFromFBType(short aType, short aSubType, short a
         return DataType::TIME;
     case SQL_TYPE_DATE:
         return DataType::DATE;
-    case SQL_INT64:
-        if(aSubType == 1)
-            return DataType::NUMERIC;
-        if(aSubType == 2)
-            return DataType::DECIMAL;
-        return DataType::BIGINT;
     case SQL_NULL:
         return DataType::SQLNULL;
     case SQL_QUAD:      // Is a "Blob ID" according to the docs
@@ -139,68 +179,48 @@ sal_Int32 firebird::getColumnTypeFromFBType(short aType, short aSubType, short a
     }
 }
 
-OUString firebird::getColumnTypeNameFromFBType(short aType, short aSubType, short aScale)
+OUString firebird::ColumnTypeInfo::getColumnTypeName() const
 {
-    aType &= ~1; // Remove last bit -- it is used to denote whether column
+    short aType = m_aType & ~1; // Remove last bit -- it is used to denote whether column
                 // can store Null, not needed for type determination
 
-    // if scale is set without subtype than imply numeric
-    if(aSubType == 0 && aScale < 0)
-        aSubType = 1;
-
-   switch (aType)
+    switch (aType)
     {
-    case SQL_TEXT:
-        return OUString("SQL_TEXT");
-    case SQL_VARYING:
-        return OUString("SQL_VARYING");
-    case SQL_SHORT:
-        if(aSubType == 1)
-            return OUString("SQL_NUMERIC");
-        if(aSubType == 2)
-            return OUString("SQL_DECIMAL");
-        return OUString("SQL_SHORT");
-    case SQL_LONG:
-        if(aSubType == 1)
-            return OUString("SQL_NUMERIC");
-        if(aSubType == 2)
-            return OUString("SQL_DECIMAL");
-        return OUString("SQL_LONG");
-    case SQL_FLOAT:
-        return OUString("SQL_FLOAT");
-    case SQL_DOUBLE:
-        if(aSubType == 1)
-            return OUString("SQL_NUMERIC");
-        if(aSubType == 2)
-            return OUString("SQL_DECIMAL");
-        return OUString("SQL_DOUBLE");
-    case SQL_D_FLOAT:
-        return OUString("SQL_D_FLOAT");
-    case SQL_TIMESTAMP:
-        return OUString("SQL_TIMESTAMP");
-    case SQL_BLOB:
-        return OUString("SQL_BLOB");
-    case SQL_ARRAY:
-        return OUString("SQL_ARRAY");
-    case SQL_TYPE_TIME:
-        return OUString("SQL_TYPE_TIME");
-    case SQL_TYPE_DATE:
-        return OUString("SQL_TYPE_DATE");
-    case SQL_INT64:
-        if(aSubType == 1)
-            return OUString("SQL_NUMERIC");
-        if(aSubType == 2)
-            return OUString("SQL_DECIMAL");
-        return OUString("SQL_INT64");
-    case SQL_NULL:
-        return OUString("SQL_NULL");
-    case SQL_QUAD:
-        return OUString("SQL_QUAD");
-    case SQL_BOOLEAN:
-        return OUString("SQL_BOOLEAN");
-    default:
-        assert(false); // Should never happen
-        return OUString();
+     case SQL_TEXT:
+         return "SQL_TEXT";
+     case SQL_VARYING:
+         return "SQL_VARYING";
+     case SQL_SHORT:
+         return "SQL_SHORT";
+     case SQL_LONG:
+         return "SQL_LONG";
+     case SQL_FLOAT:
+         return "SQL_FLOAT";
+     case SQL_DOUBLE:
+         return "SQL_DOUBLE";
+     case SQL_D_FLOAT:
+         return "SQL_D_FLOAT";
+     case SQL_TIMESTAMP:
+         return "SQL_TIMESTAMP";
+     case SQL_BLOB:
+         return "SQL_BLOB";
+     case SQL_ARRAY:
+         return "SQL_ARRAY";
+     case SQL_TYPE_TIME:
+         return "SQL_TYPE_TIME";
+     case SQL_TYPE_DATE:
+         return "SQL_TYPE_DATE";
+     case SQL_INT64:
+         return "SQL_INT64";
+     case SQL_NULL:
+         return "SQL_NULL";
+     case SQL_QUAD:
+         return "SQL_QUAD";
+     case SQL_BOOLEAN:
+         return "SQL_BOOLEAN";
+     default:
+         assert(false); // Should never happen
+         return OUString();
     }
 }
 
@@ -286,11 +306,11 @@ void firebird::mallocSQLVAR(XSQLDA* pSqlda)
         case SQL_TIMESTAMP:
             pVar->sqldata = static_cast<char*>(malloc(sizeof(ISC_TIMESTAMP)));
             break;
+        // an ARRAY is in fact a BLOB of a specialized type
+        // See https://firebirdsql.org/file/documentation/reference_manuals/fblangref25-en/html/fblangref25-datatypes-bnrytypes.html#fblangref25-datatypes-array
+        case SQL_ARRAY:
         case SQL_BLOB:
             pVar->sqldata = static_cast<char*>(malloc(sizeof(ISC_QUAD)));
-            break;
-        case SQL_ARRAY:
-            assert(false); // TODO: implement
             break;
         case SQL_TYPE_TIME:
             pVar->sqldata = static_cast<char*>(malloc(sizeof(ISC_TIME)));
@@ -335,6 +355,9 @@ void firebird::freeSQLVAR(XSQLDA* pSqlda)
         case SQL_DOUBLE:
         case SQL_D_FLOAT:
         case SQL_TIMESTAMP:
+        // an ARRAY is in fact a BLOB of a specialized type
+        // See https://firebirdsql.org/file/documentation/reference_manuals/fblangref25-en/html/fblangref25-datatypes-bnrytypes.html#fblangref25-datatypes-array
+        case SQL_ARRAY:
         case SQL_BLOB:
         case SQL_INT64:
         case SQL_TYPE_TIME:
@@ -345,9 +368,6 @@ void firebird::freeSQLVAR(XSQLDA* pSqlda)
                 free(pVar->sqldata);
                 pVar->sqldata = nullptr;
             }
-            break;
-        case SQL_ARRAY:
-            assert(false); // TODO: implement
             break;
         case SQL_NULL:
             assert(false); // TODO: implement
@@ -374,11 +394,13 @@ OUString firebird::escapeWith( const OUString& sText, const char aKey, const cha
 {
     OUString sRet(sText);
     sal_Int32 aIndex = 0;
-    while( (aIndex = sRet.indexOf(aKey, aIndex)) > 0 &&
-            aIndex < sRet.getLength())
+    for (;;)
     {
-            sRet = sRet.replaceAt(aIndex, 1, OUString(aEscapeChar) + OUString(aKey)  );
-            aIndex+= 2;
+        aIndex = sRet.indexOf(aKey, aIndex);
+        if ( aIndex <= 0 || aIndex >= sRet.getLength())
+            break;
+        sRet = sRet.replaceAt(aIndex, 1, OUStringChar(aEscapeChar) + OUStringChar(aKey)  );
+        aIndex += 2;
     }
 
     return sRet;

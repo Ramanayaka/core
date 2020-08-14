@@ -20,16 +20,15 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_GENERICCONFIGURATIONCHANGEREQUEST_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_GENERICCONFIGURATIONCHANGEREQUEST_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 #include <com/sun/star/drawing/framework/XConfigurationChangeRequest.hpp>
 #include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/beans/PropertyValues.hpp>
 #include <cppuhelper/compbase.hxx>
 
-namespace sd { namespace framework {
+namespace com::sun::star::drawing::framework { class XConfiguration; }
+namespace com::sun::star::drawing::framework { class XResourceId; }
+
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
       css::drawing::framework::XConfigurationChangeRequest,
@@ -97,7 +96,7 @@ private:
     const Mode meMode;
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

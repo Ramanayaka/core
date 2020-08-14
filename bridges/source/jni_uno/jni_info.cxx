@@ -23,14 +23,14 @@
 
 #include "jni_bridge.h"
 
-#include "com/sun/star/uno/RuntimeException.hpp"
+#include <com/sun/star/uno/RuntimeException.hpp>
 
-#include "jvmaccess/unovirtualmachine.hxx"
-#include "rtl/string.hxx"
-#include "rtl/strbuf.hxx"
-#include "rtl/ustrbuf.hxx"
+#include <jvmaccess/unovirtualmachine.hxx>
+#include <rtl/string.hxx>
+#include <rtl/strbuf.hxx>
+#include <rtl/ustrbuf.hxx>
 
-#include "uno/lbnames.h"
+#include <uno/lbnames.h>
 
 
 using namespace ::std;
@@ -61,7 +61,7 @@ void JNI_interface_type_info::destroy( JNIEnv * jni_env )
     JNI_type_info::destruct( jni_env );
     jni_env->DeleteGlobalRef( m_proxy_ctor );
     jni_env->DeleteGlobalRef( m_type );
-    delete [] m_methods;
+    m_methods.reset();
     delete this;
 }
 
@@ -103,8 +103,8 @@ JNI_interface_type_info::JNI_interface_type_info(
             typelib_InterfaceTypeDescription * td =
                 reinterpret_cast< typelib_InterfaceTypeDescription * >(
                     m_td.get() );
-            // coverity [ctor_dtor_leak]
-            m_methods = new jmethodID[ td->nMapFunctionIndexToMemberIndex ];
+            // coverity[ctor_dtor_leak] - on purpose
+            m_methods.reset(new jmethodID[ td->nMapFunctionIndexToMemberIndex ]);
             sal_Int32 nMethodIndex = 0;
             typelib_TypeDescriptionReference ** ppMembers = td->ppMembers;
             sal_Int32 nMembers = td->nMembers;
@@ -211,7 +211,7 @@ JNI_interface_type_info::JNI_interface_type_info(
         }
         catch (...)
         {
-            delete [] m_methods;
+            m_methods.reset();
             throw;
         }
     }
@@ -224,7 +224,7 @@ JNI_interface_type_info::JNI_interface_type_info(
 void JNI_compound_type_info::destroy( JNIEnv * jni_env )
 {
     JNI_type_info::destruct( jni_env );
-    delete [] m_fields;
+    m_fields.reset();
     delete this;
 }
 
@@ -232,8 +232,7 @@ void JNI_compound_type_info::destroy( JNIEnv * jni_env )
 JNI_compound_type_info::JNI_compound_type_info(
     JNI_context const & jni, typelib_TypeDescription * td_ )
     : JNI_type_info( jni, td_ ),
-      m_exc_ctor( nullptr ),
-      m_fields( nullptr )
+      m_exc_ctor( nullptr )
 {
     assert( m_td.get()->eTypeClass == typelib_TypeClass_STRUCT ||
                 m_td.get()->eTypeClass == typelib_TypeClass_EXCEPTION );
@@ -288,8 +287,8 @@ JNI_compound_type_info::JNI_compound_type_info(
                 td->aBase.pWeakRef,
                 jni_info->m_RuntimeException_type.getTypeLibType() ))
         {
-            // coverity [ctor_dtor_leak]
-            m_fields = new jfieldID[ 2 ];
+            // coverity[ctor_dtor_leak] - on purpose
+            m_fields.reset(new jfieldID[ 2 ]);
             m_fields[ 0 ] = nullptr; // special Throwable.getMessage()
             // field Context
             m_fields[ 1 ] = jni->GetFieldID(
@@ -301,7 +300,7 @@ JNI_compound_type_info::JNI_compound_type_info(
         {
             // retrieve field ids for all direct members
             sal_Int32 nMembers = td->nMembers;
-            m_fields = new jfieldID[ nMembers ];
+            m_fields.reset(new jfieldID[ nMembers ]);
 
             for ( sal_Int32 nPos = 0; nPos < nMembers; ++nPos )
             {
@@ -334,7 +333,7 @@ JNI_compound_type_info::JNI_compound_type_info(
     }
     catch (...)
     {
-        delete [] m_fields;
+        m_fields.reset();
         throw;
     }
 
@@ -860,7 +859,7 @@ JNI_info::JNI_info(
     {
         css::uno::TypeDescription XInterface_td(
             cppu::UnoType<css::uno::XInterface>::get());
-        // coverity [ctor_dtor_leak]
+        // coverity[ctor_dtor_leak] - on purpose
         m_XInterface_type_info =
             new JNI_interface_type_info( jni, XInterface_td.get() );
     }

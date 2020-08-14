@@ -17,22 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "calc/CConnection.hxx"
-#include "calc/CDatabaseMetaData.hxx"
-#include "calc/CCatalog.hxx"
-#include "calc/CDriver.hxx"
-#include "resource/calc_res.hrc"
-#include "resource/sharedresources.hxx"
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <calc/CConnection.hxx>
+#include <calc/CDatabaseMetaData.hxx>
+#include <calc/CCatalog.hxx>
+#include <calc/CDriver.hxx>
+#include <resource/sharedresources.hxx>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <tools/urlobj.hxx>
-#include "calc/CPreparedStatement.hxx"
-#include "calc/CStatement.hxx"
+#include <component/CPreparedStatement.hxx>
+#include <component/CStatement.hxx>
 #include <unotools/pathoptions.hxx>
 #include <connectivity/dbexception.hxx>
 #include <cppuhelper/exc_hlp.hxx>
-#include <comphelper/processfactory.hxx>
+#include <strings.hrc>
 
 using namespace connectivity::calc;
 using namespace connectivity::file;
@@ -237,7 +235,7 @@ Reference< XStatement > SAL_CALL OCalcConnection::createStatement(  )
     checkDisposed(OConnection_BASE::rBHelper.bDisposed);
 
 
-    Reference< XStatement > xReturn = new OCalcStatement(this);
+    Reference< XStatement > xReturn = new connectivity::component::OComponentStatement(this);
     m_aStatements.push_back(WeakReferenceHelper(xReturn));
     return xReturn;
 }
@@ -249,7 +247,7 @@ Reference< XPreparedStatement > SAL_CALL OCalcConnection::prepareStatement( cons
     checkDisposed(OConnection_BASE::rBHelper.bDisposed);
 
 
-    OCalcPreparedStatement* pStmt = new OCalcPreparedStatement(this);
+    auto pStmt = new connectivity::component::OComponentPreparedStatement(this);
     Reference< XPreparedStatement > xHoldAlive = pStmt;
     pStmt->construct(sql);
     m_aStatements.push_back(WeakReferenceHelper(*pStmt));

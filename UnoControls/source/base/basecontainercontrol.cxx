@@ -17,10 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "basecontainercontrol.hxx"
+#include <basecontainercontrol.hxx>
 
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
+
+#include <com/sun/star/container/ContainerEvent.hpp>
+#include <com/sun/star/container/XContainerListener.hpp>
+#include <com/sun/star/awt/XControlContainer.hpp>
 
 //  namespaces
 
@@ -31,7 +35,7 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::container;
 
-namespace unocontrols{
+namespace unocontrols {
 
 //  construct/destruct
 
@@ -43,7 +47,6 @@ BaseContainerControl::BaseContainerControl( const Reference< XComponentContext >
 
 BaseContainerControl::~BaseContainerControl()
 {
-    impl_cleanMemory();
 }
 
 //  XInterface
@@ -56,13 +59,13 @@ Any SAL_CALL BaseContainerControl::queryInterface( const Type& rType )
     Reference< XInterface > xDel = BaseControl::impl_getDelegator();
     if ( xDel.is() )
     {
-        // If an delegator exist, forward question to his queryInterface.
-        // Delegator will ask his own queryAggregation!
+        // If a delegator exists, forward question to its queryInterface.
+        // Delegator will ask its own queryAggregation!
         aReturn = xDel->queryInterface( rType );
     }
     else
     {
-        // If an delegator unknown, forward question to own queryAggregation.
+        // If a delegator is unknown, forward question to own queryAggregation.
         aReturn = queryAggregation( rType );
     }
 
@@ -111,23 +114,18 @@ Any SAL_CALL BaseContainerControl::queryAggregation( const Type& aType )
 void SAL_CALL BaseContainerControl::createPeer( const   Reference< XToolkit >&      xToolkit    ,
                                                 const   Reference< XWindowPeer >&   xParent     )
 {
-    if ( !getPeer().is() )
+    if ( getPeer().is() )
+        return;
+
+    // create own peer
+    BaseControl::createPeer( xToolkit, xParent );
+
+    // create peers at all children
+    Sequence< Reference< XControl > >   seqControlList  = getControls();
+
+    for ( auto& rxControl : seqControlList )
     {
-        // create own peer
-        BaseControl::createPeer( xToolkit, xParent );
-
-        // create peers at all children
-        Sequence< Reference< XControl > >   seqControlList  = getControls();
-        sal_uInt32                          nControls       = seqControlList.getLength();
-
-        for ( sal_uInt32 n=0; n<nControls; n++ )
-        {
-            seqControlList.getArray()[n]->createPeer( xToolkit, getPeer() );
-        }
-
-        // activate new tab order
-        impl_activateTabControllers();
-
+        rxControl->createPeer( xToolkit, getPeer() );
     }
 }
 
@@ -165,22 +163,14 @@ void SAL_CALL BaseContainerControl::dispose()
     m_aListeners.disposeAndClear( aObject );
 
     // remove controls
-    Sequence< Reference< XControl > >   seqCtrls    =   getControls();
-    Reference< XControl > *             pCtrls      =   seqCtrls.getArray();
-    sal_uInt32                          nCtrls      =   seqCtrls.getLength();
-    size_t                              nMaxCount   =   maControlInfoList.size();
-    size_t                              nCount      =   0;
+    const Sequence< Reference< XControl > >   seqCtrls    =   getControls();
 
-    for ( nCount = 0; nCount < nMaxCount; ++nCount )
-    {
-        delete maControlInfoList[ nCount ];
-    }
     maControlInfoList.clear();
 
-    for ( nCount = 0; nCount < nCtrls; ++nCount )
+    for ( Reference< XControl > const & control : seqCtrls )
     {
-        pCtrls [ nCount ] -> removeEventListener    ( static_cast< XEventListener* >( static_cast< XWindowListener* >( this ) ) );
-        pCtrls [ nCount ] -> dispose                (       );
+        control->removeEventListener    ( static_cast< XEventListener* >( static_cast< XWindowListener* >( this ) ) );
+        control->dispose                (       );
     }
 
     // call baseclass
@@ -215,39 +205,38 @@ void SAL_CALL BaseContainerControl::addControl ( const OUString& rName, const Re
     pNewControl->xControl   = rControl;
 
     // and insert in list
-    maControlInfoList.push_back( pNewControl );
+    maControlInfoList.emplace_back( pNewControl );
 
     // initialize new control
     pNewControl->xControl->setContext       ( static_cast<OWeakObject*>(this)    );
     pNewControl->xControl->addEventListener ( static_cast< XEventListener* >( static_cast< XWindowListener* >( this ) ) );
 
-    // when container has a peer ...
+    // when container has a peer...
     if (getPeer().is())
     {
-        // .. then create a peer on child
+        // ... then create a peer on child
         pNewControl->xControl->createPeer ( getPeer()->getToolkit(), getPeer() );
-        impl_activateTabControllers ();
     }
 
     // Send message to all listener
     OInterfaceContainerHelper* pInterfaceContainer = m_aListeners.getContainer( cppu::UnoType<XContainerListener>::get());
 
-    if (pInterfaceContainer)
+    if (!pInterfaceContainer)
+        return;
+
+    // Build event
+    ContainerEvent  aEvent;
+
+    aEvent.Source   = *this;
+    aEvent.Element <<= rControl;
+
+    // Get all listener
+    OInterfaceIteratorHelper    aIterator (*pInterfaceContainer);
+
+    // Send event
+    while ( aIterator.hasMoreElements() )
     {
-        // Build event
-        ContainerEvent  aEvent;
-
-        aEvent.Source   = *this;
-        aEvent.Element <<= rControl;
-
-        // Get all listener
-        OInterfaceIteratorHelper    aIterator (*pInterfaceContainer);
-
-        // Send event
-        while ( aIterator.hasMoreElements() )
-        {
-            static_cast<XContainerListener*>(aIterator.next())->elementInserted (aEvent);
-        }
+        static_cast<XContainerListener*>(aIterator.next())->elementInserted (aEvent);
     }
 }
 
@@ -255,49 +244,46 @@ void SAL_CALL BaseContainerControl::addControl ( const OUString& rName, const Re
 
 void SAL_CALL BaseContainerControl::removeControl ( const Reference< XControl > & rControl )
 {
-    if ( rControl.is() )
+    if ( !rControl.is() )
+        return;
+
+    // Ready for multithreading
+    MutexGuard aGuard (m_aMutex);
+
+    size_t nControls = maControlInfoList.size();
+
+    for ( size_t n = 0; n < nControls; n++ )
     {
-        // Ready for multithreading
-        MutexGuard aGuard (m_aMutex);
-
-        size_t nControls = maControlInfoList.size();
-
-        for ( size_t n = 0; n < nControls; n++ )
+        // Search for right control
+        IMPL_ControlInfo* pControl = maControlInfoList[ n ].get();
+        if ( rControl == pControl->xControl )
         {
-            // Search for right control
-            IMPL_ControlInfo* pControl = maControlInfoList[ n ];
-            if ( rControl == pControl->xControl )
+            //.is it found ... remove listener from control
+            pControl->xControl->removeEventListener (static_cast< XEventListener* >( static_cast< XWindowListener* >( this ) ));
+            pControl->xControl->setContext          ( Reference< XInterface >  ()   );
+
+            // ... free memory
+            maControlInfoList.erase(maControlInfoList.begin() + n);
+
+            // Send message to all other listener
+            OInterfaceContainerHelper * pInterfaceContainer = m_aListeners.getContainer( cppu::UnoType<XContainerListener>::get());
+
+            if (pInterfaceContainer)
             {
-                //.is it found ... remove listener from control
-                pControl->xControl->removeEventListener (static_cast< XEventListener* >( static_cast< XWindowListener* >( this ) ));
-                pControl->xControl->setContext          ( Reference< XInterface >  ()   );
+                ContainerEvent  aEvent;
 
-                // ... free memory
-                delete pControl;
-                ::std::vector<IMPL_ControlInfo*>::iterator itr = maControlInfoList.begin();
-                ::std::advance(itr, n);
-                maControlInfoList.erase(itr);
+                aEvent.Source    = *this;
+                aEvent.Element <<= rControl;
 
-                // Send message to all other listener
-                OInterfaceContainerHelper * pInterfaceContainer = m_aListeners.getContainer( cppu::UnoType<XContainerListener>::get());
+                OInterfaceIteratorHelper    aIterator (*pInterfaceContainer);
 
-                if (pInterfaceContainer)
+                while ( aIterator.hasMoreElements() )
                 {
-                    ContainerEvent  aEvent;
-
-                    aEvent.Source    = *this;
-                    aEvent.Element <<= rControl;
-
-                    OInterfaceIteratorHelper    aIterator (*pInterfaceContainer);
-
-                    while ( aIterator.hasMoreElements() )
-                    {
-                        static_cast<XContainerListener*>(aIterator.next())->elementRemoved (aEvent);
-                    }
+                    static_cast<XContainerListener*>(aIterator.next())->elementRemoved (aEvent);
                 }
-                // Break "for" !
-                break;
             }
+            // Break "for" !
+            break;
         }
     }
 }
@@ -327,7 +313,7 @@ Reference< XControl > SAL_CALL BaseContainerControl::getControl ( const OUString
     // Search for right control
     for( size_t nCount = 0; nCount < nControls; ++nCount )
     {
-        IMPL_ControlInfo* pSearchControl = maControlInfoList[ nCount ];
+        IMPL_ControlInfo* pSearchControl = maControlInfoList[ nCount ].get();
 
         if ( pSearchControl->sName == rName )
         {
@@ -356,7 +342,7 @@ Sequence< Reference< XControl > > SAL_CALL BaseContainerControl::getControls ()
     // Copy controls to sequence
     for( nCount = 0; nCount < nControls; ++nCount )
     {
-        IMPL_ControlInfo* pCopyControl = maControlInfoList[ nCount ];
+        IMPL_ControlInfo* pCopyControl = maControlInfoList[ nCount ].get();
         pDestination [ nCount ] = pCopyControl->xControl;
     }
 
@@ -381,20 +367,16 @@ void SAL_CALL BaseContainerControl::setVisible ( sal_Bool bVisible )
 
 //  protected method
 
-WindowDescriptor* BaseContainerControl::impl_getWindowDescriptor ( const Reference< XWindowPeer > & rParentPeer )
+WindowDescriptor BaseContainerControl::impl_getWindowDescriptor ( const Reference< XWindowPeer > & rParentPeer )
 {
-    // - used from "createPeer()" to set the values of an WindowDescriptor!!!
-    // - if you will change the descriptor-values, you must override this virtual function
-    // - the caller must release the memory for this dynamical descriptor!!!
+    WindowDescriptor aDescriptor;
 
-    WindowDescriptor    *   aDescriptor = new WindowDescriptor;
-
-    aDescriptor->Type               = WindowClass_CONTAINER;
-    aDescriptor->WindowServiceName  = "window";
-    aDescriptor->ParentIndex        = -1;
-    aDescriptor->Parent             = rParentPeer;
-    aDescriptor->Bounds             = getPosSize ();
-    aDescriptor->WindowAttributes   = 0;
+    aDescriptor.Type               = WindowClass_CONTAINER;
+    aDescriptor.WindowServiceName  = "window";
+    aDescriptor.ParentIndex        = -1;
+    aDescriptor.Parent             = rParentPeer;
+    aDescriptor.Bounds             = getPosSize ();
+    aDescriptor.WindowAttributes   = 0;
 
     return aDescriptor;
 }
@@ -403,46 +385,6 @@ WindowDescriptor* BaseContainerControl::impl_getWindowDescriptor ( const Referen
 
 void BaseContainerControl::impl_paint ( sal_Int32 /*nX*/, sal_Int32 /*nY*/, const Reference< XGraphics > & /*rGraphics*/ )
 {
-}
-
-//  private method
-
-void BaseContainerControl::impl_activateTabControllers ()
-{
-    // Ready for multithreading
-    MutexGuard aGuard (m_aMutex);
-
-    sal_uInt32  nMaxCount   =   m_xTabControllerList.getLength ();
-    sal_uInt32  nCount      =   0;
-
-    for ( nCount = 0; nCount < nMaxCount; ++nCount )
-    {
-         m_xTabControllerList.getArray () [nCount]->setContainer        ( this  );
-         m_xTabControllerList.getArray () [nCount]->activateTabOrder    (       );
-    }
-}
-
-//  private method
-
-void BaseContainerControl::impl_cleanMemory ()
-{
-    // Get count of listitems.
-    size_t  nMaxCount   = maControlInfoList.size();
-    size_t  nCount      = 0;
-
-    // Delete all items.
-    for ( nCount = 0; nCount < nMaxCount; ++nCount )
-    {
-        // Delete every time first element of list!
-        // We count from 0 to MAX, where "MAX=count of items" BEFORE we delete some elements!
-        // If we use "GetObject ( nCount )" ... it can be, that we have an index greater then count of current elements!
-
-        IMPL_ControlInfo* pSearchControl = maControlInfoList[ nCount ];
-        delete pSearchControl;
-    }
-
-    // Delete list himself.
-    maControlInfoList.clear ();
 }
 
 } // namespace unocontrols

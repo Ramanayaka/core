@@ -24,7 +24,6 @@
 #include "xerecord.hxx"
 
 class ScDBData;
-class XclExpTablesManagerImpl;
 
 class XclExpTables : public XclExpRecordBase, protected XclExpRoot
 {
@@ -58,10 +57,10 @@ public:
     virtual             ~XclExpTablesManager() override;
 
     void                Initialize();
-    ::std::shared_ptr< XclExpTables > GetTablesBySheet( SCTAB nTab );
+    rtl::Reference< XclExpTables > GetTablesBySheet( SCTAB nTab );
 
 private:
-    typedef ::std::map< SCTAB, ::std::shared_ptr< XclExpTables > > TablesMapType;
+    typedef ::std::map< SCTAB, rtl::Reference< XclExpTables > > TablesMapType;
     TablesMapType maTablesMap;
 };
 

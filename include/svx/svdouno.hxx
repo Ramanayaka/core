@@ -34,14 +34,14 @@ class SdrView;
 class SdrPageWindow;
 class SdrControlEventListenerImpl;
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
     class ViewContactOfUnoControl;
-}}
+}
 
 
 // SdrUnoObj
 struct SdrUnoObjDataHolder;
-class SVX_DLLPUBLIC SdrUnoObj : public SdrRectObj
+class SVXCORE_DLLPUBLIC SdrUnoObj : public SdrRectObj
 {
     friend class                SdrPageView;
     friend class                SdrControlEventListenerImpl;
@@ -59,27 +59,29 @@ private:
     SVX_DLLPRIVATE void CreateUnoControlModel(const OUString& rModelName,
         const css::uno::Reference< css::lang::XMultiServiceFactory >& rxSFac );
 
-public:
-
-    explicit SdrUnoObj(const OUString& rModelName);
-    SdrUnoObj(const OUString& rModelName,
-        const css::uno::Reference< css::lang::XMultiServiceFactory >& rxSFac);
+protected:
+    // protected destructor
     virtual ~SdrUnoObj() override;
+
+public:
+    explicit SdrUnoObj(
+        SdrModel& rSdrModel,
+        const OUString& rModelName);
+    SdrUnoObj(
+        SdrModel& rSdrModel,
+        const OUString& rModelName,
+        const css::uno::Reference< css::lang::XMultiServiceFactory >& rxSFac);
 
     virtual void TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
     virtual sal_uInt16 GetObjIdentifier() const override;
 
-    virtual SdrUnoObj* Clone() const override;
+    virtual SdrUnoObj* CloneSdrObject(SdrModel& rTargetModel) const override;
     SdrUnoObj& operator= (const SdrUnoObj& rObj);
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
     virtual void NbcSetLayer(SdrLayerID nLayer) override;
 
     // SpecialDrag support
     virtual bool hasSpecialDrag() const override;
-
-    // FullDrag support
-    virtual bool supportsFullDrag() const override;
-    virtual SdrObject* getFullDragClone() const override;
 
     virtual OUString TakeObjNameSingul() const override;
     virtual OUString TakeObjNamePlural() const override;
@@ -94,7 +96,7 @@ public:
         The method GetUnoControl, used to retrieve the XControl whose parent is a given device, only works
         if the SdrUnoObj has already been painted at least once onto this device. However, there are valid
         scenarios where you need certain information on how a control is painted onto a window, without
-        actually painting it. For example, you might be interested in the DeviceInfo of an UNO control.
+        actually painting it. For example, you might be interested in the DeviceInfo of a UNO control.
 
         For those cases, you can contain an XControl which behaves as the control which *would* be used to
         paint onto a window.
@@ -125,7 +127,7 @@ public:
 
 protected:
     // SdrObject overridables
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
 
 private:
     /** Retrieves the typed ViewContact for the object

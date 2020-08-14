@@ -26,7 +26,6 @@
 #include <com/sun/star/table/CellRangeAddress.hpp>
 #include <com/sun/star/form/binding/XValueBinding.hpp>
 #include <com/sun/star/form/binding/XListEntrySource.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 
 namespace xmloff
@@ -37,7 +36,6 @@ namespace xmloff
     */
     class FormCellBindingHelper
     {
-    protected:
         css::uno::Reference< css::beans::XPropertySet >
                     m_xControlModel;    // the model we work for
         css::uno::Reference< css::sheet::XSpreadsheetDocument >
@@ -57,7 +55,7 @@ namespace xmloff
                 the control model which is or will be bound
             @param _rxDocument
                 the document. If this is <NULL/>, the document will be obtained from the model
-                itself by walkon up the chain of its ancestors.<br/>
+                itself by walk on up the chain of its ancestors.<br/>
                 This parameter can be used if the control model is not (yet) part of a document
                 model.
         */
@@ -66,7 +64,6 @@ namespace xmloff
             const css::uno::Reference< css::frame::XModel >& _rxDocument
         );
 
-    public:
         /** gets a cell binding for the given address
             @precond
                 isCellBindingAllowed returns <TRUE/>
@@ -178,7 +175,7 @@ namespace xmloff
                             const css::uno::Reference< css::form::binding::XListEntrySource >& _rxSource
                         );
 
-    protected:
+    private:
         /** creates an address object from a string representation of a cell address
         */
         bool            convertStringAddress(
@@ -206,7 +203,7 @@ namespace xmloff
                             const OUString& _rService
                         );
 
-        /** checkes whether a given component supports a given servive
+        /** checks whether a given component supports a given service
         */
         static bool     doesComponentSupport(
                             const css::uno::Reference< css::uno::XInterface >& _rxComponent,

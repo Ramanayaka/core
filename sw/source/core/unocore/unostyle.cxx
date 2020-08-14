@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <o3tl/safeint.hxx>
 #include <svx/svxids.hrc>
 #include <hintids.hxx>
 #include <vcl/svapp.hxx>
@@ -24,17 +27,26 @@
 #include <svtools/ctrltool.hxx>
 #include <svl/style.hxx>
 #include <svl/itemiter.hxx>
+#include <svl/listener.hxx>
 #include <svl/zforlist.hxx>
 #include <svl/zformat.hxx>
 #include <svx/pageitem.hxx>
+#include <editeng/colritem.hxx>
+#include <editeng/contouritem.hxx>
+#include <editeng/crossedoutitem.hxx>
+#include <editeng/fontitem.hxx>
 #include <editeng/sizeitem.hxx>
+#include <editeng/udlnitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/boxitem.hxx>
-#include <editeng/shaditem.hxx>
+#include <editeng/postitem.hxx>
+#include <editeng/shdditem.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/flstitem.hxx>
+#include <editeng/fhgtitem.hxx>
 #include <editeng/paperinf.hxx>
+#include <editeng/wghtitem.hxx>
 #include <pagedesc.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -43,10 +55,11 @@
 #include <docary.hxx>
 #include <charfmt.hxx>
 #include <cmdid.h>
+#include <unomid.h>
+#include <unomap.hxx>
 #include <unostyle.hxx>
 #include <unosett.hxx>
 #include <docsh.hxx>
-#include <swstyle.h>
 #include <paratr.hxx>
 #include <unoprnms.hxx>
 #include <shellio.hxx>
@@ -54,50 +67,67 @@
 #include <unotextbodyhf.hxx>
 #include <fmthdft.hxx>
 #include <fmtpdsc.hxx>
-#include <poolfmt.hrc>
+#include <strings.hrc>
 #include <poolfmt.hxx>
-#include "unoevent.hxx"
+#include <unoevent.hxx>
 #include <fmtruby.hxx>
 #include <SwStyleNameMapper.hxx>
 #include <sfx2/printer.hxx>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/style/ParagraphStyleCategory.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
-#include <com/sun/star/text/XTextTablesSupplier.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/drawing/BitmapMode.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/document/XEventsSupplier.hpp>
+#include <com/sun/star/io/XInputStream.hpp>
 #include <istyleaccess.hxx>
 #include <GetMetricVal.hxx>
 #include <fmtfsize.hxx>
 #include <numrule.hxx>
 #include <tblafmt.hxx>
+#include <frameformats.hxx>
 
 #include <comphelper/servicehelper.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/typeprovider.hxx>
 #include <comphelper/sequence.hxx>
-#include <o3tl/make_unique.hxx>
+#include <sal/log.hxx>
 
-//
+#include <svl/stylepool.hxx>
 #include <svx/unobrushitemhelper.hxx>
 #include <editeng/unoipset.hxx>
-#include <editeng/memberids.hrc>
+#include <editeng/memberids.h>
+#include <svx/unomid.hxx>
 #include <svx/unoshape.hxx>
 #include <svx/xflbstit.hxx>
 #include <svx/xflbmtit.hxx>
 #include <swunohelper.hxx>
 #include <svx/xbtmpit.hxx>
 
-#include "ccoll.hxx"
-#include "unocore.hrc"
+#include <ccoll.hxx>
+#include <hints.hxx>
 
 #include <cassert>
 #include <memory>
 #include <set>
 #include <limits>
 
-namespace
-{
+using namespace css;
+using namespace css::io;
+using namespace css::lang;
+using namespace css::uno;
+
+namespace {
+
+class SwXStyle;
+class SwStyleProperties_Impl;
+
     struct StyleFamilyEntry
     {
         using GetCountOrName_t = std::function<sal_Int32 (const SwDoc&, OUString*, sal_Int32)>;
@@ -108,23 +138,23 @@ namespace
         uno::Reference<beans::XPropertySetInfo> m_xPSInfo;
         SwGetPoolIdFromName m_aPoolId;
         OUString m_sName;
-        sal_uInt32 m_nResId;
+        const char* m_pResId;
         GetCountOrName_t m_fGetCountOrName;
         CreateStyle_t m_fCreateStyle;
         TranslateIndex_t m_fTranslateIndex;
-        StyleFamilyEntry(SfxStyleFamily eFamily, sal_uInt16 nPropMapType, SwGetPoolIdFromName aPoolId, OUString const& sName, sal_uInt32 nResId, GetCountOrName_t const & fGetCountOrName, CreateStyle_t const & fCreateStyle, TranslateIndex_t const & fTranslateIndex)
+        StyleFamilyEntry(SfxStyleFamily eFamily, sal_uInt16 nPropMapType, SwGetPoolIdFromName aPoolId, OUString const& sName, const char* pResId, GetCountOrName_t const & fGetCountOrName, CreateStyle_t const & fCreateStyle, TranslateIndex_t const & fTranslateIndex)
                 : m_eFamily(eFamily)
                 , m_nPropMapType(nPropMapType)
                 , m_xPSInfo(aSwMapProvider.GetPropertySet(nPropMapType)->getPropertySetInfo())
                 , m_aPoolId(aPoolId)
                 , m_sName(sName)
-                , m_nResId(nResId)
+                , m_pResId(pResId)
                 , m_fGetCountOrName(fGetCountOrName)
                 , m_fCreateStyle(fCreateStyle)
                 , m_fTranslateIndex(fTranslateIndex)
             { }
     };
-    static const std::vector<StyleFamilyEntry>* our_pStyleFamilyEntries;
+    const std::vector<StyleFamilyEntry>* our_pStyleFamilyEntries;
     // these should really be constexprs, but MSVC still is apparently too stupid for them
     #define nPoolChrNormalRange (RES_POOLCHR_NORMAL_END - RES_POOLCHR_NORMAL_BEGIN)
     #define nPoolChrHtmlRange   (RES_POOLCHR_HTML_END   - RES_POOLCHR_HTML_BEGIN)
@@ -143,20 +173,19 @@ namespace
     #define nPoolCollDocStackedStart      ( nPoolCollRegisterStackedStart + nPoolCollRegisterRange)
     #define nPoolCollHtmlStackedStart     ( nPoolCollDocStackedStart      + nPoolCollDocRange)
     using paragraphstyle_t = std::remove_const<decltype(style::ParagraphStyleCategory::TEXT)>::type;
-    using swstylebits_t = sal_uInt16;
     using collectionbits_t = sal_uInt16;
     struct ParagraphStyleCategoryEntry
     {
         paragraphstyle_t m_eCategory;
-        swstylebits_t m_nSwStyleBits;
+        SfxStyleSearchBits m_nSwStyleBits;
         collectionbits_t m_nCollectionBits;
-        ParagraphStyleCategoryEntry(paragraphstyle_t eCategory, swstylebits_t nSwStyleBits, collectionbits_t nCollectionBits)
+        ParagraphStyleCategoryEntry(paragraphstyle_t eCategory, SfxStyleSearchBits nSwStyleBits, collectionbits_t nCollectionBits)
                 : m_eCategory(eCategory)
                 , m_nSwStyleBits(nSwStyleBits)
                 , m_nCollectionBits(nCollectionBits)
             { }
     };
-    static const std::vector<ParagraphStyleCategoryEntry>* our_pParagraphStyleCategoryEntries;
+    const std::vector<ParagraphStyleCategoryEntry>* our_pParagraphStyleCategoryEntries;
 }
 static const std::vector<StyleFamilyEntry>* lcl_GetStyleFamilyEntries();
 
@@ -164,6 +193,8 @@ using namespace ::com::sun::star;
 
 namespace sw
 {
+    namespace {
+
     class XStyleFamily : public cppu::WeakImplHelper
     <
         container::XNameContainer,
@@ -194,7 +225,8 @@ namespace sw
             , m_pBasePool(pDocShell->GetStyleSheetPool())
             , m_pDocShell(pDocShell)
         {
-            StartListening(*m_pBasePool);
+            if (m_pBasePool) //tdf#124142 html docs can have no styles
+                StartListening(*m_pBasePool);
         }
 
         //XIndexAccess
@@ -206,9 +238,9 @@ namespace sw
         virtual uno::Any SAL_CALL getByIndex(sal_Int32 nIndex) override;
 
         //XElementAccess
-        virtual uno::Type SAL_CALL SAL_CALL getElementType(  ) override
+        virtual uno::Type SAL_CALL getElementType(  ) override
             { return cppu::UnoType<style::XStyle>::get(); };
-        virtual sal_Bool SAL_CALL SAL_CALL hasElements(  ) override
+        virtual sal_Bool SAL_CALL hasElements(  ) override
         {
             if(!m_pBasePool)
                 throw uno::RuntimeException();
@@ -260,7 +292,10 @@ namespace sw
             { return { "com.sun.star.style.StyleFamily" }; }
     };
 
+    }
 }
+
+namespace {
 
 class SwStyleBase_Impl;
 class SwXStyle : public cppu::WeakImplHelper
@@ -274,7 +309,7 @@ class SwXStyle : public cppu::WeakImplHelper
         css::beans::XMultiPropertyStates
     >
     , public SfxListener
-    , public SwClient
+    , public SvtListener
 {
     SwDoc* m_pDoc;
     OUString m_sStyleName;
@@ -299,7 +334,6 @@ protected:
     uno::Any GetStyleProperty_Impl(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, SwStyleBase_Impl& rBase);
     uno::Any GetPropertyValue_Impl(const SfxItemPropertySet* pPropSet, SwStyleBase_Impl& rBase, const OUString& rPropertyName);
 
-   virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
 public:
     SwXStyle(SwDoc* pDoc, SfxStyleFamily eFam, bool bConditional = false);
     SwXStyle(SfxStyleSheetBasePool* pPool, SfxStyleFamily eFamily, SwDoc* pDoc, const OUString& rStyleName);
@@ -364,6 +398,8 @@ public:
 
     //SfxListener
     virtual void        Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
+    //SvtListener
+    virtual void Notify(const SfxHint&) override;
     const OUString&     GetStyleName() const { return m_sStyleName;}
     SfxStyleFamily      GetFamily() const {return m_rEntry.m_eFamily;}
 
@@ -374,7 +410,7 @@ public:
                             {
                                 m_bIsDescriptor = false; m_pDoc = pDc;
                                 m_pBasePool = pPool;
-                                StartListening(*m_pBasePool);
+                                SfxListener::StartListening(*m_pBasePool);
                             }
     SwDoc*                GetDoc() const { return m_pDoc; }
     void Invalidate();
@@ -408,8 +444,8 @@ public:
     virtual css::uno::Reference< css::container::XNameReplace > SAL_CALL getEvents(  ) override;
 
     //ICoreStyle
-    virtual void SetItem(enum RES_FRMATR eAtr, const SfxPoolItem& rItem) override;
-    virtual const SfxPoolItem* GetItem(enum RES_FRMATR eAtr) override;
+    virtual void SetItem(sal_uInt16 eAtr, const SfxPoolItem& rItem) override;
+    virtual const SfxPoolItem* GetItem(sal_uInt16 eAtr) override;
     virtual css::document::XEventsSupplier& GetEventsSupplier() override
             { return *this; };
 };
@@ -432,6 +468,7 @@ public:
     virtual css::uno::Sequence< css::uno::Any > SAL_CALL getPropertyValues( const css::uno::Sequence< OUString >& aPropertyNames ) override;
 };
 
+}
 
 using sw::XStyleFamily;
 
@@ -479,9 +516,8 @@ uno::Sequence< OUString > SwXStyleFamilies::getElementNames()
 sal_Bool SwXStyleFamilies::hasByName(const OUString& Name)
 {
     auto pEntries(lcl_GetStyleFamilyEntries());
-    const auto pEntry = std::find_if(pEntries->begin(), pEntries->end(),
+    return std::any_of(pEntries->begin(), pEntries->end(),
         [&Name] (const StyleFamilyEntry& e) { return e.m_sName == Name; });
-    return pEntry != pEntries->end();
 }
 
 sal_Int32 SwXStyleFamilies::getCount()
@@ -527,9 +563,10 @@ void SwXStyleFamilies::loadStylesFromURL(const OUString& rURL,
     aOpt.SetMerge(false);
     for(const auto& rProperty: aOptions)
     {
-        if(rProperty.Value.getValueType() != cppu::UnoType<bool>::get())
-            continue;
-        const bool bValue = rProperty.Value.get<bool>();
+        bool bValue = false;
+        if(rProperty.Value.getValueType() == cppu::UnoType<bool>::get())
+            bValue = rProperty.Value.get<bool>();
+
         if(rProperty.Name == UNO_NAME_OVERWRITE_STYLES)
             aOpt.SetMerge(!bValue);
         else if(rProperty.Name == UNO_NAME_LOAD_NUMBERING_STYLES)
@@ -540,6 +577,17 @@ void SwXStyleFamilies::loadStylesFromURL(const OUString& rURL,
             aOpt.SetFrameFormats(bValue);
         else if(rProperty.Name == UNO_NAME_LOAD_TEXT_STYLES)
             aOpt.SetTextFormats(bValue);
+        else if(rProperty.Name == "InputStream")
+        {
+            Reference<XInputStream> xInputStream;
+            if (!(rProperty.Value >>= xInputStream))
+                throw IllegalArgumentException("Parameter 'InputStream' could not be converted to "
+                                               "type 'com::sun::star::io::XInputStream'",
+                                               nullptr, 0);
+
+            aOpt.SetInputStream(xInputStream);
+
+        }
     }
     const ErrCode nErr = m_pDocShell->LoadStylesFromFile( rURL, aOpt, true );
     if(nErr)
@@ -565,7 +613,7 @@ static bool lcl_GetHeaderFooterItem(
         SvxSetItem const*& o_rpItem)
 {
     SfxItemState eState = rSet.GetItemState(
-        (bFooter) ? SID_ATTR_PAGE_FOOTERSET : SID_ATTR_PAGE_HEADERSET,
+        bFooter ? SID_ATTR_PAGE_FOOTERSET : SID_ATTR_PAGE_HEADERSET,
         false, reinterpret_cast<const SfxPoolItem**>(&o_rpItem));
     if (SfxItemState::SET != eState &&
         rPropName == UNO_NAME_FIRST_IS_SHARED)
@@ -596,7 +644,7 @@ sal_Int32 lcl_GetCountOrName<SfxStyleFamily::Char>(const SwDoc& rDoc, OUString* 
         {
             // the default character format needs to be set to "Default!"
             if(rDoc.GetDfltCharFormat() == pFormat)
-                SwStyleNameMapper::FillUIName(RES_POOLCOLL_STANDARD, *pString);
+                *pString = SwResId(STR_POOLCHR_STANDARD);
             else
                 *pString = pFormat->GetName();
             break;
@@ -695,6 +743,9 @@ sal_Int32 lcl_GetCountOrName<SfxStyleFamily::Pseudo>(const SwDoc& rDoc, OUString
 template<>
 sal_Int32 lcl_GetCountOrName<SfxStyleFamily::Table>(const SwDoc& rDoc, OUString* pString, sal_Int32 nIndex)
 {
+    if (!rDoc.HasTableStyles())
+        return 0;
+
     const auto pAutoFormats = &rDoc.GetTableStyles();
     const sal_Int32 nCount = pAutoFormats->size();
     if (0 <= nIndex && nIndex < nCount)
@@ -716,9 +767,9 @@ sal_Int32 lcl_GetCountOrName<SfxStyleFamily::Cell>(const SwDoc& rDoc, OUString* 
         {
             const sal_Int32 nAutoFormat = nIndex / rTableTemplateMap.size();
             const sal_Int32 nBoxFormat = rTableTemplateMap[nIndex % rTableTemplateMap.size()];
-            const SwTableAutoFormat* pTableFormat = &rAutoFormats[nAutoFormat];
-            if (pTableFormat)
-                *pString = pTableFormat->GetName() + pTableFormat->GetTableTemplateCellSubName(pTableFormat->GetBoxFormat(nBoxFormat));
+            const SwTableAutoFormat& rTableFormat = rAutoFormats[nAutoFormat];
+            SwStyleNameMapper::FillProgName(rTableFormat.GetName(), *pString, SwGetPoolIdFromName::TabStyle);
+            *pString += rTableFormat.GetTableTemplateCellSubName(rTableFormat.GetBoxFormat(nBoxFormat));
         }
         else
             *pString = rDoc.GetCellStyles()[nIndex-nUsedCellStylesCount].GetName();
@@ -837,11 +888,10 @@ uno::Any XStyleFamily::getByName(const OUString& rName)
 {
     SolarMutexGuard aGuard;
     OUString sStyleName;
-    SwStyleNameMapper::FillUIName(rName, sStyleName, m_rEntry.m_aPoolId, true);
+    SwStyleNameMapper::FillUIName(rName, sStyleName, m_rEntry.m_aPoolId);
     if(!m_pBasePool)
         throw uno::RuntimeException();
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(sStyleName);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(sStyleName, m_rEntry.m_eFamily);
     if(!pBase)
         throw container::NoSuchElementException();
     uno::Reference<style::XStyle> xStyle = FindStyle(sStyleName);
@@ -856,11 +906,11 @@ uno::Sequence<OUString> XStyleFamily::getElementNames()
     if(!m_pBasePool)
         throw uno::RuntimeException();
     std::vector<OUString> vRet;
-    std::shared_ptr<SfxStyleSheetIterator> pIt = m_pBasePool->CreateIterator(m_rEntry.m_eFamily, SFXSTYLEBIT_ALL);
+    std::unique_ptr<SfxStyleSheetIterator> pIt = m_pBasePool->CreateIterator(m_rEntry.m_eFamily);
     for (SfxStyleSheetBase* pStyle = pIt->First(); pStyle; pStyle = pIt->Next())
     {
         OUString sName;
-        SwStyleNameMapper::FillProgName(pStyle->GetName(), sName, m_rEntry.m_aPoolId, true);
+        SwStyleNameMapper::FillProgName(pStyle->GetName(), sName, m_rEntry.m_aPoolId);
         vRet.push_back(sName);
     }
     return comphelper::containerToSequence(vRet);
@@ -872,12 +922,10 @@ sal_Bool XStyleFamily::hasByName(const OUString& rName)
     if(!m_pBasePool)
         throw uno::RuntimeException();
     OUString sStyleName;
-    SwStyleNameMapper::FillUIName(rName, sStyleName, m_rEntry.m_aPoolId, true);
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(sStyleName);
+    SwStyleNameMapper::FillUIName(rName, sStyleName, m_rEntry.m_aPoolId);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(sStyleName, m_rEntry.m_eFamily);
     return nullptr != pBase;
 }
-
 
 void XStyleFamily::insertByName(const OUString& rName, const uno::Any& rElement)
 {
@@ -885,10 +933,9 @@ void XStyleFamily::insertByName(const OUString& rName, const uno::Any& rElement)
     if(!m_pBasePool)
         throw uno::RuntimeException();
     OUString sStyleName;
-    SwStyleNameMapper::FillUIName(rName, sStyleName, m_rEntry.m_aPoolId, true);
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(sStyleName);
-    SfxStyleSheetBase* pUINameBase = m_pBasePool->Find( sStyleName );
+    SwStyleNameMapper::FillUIName(rName, sStyleName, m_rEntry.m_aPoolId);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(sStyleName, m_rEntry.m_eFamily);
+    SfxStyleSheetBase* pUINameBase = m_pBasePool->Find(sStyleName, m_rEntry.m_eFamily);
     if(pBase || pUINameBase)
         throw container::ElementExistException();
     if(rElement.getValueType().getTypeClass() != uno::TypeClass_INTERFACE)
@@ -930,19 +977,18 @@ void XStyleFamily::insertByName(const OUString& rName, const uno::Any& rElement)
         if (!pNewStyle || !pNewStyle->IsDescriptor() || pNewStyle->GetFamily() != m_rEntry.m_eFamily)
             throw lang::IllegalArgumentException();
 
-        sal_uInt16 nMask = SFXSTYLEBIT_ALL;
+        SfxStyleSearchBits nMask = SfxStyleSearchBits::All;
         if(m_rEntry.m_eFamily == SfxStyleFamily::Para && !pNewStyle->IsConditional())
-            nMask &= ~SWSTYLEBIT_CONDCOLL;
+            nMask &= ~SfxStyleSearchBits::SwCondColl;
         m_pBasePool->Make(sStyleName, m_rEntry.m_eFamily, nMask);
         pNewStyle->SetDoc(m_pDocShell->GetDoc(), m_pBasePool);
         pNewStyle->SetStyleName(sStyleName);
         const OUString sParentStyleName(pNewStyle->GetParentStyleName());
         if (!sParentStyleName.isEmpty())
         {
-            m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-            SfxStyleSheetBase* pParentBase = m_pBasePool->Find(sParentStyleName);
+            SfxStyleSheetBase* pParentBase = m_pBasePool->Find(sParentStyleName, m_rEntry.m_eFamily);
             if(pParentBase && pParentBase->GetFamily() == m_rEntry.m_eFamily &&
-                &pParentBase->GetPool() == m_pBasePool)
+                pParentBase->GetPool() == m_pBasePool)
                 m_pBasePool->SetParent(m_rEntry.m_eFamily, sStyleName, sParentStyleName);
         }
         // after all, we still need to apply the properties of the descriptor
@@ -955,8 +1001,9 @@ void XStyleFamily::replaceByName(const OUString& rName, const uno::Any& rElement
     SolarMutexGuard aGuard;
     if(!m_pBasePool)
         throw uno::RuntimeException();
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(rName);
+    OUString sStyleName;
+    SwStyleNameMapper::FillUIName(rName, sStyleName, m_rEntry.m_aPoolId);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(sStyleName, m_rEntry.m_eFamily);
     // replacements only for userdefined styles
     if(!pBase)
         throw container::NoSuchElementException();
@@ -964,7 +1011,7 @@ void XStyleFamily::replaceByName(const OUString& rName, const uno::Any& rElement
     {
         // handle cell styles, don't call on assigned cell styles (TableStyle child)
         OUString sParent;
-        SwBoxAutoFormat* pBoxAutoFormat = SwXTextCellStyle::GetBoxAutoFormat(m_pDocShell, rName, &sParent);
+        SwBoxAutoFormat* pBoxAutoFormat = SwXTextCellStyle::GetBoxAutoFormat(m_pDocShell, sStyleName, &sParent);
         if (pBoxAutoFormat && sParent.isEmpty())// if parent exists then this style is assigned to a table style. Don't replace.
         {
             uno::Reference<style::XStyle> xStyle = rElement.get<uno::Reference<style::XStyle>>();
@@ -972,7 +1019,7 @@ void XStyleFamily::replaceByName(const OUString& rName, const uno::Any& rElement
             if (!pStyleToReplaceWith)
                 throw lang::IllegalArgumentException();
 
-            pStyleToReplaceWith->setName(rName);
+            pStyleToReplaceWith->setName(sStyleName);
             *pBoxAutoFormat = *pStyleToReplaceWith->GetBoxFormat();
             pStyleToReplaceWith->SetPhysical();
         }
@@ -980,7 +1027,7 @@ void XStyleFamily::replaceByName(const OUString& rName, const uno::Any& rElement
     else if (SwGetPoolIdFromName::TabStyle == m_rEntry.m_aPoolId)
     {
         // handle table styles
-        SwTableAutoFormat* pTableAutoFormat = SwXTextTableStyle::GetTableAutoFormat(m_pDocShell, rName);
+        SwTableAutoFormat* pTableAutoFormat = SwXTextTableStyle::GetTableAutoFormat(m_pDocShell, sStyleName);
         if (pTableAutoFormat)
         {
             uno::Reference<style::XStyle> xStyle = rElement.get<uno::Reference<style::XStyle>>();
@@ -988,7 +1035,7 @@ void XStyleFamily::replaceByName(const OUString& rName, const uno::Any& rElement
             if (!pStyleToReplaceWith)
                 throw lang::IllegalArgumentException();
 
-            pStyleToReplaceWith->setName(rName);
+            pStyleToReplaceWith->setName(sStyleName);
             *pTableAutoFormat = *pStyleToReplaceWith->GetTableFormat();
             pStyleToReplaceWith->SetPhysical();
         }
@@ -997,17 +1044,13 @@ void XStyleFamily::replaceByName(const OUString& rName, const uno::Any& rElement
     {
         if(!pBase->IsUserDefined())
             throw lang::IllegalArgumentException();
-        //if theres an object available to this style then it must be invalidated
+        //if there's an object available to this style then it must be invalidated
         uno::Reference<style::XStyle> xStyle = FindStyle(pBase->GetName());
         if(xStyle.is())
         {
-            uno::Reference<lang::XUnoTunnel> xTunnel( xStyle, uno::UNO_QUERY);
-            if(xTunnel.is())
-            {
-                SwXStyle* pStyle = reinterpret_cast< SwXStyle * >(
-                        sal::static_int_cast< sal_IntPtr >( xTunnel->getSomething( SwXStyle::getUnoTunnelId()) ));
+            SwXStyle* pStyle = comphelper::getUnoTunnelImplementation<SwXStyle>(xStyle);
+            if(pStyle)
                 pStyle->Invalidate();
-            }
         }
         m_pBasePool->Remove(pBase);
         insertByName(rName, rElement);
@@ -1019,10 +1062,9 @@ void XStyleFamily::removeByName(const OUString& rName)
     SolarMutexGuard aGuard;
     if(!m_pBasePool)
         throw uno::RuntimeException();
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
     OUString sName;
-    SwStyleNameMapper::FillUIName(rName, sName, m_rEntry.m_aPoolId, true);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find( sName );
+    SwStyleNameMapper::FillUIName(rName, sName, m_rEntry.m_aPoolId);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(sName, m_rEntry.m_eFamily);
     if(!pBase)
         throw container::NoSuchElementException();
     if (SwGetPoolIdFromName::CellStyle == m_rEntry.m_aPoolId)
@@ -1044,7 +1086,7 @@ uno::Any SAL_CALL XStyleFamily::getPropertyValue( const OUString& sPropertyName 
     if(sPropertyName != "DisplayName")
         throw beans::UnknownPropertyException( "unknown property: " + sPropertyName, static_cast<OWeakObject *>(this) );
     SolarMutexGuard aGuard;
-    return uno::makeAny(SwResId(m_rEntry.m_nResId));
+    return uno::makeAny(SwResId(m_rEntry.m_pResId));
 }
 
 
@@ -1083,16 +1125,18 @@ static const std::vector<ParagraphStyleCategoryEntry>* lcl_GetParagraphStyleCate
     if(!our_pParagraphStyleCategoryEntries)
     {
         our_pParagraphStyleCategoryEntries = new std::vector<ParagraphStyleCategoryEntry>{
-            { style::ParagraphStyleCategory::TEXT,    SWSTYLEBIT_TEXT,    COLL_TEXT_BITS     },
-            { style::ParagraphStyleCategory::CHAPTER, SWSTYLEBIT_CHAPTER, COLL_DOC_BITS      },
-            { style::ParagraphStyleCategory::LIST,    SWSTYLEBIT_LIST,    COLL_LISTS_BITS    },
-            { style::ParagraphStyleCategory::INDEX,   SWSTYLEBIT_IDX,     COLL_REGISTER_BITS },
-            { style::ParagraphStyleCategory::EXTRA,   SWSTYLEBIT_EXTRA,   COLL_EXTRA_BITS    },
-            { style::ParagraphStyleCategory::HTML,    SWSTYLEBIT_HTML,    COLL_HTML_BITS     }
+            { style::ParagraphStyleCategory::TEXT,    SfxStyleSearchBits::SwText,    COLL_TEXT_BITS     },
+            { style::ParagraphStyleCategory::CHAPTER, SfxStyleSearchBits::SwChapter, COLL_DOC_BITS      },
+            { style::ParagraphStyleCategory::LIST,    SfxStyleSearchBits::SwList,    COLL_LISTS_BITS    },
+            { style::ParagraphStyleCategory::INDEX,   SfxStyleSearchBits::SwIndex,     COLL_REGISTER_BITS },
+            { style::ParagraphStyleCategory::EXTRA,   SfxStyleSearchBits::SwExtra,   COLL_EXTRA_BITS    },
+            { style::ParagraphStyleCategory::HTML,    SfxStyleSearchBits::SwHtml,    COLL_HTML_BITS     }
         };
     }
     return our_pParagraphStyleCategoryEntries;
 }
+
+namespace {
 
 class SwStyleProperties_Impl
 {
@@ -1105,7 +1149,7 @@ public:
 
     bool AllowsKey(const OUString& rName)
     {
-        return aPropertyEntries.end() != std::find_if(aPropertyEntries.begin(), aPropertyEntries.end(),
+        return std::any_of(aPropertyEntries.begin(), aPropertyEntries.end(),
             [rName] (const SfxItemPropertyNamedEntry& rEntry) {return rName == rEntry.sName;} );
     }
     bool SetProperty(const OUString& rName, const uno::Any& rValue)
@@ -1115,15 +1159,15 @@ public:
         m_vPropertyValues[rName] = rValue;
         return true;
     }
-    bool GetProperty(const OUString& rName, const uno::Any*& pAny)
+    void GetProperty(const OUString& rName, const uno::Any*& pAny)
     {
         if(!AllowsKey(rName))
         {
             pAny = nullptr;
-            return false;
+            return;
         }
         pAny = &m_vPropertyValues[rName];
-        return true;
+        return;
     }
     bool ClearProperty( const OUString& rName )
     {
@@ -1148,6 +1192,8 @@ public:
     }
 };
 
+}
+
 static SwGetPoolIdFromName lcl_GetSwEnumFromSfxEnum(SfxStyleFamily eFamily)
 {
     auto pEntries(lcl_GetStyleFamilyEntries());
@@ -1171,9 +1217,7 @@ const uno::Sequence<sal_Int8>& SwXStyle::getUnoTunnelId()
 
 sal_Int64 SAL_CALL SwXStyle::getSomething(const uno::Sequence<sal_Int8>& rId)
 {
-    if(rId.getLength() != 16)
-        return 0;
-    if(0 == memcmp(getUnoTunnelId().getConstArray(), rId.getConstArray(), 16))
+    if(isUnoTunnelId<SwXStyle>(rId))
     {
         return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_IntPtr>(this));
     }
@@ -1224,7 +1268,7 @@ uno::Sequence< OUString > SwXStyle::getSupportedServiceNames()
     return aRet;
 }
 
-static uno::Reference<beans::XPropertySet> lcl_InitStandardStyle(const SfxStyleFamily eFamily,  uno::Reference<container::XNameAccess>& rxStyleFamily)
+static uno::Reference<beans::XPropertySet> lcl_InitStandardStyle(const SfxStyleFamily eFamily,  uno::Reference<container::XNameAccess> const & rxStyleFamily)
 {
     using return_t = decltype(lcl_InitStandardStyle(eFamily, rxStyleFamily));
     if(eFamily != SfxStyleFamily::Para && eFamily != SfxStyleFamily::Page)
@@ -1255,8 +1299,7 @@ static bool lcl_InitConditional(SfxStyleSheetBasePool* pBasePool, const SfxStyle
 {
     if(!pBasePool || eFamily != SfxStyleFamily::Para)
         return false;
-    pBasePool->SetSearchMask(eFamily);
-    SfxStyleSheetBase* pBase = pBasePool->Find(rStyleName);
+    SfxStyleSheetBase* pBase = pBasePool->Find(rStyleName, eFamily);
     SAL_WARN_IF(!pBase, "sw.uno", "where is the style?" );
     if(!pBase)
         return false;
@@ -1286,8 +1329,8 @@ SwXStyle::SwXStyle(SwDoc* pDoc, SfxStyleFamily eFamily, bool bConditional)
 {
     assert(!m_bIsConditional || m_rEntry.m_eFamily == SfxStyleFamily::Para); // only paragraph styles are conditional
     // Register ourselves as a listener to the document (via the page descriptor)
-    pDoc->getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->Add(this);
-    m_pPropertiesImpl = o3tl::make_unique<SwStyleProperties_Impl>(
+    SvtListener::StartListening(pDoc->getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->GetNotifier());
+    m_pPropertiesImpl = std::make_unique<SwStyleProperties_Impl>(
             aSwMapProvider.GetPropertySet(m_bIsConditional ? PROPERTY_MAP_CONDITIONAL_PARA_STYLE :  m_rEntry.m_nPropMapType)->getPropertyMap());
 }
 
@@ -1298,23 +1341,20 @@ SwXStyle::SwXStyle(SfxStyleSheetBasePool* pPool, SfxStyleFamily eFamily, SwDoc* 
     , m_bIsDescriptor(false)
     , m_bIsConditional(lcl_InitConditional(pPool, eFamily, rStyleName))
     , m_pBasePool(pPool)
-    , m_pPropertiesImpl(nullptr)
 { }
 
 SwXStyle::~SwXStyle()
 {
     SolarMutexGuard aGuard;
     if(m_pBasePool)
-        EndListening(*m_pBasePool);
+        SfxListener::EndListening(*m_pBasePool);
     m_pPropertiesImpl.reset();
-    if(GetRegisteredIn())
-        GetRegisteredIn()->Remove( this );
+    SvtListener::EndListeningAll();
 }
 
-void SwXStyle::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew)
+void SwXStyle::Notify(const SfxHint& rHint)
 {
-    ClientModify(this, pOld, pNew);
-    if(!GetRegisteredIn())
+    if(rHint.GetId() == SfxHintId::Dying)
     {
         m_pDoc = nullptr;
         m_xStyleData.clear();
@@ -1327,13 +1367,12 @@ OUString SwXStyle::getName()
     SolarMutexGuard aGuard;
     if(!m_pBasePool)
         return m_sStyleName;
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName, m_rEntry.m_eFamily);
     SAL_WARN_IF(!pBase, "sw.uno", "where is the style?");
     if(!pBase)
         throw uno::RuntimeException();
     OUString aString;
-    SwStyleNameMapper::FillProgName(pBase->GetName(), aString, lcl_GetSwEnumFromSfxEnum ( m_rEntry.m_eFamily ), true);
+    SwStyleNameMapper::FillProgName(pBase->GetName(), aString, lcl_GetSwEnumFromSfxEnum ( m_rEntry.m_eFamily ));
     return aString;
 }
 
@@ -1345,8 +1384,7 @@ void SwXStyle::setName(const OUString& rName)
         m_sStyleName = rName;
         return;
     }
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName, m_rEntry.m_eFamily);
     SAL_WARN_IF(!pBase, "sw.uno", "where is the style?");
     if(!pBase || !pBase->IsUserDefined())
         throw uno::RuntimeException();
@@ -1361,8 +1399,7 @@ sal_Bool SwXStyle::isUserDefined()
     SolarMutexGuard aGuard;
     if(!m_pBasePool)
         throw uno::RuntimeException();
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName, m_rEntry.m_eFamily);
     //if it is not found it must be non user defined
     return pBase && pBase->IsUserDefined();
 }
@@ -1372,8 +1409,7 @@ sal_Bool SwXStyle::isInUse()
     SolarMutexGuard aGuard;
     if(!m_pBasePool)
         throw uno::RuntimeException();
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily, SFXSTYLEBIT_USED);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName, m_rEntry.m_eFamily, SfxStyleSearchBits::Used);
     return pBase && pBase->IsUsed();
 }
 
@@ -1386,12 +1422,11 @@ OUString SwXStyle::getParentStyle()
             throw uno::RuntimeException();
         return m_sParentStyleName;
     }
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName, m_rEntry.m_eFamily);
     OUString aString;
     if(pBase)
         aString = pBase->GetParent();
-    SwStyleNameMapper::FillProgName(aString, aString, lcl_GetSwEnumFromSfxEnum(m_rEntry.m_eFamily), true);
+    SwStyleNameMapper::FillProgName(aString, aString, lcl_GetSwEnumFromSfxEnum(m_rEntry.m_eFamily));
     return aString;
 }
 
@@ -1399,7 +1434,7 @@ void SwXStyle::setParentStyle(const OUString& rParentStyle)
 {
     SolarMutexGuard aGuard;
     OUString sParentStyle;
-    SwStyleNameMapper::FillUIName(rParentStyle, sParentStyle, lcl_GetSwEnumFromSfxEnum ( m_rEntry.m_eFamily ), true );
+    SwStyleNameMapper::FillUIName(rParentStyle, sParentStyle, lcl_GetSwEnumFromSfxEnum ( m_rEntry.m_eFamily ) );
     if(!m_pBasePool)
     {
         if(!m_bIsDescriptor)
@@ -1414,8 +1449,7 @@ void SwXStyle::setParentStyle(const OUString& rParentStyle)
         { }
         return;
     }
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName, m_rEntry.m_eFamily);
     if(!pBase)
         throw uno::RuntimeException();
     rtl::Reference<SwDocStyleSheet> xBase(new SwDocStyleSheet(*static_cast<SwDocStyleSheet*>(pBase)));
@@ -1448,6 +1482,8 @@ void SwXStyle::ApplyDescriptorProperties()
     m_pPropertiesImpl->Apply(*this);
 }
 
+namespace {
+
 class SwStyleBase_Impl
 {
 private:
@@ -1463,7 +1499,6 @@ public:
         : m_rDoc(rSwDoc)
         , m_pOldPageDesc(nullptr)
         , m_pItemSet(nullptr)
-        , m_pMyItemSet(nullptr)
         , m_rStyleName(rName)
         , m_pParentStyle(pParentStyle)
     { }
@@ -1514,6 +1549,22 @@ public:
     };
 };
 
+    const char* STR_POOLPAGE_ARY[] =
+    {
+        // Page styles
+        STR_POOLPAGE_STANDARD,
+        STR_POOLPAGE_FIRST,
+        STR_POOLPAGE_LEFT,
+        STR_POOLPAGE_RIGHT,
+        STR_POOLPAGE_JAKET,
+        STR_POOLPAGE_REGISTER,
+        STR_POOLPAGE_HTML,
+        STR_POOLPAGE_FOOTNOTE,
+        STR_POOLPAGE_ENDNOTE,
+        STR_POOLPAGE_LANDSCAPE
+    };
+}
+
 const SwPageDesc* SwStyleBase_Impl::GetOldPageDesc()
 {
     if(!m_pOldPageDesc)
@@ -1524,11 +1575,11 @@ const SwPageDesc* SwStyleBase_Impl::GetOldPageDesc()
 
         if(!m_pOldPageDesc)
         {
-            for(sal_uInt16 i = RC_POOLPAGEDESC_BEGIN; i <= STR_POOLPAGE_LANDSCAPE; ++i)
+            for (size_t i = 0; i < SAL_N_ELEMENTS(STR_POOLPAGE_ARY); ++i)
             {
-                if(SwResId(i) == m_rStyleName)
+                if (SwResId(STR_POOLPAGE_ARY[i]) == m_rStyleName)
                 {
-                    m_pOldPageDesc = m_rDoc.getIDocumentStylePoolAccess().GetPageDescFromPool( static_cast<sal_uInt16>(RES_POOLPAGE_BEGIN + i - RC_POOLPAGEDESC_BEGIN));
+                    m_pOldPageDesc = m_rDoc.getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_BEGIN + i);
                     break;
                 }
             }
@@ -1539,10 +1590,10 @@ const SwPageDesc* SwStyleBase_Impl::GetOldPageDesc()
 
 
 
-sal_uInt8 lcl_TranslateMetric(const SfxItemPropertySimpleEntry& rEntry, SwDoc* pDoc, uno::Any& o_aValue)
+static sal_uInt8 lcl_TranslateMetric(const SfxItemPropertySimpleEntry& rEntry, SwDoc* pDoc, uno::Any& o_aValue)
 {
     // check for needed metric translation
-    if(!(rEntry.nMemberId & SFX_METRIC_ITEM))
+    if(!(rEntry.nMoreFlags & PropertyMoreFlags::METRIC_ITEM))
         return rEntry.nMemberId;
     // exception: If these ItemTypes are used, do not convert when these are negative
     // since this means they are intended as percent values
@@ -1551,13 +1602,13 @@ sal_uInt8 lcl_TranslateMetric(const SfxItemPropertySimpleEntry& rEntry, SwDoc* p
             && o_aValue.get<sal_Int32>() < 0)
         return rEntry.nMemberId;
     if(!pDoc)
-        return rEntry.nMemberId & (~SFX_METRIC_ITEM);
+        return rEntry.nMemberId;
 
     const SfxItemPool& rPool = pDoc->GetAttrPool();
     const MapUnit eMapUnit(rPool.GetMetric(rEntry.nWID));
     if(eMapUnit != MapUnit::Map100thMM)
         SvxUnoConvertFromMM(eMapUnit, o_aValue);
-    return rEntry.nMemberId & (~SFX_METRIC_ITEM);
+    return rEntry.nMemberId;
 }
 template<>
 void SwXStyle::SetPropertyValue<HINT_BEGIN>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
@@ -1589,7 +1640,7 @@ void SwXStyle::SetPropertyValue<FN_UNO_STYLE_INTEROP_GRAB_BAG>(const SfxItemProp
     SetPropertyValue<HINT_BEGIN>(rEntry, rPropSet, rValue, o_rStyleBase);
 }
 template<>
-void SwXStyle::SetPropertyValue<XATTR_FILLGRADIENT>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
+void SwXStyle::SetPropertyValue<sal_uInt16(XATTR_FILLGRADIENT)>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
 {
     uno::Any aValue(rValue);
     const auto nMemberId(lcl_TranslateMetric(rEntry, m_pDoc, aValue));
@@ -1601,11 +1652,10 @@ void SwXStyle::SetPropertyValue<XATTR_FILLGRADIENT>(const SfxItemPropertySimpleE
             throw lang::IllegalArgumentException();
         SvxShape::SetFillAttribute(rEntry.nWID, aValue.get<OUString>(), rStyleSet);
     }
-    else if(MID_GRAFURL == nMemberId)
+    else if(MID_BITMAP == nMemberId)
     {
-        if(XATTR_FILLBITMAP == rEntry.nWID)
+        if(sal_uInt16(XATTR_FILLBITMAP) == rEntry.nWID)
         {
-            // Bitmap also has the MID_GRAFURL mode where a Bitmap URL is used
             const Graphic aNullGraphic;
             SfxItemSet& rStyleSet = o_rStyleBase.GetItemSet();
             XFillBitmapItem aXFillBitmapItem(aNullGraphic);
@@ -1617,23 +1667,23 @@ void SwXStyle::SetPropertyValue<XATTR_FILLGRADIENT>(const SfxItemPropertySimpleE
         SetPropertyValue<HINT_BEGIN>(rEntry, rPropSet, aValue, o_rStyleBase);
 }
 template<>
-void SwXStyle::SetPropertyValue<RES_BACKGROUND>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet&, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
+void SwXStyle::SetPropertyValue<sal_uInt16(RES_BACKGROUND)>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet&, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
 {
     SfxItemSet& rStyleSet = o_rStyleBase.GetItemSet();
-    const SvxBrushItem aOriginalBrushItem(getSvxBrushItemFromSourceSet(rStyleSet, RES_BACKGROUND, true, m_pDoc->IsInXMLImport()));
-    SvxBrushItem aChangedBrushItem(aOriginalBrushItem);
+    const std::unique_ptr<SvxBrushItem> aOriginalBrushItem(getSvxBrushItemFromSourceSet(rStyleSet, RES_BACKGROUND, true, m_pDoc->IsInXMLImport()));
+    std::unique_ptr<SvxBrushItem> aChangedBrushItem(aOriginalBrushItem->Clone());
 
     uno::Any aValue(rValue);
     const auto nMemberId(lcl_TranslateMetric(rEntry, m_pDoc, aValue));
-    aChangedBrushItem.PutValue(aValue, nMemberId);
+    aChangedBrushItem->PutValue(aValue, nMemberId);
 
     // 0xff is already the default - but if BackTransparent is set
     // to true, it must be applied in the item set on ODF import
     // to potentially override parent style, which is unknown yet
-    if(aChangedBrushItem == aOriginalBrushItem && (MID_GRAPHIC_TRANSPARENT != nMemberId || !aValue.has<bool>() || !aValue.get<bool>()))
+    if(*aChangedBrushItem == *aOriginalBrushItem && (MID_GRAPHIC_TRANSPARENT != nMemberId || !aValue.has<bool>() || !aValue.get<bool>()))
         return;
 
-    setSvxBrushItemAsFillAttributesToTargetSet(aChangedBrushItem, rStyleSet);
+    setSvxBrushItemAsFillAttributesToTargetSet(*aChangedBrushItem, rStyleSet);
 }
 template<>
 void SwXStyle::SetPropertyValue<OWN_ATTR_FILLBMP_MODE>(const SfxItemPropertySimpleEntry&, const SfxItemPropertySet&, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
@@ -1643,14 +1693,14 @@ void SwXStyle::SetPropertyValue<OWN_ATTR_FILLBMP_MODE>(const SfxItemPropertySimp
     {
         if(!rValue.has<sal_Int32>())
             throw lang::IllegalArgumentException();
-        eMode = ((drawing::BitmapMode)rValue.get<sal_Int32>());
+        eMode = static_cast<drawing::BitmapMode>(rValue.get<sal_Int32>());
     }
     SfxItemSet& rStyleSet = o_rStyleBase.GetItemSet();
     rStyleSet.Put(XFillBmpStretchItem(drawing::BitmapMode_STRETCH == eMode));
     rStyleSet.Put(XFillBmpTileItem(drawing::BitmapMode_REPEAT == eMode));
 }
 template<>
-void SwXStyle::SetPropertyValue<RES_PAPER_BIN>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
+void SwXStyle::SetPropertyValue<sal_uInt16(RES_PAPER_BIN)>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
 {
     if(!rValue.has<OUString>())
         throw lang::IllegalArgumentException();
@@ -1731,7 +1781,7 @@ void SwXStyle::SetPropertyValue<FN_UNO_NUM_RULES>(const SfxItemPropertySimpleEnt
     o_rStyleBase.getNewBase()->SetNumRule(aSetRule);
 }
 template<>
-void SwXStyle::SetPropertyValue<RES_PARATR_OUTLINELEVEL>(const SfxItemPropertySimpleEntry&, const SfxItemPropertySet&, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
+void SwXStyle::SetPropertyValue<sal_uInt16(RES_PARATR_OUTLINELEVEL)>(const SfxItemPropertySimpleEntry&, const SfxItemPropertySet&, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
 {
     if(!rValue.has<sal_Int16>())
         return;
@@ -1746,11 +1796,11 @@ void SwXStyle::SetPropertyValue<FN_UNO_FOLLOW_STYLE>(const SfxItemPropertySimple
         return;
     const auto sValue(rValue.get<OUString>());
     OUString aString;
-    SwStyleNameMapper::FillUIName(sValue, aString, m_rEntry.m_aPoolId, true);
+    SwStyleNameMapper::FillUIName(sValue, aString, m_rEntry.m_aPoolId);
     o_rStyleBase.getNewBase()->SetFollow(aString);
 }
 template<>
-void SwXStyle::SetPropertyValue<RES_PAGEDESC>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
+void SwXStyle::SetPropertyValue<sal_uInt16(RES_PAGEDESC)>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
 {
     if(MID_PAGEDESC_PAGEDESCNAME != rEntry.nMemberId)
     {
@@ -1769,7 +1819,7 @@ void SwXStyle::SetPropertyValue<RES_PAGEDESC>(const SfxItemPropertySimpleEntry& 
         pNewDesc.reset(new SwFormatPageDesc);
     const auto sValue(rValue.get<OUString>());
     OUString sDescName;
-    SwStyleNameMapper::FillUIName(sValue, sDescName, SwGetPoolIdFromName::PageDesc, true);
+    SwStyleNameMapper::FillUIName(sValue, sDescName, SwGetPoolIdFromName::PageDesc);
     if(pNewDesc->GetPageDesc() && pNewDesc->GetPageDesc()->GetName() == sDescName)
         return;
     if(sDescName.isEmpty())
@@ -1787,8 +1837,13 @@ void SwXStyle::SetPropertyValue<RES_PAGEDESC>(const SfxItemPropertySimpleEntry& 
     }
 }
 template<>
-void SwXStyle::SetPropertyValue<RES_TEXT_VERT_ADJUST>(const SfxItemPropertySimpleEntry&, const SfxItemPropertySet&, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
+void SwXStyle::SetPropertyValue<sal_uInt16(RES_TEXT_VERT_ADJUST)>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
 {
+    if(m_rEntry.m_eFamily != SfxStyleFamily::Page)
+    {
+        SetPropertyValue<HINT_BEGIN>(rEntry, rPropSet, rValue, o_rStyleBase);
+        return;
+    }
     if(!m_pDoc || !rValue.has<drawing::TextVerticalAdjust>() || !o_rStyleBase.GetOldPageDesc())
         return;
     SwPageDesc* pPageDesc = m_pDoc->FindPageDesc(o_rStyleBase.GetOldPageDesc()->GetName());
@@ -1814,7 +1869,8 @@ void SwXStyle::SetPropertyValue<FN_UNO_PARA_STYLE_CONDITIONS>(const SfxItemPrope
     if(!rValue.has<expectedarg_t>() || !m_pBasePool)
         throw lang::IllegalArgumentException();
     SwCondCollItem aCondItem;
-    for(auto& rNamedValue : rValue.get<expectedarg_t>())
+    const auto aNamedValues = rValue.get<expectedarg_t>();
+    for(const auto& rNamedValue : aNamedValues)
     {
         if(!rNamedValue.Value.has<OUString>())
             throw lang::IllegalArgumentException();
@@ -1822,15 +1878,14 @@ void SwXStyle::SetPropertyValue<FN_UNO_PARA_STYLE_CONDITIONS>(const SfxItemPrope
         const OUString sValue(rNamedValue.Value.get<OUString>());
         // get UI style name from programmatic style name
         OUString aStyleName;
-        SwStyleNameMapper::FillUIName(sValue, aStyleName, lcl_GetSwEnumFromSfxEnum(m_rEntry.m_eFamily), true);
+        SwStyleNameMapper::FillUIName(sValue, aStyleName, lcl_GetSwEnumFromSfxEnum(m_rEntry.m_eFamily));
 
         // check for correct context and style name
         const auto nIdx(GetCommandContextIndex(rNamedValue.Name));
         if (nIdx == -1)
             throw lang::IllegalArgumentException();
-        m_pBasePool->SetSearchMask(SfxStyleFamily::Para);
         bool bStyleFound = false;
-        for(auto pBase = m_pBasePool->First(); pBase; pBase = m_pBasePool->Next())
+        for(auto pBase = m_pBasePool->First(SfxStyleFamily::Para); pBase; pBase = m_pBasePool->Next())
         {
             bStyleFound = pBase->GetName() == aStyleName;
             if (bStyleFound)
@@ -1847,18 +1902,18 @@ void SwXStyle::SetPropertyValue<FN_UNO_CATEGORY>(const SfxItemPropertySimpleEntr
 {
     if(!o_rStyleBase.getNewBase()->IsUserDefined() || !rValue.has<paragraphstyle_t>())
         throw lang::IllegalArgumentException();
-    static std::unique_ptr<std::map<paragraphstyle_t, swstylebits_t>> pUnoToCore;
+    static std::unique_ptr<std::map<paragraphstyle_t, SfxStyleSearchBits>> pUnoToCore;
     if(!pUnoToCore)
     {
-        pUnoToCore.reset(new std::map<paragraphstyle_t, swstylebits_t>);
+        pUnoToCore.reset(new std::map<paragraphstyle_t, SfxStyleSearchBits>);
         auto pEntries = lcl_GetParagraphStyleCategoryEntries();
         std::transform(pEntries->begin(), pEntries->end(), std::inserter(*pUnoToCore, pUnoToCore->end()),
-            [] (const ParagraphStyleCategoryEntry& rEntry) { return std::pair<paragraphstyle_t, swstylebits_t>(rEntry.m_eCategory, rEntry.m_nSwStyleBits); });
+            [] (const ParagraphStyleCategoryEntry& rEntry) { return std::pair<paragraphstyle_t, SfxStyleSearchBits>(rEntry.m_eCategory, rEntry.m_nSwStyleBits); });
     }
     const auto pUnoToCoreIt(pUnoToCore->find(rValue.get<paragraphstyle_t>()));
     if(pUnoToCoreIt == pUnoToCore->end())
         throw lang::IllegalArgumentException();
-    o_rStyleBase.getNewBase()->SetMask( pUnoToCoreIt->second|SFXSTYLEBIT_USERDEF );
+    o_rStyleBase.getNewBase()->SetMask( pUnoToCoreIt->second|SfxStyleSearchBits::UserDefined );
 }
 template<>
 void SwXStyle::SetPropertyValue<SID_SWREGISTER_COLLECTION>(const SfxItemPropertySimpleEntry&, const SfxItemPropertySet&, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
@@ -1869,11 +1924,11 @@ void SwXStyle::SetPropertyValue<SID_SWREGISTER_COLLECTION>(const SfxItemProperty
     aReg.SetWhich(SID_SWREGISTER_MODE);
     o_rStyleBase.GetItemSet().Put(aReg);
     OUString aString;
-    SwStyleNameMapper::FillUIName(sName, aString, SwGetPoolIdFromName::TxtColl, true);
+    SwStyleNameMapper::FillUIName(sName, aString, SwGetPoolIdFromName::TxtColl);
     o_rStyleBase.GetItemSet().Put(SfxStringItem(SID_SWREGISTER_COLLECTION, aString ) );
 }
 template<>
-void SwXStyle::SetPropertyValue<RES_TXTATR_CJK_RUBY>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
+void SwXStyle::SetPropertyValue<sal_uInt16(RES_TXTATR_CJK_RUBY)>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
 {
     if(MID_RUBY_CHARSTYLE != rEntry.nMemberId)
         return;
@@ -1888,7 +1943,7 @@ void SwXStyle::SetPropertyValue<RES_TXTATR_CJK_RUBY>(const SfxItemPropertySimple
     else
         pRuby.reset(new SwFormatRuby(OUString()));
     OUString sStyle;
-    SwStyleNameMapper::FillUIName(sValue, sStyle, SwGetPoolIdFromName::ChrFmt, true);
+    SwStyleNameMapper::FillUIName(sValue, sStyle, SwGetPoolIdFromName::ChrFmt);
     pRuby->SetCharFormatName(sValue);
     pRuby->SetCharFormatId(0);
     if(!sValue.isEmpty())
@@ -1900,7 +1955,7 @@ void SwXStyle::SetPropertyValue<RES_TXTATR_CJK_RUBY>(const SfxItemPropertySimple
     SetPropertyValue<HINT_BEGIN>(rEntry, rPropSet, rValue, o_rStyleBase);
 }
 template<>
-void SwXStyle::SetPropertyValue<RES_PARATR_DROP>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
+void SwXStyle::SetPropertyValue<sal_uInt16(RES_PARATR_DROP)>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
 {
     if(MID_DROPCAP_CHAR_STYLE_NAME != rEntry.nMemberId)
     {
@@ -1918,7 +1973,7 @@ void SwXStyle::SetPropertyValue<RES_PARATR_DROP>(const SfxItemPropertySimpleEntr
         pDrop.reset(new SwFormatDrop);
     const auto sValue(rValue.get<OUString>());
     OUString sStyle;
-    SwStyleNameMapper::FillUIName(sValue, sStyle, SwGetPoolIdFromName::ChrFmt, true);
+    SwStyleNameMapper::FillUIName(sValue, sStyle, SwGetPoolIdFromName::ChrFmt);
     auto pStyle(static_cast<SwDocStyleSheet*>(m_pDoc->GetDocShell()->GetStyleSheetPool()->Find(sStyle, SfxStyleFamily::Char)));
     //default character style must not be set as default format
     if(!pStyle || pStyle->GetCharFormat() == m_pDoc->GetDfltCharFormat() )
@@ -1929,7 +1984,7 @@ void SwXStyle::SetPropertyValue<RES_PARATR_DROP>(const SfxItemPropertySimpleEntr
     rStyleSet.Put(*pDrop);
 }
 template<>
-void SwXStyle::SetPropertyValue<RES_PARATR_NUMRULE>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
+void SwXStyle::SetPropertyValue<sal_uInt16(RES_PARATR_NUMRULE)>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
 {
     uno::Any aValue(rValue);
     lcl_TranslateMetric(rEntry, m_pDoc, aValue);
@@ -1958,25 +2013,25 @@ void SwXStyle::SetStyleProperty(const SfxItemPropertySimpleEntry& rEntry, const 
             // these explicit std::mem_fn() calls shouldn't be needed, but apparently MSVC is currently too stupid for C++11 again
             { FN_UNO_HIDDEN,                 std::mem_fn(&SwXStyle::SetPropertyValue<FN_UNO_HIDDEN>)                 },
             { FN_UNO_STYLE_INTEROP_GRAB_BAG, std::mem_fn(&SwXStyle::SetPropertyValue<FN_UNO_STYLE_INTEROP_GRAB_BAG>) },
-            { XATTR_FILLGRADIENT,            std::mem_fn(&SwXStyle::SetPropertyValue<XATTR_FILLGRADIENT>)            },
-            { XATTR_FILLHATCH,               std::mem_fn(&SwXStyle::SetPropertyValue<XATTR_FILLGRADIENT>)            },
-            { XATTR_FILLBITMAP,              std::mem_fn(&SwXStyle::SetPropertyValue<XATTR_FILLGRADIENT>)            },
-            { XATTR_FILLFLOATTRANSPARENCE,   std::mem_fn(&SwXStyle::SetPropertyValue<XATTR_FILLGRADIENT>)            },
-            { RES_BACKGROUND,                std::mem_fn(&SwXStyle::SetPropertyValue<RES_BACKGROUND>)                },
+            { XATTR_FILLGRADIENT,            std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(XATTR_FILLGRADIENT)>)            },
+            { XATTR_FILLHATCH,               std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(XATTR_FILLGRADIENT)>)            },
+            { XATTR_FILLBITMAP,              std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(XATTR_FILLGRADIENT)>)            },
+            { XATTR_FILLFLOATTRANSPARENCE,   std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(XATTR_FILLGRADIENT)>)            },
+            { RES_BACKGROUND,                std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(RES_BACKGROUND)>)                },
             { OWN_ATTR_FILLBMP_MODE,         std::mem_fn(&SwXStyle::SetPropertyValue<OWN_ATTR_FILLBMP_MODE>)         },
-            { RES_PAPER_BIN,                 std::mem_fn(&SwXStyle::SetPropertyValue<RES_PAPER_BIN>)                 },
+            { RES_PAPER_BIN,                 std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(RES_PAPER_BIN)>)                 },
             { FN_UNO_NUM_RULES,              std::mem_fn(&SwXStyle::SetPropertyValue<FN_UNO_NUM_RULES>)              },
-            { RES_PARATR_OUTLINELEVEL,       std::mem_fn(&SwXStyle::SetPropertyValue<RES_PARATR_OUTLINELEVEL>)       },
+            { RES_PARATR_OUTLINELEVEL,       std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(RES_PARATR_OUTLINELEVEL)>)       },
             { FN_UNO_FOLLOW_STYLE,           std::mem_fn(&SwXStyle::SetPropertyValue<FN_UNO_FOLLOW_STYLE>)           },
-            { RES_PAGEDESC,                  std::mem_fn(&SwXStyle::SetPropertyValue<RES_PAGEDESC>)                  },
-            { RES_TEXT_VERT_ADJUST,          std::mem_fn(&SwXStyle::SetPropertyValue<RES_TEXT_VERT_ADJUST>)          },
+            { RES_PAGEDESC,                  std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(RES_PAGEDESC)>)                  },
+            { RES_TEXT_VERT_ADJUST,          std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(RES_TEXT_VERT_ADJUST)>)          },
             { FN_UNO_IS_AUTO_UPDATE,         std::mem_fn(&SwXStyle::SetPropertyValue<FN_UNO_IS_AUTO_UPDATE>)         },
             { FN_UNO_PARA_STYLE_CONDITIONS,  std::mem_fn(&SwXStyle::SetPropertyValue<FN_UNO_PARA_STYLE_CONDITIONS>)  },
             { FN_UNO_CATEGORY,               std::mem_fn(&SwXStyle::SetPropertyValue<FN_UNO_CATEGORY>)               },
             { SID_SWREGISTER_COLLECTION,     std::mem_fn(&SwXStyle::SetPropertyValue<SID_SWREGISTER_COLLECTION>)     },
-            { RES_TXTATR_CJK_RUBY,           std::mem_fn(&SwXStyle::SetPropertyValue<RES_TXTATR_CJK_RUBY>)           },
-            { RES_PARATR_DROP,               std::mem_fn(&SwXStyle::SetPropertyValue<RES_PARATR_DROP>)               },
-            { RES_PARATR_NUMRULE,            std::mem_fn(&SwXStyle::SetPropertyValue<RES_PARATR_NUMRULE>)            }
+            { RES_TXTATR_CJK_RUBY,           std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(RES_TXTATR_CJK_RUBY)>)           },
+            { RES_PARATR_DROP,               std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(RES_PARATR_DROP)>)               },
+            { RES_PARATR_NUMRULE,            std::mem_fn(&SwXStyle::SetPropertyValue<sal_uInt16(RES_PARATR_NUMRULE)>)            }
         });
     }
     const auto pUnoToCoreIt(pUnoToCore->find(rEntry.nWID));
@@ -2005,10 +2060,7 @@ void SwXStyle::SetPropertyValues_Impl(const uno::Sequence<OUString>& rPropertyNa
     SwStyleBase_Impl aBaseImpl(*m_pDoc, m_sStyleName, &GetDoc()->GetDfltTextFormatColl()->GetAttrSet()); // add pDfltTextFormatColl as parent
     if(m_pBasePool)
     {
-        const sal_uInt16 nSaveMask = m_pBasePool->GetSearchMask();
-        m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-        SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName);
-        m_pBasePool->SetSearchMask(m_rEntry.m_eFamily, nSaveMask);
+        SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName, m_rEntry.m_eFamily);
         SAL_WARN_IF(!pBase, "sw.uno", "where is the style?");
         if(!pBase)
             throw uno::RuntimeException();
@@ -2058,10 +2110,7 @@ SfxStyleSheetBase* SwXStyle::GetStyleSheetBase()
 {
     if(!m_pBasePool)
         return nullptr;
-    const sal_uInt16 nSaveMask = m_pBasePool->GetSearchMask();
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName);
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily, nSaveMask );
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName, m_rEntry.m_eFamily);
     return pBase;
 }
 void SwXStyle::PrepareStyleBase(SwStyleBase_Impl& rBase)
@@ -2110,7 +2159,7 @@ uno::Any SwXStyle::GetStyleProperty<FN_UNO_STYLE_INTEROP_GRAB_BAG>(const SfxItem
     return aRet;
 }
 template<>
-uno::Any SwXStyle::GetStyleProperty<RES_PAPER_BIN>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, SwStyleBase_Impl& rBase)
+uno::Any SwXStyle::GetStyleProperty<sal_uInt16(RES_PAPER_BIN)>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, SwStyleBase_Impl& rBase)
 {
     PrepareStyleBase(rBase);
     SfxItemSet& rSet = rBase.GetItemSet();
@@ -2134,10 +2183,10 @@ uno::Any SwXStyle::GetStyleProperty<FN_UNO_NUM_RULES>(const SfxItemPropertySimpl
     return uno::makeAny<uno::Reference<container::XIndexReplace>>(xRules);
 }
 template<>
-uno::Any SwXStyle::GetStyleProperty<RES_PARATR_OUTLINELEVEL>(const SfxItemPropertySimpleEntry&, const SfxItemPropertySet&, SwStyleBase_Impl& rBase)
+uno::Any SwXStyle::GetStyleProperty<sal_uInt16(RES_PARATR_OUTLINELEVEL)>(const SfxItemPropertySimpleEntry&, const SfxItemPropertySet&, SwStyleBase_Impl& rBase)
 {
     PrepareStyleBase(rBase);
-    SAL_WARN_IF(SfxStyleFamily::Para == GetFamily(), "sw.uno", "only paras");
+    SAL_WARN_IF(SfxStyleFamily::Para != GetFamily(), "sw.uno", "only paras");
     return uno::makeAny<sal_Int16>(rBase.getNewBase()->GetCollection()->GetAttrOutlineLevel());
 }
 template<>
@@ -2145,15 +2194,14 @@ uno::Any SwXStyle::GetStyleProperty<FN_UNO_FOLLOW_STYLE>(const SfxItemPropertySi
 {
     PrepareStyleBase(rBase);
     OUString aString;
-    SwStyleNameMapper::FillProgName(rBase.getNewBase()->GetFollow(), aString, lcl_GetSwEnumFromSfxEnum(GetFamily()), true);
+    SwStyleNameMapper::FillProgName(rBase.getNewBase()->GetFollow(), aString, lcl_GetSwEnumFromSfxEnum(GetFamily()));
     return uno::makeAny(aString);
 }
 template<>
-uno::Any SwXStyle::GetStyleProperty<RES_PAGEDESC>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, SwStyleBase_Impl& rBase)
+uno::Any SwXStyle::GetStyleProperty<sal_uInt16(RES_PAGEDESC)>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet& rPropSet, SwStyleBase_Impl& rBase)
 {
     PrepareStyleBase(rBase);
-    const sal_uInt8 nMemberId(rEntry.nMemberId & (~SFX_METRIC_ITEM));
-    if(MID_PAGEDESC_PAGEDESCNAME != nMemberId)
+    if(MID_PAGEDESC_PAGEDESCNAME != rEntry.nMemberId)
         return GetStyleProperty<HINT_BEGIN>(rEntry, rPropSet, rBase);
     // special handling for RES_PAGEDESC
     const SfxPoolItem* pItem;
@@ -2163,7 +2211,7 @@ uno::Any SwXStyle::GetStyleProperty<RES_PAGEDESC>(const SfxItemPropertySimpleEnt
     if(!pDesc)
         return uno::Any();
     OUString aString;
-    SwStyleNameMapper::FillProgName(pDesc->GetName(), aString, SwGetPoolIdFromName::PageDesc, true);
+    SwStyleNameMapper::FillProgName(pDesc->GetName(), aString, SwGetPoolIdFromName::PageDesc);
     return uno::makeAny(aString);
 }
 template<>
@@ -2181,7 +2229,7 @@ template<>
 uno::Any SwXStyle::GetStyleProperty<FN_UNO_DISPLAY_NAME>(const SfxItemPropertySimpleEntry&, const SfxItemPropertySet&, SwStyleBase_Impl& rBase)
 {
     PrepareStyleBase(rBase);
-    return uno::makeAny(rBase.getNewBase()->GetDisplayName());
+    return uno::makeAny(rBase.getNewBase()->GetName());
 }
 template<>
 uno::Any SwXStyle::GetStyleProperty<FN_UNO_PARA_STYLE_CONDITIONS>(const SfxItemPropertySimpleEntry&, const SfxItemPropertySet&, SwStyleBase_Impl& rBase)
@@ -2207,7 +2255,7 @@ uno::Any SwXStyle::GetStyleProperty<FN_UNO_PARA_STYLE_CONDITIONS>(const SfxItemP
                 continue;
             // get programmatic style name from UI style name
             OUString aStyleName = pCond->GetTextFormatColl()->GetName();
-            SwStyleNameMapper::FillProgName(aStyleName, aStyleName, lcl_GetSwEnumFromSfxEnum(GetFamily()), true);
+            SwStyleNameMapper::FillProgName(aStyleName, aStyleName, lcl_GetSwEnumFromSfxEnum(GetFamily()));
             pSeq[n].Value <<= aStyleName;
         }
     }
@@ -2242,18 +2290,17 @@ uno::Any SwXStyle::GetStyleProperty<SID_SWREGISTER_COLLECTION>(const SfxItemProp
     if(!pCol)
         return uno::makeAny(OUString());
     OUString aName;
-    SwStyleNameMapper::FillProgName(pCol->GetName(), aName, SwGetPoolIdFromName::TxtColl, true);
+    SwStyleNameMapper::FillProgName(pCol->GetName(), aName, SwGetPoolIdFromName::TxtColl);
     return uno::makeAny(aName);
 }
 template<>
-uno::Any SwXStyle::GetStyleProperty<RES_BACKGROUND>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet&, SwStyleBase_Impl& rBase)
+uno::Any SwXStyle::GetStyleProperty<sal_uInt16(RES_BACKGROUND)>(const SfxItemPropertySimpleEntry& rEntry, const SfxItemPropertySet&, SwStyleBase_Impl& rBase)
 {
     PrepareStyleBase(rBase);
     const SfxItemSet& rSet = rBase.GetItemSet();
-    const SvxBrushItem aOriginalBrushItem(getSvxBrushItemFromSourceSet(rSet, RES_BACKGROUND));
-    const sal_uInt8 nMemberId(rEntry.nMemberId & (~SFX_METRIC_ITEM));
+    const std::unique_ptr<SvxBrushItem> aOriginalBrushItem(getSvxBrushItemFromSourceSet(rSet, RES_BACKGROUND));
     uno::Any aResult;
-    if(!aOriginalBrushItem.QueryValue(aResult, nMemberId))
+    if(!aOriginalBrushItem->QueryValue(aResult, rEntry.nMemberId))
         SAL_WARN("sw.uno", "error getting attribute from RES_BACKGROUND.");
     return aResult;
 }
@@ -2262,11 +2309,9 @@ uno::Any SwXStyle::GetStyleProperty<OWN_ATTR_FILLBMP_MODE>(const SfxItemProperty
 {
     PrepareStyleBase(rBase);
     const SfxItemSet& rSet = rBase.GetItemSet();
-    const XFillBmpTileItem* pTileItem = dynamic_cast<const XFillBmpTileItem*>(&rSet.Get(XATTR_FILLBMP_TILE));
-    if(pTileItem && pTileItem->GetValue())
+    if (rSet.Get(XATTR_FILLBMP_TILE).GetValue())
         return uno::makeAny(drawing::BitmapMode_REPEAT);
-    const XFillBmpStretchItem* pStretchItem = dynamic_cast<const XFillBmpStretchItem*>(&rSet.Get(XATTR_FILLBMP_STRETCH));
-    if(pStretchItem && pStretchItem->GetValue())
+    if (rSet.Get(XATTR_FILLBMP_STRETCH).GetValue())
         return uno::makeAny(drawing::BitmapMode_STRETCH);
     return uno::makeAny(drawing::BitmapMode_NO_REPEAT);
 }
@@ -2280,9 +2325,9 @@ uno::Any SwXStyle::GetStyleProperty<HINT_BEGIN>(const SfxItemPropertySimpleEntry
     //
     // since the sfx uint16 item now exports a sal_Int32, we may have to fix this here
     if(rEntry.aType == cppu::UnoType<sal_Int16>::get() && aResult.getValueType() == cppu::UnoType<sal_Int32>::get())
-        aResult <<= (sal_Int16)(aResult.get<sal_Int32>());
+        aResult <<= static_cast<sal_Int16>(aResult.get<sal_Int32>());
     // check for needed metric translation
-    if(rEntry.nMemberId & SFX_METRIC_ITEM && GetDoc())
+    if(rEntry.nMoreFlags & PropertyMoreFlags::METRIC_ITEM && GetDoc())
     {
         const SfxItemPool& rPool = GetDoc()->GetAttrPool();
         const MapUnit eMapUnit(rPool.GetMetric(rEntry.nWID));
@@ -2309,17 +2354,17 @@ uno::Any SwXStyle::GetStyleProperty_Impl(const SfxItemPropertySimpleEntry& rEntr
             { FN_UNO_IS_PHYSICAL,            std::mem_fn(&SwXStyle::GetStyleProperty<FN_UNO_IS_PHYSICAL>)            },
             { FN_UNO_HIDDEN,                 std::mem_fn(&SwXStyle::GetStyleProperty<FN_UNO_HIDDEN>)                 },
             { FN_UNO_STYLE_INTEROP_GRAB_BAG, std::mem_fn(&SwXStyle::GetStyleProperty<FN_UNO_STYLE_INTEROP_GRAB_BAG>) },
-            { RES_PAPER_BIN,                 std::mem_fn(&SwXStyle::GetStyleProperty<RES_PAPER_BIN>)                 },
+            { RES_PAPER_BIN,                 std::mem_fn(&SwXStyle::GetStyleProperty<sal_uInt16(RES_PAPER_BIN)>)                 },
             { FN_UNO_NUM_RULES,              std::mem_fn(&SwXStyle::GetStyleProperty<FN_UNO_NUM_RULES>)              },
-            { RES_PARATR_OUTLINELEVEL,       std::mem_fn(&SwXStyle::GetStyleProperty<RES_PARATR_OUTLINELEVEL>)       },
+            { RES_PARATR_OUTLINELEVEL,       std::mem_fn(&SwXStyle::GetStyleProperty<sal_uInt16(RES_PARATR_OUTLINELEVEL)>)       },
             { FN_UNO_FOLLOW_STYLE,           std::mem_fn(&SwXStyle::GetStyleProperty<FN_UNO_FOLLOW_STYLE>)           },
-            { RES_PAGEDESC,                  std::mem_fn(&SwXStyle::GetStyleProperty<RES_PAGEDESC>)                  },
+            { RES_PAGEDESC,                  std::mem_fn(&SwXStyle::GetStyleProperty<sal_uInt16(RES_PAGEDESC)>)                  },
             { FN_UNO_IS_AUTO_UPDATE,         std::mem_fn(&SwXStyle::GetStyleProperty<FN_UNO_IS_AUTO_UPDATE>)         },
             { FN_UNO_DISPLAY_NAME,           std::mem_fn(&SwXStyle::GetStyleProperty<FN_UNO_DISPLAY_NAME>)           },
             { FN_UNO_PARA_STYLE_CONDITIONS,  std::mem_fn(&SwXStyle::GetStyleProperty<FN_UNO_PARA_STYLE_CONDITIONS>)  },
             { FN_UNO_CATEGORY,               std::mem_fn(&SwXStyle::GetStyleProperty<FN_UNO_CATEGORY>)               },
             { SID_SWREGISTER_COLLECTION,     std::mem_fn(&SwXStyle::GetStyleProperty<SID_SWREGISTER_COLLECTION>)     },
-            { RES_BACKGROUND,                std::mem_fn(&SwXStyle::GetStyleProperty<RES_BACKGROUND>)                },
+            { RES_BACKGROUND,                std::mem_fn(&SwXStyle::GetStyleProperty<sal_uInt16(RES_BACKGROUND)>)                },
             { OWN_ATTR_FILLBMP_MODE,         std::mem_fn(&SwXStyle::GetStyleProperty<OWN_ATTR_FILLBMP_MODE>)         }
         });
     }
@@ -2404,11 +2449,15 @@ uno::Sequence<uno::Any> SwXStyle::getPropertyValues(const uno::Sequence<OUString
     }
     catch(beans::UnknownPropertyException&)
     {
-        throw uno::RuntimeException("Unknown property exception caught", static_cast<cppu::OWeakObject*>(this));
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException("Unknown property exception caught",
+                static_cast < cppu::OWeakObject * > ( this ), anyEx );
     }
     catch(lang::WrappedTargetException&)
     {
-        throw uno::RuntimeException("WrappedTargetException caught", static_cast<cppu::OWeakObject*>(this));
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw lang::WrappedTargetRuntimeException("WrappedTargetException caught",
+                static_cast < cppu::OWeakObject * > ( this ), anyEx );
     }
     return aValues;
 }
@@ -2431,7 +2480,7 @@ beans::PropertyState SwXStyle::getPropertyState(const OUString& rPropertyName)
 
 // allow to retarget the SfxItemSet working on, default correctly. Only
 // use pSourceSet below this point (except in header/footer processing)
-const SfxItemSet* lcl_GetItemsetForProperty(const SfxItemSet& rSet, SfxStyleFamily eFamily, const OUString& rPropertyName)
+static const SfxItemSet* lcl_GetItemsetForProperty(const SfxItemSet& rSet, SfxStyleFamily eFamily, const OUString& rPropertyName)
 {
     if(eFamily != SfxStyleFamily::Page)
         return &rSet;
@@ -2451,8 +2500,7 @@ uno::Sequence<beans::PropertyState> SwXStyle::getPropertyStates(const uno::Seque
 
     if(!m_pBasePool)
         throw uno::RuntimeException();
-    m_pBasePool->SetSearchMask(m_rEntry.m_eFamily);
-    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName);
+    SfxStyleSheetBase* pBase = m_pBasePool->Find(m_sStyleName, m_rEntry.m_eFamily);
 
     SAL_WARN_IF(!pBase, "sw.uno", "where is the style?");
     if(!pBase)
@@ -2524,7 +2572,7 @@ uno::Sequence<beans::PropertyState> SwXStyle::getPropertyStates(const uno::Seque
 
                 if(SfxStyleFamily::Page == m_rEntry.m_eFamily && SID_ATTR_PAGE_SIZE == pEntry->nWID && beans::PropertyState_DIRECT_VALUE == pStates[i])
                 {
-                    const SvxSizeItem& rSize = static_cast <const SvxSizeItem&>( rSet.Get(SID_ATTR_PAGE_SIZE));
+                    const SvxSizeItem& rSize = rSet.Get(SID_ATTR_PAGE_SIZE);
                     sal_uInt8 nMemberId = pEntry->nMemberId & 0x7f;
 
                     if((LONG_MAX == rSize.GetSize().Width() && (MID_SIZE_WIDTH == nMemberId || MID_SIZE_SIZE == nMemberId)) ||
@@ -2545,7 +2593,7 @@ void SwXStyle::setPropertyToDefault(const OUString& rPropertyName)
     setPropertiesToDefault(aSequence);
 }
 
-SwFormat* lcl_GetFormatForStyle(SwDoc* pDoc, const rtl::Reference<SwDocStyleSheet>& xStyle, const SfxStyleFamily eFamily)
+static SwFormat* lcl_GetFormatForStyle(SwDoc const * pDoc, const rtl::Reference<SwDocStyleSheet>& xStyle, const SfxStyleFamily eFamily)
 {
     if(!xStyle.is())
         return nullptr;
@@ -2650,7 +2698,7 @@ void SAL_CALL SwXStyle::setAllPropertiesToDefault()
         pPageFormat->SetFormatAttr(aLR);
         pPageFormat->SetFormatAttr(aUL);
         SwPageDesc* pStdPgDsc = m_pDoc->getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD);
-        SwFormatFrameSize aFrameSz(ATT_FIX_SIZE);
+        std::shared_ptr<SwFormatFrameSize> aFrameSz(std::make_shared<SwFormatFrameSize>(SwFrameSize::Fixed));
 
         if(RES_POOLPAGE_STANDARD == rPageDesc.GetPoolFormatId())
         {
@@ -2658,27 +2706,27 @@ void SAL_CALL SwXStyle::setAllPropertiesToDefault()
             {
                 const Size aPhysSize( SvxPaperInfo::GetPaperSize(
                     static_cast<Printer*>(m_pDoc->getIDocumentDeviceAccess().getPrinter(false))));
-                aFrameSz.SetSize(aPhysSize);
+                aFrameSz->SetSize(aPhysSize);
             }
             else
             {
-                aFrameSz.SetSize(SvxPaperInfo::GetDefaultPaperSize());
+                aFrameSz->SetSize(SvxPaperInfo::GetDefaultPaperSize());
             }
 
         }
         else
         {
-            aFrameSz = pStdPgDsc->GetMaster().GetFrameSize();
+            aFrameSz.reset(pStdPgDsc->GetMaster().GetFrameSize().Clone());
         }
 
         if(pStdPgDsc->GetLandscape())
         {
-            SwTwips nTmp = aFrameSz.GetHeight();
-            aFrameSz.SetHeight(aFrameSz.GetWidth());
-            aFrameSz.SetWidth(nTmp);
+            SwTwips nTmp = aFrameSz->GetHeight();
+            aFrameSz->SetHeight(aFrameSz->GetWidth());
+            aFrameSz->SetWidth(nTmp);
         }
 
-        pPageFormat->SetFormatAttr(aFrameSz);
+        pPageFormat->SetFormatAttr(*aFrameSz);
         m_pDoc->ChgPageDesc(nPgDscPos, m_pDoc->GetPageDesc(nPgDscPos));
         return;
     }
@@ -2744,15 +2792,15 @@ void SwXStyle::Notify(SfxBroadcaster& rBC, const SfxHint& rHint)
     if((rHint.GetId() == SfxHintId::Dying) || (rHint.GetId() == SfxHintId::StyleSheetErased))
     {
         m_pBasePool = nullptr;
-        EndListening(rBC);
+        SfxListener::EndListening(rBC);
     }
     else if(rHint.GetId() == SfxHintId::StyleSheetChanged)
     {
-        static_cast<SfxStyleSheetBasePool&>(rBC).SetSearchMask(m_rEntry.m_eFamily);
-        SfxStyleSheetBase* pOwnBase = static_cast<SfxStyleSheetBasePool&>(rBC).Find(m_sStyleName);
+        SfxStyleSheetBasePool& rBP = static_cast<SfxStyleSheetBasePool&>(rBC);
+        SfxStyleSheetBase* pOwnBase = rBP.Find(m_sStyleName, m_rEntry.m_eFamily);
         if(!pOwnBase)
         {
-            EndListening(rBC);
+            SfxListener::EndListening(rBC);
             Invalidate();
         }
     }
@@ -2778,7 +2826,7 @@ SwXPageStyle::SwXPageStyle(SwDocShell* pDocSh)
 void SwXStyle::PutItemToSet(const SvxSetItem* pSetItem, const SfxItemPropertySet& rPropSet, const SfxItemPropertySimpleEntry& rEntry, const uno::Any& rVal, SwStyleBase_Impl& rBaseImpl)
 {
     // create a new SvxSetItem and get it's ItemSet as new target
-    const std::unique_ptr<SvxSetItem> pNewSetItem(static_cast<SvxSetItem*>(pSetItem->Clone()));
+    const std::unique_ptr<SvxSetItem> pNewSetItem(pSetItem->Clone());
     SfxItemSet& rSetSet = pNewSetItem->GetItemSet();
 
     // set parent to ItemSet to ensure XFILL_NONE as XFillStyleItem
@@ -2791,7 +2839,7 @@ void SwXStyle::PutItemToSet(const SvxSetItem* pSetItem, const SfxItemPropertySet
         SetStyleProperty(rEntry, rPropSet, rVal, rBaseImpl);
     }
 
-    // reset paret at ItemSet from SetItem
+    // reset parent at ItemSet from SetItem
     rSetSet.SetParent(nullptr);
 
     // set the new SvxSetItem at the real target and delete it
@@ -2927,7 +2975,7 @@ void SwXPageStyle::SetPropertyValues_Impl(const uno::Sequence<OUString>& rProper
                     if(SfxItemState::SET == aBaseImpl.GetItemSet().GetItemState(bFooter ? SID_ATTR_PAGE_FOOTERSET : SID_ATTR_PAGE_HEADERSET, false, reinterpret_cast<const SfxPoolItem**>(&pSetItem)))
                     {
                         // create a new SvxSetItem and get it's ItemSet as new target
-                        std::unique_ptr<SvxSetItem> pNewSetItem(static_cast<SvxSetItem*>(pSetItem->Clone()));
+                        std::unique_ptr<SvxSetItem> pNewSetItem(pSetItem->Clone());
                         SfxItemSet& rSetSet = pNewSetItem->GetItemSet();
 
                         // set parent to ItemSet to ensure XFILL_NONE as XFillStyleItem
@@ -2972,10 +3020,10 @@ void SwXPageStyle::SetPropertyValues_Impl(const uno::Sequence<OUString>& rProper
             case FN_PARAM_FTN_INFO:
             {
                 const SfxPoolItem& rItem = aBaseImpl.GetItemSet().Get(FN_PARAM_FTN_INFO);
-                const std::unique_ptr<SfxPoolItem> pNewFootnoteItem(rItem.Clone());
+                std::unique_ptr<SfxPoolItem> pNewFootnoteItem(rItem.Clone());
                 if(!pNewFootnoteItem->PutValue(rValues[nProp], pEntry->nMemberId))
                     throw lang::IllegalArgumentException();
-                aBaseImpl.GetItemSet().Put(*pNewFootnoteItem);
+                aBaseImpl.GetItemSet().Put(std::move(pNewFootnoteItem));
                 break;
             }
             default:
@@ -3027,7 +3075,7 @@ static uno::Reference<text::XText> lcl_makeHeaderFooter(const sal_uInt16 nRes, c
     const SfxPoolItem* pItem;
     if(SfxItemState::SET != rSet.GetItemState(nRes, true, &pItem))
         return nullptr;
-    SwFrameFormat* const pHeadFootFormat = (bHeader)
+    SwFrameFormat* const pHeadFootFormat = bHeader
         ? static_cast<SwFormatHeader*>(const_cast<SfxPoolItem*>(pItem))->GetHeaderFormat()
         : static_cast<SwFormatFooter*>(const_cast<SfxPoolItem*>(pItem))->GetFooterFormat();
     if(!pHeadFootFormat)
@@ -3214,8 +3262,7 @@ uno::Sequence<uno::Any> SwXPageStyle::GetPropertyValues_Impl(const uno::Sequence
                 rtl::Reference<SwDocStyleSheet> xStyle(new SwDocStyleSheet(*static_cast<SwDocStyleSheet*>(pBase)));
                 const SfxItemSet& rSet = xStyle->GetItemSet();
                 const SfxPoolItem& rItem = rSet.Get(FN_PARAM_FTN_INFO);
-                const sal_uInt8 nMemberId(pEntry->nMemberId & (~SFX_METRIC_ITEM));
-                rItem.QueryValue(aRet[nProp], nMemberId);
+                rItem.QueryValue(aRet[nProp], pEntry->nMemberId);
             }
             break;
             default:
@@ -3237,11 +3284,15 @@ uno::Sequence<uno::Any> SwXPageStyle::getPropertyValues(const uno::Sequence<OUSt
     }
     catch(beans::UnknownPropertyException &)
     {
-        throw uno::RuntimeException("Unknown property exception caught", static_cast<cppu::OWeakObject*>(this));
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw lang::WrappedTargetRuntimeException("Unknown property exception caught",
+                static_cast < cppu::OWeakObject * > ( this ), anyEx );
     }
     catch(lang::WrappedTargetException &)
     {
-        throw uno::RuntimeException("WrappedTargetException caught", static_cast<cppu::OWeakObject*>(this));
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw lang::WrappedTargetRuntimeException("WrappedTargetException caught",
+                static_cast < cppu::OWeakObject * > ( this ), anyEx );
     }
 
     return aValues;
@@ -3266,8 +3317,9 @@ SwXFrameStyle::SwXFrameStyle(SwDoc *pDoc)
     : SwXStyle(pDoc, SfxStyleFamily::Frame, false)
 { }
 
-void SwXFrameStyle::SetItem(enum RES_FRMATR eAtr, const SfxPoolItem& rItem)
+void SwXFrameStyle::SetItem(sal_uInt16 eAtr, const SfxPoolItem& rItem)
 {
+    assert(eAtr >= RES_FRMATR_BEGIN && eAtr < RES_FRMATR_END);
     SfxStyleSheetBase* pBase = GetStyleSheetBase();
     if(!pBase)
         return;
@@ -3278,8 +3330,9 @@ void SwXFrameStyle::SetItem(enum RES_FRMATR eAtr, const SfxPoolItem& rItem)
     xStyle->SetItemSet(aSet);
 }
 
-const SfxPoolItem* SwXFrameStyle::GetItem(enum RES_FRMATR eAtr)
+const SfxPoolItem* SwXFrameStyle::GetItem(sal_uInt16 eAtr)
 {
+    assert(eAtr >= RES_FRMATR_BEGIN && eAtr < RES_FRMATR_END);
     SfxStyleSheetBase* pBase = GetStyleSheetBase();
     if(!pBase)
         return nullptr;
@@ -3289,11 +3342,10 @@ const SfxPoolItem* SwXFrameStyle::GetItem(enum RES_FRMATR eAtr)
 
 uno::Sequence<uno::Type> SwXFrameStyle::getTypes()
 {
-    uno::Sequence<uno::Type> aTypes = SwXStyle::getTypes();
-    sal_Int32 nLen = aTypes.getLength();
-    aTypes.realloc(nLen + 1);
-    aTypes[nLen] = cppu::UnoType<XEventsSupplier>::get();
-    return aTypes;
+    return cppu::OTypeCollection(
+            cppu::UnoType<XEventsSupplier>::get(),
+            SwXStyle::getTypes()
+        ).getTypes();
 }
 
 uno::Any SwXFrameStyle::queryInterface(const uno::Type& rType)
@@ -3326,7 +3378,7 @@ class SwAutoStylesEnumImpl
 public:
     SwAutoStylesEnumImpl( SwDoc* pInitDoc, IStyleAccess::SwAutoStyleFamily eFam );
     bool hasMoreElements() { return aIter != mAutoStyles.end(); }
-    std::shared_ptr<SfxItemSet> nextElement() { return *(aIter++); }
+    std::shared_ptr<SfxItemSet> const & nextElement() { return *(aIter++); }
     IStyleAccess::SwAutoStyleFamily getFamily() const { return eFamily; }
     SwDoc* getDoc() const { return pDoc; }
 };
@@ -3351,41 +3403,40 @@ uno::Any SwXAutoStyles::getByIndex(sal_Int32 nIndex)
     uno::Any aRet;
     if(nIndex < 0 || nIndex >= AUTOSTYLE_FAMILY_COUNT)
         throw lang::IndexOutOfBoundsException();
-    if(IsValid())
-    {
-        uno::Reference< style::XAutoStyleFamily >  aRef;
-        IStyleAccess::SwAutoStyleFamily nType = aAutoStyleByIndex[nIndex];
-        switch( nType )
-        {
-            case IStyleAccess::AUTO_STYLE_CHAR:
-            {
-                if(!m_xAutoCharStyles.is())
-                    m_xAutoCharStyles = new SwXAutoStyleFamily(m_pDocShell, nType);
-                aRef = m_xAutoCharStyles;
-            }
-            break;
-            case IStyleAccess::AUTO_STYLE_RUBY:
-            {
-                if(!m_xAutoRubyStyles.is())
-                    m_xAutoRubyStyles = new SwXAutoStyleFamily(m_pDocShell, nType );
-                aRef = m_xAutoRubyStyles;
-            }
-            break;
-            case IStyleAccess::AUTO_STYLE_PARA:
-            {
-                if(!m_xAutoParaStyles.is())
-                    m_xAutoParaStyles = new SwXAutoStyleFamily(m_pDocShell, nType );
-                aRef = m_xAutoParaStyles;
-            }
-            break;
-
-            default:
-                ;
-        }
-        aRet <<= aRef;
-    }
-    else
+    if(!IsValid())
         throw uno::RuntimeException();
+
+    uno::Reference< style::XAutoStyleFamily >  aRef;
+    IStyleAccess::SwAutoStyleFamily nType = aAutoStyleByIndex[nIndex];
+    switch( nType )
+    {
+        case IStyleAccess::AUTO_STYLE_CHAR:
+        {
+            if(!m_xAutoCharStyles.is())
+                m_xAutoCharStyles = new SwXAutoStyleFamily(m_pDocShell, nType);
+            aRef = m_xAutoCharStyles;
+        }
+        break;
+        case IStyleAccess::AUTO_STYLE_RUBY:
+        {
+            if(!m_xAutoRubyStyles.is())
+                m_xAutoRubyStyles = new SwXAutoStyleFamily(m_pDocShell, nType );
+            aRef = m_xAutoRubyStyles;
+        }
+        break;
+        case IStyleAccess::AUTO_STYLE_PARA:
+        {
+            if(!m_xAutoParaStyles.is())
+                m_xAutoParaStyles = new SwXAutoStyleFamily(m_pDocShell, nType );
+            aRef = m_xAutoParaStyles;
+        }
+        break;
+
+        default:
+            ;
+    }
+    aRet <<= aRef;
+
     return aRet;
 }
 
@@ -3437,17 +3488,16 @@ SwXAutoStyleFamily::SwXAutoStyleFamily(SwDocShell* pDocSh, IStyleAccess::SwAutoS
     m_pDocShell( pDocSh ), m_eFamily(nFamily)
 {
     // Register ourselves as a listener to the document (via the page descriptor)
-    pDocSh->GetDoc()->getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->Add(this);
+    StartListening(pDocSh->GetDoc()->getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->GetNotifier());
 }
 
 SwXAutoStyleFamily::~SwXAutoStyleFamily()
 {
 }
 
-void SwXAutoStyleFamily::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew)
+void SwXAutoStyleFamily::Notify(const SfxHint& rHint)
 {
-    ClientModify(this, pOld, pNew);
-    if(!GetRegisteredIn())
+    if(rHint.GetId() == SfxHintId::Dying)
         m_pDocShell = nullptr;
 }
 
@@ -3488,17 +3538,15 @@ uno::Reference< style::XAutoStyle > SwXAutoStyleFamily::insertStyle(
         throw uno::RuntimeException();
 
     SwAttrSet aSet( m_pDocShell->GetDoc()->GetAttrPool(), pRange );
-    const beans::PropertyValue* pSeq = Values.getConstArray();
-    sal_Int32 nLen = Values.getLength();
     const bool bTakeCareOfDrawingLayerFillStyle(IStyleAccess::AUTO_STYLE_PARA == m_eFamily);
 
     if(!bTakeCareOfDrawingLayerFillStyle)
     {
-        for( sal_Int32 i = 0; i < nLen; ++i )
+        for( const beans::PropertyValue& rValue : Values )
         {
             try
             {
-                pPropSet->setPropertyValue( pSeq[i].Name, pSeq[i].Value, aSet );
+                pPropSet->setPropertyValue( rValue.Name, rValue.Value, aSet );
             }
             catch (const beans::UnknownPropertyException &)
             {
@@ -3522,10 +3570,10 @@ uno::Reference< style::XAutoStyle > SwXAutoStyleFamily::insertStyle(
         // used slots functionality here to do this correctly
         const SfxItemPropertyMap& rMap = pPropSet->getPropertyMap();
 
-        for( sal_Int32 i = 0; i < nLen; ++i )
+        for( const beans::PropertyValue& rValue : Values )
         {
-            const OUString& rPropName = pSeq[i].Name;
-            uno::Any aValue(pSeq[i].Value);
+            const OUString& rPropName = rValue.Name;
+            uno::Any aValue(rValue.Value);
             const SfxItemPropertySimpleEntry* pEntry = rMap.getByName(rPropName);
 
             if (!pEntry)
@@ -3534,11 +3582,11 @@ uno::Reference< style::XAutoStyle > SwXAutoStyleFamily::insertStyle(
                 continue;
             }
 
-            const sal_uInt8 nMemberId(pEntry->nMemberId & (~SFX_METRIC_ITEM));
+            const sal_uInt8 nMemberId(pEntry->nMemberId);
             bool bDone(false);
 
             // check for needed metric translation
-            if(pEntry->nMemberId & SFX_METRIC_ITEM)
+            if(pEntry->nMoreFlags & PropertyMoreFlags::METRIC_ITEM)
             {
                 bool bDoIt(true);
 
@@ -3590,11 +3638,10 @@ uno::Reference< style::XAutoStyle > SwXAutoStyleFamily::insertStyle(
                         SvxShape::SetFillAttribute(pEntry->nWID, aTempName, aSet);
                         bDone = true;
                     }
-                    else if(MID_GRAFURL == nMemberId)
+                    else if (MID_BITMAP == nMemberId)
                     {
                         if(XATTR_FILLBITMAP == pEntry->nWID)
                         {
-                            // Bitmap also has the MID_GRAFURL mode where a Bitmap URL is used
                             const Graphic aNullGraphic;
                             XFillBitmapItem aXFillBitmapItem(aNullGraphic);
 
@@ -3608,14 +3655,14 @@ uno::Reference< style::XAutoStyle > SwXAutoStyleFamily::insertStyle(
                 }
                 case RES_BACKGROUND:
                 {
-                    const SvxBrushItem aOriginalBrushItem(getSvxBrushItemFromSourceSet(aSet, RES_BACKGROUND, true, m_pDocShell->GetDoc()->IsInXMLImport()));
-                    SvxBrushItem aChangedBrushItem(aOriginalBrushItem);
+                    const std::unique_ptr<SvxBrushItem> aOriginalBrushItem(getSvxBrushItemFromSourceSet(aSet, RES_BACKGROUND, true, m_pDocShell->GetDoc()->IsInXMLImport()));
+                    std::unique_ptr<SvxBrushItem> aChangedBrushItem(aOriginalBrushItem->Clone());
 
-                    aChangedBrushItem.PutValue(aValue, nMemberId);
+                    aChangedBrushItem->PutValue(aValue, nMemberId);
 
-                    if(!(aChangedBrushItem == aOriginalBrushItem))
+                    if(*aChangedBrushItem != *aOriginalBrushItem)
                     {
-                        setSvxBrushItemAsFillAttributesToTargetSet(aChangedBrushItem, aSet);
+                        setSvxBrushItemAsFillAttributesToTargetSet(*aChangedBrushItem, aSet);
                     }
 
                     bDone = true;
@@ -3634,7 +3681,7 @@ uno::Reference< style::XAutoStyle > SwXAutoStyleFamily::insertStyle(
                             throw lang::IllegalArgumentException();
                         }
 
-                        eMode = (drawing::BitmapMode)nMode;
+                        eMode = static_cast<drawing::BitmapMode>(nMode);
                     }
 
                     aSet.Put(XFillBmpStretchItem(drawing::BitmapMode_STRETCH == eMode));
@@ -3706,21 +3753,23 @@ SwAutoStylesEnumImpl::SwAutoStylesEnumImpl( SwDoc* pInitDoc, IStyleAccess::SwAut
     {
         std::set< std::pair< sal_uInt16, text::RubyAdjust > > aRubyMap;
         SwAttrPool& rAttrPool = pDoc->GetAttrPool();
-        sal_uInt32 nCount = rAttrPool.GetItemCount2( RES_TXTATR_CJK_RUBY );
 
-        for ( sal_uInt32 nI = 0; nI < nCount; ++nI )
+        // do this in two phases otherwise we invalidate the iterators when we insert into the pool
+        std::vector<const SwFormatRuby*> vRubyItems;
+        for (const SfxPoolItem* pItem : rAttrPool.GetItemSurrogates(RES_TXTATR_CJK_RUBY))
         {
-            const SwFormatRuby* pItem = static_cast<const SwFormatRuby*>(rAttrPool.GetItem2( RES_TXTATR_CJK_RUBY, nI ));
-            if ( pItem && pItem->GetTextRuby() )
+            auto pRubyItem = dynamic_cast<const SwFormatRuby*>(pItem);
+            if ( pRubyItem && pRubyItem->GetTextRuby() )
+                vRubyItems.push_back(pRubyItem);
+        }
+        for (const SwFormatRuby* pRubyItem : vRubyItems)
+        {
+            std::pair< sal_uInt16, text::RubyAdjust > aPair( pRubyItem->GetPosition(), pRubyItem->GetAdjustment() );
+            if ( aRubyMap.insert( aPair ).second )
             {
-                std::pair< sal_uInt16, text::RubyAdjust > aPair( pItem->GetPosition(), pItem->GetAdjustment() );
-                if ( aRubyMap.find( aPair ) == aRubyMap.end() )
-                {
-                    aRubyMap.insert( aPair );
-                    std::shared_ptr<SfxItemSet> pItemSet( new SfxItemSet( rAttrPool, svl::Items<RES_TXTATR_CJK_RUBY, RES_TXTATR_CJK_RUBY>{} ) );
-                    pItemSet->Put( *pItem );
-                    mAutoStyles.push_back( pItemSet );
-                }
+                auto pItemSet = std::make_shared<SfxItemSet>( rAttrPool, svl::Items<RES_TXTATR_CJK_RUBY, RES_TXTATR_CJK_RUBY>{} );
+                pItemSet->Put( *pRubyItem );
+                mAutoStyles.push_back( pItemSet );
             }
         }
     }
@@ -3736,20 +3785,17 @@ SwXAutoStylesEnumerator::SwXAutoStylesEnumerator( SwDoc* pDoc, IStyleAccess::SwA
 : m_pImpl( new SwAutoStylesEnumImpl( pDoc, eFam ) )
 {
     // Register ourselves as a listener to the document (via the page descriptor)
-    pDoc->getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->Add(this);
+    StartListening(pDoc->getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->GetNotifier());
 }
 
 SwXAutoStylesEnumerator::~SwXAutoStylesEnumerator()
 {
 }
 
-void SwXAutoStylesEnumerator::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew)
+void SwXAutoStylesEnumerator::Notify( const SfxHint& rHint)
 {
-    ClientModify(this, pOld, pNew);
-    if(!GetRegisteredIn())
-    {
+    if(rHint.GetId() == SfxHintId::Dying)
         m_pImpl.reset();
-    }
 }
 
 sal_Bool SwXAutoStylesEnumerator::hasMoreElements(  )
@@ -3790,20 +3836,17 @@ SwXAutoStyle::SwXAutoStyle(
     mrDoc(*pDoc)
 {
     // Register ourselves as a listener to the document (via the page descriptor)
-    mrDoc.getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->Add(this);
+    //StartListening(mrDoc.getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->GetNotifier());
 }
 
 SwXAutoStyle::~SwXAutoStyle()
 {
 }
 
-void SwXAutoStyle::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew)
+void SwXAutoStyle::Notify(const SfxHint& rHint)
 {
-    ClientModify(this, pOld, pNew);
-    if(!GetRegisteredIn())
-    {
+    if(rHint.GetId() == SfxHintId::Dying)
         mpSet.reset();
-    }
 }
 
 uno::Reference< beans::XPropertySetInfo > SwXAutoStyle::getPropertySetInfo(  )
@@ -3891,7 +3934,7 @@ void SwXAutoStyle::setPropertyValues(
 uno::Sequence< uno::Any > SwXAutoStyle::GetPropertyValues_Impl(
         const uno::Sequence< OUString > & rPropertyNames )
 {
-    if( !mpSet.get() )
+    if( !mpSet )
     {
         throw uno::RuntimeException();
     }
@@ -3940,10 +3983,9 @@ uno::Sequence< uno::Any > SwXAutoStyle::GetPropertyValues_Impl(
             {
                 case RES_BACKGROUND:
                 {
-                    const SvxBrushItem aOriginalBrushItem(getSvxBrushItemFromSourceSet(*mpSet, RES_BACKGROUND));
-                    const sal_uInt8 nMemberId(pEntry->nMemberId & (~SFX_METRIC_ITEM));
+                    const std::unique_ptr<SvxBrushItem> aOriginalBrushItem(getSvxBrushItemFromSourceSet(*mpSet, RES_BACKGROUND));
 
-                    if(!aOriginalBrushItem.QueryValue(aTarget, nMemberId))
+                    if(!aOriginalBrushItem->QueryValue(aTarget, pEntry->nMemberId))
                     {
                         OSL_ENSURE(false, "Error getting attribute from RES_BACKGROUND (!)");
                     }
@@ -3953,14 +3995,11 @@ uno::Sequence< uno::Any > SwXAutoStyle::GetPropertyValues_Impl(
                 }
                 case OWN_ATTR_FILLBMP_MODE:
                 {
-                    const XFillBmpStretchItem* pStretchItem = dynamic_cast< const XFillBmpStretchItem* >(&mpSet->Get(XATTR_FILLBMP_STRETCH));
-                    const XFillBmpTileItem* pTileItem = dynamic_cast< const XFillBmpTileItem* >(&mpSet->Get(XATTR_FILLBMP_TILE));
-
-                    if( pTileItem && pTileItem->GetValue() )
+                    if (mpSet->Get(XATTR_FILLBMP_TILE).GetValue())
                     {
                         aTarget <<= drawing::BitmapMode_REPEAT;
                     }
-                    else if( pStretchItem && pStretchItem->GetValue() )
+                    else if (mpSet->Get(XATTR_FILLBMP_STRETCH).GetValue())
                     {
                         aTarget <<= drawing::BitmapMode_STRETCH;
                     }
@@ -3993,7 +4032,7 @@ uno::Sequence< uno::Any > SwXAutoStyle::GetPropertyValues_Impl(
             }
 
             // check for needed metric translation
-            if(pEntry->nMemberId & SFX_METRIC_ITEM)
+            if(pEntry->nMoreFlags & PropertyMoreFlags::METRIC_ITEM)
             {
                 bool bDoIt(true);
 
@@ -4042,11 +4081,13 @@ uno::Sequence< uno::Any > SwXAutoStyle::getPropertyValues (
     }
     catch (beans::UnknownPropertyException &)
     {
-        throw uno::RuntimeException("Unknown property exception caught", static_cast < cppu::OWeakObject * > ( this ) );
+        css::uno::Any exc = cppu::getCaughtException();
+        throw lang::WrappedTargetRuntimeException("Unknown property exception caught", static_cast < cppu::OWeakObject * > ( this ), exc );
     }
     catch (lang::WrappedTargetException &)
     {
-        throw uno::RuntimeException("WrappedTargetException caught", static_cast < cppu::OWeakObject * > ( this ) );
+        css::uno::Any exc = cppu::getCaughtException();
+        throw lang::WrappedTargetRuntimeException("WrappedTargetException caught", static_cast < cppu::OWeakObject * > ( this ), exc );
     }
 
     return aValues;
@@ -4091,7 +4132,7 @@ uno::Any SwXAutoStyle::getPropertyDefault( const OUString& rPropertyName )
 uno::Sequence< beans::PropertyState > SwXAutoStyle::getPropertyStates(
         const uno::Sequence< OUString >& rPropertyNames )
 {
-    if (!mpSet.get())
+    if (!mpSet)
     {
         throw uno::RuntimeException();
     }
@@ -4190,7 +4231,7 @@ uno::Sequence< uno::Any > SwXAutoStyle::getPropertyDefaults(
 
 uno::Sequence< beans::PropertyValue > SwXAutoStyle::getProperties()
 {
-    if( !mpSet.get() )
+    if( !mpSet )
         throw uno::RuntimeException();
     SolarMutexGuard aGuard;
     std::vector< beans::PropertyValue > aPropertyVector;
@@ -4208,29 +4249,25 @@ uno::Sequence< beans::PropertyValue > SwXAutoStyle::getProperties()
     const SfxItemPropertyMap &rMap = pPropSet->getPropertyMap();
     PropertyEntryVector_t aPropVector = rMap.getPropertyEntries();
 
-    SfxItemSet& rSet = *mpSet.get();
+    SfxItemSet& rSet = *mpSet;
     SfxItemIter aIter(rSet);
-    const SfxPoolItem* pItem = aIter.FirstItem();
 
-    while ( pItem )
+    for (const SfxPoolItem* pItem = aIter.GetCurItem(); pItem; pItem = aIter.NextItem())
     {
         const sal_uInt16 nWID = pItem->Which();
 
         // TODO: Optimize - and fix! the old iteration filled each WhichId
         // only once but there are more properties than WhichIds
-        PropertyEntryVector_t::const_iterator aIt = aPropVector.begin();
-        while( aIt != aPropVector.end() )
+        for( const auto& rProp : aPropVector )
         {
-            if ( aIt->nWID == nWID )
+            if ( rProp.nWID == nWID )
             {
                 beans::PropertyValue aPropertyValue;
-                aPropertyValue.Name = aIt->sName;
-                pItem->QueryValue( aPropertyValue.Value, aIt->nMemberId );
+                aPropertyValue.Name = rProp.sName;
+                pItem->QueryValue( aPropertyValue.Value, rProp.nMemberId );
                 aPropertyVector.push_back( aPropertyValue );
             }
-            ++aIt;
         }
-        pItem = aIter.NextItem();
     }
 
     const sal_Int32 nCount = aPropertyVector.size();
@@ -4246,7 +4283,7 @@ uno::Sequence< beans::PropertyValue > SwXAutoStyle::getProperties()
 }
 
 SwXTextTableStyle::SwXTextTableStyle(SwDocShell* pDocShell, SwTableAutoFormat* pTableAutoFormat) :
-    m_pDocShell(pDocShell), m_pTableAutoFormat(pTableAutoFormat), m_pTableAutoFormat_Impl(nullptr), m_bPhysical(true)
+    m_pDocShell(pDocShell), m_pTableAutoFormat(pTableAutoFormat), m_bPhysical(true)
 {
     UpdateCellStylesMapping();
 }
@@ -4302,30 +4339,26 @@ void SwXTextTableStyle::UpdateCellStylesMapping()
 
 const CellStyleNameMap& SwXTextTableStyle::GetCellStyleNameMap()
 {
-    static CellStyleNameMap aMap;
-    if(aMap.empty())
+    static CellStyleNameMap const aMap
     {
-        CellStyleNameMap aNewMap;
-        aNewMap[ "first-row"    ] = FIRST_ROW_STYLE;
-        aNewMap[ "last-row"     ] = LAST_ROW_STYLE;
-        aNewMap[ "first-column" ] = FIRST_COLUMN_STYLE;
-        aNewMap[ "last-column"  ] = LAST_COLUMN_STYLE;
-        aNewMap[ "body"         ] = BODY_STYLE;
-        aNewMap[ "even-rows"    ] = EVEN_ROWS_STYLE;
-        aNewMap[ "odd-rows"     ] = ODD_ROWS_STYLE;
-        aNewMap[ "even-columns" ] = EVEN_COLUMNS_STYLE;
-        aNewMap[ "odd-columns"  ] = ODD_COLUMNS_STYLE;
-        aNewMap[ "background"   ] = BACKGROUND_STYLE;
+        { "first-row"     , FIRST_ROW_STYLE },
+        { "last-row"      , LAST_ROW_STYLE },
+        { "first-column"  , FIRST_COLUMN_STYLE },
+        { "last-column"   , LAST_COLUMN_STYLE },
+        { "body"          , BODY_STYLE },
+        { "even-rows"     , EVEN_ROWS_STYLE },
+        { "odd-rows"      , ODD_ROWS_STYLE },
+        { "even-columns"  , EVEN_COLUMNS_STYLE },
+        { "odd-columns"   , ODD_COLUMNS_STYLE },
+        { "background"    , BACKGROUND_STYLE },
         // loext namespace
-        aNewMap[ "first-row-start-column" ] = FIRST_ROW_START_COLUMN_STYLE;
-        aNewMap[ "first-row-end-column"   ] = FIRST_ROW_END_COLUMN_STYLE;
-        aNewMap[ "last-row-start-column"  ] = LAST_ROW_START_COLUMN_STYLE;
-        aNewMap[ "last-row-end-column"    ] = LAST_ROW_END_COLUMN_STYLE;
-        aNewMap[ "first-row-even-column"  ] = FIRST_ROW_EVEN_COLUMN_STYLE;
-        aNewMap[ "last-row-even-column"   ] = LAST_ROW_EVEN_COLUMN_STYLE;
-
-        aMap.swap(aNewMap);
-    }
+        { "first-row-start-column"  , FIRST_ROW_START_COLUMN_STYLE },
+        { "first-row-end-column"    , FIRST_ROW_END_COLUMN_STYLE },
+        { "last-row-start-column"   , LAST_ROW_START_COLUMN_STYLE },
+        { "last-row-end-column"     , LAST_ROW_END_COLUMN_STYLE },
+        { "first-row-even-column"   , FIRST_ROW_EVEN_COLUMN_STYLE },
+        { "last-row-even-column"    , LAST_ROW_EVEN_COLUMN_STYLE },
+    };
     return aMap;
 }
 
@@ -4366,7 +4399,7 @@ void SwXTextTableStyle::SetPhysical()
                 uno::Reference<style::XStyle> xCellStyle(pOldBoxFormat->GetXObject(), uno::UNO_QUERY);
                 if (!xCellStyle.is())
                     continue;
-                SwXTextCellStyle& rStyle = dynamic_cast<SwXTextCellStyle&>(*xCellStyle.get());
+                SwXTextCellStyle& rStyle = dynamic_cast<SwXTextCellStyle&>(*xCellStyle);
                 SwBoxAutoFormat& rNewBoxFormat = pTableAutoFormat->GetBoxFormat(aTableTemplateMap[i]);
                 rStyle.SetBoxFormat(&rNewBoxFormat);
                 rNewBoxFormat.SetXObject(xCellStyle);
@@ -4405,17 +4438,9 @@ sal_Bool SAL_CALL SwXTextTableStyle::isInUse()
     {
         if (!pFormat->GetInfo(aGetHt))
         {
-            uno::Reference<text::XTextTable> xTable = SwXTextTables::GetObject(*pFormat);
-            if (xTable.is())
-            {
-                uno::Reference<beans::XPropertySet> xTablePropertySet(xTable, uno::UNO_QUERY);
-                OUString sTableTemplateName;
-                if (xTablePropertySet.is() && (xTablePropertySet->getPropertyValue("TableTemplateName") >>= sTableTemplateName)
-                    && sTableTemplateName == m_pTableAutoFormat->GetName())
-                {
-                    return true;
-                }
-            }
+            SwTable* pTable = SwTable::FindTable(pFormat);
+            if (pTable->GetTableStyleName() == m_pTableAutoFormat->GetName())
+                return true;
         }
     }
 
@@ -4435,7 +4460,7 @@ OUString SAL_CALL SwXTextTableStyle::getName()
 {
     SolarMutexGuard aGuard;
     OUString sProgName;
-    SwStyleNameMapper::FillProgName(m_pTableAutoFormat->GetName(), sProgName, SwGetPoolIdFromName::TabStyle, true);
+    SwStyleNameMapper::FillProgName(m_pTableAutoFormat->GetName(), sProgName, SwGetPoolIdFromName::TabStyle);
     return sProgName;
 }
 
@@ -4473,7 +4498,7 @@ css::uno::Any SAL_CALL SwXTextTableStyle::getPropertyValue(const OUString& rProp
     else if (rPropertyName == UNO_NAME_DISPLAY_NAME)
         return uno::makeAny(m_pTableAutoFormat->GetName());
     else
-        throw css::beans::UnknownPropertyException();
+        throw css::beans::UnknownPropertyException(rPropertyName);
 
     return uno::makeAny(bIsRow ? OUString("row") : OUString("column"));
 }
@@ -4556,11 +4581,11 @@ void SAL_CALL SwXTextTableStyle::replaceByName(const OUString& rName, const uno:
 
     // move SwBoxAutoFormat to dest. SwTableAutoFormat
     m_pTableAutoFormat->SetBoxFormat(*pStyleToReplaceWith->GetBoxFormat(), nBoxFormat);
+    // remove unassigned SwBoxAutoFormat, which is not anymore in use anyways
+    m_pDocShell->GetDoc()->GetCellStyles().RemoveBoxFormat(xStyle->getName());
     // make SwXTextCellStyle use new, moved SwBoxAutoFormat
     pStyleToReplaceWith->SetBoxFormat(&m_pTableAutoFormat->GetBoxFormat(nBoxFormat));
     m_pTableAutoFormat->GetBoxFormat(nBoxFormat).SetXObject(xStyle);
-    // remove unassigned SwBoxAutoFormat, which is not anymore in use anyways
-    m_pDocShell->GetDoc()->GetCellStyles().RemoveBoxFormat(xStyle->getName());
     // make this SwXTextTableStyle use new SwXTextCellStyle
     m_aCellStyles[nCellStyle] = xStyle;
 }
@@ -4601,14 +4626,13 @@ css::uno::Sequence<OUString> SAL_CALL SwXTextTableStyle::getSupportedServiceName
 SwXTextCellStyle::SwXTextCellStyle(SwDocShell* pDocShell, SwBoxAutoFormat* pBoxAutoFormat, const OUString& sParentStyle) :
     m_pDocShell(pDocShell),
     m_pBoxAutoFormat(pBoxAutoFormat),
-    m_pBoxAutoFormat_Impl(nullptr),
     m_sParentStyle(sParentStyle),
     m_bPhysical(true)
 { }
 
 SwXTextCellStyle::SwXTextCellStyle(SwDocShell* pDocShell, const OUString& sName) :
     m_pDocShell(pDocShell),
-    m_pBoxAutoFormat_Impl(new SwBoxAutoFormat()),
+    m_pBoxAutoFormat_Impl(std::make_shared<SwBoxAutoFormat>()),
     m_sName(sName),
     m_bPhysical(false)
 {
@@ -4647,7 +4671,7 @@ void SwXTextCellStyle::SetPhysical()
         SAL_WARN("sw.uno", "calling SetPhysical on a physical SwXTextCellStyle");
 }
 
-bool SwXTextCellStyle::IsPhysical()
+bool SwXTextCellStyle::IsPhysical() const
 {
     return m_bPhysical;
 }
@@ -4674,9 +4698,10 @@ SwBoxAutoFormat* SwXTextCellStyle::GetBoxAutoFormat(SwDocShell* pDocShell, const
             return nullptr;
 
         const auto& rTableTemplateMap = SwTableAutoFormat::GetTableTemplateMap();
-        if (rTableTemplateMap.size() <= (size_t)nTemplateIndex)
+        if (rTableTemplateMap.size() <= o3tl::make_unsigned(nTemplateIndex))
             return nullptr;
 
+        SwStyleNameMapper::FillUIName(sParentName, sParentName, SwGetPoolIdFromName::TabStyle);
         SwTableAutoFormat* pTableAutoFormat = pDocShell->GetDoc()->GetTableStyles().FindAutoFormat(sParentName);
         if (!pTableAutoFormat)
             return nullptr;
@@ -4703,10 +4728,8 @@ css::uno::Reference<css::style::XStyle> SwXTextCellStyle::CreateXTextCellStyle(S
         if (!pBoxFormat)
         {
             // return a default-dummy style to prevent crash
-            static SwBoxAutoFormat* pDefaultBoxFormat;
-            if (!pDefaultBoxFormat)
-                pDefaultBoxFormat = new SwBoxAutoFormat();
-            pBoxFormat = pDefaultBoxFormat;
+            static SwBoxAutoFormat aDefaultBoxFormat;
+            pBoxFormat = &aDefaultBoxFormat;
         }
 
         xTextCellStyle.set(pBoxFormat->GetXObject(), uno::UNO_QUERY);
@@ -4740,7 +4763,7 @@ sal_Bool SAL_CALL SwXTextCellStyle::isInUse()
     if (!xFamiliesSupplier.is())
         return false;
 
-    uno::Reference<container::XNameAccess> xFamilies(xFamiliesSupplier->getStyleFamilies(), uno::UNO_QUERY);
+    uno::Reference<container::XNameAccess> xFamilies = xFamiliesSupplier->getStyleFamilies();
     if (!xFamilies.is())
         return false;
 
@@ -4766,7 +4789,7 @@ OUString SAL_CALL SwXTextCellStyle::getParentStyle()
 void SAL_CALL SwXTextCellStyle::setParentStyle(const OUString& /*sParentStyle*/)
 {
     SolarMutexGuard aGuard;
-    // Changing parent to one which is unaware of it will lead to a something unexcpected. getName() rely on a parent.
+    // Changing parent to one which is unaware of it will lead to a something unexpected. getName() rely on a parent.
     SAL_INFO("sw.uno", "Changing SwXTextCellStyle parent");
 }
 
@@ -4779,16 +4802,18 @@ OUString SAL_CALL SwXTextCellStyle::getName()
     // if style is physical then we request a name from doc
     if (m_bPhysical)
     {
-        OUString sParentStyle;
-        SwStyleNameMapper::FillUIName(m_sParentStyle, sParentStyle, SwGetPoolIdFromName::TabStyle, true);
-        SwTableAutoFormat* pTableFormat = m_pDocShell->GetDoc()->GetTableStyles().FindAutoFormat(sParentStyle);
+        SwTableAutoFormat* pTableFormat = m_pDocShell->GetDoc()->GetTableStyles().FindAutoFormat(m_sParentStyle);
         if (!pTableFormat)
         {
             // if auto format is not found as a child of table formats, look in SwDoc cellstyles
             sName = m_pDocShell->GetDoc()->GetCellStyles().GetBoxFormatName(*m_pBoxAutoFormat);
         }
         else
+        {
+            OUString sParentStyle;
+            SwStyleNameMapper::FillProgName(m_sParentStyle, sParentStyle, SwGetPoolIdFromName::TabStyle);
             sName = sParentStyle + pTableFormat->GetTableTemplateCellSubName(*m_pBoxAutoFormat);
+        }
     }
     else
         sName = m_sName;
@@ -4999,7 +5024,7 @@ void SAL_CALL SwXTextCellStyle::setPropertyValue(const OUString& rPropertyName, 
         }
     }
 
-    throw css::beans::UnknownPropertyException();
+    throw css::beans::UnknownPropertyException(rPropertyName);
 }
 
 css::uno::Any SAL_CALL SwXTextCellStyle::getPropertyValue(const OUString& rPropertyName)
@@ -5042,7 +5067,7 @@ css::uno::Any SAL_CALL SwXTextCellStyle::getPropertyValue(const OUString& rPrope
                 m_pBoxAutoFormat->GetValueFormat(sFormat, eLng, eSys);
                 if(!sFormat.isEmpty())
                 {
-                    short nType; bool bNew; sal_Int32 nCheckPos;
+                    SvNumFormatType nType; bool bNew; sal_Int32 nCheckPos;
                     sal_uInt32 nKey = m_pDocShell->GetDoc()->GetNumberFormatter()->GetIndexPuttingAndConverting(sFormat, eLng, eSys, nType, bNew, nCheckPos);
                     aRet <<= nKey;
                 }
@@ -5163,7 +5188,7 @@ css::uno::Any SAL_CALL SwXTextCellStyle::getPropertyValue(const OUString& rPrope
         }
     }
 
-    throw css::beans::UnknownPropertyException();
+    throw css::beans::UnknownPropertyException(rPropertyName);
 }
 
 void SAL_CALL SwXTextCellStyle::addPropertyChangeListener( const OUString& /*aPropertyName*/, const css::uno::Reference< css::beans::XPropertyChangeListener >& /*xListener*/ )
@@ -5331,7 +5356,7 @@ css::uno::Sequence<css::beans::PropertyState> SAL_CALL SwXTextCellStyle::getProp
                     pStates[i] = aAny1 == aAny2 ? beans::PropertyState_DEFAULT_VALUE : beans::PropertyState_DIRECT_VALUE;
                     break;
                 default:
-                    // falltrough to DIRECT_VALUE, to export properties for which getPropertyStates is not implemented
+                    // fallthrough to DIRECT_VALUE, to export properties for which getPropertyStates is not implemented
                     pStates[i] = beans::PropertyState_DIRECT_VALUE;
                     SAL_WARN("sw.uno", "SwXTextCellStyle getPropertyStates unknown nWID");
             }
@@ -5339,7 +5364,7 @@ css::uno::Sequence<css::beans::PropertyState> SAL_CALL SwXTextCellStyle::getProp
         else
         {
             SAL_WARN("sw.uno", "SwXTextCellStyle unknown property:" + sPropName);
-            throw css::beans::UnknownPropertyException();
+            throw css::beans::UnknownPropertyException(sPropName);
         }
     }
     return aRet;
@@ -5351,198 +5376,198 @@ void SAL_CALL SwXTextCellStyle::setPropertyToDefault(const OUString& rPropertyNa
     const SwBoxAutoFormat& rDefaultBoxFormat = SwTableAutoFormat::GetDefaultBoxFormat();
     const SfxItemPropertyMap& rMap = aSwMapProvider.GetPropertySet(PROPERTY_MAP_CELL_STYLE)->getPropertyMap();
     const SfxItemPropertySimpleEntry* pEntry = rMap.getByName(rPropertyName);
-    if(pEntry)
+    if(!pEntry)
+        return;
+
+    uno::Any aAny;
+    switch(pEntry->nWID)
     {
-        uno::Any aAny;
-        switch(pEntry->nWID)
+        case RES_BACKGROUND:
         {
-            case RES_BACKGROUND:
-            {
-                SvxBrushItem rBrush = m_pBoxAutoFormat->GetBackground();
-                rDefaultBoxFormat.GetBackground().QueryValue(aAny, pEntry->nMemberId);
-                rBrush.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetBackground(rBrush);
-                break;
-            }
-            case RES_BOX:
-            {
-                SvxBoxItem rBox = m_pBoxAutoFormat->GetBox();
-                rDefaultBoxFormat.GetBox().QueryValue(aAny, pEntry->nMemberId);
-                rBox.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetBox(rBox);
-                break;
-            }
-            case RES_VERT_ORIENT:
-            {
-                SwFormatVertOrient rVertOrient = m_pBoxAutoFormat->GetVerticalAlignment();
-                rDefaultBoxFormat.GetVerticalAlignment().QueryValue(aAny, pEntry->nMemberId);
-                rVertOrient.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetVerticalAlignment(rVertOrient);
-                break;
-            }
-            case RES_FRAMEDIR:
-            {
-                SvxFrameDirectionItem rFrameDirectionItem = m_pBoxAutoFormat->GetTextOrientation();
-                rDefaultBoxFormat.GetTextOrientation().QueryValue(aAny, pEntry->nMemberId);
-                rFrameDirectionItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetTextOrientation(rFrameDirectionItem);
-                break;
-            }
-            case RES_BOXATR_FORMAT:
-            {
-                OUString sFormat;
-                LanguageType eLng, eSys;
-                rDefaultBoxFormat.GetValueFormat(sFormat, eLng, eSys);
-                m_pBoxAutoFormat->SetValueFormat(sFormat, eLng, eSys);
-                break;
-            }
-            case RES_PARATR_ADJUST:
-            {
-                SvxAdjustItem rAdjustItem = m_pBoxAutoFormat->GetAdjust();
-                rDefaultBoxFormat.GetAdjust().QueryValue(aAny, pEntry->nMemberId);
-                rAdjustItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetAdjust(rAdjustItem);
-                break;
-            }
-            case RES_CHRATR_COLOR:
-            {
-                SvxColorItem rColorItem = m_pBoxAutoFormat->GetColor();
-                rDefaultBoxFormat.GetColor().QueryValue(aAny, pEntry->nMemberId);
-                rColorItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetColor(rColorItem);
-                break;
-            }
-            case RES_CHRATR_SHADOWED:
-            {
-                SvxShadowedItem rShadowedItem = m_pBoxAutoFormat->GetShadowed();
-                rDefaultBoxFormat.GetShadowed().QueryValue(aAny, pEntry->nMemberId);
-                rShadowedItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetShadowed(rShadowedItem);
-                break;
-            }
-            case RES_CHRATR_CONTOUR:
-            {
-                SvxContourItem rContourItem = m_pBoxAutoFormat->GetContour();
-                rDefaultBoxFormat.GetContour().QueryValue(aAny, pEntry->nMemberId);
-                rContourItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetContour(rContourItem);
-                break;
-            }
-            case RES_CHRATR_CROSSEDOUT:
-            {
-                SvxCrossedOutItem rCrossedOutItem = m_pBoxAutoFormat->GetCrossedOut();
-                rDefaultBoxFormat.GetCrossedOut().QueryValue(aAny, pEntry->nMemberId);
-                rCrossedOutItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetCrossedOut(rCrossedOutItem);
-                break;
-            }
-            case RES_CHRATR_UNDERLINE:
-            {
-                SvxUnderlineItem rUnderlineItem = m_pBoxAutoFormat->GetUnderline();
-                rDefaultBoxFormat.GetUnderline().QueryValue(aAny, pEntry->nMemberId);
-                rUnderlineItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetUnderline(rUnderlineItem);
-                break;
-            }
-            case RES_CHRATR_FONTSIZE:
-            {
-                SvxFontHeightItem rFontHeightItem = m_pBoxAutoFormat->GetHeight();
-                rDefaultBoxFormat.GetHeight().QueryValue(aAny, pEntry->nMemberId);
-                rFontHeightItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetHeight(rFontHeightItem);
-                break;
-            }
-            case RES_CHRATR_WEIGHT:
-            {
-                SvxWeightItem rWeightItem = m_pBoxAutoFormat->GetWeight();
-                rDefaultBoxFormat.GetWeight().QueryValue(aAny, pEntry->nMemberId);
-                rWeightItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetWeight(rWeightItem);
-                break;
-            }
-            case RES_CHRATR_POSTURE:
-            {
-                SvxPostureItem rPostureItem = m_pBoxAutoFormat->GetPosture();
-                rDefaultBoxFormat.GetPosture().QueryValue(aAny, pEntry->nMemberId);
-                rPostureItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetPosture(rPostureItem);
-                break;
-            }
-            case RES_CHRATR_FONT:
-            {
-                SvxFontItem rFontItem = m_pBoxAutoFormat->GetFont();
-                rDefaultBoxFormat.GetFont().QueryValue(aAny, pEntry->nMemberId);
-                rFontItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetFont(rFontItem);
-                break;
-            }
-            case RES_CHRATR_CJK_FONTSIZE:
-            {
-                SvxFontHeightItem rFontHeightItem = m_pBoxAutoFormat->GetCJKHeight();
-                rDefaultBoxFormat.GetCJKHeight().QueryValue(aAny, pEntry->nMemberId);
-                rFontHeightItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetCJKHeight(rFontHeightItem);
-                break;
-            }
-            case RES_CHRATR_CJK_WEIGHT:
-            {
-                SvxWeightItem rWeightItem = m_pBoxAutoFormat->GetCJKWeight();
-                rDefaultBoxFormat.GetCJKWeight().QueryValue(aAny, pEntry->nMemberId);
-                rWeightItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetCJKWeight(rWeightItem);
-                break;
-            }
-            case RES_CHRATR_CJK_POSTURE:
-            {
-                SvxPostureItem rPostureItem = m_pBoxAutoFormat->GetCJKPosture();
-                rDefaultBoxFormat.GetCJKPosture().QueryValue(aAny, pEntry->nMemberId);
-                rPostureItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetCJKPosture(rPostureItem);
-                break;
-            }
-            case RES_CHRATR_CJK_FONT:
-            {
-                SvxFontItem rFontItem = m_pBoxAutoFormat->GetCJKFont();
-                rDefaultBoxFormat.GetCJKFont().QueryValue(aAny, pEntry->nMemberId);
-                rFontItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetCJKFont(rFontItem);
-                break;
-            }
-            case RES_CHRATR_CTL_FONTSIZE:
-            {
-                SvxFontHeightItem rFontHeightItem = m_pBoxAutoFormat->GetCTLHeight();
-                rDefaultBoxFormat.GetCTLHeight().QueryValue(aAny, pEntry->nMemberId);
-                rFontHeightItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetCTLHeight(rFontHeightItem);
-                break;
-            }
-            case RES_CHRATR_CTL_WEIGHT:
-            {
-                SvxWeightItem rWeightItem = m_pBoxAutoFormat->GetCTLWeight();
-                rDefaultBoxFormat.GetCTLWeight().QueryValue(aAny, pEntry->nMemberId);
-                rWeightItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetCTLWeight(rWeightItem);
-                break;
-            }
-            case RES_CHRATR_CTL_POSTURE:
-            {
-                SvxPostureItem rPostureItem = m_pBoxAutoFormat->GetCTLPosture();
-                rDefaultBoxFormat.GetCTLPosture().QueryValue(aAny, pEntry->nMemberId);
-                rPostureItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetCTLPosture(rPostureItem);
-                break;
-            }
-            case RES_CHRATR_CTL_FONT:
-            {
-                SvxFontItem rFontItem = m_pBoxAutoFormat->GetCTLFont();
-                rDefaultBoxFormat.GetCTLFont().QueryValue(aAny, pEntry->nMemberId);
-                rFontItem.PutValue(aAny, pEntry->nMemberId);
-                m_pBoxAutoFormat->SetCTLFont(rFontItem);
-                break;
-            }
-            default:
-                SAL_WARN("sw.uno", "SwXTextCellStyle setPropertyToDefault unknown nWID");
+            SvxBrushItem rBrush = m_pBoxAutoFormat->GetBackground();
+            rDefaultBoxFormat.GetBackground().QueryValue(aAny, pEntry->nMemberId);
+            rBrush.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetBackground(rBrush);
+            break;
         }
+        case RES_BOX:
+        {
+            SvxBoxItem rBox = m_pBoxAutoFormat->GetBox();
+            rDefaultBoxFormat.GetBox().QueryValue(aAny, pEntry->nMemberId);
+            rBox.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetBox(rBox);
+            break;
+        }
+        case RES_VERT_ORIENT:
+        {
+            SwFormatVertOrient rVertOrient = m_pBoxAutoFormat->GetVerticalAlignment();
+            rDefaultBoxFormat.GetVerticalAlignment().QueryValue(aAny, pEntry->nMemberId);
+            rVertOrient.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetVerticalAlignment(rVertOrient);
+            break;
+        }
+        case RES_FRAMEDIR:
+        {
+            SvxFrameDirectionItem rFrameDirectionItem = m_pBoxAutoFormat->GetTextOrientation();
+            rDefaultBoxFormat.GetTextOrientation().QueryValue(aAny, pEntry->nMemberId);
+            rFrameDirectionItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetTextOrientation(rFrameDirectionItem);
+            break;
+        }
+        case RES_BOXATR_FORMAT:
+        {
+            OUString sFormat;
+            LanguageType eLng, eSys;
+            rDefaultBoxFormat.GetValueFormat(sFormat, eLng, eSys);
+            m_pBoxAutoFormat->SetValueFormat(sFormat, eLng, eSys);
+            break;
+        }
+        case RES_PARATR_ADJUST:
+        {
+            SvxAdjustItem rAdjustItem = m_pBoxAutoFormat->GetAdjust();
+            rDefaultBoxFormat.GetAdjust().QueryValue(aAny, pEntry->nMemberId);
+            rAdjustItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetAdjust(rAdjustItem);
+            break;
+        }
+        case RES_CHRATR_COLOR:
+        {
+            SvxColorItem rColorItem = m_pBoxAutoFormat->GetColor();
+            rDefaultBoxFormat.GetColor().QueryValue(aAny, pEntry->nMemberId);
+            rColorItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetColor(rColorItem);
+            break;
+        }
+        case RES_CHRATR_SHADOWED:
+        {
+            SvxShadowedItem rShadowedItem = m_pBoxAutoFormat->GetShadowed();
+            rDefaultBoxFormat.GetShadowed().QueryValue(aAny, pEntry->nMemberId);
+            rShadowedItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetShadowed(rShadowedItem);
+            break;
+        }
+        case RES_CHRATR_CONTOUR:
+        {
+            SvxContourItem rContourItem = m_pBoxAutoFormat->GetContour();
+            rDefaultBoxFormat.GetContour().QueryValue(aAny, pEntry->nMemberId);
+            rContourItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetContour(rContourItem);
+            break;
+        }
+        case RES_CHRATR_CROSSEDOUT:
+        {
+            SvxCrossedOutItem rCrossedOutItem = m_pBoxAutoFormat->GetCrossedOut();
+            rDefaultBoxFormat.GetCrossedOut().QueryValue(aAny, pEntry->nMemberId);
+            rCrossedOutItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetCrossedOut(rCrossedOutItem);
+            break;
+        }
+        case RES_CHRATR_UNDERLINE:
+        {
+            SvxUnderlineItem rUnderlineItem = m_pBoxAutoFormat->GetUnderline();
+            rDefaultBoxFormat.GetUnderline().QueryValue(aAny, pEntry->nMemberId);
+            rUnderlineItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetUnderline(rUnderlineItem);
+            break;
+        }
+        case RES_CHRATR_FONTSIZE:
+        {
+            SvxFontHeightItem rFontHeightItem = m_pBoxAutoFormat->GetHeight();
+            rDefaultBoxFormat.GetHeight().QueryValue(aAny, pEntry->nMemberId);
+            rFontHeightItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetHeight(rFontHeightItem);
+            break;
+        }
+        case RES_CHRATR_WEIGHT:
+        {
+            SvxWeightItem rWeightItem = m_pBoxAutoFormat->GetWeight();
+            rDefaultBoxFormat.GetWeight().QueryValue(aAny, pEntry->nMemberId);
+            rWeightItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetWeight(rWeightItem);
+            break;
+        }
+        case RES_CHRATR_POSTURE:
+        {
+            SvxPostureItem rPostureItem = m_pBoxAutoFormat->GetPosture();
+            rDefaultBoxFormat.GetPosture().QueryValue(aAny, pEntry->nMemberId);
+            rPostureItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetPosture(rPostureItem);
+            break;
+        }
+        case RES_CHRATR_FONT:
+        {
+            SvxFontItem rFontItem = m_pBoxAutoFormat->GetFont();
+            rDefaultBoxFormat.GetFont().QueryValue(aAny, pEntry->nMemberId);
+            rFontItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetFont(rFontItem);
+            break;
+        }
+        case RES_CHRATR_CJK_FONTSIZE:
+        {
+            SvxFontHeightItem rFontHeightItem = m_pBoxAutoFormat->GetCJKHeight();
+            rDefaultBoxFormat.GetCJKHeight().QueryValue(aAny, pEntry->nMemberId);
+            rFontHeightItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetCJKHeight(rFontHeightItem);
+            break;
+        }
+        case RES_CHRATR_CJK_WEIGHT:
+        {
+            SvxWeightItem rWeightItem = m_pBoxAutoFormat->GetCJKWeight();
+            rDefaultBoxFormat.GetCJKWeight().QueryValue(aAny, pEntry->nMemberId);
+            rWeightItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetCJKWeight(rWeightItem);
+            break;
+        }
+        case RES_CHRATR_CJK_POSTURE:
+        {
+            SvxPostureItem rPostureItem = m_pBoxAutoFormat->GetCJKPosture();
+            rDefaultBoxFormat.GetCJKPosture().QueryValue(aAny, pEntry->nMemberId);
+            rPostureItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetCJKPosture(rPostureItem);
+            break;
+        }
+        case RES_CHRATR_CJK_FONT:
+        {
+            SvxFontItem rFontItem = m_pBoxAutoFormat->GetCJKFont();
+            rDefaultBoxFormat.GetCJKFont().QueryValue(aAny, pEntry->nMemberId);
+            rFontItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetCJKFont(rFontItem);
+            break;
+        }
+        case RES_CHRATR_CTL_FONTSIZE:
+        {
+            SvxFontHeightItem rFontHeightItem = m_pBoxAutoFormat->GetCTLHeight();
+            rDefaultBoxFormat.GetCTLHeight().QueryValue(aAny, pEntry->nMemberId);
+            rFontHeightItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetCTLHeight(rFontHeightItem);
+            break;
+        }
+        case RES_CHRATR_CTL_WEIGHT:
+        {
+            SvxWeightItem rWeightItem = m_pBoxAutoFormat->GetCTLWeight();
+            rDefaultBoxFormat.GetCTLWeight().QueryValue(aAny, pEntry->nMemberId);
+            rWeightItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetCTLWeight(rWeightItem);
+            break;
+        }
+        case RES_CHRATR_CTL_POSTURE:
+        {
+            SvxPostureItem rPostureItem = m_pBoxAutoFormat->GetCTLPosture();
+            rDefaultBoxFormat.GetCTLPosture().QueryValue(aAny, pEntry->nMemberId);
+            rPostureItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetCTLPosture(rPostureItem);
+            break;
+        }
+        case RES_CHRATR_CTL_FONT:
+        {
+            SvxFontItem rFontItem = m_pBoxAutoFormat->GetCTLFont();
+            rDefaultBoxFormat.GetCTLFont().QueryValue(aAny, pEntry->nMemberId);
+            rFontItem.PutValue(aAny, pEntry->nMemberId);
+            m_pBoxAutoFormat->SetCTLFont(rFontItem);
+            break;
+        }
+        default:
+            SAL_WARN("sw.uno", "SwXTextCellStyle setPropertyToDefault unknown nWID");
     }
 }
 

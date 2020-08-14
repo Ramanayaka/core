@@ -19,18 +19,17 @@
 #ifndef INCLUDED_I18NPOOL_INC_INDEXENTRYSUPPLIER_DEFAULT_HXX
 #define INCLUDED_I18NPOOL_INC_INDEXENTRYSUPPLIER_DEFAULT_HXX
 
-#include <indexentrysupplier_common.hxx>
+#include "indexentrysupplier_common.hxx"
 
 #include <memory>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 class Index;
 
 
-//  class IndexEntrySupplier_Unicode
 
-class IndexEntrySupplier_Unicode : public IndexEntrySupplier_Common {
+class IndexEntrySupplier_Unicode final : public IndexEntrySupplier_Common {
 public:
     IndexEntrySupplier_Unicode( const css::uno::Reference < css::uno::XComponentContext >& rxContext );
     virtual ~IndexEntrySupplier_Unicode() override;
@@ -66,7 +65,7 @@ public:
     IndexTable();
     ~IndexTable();
 
-    void init(sal_Unicode start_, sal_Unicode end_, IndexKey* keys, sal_Int16 key_count, Index *index);
+    void init(sal_Unicode start_, sal_Unicode end_, IndexKey const * keys, sal_Int16 key_count, Index *index);
 
     sal_Unicode start;
     sal_Unicode end;
@@ -101,7 +100,7 @@ public:
     sal_Int16 compare(sal_Unicode c1, sal_Unicode c2);
 };
 
-} } } }
+}
 
 #endif
 

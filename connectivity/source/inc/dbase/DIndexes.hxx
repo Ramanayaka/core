@@ -21,11 +21,9 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DINDEXES_HXX
 
 #include <connectivity/sdbcx/VCollection.hxx>
-#include "dbase/DTable.hxx"
+#include <dbase/DTable.hxx>
 
-namespace connectivity
-{
-    namespace dbase
+namespace connectivity::dbase
     {
         class ODbaseTable;
 
@@ -42,12 +40,12 @@ namespace connectivity
             virtual void dropObject(sal_Int32 _nPos, const OUString& _sElementName) override;
         public:
             ODbaseIndexes(ODbaseTable* _pTable, ::osl::Mutex& _rMutex,
-                const TStringVector &_rVector) : ODbaseIndexes_BASE(*_pTable,_pTable->getConnection()->getMetaData()->supportsMixedCaseQuotedIdentifiers(),_rMutex,_rVector)
+                const ::std::vector< OUString> &_rVector) : ODbaseIndexes_BASE(*_pTable,_pTable->getConnection()->getMetaData()->supportsMixedCaseQuotedIdentifiers(),_rMutex,_rVector)
                 , m_pTable(_pTable)
             {}
 
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DINDEXES_HXX
 

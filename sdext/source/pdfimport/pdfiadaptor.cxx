@@ -20,25 +20,19 @@
 
 #include "pdfiadaptor.hxx"
 #include "filterdet.hxx"
-#include "saxemitter.hxx"
-#include "odfemitter.hxx"
+#include <saxemitter.hxx>
+#include <odfemitter.hxx>
 #include "inc/wrapper.hxx"
-#include "inc/contentsink.hxx"
-#include "tree/pdfiprocessor.hxx"
+#include <pdfiprocessor.hxx>
 
 #include <osl/file.h>
-#include <osl/thread.h>
-#include "sal/log.hxx"
+#include <sal/log.hxx>
 
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
+#include <tools/diagnose_ex.h>
 
 #include <memory>
 
@@ -85,14 +79,10 @@ sal_Bool SAL_CALL PDFIHybridAdaptor::filter( const uno::Sequence< beans::Propert
         if( ! xSubStream.is() )
         {
             uno::Reference< io::XInputStream > xInput;
-            for( sal_Int32 i = 0; i < nAttribs; i++ )
-            {
-                if ( pAttribs[i].Name == "InputStream" )
-                {
-                    pAttribs[i].Value >>= xInput;
-                    break;
-                }
-            }
+            auto pAttr = std::find_if(rFilterData.begin(), rFilterData.end(),
+                [](const beans::PropertyValue& rAttr) { return rAttr.Name == "InputStream"; });
+            if (pAttr != rFilterData.end())
+                pAttr->Value >>= xInput;
             if( xInput.is() )
             {
                 // TODO(P2): extracting hybrid substream twice - once during detection, second time here
@@ -153,9 +143,9 @@ sal_Bool SAL_CALL PDFIHybridAdaptor::filter( const uno::Sequence< beans::Propert
                         m_xContext ),
                     uno::UNO_QUERY );
             }
-            catch(const uno::Exception& e)
+            catch(const uno::Exception&)
             {
-                SAL_INFO("sdext.pdfimport", "subfilter exception: " << e.Message);
+                TOOLS_INFO_EXCEPTION("sdext.pdfimport", "subfilter");
             }
 
             SAL_INFO("sdext.pdfimport", "subfilter: " << xSubFilter.get() );
@@ -201,7 +191,7 @@ void SAL_CALL PDFIHybridAdaptor::setTargetDocument( const uno::Reference< lang::
 
 OUString PDFIHybridAdaptor::getImplementationName()
 {
-    return OUString("org.libreoffice.comp.documents.HybridPDFImport");
+    return "org.libreoffice.comp.documents.HybridPDFImport";
 }
 
 sal_Bool PDFIHybridAdaptor::supportsService(OUString const & ServiceName)
@@ -219,8 +209,7 @@ PDFIRawAdaptor::PDFIRawAdaptor( OUString const & implementationName, const uno::
     m_implementationName(implementationName),
     m_xContext( xContext ),
     m_xModel(),
-    m_pVisitorFactory(),
-    m_bEnableToplevelText(false)
+    m_pVisitorFactory()
 {
 }
 
@@ -238,8 +227,7 @@ bool PDFIRawAdaptor::parse( const uno::Reference<io::XInputStream>&       xInput
                             const OUString&                          rFilterOptions )
 {
     // container for metaformat
-    std::shared_ptr<PDFIProcessor> pSink(
-        new PDFIProcessor(xStatus, m_xContext));
+    auto pSink = std::make_shared<PDFIProcessor>(xStatus, m_xContext);
 
     bool bSuccess=false;
 
@@ -284,23 +272,21 @@ sal_Bool SAL_CALL PDFIRawAdaptor::importer( const uno::Sequence< beans::Property
     OUString aURL;
     OUString aPwd;
     OUString aFilterOptions;
-    const beans::PropertyValue* pAttribs = rSourceData.getConstArray();
-    sal_Int32 nAttribs = rSourceData.getLength();
-    for( sal_Int32 i = 0; i < nAttribs; i++, pAttribs++ )
+    for( const beans::PropertyValue& rAttrib : rSourceData )
     {
-        SAL_INFO("sdext.pdfimport", "importer Attrib: " << pAttribs->Name );
-        if ( pAttribs->Name == "InputStream" )
-            pAttribs->Value >>= xInput;
-        else if ( pAttribs->Name == "URL" )
-            pAttribs->Value >>= aURL;
-        else if ( pAttribs->Name == "StatusIndicator" )
-            pAttribs->Value >>= xStatus;
-        else if ( pAttribs->Name == "InteractionHandler" )
-            pAttribs->Value >>= xInteractionHandler;
-        else if ( pAttribs->Name == "Password" )
-            pAttribs->Value >>= aPwd;
-        else if ( pAttribs->Name == "FilterOptions" )
-            pAttribs->Value >>= aFilterOptions;
+        SAL_INFO("sdext.pdfimport", "importer Attrib: " << rAttrib.Name );
+        if ( rAttrib.Name == "InputStream" )
+            rAttrib.Value >>= xInput;
+        else if ( rAttrib.Name == "URL" )
+            rAttrib.Value >>= aURL;
+        else if ( rAttrib.Name == "StatusIndicator" )
+            rAttrib.Value >>= xStatus;
+        else if ( rAttrib.Name == "InteractionHandler" )
+            rAttrib.Value >>= xInteractionHandler;
+        else if ( rAttrib.Name == "Password" )
+            rAttrib.Value >>= aPwd;
+        else if ( rAttrib.Name == "FilterOptions" )
+            rAttrib.Value >>= aFilterOptions;
     }
     if( !xInput.is() )
         return false;
@@ -338,6 +324,45 @@ sal_Bool PDFIRawAdaptor::supportsService(OUString const & ServiceName)
 css::uno::Sequence<OUString> PDFIRawAdaptor::getSupportedServiceNames()
 {
     return css::uno::Sequence<OUString>{"com.sun.star.document.ImportFilter"};
+}
+
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+sdext_PDFIRawAdaptor_Writer_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    pdfi::PDFIRawAdaptor* pAdaptor = new pdfi::PDFIRawAdaptor( "org.libreoffice.comp.documents.WriterPDFImport", context );
+    pAdaptor->setTreeVisitorFactory(pdfi::createWriterTreeVisitorFactory());
+    pAdaptor->acquire();
+    return static_cast<cppu::OWeakObject*>(pAdaptor);
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+sdext_PDFIRawAdaptor_Draw_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    pdfi::PDFIRawAdaptor* pAdaptor = new pdfi::PDFIRawAdaptor( "org.libreoffice.comp.documents.DrawPDFImport", context );
+    pAdaptor->setTreeVisitorFactory(pdfi::createDrawTreeVisitorFactory());
+    pAdaptor->acquire();
+    return static_cast<cppu::OWeakObject*>(pAdaptor);
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+sdext_PDFIRawAdaptor_Impress_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    pdfi::PDFIRawAdaptor* pAdaptor = new pdfi::PDFIRawAdaptor( "org.libreoffice.comp.documents.ImpressPDFImport", context );
+    pAdaptor->setTreeVisitorFactory(pdfi::createImpressTreeVisitorFactory());
+    pAdaptor->acquire();
+    return static_cast<cppu::OWeakObject*>(pAdaptor);
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+sdext_PDFIHybridAdaptor_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new pdfi::PDFIHybridAdaptor( context ));
 }
 
 }

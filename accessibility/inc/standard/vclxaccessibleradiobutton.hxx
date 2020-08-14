@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLERADIOBUTTON_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLERADIOBUTTON_HXX
+#pragma once
 
 #include <standard/vclxaccessibletextcomponent.hxx>
 
@@ -28,25 +27,23 @@
 #include <cppuhelper/implbase2.hxx>
 
 
-//  class VCLXAccessibleRadioButton
 
 
 typedef ::cppu::ImplHelper2<
     css::accessibility::XAccessibleAction,
     css::accessibility::XAccessibleValue > VCLXAccessibleRadioButton_BASE;
 
-class VCLXAccessibleRadioButton : public VCLXAccessibleTextComponent,
+class VCLXAccessibleRadioButton final : public VCLXAccessibleTextComponent,
                                   public VCLXAccessibleRadioButton_BASE
 {
-protected:
-    virtual ~VCLXAccessibleRadioButton() override;
+    virtual ~VCLXAccessibleRadioButton() override = default;
 
     virtual void ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
     virtual void FillAccessibleRelationSet( utl::AccessibleRelationSetHelper& rRelationSet ) override;
     virtual void FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet ) override;
 
 public:
-    VCLXAccessibleRadioButton( VCLXWindow* pVCLXindow );
+    using VCLXAccessibleTextComponent::VCLXAccessibleTextComponent;
 
     // XInterface
     DECLARE_XINTERFACE()
@@ -71,6 +68,5 @@ public:
     virtual css::uno::Any SAL_CALL getMinimumValue(  ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLERADIOBUTTON_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

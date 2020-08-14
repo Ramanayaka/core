@@ -25,15 +25,11 @@
 #include <com/sun/star/sdb/SQLContext.hpp>
 #include <com/sun/star/sdbc/SQLWarning.hpp>
 #include <com/sun/star/sdb/SQLErrorEvent.hpp>
-#include "TConnection.hxx"
-#include "resource/common_res.hrc"
-#include "resource/sharedresources.hxx"
-
+#include <strings.hrc>
+#include <resource/sharedresources.hxx>
 
 namespace dbtools
 {
-
-
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::sdb;
     using namespace ::com::sun::star::sdbc;
@@ -74,14 +70,6 @@ SQLExceptionInfo::SQLExceptionInfo( const OUString& _rSimpleErrorMessage )
     m_aContent <<= aError;
     implDetermineType();
 }
-
-
-SQLExceptionInfo::SQLExceptionInfo(const SQLExceptionInfo& _rCopySource)
-    :m_aContent(_rCopySource.m_aContent)
-    ,m_eType(_rCopySource.m_eType)
-{
-}
-
 
 SQLExceptionInfo& SQLExceptionInfo::operator=(const css::sdbc::SQLException& _rError)
 {
@@ -258,7 +246,7 @@ SQLExceptionIteratorHelper::SQLExceptionIteratorHelper( const SQLExceptionInfo& 
 {
     if ( _rChainStart.isValid() )
     {
-        m_pCurrent = static_cast<const SQLException*>(_rChainStart);
+        m_pCurrent = _rChainStart;
         m_eCurrentType = _rChainStart.getType();
     }
 }
@@ -411,7 +399,7 @@ void throwGenericSQLException(const OUString& _rMsg, const Reference< XInterface
     throw SQLException( _rMsg, _rxSource, getStandardSQLState( StandardSQLState::GENERAL_ERROR ), 0, _rNextException);
 }
 
-void throwFeatureNotImplementedSQLException( const OUString& _rFeatureName, const Reference< XInterface >& _rxContext )
+void throwFeatureNotImplementedSQLException( const OUString& _rFeatureName, const Reference< XInterface >& _rxContext, const Any& _rNextException )
 {
     ::connectivity::SharedResources aResources;
     const OUString sError( aResources.getResourceStringWithSubstitution(
@@ -424,7 +412,7 @@ void throwFeatureNotImplementedSQLException( const OUString& _rFeatureName, cons
         _rxContext,
         getStandardSQLState( StandardSQLState::FEATURE_NOT_IMPLEMENTED ),
         0,
-        Any()
+        _rNextException
     );
 }
 
@@ -449,14 +437,14 @@ void throwInvalidColumnException( const OUString& _rColumnName, const Reference<
 }
 
 void throwSQLException( const OUString& _rMessage, const OUString& _rSQLState,
-        const Reference< XInterface >& _rxContext, const sal_Int32 _nErrorCode, const Any* _pNextException )
+        const Reference< XInterface >& _rxContext, const sal_Int32 _nErrorCode )
 {
     throw SQLException(
         _rMessage,
         _rxContext,
         _rSQLState,
         _nErrorCode,
-        _pNextException ? *_pNextException : Any()
+        Any()
     );
 }
 
@@ -472,17 +460,17 @@ OUString getStandardSQLState( StandardSQLState _eState )
 {
     switch ( _eState )
     {
-    case StandardSQLState::INVALID_DESCRIPTOR_INDEX:  return OUString("07009");
-    case StandardSQLState::INVALID_CURSOR_STATE:      return OUString("24000");
-    case StandardSQLState::COLUMN_NOT_FOUND:          return OUString("42S22");
-    case StandardSQLState::GENERAL_ERROR:             return OUString("HY000");
-    case StandardSQLState::INVALID_SQL_DATA_TYPE:     return OUString("HY004");
-    case StandardSQLState::FUNCTION_SEQUENCE_ERROR:   return OUString("HY010");
-    case StandardSQLState::INVALID_CURSOR_POSITION:   return OUString("HY109");
-    case StandardSQLState::FEATURE_NOT_IMPLEMENTED:   return OUString("HYC00");
-    case StandardSQLState::FUNCTION_NOT_SUPPORTED:    return OUString("IM001");
-    case StandardSQLState::CONNECTION_DOES_NOT_EXIST: return OUString("08003");
-    default:                                          return OUString("HY001"); // General Error
+    case StandardSQLState::INVALID_DESCRIPTOR_INDEX:  return "07009";
+    case StandardSQLState::INVALID_CURSOR_STATE:      return "24000";
+    case StandardSQLState::COLUMN_NOT_FOUND:          return "42S22";
+    case StandardSQLState::GENERAL_ERROR:             return "HY000";
+    case StandardSQLState::INVALID_SQL_DATA_TYPE:     return "HY004";
+    case StandardSQLState::FUNCTION_SEQUENCE_ERROR:   return "HY010";
+    case StandardSQLState::INVALID_CURSOR_POSITION:   return "HY109";
+    case StandardSQLState::FEATURE_NOT_IMPLEMENTED:   return "HYC00";
+    case StandardSQLState::FUNCTION_NOT_SUPPORTED:    return "IM001";
+    case StandardSQLState::CONNECTION_DOES_NOT_EXIST: return "08003";
+    default:                                          return "HY001"; // General Error
     }
 }
 

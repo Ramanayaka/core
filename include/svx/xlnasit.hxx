@@ -28,7 +28,7 @@
 #include <svx/svxdllapi.h>
 
 // SetItem with all ItemSets of line-attributes
-class SVX_DLLPUBLIC XLineAttrSetItem : public SfxSetItem
+class SVXCORE_DLLPUBLIC XLineAttrSetItem final : public SfxSetItem
 {
 public:
                             XLineAttrSetItem(std::unique_ptr<SfxItemSet>&& pItemSet );
@@ -36,8 +36,7 @@ public:
                             XLineAttrSetItem(const XLineAttrSetItem& rAttr);
                             XLineAttrSetItem(const XLineAttrSetItem& rAttr,
                                              SfxItemPool* pItemPool);
-    virtual SfxPoolItem*    Clone( SfxItemPool* pToPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream& rStream, sal_uInt16 nVersion ) const override;
+    virtual XLineAttrSetItem* Clone( SfxItemPool* pToPool = nullptr ) const override;
 };
 
 #endif

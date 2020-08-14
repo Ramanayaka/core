@@ -17,15 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <osl/thread.h>
+#include <osl/diagnose.h>
+#include <sot/exchange.hxx>
 #include <sot/formats.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/linkmgr.hxx>
-#include "servobj.hxx"
-#include "docsh.hxx"
-#include "impex.hxx"
-#include "brdcst.hxx"
-#include "rangenam.hxx"
-#include "sc.hrc"
+#include <servobj.hxx>
+#include <docsh.hxx>
+#include <impex.hxx>
+#include <brdcst.hxx>
+#include <rangenam.hxx>
+#include <unotools/charclass.hxx>
 
 using namespace formula;
 
@@ -37,7 +40,7 @@ static bool lcl_FillRangeFromName( ScRange& rRange, ScDocShell* pDocSh, const OU
         ScRangeName* pNames = rDoc.GetRangeName();
         if (pNames)
         {
-            const ScRangeData* pData = pNames->findByUpperName(ScGlobal::pCharClass->uppercase(rName));
+            const ScRangeData* pData = pNames->findByUpperName(ScGlobal::getCharClassPtr()->uppercase(rName));
             if (pData)
             {
                 if ( pData->IsValidReference( rRange ) )
@@ -163,7 +166,8 @@ bool ScServerObject::GetData(
     OUString aDdeTextFmt = pDocSh->GetDdeTextFmt();
     ScDocument& rDoc = pDocSh->GetDocument();
 
-    if( SotClipboardFormatId::STRING == SotExchange::GetFormatIdFromMimeType( rMimeType ))
+    SotClipboardFormatId eFormatId = SotExchange::GetFormatIdFromMimeType( rMimeType );
+    if (SotClipboardFormatId::STRING == eFormatId || SotClipboardFormatId::STRING_TSVC == eFormatId)
     {
         ScImportExport aObj( &rDoc, aRange );
         if( aDdeTextFmt[0] == 'F' )
@@ -182,6 +186,7 @@ bool ScServerObject::GetData(
         }
         if( aDdeTextFmt == "CSV" || aDdeTextFmt == "FCSV" )
             aObj.SetSeparator( ',' );
+        /* TODO: STRING_TSVC could preserve line breaks with added quotes. */
         aObj.SetExportTextOptions( ScExportTextOptions( ScExportTextOptions::ToSpace, ' ', false ) );
         return aObj.ExportData( rMimeType, rData );
     }
@@ -227,7 +232,7 @@ void ScServerObject::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
             bDataChanged = true;
         else if (const ScAreaChangedHint *pChgHint = dynamic_cast<const ScAreaChangedHint*>(&rHint))      // position of broadcaster changed
         {
-            ScRange aNewRange = pChgHint->GetRange();
+            const ScRange& aNewRange = pChgHint->GetRange();
             if ( aRange != aNewRange )
             {
                 bRefreshListener = true;

@@ -17,24 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/TitleBar.hxx>
-#include <sfx2/sidebar/Paint.hxx>
-#include <sfx2/sidebar/Accessible.hxx>
-#include <sfx2/sidebar/AccessibleTitleBar.hxx>
-
-#include <tools/svborder.hxx>
-#include <vcl/gradient.hxx>
-#include <vcl/lineinfo.hxx>
+#include <sidebar/TitleBar.hxx>
+#include <sidebar/Paint.hxx>
+#include <sidebar/AccessibleTitleBar.hxx>
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 
 namespace
 {
-    const static sal_Int32 gnLeftIconSpace (3);
-    const static sal_Int32 gnRightIconSpace (3);
+    const sal_Int32 gnLeftIconSpace (3);
+    const sal_Int32 gnRightIconSpace (3);
 }
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 TitleBar::TitleBar(const OUString& rsTitle,
                    vcl::Window* pParentWindow,
@@ -82,7 +77,7 @@ void TitleBar::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&
     Size aWindowSize (GetSizePixel());
     tools::Rectangle aTitleBarBox(0,0, aWindowSize.Width(), aWindowSize.Height());
 
-    PaintDecoration(rRenderContext, aTitleBarBox);
+    PaintDecoration(rRenderContext);
     const tools::Rectangle aTitleBox(GetTitleArea(aTitleBarBox));
     PaintTitle(rRenderContext, aTitleBox);
     PaintFocus(rRenderContext, aTitleBox);
@@ -128,7 +123,7 @@ void TitleBar::PaintTitle(vcl::RenderContext& rRenderContext, const tools::Recta
         rRenderContext.DrawImage(Point(aTitleBox.Left() + gnLeftIconSpace,
                                        aTitleBox.Top() + (aTitleBox.GetHeight() - maIcon.GetSizePixel().Height()) / 2),
                                  maIcon);
-        aTitleBox.Left() += gnLeftIconSpace + maIcon.GetSizePixel().Width() + gnRightIconSpace;
+        aTitleBox.AdjustLeft(gnLeftIconSpace + maIcon.GetSizePixel().Width() + gnRightIconSpace );
     }
 
     vcl::Font aFont(rRenderContext.GetFont());
@@ -172,6 +167,6 @@ IMPL_LINK(TitleBar, SelectionHandler, ToolBox*, pToolBox, void)
     HandleToolBoxItemClick(nItemId);
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

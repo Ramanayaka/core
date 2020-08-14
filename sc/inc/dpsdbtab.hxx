@@ -27,7 +27,6 @@
 #include <unordered_set>
 #include <vector>
 
-class ScDPFilteredCache;
 class ScDocument;
 class ScDPCache;
 class ScDPDimensionSaveData;
@@ -56,12 +55,12 @@ struct ScImportSourceDesc
 /**
  * This class represents source data from database source.
  */
-class ScDatabaseDPData : public ScDPTableData
+class ScDatabaseDPData final : public ScDPTableData
 {
 private:
     ScDPFilteredCache aCacheTable;
 public:
-    ScDatabaseDPData(ScDocument* pDoc, const ScDPCache& rCache);
+    ScDatabaseDPData(const ScDocument* pDoc, const ScDPCache& rCache);
     virtual ~ScDatabaseDPData() override;
 
     virtual long                    GetColumnCount() override;

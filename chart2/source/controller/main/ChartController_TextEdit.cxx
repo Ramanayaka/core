@@ -17,27 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ChartController.hxx"
+#include <ChartController.hxx>
 
-#include "ResId.hxx"
+#include <ResId.hxx>
 #include "UndoGuard.hxx"
-#include "DrawViewWrapper.hxx"
-#include "ChartWindow.hxx"
-#include "TitleHelper.hxx"
-#include "ObjectIdentifier.hxx"
-#include "macros.hxx"
-#include "ControllerLockGuard.hxx"
-#include "AccessibleTextHelper.hxx"
-#include "Strings.hrc"
-#include "chartview/DrawModelWrapper.hxx"
+#include <DrawViewWrapper.hxx>
+#include <ChartWindow.hxx>
+#include <TitleHelper.hxx>
+#include <ObjectIdentifier.hxx>
+#include <ControllerLockGuard.hxx>
+#include <AccessibleTextHelper.hxx>
+#include <strings.hrc>
+#include <chartview/DrawModelWrapper.hxx>
 
-#include <svx/svdotext.hxx>
-#include <vcl/msgbox.hxx>
 #include <svx/svdoutl.hxx>
 #include <svx/svxdlg.hxx>
-#include <svx/dialogs.hrc>
+#include <svx/svxids.hrc>
+#include <editeng/editids.hrc>
 #include <vcl/svapp.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/chart2/XTitle.hpp>
 #include <svl/stritem.hxx>
 #include <editeng/fontitem.hxx>
 #include <memory>
@@ -48,7 +47,7 @@ using namespace ::com::sun::star;
 
 void ChartController::executeDispatch_EditText( const Point* pMousePixel )
 {
-    this->StartTextEdit( pMousePixel );
+    StartTextEdit( pMousePixel );
 }
 
 void ChartController::StartTextEdit( const Point* pMousePixel )
@@ -60,7 +59,8 @@ void ChartController::StartTextEdit( const Point* pMousePixel )
     if(!pTextObj)
         return;
 
-    OSL_PRECOND( !m_pTextActionUndoGuard.get(), "ChartController::StartTextEdit: already have a TextUndoGuard!?" );
+    OSL_PRECOND(!m_pTextActionUndoGuard,
+                "ChartController::StartTextEdit: already have a TextUndoGuard!?");
     m_pTextActionUndoGuard.reset( new UndoGuard(
         SchResId( STR_ACTION_EDIT_TEXT ), m_xUndoManager ) );
     SdrOutliner* pOutliner = m_pDrawViewWrapper->getOutliner();
@@ -79,26 +79,26 @@ void ChartController::StartTextEdit( const Point* pMousePixel )
                     , true //bDontDeleteOutliner
                     , true //bOnlyOneView
                     );
-    if(bEdit)
+    if(!bEdit)
+        return;
+
+    m_pDrawViewWrapper->SetEditMode();
+
+    // #i12587# support for shapes in chart
+    if ( pMousePixel )
     {
-        m_pDrawViewWrapper->SetEditMode();
-
-        // #i12587# support for shapes in chart
-        if ( pMousePixel )
+        OutlinerView* pOutlinerView = m_pDrawViewWrapper->GetTextEditOutlinerView();
+        if ( pOutlinerView )
         {
-            OutlinerView* pOutlinerView = m_pDrawViewWrapper->GetTextEditOutlinerView();
-            if ( pOutlinerView )
-            {
-                MouseEvent aEditEvt( *pMousePixel, 1, MouseEventModifiers::SYNTHETIC, MOUSE_LEFT, 0 );
-                pOutlinerView->MouseButtonDown( aEditEvt );
-                pOutlinerView->MouseButtonUp( aEditEvt );
-            }
+            MouseEvent aEditEvt( *pMousePixel, 1, MouseEventModifiers::SYNTHETIC, MOUSE_LEFT, 0 );
+            pOutlinerView->MouseButtonDown( aEditEvt );
+            pOutlinerView->MouseButtonUp( aEditEvt );
         }
-
-        //we invalidate the outliner region because the outliner has some
-        //paint problems (some characters are painted twice a little bit shifted)
-        GetChartWindow()->Invalidate( m_pDrawViewWrapper->GetMarkedObjBoundRect() );
     }
+
+    //we invalidate the outliner region because the outliner has some
+    //paint problems (some characters are painted twice a little bit shifted)
+    GetChartWindow()->Invalidate( m_pDrawViewWrapper->GetMarkedObjBoundRect() );
 }
 
 bool ChartController::EndTextEdit()
@@ -136,8 +136,8 @@ bool ChartController::EndTextEdit()
             TitleHelper::setCompleteString( aString, uno::Reference<
                 css::chart2::XTitle >::query( xPropSet ), m_xCC );
 
-            OSL_ENSURE( m_pTextActionUndoGuard.get(), "ChartController::EndTextEdit: no TextUndoGuard!" );
-            if ( m_pTextActionUndoGuard.get() )
+            OSL_ENSURE(m_pTextActionUndoGuard, "ChartController::EndTextEdit: no TextUndoGuard!");
+            if (m_pTextActionUndoGuard)
                 m_pTextActionUndoGuard->commit();
         }
         m_pTextActionUndoGuard.reset();
@@ -154,10 +154,9 @@ void ChartController::executeDispatch_InsertSpecialCharacter()
         return;
     }
     if( !m_pDrawViewWrapper->IsTextEdit() )
-        this->StartTextEdit();
+        StartTextEdit();
 
     SvxAbstractDialogFactory * pFact = SvxAbstractDialogFactory::Create();
-    OSL_ENSURE( pFact, "No dialog factory" );
 
     SfxAllItemSet aSet( m_pDrawModelWrapper->GetItemPool() );
     aSet.Put( SfxBoolItem( FN_PARAM_1, false ) );
@@ -168,51 +167,50 @@ void ChartController::executeDispatch_InsertSpecialCharacter()
     vcl::Font aCurFont = m_pDrawViewWrapper->getOutliner()->GetRefDevice()->GetFont();
     aSet.Put( SvxFontItem( aCurFont.GetFamilyType(), aCurFont.GetFamilyName(), aCurFont.GetStyleName(), aCurFont.GetPitch(), aCurFont.GetCharSet(), SID_ATTR_CHAR_FONT ) );
 
-    ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateSfxDialog( GetChartWindow(), aSet, getFrame(), RID_SVXDLG_CHARMAP ));
-    OSL_ENSURE( pDlg, "Couldn't create SvxCharacterMap dialog" );
-    if( pDlg->Execute() == RET_OK )
-    {
-        const SfxItemSet* pSet = pDlg->GetOutputItemSet();
-        const SfxPoolItem* pItem=nullptr;
-        OUString aString;
-        if ( pSet && pSet->GetItemState( SID_CHARMAP, true, &pItem) == SfxItemState::SET &&
-             dynamic_cast< const SfxStringItem* >(pItem) !=  nullptr )
-                aString = dynamic_cast<const SfxStringItem*>(pItem)->GetValue();
+    ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateCharMapDialog(GetChartFrame(), aSet, nullptr));
+    if( pDlg->Execute() != RET_OK )
+        return;
 
-        OutlinerView* pOutlinerView = m_pDrawViewWrapper->GetTextEditOutlinerView();
-        SdrOutliner*  pOutliner = m_pDrawViewWrapper->getOutliner();
+    const SfxItemSet* pSet = pDlg->GetOutputItemSet();
+    const SfxPoolItem* pItem=nullptr;
+    OUString aString;
+    if (pSet && pSet->GetItemState(SID_CHARMAP, true, &pItem) == SfxItemState::SET)
+        if (auto pStringItem = dynamic_cast<const SfxStringItem*>(pItem))
+            aString = pStringItem->GetValue();
 
-        if(!pOutliner || !pOutlinerView)
-            return;
+    OutlinerView* pOutlinerView = m_pDrawViewWrapper->GetTextEditOutlinerView();
+    SdrOutliner*  pOutliner = m_pDrawViewWrapper->getOutliner();
 
-        // insert string to outliner
+    if(!pOutliner || !pOutlinerView)
+        return;
 
-        // prevent flicker
-        pOutlinerView->HideCursor();
-        pOutliner->SetUpdateMode(false);
+    // insert string to outliner
 
-        // delete current selection by inserting empty String, so current
-        // attributes become unique (sel. has to be erased anyway)
-        pOutlinerView->InsertText(OUString());
+    // prevent flicker
+    pOutlinerView->HideCursor();
+    pOutliner->SetUpdateMode(false);
 
-        pOutlinerView->InsertText(aString, true);
+    // delete current selection by inserting empty String, so current
+    // attributes become unique (sel. has to be erased anyway)
+    pOutlinerView->InsertText(OUString());
 
-        ESelection aSel = pOutlinerView->GetSelection();
-        aSel.nStartPara = aSel.nEndPara;
-        aSel.nStartPos = aSel.nEndPos;
-        pOutlinerView->SetSelection(aSel);
+    pOutlinerView->InsertText(aString, true);
 
-        // show changes
-        pOutliner->SetUpdateMode(true);
-        pOutlinerView->ShowCursor();
-    }
+    ESelection aSel = pOutlinerView->GetSelection();
+    aSel.nStartPara = aSel.nEndPara;
+    aSel.nStartPos = aSel.nEndPos;
+    pOutlinerView->SetSelection(aSel);
+
+    // show changes
+    pOutliner->SetUpdateMode(true);
+    pOutlinerView->ShowCursor();
 }
 
 uno::Reference< css::accessibility::XAccessibleContext >
     ChartController::impl_createAccessibleTextContext()
 {
     uno::Reference< css::accessibility::XAccessibleContext > xResult(
-        new AccessibleTextHelper( m_pDrawViewWrapper ));
+        new AccessibleTextHelper( m_pDrawViewWrapper.get() ));
 
     return xResult;
 }

@@ -24,9 +24,7 @@
 #include <gdk/gdk.h>
 #include <gdk/gdkx.h>
 #include <gtk/gtk.h>
-#if GTK_CHECK_VERSION(3,0,0)
-#  include <gtk/gtkx.h>
-#endif
+#include <gtk/gtkx.h>
 #include <gdk/gdkkeysyms.h>
 
 #include <salframe.hxx>
@@ -36,7 +34,7 @@
 #include <unx/saltype.h>
 #include <unx/screensaverinhibitor.hxx>
 
-#include "tools/link.hxx"
+#include <tools/link.hxx>
 
 #include <com/sun/star/awt/XTopWindow.hpp>
 #include <com/sun/star/datatransfer/DataFlavor.hpp>
@@ -49,26 +47,22 @@
 #include <config_dbus.h>
 #include <config_gio.h>
 
-#include "headless/svpgdi.hxx"
+#include <headless/svpgdi.hxx>
 
 class GtkSalGraphics;
 class GtkSalDisplay;
 
-#if GTK_CHECK_VERSION(3,0,0)
-typedef ::Window GdkNativeWindow;
+typedef sal_uIntPtr GdkNativeWindow;
 #define GDK_WINDOW_XWINDOW(o) GDK_WINDOW_XID(o)
 #define gdk_set_sm_client_id(i) gdk_x11_set_sm_client_id(i)
 #define gdk_window_foreign_new_for_display(a,b) gdk_x11_window_foreign_new_for_display(a,b)
 class GtkDropTarget;
 class GtkDragSource;
 class GtkDnDTransferable;
-#endif
 
-#if !(GLIB_MAJOR_VERSION > 2 || GLIB_MINOR_VERSION >= 26)
-    typedef void GDBusConnection;
-#endif
+class GtkSalMenu;
 
-class GtkSalFrame : public SalFrame
+class GtkSalFrame final : public SalFrame
                   , public NativeWindowHandleProvider
 {
     struct IMHandler
@@ -122,7 +116,7 @@ class GtkSalFrame : public SalFrame
                 group( rPrev.group )
             {}
 
-            bool operator== (GdkEventKey *event) const
+            bool operator== (GdkEventKey const *event) const
             {
                 return (event != nullptr)
                     && (event->window == window)
@@ -168,11 +162,12 @@ class GtkSalFrame : public SalFrame
     };
     friend struct IMHandler;
 
+    friend class GtkSalObjectWidgetClip;
+
     SalX11Screen                    m_nXScreen;
     GtkWidget*                      m_pWindow;
-#if GTK_CHECK_VERSION(3,0,0)
+    GtkHeaderBar*                   m_pHeaderBar;
     GtkGrid*                        m_pTopLevelGrid;
-#endif
     GtkEventBox*                    m_pEventBox;
     GtkFixed*                       m_pFixedContainer;
     GdkWindow*                      m_pForeignParent;
@@ -184,43 +179,38 @@ class GtkSalFrame : public SalFrame
     std::list< GtkSalFrame* >       m_aChildren;
     GdkWindowState                  m_nState;
     SystemEnvData                   m_aSystemData;
-    GtkSalGraphics                 *m_pGraphics;
+    std::unique_ptr<GtkSalGraphics> m_pGraphics;
     bool                            m_bGraphics;
     ModKeyFlags                     m_nKeyModifiers;
     GdkCursor                      *m_pCurrentCursor;
     PointerStyle                    m_ePointerStyle;
     ScreenSaverInhibitor            m_ScreenSaverInhibitor;
-    int                             m_nWorkArea;
     bool                            m_bFullscreen;
     bool                            m_bSpanMonitorsWhenFullscreen;
     bool                            m_bDefaultPos;
     bool                            m_bDefaultSize;
-    bool                            m_bWindowIsGtkPlug;
-    OUString                        m_aTitle;
+    bool                            m_bTooltipBlocked;
     OUString                        m_sWMClass;
 
-    IMHandler*                      m_pIMHandler;
+    std::unique_ptr<IMHandler>      m_pIMHandler;
 
     Size                            m_aMaxSize;
     Size                            m_aMinSize;
     tools::Rectangle                       m_aRestorePosSize;
 
-#if GTK_CHECK_VERSION(3,0,0)
     OUString                        m_aTooltip;
-    tools::Rectangle                       m_aHelpArea;
+    tools::Rectangle                m_aHelpArea;
+    tools::Rectangle                m_aFloatRect;
+    FloatWinPopupFlags              m_nFloatFlags;
+    bool                            m_bFloatPositioned;
     long                            m_nWidthRequest;
     long                            m_nHeightRequest;
     cairo_region_t*                 m_pRegion;
     GtkDropTarget*                  m_pDropTarget;
     GtkDragSource*                  m_pDragSource;
-    bool                            m_bInDrag;
-    GtkDnDTransferable*             m_pFormatConversionRequest;
-#else
-    GdkRegion*                      m_pRegion;
-    bool                            m_bSetFocusOnMap;
-#endif
+    bool                            m_bGeometryIsProvisional;
 
-    SalMenu*                        m_pSalMenu;
+    GtkSalMenu*                     m_pSalMenu;
 
 #if ENABLE_DBUS && ENABLE_GIO
     private:
@@ -237,12 +227,7 @@ class GtkSalFrame : public SalFrame
 
     // signals
     static gboolean     signalButton( GtkWidget*, GdkEventButton*, gpointer );
-#if GTK_CHECK_VERSION(3,0,0)
     static void         signalStyleUpdated(GtkWidget*, gpointer);
-#else
-    static void         signalStyleSet(GtkWidget*, GtkStyle* pPrevious, gpointer);
-#endif
-#if GTK_CHECK_VERSION(3,0,0)
     static gboolean     signalDraw( GtkWidget*, cairo_t *cr, gpointer );
     static void         signalRealize(GtkWidget*, gpointer frame);
     static void         sizeAllocated(GtkWidget*, GdkRectangle *pAllocation, gpointer frame);
@@ -263,16 +248,10 @@ class GtkSalFrame : public SalFrame
     static void         signalDragDataGet(GtkWidget* widget, GdkDragContext* context, GtkSelectionData *data, guint info,
                                           guint time, gpointer frame);
 
-#if GTK_CHECK_VERSION(3,14,0)
     static void         gestureSwipe(GtkGestureSwipe* gesture, gdouble velocity_x, gdouble velocity_y, gpointer frame);
-    static void         gestureLongPress(GtkGestureLongPress* gesture, gpointer frame);
-#endif
-#else
-    static gboolean     signalExpose( GtkWidget*, GdkEventExpose*, gpointer );
-    void askForXEmbedFocus( sal_Int32 nTimecode );
-    void grabKeyboard(bool bGrab);
-#endif
+    static void         gestureLongPress(GtkGestureLongPress* gesture, gdouble x, gdouble y, gpointer frame);
     static gboolean     signalFocus( GtkWidget*, GdkEventFocus*, gpointer );
+    static void         signalSetFocus( GtkWindow* pWindow, GtkWidget* pWidget, gpointer frame );
     static gboolean     signalMap( GtkWidget*, GdkEvent*, gpointer );
     static gboolean     signalUnmap( GtkWidget*, GdkEvent*, gpointer );
     static gboolean     signalConfigure( GtkWidget*, GdkEventConfigure*, gpointer );
@@ -288,7 +267,7 @@ class GtkSalFrame : public SalFrame
     void            Center();
     void            SetDefaultSize();
 
-    void            doKeyCallback( guint state,
+    bool            doKeyCallback( guint state,
                                    guint keyval,
                                    guint16 hardware_keycode,
                                    guint8 group,
@@ -330,7 +309,6 @@ class GtkSalFrame : public SalFrame
     Size calcDefaultSize();
 
     void setMinMaxSize();
-    void createNewWindow( ::Window aParent, bool bXEmbed, SalX11Screen nXScreen );
 
     void AllocateFrame();
     void TriggerPaintEvent();
@@ -339,10 +317,9 @@ class GtkSalFrame : public SalFrame
 
     enum class SetType { RetainSize, Fullscreen, UnFullscreen };
 
-    void SetScreen( unsigned int nNewScreen, SetType eType, tools::Rectangle *pSize = nullptr );
+    void SetScreen( unsigned int nNewScreen, SetType eType, tools::Rectangle const *pSize = nullptr );
 
 public:
-#if GTK_CHECK_VERSION(3,0,0)
     cairo_surface_t*                m_pSurface;
     basegfx::B2IVector              m_aFrameSize;
     DamageHandler                   m_aDamageHandler;
@@ -350,22 +327,15 @@ public:
     Idle                            m_aSmoothScrollIdle;
     int                             m_nGrabLevel;
     bool                            m_bSalObjectSetPosSize;
-#endif
     GtkSalFrame( SalFrame* pParent, SalFrameStyleFlags nStyle );
     GtkSalFrame( SystemParentData* pSysData );
 
     guint                           m_nMenuExportId;
-    guint                           m_nAppMenuExportId;
     guint                           m_nActionGroupExportId;
-    guint                           m_nAppActionGroupExportId;
     guint                           m_nHudAwarenessId;
     std::vector<gulong>             m_aMouseSignalIds;
 
-    // dispatches an event, returns true if dispatched
-    // and false else; if true was returned the event should
-    // be swallowed
-    bool Dispatch( const XEvent* pEvent );
-    void grabPointer(bool bGrab, bool bOwnerEvents = false);
+    void grabPointer(bool bGrab, bool bKeyboardAlso, bool bOwnerEvents);
 
     static GtkSalDisplay*  getDisplay();
     static GdkDisplay*     getGdkDisplay();
@@ -373,19 +343,11 @@ public:
     GtkFixed*   getFixedContainer() const { return m_pFixedContainer; }
     GtkEventBox* getEventBox() const { return m_pEventBox; }
     GtkWidget*  getMouseEventWidget() const;
-#if GTK_CHECK_VERSION(3,0,0)
     GtkGrid*    getTopLevelGridWidget() const { return m_pTopLevelGrid; }
-#endif
-    GdkWindow*  getForeignParent() const { return m_pForeignParent; }
-    GdkNativeWindow getForeignParentWindow() const { return m_aForeignParentWindow; }
-    GdkWindow*  getForeignTopLevel() const { return m_pForeignTopLevel; }
-    GdkNativeWindow getForeignTopLevelWindow() const { return m_aForeignTopLevelWindow; }
     const SalX11Screen& getXScreenNumber() const { return m_nXScreen; }
     int          GetDisplayScreen() const { return maGeometry.nDisplayScreenNumber; }
     void updateScreenNumber();
 
-#if GTK_CHECK_VERSION(3,0,0)
-    // only for gtk3 ...
     cairo_t* getCairoContext() const;
     void damaged(sal_Int32 nExtentsLeft, sal_Int32 nExtentsTop,
                  sal_Int32 nExtentsRight, sal_Int32 nExtentsBottom) const;
@@ -396,7 +358,7 @@ public:
         m_pDropTarget = pDropTarget;
     }
 
-    void deregisterDropTarget(GtkDropTarget* pDropTarget)
+    void deregisterDropTarget(GtkDropTarget const * pDropTarget)
     {
         assert(m_pDropTarget == pDropTarget); (void)pDropTarget;
         m_pDropTarget = nullptr;
@@ -408,15 +370,10 @@ public:
         m_pDragSource = pDragSource;
     }
 
-    void deregisterDragSource(GtkDragSource* pDragSource)
+    void deregisterDragSource(GtkDragSource const * pDragSource)
     {
         assert(m_pDragSource == pDragSource); (void)pDragSource;
         m_pDragSource = nullptr;
-    }
-
-    void SetFormatConversionRequest(GtkDnDTransferable *pRequest)
-    {
-        m_pFormatConversionRequest = pRequest;
     }
 
     void startDrag(gint nButton, gint nDragOriginX, gint nDragOriginY,
@@ -429,10 +386,9 @@ public:
 
     void nopaint_container_resize_children(GtkContainer*);
 
-    void LaunchAsyncScroll(GdkEvent* pEvent);
+    void LaunchAsyncScroll(GdkEvent const * pEvent);
     DECL_LINK(AsyncScroll, Timer *, void);
 
-#endif
     virtual ~GtkSalFrame() override;
 
     // SalGraphics or NULL, but two Graphics for all SalFrames
@@ -442,7 +398,7 @@ public:
 
     // Event must be destroyed, when Frame is destroyed
     // When Event is called, SalInstance::Yield() must be returned
-    virtual bool                PostEvent(ImplSVEvent* pData) override;
+    virtual bool                PostEvent(std::unique_ptr<ImplSVEvent> pData) override;
 
     virtual void                SetTitle( const OUString& rTitle ) override;
     virtual void                SetIcon( sal_uInt16 nIcon ) override;
@@ -478,6 +434,7 @@ public:
     // pointer style
     virtual void                SetPointer( PointerStyle ePointerStyle ) override;
     virtual void                CaptureMouse( bool bMouse ) override;
+    virtual void                GrabFocus() override;
     virtual void                SetPointerPos( long nX, long nY ) override;
 
     // flush output buffer
@@ -523,30 +480,34 @@ public:
     // set clip region to none (-> rectangular windows, normal state)
     virtual void                ResetClipRegion() override;
     // start setting the clipregion consisting of nRects rectangles
-    virtual void                BeginSetClipRegion( sal_uLong nRects ) override;
+    virtual void                BeginSetClipRegion( sal_uInt32 nRects ) override;
     // add a rectangle to the clip region
     virtual void                UnionClipRegion( long nX, long nY, long nWidth, long nHeight ) override;
     // done setting up the clipregion
     virtual void                EndSetClipRegion() override;
 
-#if GTK_CHECK_VERSION(3,0,0)
+    virtual void                PositionByToolkit(const tools::Rectangle& rRect, FloatWinPopupFlags nFlags) override;
     virtual void                SetModal(bool bModal) override;
+    virtual bool                GetModal() const override;
+    void                        HideTooltip();
+    void                        BlockTooltip();
+    void                        UnblockTooltip();
     virtual bool                ShowTooltip(const OUString& rHelpText, const tools::Rectangle& rHelpArea) override;
-    virtual sal_uIntPtr         ShowPopover(const OUString& rHelpText, const tools::Rectangle& rHelpArea, QuickHelpFlags nFlags) override;
-    virtual bool                UpdatePopover(sal_uIntPtr nId, const OUString& rHelpText, const tools::Rectangle& rHelpArea) override;
-    virtual bool                HidePopover(sal_uIntPtr nId) override;
-#endif
+    virtual void*               ShowPopover(const OUString& rHelpText, vcl::Window* pParent, const tools::Rectangle& rHelpArea, QuickHelpFlags nFlags) override;
+    virtual bool                UpdatePopover(void* nId, const OUString& rHelpText, vcl::Window* pParent, const tools::Rectangle& rHelpArea) override;
+    virtual bool                HidePopover(void* nId) override;
+    virtual weld::Window*       GetFrameWeld() const override;
 
-    static GtkSalFrame         *getFromWindow( GtkWindow *pWindow );
+    static GtkSalFrame         *getFromWindow( GtkWidget *pWindow );
 
     sal_uIntPtr                 GetNativeWindowHandle(GtkWidget *pWidget);
     virtual sal_uIntPtr         GetNativeWindowHandle() override;
 
     //Call the usual SalFrame Callback, but catch uno exceptions and delegate
-    //to GtkData to rethrow them after the gsignal is processed when its safe
+    //to GtkSalData to rethrow them after the gsignal is processed when its safe
     //to do so again in our own code after the g_main_context_iteration call
     //which triggers the gsignals.
-    long                        CallCallbackExc(SalEvent nEvent, const void* pEvent) const;
+    bool                        CallCallbackExc(SalEvent nEvent, const void* pEvent) const;
 
 
     static void                 KeyCodeToGdkKey(const vcl::KeyCode& rKeyCode,
@@ -554,6 +515,12 @@ public:
 
     static guint32              GetLastInputEventTime();
     static void                 UpdateLastInputEventTime(guint32 nUserInputTime);
+    static sal_uInt16           GetMouseModCode(guint nState);
+    static sal_uInt16           GetKeyCode(guint nKeyVal);
+    static guint                GetKeyValFor(GdkKeymap* pKeyMap, guint16 hardware_keycode, guint8 group);
+    static sal_uInt16           GetKeyModCode(guint nState);
+    static GdkEvent*            makeFakeKeyPress(GtkWidget* pWidget);
+    static SalWheelMouseEvent   GetWheelEvent(GdkEventScroll& rEvent);
 };
 
 #define OOO_TYPE_FIXED ooo_fixed_get_type()
@@ -564,6 +531,30 @@ GType ooo_fixed_get_type();
 AtkObject* ooo_fixed_get_accessible(GtkWidget *obj);
 
 } // extern "C"
+
+#if !GTK_CHECK_VERSION(3, 20, 0)
+enum GdkDragCancelReason
+{
+  GDK_DRAG_CANCEL_NO_TARGET,
+  GDK_DRAG_CANCEL_USER_CANCELLED,
+  GDK_DRAG_CANCEL_ERROR
+};
+#endif
+
+#if !GTK_CHECK_VERSION(3, 22, 0)
+enum GdkAnchorHints
+{
+  GDK_ANCHOR_FLIP_X   = 1 << 0,
+  GDK_ANCHOR_FLIP_Y   = 1 << 1,
+  GDK_ANCHOR_SLIDE_X  = 1 << 2,
+  GDK_ANCHOR_SLIDE_Y  = 1 << 3,
+  GDK_ANCHOR_RESIZE_X = 1 << 4,
+  GDK_ANCHOR_RESIZE_Y = 1 << 5,
+  GDK_ANCHOR_FLIP     = GDK_ANCHOR_FLIP_X | GDK_ANCHOR_FLIP_Y,
+  GDK_ANCHOR_SLIDE    = GDK_ANCHOR_SLIDE_X | GDK_ANCHOR_SLIDE_Y,
+  GDK_ANCHOR_RESIZE   = GDK_ANCHOR_RESIZE_X | GDK_ANCHOR_RESIZE_Y
+};
+#endif
 
 #endif // INCLUDED_VCL_INC_UNX_GTK_GTKFRAME_HXX
 

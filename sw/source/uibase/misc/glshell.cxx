@@ -17,22 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/frame/XTitle.hpp>
-#include <o3tl/make_unique.hxx>
 #include <svl/eitem.hxx>
 #include <svl/stritem.hxx>
 #include <sfx2/printer.hxx>
 #include <sfx2/request.hxx>
-#include <sfx2/sfxsids.hrc>
-#include <svl/srchitem.hxx>
 #include <svl/macitem.hxx>
 #include <gloshdl.hxx>
 
 #include <editeng/acorrcfg.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <uitool.hxx>
 #include <wrtsh.hxx>
 #include <view.hxx>
 #include <glshell.hxx>
@@ -44,11 +42,10 @@
 #include <shellio.hxx>
 #include <initui.hxx>
 #include <cmdid.h>
-#include <swerror.h>
-#include <misc.hrc>
+#include <strings.hrc>
 
-#define SwWebGlosDocShell
-#define SwGlosDocShell
+#define ShellClass_SwWebGlosDocShell
+#define ShellClass_SwGlosDocShell
 
 #include <sfx2/msg.hxx>
 #include <swslots.hxx>
@@ -72,20 +69,20 @@ void SwWebGlosDocShell::InitInterface_Impl()
 
 static void lcl_Execute( SwDocShell& rSh, SfxRequest& rReq )
 {
-    if ( rReq.GetSlot() == SID_SAVEDOC )
+    if ( rReq.GetSlot() != SID_SAVEDOC )
+        return;
+
+    if( !rSh.HasName() )
     {
-        if( !rSh.HasName() )
-        {
-            rReq.SetReturnValue( SfxBoolItem( 0, rSh.Save() ) );
-        }
-        else
-        {
-            const SfxBoolItem* pRes = static_cast< const SfxBoolItem* >(
-                                        rSh.ExecuteSlot( rReq,
-                                        rSh.SfxObjectShell::GetInterface() ));
-            if( pRes->GetValue() )
-                rSh.GetDoc()->getIDocumentState().ResetModified();
-        }
+        rReq.SetReturnValue( SfxBoolItem( 0, rSh.Save() ) );
+    }
+    else
+    {
+        const SfxBoolItem* pRes = static_cast< const SfxBoolItem* >(
+                                    rSh.ExecuteSlot( rReq,
+                                    rSh.SfxObjectShell::GetInterface() ));
+        if( pRes->GetValue() )
+            rSh.GetDoc()->getIDocumentState().ResetModified();
     }
 }
 
@@ -106,8 +103,8 @@ static bool lcl_Save( SwWrtShell& rSh, const OUString& rGroupName,
     const SvxAutoCorrCfg& rCfg = SvxAutoCorrCfg::Get();
     std::unique_ptr<SwTextBlocks> pBlock(::GetGlossaries()->GetGroupDoc( rGroupName ));
 
-    SvxMacro aStart(aEmptyOUStr, aEmptyOUStr);
-    SvxMacro aEnd(aEmptyOUStr, aEmptyOUStr);
+    SvxMacro aStart { OUString(), OUString() };
+    SvxMacro aEnd { OUString(), OUString() };
     SwGlossaryHdl* pGlosHdl;
 
     pGlosHdl = rSh.GetView().GetGlosHdl();
@@ -131,7 +128,7 @@ static bool lcl_Save( SwWrtShell& rSh, const OUString& rGroupName,
 }
 
 SwGlosDocShell::SwGlosDocShell(bool bNewShow)
-    : SwDocShell( (bNewShow)
+    : SwDocShell( bNewShow
             ? SfxObjectCreateMode::STANDARD : SfxObjectCreateMode::INTERNAL )
 {
 }
@@ -201,7 +198,7 @@ SwDocShellRef SwGlossaries::EditGroupDoc( const OUString& rGroup, const OUString
 {
     SwDocShellRef xDocSh;
 
-    SwTextBlocks* pGroup = GetGroupDoc( rGroup );
+    std::unique_ptr<SwTextBlocks> pGroup = GetGroupDoc( rGroup );
     if (pGroup && pGroup->GetCount())
     {
         // query which view is registered. In WebWriter there is no normal view
@@ -240,7 +237,7 @@ SwDocShellRef SwGlossaries::EditGroupDoc( const OUString& rGroup, const OUString
         {
             // we create a default SfxPrinter.
             // ItemSet is deleted by Sfx!
-            auto pSet = o3tl::make_unique<SfxItemSet>(
+            auto pSet = std::make_unique<SfxItemSet>(
                 xDocSh->GetDoc()->GetAttrPool(),
                 svl::Items<
                     SID_PRINTER_NOTFOUND_WARN, SID_PRINTER_NOTFOUND_WARN,
@@ -268,7 +265,6 @@ SwDocShellRef SwGlossaries::EditGroupDoc( const OUString& rGroup, const OUString
         if ( bShow )
             pFrame->GetFrame().Appear();
     }
-    delete pGroup;
     return xDocSh;
 }
 

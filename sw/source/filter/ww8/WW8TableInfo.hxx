@@ -101,11 +101,11 @@ public:
 
     const SwNode * getNode() const;
 
-    TableBoxVectorPtr getTableBoxesOfRow();
-    WidthsPtr getWidthsOfRow();
-    WidthsPtr getColumnWidthsBasedOnAllRows();
+    TableBoxVectorPtr getTableBoxesOfRow() const;
+    WidthsPtr getWidthsOfRow() const;
+    WidthsPtr getColumnWidthsBasedOnAllRows() const;
     GridColsPtr getGridColsOfRow(AttributeOutputBase & rBase, bool calculateColumnsFromAllRows = false);
-    RowSpansPtr getRowSpansOfRow();
+    RowSpansPtr getRowSpansOfRow() const;
 
 #ifdef DBG_UTIL
     std::string toString() const;
@@ -203,8 +203,8 @@ public:
     const SwNode * getNextNode() const { return mpNextNode;}
 
     const Inners_t & getInners() const { return mInners;}
-    const WW8TableNodeInfoInner::Pointer_t getFirstInner() const;
-    const WW8TableNodeInfoInner::Pointer_t getInnerForDepth(sal_uInt32 nDepth) const;
+    WW8TableNodeInfoInner::Pointer_t getFirstInner() const;
+    WW8TableNodeInfoInner::Pointer_t getInnerForDepth(sal_uInt32 nDepth) const;
 
     sal_uInt32 getCell() const;
     sal_uInt32 getRow() const;
@@ -282,9 +282,9 @@ public:
     std::string toString();
 #endif
 
-    TableBoxVectorPtr getTableBoxesOfRow(WW8TableNodeInfoInner * pNodeInfo);
-    WidthsPtr getWidthsOfRow(WW8TableNodeInfoInner * pNodeInfo);
-    RowSpansPtr getRowSpansOfRow(WW8TableNodeInfoInner * pNodeInfo);
+    TableBoxVectorPtr getTableBoxesOfRow(WW8TableNodeInfoInner const * pNodeInfo);
+    WidthsPtr getWidthsOfRow(WW8TableNodeInfoInner const * pNodeInfo);
+    RowSpansPtr getRowSpansOfRow(WW8TableNodeInfoInner const * pNodeInfo);
 };
 
 class WW8TableInfo final
@@ -328,7 +328,7 @@ class WW8TableInfo final
                         sal_uInt32 nRow,
                         sal_uInt32 nCell,
                         sal_uInt32 nDepth,
-                        SwRect * pRect = nullptr);
+                        SwRect const * pRect = nullptr);
 
     WW8TableCellGrid::Pointer_t getCellGridForTable(const SwTable * pTable,
                                                     bool bCreate = true);

@@ -9,6 +9,8 @@
 
 #include "ucalc.hxx"
 #include "helper/sorthelper.hxx"
+#include "helper/debughelper.hxx"
+#include "helper/qahelper.hxx"
 
 #include <postit.hxx>
 #include <sortparam.hxx>
@@ -21,11 +23,16 @@
 #include <docfunc.hxx>
 #include <scitems.hxx>
 #include <editutil.hxx>
+#include <drwlayer.hxx>
+#include <formulaopt.hxx>
 
 #include <sal/config.h>
 #include <editeng/wghtitem.hxx>
 #include <editeng/postitem.hxx>
-#include <test/bootstrapfixture.hxx>
+#include <editeng/editobj.hxx>
+#include <svx/svdocirc.hxx>
+#include <svx/svdpage.hxx>
+#include <rtl/math.hxx>
 
 void Test::testSort()
 {
@@ -144,7 +151,7 @@ void Test::testSortHorizontal()
 
     // Insert raw data into A1:D4.
     ScRange aDataRange = insertRangeData(m_pDoc, ScAddress(0,0,0), aData, SAL_N_ELEMENTS(aData));
-    CPPUNIT_ASSERT_EQUAL(OUString("A1:D4"), aDataRange.Format(ScRefFlags::VALID));
+    CPPUNIT_ASSERT_EQUAL(OUString("A1:D4"), aDataRange.Format(*m_pDoc, ScRefFlags::VALID));
 
     // Check the formula values.
     CPPUNIT_ASSERT_EQUAL(OUString("Yes-No"), m_pDoc->GetString(ScAddress(3,1,0)));
@@ -153,7 +160,7 @@ void Test::testSortHorizontal()
 
     // Define A1:D4 as sheet-local anonymous database range.
     m_pDoc->SetAnonymousDBData(
-        0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 3, 3));
+        0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 3, 3)));
 
     // Sort A1:D4 horizontally, ascending by row 1.
     ScDBDocFunc aFunc(getDocShell());
@@ -174,14 +181,14 @@ void Test::testSortHorizontal()
 
     {
         // Expected output table content.  0 = empty cell
-        const char* aOutputCheck[][4] = {
+        std::vector<std::vector<const char*>> aOutputCheck = {
             { "table", "flag", "has UNIQUE", "Publish to EC2" },
             { "w2gi.mobilehit",     "Yes-No",  "Yes", "No" },
             { "w2gi.visitors",      "No-No",   "No",  "No" },
             { "w2gi.pagedimension", "Yes-Yes", "Yes", "Yes" },
         };
 
-        bool bSuccess = checkOutput<4>(m_pDoc, aDataRange, aOutputCheck, "Sorted by column with formula");
+        bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "Sorted by column with formula");
         CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
     }
 
@@ -220,7 +227,7 @@ void Test::testSortHorizontalWholeColumn()
 
     // Define C:G as sheet-local anonymous database range.
     m_pDoc->SetAnonymousDBData(
-        0, new ScDBData(STR_DB_LOCAL_NONAME, 0, nCol1, nRow1, nCol2, nRow2, false, false));
+        0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, nCol1, nRow1, nCol2, nRow2, false, false)));
 
     // Sort C:G horizontally ascending by row 1.
     ScDBDocFunc aFunc(getDocShell());
@@ -281,7 +288,7 @@ void Test::testSortSingleRow()
 
     // Define A1:B1 as sheet-local anonymous database range.
     m_pDoc->SetAnonymousDBData(
-        0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 1, 0));
+        0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 1, 0)));
 
     // Sort A1:B1 horizontally, ascending by row 1.
     ScDBDocFunc aFunc(getDocShell());
@@ -316,7 +323,7 @@ void Test::testSortSingleRow()
 
     // Define A1:G1 as sheet-local anonymous database range.
     m_pDoc->SetAnonymousDBData(
-        0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 6, 0, false, true));
+        0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 6, 0, false, true)));
 
     // Update the sort data.
     aSortData.nCol1 = 0;
@@ -360,7 +367,7 @@ void Test::testSortSingleRow()
     m_pDoc->DeleteTab(0);
 }
 
-// regression test fo fdo#53814, sorting doesn't work as expected
+// regression test of fdo#53814, sorting doesn't work as expected
 // if cells in the sort are referenced by formulas
 void Test::testSortWithFormulaRefs()
 {
@@ -378,7 +385,7 @@ void Test::testSortWithFormulaRefs()
         "=IF($List1.A7<>\"\";$List1.A7;\"\")",
     };
 
-    const char* aTextData[4] = {
+    const char* const aTextData[4] = {
         "bob",
         "tim",
         "brian",
@@ -427,7 +434,7 @@ void Test::testSortWithStrings()
     m_pDoc->InsertTab(0, "Test");
 
     ScFieldEditEngine& rEE = m_pDoc->GetEditEngine();
-    rEE.SetText("Val1");
+    rEE.SetTextCurrentDefaults("Val1");
     m_pDoc->SetString(ScAddress(1,1,0), "Header");
     m_pDoc->SetString(ScAddress(1,2,0), "Val2");
     m_pDoc->SetEditText(ScAddress(1,3,0), rEE.CreateTextObject());
@@ -467,7 +474,7 @@ void Test::testSortInFormulaGroup()
 {
     SortRefUpdateSetter aUpdateSet;
 
-    static struct {
+    static const struct {
         SCCOL nCol;
         SCROW nRow;
         const char *pData;
@@ -486,7 +493,7 @@ void Test::testSortInFormulaGroup()
 
     m_pDoc->InsertTab(0, "sorttest");
 
-    for ( SCROW i = 0; i < (SCROW) SAL_N_ELEMENTS( aEntries ); ++i )
+    for ( SCROW i = 0; i < SCROW(SAL_N_ELEMENTS( aEntries )); ++i )
         m_pDoc->SetString( aEntries[i].nCol, aEntries[i].nRow, 0,
                            OUString::createFromAscii( aEntries[i].pData) );
 
@@ -501,31 +508,24 @@ void Test::testSortInFormulaGroup()
 
     m_pDoc->Sort(0, aSortData, false, true, nullptr, nullptr);
 
-    static struct {
-        SCCOL nCol;
-        SCROW nRow;
-        double fValue;
-    } aResults[] = {
-        { 0, 0, 1.0 },   { 1, 0, 1.0 },
-        { 0, 1, 2.0 },   { 1, 1, 3.0 },
-        { 0, 2, 3.0 },   { 1, 2, 3.0 },
-        { 0, 3, 10.0 },  { 1, 3, 11.0 },
-        { 0, 4, 20.0 },  { 1, 4, 20.0 },
-        { 0, 5, 100.0 }, { 1, 5, 100.0 },
-        { 0, 6, 101.0 }, { 1, 6, 101.0 },
-        { 0, 7, 102.0 }, { 1, 7, 102.0 },
-        { 0, 8, 103.0 }, { 1, 8, 103.0 },
-        { 0, 9, 104.0 }, { 1, 9, 104.0 },
+    static const double aResults[] = {
+        1.0,   1.0,
+        2.0,   3.0,
+        3.0,   3.0,
+        10.0,  11.0,
+        20.0,  20.0,
+        100.0, 100.0,
+        101.0, 101.0,
+        102.0, 102.0,
+        103.0, 103.0,
+        104.0, 104.0
     };
 
-    for ( SCROW i = 0; i < (SCROW) SAL_N_ELEMENTS( aEntries ); ++i )
+    for ( SCROW i = 0; i < SCROW(SAL_N_ELEMENTS( aEntries )); ++i )
     {
         double val = m_pDoc->GetValue( aEntries[i].nCol, aEntries[i].nRow, 0 );
-//        fprintf(stderr, "value at %d %d is %g = %g\n",
-//                (int)aResults[i].nRow, (int)aResults[i].nCol,
-//                val, aResults[i].fValue);
         CPPUNIT_ASSERT_MESSAGE("Mis-matching value after sort.",
-                               rtl::math::approxEqual(val, aResults[i].fValue));
+                               rtl::math::approxEqual(val, aResults[i]));
     }
 
     m_pDoc->DeleteTab( 0 );
@@ -657,7 +657,7 @@ void Test::testSortWithCellFormats()
 
     // Define A1:A4 as sheet-local anonymous database range, else sort wouldn't run.
     m_pDoc->SetAnonymousDBData(
-        0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 0, 3));
+        0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 0, 3)));
 
     // Sort A1:A4 ascending with cell formats.
     ScDBDocFunc aFunc(getDocShell());
@@ -729,7 +729,7 @@ void Test::testSortRefUpdate()
 
     // Define A1:A10 as sheet-local anonymous database range, else sort wouldn't run.
     m_pDoc->SetAnonymousDBData(
-        0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 0, 9));
+        0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 0, 9)));
 
     // Sort A1:A10 (with a header row).
     ScSortParam aSortData;
@@ -880,7 +880,7 @@ void Test::testSortRefUpdate2()
 
     // Define A1:B5 as sheet-local anonymous database range, else sort wouldn't run.
     m_pDoc->SetAnonymousDBData(
-        0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 1, 4));
+        0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 1, 4)));
 
     // Sort A1:B5 by column A (with a row header).
     ScSortParam aSortData;
@@ -965,7 +965,7 @@ void Test::testSortRefUpdate3()
 
     // Sort A1:A6.
     m_pDoc->SetAnonymousDBData(
-        0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 0, 5));
+        0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 0, 5)));
 
     // Sort A1:A6 by column A (with a row header).
     ScSortParam aSortData;
@@ -1108,8 +1108,8 @@ void Test::testSortRefUpdate4_Impl()
         aSortData.maKeyState[0].nField = 3;             // Average
         aSortData.maKeyState[0].bAscending = false;     // descending
 
-        m_pDoc->SetAnonymousDBData( 0, new ScDBData( STR_DB_LOCAL_NONAME, aSortRange.aStart.Tab(),
-                    aSortData.nCol1, aSortData.nRow1, aSortData.nCol2, aSortData.nRow2));
+        m_pDoc->SetAnonymousDBData( 0, std::unique_ptr<ScDBData>(new ScDBData( STR_DB_LOCAL_NONAME, aSortRange.aStart.Tab(),
+                    aSortData.nCol1, aSortData.nRow1, aSortData.nCol2, aSortData.nRow2)));
 
         bool bSorted = aFunc.Sort(0, aSortData, true, true, true);
         CPPUNIT_ASSERT(bSorted);
@@ -1141,7 +1141,7 @@ void Test::testSortRefUpdate4_Impl()
         {
             for (SCCOL nCol=0; nCol < 4; ++nCol)
             {
-                ASSERT_FORMULA_EQUAL(*m_pDoc, ScAddress(nCol,nRow+1,0), aCheck[nRow][nCol], OString("Wrong formula in " + OString('A'+nCol) + OString::number(nRow+2) + ".").getStr());
+                ASSERT_FORMULA_EQUAL(*m_pDoc, ScAddress(nCol,nRow+1,0), aCheck[nRow][nCol], OString("Wrong formula in " + OStringChar(char('A'+nCol)) + OString::number(nRow+2) + ".").getStr());
             }
         }
 
@@ -1179,8 +1179,8 @@ void Test::testSortRefUpdate4_Impl()
         aSortData.maKeyState[0].nField = 0;             // Name
         aSortData.maKeyState[0].bAscending = false;     // descending
 
-        m_pDoc->SetAnonymousDBData( 0, new ScDBData( STR_DB_LOCAL_NONAME, aSortRange.aStart.Tab(),
-                    aSortData.nCol1, aSortData.nRow1, aSortData.nCol2, aSortData.nRow2));
+        m_pDoc->SetAnonymousDBData( 0, std::unique_ptr<ScDBData>(new ScDBData( STR_DB_LOCAL_NONAME, aSortRange.aStart.Tab(),
+                    aSortData.nCol1, aSortData.nRow1, aSortData.nCol2, aSortData.nRow2)));
 
         bool bSorted = aFunc.Sort(0, aSortData, true, true, true);
         CPPUNIT_ASSERT(bSorted);
@@ -1212,7 +1212,7 @@ void Test::testSortRefUpdate4_Impl()
         {
             for (SCCOL nCol=0; nCol < 4; ++nCol)
             {
-                ASSERT_FORMULA_EQUAL(*m_pDoc, ScAddress(nCol,nRow+1,0), aCheck[nRow][nCol], OString("Wrong formula in " + OString('A'+nCol) + OString::number(nRow+2) + ".").getStr());
+                ASSERT_FORMULA_EQUAL(*m_pDoc, ScAddress(nCol,nRow+1,0), aCheck[nRow][nCol], OString("Wrong formula in " + OStringChar(char('A'+nCol)) + OString::number(nRow+2) + ".").getStr());
             }
         }
     }
@@ -1226,8 +1226,8 @@ void Test::testSortRefUpdate4_Impl()
 /* FIXME: this test is not roll-over-midnight safe and will fail then! We may
  * want to have something different, but due to the nature of volatile
  * functions it's not that easy to come up with something reproducible staying
- * stable over sorts.. ;-)  Check for time and don't run test a few seconds
- * before midnight, ermm.. */
+ * stable over sorts... ;-)  Check for time and don't run test a few seconds
+ * before midnight, ermm... */
 void Test::testSortRefUpdate5()
 {
     SortRefUpdateSetter aUpdateSet;
@@ -1270,8 +1270,8 @@ void Test::testSortRefUpdate5()
     ScDBDocFunc aFunc(getDocShell());
 
     // Sort A1:B5.
-    m_pDoc->SetAnonymousDBData( 0, new ScDBData( STR_DB_LOCAL_NONAME, aSortRange.aStart.Tab(),
-                aSortRange.aStart.Col(), aSortRange.aStart.Row(), aSortRange.aEnd.Col(), aSortRange.aEnd.Row()));
+    m_pDoc->SetAnonymousDBData( 0, std::unique_ptr<ScDBData>(new ScDBData( STR_DB_LOCAL_NONAME, aSortRange.aStart.Tab(),
+                aSortRange.aStart.Col(), aSortRange.aStart.Row(), aSortRange.aEnd.Col(), aSortRange.aEnd.Row())));
 
     // Sort by column A.
     ScSortParam aSortData;
@@ -1351,14 +1351,14 @@ void Test::testSortRefUpdate6()
 
     {
         // Expected output table content.  0 = empty cell
-        const char* aOutputCheck[][3] = {
+        std::vector<std::vector<const char*>> aOutputCheck = {
             { "Order", "Value", "1" },
             { "9", "1", "2" },
             { "1", "2", "4" },
             { "8", "3", "7" },
         };
 
-        bool bSuccess = checkOutput<3>(m_pDoc, aDataRange, aOutputCheck, "Initial value");
+        bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "Initial value");
         CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
     }
 
@@ -1366,7 +1366,7 @@ void Test::testSortRefUpdate6()
 
     // Sort A1:C4.
     m_pDoc->SetAnonymousDBData(
-        0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 2, 3));
+        0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 2, 3)));
 
     // Sort A1:A6 by column A (with a row header).
     ScSortParam aSortData;
@@ -1383,14 +1383,14 @@ void Test::testSortRefUpdate6()
 
     {
         // Expected output table content.  0 = empty cell
-        const char* aOutputCheck[][3] = {
+        std::vector<std::vector<const char*>> aOutputCheck = {
             { "Order", "Value", "1" },
             { "1", "2", "3" },
             { "8", "3", "6" },
             { "9", "1", "7" },
         };
 
-        bool bSuccess = checkOutput<3>(m_pDoc, aDataRange, aOutputCheck, "Sorted without reference update");
+        bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "Sorted without reference update");
         CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
     }
 
@@ -1407,14 +1407,14 @@ void Test::testSortRefUpdate6()
 
     {
         // Expected output table content.  0 = empty cell
-        const char* aOutputCheck[][3] = {
+        std::vector<std::vector<const char*>> aOutputCheck = {
             { "Order", "Value", "1" },
             { "9", "1", "2" },
             { "1", "2", "4" },
             { "8", "3", "7" },
         };
 
-        bool bSuccess = checkOutput<3>(m_pDoc, aDataRange, aOutputCheck, "After undo");
+        bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "After undo");
         CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
     }
 
@@ -1422,14 +1422,14 @@ void Test::testSortRefUpdate6()
     pUndoMgr->Redo();
     {
         // Expected output table content.  0 = empty cell
-        const char* aOutputCheck[][3] = {
+        std::vector<std::vector<const char*>> aOutputCheck = {
             { "Order", "Value", "1" },
             { "1", "2", "3" },
             { "8", "3", "6" },
             { "9", "1", "7" },
         };
 
-        bool bSuccess = checkOutput<3>(m_pDoc, aDataRange, aOutputCheck, "After redo");
+        bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "After redo");
         CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
     }
 
@@ -1438,14 +1438,14 @@ void Test::testSortRefUpdate6()
     rFunc.SetValueCell(ScAddress(2,0,0), 11.0, false);
     {
         // Expected output table content.  0 = empty cell
-        const char* aOutputCheck[][3] = {
+        std::vector<std::vector<const char*>> aOutputCheck = {
             { "Order", "Value", "11" },
             { "1", "2", "13" },
             { "8", "3", "16" },
             { "9", "1", "17" },
         };
 
-        bool bSuccess = checkOutput<3>(m_pDoc, aDataRange, aOutputCheck, "Change the header value");
+        bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "Change the header value");
         CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
     }
 
@@ -1453,14 +1453,14 @@ void Test::testSortRefUpdate6()
     pUndoMgr->Undo();
     {
         // Expected output table content.  0 = empty cell
-        const char* aOutputCheck[][3] = {
+        std::vector<std::vector<const char*>> aOutputCheck = {
             { "Order", "Value", "1" },
             { "1", "2", "3" },
             { "8", "3", "6" },
             { "9", "1", "7" },
         };
 
-        bool bSuccess = checkOutput<3>(m_pDoc, aDataRange, aOutputCheck, "After undo of header value change");
+        bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "After undo of header value change");
         CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
     }
 
@@ -1488,18 +1488,18 @@ void Test::testSortBroadcaster()
 
         {
             // Expected output table content.  0 = empty cell
-            const char* aOutputCheck[][7] = {
+            std::vector<std::vector<const char*>> aOutputCheck = {
                 { "1",   nullptr, nullptr, "0", "0",  "1",  "1" },
                 { "2", "8", nullptr, "8", "8", "10", "10" },
             };
 
-            bool bSuccess = checkOutput<7>(m_pDoc, aDataRange, aOutputCheck, "Initial value");
+            bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "Initial value");
             CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
         }
 
         // Sort A1:B2.
         m_pDoc->SetAnonymousDBData(
-                0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 1, 1));
+                0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 1, 1)));
 
         ScDBDocFunc aFunc(getDocShell());
 
@@ -1519,12 +1519,12 @@ void Test::testSortBroadcaster()
 
         {
             // Expected output table content.  0 = empty cell
-            const char* aOutputCheck[][7] = {
+            std::vector<std::vector<const char*>> aOutputCheck = {
                 { "2", "8", nullptr, "8", "8", "10", "10" },
                 { "1",   nullptr, nullptr, "0", "0",  "1",  "1" },
             };
 
-            bool bSuccess = checkOutput<7>(m_pDoc, aDataRange, aOutputCheck, "Sorted without reference update");
+            bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "Sorted without reference update");
             CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
         }
 
@@ -1580,7 +1580,7 @@ void Test::testSortBroadcaster()
 
         {
             // Expected output table content.  0 = empty cell
-            const char* aOutputCheck[][2] = {
+            std::vector<std::vector<const char*>> aOutputCheck = {
                 { "1", "2" },
                 {   nullptr, "8" },
                 { nullptr, nullptr },
@@ -1590,13 +1590,13 @@ void Test::testSortBroadcaster()
                 { "1", "10" },
             };
 
-            bool bSuccess = checkOutput<2>(m_pDoc, aDataRange, aOutputCheck, "Initial value");
+            bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "Initial value");
             CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
         }
 
         // Sort A5:B6.
         m_pDoc->SetAnonymousDBData(
-                0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 4, 1, 5));
+                0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 4, 1, 5)));
 
         ScDBDocFunc aFunc(getDocShell());
 
@@ -1616,7 +1616,7 @@ void Test::testSortBroadcaster()
 
         {
             // Expected output table content.  0 = empty cell
-            const char* aOutputCheck[][2] = {
+            std::vector<std::vector<const char*>> aOutputCheck = {
                 { "2", "1" },
                 { "8",   nullptr },
                 { nullptr, nullptr },
@@ -1626,7 +1626,7 @@ void Test::testSortBroadcaster()
                 { "10", "1" },
             };
 
-            bool bSuccess = checkOutput<2>(m_pDoc, aDataRange, aOutputCheck, "Sorted without reference update");
+            bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "Sorted without reference update");
             CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
         }
 
@@ -1688,18 +1688,18 @@ void Test::testSortBroadcastBroadcaster()
 
         {
             // Expected output table content.  0 = empty cell
-            const char* aOutputCheck[][3] = {
+            std::vector<std::vector<const char*>> aOutputCheck = {
                 { "1", "1", "1" },
                 { "2", "2", "2" },
             };
 
-            bool bSuccess = checkOutput<3>(m_pDoc, aDataRange, aOutputCheck, "Initial value");
+            bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "Initial value");
             CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
         }
 
         // Sort A1:A2.
         m_pDoc->SetAnonymousDBData(
-                0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 0, 1));
+                0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 0, 1)));
 
         ScDBDocFunc aFunc(getDocShell());
 
@@ -1719,12 +1719,12 @@ void Test::testSortBroadcastBroadcaster()
 
         {
             // Expected output table content.  0 = empty cell
-            const char* aOutputCheck[][3] = {
+            std::vector<std::vector<const char*>> aOutputCheck = {
                 { "2", "2", "2" },
                 { "1", "1", "1" },
             };
 
-            bool bSuccess = checkOutput<3>(m_pDoc, aDataRange, aOutputCheck, "Sorted without reference update");
+            bool bSuccess = checkOutput(m_pDoc, aDataRange, aOutputCheck, "Sorted without reference update");
             CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
         }
 
@@ -1769,7 +1769,7 @@ void Test::testSortOutOfPlaceResult()
 
     // Sort A1:A6, and set the result to C2:C7
     m_pDoc->SetAnonymousDBData(
-        0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 0, 5));
+        0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 0, 0, 0, 5)));
 
     ScSortParam aSortData;
     aSortData.nCol1 = 0;
@@ -1848,7 +1848,7 @@ void Test::testSortPartialFormulaGroup()
 
     // Sort only B2:B4.  This caused crash at one point (c.f. fdo#81617).
 
-    m_pDoc->SetAnonymousDBData(0, new ScDBData(STR_DB_LOCAL_NONAME, 0, 1, 1, 1, 3));
+    m_pDoc->SetAnonymousDBData(0, std::unique_ptr<ScDBData>(new ScDBData(STR_DB_LOCAL_NONAME, 0, 1, 1, 1, 3)));
 
     ScSortParam aSortData;
     aSortData.nCol1 = 1;
@@ -1880,6 +1880,67 @@ void Test::testSortPartialFormulaGroup()
     CPPUNIT_ASSERT_EQUAL(50.0, m_pDoc->GetValue(ScAddress(1,3,0)));
     CPPUNIT_ASSERT_EQUAL(47.0, m_pDoc->GetValue(ScAddress(1,4,0)));
     CPPUNIT_ASSERT_EQUAL(28.0, m_pDoc->GetValue(ScAddress(1,5,0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+void Test::testSortImages()
+{
+    m_pDoc->InsertTab(0, "testSortImages");
+
+    // We need a drawing layer in order to create caption objects.
+    m_pDoc->InitDrawLayer(&getDocShell());
+    ScDrawLayer* pDrawLayer = m_pDoc->GetDrawLayer();
+    CPPUNIT_ASSERT(pDrawLayer);
+
+    ScRange aDataRange;
+    ScAddress aPos(0,0,0);
+    {
+        const char* aData[][1] = {
+            { "2" },
+            { "1" },
+        };
+
+        clearRange(m_pDoc, ScRange(0, 0, 0, 1, SAL_N_ELEMENTS(aData), 0));
+        aDataRange = insertRangeData(m_pDoc, aPos, aData, SAL_N_ELEMENTS(aData));
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("failed to insert range data at correct position", aPos, aDataRange.aStart);
+    }
+
+    // Insert graphic in cell B2.
+    const tools::Rectangle aOrigRect(1000, 1000, 1200, 1200);
+    SdrCircObj* pObj = new SdrCircObj(*pDrawLayer, SdrCircKind::Full, aOrigRect);
+    SdrPage* pPage = pDrawLayer->GetPage(0);
+    CPPUNIT_ASSERT(pPage);
+    pPage->InsertObject(pObj);
+    // Anchor to cell
+    ScDrawLayer::SetCellAnchoredFromPosition(*pObj, *m_pDoc, 0, false);
+    // Move to cell B2
+    ScAddress aCellPos(1, 1, 0);
+    pDrawLayer->MoveObject(pObj, aCellPos);
+
+    std::map<SCROW, std::vector<SdrObject*>> pRowObjects
+        = pDrawLayer->GetObjectsAnchoredToRange(aCellPos.Tab(), aCellPos.Col(), aCellPos.Row(), aCellPos.Row());
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pRowObjects[aCellPos.Row()].size());
+
+    ScSortParam aSortData;
+    aSortData.nCol1 = 0;
+    aSortData.nCol2 = 1;
+    aSortData.nRow1 = 0;
+    aSortData.nRow2 = 1;
+    aSortData.maKeyState[0].bDoSort = true;
+    aSortData.maKeyState[0].nField = 0;
+    aSortData.maKeyState[0].bAscending = true;
+
+    m_pDoc->Sort(0, aSortData, false, true, nullptr, nullptr);
+
+    double nVal = m_pDoc->GetValue(0,0,0);
+    ASSERT_DOUBLES_EQUAL(nVal, 1.0);
+
+    // check that note is also moved after sorting
+    aCellPos = ScAddress(1, 0, 0);
+    pRowObjects
+        = pDrawLayer->GetObjectsAnchoredToRange(aCellPos.Tab(), aCellPos.Col(), aCellPos.Row(), aCellPos.Row());
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pRowObjects[aCellPos.Row()].size());
 
     m_pDoc->DeleteTab(0);
 }

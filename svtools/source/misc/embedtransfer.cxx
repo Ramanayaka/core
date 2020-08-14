@@ -17,17 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/embed/XComponentSupplier.hpp>
-#include <com/sun/star/embed/EmbedStates.hpp>
-#include <com/sun/star/embed/XVisualObject.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/embed/XEmbedPersist.hpp>
 #include <com/sun/star/embed/NoVisualAreaSizeException.hpp>
 #include <com/sun/star/datatransfer/XTransferable.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
+#include <osl/diagnose.h>
 #include <sot/exchange.hxx>
 #include <svtools/embedtransfer.hxx>
 #include <tools/mapunit.hxx>
 #include <vcl/outdev.hxx>
+#include <vcl/gdimtf.hxx>
+#include <comphelper/fileformat.h>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <unotools/ucbstreamhelper.hxx>
@@ -58,11 +59,6 @@ SvEmbedTransferHelper::SvEmbedTransferHelper( const uno::Reference< embed::XEmbe
 
 SvEmbedTransferHelper::~SvEmbedTransferHelper()
 {
-    if ( m_pGraphic )
-    {
-        delete m_pGraphic;
-        m_pGraphic = nullptr;
-    }
 }
 
 void SvEmbedTransferHelper::SetParentShellID( const OUString& rShellID )
@@ -94,14 +90,14 @@ bool SvEmbedTransferHelper::GetData( const css::datatransfer::DataFlavor& rFlavo
                 if( nFormat == SotClipboardFormatId::OBJECTDESCRIPTOR )
                 {
                     TransferableObjectDescriptor aDesc;
-                    FillTransferableObjectDescriptor( aDesc, m_xObj, m_pGraphic, m_nAspect );
+                    FillTransferableObjectDescriptor( aDesc, m_xObj, m_pGraphic.get(), m_nAspect );
                     bRet = SetTransferableObjectDescriptor( aDesc );
                 }
                 else if( nFormat == SotClipboardFormatId::EMBED_SOURCE )
                 {
                     try
                     {
-                        // TODO/LATER: Propbably the graphic should be copied here as well
+                        // TODO/LATER: Probably the graphic should be copied here as well
                         // currently it is handled by the applications
                         utl::TempFile aTmp;
                         aTmp.EnableKillingFile();
@@ -121,7 +117,7 @@ bool SvEmbedTransferHelper::GetData( const css::datatransfer::DataFlavor& rFlavo
                             if ( xStg->isStreamElement( aName ) )
                             {
                                 uno::Reference < io::XStream > xStm = xStg->cloneStreamElement( aName );
-                                pStream = utl::UcbStreamHelper::CreateStream( xStm );
+                                pStream = utl::UcbStreamHelper::CreateStream( xStm ).release();
                                 bDeleteStream = true;
                             }
                             else
@@ -131,7 +127,7 @@ bool SvEmbedTransferHelper::GetData( const css::datatransfer::DataFlavor& rFlavo
                                 xStg->openStorageElement( aName, embed::ElementModes::READ )->copyToStorage( xStor );
                             }
 
-                            const sal_uInt32               nLen = pStream->Seek( STREAM_SEEK_TO_END );
+                            const sal_uInt32               nLen = pStream->TellEnd();
                             css::uno::Sequence< sal_Int8 > aSeq( nLen );
 
                             pStream->Seek( STREAM_SEEK_TO_BEGIN );
@@ -139,7 +135,7 @@ bool SvEmbedTransferHelper::GetData( const css::datatransfer::DataFlavor& rFlavo
                             if ( bDeleteStream )
                                 delete pStream;
 
-                            bRet = ( aSeq.getLength() > 0 );
+                            bRet = aSeq.hasElements();
                             if( bRet )
                             {
                                 SetAny( uno::Any(aSeq) );
@@ -163,7 +159,7 @@ bool SvEmbedTransferHelper::GetData( const css::datatransfer::DataFlavor& rFlavo
                     const_cast<GDIMetaFile*>(&aMetaFile)->Write( aMemStm );
                     uno::Any aAny;
                     aAny <<= uno::Sequence< sal_Int8 >( static_cast< const sal_Int8* >( aMemStm.GetData() ),
-                                                    aMemStm.Seek( STREAM_SEEK_TO_END ) );
+                                                    aMemStm.TellEnd() );
                     SetAny( aAny );
                     bRet = true;
                 }
@@ -231,8 +227,7 @@ void SvEmbedTransferHelper::FillTransferableObjectDescriptor( TransferableObject
     {
         try
         {
-            awt::Size aSz;
-            aSz = xObj->getVisualAreaSize( rDesc.mnViewAspect );
+            awt::Size aSz = xObj->getVisualAreaSize( rDesc.mnViewAspect );
             aSize = Size( aSz.Width, aSz.Height );
         }
         catch( embed::NoVisualAreaSizeException& )

@@ -16,15 +16,14 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
+
 #ifndef INCLUDED_SVX_INSCTRL_HXX
 #define INCLUDED_SVX_INSCTRL_HXX
 
 #include <sfx2/stbitem.hxx>
 #include <svx/svxdllapi.h>
 
-// class SvxInsertToolBoxControl -----------------------------------------
-
-class SVX_DLLPUBLIC SvxInsertStatusBarControl : public SfxStatusBarControl
+class SVX_DLLPUBLIC SvxInsertStatusBarControl final : public SfxStatusBarControl
 {
 public:
     virtual void    StateChanged( sal_uInt16 nSID, SfxItemState eState,

@@ -61,6 +61,11 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPTBLFORMULA_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPTBLFORMULA_HXX
 
+#include <rtl/ustring.hxx>
+#include <memory>
+#include <vector>
+#include "lwptblcell.hxx"
+
 /* These token types are written to the file.  Don't change their
 values unless you filter them.
 */
@@ -139,8 +144,8 @@ class LwpFormulaCellAddr:public LwpFormulaArg
 public:
     LwpFormulaCellAddr(sal_Int16 aCol, sal_Int16 aRow);
 
-    sal_Int16 GetCol(){return m_aCol;}
-    sal_Int16 GetRow(){return m_aRow;}
+    sal_Int16 GetCol() const {return m_aCol;}
+    sal_Int16 GetRow() const {return m_aRow;}
 
     virtual OUString ToString(LwpTableLayout* pCellsMap) override;
 private:
@@ -167,13 +172,13 @@ public:
     explicit LwpFormulaFunc(sal_uInt16 nTokenType);
     virtual ~LwpFormulaFunc() override;
 
-    void AddArg(LwpFormulaArg* pArg);
+    void AddArg(std::unique_ptr<LwpFormulaArg> pArg);
 
     virtual OUString ToString(LwpTableLayout* pCellsMap) override;
     OUString ToArgString(LwpTableLayout* pCellsMap) override;
 
 protected:
-    std::vector<LwpFormulaArg*> m_aArgs;
+    std::vector<std::unique_ptr<LwpFormulaArg>> m_aArgs;
     sal_uInt16 m_nTokenType;
 };
 
@@ -191,27 +196,25 @@ public:
     virtual OUString ToString(LwpTableLayout* pCellsMap) override;
 };
 
-class LwpFormulaInfo : public LwpCellList
+class LwpFormulaInfo final : public LwpCellList
 {
 public:
-    LwpFormulaInfo(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpFormulaInfo(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     OUString Convert(LwpTableLayout* pCellsMap);
     void Convert(XFCell * pCell, LwpTableLayout* pCellsMap=nullptr) override;
-protected:
+private:
     void Read() override;
-    bool ReadCellID();
+    void ReadCellID();
     void ReadText();
     void ReadCellRange();
     void ReadExpression();
     void ReadArguments(LwpFormulaFunc& aFunc);
     bool m_bSupported;
-private:
     virtual ~LwpFormulaInfo() override;
-
-    std::vector<LwpFormulaArg*> m_aStack;
     void ReadConst();
     void MarkUnsupported(sal_uInt16 TokenType);
 
+    std::vector<std::unique_ptr<LwpFormulaArg>> m_aStack;
     sal_uInt16 m_nFormulaRow;
 };
 

@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "XMLScriptContextFactory.hxx"
+#include <XMLScriptContextFactory.hxx>
 #include <xmloff/XMLEventsImportContext.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 
 
@@ -32,10 +32,11 @@ using ::com::sun::star::beans::PropertyValue;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
 
-XMLScriptContextFactory::XMLScriptContextFactory() :
-    sEventType("EventType"),
-    sScript("Script"),
-    sURL("Script")
+const OUStringLiteral gsEventType("EventType");
+const OUStringLiteral gsScript("Script");
+const OUStringLiteral gsURL("Script");
+
+XMLScriptContextFactory::XMLScriptContextFactory()
 {
 }
 
@@ -45,12 +46,9 @@ XMLScriptContextFactory::~XMLScriptContextFactory()
 
 SvXMLImportContext * XMLScriptContextFactory::CreateContext
 (SvXMLImport & rImport,
- sal_uInt16 p_nPrefix,
- const OUString & rLocalName,
  const Reference<XAttributeList> & xAttrList,
  XMLEventsImportContext * rEvents,
- const OUString & rApiEventName,
- const OUString & /*rApiLanguage*/)
+ const OUString & rApiEventName)
 {
     OUString sURLVal;
 
@@ -73,18 +71,18 @@ SvXMLImportContext * XMLScriptContextFactory::CreateContext
     Sequence<PropertyValue> aValues(2);
 
     // EventType
-    aValues[0].Name = sEventType;
-    aValues[0].Value <<= sScript;
+    aValues[0].Name = gsEventType;
+    aValues[0].Value <<= OUString(gsScript);
 
     // URL
-    aValues[1].Name = sURL;
+    aValues[1].Name = gsURL;
     aValues[1].Value <<= sURLVal;
 
     // add values for event now
     rEvents->AddEventValues(rApiEventName, aValues);
 
     // return dummy context
-    return new SvXMLImportContext(rImport, p_nPrefix, rLocalName);
+    return new SvXMLImportContext(rImport);
 }
 
 

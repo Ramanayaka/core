@@ -22,7 +22,7 @@
 #include <com/sun/star/ucb/InteractiveAugmentedIOException.hpp>
 #include <comphelper/fileurl.hxx>
 
-#include "ids.hrc"
+#include <ids.hxx>
 
 #include "iahndl.hxx"
 
@@ -30,17 +30,18 @@ using namespace com::sun::star;
 
 namespace {
 
+template<class T>
 bool
-getStringRequestArgument(uno::Sequence< uno::Any > const & rArguments,
-                         OUString const & rKey,
-                         OUString * pValue)
+getRequestArgument(uno::Sequence< uno::Any > const & rArguments,
+                   OUString const & rKey,
+                   T * pValue)
 {
-    for (sal_Int32 i = 0; i < rArguments.getLength(); ++i)
+    for (const auto& rArgument : rArguments)
     {
         beans::PropertyValue aProperty;
-        if ((rArguments[i] >>= aProperty) && aProperty.Name == rKey)
+        if ((rArgument >>= aProperty) && aProperty.Name == rKey)
         {
-            OUString aValue;
+            T aValue;
             if (aProperty.Value >>= aValue)
             {
                 if (pValue)
@@ -53,36 +54,14 @@ getStringRequestArgument(uno::Sequence< uno::Any > const & rArguments,
 }
 
 bool
-getBoolRequestArgument(uno::Sequence< uno::Any > const & rArguments,
-                       OUString const & rKey,
-                       bool * pValue)
-{
-    for (sal_Int32 i = 0; i < rArguments.getLength(); ++i)
-    {
-        beans::PropertyValue aProperty;
-        if ((rArguments[i] >>= aProperty) && aProperty.Name == rKey)
-        {
-            bool bValue;
-            if (aProperty.Value >>= bValue)
-            {
-                if (pValue)
-                    *pValue = bValue;
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-bool
 getResourceNameRequestArgument(uno::Sequence< uno::Any > const & rArguments,
                                OUString * pValue)
 {
-    if (!getStringRequestArgument(rArguments, "Uri",  pValue))
+    if (!getRequestArgument(rArguments, "Uri",  pValue))
         return false;
     // Use the resource name only for file URLs, to avoid confusion:
     if (pValue && comphelper::isFileUrl(*pValue))
-        getStringRequestArgument(rArguments, "ResourceName", pValue);
+        getRequestArgument(rArguments, "ResourceName", pValue);
     return true;
 }
 
@@ -109,7 +88,7 @@ UUIInteractionHelper::handleInteractiveIOException(
         ErrCode nErrorCode;
         std::vector< OUString > aArguments;
         static ErrCode const
-            aErrorCode[(sal_Int32)ucb::IOErrorCode_WRONG_VERSION + 1][2]
+            aErrorCode[sal_Int32(ucb::IOErrorCode_WRONG_VERSION) + 1][2]
             = { { ERRCODE_IO_ABORT, ERRCODE_UUI_IO_ABORT }, // ABORT
                 { ERRCODE_IO_ACCESSDENIED, ERRCODE_UUI_IO_ACCESSDENIED },
                 // ACCESS_DENIED
@@ -183,7 +162,7 @@ UUIInteractionHelper::handleInteractiveIOException(
         case ucb::IOErrorCode_CANT_CREATE:
             {
                 OUString aArgFolder;
-                if (getStringRequestArgument(aRequestArguments, "Folder", &aArgFolder))
+                if (getRequestArgument(aRequestArguments, "Folder", &aArgFolder))
                 {
                     OUString aArgUri;
                     if (getResourceNameRequestArgument(aRequestArguments,
@@ -201,7 +180,7 @@ UUIInteractionHelper::handleInteractiveIOException(
                     }
                 }
                 else
-                    nErrorCode = aErrorCode[(sal_Int32)aIoException.Code][0];
+                    nErrorCode = aErrorCode[static_cast<sal_Int32>(aIoException.Code)][0];
                 break;
             }
 
@@ -212,9 +191,9 @@ UUIInteractionHelper::handleInteractiveIOException(
                                                    &aArgUri))
                 {
                     OUString aResourceType;
-                    getStringRequestArgument(aRequestArguments, "ResourceType", &aResourceType);
+                    getRequestArgument(aRequestArguments, "ResourceType", &aResourceType);
                     bool bRemovable = false;
-                    getBoolRequestArgument(aRequestArguments, "Removable", &bRemovable);
+                    getRequestArgument(aRequestArguments, "Removable", &bRemovable);
                     nErrorCode = aResourceType == "volume"
                         ? (bRemovable
                            ? ERRCODE_UUI_IO_NOTREADY_VOLUME_REMOVABLE
@@ -225,7 +204,7 @@ UUIInteractionHelper::handleInteractiveIOException(
                     aArguments.push_back(aArgUri);
                 }
                 else
-                    nErrorCode = aErrorCode[(sal_Int32)aIoException.Code][0];
+                    nErrorCode = aErrorCode[static_cast<sal_Int32>(aIoException.Code)][0];
                 break;
             }
 
@@ -233,17 +212,17 @@ UUIInteractionHelper::handleInteractiveIOException(
             {
                 OUString aArgVolume;
                 OUString aArgOtherVolume;
-                if (getStringRequestArgument(aRequestArguments, "Volume", &aArgVolume)
-                    && getStringRequestArgument(aRequestArguments, "OtherVolume",
+                if (getRequestArgument(aRequestArguments, "Volume", &aArgVolume)
+                    && getRequestArgument(aRequestArguments, "OtherVolume",
                         &aArgOtherVolume))
                 {
-                    nErrorCode = aErrorCode[(sal_Int32)aIoException.Code][1];
+                    nErrorCode = aErrorCode[static_cast<sal_Int32>(aIoException.Code)][1];
                     aArguments.reserve(2);
                     aArguments.push_back(aArgVolume);
                     aArguments.push_back(aArgOtherVolume);
                 }
                 else
-                    nErrorCode = aErrorCode[(sal_Int32)aIoException.Code][0];
+                    nErrorCode = aErrorCode[static_cast<sal_Int32>(aIoException.Code)][0];
                 break;
         }
 
@@ -254,7 +233,7 @@ UUIInteractionHelper::handleInteractiveIOException(
                            &aArgUri))
                 {
                     OUString aResourceType;
-                    getStringRequestArgument(aRequestArguments, "ResourceType",
+                    getRequestArgument(aRequestArguments, "ResourceType",
                                             &aResourceType);
                     nErrorCode = aResourceType == "volume"
                         ? ERRCODE_UUI_IO_NOTEXISTS_VOLUME
@@ -264,7 +243,7 @@ UUIInteractionHelper::handleInteractiveIOException(
                     aArguments.push_back(aArgUri);
                 }
                 else
-                    nErrorCode = aErrorCode[(sal_Int32)aIoException.Code][0];
+                    nErrorCode = aErrorCode[static_cast<sal_Int32>(aIoException.Code)][0];
                 break;
             }
 
@@ -274,11 +253,11 @@ UUIInteractionHelper::handleInteractiveIOException(
                 if (getResourceNameRequestArgument(aRequestArguments,
                                                    &aArgUri))
                 {
-                    nErrorCode = aErrorCode[(sal_Int32)aIoException.Code][1];
+                    nErrorCode = aErrorCode[static_cast<sal_Int32>(aIoException.Code)][1];
                     aArguments.push_back(aArgUri);
                 }
                 else
-                    nErrorCode = aErrorCode[(sal_Int32)aIoException.Code][0];
+                    nErrorCode = aErrorCode[static_cast<sal_Int32>(aIoException.Code)][0];
                 break;
             }
         }

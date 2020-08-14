@@ -21,10 +21,11 @@
 
 #include <sfx2/bindings.hxx>
 #include <sfx2/navigat.hxx>
-#include <sfx2/sfx.hrc>
-#include <sfx2/app.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <sfx2/strings.hrc>
 #include <sfx2/sfxresid.hxx>
-#include "helpid.hrc"
+#include <helpids.h>
+#include <tools/debug.hxx>
 
 SFX_IMPL_DOCKINGWINDOW( SfxNavigatorWrapper , SID_NAVIGATOR );
 
@@ -54,7 +55,7 @@ SfxNavigator::SfxNavigator( SfxBindings* pBind ,
                                             nBits )
                         , pWrapper( pChildWin )
 {
-    SetText( SfxResId(SID_NAVIGATOR) );
+    SetText(SfxResId(STR_SID_NAVIGATOR));
 }
 
 void SfxNavigator::Resize()

@@ -20,7 +20,6 @@
 #ifndef INCLUDED_XMLOFF_INC_XMLMULTIIMAGEHELPER_HXX
 #define INCLUDED_XMLOFF_INC_XMLMULTIIMAGEHELPER_HXX
 
-#include <sal/types.h>
 #include <xmloff/xmlimp.hxx>
 
 
@@ -32,15 +31,16 @@ private:
 
 protected:
     /// helper to get the created xShape instance, override this
-    virtual OUString getGraphicURLFromImportContext(const SvXMLImportContext& rContext) const = 0;
     virtual void removeGraphicFromImportContext(const SvXMLImportContext& rContext) = 0;
+    virtual OUString getGraphicPackageURLFromImportContext(const SvXMLImportContext& rContext) const = 0;
+    virtual css::uno::Reference<css::graphic::XGraphic> getGraphicFromImportContext(const SvXMLImportContext& rContext) const = 0;
 
 public:
     MultiImageImportHelper();
     virtual ~MultiImageImportHelper();
 
     /// solve multiple imported images. The most valuable one is chosen,
-    /// see imlementation for evtl. changing weights and/or adding filetypes.
+    /// see implementation for evtl. changing weights and/or adding filetypes.
     ///
     /// @returns import context of the selected image
     SvXMLImportContextRef solveMultipleImages();

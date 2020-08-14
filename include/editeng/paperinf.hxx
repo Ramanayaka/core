@@ -21,15 +21,15 @@
 
 // INCLUDE ---------------------------------------------------------------
 
-#include <vcl/print.hxx>
-#include <vcl/mapmod.hxx>
-#include <editeng/svxenum.hxx>
+#include <rtl/ustring.hxx>
+#include <tools/mapunit.hxx>
+#include <i18nutil/paper.hxx>
+#include <tools/gen.hxx>
 #include <editeng/editengdllapi.h>
 
 // forward ---------------------------------------------------------------
 
 class Printer;
-class Size;
 
 // class SvxPaperInfo -----------------------------------------------------
 
@@ -39,7 +39,7 @@ public:
     static Size     GetDefaultPaperSize( MapUnit eUnit = MapUnit::MapTwip );
     static Size     GetPaperSize( Paper ePaper, MapUnit eUnit = MapUnit::MapTwip );
     static Size     GetPaperSize( const Printer* pPrinter );
-    static Paper    GetSvxPaper( const Size &rSize, MapUnit eUnit, bool bSloppy );
+    static Paper    GetSvxPaper( const Size &rSize, MapUnit eUnit );
     static long     GetSloppyPaperDimension( long nSize );
     static OUString GetName( Paper ePaper );
 };
@@ -49,8 +49,8 @@ public:
 inline Size &Swap(Size &rSize)
 {
     const long lVal = rSize.Width();
-    rSize.Width() = rSize.Height();
-    rSize.Height() = lVal;
+    rSize.setWidth( rSize.Height() );
+    rSize.setHeight( lVal );
     return rSize;
 }
 

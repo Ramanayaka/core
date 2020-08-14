@@ -20,7 +20,14 @@
 #ifndef INCLUDED_SAX_INC_XML2UTF_HXX
 #define INCLUDED_SAX_INC_XML2UTF_HXX
 
+#include <sal/config.h>
+
+#include <memory>
+
 #include <sal/types.h>
+#include <rtl/string.hxx>
+
+#include <com/sun/star/io/XInputStream.hpp>
 
 namespace sax_expatwrap {
 
@@ -32,7 +39,7 @@ public:
     ~Text2UnicodeConverter();
 
     css::uno::Sequence < sal_Unicode > convert( const css::uno::Sequence<sal_Int8> & );
-    bool canContinue() {  return m_bCanContinue; }
+    bool canContinue() const { return m_bCanContinue; }
 
 private:
     void init( rtl_TextEncoding encoding );
@@ -73,14 +80,10 @@ class XMLFile2UTFConverter
 {
 public:
     XMLFile2UTFConverter( ):
-        m_bStarted( false ),
-        m_pText2Unicode( nullptr ),
-        m_pUnicode2Text( nullptr )
+        m_bStarted( false )
         {}
 
-    ~XMLFile2UTFConverter();
-
-    void setInputStream( css::uno::Reference< css::io::XInputStream > &r ) { m_in = r; }
+    void setInputStream( css::uno::Reference< css::io::XInputStream > const &r ) { m_in = r; }
     void setEncoding( const OString &s ) { m_sEncoding = s; }
 
 
@@ -116,8 +119,8 @@ private:
     bool m_bStarted;
     OString m_sEncoding;
 
-    Text2UnicodeConverter *m_pText2Unicode;
-    Unicode2TextConverter *m_pUnicode2Text;
+    std::unique_ptr<Text2UnicodeConverter> m_pText2Unicode;
+    std::unique_ptr<Unicode2TextConverter> m_pUnicode2Text;
 };
 }
 

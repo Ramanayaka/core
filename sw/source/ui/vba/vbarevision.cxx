@@ -18,8 +18,10 @@
  */
 #include "vbarevision.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 #include <com/sun/star/document/XRedlinesSupplier.hpp>
+#include <com/sun/star/container/XIndexAccess.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include "wordvbahelper.hxx"
 #include <docsh.hxx>
 #include <doc.hxx>
@@ -77,18 +79,16 @@ SwVbaRevision::Reject( )
 OUString
 SwVbaRevision::getServiceImplName()
 {
-    return OUString("SwVbaRevision");
+    return "SwVbaRevision";
 }
 
 uno::Sequence< OUString >
 SwVbaRevision::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Revision";
-    }
+        "ooo.vba.word.Revision"
+    };
     return aServiceNames;
 }
 

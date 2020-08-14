@@ -30,9 +30,11 @@
 #include <comphelper/mimeconfighelper.hxx>
 #include <comphelper/seqstream.hxx>
 #include <filter/msfilter/classids.hxx>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
 #if defined(_WIN32)
-#include <olecomponent.hxx>
+#include "olecomponent.hxx"
 #endif
 
 using namespace ::com::sun::star;
@@ -69,7 +71,7 @@ embed::VisualRepresentation OleEmbeddedObject::GetVisualRepresentationInNativeFo
             cppu::UnoType<uno::Sequence< sal_Int8 >>::get() );
     }
 
-    sal_Int32 nStreamLength = (sal_Int32)xSeekable->getLength();
+    sal_Int32 nStreamLength = static_cast<sal_Int32>(xSeekable->getLength());
     uno::Sequence< sal_Int8 > aRepresent( nStreamLength );
     xInStream->readBytes( aRepresent, nStreamLength );
     aVisualRepr.Data <<= aRepresent;
@@ -233,11 +235,9 @@ awt::Size SAL_CALL OleEmbeddedObject::getVisualAreaSize( sal_Int64 nAspect )
                     {
                         changeState(embed::EmbedStates::LOADED);
                     }
-                    catch( const uno::Exception& e )
+                    catch( const uno::Exception& )
                     {
-                        SAL_WARN(
-                            "embeddedobj.ole",
-                            "ignoring Exception " << e.Message);
+                        TOOLS_WARN_EXCEPTION("embeddedobj.ole", "ignoring ");
                     }
                 }
 
@@ -296,17 +296,14 @@ awt::Size SAL_CALL OleEmbeddedObject::getVisualAreaSize( sal_Int64 nAspect )
 #endif
     {
         // return cached value
-        if ( m_bHasCachedSize )
-        {
-            SAL_WARN_IF( nAspect != m_nCachedAspect, "embeddedobj.ole", "Unexpected aspect is requested!" );
-            aResult = m_aCachedSize;
-        }
-        else
+        if ( !m_bHasCachedSize )
         {
             throw embed::NoVisualAreaSizeException(
                             "No size available!",
                             static_cast< ::cppu::OWeakObject* >(this) );
         }
+        SAL_WARN_IF( nAspect != m_nCachedAspect, "embeddedobj.ole", "Unexpected aspect is requested!" );
+        aResult = m_aCachedSize;
     }
 
     return aResult;
@@ -339,8 +336,6 @@ embed::VisualRepresentation SAL_CALL OleEmbeddedObject::getPreferredVisualRepres
         throw embed::WrongStateException( "The object is not loaded!",
                                     static_cast< ::cppu::OWeakObject* >(this) );
 
-    embed::VisualRepresentation aVisualRepr;
-
     // TODO: in case of different aspects they must be applied to the mediatype and XTransferable must be used
     // the cache is used only as a fallback if object is not in loaded state
     if ( !m_xCachedVisualRepresentation.is() && ( !m_bVisReplInitialized || m_bVisReplInStream )
@@ -350,12 +345,8 @@ embed::VisualRepresentation SAL_CALL OleEmbeddedObject::getPreferredVisualRepres
         SetVisReplInStream( m_xCachedVisualRepresentation.is() );
     }
 
-    if ( m_xCachedVisualRepresentation.is() )
-    {
-        return GetVisualRepresentationInNativeFormat_Impl( m_xCachedVisualRepresentation );
-    }
 #ifdef _WIN32
-    else if ( m_pOleComponent )
+    if ( !m_xCachedVisualRepresentation.is() && m_pOleComponent )
     {
         try
         {
@@ -367,6 +358,7 @@ embed::VisualRepresentation SAL_CALL OleEmbeddedObject::getPreferredVisualRepres
                     "Windows Metafile",
                     cppu::UnoType<uno::Sequence< sal_Int8 >>::get() );
 
+            embed::VisualRepresentation aVisualRepr;
             aVisualRepr.Data = m_pOleComponent->getTransferData( aDataFlavor );
             aVisualRepr.Flavor = aDataFlavor;
 
@@ -375,8 +367,8 @@ embed::VisualRepresentation SAL_CALL OleEmbeddedObject::getPreferredVisualRepres
             if ( aVisReplSeq.getLength() )
             {
                 m_xCachedVisualRepresentation = GetNewFilledTempStream_Impl(
-                        uno::Reference< io::XInputStream > ( static_cast< io::XInputStream* > (
-                            new ::comphelper::SequenceInputStream( aVisReplSeq ) ) ) );
+                    uno::Reference< io::XInputStream >(
+                        new ::comphelper::SequenceInputStream(aVisReplSeq)));
             }
 
             return aVisualRepr;

@@ -17,15 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/sidebar/ContextChangeEventMultiplexer.hxx"
+#include <svx/sidebar/ContextChangeEventMultiplexer.hxx>
 
 #include <com/sun/star/ui/ContextChangeEventObject.hpp>
 #include <com/sun/star/ui/XContextChangeEventMultiplexer.hpp>
 #include <com/sun/star/ui/ContextChangeEventMultiplexer.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
+#include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
+#include <sfx2/lokhelper.hxx>
 #include <sfx2/viewsh.hxx>
-#include <tools/diagnose_ex.h>
 
 using namespace css;
 using namespace css::uno;
@@ -35,24 +36,31 @@ void ContextChangeEventMultiplexer::NotifyContextChange (
     const css::uno::Reference<css::frame::XController>& rxController,
     const vcl::EnumContext::Context eContext)
 {
-    if (rxController.is() && rxController->getFrame().is())
-    {
-        const css::ui::ContextChangeEventObject aEvent(
-            rxController,
-            GetModuleName(rxController->getFrame()),
-            vcl::EnumContext::GetContextName(eContext));
+    if (!(rxController.is() && rxController->getFrame().is()))
+        return;
 
-        css::uno::Reference<css::ui::XContextChangeEventMultiplexer> xMultiplexer (
-            css::ui::ContextChangeEventMultiplexer::get(
-                ::comphelper::getProcessComponentContext()));
-        if (xMultiplexer.is())
-            xMultiplexer->broadcastContextChangeEvent(aEvent, rxController);
+    const css::ui::ContextChangeEventObject aEvent(
+        rxController,
+        GetModuleName(rxController->getFrame()),
+        vcl::EnumContext::GetContextName(eContext));
+
+    css::uno::Reference<css::ui::XContextChangeEventMultiplexer> xMultiplexer (
+        css::ui::ContextChangeEventMultiplexer::get(
+            ::comphelper::getProcessComponentContext()));
+    if (xMultiplexer.is())
+        xMultiplexer->broadcastContextChangeEvent(aEvent, rxController);
+
+    // notify the LOK too after all the change have taken effect.
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        if (SfxViewShell* pViewShell = SfxViewShell::Get(rxController))
+            SfxLokHelper::notifyContextChange(pViewShell, GetModuleName(rxController->getFrame()), vcl::EnumContext::GetContextName(eContext));
     }
 }
 
 
 void ContextChangeEventMultiplexer::NotifyContextChange (
-    SfxViewShell* pViewShell,
+    const SfxViewShell* pViewShell,
     const vcl::EnumContext::Context eContext)
 {
     if (pViewShell != nullptr)
@@ -60,7 +68,7 @@ void ContextChangeEventMultiplexer::NotifyContextChange (
 }
 
 
-::rtl::OUString ContextChangeEventMultiplexer::GetModuleName (
+OUString ContextChangeEventMultiplexer::GetModuleName (
     const css::uno::Reference<css::frame::XFrame>& rxFrame)
 {
     try

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DrawViewShell.hxx"
+#include <DrawViewShell.hxx>
 #include <com/sun/star/scanner/ScannerManager.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/processfactory.hxx>
@@ -29,44 +29,42 @@
 #include <svl/stritem.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/dispatch.hxx>
-#include <svx/svdopath.hxx>
-#include <sfx2/docfile.hxx>
 #include <svx/zoomslideritem.hxx>
 #include <svl/eitem.hxx>
 
-#include <svx/dialogs.hrc>
-#include <svx/extrusionbar.hxx>
-#include <svx/fontworkbar.hxx>
+#include <sdcommands.h>
+#include <svx/f3dchild.hxx>
 #include <svx/clipfmtitem.hxx>
 
 #include <sfx2/viewfrm.hxx>
-#include <svx/fmshell.hxx>
 #include <svtools/cliplistener.hxx>
 #include <svx/float3d.hxx>
 #include <svx/extedit.hxx>
 #include <svx/sidebar/SelectionAnalyzer.hxx>
-#include "helpids.h"
+#include <svx/sidebar/SelectionChangeHandler.hxx>
+#include <helpids.h>
 
-#include "view/viewoverlaymanager.hxx"
-#include "app.hrc"
-#include "strings.hrc"
-#include "res_bmp.hrc"
-#include "sdpage.hxx"
-#include "FrameView.hxx"
-#include "drawdoc.hxx"
-#include "sdresid.hxx"
-#include "DrawDocShell.hxx"
-#include "Window.hxx"
-#include "fupoor.hxx"
-#include "fusel.hxx"
-#include "funavig.hxx"
-#include "drawview.hxx"
-#include "SdUnoDrawView.hxx"
-#include "ViewShellBase.hxx"
-#include "slideshow.hxx"
-#include "ToolBarManager.hxx"
-#include "annotationmanager.hxx"
-#include "DrawController.hxx"
+#include <view/viewoverlaymanager.hxx>
+#include <app.hrc>
+#include <strings.hrc>
+#include <sdmod.hxx>
+#include <sdpage.hxx>
+#include <FrameView.hxx>
+#include <drawdoc.hxx>
+#include <sdresid.hxx>
+#include <DrawDocShell.hxx>
+#include <Window.hxx>
+#include <fupoor.hxx>
+#include <fusel.hxx>
+#include <funavig.hxx>
+#include <drawview.hxx>
+#include <SdUnoDrawView.hxx>
+#include <ViewShellBase.hxx>
+#include <slideshow.hxx>
+#include <annotationmanager.hxx>
+#include <DrawController.hxx>
+#include <tools/diagnose_ex.h>
+#include <LayerTabBar.hxx>
 
 #include <memory>
 
@@ -78,6 +76,7 @@ namespace sd {
 
 bool DrawViewShell::mbPipette = false;
 
+namespace {
 
 class ScannerEventListener : public ::cppu::WeakImplHelper< lang::XEventListener >
 {
@@ -95,6 +94,8 @@ public:
     void                    ParentDestroyed() { mpParent = nullptr; }
 };
 
+}
+
 void SAL_CALL ScannerEventListener::disposing( const lang::EventObject& /*rEventObject*/ )
 {
     if( mpParent )
@@ -110,6 +111,8 @@ DrawViewShell::DrawViewShell( ViewShellBase& rViewShellBase, vcl::Window* pParen
           [this] () { return this->GetSidebarContextName(); },
           uno::Reference<frame::XController>(&rViewShellBase.GetDrawController()),
           vcl::EnumContext::Context::Default))
+    , mbMouseButtonDown(false)
+    , mbMouseSelecting(false)
 {
     if (pFrameViewArgument != nullptr)
         mpFrameView = pFrameViewArgument;
@@ -183,10 +186,10 @@ DrawViewShell::~DrawViewShell()
         mxClipEvtLstnr.clear();
     }
 
-    delete mpDrawView;
+    mpDrawView.reset();
     // Set mpView to NULL so that the destructor of the ViewShell base class
     // does not access it.
-    mpView = mpDrawView = nullptr;
+    mpView = nullptr;
 
     mpFrameView->Disconnect();
     maTabControl.disposeAndClear();
@@ -212,8 +215,8 @@ void DrawViewShell::Construct(DrawDocShell* pDocSh, PageKind eInitialPageKind)
 
     GetDoc()->CreateFirstPages();
 
-    mpDrawView = new DrawView(pDocSh, GetActiveWindow(), this);
-    mpView = mpDrawView;             // Pointer of base class ViewShell
+    mpDrawView.reset( new DrawView(pDocSh, GetActiveWindow(), this) );
+    mpView = mpDrawView.get();             // Pointer of base class ViewShell
     mpDrawView->SetSwapAsynchron(); // Asynchronous load of graphics
 
     // We do not read the page kind from the frame view anymore so we have
@@ -315,7 +318,7 @@ void DrawViewShell::Construct(DrawDocShell* pDocSh, PageKind eInitialPageKind)
 
     SetName ("DrawViewShell");
 
-    mnLockCount = 0UL;
+    mnLockCount = 0;
 
     uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
 
@@ -326,11 +329,11 @@ void DrawViewShell::Construct(DrawDocShell* pDocSh, PageKind eInitialPageKind)
         mxScannerListener.set( static_cast< ::cppu::OWeakObject* >( new ScannerEventListener( this ) ),
                                uno::UNO_QUERY );
     }
-    catch (Exception& exception)
+    catch (Exception const &)
     {
         // Eat the exception and log it
         // We can still continue if scanner manager is not available.
-        SAL_WARN("sd", "Scanner manager exception: " << exception.Message);
+        DBG_UNHANDLED_EXCEPTION("sd");
     }
 
     mpAnnotationManager.reset( new AnnotationManager( GetViewShellBase() ) );
@@ -341,7 +344,8 @@ void DrawViewShell::Init (bool bIsMainViewShell)
 {
     ViewShell::Init(bIsMainViewShell);
 
-    StartListening (*GetDocSh());
+    if (!IsListening(*GetDocSh()))
+        StartListening (*GetDocSh());
 }
 
 void DrawViewShell::Shutdown()
@@ -410,7 +414,7 @@ void DrawViewShell::CheckLineTo(SfxRequest& rReq)
 /**
  * Change page parameter if SID_PAGESIZE or SID_PAGEMARGIN
  */
-void DrawViewShell::SetupPage (Size &rSize,
+void DrawViewShell::SetupPage (Size const &rSize,
                                  long nLeft,
                                  long nRight,
                                  long nUpper,
@@ -438,10 +442,10 @@ void DrawViewShell::SetupPage (Size &rSize,
             }
             if( bMargin )
             {
-                pPage->SetLftBorder(nLeft);
-                pPage->SetRgtBorder(nRight);
-                pPage->SetUppBorder(nUpper);
-                pPage->SetLwrBorder(nLower);
+                pPage->SetLeftBorder(nLeft);
+                pPage->SetRightBorder(nRight);
+                pPage->SetUpperBorder(nUpper);
+                pPage->SetLowerBorder(nLower);
             }
 
             if ( mePageKind == PageKind::Standard )
@@ -470,10 +474,10 @@ void DrawViewShell::SetupPage (Size &rSize,
             }
             if( bMargin )
             {
-                pPage->SetLftBorder(nLeft);
-                pPage->SetRgtBorder(nRight);
-                pPage->SetUppBorder(nUpper);
-                pPage->SetLwrBorder(nLower);
+                pPage->SetLeftBorder(nLeft);
+                pPage->SetRightBorder(nRight);
+                pPage->SetUpperBorder(nUpper);
+                pPage->SetLowerBorder(nLower);
             }
 
             if ( mePageKind == PageKind::Standard )
@@ -511,7 +515,7 @@ void DrawViewShell::SetupPage (Size &rSize,
 
     UpdateScrollBars();
 
-    Point aNewOrigin(mpActualPage->GetLftBorder(), mpActualPage->GetUppBorder());
+    Point aNewOrigin(mpActualPage->GetLeftBorder(), mpActualPage->GetUpperBorder());
     GetView()->GetSdrPageView()->SetPageOrigin(aNewOrigin);
 
     GetViewFrame()->GetBindings().Invalidate(SID_RULER_NULL_OFFSET);
@@ -528,14 +532,15 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
        or page) with the help of the ZoomItems !!!   */
     if( SfxItemState::DEFAULT == rSet.GetItemState( SID_ATTR_ZOOM ) )
     {
-        if (GetDocSh()->IsUIActive() || (SlideShow::IsRunning(GetViewShellBase())) )
+        if (GetDocSh()->IsUIActive() || SlideShow::IsRunning(GetViewShellBase())
+            || !GetActiveWindow())
         {
             rSet.DisableItem( SID_ATTR_ZOOM );
         }
         else
         {
             std::unique_ptr<SvxZoomItem> pZoomItem;
-            sal_uInt16 nZoom = (sal_uInt16) GetActiveWindow()->GetZoom();
+            sal_uInt16 nZoom = static_cast<sal_uInt16>(GetActiveWindow()->GetZoom());
 
             if( mbZoomOnPage )
                 pZoomItem.reset(new SvxZoomItem( SvxZoomType::WHOLEPAGE, nZoom ));
@@ -546,8 +551,7 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
             SvxZoomEnableFlags nZoomValues = SvxZoomEnableFlags::ALL;
             SdrPageView* pPageView = mpDrawView->GetSdrPageView();
 
-            if( ( pPageView && pPageView->GetObjList()->GetObjCount() == 0 ) )
-                // || ( mpDrawView->GetMarkedObjectList().GetMarkCount() == 0 ) )
+            if( pPageView && pPageView->GetObjList()->GetObjCount() == 0 )
             {
                 nZoomValues &= ~SvxZoomEnableFlags::OPTIMAL;
             }
@@ -566,7 +570,7 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
         else
         {
             sd::Window * pActiveWindow = GetActiveWindow();
-            SvxZoomSliderItem aZoomItem( (sal_uInt16) pActiveWindow->GetZoom(), (sal_uInt16)pActiveWindow->GetMinZoom(), (sal_uInt16)pActiveWindow->GetMaxZoom() ) ;
+            SvxZoomSliderItem aZoomItem( static_cast<sal_uInt16>(pActiveWindow->GetZoom()), static_cast<sal_uInt16>(pActiveWindow->GetMinZoom()), static_cast<sal_uInt16>(pActiveWindow->GetMaxZoom()) ) ;
 
             SdrPageView* pPageView = mpDrawView->GetSdrPageView();
             if( pPageView )
@@ -574,14 +578,14 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
                 Point aPagePos(0, 0);
                 Size aPageSize = pPageView->GetPage()->GetSize();
 
-                aPagePos.X() += aPageSize.Width()  / 2;
-                aPageSize.Width() = (long) (aPageSize.Width() * 1.03);
+                aPagePos.AdjustX(aPageSize.Width()  / 2 );
+                aPageSize.setWidth( static_cast<long>(aPageSize.Width() * 1.03) );
 
-                aPagePos.Y() += aPageSize.Height() / 2;
-                aPageSize.Height() = (long) (aPageSize.Height() * 1.03);
-                aPagePos.Y() -= aPageSize.Height() / 2;
+                aPagePos.AdjustY(aPageSize.Height() / 2 );
+                aPageSize.setHeight( static_cast<long>(aPageSize.Height() * 1.03) );
+                aPagePos.AdjustY( -(aPageSize.Height() / 2) );
 
-                aPagePos.X() -= aPageSize.Width()  / 2;
+                aPagePos.AdjustX( -(aPageSize.Width()  / 2) );
 
                 ::tools::Rectangle aFullPageZoomRect( aPagePos, aPageSize );
                 aZoomItem.AddSnappingPoint( pActiveWindow->GetZoomForRect( aFullPageZoomRect ) );
@@ -597,8 +601,8 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
         Point aPos = GetActiveWindow()->PixelToLogic(maMousePos);
         pPageView->LogicToPagePos(aPos);
         Fraction aUIScale(GetDoc()->GetUIScale());
-        aPos.X() = Fraction(aPos.X()) / aUIScale;
-        aPos.Y() = Fraction(aPos.Y()) / aUIScale;
+        aPos.setX( long(aPos.X() / aUIScale) );
+        aPos.setY( long(aPos.Y() / aUIScale) );
 
         // position- and size items
         if ( mpDrawView->IsAction() )
@@ -612,12 +616,12 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
             {
                 pPageView->LogicToPagePos(aRect);
                 aPos = aRect.TopLeft();
-                aPos.X() = Fraction(aPos.X()) / aUIScale;
-                aPos.Y() = Fraction(aPos.Y()) / aUIScale;
+                aPos.setX( long(aPos.X() / aUIScale) );
+                aPos.setY( long(aPos.Y() / aUIScale) );
                 rSet.Put( SfxPointItem( SID_ATTR_POSITION, aPos) );
                 Size aSize( aRect.Right() - aRect.Left(), aRect.Bottom() - aRect.Top() );
-                aSize.Height() = Fraction(aSize.Height()) / aUIScale;
-                aSize.Width()  = Fraction(aSize.Width())  / aUIScale;
+                aSize.setHeight( long(aSize.Height() / aUIScale) );
+                aSize.setWidth( long(aSize.Width()  / aUIScale) );
                 rSet.Put( SvxSizeItem( SID_ATTR_SIZE, aSize) );
             }
         }
@@ -630,13 +634,13 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
 
                 // Show the position of the selected shape(s)
                 Point aShapePosition (aRect.TopLeft());
-                aShapePosition.X() = Fraction(aShapePosition.X()) / aUIScale;
-                aShapePosition.Y() = Fraction(aShapePosition.Y()) / aUIScale;
+                aShapePosition.setX( long(aShapePosition.X() / aUIScale) );
+                aShapePosition.setY( long(aShapePosition.Y() / aUIScale) );
                 rSet.Put (SfxPointItem(SID_ATTR_POSITION, aShapePosition));
 
                 Size aSize( aRect.Right() - aRect.Left(), aRect.Bottom() - aRect.Top() );
-                aSize.Height() = Fraction(aSize.Height()) / aUIScale;
-                aSize.Width()  = Fraction(aSize.Width())  / aUIScale;
+                aSize.setHeight( long(aSize.Height() / aUIScale) );
+                aSize.setWidth( long(aSize.Width()  / aUIScale) );
                 rSet.Put( SvxSizeItem( SID_ATTR_SIZE, aSize) );
             }
             else
@@ -695,9 +699,7 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
                 SdrLayer* pLayer = rLayerAdmin.GetLayerPerID( nLayer );
                 if( pLayer )
                 {
-                    aOUString += " (" ;
-                    aOUString += pLayer->GetName();
-                    aOUString += ")";
+                    aOUString += " (" + LayerTabBar::convertToLocalizedName(pLayer->GetName()) + ")";
                 }
             }
         }
@@ -717,41 +719,41 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
 
 void DrawViewShell::Notify (SfxBroadcaster&, const SfxHint& rHint)
 {
-    if (rHint.GetId()==SfxHintId::ModeChanged)
+    if (rHint.GetId()!=SfxHintId::ModeChanged)
+        return;
+
+    // Change to selection when turning on read-only mode.
+    if(GetDocSh()->IsReadOnly() && dynamic_cast< FuSelection* >( GetCurrentFunction().get() ) )
     {
-        // Change to selection when turning on read-only mode.
-        if(GetDocSh()->IsReadOnly() && dynamic_cast< FuSelection* >( GetCurrentFunction().get() ) )
-        {
-            SfxRequest aReq(SID_OBJECT_SELECT, SfxCallMode::SLOT, GetDoc()->GetItemPool());
-            FuPermanent(aReq);
-        }
+        SfxRequest aReq(SID_OBJECT_SELECT, SfxCallMode::SLOT, GetDoc()->GetItemPool());
+        FuPermanent(aReq);
+    }
 
-        // Turn on design mode when document is not read-only.
-        if (GetDocSh()->IsReadOnly() != mbReadOnly )
-        {
-            mbReadOnly = GetDocSh()->IsReadOnly();
+    // Turn on design mode when document is not read-only.
+    if (GetDocSh()->IsReadOnly() != mbReadOnly )
+    {
+        mbReadOnly = GetDocSh()->IsReadOnly();
 
-            SfxBoolItem aItem( SID_FM_DESIGN_MODE, !mbReadOnly );
-            GetViewFrame()->GetDispatcher()->ExecuteList(SID_FM_DESIGN_MODE,
-                SfxCallMode::ASYNCHRON | SfxCallMode::RECORD, { &aItem });
-        }
+        SfxBoolItem aItem( SID_FM_DESIGN_MODE, !mbReadOnly );
+        GetViewFrame()->GetDispatcher()->ExecuteList(SID_FM_DESIGN_MODE,
+            SfxCallMode::ASYNCHRON | SfxCallMode::RECORD, { &aItem });
     }
 
 }
 
-void DrawViewShell::ExecuteAnnotation (SfxRequest& rRequest)
+void DrawViewShell::ExecuteAnnotation (SfxRequest const & rRequest)
 {
-    if( mpAnnotationManager.get() )
+    if (mpAnnotationManager)
         mpAnnotationManager->ExecuteAnnotation( rRequest );
 }
 
 void DrawViewShell::GetAnnotationState (SfxItemSet& rItemSet )
 {
-    if( mpAnnotationManager.get() )
+    if (mpAnnotationManager)
         mpAnnotationManager->GetAnnotationState( rItemSet );
 }
 
-::rtl::OUString DrawViewShell::GetSidebarContextName() const
+OUString const & DrawViewShell::GetSidebarContextName() const
 {
     svx::sidebar::SelectionAnalyzer::ViewType eViewType (svx::sidebar::SelectionAnalyzer::ViewType::Standard);
     switch (mePageKind)
@@ -777,7 +779,7 @@ void DrawViewShell::GetAnnotationState (SfxItemSet& rItemSet )
 
 void DrawViewShell::ExecGoToNextPage (SfxRequest& rReq)
 {
-    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView, GetDoc(), rReq) );
+    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
     Cancel();
 }
 
@@ -792,7 +794,7 @@ void DrawViewShell::GetStateGoToNextPage (SfxItemSet& rSet)
 
 void DrawViewShell::ExecGoToPreviousPage (SfxRequest& rReq)
 {
-    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView, GetDoc(), rReq) );
+    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
     Cancel();
 }
 
@@ -807,7 +809,7 @@ void DrawViewShell::GetStateGoToPreviousPage (SfxItemSet& rSet)
 
 void DrawViewShell::ExecGoToFirstPage (SfxRequest& rReq)
 {
-    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView, GetDoc(), rReq) );
+    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
     Cancel();
 }
 
@@ -821,7 +823,7 @@ void DrawViewShell::GetStateGoToFirstPage (SfxItemSet& rSet)
 
 void DrawViewShell::ExecGoToLastPage (SfxRequest& rReq)
 {
-    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView, GetDoc(), rReq) );
+    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
     Cancel();
 }
 

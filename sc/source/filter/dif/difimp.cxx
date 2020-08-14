@@ -17,21 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <math.h>
-
 #include <svl/zforlist.hxx>
+#include <tools/stream.hxx>
 #include <osl/diagnose.h>
-#include "attrib.hxx"
-#include "dif.hxx"
-#include "docpool.hxx"
-#include "document.hxx"
-#include "filter.hxx"
-#include "fprogressbar.hxx"
-#include "ftools.hxx"
-#include "patattr.hxx"
-#include "scerrors.hxx"
-#include "scitems.hxx"
-#include "stringutil.hxx"
+#include <dif.hxx>
+#include <docpool.hxx>
+#include <document.hxx>
+#include <fprogressbar.hxx>
+#include <ftools.hxx>
+#include <patattr.hxx>
+#include <scerrors.hxx>
+#include <scitems.hxx>
+#include <stringutil.hxx>
+#include <table.hxx>
 #include <memory>
 
 const sal_Unicode pKeyTABLE[]   = { 'T', 'A', 'B', 'L', 'E', 0 };
@@ -47,7 +45,7 @@ const sal_Unicode pKeyNA[]      = { 'N', 'A', 0 };
 const sal_Unicode pKeyV[]       = { 'V', 0 };
 const sal_Unicode pKey1_0[]     = { '1', ',', '0', 0 };
 
-ErrCode ScFormatFilterPlugin::ScImportDif(SvStream& rIn, ScDocument* pDoc, const ScAddress& rInsPos,
+ErrCode ScFormatFilterPluginImpl::ScImportDif(SvStream& rIn, ScDocument* pDoc, const ScAddress& rInsPos,
                         const rtl_TextEncoding eVon )
 {
     DifParser   aDifParser( rIn, *pDoc, eVon );
@@ -58,7 +56,7 @@ ErrCode ScFormatFilterPlugin::ScImportDif(SvStream& rIn, ScDocument* pDoc, const
     bool        bSyntErrWarn = false;
     bool        bOverflowWarn = false;
 
-    OUString&   aData = aDifParser.aData;
+    OUStringBuffer& rData = aDifParser.m_aData;
 
     rIn.Seek( 0 );
 
@@ -70,7 +68,7 @@ ErrCode ScFormatFilterPlugin::ScImportDif(SvStream& rIn, ScDocument* pDoc, const
 
         aPrgrsBar.Progress();
 
-        const bool bData = !aData.isEmpty();
+        const bool bData = !rData.isEmpty();
 
         switch( eTopic )
         {
@@ -79,7 +77,7 @@ ErrCode ScFormatFilterPlugin::ScImportDif(SvStream& rIn, ScDocument* pDoc, const
                 if( aDifParser.nVector != 0 || aDifParser.nVal != 1 )
                     bSyntErrWarn = true;
                 if( bData )
-                    pDoc->RenameTab( nBaseTab, aData);
+                    pDoc->RenameTab(nBaseTab, rData.toString());
             }
                 break;
             case T_VECTORS:
@@ -126,19 +124,21 @@ ErrCode ScFormatFilterPlugin::ScImportDif(SvStream& rIn, ScDocument* pDoc, const
         SCROW               nRowCnt = rInsPos.Row();
         DifAttrCache        aAttrCache;
 
-        DATASET             eAkt = D_UNKNOWN;
+        DATASET             eCurrent = D_UNKNOWN;
 
         ScSetStringParam aStrParam; // used to set string value without number detection.
         aStrParam.setTextInput();
 
-        while( eAkt != D_EOD )
+        while( eCurrent != D_EOD )
         {
-            eAkt = aDifParser.GetNextDataset();
+            eCurrent = aDifParser.GetNextDataset();
 
             aPrgrsBar.Progress();
             ScAddress aPos(nColCnt, nRowCnt, nBaseTab);
 
-            switch( eAkt )
+            OUString aData = rData.toString();
+
+            switch( eCurrent )
             {
                 case D_BOT:
                     if( nColCnt < SCCOL_MAX )
@@ -151,20 +151,20 @@ ErrCode ScFormatFilterPlugin::ScImportDif(SvStream& rIn, ScDocument* pDoc, const
                     if( nColCnt == SCCOL_MAX )
                         nColCnt = nBaseCol;
 
-                    if( ValidCol(nColCnt) && ValidRow(nRowCnt) )
+                    if( pDoc->ValidCol(nColCnt) && pDoc->ValidRow(nRowCnt) )
                     {
                         pDoc->EnsureTable(nBaseTab);
 
                         if( DifParser::IsV( aData.getStr() ) )
                         {
                             pDoc->SetValue(aPos, aDifParser.fVal);
-                            aAttrCache.SetNumFormat( nColCnt, nRowCnt,
+                            aAttrCache.SetNumFormat( pDoc, nColCnt, nRowCnt,
                                     aDifParser.nNumFormat );
                         }
                         else if( aData == pKeyTRUE || aData == pKeyFALSE )
                         {
                             pDoc->SetValue(aPos, aDifParser.fVal);
-                            aAttrCache.SetNumFormat( nColCnt, nRowCnt,
+                            aAttrCache.SetNumFormat( pDoc, nColCnt, nRowCnt,
                                 aDifParser.nNumFormat );
                         }
                         else if( aData == pKeyNA || aData == pKeyERROR  )
@@ -186,7 +186,7 @@ ErrCode ScFormatFilterPlugin::ScImportDif(SvStream& rIn, ScDocument* pDoc, const
                     if( nColCnt == SCCOL_MAX )
                         nColCnt = nBaseCol;
 
-                    if( ValidCol(nColCnt) && ValidRow(nRowCnt) )
+                    if( pDoc->ValidCol(nColCnt) && pDoc->ValidRow(nRowCnt) )
                     {
                         if (!aData.isEmpty())
                         {
@@ -224,12 +224,11 @@ ErrCode ScFormatFilterPlugin::ScImportDif(SvStream& rIn, ScDocument* pDoc, const
         return ERRCODE_NONE;
 }
 
-DifParser::DifParser( SvStream& rNewIn, ScDocument& rDoc, rtl_TextEncoding e )
+DifParser::DifParser( SvStream& rNewIn, const ScDocument& rDoc, rtl_TextEncoding eCharSet )
     : fVal(0.0)
     , nVector(0)
     , nVal(0)
     , nNumFormat(0)
-    , eCharSet(e)
     , pNumFormatter(rDoc.GetFormatTable())
     , rIn(rNewIn)
 {
@@ -359,9 +358,9 @@ TOPIC DifParser::GetNextTopic()
                 OSL_ENSURE( aLine.getLength() >= 2,
                     "+GetNextTopic(): <String> is too short!" );
                 if( aLine.getLength() > 2 )
-                    aData = aLine.copy( 1, aLine.getLength() - 2 );
+                    m_aData.append(aLine.copy(1, aLine.getLength() - 2));
                 else
-                    aData.clear();
+                    m_aData.truncate();
                 eS = S_END;
                 break;
             case S_END:
@@ -370,7 +369,7 @@ TOPIC DifParser::GetNextTopic()
             case S_UNKNOWN:
                 // skip 2 lines
                 ReadNextLine( aLine );
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case S_ERROR_L2:                // error happened in line 2
                 // skip 1 line
                 ReadNextLine( aLine );
@@ -384,14 +383,14 @@ TOPIC DifParser::GetNextTopic()
     return eRet;
 }
 
-static void lcl_DeEscapeQuotesDif( OUString& rString )
+static void lcl_DeEscapeQuotesDif(OUStringBuffer& rString)
 {
     //  Special handling for DIF import: Escaped (duplicated) quotes are resolved.
     //  Single quote characters are left in place because older versions didn't
     //  escape quotes in strings (and Excel doesn't when using the clipboard).
     //  The quotes around the string are removed before this function is called.
 
-    rString = rString.replaceAll("\"\"", "\"");
+    rString = rString.toString().replaceAll("\"\"", "\"");
 }
 
 // Determine if passed in string is numeric data and set fVal/nNumFormat if so
@@ -433,30 +432,30 @@ bool DifParser::ReadNextLine( OUString& rStr )
 // a valid data record structure
 bool DifParser::LookAhead()
 {
-    const sal_Unicode* pAktBuffer;
+    const sal_Unicode* pCurrentBuffer;
     bool bValidStructure = false;
 
     OSL_ENSURE( aLookAheadLine.isEmpty(), "*DifParser::LookAhead(): LookAhead called twice in a row" );
     rIn.ReadUniOrByteStringLine( aLookAheadLine, rIn.GetStreamCharSet() );
 
-    pAktBuffer = aLookAheadLine.getStr();
+    pCurrentBuffer = aLookAheadLine.getStr();
 
-    switch( *pAktBuffer )
+    switch( *pCurrentBuffer )
     {
         case '-':                   // Special Datatype
-            pAktBuffer++;
+            pCurrentBuffer++;
 
-            if( Is1_0( pAktBuffer ) )
+            if( Is1_0( pCurrentBuffer ) )
             {
                 bValidStructure = true;
             }
             break;
         case '0':                   // Numeric Data
-            pAktBuffer++;
-            if( *pAktBuffer == ',' )
+            pCurrentBuffer++;
+            if( *pCurrentBuffer == ',' )
             {
-                pAktBuffer++;
-                bValidStructure = ( GetNumberDataset(pAktBuffer) != D_SYNT_ERROR );
+                pCurrentBuffer++;
+                bValidStructure = ( GetNumberDataset(pCurrentBuffer) != D_SYNT_ERROR );
             }
             break;
         case '1':                   // String Data
@@ -473,18 +472,18 @@ DATASET DifParser::GetNextDataset()
 {
     DATASET eRet = D_UNKNOWN;
     OUString aLine;
-    const sal_Unicode* pAktBuffer;
+    const sal_Unicode* pCurrentBuffer;
 
     ReadNextLine( aLine );
 
-    pAktBuffer = aLine.getStr();
+    pCurrentBuffer = aLine.getStr();
 
-    switch( *pAktBuffer )
+    switch( *pCurrentBuffer )
     {
         case '-':                   // Special Datatype
-            pAktBuffer++;
+            pCurrentBuffer++;
 
-            if( Is1_0( pAktBuffer ) )
+            if( Is1_0( pCurrentBuffer ) )
             {
                 ReadNextLine( aLine );
                 if( IsBOT( aLine.getStr() ) )
@@ -494,24 +493,23 @@ DATASET DifParser::GetNextDataset()
             }
             break;
         case '0':                   // Numeric Data
-            pAktBuffer++;           // value in fVal, 2. line in aData
-            if( *pAktBuffer == ',' )
+            pCurrentBuffer++;       // value in fVal, 2. line in m_aData
+            if( *pCurrentBuffer == ',' )
             {
-                pAktBuffer++;
-                eRet = GetNumberDataset(pAktBuffer);
+                pCurrentBuffer++;
+                eRet = GetNumberDataset(pCurrentBuffer);
                 OUString aTmpLine;
                 ReadNextLine( aTmpLine );
                 if ( eRet == D_SYNT_ERROR )
                 {   // for broken records write "#ERR: data" to cell
-                    OUStringBuffer aTmp("#ERR: ");
-                    aTmp.append(pAktBuffer).append(" (");
-                    aTmp.append(aTmpLine).append(')');
-                    aData = aTmp.makeStringAndClear();
+                    m_aData = "#ERR: ";
+                    m_aData.append(pCurrentBuffer).append(" (");
+                    m_aData.append(aTmpLine).append(')');
                     eRet = D_STRING;
                 }
                 else
                 {
-                    aData = aTmpLine;
+                    m_aData = aTmpLine;
                 }
             }
             break;
@@ -532,20 +530,20 @@ DATASET DifParser::GetNextDataset()
                         // Single line string
                         if( nLineLength >= 2 && pLine[nLineLength - 1] == '"' )
                         {
-                            aData = aLine.copy( 1, nLineLength - 2 );
-                            lcl_DeEscapeQuotesDif( aData );
+                            m_aData = aLine.copy( 1, nLineLength - 2 );
+                            lcl_DeEscapeQuotesDif(m_aData);
                             eRet = D_STRING;
                         }
                     }
                     else
                     {
                         // Multiline string
-                        aData = aLine.copy( 1 );
+                        m_aData = aLine.copy( 1 );
                         bool bContinue = true;
                         while ( bContinue )
                         {
-                            aData = aData + "\n";
-                            bContinue = !rIn.IsEof() && ReadNextLine( aLine );
+                            m_aData.append("\n");
+                            bContinue = !rIn.eof() && ReadNextLine( aLine );
                             if( bContinue )
                             {
                                 nLineLength = aLine.getLength();
@@ -555,12 +553,12 @@ DATASET DifParser::GetNextDataset()
                                     bContinue = !LookAhead();
                                     if( bContinue )
                                     {
-                                        aData = aData + aLine;
+                                        m_aData.append(aLine);
                                     }
                                     else if( pLine[nLineLength - 1] == '"' )
                                     {
-                                        aData = aData + aLine.copy(0, nLineLength -1 );
-                                        lcl_DeEscapeQuotesDif( aData );
+                                        m_aData.append(aLine.copy(0, nLineLength -1));
+                                        lcl_DeEscapeQuotesDif(m_aData);
                                         eRet = D_STRING;
                                     }
                                 }
@@ -575,7 +573,7 @@ DATASET DifParser::GetNextDataset()
     if( eRet == D_UNKNOWN )
         ReadNextLine( aLine );
 
-    if( rIn.IsEof() )
+    if( rIn.eof() )
         eRet = D_EOD;
 
     return eRet;
@@ -587,48 +585,48 @@ const sal_Unicode* DifParser::ScanIntVal( const sal_Unicode* pStart, sal_uInt32&
     while (*pStart == ' ' || *pStart == '\t')
         ++pStart;
 
-    sal_Unicode     cAkt = *pStart;
+    sal_Unicode     cCurrent = *pStart;
 
-    if( IsNumber( cAkt ) )
-        rRet = ( sal_uInt32 ) ( cAkt - '0' );
+    if( IsNumber( cCurrent ) )
+        rRet = static_cast<sal_uInt32>( cCurrent - '0' );
     else
         return nullptr;
 
     pStart++;
-    cAkt = *pStart;
+    cCurrent = *pStart;
 
-    while( IsNumber( cAkt ) && rRet < ( 0xFFFFFFFF / 10 ) )
+    while( IsNumber( cCurrent ) && rRet < ( 0xFFFFFFFF / 10 ) )
     {
         rRet *= 10;
-        rRet += ( sal_uInt32 ) ( cAkt - '0' );
+        rRet += static_cast<sal_uInt32>( cCurrent - '0' );
 
         pStart++;
-        cAkt = *pStart;
+        cCurrent = *pStart;
     }
 
     return pStart;
 }
 
 DifColumn::DifColumn ()
-    : mpAkt(nullptr)
+    : mpCurrent(nullptr)
 {
 }
 
-void DifColumn::SetNumFormat( SCROW nRow, const sal_uInt32 nNumFormat )
+void DifColumn::SetNumFormat( const ScDocument* pDoc, SCROW nRow, const sal_uInt32 nNumFormat )
 {
-    OSL_ENSURE( ValidRow(nRow), "*DifColumn::SetNumFormat(): Row too big!" );
+    OSL_ENSURE( pDoc->ValidRow(nRow), "*DifColumn::SetNumFormat(): Row too big!" );
 
     if( nNumFormat > 0 )
     {
-        if(mpAkt)
+        if(mpCurrent)
         {
             OSL_ENSURE( nRow > 0,
                 "*DifColumn::SetNumFormat(): more cannot be zero!" );
-            OSL_ENSURE( nRow > mpAkt->nEnd,
+            OSL_ENSURE( nRow > mpCurrent->nEnd,
                 "*DifColumn::SetNumFormat(): start from scratch?" );
 
-            if( mpAkt->nNumFormat == nNumFormat && mpAkt->nEnd == nRow - 1 )
-                mpAkt->nEnd = nRow;
+            if( mpCurrent->nNumFormat == nNumFormat && mpCurrent->nEnd == nRow - 1 )
+                mpCurrent->nEnd = nRow;
             else
                 NewEntry( nRow, nNumFormat );
         }
@@ -636,15 +634,15 @@ void DifColumn::SetNumFormat( SCROW nRow, const sal_uInt32 nNumFormat )
             NewEntry(nRow,nNumFormat );
     }
     else
-        mpAkt = nullptr;
+        mpCurrent = nullptr;
 }
 
 void DifColumn::NewEntry( const SCROW nPos, const sal_uInt32 nNumFormat )
 {
-    maEntries.push_back(ENTRY());
-    mpAkt = &maEntries.back();
-    mpAkt->nStart = mpAkt->nEnd = nPos;
-    mpAkt->nNumFormat = nNumFormat;
+    maEntries.emplace_back();
+    mpCurrent = &maEntries.back();
+    mpCurrent->nStart = mpCurrent->nEnd = nPos;
+    mpCurrent->nNumFormat = nNumFormat;
 
 }
 
@@ -653,14 +651,14 @@ void DifColumn::Apply( ScDocument& rDoc, const SCCOL nCol, const SCTAB nTab )
     ScPatternAttr aAttr( rDoc.GetPool() );
     SfxItemSet &rItemSet = aAttr.GetItemSet();
 
-    for (std::vector<ENTRY>::const_iterator it = maEntries.begin(); it != maEntries.end(); ++it)
+    for (const auto& rEntry : maEntries)
     {
-        OSL_ENSURE( it->nNumFormat > 0,
+        OSL_ENSURE( rEntry.nNumFormat > 0,
             "+DifColumn::Apply(): Number format must not be 0!" );
 
-        rItemSet.Put( SfxUInt32Item( ATTR_VALUE_FORMAT, it->nNumFormat ) );
+        rItemSet.Put( SfxUInt32Item( ATTR_VALUE_FORMAT, rEntry.nNumFormat ) );
 
-        rDoc.ApplyPatternAreaTab( nCol, it->nStart, nCol, it->nEnd, nTab, aAttr );
+        rDoc.ApplyPatternAreaTab( nCol, rEntry.nStart, nCol, rEntry.nEnd, nTab, aAttr );
 
         rItemSet.ClearItem();
     }
@@ -668,38 +666,28 @@ void DifColumn::Apply( ScDocument& rDoc, const SCCOL nCol, const SCTAB nTab )
 
 DifAttrCache::DifAttrCache()
 {
-    ppCols = new DifColumn *[ MAXCOL + 1 ];
-    for( SCCOL nCnt = 0 ; nCnt <= MAXCOL ; nCnt++ )
-        ppCols[ nCnt ] = nullptr;
 }
 
 DifAttrCache::~DifAttrCache()
 {
-    for( SCCOL nCnt = 0 ; nCnt <= MAXCOL ; nCnt++ )
-    {
-        if( ppCols[ nCnt ] )
-            delete ppCols[ nCnt ];
-    }
-
-    delete[] ppCols;
 }
 
-void DifAttrCache::SetNumFormat( const SCCOL nCol, const SCROW nRow, const sal_uInt32 nNumFormat )
+void DifAttrCache::SetNumFormat( const ScDocument* pDoc, const SCCOL nCol, const SCROW nRow, const sal_uInt32 nNumFormat )
 {
-    OSL_ENSURE( ValidCol(nCol), "-DifAttrCache::SetNumFormat(): Col too big!" );
+    OSL_ENSURE( pDoc->ValidCol(nCol), "-DifAttrCache::SetNumFormat(): Col too big!" );
 
-    if( !ppCols[ nCol ] )
-        ppCols[ nCol ] = new DifColumn;
+    if( !maColMap.count(nCol) )
+        maColMap[ nCol ].reset( new DifColumn );
 
-    ppCols[ nCol ]->SetNumFormat( nRow, nNumFormat );
+    maColMap[ nCol ]->SetNumFormat( pDoc, nRow, nNumFormat );
 }
 
 void DifAttrCache::Apply( ScDocument& rDoc, SCTAB nTab )
 {
-    for( SCCOL nCol = 0 ; nCol <= MAXCOL ; nCol++ )
+    for( SCCOL nCol : rDoc.GetColumnsRange(nTab, 0, rDoc.MaxCol()) )
     {
-        if( ppCols[ nCol ] )
-            ppCols[ nCol ]->Apply( rDoc, nCol, nTab );
+        if( maColMap.count(nCol) )
+            maColMap[ nCol ]->Apply( rDoc, nCol, nTab );
     }
 }
 

@@ -21,9 +21,9 @@
 
 #include "transliteration_body.hxx"
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
-class Transliteration_caseignore: public Transliteration_body
+class Transliteration_caseignore final : public Transliteration_body
 {
 public:
     Transliteration_caseignore();
@@ -31,7 +31,7 @@ public:
     // Methods which are shared.
     sal_Int16 SAL_CALL getType() override;
 
-    void SAL_CALL loadModule( TransliterationModules modName, const css::lang::Locale& rLocale ) override;
+    void SAL_CALL loadModule( css::i18n::TransliterationModules modName, const css::lang::Locale& rLocale ) override;
 
     css::uno::Sequence< OUString > SAL_CALL transliterateRange(
         const OUString& str1, const OUString& str2 ) override;
@@ -48,16 +48,16 @@ public:
         const OUString& s1,
         const OUString& s2) override;
 
-protected:
-    TransliterationFlags moduleLoaded;
 private:
     /// @throws css::uno::RuntimeException
-    sal_Int32 SAL_CALL compare(
+    sal_Int32 compare(
         const OUString& str1, sal_Int32 pos1, sal_Int32 nCount1, sal_Int32& nMatch1,
         const OUString& str2, sal_Int32 pos2, sal_Int32 nCount2, sal_Int32& nMatch2);
+
+    TransliterationFlags moduleLoaded;
 };
 
-} } } }
+}
 
 #endif
 

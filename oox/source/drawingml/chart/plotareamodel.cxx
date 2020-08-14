@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/plotareamodel.hxx"
+#include <drawingml/chart/plotareamodel.hxx>
+#include <drawingml/fillproperties.hxx>
+#include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 View3DModel::View3DModel(bool bMSO2007Doc) :
     mnDepthPercent( 100 ),
@@ -55,14 +55,13 @@ DataTableModel::~DataTableModel()
 
 PlotAreaModel::PlotAreaModel()
 {
+    mxShapeProp.create().getFillProperties().moFillType = XML_noFill;
 }
 
 PlotAreaModel::~PlotAreaModel()
 {
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

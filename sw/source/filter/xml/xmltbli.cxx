@@ -17,47 +17,53 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hintids.hxx"
+#include <hintids.hxx>
 
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/text/XTextTable.hpp>
 #include <com/sun/star/table/XCellRange.hpp>
 #include <o3tl/numeric.hxx>
-#include <o3tl/make_unique.hxx>
+#include <o3tl/safeint.hxx>
+#include <sal/log.hxx>
 #include <svl/itemset.hxx>
 #include <svl/zformat.hxx>
 #include <sax/tools/converter.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <unotools/configmgr.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltkmap.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 
 #include <xmloff/families.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/i18nmap.hxx>
 #include <editeng/protitem.hxx>
-#include "poolfmt.hxx"
-#include "fmtfsize.hxx"
-#include "fmtornt.hxx"
-#include "fmtfordr.hxx"
-#include "doc.hxx"
+#include <editeng/lrspitem.hxx>
+#include <poolfmt.hxx>
+#include <fmtfsize.hxx>
+#include <fmtornt.hxx>
+#include <fmtfordr.hxx>
+#include <doc.hxx>
 #include <IDocumentFieldsAccess.hxx>
 #include <IDocumentLayoutAccess.hxx>
 #include <IDocumentStylePoolAccess.hxx>
-#include "swtable.hxx"
-#include "swtblfmt.hxx"
-#include "pam.hxx"
-#include "unotbl.hxx"
-#include "unotextrange.hxx"
-#include "unocrsr.hxx"
-#include "cellatr.hxx"
-#include "swddetbl.hxx"
-#include "ddefld.hxx"
+#include <swtable.hxx>
+#include <swtblfmt.hxx>
+#include <pam.hxx>
+#include <unotbl.hxx>
+#include <unotextrange.hxx>
+#include <cellatr.hxx>
+#include <swddetbl.hxx>
+#include <ddefld.hxx>
 #include <sfx2/linkmgr.hxx>
 #include "xmlimp.hxx"
 #include "xmltbli.hxx"
 #include <vcl/svapp.hxx>
-#include "ndtxt.hxx"
+#include <ndtxt.hxx>
+#include <SwStyleNameMapper.hxx>
 
+#include <algorithm>
 #include <vector>
 #include <memory>
 
@@ -71,6 +77,8 @@ using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::table;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::xmloff::token;
+
+namespace {
 
 enum SwXMLTableElemTokens
 {
@@ -100,7 +108,9 @@ enum SwXMLTableCellAttrTokens
     XML_TOK_TABLE_VALUE_TYPE,
 };
 
-static SvXMLTokenMapEntry aTableElemTokenMap[] =
+}
+
+const SvXMLTokenMapEntry aTableElemTokenMap[] =
 {
     { XML_NAMESPACE_TABLE, XML_TABLE_HEADER_COLUMNS,
             XML_TOK_TABLE_HEADER_COLS },
@@ -125,7 +135,7 @@ static SvXMLTokenMapEntry aTableElemTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
-static SvXMLTokenMapEntry aTableCellAttrTokenMap[] =
+const SvXMLTokenMapEntry aTableCellAttrTokenMap[] =
 {
     { XML_NAMESPACE_XML, XML_ID, XML_TOK_TABLE_XMLID },
     { XML_NAMESPACE_TABLE, XML_STYLE_NAME, XML_TOK_TABLE_STYLE_NAME },
@@ -147,7 +157,7 @@ static SvXMLTokenMapEntry aTableCellAttrTokenMap[] =
 const SvXMLTokenMap& SwXMLImport::GetTableElemTokenMap()
 {
     if( !m_pTableElemTokenMap )
-        m_pTableElemTokenMap = new SvXMLTokenMap( aTableElemTokenMap );
+        m_pTableElemTokenMap.reset(new SvXMLTokenMap( aTableElemTokenMap ));
 
     return *m_pTableElemTokenMap;
 }
@@ -155,7 +165,7 @@ const SvXMLTokenMap& SwXMLImport::GetTableElemTokenMap()
 const SvXMLTokenMap& SwXMLImport::GetTableCellAttrTokenMap()
 {
     if( !m_pTableCellAttrTokenMap )
-        m_pTableCellAttrTokenMap = new SvXMLTokenMap( aTableCellAttrTokenMap );
+        m_pTableCellAttrTokenMap.reset(new SvXMLTokenMap( aTableCellAttrTokenMap ));
 
     return *m_pTableCellAttrTokenMap;
 }
@@ -164,7 +174,6 @@ class SwXMLTableCell_Impl
 {
     OUString aStyleName;
 
-    OUString mXmlId;
     OUString m_StringValue;
 
     OUString sFormula;  // cell formula; valid if length > 0
@@ -183,7 +192,7 @@ class SwXMLTableCell_Impl
 
 public:
 
-    SwXMLTableCell_Impl( sal_uInt32 nRSpan=1UL, sal_uInt32 nCSpan=1UL ) :
+    SwXMLTableCell_Impl( sal_uInt32 nRSpan=1, sal_uInt32 nCSpan=1 ) :
         dValue( 0.0 ),
         pStartNode( nullptr ),
         nRowSpan( nRSpan ),
@@ -202,8 +211,7 @@ public:
                      bool bHasValue,
                      bool bCovered,
                      double dVal,
-                     OUString const*const pStringValue,
-                     OUString const& i_rXmlId);
+                     OUString const*const pStringValue);
 
     bool IsUsed() const { return pStartNode!=nullptr ||
                                      xSubTable.is() || bProtected;}
@@ -219,7 +227,7 @@ public:
     bool IsCovered() const { return mbCovered; }
     bool HasStringValue() const { return m_bHasStringValue; }
     OUString const* GetStringValue() const {
-        return (m_bHasStringValue) ? &m_StringValue : nullptr;
+        return m_bHasStringValue ? &m_StringValue : nullptr;
     }
 
     const SwStartNode *GetStartNode() const { return pStartNode; }
@@ -239,8 +247,7 @@ inline void SwXMLTableCell_Impl::Set( const OUString& rStyleName,
                                       bool bHasVal,
                                       bool bCov,
                                       double dVal,
-                                      OUString const*const pStringValue,
-                                      OUString const& i_rXmlId )
+                                      OUString const*const pStringValue )
 {
     aStyleName = rStyleName;
     nRowSpan = nRSpan;
@@ -256,11 +263,6 @@ inline void SwXMLTableCell_Impl::Set( const OUString& rStyleName,
     }
     m_bHasStringValue = (pStringValue != nullptr);
     bProtected = bProtect;
-
-    if (!mbCovered) // ensure uniqueness
-    {
-        mXmlId = i_rXmlId;
-    }
 
     // set formula, if valid
     if (pFormula != nullptr)
@@ -290,21 +292,18 @@ class SwXMLTableRow_Impl
 {
     OUString   aStyleName;
     OUString   aDfltCellStyleName;
-    OUString   mXmlId;
     std::vector<std::unique_ptr<SwXMLTableCell_Impl>> m_Cells;
     bool       bSplitable;
 
 public:
 
     SwXMLTableRow_Impl( const OUString& rStyleName, sal_uInt32 nCells,
-                        const OUString *pDfltCellStyleName = nullptr,
-                        const OUString& i_rXmlId = OUString() );
+                        const OUString *pDfltCellStyleName = nullptr );
 
     inline SwXMLTableCell_Impl *GetCell( sal_uInt32 nCol );
 
     inline void Set( const OUString& rStyleName,
-                     const OUString& rDfltCellStyleName,
-                     const OUString& i_rXmlId );
+                     const OUString& rDfltCellStyleName );
 
     void Expand( sal_uInt32 nCells, bool bOneCell );
 
@@ -319,10 +318,8 @@ public:
 
 SwXMLTableRow_Impl::SwXMLTableRow_Impl( const OUString& rStyleName,
                                         sal_uInt32 nCells,
-                                        const OUString *pDfltCellStyleName,
-                                        const OUString& i_rXmlId ) :
+                                        const OUString *pDfltCellStyleName ) :
     aStyleName( rStyleName ),
-    mXmlId( i_rXmlId ),
     bSplitable( false )
 {
     if( pDfltCellStyleName  )
@@ -334,14 +331,14 @@ SwXMLTableRow_Impl::SwXMLTableRow_Impl( const OUString& rStyleName,
 
     for( sal_uInt32 i=0U; i<nCells; ++i )
     {
-        m_Cells.push_back(o3tl::make_unique<SwXMLTableCell_Impl>());
+        m_Cells.push_back(std::make_unique<SwXMLTableCell_Impl>());
     }
 }
 
 inline SwXMLTableCell_Impl *SwXMLTableRow_Impl::GetCell( sal_uInt32 nCol )
 {
     OSL_ENSURE( nCol < USHRT_MAX,
-            "SwXMLTableRow_Impl::GetCell: column number is to big" );
+            "SwXMLTableRow_Impl::GetCell: column number is too big" );
     // #i95726# - some fault tolerance
     OSL_ENSURE( nCol < m_Cells.size(),
             "SwXMLTableRow_Impl::GetCell: column number is out of bound" );
@@ -358,8 +355,8 @@ void SwXMLTableRow_Impl::Expand( sal_uInt32 nCells, bool bOneCell )
     sal_uInt32 nColSpan = nCells - m_Cells.size();
     for (size_t i = m_Cells.size(); i < nCells; ++i)
     {
-        m_Cells.push_back(o3tl::make_unique<SwXMLTableCell_Impl>(
-                1UL, (bOneCell) ? nColSpan : 1UL));
+        m_Cells.push_back(std::make_unique<SwXMLTableCell_Impl>(
+                1UL, bOneCell ? nColSpan : 1UL));
         nColSpan--;
     }
 
@@ -368,12 +365,10 @@ void SwXMLTableRow_Impl::Expand( sal_uInt32 nCells, bool bOneCell )
 }
 
 inline void SwXMLTableRow_Impl::Set( const OUString& rStyleName,
-                                     const OUString& rDfltCellStyleName,
-                                     const OUString& i_rXmlId )
+                                     const OUString& rDfltCellStyleName )
 {
     aStyleName = rStyleName;
     aDfltCellStyleName = rDfltCellStyleName;
-    mXmlId = i_rXmlId;
 }
 
 void SwXMLTableRow_Impl::Dispose()
@@ -384,32 +379,33 @@ void SwXMLTableRow_Impl::Dispose()
     }
 }
 
+namespace {
+
 class SwXMLTableCellContext_Impl : public SvXMLImportContext
 {
-    OUString aStyleName;
-    OUString sFormula;
-    OUString sSaveParaDefault;
-    OUString mXmlId;
+    OUString m_aStyleName;
+    OUString m_sFormula;
+    OUString m_sSaveParaDefault;
     OUString m_StringValue;
 
-    SvXMLImportContextRef   xMyTable;
+    SvXMLImportContextRef   m_xMyTable;
 
-    double fValue;
-    bool bHasValue;
+    double m_fValue;
+    bool m_bHasValue;
     bool     m_bHasStringValue;
     bool     m_bValueTypeIsString;
-    bool bProtect;
+    bool m_bProtect;
 
-    sal_uInt32                  nRowSpan;
-    sal_uInt32                  nColSpan;
-    sal_uInt32                  nColRepeat;
+    sal_uInt32                  m_nRowSpan;
+    sal_uInt32                  m_nColSpan;
+    sal_uInt32                  m_nColRepeat;
 
-    bool                    bHasTextContent : 1;
-    bool                    bHasTableContent : 1;
+    bool                    m_bHasTextContent : 1;
+    bool                    m_bHasTableContent : 1;
 
-    SwXMLTableContext *GetTable() { return static_cast<SwXMLTableContext *>(xMyTable.get()); }
+    SwXMLTableContext *GetTable() { return static_cast<SwXMLTableContext *>(m_xMyTable.get()); }
 
-    bool HasContent() const { return bHasTextContent || bHasTableContent; }
+    bool HasContent() const { return m_bHasTextContent || m_bHasTableContent; }
     inline void InsertContent_();
     inline void InsertContent();
     inline void InsertContent( SwXMLTableContext *pTable );
@@ -421,7 +417,7 @@ public:
             const Reference< xml::sax::XAttributeList > & xAttrList,
             SwXMLTableContext *pTable );
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 nPrefix, const OUString& rLocalName,
             const Reference< xml::sax::XAttributeList > & xAttrList ) override;
     virtual void EndElement() override;
@@ -429,25 +425,27 @@ public:
     SwXMLImport& GetSwImport() { return static_cast<SwXMLImport&>(GetImport()); }
 };
 
+}
+
 SwXMLTableCellContext_Impl::SwXMLTableCellContext_Impl(
         SwXMLImport& rImport, sal_uInt16 nPrfx, const OUString& rLName,
         const Reference< xml::sax::XAttributeList > & xAttrList,
         SwXMLTableContext *pTable ) :
     SvXMLImportContext( rImport, nPrfx, rLName ),
-    sFormula(),
-    xMyTable( pTable ),
-    fValue( 0.0 ),
-    bHasValue( false ),
+    m_sFormula(),
+    m_xMyTable( pTable ),
+    m_fValue( 0.0 ),
+    m_bHasValue( false ),
     m_bHasStringValue(false),
     m_bValueTypeIsString(false),
-    bProtect( false ),
-    nRowSpan( 1UL ),
-    nColSpan( 1UL ),
-    nColRepeat( 1UL ),
-    bHasTextContent( false ),
-    bHasTableContent( false )
+    m_bProtect( false ),
+    m_nRowSpan( 1 ),
+    m_nColSpan( 1 ),
+    m_nColRepeat( 1 ),
+    m_bHasTextContent( false ),
+    m_bHasTableContent( false )
 {
-    sSaveParaDefault = GetImport().GetTextImport()->GetCellParaStyleDefault();
+    m_sSaveParaDefault = GetImport().GetTextImport()->GetCellParaStyleDefault();
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
     for( sal_Int16 i=0; i < nAttrCount; i++ )
     {
@@ -462,34 +460,40 @@ SwXMLTableCellContext_Impl::SwXMLTableCellContext_Impl(
             GetSwImport().GetTableCellAttrTokenMap();
         switch( rTokenMap.Get( nPrefix, aLocalName ) )
         {
-        case XML_TOK_TABLE_XMLID:
-            mXmlId = rValue;
-            break;
         case XML_TOK_TABLE_STYLE_NAME:
-            aStyleName = rValue;
+            m_aStyleName = rValue;
             GetImport().GetTextImport()->SetCellParaStyleDefault(rValue);
             break;
         case XML_TOK_TABLE_NUM_COLS_SPANNED:
-            nColSpan = (sal_uInt32)rValue.toInt32();
-            if( nColSpan < 1UL )
-                nColSpan = 1UL;
+            m_nColSpan = static_cast<sal_uInt32>(std::max<sal_Int32>(1, rValue.toInt32()));
+            if (m_nColSpan > 256)
+            {
+                SAL_INFO("sw.xml", "ignoring huge table:number-columns-spanned " << m_nColSpan);
+                m_nColSpan = 1;
+            }
             break;
         case XML_TOK_TABLE_NUM_ROWS_SPANNED:
-            nRowSpan = (sal_uInt32)rValue.toInt32();
-            if( nRowSpan < 1UL )
-                nRowSpan = 1UL;
+            m_nRowSpan = static_cast<sal_uInt32>(std::max<sal_Int32>(1, rValue.toInt32()));
+            if (m_nRowSpan > 8192 || (m_nRowSpan > 256 && utl::ConfigManager::IsFuzzing()))
+            {
+                SAL_INFO("sw.xml", "ignoring huge table:number-rows-spanned " << m_nRowSpan);
+                m_nRowSpan = 1;
+            }
             break;
         case XML_TOK_TABLE_NUM_COLS_REPEATED:
-            nColRepeat = (sal_uInt32)rValue.toInt32();
-            if( nColRepeat < 1UL )
-                nColRepeat = 1UL;
+            m_nColRepeat = static_cast<sal_uInt32>(std::max<sal_Int32>(1, rValue.toInt32()));
+            if (m_nColRepeat > 256)
+            {
+                SAL_INFO("sw.xml", "ignoring huge table:number-columns-repeated " << m_nColRepeat);
+                m_nColRepeat = 1;
+            }
             break;
         case XML_TOK_TABLE_FORMULA:
             {
                 OUString sTmp;
                 const sal_uInt16 nPrefix2 = GetImport().GetNamespaceMap().
-                        GetKeyByAttrName_( rValue, &sTmp );
-                sFormula = XML_NAMESPACE_OOOW == nPrefix2 ? sTmp : rValue;
+                        GetKeyByAttrValueQName(rValue, &sTmp);
+                m_sFormula = XML_NAMESPACE_OOOW == nPrefix2 ? sTmp : rValue;
             }
             break;
         case XML_TOK_TABLE_VALUE:
@@ -497,8 +501,8 @@ SwXMLTableCellContext_Impl::SwXMLTableCellContext_Impl(
                 double fTmp;
                 if (::sax::Converter::convertDouble(fTmp, rValue))
                 {
-                    fValue = fTmp;
-                    bHasValue = true;
+                    m_fValue = fTmp;
+                    m_bHasValue = true;
                 }
             }
             break;
@@ -507,8 +511,8 @@ SwXMLTableCellContext_Impl::SwXMLTableCellContext_Impl(
                 double fTmp;
                 if (::sax::Converter::convertDuration(fTmp, rValue))
                 {
-                    fValue = fTmp;
-                    bHasValue = true;
+                    m_fValue = fTmp;
+                    m_bHasValue = true;
                 }
             }
             break;
@@ -518,8 +522,8 @@ SwXMLTableCellContext_Impl::SwXMLTableCellContext_Impl(
                 if (GetImport().GetMM100UnitConverter().convertDateTime(fTmp,
                                                                       rValue))
                 {
-                    fValue = fTmp;
-                    bHasValue = true;
+                    m_fValue = fTmp;
+                    m_bHasValue = true;
                 }
             }
             break;
@@ -528,8 +532,8 @@ SwXMLTableCellContext_Impl::SwXMLTableCellContext_Impl(
                 bool bTmp(false);
                 if (::sax::Converter::convertBool(bTmp, rValue))
                 {
-                    fValue = (bTmp ? 1.0 : 0.0);
-                    bHasValue = true;
+                    m_fValue = (bTmp ? 1.0 : 0.0);
+                    m_bHasValue = true;
                 }
             }
             break;
@@ -538,7 +542,7 @@ SwXMLTableCellContext_Impl::SwXMLTableCellContext_Impl(
                 bool bTmp(false);
                 if (::sax::Converter::convertBool(bTmp, rValue))
                 {
-                    bProtect = bTmp;
+                    m_bProtect = bTmp;
                 }
             }
             break;
@@ -567,36 +571,34 @@ inline void SwXMLTableCellContext_Impl::InsertContent_()
 {
     SwStartNode const*const pStartNode( GetTable()->InsertTableSection(nullptr,
             (m_bHasStringValue && m_bValueTypeIsString &&
-             !aStyleName.isEmpty()) ? & aStyleName : nullptr) );
-    GetTable()->InsertCell( aStyleName, nRowSpan, nColSpan,
+             !m_aStyleName.isEmpty()) ? & m_aStyleName : nullptr) );
+    GetTable()->InsertCell( m_aStyleName, m_nRowSpan, m_nColSpan,
                             pStartNode,
-                            mXmlId,
-                            nullptr, bProtect, &sFormula, bHasValue, fValue,
+                            nullptr, m_bProtect, &m_sFormula, m_bHasValue, m_fValue,
             (m_bHasStringValue && m_bValueTypeIsString) ? &m_StringValue : nullptr);
 }
 
 inline void SwXMLTableCellContext_Impl::InsertContent()
 {
     OSL_ENSURE( !HasContent(), "content already there" );
-    bHasTextContent = true;
+    m_bHasTextContent = true;
     InsertContent_();
 }
 
 inline void SwXMLTableCellContext_Impl::InsertContent(
                                                 SwXMLTableContext *pTable )
 {
-    GetTable()->InsertCell( aStyleName, nRowSpan, nColSpan, nullptr, mXmlId, pTable, bProtect );
-    bHasTableContent = true;
+    GetTable()->InsertCell( m_aStyleName, m_nRowSpan, m_nColSpan, nullptr, pTable, m_bProtect );
+    m_bHasTableContent = true;
 }
 
-SvXMLImportContext *SwXMLTableCellContext_Impl::CreateChildContext(
+SvXMLImportContextRef SwXMLTableCellContext_Impl::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
 {
     SvXMLImportContext *pContext = nullptr;
 
-    OUString sXmlId;
     bool bSubTable = false;
     if( XML_NAMESPACE_TABLE == nPrefix &&
         IsXMLToken( rLocalName, XML_TABLE ) )
@@ -616,11 +618,6 @@ SvXMLImportContext *SwXMLTableCellContext_Impl::CreateChildContext(
             {
                 bSubTable = true;
             }
-            else if ( (XML_NAMESPACE_XML == nPrefix2) &&
-                     IsXMLToken( aLocalName, XML_ID ) )
-            {
-                sXmlId = xAttrList->getValueByIndex( i );
-            }
         //FIXME: RDFa
         }
     }
@@ -631,7 +628,7 @@ SvXMLImportContext *SwXMLTableCellContext_Impl::CreateChildContext(
         {
             SwXMLTableContext *pTableContext =
                 new SwXMLTableContext( GetSwImport(), nPrefix, rLocalName,
-                                       xAttrList, GetTable() );
+                                       GetTable() );
             pContext = pTableContext;
             if( GetTable()->IsValid() )
                 InsertContent( pTableContext );
@@ -652,9 +649,6 @@ SvXMLImportContext *SwXMLTableCellContext_Impl::CreateChildContext(
         }
     }
 
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-
     return pContext;
 }
 
@@ -662,10 +656,10 @@ void SwXMLTableCellContext_Impl::EndElement()
 {
     if( GetTable()->IsValid() )
     {
-        if( bHasTextContent )
+        if( m_bHasTextContent )
         {
             GetImport().GetTextImport()->DeleteParagraph();
-            if( nColRepeat > 1 && nColSpan == 1 )
+            if( m_nColRepeat > 1 && m_nColSpan == 1 )
             {
                 // The original text is invalid after deleting the last
                 // paragraph
@@ -682,7 +676,7 @@ void SwXMLTableCellContext_Impl::EndElement()
                 SwDoc *pDoc = pSrcTextCursor->GetDoc();
                 const SwPaM *pSrcPaM = pSrcTextCursor->GetPaM();
 
-                while( nColRepeat > 1 && GetTable()->IsInsertCellPossible() )
+                while( m_nColRepeat > 1 && GetTable()->IsInsertCellPossible() )
                 {
                     InsertContent_();
 
@@ -694,27 +688,29 @@ void SwXMLTableCellContext_Impl::EndElement()
                     assert(pDstTextCursor && "SwXTextCursor missing");
                     SwPaM aSrcPaM(*pSrcPaM->GetMark(), *pSrcPaM->GetPoint());
                     SwPosition aDstPos( *pDstTextCursor->GetPaM()->GetPoint() );
-                    pDoc->getIDocumentContentOperations().CopyRange( aSrcPaM, aDstPos, /*bCopyAll=*/false, /*bCheckPos=*/true );
+                    pDoc->getIDocumentContentOperations().CopyRange(aSrcPaM, aDstPos, SwCopyFlags::CheckPosInFly);
 
-                    nColRepeat--;
+                    m_nColRepeat--;
                 }
             }
         }
-        else if( !bHasTableContent )
+        else if( !m_bHasTableContent )
         {
             InsertContent();
-            if( nColRepeat > 1 && nColSpan == 1 )
+            if( m_nColRepeat > 1 && m_nColSpan == 1 )
             {
-                while( nColRepeat > 1 && GetTable()->IsInsertCellPossible() )
+                while( m_nColRepeat > 1 && GetTable()->IsInsertCellPossible() )
                 {
                     InsertContent_();
-                    nColRepeat--;
+                    m_nColRepeat--;
                 }
             }
         }
     }
-    GetImport().GetTextImport()->SetCellParaStyleDefault(sSaveParaDefault);
+    GetImport().GetTextImport()->SetCellParaStyleDefault(m_sSaveParaDefault);
 }
+
+namespace {
 
 class SwXMLTableColContext_Impl : public SvXMLImportContext
 {
@@ -732,6 +728,8 @@ public:
     SwXMLImport& GetSwImport() { return static_cast<SwXMLImport&>(GetImport()); }
 };
 
+}
+
 SwXMLTableColContext_Impl::SwXMLTableColContext_Impl(
         SwXMLImport& rImport, sal_uInt16 nPrfx, const OUString& rLName,
         const Reference< xml::sax::XAttributeList > & xAttrList,
@@ -739,7 +737,7 @@ SwXMLTableColContext_Impl::SwXMLTableColContext_Impl(
     SvXMLImportContext( rImport, nPrfx, rLName ),
     xMyTable( pTable )
 {
-    sal_uInt32 nColRep = 1UL;
+    sal_uInt32 nColRep = 1;
     OUString aStyleName, aDfltCellStyleName;
 
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
@@ -757,7 +755,14 @@ SwXMLTableColContext_Impl::SwXMLTableColContext_Impl(
             if( IsXMLToken( aLocalName, XML_STYLE_NAME ) )
                 aStyleName = rValue;
             else if( IsXMLToken( aLocalName, XML_NUMBER_COLUMNS_REPEATED ) )
-                nColRep = (sal_uInt32)rValue.toInt32();
+            {
+                nColRep = static_cast<sal_uInt32>(std::max<sal_Int32>(1, rValue.toInt32()));
+                if (nColRep > 256)
+                {
+                    SAL_INFO("sw.xml", "ignoring huge table:number-columns-repeated " << nColRep);
+                    nColRep = 1;
+                }
+            }
             else if( IsXMLToken( aLocalName, XML_DEFAULT_CELL_STYLE_NAME ) )
                 aDfltCellStyleName = rValue;
         }
@@ -775,7 +780,7 @@ SwXMLTableColContext_Impl::SwXMLTableColContext_Impl(
         const SfxPoolItem *pItem;
         const SfxItemSet *pAutoItemSet = nullptr;
         if( GetSwImport().FindAutomaticStyle(
-                    XML_STYLE_FAMILY_TABLE_COLUMN,
+                    XmlStyleFamily::TABLE_COLUMN,
                                               aStyleName, &pAutoItemSet ) &&
             pAutoItemSet &&
             SfxItemState::SET == pAutoItemSet->GetItemState( RES_FRM_SIZE, false,
@@ -783,7 +788,7 @@ SwXMLTableColContext_Impl::SwXMLTableColContext_Impl(
         {
             const SwFormatFrameSize *pSize = static_cast<const SwFormatFrameSize *>(pItem);
             nWidth = pSize->GetWidth();
-            bRelWidth = ATT_VAR_SIZE == pSize->GetHeightSizeType();
+            bRelWidth = SwFrameSize::Variable == pSize->GetHeightSizeType();
         }
     }
 
@@ -793,6 +798,8 @@ SwXMLTableColContext_Impl::SwXMLTableColContext_Impl(
             GetTable()->InsertColumn( nWidth, bRelWidth, &aDfltCellStyleName );
     }
 }
+
+namespace {
 
 class SwXMLTableColsContext_Impl : public SvXMLImportContext
 {
@@ -805,26 +812,26 @@ public:
     SwXMLTableColsContext_Impl(
             SwXMLImport& rImport, sal_uInt16 nPrfx,
             const OUString& rLName,
-            const Reference< xml::sax::XAttributeList > & xAttrList,
             SwXMLTableContext *pTable );
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 nPrefix, const OUString& rLocalName,
             const Reference< xml::sax::XAttributeList > & xAttrList ) override;
 
     SwXMLImport& GetSwImport() { return static_cast<SwXMLImport&>(GetImport()); }
 };
 
+}
+
 SwXMLTableColsContext_Impl::SwXMLTableColsContext_Impl(
         SwXMLImport& rImport, sal_uInt16 nPrfx, const OUString& rLName,
-        const Reference< xml::sax::XAttributeList > &,
         SwXMLTableContext *pTable ) :
     SvXMLImportContext( rImport, nPrfx, rLName ),
     xMyTable( pTable )
 {
 }
 
-SvXMLImportContext *SwXMLTableColsContext_Impl::CreateChildContext(
+SvXMLImportContextRef SwXMLTableColsContext_Impl::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
@@ -838,11 +845,10 @@ SvXMLImportContext *SwXMLTableColsContext_Impl::CreateChildContext(
                                                   rLocalName, xAttrList,
                                                   GetTable() );
 
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-
     return pContext;
 }
+
+namespace {
 
 class SwXMLTableRowContext_Impl : public SvXMLImportContext
 {
@@ -859,7 +865,7 @@ public:
             const Reference< xml::sax::XAttributeList > & xAttrList,
             SwXMLTableContext *pTable, bool bInHead=false );
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
             const OUString& rLocalName,
             const Reference< xml::sax::XAttributeList > & xAttrList ) override;
 
@@ -867,6 +873,8 @@ public:
 
     SwXMLImport& GetSwImport() { return static_cast<SwXMLImport&>(GetImport()); }
 };
+
+}
 
 SwXMLTableRowContext_Impl::SwXMLTableRowContext_Impl( SwXMLImport& rImport,
         sal_uInt16 nPrfx,
@@ -899,9 +907,12 @@ SwXMLTableRowContext_Impl::SwXMLTableRowContext_Impl( SwXMLImport& rImport,
             }
             else if( IsXMLToken( aLocalName, XML_NUMBER_ROWS_REPEATED ) )
             {
-                nRowRepeat = (sal_uInt32)rValue.toInt32();
-                if( nRowRepeat < 1UL )
-                    nRowRepeat = 1UL;
+                nRowRepeat = static_cast<sal_uInt32>(std::max<sal_Int32>(1, rValue.toInt32()));
+                if (nRowRepeat > 8192 || (nRowRepeat > 256 && utl::ConfigManager::IsFuzzing()))
+                {
+                    SAL_INFO("sw.xml", "ignoring huge table:number-rows-repeated " << nRowRepeat);
+                    nRowRepeat = 1;
+                }
             }
             else if( IsXMLToken( aLocalName, XML_DEFAULT_CELL_STYLE_NAME ) )
             {
@@ -915,8 +926,7 @@ SwXMLTableRowContext_Impl::SwXMLTableRowContext_Impl( SwXMLImport& rImport,
         }
     }
     if( GetTable()->IsValid() )
-        GetTable()->InsertRow( aStyleName, aDfltCellStyleName, bInHead,
-                               sXmlId );
+        GetTable()->InsertRow( aStyleName, aDfltCellStyleName, bInHead );
 }
 
 void SwXMLTableRowContext_Impl::EndElement()
@@ -925,12 +935,12 @@ void SwXMLTableRowContext_Impl::EndElement()
     {
         GetTable()->FinishRow();
 
-        if( nRowRepeat > 1UL )
+        if( nRowRepeat > 1 )
             GetTable()->InsertRepRows( nRowRepeat );
     }
 }
 
-SvXMLImportContext *SwXMLTableRowContext_Impl::CreateChildContext(
+SvXMLImportContextRef SwXMLTableRowContext_Impl::CreateChildContext(
         sal_uInt16 nPrefix, const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
 {
@@ -952,11 +962,10 @@ SvXMLImportContext *SwXMLTableRowContext_Impl::CreateChildContext(
                                                rLocalName );
     }
 
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-
     return pContext;
 }
+
+namespace {
 
 class SwXMLTableRowsContext_Impl : public SvXMLImportContext
 {
@@ -970,21 +979,21 @@ public:
 
     SwXMLTableRowsContext_Impl( SwXMLImport& rImport, sal_uInt16 nPrfx,
             const OUString& rLName,
-            const Reference< xml::sax::XAttributeList > & xAttrList,
             SwXMLTableContext *pTable,
             bool bHead );
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
             const OUString& rLocalName,
             const Reference< xml::sax::XAttributeList > & xAttrList ) override;
 
     SwXMLImport& GetSwImport() { return static_cast<SwXMLImport&>(GetImport()); }
 };
 
+}
+
 SwXMLTableRowsContext_Impl::SwXMLTableRowsContext_Impl( SwXMLImport& rImport,
         sal_uInt16 nPrfx,
         const OUString& rLName,
-        const Reference< xml::sax::XAttributeList > &,
         SwXMLTableContext *pTable,
         bool bHead ) :
     SvXMLImportContext( rImport, nPrfx, rLName ),
@@ -993,7 +1002,7 @@ SwXMLTableRowsContext_Impl::SwXMLTableRowsContext_Impl( SwXMLImport& rImport,
 {
 }
 
-SvXMLImportContext *SwXMLTableRowsContext_Impl::CreateChildContext(
+SvXMLImportContextRef SwXMLTableRowsContext_Impl::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
@@ -1007,9 +1016,6 @@ SvXMLImportContext *SwXMLTableRowsContext_Impl::CreateChildContext(
                                                   rLocalName, xAttrList,
                                                   GetTable(),
                                                   bHeader );
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }
@@ -1035,7 +1041,7 @@ public:
     OUString& GetDDEApplication()   { return sDDEApplication; }
     OUString& GetDDEItem()          { return sDDEItem; }
     OUString& GetDDETopic()         { return sDDETopic; }
-    bool GetIsAutomaticUpdate() { return bIsAutomaticUpdate; }
+    bool GetIsAutomaticUpdate() const { return bIsAutomaticUpdate; }
 };
 
 
@@ -1124,9 +1130,9 @@ static SwDDEFieldType* lcl_GetDDEFieldType(SwXMLDDETableContext_Impl* pContext,
 {
     // make command string
     const OUString sCommand(pContext->GetDDEApplication()
-        + OUStringLiteral1(sfx2::cTokenSeparator)
+        + OUStringChar(sfx2::cTokenSeparator)
         + pContext->GetDDEItem()
-        + OUStringLiteral1(sfx2::cTokenSeparator)
+        + OUStringChar(sfx2::cTokenSeparator)
         + pContext->GetDDETopic());
 
     const SfxLinkUpdateMode nType = pContext->GetIsAutomaticUpdate()
@@ -1229,21 +1235,20 @@ SwXMLTableContext::SwXMLTableContext( SwXMLImport& rImport,
         const OUString& rLName,
         const Reference< xml::sax::XAttributeList > & xAttrList ) :
     XMLTextTableContext( rImport, nPrfx, rLName ),
-    m_pColumnDefaultCellStyleNames( nullptr ),
     m_pRows( new SwXMLTableRows_Impl ),
     m_pTableNode( nullptr ),
     m_pBox1( nullptr ),
+    m_bOwnsBox1( false ),
     m_pSttNd1( nullptr ),
     m_pBoxFormat( nullptr ),
     m_pLineFormat( nullptr ),
-    m_pSharedBoxFormats(nullptr),
     m_bFirstSection( true ),
     m_bRelWidth( true ),
     m_bHasSubTables( false ),
     m_nHeaderRows( 0 ),
-    m_nCurRow( 0UL ),
-    m_nCurCol( 0UL ),
-    m_nWidth( 0UL )
+    m_nCurRow( 0 ),
+    m_nCurCol( 0 ),
+    m_nWidth( 0 )
 {
     OUString aName;
     OUString sXmlId;
@@ -1345,61 +1350,61 @@ SwXMLTableContext::SwXMLTableContext( SwXMLImport& rImport,
         GetImport().GetTextImport()->SetCursor( xText->createTextCursor() );
 
         // take care of open redlines for tables
-        GetImport().GetTextImport()->RedlineAdjustStartNodeCursor(true);
+        GetImport().GetTextImport()->RedlineAdjustStartNodeCursor();
     }
-    if( pXTable )
-    {
-        SwFrameFormat *const pTableFrameFormat = pXTable->GetFrameFormat();
-        OSL_ENSURE( pTableFrameFormat, "table format missing" );
-        SwTable *pTable = SwTable::FindTable( pTableFrameFormat );
-        OSL_ENSURE( pTable, "table missing" );
-        m_pTableNode = pTable->GetTableNode();
-        OSL_ENSURE( m_pTableNode, "table node missing" );
+    if( !pXTable )
+        return;
 
-        pTableFrameFormat->SetName( sTableName );
+    SwFrameFormat *const pTableFrameFormat = pXTable->GetFrameFormat();
+    OSL_ENSURE( pTableFrameFormat, "table format missing" );
+    SwTable *pTable = SwTable::FindTable( pTableFrameFormat );
+    OSL_ENSURE( pTable, "table missing" );
+    m_pTableNode = pTable->GetTableNode();
+    OSL_ENSURE( m_pTableNode, "table node missing" );
 
-        SwTableLine *pLine1 = m_pTableNode->GetTable().GetTabLines()[0U];
-        m_pBox1 = pLine1->GetTabBoxes()[0U];
-        m_pSttNd1 = m_pBox1->GetSttNd();
-    }
+    pTableFrameFormat->SetName( sTableName );
+
+    SwTableLine *pLine1 = m_pTableNode->GetTable().GetTabLines()[0U];
+    m_pBox1 = pLine1->GetTabBoxes()[0U];
+    m_pSttNd1 = m_pBox1->GetSttNd();
 }
 
 SwXMLTableContext::SwXMLTableContext( SwXMLImport& rImport,
         sal_uInt16 nPrfx,
         const OUString& rLName,
-        const Reference< xml::sax::XAttributeList > &,
         SwXMLTableContext *pTable ) :
     XMLTextTableContext( rImport, nPrfx, rLName ),
-    m_pColumnDefaultCellStyleNames( nullptr ),
     m_pRows( new SwXMLTableRows_Impl ),
     m_pTableNode( pTable->m_pTableNode ),
     m_pBox1( nullptr ),
+    m_bOwnsBox1( false ),
     m_pSttNd1( nullptr ),
     m_pBoxFormat( nullptr ),
     m_pLineFormat( nullptr ),
-    m_pSharedBoxFormats(nullptr),
     m_xParentTable( pTable ),
     m_bFirstSection( false ),
     m_bRelWidth( true ),
     m_bHasSubTables( false ),
     m_nHeaderRows( 0 ),
-    m_nCurRow( 0UL ),
-    m_nCurCol( 0UL ),
-    m_nWidth( 0UL )
+    m_nCurRow( 0 ),
+    m_nCurCol( 0 ),
+    m_nWidth( 0 )
 {
 }
 
 SwXMLTableContext::~SwXMLTableContext()
 {
-    delete m_pColumnDefaultCellStyleNames;
-    delete m_pSharedBoxFormats;
-    delete m_pRows;
+    if (m_bOwnsBox1)
+        delete m_pBox1;
+    m_pColumnDefaultCellStyleNames.reset();
+    m_pSharedBoxFormats.reset();
+    m_pRows.reset();
 
     // close redlines on table end nodes
-    GetImport().GetTextImport()->RedlineAdjustStartNodeCursor(false);
+    GetImport().GetTextImport()->RedlineAdjustStartNodeCursor();
 }
 
-SvXMLImportContext *SwXMLTableContext::CreateChildContext( sal_uInt16 nPrefix,
+SvXMLImportContextRef SwXMLTableContext::CreateChildContext( sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
 {
@@ -1413,7 +1418,7 @@ SvXMLImportContext *SwXMLTableContext::CreateChildContext( sal_uInt16 nPrefix,
     case XML_TOK_TABLE_COLS:
         if( IsValid() )
             pContext = new SwXMLTableColsContext_Impl( GetSwImport(), nPrefix,
-                                                       rLocalName, xAttrList,
+                                                       rLocalName,
                                                        this );
         break;
     case XML_TOK_TABLE_COL:
@@ -1424,10 +1429,10 @@ SvXMLImportContext *SwXMLTableContext::CreateChildContext( sal_uInt16 nPrefix,
         break;
     case XML_TOK_TABLE_HEADER_ROWS:
         bHeader = true;
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case XML_TOK_TABLE_ROWS:
         pContext = new SwXMLTableRowsContext_Impl( GetSwImport(), nPrefix,
-                                                   rLocalName, xAttrList,
+                                                   rLocalName,
                                                    this, bHeader );
         break;
     case XML_TOK_TABLE_ROW:
@@ -1447,9 +1452,6 @@ SvXMLImportContext *SwXMLTableContext::CreateChildContext( sal_uInt16 nPrefix,
         break;
     }
 
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-
     return pContext;
 }
 
@@ -1463,25 +1465,25 @@ void SwXMLTableContext::InsertColumn( sal_Int32 nWidth2, bool bRelWidth2,
 
     if( nWidth2 < MINLAY )
         nWidth2 = MINLAY;
-    else if( nWidth2 > USHRT_MAX )
-        nWidth2 = USHRT_MAX;
-    m_aColumnWidths.push_back( ColumnWidthInfo(nWidth2, bRelWidth2) );
-    if( (pDfltCellStyleName && !pDfltCellStyleName->isEmpty()) ||
-        m_pColumnDefaultCellStyleNames )
-    {
-        if( !m_pColumnDefaultCellStyleNames )
-        {
-            m_pColumnDefaultCellStyleNames = new std::vector<OUString>;
-            sal_uLong nCount = m_aColumnWidths.size() - 1;
-            while( nCount-- )
-                m_pColumnDefaultCellStyleNames->push_back(OUString());
-        }
+    else if( nWidth2 > MAX_WIDTH )
+        nWidth2 = MAX_WIDTH;
+    m_aColumnWidths.emplace_back(nWidth2, bRelWidth2 );
+    if( !((pDfltCellStyleName && !pDfltCellStyleName->isEmpty()) ||
+        m_pColumnDefaultCellStyleNames) )
+        return;
 
-        if(pDfltCellStyleName)
-            m_pColumnDefaultCellStyleNames->push_back(*pDfltCellStyleName);
-        else
+    if( !m_pColumnDefaultCellStyleNames )
+    {
+        m_pColumnDefaultCellStyleNames.reset(new std::vector<OUString>);
+        sal_uLong nCount = m_aColumnWidths.size() - 1;
+        while( nCount-- )
             m_pColumnDefaultCellStyleNames->push_back(OUString());
     }
+
+    if(pDfltCellStyleName)
+        m_pColumnDefaultCellStyleNames->push_back(*pDfltCellStyleName);
+    else
+        m_pColumnDefaultCellStyleNames->push_back(OUString());
 }
 
 sal_Int32 SwXMLTableContext::GetColumnWidth( sal_uInt32 nCol,
@@ -1491,7 +1493,7 @@ sal_Int32 SwXMLTableContext::GetColumnWidth( sal_uInt32 nCol,
     if( nLast > m_aColumnWidths.size() )
         nLast = m_aColumnWidths.size();
 
-    sal_Int32 nWidth2 = 0L;
+    sal_Int32 nWidth2 = 0;
     for( sal_uInt32 i=nCol; i < nLast; ++i )
         nWidth2 += m_aColumnWidths[i].width;
 
@@ -1509,7 +1511,6 @@ OUString SwXMLTableContext::GetColumnDefaultCellStyleName( sal_uInt32 nCol ) con
 void SwXMLTableContext::InsertCell( const OUString& rStyleName,
                                     sal_uInt32 nRowSpan, sal_uInt32 nColSpan,
                                     const SwStartNode *pStartNode,
-                                    const OUString & i_rXmlId,
                                     SwXMLTableContext *pTable,
                                     bool bProtect,
                                     const OUString* pFormula,
@@ -1524,12 +1525,12 @@ void SwXMLTableContext::InsertCell( const OUString& rStyleName,
     if( m_nCurCol >= USHRT_MAX || m_nCurRow > USHRT_MAX )
         return;
 
-    OSL_ENSURE( nRowSpan >=1UL, "SwXMLTableContext::InsertCell: row span is 0" );
-    if( 0UL == nRowSpan )
-        nRowSpan = 1UL;
-    OSL_ENSURE( nColSpan >=1UL, "SwXMLTableContext::InsertCell: col span is 0" );
-    if( 0UL == nColSpan )
-        nColSpan = 1UL;
+    OSL_ENSURE( nRowSpan >=1, "SwXMLTableContext::InsertCell: row span is 0" );
+    if( 0 == nRowSpan )
+        nRowSpan = 1;
+    OSL_ENSURE( nColSpan >=1, "SwXMLTableContext::InsertCell: col span is 0" );
+    if( 0 == nColSpan )
+        nColSpan = 1;
 
     // Until it is possible to add columns here, fix the column span.
     sal_uInt32 nColsReq = m_nCurCol + nColSpan;
@@ -1541,12 +1542,12 @@ void SwXMLTableContext::InsertCell( const OUString& rStyleName,
 
     // Check whether there are cells from a previous line already that reach
     // into the current row.
-    if( m_nCurRow > 0UL && nColSpan > 1UL )
+    if( m_nCurRow > 0 && nColSpan > 1 )
     {
         SwXMLTableRow_Impl *pCurRow = (*m_pRows)[m_nCurRow].get();
         sal_uInt32 nLastCol = GetColumnCount() < nColsReq ? GetColumnCount()
                                                      : nColsReq;
-        for( sal_uInt32 i=m_nCurCol+1UL; i<nLastCol; ++i )
+        for( sal_uInt32 i=m_nCurCol+1; i<nLastCol; ++i )
         {
             if( pCurRow->GetCell(i)->IsUsed() )
             {
@@ -1571,7 +1572,7 @@ void SwXMLTableContext::InsertCell( const OUString& rStyleName,
     {
         for( sal_uInt32 i=GetColumnCount(); i<nColsReq; ++i )
         {
-            m_aColumnWidths.push_back( ColumnWidthInfo(MINLAY, true) );
+            m_aColumnWidths.emplace_back(MINLAY, true );
         }
         // adjust columns in *all* rows, if columns must be inserted
         for (size_t i = 0; i < m_pRows->size(); ++i)
@@ -1582,7 +1583,7 @@ void SwXMLTableContext::InsertCell( const OUString& rStyleName,
     if (m_pRows->size() < nRowsReq)
     {
         for (size_t i = m_pRows->size(); i < nRowsReq; ++i)
-            m_pRows->push_back(o3tl::make_unique<SwXMLTableRow_Impl>(
+            m_pRows->push_back(std::make_unique<SwXMLTableRow_Impl>(
                         "", GetColumnCount()));
     }
 
@@ -1599,15 +1600,17 @@ void SwXMLTableContext::InsertCell( const OUString& rStyleName,
     }
 
     // Fill the cells
-    for( sal_uInt32 i=nColSpan; i>0UL; --i )
+    for( sal_uInt32 i=nColSpan; i>0; --i )
     {
-        for( sal_uInt32 j=nRowSpan; j>0UL; --j )
+        for( sal_uInt32 j=nRowSpan; j>0; --j )
         {
             const bool bCovered = i != nColSpan || j != nRowSpan;
-            GetCell( nRowsReq-j, nColsReq-i )
-                ->Set( sStyleName, j, i, pStartNode,
+            SwXMLTableCell_Impl *pCell = GetCell( nRowsReq-j, nColsReq-i );
+            if (!pCell)
+                throw css::lang::IndexOutOfBoundsException();
+            pCell->Set( sStyleName, j, i, pStartNode,
                        pTable, bProtect, pFormula, bHasValue, bCovered, fValue,
-                       pStringValue, i_rXmlId );
+                       pStringValue );
         }
     }
 
@@ -1619,8 +1622,7 @@ void SwXMLTableContext::InsertCell( const OUString& rStyleName,
 
 void SwXMLTableContext::InsertRow( const OUString& rStyleName,
                                    const OUString& rDfltCellStyleName,
-                                   bool bInHead,
-                                   const OUString & i_rXmlId )
+                                   bool bInHead )
 {
     OSL_ENSURE( m_nCurRow < USHRT_MAX,
             "SwXMLTableContext::InsertRow: no space left" );
@@ -1628,7 +1630,7 @@ void SwXMLTableContext::InsertRow( const OUString& rStyleName,
         return;
 
     // Make sure there is at least one column.
-    if( 0==m_nCurRow && 0UL == GetColumnCount()  )
+    if( 0==m_nCurRow && 0 == GetColumnCount()  )
         InsertColumn( USHRT_MAX, true );
 
     if (m_nCurRow < m_pRows->size())
@@ -1636,18 +1638,18 @@ void SwXMLTableContext::InsertRow( const OUString& rStyleName,
         // The current row has already been inserted because of a row span
         // of a previous row.
         (*m_pRows)[m_nCurRow]->Set(
-            rStyleName, rDfltCellStyleName, i_rXmlId );
+            rStyleName, rDfltCellStyleName );
     }
     else
     {
         // add a new row
-        m_pRows->push_back(o3tl::make_unique<SwXMLTableRow_Impl>(
+        m_pRows->push_back(std::make_unique<SwXMLTableRow_Impl>(
                 rStyleName, GetColumnCount(),
-                                       &rDfltCellStyleName, i_rXmlId));
+                                       &rDfltCellStyleName));
     }
 
     // We start at the first column ...
-    m_nCurCol=0UL;
+    m_nCurCol=0;
 
     // ... but this cell may be occupied already.
     while( m_nCurCol<GetColumnCount() && GetCell(m_nCurRow,m_nCurCol)->IsUsed() )
@@ -1673,7 +1675,6 @@ void SwXMLTableContext::InsertRepRows( sal_uInt32 nCount )
                 InsertCell( pSrcCell->GetStyleName(), 1U,
                             pSrcCell->GetColSpan(),
                             InsertTableSection(),
-                            OUString(),
                             nullptr, pSrcCell->IsProtected(),
                             &pSrcCell->GetFormula(),
                             pSrcCell->HasValue(), pSrcCell->GetValue(),
@@ -1705,17 +1706,17 @@ const SwStartNode *SwXMLTableContext::GetPrevStartNode( sal_uInt32 nRow,
     if( GetColumnCount() == nCol )
     {
         // The last cell is the right one here.
-        pPrevCell = GetCell( m_pRows->size() - 1U, GetColumnCount() - 1UL );
+        pPrevCell = GetCell( m_pRows->size() - 1U, GetColumnCount() - 1 );
     }
-    else if( nCol > 0UL )
+    else if( nCol > 0 )
     {
         // The previous cell in this row.
-        pPrevCell = GetCell( nRow, nCol-1UL );
+        pPrevCell = GetCell( nRow, nCol-1 );
     }
-    else if( nRow > 0UL )
+    else if( nRow > 0 )
     {
         // The last cell from the previous row.
-        pPrevCell = GetCell( nRow-1UL, GetColumnCount()-1UL );
+        pPrevCell = GetCell( nRow-1, GetColumnCount()-1 );
     }
 
     const SwStartNode *pSttNd = nullptr;
@@ -1742,12 +1743,12 @@ void SwXMLTableContext::FixRowSpan( sal_uInt32 nRow, sal_uInt32 nCol,
     for( sal_uInt32 i = nCol; i < nLastCol; i++ )
     {
         sal_uInt32 j = nRow;
-        sal_uInt32 nRowSpan = 1UL;
+        sal_uInt32 nRowSpan = 1;
         SwXMLTableCell_Impl *pCell = GetCell( j, i );
-        while( pCell && pCell->GetRowSpan() > 1UL )
+        while( pCell && pCell->GetRowSpan() > 1 )
         {
             pCell->SetRowSpan( nRowSpan++ );
-            pCell = j > 0UL ? GetCell( --j, i ) : nullptr;
+            pCell = j > 0 ? GetCell( --j, i ) : nullptr;
         }
     }
 }
@@ -1789,6 +1790,7 @@ SwTableBox *SwXMLTableContext::NewTableBox( const SwStartNode *pStNd,
         pBox = m_pBox1;
         pBox->SetUpper( pUpper );
         m_pBox1 = nullptr;
+        m_bOwnsBox1 = false;
     }
     else
         pBox = new SwTableBox( m_pBoxFormat, *pStNd, pUpper );
@@ -1806,7 +1808,7 @@ SwTableBoxFormat* SwXMLTableContext::GetSharedBoxFormat(
     bool* pModifyLocked )
 {
     if ( m_pSharedBoxFormats == nullptr )
-        m_pSharedBoxFormats = new map_BoxFormat;
+        m_pSharedBoxFormats.reset(new map_BoxFormat);
 
     SwTableBoxFormat* pBoxFormat2;
 
@@ -1832,7 +1834,7 @@ SwTableBoxFormat* SwXMLTableContext::GetSharedBoxFormat(
     {
         // set the shared format
         pBoxFormat2 = aIter->second;
-        pBox->ChgFrameFormat( pBoxFormat2 );
+        pBox->ChgFrameFormat( pBoxFormat2, /*bNeedToReregister*/false );
         bNew = false;   // copied from an existing format
 
         // claim it, if we are not allowed to share
@@ -1868,7 +1870,7 @@ SwTableBox *SwXMLTableContext::MakeTableBox( SwTableLine *pUpper,
     pFrameFormat->ResetAllFormatAttr(); // #i73790# - method renamed
     pFrameFormat->SetFormatAttr( aFillOrder );
 
-    pFrameFormat->SetFormatAttr( SwFormatFrameSize( ATT_VAR_SIZE, nColWidth ) );
+    pFrameFormat->SetFormatAttr( SwFormatFrameSize( SwFrameSize::Variable, nColWidth ) );
 
     SwTableLines& rLines = pBox->GetTabLines();
     bool bSplitted = false;
@@ -1880,24 +1882,24 @@ SwTableBox *SwXMLTableContext::MakeTableBox( SwTableLine *pUpper,
 
         for( i = nTopRow; i < nBottomRow; i++ )
         {
-            // Could the table be splitted behind the current row?
+            // Could the table be split behind the current row?
             bool bSplit = true;
             SwXMLTableRow_Impl *pRow = (*m_pRows)[i].get();
             for( sal_uInt32 j=nLeftCol; j<nRightCol; j++ )
             {
-                bSplit = ( 1UL == pRow->GetCell(j)->GetRowSpan() );
+                bSplit = ( 1 == pRow->GetCell(j)->GetRowSpan() );
                 if( !bSplit )
                     break;
             }
-            if( bSplit && (nStartRow>nTopRow || i+1UL<nBottomRow) )
+            if( bSplit && (nStartRow>nTopRow || i+1<nBottomRow) )
             {
                 SwTableLine *pLine =
-                    MakeTableLine( pBox, nStartRow, nLeftCol, i+1UL,
+                    MakeTableLine( pBox, nStartRow, nLeftCol, i+1,
                                    nRightCol );
 
                 rLines.push_back( pLine );
 
-                nStartRow = i+1UL;
+                nStartRow = i+1;
                 bSplitted = true;
             }
         }
@@ -1909,13 +1911,15 @@ SwTableBox *SwXMLTableContext::MakeTableBox( SwTableLine *pUpper,
             nStartRow = nTopRow;
             while( nStartRow < nBottomRow )
             {
-                sal_uInt32 nMaxRowSpan = 0UL;
+                sal_uInt32 nMaxRowSpan = 0;
                 SwXMLTableRow_Impl *pStartRow = (*m_pRows)[nStartRow].get();
                 const SwXMLTableCell_Impl *pCell;
                 for( i=nLeftCol; i<nRightCol; i++ )
-                    if( ( pCell=pStartRow->GetCell(i),
-                          pCell->GetRowSpan() > nMaxRowSpan ) )
+                {
+                    pCell = pStartRow->GetCell(i);
+                    if( pCell->GetRowSpan() > nMaxRowSpan )
                         nMaxRowSpan = pCell->GetRowSpan();
+                }
 
                 nStartRow += nMaxRowSpan;
                 if( nStartRow<nBottomRow )
@@ -1924,12 +1928,12 @@ SwTableBox *SwXMLTableContext::MakeTableBox( SwTableLine *pUpper,
                     i = nLeftCol;
                     while( i < nRightCol )
                     {
-                        if( pPrevRow->GetCell(i)->GetRowSpan() > 1UL )
+                        if( pPrevRow->GetCell(i)->GetRowSpan() > 1 )
                         {
                             const SwXMLTableCell_Impl *pCell2 =
                                 GetCell( nStartRow, i );
                             const sal_uInt32 nColSpan2 = pCell2->GetColSpan();
-                            FixRowSpan( nStartRow-1UL, i, nColSpan2 );
+                            FixRowSpan( nStartRow-1, i, nColSpan2 );
                             ReplaceWithEmptyCell( nStartRow, i, true );
                             i += nColSpan2;
                         }
@@ -1985,7 +1989,7 @@ SwTableBox *SwXMLTableContext::MakeTableBox(
         const SfxItemSet *pAutoItemSet = nullptr;
         if( pCell->GetStartNode() && !sStyleName.isEmpty() &&
             GetSwImport().FindAutomaticStyle(
-                XML_STYLE_FAMILY_TABLE_CELL, sStyleName, &pAutoItemSet ) )
+                XmlStyleFamily::TABLE_CELL, sStyleName, &pAutoItemSet ) )
         {
             if( pAutoItemSet )
                 pBoxFormat2->SetFormatAttr( *pAutoItemSet );
@@ -2114,7 +2118,7 @@ SwTableBox *SwXMLTableContext::MakeTableBox(
     if (! bModifyLocked)
         pBoxFormat2->UnlockModify();
 
-    pBoxFormat2->SetFormatAttr( SwFormatFrameSize( ATT_VAR_SIZE, nColWidth ) );
+    pBoxFormat2->SetFormatAttr( SwFormatFrameSize( SwFrameSize::Variable, nColWidth ) );
 
     return pBox;
 }
@@ -2144,10 +2148,10 @@ SwTableLine *SwXMLTableContext::MakeTableLine( SwTableBox *pUpper,
 
     const SfxItemSet *pAutoItemSet = nullptr;
     const OUString& rStyleName = (*m_pRows)[nTopRow]->GetStyleName();
-    if( 1UL == (nBottomRow - nTopRow) &&
+    if( 1 == (nBottomRow - nTopRow) &&
         !rStyleName.isEmpty() &&
         GetSwImport().FindAutomaticStyle(
-            XML_STYLE_FAMILY_TABLE_ROW, rStyleName, &pAutoItemSet ) )
+            XmlStyleFamily::TABLE_ROW, rStyleName, &pAutoItemSet ) )
     {
         if( pAutoItemSet )
             pFrameFormat->SetFormatAttr( *pAutoItemSet );
@@ -2166,7 +2170,7 @@ SwTableLine *SwXMLTableContext::MakeTableLine( SwTableBox *pUpper,
         bool bSplitted = false;
         while( !bSplitted )
         {
-            OSL_ENSURE( nCol < nRightCol, "Zu weit gelaufen" );
+            OSL_ENSURE( nCol < nRightCol, "Ran too far" );
 
             // Can be split after current HTML table column?
             // If yes, can the created region still be split to
@@ -2181,24 +2185,24 @@ SwTableLine *SwXMLTableContext::MakeTableLine( SwTableBox *pUpper,
                 for( sal_uInt32 nRow=nTopRow; nRow<nBottomRow; nRow++ )
                 {
                     SwXMLTableCell_Impl *pCell = GetCell(nRow,nCol);
-                    // Could the table fragment be splitted horizontally behind
+                    // Could the table fragment be split horizontally behind
                     // the current line?
                     bool bHoriSplit = (*m_pRows)[nRow]->IsSplitable() &&
-                                      nRow+1UL < nBottomRow &&
-                                      1UL == pCell->GetRowSpan();
+                                      nRow+1 < nBottomRow &&
+                                      1 == pCell->GetRowSpan();
                     (*m_pRows)[nRow]->SetSplitable( bHoriSplit );
 
-                    // Could the table fragment be splitted vertically behind the
+                    // Could the table fragment be split vertically behind the
                     // current column (uptp the current line?
-                    bSplit &= ( 1UL == pCell->GetColSpan() );
+                    bSplit &= ( 1 == pCell->GetColSpan() );
                     if( bSplit )
                     {
                         bHoriSplitPossible |= bHoriSplit;
 
-                        // Could the current table fragment be splitted
+                        // Could the current table fragment be split
                         // horizontally behind the next column, too?
-                        bHoriSplit &= (nCol+1UL < nRightCol &&
-                                       1UL == GetCell(nRow,nCol+1UL)->GetRowSpan());
+                        bHoriSplit &= (nCol+1 < nRightCol &&
+                                       1 == GetCell(nRow,nCol+1)->GetRowSpan());
                         bHoriSplitMayContinue |= bHoriSplit;
                     }
                 }
@@ -2215,13 +2219,13 @@ SwTableLine *SwXMLTableContext::MakeTableLine( SwTableBox *pUpper,
                     break;
                 }
 
-                // Could the table fragment be splitted vertically behind the
+                // Could the table fragment be split vertically behind the
                 // current column (uptp the current line?
-                bSplit = 1UL == pCell->GetColSpan();
+                bSplit = 1 == pCell->GetColSpan();
             }
 
 #if OSL_DEBUG_LEVEL > 0
-            if( nCol == nRightCol-1UL )
+            if( nCol == nRightCol-1 )
             {
                 OSL_ENSURE( bSplit, "Split-Flag wrong" );
                 if ( m_bHasSubTables )
@@ -2244,7 +2248,7 @@ SwTableLine *SwXMLTableContext::MakeTableLine( SwTableBox *pUpper,
                 SwXMLTableCell_Impl *pCell = GetCell( nTopRow, nStartCol );
                 // #i95726# - some fault tolerance
                 if( ( !m_bHasSubTables || ( pCell->GetRowSpan() == (nBottomRow-nTopRow) ) ) &&
-                    pCell->GetColSpan() == (nCol+1UL-nStartCol) &&
+                    pCell->GetColSpan() == (nCol+1-nStartCol) &&
                     ( pCell->GetStartNode() || pCell->GetSubTable() ) )
                 {
                     // insert new empty cell for covered cells:
@@ -2261,7 +2265,7 @@ SwTableLine *SwXMLTableContext::MakeTableLine( SwTableBox *pUpper,
 
                     // The remaining box neither contains lines nor rows (i.e.
                     // is a content box
-                    nSplitCol = nCol + 1UL;
+                    nSplitCol = nCol + 1;
 
                     pBox = MakeTableBox( pLine, pCell, nStartCol, nSplitCol );
 
@@ -2272,13 +2276,13 @@ SwTableLine *SwXMLTableContext::MakeTableLine( SwTableBox *pUpper,
                 }
                 else if( m_bHasSubTables && bHoriSplitPossible && bHoriSplitMayContinue )
                 {
-                    // The table fragment could be splitted behind the current
+                    // The table fragment could be split behind the current
                     // column, and the remaining fragment could be divided
                     // into lines. Anyway, it could be that this applies to
                     // the next column, too. That for, we check the next
                     // column but remember the current one as a good place to
                     // split.
-                    nSplitCol = nCol + 1UL;
+                    nSplitCol = nCol + 1;
                 }
                 else if ( m_bHasSubTables )
                 {
@@ -2287,16 +2291,16 @@ SwTableLine *SwXMLTableContext::MakeTableLine( SwTableBox *pUpper,
                     // this doesn't apply for thr next column, we split begind
                     // the current column. This applies for the last column,
                     // too.
-                    // If the resulting box cannot be splitted into rows,
+                    // If the resulting box cannot be split into rows,
                     // the split at the last split position we remembered.
                     if( bHoriSplitPossible || nSplitCol > nCol+1 )
                     {
                         OSL_ENSURE( !bHoriSplitMayContinue,
                                 "bHoriSplitMayContinue==true" );
                         OSL_ENSURE( bHoriSplitPossible || nSplitCol == nRightCol,
-                                "bHoriSplitPossible-Flag sollte gesetzt sein" );
+                                "bHoriSplitPossible flag should be set" );
 
-                        nSplitCol = nCol + 1UL;
+                        nSplitCol = nCol + 1;
                     }
 
                     pBox = MakeTableBox( pLine, nTopRow, nStartCol,
@@ -2332,12 +2336,13 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
         const SwXMLTableCell_Impl *pCell;
         for( sal_uLong i = 0; i < m_aColumnWidths.size(); ++i )
         {
-            if( ( pCell=pPrevRow->GetCell(i), pCell->GetRowSpan() > 1UL ) )
+            pCell = pPrevRow->GetCell(i);
+            if( pCell->GetRowSpan() > 1 )
             {
-                FixRowSpan( m_nCurRow-1UL, i, 1UL );
+                FixRowSpan( m_nCurRow-1, i, 1UL );
             }
         }
-        for (sal_uLong i = m_pRows->size() - 1UL; i >= m_nCurRow; --i)
+        for (sal_uLong i = m_pRows->size() - 1; i >= m_nCurRow; --i)
             m_pRows->pop_back();
     }
 
@@ -2348,25 +2353,25 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
 
     // TODO: Do we have to keep both values, the relative and the absolute
     // width?
-    sal_Int32 nAbsWidth = 0L;
-    sal_Int32 nMinAbsColWidth = 0L;
-    sal_Int32 nRelWidth = 0L;
-    sal_Int32 nMinRelColWidth = 0L;
-    sal_uInt32 nRelCols = 0UL;
-    for( colIter = m_aColumnWidths.begin(); colIter < m_aColumnWidths.end(); ++colIter)
+    sal_Int32 nAbsWidth = 0;
+    sal_Int32 nMinAbsColWidth = 0;
+    sal_Int32 nRelWidth = 0;
+    sal_Int32 nMinRelColWidth = 0;
+    sal_uInt32 nRelCols = 0;
+    for( const auto& rCol : m_aColumnWidths)
     {
-        if( colIter->isRelative )
+        if( rCol.isRelative )
         {
-            nRelWidth += colIter->width;
-            if( 0L == nMinRelColWidth || colIter->width < nMinRelColWidth )
-                nMinRelColWidth = colIter->width;
+            nRelWidth += rCol.width;
+            if( 0 == nMinRelColWidth || rCol.width < nMinRelColWidth )
+                nMinRelColWidth = rCol.width;
             nRelCols++;
         }
         else
         {
-            nAbsWidth += colIter->width;
-            if( 0L == nMinAbsColWidth || colIter->width < nMinAbsColWidth )
-                nMinAbsColWidth = colIter->width;
+            nAbsWidth += rCol.width;
+            if( 0 == nMinAbsColWidth || rCol.width < nMinAbsColWidth )
+                nMinAbsColWidth = rCol.width;
         }
     }
     sal_uInt32 nAbsCols = nCols - nRelCols;
@@ -2375,27 +2380,32 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
     {
         // If there a columns that have an absolute width, we have to
         // calculate a relative one for them.
-        if( nAbsCols > 0UL )
+        if( nAbsCols > 0 )
         {
             // All column that have absolute widths get relative widths;
             // these widths relate to each over like the original absolute
-            // widths. The smallest column gets a width that hat the same
-            // value as the smallest column that has an relative width
+            // widths. The smallest column gets a width that has the same
+            // value as the smallest column that has a relative width
             // already.
-            if( 0L == nMinRelColWidth )
+            if( 0 == nMinRelColWidth )
                 nMinRelColWidth = nMinAbsColWidth;
 
-            for( colIter = m_aColumnWidths.begin(); nAbsCols > 0UL && colIter < m_aColumnWidths.end(); ++colIter)
+            for( auto& rCol : m_aColumnWidths)
             {
-                if( !colIter->isRelative )
+                if( !rCol.isRelative )
                 {
                     if (nMinAbsColWidth == 0)
                         throw o3tl::divide_by_zero();
-                    sal_Int32 nRelCol = ( colIter->width * nMinRelColWidth) / nMinAbsColWidth;
-                    colIter->width = nRelCol;
-                    colIter->isRelative = true;
+                    sal_Int32 nVal;
+                    if (o3tl::checked_multiply<sal_Int32>(rCol.width, nMinRelColWidth, nVal))
+                        throw std::overflow_error("overflow in multiply");
+                    sal_Int32 nRelCol = nVal / nMinAbsColWidth;
+                    rCol.width = nRelCol;
+                    rCol.isRelative = true;
                     nRelWidth += nRelCol;
                     nAbsCols--;
+                    if (nAbsCols <= 0)
+                        break;
                 }
             }
         }
@@ -2404,18 +2414,18 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
         {
             // This happens only for percentage values for the table itself.
             // In this case, the columns get the correct width even if
-            // the sum of the relative withs is smaller than the available
+            // the sum of the relative widths is smaller than the available
             // width in TWIP. Therefore, we can use the relative width.
-            m_nWidth = nRelWidth > USHRT_MAX ? USHRT_MAX : nRelWidth;
+            m_nWidth = std::min(nRelWidth, MAX_WIDTH);
         }
         if( nRelWidth != m_nWidth && nRelWidth && nCols )
         {
-            double n = (double)m_nWidth / (double)nRelWidth;
-            nRelWidth = 0L;
+            double n = static_cast<double>(m_nWidth) / static_cast<double>(nRelWidth);
+            nRelWidth = 0;
             for( colIter = m_aColumnWidths.begin(); colIter < m_aColumnWidths.end() - 1; ++colIter)
             {
-                sal_Int32 nW = (sal_Int32)( colIter->width * n);
-                colIter->width = (sal_uInt16)nW;
+                sal_Int32 nW = static_cast<sal_Int32>( colIter->width * n);
+                colIter->width = static_cast<sal_uInt16>(nW);
                 nRelWidth += nW;
             }
             m_aColumnWidths.back().width = (m_nWidth-nRelWidth);
@@ -2424,13 +2434,13 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
     else
     {
         // If there are columns that have relative widths, we have to
-        // calculate a absolute widths for them.
-        if( nRelCols > 0UL )
+        // calculate an absolute widths for them.
+        if( nRelCols > 0 )
         {
             // The absolute space that is available for all columns with a
             // relative width.
             sal_Int32 nAbsForRelWidth =
-                    m_nWidth > nAbsWidth ? m_nWidth - nAbsWidth : (sal_Int32)0L;
+                    m_nWidth > nAbsWidth ? m_nWidth - nAbsWidth : sal_Int32(0L);
 
             // The relative width that has to be distributed in addition to
             // equally widthed columns.
@@ -2440,9 +2450,9 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
             // minimum widthed columns.
             sal_Int32 nMinAbs = nRelCols * MINLAY;
             sal_Int32 nExtraAbs =
-                    nAbsForRelWidth > nMinAbs ? nAbsForRelWidth - nMinAbs : (sal_Int32)0L;
+                    nAbsForRelWidth > nMinAbs ? nAbsForRelWidth - nMinAbs : sal_Int32(0L);
 
-            bool bMin = false;      // Do all columns get the mininum width?
+            bool bMin = false;      // Do all columns get the minimum width?
             bool bMinExtra = false; // Do all columns get the minimum width plus
                                     // some extra space?
 
@@ -2466,12 +2476,12 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
             // Otherwise, if there is enough space for every column, every
             // column gets this space.
 
-            for( colIter = m_aColumnWidths.begin(); nRelCols > 0UL && colIter < m_aColumnWidths.end(); ++colIter )
+            for( auto& rCol : m_aColumnWidths )
             {
-                if( colIter->isRelative )
+                if( rCol.isRelative )
                 {
                     sal_Int32 nAbsCol;
-                    if( 1UL == nRelCols )
+                    if( 1 == nRelCols )
                     {
                         // The last column that has a relative width gets
                         // all absolute space that is left.
@@ -2485,20 +2495,22 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
                         }
                         else if( bMinExtra )
                         {
-                            sal_Int32 nExtraRelCol = colIter->width - nMinRelColWidth;
+                            sal_Int32 nExtraRelCol = rCol.width - nMinRelColWidth;
                             nAbsCol = MINLAY + (nExtraRelCol * nExtraAbs) /
                                                  nExtraRel;
                         }
                         else
                         {
-                            nAbsCol = ( colIter->width * nAbsForRelWidth) / nRelWidth;
+                            nAbsCol = ( rCol.width * nAbsForRelWidth) / nRelWidth;
                         }
                     }
-                    colIter->width = nAbsCol;
-                    colIter->isRelative = false;
+                    rCol.width = nAbsCol;
+                    rCol.isRelative = false;
                     nAbsForRelWidth -= nAbsCol;
                     nAbsWidth += nAbsCol;
                     nRelCols--;
+                    if (nRelCols <= 0)
+                        break;
                 }
             }
         }
@@ -2511,7 +2523,7 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
                 // column widths, every column get some extra width.
                 sal_Int32 nExtraAbs = m_nWidth - nAbsWidth;
                 sal_Int32 nAbsLastCol = m_aColumnWidths.back().width + nExtraAbs;
-                for( colIter = m_aColumnWidths.begin(); colIter < m_aColumnWidths.end()-1UL; ++colIter )
+                for( colIter = m_aColumnWidths.begin(); colIter < m_aColumnWidths.end()-1; ++colIter )
                 {
                     sal_Int32 nAbsCol = colIter->width;
                     sal_Int32 nExtraAbsCol = (nAbsCol * nExtraAbs) /
@@ -2529,7 +2541,7 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
                 // Every column gets the minimum width plus some extra width.
                 sal_Int32 nExtraAbs = m_nWidth - (nCols * MINLAY);
                 sal_Int32 nAbsLastCol = MINLAY + nExtraAbs;
-                for( colIter = m_aColumnWidths.begin(); colIter < m_aColumnWidths.end()-1UL; ++colIter )
+                for( colIter = m_aColumnWidths.begin(); colIter < m_aColumnWidths.end()-1; ++colIter )
                 {
                     sal_Int32 nAbsCol = colIter->width;
                     sal_Int32 nExtraAbsCol = (nAbsCol * nExtraAbs) /
@@ -2547,18 +2559,18 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
         pBox ? pBox->GetTabLines()
              : m_pTableNode->GetTable().GetTabLines();
 
-    sal_uInt32 nStartRow = 0UL;
+    sal_uInt32 nStartRow = 0;
     sal_uInt32 nRows = m_pRows->size();
-    for(sal_uInt32 i=0UL; i<nRows; ++i )
+    for(sal_uInt32 i=0; i<nRows; ++i )
     {
         // Could we split the table behind the current line?
         bool bSplit = true;
         if ( m_bHasSubTables )
         {
             SwXMLTableRow_Impl *pRow = (*m_pRows)[i].get();
-            for( sal_uInt32 j=0UL; j<nCols; j++ )
+            for( sal_uInt32 j=0; j<nCols; j++ )
             {
-                bSplit = ( 1UL == pRow->GetCell(j)->GetRowSpan() );
+                bSplit = ( 1 == pRow->GetCell(j)->GetRowSpan() );
                 if( !bSplit )
                     break;
             }
@@ -2567,10 +2579,10 @@ void SwXMLTableContext::MakeTable_( SwTableBox *pBox )
         if( bSplit )
         {
             SwTableLine *pLine =
-                MakeTableLine( pBox, nStartRow, 0UL, i+1UL, nCols );
-            if( pBox || nStartRow>0UL )
+                MakeTableLine( pBox, nStartRow, 0UL, i+1, nCols );
+            if( pBox || nStartRow>0 )
                 rLines.push_back( pLine );
-            nStartRow = i+1UL;
+            nStartRow = i+1;
         }
     }
 }
@@ -2589,6 +2601,7 @@ void SwXMLTableContext::MakeTable()
         m_pTableNode->GetDoc()->getIDocumentContentOperations().DeleteSection( m_pTableNode );
         m_pTableNode = nullptr;
         m_pBox1 = nullptr;
+        m_bOwnsBox1 = false;
         m_pSttNd1 = nullptr;
         return;
     }
@@ -2600,16 +2613,18 @@ void SwXMLTableContext::MakeTable()
     sal_Int16 eHoriOrient = text::HoriOrientation::FULL;
     bool bSetHoriOrient = false;
 
-    sal_uInt8 nPrcWidth = 0U;
+    sal_uInt8 nPercentWidth = 0U;
 
+    OUString sStyleName;
+    SwStyleNameMapper::FillUIName( m_aTemplateName, sStyleName, SwGetPoolIdFromName::TabStyle );
+    m_pTableNode->GetTable().SetTableStyleName( sStyleName );
     m_pTableNode->GetTable().SetRowsToRepeat( m_nHeaderRows );
     m_pTableNode->GetTable().SetTableModel( !m_bHasSubTables );
-    m_pTableNode->GetTable().SetTableStyleName( m_aTemplateName );
 
     const SfxItemSet *pAutoItemSet = nullptr;
     if( !m_aStyleName.isEmpty() &&
         rSwImport.FindAutomaticStyle(
-            XML_STYLE_FAMILY_TABLE_TABLE, m_aStyleName, &pAutoItemSet ) &&
+            XmlStyleFamily::TABLE_TABLE, m_aStyleName, &pAutoItemSet ) &&
          pAutoItemSet )
     {
         const SfxPoolItem *pItem;
@@ -2660,9 +2675,9 @@ void SwXMLTableContext::MakeTable()
             // of the relative column widths as reference width.
             // Unfortunately this works only if this sum interpreted as
             // twip value is larger than the space that is available.
-            // We don't know that space, so we have to use USHRT_MAX, too.
+            // We don't know that space, so we have to use MAX_WIDTH, too.
             // Even if a size is specified, it will be ignored!
-            m_nWidth = USHRT_MAX;
+            m_nWidth = MAX_WIDTH;
             break;
         default:
             if( pSize )
@@ -2670,18 +2685,20 @@ void SwXMLTableContext::MakeTable()
                 if( pSize->GetWidthPercent() )
                 {
                     // The width will be set in MakeTable_
-                    nPrcWidth = pSize->GetWidthPercent();
+                    nPercentWidth = pSize->GetWidthPercent();
                 }
                 else
                 {
                     m_nWidth = pSize->GetWidth();
-                    if( m_nWidth < (sal_Int32)GetColumnCount() * MINLAY )
+                    sal_Int32 const min = static_cast<sal_Int32>(
+                        std::min<sal_uInt32>(GetColumnCount() * MINLAY, MAX_WIDTH));
+                    if( m_nWidth < min )
                     {
-                        m_nWidth = GetColumnCount() * MINLAY;
+                        m_nWidth = min;
                     }
-                    else if( m_nWidth > USHRT_MAX )
+                    else if( m_nWidth > MAX_WIDTH )
                     {
-                        m_nWidth = USHRT_MAX;
+                        m_nWidth = MAX_WIDTH;
                     }
                     m_bRelWidth = false;
                 }
@@ -2691,7 +2708,7 @@ void SwXMLTableContext::MakeTable()
                 eHoriOrient = text::HoriOrientation::LEFT_AND_WIDTH == eHoriOrient
                                     ? text::HoriOrientation::NONE : text::HoriOrientation::FULL;
                 bSetHoriOrient = true;
-                m_nWidth = USHRT_MAX;
+                m_nWidth = MAX_WIDTH;
             }
             break;
         }
@@ -2701,14 +2718,14 @@ void SwXMLTableContext::MakeTable()
     else
     {
         bSetHoriOrient = true;
-        m_nWidth = USHRT_MAX;
+        m_nWidth = MAX_WIDTH;
     }
 
     SwTableLine *pLine1 = m_pTableNode->GetTable().GetTabLines()[0U];
-    OSL_ENSURE( m_pBox1 == pLine1->GetTabBoxes()[0U],
-                "Why is box 1 change?" );
+    assert(m_pBox1 == pLine1->GetTabBoxes()[0] && !m_bOwnsBox1 && "Why is box 1 change?");
     m_pBox1->m_pStartNode = m_pSttNd1;
     pLine1->GetTabBoxes().erase( pLine1->GetTabBoxes().begin() );
+    m_bOwnsBox1 = true;
 
     m_pLineFormat = static_cast<SwTableLineFormat*>(pLine1->GetFrameFormat());
     m_pBoxFormat = static_cast<SwTableBoxFormat*>(m_pBox1->GetFrameFormat());
@@ -2721,8 +2738,8 @@ void SwXMLTableContext::MakeTable()
     // This must be after the call to MakeTable_, because nWidth might be
     // changed there.
     pFrameFormat->LockModify();
-    SwFormatFrameSize aSize( ATT_VAR_SIZE, m_nWidth );
-    aSize.SetWidthPercent( nPrcWidth );
+    SwFormatFrameSize aSize( SwFrameSize::Variable, m_nWidth );
+    aSize.SetWidthPercent( nPercentWidth );
     pFrameFormat->SetFormatAttr( aSize );
     pFrameFormat->UnlockModify();
 
@@ -2741,11 +2758,11 @@ void SwXMLTableContext::MakeTable()
         m_xDDESource.set(nullptr);
 
         // 3) create new DDE table, and
-        SwDDETable* pDDETable = new SwDDETable( m_pTableNode->GetTable(),
-                                                pFieldType, false );
+        std::unique_ptr<SwDDETable> pDDETable( new SwDDETable( m_pTableNode->GetTable(),
+                                                pFieldType, false ) );
 
         // 4) set new (DDE)table at node.
-        m_pTableNode->SetNewTable(pDDETable, false);
+        m_pTableNode->SetNewTable(std::move(pDDETable), false);
     }
 
     // ??? this is always false: root frame is only created in SwViewShell::Init
@@ -2753,7 +2770,7 @@ void SwXMLTableContext::MakeTable()
     {
         m_pTableNode->DelFrames();
         SwNodeIndex aIdx( *m_pTableNode->EndOfSectionNode(), 1 );
-        m_pTableNode->MakeFrames( &aIdx );
+        m_pTableNode->MakeOwnFrames(&aIdx);
     }
 }
 

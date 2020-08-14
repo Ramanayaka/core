@@ -30,17 +30,9 @@ struct SvxClipboardFormatItem_Impl
     std::vector<SotClipboardFormatId> aFmtIds;
 
     SvxClipboardFormatItem_Impl() {}
-    SvxClipboardFormatItem_Impl( const SvxClipboardFormatItem_Impl& );
 };
 
 SfxPoolItem* SvxClipboardFormatItem::CreateDefault() { return new  SvxClipboardFormatItem(0); };
-
-SvxClipboardFormatItem_Impl::SvxClipboardFormatItem_Impl(
-                            const SvxClipboardFormatItem_Impl& rCpy )
-    : aFmtNms(rCpy.aFmtNms)
-    , aFmtIds(rCpy.aFmtIds)
-{
-}
 
 SvxClipboardFormatItem::SvxClipboardFormatItem( sal_uInt16 nId )
     : SfxPoolItem( nId ), pImpl( new SvxClipboardFormatItem_Impl )
@@ -48,7 +40,7 @@ SvxClipboardFormatItem::SvxClipboardFormatItem( sal_uInt16 nId )
 }
 
 SvxClipboardFormatItem::SvxClipboardFormatItem( const SvxClipboardFormatItem& rCpy )
-    : SfxPoolItem( rCpy.Which() ),
+    : SfxPoolItem( rCpy ),
     pImpl( new SvxClipboardFormatItem_Impl( *rCpy.pImpl ) )
 {
 }
@@ -67,7 +59,7 @@ bool SvxClipboardFormatItem::QueryValue( css::uno::Any& rVal, sal_uInt8 /*nMembe
     aClipFormats.Names.realloc( nCount );
     for ( sal_uInt16 n=0; n < nCount; n++ )
     {
-        aClipFormats.Identifiers[n] = (sal_Int64)GetClipbrdFormatId( n );
+        aClipFormats.Identifiers[n] = static_cast<sal_Int64>(GetClipbrdFormatId( n ));
         aClipFormats.Names[n] = GetClipbrdFormatName( n );
     }
 
@@ -95,6 +87,8 @@ bool SvxClipboardFormatItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /*nM
 
 bool SvxClipboardFormatItem::operator==( const SfxPoolItem& rComp ) const
 {
+    if (!SfxPoolItem::operator==(rComp))
+        return false;
     const SvxClipboardFormatItem& rCmp = static_cast<const SvxClipboardFormatItem&>(rComp);
     if(rCmp.pImpl->aFmtNms.size() != pImpl->aFmtNms.size())
         return false;
@@ -113,7 +107,7 @@ bool SvxClipboardFormatItem::operator==( const SfxPoolItem& rComp ) const
     return nRet;
 }
 
-SfxPoolItem* SvxClipboardFormatItem::Clone( SfxItemPool * /*pPool*/ ) const
+SvxClipboardFormatItem* SvxClipboardFormatItem::Clone( SfxItemPool * /*pPool*/ ) const
 {
     return new SvxClipboardFormatItem( *this );
 }
@@ -146,7 +140,7 @@ SotClipboardFormatId SvxClipboardFormatItem::GetClipbrdFormatId( sal_uInt16 nPos
     return pImpl->aFmtIds[ nPos ];
 }
 
-const OUString SvxClipboardFormatItem::GetClipbrdFormatName( sal_uInt16 nPos ) const
+OUString const & SvxClipboardFormatItem::GetClipbrdFormatName( sal_uInt16 nPos ) const
 {
     return pImpl->aFmtNms[nPos];
 }

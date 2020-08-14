@@ -26,22 +26,22 @@
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 
 #include <oleacc.h>
-#include "AccObjectWinManager.hxx"
-#include "AccEventListener.hxx"
-#include "AccComponentEventListener.hxx"
-#include "AccContainerEventListener.hxx"
-#include "AccDialogEventListener.hxx"
-#include "AccWindowEventListener.hxx"
-#include "AccFrameEventListener.hxx"
-#include "AccMenuEventListener.hxx"
-#include "AccObjectContainerEventListener.hxx"
-#include "AccParagraphEventListener.hxx"
-#include "AccTextComponentEventListener.hxx"
-#include "AccListEventListener.hxx"
-#include "AccTreeEventListener.hxx"
-#include "AccTableEventListener.hxx"
-#include "AccObject.hxx"
-#include "unomsaaevent.hxx"
+#include <AccObjectWinManager.hxx>
+#include <AccEventListener.hxx>
+#include <AccComponentEventListener.hxx>
+#include <AccContainerEventListener.hxx>
+#include <AccDialogEventListener.hxx>
+#include <AccWindowEventListener.hxx>
+#include <AccFrameEventListener.hxx>
+#include <AccMenuEventListener.hxx>
+#include <AccObjectContainerEventListener.hxx>
+#include <AccParagraphEventListener.hxx>
+#include <AccTextComponentEventListener.hxx>
+#include <AccListEventListener.hxx>
+#include <AccTreeEventListener.hxx>
+#include <AccTableEventListener.hxx>
+#include <AccObject.hxx>
+#include <unomsaaevent.hxx>
 
 
 using namespace std;
@@ -111,9 +111,8 @@ AccObjectWinManager::Get_ToATInterface(HWND hWnd, long lParam, WPARAM wParam)
 
     if ( pRetIMAcc && lParam == OBJID_CLIENT )
     {
-        IAccessible* pTemp = dynamic_cast<IAccessible*>( pRetIMAcc );
-        LRESULT result = LresultFromObject(IID_IAccessible, wParam, pTemp);
-        pTemp->Release();
+        LRESULT result = LresultFromObject(IID_IAccessible, wParam, pRetIMAcc);
+        pRetIMAcc->Release();
         return result;
     }
     return 0;
@@ -182,8 +181,7 @@ bool AccObjectWinManager::NotifyAccEvent(XAccessible* pXAcc,short state)
     case UM_EVENT_STATE_FOCUSED:
         {
             UpdateAccFocus(pXAcc);
-            if( selfAccObj )
-                selfAccObj->UpdateDefaultAction( );
+            selfAccObj->UpdateDefaultAction( );
             UpdateValue(pXAcc);
             NotifyWinEvent( EVENT_OBJECT_FOCUS,hAcc, OBJID_CLIENT,dChildID  );
             break;
@@ -399,7 +397,7 @@ int AccObjectWinManager::UpdateAccSelection(XAccessible* pXAcc)
     if(pAccObj==nullptr)
         return 0;
 
-    Reference<XAccessible> pRChild = nullptr;
+    Reference<XAccessible> pRChild;
     AccObject* pAccChildObj = nullptr;
     int selectNum= pRSelection->getSelectedAccessibleChildCount();
 
@@ -443,14 +441,12 @@ int AccObjectWinManager::UpdateAccSelection(XAccessible* pXAcc)
             NotifyWinEvent(EVENT_OBJECT_SELECTIONADD,pAccObj->GetParentHWND(), OBJID_CLIENT,pAccChildObj->GetResID());
     }
 
-    IAccSelectionList::iterator iter = oldSelection.begin();
-    while(iter!=oldSelection.end())
+    for (const auto& rEntry : oldSelection)
     {
-        pAccObj->GetSelection().erase(iter->first);
-        pAccChildObj = iter->second;
+        pAccObj->GetSelection().erase(rEntry.first);
+        pAccChildObj = rEntry.second;
         if(pAccChildObj != nullptr)
             NotifyWinEvent(EVENT_OBJECT_SELECTIONREMOVE,pAccObj->GetParentHWND(), OBJID_CLIENT,pAccChildObj->GetResID());
-        ++iter;
     }
     return 0;
 
@@ -458,7 +454,7 @@ int AccObjectWinManager::UpdateAccSelection(XAccessible* pXAcc)
 
 /**
    * Delete child element from children list.
-   * @param pObj Child element that should be removed from parant child list.
+   * @param pObj Child element that should be removed from parent child list.
    * @return
    */
 void AccObjectWinManager::DeleteAccChildNode( AccObject* pObj )
@@ -473,18 +469,12 @@ void AccObjectWinManager::DeleteAccChildNode( AccObject* pObj )
    * @param pXAcc XAccessible interface.
    * @return
    */
-void AccObjectWinManager::DeleteFromHwndXAcc(XAccessible* pXAcc )
+void AccObjectWinManager::DeleteFromHwndXAcc(XAccessible const * pXAcc )
 {
-    XHWNDToXAccHash::iterator iter = HwndXAcc.begin();
-    while(iter!=HwndXAcc.end())
-    {
-        if(iter->second == pXAcc )
-        {
-            HwndXAcc.erase(iter);
-            return;
-        }
-        ++iter;
-    }
+    auto iter = std::find_if(HwndXAcc.begin(), HwndXAcc.end(),
+        [&pXAcc](XHWNDToXAccHash::value_type& rEntry) { return rEntry.second == pXAcc; });
+    if (iter != HwndXAcc.end())
+        HwndXAcc.erase(iter);
 }
 
 /**
@@ -629,7 +619,7 @@ bool AccObjectWinManager::InsertChildrenAccObj( css::accessibility::XAccessible*
 /**
    * Insert child object.
    * @param pCurObj The child object
-   * @param pParentObj The parant object
+   * @param pParentObj The parent object
    * @param pWnd Top window handle.
    * @return
    */
@@ -651,7 +641,7 @@ void AccObjectWinManager::InsertAccChildNode( AccObject* pCurObj, AccObject* pPa
 /**
    * Insert child object.
    * @param pCurObj The child object
-   * @param pParentObj The parant object
+   * @param pParentObj The parent object
    * @param pWnd Top window handle.
    * @return
    */
@@ -718,7 +708,7 @@ bool AccObjectWinManager::InsertAccObj( XAccessible* pXAcc,XAccessible* pParentX
         {
             XHWNDDocList.erase( aIter );
         }
-        XHWNDDocList.insert( XHWNDToDocumentHash::value_type(pWnd, pXAcc) );
+        XHWNDDocList.emplace( pWnd, pXAcc );
     }
     //end of file name
 
@@ -736,9 +726,9 @@ bool AccObjectWinManager::InsertAccObj( XAccessible* pXAcc,XAccessible* pParentX
     else
         return false;
 
-    XIdAccList.insert( XIdToAccObjHash::value_type( pXAcc, pObj ));
+    XIdAccList.emplace(pXAcc, pObj);
     XIdToAccObjHash::iterator pIndTemp = XIdAccList.find( pXAcc );
-    XResIdAccList.insert(XResIdToAccObjHash::value_type(pObj.GetResID(),&(pIndTemp->second)));
+    XResIdAccList.emplace(pObj.GetResID(),&(pIndTemp->second));
 
     AccObject* pCurObj = GetAccObjByXAcc(pXAcc);
     if( pCurObj )
@@ -762,7 +752,7 @@ bool AccObjectWinManager::InsertAccObj( XAccessible* pXAcc,XAccessible* pParentX
    */
 void AccObjectWinManager::SaveTopWindowHandle(HWND hWnd, css::accessibility::XAccessible* pXAcc)
 {
-    HwndXAcc.insert( XHWNDToXAccHash::value_type( hWnd,pXAcc ) );
+    HwndXAcc.emplace(hWnd,pXAcc);
 }
 
 
@@ -773,7 +763,7 @@ void AccObjectWinManager::SaveTopWindowHandle(HWND hWnd, css::accessibility::XAc
 AccObjectWinManager::CreateAccEventListener(XAccessible* pXAcc)
 {
     ::rtl::Reference<AccEventListener> pRet;
-    Reference<XAccessibleContext> xContext(pXAcc->getAccessibleContext(),UNO_QUERY);
+    Reference<XAccessibleContext> xContext = pXAcc->getAccessibleContext();
     if(xContext.is())
     {
         switch( xContext->getAccessibleRole() )
@@ -825,6 +815,7 @@ AccObjectWinManager::CreateAccEventListener(XAccessible* pXAcc)
         case /*AccessibleRole::*/CHECK_BOX:
         case /*AccessibleRole::*/ICON:
         case /*AccessibleRole::*/LABEL:
+        case /*AccessibleRole::*/STATIC:
         case /*AccessibleRole::*/MENU_ITEM:
         case /*AccessibleRole::*/CHECK_MENU_ITEM:
         case /*AccessibleRole::*/RADIO_MENU_ITEM:
@@ -913,7 +904,7 @@ void  AccObjectWinManager::UpdateState( css::accessibility::XAccessible* pXAcc )
 }
 
 /**
-   * Set corresponding com object's accessible name via XAccessilbe interface and new
+   * Set corresponding com object's accessible name via XAccessible interface and new
    * name
    * @param pXAcc XAccessible interface.
    * @return
@@ -940,7 +931,7 @@ void AccObjectWinManager::UpdateDescription( XAccessible* pXAcc )
 }
 
 /**
-   * Set corresponding com object's accessible location via XAccessilbe interface and new
+   * Set corresponding com object's accessible location via XAccessible interface and new
    * location.
    * @param pXAcc XAccessible interface.
    * @return
@@ -955,7 +946,7 @@ void  AccObjectWinManager::SetLocation( XAccessible* pXAcc, long /*top*/, long /
 }
 
 /**
-   * Set corresponding com object's value  via XAccessilbe interface and new value.
+   * Set corresponding com object's value  via XAccessible interface and new value.
    * @param pXAcc XAccessible interface.
    * @param pAny new value.
    * @return
@@ -968,7 +959,7 @@ void  AccObjectWinManager::SetValue( XAccessible* pXAcc, Any pAny )
 }
 
 /**
-   * Set corresponding com object's value  via XAccessilbe interface.
+   * Set corresponding com object's value  via XAccessible interface.
    * @param pXAcc XAccessible interface.
    * @return
    */
@@ -980,7 +971,7 @@ void  AccObjectWinManager::UpdateValue( XAccessible* pXAcc )
 }
 
 /**
-   * Set corresponding com object's name via XAccessilbe interface and new name.
+   * Set corresponding com object's name via XAccessible interface and new name.
    * @param pXAcc XAccessible interface.
    * @param newName new name
    * @return
@@ -993,7 +984,7 @@ void  AccObjectWinManager::SetAccName( XAccessible* pXAcc, Any newName)
 }
 
 /**
-   * Set corresponding com object's description via XAccessilbe interface and new description.
+   * Set corresponding com object's description via XAccessible interface and new description.
    * @param pXAcc XAccessible interface.
    * @param newDesc new description
    * @return
@@ -1006,7 +997,7 @@ void  AccObjectWinManager::SetDescription( XAccessible* pXAcc, Any newDesc )
 }
 
 /**
-   * Set corresponding com object's role via XAccessilbe interface and new role.
+   * Set corresponding com object's role via XAccessible interface and new role.
    * @param pXAcc XAccessible interface.
    * @param Role new role
    * @return
@@ -1015,7 +1006,7 @@ void  AccObjectWinManager::SetRole( XAccessible* pXAcc, long Role )
 {
     AccObject* pAccObj = GetAccObjByXAcc( pXAcc );
     if( pAccObj )
-        pAccObj->SetRole( (short)Role );
+        pAccObj->SetRole( static_cast<short>(Role) );
 }
 
 /**
@@ -1029,7 +1020,7 @@ bool AccObjectWinManager::IsContainer(XAccessible* pAccessible)
     {
         if(pAccessible)
         {
-            Reference<XAccessibleContext> xContext(pAccessible->getAccessibleContext(),UNO_QUERY);
+            Reference<XAccessibleContext> xContext = pAccessible->getAccessibleContext();
             if(xContext.is())
             {
                 switch( xContext->getAccessibleRole() )
@@ -1099,7 +1090,7 @@ bool AccObjectWinManager::IsStateManageDescendant(XAccessible* pAccessible)
 {
     if(pAccessible)
     {
-        Reference<XAccessibleContext> xContext(pAccessible->getAccessibleContext(),UNO_QUERY);
+        Reference<XAccessibleContext> xContext = pAccessible->getAccessibleContext();
         if(xContext.is())
         {
             Reference< XAccessibleStateSet > pRState = xContext->getAccessibleStateSet();
@@ -1213,7 +1204,7 @@ bool AccObjectWinManager::IsSpecialToolboItem(css::accessibility::XAccessible* p
 short AccObjectWinManager::GetRole(css::accessibility::XAccessible* pXAcc)
 {
     assert(pXAcc != nullptr);
-    Reference<css::accessibility::XAccessibleContext> xContext(pXAcc->getAccessibleContext(),UNO_QUERY);
+    Reference<css::accessibility::XAccessibleContext> xContext = pXAcc->getAccessibleContext();
     if(xContext.is())
     {
         return xContext->getAccessibleRole();

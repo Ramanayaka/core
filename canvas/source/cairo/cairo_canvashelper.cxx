@@ -18,18 +18,17 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <algorithm>
 #include <tuple>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/tools/keystoplerp.hxx>
-#include <basegfx/tools/lerp.hxx>
+#include <basegfx/utils/canvastools.hxx>
+#include <basegfx/utils/keystoplerp.hxx>
+#include <basegfx/utils/lerp.hxx>
 #include <com/sun/star/rendering/ColorComponentTag.hpp>
 #include <com/sun/star/rendering/ColorSpaceType.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
@@ -37,7 +36,6 @@
 #include <com/sun/star/rendering/PathCapType.hpp>
 #include <com/sun/star/rendering/PathJoinType.hpp>
 #include <com/sun/star/rendering/RenderingIntent.hpp>
-#include <com/sun/star/rendering/RepaintResult.hpp>
 #include <com/sun/star/rendering/TexturingMode.hpp>
 #include <com/sun/star/rendering/XIntegerBitmapColorSpace.hpp>
 #include <com/sun/star/util/Endianness.hpp>
@@ -47,17 +45,17 @@
 #include <rtl/math.hxx>
 #include <tools/diagnose_ex.h>
 #include <vcl/bitmapex.hxx>
-#include <vcl/bitmapaccess.hxx>
+#include <vcl/BitmapTools.hxx>
 #include <vcl/canvastools.hxx>
 #include <vcl/virdev.hxx>
 
 #include <canvas/canvastools.hxx>
-#include <canvas/parametricpolypolygon.hxx>
+#include <parametricpolypolygon.hxx>
+#include <cairo.h>
 
 #include "cairo_cachedbitmap.hxx"
 #include "cairo_canvasbitmap.hxx"
 #include "cairo_canvashelper.hxx"
-#include "cairo_spritecanvas.hxx"
 
 using namespace ::cairo;
 using namespace ::com::sun::star;
@@ -218,25 +216,25 @@ namespace cairocanvas
     {
         SAL_INFO( "canvas.cairo", "clear whole area: " << maSize.getX() << " x " << maSize.getY() );
 
-        if( mpCairo )
-        {
-            cairo_save( mpCairo.get() );
+        if( !mpCairo )
+            return;
 
-            cairo_identity_matrix( mpCairo.get() );
-            // this does not really differ from all-zero, as cairo
-            // internally converts to premultiplied alpha. but anyway,
-            // this keeps it consistent with the other canvas impls
-            if( mbHaveAlpha )
-                cairo_set_source_rgba( mpCairo.get(), 1.0, 1.0, 1.0, 0.0 );
-            else
-                cairo_set_source_rgb( mpCairo.get(), 1.0, 1.0, 1.0 );
-            cairo_set_operator( mpCairo.get(), CAIRO_OPERATOR_SOURCE );
+        cairo_save( mpCairo.get() );
 
-            cairo_rectangle( mpCairo.get(), 0, 0, maSize.getX(), maSize.getY() );
-            cairo_fill( mpCairo.get() );
+        cairo_identity_matrix( mpCairo.get() );
+        // this does not really differ from all-zero, as cairo
+        // internally converts to premultiplied alpha. but anyway,
+        // this keeps it consistent with the other canvas impls
+        if( mbHaveAlpha )
+            cairo_set_source_rgba( mpCairo.get(), 1.0, 1.0, 1.0, 0.0 );
+        else
+            cairo_set_source_rgb( mpCairo.get(), 1.0, 1.0, 1.0 );
+        cairo_set_operator( mpCairo.get(), CAIRO_OPERATOR_SOURCE );
 
-            cairo_restore( mpCairo.get() );
-        }
+        cairo_rectangle( mpCairo.get(), 0, 0, maSize.getX(), maSize.getY() );
+        cairo_fill( mpCairo.get() );
+
+        cairo_restore( mpCairo.get() );
     }
 
     void CanvasHelper::drawLine( const rendering::XCanvas*      /*pCanvas*/,
@@ -245,20 +243,20 @@ namespace cairocanvas
                                  const rendering::ViewState&    viewState,
                                  const rendering::RenderState&  renderState )
     {
-        if( mpCairo )
-        {
-            cairo_save( mpCairo.get() );
+        if( !mpCairo )
+            return;
 
-            cairo_set_line_width( mpCairo.get(), 1 );
+        cairo_save( mpCairo.get() );
 
-            useStates( viewState, renderState, true );
+        cairo_set_line_width( mpCairo.get(), 1 );
 
-            cairo_move_to( mpCairo.get(), aStartPoint.X + 0.5, aStartPoint.Y + 0.5 );
-            cairo_line_to( mpCairo.get(), aEndPoint.X + 0.5, aEndPoint.Y + 0.5 );
-            cairo_stroke( mpCairo.get() );
+        useStates( viewState, renderState, true );
 
-            cairo_restore( mpCairo.get() );
-        }
+        cairo_move_to( mpCairo.get(), aStartPoint.X + 0.5, aStartPoint.Y + 0.5 );
+        cairo_line_to( mpCairo.get(), aEndPoint.X + 0.5, aEndPoint.Y + 0.5 );
+        cairo_stroke( mpCairo.get() );
+
+        cairo_restore( mpCairo.get() );
     }
 
     void CanvasHelper::drawBezier( const rendering::XCanvas*            ,
@@ -267,25 +265,25 @@ namespace cairocanvas
                                    const rendering::ViewState&          viewState,
                                    const rendering::RenderState&        renderState )
     {
-        if( mpCairo )
-        {
-            cairo_save( mpCairo.get() );
+        if( !mpCairo )
+            return;
 
-            cairo_set_line_width( mpCairo.get(), 1 );
+        cairo_save( mpCairo.get() );
 
-            useStates( viewState, renderState, true );
+        cairo_set_line_width( mpCairo.get(), 1 );
 
-            cairo_move_to( mpCairo.get(), aBezierSegment.Px + 0.5, aBezierSegment.Py + 0.5 );
-            // tdf#99165 correction of control points not needed here, only hairlines drawn
-            // (see cairo_set_line_width above)
-            cairo_curve_to( mpCairo.get(),
-                            aBezierSegment.C1x + 0.5, aBezierSegment.C1y + 0.5,
-                            aBezierSegment.C2x + 0.5, aBezierSegment.C2y + 0.5,
-                            aEndPoint.X + 0.5, aEndPoint.Y + 0.5 );
-            cairo_stroke( mpCairo.get() );
+        useStates( viewState, renderState, true );
 
-            cairo_restore( mpCairo.get() );
-        }
+        cairo_move_to( mpCairo.get(), aBezierSegment.Px + 0.5, aBezierSegment.Py + 0.5 );
+        // tdf#99165 correction of control points not needed here, only hairlines drawn
+        // (see cairo_set_line_width above)
+        cairo_curve_to( mpCairo.get(),
+                        aBezierSegment.C1x + 0.5, aBezierSegment.C1y + 0.5,
+                        aBezierSegment.C2x + 0.5, aBezierSegment.C2y + 0.5,
+                        aEndPoint.X + 0.5, aEndPoint.Y + 0.5 );
+        cairo_stroke( mpCairo.get() );
+
+        cairo_restore( mpCairo.get() );
     }
 
 #define PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME "Canvas::ParametricPolyPolygon"
@@ -328,71 +326,6 @@ namespace cairocanvas
         return ::BitmapEx();
     }
 
-    static sal_uInt8 lcl_GetColor(BitmapColor const& rColor)
-    {
-        sal_uInt8 nTemp(0);
-        if (rColor.IsIndex())
-        {
-            nTemp = rColor.GetIndex();
-        }
-        else
-        {
-            nTemp = rColor.GetBlue();
-            // greyscale expected here, or what would non-grey colors mean?
-            assert(rColor.GetRed() == nTemp && rColor.GetGreen() == nTemp);
-        }
-        return nTemp;
-    }
-
-    static bool readAlpha( BitmapReadAccess* pAlphaReadAcc, long nY, const long nWidth, unsigned char* data, long nOff )
-    {
-        bool bIsAlpha = false;
-        long nX;
-        int nAlpha;
-        Scanline pReadScan;
-
-        nOff += 3;
-
-        switch( pAlphaReadAcc->GetScanlineFormat() )
-        {
-            case ScanlineFormat::N8BitTcMask:
-                pReadScan = pAlphaReadAcc->GetScanline( nY );
-                for( nX = 0; nX < nWidth; nX++ )
-                {
-                    nAlpha = data[ nOff ] = 255 - ( *pReadScan++ );
-                    if( nAlpha != 255 )
-                        bIsAlpha = true;
-                    nOff += 4;
-                }
-                break;
-            case ScanlineFormat::N8BitPal:
-                pReadScan = pAlphaReadAcc->GetScanline( nY );
-                for( nX = 0; nX < nWidth; nX++ )
-                {
-                    BitmapColor const& rColor(
-                        pAlphaReadAcc->GetPaletteColor(*pReadScan));
-                    pReadScan++;
-                    nAlpha = data[ nOff ] = 255 - lcl_GetColor(rColor);
-                    if( nAlpha != 255 )
-                        bIsAlpha = true;
-                    nOff += 4;
-                }
-                break;
-            default:
-                SAL_INFO( "canvas.cairo", "fallback to GetColor for alpha - slow, format: " << (int)pAlphaReadAcc->GetScanlineFormat() );
-                for( nX = 0; nX < nWidth; nX++ )
-                {
-                    nAlpha = data[ nOff ] = 255 - pAlphaReadAcc->GetColor( nY, nX ).GetIndex();
-                    if( nAlpha != 255 )
-                        bIsAlpha = true;
-                    nOff += 4;
-                }
-        }
-
-        return bIsAlpha;
-    }
-
-
     /** surfaceFromXBitmap Create a surface from XBitmap
      * @param xBitmap bitmap image that will be used for the surface
      * @param rDevice reference to the device into which we want to draw
@@ -427,232 +360,20 @@ namespace cairocanvas
 
             if( !pSurface )
             {
-                AlphaMask aAlpha = aBmpEx.GetAlpha();
-
-                ::BitmapReadAccess* pBitmapReadAcc = aBitmap.AcquireReadAccess();
-                ::BitmapReadAccess* pAlphaReadAcc = nullptr;
-                const long      nWidth = pBitmapReadAcc->Width();
-                const long      nHeight = pBitmapReadAcc->Height();
-                long nX, nY;
-                bool bIsAlpha = false;
-
-                if( aBmpEx.IsTransparent() || aBmpEx.IsAlpha() )
-                    pAlphaReadAcc = aAlpha.AcquireReadAccess();
-
-                data = static_cast<unsigned char*>(malloc( nWidth*nHeight*4 ));
-
-                long nOff = 0;
-                ::Color aColor;
-                unsigned int nAlpha = 255;
-
-                for( nY = 0; nY < nHeight; nY++ )
-                {
-                    ::Scanline pReadScan;
-
-                    switch( pBitmapReadAcc->GetScanlineFormat() )
-                    {
-                    case ScanlineFormat::N8BitPal:
-                        pReadScan = pBitmapReadAcc->GetScanline( nY );
-                        if( pAlphaReadAcc )
-                            if( readAlpha( pAlphaReadAcc, nY, nWidth, data, nOff ) )
-                                bIsAlpha = true;
-
-                        for( nX = 0; nX < nWidth; nX++ )
-                        {
-#ifdef OSL_BIGENDIAN
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff++ ];
-                            else
-                                nAlpha = data[ nOff++ ] = 255;
-#else
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff + 3 ];
-                            else
-                                nAlpha = data[ nOff + 3 ] = 255;
-#endif
-                            aColor = pBitmapReadAcc->GetPaletteColor( *pReadScan++ );
-
-#ifdef OSL_BIGENDIAN
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( aColor.GetRed() ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( aColor.GetGreen() ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( aColor.GetBlue() ) )/255 );
-#else
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( aColor.GetBlue() ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( aColor.GetGreen() ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( aColor.GetRed() ) )/255 );
-                            nOff++;
-#endif
-                        }
-                        break;
-                    case ScanlineFormat::N24BitTcBgr:
-                        pReadScan = pBitmapReadAcc->GetScanline( nY );
-                        if( pAlphaReadAcc )
-                            if( readAlpha( pAlphaReadAcc, nY, nWidth, data, nOff ) )
-                                bIsAlpha = true;
-
-                        for( nX = 0; nX < nWidth; nX++ )
-                        {
-#ifdef OSL_BIGENDIAN
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff ];
-                            else
-                                nAlpha = data[ nOff ] = 255;
-                            data[ nOff + 3 ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            data[ nOff + 2 ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            data[ nOff + 1 ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            nOff += 4;
-#else
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff + 3 ];
-                            else
-                                nAlpha = data[ nOff + 3 ] = 255;
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            nOff++;
-#endif
-                        }
-                        break;
-                    case ScanlineFormat::N24BitTcRgb:
-                        pReadScan = pBitmapReadAcc->GetScanline( nY );
-                        if( pAlphaReadAcc )
-                            if( readAlpha( pAlphaReadAcc, nY, nWidth, data, nOff ) )
-                                bIsAlpha = true;
-
-                        for( nX = 0; nX < nWidth; nX++ )
-                        {
-#ifdef OSL_BIGENDIAN
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff++ ];
-                            else
-                                nAlpha = data[ nOff++ ] = 255;
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-#else
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff + 3 ];
-                            else
-                                nAlpha = data[ nOff + 3 ] = 255;
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( pReadScan[ 2 ] ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( pReadScan[ 1 ] ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( pReadScan[ 0 ] ) )/255 );
-                            pReadScan += 3;
-                            nOff++;
-#endif
-                        }
-                        break;
-                    case ScanlineFormat::N32BitTcBgra:
-                        pReadScan = pBitmapReadAcc->GetScanline( nY );
-                        if( pAlphaReadAcc )
-                            if( readAlpha( pAlphaReadAcc, nY, nWidth, data, nOff ) )
-                                bIsAlpha = true;
-
-                        for( nX = 0; nX < nWidth; nX++ )
-                        {
-#ifdef OSL_BIGENDIAN
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff++ ];
-                            else
-                                nAlpha = data[ nOff++ ] = 255;
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( pReadScan[ 2 ] ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( pReadScan[ 1 ] ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( pReadScan[ 0 ] ) )/255 );
-                            pReadScan += 4;
-#else
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff + 3 ];
-                            else
-                                nAlpha = data[ nOff + 3 ] = 255;
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            pReadScan++;
-                            nOff++;
-#endif
-                        }
-                        break;
-                    case ScanlineFormat::N32BitTcRgba:
-                        pReadScan = pBitmapReadAcc->GetScanline( nY );
-                        if( pAlphaReadAcc )
-                            if( readAlpha( pAlphaReadAcc, nY, nWidth, data, nOff ) )
-                                bIsAlpha = true;
-
-                        for( nX = 0; nX < nWidth; nX++ )
-                        {
-#ifdef OSL_BIGENDIAN
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff ++ ];
-                            else
-                                nAlpha = data[ nOff ++ ] = 255;
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( *pReadScan++ ) )/255 );
-                            pReadScan++;
-#else
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff + 3 ];
-                            else
-                                nAlpha = data[ nOff + 3 ] = 255;
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( pReadScan[ 2 ] ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( pReadScan[ 1 ] ) )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*( pReadScan[ 0 ] ) )/255 );
-                            pReadScan += 4;
-                            nOff++;
-#endif
-                        }
-                        break;
-                    default:
-                        SAL_INFO( "canvas.cairo", "fallback to GetColor - slow, format: " << (int)pBitmapReadAcc->GetScanlineFormat() );
-
-                        if( pAlphaReadAcc )
-                            if( readAlpha( pAlphaReadAcc, nY, nWidth, data, nOff ) )
-                                bIsAlpha = true;
-
-                        for( nX = 0; nX < nWidth; nX++ )
-                        {
-                            aColor = pBitmapReadAcc->GetColor( nY, nX );
-
-                            // cairo need premultiplied color values
-                            // TODO(rodo) handle endianness
-#ifdef OSL_BIGENDIAN
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff++ ];
-                            else
-                                nAlpha = data[ nOff++ ] = 255;
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*aColor.GetRed() )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*aColor.GetGreen() )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*aColor.GetBlue() )/255 );
-#else
-                            if( pAlphaReadAcc )
-                                nAlpha = data[ nOff + 3 ];
-                            else
-                                nAlpha = data[ nOff + 3 ] = 255;
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*aColor.GetBlue() )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*aColor.GetGreen() )/255 );
-                            data[ nOff++ ] = sal::static_int_cast<unsigned char>(( nAlpha*aColor.GetRed() )/255 );
-                            nOff ++;
-#endif
-                        }
-                    }
-                }
-
-                ::Bitmap::ReleaseAccess( pBitmapReadAcc );
-                if( pAlphaReadAcc )
-                    aAlpha.ReleaseAccess( pAlphaReadAcc );
+                long nWidth;
+                long nHeight;
+                vcl::bitmap::CanvasCairoExtractBitmapData(aBmpEx, aBitmap, data, bHasAlpha, nWidth, nHeight);
 
                 SurfaceSharedPtr pImageSurface = rSurfaceProvider->getOutputDevice()->CreateSurface(
                     CairoSurfaceSharedPtr(
                         cairo_image_surface_create_for_data(
                             data,
-                            bIsAlpha ? CAIRO_FORMAT_ARGB32 : CAIRO_FORMAT_RGB24,
+                            bHasAlpha ? CAIRO_FORMAT_ARGB32 : CAIRO_FORMAT_RGB24,
                             nWidth, nHeight, nWidth*4 ),
                         &cairo_surface_destroy) );
                 pSurface = pImageSurface;
 
-                bHasAlpha = bIsAlpha;
-
-                SAL_INFO( "canvas.cairo","image: " << nWidth << " x " << nHeight << " alpha: " << bIsAlpha << " alphaRead " << std::hex << pAlphaReadAcc);
+                SAL_INFO( "canvas.cairo","image: " << nWidth << " x " << nHeight << " alpha: " << bHasAlpha);
             }
         }
 
@@ -685,25 +406,25 @@ namespace cairocanvas
         if( rLeft.getLength() == 3 )
         {
             uno::Sequence<double> aRes(3);
-            aRes[0] = basegfx::tools::lerp(rLeft[0],rRight[0],fAlpha);
-            aRes[1] = basegfx::tools::lerp(rLeft[1],rRight[1],fAlpha);
-            aRes[2] = basegfx::tools::lerp(rLeft[2],rRight[2],fAlpha);
+            aRes[0] = basegfx::utils::lerp(rLeft[0],rRight[0],fAlpha);
+            aRes[1] = basegfx::utils::lerp(rLeft[1],rRight[1],fAlpha);
+            aRes[2] = basegfx::utils::lerp(rLeft[2],rRight[2],fAlpha);
             return aRes;
         }
         else if( rLeft.getLength() == 4 )
         {
             uno::Sequence<double> aRes(4);
-            aRes[0] = basegfx::tools::lerp(rLeft[0],rRight[0],fAlpha);
-            aRes[1] = basegfx::tools::lerp(rLeft[1],rRight[1],fAlpha);
-            aRes[2] = basegfx::tools::lerp(rLeft[2],rRight[2],fAlpha);
-            aRes[3] = basegfx::tools::lerp(rLeft[3],rRight[3],fAlpha);
+            aRes[0] = basegfx::utils::lerp(rLeft[0],rRight[0],fAlpha);
+            aRes[1] = basegfx::utils::lerp(rLeft[1],rRight[1],fAlpha);
+            aRes[2] = basegfx::utils::lerp(rLeft[2],rRight[2],fAlpha);
+            aRes[3] = basegfx::utils::lerp(rLeft[3],rRight[3],fAlpha);
             return aRes;
         }
 
         return uno::Sequence<double>();
     }
 
-    static cairo_pattern_t* patternFromParametricPolyPolygon( ::canvas::ParametricPolyPolygon& rPolygon )
+    static cairo_pattern_t* patternFromParametricPolyPolygon( ::canvas::ParametricPolyPolygon const & rPolygon )
     {
         cairo_pattern_t* pPattern = nullptr;
         const ::canvas::ParametricPolyPolygon::Values aValues = rPolygon.getValues();
@@ -868,7 +589,7 @@ namespace cairocanvas
                                             128U )) + 1 );
 
                                 const uno::Sequence<double>* pColors=&pPolyImpl->getValues().maColors[0];
-                                basegfx::tools::KeyStopLerp aLerper(pPolyImpl->getValues().maStops);
+                                basegfx::utils::KeyStopLerp aLerper(pPolyImpl->getValues().maStops);
                                 for( unsigned int i=1; i<nStepCount; ++i )
                                 {
                                     const double fT( i/double(nStepCount) );
@@ -952,7 +673,7 @@ namespace cairocanvas
                                       rendering::FillRule eFillrule )
     {
         if( pTextures )
-            ENSURE_ARG_OR_THROW( pTextures->getLength(),
+            ENSURE_ARG_OR_THROW( pTextures->hasElements(),
                                  "CanvasHelper::fillTexturedPolyPolygon: empty texture sequence");
 
         bool bOpToDo = false;
@@ -969,7 +690,7 @@ namespace cairocanvas
 
         for( sal_uInt32 nPolygonIndex = 0; nPolygonIndex < aPolyPolygon.count(); nPolygonIndex++ )
         {
-            ::basegfx::B2DPolygon aPolygon( aPolyPolygon.getB2DPolygon( nPolygonIndex ) );
+            const ::basegfx::B2DPolygon& aPolygon( aPolyPolygon.getB2DPolygon( nPolygonIndex ) );
             const sal_uInt32 nPointCount( aPolygon.count() );
             // to correctly render closed curves, need to output first
             // point twice (so output one additional point)
@@ -1106,7 +827,7 @@ namespace cairocanvas
             // emulate rendering::PathJoinType::NONE by painting single edges
             for(sal_uInt32 a(0); a < rPolyPoly.count(); a++)
             {
-                const basegfx::B2DPolygon aCandidate(rPolyPoly.getB2DPolygon(a));
+                const basegfx::B2DPolygon& aCandidate(rPolyPoly.getB2DPolygon(a));
                 const sal_uInt32 nPointCount(aCandidate.count());
 
                 if(nPointCount)
@@ -1220,7 +941,7 @@ namespace cairocanvas
             {
                 case rendering::PathJoinType::NONE:
                     bNoLineJoin = true;
-                    SAL_FALLTHROUGH; // cairo doesn't have join type NONE so we use MITER as it's pretty close
+                    [[fallthrough]]; // cairo doesn't have join type NONE so we use MITER as it's pretty close
                 case rendering::PathJoinType::MITER:
                     cairo_set_line_join( mpCairo.get(), CAIRO_LINE_JOIN_MITER );
                     break;
@@ -1235,7 +956,7 @@ namespace cairocanvas
             //tdf#103026 If the w scaling is 0, then all dashes become zero so
             //cairo will set the cairo_t status to CAIRO_STATUS_INVALID_DASH
             //and no further drawing will occur
-            if (strokeAttributes.DashArray.getLength() > 0 && w > 0.0)
+            if (strokeAttributes.DashArray.hasElements() && w > 0.0)
             {
                 auto aDashArray(comphelper::sequenceToContainer<std::vector<double>>(strokeAttributes.DashArray));
                 for (auto& rDash : aDashArray)
@@ -1361,7 +1082,7 @@ namespace cairocanvas
                                                                                        bool                             bHasAlpha )
     {
         SurfaceSharedPtr pSurface=pInputSurface;
-        uno::Reference< rendering::XCachedPrimitive > rv(nullptr);
+        uno::Reference< rendering::XCachedPrimitive > rv;
         geometry::IntegerSize2D aBitmapSize = rSize;
 
         if( mpCairo )
@@ -1535,7 +1256,7 @@ namespace cairocanvas
     }
 
 
-    geometry::IntegerSize2D CanvasHelper::getSize()
+    geometry::IntegerSize2D CanvasHelper::getSize() const
     {
         if( !mpSurfaceProvider )
             return geometry::IntegerSize2D(1, 1); // we're disposed
@@ -1817,7 +1538,7 @@ namespace cairocanvas
                 rendering::RGBColor* pOut( aRes.getArray() );
                 for( std::size_t i=0; i<nLen; i+=4 )
                 {
-                    const double fAlpha((sal_uInt8)pIn[3]);
+                    const double fAlpha(static_cast<sal_uInt8>(pIn[3]));
                     if( fAlpha )
                         *pOut++ = rendering::RGBColor(
                             pIn[2]/fAlpha,
@@ -1842,7 +1563,7 @@ namespace cairocanvas
                 rendering::ARGBColor* pOut( aRes.getArray() );
                 for( std::size_t i=0; i<nLen; i+=4 )
                 {
-                    const double fAlpha((sal_uInt8)pIn[3]);
+                    const double fAlpha(static_cast<sal_uInt8>(pIn[3]));
                     if( fAlpha )
                         *pOut++ = rendering::ARGBColor(
                             fAlpha/255.0,
@@ -2097,7 +1818,7 @@ namespace cairocanvas
                         *pOut++ = vcl::unotools::toDoubleColor(*pIn++);
                         *pOut++ = vcl::unotools::toDoubleColor(*pIn++);
                         *pOut++ = vcl::unotools::toDoubleColor(*pIn++);
-                        *pOut++ = 1.0; // the value does not matter
+                        *pOut++ = 1.0; pIn++; // the value does not matter
                     }
                     return aRes;
                 }

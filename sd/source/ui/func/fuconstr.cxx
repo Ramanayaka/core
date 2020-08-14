@@ -17,29 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fuconstr.hxx"
+#include <fuconstr.hxx>
 
 #include <svx/svxids.hrc>
-#include <svl/aeitem.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/xdef.hxx>
 #include <svx/xfillit0.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewfrm.hxx>
+#include <tools/debug.hxx>
 
-#include "app.hrc"
-#include "glob.hrc"
-#include "strings.hxx"
-#include "fudraw.hxx"
-#include "View.hxx"
-#include "Window.hxx"
-#include "ViewShell.hxx"
-#include "drawdoc.hxx"
-#include "FrameView.hxx"
-#include "sdpage.hxx"
-#include "sdresid.hxx"
-#include "stlpool.hxx"
-#include <svx/globl3d.hxx>
+#include <app.hrc>
+#include <strings.hrc>
+#include <strings.hxx>
+#include <fudraw.hxx>
+#include <View.hxx>
+#include <Window.hxx>
+#include <ViewShell.hxx>
+#include <drawdoc.hxx>
+#include <FrameView.hxx>
+#include <sdpage.hxx>
+#include <sdresid.hxx>
+#include <glob.hxx>
 
 using namespace com::sun::star;
 
@@ -318,16 +317,16 @@ void FuConstruct::SetStyleSheet( SfxItemSet& rAttr, SdrObject* pObj,
         OUString aName( pPage->GetLayoutName() );
         sal_Int32 n = aName.indexOf(SD_LT_SEPARATOR) + strlen(SD_LT_SEPARATOR);
         aName = aName.copy(0, n) + STR_LAYOUT_BACKGROUNDOBJECTS;
-        SfxStyleSheet* pSheet = static_cast<SfxStyleSheet*>(pPage->GetModel()->
-                                                GetStyleSheetPool()->
-                                                Find(aName, SD_STYLE_FAMILY_MASTERPAGE));
+        SfxStyleSheet* pSheet(
+            static_cast< SfxStyleSheet* >(
+                pPage->getSdrModelFromSdrPage().GetStyleSheetPool()->Find(aName, SfxStyleFamily::Page)));
         DBG_ASSERT(pSheet, "StyleSheet missing");
         if (pSheet)
         {
             // applying style sheet for background objects
             pObj->SetStyleSheet(pSheet, false);
             SfxItemSet& rSet = pSheet->GetItemSet();
-            const XFillStyleItem& rFillStyle = static_cast<const XFillStyleItem&>(rSet.Get(XATTR_FILLSTYLE));
+            const XFillStyleItem& rFillStyle = rSet.Get(XATTR_FILLSTYLE);
             if ( bForceFillStyle )
             {
                 if (rFillStyle.GetValue() == drawing::FillStyle_NONE)
@@ -348,20 +347,20 @@ void FuConstruct::SetStyleSheet( SfxItemSet& rAttr, SdrObject* pObj,
         if ( bForceNoFillStyle )
         {
             OUString aName(SdResId(STR_POOLSHEET_OBJWITHOUTFILL));
-            SfxStyleSheet* pSheet = static_cast<SfxStyleSheet*>(pPage->GetModel()->
-                                         GetStyleSheetPool()->
-                                         Find(aName, SD_STYLE_FAMILY_GRAPHICS));
+            SfxStyleSheet* pSheet(
+                static_cast< SfxStyleSheet* >(
+                    pPage->getSdrModelFromSdrPage().GetStyleSheetPool()->Find(aName, SfxStyleFamily::Para)));
             DBG_ASSERT(pSheet, "Stylesheet missing");
             if (pSheet)
             {
                 pObj->SetStyleSheet(pSheet, false);
-                SfxItemSet aAttr(*mpView->GetDefaultAttr().Clone());
+                SfxItemSet aAttr(mpView->GetDefaultAttr());
                 aAttr.Put(pSheet->GetItemSet().Get(XATTR_FILLSTYLE));
                 pObj->SetMergedItemSet(aAttr);
             }
             else
             {
-                SfxItemSet aAttr(*mpView->GetDefaultAttr().Clone());
+                SfxItemSet aAttr(mpView->GetDefaultAttr());
                 rAttr.Put(XFillStyleItem(drawing::FillStyle_NONE));
                 pObj->SetMergedItemSet(aAttr);
             }

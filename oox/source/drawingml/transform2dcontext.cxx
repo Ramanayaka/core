@@ -17,21 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/transform2dcontext.hxx"
-#include "oox/helper/attributelist.hxx"
-#include "oox/drawingml/shape.hxx"
-#include "drawingml/customshapeproperties.hxx"
-#include "drawingml/textbody.hxx"
+#include <drawingml/transform2dcontext.hxx>
+#include <oox/helper/attributelist.hxx>
+#include <oox/drawingml/shape.hxx>
+#include <drawingml/customshapeproperties.hxx>
+#include <drawingml/textbody.hxx>
 #include <oox/token/namespaces.hxx>
 
 using namespace ::com::sun::star;
 using ::oox::core::ContextHandlerRef;
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 /** context to import a CT_Transform2D */
-Transform2DContext::Transform2DContext( ContextHandler2Helper& rParent, const AttributeList& rAttribs, Shape& rShape, bool btxXfrm ) throw()
+Transform2DContext::Transform2DContext( ContextHandler2Helper const & rParent, const AttributeList& rAttribs, Shape& rShape, bool btxXfrm ) throw()
 : ContextHandler2( rParent )
 , mrShape( rShape )
 , mbtxXfrm ( btxXfrm )
@@ -54,7 +53,7 @@ ContextHandlerRef Transform2DContext::onCreateContext( sal_Int32 aElementToken, 
     {
         // Workaround: only for rectangles
         const sal_Int32 nType = mrShape.getCustomShapeProperties()->getShapePresetType();
-        if( nType == XML_rect || nType == XML_roundRect )
+        if( nType == XML_rect || nType == XML_roundRect || nType == XML_ellipse )
         {
             switch( aElementToken )
             {
@@ -63,7 +62,7 @@ ContextHandlerRef Transform2DContext::onCreateContext( sal_Int32 aElementToken, 
                         const OUString sXValue = rAttribs.getString( XML_x ).get();
                         const OUString sYValue = rAttribs.getString( XML_y ).get();
 
-                        if( !sXValue.isEmpty() )
+                        if( !sXValue.isEmpty() && nType != XML_ellipse )
                             mrShape.getTextBody()->getTextProperties().moTextOffLeft = GetCoordinate( sXValue.toInt32() - mrShape.getPosition().X );
                         if( !sYValue.isEmpty() )
                             mrShape.getTextBody()->getTextProperties().moTextOffUpper = GetCoordinate( sYValue.toInt32() - mrShape.getPosition().Y );
@@ -113,7 +112,6 @@ ContextHandlerRef Transform2DContext::onCreateContext( sal_Int32 aElementToken, 
     return nullptr;
 }
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

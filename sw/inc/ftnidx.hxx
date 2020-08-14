@@ -23,6 +23,7 @@
 #include <sal/types.h>
 #include <o3tl/sorted_vector.hxx>
 
+class IDocumentRedlineAccess;
 class SwTextFootnote;
 class SwNodeIndex;
 class SwSectionNode;
@@ -50,18 +51,28 @@ public:
 
 class SwUpdFootnoteEndNtAtEnd
 {
-    std::vector<const SwSectionNode*> aFootnoteSects, aEndSects;
-    std::vector<sal_uInt16> aFootnoteNums, aEndNums;
+    std::vector<const SwSectionNode*> m_aFootnoteSections, m_aEndSections;
+    std::vector<std::pair<sal_uInt16, sal_uInt16>> m_aFootnoteNumbers, m_aEndNumbers;
 
 public:
-    SwUpdFootnoteEndNtAtEnd() : aFootnoteSects(), aEndSects() {}
+    SwUpdFootnoteEndNtAtEnd() : m_aFootnoteSections(), m_aEndSections() {}
 
     static const SwSectionNode* FindSectNdWithEndAttr(
                                             const SwTextFootnote& rTextFootnote );
 
-    sal_uInt16 GetNumber( const SwTextFootnote& rTextFootnote, const SwSectionNode& rNd );
-    sal_uInt16 ChkNumber( const SwTextFootnote& rTextFootnote );
+    std::pair<sal_uInt16, sal_uInt16> GetNumber(
+            IDocumentRedlineAccess const&, const SwTextFootnote& rTextFootnote,
+            const SwSectionNode& rNd);
+    std::pair<sal_uInt16, sal_uInt16> ChkNumber(
+            IDocumentRedlineAccess const&, const SwTextFootnote& rTextFootnote);
 };
+
+namespace sw {
+
+bool IsFootnoteDeleted(IDocumentRedlineAccess const& rIDRA,
+        SwTextFootnote const& rTextFootnote);
+
+}
 
 #endif // INCLUDED_SW_INC_FTNIDX_HXX
 

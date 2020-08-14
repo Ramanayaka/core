@@ -24,27 +24,25 @@
 #include <rtl/strbuf.hxx>
 #include <sfx2/docfac.hxx>
 #include <sfx2/objsh.hxx>
-#include <sot/storage.hxx>
 #include <svl/lstner.hxx>
-#include <vcl/jobset.hxx>
-#include <vcl/virdev.hxx>
 #include <sax/fshelper.hxx>
 #include <unotools/lingucfg.hxx>
 #include <oox/core/filterbase.hxx>
-#include <oox/mathml/import.hxx>
 #include <oox/export/utils.hxx>
 
 #include <memory>
 #include <set>
 
 #include "format.hxx"
+#include "node.hxx"
 #include "parse.hxx"
-#include "smmod.hxx"
 #include "smdllapi.hxx"
 
 class SfxPrinter;
 class Printer;
 class SmCursor;
+
+namespace oox::formulaimport { class XmlStream; }
 
 #define STAROFFICE_XML  "StarOffice XML (Math)"
 #define MATHML_XML      "MathML XML (Math)"
@@ -77,7 +75,6 @@ public:
     OutputDevice* GetRefDev()  { return pRefDev.get(); }
 };
 
-void SetEditEngineDefaultFonts(SfxItemPool &rEditEngineItemPool, const SvtLinguOptions &rOpt);
 
 class SM_DLLPUBLIC SmDocShell : public SfxObjectShell, public SfxListener
 {
@@ -89,9 +86,9 @@ class SM_DLLPUBLIC SmDocShell : public SfxObjectShell, public SfxListener
     SmParser            maParser;
     OUString            maAccText;
     SvtLinguOptions     maLinguOptions;
-    SmTableNode        *mpTree;
+    std::unique_ptr<SmTableNode> mpTree;
     SfxItemPool        *mpEditEngineItemPool;
-    EditEngine         *mpEditEngine;
+    std::unique_ptr<EditEngine> mpEditEngine;
     VclPtr<SfxPrinter>  mpPrinter;       //q.v. comment to SmPrinter Access!
     VclPtr<Printer>     mpTmpPrinter;    //ditto
     sal_uInt16          mnModifyCount;
@@ -106,13 +103,11 @@ class SM_DLLPUBLIC SmDocShell : public SfxObjectShell, public SfxListener
 
     virtual void        Draw(OutputDevice *pDevice,
                              const JobSetup & rSetup,
-                             sal_uInt16 nAspect = ASPECT_CONTENT) override;
+                             sal_uInt16 nAspect) override;
 
     virtual void        FillClass(SvGlobalName* pClassName,
                                   SotClipboardFormatId*  pFormat,
-                                  OUString* pAppName,
                                   OUString* pFullTypeName,
-                                  OUString* pShortTypeName,
                                   sal_Int32 nFileFormat,
                                   bool bTemplate = false ) const override;
 
@@ -160,40 +155,38 @@ public:
     //Access for the View. This access is not for the OLE-case!
     //and for the communication with the SFX!
     //All internal printer uses should work with the SmPrinterAccess only
-    bool        HasPrinter()    { return mpPrinter != nullptr; }
+    bool        HasPrinter() const { return mpPrinter != nullptr; }
     SfxPrinter *GetPrinter()    { GetPrt(); return mpPrinter; }
     void        SetPrinter( SfxPrinter * );
 
-    const OUString GetComment() const;
+    OUString GetComment() const;
 
     // to replace chars that can not be saved with the document...
     void        ReplaceBadChars();
 
     void        UpdateText();
     void        SetText(const OUString& rBuffer);
-    const OUString&  GetText() { return maText; }
-    void        SetFormat(SmFormat& rFormat);
-    const SmFormat&  GetFormat() { return maFormat; }
+    const OUString&  GetText() const { return maText; }
+    void        SetFormat(SmFormat const & rFormat);
+    const SmFormat&  GetFormat() const { return maFormat; }
 
     void            Parse();
     SmParser &      GetParser() { return maParser; }
-    const SmTableNode *GetFormulaTree() const  { return mpTree; }
-    void            SetFormulaTree(SmTableNode *pTree) { mpTree = pTree; }
+    const SmTableNode *GetFormulaTree() const  { return mpTree.get(); }
+    void            SetFormulaTree(SmTableNode *pTree) { mpTree.reset(pTree); }
 
     const std::set< OUString > &    GetUsedSymbols() const  { return maUsedSymbols; }
 
     OUString const & GetAccessibleText();
 
     EditEngine &    GetEditEngine();
-    SfxItemPool &   GetEditEngineItemPool();
-    const SvtLinguOptions & GetLinguOptions() const { return maLinguOptions; }
 
     void        DrawFormula(OutputDevice &rDev, Point &rPosition, bool bDrawSelection = false);
     Size        GetSize();
 
     void        Repaint();
 
-    virtual ::svl::IUndoManager *GetUndoManager () override;
+    virtual SfxUndoManager *GetUndoManager () override;
 
     static SfxItemPool& GetPool();
 
@@ -210,13 +203,16 @@ public:
     /** True, if cursor have previously been requested and thus
      * has some sort of position.
      */
-    bool        HasCursor();
+    bool        HasCursor() const;
 
-    bool writeFormulaOoxml(const ::sax_fastparser::FSHelperPtr& pSerializer,
+    void writeFormulaOoxml(const ::sax_fastparser::FSHelperPtr& pSerializer,
             oox::core::OoxmlVersion version,
-            oox::drawingml::DocumentType documentType);
+            oox::drawingml::DocumentType documentType,
+            const sal_Int8 nAlign);
     void writeFormulaRtf(OStringBuffer& rBuffer, rtl_TextEncoding nEncoding);
     void readFormulaOoxml( oox::formulaimport::XmlStream& stream );
+
+    void UpdateEditEngineDefaultFonts(const Color& aTextColor);
 };
 
 #endif

@@ -25,6 +25,7 @@
 #include <svx/svxdllapi.h>
 #include <svx/svdglev.hxx>
 #include <svx/selectioncontroller.hxx>
+#include <editeng/editview.hxx>
 #include <memory>
 
 class SdrOutliner;
@@ -36,9 +37,9 @@ struct PasteOrDropInfos;
 class SdrUndoManager;
 class TextChainCursorManager;
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class Any;
-} } } }
+}
 
 namespace sdr {
     class SelectionController;
@@ -54,22 +55,33 @@ enum class SdrEndTextEditKind
 
 // - general edit for objectspecific properties
 // - textedit for all drawobjects, inherited from SdrTextObj
-// - macromod
+// - macromode
 
 
-class SVX_DLLPUBLIC SdrObjEditView: public SdrGlueEditView
+class SVXCORE_DLLPUBLIC SdrObjEditView : public SdrGlueEditView, public EditViewCallbacks
 {
     friend class                SdrPageView;
     friend class                ImpSdrEditPara;
 
+    // Now derived from EditViewCallbacks and overriding these callbacks to
+    // allow own EditText visualization
+    virtual void EditViewInvalidate(const tools::Rectangle& rRect) const override;
+    virtual void EditViewSelectionChange() const override;
+    virtual OutputDevice& EditViewOutputDevice() const override;
+
+    // The OverlayObjects used for visualizing active TextEdit (currently
+    // using TextEditOverlayObject, but not limited to it
+    sdr::overlay::OverlayObjectList           maTEOverlayGroup;
+
 protected:
     // TextEdit
-    SdrObjectWeakRef            mxTextEditObj;         // current object in TextEdit
+    tools::WeakReference<SdrTextObj>
+                                mxTextEditObj;         // current object in TextEdit
     SdrPageView*                pTextEditPV;
-    SdrOutliner*                pTextEditOutliner;     // outliner for the TextEdit
+    std::unique_ptr<SdrOutliner> pTextEditOutliner;     // outliner for the TextEdit
     OutlinerView*               pTextEditOutlinerView; // current view of the outliners
     VclPtr<vcl::Window>         pTextEditWin;          // matching window to pTextEditOutlinerView
-    vcl::Cursor*                pTextEditCursorMerker; // to restore the cursor in each window
+    vcl::Cursor*                pTextEditCursorBuffer; // to restore the cursor in each window
     SdrObject*                  pMacroObj;
     SdrPageView*                pMacroPV;
     VclPtr<vcl::Window>         pMacroWin;
@@ -91,7 +103,7 @@ protected:
     rtl::Reference< sdr::SelectionController > mxLastSelectionController;
 
 private:
-    ::svl::IUndoManager* mpOldTextEditUndoManager;
+    SfxUndoManager* mpOldTextEditUndoManager;
 
     SVX_DLLPRIVATE void ImpClearVars();
 
@@ -106,13 +118,13 @@ protected:
     TextChainCursorManager *ImpHandleMotionThroughBoxesKeyInput(const KeyEvent& rKEvt, bool *bOutHandled);
 
 
-    OutlinerView* ImpFindOutlinerView(vcl::Window* pWin) const;
+    OutlinerView* ImpFindOutlinerView(vcl::Window const * pWin) const;
 
     // Create a new OutlinerView at the heap and initialize all required parameters.
     // pTextEditObj, pTextEditPV and pTextEditOutliner have to be initialized
     OutlinerView* ImpMakeOutlinerView(vcl::Window* pWin, OutlinerView* pGivenView, SfxViewShell* pViewShell = nullptr) const;
     void ImpPaintOutlinerView(OutlinerView& rOutlView, const tools::Rectangle& rRect, OutputDevice& rTargetDevice) const;
-    void ImpInvalidateOutlinerView(OutlinerView& rOutlView) const;
+    void ImpInvalidateOutlinerView(OutlinerView const & rOutlView) const;
 
     // Chaining
     void ImpChainingEventHdl();
@@ -139,7 +151,10 @@ protected:
 
 protected:
     // #i71538# make constructors of SdrView sub-components protected to avoid incomplete incarnations which may get casted to SdrView
-    SdrObjEditView(SdrModel* pModel1, OutputDevice* pOut);
+    SdrObjEditView(
+        SdrModel& rSdrModel,
+        OutputDevice* pOut);
+
     virtual ~SdrObjEditView() override;
 
 public:
@@ -148,7 +163,7 @@ public:
     // outliner will be displayed on the overlay in edit mode.
     void TextEditDrawing(SdrPaintWindow& rPaintWindow) const;
 
-    // Actionhandling for macromod
+    // Actionhandling for macromode
     virtual bool IsAction() const override;
     virtual void MovAction(const Point& rPnt) override;
     virtual void EndAction() override;
@@ -205,36 +220,36 @@ public:
     bool IsTextEditInSelectionMode() const;
 
     // If sb needs the object out of the TextEdit:
-    SdrObject* GetTextEditObject() const { return mxTextEditObj.get(); }
+    SdrTextObj* GetTextEditObject() const { return mxTextEditObj.get(); }
 
     // info about TextEditPageView. Default is 0L.
-    virtual SdrPageView* GetTextEditPageView() const override;
+    SdrPageView* GetTextEditPageView() const;
 
     // Current window of the outliners.
     void SetTextEditWin(vcl::Window* pWin);
 
     // Now at this outliner, events can be send, attributes can be set,
     // call Cut/Copy/Paste, call Undo/Redo, and so on...
-    const SdrOutliner* GetTextEditOutliner() const { return pTextEditOutliner; }
-    SdrOutliner* GetTextEditOutliner() { return pTextEditOutliner; }
+    const SdrOutliner* GetTextEditOutliner() const { return pTextEditOutliner.get(); }
+    SdrOutliner* GetTextEditOutliner() { return pTextEditOutliner.get(); }
     const OutlinerView* GetTextEditOutlinerView() const { return pTextEditOutlinerView; }
     OutlinerView* GetTextEditOutlinerView() { return pTextEditOutlinerView; }
 
     virtual bool KeyInput(const KeyEvent& rKEvt, vcl::Window* pWin) override;
-    virtual bool MouseButtonDown(const MouseEvent& rMEvt, vcl::Window* pWin) override;
-    virtual bool MouseButtonUp(const MouseEvent& rMEvt, vcl::Window* pWin) override;
-    virtual bool MouseMove(const MouseEvent& rMEvt, vcl::Window* pWin) override;
+    virtual bool MouseButtonDown(const MouseEvent& rMEvt, OutputDevice* pWin) override;
+    virtual bool MouseButtonUp(const MouseEvent& rMEvt, OutputDevice* pWin) override;
+    virtual bool MouseMove(const MouseEvent& rMEvt, OutputDevice* pWin) override;
     virtual bool Command(const CommandEvent& rCEvt, vcl::Window* pWin) override;
 
     // #97766# make virtual to change implementation e.g. for SdOutlineView
     virtual SvtScriptType GetScriptType() const;
 
     /* new interface src537 */
-    bool GetAttributes(SfxItemSet& rTargetSet, bool bOnlyHardAttr) const;
+    void GetAttributes(SfxItemSet& rTargetSet, bool bOnlyHardAttr) const;
 
     bool SetAttributes(const SfxItemSet& rSet, bool bReplaceAll);
     SfxStyleSheet* GetStyleSheet() const; // SfxStyleSheet* GetStyleSheet(bool& rOk) const;
-    bool SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr);
+    void SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr);
 
     // Intern: at mounting new OutlinerView...
     virtual void AddWindowToPaintView(OutputDevice* pNewWin, vcl::Window* pWindow) override;
@@ -243,9 +258,9 @@ public:
     sal_uInt16 GetSelectionLevel() const;
 
 
-    // Object-MacroModus (e.g. rect as button or sth. like that):
+    // Object MacroMode (e.g. rect as button or sth. like that):
 
-    bool BegMacroObj(const Point& rPnt, short nTol, SdrObject* pObj, SdrPageView* pPV, vcl::Window* pWin);
+    void BegMacroObj(const Point& rPnt, short nTol, SdrObject* pObj, SdrPageView* pPV, vcl::Window* pWin);
     void BegMacroObj(const Point& rPnt, SdrObject* pObj, SdrPageView* pPV, vcl::Window* pWin) { BegMacroObj(rPnt,-2,pObj,pPV,pWin); }
     void MovMacroObj(const Point& rPnt);
     void BrkMacroObj();
@@ -273,7 +288,7 @@ public:
     void ApplyFormatPaintBrush( SfxItemSet& rFormatSet, bool bNoCharacterFormats, bool bNoParagraphFormats );
 
     /** helper function for selections with multiple SdrText for one SdrTextObj (f.e. tables ) */
-    static void ApplyFormatPaintBrushToText( SfxItemSet& rFormatSet, SdrTextObj& rTextObj, SdrText* pText, bool bNoCharacterFormats, bool bNoParagraphFormats );
+    static void ApplyFormatPaintBrushToText( SfxItemSet const & rFormatSet, SdrTextObj& rTextObj, SdrText* pText, bool bNoCharacterFormats, bool bNoParagraphFormats );
 
 protected:
     virtual void OnBeginPasteOrDrop( PasteOrDropInfos* pInfo );

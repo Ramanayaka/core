@@ -18,8 +18,9 @@
  */
 
 
-#include "propacc.hxx"
+#include <propacc.hxx>
 
+#include <basic/sberrors.hxx>
 #include <basic/sbstar.hxx>
 #include <basic/sbuno.hxx>
 #include <sbunoobj.hxx>
@@ -29,7 +30,6 @@
 #include <o3tl/any.hxx>
 
 #include <algorithm>
-#include <limits.h>
 
 using com::sun::star::uno::Reference;
 using namespace com::sun::star;
@@ -38,24 +38,16 @@ using namespace com::sun::star::lang;
 using namespace com::sun::star::beans;
 using namespace cppu;
 
-struct SbCompare_UString_PropertyValue_Impl
+static bool SbCompare_UString_PropertyValue_Impl(PropertyValue const & lhs, const OUString& rhs)
 {
-   bool operator() (PropertyValue const & lhs, const OUString& rhs)
-   {
-      return lhs.Name.compareTo(rhs) < 0;
-   }
-};
-
-
-SbPropertyValues::SbPropertyValues()
-{
+    return lhs.Name.compareTo(rhs) < 0;
 }
 
 
-SbPropertyValues::~SbPropertyValues()
-{
-    m_xInfo.clear();
-}
+SbPropertyValues::SbPropertyValues() = default;
+
+
+SbPropertyValues::~SbPropertyValues() = default;
 
 Reference< XPropertySetInfo > SbPropertyValues::getPropertySetInfo()
 {
@@ -82,8 +74,8 @@ size_t SbPropertyValues::GetIndex_Impl( const OUString &rPropName ) const
 {
     SbPropertyValueArr_Impl::const_iterator it = std::lower_bound(
           m_aPropVals.begin(), m_aPropVals.end(), rPropName,
-          SbCompare_UString_PropertyValue_Impl() );
-    if (it == m_aPropVals.end())
+          SbCompare_UString_PropertyValue_Impl );
+    if (it == m_aPropVals.end() || it->Name != rPropName)
     {
         throw beans::UnknownPropertyException(
                 "Property not found: " + rPropName,
@@ -146,10 +138,9 @@ void SbPropertyValues::setPropertyValues(const Sequence< PropertyValue >& rPrope
     if (!m_aPropVals.empty())
         throw IllegalArgumentException();
 
-    const PropertyValue *pPropVals = rPropertyValues.getConstArray();
-    for (sal_Int32 n = 0; n < rPropertyValues.getLength(); ++n)
+    for (const PropertyValue& i : rPropertyValues)
     {
-        m_aPropVals.push_back(pPropVals[n]);
+        m_aPropVals.push_back(i);
     }
 }
 
@@ -158,7 +149,7 @@ void RTL_Impl_CreatePropertySet( SbxArray& rPar )
 {
     // We need at least one parameter
     // TODO: In this case < 2 is not correct ;-)
-    if ( rPar.Count() < 2 )
+    if ( rPar.Count32() < 2 )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
         return;
@@ -168,11 +159,11 @@ void RTL_Impl_CreatePropertySet( SbxArray& rPar )
 
     Reference< XInterface > xInterface = static_cast<OWeakObject*>(new SbPropertyValues());
 
-    SbxVariableRef refVar = rPar.Get(0);
+    SbxVariableRef refVar = rPar.Get32(0);
     if( xInterface.is() )
     {
         // Set PropertyValues
-        Any aArgAsAny = sbxToUnoValue( rPar.Get(1),
+        Any aArgAsAny = sbxToUnoValue( rPar.Get32(1),
                 cppu::UnoType<Sequence<PropertyValue>>::get() );
         auto pArg = o3tl::doAccess<Sequence<PropertyValue>>(aArgAsAny);
         Reference< XPropertyAccess > xPropAcc( xInterface, UNO_QUERY );

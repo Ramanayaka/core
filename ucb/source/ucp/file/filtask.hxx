@@ -19,46 +19,34 @@
 #ifndef INCLUDED_UCB_SOURCE_UCP_FILE_FILTASK_HXX
 #define INCLUDED_UCB_SOURCE_UCP_FILE_FILTASK_HXX
 
-#include <cppuhelper/weak.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <osl/file.hxx>
 #include <rtl/ustring.hxx>
 
-#include "osl/mutex.hxx"
+#include <osl/mutex.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/beans/PropertyChangeEvent.hpp>
 #include <com/sun/star/ucb/XCommandInfo.hpp>
 #include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/io/XStream.hpp>
-#include <com/sun/star/beans/XPropertyChangeListener.hpp>
-#include <com/sun/star/ucb/XCommandProcessor.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
-#include <com/sun/star/beans/XPropertiesChangeNotifier.hpp>
 #include <com/sun/star/ucb/NumberedSortingInfo.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/ucb/XContentProvider.hpp>
 #include <com/sun/star/ucb/XDynamicResultSet.hpp>
 #include <com/sun/star/beans/XPropertyContainer.hpp>
 #include <com/sun/star/beans/XPropertyAccess.hpp>
-#include <com/sun/star/ucb/XPropertySetRegistryFactory.hpp>
-#include <com/sun/star/ucb/TransferInfo.hpp>
 #include <com/sun/star/ucb/ContentInfo.hpp>
-#include <com/sun/star/ucb/DuplicateCommandIdentifierException.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
-#include <com/sun/star/ucb/XProgressHandler.hpp>
+#include <com/sun/star/ucb/XPersistentPropertySet.hpp>
+#include <com/sun/star/ucb/XPropertySetRegistry.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
 #include <com/sun/star/task/XInteractionRequest.hpp>
 #include "filerror.hxx"
 #include "filnot.hxx"
-#include <list>
 #include <unordered_map>
-#include <functional>
 #include <unordered_set>
 #include <vector>
 
@@ -89,7 +77,7 @@ namespace fileaccess
         {
         private:
 
-            bool m_bAbort,m_bHandled;
+            bool m_bHandled;
             sal_Int32 m_nErrorCode,m_nMinorCode;
             css::uno::Reference< css::task::XInteractionHandler > m_xInteractionHandler;
             css::uno::Reference< css::ucb::XCommandEnvironment >  m_xCommandEnvironment;
@@ -98,20 +86,12 @@ namespace fileaccess
         public:
 
             explicit TaskHandling(
-                const css::uno::Reference< css::ucb::XCommandEnvironment >&  xCommandEnv
-                = css::uno::Reference< css::ucb::XCommandEnvironment >( nullptr ) )
-                : m_bAbort( false ),
-                  m_bHandled( false ),
+                const css::uno::Reference< css::ucb::XCommandEnvironment >&  xCommandEnv )
+                : m_bHandled( false ),
                   m_nErrorCode( TASKHANDLER_NO_ERROR ),
                   m_nMinorCode( TASKHANDLER_NO_ERROR ),
-                  m_xInteractionHandler( nullptr ),
                   m_xCommandEnvironment( xCommandEnv )
             {
-            }
-
-            void SAL_CALL abort()
-            {
-                m_bAbort = true;
             }
 
             void setHandled()
@@ -130,24 +110,24 @@ namespace fileaccess
                 m_nMinorCode =  TASKHANDLER_NO_ERROR;
             }
 
-            void SAL_CALL installError( sal_Int32 nErrorCode,
+            void installError( sal_Int32 nErrorCode,
                                         sal_Int32 nMinorCode )
             {
                 m_nErrorCode = nErrorCode;
                 m_nMinorCode = nMinorCode;
             }
 
-            sal_Int32 SAL_CALL getInstalledError()
+            sal_Int32 getInstalledError() const
             {
                 return m_nErrorCode;
             }
 
-            sal_Int32 SAL_CALL getMinorErrorCode()
+            sal_Int32 getMinorErrorCode() const
             {
                 return m_nMinorCode;
             }
 
-            css::uno::Reference< css::task::XInteractionHandler > const & SAL_CALL
+            css::uno::Reference< css::task::XInteractionHandler > const &
             getInteractionHandler()
             {
                 if( ! m_xInteractionHandler.is() && m_xCommandEnvironment.is() )
@@ -156,8 +136,8 @@ namespace fileaccess
                 return m_xInteractionHandler;
             }
 
-            const css::uno::Reference< css::ucb::XCommandEnvironment >& SAL_CALL
-            getCommandEnvironment()
+            const css::uno::Reference< css::ucb::XCommandEnvironment >&
+            getCommandEnvironment() const
             {
                 return m_xCommandEnvironment;
             }
@@ -194,25 +174,24 @@ namespace fileaccess
                         const css::beans::PropertyState&  theState,
                         sal_Int16                         theAttributes );
 
-            ~MyProperty();
-            inline const bool& SAL_CALL IsNative() const;
-            const OUString& SAL_CALL getPropertyName() const { return PropertyName; }
-            inline const sal_Int32& SAL_CALL getHandle() const;
-            inline const css::uno::Type& SAL_CALL getType() const;
-            inline const css::uno::Any& SAL_CALL getValue() const;
-            inline const css::beans::PropertyState& SAL_CALL getState() const;
-            inline const sal_Int16& SAL_CALL getAttributes() const;
+            inline const bool& IsNative() const;
+            const OUString& getPropertyName() const { return PropertyName; }
+            inline const sal_Int32& getHandle() const;
+            inline const css::uno::Type& getType() const;
+            inline const css::uno::Any& getValue() const;
+            inline const css::beans::PropertyState& getState() const;
+            inline const sal_Int16& getAttributes() const;
 
             // The set* functions are declared const, because the key of "this" stays intact
-            inline void SAL_CALL setValue( const css::uno::Any& theValue ) const;
-            inline void SAL_CALL setState( const css::beans::PropertyState& theState ) const;
+            inline void setValue( const css::uno::Any& theValue ) const;
+            inline void setState( const css::beans::PropertyState& theState ) const;
         };
 
         struct eMyProperty
         {
             bool operator()( const MyProperty& rKey1, const MyProperty& rKey2 ) const
             {
-                return !!(  rKey1.getPropertyName() == rKey2.getPropertyName() );
+                return rKey1.getPropertyName() == rKey2.getPropertyName();
             }
         };
 
@@ -225,19 +204,16 @@ namespace fileaccess
         };
 
         typedef std::unordered_set< MyProperty,hMyProperty,eMyProperty > PropertySet;
-        typedef std::list< Notifier* >                              NotifierList;
-
 
         class UnqPathData
         {
         public:
             UnqPathData();
+            UnqPathData(UnqPathData&&);
             ~UnqPathData();
-            UnqPathData( const UnqPathData& );
-            UnqPathData& operator=( UnqPathData& );
 
-            PropertySet*               properties;
-            NotifierList*              notifier;
+            PropertySet properties;
+            std::vector< Notifier* > notifier;
 
             // Three views on the PersistentPropertySet
             css::uno::Reference< css::ucb::XPersistentPropertySet >   xS;
@@ -245,19 +221,18 @@ namespace fileaccess
             css::uno::Reference< css::beans::XPropertyAccess >        xA;
         };
 
-        typedef std::unordered_map< OUString,UnqPathData,OUStringHash > ContentMap;
+        typedef std::unordered_map< OUString,UnqPathData > ContentMap;
 
         TaskManager( const css::uno::Reference< css::uno::XComponentContext >& rxContext,
                FileProvider* pProvider, bool bWithConfig );
         ~TaskManager();
 
         /// @throws css::ucb::DuplicateCommandIdentifierException
-        void SAL_CALL startTask(
+        void startTask(
             sal_Int32 CommandId,
             const css::uno::Reference< css::ucb::XCommandEnvironment >&  xCommandEnv );
 
-        sal_Int32 SAL_CALL getCommandId();
-        void SAL_CALL abort( sal_Int32 CommandId );
+        sal_Int32 getCommandId();
 
 
         /**
@@ -266,11 +241,11 @@ namespace fileaccess
          *  The minor code refines the information given in ErrorCode.
          */
 
-        void SAL_CALL installError( sal_Int32 CommandId,
+        void installError( sal_Int32 CommandId,
                                     sal_Int32 ErrorCode,
                                     sal_Int32 minorCode = TASKHANDLER_NO_ERROR );
 
-        void SAL_CALL retrieveError( sal_Int32 CommandId,
+        void retrieveError( sal_Int32 CommandId,
                                      sal_Int32 &ErrorCode,
                                      sal_Int32 &minorCode);
 
@@ -279,7 +254,7 @@ namespace fileaccess
          *  "endTask" throws in case an error code is set the corresponding exception.
          */
 
-        void SAL_CALL endTask( sal_Int32 CommandId,
+        void endTask( sal_Int32 CommandId,
                                // the physical URL of the object
                                const OUString& aUnqPath,
                                BaseContent* pContent);
@@ -289,23 +264,23 @@ namespace fileaccess
          *  Handles an interactionrequest
          */
 
-        void SAL_CALL handleTask( sal_Int32 CommandId,
+        void handleTask( sal_Int32 CommandId,
                                   const css::uno::Reference< css::task::XInteractionRequest >& request );
 
         /**
          *  Clears any error which are set on the commandid
          */
 
-        void SAL_CALL clearError( sal_Int32 );
+        void clearError( sal_Int32 );
 
         /**
          *  This two methods register and deregister a change listener for the content belonging
          *  to URL aUnqPath
          */
 
-        void SAL_CALL registerNotifier( const OUString& aUnqPath,Notifier* pNotifier );
+        void registerNotifier( const OUString& aUnqPath,Notifier* pNotifier );
 
-        void SAL_CALL deregisterNotifier( const OUString& aUnqPath,Notifier* pNotifier );
+        void deregisterNotifier( const OUString& aUnqPath,Notifier* pNotifier );
 
 
         /**
@@ -318,7 +293,7 @@ namespace fileaccess
          *  @throws css::uno::RuntimeException
          */
 
-        void SAL_CALL associate( const OUString& UnqPath,
+        void associate( const OUString& UnqPath,
                                  const OUString& PropertyName,
                                  const css::uno::Any& DefaultValue,
                                  const sal_Int16 Attributes );
@@ -326,7 +301,7 @@ namespace fileaccess
         /// @throws css::beans::UnknownPropertyException
         /// @throws css::beans::NotRemoveableException
         /// @throws css::uno::RuntimeException
-        void SAL_CALL deassociate( const OUString& UnqPath,
+        void deassociate( const OUString& UnqPath,
                                    const OUString& PropertyName );
 
 
@@ -339,7 +314,7 @@ namespace fileaccess
          *  URL aUnqPath into the XOutputStream
          */
 
-        void SAL_CALL page( sal_Int32 CommandId,
+        void page( sal_Int32 CommandId,
                             const OUString& aUnqPath,
                             const css::uno::Reference< css::io::XOutputStream >& xOutputStream );
 
@@ -348,7 +323,7 @@ namespace fileaccess
          *  Given a file URL aUnqPath, this methods returns a XInputStream which reads from the open file.
          */
 
-        css::uno::Reference< css::io::XInputStream > SAL_CALL
+        css::uno::Reference< css::io::XInputStream >
         open( sal_Int32 CommandId,
               const OUString& aUnqPath,
               bool bLock );
@@ -359,7 +334,7 @@ namespace fileaccess
          *  to read and write from/to the file.
          */
 
-        css::uno::Reference< css::io::XStream > SAL_CALL
+        css::uno::Reference< css::io::XStream >
         open_rw( sal_Int32 CommandId,
                  const OUString& aUnqPath,
                  bool bLock );
@@ -370,7 +345,7 @@ namespace fileaccess
          *  to file URL aUnqPath
          */
 
-        css::uno::Reference< css::ucb::XDynamicResultSet > SAL_CALL
+        css::uno::Reference< css::ucb::XDynamicResultSet >
         ls( sal_Int32 CommandId,
             const OUString& aUnqPath,
             const sal_Int32 OpenMode,
@@ -383,11 +358,11 @@ namespace fileaccess
          */
 
         // Info for commands
-        css::uno::Reference< css::ucb::XCommandInfo > SAL_CALL
+        css::uno::Reference< css::ucb::XCommandInfo >
         info_c();
 
         // Info for the properties
-        css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL
+        css::uno::Reference< css::beans::XPropertySetInfo >
         info_p( const OUString& aUnqPath );
 
 
@@ -395,7 +370,7 @@ namespace fileaccess
          *  Sets the values of the properties belonging to fileURL aUnqPath
          */
 
-        css::uno::Sequence< css::uno::Any > SAL_CALL
+        css::uno::Sequence< css::uno::Any >
         setv( const OUString& aUnqPath,
               const css::uno::Sequence< css::beans::PropertyValue >& values );
 
@@ -405,7 +380,7 @@ namespace fileaccess
          *  Returns an XRow object containing the values in the requested order.
          */
 
-        css::uno::Reference< css::sdbc::XRow > SAL_CALL
+        css::uno::Reference< css::sdbc::XRow >
         getv( sal_Int32 CommandId,
               const OUString& aUnqPath,
               const css::uno::Sequence< css::beans::Property >& properties );
@@ -419,7 +394,7 @@ namespace fileaccess
          *  Moves the content belonging to fileURL srcUnqPath to fileURL dstUnqPath( files and directories )
          */
 
-        void SAL_CALL
+        void
         move( sal_Int32 CommandId,
               const OUString& srcUnqPath,   // Full file(folder)-path
               const OUString& dstUnqPath,   // Path to the destination-directory
@@ -429,7 +404,7 @@ namespace fileaccess
          *  Copies the content belonging to fileURL srcUnqPath to fileURL dstUnqPath ( files and directories )
          */
 
-        void SAL_CALL
+        void
         copy( sal_Int32 CommandId,               // See "move"
               const OUString& srcUnqPath,
               const OUString& dstUnqPath,
@@ -441,7 +416,7 @@ namespace fileaccess
          *  Deletes the content belonging to fileURL aUnqPath( recursively in case of directory )
          */
 
-        bool SAL_CALL
+        bool
         remove( sal_Int32 CommandId,
                 const OUString& aUnqPath,
                 FileUrlType eTypeToMove = FileUrlType::Unknown,
@@ -457,7 +432,7 @@ namespace fileaccess
          *  Return:: success of operation
          */
 
-        bool SAL_CALL
+        bool
         mkdir( sal_Int32 CommandId,
                const OUString& aDirectoryName,
                bool OverWrite );
@@ -469,7 +444,7 @@ namespace fileaccess
          *  Return:: success of operation
          */
 
-        bool SAL_CALL
+        bool
         mkfil( sal_Int32 CommandId,
                const OUString& aFileName,
                bool OverWrite,
@@ -481,16 +456,16 @@ namespace fileaccess
          *  The content of aInputStream becomes the content of the file
          *  Return:: success of operation
          */
-        bool SAL_CALL
+        bool
         write( sal_Int32 CommandId,
                const OUString& aUnqPath,
                bool OverWrite,
                const css::uno::Reference< css::io::XInputStream >& aInputStream );
 
 
-        void SAL_CALL insertDefaultProperties( const OUString& aUnqPath );
+        void insertDefaultProperties( const OUString& aUnqPath );
 
-        css::uno::Sequence< css::ucb::ContentInfo >
+        static css::uno::Sequence< css::ucb::ContentInfo >
         queryCreatableContentsInfo();
 
 
@@ -501,12 +476,11 @@ namespace fileaccess
         /*                                                                            */
         /******************************************************************************/
 
-        static bool SAL_CALL getUnqFromUrl( const OUString& Url, OUString& Unq );
+        static bool getUnqFromUrl( const OUString& Url, OUString& Unq );
 
-        static bool SAL_CALL getUrlFromUnq( const OUString& Unq, OUString& Url );
+        static bool getUrlFromUnq( const OUString& Unq, OUString& Url );
 
 
-        bool m_bWithConfig;
         FileProvider*                                             m_pProvider;
         css::uno::Reference< css::uno::XComponentContext >        m_xContext;
         css::uno::Reference< css::ucb::XPropertySetRegistry >     m_xFileRegistry;
@@ -517,21 +491,21 @@ namespace fileaccess
         /*                              get eventListeners                              */
         /********************************************************************************/
 
-        std::list< ContentEventNotifier* >* SAL_CALL
+        std::vector< std::unique_ptr< ContentEventNotifier > >
         getContentEventListeners( const OUString& aName );
 
-        std::list< ContentEventNotifier* >* SAL_CALL
+        std::vector< std::unique_ptr< ContentEventNotifier > >
         getContentDeletedEventListeners( const OUString& aName );
 
-        std::vector< std::list< ContentEventNotifier* >* >* SAL_CALL
+        std::vector< std::unique_ptr < ContentEventNotifier > >
         getContentExchangedEventListeners( const OUString& aOldPrefix,
                                            const OUString& aNewPrefix,
                                            bool withChildren );
 
-        std::list< PropertyChangeNotifier* >* SAL_CALL
+        std::vector< std::unique_ptr< PropertyChangeNotifier > >
         getPropertyChangeNotifier( const OUString& aName );
 
-        std::list< PropertySetInfoChangeNotifier* >* SAL_CALL
+        std::vector< std::unique_ptr< PropertySetInfoChangeNotifier > >
         getPropertySetListeners( const OUString& aName );
 
 
@@ -539,37 +513,38 @@ namespace fileaccess
         /*                              notify eventListeners                           */
         /********************************************************************************/
 
-        static void SAL_CALL notifyPropertyChanges(
-            std::list< PropertyChangeNotifier* >* listeners,
-            const css::uno::Sequence< css::beans::PropertyChangeEvent >& seqChanged );
+        static void notifyPropertyChanges(
+            const std::vector<std::unique_ptr<PropertyChangeNotifier>>& listeners,
+            const css::uno::Sequence<css::beans::PropertyChangeEvent>& seqChanged);
 
-        static void SAL_CALL notifyContentExchanged(
-            std::vector< std::list< ContentEventNotifier* >* >* listeners_vec );
+        static void notifyContentExchanged(
+            const std::vector<std::unique_ptr<ContentEventNotifier>>& listeners_vec);
 
-        static void SAL_CALL notifyInsert(
-            std::list< ContentEventNotifier* >* listeners,const OUString& aChildName );
+        static void
+        notifyInsert(const std::vector<std::unique_ptr<ContentEventNotifier>>& listeners,
+                     const OUString& aChildName);
 
-        static void SAL_CALL notifyContentDeleted(
-            std::list< ContentEventNotifier* >* listeners );
+        static void
+        notifyContentDeleted(const std::vector<std::unique_ptr<ContentEventNotifier>>& listeners);
 
-        static void SAL_CALL notifyContentRemoved(
-            std::list< ContentEventNotifier* >* listeners,
-            const OUString& aChildName );
+        static void
+        notifyContentRemoved(const std::vector<std::unique_ptr<ContentEventNotifier>>& listeners,
+                             const OUString& aChildName);
 
-        static void SAL_CALL notifyPropertyAdded(
-            std::list< PropertySetInfoChangeNotifier* >* listeners,
-            const OUString& aPropertyName );
+        static void notifyPropertyAdded(
+            const std::vector<std::unique_ptr<PropertySetInfoChangeNotifier>>& listeners,
+            const OUString& aPropertyName);
 
-        static void SAL_CALL notifyPropertyRemoved(
-            std::list< PropertySetInfoChangeNotifier* >* listeners,
-            const OUString& aPropertyName );
-
+        static void notifyPropertyRemoved(
+            const std::vector<std::unique_ptr<PropertySetInfoChangeNotifier>>& listeners,
+            const OUString& aPropertyName);
 
         /********************************************************************************/
         /*                       remove persistent propertyset                          */
         /********************************************************************************/
 
-        void SAL_CALL erasePersistentSet( const OUString& aUnqPath,
+        void erasePersistentSetWithoutChildren( const OUString& aUnqPath );
+        void erasePersistentSet( const OUString& aUnqPath,
                                           bool withChildren = false );
 
         /********************************************************************************/
@@ -577,7 +552,9 @@ namespace fileaccess
         /*                       from srcUnqPath to dstUnqPath                          */
         /********************************************************************************/
 
-        void SAL_CALL copyPersistentSet( const OUString& srcUnqPath,
+        void copyPersistentSetWithoutChildren( const OUString& srcUnqPath,
+                                const OUString& dstUnqPath );
+        void copyPersistentSet( const OUString& srcUnqPath,
                                          const OUString& dstUnqPath,
                                          bool withChildren );
 
@@ -585,9 +562,8 @@ namespace fileaccess
         // Special optimized method for getting the properties of a directoryitem, which
         // is returned by osl::DirectoryItem::getNextItem()
 
-        bool SAL_CALL
-        getv( Notifier* pNotifier,
-              const css::uno::Sequence< css::beans::Property >& properties,
+        bool
+        getv( const css::uno::Sequence< css::beans::Property >& properties,
               osl::DirectoryItem& DirItem,
               OUString& aUnqPath,
               bool&      bIsRegular,
@@ -599,7 +575,7 @@ namespace fileaccess
          *  The Properties are stored under the url belonging to it->first.
          */
 
-        void SAL_CALL load( const TaskManager::ContentMap::iterator& it,
+        void load( const TaskManager::ContentMap::iterator& it,
                             bool create );
 
         /**
@@ -608,18 +584,18 @@ namespace fileaccess
          *  setting of file properties which properties have changed without filestat
          */
 
-        void SAL_CALL
+        void
         commit(
             const TaskManager::ContentMap::iterator& it,
             const osl::FileStatus& aFileStatus );
 
         /**
          *  Given a Sequence of properties seq, this method determines the mask
-         *  used to instantiate a osl::FileStatus, so that a call to
+         *  used to instantiate an osl::FileStatus, so that a call to
          *  osl::DirectoryItem::getFileStatus fills the required fields.
          */
 
-        void SAL_CALL
+        static void
         getMaskFromProperties(
             sal_Int32& n_Mask,
             const css::uno::Sequence< css::beans::Property >& seq );
@@ -627,7 +603,7 @@ namespace fileaccess
 
         // Helper function for public copy
 
-        osl::FileBase::RC SAL_CALL
+        osl::FileBase::RC
         copy_recursive(
             const OUString& srcUnqPath,
             const OUString& dstUnqPath,
@@ -641,7 +617,7 @@ namespace fileaccess
         // The call determines the errorCode, which should be used to install
         // any error
 
-        bool SAL_CALL
+        bool
         ensuredir( sal_Int32 CommandId,
                    const OUString& aDirectoryName,
                    sal_Int32 errorCode );
@@ -649,28 +625,11 @@ namespace fileaccess
         // General
         ContentMap  m_aContent;
 
-        // Default properties
-
-        const OUString Title;
-        const OUString CasePreservingURL;
-        const OUString IsDocument;
-        const OUString IsFolder;
-        const OUString DateModified;
-        const OUString Size;
-        const OUString IsVolume;
-        const OUString IsRemoveable;
-        const OUString IsRemote;
-        const OUString IsCompactDisc;
-        const OUString IsFloppy;
-        const OUString IsHidden;
-        const OUString ContentType;
-        const OUString IsReadOnly;
-        const OUString CreatableContentsInfo;
 
     public:
 
-        const OUString FolderContentType;
-        const OUString FileContentType;
+        static const OUStringLiteral FolderContentType;
+        static const OUStringLiteral FileContentType;
 
 
     private:
@@ -682,11 +641,7 @@ namespace fileaccess
         // Miscellaneous:
         // Methods for "writeComponentInfo" and "createComponentFactory"
 
-        static void SAL_CALL getScheme( OUString& Scheme );
-
-        static OUString SAL_CALL getImplementationName_static();
-
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_static();
+        static void getScheme( OUString& Scheme );
     };
 
 } // end namespace TaskHandling

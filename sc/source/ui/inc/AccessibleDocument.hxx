@@ -26,13 +26,13 @@
 #include <com/sun/star/view/XSelectionChangeListener.hpp>
 #include <cppuhelper/implbase3.hxx>
 #include <com/sun/star/accessibility/XAccessibleExtendedAttributes.hpp>
-#include <com/sun/star/accessibility/XAccessibleGetAccFlowTo.hpp>
 #include <svx/IAccessibleViewForwarder.hxx>
 
 class ScTabViewShell;
 class ScAccessibleSpreadsheet;
 class ScChildrenShapes;
 class ScAccessibleEditObject;
+class VclWindowEvent;
 
 namespace utl
 {
@@ -52,7 +52,6 @@ typedef cppu::ImplHelper3< css::accessibility::XAccessibleSelection,
 class ScAccessibleDocument
     :   public ScAccessibleDocumentBase,
         public ScAccessibleDocumentImpl,
-        public css::accessibility::XAccessibleGetAccFlowTo,
         public accessibility::IAccessibleViewForwarder
 {
 public:
@@ -164,7 +163,7 @@ public:
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL
         getTypes() override;
 
-    /** Returns a implementation id.
+    /** Returns an implementation id.
     */
     virtual css::uno::Sequence<sal_Int8> SAL_CALL
         getImplementationId() override;
@@ -212,11 +211,11 @@ public:
 
 protected:
     /// Return this object's description.
-    virtual OUString SAL_CALL
+    virtual OUString
         createAccessibleDescription() override;
 
     /// Return the object's current name.
-    virtual OUString SAL_CALL
+    virtual OUString
         createAccessibleName() override;
 
     /// Return the object's current bounding box relative to the desktop.
@@ -229,7 +228,7 @@ private:
     ScTabViewShell* mpViewShell;
     ScSplitPos      meSplitPos;
     rtl::Reference<ScAccessibleSpreadsheet> mpAccessibleSpreadsheet;
-    ScChildrenShapes* mpChildrenShapes;
+    std::unique_ptr<ScChildrenShapes> mpChildrenShapes;
     ScAccessibleEditObject* mpTempAccEdit;
     css::uno::Reference<css::accessibility::XAccessible> mxTempAcc;
     tools::Rectangle maVisArea;
@@ -253,15 +252,11 @@ private:
     static OUString GetCurrentCellDescription();
 
     tools::Rectangle GetVisibleArea_Impl() const;
-    css::uno::Sequence< css::uno::Any > GetScAccFlowToSequence();
 public:
     ScDocument *GetDocument() const ;
     ScAddress   GetCurCellAddress() const;
-    //=====  XAccessibleGetAccFromXShape  ============================================
-    css::uno::Sequence< css::uno::Any >
-        SAL_CALL getAccFlowTo(const css::uno::Any& rAny, sal_Int32 nType) override;
 
-     virtual sal_Int32 SAL_CALL getForeground(  ) override;
+    virtual sal_Int32 SAL_CALL getForeground(  ) override;
 
     virtual sal_Int32 SAL_CALL getBackground(  ) override;
 };

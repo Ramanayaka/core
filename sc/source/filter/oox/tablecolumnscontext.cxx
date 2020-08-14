@@ -17,14 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "tablecolumnscontext.hxx"
+#include <tablecolumnscontext.hxx>
 
-#include "tablecolumnsbuffer.hxx"
+#include <tablecolumnsbuffer.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using ::oox::core::ContextHandlerRef;
 
@@ -89,7 +87,6 @@ void TableColumnsContext::onStartRecord( SequenceInputStream& rStrm )
     mrTableColumns.importTableColumns( rStrm );
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

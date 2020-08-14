@@ -22,14 +22,14 @@
 
 #include <sal/config.h>
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <com/sun/star/uno/Reference.hxx>
 
 #include "dp_misc_api.hxx"
 
-namespace com { namespace sun { namespace star { namespace deployment {
+namespace com::sun::star::deployment {
     class XPackage;
-} } } }
+}
 
 namespace dp_misc {
 
@@ -47,7 +47,7 @@ namespace dp_misc {
    on the given file name
 */
 DESKTOP_DEPLOYMENTMISC_DLLPUBLIC OUString generateIdentifier(
-    ::boost::optional< OUString > const & optional,
+    ::std::optional< OUString > const & optional,
     OUString const & fileName);
 
 /**

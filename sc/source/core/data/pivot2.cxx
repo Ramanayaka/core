@@ -17,27 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <editeng/boxitem.hxx>
-#include <editeng/wghtitem.hxx>
-#include <svx/algitem.hxx>
-#include <unotools/transliterationwrapper.hxx>
-
-#include "globstr.hrc"
-#include "subtotal.hxx"
-#include "rangeutl.hxx"
-#include "attrib.hxx"
-#include "patattr.hxx"
-#include "docpool.hxx"
-#include "document.hxx"
-#include "userlist.hxx"
-#include "pivot.hxx"
-#include "rechead.hxx"
-#include <formula/errorcodes.hxx>
-#include "refupdat.hxx"
-#include "stlpool.hxx"
-#include "stlsheet.hxx"
-#include <o3tl/make_unique.hxx>
+#include <pivot.hxx>
 
 #if DEBUG_PIVOT_TABLE
 using std::cout;
@@ -94,18 +74,10 @@ OUString const & ScDPLabelData::getDisplayName() const
 // ScPivotField
 
 ScPivotField::ScPivotField(SCCOL nNewCol) :
-    nCol(nNewCol),
     mnOriginalDim(-1),
     nFuncMask(PivotFunc::NONE),
+    nCol(nNewCol),
     mnDupCount(0)
-{}
-
-ScPivotField::ScPivotField( const ScPivotField& rPivotField ) :
-    nCol(rPivotField.nCol),
-    mnOriginalDim(rPivotField.mnOriginalDim),
-    nFuncMask(rPivotField.nFuncMask),
-    mnDupCount(rPivotField.mnDupCount),
-    maFieldRef(rPivotField.maFieldRef)
 {}
 
 long ScPivotField::getOriginalDim() const
@@ -142,10 +114,9 @@ void ScPivotParam::SetLabelData(const ScDPLabelDataVector& rVector)
 {
     ScDPLabelDataVector aNewArray;
     aNewArray.reserve(rVector.size());
-    ScDPLabelDataVector::const_iterator it;
-    for (it = rVector.begin(); it != rVector.end(); ++it)
+    for (const auto& rxData : rVector)
     {
-        aNewArray.push_back(o3tl::make_unique<ScDPLabelData>(*it->get()));
+        aNewArray.push_back(std::make_unique<ScDPLabelData>(*rxData));
     }
     maLabelArray.swap(aNewArray);
 }
@@ -172,9 +143,9 @@ ScPivotParam& ScPivotParam::operator=( const ScPivotParam& rPivotParam )
 // ScPivotFuncData
 
 ScPivotFuncData::ScPivotFuncData( SCCOL nCol, PivotFunc nFuncMask ) :
-    mnCol( nCol ),
     mnOriginalDim(-1),
     mnFuncMask(nFuncMask),
+    mnCol( nCol ),
     mnDupCount(0)
 {}
 

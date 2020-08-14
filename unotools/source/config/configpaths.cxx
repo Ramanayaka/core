@@ -17,6 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <string_view>
+
 #include <unotools/configpaths.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
@@ -49,7 +53,7 @@ void lcl_resolveCharEntities(OUString & aLocalString)
         OSL_ENSURE(ch,"Configuration path contains '&' that is not part of a valid character escape");
         if (ch)
         {
-            aResult.append(aLocalString.copy(nStart,nEscapePos-nStart)).append(ch);
+            aResult.append(std::u16string_view(aLocalString).substr(nStart,nEscapePos-nStart)).append(ch);
 
             sal_Int32 nEscapeEnd=aLocalString.indexOf(';',nEscapePos);
             nStart = nEscapeEnd+1;
@@ -62,7 +66,7 @@ void lcl_resolveCharEntities(OUString & aLocalString)
     }
     while ( nEscapePos > 0);
 
-    aResult.append(aLocalString.copy(nStart));
+    aResult.append(std::u16string_view(aLocalString).substr(nStart));
 
     aLocalString = aResult.makeStringAndClear();
 }
@@ -178,8 +182,7 @@ OUString extractFirstFromConfigurationPath(OUString const& _sInPath, OUString* _
 }
 
 // find the position after the prefix in the nested path
-static inline
-sal_Int32 lcl_findPrefixEnd(OUString const& _sNestedPath, OUString const& _sPrefixPath)
+static sal_Int32 lcl_findPrefixEnd(OUString const& _sNestedPath, OUString const& _sPrefixPath)
 {
     // TODO: currently handles only exact prefix matches
     sal_Int32 nPrefixLength = _sPrefixPath.getLength();
@@ -196,7 +199,7 @@ sal_Int32 lcl_findPrefixEnd(OUString const& _sNestedPath, OUString const& _sPref
     }
     else if (_sNestedPath.getLength() == nPrefixLength)
     {
-        bIsPrefix = _sNestedPath.equals(_sPrefixPath);
+        bIsPrefix = _sNestedPath == _sPrefixPath;
     }
     else
     {

@@ -32,6 +32,7 @@ $(eval $(call gb_CppunitTest_use_libraries,desktop_app, \
     $(if $(ENABLE_BREAKPAD),crashreport) \
     deploymentmisc \
     editeng \
+    fwk \
     i18nlangtag \
     $(if $(filter OPENCL,$(BUILD_TYPE)),opencl) \
     sal \
@@ -49,6 +50,14 @@ $(eval $(call gb_CppunitTest_use_libraries,desktop_app, \
     vcl \
 ))
 
+ifeq ($(OS),WNT)
+$(eval $(call gb_CppunitTest_use_static_libraries,desktop_app,\
+    $(if $(ENABLE_ONLINE_UPDATE_MAR),\
+        windows_process )\
+))
+endif
+
+
 ifeq ($(OS), $(filter LINUX %BSD SOLARIS, $(OS)))
 ifeq ($(USING_X11),TRUE)
 $(eval $(call gb_CppunitTest_use_static_libraries,desktop_app,\
@@ -58,7 +67,6 @@ endif
 
 $(eval $(call gb_CppunitTest_add_libs,desktop_app,\
 	-lm $(DLOPEN_LIBS) \
-	-lpthread \
     -lX11 \
 ))
 endif

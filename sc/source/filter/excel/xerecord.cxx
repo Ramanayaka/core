@@ -17,9 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xerecord.hxx"
-#include "xeroot.hxx"
+#include <xerecord.hxx>
+#include <xeroot.hxx>
+#include <xltools.hxx>
 
+#include <oox/token/tokens.hxx>
+#include <oox/export/utils.hxx>
 #include <osl/diagnose.h>
 
 using namespace ::oox;
@@ -78,7 +81,7 @@ void XclExpXmlStartElementRecord::SaveXml( XclExpXmlStream& rStrm )
     sax_fastparser::FSHelperPtr& rStream = rStrm.GetCurrentStream();
     // TODO: no generic way to add attributes here, but it appears to
     // not be needed yet
-    rStream->startElement( mnElement, FSEND );
+    rStream->startElement(mnElement);
 }
 
 XclExpXmlEndElementRecord::XclExpXmlEndElementRecord( sal_Int32 nElement )
@@ -157,14 +160,12 @@ void XclExpValueRecord<double>::SaveXml( XclExpXmlStream& rStrm )
 {
     if( mnAttribute == -1 )
         return;
-    rStrm.WriteAttributes(
-        mnAttribute,    OString::number( maValue ).getStr(),
-        FSEND );
+    rStrm.WriteAttributes(mnAttribute, OUString::number(maValue));
 }
 
 void XclExpBoolRecord::WriteBody( XclExpStream& rStrm )
 {
-    rStrm << (static_cast< sal_uInt16 >( mbValue ? 1 : 0 ));
+    rStrm << static_cast< sal_uInt16 >( mbValue ? 1 : 0 );
 }
 
 void XclExpBoolRecord::SaveXml( XclExpXmlStream& rStrm )
@@ -174,8 +175,7 @@ void XclExpBoolRecord::SaveXml( XclExpXmlStream& rStrm )
 
     rStrm.WriteAttributes(
             // HACK: HIDEOBJ (excdoc.cxx) should be its own object to handle XML_showObjects
-            mnAttribute, mnAttribute == XML_showObjects ? "all" : XclXmlUtils::ToPsz( mbValue ),
-            FSEND );
+            mnAttribute, mnAttribute == XML_showObjects ? "all" : ToPsz( mbValue ));
 }
 
 XclExpDummyRecord::XclExpDummyRecord( sal_uInt16 nRecId, const void* pRecData, std::size_t nRecSize ) :

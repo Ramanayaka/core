@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/fmsrccfg.hxx"
+#include <svx/fmsrccfg.hxx>
 
-#include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <comphelper/processfactory.hxx>
 #include <i18nutil/transliteration.hxx>
 
@@ -73,11 +73,15 @@ namespace svxform
 
     // maps from ascii values to int values
 
+    namespace {
+
     struct Ascii2Int16
     {
-        const sal_Char* pAscii;
-        sal_Int16       nValue;
+        const char* pAscii;
+        sal_Int16   nValue;
     };
+
+    }
 
     static const Ascii2Int16* lcl_getSearchForTypeValueMap()
     {
@@ -121,7 +125,7 @@ namespace svxform
         return -1;
     }
 
-    static const sal_Char* lcl_implMapIntValue( const sal_Int16 _nValue, const Ascii2Int16* _pMap )
+    static const char* lcl_implMapIntValue( const sal_Int16 _nValue, const Ascii2Int16* _pMap )
     {
         // search the map for the given integer value
         const Ascii2Int16* pSearch = _pMap;
@@ -135,8 +139,8 @@ namespace svxform
 
         SAL_WARN( "svx", "lcl_implMapIntValue: could not convert the integer value "
                     << _nValue <<  " !");
-        static const sal_Char* const s_pDummy = "";
-            // just as a fallback ....
+        static const char* const s_pDummy = "";
+            // just as a fallback...
         return s_pDummy;
     }
 

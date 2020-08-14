@@ -29,14 +29,12 @@
 
 // predefines
 
-namespace drawinglayer { namespace geometry {
+namespace drawinglayer::geometry {
     class ViewInformation3D;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
+namespace drawinglayer::primitive3d
     {
         /** SliceType3D definition */
         enum SliceType3D
@@ -47,9 +45,8 @@ namespace drawinglayer
         };
 
         /// class to hold one Slice3D
-        class DRAWINGLAYER_DLLPUBLIC Slice3D
+        class DRAWINGLAYER_DLLPUBLIC Slice3D final
         {
-        protected:
             basegfx::B3DPolyPolygon                 maPolyPolygon;
             SliceType3D                             maSliceType;
 
@@ -58,7 +55,7 @@ namespace drawinglayer
                 const basegfx::B2DPolyPolygon& rPolyPolygon,
                 const basegfx::B3DHomMatrix& aTransform,
                 SliceType3D aSliceType = SLICETYPE3D_REGULAR)
-            :   maPolyPolygon(basegfx::tools::createB3DPolyPolygonFromB2DPolyPolygon(rPolyPolygon)),
+            :   maPolyPolygon(basegfx::utils::createB3DPolyPolygonFromB2DPolyPolygon(rPolyPolygon)),
                 maSliceType(aSliceType)
             {
                 maPolyPolygon.transform(aTransform);
@@ -102,7 +99,6 @@ namespace drawinglayer
             ::std::vector< basegfx::B3DPolyPolygon >& rFill,
             const Slice3DVector& rSliceVector,
             bool bCreateNormals,
-            bool bSmoothHorizontalNormals,
             bool bSmoothNormals,
             bool bSmoothLids,
             bool bClosed,
@@ -118,8 +114,7 @@ namespace drawinglayer
             const basegfx::B3DPolygon& rLoopB,
             basegfx::B3DPolyPolygon& rTarget);
 
-    } // end of namespace overlay
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::overlay
 
 
 #endif //_DRAWINGLAYER_PRIMITIVE3D_SDREXTRUDELATHETOOLS3D_HXX

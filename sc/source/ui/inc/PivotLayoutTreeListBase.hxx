@@ -11,16 +11,27 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_PIVOTLAYOUTTREELISTBASE_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_PIVOTLAYOUTTREELISTBASE_HXX
 
-#include <svtools/treelistbox.hxx>
-
-#include <vcl/builder.hxx>
-
-#include "pivot.hxx"
+#include <vcl/transfer.hxx>
+#include <vcl/weld.hxx>
+#include <pivot.hxx>
 
 class ScPivotLayoutDialog;
+class ScPivotLayoutTreeListBase;
 class ScItemValue;
 
-class ScPivotLayoutTreeListBase : public SvTreeListBox
+class ScPivotLayoutTreeDropTarget : public DropTargetHelper
+{
+private:
+    ScPivotLayoutTreeListBase& m_rTreeView;
+
+    virtual sal_Int8 AcceptDrop( const AcceptDropEvent& rEvt ) override;
+    virtual sal_Int8 ExecuteDrop( const ExecuteDropEvent& rEvt ) override;
+
+public:
+    ScPivotLayoutTreeDropTarget(ScPivotLayoutTreeListBase& rTreeView);
+};
+
+class ScPivotLayoutTreeListBase
 {
 public:
     enum SvPivotTreeListType
@@ -29,40 +40,31 @@ public:
         LABEL_LIST,
         PAGE_LIST,
         ROW_LIST,
-        COLUMN_LIST,
-        DATA_LIST
+        COLUMN_LIST
     };
 
 protected:
+    std::unique_ptr<weld::TreeView> mxControl;
+    ScPivotLayoutTreeDropTarget maDropTargetHelper;
     SvPivotTreeListType meType;
-    VclPtr<ScPivotLayoutDialog> mpParent;
+    ScPivotLayoutDialog* mpParent;
+
+    DECL_LINK(GetFocusHdl, weld::Widget&, void);
+    DECL_LINK(MnemonicActivateHdl, weld::Widget&, bool);
+    DECL_LINK(LoseFocusHdl, weld::Widget&, void);
 
 public:
     void Setup(ScPivotLayoutDialog* pParent);
 
-    ScPivotLayoutTreeListBase(vcl::Window* pParent, WinBits nBits, SvPivotTreeListType eType = UNDEFINED);
-    virtual ~ScPivotLayoutTreeListBase() override;
-    virtual void dispose() override;
-
-    virtual bool NotifyAcceptDrop(SvTreeListEntry* pEntry) override;
-    virtual TriState NotifyMoving(SvTreeListEntry* pTarget, SvTreeListEntry* pSource,
-                                  SvTreeListEntry*& rpNewParent, sal_uLong& rNewChildPos) override;
-    virtual TriState NotifyCopying(SvTreeListEntry* pTarget, SvTreeListEntry* pSource,
-                                   SvTreeListEntry*& rpNewParent, sal_uLong& rNewChildPos) override;
-    virtual DragDropMode NotifyStartDrag(TransferDataContainer& aTransferDataContainer,
-                                         SvTreeListEntry* pEntry) override;
-    virtual void DragFinished(sal_Int8 nDropAction) override;
+    ScPivotLayoutTreeListBase(std::unique_ptr<weld::TreeView> xControl, SvPivotTreeListType eType = UNDEFINED);
+    weld::TreeView& get_widget() { return *mxControl; }
+    virtual ~ScPivotLayoutTreeListBase();
 
     void PushEntriesToPivotFieldVector(ScPivotFieldVector& rVector);
 
-    void RemoveEntryForItem(ScItemValue* pItemValue);
+    void RemoveEntryForItem(const ScItemValue* pItemValue);
 
-    bool HasEntry(SvTreeListEntry* pEntry);
-
-protected:
-    virtual void InsertEntryForSourceTarget(SvTreeListEntry* pSource, SvTreeListEntry* pTarget);
-
-    virtual void InsertEntryForItem(ScItemValue* pItemValue, sal_uLong nPosition);
+    virtual void InsertEntryForSourceTarget(weld::TreeView& rSource, int nTarget);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

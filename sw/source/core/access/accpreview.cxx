@@ -17,16 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/svapp.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "access.hrc"
-#include <accpreview.hxx>
+#include <strings.hrc>
+#include "accpreview.hxx"
 
-const sal_Char sImplementationName[] = "com.sun.star.comp.Writer.SwAccessibleDocumentPageView";
+const char sImplementationName[] = "com.sun.star.comp.Writer.SwAccessibleDocumentPageView";
 
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::uno::Sequence;
 
 SwAccessiblePreview::SwAccessiblePreview(std::shared_ptr<SwAccessibleMap> const& pMap)
@@ -41,7 +38,7 @@ SwAccessiblePreview::~SwAccessiblePreview()
 
 OUString SwAccessiblePreview::getImplementationName( )
 {
-    return OUString( sImplementationName );
+    return sImplementationName;
 }
 
 sal_Bool SwAccessiblePreview::supportsService( const OUString& rServiceName )

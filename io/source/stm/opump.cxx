@@ -18,8 +18,6 @@
  */
 
 
-#include <stdio.h>
-
 #include <sal/log.hxx>
 
 #include <com/sun/star/io/IOException.hpp>
@@ -28,32 +26,26 @@
 #include <com/sun/star/io/XActiveDataSink.hpp>
 #include <com/sun/star/io/XActiveDataControl.hpp>
 #include <com/sun/star/io/XConnectable.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
-#include <uno/dispatcher.h>
-#include <uno/mapping.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/mutex.hxx>
 #include <osl/thread.h>
-
+#include <tools/diagnose_ex.h>
 
 using namespace osl;
 using namespace std;
 using namespace cppu;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
-using namespace com::sun::star::registry;
 using namespace com::sun::star::io;
 
-#include "services.hxx"
-
 namespace io_stm {
+
+    namespace {
 
     class Pump : public WeakImplHelper<
           XActiveDataSource, XActiveDataSink, XActiveDataControl, XConnectable, XServiceInfo >
@@ -107,6 +99,8 @@ namespace io_stm {
         virtual sal_Bool     SAL_CALL supportsService(const OUString& ServiceName) override;
     };
 
+    }
+
 Pump::Pump() : m_aThread( nullptr ),
                m_cnt( m_aMutex ),
                m_closeFired( false )
@@ -132,9 +126,9 @@ void Pump::fireError( const  Any & exception )
         {
             static_cast< XStreamListener * > ( iter.next() )->error( exception );
         }
-        catch ( const RuntimeException &e )
+        catch ( const RuntimeException & )
         {
-            SAL_WARN("io.streams","com.sun.star.comp.stoc.Pump: unexpected exception during calling listeners" << e.Message);
+            TOOLS_WARN_EXCEPTION("io.streams","com.sun.star.comp.stoc.Pump: unexpected exception during calling listeners");
         }
     }
 }
@@ -151,19 +145,19 @@ void Pump::fireClose()
         }
     }
 
-    if( bFire )
+    if( !bFire )
+        return;
+
+    OInterfaceIteratorHelper iter( m_cnt );
+    while( iter.hasMoreElements() )
     {
-        OInterfaceIteratorHelper iter( m_cnt );
-        while( iter.hasMoreElements() )
+        try
         {
-            try
-            {
-                static_cast< XStreamListener * > ( iter.next() )->closed( );
-            }
-            catch ( const RuntimeException &e )
-            {
-                SAL_WARN("io.streams","com.sun.star.comp.stoc.Pump: unexpected exception during calling listeners" << e.Message);
-            }
+            static_cast< XStreamListener * > ( iter.next() )->closed( );
+        }
+        catch ( const RuntimeException & )
+        {
+            TOOLS_WARN_EXCEPTION("io.streams","com.sun.star.comp.stoc.Pump: unexpected exception during calling listeners");
         }
     }
 }
@@ -177,9 +171,9 @@ void Pump::fireStarted()
         {
             static_cast< XStreamListener * > ( iter.next() )->started( );
         }
-        catch ( const RuntimeException &e )
+        catch ( const RuntimeException & )
         {
-            SAL_WARN("io.streams","com.sun.star.comp.stoc.Pump: unexpected exception during calling listeners" << e.Message);
+            TOOLS_WARN_EXCEPTION("io.streams","com.sun.star.comp.stoc.Pump: unexpected exception during calling listeners");
         }
     }
 }
@@ -193,9 +187,9 @@ void Pump::fireTerminated()
         {
             static_cast< XStreamListener * > ( iter.next() )->terminated();
         }
-        catch ( const RuntimeException &e )
+        catch ( const RuntimeException & )
         {
-            SAL_WARN("io.streams","com.sun.star.comp.stoc.Pump: unexpected exception during calling listeners" << e.Message);
+            TOOLS_WARN_EXCEPTION("io.streams","com.sun.star.comp.stoc.Pump: unexpected exception during calling listeners");
         }
     }
 }
@@ -293,11 +287,11 @@ void Pump::run()
         close();
         fireClose();
     }
-    catch ( const css::uno::Exception &e )
+    catch ( const css::uno::Exception & )
     {
         // we are the last on the stack.
         // this is to avoid crashing the program, when e.g. a bridge crashes
-        SAL_WARN("io.streams","com.sun.star.comp.stoc.Pump: unexpected exception during calling listeners" << e.Message);
+        TOOLS_WARN_EXCEPTION("io.streams","com.sun.star.comp.stoc.Pump: unexpected exception during calling listeners");
     }
 }
 
@@ -354,18 +348,17 @@ void Pump::start()
 {
     Guard< Mutex > aGuard( m_aMutex );
     m_aThread = osl_createSuspendedThread(Pump::static_run,this);
-    if( m_aThread )
-    {
-        // will be released by OPump::static_run
-        acquire();
-        osl_resumeThread( m_aThread );
-    }
-    else
+    if( !m_aThread )
     {
         throw RuntimeException(
             "Pump::start Couldn't create worker thread",
             *this);
     }
+
+    // will be released by OPump::static_run
+    acquire();
+    osl_resumeThread( m_aThread );
+
 }
 
 
@@ -427,7 +420,7 @@ Reference< XOutputStream > Pump::getOutputStream()
 // XServiceInfo
 OUString Pump::getImplementationName()
 {
-    return OPumpImpl_getImplementationName();
+    return "com.sun.star.comp.io.Pump";
 }
 
 // XServiceInfo
@@ -439,26 +432,17 @@ sal_Bool Pump::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > Pump::getSupportedServiceNames()
 {
-    return OPumpImpl_getSupportedServiceNames();
+    return { "com.sun.star.io.Pump" };
 }
 
+}
 
-Reference< XInterface > SAL_CALL OPumpImpl_CreateInstance(
-    SAL_UNUSED_PARAMETER const Reference< XComponentContext > & )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+io_Pump_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    return Reference< XInterface >( *new Pump );
+    return cppu::acquire(new io_stm::Pump());
 }
 
-OUString OPumpImpl_getImplementationName()
-{
-    return OUString("com.sun.star.comp.io.Pump");
-}
-
-Sequence<OUString> OPumpImpl_getSupportedServiceNames()
-{
-    return Sequence< OUString > { "com.sun.star.io.Pump" };
-}
-
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

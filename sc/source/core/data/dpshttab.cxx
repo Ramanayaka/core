@@ -18,28 +18,28 @@
  */
 
 #include <svl/zforlist.hxx>
+#include <unotools/charclass.hxx>
 
-#include "dpshttab.hxx"
-#include "dptabres.hxx"
-#include "document.hxx"
-#include "formulacell.hxx"
-#include "dpfilteredcache.hxx"
-#include "dpobject.hxx"
-#include "globstr.hrc"
-#include "rangenam.hxx"
-#include "queryentry.hxx"
+#include <dpcache.hxx>
+#include <dpshttab.hxx>
+#include <document.hxx>
+#include <dpfilteredcache.hxx>
+#include <dpobject.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <rangenam.hxx>
+#include <queryentry.hxx>
 
 #include <osl/diagnose.h>
 
 #include <vector>
-#include <set>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::Sequence;
 using ::std::vector;
 
-ScSheetDPData::ScSheetDPData(ScDocument* pD, const ScSheetSourceDesc& rDesc, const ScDPCache& rCache) :
+ScSheetDPData::ScSheetDPData(const ScDocument* pD, const ScSheetSourceDesc& rDesc, const ScDPCache& rCache) :
     ScDPTableData(pD),
     aQuery ( rDesc.GetQueryParam() ),
     bIgnoreEmptyRows( false ),
@@ -86,7 +86,7 @@ OUString ScSheetDPData::getDimensionName(long nColumn)
     {
         //TODO: different internal and display names?
         //return "Data";
-        return ScGlobal::GetRscString(STR_PIVOT_DATA);
+        return ScResId(STR_PIVOT_DATA);
     }
     else if (nColumn >= aCacheTable.getColSize())
     {
@@ -118,7 +118,7 @@ bool ScSheetDPData::IsDateDimension(long nDim)
     }
 }
 
-sal_uLong ScSheetDPData::GetNumberFormat(long nDim)
+sal_uInt32 ScSheetDPData::GetNumberFormat(long nDim)
 {
     CreateCacheTable();
     if (getIsDataLayoutDimension(nDim))
@@ -149,7 +149,7 @@ sal_uInt32  ScDPTableData::GetNumberFormatByIdx( NfIndexTableOffset eIdx )
 bool ScSheetDPData::getIsDataLayoutDimension(long nColumn)
 {
     CreateCacheTable();
-    return (nColumn ==(long)( aCacheTable.getColSize()));
+    return (nColumn ==static_cast<long>( aCacheTable.getColSize()));
 }
 
 void ScSheetDPData::SetEmptyFlags( bool bIgnoreEmptyRowsP, bool bRepeatIfEmptyP )
@@ -238,7 +238,7 @@ const ScRange& ScSheetSourceDesc::GetSourceRange() const
             if (!pRangeName)
                 break;
 
-            OUString aUpper = ScGlobal::pCharClass->uppercase(maRangeName);
+            OUString aUpper = ScGlobal::getCharClassPtr()->uppercase(maRangeName);
             const ScRangeData* pData = pRangeName->findByUpperName(aUpper);
             if (!pData)
                 break;
@@ -283,8 +283,8 @@ const ScDPCache* ScSheetSourceDesc::CreateCache(const ScDPDimensionSaveData* pDi
     if (!mpDoc)
         return nullptr;
 
-    sal_uLong nErrId = CheckSourceRange();
-    if (nErrId)
+    const char* pErrId = CheckSourceRange();
+    if (pErrId)
     {
         OSL_FAIL( "Error Create Cache" );
         return nullptr;
@@ -303,7 +303,7 @@ const ScDPCache* ScSheetSourceDesc::CreateCache(const ScDPDimensionSaveData* pDi
     return rCaches.getCache(GetSourceRange(), pDimData);
 }
 
-sal_uLong ScSheetSourceDesc::CheckSourceRange() const
+const char* ScSheetSourceDesc::CheckSourceRange() const
 {
     if (!mpDoc)
         return STR_ERR_DATAPILOTSOURCE;
@@ -316,7 +316,7 @@ sal_uLong ScSheetSourceDesc::CheckSourceRange() const
     if (rSrcRange.aStart.Col() > rSrcRange.aEnd.Col() || rSrcRange.aStart.Row() > rSrcRange.aEnd.Row())
         return STR_ERR_DATAPILOTSOURCE;
 
-    return 0;
+    return nullptr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

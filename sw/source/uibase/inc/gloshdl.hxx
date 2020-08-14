@@ -21,7 +21,9 @@
 
 #include <memory>
 #include <rtl/ustring.hxx>
-#include "swdllapi.h"
+#include <vcl/weld.hxx>
+
+#include <swdllapi.h>
 
 class SwWrtShell;
 class SwTextBlocks;
@@ -39,9 +41,9 @@ class SW_DLLPUBLIC SwGlossaryHdl
     std::unique_ptr<SwTextBlocks>
                     pCurGrp;
 
-    SAL_DLLPRIVATE bool  Expand( const OUString& rShortName,
+    SAL_DLLPRIVATE bool  Expand(weld::Window* pParent, const OUString& rShortName,
                     SwGlossaries* pGlossaries,
-                    SwTextBlocks *pGlossary );
+                    std::unique_ptr<SwTextBlocks> pGlossary );
 
 public:
     void        GlossaryDlg();
@@ -53,15 +55,13 @@ public:
     void        RenameGroup(const OUString& rOld, OUString& rNew, const OUString& rNewTitle);
     void        SetCurGroup(const OUString &aGrp, bool bApi = false, bool bAlwaysCreateNew = false);
 
-    sal_uInt16  GetGlossaryCnt();
+    sal_uInt16  GetGlossaryCnt() const;
     OUString    GetGlossaryName(sal_uInt16);
     OUString    GetGlossaryShortName(const OUString &rName);
     OUString    GetGlossaryShortName(sal_uInt16);
 
     bool    Rename( const OUString& rOldShortName, const OUString& rNewShortName,
                         const OUString& rNewName);
-    bool    CopyOrMove( const OUString& rSourceGroupName, OUString& rSourceShortName,
-                        const OUString& rDestGroupName, const OUString& rLongName, bool bMove );
     bool    HasShortName(const OUString &rShortName) const;
     // when NewGlossary is called from Basic then the previously set group should
     // be newly created if applicable.
@@ -70,7 +70,7 @@ public:
     bool    DelGlossary(const OUString&);
     bool    CopyToClipboard(SwWrtShell& rSh, const OUString& rShortName);
 
-    bool    ExpandGlossary();
+    bool    ExpandGlossary(weld::Window* pParent);
     bool    InsertGlossary(const OUString &rName);
 
     void    SetMacros(const OUString& rName,

@@ -18,13 +18,13 @@
  */
 
 #include "RTableConnection.hxx"
-#include "RelationTableView.hxx"
+#include <RTableConnectionData.hxx>
+#include <RelationTableView.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
-#include "ConnectionLine.hxx"
+#include <ConnectionLine.hxx>
 
 using namespace dbaui;
-// class ORelationTableConnection
 ORelationTableConnection::ORelationTableConnection( ORelationTableView* pContainer,
                                                    const TTableConnectionData::value_type& pTabConnData )
     :OTableConnection( pContainer, pTabConnData )
@@ -60,20 +60,18 @@ void ORelationTableConnection::Draw(vcl::RenderContext& rRenderContext, const to
     long nTemp;
 
     const OConnectionLine* pTopLine = nullptr;
-    const std::vector<OConnectionLine*>& rConnLineList = GetConnLineList();
-    std::vector<OConnectionLine*>::const_iterator aIter = rConnLineList.begin();
-    std::vector<OConnectionLine*>::const_iterator aEnd = rConnLineList.end();
+    const std::vector<std::unique_ptr<OConnectionLine>>& rConnLineList = GetConnLineList();
 
-    for(;aIter != aEnd;++aIter)
+    for (auto const& elem : rConnLineList)
     {
-        if( (*aIter)->IsValid() )
+        if( elem->IsValid() )
         {
-            aBoundingRect = (*aIter)->GetBoundingRect();
+            aBoundingRect = elem->GetBoundingRect();
             nTemp = aBoundingRect.Top();
             if(nTemp < nTop)
             {
                 nTop = nTemp;
-                pTopLine = (*aIter);
+                pTopLine = elem.get();
             }
         }
     }

@@ -18,17 +18,13 @@
  */
 
 
-#include "serialization.hxx"
 #include "serialization_app_xml.hxx"
 
 #include <com/sun/star/io/Pipe.hpp>
 #include <com/sun/star/xml/dom/DocumentBuilder.hpp>
 #include <com/sun/star/xml/dom/XNode.hpp>
 #include <com/sun/star/xml/dom/XDocument.hpp>
-#include <com/sun/star/xml/dom/XNodeList.hpp>
 #include <com/sun/star/xml/dom/NodeType.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/xml/xpath/XPathObjectType.hpp>
 #include <com/sun/star/xml/sax/XSAXSerializable.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
 #include <com/sun/star/beans/StringPair.hpp>
@@ -36,9 +32,6 @@
 
 #include <tools/diagnose_ex.h>
 #include <comphelper/processfactory.hxx>
-
-#include <limits>
-#include <memory>
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Exception;
@@ -67,7 +60,7 @@ CSerializationAppXML::getInputStream()
 {
     // The pipes output is provided through it's
     // XOutputStream interface aspect
-    return Reference< css::io::XInputStream >(m_xBuffer, UNO_QUERY);
+    return m_xBuffer;
 }
 
 void
@@ -112,7 +105,7 @@ CSerializationAppXML::serialize_node(const Reference< XNode >& rNode)
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.xforms");
     }
 }
 

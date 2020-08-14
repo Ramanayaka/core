@@ -28,6 +28,7 @@
 #include <com/sun/star/frame/XFrame2.hpp>
 #include <com/sun/star/frame/XDispatchProviderInterceptor.hpp>
 #include <cppuhelper/implbase.hxx>
+#include <cppuhelper/weakref.hxx>
 
 #include <rtl/ref.hxx>
 
@@ -52,7 +53,7 @@ class DocumentHolder :
 private:
     ::osl::Mutex                m_aMutex;
 
-    BOOL                        m_bAllowInPlace;
+    bool                        m_bAllowInPlace;
     LPOLEINPLACESITE            m_pIOleIPSite;
     LPOLEINPLACEFRAME           m_pIOleIPFrame;
     LPOLEINPLACEUIWINDOW        m_pIOleIPUIWindow;

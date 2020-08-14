@@ -16,10 +16,11 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
+
+#include <vbahelper/vbahelper.hxx>
 #include "vbatablehelper.hxx"
 #include <swtable.hxx>
 #include <unotbl.hxx>
-#include <docsh.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
@@ -102,11 +103,12 @@ OUString SwVbaTableHelper::getColumnStr( sal_Int32 nCol )
     do{
         nCalc = nCol % coDiff;
         if( nCalc >= 26 )
-            sRet = OUStringLiteral1( 'a' - 26 + nCalc ) + sRet;
+            sRet = OUStringChar( sal_Unicode('a' - 26 + nCalc) ) + sRet;
         else
-            sRet = OUStringLiteral1( 'A' + nCalc ) + sRet;
+            sRet = OUStringChar( sal_Unicode('A' + nCalc) ) + sRet;
 
-        if( 0 == ( nCol = nCol - nCalc ) )
+        nCol = nCol - nCalc;
+        if( 0 == nCol )
             break;
         nCol /= coDiff;
         --nCol;
@@ -114,7 +116,7 @@ OUString SwVbaTableHelper::getColumnStr( sal_Int32 nCol )
     return sRet;
 }
 
-sal_Int32 SwVbaTableHelper::getTableWidth( )
+sal_Int32 SwVbaTableHelper::getTableWidth( ) const
 {
     sal_Int32 nWidth = 0;
     bool isWidthRelatvie = false;
@@ -160,7 +162,7 @@ void SwVbaTableHelper::InitTabCols( SwTabCols& rCols, const SwTableBox *pStart )
     pTable->GetTabCols( rCols, pStart );
 }
 
-sal_Int32 SwVbaTableHelper::GetColCount( SwTabCols& rCols )
+sal_Int32 SwVbaTableHelper::GetColCount( SwTabCols const & rCols )
 {
     sal_Int32 nCount = 0;
     for( size_t i = 0; i < rCols.Count(); ++i )
@@ -169,7 +171,7 @@ sal_Int32 SwVbaTableHelper::GetColCount( SwTabCols& rCols )
     return rCols.Count() - nCount;
 }
 
-sal_Int32 SwVbaTableHelper::GetRightSeparator( SwTabCols& rCols, sal_Int32 nNum)
+sal_Int32 SwVbaTableHelper::GetRightSeparator( SwTabCols const & rCols, sal_Int32 nNum)
 {
     OSL_ENSURE( nNum < GetColCount( rCols ) ,"Index out of range");
     sal_Int32 i = 0;
@@ -190,8 +192,8 @@ sal_Int32 SwVbaTableHelper::GetColWidth( sal_Int32 nCol, sal_Int32 nRow )
     sal_Int32 nWidth = GetColWidth( aCols, nCol );
 
     sal_Int32 nTableWidth = getTableWidth( );
-    double dAbsWidth = ( (double)nWidth / UNO_TABLE_COLUMN_SUM ) * (double) nTableWidth;
-    return ( sal_Int32 )Millimeter::getInPoints( static_cast<int>(dAbsWidth) );
+    double dAbsWidth = ( static_cast<double>(nWidth) / UNO_TABLE_COLUMN_SUM ) * static_cast<double>(nTableWidth);
+    return static_cast<sal_Int32>(Millimeter::getInPoints( static_cast<int>(dAbsWidth) ));
 }
 
 sal_Int32 SwVbaTableHelper::GetColWidth( SwTabCols& rCols, sal_Int32 nNum )
@@ -234,6 +236,8 @@ void SwVbaTableHelper::SetColWidth( sal_Int32 _width, sal_Int32 nCol, sal_Int32 
 {
     double dAbsWidth = Millimeter::getInHundredthsOfOneMillimeter( _width );
     sal_Int32 nTableWidth = getTableWidth( );
+    if (!nTableWidth)
+        throw uno::RuntimeException();
     sal_Int32 nNewWidth = dAbsWidth/nTableWidth * UNO_TABLE_COLUMN_SUM;
 
     SwTableBox* pStart = GetTabBox( nCol, nRow );
@@ -254,7 +258,7 @@ void SwVbaTableHelper::SetColWidth( sal_Int32 _width, sal_Int32 nCol, sal_Int32 
                 aCols[ GetRightSeparator( aCols, nCol ) ] += nDiff;
             else
             {
-                int nDiffLeft = nDiff - (int)GetColWidth( aCols, nCol + 1) + (int)MINLAY;
+                int nDiffLeft = nDiff - static_cast<int>(GetColWidth( aCols, nCol + 1)) + int(MINLAY);
                 aCols[ GetRightSeparator( aCols, nCol ) ] += (nDiff - nDiffLeft);
                 aCols[ GetRightSeparator( aCols, nCol - 1 ) ] -= nDiffLeft;
             }
@@ -263,7 +267,7 @@ void SwVbaTableHelper::SetColWidth( sal_Int32 _width, sal_Int32 nCol, sal_Int32 
             aCols[ GetRightSeparator( aCols, nCol-1 ) ] -= nDiff;
     }
     else
-        aCols.SetRight( std::min( (long)nNewWidth, aCols.GetRightMax()) );
+        aCols.SetRight( std::min( static_cast<long>(nNewWidth), aCols.GetRightMax()) );
 
     pTable->SetTabCols(aCols, aOldCols, pStart, bCurRowOnly );
 }

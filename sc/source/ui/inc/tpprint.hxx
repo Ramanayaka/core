@@ -21,23 +21,20 @@
 #define INCLUDED_SC_SOURCE_UI_INC_TPPRINT_HXX
 
 #include <sfx2/tabdlg.hxx>
-#include <vcl/fixed.hxx>
 
 class ScTpPrintOptions : public SfxTabPage
 {
-    friend class VclPtr<ScTpPrintOptions>;
-    VclPtr<CheckBox>       m_pSkipEmptyPagesCB;
-    VclPtr<CheckBox>       m_pSelectedSheetsCB;
-    VclPtr<CheckBox>       m_pForceBreaksCB;
+    std::unique_ptr<weld::CheckButton>       m_xSkipEmptyPagesCB;
+    std::unique_ptr<weld::CheckButton>       m_xSelectedSheetsCB;
+    std::unique_ptr<weld::CheckButton>       m_xForceBreaksCB;
 
-            ScTpPrintOptions( vcl::Window* pParent, const SfxItemSet& rCoreSet );
 public:
+    ScTpPrintOptions(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rCoreSet);
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rCoreSet );
     virtual ~ScTpPrintOptions() override;
-    virtual void dispose() override;
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rCoreSet );
+
     virtual bool        FillItemSet( SfxItemSet* rCoreSet ) override;
     virtual void        Reset( const SfxItemSet* rCoreSet ) override;
-    using SfxTabPage::DeactivatePage;
     virtual DeactivateRC   DeactivatePage( SfxItemSet* pSet ) override;
 };
 

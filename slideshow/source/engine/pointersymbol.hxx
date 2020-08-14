@@ -12,21 +12,21 @@
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_POINTERSYMBOL_HXX
 
 #include <com/sun/star/rendering/XBitmap.hpp>
-#include <cppcanvas/customsprite.hxx>
+#include <cppcanvas/sprite.hxx>
 
-#include "com/sun/star/uno/Reference.hxx"
+#include <com/sun/star/geometry/RealPoint2D.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 
-#include "vieweventhandler.hxx"
-#include "screenupdater.hxx"
-#include "eventmultiplexer.hxx"
-#include "unoview.hxx"
+#include <vieweventhandler.hxx>
+#include <screenupdater.hxx>
+#include <eventmultiplexer.hxx>
+#include <unoview.hxx>
 
 #include <vector>
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 class EventMultiplexer;
 typedef std::shared_ptr<class PointerSymbol> PointerSymbolSharedPtr;
@@ -70,8 +70,7 @@ private:
     bool                                          mbVisible;
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif
 

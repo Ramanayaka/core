@@ -50,38 +50,38 @@ ItemContainer::ItemContainer( const ConstItemContainer& rConstItemContainer, con
 ItemContainer::ItemContainer( const Reference< XIndexAccess >& rSourceContainer, const ShareableMutex& rMutex ) :
     m_aShareMutex( rMutex )
 {
-    if ( rSourceContainer.is() )
+    if ( !rSourceContainer.is() )
+        return;
+
+    sal_Int32 nCount = rSourceContainer->getCount();
+    try
     {
-        sal_Int32 nCount = rSourceContainer->getCount();
-        try
+        for ( sal_Int32 i = 0; i < nCount; i++ )
         {
-            for ( sal_Int32 i = 0; i < nCount; i++ )
+            Sequence< PropertyValue > aPropSeq;
+            if ( rSourceContainer->getByIndex( i ) >>= aPropSeq )
             {
-                Sequence< PropertyValue > aPropSeq;
-                if ( rSourceContainer->getByIndex( i ) >>= aPropSeq )
+                sal_Int32 nContainerIndex = -1;
+                Reference< XIndexAccess > xIndexAccess;
+                for ( sal_Int32 j = 0; j < aPropSeq.getLength(); j++ )
                 {
-                    sal_Int32 nContainerIndex = -1;
-                    Reference< XIndexAccess > xIndexAccess;
-                    for ( sal_Int32 j = 0; j < aPropSeq.getLength(); j++ )
+                    if ( aPropSeq[j].Name == "ItemDescriptorContainer" )
                     {
-                        if ( aPropSeq[j].Name == "ItemDescriptorContainer" )
-                        {
-                            aPropSeq[j].Value >>= xIndexAccess;
-                            nContainerIndex = j;
-                            break;
-                        }
+                        aPropSeq[j].Value >>= xIndexAccess;
+                        nContainerIndex = j;
+                        break;
                     }
-
-                    if ( xIndexAccess.is() && nContainerIndex >= 0 )
-                        aPropSeq[nContainerIndex].Value <<= deepCopyContainer( xIndexAccess, rMutex );
-
-                    m_aItemVector.push_back( aPropSeq );
                 }
+
+                if ( xIndexAccess.is() && nContainerIndex >= 0 )
+                    aPropSeq[nContainerIndex].Value <<= deepCopyContainer( xIndexAccess, rMutex );
+
+                m_aItemVector.push_back( aPropSeq );
             }
         }
-        catch ( const IndexOutOfBoundsException& )
-        {
-        }
+    }
+    catch ( const IndexOutOfBoundsException& )
+    {
     }
 }
 
@@ -120,7 +120,7 @@ Reference< XIndexAccess > ItemContainer::deepCopyContainer( const Reference< XIn
     Reference< XIndexAccess > xReturn;
     if ( rSubContainer.is() )
     {
-        ConstItemContainer* pSource = ConstItemContainer::GetImplementation( rSubContainer );
+        ConstItemContainer* pSource = comphelper::getUnoTunnelImplementation<ConstItemContainer>( rSubContainer );
         ItemContainer* pSubContainer( nullptr );
         if ( pSource )
             pSubContainer = new ItemContainer( *pSource, rMutex );
@@ -137,16 +137,9 @@ namespace
     class theItemContainerUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theItemContainerUnoTunnelId > {};
 }
 
-const Sequence< sal_Int8 >& ItemContainer::GetUnoTunnelId() throw()
+const Sequence< sal_Int8 >& ItemContainer::getUnoTunnelId() throw()
 {
     return theItemContainerUnoTunnelId::get().getSeq();
-}
-
-ItemContainer* ItemContainer::GetImplementation( const css::uno::Reference< css::uno::XInterface >& rxIFace ) throw()
-{
-    css::uno::Reference< css::lang::XUnoTunnel > xUT( rxIFace, css::uno::UNO_QUERY );
-    return xUT.is() ? reinterpret_cast< ItemContainer* >(sal::static_int_cast< sal_IntPtr >(
-                          xUT->getSomething( ItemContainer::GetUnoTunnelId() ))) : nullptr;
 }
 
 // XElementAccess
@@ -166,60 +159,54 @@ sal_Int32 SAL_CALL ItemContainer::getCount()
 Any SAL_CALL ItemContainer::getByIndex( sal_Int32 Index )
 {
     ShareGuard aLock( m_aShareMutex );
-    if ( sal_Int32( m_aItemVector.size()) > Index )
-        return makeAny( m_aItemVector[Index] );
-    else
+    if ( sal_Int32( m_aItemVector.size()) <= Index )
         throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
+
+    return makeAny( m_aItemVector[Index] );
 }
 
 // XIndexContainer
 void SAL_CALL ItemContainer::insertByIndex( sal_Int32 Index, const Any& aItem )
 {
     Sequence< PropertyValue > aSeq;
-    if ( aItem >>= aSeq )
-    {
-        ShareGuard aLock( m_aShareMutex );
-        if ( sal_Int32( m_aItemVector.size()) == Index )
-            m_aItemVector.push_back( aSeq );
-        else if ( sal_Int32( m_aItemVector.size()) >Index )
-        {
-            std::vector< Sequence< PropertyValue > >::iterator aIter = m_aItemVector.begin();
-            aIter += Index;
-            m_aItemVector.insert( aIter, aSeq );
-        }
-        else
-            throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
-    }
-    else
+    if ( !(aItem >>= aSeq) )
         throw IllegalArgumentException( WRONG_TYPE_EXCEPTION,
                                         static_cast<OWeakObject *>(this), 2 );
-}
 
-void SAL_CALL ItemContainer::removeByIndex( sal_Int32 nIndex )
-{
     ShareGuard aLock( m_aShareMutex );
-    if ( (sal_Int32)m_aItemVector.size() > nIndex )
+    if ( sal_Int32( m_aItemVector.size()) == Index )
+        m_aItemVector.push_back( aSeq );
+    else if ( sal_Int32( m_aItemVector.size()) >Index )
     {
-        m_aItemVector.erase(m_aItemVector.begin() + nIndex);
+        std::vector< Sequence< PropertyValue > >::iterator aIter = m_aItemVector.begin();
+        aIter += Index;
+        m_aItemVector.insert( aIter, aSeq );
     }
     else
         throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
 }
 
+void SAL_CALL ItemContainer::removeByIndex( sal_Int32 nIndex )
+{
+    ShareGuard aLock( m_aShareMutex );
+    if ( static_cast<sal_Int32>(m_aItemVector.size()) <= nIndex )
+        throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
+
+    m_aItemVector.erase(m_aItemVector.begin() + nIndex);
+}
+
 void SAL_CALL ItemContainer::replaceByIndex( sal_Int32 Index, const Any& aItem )
 {
     Sequence< PropertyValue > aSeq;
-    if ( aItem >>= aSeq )
-    {
-        ShareGuard aLock( m_aShareMutex );
-        if ( sal_Int32( m_aItemVector.size()) > Index )
-            m_aItemVector[Index] = aSeq;
-        else
-            throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
-    }
-    else
+    if ( !(aItem >>= aSeq) )
         throw IllegalArgumentException( WRONG_TYPE_EXCEPTION,
                                         static_cast<OWeakObject *>(this), 2 );
+
+    ShareGuard aLock( m_aShareMutex );
+    if ( sal_Int32( m_aItemVector.size()) <= Index )
+        throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
+
+    m_aItemVector[Index] = aSeq;
 }
 
 } // namespace framework

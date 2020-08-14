@@ -18,35 +18,27 @@
  */
 
 
-#include "svx/svdstr.hrc"
-#include "svdglob.hxx"
-#include "svx/svditer.hxx"
+#include <svx/strings.hrc>
+#include <svx/dialmgr.hxx>
+#include <svx/svditer.hxx>
 
 #include <stdlib.h>
 #include <svx/globl3d.hxx>
 #include <svx/svdpage.hxx>
-#include <svl/style.hxx>
 #include <svx/scene3d.hxx>
-#include <svx/e3dundo.hxx>
 #include <svx/svdtrans.hxx>
-#include <svx/svxids.hrc>
-#include <editeng/colritem.hxx>
-#include <svx/e3ditem.hxx>
-#include <svx/xlntrit.hxx>
-#include <svx/xfltrit.hxx>
-#include <svx/svx3ditems.hxx>
-#include <svl/whiter.hxx>
-#include <svx/xflftrit.hxx>
 #include <sdr/properties/e3dsceneproperties.hxx>
 #include <svx/sdr/contact/viewcontactofe3dscene.hxx>
 #include <svx/svddrag.hxx>
-#include <helperminimaldepth3d.hxx>
+#include "helperminimaldepth3d.hxx"
 #include <algorithm>
 #include <drawinglayer/geometry/viewinformation3d.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <svx/e3dsceneupdater.hxx>
 #include <svx/svdmodel.hxx>
+#include <rtl/ustrbuf.hxx>
 
+namespace {
 
 class ImpRemap3DDepth
 {
@@ -66,6 +58,8 @@ public:
     sal_uInt32 GetOrdNum() const { return mnOrdNum; }
     bool IsScene() const { return mbIsScene; }
 };
+
+}
 
 ImpRemap3DDepth::ImpRemap3DDepth(sal_uInt32 nOrdNum, double fMinimalDepth)
 :   mnOrdNum(nOrdNum),
@@ -105,14 +99,14 @@ class Imp3DDepthRemapper
     std::vector< ImpRemap3DDepth > maVector;
 
 public:
-    explicit Imp3DDepthRemapper(E3dScene& rScene);
+    explicit Imp3DDepthRemapper(E3dScene const & rScene);
 
     sal_uInt32 RemapOrdNum(sal_uInt32 nOrdNum) const;
 };
 
-Imp3DDepthRemapper::Imp3DDepthRemapper(E3dScene& rScene)
+Imp3DDepthRemapper::Imp3DDepthRemapper(E3dScene const & rScene)
 {
-    // only called when rScene.GetSubList() and nObjCount > 1L
+    // only called when rScene.GetSubList() and nObjCount > 1
     SdrObjList* pList = rScene.GetSubList();
     const size_t nObjCount(pList->GetObjCount());
 
@@ -156,25 +150,26 @@ sal_uInt32 Imp3DDepthRemapper::RemapOrdNum(sal_uInt32 nOrdNum) const
 
 // BaseProperties section
 
-sdr::properties::BaseProperties* E3dScene::CreateObjectSpecificProperties()
+std::unique_ptr<sdr::properties::BaseProperties> E3dScene::CreateObjectSpecificProperties()
 {
-    return new sdr::properties::E3dSceneProperties(*this);
+    return std::make_unique<sdr::properties::E3dSceneProperties>(*this);
 }
 
 
 // DrawContact section
 
-sdr::contact::ViewContact* E3dScene::CreateObjectSpecificViewContact()
+std::unique_ptr<sdr::contact::ViewContact> E3dScene::CreateObjectSpecificViewContact()
 {
-    return new sdr::contact::ViewContactOfE3dScene(*this);
+    return std::make_unique<sdr::contact::ViewContactOfE3dScene>(*this);
 }
 
 
-E3dScene::E3dScene()
-:   E3dObject(),
+E3dScene::E3dScene(SdrModel& rSdrModel)
+:   E3dObject(rSdrModel),
+    SdrObjList(),
     aCamera(basegfx::B3DPoint(0.0, 0.0, 4.0), basegfx::B3DPoint()),
-    mp3DDepthRemapper(nullptr),
-    bDrawOnlySelected(false)
+    bDrawOnlySelected(false),
+    mbSkipSettingDirty(false)
 {
     // Set defaults
     SetDefaultAttributes();
@@ -213,13 +208,28 @@ E3dScene::~E3dScene()
     ImpCleanup3DDepthMapper();
 }
 
+SdrPage* E3dScene::getSdrPageFromSdrObjList() const
+{
+    return getSdrPageFromSdrObject();
+}
+
+SdrObject* E3dScene::getSdrObjectFromSdrObjList() const
+{
+    return const_cast< E3dScene* >(this);
+}
+
+SdrObjList* E3dScene::getChildrenOfSdrObject() const
+{
+    return const_cast< E3dScene* >(this);
+}
+
 basegfx::B2DPolyPolygon E3dScene::TakeXorPoly() const
 {
     const sdr::contact::ViewContactOfE3dScene& rVCScene = static_cast< sdr::contact::ViewContactOfE3dScene& >(GetViewContact());
     const drawinglayer::geometry::ViewInformation3D& aViewInfo3D(rVCScene.getViewInformation3D());
     const basegfx::B3DPolyPolygon aCubePolyPolygon(CreateWireframe());
 
-    basegfx::B2DPolyPolygon aRetval(basegfx::tools::createB2DPolyPolygonFromB3DPolyPolygon(aCubePolyPolygon,
+    basegfx::B2DPolyPolygon aRetval(basegfx::utils::createB2DPolyPolygonFromB3DPolyPolygon(aCubePolyPolygon,
         aViewInfo3D.getObjectToView()));
     aRetval.transform(rVCScene.getObjectTransformation());
 
@@ -228,11 +238,7 @@ basegfx::B2DPolyPolygon E3dScene::TakeXorPoly() const
 
 void E3dScene::ImpCleanup3DDepthMapper()
 {
-    if(mp3DDepthRemapper)
-    {
-        delete mp3DDepthRemapper;
-        mp3DDepthRemapper = nullptr;
-    }
+    mp3DDepthRemapper.reset();
 }
 
 sal_uInt32 E3dScene::RemapOrdNum(sal_uInt32 nNewOrdNum) const
@@ -243,7 +249,7 @@ sal_uInt32 E3dScene::RemapOrdNum(sal_uInt32 nNewOrdNum) const
 
         if(nObjCount > 1)
         {
-            const_cast<E3dScene*>(this)->mp3DDepthRemapper = new Imp3DDepthRemapper(const_cast<E3dScene&>(*this));
+            mp3DDepthRemapper.reset(new Imp3DDepthRemapper(*this));
         }
     }
 
@@ -262,7 +268,7 @@ sal_uInt16 E3dScene::GetObjIdentifier() const
 
 void E3dScene::SetBoundRectDirty()
 {
-    E3dScene* pScene = GetScene();
+    E3dScene* pScene(getRootE3dSceneFromE3dObject());
 
     if(pScene == this)
     {
@@ -289,7 +295,7 @@ void E3dScene::NbcSetSnapRect(const tools::Rectangle& rRect)
 void E3dScene::NbcMove(const Size& rSize)
 {
     tools::Rectangle aNewSnapRect = GetSnapRect();
-    MoveRect(aNewSnapRect, rSize);
+    aNewSnapRect.Move(rSize);
     NbcSetSnapRect(aNewSnapRect);
 }
 
@@ -330,43 +336,43 @@ void E3dScene::SetCamera(const Camera3D& rNewCamera)
     ImpCleanup3DDepthMapper();
 }
 
-void E3dScene::NewObjectInserted(const E3dObject* p3DObj)
-{
-    E3dObject::NewObjectInserted(p3DObj);
-
-    if ( p3DObj == this )
-        return;
-
-    ImpCleanup3DDepthMapper();
-}
-
 // Inform parent of changes of a child
 
 void E3dScene::StructureChanged()
 {
     E3dObject::StructureChanged();
-    SetRectsDirty();
+
+    E3dScene* pScene(getRootE3dSceneFromE3dObject());
+
+    if(nullptr != pScene && !pScene->mbSkipSettingDirty)
+    {
+        SetRectsDirty();
+    }
 
     ImpCleanup3DDepthMapper();
 }
 
 // Determine the overall scene object
 
-E3dScene* E3dScene::GetScene() const
+E3dScene* E3dScene::getRootE3dSceneFromE3dObject() const
 {
-    if(GetParentObj())
-        return GetParentObj()->GetScene();
-    else
-        return const_cast<E3dScene*>(this);
+    E3dScene* pParent(getParentE3dSceneFromE3dObject());
+
+    if(nullptr != pParent)
+    {
+        return pParent->getRootE3dSceneFromE3dObject();
+    }
+
+    return const_cast< E3dScene* >(this);
 }
 
 void E3dScene::removeAllNonSelectedObjects()
 {
     E3DModifySceneSnapRectUpdater aUpdater(this);
 
-    for(size_t a = 0; a < maSubList.GetObjCount(); ++a)
+    for(size_t a = 0; a < GetObjCount(); ++a)
     {
-        SdrObject* pObj = maSubList.GetObj(a);
+        SdrObject* pObj = GetObj(a);
 
         if(pObj)
         {
@@ -400,7 +406,7 @@ void E3dScene::removeAllNonSelectedObjects()
 
             if(bRemoveObject)
             {
-                maSubList.NbcRemoveObject(pObj->GetOrdNum());
+                NbcRemoveObject(pObj->GetOrdNum());
                 a--;
                 SdrObject::Free(pObj);
             }
@@ -408,41 +414,70 @@ void E3dScene::removeAllNonSelectedObjects()
     }
 }
 
-E3dScene* E3dScene::Clone() const
+E3dScene* E3dScene::CloneSdrObject(SdrModel& rTargetModel) const
 {
-    return CloneHelper< E3dScene >();
+    return CloneHelper< E3dScene >(rTargetModel);
 }
 
-E3dScene& E3dScene::operator=(const E3dScene& rObj)
+E3dScene& E3dScene::operator=(const E3dScene& rSource)
 {
-    if( this == &rObj )
-        return *this;
-    E3dObject::operator=(rObj);
+    if(this != &rSource)
+    {
+        // call parent
+        E3dObject::operator=(rSource);
 
-    aCamera          = rObj.aCamera;
+        // copy child SdrObjects
+        if (rSource.GetSubList())
+        {
+            CopyObjects(*rSource.GetSubList());
 
-    aCameraSet = rObj.aCameraSet;
-    static_cast<sdr::properties::E3dSceneProperties&>(GetProperties()).SetSceneItemsFromCamera();
+            // tdf#116979: needed here, we need bSnapRectDirty to be true
+            // which it is after using SdrObject::operator= (see above),
+            // but set to false again using CopyObjects
+            SetRectsDirty();
+        }
 
-    InvalidateBoundVolume();
-    RebuildLists();
-    SetRectsDirty();
+        // copy local data
+        aCamera = rSource.aCamera;
+        aCameraSet = rSource.aCameraSet;
+        static_cast<sdr::properties::E3dSceneProperties&>(GetProperties()).SetSceneItemsFromCamera();
+        InvalidateBoundVolume();
+        RebuildLists();
+        ImpCleanup3DDepthMapper();
+        GetViewContact().ActionChanged();
+    }
 
-    ImpCleanup3DDepthMapper();
-
-    // #i101941#
-    // After a Scene as model object is cloned, the used
-    // ViewContactOfE3dScene is created and partially used
-    // to calculate Bound/SnapRects, but - since quite some
-    // values are buffered at the VC - not really well
-    // initialized. It would be possible to always watch for
-    // preconditions of buffered data, but this would be expensive
-    // and would create a lot of short living data structures.
-    // It is currently better to flush that data, e.g. by using
-    // ActionChanged at the VC which will for this class
-    // flush that cached data and initialize its valid reconstruction
-    GetViewContact().ActionChanged();
     return *this;
+}
+
+void E3dScene::SuspendReportingDirtyRects()
+{
+    E3dScene* pScene(getRootE3dSceneFromE3dObject());
+
+    if(nullptr != pScene)
+    {
+        pScene->mbSkipSettingDirty = true;
+    }
+}
+
+void E3dScene::ResumeReportingDirtyRects()
+{
+    E3dScene* pScene(getRootE3dSceneFromE3dObject());
+
+    if(nullptr != pScene)
+    {
+        pScene->mbSkipSettingDirty = false;
+    }
+}
+
+void E3dScene::SetAllSceneRectsDirty()
+{
+    E3dScene* pScene(getRootE3dSceneFromE3dObject());
+
+    if(nullptr != pScene)
+    {
+        pScene->SetRectsDirty();
+    }
 }
 
 // Rebuild Light- and label- object lists rebuild (after loading, allocation)
@@ -450,17 +485,17 @@ E3dScene& E3dScene::operator=(const E3dScene& rObj)
 void E3dScene::RebuildLists()
 {
     // first delete
-    SdrLayerID nCurrLayerID = GetLayer();
-
-    SdrObjListIter a3DIterator(maSubList, SdrIterMode::Flat);
+    const SdrLayerID nCurrLayerID(GetLayer());
+    SdrObjListIter a3DIterator(GetSubList(), SdrIterMode::Flat);
 
     // then examine all the objects in the scene
-    while ( a3DIterator.IsMore() )
+    while(a3DIterator.IsMore())
     {
-        E3dObject* p3DObj = static_cast<E3dObject*>(a3DIterator.Next());
+        E3dObject* p3DObj(static_cast< E3dObject* >(a3DIterator.Next()));
         p3DObj->NbcSetLayer(nCurrLayerID);
-        NewObjectInserted(p3DObj);
     }
+
+    ImpCleanup3DDepthMapper();
 }
 
 SdrObjGeoData *E3dScene::NewGeoData() const
@@ -508,18 +543,18 @@ void E3dScene::RotateScene (const Point& rRef, double sn, double cs)
         // point is the origin, and the y-axis increases upward, the X-axis to
         // the right. This must be especially noted for the Y-values.
         // (When considering a flat piece of paper the Y-axis pointing downwards
-    Center.X() = (UpperLeft.X() + dxOutRectHalf) - rRef.X();
-    Center.Y() = -((UpperLeft.Y() + dyOutRectHalf) - rRef.Y());
+    Center.setX( (UpperLeft.X() + dxOutRectHalf) - rRef.X() );
+    Center.setY( -((UpperLeft.Y() + dyOutRectHalf) - rRef.Y()) );
                   // A few special cases has to be dealt with first (n * 90 degrees n integer)
     if (sn==1.0 && cs==0.0) { // 90deg
-        NewCenter.X() = -Center.Y();
-        NewCenter.Y() = -Center.X();
+        NewCenter.setX( -Center.Y() );
+        NewCenter.setY( -Center.X() );
     } else if (sn==0.0 && cs==-1.0) { // 180deg
-        NewCenter.X() = -Center.X();
-        NewCenter.Y() = -Center.Y();
+        NewCenter.setX( -Center.X() );
+        NewCenter.setY( -Center.Y() );
     } else if (sn==-1.0 && cs==0.0) { // 270deg
-        NewCenter.X() =  Center.Y();
-        NewCenter.Y() = -Center.X();
+        NewCenter.setX(  Center.Y() );
+        NewCenter.setY( -Center.X() );
     }
     else          // Here it is rotated to any angle in the mathematically
                   // positive direction!
@@ -527,20 +562,20 @@ void E3dScene::RotateScene (const Point& rRef, double sn, double cs)
                   // ynew = x * sin(alpha) + y * cos(alpha)
                   // Bottom Right is not rotated: the pages of aOutRect must
                   // remain parallel to the coordinate axes.
-        NewCenter.X() = (long) (Center.X() * cs - Center.Y() * sn);
-        NewCenter.Y() = (long) (Center.X() * sn + Center.Y() * cs);
+        NewCenter.setX( static_cast<long>(Center.X() * cs - Center.Y() * sn) );
+        NewCenter.setY( static_cast<long>(Center.X() * sn + Center.Y() * cs) );
     }
 
     Size Differenz;
-    Point DiffPoint = (NewCenter - Center);
-    Differenz.Width() = DiffPoint.X();
-    Differenz.Height() = -DiffPoint.Y();  // Note that the Y-axis is counted ad positive downward.
+    Point DiffPoint = NewCenter - Center;
+    Differenz.setWidth( DiffPoint.X() );
+    Differenz.setHeight( -DiffPoint.Y() );  // Note that the Y-axis is counted ad positive downward.
     NbcMove (Differenz);  // Actually executes the coordinate transformation.
 }
 
 OUString E3dScene::TakeObjNameSingul() const
 {
-    OUStringBuffer sName(ImpGetResStr(STR_ObjNameSingulScene3d));
+    OUStringBuffer sName(SvxResId(STR_ObjNameSingulScene3d));
 
     OUString aName(GetName());
     if (!aName.isEmpty())
@@ -555,7 +590,7 @@ OUString E3dScene::TakeObjNameSingul() const
 
 OUString E3dScene::TakeObjNamePlural() const
 {
-    return ImpGetResStr(STR_ObjNamePluralScene3d);
+    return SvxResId(STR_ObjNamePluralScene3d);
 }
 
 // The NbcRotate routine overrides the one of the SdrObject. The idea is
@@ -594,7 +629,7 @@ void E3dScene::NbcRotate(const Point& rRef, long nAngle, double sn, double cs)
     // through the enter of aOutRect's (Steiner's theorem), so RotateZ
 
     RotateScene (rRef, sn, cs);  // Rotates the scene
-    double fAngleInRad = nAngle/100.0 * F_PI180;
+    double fAngleInRad = basegfx::deg2rad(nAngle/100.0);
 
     basegfx::B3DHomMatrix aRotation;
     aRotation.rotate(0.0, 0.0, fAngleInRad);
@@ -610,7 +645,7 @@ void E3dScene::NbcRotate(const Point& rRef, long nAngle, double sn, double cs)
 
 void E3dScene::RecalcSnapRect()
 {
-    E3dScene* pScene = GetScene();
+    E3dScene* pScene(getRootE3dSceneFromE3dObject());
 
     if(pScene == this)
     {
@@ -622,14 +657,25 @@ void E3dScene::RecalcSnapRect()
     {
         // The Scene itself is a member of another scene, get the SnapRect
         // as a composite object
+        // call parent
         E3dObject::RecalcSnapRect();
+
+        for(size_t a = 0; a < GetObjCount(); ++a)
+        {
+            E3dObject* pCandidate(dynamic_cast< E3dObject* >(GetObj(a)));
+
+            if(pCandidate)
+            {
+                maSnapRect.Union(pCandidate->GetSnapRect());
+            }
+        }
     }
 }
 
 bool E3dScene::IsBreakObjPossible()
 {
     // Break scene, if all members are able to break
-    SdrObjListIter a3DIterator(maSubList, SdrIterMode::DeepWithGroups);
+    SdrObjListIter a3DIterator(GetSubList(), SdrIterMode::DeepWithGroups);
 
     while ( a3DIterator.IsMore() )
     {
@@ -686,6 +732,178 @@ bool E3dScene::BckCreate(SdrDragStat& /*rStat*/)
 
 void E3dScene::BrkCreate(SdrDragStat& /*rStat*/)
 {
+}
+
+void E3dScene::SetSelected(bool bNew)
+{
+    // call parent
+    E3dObject::SetSelected(bNew);
+
+    for(size_t a(0); a < GetObjCount(); a++)
+    {
+        E3dObject* pCandidate(dynamic_cast< E3dObject* >(GetObj(a)));
+
+        if(pCandidate)
+        {
+            pCandidate->SetSelected(bNew);
+        }
+    }
+}
+
+void E3dScene::NbcInsertObject(SdrObject* pObj, size_t nPos)
+{
+    // Is it even a 3D object?
+    if(nullptr != dynamic_cast< const E3dObject* >(pObj))
+    {
+        // Normal 3D object, insert means call parent
+        SdrObjList::NbcInsertObject(pObj, nPos);
+
+        // local needed stuff
+        InvalidateBoundVolume();
+        StructureChanged();
+    }
+    else
+    {
+        // No 3D object, inserted a page in place in a scene ...
+        getSdrObjectFromSdrObjList()->getSdrPageFromSdrObject()->InsertObject(pObj, nPos);
+    }
+}
+
+void E3dScene::InsertObject(SdrObject* pObj, size_t nPos)
+{
+    // Is it even a 3D object?
+    if(nullptr != dynamic_cast< const E3dObject* >(pObj))
+    {
+        // call parent
+        SdrObjList::InsertObject(pObj, nPos);
+
+        // local needed stuff
+        InvalidateBoundVolume();
+        StructureChanged();
+    }
+    else
+    {
+        // No 3D object, inserted a page in place in a scene ...
+        getSdrObjectFromSdrObjList()->getSdrPageFromSdrObject()->InsertObject(pObj, nPos);
+    }
+}
+
+SdrObject* E3dScene::NbcRemoveObject(size_t nObjNum)
+{
+    // call parent
+    SdrObject* pRetval = SdrObjList::NbcRemoveObject(nObjNum);
+
+    InvalidateBoundVolume();
+    StructureChanged();
+
+    return pRetval;
+}
+
+SdrObject* E3dScene::RemoveObject(size_t nObjNum)
+{
+    // call parent
+    SdrObject* pRetval(SdrObjList::RemoveObject(nObjNum));
+
+    InvalidateBoundVolume();
+    StructureChanged();
+
+    return pRetval;
+}
+
+void E3dScene::SetRectsDirty(bool bNotMyself, bool bRecursive)
+{
+    // call parent
+    E3dObject::SetRectsDirty(bNotMyself, bRecursive);
+
+    for(size_t a = 0; a < GetObjCount(); ++a)
+    {
+        E3dObject* pCandidate = dynamic_cast< E3dObject* >(GetObj(a));
+
+        if(pCandidate)
+        {
+            pCandidate->SetRectsDirty(bNotMyself, false);
+        }
+    }
+}
+
+void E3dScene::NbcSetLayer(SdrLayerID nLayer)
+{
+    // call parent
+    E3dObject::NbcSetLayer(nLayer);
+
+    for(size_t a = 0; a < GetObjCount(); ++a)
+    {
+        E3dObject* pCandidate = dynamic_cast< E3dObject* >(GetObj(a));
+
+        if(pCandidate)
+        {
+            pCandidate->NbcSetLayer(nLayer);
+        }
+    }
+}
+
+void E3dScene::handlePageChange(SdrPage* pOldPage, SdrPage* pNewPage)
+{
+    if(pOldPage == pNewPage)
+        return;
+
+    // call parent
+    E3dObject::handlePageChange(pOldPage, pNewPage);
+
+    for(size_t a(0); a < GetObjCount(); a++)
+    {
+        E3dObject* pCandidate = dynamic_cast< E3dObject* >(GetObj(a));
+
+        if(pCandidate)
+        {
+            pCandidate->handlePageChange(pOldPage, pNewPage);
+        }
+        else
+        {
+            OSL_ENSURE(false, "E3dScene::handlePageChange invalid object list (!)");
+        }
+    }
+}
+
+SdrObjList* E3dScene::GetSubList() const
+{
+    return const_cast< E3dScene* >(this);
+}
+
+basegfx::B3DRange E3dScene::RecalcBoundVolume() const
+{
+    basegfx::B3DRange aRetval;
+    const size_t nObjCnt(GetObjCount());
+
+    for(size_t a = 0; a < nObjCnt; ++a)
+    {
+        const E3dObject* p3DObject = dynamic_cast< const E3dObject* >(GetObj(a));
+
+        if(p3DObject)
+        {
+            basegfx::B3DRange aLocalRange(p3DObject->GetBoundVolume());
+            aLocalRange.transform(p3DObject->GetTransform());
+            aRetval.expand(aLocalRange);
+        }
+    }
+
+    return aRetval;
+}
+
+void E3dScene::SetTransformChanged()
+{
+    // call parent
+    E3dObject::SetTransformChanged();
+
+    for(size_t a = 0; a < GetObjCount(); ++a)
+    {
+        E3dObject* pCandidate = dynamic_cast< E3dObject* >(GetObj(a));
+
+        if(pCandidate)
+        {
+            pCandidate->SetTransformChanged();
+        }
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

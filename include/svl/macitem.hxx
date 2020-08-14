@@ -27,6 +27,7 @@
 #include <map>
 
 class SvStream;
+enum class SvMacroItemId : sal_uInt16;
 
 #define SVX_MACRO_LANGUAGE_JAVASCRIPT "JavaScript"
 #define SVX_MACRO_LANGUAGE_STARBASIC "StarBasic"
@@ -59,8 +60,6 @@ public:
     ScriptType GetScriptType() const        { return eType; }
 
     bool HasMacro() const { return !aMacName.isEmpty(); }
-
-    SvxMacro& operator=( const SvxMacro& rBase );
 };
 
 inline SvxMacro::SvxMacro( const OUString &rMacName, const OUString &rLibName,
@@ -69,12 +68,10 @@ inline SvxMacro::SvxMacro( const OUString &rMacName, const OUString &rLibName,
 {}
 
 // Macro Table, destroys the pointers in the DTor!
-typedef std::map<sal_uInt16, SvxMacro> SvxMacroTable;
+typedef std::map<SvMacroItemId, SvxMacro> SvxMacroTable;
 
 #define SVX_MACROTBL_VERSION31  0
 #define SVX_MACROTBL_VERSION40  1
-
-#define SVX_MACROTBL_AKTVERSION SVX_MACROTBL_VERSION40
 
 class SVL_DLLPUBLIC SvxMacroTableDtor
 {
@@ -87,28 +84,21 @@ public:
     SvxMacroTableDtor& operator=( const SvxMacroTableDtor &rCpy );
     bool operator==( const SvxMacroTableDtor& rOther ) const;
 
-    void        Read( SvStream &, sal_uInt16 nVersion = SVX_MACROTBL_AKTVERSION );
+    void        Read( SvStream & );
     SvStream&   Write( SvStream & ) const;
 
-    static sal_uInt16 GetVersion() { return SVX_MACROTBL_AKTVERSION; }
-
-    SvxMacroTable::iterator begin() { return aSvxMacroTable.begin(); }
-    SvxMacroTable::const_iterator begin() const { return aSvxMacroTable.begin(); }
-    SvxMacroTable::iterator end() { return aSvxMacroTable.end(); }
-    SvxMacroTable::const_iterator end () const { return aSvxMacroTable.end(); }
-    SvxMacroTable::size_type size() const { return aSvxMacroTable.size(); }
     bool empty() const { return aSvxMacroTable.empty(); }
 
     // returns NULL if no entry exists, or a pointer to the internal value
-    const SvxMacro* Get(sal_uInt16 nEvent) const;
+    const SvxMacro* Get(SvMacroItemId nEvent) const;
     // returns NULL if no entry exists, or a pointer to the internal value
-    SvxMacro* Get(sal_uInt16 nEvent);
+    SvxMacro* Get(SvMacroItemId nEvent);
     // return true if the key exists
-    bool IsKeyValid(sal_uInt16 nEvent) const;
+    bool IsKeyValid(SvMacroItemId nEvent) const;
     // This stores a copy of the rMacro parameter
-    SvxMacro& Insert(sal_uInt16 nEvent, const SvxMacro& rMacro);
+    SvxMacro& Insert(SvMacroItemId nEvent, const SvxMacro& rMacro);
     // If the entry exists, remove it from the map and release it's storage
-    void Erase(sal_uInt16 nEvent);
+    void Erase(SvMacroItemId nEvent);
 };
 
 
@@ -116,7 +106,7 @@ public:
 This item describes a Macro table.
 */
 
-class SVL_DLLPUBLIC SvxMacroItem: public SfxPoolItem
+class SVL_DLLPUBLIC SvxMacroItem final : public SfxPoolItem
 {
 public:
     explicit inline SvxMacroItem ( const sal_uInt16 nId );
@@ -127,39 +117,31 @@ public:
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper * = nullptr ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion ) const override;
-    virtual sal_uInt16          GetVersion( sal_uInt16 nFileFormatVersion ) const override;
+                                  const IntlWrapper& ) const override;
+    virtual SvxMacroItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const SvxMacroTableDtor& GetMacroTable() const { return aMacroTable;}
     void SetMacroTable( const SvxMacroTableDtor& rTbl ) { aMacroTable = rTbl; }
 
-    inline const SvxMacro& GetMacro( sal_uInt16 nEvent ) const;
-    inline bool HasMacro( sal_uInt16 nEvent ) const;
-           void SetMacro( sal_uInt16 nEvent, const SvxMacro& );
+    inline const SvxMacro& GetMacro( SvMacroItemId nEvent ) const;
+    inline bool HasMacro( SvMacroItemId nEvent ) const;
+           void SetMacro( SvMacroItemId nEvent, const SvxMacro& );
 
 private:
     SvxMacroTableDtor aMacroTable;
 
-    inline SvxMacroItem( const SvxMacroItem& );
-    SvxMacroItem &operator=( const SvxMacroItem & ) = delete;
+    SvxMacroItem( const SvxMacroItem& ) = default;
 };
 
 inline SvxMacroItem::SvxMacroItem( const sal_uInt16 nId )
     : SfxPoolItem( nId )
 {}
-inline SvxMacroItem::SvxMacroItem( const SvxMacroItem &rCpy )
-    : SfxPoolItem( rCpy ),
-    aMacroTable( rCpy.GetMacroTable() )
-{}
 
-inline bool SvxMacroItem::HasMacro( sal_uInt16 nEvent ) const
+inline bool SvxMacroItem::HasMacro( SvMacroItemId nEvent ) const
 {
     return aMacroTable.IsKeyValid( nEvent );
 }
-inline const SvxMacro& SvxMacroItem::GetMacro( sal_uInt16 nEvent ) const
+inline const SvxMacro& SvxMacroItem::GetMacro( SvMacroItemId nEvent ) const
 {
     return *(aMacroTable.Get(nEvent));
 }

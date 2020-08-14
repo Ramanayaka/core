@@ -17,31 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "JoinDesignView.hxx"
-#include "JoinTableView.hxx"
-#include "JoinController.hxx"
-#include <svl/undo.hxx>
-#include "adtabdlg.hxx"
+#include <JoinDesignView.hxx>
+#include <JoinTableView.hxx>
+#include <JoinController.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/msgbox.hxx>
-#include "browserids.hxx"
-#include "dbu_qry.hrc"
-#include <comphelper/types.hxx>
-#include <connectivity/dbtools.hxx>
-#include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include "TableConnection.hxx"
-#include "ConnectionLine.hxx"
-#include "ConnectionLineData.hxx"
-#include "TableConnectionData.hxx"
-#include "dbustrings.hrc"
-#include <comphelper/extract.hxx>
-#include "UITools.hxx"
 #include <vcl/settings.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
@@ -99,7 +82,7 @@ void OJoinDesignView::setReadOnly(bool /*_bReadOnly*/)
 {
 }
 
-void OJoinDesignView::SaveTabWinUIConfig(OTableWindow* pWin)
+void OJoinDesignView::SaveTabWinUIConfig(OTableWindow const * pWin)
 {
     OJoinController::SaveTabWinPosSize(pWin, m_pScrollWindow->GetHScrollBar().GetThumbPos(), m_pScrollWindow->GetVScrollBar().GetThumbPos());
 }

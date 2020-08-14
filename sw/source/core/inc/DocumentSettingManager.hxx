@@ -21,12 +21,13 @@
 
 #include <IDocumentSettingAccess.hxx>
 class SwDoc;
+typedef struct _xmlTextWriter* xmlTextWriterPtr;
 
 namespace sw {
 class DocumentSettingManager :
     public IDocumentSettingAccess
 {
-    rtl::Reference<SvxForbiddenCharactersTable> mxForbiddenCharsTable;
+    std::shared_ptr<SvxForbiddenCharactersTable> mxForbiddenCharsTable;
     SwDoc &m_rDoc;
 
     sal_uInt16  mnLinkUpdMode;       //< UpdateMode for links.
@@ -122,7 +123,11 @@ class DocumentSettingManager :
     bool mbMathBaselineAlignment            : 1;    // TL  2010-10-29 #i972#
     bool mbStylesNoDefault                  : 1;
     bool mbFloattableNomargins              : 1; //< If paragraph margins next to a floating table should be ignored.
-    bool mEmbedFonts                        : 1;  //< Whether to embed fonts used by the document when saving.
+    bool mEmbedFonts                        : 1;  //< Whether to embed fonts when saving.
+    bool mEmbedUsedFonts                    : 1;  //< Whether to embed fonts that are used by the document when saving.
+    bool mEmbedLatinScriptFonts             : 1;  //< Whether to embed latin script fonts when saving.
+    bool mEmbedAsianScriptFonts             : 1;  //< Whether to embed asian script fonts when saving.
+    bool mEmbedComplexScriptFonts           : 1;  //< Whether to embed complex script fonts when saving.
     bool mEmbedSystemFonts                  : 1;  //< Whether to embed also system fonts.
 
     // non-ui-compatibility flags:
@@ -138,6 +143,7 @@ class DocumentSettingManager :
     bool mbTabRelativeToIndent                      : 1;   // #i24363# tab stops relative to indent
     bool mbProtectForm                              : 1;
     bool mbMsWordCompTrailingBlanks                 : 1;   // tdf#104349 tdf#104668
+    bool mbMsWordCompMinLineHeightByFly             : 1;
     bool mbInvertBorderSpacing                      : 1;
     bool mbCollapseEmptyCellPara                    : 1;
     bool mbTabAtLeftIndentForParagraphsInList;             // #i89181# - see above
@@ -154,6 +160,14 @@ class DocumentSettingManager :
     bool mApplyParagraphMarkFormatToNumbering;
 
     bool mbLastBrowseMode                           : 1;
+    bool mbDisableOffPagePositioning; // tdf#112443
+    bool mbEmptyDbFieldHidesPara;
+    bool mbContinuousEndnotes = false;
+    bool mbProtectBookmarks;
+    bool mbProtectFields;
+    bool mbHeaderSpacingBelowLastPara;
+    bool mbFrameAutowidthWithMorePara; //tdf#124423
+    bool mbAllowWrapWhenAnchoredInTable;
 
 public:
 
@@ -165,8 +179,8 @@ public:
     virtual void set(/*[in]*/ DocumentSettingId id, /*[in]*/ bool value) override;
     virtual const css::i18n::ForbiddenCharacters* getForbiddenCharacters(/*[in]*/ LanguageType nLang, /*[in]*/ bool bLocaleData ) const override;
     virtual void setForbiddenCharacters(/*[in]*/ LanguageType nLang, /*[in]*/ const css::i18n::ForbiddenCharacters& rForbiddenCharacters ) override;
-    virtual rtl::Reference<SvxForbiddenCharactersTable>& getForbiddenCharacterTable() override;
-    virtual const rtl::Reference<SvxForbiddenCharactersTable>& getForbiddenCharacterTable() const override;
+    virtual std::shared_ptr<SvxForbiddenCharactersTable>& getForbiddenCharacterTable() override;
+    virtual const std::shared_ptr<SvxForbiddenCharactersTable>& getForbiddenCharacterTable() const override;
     virtual sal_uInt16 getLinkUpdateMode( /*[in]*/bool bGlobalSettings ) const override;
     virtual void setLinkUpdateMode( /*[in]*/ sal_uInt16 nMode ) override;
     virtual SwFieldUpdateFlags getFieldUpdateFlags( /*[in]*/bool bGlobalSettings ) const override;
@@ -182,7 +196,7 @@ public:
     void Setn32DummyCompatibilityOptions1( const sal_uInt32 CompatibilityOptions1 ) override;
     sal_uInt32 Getn32DummyCompatibilityOptions2() const override;
     void Setn32DummyCompatibilityOptions2( const sal_uInt32 CompatibilityOptions2 ) override;
-
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 }

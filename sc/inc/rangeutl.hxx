@@ -25,27 +25,24 @@
 #include "dbdata.hxx"
 #include "scdllapi.h"
 
-#include <com/sun/star/table/CellAddress.hpp>
-#include <com/sun/star/table/CellRangeAddress.hpp>
-#include <com/sun/star/uno/Sequence.hxx>
+namespace com::sun::star::table { struct CellAddress; }
+namespace com::sun::star::table { struct CellRangeAddress; }
+namespace com::sun::star::uno { template <typename > class Sequence; }
 
 class ScArea;
 class ScDocument;
-class ScRange;
-class ScRangeName;
 class ScRangeList;
-class ScDBCollection;
 
 enum RutlNameScope { RUTL_NONE=0, RUTL_NAMES, RUTL_DBASE };
 
 class SC_DLLPUBLIC ScRangeUtil
 {
 public:
-                ScRangeUtil()  {}
+    ScRangeUtil() = delete;
 
-    static bool MakeArea        ( const OUString&     rAreaStr,
+    static bool MakeArea        ( const OUString&   rAreaStr,
                                   ScArea&           rArea,
-                                  ScDocument*       pDoc,
+                                  const ScDocument* pDoc,
                                   SCTAB         nTab,
                                   ScAddress::Details const & rDetails );
 
@@ -53,14 +50,14 @@ public:
                                   OUString&           thePosStr );
 
     static bool IsAbsTabArea    ( const OUString&   rAreaStr,
-                                  ScDocument*       pDoc,
-                                  ScArea***         pppAreas,
-                                  sal_uInt16*       pAreaCount  = nullptr,
+                                  const ScDocument* pDoc,
+                                  std::unique_ptr<ScArea[]>* ppAreas,
+                                  sal_uInt16*       pAreaCount,
                                   bool              bAcceptCellRef = false,
                                   ScAddress::Details const & rDetails = ScAddress::detailsOOOa1 );
 
     static bool IsAbsArea       ( const OUString& rAreaStr,
-                                  ScDocument*   pDoc,
+                                  const ScDocument* pDoc,
                                   SCTAB     nTab,
                                   OUString*     pCompleteStr,
                                   ScRefAddress* pStartPos    = nullptr,
@@ -68,14 +65,14 @@ public:
                                   ScAddress::Details const & rDetails = ScAddress::detailsOOOa1 );
 
     static bool IsAbsPos        ( const OUString& rPosStr,
-                                  ScDocument*   pDoc,
+                                  const ScDocument* pDoc,
                                   SCTAB     nTab,
                                   OUString*       pCompleteStr,
                                   ScRefAddress* pPosTripel   = nullptr,
                                   ScAddress::Details const & rDetails = ScAddress::detailsOOOa1 );
 
     static bool MakeRangeFromName( const OUString& rName,
-                                    ScDocument*     pDoc,
+                                    const ScDocument* pDoc,
                                     SCTAB           nCurTab,
                                     ScRange&        rRange,
                                   RutlNameScope eScope=RUTL_NAMES,
@@ -169,7 +166,7 @@ public:
                             formula::FormulaGrammar::AddressConvention eConv,
                             sal_Unicode cSeparator = ' ',
                             bool bAppendStr = false,
-                            ScRefFlags nFormatFlags = (ScRefFlags::VALID | ScRefFlags::TAB_3D) );
+                            ScRefFlags nFormatFlags = ScRefFlags::VALID | ScRefFlags::TAB_3D );
     static void         GetStringFromRange(
                             OUString& rString,
                             const ScRange& rRange,
@@ -177,7 +174,7 @@ public:
                             formula::FormulaGrammar::AddressConvention eConv,
                             sal_Unicode cSeparator = ' ',
                             bool bAppendStr = false,
-                            ScRefFlags nFormatFlags = (ScRefFlags::VALID | ScRefFlags::TAB_3D) );
+                            ScRefFlags nFormatFlags = ScRefFlags::VALID | ScRefFlags::TAB_3D );
     static void         GetStringFromRangeList(
                             OUString& rString,
                             const ScRangeList* pRangeList,
@@ -192,7 +189,7 @@ public:
                             formula::FormulaGrammar::AddressConvention eConv,
                             sal_Unicode cSeparator,
                             bool bAppendStr = false,
-                            ScRefFlags nFormatFlags = (ScRefFlags::VALID | ScRefFlags::TAB_3D) );
+                            ScRefFlags nFormatFlags = ScRefFlags::VALID | ScRefFlags::TAB_3D );
 
 /// Range to String API
     static void         GetStringFromAddress(
@@ -209,7 +206,7 @@ public:
                             formula::FormulaGrammar::AddressConvention eConv,
                             sal_Unicode cSeparator = ' ',
                             bool bAppendStr = false,
-                            ScRefFlags nFormatFlags = (ScRefFlags::VALID | ScRefFlags::TAB_3D) );
+                            ScRefFlags nFormatFlags = ScRefFlags::VALID | ScRefFlags::TAB_3D );
     static void         GetStringFromRangeList(
                             OUString& rString,
                             const css::uno::Sequence< css::table::CellRangeAddress >& rRangeSeq,
@@ -221,7 +218,7 @@ public:
     static void         GetStringFromXMLRangeString(
                             OUString& rString,
                             const OUString& rXMLRange,
-                            ScDocument* pDoc );
+                            const ScDocument* pDoc );
 
 /// String to RangeData core
     static ScRangeData* GetRangeDataFromString(const OUString& rString, const SCTAB nTab, const ScDocument* pDoc);
@@ -236,9 +233,6 @@ public:
                     SCCOL colEnd   = 0,
                     SCROW rowEnd   = 0 );
 
-            ScArea( const ScArea& r );
-
-    ScArea& operator=   ( const ScArea& r );
     bool    operator==  ( const ScArea& r ) const;
 
 public:
@@ -263,7 +257,7 @@ private:
     bool            bFirstPass;
 
 public:
-            ScAreaNameIterator( ScDocument* pDoc );
+            ScAreaNameIterator( const ScDocument* pDoc );
 
     bool Next( OUString& rName, ScRange& rRange );
     bool WasDBName() const { return !bFirstPass; }

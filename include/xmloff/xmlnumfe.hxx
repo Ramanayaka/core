@@ -23,11 +23,14 @@
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <com/sun/star/uno/Sequence.h>
 #include <rtl/ustrbuf.hxx>
 #include <i18nlangtag/lang.h>
 #include <memory>
+
+namespace com::sun::star::lang { struct Locale; }
+namespace com::sun::star::uno { template <typename > class Reference; }
+namespace com::sun::star::util { class XNumberFormatsSupplier; }
 
 #define XML_WRITTENNUMBERSTYLES "WrittenNumberStyles"
 
@@ -35,25 +38,22 @@ class Color;
 class LocaleDataWrapper;
 class CharClass;
 class SvXMLExport;
-class SvXMLNamespaceMap;
-class SvXMLAttributeList;
 class SvNumberFormatter;
 class SvNumberformat;
 class SvXMLNumUsedList_Impl;
 
-struct SvXMLEmbeddedTextEntry;
 class SvXMLEmbeddedTextEntryArr;
 
 class XMLOFF_DLLPUBLIC SvXMLNumFmtExport final
 {
 private:
     SvXMLExport&                rExport;
-    OUString             sPrefix;
+    OUString                    sPrefix;
     SvNumberFormatter*          pFormatter;
     OUStringBuffer       sTextContent;
     std::unique_ptr<SvXMLNumUsedList_Impl>      pUsedList;
-    CharClass*                  pCharClass;
-    LocaleDataWrapper*          pLocaleData;
+    std::unique_ptr<CharClass>                  pCharClass;
+    std::unique_ptr<LocaleDataWrapper>          pLocaleData;
 
     SAL_DLLPRIVATE void AddCalendarAttr_Impl( const OUString& rCalendar );
     SAL_DLLPRIVATE void AddStyleAttr_Impl( bool bLong );
@@ -92,10 +92,10 @@ private:
     SAL_DLLPRIVATE void WriteRepeatedElement_Impl( sal_Unicode ch );
     SAL_DLLPRIVATE bool WriteTextWithCurrency_Impl( const OUString& rString,
                             const css::lang::Locale& rLocale );
-    SAL_DLLPRIVATE void ExportPart_Impl( const SvNumberformat& rFormat, sal_uInt32 nKey,
+    SAL_DLLPRIVATE void ExportPart_Impl( const SvNumberformat& rFormat, sal_uInt32 nKey, sal_uInt32 nRealKey,
                                 sal_uInt16 nPart, bool bDefPart );
 
-    SAL_DLLPRIVATE void ExportFormat_Impl( const SvNumberformat& rFormat, sal_uInt32 nKey );
+    SAL_DLLPRIVATE void ExportFormat_Impl( const SvNumberformat& rFormat, sal_uInt32 nKey, sal_uInt32 nRealKey );
 
 public:
     SvXMLNumFmtExport( SvXMLExport& rExport,
@@ -115,14 +115,14 @@ public:
     // get the style name that was generated for a key
     OUString GetStyleName( sal_uInt32 nKey );
 
-    css::uno::Sequence<sal_Int32> GetWasUsed();
+    css::uno::Sequence<sal_Int32> GetWasUsed() const;
     void SetWasUsed(const css::uno::Sequence<sal_Int32>& rWasUsed);
 
 
     // two methods to allow the field import/export to treat system languages
     // properly:
 
-    /// obtain number format with system languange for a given key
+    /// obtain number format with system language for a given key
     sal_uInt32 ForceSystemLanguage( sal_uInt32 nKey );
 };
 

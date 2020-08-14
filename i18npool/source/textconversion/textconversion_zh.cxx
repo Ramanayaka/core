@@ -18,7 +18,6 @@
  */
 
 
-#include <assert.h>
 #include <textconversion.hxx>
 #include <com/sun/star/i18n/TextConversionType.hpp>
 #include <com/sun/star/i18n/TextConversionOption.hpp>
@@ -26,7 +25,6 @@
 #include <com/sun/star/linguistic2/ConversionDirection.hpp>
 #include <com/sun/star/linguistic2/ConversionDictionaryType.hpp>
 #include <com/sun/star/linguistic2/ConversionDictionaryList.hpp>
-#include <comphelper/string.hxx>
 #include <memory>
 
 using namespace com::sun::star::lang;
@@ -35,7 +33,7 @@ using namespace com::sun::star::linguistic2;
 using namespace com::sun::star::uno;
 
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 TextConversion_zh::TextConversion_zh( const Reference < XComponentContext >& xContext )
     : TextConversionService("com.sun.star.i18n.TextConversion_zh")
@@ -43,7 +41,7 @@ TextConversion_zh::TextConversion_zh( const Reference < XComponentContext >& xCo
     xCDL = ConversionDictionaryList::create(xContext);
 }
 
-sal_Unicode SAL_CALL getOneCharConversion(sal_Unicode ch, const sal_Unicode* Data, const sal_uInt16* Index)
+static sal_Unicode getOneCharConversion(sal_Unicode ch, const sal_Unicode* Data, const sal_uInt16* Index)
 {
     if (Data && Index) {
         sal_Unicode address = Index[ch>>8];
@@ -77,7 +75,7 @@ const sal_uInt16 *getSTC_WordEntry_S2T();
 
 #endif
 
-OUString SAL_CALL
+OUString
 TextConversion_zh::getCharConversion(const OUString& aText, sal_Int32 nStartPos, sal_Int32 nLength, bool toSChinese, sal_Int32 nConversionOptions)
 {
     const sal_Unicode *Data;
@@ -114,7 +112,7 @@ TextConversion_zh::getCharConversion(const OUString& aText, sal_Int32 nStartPos,
     return OUString(newStr, SAL_NO_ACQUIRE); //take ownership
 }
 
-OUString SAL_CALL
+OUString
 TextConversion_zh::getWordConversion(const OUString& aText, sal_Int32 nStartPos, sal_Int32 nLength, bool toSChinese, sal_Int32 nConversionOptions, Sequence<sal_Int32>& offset)
 {
     sal_Int32 dictLen = 0;
@@ -195,8 +193,8 @@ TextConversion_zh::getWordConversion(const OUString& aText, sal_Int32 nStartPos,
                     // catch all other exceptions to allow
                     // querying the system dictionary in the next line
                 }
-                if (conversions.getLength() > 0) {
-                    if (offset.getLength() > 0) {
+                if (conversions.hasElements()) {
+                    if (offset.hasElements()) {
                         if (word.getLength() != conversions[0].getLength())
                             one2one=false;
                         while (current < conversions[0].getLength()) {
@@ -215,8 +213,8 @@ TextConversion_zh::getWordConversion(const OUString& aText, sal_Int32 nStartPos,
             }
 
             if (!found && index[len+1] - index[len] > 0) {
-                sal_Int32 bottom = (sal_Int32) index[len];
-                sal_Int32 top = (sal_Int32) index[len+1] - 1;
+                sal_Int32 bottom = static_cast<sal_Int32>(index[len]);
+                sal_Int32 top = static_cast<sal_Int32>(index[len+1]) - 1;
 
                 while (bottom <= top && !found) {
                     current = (top + bottom) / 2;
@@ -231,7 +229,7 @@ TextConversion_zh::getWordConversion(const OUString& aText, sal_Int32 nStartPos,
                         else  // Simplified/Traditionary conversion, forwards search for next word
                             current = entry[current] + word.getLength() + 1;
                         sal_Int32 start=current;
-                        if (offset.getLength() > 0) {
+                        if (offset.hasElements()) {
                             if (word.getLength() != OUString(&wordData[current]).getLength())
                                 one2one=false;
                             sal_Int32 convertedLength=OUString(&wordData[current]).getLength();
@@ -252,14 +250,14 @@ TextConversion_zh::getWordConversion(const OUString& aText, sal_Int32 nStartPos,
             }
         }
         if (!found) {
-            if (offset.getLength() > 0)
+            if (offset.hasElements())
                 offset[count]=nStartPos+currPos;
             newStr[count++] =
                 getOneCharConversion(aText[nStartPos+currPos], charData, charIndex);
             currPos++;
         }
     }
-    if (offset.getLength() > 0)
+    if (offset.hasElements())
         offset.realloc(one2one ? 0 : count);
     OUString aRet(newStr.get(), count);
     return aRet;
@@ -283,44 +281,42 @@ OUString SAL_CALL
 TextConversion_zh::getConversion( const OUString& aText, sal_Int32 nStartPos, sal_Int32 nLength,
     const Locale& rLocale, sal_Int16 nConversionType, sal_Int32 nConversionOptions)
 {
-    if (rLocale.Language == "zh" && ( nConversionType == TextConversionType::TO_SCHINESE || nConversionType == TextConversionType::TO_TCHINESE) ) {
-
-        aLocale=rLocale;
-        bool toSChinese = nConversionType == TextConversionType::TO_SCHINESE;
-
-        if (nConversionOptions & TextConversionOption::CHARACTER_BY_CHARACTER)
-            // char to char dictionary
-            return getCharConversion(aText, nStartPos, nLength, toSChinese, nConversionOptions);
-        else {
-            Sequence <sal_Int32> offset;
-            // word to word dictionary
-            return  getWordConversion(aText, nStartPos, nLength, toSChinese, nConversionOptions, offset);
-        }
-    } else
+    if (rLocale.Language != "zh" || ( nConversionType != TextConversionType::TO_SCHINESE && nConversionType != TextConversionType::TO_TCHINESE) )
         throw NoSupportException(); // Conversion type is not supported in this service.
+
+    aLocale=rLocale;
+    bool toSChinese = nConversionType == TextConversionType::TO_SCHINESE;
+
+    if (nConversionOptions & TextConversionOption::CHARACTER_BY_CHARACTER)
+        // char to char dictionary
+        return getCharConversion(aText, nStartPos, nLength, toSChinese, nConversionOptions);
+    else {
+        Sequence <sal_Int32> offset;
+        // word to word dictionary
+        return  getWordConversion(aText, nStartPos, nLength, toSChinese, nConversionOptions, offset);
+    }
 }
 
 OUString SAL_CALL
 TextConversion_zh::getConversionWithOffset( const OUString& aText, sal_Int32 nStartPos, sal_Int32 nLength,
     const Locale& rLocale, sal_Int16 nConversionType, sal_Int32 nConversionOptions, Sequence<sal_Int32>& offset)
 {
-    if (rLocale.Language == "zh" && ( nConversionType == TextConversionType::TO_SCHINESE || nConversionType == TextConversionType::TO_TCHINESE) ) {
-
-        aLocale=rLocale;
-        bool toSChinese = nConversionType == TextConversionType::TO_SCHINESE;
-
-        if (nConversionOptions & TextConversionOption::CHARACTER_BY_CHARACTER) {
-            offset.realloc(0);
-            // char to char dictionary
-            return getCharConversion(aText, nStartPos, nLength, toSChinese, nConversionOptions);
-        } else {
-            if (offset.getLength() < 2*nLength)
-                offset.realloc(2*nLength);
-            // word to word dictionary
-            return  getWordConversion(aText, nStartPos, nLength, toSChinese, nConversionOptions, offset);
-        }
-    } else
+    if (rLocale.Language != "zh" || ( nConversionType != TextConversionType::TO_SCHINESE && nConversionType != TextConversionType::TO_TCHINESE) )
         throw NoSupportException(); // Conversion type is not supported in this service.
+
+    aLocale=rLocale;
+    bool toSChinese = nConversionType == TextConversionType::TO_SCHINESE;
+
+    if (nConversionOptions & TextConversionOption::CHARACTER_BY_CHARACTER) {
+        offset.realloc(0);
+        // char to char dictionary
+        return getCharConversion(aText, nStartPos, nLength, toSChinese, nConversionOptions);
+    } else {
+        if (offset.getLength() < 2*nLength)
+            offset.realloc(2*nLength);
+        // word to word dictionary
+        return  getWordConversion(aText, nStartPos, nLength, toSChinese, nConversionOptions, offset);
+    }
 }
 
 sal_Bool SAL_CALL
@@ -329,6 +325,6 @@ TextConversion_zh::interactiveConversion( const Locale& /*rLocale*/, sal_Int16 /
     return false;
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

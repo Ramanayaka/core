@@ -25,35 +25,20 @@
 #include <com/sun/star/task/XJob.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/xml/dom/XDocumentBuilder.hpp>
-#include <com/sun/star/ucb/SimpleFileAccess.hpp>
+#include <com/sun/star/ucb/XSimpleFileAccess3.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/ucb/XProgressHandler.hpp>
 
 #include <osl/mutex.hxx>
-#include <osl/file.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <ucbhelper/content.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace uno {
-        class XComponentContext;
-    }
-}}}
+namespace com::sun::star::uno { class XComponentContext; }
 
 class INetURLObject;
 
 
 namespace migration
 {
-
-    OUString SAL_CALL OO3ExtensionMigration_getImplementationName();
-    css::uno::Sequence< OUString > SAL_CALL OO3ExtensionMigration_getSupportedServiceNames();
-    css::uno::Reference< css::uno::XInterface > SAL_CALL OO3ExtensionMigration_create(
-        css::uno::Reference< css::uno::XComponentContext > const & xContext );
-
-
-    // class ExtensionMigration
-
 
     typedef ::cppu::WeakImplHelper<
         css::lang::XServiceInfo,
@@ -69,7 +54,7 @@ namespace migration
         ::osl::Mutex            m_aMutex;
         OUString                m_sSourceDir;
         OUString                m_sTargetDir;
-        TStringVector           m_aBlackList;
+        TStringVector           m_aDenyList;
 
         enum ScanResult
         {
@@ -78,7 +63,6 @@ namespace migration
             SCANRESULT_DONTMIGRATE_EXTENSION
         };
 
-        void                    checkAndCreateDirectory( INetURLObject& rDirURL );
         ScanResult              scanExtensionFolder( const OUString& sExtFolder );
         void                    scanUserExtensions( const OUString& sSourceDir, TStringVector& aMigrateExtensions );
         bool                    scanDescriptionXml( const OUString& sDescriptionXmlFilePath );

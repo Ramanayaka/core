@@ -38,7 +38,7 @@ class CheckCrossReferences(unittest.TestCase):
     def setUpClass(cls):
         cls._uno = UnoInProcess()
         cls._uno.setUp()
-        cls.document = cls._uno.openWriterTemplateDoc("CheckCrossReferences.odt")
+        cls.document = cls._uno.openDocFromTDOC("CheckCrossReferences.odt")
         cls.xParaEnum = None
         cls.xPortionEnum = None
         cls.xFieldsRefresh = None
@@ -46,6 +46,10 @@ class CheckCrossReferences(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls._uno.tearDown()
+        # HACK in case cls.document holds a UNO proxy to an SwXTextDocument (whose dtor calls
+        # Application::GetSolarMutex via sw::UnoImplPtrDeleter), which would potentially only be
+        # garbage-collected after VCL has already been deinitialized:
+        cls.document = None
 
     def getNextField(self):
         while True:
@@ -59,8 +63,7 @@ class CheckCrossReferences(unittest.TestCase):
             if (self.xPortionEnum is None):
                 break
 
-            while self.xPortionEnum.hasMoreElements():
-                xPortionProps = self.xPortionEnum.nextElement()
+            for xPortionProps in self.xPortionEnum:
                 sPortionType = str(xPortionProps.getPropertyValue("TextPortionType"))
                 if (sPortionType == "TextField"):
                     xField = xPortionProps.getPropertyValue("TextField")
@@ -185,8 +188,7 @@ class CheckCrossReferences(unittest.TestCase):
         self.xParaEnum = xParaEnumAccess.createEnumeration()
 
         # iterate on the paragraphs to find certain paragraph to insert the bookmark
-        while self.xParaEnum.hasMoreElements():
-            xParaTextRange = self.xParaEnum.nextElement()
+        for xParaTextRange in self.xParaEnum:
 
             if xParaTextRange.getString() == "J":
                 break

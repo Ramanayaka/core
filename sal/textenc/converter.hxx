@@ -20,13 +20,13 @@
 #ifndef INCLUDED_SAL_TEXTENC_CONVERTER_HXX
 #define INCLUDED_SAL_TEXTENC_CONVERTER_HXX
 
-#include "sal/config.h"
-#include "sal/saldllapi.h"
-#include "sal/types.h"
+#include <sal/config.h>
+#include <sal/saldllapi.h>
+#include <sal/types.h>
 
 // Internal, non-stable ABI
 
-namespace sal { namespace detail { namespace textenc {
+namespace sal::detail::textenc {
 
 enum BadInputConversionAction
 {
@@ -46,7 +46,7 @@ handleBadInputUnicodeToTextConversion(
     const char * pDestBufEnd, sal_uInt32 * pInfo, char const * pPrefix,
     sal_Size nPrefixLen, bool * pPrefixWritten);
 
-} } }
+}
 
 #endif
 

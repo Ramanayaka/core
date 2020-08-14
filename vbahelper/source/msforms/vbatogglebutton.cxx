@@ -19,11 +19,13 @@
 
 #include "vbatogglebutton.hxx"
 #include "vbanewfont.hxx"
+#include <sal/log.hxx>
 
 using namespace com::sun::star;
 using namespace ooo::vba;
 
-ScVbaToggleButton::ScVbaToggleButton( const css::uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, ov::AbstractGeometryAttributes* pGeomHelper ) : ToggleButtonImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+ScVbaToggleButton::ScVbaToggleButton( const css::uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<ov::AbstractGeometryAttributes> pGeomHelper )
+    : ToggleButtonImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 {
     SAL_INFO("vbahelper", "ScVbaToggleButton(ctor)");
     m_xProps->setPropertyValue( "Toggle", uno::makeAny( true ) );
@@ -53,8 +55,8 @@ uno::Any SAL_CALL
 ScVbaToggleButton::getValue()
 {
     sal_Int16 nState = 0;
-        m_xProps->getPropertyValue( "State" ) >>= nState;
-     return uno::makeAny( nState ? sal_Int16( -1 ) : sal_Int16( 0 ) );
+    m_xProps->getPropertyValue( "State" ) >>= nState;
+    return uno::makeAny( nState ? sal_Int16( -1 ) : sal_Int16( 0 ) );
 }
 
 
@@ -146,18 +148,16 @@ void SAL_CALL ScVbaToggleButton::setLocked( sal_Bool bLocked )
 OUString
 ScVbaToggleButton::getServiceImplName()
 {
-    return OUString( "ScVbaToggleButton" );
+    return "ScVbaToggleButton";
 }
 
 uno::Sequence< OUString >
 ScVbaToggleButton::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.ToggleButton";
-    }
+        "ooo.vba.msforms.ToggleButton"
+    };
     return aServiceNames;
 }
 

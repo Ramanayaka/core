@@ -21,12 +21,11 @@
 #define INCLUDED_SC_SOURCE_UI_INC_CBUTTON_HXX
 
 #include <tools/gen.hxx>
-#include <tools/color.hxx>
 #include <vcl/vclptr.hxx>
 
 class OutputDevice;
 
-class ScDDComboBoxButton
+class ScDDComboBoxButton final
 {
 public:
             ScDDComboBoxButton( OutputDevice* pOutputDevice );
@@ -50,7 +49,6 @@ public:
 private:
     void    ImpDrawArrow( const tools::Rectangle&  rRect );
 
-protected:
     VclPtr<OutputDevice> pOut;
     Point   aBtnPos;
     Size    aBtnSize;

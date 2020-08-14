@@ -38,8 +38,9 @@
 #define RID_EXTBMP_SCROLLBAR                "res/sx10768.png"
 #define RID_EXTBMP_SPINBUTTON               "res/sx10769.png"
 #define RID_EXTBMP_NAVIGATIONBAR            "res/sx10607.png"
-#define RID_UPDATE_AVAILABLE_16             "extensions/source/update/ui/onlineupdate_16.png"
-#define RID_UPDATE_AVAILABLE_26             "extensions/source/update/ui/onlineupdate_26.png"
+#define RID_UPDATE_AVAILABLE_16             "extensions/res/update/ui/onlineupdate_16.png"
+#define RID_UPDATE_AVAILABLE_26             "extensions/res/update/ui/onlineupdate_26.png"
+#define RID_SCANNER_HANDLE                  "extensions/res/scanner/handle.png"
 #define BMP_TABLE                           "res/sx03188.png"
 #define BMP_QUERY                           "res/sx03202.png"
 #define RID_EXTBMP_AUTOFILTER_SC            "res/sc10716.png"
@@ -48,6 +49,7 @@
 #define RID_EXTBMP_AUTOFILTER_LC            "res/lc10716.png"
 #define RID_EXTBMP_FILTERCRIT_LC            "res/lc10715.png"
 #define RID_EXTBMP_REMOVE_FILTER_SORT_LC    "res/lc10711.png"
+#define SV_RESID_BITMAP_INFOBOX             "vcl/res/infobox.png"
 
 #endif
 

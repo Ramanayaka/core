@@ -34,11 +34,15 @@ namespace utl
 
     //= NodeValueAccessor
 
+    namespace {
+
     enum class LocationType
     {
         SimplyObjectInstance,
         Unbound
     };
+
+    }
 
     struct NodeValueAccessor
     {
@@ -85,9 +89,7 @@ namespace utl
         aDataType = _rType;
     }
 
-    #ifndef UNX
     static
-    #endif
     void lcl_copyData( const NodeValueAccessor& _rAccessor, const Any& _rData, ::osl::Mutex& _rMutex )
     {
         ::osl::MutexGuard aGuard( _rMutex );
@@ -118,9 +120,7 @@ namespace utl
         }
     }
 
-    #ifndef UNX
     static
-    #endif
     void lcl_copyData( Any& _rData, const NodeValueAccessor& _rAccessor, ::osl::Mutex& _rMutex )
     {
         ::osl::MutexGuard aGuard( _rMutex );
@@ -129,7 +129,7 @@ namespace utl
         switch ( _rAccessor.getLocType() )
         {
             case LocationType::SimplyObjectInstance:
-                // a simple setValue ....
+                // a simple setValue...
                 _rData.setValue( _rAccessor.getLocation(), _rAccessor.getDataType() );
                 break;
 
@@ -139,6 +139,8 @@ namespace utl
     }
 
     //= functors on NodeValueAccessor instances
+
+    namespace {
 
     /// base class for functors synchronizing between exchange locations and config sub nodes
     struct SubNodeAccess
@@ -160,7 +162,7 @@ namespace utl
     public:
         UpdateFromConfig( const OConfigurationNode& _rRootNode, ::osl::Mutex& _rMutex ) : SubNodeAccess( _rRootNode, _rMutex ) { }
 
-        void operator() ( NodeValueAccessor& _rAccessor )
+        void operator() ( NodeValueAccessor const & _rAccessor )
         {
             ::utl::lcl_copyData( _rAccessor, m_rRootNode.getNodeValue( _rAccessor.getPath( ) ), m_rMutex );
         }
@@ -171,7 +173,7 @@ namespace utl
     public:
         UpdateToConfig( const OConfigurationNode& _rRootNode, ::osl::Mutex& _rMutex ) : SubNodeAccess( _rRootNode, _rMutex ) { }
 
-        void operator() ( NodeValueAccessor& _rAccessor )
+        void operator() ( NodeValueAccessor const & _rAccessor )
         {
             Any aNewValue;
             lcl_copyData( aNewValue, _rAccessor, m_rMutex );
@@ -179,7 +181,7 @@ namespace utl
         }
     };
 
-    typedef std::vector<NodeValueAccessor> NodeValueAccessors;
+    }
 
     //= OConfigurationValueContainerImpl
 
@@ -189,7 +191,7 @@ namespace utl
         ::osl::Mutex&                           rMutex;         // the mutex for accessing the data containers
         OConfigurationTreeRoot                  aConfigRoot;    // the configuration node we're accessing
 
-        NodeValueAccessors                      aAccessors;     // the accessors to the node values
+        std::vector<NodeValueAccessor>          aAccessors;     // the accessors to the node values
 
         OConfigurationValueContainerImpl( const Reference< XComponentContext >& _rxORB, ::osl::Mutex& _rMutex )
             :xORB( _rxORB )
@@ -202,7 +204,7 @@ namespace utl
 
     OConfigurationValueContainer::OConfigurationValueContainer(
             const Reference< XComponentContext >& _rxORB, ::osl::Mutex& _rAccessSafety,
-            const sal_Char* _pConfigLocation, const sal_Int32 _nLevels )
+            const char* _pConfigLocation, const sal_Int32 _nLevels )
         :m_pImpl( new OConfigurationValueContainerImpl( _rxORB, _rAccessSafety ) )
     {
         implConstruct( OUString::createFromAscii( _pConfigLocation ), _nLevels );
@@ -227,10 +229,10 @@ namespace utl
             "Could not access the configuration node located at " << _rConfigLocation);
     }
 
-    void OConfigurationValueContainer::registerExchangeLocation( const sal_Char* _pRelativePath,
+    void OConfigurationValueContainer::registerExchangeLocation( const char* _pRelativePath,
         void* _pContainer, const Type& _rValueType )
     {
-        // checks ....
+        // checks...
         SAL_WARN_IF(!_pContainer, "unotools.config",
             "OConfigurationValueContainer::registerExchangeLocation: invalid container location!");
         SAL_WARN_IF(!( (TypeClass_CHAR      ==  _rValueType.getTypeClass( ) )

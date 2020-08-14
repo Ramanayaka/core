@@ -17,24 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_CACHEDPRIMITIVEBASE_HXX
-#define INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_CACHEDPRIMITIVEBASE_HXX
+#pragma once
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/rendering/XCanvas.hpp>
+#include <com/sun/star/rendering/XCachedPrimitive.hpp>
 
+#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <cppcanvas/canvas.hxx>
 
-#include "action.hxx"
+#include <action.hxx>
 
 namespace basegfx { class B2DHomMatrix; }
 
 
 /* Definition of internal::CachedPrimitiveBase class */
 
-namespace cppcanvas
-{
-    namespace internal
+namespace cppcanvas::internal
     {
         /** Base class providing cached re-rendering, if XCanvas
             returns XCachedPrimitive
@@ -79,9 +77,7 @@ namespace cppcanvas
             mutable ::basegfx::B2DHomMatrix                                 maLastTransformation;
             const bool                                                      mbOnlyRedrawWithSameTransform;
         };
-    }
-}
 
-#endif // INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_CACHEDPRIMITIVEBASE_HXX
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

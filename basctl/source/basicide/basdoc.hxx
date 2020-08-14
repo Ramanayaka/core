@@ -17,15 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASCTL_SOURCE_BASICIDE_BASDOC_HXX
-#define INCLUDED_BASCTL_SOURCE_BASICIDE_BASDOC_HXX
+#pragma once
 
-#include <iderid.hxx>
 #include <sfx2/docfac.hxx>
 #include <svx/ifaceids.hxx>
 #include <vcl/vclptr.hxx>
 #include <sfx2/printer.hxx>
-#include <memory>
+#include <sfx2/objsh.hxx>
 
 namespace basctl
 {
@@ -36,12 +34,10 @@ class DocShell: public SfxObjectShell
 
 protected:
     virtual void    Draw( OutputDevice *, const JobSetup & rSetup,
-                          sal_uInt16 nAspect = ASPECT_CONTENT ) override;
+                          sal_uInt16 nAspect ) override;
     virtual void    FillClass( SvGlobalName * pClassName,
                                SotClipboardFormatId * pFormat,
-                               OUString * pAppName,
                                OUString * pFullTypeName,
-                               OUString * pShortTypeName,
                                sal_Int32 nVersion,
                                bool bTemplate = false ) const override;
 
@@ -67,7 +63,5 @@ public:
 // This typedef helps baside.sdi,
 // because I don't know how to use nested names in it.
 typedef basctl::DocShell basctl_DocShell;
-
-#endif // INCLUDED_BASCTL_SOURCE_BASICIDE_BASDOC_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

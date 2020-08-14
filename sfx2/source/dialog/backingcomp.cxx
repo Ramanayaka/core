@@ -19,18 +19,10 @@
 
 #include "backingwindow.hxx"
 
-#include <helpid.hrc>
-
-#include <com/sun/star/beans/NamedValue.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/awt/Toolkit.hpp>
-#include <com/sun/star/awt/XDataTransferProviderAccess.hpp>
 #include <com/sun/star/awt/KeyEvent.hpp>
-#include <com/sun/star/awt/KeyModifier.hpp>
 #include <com/sun/star/frame/XLayoutManager.hpp>
-#include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
@@ -40,24 +32,16 @@
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/lang/XTypeProvider.hpp>
 
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
+#include <cppuhelper/weak.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <vcl/keycod.hxx>
 #include <vcl/wrkwin.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/syswin.hxx>
-#include <rtl/ref.hxx>
-#include <rtl/ustrbuf.hxx>
-
-#include <svl/solar.hrc>
-#include <svl/urihelper.hxx>
-#include <osl/file.hxx>
-#include <unotools/configmgr.hxx>
-
-#include <unotools/bootstrap.hxx>
 
 #include <sfx2/notebookbar/SfxNotebookBar.hxx>
 
@@ -89,6 +73,8 @@ private:
 
     /** the owner frame of this component. */
     css::uno::Reference< css::frame::XFrame > m_xFrame;
+
+    Size m_aInitialWindowMinSize;
 
 public:
 
@@ -163,10 +149,8 @@ BackingComp::BackingComp()
 
 css::uno::Any SAL_CALL BackingComp::queryInterface( /*IN*/ const css::uno::Type& aType )
 {
-    css::uno::Any aResult;
-
     // first look for own supported interfaces
-    aResult = ::cppu::queryInterface(
+    css::uno::Any aResult = ::cppu::queryInterface(
                 aType,
                 static_cast< css::lang::XTypeProvider* >(this),
                 static_cast< css::lang::XServiceInfo* >(this),
@@ -231,38 +215,25 @@ void SAL_CALL BackingComp::release()
 
 css::uno::Sequence< css::uno::Type > SAL_CALL BackingComp::getTypes()
 {
-    static ::cppu::OTypeCollection* pTypeCollection = nullptr;
-    if (!pTypeCollection)
-    {
-        /* GLOBAL SAFE { */
-        ::osl::MutexGuard aGlobalLock(::osl::Mutex::getGlobalMutex());
-        // Control these pointer again ... it can be, that another instance will be faster then this one!
-        if (!pTypeCollection)
-        {
-            /* LOCAL SAFE { */
-            SolarMutexGuard aGuard;
-            css::uno::Reference< css::lang::XTypeProvider > xProvider(m_xWindow, css::uno::UNO_QUERY);
+    static cppu::OTypeCollection aTypeCollection = [this]() {
+        SolarMutexGuard aGuard;
+        css::uno::Reference<css::lang::XTypeProvider> xProvider(m_xWindow, css::uno::UNO_QUERY);
 
-            css::uno::Sequence< css::uno::Type > lWindowTypes;
-            if (xProvider.is())
-                lWindowTypes = xProvider->getTypes();
+        css::uno::Sequence<css::uno::Type> lWindowTypes;
+        if (xProvider.is())
+            lWindowTypes = xProvider->getTypes();
 
-            static ::cppu::OTypeCollection aTypeCollection(
-                    cppu::UnoType<css::lang::XInitialization>::get(),
-                    cppu::UnoType<css::lang::XTypeProvider>::get(),
-                    cppu::UnoType<css::lang::XServiceInfo>::get(),
-                    cppu::UnoType<css::frame::XController>::get(),
-                    cppu::UnoType<css::lang::XComponent>::get(),
-                    cppu::UnoType<css::frame::XDispatchProvider>::get(),
-                    cppu::UnoType<css::frame::XDispatch>::get(),
-                    lWindowTypes);
+        return cppu::OTypeCollection(
+            cppu::UnoType<css::lang::XInitialization>::get(),
+            cppu::UnoType<css::lang::XTypeProvider>::get(),
+            cppu::UnoType<css::lang::XServiceInfo>::get(),
+            cppu::UnoType<css::frame::XController>::get(),
+            cppu::UnoType<css::lang::XComponent>::get(),
+            cppu::UnoType<css::frame::XDispatchProvider>::get(),
+            cppu::UnoType<css::frame::XDispatch>::get(), lWindowTypes);
+    }();
 
-            pTypeCollection = &aTypeCollection;
-            /* } LOCAL SAFE */
-        }
-        /* } GLOBAL SAFE */
-    }
-    return pTypeCollection->getTypes();
+    return aTypeCollection.getTypes();
 }
 
 
@@ -282,7 +253,7 @@ css::uno::Sequence< sal_Int8 > SAL_CALL BackingComp::getImplementationId()
 
 OUString SAL_CALL BackingComp::getImplementationName()
 {
-    return OUString("com.sun.star.comp.sfx2.BackingComp");
+    return "com.sun.star.comp.sfx2.BackingComp";
 }
 
 sal_Bool SAL_CALL BackingComp::supportsService( /*IN*/ const OUString& sServiceName )
@@ -292,10 +263,7 @@ sal_Bool SAL_CALL BackingComp::supportsService( /*IN*/ const OUString& sServiceN
 
 css::uno::Sequence< OUString > SAL_CALL BackingComp::getSupportedServiceNames()
 {
-    css::uno::Sequence< OUString > lNames(2);
-    lNames[0] = "com.sun.star.frame.StartModule";
-    lNames[1] = "com.sun.star.frame.ProtocolHandler";
-    return lNames;
+    return { "com.sun.star.frame.StartModule", "com.sun.star.frame.ProtocolHandler" };
 }
 
 
@@ -409,25 +377,31 @@ void SAL_CALL BackingComp::attachFrame( /*IN*/ const css::uno::Reference< css::f
         pBack->setOwningFrame( m_xFrame );
 
     // set NotebookBar
-    SystemWindow* pSysWindow = static_cast<SystemWindow*>(pParent);
+    SystemWindow* pSysWindow = pParent;
     if (pSysWindow)
     {
         //sfx2::SfxNotebookBar::StateMethod(pSysWindow, m_xFrame, "sfx/ui/notebookbar.ui");
     }
 
     // Set a minimum size for Start Center
-    if( pParent && pBack )
-    {
-        long nMenuHeight = 0;
-        vcl::Window* pMenu = pParent->GetWindow(GetWindowType::Next);
-        if( pMenu )
-            nMenuHeight = pMenu->GetSizePixel().Height();
+    if( !pParent || !pBack )
+        return;
 
-        pParent->SetMinOutputSizePixel(
-            Size(
-                pBack->get_width_request(),
-                pBack->get_height_request() + nMenuHeight));
-    }
+    long nMenuHeight = 0;
+    vcl::Window* pMenu = pParent->GetWindow(GetWindowType::Next);
+    if( pMenu )
+        nMenuHeight = pMenu->GetSizePixel().Height();
+
+    m_aInitialWindowMinSize = pParent->GetMinOutputSizePixel();
+    if (!m_aInitialWindowMinSize.Width())
+        m_aInitialWindowMinSize.AdjustWidth(1);
+    if (!m_aInitialWindowMinSize.Height())
+        m_aInitialWindowMinSize.AdjustHeight(1);
+
+    pParent->SetMinOutputSizePixel(
+        Size(
+            pBack->get_width_request(),
+            pBack->get_height_request() + nMenuHeight));
 
     /* } SAFE */
 }
@@ -556,9 +530,9 @@ void SAL_CALL BackingComp::disposing( /*IN*/ const css::lang::EventObject& aEven
 
 /** kill this instance.
 
-    It can be called from our owner frame only. But there is no possibility to check the calli.
+    It can be called from our owner frame only. But there is no possibility to check the caller.
     We have to release all our internal used resources and die. From this point we can throw
-    DisposedExceptions for every further interface request ... but current implementation doesn`t do so ...
+    DisposedExceptions for every further interface request... but current implementation doesn't do so...
 
 */
 
@@ -571,22 +545,19 @@ void SAL_CALL BackingComp::dispose()
     {
         css::uno::Reference< css::awt::XWindow > xParentWindow = m_xFrame->getContainerWindow();
         VclPtr< WorkWindow > pParent = static_cast<WorkWindow*>(VCLUnoHelper::GetWindow(xParentWindow).get());
-
-        // hide NotebookBar
-        sfx2::SfxNotebookBar::CloseMethod(static_cast<SystemWindow*>(pParent));
+        if (pParent)
+        {
+            pParent->SetMinOutputSizePixel(m_aInitialWindowMinSize);
+            // hide NotebookBar
+            sfx2::SfxNotebookBar::CloseMethod(static_cast<SystemWindow*>(pParent));
+        }
     }
 
     // stop listening at the window
     if (m_xWindow.is())
     {
-        css::uno::Reference< css::lang::XComponent > xBroadcaster(m_xWindow, css::uno::UNO_QUERY);
-        if (xBroadcaster.is())
-        {
-            css::uno::Reference< css::lang::XEventListener > xEventThis(static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY);
-            xBroadcaster->removeEventListener(xEventThis);
-        }
-        css::uno::Reference< css::awt::XKeyListener > xKeyThis(static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY);
-        m_xWindow->removeKeyListener(xKeyThis);
+        m_xWindow->removeEventListener(this);
+        m_xWindow->removeKeyListener(this);
         m_xWindow.clear();
     }
 
@@ -680,9 +651,7 @@ void SAL_CALL BackingComp::initialize( /*IN*/ const css::uno::Sequence< css::uno
 
     // start listening for window disposing
     // It's set at our owner frame as component window later too. So it will may be disposed there ...
-    css::uno::Reference< css::lang::XComponent > xBroadcaster(m_xWindow, css::uno::UNO_QUERY);
-    if (xBroadcaster.is())
-        xBroadcaster->addEventListener(static_cast< css::lang::XEventListener* >(this));
+    m_xWindow->addEventListener(static_cast< css::lang::XEventListener* >(this));
 
     m_xWindow->setVisible(true);
 
@@ -698,11 +667,11 @@ void SAL_CALL BackingComp::keyPressed( /*IN*/ const css::awt::KeyEvent&  )
 void SAL_CALL BackingComp::keyReleased( /*IN*/ const css::awt::KeyEvent& )
 {
     /* Attention
-        Please use keyPressed() instead of this method. Otherwhise it would be possible, that
+        Please use keyPressed() instead of this method. Otherwise it would be possible, that
         - a key input may be first switch to the backing mode
         - and this component register itself as key listener too
-        - and it's first event will be a keyRealeased() for the already well known event, which switched to the backing mode!
-        So it will be handled twice! document => backing mode => exit app ...
+        - and it's first event will be a keyReleased() for the already well known event, which switched to the backing mode!
+        So it will be handled twice! document => backing mode => exit app...
      */
 }
 
@@ -721,8 +690,9 @@ css::uno::Sequence < css::uno::Reference< css::frame::XDispatch > > SAL_CALL Bac
     sal_Int32 nCount = seqDescripts.getLength();
     css::uno::Sequence < css::uno::Reference < XDispatch > > lDispatcher( nCount );
 
-    for( sal_Int32 i=0; i<nCount; ++i )
-        lDispatcher[i] = queryDispatch( seqDescripts[i].FeatureURL, seqDescripts[i].FrameName, seqDescripts[i].SearchFlags );
+    std::transform(seqDescripts.begin(), seqDescripts.end(), lDispatcher.begin(),
+        [this](const css::frame::DispatchDescriptor& rDesc) -> css::uno::Reference<XDispatch> {
+            return queryDispatch(rDesc.FeatureURL, rDesc.FrameName, rDesc.SearchFlags); });
 
     return lDispatcher;
 }
@@ -731,24 +701,24 @@ css::uno::Sequence < css::uno::Reference< css::frame::XDispatch > > SAL_CALL Bac
 void SAL_CALL BackingComp::dispatch( const css::util::URL& aURL, const css::uno::Sequence < css::beans::PropertyValue >& /*lArgs*/ )
 {
     // vnd.org.libreoffice.recentdocs:ClearRecentFileList  - clear recent files
-    if ( aURL.Path == "ClearRecentFileList" )
-    {
-        VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(m_xWindow);
-        BackingWindow* pBack = dynamic_cast<BackingWindow*>(pWindow.get());
-        if( pBack )
-        {
-            pBack->clearRecentFileList();
+    if ( aURL.Path != "ClearRecentFileList" )
+        return;
 
-            // Recalculate minimum width
-            css::uno::Reference< css::awt::XWindow > xParentWindow = m_xFrame->getContainerWindow();
-            VclPtr< WorkWindow > pParent = static_cast<WorkWindow*>(VCLUnoHelper::GetWindow(xParentWindow).get());
-            if( pParent )
-            {
-                pParent->SetMinOutputSizePixel( Size(
-                        pBack->get_width_request(),
-                        pParent->GetMinOutputSizePixel().Height()) );
-            }
-        }
+    VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(m_xWindow);
+    BackingWindow* pBack = dynamic_cast<BackingWindow*>(pWindow.get());
+    if( !pBack )
+        return;
+
+    pBack->clearRecentFileList();
+
+    // Recalculate minimum width
+    css::uno::Reference< css::awt::XWindow > xParentWindow = m_xFrame->getContainerWindow();
+    VclPtr< WorkWindow > pParent = static_cast<WorkWindow*>(VCLUnoHelper::GetWindow(xParentWindow).get());
+    if( pParent )
+    {
+        pParent->SetMinOutputSizePixel( Size(
+                pBack->get_width_request(),
+                pParent->GetMinOutputSizePixel().Height()) );
     }
 }
 
@@ -762,7 +732,7 @@ void SAL_CALL BackingComp::removeStatusListener( const css::uno::Reference< css:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_sfx2_BackingComp_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

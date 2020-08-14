@@ -11,32 +11,29 @@
 #define INCLUDED_VCL_INC_UNX_SCREENSAVERINHIBITOR_HXX
 
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#if !defined(__sun) && !defined(AIX)
-#include <X11/extensions/dpms.h>
-#endif
+#include <X11/Xmd.h>
 
 #include <rtl/ustring.hxx>
 #include <vcl/dllapi.h>
 
-#include <boost/optional.hpp>
+#include <optional>
 
 class VCL_PLUGIN_PUBLIC ScreenSaverInhibitor
 {
 public:
-    void inhibit( bool bInhibit, const rtl::OUString& sReason,
-                  bool bIsX11, const boost::optional<unsigned int>& xid, boost::optional<Display*> pDisplay );
+    void inhibit( bool bInhibit, const OUString& sReason,
+                  bool bIsX11, const std::optional<unsigned int>& xid, std::optional<Display*> pDisplay );
 
 private:
     // These are all used as guint, however this header may be included
     // in kde/tde/etc backends, where we would ideally avoid having
     // any glib dependencies, hence the direct use of unsigned int.
-    boost::optional<unsigned int> mnFDOCookie; // FDO ScreenSaver Inhibit
-    boost::optional<unsigned int> mnFDOPMCookie; // FDO PowerManagement Inhibit
-    boost::optional<unsigned int> mnGSMCookie;
-    boost::optional<unsigned int> mnMSMCookie;
+    std::optional<unsigned int> mnFDOCookie; // FDO ScreenSaver Inhibit
+    std::optional<unsigned int> mnFDOPMCookie; // FDO PowerManagement Inhibit
+    std::optional<unsigned int> mnGSMCookie;
+    std::optional<unsigned int> mnMSMCookie;
 
-    boost::optional<int> mnXScreenSaverTimeout;
+    std::optional<int> mnXScreenSaverTimeout;
 
 #if !defined(__sun) && !defined(AIX)
     BOOL mbDPMSWasEnabled;
@@ -48,7 +45,7 @@ private:
     // There are a bunch of different dbus based inhibition APIs. Some call
     // themselves ScreenSaver inhibition, some are PowerManagement inhibition,
     // but they appear to have the same effect. There doesn't appear to be one
-    // all encompassing standard, hence we should just try all of tem.
+    // all encompassing standard, hence we should just try all of them.
     //
     // The current APIs we have: (note: the list of supported environments is incomplete)
     // FDO: org.freedesktop.ScreenSaver::Inhibit - appears to be supported only by KDE?

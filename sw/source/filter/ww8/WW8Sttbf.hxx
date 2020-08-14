@@ -23,7 +23,6 @@
 #include <memory>
 #include <vector>
 
-#include <tools/solar.h>
 #include <rtl/ustring.hxx>
 #include <IDocumentExternalData.hxx>
 
@@ -40,7 +39,7 @@ namespace ww8
 
     public:
         WW8Struct(SvStream& rSt, sal_uInt32 nPos, sal_uInt32 nSize);
-        WW8Struct(WW8Struct * pStruct, sal_uInt32 nPos, sal_uInt32 nSize);
+        WW8Struct(WW8Struct const * pStruct, sal_uInt32 nPos, sal_uInt32 nSize);
         virtual ~WW8Struct() override;
 
         sal_uInt8 getU8(sal_uInt32 nOffset);
@@ -106,7 +105,7 @@ namespace ww8
 
             if (ncbExtra > 0)
             {
-                ExtraPointer_t pExtra(new T(this, nOffset, ncbExtra));
+                ExtraPointer_t pExtra = std::make_shared<T>(this, nOffset, ncbExtra);
                 m_Extras.push_back(pExtra);
 
                 nOffset += ncbExtra;

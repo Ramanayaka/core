@@ -17,15 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sharedstringsfragment.hxx"
+#include <sharedstringsfragment.hxx>
+#include <biffhelper.hxx>
 
-#include "richstringcontext.hxx"
-#include "sharedstringsbuffer.hxx"
+#include <richstringcontext.hxx>
+#include <sharedstringsbuffer.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::oox::core;
 
@@ -84,7 +83,6 @@ void SharedStringsFragment::finalizeImport()
     getSharedStrings().finalizeImport();
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

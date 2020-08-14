@@ -27,11 +27,6 @@
 #include <tools/globname.hxx>
 
 // ImpSvGlobalName ------------------------------------------------------------
-ImpSvGlobalName::ImpSvGlobalName()
-{
-    memset( &szData, 0, sizeof( szData ) );
-}
-
 ImpSvGlobalName::ImpSvGlobalName( const ImpSvGlobalName & rObj )
     : szData(rObj.szData)
 {
@@ -80,15 +75,14 @@ SvGlobalName::SvGlobalName( sal_uInt32 n1, sal_uInt16 n2, sal_uInt16 n3,
 SvGlobalName::SvGlobalName( const css::uno::Sequence < sal_Int8 >& aSeq )
 {
     // create SvGlobalName from a platform independent representation
-    SvGUID aResult;
-    memset( &aResult, 0, sizeof( aResult ) );
+    SvGUID aResult = {};
     if ( aSeq.getLength() == 16 )
     {
-        aResult.Data1 = ( ( ( ( ( ( sal_uInt8 )aSeq[0] << 8 ) + ( sal_uInt8 )aSeq[1] ) << 8 ) + ( sal_uInt8 )aSeq[2] ) << 8 ) + ( sal_uInt8 )aSeq[3];
-        aResult.Data2 = ( ( sal_uInt8 )aSeq[4] << 8 ) + ( sal_uInt8 )aSeq[5];
-        aResult.Data3 = ( ( sal_uInt8 )aSeq[6] << 8 ) + ( sal_uInt8 )aSeq[7];
+        aResult.Data1 = ( ( ( ( ( static_cast<sal_uInt8>(aSeq[0]) << 8 ) + static_cast<sal_uInt8>(aSeq[1]) ) << 8 ) + static_cast<sal_uInt8>(aSeq[2]) ) << 8 ) + static_cast<sal_uInt8>(aSeq[3]);
+        aResult.Data2 = ( static_cast<sal_uInt8>(aSeq[4]) << 8 ) + static_cast<sal_uInt8>(aSeq[5]);
+        aResult.Data3 = ( static_cast<sal_uInt8>(aSeq[6]) << 8 ) + static_cast<sal_uInt8>(aSeq[7]);
         for( int nInd = 0; nInd < 8; nInd++ )
-            aResult.Data4[nInd] = ( sal_uInt8 )aSeq[nInd+8];
+            aResult.Data4[nInd] = static_cast<sal_uInt8>(aSeq[nInd+8]);
     }
 
     pImp = ::o3tl::cow_wrapper< ImpSvGlobalName >(aResult);
@@ -105,7 +99,7 @@ SvGlobalName & SvGlobalName::operator = ( const SvGlobalName & rObj )
     return *this;
 }
 
-SvGlobalName & SvGlobalName::operator = ( SvGlobalName && rObj )
+SvGlobalName & SvGlobalName::operator = ( SvGlobalName && rObj ) noexcept
 {
     pImp = std::move(rObj.pImp);
     return *this;
@@ -147,19 +141,6 @@ bool SvGlobalName::operator < ( const SvGlobalName & rObj ) const
     return pImp->szData.Data1 < rObj.pImp->szData.Data1;
 }
 
-SvGlobalName & SvGlobalName::operator += ( sal_uInt32 n )
-{
-    sal_uInt32 nOld = pImp->szData.Data1;
-    pImp->szData.Data1 += n;
-
-    if( nOld > pImp->szData.Data1 )
-    {
-        // overflow
-        pImp->szData.Data2++;
-    }
-    return *this;
-}
-
 bool SvGlobalName::operator == ( const SvGlobalName & rObj ) const
 {
     return pImp == rObj.pImp;
@@ -199,7 +180,7 @@ bool SvGlobalName::MakeId( const OUString & rIdStr )
                 if( rtl::isAsciiDigit( *pStr ) )
                     nSec = nSec * 16 + (*pStr - '0');
                 else
-                    nSec = nSec * 16 + (sal_uInt16)(rtl::toAsciiUpperCase( *pStr ) - 'A' + 10 );
+                    nSec = nSec * 16 + static_cast<sal_uInt16>(rtl::toAsciiUpperCase( *pStr ) - 'A' + 10 );
             else
                 return false;
             pStr++;
@@ -213,14 +194,13 @@ bool SvGlobalName::MakeId( const OUString & rIdStr )
                 if( rtl::isAsciiDigit( *pStr ) )
                     nThird = nThird * 16 + (*pStr - '0');
                 else
-                    nThird = nThird * 16 + (sal_uInt16)(rtl::toAsciiUpperCase( *pStr ) - 'A' + 10 );
+                    nThird = nThird * 16 + static_cast<sal_uInt16>(rtl::toAsciiUpperCase( *pStr ) - 'A' + 10 );
             else
                 return false;
             pStr++;
         }
 
-        sal_Int8 szRemain[ 8 ];
-        memset( szRemain, 0, sizeof( szRemain ) );
+        sal_Int8 szRemain[ 8 ] = {};
         pStr++;
         for( i = 0; i < 16; i++ )
         {
@@ -228,7 +208,7 @@ bool SvGlobalName::MakeId( const OUString & rIdStr )
                 if( rtl::isAsciiDigit( *pStr ) )
                     szRemain[i/2] = szRemain[i/2] * 16 + (*pStr - '0');
                 else
-                    szRemain[i/2] = szRemain[i/2] * 16 + (sal_Int8)(rtl::toAsciiUpperCase( *pStr ) - 'A' + 10 );
+                    szRemain[i/2] = szRemain[i/2] * 16 + static_cast<sal_Int8>(rtl::toAsciiUpperCase( *pStr ) - 'A' + 10 );
             else
                 return false;
             pStr++;
@@ -247,9 +227,9 @@ bool SvGlobalName::MakeId( const OUString & rIdStr )
 
 OUString SvGlobalName::GetHexName() const
 {
-    OStringBuffer aHexBuffer;
+    OStringBuffer aHexBuffer(36);
 
-    sal_Char buf[ 10 ];
+    char buf[ 10 ];
     sprintf( buf, "%8.8" SAL_PRIXUINT32, pImp->szData.Data1 );
     aHexBuffer.append(buf);
     aHexBuffer.append('-');
@@ -279,14 +259,14 @@ css::uno::Sequence < sal_Int8 > SvGlobalName::GetByteSequence() const
     // maybe transported remotely
     css::uno::Sequence< sal_Int8 > aResult( 16 );
 
-    aResult[ 0] = (sal_Int8) (pImp->szData.Data1 >> 24);
-    aResult[ 1] = (sal_Int8) ((pImp->szData.Data1 << 8 ) >> 24);
-    aResult[ 2] = (sal_Int8) ((pImp->szData.Data1 << 16 ) >> 24);
-    aResult[ 3] = (sal_Int8) ((pImp->szData.Data1 << 24 ) >> 24);
-    aResult[ 4] = (sal_Int8) (pImp->szData.Data2 >> 8);
-    aResult[ 5] = (sal_Int8) ((pImp->szData.Data2 << 8 ) >> 8);
-    aResult[ 6] = (sal_Int8) (pImp->szData.Data3 >> 8);
-    aResult[ 7] = (sal_Int8) ((pImp->szData.Data3 << 8 ) >> 8);
+    aResult[ 0] = static_cast<sal_Int8>(pImp->szData.Data1 >> 24);
+    aResult[ 1] = static_cast<sal_Int8>((pImp->szData.Data1 << 8 ) >> 24);
+    aResult[ 2] = static_cast<sal_Int8>((pImp->szData.Data1 << 16 ) >> 24);
+    aResult[ 3] = static_cast<sal_Int8>((pImp->szData.Data1 << 24 ) >> 24);
+    aResult[ 4] = static_cast<sal_Int8>(pImp->szData.Data2 >> 8);
+    aResult[ 5] = static_cast<sal_Int8>((pImp->szData.Data2 << 8 ) >> 8);
+    aResult[ 6] = static_cast<sal_Int8>(pImp->szData.Data3 >> 8);
+    aResult[ 7] = static_cast<sal_Int8>((pImp->szData.Data3 << 8 ) >> 8);
     aResult[ 8] = pImp->szData.Data4[ 0 ];
     aResult[ 9] = pImp->szData.Data4[ 1 ];
     aResult[10] = pImp->szData.Data4[ 2 ];

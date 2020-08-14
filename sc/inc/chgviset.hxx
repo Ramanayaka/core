@@ -21,6 +21,7 @@
 
 #include <memory>
 #include <tools/datetime.hxx>
+#include <tools/solar.h>
 #include <unotools/textsearch.hxx>
 #include <svx/ctredlin.hxx>
 #include "rangelst.hxx"
@@ -45,7 +46,6 @@ private:
     bool                bIsAuthor;
     bool                bIsComment;
     bool                bIsRange;
-    bool                bEveryoneButMe;
     bool                bShowAccepted;
     bool                bShowRejected;
     bool                mbIsActionRange;
@@ -55,8 +55,7 @@ private:
 public:
 
     ScChangeViewSettings()
-        : pCommentSearcher(nullptr)
-        , aFirstDateTime(DateTime::EMPTY)
+        : aFirstDateTime(DateTime::EMPTY)
         , aLastDateTime(DateTime::EMPTY)
         , eDateMode(SvxRedlinDateMode::BEFORE)
         , bShowIt(false)
@@ -64,7 +63,6 @@ public:
         , bIsAuthor(false)
         , bIsComment(false)
         , bIsRange(false)
-        , bEveryoneButMe(false)
         , bShowAccepted(false)
         , bShowRejected(false)
         , mbIsActionRange(false)
@@ -105,8 +103,6 @@ public:
     void                SetTheComment(const OUString& aString);
 
     bool                IsValidComment(const OUString* pCommentStr) const;
-
-    bool                IsEveryoneButMe() const {return bEveryoneButMe;}
 
     bool                HasRange() const {return bIsRange;}
     void                SetHasRange(bool bFlag) {bIsRange=bFlag;}

@@ -21,13 +21,13 @@
 
 #include <com/sun/star/animations/Timing.hpp>
 
-#include "oox/helper/attributelist.hxx"
+#include <oox/helper/attributelist.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::animations;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
 // ST_TLTime
 Any GetTime(  const OUString & val )
@@ -59,6 +59,6 @@ Any GetTimeAnimateValueTime( const OUString & val )
     return aPercent;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

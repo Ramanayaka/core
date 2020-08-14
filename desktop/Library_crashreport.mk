@@ -26,9 +26,10 @@ $(eval $(call gb_Library_add_defs,crashreport,\
 $(eval $(call gb_Library_add_libs,crashreport,\
     $(if $(filter LINUX %BSD SOLARIS, $(OS)), \
         $(DLOPEN_LIBS) \
-        -lpthread \
     ) \
 ))
+
+$(eval $(call gb_Library_use_sdk_api,crashreport))
 
 $(eval $(call gb_Library_use_libraries,crashreport,\
     comphelper \
@@ -36,6 +37,7 @@ $(eval $(call gb_Library_use_libraries,crashreport,\
     cppuhelper \
     sal \
     salhelper \
+    ucbhelper \
     utl \
 ))
 

@@ -17,26 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ORealDriver.hxx"
-#include "odbc/ODriver.hxx"
-#include "odbc/OTools.hxx"
-#include "odbc/OFunctions.hxx"
+#include <odbc/ODriver.hxx>
+#include <odbc/OTools.hxx>
+#include <odbc/OFunctions.hxx>
 
-namespace connectivity
+namespace connectivity::odbc
 {
-    namespace odbc
-    {
-        class ORealObdcDriver : public ODBCDriver
+        namespace {
+
+        class ORealOdbcDriver : public ODBCDriver
         {
         protected:
             virtual oslGenericFunction  getOdbcFunction(ODBC3SQLFunctionId _nIndex)  const override;
             virtual SQLHANDLE   EnvironmentHandle(OUString &_rPath) override;
         public:
-            explicit ORealObdcDriver(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory) : ODBCDriver(_rxFactory) {}
+            explicit ORealOdbcDriver(const css::uno::Reference< css::uno::XComponentContext >& _rxContext) : ODBCDriver(_rxContext) {}
         };
 
+        }
 
-oslGenericFunction ORealObdcDriver::getOdbcFunction(ODBC3SQLFunctionId _nIndex) const
+oslGenericFunction ORealOdbcDriver::getOdbcFunction(ODBC3SQLFunctionId _nIndex) const
 {
     oslGenericFunction pFunction = nullptr;
     switch(_nIndex)
@@ -258,15 +258,10 @@ oslGenericFunction ORealObdcDriver::getOdbcFunction(ODBC3SQLFunctionId _nIndex) 
 }
 
 
-css::uno::Reference< css::uno::XInterface >  SAL_CALL ODBCDriver_CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory)
-{
-    return *(new ORealObdcDriver(_rxFactory));
-}
-
 // ODBC Environment (common for all Connections):
-SQLHANDLE ORealObdcDriver::EnvironmentHandle(OUString &_rPath)
+SQLHANDLE ORealOdbcDriver::EnvironmentHandle(OUString &_rPath)
 {
-    // Is (for this instance) already a Environment made?
+    // Is (for this instance) already an Environment made?
     if (!m_pDriverHandle)
     {
         SQLHANDLE h = SQL_NULL_HANDLE;
@@ -285,8 +280,12 @@ SQLHANDLE ORealObdcDriver::EnvironmentHandle(OUString &_rPath)
     return m_pDriverHandle;
 }
 
-
-    }
 }
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+connectivity_odbc_ORealOdbcDriver_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new connectivity::odbc::ORealOdbcDriver(context));
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

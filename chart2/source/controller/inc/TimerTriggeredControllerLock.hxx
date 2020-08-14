@@ -16,14 +16,16 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_TIMERTRIGGEREDCONTROLLERLOCK_HXX
-#define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_TIMERTRIGGEREDCONTROLLERLOCK_HXX
 
-#include "ControllerLockGuard.hxx"
+#pragma once
+
+#include <com/sun/star/uno/Reference.h>
 #include <vcl/timer.hxx>
-#include <com/sun/star/frame/XModel.hpp>
 
 #include <memory>
+
+namespace com::sun::star::frame { class XModel; }
+namespace chart { class ControllerLockGuardUNO; }
 
 namespace chart
 {
@@ -45,7 +47,5 @@ private:
 };
 
 } //namespace chart
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

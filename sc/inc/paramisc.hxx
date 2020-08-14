@@ -20,15 +20,14 @@
 #ifndef INCLUDED_SC_INC_PARAMISC_HXX
 #define INCLUDED_SC_INC_PARAMISC_HXX
 
-#include <memory>
 #include "address.hxx"
-#include <sal/types.h>
+#include <optional>
 
 struct ScSolveParam
 {
     ScAddress                   aRefFormulaCell;
     ScAddress                   aRefVariableCell;
-    std::unique_ptr<OUString>   pStrTargetVal;
+    std::optional<OUString>   pStrTargetVal;
 
     ScSolveParam();
     ScSolveParam( const ScSolveParam& r );

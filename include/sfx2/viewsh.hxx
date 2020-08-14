@@ -23,49 +23,48 @@
 #include <memory>
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
-#include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/view/XRenderable.hpp>
 #include <com/sun/star/uno/Reference.h>
 #include <svl/lstner.hxx>
-#include <com/sun/star/ui/XContextMenuInterceptor.hpp>
-#include <com/sun/star/datatransfer/clipboard/XClipboardListener.hpp>
-#include <com/sun/star/datatransfer/clipboard/XClipboardNotifier.hpp>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <sfx2/shell.hxx>
-#include <tools/gen.hxx>
+#include <i18nlangtag/languagetag.hxx>
+#include <vcl/IDialogRenderable.hxx>
 #include <vcl/errcode.hxx>
-#include <vcl/jobset.hxx>
 #include <o3tl/typed_flags_set.hxx>
 #include <vcl/vclptr.hxx>
-#include <sfx2/tabdlg.hxx>
 #include <LibreOfficeKit/LibreOfficeKitTypes.h>
 #include <editeng/outliner.hxx>
 #include <functional>
 
+class SfxTabPage;
 class SfxBaseController;
 class Size;
+class Point;
 class Fraction;
-namespace vcl { class Window; }
+namespace weld {
+    class Container;
+    class DialogController;
+    class Window;
+}
 class KeyEvent;
-class WorkWindow;
 class SvBorder;
 class SdrView;
-class SfxFrame;
-class SfxMedium;
 class SfxModule;
 class SfxViewFrame;
-class SfxItemPool;
-class SfxFrameSetDescriptor;
 class Printer;
 class SfxPrinter;
-class SfxProgress;
-class SfxFrameItem;
-class Dialog;
 class Menu;
 class NotifyEvent;
 class SfxInPlaceClient;
 namespace vcl { class PrinterController; }
+
+namespace com::sun::star::datatransfer::clipboard { class XClipboardListener; }
+namespace com::sun::star::datatransfer::clipboard { class XClipboardNotifier; }
+namespace com::sun::star::embed { class XEmbeddedObject; }
+namespace com::sun::star::frame { class XController; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::ui { class XContextMenuInterceptor; }
+namespace com::sun::star::ui { struct ContextMenuExecuteEvent; }
+namespace com::sun::star::view { class XRenderable; }
 
 
 enum class SfxPrinterChangeFlags
@@ -96,12 +95,11 @@ enum class SfxViewShellFlags
 {
     NONE              = 0x0000,
     HAS_PRINTOPTIONS  = 0x0010, /* Options-Button and Options-Dialog in PrintDialog */
-    NO_SHOW           = 0x0040, /* Window of the ViewShell shall not be showed automatically */
     NO_NEWWINDOW      = 0x0100, /* Allow N View */
 };
 namespace o3tl
 {
-    template<> struct typed_flags<SfxViewShellFlags> : is_typed_flags<SfxViewShellFlags, 0x0150> {};
+    template<> struct typed_flags<SfxViewShellFlags> : is_typed_flags<SfxViewShellFlags, 0x0110> {};
 }
 
 /*  [Description]
@@ -111,7 +109,15 @@ namespace o3tl
     <SfxViewShell>.
 */
 
+enum class LOKDeviceFormFactor
+{
+    UNKNOWN     = 0,
+    DESKTOP     = 1,
+    TABLET      = 2,
+    MOBILE      = 3
+};
 
+class SfxViewFactory;
 #define SFX_DECL_VIEWFACTORY(Class) \
 private: \
     static SfxViewFactory *pFactory; \
@@ -140,20 +146,24 @@ template<class T> bool checkSfxViewShell(const SfxViewShell* pShell)
     return dynamic_cast<const T*>(pShell) != nullptr;
 }
 
-class SFX2_DLLPUBLIC SfxViewShell: public SfxShell, public SfxListener, public OutlinerViewShell
+/**
+ * One SfxViewShell more or less represents one edit window for a document, there can be multiple
+ * ones for a single opened document (SfxObjectShell).
+ */
+class SFX2_DLLPUBLIC SfxViewShell: public SfxShell, public SfxListener, public OutlinerViewShell, public vcl::ILibreOfficeKitNotifier
 {
-#ifdef INCLUDED_SFX2_VIEWSH_HXX
 friend class SfxViewFrame;
 friend class SfxBaseController;
 friend class SfxPrinterController;
-#endif
 
     std::unique_ptr<struct SfxViewShell_Impl>   pImpl;
     SfxViewFrame*               pFrame;
-    SfxShell*                   pSubShell;
     VclPtr<vcl::Window>         pWindow;
     bool                        bNoNewWindow;
     bool                        mbPrinterSettingsModified;
+    LanguageTag                 maLOKLanguageTag;
+    LanguageTag                 maLOKLocale;
+    LOKDeviceFormFactor         maLOKDeviceFormFactor;
 
 protected:
     virtual void                Activate(bool IsMDIActivate) override;
@@ -214,13 +224,15 @@ public:
     virtual bool                HasSelection( bool bText = true ) const;
     virtual SdrView*            GetDrawView() const;
 
-    SfxShell*                   GetSubShell() const { return pSubShell; }
     void                        AddSubShell( SfxShell& rShell );
     void                        RemoveSubShell( SfxShell *pShell=nullptr );
     SfxShell*                   GetSubShell( sal_uInt16 );
 
     virtual       SfxShell*     GetFormShell()       { return nullptr; };
     virtual const SfxShell*     GetFormShell() const { return nullptr; };
+
+    // ILibreOfficeKitNotifier
+    virtual void                notifyWindow(vcl::LOKWindowId nLOKWindowId, const OUString& rAction, const std::vector<vcl::LOKPayloadItem>& rPayload = std::vector<vcl::LOKPayloadItem>()) const override;
 
     // Focus, KeyInput, Cursor
     virtual void                ShowCursor( bool bOn = true );
@@ -229,8 +241,8 @@ public:
 
     // Viewing Interface
     vcl::Window*                GetWindow() const { return pWindow; }
+    weld::Window*               GetFrameWeld() const;
     void                        SetWindow( vcl::Window *pViewPort );
-    virtual void                AdjustPosSizePixel( const Point &rOfs, const Size &rSize );
     const SvBorder&             GetBorderPixel() const;
     void                        SetBorderPixel( const SvBorder &rBorder );
     void                        InvalidateBorder();
@@ -240,7 +252,7 @@ public:
     virtual SfxPrinter*         GetPrinter( bool bCreate = false );
     virtual sal_uInt16          SetPrinter( SfxPrinter *pNewPrinter, SfxPrinterChangeFlags nDiffFlags = SFX_PRINTER_ALL );
     virtual bool                HasPrintOptionsPage() const;
-    virtual VclPtr<SfxTabPage>  CreatePrintOptionsPage( vcl::Window *pParent, const SfxItemSet &rOptions );
+    virtual std::unique_ptr<SfxTabPage>  CreatePrintOptionsPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rOptions);
     Printer*                    GetActivePrinter() const;
 
     // Working set
@@ -277,8 +289,7 @@ public:
     void                        SetNewWindowAllowed( bool bSet )    { bNoNewWindow = !bSet; }
 
     void                        SetController( SfxBaseController* pController );
-    css::uno::Reference< css::frame::XController >
-                                GetController();
+    css::uno::Reference<css::frame::XController> GetController() const;
 
     bool                        TryContextMenuInterception( Menu& rIn, const OUString& rMenuIdentifier, VclPtr<Menu>& rpOut, css::ui::ContextMenuExecuteEvent aEvent );
     bool                        TryContextMenuInterception( Menu& rMenu, const OUString& rMenuIdentifier, css::ui::ContextMenuExecuteEvent aEvent );
@@ -289,7 +300,7 @@ public:
     const std::shared_ptr< vcl::PrinterController >& GetPrinterController() const;
 
     void                        AddRemoveClipboardListener( const css::uno::Reference < css::datatransfer::clipboard::XClipboardListener>&, bool );
-    css::uno::Reference< css::datatransfer::clipboard::XClipboardNotifier > GetClipboardNotifier();
+    css::uno::Reference< css::datatransfer::clipboard::XClipboardNotifier > GetClipboardNotifier() const;
 
     SAL_DLLPRIVATE SfxInPlaceClient* GetUIActiveIPClient_Impl() const;
     SAL_DLLPRIVATE void AddContextMenuInterceptor_Impl( const css::uno::Reference < css::ui::XContextMenuInterceptor >& xInterceptor );
@@ -297,16 +308,14 @@ public:
     SAL_DLLPRIVATE bool GlobalKeyInput_Impl( const KeyEvent &rKeyEvent );
 
     SAL_DLLPRIVATE void NewIPClient_Impl( SfxInPlaceClient *pIPClient );
-    SAL_DLLPRIVATE void IPClientGone_Impl( SfxInPlaceClient *pIPClient );
-    SAL_DLLPRIVATE void ResetAllClients_Impl( SfxInPlaceClient *pIP );
-    SAL_DLLPRIVATE void DiscardClients_Impl();
+    SAL_DLLPRIVATE void IPClientGone_Impl( SfxInPlaceClient const *pIPClient );
+    SAL_DLLPRIVATE void ResetAllClients_Impl( SfxInPlaceClient const *pIP );
 
     SAL_DLLPRIVATE void SetPrinter_Impl( VclPtr<SfxPrinter>& pNewPrinter );
-    SAL_DLLPRIVATE bool IsShowView_Impl() const;
 
-    SAL_DLLPRIVATE bool HandleNotifyEvent_Impl( NotifyEvent& rEvent );
-    SAL_DLLPRIVATE bool HasKeyListeners_Impl();
-    SAL_DLLPRIVATE bool HasMouseClickListeners_Impl();
+    SAL_DLLPRIVATE bool HandleNotifyEvent_Impl( NotifyEvent const & rEvent );
+    SAL_DLLPRIVATE bool HasKeyListeners_Impl() const;
+    SAL_DLLPRIVATE bool HasMouseClickListeners_Impl() const;
 
     SAL_DLLPRIVATE SfxBaseController*   GetBaseController_Impl() const;
 
@@ -314,7 +323,7 @@ public:
     SAL_DLLPRIVATE void ExecPrint_Impl(SfxRequest &);
     SAL_DLLPRIVATE void ExecMisc_Impl(SfxRequest &);
     SAL_DLLPRIVATE void GetState_Impl(SfxItemSet&);
-    SAL_DLLPRIVATE void CheckIPClient_Impl(SfxInPlaceClient*, const tools::Rectangle&);
+    SAL_DLLPRIVATE void CheckIPClient_Impl(SfxInPlaceClient const *, const tools::Rectangle&);
     SAL_DLLPRIVATE void PushSubShells_Impl( bool bPush=true );
     SAL_DLLPRIVATE void PopSubShells_Impl() { PushSubShells_Impl( false ); }
     SAL_DLLPRIVATE bool ExecKey_Impl(const KeyEvent& aKey);
@@ -327,9 +336,11 @@ public:
     void setTiledSearching(bool bTiledSearching);
     /// See lok::Document::getPart().
     virtual int getPart() const;
-    virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
     /// See OutlinerViewShell::GetViewShellId().
     ViewShellId GetViewShellId() const override;
+    void SetDocId(ViewShellDocId nId) override;
+    ViewShellDocId GetDocId() const override;
     /// See OutlinerViewShell::NotifyOtherViews().
     void NotifyOtherViews(int nType, const OString& rKey, const OString& rPayload) override;
     /// See OutlinerViewShell::NotifyOtherView().
@@ -338,6 +349,26 @@ public:
     virtual void NotifyCursor(SfxViewShell* /*pViewShell*/) const;
     /// Where a new view can perform some update/initialization soon after the callback has been registered.
     virtual void afterCallbackRegistered();
+    /// See OutlinerViewShell::GetEditWindowForActiveOLEObj().
+    virtual vcl::Window* GetEditWindowForActiveOLEObj() const override;
+
+    /// Set the LibreOfficeKit language of this view.
+    void SetLOKLanguageTag(const OUString& rBcp47LanguageTag);
+    /// Get the LibreOfficeKit language of this view.
+    const LanguageTag& GetLOKLanguageTag() const { return maLOKLanguageTag; }
+
+    /// Set the LibreOfficeKit locale of this view.
+    void SetLOKLocale(const OUString& rBcp47LanguageTag);
+    /// Get the LibreOfficeKit locale of this view.
+    const LanguageTag& GetLOKLocale() const { return maLOKLocale; }
+    /// Get the form factor of the device where the lok client is running.
+    LOKDeviceFormFactor GetLOKDeviceFormFactor() const { return maLOKDeviceFormFactor; }
+    /// Check if the lok client is running on a desktop machine.
+    bool isLOKDesktop() const { return maLOKDeviceFormFactor == LOKDeviceFormFactor::DESKTOP; }
+    /// Check if the lok client is running on a tablet.
+    bool isLOKTablet() const  { return maLOKDeviceFormFactor == LOKDeviceFormFactor::TABLET; }
+    /// Check if the lok client is running on a mobile device.
+    bool isLOKMobilePhone() const { return maLOKDeviceFormFactor == LOKDeviceFormFactor::MOBILE; }
 };
 
 

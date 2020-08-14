@@ -35,40 +35,38 @@
 #include <sys/stat.h>
 
 #include <comphelper/fileurl.hxx>
-#include "rtl/ustring.hxx"
+#include <o3tl/safeint.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
-#include <vcl/button.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/fixed.hxx>
+#include <vcl/gdimtf.hxx>
 #include <vcl/idle.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/print.hxx>
+#include <vcl/QueueInfo.hxx>
 #include <vcl/pdfwriter.hxx>
-#include "printerinfomanager.hxx"
+#include <printerinfomanager.hxx>
+#include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
-#include "svids.hrc"
-#include "saldatabasic.hxx"
-#include "unx/genprn.h"
-#include "unx/geninst.h"
-#include "unx/genpspgraphics.h"
+#include <vcl/weld.hxx>
+#include <strings.hrc>
+#include <saldatabasic.hxx>
+#include <unx/genprn.h>
+#include <unx/geninst.h>
+#include <unx/genpspgraphics.h>
 
-#include "jobset.h"
-#include "print.h"
+#include <jobset.h>
+#include <print.h>
 #include "prtsetup.hxx"
-#include "salptype.hxx"
+#include <salptype.hxx>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 
 using namespace psp;
 using namespace com::sun::star;
 
-/*
- *  static helpers
- */
-static OUString getPdfDir( const PrinterInfo& rInfo )
+static bool getPdfDir( const PrinterInfo& rInfo, OUString &rDir )
 {
-    OUString aDir;
     sal_Int32 nIndex = 0;
     while( nIndex != -1 )
     {
@@ -76,80 +74,71 @@ static OUString getPdfDir( const PrinterInfo& rInfo )
         if( aToken.startsWith( "pdf=" ) )
         {
             sal_Int32 nPos = 0;
-            aDir = aToken.getToken( 1, '=', nPos );
-            if( aDir.isEmpty() && getenv( "HOME" ) )
-                aDir = OUString( getenv( "HOME" ), strlen( getenv( "HOME" ) ), osl_getThreadTextEncoding() );
-            break;
+            rDir = aToken.getToken( 1, '=', nPos );
+            if( rDir.isEmpty() && getenv( "HOME" ) )
+                rDir = OUString( getenv( "HOME" ), strlen( getenv( "HOME" ) ), osl_getThreadTextEncoding() );
+            return true;
         }
     }
-    return aDir;
+    return false;
 }
 
 namespace
 {
-    class QueryString : public ModalDialog
+    class QueryString : public weld::GenericDialogController
     {
     private:
-        VclPtr<OKButton>    m_pOKButton;
-        VclPtr<FixedText>   m_pFixedText;
-        VclPtr<Edit>        m_pEdit;
         OUString&           m_rReturnValue;
 
-        DECL_LINK( ClickBtnHdl, Button*, void );
+        std::unique_ptr<weld::Button> m_xOKButton;
+        std::unique_ptr<weld::Label> m_xFixedText;
+        std::unique_ptr<weld::Entry> m_xEdit;
+
+        DECL_LINK( ClickBtnHdl, weld::Button&, void );
 
     public:
         // parent window, Query text, initial value
-        QueryString(vcl::Window*, OUString &, OUString &);
-        virtual ~QueryString() override { disposeOnce(); }
-        virtual void dispose() override
-        {
-            m_pOKButton.clear();
-            m_pFixedText.clear();
-            m_pEdit.clear();
-            ModalDialog::dispose();
-        }
+        QueryString(weld::Window*, OUString const &, OUString &);
     };
 
     /*
      *  QueryString
      */
-    QueryString::QueryString(vcl::Window* pParent, OUString& rQuery, OUString& rRet)
-        : ModalDialog(pParent, "QueryDialog",
-            "vcl/ui/querydialog.ui" )
+    QueryString::QueryString(weld::Window* pParent, OUString const & rQuery, OUString& rRet)
+        : GenericDialogController(pParent, "vcl/ui/querydialog.ui", "QueryDialog")
         , m_rReturnValue( rRet )
+        , m_xOKButton(m_xBuilder->weld_button("ok"))
+        , m_xFixedText(m_xBuilder->weld_label("label"))
+        , m_xEdit(m_xBuilder->weld_entry("entry"))
     {
-        get(m_pOKButton, "ok");
-        get(m_pFixedText, "label");
-        get(m_pEdit, "entry");
-
-        m_pOKButton->SetClickHdl(LINK(this, QueryString, ClickBtnHdl));
-        m_pFixedText->SetText(rQuery);
-        m_pEdit->SetText(m_rReturnValue);
-        SetText(rQuery);
+        m_xOKButton->connect_clicked(LINK(this, QueryString, ClickBtnHdl));
+        m_xFixedText->set_label(rQuery);
+        m_xEdit->set_text(m_rReturnValue);
+        m_xDialog->set_title(rQuery);
     }
 
-    IMPL_LINK( QueryString, ClickBtnHdl, Button*, pButton, void )
+    IMPL_LINK(QueryString, ClickBtnHdl, weld::Button&, rButton, void)
     {
-        if (pButton == m_pOKButton)
+        if (&rButton == m_xOKButton.get())
         {
-            m_rReturnValue = m_pEdit->GetText();
-            EndDialog( 1 );
+            m_rReturnValue = m_xEdit->get_text();
+            m_xDialog->response(RET_OK);
         }
         else
-            EndDialog();
+            m_xDialog->response(RET_CANCEL);
     }
 
     int QueryFaxNumber(OUString& rNumber)
     {
-        OUString aTmpString(VclResId(SV_PRINT_QUERYFAXNUMBER_TXT));
-        ScopedVclPtrInstance< QueryString > aQuery( nullptr, aTmpString, rNumber );
-        return aQuery->Execute();
+        vcl::Window* pWin = Application::GetDefDialogParent();
+        QueryString aQuery(pWin ? pWin->GetFrameWeld() : nullptr, VclResId(SV_PRINT_QUERYFAXNUMBER_TXT), rNumber);
+        return aQuery.run();
     }
 }
 
-inline int PtTo10Mu( int nPoints ) { return (int)((((double)nPoints)*35.27777778)+0.5); }
+static int PtTo10Mu( int nPoints ) { return static_cast<int>((static_cast<double>(nPoints)*35.27777778)+0.5); }
 
-inline int TenMuToPt( int nUnits ) { return (int)((((double)nUnits)/35.27777778)+0.5); }
+static int TenMuToPt( int nUnits ) { return static_cast<int>((static_cast<double>(nUnits)/35.27777778)+0.5); }
 
 static void copyJobDataToJobSetup( ImplJobSetup* pJobSetup, JobData& rData )
 {
@@ -190,7 +179,7 @@ static void copyJobDataToJobSetup( ImplJobSetup* pJobSetup, JobData& rData )
 
     pJobSetup->SetPaperBin( 0 );
     if( rData.m_pParser )
-        pKey                    = rData.m_pParser->getKey( OUString("InputSlot") );
+        pKey                    = rData.m_pParser->getKey( "InputSlot" );
     if( pKey )
         pValue                  = rData.m_aContext.getValue( pKey );
     if( pKey && pValue )
@@ -210,7 +199,7 @@ static void copyJobDataToJobSetup( ImplJobSetup* pJobSetup, JobData& rData )
 
     pJobSetup->SetDuplexMode( DuplexMode::Unknown );
     if( rData.m_pParser )
-        pKey = rData.m_pParser->getKey( OUString("Duplex") );
+        pKey = rData.m_pParser->getKey( "Duplex" );
     if( pKey )
         pValue = rData.m_aContext.getValue( pKey );
     if( pKey && pValue )
@@ -233,7 +222,7 @@ static void copyJobDataToJobSetup( ImplJobSetup* pJobSetup, JobData& rData )
 
     // copy the whole context
     if( pJobSetup->GetDriverData() )
-        rtl_freeMemory( const_cast<sal_uInt8*>(pJobSetup->GetDriverData()) );
+        std::free( const_cast<sal_uInt8*>(pJobSetup->GetDriverData()) );
 
     sal_uInt32 nBytes;
     void* pBuffer = nullptr;
@@ -247,6 +236,7 @@ static void copyJobDataToJobSetup( ImplJobSetup* pJobSetup, JobData& rData )
         pJobSetup->SetDriverDataLen( 0 );
         pJobSetup->SetDriverData( nullptr );
     }
+    pJobSetup->SetPapersizeFromSetup( rData.m_bPapersizeFromSetup );
 }
 
 // Needs a cleaner abstraction ...
@@ -262,16 +252,18 @@ static bool passFileToCommandLine( const OUString& rFilename, const OUString& rC
 
     // setup command line for exec
     if( ! bPipe )
-        aCmdLine = aCmdLine.replaceAll(OString("(TMP)"), aFilename);
+        aCmdLine = aCmdLine.replaceAll("(TMP)", aFilename);
 
 #if OSL_DEBUG_LEVEL > 1
-    fprintf( stderr, "%s commandline: \"%s\"\n",
-             bPipe ? "piping to" : "executing",
-             aCmdLine.getStr() );
+    SAL_INFO("vcl.unx.print", (bPipe ? "piping to" : "executing")
+            << " commandline: \"" << aCmdLine << "\".");
     struct stat aStat;
-    if( stat( aFilename.getStr(), &aStat ) )
-        fprintf( stderr, "stat( %s ) failed\n", aFilename.getStr() );
-    fprintf( stderr, "Tmp file %s has modes: 0%03lo\n", aFilename.getStr(), (long)aStat.st_mode );
+    SAL_WARN_IF(stat( aFilename.getStr(), &aStat ),
+            "vcl.unx.print", "stat( " << aFilename << " ) failed.");
+    SAL_INFO("vcl.unx.print", "Tmp file " << aFilename
+            << " has modes: "
+            << std::showbase << std::oct
+            << (long)aStat.st_mode);
 #endif
     const char* argv[4];
     if( ! ( argv[ 0 ] = getenv( "SHELL" ) ) )
@@ -341,13 +333,8 @@ static std::vector<OUString> getFaxNumbers()
     OUString aNewNr;
     if (QueryFaxNumber(aNewNr))
     {
-        sal_Int32 nIndex = 0;
-        do
-        {
-            OUString sToken = aNewNr.getToken( 0, ';', nIndex );
-            aFaxNumbers.push_back(sToken);
-        }
-        while (nIndex >= 0);
+        for (sal_Int32 nIndex {0}; nIndex >= 0; )
+            aFaxNumbers.push_back(aNewNr.getToken( 0, ';', nIndex ));
     }
 
     return aFaxNumbers;
@@ -355,10 +342,7 @@ static std::vector<OUString> getFaxNumbers()
 
 static bool createPdf( const OUString& rToFile, const OUString& rFromFile, const OUString& rCommandLine )
 {
-    OUString aCommandLine(
-        rCommandLine.replaceAll("(OUTFILE)", rToFile));
-
-    return passFileToCommandLine( rFromFile, aCommandLine );
+    return passFileToCommandLine( rFromFile, rCommandLine.replaceAll("(OUTFILE)", rToFile) );
 }
 
 /*
@@ -366,24 +350,24 @@ static bool createPdf( const OUString& rToFile, const OUString& rFromFile, const
  */
 
 void SalGenericInstance::configurePspInfoPrinter(PspSalInfoPrinter *pPrinter,
-    SalPrinterQueueInfo* pQueueInfo, ImplJobSetup* pJobSetup)
+    SalPrinterQueueInfo const * pQueueInfo, ImplJobSetup* pJobSetup)
 {
-    if( pJobSetup )
-    {
-        PrinterInfoManager& rManager( PrinterInfoManager::get() );
-        PrinterInfo aInfo( rManager.getPrinterInfo( pQueueInfo->maPrinterName ) );
-        pPrinter->m_aJobData = aInfo;
-        pPrinter->m_aPrinterGfx.Init( pPrinter->m_aJobData );
+    if( !pJobSetup )
+        return;
 
-        if( pJobSetup->GetDriverData() )
-            JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(),
-                                                pJobSetup->GetDriverDataLen(), aInfo );
+    PrinterInfoManager& rManager( PrinterInfoManager::get() );
+    PrinterInfo aInfo( rManager.getPrinterInfo( pQueueInfo->maPrinterName ) );
+    pPrinter->m_aJobData = aInfo;
+    pPrinter->m_aPrinterGfx.Init( pPrinter->m_aJobData );
 
-        pJobSetup->SetSystem( JOBSETUP_SYSTEM_UNIX );
-        pJobSetup->SetPrinterName( pQueueInfo->maPrinterName );
-        pJobSetup->SetDriver( aInfo.m_aDriverName );
-        copyJobDataToJobSetup( pJobSetup, aInfo );
-    }
+    if( pJobSetup->GetDriverData() )
+        JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(),
+                                            pJobSetup->GetDriverDataLen(), aInfo );
+
+    pJobSetup->SetSystem( JOBSETUP_SYSTEM_UNIX );
+    pJobSetup->SetPrinterName( pQueueInfo->maPrinterName );
+    pJobSetup->SetDriver( aInfo.m_aDriverName );
+    copyJobDataToJobSetup( pJobSetup, aInfo );
 }
 
 SalInfoPrinter* SalGenericInstance::CreateInfoPrinter( SalPrinterQueueInfo*    pQueueInfo,
@@ -401,19 +385,14 @@ void SalGenericInstance::DestroyInfoPrinter( SalInfoPrinter* pPrinter )
     delete pPrinter;
 }
 
-SalPrinter* SalGenericInstance::CreatePrinter( SalInfoPrinter* pInfoPrinter )
+std::unique_ptr<SalPrinter> SalGenericInstance::CreatePrinter( SalInfoPrinter* pInfoPrinter )
 {
     mbPrinterInit = true;
     // create and initialize SalPrinter
     PspSalPrinter* pPrinter = new PspSalPrinter( pInfoPrinter );
     pPrinter->m_aJobData = static_cast<PspSalInfoPrinter*>(pInfoPrinter)->m_aJobData;
 
-    return pPrinter;
-}
-
-void SalGenericInstance::DestroyPrinter( SalPrinter* pPrinter )
-{
-    delete pPrinter;
+    return std::unique_ptr<SalPrinter>(pPrinter);
 }
 
 void SalGenericInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
@@ -426,38 +405,25 @@ void SalGenericInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
         // #i62663# synchronize possible asynchronouse printer detection now
         rManager.checkPrintersChanged( true );
     }
-    ::std::list< OUString > aPrinters;
+    ::std::vector< OUString > aPrinters;
     rManager.listPrinters( aPrinters );
 
-    for( ::std::list< OUString >::iterator it = aPrinters.begin(); it != aPrinters.end(); ++it )
+    for (auto const& printer : aPrinters)
     {
-        const PrinterInfo& rInfo( rManager.getPrinterInfo( *it ) );
-        // Neuen Eintrag anlegen
-        SalPrinterQueueInfo* pInfo = new SalPrinterQueueInfo;
-        pInfo->maPrinterName    = *it;
+        const PrinterInfo& rInfo( rManager.getPrinterInfo(printer) );
+        // create new entry
+        std::unique_ptr<SalPrinterQueueInfo> pInfo(new SalPrinterQueueInfo);
+        pInfo->maPrinterName    = printer;
         pInfo->maDriver         = rInfo.m_aDriverName;
         pInfo->maLocation       = rInfo.m_aLocation;
         pInfo->maComment        = rInfo.m_aComment;
-        pInfo->mpSysData        = nullptr;
 
-        sal_Int32 nIndex = 0;
-        while( nIndex != -1 )
-        {
-            OUString aToken( rInfo.m_aFeatures.getToken( 0, ',', nIndex ) );
-            if( aToken.match( "pdf=" ) )
-            {
-                pInfo->maLocation = getPdfDir( rInfo );
-                break;
-            }
-        }
+        OUString sPdfDir;
+        if (getPdfDir(rInfo, sPdfDir))
+            pInfo->maLocation = sPdfDir;
 
-        pList->Add( pInfo );
+        pList->Add( std::move(pInfo) );
     }
-}
-
-void SalGenericInstance::DeletePrinterQueueInfo( SalPrinterQueueInfo* pInfo )
-{
-    delete pInfo;
 }
 
 void SalGenericInstance::GetPrinterQueueState( SalPrinterQueueInfo* )
@@ -473,17 +439,11 @@ OUString SalGenericInstance::GetDefaultPrinter()
 }
 
 PspSalInfoPrinter::PspSalInfoPrinter()
-    : m_pGraphics( nullptr )
 {
 }
 
 PspSalInfoPrinter::~PspSalInfoPrinter()
 {
-    if( m_pGraphics )
-    {
-        delete m_pGraphics;
-        m_pGraphics = nullptr;
-    }
 }
 
 void PspSalInfoPrinter::InitPaperFormats( const ImplJobSetup* )
@@ -491,20 +451,20 @@ void PspSalInfoPrinter::InitPaperFormats( const ImplJobSetup* )
     m_aPaperFormats.clear();
     m_bPapersInit = true;
 
-    if( m_aJobData.m_pParser )
+    if( !m_aJobData.m_pParser )
+        return;
+
+    const PPDKey* pKey = m_aJobData.m_pParser->getKey( "PageSize" );
+    if( pKey )
     {
-        const PPDKey* pKey = m_aJobData.m_pParser->getKey( OUString("PageSize") );
-        if( pKey )
+        int nValues = pKey->countValues();
+        for( int i = 0; i < nValues; i++ )
         {
-            int nValues = pKey->countValues();
-            for( int i = 0; i < nValues; i++ )
-            {
-                const PPDValue* pValue = pKey->getValue( i );
-                int nWidth = 0, nHeight = 0;
-                m_aJobData.m_pParser->getPaperDimension( pValue->m_aOption, nWidth, nHeight );
-                PaperInfo aInfo(PtTo10Mu( nWidth ), PtTo10Mu( nHeight ));
-                m_aPaperFormats.push_back( aInfo );
-            }
+            const PPDValue* pValue = pKey->getValue( i );
+            int nWidth = 0, nHeight = 0;
+            m_aJobData.m_pParser->getPaperDimension( pValue->m_aOption, nWidth, nHeight );
+            PaperInfo aInfo(PtTo10Mu( nWidth ), PtTo10Mu( nHeight ));
+            m_aPaperFormats.push_back( aInfo );
         }
     }
 }
@@ -525,21 +485,20 @@ SalGraphics* PspSalInfoPrinter::AcquireGraphics()
     {
         m_pGraphics = GetGenericInstance()->CreatePrintGraphics();
         m_pGraphics->Init(&m_aJobData, &m_aPrinterGfx);
-        pRet = m_pGraphics;
+        pRet = m_pGraphics.get();
     }
     return pRet;
 }
 
 void PspSalInfoPrinter::ReleaseGraphics( SalGraphics* pGraphics )
 {
-    if( pGraphics == m_pGraphics )
+    if( m_pGraphics.get() == pGraphics )
     {
-        delete pGraphics;
-        m_pGraphics = nullptr;
+        m_pGraphics.reset();
     }
 }
 
-bool PspSalInfoPrinter::Setup( SalFrame* pFrame, ImplJobSetup* pJobSetup )
+bool PspSalInfoPrinter::Setup( weld::Window* pFrame, ImplJobSetup* pJobSetup )
 {
     if( ! pFrame || ! pJobSetup )
         return false;
@@ -553,11 +512,12 @@ bool PspSalInfoPrinter::Setup( SalFrame* pFrame, ImplJobSetup* pJobSetup )
         JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(), pJobSetup->GetDriverDataLen(), aInfo );
     }
     aInfo.m_bPapersizeFromSetup = pJobSetup->GetPapersizeFromSetup();
+    aInfo.meSetupMode = pJobSetup->GetPrinterSetupMode();
 
-    if (SetupPrinterDriver(aInfo))
+    if (SetupPrinterDriver(pFrame, aInfo))
     {
         aInfo.resolveDefaultBackend();
-        rtl_freeMemory( const_cast<sal_uInt8*>(pJobSetup->GetDriverData()) );
+        std::free( const_cast<sal_uInt8*>(pJobSetup->GetDriverData()) );
         pJobSetup->SetDriverData( nullptr );
 
         sal_uInt32 nBytes;
@@ -589,8 +549,8 @@ bool PspSalInfoPrinter::SetPrinterData( ImplJobSetup* pJobSetup )
     return true;
 }
 
-// This function merges the independ driver data
-// and sets the new independ data in pJobSetup
+// This function merges the independent driver data
+// and sets the new independent data in pJobSetup
 // Only the data must be changed, where the bit
 // in nGetDataFlags is set
 bool PspSalInfoPrinter::SetData(
@@ -617,7 +577,7 @@ bool PspSalInfoPrinter::SetData(
             else
                 aPaper = OStringToOUString(PaperInfo::toPSName(pJobSetup->GetPaperFormat()), RTL_TEXTENCODING_ISO_8859_1);
 
-            pKey = aData.m_pParser->getKey( OUString("PageSize") );
+            pKey = aData.m_pParser->getKey( "PageSize" );
             pValue = pKey ? pKey->getValueCaseInsensitive( aPaper ) : nullptr;
 
             // some PPD files do not specify the standard paper names (e.g. C5 instead of EnvC5)
@@ -638,7 +598,7 @@ bool PspSalInfoPrinter::SetData(
         // merge paperbin if necessary
         if( nSetDataFlags & JobSetFlags::PAPERBIN )
         {
-            pKey = aData.m_pParser->getKey( OUString("InputSlot") );
+            pKey = aData.m_pParser->getKey( "InputSlot" );
             if( pKey )
             {
                 int nPaperBin = pJobSetup->GetPaperBin();
@@ -662,22 +622,22 @@ bool PspSalInfoPrinter::SetData(
         // merge duplex if necessary
         if( nSetDataFlags & JobSetFlags::DUPLEXMODE )
         {
-            pKey = aData.m_pParser->getKey( OUString("Duplex") );
+            pKey = aData.m_pParser->getKey( "Duplex" );
             if( pKey )
             {
                 pValue = nullptr;
                 switch( pJobSetup->GetDuplexMode() )
                 {
                 case DuplexMode::Off:
-                    pValue = pKey->getValue( OUString("None") );
+                    pValue = pKey->getValue( "None" );
                     if( pValue == nullptr )
-                        pValue = pKey->getValue( OUString("SimplexNoTumble") );
+                        pValue = pKey->getValue( "SimplexNoTumble" );
                     break;
                 case DuplexMode::ShortEdge:
-                    pValue = pKey->getValue( OUString("DuplexTumble") );
+                    pValue = pKey->getValue( "DuplexTumble" );
                     break;
                 case DuplexMode::LongEdge:
-                    pValue = pKey->getValue( OUString("DuplexNoTumble") );
+                    pValue = pKey->getValue( "DuplexNoTumble" );
                     break;
                 case DuplexMode::Unknown:
                 default:
@@ -689,6 +649,7 @@ bool PspSalInfoPrinter::SetData(
                 aData.m_aContext.setValue( pKey, pValue );
             }
         }
+        aData.m_bPapersizeFromSetup = pJobSetup->GetPapersizeFromSetup();
 
         m_aJobData = aData;
         copyJobDataToJobSetup( pJobSetup, aData );
@@ -701,8 +662,8 @@ bool PspSalInfoPrinter::SetData(
 void PspSalInfoPrinter::GetPageInfo(
     const ImplJobSetup* pJobSetup,
     long& rOutWidth, long& rOutHeight,
-    long& rPageOffX, long& rPageOffY,
-    long& rPageWidth, long& rPageHeight )
+    Point& rPageOffset,
+    Size& rPaperSize )
 {
     if( ! pJobSetup )
         return;
@@ -711,32 +672,33 @@ void PspSalInfoPrinter::GetPageInfo(
     JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(), pJobSetup->GetDriverDataLen(), aData );
 
     // get the selected page size
-    if( aData.m_pParser )
+    if( !aData.m_pParser )
+        return;
+
+
+    OUString aPaper;
+    int width, height;
+    int left = 0, top = 0, right = 0, bottom = 0;
+    int nDPI = aData.m_aContext.getRenderResolution();
+
+    if( aData.m_eOrientation == psp::orientation::Portrait )
     {
-
-        OUString aPaper;
-        int width, height;
-        int left = 0, top = 0, right = 0, bottom = 0;
-        int nDPI = aData.m_aContext.getRenderResolution();
-
-        if( aData.m_eOrientation == psp::orientation::Portrait )
-        {
-            aData.m_aContext.getPageSize( aPaper, width, height );
-            aData.m_pParser->getMargins( aPaper, left, right, top, bottom );
-        }
-        else
-        {
-            aData.m_aContext.getPageSize( aPaper, height, width );
-            aData.m_pParser->getMargins( aPaper, top, bottom, right, left );
-        }
-
-        rPageWidth  = width * nDPI / 72;
-        rPageHeight = height * nDPI / 72;
-        rPageOffX   = left * nDPI / 72;
-        rPageOffY   = top * nDPI / 72;
-        rOutWidth   = ( width  - left - right ) * nDPI / 72;
-        rOutHeight  = ( height - top  - bottom ) * nDPI / 72;
+        aData.m_aContext.getPageSize( aPaper, width, height );
+        aData.m_pParser->getMargins( aPaper, left, right, top, bottom );
     }
+    else
+    {
+        aData.m_aContext.getPageSize( aPaper, height, width );
+        aData.m_pParser->getMargins( aPaper, top, bottom, right, left );
+    }
+
+    rPaperSize.setWidth( width * nDPI / 72 );
+    rPaperSize.setHeight( height * nDPI / 72 );
+    rPageOffset.setX( left * nDPI / 72 );
+    rPageOffset.setY( top * nDPI / 72 );
+    rOutWidth   = ( width  - left - right ) * nDPI / 72;
+    rOutHeight  = ( height - top  - bottom ) * nDPI / 72;
+
 }
 
 sal_uInt16 PspSalInfoPrinter::GetPaperBinCount( const ImplJobSetup* pJobSetup )
@@ -747,7 +709,7 @@ sal_uInt16 PspSalInfoPrinter::GetPaperBinCount( const ImplJobSetup* pJobSetup )
     JobData aData;
     JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(), pJobSetup->GetDriverDataLen(), aData );
 
-    const PPDKey* pKey = aData.m_pParser ? aData.m_pParser->getKey( OUString("InputSlot") ): nullptr;
+    const PPDKey* pKey = aData.m_pParser ? aData.m_pParser->getKey( "InputSlot" ): nullptr;
     return pKey ? pKey->countValues() : 0;
 }
 
@@ -756,21 +718,17 @@ OUString PspSalInfoPrinter::GetPaperBinName( const ImplJobSetup* pJobSetup, sal_
     JobData aData;
     JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(), pJobSetup->GetDriverDataLen(), aData );
 
-    OUString aRet;
     if( aData.m_pParser )
     {
-        const PPDKey* pKey = aData.m_pParser ? aData.m_pParser->getKey( OUString("InputSlot") ): nullptr;
-        if( ! pKey || nPaperBin >= (sal_uInt16)pKey->countValues() )
-            aRet = aData.m_pParser->getDefaultInputSlot();
-        else
-        {
-            const PPDValue* pValue = pKey->getValue( nPaperBin );
-            if( pValue )
-                aRet = aData.m_pParser->translateOption( pKey->getKey(), pValue->m_aOption );
-        }
+        const PPDKey* pKey = aData.m_pParser ? aData.m_pParser->getKey( "InputSlot" ): nullptr;
+        if( ! pKey || nPaperBin >= o3tl::make_unsigned(pKey->countValues()) )
+            return aData.m_pParser->getDefaultInputSlot();
+        const PPDValue* pValue = pKey->getValue( nPaperBin );
+        if( pValue )
+            return aData.m_pParser->translateOption( pKey->getKey(), pValue->m_aOption );
     }
 
-    return aRet;
+    return OUString();
 }
 
 sal_uInt32 PspSalInfoPrinter::GetCapabilities( const ImplJobSetup* pJobSetup, PrinterCapType nType )
@@ -800,7 +758,7 @@ sal_uInt32 PspSalInfoPrinter::GetCapabilities( const ImplJobSetup* pJobSetup, Pr
                 JobData aData = PrinterInfoManager::get().getPrinterInfo(pJobSetup->GetPrinterName());
                 if( pJobSetup->GetDriverData() )
                     JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(), pJobSetup->GetDriverDataLen(), aData );
-                const PPDKey* pKey = aData.m_pParser ? aData.m_pParser->getKey(OUString("Dial")) : nullptr;
+                const PPDKey* pKey = aData.m_pParser ? aData.m_pParser->getKey("Dial") : nullptr;
                 const PPDValue* pValue = pKey ? aData.m_aContext.getValue(pKey) : nullptr;
                 if (pValue && !pValue->m_aOption.equalsIgnoreAsciiCase("Manually"))
                     return 1;
@@ -838,7 +796,6 @@ sal_uInt32 PspSalInfoPrinter::GetCapabilities( const ImplJobSetup* pJobSetup, Pr
  */
 PspSalPrinter::PspSalPrinter( SalInfoPrinter* pInfoPrinter )
     : m_pInfoPrinter( pInfoPrinter )
-    , m_pGraphics( nullptr )
     , m_nCopies( 1 )
     , m_bCollate( false )
     , m_bPdf( false )
@@ -890,27 +847,16 @@ bool PspSalPrinter::StartJob(
 
     int nMode = 0;
     // check whether this printer is configured as fax
-    sal_Int32 nIndex = 0;
     const PrinterInfo& rInfo( PrinterInfoManager::get().getPrinterInfo( m_aJobData.m_aPrinterName ) );
-    while( nIndex != -1 )
+    OUString sPdfDir;
+    if (getPdfDir(rInfo, sPdfDir))
     {
-        OUString aToken( rInfo.m_aFeatures.getToken( 0, ',', nIndex ) );
-        if( aToken.startsWith( "pdf=" ) )
-        {
-            m_bPdf = true;
-            m_aTmpFile = getTmpName();
-            nMode = S_IRUSR | S_IWUSR;
+        m_bPdf = true;
+        m_aTmpFile = getTmpName();
+        nMode = S_IRUSR | S_IWUSR;
 
-            if( m_aFileName.isEmpty() )
-            {
-                OUStringBuffer aFileName( getPdfDir( rInfo ) );
-                aFileName.append( '/' );
-                aFileName.append( rJobName );
-                aFileName.append( ".pdf" );
-                m_aFileName = aFileName.makeStringAndClear();
-            }
-            break;
-        }
+        if( m_aFileName.isEmpty() )
+            m_aFileName = sPdfDir + "/" + rJobName + ".pdf";
     }
     m_aPrinterGfx.Init( m_aJobData );
 
@@ -942,8 +888,8 @@ SalGraphics* PspSalPrinter::StartPage( ImplJobSetup* pJobSetup, bool )
     SAL_INFO( "vcl.unx.print", "PspSalPrinter::StartPage");
 
     JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(), pJobSetup->GetDriverDataLen(), m_aJobData );
-    m_pGraphics = GetGenericInstance()->CreatePrintGraphics();
-    m_pGraphics->Init(&m_aJobData, &m_aPrinterGfx);
+    m_xGraphics = GetGenericInstance()->CreatePrintGraphics();
+    m_xGraphics->Init(&m_aJobData, &m_aPrinterGfx);
 
     if( m_nCopies > 1 )
     {
@@ -956,7 +902,7 @@ SalGraphics* PspSalPrinter::StartPage( ImplJobSetup* pJobSetup, bool )
     m_aPrintJob.StartPage( m_aJobData );
     m_aPrinterGfx.Init( m_aPrintJob );
 
-    return m_pGraphics;
+    return m_xGraphics.get();
 }
 
 void PspSalPrinter::EndPage()
@@ -966,10 +912,7 @@ void PspSalPrinter::EndPage()
     SAL_INFO( "vcl.unx.print", "PspSalPrinter::EndPage");
 }
 
-sal_uLong PspSalPrinter::GetErrorCode()
-{
-    return 0;
-}
+namespace {
 
 struct PDFNewJobParameters
 {
@@ -993,7 +936,7 @@ struct PDFNewJobParameters
 
     bool operator!=(const PDFNewJobParameters& rComp) const
     {
-        return ! this->operator==(rComp);
+        return ! operator==(rComp);
     }
 };
 
@@ -1006,6 +949,8 @@ struct PDFPrintFile
     : maTmpURL( i_rURL )
     , maParameters( i_rNewParameters ) {}
 };
+
+}
 
 bool PspSalPrinter::StartJob( const OUString* i_pFileName, const OUString& i_rJobName, const OUString& i_rAppName,
                               ImplJobSetup* i_pSetupData, vcl::PrinterController& i_rController )
@@ -1027,7 +972,7 @@ bool PspSalPrinter::StartJob( const OUString* i_pFileName, const OUString& i_rJo
 
     // possibly create one job for collated output
     bool bSinglePrintJobs = false;
-    beans::PropertyValue* pSingleValue = i_rController.getValue( OUString( "PrintCollateAsSingleJobs" ) );
+    beans::PropertyValue* pSingleValue = i_rController.getValue( "PrintCollateAsSingleJobs" );
     if( pSingleValue )
     {
         pSingleValue->Value >>= bSinglePrintJobs;
@@ -1087,7 +1032,7 @@ bool PspSalPrinter::StartJob( const OUString* i_pFileName, const OUString& i_rJo
         else
         {
             xPrinter->SetMapMode( MapMode( MapUnit::Map100thMM ) );
-            xPrinter->SetPaperSizeUser( aPageSize.aSize, true );
+            xPrinter->SetPaperSizeUser( aPageSize.aSize );
             PDFNewJobParameters aNewParm(xPrinter->GetPaperSize(), xPrinter->GetPaperBin());
 
             // create PDF writer on demand
@@ -1112,19 +1057,19 @@ bool PspSalPrinter::StartJob( const OUString* i_pFileName, const OUString& i_rJo
                 if( !comphelper::isFileUrl(aPDFUrl) )
                 {
                     // this is not a file URL, but it should
-                    // form it into a osl friendly file URL
+                    // form it into an osl friendly file URL
                     OUString aTmp;
                     osl_getFileURLFromSystemPath( aPDFUrl.pData, &aTmp.pData );
                     aPDFUrl = aTmp;
                 }
                 // save current file and paper format
                 aLastParm = aNewParm;
-                aPDFFiles.push_back( PDFPrintFile( aPDFUrl, aNewParm ) );
+                aPDFFiles.emplace_back( aPDFUrl, aNewParm );
                 // update context
                 aContext.URL = aPDFUrl;
 
                 // create and initialize PDFWriter
-                xWriter.reset( new vcl::PDFWriter( aContext, uno::Reference< beans::XMaterialHolder >() ) );
+                xWriter = std::make_shared<vcl::PDFWriter>( aContext, uno::Reference< beans::XMaterialHolder >() );
             }
 
             xWriter->NewPage( TenMuToPt( aNewParm.maPageSize.Width() ),
@@ -1213,10 +1158,10 @@ bool PspSalPrinter::StartJob( const OUString* i_pFileName, const OUString& i_rJo
                             sal_uInt64 nBytesRead = 0;
                             do
                             {
-                                osl_readFile( pFile, &buffer[0], buffer.size(), &nBytesRead );
+                                osl_readFile( pFile, buffer.data(), buffer.size(), &nBytesRead );
                                 if( nBytesRead > 0 )
                                 {
-                                    size_t nBytesWritten = fwrite(&buffer[0], 1, nBytesRead, fp);
+                                    size_t nBytesWritten = fwrite(buffer.data(), 1, nBytesRead, fp);
                                     OSL_ENSURE(nBytesRead == nBytesWritten, "short write");
                                     if (nBytesRead != nBytesWritten)
                                         break;
@@ -1242,9 +1187,9 @@ bool PspSalPrinter::StartJob( const OUString* i_pFileName, const OUString& i_rJo
     }
 
     // job has been spooled
-    i_rController.setJobState( (bAborted)
+    i_rController.setJobState( bAborted
             ? view::PrintableState_JOB_ABORTED
-            : ((bSuccess) ? view::PrintableState_JOB_SPOOLED
+            : (bSuccess ? view::PrintableState_JOB_SPOOLED
                           : view::PrintableState_JOB_SPOOLING_FAILED));
 
     // clean up the temporary PDF files
@@ -1260,6 +1205,8 @@ bool PspSalPrinter::StartJob( const OUString* i_pFileName, const OUString& i_rJo
     return true;
 }
 
+namespace {
+
 class PrinterUpdate
 {
     static Idle*  pPrinterUpdateIdle;
@@ -1268,10 +1215,12 @@ class PrinterUpdate
     static void doUpdate();
     DECL_STATIC_LINK( PrinterUpdate, UpdateTimerHdl, Timer*, void );
 public:
-    static void update(SalGenericInstance &rInstance);
+    static void update(SalGenericInstance const &rInstance);
     static void jobStarted() { nActiveJobs++; }
     static void jobEnded();
 };
+
+}
 
 Idle* PrinterUpdate::pPrinterUpdateIdle = nullptr;
 int PrinterUpdate::nActiveJobs = 0;
@@ -1296,7 +1245,7 @@ IMPL_STATIC_LINK_NOARG( PrinterUpdate, UpdateTimerHdl, Timer*, void )
         pPrinterUpdateIdle->Start();
 }
 
-void PrinterUpdate::update(SalGenericInstance &rInstance)
+void PrinterUpdate::update(SalGenericInstance const &rInstance)
 {
     if( Application::GetSettings().GetMiscSettings().GetDisablePrinting() )
         return;

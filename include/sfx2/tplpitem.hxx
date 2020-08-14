@@ -23,9 +23,9 @@
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
 #include <svl/flagitem.hxx>
-#include <svl/style.hrc>
+#include <svl/style.hxx>
 
-class SFX2_DLLPUBLIC SfxTemplateItem: public SfxFlagItem
+class SFX2_DLLPUBLIC SfxTemplateItem final : public SfxFlagItem
 {
     OUString aStyle;
 public:
@@ -33,15 +33,16 @@ public:
     SfxTemplateItem();
     SfxTemplateItem( sal_uInt16 nWhich,
                      const OUString &rStyle );
-    SfxTemplateItem( const SfxTemplateItem& );
 
     const OUString&         GetStyleName() const { return aStyle; }
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SfxTemplateItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual sal_uInt8       GetFlagCount() const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
+    SfxStyleSearchBits      GetValue() const { return static_cast<SfxStyleSearchBits>(SfxFlagItem::GetValue()); }
+    void                    SetValue(SfxStyleSearchBits n) { SfxFlagItem::SetValue(static_cast<sal_uInt16>(n)); }
 };
 
 #endif

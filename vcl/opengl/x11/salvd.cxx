@@ -32,12 +32,11 @@ void X11SalGraphics::Init( X11OpenGLSalVirtualDevice *pDevice )
     mxImpl->Init();
 }
 
-X11OpenGLSalVirtualDevice::X11OpenGLSalVirtualDevice( SalGraphics* pGraphics,
-                                                      long &nDX, long &nDY,
-                                                      DeviceFormat /*eFormat*/,
+X11OpenGLSalVirtualDevice::X11OpenGLSalVirtualDevice( SalGraphics const * pGraphics,
+                                                      long nDX, long nDY,
                                                       const SystemGraphicsData *pData,
-                                                      X11SalGraphics* pNewGraphics) :
-    mpGraphics(pNewGraphics),
+                                                      std::unique_ptr<X11SalGraphics> pNewGraphics) :
+    mpGraphics(std::move(pNewGraphics)),
     mbGraphics( false ),
     mnXScreen( 0 )
 {
@@ -46,9 +45,9 @@ X11OpenGLSalVirtualDevice::X11OpenGLSalVirtualDevice( SalGraphics* pGraphics,
     // TODO Check where a VirtualDevice is created from SystemGraphicsData
     assert( pData == nullptr ); (void)pData;
 
-    mpDisplay  = vcl_sal::getSalDisplay(GetGenericData());
-    mnXScreen  = pGraphics ? static_cast<X11SalGraphics*>(pGraphics)->GetScreenNumber() :
-                             vcl_sal::getSalDisplay(GetGenericData())->GetDefaultXScreen();
+    mpDisplay  = vcl_sal::getSalDisplay(GetGenericUnixSalData());
+    mnXScreen  = pGraphics ? static_cast<X11SalGraphics const *>(pGraphics)->GetScreenNumber() :
+                             vcl_sal::getSalDisplay(GetGenericUnixSalData())->GetDefaultXScreen();
     mnWidth    = nDX;
     mnHeight   = nDY;
     mpGraphics->Init( this );

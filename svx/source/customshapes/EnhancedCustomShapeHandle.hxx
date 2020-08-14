@@ -20,14 +20,11 @@
 #ifndef INCLUDED_SVX_SOURCE_CUSTOMSHAPES_ENHANCEDCUSTOMSHAPEHANDLE_HXX
 #define INCLUDED_SVX_SOURCE_CUSTOMSHAPES_ENHANCEDCUSTOMSHAPEHANDLE_HXX
 
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/drawing/XCustomShapeHandle.hpp>
 #include <com/sun/star/awt/Point.hpp>
-#include <cppuhelper/weakref.hxx>
 
 class EnhancedCustomShapeHandle : public cppu::WeakImplHelper
 <
@@ -40,7 +37,7 @@ class EnhancedCustomShapeHandle : public cppu::WeakImplHelper
 
 public:
 
-            EnhancedCustomShapeHandle( css::uno::Reference< css::drawing::XShape >& xCustomShape, sal_uInt32 nIndex );
+            EnhancedCustomShapeHandle( css::uno::Reference< css::drawing::XShape > const & xCustomShape, sal_uInt32 nIndex );
     virtual ~EnhancedCustomShapeHandle() override;
 
     // XInterface

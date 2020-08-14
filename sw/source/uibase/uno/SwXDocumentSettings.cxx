@@ -17,15 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <config_features.h>
+
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <utility>
 
 #include <o3tl/any.hxx>
-#include <o3tl/make_unique.hxx>
-#include <sfx2/sfxbasecontroller.hxx>
-#include <SwXDocumentSettings.hxx>
+#include "SwXDocumentSettings.hxx"
 #include <comphelper/MasterPropertySetInfo.hxx>
+#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/i18n/XForbiddenCharacters.hpp>
@@ -39,20 +41,15 @@
 #include <linkenum.hxx>
 #include <sfx2/printer.hxx>
 #include <editsh.hxx>
-#include <drawdoc.hxx>
-#include <svl/zforlist.hxx>
 #include <unotxdoc.hxx>
 #include <cmdid.h>
-#include <sfx2/zoomitem.hxx>
 #include <unomod.hxx>
 #include <vcl/svapp.hxx>
 #include <svl/asiancfg.hxx>
-#include <comphelper/servicehelper.hxx>
+#include <tools/stream.hxx>
 
-#include "swmodule.hxx"
-#include "cfgitems.hxx"
-#include "prtopt.hxx"
-#include "dbmgr.hxx"
+#include <cfgitems.hxx>
+#include <dbmgr.hxx>
 
 using namespace comphelper;
 using namespace ::com::sun::star;
@@ -60,6 +57,8 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::i18n;
+
+namespace {
 
 enum SwDocumentSettingsPropertyHandles
 {
@@ -72,9 +71,11 @@ enum SwDocumentSettingsPropertyHandles
     HANDLE_ALIGN_TAB_STOP_POSITION,
     HANDLE_PRINTER_NAME,
     HANDLE_PRINTER_SETUP,
+    HANDLE_PRINTER_PAPER,
     HANDLE_IS_KERN_ASIAN_PUNCTUATION,
     HANDLE_CHARACTER_COMPRESSION_TYPE,
     HANDLE_APPLY_USER_DATA,
+    HANDLE_SAVE_THUMBNAIL,
     HANDLE_SAVE_GLOBAL_DOCUMENT_LINKS,
     HANDLE_CURRENT_DATABASE_DATA_SOURCE,
     HANDLE_CURRENT_DATABASE_COMMAND,
@@ -109,6 +110,7 @@ enum SwDocumentSettingsPropertyHandles
     HANDLE_USE_OLD_PRINTER_METRICS,
     HANDLE_PROTECT_FORM,
     HANDLE_MS_WORD_COMP_TRAILING_BLANKS,
+    HANDLE_MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY,
     HANDLE_TABS_RELATIVE_TO_INDENT,
     HANDLE_RSID,
     HANDLE_RSID_ROOT,
@@ -125,6 +127,10 @@ enum SwDocumentSettingsPropertyHandles
     HANDLE_CLIPPED_PICTURES,
     HANDLE_BACKGROUND_PARA_OVER_DRAWINGS,
     HANDLE_EMBED_FONTS,
+    HANDLE_EMBED_USED_FONTS,
+    HANDLE_EMBED_LATIN_SCRIPT_FONTS,
+    HANDLE_EMBED_ASIAN_SCRIPT_FONTS,
+    HANDLE_EMBED_COMPLEX_SCRIPT_FONTS,
     HANDLE_EMBED_SYSTEM_FONTS,
     HANDLE_TAB_OVER_MARGIN,
     HANDLE_TREAT_SINGLE_COLUMN_BREAK_AS_PAGE_BREAK,
@@ -132,7 +138,17 @@ enum SwDocumentSettingsPropertyHandles
     HANDLE_APPLY_PARAGRAPH_MARK_FORMAT_TO_NUMBERING,
     HANDLE_PROP_LINE_SPACING_SHRINKS_FIRST_LINE,
     HANDLE_SUBTRACT_FLYS,
+    HANDLE_DISABLE_OFF_PAGE_POSITIONING,
+    HANDLE_EMPTY_DB_FIELD_HIDES_PARA,
+    HANDLE_CONTINUOUS_ENDNOTES,
+    HANDLE_PROTECT_BOOKMARKS,
+    HANDLE_PROTECT_FIELDS,
+    HANDLE_HEADER_SPACING_BELOW_LAST_PARA,
+    HANDLE_FRAME_AUTOWIDTH_WITH_MORE_PARA,
+    HANDLE_ALLOW_WRAP_WHEN_ANCHORED_IN_TABLE,
 };
+
+}
 
 static MasterPropertySetInfo * lcl_createSettingsInfo()
 {
@@ -147,9 +163,11 @@ static MasterPropertySetInfo * lcl_createSettingsInfo()
         { OUString("AlignTabStopPosition"),       HANDLE_ALIGN_TAB_STOP_POSITION,         cppu::UnoType<bool>::get(),           0},
         { OUString("PrinterName"),                HANDLE_PRINTER_NAME,                    cppu::UnoType<OUString>::get(),          0},
         { OUString("PrinterSetup"),               HANDLE_PRINTER_SETUP,                   cppu::UnoType< cppu::UnoSequenceType<sal_Int8> >::get(),           0},
+        { OUString("PrinterPaperFromSetup"),      HANDLE_PRINTER_PAPER,                   cppu::UnoType<bool>::get(),           0},
         { OUString("IsKernAsianPunctuation"),     HANDLE_IS_KERN_ASIAN_PUNCTUATION,       cppu::UnoType<bool>::get(),           0},
         { OUString("CharacterCompressionType"),   HANDLE_CHARACTER_COMPRESSION_TYPE,      cppu::UnoType<sal_Int16>::get(),             0},
-        { OUString("ApplyUserData"),              HANDLE_APPLY_USER_DATA,                 cppu::UnoType<bool>::get(),           0},
+        { OUString("ApplyUserData"),              HANDLE_APPLY_USER_DATA,                 cppu::UnoType<bool>::get(),           0 },
+        { OUString("SaveThumbnail"),              HANDLE_SAVE_THUMBNAIL,                  cppu::UnoType<bool>::get(),           0 },
         { OUString("SaveGlobalDocumentLinks"),    HANDLE_SAVE_GLOBAL_DOCUMENT_LINKS,      cppu::UnoType<bool>::get(),           0},
         { OUString("CurrentDatabaseDataSource"),  HANDLE_CURRENT_DATABASE_DATA_SOURCE,    cppu::UnoType<OUString>::get(),          0},
         { OUString("CurrentDatabaseCommand"),     HANDLE_CURRENT_DATABASE_COMMAND,        cppu::UnoType<OUString>::get(),          0},
@@ -188,6 +206,7 @@ static MasterPropertySetInfo * lcl_createSettingsInfo()
         { OUString("RsidRoot"), HANDLE_RSID_ROOT, cppu::UnoType<sal_Int32>::get(), 0},
         { OUString("ProtectForm"), HANDLE_PROTECT_FORM, cppu::UnoType<bool>::get(), 0},
         { OUString("MsWordCompTrailingBlanks"), HANDLE_MS_WORD_COMP_TRAILING_BLANKS, cppu::UnoType<bool>::get(), 0 },
+        { OUString("MsWordCompMinLineHeightByFly"), HANDLE_MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY, cppu::UnoType<bool>::get(), 0 },
         { OUString("TabAtLeftIndentForParagraphsInList"), HANDLE_TAB_AT_LEFT_INDENT_FOR_PARA_IN_LIST, cppu::UnoType<bool>::get(), 0},
         { OUString("ModifyPasswordInfo"), HANDLE_MODIFYPASSWORDINFO, cppu::UnoType< cppu::UnoSequenceType<css::beans::PropertyValue> >::get(), 0},
         { OUString("MathBaselineAlignment"), HANDLE_MATH_BASELINE_ALIGNMENT, cppu::UnoType<bool>::get(), 0},
@@ -201,6 +220,10 @@ static MasterPropertySetInfo * lcl_createSettingsInfo()
         { OUString("ClippedPictures"), HANDLE_CLIPPED_PICTURES, cppu::UnoType<bool>::get(), 0},
         { OUString("BackgroundParaOverDrawings"), HANDLE_BACKGROUND_PARA_OVER_DRAWINGS, cppu::UnoType<bool>::get(), 0},
         { OUString("EmbedFonts"), HANDLE_EMBED_FONTS, cppu::UnoType<bool>::get(), 0},
+        { OUString("EmbedOnlyUsedFonts"), HANDLE_EMBED_USED_FONTS, cppu::UnoType<bool>::get(), 0},
+        { OUString("EmbedLatinScriptFonts"), HANDLE_EMBED_LATIN_SCRIPT_FONTS, cppu::UnoType<bool>::get(), 0},
+        { OUString("EmbedAsianScriptFonts"), HANDLE_EMBED_ASIAN_SCRIPT_FONTS, cppu::UnoType<bool>::get(), 0},
+        { OUString("EmbedComplexScriptFonts"), HANDLE_EMBED_COMPLEX_SCRIPT_FONTS, cppu::UnoType<bool>::get(), 0},
         { OUString("EmbedSystemFonts"), HANDLE_EMBED_SYSTEM_FONTS, cppu::UnoType<bool>::get(), 0},
         { OUString("TabOverMargin"), HANDLE_TAB_OVER_MARGIN, cppu::UnoType<bool>::get(), 0},
         { OUString("TreatSingleColumnBreakAsPageBreak"), HANDLE_TREAT_SINGLE_COLUMN_BREAK_AS_PAGE_BREAK, cppu::UnoType<bool>::get(), 0},
@@ -208,6 +231,15 @@ static MasterPropertySetInfo * lcl_createSettingsInfo()
         { OUString("ApplyParagraphMarkFormatToNumbering"), HANDLE_APPLY_PARAGRAPH_MARK_FORMAT_TO_NUMBERING, cppu::UnoType<bool>::get(), 0},
         { OUString("PropLineSpacingShrinksFirstLine"),       HANDLE_PROP_LINE_SPACING_SHRINKS_FIRST_LINE,         cppu::UnoType<bool>::get(),           0},
         { OUString("SubtractFlysAnchoredAtFlys"),       HANDLE_SUBTRACT_FLYS,         cppu::UnoType<bool>::get(),           0},
+        { OUString("DisableOffPagePositioning"),       HANDLE_DISABLE_OFF_PAGE_POSITIONING,         cppu::UnoType<bool>::get(),           0},
+        { OUString("EmptyDbFieldHidesPara"), HANDLE_EMPTY_DB_FIELD_HIDES_PARA, cppu::UnoType<bool>::get(), 0 },
+        { OUString("ContinuousEndnotes"), HANDLE_CONTINUOUS_ENDNOTES, cppu::UnoType<bool>::get(), 0 },
+        { OUString("ProtectBookmarks"), HANDLE_PROTECT_BOOKMARKS, cppu::UnoType<bool>::get(), 0 },
+        { OUString("ProtectFields"), HANDLE_PROTECT_FIELDS, cppu::UnoType<bool>::get(), 0 },
+        { OUString("HeaderSpacingBelowLastPara"), HANDLE_HEADER_SPACING_BELOW_LAST_PARA, cppu::UnoType<bool>::get(), 0 },
+        { OUString("FrameAutowidthWithMorePara"), HANDLE_FRAME_AUTOWIDTH_WITH_MORE_PARA, cppu::UnoType<bool>::get(), 0 },
+        { OUString("AllowWrapWhenAnchoredInTable"), HANDLE_ALLOW_WRAP_WHEN_ANCHORED_IN_TABLE, cppu::UnoType<bool>::get(), 0 },
+
 /*
  * As OS said, we don't have a view when we need to set this, so I have to
  * find another solution before adding them to this property set - MTG
@@ -244,6 +276,7 @@ SwXDocumentSettings::SwXDocumentSettings ( SwXTextDocument * pModel )
 , mpDocSh ( nullptr )
 , mpDoc ( nullptr )
 , mpPrinter( nullptr )
+, mbPreferPrinterPapersize( false )
 {
     registerSlave ( new SwXPrintSettings ( SwXPrintSettingsType::Document, mpModel->GetDocShell()->GetDoc() ) );
 }
@@ -255,16 +288,16 @@ SwXDocumentSettings::~SwXDocumentSettings()
 
 Any SAL_CALL SwXDocumentSettings::queryInterface( const Type& rType )
 {
-        return ::cppu::queryInterface ( rType,
-                                        // OWeakObject interfaces
-                                        dynamic_cast< XInterface* > ( dynamic_cast< OWeakObject*  >(this) ),
-                                        dynamic_cast< XWeak* > ( this ),
-                                        // my own interfaces
-                                        dynamic_cast< XPropertySet*  > ( this ),
-                                        dynamic_cast< XPropertyState* > ( this ),
-                                        dynamic_cast< XMultiPropertySet* > ( this ),
-                                        dynamic_cast< XServiceInfo* > ( this ),
-                                        dynamic_cast< XTypeProvider* > ( this ) );
+        return ::cppu::queryInterface(rType,
+                                      // OWeakObject interfaces
+                                      &dynamic_cast<XInterface&>(dynamic_cast<OWeakObject&>(*this)),
+                                      &dynamic_cast<XWeak&>(*this),
+                                      // my own interfaces
+                                      &dynamic_cast<XPropertySet&>(*this),
+                                      &dynamic_cast<XPropertyState&>(*this),
+                                      &dynamic_cast<XMultiPropertySet&>(*this),
+                                      &dynamic_cast<XServiceInfo&>(*this),
+                                      &dynamic_cast<XTypeProvider&>(*this));
 }
 void SwXDocumentSettings::acquire ()
     throw ()
@@ -279,20 +312,15 @@ void SwXDocumentSettings::release ()
 
 uno::Sequence< uno::Type > SAL_CALL SwXDocumentSettings::getTypes(  )
 {
-    SolarMutexGuard aGuard;
-
-    uno::Sequence< uno::Type > aBaseTypes( 5 );
-    uno::Type* pBaseTypes = aBaseTypes.getArray();
-
-    // from MasterPropertySet
-    pBaseTypes[0] = cppu::UnoType<XPropertySet>::get();
-    pBaseTypes[1] = cppu::UnoType<XPropertyState>::get();
-    pBaseTypes[2] = cppu::UnoType<XMultiPropertySet>::get();
-
-    pBaseTypes[3] = cppu::UnoType<XServiceInfo>::get();
-    pBaseTypes[4] = cppu::UnoType<XTypeProvider>::get();
-
-    return aBaseTypes;
+    static const uno::Sequence< uno::Type > aTypes {
+        // from MasterPropertySet
+        cppu::UnoType<XPropertySet>::get(),
+        cppu::UnoType<XPropertyState>::get(),
+        cppu::UnoType<XMultiPropertySet>::get(),
+        cppu::UnoType<XServiceInfo>::get(),
+        cppu::UnoType<XTypeProvider>::get(),
+    };
+    return aTypes;
 }
 
 uno::Sequence< sal_Int8 > SAL_CALL SwXDocumentSettings::getImplementationId(  )
@@ -383,60 +411,66 @@ void SwXDocumentSettings::_setSingleValue( const comphelper::PropertyInfo & rInf
         {
             //the printer must be created
             OUString sPrinterName;
-            if( rValue >>= sPrinterName  )
+            if( !(rValue >>= sPrinterName)  )
+                throw IllegalArgumentException();
+
+            if( !mpPrinter && !sPrinterName.isEmpty() && mpDocSh->GetCreateMode() != SfxObjectCreateMode::EMBEDDED )
             {
-                if( !mpPrinter && !sPrinterName.isEmpty() && mpDocSh->GetCreateMode() != SfxObjectCreateMode::EMBEDDED )
+                SfxPrinter* pPrinter = mpDoc->getIDocumentDeviceAccess().getPrinter( true );
+                if ( pPrinter->GetName() != sPrinterName )
                 {
-                    SfxPrinter* pPrinter = mpDoc->getIDocumentDeviceAccess().getPrinter( true );
-                    if ( pPrinter->GetName() != sPrinterName )
+                    VclPtrInstance<SfxPrinter> pNewPrinter( pPrinter->GetOptions().Clone(), sPrinterName );
+                    assert (! pNewPrinter->isDisposed() );
+                    if( pNewPrinter->IsKnown() )
                     {
-                        VclPtrInstance<SfxPrinter> pNewPrinter( std::unique_ptr<SfxItemSet>(pPrinter->GetOptions().Clone()), sPrinterName );
-                        assert (! pNewPrinter->isDisposed() );
-                        if( pNewPrinter->IsKnown() )
-                        {
-                            // set printer only once; in _postSetValues
-                            mpPrinter = pNewPrinter;
-                        }
-                        else
-                        {
-                            pNewPrinter.disposeAndClear();
-                        }
+                        // set printer only once; in _postSetValues
+                        mpPrinter = pNewPrinter;
+                    }
+                    else
+                    {
+                        pNewPrinter.disposeAndClear();
                     }
                 }
             }
-            else
-                throw IllegalArgumentException();
+
         }
         break;
         case HANDLE_PRINTER_SETUP:
         {
             Sequence < sal_Int8 > aSequence;
-            if ( rValue >>= aSequence )
-            {
-                sal_uInt32 nSize = aSequence.getLength();
-                if( nSize > 0 )
-                {
-                    SvMemoryStream aStream (aSequence.getArray(), nSize,
-                                            StreamMode::READ );
-                    aStream.Seek ( STREAM_SEEK_TO_BEGIN );
-                    static sal_uInt16 const nRange[] =
-                    {
-                        FN_PARAM_ADDPRINTER, FN_PARAM_ADDPRINTER,
-                        SID_HTML_MODE,  SID_HTML_MODE,
-                        SID_PRINTER_NOTFOUND_WARN, SID_PRINTER_NOTFOUND_WARN,
-                        SID_PRINTER_CHANGESTODOC, SID_PRINTER_CHANGESTODOC,
-                        0
-                    };
-                    auto pItemSet = o3tl::make_unique<SfxItemSet>( mpDoc->GetAttrPool(), nRange );
-                    VclPtr<SfxPrinter> pPrinter = SfxPrinter::Create ( aStream, std::move(pItemSet) );
-                    assert (! pPrinter->isDisposed() );
-                    // set printer only once; in _postSetValues
-                    mpPrinter.disposeAndClear();
-                    mpPrinter = pPrinter;
-                }
-            }
-            else
+            if ( !(rValue >>= aSequence) )
                 throw IllegalArgumentException();
+
+            sal_uInt32 nSize = aSequence.getLength();
+            if( nSize > 0 )
+            {
+                SvMemoryStream aStream (aSequence.getArray(), nSize,
+                                        StreamMode::READ );
+                aStream.Seek ( STREAM_SEEK_TO_BEGIN );
+                static sal_uInt16 const nRange[] =
+                {
+                    FN_PARAM_ADDPRINTER, FN_PARAM_ADDPRINTER,
+                    SID_HTML_MODE,  SID_HTML_MODE,
+                    SID_PRINTER_NOTFOUND_WARN, SID_PRINTER_NOTFOUND_WARN,
+                    SID_PRINTER_CHANGESTODOC, SID_PRINTER_CHANGESTODOC,
+                    0
+                };
+                auto pItemSet = std::make_unique<SfxItemSet>( mpDoc->GetAttrPool(), nRange );
+                VclPtr<SfxPrinter> pPrinter = SfxPrinter::Create ( aStream, std::move(pItemSet) );
+                assert (! pPrinter->isDisposed() );
+                // set printer only once; in _postSetValues
+                mpPrinter.disposeAndClear();
+                mpPrinter = pPrinter;
+            }
+
+        }
+        break;
+        case HANDLE_PRINTER_PAPER:
+        {
+            bool bPreferPrinterPapersize = {}; // spurious -Werror=maybe-uninitialized
+            if(!(rValue >>= bPreferPrinterPapersize))
+                throw IllegalArgumentException();
+            mbPreferPrinterPapersize = bPreferPrinterPapersize;
         }
         break;
         case HANDLE_IS_KERN_ASIAN_PUNCTUATION:
@@ -452,7 +486,7 @@ void SwXDocumentSettings::_setSingleValue( const comphelper::PropertyInfo & rInf
         {
             sal_Int16 nMode = 0;
             rValue >>= nMode;
-            switch ((CharCompressType)nMode)
+            switch (static_cast<CharCompressType>(nMode))
             {
                 case CharCompressType::NONE:
                 case CharCompressType::PunctuationOnly:
@@ -461,12 +495,17 @@ void SwXDocumentSettings::_setSingleValue( const comphelper::PropertyInfo & rInf
                 default:
                     throw IllegalArgumentException();
             }
-            mpDoc->getIDocumentSettingAccess().setCharacterCompressionType((CharCompressType)nMode);
+            mpDoc->getIDocumentSettingAccess().setCharacterCompressionType(static_cast<CharCompressType>(nMode));
         }
         break;
         case HANDLE_APPLY_USER_DATA:
         {
-            mpDocSh->SetUseUserData( *o3tl::doAccess<bool>(rValue) );
+            mpDocSh->SetUseUserData(*o3tl::doAccess<bool>(rValue));
+        }
+        break;
+        case HANDLE_SAVE_THUMBNAIL:
+        {
+            mpDocSh->SetUseThumbnailSave(*o3tl::doAccess<bool>(rValue));
         }
         break;
         case HANDLE_SAVE_GLOBAL_DOCUMENT_LINKS:
@@ -506,9 +545,11 @@ void SwXDocumentSettings::_setSingleValue( const comphelper::PropertyInfo & rInf
         break;
         case HANDLE_EMBEDDED_DATABASE_NAME:
         {
+#if HAVE_FEATURE_DBCONNECTIVITY
             OUString sEmbeddedName;
             if (rValue >>= sEmbeddedName)
                 mpDoc->GetDBManager()->setEmbeddedName(sEmbeddedName, *mpDocSh);
+#endif
         }
         break;
         case HANDLE_SAVE_VERSION_ON_CLOSE:
@@ -613,7 +654,7 @@ void SwXDocumentSettings::_setSingleValue( const comphelper::PropertyInfo & rInf
             if(rValue >>= aNew)
             {
                 mpDoc->getIDocumentRedlineAccess().SetRedlinePassword(aNew);
-                if(aNew.getLength())
+                if(aNew.hasElements())
                 {
                     RedlineFlags eMode = mpDoc->getIDocumentRedlineAccess().GetRedlineFlags();
                     eMode |= RedlineFlags::On;
@@ -716,6 +757,12 @@ void SwXDocumentSettings::_setSingleValue( const comphelper::PropertyInfo & rInf
             mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::MS_WORD_COMP_TRAILING_BLANKS, bTmp);
         }
         break;
+        case HANDLE_MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY:
+        {
+            bool bTmp = *o3tl::doAccess<bool>(rValue);
+            mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY, bTmp);
+        }
+        break;
         case HANDLE_TAB_AT_LEFT_INDENT_FOR_PARA_IN_LIST:
         {
             bool bTmp = *o3tl::doAccess<bool>(rValue);
@@ -803,6 +850,30 @@ void SwXDocumentSettings::_setSingleValue( const comphelper::PropertyInfo & rInf
             mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::EMBED_FONTS, bTmp);
         }
         break;
+        case HANDLE_EMBED_USED_FONTS:
+        {
+            bool bTmp = *o3tl::doAccess<bool>(rValue);
+            mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::EMBED_USED_FONTS, bTmp);
+        }
+        break;
+        case HANDLE_EMBED_LATIN_SCRIPT_FONTS:
+        {
+            bool bTmp = *o3tl::doAccess<bool>(rValue);
+            mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::EMBED_LATIN_SCRIPT_FONTS, bTmp);
+        }
+        break;
+        case HANDLE_EMBED_ASIAN_SCRIPT_FONTS:
+        {
+            bool bTmp = *o3tl::doAccess<bool>(rValue);
+            mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::EMBED_ASIAN_SCRIPT_FONTS, bTmp);
+        }
+        break;
+        case HANDLE_EMBED_COMPLEX_SCRIPT_FONTS:
+        {
+            bool bTmp = *o3tl::doAccess<bool>(rValue);
+            mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::EMBED_COMPLEX_SCRIPT_FONTS, bTmp);
+        }
+        break;
         case HANDLE_EMBED_SYSTEM_FONTS:
         {
             bool bTmp = *o3tl::doAccess<bool>(rValue);
@@ -853,8 +924,87 @@ void SwXDocumentSettings::_setSingleValue( const comphelper::PropertyInfo & rInf
             }
         }
         break;
+        case HANDLE_DISABLE_OFF_PAGE_POSITIONING:
+        {
+            bool bTmp;
+            if (rValue >>= bTmp)
+            {
+                mpDoc->getIDocumentSettingAccess().set(
+                    DocumentSettingId::DISABLE_OFF_PAGE_POSITIONING, bTmp);
+            }
+        }
+        break;
+        case HANDLE_EMPTY_DB_FIELD_HIDES_PARA:
+        {
+            bool bTmp;
+            if (rValue >>= bTmp)
+            {
+                mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::EMPTY_DB_FIELD_HIDES_PARA,
+                                                       bTmp);
+            }
+        }
+        break;
+        case HANDLE_CONTINUOUS_ENDNOTES:
+        {
+            bool bTmp;
+            if (rValue >>= bTmp)
+            {
+                mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::CONTINUOUS_ENDNOTES,
+                                                       bTmp);
+            }
+        }
+        break;
+        case HANDLE_PROTECT_BOOKMARKS:
+        {
+            bool bTmp;
+            if (rValue >>= bTmp)
+            {
+                mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::PROTECT_BOOKMARKS,
+                                                       bTmp);
+            }
+        }
+        break;
+        case HANDLE_PROTECT_FIELDS:
+        {
+            bool bTmp;
+            if (rValue >>= bTmp)
+            {
+                mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::PROTECT_FIELDS,
+                                                       bTmp);
+            }
+        }
+        break;
+        case HANDLE_HEADER_SPACING_BELOW_LAST_PARA:
+        {
+            bool bTmp;
+            if (rValue >>= bTmp)
+            {
+                mpDoc->getIDocumentSettingAccess().set(
+                    DocumentSettingId::HEADER_SPACING_BELOW_LAST_PARA, bTmp);
+            }
+        }
+        break;
+        case HANDLE_FRAME_AUTOWIDTH_WITH_MORE_PARA:
+        {
+            bool bTmp;
+            if (rValue >>= bTmp)
+            {
+                mpDoc->getIDocumentSettingAccess().set(
+                    DocumentSettingId::FRAME_AUTOWIDTH_WITH_MORE_PARA, bTmp);
+            }
+        }
+        break;
+        case HANDLE_ALLOW_WRAP_WHEN_ANCHORED_IN_TABLE:
+        {
+            bool bTmp;
+            if (rValue >>= bTmp)
+            {
+                mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::ALLOW_WRAP_WHEN_ANCHORED_IN_TABLE, bTmp);
+            }
+        }
+        break;
         default:
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(OUString::number(rInfo.mnHandle));
     }
 }
 
@@ -870,6 +1020,7 @@ void SwXDocumentSettings::_postSetValues ()
         SwAddPrinterItem aAddPrinterItem (aPrtData);
         aOptions.Put(aAddPrinterItem);
         mpPrinter->SetOptions( aOptions );
+        mpPrinter->SetPrinterSettingsPreferred( mbPreferPrinterPapersize );
 
         mpDoc->getIDocumentDeviceAccess().setPrinter( mpPrinter, true, true );
     }
@@ -944,8 +1095,7 @@ void SwXDocumentSettings::_getSingleValue( const comphelper::PropertyInfo & rInf
             {
                 SvMemoryStream aStream;
                 pPrinter->Store( aStream );
-                aStream.Seek ( STREAM_SEEK_TO_END );
-                sal_uInt32 nSize = aStream.Tell();
+                sal_uInt32 nSize = aStream.TellEnd();
                 aStream.Seek ( STREAM_SEEK_TO_BEGIN );
                 Sequence < sal_Int8 > aSequence( nSize );
                 aStream.ReadBytes(aSequence.getArray(), nSize);
@@ -958,6 +1108,12 @@ void SwXDocumentSettings::_getSingleValue( const comphelper::PropertyInfo & rInf
             }
         }
         break;
+        case HANDLE_PRINTER_PAPER:
+        {
+            SfxPrinter *pTempPrinter = mpDoc->getIDocumentDeviceAccess().getPrinter( false );
+            rValue <<= pTempPrinter && pTempPrinter->GetPrinterSettingsPreferred();
+        }
+        break;
         case HANDLE_IS_KERN_ASIAN_PUNCTUATION:
         {
             rValue <<= mpDoc->getIDocumentSettingAccess().get(DocumentSettingId::KERN_ASIAN_PUNCTUATION);
@@ -966,6 +1122,11 @@ void SwXDocumentSettings::_getSingleValue( const comphelper::PropertyInfo & rInf
         case HANDLE_APPLY_USER_DATA:
         {
             rValue <<= mpDocSh->IsUseUserData();
+        }
+        break;
+        case HANDLE_SAVE_THUMBNAIL:
+        {
+            rValue <<= mpDocSh->IsUseThumbnailSave();
         }
         break;
         case HANDLE_CHARACTER_COMPRESSION_TYPE:
@@ -998,7 +1159,11 @@ void SwXDocumentSettings::_getSingleValue( const comphelper::PropertyInfo & rInf
         break;
         case HANDLE_EMBEDDED_DATABASE_NAME:
         {
+#if HAVE_FEATURE_DBCONNECTIVITY
             rValue <<= mpDoc->GetDBManager()->getEmbeddedName();
+#else
+            rValue = uno::Any();
+#endif
         }
         break;
         case HANDLE_SAVE_VERSION_ON_CLOSE:
@@ -1163,6 +1328,11 @@ void SwXDocumentSettings::_getSingleValue( const comphelper::PropertyInfo & rInf
             rValue <<= mpDoc->getIDocumentSettingAccess().get(DocumentSettingId::MS_WORD_COMP_TRAILING_BLANKS);
         }
         break;
+        case HANDLE_MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get(DocumentSettingId::MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY);
+        }
+        break;
         case HANDLE_TAB_AT_LEFT_INDENT_FOR_PARA_IN_LIST:
         {
             rValue <<= mpDoc->getIDocumentSettingAccess().get(DocumentSettingId::TAB_AT_LEFT_INDENT_FOR_PARA_IN_LIST);
@@ -1228,6 +1398,26 @@ void SwXDocumentSettings::_getSingleValue( const comphelper::PropertyInfo & rInf
             rValue <<= mpDoc->getIDocumentSettingAccess().get( DocumentSettingId::EMBED_FONTS );
         }
         break;
+        case HANDLE_EMBED_USED_FONTS:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get( DocumentSettingId::EMBED_USED_FONTS );
+        }
+        break;
+        case HANDLE_EMBED_LATIN_SCRIPT_FONTS:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get( DocumentSettingId::EMBED_LATIN_SCRIPT_FONTS );
+        }
+        break;
+        case HANDLE_EMBED_ASIAN_SCRIPT_FONTS:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get( DocumentSettingId::EMBED_ASIAN_SCRIPT_FONTS );
+        }
+        break;
+        case HANDLE_EMBED_COMPLEX_SCRIPT_FONTS:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get( DocumentSettingId::EMBED_COMPLEX_SCRIPT_FONTS );
+        }
+        break;
         case HANDLE_EMBED_SYSTEM_FONTS:
         {
             rValue <<= mpDoc->getIDocumentSettingAccess().get( DocumentSettingId::EMBED_SYSTEM_FONTS );
@@ -1263,8 +1453,55 @@ void SwXDocumentSettings::_getSingleValue( const comphelper::PropertyInfo & rInf
             rValue <<= mpDoc->getIDocumentSettingAccess().get(DocumentSettingId::SUBTRACT_FLYS);
         }
         break;
+        case HANDLE_DISABLE_OFF_PAGE_POSITIONING:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get(DocumentSettingId::DISABLE_OFF_PAGE_POSITIONING);
+        }
+        break;
+        case HANDLE_EMPTY_DB_FIELD_HIDES_PARA:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get(
+                DocumentSettingId::EMPTY_DB_FIELD_HIDES_PARA);
+        }
+        break;
+        case HANDLE_CONTINUOUS_ENDNOTES:
+        {
+            rValue
+                <<= mpDoc->getIDocumentSettingAccess().get(DocumentSettingId::CONTINUOUS_ENDNOTES);
+        }
+        break;
+        case HANDLE_PROTECT_BOOKMARKS:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get(
+                DocumentSettingId::PROTECT_BOOKMARKS);
+        }
+        break;
+        case HANDLE_PROTECT_FIELDS:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get(
+                DocumentSettingId::PROTECT_FIELDS);
+        }
+        break;
+        case HANDLE_HEADER_SPACING_BELOW_LAST_PARA:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get(
+                DocumentSettingId::HEADER_SPACING_BELOW_LAST_PARA);
+        }
+        break;
+        case HANDLE_FRAME_AUTOWIDTH_WITH_MORE_PARA:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get(
+                DocumentSettingId::FRAME_AUTOWIDTH_WITH_MORE_PARA);
+        }
+        break;
+        case HANDLE_ALLOW_WRAP_WHEN_ANCHORED_IN_TABLE:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get(
+                DocumentSettingId::ALLOW_WRAP_WHEN_ANCHORED_IN_TABLE);
+        }
+        break;
         default:
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(OUString::number(rInfo.mnHandle));
     }
 }
 
@@ -1277,7 +1514,7 @@ void SwXDocumentSettings::_postGetValues ()
 // XServiceInfo
 OUString SAL_CALL SwXDocumentSettings::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.Writer.DocumentSettings");
+    return "SwXDocumentSettings";
 }
 
 sal_Bool SAL_CALL SwXDocumentSettings::supportsService( const OUString& ServiceName )
@@ -1287,11 +1524,7 @@ sal_Bool SAL_CALL SwXDocumentSettings::supportsService( const OUString& ServiceN
 
 Sequence< OUString > SAL_CALL SwXDocumentSettings::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aSeq( 3 );
-    aSeq[0] = "com.sun.star.document.Settings";
-    aSeq[1] = "com.sun.star.text.DocumentSettings";
-    aSeq[2] = "com.sun.star.text.PrintSettings";
-    return aSeq;
+    return { "com.sun.star.document.Settings", "com.sun.star.text.DocumentSettings", "com.sun.star.text.PrintSettings" };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

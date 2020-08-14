@@ -18,17 +18,16 @@
  */
 
 #include <connectivity/ConnectionWrapper.hxx>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/sdbc/XConnection.hpp>
 #include <comphelper/uno3.hxx>
 #include <comphelper/sequence.hxx>
+#include <comphelper/servicehelper.hxx>
+#include <comphelper/hash.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <com/sun/star/reflection/ProxyFactory.hpp>
-#include <rtl/digest.h>
 #include <algorithm>
-#include <string.h>
 
 using namespace connectivity;
 
@@ -107,7 +106,7 @@ OConnectionWrapper::~OConnectionWrapper()
 
 OUString SAL_CALL OConnectionWrapper::getImplementationName(  )
 {
-    return OUString( "com.sun.star.sdbc.drivers.OConnectionWrapper" );
+    return "com.sun.star.sdbc.drivers.OConnectionWrapper";
 }
 
 
@@ -120,7 +119,7 @@ css::uno::Sequence< OUString > SAL_CALL OConnectionWrapper::getSupportedServiceN
 
     // append our own service, if necessary
     OUString sConnectionService( "com.sun.star.sdbc.Connection" );
-    if ( 0 == ::comphelper::findValue( aSupported, sConnectionService, true ).getLength() )
+    if ( ::comphelper::findValue( aSupported, sConnectionService ) == -1 )
     {
         sal_Int32 nLen = aSupported.getLength();
         aSupported.realloc( nLen + 1 );
@@ -155,7 +154,7 @@ Sequence< Type > SAL_CALL OConnectionWrapper::getTypes(  )
 // css::lang::XUnoTunnel
 sal_Int64 SAL_CALL OConnectionWrapper::getSomething( const Sequence< sal_Int8 >& rId )
 {
-    if (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    if (isUnoTunnelId<OConnectionWrapper>(rId))
         return reinterpret_cast< sal_Int64 >( this );
 
     if(m_xUnoTunnel.is())
@@ -164,7 +163,7 @@ sal_Int64 SAL_CALL OConnectionWrapper::getSomething( const Sequence< sal_Int8 >&
 }
 
 
-Sequence< sal_Int8 > OConnectionWrapper::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OConnectionWrapper::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -173,7 +172,7 @@ Sequence< sal_Int8 > OConnectionWrapper::getUnoTunnelImplementationId()
 
 namespace
 {
-    class TPropertyValueLessFunctor : public std::binary_function< css::beans::PropertyValue,css::beans::PropertyValue,bool>
+    class TPropertyValueLessFunctor
     {
     public:
         TPropertyValueLessFunctor()
@@ -195,52 +194,45 @@ void OConnectionWrapper::createUniqueId( const OUString& _rURL
                     ,const OUString& _rPassword)
 {
     // first we create the digest we want to have
-    rtlDigest aDigest = rtl_digest_create( rtl_Digest_AlgorithmSHA1 );
-    rtl_digest_update(aDigest,_rURL.getStr(),_rURL.getLength()*sizeof(sal_Unicode));
+    ::comphelper::Hash sha1(::comphelper::HashType::SHA1);
+    sha1.update(reinterpret_cast<unsigned char const*>(_rURL.getStr()), _rURL.getLength() * sizeof(sal_Unicode));
     if ( !_rUserName.isEmpty() )
-        rtl_digest_update(aDigest,_rUserName.getStr(),_rUserName.getLength()*sizeof(sal_Unicode));
+        sha1.update(reinterpret_cast<unsigned char const*>(_rUserName.getStr()), _rUserName.getLength() * sizeof(sal_Unicode));
     if ( !_rPassword.isEmpty() )
-        rtl_digest_update(aDigest,_rPassword.getStr(),_rPassword.getLength()*sizeof(sal_Unicode));
+        sha1.update(reinterpret_cast<unsigned char const*>(_rPassword.getStr()), _rPassword.getLength() * sizeof(sal_Unicode));
     // now we need to sort the properties
-    PropertyValue* pBegin = _rInfo.getArray();
-    PropertyValue* pEnd   = pBegin + _rInfo.getLength();
-    std::sort(pBegin,pEnd,TPropertyValueLessFunctor());
+    std::sort(_rInfo.begin(),_rInfo.end(),TPropertyValueLessFunctor());
 
-    pBegin = _rInfo.getArray();
-    pEnd   = pBegin + _rInfo.getLength();
-    for (; pBegin != pEnd; ++pBegin)
+    for (PropertyValue const & prop : std::as_const(_rInfo))
     {
         // we only include strings an integer values
         OUString sValue;
-        if ( pBegin->Value >>= sValue )
+        if ( prop.Value >>= sValue )
             ;
         else
         {
             sal_Int32 nValue = 0;
-            if ( pBegin->Value >>= nValue )
+            if ( prop.Value >>= nValue )
                 sValue = OUString::number(nValue);
             else
             {
                 Sequence< OUString> aSeq;
-                if ( pBegin->Value >>= aSeq )
+                if ( prop.Value >>= aSeq )
                 {
-                    const OUString* pSBegin = aSeq.getConstArray();
-                    const OUString* pSEnd   = pSBegin + aSeq.getLength();
-                    for(;pSBegin != pSEnd;++pSBegin)
-                        rtl_digest_update(aDigest,pSBegin->getStr(),pSBegin->getLength()*sizeof(sal_Unicode));
+                    for(OUString const & s : std::as_const(aSeq))
+                        sha1.update(reinterpret_cast<unsigned char const*>(s.getStr()), s.getLength() * sizeof(sal_Unicode));
                 }
             }
         }
         if ( !sValue.isEmpty() )
         {
             // we don't have to convert this into UTF8 because we don't store on a file system
-            rtl_digest_update(aDigest,sValue.getStr(),sValue.getLength()*sizeof(sal_Unicode));
+            sha1.update(reinterpret_cast<unsigned char const*>(sValue.getStr()), sValue.getLength() * sizeof(sal_Unicode));
         }
     }
 
-    rtl_digest_get(aDigest,_pBuffer,RTL_DIGEST_LENGTH_SHA1);
-    // we have to destroy the digest
-    rtl_digest_destroy(aDigest);
+    std::vector<unsigned char> result(sha1.finalize());
+    std::copy(result.begin(), result.end(), _pBuffer);
 }
 
 

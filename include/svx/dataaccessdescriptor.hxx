@@ -20,10 +20,15 @@
 #ifndef INCLUDED_SVX_DATAACCESSDESCRIPTOR_HXX
 #define INCLUDED_SVX_DATAACCESSDESCRIPTOR_HXX
 
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <rtl/ustring.hxx>
 #include <svx/svxdllapi.h>
 #include <memory>
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::uno { class Any; }
+namespace com::sun::star::uno { template <class E> class Sequence; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 namespace svx
 {
@@ -56,15 +61,14 @@ namespace svx
 
     /** class encapsulating the css::sdb::DataAccessDescriptor service.
     */
-    class SAL_WARN_UNUSED SVX_DLLPUBLIC ODataAccessDescriptor
+    class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC ODataAccessDescriptor final
     {
-    protected:
         std::unique_ptr<ODADescriptorImpl>      m_pImpl;
 
     public:
         ODataAccessDescriptor();
         ODataAccessDescriptor( const ODataAccessDescriptor& _rSource );
-        ODataAccessDescriptor( ODataAccessDescriptor&& _rSource );
+        ODataAccessDescriptor(ODataAccessDescriptor&& _rSource) noexcept;
         ODataAccessDescriptor( const css::uno::Reference< css::beans::XPropertySet >& _rValues );
         ODataAccessDescriptor( const css::uno::Sequence< css::beans::PropertyValue >& _rValues );
 
@@ -72,7 +76,7 @@ namespace svx
         ODataAccessDescriptor( const css::uno::Any& _rValues );
 
         ODataAccessDescriptor& operator=(const ODataAccessDescriptor& _rSource);
-        ODataAccessDescriptor& operator=(ODataAccessDescriptor&& _rSource);
+        ODataAccessDescriptor& operator=(ODataAccessDescriptor&& _rSource) noexcept;
 
         ~ODataAccessDescriptor();
 
@@ -80,7 +84,7 @@ namespace svx
             <p>If you call this method more than once, without writing any values between both calls, the same object
             is returned. If you wrote values, a new object is returned.</p>
         */
-        css::uno::Sequence< css::beans::PropertyValue >
+        css::uno::Sequence< css::beans::PropertyValue > const &
                     createPropertyValueSequence();
 
         /** initialized the descriptor from the property values given

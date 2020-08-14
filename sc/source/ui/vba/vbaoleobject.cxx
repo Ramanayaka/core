@@ -18,17 +18,12 @@
  */
 
 #include <com/sun/star/awt/XControlModel.hpp>
-#include <com/sun/star/awt/XWindow2.hpp>
-#include <com/sun/star/view/XControlAccess.hpp>
 #include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/drawing/XShape.hpp>
+#include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <ooo/vba/XControlProvider.hpp>
 
 #include "vbaoleobject.hxx"
-#include <svx/svdobj.hxx>
-#include "drwlayer.hxx"
-#include "excelvbahelper.hxx"
-#include <svtools/bindablecontrolhelper.hxx>
+
 using namespace com::sun::star;
 using namespace ooo::vba;
 
@@ -37,12 +32,12 @@ ScVbaOLEObject::ScVbaOLEObject( const uno::Reference< XHelperInterface >& xParen
 : OLEObjectImpl_BASE( xParent, xContext )
 {
     //init m_xWindowPeer
-    uno::Reference< awt::XControlModel > xControlModel( xControlShape->getControl(), css::uno::UNO_QUERY_THROW );
+    uno::Reference< awt::XControlModel > xControlModel( xControlShape->getControl(), css::uno::UNO_SET_THROW );
     uno::Reference< container::XChild > xChild( xControlModel, uno::UNO_QUERY_THROW );
     xChild.set( xChild->getParent(), uno::UNO_QUERY_THROW );
     xChild.set( xChild->getParent(), uno::UNO_QUERY_THROW );
     uno::Reference<frame::XModel> xModel( xChild->getParent(), uno::UNO_QUERY_THROW );
-    uno::Reference<lang::XMultiComponentFactory > xServiceManager( mxContext->getServiceManager(), uno::UNO_QUERY_THROW );
+    uno::Reference<lang::XMultiComponentFactory > xServiceManager( mxContext->getServiceManager(), uno::UNO_SET_THROW );
     uno::Reference< XControlProvider > xControlProvider( xServiceManager->createInstanceWithContext("ooo.vba.ControlProvider", mxContext ), uno::UNO_QUERY_THROW );
     m_xControl.set( xControlProvider->createControl(  xControlShape, xModel ) );
 }
@@ -139,18 +134,16 @@ void SAL_CALL ScVbaOLEObject::setLinkedCell( const OUString& _linkedcell )
 OUString
 ScVbaOLEObject::getServiceImplName()
 {
-    return OUString("ScVbaOLEObject");
+    return "ScVbaOLEObject";
 }
 
 uno::Sequence< OUString >
 ScVbaOLEObject::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.OLEObject";
-    }
+        "ooo.vba.excel.OLEObject"
+    };
     return aServiceNames;
 }
 

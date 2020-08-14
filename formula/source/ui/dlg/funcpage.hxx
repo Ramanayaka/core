@@ -20,17 +20,8 @@
 #ifndef INCLUDED_FORMULA_SOURCE_UI_DLG_FUNCPAGE_HXX
 #define INCLUDED_FORMULA_SOURCE_UI_DLG_FUNCPAGE_HXX
 
-#include <vcl/lstbox.hxx>
-#include <vcl/group.hxx>
-#include <svtools/svmedit.hxx>
-#include <vcl/tabpage.hxx>
-
-#include <vcl/tabctrl.hxx>
-#include <vcl/button.hxx>
-#include <svtools/treelistbox.hxx>
-
+#include <vcl/weld.hxx>
 #include <vector>
-#include "formula/omoduleclient.hxx"
 
 namespace formula
 {
@@ -39,59 +30,47 @@ class IFunctionDescription;
 class IFunctionManager;
 class IFunctionCategory;
 
-
-class FormulaListBox : public ListBox
-{
-protected:
-
-    virtual void    KeyInput( const KeyEvent& rKEvt ) override;
-    virtual bool    PreNotify( NotifyEvent& rNEvt ) override;
-
-public:
-                    FormulaListBox( vcl::Window* pParent, WinBits nBits );
-
-};
-
-
 typedef const IFunctionDescription* TFunctionDesc;
 
-class FuncPage : public TabPage
+class FuncPage final
 {
 private:
-    OModuleClient            m_aModuleClient;
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Container> m_xContainer;
+
+    std::unique_ptr<weld::ComboBox> m_xLbCategory;
+    std::unique_ptr<weld::TreeView> m_xLbFunction;
+    std::unique_ptr<weld::Entry> m_xLbFunctionSearchString;
+
     Link<FuncPage&,void>     aDoubleClickLink;
     Link<FuncPage&,void>     aSelectionLink;
-    VclPtr<ListBox>          m_pLbCategory;
-    VclPtr<FormulaListBox>   m_pLbFunction;
-    VclPtr<Edit>             m_plbFunctionSearchString;
     const IFunctionManager*  m_pFunctionManager;
 
     ::std::vector< TFunctionDesc >  aLRUList;
     OString    m_aHelpId;
 
-
     void impl_addFunctions(const IFunctionCategory* _pCategory);
-                    DECL_LINK( SelHdl, ListBox&, void );
-                    DECL_LINK(DblClkHdl, ListBox&, void);
-                    DECL_LINK(ModifyHdl, Edit&, void);
 
-protected:
+    DECL_LINK(SelComboBoxHdl, weld::ComboBox&, void);
+    DECL_LINK(SelTreeViewHdl, weld::TreeView&, void);
+    DECL_LINK(DblClkHdl, weld::TreeView&, bool);
+    DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
+    DECL_LINK(ModifyHdl, weld::Entry&, void);
 
     void            UpdateFunctionList(const OUString&);
 
-
 public:
 
-                    FuncPage( vcl::Window* pParent,const IFunctionManager* _pFunctionManager);
-    virtual         ~FuncPage() override;
-    virtual void    dispose() override;
+    FuncPage(weld::Container* pContainer, const IFunctionManager* _pFunctionManager);
+    ~FuncPage();
 
     void            SetCategory(sal_Int32  nCat);
     void            SetFunction(sal_Int32  nFunc);
     void            SetFocus();
-    sal_Int32       GetCategory();
-    sal_Int32       GetFunction();
-    sal_Int32       GetFunctionEntryCount();
+    sal_Int32       GetCategory() const;
+    sal_Int32       GetCategoryEntryCount() const;
+    sal_Int32       GetFunction() const;
+    sal_Int32       GetFunctionEntryCount() const;
 
     sal_Int32       GetFuncPos(const IFunctionDescription* _pDesc);
     const IFunctionDescription* GetFuncDesc( sal_Int32  nPos ) const;
@@ -101,6 +80,7 @@ public:
 
     void            SetSelectHdl( const Link<FuncPage&,void>& rLink ) { aSelectionLink = rLink; }
 
+    bool            IsVisible() const { return m_xContainer->get_visible(); }
 };
 
 } // formula

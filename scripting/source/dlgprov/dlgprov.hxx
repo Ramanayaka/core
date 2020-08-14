@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SCRIPTING_SOURCE_DLGPROV_DLGPROV_HXX
-#define INCLUDED_SCRIPTING_SOURCE_DLGPROV_DLGPROV_HXX
+#pragma once
 
 #include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/awt/XDialog.hpp>
@@ -50,7 +49,6 @@ namespace dlgprov
     ::osl::Mutex& getMutex();
 
 
-    // class DialogProviderImpl
 
     css::uno::Reference< css::container::XNameContainer > lcl_createControlModel(const css::uno::Reference< css::uno::XComponentContext >& i_xContext);
     css::uno::Reference< css::resource::XStringResourceManager > lcl_getStringResourceManager(const css::uno::Reference< css::uno::XComponentContext >& i_xContext,const OUString& i_sURL);
@@ -106,7 +104,7 @@ namespace dlgprov
         // XDialogProvider / XDialogProvider2 impl method
         /// @throws css::lang::IllegalArgumentException
         /// @throws css::uno::RuntimeException
-        css::uno::Reference < css::awt::XControl > SAL_CALL createDialogImpl(
+        css::uno::Reference < css::awt::XControl > createDialogImpl(
             const OUString& URL,
             const css::uno::Reference< css::uno::XInterface >& xHandler,
             const css::uno::Reference< css::awt::XWindowPeer >& xParent,
@@ -146,18 +144,5 @@ namespace dlgprov
 
 
 }   // namespace dlgprov
-
-
-// component helper namespace
-namespace comp_DialogModelProvider {
-
-// component and service helper functions:
-OUString SAL_CALL _getImplementationName();
-css::uno::Sequence< OUString > SAL_CALL _getSupportedServiceNames();
-
-} // namespace comp_DialogModelProvider
-
-
-#endif // INCLUDED_SCRIPTING_SOURCE_DLGPROV_DLGPROV_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,10 +21,8 @@
 #define INCLUDED_SC_SOURCE_UI_INC_PRINTFUN_HXX
 
 #include <memory>
-#include "pagepar.hxx"
-#include "editutil.hxx"
-
-#include <vcl/print.hxx>
+#include <pagepar.hxx>
+#include <editutil.hxx>
 
 class SfxPrinter;
 class ScDocShell;
@@ -34,7 +32,6 @@ class SfxItemSet;
 class ScPageHFItem;
 class EditTextObject;
 class MultiSelection;
-class ScHeaderEditEngine;
 class ScPageBreakData;
 class ScPreviewLocationData;
 class ScPrintOptions;
@@ -66,44 +63,13 @@ struct ScPrintHFParam
     const SvxShadowItem* pShadow;
 };
 
-struct ScPrintState                         //  Save Variables from ScPrintFunc
-{
-    SCTAB   nPrintTab;
-    SCCOL   nStartCol;
-    SCROW   nStartRow;
-    SCCOL   nEndCol;
-    SCROW   nEndRow;
-    sal_uInt16  nZoom;
-    size_t  nPagesX;
-    size_t  nPagesY;
-    long    nTabPages;
-    long    nTotalPages;
-    long    nPageStart;
-    long    nDocPages;
-    ScPrintState()
-        : nPrintTab(0)
-        , nStartCol(0)
-        , nStartRow(0)
-        , nEndCol(0)
-        , nEndRow(0)
-        , nZoom(0)
-        , nPagesX(0)
-        , nPagesY(0)
-        , nTabPages(0)
-        , nTotalPages(0)
-        , nPageStart(0)
-        , nDocPages(0)
-    {
-    }
-};
-
 class ScPageRowEntry
 {
 private:
     SCROW                    nStartRow;
     SCROW                    nEndRow;
     size_t                   nPagesX;
-    std::unique_ptr<bool[]>  pHidden;
+    std::vector<bool>        aHidden;
     //!     Cache Number of really visible?
 
 public:
@@ -123,6 +89,101 @@ public:
     bool    IsHidden(size_t nX) const;
 
     size_t  CountVisible() const;
+};
+
+namespace sc
+{
+
+struct PrintPageRangesInput
+{
+    bool m_bSkipEmpty;
+    bool m_bPrintArea;
+    SCROW m_nStartRow;
+    SCROW m_nEndRow;
+    SCCOL m_nStartCol;
+    SCCOL m_nEndCol;
+    SCTAB m_nPrintTab;
+    Size  m_aDocSize;
+
+    PrintPageRangesInput()
+        : m_bSkipEmpty(false)
+        , m_bPrintArea(false)
+        , m_nStartRow(0)
+        , m_nEndRow(0)
+        , m_nStartCol(0)
+        , m_nEndCol(0)
+        , m_nPrintTab(0)
+    {}
+};
+
+class PrintPageRanges
+{
+public:
+    PrintPageRanges();
+
+    std::vector<SCCOL> m_aPageEndX;
+    std::vector<SCROW> m_aPageEndY;
+    std::vector<ScPageRowEntry> m_aPageRows;
+
+    size_t m_nPagesX;
+    size_t m_nPagesY;
+    size_t m_nTotalY;
+
+    PrintPageRangesInput m_aInput;
+
+    bool checkIfAlreadyCalculatedAndSet(bool bSkipEmpty, bool bPrintArea,
+                                        SCROW nStartRow, SCROW nEndRow,
+                                        SCCOL nStartCol, SCCOL nEndCol,
+                                        SCTAB nPrintTab, Size const & aDocSize);
+
+    void calculate(ScDocument* pDoc, bool bSkipEmpty, bool bPrintArea,
+                   SCROW nStartRow, SCROW nEndRow, SCCOL nStartCol, SCCOL nEndCol,
+                   SCTAB nPrintTab, Size const & aDocSize);
+};
+
+}
+
+struct ScPrintState                         //  Save Variables from ScPrintFunc
+{
+    SCTAB   nPrintTab;
+    SCCOL   nStartCol;
+    SCROW   nStartRow;
+    SCCOL   nEndCol;
+    SCROW   nEndRow;
+    bool    bPrintAreaValid; // the 4 variables above are set
+    sal_uInt16  nZoom;
+    size_t  nPagesX;
+    size_t  nPagesY;
+    long    nTabPages;
+    long    nTotalPages;
+    long    nPageStart;
+    long    nDocPages;
+
+    // Additional state of page ranges
+    bool bSavedStateRanges;
+    sc::PrintPageRangesInput aPrintPageRangesInput;
+    size_t nTotalY;
+    std::vector<SCCOL> aPageEndX;
+    std::vector<SCROW> aPageEndY;
+    std::vector<ScPageRowEntry> aPageRows;
+
+    ScPrintState()
+        : nPrintTab(0)
+        , nStartCol(0)
+        , nStartRow(0)
+        , nEndCol(0)
+        , nEndRow(0)
+        , bPrintAreaValid(false)
+        , nZoom(0)
+        , nPagesX(0)
+        , nPagesY(0)
+        , nTabPages(0)
+        , nTotalPages(0)
+        , nPageStart(0)
+        , nDocPages(0)
+        , bSavedStateRanges(false)
+        , nTotalY(0)
+    {}
 };
 
 class ScPrintFunc
@@ -150,7 +211,7 @@ private:
     const ScRange*      pUserArea;          //  Selection, if set in dialog
 
     const SfxItemSet*   pParamSet;          //  Selected template
-    bool                bState;             // created from State-struct
+    bool                bFromPrintState;    // created from State-struct
 
                                             //  Parameter from template:
     sal_uInt16          nLeftMargin;
@@ -199,17 +260,12 @@ private:
     SCROW               nStartRow;
     SCCOL               nEndCol;
     SCROW               nEndRow;
+    bool                bPrintAreaValid; // the 4 variables above are set
 
-    std::vector< SCCOL >            maPageEndX;
-    std::vector< SCROW >            maPageEndY;
-    std::vector< ScPageRowEntry>    maPageRows;
+    sc::PrintPageRanges m_aRanges;
 
-    size_t              nPagesX;
-    size_t              nPagesY;
-    size_t              nTotalY;
-
-    ScHeaderEditEngine* pEditEngine;
-    SfxItemSet*         pEditDefaults;
+    std::unique_ptr<ScHeaderEditEngine> pEditEngine;
+    std::unique_ptr<SfxItemSet>         pEditDefaults;
 
     ScHeaderFieldData   aFieldData;
 
@@ -223,6 +279,9 @@ public:
                                  const ScRange* pArea = nullptr,
                                  const ScPrintOptions* pOptions = nullptr,
                                  ScPageBreakData* pData = nullptr );
+
+                    ScPrintFunc( ScDocShell* pShell, SfxPrinter* pNewPrinter,
+                                const ScPrintState& rState, const ScPrintOptions* pOptions );
 
                     // ctors for device other than printer - for preview and pdf:
 
@@ -244,7 +303,7 @@ public:
 
     void            SetOffset( const Point& rOfs );
     void            SetManualZoom( sal_uInt16 nNewZoom );
-    void            SetDateTime( const Date& rDate, const tools::Time& rTime );
+    void            SetDateTime( const DateTime& );
 
     void            SetClearFlag( bool bFlag );
     void            SetUseStyleColor( bool bFlag );
@@ -271,14 +330,14 @@ public:
 
     void            ResetBreaks( SCTAB nTab );
 
-    void            GetPrintState( ScPrintState& rState );
+    void            GetPrintState(ScPrintState& rState, bool bSavePageRanges = false);
     bool            GetLastSourceRange( ScRange& rRange ) const;
     sal_uInt16      GetLeftMargin() const{return nLeftMargin;}
     sal_uInt16      GetRightMargin() const{return nRightMargin;}
     sal_uInt16      GetTopMargin() const{return nTopMargin;}
     sal_uInt16      GetBottomMargin() const{return nBottomMargin;}
-    const ScPrintHFParam& GetHeader(){return aHdr;}
-    const ScPrintHFParam& GetFooter(){return aFtr;}
+    const ScPrintHFParam& GetHeader() const {return aHdr;}
+    const ScPrintHFParam& GetFooter() const {return aFtr;}
 
     bool HasPrintRange() const { return mbHasPrintRange;}
 

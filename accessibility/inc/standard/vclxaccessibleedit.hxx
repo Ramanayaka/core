@@ -17,36 +17,35 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEEDIT_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEEDIT_HXX
+#pragma once
 
 #include <standard/vclxaccessibletextcomponent.hxx>
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessibleEditableText.hpp>
 #include <com/sun/star/accessibility/XAccessibleAction.hpp>
 
 #include <cppuhelper/implbase2.hxx>
 
 
-//  class VCLXAccessibleEdit
 
 
 typedef ::cppu::ImplHelper2<
     css::accessibility::XAccessibleAction,
     css::accessibility::XAccessibleEditableText > VCLXAccessibleEdit_BASE;
 
-class VCLXAccessibleEdit : public VCLXAccessibleTextComponent,
-                           public VCLXAccessibleEdit_BASE
+class VCLXAccessibleEdit final : public VCLXAccessibleTextComponent,
+                                 public VCLXAccessibleEdit_BASE
 {
     friend class VCLXAccessibleBox;
 
 private:
     sal_Int32   m_nCaretPosition;
 
-protected:
-    virtual ~VCLXAccessibleEdit() override;
+    virtual ~VCLXAccessibleEdit() override = default;
 
     virtual void                ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
     virtual void                FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet ) override;
+    sal_Int16                   implGetAccessibleRole();
 
     // OCommonAccessibleText
     virtual OUString            implGetText() override;
@@ -94,6 +93,7 @@ public:
     virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+    virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
     // XAccessibleEditableText
     virtual sal_Bool SAL_CALL cutText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
@@ -105,6 +105,5 @@ public:
     virtual sal_Bool SAL_CALL setText( const OUString& sText ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEEDIT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

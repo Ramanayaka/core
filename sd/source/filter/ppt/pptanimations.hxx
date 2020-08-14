@@ -22,8 +22,6 @@
 
 #include <com/sun/star/uno/Any.h>
 
-#include <oox/ppt/pptfilterhelpers.hxx>
-
 #include <map>
 #include <sal/types.h>
 
@@ -57,6 +55,9 @@ namespace ppt
 #define PPT_TRANSITION_TYPE_SMOOTHFADE      23 // Alpha Fade in MS-PPT Specs
 #define PPT_TRANSITION_TYPE_WHEEL           26
 #define PPT_TRANSITION_TYPE_CIRCLE          27
+
+// undocumented(?)
+#define PPT_TRANSITION_TYPE_FLASH           30
 
 // atoms
 #define DFF_msofbtAnimEvent                         0xf125
@@ -127,11 +128,15 @@ namespace ppt
 #define DFF_ANIM_PRESS_CLASS_OLE_ACTION     5
 #define DFF_ANIM_PRESS_CLASS_MEDIACALL      6
 
+// Effect node type.
 #define DFF_ANIM_NODE_TYPE_ON_CLICK         1
 #define DFF_ANIM_NODE_TYPE_WITH_PREVIOUS    2
 #define DFF_ANIM_NODE_TYPE_AFTER_PREVIOUS   3
 #define DFF_ANIM_NODE_TYPE_MAIN_SEQUENCE    4
 #define DFF_ANIM_NODE_TYPE_INTERACTIVE_SEQ  5
+#define DFF_ANIM_NODE_TYPE_CLICK_PARALLEL   6
+#define DFF_ANIM_NODE_TYPE_WITH_GROUP       7
+#define DFF_ANIM_NODE_TYPE_AFTER_GROUP      8
 #define DFF_ANIM_NODE_TYPE_TIMING_ROOT      9
 
 /* constants for fill entry in AnimationNode */
@@ -150,7 +155,7 @@ const sal_Int32 mso_Anim_Fill_REMOVE    = 1;
 const sal_Int32 mso_Anim_Fill_FREEZE    = 2;
 const sal_Int32 mso_Anim_Fill_HOLD      = 3;
 
-/* constants for behaviour entry in PPtAnimationNode */
+/* constants for behaviour entry in PPTAnimationNode */
 const sal_Int32 mso_Anim_Behaviour_FILTER   = 24;
 const sal_Int32 mso_Anim_Behaviour_ANIMATION= 25;
 
@@ -197,7 +202,7 @@ public:
     }
 public:
 
-    friend SvStream& WriteAnimationNode(SvStream& rOut, AnimationNode& rAtom);
+    friend SvStream& WriteAnimationNode(SvStream& rOut, AnimationNode const & rAtom);
 };
 
 } // namespace ppt

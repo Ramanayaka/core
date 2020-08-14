@@ -18,6 +18,7 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <cassert>
 
@@ -26,13 +27,11 @@
 
 #include <desktop/exithelper.h>
 
-#include <tools/debug.hxx>
-#include <tools/resmgr.hxx>
-
 #include <comphelper/processfactory.hxx>
 #include <comphelper/asyncnotification.hxx>
-
+#include <i18nlangtag/mslangid.hxx>
 #include <unotools/syslocaleoptions.hxx>
+#include <vcl/QueueInfo.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/vclmain.hxx>
 #include <vcl/wrkwin.hxx>
@@ -41,22 +40,23 @@
 #include <vcl/image.hxx>
 #include <vcl/ImageTree.hxx>
 #include <vcl/settings.hxx>
-#include <vcl/unowrap.hxx>
-#include <vcl/commandinfoprovider.hxx>
-#include <vcl/configsettings.hxx>
+#include <vcl/toolkit/unowrap.hxx>
+#include <configsettings.hxx>
 #include <vcl/lazydelete.hxx>
 #include <vcl/embeddedfontshelper.hxx>
-#include <vcl/debugevent.hxx>
-#include <vcl/dialog.hxx>
+#include <vcl/toolkit/dialog.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/print.hxx>
+#include <debugevent.hxx>
 #include <scrwnd.hxx>
 
 #ifdef _WIN32
 #include <svsys.h>
 #include <process.h>
 #include <ole2.h>
+#else
+#include <stdlib.h>
 #endif
 
 #ifdef ANDROID
@@ -64,31 +64,28 @@
 #include <jni.h>
 #endif
 
-#include "salinst.hxx"
-#include "salwtype.hxx"
-#include "svdata.hxx"
+#include <impfontcache.hxx>
+#include <salinst.hxx>
+#include <svdata.hxx>
 #include <vcl/svmain.hxx>
-#include "dbggui.hxx"
-#include "accmgr.hxx"
-#include "outdev.h"
-#include "fontinstance.hxx"
-#include "PhysicalFontCollection.hxx"
-#include "print.h"
-#include "salgdi.hxx"
-#include "salsys.hxx"
-#include "saltimer.hxx"
-#include "salimestatus.hxx"
-#include "displayconnectiondispatch.hxx"
+#include <dbggui.hxx>
+#include <accmgr.hxx>
+#include <PhysicalFontCollection.hxx>
+#include <print.h>
+#include <salsys.hxx>
+#include <saltimer.hxx>
+#include <displayconnectiondispatch.hxx>
 
 #include <config_features.h>
-#if HAVE_FEATURE_OPENGL
-#include <vcl/opengl/OpenGLContext.hxx>
-#endif
+#include <config_feature_opencl.h>
 
 #include <osl/process.h>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
+
+#ifdef _WIN32
+#include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
+#endif
 
 #include <comphelper/lok.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -96,7 +93,11 @@
 
 #include <opencl/OpenCLZone.hxx>
 #include <opengl/zone.hxx>
-#include <opengl/watchdog.hxx>
+#include <skia/zone.hxx>
+#include <watchdog.hxx>
+
+#include <basegfx/utils/systemdependentdata.hxx>
+#include <tools/diagnose_ex.h>
 
 #if OSL_DEBUG_LEVEL > 0
 #include <typeinfo>
@@ -107,9 +108,7 @@ using namespace ::com::sun::star;
 
 static bool g_bIsLeanException;
 
-static bool isInitVCL();
-
-oslSignalAction SAL_CALL VCLExceptionSignal_impl( void* /*pData*/, oslSignalInfo* pInfo)
+static oslSignalAction VCLExceptionSignal_impl( void* /*pData*/, oslSignalInfo* pInfo)
 {
     static volatile bool bIn = false;
 
@@ -130,12 +129,16 @@ oslSignalAction SAL_CALL VCLExceptionSignal_impl( void* /*pData*/, oslSignalInfo
         if (OpenGLZone::isInZone())
             OpenGLZone::hardDisable();
 #endif
+#if HAVE_FEATURE_SKIA
+        if (SkiaZone::isInZone())
+            SkiaZone::hardDisable();
+#endif
 #if HAVE_FEATURE_OPENCL
         if (OpenCLZone::isInZone())
         {
             OpenCLZone::hardDisable();
 #ifdef _WIN32
-            if (OpenCLZone::isInInitialTest())
+            if (OpenCLInitialZone::isInZone())
                 TerminateProcess(GetCurrentProcess(), EXITHELPER_NORMAL_RESTART);
 #endif
         }
@@ -156,16 +159,18 @@ oslSignalAction SAL_CALL VCLExceptionSignal_impl( void* /*pData*/, oslSignalInfo
     {
         bIn = true;
 
-        SolarMutexGuard aLock;
-
-        // do not stop timer because otherwise the UAE-Box will not be painted as well
-        ImplSVData* pSVData = ImplGetSVData();
-        if ( pSVData->mpApp )
+        vcl::SolarMutexTryAndBuyGuard aLock;
+        if( aLock.isAcquired())
         {
-            SystemWindowFlags nOldMode = Application::GetSystemWindowMode();
-            Application::SetSystemWindowMode( nOldMode & ~SystemWindowFlags::NOAUTOMODE );
-            pSVData->mpApp->Exception( nVCLException );
-            Application::SetSystemWindowMode( nOldMode );
+            // do not stop timer because otherwise the UAE-Box will not be painted as well
+            ImplSVData* pSVData = ImplGetSVData();
+            if ( pSVData->mpApp )
+            {
+                SystemWindowFlags nOldMode = Application::GetSystemWindowMode();
+                Application::SetSystemWindowMode( nOldMode & ~SystemWindowFlags::NOAUTOMODE );
+                pSVData->mpApp->Exception( nVCLException );
+                Application::SetSystemWindowMode( nOldMode );
+            }
         }
         bIn = false;
     }
@@ -183,7 +188,11 @@ int ImplSVMain()
 
     int nReturn = EXIT_FAILURE;
 
-    bool bInit = isInitVCL() || InitVCL();
+    const bool bWasInitVCL = IsVCLInit();
+    const bool bInit = bWasInitVCL || InitVCL();
+    int nRet = 0;
+    if (!bWasInitVCL && bInit && pSVData->mpDefInst->SVMainHook(&nRet))
+        return nRet;
 
     if( bInit )
     {
@@ -210,12 +219,10 @@ int ImplSVMain()
             SolarMutexReleaser aReleaser;
             pSVData->mxAccessBridge->dispose();
         }
-      pSVData->mxAccessBridge.clear();
+        pSVData->mxAccessBridge.clear();
     }
 
-#if HAVE_FEATURE_OPENGL
-    OpenGLWatchdogThread::stop();
-#endif
+    WatchdogThread::stop();
     DeInitVCL();
 
     return nReturn;
@@ -223,11 +230,7 @@ int ImplSVMain()
 
 int SVMain()
 {
-    int nRet;
-    if( !Application::IsConsoleOnly() && ImplSVMainHook( &nRet ) )
-        return nRet;
-    else
-        return ImplSVMain();
+    return ImplSVMain();
 }
 
 // This variable is set when no Application object has been instantiated
@@ -236,6 +239,8 @@ static Application *        pOwnSvApp = nullptr;
 
 // Exception handler. pExceptionHandler != NULL => VCL already inited
 static oslSignalHandler pExceptionHandler = nullptr;
+
+namespace {
 
 class DesktopEnvironmentContext: public cppu::WeakImplHelper< css::uno::XCurrentContext >
 {
@@ -249,6 +254,8 @@ public:
 private:
     css::uno::Reference< css::uno::XCurrentContext > m_xNextContext;
 };
+
+}
 
 uno::Any SAL_CALL DesktopEnvironmentContext::getValueByName( const OUString& Name)
 {
@@ -266,7 +273,7 @@ uno::Any SAL_CALL DesktopEnvironmentContext::getValueByName( const OUString& Nam
     return retVal;
 }
 
-static bool isInitVCL()
+bool IsVCLInit()
 {
     ImplSVData* pSVData = ImplGetSVData();
     return  pExceptionHandler != nullptr &&
@@ -287,6 +294,12 @@ namespace vclmain
 
 bool InitVCL()
 {
+    if (IsVCLInit())
+    {
+        SAL_INFO("vcl.app", "Double initialization of vcl");
+        return true;
+    }
+
     if( pExceptionHandler != nullptr )
         return false;
 
@@ -296,7 +309,6 @@ bool InitVCL()
     {
         pOwnSvApp = new Application();
     }
-    InitSalMain();
 
     ImplSVData* pSVData = ImplGetSVData();
 
@@ -320,18 +332,23 @@ bool InitVCL()
         pSVData->mpApp->Init();
     }
 
-    if (pSVData->maAppData.mpSettings)
+    try
     {
         //Now that uno has been bootstrapped we can ask the config what the UI language is so that we can
         //force that in as $LANGUAGE. That way we can get gtk to render widgets RTL
         //if we have a RTL UI in an otherwise LTR locale and get gettext using externals (e.g. python)
         //to match their translations to our preferred UI language
-        OUString aLocaleString(pSVData->maAppData.mpSettings->GetUILanguageTag().getGlibcLocaleString(".UTF-8"));
+        OUString aLocaleString(SvtSysLocaleOptions().GetRealUILanguageTag().getGlibcLocaleString(".UTF-8"));
         if (!aLocaleString.isEmpty())
         {
+            MsLangId::getSystemUILanguage(); //call this now to pin what the system UI really was
             OUString envVar("LANGUAGE");
             osl_setEnvironment(envVar.pData, aLocaleString.pData);
         }
+    }
+    catch (const uno::Exception &)
+    {
+        TOOLS_INFO_EXCEPTION("vcl.app", "Unable to get ui language:");
     }
 
     pSVData->mpDefInst->AfterAppInit();
@@ -343,23 +360,29 @@ bool InitVCL()
     // convert path to native file format
     OUString aNativeFileName;
     osl::FileBase::getSystemPathFromFileURL( aExeFileName, aNativeFileName );
-    pSVData->maAppData.mpAppFileName = new OUString( aNativeFileName );
+    pSVData->maAppData.mxAppFileName = aNativeFileName;
 
     // Initialize global data
-    pSVData->maGDIData.mpScreenFontList     = new PhysicalFontCollection;
-    pSVData->maGDIData.mpScreenFontCache    = new ImplFontCache;
-    pSVData->maGDIData.mpGrfConverter       = new GraphicConverter;
+    pSVData->maGDIData.mxScreenFontList = std::make_shared<PhysicalFontCollection>();
+    pSVData->maGDIData.mxScreenFontCache = std::make_shared<ImplFontCache>();
+    pSVData->maGDIData.mpGrfConverter = new GraphicConverter;
 
     g_bIsLeanException = getenv("LO_LEAN_EXCEPTION") != nullptr;
     // Set exception handler
     pExceptionHandler = osl_addSignalHandler(VCLExceptionSignal_impl, nullptr);
 
-#ifdef DBG_UTIL
+#ifndef NDEBUG
     DbgGUIInitSolarMutexCheck();
 #endif
 
 #if OSL_DEBUG_LEVEL > 0
     DebugEventInjector::getCreate();
+#endif
+
+#ifndef _WIN32
+    // Clear startup notification details for child processes
+    // See https://bugs.freedesktop.org/show_bug.cgi?id=11375 for discussion
+    unsetenv("DESKTOP_STARTUP_ID");
 #endif
 
     return true;
@@ -393,6 +416,9 @@ VCLUnoWrapperDeleter::disposing(lang::EventObject const& /* rSource */)
 
 void DeInitVCL()
 {
+    // The LOK Windows map container should be empty
+    assert(vcl::Window::IsLOKWindowsEmpty());
+
     //rhbz#1444437, when using LibreOffice like a library you can't realistically
     //tear everything down and recreate them on the next call, there's too many
     //(c++) singletons that point to stuff that gets deleted during shutdown
@@ -413,10 +439,6 @@ void DeInitVCL()
 
     vcl::DeleteOnDeinitBase::ImplDeleteOnDeInit();
 
-    // give ime status a chance to destroy its own windows
-    delete pSVData->mpImeStatus;
-    pSVData->mpImeStatus = nullptr;
-
 #if OSL_DEBUG_LEVEL > 0
     OStringBuffer aBuf( 256 );
     aBuf.append( "DeInitVCL: some top Windows are still alive\n" );
@@ -436,7 +458,7 @@ void DeInitVCL()
             aBuf.append( "\" type = \"" );
             aBuf.append( typeid(*pWin).name() );
             aBuf.append( "\", ptr = 0x" );
-            aBuf.append( sal_Int64( pWin ), 16 );
+            aBuf.append( reinterpret_cast<sal_Int64>( pWin ), 16 );
             aBuf.append( "\n" );
         }
     }
@@ -449,32 +471,38 @@ void DeInitVCL()
     pExceptionHandler = nullptr;
 
     // free global data
-    delete pSVData->maGDIData.mpGrfConverter;
-
-    if( pSVData->mpSettingsConfigItem )
+    if (pSVData->maGDIData.mpGrfConverter)
     {
-        delete pSVData->mpSettingsConfigItem;
-        pSVData->mpSettingsConfigItem = nullptr;
+        delete pSVData->maGDIData.mpGrfConverter;
+        pSVData->maGDIData.mpGrfConverter = nullptr;
     }
+
+    pSVData->mpSettingsConfigItem.reset();
+
+    // prevent unnecessary painting during Scheduler shutdown
+    // as this processes all pending events in debug builds.
+    ImplGetSystemDependentDataManager().flushAll();
 
     Scheduler::ImplDeInitScheduler();
 
-    pSVData->maWinData.maMsgBoxImgList.clear();
+    pSVData->mpWinData->maMsgBoxImgList.clear();
     pSVData->maCtrlData.maCheckImgList.clear();
     pSVData->maCtrlData.maRadioImgList.clear();
-    if ( pSVData->maCtrlData.mpDisclosurePlus )
-    {
-        delete pSVData->maCtrlData.mpDisclosurePlus;
-        pSVData->maCtrlData.mpDisclosurePlus = nullptr;
-    }
-    if ( pSVData->maCtrlData.mpDisclosureMinus )
-    {
-        delete pSVData->maCtrlData.mpDisclosureMinus;
-        pSVData->maCtrlData.mpDisclosureMinus = nullptr;
-    }
+    pSVData->maCtrlData.mpDisclosurePlus.reset();
+    pSVData->maCtrlData.mpDisclosureMinus.reset();
     pSVData->mpDefaultWin.disposeAndClear();
 
-#ifdef DBG_UTIL
+#if defined _WIN32
+    // See GetSystemClipboard (vcl/source/treelist/transfer2.cxx):
+    if (auto const comp = css::uno::Reference<css::lang::XComponent>(
+            pSVData->m_xSystemClipboard, css::uno::UNO_QUERY))
+    {
+        SolarMutexReleaser r; // unblock pending "clipboard content changed" notifications
+        comp->dispose(); // will use CWinClipbImpl::s_aMutex
+    }
+#endif
+
+#ifndef NDEBUG
     DbgGUIDeInitSolarMutexCheck();
 #endif
 
@@ -516,76 +544,24 @@ void DeInitVCL()
             delete pSVData->maAppData.mpCfgListener;
         }
 
-        delete pSVData->maAppData.mpSettings;
-        pSVData->maAppData.mpSettings = nullptr;
+        pSVData->maAppData.mpSettings.reset();
     }
     if ( pSVData->maAppData.mpAccelMgr )
     {
         delete pSVData->maAppData.mpAccelMgr;
         pSVData->maAppData.mpAccelMgr = nullptr;
     }
-    if ( pSVData->maAppData.mpAppFileName )
-    {
-        delete pSVData->maAppData.mpAppFileName;
-        pSVData->maAppData.mpAppFileName = nullptr;
-    }
-    if ( pSVData->maAppData.mpAppName )
-    {
-        delete pSVData->maAppData.mpAppName;
-        pSVData->maAppData.mpAppName = nullptr;
-    }
-    if ( pSVData->maAppData.mpDisplayName )
-    {
-        delete pSVData->maAppData.mpDisplayName;
-        pSVData->maAppData.mpDisplayName = nullptr;
-    }
-    if ( pSVData->maAppData.mpToolkitName )
-    {
-        delete pSVData->maAppData.mpToolkitName;
-        pSVData->maAppData.mpToolkitName = nullptr;
-    }
-    if ( pSVData->maAppData.mpEventListeners )
-    {
-        delete pSVData->maAppData.mpEventListeners;
-        pSVData->maAppData.mpEventListeners = nullptr;
-    }
-    if ( pSVData->maAppData.mpKeyListeners )
-    {
-        delete pSVData->maAppData.mpKeyListeners;
-        pSVData->maAppData.mpKeyListeners = nullptr;
-    }
-
-    if ( pSVData->maAppData.mpFirstHotKey )
-        ImplFreeHotKeyData();
-    if ( pSVData->maAppData.mpFirstEventHook )
-        ImplFreeEventHookData();
-
-    if (pSVData->mpBlendFrameCache)
-    {
-        delete pSVData->mpBlendFrameCache;
-        pSVData->mpBlendFrameCache = nullptr;
-    }
+    pSVData->maAppData.maKeyListeners.clear();
+    pSVData->mpBlendFrameCache.reset();
 
     ImplDeletePrnQueueList();
-    delete pSVData->maGDIData.mpScreenFontList;
-    pSVData->maGDIData.mpScreenFontList = nullptr;
-    delete pSVData->maGDIData.mpScreenFontCache;
-    pSVData->maGDIData.mpScreenFontCache = nullptr;
-
-    if ( pSVData->mpResMgr )
-    {
-        delete pSVData->mpResMgr;
-        pSVData->mpResMgr = nullptr;
-    }
-
-    ResMgr::DestroyAllResMgr();
 
     // destroy all Sal interfaces before destroying the instance
     // and thereby unloading the plugin
-    delete pSVData->mpSalSystem;
-    pSVData->mpSalSystem = nullptr;
-    delete pSVData->mpSalTimer;
-    pSVData->mpSalTimer = nullptr;
+    pSVData->mpSalSystem.reset();
+    assert( !pSVData->maSchedCtx.mpSalTimer );
+    delete pSVData->maSchedCtx.mpSalTimer;
+    pSVData->maSchedCtx.mpSalTimer = nullptr;
 
     pSVData->mpDefaultWin = nullptr;
     pSVData->mpIntroWindow = nullptr;
@@ -598,20 +574,27 @@ void DeInitVCL()
     pSVData->maGDIData.mpFirstPrnGraphics = nullptr;
     pSVData->maGDIData.mpLastPrnGraphics = nullptr;
     pSVData->maGDIData.mpFirstVirDev = nullptr;
-    pSVData->maGDIData.mpLastVirDev = nullptr;
     pSVData->maGDIData.mpFirstPrinter = nullptr;
-    pSVData->maGDIData.mpLastPrinter = nullptr;
-    pSVData->maWinData.mpFirstFrame = nullptr;
-    pSVData->maWinData.mpAppWin = nullptr;
-    pSVData->maWinData.mpActiveApplicationFrame = nullptr;
-    pSVData->maWinData.mpCaptureWin = nullptr;
-    pSVData->maWinData.mpLastDeacWin = nullptr;
-    pSVData->maWinData.mpFirstFloat = nullptr;
-    pSVData->maWinData.mpLastExecuteDlg = nullptr;
-    pSVData->maWinData.mpExtTextInputWin = nullptr;
-    pSVData->maWinData.mpTrackWin = nullptr;
-    pSVData->maWinData.mpAutoScrollWin = nullptr;
-    pSVData->maWinData.mpLastWheelWindow = nullptr;
+    pSVData->maFrameData.mpFirstFrame = nullptr;
+    pSVData->maFrameData.mpAppWin = nullptr;
+    pSVData->maFrameData.mpActiveApplicationFrame = nullptr;
+    pSVData->mpWinData->mpCaptureWin = nullptr;
+    pSVData->mpWinData->mpLastDeacWin = nullptr;
+    pSVData->mpWinData->mpFirstFloat = nullptr;
+    pSVData->mpWinData->mpExecuteDialogs.clear();
+    pSVData->mpWinData->mpExtTextInputWin = nullptr;
+    pSVData->mpWinData->mpTrackWin = nullptr;
+    pSVData->mpWinData->mpAutoScrollWin = nullptr;
+    pSVData->mpWinData->mpLastWheelWindow = nullptr;
+
+    pSVData->maGDIData.mxScreenFontList.reset();
+    pSVData->maGDIData.mxScreenFontCache.reset();
+    pSVData->maGDIData.maScaleCache.remove_if([](const lru_scale_cache::key_value_pair_t&)
+                                                { return true; });
+
+    pSVData->maGDIData.maThemeDrawCommandsCache.clear();
+    pSVData->maGDIData.maThemeImageCache.clear();
+
     // Deinit Sal
     if (pSVData->mpDefInst)
     {
@@ -628,6 +611,8 @@ void DeInitVCL()
     EmbeddedFontsHelper::clearTemporaryFontFiles();
 }
 
+namespace {
+
 // only one call is allowed
 struct WorkerThreadData
 {
@@ -639,6 +624,8 @@ struct WorkerThreadData
     {
     }
 };
+
+}
 
 #ifdef _WIN32
 static HANDLE hThreadID = nullptr;
@@ -655,7 +642,7 @@ static unsigned __stdcall threadmain( void *pArgs )
 static oslThread hThreadID = nullptr;
 extern "C"
 {
-static void SAL_CALL MainWorkerFunction( void* pArgs )
+static void MainWorkerFunction( void* pArgs )
 {
     static_cast<WorkerThreadData*>(pArgs)->pWorker( static_cast<WorkerThreadData*>(pArgs)->pThreadData );
     delete static_cast<WorkerThreadData*>(pArgs);

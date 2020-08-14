@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
+#include <config_extensions.h>
 #include <config_folders.h>
 
 #include <com/sun/star/container/XNameContainer.hpp>
@@ -33,28 +33,25 @@
 #include <osl/mutex.hxx>
 #include <vcl/errinf.hxx>
 #include <rtl/ustring.hxx>
-#include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
+#include <sot/storage.hxx>
 #include <comphelper/getexpandeduri.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/anytostring.hxx>
 #include <comphelper/sequence.hxx>
 
-#include "namecont.hxx"
+#include <namecont.hxx>
 #include <basic/basicmanagerrepository.hxx>
 #include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
-#include <unotools/streamwrap.hxx>
 #include <unotools/pathoptions.hxx>
 #include <svtools/sfxecode.hxx>
 #include <svtools/ehdl.hxx>
 #include <basic/basmgr.hxx>
-#include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/InputSource.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/uno/DeploymentException.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
@@ -67,7 +64,7 @@
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <basic/sbmod.hxx>
+#include <cppuhelper/typeprovider.hxx>
 #include <memory>
 
 namespace basic
@@ -167,7 +164,7 @@ void NameContainer::replaceByName( const OUString& aName, const Any& aElement )
     }
 
     /*  After the container event has been fired (one listener will update the
-        core Basic manager), fire change event. Listeners can rely that the
+        core Basic manager), fire change event. Listeners can rely on that the
         Basic source code of the core Basic manager is up-to-date. */
     if( maChangesListeners.getLength() > 0 )
     {
@@ -218,7 +215,7 @@ void NameContainer::insertNoCheck(const OUString& aName, const Any& aElement)
     }
 
     /*  After the container event has been fired (one listener will update the
-        core Basic manager), fire change event. Listeners can rely that the
+        core Basic manager), fire change event. Listeners can rely on that the
         Basic source code of the core Basic manager is up-to-date. */
     if( maChangesListeners.getLength() > 0 )
     {
@@ -272,7 +269,7 @@ void NameContainer::removeByName( const OUString& aName )
     }
 
     /*  After the container event has been fired (one listener will update the
-        core Basic manager), fire change event. Listeners can rely that the
+        core Basic manager), fire change event. Listeners can rely on that the
         Basic source code of the core Basic manager is up-to-date. */
     if( maChangesListeners.getLength() > 0 )
     {
@@ -359,12 +356,11 @@ bool VBAScriptListenerContainer::implTypedNotify( const Reference< vba::XVBAScri
 
 // Ctor
 SfxLibraryContainer::SfxLibraryContainer()
-    : SfxLibraryContainer_BASE( maMutex )
-
-    , maVBAScriptListeners( maMutex )
+    : SfxLibraryContainer_BASE( m_aMutex )
+    , maVBAScriptListeners( m_aMutex )
     , mnRunningVBAScripts( 0 )
     , mbVBACompat( false )
-    , maModifiable( *this, maMutex )
+    , maModifiable( *this, m_aMutex )
     , maNameContainer( new NameContainer(cppu::UnoType<XNameAccess>::get()) )
     , mbOldInfoFormat( false )
     , mbOasis2OOoFormat( false )
@@ -383,7 +379,7 @@ SfxLibraryContainer::~SfxLibraryContainer()
 {
     if( mbOwnBasMgr )
     {
-        BasicManager::LegacyDeleteBasicManager( mpBasMgr );
+        delete mpBasMgr;
     }
 }
 
@@ -419,9 +415,9 @@ BasicManager* SfxLibraryContainer::getBasicManager()
             mpBasMgr = BasicManagerRepository::getDocumentBasicManager( xDocument );
         }
     }
-    catch (const css::ucb::ContentCreationException& e)
+    catch (const css::ucb::ContentCreationException&)
     {
-        SAL_WARN( "basic", "SfxLibraryContainer::getBasicManager : Caught exception: " << e.Message );
+        TOOLS_WARN_EXCEPTION( "basic", "SfxLibraryContainer::getBasicManager:" );
     }
     return mpBasMgr;
 }
@@ -592,7 +588,7 @@ static void createVariableURL( OUString& rStr, const OUString& rLibName,
 void SfxLibraryContainer::init( const OUString& rInitialDocumentURL, const uno::Reference< embed::XStorage >& rxInitialStorage )
 {
     // this might be called from within the ctor, and the impl_init might (indirectly) create
-    // an UNO reference to ourself.
+    // a UNO reference to ourself.
     // Ensure that we're not destroyed while we're in here
     osl_atomic_increment( &m_refCount );
     init_Impl( rInitialDocumentURL, rxInitialStorage );
@@ -806,14 +802,14 @@ void SfxLibraryContainer::init_Impl( const OUString& rInitialDocumentURL,
                 xParser->setDocumentHandler( ::xmlscript::importLibraryContainer( pLibArray.get() ) );
                 xParser->parseStream( source );
             }
-            catch ( const xml::sax::SAXException& e )
+            catch ( const xml::sax::SAXException& )
             {
-                SAL_WARN("basic", e.Message);
+                TOOLS_WARN_EXCEPTION( "basic", "" );
                 return;
             }
-            catch ( const io::IOException& e )
+            catch ( const io::IOException& )
             {
-                SAL_WARN("basic", e.Message);
+                TOOLS_WARN_EXCEPTION( "basic", "" );
                 return;
             }
 
@@ -908,12 +904,9 @@ void SfxLibraryContainer::init_Impl( const OUString& rInitialDocumentURL,
                         catch(const uno::Exception& )
                         {
                             #if OSL_DEBUG_LEVEL > 0
-                            Any aError( ::cppu::getCaughtException() );
-                            SAL_WARN(
+                            TOOLS_WARN_EXCEPTION(
                                 "basic",
-                                "couldn't open sub storage for library \""
-                                    << rLib.aName << "\". Exception: "
-                                    << comphelper::anyToString(aError));
+                                "couldn't open sub storage for library \"" << rLib.aName << "\"");
                             #endif
                         }
                     }
@@ -921,8 +914,7 @@ void SfxLibraryContainer::init_Impl( const OUString& rInitialDocumentURL,
                     // Link is already initialised in createLibraryLink()
                     if( !pImplLib->mbInitialised && (!bStorage || xLibraryStor.is()) )
                     {
-                        OUString aIndexFileName;
-                        bool bLoaded = implLoadLibraryIndexFile( pImplLib, rLib, xLibraryStor, aIndexFileName );
+                        bool bLoaded = implLoadLibraryIndexFile( pImplLib, rLib, xLibraryStor, OUString() );
                         SAL_WARN_IF(
                             bLoaded && aLibName != rLib.aName, "basic",
                             ("Different library names in library container and"
@@ -991,248 +983,245 @@ void SfxLibraryContainer::init_Impl( const OUString& rInitialDocumentURL,
         }
     }
 
-    if( meInitMode == DEFAULT )
+    if( meInitMode != DEFAULT )
+        return;
+
+    INetURLObject aUserBasicInetObj( maLibraryPath.getToken(1, ';') );
+    OUString aStandardStr("Standard");
+
+    INetURLObject aPrevUserBasicInetObj_1( aUserBasicInetObj );
+    aPrevUserBasicInetObj_1.removeSegment();
+    INetURLObject aPrevUserBasicInetObj_2 = aPrevUserBasicInetObj_1;
+    aPrevUserBasicInetObj_1.Append( "__basic_80" );
+    aPrevUserBasicInetObj_2.Append( "__basic_80_2" );
+
+    // #i93163
+    bool bCleanUp = false;
+    try
     {
-        INetURLObject aUserBasicInetObj( maLibraryPath.getToken(1, ';') );
-        OUString aStandardStr("Standard");
-
-        INetURLObject aPrevUserBasicInetObj_1( aUserBasicInetObj );
-        aPrevUserBasicInetObj_1.removeSegment();
-        INetURLObject aPrevUserBasicInetObj_2 = aPrevUserBasicInetObj_1;
-        aPrevUserBasicInetObj_1.Append( "__basic_80" );
-        aPrevUserBasicInetObj_2.Append( "__basic_80_2" );
-
-        // #i93163
-        bool bCleanUp = false;
-        try
+        INetURLObject aPrevUserBasicInetObj = aPrevUserBasicInetObj_1;
+        OUString aPrevFolder = aPrevUserBasicInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+        if( mxSFI->isFolder( aPrevFolder ) )
         {
-            INetURLObject aPrevUserBasicInetObj = aPrevUserBasicInetObj_1;
-            OUString aPrevFolder = aPrevUserBasicInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-            if( mxSFI->isFolder( aPrevFolder ) )
+            // Check if Standard folder exists and is complete
+            INetURLObject aUserBasicStandardInetObj( aUserBasicInetObj );
+            aUserBasicStandardInetObj.insertName( aStandardStr, true, INetURLObject::LAST_SEGMENT,
+                                                  INetURLObject::EncodeMechanism::All );
+            INetURLObject aPrevUserBasicStandardInetObj( aPrevUserBasicInetObj );
+            aPrevUserBasicStandardInetObj.insertName( aStandardStr, true, INetURLObject::LAST_SEGMENT,
+                                                    INetURLObject::EncodeMechanism::All );
+            OUString aPrevStandardFolder = aPrevUserBasicStandardInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+            if( mxSFI->isFolder( aPrevStandardFolder ) )
             {
-                // Check if Standard folder exists and is complete
-                INetURLObject aUserBasicStandardInetObj( aUserBasicInetObj );
-                aUserBasicStandardInetObj.insertName( aStandardStr, true, INetURLObject::LAST_SEGMENT,
-                                                      INetURLObject::EncodeMechanism::All );
-                INetURLObject aPrevUserBasicStandardInetObj( aPrevUserBasicInetObj );
-                aPrevUserBasicStandardInetObj.insertName( aStandardStr, true, INetURLObject::LAST_SEGMENT,
-                                                        INetURLObject::EncodeMechanism::All );
-                OUString aPrevStandardFolder = aPrevUserBasicStandardInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-                if( mxSFI->isFolder( aPrevStandardFolder ) )
-                {
-                    OUString aXlbExtension( "xlb" );
-                    OUString aCheckFileName;
+                OUString aXlbExtension( "xlb" );
+                OUString aCheckFileName;
 
-                    // Check if script.xlb exists
-                    aCheckFileName = "script";
-                    checkAndCopyFileImpl( aUserBasicStandardInetObj,
-                                          aPrevUserBasicStandardInetObj,
-                                          aCheckFileName, aXlbExtension, mxSFI );
+                // Check if script.xlb exists
+                aCheckFileName = "script";
+                checkAndCopyFileImpl( aUserBasicStandardInetObj,
+                                      aPrevUserBasicStandardInetObj,
+                                      aCheckFileName, aXlbExtension, mxSFI );
 
-                    // Check if dialog.xlb exists
-                    aCheckFileName = "dialog";
-                    checkAndCopyFileImpl( aUserBasicStandardInetObj,
-                                          aPrevUserBasicStandardInetObj,
-                                          aCheckFileName, aXlbExtension, mxSFI );
+                // Check if dialog.xlb exists
+                aCheckFileName = "dialog";
+                checkAndCopyFileImpl( aUserBasicStandardInetObj,
+                                      aPrevUserBasicStandardInetObj,
+                                      aCheckFileName, aXlbExtension, mxSFI );
 
-                    // Check if module1.xba exists
-                    aCheckFileName = "Module1";
-                    checkAndCopyFileImpl( aUserBasicStandardInetObj,
-                                          aPrevUserBasicStandardInetObj,
-                                          aCheckFileName, "xba", mxSFI );
-                }
-                else
-                {
-                    OUString aStandardFolder = aUserBasicStandardInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-                    mxSFI->copy( aStandardFolder, aPrevStandardFolder );
-                }
-
-                OUString aPrevCopyToFolder = aPrevUserBasicInetObj_2.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-                mxSFI->copy( aPrevFolder, aPrevCopyToFolder );
+                // Check if module1.xba exists
+                aCheckFileName = "Module1";
+                checkAndCopyFileImpl( aUserBasicStandardInetObj,
+                                      aPrevUserBasicStandardInetObj,
+                                      aCheckFileName, "xba", mxSFI );
             }
             else
             {
-                aPrevUserBasicInetObj = aPrevUserBasicInetObj_2;
-                aPrevFolder = aPrevUserBasicInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+                OUString aStandardFolder = aUserBasicStandardInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+                mxSFI->copy( aStandardFolder, aPrevStandardFolder );
             }
-            if( mxSFI->isFolder( aPrevFolder ) )
+
+            OUString aPrevCopyToFolder = aPrevUserBasicInetObj_2.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+            mxSFI->copy( aPrevFolder, aPrevCopyToFolder );
+        }
+        else
+        {
+            aPrevUserBasicInetObj = aPrevUserBasicInetObj_2;
+            aPrevFolder = aPrevUserBasicInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+        }
+        if( mxSFI->isFolder( aPrevFolder ) )
+        {
+            rtl::Reference<SfxLibraryContainer> pPrevCont = createInstanceImpl();
+
+            // Rename previous basic folder to make storage URLs correct during initialisation
+            OUString aFolderUserBasic = aUserBasicInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+            INetURLObject aUserBasicTmpInetObj( aUserBasicInetObj );
+            aUserBasicTmpInetObj.removeSegment();
+            aUserBasicTmpInetObj.Append( "__basic_tmp" );
+            OUString aFolderTmp = aUserBasicTmpInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+
+            mxSFI->move( aFolderUserBasic, aFolderTmp );
+            try
             {
-                rtl::Reference<SfxLibraryContainer> pPrevCont = createInstanceImpl();
-
-                // Rename previous basic folder to make storage URLs correct during initialisation
-                OUString aFolderUserBasic = aUserBasicInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-                INetURLObject aUserBasicTmpInetObj( aUserBasicInetObj );
-                aUserBasicTmpInetObj.removeSegment();
-                aUserBasicTmpInetObj.Append( "__basic_tmp" );
-                OUString aFolderTmp = aUserBasicTmpInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-
-                mxSFI->move( aFolderUserBasic, aFolderTmp );
+                mxSFI->move( aPrevFolder, aFolderUserBasic );
+            }
+            catch(const Exception& )
+            {
+                // Move back user/basic folder
                 try
                 {
-                    mxSFI->move( aPrevFolder, aFolderUserBasic );
+                       mxSFI->kill( aFolderUserBasic );
                 }
                 catch(const Exception& )
-                {
-                    // Move back user/basic folder
-                    try
-                    {
-                           mxSFI->kill( aFolderUserBasic );
-                    }
-                    catch(const Exception& )
-                    {}
-                    mxSFI->move( aFolderTmp, aFolderUserBasic );
-                    throw;
-                }
-
-                INetURLObject aPrevUserBasicLibInfoInetObj( aUserBasicInetObj );
-                aPrevUserBasicLibInfoInetObj.insertName( maInfoFileName, false, INetURLObject::LAST_SEGMENT,
-                                                    INetURLObject::EncodeMechanism::All );
-                aPrevUserBasicLibInfoInetObj.setExtension( "xlc");
-                OUString aLibInfoFileName = aPrevUserBasicLibInfoInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-                Sequence<Any> aInitSeq( 1 );
-                aInitSeq.getArray()[0] <<= aLibInfoFileName;
-                GbMigrationSuppressErrors = true;
-                pPrevCont->initialize( aInitSeq );
-                GbMigrationSuppressErrors = false;
-
-                // Rename folders back
-                mxSFI->move( aFolderUserBasic, aPrevFolder );
+                {}
                 mxSFI->move( aFolderTmp, aFolderUserBasic );
+                throw;
+            }
 
-                OUString aUserSearchStr("vnd.sun.star.expand:$UNO_USER_PACKAGES_CACHE");
-                OUString aSharedSearchStr("vnd.sun.star.expand:$UNO_SHARED_PACKAGES_CACHE");
-                OUString const aBundledSearchStr("vnd.sun.star.expand:$BUNDLED_EXTENSIONS");
-                OUString const aInstSearchStr("$(INST)");
+            INetURLObject aPrevUserBasicLibInfoInetObj( aUserBasicInetObj );
+            aPrevUserBasicLibInfoInetObj.insertName( maInfoFileName, false, INetURLObject::LAST_SEGMENT,
+                                                INetURLObject::EncodeMechanism::All );
+            aPrevUserBasicLibInfoInetObj.setExtension( "xlc");
+            OUString aLibInfoFileName = aPrevUserBasicLibInfoInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+            Sequence<Any> aInitSeq( 1 );
+            aInitSeq.getArray()[0] <<= aLibInfoFileName;
+            GbMigrationSuppressErrors = true;
+            pPrevCont->initialize( aInitSeq );
+            GbMigrationSuppressErrors = false;
 
-                Sequence< OUString > aNames = pPrevCont->getElementNames();
-                const OUString* pNames = aNames.getConstArray();
-                sal_Int32 nNameCount = aNames.getLength();
+            // Rename folders back
+            mxSFI->move( aFolderUserBasic, aPrevFolder );
+            mxSFI->move( aFolderTmp, aFolderUserBasic );
 
-                for( sal_Int32 i = 0 ; i < nNameCount ; i++ )
+            Sequence< OUString > aNames = pPrevCont->getElementNames();
+            const OUString* pNames = aNames.getConstArray();
+            sal_Int32 nNameCount = aNames.getLength();
+
+            for( sal_Int32 i = 0 ; i < nNameCount ; i++ )
+            {
+                OUString aLibName = pNames[ i ];
+                if( hasByName( aLibName ) )
                 {
-                    OUString aLibName = pNames[ i ];
-                    if( hasByName( aLibName ) )
+                    if( aLibName == aStandardStr )
                     {
-                        if( aLibName == aStandardStr )
-                        {
-                            SfxLibrary* pImplLib = getImplLib( aStandardStr );
-                            OUString aStandardFolder = pImplLib->maStorageURL;
-                            mxSFI->kill( aStandardFolder );
-                        }
-                        else
-                        {
-                            continue;
-                        }
-                    }
-
-                    SfxLibrary* pImplLib = pPrevCont->getImplLib( aLibName );
-                    if( pImplLib->mbLink )
-                    {
-                        OUString aStorageURL = pImplLib->maUnexpandedStorageURL;
-                        bool bCreateLink = true;
-                        if( aStorageURL.indexOf( aUserSearchStr   ) != -1 ||
-                            aStorageURL.indexOf( aSharedSearchStr ) != -1 ||
-                            aStorageURL.indexOf( aBundledSearchStr ) != -1 ||
-                            aStorageURL.indexOf( aInstSearchStr   ) != -1 )
-                        {
-                            bCreateLink = false;
-                        }
-                        if( bCreateLink )
-                        {
-                            createLibraryLink( aLibName, pImplLib->maStorageURL, pImplLib->mbReadOnly );
-                        }
+                        SfxLibrary* pImplLib = getImplLib( aStandardStr );
+                        OUString aStandardFolder = pImplLib->maStorageURL;
+                        mxSFI->kill( aStandardFolder );
                     }
                     else
                     {
-                        // Move folder if not already done
-                        INetURLObject aUserBasicLibFolderInetObj( aUserBasicInetObj );
-                        aUserBasicLibFolderInetObj.Append( aLibName );
-                        OUString aLibFolder = aUserBasicLibFolderInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-
-                        INetURLObject aPrevUserBasicLibFolderInetObj( aPrevUserBasicInetObj );
-                        aPrevUserBasicLibFolderInetObj.Append( aLibName );
-                        OUString aPrevLibFolder = aPrevUserBasicLibFolderInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-
-                        if( mxSFI->isFolder( aPrevLibFolder ) && !mxSFI->isFolder( aLibFolder ) )
-                        {
-                            mxSFI->move( aPrevLibFolder, aLibFolder );
-                        }
-
-                        if( aLibName == aStandardStr )
-                        {
-                            maNameContainer->removeByName( aLibName );
-                        }
-
-                        // Create library
-                        Reference< XNameContainer > xLib = createLibrary( aLibName );
-                           SfxLibrary* pNewLib = static_cast< SfxLibrary* >( xLib.get() );
-                        pNewLib->mbLoaded = false;
-                        pNewLib->implSetModified( false );
-                        checkStorageURL( aLibFolder, pNewLib->maLibInfoFileURL,
-                                         pNewLib->maStorageURL, pNewLib->maUnexpandedStorageURL );
-
-                        uno::Reference< embed::XStorage > xDummyStor;
-                        ::xmlscript::LibDescriptor aLibDesc;
-                        implLoadLibraryIndexFile( pNewLib, aLibDesc, xDummyStor, pNewLib->maLibInfoFileURL );
-                        implImportLibDescriptor( pNewLib, aLibDesc );
+                        continue;
                     }
                 }
-                mxSFI->kill( aPrevFolder );
-            }
-        }
-        catch(const Exception& e)
-        {
-            bCleanUp = true;
-            SAL_WARN("basic", "Upgrade of Basic installation failed somehow: " << e.Message);
-        }
 
-        // #i93163
-        if( bCleanUp )
-        {
-            INetURLObject aPrevUserBasicInetObj_Err( aUserBasicInetObj );
-            aPrevUserBasicInetObj_Err.removeSegment();
-            aPrevUserBasicInetObj_Err.Append( "__basic_80_err" );
-            OUString aPrevFolder_Err = aPrevUserBasicInetObj_Err.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-
-            bool bSaved = false;
-            try
-            {
-                OUString aPrevFolder_1 = aPrevUserBasicInetObj_1.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-                if( mxSFI->isFolder( aPrevFolder_1 ) )
+                SfxLibrary* pImplLib = pPrevCont->getImplLib( aLibName );
+                if( pImplLib->mbLink )
                 {
-                    mxSFI->move( aPrevFolder_1, aPrevFolder_Err );
-                    bSaved = true;
-                }
-            }
-            catch(const Exception& )
-            {}
-            try
-            {
-                OUString aPrevFolder_2 = aPrevUserBasicInetObj_2.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-                if( !bSaved && mxSFI->isFolder( aPrevFolder_2 ) )
-                {
-                    mxSFI->move( aPrevFolder_2, aPrevFolder_Err );
+                    OUString aStorageURL = pImplLib->maUnexpandedStorageURL;
+                    bool bCreateLink = true;
+                    if( aStorageURL.indexOf( "vnd.sun.star.expand:$UNO_USER_PACKAGES_CACHE"   ) != -1 ||
+                        aStorageURL.indexOf( "vnd.sun.star.expand:$UNO_SHARED_PACKAGES_CACHE" ) != -1 ||
+                        aStorageURL.indexOf( "vnd.sun.star.expand:$BUNDLED_EXTENSIONS" ) != -1 ||
+                        aStorageURL.indexOf( "$(INST)"   ) != -1 )
+                    {
+                        bCreateLink = false;
+                    }
+                    if( bCreateLink )
+                    {
+                        createLibraryLink( aLibName, pImplLib->maStorageURL, pImplLib->mbReadOnly );
+                    }
                 }
                 else
                 {
-                    mxSFI->kill( aPrevFolder_2 );
+                    // Move folder if not already done
+                    INetURLObject aUserBasicLibFolderInetObj( aUserBasicInetObj );
+                    aUserBasicLibFolderInetObj.Append( aLibName );
+                    OUString aLibFolder = aUserBasicLibFolderInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+
+                    INetURLObject aPrevUserBasicLibFolderInetObj( aPrevUserBasicInetObj );
+                    aPrevUserBasicLibFolderInetObj.Append( aLibName );
+                    OUString aPrevLibFolder = aPrevUserBasicLibFolderInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+
+                    if( mxSFI->isFolder( aPrevLibFolder ) && !mxSFI->isFolder( aLibFolder ) )
+                    {
+                        mxSFI->move( aPrevLibFolder, aLibFolder );
+                    }
+
+                    if( aLibName == aStandardStr )
+                    {
+                        maNameContainer->removeByName( aLibName );
+                    }
+
+                    // Create library
+                    Reference< XNameContainer > xLib = createLibrary( aLibName );
+                    SfxLibrary* pNewLib = static_cast< SfxLibrary* >( xLib.get() );
+                    pNewLib->mbLoaded = false;
+                    pNewLib->implSetModified( false );
+                    checkStorageURL( aLibFolder, pNewLib->maLibInfoFileURL,
+                                     pNewLib->maStorageURL, pNewLib->maUnexpandedStorageURL );
+
+                    uno::Reference< embed::XStorage > xDummyStor;
+                    ::xmlscript::LibDescriptor aLibDesc;
+                    implLoadLibraryIndexFile( pNewLib, aLibDesc, xDummyStor, pNewLib->maLibInfoFileURL );
+                    implImportLibDescriptor( pNewLib, aLibDesc );
                 }
             }
-            catch(const Exception& )
-            {}
+            mxSFI->kill( aPrevFolder );
         }
     }
+    catch(const Exception&)
+    {
+        TOOLS_WARN_EXCEPTION("basic", "Upgrade of Basic installation failed somehow" );
+        bCleanUp = true;
+    }
+
+    // #i93163
+    if( !bCleanUp )
+        return;
+
+    INetURLObject aPrevUserBasicInetObj_Err( aUserBasicInetObj );
+    aPrevUserBasicInetObj_Err.removeSegment();
+    aPrevUserBasicInetObj_Err.Append( "__basic_80_err" );
+    OUString aPrevFolder_Err = aPrevUserBasicInetObj_Err.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+
+    bool bSaved = false;
+    try
+    {
+        OUString aPrevFolder_1 = aPrevUserBasicInetObj_1.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+        if( mxSFI->isFolder( aPrevFolder_1 ) )
+        {
+            mxSFI->move( aPrevFolder_1, aPrevFolder_Err );
+            bSaved = true;
+        }
+    }
+    catch(const Exception& )
+    {}
+    try
+    {
+        OUString aPrevFolder_2 = aPrevUserBasicInetObj_2.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+        if( !bSaved && mxSFI->isFolder( aPrevFolder_2 ) )
+        {
+            mxSFI->move( aPrevFolder_2, aPrevFolder_Err );
+        }
+        else
+        {
+            mxSFI->kill( aPrevFolder_2 );
+        }
+    }
+    catch(const Exception& )
+    {}
 }
 
 void SfxLibraryContainer::implScanExtensions()
 {
 #if HAVE_FEATURE_EXTENSIONS
     ScriptExtensionIterator aScriptIt;
-    OUString aLibURL;
 
     bool bPureDialogLib = false;
-    while ( !(aLibURL = aScriptIt.nextBasicOrDialogLibrary( bPureDialogLib )).isEmpty())
+    for (;;)
     {
+        OUString aLibURL = aScriptIt.nextBasicOrDialogLibrary( bPureDialogLib );
+        if (aLibURL.isEmpty())
+            break;
         if( bPureDialogLib && maInfoFileName == "script" )
         {
             continue;
@@ -1370,10 +1359,9 @@ void SfxLibraryContainer::implStoreLibrary( SfxLibrary* pLib,
                                             const OUString& aName,
                                             const uno::Reference< embed::XStorage >& xStorage )
 {
-    OUString aDummyLocation;
     Reference< XSimpleFileAccess3 > xDummySFA;
     Reference< XInteractionHandler > xDummyHandler;
-    implStoreLibrary( pLib, aName, xStorage, aDummyLocation, xDummySFA, xDummyHandler );
+    implStoreLibrary( pLib, aName, xStorage, OUString(), xDummySFA, xDummyHandler );
 }
 
 // New variant for library export
@@ -1524,9 +1512,8 @@ void SfxLibraryContainer::implStoreLibraryIndexFile( SfxLibrary* pLib,
                                                      const ::xmlscript::LibDescriptor& rLib,
                                                      const uno::Reference< embed::XStorage >& xStorage )
 {
-    OUString aDummyLocation;
     Reference< XSimpleFileAccess3 > xDummySFA;
-    implStoreLibraryIndexFile( pLib, rLib, xStorage, aDummyLocation, xDummySFA );
+    implStoreLibraryIndexFile( pLib, rLib, xStorage, OUString(), xDummySFA );
 }
 
 // New variant for library export
@@ -1726,23 +1713,23 @@ bool SfxLibraryContainer::implLoadLibraryIndexFile(  SfxLibrary* pLib,
 }
 
 void SfxLibraryContainer::implImportLibDescriptor( SfxLibrary* pLib,
-                                                   ::xmlscript::LibDescriptor& rLib )
+                                                   ::xmlscript::LibDescriptor const & rLib )
 {
-    if( !pLib->mbInitialised )
+    if( pLib->mbInitialised )
+        return;
+
+    sal_Int32 nElementCount = rLib.aElementNames.getLength();
+    const OUString* pElementNames = rLib.aElementNames.getConstArray();
+    Any aDummyElement = createEmptyLibraryElement();
+    for( sal_Int32 i = 0 ; i < nElementCount ; i++ )
     {
-        sal_Int32 nElementCount = rLib.aElementNames.getLength();
-        const OUString* pElementNames = rLib.aElementNames.getConstArray();
-        Any aDummyElement = createEmptyLibraryElement();
-        for( sal_Int32 i = 0 ; i < nElementCount ; i++ )
-        {
-            pLib->maNameContainer->insertByName( pElementNames[i], aDummyElement );
-        }
-        pLib->mbPasswordProtected = rLib.bPasswordProtected;
-        pLib->mbReadOnly = rLib.bReadOnly;
-        pLib->mbPreload  = rLib.bPreload;
-        pLib->implSetModified( false );
-        pLib->mbInitialised = true;
+        pLib->maNameContainer->insertByName( pElementNames[i], aDummyElement );
     }
+    pLib->mbPasswordProtected = rLib.bPasswordProtected;
+    pLib->mbReadOnly = rLib.bReadOnly;
+    pLib->mbPreload  = rLib.bPreload;
+    pLib->implSetModified( false );
+    pLib->mbInitialised = true;
 }
 
 
@@ -1831,11 +1818,11 @@ void SfxLibraryContainer::storeLibraries_Impl( const uno::Reference< embed::XSto
                 }
             }
 
-            xTargetLibrariesStor.set( i_rStorage->openStorageElement( sTargetLibrariesStoreName, embed::ElementModes::READWRITE ), UNO_QUERY_THROW );
+            xTargetLibrariesStor.set( i_rStorage->openStorageElement( sTargetLibrariesStoreName, embed::ElementModes::READWRITE ), UNO_SET_THROW );
         }
         catch( const uno::Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("basic");
             return;
         }
 
@@ -1850,7 +1837,7 @@ void SfxLibraryContainer::storeLibraries_Impl( const uno::Reference< embed::XSto
         }
         catch( const uno::Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("basic");
             return;
         }
     }
@@ -1926,7 +1913,7 @@ void SfxLibraryContainer::storeLibraries_Impl( const uno::Reference< embed::XSto
                 }
                 catch( const uno::Exception& )
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("basic");
                     // TODO: error handling?
                 }
             }
@@ -1935,24 +1922,23 @@ void SfxLibraryContainer::storeLibraries_Impl( const uno::Reference< embed::XSto
                 uno::Reference< embed::XStorage > xLibraryStor;
                 if( bStorage )
                 {
+#if OSL_DEBUG_LEVEL > 0
                     try
                     {
+#endif
                         xLibraryStor = xTargetLibrariesStor->openStorageElement(
                                                                         rLib.aName,
                                                                         embed::ElementModes::READWRITE );
+#if OSL_DEBUG_LEVEL > 0
                     }
                     catch(const uno::Exception& )
                     {
-                        #if OSL_DEBUG_LEVEL > 0
-                        Any aError( ::cppu::getCaughtException() );
-                        SAL_WARN(
+                        TOOLS_WARN_EXCEPTION(
                             "basic",
-                            "couldn't create sub storage for library \""
-                                << rLib.aName << "\". Exception: "
-                                << comphelper::anyToString(aError));
-                        #endif
+                            "couldn't create sub storage for library \"" << rLib.aName << "\"");
                         throw;
                     }
+#endif
                 }
 
                 // Maybe lib is not loaded?!
@@ -1979,7 +1965,7 @@ void SfxLibraryContainer::storeLibraries_Impl( const uno::Reference< embed::XSto
                     }
                     catch(const uno::Exception& )
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("basic");
                         // TODO: error handling
                         throw;
                     }
@@ -2014,22 +2000,16 @@ void SfxLibraryContainer::storeLibraries_Impl( const uno::Reference< embed::XSto
             {
                 // remove
                 const Sequence< OUString > aRemoveNames( xSourceLibrariesStor->getElementNames() );
-                for ( const OUString* pRemoveName = aRemoveNames.getConstArray();
-                      pRemoveName != aRemoveNames.getConstArray() + aRemoveNames.getLength();
-                      ++pRemoveName
-                    )
+                for ( auto const & removeName : aRemoveNames )
                 {
-                    xSourceLibrariesStor->removeElement( *pRemoveName );
+                    xSourceLibrariesStor->removeElement( removeName );
                 }
 
                 // copy
                 const Sequence< OUString > aCopyNames( xTargetLibrariesStor->getElementNames() );
-                for ( const OUString* pCopyName = aCopyNames.getConstArray();
-                      pCopyName != aCopyNames.getConstArray() + aCopyNames.getLength();
-                      ++pCopyName
-                    )
+                for ( auto const & copyName : aCopyNames )
                 {
-                    xTargetLibrariesStor->copyElementTo( *pCopyName, xSourceLibrariesStor, *pCopyName );
+                    xTargetLibrariesStor->copyElementTo( copyName, xSourceLibrariesStor, copyName );
                 }
             }
 
@@ -2045,7 +2025,7 @@ void SfxLibraryContainer::storeLibraries_Impl( const uno::Reference< embed::XSto
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("basic");
             throw;
         }
     }
@@ -2205,10 +2185,9 @@ Reference< XNameAccess > SAL_CALL SfxLibraryContainer::createLibraryLink
     pNewLib->maUnexpandedStorageURL = aUnexpandedStorageURL;
     pNewLib->maOriginalStorageURL = StorageURL;
 
-    OUString aInitFileName;
     uno::Reference< embed::XStorage > xDummyStor;
     ::xmlscript::LibDescriptor aLibDesc;
-    implLoadLibraryIndexFile( pNewLib, aLibDesc, xDummyStor, aInitFileName );
+    implLoadLibraryIndexFile( pNewLib, aLibDesc, xDummyStor, OUString() );
     implImportLibDescriptor( pNewLib, aLibDesc );
 
     Reference< XNameAccess > xRet = static_cast< XNameAccess* >( pNewLib );
@@ -2217,14 +2196,12 @@ Reference< XNameAccess > SAL_CALL SfxLibraryContainer::createLibraryLink
     maNameContainer->insertByName( Name, aElement );
     maModifiable.setModified( true );
 
-    OUString aUserSearchStr("vnd.sun.star.expand:$UNO_USER_PACKAGES_CACHE");
-    OUString aSharedSearchStr("vnd.sun.star.expand:$UNO_SHARED_PACKAGES_CACHE");
-    OUString const aBundledSearchStr("vnd.sun.star.expand:$BUNDLED_EXTENSIONS");
-    if( StorageURL.indexOf( aUserSearchStr ) != -1 )
+    if( StorageURL.indexOf( "vnd.sun.star.expand:$UNO_USER_PACKAGES_CACHE" ) != -1 )
     {
         pNewLib->mbExtension = true;
     }
-    else if( StorageURL.indexOf( aSharedSearchStr ) != -1 || StorageURL.indexOf( aBundledSearchStr ) != -1 )
+    else if( StorageURL.indexOf( "vnd.sun.star.expand:$UNO_SHARED_PACKAGES_CACHE" ) != -1
+           || StorageURL.indexOf( "vnd.sun.star.expand:$BUNDLED_EXTENSIONS" ) != -1 )
     {
         pNewLib->mbExtension = true;
         pNewLib->mbReadOnly = true;
@@ -2250,56 +2227,56 @@ void SAL_CALL SfxLibraryContainer::removeLibrary( const OUString& Name )
     maModifiable.setModified( true );
 
     // Delete library files, but not for linked libraries
-    if( !pImplLib->mbLink )
+    if( pImplLib->mbLink )
+        return;
+
+    if( mxStorage.is() )
     {
-        if( mxStorage.is() )
+        return;
+    }
+    if( xNameAccess->hasElements() )
+    {
+        Sequence< OUString > aNames = pImplLib->getElementNames();
+        sal_Int32 nNameCount = aNames.getLength();
+        const OUString* pNames = aNames.getConstArray();
+        for( sal_Int32 i = 0 ; i < nNameCount ; ++i, ++pNames )
         {
-            return;
+            pImplLib->removeElementWithoutChecks( *pNames, SfxLibrary::LibraryContainerAccess() );
         }
-        if( xNameAccess->hasElements() )
+    }
+
+    // Delete index file
+    createAppLibraryFolder( pImplLib, Name );
+    OUString aLibInfoPath = pImplLib->maLibInfoFileURL;
+    try
+    {
+        if( mxSFI->exists( aLibInfoPath ) )
         {
-            Sequence< OUString > aNames = pImplLib->getElementNames();
-            sal_Int32 nNameCount = aNames.getLength();
-            const OUString* pNames = aNames.getConstArray();
-            for( sal_Int32 i = 0 ; i < nNameCount ; ++i, ++pNames )
+            mxSFI->kill( aLibInfoPath );
+        }
+    }
+    catch(const Exception& ) {}
+
+    // Delete folder if empty
+    INetURLObject aInetObj( maLibraryPath.getToken(1, ';') );
+    aInetObj.insertName( Name, true, INetURLObject::LAST_SEGMENT,
+                         INetURLObject::EncodeMechanism::All );
+    OUString aLibDirPath = aInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+
+    try
+    {
+        if( mxSFI->isFolder( aLibDirPath ) )
+        {
+            Sequence< OUString > aContentSeq = mxSFI->getFolderContents( aLibDirPath, true );
+            sal_Int32 nCount = aContentSeq.getLength();
+            if( !nCount )
             {
-                pImplLib->removeElementWithoutChecks( *pNames, SfxLibrary::LibraryContainerAccess() );
+                mxSFI->kill( aLibDirPath );
             }
         }
-
-        // Delete index file
-        createAppLibraryFolder( pImplLib, Name );
-        OUString aLibInfoPath = pImplLib->maLibInfoFileURL;
-        try
-        {
-            if( mxSFI->exists( aLibInfoPath ) )
-            {
-                mxSFI->kill( aLibInfoPath );
-            }
-        }
-        catch(const Exception& ) {}
-
-        // Delete folder if empty
-        INetURLObject aInetObj( maLibraryPath.getToken(1, ';') );
-        aInetObj.insertName( Name, true, INetURLObject::LAST_SEGMENT,
-                             INetURLObject::EncodeMechanism::All );
-        OUString aLibDirPath = aInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-
-        try
-        {
-            if( mxSFI->isFolder( aLibDirPath ) )
-            {
-                Sequence< OUString > aContentSeq = mxSFI->getFolderContents( aLibDirPath, true );
-                sal_Int32 nCount = aContentSeq.getLength();
-                if( !nCount )
-                {
-                    mxSFI->kill( aLibDirPath );
-                }
-            }
-        }
-        catch(const Exception& )
-        {
-        }
+    }
+    catch(const Exception& )
+    {
     }
 }
 
@@ -2322,133 +2299,132 @@ void SAL_CALL SfxLibraryContainer::loadLibrary( const OUString& Name )
 
     bool bLoaded = pImplLib->mbLoaded;
     pImplLib->mbLoaded = true;
-    if( !bLoaded && xNameAccess->hasElements() )
+    if( !(!bLoaded && xNameAccess->hasElements()) )
+        return;
+
+    if( pImplLib->mbPasswordProtected )
     {
-        if( pImplLib->mbPasswordProtected )
+        implLoadPasswordLibrary( pImplLib, Name );
+        return;
+    }
+
+    bool bLink = pImplLib->mbLink;
+    bool bStorage = mxStorage.is() && !bLink;
+
+    uno::Reference< embed::XStorage > xLibrariesStor;
+    uno::Reference< embed::XStorage > xLibraryStor;
+    if( bStorage )
+    {
+#if OSL_DEBUG_LEVEL > 0
+        try
         {
-            implLoadPasswordLibrary( pImplLib, Name );
-            return;
+#endif
+            xLibrariesStor = mxStorage->openStorageElement( maLibrariesDir, embed::ElementModes::READ );
+            SAL_WARN_IF(
+                !xLibrariesStor.is(), "basic",
+                ("The method must either throw exception or return a"
+                 " storage!"));
+            if ( !xLibrariesStor.is() )
+            {
+                throw uno::RuntimeException("null returned from openStorageElement");
+            }
+
+            xLibraryStor = xLibrariesStor->openStorageElement( Name, embed::ElementModes::READ );
+            SAL_WARN_IF(
+                !xLibraryStor.is(), "basic",
+                ("The method must either throw exception or return a"
+                 " storage!"));
+            if ( !xLibrariesStor.is() )
+            {
+                throw uno::RuntimeException("null returned from openStorageElement");
+            }
+#if OSL_DEBUG_LEVEL > 0
         }
+        catch(const uno::Exception& )
+        {
+            TOOLS_WARN_EXCEPTION(
+                "basic",
+                "couldn't open sub storage for library \"" << Name << "\"");
+            throw;
+        }
+#endif
+    }
 
-        bool bLink = pImplLib->mbLink;
-        bool bStorage = mxStorage.is() && !bLink;
+    Sequence< OUString > aNames = pImplLib->getElementNames();
+    sal_Int32 nNameCount = aNames.getLength();
+    const OUString* pNames = aNames.getConstArray();
+    for( sal_Int32 i = 0 ; i < nNameCount ; i++ )
+    {
+        OUString aElementName = pNames[ i ];
 
-        uno::Reference< embed::XStorage > xLibrariesStor;
-        uno::Reference< embed::XStorage > xLibraryStor;
+        OUString aFile;
+        uno::Reference< io::XInputStream > xInStream;
+
         if( bStorage )
         {
+            uno::Reference< io::XStream > xElementStream;
+
+            aFile = aElementName + ".xml";
+
             try
             {
-                xLibrariesStor = mxStorage->openStorageElement( maLibrariesDir, embed::ElementModes::READ );
-                SAL_WARN_IF(
-                    !xLibrariesStor.is(), "basic",
-                    ("The method must either throw exception or return a"
-                     " storage!"));
-                if ( !xLibrariesStor.is() )
-                {
-                    throw uno::RuntimeException("null returned from openStorageElement");
-                }
-
-                xLibraryStor = xLibrariesStor->openStorageElement( Name, embed::ElementModes::READ );
-                SAL_WARN_IF(
-                    !xLibraryStor.is(), "basic",
-                    ("The method must either throw exception or return a"
-                     " storage!"));
-                if ( !xLibrariesStor.is() )
-                {
-                    throw uno::RuntimeException("null returned from openStorageElement");
-                }
+                xElementStream = xLibraryStor->openStreamElement( aFile, embed::ElementModes::READ );
             }
             catch(const uno::Exception& )
+            {}
+
+            if( !xElementStream.is() )
             {
-            #if OSL_DEBUG_LEVEL > 0
-                Any aError( ::cppu::getCaughtException() );
-                SAL_WARN(
-                    "basic",
-                    "couldn't open sub storage for library \"" << Name
-                        << "\". Exception: "
-                        << comphelper::anyToString(aError));
-            #endif
-                throw;
-            }
-        }
-
-        Sequence< OUString > aNames = pImplLib->getElementNames();
-        sal_Int32 nNameCount = aNames.getLength();
-        const OUString* pNames = aNames.getConstArray();
-        for( sal_Int32 i = 0 ; i < nNameCount ; i++ )
-        {
-            OUString aElementName = pNames[ i ];
-
-            OUString aFile;
-            uno::Reference< io::XInputStream > xInStream;
-
-            if( bStorage )
-            {
-                uno::Reference< io::XStream > xElementStream;
-
-                aFile = aElementName + ".xml";
-
+                // Check for EA2 document version with wrong extensions
+                aFile = aElementName + "." + maLibElementFileExtension;
                 try
                 {
                     xElementStream = xLibraryStor->openStreamElement( aFile, embed::ElementModes::READ );
                 }
                 catch(const uno::Exception& )
                 {}
-
-                if( !xElementStream.is() )
-                {
-                    // Check for EA2 document version with wrong extensions
-                    aFile = aElementName + "." + maLibElementFileExtension;
-                    try
-                    {
-                        xElementStream = xLibraryStor->openStreamElement( aFile, embed::ElementModes::READ );
-                    }
-                    catch(const uno::Exception& )
-                    {}
-                }
-
-                if ( xElementStream.is() )
-                {
-                    xInStream = xElementStream->getInputStream();
-                }
-                if ( !xInStream.is() )
-                {
-                    SAL_WARN(
-                        "basic",
-                        "couldn't open library element stream - attempted to"
-                            " open library \"" << Name << '"');
-                    throw RuntimeException("couldn't open library element stream", *this);
-                }
-            }
-            else
-            {
-                OUString aLibDirPath = pImplLib->maStorageURL;
-                INetURLObject aElementInetObj( aLibDirPath );
-                aElementInetObj.insertName( aElementName, false,
-                                            INetURLObject::LAST_SEGMENT,
-                                            INetURLObject::EncodeMechanism::All );
-                aElementInetObj.setExtension( maLibElementFileExtension );
-                aFile = aElementInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
             }
 
-            Reference< XNameContainer > xLib( pImplLib );
-            Any aAny = importLibraryElement( xLib, aElementName,
-                                             aFile, xInStream );
-            if( pImplLib->hasByName( aElementName ) )
+            if ( xElementStream.is() )
             {
-                if( aAny.hasValue() )
-                {
-                    pImplLib->maNameContainer->replaceByName( aElementName, aAny );
-                }
+                xInStream = xElementStream->getInputStream();
             }
-            else
+            if ( !xInStream.is() )
             {
-                pImplLib->maNameContainer->insertNoCheck(aElementName, aAny);
+                SAL_WARN(
+                    "basic",
+                    "couldn't open library element stream - attempted to"
+                        " open library \"" << Name << '"');
+                throw RuntimeException("couldn't open library element stream", *this);
             }
         }
-        pImplLib->implSetModified( false );
+        else
+        {
+            OUString aLibDirPath = pImplLib->maStorageURL;
+            INetURLObject aElementInetObj( aLibDirPath );
+            aElementInetObj.insertName( aElementName, false,
+                                        INetURLObject::LAST_SEGMENT,
+                                        INetURLObject::EncodeMechanism::All );
+            aElementInetObj.setExtension( maLibElementFileExtension );
+            aFile = aElementInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+        }
+
+        Reference< XNameContainer > xLib( pImplLib );
+        Any aAny = importLibraryElement( xLib, aElementName,
+                                         aFile, xInStream );
+        if( pImplLib->hasByName( aElementName ) )
+        {
+            if( aAny.hasValue() )
+            {
+                pImplLib->maNameContainer->replaceByName( aElementName, aAny );
+            }
+        }
+        else
+        {
+            pImplLib->maNameContainer->insertNoCheck(aElementName, aAny);
+        }
     }
+    pImplLib->implSetModified( false );
 }
 
 // Methods XLibraryContainer2
@@ -2659,7 +2635,7 @@ void SAL_CALL SfxLibraryContainer::initialize( const Sequence< Any >& _rArgument
     throw IllegalArgumentException();
 }
 
-void SAL_CALL SfxLibraryContainer::initializeFromDocument( const Reference< XStorageBasedDocument >& _rxDocument )
+void SfxLibraryContainer::initializeFromDocument( const Reference< XStorageBasedDocument >& _rxDocument )
 {
     // check whether this is a valid OfficeDocument, and obtain the document's root storage
     Reference< XStorage > xDocStorage;
@@ -2668,7 +2644,7 @@ void SAL_CALL SfxLibraryContainer::initializeFromDocument( const Reference< XSto
         Reference< XServiceInfo > xSI( _rxDocument, UNO_QUERY_THROW );
         if ( xSI->supportsService("com.sun.star.document.OfficeDocument"))
         {
-            xDocStorage.set( _rxDocument->getDocumentStorage(), UNO_QUERY_THROW );
+            xDocStorage.set( _rxDocument->getDocumentStorage(), UNO_SET_THROW );
         }
         Reference< XModel > xDocument( _rxDocument, UNO_QUERY_THROW );
         Reference< XComponent > xDocComponent( _rxDocument, UNO_QUERY_THROW );
@@ -2825,34 +2801,35 @@ void SAL_CALL SfxLibraryContainer::setVBACompatibilityMode( sal_Bool _vbacompatm
         to getBasicManager() may call getVBACompatibilityMode() which returns
         this value. */
     mbVBACompat = _vbacompatmodeon;
-    if( BasicManager* pBasMgr = getBasicManager() )
+    BasicManager* pBasMgr = getBasicManager();
+    if( !pBasMgr )
+        return;
+
+    // get the standard library
+    OUString aLibName = pBasMgr->GetName();
+    if ( aLibName.isEmpty())
     {
-        // get the standard library
-        OUString aLibName = pBasMgr->GetName();
-        if ( aLibName.isEmpty())
-        {
-            aLibName = "Standard";
-        }
-        if( StarBASIC* pBasic = pBasMgr->GetLib( aLibName ) )
-        {
-            pBasic->SetVBAEnabled( _vbacompatmodeon );
-        }
-        /*  If in VBA compatibility mode, force creation of the VBA Globals
-            object. Each application will create an instance of its own
-            implementation and store it in its Basic manager. Implementations
-            will do all necessary additional initialization, such as
-            registering the global "This***Doc" UNO constant, starting the
-            document events processor etc.
-         */
-        if( mbVBACompat ) try
-        {
-            Reference< XModel > xModel( mxOwnerDocument );   // weak-ref -> ref
-            Reference< XMultiServiceFactory > xFactory( xModel, UNO_QUERY_THROW );
-            xFactory->createInstance("ooo.vba.VBAGlobals");
-        }
-        catch(const Exception& )
-        {
-        }
+        aLibName = "Standard";
+    }
+    if( StarBASIC* pBasic = pBasMgr->GetLib( aLibName ) )
+    {
+        pBasic->SetVBAEnabled( _vbacompatmodeon );
+    }
+    /*  If in VBA compatibility mode, force creation of the VBA Globals
+        object. Each application will create an instance of its own
+        implementation and store it in its Basic manager. Implementations
+        will do all necessary additional initialization, such as
+        registering the global "This***Doc" UNO constant, starting the
+        document events processor etc.
+     */
+    if( mbVBACompat ) try
+    {
+        Reference< XModel > xModel( mxOwnerDocument );   // weak-ref -> ref
+        Reference< XMultiServiceFactory > xFactory( xModel, UNO_QUERY_THROW );
+        xFactory->createInstance("ooo.vba.VBAGlobals");
+    }
+    catch(const Exception& )
+    {
     }
 }
 
@@ -2981,9 +2958,7 @@ void SfxLibrary::implSetModified( bool _bIsModified )
 // Methods XInterface
 Any SAL_CALL SfxLibrary::queryInterface( const Type& rType )
 {
-    Any aRet;
-
-    aRet =
+    Any aRet =
         ::cppu::queryInterface(
             rType,
             static_cast< XContainer * >( this ),
@@ -3092,26 +3067,26 @@ void SfxLibrary::impl_removeWithoutChecks( const OUString& _rElementName )
     implSetModified( true );
 
     // Remove element file
-    if( !maStorageURL.isEmpty() )
-    {
-        INetURLObject aElementInetObj( maStorageURL );
-        aElementInetObj.insertName( _rElementName, false,
-                                    INetURLObject::LAST_SEGMENT,
-                                    INetURLObject::EncodeMechanism::All );
-        aElementInetObj.setExtension( maLibElementFileExtension );
-        OUString aFile = aElementInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+    if( maStorageURL.isEmpty() )
+        return;
 
-        try
+    INetURLObject aElementInetObj( maStorageURL );
+    aElementInetObj.insertName( _rElementName, false,
+                                INetURLObject::LAST_SEGMENT,
+                                INetURLObject::EncodeMechanism::All );
+    aElementInetObj.setExtension( maLibElementFileExtension );
+    OUString aFile = aElementInetObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+
+    try
+    {
+        if( mxSFI->exists( aFile ) )
         {
-            if( mxSFI->exists( aFile ) )
-            {
-                mxSFI->kill( aFile );
-            }
+            mxSFI->kill( aFile );
         }
-        catch(const Exception& )
-        {
-            DBG_UNHANDLED_EXCEPTION();
-        }
+    }
+    catch(const Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION("basic");
     }
 }
 
@@ -3368,15 +3343,12 @@ Reference< deployment::XPackage > ScriptExtensionIterator::implGetNextUserScript
             m_pScriptSubPackageIterator = new ScriptSubPackageIterator( xPackage );
         }
 
-        if( m_pScriptSubPackageIterator != nullptr )
+        xScriptPackage = m_pScriptSubPackageIterator->getNextScriptSubPackage( rbPureDialogLib );
+        if( !xScriptPackage.is() )
         {
-            xScriptPackage = m_pScriptSubPackageIterator->getNextScriptSubPackage( rbPureDialogLib );
-            if( !xScriptPackage.is() )
-            {
-                delete m_pScriptSubPackageIterator;
-                m_pScriptSubPackageIterator = nullptr;
-                m_iUserPackage++;
-            }
+            delete m_pScriptSubPackageIterator;
+            m_pScriptSubPackageIterator = nullptr;
+            m_iUserPackage++;
         }
     }
 
@@ -3422,15 +3394,12 @@ Reference< deployment::XPackage > ScriptExtensionIterator::implGetNextSharedScri
             m_pScriptSubPackageIterator = new ScriptSubPackageIterator( xPackage );
         }
 
-        if( m_pScriptSubPackageIterator != nullptr )
+        xScriptPackage = m_pScriptSubPackageIterator->getNextScriptSubPackage( rbPureDialogLib );
+        if( !xScriptPackage.is() )
         {
-            xScriptPackage = m_pScriptSubPackageIterator->getNextScriptSubPackage( rbPureDialogLib );
-            if( !xScriptPackage.is() )
-            {
-                delete m_pScriptSubPackageIterator;
-                m_pScriptSubPackageIterator = nullptr;
-                m_iSharedPackage++;
-            }
+            delete m_pScriptSubPackageIterator;
+            m_pScriptSubPackageIterator = nullptr;
+            m_iSharedPackage++;
         }
     }
 
@@ -3476,15 +3445,12 @@ Reference< deployment::XPackage > ScriptExtensionIterator::implGetNextBundledScr
             m_pScriptSubPackageIterator = new ScriptSubPackageIterator( xPackage );
         }
 
-        if( m_pScriptSubPackageIterator != nullptr )
+        xScriptPackage = m_pScriptSubPackageIterator->getNextScriptSubPackage( rbPureDialogLib );
+        if( !xScriptPackage.is() )
         {
-            xScriptPackage = m_pScriptSubPackageIterator->getNextScriptSubPackage( rbPureDialogLib );
-            if( !xScriptPackage.is() )
-            {
-                delete m_pScriptSubPackageIterator;
-                m_pScriptSubPackageIterator = nullptr;
-                m_iBundledPackage++;
-            }
+            delete m_pScriptSubPackageIterator;
+            m_pScriptSubPackageIterator = nullptr;
+            m_iBundledPackage++;
         }
     }
 

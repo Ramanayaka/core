@@ -19,8 +19,6 @@
 #ifndef INCLUDED_TOOLS_GLOBNAME_HXX
 #define INCLUDED_TOOLS_GLOBNAME_HXX
 
-#include <vector>
-
 #include <tools/toolsdllapi.h>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <o3tl/cow_wrapper.hxx>
@@ -35,7 +33,7 @@ struct SAL_WARN_UNUSED SvGUID
 
 struct SAL_WARN_UNUSED ImpSvGlobalName
 {
-    struct SvGUID   szData;
+    struct SvGUID   szData = {};
 
     ImpSvGlobalName(const SvGUID &rData)
         : szData(rData)
@@ -45,7 +43,7 @@ struct SAL_WARN_UNUSED ImpSvGlobalName
               sal_uInt8 b8, sal_uInt8 b9, sal_uInt8 b10, sal_uInt8 b11,
               sal_uInt8 b12, sal_uInt8 b13, sal_uInt8 b14, sal_uInt8 b15);
     ImpSvGlobalName( const ImpSvGlobalName & rObj );
-    ImpSvGlobalName();
+    ImpSvGlobalName() = default;
 
     bool        operator == ( const ImpSvGlobalName & rObj ) const;
 };
@@ -62,7 +60,7 @@ public:
         pImp( rObj.pImp )
     {
     }
-    SvGlobalName( SvGlobalName && rObj ) :
+    SvGlobalName( SvGlobalName && rObj ) noexcept :
         pImp( std::move(rObj.pImp) )
     {
     }
@@ -77,14 +75,13 @@ public:
     SvGlobalName( const SvGUID & rId );
 
     SvGlobalName & operator = ( const SvGlobalName & rObj );
-    SvGlobalName & operator = ( SvGlobalName && rObj );
+    SvGlobalName & operator = ( SvGlobalName && rObj ) noexcept;
     ~SvGlobalName();
 
     TOOLS_DLLPUBLIC friend SvStream & operator >> ( SvStream &, SvGlobalName & );
     TOOLS_DLLPUBLIC friend SvStream & WriteSvGlobalName( SvStream &, const SvGlobalName & );
 
     bool          operator < ( const SvGlobalName & rObj ) const;
-    SvGlobalName& operator += ( sal_uInt32 );
 
     bool          operator == ( const SvGlobalName & rObj ) const;
     bool          operator != ( const SvGlobalName & rObj ) const

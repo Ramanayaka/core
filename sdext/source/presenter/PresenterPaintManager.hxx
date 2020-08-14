@@ -27,7 +27,9 @@
 
 #include <functional>
 
-namespace sdext { namespace presenter {
+#include "PresenterPaneContainer.hxx"
+
+namespace sdext::presenter {
 
 class PresenterPaneContainer;
 
@@ -80,7 +82,7 @@ private:
     ::rtl::Reference<PresenterPaneContainer> mpPaneContainer;
 };
 
-} }
+}
 
 #endif
 

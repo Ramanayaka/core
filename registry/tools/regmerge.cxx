@@ -18,16 +18,19 @@
  */
 
 
-#include "registry/registry.hxx"
+#include <registry/registry.hxx>
 #include "fileurl.hxx"
 #include "options.hxx"
 
-#include "rtl/ustring.hxx"
+#include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 #include <stdio.h>
 #include <string.h>
 
 using namespace registry::tools;
+
+namespace {
 
 class Options_Impl : public Options
 {
@@ -43,6 +46,8 @@ protected:
     virtual void printUsage_Impl() const override;
     virtual bool initOptions_Impl(std::vector< std::string > & rArgs) override;
 };
+
+}
 
 void Options_Impl::printUsage_Impl() const
 {

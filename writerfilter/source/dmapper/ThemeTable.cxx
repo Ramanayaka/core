@@ -17,14 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <ThemeTable.hxx>
+#include "TagLogger.hxx"
+#include "ThemeTable.hxx"
 #include <i18nlangtag/languagetag.hxx>
 #include <ooxml/resourceids.hxx>
 
+#include <map>
+
 using namespace com::sun::star;
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 
 struct ThemeTable_Impl
@@ -79,7 +81,7 @@ void ThemeTable::lcl_attribute(Id Name, Value & val)
             break;
         default:
         {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
             TagLogger::getInstance().element("unhandled");
 #endif
         }
@@ -94,7 +96,7 @@ void ThemeTable::lcl_attribute(Id Name, Value & val)
 
 void ThemeTable::lcl_sprm(Sprm& rSprm)
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("ThemeTable.sprm");
     TagLogger::getInstance().chars(rSprm.toString());
 #endif
@@ -108,58 +110,58 @@ void ThemeTable::lcl_sprm(Sprm& rSprm)
     case NS_ooxml::LN_CT_BaseStyles_fontScheme:
         {
             writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
-            if( pProperties.get())
+            if( pProperties )
                 pProperties->resolve(*this);
     }
     break;
     case NS_ooxml::LN_CT_FontScheme_majorFont:
     case NS_ooxml::LN_CT_FontScheme_minorFont:
-        {
-            writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
+    {
+        writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
         m_pImpl->m_currentFontThemeEntry = std::map<sal_uInt32, OUString>();
-            if( pProperties.get())
+        if( pProperties )
                 pProperties->resolve(*this);
-            m_pImpl->m_themeFontMap[nSprmId] = m_pImpl->m_currentFontThemeEntry;
+        m_pImpl->m_themeFontMap[nSprmId] = m_pImpl->m_currentFontThemeEntry;
     }
     break;
     case NS_ooxml::LN_CT_FontCollection_latin:
     case NS_ooxml::LN_CT_FontCollection_ea:
     case NS_ooxml::LN_CT_FontCollection_cs:
-        {
+    {
         m_pImpl->m_currentThemeFontId = nSprmId;
-            writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
-            if( pProperties.get())
+        writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
+        if( pProperties )
                 pProperties->resolve(*this);
     }
     break;
     case NS_ooxml::LN_CT_FontCollection_font:
     {
         writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
-        if (pProperties.get())
+        if (pProperties )
             pProperties->resolve(*this);
     }
     break;
     default:
         {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
             TagLogger::getInstance().element("unhandled");
 #endif
         }
     }
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().endElement();
 #endif
 }
 
-void ThemeTable::lcl_entry(int /*pos*/, writerfilter::Reference<Properties>::Pointer_t ref)
+void ThemeTable::lcl_entry(writerfilter::Reference<Properties>::Pointer_t ref)
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("ThemeTable.entry");
 #endif
 
     ref->resolve(*this);
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().endElement();
 #endif
 }
@@ -169,25 +171,25 @@ OUString ThemeTable::getStringForTheme(const Id id)
     switch (id)
     {
         case NS_ooxml::LN_Value_ST_Theme_majorEastAsia:
-            return OUString("majorEastAsia");
+            return "majorEastAsia";
         case NS_ooxml::LN_Value_ST_Theme_majorBidi:
-            return OUString("majorBidi");
+            return "majorBidi";
         case NS_ooxml::LN_Value_ST_Theme_majorAscii:
-            return OUString("majorAscii");
+            return "majorAscii";
         case NS_ooxml::LN_Value_ST_Theme_majorHAnsi:
-            return OUString("majorHAnsi");
+            return "majorHAnsi";
         case NS_ooxml::LN_Value_ST_Theme_minorEastAsia:
-            return OUString("minorEastAsia");
+            return "minorEastAsia";
         case NS_ooxml::LN_Value_ST_Theme_minorBidi:
-            return OUString("minorBidi");
+            return "minorBidi";
         case NS_ooxml::LN_Value_ST_Theme_minorAscii:
-            return OUString("minorAscii");
+            return "minorAscii";
         case NS_ooxml::LN_Value_ST_Theme_minorHAnsi:
-            return OUString("minorHAnsi");
+            return "minorHAnsi";
     }
     return OUString();
 }
-const OUString ThemeTable::getFontNameForTheme(const Id id) const
+OUString ThemeTable::getFontNameForTheme(const Id id) const
 {
     std::map<sal_uInt32, OUString> tmpThemeFontMap;
     switch (id)
@@ -214,18 +216,18 @@ const OUString ThemeTable::getFontNameForTheme(const Id id) const
     case NS_ooxml::LN_Value_ST_Theme_majorHAnsi:
     case NS_ooxml::LN_Value_ST_Theme_minorAscii:
     case NS_ooxml::LN_Value_ST_Theme_minorHAnsi:
-    {
-         std::map<sal_uInt32, OUString>::const_iterator Iter = tmpThemeFontMap.find(NS_ooxml::LN_CT_FontCollection_latin);
-             if (Iter != tmpThemeFontMap.end())
-                  return (Iter)->second;
-             return OUString();
+        {
+            std::map<sal_uInt32, OUString>::const_iterator Iter = tmpThemeFontMap.find(NS_ooxml::LN_CT_FontCollection_latin);
+            if (Iter != tmpThemeFontMap.end())
+                      return Iter->second;
+            return OUString();
         }
     case NS_ooxml::LN_Value_ST_Theme_majorBidi:
     case NS_ooxml::LN_Value_ST_Theme_minorBidi:
         {
              std::map<sal_uInt32, OUString>::const_iterator Iter = tmpThemeFontMap.find(NS_ooxml::LN_CT_FontCollection_cs);
              if (Iter != tmpThemeFontMap.end())
-                 return (Iter)->second;
+                 return Iter->second;
              return OUString();
         }
     case NS_ooxml::LN_Value_ST_Theme_majorEastAsia:
@@ -233,7 +235,7 @@ const OUString ThemeTable::getFontNameForTheme(const Id id) const
         {
              std::map<sal_uInt32, OUString>::const_iterator Iter = tmpThemeFontMap.find(NS_ooxml::LN_CT_FontCollection_ea);
              if (Iter != tmpThemeFontMap.end())
-                 return (Iter)->second;
+                 return Iter->second;
              return OUString();
         }
     default:
@@ -243,13 +245,13 @@ const OUString ThemeTable::getFontNameForTheme(const Id id) const
 
 void ThemeTable::setThemeFontLangProperties(const uno::Sequence<beans::PropertyValue>& aPropSeq)
 {
-    for (sal_Int32 i = 0 ; i < aPropSeq.getLength() ; i ++)
+    for (const auto& rProp : aPropSeq)
     {
         OUString sLocaleName;
-        aPropSeq.getConstArray()[i].Value >>= sLocaleName;
-        if (aPropSeq.getConstArray()[i].Name == "eastAsia")
+        rProp.Value >>= sLocaleName;
+        if (rProp.Name == "eastAsia")
             m_pImpl->m_themeFontLangEastAsia = fromLocaleToScriptTag(sLocaleName);
-        if (aPropSeq.getConstArray()[i].Name == "bidi")
+        if (rProp.Name == "bidi")
             m_pImpl->m_themeFontLangBidi = fromLocaleToScriptTag(sLocaleName);
 
     }
@@ -264,7 +266,7 @@ OUString ThemeTable::fromLCIDToScriptTag(LanguageType lang)
 {
     // conversion list from:
     // http://blogs.msdn.com/b/officeinteroperability/archive/2013/04/22/office-open-xml-themes-schemes-and-fonts.aspx
-    switch ((sal_uInt16)lang)
+    switch (static_cast<sal_uInt16>(lang))
     {
         case 0x429  :  // lidFarsi
         case 0x401  :  // lidArabic
@@ -290,18 +292,18 @@ OUString ThemeTable::fromLCIDToScriptTag(LanguageType lang)
         case 0x460  :  // lidKashmiri
         case 0x463  :  // lidPashto
         case 0x48c  :  // lidDari
-            return OUString("Arab");
+            return "Arab";
         case 0x42b  :  // lidArmenian
-            return OUString("Armn");
+            return "Armn";
         case 0x445  :  // lidBengali
         case 0x845  :  // lidBengaliBangladesh
         case 0x44d  :  // lidAssamese
         case 0x458  :  // lidManipuri
-            return OUString("Beng");
+            return "Beng";
         case 0x45d  :  // lidInuktitut
-            return OUString("Cans");
+            return "Cans";
         case 0x45c  :  // lidCherokee
-            return OUString("Cher");
+            return "Cher";
         case 0x419  :  // lidRussian
         case 0x402  :  // lidBulgarian
         case 0x281a :  // lidSerbianCyrillic
@@ -322,7 +324,7 @@ OUString ThemeTable::fromLCIDToScriptTag(LanguageType lang)
         case 0x450  :  // lidMongolian
         case 0x46d  :  // lidBashkir
         case 0x485  :  // lidSakha
-            return OUString("Cyrl");
+            return "Cyrl";
         case 0x439  :  // lidHindi
         case 0x44e  :  // lidMarathi
         case 0x44f  :  // lidSanskrit
@@ -331,39 +333,39 @@ OUString ThemeTable::fromLCIDToScriptTag(LanguageType lang)
         case 0x860  :  // lidKashmiriIndia
         case 0x461  :  // lidNepali
         case 0x861  :  // lidNepaliIndia
-            return OUString("Deva");
+            return "Deva";
         case 0x45e  :  // lidAmharic
         case 0x473  :  // lidTigrignaEthiopic
         case 0x873  :  // lidTigrignaEritrea
-            return OUString("Ethi");
+            return "Ethi";
         case 0x437  :  // lidGeorgian
-            return OUString("Geor");
+            return "Geor";
         case 0x408  :  // lidGreek
-            return OUString("Grek");
+            return "Grek";
         case 0x447  :  // lidGujarati
-            return OUString("Gujr");
+            return "Gujr";
         case 0x446  :  // lidPunjabi
-            return OUString("Guru");
+            return "Guru";
         case 0x412  :  // lidKoreanExtWansung
-            return OUString("Hang");
+            return "Hang";
         case 0x804  :  // lidChineseSimp
         case 0x1004 :  // lidSingapore
-            return OUString("Hans");
+            return "Hans";
         case 0x404  :  // lidChineseTrad
         case 0xc04  :  // lidHongkong
         case 0x1404 :  // lidMacau
-            return OUString("Hant");
+            return "Hant";
         case 0x40d  :  // lidHebrew
         case 0x43d  :  // lidYiddish
-            return OUString("Hebr");
+            return "Hebr";
         case 0x411  :  // lidJapanese
-            return OUString("Jpan");
+            return "Jpan";
         case 0x453  :  // lidKhmer
-            return OUString("Khmr");
+            return "Khmr";
         case 0x44b  :  // lidKannada
-            return OUString("Knda");
+            return "Knda";
         case 0x454  :  // lidLao
-            return OUString("Laoo");
+            return "Laoo";
         case 0x409  :  // lidAmerican
         case 0xc09  :  // lidAustralian
         case 0x809  :  // lidBritish
@@ -522,42 +524,41 @@ OUString ThemeTable::fromLCIDToScriptTag(LanguageType lang)
         case 0x486  :  // lidKiche
         case 0x487  :  // lidKinyarwanda
         case 0x488  :  // lidWolof
-            return OUString("Latn");
+            return "Latn";
         case 0x44c  :  // lidMalayalam
-            return OUString("Mlym");
+            return "Mlym";
         case 0x850  :  // lidMongolianMongo
-            return OUString("Mong");
+            return "Mong";
         case 0x455  :  // lidBurmese
-            return OUString("Mymr");
+            return "Mymr";
         case 0x448  :  // lidOriya
-            return OUString("Orya");
+            return "Orya";
         case 0x45b  :  // lidSinhalese
-            return OUString("Sinh");
+            return "Sinh";
         case 0x45a  :  // lidSyriac
-            return OUString("Syrc");
+            return "Syrc";
         case 0x449  :  // lidTamil
-            return OUString("Taml");
+            return "Taml";
         case 0x44a  :  // lidTelugu
-            return OUString("Telu");
+            return "Telu";
         case 0x465  :  // lidMaldivian
-            return OUString("Thaa");
+            return "Thaa";
         case 0x41e  :  // lidThai
-            return OUString("Thai");
+            return "Thai";
         case 0x451  :  // lidTibetan
         case 0x851  :  // lidBhutanese
-            return OUString("Tibt");
+            return "Tibt";
         case 0x480  :  // lidUighur
-            return OUString("Uigh");
+            return "Uigh";
         case 0x42a  :  // lidVietnamese
-            return OUString("Viet");
+            return "Viet";
         case 0x478  :  // lidYi
-            return OUString("Yiii");
+            return "Yiii";
         default:
             return OUString();
     }
 }
 
-}//namespace dmapper
 } //namespace writerfilter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

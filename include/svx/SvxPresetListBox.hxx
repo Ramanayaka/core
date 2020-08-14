@@ -20,32 +20,29 @@
 #ifndef INCLUDED_SVX_SVXPRESETLISTBOX_HXX
 #define INCLUDED_SVX_SVXPRESETLISTBOX_HXX
 
-#include <svtools/svtdllapi.h>
-#include <svx/XPropertyTable.hxx>
-#include <vcl/ctrl.hxx>
 #include <svtools/valueset.hxx>
 #include <svx/xtable.hxx>
 #include <tools/gen.hxx>
 
-class SVX_DLLPUBLIC SvxPresetListBox : public ValueSet
+class SVXCORE_DLLPUBLIC SvxPresetListBox final : public ValueSet
 {
 private:
-    sal_uInt32 nColCount;
-    Size       aIconSize;
+    static constexpr sal_uInt32  nColCount = 3;
+    Size                         aIconSize;
     Link<SvxPresetListBox*,void> maRenameHdl;
     Link<SvxPresetListBox*,void> maDeleteHdl;
 
-    DECL_LINK( OnMenuItemSelected, Menu*, bool );
+    void OnMenuItemSelected(const OString& rIdent);
 
     template< typename ListType, typename EntryType >
     void FillPresetListBoxImpl(ListType& pList, sal_uInt32 nStartIndex);
 
 public:
-    SvxPresetListBox(vcl::Window* pParent, WinBits nWinStyle);
+    SvxPresetListBox(std::unique_ptr<weld::ScrolledWindow> pWindow);
 
     virtual void Resize() override;
-    virtual void Command( const CommandEvent& rEvt ) override;
-    sal_uInt32 getColumnCount() const { return nColCount; }
+    virtual bool Command(const CommandEvent& rEvent) override;
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
     Size const & GetIconSize() const { return aIconSize; }
 
     void SetRenameHdl( const Link<SvxPresetListBox*,void>& rLink )
@@ -62,7 +59,6 @@ public:
     void FillPresetListBox(XBitmapList& pList, sal_uInt32 nStartIndex = 1);
     void FillPresetListBox(XPatternList& pList, sal_uInt32 nStartIndex = 1);
     void DrawLayout();
-
 };
 
 #endif // INCLUDED_SVX_SVXPRESETLISTBOX_HXX

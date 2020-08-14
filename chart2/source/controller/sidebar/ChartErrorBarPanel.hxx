@@ -14,17 +14,11 @@
 #include <sfx2/sidebar/ControllerItem.hxx>
 #include <sfx2/sidebar/IContextChangeReceiver.hxx>
 #include <sfx2/sidebar/SidebarModelUpdate.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 
 #include "ChartSidebarModifyListener.hxx"
 
-#include <com/sun/star/util/XModifyListener.hpp>
-
-class FixedText;
-class ListBox;
-class NumericField;
-class MetricField;
-class Edit;
+namespace com::sun::star::util { class XModifyListener; }
 
 namespace chart {
 
@@ -53,8 +47,11 @@ public:
     virtual void NotifyItemUpdate(
         const sal_uInt16 nSId,
         const SfxItemState eState,
-        const SfxPoolItem* pState,
-        const bool bIsEnabled) override;
+        const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
 
     // constructor/destructor
     ChartErrorBarPanel(
@@ -71,14 +68,14 @@ public:
 
 private:
     //ui controls
-    VclPtr<RadioButton> mpRBPosAndNeg;
-    VclPtr<RadioButton> mpRBPos;
-    VclPtr<RadioButton> mpRBNeg;
+    std::unique_ptr<weld::RadioButton> mxRBPosAndNeg;
+    std::unique_ptr<weld::RadioButton> mxRBPos;
+    std::unique_ptr<weld::RadioButton> mxRBNeg;
 
-    VclPtr<ListBox> mpLBType;
+    std::unique_ptr<weld::ComboBox> mxLBType;
 
-    VclPtr<NumericField> mpMFPos;
-    VclPtr<NumericField> mpMFNeg;
+    std::unique_ptr<weld::SpinButton> mxMFPos;
+    std::unique_ptr<weld::SpinButton> mxMFNeg;
 
     css::uno::Reference<css::frame::XModel> mxModel;
     css::uno::Reference<css::util::XModifyListener> mxListener;
@@ -87,9 +84,9 @@ private:
 
     void Initialize();
 
-    DECL_LINK(RadioBtnHdl, RadioButton&, void);
-    DECL_LINK(ListBoxHdl, ListBox&, void);
-    DECL_LINK(NumericFieldHdl, Edit&, void);
+    DECL_LINK(RadioBtnHdl, weld::ToggleButton&, void);
+    DECL_LINK(ListBoxHdl, weld::ComboBox&, void);
+    DECL_LINK(NumericFieldHdl, weld::SpinButton&, void);
 };
 
 } } // end of namespace ::chart::sidebar

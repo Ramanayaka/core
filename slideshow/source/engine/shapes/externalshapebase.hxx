@@ -20,18 +20,12 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_EXTERNALSHAPEBASE_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_EXTERNALSHAPEBASE_HXX
 
-#include <vector>
-
-#include "iexternalmediashapebase.hxx"
-#include "unoview.hxx"
-#include "subsettableshapemanager.hxx"
-#include "slideshowexceptions.hxx"
-#include "slideshowcontext.hxx"
+#include <iexternalmediashapebase.hxx>
+#include <unoview.hxx>
+#include <slideshowcontext.hxx>
 
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** Base class for shapes rendered by external engines.
 
@@ -128,7 +122,6 @@ namespace slideshow
             const double                                                            mnPriority;
             ::basegfx::B2DRectangle                                                 maBounds;
         };
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_EXTERNALSHAPEBASE_HXX

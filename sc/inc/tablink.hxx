@@ -30,7 +30,9 @@
 class ScDocShell;
 struct TableLink_Impl;
 
-class ScTableLink : public ::sfx2::SvBaseLink, public ScRefreshTimer
+namespace weld { class Window; }
+
+class ScTableLink final : public ::sfx2::SvBaseLink, public ScRefreshTimer
 {
 private:
     std::unique_ptr<TableLink_Impl> pImpl;
@@ -51,7 +53,7 @@ public:
     virtual ::sfx2::SvBaseLink::UpdateResult DataChanged(
         const OUString& rMimeType, const css::uno::Any & rValue ) override;
 
-    virtual void    Edit( vcl::Window*, const Link<SvBaseLink&,void>& rEndEditHdl ) override;
+    virtual void    Edit(weld::Window*, const Link<SvBaseLink&,void>& rEndEditHdl) override;
 
     bool    Refresh(const OUString& rNewFile, const OUString& rNewFilter,
                     const OUString* pNewOptions /* = NULL */, sal_uLong nNewRefresh );
@@ -80,10 +82,11 @@ private:
     SfxMedium*          pMedium;
 
 public:
-                        ScDocumentLoader( const OUString& rFileName,
-                                          OUString& rFilterName, OUString& rOptions,
-                                          sal_uInt32 nRekCnt = 0, bool bWithInteraction = false );
-                        ~ScDocumentLoader();
+    ScDocumentLoader(const OUString& rFileName, OUString& rFilterName, OUString& rOptions,
+                     sal_uInt32 nRekCnt = 0, weld::Window* pInteractionParent = nullptr,
+                     css::uno::Reference<css::io::XInputStream> xInputStream
+                     = css::uno::Reference<css::io::XInputStream>());
+    ~ScDocumentLoader();
     ScDocument*         GetDocument();
     ScDocShell*         GetDocShell()       { return pDocShell; }
     bool                IsError() const;
@@ -94,9 +97,10 @@ public:
     /** Create SfxMedium for stream read with SfxFilter and filter options set
         at the medium's SfxItemSet.
      */
-    static SfxMedium*   CreateMedium( const OUString& rFileName, std::shared_ptr<const SfxFilter> const & pFilter, const OUString& rOptions );
+    static SfxMedium*   CreateMedium(const OUString& rFileName, std::shared_ptr<const SfxFilter> const & pFilter,
+                                     const OUString& rOptions, weld::Window* pInteractionParent = nullptr);
 
-    static OUString     GetOptions( SfxMedium& rMedium );
+    static OUString     GetOptions( const SfxMedium& rMedium );
 
     /** Returns the filter name and options from a file name.
         @param bWithContent

@@ -17,24 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "officecfg/Office/Common.hxx"
+#include <officecfg/Office/Common.hxx>
 
+#include <vcl/gdimtf.hxx>
 #include <vcl/print.hxx>
 #include <sal/macros.h>
+#include <osl/diagnose.h>
 
-#include "osx/salinst.h"
-#include "osx/salprn.h"
-#include "osx/printview.h"
-#include "quartz/salgdi.h"
-#include "osx/saldata.hxx"
-#include "quartz/utils.h"
+#include <osx/salinst.h>
+#include <osx/salprn.h>
+#include <osx/printview.h>
+#include <quartz/salgdi.h>
+#include <osx/saldata.hxx>
+#include <quartz/utils.h>
 
-#include "jobset.h"
-#include "salptype.hxx"
+#include <jobset.h>
+#include <salptype.hxx>
 
-#include "com/sun/star/beans/PropertyValue.hpp"
-#include "com/sun/star/awt/Size.hpp"
-#include "com/sun/star/uno/Sequence.hxx"
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
 
 #include <algorithm>
 #include <cstdlib>
@@ -64,20 +66,14 @@ AquaSalInfoPrinter::AquaSalInfoPrinter( const SalPrinterQueueInfo& i_rQueue ) :
     {
         mpPrintInfo = [pShared copy];
         [mpPrintInfo setPrinter: mpPrinter];
-#if MACOSX_SDK_VERSION >= 1090
-        mePageOrientation = ([mpPrintInfo orientation] == NSPaperOrientationPortrait) ? Orientation::Landscape : Orientation::Portrait;
+        mePageOrientation = ([mpPrintInfo orientation] == NSPaperOrientationLandscape) ? Orientation::Landscape : Orientation::Portrait;
         [mpPrintInfo setOrientation: NSPaperOrientationPortrait];
-#else
-        mePageOrientation = ([mpPrintInfo orientation] == NSLandscapeOrientation) ? Orientation::Landscape : Orientation::Portrait;
-        [mpPrintInfo setOrientation: NSPortraitOrientation];
-#endif
     }
 
     mpGraphics = new AquaSalGraphics();
 
     const int nWidth = 100, nHeight = 100;
-    mpContextMemory.reset(static_cast<sal_uInt8*>(rtl_allocateMemory(nWidth * 4 * nHeight)),
-                          &rtl_freeMemory);
+    mpContextMemory.reset(new (std::nothrow) sal_uInt8[nWidth * 4 * nHeight]);
 
     if (mpContextMemory)
     {
@@ -153,7 +149,7 @@ void AquaSalInfoPrinter::ReleaseGraphics( SalGraphics* )
     mbGraphics = false;
 }
 
-bool AquaSalInfoPrinter::Setup( SalFrame*, ImplJobSetup* )
+bool AquaSalInfoPrinter::Setup( weld::Window*, ImplJobSetup* )
 {
     return false;
 }
@@ -193,7 +189,7 @@ bool AquaSalInfoPrinter::SetPrinterData( ImplJobSetup* io_pSetupData )
         io_pSetupData->SetOrientation( mePageOrientation );
 
         io_pSetupData->SetPaperBin( 0 );
-        io_pSetupData->SetDriverData( static_cast<sal_uInt8*>(rtl_allocateMemory( 4 )) );
+        io_pSetupData->SetDriverData( static_cast<sal_uInt8*>(std::malloc( 4 )) );
         io_pSetupData->SetDriverDataLen( 4 );
     }
     else
@@ -299,8 +295,8 @@ sal_uInt32 AquaSalInfoPrinter::GetCapabilities( const ImplJobSetup*, PrinterCapT
 
 void AquaSalInfoPrinter::GetPageInfo( const ImplJobSetup*,
                                   long& o_rOutWidth, long& o_rOutHeight,
-                                  long& o_rPageOffX, long& o_rPageOffY,
-                                  long& o_rPageWidth, long& o_rPageHeight )
+                                  Point& rPageOffset,
+                                  Size& rPaperSize )
 {
     if( mpPrintInfo )
     {
@@ -310,36 +306,42 @@ void AquaSalInfoPrinter::GetPageInfo( const ImplJobSetup*,
                      fYScaling = static_cast<double>(nDPIY)/72.0;
 
         NSSize aPaperSize = [mpPrintInfo paperSize];
-        o_rPageWidth  = static_cast<long>( double(aPaperSize.width) * fXScaling );
-        o_rPageHeight = static_cast<long>( double(aPaperSize.height) * fYScaling );
+        rPaperSize.setWidth( static_cast<long>( double(aPaperSize.width) * fXScaling ) );
+        rPaperSize.setHeight( static_cast<long>( double(aPaperSize.height) * fYScaling ) );
 
         NSRect aImageRect = [mpPrintInfo imageablePageBounds];
-        o_rPageOffX   = static_cast<long>( aImageRect.origin.x * fXScaling );
-        o_rPageOffY   = static_cast<long>( (aPaperSize.height - aImageRect.size.height - aImageRect.origin.y) * fYScaling );
+        rPageOffset.setX( static_cast<long>( aImageRect.origin.x * fXScaling ) );
+        rPageOffset.setY( static_cast<long>( (aPaperSize.height - aImageRect.size.height - aImageRect.origin.y) * fYScaling ) );
         o_rOutWidth   = static_cast<long>( aImageRect.size.width * fXScaling );
         o_rOutHeight  = static_cast<long>( aImageRect.size.height * fYScaling );
 
         if( mePageOrientation == Orientation::Landscape )
         {
             std::swap( o_rOutWidth, o_rOutHeight );
-            std::swap( o_rPageWidth, o_rPageHeight );
-            std::swap( o_rPageOffX, o_rPageOffY );
+            // swap width and height
+            long n = rPaperSize.Width();
+            rPaperSize.setWidth(rPaperSize.Height());
+            rPaperSize.setHeight(n);
+            // swap offset x and y
+            n = rPageOffset.X();
+            rPageOffset.setX(rPageOffset.Y());
+            rPageOffset.setY(n);
         }
     }
 }
 
-static Size getPageSize( vcl::PrinterController& i_rController, sal_Int32 i_nPage )
+static Size getPageSize( vcl::PrinterController const & i_rController, sal_Int32 i_nPage )
 {
     Size aPageSize;
-    uno::Sequence< PropertyValue > aPageParms( i_rController.getPageParameters( i_nPage ) );
-    for( sal_Int32 nProperty = 0, nPropertyCount = aPageParms.getLength(); nProperty < nPropertyCount; ++nProperty )
+    uno::Sequence< PropertyValue > const aPageParms( i_rController.getPageParameters( i_nPage ) );
+    for( const PropertyValue & pv : aPageParms )
     {
-        if ( aPageParms[ nProperty ].Name == "PageSize" )
+        if ( pv.Name == "PageSize" )
         {
             awt::Size aSize;
-            aPageParms[ nProperty].Value >>= aSize;
-            aPageSize.Width() = aSize.Width;
-            aPageSize.Height() = aSize.Height;
+            pv.Value >>= aSize;
+            aPageSize.setWidth( aSize.Width );
+            aPageSize.setHeight( aSize.Height );
             break;
         }
     }
@@ -358,7 +360,7 @@ bool AquaSalInfoPrinter::StartJob( const OUString* i_pFileName,
 
     bool bSuccess = false;
     bool bWasAborted = false;
-    AquaSalInstance* pInst = GetSalData()->mpFirstInstance;
+    AquaSalInstance* pInst = GetSalData()->mpInstance;
     PrintAccessoryViewState aAccViewState;
     sal_Int32 nAllPages = 0;
 
@@ -446,7 +448,7 @@ bool AquaSalInfoPrinter::StartJob( const OUString* i_pFileName,
             // platform independent paper matching algorithm
             VclPtr<Printer> pPrinter( i_rController.getPrinter() );
             pPrinter->SetMapMode( MapMode( MapUnit::Map100thMM ) );
-            pPrinter->SetPaperSizeUser( aCurSize, true );
+            pPrinter->SetPaperSizeUser( aCurSize );
 
             // create view
             NSView* pPrintView = [[AquaPrintView alloc] initWithController: &i_rController withInfoPrinter: this];
@@ -495,7 +497,7 @@ bool AquaSalInfoPrinter::StartJob( const OUString* i_pFileName,
                 bSuccess = true;
                 mbJob = true;
                 pInst->startedPrintJob();
-                BOOL wasSuccessful = [pPrintOperation runOperation];
+                bool wasSuccessful = [pPrintOperation runOperation];
                 pInst->endedPrintJob();
                 bSuccess = wasSuccessful;
                 bWasAborted = [[[pPrintOperation printInfo] jobDisposition] compare: NSPrintCancelJob] == NSOrderedSame;
@@ -511,7 +513,7 @@ bool AquaSalInfoPrinter::StartJob( const OUString* i_pFileName,
 
     // inform application that it can release its data
     // this is awkward, but the XRenderable interface has no method for this,
-    // so we need to call XRenderadble::render one last time with IsLastPage = true
+    // so we need to call XRenderable::render one last time with IsLastPage = true
     i_rController.setLastPage( true );
     GDIMetaFile aPageFile;
     if( mrContext )
@@ -547,7 +549,7 @@ SalGraphics* AquaSalInfoPrinter::StartPage( ImplJobSetup* i_pSetupData, bool i_b
     if( i_bNewJobData && i_pSetupData )
         SetPrinterData( i_pSetupData );
 
-    CGContextRef rContext = static_cast<CGContextRef>([[NSGraphicsContext currentContext] graphicsPort]);
+    CGContextRef rContext = [[NSGraphicsContext currentContext] CGContext];
 
     SetupPrinterGraphics( rContext );
 
@@ -558,11 +560,6 @@ bool AquaSalInfoPrinter::EndPage()
 {
     mpGraphics->InvalidateContext();
     return true;
-}
-
-sal_uLong AquaSalInfoPrinter::GetErrorCode()
-{
-    return 0;
 }
 
 AquaSalPrinter::AquaSalPrinter( AquaSalInfoPrinter* i_pInfoPrinter ) :
@@ -608,11 +605,6 @@ SalGraphics* AquaSalPrinter::StartPage( ImplJobSetup* i_pSetupData, bool i_bNewJ
 void AquaSalPrinter::EndPage()
 {
     mpInfoPrinter->EndPage();
-}
-
-sal_uLong AquaSalPrinter::GetErrorCode()
-{
-    return AquaSalInfoPrinter::GetErrorCode();
 }
 
 void AquaSalInfoPrinter::InitPaperFormats( const ImplJobSetup* )

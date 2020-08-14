@@ -21,10 +21,11 @@
 #define INCLUDED_WRITERFILTER_INC_DMAPPER_RESOURCEMODEL_HXX
 
 #include <string>
-#include <memory>
 #include <sal/types.h>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/uno/Any.hxx>
+#include <tools/ref.hxx>
+
 /**
    @file resourcemodel.hxx
 
@@ -56,7 +57,7 @@ typedef sal_uInt32 Id;
 namespace writerfilter {
 
 /**
-    Reference to an resource that generates events and sends them to a
+    Reference to a resource that generates events and sends them to a
     handler.
 
     The reference can be resolved, i.e. the resource generates its
@@ -76,7 +77,7 @@ namespace writerfilter {
 */
 
 template <class T>
-class SAL_DLLPUBLIC_TEMPLATE Reference
+class SAL_DLLPUBLIC_TEMPLATE Reference : public virtual SvRefBase
 {
 public:
     /**
@@ -85,7 +86,7 @@ public:
         @attention The ownership of a reference is transferred when
         the reference is passed.
     */
-    typedef std::shared_ptr< Reference<T> > Pointer_t;
+    typedef tools::SvRef< Reference<T> > Pointer_t;
 
     /**
        Resolves the reference.
@@ -97,8 +98,14 @@ public:
      */
     virtual void resolve(T & rHandler) = 0;
 
+    Reference() = default;
+    Reference(Reference const &) = default;
+    Reference(Reference &&) = default;
+    Reference & operator =(Reference const &) = default;
+    Reference & operator =(Reference &&) = default;
+
 protected:
-    ~Reference() {}
+    ~Reference() override {}
 };
 
 class Value;
@@ -107,7 +114,7 @@ class Sprm;
 /**
    Handler for properties.
  */
-class Properties
+class Properties : public virtual SvRefBase
 {
 public:
     /**
@@ -126,16 +133,16 @@ public:
     virtual void sprm(Sprm & sprm) = 0;
 
 protected:
-    ~Properties() {}
+    ~Properties() override {}
 };
 
 /**
    Handler for tables.
  */
-class Table
+class Table : public virtual SvRefBase
 {
 public:
-    typedef std::shared_ptr<Table> Pointer_t;
+    typedef tools::SvRef<Table> Pointer_t;
 
     /**
        Receives an entry of the table.
@@ -146,7 +153,7 @@ public:
     virtual void entry(int pos, writerfilter::Reference<Properties>::Pointer_t ref) = 0;
 
 protected:
-    ~Table() {}
+    ~Table() override {}
 };
 
 /**
@@ -160,10 +167,8 @@ public:
 
        @param buf     pointer to buffer containing the data
        @param len     size of buffer
-       @param ref     reference to properties of binary object
      */
-    virtual void data(const sal_uInt8* buf, size_t len,
-                      writerfilter::Reference<Properties>::Pointer_t ref) = 0;
+    virtual void data(const sal_uInt8* buf, size_t len) = 0;
 
 protected:
     ~BinaryObj() {}
@@ -176,14 +181,14 @@ const sal_uInt8 cFieldEnd = 0x15;
 /**
    Handler for a stream.
  */
-class Stream
+class Stream : public virtual SvRefBase
 {
 public:
 
     /**
        Pointer to this stream.
      */
-    typedef std::shared_ptr<Stream> Pointer_t;
+    typedef tools::SvRef<Stream> Pointer_t;
 
     /**
        Receives start mark for group with the same section properties.
@@ -298,7 +303,7 @@ public:
     virtual void endGlossaryEntry() = 0;
 
 protected:
-    ~Stream() {}
+    ~Stream() override {}
 };
 
 /**
@@ -308,15 +313,13 @@ protected:
    makes no sense for a certain value, e.g. the integer value of a
    string.
  */
-class Value
+class Value : public virtual SvRefBase
 {
 public:
     /**
        Pointer to a value.
      */
-    typedef std::unique_ptr<Value> Pointer_t;
-
-    virtual ~Value() {}
+    typedef tools::SvRef<Value> Pointer_t;
 
     /**
        Returns integer representation of the value.
@@ -346,7 +349,7 @@ public:
     /**
        Returns string representation of this value.
      */
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     virtual std::string toString() const = 0;
 #endif
 };
@@ -355,10 +358,10 @@ public:
    An SPRM: Section, Paragraph and Run Modifier
 
  */
-class Sprm
+class Sprm : public virtual SvRefBase
 {
 public:
-    typedef std::unique_ptr<Sprm> Pointer_t;
+    typedef tools::SvRef<Sprm> Pointer_t;
 
     /**
        Returns id of the SPRM.
@@ -379,19 +382,19 @@ public:
     /**
        Returns name of sprm.
     */
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     virtual std::string getName() const = 0;
 #endif
 
     /**
        Returns string representation of sprm.
      */
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     virtual std::string toString() const = 0;
 #endif
 
 protected:
-    ~Sprm() {}
+    ~Sprm() override {}
 };
 
 typedef sal_Int32 Token_t;

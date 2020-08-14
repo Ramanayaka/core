@@ -23,15 +23,12 @@
 #include "NConnection.hxx"
 #include <connectivity/sdbcx/VTable.hxx>
 
-namespace connectivity
+namespace connectivity::evoab
 {
-    namespace evoab
-    {
         typedef connectivity::sdbcx::OTable OEvoabTable_TYPEDEF;
 
         class OEvoabTable : public OEvoabTable_TYPEDEF
         {
-            css::uno::Reference< css::sdbc::XDatabaseMetaData > m_xMetaData;
             OEvoabConnection* m_pConnection;
 
         public:
@@ -39,9 +36,9 @@ namespace connectivity
                     OEvoabConnection* _pConnection,
                     const OUString& Name,
                     const OUString& Type,
-                    const OUString& Description = OUString(),
-                    const OUString& SchemaName = OUString(),
-                    const OUString& CatalogName = OUString()
+                    const OUString& Description,
+                    const OUString& SchemaName,
+                    const OUString& CatalogName
                 );
 
             OEvoabConnection* getConnection() { return m_pConnection;}
@@ -51,8 +48,8 @@ namespace connectivity
             OUString const & getTableName() const { return m_Name; }
             OUString const & getSchema() const { return m_SchemaName; }
         };
-    }
 }
+
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_EVOAB2_NTABLE_HXX
 

@@ -12,15 +12,19 @@ $(eval $(call gb_Library_Library,wpd))
 $(eval $(call gb_Library_use_unpacked,wpd,libwpd))
 
 $(eval $(call gb_Library_use_externals,wpd,\
+	boost_headers \
 	revenge \
 ))
 
-$(eval $(call gb_Library_set_warnings_not_errors,wpd))
+$(eval $(call gb_Library_set_warnings_disabled,wpd))
 
 $(eval $(call gb_Library_set_include,wpd,\
     -I$(call gb_UnpackedTarball_get_dir,libwpd)/inc \
+    -I$(call gb_UnpackedTarball_get_dir,libwpd)/src/lib \
     $$(INCLUDE) \
 ))
+
+$(eval $(call gb_Library_set_precompiled_header,wpd,external/libwpd/inc/pch/precompiled_wpd))
 
 $(eval $(call gb_Library_add_defs,wpd,\
 	-DBOOST_ALL_NO_LIB \
@@ -191,6 +195,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,wpd,\
 	UnpackedTarball/libwpd/src/lib/WPXContentListener \
 	UnpackedTarball/libwpd/src/lib/WPXEncryption \
 	UnpackedTarball/libwpd/src/lib/WPXHeader \
+	UnpackedTarball/libwpd/src/lib/WPXHeaderFooter \
 	UnpackedTarball/libwpd/src/lib/WPXListener \
 	UnpackedTarball/libwpd/src/lib/WPXMemoryStream \
 	UnpackedTarball/libwpd/src/lib/WPXPageSpan \
@@ -198,6 +203,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,wpd,\
 	UnpackedTarball/libwpd/src/lib/WPXStylesListener \
 	UnpackedTarball/libwpd/src/lib/WPXSubDocument \
 	UnpackedTarball/libwpd/src/lib/WPXTable \
+	UnpackedTarball/libwpd/src/lib/WPXTableList \
 	UnpackedTarball/libwpd/src/lib/libwpd_internal \
 	UnpackedTarball/libwpd/src/lib/libwpd_math \
 ))

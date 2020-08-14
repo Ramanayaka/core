@@ -20,8 +20,8 @@
 #ifndef INCLUDED_SALHELPER_SIMPLEREFERENCEOBJECT_HXX
 #define INCLUDED_SALHELPER_SIMPLEREFERENCEOBJECT_HXX
 
-#include <osl/interlck.h>
-#include <salhelper/salhelperdllapi.h>
+#include "osl/interlck.h"
+#include "salhelper/salhelperdllapi.h"
 
 #include <cstddef>
 #include <new>
@@ -51,8 +51,8 @@ namespace salhelper {
 
     The same problem as with operators new and delete would also be there with
     operators new[] and delete[].  But since arrays of reference-counted
-    objects are of no use, anyway, it seems best to simply declare and not
-    define (private) operators new[] and delete[].
+    objects are of no use, anyway, it seems best to simply
+    define operators new[] and delete[] as deleted.
  */
 class SALHELPER_DLLPUBLIC SimpleReferenceObject
 {
@@ -91,9 +91,9 @@ public:
 protected:
     virtual ~SimpleReferenceObject() COVERITY_NOEXCEPT_FALSE;
 
-private:
     oslInterlockedCount m_nCount;
 
+private:
     /** not implemented
      */
     SimpleReferenceObject(SimpleReferenceObject &) SAL_DELETED_FUNCTION;
@@ -102,23 +102,13 @@ private:
      */
     void operator =(SimpleReferenceObject) SAL_DELETED_FUNCTION;
 
-    /// @cond INTERNAL
-
-#ifdef _MSC_VER
-/* We can't now have these private with MSVC2008 at least, it leads to
-   compilation errors in xmloff and other places.
-*/
-protected:
-#endif
-    /** not implemented (see general class documentation)
+    /** see general class documentation
      */
-    static void * operator new[](std::size_t);
+    static void * operator new[](std::size_t) SAL_DELETED_FUNCTION;
 
-    /** not implemented (see general class documentation)
+    /** see general class documentation
      */
-    static void operator delete[](void * pPtr);
-
-    /// @endcond
+    static void operator delete[](void * pPtr) SAL_DELETED_FUNCTION;
 };
 
 }

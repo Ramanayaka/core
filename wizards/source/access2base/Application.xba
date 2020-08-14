@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE script:module PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "module.dtd">
-<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Application" script:language="StarBasic">REM =======================================================================================================================
+<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Application" script:language="StarBasic">
+REM =======================================================================================================================
 REM ===					The Access2Base library is a part of the LibreOffice project.									===
 REM ===					Full documentation is available on http://www.access2base.com									===
 REM =======================================================================================================================
@@ -183,6 +184,12 @@ Type DbContainer
 End Type
 
 REM -----------------------------------------------------------------------------------------------------------------------
+REM --- Next variable is initialized to empty at each macro execution start												---
+REM --- Items in both lists correspond one by one																		---
+Public vFormNamesList	As Variant				&apos;	(0) Buffer of hierarchical form names =&gt; &quot;\;&quot; separated values
+												&apos;	(1) Buffer of persistent form names =&gt; &quot;\;&quot; separated values
+
+REM -----------------------------------------------------------------------------------------------------------------------
 Public Function AllDialogs(ByVal Optional pvIndex As Variant) As Variant
 &apos;	Return either a Collection or a Dialog object
 &apos;	The dialogs are selected only if library is loaded
@@ -193,8 +200,9 @@ Const cstThisSub = &quot;AllDialogs&quot;
 
 Dim iMode As Integer, vDialogs() As Variant, i As Integer, j As Integer, iCount As Integer
 Dim oMacLibraries As Object, vAllDialogs As Variant, oLibrary As Object, vNames() As Variant, bFound As Boolean
-Dim oLibDialog As Object, sLibrary As String, oDocLibraries As Object
+Dim oLibDialog As Object, sLibrary As String, oDocLibraries As Object, bLocalStorage As Boolean
 Dim vLibraries() As Variant, vMacLibraries() As Variant, vDocLibraries() As Variant, oDocMacLib As Object
+Dim vCurrentDocument As Variant
 Const cstCount = 0
 Const cstByIndex = 1
 Const cstByName = 2
@@ -209,9 +217,20 @@ Const cstSepar = &quot;!&quot;
 
 	Set vAllDialogs = Nothing
 
-	Set oDocLibraries = ThisComponent.DialogLibraries
-	vDocLibraries = oDocLibraries.getElementNames()
-	Set oMacLibraries = DialogLibraries
+	Set vCurrentDocument = Nothing
+	If Not IsNull(_A2B_.CurrentDocument) Then
+		Set vCurrentDocument = _A2B_.CurrentDocument.Document
+	ElseIf Not IsNull(ThisComponent) Then
+		Set vCurrentDocument = ThisComponent
+	End If
+	If IsNull(vCurrentDocument) Then
+		Set oDocLibraries = Nothing
+		vDocLibraries = Array()
+	Else
+		Set oDocLibraries = vCurrentDocument.DialogLibraries
+		vDocLibraries = oDocLibraries.getElementNames()
+	End If
+	Set oMacLibraries = GlobalScope.DialogLibraries
 	vMacLibraries = oMacLibraries.getElementNames()
 	&apos;Remove Access2Base from the list
 	If _A2B_.ExcludeA2B Then
@@ -223,9 +242,8 @@ Const cstSepar = &quot;!&quot;
 
 	If UBound(vDocLibraries) + UBound(vMacLibraries) &lt; 0 Then				&apos;	No library
 		Set vAllDialogs = New Collect
+		Set vAllDialogs._This = vAllDialogs
 		vAllDialogs._CollType = COLLALLDIALOGS
-		vAllDialogs._ParentType = OBJAPPLICATION
-		vAllDialogs._ParentName = &quot;&quot;
 		vAllDialogs._Count = 0
 		Goto Exit_Function
 	End If
@@ -236,11 +254,13 @@ Const cstSepar = &quot;!&quot;
 		bFound = False
 		If i &lt;= UBound(vDocLibraries) Then
 			sLibrary = vDocLibraries(i)
+			bLocalStorage = True
 			Set oDocMacLib = oDocLibraries
 			&apos;	Sometimes library not loaded as should ??
 			If Not oDocMacLib.IsLibraryLoaded(sLibrary) Then oDocMacLib.loadLibrary(sLibrary)
 		Else
 			sLibrary = vMacLibraries(i - UBound(vDocLibraries) - 1)
+			bLocalStorage = False
 			Set oDocMacLib = oMacLibraries
 		End If
 		If oDocMacLib.IsLibraryLoaded(sLibrary) Then
@@ -271,18 +291,22 @@ Const cstSepar = &quot;!&quot;
 	
 	If iMode = cstCount Then
 		Set vAllDialogs = New Collect
+		Set vAllDialogs._This = vAllDialogs
 		vAllDialogs._CollType = COLLALLDIALOGS
-		vAllDialogs._ParentType = OBJAPPLICATION
-		vAllDialogs._ParentName = &quot;&quot;
 		vAllDialogs._Count = iCount
 	Else
 		If Not bFound Then
 			If iMode = cstByIndex Then Goto Trace_Error_Index Else Goto Trace_Not_Found
 		End If
 		Set vAllDialogs = New Dialog
-		vAllDialogs._Name = vDialogs(j)
-		vAllDialogs._Shortcut = &quot;Dialogs!&quot; &amp; vDialogs(j)
-		Set vAllDialogs._Dialog = oLibDialog
+		With vAllDialogs
+			._This = vAllDialogs
+			._Name = vDialogs(j)
+			._Shortcut = &quot;Dialogs!&quot; &amp; vDialogs(j)
+			Set ._Dialog = oLibDialog
+			._Library = sLibrary
+			._Storage = Iif(bLocalStorage, &quot;DOCUMENT&quot;, &quot;GLOBAL&quot;)
+		End With
 	End If
 
 Exit_Function:
@@ -308,57 +332,61 @@ Public Function AllForms(ByVal Optional pvIndex As Variant) As Variant
 &apos;	Easiest use for standalone forms: AllForms(0)
 &apos;	If no argument, return a Collection type
 
-	If _ErrorHandler() Then On Local Error Goto Error_Function
 Const cstThisSub = &quot;AllForms&quot;
+Dim iIndex As Integer, vReturn As Variant
+Dim iCurrentDoc As Integer, vCurrentDoc As Variant, oForms As Variant, oCounter As Variant, oFormsCollection As Object
+Dim ofForm As Object
+Dim vAllForms As Variant, i As Integer, vName As Variant, oDatabase As Object, bFound As Boolean
+Const cstSeparator = &quot;\;&quot;
+
+	If _ErrorHandler() Then On Local Error Goto Error_Function
 	Utils._SetCalledSub(cstThisSub)
-Dim iIndex As Integer, vAllForms As Variant
-	Set vAllForms = Nothing
+	Set vReturn = Nothing
 	
 	If Not IsMissing(pvIndex) Then
 		If Not Utils._CheckArgument(pvIndex, 1, Utils._AddNumeric(vbString)) Then Goto Exit_Function
 		Select Case VarType(pvIndex)
 			Case vbString
 				iIndex = -1
-			Case vbInteger, vbLong, vbSingle, vbDouble, vbCurrency, vbBigint, vbDecimal
+			Case Else
 				iIndex = pvIndex
 		End Select
 	End If
 
-Dim iCurrentDoc As Integer, vCurrentDoc As Variant, oForms As Variant, oCounter As Variant, oFormsCollection As Object
 	iCurrentDoc = _A2B_.CurrentDocIndex()
 	If iCurrentDoc &gt;= 0 Then
 		vCurrentDoc = _A2B_.CurrentDocument(iCurrentDoc)
 	Else
 		Goto Exit_Function
 	End If
-	If vCurrentDoc.DbConnect = DBCONNECTBASE Then Set oForms = vCurrentDoc.Document.getFormDocuments()
+
+&apos; Load complete list of hierarchical and persistent names when Base document
+	If vCurrentDoc.DbConnect = DBCONNECTBASE Then vAllForms = _GetAllHierarchicalNames()
+
 &apos; Process when NO ARGUMENT
 	If IsMissing(pvIndex) Then					&apos;	No argument
 		Set oCounter = New Collect
+		Set oCounter._This = oCounter
 		oCounter._CollType = COLLALLFORMS
-		oCounter._ParentType = OBJAPPLICATION
-		oCounter._ParentName = &quot;&quot;
-		If vCurrentDoc.DbConnect = DBCONNECTFORM Then oCounter._Count = UBound(vCurrentDoc.DbContainers) + 1 Else oCounter._Count = oForms.getCount()
-		Set vAllForms = oCounter
+		If vCurrentDoc.DbConnect = DBCONNECTFORM Then oCounter._Count = UBound(vCurrentDoc.DbContainers) + 1 Else oCounter._Count = UBound(vAllForms) + 1
+		Set vReturn = oCounter
 		Goto Exit_Function
 	End If
 	
 &apos; Process when ARGUMENT = STRING or INDEX =&gt; Initialize form object
-Dim ofForm As Object
 	Set ofForm = New Form
-Dim sAllForms As Variant, i As Integer, vName As Variant, oDatabase As Object, bFound As Boolean
+	Set ofForm._This = ofForm
 	Select Case vCurrentDoc.DbConnect
 		Case DBCONNECTBASE
-			sAllForms() = oForms.getElementNames()
 			ofForm._DocEntry = 0
 			ofForm._DbEntry = 0
 			If iIndex= -1 Then														&apos;	String argument
-				vName = Utils._InList(Utils._Trim(pvIndex), sAllForms, True)		&apos;	hasByName not used because case sensitive
+				vName = Utils._InList(Utils._Trim(pvIndex), vAllForms, True)
 				If vName = False Then Goto Trace_Not_Found
 				ofForm._Initialize(vName)
 			Else	
-				If iIndex + 1 &gt; oForms.getCount() Or iIndex &lt; 0 Then Goto Trace_Error_Index	&apos;	Numeric argument OK but value nonsense
-				ofForm._Initialize(sAllForms(iIndex))
+				If iIndex &gt; UBound(vAllForms) Or iIndex &lt; 0 Then Goto Trace_Error_Index	&apos;	Numeric argument OK but value nonsense
+				ofForm._Initialize(vAllForms(iIndex))
 			End If
 		Case DBCONNECTFORM
 			With vCurrentDoc
@@ -385,10 +413,10 @@ Dim sAllForms As Variant, i As Integer, vName As Variant, oDatabase As Object, b
 			ofForm._Initialize(vName)
 	End Select
 	
-	Set vAllForms = ofForm
+	Set vReturn = ofForm
 			
 Exit_Function:
-	Set AllForms = vAllForms
+	Set AllForms = vReturn
 	Utils._ResetCalledSub(cstThisSub)
 	Exit Function
 Trace_Not_Found:
@@ -396,11 +424,11 @@ Trace_Not_Found:
 	Goto Exit_Function
 Trace_Error_Index:
 	TraceError(TRACEFATAL, ERRCOLLECTION, Utils._CalledSub(), 0, 1)
-	Set vAllForms = Nothing
+	Set vReturn = Nothing
 	Goto Exit_Function
 Error_Function:
 	TraceError(TRACEABORT, Err, cstThisSub, Erl)
-	Set vAllForms = Nothing
+	Set vReturn = Nothing
 	GoTo Exit_Function
 End Function		&apos;	AllForms	V0.9.0
 
@@ -447,7 +475,7 @@ Const cstDot = &quot;.&quot;
 
 	Set vAllModules = Nothing
 
-	Set oDocLibraries = ThisComponent.BasicLibraries
+	Set oDocLibraries = _A2B_.CurrentDocument.Document.BasicLibraries	&apos;	ThisComponent.BasicLibraries
 	vDocLibraries = oDocLibraries.getElementNames()
 	If pbAllModules Then
 		Set oMacLibraries = GlobalScope.BasicLibraries
@@ -463,9 +491,8 @@ Const cstDot = &quot;.&quot;
 
 	If UBound(vDocLibraries) + UBound(vMacLibraries) &lt; 0 Then				&apos;	No library
 		Set vAllModules = New Collect
+		Set vAllModules._This = vAllModules
 		vAllModules._CollType = COLLALLMODULES
-		vAllModules._ParentType = OBJAPPLICATION
-		vAllModules._ParentName = &quot;&quot;
 		vAllModules._Count = 0
 		Goto Exit_Function
 	End If
@@ -513,15 +540,15 @@ Const cstDot = &quot;.&quot;
 	
 	If iMode = cstCount Then
 		Set vAllModules = New Collect
+		Set vAllModules._This =vAllModules
 		vAllModules._CollType = COLLALLMODULES
-		vAllModules._ParentType = OBJAPPLICATION
-		vAllModules._ParentName = &quot;&quot;
 		vAllModules._Count = iCount
 	Else
 		If Not bFound Then
 			If iMode = cstByIndex Then Goto Trace_Error_Index Else Goto Trace_Not_Found
 		End If
 		Set vAllModules = New Module
+		Set vAllModules._This = vAllModules
 		vAllModules._Name = vModules(j)
 		vAllModules._LibraryName = sLibrary
 		Set vAllModules._Library = oLibrary
@@ -567,9 +594,10 @@ Exit_Sub:
 End Sub			&apos;	CloseConnection		V1.2.0
 
 REM -----------------------------------------------------------------------------------------------------------------------
-Public Function CommandBars(Optional ByVal pvIndex As Variant) As Variant
+Public Function CommandBars(Optional ByVal pvIndex As Variant, Optional ByRef poWindow As Object) As Variant
 &apos;	Return an object of type CommandBar indicated by its index or its name (CASE-INSENSITIVE string)
 &apos;	If no pvIndex argument, return a Collection type
+&apos;	(Unpublished) With poWindow, force the frame in which toolbars are detected
 
 	If _ErrorHandler() Then On Local Error Goto Error_Function
 Const cstThisSub = &quot;CommandBars&quot;
@@ -590,9 +618,8 @@ Const cstCustom = &quot;CUSTOM&quot;
 			
 	iObjectsCount = 0
 	bFound = False
-	iBuiltin = 1		&apos;	Default = builtin
 
-	Set oWindow = _SelectWindow()
+	If IsMissing(poWindow) Then Set oWindow = _SelectWindow() Else Set oWindow = poWindow
 	If IsNull(oWindow.Frame) Then Goto Trace_WindowError
 
 	&apos;	List of 21 modules
@@ -633,6 +660,7 @@ Const cstCustom = &quot;CUSTOM&quot;
 	Set oModuleUI = CreateUnoService(&quot;com.sun.star.ui.ModuleUIConfigurationManagerSupplier&quot;)
 	For k = 0 To UBound(vModules)
 		For j = 0 To UBound(sSupportedModules)
+			iBuiltin = 1		&apos;	Default = builtin
 			If vModules(k) = sSupportedModules(j) Then	&apos;	Supported modules only
 				Set oToolbar = oModuleUI.getUIConfigurationManager(vModules(k))
 				vUIElements() = oToolbar.getUIElementsInfo(0)
@@ -680,7 +708,7 @@ Const cstCustom = &quot;CUSTOM&quot;
 			Case Else
 				If pvIndex = iObjectsCount - 1 Then bFound = True
 		End Select
-			If bFound Then
+		If bFound Then
 			Set oObject = _NewCommandBar(&quot;&quot;, sToolbarName, sToolbarFullName, iBuiltin)
 			Set oObject._Window = oWindow.Frame
 			Set oObject._Toolbar = oToolbar
@@ -693,8 +721,8 @@ Const cstCustom = &quot;CUSTOM&quot;
 	Select Case True
 		Case IsMissing(pvIndex)
 			Set oObject = New Collect
+			Set oObject._This = oObject
 			oObject._CollType = COLLCOMMANDBARS
-			oObject._ParentType = OBJAPPLICATION
 			oObject._Count = iObjectsCount
 		Case VarType(pvIndex) = vbString
 			Goto Trace_NotFound
@@ -784,16 +812,11 @@ End Function	&apos;	CurrentDb		V1.1.0
 REM -----------------------------------------------------------------------------------------------------------------------
 Public Function CurrentUser() As String
 
-Const cstWindows = 1
-Const cstUnix = 4
-	Select Case GetGuiType()
-		Case cstWindows
-			CurrentUser = Environ(&quot;USERNAME&quot;)
-		Case cstUnix
-			CurrentUser = Environ(&quot;USER&quot;)
-		Case Else
-			CurrentUser = &quot;&quot;
-	End Select
+Dim oPath As Object, sUser As String
+
+	Set oPath = CreateUnoService(&quot;com.sun.star.util.PathSubstitution&quot;)
+	sUser = oPath.getSubstituteVariableValue(&quot;$(username)&quot;)		&apos;	New since LibreOffice 5.2
+	CurrentUser = sUser
 
 End Function	&apos;	CurrentUser	V0.9.1
 
@@ -1003,9 +1026,8 @@ Dim iCount As Integer
 	If IsMissing(pvIndex) Then
 		iCount = Application._CountOpenForms()
 		Set oCounter = New Collect
+		Set oCounter._This = oCounter
 		oCounter._CollType = COLLFORMS
-		oCounter._ParentType = OBJAPPLICATION
-		oCounter._ParentName = &quot;&quot;
 		oCounter._Count = iCount
 		Forms = oCounter
 		Exit Function
@@ -1016,11 +1038,10 @@ Dim iCount As Integer
 	Select Case VarType(pvIndex)
 		Case vbString
 			Set ofForm = Application.AllForms(Utils._Trim(pvIndex))
-		Case vbInteger, vbLong, vbSingle, vbDouble, vbCurrency, vbBigint, vbDecimal
+		Case Else
 			iCount = Application._CountOpenForms()
 			If iCount &lt;= pvIndex Then Goto Trace_Error_Index
 			Set ofForm = Application._CountOpenForms(pvIndex)
-		Case Else
 	End Select
 
 	If IsNull(ofForm) Then Goto Trace_Error
@@ -1048,6 +1069,105 @@ Error_Function:
 	TraceError(TRACEABORT, Err, cstThisSub, Erl)
 	GoTo Exit_Function
 End Function		&apos;	Forms	V0.9.0
+
+REM -----------------------------------------------------------------------------------------------------------------------
+Public Function getObject(Optional pvShortcut As Variant) As Variant
+&apos; Return the object described by pvShortcut ignoring its final property
+&apos; Example:		&quot;Forms!myForm!myControl.myProperty&quot; =&gt;	Controls(Forms(&quot;myForm&quot;), &quot;myControl&quot;))
+
+Const cstEXCLAMATION = &quot;!&quot;
+Const cstDOT = &quot;.&quot;
+
+	If _ErrorHandler() Then On Local Error Goto Error_Function
+Const cstThisSub = &quot;getObject&quot;
+	Utils._SetCalledSub(cstThisSub)
+	If IsMissing(pvShortcut) Then Call _TraceArguments()
+	If Not Utils._CheckArgument(pvShortcut, 1, vbString) Then Goto Exit_Function
+
+Dim iCurrentIndex As Integer, vCurrentObject As Variant, sCurrentProperty As String
+Dim sComponents() As String, sSubComponents() As String, sDialog As String
+Dim oDoc As Object
+	Set vCurrentObject = Nothing
+	sComponents = Split(Trim(pvShortcut), cstEXCLAMATION)
+	If UBound(sComponents) = 0 Then Goto Trace_Error
+	If Not Utils._InList(UCase(sComponents(0)), Array(&quot;FORMS&quot;, &quot;DIALOGS&quot;, &quot;TEMPVARS&quot;)) Then Goto Trace_Error
+	If sComponents(1) = &quot;0&quot; Or Left(sComponents(1), 2) = &quot;0.&quot; Then
+		Set oDoc = _A2B_.CurrentDocument()
+		If oDoc.DbConnect = DBCONNECTFORM Then sComponents(1) = oDoc.DbContainers(0).FormName Else Goto Trace_Error
+	End If
+
+	sSubComponents = Split(sComponents(UBound(sComponents)), cstDOT)
+	sComponents(UBound(sComponents)) = sSubComponents(0)				&apos;	Ignore final property, if any
+	
+	Set vCurrentObject = New Collect
+	Set vCurrentObject._This = vCurrentObject
+	Select Case UCase(sComponents(0))
+		Case &quot;FORMS&quot;	:	vCurrentObject._CollType = COLLFORMS
+		Case &quot;DIALOGS&quot;	:	vCurrentObject._CollType = COLLALLDIALOGS
+		Case &quot;TEMPVARS&quot;	:	vCurrentObject._CollType = COLLTEMPVARS
+	End Select
+	For iCurrentIndex = 1 To UBound(sComponents)	&apos;	Start parsing ...
+		sSubComponents = Split(sComponents(iCurrentIndex), cstDOT)
+		sComponents(iCurrentIndex) = Utils._Trim(sSubComponents(0))
+		Select Case UBound(sSubComponents)
+			Case 0
+				sCurrentProperty = &quot;&quot;
+			Case 1
+				sCurrentProperty = sSubComponents(1)
+			Case Else
+				Goto Trace_Error
+		End Select
+		Select Case vCurrentObject._Type
+			Case OBJCOLLECTION
+				Select Case vCurrentObject._CollType
+					Case COLLFORMS
+						vCurrentObject = Application.AllForms(sComponents(iCurrentIndex))
+					Case COLLALLDIALOGS
+						sDialog = UCase(sComponents(iCurrentIndex))
+						vCurrentObject = Application.AllDialogs(sDialog)
+						If Not vCurrentObject.IsLoaded Then Goto Trace_Error
+						Set vCurrentObject.UnoDialog = _A2B_.Dialogs.Item(sDialog)
+					Case COLLTEMPVARS
+						If UBound(sComponents) &gt; 1 Then Goto Trace_Error
+						vCurrentObject = Application.TempVars(sComponents(1))
+					&apos;Case Else
+				End Select
+			Case OBJFORM, OBJSUBFORM, OBJCONTROL, OBJDIALOG
+				vCurrentObject = vCurrentObject.Controls(sComponents(iCurrentIndex))
+		End Select
+		If sCurrentProperty &lt;&gt; &quot;&quot; Then vCurrentObject = vCurrentObject.getProperty(sCurrentProperty)
+	Next iCurrentIndex
+	
+	Set getObject = vCurrentObject
+				
+Exit_Function:
+	Utils._ResetCalledSub(cstThisSub)
+	Exit Function
+Trace_Error:
+	TraceError(TRACEFATAL, ERRWRONGARGUMENT, Utils._CalledSub(), 0, , Array(1, pvShortcut))
+	Goto Exit_Function
+Error_Function:
+	TraceError(TRACEABORT, Err, cstThisSub, Erl)
+	GoTo Exit_Function
+End Function		&apos;	getObject	V0.9.5
+
+REM -----------------------------------------------------------------------------------------------------------------------
+Public Function getValue(Optional pvObject As Variant) As Variant
+&apos;	getValue also interprets shortcut strings !!
+Dim vItem As Variant, sProperty As String
+	If IsMissing(pvObject) Or IsEmpty(pvObject) Then Call _TraceArguments(&quot;getValue&quot;)
+	If VarType(pvObject) = vbString Then
+		Utils._SetCalledSub(&quot;getValue&quot;)
+		Set vItem = getObject(pvObject)
+		sProperty = Utils._FinalProperty(pvObject)
+		If sProperty = &quot;&quot; Then sProperty = &quot;Value&quot;			&apos;	Default value if final property in shortcut is absent
+		getValue = vItem.getProperty(sproperty)
+		Utils._ResetCalledSub(&quot;getValue&quot;)
+	Else
+		Set vItem = pvObject
+		getValue = vItem.getProperty(&quot;Value&quot;)
+	End If
+End Function		&apos;	getValue
 
 REM -----------------------------------------------------------------------------------------------------------------------
 Function HtmlEncode(ByVal pvString As Variant, ByVal Optional pvLength As Variant) As String
@@ -1198,6 +1318,7 @@ Const cstThisSub = &quot;OpenConnection&quot;
 				Set .Document = oComponent
 				.Title = oComponent.Title
 				.URL = vDocContainer.URL
+				.Location = oComponent.Location
 				ReDim vDbContainers(0 To 0)
 				Set vDbContainers(0) = vDbContainer
 				TraceLog(TRACEANY, .Version, False)
@@ -1264,12 +1385,12 @@ Public Function OpenDatabase ( _
 				, ByVal Optional pvUser As Variant _
 				, ByVal Optional pvPassword As Variant _
 				, ByVal Optional pvReadOnly As Variant _
-				) As Object
+				) As Variant
 				
 &apos;	Return a database object based on input arguments:
 &apos;	Call template:
 &apos;		Call OpenDatabase(&quot;... databaseURL ...&quot;[, &quot;&quot;, &quot;&quot;, True/False])
-&apos;	pvDatabaseURL maby be the name of a registered database or the URL of the targeted .odb file
+&apos;	pvDatabaseURL may be the name of a registered database or the URL of the targeted .odb file
 &apos;	Might be called from any AOO/LibO application, independently from OpenConnection
 
 Dim odbDatabase As Variant, oBaseContext As Object, sDbNames() As String, oBaseSource As Object
@@ -1305,6 +1426,7 @@ Const cstThisSub = &quot;OpenDatabase&quot;
 		If UCase(sDbNames(i)) = UCase(pvDatabaseURL) Then
 			sDatabaseURL = sDbNames(i)
 			Set oBaseSource = oBaseContext.getByName(sDatabaseURL)
+			odbDatabase.Location = oBaseContext.getDatabaseLocation(sDbNames(i))
 			bFound = True
 			Exit For
 		End If
@@ -1314,6 +1436,7 @@ Const cstThisSub = &quot;OpenDatabase&quot;
 		If UCase(Right(sDatabaseURL, 4)) &lt;&gt; &quot;.ODB&quot; Then Goto Trace_Error
 		If Not FileExists(sDatabaseURL) Then Goto Trace_Error
 		Set oBaseSource = oBaseContext.getByName(sDatabaseURL)
+		odbDatabase.Location = sDatabaseURL
 	End If
 
 	Set odbDatabase.Connection = oBaseSource.getConnection(pvUser, pvPassword)
@@ -1353,6 +1476,24 @@ Public Function ProductCode()
 	If IsEmpty(_A2B_) Then Call Application._RootInit()	&apos;	First use of Access2Base in current AOO/LibO session
 	ProductCode = &quot;Access2Base &quot; &amp; _A2B_.VersionNumber
 End Function	&apos;	ProductCode	V0.9.1
+
+REM -----------------------------------------------------------------------------------------------------------------------
+Public Function setValue(Optional pvObject As Variant, ByVal Optional pvValue As Variant) As Boolean
+&apos;	setValue also interprets shortcut strings !!
+Dim vItem As Variant, sProperty As String
+	If IsMissing(pvObject) Or IsMissing(pvValue) Or IsEmpty(pvObject) Then Call _TraceArguments(&quot;setValue&quot;)
+	If VarType(pvObject) = vbString Then
+		Utils._SetCalledSub(&quot;setValue&quot;)
+		Set vItem = getObject(pvObject)
+		sProperty = Utils._FinalProperty(pvObject)
+		If sProperty = &quot;&quot; Then sProperty = &quot;Value&quot;
+		setValue = vItem.setProperty(sProperty, pvValue)
+		Utils._ResetCalledSub(&quot;setValue&quot;)
+	Else
+		Set vItem = pvObject
+		setValue = vItem.setProperty(&quot;Value&quot;, pvValue)
+	End If
+End Function		&apos;	setValue
 
 REM -----------------------------------------------------------------------------------------------------------------------
 Public Function SysCmd(Optional pvAction As Variant _
@@ -1471,6 +1612,7 @@ Const cstByName = 2
 		Case cstCount							&apos;	Build Collection object
 			Set vTempVars = New Collect
 			With vTempVars
+				._This = vTempVars
 				._CollType = COLLTEMPVARS
 				._Count = _A2B_.TempVars.Count
 			End With
@@ -1510,6 +1652,51 @@ REM --- PRIVATE FUNCTIONS 								        														---
 REM -----------------------------------------------------------------------------------------------------------------------
 
 REM -----------------------------------------------------------------------------------------------------------------------
+Private Function _CollectNames(ByRef poCollection As Object, ByVal psPrefix As String) As Variant
+&apos;	Return a &quot;\;&quot; separated list of hierarchical (prefixed with Prefix) and persistent names contained in Collection
+&apos;	If one of those names refers to a folder, function is called recursively
+&apos;	Result = 2 items array:		(0) list of hierarchical names
+&apos;								(1) list of persistent names
+&apos;	
+Dim oObject As Object, vNamesList() As Variant, vPersistentList As Variant, i As Integer, sCollect(0 To 1) As String
+Dim sName As String, sType As String, sPrefix As String
+Const cstFormType = &quot;application/vnd.oasis.opendocument.text&quot;
+Const cstSeparator = &quot;\;&quot;
+
+	_CollectNames = sCollect()
+	vPersistentList = Array()
+
+	With poCollection
+		If .getCount = 0 Then Exit Function
+		vNamesList = .getElementNames()
+		ReDim vPersistentList(0 To UBound(vNamesList))
+
+		For i = 0 To UBound(vNamesList)
+			sName = vNamesList(i)
+			Set oObject = .getByName(sName)
+			sType = oObject.getContentType()
+			Select Case sType
+				Case cstFormType
+					vNamesList(i) = psPrefix &amp; vNamesList(i)
+					vPersistentList(i) = oObject.PersistentName
+				Case &quot;&quot;				&apos;	Folder
+					sCollect = _CollectNames(oObject, psPrefix &amp; sName &amp; &quot;/&quot;)
+					vNamesList(i) = sCollect(0)
+					vPersistentList(i) = sCollect(1)
+				Case Else
+			End Select
+		Next i
+
+	End With
+
+	Set oObject = Nothing
+	sCollect(0) = Join(vNamesList, cstSeparator)
+	sCollect(1) = Join(vPersistentList, cstSeparator)
+	_CollectNames = sCollect()
+
+End Function			&apos;	_CollectNames	V6.2.0
+
+REM -----------------------------------------------------------------------------------------------------------------------
 Public Function _CountOpenForms(ByVal Optional piCountMax As Integer) As Variant
 &apos;	Return # of active forms if no argument
 &apos;	Return name of piCountMax-th open form if argument present
@@ -1520,7 +1707,7 @@ Dim i As Integer, iCount As Integer, iAllCount As Integer, ofForm As Variant
 	If iAllCount &gt; 0 Then
 		For i = 0 To iAllCount - 1
 			Set ofForm = Application.AllForms(i)
-			If ofForm.IsLoaded Then iCount = iCount + 1
+			If ofForm._IsLoaded Then iCount = iCount + 1
 			If Not IsMissing(piCountMax) Then
 				If iCount = piCountMax + 1 Then
 					_CountOpenForms = ofForm	&apos;	OO3.2 aborts when Set verb present ?!?
@@ -1551,6 +1738,59 @@ Trace_Error:
 	TraceError(TRACEABORT, ERRDBNOTCONNECTED, Utils._CalledSub(), 0, 1)
 	Goto Exit_Function
 End Function		&apos;	_CurrentDb	V1.1.0
+
+REM -----------------------------------------------------------------------------------------------------------------------
+Private Function _GetAllHierarchicalNames() As Variant
+&apos;	Return the full hierarchical names list of a database document
+&apos;	Get it from the vFormNamesList buffer if the latter is not empty
+
+Dim vNamesList As Variant, iCurrentDoc As Integer, vCurrentDoc As Variant
+Dim oForms As Object
+Const cstSeparator = &quot;\;&quot;
+
+	_GetAllHierarchicalNames = Array()
+
+&apos; Load complete list of names when Base document
+	iCurrentDoc = _A2B_.CurrentDocIndex()
+	If iCurrentDoc &gt;= 0 Then vCurrentDoc = _A2B_.CurrentDocument(iCurrentDoc) Else Exit Function
+	If vCurrentDoc.DbConnect = DBCONNECTBASE Then
+		If IsEmpty(vFormNamesList) Then
+			Set oForms = vCurrentDoc.Document.getFormDocuments()
+			vFormNamesList = _CollectNames(oForms, &quot;&quot;)
+		End If
+		vNamesList = Split(vFormNamesList(0), cstSeparator)
+	Else
+		Exit Function
+	End If
+
+	_GetAllHierarchicalNames = vNamesList
+	Set oForms = Nothing
+
+End Function	&apos;	_GetAllHierarchicalNames	V 6.2.0
+
+REM -----------------------------------------------------------------------------------------------------------------------
+Private Function _GetHierarchicalName(ByVal psPersistent As String) As String
+&apos;	Return the full hierarchical name from the persistent name of a form/report
+
+Dim vPersistentList As Variant, vNamesList As Variant, i As Integer
+Const cstSeparator = &quot;\;&quot;
+
+	_GetHierarchicalName = &quot;&quot;
+
+&apos; Load complete list of names when Base document
+	vNamesList = _GetAllHierarchicalNames()
+	If UBound(vNamesList) &lt; 0 Then Exit Function
+	vPersistentList = Split(vFormNamesList(1), cstSeparator)
+
+&apos;	Search in list
+	For i = 0 To UBound(vPersistentList)
+		If vPersistentList(i) = psPersistent Then
+			_GetHierarchicalName = vNamesList(i)
+			Exit For
+		End If
+	Next i
+
+End Function	&apos;	_GetHierarchicalName	V 6.2.0
 
 REM -----------------------------------------------------------------------------------------------------------------------
 Private Function _NewBar() As Object
@@ -1597,6 +1837,7 @@ Private Function _NewCommandBar(psModule As String _
 Dim oObject As Object
 	Set oObject = New CommandBar
 	With oObject
+		._This = oObject
 		._Type = OBJCOMMANDBAR
 		._Name = psToolbarName
 		._ResourceURL = psToolbarFullName
@@ -1624,4 +1865,5 @@ Public Sub _RootInit(Optional ByVal pbForce As Boolean)
 	If IsEmpty(_A2B_) Or pbForce Then _A2B_ = New Root_
 	
 End Sub		&apos;	_RootInit	V1.1.0
+
 </script:module>

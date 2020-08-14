@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "rtl/malformeduriexception.hxx"
+#include <rtl/malformeduriexception.hxx>
 
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -26,11 +26,9 @@
 #include <com/sun/star/bridge/XUnoUrlResolver.hpp>
 #include <com/sun/star/connection/XConnector.hpp>
 #include <com/sun/star/registry/XRegistryKey.hpp>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "cppuhelper/unourl.hxx"
+#include <cppuhelper/unourl.hxx>
 
 using namespace cppu;
 using namespace com::sun::star::uno;
@@ -39,21 +37,10 @@ using namespace com::sun::star::connection;
 using namespace com::sun::star::bridge;
 using namespace com::sun::star::registry;
 
-#define IMPLNAME        "com.sun.star.comp.bridge.UnoUrlResolver"
-
 namespace unourl_resolver
 {
 
-Sequence< OUString > resolver_getSupportedServiceNames()
-{
-    Sequence< OUString > seqNames { "com.sun.star.bridge.UnoUrlResolver" };
-    return seqNames;
-}
-
-OUString resolver_getImplementationName()
-{
-    return OUString(IMPLNAME);
-}
+namespace {
 
 class ResolverImpl : public WeakImplHelper< XServiceInfo, XUnoUrlResolver >
 {
@@ -72,6 +59,8 @@ public:
     virtual Reference< XInterface > SAL_CALL resolve( const OUString & rUnoUrl ) override;
 };
 
+}
+
 ResolverImpl::ResolverImpl( const Reference< XComponentContext > & xCtx )
     : _xSMgr( xCtx->getServiceManager() )
     , _xCtx( xCtx )
@@ -80,7 +69,7 @@ ResolverImpl::ResolverImpl( const Reference< XComponentContext > & xCtx )
 // XServiceInfo
 OUString ResolverImpl::getImplementationName()
 {
-    return resolver_getImplementationName();
+    return "com.sun.star.comp.bridge.UnoUrlResolver";
 }
 
 sal_Bool ResolverImpl::supportsService( const OUString & rServiceName )
@@ -90,7 +79,7 @@ sal_Bool ResolverImpl::supportsService( const OUString & rServiceName )
 
 Sequence< OUString > ResolverImpl::getSupportedServiceNames()
 {
-    return resolver_getSupportedServiceNames();
+    return { "com.sun.star.bridge.UnoUrlResolver" };
 }
 
 // XUnoUrlResolver
@@ -129,29 +118,14 @@ Reference< XInterface > ResolverImpl::resolve( const OUString & rUnoUrl )
     return xRet;
 }
 
-static Reference< XInterface > SAL_CALL ResolverImpl_create( const Reference< XComponentContext > & xCtx )
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+remotebridges_ResolverImpl_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return Reference< XInterface >( *new ResolverImpl( xCtx ) );
+    return cppu::acquire(new ResolverImpl(context));
 }
 
-}
-
-using namespace unourl_resolver;
-
-static const struct ImplementationEntry g_entries[] =
-{
-    {
-        ResolverImpl_create, resolver_getImplementationName,
-        resolver_getSupportedServiceNames, createSingleComponentFactory,
-        nullptr, 0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-};
-
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL uuresolver_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
-{
-    return component_getFactoryHelper( pImplName, pServiceManager, pRegistryKey , g_entries );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

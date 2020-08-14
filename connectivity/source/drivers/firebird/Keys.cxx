@@ -23,7 +23,7 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::uno;
 
-Keys::Keys(Table* pTable, Mutex& rMutex, const TStringVector& rNames):
+Keys::Keys(Table* pTable, Mutex& rMutex, const ::std::vector< OUString>& rNames):
     OKeysHelper(pTable,
                 rMutex,
                 rNames),
@@ -34,20 +34,20 @@ Keys::Keys(Table* pTable, Mutex& rMutex, const TStringVector& rNames):
 //----- XDrop ----------------------------------------------------------------
 void Keys::dropObject(sal_Int32 nPosition, const OUString& sName)
 {
-    if (!m_pTable->isNew())
+    if (m_pTable->isNew())
+        return;
+
+    uno::Reference<XPropertySet> xKey(getObject(nPosition), UNO_QUERY);
+
+    if (xKey.is())
     {
-        uno::Reference<XPropertySet> xKey(getObject(nPosition), UNO_QUERY);
+        const OUString sQuote = m_pTable->getConnection()->getMetaData()
+                                                ->getIdentifierQuoteString();
 
-        if (xKey.is())
-        {
-            const OUString sQuote = m_pTable->getConnection()->getMetaData()
-                                                    ->getIdentifierQuoteString();
+        OUString sSql("ALTER TABLE " + quoteName(sQuote, m_pTable->getName())
+                         + " DROP CONSTRAINT " + quoteName(sQuote, sName));
 
-            OUString sSql("ALTER TABLE " + quoteName(sQuote, m_pTable->getName())
-                             + " DROP CONSTRAINT " + quoteName(sQuote, sName));
-
-            m_pTable->getConnection()->createStatement()->execute(sSql);
-        }
+        m_pTable->getConnection()->createStatement()->execute(sSql);
     }
 }
 

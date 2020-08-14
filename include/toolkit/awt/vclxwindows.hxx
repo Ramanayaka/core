@@ -20,51 +20,24 @@
 #ifndef INCLUDED_TOOLKIT_AWT_VCLXWINDOWS_HXX
 #define INCLUDED_TOOLKIT_AWT_VCLXWINDOWS_HXX
 
+#include <config_options.h>
 #include <toolkit/dllapi.h>
 
-#include <com/sun/star/beans/PropertyValues.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/PropertyState.hpp>
-#include <com/sun/star/beans/XPropertySetInfo.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/beans/XFastPropertySet.hpp>
-#include <com/sun/star/beans/XVetoableChangeListener.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/beans/XPropertiesChangeListener.hpp>
-#include <com/sun/star/beans/XPropertyChangeListener.hpp>
-#include <com/sun/star/beans/XPropertyAccess.hpp>
-#include <com/sun/star/beans/XPropertyContainer.hpp>
-#include <com/sun/star/beans/PropertyStateChangeEvent.hpp>
-#include <com/sun/star/beans/PropertyChangeEvent.hpp>
-#include <com/sun/star/awt/XFileDialog.hpp>
 #include <com/sun/star/awt/XTextComponent.hpp>
 #include <com/sun/star/awt/XListBox.hpp>
-#include <com/sun/star/awt/XProgressMonitor.hpp>
-#include <com/sun/star/awt/TextAlign.hpp>
 #include <com/sun/star/awt/XScrollBar.hpp>
-#include <com/sun/star/awt/XVclContainerPeer.hpp>
-#include <com/sun/star/awt/XTabControllerModel.hpp>
 #include <com/sun/star/awt/XMessageBox.hpp>
+#include <com/sun/star/awt/XProgressBar.hpp>
 #include <com/sun/star/awt/XTextEditField.hpp>
-#include <com/sun/star/awt/Style.hpp>
 #include <com/sun/star/awt/XTimeField.hpp>
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
-#include <com/sun/star/awt/XControlModel.hpp>
 #include <com/sun/star/awt/XSpinField.hpp>
-#include <com/sun/star/awt/XUnoControlContainer.hpp>
 #include <com/sun/star/awt/XTextLayoutConstrains.hpp>
 #include <com/sun/star/awt/XNumericField.hpp>
 #include <com/sun/star/awt/XMetricField.hpp>
 #include <com/sun/star/awt/XButton.hpp>
 #include <com/sun/star/awt/XToggleButton.hpp>
-#include <com/sun/star/awt/XPointer.hpp>
-#include <com/sun/star/awt/XTextArea.hpp>
-#include <com/sun/star/awt/XImageButton.hpp>
 #include <com/sun/star/awt/XFixedHyperlink.hpp>
 #include <com/sun/star/awt/XFixedText.hpp>
-#include <com/sun/star/awt/XControlContainer.hpp>
 #include <com/sun/star/awt/XDialog2.hpp>
 #include <com/sun/star/awt/XRadioButton.hpp>
 #include <com/sun/star/awt/XCurrencyField.hpp>
@@ -73,40 +46,30 @@
 #include <com/sun/star/awt/XComboBox.hpp>
 #include <com/sun/star/awt/XCheckBox.hpp>
 #include <com/sun/star/awt/XItemListListener.hpp>
-#include <com/sun/star/awt/XImageConsumer.hpp>
 #include <com/sun/star/awt/XSimpleTabController.hpp>
 #include <com/sun/star/util/Time.hpp>
 #include <com/sun/star/util/Date.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/weak.hxx>
 
+#include <svl/numuno.hxx>
+
 #include <toolkit/awt/vclxwindow.hxx>
 #include <toolkit/awt/vclxtopwindow.hxx>
+#include <toolkit/helper/listenermultiplexer.hxx>
 
-#include <vcl/pointr.hxx>
 #include <vcl/image.hxx>
-#include <vcl/tabctrl.hxx>
 
-class Button;
-class CheckBox;
-class RadioButton;
-class ListBox;
-class ScrollBar;
-class Edit;
-class Menu;
-class ComboBox;
 class FormatterBase;
-class SpinField;
-class ToolBox;
-class VclSimpleEvent;
-class VclMenuEvent;
-
+class TabControl;
+class TabPage;
+class Edit;
 
 //  class VCLXGraphicControl
 //    deriving from VCLXWindow, drawing the graphic which exists as "Graphic" at the model
 
 
-class TOOLKIT_DLLPUBLIC VCLXGraphicControl : public VCLXWindow
+class VCLXGraphicControl : public VCLXWindow
 {
 private:
     /// the image we currently display
@@ -146,14 +109,13 @@ typedef cppu::ImplInheritanceHelper< VCLXGraphicControl,
                                      css::awt::XButton,
                                      css::awt::XToggleButton
                                    > VCLXButton_Base;
-class VCLXButton :public VCLXButton_Base
+class VCLXButton final : public VCLXButton_Base
 {
 private:
     OUString             maActionCommand;
     ActionListenerMultiplexer   maActionListeners;
     ItemListenerMultiplexer     maItemListeners;
 
-protected:
     void            ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
     virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
 
@@ -191,7 +153,7 @@ public:
 
 //  class VCLXImageControl
 
-class VCLXImageControl : public VCLXGraphicControl
+class VCLXImageControl final : public VCLXGraphicControl
 {
 public:
                     VCLXImageControl();
@@ -209,14 +171,14 @@ public:
     static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
     virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
 
-protected:
+private:
     virtual void    ImplSetNewImage() override;
 };
 
 
 //  class VCLXCheckBox
 
-class VCLXCheckBox :    public css::awt::XCheckBox,
+class TOOLKIT_DLLPUBLIC VCLXCheckBox final : public css::awt::XCheckBox,
                         public css::awt::XButton,
                         public VCLXGraphicControl
 {
@@ -225,7 +187,6 @@ private:
     OUString             maActionCommand;
     ItemListenerMultiplexer     maItemListeners;
 
-protected:
     void    ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
     virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
 
@@ -274,7 +235,7 @@ public:
 
 //  class VCLXRadioButton
 
-class VCLXRadioButton : public css::awt::XRadioButton,
+class TOOLKIT_DLLPUBLIC VCLXRadioButton final : public css::awt::XRadioButton,
                         public css::awt::XButton,
                         public VCLXGraphicControl
 {
@@ -283,7 +244,6 @@ private:
     ActionListenerMultiplexer   maActionListeners;
     OUString             maActionCommand;
 
-protected:
     void            ImplClickedOrToggled( bool bToggled );
     void            ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
     virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
@@ -332,7 +292,7 @@ public:
 
 //  class VCLXMessageBox
 
-class VCLXMessageBox :  public css::awt::XMessageBox,
+class VCLXMessageBox final : public css::awt::XMessageBox,
                         public VCLXTopWindow
 {
 public:
@@ -365,9 +325,8 @@ public:
 
 //  class VCLXFrame
 
-class VCLXFrame :   public VCLXContainer
+class VCLXFrame final : public VCLXContainer
 {
-protected:
     void                        ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
 
 public:
@@ -379,14 +338,10 @@ public:
     void                                        SAL_CALL release() throw() override  { OWeakObject::release(); }
 
     // css::lang::XTypeProvider
-    css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
     css::uno::Sequence< sal_Int8 >                     SAL_CALL getImplementationId() override;
 
     // css::awt::XView
     void SAL_CALL draw( sal_Int32 nX, sal_Int32 nY ) override;
-
-    // css::awt::XDevice,
-    css::awt::DeviceInfo SAL_CALL getInfo() override;
 
     // css::awt::XVclWindowPeer
     void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
@@ -398,7 +353,7 @@ public:
 
 //  class VCLXDialog
 
-class TOOLKIT_DLLPUBLIC VCLXDialog :    public css::awt::XDialog2,
+class VCLXDialog final : public css::awt::XDialog2,
                     public VCLXTopWindow
 {
 public:
@@ -440,7 +395,7 @@ public:
 
 //  class VCLXTabPage
 
-class VCLXTabPage : public VCLXContainer
+class VCLXTabPage final : public VCLXContainer
 {
 public:
                         VCLXTabPage();
@@ -451,14 +406,10 @@ public:
     void                                        SAL_CALL release() throw() override  { OWeakObject::release(); }
 
     // css::lang::XTypeProvider
-    css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
     css::uno::Sequence< sal_Int8 >                     SAL_CALL getImplementationId() override;
 
     // css::awt::XView
     void SAL_CALL draw( sal_Int32 nX, sal_Int32 nY ) override;
-
-    // css::awt::XDevice,
-    css::awt::DeviceInfo SAL_CALL getInfo() override;
 
     // css::awt::XVclWindowPeer
     void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
@@ -469,11 +420,11 @@ public:
     virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
 };
 
-class VCLXMultiPage : public css::awt::XSimpleTabController, public VCLXContainer
+class VCLXMultiPage final : public css::awt::XSimpleTabController, public VCLXContainer
 {
     TabListenerMultiplexer maTabListeners;
     sal_Int32 mTabId;
-protected:
+
     void ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
 public:
     VCLXMultiPage();
@@ -485,7 +436,6 @@ public:
     void SAL_CALL release() throw() override { OWeakObject::release(); }
 
     // css::lang::XTypeProvider
-    css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
     css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 
     // css::lang::XComponent
@@ -493,9 +443,6 @@ public:
 
     // css::awt::XView
     void SAL_CALL draw( sal_Int32 nX, sal_Int32 nY ) override;
-
-    // css::awt::XDevice,
-    css::awt::DeviceInfo SAL_CALL getInfo() override;
 
     // css::awt::XVclWindowPeer
     void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
@@ -515,7 +462,7 @@ public:
     // C++
     /// @throws css::uno::RuntimeException
     TabControl*  getTabControl() const;
-    sal_uInt16 insertTab( TabPage*, OUString& sTitle );
+    sal_uInt16 insertTab( TabPage*, OUString const & sTitle );
     static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
     virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
 };
@@ -523,14 +470,13 @@ public:
 
 //  class VCLXFixedHyperlink
 
-class TOOLKIT_DLLPUBLIC VCLXFixedHyperlink :
+class VCLXFixedHyperlink final :
     public css::awt::XFixedHyperlink,
     public VCLXWindow
 {
 private:
     ActionListenerMultiplexer   maActionListeners;
 
-protected:
     void                        ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
 
     virtual css::uno::Reference< css::accessibility::XAccessibleContext >
@@ -578,10 +524,9 @@ public:
 
 //  class VCLXFixedText
 
-class VCLXFixedText :   public css::awt::XFixedText,
+class VCLXFixedText final : public css::awt::XFixedText,
                         public VCLXWindow
 {
-protected:
     virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
 
 public:
@@ -615,13 +560,12 @@ public:
 
 //  class VCLXScrollBar
 
-class VCLXScrollBar :   public css::awt::XScrollBar,
+class TOOLKIT_DLLPUBLIC VCLXScrollBar final : public css::awt::XScrollBar,
                         public VCLXWindow
 {
 private:
     AdjustmentListenerMultiplexer maAdjustmentListeners;
 
-protected:
     void            ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
     virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
 
@@ -659,9 +603,9 @@ public:
 
     // why isn't this part of the XScrollbar?
     /// @throws css::uno::RuntimeException
-    void SAL_CALL setMinimum( sal_Int32 n );
+    void setMinimum( sal_Int32 n );
     /// @throws css::uno::RuntimeException
-    sal_Int32 SAL_CALL getMinimum(  );
+    sal_Int32 getMinimum(  ) const;
 
     // css::awt::VclWindowPeer
     void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
@@ -670,7 +614,7 @@ public:
     // css::awt::XLayoutConstrains
     css::awt::Size SAL_CALL getMinimumSize() override;
     /// @throws css::uno::RuntimeException
-    static css::awt::Size SAL_CALL implGetMinimumSize( vcl::Window* p );
+    static css::awt::Size implGetMinimumSize( vcl::Window const * p );
 
     static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
     virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
@@ -679,7 +623,7 @@ public:
 
 //  class VCLXEdit
 
-class TOOLKIT_DLLPUBLIC VCLXEdit :  public css::awt::XTextComponent,
+class SAL_DLLPUBLIC_RTTI VCLXEdit :  public css::awt::XTextComponent,
                     public css::awt::XTextEditField,
                     public css::awt::XTextLayoutConstrains,
                     public VCLXWindow
@@ -752,13 +696,12 @@ typedef cppu::ImplInheritanceHelper< VCLXWindow,
                                      css::awt::XTextLayoutConstrains,
                                      css::awt::XItemListListener
                                    > VCLXListBox_Base;
-class VCLXListBox  : public VCLXListBox_Base
+class VCLXListBox final : public VCLXListBox_Base
 {
 private:
     ActionListenerMultiplexer   maActionListeners;
     ItemListenerMultiplexer     maItemListeners;
 
-protected:
     virtual void    ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
     virtual css::uno::Reference< css::accessibility::XAccessibleContext >
                     CreateAccessibleContext() override;
@@ -828,13 +771,12 @@ typedef cppu::ImplInheritanceHelper< VCLXEdit,
                                      css::awt::XComboBox,
                                      css::awt::XItemListListener
                                    > VCLXComboBox_Base;
-class VCLXComboBox :    public VCLXComboBox_Base
+class VCLXComboBox final : public VCLXComboBox_Base
 {
 private:
     ActionListenerMultiplexer   maActionListeners;
     ItemListenerMultiplexer     maItemListeners;
 
-protected:
     void            ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
     virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
 
@@ -889,8 +831,7 @@ public:
 
 //  class VCLXSpinField
 
-class TOOLKIT_DLLPUBLIC VCLXSpinField : public css::awt::XSpinField,
-                        public VCLXEdit
+class VCLXSpinField : public css::awt::XSpinField, public VCLXEdit
 {
 private:
     SpinListenerMultiplexer maSpinListeners;
@@ -927,7 +868,7 @@ public:
 
 //  class VCLXFormattedSpinField
 
-class VCLXFormattedSpinField : public VCLXSpinField
+class SAL_DLLPUBLIC_RTTI VCLXFormattedSpinField : public VCLXSpinField
 {
 private:
     FormatterBase*  mpFormatter;
@@ -942,7 +883,7 @@ public:
     void            SetFormatter( FormatterBase* pFormatter ) { mpFormatter = pFormatter; }
 
     void            setStrictFormat( bool bStrict );
-    bool        isStrictFormat();
+    bool            isStrictFormat() const;
 
     // css::awt::VclWindowPeer
     void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
@@ -955,7 +896,7 @@ public:
 
 //  class VCLXDateField
 
-class TOOLKIT_DLLPUBLIC VCLXDateField : public css::awt::XDateField,
+class VCLXDateField : public css::awt::XDateField,
                         public VCLXFormattedSpinField
 {
 protected:
@@ -1003,10 +944,9 @@ public:
 
 //  class VCLXTimeField
 
-class VCLXTimeField :   public css::awt::XTimeField,
+class VCLXTimeField final : public css::awt::XTimeField,
                         public VCLXFormattedSpinField
 {
-protected:
     virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
 public:
                     VCLXTimeField();
@@ -1048,7 +988,7 @@ public:
 
 //  class VCLXNumericField
 
-class VCLXNumericField :    public css::awt::XNumericField,
+class VCLXNumericField final : public css::awt::XNumericField,
                             public VCLXFormattedSpinField
 {
 public:
@@ -1095,7 +1035,7 @@ public:
 
 class MetricFormatter;
 class MetricField;
-class VCLXMetricField : public css::awt::XMetricField,
+class VCLXMetricField final : public css::awt::XMetricField,
                         public VCLXFormattedSpinField
 {
     /// @throws css::uno::RuntimeException
@@ -1144,56 +1084,8 @@ public:
     virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
 };
 
-
-//  class VCLXCurrencyField
-
-class VCLXCurrencyField :   public css::awt::XCurrencyField,
-                            public VCLXFormattedSpinField
-{
-public:
-                    VCLXCurrencyField();
-                    virtual ~VCLXCurrencyField() override;
-
-    // css::uno::XInterface
-    css::uno::Any                  SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    void                                        SAL_CALL acquire() throw() override  { OWeakObject::acquire(); }
-    void                                        SAL_CALL release() throw() override  { OWeakObject::release(); }
-
-    // css::lang::XTypeProvider
-    css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
-    css::uno::Sequence< sal_Int8 >                     SAL_CALL getImplementationId() override;
-
-
-    // css::awt::XCurrencyField
-    void SAL_CALL setValue( double Value ) override;
-    double SAL_CALL getValue(  ) override;
-    void SAL_CALL setMin( double Value ) override;
-    double SAL_CALL getMin(  ) override;
-    void SAL_CALL setMax( double Value ) override;
-    double SAL_CALL getMax(  ) override;
-    void SAL_CALL setFirst( double Value ) override;
-    double SAL_CALL getFirst(  ) override;
-    void SAL_CALL setLast( double Value ) override;
-    double SAL_CALL getLast(  ) override;
-    void SAL_CALL setSpinSize( double Value ) override;
-    double SAL_CALL getSpinSize(  ) override;
-    void SAL_CALL setDecimalDigits( sal_Int16 nDigits ) override;
-    sal_Int16 SAL_CALL getDecimalDigits(  ) override;
-    void SAL_CALL setStrictFormat( sal_Bool bStrict ) override;
-    sal_Bool SAL_CALL isStrictFormat(  ) override;
-
-    // css::awt::VclWindowPeer
-    void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
-    css::uno::Any SAL_CALL getProperty( const OUString& PropertyName ) override;
-
-    static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
-    virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
-};
-
-
 //  class VCLXPatternField
-
-class VCLXPatternField :    public css::awt::XPatternField,
+class VCLXPatternField final :  public css::awt::XPatternField,
                             public VCLXFormattedSpinField
 {
 public:
@@ -1226,20 +1118,249 @@ public:
     virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
 };
 
-
 //  class VCLXToolBox
-
-class VCLXToolBox : public VCLXWindow
+class VCLXToolBox final : public VCLXWindow
 {
-private:
-
-protected:
     virtual css::uno::Reference< css::accessibility::XAccessibleContext >
                         CreateAccessibleContext() override;
 
 public:
                         VCLXToolBox();
                         virtual ~VCLXToolBox() override;
+};
+
+class VCLXHeaderBar final : public VCLXWindow
+{
+public:
+    VCLXHeaderBar();
+    virtual ~VCLXHeaderBar() override;
+
+    virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
+
+};
+
+//  class VCLXProgressBar
+class VCLXProgressBar final : public css::awt::XProgressBar
+                            , public VCLXWindow
+{
+private:
+    sal_Int32   m_nValue;
+    sal_Int32   m_nValueMin;
+    sal_Int32   m_nValueMax;
+
+    void            ImplUpdateValue();
+
+public:
+                    VCLXProgressBar();
+                    virtual ~VCLXProgressBar() override;
+
+    // css::uno::XInterface
+    css::uno::Any                  SAL_CALL queryInterface( const css::uno::Type & rType ) override;
+    void                           SAL_CALL acquire() throw() override  { VCLXWindow::acquire(); }
+    void                           SAL_CALL release() throw() override  { VCLXWindow::release(); }
+
+    // css::lang::XTypeProvider
+    css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
+    css::uno::Sequence< sal_Int8 >                     SAL_CALL getImplementationId() override;
+
+    // css::awt::XProgressBar
+    void SAL_CALL setForegroundColor( sal_Int32 nColor ) override;
+    void SAL_CALL setBackgroundColor( sal_Int32 nColor ) override;
+    void SAL_CALL setValue( sal_Int32 nValue ) override;
+    void SAL_CALL setRange( sal_Int32 nMin, sal_Int32 nMax ) override;
+    sal_Int32 SAL_CALL getValue() override;
+
+    // css::awt::VclWindowPeer
+    void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
+    css::uno::Any SAL_CALL getProperty( const OUString& PropertyName ) override;
+
+    static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
+    virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
+};
+
+class VCLXFileControl final : public css::awt::XTextComponent, public css::awt::XTextLayoutConstrains, public VCLXWindow
+{
+    DECL_LINK(ModifyHdl, Edit&, void);
+    void ModifyHdl();
+    TextListenerMultiplexer maTextListeners;
+
+public:
+                    VCLXFileControl();
+                    virtual ~VCLXFileControl() override;
+
+    virtual void SetWindow( const VclPtr< vcl::Window > &pWindow ) override;
+
+    // css::uno::XInterface
+    css::uno::Any                  SAL_CALL queryInterface( const css::uno::Type & rType ) override;
+    void                           SAL_CALL acquire() throw() override  { VCLXWindow::acquire(); }
+    void                           SAL_CALL release() throw() override  { VCLXWindow::release(); }
+
+    // css::lang::XTypeProvider
+    css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
+    css::uno::Sequence< sal_Int8 >                     SAL_CALL getImplementationId() override;
+
+    // css::awt::XTextComponent
+    void SAL_CALL addTextListener( const css::uno::Reference< css::awt::XTextListener >& l ) override;
+    void SAL_CALL removeTextListener( const css::uno::Reference< css::awt::XTextListener >& l ) override;
+    void SAL_CALL setText( const OUString& aText ) override;
+    void SAL_CALL insertText( const css::awt::Selection& Sel, const OUString& Text ) override;
+    OUString SAL_CALL getText(  ) override;
+    OUString SAL_CALL getSelectedText(  ) override;
+    void SAL_CALL setSelection( const css::awt::Selection& aSelection ) override;
+    css::awt::Selection SAL_CALL getSelection(  ) override;
+    sal_Bool SAL_CALL isEditable(  ) override;
+    void SAL_CALL setEditable( sal_Bool bEditable ) override;
+    void SAL_CALL setMaxTextLen( sal_Int16 nLen ) override;
+    sal_Int16 SAL_CALL getMaxTextLen(  ) override;
+
+    // css::awt::XLayoutConstrains
+    css::awt::Size SAL_CALL getMinimumSize(  ) override;
+    css::awt::Size SAL_CALL getPreferredSize(  ) override;
+    css::awt::Size SAL_CALL calcAdjustedSize( const css::awt::Size& aNewSize ) override;
+
+    // css::awt::XTextLayoutConstrains
+    css::awt::Size SAL_CALL getMinimumSize( sal_Int16 nCols, sal_Int16 nLines ) override;
+    void SAL_CALL getColumnsAndLines( sal_Int16& nCols, sal_Int16& nLines ) override;
+
+    void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value) override;
+
+    static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
+    virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
+};
+
+class SVTXFormattedField : public VCLXSpinField
+{
+protected:
+    rtl::Reference<SvNumberFormatsSupplierObj> m_xCurrentSupplier;
+    bool                    bIsStandardSupplier;
+
+    sal_Int32                   nKeyToSetDelayed;
+
+public:
+    SVTXFormattedField();
+    virtual ~SVTXFormattedField() override;
+
+    // css::awt::XVclWindowPeer
+    void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
+    css::uno::Any SAL_CALL getProperty( const OUString& PropertyName ) override;
+
+protected:
+    void    setFormatsSupplier(const css::uno::Reference< css::util::XNumberFormatsSupplier > & xSupplier);
+    sal_Int32   getFormatKey() const;
+    void    setFormatKey(sal_Int32 nKey);
+
+    void    SetValue(const css::uno::Any& rValue);
+    css::uno::Any  GetValue() const;
+
+    void    SetTreatAsNumber(bool bSet);
+    bool    GetTreatAsNumber() const;
+
+    void    SetDefaultValue(const css::uno::Any& rValue);
+    css::uno::Any  GetDefaultValue() const;
+
+    void    SetMinValue(const css::uno::Any& rValue);
+    css::uno::Any  GetMinValue() const;
+
+    void    SetMaxValue(const css::uno::Any& rValue);
+    css::uno::Any  GetMaxValue() const;
+
+    void    NotifyTextListeners();
+    css::uno::Any  convertEffectiveValue(const css::uno::Any& rValue);
+
+    virtual void    SetWindow( const VclPtr< vcl::Window > &_pWindow) override;
+
+    static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
+    virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
+};
+
+class SVTXCurrencyField : public css::awt::XCurrencyField, public SVTXFormattedField
+{
+public:
+                    SVTXCurrencyField();
+                    virtual ~SVTXCurrencyField() override;
+
+    // css::uno::XInterface
+    css::uno::Any                  SAL_CALL queryInterface( const css::uno::Type & rType ) override;
+    void                           SAL_CALL acquire() throw() override  { SVTXFormattedField::acquire(); }
+    void                           SAL_CALL release() throw() override  { SVTXFormattedField::release(); }
+
+    // css::lang::XTypeProvider
+    css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
+    css::uno::Sequence< sal_Int8 >                     SAL_CALL getImplementationId() override;
+
+    // css::awt::XVclWindowPeer
+    void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
+    css::uno::Any SAL_CALL getProperty( const OUString& PropertyName ) override;
+
+    // css::awt::XCurrencyField
+    void SAL_CALL setValue( double Value ) override;
+    double SAL_CALL getValue(  ) override;
+    void SAL_CALL setMin( double Value ) override;
+    double SAL_CALL getMin(  ) override;
+    void SAL_CALL setMax( double Value ) override;
+    double SAL_CALL getMax(  ) override;
+    void SAL_CALL setFirst( double Value ) override;
+    double SAL_CALL getFirst(  ) override;
+    void SAL_CALL setLast( double Value ) override;
+    double SAL_CALL getLast(  ) override;
+    void SAL_CALL setSpinSize( double Value ) override;
+    double SAL_CALL getSpinSize(  ) override;
+    void SAL_CALL setDecimalDigits( sal_Int16 nDigits ) override;
+    sal_Int16 SAL_CALL getDecimalDigits(  ) override;
+    void SAL_CALL setStrictFormat( sal_Bool bStrict ) override;
+    sal_Bool SAL_CALL isStrictFormat(  ) override;
+
+    static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
+    virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
+};
+
+class SVTXNumericField : public css::awt::XNumericField, public SVTXFormattedField
+{
+public:
+                    SVTXNumericField();
+                    virtual ~SVTXNumericField() override;
+
+    // css::uno::XInterface
+    css::uno::Any                  SAL_CALL queryInterface( const css::uno::Type & rType ) override;
+    void                           SAL_CALL acquire() throw() override  { SVTXFormattedField::acquire(); }
+    void                           SAL_CALL release() throw() override  { SVTXFormattedField::release(); }
+
+    // css::lang::XTypeProvider
+    css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
+    css::uno::Sequence< sal_Int8 >                     SAL_CALL getImplementationId() override;
+
+    // css::awt::XNumericField
+    void SAL_CALL setValue( double Value ) override;
+    double SAL_CALL getValue(  ) override;
+    void SAL_CALL setMin( double Value ) override;
+    double SAL_CALL getMin(  ) override;
+    void SAL_CALL setMax( double Value ) override;
+    double SAL_CALL getMax(  ) override;
+    void SAL_CALL setFirst( double Value ) override;
+    double SAL_CALL getFirst(  ) override;
+    void SAL_CALL setLast( double Value ) override;
+    double SAL_CALL getLast(  ) override;
+    void SAL_CALL setSpinSize( double Value ) override;
+    double SAL_CALL getSpinSize(  ) override;
+    void SAL_CALL setDecimalDigits( sal_Int16 nDigits ) override;
+    sal_Int16 SAL_CALL getDecimalDigits(  ) override;
+    void SAL_CALL setStrictFormat( sal_Bool bStrict ) override;
+    sal_Bool SAL_CALL isStrictFormat(  ) override;
+
+    virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override;
+};
+
+class SVTXDateField : public VCLXDateField
+{
+public:
+                    SVTXDateField();
+                    virtual ~SVTXDateField() override;
+
+    // css::awt::VclWindowPeer
+    void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
+
+    static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
+    virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
 };
 
 #endif // INCLUDED_TOOLKIT_AWT_VCLXWINDOWS_HXX

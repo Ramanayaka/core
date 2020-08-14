@@ -19,11 +19,7 @@
 
 
 
-#include <uno/mapping.hxx>
-
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <rtl/textenc.h>
@@ -33,7 +29,7 @@
 #include <com/sun/star/io/XTextOutputStream2.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-#include "services.hxx"
+namespace com::sun::star::uno { class XComponentContext; }
 
 #define IMPLEMENTATION_NAME "com.sun.star.comp.io.TextOutputStream"
 #define SERVICE_NAME "com.sun.star.io.TextOutputStream"
@@ -43,26 +39,23 @@ using namespace ::cppu;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::registry;
-
-namespace io_TextOutputStream
-{
 
 // Implementation XTextOutputStream
+
+namespace {
 
 class OTextOutputStream : public WeakImplHelper< XTextOutputStream2, XServiceInfo >
 {
     Reference< XOutputStream > mxStream;
 
     // Encoding
-    OUString mEncoding;
     bool mbEncodingInitialized;
     rtl_UnicodeToTextConverter  mConvUnicode2Text;
     rtl_UnicodeToTextContext    mContextUnicode2Text;
 
     Sequence<sal_Int8> implConvert( const OUString& rSource );
     /// @throws IOException
-    void checkOutputStream();
+    void checkOutputStream() const;
 
 public:
     OTextOutputStream();
@@ -86,6 +79,8 @@ public:
         virtual Sequence< OUString >  SAL_CALL getSupportedServiceNames() override;
         virtual sal_Bool              SAL_CALL supportsService(const OUString& ServiceName) override;
 };
+
+}
 
 OTextOutputStream::OTextOutputStream()
     : mbEncodingInitialized(false)
@@ -120,7 +115,7 @@ Sequence<sal_Int8> OTextOutputStream::implConvert( const OUString& rSource )
     sal_Int32 nSeqSize =  nSourceSize * 3;
 
     Sequence<sal_Int8> seqText( nSeqSize );
-    sal_Char *pTarget = reinterpret_cast<char *>(seqText.getArray());
+    char *pTarget = reinterpret_cast<char *>(seqText.getArray());
     while( true )
     {
         nTargetCount += rtl_convertUnicodeToText(
@@ -178,7 +173,6 @@ void OTextOutputStream::setEncoding( const OUString& Encoding )
     mbEncodingInitialized = true;
     mConvUnicode2Text   = rtl_createUnicodeToTextConverter( encoding );
     mContextUnicode2Text = rtl_createUnicodeToTextContext( mConvUnicode2Text );
-    mEncoding = Encoding;
 }
 
 
@@ -202,7 +196,7 @@ void OTextOutputStream::closeOutput(  )
 }
 
 
-void OTextOutputStream::checkOutputStream()
+void OTextOutputStream::checkOutputStream() const
 {
     if (! mxStream.is() )
         throw IOException("output stream is not initialized, you have to use setOutputStream first");
@@ -221,28 +215,9 @@ Reference< XOutputStream > OTextOutputStream::getOutputStream()
     return mxStream;
 }
 
-
-Reference< XInterface > SAL_CALL TextOutputStream_CreateInstance(
-    SAL_UNUSED_PARAMETER const Reference< XComponentContext > &)
-{
-    return Reference < XInterface >( static_cast<OWeakObject *>(new OTextOutputStream()) );
-}
-
-OUString TextOutputStream_getImplementationName()
-{
-    return OUString( IMPLEMENTATION_NAME );
-}
-
-
-Sequence< OUString > TextOutputStream_getSupportedServiceNames()
-{
-    Sequence< OUString > seqNames { SERVICE_NAME };
-    return seqNames;
-}
-
 OUString OTextOutputStream::getImplementationName()
 {
-    return TextOutputStream_getImplementationName();
+    return IMPLEMENTATION_NAME;
 }
 
 sal_Bool OTextOutputStream::supportsService(const OUString& ServiceName)
@@ -252,10 +227,16 @@ sal_Bool OTextOutputStream::supportsService(const OUString& ServiceName)
 
 Sequence< OUString > OTextOutputStream::getSupportedServiceNames()
 {
-    return TextOutputStream_getSupportedServiceNames();
+    return { SERVICE_NAME };
 }
 
 
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+io_OTextOutputStream_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new OTextOutputStream());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

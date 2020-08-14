@@ -20,7 +20,7 @@
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/i18n/IndexEntrySupplier.hpp>
 #include <toxwrap.hxx>
-#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 
@@ -31,9 +31,9 @@ IndexEntrySupplierWrapper::IndexEntrySupplierWrapper()
     try {
         xIES = i18n::IndexEntrySupplier::create(xContext);
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN( "sw.core", "IndexEntrySupplierWrapper: Caught exception: " << e.Message );
+        TOOLS_WARN_EXCEPTION( "sw.core", "IndexEntrySupplierWrapper" );
     }
 }
 
@@ -49,9 +49,9 @@ OUString IndexEntrySupplierWrapper::GetIndexKey( const OUString& rText,
     try {
         sRet = xIES->getIndexKey( rText, rTextReading, rLocale );
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN( "sw.core", "getIndexKey: Caught exception: " << e.Message );
+        TOOLS_WARN_EXCEPTION( "sw.core", "getIndexKey" );
     }
     return sRet;
 }
@@ -62,9 +62,9 @@ OUString IndexEntrySupplierWrapper::GetFollowingText( bool bMorePages ) const
     try {
         sRet = xIES->getIndexFollowPageWord( bMorePages, aLcl );
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN( "sw.core", "getIndexFollowPageWord: Caught exception: " << e.Message );
+        TOOLS_WARN_EXCEPTION( "sw.core", "getIndexFollowPageWord" );
     }
     return sRet;
 }
@@ -76,9 +76,9 @@ css::uno::Sequence< OUString > IndexEntrySupplierWrapper::GetAlgorithmList( cons
     try {
         sRet = xIES->getAlgorithmList( rLcl );
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN( "sw.core", "getAlgorithmList: Caught exception: " << e.Message );
+        TOOLS_WARN_EXCEPTION( "sw.core", "getAlgorithmList" );
     }
     return sRet;
 }
@@ -91,9 +91,9 @@ bool IndexEntrySupplierWrapper::LoadAlgorithm(
     try {
         bRet = xIES->loadAlgorithm( rLcl, sSortAlgorithm, nOptions );
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN( "sw.core", "loadAlgorithm: Caught exception: " << e.Message );
+        TOOLS_WARN_EXCEPTION( "sw.core", "loadAlgorithm" );
     }
     return bRet;
 }
@@ -109,9 +109,9 @@ sal_Int16 IndexEntrySupplierWrapper::CompareIndexEntry(
         nRet = xIES->compareIndexEntry( rText1, rTextReading1, rLocale1,
                                         rText2, rTextReading2, rLocale2 );
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN( "sw.core", "compareIndexEntry: Caught exception: " << e.Message );
+        TOOLS_WARN_EXCEPTION( "sw.core", "compareIndexEntry" );
     }
     return nRet;
 }

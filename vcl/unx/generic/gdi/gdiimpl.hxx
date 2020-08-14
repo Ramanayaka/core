@@ -21,16 +21,14 @@
 #define INCLUDED_VCL_GENERIC_GDI_GDIIMPL_HXX
 
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <X11/extensions/Xrender.h>
 
-#include "unx/saltype.h"
-#include "unx/x11/x11gdiimpl.h"
+#include <unx/x11/x11gdiimpl.h>
 
-#include "salgdiimpl.hxx"
+#include <salgdiimpl.hxx>
 
 #include <basegfx/polygon/b2dtrapezoid.hxx>
-#include "ControlCacheKey.hxx"
+#include <basegfx/polygon/b2dpolygontriangulator.hxx>
+#include <ControlCacheKey.hxx>
 
 /* From <X11/Intrinsic.h> */
 typedef unsigned long Pixel;
@@ -46,7 +44,7 @@ class X11SalGraphicsImpl : public SalGraphicsImpl, public X11GraphicsImpl
 private:
     X11SalGraphics& mrParent;
 
-    SalColor mnBrushColor;
+    Color mnBrushColor;
     GC mpBrushGC;      // Brush attributes
     Pixel mnBrushPixel;
 
@@ -62,7 +60,7 @@ private:
     bool mbXORMode : 1;      // is ROP XOR Mode set
 
     GC mpPenGC;        // Pen attributes
-    SalColor mnPenColor;
+    Color mnPenColor;
     Pixel mnPenPixel;
 
 
@@ -85,7 +83,7 @@ private:
     GC GetInvertGC();
     GC GetInvert50GC();
 
-    void DrawLines( sal_uIntPtr              nPoints,
+    void DrawLines( sal_uInt32              nPoints,
                                const SalPolyLine &rPoints,
                                GC                 pGC,
                                bool bClose
@@ -93,6 +91,10 @@ private:
 
     XID GetXRenderPicture();
     bool drawFilledTrapezoids( const basegfx::B2DTrapezoid*, int nTrapCount, double fTransparency );
+    bool drawFilledTriangles(
+        const basegfx::B2DHomMatrix& rObjectToDevice,
+        const basegfx::triangulator::B2DTriangleVector& rTriangles,
+        double fTransparency);
 
     long GetGraphicsHeight() const;
 
@@ -110,6 +112,8 @@ public:
 
     virtual ~X11SalGraphicsImpl() override;
 
+    virtual OUString getRenderBackendName() const override { return "gen"; }
+
     virtual bool setClipRegion( const vcl::Region& ) override;
     //
     // get the depth of the device
@@ -126,17 +130,17 @@ public:
     virtual void SetLineColor() override;
 
     // set the line color to a specific color
-    virtual void SetLineColor( SalColor nSalColor ) override;
+    virtual void SetLineColor( Color nColor ) override;
 
     // set the fill color to transparent (= don't fill)
     virtual void SetFillColor() override;
 
     // set the fill color to a specific color, shapes will be
     // filled accordingly
-    virtual void SetFillColor( SalColor nSalColor ) override;
+    virtual void SetFillColor( Color nColor ) override;
 
     // enable/disable XOR drawing
-    virtual void SetXORMode( bool bSet ) override;
+    virtual void SetXORMode( bool bSet, bool bInvertOnly ) override;
 
     // set line color for raster operations
     virtual void SetROPLineColor( SalROPColor nROPColor ) override;
@@ -146,7 +150,7 @@ public:
 
     // draw --> LineColor and FillColor and RasterOp and ClipRegion
     virtual void drawPixel( long nX, long nY ) override;
-    virtual void drawPixel( long nX, long nY, SalColor nSalColor ) override;
+    virtual void drawPixel( long nX, long nY, Color nColor ) override;
 
     virtual void drawLine( long nX1, long nY1, long nX2, long nY2 ) override;
 
@@ -157,15 +161,22 @@ public:
     virtual void drawPolygon( sal_uInt32 nPoints, const SalPoint* pPtAry ) override;
 
     virtual void drawPolyPolygon( sal_uInt32 nPoly, const sal_uInt32* pPoints, PCONSTSALPOINT* pPtAry ) override;
-    virtual bool drawPolyPolygon( const basegfx::B2DPolyPolygon&, double fTransparency ) override;
+
+    virtual bool drawPolyPolygon(
+                const basegfx::B2DHomMatrix& rObjectToDevice,
+                const basegfx::B2DPolyPolygon&,
+                double fTransparency) override;
 
     virtual bool drawPolyLine(
+                const basegfx::B2DHomMatrix& rObjectToDevice,
                 const basegfx::B2DPolygon&,
                 double fTransparency,
-                const basegfx::B2DVector& rLineWidths,
+                double fLineWidth,
+                const std::vector< double >* pStroke, // MM01
                 basegfx::B2DLineJoin,
                 css::drawing::LineCap,
-                double fMiterMinimumAngle) override;
+                double fMiterMinimumAngle,
+                bool bPixelSnapHairline) override;
 
     virtual bool drawPolyLineBezier(
                 sal_uInt32 nPoints,
@@ -204,11 +215,11 @@ public:
     virtual void drawMask(
                 const SalTwoRect& rPosAry,
                 const SalBitmap& rSalBitmap,
-                SalColor nMaskColor ) override;
+                Color nMaskColor ) override;
 
-    virtual SalBitmap* getBitmap( long nX, long nY, long nWidth, long nHeight ) override;
+    virtual std::shared_ptr<SalBitmap> getBitmap( long nX, long nY, long nWidth, long nHeight ) override;
 
-    virtual SalColor getPixel( long nX, long nY ) override;
+    virtual Color getPixel( long nX, long nY ) override;
 
     // invert --> ClipRegion (only Windows or VirDevs)
     virtual void invert(
@@ -222,7 +233,7 @@ public:
                 long nX, long nY,
                 long nWidth, long nHeight,
                 void* pPtr,
-                sal_uLong nSize ) override;
+                sal_uInt32 nSize ) override;
 
     /** Blend bitmap with color channels */
     virtual bool blendBitmap(
@@ -274,17 +285,10 @@ public:
 
     virtual bool drawGradient(const tools::PolyPolygon& rPolygon, const Gradient& rGradient) override;
 
+    virtual bool supportsOperation(OutDevSupportType eType) const override;
+
 public:
-    // implementation of X11GraphicsImpl
-
     void Init() override;
-    bool FillPixmapFromScreen( X11Pixmap* pPixmap, int nX, int nY ) override;
-    bool RenderPixmapToScreen( X11Pixmap* pPixmap, X11Pixmap* pMask, int nX, int nY ) override;
-
-    virtual bool TryRenderCachedNativeControl(ControlCacheKey& rControlCacheKey,
-                                              int nX, int nY) override;
-    virtual bool RenderAndCacheNativeControl(X11Pixmap* pPixmap, X11Pixmap* pMask, int nX, int nY,
-                                             ControlCacheKey& aControlCacheKey) override;
 };
 
 #endif

@@ -18,17 +18,17 @@
  */
 
 #include "documentdefinition.hxx"
-#include "dbastrings.hrc"
-#include "sdbcoretools.hxx"
-#include <tools/debug.hxx>
+#include <ModelImpl.hxx>
+#include <stringconstants.hxx>
+#include <sdbcoretools.hxx>
 #include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
-#include <comphelper/property.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/classids.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <comphelper/types.hxx>
 #include <com/sun/star/frame/XUntitledNumbers.hpp>
-#include <com/sun/star/awt/XTopWindow.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
@@ -37,33 +37,26 @@
 #include <com/sun/star/frame/XTitle.hpp>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/task/XJobExecutor.hpp>
-#include <com/sun/star/ucb/InsertCommandArgument.hpp>
 #include <com/sun/star/report/XReportDefinition.hpp>
 #include <com/sun/star/report/XReportEngine.hpp>
 #include <com/sun/star/ucb/OpenMode.hpp>
 #include <com/sun/star/embed/WrongStateException.hpp>
-#include <com/sun/star/embed/XEmbedObjectFactory.hpp>
 #include <com/sun/star/embed/EmbeddedObjectCreator.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/embed/OOoEmbeddedObjectFactory.hpp>
 #include <ucbhelper/cancelcommandexecution.hxx>
-#include <com/sun/star/ucb/UnsupportedDataSinkException.hpp>
 #include <com/sun/star/ucb/UnsupportedOpenModeException.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/XEmbedPersist.hpp>
 #include <com/sun/star/embed/EmbedStates.hpp>
-#include <com/sun/star/embed/XComponentSupplier.hpp>
 #include <com/sun/star/embed/EntryInitModes.hpp>
 #include <com/sun/star/ucb/MissingPropertiesException.hpp>
-#include <com/sun/star/ucb/MissingInputStreamException.hpp>
 #include <com/sun/star/ucb/OpenCommandArgument2.hpp>
 #include <com/sun/star/util/CloseVetoException.hpp>
-#include <com/sun/star/util/XCloseBroadcaster.hpp>
 #include <com/sun/star/frame/XModule.hpp>
 #include <com/sun/star/datatransfer/DataFlavor.hpp>
 #include <com/sun/star/datatransfer/XTransferable.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/embed/XTransactedObject.hpp>
 #include <com/sun/star/embed/XCommonEmbedPersist.hpp>
 #include "intercept.hxx"
 #include <com/sun/star/sdb/ErrorCondition.hpp>
@@ -73,28 +66,22 @@
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/MacroExecMode.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/form/XFormsSupplier.hpp>
 #include <com/sun/star/form/XForm.hpp>
 #include <comphelper/interaction.hxx>
 #include <connectivity/dbtools.hxx>
 #include <vcl/svapp.hxx>
 #include <osl/mutex.hxx>
-#include <sal/macros.h>
 #include <com/sun/star/view/XViewSettingsSupplier.hpp>
-#include "core_resource.hxx"
-#include "core_resource.hrc"
-#include "datasource.hxx"
-#include <com/sun/star/embed/XStateChangeBroadcaster.hpp>
+#include <core_resource.hxx>
+#include <strings.hrc>
 #include <com/sun/star/task/XInteractionApprove.hpp>
 #include <com/sun/star/task/XInteractionDisapprove.hpp>
 #include <com/sun/star/frame/XLayoutManager.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/sequenceashashmap.hxx>
 #include <comphelper/mimeconfighelper.hxx>
-#include <comphelper/storagehelper.hxx>
 #include <com/sun/star/container/XContentEnumerationAccess.hpp>
 #include <com/sun/star/io/WrongFormatException.hpp>
 #include <com/sun/star/sdb/application/XDatabaseDocumentUI.hpp>
@@ -133,7 +120,7 @@ namespace DatabaseObject = sdb::application::DatabaseObject;
 namespace dbaccess
 {
 
-    typedef ::boost::optional< bool > optional_bool;
+    typedef ::std::optional< bool > optional_bool;
 
     // helper
     namespace
@@ -150,7 +137,7 @@ namespace dbaccess
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
             return sContentType;
         }
@@ -158,6 +145,9 @@ namespace dbaccess
 
     // OEmbedObjectHolder
     typedef ::cppu::WeakComponentImplHelper<   embed::XStateChangeListener > TEmbedObjectHolder;
+
+    namespace {
+
     class OEmbedObjectHolder :   public ::cppu::BaseMutex
                                 ,public TEmbedObjectHolder
     {
@@ -186,6 +176,8 @@ namespace dbaccess
         virtual void SAL_CALL disposing( const lang::EventObject& Source ) override;
     };
 
+    }
+
     void SAL_CALL OEmbedObjectHolder::disposing()
     {
         if ( m_xBroadCaster.is() )
@@ -203,7 +195,7 @@ namespace dbaccess
         if ( !m_bInStateChange && nNewState == EmbedStates::RUNNING && nOldState == EmbedStates::ACTIVE && m_pDefinition )
         {
             m_bInStateChange = true;
-            Reference<XInterface> xInt(static_cast< ::cppu::OWeakObject* >(m_pDefinition),UNO_QUERY);
+            Reference<XInterface> xHoldAlive(static_cast< ::cppu::OWeakObject* >(m_pDefinition),UNO_QUERY);
             {
                 Reference<XEmbeddedObject> xEmbeddedObject(aEvent.Source,UNO_QUERY);
                 if ( xEmbeddedObject.is() )
@@ -237,6 +229,8 @@ namespace dbaccess
         }
     };
 
+    namespace {
+
     // LockModifiable
     class LockModifiable
     {
@@ -269,9 +263,14 @@ namespace dbaccess
         Reference< XModifiable2 >   m_xModifiable;
     };
 
+    }
+
     // LifetimeCoupler
     typedef ::cppu::WeakImplHelper<   css::lang::XEventListener
                                   >   LifetimeCoupler_Base;
+
+    namespace {
+
     /** helper class which couples the lifetime of a component to the lifetime
         of another component
 
@@ -291,7 +290,7 @@ namespace dbaccess
     public:
         static void couple( const Reference< XInterface >& _rxClient, const Reference< XComponent >& _rxActor )
         {
-            Reference< css::lang::XEventListener > xEnsureDelete( new LifetimeCoupler( _rxClient, _rxActor ) );
+            new LifetimeCoupler( _rxClient, _rxActor );
         }
 
     private:
@@ -311,10 +310,14 @@ namespace dbaccess
     protected:
     };
 
+    }
+
     void SAL_CALL LifetimeCoupler::disposing( const css::lang::EventObject& /*Source*/ )
     {
         m_xClient.clear();
     }
+
+    namespace {
 
     // ODocumentSaveContinuation
     class ODocumentSaveContinuation : public OInteraction< XInteractionDocumentSave >
@@ -331,6 +334,8 @@ namespace dbaccess
         // XInteractionDocumentSave
         virtual void SAL_CALL setName( const OUString& _sName,const Reference<XContent>& _xParent) override;
     };
+
+    }
 
     void SAL_CALL ODocumentSaveContinuation::setName( const OUString& _sName,const Reference<XContent>& _xParent)
     {
@@ -356,22 +361,22 @@ OUString ODocumentDefinition::GetDocumentServiceFromMediaType( const OUString& _
         ::comphelper::MimeConfigurationHelper aConfigHelper( _rContext );
         sResult = aConfigHelper.GetDocServiceNameFromMediaType( _rMediaType );
         _rClassId = comphelper::MimeConfigurationHelper::GetSequenceClassIDRepresentation(aConfigHelper.GetExplicitlyRegisteredObjClassID( _rMediaType ));
-        if ( !_rClassId.getLength() && !sResult.isEmpty() )
+        if ( !_rClassId.hasElements() && !sResult.isEmpty() )
         {
             Reference< XNameAccess > xObjConfig = aConfigHelper.GetObjConfiguration();
             if ( xObjConfig.is() )
             {
-                Sequence< OUString > aClassIDs = xObjConfig->getElementNames();
-                for ( sal_Int32 nInd = 0; nInd < aClassIDs.getLength(); nInd++ )
+                const Sequence< OUString > aClassIDs = xObjConfig->getElementNames();
+                for ( OUString const & classId : aClassIDs )
                 {
                     Reference< XNameAccess > xObjectProps;
                     OUString aEntryDocName;
 
-                    if (    ( xObjConfig->getByName( aClassIDs[nInd] ) >>= xObjectProps ) && xObjectProps.is()
+                    if (    ( xObjConfig->getByName( classId ) >>= xObjectProps ) && xObjectProps.is()
                          && ( xObjectProps->getByName("ObjectDocumentServiceName") >>= aEntryDocName )
-                         && aEntryDocName.equals( sResult ) )
+                         && aEntryDocName == sResult )
                     {
-                        _rClassId = comphelper::MimeConfigurationHelper::GetSequenceClassIDRepresentation(aClassIDs[nInd]);
+                        _rClassId = comphelper::MimeConfigurationHelper::GetSequenceClassIDRepresentation(classId);
                         break;
                     }
                 }
@@ -389,7 +394,7 @@ OUString ODocumentDefinition::GetDocumentServiceFromMediaType( const OUString& _
     }
     catch ( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     return sResult;
 }
@@ -411,8 +416,8 @@ ODocumentDefinition::ODocumentDefinition( const Reference< XInterface >& _rxCont
 void ODocumentDefinition::initialLoad( const Sequence< sal_Int8 >& i_rClassID, const Sequence< PropertyValue >& i_rCreationArgs,
                                        const Reference< XConnection >& i_rConnection )
 {
-    OSL_ENSURE( i_rClassID.getLength(), "ODocumentDefinition::initialLoad: illegal class ID!" );
-    if ( !i_rClassID.getLength() )
+    OSL_ENSURE( i_rClassID.hasElements(), "ODocumentDefinition::initialLoad: illegal class ID!" );
+    if ( !i_rClassID.hasElements() )
         return;
 
     loadEmbeddedObject( i_rConnection, i_rClassID, i_rCreationArgs, false, false );
@@ -440,9 +445,7 @@ void ODocumentDefinition::closeObject()
     {
         try
         {
-            Reference< css::util::XCloseable> xCloseable(m_xEmbeddedObject,UNO_QUERY);
-            if ( xCloseable.is() )
-                xCloseable->close(true);
+            m_xEmbeddedObject->close(true);
         }
         catch(const Exception&)
         {
@@ -535,6 +538,8 @@ IPropertyArrayHelper* ODocumentDefinition::createArrayHelper( ) const
     return new OPropertyArrayHelper( ::comphelper::concatSequences( aProps, aManualProps ) );
 }
 
+namespace {
+
 class OExecuteImpl
 {
     bool& m_rbSet;
@@ -543,8 +548,6 @@ public:
     ~OExecuteImpl(){ m_rbSet = false; }
 };
 
-namespace
-{
     bool lcl_extractOpenMode( const Any& _rValue, sal_Int32& _out_rMode )
     {
         OpenCommandArgument aOpenCommand;
@@ -565,7 +568,7 @@ namespace
 void ODocumentDefinition::impl_removeFrameFromDesktop_throw( const Reference<XComponentContext> & _rxContext, const Reference< XFrame >& _rxFrame )
 {
     Reference< XDesktop2 > xDesktop = Desktop::create( _rxContext );
-    Reference< XFrames > xFrames( xDesktop->getFrames(), UNO_QUERY_THROW );
+    Reference< XFrames > xFrames( xDesktop->getFrames(), UNO_SET_THROW );
     xFrames->remove( _rxFrame );
 }
 
@@ -601,7 +604,7 @@ void ODocumentDefinition::impl_onActivateEmbeddedObject_nothrow( const bool i_bR
     }
     catch( const RuntimeException& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -628,7 +631,7 @@ namespace
                 }
                 catch ( const Exception& )
                 {
-                    OSL_FAIL( "PreserveVisualAreaSize::PreserveVisualAreaSize: caught an exception!" );
+                    TOOLS_WARN_EXCEPTION( "dbaccess", "PreserveVisualAreaSize::PreserveVisualAreaSize" );
                 }
             }
         }
@@ -643,7 +646,7 @@ namespace
                 }
                 catch ( const Exception& )
                 {
-                    OSL_FAIL( "PreserveVisualAreaSize::~PreserveVisualAreaSize: caught an exception!" );
+                    TOOLS_WARN_EXCEPTION( "dbaccess", "PreserveVisualAreaSize::~PreserveVisualAreaSize" );
                 }
             }
         }
@@ -673,7 +676,7 @@ namespace
             }
             catch( const Exception& )
             {
-                OSL_FAIL( "LayoutManagerLock::LayoutManagerLock: caught an exception!" );
+                TOOLS_WARN_EXCEPTION( "dbaccess", "LayoutManagerLock::LayoutManagerLock" );
             }
         }
 
@@ -687,7 +690,7 @@ namespace
             }
             catch( const Exception& )
             {
-                OSL_FAIL( "LayoutManagerLock::~LayoutManagerLock: caught an exception!" );
+                TOOLS_WARN_EXCEPTION( "dbaccess", "LayoutManagerLock::~LayoutManagerLock" );
             }
         }
     };
@@ -698,7 +701,7 @@ void ODocumentDefinition::impl_initFormEditView( const Reference< XController >&
     try
     {
         Reference< XViewSettingsSupplier > xSettingsSupplier( _rxController, UNO_QUERY_THROW );
-        Reference< XPropertySet > xViewSettings( xSettingsSupplier->getViewSettings(), UNO_QUERY_THROW );
+        Reference< XPropertySet > xViewSettings( xSettingsSupplier->getViewSettings(), UNO_SET_THROW );
 
         // the below code could indirectly tamper with the "modified" flag of the model, temporarily disable this
         LockModifiable aLockModify( _rxController->getModel() );
@@ -723,7 +726,7 @@ void ODocumentDefinition::impl_initFormEditView( const Reference< XController >&
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -776,7 +779,7 @@ Any ODocumentDefinition::onCommandOpenSomething( const Any& _rOpenArgument, cons
     if ( xHandler.is() )
         aDocumentArgs.put( "InteractionHandler", xHandler );
 
-    ::boost::optional< sal_Int16 > aDocumentMacroMode;
+    ::std::optional< sal_Int16 > aDocumentMacroMode;
 
     if ( !lcl_extractOpenMode( _rOpenArgument, nOpenMode ) )
     {
@@ -800,7 +803,7 @@ Any ODocumentDefinition::onCommandOpenSomething( const Any& _rOpenArgument, cons
                 {
                     sal_Int16 nMacroExecMode( !aDocumentMacroMode ? MacroExecMode::USE_CONFIG : *aDocumentMacroMode );
                     OSL_VERIFY( pIter->Value >>= nMacroExecMode );
-                    aDocumentMacroMode.reset( nMacroExecMode );
+                    aDocumentMacroMode = nMacroExecMode;
                     continue;
                 }
 
@@ -851,7 +854,7 @@ Any ODocumentDefinition::onCommandOpenSomething( const Any& _rOpenArgument, cons
             // sub document, in case the settings require this, *and* the document
             // contains scripts in the content.xml. But this is better than the security
             // issue we had before ...
-            aDocumentMacroMode.reset( MacroExecMode::USE_CONFIG );
+            aDocumentMacroMode = MacroExecMode::USE_CONFIG;
         }
     }
 
@@ -859,7 +862,8 @@ Any ODocumentDefinition::onCommandOpenSomething( const Any& _rOpenArgument, cons
     {
         // nobody so far felt responsible for setting it
         // => use the DBDoc-wide macro exec mode for the document, too
-        aDocumentMacroMode.reset( bExecuteDBDocMacros ? MacroExecMode::ALWAYS_EXECUTE_NO_WARN : MacroExecMode::NEVER_EXECUTE );
+        aDocumentMacroMode = bExecuteDBDocMacros ? MacroExecMode::ALWAYS_EXECUTE_NO_WARN
+                                                 : MacroExecMode::NEVER_EXECUTE;
     }
     aDocumentArgs.put( "MacroExecutionMode", *aDocumentMacroMode );
 
@@ -960,7 +964,7 @@ Any SAL_CALL ODocumentDefinition::execute( const Command& aCommand, sal_Int32 Co
         // making it release the own mutex before calling SolarMutex-code is ... difficult, at least.
         // So, to be on the same side, we lock the SolarMutex here. Yes, it sucks.
         ::SolarMutexGuard aSolarGuard;
-        ::osl::ClearableMutexGuard aGuard(m_aMutex);
+        osl::MutexGuard aGuard(m_aMutex);
         if ( m_bInExecute )
             return aRet;
 
@@ -995,7 +999,7 @@ Any SAL_CALL ODocumentDefinition::execute( const Command& aCommand, sal_Int32 Co
         return onCommandOpenSomething( aCommand.Argument, bActivateObject, Environment );
     }
 
-    ::osl::ClearableMutexGuard aGuard(m_aMutex);
+    osl::MutexGuard aGuard(m_aMutex);
     if ( m_bInExecute )
         return aRet;
 
@@ -1029,7 +1033,7 @@ Any SAL_CALL ODocumentDefinition::execute( const Command& aCommand, sal_Int32 Co
     {
         Sequence<Any> aIni;
         aCommand.Argument >>= aIni;
-        if ( !aIni.getLength() )
+        if ( !aIni.hasElements() )
         {
             OSL_FAIL( "Wrong argument count!" );
             ucbhelper::cancelCommandExecution(
@@ -1108,7 +1112,7 @@ namespace
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
 
             // if the element is a container itself, step down the component hierarchy
@@ -1133,7 +1137,7 @@ namespace
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
 
     }
@@ -1182,9 +1186,8 @@ void ODocumentDefinition::onCommandInsert( const OUString& _sURL, const Referenc
             }
             try
             {
-                Reference< css::util::XCloseable> xCloseable(m_xEmbeddedObject,UNO_QUERY);
-                if ( xCloseable.is() )
-                    xCloseable->close(true);
+                if ( m_xEmbeddedObject.is() )
+                    m_xEmbeddedObject->close(true);
             }
             catch(const Exception&)
             {
@@ -1196,7 +1199,7 @@ void ODocumentDefinition::onCommandInsert( const OUString& _sURL, const Referenc
     aGuard.clear();
 }
 
-bool ODocumentDefinition::save(bool _bApprove)
+bool ODocumentDefinition::save(bool _bApprove, const css::uno::Reference<css::awt::XTopWindow>& rDialogParent)
 {
     // default handling: instantiate an interaction handler and let it handle the parameter request
     if ( !m_bOpenInDesign )
@@ -1244,8 +1247,10 @@ bool ODocumentDefinition::save(bool _bApprove)
             OInteractionAbort* pAbort = new OInteractionAbort;
             pRequest->addContinuation(pAbort);
 
+            Reference<XWindow> xDialogParent(rDialogParent, UNO_QUERY);
+
             // create the handler, let it handle the request
-            Reference< XInteractionHandler2 > xHandler( InteractionHandler::createWithParent(m_aContext, nullptr) );
+            Reference<XInteractionHandler2> xHandler(InteractionHandler::createWithParent(m_aContext, xDialogParent));
             xHandler->handle(xRequest);
 
             if ( pAbort->wasSelected() )
@@ -1293,93 +1298,81 @@ void ODocumentDefinition::saveAs()
         if ( m_pImpl->m_aProps.aTitle.isEmpty() )
         {
             aGuard.clear();
-            save(false); // (sal_False) : we don't want an approve dialog
+            save(false, css::uno::Reference<css::awt::XTopWindow>()); // (sal_False) : we don't want an approve dialog
             return;
         }
     }
     try
     {
+        ::SolarMutexGuard aSolarGuard;
+
+        // the request
+        DocumentSaveRequest aRequest;
+        aRequest.Name = m_pImpl->m_aProps.aTitle;
+
+        aRequest.Content.set(m_xParentContainer,UNO_QUERY);
+        OInteractionRequest* pRequest = new OInteractionRequest(makeAny(aRequest));
+        Reference< XInteractionRequest > xRequest(pRequest);
+        // some knittings
+        // two continuations allowed: OK and Cancel
+        ODocumentSaveContinuation* pDocuSave = new ODocumentSaveContinuation;
+        pRequest->addContinuation(pDocuSave);
+        OInteraction< XInteractionDisapprove >* pDisApprove = new OInteraction< XInteractionDisapprove >;
+        pRequest->addContinuation(pDisApprove);
+        OInteractionAbort* pAbort = new OInteractionAbort;
+        pRequest->addContinuation(pAbort);
+
+        // create the handler, let it handle the request
+        Reference< XInteractionHandler2 > xHandler( InteractionHandler::createWithParent(m_aContext, nullptr) );
+        xHandler->handle(xRequest);
+
+        if ( pAbort->wasSelected() )
+            return;
+        if  ( pDisApprove->wasSelected() )
+            return;
+        if ( pDocuSave->wasSelected() )
         {
-            ::SolarMutexGuard aSolarGuard;
-
-            // the request
-            DocumentSaveRequest aRequest;
-            aRequest.Name = m_pImpl->m_aProps.aTitle;
-
-            aRequest.Content.set(m_xParentContainer,UNO_QUERY);
-            OInteractionRequest* pRequest = new OInteractionRequest(makeAny(aRequest));
-            Reference< XInteractionRequest > xRequest(pRequest);
-            // some knittings
-            // two continuations allowed: OK and Cancel
-            ODocumentSaveContinuation* pDocuSave = new ODocumentSaveContinuation;
-            pRequest->addContinuation(pDocuSave);
-            OInteraction< XInteractionDisapprove >* pDisApprove = new OInteraction< XInteractionDisapprove >;
-            pRequest->addContinuation(pDisApprove);
-            OInteractionAbort* pAbort = new OInteractionAbort;
-            pRequest->addContinuation(pAbort);
-
-            // create the handler, let it handle the request
-            Reference< XInteractionHandler2 > xHandler( InteractionHandler::createWithParent(m_aContext, nullptr) );
-            xHandler->handle(xRequest);
-
-            if ( pAbort->wasSelected() )
-                return;
-            if  ( pDisApprove->wasSelected() )
-                return;
-            if ( pDocuSave->wasSelected() )
+            ::osl::MutexGuard aGuard(m_aMutex);
+            Reference<XNameContainer> xNC(pDocuSave->getContent(),UNO_QUERY);
+            if ( xNC.is() )
             {
-                ::osl::MutexGuard aGuard(m_aMutex);
-                Reference<XNameContainer> xNC(pDocuSave->getContent(),UNO_QUERY);
-                if ( xNC.is() )
+                if ( m_pImpl->m_aProps.aTitle != pDocuSave->getName() )
                 {
-                    if ( m_pImpl->m_aProps.aTitle != pDocuSave->getName() )
+                    try
                     {
-                        try
+                        Reference< XStorage> xStorage = getContainerStorage();
+
+                        OUString sPersistentName = ::dbtools::createUniqueName(xStorage,"Obj");
+                        xStorage->copyElementTo(m_pImpl->m_aProps.sPersistentName,xStorage,sPersistentName);
+
+                        OUString sOldName = m_pImpl->m_aProps.aTitle;
+                        rename(pDocuSave->getName());
+                        updateDocumentTitle();
+
+                        uno::Sequence<uno::Any> aArguments(comphelper::InitAnyPropertySequence(
                         {
-                            Reference< XStorage> xStorage = getContainerStorage();
-
-                            OUString sPersistentName = ::dbtools::createUniqueName(xStorage,"Obj");
-                            xStorage->copyElementTo(m_pImpl->m_aProps.sPersistentName,xStorage,sPersistentName);
-
-                            OUString sOldName = m_pImpl->m_aProps.aTitle;
-                            rename(pDocuSave->getName());
-                            updateDocumentTitle();
-
-                            Sequence< Any > aArguments(3);
-                            PropertyValue aValue;
-                            // set as folder
-                            aValue.Name = PROPERTY_NAME;
-                            aValue.Value <<= sOldName;
-                            aArguments[0] <<= aValue;
-
-                            aValue.Name = PROPERTY_PERSISTENT_NAME;
-                            aValue.Value <<= sPersistentName;
-                            aArguments[1] <<= aValue;
-
-                            aValue.Name = PROPERTY_AS_TEMPLATE;
-                            aValue.Value <<= m_pImpl->m_aProps.bAsTemplate;
-                            aArguments[2] <<= aValue;
-
-                            Reference< XMultiServiceFactory > xORB( m_xParentContainer, UNO_QUERY_THROW );
-                            Reference< XInterface > xComponent( xORB->createInstanceWithArguments( SERVICE_SDB_DOCUMENTDEFINITION, aArguments ) );
-                            Reference< XNameContainer > xNameContainer( m_xParentContainer, UNO_QUERY_THROW );
-                            xNameContainer->insertByName( sOldName, makeAny( xComponent ) );
-                        }
-                        catch(const Exception&)
-                        {
-                            DBG_UNHANDLED_EXCEPTION();
-                        }
+                            {PROPERTY_NAME, uno::Any(sOldName)}, // set as folder
+                            {PROPERTY_PERSISTENT_NAME, uno::Any(sPersistentName)},
+                            {PROPERTY_AS_TEMPLATE, uno::Any(m_pImpl->m_aProps.bAsTemplate)},
+                        }));
+                        Reference< XMultiServiceFactory > xORB( m_xParentContainer, UNO_QUERY_THROW );
+                        Reference< XInterface > xComponent( xORB->createInstanceWithArguments( SERVICE_SDB_DOCUMENTDEFINITION, aArguments ) );
+                        Reference< XNameContainer > xNameContainer( m_xParentContainer, UNO_QUERY_THROW );
+                        xNameContainer->insertByName( sOldName, makeAny( xComponent ) );
                     }
-                    Reference<XEmbedPersist> xPersist(m_xEmbeddedObject,UNO_QUERY);
-                    if ( xPersist.is() )
+                    catch(const Exception&)
                     {
-                        xPersist->storeOwn();
-                        notifyDataSourceModified();
+                        DBG_UNHANDLED_EXCEPTION("dbaccess");
                     }
+                }
+                Reference<XEmbedPersist> xPersist(m_xEmbeddedObject,UNO_QUERY);
+                if ( xPersist.is() )
+                {
+                    xPersist->storeOwn();
+                    notifyDataSourceModified();
                 }
             }
         }
-
     }
     catch(const Exception&)
     {
@@ -1415,7 +1408,7 @@ namespace
 
 namespace
 {
-    Reference< XFrame > lcl_getDatabaseDocumentFrame( ODatabaseModelImpl& _rImpl )
+    Reference< XFrame > lcl_getDatabaseDocumentFrame( ODatabaseModelImpl const & _rImpl )
     {
         Reference< XModel > xDatabaseDocumentModel( _rImpl.getModel_noCreate() );
 
@@ -1453,7 +1446,7 @@ void ODocumentDefinition::separateOpenCommandArguments( const Sequence< Property
 {
     ::comphelper::NamedValueCollection aOpenCommandArguments( i_rOpenCommandArguments );
 
-    const char* pObjectDescriptorArgs[] =
+    const char* const pObjectDescriptorArgs[] =
     {
         "RecoveryStorage"
     };
@@ -1554,7 +1547,7 @@ void ODocumentDefinition::loadEmbeddedObject( const Reference< XConnection >& i_
             bool bSetSize = false;
             sal_Int32 nEntryConnectionMode = EntryInitModes::DEFAULT_INIT;
             Sequence< sal_Int8 > aClassID = _aClassID;
-            if ( aClassID.getLength() )
+            if ( aClassID.hasElements() )
             {
                 nEntryConnectionMode = EntryInitModes::TRUNCATE_INIT;
                 bSetSize = true;
@@ -1564,7 +1557,7 @@ void ODocumentDefinition::loadEmbeddedObject( const Reference< XConnection >& i_
                 sDocumentService = GetDocumentServiceFromMediaType( getContentType(), m_aContext, aClassID );
                 // check if we are not a form and
                 // the org.libreoffice.report.pentaho.SOReportJobFactory is not present.
-                if ( !m_bForm && !(sDocumentService == "com.sun.star.text.TextDocument"))
+                if ( !m_bForm && sDocumentService != "com.sun.star.text.TextDocument")
                 {
                     // we seem to be a "new style" report, check if report extension is present.
                     Reference< XContentEnumerationAccess > xEnumAccess( m_aContext->getServiceManager(), UNO_QUERY );
@@ -1577,7 +1570,7 @@ void ODocumentDefinition::loadEmbeddedObject( const Reference< XConnection >& i_
                         throw aWFE;
                     }
                 }
-                if ( !aClassID.getLength() )
+                if ( !aClassID.hasElements() )
                 {
                     if ( m_bForm )
                         aClassID = MimeConfigurationHelper::GetSequenceClassID(SO3_SW_CLASSID);
@@ -1588,7 +1581,7 @@ void ODocumentDefinition::loadEmbeddedObject( const Reference< XConnection >& i_
                 }
             }
 
-            OSL_ENSURE( aClassID.getLength(),"No Class ID" );
+            OSL_ENSURE( aClassID.hasElements(),"No Class ID" );
 
             Sequence< PropertyValue > aEmbeddedObjectDescriptor;
             Sequence< PropertyValue > aLoadArgs( fillLoadArgs(
@@ -1673,7 +1666,7 @@ void ODocumentDefinition::loadEmbeddedObject( const Reference< XConnection >& i_
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
         }
     }
@@ -1692,7 +1685,7 @@ void ODocumentDefinition::loadEmbeddedObject( const Reference< XConnection >& i_
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 
@@ -1703,24 +1696,24 @@ void ODocumentDefinition::loadEmbeddedObject( const Reference< XConnection >& i_
 void ODocumentDefinition::onCommandPreview(Any& _rImage)
 {
     loadEmbeddedObjectForPreview();
-    if ( m_xEmbeddedObject.is() )
-    {
-        try
-        {
-            Reference<XTransferable> xTransfer(getComponent(),UNO_QUERY);
-            if ( xTransfer.is() )
-            {
-                DataFlavor aFlavor;
-                aFlavor.MimeType = "image/png";
-                aFlavor.HumanPresentableName = "Portable Network Graphics";
-                aFlavor.DataType = cppu::UnoType<Sequence < sal_Int8 >>::get();
+    if ( !m_xEmbeddedObject.is() )
+        return;
 
-                _rImage = xTransfer->getTransferData( aFlavor );
-            }
-        }
-        catch( const Exception& )
+    try
+    {
+        Reference<XTransferable> xTransfer(getComponent(),UNO_QUERY);
+        if ( xTransfer.is() )
         {
+            DataFlavor aFlavor;
+            aFlavor.MimeType = "image/png";
+            aFlavor.HumanPresentableName = "Portable Network Graphics";
+            aFlavor.DataType = cppu::UnoType<Sequence < sal_Int8 >>::get();
+
+            _rImage = xTransfer->getTransferData( aFlavor );
         }
+    }
+    catch( const Exception& )
+    {
     }
 }
 
@@ -1732,19 +1725,19 @@ void ODocumentDefinition::getPropertyDefaultByHandle( sal_Int32 /*_nHandle*/, An
 void ODocumentDefinition::onCommandGetDocumentProperties( Any& _rProps )
 {
     loadEmbeddedObjectForPreview();
-    if ( m_xEmbeddedObject.is() )
+    if ( !m_xEmbeddedObject.is() )
+        return;
+
+    try
     {
-        try
-        {
-            Reference<XDocumentPropertiesSupplier> xDocSup(
-                getComponent(), UNO_QUERY );
-            if ( xDocSup.is() )
-                _rProps <<= xDocSup->getDocumentProperties();
-        }
-        catch( const Exception& )
-        {
-            DBG_UNHANDLED_EXCEPTION();
-        }
+        Reference<XDocumentPropertiesSupplier> xDocSup(
+            getComponent(), UNO_QUERY );
+        if ( xDocSup.is() )
+            _rProps <<= xDocSup->getDocumentProperties();
+    }
+    catch( const Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -1764,10 +1757,9 @@ Reference< util::XCloseable > ODocumentDefinition::impl_getComponent_throw( cons
 
         if ( nState == EmbedStates::ACTIVE || nState == EmbedStates::RUNNING )
         {
-            Reference<XComponentSupplier> xCompProv(m_xEmbeddedObject,UNO_QUERY);
-            if ( xCompProv.is() )
+            if ( m_xEmbeddedObject.is() )
             {
-                xComp = xCompProv->getComponent();
+                xComp = m_xEmbeddedObject->getComponent();
                 OSL_ENSURE(xComp.is(),"No valid component");
             }
         }
@@ -1783,7 +1775,7 @@ Reference< util::XCloseable > ODocumentDefinition::getComponent()
 
 namespace
 {
-    Reference< XDatabaseDocumentUI > lcl_getDatabaseDocumentUI( ODatabaseModelImpl& _rModelImpl )
+    Reference< XDatabaseDocumentUI > lcl_getDatabaseDocumentUI( ODatabaseModelImpl const & _rModelImpl )
     {
         Reference< XDatabaseDocumentUI > xUI;
 
@@ -1916,7 +1908,7 @@ void SAL_CALL ODocumentDefinition::rename( const OUString& _rNewName )
     try
     {
         ::osl::ResettableMutexGuard aGuard(m_aMutex);
-        if ( _rNewName.equals( m_pImpl->m_aProps.aTitle ) )
+        if ( _rNewName == m_pImpl->m_aProps.aTitle )
             return;
 
         // document definitions are organized in a hierarchical way, so reject names
@@ -1982,24 +1974,23 @@ bool ODocumentDefinition::prepareClose()
             // document has not yet been activated, i.e. has no UI, yet
             return true;
 
-        bool bCouldSuspend = xController->suspend( true );
-        if ( !bCouldSuspend )
+        if (!xController->suspend(true))
             // controller vetoed the closing
             return false;
 
         if ( isModified() )
         {
             Reference< XFrame > xFrame( xController->getFrame() );
+            Reference<XTopWindow> xTopWindow;
             if ( xFrame.is() )
             {
-                Reference< XTopWindow > xTopWindow( xFrame->getContainerWindow(), UNO_QUERY_THROW );
+                xTopWindow = Reference<XTopWindow>(xFrame->getContainerWindow(), UNO_QUERY_THROW);
                 xTopWindow->toFront();
             }
-            if ( !save( true ) )
+            if (!save(true, xTopWindow))
             {
-                if ( bCouldSuspend )
-                    // revert suspension
-                    xController->suspend( false );
+                // revert suspension
+                xController->suspend(false);
                 // saving failed or was cancelled
                 return false;
             }
@@ -2007,7 +1998,7 @@ bool ODocumentDefinition::prepareClose()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 
     return true;
@@ -2017,15 +2008,11 @@ void ODocumentDefinition::fillReportData( const Reference< XComponentContext >& 
                                                const Reference< util::XCloseable >& _rxComponent,
                                                const Reference< XConnection >& _rxActiveConnection )
 {
-    Sequence< Any > aArgs(2);
-    PropertyValue aValue;
-    aValue.Name =  "TextDocument";
-    aValue.Value <<= _rxComponent;
-    aArgs[0] <<= aValue;
-    aValue.Name = "ActiveConnection";
-    aValue.Value <<= _rxActiveConnection;
-    aArgs[1] <<= aValue;
-
+    uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+    {
+        {"TextDocument", uno::Any(_rxComponent)},
+        {"ActiveConnection", uno::Any(_rxActiveConnection)}
+    }));
     try
     {
         Reference< XJobExecutor > xExecuteable(
@@ -2034,7 +2021,7 @@ void ODocumentDefinition::fillReportData( const Reference< XComponentContext >& 
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 

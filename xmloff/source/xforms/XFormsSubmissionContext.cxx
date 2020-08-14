@@ -23,17 +23,16 @@
 #include "xformsapi.hxx"
 
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmlerror.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmltkmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 
 #include <sax/tools/converter.hxx>
 
 #include <com/sun/star/xforms/XModel2.hpp>
 
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 using com::sun::star::xml::sax::XAttributeList;
 using com::sun::star::xforms::XModel2;
@@ -42,7 +41,7 @@ using namespace com::sun::star::uno;
 using namespace xmloff::token;
 
 
-static const struct SvXMLTokenMapEntry aAttributeMap[] =
+const struct SvXMLTokenMapEntry aAttributeMap[] =
 {
     TOKEN_MAP_ENTRY( NONE, ID ),
     TOKEN_MAP_ENTRY( NONE, BIND ),

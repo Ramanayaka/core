@@ -24,12 +24,10 @@
 #include <basegfx/vector/b2dsize.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <cppcanvas/spritecanvas.hxx>
-#include <implcanvas.hxx>
+#include "implcanvas.hxx"
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         class ImplSpriteCanvas : public virtual SpriteCanvas, protected virtual ImplCanvas
         {
         public:
@@ -78,7 +76,6 @@ namespace cppcanvas
             const css::uno::Reference< css::rendering::XSpriteCanvas > mxSpriteCanvas;
             TransformationArbiterSharedPtr                             mpTransformArbiter;
         };
-    }
 }
 
 #endif // INCLUDED_CPPCANVAS_SOURCE_WRAPPER_IMPLSPRITECANVAS_HXX

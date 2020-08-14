@@ -17,36 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/instance.hxx>
 #include <sax/fastattribs.hxx>
 #include "OOXMLFactory.hxx"
-#include "OOXMLFastHelper.hxx"
 
-namespace writerfilter {
-namespace ooxml {
+namespace writerfilter::ooxml {
 
 using namespace com::sun::star;
 
-// class OOXMLFactory_ns
 
 OOXMLFactory_ns::~OOXMLFactory_ns()
 {
 }
 
-// class OOXMLFactory
 
 void OOXMLFactory::attributes(OOXMLFastContextHandler * pHandler,
-                              const uno::Reference< xml::sax::XFastAttributeList > & Attribs)
+                              const uno::Reference< xml::sax::XFastAttributeList > & xAttribs)
 {
     Id nDefine = pHandler->getDefine();
     OOXMLFactory_ns::Pointer_t pFactory = getFactoryForNamespace(nDefine);
 
-    if (pFactory.get() == nullptr)
+    if (!pFactory)
         return;
 
-    assert( dynamic_cast< sax_fastparser::FastAttributeList *>( Attribs.get() ) != nullptr );
-    sax_fastparser::FastAttributeList *pAttribs;
-    pAttribs = static_cast< sax_fastparser::FastAttributeList *>( Attribs.get() );
+    sax_fastparser::FastAttributeList& rAttribs =
+            sax_fastparser::castToFastAttributeList( xAttribs );
 
     const AttributeInfo *pAttr = pFactory->getAttributeInfoArray(nDefine);
     if (!pAttr)
@@ -55,7 +49,8 @@ void OOXMLFactory::attributes(OOXMLFastContextHandler * pHandler,
     for (; pAttr->m_nToken != -1; ++pAttr)
     {
         sal_Int32 nToken = pAttr->m_nToken;
-        if (!pAttribs->hasAttribute(nToken))
+        sal_Int32 nAttrIndex = rAttribs.getAttributeIndex(nToken);
+        if (nAttrIndex == -1)
             continue;
 
         Id nId = pFactory->getResourceId(nDefine, nToken);
@@ -64,8 +59,7 @@ void OOXMLFactory::attributes(OOXMLFastContextHandler * pHandler,
         {
         case ResourceType::Boolean:
             {
-                const char *pValue = "";
-                pAttribs->getAsChar(nToken, pValue);
+                const char *pValue = rAttribs.getAsCharByIndex(nAttrIndex);
                 OOXMLValue::Pointer_t xValue(OOXMLBooleanValue::Create(pValue));
                 pHandler->newProperty(nId, xValue);
                 pFactory->attributeAction(pHandler, nToken, xValue);
@@ -73,7 +67,7 @@ void OOXMLFactory::attributes(OOXMLFastContextHandler * pHandler,
             break;
         case ResourceType::String:
             {
-                OUString aValue(pAttribs->getValue(nToken));
+                OUString aValue(rAttribs.getValueByIndex(nAttrIndex));
                 OOXMLValue::Pointer_t xValue(new OOXMLStringValue(aValue));
                 pHandler->newProperty(nId, xValue);
                 pFactory->attributeAction(pHandler, nToken, xValue);
@@ -81,8 +75,7 @@ void OOXMLFactory::attributes(OOXMLFastContextHandler * pHandler,
             break;
         case ResourceType::Integer:
             {
-                sal_Int32 nValue;
-                pAttribs->getAsInteger(nToken,nValue);
+                sal_Int32 nValue = rAttribs.getAsIntegerByIndex(nAttrIndex);
                 OOXMLValue::Pointer_t xValue = OOXMLIntegerValue::Create(nValue);
                 pHandler->newProperty(nId, xValue);
                 pFactory->attributeAction(pHandler, nToken, xValue);
@@ -90,35 +83,54 @@ void OOXMLFactory::attributes(OOXMLFastContextHandler * pHandler,
             break;
         case ResourceType::Hex:
             {
-                const char *pValue = "";
-                pAttribs->getAsChar(nToken, pValue);
+                const char *pValue = rAttribs.getAsCharByIndex(nAttrIndex);
                 OOXMLValue::Pointer_t xValue(new OOXMLHexValue(pValue));
                 pHandler->newProperty(nId, xValue);
                 pFactory->attributeAction(pHandler, nToken, xValue);
             }
             break;
-        case ResourceType::TwipsMeasure:
+        case ResourceType::HexColor:
             {
-                const char *pValue = "";
-                pAttribs->getAsChar(nToken, pValue);
+                const char *pValue = rAttribs.getAsCharByIndex(nAttrIndex);
+                OOXMLValue::Pointer_t xValue(new OOXMLHexColorValue(pValue));
+                pHandler->newProperty(nId, xValue);
+                pFactory->attributeAction(pHandler, nToken, xValue);
+            }
+            break;
+        case ResourceType::TwipsMeasure_asSigned:
+        case ResourceType::TwipsMeasure_asZero:
+            {
+                const char *pValue = rAttribs.getAsCharByIndex(nAttrIndex);
                 OOXMLValue::Pointer_t xValue(new OOXMLTwipsMeasureValue(pValue));
+                if ( xValue->getInt() < 0 )
+                {
+                    if ( pAttr->m_nResource == ResourceType::TwipsMeasure_asZero )
+                        xValue = OOXMLIntegerValue::Create(0);
+                }
                 pHandler->newProperty(nId, xValue);
                 pFactory->attributeAction(pHandler, nToken, xValue);
             }
             break;
         case ResourceType::HpsMeasure:
             {
-                const char *pValue = "";
-                pAttribs->getAsChar(nToken, pValue);
+                const char *pValue = rAttribs.getAsCharByIndex(nAttrIndex);
                 OOXMLValue::Pointer_t xValue(new OOXMLHpsMeasureValue(pValue));
                 pHandler->newProperty(nId, xValue);
                 pFactory->attributeAction(pHandler, nToken, xValue);
             }
         break;
+        case ResourceType::MeasurementOrPercent:
+            {
+                const char *pValue = rAttribs.getAsCharByIndex(nAttrIndex);
+                OOXMLValue::Pointer_t xValue(new OOXMLMeasurementOrPercentValue(pValue));
+                pHandler->newProperty(nId, xValue);
+                pFactory->attributeAction(pHandler, nToken, xValue);
+            }
+            break;
         case ResourceType::List:
             {
                 sal_uInt32 nValue;
-                if (pFactory->getListValue(pAttr->m_nRef, Attribs->getValue(nToken), nValue))
+                if (pFactory->getListValue(pAttr->m_nRef, rAttribs.getValueByIndex(nAttrIndex), nValue))
                 {
                     OOXMLValue::Pointer_t xValue = OOXMLIntegerValue::Create(nValue);
                     pHandler->newProperty(nId, xValue);
@@ -155,7 +167,7 @@ void OOXMLFactory::characters(OOXMLFastContextHandler * pHandler,
     Id nDefine = pHandler->getDefine();
     OOXMLFactory_ns::Pointer_t pFactory = getFactoryForNamespace(nDefine);
 
-    if (pFactory.get() != nullptr)
+    if (pFactory)
     {
         pFactory->charactersAction(pHandler, rString);
     }
@@ -166,7 +178,7 @@ void OOXMLFactory::startAction(OOXMLFastContextHandler * pHandler)
     Id nDefine = pHandler->getDefine();
     OOXMLFactory_ns::Pointer_t pFactory = getFactoryForNamespace(nDefine);
 
-    if (pFactory.get() != nullptr)
+    if (pFactory)
     {
         pFactory->startAction(pHandler);
     }
@@ -177,7 +189,7 @@ void OOXMLFactory::endAction(OOXMLFastContextHandler * pHandler)
     Id nDefine = pHandler->getDefine();
     OOXMLFactory_ns::Pointer_t pFactory = getFactoryForNamespace(nDefine);
 
-    if (pFactory.get() != nullptr)
+    if (pFactory)
     {
         pFactory->endAction(pHandler);
     }
@@ -199,7 +211,6 @@ void OOXMLFactory_ns::attributeAction(OOXMLFastContextHandler *, Token_t, const 
 {
 }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CUI_SOURCE_OPTIONS_DBREGISTERSETTINGS_HXX
-#define INCLUDED_CUI_SOURCE_OPTIONS_DBREGISTERSETTINGS_HXX
+#pragma once
 
 #include <sal/config.h>
 
@@ -59,9 +58,8 @@ namespace svx
 
     typedef std::map< OUString, DatabaseRegistration > DatabaseRegistrations;
 
-    class DatabaseMapItem : public SfxPoolItem
+    class DatabaseMapItem final : public SfxPoolItem
     {
-    protected:
         DatabaseRegistrations   m_aRegistrations;
 
     public:
@@ -69,7 +67,7 @@ namespace svx
         DatabaseMapItem( sal_uInt16 _nId, const DatabaseRegistrations& _rRegistrations );
 
         virtual bool             operator==( const SfxPoolItem& ) const override;
-        virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
+        virtual DatabaseMapItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
         const DatabaseRegistrations&
                                 getRegistrations() const { return m_aRegistrations; }
@@ -77,7 +75,5 @@ namespace svx
 
 
 }
-
-#endif // INCLUDED_CUI_SOURCE_OPTIONS_DBREGISTERSETTINGS_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

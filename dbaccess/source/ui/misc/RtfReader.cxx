@@ -17,34 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RtfReader.hxx"
+#include <RtfReader.hxx>
 #include <tools/stream.hxx>
 #include <com/sun/star/sdbcx/XDataDescriptorFactory.hpp>
-#include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <com/sun/star/sdbcx/XAppend.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/awt/FontDescriptor.hpp>
 #include <com/sun/star/awt/FontWeight.hpp>
 #include <com/sun/star/awt/FontStrikeout.hpp>
 #include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/awt/FontUnderline.hpp>
-#include <com/sun/star/util/NumberFormat.hpp>
-#include <com/sun/star/util/XNumberFormatTypes.hpp>
-#include "dbustrings.hrc"
+#include <core_resource.hxx>
 #include <svtools/rtftoken.h>
 #include <toolkit/helper/vclunohelper.hxx>
-#include "dbu_misc.hrc"
-#include <vcl/msgbox.hxx>
-#include <connectivity/dbconversion.hxx>
+#include <strings.hrc>
 #include <connectivity/dbtools.hxx>
-#include <comphelper/extract.hxx>
 #include <comphelper/string.hxx>
 #include <tools/color.hxx>
-#include "WExtendPages.hxx"
-#include "moduledbu.hxx"
-#include "QEnumTypes.hxx"
-#include "UITools.hxx"
+#include <WExtendPages.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
@@ -94,6 +82,10 @@ SvParserState ORTFReader::CallParser()
     return m_bFoundTable ? eParseState : SvParserState::Error;
 }
 
+#if defined _MSC_VER
+#pragma warning(disable: 4702) // unreachable code, bug in MSVC2015
+#endif
+
 void ORTFReader::NextToken( int nToken )
 {
     if(m_bError || !m_nRows) // if there is an error or no more rows to check, return immediately
@@ -114,9 +106,9 @@ void ORTFReader::NextToken( int nToken )
                         {
                             switch(nTmpToken2)
                             {
-                                case RTF_RED:   aColor.SetRed((sal_uInt8)nTokenValue); break;
-                                case RTF_BLUE:  aColor.SetBlue((sal_uInt8)nTokenValue); break;
-                                case RTF_GREEN: aColor.SetGreen((sal_uInt8)nTokenValue); break;
+                                case RTF_RED:   aColor.SetRed(static_cast<sal_uInt8>(nTokenValue)); break;
+                                case RTF_BLUE:  aColor.SetBlue(static_cast<sal_uInt8>(nTokenValue)); break;
+                                case RTF_GREEN: aColor.SetGreen(static_cast<sal_uInt8>(nTokenValue)); break;
                                 default: break;
                             }
                             nTmpToken2 = GetNextToken();
@@ -132,29 +124,15 @@ void ORTFReader::NextToken( int nToken )
 
             case RTF_TROWD:
                 {
-                    bool bInsertRow = true;
                     if ( !m_xTable.is() ) // use first line as header
                     {
                         sal_uInt64 const nTell = rInput.Tell(); // perhaps alters position of the stream
 
                         m_bError = !CreateTable(nToken);
-                        bInsertRow = m_bAppendFirstLine;
                         if ( m_bAppendFirstLine )
                         {
                             rInput.Seek(nTell);
                             rInput.ResetError();
-                        }
-                    }
-                    if ( bInsertRow && !m_bError)
-                    {
-                        try
-                        {
-                            m_pUpdateHelper->moveToInsertRow(); // otherwise append new line
-                        }
-                        catch(SQLException& e)
-                        // handling update failure
-                        {
-                            showErrorDialog(e);
                         }
                     }
                 }
@@ -243,7 +221,7 @@ void ORTFReader::NextToken( int nToken )
 
 bool ORTFReader::CreateTable(int nToken)
 {
-    OUString aTableName(ModuleRes(STR_TBL_TITLE));
+    OUString aTableName(DBA_RES(STR_TBL_TITLE));
     aTableName = aTableName.getToken(0,' ');
     aTableName = ::dbtools::createUniqueName(m_xTables, aTableName);
 
@@ -274,7 +252,7 @@ bool ORTFReader::CreateTable(int nToken)
                 {
                     aColumnName = comphelper::string::strip(aColumnName, ' ');
                     if (aColumnName.isEmpty() || m_bAppendFirstLine )
-                        aColumnName = ModuleRes(STR_COLUMN_NAME);
+                        aColumnName = DBA_RES(STR_COLUMN_NAME);
 
                     CreateDefaultColumn(aColumnName);
                     aColumnName.clear();
@@ -305,7 +283,7 @@ bool ORTFReader::CreateTable(int nToken)
         if ( !aColumnName.isEmpty() )
         {
             if ( m_bAppendFirstLine )
-                aColumnName = ModuleRes(STR_COLUMN_NAME);
+                aColumnName = DBA_RES(STR_COLUMN_NAME);
             CreateDefaultColumn(aColumnName);
         }
 
@@ -321,11 +299,6 @@ bool ORTFReader::CreateTable(int nToken)
         bOk = !executeWizard(aTableName,aTextColor,aFont) && m_xTable.is();
     }
     return bOk;
-}
-
-void ORTFReader::release()
-{
-    ReleaseRef();
 }
 
 TypeSelectionPageFactory ORTFReader::getTypeSelectionPageFactory()

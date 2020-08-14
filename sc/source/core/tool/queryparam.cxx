@@ -18,13 +18,12 @@
  */
 
 #include <memory>
-#include "queryparam.hxx"
-#include "queryentry.hxx"
-#include "scmatrix.hxx"
+#include <queryparam.hxx>
+#include <queryentry.hxx>
+#include <scmatrix.hxx>
 
 #include <svl/sharedstringpool.hxx>
 #include <svl/zforlist.hxx>
-#include <o3tl/make_unique.hxx>
 #include <osl/diagnose.h>
 
 #include <algorithm>
@@ -74,7 +73,7 @@ ScQueryParamBase::ScQueryParamBase() :
     mbRangeLookup(false)
 {
     for (size_t i = 0; i < MAXQUERY; ++i)
-        m_Entries.push_back(o3tl::make_unique<ScQueryEntry>());
+        m_Entries.push_back(std::make_unique<ScQueryEntry>());
 }
 
 ScQueryParamBase::ScQueryParamBase(const ScQueryParamBase& r) :
@@ -83,8 +82,29 @@ ScQueryParamBase::ScQueryParamBase(const ScQueryParamBase& r) :
 {
     for (auto const& it : r.m_Entries)
     {
-        m_Entries.push_back(o3tl::make_unique<ScQueryEntry>(*it));
+        m_Entries.push_back(std::make_unique<ScQueryEntry>(*it));
     }
+}
+
+ScQueryParamBase& ScQueryParamBase::operator=(const ScQueryParamBase& r)
+{
+    if (this != &r)
+    {
+        eSearchType = r.eSearchType;
+        bHasHeader  = r.bHasHeader;
+        bByRow = r.bByRow;
+        bInplace = r.bInplace;
+        bCaseSens = r.bCaseSens;
+        bDuplicate = r.bDuplicate;
+        mbRangeLookup = r.mbRangeLookup;
+
+        m_Entries.clear();
+        for (auto const& it : r.m_Entries)
+        {
+            m_Entries.push_back(std::make_unique<ScQueryEntry>(*it));
+        }
+    }
+    return *this;
 }
 
 ScQueryParamBase::~ScQueryParamBase()
@@ -122,7 +142,7 @@ ScQueryEntry& ScQueryParamBase::AppendEntry()
         return **itr;
 
     // Add a new entry to the end.
-    m_Entries.push_back(o3tl::make_unique<ScQueryEntry>());
+    m_Entries.push_back(std::make_unique<ScQueryEntry>());
     return *m_Entries.back();
 }
 
@@ -148,23 +168,20 @@ std::vector<ScQueryEntry*> ScQueryParamBase::FindAllEntriesByField(SCCOLROW nFie
 {
     std::vector<ScQueryEntry*> aEntries;
 
-    EntriesType::iterator itr = std::find_if(
-        m_Entries.begin(), m_Entries.end(), FindByField(nField));
+    auto fFind = FindByField(nField);
 
-    while (itr != m_Entries.end())
-    {
-        aEntries.push_back((*itr).get());
-        itr = std::find_if(
-            itr + 1, m_Entries.end(), FindByField(nField));
-    }
+    for (const auto& rxEntry : m_Entries)
+        if (fFind(rxEntry))
+            aEntries.push_back(rxEntry.get());
 
     return aEntries;
 }
 
-void ScQueryParamBase::RemoveEntryByField(SCCOLROW nField)
+bool ScQueryParamBase::RemoveEntryByField(SCCOLROW nField)
 {
     EntriesType::iterator itr = std::find_if(
         m_Entries.begin(), m_Entries.end(), FindByField(nField));
+    bool bRet = false;
 
     if (itr != m_Entries.end())
     {
@@ -172,8 +189,16 @@ void ScQueryParamBase::RemoveEntryByField(SCCOLROW nField)
         if (m_Entries.size() < MAXQUERY)
             // Make sure that we have at least MAXQUERY number of entries at
             // all times.
-            m_Entries.push_back(o3tl::make_unique<ScQueryEntry>());
+            m_Entries.push_back(std::make_unique<ScQueryEntry>());
+        bRet = true;
     }
+
+    return bRet;
+}
+
+void ScQueryParamBase::RemoveAllEntriesByField(SCCOLROW nField)
+{
+    while( RemoveEntryByField( nField ) ) {}
 }
 
 void ScQueryParamBase::Resize(size_t nNew)
@@ -191,7 +216,7 @@ void ScQueryParamBase::Resize(size_t nNew)
     {
         size_t n = nNew - m_Entries.size();
         for (size_t i = 0; i < n; ++i)
-            m_Entries.push_back(o3tl::make_unique<ScQueryEntry>());
+            m_Entries.push_back(std::make_unique<ScQueryEntry>());
     }
 }
 
@@ -251,31 +276,26 @@ void ScQueryParamBase::FillInExcelSyntax(
         }
     }
 
-    if (pFormatter)
-    {
-        sal_uInt32 nFormat = 0;
-        bool bNumber = pFormatter->IsNumberFormat( rItem.maString.getString(), nFormat, rItem.mfVal);
-        rItem.meType = bNumber ? ScQueryEntry::ByValue : ScQueryEntry::ByString;
+    if (!pFormatter)
+        return;
 
-        /* TODO: pFormatter currently is also used as a flag whether matching
-         * empty cells with an empty string is triggered from the interpreter.
-         * This could be handled independently if all queries should support
-         * it, needs to be evaluated if that actually is desired. */
+    sal_uInt32 nFormat = 0;
+    bool bNumber = pFormatter->IsNumberFormat( rItem.maString.getString(), nFormat, rItem.mfVal);
+    rItem.meType = bNumber ? ScQueryEntry::ByValue : ScQueryEntry::ByString;
 
-        // (empty = empty) is a match, and (empty <> not-empty) also is a match
-        if (rItem.meType == ScQueryEntry::ByString)
-            rItem.mbMatchEmpty = ((rEntry.eOp == SC_EQUAL && rItem.maString.isEmpty())
-                || (rEntry.eOp == SC_NOT_EQUAL && !rItem.maString.isEmpty()));
-    }
+    /* TODO: pFormatter currently is also used as a flag whether matching
+     * empty cells with an empty string is triggered from the interpreter.
+     * This could be handled independently if all queries should support
+     * it, needs to be evaluated if that actually is desired. */
+
+    // (empty = empty) is a match, and (empty <> not-empty) also is a
+    // match. (empty = 0) is not a match.
+    rItem.mbMatchEmpty = ((rEntry.eOp == SC_EQUAL && rItem.maString.isEmpty())
+            || (rEntry.eOp == SC_NOT_EQUAL && !rItem.maString.isEmpty()));
 }
 
 ScQueryParamTable::ScQueryParamTable() :
     nCol1(0),nRow1(0),nCol2(0),nRow2(0),nTab(0)
-{
-}
-
-ScQueryParamTable::ScQueryParamTable(const ScQueryParamTable& r) :
-    nCol1(r.nCol1),nRow1(r.nRow1),nCol2(r.nCol2),nRow2(r.nRow2),nTab(r.nTab)
 {
 }
 
@@ -294,12 +314,7 @@ ScQueryParam::ScQueryParam() :
     Clear();
 }
 
-ScQueryParam::ScQueryParam( const ScQueryParam& r ) :
-    ScQueryParamBase(r),
-    ScQueryParamTable(r),
-    bDestPers(r.bDestPers), nDestTab(r.nDestTab), nDestCol(r.nDestCol), nDestRow(r.nDestRow)
-{
-}
+ScQueryParam::ScQueryParam( const ScQueryParam& ) = default;
 
 ScQueryParam::ScQueryParam( const ScDBQueryParamInternal& r ) :
     ScQueryParamBase(r),
@@ -340,32 +355,7 @@ void ScQueryParam::ClearDestParams()
     nDestRow = 0;
 }
 
-ScQueryParam& ScQueryParam::operator=( const ScQueryParam& r )
-{
-    nCol1       = r.nCol1;
-    nRow1       = r.nRow1;
-    nCol2       = r.nCol2;
-    nRow2       = r.nRow2;
-    nTab        = r.nTab;
-    nDestTab    = r.nDestTab;
-    nDestCol    = r.nDestCol;
-    nDestRow    = r.nDestRow;
-    bHasHeader  = r.bHasHeader;
-    bInplace    = r.bInplace;
-    bCaseSens   = r.bCaseSens;
-    eSearchType = r.eSearchType;
-    bDuplicate  = r.bDuplicate;
-    bByRow      = r.bByRow;
-    bDestPers   = r.bDestPers;
-
-    m_Entries.clear();
-    for (auto const& it : r.m_Entries)
-    {
-        m_Entries.push_back(o3tl::make_unique<ScQueryEntry>(*it));
-    }
-
-    return *this;
-}
+ScQueryParam& ScQueryParam::operator=( const ScQueryParam& ) = default;
 
 bool ScQueryParam::operator==( const ScQueryParam& rOther ) const
 {

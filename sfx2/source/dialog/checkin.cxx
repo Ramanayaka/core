@@ -7,45 +7,34 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <sfx2/checkin.hxx>
-#include <vcl/msgbox.hxx>
+#include <checkin.hxx>
 
-SfxCheckinDialog::SfxCheckinDialog( vcl::Window* pParent ) :
-    ModalDialog( pParent, "CheckinDialog", "sfx/ui/checkin.ui" )
+SfxCheckinDialog::SfxCheckinDialog(weld::Window* pParent)
+    : GenericDialogController( pParent, "sfx/ui/checkin.ui", "CheckinDialog")
+    , m_xCommentED(m_xBuilder->weld_text_view("VersionComment"))
+    , m_xMajorCB(m_xBuilder->weld_check_button("MajorVersion"))
+    , m_xOKBtn(m_xBuilder->weld_button("ok"))
 {
-    get( m_pCommentED, "VersionComment" );
-    get( m_pMajorCB, "MajorVersion" );
-
-    get( m_pOKBtn, "ok" );
-    m_pOKBtn->SetClickHdl( LINK( this, SfxCheckinDialog, OKHdl ) );
+    m_xOKBtn->connect_clicked(LINK(this, SfxCheckinDialog, OKHdl));
 }
 
 SfxCheckinDialog::~SfxCheckinDialog()
 {
-    disposeOnce();
 }
 
-void SfxCheckinDialog::dispose()
+OUString SfxCheckinDialog::GetComment( ) const
 {
-    m_pCommentED.clear();
-    m_pMajorCB.clear();
-    m_pOKBtn.clear();
-    ModalDialog::dispose();
+    return m_xCommentED->get_text();
 }
 
-OUString SfxCheckinDialog::GetComment( )
+bool SfxCheckinDialog::IsMajor( ) const
 {
-    return m_pCommentED->GetText( );
+    return m_xMajorCB->get_active();
 }
 
-bool SfxCheckinDialog::IsMajor( )
+IMPL_LINK_NOARG(SfxCheckinDialog, OKHdl, weld::Button&, void )
 {
-    return m_pMajorCB->IsChecked( );
-}
-
-IMPL_LINK_NOARG( SfxCheckinDialog, OKHdl, Button*, void )
-{
-    EndDialog( RET_OK );
+    m_xDialog->response(RET_OK);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,20 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_PAGEPREVIEWPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_PAGEPREVIEWPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
-#include <com/sun/star/drawing/XDrawPage.hpp>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 
+namespace com::sun::star::drawing { class XDrawPage; }
 
-namespace drawinglayer
+
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** PagePreviewPrimitive2D class
 
             This primitive is needed to have the correct XDrawPage as ViewInformation for decomposing
@@ -39,7 +37,7 @@ namespace drawinglayer
             those primitives to be visualized correctly, Your renderer needs to locally correct its
             ViewInformation2D to reference the new XDrawPage.
          */
-        class DRAWINGLAYER_DLLPUBLIC PagePreviewPrimitive2D : public BufferedDecompositionPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC PagePreviewPrimitive2D final : public BufferedDecompositionPrimitive2D
         {
         private:
             /** the XDrawPage visualized by this primitive. When we go forward with primitives
@@ -58,7 +56,6 @@ namespace drawinglayer
             double                                      mfContentWidth;
             double                                      mfContentHeight;
 
-        protected:
             /// local decomposition. Implementation will just return children
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
@@ -85,12 +82,9 @@ namespace drawinglayer
             virtual basegfx::B2DRange getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_PAGEPREVIEWPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

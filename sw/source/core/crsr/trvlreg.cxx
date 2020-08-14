@@ -23,24 +23,44 @@
 #include <docary.hxx>
 #include <fmtcntnt.hxx>
 #include <viscrs.hxx>
-#include <callnk.hxx>
+#include "callnk.hxx"
 #include <pamtyp.hxx>
 #include <section.hxx>
+#include <svx/srchdlg.hxx>
 
 bool GotoPrevRegion( SwPaM& rCurrentCursor, SwMoveFnCollection const & fnPosRegion,
                         bool bInReadOnly )
 {
+    SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::Empty );
     SwNodeIndex aIdx( rCurrentCursor.GetPoint()->nNode );
     SwSectionNode* pNd = aIdx.GetNode().FindSectionNode();
     if( pNd )
         aIdx.Assign( *pNd, - 1 );
 
+    SwNodeIndex aOldIdx = aIdx;
+    sal_uLong nLastNd = rCurrentCursor.GetDoc()->GetNodes().Count() - 1;
     do {
-        while( aIdx.GetIndex() &&
-            nullptr == ( pNd = aIdx.GetNode().StartOfSectionNode()->GetSectionNode()) )
+        while( aIdx.GetIndex() )
+        {
+            pNd = aIdx.GetNode().StartOfSectionNode()->GetSectionNode();
+            if (pNd)
+                break;
             --aIdx;
+            if ( aIdx == aOldIdx )
+            {
+                SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::NavElementNotFound );
+                return false;
+            }
+        }
 
-        if( pNd ) // is there another section node?
+        if ( !aIdx.GetIndex() )
+        {
+            SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::StartWrapped );
+            aIdx = nLastNd;
+            continue;
+        }
+
+        assert( pNd );  // coverity, should never be nullptr
         {
             if( pNd->GetSection().IsHiddenFlag() ||
                 ( !bInReadOnly &&
@@ -48,6 +68,7 @@ bool GotoPrevRegion( SwPaM& rCurrentCursor, SwMoveFnCollection const & fnPosRegi
             {
                 // skip protected or hidden ones
                 aIdx.Assign( *pNd, - 1 );
+                continue;
             }
             else if( &fnPosRegion == &fnMoveForward )
             {
@@ -76,25 +97,45 @@ bool GotoPrevRegion( SwPaM& rCurrentCursor, SwMoveFnCollection const & fnPosRegi
             rCurrentCursor.GetPoint()->nNode = aIdx;
             return true;
         }
-    } while( pNd );
+    } while( true );
+
+    // the flow is such that it is not possible to get here
     return false;
 }
 
 bool GotoNextRegion( SwPaM& rCurrentCursor, SwMoveFnCollection const & fnPosRegion,
                         bool bInReadOnly )
 {
+    SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::Empty );
     SwNodeIndex aIdx( rCurrentCursor.GetPoint()->nNode );
     SwSectionNode* pNd = aIdx.GetNode().FindSectionNode();
     if( pNd )
         aIdx.Assign( *pNd->EndOfSectionNode(), - 1 );
 
+    SwNodeIndex aOldIdx = aIdx;
     sal_uLong nEndCount = aIdx.GetNode().GetNodes().Count()-1;
     do {
-        while( aIdx.GetIndex() < nEndCount &&
-                nullptr == ( pNd = aIdx.GetNode().GetSectionNode()) )
+        while( aIdx.GetIndex() < nEndCount )
+        {
+            pNd = aIdx.GetNode().GetSectionNode();
+            if (pNd)
+                break;
             ++aIdx;
+            if ( aIdx == aOldIdx )
+            {
+                SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::NavElementNotFound );
+                return false;
+            }
+        }
 
-        if( pNd ) // is there another section node?
+        if ( aIdx.GetIndex() == nEndCount )
+        {
+            SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::EndWrapped );
+            aIdx = 0;
+            continue;
+        }
+
+        assert( pNd );  // coverity, should never be nullptr
         {
             if( pNd->GetSection().IsHiddenFlag() ||
                 ( !bInReadOnly &&
@@ -102,6 +143,7 @@ bool GotoNextRegion( SwPaM& rCurrentCursor, SwMoveFnCollection const & fnPosRegi
             {
                 // skip protected or hidden ones
                 aIdx.Assign( *pNd->EndOfSectionNode(), +1 );
+                continue;
             }
             else if( &fnPosRegion == &fnMoveForward )
             {
@@ -130,7 +172,9 @@ bool GotoNextRegion( SwPaM& rCurrentCursor, SwMoveFnCollection const & fnPosRegi
             rCurrentCursor.GetPoint()->nNode = aIdx;
             return true;
         }
-    } while( pNd );
+    } while( true );
+
+    // the flow is such that it is not possible to get here
     return false;
 }
 
@@ -185,8 +229,8 @@ bool SwCursor::MoveRegion( SwWhichRegion fnWhichRegion, SwMoveFnCollection const
     return !dynamic_cast<SwTableCursor*>(this) &&
             (*fnWhichRegion)( *this, fnPosRegion, IsReadOnlyAvailable()  ) &&
             !IsSelOvr() &&
-            (GetPoint()->nNode.GetIndex() != m_pSavePos->nNode ||
-             GetPoint()->nContent.GetIndex() != m_pSavePos->nContent);
+            (GetPoint()->nNode.GetIndex() != m_vSavePos.back().nNode ||
+             GetPoint()->nContent.GetIndex() != m_vSavePos.back().nContent);
 }
 
 bool SwCursorShell::MoveRegion( SwWhichRegion fnWhichRegion, SwMoveFnCollection const & fnPosRegion )
@@ -205,19 +249,19 @@ bool SwCursor::GotoRegion( const OUString& rName )
     for( SwSectionFormats::size_type n = rFormats.size(); n; )
     {
         const SwSectionFormat* pFormat = rFormats[ --n ];
-        const SwNodeIndex* pIdx = nullptr;
-        const SwSection* pSect;
-        if( nullptr != ( pSect = pFormat->GetSection() ) &&
-            pSect->GetSectionName() == rName &&
-            nullptr != ( pIdx = pFormat->GetContent().GetContentIdx() ) &&
-            pIdx->GetNode().GetNodes().IsDocNodes() )
+        const SwSection* pSect = pFormat->GetSection();
+        if( pSect && pSect->GetSectionName() == rName )
         {
-            // area in normal nodes array
-            SwCursorSaveState aSaveState( *this );
+            const SwNodeIndex* pIdx = pFormat->GetContent().GetContentIdx();
+            if( pIdx && pIdx->GetNode().GetNodes().IsDocNodes() )
+            {
+                // area in normal nodes array
+                SwCursorSaveState aSaveState( *this );
 
-            GetPoint()->nNode = *pIdx;
-            Move( fnMoveForward, GoInContent );
-            bRet = !IsSelOvr();
+                GetPoint()->nNode = *pIdx;
+                Move( fnMoveForward, GoInContent );
+                bRet = !IsSelOvr();
+            }
         }
     }
     return bRet;

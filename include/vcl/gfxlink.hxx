@@ -20,61 +20,54 @@
 #ifndef INCLUDED_VCL_GFXLINK_HXX
 #define INCLUDED_VCL_GFXLINK_HXX
 
-#include <rtl/ustring.hxx>
 #include <tools/gen.hxx>
-#include <tools/solar.h>
 #include <vcl/dllapi.h>
 #include <vcl/mapmod.hxx>
 #include <memory>
 
 class SvStream;
 
+/** GfxLink graphic types that are supported by GfxLink.
+ *
+ * It is important that the numbers for native types stay the same, because
+ * they are used in serialization to MTF.
+ */
 enum class GfxLinkType
 {
     NONE         = 0,
     EpsBuffer    = 1,
-    NativeGif    = 2,    // Don't forget to update the following defines
-    NativeJpg    = 3,    // Don't forget to update the following defines
-    NativePng    = 4,    // Don't forget to update the following defines
-    NativeTif    = 5,    // Don't forget to update the following defines
-    NativeWmf    = 6,    // Don't forget to update the following defines
-    NativeMet    = 7,    // Don't forget to update the following defines
-    NativePct    = 8,    // Don't forget to update the following defines
-    NativeSvg    = 9,    // Don't forget to update the following defines
-    NativeMov    = 10,   // Don't forget to update the following defines
+    NativeGif    = 2,
+    NativeJpg    = 3,
+    NativePng    = 4,
+    NativeTif    = 5,
+    NativeWmf    = 6,
+    NativeMet    = 7,
+    NativePct    = 8,
+    NativeSvg    = 9,
+    NativeMov    = 10,
     NativeBmp    = 11,
-    NativePdf    = 12    // Don't forget to update the following defines
-};
+    NativePdf    = 12, // If a new type is added, make sure to change NativeLast too
 
-#define GFX_LINK_FIRST_NATIVE_ID    GfxLinkType::NativeGif
-#define GFX_LINK_LAST_NATIVE_ID     GfxLinkType::NativePdf
+    // Alias for when the first native type starts and last native
+    // type ends.
+    NativeFirst  = NativeGif,
+    NativeLast   = NativePdf,
+};
 
 class Graphic;
 
 class VCL_DLLPUBLIC GfxLink
 {
 private:
-
-    struct SwapOutData
-    {
-        SwapOutData(const OUString &aURL);
-        ~SwapOutData();
-
-        OUString maURL; // File is removed in the destructor
-
-    };
-
-    GfxLinkType     meType = GfxLinkType::NONE;
-    sal_uInt32      mnUserId = 0;
-
-    std::shared_ptr<sal_uInt8> mpSwapInData;
-    std::shared_ptr<SwapOutData> mpSwapOutData;
-
-    sal_uInt32      mnSwapInDataSize = 0;
+    GfxLinkType     meType;
+    sal_uInt32      mnUserId;
+    mutable std::shared_ptr<sal_uInt8> mpSwapInData;
+    mutable size_t  maHash;
+    sal_uInt32      mnSwapInDataSize;
     MapMode         maPrefMapMode;
     Size            maPrefSize;
-    bool            mbPrefMapModeValid = false;
-    bool            mbPrefSizeValid = false;
+    bool            mbPrefMapModeValid;
+    bool            mbPrefSizeValid;
 
     SAL_DLLPRIVATE std::shared_ptr<sal_uInt8> GetSwapInData() const;
 public:
@@ -83,9 +76,11 @@ public:
                         // pBuff = The Graphic data. This class takes ownership of this
                         GfxLink( std::unique_ptr<sal_uInt8[]> pBuf, sal_uInt32 nBufSize, GfxLinkType nType );
 
-    bool                IsEqual( const GfxLink& ) const;
+    bool                operator==( const GfxLink& ) const;
 
     GfxLinkType         GetType() const { return meType;}
+
+    size_t              GetHash() const;
 
     void                SetUserId( sal_uInt32 nUserId ) { mnUserId = nUserId; }
     sal_uInt32          GetUserId() const { return mnUserId; }
@@ -95,11 +90,11 @@ public:
 
     const Size&         GetPrefSize() const { return maPrefSize;}
     void                SetPrefSize( const Size& rPrefSize );
-    bool                IsPrefSizeValid() { return mbPrefSizeValid;}
+    bool                IsPrefSizeValid() const { return mbPrefSizeValid;}
 
     const MapMode&      GetPrefMapMode() const { return maPrefMapMode;}
     void                SetPrefMapMode( const MapMode& rPrefMapMode );
-    bool                IsPrefMapModeValid() { return mbPrefMapModeValid;}
+    bool                IsPrefMapModeValid() const { return mbPrefMapModeValid;}
 
     bool                IsNative() const;
 
@@ -107,14 +102,7 @@ public:
 
     bool                ExportNative( SvStream& rOStream ) const;
 
-    void                SwapOut();
-    void                SwapIn();
-    bool                IsSwappedOut() const { return( bool(mpSwapOutData) ); }
-
-public:
-
-    friend VCL_DLLPUBLIC SvStream&  WriteGfxLink( SvStream& rOStream, const GfxLink& rGfxLink );
-    friend VCL_DLLPUBLIC SvStream&  ReadGfxLink( SvStream& rIStream, GfxLink& rGfxLink );
+    bool                IsEMF() const; // WMF & EMF stored under the same type (NativeWmf)
 };
 
 #endif

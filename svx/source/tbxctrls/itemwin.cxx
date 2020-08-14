@@ -18,268 +18,89 @@
  */
 
 #include <com/sun/star/drawing/FillStyle.hpp>
+#include <com/sun/star/frame/XDispatchProvider.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
 
-#include <sfx2/dispatch.hxx>
-#include <sfx2/objsh.hxx>
+#include <sfx2/tbxctrl.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/module.hxx>
-#include <tools/urlobj.hxx>
 
+#include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
-#include <vcl/builderfactory.hxx>
+#include <vcl/virdev.hxx>
 
-#include <svx/dialogs.hrc>
-
-#define DELAY_TIMEOUT           100
-
-#include <svx/xlnclit.hxx>
-#include <svx/xlnwtit.hxx>
-#include <svx/xlineit0.hxx>
-#include <svx/xlndsit.hxx>
-#include <svx/xtable.hxx>
-#include "svx/drawitem.hxx"
 #include <svx/dialmgr.hxx>
-#include "svx/dlgutil.hxx"
+#include <svx/strings.hrc>
+
+#include <svx/xlnwtit.hxx>
+#include <svx/xtable.hxx>
 #include <svx/itemwin.hxx>
-#include "svx/linectrl.hxx"
-#include <svtools/colorcfg.hxx>
+#include <svtools/unitconv.hxx>
+#include "linemetricbox.hxx"
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 
-SvxLineBox::SvxLineBox( vcl::Window* pParent, const Reference< XFrame >& rFrame ) :
-    LineLB( pParent, WB_BORDER | WB_DROPDOWN | WB_AUTOHSCROLL ),
-    nCurPos     ( 0 ),
-    aLogicalSize(40,140),
-    bRelease    ( true ),
-    mpSh        ( nullptr ),
-    mxFrame     ( rFrame )
-{
-    SetSizePixel( LogicToPixel( aLogicalSize, MapUnit::MapAppFont ));
-    Show();
-
-    aDelayTimer.SetTimeout( DELAY_TIMEOUT );
-    aDelayTimer.SetInvokeHandler( LINK( this, SvxLineBox, DelayHdl_Impl ) );
-    aDelayTimer.Start();
-}
-
-
-IMPL_LINK_NOARG(SvxLineBox, DelayHdl_Impl, Timer *, void)
-{
-    if ( GetEntryCount() == 0 )
-    {
-        mpSh = SfxObjectShell::Current();
-        FillControl();
-    }
-}
-
-
-void SvxLineBox::Select()
-{
-    // Call the parent's Select() member to trigger accessibility events.
-    LineLB::Select();
-
-    if ( !IsTravelSelect() )
-    {
-        drawing::LineStyle eXLS;
-        sal_Int32 nPos = GetSelectEntryPos();
-
-        switch ( nPos )
-        {
-            case 0:
-                eXLS = drawing::LineStyle_NONE;
-                break;
-
-            case 1:
-                eXLS = drawing::LineStyle_SOLID;
-                break;
-
-            default:
-            {
-                eXLS = drawing::LineStyle_DASH;
-
-                if ( nPos != LISTBOX_ENTRY_NOTFOUND &&
-                     SfxObjectShell::Current()  &&
-                     SfxObjectShell::Current()->GetItem( SID_DASH_LIST ) )
-                {
-                    // LineDashItem will only be sent if it also has a dash.
-                    // Notify cares!
-                    SvxDashListItem aItem( *static_cast<const SvxDashListItem*>(
-                        SfxObjectShell::Current()->GetItem( SID_DASH_LIST ) ) );
-                    XLineDashItem aLineDashItem( GetSelectEntry(),
-                        aItem.GetDashList()->GetDash( nPos - 2 )->GetDash() );
-
-                    Any a;
-                    Sequence< PropertyValue > aArgs( 1 );
-                    aArgs[0].Name = "LineDash";
-                    aLineDashItem.QueryValue ( a );
-                    aArgs[0].Value = a;
-                    SfxToolBoxControl::Dispatch( Reference< XDispatchProvider >( mxFrame->getController(), UNO_QUERY ),
-                                                 ".uno:LineDash",
-                                                 aArgs );
-                }
-            }
-            break;
-        }
-
-        XLineStyleItem aLineStyleItem( eXLS );
-        Any a;
-        Sequence< PropertyValue > aArgs( 1 );
-        aArgs[0].Name = "XLineStyle";
-        aLineStyleItem.QueryValue ( a );
-        aArgs[0].Value = a;
-        SfxToolBoxControl::Dispatch( Reference< XDispatchProvider >( mxFrame->getController(), UNO_QUERY ),
-                                     ".uno:XLineStyle",
-                                     aArgs );
-
-        nCurPos = GetSelectEntryPos();
-        ReleaseFocus_Impl();
-    }
-}
-
-
-bool SvxLineBox::PreNotify( NotifyEvent& rNEvt )
-{
-    MouseNotifyEvent nType = rNEvt.GetType();
-
-    switch(nType)
-    {
-        case MouseNotifyEvent::MOUSEBUTTONDOWN:
-        case MouseNotifyEvent::GETFOCUS:
-            nCurPos = GetSelectEntryPos();
-        break;
-        case MouseNotifyEvent::LOSEFOCUS:
-            SelectEntryPos(nCurPos);
-        break;
-        case MouseNotifyEvent::KEYINPUT:
-        {
-            const KeyEvent* pKEvt = rNEvt.GetKeyEvent();
-            if( pKEvt->GetKeyCode().GetCode() == KEY_TAB)
-            {
-                bRelease = false;
-                Select();
-            }
-        }
-        break;
-        default:
-        break;
-    }
-    return LineLB::PreNotify( rNEvt );
-}
-
-
-bool SvxLineBox::EventNotify( NotifyEvent& rNEvt )
-{
-    bool bHandled = LineLB::EventNotify( rNEvt );
-
-    if ( rNEvt.GetType() == MouseNotifyEvent::KEYINPUT )
-    {
-        const KeyEvent* pKEvt = rNEvt.GetKeyEvent();
-
-        switch ( pKEvt->GetKeyCode().GetCode() )
-        {
-            case KEY_RETURN:
-                Select();
-                bHandled = true;
-                break;
-
-            case KEY_ESCAPE:
-                SelectEntryPos( nCurPos );
-                ReleaseFocus_Impl();
-                bHandled = true;
-                break;
-        }
-    }
-    return bHandled;
-}
-
-
-void SvxLineBox::ReleaseFocus_Impl()
-{
-    if(!bRelease)
-    {
-        bRelease = true;
-        return;
-    }
-
-    if( SfxViewShell::Current() )
-    {
-        vcl::Window* pShellWnd = SfxViewShell::Current()->GetWindow();
-
-        if ( pShellWnd )
-            pShellWnd->GrabFocus();
-    }
-}
-
-void SvxLineBox::DataChanged( const DataChangedEvent& rDCEvt )
-{
-    if ( (rDCEvt.GetType() == DataChangedEventType::SETTINGS) &&
-         (rDCEvt.GetFlags() & AllSettingsFlags::STYLE) )
-    {
-        SetSizePixel(LogicToPixel(aLogicalSize, MapUnit::MapAppFont));
-    }
-
-    LineLB::DataChanged( rDCEvt );
-}
-
-void SvxLineBox::FillControl()
-{
-    // FillStyles();
-    if ( !mpSh )
-        mpSh = SfxObjectShell::Current();
-
-    if( mpSh )
-    {
-        const SvxDashListItem* pItem = static_cast<const SvxDashListItem*>( mpSh->GetItem( SID_DASH_LIST ) );
-        if ( pItem )
-            Fill( pItem->GetDashList() );
-    }
-}
-
 SvxMetricField::SvxMetricField(
     vcl::Window* pParent, const Reference< XFrame >& rFrame )
-    : MetricField(pParent, WB_BORDER | WB_SPIN | WB_REPEAT)
-    , aCurTxt()
-    , ePoolUnit(MapUnit::MapCM)
+    : InterimItemWindow(pParent, "svx/ui/metricfieldbox.ui", "MetricFieldBox")
+    , m_xWidget(m_xBuilder->weld_metric_spin_button("metricfield", FieldUnit::MM))
+    , nCurValue(0)
+    , eDestPoolUnit(MapUnit::Map100thMM)
+    , eDlgUnit(SfxModule::GetModuleFieldUnit(rFrame))
     , mxFrame(rFrame)
 {
-    Size aSize( CalcMinimumSize() );
-    SetSizePixel( aSize );
-    aLogicalSize = PixelToLogic(aSize, MapUnit::MapAppFont);
-    SetUnit( FUNIT_MM );
-    SetDecimalDigits( 2 );
-    SetMax( 5000 );
-    SetMin( 0 );
-    SetLast( 5000 );
-    SetFirst( 0 );
+    InitControlBase(&m_xWidget->get_widget());
 
-    eDlgUnit = SfxModule::GetModuleFieldUnit( mxFrame );
-    SetFieldUnit( *this, eDlgUnit );
-    Show();
+    m_xWidget->set_range(0, 5000, FieldUnit::NONE);
+    m_xWidget->connect_value_changed(LINK(this, SvxMetricField, ModifyHdl));
+    m_xWidget->connect_focus_in(LINK(this, SvxMetricField, FocusInHdl));
+    m_xWidget->get_widget().connect_key_press(LINK(this, SvxMetricField, KeyInputHdl));
+
+    SetFieldUnit(*m_xWidget, eDlgUnit);
+
+    SetSizePixel(m_xWidget->get_preferred_size());
 }
 
+void SvxMetricField::dispose()
+{
+    m_xWidget.reset();
+    InterimItemWindow::dispose();
+}
+
+SvxMetricField::~SvxMetricField()
+{
+    disposeOnce();
+}
+
+void SvxMetricField::set_sensitive(bool bSensitive)
+{
+    Enable(bSensitive);
+    m_xWidget->set_sensitive(bSensitive);
+    if (!bSensitive)
+        m_xWidget->set_text("");
+}
 
 void SvxMetricField::Update( const XLineWidthItem* pItem )
 {
     if ( pItem )
     {
-        if ( pItem->GetValue() != GetCoreValue( *this, ePoolUnit ) )
-            SetMetricValue( *this, pItem->GetValue(), ePoolUnit );
+        // tdf#132169 we always get the value in MapUnit::Map100thMM but have
+        // to set it in the core metric of the target application
+        if (pItem->GetValue() != GetCoreValue(*m_xWidget, MapUnit::Map100thMM))
+            SetMetricValue(*m_xWidget, pItem->GetValue(), MapUnit::Map100thMM);
     }
     else
-        SetText( "" );
+        m_xWidget->set_text("");
 }
 
-
-void SvxMetricField::Modify()
+IMPL_LINK_NOARG(SvxMetricField, ModifyHdl, weld::MetricSpinButton&, void)
 {
-    MetricField::Modify();
-    long nTmp = GetCoreValue( *this, ePoolUnit );
+    auto nTmp = GetCoreValue(*m_xWidget, eDestPoolUnit);
     XLineWidthItem aLineWidthItem( nTmp );
 
     Any a;
@@ -292,7 +113,6 @@ void SvxMetricField::Modify()
                                  aArgs );
 }
 
-
 void SvxMetricField::ReleaseFocus_Impl()
 {
     if( SfxViewShell::Current() )
@@ -303,9 +123,9 @@ void SvxMetricField::ReleaseFocus_Impl()
     }
 }
 
-void SvxMetricField::SetCoreUnit( MapUnit eUnit )
+void SvxMetricField::SetDestCoreUnit( MapUnit eUnit )
 {
-    ePoolUnit = eUnit;
+    eDestPoolUnit = eUnit;
 }
 
 void SvxMetricField::RefreshDlgUnit()
@@ -314,59 +134,30 @@ void SvxMetricField::RefreshDlgUnit()
     if ( eDlgUnit != eTmpUnit )
     {
         eDlgUnit = eTmpUnit;
-        SetFieldUnit( *this, eDlgUnit );
+        SetFieldUnit(*m_xWidget, eDlgUnit);
     }
 }
 
-bool SvxMetricField::PreNotify( NotifyEvent& rNEvt )
+IMPL_LINK_NOARG(SvxMetricField, FocusInHdl, weld::Widget&, void)
 {
-    MouseNotifyEvent nType = rNEvt.GetType();
-
-    if ( MouseNotifyEvent::MOUSEBUTTONDOWN == nType || MouseNotifyEvent::GETFOCUS == nType )
-        aCurTxt = GetText();
-
-    return MetricField::PreNotify( rNEvt );
+    nCurValue = m_xWidget->get_value(FieldUnit::NONE);
 }
 
-
-bool SvxMetricField::EventNotify( NotifyEvent& rNEvt )
+IMPL_LINK(SvxMetricField, KeyInputHdl, const KeyEvent&, rKEvt, bool)
 {
-    bool bHandled = MetricField::EventNotify( rNEvt );
+    bool bHandled = false;
 
-    if ( rNEvt.GetType() == MouseNotifyEvent::KEYINPUT )
+    sal_uInt16 nCode = rKEvt.GetKeyCode().GetCode();
+
+    if (nCode == KEY_ESCAPE)
     {
-        const KeyEvent* pKEvt = rNEvt.GetKeyEvent();
-        const vcl::KeyCode& rKey = pKEvt->GetKeyCode();
-        SfxViewShell* pSh = SfxViewShell::Current();
-
-        if ( rKey.GetModifier() && rKey.GetGroup() != KEYGROUP_CURSOR && pSh )
-            (void)pSh->KeyInput( *pKEvt );
-        else
-        {
-            bool bHandledInside = false;
-
-            switch ( rKey.GetCode() )
-            {
-                case KEY_RETURN:
-                    Reformat();
-                    bHandledInside = true;
-                    break;
-
-                case KEY_ESCAPE:
-                    SetText( aCurTxt );
-                    bHandled = true;
-                    break;
-            }
-
-            if ( bHandledInside )
-            {
-                bHandled = true;
-                Modify();
-                ReleaseFocus_Impl();
-            }
-        }
+        m_xWidget->set_value(nCurValue, FieldUnit::NONE);
+        ModifyHdl(*m_xWidget);
+        ReleaseFocus_Impl();
+        bHandled = true;
     }
-    return bHandled;
+
+    return bHandled || ChildKeyInput(rKEvt);
 }
 
 void SvxMetricField::DataChanged( const DataChangedEvent& rDCEvt )
@@ -374,150 +165,183 @@ void SvxMetricField::DataChanged( const DataChangedEvent& rDCEvt )
     if ( (rDCEvt.GetType() == DataChangedEventType::SETTINGS) &&
          (rDCEvt.GetFlags() & AllSettingsFlags::STYLE) )
     {
-        SetSizePixel(LogicToPixel(aLogicalSize, MapUnit::MapAppFont));
+        SetSizePixel(m_xWidget->get_preferred_size());
     }
 
-    MetricField::DataChanged( rDCEvt );
+    InterimItemWindow::DataChanged( rDCEvt );
 }
 
-SvxFillTypeBox::SvxFillTypeBox( vcl::Window* pParent ) :
-    FillTypeLB( pParent, WB_BORDER | WB_DROPDOWN | WB_AUTOHSCROLL | WB_TABSTOP ),
-    nCurPos ( 0 ),
-    bSelect ( false )
+void SvxFillTypeBox::Fill(weld::ComboBox& rListBox)
 {
-    SetSizePixel( LogicToPixel( Size(40, 40 ),MapUnit::MapAppFont ));
-    Fill();
-    SelectEntryPos( (sal_Int32)drawing::FillStyle_SOLID );
-    Show();
+    rListBox.freeze();
+
+    rListBox.append_text(SvxResId(RID_SVXSTR_INVISIBLE));
+    rListBox.append_text(SvxResId(RID_SVXSTR_COLOR));
+    rListBox.append_text(SvxResId(RID_SVXSTR_GRADIENT));
+    rListBox.append_text(SvxResId(RID_SVXSTR_HATCH));
+    rListBox.append_text(SvxResId(RID_SVXSTR_BITMAP));
+    rListBox.append_text(SvxResId(RID_SVXSTR_PATTERN));
+
+    rListBox.thaw();
+
+    rListBox.set_active(1); // solid color
 }
 
-VCL_BUILDER_FACTORY(SvxFillTypeBox)
-
-bool SvxFillTypeBox::PreNotify( NotifyEvent& rNEvt )
+namespace
 {
-    MouseNotifyEvent nType = rNEvt.GetType();
-
-    if (!isDisposed())
+    void formatBitmapExToSize(BitmapEx& rBitmapEx, const Size& rSize)
     {
-        if ( MouseNotifyEvent::MOUSEBUTTONDOWN == nType || MouseNotifyEvent::GETFOCUS == nType )
-            nCurPos = GetSelectEntryPos();
-        else if ( MouseNotifyEvent::LOSEFOCUS == nType
-                  && Application::GetFocusWindow()
-                  && !IsWindowOrChild( Application::GetFocusWindow(), true ) )
+        if(rBitmapEx.IsEmpty() || rSize.IsEmpty())
+            return;
+
+        ScopedVclPtrInstance< VirtualDevice > pVirtualDevice;
+        pVirtualDevice->SetOutputSizePixel(rSize);
+
+        if(rBitmapEx.IsTransparent())
         {
-            if ( !bSelect )
-                SelectEntryPos( nCurPos );
+            const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
+
+            if(rStyleSettings.GetPreviewUsesCheckeredBackground())
+            {
+                const Point aNull(0, 0);
+                static const sal_uInt32 nLen(8);
+                static const Color aW(COL_WHITE);
+                static const Color aG(0xef, 0xef, 0xef);
+
+                pVirtualDevice->DrawCheckered(aNull, rSize, nLen, aW, aG);
+            }
             else
-                bSelect = false;
+            {
+                pVirtualDevice->SetBackground(rStyleSettings.GetFieldColor());
+                pVirtualDevice->Erase();
+            }
         }
-    }
 
-    return FillTypeLB::PreNotify( rNEvt );
-}
-
-
-bool SvxFillTypeBox::EventNotify( NotifyEvent& rNEvt )
-{
-    bool bHandled = FillTypeLB::EventNotify( rNEvt );
-
-    if (isDisposed())
-        return false;
-
-    if ( rNEvt.GetType() == MouseNotifyEvent::KEYINPUT )
-    {
-        const KeyEvent* pKEvt = rNEvt.GetKeyEvent();
-        switch ( pKEvt->GetKeyCode().GetCode() )
+        if(rBitmapEx.GetSizePixel().Width() >= rSize.Width() && rBitmapEx.GetSizePixel().Height() >= rSize.Height())
         {
-            case KEY_RETURN:
-                bHandled = true;
-                GetSelectHdl().Call( *this );
-            break;
-
-            case KEY_TAB:
-                GetSelectHdl().Call( *this );
-                break;
-
-            case KEY_ESCAPE:
-                SelectEntryPos( nCurPos );
-                ReleaseFocus_Impl();
-                bHandled = true;
-                break;
+            rBitmapEx.Scale(rSize);
+            pVirtualDevice->DrawBitmapEx(Point(0, 0), rBitmapEx);
         }
-    }
-    return bHandled;
-}
-
-
-void SvxFillTypeBox::ReleaseFocus_Impl()
-{
-    if( SfxViewShell::Current() )
-    {
-        vcl::Window* pShellWnd = SfxViewShell::Current()->GetWindow();
-
-        if ( pShellWnd )
-            pShellWnd->GrabFocus();
-    }
-}
-
-SvxFillAttrBox::SvxFillAttrBox( vcl::Window* pParent ) :
-    FillAttrLB( pParent, WB_BORDER | WB_DROPDOWN | WB_AUTOHSCROLL | WB_TABSTOP ),
-    nCurPos( 0 )
-{
-    SetPosPixel( Point( 90, 0 ) );
-    SetSizePixel( LogicToPixel( Size(50, 80 ), MapUnit::MapAppFont ));
-    Show();
-}
-
-VCL_BUILDER_FACTORY(SvxFillAttrBox)
-
-bool SvxFillAttrBox::PreNotify( NotifyEvent& rNEvt )
-{
-    MouseNotifyEvent nType = rNEvt.GetType();
-
-    if ( MouseNotifyEvent::MOUSEBUTTONDOWN == nType || MouseNotifyEvent::GETFOCUS == nType )
-        nCurPos = GetSelectEntryPos();
-
-    return FillAttrLB::PreNotify( rNEvt );
-}
-
-
-bool SvxFillAttrBox::EventNotify( NotifyEvent& rNEvt )
-{
-    bool bHandled = FillAttrLB::EventNotify( rNEvt );
-
-    if ( rNEvt.GetType() == MouseNotifyEvent::KEYINPUT )
-    {
-        const KeyEvent* pKEvt = rNEvt.GetKeyEvent();
-
-        switch ( pKEvt->GetKeyCode().GetCode() )
+        else
         {
-            case KEY_RETURN:
-                GetSelectHdl().Call( *this );
-                bHandled = true;
-            break;
-            case KEY_TAB:
-                GetSelectHdl().Call( *this );
-            break;
-            case KEY_ESCAPE:
-                SelectEntryPos( nCurPos );
-                ReleaseFocus_Impl();
-                bHandled = true;
-                break;
+            const Size aBitmapSize(rBitmapEx.GetSizePixel());
+
+            for(long y(0); y < rSize.Height(); y += aBitmapSize.Height())
+            {
+                for(long x(0); x < rSize.Width(); x += aBitmapSize.Width())
+                {
+                    pVirtualDevice->DrawBitmapEx(
+                        Point(x, y),
+                        rBitmapEx);
+                }
+            }
         }
+
+        rBitmapEx = pVirtualDevice->GetBitmapEx(Point(0, 0), rSize);
     }
-    return bHandled;
+} // end of anonymous namespace
+
+void SvxFillAttrBox::Fill(weld::ComboBox& rBox, const XHatchListRef &pList)
+{
+    if( !pList.is() )
+        return;
+
+    long nCount = pList->Count();
+    ScopedVclPtrInstance< VirtualDevice > pVD;
+    rBox.freeze();
+
+    for( long i = 0; i < nCount; i++ )
+    {
+        const XHatchEntry* pEntry = pList->GetHatch(i);
+        const BitmapEx aBitmapEx = pList->GetUiBitmap( i );
+        if( !aBitmapEx.IsEmpty() )
+        {
+            const Size aBmpSize(aBitmapEx.GetSizePixel());
+            pVD->SetOutputSizePixel(aBmpSize, false);
+            pVD->DrawBitmapEx(Point(), aBitmapEx);
+            rBox.append("", pEntry->GetName(), *pVD);
+        }
+        else
+            rBox.append_text(pEntry->GetName());
+    }
+
+    rBox.thaw();
 }
 
-
-void SvxFillAttrBox::ReleaseFocus_Impl()
+void SvxFillAttrBox::Fill(weld::ComboBox& rBox, const XGradientListRef &pList)
 {
-    if( SfxViewShell::Current() )
-    {
-        vcl::Window* pShellWnd = SfxViewShell::Current()->GetWindow();
+    if( !pList.is() )
+        return;
 
-        if ( pShellWnd )
-            pShellWnd->GrabFocus();
+    long nCount = pList->Count();
+    ScopedVclPtrInstance< VirtualDevice > pVD;
+    rBox.freeze();
+
+    for( long i = 0; i < nCount; i++ )
+    {
+        const XGradientEntry* pEntry = pList->GetGradient(i);
+        const BitmapEx aBitmapEx = pList->GetUiBitmap( i );
+        if( !aBitmapEx.IsEmpty() )
+        {
+            const Size aBmpSize(aBitmapEx.GetSizePixel());
+            pVD->SetOutputSizePixel(aBmpSize, false);
+            pVD->DrawBitmapEx(Point(), aBitmapEx);
+            rBox.append("", pEntry->GetName(), *pVD);
+        }
+        else
+            rBox.append_text(pEntry->GetName());
     }
+
+    rBox.thaw();
+}
+
+void SvxFillAttrBox::Fill(weld::ComboBox& rBox, const XBitmapListRef &pList)
+{
+    if( !pList.is() )
+        return;
+
+    long nCount = pList->Count();
+    const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
+    const Size aSize(rStyleSettings.GetListBoxPreviewDefaultPixelSize());
+    ScopedVclPtrInstance< VirtualDevice > pVD;
+    pVD->SetOutputSizePixel(aSize, false);
+    rBox.freeze();
+
+    for( long i = 0; i < nCount; i++ )
+    {
+        const XBitmapEntry* pEntry = pList->GetBitmap( i );
+        BitmapEx aBitmapEx = pEntry->GetGraphicObject().GetGraphic().GetBitmapEx();
+        formatBitmapExToSize(aBitmapEx, aSize);
+        pVD->DrawBitmapEx(Point(), aBitmapEx);
+        rBox.append("", pEntry->GetName(), *pVD);
+    }
+
+    rBox.thaw();
+}
+
+void SvxFillAttrBox::Fill(weld::ComboBox& rBox, const XPatternListRef &pList)
+{
+    if( !pList.is() )
+        return;
+
+    long nCount = pList->Count();
+    const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
+    const Size aSize(rStyleSettings.GetListBoxPreviewDefaultPixelSize());
+    ScopedVclPtrInstance< VirtualDevice > pVD;
+    pVD->SetOutputSizePixel(aSize, false);
+    rBox.freeze();
+
+    for( long i = 0; i < nCount; i++ )
+    {
+        const XBitmapEntry* pEntry = pList->GetBitmap( i );
+        BitmapEx aBitmapEx = pEntry->GetGraphicObject().GetGraphic().GetBitmapEx();
+        formatBitmapExToSize(aBitmapEx, aSize);
+        pVD->DrawBitmapEx(Point(), aBitmapEx);
+        rBox.append("", pEntry->GetName(), *pVD);
+    }
+
+    rBox.thaw();
+
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -12,51 +12,41 @@
 
 #include "StylePresetsPanel.hxx"
 
-#include <swtypes.hxx>
-#include <cmdid.h>
+#include <vcl/image.hxx>
+#include <vcl/virdev.hxx>
+#include <vcl/svapp.hxx>
 
-#include <svl/intitem.hxx>
-#include <svx/svxids.hrc>
-#include <svx/dlgutil.hxx>
-#include <svx/rulritem.hxx>
-
-#include <sfx2/sidebar/ControlFactory.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/bindings.hxx>
-#include <sfx2/viewsh.hxx>
 #include <sfx2/objsh.hxx>
+#include <sfx2/StylePreviewRenderer.hxx>
 
-#include <com/sun/star/frame/DocumentTemplates.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 
 #include <sfx2/doctempl.hxx>
 
-#include "shellio.hxx"
-#include "docsh.hxx"
+#include <shellio.hxx>
+#include <docsh.hxx>
 
-#include <comphelper/processfactory.hxx>
-#include <comphelper/documentconstants.hxx>
-#include <comphelper/string.hxx>
-#include <o3tl/make_unique.hxx>
+#include <sfx2/docfile.hxx>
 
-namespace sw { namespace sidebar {
+namespace sw::sidebar {
 
 namespace {
 
 void renderPreview(sfx2::StyleManager* pStyleManager, OutputDevice& aOutputDevice,
-                   OUString const & sName, sal_Int32 nHeight, tools::Rectangle& aRect)
+                   OUString const & sName, sal_Int32 nHeight, tools::Rectangle const & aRect)
 {
     SfxStyleSheetBase* pStyleSheet = pStyleManager->Search(sName, SfxStyleFamily::Para);
 
     if (pStyleSheet)
     {
-        sfx2::StylePreviewRenderer* pStylePreviewRenderer;
-        pStylePreviewRenderer = pStyleManager->CreateStylePreviewRenderer(aOutputDevice, pStyleSheet, nHeight);
+        std::unique_ptr<sfx2::StylePreviewRenderer> pStylePreviewRenderer
+            = pStyleManager->CreateStylePreviewRenderer(aOutputDevice, pStyleSheet, nHeight);
         pStylePreviewRenderer->recalculate();
         pStylePreviewRenderer->render(aRect, sfx2::StylePreviewRenderer::RenderAlign::TOP);
     }
 }
 
-BitmapEx GenerateStylePreview(SfxObjectShell& rSource, OUString& aName)
+BitmapEx GenerateStylePreview(SfxObjectShell& rSource, OUString const & aName)
 {
     sfx2::StyleManager* pStyleManager = rSource.GetStyleManager();
 
@@ -108,24 +98,24 @@ BitmapEx GenerateStylePreview(SfxObjectShell& rSource, OUString& aName)
 
     {
         tools::Rectangle aRenderRect(Point(nMargin, y), aSize);
-        renderPreview(pStyleManager, *pVirtualDev.get(), "Title", nTitleHeight, aRenderRect);
+        renderPreview(pStyleManager, *pVirtualDev, "Title", nTitleHeight, aRenderRect);
         y += nTitleHeight;
     }
 
     {
         tools::Rectangle aRenderRect(Point(nMargin, y), aSize);
-        renderPreview(pStyleManager, *pVirtualDev.get(), "Heading 1", nHeadingHeight, aRenderRect);
+        renderPreview(pStyleManager, *pVirtualDev, "Heading 1", nHeadingHeight, aRenderRect);
         y += nHeadingHeight;
     }
     {
         tools::Rectangle aRenderRect(Point(nMargin, y), aSize);
-        renderPreview(pStyleManager, *pVirtualDev.get(), "Text Body", nTextBodyHeight, aRenderRect);
+        renderPreview(pStyleManager, *pVirtualDev, "Text Body", nTextBodyHeight, aRenderRect);
     }
 
     return pVirtualDev->GetBitmapEx(Point(), aSize);
 }
 
-BitmapEx CreatePreview(OUString& aUrl, OUString& aName)
+BitmapEx CreatePreview(OUString const & aUrl, OUString const & aName)
 {
     SfxMedium aMedium(aUrl, StreamMode::STD_READWRITE);
     SfxObjectShell* pObjectShell = SfxObjectShell::Current();
@@ -154,12 +144,12 @@ VclPtr<vcl::Window> StylePresetsPanel::Create (vcl::Window* pParent,
 StylePresetsPanel::StylePresetsPanel(vcl::Window* pParent,
                                const css::uno::Reference<css::frame::XFrame>& rxFrame)
     : PanelLayout(pParent, "StylePresetsPanel", "modules/swriter/ui/sidebarstylepresets.ui", rxFrame)
+    , mxValueSet(new ValueSet(nullptr))
+    , mxValueSetWin(new weld::CustomWeld(*m_xBuilder, "valueset", *mxValueSet))
 {
-    get(mpValueSet, "valueset");
+    mxValueSet->SetColCount(2);
 
-    mpValueSet->SetColCount(2);
-
-    mpValueSet->SetDoubleClickHdl(LINK(this, StylePresetsPanel, DoubleClickHdl));
+    mxValueSet->SetDoubleClickHdl(LINK(this, StylePresetsPanel, DoubleClickHdl));
 
     RefreshList();
 }
@@ -178,10 +168,12 @@ void StylePresetsPanel::RefreshList()
                 OUString aName = aTemplates.GetName(i,j);
                 OUString aURL = aTemplates.GetPath(i,j);
                 BitmapEx aPreview = CreatePreview(aURL, aName);
-                mpValueSet->InsertItem(j, Image(aPreview), aName);
-                maTemplateEntries.push_back(o3tl::make_unique<TemplateEntry>(aURL));
-                mpValueSet->SetItemData(j, maTemplateEntries.back().get());
+                sal_uInt16 nId = j + 1;
+                mxValueSet->InsertItem(nId, Image(aPreview), aName);
+                maTemplateEntries.push_back(std::make_unique<TemplateEntry>(aURL));
+                mxValueSet->SetItemData(nId, maTemplateEntries.back().get());
             }
+            mxValueSet->SetOptimalSize();
         }
     }
 }
@@ -193,15 +185,16 @@ StylePresetsPanel::~StylePresetsPanel()
 
 void StylePresetsPanel::dispose()
 {
-    mpValueSet.disposeAndClear();
+    mxValueSetWin.reset();
+    mxValueSet.reset();
 
     PanelLayout::dispose();
 }
 
 IMPL_LINK_NOARG(StylePresetsPanel, DoubleClickHdl, ValueSet*, void)
 {
-    sal_Int32 nItemId = mpValueSet->GetSelectItemId();
-    TemplateEntry* pEntry = static_cast<TemplateEntry*>(mpValueSet->GetItemData(nItemId));
+    sal_Int32 nItemId = mxValueSet->GetSelectedItemId();
+    TemplateEntry* pEntry = static_cast<TemplateEntry*>(mxValueSet->GetItemData(nItemId));
 
     SwDocShell* pDocSh = static_cast<SwDocShell*>(SfxObjectShell::Current());
     if (pDocSh)
@@ -215,11 +208,10 @@ IMPL_LINK_NOARG(StylePresetsPanel, DoubleClickHdl, ValueSet*, void)
 
 void StylePresetsPanel::NotifyItemUpdate(const sal_uInt16 /*nSId*/,
                                          const SfxItemState /*eState*/,
-                                         const SfxPoolItem* /*pState*/,
-                                         const bool /*bIsEnabled*/)
+                                         const SfxPoolItem* /*pState*/)
 {
 }
 
-}} // end of namespace ::sw::sidebar
+} // end of namespace ::sw::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -44,11 +44,11 @@
 #include <astobserves.hxx>
 #include <astneeds.hxx>
 
-#include "aststructinstance.hxx"
+#include <aststructinstance.hxx>
 
 #include "attributeexceptions.hxx"
 
-#include "rtl/strbuf.hxx"
+#include <rtl/string.hxx>
 #include <osl/diagnose.h>
 
 #include <algorithm>
@@ -58,15 +58,10 @@
 #define YYDEBUG 1
 #define YYERROR_VERBOSE 1
 
-using ::rtl::OUString;
-using ::rtl::OString;
-using ::rtl::OStringToOUString;
-using ::rtl::OStringBuffer;
-
 extern int yylex(void);
-void yyerror(char const *);
+static void yyerror(char const *);
 
-void checkIdentifier(::rtl::OString* id)
+static void checkIdentifier(OString const * id)
 {
     static short check = 0;
     if (check == 0) {
@@ -80,10 +75,7 @@ void checkIdentifier(::rtl::OString* id)
         if ( (id->pData->buffer[0] >= 97 && id->pData->buffer[0] <= 122)
              || id->pData->buffer[0] == '_') {
             if (check == 1) {
-                ::rtl::OStringBuffer msg(25 + id->getLength());
-                msg.append("mismatched identifier '");
-                msg.append(*id);
-                msg.append("'");
+                OString msg = "mismatched identifier '" + *id + "'";
                 ErrorHandler::syntaxError(idlc()->getParseState(),
                                          idlc()->getLineNumber(),
                                          msg.getStr());
@@ -93,20 +85,18 @@ void checkIdentifier(::rtl::OString* id)
         }
 }
 
-void reportDoubleMemberDeclarations(
+static void reportDoubleMemberDeclarations(
     AstInterface::DoubleMemberDeclarations const & doubleMembers)
 {
-    for (AstInterface::DoubleMemberDeclarations::const_iterator i(
-             doubleMembers.begin());
-         i != doubleMembers.end(); ++i)
+    for (auto const& doubleMember : doubleMembers)
     {
-        ErrorHandler::error2(ErrorCode::DoubleMember, i->first, i->second);
+        ErrorHandler::error2(ErrorCode::DoubleMember, doubleMember.first, doubleMember.second);
     }
 }
 
-void addInheritedInterface(
-    AstInterface * ifc, rtl::OString const & name, bool optional,
-    rtl::OUString const & documentation)
+static void addInheritedInterface(
+    AstInterface * ifc, OString const & name, bool optional,
+    OUString const & documentation)
 {
     AstDeclaration * decl = ifc->lookupByName(name);
     AstDeclaration const * resolved = resolveTypedefs(decl);
@@ -127,12 +117,10 @@ void addInheritedInterface(
                         static_cast< AstType * >(decl), optional,
                         documentation);
                 } else {
-                    for (AstInterface::DoubleInterfaceDeclarations::iterator i(
-                             doubleDecls.interfaces.begin());
-                         i != doubleDecls.interfaces.end(); ++i)
+                    for (auto const& elem : doubleDecls.interfaces)
                     {
                         ErrorHandler::error1(
-                            ErrorCode::DoubleInheritance, *i);
+                            ErrorCode::DoubleInheritance, elem);
                     }
                     reportDoubleMemberDeclarations(doubleDecls.members);
                 }
@@ -144,8 +132,8 @@ void addInheritedInterface(
     }
 }
 
-AstDeclaration const * createNamedType(
-    rtl::OString const * scopedName, DeclList const * typeArgs)
+static AstDeclaration const * createNamedType(
+    OString const * scopedName, DeclList const * typeArgs)
 {
     AstDeclaration * decl = idlc()->scopes()->topNonNull()->lookupByName(
         *scopedName);
@@ -183,7 +171,7 @@ AstDeclaration const * createNamedType(
     return decl;
 }
 
-bool includes(AstDeclaration const * type1, AstDeclaration const * type2) {
+static bool includes(AstDeclaration const * type1, AstDeclaration const * type2) {
     OSL_ASSERT(type2 != nullptr);
     if (type1 != nullptr) {
         if (type1->getNodeType() == NT_instantiated_struct) {
@@ -208,8 +196,7 @@ bool includes(AstDeclaration const * type1, AstDeclaration const * type2) {
 
 // Suppress any warnings from generated code:
 #if defined _MSC_VER
-#pragma warning(push, 1)
-#pragma warning(disable: 4273 4701 4702)
+#pragma warning(disable: 4702) // unreachable code
 #endif
 %}
 /*
@@ -224,9 +211,9 @@ bool includes(AstDeclaration const * type1, AstDeclaration const * type2) {
     FeDeclarator*           fdval;      /* declarator value */
     FeDeclList*         dlval;      /* declarator list value */
     FeInheritanceHeader*    ihval;      /* inheritance header value */
-    ::rtl::OString*     sval;       /* OString value */
-    std::vector< rtl::OString > * svals;
-    sal_Char*           strval; /* sal_Char* value */
+    OString*     sval;       /* OString value */
+    std::vector< OString > * svals;
+    char*               strval; /* char* value */
     bool                bval;       /* sal_Boolean* value */
     sal_Int64               ival;       /* sal_Int64 value */
     sal_uInt64 uval; /* sal_uInt64 value */
@@ -501,7 +488,7 @@ interface_decl :
     identifier
     {
         idlc()->setParseState(PS_InterfaceIDSeen);
-       checkIdentifier($3);
+        checkIdentifier($3);
         $$ = $3;
     }
     ;
@@ -622,7 +609,7 @@ interface_dcl :
          * Push it on the scope stack
          */
         idlc()->scopes()->push(pInterface);
-        delete($1);
+        delete $1;
     }
     '{'
     {
@@ -636,8 +623,8 @@ interface_dcl :
             && ifc->getScopedName() != "com::sun::star::uno::XInterface")
         {
             addInheritedInterface(
-                ifc, rtl::OString("::com::sun::star::uno::XInterface"), false,
-                rtl::OUString());
+                ifc, "::com::sun::star::uno::XInterface", false,
+                OUString());
         }
         ifc->setDefined();
         idlc()->setParseState(PS_InterfaceBodySeen);
@@ -833,7 +820,7 @@ opt_attrflag :
     }
     | error ']'
     {
-       yyerror("unknown property|attribute flag");
+        yyerror("unknown property|attribute flag");
         yyerrok;
     }
     ;
@@ -892,8 +879,8 @@ opt_attribute_get_raises:
 attribute_get_raises:
     IDL_GET raises ';'
     {
-        $$.documentation = new rtl::OUString(
-            rtl::OStringToOUString(
+        $$.documentation = new OUString(
+            OStringToOUString(
                 idlc()->getDocumentation(), RTL_TEXTENCODING_UTF8));
         $$.exceptions = $2;
     }
@@ -915,8 +902,8 @@ attribute_set_raises:
     }
     raises ';'
     {
-        $$.documentation = new rtl::OUString(
-            rtl::OStringToOUString(
+        $$.documentation = new OUString(
+            OStringToOUString(
                 idlc()->getDocumentation(), RTL_TEXTENCODING_UTF8));
         $$.exceptions = $3;
     }
@@ -930,7 +917,7 @@ operation :
     identifier
     {
         idlc()->setParseState(PS_OpIDSeen);
-       checkIdentifier($3);
+        checkIdentifier($3);
 
         AstInterface * pScope = static_cast< AstInterface * >(
             idlc()->scopes()->top());
@@ -1199,7 +1186,7 @@ interface_inheritance_decl:
         } else {
             addInheritedInterface(
                 ifc, *$4, $1,
-                rtl::OStringToOUString(
+                OStringToOUString(
                     idlc()->getDocumentation(), RTL_TEXTENCODING_UTF8));
         }
         delete $4;
@@ -1421,11 +1408,11 @@ literal :
     }
     | IDL_TRUE
     {
-        $$ = new AstExpression((sal_Int32)1, ET_boolean);
+        $$ = new AstExpression(sal_Int32(1), ET_boolean);
     }
     | IDL_FALSE
     {
-        $$ = new AstExpression((sal_Int32)0, ET_boolean);
+        $$ = new AstExpression(sal_Int32(0), ET_boolean);
     }
     ;
 
@@ -1443,22 +1430,26 @@ const_type :
          * If the constant's type is a scoped name, it must resolve
          * to a scalar constant type
          */
-        if ( pScope && (type = pScope->lookupByName(*$1)) ) {
-            if (!ErrorHandler::checkPublished(type))
-            {
-                type = nullptr;
-                $$ = ET_none;
-            }
-            else
-            {
-                type = resolveTypedefs(type);
-                if (type->getNodeType() == NT_predefined)
+        if ( pScope ) {
+            type = pScope->lookupByName(*$1);
+            if (type) {
+                if (!ErrorHandler::checkPublished(type))
                 {
-                    $$ = static_cast< AstBaseType const * >(type)->
-                        getExprType();
-                } else
-                    $$ = ET_any;
-            }
+                    type = nullptr;
+                    $$ = ET_none;
+                }
+                else
+                {
+                    type = resolveTypedefs(type);
+                    if (type->getNodeType() == NT_predefined)
+                    {
+                        $$ = static_cast< AstBaseType const * >(type)->
+                            getExprType();
+                    } else
+                        $$ = ET_any;
+                }
+            } else
+                $$ = ET_any;
         } else
             $$ = ET_any;
     }
@@ -1561,7 +1552,7 @@ property :
                     pDecl = (*iter);
                     if ( !pDecl )
                     {
-                        iter++;
+                        ++iter;
                         continue;
                     }
 
@@ -1569,14 +1560,14 @@ property :
 
                     if ( !pType )
                     {
-                        iter++;
+                        ++iter;
                         continue;
                     }
 
                     pAttr = new AstAttribute(NT_property, $1, pType, pDecl->getName(), pScope);
 
                     pScope->addDeclaration(pAttr);
-                    iter++;
+                    ++iter;
                     delete pDecl;
                 }
             }
@@ -1619,12 +1610,9 @@ service_export :
              */
             if ( pScope && $2 )
             {
-                std::list< OString >::iterator iter = $2->begin();
-                std::list< OString >::iterator end = $2->end();
-
-                while ( iter != end )
+                for (auto const& elem : *($2))
                 {
-                    pDecl = pScope->lookupByName(*iter);
+                    pDecl = pScope->lookupByName(elem);
                     if ( pDecl && (pDecl->getNodeType() == NT_interface) )
                     {
                         /* we relax the strict published check and allow to add new
@@ -1634,14 +1622,13 @@ service_export :
                         if ( ErrorHandler::checkPublished(pDecl, bOptional) )
                         {
                             pIMember = new AstInterfaceMember(
-                                $1, static_cast<AstInterface*>(pDecl), *iter, pScope);
+                                $1, static_cast<AstInterface*>(pDecl), elem, pScope);
                             pScope->addDeclaration(pIMember);
                         }
                     } else
                     {
-                        ErrorHandler::lookupError(ErrorCode::InterfaceMemberLookup, *iter, scopeAsDecl(pScope));
+                        ErrorHandler::lookupError(ErrorCode::InterfaceMemberLookup, elem, scopeAsDecl(pScope));
                     }
-                    iter++;
                 }
             }
         }
@@ -1663,12 +1650,9 @@ service_export :
          */
         if ( pScope && $2 )
         {
-            std::list< OString >::iterator iter = $2->begin();
-            std::list< OString >::iterator end = $2->end();
-
-            while ( iter != end )
+            for (auto const& elem : *($2))
             {
-                pDecl = pScope->lookupByName(*iter);
+                pDecl = pScope->lookupByName(elem);
                 if ( pDecl && (pDecl->getNodeType() == NT_service) )
                 {
                     if ( static_cast< AstService * >(pDecl)->isSingleInterfaceBasedService() || (pScope->getScopeNodeType() == NT_singleton && pScope->nMembers() > 0) )
@@ -1676,14 +1660,13 @@ service_export :
                     else if ( ErrorHandler::checkPublished(pDecl) )
                     {
                         pSMember = new AstServiceMember(
-                            $1, static_cast<AstService*>(pDecl), *iter, pScope);
+                            $1, static_cast<AstService*>(pDecl), elem, pScope);
                         pScope->addDeclaration(pSMember);
                     }
                 } else
                 {
-                    ErrorHandler::lookupError(ErrorCode::ServiceMemberLookup, *iter, scopeAsDecl(pScope));
+                    ErrorHandler::lookupError(ErrorCode::ServiceMemberLookup, elem, scopeAsDecl(pScope));
                 }
-                iter++;
             }
         }
         delete $2;
@@ -1709,21 +1692,17 @@ service_export :
              */
             if ( pScope && $2 )
             {
-                std::list< OString >::iterator iter = $2->begin();
-                std::list< OString >::iterator end = $2->end();
-
-                while ( iter != end )
+                for (auto const& elem : *($2))
                 {
-                    pDecl = pScope->lookupByName(*iter);
+                    pDecl = pScope->lookupByName(elem);
                     if ( pDecl && (pDecl->getNodeType() == NT_interface) )
                     {
-                        pObserves = new AstObserves(static_cast<AstInterface*>(pDecl), *iter, pScope);
+                        pObserves = new AstObserves(static_cast<AstInterface*>(pDecl), elem, pScope);
                         pScope->addDeclaration(pObserves);
                     } else
                     {
-                        ErrorHandler::lookupError(ErrorCode::InterfaceMemberLookup, *iter, scopeAsDecl(pScope));
+                        ErrorHandler::lookupError(ErrorCode::InterfaceMemberLookup, elem, scopeAsDecl(pScope));
                     }
-                    iter++;
                 }
             }
         }
@@ -1750,21 +1729,17 @@ service_export :
              */
             if ( pScope && $2 )
             {
-                std::list< OString >::iterator iter = $2->begin();
-                std::list< OString >::iterator end = $2->end();
-
-                while ( iter != end )
+                for (auto const& elem : *($2))
                 {
-                    pDecl = pScope->lookupByName(*iter);
+                    pDecl = pScope->lookupByName(elem);
                     if ( pDecl && (pDecl->getNodeType() == NT_service) )
                     {
-                        pNeeds = new AstNeeds(static_cast<AstService*>(pDecl), *iter, pScope);
+                        pNeeds = new AstNeeds(static_cast<AstService*>(pDecl), elem, pScope);
                         pScope->addDeclaration(pNeeds);
                     } else
                     {
-                        ErrorHandler::lookupError(ErrorCode::ServiceMemberLookup, *iter, scopeAsDecl(pScope));
+                        ErrorHandler::lookupError(ErrorCode::ServiceMemberLookup, elem, scopeAsDecl(pScope));
                     }
-                    iter++;
                 }
             }
         }
@@ -1949,7 +1924,7 @@ singleton_dcl :
     }
     singleton_dfn
     {
-        /* this singelton is finished, pop its scope from the stack */
+        /* this singleton is finished, pop its scope from the stack */
         idlc()->scopes()->pop();
     }
     ;
@@ -2042,7 +2017,7 @@ type_declarator :
                 pDecl = (*iter);
                 if ( !pDecl )
                 {
-                    iter++;
+                    ++iter;
                     continue;
                 }
 
@@ -2050,14 +2025,14 @@ type_declarator :
 
                 if ( !pType )
                 {
-                    iter++;
+                    ++iter;
                     continue;
                 }
 
                 pTypeDef = new AstTypeDef(pType, pDecl->getName(), pScope);
 
                 pScope->addDeclaration(pTypeDef);
-                iter++;
+                ++iter;
                 delete pDecl;
             }
             delete pList;
@@ -2136,11 +2111,11 @@ at_least_one_scoped_name :
         } else
         {
             std::list< OString >* pScopedNames = new std::list< OString >;
-            // coverity [copy_paste_error]
+            // coverity[copy_paste_error : FALSE] - this is not a cut and paste
             pScopedNames->push_back(*$1);
             $$ = pScopedNames;
         }
-        delete($1);
+        delete $1;
     }
     ;
 
@@ -2163,7 +2138,7 @@ scoped_names :
             pNames->push_back(*$4);
             $$ = pNames;
         }
-        delete($4);
+        delete $4;
     }
     | /* EMPTY */
     {
@@ -2197,7 +2172,7 @@ scoped_name :
     identifier
     {
         checkIdentifier($4);
-        *$1 += ::rtl::OString("::");
+        *$1 += OString("::");
         *$1 += *$4;
         delete $4;
         $$ = $1;
@@ -2499,7 +2474,7 @@ opt_type_params:
 type_params:
     identifier
     {
-        $$ = new std::vector< rtl::OString >;
+        $$ = new std::vector< OString >;
         $$->push_back(*$1);
         delete $1;
     }
@@ -2551,7 +2526,7 @@ member :
                 pDecl = (*iter);
                 if ( !pDecl )
                 {
-                    iter++;
+                    ++iter;
                     continue;
                 }
 
@@ -2559,7 +2534,7 @@ member :
 
                 if ( !pType )
                 {
-                    iter++;
+                    ++iter;
                     continue;
                 }
 
@@ -2571,7 +2546,7 @@ member :
                 }
 
                 pScope->addDeclaration(pMember);
-                iter++;
+                ++iter;
                 delete pDecl;
             }
             delete pList;

@@ -18,17 +18,17 @@
  */
 #include <sfx2/bindings.hxx>
 #include "TextCharacterSpacingControl.hxx"
-#include "TextPropertyPanel.hrc"
-#include <svx/dialogs.hrc>
-#include <svx/dialmgr.hxx>
 #include <unotools/viewoptions.hxx>
+#include <editeng/editids.hrc>
 #include <editeng/kernitem.hxx>
-#include <editeng/fhgtitem.hxx>
+#include <sfx2/app.hxx>
 #include <sfx2/dispatch.hxx>
-#include <sfx2/sidebar/Theme.hxx>
-#include <vcl/settings.hxx>
-#include <vcl/lstbox.hxx>
+#include <sfx2/viewfrm.hxx>
+#include <svx/TextCharacterSpacingPopup.hxx>
 #include <svl/itempool.hxx>
+#include <helpids.h>
+
+#include <com/sun/star/beans/NamedValue.hpp>
 
 #define SPACING_VERY_TIGHT  -30
 #define SPACING_TIGHT       -15
@@ -38,60 +38,47 @@
 
 namespace svx {
 
-TextCharacterSpacingControl::TextCharacterSpacingControl(sal_uInt16 nId)
-    : SfxPopupWindow(nId, "TextCharacterSpacingControl", "svx/ui/textcharacterspacingcontrol.ui")
-,   mnId(nId)
-,   mnCustomKern(0)
-,   mnLastCus(SPACING_NOCUSTOM)
+TextCharacterSpacingControl::TextCharacterSpacingControl(TextCharacterSpacingPopup* pControl, weld::Widget* pParent)
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "svx/ui/textcharacterspacingcontrol.ui", "TextCharacterSpacingControl")
+    , mnCustomKern(0)
+    , mnLastCus(SPACING_NOCUSTOM)
+    , mxEditKerning(m_xBuilder->weld_metric_spin_button("kerning", FieldUnit::POINT))
+    , mxTight(m_xBuilder->weld_button("tight"))
+    , mxVeryTight(m_xBuilder->weld_button("very_tight"))
+    , mxNormal(m_xBuilder->weld_button("normal"))
+    , mxLoose(m_xBuilder->weld_button("loose"))
+    , mxVeryLoose(m_xBuilder->weld_button("very_loose"))
+    , mxLastCustom(m_xBuilder->weld_button("last_custom"))
+    , mxControl(pControl)
 {
-    get(maEditKerning, "kerning");
+    mxEditKerning->connect_value_changed(LINK(this, TextCharacterSpacingControl, KerningModifyHdl));
+    mxEditKerning->set_help_id(HID_SPACING_MB_KERN);
 
-    get(maNormal, "normal");
-    get(maVeryTight, "very_tight");
-    get(maTight, "tight");
-    get(maVeryLoose, "very_loose");
-    get(maLoose, "loose");
-    get(maLastCustom, "last_custom");
-
-    maEditKerning->SetModifyHdl(LINK(this, TextCharacterSpacingControl, KerningModifyHdl));
-    maEditKerning->SetHelpId(HID_SPACING_MB_KERN);
-
-    Link<Button*,void> aLink = LINK(this, TextCharacterSpacingControl, PredefinedValuesHdl);
-    maNormal->SetClickHdl(aLink);
-    maVeryTight->SetClickHdl(aLink);
-    maTight->SetClickHdl(aLink);
-    maVeryLoose->SetClickHdl(aLink);
-    maLoose->SetClickHdl(aLink);
-    maLastCustom->SetClickHdl(aLink);
+    Link<weld::Button&,void> aLink = LINK(this, TextCharacterSpacingControl, PredefinedValuesHdl);
+    mxNormal->connect_clicked(aLink);
+    mxVeryTight->connect_clicked(aLink);
+    mxTight->connect_clicked(aLink);
+    mxVeryLoose->connect_clicked(aLink);
+    mxLoose->connect_clicked(aLink);
+    mxLastCustom->connect_clicked(aLink);
 
     Initialize();
 }
 
-TextCharacterSpacingControl::~TextCharacterSpacingControl()
+void TextCharacterSpacingControl::GrabFocus()
 {
-    disposeOnce();
+    mxVeryTight->grab_focus();
 }
 
-void TextCharacterSpacingControl::dispose()
+TextCharacterSpacingControl::~TextCharacterSpacingControl()
 {
     if (mnLastCus == SPACING_CLOSE_BY_CUS_EDIT)
     {
         SvtViewOptions aWinOpt(EViewType::Window, SIDEBAR_SPACING_GLOBAL_VALUE);
         css::uno::Sequence<css::beans::NamedValue> aSeq
-            { { "Spacing", css::uno::makeAny(OUString::number(GetLastCustomValue())) } };
+            { { "Spacing", css::uno::makeAny(OUString::number(mnCustomKern)) } };
         aWinOpt.SetUserData(aSeq);
     }
-
-    maEditKerning.clear();
-
-    maNormal.clear();
-    maVeryTight.clear();
-    maTight.clear();
-    maVeryLoose.clear();
-    maLoose.clear();
-    maLastCustom.clear();
-
-    SfxPopupWindow::dispose();
 }
 
 void TextCharacterSpacingControl::Initialize()
@@ -109,8 +96,8 @@ void TextCharacterSpacingControl::Initialize()
     if(aWinOpt.Exists())
     {
         css::uno::Sequence<css::beans::NamedValue> aSeq = aWinOpt.GetUserData();
-        ::rtl::OUString aTmp;
-        if(aSeq.getLength())
+        OUString aTmp;
+        if(aSeq.hasElements())
             aSeq[0].Value >>= aTmp;
 
         OUString aWinData(aTmp);
@@ -126,19 +113,19 @@ void TextCharacterSpacingControl::Initialize()
     {
         MapUnit eUnit = GetCoreMetric();
         MapUnit eOrgUnit = eUnit;
-        long nBig = maEditKerning->Normalize(nKerning);
-        nKerning = LogicToLogic(nBig, eOrgUnit, MapUnit::MapPoint);
-        maEditKerning->SetValue(nKerning);
+        long nBig = mxEditKerning->normalize(nKerning);
+        nKerning = OutputDevice::LogicToLogic(nBig, eOrgUnit, MapUnit::MapPoint);
+        mxEditKerning->set_value(nKerning, FieldUnit::NONE);
     }
     else if(SfxItemState::DISABLED == eState)
     {
-        maEditKerning->SetText(OUString());
-        maEditKerning->Disable();
+        mxEditKerning->set_text(OUString());
+        mxEditKerning->set_sensitive(false);
     }
     else
     {
-        maEditKerning->SetText(OUString());
-        maEditKerning->Disable();
+        mxEditKerning->set_text(OUString());
+        mxEditKerning->set_sensitive(false);
     }
 }
 
@@ -149,60 +136,60 @@ void TextCharacterSpacingControl::ExecuteCharacterSpacing(long nValue, bool bClo
     long nSign = (nValue < 0) ? -1 : 1;
     nValue = nValue * nSign;
 
-    long nVal = LogicToLogic(nValue, MapUnit::MapPoint, eUnit);
-    short nKern = (nValue == 0) ? 0 : (short)maEditKerning->Denormalize(nVal);
+    long nVal = OutputDevice::LogicToLogic(nValue, MapUnit::MapPoint, eUnit);
+    short nKern = (nValue == 0) ? 0 : static_cast<short>(mxEditKerning->denormalize(nVal));
 
     SvxKerningItem aKernItem(nSign * nKern, SID_ATTR_CHAR_KERNING);
 
     SfxViewFrame::Current()->GetBindings().GetDispatcher()->ExecuteList(SID_ATTR_CHAR_KERNING,
         SfxCallMode::RECORD, { &aKernItem });
 
-    if(bClose)
-        EndPopupMode();
+    if (bClose)
+        mxControl->EndPopupMode();
 }
 
-IMPL_LINK(TextCharacterSpacingControl, PredefinedValuesHdl, Button*, pControl, void)
+IMPL_LINK(TextCharacterSpacingControl, PredefinedValuesHdl, weld::Button&, rControl, void)
 {
     mnLastCus = SPACING_CLOSE_BY_CLICK_ICON;
 
-    if(pControl == maNormal)
+    if (&rControl == mxNormal.get())
     {
         ExecuteCharacterSpacing(SPACING_NORMAL);
     }
-    else if(pControl == maVeryTight)
+    else if (&rControl == mxVeryTight.get())
     {
         ExecuteCharacterSpacing(SPACING_VERY_TIGHT);
     }
-    else if(pControl == maTight)
+    else if (&rControl == mxTight.get())
     {
         ExecuteCharacterSpacing(SPACING_TIGHT);
     }
-    else if(pControl == maVeryLoose)
+    else if (&rControl == mxVeryLoose.get())
     {
         ExecuteCharacterSpacing(SPACING_VERY_LOOSE);
     }
-    else if(pControl == maLoose)
+    else if (&rControl == mxLoose.get())
     {
         ExecuteCharacterSpacing(SPACING_LOOSE);
     }
-    else if(pControl == maLastCustom)
+    else if (&rControl == mxLastCustom.get())
     {
         ExecuteCharacterSpacing(mnCustomKern);
     }
 }
 
-IMPL_LINK_NOARG(TextCharacterSpacingControl, KerningModifyHdl, Edit&, void)
+IMPL_LINK_NOARG(TextCharacterSpacingControl, KerningModifyHdl, weld::MetricSpinButton&, void)
 {
     mnLastCus = SPACING_CLOSE_BY_CUS_EDIT;
-    mnCustomKern = static_cast<long>(maEditKerning->GetValue());
+    mnCustomKern = mxEditKerning->get_value(FieldUnit::NONE);
 
     ExecuteCharacterSpacing(mnCustomKern, false);
 }
 
-MapUnit TextCharacterSpacingControl::GetCoreMetric() const
+MapUnit TextCharacterSpacingControl::GetCoreMetric()
 {
     SfxItemPool &rPool = SfxGetpApp()->GetPool();
-    sal_uInt16 nWhich = rPool.GetWhich(mnId);
+    sal_uInt16 nWhich = rPool.GetWhich(SID_ATTR_CHAR_KERNING);
     return rPool.GetMetric(nWhich);
 }
 

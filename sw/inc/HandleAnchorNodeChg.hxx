@@ -35,8 +35,6 @@ public:
     /** checks, if re-creation of fly frames for an anchor node change at the
         given fly frame format is necessary, and performs the first part.
 
-        @author OD
-
         @param _rFlyFrameFormat
         reference to the fly frame format instance, which is handled.
 
@@ -49,20 +47,22 @@ public:
     */
     SwHandleAnchorNodeChg( SwFlyFrameFormat& _rFlyFrameFormat,
                            const SwFormatAnchor& _rNewAnchorFormat,
-                           SwFlyFrame* _pKeepThisFlyFrame = nullptr );
+                           SwFlyFrame const * _pKeepThisFlyFrame = nullptr );
 
-    /** calls <SwFlyFrameFormat::MakeFrames>, if re-creation of fly frames is necessary.
-
-        @author OD
-    */
-    ~SwHandleAnchorNodeChg();
+    /** calls <SwFlyFrameFormat::MakeFrames>, if re-creation of fly frames is necessary. */
+    ~SwHandleAnchorNodeChg() COVERITY_NOEXCEPT_FALSE;
 
 private:
-    // fly frame format, which is tracked for a anchor node change.
+    // fly frame format, which is tracked for an anchor node change.
     SwFlyFrameFormat& mrFlyFrameFormat;
     // internal flag, which indicates that the certain anchor node change occurs
     // and that re-creation of fly frames is necessary.
     bool mbAnchorNodeChanged;
+
+    /// If the fly frame has a comment, this points to the old comment anchor.
+    std::unique_ptr<SwPosition> mpCommentAnchor;
+
+    SwWrtShell* mpWrtShell;
 
     SwHandleAnchorNodeChg( const SwHandleAnchorNodeChg& ) = delete;
     void operator=( const SwHandleAnchorNodeChg ) = delete;

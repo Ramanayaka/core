@@ -30,14 +30,12 @@ namespace basegfx {
     class B2DPolyPolygon;
 }
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpLineStartEndAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC LineStartEndAttribute
         {
@@ -54,8 +52,8 @@ namespace drawinglayer
                 const basegfx::B2DPolyPolygon& rPolyPolygon,
                 bool bCentered);
             LineStartEndAttribute();
-            LineStartEndAttribute(const LineStartEndAttribute& rCandidate);
-            LineStartEndAttribute& operator=(const LineStartEndAttribute& rCandidate);
+            LineStartEndAttribute(const LineStartEndAttribute&);
+            LineStartEndAttribute& operator=(const LineStartEndAttribute&);
             ~LineStartEndAttribute();
 
             // checks if the incarnation is default constructed
@@ -70,8 +68,8 @@ namespace drawinglayer
             bool isCentered() const;
             bool isActive() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_LINESTARTENDATTRIBUTE_HXX

@@ -19,12 +19,14 @@
 
 #include <transliteration_Ignore.hxx>
 
+#include <numeric>
+
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
-static const sal_Unicode table_normalwidth[] = {
+const sal_Unicode table_normalwidth[] = {
     //  0x0000,   // 0x3040
     0x3041,       // 0x3041 HIRAGANA LETTER SMALL A
     0x3042,       // 0x3042 HIRAGANA LETTER A
@@ -219,7 +221,7 @@ static const sal_Unicode table_normalwidth[] = {
     //  0x0000    // 0x30ff
 };
 
-static const sal_Unicode table_halfwidth[] = {
+const sal_Unicode table_halfwidth[] = {
     //  0x0000,   // 0xff61 HALFWIDTH IDEOGRAPHIC FULL STOP
     //  0x0000,   // 0xff62 HALFWIDTH LEFT CORNER BRACKET
     //  0x0000,   // 0xff63 HALFWIDTH RIGHT CORNER BRACKET
@@ -286,8 +288,8 @@ static const sal_Unicode table_halfwidth[] = {
 };
 
 
-OUString SAL_CALL
-ignoreProlongedSoundMark_ja_JP::folding( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset )
+OUString
+ignoreProlongedSoundMark_ja_JP::foldingImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset, bool useOffset )
 {
     // Create a string buffer which can hold nCount + 1 characters.
     // The reference count is 1 now.
@@ -295,14 +297,10 @@ ignoreProlongedSoundMark_ja_JP::folding( const OUString& inStr, sal_Int32 startP
     sal_Unicode * dst = newStr->buffer;
     const sal_Unicode * src = inStr.getStr() + startPos;
 
-    sal_Int32 *p = nullptr;
-    sal_Int32 position = 0;
-
     if (useOffset) {
         // Allocate nCount length to offset argument.
         offset.realloc( nCount );
-        p = offset.getArray();
-        position = startPos;
+        std::iota(offset.begin(), offset.end(), startPos);
     }
 
 
@@ -324,15 +322,11 @@ ignoreProlongedSoundMark_ja_JP::folding( const OUString& inStr, sal_Int32 startP
             }
         }
 
-        if (useOffset)
-            *p ++ = position ++;
         *dst ++ = previousChar;
         previousChar = currentChar;
     }
 
     if (nCount == 0) {
-        if (useOffset)
-            *p = position;
         *dst ++ = previousChar;
     }
 
@@ -345,6 +339,6 @@ ignoreProlongedSoundMark_ja_JP::folding( const OUString& inStr, sal_Int32 startP
 
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

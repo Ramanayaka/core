@@ -26,7 +26,6 @@ namespace
     typedef ::cppu::WeakComponentImplHelper <
         css::ui::test::XUITest, css::lang::XServiceInfo
         > UITestBase;
-}
 
 class UITestUnoObj : public cppu::BaseMutex,
     public UITestBase
@@ -39,6 +38,9 @@ public:
     UITestUnoObj();
 
     sal_Bool SAL_CALL executeCommand(const OUString& rCommand) override;
+
+    sal_Bool SAL_CALL executeCommandWithParameters(const OUString& rCommand,
+        const css::uno::Sequence< css::beans::PropertyValue >& rArgs) override;
 
     sal_Bool SAL_CALL executeDialog(const OUString& rCommand) override;
 
@@ -53,6 +55,8 @@ public:
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 };
 
+}
+
 UITestUnoObj::UITestUnoObj():
     UITestBase(m_aMutex),
     mpUITest(new UITest)
@@ -63,6 +67,13 @@ sal_Bool SAL_CALL UITestUnoObj::executeCommand(const OUString& rCommand)
 {
     SolarMutexGuard aGuard;
     return UITest::executeCommand(rCommand);
+}
+
+sal_Bool SAL_CALL UITestUnoObj::executeCommandWithParameters(const OUString& rCommand,
+    const css::uno::Sequence< css::beans::PropertyValue >& rArgs)
+{
+    SolarMutexGuard aGuard;
+    return UITest::executeCommandWithParameters(rCommand,rArgs);
 }
 
 sal_Bool SAL_CALL UITestUnoObj::executeDialog(const OUString& rCommand)
@@ -87,7 +98,7 @@ css::uno::Reference<css::ui::test::XUIObject> SAL_CALL UITestUnoObj::getFloatWin
 
 OUString SAL_CALL UITestUnoObj::getImplementationName()
 {
-    return OUString("org.libreoffice.uitest.UITest");
+    return "org.libreoffice.uitest.UITest";
 }
 
 sal_Bool UITestUnoObj::supportsService(OUString const & ServiceName)
@@ -97,12 +108,10 @@ sal_Bool UITestUnoObj::supportsService(OUString const & ServiceName)
 
 css::uno::Sequence<OUString> UITestUnoObj::getSupportedServiceNames()
 {
-    css::uno::Sequence<OUString> aServiceNames(1);
-    aServiceNames[0] = "com.sun.star.ui.test.UITest";
-    return aServiceNames;
+    return { "com.sun.star.ui.test.UITest" };
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 UITest_get_implementation(css::uno::XComponentContext*, css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new UITestUnoObj());

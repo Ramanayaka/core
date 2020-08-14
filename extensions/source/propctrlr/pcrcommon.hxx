@@ -27,7 +27,6 @@
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/beans/PropertyChangeEvent.hpp>
 
-#include <toolkit/helper/vclunohelper.hxx>
 #include <comphelper/listenernotification.hxx>
 
 
@@ -94,7 +93,7 @@ namespace pcr
         iterator end() { return UnoBase::getArray() + UnoBase::getLength(); }
 
         sal_Int32 size() const { return UnoBase::getLength(); }
-        bool empty() const { return UnoBase::getLength() == 0; }
+        bool empty() const { return !UnoBase::hasElements(); }
     };
 
 

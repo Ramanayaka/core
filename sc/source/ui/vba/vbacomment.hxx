@@ -20,7 +20,6 @@
 #define INCLUDED_SC_SOURCE_UI_VBA_VBACOMMENT_HXX
 
 #include <ooo/vba/excel/XComment.hpp>
-#include <ooo/vba/excel/XApplication.hpp>
 #include <ooo/vba/msforms/XShape.hpp>
 #include <com/sun/star/sheet/XSheetAnnotations.hpp>
 #include <com/sun/star/sheet/XSheetAnnotation.hpp>
@@ -38,13 +37,13 @@ class ScVbaComment : public ScVbaComment_BASE
 
 private:
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::sheet::XSheetAnnotation > SAL_CALL getAnnotation();
+    css::uno::Reference< css::sheet::XSheetAnnotation > getAnnotation();
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::sheet::XSheetAnnotations > SAL_CALL getAnnotations();
+    css::uno::Reference< css::sheet::XSheetAnnotations > getAnnotations() const;
     /// @throws css::uno::RuntimeException
-    sal_Int32 SAL_CALL getAnnotationIndex();
+    sal_Int32 getAnnotationIndex();
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< ov::excel::XComment > SAL_CALL getCommentByIndex( sal_Int32 Index );
+    css::uno::Reference< ov::excel::XComment > getCommentByIndex( sal_Int32 Index );
 public:
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::uno::RuntimeException

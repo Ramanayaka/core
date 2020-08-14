@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ole/olestorage.hxx"
+#include <oox/ole/olestorage.hxx>
 
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/embed/XTransactedObject.hpp>
 #include <com/sun/star/io/IOException.hpp>
@@ -33,15 +32,12 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <osl/diagnose.h>
-#include "oox/helper/binaryinputstream.hxx"
-#include "oox/helper/binaryoutputstream.hxx"
-#include "oox/helper/containerhelper.hxx"
-#include "oox/helper/helper.hxx"
+#include <oox/helper/binaryinputstream.hxx>
+#include <oox/helper/binaryoutputstream.hxx>
+#include <oox/helper/containerhelper.hxx>
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::embed;
 using namespace ::com::sun::star::io;
@@ -287,7 +283,7 @@ void OleStorage::implGetElementNames( ::std::vector< OUString >& orElementNames 
     if( mxStorage.is() ) try
     {
         aNames = mxStorage->getElementNames();
-        if( aNames.getLength() > 0 )
+        if( aNames.hasElements() )
             orElementNames.insert( orElementNames.end(), aNames.begin(), aNames.end() );
     }
     catch(const Exception& )
@@ -315,13 +311,13 @@ StorageRef OleStorage::implOpenSubStorage( const OUString& rElementName, bool bC
             new OLE storage based on a temporary file. All operations are
             performed on this clean storage. On committing, the storage will be
             completely re-inserted into the parent storage. */
-        if( !isReadOnly() && (bCreateMissing || xSubStorage.get()) ) try
+        if( !isReadOnly() && (bCreateMissing || xSubStorage) ) try
         {
             // create new storage based on a temp file
             Reference< XStream > xTempFile( TempFile::create(mxContext), UNO_QUERY_THROW );
             StorageRef xTempStorage( new OleStorage( *this, xTempFile, rElementName ) );
             // copy existing substorage into temp storage
-            if( xSubStorage.get() )
+            if( xSubStorage )
                 xSubStorage->copyStorageToStorage( *xTempStorage );
             // return the temp storage to caller
             xSubStorage = xTempStorage;
@@ -378,7 +374,6 @@ void OleStorage::implCommit() const
     }
 }
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

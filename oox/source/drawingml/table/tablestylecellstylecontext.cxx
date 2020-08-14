@@ -18,10 +18,11 @@
  */
 
 
-#include "drawingml/table/tablestylecellstylecontext.hxx"
-#include "drawingml/misccontexts.hxx"
-#include "drawingml/linepropertiescontext.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <drawingml/table/tablestylecellstylecontext.hxx>
+#include <drawingml/misccontexts.hxx>
+#include <drawingml/lineproperties.hxx>
+#include <drawingml/linepropertiescontext.hxx>
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
@@ -30,9 +31,9 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
-TableStyleCellStyleContext::TableStyleCellStyleContext( ContextHandler2Helper& rParent, TableStylePart& rTableStylePart )
+TableStyleCellStyleContext::TableStyleCellStyleContext( ContextHandler2Helper const & rParent, TableStylePart& rTableStylePart )
 : ContextHandler2( rParent )
 , mrTableStylePart( rTableStylePart )
 , mnLineType( XML_none )
@@ -67,7 +68,7 @@ TableStyleCellStyleContext::onCreateContext( ::sal_Int32 aElementToken, const At
                 if ( mnLineType != XML_none )
                 {
                     std::map < sal_Int32, ::oox::drawingml::LinePropertiesPtr >& rLineBorders = mrTableStylePart.getLineBorders();
-                    ::oox::drawingml::LinePropertiesPtr pLineProperties( new oox::drawingml::LineProperties );
+                    ::oox::drawingml::LinePropertiesPtr pLineProperties = std::make_shared<oox::drawingml::LineProperties>();
                     rLineBorders[ mnLineType ] = pLineProperties;
                     return new LinePropertiesContext( *this, rAttribs, *pLineProperties );
                 }
@@ -88,7 +89,7 @@ TableStyleCellStyleContext::onCreateContext( ::sal_Int32 aElementToken, const At
         case A_TOKEN( fill ):       // CT_FillProperties
             {
                 FillPropertiesPtr& rxFillProperties = mrTableStylePart.getFillProperties();
-                rxFillProperties.reset( new FillProperties );
+                rxFillProperties = std::make_shared<FillProperties>();
                 return new FillPropertiesContext( *this, *rxFillProperties );
             }
         case A_TOKEN( fillRef ):    // CT_StyleMatrixReference
@@ -104,6 +105,6 @@ TableStyleCellStyleContext::onCreateContext( ::sal_Int32 aElementToken, const At
     return this;
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

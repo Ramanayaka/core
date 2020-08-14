@@ -22,27 +22,25 @@
 #include <sal/config.h>
 
 #include <map>
+#include <memory>
 
-#include "svx/svdmark.hxx"
+#include <svx/svdmark.hxx>
+#include <svx/svdobj.hxx>
 #include "fmdocumentclassification.hxx"
 
 #include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/form/runtime/XFormController.hpp>
 #include <com/sun/star/form/runtime/XFormControllerContext.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/container/ContainerEvent.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/awt/XFocusListener.hpp>
 #include <com/sun/star/sdb/SQLErrorEvent.hpp>
 #include <com/sun/star/sdbc/XDataSource.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
-#include <comphelper/stl_types.hxx>
 #include <tools/link.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/uno3.hxx>
 #include <rtl/ref.hxx>
 #include <vcl/vclptr.hxx>
 
@@ -59,7 +57,7 @@ class SdrUnoObj;
 struct ImplSVEvent;
 enum class SdrInventor : sal_uInt32;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt {
         class XControl;
         class XWindow;
@@ -70,7 +68,7 @@ namespace com { namespace sun { namespace star {
     namespace util {
         class XNumberFormats;
     }
-}}}
+}
 
 class FmXFormView;
 
@@ -86,7 +84,7 @@ typedef ::cppu::WeakImplHelper <   css::container::XIndexAccess
                                 ,   css::form::runtime::XFormControllerContext
                                 >   FormViewPageWindowAdapter_Base;
 
-class FormViewPageWindowAdapter : public FormViewPageWindowAdapter_Base
+class FormViewPageWindowAdapter final : public FormViewPageWindowAdapter_Base
 {
     friend class FmXFormView;
 
@@ -95,9 +93,6 @@ class FormViewPageWindowAdapter : public FormViewPageWindowAdapter_Base
     css::uno::Reference<css::uno::XComponentContext>                              m_xContext;
     FmXFormView*                m_pViewImpl;
     VclPtr<vcl::Window>         m_pWindow;
-
-protected:
-    virtual ~FormViewPageWindowAdapter() override;
 
 public:
     FormViewPageWindowAdapter(  const css::uno::Reference<css::uno::XComponentContext>& _rContext,
@@ -115,9 +110,11 @@ public:
     // XFormControllerContext
     virtual void SAL_CALL makeVisible( const css::uno::Reference< css::awt::XControl >& Control ) override;
 
-    const ::std::vector< css::uno::Reference< css::form::runtime::XFormController > >& GetList() {return m_aControllerList;}
+    const ::std::vector< css::uno::Reference< css::form::runtime::XFormController > >& GetList() const {return m_aControllerList;}
 
-protected:
+private:
+    virtual ~FormViewPageWindowAdapter() override;
+
     css::uno::Reference< css::form::runtime::XFormController >  getController( const css::uno::Reference< css::form::XForm >& xForm ) const;
     void setController(
             const css::uno::Reference< css::form::XForm >& xForm,
@@ -129,14 +126,8 @@ protected:
 };
 
 typedef ::rtl::Reference< FormViewPageWindowAdapter >   PFormViewPageWindowAdapter;
-typedef ::std::vector< PFormViewPageWindowAdapter >     PageWindowAdapterList;
-typedef ::std::set  <   css::uno::Reference< css::form::XForm >
-                    ,   ::comphelper::OInterfaceCompare< css::form::XForm >
-                    >   SetOfForms;
-typedef ::std::map  <   css::uno::Reference< css::awt::XControlContainer >
-                    ,   SetOfForms
-                    ,   ::comphelper::OInterfaceCompare< css::awt::XControlContainer >
-                    >   MapControlContainerToSetOfForms;
+typedef ::std::set< css::uno::Reference< css::form::XForm > > SetOfForms;
+typedef ::std::map< css::uno::Reference< css::awt::XControlContainer >, SetOfForms > MapControlContainerToSetOfForms;
 class SdrModel;
 
 class FmXFormView : public ::cppu::WeakImplHelper<
@@ -164,14 +155,15 @@ class FmXFormView : public ::cppu::WeakImplHelper<
     css::sdb::SQLErrorEvent
                     m_aAsyncError;          // error event which is to be displayed asyn. See m_nErrorMessageEvent.
 
-    PageWindowAdapterList
+    std::vector< PFormViewPageWindowAdapter >
                     m_aPageWindowAdapters;  // to be filled in alive mode only
     MapControlContainerToSetOfForms
                     m_aNeedTabOrderUpdate;
 
     // list of selected objects, used for restoration when switching from Alive to DesignMode
     SdrMarkList             m_aMark;
-    ObjectRemoveListener*   m_pWatchStoredList;
+    std::unique_ptr<ObjectRemoveListener>
+                    m_pWatchStoredList;
 
     bool            m_bFirstActivation;
     bool            m_isTabOrderUpdateSuspended;
@@ -232,7 +224,7 @@ public:
     */
     void    resumeTabOrderUpdate();
 
-    void    onCreatedFormObject( FmFormObj& _rFormObject );
+    void    onCreatedFormObject( FmFormObj const & _rFormObject );
 
     void    breakCreateFormObject();
 
@@ -246,11 +238,11 @@ private:
     void Activate(bool bSync = false);
     void Deactivate(bool bDeactivateController = true);
 
-    SdrObject*  implCreateFieldControl( const svx::ODataAccessDescriptor& _rColumnDescriptor );
-    SdrObject*  implCreateXFormsControl( const svx::OXFormsDescriptor &_rDesc );
+    SdrObjectUniquePtr implCreateFieldControl( const svx::ODataAccessDescriptor& _rColumnDescriptor );
+    SdrObjectUniquePtr implCreateXFormsControl( const svx::OXFormsDescriptor &_rDesc );
 
     static bool createControlLabelPair(
-        OutputDevice& _rOutDev,
+        OutputDevice const & _rOutDev,
         sal_Int32 _nXOffsetMM,
         sal_Int32 _nYOffsetMM,
         const css::uno::Reference< css::beans::XPropertySet >& _rxField,
@@ -259,23 +251,25 @@ private:
         const OUString& _rFieldPostfix,
         SdrInventor _nInventor,
         sal_uInt16 _nLabelObjectID,
-        SdrPage* _pLabelPage,
-        SdrPage* _pControlPage,
-        SdrModel* _pModel,
-        SdrUnoObj*& _rpLabel,
-        SdrUnoObj*& _rpControl
+
+        // tdf#118963 Need a SdrModel for SdrObject creation. To make the
+        // demand clear, hand over a SdrMldel&
+        SdrModel& _rModel,
+
+        std::unique_ptr<SdrUnoObj, SdrObjectFreeOp>& _rpLabel,
+        std::unique_ptr<SdrUnoObj, SdrObjectFreeOp>& _rpControl
     );
 
     bool    createControlLabelPair(
-        OutputDevice& _rOutDev,
+        OutputDevice const & _rOutDev,
         sal_Int32 _nXOffsetMM,
         sal_Int32 _nYOffsetMM,
         const css::uno::Reference< css::beans::XPropertySet >& _rxField,
         const css::uno::Reference< css::util::XNumberFormats >& _rxNumberFormats,
         sal_uInt16 _nControlObjectID,
         const OUString& _rFieldPostfix,
-        SdrUnoObj*& _rpLabel,
-        SdrUnoObj*& _rpControl,
+        std::unique_ptr<SdrUnoObj, SdrObjectFreeOp>& _rpLabel,
+        std::unique_ptr<SdrUnoObj, SdrObjectFreeOp>& _rpControl,
         const css::uno::Reference< css::sdbc::XDataSource >& _rxDataSource,
         const OUString& _rDataSourceName,
         const OUString& _rCommand,

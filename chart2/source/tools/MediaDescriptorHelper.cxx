@@ -17,7 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "MediaDescriptorHelper.hxx"
+#include <MediaDescriptorHelper.hxx>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/embed/XStorage.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 
 using namespace ::com::sun::star;
 
@@ -26,20 +31,17 @@ namespace apphelper
 
 MediaDescriptorHelper::MediaDescriptorHelper( const uno::Sequence<
                         beans::PropertyValue > & rMediaDescriptor )
-    : m_aRegularProperties(rMediaDescriptor.getLength())
-    , m_aDeprecatedProperties(rMediaDescriptor.getLength())
-    , m_aAdditionalProperties(rMediaDescriptor.getLength())
-    , m_aModelProperties(rMediaDescriptor.getLength())
+    : m_aModelProperties(rMediaDescriptor.getLength())
 {
+    css::uno::Sequence< css::beans::PropertyValue >
+                        aRegularProperties(rMediaDescriptor.getLength()); //these are the properties which are described in service com.sun.star.document.MediaDescriptor and not marked as deprecated
     impl_init();
     sal_Int32 nRegularCount = 0;
-    sal_Int32 nDeprecatedCount = 0;
-    sal_Int32 nAdditionalCount = 0;
     sal_Int32 nModelCount = 0;
 
-    auto addRegularProp = [this, &nRegularCount](const beans::PropertyValue& rRegularProp)
+    auto addRegularProp = [&aRegularProperties, &nRegularCount](const beans::PropertyValue& rRegularProp)
     {
-        m_aRegularProperties[nRegularCount] = rRegularProp;
+        aRegularProperties[nRegularCount] = rRegularProp;
         ++nRegularCount;
     };
     auto addModelProp = [this, &nModelCount, &addRegularProp](const beans::PropertyValue& rModelProp)
@@ -48,20 +50,12 @@ MediaDescriptorHelper::MediaDescriptorHelper( const uno::Sequence<
         m_aModelProperties[nModelCount] = rModelProp;
         ++nModelCount;
     };
-    auto addDepreciatedProp = [this, &nDeprecatedCount](const beans::PropertyValue& rDeprecatedProp)
-    {
-        m_aDeprecatedProperties[nDeprecatedCount] = rDeprecatedProp;
-        ++nDeprecatedCount;
-    };
 
     //read given rMediaDescriptor and store in internal structures:
-    for( sal_Int32 i= rMediaDescriptor.getLength();i--;)
+    for( const beans::PropertyValue& rProp : rMediaDescriptor)
     {
-        const beans::PropertyValue& rProp = rMediaDescriptor[i];
-
         if (rProp.Name == "AsTemplate")
         {
-            rProp.Value >>= AsTemplate;
             addModelProp(rProp);
         }
         else if (rProp.Name == "Author")
@@ -78,26 +72,16 @@ MediaDescriptorHelper::MediaDescriptorHelper( const uno::Sequence<
         }
         else if (rProp.Name == "ComponentData")
         {
-            ComponentData = rProp.Value;
             addModelProp(rProp);
-        }
-        else if (rProp.Name == "FileName")
-        {
-            addDepreciatedProp(rProp);
         }
         else if (rProp.Name == "FilterData")
         {
-            FilterData = rProp.Value;
             addModelProp(rProp);
         }
         else if (rProp.Name == "FilterName")
         {
             ISSET_FilterName = rProp.Value >>= FilterName;
             addModelProp(rProp);
-        }
-        else if (rProp.Name == "FilterFlags")
-        {
-            addDepreciatedProp(rProp);
         }
         else if (rProp.Name == "FilterOptions")
         {
@@ -109,7 +93,6 @@ MediaDescriptorHelper::MediaDescriptorHelper( const uno::Sequence<
         }
         else if (rProp.Name == "Hidden")
         {
-            rProp.Value >>= Hidden;
             addModelProp(rProp);
         }
         else if (rProp.Name == "HierarchicalDocumentName")
@@ -139,18 +122,12 @@ MediaDescriptorHelper::MediaDescriptorHelper( const uno::Sequence<
         {
             addModelProp(rProp);
         }
-        else if (rProp.Name == "OpenFlags")
-        {
-            addDepreciatedProp(rProp);
-        }
         else if (rProp.Name == "OpenNewView")
         {
-            rProp.Value >>= OpenNewView;
             addRegularProp(rProp);
         }
         else if (rProp.Name == "Overwrite")
         {
-            rProp.Value >>= Overwrite;
             addModelProp(rProp);
         }
         else if (rProp.Name == "Password")
@@ -165,13 +142,8 @@ MediaDescriptorHelper::MediaDescriptorHelper( const uno::Sequence<
         {
             addRegularProp(rProp);
         }
-        else if (rProp.Name == "PostString")
-        {
-            addDepreciatedProp(rProp);
-        }
         else if (rProp.Name == "Preview")
         {
-            rProp.Value >>= Preview;
             addModelProp(rProp);
         }
         else if (rProp.Name == "ReadOnly")
@@ -185,12 +157,10 @@ MediaDescriptorHelper::MediaDescriptorHelper( const uno::Sequence<
         }
         else if (rProp.Name == "SetEmbedded")
         {
-            rProp.Value >>= SetEmbedded;
             addRegularProp(rProp);
         }
         else if (rProp.Name == "Silent")
         {
-            rProp.Value >>= Silent;
             addRegularProp(rProp);
         }
         else if (rProp.Name == "StatusIndicator")
@@ -207,17 +177,8 @@ MediaDescriptorHelper::MediaDescriptorHelper( const uno::Sequence<
             ISSET_Stream = rProp.Value >>= Stream;
             addModelProp(rProp);
         }
-        else if (rProp.Name == "TemplateName")
-        {
-            addDepreciatedProp(rProp);
-        }
-        else if (rProp.Name == "TemplateRegionName")
-        {
-            addDepreciatedProp(rProp);
-        }
         else if (rProp.Name == "Unpacked")
         {
-            rProp.Value >>= Unpacked;
             addModelProp(rProp);
         }
         else if (rProp.Name == "URL")
@@ -227,58 +188,31 @@ MediaDescriptorHelper::MediaDescriptorHelper( const uno::Sequence<
         }
         else if (rProp.Name == "Version")
         {
-            rProp.Value >>= Version;
             addModelProp(rProp);
         }
         else if (rProp.Name == "ViewData")
         {
-            ViewData = rProp.Value;
             addModelProp(rProp);
         }
         else if (rProp.Name == "ViewId")
         {
-            rProp.Value >>= ViewId;
             addModelProp(rProp);
-        }
-        else if (rProp.Name == "WinExtent")
-        {
-            addDepreciatedProp(rProp);
-        }
-        else
-        {
-            m_aAdditionalProperties[nAdditionalCount]=rProp;
-            nAdditionalCount++;
         }
     }
 
-    m_aRegularProperties.realloc(nRegularCount);
-    m_aDeprecatedProperties.realloc(nDeprecatedCount);
-    m_aAdditionalProperties.realloc(nAdditionalCount);
+    aRegularProperties.realloc(nRegularCount);
     m_aModelProperties.realloc(nModelCount);
 }
 
 void MediaDescriptorHelper::impl_init()
 {
-    AsTemplate = false;
-
     ISSET_FilterName = false;
 
-    Hidden = false;
     ISSET_OutputStream = false;
     ISSET_InputStream = false;
-    OpenNewView = false;
-    Overwrite = false;
 
-    Preview = false;
     ReadOnly = false;
-    Silent = false;
-    Unpacked = false;
     ISSET_URL = false;
-    Version = 0;
-
-    ViewId = 0;
-
-    SetEmbedded = false;
 
     ISSET_Storage = false;
     ISSET_Stream = false;

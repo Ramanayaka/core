@@ -28,14 +28,14 @@
 #include <vcl/layout.hxx>
 #include <vcl/settings.hxx>
 
-// Horrible hack
+// Totally wrong of course but doesn't seem to harm much in the iOS app.
 static int viewWidth = 1, viewHeight = 1;
 
-class IosSalData : public SalGenericData
+class IosSalData : public GenericUnixSalData
 {
 public:
     explicit IosSalData(SalInstance *pInstance)
-        : SalGenericData(SAL_DATA_IOS, pInstance)
+        : GenericUnixSalData(SAL_DATA_IOS, pInstance)
     {
     }
     virtual void ErrorTrapPush() {}
@@ -58,8 +58,8 @@ IosSalInstance *IosSalInstance::getInstance()
     return static_cast<IosSalInstance *>(pData->m_pInstance);
 }
 
-IosSalInstance::IosSalInstance( SalYieldMutex *pMutex )
-    : SvpSalInstance( pMutex )
+IosSalInstance::IosSalInstance( std::unique_ptr<SalYieldMutex> pMutex )
+    : SvpSalInstance( std::move(pMutex) )
 {
 }
 
@@ -73,8 +73,7 @@ public:
     virtual ~IosSalSystem() {}
     virtual int ShowNativeDialog( const OUString& rTitle,
                                   const OUString& rMessage,
-                                  const std::list< OUString >& rButtons,
-                                  int nDefButton );
+                                  const std::vector< OUString >& rButtons );
 };
 
 SalSystem *IosSalInstance::CreateSalSystem()
@@ -108,7 +107,7 @@ public:
     virtual void UpdateSettings( AllSettings &rSettings ) override
     {
         // Clobber the UI fonts
-        vcl::Font aFont( OUString( "Helvetica" ), Size( 0, 14 ) );
+        vcl::Font aFont( "Helvetica", Size( 0, 10 ) );
 
         StyleSettings aStyleSet = rSettings.GetStyleSettings();
         aStyleSet.SetAppFont( aFont );
@@ -122,6 +121,12 @@ public:
         aStyleSet.SetIconFont( aFont );
         aStyleSet.SetTabFont( aFont );
         aStyleSet.SetGroupFont( aFont );
+
+        Color aBackgroundColor( 0xff, 0xff, 0xff );
+        aStyleSet.BatchSetBackgrounds( aBackgroundColor, false );
+        aStyleSet.SetMenuColor( aBackgroundColor );
+        aStyleSet.SetMenuBarColor( aBackgroundColor );
+        aStyleSet.SetDialogColor( aBackgroundColor );
 
         rSettings.SetStyleSettings( aStyleSet );
     }
@@ -137,11 +142,6 @@ SalFrame *IosSalInstance::CreateFrame( SalFrame* pParent, SalFrameStyleFlags nSt
 {
     return new IosSalFrame( this, pParent, nStyle );
 }
-
-// All the interesting stuff is slaved from the IosSalInstance
-void InitSalData()   {}
-void DeInitSalData() {}
-void InitSalMain()   {}
 
 void SalAbort( const OUString& rErrorText, bool bDumpCore )
 {
@@ -171,25 +171,23 @@ SalData::~SalData()
 // This is our main entry point:
 SalInstance *CreateSalInstance()
 {
-    IosSalInstance* pInstance = new IosSalInstance( new SalYieldMutex() );
+    IosSalInstance* pInstance = new IosSalInstance( std::make_unique<SvpSalYieldMutex>() );
     new IosSalData( pInstance );
-    pInstance->AcquireYieldMutex(1);
+    pInstance->AcquireYieldMutex();
     return pInstance;
 }
 
 void DestroySalInstance( SalInstance *pInst )
 {
-    pInst->ReleaseYieldMutex();
+    pInst->ReleaseYieldMutexAll();
     delete pInst;
 }
 
 int IosSalSystem::ShowNativeDialog( const OUString& rTitle,
                                     const OUString& rMessage,
-                                    const std::list< OUString >& rButtons,
-                                    int nDefButton )
+                                    const std::vector< OUString >& rButtons )
 {
     (void)rButtons;
-    (void)nDefButton;
 
     NSLog(@"%@: %@", CreateNSString(rTitle), CreateNSString(rMessage));
 

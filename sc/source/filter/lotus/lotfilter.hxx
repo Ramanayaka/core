@@ -21,49 +21,43 @@
 #define INCLUDED_SC_SOURCE_FILTER_LOTUS_FILTER_HXX
 
 #include <map>
-#include "decl.h"
-#include "op.h"
-#include "optab.h"
-#include "root.hxx"
+#include <decl.h>
+#include <optab.h>
+#include <patattr.hxx>
+#include <lotattr.hxx>
+#include <lotrange.hxx>
+#include <lotfntbf.hxx>
+#include <flttypes.hxx>
+#include <namebuff.hxx>
 
 class SvxHorJustifyItem;
-class ScProtectionAttr;
-class SfxUInt32Item;
 class FormCache;
 
 struct LotusContext
 {
     static const sal_uInt16 nBOF = 0x0000;
-    WKTYP            eTyp;          // type of file being processed
-    bool             bEOF;          // shows end of file
-    rtl_TextEncoding eCharVon;
-    ScDocument*      pDoc;          // pointer to access document
     static OPCODE_FKT pOpFkt[ FKT_LIMIT ];
     static OPCODE_FKT pOpFkt123[ FKT_LIMIT123 ]; // -> optab.cxx; table of possible Opcodes
-    LOTUS_ROOT*      pLotusRoot;
+
+    WKTYP            eTyp;          // type of file being processed
+    bool             bEOF;          // shows end of file
+    rtl_TextEncoding eCharset;
+    ScDocument*      pDoc;          // pointer to access document
     std::map<sal_uInt16, ScPatternAttr> aLotusPatternPool;
 
     SvxHorJustifyItem *pAttrRight, *pAttrLeft, *pAttrCenter, *pAttrRepeat, *pAttrStandard;
-    ScProtectionAttr* pAttrUnprot;
 
     FormCache*       pValueFormCache; // -> initialized in memory.cxx
 
-    LotusContext()
-        : eTyp(eWK_UNKNOWN)
-        , bEOF(false)
-        , eCharVon(RTL_TEXTENCODING_DONTKNOW)
-        , pDoc(nullptr)
-        , pLotusRoot(nullptr)
+    LotusRangeList      maRangeNames;
+    Lotus123Typ         eFirstType;
+    Lotus123Typ         eActType;
+    ScRange             aActRange;
+    std::unique_ptr<RangeNameBufferWK3> pRngNmBffWK3;
+    LotusFontBuffer     maFontBuff;
+    LotAttrTable        maAttrTable;
 
-        , pAttrRight(nullptr)
-        , pAttrLeft(nullptr)
-        , pAttrCenter(nullptr)
-        , pAttrRepeat(nullptr)
-        , pAttrStandard(nullptr)
-        , pAttrUnprot(nullptr)
-        , pValueFormCache(nullptr)
-    {
-    }
+    LotusContext(ScDocument* pDocP, rtl_TextEncoding eQ);
 };
 
 #endif

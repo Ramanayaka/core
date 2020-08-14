@@ -54,10 +54,10 @@
 /config_build.mk
 /config_build_lang.mk
 /configure
-/lo.xcent
 /bin/bffvalidator.sh
 /bin/odfvalidator.sh
 /bin/officeotron.sh
+/hardened_runtime.xcent
 /Makefile
 /NEWS
 /TODO
@@ -80,6 +80,7 @@
 *~
 .*sw?
 \#*
+.\#*
 *.kdev4
 .kdev_include_paths
 .buckd
@@ -93,6 +94,8 @@ eclipsesettingfile.xml
 .cxx_tags
 .yavide_proj
 .yavide_session
+.vscode
+*.code-workspace
 
 # things below this point are targeted for elimination
 
@@ -138,12 +141,14 @@ DerivedData
 *.opensdf
 *.vcxproj*
 /.vs
-LibreOffice.VC.db
+/.vscode
+*.VC.db
 LibreOffice.VC.VC.opendb
 
 # QtCreator specific
 *.pro
 *.pro.user
+*.pro.user.*
 
 # doxygen output
 /docs
@@ -174,3 +179,6 @@ LibreOffice.VC.VC.opendb
 
 # vim-ide-integration
 /compile_commands.json
+
+# clang-plugin generated temporary files
+compilerplugins/clang/sharedvisitor/*.dwo

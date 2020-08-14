@@ -20,11 +20,9 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_DROPDOWNBOXTOOLBARCONTROLLER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_DROPDOWNBOXTOOLBARCONTROLLER_HXX
 
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/frame/ControlCommand.hpp>
 
 #include <uielement/complextoolbarcontroller.hxx>
-#include <vcl/lstbox.hxx>
 #include <vcl/vclptr.hxx>
 
 class ToolBox;
@@ -34,7 +32,7 @@ namespace framework
 
 class ListBoxControl;
 
-class DropdownToolbarController : public ComplexToolbarController
+class DropdownToolbarController final : public ComplexToolbarController
 
 {
     public:
@@ -54,11 +52,10 @@ class DropdownToolbarController : public ComplexToolbarController
         void GetFocus();
         void LoseFocus();
 
-    protected:
+    private:
         virtual void executeControlCommand( const css::frame::ControlCommand& rControlCommand ) override;
         virtual css::uno::Sequence< css::beans::PropertyValue> getExecuteArgs(sal_Int16 KeyModifier) const override;
 
-    private:
         VclPtr<ListBoxControl>    m_pListBoxControl;
 };
 

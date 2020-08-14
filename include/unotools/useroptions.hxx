@@ -20,10 +20,11 @@
 #define INCLUDED_UNOTOOLS_USEROPTIONS_HXX
 
 #include <unotools/unotoolsdllapi.h>
-#include <unotools/configitem.hxx>
-#include <osl/mutex.hxx>
+#include <rtl/ustring.hxx>
 #include <unotools/options.hxx>
 #include <memory>
+
+namespace osl { class Mutex; }
 
 // define ----------------------------------------------------------------
 enum class UserOptToken
@@ -45,12 +46,15 @@ enum class UserOptToken
     Zip                = 14,
     FathersName        = 15,
     Apartment          = 16,
-    LAST               = Apartment,
+    SigningKey         = 17,
+    EncryptionKey      = 18,
+    EncryptToSelf      = 19,
+    LAST               = EncryptToSelf,
 };
 
 // class SvtUserOptions --------------------------------------------------
 
-class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtUserOptions : public utl::detail::Options
+class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtUserOptions final : public utl::detail::Options
 {
 public:
     SvtUserOptions ();
@@ -74,19 +78,23 @@ public:
     OUString GetTelephoneWork  () const;
     OUString GetFax            () const;
     OUString GetEmail          () const;
+    OUString GetSigningKey     () const;
+    OUString GetEncryptionKey  () const;
+    bool GetEncryptToSelf      () const;
 
     OUString GetFullName       () const;
 
     bool      IsTokenReadonly (UserOptToken nToken) const;
     OUString  GetToken (UserOptToken nToken) const;
     void      SetToken (UserOptToken nToken, OUString const& rNewToken);
+    void      SetBoolValue (UserOptToken nToken, bool bNewValue);
 
 private:
-    class Impl;
+    class SAL_DLLPRIVATE Impl;
     std::shared_ptr<Impl> xImpl;
     static std::weak_ptr<Impl> xSharedImpl;
 private:
-    class ChangeListener;
+    class SAL_DLLPRIVATE ChangeListener;
 };
 
 #endif // INCLUDED_UNOTOOLS_USEROPTIONS_HXX

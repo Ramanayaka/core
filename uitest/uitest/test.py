@@ -22,11 +22,6 @@ class DialogNotExecutedException(Exception):
     def __str__(self):
         return "Dialog not executed for: " + self.command
 
-class DialogNotClosedException(Exception):
-
-    def __str__(self):
-        return "Dialog was not closed"
-
 class UITest(object):
 
     def __init__(self, xUITest, xContext):
@@ -53,6 +48,24 @@ class UITest(object):
             if component is not None:
                 return component
 
+    def wait_until_child_is_available(self, parent, childName):
+        time_ = 0
+        while time_ < MAX_WAIT:
+            if childName in parent.getChildren():
+                break
+            else:
+                time_ += DEFAULT_SLEEP
+                time.sleep(DEFAULT_SLEEP)
+
+    def wait_until_property_is_updated(self, element, propertyName, value):
+        time_ = 0
+        while time_ < MAX_WAIT:
+            if get_state_as_dict(element)[propertyName] == value:
+                break
+            else:
+                time_ += DEFAULT_SLEEP
+                time.sleep(DEFAULT_SLEEP)
+
     def load_file(self, url):
         desktop = self.get_desktop()
         with EventListener(self._xContext, "OnLoad") as event:
@@ -68,22 +81,18 @@ class UITest(object):
                 time_ += DEFAULT_SLEEP
                 time.sleep(DEFAULT_SLEEP)
 
-    def execute_dialog_through_command(self, command):
-        with EventListener(self._xContext, "DialogExecute") as event:
+    def execute_dialog_through_command(self, command, printNames=False):
+        with EventListener(self._xContext, "DialogExecute", printNames=printNames) as event:
             if not self._xUITest.executeDialog(command):
                 raise DialogNotExecutedException(command)
-            time_ = 0
-            while time_ < MAX_WAIT:
+            while True:
                 if event.executed:
                     time.sleep(DEFAULT_SLEEP)
                     return
-                time_ += DEFAULT_SLEEP
                 time.sleep(DEFAULT_SLEEP)
 
-        raise DialogNotExecutedException(command)
-
-    def execute_modeless_dialog_through_command(self, command):
-        with EventListener(self._xContext, "ModelessDialogVisible") as event:
+    def execute_modeless_dialog_through_command(self, command, printNames=False):
+        with EventListener(self._xContext, "ModelessDialogVisible", printNames = printNames) as event:
             if not self._xUITest.executeCommand(command):
                 raise DialogNotExecutedException(command)
             time_ = 0
@@ -115,22 +124,23 @@ class UITest(object):
         xCrashReportDlg = self._xUITest.getTopFocusWindow()
         state = get_state_as_dict(xCrashReportDlg)
         print(state)
-        if state['ID'] == "CrashReportDialog":
-            print("found a crash reporter")
-            xCancelBtn = xCrashReportDlg.getChild("btn_cancel")
-            self.close_dialog_through_button(xCancelBtn)
-        else:
-            raise RuntimeException("not a crashreporter")
+        if state['ID'] != "CrashReportDialog":
+            return False
+        print("found a crash reporter")
+        xCancelBtn = xCrashReportDlg.getChild("btn_cancel")
+        self.close_dialog_through_button(xCancelBtn)
+        return True
 
     def create_doc_in_start_center(self, app):
         xStartCenter = self._xUITest.getTopFocusWindow()
         try:
             xBtn = xStartCenter.getChild(app + "_all")
         except RuntimeException:
-            print("Handled crash reporter")
-            self._handle_crash_reporter()
-            xStartCenter = self._xUITest.getTopFocusWindow()
-            xBtn = xStartCenter.getChild(app + "_all")
+            if self._handle_crash_reporter():
+                xStartCenter = self._xUITest.getTopFocusWindow()
+                xBtn = xStartCenter.getChild(app + "_all")
+            else:
+                raise
 
         with EventListener(self._xContext, "OnNew") as event:
             xBtn.executeAction("CLICK", tuple())
@@ -151,42 +161,58 @@ class UITest(object):
     def close_dialog_through_button(self, button):
         with EventListener(self._xContext, "DialogClosed" ) as event:
             button.executeAction("CLICK", tuple())
-            time_ = 0
-            while time_ < MAX_WAIT:
+            while True:
                 if event.executed:
                     time.sleep(DEFAULT_SLEEP)
                     return
-                time_ += DEFAULT_SLEEP
                 time.sleep(DEFAULT_SLEEP)
-        raise DialogNotClosedException()
 
     def close_doc(self):
-        with EventListener(self._xContext, ["DialogExecute", "OnViewClosed"] ) as event:
-            if not self._xUITest.executeDialog(".uno:CloseDoc"):
-                print(".uno:CloseDoc failed")
-            time_ = 0
-            while time_ < MAX_WAIT:
-                if event.hasExecuted("DialogExecute"):
-                    xCloseDlg = self._xUITest.getTopFocusWindow()
-                    xNoBtn = xCloseDlg.getChild("discard")
-                    xNoBtn.executeAction("CLICK", tuple())
-                    return
-                elif event.hasExecuted("OnViewClosed"):
-                    return
+        desktop = self.get_desktop()
+        active_frame = desktop.getActiveFrame()
+        if not active_frame:
+            print("close_doc: no active frame")
+            return
+        component = active_frame.getController().getModel()
+        if not component:
+            print("close_doc: active frame has no component")
+            return
+        component.dispose()
+        frames = desktop.getFrames()
+        if frames:
+            frames[0].activate()
 
-                time_ += DEFAULT_SLEEP
-                time.sleep(DEFAULT_SLEEP)
+    def execute_blocking_action(self, action, dialog_element=None,
+            args=(), dialog_handler=None, printNames=False):
+        """Executes an action which blocks while a dialog is shown.
 
-    def execute_blocking_action(self, action, dialog_element, args = ()):
+        Click a button or perform some other action on the dialog when it
+        is shown.
+
+        Args:
+            action(callable): Will be called to show a dialog, and is expected
+                to block while the dialog is shown.
+            dialog_element(str, optional): The name of a button on the dialog
+                which will be clicked when the dialog is shown.
+            args(tuple, optional): The arguments to be passed to `action`
+            dialog_handler(callable, optional): Will be called when the dialog
+                is shown, with the dialog object passed as a parameter.
+            printNames: print all received event names
+        """
+
         thread = threading.Thread(target=action, args=args)
-        with EventListener(self._xContext, ["DialogExecute", "ModelessDialogExecute"]) as event:
+        with EventListener(self._xContext, ["DialogExecute", "ModelessDialogExecute", "ModelessDialogVisible"], printNames=printNames) as event:
             thread.start()
             time_ = 0
-            while time_ < MAX_WAIT:
+            # we are not necessarily opening a dialog, so wait much longer
+            while time_ < 10 * MAX_WAIT:
                 if event.executed:
                     xDlg = self._xUITest.getTopFocusWindow()
-                    xUIElement = xDlg.getChild(dialog_element)
-                    xUIElement.executeAction("CLICK", tuple())
+                    if dialog_element:
+                        xUIElement = xDlg.getChild(dialog_element)
+                        xUIElement.executeAction("CLICK", tuple())
+                    if dialog_handler:
+                        dialog_handler(xDlg)
                     thread.join()
                     return
 

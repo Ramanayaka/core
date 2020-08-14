@@ -29,13 +29,14 @@
 /**
  * Import all text into a string buffer.  Paragraph elements (<text:p>)
  * are recognized and cause a return character (0x0a) to be added.
+ *
+ * Supports both old and fast-parser.
  */
-class XMLStringBufferImportContext : public SvXMLImportContext
+class XMLStringBufferImportContext final : public SvXMLImportContext
 {
     OUStringBuffer& rTextBuffer;
 
 public:
-
 
     XMLStringBufferImportContext(
         SvXMLImport& rImport,
@@ -43,9 +44,13 @@ public:
         const OUString& sLocalName,
         OUStringBuffer& rBuffer);
 
+    XMLStringBufferImportContext(
+        SvXMLImport& rImport,
+        OUStringBuffer& rBuffer);
+
     virtual ~XMLStringBufferImportContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList >& xAttrList ) override;
@@ -54,6 +59,12 @@ public:
         const OUString& rChars ) override;
 
     virtual void EndElement() override;
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
+    virtual void SAL_CALL startFastElement( sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
+    virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
+    virtual void SAL_CALL characters(const OUString& rChars) override;
 };
 
 #endif

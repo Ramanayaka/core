@@ -20,16 +20,19 @@
 #include <sal/config.h>
 
 #include <sal/log.hxx>
-#include <unotools/configmgr.hxx>
+#include <unotools/localedatawrapper.hxx>
+#include <unotools/charclass.hxx>
 #include <unotools/syslocale.hxx>
 #include <unotools/syslocaleoptions.hxx>
-#include <comphelper/processfactory.hxx>
+#include <comphelper/lok.hxx>
 #include <comphelper/sequence.hxx>
 #include <rtl/tencinfo.h>
 #include <rtl/locale.h>
 #include <osl/thread.h>
 #include <osl/nlsupport.h>
+
 #include <vector>
+#include <memory>
 
 using namespace osl;
 using namespace com::sun::star;
@@ -43,9 +46,9 @@ std::weak_ptr<SvtSysLocale_Impl> g_pSysLocale;
 class SvtSysLocale_Impl : public utl::ConfigurationListener
 {
 public:
-        SvtSysLocaleOptions     aSysLocaleOptions;
-        LocaleDataWrapper*      pLocaleData;
-        CharClass*              pCharClass;
+        SvtSysLocaleOptions                    aSysLocaleOptions;
+        std::unique_ptr<LocaleDataWrapper>      pLocaleData;
+        std::unique_ptr<CharClass>              pCharClass;
 
                                 SvtSysLocale_Impl();
     virtual                     ~SvtSysLocale_Impl() override;
@@ -57,9 +60,9 @@ private:
     void                        setDateAcceptancePatternsConfig();
 };
 
-SvtSysLocale_Impl::SvtSysLocale_Impl() : pCharClass(nullptr)
+SvtSysLocale_Impl::SvtSysLocale_Impl()
 {
-    pLocaleData = new LocaleDataWrapper( aSysLocaleOptions.GetRealLanguageTag() );
+    pLocaleData.reset(new LocaleDataWrapper( aSysLocaleOptions.GetRealLanguageTag() ));
     setDateAcceptancePatternsConfig();
 
     // listen for further changes
@@ -69,15 +72,13 @@ SvtSysLocale_Impl::SvtSysLocale_Impl() : pCharClass(nullptr)
 SvtSysLocale_Impl::~SvtSysLocale_Impl()
 {
     aSysLocaleOptions.RemoveListener( this );
-    delete pCharClass;
-    delete pLocaleData;
 }
 
 CharClass* SvtSysLocale_Impl::GetCharClass()
 {
     if ( !pCharClass )
-        pCharClass = new CharClass( aSysLocaleOptions.GetRealLanguageTag() );
-    return pCharClass;
+        pCharClass.reset(new CharClass( aSysLocaleOptions.GetRealLanguageTag() ));
+    return pCharClass.get();
 }
 
 void SvtSysLocale_Impl::ConfigurationChanged( utl::ConfigurationBroadcaster*, ConfigurationHints nHint )
@@ -149,7 +150,7 @@ const LocaleDataWrapper& SvtSysLocale::GetLocaleData() const
 
 const LocaleDataWrapper* SvtSysLocale::GetLocaleDataPtr() const
 {
-    return pImpl->pLocaleData;
+    return pImpl->pLocaleData.get();
 }
 
 const CharClass& SvtSysLocale::GetCharClass() const
@@ -169,18 +170,24 @@ SvtSysLocaleOptions& SvtSysLocale::GetOptions() const
 
 const LanguageTag& SvtSysLocale::GetLanguageTag() const
 {
+    if (comphelper::LibreOfficeKit::isActive())
+        return comphelper::LibreOfficeKit::getLocale();
+
     return pImpl->aSysLocaleOptions.GetRealLanguageTag();
 }
 
 const LanguageTag& SvtSysLocale::GetUILanguageTag() const
 {
+    if (comphelper::LibreOfficeKit::isActive())
+        return comphelper::LibreOfficeKit::getLanguageTag();
+
     return pImpl->aSysLocaleOptions.GetRealUILanguageTag();
 }
 
 // static
 rtl_TextEncoding SvtSysLocale::GetBestMimeEncoding()
 {
-    const sal_Char* pCharSet = rtl_getBestMimeCharsetFromTextEncoding(
+    const char* pCharSet = rtl_getBestMimeCharsetFromTextEncoding(
             osl_getThreadTextEncoding() );
     if ( !pCharSet )
     {
@@ -192,7 +199,7 @@ rtl_TextEncoding SvtSysLocale::GetBestMimeEncoding()
         // 'qlt' to rtl_locale_register() and the underlying system locale
         // stuff, which doesn't know about it nor about BCP47 in the Variant
         // field. So use the real language and for non-pure ISO cases hope for
-        // the best.. the fallback to UTF-8 should solve these cases nowadays.
+        // the best... the fallback to UTF-8 should solve these cases nowadays.
         /* FIXME-BCP47: the script needs to go in here as well, so actually
          * we'd need some variant fiddling or glibc locale string and tweak
          * rtl_locale_register() to know about it! But then again the Windows

@@ -20,12 +20,11 @@
 #ifndef INCLUDED_IO_SOURCE_STM_STREAMHELPER_HXX
 #define INCLUDED_IO_SOURCE_STM_STREAMHELPER_HXX
 
-#include <com/sun/star/io/BufferSizeExceededException.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
 
 #include <assert.h>
 
-#define Max( a, b )     (((a)>(b)) ? (a) : (b) )
-#define Min( a, b )     (((a)<(b)) ? (a) : (b) )
+using namespace com::sun::star::uno;
 
 namespace io_stm
 {
@@ -51,7 +50,7 @@ public:
 private:
     /// @throws css::io::BufferSizeExceededException
     void resizeBuffer(sal_Int32 nMinSize);
-    void checkInvariants() {
+    void checkInvariants() const {
         assert( m_nBufferLen >= 0 );
         assert( m_nOccupiedBuffer >= 0 );
         assert( m_nOccupiedBuffer <= m_nBufferLen );

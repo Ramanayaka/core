@@ -22,44 +22,38 @@
 #include <com/sun/star/sdbc/SQLWarning.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <connectivity/odbc.hxx>
-#include "odbc/odbcbasedllapi.hxx"
-#include <connectivity/OSubComponent.hxx>
+#include <odbc/odbcbasedllapi.hxx>
 #include <connectivity/CommonTools.hxx>
-#include "TConnection.hxx"
-#include "OTypeInfo.hxx"
-#include "OTools.hxx"
+#include <TConnection.hxx>
+#include <OTypeInfo.hxx>
+#include <odbc/OTools.hxx>
 #include <cppuhelper/weakref.hxx>
-#include "AutoRetrievingBase.hxx"
+#include <AutoRetrievingBase.hxx>
 #include <osl/module.h>
+#include <rtl/ref.hxx>
 
 
 #include <map>
 
-namespace connectivity
-{
-    namespace odbc
+namespace connectivity::odbc
     {
         class ODBCDriver;
 
         typedef connectivity::OMetaConnection OConnection_BASE;
         typedef std::vector< ::connectivity::OTypeInfo>   TTypeInfoVector;
 
-        class OOO_DLLPUBLIC_ODBCBASE OConnection :
+        class OOO_DLLPUBLIC_ODBCBASE OConnection final :
                             public OConnection_BASE,
-                            public connectivity::OSubComponent<OConnection, OConnection_BASE>,
                             public OAutoRetrievingBase
         {
-            friend class connectivity::OSubComponent<OConnection, OConnection_BASE>;
-
-        protected:
-
             // Data attributes
 
-            std::map< SQLHANDLE,OConnection*> m_aConnections; // holds all connections which are need for several statements
+            std::map< SQLHANDLE, rtl::Reference<OConnection>> m_aConnections; // holds all connections which are need for several statements
 
 
             OUString        m_sUser;        //  the user name
-            ODBCDriver*     m_pDriver;      //  Pointer to the owning
+            rtl::Reference<ODBCDriver>
+                            m_xDriver;      //  Pointer to the owning
                                             //  driver object
 
             SQLHANDLE       m_aConnectionHandle;
@@ -68,7 +62,6 @@ namespace connectivity
             bool            m_bClosed;
             bool            m_bUseCatalog;  // should we use the catalog on filebased databases
             bool            m_bUseOldDateFormat;
-            bool            m_bParameterSubstitution;
             bool            m_bIgnoreDriverPrivileges;
             bool            m_bPreventGetVersionColumns;    // #i60273#
             bool            m_bReadOnly;
@@ -87,8 +80,6 @@ namespace connectivity
 
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
-            // XInterface
-            virtual void SAL_CALL release() throw() override;
 
             // XServiceInfo
             DECLARE_SERVICE_INFO();
@@ -121,17 +112,16 @@ namespace connectivity
 
             // should we use the catalog on filebased databases
             bool     isCatalogUsed()                     const { return m_bUseCatalog; }
-            bool     isParameterSubstitutionEnabled()    const { return m_bParameterSubstitution; }
             bool     isIgnoreDriverPrivilegesEnabled()   const { return m_bIgnoreDriverPrivileges; }
             bool     preventGetVersionColumns()          const { return m_bPreventGetVersionColumns; }
             bool     useOldDateFormat()                  const { return m_bUseOldDateFormat; }
-            ODBCDriver*      getDriver()                     const { return m_pDriver;}
+            ODBCDriver*      getDriver()                 const { return m_xDriver.get();}
 
             SQLHANDLE       createStatementHandle();
             // close and free the handle and set it to SQL_NULLHANDLE
             void            freeStatementHandle(SQLHANDLE& _pHandle);
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ODBC_OCONNECTION_HXX
 

@@ -9,15 +9,11 @@
 
 // Unit test to check that we get the right filters for the right extensions.
 
-#include <limits>
-
 #include <cppunit/TestAssert.h>
-#include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
 #include <cppunit/plugin/TestPlugIn.h>
 
 #include <sal/types.h>
-#include <rtl/ustrbuf.hxx>
 
 #include <com/sun/star/document/XTypeDetection.hpp>
 #include <comphelper/processfactory.hxx>
@@ -50,7 +46,7 @@ void PriorityFilterTest::testPriority()
     static struct {
         const char *pURL;
         const char *pFormat;
-    } aToCheck[] = {
+    } const aToCheck[] = {
         { "file:///tmp/foo.xls", "calc_MS_Excel_97" }
         // TODO: expand this to check more of these priorities
     };
@@ -63,24 +59,20 @@ void PriorityFilterTest::testPriority()
             OUString aTypeName = xDetection->queryTypeByURL(aURL);
 
             OUString aFormatCorrect = OUString::createFromAscii(aToCheck[i].pFormat);
-            OUStringBuffer aMsg("Mis-matching formats ");
-            aMsg.append("'");
-            aMsg.append(aTypeName);
-            aMsg.append("' should be '");
-            aMsg.append(aFormatCorrect);
-            aMsg.append("'");
-            CPPUNIT_ASSERT_EQUAL_MESSAGE(rtl::OUStringToOString(aMsg.makeStringAndClear(),
+            OUString aMsg = "Mis-matching formats "
+                "'" +
+                aTypeName +
+                "' should be '" +
+                aFormatCorrect +
+                "'";
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(OUStringToOString(aMsg,
                                                           RTL_TEXTENCODING_UTF8).getStr(),
                                    aFormatCorrect, aTypeName);
         }
         catch (const uno::Exception &e)
         {
-            OUStringBuffer aMsg("Exception querying for type: ");
-            aMsg.append("'");
-            aMsg.append(e.Message);
-            aMsg.append("'");
-            CPPUNIT_FAIL(rtl::OUStringToOString(aMsg.makeStringAndClear(),
-                                                RTL_TEXTENCODING_UTF8).getStr());
+            OUString aMsg = "Exception querying for type: '" + e.Message + "'";
+            CPPUNIT_FAIL(OUStringToOString(aMsg, RTL_TEXTENCODING_UTF8).getStr());
         }
     }
 }

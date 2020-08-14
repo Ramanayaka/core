@@ -24,6 +24,7 @@
 #include <com/sun/star/beans/StringPair.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <vector>
 
@@ -34,10 +35,10 @@ class DocTemplLocaleHelper : public cppu::WeakImplHelper < css::xml::sax::XDocum
     std::vector< OUString > m_aElementsSeq; // stack of elements being parsed
 
     DocTemplLocaleHelper();
-    std::vector< css::beans::StringPair > const & GetParsingResult();
+    std::vector< css::beans::StringPair > const & GetParsingResult() const;
 
     /// @throws css::uno::Exception
-    static std::vector< css::beans::StringPair > SAL_CALL ReadLocalizationSequence_Impl( const css::uno::Reference< css::io::XInputStream >& xInStream, const OUString& aStringID, const css::uno::Reference< css::uno::XComponentContext >& xContext );
+    static std::vector< css::beans::StringPair > ReadLocalizationSequence_Impl( const css::uno::Reference< css::io::XInputStream >& xInStream, const OUString& aStringID, const css::uno::Reference< css::uno::XComponentContext >& xContext );
 
 public:
     virtual ~DocTemplLocaleHelper() override;
@@ -53,10 +54,12 @@ public:
     // writes sequence of elements ( GroupName, GroupUIName )
     /// @throws css::uno::Exception
     static
-    void SAL_CALL WriteGroupLocalizationSequence(
+    void WriteGroupLocalizationSequence(
         const css::uno::Reference< css::io::XOutputStream >& xOutStream,
         const std::vector< css::beans::StringPair >& aSequence,
         const css::uno::Reference< css::uno::XComponentContext >& xContext );
+
+    static OUString GetStandardGroupString();
 
     // XDocumentHandler
     virtual void SAL_CALL startDocument() override;

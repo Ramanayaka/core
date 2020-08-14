@@ -17,10 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <editeng/memberids.hrc>
+#include <editeng/memberids.h>
+#include <editeng/xmlcnitm.hxx>
 #include <hintids.hxx>
 #include <svx/unomid.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include "xmlitmap.hxx"
 #include <xmloff/xmltoken.hxx>
 
@@ -280,6 +281,7 @@ SvXMLItemMapEntry const aXMLTableCellItemMap[] =
 
     // RES_FRAMEDIR
     MAP_ENTRY( STYLE, WRITING_MODE, RES_FRAMEDIR, 0 ),
+    MAP_ENTRY( LO_EXT, WRITING_MODE, RES_FRAMEDIR, 0 ),
 
     M_END
 };

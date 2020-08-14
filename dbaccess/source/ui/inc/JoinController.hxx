@@ -20,13 +20,10 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_JOINCONTROLLER_HXX
 
 #include "singledoccontroller.hxx"
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include "moduledbu.hxx"
 #include "JoinTableView.hxx"
 #include "JoinDesignView.hxx"
 #include "TableConnectionData.hxx"
 #include "TableWindowData.hxx"
-#include <tools/fract.hxx>
 #include <memory>
 
 namespace comphelper
@@ -43,14 +40,13 @@ namespace dbaui
 
     class OJoinController : public OJoinController_BASE
     {
-        OModuleClient                    m_aModuleClient;
     protected:
         TTableConnectionData m_vTableConnectionData;
         TTableWindowData     m_vTableData;
 
         ::dbtools::SQLExceptionInfo             m_aExceptionInfo;
 
-        VclPtr<OAddTableDlg>                          m_pAddTableDialog;
+        std::shared_ptr<OAddTableDlg>           m_xAddTableDialog;
         std::unique_ptr< AddTableDialogContext >    m_pDialogContext;
         Point                                   m_aMinimumTableViewSize;
 
@@ -84,7 +80,7 @@ namespace dbaui
         // attribute access
         TTableWindowData&        getTableWindowData()     { return m_vTableData; }
         TTableConnectionData&    getTableConnectionData() { return m_vTableConnectionData;}
-        OAddTableDlg*            getAddTableDialog()const { return m_pAddTableDialog; }
+        OAddTableDlg*            getAddTableDialog()const { return m_xAddTableDialog.get(); }
 
         // OSingleDocumentController overridables
         virtual void        reconnect( bool _bUI ) override;
@@ -112,7 +108,7 @@ namespace dbaui
 
         void    SaveTabWinsPosSize( OJoinTableView::OTableWindowMap* pTabWinList, long nOffsetX, long nOffsetY );
 
-        static void SaveTabWinPosSize(OTableWindow* pTabWin, long nOffsetX, long nOffsetY);
+        static void SaveTabWinPosSize(OTableWindow const * pTabWin, long nOffsetX, long nOffsetY);
 
         // UNO interface overridables
         // XEventListener
@@ -141,11 +137,14 @@ namespace dbaui
             return aInfo;
         }
 
+        // show the dialog
+        void runDialogAsync();
+
     protected:
         TTableWindowData::value_type createTableWindowData(const OUString& _sComposedName,const OUString& _sTableName,const OUString& _sWindowName);
         // ask the user if the design should be saved when it is modified
         virtual short saveModified() = 0;
-        // called when the original state should be reseted (first time load)
+        // called when the original state should be reset (first time load)
         virtual void reset()         = 0;
         virtual void describeSupportedFeatures() override;
 

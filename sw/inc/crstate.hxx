@@ -21,16 +21,17 @@
 
 #include <com/sun/star/text/HoriOrientation.hpp>
 #include <tools/gen.hxx>
-#include <swtypes.hxx>
-#include <swrect.hxx>
+#include "swrect.hxx"
 
-enum SwFillMode
+#include <memory>
+
+enum class SwFillMode
 {
-    FILL_TAB,       ///< default, fill with tabs
-    FILL_TAB_SPACE, ///< fill with spaces and tabs
-    FILL_SPACE,     ///< fill with spaces
-    FILL_MARGIN,    ///< only align left, center, right
-    FILL_INDENT     ///< by left paragraph indention
+    Tab,       ///< default, fill with tabs
+    TabSpace,  ///< fill with spaces and tabs
+    Space,     ///< fill with spaces
+    Margin,    ///< only align left, center, right
+    Indent     ///< by left paragraph indentation
 };
 
 struct SwFillCursorPos
@@ -116,22 +117,22 @@ struct SwSpecialPos
     {}
 };
 
-// CursorTravelling-States (for GetCursorOfst)
-enum CursorMoveState
+// CursorTravelling-States (for GetModelPositionForViewPoint)
+enum class CursorMoveState
 {
-    MV_NONE,            ///< default
-    MV_UPDOWN,          ///< Cursor Up/Down
-    MV_RIGHTMARGIN,     ///< at right margin
-    MV_LEFTMARGIN,      ///< at left margin
-    MV_SETONLYTEXT,     ///< stay with the cursor inside text
-    MV_TBLSEL           ///< not in repeated headlines
+    NONE,            ///< default
+    UpDown,          ///< Cursor Up/Down
+    RightMargin,     ///< at right margin
+    LeftMargin,      ///< at left margin
+    SetOnlyText,     ///< stay with the cursor inside text
+    TableSel         ///< not in repeated headlines
 };
 
 // struct for later extensions
 struct SwCursorMoveState
 {
     SwFillCursorPos   *m_pFill;     ///< for automatic filling with tabs etc
-    Sw2LinesPos     *m_p2Lines;   ///< for selections inside/around 2line portions
+    std::unique_ptr<Sw2LinesPos> m_p2Lines;   ///< for selections inside/around 2line portions
     SwSpecialPos*   m_pSpecialPos; ///< for positions inside fields
     Point m_aRealHeight;          ///< contains then the position/height of the cursor
     CursorMoveState m_eState;
@@ -141,14 +142,14 @@ struct SwCursorMoveState
     bool m_bFieldInfo;            ///< should be fields recognized?
     bool m_bPosCorr;              ///< Point had to be corrected
     bool m_bFootnoteNoInfo;            ///< recognized footnote numbering
-    bool m_bExactOnly;            /**< let GetCursorOfst look for exact matches only,
+    bool m_bExactOnly;            /**< let GetModelPositionForViewPoint look for exact matches only,
                                          i.e. never let it run into GetContentPos */
     bool m_bFillRet;              ///< only used temporary in FillMode
     bool m_bSetInReadOnly;        ///< ReadOnly areas may be entered
     bool m_bRealWidth;            ///< Calculation of the width required
     bool m_b2Lines;               ///< Check 2line portions and fill p2Lines
     bool m_bNoScroll;             ///< No scrolling of undersized textframes
-    bool m_bPosMatchesBounds;         /**< GetCursorOfst should not return the next
+    bool m_bPosMatchesBounds;         /**< GetModelPositionForViewPoint should not return the next
                                        position if screen position is inside second
                                        have of bound rect */
 
@@ -162,9 +163,8 @@ struct SwCursorMoveState
     bool m_bInNumPortion;         ///< point is in number portion #i23726#
     int m_nInNumPortionOffset;        ///< distance from number portion's start
 
-    SwCursorMoveState( CursorMoveState eSt = MV_NONE ) :
+    SwCursorMoveState( CursorMoveState eSt = CursorMoveState::NONE ) :
         m_pFill( nullptr ),
-        m_p2Lines( nullptr ),
         m_pSpecialPos( nullptr ),
         m_eState( eSt ),
         m_nCursorBidiLevel( 0 ),
@@ -187,9 +187,8 @@ struct SwCursorMoveState
     {}
     SwCursorMoveState( SwFillCursorPos *pInitFill ) :
         m_pFill( pInitFill ),
-        m_p2Lines( nullptr ),
         m_pSpecialPos( nullptr ),
-        m_eState( MV_SETONLYTEXT ),
+        m_eState( CursorMoveState::SetOnlyText ),
         m_nCursorBidiLevel( 0 ),
         m_bStop( false ),
         m_bRealHeight( false ),

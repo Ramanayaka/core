@@ -21,11 +21,9 @@
 #define INCLUDED_SD_SOURCE_UI_INC_TPACTION_HXX
 
 #include <com/sun/star/presentation/ClickAction.hpp>
-#include <vcl/fixed.hxx>
-#include <vcl/layout.hxx>
-#include <svx/dlgctrl.hxx>
 #include <sfx2/tabdlg.hxx>
 #include <sfx2/basedlgs.hxx>
+#include <svx/xtable.hxx>
 #include "sdtreelb.hxx"
 
 #include <vector>
@@ -38,12 +36,10 @@ class SdDrawDocument;
 /**
  * Effect-SingleTab-Dialog
  */
-class SdActionDlg : public SfxSingleTabDialog
+class SdActionDlg : public SfxSingleTabDialogController
 {
-private:
-    const SfxItemSet&   rOutAttrs;
 public:
-    SdActionDlg(vcl::Window* pParent, const SfxItemSet* pAttr, ::sd::View* pView);
+    SdActionDlg(weld::Window* pParent, const SfxItemSet* pAttr, ::sd::View const * pView);
 };
 
 /**
@@ -52,22 +48,6 @@ public:
 class SdTPAction : public SfxTabPage
 {
 private:
-    VclPtr<ListBox>                m_pLbAction;
-
-    VclPtr<FixedText>              m_pFtTree;                // jump destination controls
-    VclPtr<SdPageObjsTLB>          m_pLbTree;
-    VclPtr<SdPageObjsTLB>          m_pLbTreeDocument;
-    VclPtr<ListBox>                m_pLbOLEAction;
-
-    VclPtr<VclFrame>               m_pFrame;
-    VclPtr<Edit>                   m_pEdtSound;
-    VclPtr<Edit>                   m_pEdtBookmark;
-    VclPtr<Edit>                   m_pEdtDocument;
-    VclPtr<Edit>                   m_pEdtProgram;
-    VclPtr<Edit>                   m_pEdtMacro;
-    VclPtr<PushButton>             m_pBtnSearch;
-    VclPtr<PushButton>             m_pBtnSeek;
-
     const ::sd::View*       mpView;
     SdDrawDocument*         mpDoc;
     XColorListRef           pColList;
@@ -77,10 +57,24 @@ private:
     OUString                aLastFile;
     ::std::vector< long >   aVerbVector;
 
-    DECL_LINK( ClickSearchHdl, Button*, void );
-    DECL_LINK( ClickActionHdl, ListBox&, void );
-    DECL_LINK( SelectTreeHdl, SvTreeListBox*, void );
-    DECL_LINK( CheckFileHdl, Control&, void );
+    std::unique_ptr<weld::ComboBox> m_xLbAction;
+    std::unique_ptr<weld::Label> m_xFtTree;                // jump destination controls
+    std::unique_ptr<SdPageObjsTLV> m_xLbTree;
+    std::unique_ptr<SdPageObjsTLV> m_xLbTreeDocument;
+    std::unique_ptr<weld::TreeView> m_xLbOLEAction;
+    std::unique_ptr<weld::Frame> m_xFrame;
+    std::unique_ptr<weld::Entry> m_xEdtSound;
+    std::unique_ptr<weld::Entry> m_xEdtBookmark;
+    std::unique_ptr<weld::Entry> m_xEdtDocument;
+    std::unique_ptr<weld::Entry> m_xEdtProgram;
+    std::unique_ptr<weld::Entry> m_xEdtMacro;
+    std::unique_ptr<weld::Button> m_xBtnSearch;
+    std::unique_ptr<weld::Button> m_xBtnSeek;
+
+    DECL_LINK( ClickSearchHdl, weld::Button&, void );
+    DECL_LINK( ClickActionHdl, weld::ComboBox&, void );
+    DECL_LINK( SelectTreeHdl, weld::TreeView&, void );
+    DECL_LINK( CheckFileHdl, weld::Widget&, void );
 
     void                    UpdateTree();
     void                    OpenFileDialog();
@@ -88,14 +82,13 @@ private:
     void                    SetActualClickAction( css::presentation::ClickAction eCA );
     void                    SetEditText( OUString const & rStr );
     OUString                GetEditText( bool bURL = false );
-    static sal_uInt16       GetClickActionSdResId( css::presentation::ClickAction eCA );
+    static const char*      GetClickActionSdResId(css::presentation::ClickAction eCA);
 
 public:
-            SdTPAction( vcl::Window* pParent, const SfxItemSet& rInAttrs );
-            virtual ~SdTPAction() override;
-    virtual void dispose() override;
+    SdTPAction(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs);
+    virtual ~SdTPAction() override;
 
-    static  VclPtr<SfxTabPage> Create( vcl::Window*, const SfxItemSet& );
+    static  std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& );
 
     virtual bool FillItemSet( SfxItemSet* ) override;
     virtual void Reset( const SfxItemSet * ) override;
@@ -106,9 +99,6 @@ public:
     void    Construct();
 
     void    SetView( const ::sd::View* pSdView );
-
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
 };
 
 #endif // INCLUDED_SD_SOURCE_UI_INC_TPACTION_HXX

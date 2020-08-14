@@ -22,30 +22,19 @@
 #include <memory>
 #include <com/sun/star/frame/XFrame.hpp>
 
-#include <svx/sidebar/PanelLayout.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 
 #include <sfx2/sidebar/ControllerItem.hxx>
 
-#include <i18nutil/paper.hxx>
-
-#include <svx/pageitem.hxx>
 #include <svx/rulritem.hxx>
-#include <editeng/sizeitem.hxx>
 
-#include <vcl/ctrl.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <vcl/toolbox.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/field.hxx>
 #include <svl/intitem.hxx>
-#include <tools/fldunit.hxx>
 #include <svl/poolitem.hxx>
 #include <svl/eitem.hxx>
 #include <svx/spacinglistbox.hxx>
 #include <svx/samecontentlistbox.hxx>
 
-namespace sw { namespace sidebar {
+namespace sw::sidebar {
 
 class PageHeaderPanel:
     public PanelLayout,
@@ -60,8 +49,11 @@ public:
     virtual void NotifyItemUpdate(
         const sal_uInt16 nSId,
         const SfxItemState eState,
-        const SfxPoolItem* pState,
-        const bool bIsEnabled) override;
+        const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
 
     SfxBindings* GetBindings() const { return mpBindings; }
     PageHeaderPanel(
@@ -76,18 +68,17 @@ private:
     SfxBindings* mpBindings;
 
     ::sfx2::sidebar::ControllerItem maHFToggleController;
+    ::sfx2::sidebar::ControllerItem maMetricController;
     ::sfx2::sidebar::ControllerItem maHeaderLRMarginController;
     ::sfx2::sidebar::ControllerItem maHeaderSpacingController;
     ::sfx2::sidebar::ControllerItem maHeaderLayoutController;
 
-    VclPtr<CheckBox>           mpHeaderToggle;
-    VclPtr<SpacingListBox>     mpHeaderSpacingLB;
-    VclPtr<SpacingListBox>     mpHeaderMarginPresetLB;
-    VclPtr<SameContentListBox> mpHeaderLayoutLB;
-    VclPtr<FixedText>          mpCustomEntry;
+    FieldUnit meFUnit;
+
     OUString aCustomEntry;
 
     void Initialize();
+    void SetMarginsAndSpacingFieldUnit();
     void UpdateHeaderCheck();
     void UpdateMarginControl();
     void UpdateSpacingControl();
@@ -98,13 +89,21 @@ private:
     ::std::unique_ptr<SvxLongULSpaceItem> mpHeaderSpacingItem;
     ::std::unique_ptr<SfxInt16Item>       mpHeaderLayoutItem;
 
-    DECL_LINK( HeaderToggleHdl, Button*, void );
-    DECL_LINK( HeaderLRMarginHdl, ListBox&, void);
-    DECL_LINK( HeaderSpacingHdl, ListBox&, void);
-    DECL_LINK( HeaderLayoutHdl, ListBox&, void);
+    std::unique_ptr<weld::CheckButton> mxHeaderToggle;
+    std::unique_ptr<weld::ComboBox> mxHeaderSpacingLB;
+    std::unique_ptr<weld::ComboBox> mxHeaderMarginPresetLB;
+    std::unique_ptr<weld::ComboBox> mxHeaderLayoutLB;
+    std::unique_ptr<weld::Label> mxCustomEntry;
+
+    static FieldUnit GetCurrentUnit(SfxItemState eState, const SfxPoolItem* pState);
+
+    DECL_LINK( HeaderToggleHdl, weld::ToggleButton&, void );
+    DECL_LINK( HeaderLRMarginHdl, weld::ComboBox&, void);
+    DECL_LINK( HeaderSpacingHdl, weld::ComboBox&, void);
+    DECL_LINK( HeaderLayoutHdl, weld::ComboBox&, void);
 };
 
-} } //end of namespace sw::sidebar
+} //end of namespace sw::sidebar
 
 #endif
 

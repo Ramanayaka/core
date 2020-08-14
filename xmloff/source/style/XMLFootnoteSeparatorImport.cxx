@@ -21,6 +21,7 @@
 #include "XMLFootnoteSeparatorImport.hxx"
 
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
@@ -33,11 +34,12 @@
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlprmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/maptype.hxx>
+#include <xmloff/xmlement.hxx>
 
-#include <xmloff/PageMasterStyleMap.hxx>
+#include <PageMasterStyleMap.hxx>
 
 #include <vector>
 
@@ -79,7 +81,10 @@ void XMLFootnoteSeparatorImport::StartElement(
     text::HorizontalAdjust eLineAdjust = text::HorizontalAdjust_LEFT;
     sal_Int32 nLineTextDistance = 0;
     sal_Int32 nLineDistance = 0;
-    sal_Int8 nLineStyle = 0;
+
+    // Default separator line style should be SOLID (used to be default before
+    // the choice selector was available)
+    sal_Int8 nLineStyle = 1;
 
     // iterate over xattribute list and fill values
     sal_Int16 nLength = xAttrList->getLength();
@@ -99,7 +104,7 @@ void XMLFootnoteSeparatorImport::StartElement(
                 if (GetImport().GetMM100UnitConverter().convertMeasureToCore(
                     nTmp, sAttrValue))
                 {
-                    nLineWeight = (sal_Int16)nTmp;
+                    nLineWeight = static_cast<sal_Int16>(nTmp);
                 }
             }
             else if (IsXMLToken( sLocalName, XML_DISTANCE_BEFORE_SEP ))
@@ -121,7 +126,7 @@ void XMLFootnoteSeparatorImport::StartElement(
                     { XML_LEFT,     text::HorizontalAdjust_LEFT },
                     { XML_CENTER,   text::HorizontalAdjust_CENTER },
                     { XML_RIGHT,    text::HorizontalAdjust_RIGHT },
-                    { XML_TOKEN_INVALID, (text::HorizontalAdjust)0 }
+                    { XML_TOKEN_INVALID, text::HorizontalAdjust(0) }
                 };
 
                 SvXMLUnitConverter::convertEnum(
@@ -130,7 +135,7 @@ void XMLFootnoteSeparatorImport::StartElement(
             else if (IsXMLToken( sLocalName, XML_REL_WIDTH ))
             {
                 if (::sax::Converter::convertPercent(nTmp, sAttrValue))
-                    nLineRelWidth = (sal_uInt8)nTmp;
+                    nLineRelWidth = static_cast<sal_uInt8>(nTmp);
             }
             else if (IsXMLToken( sLocalName, XML_COLOR ))
             {
@@ -159,7 +164,7 @@ void XMLFootnoteSeparatorImport::StartElement(
     sal_Int32 nIndex;
 
     nIndex = rMapper->FindEntryIndex(CTF_PM_FTN_LINE_ADJUST);
-    XMLPropertyState aLineAdjust( nIndex, uno::Any(eLineAdjust));
+    XMLPropertyState aLineAdjust( nIndex, uno::Any(sal_Int16(eLineAdjust)) );
     rProperties.push_back(aLineAdjust);
 
     nIndex = rMapper->FindEntryIndex(CTF_PM_FTN_LINE_COLOR);

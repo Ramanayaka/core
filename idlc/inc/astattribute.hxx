@@ -19,7 +19,7 @@
 #ifndef INCLUDED_IDLC_INC_ASTATTRIBUTE_HXX
 #define INCLUDED_IDLC_INC_ASTATTRIBUTE_HXX
 
-#include <astdeclaration.hxx>
+#include "astdeclaration.hxx"
 #include "astscope.hxx"
 
 #include <registry/types.hxx>
@@ -27,7 +27,7 @@
 
 namespace typereg { class Writer; }
 
-class AstAttribute: public AstDeclaration, public AstScope {
+class AstAttribute final : public AstDeclaration, public AstScope {
 public:
     AstAttribute(
         sal_uInt32 flags, AstType const * type, OString const & name,
@@ -85,14 +85,14 @@ public:
     bool isRemoveable() const
         { return ((m_flags & AF_REMOVABLE) == AF_REMOVABLE); }
 
-    bool dumpBlob(
-        typereg::Writer & rBlob, sal_uInt16 index, sal_uInt16 * methodIndex);
+    void dumpBlob(
+        typereg::Writer & rBlob, sal_uInt16 index, sal_uInt16 * methodIndex) const;
 
 private:
     void dumpExceptions(
         typereg::Writer & writer, OUString const & documentation,
         DeclList const & exceptions, RTMethodMode flags,
-        sal_uInt16 * methodIndex);
+        sal_uInt16 * methodIndex) const;
 
     const sal_uInt32    m_flags;
     AstType const * m_pType;

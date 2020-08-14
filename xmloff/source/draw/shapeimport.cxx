@@ -17,23 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <o3tl/make_unique.hxx>
-
 #include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/PositionLayoutDir.hpp>
-#include <com/sun/star/chart/XChartDocument.hpp>
+#include <com/sun/star/drawing/XShapes3.hpp>
 
 #include <utility>
 #include <xmloff/unointerfacetouniqueidentifiermapper.hxx>
 
-#include <list>
-
 #include <xmloff/shapeimport.hxx>
+#include <xmloff/xmlstyle.hxx>
 #include <xmloff/xmltkmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
-#include "ximpstyl.hxx"
+#include <xmloff/table/XMLTableImport.hxx>
+#include <xmloff/attrlist.hxx>
+#include "eventimp.hxx"
 #include "ximpshap.hxx"
 #include "sdpropls.hxx"
 #include <xmloff/xmlprmap.hxx>
@@ -45,9 +47,17 @@
 #include <map>
 #include <vector>
 
+namespace {
+
+class ShapeGroupContext;
+
+}
+
 using namespace ::std;
 using namespace ::com::sun::star;
 using namespace ::xmloff::token;
+
+namespace {
 
 struct ConnectionHint
 {
@@ -65,6 +75,8 @@ struct XShapeCompareHelper
     return x1.get() < x2.get();
   }
 };
+
+}
 
 /** this map store all glue point id mappings for shapes that had user defined glue points. This
     is needed because on insertion the glue points will get a new and unique id */
@@ -87,7 +99,7 @@ struct XMLShapeImportPageContextImpl
 struct XMLShapeImportHelperImpl
 {
     // context for sorting shapes
-    std::shared_ptr<ShapeSortContext> mpSortContext;
+    std::shared_ptr<ShapeGroupContext> mpGroupContext;
 
     std::vector<ConnectionHint> maConnections;
 
@@ -98,22 +110,19 @@ struct XMLShapeImportHelperImpl
     bool                        mbIsPresentationShapesSupported;
 };
 
+const OUStringLiteral gsStartShape("StartShape");
+const OUStringLiteral gsEndShape("EndShape");
+const OUStringLiteral gsStartGluePointIndex("StartGluePointIndex");
+const OUStringLiteral gsEndGluePointIndex("EndGluePointIndex");
+
 XMLShapeImportHelper::XMLShapeImportHelper(
         SvXMLImport& rImporter,
         const uno::Reference< frame::XModel>& rModel,
         SvXMLImportPropertyMapper *pExtMapper )
 :   mpImpl( new XMLShapeImportHelperImpl ),
-
-    mpPropertySetMapper(nullptr),
-    mpPresPagePropsMapper(nullptr),
-    msStartShape("StartShape"),
-    msEndShape("EndShape"),
-    msStartGluePointIndex("StartGluePointIndex"),
-    msEndGluePointIndex("EndGluePointIndex"),
-
     mrImporter( rImporter )
 {
-    mpImpl->mpSortContext = nullptr;
+    mpImpl->mpGroupContext = nullptr;
 
     // #88546# init to sal_False
     mpImpl->mbHandleProgressBar = false;
@@ -139,8 +148,7 @@ XMLShapeImportHelper::XMLShapeImportHelper(
     mpPresPagePropsMapper = new SvXMLImportPropertyMapper( xMapper, rImporter );
 
     uno::Reference< lang::XServiceInfo > xInfo( rImporter.GetModel(), uno::UNO_QUERY );
-    const OUString aSName( "com.sun.star.presentation.PresentationDocument" );
-    mpImpl->mbIsPresentationShapesSupported = xInfo.is() && xInfo->supportsService( aSName );
+    mpImpl->mbIsPresentationShapesSupported = xInfo.is() && xInfo->supportsService( "com.sun.star.presentation.PresentationDocument" );
 }
 
 XMLShapeImportHelper::~XMLShapeImportHelper()
@@ -158,10 +166,10 @@ XMLShapeImportHelper::~XMLShapeImportHelper()
 
     // Styles or AutoStyles context?
     if(mxStylesContext.is())
-        mxStylesContext->Clear();
+        mxStylesContext->dispose();
 
     if(mxAutoStylesContext.is())
-        mxAutoStylesContext->Clear();
+        mxAutoStylesContext->dispose();
 }
 
 const SvXMLTokenMap& XMLShapeImportHelper::GetGroupShapeElemTokenMap()
@@ -197,7 +205,7 @@ const SvXMLTokenMap& XMLShapeImportHelper::GetGroupShapeElemTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        mpGroupShapeElemTokenMap = o3tl::make_unique<SvXMLTokenMap>(aGroupShapeElemTokenMap);
+        mpGroupShapeElemTokenMap = std::make_unique<SvXMLTokenMap>(aGroupShapeElemTokenMap);
     }
 
     return *mpGroupShapeElemTokenMap;
@@ -220,7 +228,7 @@ const SvXMLTokenMap& XMLShapeImportHelper::GetFrameShapeElemTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        mpFrameShapeElemTokenMap = o3tl::make_unique<SvXMLTokenMap>(aFrameShapeElemTokenMap);
+        mpFrameShapeElemTokenMap = std::make_unique<SvXMLTokenMap>(aFrameShapeElemTokenMap);
     }
 
     return *mpFrameShapeElemTokenMap;
@@ -240,7 +248,7 @@ const SvXMLTokenMap& XMLShapeImportHelper::Get3DSceneShapeElemTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        mp3DSceneShapeElemTokenMap = o3tl::make_unique<SvXMLTokenMap>(a3DSceneShapeElemTokenMap);
+        mp3DSceneShapeElemTokenMap = std::make_unique<SvXMLTokenMap>(a3DSceneShapeElemTokenMap);
     }
 
     return *mp3DSceneShapeElemTokenMap;
@@ -257,7 +265,7 @@ const SvXMLTokenMap& XMLShapeImportHelper::Get3DObjectAttrTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        mp3DObjectAttrTokenMap = o3tl::make_unique<SvXMLTokenMap>(a3DObjectAttrTokenMap);
+        mp3DObjectAttrTokenMap = std::make_unique<SvXMLTokenMap>(a3DObjectAttrTokenMap);
     }
 
     return *mp3DObjectAttrTokenMap;
@@ -274,7 +282,7 @@ const SvXMLTokenMap& XMLShapeImportHelper::Get3DPolygonBasedAttrTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        mp3DPolygonBasedAttrTokenMap = o3tl::make_unique<SvXMLTokenMap>(a3DPolygonBasedAttrTokenMap);
+        mp3DPolygonBasedAttrTokenMap = std::make_unique<SvXMLTokenMap>(a3DPolygonBasedAttrTokenMap);
     }
 
     return *mp3DPolygonBasedAttrTokenMap;
@@ -291,7 +299,7 @@ const SvXMLTokenMap& XMLShapeImportHelper::Get3DCubeObjectAttrTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        mp3DCubeObjectAttrTokenMap = o3tl::make_unique<SvXMLTokenMap>(a3DCubeObjectAttrTokenMap);
+        mp3DCubeObjectAttrTokenMap = std::make_unique<SvXMLTokenMap>(a3DCubeObjectAttrTokenMap);
     }
 
     return *mp3DCubeObjectAttrTokenMap;
@@ -308,7 +316,7 @@ const SvXMLTokenMap& XMLShapeImportHelper::Get3DSphereObjectAttrTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        mp3DSphereObjectAttrTokenMap = o3tl::make_unique<SvXMLTokenMap>(a3DSphereObjectAttrTokenMap);
+        mp3DSphereObjectAttrTokenMap = std::make_unique<SvXMLTokenMap>(a3DSphereObjectAttrTokenMap);
     }
 
     return *mp3DSphereObjectAttrTokenMap;
@@ -327,7 +335,7 @@ const SvXMLTokenMap& XMLShapeImportHelper::Get3DLightAttrTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        mp3DLightAttrTokenMap = o3tl::make_unique<SvXMLTokenMap>(a3DLightAttrTokenMap);
+        mp3DLightAttrTokenMap = std::make_unique<SvXMLTokenMap>(a3DLightAttrTokenMap);
     }
 
     return *mp3DLightAttrTokenMap;
@@ -338,7 +346,7 @@ SvXMLShapeContext* XMLShapeImportHelper::Create3DSceneChildContext(
     sal_uInt16 p_nPrefix,
     const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList>& xAttrList,
-    uno::Reference< drawing::XShapes >& rShapes)
+    uno::Reference< drawing::XShapes > const & rShapes)
 {
     SdXMLShapeContext *pContext = nullptr;
 
@@ -413,7 +421,7 @@ SvXMLShapeContext* XMLShapeImportHelper::CreateGroupChildContext(
     sal_uInt16 p_nPrefix,
     const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList>& xAttrList,
-    uno::Reference< drawing::XShapes >& rShapes,
+    uno::Reference< drawing::XShapes > const & rShapes,
     bool bTemporaryShape)
 {
     SdXMLShapeContext *pContext = nullptr;
@@ -546,7 +554,7 @@ SvXMLShapeContext* XMLShapeImportHelper::CreateFrameChildContext(
     sal_uInt16 p_nPrefix,
     const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList>& rAttrList,
-    uno::Reference< drawing::XShapes >& rShapes,
+    uno::Reference< drawing::XShapes > const & rShapes,
     const uno::Reference< xml::sax::XAttributeList>& rFrameAttrList)
 {
     SdXMLShapeContext *pContext = nullptr;
@@ -628,19 +636,19 @@ SvXMLShapeContext* XMLShapeImportHelper::CreateFrameChildContext(
     return pContext;
 }
 
-SvXMLImportContext *XMLShapeImportHelper::CreateFrameChildContext(
+SvXMLImportContextRef XMLShapeImportHelper::CreateFrameChildContext(
     SvXMLImportContext *pThisContext,
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList>& xAttrList )
 {
-    SvXMLImportContext * pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     SdXMLFrameShapeContext *pFrameContext = dynamic_cast<SdXMLFrameShapeContext*>( pThisContext  );
-    if( pFrameContext )
-        pContext = pFrameContext->CreateChildContext( nPrefix, rLocalName, xAttrList );
+    if (pFrameContext)
+        xContext = pFrameContext->CreateChildContext( nPrefix, rLocalName, xAttrList );
 
-    return pContext;
+    return xContext;
 }
 
 /** this function is called whenever the implementation classes like to add this new
@@ -693,6 +701,8 @@ void XMLShapeImportHelper::finishShape(
     }
 }
 
+namespace {
+
 // helper functions for z-order sorting
 struct ZOrderHint
 {
@@ -704,61 +714,74 @@ struct ZOrderHint
     bool operator<(const ZOrderHint& rComp) const { return nShould < rComp.nShould; }
 };
 
-class ShapeSortContext
+// a) handle z-order of group contents after it has been imported
+// b) apply group events over group contents after it has been imported
+class ShapeGroupContext
 {
 public:
     uno::Reference< drawing::XShapes > mxShapes;
+    std::vector<SdXMLEventContextData> maEventData;
     vector<ZOrderHint>              maZOrderList;
     vector<ZOrderHint>              maUnsortedList;
 
     sal_Int32                       mnCurrentZ;
-    std::shared_ptr<ShapeSortContext> mpParentContext;
+    std::shared_ptr<ShapeGroupContext> mpParentContext;
 
-    ShapeSortContext( uno::Reference< drawing::XShapes >& rShapes, std::shared_ptr<ShapeSortContext> pParentContext );
+    ShapeGroupContext( uno::Reference< drawing::XShapes > const & rShapes, std::shared_ptr<ShapeGroupContext> pParentContext );
 
-    void popGroupAndSort();
+    void popGroupAndPostProcess();
 private:
     void moveShape( sal_Int32 nSourcePos, sal_Int32 nDestPos );
 };
 
-ShapeSortContext::ShapeSortContext( uno::Reference< drawing::XShapes >& rShapes, std::shared_ptr<ShapeSortContext> pParentContext )
+}
+
+ShapeGroupContext::ShapeGroupContext( uno::Reference< drawing::XShapes > const & rShapes, std::shared_ptr<ShapeGroupContext> pParentContext )
 :   mxShapes( rShapes ), mnCurrentZ( 0 ), mpParentContext( std::move(pParentContext) )
 {
 }
 
-void ShapeSortContext::moveShape( sal_Int32 nSourcePos, sal_Int32 nDestPos )
+void ShapeGroupContext::moveShape( sal_Int32 nSourcePos, sal_Int32 nDestPos )
 {
     uno::Any aAny( mxShapes->getByIndex( nSourcePos ) );
     uno::Reference< beans::XPropertySet > xPropSet;
     aAny >>= xPropSet;
 
-    if( xPropSet.is() && xPropSet->getPropertySetInfo()->hasPropertyByName( "ZOrder" ) )
+    if( !(xPropSet.is() && xPropSet->getPropertySetInfo()->hasPropertyByName( "ZOrder" )) )
+        return;
+
+    xPropSet->setPropertyValue( "ZOrder", uno::Any(nDestPos) );
+
+    for( ZOrderHint& rHint : maZOrderList )
     {
-        xPropSet->setPropertyValue( "ZOrder", uno::Any(nDestPos) );
-
-        for( ZOrderHint& rHint : maZOrderList )
+        if( rHint.nIs < nSourcePos )
         {
-            if( rHint.nIs < nSourcePos )
-            {
-                DBG_ASSERT(rHint.nIs >= nDestPos, "Shape sorting failed" );
-                rHint.nIs++;
-            }
+            DBG_ASSERT(rHint.nIs >= nDestPos, "Shape sorting failed" );
+            rHint.nIs++;
         }
+    }
 
-        for( ZOrderHint& rHint : maUnsortedList )
+    for( ZOrderHint& rHint : maUnsortedList )
+    {
+        if( rHint.nIs < nSourcePos )
         {
-            if( rHint.nIs < nSourcePos )
-            {
-                SAL_WARN_IF( rHint.nIs < nDestPos, "xmloff", "shape sorting failed" );
-                rHint.nIs++;
-            }
+            SAL_WARN_IF( rHint.nIs < nDestPos, "xmloff", "shape sorting failed" );
+            rHint.nIs++;
         }
     }
 }
 
 // sort shapes
-void ShapeSortContext::popGroupAndSort()
+void ShapeGroupContext::popGroupAndPostProcess()
 {
+    if (!maEventData.empty())
+    {
+        // tdf#127791 wait until a group is popped to set its event data
+        for (auto& event : maEventData)
+            event.ApplyProperties();
+        maEventData.clear();
+    }
+
     // only do something if we have shapes to sort
     if( maZOrderList.empty() )
         return;
@@ -796,13 +819,49 @@ void ShapeSortContext::popGroupAndSort()
         while( nCount );
     }
 
+    bool bSorted = std::is_sorted(maZOrderList.begin(), maZOrderList.end(),
+                       [&](const ZOrderHint& rLeft, const ZOrderHint& rRight)
+                       { return rLeft.nShould < rRight.nShould; } );
+
+    if (bSorted)
+        return; // nothin' to do
+
     // sort z-ordered shapes by nShould field
     std::sort(maZOrderList.begin(), maZOrderList.end());
+
+    uno::Reference<drawing::XShapes3> xShapes3(mxShapes, uno::UNO_QUERY);
+    if( xShapes3.is())
+    {
+        uno::Sequence<sal_Int32> aNewOrder(maZOrderList.size() + maUnsortedList.size());
+        sal_Int32 nIndex = 0;
+
+        for (ZOrderHint& rHint : maZOrderList)
+        {
+            // fill in the gaps from unordered list
+            for (vector<ZOrderHint>::iterator aIt = maUnsortedList.begin(); aIt != maUnsortedList.end() && nIndex < rHint.nShould; )
+            {
+                aNewOrder[nIndex++] = (*aIt).nIs;
+                aIt = maUnsortedList.erase(aIt);
+            }
+
+            aNewOrder[nIndex] = rHint.nIs;
+            nIndex++;
+        }
+
+        try
+        {
+            xShapes3->sort(aNewOrder);
+            maZOrderList.clear();
+            return;
+        }
+        catch (const css::lang::IllegalArgumentException& /*e*/)
+        {}
+    }
 
     // this is the current index, all shapes before that
     // index are finished
     sal_Int32 nIndex = 0;
-    for (ZOrderHint& rHint : maZOrderList)
+    for (const ZOrderHint& rHint : maZOrderList)
     {
         for (vector<ZOrderHint>::iterator aIt = maUnsortedList.begin(); aIt != maUnsortedList.end() && nIndex < rHint.nShould; )
         {
@@ -819,72 +878,85 @@ void ShapeSortContext::popGroupAndSort()
     maZOrderList.clear();
 }
 
-void XMLShapeImportHelper::pushGroupForSorting( uno::Reference< drawing::XShapes >& rShapes )
+void XMLShapeImportHelper::pushGroupForPostProcessing( uno::Reference< drawing::XShapes >& rShapes )
 {
-    mpImpl->mpSortContext = std::make_shared<ShapeSortContext>( rShapes, mpImpl->mpSortContext );
+    mpImpl->mpGroupContext = std::make_shared<ShapeGroupContext>( rShapes, mpImpl->mpGroupContext );
 }
 
-void XMLShapeImportHelper::popGroupAndSort()
+void XMLShapeImportHelper::addShapeEvents(SdXMLEventContextData& rData)
 {
-    SAL_WARN_IF( !mpImpl->mpSortContext, "xmloff", "No context to sort!" );
-    if( !mpImpl->mpSortContext )
+    if (mpImpl->mpGroupContext && mpImpl->mpGroupContext->mxShapes == rData.mxShape)
+    {
+        // tdf#127791 wait until a group is popped to set its event data so
+        // that the events are applied to all its children, which are not available
+        // at the start of the group tag
+        mpImpl->mpGroupContext->maEventData.push_back(rData);
+    }
+    else
+        rData.ApplyProperties();
+}
+
+void XMLShapeImportHelper::popGroupAndPostProcess()
+{
+    SAL_WARN_IF( !mpImpl->mpGroupContext, "xmloff", "No context to sort!" );
+    if( !mpImpl->mpGroupContext )
         return;
 
     try
     {
-        mpImpl->mpSortContext->popGroupAndSort();
+        mpImpl->mpGroupContext->popGroupAndPostProcess();
     }
-    catch( const uno::Exception& rException )
+    catch( const uno::Exception& )
     {
-        SAL_WARN("xmloff", "exception while sorting shapes, sorting failed: " << rException.Message);
+        DBG_UNHANDLED_EXCEPTION("xmloff", "exception while sorting shapes, sorting failed");
     }
 
     // put parent on top and drop current context, we are done
-    mpImpl->mpSortContext = mpImpl->mpSortContext->mpParentContext;
+    mpImpl->mpGroupContext = mpImpl->mpGroupContext->mpParentContext;
 }
 
-void XMLShapeImportHelper::shapeWithZIndexAdded( css::uno::Reference< css::drawing::XShape >& xShape, sal_Int32 nZIndex )
+void XMLShapeImportHelper::shapeWithZIndexAdded( css::uno::Reference< css::drawing::XShape > const & xShape, sal_Int32 nZIndex )
 {
-    if( mpImpl->mpSortContext)
-    {
-        ZOrderHint aNewHint;
-        aNewHint.nIs = mpImpl->mpSortContext->mnCurrentZ++;
-        aNewHint.nShould = nZIndex;
-        aNewHint.xShape = xShape;
+    if( !mpImpl->mpGroupContext)
+        return;
 
-        if( nZIndex == -1 )
-        {
-            // don't care, so add to unsorted list
-            mpImpl->mpSortContext->maUnsortedList.push_back(aNewHint);
-        }
-        else
-        {
-            // insert into sort list
-            mpImpl->mpSortContext->maZOrderList.push_back(aNewHint);
-        }
+    ZOrderHint aNewHint;
+    aNewHint.nIs = mpImpl->mpGroupContext->mnCurrentZ++;
+    aNewHint.nShould = nZIndex;
+    aNewHint.xShape = xShape;
+
+    if( nZIndex == -1 )
+    {
+        // don't care, so add to unsorted list
+        mpImpl->mpGroupContext->maUnsortedList.push_back(aNewHint);
+    }
+    else
+    {
+        // insert into sort list
+        mpImpl->mpGroupContext->maZOrderList.push_back(aNewHint);
     }
 }
 
 void XMLShapeImportHelper::shapeRemoved(const uno::Reference<drawing::XShape>& xShape)
 {
-    auto it = std::find_if(mpImpl->mpSortContext->maZOrderList.begin(), mpImpl->mpSortContext->maZOrderList.end(), [&xShape](const ZOrderHint& rHint)
+    auto it = std::find_if(mpImpl->mpGroupContext->maZOrderList.begin(), mpImpl->mpGroupContext->maZOrderList.end(), [&xShape](const ZOrderHint& rHint)
     {
         return rHint.xShape == xShape;
     });
-    if (it == mpImpl->mpSortContext->maZOrderList.end())
+    if (it == mpImpl->mpGroupContext->maZOrderList.end())
         // Part of the unsorted list, nothing to do.
         return;
 
     sal_Int32 nZIndex = it->nIs;
 
-    for (it = mpImpl->mpSortContext->maZOrderList.begin(); it != mpImpl->mpSortContext->maZOrderList.end();)
+    for (it = mpImpl->mpGroupContext->maZOrderList.begin(); it != mpImpl->mpGroupContext->maZOrderList.end();)
     {
         if (it->nIs == nZIndex)
         {
             // This is xShape: remove it and adjust the max of indexes
             // accordingly.
-            it = mpImpl->mpSortContext->maZOrderList.erase(it);
-            mpImpl->mpSortContext->mnCurrentZ--;
+            it = mpImpl->mpGroupContext->maZOrderList.erase(it);
+            mpImpl->mpGroupContext->mnCurrentZ--;
             continue;
         }
         else if (it->nIs > nZIndex)
@@ -896,7 +968,7 @@ void XMLShapeImportHelper::shapeRemoved(const uno::Reference<drawing::XShape>& x
     }
 }
 
-void XMLShapeImportHelper::addShapeConnection( css::uno::Reference< css::drawing::XShape >& rConnectorShape,
+void XMLShapeImportHelper::addShapeConnection( css::uno::Reference< css::drawing::XShape > const & rConnectorShape,
                          bool bStart,
                          const OUString& rDestShapeId,
                          sal_Int32 nDestGlueId )
@@ -912,47 +984,44 @@ void XMLShapeImportHelper::addShapeConnection( css::uno::Reference< css::drawing
 
 void XMLShapeImportHelper::restoreConnections()
 {
-    if( !mpImpl->maConnections.empty() )
+    const vector<ConnectionHint>::size_type nCount = mpImpl->maConnections.size();
+    for( vector<ConnectionHint>::size_type i = 0; i < nCount; i++ )
     {
-        const vector<ConnectionHint>::size_type nCount = mpImpl->maConnections.size();
-        for( vector<ConnectionHint>::size_type i = 0; i < nCount; i++ )
+        ConnectionHint& rHint = mpImpl->maConnections[i];
+        uno::Reference< beans::XPropertySet > xConnector( rHint.mxConnector, uno::UNO_QUERY );
+        if( xConnector.is() )
         {
-            ConnectionHint& rHint = mpImpl->maConnections[i];
-            uno::Reference< beans::XPropertySet > xConnector( rHint.mxConnector, uno::UNO_QUERY );
-            if( xConnector.is() )
+            // #86637# remember line deltas
+            uno::Any aLine1Delta;
+            uno::Any aLine2Delta;
+            uno::Any aLine3Delta;
+            OUString aStr1("EdgeLine1Delta");
+            OUString aStr2("EdgeLine2Delta");
+            OUString aStr3("EdgeLine3Delta");
+            aLine1Delta = xConnector->getPropertyValue(aStr1);
+            aLine2Delta = xConnector->getPropertyValue(aStr2);
+            aLine3Delta = xConnector->getPropertyValue(aStr3);
+
+            // #86637# simply setting these values WILL force the connector to do
+            // a new layout promptly. So the line delta values have to be rescued
+            // and restored around connector changes.
+            uno::Reference< drawing::XShape > xShape(
+                mrImporter.getInterfaceToIdentifierMapper().getReference( rHint.aDestShapeId ), uno::UNO_QUERY );
+            if( xShape.is() )
             {
-                // #86637# remember line deltas
-                uno::Any aLine1Delta;
-                uno::Any aLine2Delta;
-                uno::Any aLine3Delta;
-                OUString aStr1("EdgeLine1Delta");
-                OUString aStr2("EdgeLine2Delta");
-                OUString aStr3("EdgeLine3Delta");
-                aLine1Delta = xConnector->getPropertyValue(aStr1);
-                aLine2Delta = xConnector->getPropertyValue(aStr2);
-                aLine3Delta = xConnector->getPropertyValue(aStr3);
+                xConnector->setPropertyValue( rHint.bStart ? gsStartShape : gsEndShape, uno::Any(xShape) );
 
-                // #86637# simply setting these values WILL force the connector to do
-                // an new layout promptly. So the line delta values have to be rescued
-                // and restored around connector changes.
-                uno::Reference< drawing::XShape > xShape(
-                    mrImporter.getInterfaceToIdentifierMapper().getReference( rHint.aDestShapeId ), uno::UNO_QUERY );
-                if( xShape.is() )
-                {
-                    xConnector->setPropertyValue( rHint.bStart ? msStartShape : msEndShape, uno::Any(xShape) );
-
-                    sal_Int32 nGlueId = rHint.nDestGlueId < 4 ? rHint.nDestGlueId : getGluePointId( xShape, rHint.nDestGlueId );
-                    xConnector->setPropertyValue( rHint.bStart ? msStartGluePointIndex : msEndGluePointIndex, uno::Any(nGlueId) );
-                }
-
-                // #86637# restore line deltas
-                xConnector->setPropertyValue(aStr1, aLine1Delta );
-                xConnector->setPropertyValue(aStr2, aLine2Delta );
-                xConnector->setPropertyValue(aStr3, aLine3Delta );
+                sal_Int32 nGlueId = rHint.nDestGlueId < 4 ? rHint.nDestGlueId : getGluePointId( xShape, rHint.nDestGlueId );
+                xConnector->setPropertyValue( rHint.bStart ? gsStartGluePointIndex : gsEndGluePointIndex, uno::Any(nGlueId) );
             }
+
+            // #86637# restore line deltas
+            xConnector->setPropertyValue(aStr1, aLine1Delta );
+            xConnector->setPropertyValue(aStr2, aLine2Delta );
+            xConnector->setPropertyValue(aStr3, aLine3Delta );
         }
-        mpImpl->maConnections.clear();
     }
+    mpImpl->maConnections.clear();
 }
 
 SvXMLImportPropertyMapper* XMLShapeImportHelper::CreateShapePropMapper( const uno::Reference< frame::XModel>& rModel, SvXMLImport& rImport )
@@ -968,7 +1037,7 @@ SvXMLImportPropertyMapper* XMLShapeImportHelper::CreateShapePropMapper( const un
 
 /** adds a mapping for a glue point identifier from an xml file to the identifier created after inserting
     the new glue point into the core. The saved mappings can be retrieved by getGluePointId() */
-void XMLShapeImportHelper::addGluePointMapping( css::uno::Reference< css::drawing::XShape >& xShape,
+void XMLShapeImportHelper::addGluePointMapping( css::uno::Reference< css::drawing::XShape > const & xShape,
                           sal_Int32 nSourceId, sal_Int32 nDestinnationId )
 {
     if( mpPageContext )
@@ -983,13 +1052,10 @@ void XMLShapeImportHelper::moveGluePointMapping( const css::uno::Reference< css:
         ShapeGluePointsMap::iterator aShapeIter( mpPageContext->maShapeGluePointsMap.find( xShape ) );
         if( aShapeIter != mpPageContext->maShapeGluePointsMap.end() )
         {
-            GluePointIdMap::iterator aShapeIdIter = (*aShapeIter).second.begin();
-            GluePointIdMap::iterator aShapeIdEnd  = (*aShapeIter).second.end();
-            while ( aShapeIdIter != aShapeIdEnd )
+            for ( auto& rShapeId : (*aShapeIter).second )
             {
-                if ( (*aShapeIdIter).second != -1 )
-                    (*aShapeIdIter).second += n;
-                ++aShapeIdIter;
+                if ( rShapeId.second != -1 )
+                    rShapeId.second += n;
             }
         }
     }
@@ -1014,7 +1080,7 @@ sal_Int32 XMLShapeImportHelper::getGluePointId( const css::uno::Reference< css::
 }
 
 /** this method must be calling before the first shape is imported for the given page */
-void XMLShapeImportHelper::startPage( css::uno::Reference< css::drawing::XShapes >& rShapes )
+void XMLShapeImportHelper::startPage( css::uno::Reference< css::drawing::XShapes > const & rShapes )
 {
     const std::shared_ptr<XMLShapeImportPageContextImpl> pOldContext = mpPageContext;
     mpPageContext = std::make_shared<XMLShapeImportPageContextImpl>();
@@ -1023,7 +1089,7 @@ void XMLShapeImportHelper::startPage( css::uno::Reference< css::drawing::XShapes
 }
 
 /** this method must be calling after the last shape is imported for the given page */
-void XMLShapeImportHelper::endPage( css::uno::Reference< css::drawing::XShapes >& rShapes )
+void XMLShapeImportHelper::endPage( css::uno::Reference< css::drawing::XShapes > const & rShapes )
 {
     SAL_WARN_IF( !mpPageContext || (mpPageContext->mxShapes != rShapes), "xmloff", "wrong call to endPage(), no startPage called or wrong page" );
     if( nullptr == mpPageContext )
@@ -1046,7 +1112,7 @@ bool XMLShapeImportHelper::IsHandleProgressBarEnabled() const
 }
 
 /** queries the capability of the current model to create presentation shapes */
-bool XMLShapeImportHelper::IsPresentationShapesSupported()
+bool XMLShapeImportHelper::IsPresentationShapesSupported() const
 {
     return mpImpl->mbIsPresentationShapesSupported;
 }

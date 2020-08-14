@@ -26,7 +26,7 @@
 #include <xmloff/prstylei.hxx>
 #include <xmloff/xmlprmap.hxx>
 #include <xmloff/xmlexp.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlmetai.hxx>
 #include <xmloff/maptype.hxx>
 
@@ -39,14 +39,15 @@
 #include <com/sun/star/chart2/data/XPivotTableDataProvider.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
-#include <com/sun/star/chart2/XRegressionCurveContainer.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
+#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 
 #include <comphelper/processfactory.hxx>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 #include <algorithm>
 #include <map>
 
@@ -127,7 +128,7 @@ Reference< chart2::data::XDataSequence > lcl_createNewSequenceFromCachedXMLRange
 namespace SchXMLTools
 {
 
-static const SvXMLEnumMapEntry<SchXMLChartTypeEnum> aXMLChartClassMap[] =
+const SvXMLEnumMapEntry<SchXMLChartTypeEnum> aXMLChartClassMap[] =
 {
     { XML_LINE,         XML_CHART_CLASS_LINE    },
     { XML_AREA,         XML_CHART_CLASS_AREA    },
@@ -139,7 +140,6 @@ static const SvXMLEnumMapEntry<SchXMLChartTypeEnum> aXMLChartClassMap[] =
     { XML_BAR,          XML_CHART_CLASS_BAR     },
     { XML_STOCK,        XML_CHART_CLASS_STOCK   },
     { XML_BUBBLE,       XML_CHART_CLASS_BUBBLE  },
-    { XML_GL3DBAR,      XML_CHART_CLASS_GL3DBAR },
     { XML_SURFACE,      XML_CHART_CLASS_BAR     }, //@todo change this if a surface chart is available
     { XML_ADD_IN,       XML_CHART_CLASS_ADDIN   },
     { XML_TOKEN_INVALID, XML_CHART_CLASS_UNKNOWN }
@@ -154,7 +154,7 @@ SchXMLChartTypeEnum GetChartTypeEnum( const OUString& rClassName )
 
 typedef std::map< OUString, OUString > tMakeStringStringMap;
 //static
-const tMakeStringStringMap& lcl_getChartTypeNameMap()
+static const tMakeStringStringMap& lcl_getChartTypeNameMap()
 {
     //shape property -- chart model object property
     static const tMakeStringStringMap g_aChartTypeNameMap{
@@ -177,9 +177,7 @@ const tMakeStringStringMap& lcl_getChartTypeNameMap()
         {"com.sun.star.chart.StockDiagram",
          "com.sun.star.chart2.CandleStickChartType"},
         {"com.sun.star.chart.BubbleDiagram",
-         "com.sun.star.chart2.BubbleChartType"},
-        {"com.sun.star.chart.GL3DBarDiagram",
-         "com.sun.star.chart2.GL3DBarChartType"}};
+         "com.sun.star.chart2.BubbleChartType"}};
     return g_aChartTypeNameMap;
 }
 
@@ -256,8 +254,6 @@ OUString GetChartTypeByClassName(
         else
             aResultBuffer.append("Column");
     }
-    else if (IsXMLToken(rClassName, XML_GL3DBAR))
-        aResultBuffer.append("GL3DBar");
     else
         bInternalType = false;
 
@@ -323,8 +319,6 @@ XMLTokenEnum getTokenByChartType(
             else if( (bUseOldNames && aServiceName == "Stock") ||
                      (!bUseOldNames && aServiceName == "CandleStick"))
                 eResult = XML_STOCK;
-            else if (aServiceName == "GL3DBar")
-                eResult = XML_GL3DBAR;
         }
     }
 
@@ -505,17 +499,16 @@ void CreateCategories(
                                     xLabeledSeq->setValues(xSequence);
 
                                 }
-                                catch( const lang::IllegalArgumentException & ex )
+                                catch( const lang::IllegalArgumentException & )
                                 {
-                                    SAL_WARN("xmloff.chart", "IllegalArgumentException caught, Message: " << ex.Message );
+                                    DBG_UNHANDLED_EXCEPTION("xmloff.chart");
                                 }
                                 aData.Categories.set( xLabeledSeq );
                                 if( pLSequencesPerIndex )
                                 {
                                     // register for setting local data if external data provider is not present
-                                    pLSequencesPerIndex->insert(
-                                        tSchXMLLSequencesPerIndex::value_type(
-                                            tSchXMLIndexWithPart( SCH_XML_CATEGORIES_INDEX, SCH_XML_PART_VALUES ), xLabeledSeq ));
+                                    pLSequencesPerIndex->emplace(
+                                            tSchXMLIndexWithPart( SCH_XML_CATEGORIES_INDEX, SCH_XML_PART_VALUES ), xLabeledSeq );
                                 }
                                 xAxis->setScaleData( aData );
                             }
@@ -538,16 +531,14 @@ uno::Any getPropertyFromContext( const OUString& rPropertyName, const XMLPropSty
         return aRet;
     const ::std::vector< XMLPropertyState >& rProperties = pPropStyleContext->GetProperties();
     const rtl::Reference< XMLPropertySetMapper >& rMapper = pStylesCtxt->GetImportPropertyMapper( pPropStyleContext->GetFamily()/*XML_STYLE_FAMILY_SCH_CHART_ID*/ )->getPropertySetMapper();
-    ::std::vector< XMLPropertyState >::const_iterator aEnd( rProperties.end() );
-    ::std::vector< XMLPropertyState >::const_iterator aPropIter( rProperties.begin() );
-    for( aPropIter = rProperties.begin(); aPropIter != aEnd; ++aPropIter )
+    for( const auto& rProp : rProperties )
     {
-        sal_Int32 nIdx = aPropIter->mnIndex;
+        sal_Int32 nIdx = rProp.mnIndex;
         if( nIdx == -1 )
             continue;
         OUString aPropName = rMapper->GetEntryAPIName( nIdx );
-        if(rPropertyName.equals(aPropName))
-            return aPropIter->maValue;
+        if(rPropertyName == aPropName)
+            return rProp.maValue;
     }
     return aRet;
 }
@@ -618,8 +609,8 @@ void exportRangeToSomewhere( SvXMLExport& rExport, const OUString& rValue )
     //#i113950# first the range was exported to attribute text:id, but that attribute does not allow arbitrary strings anymore within ODF 1.2
     //as an alternative the range info is now saved into the description at an empty group element (not very nice, but ODF conform)
 
-    const SvtSaveOptions::ODFDefaultVersion nCurrentODFVersion( SvtSaveOptions().GetODFDefaultVersion() );
-    if( nCurrentODFVersion == SvtSaveOptions::ODFVER_010 || nCurrentODFVersion == SvtSaveOptions::ODFVER_011 )
+    const SvtSaveOptions::ODFSaneDefaultVersion nCurrentODFVersion(SvtSaveOptions().GetODFSaneDefaultVersion());
+    if (nCurrentODFVersion == SvtSaveOptions::ODFSVER_010 || nCurrentODFVersion == SvtSaveOptions::ODFSVER_011)
         return;//svg:desc is not allowed at draw:g in ODF1.0; but as the ranges for error bars are anyhow not allowed within ODF1.0 nor ODF1.1 we do not need the information
 
     SvXMLElementExport aEmptyShapeGroup( rExport, XML_NAMESPACE_DRAW,
@@ -645,9 +636,9 @@ void setXMLRangePropertyAtDataSequence(
         if( xInfo.is() && xInfo->hasPropertyByName( aXMLRangePropName ))
             xProp->setPropertyValue( aXMLRangePropName, uno::makeAny( rXMLRange ));
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        SAL_WARN("xmloff.chart", "Exception caught, Message: " << ex.Message );
+        DBG_UNHANDLED_EXCEPTION("xmloff.chart");
     }
 }
 
@@ -672,9 +663,9 @@ bool getXMLRangePropertyFromDataSequence(
             if( bClearProp && bResult )
                 xProp->setPropertyValue( aXMLRangePropName, uno::Any( OUString()));
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            SAL_WARN("xmloff.chart", "Exception caught, Message: " << ex.Message );
+            DBG_UNHANDLED_EXCEPTION("xmloff.chart");
         }
     }
     return bResult;
@@ -689,13 +680,12 @@ void copyProperties(
 
     try
     {
-        Reference< beans::XPropertySetInfo > xSrcInfo( xSource->getPropertySetInfo(), uno::UNO_QUERY_THROW );
-        Reference< beans::XPropertySetInfo > xDestInfo( xDestination->getPropertySetInfo(), uno::UNO_QUERY_THROW );
-        Sequence< beans::Property > aProperties( xSrcInfo->getProperties());
-        const sal_Int32 nLength = aProperties.getLength();
-        for( sal_Int32 i = 0; i < nLength; ++i )
+        Reference< beans::XPropertySetInfo > xSrcInfo( xSource->getPropertySetInfo(), uno::UNO_SET_THROW );
+        Reference< beans::XPropertySetInfo > xDestInfo( xDestination->getPropertySetInfo(), uno::UNO_SET_THROW );
+        const Sequence< beans::Property > aProperties( xSrcInfo->getProperties());
+        for( const auto& rProperty : aProperties )
         {
-            OUString aName( aProperties[i].Name);
+            OUString aName( rProperty.Name);
             if( xDestInfo->hasPropertyByName( aName ))
             {
                 beans::Property aProp( xDestInfo->getPropertyByName( aName ));
@@ -725,10 +715,9 @@ bool switchBackToDataProviderFromParent( const Reference< chart2::XChartDocument
 
     xDataReceiver->attachDataProvider( xDataProviderFromParent );
 
-    for( tSchXMLLSequencesPerIndex::const_iterator aLSeqIt( rLSequencesPerIndex.begin() );
-         aLSeqIt != rLSequencesPerIndex.end(); ++aLSeqIt )
+    for( const auto& rLSeq : rLSequencesPerIndex )
     {
-        Reference< chart2::data::XLabeledDataSequence > xLabeledSeq( aLSeqIt->second );
+        Reference< chart2::data::XLabeledDataSequence > xLabeledSeq( rLSeq.second );
         if( !xLabeledSeq.is() )
             continue;
         Reference< chart2::data::XDataSequence > xNewSeq;

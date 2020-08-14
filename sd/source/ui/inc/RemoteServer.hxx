@@ -10,35 +10,26 @@
 #define INCLUDED_SD_SOURCE_UI_INC_REMOTESERVER_HXX
 
 // SERVER
-#include <stdio.h>
-#include <stdlib.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
-#include <sys/types.h>
 #include <memory>
 #include <vector>
 
-#include <osl/mutex.hxx>
-#include <osl/socket.hxx>
-#include <rtl/ref.hxx>
+#include <osl/socket_decl.hxx>
 #include <salhelper/thread.hxx>
 
-#include <com/sun/star/presentation/XSlideShowController.hpp>
+#include <sddllapi.h>
 
-#include "sddllapi.h"
+namespace osl { class Mutex; }
+namespace com::sun::star::presentation { class XSlideShowController; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
 
 /**
 * The port for use for the main communication between LibO and remote control app.
 */
 #define PORT 1599
 
-#define CHARSET RTL_TEXTENCODING_UTF8
-
 namespace sd
 {
     class Communicator;
-    class BufferedStreamSocket;
 
     struct ClientInfo
     {
@@ -46,7 +37,6 @@ namespace sd
 
         bool mbIsAlreadyAuthorised;
 
-        enum PROTOCOL { NETWORK = 1, BLUETOOTH };
         ClientInfo( const OUString& rName,
                     const bool bIsAlreadyAuthorised ) :
             mName( rName ),
@@ -80,7 +70,7 @@ namespace sd
             SD_DLLPUBLIC static void restoreDiscoverable();
 
             // For the communicator
-            static void removeCommunicator( Communicator* pCommunicator );
+            static void removeCommunicator( Communicator const * pCommunicator );
         private:
             RemoteServer();
             virtual ~RemoteServer() override;

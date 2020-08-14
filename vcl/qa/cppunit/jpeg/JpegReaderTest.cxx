@@ -8,27 +8,23 @@
  *
  */
 
-#include <test/setupvcl.hxx>
 #include <unotest/bootstrapfixturebase.hxx>
 #include <vcl/graphicfilter.hxx>
-#include <vcl/bitmapaccess.hxx>
+#include <bitmapwriteaccess.hxx>
+#include <tools/stream.hxx>
+
+OUStringLiteral const gaDataUrl("/vcl/qa/cppunit/jpeg/data/");
 
 class JpegReaderTest : public test::BootstrapFixtureBase
 {
-    OUString maDataUrl;
-
     OUString getFullUrl(const OUString& sFileName)
     {
-        return m_directories.getURLFromSrc(maDataUrl) + sFileName;
+        return m_directories.getURLFromSrc(gaDataUrl) + sFileName;
     }
 
-    Bitmap loadJPG(const OUString& aURL);
+    Graphic loadJPG(const OUString& aURL);
 
 public:
-    JpegReaderTest() :
-        maDataUrl("/vcl/qa/cppunit/jpeg/data/")
-    {}
-
     void testReadRGB();
     void testReadGray();
     void testReadCMYK();
@@ -40,7 +36,7 @@ public:
     CPPUNIT_TEST_SUITE_END();
 };
 
-int deltaColor(BitmapColor aColor1, BitmapColor aColor2)
+static int deltaColor(BitmapColor aColor1, BitmapColor aColor2)
 {
     int deltaR = std::abs(aColor1.GetRed()   - aColor2.GetRed());
     int deltaG = std::abs(aColor1.GetGreen() - aColor2.GetGreen());
@@ -49,9 +45,9 @@ int deltaColor(BitmapColor aColor1, BitmapColor aColor2)
     return std::max(std::max(deltaR, deltaG), deltaB);
 }
 
-bool checkRect(Bitmap& rBitmap, int aLayerNumber, long nAreaHeight, long nAreaWidth, Color aExpectedColor, int nMaxDelta)
+static bool checkRect(Bitmap& rBitmap, int aLayerNumber, long nAreaHeight, long nAreaWidth, Color aExpectedColor, int nMaxDelta)
 {
-    Bitmap::ScopedWriteAccess pAccess(rBitmap);
+    BitmapScopedWriteAccess pAccess(rBitmap);
 
     long nWidth  = std::min(nAreaWidth,  pAccess->Width());
     long nHeight = std::min(nAreaHeight, pAccess->Height());
@@ -71,7 +67,7 @@ bool checkRect(Bitmap& rBitmap, int aLayerNumber, long nAreaHeight, long nAreaWi
         if (delta > nMaxDelta)
             return false;
 
-        Color aColorLast  = pAccess->GetPixel(y, lastX);
+        Color aColorLast = pAccess->GetPixel(y, lastX);
         delta = deltaColor(aColorLast, aExpectedColor);
         if (delta > nMaxDelta)
             return false;
@@ -91,19 +87,30 @@ bool checkRect(Bitmap& rBitmap, int aLayerNumber, long nAreaHeight, long nAreaWi
     return true;
 }
 
-Bitmap JpegReaderTest::loadJPG(const OUString& aURL)
+static int getNumberOfImageComponents(const Graphic& rGraphic)
+{
+    GfxLink aLink = rGraphic.GetGfxLink();
+    SvMemoryStream aMemoryStream(const_cast<sal_uInt8*>(aLink.GetData()), aLink.GetDataSize(),
+                                 StreamMode::READ | StreamMode::WRITE);
+    GraphicDescriptor aDescriptor(aMemoryStream, nullptr);
+    CPPUNIT_ASSERT(aDescriptor.Detect(true));
+    return aDescriptor.GetNumberOfImageComponents();
+}
+
+Graphic JpegReaderTest::loadJPG(const OUString& aURL)
 {
     GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
     Graphic aGraphic;
     SvFileStream aFileStream(aURL, StreamMode::READ);
     ErrCode bResult = rFilter.ImportGraphic(aGraphic, aURL, aFileStream);
     CPPUNIT_ASSERT_EQUAL(ERRCODE_NONE, bResult);
-    return aGraphic.GetBitmapEx().GetBitmap();
+    return aGraphic;
 }
 
 void JpegReaderTest::testReadRGB()
 {
-    Bitmap aBitmap = loadJPG(getFullUrl("JPEGTestRGB.jpeg"));
+    Graphic aGraphic = loadJPG(getFullUrl("JPEGTestRGB.jpeg"));
+    Bitmap aBitmap = aGraphic.GetBitmapEx().GetBitmap();
     Size aSize = aBitmap.GetSizePixel();
     CPPUNIT_ASSERT_EQUAL(12L, aSize.Width());
     CPPUNIT_ASSERT_EQUAL(12L, aSize.Height());
@@ -113,11 +120,14 @@ void JpegReaderTest::testReadRGB()
     CPPUNIT_ASSERT(checkRect(aBitmap, 1, 8, 8, Color(0xff, 0x00, 0x00), nMaxDelta));
     CPPUNIT_ASSERT(checkRect(aBitmap, 2, 8, 8, Color(0x00, 0xff, 0x00), nMaxDelta));
     CPPUNIT_ASSERT(checkRect(aBitmap, 3, 8, 8, Color(0x00, 0x00, 0xff), nMaxDelta));
+
+    CPPUNIT_ASSERT_EQUAL(3, getNumberOfImageComponents(aGraphic));
 }
 
 void JpegReaderTest::testReadGray()
 {
-    Bitmap aBitmap = loadJPG(getFullUrl("JPEGTestGray.jpeg"));
+    Graphic aGraphic = loadJPG(getFullUrl("JPEGTestGray.jpeg"));
+    Bitmap aBitmap = aGraphic.GetBitmapEx().GetBitmap();
     Size aSize = aBitmap.GetSizePixel();
     CPPUNIT_ASSERT_EQUAL(12L, aSize.Width());
     CPPUNIT_ASSERT_EQUAL(12L, aSize.Height());
@@ -129,11 +139,14 @@ void JpegReaderTest::testReadGray()
     CPPUNIT_ASSERT(checkRect(aBitmap, 1, 8, 8, Color(0x36, 0x36, 0x36), nMaxDelta));
     CPPUNIT_ASSERT(checkRect(aBitmap, 2, 8, 8, Color(0xb6, 0xb6, 0xb6), nMaxDelta));
     CPPUNIT_ASSERT(checkRect(aBitmap, 3, 8, 8, Color(0x12, 0x12, 0x12), nMaxDelta));
+
+    CPPUNIT_ASSERT_EQUAL(1, getNumberOfImageComponents(aGraphic));
 }
 
 void JpegReaderTest::testReadCMYK()
 {
-    Bitmap aBitmap = loadJPG(getFullUrl("JPEGTestCMYK.jpeg"));
+    Graphic aGraphic = loadJPG(getFullUrl("JPEGTestCMYK.jpeg"));
+    Bitmap aBitmap = aGraphic.GetBitmapEx().GetBitmap();
     Size aSize = aBitmap.GetSizePixel();
     CPPUNIT_ASSERT_EQUAL(12L, aSize.Width());
     CPPUNIT_ASSERT_EQUAL(12L, aSize.Height());
@@ -143,6 +156,8 @@ void JpegReaderTest::testReadCMYK()
     CPPUNIT_ASSERT(checkRect(aBitmap, 1, 8, 8, Color(0xff, 0x00, 0x00), maxDelta));
     CPPUNIT_ASSERT(checkRect(aBitmap, 2, 8, 8, Color(0x00, 0xff, 0x00), maxDelta));
     CPPUNIT_ASSERT(checkRect(aBitmap, 3, 8, 8, Color(0x00, 0x00, 0xff), maxDelta));
+
+    CPPUNIT_ASSERT_EQUAL(4, getNumberOfImageComponents(aGraphic));
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(JpegReaderTest);

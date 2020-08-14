@@ -21,12 +21,10 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AVIEW_HXX
 
 #include <connectivity/sdbcx/VView.hxx>
-#include "ado/Awrapadox.hxx"
+#include <ado/Awrapadox.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
 
         typedef sdbcx::OView OView_ADO;
 
@@ -45,11 +43,10 @@ namespace connectivity
 
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
             WpADOView getImpl() const { return m_aView;}
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AVIEW_HXX

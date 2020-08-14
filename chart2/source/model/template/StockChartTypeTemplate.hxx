@@ -20,8 +20,8 @@
 #define INCLUDED_CHART2_SOURCE_MODEL_TEMPLATE_STOCKCHARTTYPETEMPLATE_HXX
 
 #include "ChartTypeTemplate.hxx"
-#include "OPropertySet.hxx"
-#include "MutexContainer.hxx"
+#include <OPropertySet.hxx>
+#include <MutexContainer.hxx>
 #include <comphelper/uno3.hxx>
 
 namespace chart
@@ -33,12 +33,12 @@ class StockChartTypeTemplate :
         public ::property::OPropertySet
 {
 public:
-    enum StockVariant
+    enum class StockVariant
     {
-        LOW_HI_CLOSE,
-        OPEN_LOW_HI_CLOSE,
-        VOL_LOW_HI_CLOSE,
-        VOL_OPEN_LOW_HI_CLOSE
+        NONE,
+        Open,
+        Volume,
+        VolumeOpen
     };
 
     /** CTOR

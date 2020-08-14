@@ -23,25 +23,22 @@
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
 #include <xmloff/xmlictxt.hxx>
-#include <xmloff/xmlevent.hxx>
 
-#include <map>
 #include <vector>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
     namespace beans { struct PropertyValue; }
     namespace container { class XNameReplace; }
     namespace document { class XEventsSupplier; }
-} } }
+}
+
+namespace com::sun::star::uno { template <class E> class Sequence; }
 
 typedef ::std::pair<
             OUString,
             css::uno::Sequence<css::beans::PropertyValue> > EventNameValuesPair;
-
-typedef ::std::vector< EventNameValuesPair > EventsVector;
 
 /**
  * Import <script:events> element.
@@ -58,7 +55,7 @@ class XMLOFF_DLLPUBLIC XMLEventsImportContext : public SvXMLImportContext
 
 protected:
     // if no XNameReplace is given, use this vector to collect events
-    EventsVector aCollectEvents;
+    std::vector< EventNameValuesPair > aCollectEvents;
 
 public:
 
@@ -68,10 +65,16 @@ public:
         sal_uInt16 nPrfx,
         const OUString& rLocalName);
 
+    XMLEventsImportContext(SvXMLImport& rImport);
+
     XMLEventsImportContext(
         SvXMLImport& rImport,
         sal_uInt16 nPrfx,
         const OUString& rLocalName,
+        const css::uno::Reference<css::document::XEventsSupplier> & xEventsSupplier);
+
+    XMLEventsImportContext(
+        SvXMLImport& rImport,
         const css::uno::Reference<css::document::XEventsSupplier> & xEventsSupplier);
 
     XMLEventsImportContext(
@@ -109,10 +112,18 @@ protected:
 
     virtual void EndElement() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList ) override;
+
+    virtual void SAL_CALL startFastElement( sal_Int32 nElement,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override;
+
+    virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
 };
 
 #endif

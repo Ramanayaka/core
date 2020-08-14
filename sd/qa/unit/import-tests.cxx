@@ -7,44 +7,55 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <sal/config.h>
+
+#include <config_features.h>
 #include <config_poppler.h>
+#include <memory>
 #include <ostream>
+#include <sdpage.hxx>
 
 #include "sdmodeltestbase.hxx"
 
 #include <svl/stritem.hxx>
+#include <editeng/eeitem.hxx>
 #include <editeng/editobj.hxx>
 #include <editeng/outlobj.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/fhgtitem.hxx>
 #include <editeng/escapementitem.hxx>
 #include <editeng/colritem.hxx>
-#include <editeng/fontitem.hxx>
-#include <editeng/wghtitem.hxx>
 #include <editeng/numitem.hxx>
-#include <editeng/lrspitem.hxx>
-#include <editeng/postitem.hxx>
-#include <rsc/rscsfx.hxx>
-
+#include <editeng/unoprnms.hxx>
+#include <sfx2/app.hxx>
 #include <sfx2/sfxsids.hrc>
+#include <svl/style.hxx>
+
 #include <svx/svdotext.hxx>
 #include <svx/svdoashp.hxx>
-#include <svx/svdograf.hxx>
 #include <svx/svdogrp.hxx>
-#include <svx/svdomedia.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/svdotable.hxx>
+#include <svx/xfillit0.hxx>
 #include <svx/xflclit.hxx>
 #include <svx/xlineit0.hxx>
 #include <svx/xlnclit.hxx>
 #include <svx/xlnwtit.hxx>
+#include <svx/sdasitm.hxx>
+#include <svx/sdmetitm.hxx>
+#include <svx/sdooitm.hxx>
 #include <animations/animationnodehelper.hxx>
 #include <sax/tools/converter.hxx>
 
+#include <com/sun/star/awt/Gradient.hpp>
+#include <com/sun/star/awt/XBitmap.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/presentation/ClickAction.hpp>
 #include <com/sun/star/presentation/XPresentationPage.hpp>
+#include <com/sun/star/presentation/XPresentationSupplier.hpp>
+#include <com/sun/star/drawing/BitmapMode.hpp>
+#include <com/sun/star/drawing/ColorMode.hpp>
 #include <com/sun/star/drawing/GraphicExportFilter.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
@@ -56,6 +67,7 @@
 #include <com/sun/star/animations/XAnimationNode.hpp>
 #include <com/sun/star/animations/XAnimate.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/chart/DataLabelPlacement.hpp>
 #include <com/sun/star/chart/XChartDocument.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart2/XDataSeriesContainer.hpp>
@@ -64,41 +76,50 @@
 #include <com/sun/star/chart2/data/XLabeledDataSequence.hpp>
 #include <com/sun/star/chart2/data/XDataSequence.hpp>
 #include <com/sun/star/chart2/data/XNumericalDataSequence.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/table/BorderLineStyle.hpp>
 #include <com/sun/star/table/BorderLine2.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
+#include <com/sun/star/style/LineSpacing.hpp>
+#include <com/sun/star/style/LineSpacingMode.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/table/XTableRows.hpp>
 #include <com/sun/star/style/NumberingType.hpp>
+#include <com/sun/star/frame/Desktop.hpp>
+#include <com/sun/star/text/GraphicCrop.hpp>
+#include <com/sun/star/text/XTextCursor.hpp>
+#include <com/sun/star/xml/dom/XDocument.hpp>
 
 #include <stlpool.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequenceashashmap.hxx>
+#include <comphelper/graphicmimetype.hxx>
+#include <comphelper/lok.hxx>
 #include <vcl/pngread.hxx>
 #include <vcl/bitmapaccess.hxx>
 #include <vcl/dibtools.hxx>
-#include <sfx2/frame.hxx>
-#include <com/sun/star/frame/XModel2.hpp>
-#include <com/sun/star/frame/XController2.hpp>
+#include <svx/svdograf.hxx>
 
 using namespace ::com::sun::star;
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
 
 template<class T>
-std::ostream& operator<<(std::ostream& rStrm, const uno::Reference<T>& xRef)
+static std::ostream& operator<<(std::ostream& rStrm, const uno::Reference<T>& xRef)
 {
     rStrm << xRef.get();
     return rStrm;
 }
 
-} } } }
+}
 
 
 /// Impress import filters tests.
 class SdImportTest : public SdModelTestBase
 {
 public:
+    virtual void setUp() override;
+
     void testDocumentLayout();
     void testSmoketest();
     void testN759180();
@@ -106,11 +127,13 @@ public:
     void testMasterPageStyleParent();
     void testGradientAngle();
     void testTdf97808();
+    void testFillStyleNone();
     void testFdo64512();
     void testFdo71075();
     void testN828390_2();
     void testN828390_3();
     void testFdo68594();
+    void testPlaceholderPriority();
     void testFdo72998();
     void testFdo77027();
     void testStrictOOXML();
@@ -119,9 +142,10 @@ public:
     void testN862510_4();
     void testBnc870237();
     void testBnc887225();
-    void testBnc480256();
+    void testPredefinedTableStyle();
     void testBnc591147();
     void testCreationDate();
+    void testMultiColTexts();
     void testBnc584721_1();
     void testBnc584721_2();
     void testBnc584721_4();
@@ -131,13 +155,19 @@ public:
     void testBnc862510_6();
     void testBnc862510_7();
 #if ENABLE_PDFIMPORT
+#if HAVE_FEATURE_PDFIUM
+    void testPDFImportShared();
+#endif
+#if defined(IMPORT_PDF_ELEMENTS)
     void testPDFImport();
     void testPDFImportSkipImages();
+#endif
 #endif
     void testBulletSuffix();
     void testBnc910045();
     void testRowHeight();
     void testTdf93830();
+    void testTdf127129();
     void testTdf93097();
     void testTdf62255();
     void testTdf93124();
@@ -152,17 +182,51 @@ public:
     void testTdf103567();
     void testTdf103792();
     void testTdf103876();
+    void testTdf79007();
+    void testTdf129686();
     void testTdf104015();
     void testTdf104201();
     void testTdf103477();
     void testTdf104445();
     void testTdf105150();
     void testTdf105150PPT();
+    void testTdf123684();
     void testTdf100926();
     void testTdf89064();
+    void testTdf108925();
+    void testTdf109067();
+    void testTdf109187();
+    void testTdf108926();
+    void testTdf100065();
+    void testTdf90626();
+    void testTdf114488();
+    void testTdf114913();
+    void testTdf114821();
+    void testTdf115394();
+    void testTdf115394PPT();
+    void testTdf51340();
+    void testTdf116899();
+    void testTdf77747();
+    void testTdf116266();
+    void testTdf128684();
+    void testTdf119187();
+    void testShapeGlowEffectPPTXImpoer();
+    void testShapeBlurPPTXImport();
 
-    bool checkPattern(sd::DrawDocShellRef& rDocRef, int nShapeNumber, std::vector<sal_uInt8>& rExpected);
+    bool checkPattern(sd::DrawDocShellRef const & rDocRef, int nShapeNumber, std::vector<sal_uInt8>& rExpected);
     void testPatternImport();
+    void testPptCrop();
+    void testTdf120028();
+    void testTdf120028b();
+    void testDescriptionImport();
+    void testTdf83247();
+    void testTdf47365();
+    void testTdf122899();
+    void testOOXTheme();
+    void testCropToShape();
+    void testTdf127964();
+    void testTdf106638();
+    void testTdf113198();
 
     CPPUNIT_TEST_SUITE(SdImportTest);
 
@@ -173,11 +237,13 @@ public:
     CPPUNIT_TEST(testMasterPageStyleParent);
     CPPUNIT_TEST(testGradientAngle);
     CPPUNIT_TEST(testTdf97808);
+    CPPUNIT_TEST(testFillStyleNone);
     CPPUNIT_TEST(testFdo64512);
     CPPUNIT_TEST(testFdo71075);
     CPPUNIT_TEST(testN828390_2);
     CPPUNIT_TEST(testN828390_3);
     CPPUNIT_TEST(testFdo68594);
+    CPPUNIT_TEST(testPlaceholderPriority);
     CPPUNIT_TEST(testFdo72998);
     CPPUNIT_TEST(testFdo77027);
     CPPUNIT_TEST(testStrictOOXML);
@@ -186,9 +252,10 @@ public:
     CPPUNIT_TEST(testN862510_4);
     CPPUNIT_TEST(testBnc870237);
     CPPUNIT_TEST(testBnc887225);
-    CPPUNIT_TEST(testBnc480256);
+    CPPUNIT_TEST(testPredefinedTableStyle);
     CPPUNIT_TEST(testBnc591147);
     CPPUNIT_TEST(testCreationDate);
+    CPPUNIT_TEST(testMultiColTexts);
     CPPUNIT_TEST(testBnc584721_1);
     CPPUNIT_TEST(testBnc584721_2);
     CPPUNIT_TEST(testBnc584721_4);
@@ -198,13 +265,19 @@ public:
     CPPUNIT_TEST(testBnc862510_6);
     CPPUNIT_TEST(testBnc862510_7);
 #if ENABLE_PDFIMPORT
+#if HAVE_FEATURE_PDFIUM
+    CPPUNIT_TEST(testPDFImportShared);
+#endif
+#if defined(IMPORT_PDF_ELEMENTS)
     CPPUNIT_TEST(testPDFImport);
     CPPUNIT_TEST(testPDFImportSkipImages);
+#endif
 #endif
     CPPUNIT_TEST(testBulletSuffix);
     CPPUNIT_TEST(testBnc910045);
     CPPUNIT_TEST(testRowHeight);
     CPPUNIT_TEST(testTdf93830);
+    CPPUNIT_TEST(testTdf127129);
     CPPUNIT_TEST(testTdf93097);
     CPPUNIT_TEST(testTdf62255);
     CPPUNIT_TEST(testTdf93124);
@@ -219,18 +292,58 @@ public:
     CPPUNIT_TEST(testTdf103567);
     CPPUNIT_TEST(testTdf103792);
     CPPUNIT_TEST(testTdf103876);
+    CPPUNIT_TEST(testTdf79007);
+    CPPUNIT_TEST(testTdf129686);
     CPPUNIT_TEST(testTdf104015);
     CPPUNIT_TEST(testTdf104201);
     CPPUNIT_TEST(testTdf103477);
     CPPUNIT_TEST(testTdf104445);
     CPPUNIT_TEST(testTdf105150);
     CPPUNIT_TEST(testTdf105150PPT);
+    CPPUNIT_TEST(testTdf123684);
     CPPUNIT_TEST(testTdf100926);
     CPPUNIT_TEST(testPatternImport);
     CPPUNIT_TEST(testTdf89064);
+    CPPUNIT_TEST(testTdf108925);
+    CPPUNIT_TEST(testTdf109067);
+    CPPUNIT_TEST(testTdf109187);
+    CPPUNIT_TEST(testTdf108926);
+    CPPUNIT_TEST(testTdf100065);
+    CPPUNIT_TEST(testTdf90626);
+    CPPUNIT_TEST(testTdf114488);
+    CPPUNIT_TEST(testTdf114913);
+    CPPUNIT_TEST(testTdf114821);
+    CPPUNIT_TEST(testTdf115394);
+    CPPUNIT_TEST(testTdf115394PPT);
+    CPPUNIT_TEST(testTdf51340);
+    CPPUNIT_TEST(testTdf116899);
+    CPPUNIT_TEST(testTdf77747);
+    CPPUNIT_TEST(testTdf116266);
+    CPPUNIT_TEST(testPptCrop);
+    CPPUNIT_TEST(testTdf120028);
+    CPPUNIT_TEST(testTdf120028b);
+    CPPUNIT_TEST(testDescriptionImport);
+    CPPUNIT_TEST(testTdf83247);
+    CPPUNIT_TEST(testTdf47365);
+    CPPUNIT_TEST(testTdf122899);
+    CPPUNIT_TEST(testOOXTheme);
+    CPPUNIT_TEST(testCropToShape);
+    CPPUNIT_TEST(testTdf127964);
+    CPPUNIT_TEST(testTdf106638);
+    CPPUNIT_TEST(testTdf128684);
+    CPPUNIT_TEST(testTdf113198);
+    CPPUNIT_TEST(testTdf119187);
+    CPPUNIT_TEST(testShapeGlowEffectPPTXImpoer);
+    CPPUNIT_TEST(testShapeBlurPPTXImport);
 
     CPPUNIT_TEST_SUITE_END();
 };
+
+void SdImportTest::setUp()
+{
+    SdModelTestBase::setUp();
+    mxDesktop.set(frame::Desktop::create(getComponentContext()));
+}
 
 /** Test document against a reference XML dump of shapes.
 
@@ -264,7 +377,7 @@ the test, and re-running; it should break.
 */
 void SdImportTest::testDocumentLayout()
 {
-    struct { const char *pInput, *pDump; sal_Int32 nFormat; sal_Int32 nExportType; } aFilesToCompare[] =
+    static const struct { const char *pInput, *pDump; sal_Int32 nFormat; sal_Int32 nExportType; } aFilesToCompare[] =
     {
         { "odp/shapes-test.odp", "xml/shapes-test_page", ODP, -1 },
         { "fdo47434.pptx", "xml/fdo47434_", PPTX, -1 },
@@ -279,6 +392,15 @@ void SdImportTest::testDocumentLayout()
         { "tdf90403.pptx", "xml/tdf90403_", PPTX, -1 },
         { "tdf90338.odp", "xml/tdf90338_", ODP, PPTX },
         { "tdf92001.odp", "xml/tdf92001_", ODP, PPTX },
+// GCC -mfpmath=387 rounding issues in lclPushMarkerProperties
+// (oox/source/drawingml/lineproperties.cxx); see mail sub-thread starting at
+// <https://lists.freedesktop.org/archives/libreoffice/2016-September/
+// 075211.html> "Re: Test File: sc/qa/unit/data/functions/fods/chiinv.fods:
+// fails with Assertion" for how "-mfpmath=sse -msse2" would fix that:
+#if !(defined LINUX && defined X86)
+        { "tdf100491.pptx", "xml/tdf100491_", PPTX, -1 },
+#endif
+        { "tdf109317.pptx", "xml/tdf109317_", PPTX, ODP},
         // { "pptx/n828390.pptx", "pptx/xml/n828390_", PPTX, PPTX }, // Example
     };
 
@@ -329,20 +451,18 @@ void SdImportTest::testN759180()
         CPPUNIT_ASSERT(pTxtObj);
         std::vector<EECharAttrib> rLst;
         const EditTextObject& aEdit = pTxtObj->GetOutlinerParaObject()->GetTextObject();
-        const SvxULSpaceItem *pULSpace = dynamic_cast<const SvxULSpaceItem *>(aEdit.GetParaAttribs(0).GetItem(EE_PARA_ULSPACE));
+        const SvxULSpaceItem *pULSpace = aEdit.GetParaAttribs(0).GetItem(EE_PARA_ULSPACE);
         CPPUNIT_ASSERT(pULSpace);
         CPPUNIT_ASSERT_EQUAL_MESSAGE( "Para bottom spacing is wrong!", static_cast<sal_uInt16>(0), pULSpace->GetLower());
         aEdit.GetCharAttribs(1, rLst);
-        for( std::vector<EECharAttrib>::reverse_iterator it = rLst.rbegin(); it!=rLst.rend(); ++it)
+        auto it = std::find_if(rLst.rbegin(), rLst.rend(),
+            [](const EECharAttrib& rCharAttr) { return dynamic_cast<const SvxFontHeightItem *>(rCharAttr.pAttr) != nullptr; });
+        if (it != rLst.rend())
         {
             const SvxFontHeightItem * pFontHeight = dynamic_cast<const SvxFontHeightItem *>((*it).pAttr);
-            if(pFontHeight)
-            {
-                // nStart == 9
-                // font height = 5 => 5*2540/72
-                CPPUNIT_ASSERT_EQUAL_MESSAGE( "Font height is wrong", static_cast<sal_uInt32>(176), pFontHeight->GetHeight() );
-                break;
-            }
+            // nStart == 9
+            // font height = 5 => 5*2540/72
+            CPPUNIT_ASSERT_EQUAL_MESSAGE( "Font height is wrong", static_cast<sal_uInt32>(176), pFontHeight->GetHeight() );
         }
     }
 
@@ -377,9 +497,10 @@ void SdImportTest::testN862510_2()
 
     const SdrPage *pPage = GetPage( 1, xDocShRef );
     {
+        CPPUNIT_ASSERT_EQUAL(size_t(1), pPage->GetObjCount());
         SdrObjGroup *pGrpObj = dynamic_cast<SdrObjGroup *>( pPage->GetObj( 0 ) );
         CPPUNIT_ASSERT( pGrpObj );
-        SdrObjCustomShape *pObj = dynamic_cast<SdrObjCustomShape *>( pGrpObj->GetSubList()->GetObj( 0 ) );
+        SdrObjCustomShape *pObj = dynamic_cast<SdrObjCustomShape *>( pGrpObj->GetSubList()->GetObj( 1 ) );
         CPPUNIT_ASSERT( pObj );
         CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong Text Rotation!", 90.0, pObj->GetExtraTextRotation( true ) );
     }
@@ -402,7 +523,7 @@ void SdImportTest::testN862510_4()
         for( std::vector<EECharAttrib>::reverse_iterator it = rLst.rbegin(); it != rLst.rend(); ++it )
         {
             const SvxColorItem *pC = dynamic_cast<const SvxColorItem *>( (*it).pAttr );
-            CPPUNIT_ASSERT_MESSAGE( "gradfill for text color not handled!", !( pC && pC->GetValue().GetColor() == 0 ) );
+            CPPUNIT_ASSERT_MESSAGE( "gradfill for text color not handled!", !( pC && pC->GetValue() == Color(0) ) );
         }
     }
 
@@ -426,7 +547,6 @@ void SdImportTest::testN828390_2()
 
 void SdImportTest::testN828390_3()
 {
-    bool bPassed = true;
     sd::DrawDocShellRef xDocShRef = loadURL( m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/n828390_3.pptx"), PPTX );
     const SdrPage *pPage = GetPage( 1, xDocShRef );
 
@@ -436,18 +556,11 @@ void SdImportTest::testN828390_3()
     const EditTextObject& aEdit = pTxtObj->GetOutlinerParaObject()->GetTextObject();
     std::vector<EECharAttrib> rLst;
     aEdit.GetCharAttribs(1, rLst);
-    for( std::vector<EECharAttrib>::reverse_iterator it = rLst.rbegin(); it!=rLst.rend(); ++it)
-    {
-        const SvxEscapementItem *pFontEscapement = dynamic_cast<const SvxEscapementItem *>((*it).pAttr);
-        if(pFontEscapement)
-        {
-            if( pFontEscapement->GetEsc() != 0 )
-            {
-                bPassed = false;
-                break;
-            }
-        }
-    }
+    bool bPassed = std::none_of(rLst.rbegin(), rLst.rend(),
+        [](const EECharAttrib& rCharAttr) {
+            const SvxEscapementItem *pFontEscapement = dynamic_cast<const SvxEscapementItem *>(rCharAttr.pAttr);
+            return pFontEscapement && (pFontEscapement->GetEsc() != 0);
+        });
     CPPUNIT_ASSERT_MESSAGE("CharEscapment not imported properly", bPassed);
 
     xDocShRef->DoClose();
@@ -462,7 +575,7 @@ void SdImportTest::testMasterPageStyleParent()
     SdStyleSheetPool *const pPool(pDoc->GetSdStyleSheetPool());
 
     int parents(0);
-    SfxStyleSheetIterator iter(pPool, SD_STYLE_FAMILY_MASTERPAGE);
+    SfxStyleSheetIterator iter(pPool, SfxStyleFamily::Page);
     for (SfxStyleSheetBase * pStyle = iter.First(); pStyle; pStyle = iter.Next())
     {
         OUString const name(pStyle->GetName());
@@ -472,7 +585,7 @@ void SdImportTest::testMasterPageStyleParent()
             ++parents;
             // check that parent exists
             SfxStyleSheetBase *const pParentStyle(
-                    pPool->Find(parent, SD_STYLE_FAMILY_MASTERPAGE));
+                    pPool->Find(parent, SfxStyleFamily::Page));
             CPPUNIT_ASSERT(pParentStyle);
             CPPUNIT_ASSERT_EQUAL(pParentStyle->GetName(), parent);
             // check that parent has the same master page as pStyle
@@ -571,10 +684,46 @@ void SdImportTest::testFdo68594()
     SdrObject *pObj = pPage->GetObj(1);
     SdrTextObj *pTxtObj = dynamic_cast<SdrTextObj *>( pObj );
     CPPUNIT_ASSERT_MESSAGE( "no text object", pTxtObj != nullptr);
-    const SvxColorItem *pC = dynamic_cast<const SvxColorItem *>(&pTxtObj->GetMergedItem(EE_CHAR_COLOR));
+    const SvxColorItem *pC = &pTxtObj->GetMergedItem(EE_CHAR_COLOR);
     CPPUNIT_ASSERT_MESSAGE( "no color item", pC != nullptr);
     // Color should be black
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Placeholder color mismatch", static_cast<ColorData>(0), pC->GetValue().GetColor());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Placeholder color mismatch", sal_uInt32(0), sal_uInt32(pC->GetValue()) );
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testPlaceholderPriority()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/ppt/placeholder-priority.pptx"), PPTX);
+
+    const SdrPage* pPage = GetPage( 1, xDocShRef );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Missing placeholder", sal_uInt32(2), sal_uInt32(pPage->GetObjCount()));
+
+    tools::Rectangle pObj1Rect(9100, 3500, 29619, 4038);
+    SdrObject *pObj1 = pPage->GetObj(0);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Placeholder position is wrong, check the placeholder priority", pObj1Rect, pObj1->GetCurrentBoundRect());
+
+    tools::Rectangle pObj2Rect(9102, 8643, 29619, 12642);
+    SdrObject *pObj2 = pPage->GetObj(1);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Placeholder position is wrong, check the placeholder priority", pObj2Rect, pObj2->GetCurrentBoundRect());
+
+    // If the placeholder positions are wrong, please check placeholder priority in Placeholders class.
+}
+
+void SdImportTest::testPptCrop()
+{
+    sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/ppt/crop.ppt"), PPT);
+
+    uno::Reference<beans::XPropertySet> xPropertySet(
+        getShapeFromPage(/*nShape=*/1, /*nPage=*/0, xDocShRef));
+    text::GraphicCrop aCrop;
+    xPropertySet->getPropertyValue("GraphicCrop") >>= aCrop;
+    // These were all 0, lazy-loading broke cropping.
+    CPPUNIT_ASSERT_GREATER(static_cast<sal_Int32>(0), aCrop.Top);
+    CPPUNIT_ASSERT_GREATER(static_cast<sal_Int32>(0), aCrop.Bottom);
+    CPPUNIT_ASSERT_GREATER(static_cast<sal_Int32>(0), aCrop.Left);
+    CPPUNIT_ASSERT_GREATER(static_cast<sal_Int32>(0), aCrop.Right);
 
     xDocShRef->DoClose();
 }
@@ -587,7 +736,7 @@ void SdImportTest::testFdo72998()
     {
         SdrObjCustomShape *pObj = dynamic_cast<SdrObjCustomShape *>(pPage->GetObj(2));
         CPPUNIT_ASSERT( pObj );
-        const SdrCustomShapeGeometryItem& rGeometryItem = static_cast<const SdrCustomShapeGeometryItem&>(pObj->GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ));
+        const SdrCustomShapeGeometryItem& rGeometryItem = pObj->GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY );
         const css::uno::Any* pViewBox = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( OUString( "ViewBox" ) );
         CPPUNIT_ASSERT_MESSAGE( "Missing ViewBox", pViewBox );
         css::awt::Rectangle aViewBox;
@@ -626,7 +775,7 @@ void SdImportTest::testTdf97808()
 
     uno::Reference<style::XStyleFamiliesSupplier> xStyleFamiliesSupplier(
         xDocShRef->GetModel(), uno::UNO_QUERY);
-    uno::Reference<container::XNameAccess> xStyleFamilies(xStyleFamiliesSupplier->getStyleFamilies(), uno::UNO_QUERY);
+    uno::Reference<container::XNameAccess> xStyleFamilies = xStyleFamiliesSupplier->getStyleFamilies();
     uno::Reference<container::XNameAccess> xStyleFamily(xStyleFamilies->getByName("graphics"), uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xStyle(xStyleFamily->getByName("objectwithoutfill"), uno::UNO_QUERY);
     OUString lineend;
@@ -649,6 +798,19 @@ void SdImportTest::testTdf97808()
 
     xDocShRef->DoClose();
 }
+void SdImportTest::testFillStyleNone()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/tdf123841.odg"), ODG);
+
+    const SdrPage* pPage = GetPage(1, xDocShRef);
+    const SdrObject* pObj = pPage->GetObj(0);
+    auto& rFillStyleItem
+        = dynamic_cast<const XFillStyleItem&>(pObj->GetMergedItem(XATTR_FILLSTYLE));
+    // Without the accompanying fix in place, this test would have failed with 'Expected: 0; Actual:
+    // 1', i.e. the shape's fill was FillStyle_SOLID, making the text of the shape unreadable.
+    CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_NONE, rFillStyleItem.GetValue());
+    xDocShRef->DoClose();
+}
 
 void SdImportTest::testFdo64512()
 {
@@ -660,7 +822,7 @@ void SdImportTest::testFdo64512()
 
     uno::Reference< drawing::XDrawPage > xPage(
         xDoc->getDrawPages()->getByIndex(0), uno::UNO_QUERY_THROW );
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "no exactly three shapes", static_cast<sal_Int32>(3), xPage->getCount() );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "not exactly three shapes", static_cast<sal_Int32>(3), xPage->getCount() );
 
     uno::Reference< beans::XPropertySet > xConnectorShape(
         xPage->getByIndex(2), uno::UNO_QUERY );
@@ -736,7 +898,7 @@ void SdImportTest::testStrictOOXML()
 
     SdDrawDocument *pDoc = xDocShRef->GetDoc();
     CPPUNIT_ASSERT_MESSAGE( "no document", pDoc != nullptr );
-    uno::Reference< beans::XPropertySet > xShape( getShapeFromPage( 0, 0, xDocShRef ) );
+    getShapeFromPage( 0, 0, xDocShRef );
 
     xDocShRef->DoClose();
 }
@@ -747,12 +909,13 @@ void SdImportTest::testBnc870237()
     const SdrPage *pPage = GetPage( 1, xDocShRef );
 
     // Simulate a:ext inside dsp:txXfrm with changing the lower distance
-    const SdrObjGroup* pObj = dynamic_cast<SdrObjGroup*>( pPage->GetObj( 0 ) );
+    const SdrObjGroup* pGroupObj = dynamic_cast<SdrObjGroup*>( pPage->GetObj( 0 ) );
+    const SdrObject* pObj = pGroupObj->GetSubList()->GetObj( 1 );
     CPPUNIT_ASSERT_MESSAGE( "no object", pObj != nullptr);
-    CPPUNIT_ASSERT_EQUAL( sal_Int32(0), (static_cast< const SdrMetricItem& >(pObj->GetMergedItem(SDRATTR_TEXT_UPPERDIST))).GetValue());
-    CPPUNIT_ASSERT_EQUAL( sal_Int32(9919), (static_cast< const SdrMetricItem& >(pObj->GetMergedItem(SDRATTR_TEXT_LOWERDIST))).GetValue());
-    CPPUNIT_ASSERT_EQUAL( sal_Int32(0), (static_cast< const SdrMetricItem& >(pObj->GetMergedItem(SDRATTR_TEXT_RIGHTDIST))).GetValue());
-    CPPUNIT_ASSERT_EQUAL( sal_Int32(0), (static_cast< const SdrMetricItem& >(pObj->GetMergedItem(SDRATTR_TEXT_LEFTDIST))).GetValue());
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(0), pObj->GetMergedItem(SDRATTR_TEXT_UPPERDIST).GetValue());
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(9919), pObj->GetMergedItem(SDRATTR_TEXT_LOWERDIST).GetValue());
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(0), pObj->GetMergedItem(SDRATTR_TEXT_RIGHTDIST).GetValue());
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(0), pObj->GetMergedItem(SDRATTR_TEXT_LEFTDIST).GetValue());
 
     xDocShRef->DoClose();
 }
@@ -767,6 +930,61 @@ void SdImportTest::testCreationDate()
     sax::Converter::convertDateTime(aBuffer, aDate, nullptr);
     // Metadata wasn't imported, this was 0000-00-00.
     CPPUNIT_ASSERT_EQUAL(OUString("2013-11-09T10:37:56"), aBuffer.makeStringAndClear());
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testMultiColTexts()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL( m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/multicol.pptx"), PPTX );
+    const SdrPage *pPage = GetPage( 1, xDocShRef );
+
+    sdr::table::SdrTableObj *pTableObj = dynamic_cast<sdr::table::SdrTableObj*>(pPage->GetObj(0));
+    CPPUNIT_ASSERT( pTableObj );
+
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1), pTableObj->getRowCount());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), pTableObj->getColumnCount());
+
+    sdr::table::SdrTableObj *pMasterTableObj = dynamic_cast<sdr::table::SdrTableObj*>(pPage->TRG_GetMasterPage().GetObj(0));
+    CPPUNIT_ASSERT( pMasterTableObj );
+
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1), pMasterTableObj->getRowCount());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), pMasterTableObj->getColumnCount());
+
+    uno::Reference< table::XCellRange > xTable(pMasterTableObj->getTable(), uno::UNO_QUERY_THROW);
+    uno::Reference< beans::XPropertySet > xCell;
+    xCell.set(xTable->getCellByPosition(0, 0), uno::UNO_QUERY_THROW);
+    uno::Reference<text::XTextRange> xParagraph(getParagraphFromShape(0, xCell));
+    uno::Reference<text::XTextRange> xRun( getRunFromParagraph (0, xParagraph ) );
+    OUString sText = xRun->getString();
+
+    CPPUNIT_ASSERT_EQUAL(OUString(""), sText); //We don't import master table text for multicolumn case.
+}
+
+void SdImportTest::testPredefinedTableStyle()
+{
+    // 073A0DAA-6AF3-43AB-8588-CEC1D06C72B9 (Medium Style 2)
+    sd::DrawDocShellRef xDocShRef = loadURL( m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/predefined-table-style.pptx"), PPTX );
+    const SdrPage *pPage = GetPage( 1, xDocShRef );
+
+    sdr::table::SdrTableObj *pTableObj = dynamic_cast<sdr::table::SdrTableObj*>(pPage->GetObj(0));
+    CPPUNIT_ASSERT( pTableObj );
+
+    uno::Reference< table::XCellRange > xTable(pTableObj->getTable(), uno::UNO_QUERY_THROW);
+    uno::Reference< beans::XPropertySet > xCell;
+    sal_Int32 nColor;
+
+    xCell.set(xTable->getCellByPosition(0, 0), uno::UNO_QUERY_THROW);
+    xCell->getPropertyValue("FillColor") >>= nColor;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), nColor);
+
+    xCell.set(xTable->getCellByPosition(0, 1), uno::UNO_QUERY_THROW);
+    xCell->getPropertyValue("FillColor") >>= nColor;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(13421772), nColor);
+
+    xCell.set(xTable->getCellByPosition(0, 2), uno::UNO_QUERY_THROW);
+    xCell->getPropertyValue("FillColor") >>= nColor;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(15198183), nColor);
+
     xDocShRef->DoClose();
 }
 
@@ -811,60 +1029,6 @@ void SdImportTest::testBnc887225()
     xCell.set(xTable->getCellByPosition(3, 4), uno::UNO_QUERY_THROW);
     xCell->getPropertyValue("FillColor") >>= nColor;
     CPPUNIT_ASSERT_EQUAL(sal_Int32(6003669), nColor);
-
-    xDocShRef->DoClose();
-}
-
-void SdImportTest::testBnc480256()
-{
-    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/bnc480256.pptx"), PPTX);
-    // In the document, there are two tables with table background properties.
-    // Make sure colors are set properly for individual cells.
-
-    // TODO: If you are working on improving table background support, expect
-    // this unit test to fail. In that case, feel free to change the numbers.
-
-    const SdrPage *pPage = GetPage( 1, xDocShRef );
-
-    sdr::table::SdrTableObj *pTableObj;
-    uno::Reference< table::XCellRange > xTable;
-    uno::Reference< beans::XPropertySet > xCell;
-    sal_Int32 nColor;
-    table::BorderLine2 aBorderLine;
-
-    pTableObj = dynamic_cast<sdr::table::SdrTableObj*>(pPage->GetObj(0));
-    CPPUNIT_ASSERT( pTableObj );
-    xTable.set(pTableObj->getTable(), uno::UNO_QUERY_THROW);
-
-    xCell.set(xTable->getCellByPosition(0, 0), uno::UNO_QUERY_THROW);
-    xCell->getPropertyValue("FillColor") >>= nColor;
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(10208238), nColor);
-    xCell->getPropertyValue("LeftBorder") >>= aBorderLine;
-    CPPUNIT_ASSERT_EQUAL(util::Color(5609427), aBorderLine.Color);
-
-    xCell.set(xTable->getCellByPosition(0, 1), uno::UNO_QUERY_THROW);
-    xCell->getPropertyValue("FillColor") >>= nColor;
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(13032959), nColor);
-    xCell->getPropertyValue("TopBorder") >>= aBorderLine;
-    CPPUNIT_ASSERT_EQUAL(util::Color(5609427), aBorderLine.Color);
-
-    pTableObj = dynamic_cast<sdr::table::SdrTableObj*>(pPage->GetObj(1));
-    CPPUNIT_ASSERT( pTableObj );
-    xTable.set(pTableObj->getTable(), uno::UNO_QUERY_THROW);
-
-    xCell.set(xTable->getCellByPosition(0, 0), uno::UNO_QUERY_THROW);
-    xCell->getPropertyValue("FillColor") >>= nColor;
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(7056614), nColor);
-    xCell->getPropertyValue("LeftBorder") >>= aBorderLine;
-    CPPUNIT_ASSERT_EQUAL(util::Color(12505062), aBorderLine.Color);
-
-    xCell.set(xTable->getCellByPosition(0, 1), uno::UNO_QUERY_THROW);
-    xCell->getPropertyValue("FillColor") >>= nColor;
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(4626400), nColor);
-
-    xCell.set(xTable->getCellByPosition(1, 0), uno::UNO_QUERY_THROW);
-    xCell->getPropertyValue("BottomBorder") >>= aBorderLine;
-    CPPUNIT_ASSERT_EQUAL(util::Color(0), aBorderLine.Color);
 
     xDocShRef->DoClose();
 }
@@ -945,11 +1109,11 @@ void SdImportTest::testBnc584721_4()
     // Get first run of the paragraph
     uno::Reference<text::XTextRange> xRun( getRunFromParagraph (0, xParagraph ) );
     uno::Reference< beans::XPropertySet > xPropSet( xRun, uno::UNO_QUERY_THROW );
-    sal_Int32 nCharColor;
+    Color nCharColor;
     xPropSet->getPropertyValue( "CharColor" ) >>= nCharColor;
 
     // Color should be black
-    CPPUNIT_ASSERT_EQUAL( sal_Int32(COL_BLACK), nCharColor );
+    CPPUNIT_ASSERT_EQUAL( COL_BLACK, nCharColor );
 
     xDocShRef->DoClose();
 }
@@ -971,7 +1135,7 @@ void SdImportTest::testBnc904423()
         CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_SOLID, rStyleItem.GetValue());
         const XFillColorItem& rColorItem = dynamic_cast<const XFillColorItem&>(
                 pObj->GetMergedItem(XATTR_FILLCOLOR));
-        CPPUNIT_ASSERT_EQUAL(ColorData(0x00CC99), rColorItem.GetColorValue().GetColor());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0x00CC99), sal_uInt32(rColorItem.GetColorValue()));
     }
 
     // Second shape's background color is defined by theme
@@ -984,7 +1148,7 @@ void SdImportTest::testBnc904423()
         CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_SOLID, rStyleItem.GetValue());
         const XFillColorItem& rColorItem = dynamic_cast<const XFillColorItem&>(
                 pObj->GetMergedItem(XATTR_FILLCOLOR));
-        CPPUNIT_ASSERT_EQUAL(ColorData(0x3333CC), rColorItem.GetColorValue().GetColor());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0x3333CC), sal_uInt32(rColorItem.GetColorValue()));
     }
 
     // Third shape's background color is defined by direct formatting
@@ -997,7 +1161,7 @@ void SdImportTest::testBnc904423()
         CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_SOLID, rStyleItem.GetValue());
         const XFillColorItem& rColorItem = dynamic_cast<const XFillColorItem&>(
                 pObj->GetMergedItem(XATTR_FILLCOLOR));
-        CPPUNIT_ASSERT_EQUAL(ColorData(0xFF0000), rColorItem.GetColorValue().GetColor());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0xFF0000), sal_uInt32(rColorItem.GetColorValue()));
     }
 
     xDocShRef->DoClose();
@@ -1021,7 +1185,7 @@ void SdImportTest::testShapeLineStyle()
 
         const XLineColorItem& rColorItem = dynamic_cast<const XLineColorItem&>(
                 pObj->GetMergedItem(XATTR_LINECOLOR));
-        CPPUNIT_ASSERT_EQUAL(ColorData(0xFF0000), rColorItem.GetColorValue().GetColor());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0xFF0000), sal_uInt32(rColorItem.GetColorValue()));
 
         const XLineWidthItem& rWidthItem = dynamic_cast<const XLineWidthItem&>(
                 pObj->GetMergedItem(XATTR_LINEWIDTH));
@@ -1039,7 +1203,7 @@ void SdImportTest::testShapeLineStyle()
 
         const XLineColorItem& rColorItem = dynamic_cast<const XLineColorItem&>(
                 pObj->GetMergedItem(XATTR_LINECOLOR));
-        CPPUNIT_ASSERT_EQUAL(ColorData(0x3333CC), rColorItem.GetColorValue().GetColor());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0x3333CC), sal_uInt32(rColorItem.GetColorValue()));
 
         const XLineWidthItem& rWidthItem = dynamic_cast<const XLineWidthItem&>(
                 pObj->GetMergedItem(XATTR_LINEWIDTH));
@@ -1057,7 +1221,7 @@ void SdImportTest::testShapeLineStyle()
 
         const XLineColorItem& rColorItem = dynamic_cast<const XLineColorItem&>(
                 pObj->GetMergedItem(XATTR_LINECOLOR));
-        CPPUNIT_ASSERT_EQUAL(ColorData(0x7030A0), rColorItem.GetColorValue().GetColor());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0x7030A0), sal_uInt32(rColorItem.GetColorValue()));
 
         const XLineWidthItem& rWidthItem = dynamic_cast<const XLineWidthItem&>(
                 pObj->GetMergedItem(XATTR_LINEWIDTH));
@@ -1151,6 +1315,88 @@ void SdImportTest::testBnc862510_7()
 }
 
 #if ENABLE_PDFIMPORT
+// These tests use the old PDF-importing logic, which imports PDF elements as
+// SD elements. This suffered many issues, and therefore wasn't ideal.
+// The old PDF importer relied on an open-source project (xpdf) with an
+// incompatible license (gpl), which has to be interfaced via an out-of-process
+// library wrapper process. The resulting imported document was inaccurate
+// and often very slow and with large memory footprint.
+// Instead, PDFium offers state-of-the-art PDF importing logic,
+// which is well-maintained and renders PDFs into images with high accuracy.
+// So, the idea is to import PDFs as images using PDFium, which has a very
+// high quality (and is much faster) than importing individual editable elements.
+// So that's the "new" way of importing.
+// The user then breaks the image to editable elements (which is not perfect,
+// but very close to the old way), only if they need editing ability.
+// PDFium should overall be better, and where it isn't, we just need to improve it.
+// So these tests aren't really useful anymore. They should be modified to do
+// import+break and then check the results. But that isn't straight-forward and
+// currently await volunteering time to implement.
+
+#if HAVE_FEATURE_PDFIUM
+void SdImportTest::testPDFImportShared()
+{
+    comphelper::LibreOfficeKit::setActive();
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pdf/multipage.pdf"), PDF);
+    SdDrawDocument *pDoc = xDocShRef->GetDoc();
+    CPPUNIT_ASSERT_MESSAGE( "no document", pDoc != nullptr );
+
+    // This test is to verify that we share the PDF stream linked to each
+    // Graphic instance in the imported document.
+    // Since we import PDFs as images, we support attaching the original
+    // PDF with each image to allow for advanced editing.
+    // Here we iterate over all Graphic instances embedded in the pages
+    // and verify that they all point to the same object in memory.
+    std::vector<Graphic> aGraphics;
+
+    for (int nPageIndex = 0; nPageIndex < pDoc->GetPageCount(); ++nPageIndex)
+    {
+        const SdrPage* pPage = GetPage(nPageIndex, xDocShRef);
+        if (pPage == nullptr)
+            break;
+
+        for (size_t nObjIndex = 0; nObjIndex < pPage->GetObjCount(); ++nObjIndex)
+        {
+            SdrObject* pObject = pPage->GetObj(nObjIndex);
+            if (pObject == nullptr)
+                continue;
+
+            SdrGrafObj* pSdrGrafObj = dynamic_cast<SdrGrafObj*>(pObject);
+            if (pSdrGrafObj == nullptr)
+                continue;
+
+            const GraphicObject& rGraphicObject = pSdrGrafObj->GetGraphicObject().GetGraphic();
+            const Graphic& rGraphic = rGraphicObject.GetGraphic();
+            CPPUNIT_ASSERT_MESSAGE("After loading, the PDF shouldn't have the primitive sequence created yet",
+                                   !rGraphic.getVectorGraphicData()->isPrimitiveSequenceCreated());
+            aGraphics.push_back(rGraphic);
+        }
+    }
+
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Expected more than one page.", size_t(9), aGraphics.size());
+
+    Graphic const & rFirstGraphic = aGraphics[0];
+
+    for (size_t i = 0; i < aGraphics.size(); ++i)
+    {
+        Graphic const & rGraphic = aGraphics[i];
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Expected all PDF streams to be identical.",
+                                     rFirstGraphic.getVectorGraphicData()->getVectorGraphicDataArray().getConstArray(),
+                                     rGraphic.getVectorGraphicData()->getVectorGraphicDataArray().getConstArray());
+
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Expected all GfxLinks to be identical.",
+                                     rFirstGraphic.GetSharedGfxLink().get(),
+                                     rGraphic.GetSharedGfxLink().get());
+
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Page number doesn't match expected", sal_Int32(i), rGraphic.getPageNumber());
+    }
+
+    xDocShRef->DoClose();
+    comphelper::LibreOfficeKit::setActive(false);
+}
+#endif
+
+#if defined(IMPORT_PDF_ELEMENTS)
 
 void SdImportTest::testPDFImport()
 {
@@ -1162,7 +1408,7 @@ void SdImportTest::testPDFImport()
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "no exactly two shapes", static_cast<sal_Int32>(2), xPage->getCount() );
 
     uno::Reference< beans::XPropertySet > xShape( getShape( 0, xPage ) );
-    uno::Reference<text::XText> xText = uno::Reference<text::XTextRange>(xShape, uno::UNO_QUERY)->getText();
+    uno::Reference<text::XText> xText = uno::Reference<text::XTextRange>(xShape, uno::UNO_QUERY_THROW)->getText();
     CPPUNIT_ASSERT_MESSAGE( "not a text shape", xText.is() );
 
     xDocShRef->DoClose();
@@ -1170,8 +1416,8 @@ void SdImportTest::testPDFImport()
 
 void SdImportTest::testPDFImportSkipImages()
 {
-    SfxAllItemSet *pParams = new SfxAllItemSet( SfxGetpApp()->GetPool() );
-    pParams->Put( SfxStringItem ( SID_FILE_FILTEROPTIONS, OUString("SkipImages") ) );
+    auto pParams = std::make_shared<SfxAllItemSet>( SfxGetpApp()->GetPool() );
+    pParams->Put( SfxStringItem ( SID_FILE_FILTEROPTIONS, "SkipImages" ) );
 
     sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pdf/txtpic.pdf"), PDF, pParams);
     SdDrawDocument *pDoc = xDocShRef->GetDoc();
@@ -1181,13 +1427,13 @@ void SdImportTest::testPDFImportSkipImages()
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "no exactly one shape", static_cast<sal_Int32>(1), xPage->getCount() );
 
     uno::Reference< drawing::XShape > xShape(xPage->getByIndex(0), uno::UNO_QUERY_THROW );
-    CPPUNIT_ASSERT_MESSAGE( "failed to load shape", xShape.is() );
-    uno::Reference<text::XText> xText = uno::Reference<text::XTextRange>(xShape, uno::UNO_QUERY)->getText();
+    uno::Reference<text::XText> xText = uno::Reference<text::XTextRange>(xShape, uno::UNO_QUERY_THROW)->getText();
     CPPUNIT_ASSERT_MESSAGE( "not a text shape", xText.is() );
 
     xDocShRef->DoClose();
 }
 
+#endif
 #endif
 
 void SdImportTest::testBulletSuffix()
@@ -1199,7 +1445,7 @@ void SdImportTest::testBulletSuffix()
     SdrTextObj *pTxtObj = dynamic_cast<SdrTextObj *>( pPage->GetObj(0) );
     CPPUNIT_ASSERT_MESSAGE( "no text object", pTxtObj != nullptr);
     const EditTextObject& aEdit = pTxtObj->GetOutlinerParaObject()->GetTextObject();
-    const SvxNumBulletItem *pNumFmt = dynamic_cast<const SvxNumBulletItem *>(aEdit.GetParaAttribs(1).GetItem(EE_PARA_NUMBULLET));
+    const SvxNumBulletItem *pNumFmt = aEdit.GetParaAttribs(1).GetItem(EE_PARA_NUMBULLET);
     CPPUNIT_ASSERT(pNumFmt);
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bullet's suffix is wrong!", pNumFmt->GetNumRule()->GetLevel(0).GetSuffix(), OUString() );
     xDocShRef->DoClose();
@@ -1233,15 +1479,15 @@ void SdImportTest::testRowHeight()
     CPPUNIT_ASSERT( pTableObj );
 
     sal_Int32 nHeight;
-    const OUString sHeight("Height");
-    uno::Reference< css::table::XTable > xTable(pTableObj->getTable(), uno::UNO_QUERY_THROW);
-    uno::Reference< css::table::XTableRows > xRows( xTable->getRows(), uno::UNO_QUERY_THROW);
+    uno::Reference< css::table::XTable > xTable(pTableObj->getTable(), uno::UNO_SET_THROW);
+    uno::Reference< css::table::XTableRows > xRows( xTable->getRows(), uno::UNO_SET_THROW);
     uno::Reference< beans::XPropertySet > xRefRow( xRows->getByIndex(0), uno::UNO_QUERY_THROW );
-    xRefRow->getPropertyValue( sHeight ) >>= nHeight;
+    xRefRow->getPropertyValue( "Height" ) >>= nHeight;
     CPPUNIT_ASSERT_EQUAL( sal_Int32(507), nHeight);
 
     xDocShRef->DoClose();
 }
+
 void SdImportTest::testTdf93830()
 {
     // Text shape offset was ignored
@@ -1250,7 +1496,7 @@ void SdImportTest::testTdf93830()
 
     // Get the first text box from group shape
     uno::Reference< container::XIndexAccess > xShape( xPage->getByIndex(0), uno::UNO_QUERY );
-    uno::Reference< beans::XPropertySet > xPropSet( xShape->getByIndex(2), uno::UNO_QUERY );
+    uno::Reference< beans::XPropertySet > xPropSet( xShape->getByIndex(3), uno::UNO_QUERY );
     CPPUNIT_ASSERT_MESSAGE( "no textbox shape", xPropSet.is() );
 
     sal_Int32 nTextLeftDistance = 0;
@@ -1260,6 +1506,25 @@ void SdImportTest::testTdf93830()
     xDocShRef->DoClose();
 }
 
+void SdImportTest::testTdf127129()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/tdf127129.pptx"), PPTX);
+    uno::Reference< beans::XPropertySet > xShape( getShapeFromPage( 0, 0, xDocShRef ) );
+    uno::Reference< text::XTextRange > xParagraph( getParagraphFromShape( 0, xShape ) );
+    uno::Reference< text::XTextRange > xRun( getRunFromParagraph( 0, xParagraph ) );
+    uno::Reference< beans::XPropertySet > xPropSet( xRun, uno::UNO_QUERY_THROW );
+
+    sal_Int32 nCharColor;
+    xPropSet->getPropertyValue( "CharColor" ) >>= nCharColor;
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(0x000000), nCharColor );
+
+    // Without the accompanying fix in place, the highlight would be -1
+    sal_Int32 nCharBackColor;
+    xPropSet->getPropertyValue( "CharBackColor" ) >>= nCharBackColor;
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(0xFF00), nCharBackColor );
+
+    xDocShRef->DoClose();
+}
 void SdImportTest::testTdf93097()
 {
     // Throwing metadata import aborted the filter, check that metadata is now imported.
@@ -1304,9 +1569,9 @@ void SdImportTest::testTdf93124()
 
     uno::Sequence< beans::PropertyValue > aFilterData(2);
     aFilterData[0].Name = "PixelWidth";
-    aFilterData[0].Value <<= (sal_Int32)(320);
+    aFilterData[0].Value <<= sal_Int32(320);
     aFilterData[1].Name = "PixelHeight";
-    aFilterData[1].Value <<= (sal_Int32)(180);
+    aFilterData[1].Value <<= sal_Int32(180);
 
     utl::TempFile aTempFile;
     aTempFile.EnableKillingFile();
@@ -1350,39 +1615,25 @@ void SdImportTest::testTdf93124()
 
 void SdImportTest::testTdf99729()
 {
-    const char* filenames[] = { "/sd/qa/unit/data/odp/tdf99729-new.odp", "/sd/qa/unit/data/odp/tdf99729-legacy.odp" };
+    const OUString filenames[] = { "/sd/qa/unit/data/odp/tdf99729-new.odp", "/sd/qa/unit/data/odp/tdf99729-legacy.odp" };
     int nonwhitecounts[] = { 0, 0 };
-    for (unsigned int i = 0; i < SAL_N_ELEMENTS(filenames); ++i)
+    for (size_t i = 0; i < SAL_N_ELEMENTS(filenames); ++i)
     {
         // 1st check for new behaviour - having AnchoredTextOverflowLegacy compatibility flag set to false in settings.xml
-        sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc(filenames[i]), ODP);
+        uno::Reference<lang::XComponent> xComponent
+            = loadFromDesktop(m_directories.getURLFromSrc(filenames[i]),
+                              "com.sun.star.presentation.PresentationDocument");
 
-        const css::uno::Reference< css::frame::XFrame > xFrame = SfxFrame::CreateBlankFrame();
-        CPPUNIT_ASSERT(xFrame.is());
-        const css::uno::Reference< css::frame::XModel2 > xModel(xDocShRef->GetModel(), css::uno::UNO_QUERY);
-        CPPUNIT_ASSERT(xModel.is());
-        const css::uno::Reference< css::frame::XController2 > xController(xModel->createViewController(
-            "Default",
-            css::uno::Sequence< css::beans::PropertyValue >(),
-            xFrame
-            ), css::uno::UNO_QUERY);
-        CPPUNIT_ASSERT(xController.is());
-        xController->attachModel(xModel.get());
-        xModel->connectController(xController.get());
-        xFrame->setComponent(xController->getComponentWindow(), xController.get());
-        xController->attachFrame(xFrame);
-        xModel->setCurrentController(xController.get());
-
-        uno::Reference < uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        uno::Reference<uno::XComponentContext> xContext = getComponentContext();
         CPPUNIT_ASSERT(xContext.is());
         uno::Reference< drawing::XGraphicExportFilter > xGraphicExporter = drawing::GraphicExportFilter::create(xContext);
         CPPUNIT_ASSERT(xGraphicExporter.is());
 
         uno::Sequence< beans::PropertyValue > aFilterData(2);
         aFilterData[0].Name = "PixelWidth";
-        aFilterData[0].Value <<= (sal_Int32)(320);
+        aFilterData[0].Value <<= sal_Int32(320);
         aFilterData[1].Name = "PixelHeight";
-        aFilterData[1].Value <<= (sal_Int32)(240);
+        aFilterData[1].Value <<= sal_Int32(240);
 
         utl::TempFile aTempFile;
         aTempFile.EnableKillingFile();
@@ -1395,7 +1646,10 @@ void SdImportTest::testTdf99729()
         aDescriptor[2].Name = "FilterData";
         aDescriptor[2].Value <<= aFilterData;
 
-        uno::Reference< lang::XComponent > xPage(getPage(0, xDocShRef), uno::UNO_QUERY);
+        uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(xComponent, uno::UNO_QUERY);
+        uno::Reference<lang::XComponent> xPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
+                                               uno::UNO_QUERY);
+        CPPUNIT_ASSERT(xPage.is());
         xGraphicExporter->setSourceDocument(xPage);
         xGraphicExporter->filter(aDescriptor);
 
@@ -1413,8 +1667,7 @@ void SdImportTest::testTdf99729()
                     ++nonwhitecounts[i];
             }
         }
-        xController->dispose();
-        xFrame->dispose();
+        xComponent->dispose();
     }
     // The numbers 1-9 should be above the Text Box in rectangle 154,16 - 170,112.
     // If text alignment is wrong, the rectangle will be white.
@@ -1463,7 +1716,7 @@ void SdImportTest::testTdf95932()
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_SOLID, rStyleItem.GetValue());
     const XFillColorItem& rColorItem = dynamic_cast<const XFillColorItem&>(
         pObj->GetMergedItem(XATTR_FILLCOLOR));
-    CPPUNIT_ASSERT_EQUAL(ColorData(0x76bf3d), rColorItem.GetColorValue().GetColor());
+    CPPUNIT_ASSERT_EQUAL(sal_uInt32(0x76bf3d), sal_uInt32(rColorItem.GetColorValue()));
 
     xDocShRef->DoClose();
 }
@@ -1656,6 +1909,81 @@ void SdImportTest::testTdf103876()
     xDocShRef->DoClose();
 }
 
+void SdImportTest::testTdf79007()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf79007.pptx"), PPTX);
+
+    uno::Reference<beans::XPropertySet> xShape1(getShapeFromPage(0, 0, xDocShRef));
+    CPPUNIT_ASSERT_MESSAGE("Not a shape", xShape1.is());
+
+    // Check we map mso washout to our watermark
+    drawing::ColorMode aColorMode1;
+    xShape1->getPropertyValue("GraphicColorMode") >>= aColorMode1;
+    CPPUNIT_ASSERT_EQUAL(drawing::ColorMode_WATERMARK, aColorMode1);
+
+    sal_Int16 nContrast1;
+    xShape1->getPropertyValue("AdjustContrast") >>= nContrast1;
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int16>(0), nContrast1);
+
+    sal_Int16 nLuminance1;
+    xShape1->getPropertyValue("AdjustLuminance") >>= nLuminance1;
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int16>(0), nLuminance1);
+
+    uno::Reference<beans::XPropertySet> xShape2(getShapeFromPage(1, 0, xDocShRef));
+    CPPUNIT_ASSERT_MESSAGE("Not a shape", xShape2.is());
+
+    // Check we map mso grayscale to our grayscale
+    drawing::ColorMode aColorMode2;
+    xShape2->getPropertyValue("GraphicColorMode") >>= aColorMode2;
+    CPPUNIT_ASSERT_EQUAL(drawing::ColorMode_GREYS, aColorMode2);
+
+    sal_Int16 nContrast2;
+    xShape2->getPropertyValue("AdjustContrast") >>= nContrast2;
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int16>(0), nContrast2);
+
+    sal_Int16 nLuminance2;
+    xShape2->getPropertyValue("AdjustLuminance") >>= nLuminance2;
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int16>(0), nLuminance2);
+
+    uno::Reference<beans::XPropertySet> xShape3(getShapeFromPage(2, 0, xDocShRef));
+    CPPUNIT_ASSERT_MESSAGE("Not a shape", xShape3.is());
+
+    // Check we map mso black/white to our black/white
+    drawing::ColorMode aColorMode3;
+    xShape3->getPropertyValue("GraphicColorMode") >>= aColorMode3;
+    CPPUNIT_ASSERT_EQUAL(drawing::ColorMode_MONO, aColorMode3);
+
+    sal_Int16 nContrast3;
+    xShape3->getPropertyValue("AdjustContrast") >>= nContrast3;
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int16>(0), nContrast3);
+
+    sal_Int16 nLuminance3;
+    xShape3->getPropertyValue("AdjustLuminance") >>= nLuminance3;
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int16>(0), nLuminance3);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf129686()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf129686.pptx"), PPTX);
+    uno::Reference< beans::XPropertySet > xShape( getShapeFromPage( 0, 0, xDocShRef ) );
+
+    // Get first paragraph of the text
+    uno::Reference<text::XTextRange> const xParagraph( getParagraphFromShape( 0, xShape ) );
+
+    // Get first run of the paragraph
+    uno::Reference<text::XTextRange> xRun( getRunFromParagraph (0, xParagraph ) );
+    uno::Reference< beans::XPropertySet > xPropSet( xRun, uno::UNO_QUERY_THROW );
+    sal_Int16 nTransparency = 0;
+    xPropSet->getPropertyValue("CharTransparence") >>= nTransparency;
+
+    // 100 = no transparency
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int16>(100), nTransparency);
+
+    xDocShRef->DoClose();
+}
+
 void SdImportTest::testTdf104015()
 {
     // Shape fill, line and effect properties were not inherited from master slide shape
@@ -1672,7 +2000,7 @@ void SdImportTest::testTdf104015()
         CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_SOLID, rStyleItem.GetValue());
         const XFillColorItem& rColorItem = dynamic_cast<const XFillColorItem&>(
                 pObj->GetMergedItem(XATTR_FILLCOLOR));
-        CPPUNIT_ASSERT_EQUAL(ColorData(0xFF0000), rColorItem.GetColorValue().GetColor());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0xFF0000), sal_uInt32(rColorItem.GetColorValue()));
     }
     // Should have a blue line
     {
@@ -1682,7 +2010,7 @@ void SdImportTest::testTdf104015()
 
         const XLineColorItem& rColorItem = dynamic_cast<const XLineColorItem&>(
                 pObj->GetMergedItem(XATTR_LINECOLOR));
-        CPPUNIT_ASSERT_EQUAL(ColorData(0x0000FF), rColorItem.GetColorValue().GetColor());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0x0000FF), sal_uInt32(rColorItem.GetColorValue()));
     }
     // Should have some shadow
     {
@@ -1711,7 +2039,7 @@ void SdImportTest::testTdf104201()
         CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_SOLID, rStyleItem.GetValue());
         const XFillColorItem& rColorItem = dynamic_cast<const XFillColorItem&>(
             pObj->GetMergedItem(XATTR_FILLCOLOR));
-        CPPUNIT_ASSERT_EQUAL(ColorData(0x00FF00), rColorItem.GetColorValue().GetColor());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0x00FF00), sal_uInt32(rColorItem.GetColorValue()));
     }
     // Second shape has blue fill, but this should be overwritten by green group fill
     {
@@ -1722,8 +2050,10 @@ void SdImportTest::testTdf104201()
         CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_SOLID, rStyleItem.GetValue());
         const XFillColorItem& rColorItem = dynamic_cast<const XFillColorItem&>(
             pObj->GetMergedItem(XATTR_FILLCOLOR));
-        CPPUNIT_ASSERT_EQUAL(ColorData(0x00FF00), rColorItem.GetColorValue().GetColor());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0x00FF00), sal_uInt32(rColorItem.GetColorValue()));
     }
+
+    xDocShRef->DoClose();
 }
 
 void SdImportTest::testTdf103477()
@@ -1736,9 +2066,9 @@ void SdImportTest::testTdf103477()
     CPPUNIT_ASSERT_MESSAGE( "no text object", pTxtObj != nullptr );
 
     const EditTextObject& aEdit = pTxtObj->GetOutlinerParaObject()->GetTextObject();
-    const SvxNumBulletItem *pNumFmt = dynamic_cast<const SvxNumBulletItem *>( aEdit.GetParaAttribs(0).GetItem(EE_PARA_NUMBULLET) );
+    const SvxNumBulletItem *pNumFmt = aEdit.GetParaAttribs(0).GetItem(EE_PARA_NUMBULLET);
     CPPUNIT_ASSERT(pNumFmt);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bullet's color is wrong!", sal_uInt32(0x000000), pNumFmt->GetNumRule()->GetLevel(1).GetBulletColor().GetColor());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bullet's color is wrong!", Color(0x000000), pNumFmt->GetNumRule()->GetLevel(1).GetBulletColor());
 
     xDocShRef->DoClose();
 }
@@ -1752,6 +2082,20 @@ void SdImportTest::testTdf105150()
     // This was drawing::FillStyle_NONE, <p:sp useBgFill="1"> was ignored when
     // the slide didn't have an explicit background fill.
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_SOLID, rFillStyleItem.GetValue());
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf123684()
+{
+    sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf123684.pptx"), PPTX);
+    const SdrPage* pPage = GetPage(1, xDocShRef);
+    const SdrObject* pObj = pPage->GetObj(0);
+    auto& rFillStyleItem
+        = dynamic_cast<const XFillStyleItem&>(pObj->GetMergedItem(XATTR_FILLSTYLE));
+    // Without the accompanying fix in place, this test would have failed with 'Expected: 0; Actual:
+    // 1', i.e. the shape's fill was FillStyle_SOLID, making the text of the shape unreadable.
+    CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_NONE, rFillStyleItem.GetValue());
     xDocShRef->DoClose();
 }
 
@@ -1773,9 +2117,9 @@ void SdImportTest::testTdf104445()
     sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf104445.pptx"), PPTX);
 
     // First shape should not have bullet
-   {
+    {
         uno::Reference< beans::XPropertySet > xShape(getShapeFromPage(0, 0, xDocShRef));
-        uno::Reference< text::XText > xText = uno::Reference< text::XTextRange>(xShape, uno::UNO_QUERY)->getText();
+        uno::Reference< text::XText > xText = uno::Reference< text::XTextRange>(xShape, uno::UNO_QUERY_THROW)->getText();
         CPPUNIT_ASSERT_MESSAGE("Not a text shape", xText.is());
         uno::Reference< beans::XPropertySet > xPropSet(xText, uno::UNO_QUERY_THROW);
 
@@ -1784,9 +2128,8 @@ void SdImportTest::testTdf104445()
         uno::Sequence<beans::PropertyValue> aBulletProps;
         xNumRule->getByIndex(0) >>= aBulletProps;
 
-        for (int i = 0; i < aBulletProps.getLength(); ++i)
+        for (beans::PropertyValue const & rProp : std::as_const(aBulletProps))
         {
-            const beans::PropertyValue& rProp = aBulletProps[i];
             if(rProp.Name == "NumberingType")
                 CPPUNIT_ASSERT_EQUAL(sal_Int16(style::NumberingType::NUMBER_NONE), rProp.Value.get<sal_Int16>());
             if(rProp.Name == "LeftMargin")
@@ -1796,7 +2139,7 @@ void SdImportTest::testTdf104445()
     // Second shape should have bullet set
     {
         uno::Reference< beans::XPropertySet > xShape(getShapeFromPage(1, 0, xDocShRef));
-        uno::Reference< text::XText > xText = uno::Reference< text::XTextRange>(xShape, uno::UNO_QUERY)->getText();
+        uno::Reference< text::XText > xText = uno::Reference< text::XTextRange>(xShape, uno::UNO_QUERY_THROW)->getText();
         CPPUNIT_ASSERT_MESSAGE("Not a text shape", xText.is());
         uno::Reference< beans::XPropertySet > xPropSet(xText, uno::UNO_QUERY_THROW);
 
@@ -1805,9 +2148,8 @@ void SdImportTest::testTdf104445()
         uno::Sequence<beans::PropertyValue> aBulletProps;
         xNumRule->getByIndex(0) >>= aBulletProps;
 
-        for(int i = 0; i < aBulletProps.getLength(); ++i)
+        for(beans::PropertyValue const & rProp : std::as_const(aBulletProps))
         {
-            const beans::PropertyValue& rProp = aBulletProps[i];
             if(rProp.Name == "NumberingType")
                 CPPUNIT_ASSERT_EQUAL(sal_Int16(style::NumberingType::CHAR_SPECIAL), rProp.Value.get<sal_Int16>());
             if(rProp.Name == "LeftMargin")
@@ -1824,15 +2166,16 @@ bool checkPatternValues(std::vector<sal_uInt8>& rExpected, Bitmap& rBitmap)
 {
     bool bResult = true;
 
-    Color aFGColor(0xFF0000);
-    Color aBGColor(0xFFFFFF);
+    const Color aFGColor(0xFF0000);
+    const Color aBGColor(0xFFFFFF);
 
     Bitmap::ScopedReadAccess pAccess(rBitmap);
     for (long y = 0; y < pAccess->Height(); ++y)
     {
+        Scanline pScanline = pAccess->GetScanline( y );
         for (long x = 0; x < pAccess->Width(); ++x)
         {
-            Color aColor = pAccess->GetPixel(y, x);
+            Color aColor = pAccess->GetPixelFromData(pScanline, x);
             sal_uInt8 aValue = rExpected[y*8+x];
 
             if (aValue == 1 && aColor != aFGColor)
@@ -1847,7 +2190,7 @@ bool checkPatternValues(std::vector<sal_uInt8>& rExpected, Bitmap& rBitmap)
 
 } // end anonymous namespace
 
-bool SdImportTest::checkPattern(sd::DrawDocShellRef& rDocRef, int nShapeNumber, std::vector<sal_uInt8>& rExpected)
+bool SdImportTest::checkPattern(sd::DrawDocShellRef const & rDocRef, int nShapeNumber, std::vector<sal_uInt8>& rExpected)
 {
     uno::Reference<beans::XPropertySet> xShape(getShapeFromPage(nShapeNumber, 0, rDocRef));
     CPPUNIT_ASSERT_MESSAGE("Not a shape", xShape.is());
@@ -2181,10 +2524,666 @@ void SdImportTest::testTdf89064()
 {
     sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf89064.pptx"), PPTX);
     uno::Reference< presentation::XPresentationPage > xPage (getPage(0, xDocShRef), uno::UNO_QUERY_THROW);
-    uno::Reference< drawing::XDrawPage > xNotesPage (xPage->getNotesPage(), uno::UNO_QUERY_THROW);
+    uno::Reference< drawing::XDrawPage > xNotesPage (xPage->getNotesPage(), uno::UNO_SET_THROW);
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(1), xNotesPage->getCount());
 
     xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf108925()
+{
+    // Test document contains bulleting with too small bullet size (1%) which breaks the lower constraint
+    // So it should be converted to the lowest allowed value (25%).
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/odp/tdf108925.odp"), ODP);
+    const SdrPage *pPage = GetPage(1, xDocShRef);
+    SdrTextObj *pTxtObj = dynamic_cast<SdrTextObj *>(pPage->GetObj(0));
+    CPPUNIT_ASSERT_MESSAGE("No text object", pTxtObj != nullptr);
+    const EditTextObject& aEdit = pTxtObj->GetOutlinerParaObject()->GetTextObject();
+
+    const SvxNumBulletItem *pNumFmt = aEdit.GetParaAttribs(0).GetItem(EE_PARA_NUMBULLET);
+    CPPUNIT_ASSERT(pNumFmt);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(25), pNumFmt->GetNumRule()->GetLevel(0).GetBulletRelSize());
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf109067()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf109067.pptx"), PPTX);
+    uno::Reference< beans::XPropertySet > xShape(getShapeFromPage(0, 0, xDocShRef), uno::UNO_SET_THROW);
+    awt::Gradient gradient;
+    CPPUNIT_ASSERT(xShape->getPropertyValue("FillGradient") >>= gradient);
+    CPPUNIT_ASSERT_EQUAL(sal_Int16(450), gradient.Angle);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf109187()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf109187.pptx"), PPTX);
+    uno::Reference< beans::XPropertySet > xArrow1(getShapeFromPage(0, 0, xDocShRef), uno::UNO_SET_THROW);
+    awt::Gradient aGradient1;
+    CPPUNIT_ASSERT(xArrow1->getPropertyValue("FillGradient") >>= aGradient1);
+    CPPUNIT_ASSERT_EQUAL(sal_Int16(2250), aGradient1.Angle);
+    uno::Reference< beans::XPropertySet > xArrow2(getShapeFromPage(1, 0, xDocShRef), uno::UNO_SET_THROW);
+    awt::Gradient aGradient2;
+    CPPUNIT_ASSERT(xArrow2->getPropertyValue("FillGradient") >>= aGradient2);
+    CPPUNIT_ASSERT_EQUAL(sal_Int16(1350), aGradient2.Angle);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf108926()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf108926.ppt"), PPT);
+    uno::Reference< presentation::XPresentationPage > xPage (getPage(0, xDocShRef), uno::UNO_QUERY_THROW);
+    uno::Reference< drawing::XDrawPage > xNotesPage (xPage->getNotesPage(), uno::UNO_SET_THROW);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(2), xNotesPage->getCount());
+
+    // Second object should be imported as an empty presentation shape
+    uno::Reference< beans::XPropertySet > xPresentationShape(xNotesPage->getByIndex(1), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xPresentationShape.is());
+    bool bIsEmptyPresObject = false;
+    xPresentationShape->getPropertyValue( "IsEmptyPresentationObject" )  >>= bIsEmptyPresObject;
+    CPPUNIT_ASSERT(bIsEmptyPresObject);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf100065()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf100065.pptx"), PPTX);
+
+    uno::Reference< container::XIndexAccess > xGroupShape1(getShapeFromPage(0, 0, xDocShRef), uno::UNO_QUERY_THROW);
+    uno::Reference< beans::XPropertySet > xShape1(xGroupShape1->getByIndex(1), uno::UNO_QUERY_THROW);
+    sal_Int32 nAngle1;
+    CPPUNIT_ASSERT(xShape1->getPropertyValue("RotateAngle") >>= nAngle1);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2000), nAngle1);
+
+    uno::Reference< container::XIndexAccess > xGroupShape2(getShapeFromPage(1, 0, xDocShRef), uno::UNO_QUERY_THROW);
+    uno::Reference< beans::XPropertySet > xShape2(xGroupShape2->getByIndex(0), uno::UNO_QUERY_THROW);
+    sal_Int32 nAngle2;
+    CPPUNIT_ASSERT(xShape2->getPropertyValue("RotateAngle") >>= nAngle2);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(18000), nAngle2);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf90626()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf90626.pptx"), PPTX);
+    const SdrPage *pPage = GetPage(1, xDocShRef);
+    SdrTextObj *pTxtObj = dynamic_cast<SdrTextObj *>(pPage->GetObj(1));
+    CPPUNIT_ASSERT_MESSAGE("No text object", pTxtObj != nullptr);
+    const EditTextObject& aEdit = pTxtObj->GetOutlinerParaObject()->GetTextObject();
+    for(int i = 0; i < 4; i++)
+    {
+        const SvxNumBulletItem *pNumFmt = aEdit.GetParaAttribs(i).GetItem(EE_PARA_NUMBULLET);
+        CPPUNIT_ASSERT(pNumFmt);
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(long(371), pNumFmt->GetNumRule()->GetLevel(0).GetGraphicSize().getHeight(), long(1));
+    }
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf114488()
+{
+    // This doc has two images - one WMF and the other PNG (fallback image).
+    // When loading this doc, the WMF image should be preferred over the PNG image.
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/odg/tdf114488.fodg"), FODG);
+    uno::Reference<beans::XPropertySet> xShape(getShapeFromPage(0, 0, xDocShRef), uno::UNO_SET_THROW);
+    uno::Reference<graphic::XGraphic> xGraphic;
+    xShape->getPropertyValue("Graphic") >>= xGraphic;
+    CPPUNIT_ASSERT(xGraphic.is());
+    OUString sMimeType(comphelper::GraphicMimeTypeHelper::GetMimeTypeForXGraphic(xGraphic));
+    CPPUNIT_ASSERT_EQUAL(OUString("image/x-wmf"), sMimeType);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf114913()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf114913.pptx"), PPTX);
+    SdrTextObj *pTxtObj = dynamic_cast<SdrTextObj *>(GetPage(1, xDocShRef)->GetObj(1));
+    CPPUNIT_ASSERT_MESSAGE("No text object", pTxtObj != nullptr);
+    const SvxNumBulletItem *pItem = pTxtObj->GetOutlinerParaObject()->GetTextObject().GetParaAttribs(0).GetItem(EE_PARA_NUMBULLET);
+    CPPUNIT_ASSERT(pItem);
+    CPPUNIT_ASSERT_EQUAL(long(691), pItem->GetNumRule()->GetLevel(0).GetGraphicSize().getHeight());
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf114821()
+{
+    css::uno::Any aAny;
+    sd::DrawDocShellRef xDocShRef = loadURL( m_directories.getURLFromSrc( "/sd/qa/unit/data/pptx/tdf114821.pptx" ), PPTX );
+
+    uno::Reference< beans::XPropertySet > xPropSet( getShapeFromPage( 0, 0, xDocShRef ) );
+    aAny = xPropSet->getPropertyValue( "Model" );
+    CPPUNIT_ASSERT_MESSAGE( "The shape doesn't have the property", aAny.hasValue() );
+
+    uno::Reference< chart::XChartDocument > xChartDoc;
+    aAny >>= xChartDoc;
+    CPPUNIT_ASSERT_MESSAGE( "failed to load chart", xChartDoc.is() );
+    uno::Reference< chart2::XChartDocument > xChart2Doc( xChartDoc, uno::UNO_QUERY );
+    CPPUNIT_ASSERT_MESSAGE( "failed to load chart", xChart2Doc.is() );
+
+    uno::Reference< chart2::XCoordinateSystemContainer > xBCooSysCnt( xChart2Doc->getFirstDiagram(), uno::UNO_QUERY );
+    uno::Sequence< uno::Reference< chart2::XCoordinateSystem > > aCooSysSeq( xBCooSysCnt->getCoordinateSystems() );
+    uno::Reference< chart2::XChartTypeContainer > xCTCnt( aCooSysSeq[0], uno::UNO_QUERY );
+
+    uno::Reference< chart2::XDataSeriesContainer > xDSCnt( xCTCnt->getChartTypes()[0], uno::UNO_QUERY );
+    CPPUNIT_ASSERT_MESSAGE( "failed to load data series", xDSCnt.is() );
+    uno::Sequence< uno::Reference< chart2::XDataSeries > > aSeriesSeq( xDSCnt->getDataSeries() );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Invalid Series count", static_cast<sal_Int32>( 1 ), aSeriesSeq.getLength() );
+
+    // These Labels have custom position, so the exported LabelPlacement (reference point) by MSO is OUTSIDE/OUTEND
+    // Check the first label
+    const css::uno::Reference< css::beans::XPropertySet >& rPropSet0( aSeriesSeq[0]->getDataPointByIndex( 0 ) );
+    CPPUNIT_ASSERT( rPropSet0.is() );
+    sal_Int32 aPlacement;
+    rPropSet0->getPropertyValue( "LabelPlacement" ) >>= aPlacement;
+    CPPUNIT_ASSERT_EQUAL( css::chart::DataLabelPlacement::OUTSIDE, aPlacement );
+
+    // Check the second label
+    const css::uno::Reference< css::beans::XPropertySet >& rPropSet1( aSeriesSeq[0]->getDataPointByIndex( 1 ) );
+    CPPUNIT_ASSERT( rPropSet1.is() );
+    rPropSet1->getPropertyValue( "LabelPlacement" ) >>= aPlacement;
+    CPPUNIT_ASSERT_EQUAL( css::chart::DataLabelPlacement::OUTSIDE, aPlacement );
+
+    // Check the third label
+    const css::uno::Reference< css::beans::XPropertySet >& rPropSet2( aSeriesSeq[0]->getDataPointByIndex( 2 ) );
+    CPPUNIT_ASSERT( rPropSet2.is() );
+    rPropSet2->getPropertyValue( "LabelPlacement") >>= aPlacement;
+    CPPUNIT_ASSERT_EQUAL( css::chart::DataLabelPlacement::OUTSIDE, aPlacement );
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf115394()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/tdf115394.pptx"), PPTX);
+    double fTransitionDuration;
+
+    // Slow in MS formats
+    SdPage* pPage1 = xDocShRef->GetDoc()->GetSdPage(0, PageKind::Standard);
+    fTransitionDuration = pPage1->getTransitionDuration();
+    CPPUNIT_ASSERT_EQUAL(1.0, fTransitionDuration);
+
+    // Medium in MS formats
+    SdPage* pPage2 = xDocShRef->GetDoc()->GetSdPage(1, PageKind::Standard);
+    fTransitionDuration = pPage2->getTransitionDuration();
+    CPPUNIT_ASSERT_EQUAL(0.75, fTransitionDuration);
+
+    // Fast in MS formats
+    SdPage* pPage3 = xDocShRef->GetDoc()->GetSdPage(2, PageKind::Standard);
+    fTransitionDuration = pPage3->getTransitionDuration();
+    CPPUNIT_ASSERT_EQUAL(0.5, fTransitionDuration);
+
+    // Custom values
+    SdPage* pPage4 = xDocShRef->GetDoc()->GetSdPage(3, PageKind::Standard);
+    fTransitionDuration = pPage4->getTransitionDuration();
+    CPPUNIT_ASSERT_EQUAL(0.25, fTransitionDuration);
+
+    SdPage* pPage5 = xDocShRef->GetDoc()->GetSdPage(4, PageKind::Standard);
+    fTransitionDuration = pPage5->getTransitionDuration();
+    CPPUNIT_ASSERT_EQUAL(4.25, fTransitionDuration);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf115394PPT()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/ppt/tdf115394.ppt"), PPT);
+    double fTransitionDuration;
+
+    // Fast
+    SdPage* pPage1 = xDocShRef->GetDoc()->GetSdPage(0, PageKind::Standard);
+    fTransitionDuration = pPage1->getTransitionDuration();
+    CPPUNIT_ASSERT_EQUAL(0.5, fTransitionDuration);
+
+    // Medium
+    SdPage* pPage2 = xDocShRef->GetDoc()->GetSdPage(1, PageKind::Standard);
+    fTransitionDuration = pPage2->getTransitionDuration();
+    CPPUNIT_ASSERT_EQUAL(0.75, fTransitionDuration);
+
+    // Slow
+    SdPage* pPage3 = xDocShRef->GetDoc()->GetSdPage(2, PageKind::Standard);
+    fTransitionDuration = pPage3->getTransitionDuration();
+    CPPUNIT_ASSERT_EQUAL(1.0, fTransitionDuration);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf51340()
+{
+    // Line spacing was not inherited from upper levels (slide layout, master slide)
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/tdf51340.pptx"), PPTX);
+    uno::Reference< beans::XPropertySet > xShape( getShapeFromPage( 1, 0, xDocShRef ) );
+
+    // First paragraph has a 90% line spacing set on master slide
+    uno::Reference<text::XTextRange> xParagraph( getParagraphFromShape( 0, xShape ) );
+    uno::Reference< beans::XPropertySet > xPropSet( xParagraph, uno::UNO_QUERY_THROW );
+    css::style::LineSpacing aSpacing;
+    xPropSet->getPropertyValue( "ParaLineSpacing" ) >>= aSpacing;
+    CPPUNIT_ASSERT_EQUAL( css::style::LineSpacingMode::PROP, aSpacing.Mode );
+    CPPUNIT_ASSERT_EQUAL( static_cast<sal_Int16>(90), aSpacing.Height );
+
+    // Second paragraph has a 125% line spacing set on slide layout
+    xParagraph.set( getParagraphFromShape( 1, xShape ) );
+    xPropSet.set( xParagraph, uno::UNO_QUERY_THROW );
+    xPropSet->getPropertyValue( "ParaLineSpacing" ) >>= aSpacing;
+    CPPUNIT_ASSERT_EQUAL( css::style::LineSpacingMode::PROP, aSpacing.Mode );
+    CPPUNIT_ASSERT_EQUAL( static_cast<sal_Int16>(125), aSpacing.Height );
+
+    // Third paragraph has a 70% line spacing set directly on normal slide (master slide property is overridden)
+    xParagraph.set( getParagraphFromShape( 2, xShape ) );
+    xPropSet.set( xParagraph, uno::UNO_QUERY_THROW );
+    xPropSet->getPropertyValue( "ParaLineSpacing" ) >>= aSpacing;
+    CPPUNIT_ASSERT_EQUAL( css::style::LineSpacingMode::PROP, aSpacing.Mode );
+    CPPUNIT_ASSERT_EQUAL( static_cast<sal_Int16>(70), aSpacing.Height );
+
+    // Fourth paragraph has a 190% line spacing set directly on normal slide (slide layout property is overridden)
+    xParagraph.set( getParagraphFromShape( 3, xShape ) );
+    xPropSet.set( xParagraph, uno::UNO_QUERY_THROW );
+    xPropSet->getPropertyValue( "ParaLineSpacing" ) >>= aSpacing;
+    CPPUNIT_ASSERT_EQUAL( css::style::LineSpacingMode::PROP, aSpacing.Mode );
+    CPPUNIT_ASSERT_EQUAL( static_cast<sal_Int16>(190), aSpacing.Height );
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf116899()
+{
+    // This is a PPT created in Impress and roundtripped in PP, the key times become [1, -1] in PP,
+    //  a time of -1 (-1000) in PPT means key times have to be distributed evenly between 0 and 1
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/ppt/tdf116899.ppt"), PPT);
+
+    uno::Reference< drawing::XDrawPagesSupplier > xDoc(
+        xDocShRef->GetDoc()->getUnoModel(), uno::UNO_QUERY_THROW );
+    uno::Reference< drawing::XDrawPage > xPage(
+        xDoc->getDrawPages()->getByIndex(0), uno::UNO_QUERY_THROW );
+    uno::Reference< animations::XAnimationNodeSupplier > xAnimNodeSupplier(
+        xPage, uno::UNO_QUERY_THROW );
+    uno::Reference< animations::XAnimationNode > xRootNode(
+        xAnimNodeSupplier->getAnimationNode() );
+    std::vector< uno::Reference< animations::XAnimationNode > > aAnimVector;
+    anim::create_deep_vector(xRootNode, aAnimVector);
+    uno::Reference< animations::XAnimate > xNode(
+        aAnimVector[8], uno::UNO_QUERY_THROW );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Number of key times in the animation node isn't 2.", static_cast<sal_Int32>(2), xNode->getKeyTimes().getLength() );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "First key time in the animation node isn't 0, key times aren't normalized.", 0., xNode->getKeyTimes()[0] );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Second key time in the animation node isn't 1, key times aren't normalized.", 1., xNode->getKeyTimes()[1] );
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf77747()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/ppt/tdf77747.ppt"), PPT);
+    CPPUNIT_ASSERT(xDocShRef.is());
+    SdrTextObj *pTxtObj = dynamic_cast<SdrTextObj *>(GetPage(1, xDocShRef)->GetObj(0));
+    CPPUNIT_ASSERT_MESSAGE("No text object", pTxtObj != nullptr);
+    const SvxNumBulletItem *pNumFmt = pTxtObj->GetOutlinerParaObject()->GetTextObject().GetParaAttribs(0).GetItem(EE_PARA_NUMBULLET);
+    CPPUNIT_ASSERT(pNumFmt);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bullet's suffix is wrong!", OUString("-"), pNumFmt->GetNumRule()->GetLevel(0).GetSuffix() );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bullet's numbering type is wrong!", SVX_NUM_NUMBER_HEBREW,
+            pNumFmt->GetNumRule()->GetLevel(0).GetNumberingType());
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf116266()
+{
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/odp/tdf116266.odp"), ODP);
+    SdDrawDocument *pDoc = xDocShRef->GetDoc();
+    sfx2::LinkManager* rLinkManager = pDoc->GetLinkManager();
+    // The document contains one SVG stored as a link.
+    CPPUNIT_ASSERT_EQUAL(size_t(1), rLinkManager->GetLinks().size());
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf120028()
+{
+    // Check that the table shape has 4 columns.
+    ::sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/tdf120028.pptx"), PPTX);
+    uno::Reference<drawing::XDrawPagesSupplier> xDoc(xDocShRef->GetDoc()->getUnoModel(),
+                                                     uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xDoc.is());
+
+    uno::Reference<drawing::XDrawPage> xPage(xDoc->getDrawPages()->getByIndex(0), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xPage.is());
+
+    // This failed, shape was not a table, all text was rendered in a single
+    // column.
+    uno::Reference<beans::XPropertySet> xShape(getShape(0, xPage));
+    uno::Reference<table::XColumnRowRange> xModel(xShape->getPropertyValue("Model"),
+                                                  uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xModel.is());
+
+    uno::Reference<table::XTableColumns> xColumns = xModel->getColumns();
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(4), xColumns->getCount());
+
+    // Check font size in the A1 cell.
+    uno::Reference<table::XCellRange> xCells(xModel, uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xCell(xCells->getCellByPosition(0, 0), uno::UNO_QUERY);
+    uno::Reference<text::XTextRange> xParagraph(getParagraphFromShape(0, xCell));
+    uno::Reference<text::XTextRange> xRun(getRunFromParagraph(0, xParagraph));
+    uno::Reference<beans::XPropertySet> xPropSet(xRun, uno::UNO_QUERY);
+    double fCharHeight = 0;
+    xPropSet->getPropertyValue("CharHeight") >>= fCharHeight;
+    // This failed, non-scaled height was 13.5.
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(11.5, fCharHeight, 1E-12);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf120028b()
+{
+    // Check that the table shape has 4 columns.
+    ::sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/tdf120028b.pptx"), PPTX);
+    uno::Reference<drawing::XDrawPagesSupplier> xDoc(xDocShRef->GetDoc()->getUnoModel(),
+                                                     uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xDoc.is());
+
+    uno::Reference<drawing::XDrawPage> xPage(xDoc->getDrawPages()->getByIndex(0), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xPage.is());
+
+    uno::Reference<beans::XPropertySet> xShape(getShape(0, xPage));
+    CPPUNIT_ASSERT(xShape.is());
+
+    uno::Reference<table::XColumnRowRange> xModel(xShape->getPropertyValue("Model"),
+                                                  uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xModel.is());
+
+    uno::Reference<table::XTableColumns> xColumns = xModel->getColumns();
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(4), xColumns->getCount());
+
+    // Check font color in the A1 cell.
+    uno::Reference<table::XCellRange> xCells(xModel, uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xCell(xCells->getCellByPosition(0, 0), uno::UNO_QUERY);
+    uno::Reference<text::XTextRange> xParagraph(getParagraphFromShape(0, xCell));
+    uno::Reference<text::XTextRange> xRun(getRunFromParagraph(0, xParagraph));
+    uno::Reference<beans::XPropertySet> xPropSet(xRun, uno::UNO_QUERY);
+    sal_Int32 nCharColor = 0;
+    xPropSet->getPropertyValue("CharColor") >>= nCharColor;
+    // This was 0x1f497d, not white: text list style from placeholder shape
+    // from slide layout was ignored.
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0xffffff), nCharColor);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testDescriptionImport()
+{
+    sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/altdescription.pptx"), PPTX);
+
+    uno::Reference<beans::XPropertySet> xPropertySet(
+        getShapeFromPage(/*nShape=*/2, /*nPage=*/0, xDocShRef));
+    OUString sDesc;
+
+    xPropertySet->getPropertyValue("Description") >>= sDesc;
+
+    CPPUNIT_ASSERT_EQUAL(OUString("We Can Do It!"), sDesc);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf83247()
+{
+    auto GetPause = [this](const OUString& sSrc, sal_Int32 nFormat) {
+        sd::DrawDocShellRef xDocShRef
+            = loadURL(m_directories.getURLFromSrc(sSrc), nFormat);
+        uno::Reference<presentation::XPresentationSupplier> xPresentationSupplier(
+            xDocShRef->GetDoc()->getUnoModel(), uno::UNO_QUERY);
+        uno::Reference<beans::XPropertySet> xPresentationProps(
+            xPresentationSupplier->getPresentation(), uno::UNO_QUERY_THROW);
+
+        auto retVal = xPresentationProps->getPropertyValue("Pause");
+        xDocShRef->DoClose();
+        return retVal.get<sal_Int32>();
+    };
+
+    // 1. Check that presentation:pause attribute is imported correctly
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(10), GetPause("/sd/qa/unit/data/odp/loopPause10.odp", ODP));
+
+    // 2. ODF compliance: if presentation:pause attribute is absent, it must be treated as 0
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), GetPause("/sd/qa/unit/data/odp/loopNoPause.odp", ODP));
+
+    // 3. Import PPT: pause should be 0
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), GetPause("/sd/qa/unit/data/ppt/loopNoPause.ppt", PPT));
+}
+
+void SdImportTest::testTdf47365()
+{
+    sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/loopNoPause.pptx"), PPTX);
+    uno::Reference<presentation::XPresentationSupplier> xPresentationSupplier(
+        xDocShRef->GetDoc()->getUnoModel(), uno::UNO_QUERY_THROW);
+    uno::Reference<beans::XPropertySet> xPresentationProps(xPresentationSupplier->getPresentation(),
+                                                           uno::UNO_QUERY_THROW);
+
+    const bool bEndlessVal = xPresentationProps->getPropertyValue("IsEndless").get<bool>();
+    const sal_Int32 nPauseVal = xPresentationProps->getPropertyValue("Pause").get<sal_Int32>();
+
+    // Check that we import "loop" attribute of the presentation, and don't introduce any pauses
+    CPPUNIT_ASSERT(bEndlessVal);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), nPauseVal);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf122899()
+{
+    // tdf122899 FILEOPEN: ppt: old kind arc from MS Office 97 is broken
+    // Error was, that the path coordinates of a mso_sptArc shape were read as sal_Int16
+    // although they are unsigned 16 bit. This leads to wrong positions of start and end
+    // point and results to a huge shape width in the test document.
+    sd::DrawDocShellRef xDocShRef = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/ppt/tdf122899_Arc_90_to_91_clockwise.ppt"), PPT);
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(
+        xDocShRef->GetDoc()->getUnoModel(), uno::UNO_QUERY_THROW);
+    CPPUNIT_ASSERT_MESSAGE("Could not get XDrawPagesSupplier", xDrawPagesSupplier.is());
+    uno::Reference<drawing::XDrawPages> xDrawPages(xDrawPagesSupplier->getDrawPages());
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPages->getByIndex(0), uno::UNO_QUERY_THROW);
+    CPPUNIT_ASSERT_MESSAGE("Could not get xDrawPage", xDrawPage.is());
+    uno::Reference<drawing::XShape> xShape(xDrawPage->getByIndex(0), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_MESSAGE("Could not get xShape", xShape.is());
+    awt::Rectangle aFrameRect;
+    uno::Reference<beans::XPropertySet> xShapeProps(xShape, uno::UNO_QUERY);
+    CPPUNIT_ASSERT_MESSAGE("Could not get the shape properties", xShapeProps.is());
+    xShapeProps->getPropertyValue(UNO_NAME_MISC_OBJ_FRAMERECT) >>= aFrameRect;
+    // original width is 9cm, add some tolerance
+    CPPUNIT_ASSERT_LESS(static_cast<sal_Int32>(9020), aFrameRect.Width);
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testOOXTheme()
+{
+    sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/ooxtheme.pptx"), PPTX);
+
+    uno::Reference<beans::XPropertySet> xPropSet(xDocShRef->GetDoc()->getUnoModel(), uno::UNO_QUERY_THROW);
+    uno::Sequence<beans::PropertyValue> aGrabBag;
+    xPropSet->getPropertyValue("InteropGrabBag") >>= aGrabBag;
+
+    bool bTheme = false;
+    for (beans::PropertyValue const & prop : std::as_const(aGrabBag))
+    {
+        if (prop.Name == "OOXTheme")
+        {
+            bTheme = true;
+            uno::Reference<xml::dom::XDocument> aThemeDom;
+            CPPUNIT_ASSERT(prop.Value >>= aThemeDom); // PropertyValue of proper type
+            CPPUNIT_ASSERT(aThemeDom); // Reference not empty
+        }
+    }
+    CPPUNIT_ASSERT(bTheme); // Grab Bag has all the expected elements
+
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testCropToShape()
+{
+    sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/crop-to-shape.pptx"), PPTX);
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(
+        xDocShRef->GetDoc()->getUnoModel(), uno::UNO_QUERY_THROW);
+    CPPUNIT_ASSERT_MESSAGE("Could not get XDrawPagesSupplier", xDrawPagesSupplier.is());
+    uno::Reference<drawing::XDrawPages> xDrawPages(xDrawPagesSupplier->getDrawPages());
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPages->getByIndex(0), uno::UNO_QUERY_THROW);
+    CPPUNIT_ASSERT_MESSAGE("Could not get xDrawPage", xDrawPage.is());
+    uno::Reference<drawing::XShape> xShape(xDrawPage->getByIndex(0), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString{"com.sun.star.drawing.CustomShape"}, xShape->getShapeType());
+    CPPUNIT_ASSERT_MESSAGE("Could not get xShape", xShape.is());
+    uno::Reference<beans::XPropertySet> xShapeProps(xShape, uno::UNO_QUERY);
+    css::drawing::FillStyle fillStyle;
+    xShapeProps->getPropertyValue("FillStyle") >>= fillStyle;
+    CPPUNIT_ASSERT_EQUAL(css::drawing::FillStyle_BITMAP, fillStyle);
+    css::drawing::BitmapMode bitmapmode;
+    xShapeProps->getPropertyValue("FillBitmapMode") >>= bitmapmode;
+    CPPUNIT_ASSERT_EQUAL(css::drawing::BitmapMode_STRETCH, bitmapmode);
+}
+
+void SdImportTest::testTdf127964()
+{
+    sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf127964.pptx"), PPTX);
+    const SdrPage* pPage = GetPage(1, xDocShRef);
+    const SdrObject* pObj = pPage->GetObj(0);
+    auto& rFillStyleItem
+        = dynamic_cast<const XFillStyleItem&>(pObj->GetMergedItem(XATTR_FILLSTYLE));
+    CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_SOLID, rFillStyleItem.GetValue());
+
+    auto& rFillColorItem
+        = dynamic_cast<const XFillColorItem&>(pObj->GetMergedItem(XATTR_FILLCOLOR));
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 4294967295
+    // - Actual  : 5210557
+    // i.e. instead of transparent (which then got rendered as white), the shape fill color was
+    // blue.
+    CPPUNIT_ASSERT_EQUAL(COL_TRANSPARENT, rFillColorItem.GetColorValue());
+    xDocShRef->DoClose();
+}
+
+void SdImportTest::testTdf106638()
+{
+    sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf106638.pptx"), PPTX);
+    uno::Reference<beans::XPropertySet> xShape(getShapeFromPage(0, 0, xDocShRef));
+    uno::Reference<text::XTextRange> const xPara(getParagraphFromShape(1, xShape));
+    uno::Reference<text::XText> xText= xPara->getText();
+    uno::Reference<text::XTextCursor> xTextCursor = xText->createTextCursorByRange(xPara->getStart());
+    uno::Reference<beans::XPropertySet> xPropSet(xTextCursor, uno::UNO_QUERY_THROW );
+    OUString aCharFontName;
+    CPPUNIT_ASSERT(xTextCursor->goRight(1, true));
+    // First character U+f0fe that uses Wingding
+    xPropSet->getPropertyValue("CharFontName") >>= aCharFontName;
+    CPPUNIT_ASSERT_EQUAL(OUString("Wingdings"), aCharFontName);
+
+    // The rest characters that do not use Wingding.
+    CPPUNIT_ASSERT(xTextCursor->goRight(45, true));
+    xPropSet->getPropertyValue("CharFontName") >>= aCharFontName;
+    CPPUNIT_ASSERT(aCharFontName != "Wingdings");
+}
+
+void SdImportTest::testTdf128684()
+{
+    sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("/sd/qa/unit/data/pptx/tdf128684.pptx"), PPTX);
+    uno::Reference<drawing::XDrawPagesSupplier> xDoc(xDocShRef->GetDoc()->getUnoModel(),
+                                                     uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xDoc.is());
+    uno::Reference<drawing::XDrawPage> xPage(xDoc->getDrawPages()->getByIndex(0), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xPage.is());
+    uno::Reference<beans::XPropertySet> xShape(getShape(0, xPage));
+    CPPUNIT_ASSERT(xShape.is());
+    uno::Any aAny = xShape->getPropertyValue("CustomShapeGeometry");
+    CPPUNIT_ASSERT(aAny.hasValue());
+    uno::Sequence<beans::PropertyValue> aProps;
+    CPPUNIT_ASSERT(aAny >>= aProps);
+    sal_Int32 nRotateAngle = 0;
+    for( const auto& rProp : std::as_const(aProps) )
+    {
+        if( rProp.Name == "TextPreRotateAngle")
+        {
+            rProp.Value >>= nRotateAngle;
+        }
+    }
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(-90), nRotateAngle);
+}
+
+void SdImportTest::testTdf113198()
+{
+    sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf113198.pptx"), PPTX);
+
+    uno::Reference<beans::XPropertySet> xShape(getShapeFromPage(0, 0, xDocShRef));
+    sal_Int16 nParaAdjust = -1;
+    xShape->getPropertyValue("ParaAdjust") >>= nParaAdjust;
+    CPPUNIT_ASSERT_EQUAL(style::ParagraphAdjust_CENTER, static_cast<style::ParagraphAdjust>(nParaAdjust));
+}
+
+void SdImportTest::testTdf119187()
+{
+    std::vector< sd::DrawDocShellRef > xDocShRef;
+    // load document
+    xDocShRef.push_back(loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/tdf119187.pptx"), PPTX));
+    // load resaved document
+    xDocShRef.push_back(saveAndReload( xDocShRef.at(0).get(), PPTX ));
+
+    // check documents
+    for (const sd::DrawDocShellRef& xDoc : xDocShRef)
+    {
+        // get shape properties
+        const SdrPage* pPage = GetPage(1, xDoc);
+        CPPUNIT_ASSERT(pPage);
+        SdrObject* pObj = pPage->GetObj(0);
+        CPPUNIT_ASSERT(pObj);
+        const sdr::properties::BaseProperties & rProperties = pObj->GetProperties();
+
+        // check text vertical alignment
+        const SdrTextVertAdjustItem& rSdrTextVertAdjustItem = rProperties.GetItem(SDRATTR_TEXT_VERTADJUST);
+        const SdrTextVertAdjust eTVA = rSdrTextVertAdjustItem.GetValue();
+        CPPUNIT_ASSERT_EQUAL(SDRTEXTVERTADJUST_TOP, eTVA);
+    }
+}
+
+void SdImportTest::testShapeGlowEffectPPTXImpoer()
+{
+    sd::DrawDocShellRef xDocShRef
+        = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/shape-glow-effect.pptx"), PPTX);
+
+    uno::Reference<beans::XPropertySet> xShape(getShapeFromPage(0, 0, xDocShRef));
+    sal_Int32 nRadius = -1;
+    xShape->getPropertyValue("GlowEffectRadius") >>= nRadius;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(388), nRadius); // 139700 EMU = 388.0556 mm/100
+    Color nColor;
+    xShape->getPropertyValue("GlowEffectColor") >>= nColor;
+    CPPUNIT_ASSERT_EQUAL(Color(0xFFC000), nColor);
+    sal_Int16 nTransparency;
+    xShape->getPropertyValue("GlowEffectTransparency") >>= nTransparency;
+    CPPUNIT_ASSERT_EQUAL(sal_Int16(60), nTransparency);
+}
+
+void SdImportTest::testShapeBlurPPTXImport()
+{
+    sd::DrawDocShellRef xDocShRef
+            = loadURL(m_directories.getURLFromSrc("sd/qa/unit/data/pptx/shape-blur-effect.pptx"), PPTX);
+
+    uno::Reference<beans::XPropertySet> xShape(getShapeFromPage(0, 0, xDocShRef));
+    bool bHasShadow = false;
+    xShape->getPropertyValue("Shadow") >>= bHasShadow;
+    CPPUNIT_ASSERT(bHasShadow);
+
+    sal_Int32 nRadius = -1;
+    xShape->getPropertyValue("ShadowBlur") >>= nRadius;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(388), nRadius); // 584200EMU=46pt - 139700EMU = 388Hmm = 11pt
+
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(SdImportTest);

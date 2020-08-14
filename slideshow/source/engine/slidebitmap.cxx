@@ -23,22 +23,18 @@
 
 #include <com/sun/star/rendering/XCanvas.hpp>
 #include <com/sun/star/rendering/XBitmap.hpp>
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 
 #include <canvas/canvastools.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 
 
 using namespace ::com::sun::star;
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
 
         SlideBitmap::SlideBitmap( const ::cppcanvas::BitmapSharedPtr& rBitmap ) :
             maOutputPos(),
@@ -64,7 +60,7 @@ namespace slideshow
             rendering::RenderState aRenderState;
             ::canvas::tools::initRenderState( aRenderState );
 
-            const basegfx::B2DHomMatrix aTranslation(basegfx::tools::createTranslateB2DHomMatrix(maOutputPos));
+            const basegfx::B2DHomMatrix aTranslation(basegfx::utils::createTranslateB2DHomMatrix(maOutputPos));
             ::canvas::tools::setRenderStateTransform( aRenderState, aTranslation );
 
             try
@@ -84,7 +80,7 @@ namespace slideshow
             }
             catch( uno::Exception& )
             {
-                SAL_WARN( "slideshow", comphelper::anyToString( cppu::getCaughtException() ) );
+                TOOLS_WARN_EXCEPTION( "slideshow", "" );
                 return false;
             }
 
@@ -106,12 +102,11 @@ namespace slideshow
             maClipPoly = rClipPoly;
         }
 
-        const css::uno::Reference< css::rendering::XBitmap >&  SlideBitmap::getXBitmap()
+        const css::uno::Reference< css::rendering::XBitmap >&  SlideBitmap::getXBitmap() const
         {
         return mxBitmap;
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

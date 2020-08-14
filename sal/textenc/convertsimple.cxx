@@ -7,10 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "rtl/textcvt.h"
-#include "sal/types.h"
+#include <rtl/textcvt.h>
+#include <sal/types.h>
 
 #include "convertsimple.hxx"
 #include "handleundefinedunicodetotextchar.hxx"
@@ -26,13 +26,13 @@ struct ImplReplaceCharData
     sal_uInt16      mnReplaceChar;
 };
 
-static ImplReplaceCharData const aImplRepCharTab[] =
+ImplReplaceCharData const aImplRepCharTab[] =
 {
   { 0x00A0, 0x0020 },   /* NO-BREAK-SPACE */
   { 0x00A1, 0x0021 },   /* INVERTED EXCLAMATION MARK */
   { 0x00B7, 0x0045 },   /* MIDDLE DOT */
   { 0x00BF, 0x003F },   /* INVERTED QUESTION MARK */
-  { 0x00D7, 0x002A },   /* MULTIPLIKATION SIGN */
+  { 0x00D7, 0x002A },   /* MULTIPLICATION SIGN */
   { 0x00F7, 0x002F },   /* DIVISION SIGN */
   { 0x2000, 0x0020 },   /* EN QUAD */
   { 0x2001, 0x0020 },   /* EM QUAD */
@@ -357,7 +357,7 @@ struct ImplReplaceCharStrData
     sal_uInt16      maReplaceChars[IMPL_MAX_REPLACECHAR];
 };
 
-static ImplReplaceCharStrData const aImplRepCharStrTab[] =
+ImplReplaceCharStrData const aImplRepCharStrTab[] =
 {
   { 0x00A9, { 0x0028, 0x0063, 0x0029, 0x0000, 0x0000  } },  /* COPYRIGHT SIGN */
   { 0x00AB, { 0x003C, 0x003C, 0x0000, 0x0000, 0x0000  } },  /* LEFT-POINTING-DOUBLE ANGLE QUOTATION MARK */
@@ -372,8 +372,8 @@ static ImplReplaceCharStrData const aImplRepCharStrTab[] =
   { 0x0153, { 0x006F, 0x0065, 0x0000, 0x0000, 0x0000  } },  /* LATIN SMALL LIGATURE OE */
   { 0x2025, { 0x002E, 0x002E, 0x0000, 0x0000, 0x0000  } },  /* TWO DOT LEADER */
   { 0x2026, { 0x002E, 0x002E, 0x002E, 0x0000, 0x0000  } },  /* HORIZONTAL ELLIPSES */
-  { 0x2034, { 0x0027, 0x0027, 0x0027, 0x0000, 0x0000  } },  /* TRIPPLE PRIME */
-  { 0x2037, { 0x0027, 0x0027, 0x0027, 0x0000, 0x0000  } },  /* RESERVED TRIPPLE PRIME */
+  { 0x2034, { 0x0027, 0x0027, 0x0027, 0x0000, 0x0000  } },  /* TRIPLE PRIME */
+  { 0x2037, { 0x0027, 0x0027, 0x0027, 0x0000, 0x0000  } },  /* REVERSED TRIPLE PRIME */
   { 0x20AC, { 0x0045, 0x0055, 0x0052, 0x0000, 0x0000  } },  /* EURO SIGN */
   { 0x2122, { 0x0028, 0x0074, 0x006D, 0x0029, 0x0000  } },  /* TRADE MARK SIGN */
   { 0x2153, { 0x0031, 0x002F, 0x0033, 0x0000, 0x0000  } },  /* VULGAR FRACTION ONE THIRD */
@@ -524,7 +524,7 @@ sal_Size sal::detail::textenc::convertCharToUnicode(
     pEndSrcBuf  = pSrcBuf+nSrcBytes;
     while ( pSrcBuf < pEndSrcBuf )
     {
-        unsigned char c = (unsigned char)*pSrcBuf;
+        unsigned char c = static_cast<unsigned char>(*pSrcBuf);
         if ( c < 0x80 )
             cConv = c;
         else
@@ -540,6 +540,9 @@ sal_Size sal::detail::textenc::convertCharToUnicode(
                 *pInfo |= RTL_TEXTTOUNICODE_INFO_UNDEFINED;
                 if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_MASK) == RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR )
                 {
+                    if ((nFlags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) == 0) {
+                        ++pSrcBuf;
+                    }
                     *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR;
                     break;
                 }
@@ -554,7 +557,7 @@ sal_Size sal::detail::textenc::convertCharToUnicode(
 
         if ( pDestBuf == pEndDestBuf )
         {
-            *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL;
+            *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL;
             break;
         }
 

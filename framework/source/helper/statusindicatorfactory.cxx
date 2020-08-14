@@ -18,20 +18,12 @@
  */
 
 #include <algorithm>
+#include <utility>
 #include <helper/statusindicatorfactory.hxx>
 #include <helper/statusindicator.hxx>
 #include <helper/vclstatusindicator.hxx>
-#include <services.h>
 #include <properties.h>
 
-#include <com/sun/star/awt/Rectangle.hpp>
-
-#include <com/sun/star/awt/XControl.hpp>
-#include <com/sun/star/awt/XLayoutConstrains.hpp>
-#include <com/sun/star/awt/DeviceInfo.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
-#include <com/sun/star/awt/WindowAttribute.hpp>
-#include <com/sun/star/awt/XTopWindow.hpp>
 #include <com/sun/star/awt/XWindow2.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XLayoutManager2.hpp>
@@ -49,7 +41,12 @@
 namespace framework{
 
 sal_Int32 StatusIndicatorFactory::m_nInReschedule = 0;  ///< static counter for rescheduling
+
+namespace {
+
 struct RescheduleLock: public rtl::Static<osl::Mutex, RescheduleLock> {}; ///< mutex to guard the m_nInReschedule
+
+}
 
 const char PROGRESS_RESOURCE[] = "private:resource/progressbar/progressbar";
 
@@ -68,7 +65,7 @@ StatusIndicatorFactory::~StatusIndicatorFactory()
 
 void SAL_CALL StatusIndicatorFactory::initialize(const css::uno::Sequence< css::uno::Any >& lArguments)
 {
-    if (lArguments.getLength() > 0) {
+    if (lArguments.hasElements()) {
         osl::MutexGuard g(m_mutex);
 
         css::uno::Reference< css::frame::XFrame > xTmpFrame;
@@ -124,7 +121,7 @@ void StatusIndicatorFactory::start(const css::uno::Reference< css::task::XStatus
     IndicatorStack::iterator pItem = ::std::find(m_aStack.begin(), m_aStack.end(), xChild);
     if (pItem != m_aStack.end())
         m_aStack.erase(pItem);
-    IndicatorInfo aInfo(xChild, sText, nRange);
+    IndicatorInfo aInfo(xChild, sText);
     m_aStack.push_back (aInfo                );
 
     m_xActiveChild = xChild;
@@ -152,7 +149,7 @@ void StatusIndicatorFactory::reset(const css::uno::Reference< css::task::XStatus
     if (pItem != m_aStack.end())
     {
         pItem->m_nValue = 0;
-        (pItem->m_sText).clear();
+        pItem->m_sText.clear();
     }
 
     css::uno::Reference< css::task::XStatusIndicator > xActive   = m_xActiveChild;
@@ -436,32 +433,32 @@ void StatusIndicatorFactory::impl_showProgress()
 
     css::uno::Reference< css::task::XStatusIndicator > xProgress;
 
-    if (xFrame.is())
+    if (!xFrame.is())
+        return;
+
+    // use frame layouted progress implementation
+    css::uno::Reference< css::beans::XPropertySet > xPropSet(xFrame, css::uno::UNO_QUERY);
+    if (xPropSet.is())
     {
-        // use frame layouted progress implementation
-        css::uno::Reference< css::beans::XPropertySet > xPropSet(xFrame, css::uno::UNO_QUERY);
-        if (xPropSet.is())
+        css::uno::Reference< css::frame::XLayoutManager2 > xLayoutManager;
+        xPropSet->getPropertyValue(FRAME_PROPNAME_ASCII_LAYOUTMANAGER) >>= xLayoutManager;
+        if (xLayoutManager.is())
         {
-            css::uno::Reference< css::frame::XLayoutManager2 > xLayoutManager;
-            xPropSet->getPropertyValue(FRAME_PROPNAME_ASCII_LAYOUTMANAGER) >>= xLayoutManager;
-            if (xLayoutManager.is())
-            {
-                // Be sure that we have always a progress. It can be that our frame
-                // was recycled and therefore the progress was destroyed!
-                // CreateElement does nothing if there is already a valid progress.
-                OUString sPROGRESS_RESOURCE(PROGRESS_RESOURCE);
-                xLayoutManager->createElement( sPROGRESS_RESOURCE );
-                xLayoutManager->showElement( sPROGRESS_RESOURCE );
+            // Be sure that we have always a progress. It can be that our frame
+            // was recycled and therefore the progress was destroyed!
+            // CreateElement does nothing if there is already a valid progress.
+            OUString sPROGRESS_RESOURCE(PROGRESS_RESOURCE);
+            xLayoutManager->createElement( sPROGRESS_RESOURCE );
+            xLayoutManager->showElement( sPROGRESS_RESOURCE );
 
-                css::uno::Reference< css::ui::XUIElement > xProgressBar = xLayoutManager->getElement(sPROGRESS_RESOURCE);
-                if (xProgressBar.is())
-                    xProgress.set(xProgressBar->getRealInterface(), css::uno::UNO_QUERY);
-            }
+            css::uno::Reference< css::ui::XUIElement > xProgressBar = xLayoutManager->getElement(sPROGRESS_RESOURCE);
+            if (xProgressBar.is())
+                xProgress.set(xProgressBar->getRealInterface(), css::uno::UNO_QUERY);
         }
-
-        osl::MutexGuard g(m_mutex);
-        m_xProgress = xProgress;
     }
+
+    osl::MutexGuard g(m_mutex);
+    m_xProgress = xProgress;
 }
 
 void StatusIndicatorFactory::impl_hideProgress()
@@ -491,10 +488,11 @@ void StatusIndicatorFactory::impl_hideProgress()
 void StatusIndicatorFactory::impl_reschedule(bool bForce)
 {
     // SAFE ->
-    osl::ClearableMutexGuard aReadLock(m_mutex);
-    if (m_bDisableReschedule)
-        return;
-    aReadLock.clear();
+    {
+        osl::MutexGuard aReadLock(m_mutex);
+        if (m_bDisableReschedule)
+            return;
+    }
     // <- SAFE
 
     bool bReschedule = bForce;
@@ -511,21 +509,21 @@ void StatusIndicatorFactory::impl_reschedule(bool bForce)
     // SAFE ->
     osl::ResettableMutexGuard aRescheduleGuard(RescheduleLock::get());
 
-    if (m_nInReschedule == 0)
+    if (m_nInReschedule != 0)
+        return;
+
+    ++m_nInReschedule;
+    aRescheduleGuard.clear();
+    // <- SAFE
+
     {
-        ++m_nInReschedule;
-        aRescheduleGuard.clear();
-        // <- SAFE
-
-        {
-            SolarMutexGuard g;
-            Application::Reschedule(true);
-        }
-
-        // SAFE ->
-        aRescheduleGuard.reset();
-        --m_nInReschedule;
+        SolarMutexGuard g;
+        Application::Reschedule(true);
     }
+
+    // SAFE ->
+    aRescheduleGuard.reset();
+    --m_nInReschedule;
 }
 
 void StatusIndicatorFactory::impl_startWakeUpThread()
@@ -547,7 +545,7 @@ void StatusIndicatorFactory::impl_stopWakeUpThread()
     rtl::Reference<WakeUpThread> wakeUp;
     {
         osl::MutexGuard g(m_mutex);
-        wakeUp = m_pWakeUp;
+        std::swap(wakeUp, m_pWakeUp);
     }
     if (wakeUp.is())
     {
@@ -557,7 +555,7 @@ void StatusIndicatorFactory::impl_stopWakeUpThread()
 
 } // namespace framework
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_StatusIndicatorFactory_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

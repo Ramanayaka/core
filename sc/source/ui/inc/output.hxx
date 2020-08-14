@@ -20,12 +20,14 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_OUTPUT_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_OUTPUT_HXX
 
-#include "address.hxx"
-#include "cellvalue.hxx"
+#include <address.hxx>
+#include <cellvalue.hxx>
 #include <tools/color.hxx>
 #include <tools/fract.hxx>
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
-#include <drawinglayer/processor2d/baseprocessor2d.hxx>
+#include <tools/gen.hxx>
+#include <editeng/svxenum.hxx>
+#include <vcl/outdev.hxx>
+#include <o3tl/deleter.hxx>
 
 namespace sc {
     struct SpellCheckContext;
@@ -34,14 +36,12 @@ namespace sc {
 namespace editeng {
     struct MisspellRanges;
 }
+namespace drawinglayer::processor2d { class BaseProcessor2D; }
 
-namespace tools { class Rectangle; }
 namespace vcl { class Font; }
-class OutputDevice;
 class EditEngine;
 class ScDocument;
 class ScPatternAttr;
-class SdrObject;
 struct RowInfo;
 struct ScTableInfo;
 class ScTabViewShell;
@@ -55,7 +55,41 @@ class SdrPaintWindow;
 
 enum ScOutputType { OUTTYPE_WINDOW, OUTTYPE_PRINTER };
 
-class ScFieldEditEngine;
+class ClearableClipRegion;
+typedef std::unique_ptr<ClearableClipRegion, o3tl::default_delete<ClearableClipRegion>> ClearableClipRegionPtr;
+
+/// Describes reference mark to be drawn, position & size in TWIPs
+struct ReferenceMark {
+    long nX;
+    long nY;
+    long nWidth;
+    long nHeight;
+    long nTab;
+    Color aColor;
+
+    ReferenceMark()
+        : nX( 0 )
+        , nY( 0 )
+        , nWidth( 0 )
+        , nHeight( 0 )
+        , nTab( 0 )
+        , aColor( COL_AUTO ) {}
+
+    ReferenceMark( long aX,
+                   long aY,
+                   long aWidth,
+                   long aHeight,
+                   long aTab,
+                   const Color& rColor )
+        : nX( aX )
+        , nY( aY )
+        , nWidth( aWidth )
+        , nHeight( aHeight )
+        , nTab( aTab )
+        , aColor( rColor ) {}
+
+    bool Is() const { return ( nWidth > 0 && nHeight > 0 ); }
+};
 
 class ScOutputData
 {
@@ -108,7 +142,7 @@ private:
 
         explicit DrawEditParam(const ScPatternAttr* pPattern, const SfxItemSet* pCondSet, bool bCellIsValue);
 
-        bool readCellContent(ScDocument* pDoc, bool bShowNullValues, bool bShowFormulas, bool bSyntaxMode, bool bUseStyleColor, bool bForceAutoColor, bool& rWrapFields);
+        bool readCellContent(const ScDocument* pDoc, bool bShowNullValues, bool bShowFormulas, bool bSyntaxMode, bool bUseStyleColor, bool bForceAutoColor, bool& rWrapFields);
         void setPatternToEngine(bool bUseStyleColor);
         void calcMargins(long& rTop, long& rLeft, long& rBottom, long& rRight, double nPPTX, double nPPTY) const;
         void calcPaperSize(Size& rPaperSize, const tools::Rectangle& rAlignRect, double nPPTX, double nPPTY) const;
@@ -131,12 +165,11 @@ private:
          *                    finished, this parameter will store the new
          *                    position.
          */
-        void calcStartPosForVertical(Point& rLogicStart, long nCellWidth, long nEngineWidth, long nTopM, OutputDevice* pRefDevice);
+        void calcStartPosForVertical(Point& rLogicStart, long nCellWidth, long nEngineWidth, long nTopM, const OutputDevice* pRefDevice);
 
         void setAlignmentToEngine();
         bool adjustHorAlignment(ScFieldEditEngine* pEngine);
-        void adjustForRTL();
-        void adjustForHyperlinkInPDF(Point aURLStart, OutputDevice* pDev);
+        void adjustForHyperlinkInPDF(Point aURLStart, const OutputDevice* pDev);
     };
 
     VclPtr<OutputDevice> mpDev;        // Device
@@ -177,15 +210,15 @@ private:
     bool bMetaFile;             // Output to metafile (not pixels!)
 
     bool bPagebreakMode;        // Page break preview
-    bool bSolidBackground;      // white instead of transparant
+    bool bSolidBackground;      // white instead of transparent
 
     bool mbUseStyleColor;
     bool mbForceAutoColor;
 
     bool mbSyntaxMode;          // Syntax highlighting
-    Color* pValueColor;
-    Color* pTextColor;
-    Color* pFormulaColor;
+    std::unique_ptr<Color> pValueColor;
+    std::unique_ptr<Color> pTextColor;
+    std::unique_ptr<Color> pFormulaColor;
 
     Color   aGridColor;
 
@@ -196,7 +229,6 @@ private:
 
     bool    bSnapPixel;
 
-    bool    bAnyRotated;        // internal
     bool    bAnyClipped;        // internal
     bool    bTabProtected;
     bool    bLayoutRTL;
@@ -209,7 +241,7 @@ private:
 
     bool            GetMergeOrigin( SCCOL nX, SCROW nY, SCSIZE nArrY,
                                     SCCOL& rOverX, SCROW& rOverY, bool bVisRowChanged );
-    bool IsEmptyCellText( RowInfo* pThisRowInfo, SCCOL nX, SCROW nY );
+    bool IsEmptyCellText( const RowInfo* pThisRowInfo, SCCOL nX, SCROW nY );
     void GetVisibleCell( SCCOL nCol, SCROW nRow, SCTAB nTab, ScRefCellValue& rCell );
 
     bool IsAvailable( SCCOL nX, SCROW nY );
@@ -223,18 +255,18 @@ private:
 
     void            ShrinkEditEngine( EditEngine& rEngine, const tools::Rectangle& rAlignRect,
                                     long nLeftM, long nTopM, long nRightM, long nBottomM,
-                                    bool bWidth, sal_uInt16 nOrient, long nAttrRotate, bool bPixelToLogic,
+                                    bool bWidth, SvxCellOrientation nOrient, long nAttrRotate, bool bPixelToLogic,
                                     long& rEngineWidth, long& rEngineHeight, long& rNeededPixel,
                                     bool& rLeftClip, bool& rRightClip );
 
     void SetSyntaxColor( vcl::Font* pFont, const ScRefCellValue& rCell );
-    void SetEditSyntaxColor( EditEngine& rEngine, ScRefCellValue& rCell );
+    void SetEditSyntaxColor( EditEngine& rEngine, const ScRefCellValue& rCell );
 
-    double          GetStretch();
+    double          GetStretch() const;
 
-    void            DrawRotatedFrame(vcl::RenderContext& rRenderContext, const Color* pForceColor);       // pixel
+    void            DrawRotatedFrame(vcl::RenderContext& rRenderContext);       // pixel
 
-    drawinglayer::processor2d::BaseProcessor2D*  CreateProcessor2D( );
+    std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> CreateProcessor2D( );
 
     void DrawEditStandard(DrawEditParam& rParam);
     void DrawEditBottomTop(DrawEditParam& rParam);
@@ -242,15 +274,30 @@ private:
     void DrawEditStacked(DrawEditParam& rParam);
     void DrawEditAsianVertical(DrawEditParam& rParam);
 
-    ScFieldEditEngine* CreateOutputEditEngine();
+    std::unique_ptr<ScFieldEditEngine> CreateOutputEditEngine();
 
     void ShowClipMarks( DrawEditParam& rParam, long nEngineHeight, const Size& aCellSize,
                         bool bMerged, OutputAreaParam& aAreaParam );
 
-    bool Clip( DrawEditParam& rParam, const Size& aCellSize, OutputAreaParam& aAreaParam,
-               long nEngineHeight, bool bWrapFields);
+    ClearableClipRegionPtr Clip(DrawEditParam& rParam, const Size& aCellSize, OutputAreaParam& aAreaParam,
+                                long nEngineHeight, bool bWrapFields);
+
+    bool AdjustAreaParamClipRect(OutputAreaParam& rAreaParam);
+    long SetEngineTextAndGetWidth( DrawEditParam& rParam, const OUString& rSetString,
+                                   long& rNeededPixel, long nAddWidthPixels );
+
+    // Check for and set cell rotations at OutputData to have it available
+    // in the svx tooling to render the borders. Moved to private section
+    // and the single call to end of constructor to be sure this always happens
+    void    SetCellRotations();
 
 public:
+
+    /**
+     * @param nNewScrX: X-Offset in the output device for the table
+     * @param nNewScrY: Y-Offset in the output device for the table
+     *
+     */
                     ScOutputData( OutputDevice* pNewDev, ScOutputType eNewType,
                                     ScTableInfo& rTabInfo, ScDocument* pNewDoc,
                                     SCTAB nNewTab, long nNewScrX, long nNewScrY,
@@ -301,8 +348,6 @@ public:
 
                     // with logic MapMode set!
     void    DrawEdit(bool bPixelToLogic);
-
-    void    FindRotated();
     void    DrawRotated(bool bPixelToLogic);        // logical
 
     void    DrawClear();
@@ -320,9 +365,13 @@ public:
 
     void    FindChanged();
     void    SetPagebreakMode( ScPageBreakData* pPageData );
+    /// Draws reference mark and returns its properties
     void    DrawRefMark( SCCOL nRefStartX, SCROW nRefStartY,
                          SCCOL nRefEndX, SCROW nRefEndY,
                          const Color& rColor, bool bHandle );
+    ReferenceMark FillReferenceMark( SCCOL nRefStartX, SCROW nRefStartY,
+                                    SCCOL nRefEndX, SCROW nRefEndY,
+                                    const Color& rColor );
     void    DrawOneChange( SCCOL nRefStartX, SCROW nRefStartY,
                             SCCOL nRefEndX, SCROW nRefEndY,
                             const Color& rColor, sal_uInt16 nType );

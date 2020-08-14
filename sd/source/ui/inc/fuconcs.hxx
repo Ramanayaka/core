@@ -21,14 +21,13 @@
 #define INCLUDED_SD_SOURCE_UI_INC_FUCONCS_HXX
 
 #include "fuconstr.hxx"
+#include <rtl/ustring.hxx>
 
-class KeyEvent;
 class SdDrawDocument;
-class SdrObject;
 
 namespace sd {
 
-class FuConstructCustomShape
+class FuConstructCustomShape final
     : public FuConstruct
 {
 public:
@@ -45,12 +44,12 @@ public:
     void SetAttributes( SdrObject* pObj );
     const OUString& GetShapeType() const;
 
-    virtual SdrObject* CreateDefaultObject(const sal_uInt16 nID, const ::tools::Rectangle& rRectangle) override;
+    virtual SdrObjectUniquePtr CreateDefaultObject(const sal_uInt16 nID, const ::tools::Rectangle& rRectangle) override;
 
     // #i33136#
     virtual bool doConstructOrthogonal() const override;
 
-protected:
+private:
     FuConstructCustomShape (
         ViewShell* pViewSh,
         ::sd::Window* pWin,
@@ -58,7 +57,6 @@ protected:
         SdDrawDocument* pDoc,
         SfxRequest& rReq);
 
-private:
     OUString aCustomShape;
 };
 

@@ -27,14 +27,12 @@
 #include <com/sun/star/animations/Event.hpp>
 
 #include "generateevent.hxx"
-#include "shape.hxx"
-#include "subsettableshapemanager.hxx"
-#include "usereventqueue.hxx"
-#include "slideshowcontext.hxx"
-#include "delayevent.hxx"
+#include <subsettableshapemanager.hxx>
+#include <usereventqueue.hxx>
+#include <slideshowcontext.hxx>
+#include <delayevent.hxx>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 using namespace com::sun::star;
 
@@ -81,6 +79,11 @@ EventSharedPtr generateEvent(
 
         // TODO(F1): Respect aEvent.Repeat value
 
+        auto event2shape = [&] () {
+            if (aEvent.Source >>= xShape)
+                pShape = rContext.mpSubsettableShapeManager->lookupShape(xShape);
+        };
+
         switch (aEvent.Trigger) {
         default:
             ENSURE_OR_THROW( false, "unexpected event trigger!" );
@@ -123,8 +126,8 @@ EventSharedPtr generateEvent(
             break;
         case animations::EventTrigger::ON_CLICK:
             // try to extract XShape event source
-            if ((aEvent.Source >>= xShape) &&
-                (pShape = rContext.mpSubsettableShapeManager->lookupShape(xShape)).get())
+            event2shape();
+            if (pShape)
             {
                 pEvent = makeDelay( rFunctor,
                                     nDelay2 + nAdditionalDelay,
@@ -139,8 +142,8 @@ EventSharedPtr generateEvent(
             break;
         case animations::EventTrigger::ON_DBL_CLICK:
             // try to extract XShape event source
-            if ((aEvent.Source >>= xShape) &&
-                (pShape = rContext.mpSubsettableShapeManager->lookupShape(xShape)).get())
+            event2shape();
+            if (pShape)
             {
                 pEvent = makeDelay( rFunctor,
                                     nDelay2 + nAdditionalDelay,
@@ -155,8 +158,8 @@ EventSharedPtr generateEvent(
             break;
         case animations::EventTrigger::ON_MOUSE_ENTER:
             // try to extract XShape event source
-            if ((aEvent.Source >>= xShape) &&
-                (pShape = rContext.mpSubsettableShapeManager->lookupShape(xShape)).get())
+            event2shape();
+            if (pShape)
             {
                 pEvent = makeDelay( rFunctor,
                                     nDelay2 + nAdditionalDelay,
@@ -171,8 +174,8 @@ EventSharedPtr generateEvent(
             break;
         case animations::EventTrigger::ON_MOUSE_LEAVE:
             // try to extract XShape event source
-            if ((aEvent.Source >>= xShape) &&
-                (pShape = rContext.mpSubsettableShapeManager->lookupShape(xShape)).get())
+            event2shape();
+            if (pShape)
             {
                 pEvent = makeDelay( rFunctor,
                                     nDelay2 + nAdditionalDelay,
@@ -188,7 +191,7 @@ EventSharedPtr generateEvent(
         case animations::EventTrigger::ON_PREV:
             OSL_FAIL( "event trigger ON_PREV not yet implemented, "
                         "mapped to ON_NEXT!" );
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case animations::EventTrigger::ON_NEXT:
             pEvent = makeDelay( rFunctor,
                                 nDelay2 + nAdditionalDelay,
@@ -229,7 +232,6 @@ EventSharedPtr generateEvent(
     return pEvent;
 }
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

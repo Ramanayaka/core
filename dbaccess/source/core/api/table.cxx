@@ -17,34 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
-
-#include "table.hxx"
+#include <apitools.hxx>
+#include <table.hxx>
 #include <definitioncolumn.hxx>
-#include "dbastrings.hrc"
-#include "core_resource.hxx"
-#include "core_resource.hrc"
+#include <stringconstants.hxx>
+#include <core_resource.hxx>
+#include <strings.hrc>
 #include "CIndexes.hxx"
 
 #include <osl/diagnose.h>
 #include <cppuhelper/typeprovider.hxx>
-#include <comphelper/enumhelper.hxx>
-#include <comphelper/container.hxx>
-#include <comphelper/sequence.hxx>
-#include <comphelper/types.hxx>
-#include <com/sun/star/util/XRefreshListener.hpp>
+#include <comphelper/servicehelper.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdbcx/Privilege.hpp>
-#include <com/sun/star/sdbc/XResultSetMetaData.hpp>
-#include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
+#include <com/sun/star/sdb/tools/XTableRename.hpp>
+#include <com/sun/star/sdb/tools/XTableAlteration.hpp>
 
 #include <connectivity/TKeys.hxx>
 #include <connectivity/dbtools.hxx>
-#include <connectivity/dbexception.hxx>
 
-#include "sdbcoretools.hxx"
-#include "ContainerMediator.hxx"
+#include <ContainerMediator.hxx>
 
 using namespace dbaccess;
 using namespace connectivity;
@@ -103,7 +96,7 @@ OColumn* ODBTable::createColumn(const OUString& _rName) const
     }
     else
     {
-        OColumns* pColumns = static_cast<OColumns*>(m_pColumns);
+        OColumns* pColumns = static_cast<OColumns*>(m_xColumns.get());
         xProp.set(pColumns->createBaseObject(_rName),UNO_QUERY);
     }
 
@@ -147,7 +140,7 @@ void SAL_CALL ODBTable::disposing()
 void ODBTable::getFastPropertyValue(Any& _rValue, sal_Int32 _nHandle) const
 {
     if ((PROPERTY_ID_PRIVILEGES == _nHandle) && (-1 == m_nPrivileges))
-    {   // somebody is asking for the privileges an we do not know them, yet
+    {   // somebody is asking for the privileges and we do not know them, yet
         const_cast<ODBTable*>(this)->m_nPrivileges = ::dbtools::getTablePrivileges(getMetaData(),m_CatalogName,m_SchemaName, m_Name);
     }
 
@@ -178,6 +171,9 @@ void ODBTable::construct()
 
     registerMayBeVoidProperty(PROPERTY_ROW_HEIGHT, PROPERTY_ID_ROW_HEIGHT, PropertyAttribute::BOUND | PropertyAttribute::MAYBEVOID,
                     &m_aRowHeight, cppu::UnoType<sal_Int32>::get());
+
+    registerProperty(PROPERTY_AUTOGROW, PROPERTY_ID_AUTOGROW, PropertyAttribute::BOUND,
+                    &m_bAutoGrow, cppu::UnoType<bool>::get());
 
     registerMayBeVoidProperty(PROPERTY_TEXTCOLOR, PROPERTY_ID_TEXTCOLOR, PropertyAttribute::BOUND | PropertyAttribute::MAYBEVOID,
                     &m_aTextColor, cppu::UnoType<sal_Int32>::get());
@@ -220,18 +216,16 @@ void ODBTable::construct()
     describeProperties(aProps);
     if(!_nId)
     {
-        Property* pIter = aProps.getArray();
-        Property* pEnd  = pIter + aProps.getLength();
-        for(;pIter != pEnd;++pIter)
+        for(Property & prop : aProps)
         {
-            if (pIter->Name == PROPERTY_CATALOGNAME)
-                pIter->Attributes = PropertyAttribute::READONLY;
-            else if (pIter->Name == PROPERTY_SCHEMANAME)
-                pIter->Attributes = PropertyAttribute::READONLY;
-            else if (pIter->Name == PROPERTY_DESCRIPTION)
-                pIter->Attributes = PropertyAttribute::READONLY;
-            else if (pIter->Name == PROPERTY_NAME)
-                pIter->Attributes = PropertyAttribute::READONLY;
+            if (prop.Name == PROPERTY_CATALOGNAME)
+                prop.Attributes = PropertyAttribute::READONLY;
+            else if (prop.Name == PROPERTY_SCHEMANAME)
+                prop.Attributes = PropertyAttribute::READONLY;
+            else if (prop.Name == PROPERTY_DESCRIPTION)
+                prop.Attributes = PropertyAttribute::READONLY;
+            else if (prop.Name == PROPERTY_NAME)
+                prop.Attributes = PropertyAttribute::READONLY;
         }
     }
 
@@ -296,18 +290,18 @@ void SAL_CALL ODBTable::alterColumnByName( const OUString& _rName, const Referen
     if ( !getAlterService().is() )
         throw SQLException(DBA_RES(RID_STR_NO_TABLE_RENAME),*this,SQLSTATE_GENERAL,1000,Any() );
 
-    if ( !m_pColumns->hasByName(_rName) )
+    if ( !m_xColumns->hasByName(_rName) )
         throw SQLException(DBA_RES(RID_STR_COLUMN_NOT_VALID),*this,SQLSTATE_GENERAL,1000,Any() );
 
     Reference<XPropertySet> xTable(this);
     getAlterService()->alterColumnByName(xTable,_rName,_rxDescriptor);
-    m_pColumns->refresh();
+    m_xColumns->refresh();
 }
 
 sal_Int64 SAL_CALL ODBTable::getSomething( const Sequence< sal_Int8 >& rId )
 {
     sal_Int64 nRet(0);
-    if (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    if (isUnoTunnelId<ODBTable>(rId))
         nRet = reinterpret_cast<sal_Int64>(this);
     else
         nRet = OTable_Base::getSomething(rId);
@@ -315,19 +309,11 @@ sal_Int64 SAL_CALL ODBTable::getSomething( const Sequence< sal_Int8 >& rId )
     return nRet;
 }
 
-Sequence< sal_Int8 > ODBTable::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > ODBTable::getUnoTunnelId()
 {
-    static ::cppu::OImplementationId * pId = nullptr;
-    if (! pId)
-    {
-        ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-        if (! pId)
-        {
-            static ::cppu::OImplementationId aId;
-            pId = &aId;
-        }
-    }
-    return pId->getImplementationId();
+    static ::cppu::OImplementationId s_Id;
+
+    return s_Id.getImplementationId();
 }
 
 Reference< XPropertySet > ODBTable::createColumnDescriptor()
@@ -335,7 +321,7 @@ Reference< XPropertySet > ODBTable::createColumnDescriptor()
     return new OTableColumnDescriptor( true );
 }
 
-sdbcx::OCollection* ODBTable::createColumns(const TStringVector& _rNames)
+sdbcx::OCollection* ODBTable::createColumns(const ::std::vector< OUString>& _rNames)
 {
     Reference<XDatabaseMetaData> xMeta = getMetaData();
     OColumns* pCol = new OColumns(*this, m_aMutex, nullptr, isCaseSensitive(), _rNames, this,this,
@@ -348,12 +334,12 @@ sdbcx::OCollection* ODBTable::createColumns(const TStringVector& _rNames)
     return pCol;
 }
 
-sdbcx::OCollection* ODBTable::createKeys(const TStringVector& _rNames)
+sdbcx::OCollection* ODBTable::createKeys(const ::std::vector< OUString>& _rNames)
 {
     return new connectivity::OKeysHelper(this,m_aMutex,_rNames);
 }
 
-sdbcx::OCollection* ODBTable::createIndexes(const TStringVector& _rNames)
+sdbcx::OCollection* ODBTable::createIndexes(const ::std::vector< OUString>& _rNames)
 {
     return new OIndexes(this,m_aMutex,_rNames,nullptr);
 }

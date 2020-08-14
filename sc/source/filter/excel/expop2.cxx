@@ -19,31 +19,27 @@
 
 #include <unotools/fltrcfg.hxx>
 
+#include <osl/diagnose.h>
 #include <sfx2/objsh.hxx>
 #include <sfx2/docinf.hxx>
 #include <filter/msfilter/svxmsbas.hxx>
 
 #include <oox/ole/vbaexport.hxx>
 
-#include "scerrors.hxx"
-#include "scextopt.hxx"
+#include <scerrors.hxx>
 
-#include "root.hxx"
-#include "excdoc.hxx"
-#include "exp_op.hxx"
+#include <root.hxx>
+#include <excdoc.hxx>
+#include <exp_op.hxx>
 
-#include "xcl97esc.hxx"
-
-#include "document.hxx"
-#include "rangenam.hxx"
-#include "filtopt.hxx"
-#include "xltools.hxx"
-#include "xelink.hxx"
+#include <xehelper.hxx>
 
 #include <officecfg/Office/Calc.hxx>
 
-#include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+
+namespace com::sun::star::document { class XDocumentProperties; }
 
 namespace {
 
@@ -57,7 +53,7 @@ enum class VBAExportMode
 }
 
 ExportBiff5::ExportBiff5( XclExpRootData& rExpData, SvStream& rStrm ):
-    ExportTyp( rStrm, &rExpData.mrDoc, rExpData.meTextEnc ),
+    ExportTyp( rStrm ),
     XclExpRoot( rExpData )
 {
     // only need part of the Root data

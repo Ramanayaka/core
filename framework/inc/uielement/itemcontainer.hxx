@@ -24,18 +24,16 @@
 
 #include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
 
-#include <rtl/ustring.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <vector>
-#include <fwidllapi.h>
+#include <framework/fwkdllapi.h>
 
 namespace framework
 {
 class ConstItemContainer;
-class FWI_DLLPUBLIC ItemContainer :   public ::cppu::WeakImplHelper< css::container::XIndexContainer>
+class ItemContainer final : public ::cppu::WeakImplHelper< css::container::XIndexContainer>
 {
     friend class ConstItemContainer;
 
@@ -48,8 +46,7 @@ class FWI_DLLPUBLIC ItemContainer :   public ::cppu::WeakImplHelper< css::contai
         //  XInterface, XTypeProvider
 
         // XUnoTunnel
-        static const css::uno::Sequence< sal_Int8 >&   GetUnoTunnelId() throw();
-        static ItemContainer*                                       GetImplementation( const css::uno::Reference< css::uno::XInterface >& rxIFace ) throw();
+        static const css::uno::Sequence< sal_Int8 >&   getUnoTunnelId() throw();
 
         // XIndexContainer
         virtual void SAL_CALL insertByIndex( sal_Int32 Index, const css::uno::Any& Element ) override;

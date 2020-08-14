@@ -20,14 +20,16 @@
 #ifndef INCLUDED_CONNECTIVITY_PREDICATEINPUT_HXX
 #define INCLUDED_CONNECTIVITY_PREDICATEINPUT_HXX
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/util/XNumberFormatter.hpp>
-#include <com/sun/star/i18n/XLocaleData4.hpp>
 #include <connectivity/sqlparse.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
 #include <com/sun/star/uno/Any.hxx>
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::i18n { class XLocaleData4; }
+namespace com::sun::star::sdbc { class XConnection; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::util { class XNumberFormatter; }
+
 
 
 namespace dbtools
@@ -37,7 +39,7 @@ namespace dbtools
     //= OPredicateInputController
 
     /** A class which allows input of an SQL predicate for a row set column
-        into a edit field.
+        into an edit field.
     */
     class OOO_DLLPUBLIC_DBTOOLS OPredicateInputController
     {
@@ -103,7 +105,7 @@ namespace dbtools
         ) const;
 
     private:
-        ::connectivity::OSQLParseNode* implPredicateTree(
+        std::unique_ptr<::connectivity::OSQLParseNode> implPredicateTree(
             OUString& _rErrorMessage,
             const OUString& _rStatement,
             const css::uno::Reference< css::beans::XPropertySet > & _rxField
@@ -115,7 +117,7 @@ namespace dbtools
             sal_Unicode& _rThdSep
         ) const;
 
-        css::uno::Any implParseNode(::connectivity::OSQLParseNode* pParseNode, bool _bForStatementUse) const;
+        css::uno::Any implParseNode(std::unique_ptr<::connectivity::OSQLParseNode> pParseNode, bool _bForStatementUse) const;
     };
 
 

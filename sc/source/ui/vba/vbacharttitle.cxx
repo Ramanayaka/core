@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include "vbacharttitle.hxx"
+#include <comphelper/sequence.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
@@ -28,21 +29,15 @@ ScVbaChartTitle::ScVbaChartTitle( const uno::Reference< XHelperInterface >& xPar
 OUString
 ScVbaChartTitle::getServiceImplName()
 {
-    return OUString("ScVbaChartTitle");
+    return "ScVbaChartTitle";
 }
 
 uno::Sequence< OUString >
 ScVbaChartTitle::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
-    {
-        uno::Sequence< OUString > BaseServiceNames = ChartTitleBase::getServiceNames();
-        aServiceNames.realloc( BaseServiceNames.getLength() + 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Chart";
-        for ( sal_Int32 index = 1; index < (BaseServiceNames.getLength() + 1); ++index )
-            aServiceNames[ index ] = BaseServiceNames[ index ];
-    }
+    static uno::Sequence< OUString > const aServiceNames = comphelper::concatSequences(
+        ChartTitleBase::getServiceNames(),
+        uno::Sequence< OUString > { "ooo.vba.excel.Chart" } );
     return aServiceNames;
 }
 

@@ -162,7 +162,7 @@ sub analyze_and_save_logfile
     # This is important, to get an error code "-1", if an error was found in the log file,
     # that did not break the packaging process
 
-    if ( ! $is_success) { installer::exiter::exit_program("ERROR: Found an error in the logfile. Packaging failed.", "analyze_and_save_logfile"); }
+    if ( ! $is_success) { installer::exiter::exit_program("ERROR: Found an error in the logfile " . $loggingdir . $installer::globals::logfilename . ". Packaging failed.", "analyze_and_save_logfile"); }
 
     return ($is_success, $finalinstalldir);
 }
@@ -342,6 +342,9 @@ sub install_simple ($$$$$$)
 
         if ( -l "$sourcepath" ) {
             symlink (readlink ("$sourcepath"), "$destdir$destination") || die "Can't symlink $destdir$destination -> " . readlink ("$sourcepath") . "$!";
+        }
+        elsif ( -d $sourcepath && installer::systemactions::is_empty_dir($sourcepath) ) {
+            `mkdir -p "$destdir$destination"`;
         }
         else {
             copy ("$sourcepath", "$destdir$destination") || die "Can't copy file: $sourcepath -> $destdir$destination $!";
@@ -730,7 +733,7 @@ sub generate_cygwin_paths
         }
     }
 
-    # Checking existence fo cyg_sourcepath for every file
+    # Checking existence of cyg_sourcepath for every file
     for ( my $i = 0; $i <= $#{$filesref}; $i++ )
     {
         if (( ! exists(${$filesref}[$i]->{'cyg_sourcepath'}) ) || ( ${$filesref}[$i]->{'cyg_sourcepath'} eq "" ))
@@ -886,7 +889,7 @@ sub collectpackagemaps
 {
     my ( $installdir, $languagestringref, $allvariables ) = @_;
 
-    installer::logger::include_header_into_logfile("Collecing all packagemaps (pkgmap):");
+    installer::logger::include_header_into_logfile("Collecting all packagemaps (pkgmap):");
 
     my $pkgmapdir = installer::systemactions::create_directories("pkgmap", $languagestringref);
     my $subdirname = $allvariables->{'UNIXPRODUCTNAME'} . "_pkgmaps";

@@ -22,7 +22,6 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/drawing/XShape.hpp>
-#include <com/sun/star/drawing/XDrawPage.hpp>
 
 #include <basegfx/range/b2drectangle.hxx>
 
@@ -30,15 +29,12 @@
 
 #include <memory>
 #include <set>
-#include <vector>
 
 namespace basegfx {
     class B2DRange;
 }
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         // forward declaration necessary, because methods use ShapeSharedPtr
         class Shape;
@@ -54,7 +50,7 @@ namespace slideshow
         class Shape
         {
         public:
-            Shape() = default;
+            Shape() : mbIsForeground(true) {}
             virtual ~Shape() {}
             Shape(const Shape&) = delete;
             Shape& operator=(const Shape&) = delete;
@@ -152,7 +148,7 @@ namespace slideshow
                 shape as-is from the document, assuming a rotation
                 angle of 0).
              */
-            virtual ::basegfx::B2DRange getBounds() const = 0;
+            virtual ::basegfx::B2DRectangle getBounds() const = 0;
 
             /** Get the DOM position and size of the shape.
 
@@ -165,7 +161,7 @@ namespace slideshow
                 currently take the shape as-is from the document,
                 assuming a rotation angle of 0).
              */
-            virtual ::basegfx::B2DRange getDomBounds() const = 0;
+            virtual ::basegfx::B2DRectangle getDomBounds() const = 0;
 
             /** Get the current shape update area.
 
@@ -175,7 +171,7 @@ namespace slideshow
                 the (possibly rotated and sheared) area returned by
                 getBounds().
              */
-            virtual ::basegfx::B2DRange getUpdateArea() const = 0;
+            virtual ::basegfx::B2DRectangle getUpdateArea() const = 0;
 
             /** Query whether the shape is visible at all.
 
@@ -199,12 +195,30 @@ namespace slideshow
                 This method checks whether the Shape is currently
                 detached from the slide background, i.e. whether shape
                 updates affect the underlying slide background or
-                not. A shape that returnes true here must not alter
+                not. A shape that returns true here must not alter
                 slide content in any way when called render() or
                 update() (this is normally achieved by making this
                 shape a sprite).
              */
             virtual bool isBackgroundDetached() const = 0;
+
+            /** Check whether the shape belongs to the foreground
+
+                For instance, if the shape is in the master slide
+                it does not belong to the foreground.
+
+               @return true if the shape is on the foreground
+             */
+            virtual bool isForeground() const { return mbIsForeground; };
+
+            /**
+               Set the flag that holds whether the shape is
+               in the foreground or not
+
+               @param bIsForeground
+               Shape is on the foreground
+             */
+            virtual void setIsForeground( const bool bIsForeground ) { mbIsForeground = bIsForeground; };
 
             // Misc
 
@@ -249,14 +263,20 @@ namespace slideshow
                 }
 
             };
-        };
 
-        typedef ::std::shared_ptr< Shape > ShapeSharedPtr;
+        private:
+            /** Flag to check whether the shape belongs to the foreground.
+
+                For instance, it is false if the shape belongs to the master slide or
+                a group shape.
+             */
+            bool mbIsForeground;
+        };
 
         /** A set which contains all shapes in an ordered fashion.
          */
         typedef ::std::set< ShapeSharedPtr, Shape::lessThanShape >  ShapeSet;
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_SHAPE_HXX

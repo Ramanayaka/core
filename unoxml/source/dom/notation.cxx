@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <notation.hxx>
+#include "notation.hxx"
 
 #include <string.h>
 
@@ -57,7 +57,7 @@ namespace DOM
     {
         ::osl::MutexGuard const g(m_rMutex);
 
-       OUString aName;
+        OUString aName;
         if (m_aNodePtr != nullptr)
         {
             const xmlChar* pName = m_aNodePtr->name;

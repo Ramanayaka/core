@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SVX_SVDVITER_HXX
 #define INCLUDED_SVX_SVDVITER_HXX
 
-#include <sal/types.h>
 #include <svx/svxdllapi.h>
 
 /*
@@ -61,21 +60,19 @@ class SdrPage;
 class SdrObject;
 class SdrLayerIDSet;
 
-class SVX_DLLPUBLIC SdrViewIter
+class SVXCORE_DLLPUBLIC SdrViewIter
 {
     const SdrModel*                                     mpModel;
     const SdrPage*                                      mpPage;
     const SdrObject*                                    mpObject;
-    SdrView*                                            mpAktView;
+    SdrView*                                            mpCurrentView;
 
     size_t                                              mnListenerNum;
-
-    bool                                                mbNoMasterPage : 1;
 
 private:
     SVX_DLLPRIVATE void          ImpInitVars();
     SVX_DLLPRIVATE SdrView*      ImpFindView();
-    SVX_DLLPRIVATE bool          ImpCheckPageView(SdrPageView* pPV) const;
+    SVX_DLLPRIVATE bool          ImpCheckPageView(SdrPageView const * pPV) const;
 
 public:
     SdrViewIter(const SdrPage* pPage);

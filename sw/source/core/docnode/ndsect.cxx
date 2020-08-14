@@ -20,11 +20,9 @@
 #include <hintids.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <svl/itemiter.hxx>
-#include <tools/resid.hxx>
+#include <sal/log.hxx>
 #include <fmtcntnt.hxx>
-#include <fmtanchr.hxx>
 #include <txtftn.hxx>
-#include <fmtclds.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <IDocumentLinksAdministration.hxx>
@@ -47,22 +45,22 @@
 #include <docary.hxx>
 #include <redline.hxx>
 #include <sectfrm.hxx>
-#include <pagefrm.hxx>
 #include <cntfrm.hxx>
 #include <node2lay.hxx>
 #include <doctxm.hxx>
 #include <fmtftntx.hxx>
-#include <comcore.hrc>
+#include <strings.hrc>
 #include <viewsh.hxx>
 #include <txtfrm.hxx>
+#include <hints.hxx>
 #include <memory>
-#include <ndsect.hxx>
+#include "ndsect.hxx"
 #include <tools/datetimeutils.hxx>
 
 // #i21457# - new implementation of local method <lcl_IsInSameTableBox(..)>.
 // Method now determines the previous/next on its own. Thus, it can be controlled,
 // for which previous/next is checked, if it's visible.
-static bool lcl_IsInSameTableBox( SwNodes& _rNds,
+static bool lcl_IsInSameTableBox( SwNodes const & _rNds,
                          const SwNode& _rNd,
                          const bool _bPrev )
 {
@@ -129,7 +127,7 @@ static bool lcl_IsInSameTableBox( SwNodes& _rNds,
     return true;
 }
 
-static void lcl_CheckEmptyLayFrame( SwNodes& rNds, SwSectionData& rSectionData,
+static void lcl_CheckEmptyLayFrame( SwNodes const & rNds, SwSectionData& rSectionData,
                         const SwNode& rStt, const SwNode& rEnd )
 {
     SwNodeIndex aIdx( rStt );
@@ -151,18 +149,21 @@ static void lcl_CheckEmptyLayFrame( SwNodes& rNds, SwSectionData& rSectionData,
 
 SwSection *
 SwDoc::InsertSwSection(SwPaM const& rRange, SwSectionData & rNewData,
-                       SwTOXBase const*const pTOXBase,
+       std::pair<SwTOXBase const*, sw::RedlineMode> const*const pTOXBaseAndMode,
                        SfxItemSet const*const pAttr, bool const bUpdate)
 {
     const SwNode* pPrvNd = nullptr;
     sal_uInt16 nRegionRet = 0;
-    if( rRange.HasMark() &&
-        0 == ( nRegionRet = IsInsRegionAvailable( rRange, &pPrvNd ) ))
+    if( rRange.HasMark() )
     {
-        // demoted to info because this is called from SwXTextSection::attach,
-        // so it could be invalid input
-        SAL_INFO("sw.core" , "InsertSwSection: rRange overlaps other sections");
-        return nullptr;
+        nRegionRet = IsInsRegionAvailable( rRange, &pPrvNd );
+        if( 0 == nRegionRet )
+        {
+            // demoted to info because this is called from SwXTextSection::attach,
+            // so it could be invalid input
+            SAL_INFO("sw.core" , "InsertSwSection: rRange overlaps other sections");
+            return nullptr;
+        }
     }
 
     // See if the whole Document should be hidden, which we currently are not able to do.
@@ -184,8 +185,8 @@ SwDoc::InsertSwSection(SwPaM const& rRange, SwSectionData & rNewData,
     bool const bUndo(GetIDocumentUndoRedo().DoesUndo());
     if (bUndo)
     {
-        pUndoInsSect = new SwUndoInsSection(rRange, rNewData, pAttr, pTOXBase);
-        GetIDocumentUndoRedo().AppendUndo( pUndoInsSect );
+        pUndoInsSect = new SwUndoInsSection(rRange, rNewData, pAttr, pTOXBaseAndMode);
+        GetIDocumentUndoRedo().AppendUndo( std::unique_ptr<SwUndo>(pUndoInsSect) );
         GetIDocumentUndoRedo().DoUndo(false);
     }
 
@@ -195,6 +196,7 @@ SwDoc::InsertSwSection(SwPaM const& rRange, SwSectionData & rNewData,
         pFormat->SetFormatAttr( *pAttr );
     }
 
+    SwTOXBase const*const pTOXBase(pTOXBaseAndMode ? pTOXBaseAndMode->first : nullptr);
     SwSectionNode* pNewSectNode = nullptr;
 
     RedlineFlags eOld = getIDocumentRedlineAccess().GetRedlineFlags();
@@ -281,7 +283,7 @@ SwDoc::InsertSwSection(SwPaM const& rRange, SwSectionData & rNewData,
                         --pEndPos->nNode;
                         pTNd = pEndPos->nNode.GetNode().GetTextNode();
                     }
-                    nContent = (pTNd) ? pTNd->GetText().getLength() : 0;
+                    nContent = pTNd ? pTNd->GetText().getLength() : 0;
                     pEndPos->nContent.Assign( pTNd, nContent );
                 }
             }
@@ -327,7 +329,7 @@ SwDoc::InsertSwSection(SwPaM const& rRange, SwSectionData & rNewData,
         SwPaM aPam( *pNewSectNode->EndOfSectionNode(), *pNewSectNode, 1 );
         if( getIDocumentRedlineAccess().IsRedlineOn() )
         {
-            getIDocumentRedlineAccess().AppendRedline( new SwRangeRedline( nsRedlineType_t::REDLINE_INSERT, aPam ), true);
+            getIDocumentRedlineAccess().AppendRedline( new SwRangeRedline( RedlineType::Insert, aPam ), true);
         }
         else
         {
@@ -342,21 +344,19 @@ SwDoc::InsertSwSection(SwPaM const& rRange, SwSectionData & rNewData,
         SwCalc aCalc( *this );
         if( ! IsInReading() )
         {
-            getIDocumentFieldsAccess().FieldsToCalc( aCalc, pNewSectNode->GetIndex(), USHRT_MAX );
+            getIDocumentFieldsAccess().FieldsToCalc(aCalc, pNewSectNode->GetIndex(), SAL_MAX_INT32);
         }
         SwSection& rNewSect = pNewSectNode->GetSection();
         rNewSect.SetCondHidden( aCalc.Calculate( rNewSect.GetCondition() ).GetBool() );
     }
 
     bool bUpdateFootnote = false;
-    if( GetFootnoteIdxs().size() && pAttr )
+    if( !GetFootnoteIdxs().empty() && pAttr )
     {
-        sal_uInt16 nVal = static_cast<const SwFormatFootnoteAtTextEnd&>(pAttr->Get(
-                                            RES_FTN_AT_TXTEND )).GetValue();
-           if( ( FTNEND_ATTXTEND_OWNNUMSEQ == nVal ||
+        sal_uInt16 nVal = pAttr->Get( RES_FTN_AT_TXTEND ).GetValue();
+        if( ( FTNEND_ATTXTEND_OWNNUMSEQ == nVal ||
               FTNEND_ATTXTEND_OWNNUMANDFMT == nVal ) ||
-            ( FTNEND_ATTXTEND_OWNNUMSEQ == ( nVal = static_cast<const SwFormatEndAtTextEnd&>(
-                            pAttr->Get( RES_END_AT_TXTEND )).GetValue() ) ||
+            ( FTNEND_ATTXTEND_OWNNUMSEQ == ( nVal = pAttr->Get( RES_END_AT_TXTEND ).GetValue() ) ||
               FTNEND_ATTXTEND_OWNNUMANDFMT == nVal ))
         {
             bUpdateFootnote = true;
@@ -372,7 +372,7 @@ SwDoc::InsertSwSection(SwPaM const& rRange, SwSectionData & rNewData,
 
     if (rNewData.IsLinkType())
     {
-        pNewSectNode->GetSection().CreateLink( bUpdate ? CREATE_UPDATE : CREATE_CONNECT );
+        pNewSectNode->GetSection().CreateLink( bUpdate ? LinkCreateType::Update : LinkCreateType::Connect );
     }
 
     if( bUpdateFootnote )
@@ -412,8 +412,8 @@ sal_uInt16 SwDoc::IsInsRegionAvailable( const SwPaM& rRange,
                 const SwStartNode* pPrvNd;
                 const SwEndNode* pNxtNd;
                 while( nullptr != ( pPrvNd = (pNd = &aIdx.GetNode())->GetSectionNode() ) &&
-                    !( aIdx.GetIndex() < nCmp &&
-                        nCmp < pPrvNd->EndOfSectionIndex() ) )
+                    ( aIdx.GetIndex() >= nCmp ||
+                        nCmp >= pPrvNd->EndOfSectionIndex() ) )
                 {
                     --aIdx;
                 }
@@ -425,8 +425,8 @@ sal_uInt16 SwDoc::IsInsRegionAvailable( const SwPaM& rRange,
                 nCmp = pStt->nNode.GetIndex();
                 while( nullptr != ( pNxtNd = (pNd = &aIdx.GetNode())->GetEndNode() ) &&
                     pNxtNd->StartOfSectionNode()->IsSectionNode() &&
-                    !( pNxtNd->StartOfSectionIndex() < nCmp &&
-                        nCmp < aIdx.GetIndex() ) )
+                    ( pNxtNd->StartOfSectionIndex() >= nCmp ||
+                        nCmp >= aIdx.GetIndex() ) )
                 {
                     ++aIdx;
                 }
@@ -507,7 +507,7 @@ SwSection* SwDoc::GetCurrSection( const SwPosition& rPos )
 
 SwSectionFormat* SwDoc::MakeSectionFormat()
 {
-    SwSectionFormat* pNew = new SwSectionFormat( mpDfltFrameFormat, this );
+    SwSectionFormat* pNew = new SwSectionFormat( mpDfltFrameFormat.get(), this );
     mpSectionFormatTable->push_back( pNew );
     return pNew;
 }
@@ -537,7 +537,7 @@ void SwDoc::DelSectionFormat( SwSectionFormat *pFormat, bool bDelNodes )
             {
                 SwNodeIndex aUpdIdx( *pIdx );
                 SwPaM aPaM( *pSectNd->EndOfSectionNode(), *pSectNd );
-                GetIDocumentUndoRedo().AppendUndo( new SwUndoDelete( aPaM ));
+                GetIDocumentUndoRedo().AppendUndo( std::make_unique<SwUndoDelete>( aPaM ));
                 if( pFootnoteEndAtTextEnd )
                     GetFootnoteIdxs().UpdateFootnote( aUpdIdx );
                 getIDocumentState().SetModified();
@@ -601,7 +601,10 @@ void SwDoc::DelSectionFormat( SwSectionFormat *pFormat, bool bDelNodes )
 
     GetIDocumentUndoRedo().EndUndo(SwUndoId::DELSECTION, nullptr);
 
-    getIDocumentState().SetModified();
+    if (GetIDocumentUndoRedo().DoesUndo())
+    {   // TODO is this ever needed?
+        getIDocumentState().SetModified();
+    }
 }
 
 void SwDoc::UpdateSection( size_t const nPos, SwSectionData & rNewData,
@@ -620,19 +623,17 @@ void SwDoc::UpdateSection( size_t const nPos, SwSectionData & rNewData,
         if( pAttr && pAttr->Count() )
         {
             SfxItemIter aIter( *pAttr );
-            sal_uInt16 nWhich = aIter.GetCurItem()->Which();
-            while( true )
+            const SfxPoolItem* pItem = aIter.GetCurItem();
+            do
             {
-                if( pFormat->GetFormatAttr( nWhich ) != *aIter.GetCurItem() )
+                if (pFormat->GetFormatAttr(pItem->Which()) != *pItem)
                 {
                     bOnlyAttrChg = true;
                     break;
                 }
 
-                if( aIter.IsAtEnd() )
-                    break;
-                nWhich = aIter.NextItem()->Which();
-            }
+                pItem = aIter.NextItem();
+            } while (pItem);
         }
 
         if( bOnlyAttrChg )
@@ -681,7 +682,7 @@ void SwDoc::UpdateSection( size_t const nPos, SwSectionData & rNewData,
     ::sw::UndoGuard const undoGuard(GetIDocumentUndoRedo());
 
     // The LinkFileName could only consist of separators
-    OUString sCompareString = OUStringLiteral1(sfx2::cTokenSeparator) + OUStringLiteral1(sfx2::cTokenSeparator);
+    OUString sCompareString = OUStringChar(sfx2::cTokenSeparator) + OUStringChar(sfx2::cTokenSeparator);
     const bool bUpdate =
            (!pSection->IsLinkType() && rNewData.IsLinkType())
             ||  (!rNewData.GetLinkFileName().isEmpty()
@@ -717,7 +718,7 @@ void SwDoc::UpdateSection( size_t const nPos, SwSectionData & rNewData,
         SwCalc aCalc( *this );
         if( !pIdx )
             pIdx = pFormat->GetContent().GetContentIdx();
-        getIDocumentFieldsAccess().FieldsToCalc( aCalc, pIdx->GetIndex(), USHRT_MAX );
+        getIDocumentFieldsAccess().FieldsToCalc(aCalc, pIdx->GetIndex(), SAL_MAX_INT32);
 
         /// Because on using SwSection::operator=() to set up <pSection>
         /// with <rNewData> and the above given note, the hidden condition flag
@@ -736,7 +737,7 @@ void SwDoc::UpdateSection( size_t const nPos, SwSectionData & rNewData,
     }
 
     if( bUpdate )
-        pSection->CreateLink( bPreventLinkUpdate ? CREATE_CONNECT : CREATE_UPDATE );
+        pSection->CreateLink( bPreventLinkUpdate ? LinkCreateType::Connect : LinkCreateType::Update );
     else if( !pSection->IsLinkType() && pSection->IsConnected() )
     {
         pSection->Disconnect();
@@ -749,50 +750,50 @@ void SwDoc::UpdateSection( size_t const nPos, SwSectionData & rNewData,
 void sw_DeleteFootnote( SwSectionNode *pNd, sal_uLong nStt, sal_uLong nEnd )
 {
     SwFootnoteIdxs& rFootnoteArr = pNd->GetDoc()->GetFootnoteIdxs();
-    if( rFootnoteArr.size() )
+    if( rFootnoteArr.empty() )
+        return;
+
+    size_t nPos = 0;
+    rFootnoteArr.SeekEntry( SwNodeIndex( *pNd ), &nPos );
+    SwTextFootnote* pSrch;
+
+    // Delete all succeeding Footnotes
+    while( nPos < rFootnoteArr.size() &&
+        SwTextFootnote_GetIndex( (pSrch = rFootnoteArr[ nPos ]) ) <= nEnd )
     {
-        size_t nPos = 0;
-        rFootnoteArr.SeekEntry( SwNodeIndex( *pNd ), &nPos );
-        SwTextFootnote* pSrch;
+        // If the Nodes are not deleted, they need to deregister at the Pages
+        // (delete Frames) or else they will remain there (Undo does not delete them!)
+        pSrch->DelFrames(nullptr);
+        ++nPos;
+    }
 
-        // Delete all succeeding Footnotes
-        while( nPos < rFootnoteArr.size() &&
-            SwTextFootnote_GetIndex( (pSrch = rFootnoteArr[ nPos ]) ) <= nEnd )
-        {
-            // If the Nodes are not deleted, they need to deregister at the Pages
-            // (delete Frames) or else they will remain there (Undo does not delete them!)
-            pSrch->DelFrames(nullptr);
-            ++nPos;
-        }
-
-        while( nPos-- &&
-            SwTextFootnote_GetIndex( (pSrch = rFootnoteArr[ nPos ]) ) >= nStt )
-        {
-            // If the Nodes are not deleted, they need to deregister at the Pages
-            // (delete Frames) or else they will remain there (Undo does not delete them!)
-            pSrch->DelFrames(nullptr);
-        }
+    while( nPos-- &&
+        SwTextFootnote_GetIndex( (pSrch = rFootnoteArr[ nPos ]) ) >= nStt )
+    {
+        // If the Nodes are not deleted, they need to deregister at the Pages
+        // (delete Frames) or else they will remain there (Undo does not delete them!)
+        pSrch->DelFrames(nullptr);
     }
 }
 
-static inline bool lcl_IsTOXSection(SwSectionData const& rSectionData)
+static bool lcl_IsTOXSection(SwSectionData const& rSectionData)
 {
-    return (TOX_CONTENT_SECTION == rSectionData.GetType())
-        || (TOX_HEADER_SECTION  == rSectionData.GetType());
+    return (SectionType::ToxContent == rSectionData.GetType())
+        || (SectionType::ToxHeader  == rSectionData.GetType());
 }
 
 SwSectionNode* SwNodes::InsertTextSection(SwNodeIndex const& rNdIdx,
                                 SwSectionFormat& rSectionFormat,
                                 SwSectionData const& rSectionData,
                                 SwTOXBase const*const pTOXBase,
-                                SwNodeIndex const*const pEnde,
+                                SwNodeIndex const*const pEnd,
                                 bool const bInsAtStart, bool const bCreateFrames)
 {
     SwNodeIndex aInsPos( rNdIdx );
-    if( !pEnde ) // No Area, thus create a new Section before/after it
+    if( !pEnd ) // No Area, thus create a new Section before/after it
     {
         // #i26762#
-        OSL_ENSURE(!pEnde || rNdIdx <= *pEnde,
+        OSL_ENSURE(!pEnd || rNdIdx <= *pEnd,
                "Section start and end in wrong order!");
 
         if( bInsAtStart )
@@ -823,11 +824,11 @@ SwSectionNode* SwNodes::InsertTextSection(SwNodeIndex const& rNdIdx,
 
     SwSectionNode *const pSectNd =
             new SwSectionNode(aInsPos, rSectionFormat, pTOXBase);
-    if( pEnde )
+    if( pEnd )
     {
         // Special case for the Reader/Writer
-        if( &pEnde->GetNode() != &GetEndOfContent() )
-            aInsPos = pEnde->GetIndex()+1;
+        if( &pEnd->GetNode() != &GetEndOfContent() )
+            aInsPos = pEnd->GetIndex()+1;
         // #i58710: We created a RTF document with a section break inside a table cell
         // We are not able to handle a section start inside a table and the section end outside.
         const SwNode* pLastNode = pSectNd->StartOfSectionNode()->EndOfSectionNode();
@@ -880,7 +881,7 @@ SwSectionNode* SwNodes::InsertTextSection(SwNodeIndex const& rNdIdx,
                     pTNd->SetAttr( rSet );
             }
             // Do not forget to create the Frame!
-            pCpyTNd->MakeFrames( *pTNd );
+            pCpyTNd->MakeFramesForAdjacentContentNode(*pTNd);
         }
         else
             new SwTextNode( aInsPos, GetDoc()->GetDfltTextFormatColl() );
@@ -894,20 +895,20 @@ SwSectionNode* SwNodes::InsertTextSection(SwNodeIndex const& rNdIdx,
     // but by simply rewiring them
     bool bInsFrame = bCreateFrames && !pSectNd->GetSection().IsHidden() &&
                    GetDoc()->getIDocumentLayoutAccess().GetCurrentViewShell();
-    SwNode2Layout *pNode2Layout = nullptr;
+    SwNode2LayoutSaveUpperFrames *pNode2Layout = nullptr;
     if( bInsFrame )
     {
         SwNodeIndex aTmp( *pSectNd );
         if( !pSectNd->GetNodes().FindPrvNxtFrameNode( aTmp, pSectNd->EndOfSectionNode() ) )
             // Collect all Uppers
-            pNode2Layout = new SwNode2Layout( *pSectNd );
+            pNode2Layout = new SwNode2LayoutSaveUpperFrames(*pSectNd);
     }
 
     // Set the right StartNode for all in this Area
-    sal_uLong nEnde = pSectNd->EndOfSectionIndex();
+    sal_uLong nEnd = pSectNd->EndOfSectionIndex();
     sal_uLong nStart = pSectNd->GetIndex()+1;
     sal_uLong nSkipIdx = ULONG_MAX;
-    for( sal_uLong n = nStart; n < nEnde; ++n )
+    for( sal_uLong n = nStart; n < nEnd; ++n )
     {
         SwNode* pNd = (*this)[n];
 
@@ -937,10 +938,10 @@ SwSectionNode* SwNodes::InsertTextSection(SwNodeIndex const& rNdIdx,
             }
         }
         else if( pNd->IsContentNode() )
-            static_cast<SwContentNode*>(pNd)->DelFrames();
+            static_cast<SwContentNode*>(pNd)->DelFrames(nullptr);
     }
 
-    sw_DeleteFootnote( pSectNd, nStart, nEnde );
+    sw_DeleteFootnote( pSectNd, nStart, nEnd );
 
     if( bInsFrame )
     {
@@ -951,7 +952,7 @@ SwSectionNode* SwNodes::InsertTextSection(SwNodeIndex const& rNdIdx,
             delete pNode2Layout;
         }
         else
-            pSectNd->MakeFrames( &aInsPos );
+            pSectNd->MakeOwnFrames(&aInsPos);
     }
 
     return pSectNd;
@@ -986,13 +987,13 @@ lcl_initParent(SwSectionNode & rThis, SwSectionFormat & rFormat)
 SwSectionNode::SwSectionNode(SwNodeIndex const& rIdx,
         SwSectionFormat & rFormat, SwTOXBase const*const pTOXBase)
     : SwStartNode( rIdx, SwNodeType::Section )
-    , m_pSection( (pTOXBase)
+    , m_pSection( pTOXBase
         ? new SwTOXBaseSection(*pTOXBase, lcl_initParent(*this, rFormat))
-        : new SwSection( CONTENT_SECTION, rFormat.GetName(),
+        : new SwSection( SectionType::Content, rFormat.GetName(),
                 lcl_initParent(*this, rFormat) ) )
 {
     // Set the connection from Format to Node
-    // Suppress Modify; no one's interessted anyway
+    // Suppress Modify; no one's interested anyway
     rFormat.LockModify();
     rFormat.SetFormatAttr( SwFormatContent( this ) );
     rFormat.UnlockModify();
@@ -1022,91 +1023,71 @@ SwFrame *SwSectionNode::MakeFrame( SwFrame *pSib )
 
 // Creates all Document Views for the preceding Node.
 // The created ContentFrames are attached to the corresponding Layout
-void SwSectionNode::MakeFrames(const SwNodeIndex & rIdx )
+void SwSectionNode::MakeFramesForAdjacentContentNode(const SwNodeIndex & rIdx)
 {
-    // Take my succsessive or preceding ContentFrame
+    // Take my successive or preceding ContentFrame
     SwNodes& rNds = GetNodes();
-    if( rNds.IsDocNodes() && rNds.GetDoc()->getIDocumentLayoutAccess().GetCurrentViewShell() )
+    if( !(rNds.IsDocNodes() && rNds.GetDoc()->getIDocumentLayoutAccess().GetCurrentViewShell()) )
+        return;
+
+    if( GetSection().IsHidden() || IsContentHidden() )
     {
-        if( GetSection().IsHidden() || IsContentHidden() )
+        SwNodeIndex aIdx( *EndOfSectionNode() );
+        SwContentNode* pCNd = rNds.GoNextSection( &aIdx, true, false );
+        if( !pCNd )
         {
-            SwNodeIndex aIdx( *EndOfSectionNode() );
-            SwContentNode* pCNd = rNds.GoNextSection( &aIdx, true, false );
-            if( !pCNd )
-            {
-                aIdx = *this;
-                pCNd = SwNodes::GoPrevSection(&aIdx, true, false);
-                if (!pCNd)
-                    return;
-            }
-            pCNd = aIdx.GetNode().GetContentNode();
-            pCNd->MakeFrames( static_cast<SwContentNode&>(rIdx.GetNode()) );
+            aIdx = *this;
+            pCNd = SwNodes::GoPrevSection(&aIdx, true, false);
+            if (!pCNd)
+                return;
         }
-        else
+        pCNd = aIdx.GetNode().GetContentNode();
+        pCNd->MakeFramesForAdjacentContentNode(static_cast<SwContentNode&>(rIdx.GetNode()));
+    }
+    else
+    {
+        SwNode2Layout aNode2Layout( *this, rIdx.GetIndex() );
+        SwFrame *pFrame;
+        while( nullptr != (pFrame = aNode2Layout.NextFrame()) )
         {
-            SwNode2Layout aNode2Layout( *this, rIdx.GetIndex() );
-            SwFrame *pFrame;
-            while( nullptr != (pFrame = aNode2Layout.NextFrame()) )
+            OSL_ENSURE( pFrame->IsSctFrame(), "Depend of Section not a Section." );
+            if (pFrame->getRootFrame()->IsHideRedlines()
+                && !rIdx.GetNode().IsCreateFrameWhenHidingRedlines())
             {
-                OSL_ENSURE( pFrame->IsSctFrame(), "Depend of Section not a Section." );
-                SwFrame *pNew = rIdx.GetNode().GetContentNode()->MakeFrame( pFrame );
+                continue;
+            }
+            SwFrame *pNew = rIdx.GetNode().GetContentNode()->MakeFrame( pFrame );
 
-                SwSectionNode* pS = rIdx.GetNode().FindSectionNode();
+            SwSectionNode* pS = rIdx.GetNode().FindSectionNode();
 
-                // Assure that node is not inside a table, which is inside the
-                // found section.
-                if ( pS )
+            // Assure that node is not inside a table, which is inside the
+            // found section.
+            if ( pS )
+            {
+                SwTableNode* pTableNode = rIdx.GetNode().FindTableNode();
+                if ( pTableNode &&
+                     pTableNode->GetIndex() > pS->GetIndex() )
                 {
-                    SwTableNode* pTableNode = rIdx.GetNode().FindTableNode();
-                    if ( pTableNode &&
-                         pTableNode->GetIndex() > pS->GetIndex() )
-                    {
-                        pS = nullptr;
-                    }
+                    pS = nullptr;
                 }
+            }
 
-                // if the node is in a section, the sectionframe now
-                // has to be created..
-                // boolean to control <Init()> of a new section frame.
-                bool bInitNewSect = false;
-                if( pS )
+            // if the node is in a section, the sectionframe now
+            // has to be created...
+            // boolean to control <Init()> of a new section frame.
+            bool bInitNewSect = false;
+            if( pS )
+            {
+                SwSectionFrame *pSct = new SwSectionFrame( pS->GetSection(), pFrame );
+                // prepare <Init()> of new section frame.
+                bInitNewSect = true;
+                SwLayoutFrame* pUp = pSct;
+                while( pUp->Lower() )  // for columned sections
                 {
-                    SwSectionFrame *pSct = new SwSectionFrame( pS->GetSection(), pFrame );
-                    // prepare <Init()> of new section frame.
-                    bInitNewSect = true;
-                    SwLayoutFrame* pUp = pSct;
-                    while( pUp->Lower() )  // for columned sections
-                    {
-                        OSL_ENSURE( pUp->Lower()->IsLayoutFrame(),"Who's in there?" );
-                        pUp = static_cast<SwLayoutFrame*>(pUp->Lower());
-                    }
-                    pNew->Paste( pUp );
-                    // #i27138#
-                    // notify accessibility paragraphs objects about changed
-                    // CONTENT_FLOWS_FROM/_TO relation.
-                    // Relation CONTENT_FLOWS_FROM for next paragraph will change
-                    // and relation CONTENT_FLOWS_TO for previous paragraph will change.
-                    if ( pNew->IsTextFrame() )
-                    {
-                        SwViewShell* pViewShell( pNew->getRootFrame()->GetCurrShell() );
-                        if ( pViewShell && pViewShell->GetLayout() &&
-                             pViewShell->GetLayout()->IsAnyShellAccessible() )
-                        {
-                            pViewShell->InvalidateAccessibleParaFlowRelation(
-                                dynamic_cast<SwTextFrame*>(pNew->FindNextCnt( true )),
-                                dynamic_cast<SwTextFrame*>(pNew->FindPrevCnt()) );
-                        }
-                    }
-                    pNew = pSct;
+                    OSL_ENSURE( pUp->Lower()->IsLayoutFrame(),"Who's in there?" );
+                    pUp = static_cast<SwLayoutFrame*>(pUp->Lower());
                 }
-
-                // If a Node got Frames attached before or after
-                if ( rIdx < GetIndex() )
-                    // the new one precedes me
-                    pNew->Paste( pFrame->GetUpper(), pFrame );
-                else
-                    // the new one succeeds me
-                    pNew->Paste( pFrame->GetUpper(), pFrame->GetNext() );
+                pNew->Paste( pUp );
                 // #i27138#
                 // notify accessibility paragraphs objects about changed
                 // CONTENT_FLOWS_FROM/_TO relation.
@@ -1123,16 +1104,41 @@ void SwSectionNode::MakeFrames(const SwNodeIndex & rIdx )
                             dynamic_cast<SwTextFrame*>(pNew->FindPrevCnt()) );
                     }
                 }
-                if ( bInitNewSect )
-                    static_cast<SwSectionFrame*>(pNew)->Init();
+                pNew = pSct;
             }
+
+            // If a Node got Frames attached before or after
+            if ( rIdx < GetIndex() )
+                // the new one precedes me
+                pNew->Paste( pFrame->GetUpper(), pFrame );
+            else
+                // the new one succeeds me
+                pNew->Paste( pFrame->GetUpper(), pFrame->GetNext() );
+            // #i27138#
+            // notify accessibility paragraphs objects about changed
+            // CONTENT_FLOWS_FROM/_TO relation.
+            // Relation CONTENT_FLOWS_FROM for next paragraph will change
+            // and relation CONTENT_FLOWS_TO for previous paragraph will change.
+            if ( pNew->IsTextFrame() )
+            {
+                SwViewShell* pViewShell( pNew->getRootFrame()->GetCurrShell() );
+                if ( pViewShell && pViewShell->GetLayout() &&
+                     pViewShell->GetLayout()->IsAnyShellAccessible() )
+                {
+                    pViewShell->InvalidateAccessibleParaFlowRelation(
+                        dynamic_cast<SwTextFrame*>(pNew->FindNextCnt( true )),
+                        dynamic_cast<SwTextFrame*>(pNew->FindPrevCnt()) );
+                }
+            }
+            if ( bInitNewSect )
+                static_cast<SwSectionFrame*>(pNew)->Init();
         }
     }
 }
 
 // Create a new SectionFrame for every occurrence in the Layout and insert before
 // the corresponding ContentFrame
-void SwSectionNode::MakeFrames( SwNodeIndex* pIdxBehind, SwNodeIndex* pEndIdx )
+void SwSectionNode::MakeOwnFrames(SwNodeIndex* pIdxBehind, SwNodeIndex* pEndIdx)
 {
     OSL_ENSURE( pIdxBehind, "no Index" );
     SwNodes& rNds = GetNodes();
@@ -1152,7 +1158,7 @@ void SwSectionNode::MakeFrames( SwNodeIndex* pIdxBehind, SwNodeIndex* pEndIdx )
     }
 }
 
-void SwSectionNode::DelFrames()
+void SwSectionNode::DelFrames(SwRootFrame const*const /*FIXME TODO*/)
 {
     sal_uLong nStt = GetIndex()+1, nEnd = EndOfSectionIndex();
     if( nStt >= nEnd )
@@ -1198,7 +1204,7 @@ SwSectionNode* SwSectionNode::MakeCopy( SwDoc* pDoc, const SwNodeIndex& rIdx ) c
     pSectFormat->CopyAttrs( *GetSection().GetFormat() );
 
     std::unique_ptr<SwTOXBase> pTOXBase;
-    if (TOX_CONTENT_SECTION == GetSection().GetType())
+    if (SectionType::ToxContent == GetSection().GetType())
     {
         OSL_ENSURE( dynamic_cast< const SwTOXBaseSection* >( &GetSection() ) !=  nullptr , "no TOXBaseSection!" );
         SwTOXBaseSection const& rTBS(
@@ -1214,7 +1220,7 @@ SwSectionNode* SwSectionNode::MakeCopy( SwDoc* pDoc, const SwNodeIndex& rIdx ) c
     // Take over values
     SwSection *const pNewSect = pSectNd->m_pSection.get();
 
-    if (TOX_CONTENT_SECTION != GetSection().GetType())
+    if (SectionType::ToxContent != GetSection().GetType())
     {
         // Keep the Name for Move
         if( rNds.GetDoc() == pDoc && pDoc->IsCopyIsMove() )
@@ -1248,7 +1254,7 @@ SwSectionNode* SwSectionNode::MakeCopy( SwDoc* pDoc, const SwNodeIndex& rIdx ) c
 
     // Copy the Links/Server
     if( pNewSect->IsLinkType() ) // Add the Link
-        pNewSect->CreateLink( pDoc->getIDocumentLayoutAccess().GetCurrentViewShell() ? CREATE_CONNECT : CREATE_NONE );
+        pNewSect->CreateLink( pDoc->getIDocumentLayoutAccess().GetCurrentViewShell() ? LinkCreateType::Connect : LinkCreateType::NONE );
 
     // If we copy from the Undo as Server, enter it again
     if (m_pSection->IsServer()
@@ -1293,58 +1299,62 @@ bool SwSectionNode::IsContentHidden() const
 void SwSectionNode::NodesArrChgd()
 {
     SwSectionFormat *const pFormat = m_pSection->GetFormat();
-    if( pFormat )
+    if( !pFormat )
+        return;
+
+    SwNodes& rNds = GetNodes();
+    SwDoc* pDoc = pFormat->GetDoc();
+
+    if( !rNds.IsDocNodes() )
     {
-        SwNodes& rNds = GetNodes();
-        SwDoc* pDoc = pFormat->GetDoc();
+        SwPtrMsgPoolItem aMsgHint( RES_REMOVE_UNO_OBJECT, pFormat );
+        pFormat->ModifyNotification( &aMsgHint, &aMsgHint );
+    }
 
-        if( !rNds.IsDocNodes() )
+    pFormat->LockModify();
+    pFormat->SetFormatAttr( SwFormatContent( this ));
+    pFormat->UnlockModify();
+
+    SwSectionNode* pSectNd = StartOfSectionNode()->FindSectionNode();
+    // set the correct parent from the new section
+    pFormat->SetDerivedFrom( pSectNd ? pSectNd->GetSection().GetFormat()
+                                  : pDoc->GetDfltFrameFormat() );
+
+    // Set the right StartNode for all in this Area
+    sal_uLong nStart = GetIndex()+1, nEnd = EndOfSectionIndex();
+    for( sal_uLong n = nStart; n < nEnd; ++n )
+    {
+        // Make up the Format's nesting
+        pSectNd = rNds[ n ]->GetSectionNode();
+        if( nullptr != pSectNd )
         {
-            SwPtrMsgPoolItem aMsgHint( RES_REMOVE_UNO_OBJECT, pFormat );
-            pFormat->ModifyNotification( &aMsgHint, &aMsgHint );
-        }
-
-        pFormat->LockModify();
-        pFormat->SetFormatAttr( SwFormatContent( this ));
-        pFormat->UnlockModify();
-
-        SwSectionNode* pSectNd = StartOfSectionNode()->FindSectionNode();
-        // set the correct parent from the new section
-        pFormat->SetDerivedFrom( pSectNd ? pSectNd->GetSection().GetFormat()
-                                      : pDoc->GetDfltFrameFormat() );
-
-        // Set the right StartNode for all in this Area
-        sal_uLong nStart = GetIndex()+1, nEnde = EndOfSectionIndex();
-        for( sal_uLong n = nStart; n < nEnde; ++n )
-            // Make up the Format's nesting
-            if( nullptr != ( pSectNd = rNds[ n ]->GetSectionNode() ) )
-            {
-                pSectNd->GetSection().GetFormat()->SetDerivedFrom( pFormat );
-                n = pSectNd->EndOfSectionIndex();
-            }
-
-        // Moving Nodes to the UndoNodes array?
-        if( rNds.IsDocNodes() )
-        {
-            OSL_ENSURE( pDoc == GetDoc(),
-                    "Moving to different Documents?" );
-            if( m_pSection->IsLinkType() ) // Remove the Link
-                m_pSection->CreateLink( pDoc->getIDocumentLayoutAccess().GetCurrentViewShell() ? CREATE_CONNECT : CREATE_NONE );
-
-            if (m_pSection->IsServer())
-                pDoc->getIDocumentLinksAdministration().GetLinkManager().InsertServer( m_pSection->GetObject() );
-        }
-        else
-        {
-            if (CONTENT_SECTION != m_pSection->GetType()
-                && m_pSection->IsConnected())
-            {
-                pDoc->getIDocumentLinksAdministration().GetLinkManager().Remove( &m_pSection->GetBaseLink() );
-            }
-            if (m_pSection->IsServer())
-                pDoc->getIDocumentLinksAdministration().GetLinkManager().RemoveServer( m_pSection->GetObject() );
+            pSectNd->GetSection().GetFormat()->SetDerivedFrom( pFormat );
+            n = pSectNd->EndOfSectionIndex();
         }
     }
+
+    // Moving Nodes to the UndoNodes array?
+    if( rNds.IsDocNodes() )
+    {
+        OSL_ENSURE( pDoc == GetDoc(),
+                "Moving to different Documents?" );
+        if( m_pSection->IsLinkType() ) // Remove the Link
+            m_pSection->CreateLink( pDoc->getIDocumentLayoutAccess().GetCurrentViewShell() ? LinkCreateType::Connect : LinkCreateType::NONE );
+
+        if (m_pSection->IsServer())
+            pDoc->getIDocumentLinksAdministration().GetLinkManager().InsertServer( m_pSection->GetObject() );
+    }
+    else
+    {
+        if (SectionType::Content != m_pSection->GetType()
+            && m_pSection->IsConnected())
+        {
+            pDoc->getIDocumentLinksAdministration().GetLinkManager().Remove( &m_pSection->GetBaseLink() );
+        }
+        if (m_pSection->IsServer())
+            pDoc->getIDocumentLinksAdministration().GetLinkManager().RemoveServer( m_pSection->GetObject() );
+    }
+
 }
 
 OUString SwDoc::GetUniqueSectionName( const OUString* pChkStr ) const
@@ -1359,19 +1369,19 @@ OUString SwDoc::GetUniqueSectionName( const OUString* pChkStr ) const
         return newName;
     }
 
-    const OUString aName( ResId( STR_REGION_DEFNAME, *pSwResMgr ) );
+    const OUString aName(SwResId(STR_REGION_DEFNAME));
 
     SwSectionFormats::size_type nNum = 0;
     const SwSectionFormats::size_type nFlagSize = ( mpSectionFormatTable->size() / 8 ) + 2;
-    sal_uInt8* pSetFlags = new sal_uInt8[ nFlagSize ];
-    memset( pSetFlags, 0, nFlagSize );
+    std::unique_ptr<sal_uInt8[]> pSetFlags(new sal_uInt8[ nFlagSize ]);
+    memset( pSetFlags.get(), 0, nFlagSize );
 
     for( auto pFormat : *mpSectionFormatTable )
     {
         const SwSectionNode *const pSectNd = pFormat->GetSectionNode();
         if( pSectNd != nullptr )
         {
-            const OUString rNm = pSectNd->GetSection().GetSectionName();
+            const OUString& rNm = pSectNd->GetSection().GetSectionName();
             if (rNm.startsWith( aName ))
             {
                 // Calculate the Number and reset the Flag
@@ -1404,7 +1414,7 @@ OUString SwDoc::GetUniqueSectionName( const OUString* pChkStr ) const
             }
         }
     }
-    delete [] pSetFlags;
+    pSetFlags.reset();
     if( pChkStr )
         return *pChkStr;
     return aName + OUString::number( ++nNum );

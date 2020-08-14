@@ -17,22 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
 
 #include <tools/diagnose_ex.h>
 
-#include <math.h>
+#include <algorithm>
 
 #include <rtl/math.hxx>
+#include <sal/log.hxx>
 
-#include <com/sun/star/rendering/XCanvas.hpp>
-#include <com/sun/star/rendering/XIntegerBitmap.hpp>
 #include <com/sun/star/rendering/PanoseLetterForm.hpp>
 #include <com/sun/star/awt/FontSlant.hpp>
 
-#include <cppuhelper/exc_hlp.hxx>
-#include <comphelper/anytostring.hxx>
-
-#include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
@@ -42,14 +38,12 @@
 #include <cppcanvas/basegfxfactory.hxx>
 
 #include "viewshape.hxx"
-#include "tools.hxx"
+#include <tools.hxx>
 
 using namespace ::com::sun::star;
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
 
         // TODO(F2): Provide sensible setup for mtf-related attributes (fill mode,
         // char rotation etc.). Do that via mtf argument at this object
@@ -141,7 +135,7 @@ namespace slideshow
                     if( rAttr->isCharPostureValid() )
                     {
                         aParms.maFontLetterForm =
-                            rAttr->getCharPosture() == (sal_Int16)awt::FontSlant_NONE ?
+                            rAttr->getCharPosture() == sal_Int16(awt::FontSlant_NONE) ?
                             rendering::PanoseLetterForm::ANYTHING :
                             rendering::PanoseLetterForm::OBLIQUE_CONTACT;
                     }
@@ -153,7 +147,7 @@ namespace slideshow
                 }
 
                 io_rCacheEntry.mpRenderer = ::cppcanvas::VCLFactory::createRenderer( rDestinationCanvas,
-                                                                                     *rMtf.get(),
+                                                                                     *rMtf,
                                                                                      aParms );
 
                 io_rCacheEntry.mpMtf               = rMtf;
@@ -210,7 +204,7 @@ namespace slideshow
             }
             catch( uno::Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("slideshow");
             }
 #endif
             if( pClip )
@@ -357,10 +351,9 @@ namespace slideshow
             const ::basegfx::B2DSize& rSpriteSizePixel(rSpriteBoundsPixel.getRange());
             if( !mpSprite )
             {
-                mpSprite.reset(
-                    new AnimatedSprite( mpViewLayer,
+                mpSprite = std::make_shared<AnimatedSprite>( mpViewLayer,
                                         rSpriteSizePixel,
-                                        nPrio ));
+                                        nPrio );
             }
             else
             {
@@ -434,7 +427,7 @@ namespace slideshow
             if( mbForceUpdate || (nUpdateFlags & UpdateFlags::Alpha) )
             {
                 mpSprite->setAlpha( (pAttr && pAttr->isAlphaValid()) ?
-                                    ::basegfx::clamp(pAttr->getAlpha(),
+                                    std::clamp(pAttr->getAlpha(),
                                                      0.0,
                                                      1.0) :
                                     1.0 );
@@ -549,13 +542,13 @@ namespace slideshow
             // shape needs repaint - setup all that's needed
 
 
-            boost::optional<basegfx::B2DPolyPolygon> aClip;
+            std::optional<basegfx::B2DPolyPolygon> aClip;
 
             if( pAttr )
             {
                 // setup clip poly
                 if( pAttr->isClipValid() )
-                    aClip.reset( pAttr->getClip() );
+                    aClip = pAttr->getClip();
 
                 // emulate global shape alpha by first rendering into
                 // a temp bitmap, and then to screen (this would have
@@ -683,7 +676,7 @@ namespace slideshow
 
                         aBitmapTransform.invert();
 
-                        const basegfx::B2DHomMatrix aTranslation(basegfx::tools::createTranslateB2DHomMatrix(
+                        const basegfx::B2DHomMatrix aTranslation(basegfx::utils::createTranslateB2DHomMatrix(
                             aTmpRect.getMinX(), aTmpRect.getMinY()));
 
                         aBitmapTransform = aBitmapTransform * aTranslation;
@@ -755,7 +748,7 @@ namespace slideshow
 
                 // not yet in cache - add default-constructed cache
                 // entry, to have something to return
-                maRenderers.push_back( RendererCacheEntry() );
+                maRenderers.emplace_back( );
                 aIter = maRenderers.end()-1;
             }
 
@@ -815,12 +808,10 @@ namespace slideshow
                                        nYBorder );
         }
 
-        bool ViewShape::enterAnimationMode()
+        void ViewShape::enterAnimationMode()
         {
             mbForceUpdate   = true;
             mbAnimationMode = true;
-
-            return true;
         }
 
         void ViewShape::leaveAnimationMode()
@@ -860,7 +851,6 @@ namespace slideshow
                                bIsVisible );
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

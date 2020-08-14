@@ -19,12 +19,7 @@
 
 #include <sal/config.h>
 
-#include "comphelper_module.hxx"
-#include "comphelper_services.hxx"
-
 #include <osl/mutex.hxx>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/seqstream.hxx>
@@ -34,8 +29,8 @@
 #include <com/sun/star/io/XSeekableInputStream.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/frame/DoubleInitializationException.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
@@ -91,7 +86,7 @@ SequenceInputStreamService::SequenceInputStreamService()
 // com.sun.star.uno.XServiceInfo:
 OUString SAL_CALL SequenceInputStreamService::getImplementationName()
 {
-    return OUString ( "com.sun.star.comp.SequenceInputStreamService" );
+    return "com.sun.star.comp.SequenceInputStreamService";
 }
 
 sal_Bool SAL_CALL SequenceInputStreamService::supportsService( OUString const & serviceName )
@@ -101,8 +96,7 @@ sal_Bool SAL_CALL SequenceInputStreamService::supportsService( OUString const & 
 
 uno::Sequence< OUString > SAL_CALL SequenceInputStreamService::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> s { "com.sun.star.io.SequenceInputStream" };
-    return s;
+    return { "com.sun.star.io.SequenceInputStream" };
 }
 
 // css::io::XInputStream:
@@ -194,25 +188,23 @@ void SAL_CALL SequenceInputStreamService::initialize( const uno::Sequence< css::
                                             1 );
 
     uno::Sequence< sal_Int8 > aSeq;
-    if ( aArguments[0] >>= aSeq )
-    {
-        uno::Reference< io::XInputStream > xInputStream(
-                        static_cast< ::cppu::OWeakObject* >( new ::comphelper::SequenceInputStream( aSeq ) ),
-                        uno::UNO_QUERY_THROW );
-        uno::Reference< io::XSeekable > xSeekable( xInputStream, uno::UNO_QUERY_THROW );
-        m_xInputStream = xInputStream;
-        m_xSeekable = xSeekable;
-        m_bInitialized = true;
-    }
-    else
+    if ( !(aArguments[0] >>= aSeq) )
         throw lang::IllegalArgumentException( "Unexpected type of argument!",
                                             static_cast< ::cppu::OWeakObject* >(this),
                                             1 );
+
+    uno::Reference< io::XInputStream > xInputStream(
+                    static_cast< ::cppu::OWeakObject* >( new ::comphelper::SequenceInputStream( aSeq ) ),
+                    uno::UNO_QUERY_THROW );
+    uno::Reference< io::XSeekable > xSeekable( xInputStream, uno::UNO_QUERY_THROW );
+    m_xInputStream = xInputStream;
+    m_xSeekable = xSeekable;
+    m_bInitialized = true;
 }
 
 } // anonymous namespace
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_SequenceInputStreamService(
                                              css::uno::XComponentContext *,
                                              css::uno::Sequence<css::uno::Any> const &)

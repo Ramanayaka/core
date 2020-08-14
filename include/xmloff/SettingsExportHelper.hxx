@@ -22,17 +22,18 @@
 
 #include <xmloff/dllapi.h>
 
-#include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/formula/SymbolDescriptor.hpp>
-#include <com/sun/star/util/XStringSubstitution.hpp>
-#include <xmloff/xmlexp.hxx>
+#include <com/sun/star/uno/Reference.hxx>
+
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::formula { struct SymbolDescriptor; }
+namespace com::sun::star::util { class XStringSubstitution; }
 
 namespace com
 {
-    namespace sun { namespace star {
+    namespace sun::star {
         namespace container { class XNameAccess; class XIndexAccess; }
         namespace util { struct DateTime; }
-    } }
+    }
 }
 
 namespace xmloff
@@ -45,14 +46,6 @@ class XMLOFF_DLLPUBLIC XMLSettingsExportHelper
     ::xmloff::XMLSettingsExportContext& m_rContext;
 
     css::uno::Reference< css::util::XStringSubstitution > mxStringSubsitution;
-
-    const OUString msPrinterIndependentLayout;
-    const OUString msColorTableURL;
-    const OUString msLineEndTableURL;
-    const OUString msHatchTableURL;
-    const OUString msDashTableURL;
-    const OUString msGradientTableURL;
-    const OUString msBitmapTableURL;
 
     void ManipulateSetting( css::uno::Any& rAny, const OUString& rName ) const;
 

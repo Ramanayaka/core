@@ -23,10 +23,8 @@
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpSdr3DLightAttribute
         {
         public:
@@ -74,20 +72,11 @@ namespace drawinglayer
         {
         }
 
-        Sdr3DLightAttribute::Sdr3DLightAttribute(const Sdr3DLightAttribute& rCandidate)
-        :   mpSdr3DLightAttribute(rCandidate.mpSdr3DLightAttribute)
-        {
-        }
+        Sdr3DLightAttribute::Sdr3DLightAttribute(const Sdr3DLightAttribute&) = default;
 
-        Sdr3DLightAttribute::~Sdr3DLightAttribute()
-        {
-        }
+        Sdr3DLightAttribute::~Sdr3DLightAttribute() = default;
 
-        Sdr3DLightAttribute& Sdr3DLightAttribute::operator=(const Sdr3DLightAttribute& rCandidate)
-        {
-            mpSdr3DLightAttribute = rCandidate.mpSdr3DLightAttribute;
-            return *this;
-        }
+        Sdr3DLightAttribute& Sdr3DLightAttribute::operator=(const Sdr3DLightAttribute&) = default;
 
         bool Sdr3DLightAttribute::operator==(const Sdr3DLightAttribute& rCandidate) const
         {
@@ -109,7 +98,6 @@ namespace drawinglayer
             return mpSdr3DLightAttribute->getSpecular();
         }
 
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

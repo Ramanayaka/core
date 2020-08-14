@@ -17,52 +17,67 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_PRINTDLG_HXX
-#define INCLUDED_VCL_INC_PRINTDLG_HXX
+#ifndef VCL_INC_NEWPRINTDLG_HXX
+#define VCL_INC_NEWPRINTDLG_HXX
 
-#include <vcl/dllapi.h>
-
+#include <vcl/bitmapex.hxx>
+#include <vcl/gdimtf.hxx>
 #include <vcl/print.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <vcl/prgsbar.hxx>
-#include <vcl/field.hxx>
-#include <vcl/tabctrl.hxx>
-#include <vcl/tabpage.hxx>
-#include <vcl/virdev.hxx>
+#include <vcl/customweld.hxx>
+#include <vcl/weld.hxx>
+#include <map>
+
+namespace vcl {
+    class PrintDialog;
+}
 
 namespace vcl
 {
-    class PrintDialog : public ModalDialog
+    class MoreOptionsDialog final : public weld::GenericDialogController
     {
-    public:
-        class PrintPreviewWindow : public vcl::Window
-        {
-            static const sal_Int32 PREVIEW_BITMAP_WIDTH;
+        PrintDialog*                            mpParent;
+        std::unique_ptr<weld::Button>           mxOKButton;
+        std::unique_ptr<weld::Button>           mxCancelButton;
+        std::unique_ptr<weld::CheckButton>      mxSingleJobsBox;
 
+        DECL_LINK( ClickHdl, weld::Button&, void );
+
+    public:
+
+        MoreOptionsDialog(PrintDialog* i_pParent);
+        virtual ~MoreOptionsDialog() override;
+    };
+
+    class PrintDialog : public weld::GenericDialogController
+    {
+        friend class MoreOptionsDialog;
+    public:
+
+        class PrintPreviewWindow final : public weld::CustomWidgetController
+        {
+            PrintDialog*        mpDialog;
             GDIMetaFile         maMtf;
             Size                maOrigSize;
             Size                maPreviewSize;
-            VclPtr<VirtualDevice> maPageVDev;
-            Bitmap              maPreviewBitmap;
+            sal_Int32           mnDPIX;
+            sal_Int32           mnDPIY;
+            BitmapEx            maPreviewBitmap;
             OUString            maReplacementString;
-            OUString            maToolTipString;
             bool                mbGreyscale;
-            VclPtr<FixedLine>   maHorzDim;
-            VclPtr<FixedLine>   maVertDim;
+
+            OUString            maHorzText;
+            OUString            maVertText;
 
             void preparePreviewBitmap();
 
         public:
-            PrintPreviewWindow( vcl::Window* pParent );
+            PrintPreviewWindow(PrintDialog* pDialog);
             virtual ~PrintPreviewWindow() override;
-            virtual void dispose() override;
 
+            virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
             virtual void Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-            virtual void Command( const CommandEvent& ) override;
+            virtual bool Command( const CommandEvent& ) override;
             virtual void Resize() override;
-            virtual void DataChanged( const DataChangedEvent& ) override;
 
             void setPreview( const GDIMetaFile&, const Size& i_rPaperSize,
                              const OUString& i_rPaperName,
@@ -72,15 +87,15 @@ namespace vcl
                             );
         };
 
-        class ShowNupOrderWindow : public vcl::Window
+        class ShowNupOrderWindow final : public weld::CustomWidgetController
         {
             NupOrderType mnOrderMode;
             int mnRows;
             int mnColumns;
         public:
-            ShowNupOrderWindow( vcl::Window* pParent );
+            ShowNupOrderWindow();
 
-            virtual Size GetOptimalSize() const override;
+            virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
 
             virtual void Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& ) override;
 
@@ -93,191 +108,184 @@ namespace vcl
             }
         };
 
+        PrintDialog(weld::Window*, const std::shared_ptr<PrinterController>&);
+        virtual ~PrintDialog() override;
+
+        bool isPrintToFile() const;
+        bool isCollate() const;
+        bool isSingleJobs() const { return mbSingleJobs; };
+        bool hasPreview() const;
+
+        void setPaperSizes();
+        void previewForward();
+        void previewBackward();
+        void previewFirst();
+        void previewLast();
+
     private:
 
-        class NUpTabPage
-        {
-        public:
-            VclPtr<RadioButton>                     mpPagesBtn;
-            VclPtr<RadioButton>                     mpBrochureBtn;
-            VclPtr<FixedText>                       mpPagesBoxTitleTxt;
-            VclPtr<ListBox>                         mpNupPagesBox;
-
-            // controls for "Custom" page mode
-            VclPtr<FixedText>                       mpNupNumPagesTxt;
-            VclPtr<NumericField>                    mpNupColEdt;
-            VclPtr<FixedText>                       mpNupTimesTxt;
-            VclPtr<NumericField>                    mpNupRowsEdt;
-            VclPtr<FixedText>                       mpPageMarginTxt1;
-            VclPtr<MetricField>                     mpPageMarginEdt;
-            VclPtr<FixedText>                       mpPageMarginTxt2;
-            VclPtr<FixedText>                       mpSheetMarginTxt1;
-            VclPtr<MetricField>                     mpSheetMarginEdt;
-            VclPtr<FixedText>                       mpSheetMarginTxt2;
-            VclPtr<FixedText>                       mpNupOrientationTxt;
-            VclPtr<ListBox>                         mpNupOrientationBox;
-
-            // page order ("left to right, then down")
-            VclPtr<FixedText>                       mpNupOrderTxt;
-            VclPtr<ListBox>                         mpNupOrderBox;
-            VclPtr<ShowNupOrderWindow>              mpNupOrderWin;
-            /// border around each page
-            VclPtr<CheckBox>                        mpBorderCB;
-
-            NUpTabPage( VclBuilder* );
-
-            void initFromMultiPageSetup( const vcl::PrinterController::MultiPageSetup& );
-            void enableNupControls( bool bEnable );
-
-            void showAdvancedControls( bool );
-        };
-
-        class JobTabPage
-        {
-        public:
-            VclPtr<ListBox>                         mpPrinters;
-            VclPtr<FixedText>                       mpStatusTxt;
-            VclPtr<FixedText>                       mpLocationTxt;
-            VclPtr<FixedText>                       mpCommentTxt;
-
-            VclPtr<PushButton>                      mpSetupButton;
-
-            VclPtr<NumericField>                    mpCopyCountField;
-            VclPtr<CheckBox>                        mpCollateBox;
-            VclPtr<FixedImage>                      mpCollateImage;
-            VclPtr<CheckBox>                        mpReverseOrderBox;
-
-            BitmapEx                                maCollateBmp;
-            BitmapEx                                maNoCollateBmp;
-
-            long                                    mnCollateUIMode;
-
-            JobTabPage( VclBuilder* );
-
-            void readFromSettings();
-            void storeToSettings();
-        };
-
-        class OutputOptPage
-        {
-        public:
-            VclPtr<CheckBox>                    mpCollateSingleJobsBox;
-            VclPtr<CheckBox>                    mpPapersizeFromSetup;
-
-            OutputOptPage( VclBuilder* );
-
-            void readFromSettings();
-            void storeToSettings();
-        };
-
-        VclBuilder*                             mpCustomOptionsUIBuilder;
+        std::unique_ptr<weld::Builder>          mxCustomOptionsUIBuilder;
 
         std::shared_ptr<PrinterController>      maPController;
-        VclPtr<TabControl>                      mpTabCtrl;
-        NUpTabPage                              maNUpPage;
-        JobTabPage                              maJobPage;
-        OutputOptPage                           maOptionsPage;
-        VclPtr<PrintPreviewWindow>              mpPreviewWindow;
-        VclPtr<NumericField>                    mpPageEdit;
 
-        VclPtr<FixedText>                       mpNumPagesText;
-        VclPtr<PushButton>                      mpBackwardBtn;
-        VclPtr<PushButton>                      mpForwardBtn;
+        std::unique_ptr<MoreOptionsDialog>      mxMoreOptionsDlg;
 
-        VclPtr<OKButton>                        mpOKButton;
-        VclPtr<CancelButton>                    mpCancelButton;
-        VclPtr<HelpButton>                      mpHelpButton;
+        std::unique_ptr<weld::Notebook>         mxTabCtrl;
+        std::unique_ptr<weld::Frame>            mxPageLayoutFrame;
+        std::unique_ptr<weld::ComboBox>         mxPrinters;
+        std::unique_ptr<weld::Label>            mxStatusTxt;
+        std::unique_ptr<weld::Button>           mxSetupButton;
+
+        std::unique_ptr<weld::SpinButton>       mxCopyCountField;
+        std::unique_ptr<weld::CheckButton>      mxCollateBox;
+        std::unique_ptr<weld::Image>            mxCollateImage;
+        std::unique_ptr<weld::Entry>            mxPageRangeEdit;
+        std::unique_ptr<weld::RadioButton>      mxPageRangesRadioButton;
+        std::unique_ptr<weld::ComboBox>         mxPaperSidesBox;
+        std::unique_ptr<weld::CheckButton>      mxReverseOrderBox;
+
+        std::unique_ptr<weld::Button>           mxOKButton;
+        std::unique_ptr<weld::Button>           mxCancelButton;
+        std::unique_ptr<weld::Button>           mxHelpButton;
+        std::unique_ptr<weld::Button>           mxMoreOptionsBtn;
+
+        std::unique_ptr<weld::Button>           mxBackwardBtn;
+        std::unique_ptr<weld::Button>           mxForwardBtn;
+        std::unique_ptr<weld::Button>           mxFirstBtn;
+        std::unique_ptr<weld::Button>           mxLastBtn;
+
+        std::unique_ptr<weld::CheckButton>      mxPreviewBox;
+        std::unique_ptr<weld::Label>            mxNumPagesText;
+        std::unique_ptr<PrintPreviewWindow>     mxPreview;
+        std::unique_ptr<weld::CustomWeld>       mxPreviewWindow;
+        std::unique_ptr<weld::Entry>            mxPageEdit;
+
+        std::unique_ptr<weld::RadioButton>      mxPagesBtn;
+        std::unique_ptr<weld::RadioButton>      mxBrochureBtn;
+        std::unique_ptr<weld::Label>            mxPagesBoxTitleTxt;
+        std::unique_ptr<weld::ComboBox>         mxNupPagesBox;
+
+        // controls for "Custom" page mode
+        std::unique_ptr<weld::Label>            mxNupNumPagesTxt;
+        std::unique_ptr<weld::SpinButton>       mxNupColEdt;
+        std::unique_ptr<weld::Label>            mxNupTimesTxt;
+        std::unique_ptr<weld::SpinButton>       mxNupRowsEdt;
+        std::unique_ptr<weld::Label>            mxPageMarginTxt1;
+        std::unique_ptr<weld::MetricSpinButton> mxPageMarginEdt;
+        std::unique_ptr<weld::Label>            mxPageMarginTxt2;
+        std::unique_ptr<weld::Label>            mxSheetMarginTxt1;
+        std::unique_ptr<weld::MetricSpinButton> mxSheetMarginEdt;
+        std::unique_ptr<weld::Label>            mxSheetMarginTxt2;
+        std::unique_ptr<weld::ComboBox>         mxPaperSizeBox;
+        std::unique_ptr<weld::ComboBox>         mxOrientationBox;
+
+        // page order ("left to right, then down")
+        std::unique_ptr<weld::Label>            mxNupOrderTxt;
+        std::unique_ptr<weld::ComboBox>         mxNupOrderBox;
+        std::unique_ptr<ShowNupOrderWindow>     mxNupOrder;
+        std::unique_ptr<weld::CustomWeld>       mxNupOrderWin;
+        /// border around each page
+        std::unique_ptr<weld::CheckButton>      mxBorderCB;
+        std::unique_ptr<weld::Expander>         mxRangeExpander;
+        std::unique_ptr<weld::Expander>         mxLayoutExpander;
+        std::unique_ptr<weld::Widget>           mxCustom;
+
+        OUString                                maPrintToFileText;
+        OUString                                maPrintText;
+        OUString                                maDefPrtText;
 
         OUString                                maPageStr;
         OUString                                maNoPageStr;
+        OUString                                maNoPreviewStr;
         sal_Int32                               mnCurPage;
         sal_Int32                               mnCachedPages;
 
-        std::map< VclPtr<vcl::Window>, OUString >      maControlToPropertyMap;
-        std::map< OUString, std::vector< VclPtr<vcl::Window> > >
+        bool                                    mbCollateAlwaysOff;
+
+        std::vector<std::unique_ptr<weld::Widget>>
+                                                maExtraControls;
+
+        std::map<weld::Widget*, OUString>
+                                                maControlToPropertyMap;
+        std::map<OUString, std::vector<weld::Widget*>>
                                                 maPropertyToWindowMap;
-        std::map< VclPtr<vcl::Window>, sal_Int32 >          maControlToNumValMap;
-        std::set< OUString >                    maReverseDependencySet;
+        std::map<weld::Widget*, sal_Int32>
+                                                maControlToNumValMap;
 
         Size                                    maNupPortraitSize;
         Size                                    maNupLandscapeSize;
-
         /// internal, used for automatic Nup-Portrait/landscape
         Size                                    maFirstPageSize;
 
-        OUString                           maPrintToFileText;
-        OUString                           maPrintText;
-        OUString                           maDefPrtText;
+        bool                                    mbShowLayoutFrame;
+        bool                                    mbSingleJobs;
 
-        bool                                mbShowLayoutPage;
+        Paper                                   mePaper;
 
-        Size const & getJobPageSize();
-        void updateNup();
-        void updateNupFromPages();
-        void preparePreview( bool i_bPrintChanged = true, bool i_bMayUseCache = false );
+        DECL_LINK( ClickHdl, weld::Button&, void );
+        DECL_LINK( SelectHdl, weld::ComboBox&, void );
+        DECL_LINK( ActivateHdl, weld::Entry&, bool );
+        DECL_LINK( FocusOutHdl, weld::Widget&, void );
+        DECL_LINK( SpinModifyHdl, weld::SpinButton&, void );
+        DECL_LINK( MetricSpinModifyHdl, weld::MetricSpinButton&, void );
+        DECL_LINK( ToggleHdl, weld::ToggleButton&, void );
+
+        DECL_LINK( UIOption_CheckHdl, weld::ToggleButton&, void );
+        DECL_LINK( UIOption_RadioHdl, weld::ToggleButton&, void );
+        DECL_LINK( UIOption_SelectHdl, weld::ComboBox&, void );
+        DECL_LINK( UIOption_SpinModifyHdl, weld::SpinButton&, void );
+        DECL_LINK( UIOption_EntryModifyHdl, weld::Entry&, void );
+
+        DECL_LINK( ExpandHdl, weld::Expander&, void );
+
+        css::beans::PropertyValue* getValueForWindow(weld::Widget*) const;
+
+        void preparePreview( bool i_bMayUseCache );
+        void setupPaperSidesBox();
+        void storeToSettings();
+        void readFromSettings();
+        void setPaperOrientation( Orientation eOrientation );
+        void updateOrientationBox( bool bAutomatic = true );
+        bool hasOrientationChanged() const;
+        void checkPaperSize( Size& rPaperSize );
         void setPreviewText();
         void updatePrinterText();
         void checkControlDependencies();
         void checkOptionalControlDependencies();
-        void makeEnabled( vcl::Window* );
+        void makeEnabled( weld::Widget* );
         void updateWindowFromProperty( const OUString& );
+        void initFromMultiPageSetup( const vcl::PrinterController::MultiPageSetup& );
+        void showAdvancedControls( bool );
+        void updateNup( bool i_bMayUseCache = true );
+        void updateNupFromPages( bool i_bMayUseCache = true );
+        void enableNupControls( bool bEnable );
         void setupOptionalUI();
-        void readFromSettings();
-        void storeToSettings();
-        css::beans::PropertyValue* getValueForWindow( vcl::Window* ) const;
+        Size const & getJobPageSize();
 
-        virtual void Resize() override;
-        virtual void Command( const CommandEvent& ) override;
-        virtual void DataChanged( const DataChangedEvent& ) override;
-
-        DECL_LINK( SelectHdl, ListBox&, void );
-        DECL_LINK( ClickHdl, Button*, void );
-        DECL_LINK( ToggleHdl, CheckBox&, void );
-        DECL_LINK( ToggleRadioHdl, RadioButton&, void );
-        DECL_LINK( ModifyHdl, Edit&, void );
-
-        DECL_LINK( UIOption_CheckHdl, CheckBox&, void );
-        DECL_LINK( UIOption_RadioHdl, RadioButton&, void );
-        DECL_LINK( UIOption_SelectHdl, ListBox&, void );
-        DECL_LINK( UIOption_ModifyHdl, Edit&, void );
-
-    public:
-        PrintDialog( vcl::Window*, const std::shared_ptr< PrinterController >& );
-        virtual ~PrintDialog() override;
-        virtual void dispose() override;
-
-        bool isPrintToFile();
-        bool isCollate();
-        bool isSingleJobs();
-
-        void previewForward();
-        void previewBackward();
     };
 
-    class PrintProgressDialog : public ModelessDialog
+    class PrintProgressDialog final : public weld::GenericDialogController
     {
         OUString            maStr;
-        VclPtr<FixedText>   mpText;
-        VclPtr<ProgressBar> mpProgress;
-        VclPtr<CancelButton> mpButton;
-
         bool                mbCanceled;
         sal_Int32           mnCur;
         sal_Int32           mnMax;
 
-        DECL_LINK( ClickHdl, Button*, void );
+        std::unique_ptr<weld::Label> mxText;
+        std::unique_ptr<weld::ProgressBar> mxProgress;
+        std::unique_ptr<weld::Button> mxButton;
+
+        DECL_LINK( ClickHdl, weld::Button&, void );
 
     public:
-        PrintProgressDialog(vcl::Window* i_pParent, int i_nMax);
+        PrintProgressDialog(weld::Window* i_pParent, int i_nMax);
         virtual ~PrintProgressDialog() override;
-        virtual void dispose() override;
         bool isCanceled() const { return mbCanceled; }
         void setProgress( int i_nCurrent );
         void tick();
-        void reset();
     };
 }
 
-#endif // INCLUDED_VCL_INC_PRINTDLG_HXX
+#endif // VCL_INC_NEWPRINTDLG_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

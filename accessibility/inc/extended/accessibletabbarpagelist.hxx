@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABBARPAGELIST_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABBARPAGELIST_HXX
+#pragma once
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase3.hxx>
-#include "extended/accessibletabbarbase.hxx"
+#include <extended/accessibletabbarbase.hxx>
 
 #include <vector>
 
@@ -37,7 +36,6 @@ namespace accessibility
 {
 
 
-    //  class AccessibleTabBarPageList
 
 
     typedef ::cppu::ImplHelper3<
@@ -45,8 +43,8 @@ namespace accessibility
         css::accessibility::XAccessibleSelection,
         css::lang::XServiceInfo > AccessibleTabBarPageList_BASE;
 
-    class AccessibleTabBarPageList :    public AccessibleTabBarBase,
-                                        public AccessibleTabBarPageList_BASE
+    class AccessibleTabBarPageList final : public AccessibleTabBarBase,
+                                           public AccessibleTabBarPageList_BASE
     {
     private:
         typedef std::vector< css::uno::Reference< css::accessibility::XAccessible > > AccessibleChildren;
@@ -54,7 +52,6 @@ namespace accessibility
         AccessibleChildren      m_aAccessibleChildren;
         sal_Int32               m_nIndexInParent;
 
-    protected:
         void                    UpdateShowing( bool bShowing );
         void                    UpdateSelected( sal_Int32 i, bool bSelected );
         void                    UpdatePageText( sal_Int32 i );
@@ -74,7 +71,6 @@ namespace accessibility
 
     public:
         AccessibleTabBarPageList( TabBar* pTabBar, sal_Int32 nIndexInParent );
-        virtual ~AccessibleTabBarPageList() override;
 
         // XInterface
         DECLARE_XINTERFACE()
@@ -127,6 +123,5 @@ namespace accessibility
 }   // namespace accessibility
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABBARPAGELIST_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

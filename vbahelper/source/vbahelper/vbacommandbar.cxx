@@ -18,11 +18,11 @@
  */
 #include "vbacommandbar.hxx"
 #include "vbacommandbarcontrols.hxx"
-#include <com/sun/star/ui/XModuleUIConfigurationManagerSupplier.hpp>
 #include <com/sun/star/frame/XLayoutManager.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <ooo/vba/office/MsoBarType.hpp>
+#include <sal/log.hxx>
 
 using namespace com::sun::star;
 using namespace ooo::vba;
@@ -161,8 +161,8 @@ sal_Int32 SAL_CALL
 ScVbaCommandBar::Type()
 {
     // #FIXME support msoBarTypePopup
-    sal_Int32 nType = office::MsoBarType::msoBarTypePopup;
-    nType = m_bIsMenu? office::MsoBarType::msoBarTypeNormal : office::MsoBarType::msoBarTypeMenuBar;
+    sal_Int32 nType
+        = m_bIsMenu ? office::MsoBarType::msoBarTypeNormal : office::MsoBarType::msoBarTypeMenuBar;
     return nType;
 }
 
@@ -176,18 +176,16 @@ ScVbaCommandBar::FindControl( const uno::Any& /*aType*/, const uno::Any& /*aId*/
 OUString
 ScVbaCommandBar::getServiceImplName()
 {
-    return OUString("ScVbaCommandBar");
+    return "ScVbaCommandBar";
 }
 
 uno::Sequence<OUString>
 ScVbaCommandBar::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.CommandBar";
-    }
+        "ooo.vba.CommandBar"
+    };
     return aServiceNames;
 }
 
@@ -260,17 +258,15 @@ uno::Any SAL_CALL VbaDummyCommandBar::FindControl( const uno::Any& /*aType*/, co
 
 OUString VbaDummyCommandBar::getServiceImplName()
 {
-    return OUString("VbaDummyCommandBar");
+    return "VbaDummyCommandBar";
 }
 
 uno::Sequence< OUString > VbaDummyCommandBar::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.CommandBar";
-    }
+        "ooo.vba.CommandBar"
+    };
     return aServiceNames;
 }
 

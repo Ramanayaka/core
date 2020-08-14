@@ -19,8 +19,10 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_CHARTVIEWHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_CHARTVIEWHELPER_HXX
 
-#include <com/sun/star/frame/XModel.hpp>
 #include "charttoolsdllapi.hxx"
+
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
+namespace com::sun::star::frame { class XModel; }
 
 namespace chart
 {

@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "undosqledit.hxx"
-#include "sqledit.hxx"
+#include <undosqledit.hxx>
+#include <sqledit.hxx>
 
 namespace dbaui
 {
@@ -26,7 +26,7 @@ void OSqlEditUndoAct::ToggleText()
 {
     OUString strNext = m_pOwner->GetText();
     m_pOwner->SetText(m_strNextText);
-    m_strNextText  =strNext;
+    m_strNextText = strNext;
 }
 
 } // namespace

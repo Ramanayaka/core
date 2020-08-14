@@ -18,35 +18,36 @@
  */
 
 #include <tools/urlobj.hxx>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/drawing/PolyPolygonBezierCoords.hpp>
 #include <com/sun/star/drawing/LineDash.hpp>
 #include <com/sun/star/awt/Gradient.hpp>
+#include <com/sun/star/awt/XBitmap.hpp>
 #include <com/sun/star/drawing/Hatch.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 
 #include <sax/tools/converter.hxx>
 #include <sfx2/docfile.hxx>
 #include <rtl/ustrbuf.hxx>
-#include "xmloff/xmlnmspe.hxx"
-#include "xmloff/nmspmap.hxx"
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 
-#include "xmloff/xmltoken.hxx"
-#include "xmloff/xmlmetae.hxx"
-#include "xmloff/DashStyle.hxx"
-#include "xmloff/GradientStyle.hxx"
-#include "xmloff/HatchStyle.hxx"
-#include "xmloff/ImageStyle.hxx"
-#include "xmloff/MarkerStyle.hxx"
+#include <xmloff/xmltoken.hxx>
+#include <xmloff/xmlmetae.hxx>
+#include <xmloff/DashStyle.hxx>
+#include <xmloff/GradientStyle.hxx>
+#include <xmloff/HatchStyle.hxx>
+#include <xmloff/ImageStyle.hxx>
+#include <xmloff/MarkerStyle.hxx>
 #include <com/sun/star/embed/XTransactedObject.hpp>
 #include <comphelper/processfactory.hxx>
 #include <unotools/streamwrap.hxx>
-#include "svx/xmlgrhlp.hxx"
+#include <svx/xmlgrhlp.hxx>
 
-#include "xmlxtexp.hxx"
+#include <xmlxtexp.hxx>
 
 #include <comphelper/storagehelper.hxx>
 #include <memory>
@@ -62,6 +63,8 @@ using namespace ::xmloff::token;
 using namespace cppu;
 
 using com::sun::star::embed::XTransactedObject;
+
+namespace {
 
 class SvxXMLTableEntryExporter
 {
@@ -132,14 +135,14 @@ public:
     virtual void exportEntry( const OUString& rStrName, const Any& rValue ) override;
 };
 
+}
 
 SvxXMLXTableExportComponent::SvxXMLXTableExportComponent(
     const css::uno::Reference< css::uno::XComponentContext >& rContext,
-    const OUString& rFileName,
     const uno::Reference<xml::sax::XDocumentHandler> & rHandler,
     const uno::Reference<container::XNameContainer >& xTable,
-    uno::Reference<document::XGraphicObjectResolver >& xGrfResolver )
-:   SvXMLExport(rContext, "", rFileName, rHandler, nullptr, FUNIT_100TH_MM, SvXMLExportFlags::NONE),
+    uno::Reference<document::XGraphicStorageHandler> const & xGraphicStorageHandler)
+:   SvXMLExport(rContext, "", /*rFileName*/"", rHandler, nullptr, FieldUnit::MM_100TH, SvXMLExportFlags::NONE),
     mxTable( xTable )
 {
 
@@ -148,7 +151,7 @@ SvxXMLXTableExportComponent::SvxXMLXTableExportComponent(
     GetNamespaceMap_().Add( GetXMLToken(XML_NP_DRAW), GetXMLToken(XML_N_DRAW), XML_NAMESPACE_DRAW );
     GetNamespaceMap_().Add( GetXMLToken(XML_NP_XLINK), GetXMLToken(XML_N_XLINK), XML_NAMESPACE_XLINK );
     GetNamespaceMap_().Add( GetXMLToken(XML_NP_SVG), GetXMLToken(XML_N_SVG),  XML_NAMESPACE_SVG );
-    SetGraphicResolver( xGrfResolver );
+    SetGraphicStorageHandler(xGraphicStorageHandler);
 }
 
 SvxXMLXTableExportComponent::~SvxXMLXTableExportComponent()
@@ -177,14 +180,13 @@ static void initializeStreamMetadata( const uno::Reference< uno::XInterface > &x
 }
 
 static void createStorageStream( uno::Reference < io::XOutputStream > *xOut,
-                                 SvXMLGraphicHelper                  **ppGraphicHelper,
+                                 rtl::Reference<SvXMLGraphicHelper>&   rxGraphicHelper,
                                  const uno::Reference < embed::XStorage >& xSubStorage )
 {
-    uno::Reference < io::XStream > xStream;
-    xStream = xSubStorage->openStreamElement(
+    uno::Reference < io::XStream > xStream = xSubStorage->openStreamElement(
                         "Content.xml",
                         embed::ElementModes::WRITE );
-    *ppGraphicHelper = SvXMLGraphicHelper::Create( xSubStorage, SvXMLGraphicHelperMode::Write );
+    rxGraphicHelper = SvXMLGraphicHelper::Create( xSubStorage, SvXMLGraphicHelperMode::Write );
     initializeStreamMetadata( xStream );
     *xOut = xStream->getOutputStream();
 }
@@ -196,14 +198,14 @@ bool SvxXMLXTableExportComponent::save(
         OUString *pOptName )
 {
     bool bRet = false;
-    SfxMedium* pMedium = nullptr;
-    SvXMLGraphicHelper* pGraphicHelper = nullptr;
+    std::unique_ptr<SfxMedium> pMedium;
+    rtl::Reference<SvXMLGraphicHelper> xGraphicHelper;
     sal_Int32 eCreate = embed::ElementModes::WRITE | embed::ElementModes::TRUNCATE;
 
     INetURLObject aURLObj( rURL );
     bool bToStorage = aURLObj.GetProtocol() == INetProtocol::NotValid; // a relative path
 
-    bool bSaveAsStorage = xTable->getElementType() == cppu::UnoType<OUString>::get();
+    bool bSaveAsStorage = xTable->getElementType() == cppu::UnoType<awt::XBitmap>::get();
 
     if( pOptName )
         *pOptName = rURL;
@@ -217,9 +219,7 @@ bool SvxXMLXTableExportComponent::save(
         uno::Reference < io::XStream > xStream;
         uno::Reference < io::XOutputStream > xOut;
         uno::Reference<embed::XStorage > xSubStorage;
-        uno::Reference< XGraphicObjectResolver > xGrfResolver;
-
-        uno::Reference<xml::sax::XDocumentHandler> xHandler( xWriter, uno::UNO_QUERY );
+        uno::Reference<XGraphicStorageHandler> xGraphicStorageHandler;
 
         if( !bToStorage || !xStorage.is() )
         { // local URL -> SfxMedium route
@@ -227,7 +227,7 @@ bool SvxXMLXTableExportComponent::save(
                 xSubStorage = ::comphelper::OStorageHelper::GetStorageFromURL( rURL, eCreate );
             else
             {
-                pMedium = new SfxMedium( rURL, StreamMode::WRITE | StreamMode::TRUNC );
+                pMedium.reset(new SfxMedium( rURL, StreamMode::WRITE | StreamMode::TRUNC ));
 
                 SvStream* pStream = pMedium->GetOutStream();
                 if( !pStream )
@@ -271,22 +271,21 @@ bool SvxXMLXTableExportComponent::save(
         }
 
         if( !xOut.is() && xSubStorage.is() )
-            createStorageStream( &xOut, &pGraphicHelper, xSubStorage );
+            createStorageStream( &xOut, xGraphicHelper, xSubStorage );
         if( !xOut.is() )
             return false;
 
-        uno::Reference<io::XActiveDataSource> xMetaSrc( xWriter, uno::UNO_QUERY );
-        xMetaSrc->setOutputStream( xOut );
-        if( pGraphicHelper )
-            xGrfResolver = pGraphicHelper;
+        xWriter->setOutputStream( xOut );
+        if( xGraphicHelper.is() )
+            xGraphicStorageHandler = xGraphicHelper.get();
 
         // Finally do the export
-        const OUString aName;
-        rtl::Reference< SvxXMLXTableExportComponent > xExporter( new SvxXMLXTableExportComponent( xContext, aName, xHandler, xTable, xGrfResolver ) );
+        rtl::Reference< SvxXMLXTableExportComponent > xExporter( new SvxXMLXTableExportComponent( xContext, xWriter, xTable, xGraphicStorageHandler ) );
         bRet = xExporter->exportTable();
 
-        if( pGraphicHelper )
-            SvXMLGraphicHelper::Destroy( pGraphicHelper );
+        if( xGraphicHelper )
+            xGraphicHelper->dispose();
+        xGraphicHelper.clear();
 
         if( xSubStorage.is() )
         {
@@ -294,9 +293,7 @@ bool SvxXMLXTableExportComponent::save(
             if( xTrans.is() )
                 xTrans->commit();
 
-            uno::Reference< XComponent > xComp( xSubStorage, UNO_QUERY );
-            if( xComp.is() )
-                xSubStorage->dispose();
+            xSubStorage->dispose();
         }
     }
     catch( uno::Exception& )
@@ -305,10 +302,7 @@ bool SvxXMLXTableExportComponent::save(
     }
 
     if( pMedium )
-    {
         pMedium->Commit();
-        delete pMedium;
-    }
 
     return bRet;
 }
@@ -365,7 +359,7 @@ bool SvxXMLXTableExportComponent::exportTable() throw()
                 pExporter.reset(new SvxXMLGradientEntryExporter(*this));
                 pEleName = "gradient-table";
             }
-            else if( aExportType == cppu::UnoType<OUString>::get())
+            else if( aExportType == cppu::UnoType<awt::XBitmap>::get())
             {
                 pExporter.reset(new SvxXMLBitmapEntryExporter(*this));
                 pEleName = "bitmap-table";
@@ -378,16 +372,13 @@ bool SvxXMLXTableExportComponent::exportTable() throw()
 
             SvXMLElementExport aElem( *this, XML_NAMESPACE_OOO, pEleName, true, true );
 
-            Sequence< OUString > aNames = mxTable->getElementNames();
-            const sal_Int32 nCount = aNames.getLength();
-            const OUString* pNames = aNames.getConstArray();
+            const Sequence< OUString > aNames = mxTable->getElementNames();
             Any aAny;
 
-            sal_Int32 nIndex;
-            for( nIndex = 0; nIndex < nCount; nIndex++, pNames++ )
+            for( const OUString& rName : aNames )
             {
-                aAny = mxTable->getByName( *pNames );
-                pExporter->exportEntry( *pNames, aAny );
+                aAny = mxTable->getByName( rName );
+                pExporter->exportEntry( rName, aAny );
             }
 
             bRet = true;
@@ -486,7 +477,7 @@ SvxXMLBitmapEntryExporter::SvxXMLBitmapEntryExporter( SvXMLExport& rExport )
 
 void SvxXMLBitmapEntryExporter::exportEntry( const OUString& rStrName, const Any& rValue )
 {
-    XMLImageStyle::exportXML( rStrName, rValue, mrExport );
+    XMLImageStyle::exportXML(rStrName, rValue, mrExport);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

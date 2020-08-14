@@ -17,7 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbastrings.hrc"
+#include <stringconstants.hxx>
+#include <strings.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
@@ -40,7 +41,6 @@ namespace
 {
 
     using ::com::sun::star::uno::Reference;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Any;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::lang::XServiceInfo;
@@ -166,7 +166,7 @@ namespace
 
     OUString SAL_CALL DataAccessDescriptor::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.dba.DataAccessDescriptor" );
+        return "com.sun.star.comp.dba.DataAccessDescriptor";
     }
 
     sal_Bool SAL_CALL DataAccessDescriptor::supportsService( const OUString& rServiceName )
@@ -176,8 +176,7 @@ namespace
 
     Sequence< OUString > SAL_CALL DataAccessDescriptor::getSupportedServiceNames(  )
     {
-        Sequence< OUString > aServices { "com.sun.star.sdb.DataAccessDescriptor" };
-        return aServices;
+        return { "com.sun.star.sdb.DataAccessDescriptor" };
     }
 
     Reference< XPropertySetInfo > SAL_CALL DataAccessDescriptor::getPropertySetInfo()
@@ -219,7 +218,7 @@ namespace
 
     OUString SAL_CALL DataAccessDescriptorFactory::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.dba.DataAccessDescriptorFactory" );
+        return "com.sun.star.comp.dba.DataAccessDescriptorFactory";
     }
 
     sal_Bool SAL_CALL DataAccessDescriptorFactory::supportsService( const OUString& rServiceName )
@@ -229,8 +228,7 @@ namespace
 
     Sequence< OUString > SAL_CALL DataAccessDescriptorFactory::getSupportedServiceNames()
     {
-        Sequence< OUString > aServices { "com.sun.star.sdb.DataAccessDescriptorFactory" };
-        return aServices;
+        return { "com.sun.star.sdb.DataAccessDescriptorFactory" };
     }
 
     Reference< XPropertySet > SAL_CALL DataAccessDescriptorFactory::createDataAccessDescriptor(  )
@@ -252,7 +250,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_dba_DataAccessDescriptorFactory(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

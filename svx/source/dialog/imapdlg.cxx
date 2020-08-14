@@ -17,47 +17,37 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <stdlib.h>
 #include <vcl/errinf.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/ucbstreamhelper.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/group.hxx>
-#include <vcl/lstbox.hxx>
 #include <svl/eitem.hxx>
 #include <unotools/pathoptions.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/module.hxx>
 #include <sfx2/filedlghelper.hxx>
-#include "com/sun/star/ui/dialogs/TemplateDescription.hpp"
+#include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
 #include <svl/urihelper.hxx>
-#include <svtools/miscopt.hxx>
 #include <svtools/ehdl.hxx>
+#include <svtools/inettbc.hxx>
 #include <svtools/sfxecode.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/docfile.hxx>
 #include <unotools/localedatawrapper.hxx>
-#include <comphelper/processfactory.hxx>
-#include <vcl/layout.hxx>
+#include <vcl/weld.hxx>
 #include <svx/imapdlg.hxx>
 #include <svx/dialmgr.hxx>
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 #include <svx/svxids.hrc>
-#include "imapdlg.hrc"
 #include "imapwnd.hxx"
 #include "imapimp.hxx"
-#include "svx/dlgutil.hxx"
-#include <svx/svdtrans.hxx>
 #include <svx/svdopath.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
-#include <vcl/builderfactory.hxx>
 #include "dlgunit.hxx"
 #include <memory>
 
 #define SELF_TARGET         "_self"
-#define IMAP_ALL_FILTER     OUString("<Alle>")
 #define IMAP_CERN_FILTER    "MAP - CERN"
 #define IMAP_NCSA_FILTER    "MAP - NCSA"
 #define IMAP_BINARY_FILTER  "SIP - StarView ImageMap"
@@ -66,7 +56,7 @@
 #define IMAP_CERN_TYPE      "*.map"
 #define IMAP_NCSA_TYPE      "*.map"
 
-SFX_IMPL_MODELESSDIALOG_WITHID( SvxIMapDlgChildWindow, SID_IMAP );
+SFX_IMPL_MODELESSDIALOGCONTOLLER_WITHID( SvxIMapDlgChildWindow, SID_IMAP );
 
 // ControllerItem
 
@@ -91,17 +81,13 @@ void SvxIMapDlgItem::StateChanged( sal_uInt16 nSID, SfxItemState /*eState*/,
     }
 }
 
-SvxIMapDlgChildWindow::SvxIMapDlgChildWindow( vcl::Window* _pParent, sal_uInt16 nId,
-                                              SfxBindings* pBindings,
-                                              SfxChildWinInfo* pInfo ) :
-            SfxChildWindow( _pParent, nId )
+SvxIMapDlgChildWindow::SvxIMapDlgChildWindow(vcl::Window* _pParent, sal_uInt16 nId,
+                                             SfxBindings* pBindings,
+                                             SfxChildWinInfo const * pInfo)
+    : SfxChildWindow( _pParent, nId )
 {
-    SetWindow(VclPtr<SvxIMapDlg>::Create( pBindings, this, _pParent ));
-    SvxIMapDlg* pDlg = static_cast<SvxIMapDlg*>(GetWindow());
-
-    if ( pInfo->nFlags & SfxChildWindowFlags::ZOOMIN )
-        pDlg->RollUp();
-
+    SetController(std::make_shared<SvxIMapDlg>(pBindings, this, _pParent->GetFrameWeld()));
+    SvxIMapDlg* pDlg = static_cast<SvxIMapDlg*>(GetController().get());
     pDlg->Initialize( pInfo );
 }
 
@@ -113,140 +99,96 @@ void SvxIMapDlgChildWindow::UpdateIMapDlg( const Graphic& rGraphic, const ImageM
         pDlg->UpdateLink(rGraphic, pImageMap, pTargetList, pEditingObj);
 }
 
-VCL_BUILDER_FACTORY(StatusBar)
-
-SvxIMapDlg::SvxIMapDlg(SfxBindings *_pBindings, SfxChildWindow *pCW, vcl::Window* _pParent)
-    : SfxModelessDialog(_pBindings, pCW, _pParent, "ImapDialog", "svx/ui/imapdialog.ui")
+SvxIMapDlg::SvxIMapDlg(SfxBindings *_pBindings, SfxChildWindow *pCW, weld::Window* _pParent)
+    : SfxModelessDialogController(_pBindings, pCW, _pParent, "svx/ui/imapdialog.ui", "ImapDialog")
     , pCheckObj(nullptr)
     , aIMapItem(*this, *_pBindings)
+    , m_xIMapWnd(new IMapWindow(_pBindings->GetActiveFrame(), m_xDialog.get()))
+    , m_xTbxIMapDlg1(m_xBuilder->weld_toolbar("toolbar"))
+    , m_xFtURL(m_xBuilder->weld_label("urlft"))
+    , m_xURLBox(new SvtURLBox(m_xBuilder->weld_combo_box("url")))
+    , m_xFtText(m_xBuilder->weld_label("textft"))
+    , m_xEdtText(m_xBuilder->weld_entry("text"))
+    , m_xFtTarget(m_xBuilder->weld_label("targetft"))
+    , m_xCbbTarget(m_xBuilder->weld_combo_box("target"))
+    , m_xCancelBtn(m_xBuilder->weld_button("cancel"))
+    , m_xStbStatus1(m_xBuilder->weld_label("statusurl"))
+    , m_xStbStatus2(m_xBuilder->weld_label("statuspos"))
+    , m_xStbStatus3(m_xBuilder->weld_label("statussize"))
+    , m_xIMapWndWeld(new weld::CustomWeld(*m_xBuilder, "container", *m_xIMapWnd))
+
 {
-    get(m_pTbxIMapDlg1, "toolbar");
-    m_pTbxIMapDlg1->InsertSeparator(4, 5);
-    m_pTbxIMapDlg1->InsertSeparator(10, 5);
-    m_pTbxIMapDlg1->InsertSeparator(15, 5);
-    m_pTbxIMapDlg1->InsertSeparator(18, 5);
-
-    mnApplyId = m_pTbxIMapDlg1->GetItemId("TBI_APPLY");
-    mnOpenId = m_pTbxIMapDlg1->GetItemId("TBI_OPEN");
-    mnSaveAsId = m_pTbxIMapDlg1->GetItemId("TBI_SAVEAS");
-    mnCloseId = m_pTbxIMapDlg1->GetItemId("TBI_CLOSE");
-    mnSelectId = m_pTbxIMapDlg1->GetItemId("TBI_SELECT");
-    mnRectId = m_pTbxIMapDlg1->GetItemId("TBI_RECT");
-    mnCircleId = m_pTbxIMapDlg1->GetItemId("TBI_CIRCLE");
-    mnPolyId = m_pTbxIMapDlg1->GetItemId("TBI_POLY");
-    mnFreePolyId = m_pTbxIMapDlg1->GetItemId("TBI_FREEPOLY");
-    mnPolyEditId = m_pTbxIMapDlg1->GetItemId("TBI_POLYEDIT");
-    mnPolyMoveId = m_pTbxIMapDlg1->GetItemId("TBI_POLYMOVE");
-    mnPolyInsertId = m_pTbxIMapDlg1->GetItemId("TBI_POLYINSERT");
-    mnPolyDeleteId = m_pTbxIMapDlg1->GetItemId("TBI_POLYDELETE");
-    mnUndoId = m_pTbxIMapDlg1->GetItemId("TBI_UNDO");
-    mnRedoId = m_pTbxIMapDlg1->GetItemId("TBI_REDO");
-    mnActiveId = m_pTbxIMapDlg1->GetItemId("TBI_ACTIVE");
-    mnMacroId = m_pTbxIMapDlg1->GetItemId("TBI_MACRO");
-    mnPropertyId = m_pTbxIMapDlg1->GetItemId("TBI_PROPERTY");
-
-    get(m_pFtURL, "urlft");
-    get(m_pURLBox, "url");
-    get(m_pFtText, "textft");
-    get(m_pEdtText, "text");
-    get(m_pFtTarget, "targetft");
-    get(m_pCbbTarget, "target");
+    m_xTbxIMapDlg1->insert_separator(4, "sep1");
+    m_xTbxIMapDlg1->insert_separator(10, "sep2");
+    m_xTbxIMapDlg1->insert_separator(15, "sep3");
+    m_xTbxIMapDlg1->insert_separator(18, "sel4");
 
     //lock this down so it doesn't jump around in size
     //as entries are added later on
     TargetList aTmpList;
     SfxFrame::GetDefaultTargetList(aTmpList);
     for (const OUString & s : aTmpList)
-        m_pCbbTarget->InsertEntry(s);
-    Size aPrefSize(m_pCbbTarget->get_preferred_size());
-    m_pCbbTarget->set_width_request(aPrefSize.Width());
-    m_pCbbTarget->Clear();
+        m_xCbbTarget->append_text(s);
+    Size aPrefSize(m_xCbbTarget->get_preferred_size());
+    m_xCbbTarget->set_size_request(aPrefSize.Width(), -1);
+    m_xCbbTarget->clear();
 
-    get(m_pStbStatus, "statusbar");
+    m_xIMapWnd->Show();
 
-    VclVBox* _pContainer = get<VclVBox>("container");
-    pIMapWnd = VclPtr<IMapWindow>::Create( _pContainer, WB_BORDER, _pBindings->GetActiveFrame() );
-    pIMapWnd->set_hexpand(true);
-    pIMapWnd->set_vexpand(true);
-    pIMapWnd->Show();
+    pOwnData.reset(new IMapOwnData);
 
-    pOwnData = new IMapOwnData;
+    m_xIMapWnd->SetInfoLink( LINK( this, SvxIMapDlg, InfoHdl ) );
+    m_xIMapWnd->SetMousePosLink( LINK( this, SvxIMapDlg, MousePosHdl ) );
+    m_xIMapWnd->SetGraphSizeLink( LINK( this, SvxIMapDlg, GraphSizeHdl ) );
+    m_xIMapWnd->SetUpdateLink( LINK( this, SvxIMapDlg, StateHdl ) );
 
-    pIMapWnd->SetInfoLink( LINK( this, SvxIMapDlg, InfoHdl ) );
-    pIMapWnd->SetMousePosLink( LINK( this, SvxIMapDlg, MousePosHdl ) );
-    pIMapWnd->SetGraphSizeLink( LINK( this, SvxIMapDlg, GraphSizeHdl ) );
-    pIMapWnd->SetUpdateLink( LINK( this, SvxIMapDlg, StateHdl ) );
+    m_xURLBox->connect_changed( LINK( this, SvxIMapDlg, URLModifyHdl ) );
+    m_xURLBox->connect_focus_out( LINK( this, SvxIMapDlg, URLLoseFocusHdl ) );
+    m_xEdtText->connect_changed( LINK( this, SvxIMapDlg, EntryModifyHdl ) );
+    m_xCbbTarget->connect_focus_out( LINK( this, SvxIMapDlg, URLLoseFocusHdl ) );
 
-    m_pURLBox->SetModifyHdl( LINK( this, SvxIMapDlg, URLModifyHdl ) );
-    m_pURLBox->SetSelectHdl( LINK( this, SvxIMapDlg, URLModifyComboBoxHdl ) );
-    m_pURLBox->SetLoseFocusHdl( LINK( this, SvxIMapDlg, URLLoseFocusHdl ) );
-    m_pEdtText->SetModifyHdl( LINK( this, SvxIMapDlg, URLModifyHdl ) );
-    m_pCbbTarget->SetLoseFocusHdl( LINK( this, SvxIMapDlg, URLLoseFocusHdl ) );
+    m_xTbxIMapDlg1->connect_clicked( LINK( this, SvxIMapDlg, TbxClickHdl ) );
+    OString sSelect("TBI_SELECT");
+    m_xTbxIMapDlg1->set_item_active(sSelect, true);
+    TbxClickHdl(sSelect);
 
-    SvtMiscOptions aMiscOptions;
-    aMiscOptions.AddListenerLink( LINK( this, SvxIMapDlg, MiscHdl ) );
+    m_xStbStatus1->set_size_request(120, -1);
+    const int nWidth = m_xStbStatus1->get_pixel_size(" 9999,99 cm / 9999,99 cm ").Width();
+    m_xStbStatus2->set_size_request(nWidth, -1);
+    m_xStbStatus3->set_size_request(nWidth, -1);
 
-    m_pTbxIMapDlg1->SetSelectHdl( LINK( this, SvxIMapDlg, TbxClickHdl ) );
-    m_pTbxIMapDlg1->CheckItem( mnSelectId );
-    TbxClickHdl( m_pTbxIMapDlg1 );
-
-    SetMinOutputSizePixel( aLastSize = GetOutputSizePixel() );
-
-    m_pStbStatus->InsertItem( 1, 130, StatusBarItemBits::Left | StatusBarItemBits::In | StatusBarItemBits::AutoSize );
-    m_pStbStatus->InsertItem( 2, 10 + GetTextWidth( " 9999,99 cm / 9999,99 cm " ) );
-    m_pStbStatus->InsertItem( 3, 10 + GetTextWidth( " 9999,99 cm x 9999,99 cm " ) );
-
-    m_pFtURL->Disable();
-    m_pURLBox->Disable();
-    m_pFtText->Disable();
-    m_pEdtText->Disable();
-    m_pFtTarget->Disable();
-    m_pCbbTarget->Disable();
+    m_xFtURL->set_sensitive(false);
+    m_xURLBox->set_sensitive(false);
+    m_xFtText->set_sensitive(false);
+    m_xEdtText->set_sensitive(false);
+    m_xFtTarget->set_sensitive(false);
+    m_xCbbTarget->set_sensitive(false);
     pOwnData->bExecState = false;
 
-    pOwnData->aIdle.SetPriority( TaskPriority::LOW );
     pOwnData->aIdle.SetInvokeHandler( LINK( this, SvxIMapDlg, UpdateHdl ) );
 
-    m_pTbxIMapDlg1->EnableItem( mnActiveId, false );
-    m_pTbxIMapDlg1->EnableItem( mnMacroId, false );
-    m_pTbxIMapDlg1->EnableItem( mnPropertyId, false );
+    m_xTbxIMapDlg1->set_item_sensitive("TBI_ACTIVE", false);
+    m_xTbxIMapDlg1->set_item_sensitive("TBI_MACRO", false );
+    m_xTbxIMapDlg1->set_item_sensitive("TBI_PROPERTY", false );
+
+    m_xCancelBtn->connect_clicked(LINK(this, SvxIMapDlg, CancelHdl));
 }
 
 SvxIMapDlg::~SvxIMapDlg()
 {
-    disposeOnce();
+    m_xIMapWnd->SetUpdateLink( Link<GraphCtrl*,void>() );
+    m_xIMapWnd.reset();
 }
 
-void SvxIMapDlg::dispose()
-{
-    pIMapWnd->SetUpdateLink( Link<GraphCtrl*,void>() );
-
-    SvtMiscOptions aMiscOptions;
-    aMiscOptions.RemoveListenerLink( LINK( this, SvxIMapDlg, MiscHdl ) );
-
-    // Delete URL-List
-    pIMapWnd.disposeAndClear();
-    DELETEZ( pOwnData );
-    m_pTbxIMapDlg1.clear();
-    m_pFtURL.clear();
-    m_pURLBox.clear();
-    m_pFtText.clear();
-    m_pEdtText.clear();
-    m_pFtTarget.clear();
-    m_pCbbTarget.clear();
-    m_pStbStatus.clear();
-    SfxModelessDialog::dispose();
-    aIMapItem.dispose();
-}
-
-bool SvxIMapDlg::Close()
+IMPL_LINK_NOARG(SvxIMapDlg, CancelHdl, weld::Button&, void)
 {
     bool bRet = true;
 
-    if ( m_pTbxIMapDlg1->IsItemEnabled( mnApplyId ) )
+    if ( m_xTbxIMapDlg1->get_item_sensitive("TBI_APPLY") )
     {
-        ScopedVclPtrInstance< MessageDialog > aQBox(this,"QueryModifyImageMapChangesDialog","svx/ui/querymodifyimagemapchangesdialog.ui");
-        const long  nRet = aQBox->Execute();
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xDialog.get(), "svx/ui/querymodifyimagemapchangesdialog.ui"));
+        std::unique_ptr<weld::MessageDialog> xQBox(xBuilder->weld_message_dialog("QueryModifyImageMapChangesDialog"));
+        const long nRet = xQBox->run();
 
         if( nRet == RET_YES )
         {
@@ -258,10 +200,11 @@ bool SvxIMapDlg::Close()
         else if( nRet == RET_CANCEL )
             bRet = false;
     }
-    else if( pIMapWnd->IsChanged() )
+    else if( m_xIMapWnd->IsChanged() )
     {
-        ScopedVclPtrInstance< MessageDialog > aQBox(this,"QuerySaveImageMapChangesDialog","svx/ui/querysaveimagemapchangesdialog.ui");
-        const long  nRet = aQBox->Execute();
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xDialog.get(), "svx/ui/querysaveimagemapchangesdialog.ui"));
+        std::unique_ptr<weld::MessageDialog> xQBox(xBuilder->weld_message_dialog("QuerySaveImageMapChangesDialog"));
+        const long nRet = xQBox->run();
 
         if( nRet == RET_YES )
             bRet = DoSave();
@@ -269,7 +212,8 @@ bool SvxIMapDlg::Close()
             bRet = false;
     }
 
-    return bRet && SfxModelessDialog::Close();
+    if (bRet)
+        m_xDialog->response(RET_CANCEL);
 }
 
 // Enabled or disable all Controls
@@ -281,19 +225,19 @@ void SvxIMapDlg::SetExecState( bool bEnable )
 
 const ImageMap& SvxIMapDlg::GetImageMap() const
 {
-    return pIMapWnd->GetImageMap();
+    return m_xIMapWnd->GetImageMap();
 }
 
 void SvxIMapDlg::SetTargetList( const TargetList& rTargetList )
 {
     TargetList aNewList( rTargetList );
 
-    pIMapWnd->SetTargetList( aNewList );
+    m_xIMapWnd->SetTargetList( aNewList );
 
-    m_pCbbTarget->Clear();
+    m_xCbbTarget->clear();
 
     for (const OUString & s : aNewList)
-        m_pCbbTarget->InsertEntry( s );
+        m_xCbbTarget->append_text(s);
 }
 
 void SvxIMapDlg::UpdateLink( const Graphic& rGraphic, const ImageMap* pImageMap,
@@ -329,131 +273,98 @@ void SvxIMapDlg::UpdateLink( const Graphic& rGraphic, const ImageMap* pImageMap,
 
 // Click-handler for ToolBox
 
-IMPL_LINK( SvxIMapDlg, TbxClickHdl, ToolBox*, pTbx, void )
+IMPL_LINK(SvxIMapDlg, TbxClickHdl, const OString&, rNewItemId, void)
 {
-    sal_uInt16 nNewItemId = pTbx->GetCurItemId();
-
-    if(nNewItemId == mnApplyId)
+    if (rNewItemId == "TBI_APPLY")
     {
-        URLLoseFocusHdl( *m_pURLBox );
+        URLLoseFocusHdl(*m_xCbbTarget);
         SfxBoolItem aBoolItem( SID_IMAP_EXEC, true );
         GetBindings().GetDispatcher()->ExecuteList(SID_IMAP_EXEC,
             SfxCallMode::ASYNCHRON | SfxCallMode::RECORD,
             { &aBoolItem });
     }
-    else if(nNewItemId == mnOpenId)
+    else if (rNewItemId == "TBI_OPEN")
         DoOpen();
-    else if(nNewItemId == mnSaveAsId)
-            DoSave();
-    else if(nNewItemId == mnCloseId)
+    else if (rNewItemId == "TBI_SAVEAS")
+        DoSave();
+    else if (rNewItemId == "TBI_CLOSE")
+        CancelHdl(*m_xCancelBtn);
+    else if (rNewItemId == "TBI_SELECT")
     {
-        SvxIMapDlg* pDlg = GetIMapDlg();
-        pDlg->Close();
+        SetActiveTool( rNewItemId );
+        m_xIMapWnd->SetEditMode( true );
     }
-    else if(nNewItemId == mnSelectId)
+    else if (rNewItemId == "TBI_RECT")
     {
-        SetActiveTool( nNewItemId );
-        pIMapWnd->SetEditMode( true );
-        if( pTbx->IsKeyEvent() )
-        {
-            if((pTbx->GetKeyModifier() & KEY_MOD1) != 0)
-                pIMapWnd->SelectFirstObject();
-            else
-                pIMapWnd->GrabFocus();
-        }
+        SetActiveTool( rNewItemId );
+        m_xIMapWnd->SetObjKind( OBJ_RECT );
     }
-    else if(nNewItemId == mnRectId)
+    else if (rNewItemId == "TBI_CIRCLE")
     {
-        SetActiveTool( nNewItemId );
-        pIMapWnd->SetObjKind( OBJ_RECT );
-        if( pTbx->IsKeyEvent() && ((pTbx->GetKeyModifier() & KEY_MOD1) != 0) )
-        {
-            pIMapWnd->CreateDefaultObject();
-            pIMapWnd->GrabFocus();
-        }
+        SetActiveTool( rNewItemId );
+        m_xIMapWnd->SetObjKind( OBJ_CIRC );
     }
-    else if(nNewItemId == mnCircleId)
+    else if (rNewItemId == "TBI_POLY")
     {
-        SetActiveTool( nNewItemId );
-        pIMapWnd->SetObjKind( OBJ_CIRC );
-        if( pTbx->IsKeyEvent() && ((pTbx->GetKeyModifier() & KEY_MOD1) != 0) )
-        {
-            pIMapWnd->CreateDefaultObject();
-            pIMapWnd->GrabFocus();
-        }
+        SetActiveTool( rNewItemId );
+        m_xIMapWnd->SetObjKind( OBJ_POLY );
     }
-    else if(nNewItemId == mnPolyId)
+    else if (rNewItemId == "TBI_FREEPOLY")
     {
-        SetActiveTool( nNewItemId );
-        pIMapWnd->SetObjKind( OBJ_POLY );
-        if( pTbx->IsKeyEvent() && ((pTbx->GetKeyModifier() & KEY_MOD1) != 0) )
-        {
-            pIMapWnd->CreateDefaultObject();
-            pIMapWnd->GrabFocus();
-        }
+        SetActiveTool( rNewItemId );
+        m_xIMapWnd->SetObjKind( OBJ_FREEFILL );
     }
-    else if(nNewItemId == mnFreePolyId)
+    else if (rNewItemId == "TBI_ACTIVE")
     {
-        SetActiveTool( nNewItemId );
-        pIMapWnd->SetObjKind( OBJ_FREEFILL );
-        if( pTbx->IsKeyEvent() && ((pTbx->GetKeyModifier() & KEY_MOD1) != 0) )
-        {
-            pIMapWnd->CreateDefaultObject();
-            pIMapWnd->GrabFocus();
-        }
+        URLLoseFocusHdl(*m_xCbbTarget);
+        bool bNewState = !m_xTbxIMapDlg1->get_item_active(rNewItemId);
+        m_xTbxIMapDlg1->set_item_active(rNewItemId, bNewState);
+        m_xIMapWnd->SetCurrentObjState( !bNewState );
     }
-    else if(nNewItemId == mnActiveId)
+    else if (rNewItemId == "TBI_MACRO")
+        m_xIMapWnd->DoMacroAssign();
+    else if (rNewItemId == "TBI_PROPERTY")
+        m_xIMapWnd->DoPropertyDialog();
+    else if (rNewItemId == "TBI_POLYEDIT")
     {
-        URLLoseFocusHdl( *m_pURLBox );
-        bool bNewState = !pTbx->IsItemChecked( TBI_ACTIVE );
-        pTbx->CheckItem( TBI_ACTIVE, bNewState );
-        pIMapWnd->SetCurrentObjState( !bNewState );
+        SetActiveTool( rNewItemId );
+        m_xIMapWnd->SetPolyEditMode( m_xTbxIMapDlg1->get_item_active(rNewItemId) ? SID_BEZIER_MOVE : 0 );
     }
-    else if(nNewItemId == mnMacroId)
-        pIMapWnd->DoMacroAssign();
-    else if(nNewItemId == mnPropertyId)
-        pIMapWnd->DoPropertyDialog();
-    else if(nNewItemId == mnPolyEditId)
+    else if (rNewItemId == "TBI_POLYMOVE")
     {
-        SetActiveTool( nNewItemId );
-        pIMapWnd->SetPolyEditMode( pTbx->IsItemChecked( TBI_POLYEDIT ) ? SID_BEZIER_MOVE : 0 );
-        if( pTbx->IsKeyEvent() && pTbx->IsItemChecked( TBI_POLYEDIT ) )
-            pIMapWnd->StartPolyEdit();
+        SetActiveTool( rNewItemId );
+        m_xIMapWnd->SetPolyEditMode( SID_BEZIER_MOVE );
     }
-    else if(nNewItemId == mnPolyMoveId)
+    else if (rNewItemId == "TBI_POLYINSERT")
     {
-        SetActiveTool( nNewItemId );
-        pIMapWnd->SetPolyEditMode( SID_BEZIER_MOVE );
+        SetActiveTool( rNewItemId );
+        m_xIMapWnd->SetPolyEditMode( SID_BEZIER_INSERT );
     }
-    else if(nNewItemId == mnPolyInsertId)
+    else if (rNewItemId == "TBI_POLYDELETE")
     {
-        SetActiveTool( nNewItemId );
-        pIMapWnd->SetPolyEditMode( SID_BEZIER_INSERT );
+        SetActiveTool( rNewItemId );
+        m_xIMapWnd->GetSdrView()->DeleteMarkedPoints();
     }
-    else if(nNewItemId == mnPolyDeleteId)
+    else if (rNewItemId == "TBI_UNDO")
     {
-        SetActiveTool( nNewItemId );
-        pIMapWnd->GetSdrView()->DeleteMarkedPoints();
+        URLLoseFocusHdl(*m_xCbbTarget);
+        m_xIMapWnd->GetSdrModel()->Undo();
     }
-    else if(nNewItemId == mnUndoId)
+    else if (rNewItemId == "TBI_REDO")
     {
-        URLLoseFocusHdl( *m_pURLBox );
-        pIMapWnd->GetSdrModel()->Undo();
-    }
-    else if(nNewItemId == mnRedoId)
-    {
-        URLLoseFocusHdl( *m_pURLBox );
-        pIMapWnd->GetSdrModel()->Redo();
+        URLLoseFocusHdl(*m_xCbbTarget);
+        m_xIMapWnd->GetSdrModel()->Redo();
     }
 }
 
 void SvxIMapDlg::DoOpen()
 {
     ::sfx2::FileDialogHelper aDlg(
-        css::ui::dialogs::TemplateDescription::FILEOPEN_SIMPLE );
+        css::ui::dialogs::TemplateDescription::FILEOPEN_SIMPLE,
+        FileDialogFlags::NONE, m_xDialog.get());
 
     ImageMap        aLoadIMap;
-    const OUString  aFilter( IMAP_ALL_FILTER );
+    const OUString  aFilter(SvxResId(RID_SVXSTR_IMAP_ALL_FILTER));
 
     aDlg.AddFilter( aFilter, IMAP_ALL_TYPE );
     aDlg.AddFilter( IMAP_CERN_FILTER, IMAP_CERN_TYPE );
@@ -463,38 +374,39 @@ void SvxIMapDlg::DoOpen()
     aDlg.SetCurrentFilter( aFilter );
     aDlg.SetDisplayDirectory( SvtPathOptions().GetWorkPath() );
 
-    if( aDlg.Execute() == ERRCODE_NONE )
+    if( aDlg.Execute() != ERRCODE_NONE )
+        return;
+
+    INetURLObject aURL( aDlg.GetPath() );
+    DBG_ASSERT( aURL.GetProtocol() != INetProtocol::NotValid, "invalid URL" );
+    std::unique_ptr<SvStream> pIStm(::utl::UcbStreamHelper::CreateStream( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), StreamMode::READ ));
+
+    if( pIStm )
     {
-        INetURLObject aURL( aDlg.GetPath() );
-        DBG_ASSERT( aURL.GetProtocol() != INetProtocol::NotValid, "invalid URL" );
-        std::unique_ptr<SvStream> pIStm(::utl::UcbStreamHelper::CreateStream( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), StreamMode::READ ));
+        aLoadIMap.Read( *pIStm, IMAP_FORMAT_DETECT );
 
-        if( pIStm )
+        if( pIStm->GetError() )
         {
-            aLoadIMap.Read( *pIStm, IMAP_FORMAT_DETECT );
-
-            if( pIStm->GetError() )
-            {
-                SfxErrorContext eEC(ERRCTX_ERROR, this);
-                ErrorHandler::HandleError( ERRCODE_IO_GENERAL );
-            }
-            else
-                pIMapWnd->SetImageMap( aLoadIMap );
+            SfxErrorContext eEC(ERRCTX_ERROR, m_xDialog.get());
+            ErrorHandler::HandleError( ERRCODE_IO_GENERAL );
         }
-
-        pIMapWnd->Invalidate();
+        else
+            m_xIMapWnd->SetImageMap( aLoadIMap );
     }
+
+    m_xIMapWnd->Invalidate();
 }
 
 bool SvxIMapDlg::DoSave()
 {
     ::sfx2::FileDialogHelper aDlg(
-        css::ui::dialogs::TemplateDescription::FILESAVE_SIMPLE );
+        css::ui::dialogs::TemplateDescription::FILESAVE_SIMPLE,
+        FileDialogFlags::NONE, m_xDialog.get());
 
     const OUString    aBinFilter( IMAP_BINARY_FILTER );
     const OUString    aCERNFilter( IMAP_CERN_FILTER );
     const OUString    aNCSAFilter( IMAP_NCSA_FILTER );
-    SdrModel*       pModel = pIMapWnd->GetSdrModel();
+    SdrModel*       pModel = m_xIMapWnd->GetSdrModel();
     const bool bChanged = pModel->IsChanged();
     bool            bRet = false;
 
@@ -545,7 +457,7 @@ bool SvxIMapDlg::DoSave()
             std::unique_ptr<SvStream> pOStm(::utl::UcbStreamHelper::CreateStream( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), StreamMode::WRITE | StreamMode::TRUNC ));
             if( pOStm )
             {
-                pIMapWnd->GetImageMap().Write( *pOStm, nFormat );
+                m_xIMapWnd->GetImageMap().Write( *pOStm, nFormat );
 
                 if( pOStm->GetError() )
                     ErrorHandler::HandleError( ERRCODE_IO_GENERAL );
@@ -560,95 +472,94 @@ bool SvxIMapDlg::DoSave()
     return bRet;
 }
 
-void SvxIMapDlg::SetActiveTool( sal_uInt16 nId )
+void SvxIMapDlg::SetActiveTool(const OString& rId)
 {
-    m_pTbxIMapDlg1->CheckItem( mnSelectId, mnSelectId == nId );
-    m_pTbxIMapDlg1->CheckItem( mnRectId, mnRectId == nId );
-    m_pTbxIMapDlg1->CheckItem( mnCircleId, mnCircleId == nId );
-    m_pTbxIMapDlg1->CheckItem( mnPolyId, mnPolyId == nId );
-    m_pTbxIMapDlg1->CheckItem( mnFreePolyId, mnFreePolyId == nId );
+    m_xTbxIMapDlg1->set_item_active("TBI_SELECT", rId == "TBI_SELECT");
+    m_xTbxIMapDlg1->set_item_active("TBI_RECT", rId == "TBI_RECT");
+    m_xTbxIMapDlg1->set_item_active("TBI_CIRCLE", rId == "TBI_CIRCLE");
+    m_xTbxIMapDlg1->set_item_active("TBI_POLY", rId == "TBI_POLY");
+    m_xTbxIMapDlg1->set_item_active("TBI_FREEPOLY", rId == "TBI_FREEPOLY");
 
-    m_pTbxIMapDlg1->CheckItem( mnPolyInsertId, mnPolyInsertId == nId );
-    m_pTbxIMapDlg1->CheckItem( mnPolyDeleteId, false );
+    m_xTbxIMapDlg1->set_item_active("TBI_POLYINSERT", rId == "TBI_POLYINSERT");
+    m_xTbxIMapDlg1->set_item_active("TBI_POLYDELETE", false);
 
-    bool bMove = mnPolyMoveId == nId
-                || ( mnPolyEditId == nId
-                && !m_pTbxIMapDlg1->IsItemChecked( TBI_POLYINSERT )
-                && !m_pTbxIMapDlg1->IsItemChecked( TBI_POLYDELETE ) );
+    bool bMove = rId == "TBI_POLYMOVE"
+                || ( rId == "TBI_POLYEDIT"
+                && !m_xTbxIMapDlg1->get_item_active("TBI_POLYINSERT")
+                && !m_xTbxIMapDlg1->get_item_active("TBI_POLYDELETE") );
 
-    m_pTbxIMapDlg1->CheckItem( mnPolyMoveId, bMove );
+    m_xTbxIMapDlg1->set_item_active("TBI_POLYMOVE", bMove );
 
-    bool bEditMode = ( mnPolyEditId == nId )
-                    || ( mnPolyMoveId == nId )
-                    || ( mnPolyInsertId == nId )
-                    || ( mnPolyDeleteId == nId );
+    bool bEditMode = ( rId == "TBI_POLYEDIT" )
+                    || ( rId == "TBI_POLYMOVE")
+                    || ( rId == "TBI_POLYINSERT")
+                    || ( rId == "TBI_POLYDELETE" );
 
-    m_pTbxIMapDlg1->CheckItem( mnPolyEditId, bEditMode );
+    m_xTbxIMapDlg1->set_item_active("TBI_POLYEDIT", bEditMode);
 }
 
 IMPL_LINK( SvxIMapDlg, InfoHdl, IMapWindow&, rWnd, void )
 {
-    OUString            aStr;
     const NotifyInfo&   rInfo = rWnd.GetInfo();
 
     if ( rInfo.bNewObj )
     {
-        if( !rInfo.aMarkURL.isEmpty() && ( m_pURLBox->GetEntryPos( rInfo.aMarkURL ) == LISTBOX_ENTRY_NOTFOUND ) )
-            m_pURLBox->InsertEntry( rInfo.aMarkURL );
+        if (!rInfo.aMarkURL.isEmpty() && ( m_xURLBox->find_text(rInfo.aMarkURL) == -1))
+            m_xURLBox->append_text(rInfo.aMarkURL);
 
-        m_pURLBox->SetText( rInfo.aMarkURL );
-        m_pEdtText->SetText( rInfo.aMarkAltText );
+        m_xURLBox->set_entry_text(rInfo.aMarkURL);
+        m_xEdtText->set_text(rInfo.aMarkAltText);
 
         if ( rInfo.aMarkTarget.isEmpty() )
-            m_pCbbTarget->SetText( SELF_TARGET );
+            m_xCbbTarget->set_entry_text( SELF_TARGET );
         else
-            m_pCbbTarget->SetText( rInfo.aMarkTarget );
+            m_xCbbTarget->set_entry_text( rInfo.aMarkTarget );
     }
 
     if ( !rInfo.bOneMarked )
     {
-        m_pTbxIMapDlg1->CheckItem( mnActiveId, false );
-        m_pTbxIMapDlg1->EnableItem( mnActiveId, false );
-        m_pTbxIMapDlg1->EnableItem( mnMacroId, false );
-        m_pTbxIMapDlg1->EnableItem( mnPropertyId, false );
-        m_pStbStatus->SetItemText( 1, aStr );
+        m_xTbxIMapDlg1->set_item_active("TBI_ACTIVE", false);
+        m_xTbxIMapDlg1->set_item_sensitive("TBI_ACTIVE", false);
+        m_xTbxIMapDlg1->set_item_sensitive("TBI_MACRO", false);
+        m_xTbxIMapDlg1->set_item_sensitive("TBI_PROPERTY", false);
+        m_xStbStatus1->set_label(OUString());
 
-        m_pFtURL->Disable();
-        m_pURLBox->Disable();
-        m_pFtText->Disable();
-        m_pEdtText->Disable();
-        m_pFtTarget->Disable();
-        m_pCbbTarget->Disable();
+        m_xFtURL->set_sensitive(false);
+        m_xURLBox->set_sensitive(false);
+        m_xFtText->set_sensitive(false);
+        m_xEdtText->set_sensitive(false);
+        m_xFtTarget->set_sensitive(false);
+        m_xCbbTarget->set_sensitive(false);
 
-        m_pURLBox->SetText( "" );
-        m_pEdtText->SetText( "" );
+        m_xURLBox->set_entry_text( "" );
+        m_xEdtText->set_text( "" );
     }
     else
     {
-        m_pTbxIMapDlg1->EnableItem( mnActiveId );
-        m_pTbxIMapDlg1->CheckItem( mnActiveId, !rInfo.bActivated );
-        m_pTbxIMapDlg1->EnableItem( mnMacroId );
-        m_pTbxIMapDlg1->EnableItem( mnPropertyId );
+        m_xTbxIMapDlg1->set_item_sensitive("TBI_ACTIVE", true);
+        m_xTbxIMapDlg1->set_item_active("TBI_ACTIVE", !rInfo.bActivated );
+        m_xTbxIMapDlg1->set_item_sensitive("TBI_MACRO", true);
+        m_xTbxIMapDlg1->set_item_sensitive("TBI_PROPERTY", true);
 
-        m_pFtURL->Enable();
-        m_pURLBox->Enable();
-        m_pFtText->Enable();
-        m_pEdtText->Enable();
-        m_pFtTarget->Enable();
-        m_pCbbTarget->Enable();
+        m_xFtURL->set_sensitive(true);
+        m_xURLBox->set_sensitive(true);
+        m_xFtText->set_sensitive(true);
+        m_xEdtText->set_sensitive(true);
+        m_xFtTarget->set_sensitive(true);
+        m_xCbbTarget->set_sensitive(true);
 
-        m_pStbStatus->SetItemText( 1, rInfo.aMarkURL );
+        m_xStbStatus1->set_label(rInfo.aMarkURL);
 
-        if ( m_pURLBox->GetText() != rInfo.aMarkURL )
-            m_pURLBox->SetText( rInfo.aMarkURL );
+        if ( m_xURLBox->get_active_text() != rInfo.aMarkURL )
+            m_xURLBox->set_entry_text( rInfo.aMarkURL );
 
-        if ( m_pEdtText->GetText() != rInfo.aMarkAltText )
-            m_pEdtText->SetText( rInfo.aMarkAltText );
+        if ( m_xEdtText->get_text() != rInfo.aMarkAltText )
+            m_xEdtText->set_text( rInfo.aMarkAltText );
 
         if ( rInfo.aMarkTarget.isEmpty() )
-            m_pCbbTarget->SetText( SELF_TARGET );
+            m_xCbbTarget->set_entry_text( SELF_TARGET );
         else
-            m_pCbbTarget->SetText(  rInfo.aMarkTarget );
+            m_xCbbTarget->set_entry_text(  rInfo.aMarkTarget );
     }
 }
 
@@ -662,7 +573,7 @@ IMPL_LINK( SvxIMapDlg, MousePosHdl, GraphCtrl*, pWnd, void )
     OUString aStr = GetUnitString( rMousePos.X(), eFieldUnit, cSep ) +
                     " / " + GetUnitString( rMousePos.Y(), eFieldUnit, cSep );
 
-    m_pStbStatus->SetItemText( 2, aStr );
+    m_xStbStatus2->set_label(aStr);
 }
 
 IMPL_LINK( SvxIMapDlg, GraphSizeHdl, GraphCtrl*, pWnd, void )
@@ -675,30 +586,35 @@ IMPL_LINK( SvxIMapDlg, GraphSizeHdl, GraphCtrl*, pWnd, void )
     OUString aStr = GetUnitString( rSize.Width(), eFieldUnit, cSep ) +
                     " x " + GetUnitString( rSize.Height(), eFieldUnit, cSep );
 
-    m_pStbStatus->SetItemText( 3, aStr );
+    m_xStbStatus3->set_label(aStr);
 }
 
-
-IMPL_LINK_NOARG(SvxIMapDlg, URLModifyComboBoxHdl, ComboBox&, void)
-{
-    URLModifyHdl(*m_pURLBox);
-}
-IMPL_LINK_NOARG(SvxIMapDlg, URLModifyHdl, Edit&, void)
+void SvxIMapDlg::URLModify()
 {
     NotifyInfo  aNewInfo;
 
-    aNewInfo.aMarkURL = m_pURLBox->GetText();
-    aNewInfo.aMarkAltText = m_pEdtText->GetText();
-    aNewInfo.aMarkTarget = m_pCbbTarget->GetText();
+    aNewInfo.aMarkURL = m_xURLBox->get_active_text();
+    aNewInfo.aMarkAltText = m_xEdtText->get_text();
+    aNewInfo.aMarkTarget = m_xCbbTarget->get_active_text();
 
-    pIMapWnd->ReplaceActualIMapInfo( aNewInfo );
+    m_xIMapWnd->ReplaceActualIMapInfo( aNewInfo );
 }
 
-IMPL_LINK_NOARG(SvxIMapDlg, URLLoseFocusHdl, Control&, void)
+IMPL_LINK_NOARG(SvxIMapDlg, URLModifyHdl, weld::ComboBox&, void)
+{
+    URLModify();
+}
+
+IMPL_LINK_NOARG(SvxIMapDlg, EntryModifyHdl, weld::Entry&, void)
+{
+    URLModify();
+}
+
+IMPL_LINK_NOARG(SvxIMapDlg, URLLoseFocusHdl, weld::Widget&, void)
 {
     NotifyInfo        aNewInfo;
-    const OUString    aURLText( m_pURLBox->GetText() );
-    const OUString    aTargetText( m_pCbbTarget->GetText() );
+    const OUString    aURLText( m_xURLBox->get_active_text() );
+    const OUString    aTargetText( m_xCbbTarget->get_active_text() );
 
     if ( !aURLText.isEmpty() )
     {
@@ -710,14 +626,14 @@ IMPL_LINK_NOARG(SvxIMapDlg, URLLoseFocusHdl, Control&, void)
     else
         aNewInfo.aMarkURL = aURLText;
 
-    aNewInfo.aMarkAltText = m_pEdtText->GetText();
+    aNewInfo.aMarkAltText = m_xEdtText->get_text();
 
     if ( aTargetText.isEmpty() )
         aNewInfo.aMarkTarget = SELF_TARGET;
     else
         aNewInfo.aMarkTarget = aTargetText;
 
-    pIMapWnd->ReplaceActualIMapInfo( aNewInfo );
+    m_xIMapWnd->ReplaceActualIMapInfo( aNewInfo );
 }
 
 IMPL_LINK_NOARG(SvxIMapDlg, UpdateHdl, Timer *, void)
@@ -726,28 +642,31 @@ IMPL_LINK_NOARG(SvxIMapDlg, UpdateHdl, Timer *, void)
 
     if ( pOwnData->pUpdateEditingObject != pCheckObj )
     {
-        if ( pIMapWnd->IsChanged() &&
-             ( ScopedVclPtrInstance<MessageDialog>(this,"QuerySaveImageMapChangesDialog",
-             "svx/ui/querysaveimagemapchangesdialog.ui")->Execute() == RET_YES ) )
+        if (m_xIMapWnd->IsChanged())
         {
-            DoSave();
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xDialog.get(), "svx/ui/querysaveimagemapchangesdialog.ui"));
+            std::unique_ptr<weld::MessageDialog> xQBox(xBuilder->weld_message_dialog("QuerySaveImageMapChangesDialog"));
+            if (xQBox->run() == RET_YES)
+            {
+                DoSave();
+            }
         }
 
-        pIMapWnd->SetGraphic( pOwnData->aUpdateGraphic );
-        pIMapWnd->SetImageMap( pOwnData->aUpdateImageMap );
+        m_xIMapWnd->SetGraphic( pOwnData->aUpdateGraphic );
+        m_xIMapWnd->SetImageMap( pOwnData->aUpdateImageMap );
         SetTargetList( pOwnData->aUpdateTargetList );
         pCheckObj = pOwnData->pUpdateEditingObject;
 
         // After changes => default selection
-        m_pTbxIMapDlg1->CheckItem( mnSelectId );
-        pIMapWnd->SetEditMode( true );
+        m_xTbxIMapDlg1->set_item_active("TBI_SELECT", true);
+        m_xIMapWnd->SetEditMode( true );
     }
 
     // Delete the copied list again in the Update method
     pOwnData->aUpdateTargetList.clear();
 
     GetBindings().Invalidate( SID_IMAP_EXEC );
-    pIMapWnd->QueueIdleUpdate();
+    m_xIMapWnd->QueueIdleUpdate();
 }
 
 IMPL_LINK( SvxIMapDlg, StateHdl, GraphCtrl*, pWnd, void )
@@ -756,59 +675,51 @@ IMPL_LINK( SvxIMapDlg, StateHdl, GraphCtrl*, pWnd, void )
     const SdrModel*     pModel = pWnd->GetSdrModel();
     const SdrView*      pView = pWnd->GetSdrView();
     const bool          bPolyEdit = ( pObj != nullptr ) && dynamic_cast<const SdrPathObj*>( pObj) !=  nullptr;
-    const bool          bDrawEnabled = !( bPolyEdit && m_pTbxIMapDlg1->IsItemChecked( mnPolyEditId ) );
+    const bool          bDrawEnabled = !( bPolyEdit && m_xTbxIMapDlg1->get_item_active("TBI_POLYEDIT") );
 
-    m_pTbxIMapDlg1->EnableItem( mnApplyId, pOwnData->bExecState && pWnd->IsChanged() );
+    m_xTbxIMapDlg1->set_item_sensitive("TBI_APPLY", pOwnData->bExecState && pWnd->IsChanged() );
 
-    m_pTbxIMapDlg1->EnableItem( mnSelectId, bDrawEnabled );
-    m_pTbxIMapDlg1->EnableItem( mnRectId, bDrawEnabled );
-    m_pTbxIMapDlg1->EnableItem( mnCircleId, bDrawEnabled );
-    m_pTbxIMapDlg1->EnableItem( mnPolyId, bDrawEnabled );
-    m_pTbxIMapDlg1->EnableItem( mnFreePolyId, bDrawEnabled );
+    m_xTbxIMapDlg1->set_item_sensitive("TBI_SELECT", bDrawEnabled);
+    m_xTbxIMapDlg1->set_item_sensitive("TBI_RECT", bDrawEnabled);
+    m_xTbxIMapDlg1->set_item_sensitive("TBI_CIRCLE", bDrawEnabled);
+    m_xTbxIMapDlg1->set_item_sensitive("TBI_POLY", bDrawEnabled);
+    m_xTbxIMapDlg1->set_item_sensitive("TBI_FREEPOLY", bDrawEnabled);
 
     // BezierEditor State
-    m_pTbxIMapDlg1->EnableItem( mnPolyEditId, bPolyEdit );
-    m_pTbxIMapDlg1->EnableItem( mnPolyMoveId, !bDrawEnabled );
-    m_pTbxIMapDlg1->EnableItem( mnPolyInsertId, !bDrawEnabled );
-    m_pTbxIMapDlg1->EnableItem( mnPolyDeleteId, !bDrawEnabled && pView->IsDeleteMarkedPointsPossible() );
+    m_xTbxIMapDlg1->set_item_sensitive( "TBI_POLYEDIT", bPolyEdit );
+    m_xTbxIMapDlg1->set_item_sensitive( "TBI_POLYMOVE", !bDrawEnabled );
+    m_xTbxIMapDlg1->set_item_sensitive( "TBI_POLYINSERT", !bDrawEnabled );
+    m_xTbxIMapDlg1->set_item_sensitive( "TBI_POLYDELETE", !bDrawEnabled && pView->IsDeleteMarkedPointsPossible() );
 
     // Undo/Redo
-    m_pTbxIMapDlg1->EnableItem( mnUndoId, pModel->HasUndoActions() );
-    m_pTbxIMapDlg1->EnableItem( mnRedoId, pModel->HasRedoActions() );
+    m_xTbxIMapDlg1->set_item_sensitive( "TBI_UNDO", pModel->HasUndoActions() );
+    m_xTbxIMapDlg1->set_item_sensitive( "TBI_REDO", pModel->HasRedoActions() );
 
     if ( bPolyEdit )
     {
-        sal_uInt16 nId = 0;
-
         switch( pWnd->GetPolyEditMode() )
         {
-            case SID_BEZIER_MOVE: nId = mnPolyMoveId; break;
-            case SID_BEZIER_INSERT: nId = mnPolyInsertId; break;
-
+            case SID_BEZIER_MOVE:
+                m_xTbxIMapDlg1->set_item_active("TBI_POLYMOVE", true);
+                m_xTbxIMapDlg1->set_item_active("TBI_POLYINSERT", false);
+                break;
+            case SID_BEZIER_INSERT:
+                m_xTbxIMapDlg1->set_item_active("TBI_POLYINSERT", true);
+                m_xTbxIMapDlg1->set_item_active("TBI_POLYMOVE", false);
+                break;
             default:
-            break;
+                break;
         }
-
-        m_pTbxIMapDlg1->CheckItem( nId );
     }
     else
     {
-        m_pTbxIMapDlg1->CheckItem( mnPolyEditId, false );
-        m_pTbxIMapDlg1->CheckItem( mnPolyMoveId );
-        m_pTbxIMapDlg1->CheckItem( mnPolyInsertId, false );
+        m_xTbxIMapDlg1->set_item_active( "TBI_POLYEDIT", false );
+        m_xTbxIMapDlg1->set_item_active( "TBI_POLYMOVE", true);
+        m_xTbxIMapDlg1->set_item_active( "TBI_POLYINSERT", false );
         pWnd->SetPolyEditMode( 0 );
     }
 
-    pIMapWnd->QueueIdleUpdate();
-}
-
-IMPL_LINK_NOARG(SvxIMapDlg, MiscHdl, LinkParamNone*, void)
-{
-    if (m_pTbxIMapDlg1)
-    {
-        SvtMiscOptions aMiscOptions;
-        m_pTbxIMapDlg1->SetOutStyle( aMiscOptions.GetToolboxStyle() );
-    }
+    m_xIMapWnd->QueueIdleUpdate();
 }
 
 SvxIMapDlg* GetIMapDlg()
@@ -816,7 +727,7 @@ SvxIMapDlg* GetIMapDlg()
     SfxChildWindow* pWnd = nullptr;
     if (SfxViewFrame::Current() && SfxViewFrame::Current()->HasChildWindow(SvxIMapDlgChildWindow::GetChildWindowId()))
         pWnd = SfxViewFrame::Current()->GetChildWindow(SvxIMapDlgChildWindow::GetChildWindowId());
-    return pWnd ? static_cast<SvxIMapDlg*>(pWnd->GetWindow()) : nullptr;
+    return pWnd ? static_cast<SvxIMapDlg*>(pWnd->GetController().get()) : nullptr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

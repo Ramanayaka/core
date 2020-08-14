@@ -20,16 +20,15 @@
 #ifndef INCLUDED_SC_INC_CELLSUNO_HXX
 #define INCLUDED_SC_INC_CELLSUNO_HXX
 
-#include "global.hxx"
+#include "address.hxx"
 #include "rangelst.hxx"
 
-#include <editeng/unotext.hxx>
 #include <formula/grammar.hxx>
 #include <rtl/ref.hxx>
+#include <sal/types.h>
 #include <tools/link.hxx>
 #include <svl/lstner.hxx>
 #include <svl/listener.hxx>
-#include <svl/itemprop.hxx>
 #include <com/sun/star/table/XTableChartsSupplier.hpp>
 #include <com/sun/star/table/XTablePivotChartsSupplier.hpp>
 #include <com/sun/star/chart/XChartDataArray.hpp>
@@ -69,9 +68,6 @@
 #include <com/sun/star/util/XImportable.hpp>
 #include <com/sun/star/table/XColumnRowRange.hpp>
 #include <com/sun/star/table/XCell2.hpp>
-#include <com/sun/star/table/BorderLine2.hpp>
-#include <com/sun/star/table/TableBorder.hpp>
-#include <com/sun/star/table/TableBorder2.hpp>
 #include <com/sun/star/sheet/XDataPilotTablesSupplier.hpp>
 #include <com/sun/star/sheet/XSheetAnnotationAnchor.hpp>
 #include <com/sun/star/sheet/XScenariosSupplier.hpp>
@@ -89,10 +85,17 @@
 #include <com/sun/star/beans/XTolerantMultiPropertySet.hpp>
 #include <com/sun/star/sheet/XExternalSheetName.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <cppuhelper/weakref.hxx>
 
 #include <memory>
 #include <vector>
+
+namespace com::sun::star::table { struct BorderLine2; }
+namespace com::sun::star::table { struct BorderLine; }
+namespace com::sun::star::table { struct TableBorder2; }
+namespace com::sun::star::table { struct TableBorder; }
 
 class ScDocShell;
 class ScMarkData;
@@ -100,15 +103,22 @@ class ScMemChart;
 class ScPrintRangeSaver;
 class ScAttrRectIterator;
 class ScCellRangeObj;
-class ScLinkListener;
 class ScPatternAttr;
 class SvxBoxItem;
 class SvxBoxInfoItem;
 class SvxItemPropertySet;
+class SvxUnoText;
+class ScDocument;
+class SfxBroadcaster;
+class SfxHint;
+class SfxItemPropertyMap;
+class SfxItemPropertySet;
+class SfxItemSet;
+struct SfxItemPropertySimpleEntry;
 
 namespace editeng { class SvxBorderLine; }
 
-class ScLinkListener : public SvtListener
+class ScLinkListener final : public SvtListener
 {
     Link<const SfxHint&,void>  aLink;
 public:
@@ -141,30 +151,25 @@ public:
                         const SvxBoxItem& rOuter, const SvxBoxInfoItem& rInner );
 };
 
-namespace ooo
-{
-    namespace vba {
-        namespace excel {
+namespace ooo::vba::excel {
     class ScVbaCellRangeAccess;  // Vba Helper class
-    }
-    }
 }
 
-class SC_DLLPUBLIC ScCellRangesBase : public css::beans::XPropertySet,
-                         public css::beans::XMultiPropertySet,
-                         public css::beans::XPropertyState,
-                         public css::sheet::XSheetOperation,
-                         public css::chart::XChartDataArray,
-                         public css::util::XIndent,
-                         public css::sheet::XCellRangesQuery,
-                         public css::sheet::XFormulaQuery,
-                         public css::util::XReplaceable,
-                         public css::util::XModifyBroadcaster,
-                         public css::lang::XServiceInfo,
-                         public css::lang::XUnoTunnel,
-                         public css::lang::XTypeProvider,
-                         public css::beans::XTolerantMultiPropertySet,
-                         public cppu::OWeakObject,
+class SC_DLLPUBLIC ScCellRangesBase :
+                         public cppu::WeakImplHelper<
+                            css::beans::XPropertySet,
+                             css::beans::XMultiPropertySet,
+                             css::beans::XPropertyState,
+                             css::sheet::XSheetOperation,
+                             css::chart::XChartDataArray,
+                             css::util::XIndent,
+                             css::sheet::XCellRangesQuery,
+                             css::sheet::XFormulaQuery,
+                             css::util::XReplaceable,
+                             css::util::XModifyBroadcaster,
+                             css::lang::XServiceInfo,
+                             css::lang::XUnoTunnel,
+                             css::beans::XTolerantMultiPropertySet>,
                          public SfxListener
 {
     friend class ScTabViewObj;      // for select()
@@ -175,12 +180,12 @@ private:
     css::uno::WeakReference<css::uno::XInterface> m_wThis;
     const SfxItemPropertySet* pPropSet;
     ScDocShell*             pDocShell;
-    ScLinkListener*         pValueListener;
-    ScPatternAttr*          pCurrentFlat;
-    ScPatternAttr*          pCurrentDeep;
-    SfxItemSet*             pCurrentDataSet;
-    SfxItemSet*             pNoDfltCurrentDataSet;
-    ScMarkData*             pMarkData;
+    std::unique_ptr<ScLinkListener> pValueListener;
+    std::unique_ptr<ScPatternAttr>  pCurrentFlat;
+    std::unique_ptr<ScPatternAttr>  pCurrentDeep;
+    std::unique_ptr<SfxItemSet>     pCurrentDataSet;
+    std::unique_ptr<SfxItemSet>     pNoDfltCurrentDataSet;
+    std::unique_ptr<ScMarkData>     pMarkData;
     ScRangeList             aRanges;
     sal_Int64               nObjectId;
     bool                    bChartColAsHdr;
@@ -195,7 +200,7 @@ private:
     void            PaintGridRanges_Impl();
     ScRangeListRef  GetLimitedChartRanges_Impl( long nDataColumns, long nDataRows ) const;
     void            ForceChartListener_Impl();
-    ScMemChart*     CreateMemChart_Impl() const;
+    std::unique_ptr<ScMemChart> CreateMemChart_Impl() const;
 
     const ScPatternAttr*    GetCurrentAttrsFlat();
     const ScPatternAttr*    GetCurrentAttrsDeep();
@@ -229,10 +234,6 @@ public:
                             ScCellRangesBase(ScDocShell* pDocSh, const ScRange& rR);
                             ScCellRangesBase(ScDocShell* pDocSh, const ScRangeList& rR);
     virtual                 ~ScCellRangesBase() override;
-
-    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL   acquire() throw() override;
-    virtual void SAL_CALL   release() throw() override;
 
     virtual void            Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
     virtual void            RefChanged();
@@ -374,17 +375,10 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
                             // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScCellRangesBase* getImplementation(const css::uno::Reference<css::uno::XInterface>& rObj);
-
-                            // XTypeProvider
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
+    UNO3_GETIMPLEMENTATION_DECL(ScCellRangesBase)
 };
 
-class SC_DLLPUBLIC ScCellRangesObj : public ScCellRangesBase,
+class SC_DLLPUBLIC ScCellRangesObj final : public ScCellRangesBase,
                         public css::sheet::XSheetCellRangeContainer,
                         public css::container::XNameContainer,
                         public css::container::XEnumerationAccess
@@ -504,7 +498,7 @@ public:
 
                             // uses ObjectShell from document, if set (returns NULL otherwise)
     static css::uno::Reference<css::table::XCellRange>
-                            CreateRangeFromDoc( ScDocument* pDoc, const ScRange& rR );
+                            CreateRangeFromDoc( const ScDocument* pDoc, const ScRange& rR );
 
     virtual css::uno::Any SAL_CALL queryInterface(
                                 const css::uno::Type & rType ) override;
@@ -631,7 +625,7 @@ public:
 
 //! really derive cell from range?
 
-class SC_DLLPUBLIC ScCellObj : public ScCellRangeObj,
+class SC_DLLPUBLIC ScCellObj final : public ScCellRangeObj,
                     public css::text::XText,
                     public css::container::XEnumerationAccess,
                     public css::table::XCell2,
@@ -653,9 +647,9 @@ private:
     void        SetString_Impl(const OUString& rString, bool bInterpret, bool bEnglish);
     double      GetValue_Impl() const;
     void        SetValue_Impl(double fValue);
-    css::table::CellContentType GetResultType_Impl();
+    css::table::CellContentType GetContentType_Impl();
+    sal_Int32 GetResultType_Impl() const;
 
-protected:
     virtual const SfxItemPropertyMap& GetItemPropertyMap() override;
     virtual void GetOnePropertyValue( const SfxItemPropertySimpleEntry* pEntry,
                                 css::uno::Any& ) override;
@@ -765,7 +759,7 @@ public:
     virtual sal_Int16 SAL_CALL resetActionLocks() override;
 };
 
-class ScTableSheetObj : public ScCellRangeObj,
+class SAL_DLLPUBLIC_RTTI ScTableSheetObj : public ScCellRangeObj,
                         public css::sheet::XSpreadsheet,
                         public css::container::XNamed,
                         public css::sheet::XSheetPageBreak,
@@ -792,7 +786,7 @@ private:
     const SfxItemPropertySet*       pSheetPropSet;
 
     SCTAB                   GetTab_Impl() const;
-    void                    PrintAreaUndo_Impl( ScPrintRangeSaver* pOldRanges );
+    void                    PrintAreaUndo_Impl( std::unique_ptr<ScPrintRangeSaver> pOldRanges );
 
 protected:
     virtual const SfxItemPropertyMap& GetItemPropertyMap() override;
@@ -959,24 +953,19 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
                             // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence<
-                                    sal_Int8 >& aIdentifier ) override;
-
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScTableSheetObj* getImplementation(const css::uno::Reference< css::uno::XInterface>& rObj);
+    UNO3_GETIMPLEMENTATION_DECL(ScTableSheetObj);
 
                             // XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
     virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 };
 
-class ScTableColumnObj : public ScCellRangeObj,
+class ScTableColumnObj final : public ScCellRangeObj,
                          public css::container::XNamed
 {
 private:
     const SfxItemPropertySet*       pColPropSet;
 
-protected:
     virtual const SfxItemPropertyMap& GetItemPropertyMap() override;
     virtual void GetOnePropertyValue( const SfxItemPropertySimpleEntry* pEntry,
                                 css::uno::Any& ) override;
@@ -1010,12 +999,11 @@ public:
     virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 };
 
-class ScTableRowObj : public ScCellRangeObj
+class ScTableRowObj final : public ScCellRangeObj
 {
 private:
     const SfxItemPropertySet*       pRowPropSet;
 
-protected:
     virtual const SfxItemPropertyMap& GetItemPropertyMap() override;
     virtual void GetOnePropertyValue( const SfxItemPropertySimpleEntry* pEntry,
                                 css::uno::Any& ) override;
@@ -1036,7 +1024,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScCellsObj : public cppu::WeakImplHelper<
+class ScCellsObj final : public cppu::WeakImplHelper<
                             css::container::XEnumerationAccess,
                             css::lang::XServiceInfo >,
                         public SfxListener
@@ -1065,7 +1053,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScCellsEnumeration : public cppu::WeakImplHelper<
+class ScCellsEnumeration final : public cppu::WeakImplHelper<
                                 css::container::XEnumeration,
                                 css::lang::XServiceInfo >,
                             public SfxListener
@@ -1074,7 +1062,7 @@ private:
     ScDocShell*             pDocShell;
     ScRangeList             aRanges;
     ScAddress               aPos;
-    ScMarkData*             pMark;
+    std::unique_ptr<ScMarkData> pMark;
     bool                    bAtEnd;
 
 private:
@@ -1097,7 +1085,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScCellFormatsObj : public cppu::WeakImplHelper<
+class ScCellFormatsObj final : public cppu::WeakImplHelper<
                             css::container::XIndexAccess,
                             css::container::XEnumerationAccess,
                             css::lang::XServiceInfo >,
@@ -1134,7 +1122,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScCellFormatsEnumeration : public cppu::WeakImplHelper<
+class ScCellFormatsEnumeration final : public cppu::WeakImplHelper<
                                     css::container::XEnumeration,
                                     css::lang::XServiceInfo >,
                                  public SfxListener
@@ -1142,7 +1130,7 @@ class ScCellFormatsEnumeration : public cppu::WeakImplHelper<
 private:
     ScDocShell*             pDocShell;
     SCTAB                   nTab;
-    ScAttrRectIterator*     pIter;
+    std::unique_ptr<ScAttrRectIterator> pIter;
     ScRange                 aNext;
     bool                    bAtEnd;
     bool                    bDirty;
@@ -1167,9 +1155,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-typedef std::vector< ScRangeList > ScMyRangeLists;
-
-class ScUniqueCellFormatsObj : public cppu::WeakImplHelper<
+class ScUniqueCellFormatsObj final : public cppu::WeakImplHelper<
                             css::container::XIndexAccess,
                             css::container::XEnumerationAccess,
                             css::lang::XServiceInfo >,
@@ -1177,8 +1163,7 @@ class ScUniqueCellFormatsObj : public cppu::WeakImplHelper<
 {
 private:
     ScDocShell*                     pDocShell;
-    ScRange                         aTotalRange;
-    ScMyRangeLists                  aRangeLists;
+    std::vector<ScRangeList>        aRangeLists;
 
 public:
                             ScUniqueCellFormatsObj(ScDocShell* pDocSh, const ScRange& rR);
@@ -1204,18 +1189,18 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScUniqueCellFormatsEnumeration : public cppu::WeakImplHelper<
+class ScUniqueCellFormatsEnumeration final : public cppu::WeakImplHelper<
                                     css::container::XEnumeration,
                                     css::lang::XServiceInfo >,
                                  public SfxListener
 {
 private:
-    ScMyRangeLists                  aRangeLists;
+    std::vector<ScRangeList>        aRangeLists;
     ScDocShell*                     pDocShell;
     sal_Int32                       nCurrentPosition;
 
 public:
-                            ScUniqueCellFormatsEnumeration(ScDocShell* pDocShell, const ScMyRangeLists& rRangeLists);
+                            ScUniqueCellFormatsEnumeration(ScDocShell* pDocShell, const std::vector<ScRangeList>& rRangeLists);
     virtual                 ~ScUniqueCellFormatsEnumeration() override;
 
     virtual void            Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;

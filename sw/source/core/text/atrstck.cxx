@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <atrhndl.hxx>
+#include "atrhndl.hxx"
 #include <svl/itemiter.hxx>
 #include <vcl/outdev.hxx>
 #include <editeng/cmapitem.hxx>
@@ -54,8 +54,6 @@
 #include <IDocumentSettingAccess.hxx>
 #include <viewsh.hxx>
 
-#define STACK_INCREMENT 4
-
 /**
  * Attribute to Stack Mapping
  *
@@ -82,7 +80,7 @@ const sal_uInt8 StackPos[ RES_TXTATR_WITHEND_END - RES_CHRATR_BEGIN + 1 ] =
      8, // RES_CHRATR_KERNING,                   //  9
      9, // RES_CHRATR_LANGUAGE,                  // 10
     10, // RES_CHRATR_POSTURE,                   // 11
-     0, // RES_CHRATR_PROPORTIONALFONTSIZE,      // 12
+     0, // RES_CHRATR_UNUSED1,                   // 12
     11, // RES_CHRATR_SHADOWED,                  // 13
     12, // RES_CHRATR_UNDERLINE,                 // 14
     13, // RES_CHRATR_WEIGHT,                    // 15
@@ -90,7 +88,7 @@ const sal_uInt8 StackPos[ RES_TXTATR_WITHEND_END - RES_CHRATR_BEGIN + 1 ] =
     15, // RES_CHRATR_AUTOKERN,                  // 17
     16, // RES_CHRATR_BLINK,                     // 18
     17, // RES_CHRATR_NOHYPHEN,                  // 19
-     0, // RES_CHRATR_NOLINEBREAK,               // 20
+     0, // RES_CHRATR_UNUSED2,                   // 20
     18, // RES_CHRATR_BACKGROUND,                // 21
     19, // RES_CHRATR_CJK_FONT,                  // 22
     20, // RES_CHRATR_CJK_FONTSIZE,              // 23
@@ -131,7 +129,7 @@ const sal_uInt8 StackPos[ RES_TXTATR_WITHEND_END - RES_CHRATR_BEGIN + 1 ] =
 namespace CharFormat
 {
 
-/// Returns the item set associated with an character/inet/auto style
+/// Returns the item set associated with a character/inet/auto style
 const SfxItemSet* GetItemSet( const SfxPoolItem& rAttr )
 {
     const SfxItemSet* pSet = nullptr;
@@ -165,11 +163,11 @@ const SfxPoolItem* GetItem( const SwTextAttr& rAttr, sal_uInt16 nWhich )
         const SfxItemSet* pSet = CharFormat::GetItemSet( rAttr.GetAttr() );
         if ( !pSet ) return nullptr;
 
-       bool bInParent = RES_TXTATR_AUTOFMT != rAttr.Which();
-       const SfxPoolItem* pItem;
-       bool bRet = SfxItemState::SET == pSet->GetItemState( nWhich, bInParent, &pItem );
+        bool bInParent = RES_TXTATR_AUTOFMT != rAttr.Which();
+        const SfxPoolItem* pItem;
+        bool bRet = SfxItemState::SET == pSet->GetItemState( nWhich, bInParent, &pItem );
 
-       return bRet ? pItem : nullptr;
+        return bRet ? pItem : nullptr;
     }
 
     return ( nWhich == rAttr.Which() ) ? &rAttr.GetAttr() : nullptr;
@@ -264,91 +262,13 @@ static bool lcl_ChgHyperLinkColor( const SwTextAttr& rAttr,
     return false;
 }
 
-inline SwAttrHandler::SwAttrStack::SwAttrStack()
-    : nCount( 0 ), nSize( INITIAL_NUM_ATTR )
-{
-    pArray = pInitialArray;
-}
-
-void SwAttrHandler::SwAttrStack::Insert( const SwTextAttr& rAttr, const sal_uInt16 nPos )
-{
-    // do we still have enough space?
-    if ( nCount >= nSize )
-    {
-         // we are still in our initial array
-        if ( INITIAL_NUM_ATTR == nSize )
-        {
-            nSize += STACK_INCREMENT;
-            pArray = new SwTextAttr*[ nSize ];
-            // copy from pInitArray to new Array
-            memcpy( pArray, pInitialArray,
-                    INITIAL_NUM_ATTR * sizeof(SwTextAttr*)
-                    );
-        }
-        // we are in new memory
-        else
-        {
-            nSize += STACK_INCREMENT;
-            SwTextAttr** pTmpArray = new SwTextAttr*[ nSize ];
-            // copy from pArray to new Array
-            memcpy( pTmpArray, pArray, nCount * sizeof(SwTextAttr*) );
-            // free old array
-            delete [] pArray;
-            pArray = pTmpArray;
-        }
-    }
-
-    OSL_ENSURE( nPos <= nCount, "wrong position for insert operation");
-
-    if ( nPos < nCount )
-        memmove( pArray + nPos + 1, pArray + nPos,
-                ( nCount - nPos ) * sizeof(SwTextAttr*)
-                );
-    pArray[ nPos ] = const_cast<SwTextAttr*>(&rAttr);
-
-    nCount++;
-}
-
-void SwAttrHandler::SwAttrStack::Remove( const SwTextAttr& rAttr )
-{
-    sal_uInt16 nPos = Pos( rAttr );
-    if ( nPos < nCount )
-    {
-        memmove( pArray + nPos, pArray + nPos + 1,
-                ( nCount - 1 - nPos ) * sizeof(SwTextAttr*)
-                );
-        nCount--;
-    }
-}
-
-const SwTextAttr* SwAttrHandler::SwAttrStack::Top() const
-{
-    return nCount ? pArray[ nCount - 1 ] : nullptr;
-}
-
-sal_uInt16 SwAttrHandler::SwAttrStack::Pos( const SwTextAttr& rAttr ) const
-{
-    if ( ! nCount )
-        // empty stack
-        return USHRT_MAX;
-
-    for ( sal_uInt16 nIdx = nCount; nIdx > 0; )
-    {
-        if ( &rAttr == pArray[ --nIdx ] )
-            return nIdx;
-    }
-
-    // element not found
-    return USHRT_MAX;
-}
-
 SwAttrHandler::SwAttrHandler()
-    : mpIDocumentSettingAccess(nullptr)
-    , mpShell(nullptr)
-    , pFnt(nullptr)
-    , bVertLayout(false)
+    : m_pIDocumentSettingAccess(nullptr)
+    , m_pShell(nullptr)
+    , m_bVertLayout(false)
+    , m_bVertLayoutLRBT(false)
 {
-    memset( pDefaultArray, 0, NUM_DEFAULT_VALUES * sizeof(SfxPoolItem*) );
+    memset( m_pDefaultArray, 0, NUM_DEFAULT_VALUES * sizeof(SfxPoolItem*) );
 }
 
 SwAttrHandler::~SwAttrHandler()
@@ -358,58 +278,65 @@ SwAttrHandler::~SwAttrHandler()
 void SwAttrHandler::Init( const SwAttrSet& rAttrSet,
                           const IDocumentSettingAccess& rIDocumentSettingAcces )
 {
-    mpIDocumentSettingAccess = &rIDocumentSettingAcces;
-    mpShell = nullptr;
+    m_pIDocumentSettingAccess = &rIDocumentSettingAcces;
+    m_pShell = nullptr;
 
     for ( sal_uInt16 i = RES_CHRATR_BEGIN; i < RES_CHRATR_END; i++ )
-        pDefaultArray[ StackPos[ i ] ] = &rAttrSet.Get( i );
+        m_pDefaultArray[ StackPos[ i ] ] = &rAttrSet.Get( i );
 }
 
 void SwAttrHandler::Init( const SfxPoolItem** pPoolItem, const SwAttrSet* pAS,
                           const IDocumentSettingAccess& rIDocumentSettingAcces,
                           const SwViewShell* pSh,
-                          SwFont& rFnt, bool bVL )
+                          SwFont& rFnt, bool bVL, bool bVertLayoutLRBT )
 {
     // initialize default array
-    memcpy( pDefaultArray, pPoolItem,
+    memcpy( m_pDefaultArray, pPoolItem,
             NUM_DEFAULT_VALUES * sizeof(SfxPoolItem*) );
 
-    mpIDocumentSettingAccess = &rIDocumentSettingAcces;
-    mpShell = pSh;
+    m_pIDocumentSettingAccess = &rIDocumentSettingAcces;
+    m_pShell = pSh;
 
     // do we have to apply additional paragraph attributes?
-    bVertLayout = bVL;
+    m_bVertLayout = bVL;
+    m_bVertLayoutLRBT = bVertLayoutLRBT;
 
     if ( pAS && pAS->Count() )
     {
         SfxItemIter aIter( *pAS );
         sal_uInt16 nWhich;
         const SfxPoolItem* pItem = aIter.GetCurItem();
-        while( true )
+        do
         {
             nWhich = pItem->Which();
             if (isCHRATR(nWhich))
             {
-                pDefaultArray[ StackPos[ nWhich ] ] = pItem;
+                m_pDefaultArray[ StackPos[ nWhich ] ] = pItem;
                 FontChg( *pItem, rFnt, true );
             }
 
-            if( aIter.IsAtEnd() )
-                break;
-
             pItem = aIter.NextItem();
-        }
+        } while (pItem);
     }
 
     // It is possible, that Init is called more than once, e.g., in a
-    // SwTextFrame::FormatOnceMore situation.
-    pFnt.reset( new SwFont( rFnt ) );
+    // SwTextFrame::FormatOnceMore situation or (since sw_redlinehide)
+    // from SwAttrIter::Seek(); in the latter case SwTextSizeInfo::m_pFnt
+    // is an alias of m_pFnt so it must not be deleted!
+    if (m_pFnt)
+    {
+        *m_pFnt = rFnt;
+    }
+    else
+    {
+        m_pFnt.reset(new SwFont(rFnt));
+    }
 }
 
 void SwAttrHandler::Reset( )
 {
-    for (SwAttrStack & i : aAttrStack)
-        i.Reset();
+    for (auto& i : m_aAttrStack)
+        i.clear();
 }
 
 void SwAttrHandler::PushAndChg( const SwTextAttr& rAttr, SwFont& rFnt )
@@ -435,7 +362,7 @@ void SwAttrHandler::PushAndChg( const SwTextAttr& rAttr, SwFont& rFnt )
                 {
                     // we let pItem change rFnt
                     Color aColor;
-                    if ( lcl_ChgHyperLinkColor( rAttr, *pItem, mpShell, &aColor ) )
+                    if (lcl_ChgHyperLinkColor(rAttr, *pItem, m_pShell, &aColor))
                     {
                         SvxColorItem aItemNext( aColor, RES_CHRATR_COLOR );
                         FontChg( aItemNext, rFnt, true );
@@ -456,6 +383,11 @@ void SwAttrHandler::PushAndChg( const SwTextAttr& rAttr, SwFont& rFnt )
     }
 }
 
+const SwTextAttr* SwAttrHandler::GetTop(sal_uInt16 nStack)
+{
+    return m_aAttrStack[nStack].empty() ? nullptr : m_aAttrStack[nStack].back();
+}
+
 bool SwAttrHandler::Push( const SwTextAttr& rAttr, const SfxPoolItem& rItem )
 {
     OSL_ENSURE( rItem.Which() < RES_TXTATR_WITHEND_END,
@@ -469,20 +401,27 @@ bool SwAttrHandler::Push( const SwTextAttr& rAttr, const SfxPoolItem& rItem )
 
     // attributes originating from redlining have highest priority
     // second priority are hyperlink attributes, which have a color replacement
-    const SwTextAttr* pTopAttr = aAttrStack[ nStack ].Top();
+    const SwTextAttr* pTopAttr = GetTop(nStack);
     if ( !pTopAttr
          || rAttr.IsPriorityAttr()
          || ( !pTopAttr->IsPriorityAttr()
-              && !lcl_ChgHyperLinkColor( *pTopAttr, rItem, mpShell, nullptr ) ) )
+              && !lcl_ChgHyperLinkColor(*pTopAttr, rItem, m_pShell, nullptr)))
     {
-        aAttrStack[ nStack ].Push( rAttr );
+        m_aAttrStack[nStack].push_back(&rAttr);
         return true;
     }
 
-    const sal_uInt16 nPos = aAttrStack[ nStack ].Count();
-    OSL_ENSURE( nPos, "empty stack?" );
-    aAttrStack[ nStack ].Insert( rAttr, nPos - 1 );
+    const auto it = m_aAttrStack[nStack].end() - 1;
+    m_aAttrStack[nStack].insert(it, &rAttr);
     return false;
+}
+
+void SwAttrHandler::RemoveFromStack(sal_uInt16 nWhich, const SwTextAttr& rAttr)
+{
+    auto& rStack = m_aAttrStack[StackPos[nWhich]];
+    const auto it = std::find(rStack.begin(), rStack.end(), &rAttr);
+    if (it != rStack.end())
+        rStack.erase(it);
 }
 
 void SwAttrHandler::PopAndChg( const SwTextAttr& rAttr, SwFont& rFnt )
@@ -506,8 +445,7 @@ void SwAttrHandler::PopAndChg( const SwTextAttr& rAttr, SwFont& rFnt )
             if ( bRet )
             {
                 // we remove rAttr from the appropriate stack
-                const sal_uInt16 nStackPos = StackPos[ i ];
-                aAttrStack[ nStackPos ].Remove( rAttr );
+                RemoveFromStack(i, rAttr);
                 // reset font according to attribute on top of stack
                 // or default value
                 ActivateTop( rFnt, i );
@@ -518,7 +456,7 @@ void SwAttrHandler::PopAndChg( const SwTextAttr& rAttr, SwFont& rFnt )
     // stack and reset the font
     else
     {
-        aAttrStack[ StackPos[ rAttr.Which() ] ].Remove( rAttr );
+        RemoveFromStack(rAttr.Which(), rAttr);
         // reset font according to attribute on top of stack
         // or default value
         ActivateTop( rFnt, rAttr.Which() );
@@ -533,7 +471,7 @@ void SwAttrHandler::Pop( const SwTextAttr& rAttr )
 
     if ( rAttr.Which() < RES_TXTATR_WITHEND_END )
     {
-        aAttrStack[ StackPos[ rAttr.Which() ] ].Remove( rAttr );
+        RemoveFromStack(rAttr.Which(), rAttr);
     }
 }
 
@@ -543,7 +481,7 @@ void SwAttrHandler::ActivateTop( SwFont& rFnt, const sal_uInt16 nAttr )
             "I cannot activate this attribute, nWhich >= RES_TXTATR_WITHEND_END" );
 
     const sal_uInt16 nStackPos = StackPos[ nAttr ];
-    const SwTextAttr* pTopAt = aAttrStack[ nStackPos ].Top();
+    const SwTextAttr* pTopAt = GetTop(nStackPos);
     if ( pTopAt )
     {
         const SfxPoolItem* pItemNext(nullptr);
@@ -561,7 +499,7 @@ void SwAttrHandler::ActivateTop( SwFont& rFnt, const sal_uInt16 nAttr )
         if (pItemNext)
         {
             Color aColor;
-            if ( lcl_ChgHyperLinkColor( *pTopAt, *pItemNext, mpShell, &aColor ) )
+            if (lcl_ChgHyperLinkColor(*pTopAt, *pItemNext, m_pShell, &aColor))
             {
                 SvxColorItem aItemNext( aColor, RES_CHRATR_COLOR );
                 FontChg( aItemNext, rFnt, false );
@@ -575,7 +513,7 @@ void SwAttrHandler::ActivateTop( SwFont& rFnt, const sal_uInt16 nAttr )
 
     // default value has to be set, we only have default values for char attribs
     else if ( nStackPos < NUM_DEFAULT_VALUES )
-        FontChg( *pDefaultArray[ nStackPos ], rFnt, false );
+        FontChg( *m_pDefaultArray[ nStackPos ], rFnt, false );
     else if ( RES_TXTATR_REFMARK == nAttr )
         rFnt.GetRef()--;
     else if ( RES_TXTATR_TOXMARK == nAttr )
@@ -587,10 +525,10 @@ void SwAttrHandler::ActivateTop( SwFont& rFnt, const sal_uInt16 nAttr )
     else if ( RES_TXTATR_CJK_RUBY == nAttr )
     {
         // ruby stack has no more attributes
-        // check, if an rotation attribute has to be applied
+        // check, if a rotation attribute has to be applied
         const sal_uInt16 nTwoLineStack = StackPos[ RES_CHRATR_TWO_LINES ];
         bool bTwoLineAct = false;
-        const SwTextAttr* pTwoLineAttr = aAttrStack[ nTwoLineStack ].Top();
+        const SwTextAttr* pTwoLineAttr = GetTop(nTwoLineStack);
 
         if ( pTwoLineAttr )
         {
@@ -599,25 +537,25 @@ void SwAttrHandler::ActivateTop( SwFont& rFnt, const sal_uInt16 nAttr )
         }
         else
             bTwoLineAct =
-                static_cast<const SvxTwoLinesItem*>(pDefaultArray[ nTwoLineStack ])->GetValue();
+                static_cast<const SvxTwoLinesItem*>(m_pDefaultArray[ nTwoLineStack ])->GetValue();
 
         if ( bTwoLineAct )
             return;
 
-        // eventually, an rotate attribute has to be activated
+        // eventually, a rotate attribute has to be activated
         const sal_uInt16 nRotateStack = StackPos[ RES_CHRATR_ROTATE ];
-        const SwTextAttr* pRotateAttr = aAttrStack[ nRotateStack ].Top();
+        const SwTextAttr* pRotateAttr = GetTop(nRotateStack);
 
         if ( pRotateAttr )
         {
             const SfxPoolItem* pRotateItem = CharFormat::GetItem( *pRotateAttr, RES_CHRATR_ROTATE );
             rFnt.SetVertical( static_cast<const SvxCharRotateItem*>(pRotateItem)->GetValue(),
-                               bVertLayout );
+                               m_bVertLayout );
         }
         else
             rFnt.SetVertical(
-                static_cast<const SvxCharRotateItem*>(pDefaultArray[ nRotateStack ])->GetValue(),
-                 bVertLayout
+                static_cast<const SvxCharRotateItem*>(m_pDefaultArray[ nRotateStack ])->GetValue(),
+                 m_bVertLayout
             );
     }
     else if ( RES_TXTATR_INPUTFIELD == nAttr )
@@ -674,13 +612,13 @@ void SwAttrHandler::FontChg(const SfxPoolItem& rItem, SwFont& rFnt, bool bPush )
         case RES_CHRATR_UNDERLINE :
         {
             const sal_uInt16 nStackPos = StackPos[ RES_CHRATR_HIDDEN ];
-            const SwTextAttr* pTopAt = aAttrStack[ nStackPos ].Top();
+            const SwTextAttr* pTopAt = GetTop(nStackPos);
 
             const SfxPoolItem* pTmpItem = pTopAt ?
                                           CharFormat::GetItem( *pTopAt, RES_CHRATR_HIDDEN ) :
-                                          pDefaultArray[ nStackPos ];
+                                          m_pDefaultArray[ nStackPos ];
 
-            if( (mpShell && !mpShell->GetWin()) ||
+            if ((m_pShell && !m_pShell->GetWin()) ||
                 (pTmpItem && !static_cast<const SvxCharHiddenItem*>(pTmpItem)->GetValue()) )
             {
                 rFnt.SetUnderline( static_cast<const SvxUnderlineItem&>(rItem).GetLineStyle() );
@@ -722,16 +660,13 @@ void SwAttrHandler::FontChg(const SfxPoolItem& rItem, SwFont& rFnt, bool bPush )
         case RES_CHRATR_AUTOKERN :
             if( static_cast<const SvxAutoKernItem&>(rItem).GetValue() )
             {
-                rFnt.SetAutoKern( ( !mpIDocumentSettingAccess ||
-                                    !mpIDocumentSettingAccess->get(DocumentSettingId::KERN_ASIAN_PUNCTUATION) ) ?
+                rFnt.SetAutoKern( (!m_pIDocumentSettingAccess ||
+                                   !m_pIDocumentSettingAccess->get(DocumentSettingId::KERN_ASIAN_PUNCTUATION)) ?
                                      FontKerning::FontSpecific :
                                      FontKerning::Asian );
             }
             else
                 rFnt.SetAutoKern( FontKerning::NONE );
-            break;
-        case RES_CHRATR_BLINK :
-            rFnt.SetBlink( static_cast<const SvxBlinkItem&>(rItem).GetValue() );
             break;
         case RES_CHRATR_BACKGROUND :
             rFnt.SetBackColor(new Color( static_cast<const SvxBrushItem&>(rItem).GetColor() ) );
@@ -789,7 +724,7 @@ void SwAttrHandler::FontChg(const SfxPoolItem& rItem, SwFont& rFnt, bool bPush )
             rFnt.SetRelief( static_cast<const SvxCharReliefItem&>(rItem).GetValue() );
             break;
         case RES_CHRATR_HIDDEN :
-            if( mpShell && mpShell->GetWin())
+            if (m_pShell && m_pShell->GetWin())
             {
                 if ( static_cast<const SvxCharHiddenItem&>(rItem).GetValue() )
                     rFnt.SetUnderline( LINESTYLE_DOTTED );
@@ -804,14 +739,14 @@ void SwAttrHandler::FontChg(const SfxPoolItem& rItem, SwFont& rFnt, bool bPush )
             // 2. top of two line stack ( or default attribute )is an
             //    deactivated two line attribute
             const bool bRuby =
-                0 != aAttrStack[ StackPos[ RES_TXTATR_CJK_RUBY ] ].Count();
+                0 != m_aAttrStack[ StackPos[ RES_TXTATR_CJK_RUBY ] ].size();
 
             if ( bRuby )
                 break;
 
             const sal_uInt16 nTwoLineStack = StackPos[ RES_CHRATR_TWO_LINES ];
             bool bTwoLineAct = false;
-            const SwTextAttr* pTwoLineAttr = aAttrStack[ nTwoLineStack ].Top();
+            const SwTextAttr* pTwoLineAttr = GetTop(nTwoLineStack);
 
             if ( pTwoLineAttr )
             {
@@ -820,25 +755,25 @@ void SwAttrHandler::FontChg(const SfxPoolItem& rItem, SwFont& rFnt, bool bPush )
             }
             else
                 bTwoLineAct =
-                    static_cast<const SvxTwoLinesItem*>(pDefaultArray[ nTwoLineStack ])->GetValue();
+                    static_cast<const SvxTwoLinesItem*>(m_pDefaultArray[ nTwoLineStack ])->GetValue();
 
             if ( !bTwoLineAct )
                 rFnt.SetVertical( static_cast<const SvxCharRotateItem&>(rItem).GetValue(),
-                                   bVertLayout );
+                                   m_bVertLayout, m_bVertLayoutLRBT );
 
             break;
         }
         case RES_CHRATR_TWO_LINES :
         {
             bool bRuby = 0 !=
-                    aAttrStack[ StackPos[ RES_TXTATR_CJK_RUBY ] ].Count();
+                    m_aAttrStack[ StackPos[ RES_TXTATR_CJK_RUBY ] ].size();
 
             // two line is activated, if
             // 1. no ruby attribute is set and
             // 2. attribute is active
             if ( !bRuby && static_cast<const SvxTwoLinesItem&>(rItem).GetValue() )
             {
-                rFnt.SetVertical( 0, bVertLayout );
+                rFnt.SetVertical( 0, m_bVertLayout );
                 break;
             }
 
@@ -848,23 +783,23 @@ void SwAttrHandler::FontChg(const SfxPoolItem& rItem, SwFont& rFnt, bool bPush )
                 break;
 
             const sal_uInt16 nRotateStack = StackPos[ RES_CHRATR_ROTATE ];
-            const SwTextAttr* pRotateAttr = aAttrStack[ nRotateStack ].Top();
+            const SwTextAttr* pRotateAttr = GetTop(nRotateStack);
 
             if ( pRotateAttr )
             {
                 const SfxPoolItem* pRotateItem = CharFormat::GetItem( *pRotateAttr, RES_CHRATR_ROTATE );
                 rFnt.SetVertical( static_cast<const SvxCharRotateItem*>(pRotateItem)->GetValue(),
-                                   bVertLayout );
+                                   m_bVertLayout );
             }
             else
                 rFnt.SetVertical(
-                    static_cast<const SvxCharRotateItem*>(pDefaultArray[ nRotateStack ])->GetValue(),
-                     bVertLayout
+                    static_cast<const SvxCharRotateItem*>(m_pDefaultArray[ nRotateStack ])->GetValue(),
+                     m_bVertLayout
                 );
             break;
         }
         case RES_TXTATR_CJK_RUBY :
-            rFnt.SetVertical( 0, bVertLayout );
+            rFnt.SetVertical( 0, m_bVertLayout );
             break;
         case RES_TXTATR_REFMARK :
             if ( bPush )
@@ -895,14 +830,14 @@ void SwAttrHandler::FontChg(const SfxPoolItem& rItem, SwFont& rFnt, bool bPush )
 }
 
 /// Takes the default font and calculated the ascent and height
-void SwAttrHandler::GetDefaultAscentAndHeight( SwViewShell* pShell, OutputDevice& rOut,
+void SwAttrHandler::GetDefaultAscentAndHeight( SwViewShell const * pShell, OutputDevice const & rOut,
                                                sal_uInt16& nAscent, sal_uInt16& nHeight ) const
 {
-    OSL_ENSURE( pFnt, "No font available for GetDefaultAscentAndHeight" );
+    OSL_ENSURE(m_pFnt, "No font available for GetDefaultAscentAndHeight");
 
-    if ( pFnt )
+    if (m_pFnt)
     {
-        SwFont aFont( *pFnt );
+        SwFont aFont( *m_pFnt );
         nHeight = aFont.GetHeight( pShell, rOut );
         nAscent = aFont.GetAscent( pShell, rOut );
     }

@@ -61,11 +61,9 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPDIVOPTS_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPDIVOPTS_HXX
 
-#include "lwpobj.hxx"
-#include "lwpobjid.hxx"
-#include "lwpatomholder.hxx"
-#include "lwpcolor.hxx"
-#include "lwpheader.hxx"
+#include <config_lgpl.h>
+
+#include <lwpobj.hxx>
 
 class LwpHyphenOptions
 {
@@ -81,7 +79,7 @@ private:
 };
 
 /*
-Text languange.
+Text language.
 This class which holds identifiers for language and dialect.
 DESCRIPTION You can mark text as being a certain language. When we spell
     check or grammar check we'll use this info to determine which dictionary
@@ -103,7 +101,7 @@ private:
 class LwpDivisionOptions : public LwpObject
 {
 public:
-    LwpDivisionOptions(LwpObjectHeader& objHdr, LwpSvStream* pStrm);
+    LwpDivisionOptions(LwpObjectHeader const & objHdr, LwpSvStream* pStrm);
 protected:
     void Read() override;
 private:

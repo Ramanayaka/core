@@ -25,14 +25,15 @@
 #include <transliteration_OneToOne.hxx>
 
 using namespace com::sun::star::uno;
+using namespace com::sun::star::i18n;
 using namespace com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 fullwidthToHalfwidth::fullwidthToHalfwidth()
 {
     func = nullptr;
-    table = &widthfolding::getfull2halfTable();
+    table = &i18nutil::widthfolding::getfull2halfTable();
     transliterationName = "fullwidthToHalfwidth";
     implementationName = "com.sun.star.i18n.Transliteration.FULLWIDTH_HALFWIDTH";
 }
@@ -42,32 +43,29 @@ fullwidthToHalfwidth::fullwidthToHalfwidth()
  * The output is a reference of OUString. You MUST delete this object when you do not need to use it any more
  * The output string contains a transliterated string only, not whole string.
  */
-OUString SAL_CALL
-fullwidthToHalfwidth::transliterate( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset )
+OUString
+fullwidthToHalfwidth::transliterateImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset, bool useOffset )
 {
     // Decomposition: GA --> KA + voice-mark
-    const OUString& newStr = widthfolding::decompose_ja_voiced_sound_marks (inStr, startPos, nCount, offset, useOffset);
+    const OUString& newStr = i18nutil::widthfolding::decompose_ja_voiced_sound_marks (inStr, startPos, nCount, offset, useOffset);
 
     // One to One mapping
-    useOffset = false;
-    const OUString &tmp = transliteration_OneToOne::transliterate( newStr, 0, newStr.getLength(), offset);
-    useOffset = true;
-    return tmp;
+    return transliteration_OneToOne::transliterateImpl( newStr, 0, newStr.getLength(), offset, false);
 }
 
 sal_Unicode SAL_CALL
 fullwidthToHalfwidth::transliterateChar2Char( sal_Unicode inChar)
 {
-    sal_Unicode newChar = widthfolding::decompose_ja_voiced_sound_marksChar2Char (inChar);
+    sal_Unicode newChar = i18nutil::widthfolding::decompose_ja_voiced_sound_marksChar2Char (inChar);
     if (newChar == 0xFFFF)
         throw MultipleCharsOutputException();
     return transliteration_OneToOne::transliterateChar2Char(inChar);
 }
 
-fullwidthKatakanaToHalfwidthKatakana::fullwidthKatakanaToHalfwidthKatakana()
+FULLWIDTHKATAKANA_HALFWIDTHKATAKANA::FULLWIDTHKATAKANA_HALFWIDTHKATAKANA()
 {
     func = nullptr;
-    table = &widthfolding::getfullKana2halfKanaTable();
+    table = &i18nutil::widthfolding::getfullKana2halfKanaTable();
     transliterationName = "fullwidthKatakanaToHalfwidthKatakana";
     implementationName = "com.sun.star.i18n.Transliteration.FULLWIDTHKATAKANA_HALFWIDTHKATAKANA";
 }
@@ -75,32 +73,29 @@ fullwidthKatakanaToHalfwidthKatakana::fullwidthKatakanaToHalfwidthKatakana()
 /**
  * Transliterate fullwidth katakana to halfwidth katakana.
  */
-OUString SAL_CALL
-fullwidthKatakanaToHalfwidthKatakana::transliterate( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset )
+OUString
+FULLWIDTHKATAKANA_HALFWIDTHKATAKANA::transliterateImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset, bool useOffset )
 {
     // Decomposition: GA --> KA + voice-mark
-    const OUString& newStr = widthfolding::decompose_ja_voiced_sound_marks (inStr, startPos, nCount, offset, useOffset);
+    const OUString& newStr = i18nutil::widthfolding::decompose_ja_voiced_sound_marks (inStr, startPos, nCount, offset, useOffset);
 
     // One to One mapping
-    useOffset = false;
-    const OUString &tmp = transliteration_OneToOne::transliterate( newStr, 0, newStr.getLength(), offset);
-    useOffset = true;
-    return tmp;
+    return transliteration_OneToOne::transliterateImpl( newStr, 0, newStr.getLength(), offset, false);
 }
 
 sal_Unicode SAL_CALL
-fullwidthKatakanaToHalfwidthKatakana::transliterateChar2Char( sal_Unicode inChar )
+FULLWIDTHKATAKANA_HALFWIDTHKATAKANA::transliterateChar2Char( sal_Unicode inChar )
 {
-    sal_Unicode newChar = widthfolding::decompose_ja_voiced_sound_marksChar2Char (inChar);
+    sal_Unicode newChar = i18nutil::widthfolding::decompose_ja_voiced_sound_marksChar2Char (inChar);
     if (newChar == 0xFFFF)
         throw MultipleCharsOutputException();
     return transliteration_OneToOne::transliterateChar2Char(inChar);
 }
 
-fullwidthToHalfwidthLikeASC::fullwidthToHalfwidthLikeASC()
+FULLWIDTH_HALFWIDTH_LIKE_ASC::FULLWIDTH_HALFWIDTH_LIKE_ASC()
 {
     func = nullptr;
-    table = &widthfolding::getfull2halfTableForASC();
+    table = &i18nutil::widthfolding::getfull2halfTableForASC();
     transliterationName = "fullwidthToHalfwidthLikeASC";
     implementationName = "com.sun.star.i18n.Transliteration.FULLWIDTH_HALFWIDTH_LIKE_ASC";
 }
@@ -108,29 +103,25 @@ fullwidthToHalfwidthLikeASC::fullwidthToHalfwidthLikeASC()
 /**
  * Transliterate fullwidth to halfwidth like Excel's ASC function.
  */
-OUString SAL_CALL
-fullwidthToHalfwidthLikeASC::transliterate( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset )
+OUString
+FULLWIDTH_HALFWIDTH_LIKE_ASC::transliterateImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset, bool useOffset )
 {
     // Decomposition: GA --> KA + voice-mark
-    const OUString& newStr = widthfolding::decompose_ja_voiced_sound_marks (inStr, startPos, nCount, offset, useOffset);
+    const OUString& newStr = i18nutil::widthfolding::decompose_ja_voiced_sound_marks (inStr, startPos, nCount, offset, useOffset);
 
     // One to One mapping
-    useOffset = false;
-    const OUString &tmp = transliteration_OneToOne::transliterate( newStr, 0, newStr.getLength(), offset);
-    useOffset = true;
-
-    return tmp;
+    return transliteration_OneToOne::transliterateImpl( newStr, 0, newStr.getLength(), offset, false);
 }
 
 sal_Unicode SAL_CALL
-fullwidthToHalfwidthLikeASC::transliterateChar2Char( sal_Unicode inChar )
+FULLWIDTH_HALFWIDTH_LIKE_ASC::transliterateChar2Char( sal_Unicode inChar )
 {
-    sal_Unicode newChar = widthfolding::decompose_ja_voiced_sound_marksChar2Char (inChar);
+    sal_Unicode newChar = i18nutil::widthfolding::decompose_ja_voiced_sound_marksChar2Char (inChar);
     if (newChar == 0xFFFF)
         throw MultipleCharsOutputException();
     return transliteration_OneToOne::transliterateChar2Char(inChar);
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

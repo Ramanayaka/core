@@ -21,9 +21,7 @@
 #define INCLUDED_VCL_INC_UNX_SALFRAME_H
 
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
 
-#include <unx/salunx.h>
 #include <unx/saltype.h>
 #include <unx/saldisp.hxx>
 #include <unx/screensaverinhibitor.hxx>
@@ -60,7 +58,7 @@ enum class WMWindowType
     Dock
 };
 
-class VCLPLUG_GEN_PUBLIC X11SalFrame : public SalFrame, public NativeWindowHandleProvider
+class X11SalFrame final : public SalFrame, public NativeWindowHandleProvider
 {
     friend class vcl_sal::WMAdaptor;
     friend class vcl_sal::NetWMAdaptor;
@@ -83,8 +81,8 @@ class VCLPLUG_GEN_PUBLIC X11SalFrame : public SalFrame, public NativeWindowHandl
     Cursor          hCursor_;
     int             nCaptured_;         // is captured
 
-    X11SalGraphics  *pGraphics_;            // current frame graphics
-    X11SalGraphics  *pFreeGraphics_;        // first free frame graphics
+    std::unique_ptr<X11SalGraphics> pGraphics_;            // current frame graphics
+    std::unique_ptr<X11SalGraphics> pFreeGraphics_;        // first free frame graphics
 
     bool            mbSendExtKeyModChange;
     ModKeyFlags     mnExtKeyMod;
@@ -98,7 +96,6 @@ class VCLPLUG_GEN_PUBLIC X11SalFrame : public SalFrame, public NativeWindowHandl
     bool            bAlwaysOnTop_;
     bool            bViewable_;
     bool            bMapped_;
-    bool            mbInShow;
     bool            bDefaultPosition_;  // client is centered initially
     bool            m_bXEmbed;
     int             nVisibility_;
@@ -126,12 +123,10 @@ class VCLPLUG_GEN_PUBLIC X11SalFrame : public SalFrame, public NativeWindowHandl
 
     SystemEnvData maSystemChildData;
 
-    SalI18N_InputContext *mpInputContext;
+    std::unique_ptr<SalI18N_InputContext> mpInputContext;
     Bool            mbInputFocus;
 
-    XRectangle*     m_pClipRectangles;
-    int             m_nCurClipRect;
-    int             m_nMaxClipRect;
+    std::vector<XRectangle> m_vClipRectangles;
 
     bool mPendingSizeEvent;
 
@@ -146,14 +141,14 @@ class VCLPLUG_GEN_PUBLIC X11SalFrame : public SalFrame, public NativeWindowHandl
     void            RestackChildren( ::Window* pTopLevelWindows, int nTopLevelWindows );
     void            RestackChildren();
 
-    long            HandleKeyEvent      ( XKeyEvent         *pEvent );
-    long            HandleMouseEvent    ( XEvent            *pEvent );
-    long            HandleFocusEvent    ( XFocusChangeEvent *pEvent );
-    long            HandleExposeEvent   ( XEvent            *pEvent );
-    long            HandleSizeEvent     ( XConfigureEvent   *pEvent );
-    long            HandleStateEvent    ( XPropertyEvent    *pEvent );
-    long            HandleReparentEvent ( XReparentEvent    *pEvent );
-    long            HandleClientMessage ( XClientMessageEvent*pEvent );
+    bool            HandleKeyEvent      ( XKeyEvent         *pEvent );
+    bool            HandleMouseEvent    ( XEvent            *pEvent );
+    bool            HandleFocusEvent    ( XFocusChangeEvent const *pEvent );
+    bool            HandleExposeEvent   ( XEvent const      *pEvent );
+    bool            HandleSizeEvent     ( XConfigureEvent   *pEvent );
+    bool            HandleStateEvent    ( XPropertyEvent const *pEvent );
+    bool            HandleReparentEvent ( XReparentEvent    *pEvent );
+    bool            HandleClientMessage ( XClientMessageEvent*pEvent );
 
     DECL_LINK( HandleAlwaysOnTopRaise, Timer*, void );
 
@@ -165,12 +160,12 @@ class VCLPLUG_GEN_PUBLIC X11SalFrame : public SalFrame, public NativeWindowHandl
 
     void            updateWMClass();
 public:
-    X11SalFrame( SalFrame* pParent, SalFrameStyleFlags nSalFrameStyle, SystemParentData* pSystemParent = nullptr );
+    X11SalFrame( SalFrame* pParent, SalFrameStyleFlags nSalFrameStyle, SystemParentData const * pSystemParent = nullptr );
     virtual ~X11SalFrame() override;
 
-    long            Dispatch( XEvent *pEvent );
+    bool            Dispatch( XEvent *pEvent );
     void            Init( SalFrameStyleFlags nSalFrameStyle, SalX11Screen nScreen,
-                          SystemParentData* pParentData, bool bUseGeometry = false );
+                          SystemParentData const * pParentData, bool bUseGeometry = false );
 
     SalDisplay* GetDisplay() const
     {
@@ -191,14 +186,13 @@ public:
     Cursor                  GetCursor() const { return hCursor_; }
     bool                    IsCaptured() const { return nCaptured_ == 1; }
 #if !defined(__synchronous_extinput__)
-    void                    HandleExtTextEvent (XClientMessageEvent *pEvent);
+    void                    HandleExtTextEvent (XClientMessageEvent const *pEvent);
 #endif
     bool                    IsOverrideRedirect() const;
     bool                    IsChildWindow() const { return bool(nStyle_ & (SalFrameStyleFlags::PLUG|SalFrameStyleFlags::SYSTEMCHILD)); }
-    bool                    IsSysChildWindow() const { return bool(nStyle_ & (SalFrameStyleFlags::SYSTEMCHILD)); }
+    bool                    IsSysChildWindow() const { return bool(nStyle_ & SalFrameStyleFlags::SYSTEMCHILD); }
     bool                    IsFloatGrabWindow() const;
-    SalI18N_InputContext* getInputContext() const { return mpInputContext; }
-    bool                    isMapped() const { return bMapped_; }
+    SalI18N_InputContext* getInputContext() const { return mpInputContext.get(); }
     bool                    hasFocus() const { return mbInputFocus; }
 
     void                    beginUnicodeSequence();
@@ -212,7 +206,7 @@ public:
     // call with false to setup graphics with window (GetWindow())
     virtual void                updateGraphics( bool bClear );
 
-    virtual bool                PostEvent(ImplSVEvent* pData) override;
+    virtual bool                PostEvent(std::unique_ptr<ImplSVEvent> pData) override;
 
     virtual void                SetTitle( const OUString& rTitle ) override;
     virtual void                SetIcon( sal_uInt16 nIcon ) override;
@@ -259,7 +253,7 @@ public:
     // set clip region to none (-> rectangular windows, normal state)
     virtual void                    ResetClipRegion() override;
     // start setting the clipregion consisting of nRects rectangles
-    virtual void                    BeginSetClipRegion( sal_uIntPtr nRects ) override;
+    virtual void                    BeginSetClipRegion( sal_uInt32 nRects ) override;
     // add a rectangle to the clip region
     virtual void                    UnionClipRegion( long nX, long nY, long nWidth, long nHeight ) override;
     // done setting up the clipregion

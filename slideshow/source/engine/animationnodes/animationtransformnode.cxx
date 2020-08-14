@@ -21,13 +21,12 @@
 #include <com/sun/star/animations/AnimationTransformType.hpp>
 
 #include "animationtransformnode.hxx"
-#include "animationfactory.hxx"
-#include "activitiesfactory.hxx"
+#include <animationfactory.hxx>
+#include <activitiesfactory.hxx>
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 void AnimationTransformNode::dispose()
 {
@@ -51,7 +50,6 @@ AnimationActivitySharedPtr AnimationTransformNode::createActivity() const
             "Unknown transform type" );
 
     case animations::AnimationTransformType::TRANSLATE:
-        // FALLTHROUGH intended
     case animations::AnimationTransformType::SCALE:
         return ActivitiesFactory::createAnimateActivity(
             aParms,
@@ -69,7 +67,8 @@ AnimationActivitySharedPtr AnimationTransformNode::createActivity() const
                 "Rotate",
                 rShape,
                 getContext().mpSubsettableShapeManager,
-                getSlideSize() ),
+                getSlideSize(),
+                getContext().mpBox2DWorld ),
             getXAnimateNode() );
 
     case animations::AnimationTransformType::SKEWX:
@@ -79,7 +78,8 @@ AnimationActivitySharedPtr AnimationTransformNode::createActivity() const
                 "SkewX",
                 rShape,
                 getContext().mpSubsettableShapeManager,
-                getSlideSize() ),
+                getSlideSize(),
+                getContext().mpBox2DWorld ),
             getXAnimateNode() );
 
     case animations::AnimationTransformType::SKEWY:
@@ -89,12 +89,12 @@ AnimationActivitySharedPtr AnimationTransformNode::createActivity() const
                 "SkewY",
                 rShape,
                 getContext().mpSubsettableShapeManager,
-                getSlideSize() ),
+                getSlideSize(),
+                getContext().mpBox2DWorld ),
             getXAnimateNode() );
     }
 }
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -62,7 +62,7 @@ class SmDocShell;
 /** Formula cursor
  *
  * This class is used to represent a cursor in a formula, which can be used to manipulate
- * an formula programmatically.
+ * a formula programmatically.
  * @remarks This class is a very intimate friend of SmDocShell.
  */
 class SmCursor{
@@ -83,12 +83,12 @@ public:
     const SmCaretPos& GetPosition() const { return mpPosition->CaretPos; }
 
     /** True, if the cursor has a selection */
-    bool HasSelection() { return mpAnchor != mpPosition; }
+    bool HasSelection() const { return mpAnchor != mpPosition; }
 
     /** Move the position of this cursor */
     void Move(OutputDevice* pDev, SmMovementDirection direction, bool bMoveAnchor = true);
 
-    /** Move to the caret position closet to a given point */
+    /** Move to the caret position closest to a given point */
     void MoveTo(OutputDevice* pDev, const Point& pos, bool bMoveAnchor);
 
     /** Delete the current selection or do nothing */
@@ -140,7 +140,7 @@ public:
 
     /** Insert a new row or newline
      *
-     * Inserts a new row if position is in an matrix or stack command.
+     * Inserts a new row if position is in a matrix or stack command.
      * Otherwise a newline is inserted if we're in a toplevel line.
      *
      * @returns True, if a new row/line could be inserted.
@@ -208,7 +208,7 @@ private:
      *
      * These are SmExpression, SmBinHorNode, SmUnHorNode etc.
      */
-    static bool IsLineCompositionNode(SmNode* pNode);
+    static bool IsLineCompositionNode(SmNode const * pNode);
 
     /** Count number of selected nodes, excluding line composition nodes
      *
@@ -225,14 +225,14 @@ private:
      * that includes pLine!
      * This method also deletes SmErrorNode's as they're just meta info in the line.
      */
-    static SmNodeList* LineToList(SmStructureNode* pLine, SmNodeList* pList);
+    static void LineToList(SmStructureNode* pLine, SmNodeList& rList);
 
     /** Auxiliary function for calling LineToList on a node
      *
      * This method sets pNode = NULL and remove it from its parent.
      * (Assuming it has a parent, and is a child of it).
      */
-    static SmNodeList* NodeToList(SmNode*& rpNode, SmNodeList* pList = new SmNodeList){
+    static void NodeToList(SmNode*& rpNode, SmNodeList& rList){
         //Remove from parent and NULL rpNode
         SmNode* pNode = rpNode;
         if(rpNode && rpNode->GetParent()){    //Don't remove this, correctness relies on it
@@ -242,11 +242,12 @@ private:
         }
         rpNode = nullptr;
         //Create line from node
-        if(pNode && IsLineCompositionNode(pNode))
-            return LineToList(static_cast<SmStructureNode*>(pNode), pList);
+        if(pNode && IsLineCompositionNode(pNode)){
+            LineToList(static_cast<SmStructureNode*>(pNode), rList);
+            return;
+        }
         if(pNode)
-            pList->push_front(pNode);
-        return pList;
+            rList.push_front(pNode);
     }
 
     /** Clone a visual line to a clipboard
@@ -260,7 +261,7 @@ private:
     void BuildGraph();
 
     /** Insert new nodes in the tree after position */
-    void InsertNodes(SmNodeList* pNewNodes);
+    void InsertNodes(std::unique_ptr<SmNodeList> pNewNodes);
 
     /** tries to set position to a specific SmCaretPos
      *
@@ -272,7 +273,7 @@ private:
     void AnnotateSelection();
 
     /** Clone list of nodes in a clipboard (creates a deep clone) */
-    static SmNodeList* CloneList(SmClipboard &rClipboard);
+    static std::unique_ptr<SmNodeList> CloneList(SmClipboard &rClipboard);
 
     /** Find an iterator pointing to the node in pLineList following rCaretPos
      *
@@ -342,7 +343,7 @@ private:
      * @param pStartLine    Line to take first position in, if PosAfterEdit cannot be found,
      *                      leave it NULL for pLineList.
      */
-    void FinishEdit(SmNodeList* pLineList,
+    void FinishEdit(std::unique_ptr<SmNodeList> pLineList,
                     SmStructureNode* pParent,
                     int nParentIndex,
                     SmCaretPos PosAfterEdit,

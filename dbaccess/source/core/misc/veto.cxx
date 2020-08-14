@@ -17,13 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "veto.hxx"
+#include <veto.hxx>
 
 namespace dbaccess
 {
 
     using ::com::sun::star::uno::Any;
-    using ::com::sun::star::uno::RuntimeException;
 
     // Veto
     Veto::Veto( const Any& _rDetails )

@@ -17,40 +17,35 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sddll.hxx"
-
-#include <boost/property_tree/json_parser.hpp>
-
-#include <com/sun/star/beans/XMultiPropertyStates.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
+#include <com/sun/star/drawing/XDrawView.hpp>
 #include <com/sun/star/geometry/RealPoint2D.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/document/XEventBroadcaster.hpp>
+#include <com/sun/star/office/XAnnotationAccess.hpp>
 #include <comphelper/lok.hxx>
-#include <comphelper/string.hxx>
 #include <svx/svxids.hrc>
 
 #include <vcl/commandinfoprovider.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
 #include <vcl/menu.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/weld.hxx>
 
 #include <sal/macros.h>
-#include <svl/style.hxx>
 #include <svl/itempool.hxx>
-#include <unotools/datetime.hxx>
+#include <svl/intitem.hxx>
+#include <unotools/localedatawrapper.hxx>
 #include <unotools/useroptions.hxx>
 #include <unotools/syslocale.hxx>
 #include <unotools/saveopt.hxx>
 
 #include <tools/datetime.hxx>
+#include <tools/UnitConversion.hxx>
 
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/bindings.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/dispatch.hxx>
-#include <sfx2/objface.hxx>
 
 #include <editeng/editeng.hxx>
 #include <editeng/eeitem.hxx>
@@ -63,27 +58,23 @@
 #include <editeng/crossedoutitem.hxx>
 
 #include <svx/postattr.hxx>
-#include <svx/svdetc.hxx>
 
-#include "annotationmanager.hxx"
+#include <annotationmanager.hxx>
 #include "annotationmanagerimpl.hxx"
 #include "annotationwindow.hxx"
-#include "annotations.hrc"
+#include <strings.hrc>
 
-#include "Annotation.hxx"
-#include "ToolBarManager.hxx"
-#include "DrawDocShell.hxx"
-#include "DrawViewShell.hxx"
-#include "DrawController.hxx"
-#include "glob.hrc"
-#include "sdresid.hxx"
-#include "EventMultiplexer.hxx"
-#include "ViewShellManager.hxx"
-#include "helpids.h"
-#include "sdpage.hxx"
-#include "drawdoc.hxx"
-#include "textapi.hxx"
-#include "optsitem.hxx"
+#include <Annotation.hxx>
+#include <DrawDocShell.hxx>
+#include <DrawViewShell.hxx>
+#include <sdresid.hxx>
+#include <EventMultiplexer.hxx>
+#include <ViewShellBase.hxx>
+#include <sdpage.hxx>
+#include <drawdoc.hxx>
+#include <textapi.hxx>
+#include <optsitem.hxx>
+#include <sdmod.hxx>
 
 #include <memory>
 
@@ -110,7 +101,7 @@ SfxItemPool* GetAnnotationPool()
     static SfxItemPool* s_pAnnotationPool = nullptr;
     if( s_pAnnotationPool == nullptr )
     {
-        s_pAnnotationPool = EditEngine::CreatePool( false );
+        s_pAnnotationPool = EditEngine::CreatePool();
         s_pAnnotationPool->SetPoolDefaultItem(SvxFontHeightItem(423,100,EE_CHAR_FONTHEIGHT));
 
         vcl::Font aAppFont( Application::GetSettings().GetStyleSettings().GetAppFont() );
@@ -120,17 +111,17 @@ SfxItemPool* GetAnnotationPool()
     return s_pAnnotationPool;
 }
 
-static SfxBindings* getBindings( ViewShellBase& rBase )
+static SfxBindings* getBindings( ViewShellBase const & rBase )
 {
-    if( rBase.GetMainViewShell().get() && rBase.GetMainViewShell()->GetViewFrame() )
+    if( rBase.GetMainViewShell() && rBase.GetMainViewShell()->GetViewFrame() )
         return &rBase.GetMainViewShell()->GetViewFrame()->GetBindings();
 
     return nullptr;
 }
 
-static SfxDispatcher* getDispatcher( ViewShellBase& rBase )
+static SfxDispatcher* getDispatcher( ViewShellBase const & rBase )
 {
-    if( rBase.GetMainViewShell().get() && rBase.GetMainViewShell()->GetViewFrame() )
+    if( rBase.GetMainViewShell() && rBase.GetMainViewShell()->GetViewFrame() )
         return rBase.GetMainViewShell()->GetViewFrame()->GetDispatcher();
 
     return nullptr;
@@ -166,7 +157,7 @@ OUString getAnnotationDateTimeString( const Reference< XAnnotation >& xAnnotatio
 
         ::tools::Time aTime( aDateTime );
         if(aTime.GetTime() != 0)
-            sRet = sRet + " "  + rLocalData.getTime( aTime,false );
+            sRet += " "  + rLocalData.getTime( aTime,false );
     }
     return sRet;
 }
@@ -237,25 +228,25 @@ void SAL_CALL AnnotationManagerImpl::disposing ()
 // XEventListener
 void SAL_CALL AnnotationManagerImpl::notifyEvent( const css::document::EventObject& aEvent )
 {
-    if( aEvent.EventName == "OnAnnotationInserted" || aEvent.EventName == "OnAnnotationRemoved" || aEvent.EventName == "OnAnnotationChanged" )
-    {
-        // AnnotationInsertion and modification is not handled here because when
-        // a new annotation is inserted, it consists of OnAnnotationInserted
-        // followed by a chain of OnAnnotationChanged (called for setting each
-        // of the annotation attributes - author, text etc.). This is not what a
-        // LOK client wants. So only handle removal here as annotation removal
-        // consists of only one event - 'OnAnnotationRemoved'
-        if ( aEvent.EventName == "OnAnnotationRemoved" )
-        {
-            Reference< XAnnotation > xAnnotation( aEvent.Source, uno::UNO_QUERY );
-            if ( xAnnotation.is() )
-            {
-                LOKCommentNotify(CommentNotificationType::Remove, &mrBase, xAnnotation);
-            }
-        }
+    if( !(aEvent.EventName == "OnAnnotationInserted" || aEvent.EventName == "OnAnnotationRemoved" || aEvent.EventName == "OnAnnotationChanged") )
+        return;
 
-        UpdateTags();
+    // AnnotationInsertion and modification is not handled here because when
+    // a new annotation is inserted, it consists of OnAnnotationInserted
+    // followed by a chain of OnAnnotationChanged (called for setting each
+    // of the annotation attributes - author, text etc.). This is not what a
+    // LOK client wants. So only handle removal here as annotation removal
+    // consists of only one event - 'OnAnnotationRemoved'
+    if ( aEvent.EventName == "OnAnnotationRemoved" )
+    {
+        Reference< XAnnotation > xAnnotation( aEvent.Source, uno::UNO_QUERY );
+        if ( xAnnotation.is() )
+        {
+            LOKCommentNotify(CommentNotificationType::Remove, &mrBase, xAnnotation);
+        }
     }
+
+    UpdateTags();
 }
 
 void SAL_CALL AnnotationManagerImpl::disposing( const css::lang::EventObject& /*Source*/ )
@@ -271,14 +262,12 @@ Reference<XAnnotation> AnnotationManagerImpl::GetAnnotationById(sal_uInt32 nAnno
         if( pPage && !pPage->getAnnotations().empty() )
         {
             AnnotationVector aAnnotations(pPage->getAnnotations());
-            for( AnnotationVector::iterator iter = aAnnotations.begin(); iter != aAnnotations.end(); ++iter )
-            {
-                Reference<XAnnotation> xAnnotation(*iter);
-                if( sd::getAnnotationId(xAnnotation) == nAnnotationId )
-                {
-                    return xAnnotation;
-                }
-            }
+            auto iter = std::find_if(aAnnotations.begin(), aAnnotations.end(),
+                [nAnnotationId](const Reference<XAnnotation>& xAnnotation) {
+                    return sd::getAnnotationId(xAnnotation) == nAnnotationId;
+                });
+            if (iter != aAnnotations.end())
+                return *iter;
         }
     } while( pPage );
 
@@ -301,7 +290,7 @@ void AnnotationManagerImpl::ShowAnnotations( bool bShow )
     }
 }
 
-void AnnotationManagerImpl::ExecuteAnnotation(SfxRequest& rReq )
+void AnnotationManagerImpl::ExecuteAnnotation(SfxRequest const & rReq )
 {
     switch( rReq.GetSlot() )
     {
@@ -329,7 +318,7 @@ void AnnotationManagerImpl::ExecuteAnnotation(SfxRequest& rReq )
     }
 }
 
-void AnnotationManagerImpl::ExecuteInsertAnnotation(SfxRequest& rReq)
+void AnnotationManagerImpl::ExecuteInsertAnnotation(SfxRequest const & rReq)
 {
     if (!comphelper::LibreOfficeKit::isActive() || comphelper::LibreOfficeKit::isTiledAnnotations())
         ShowAnnotations(true);
@@ -348,7 +337,7 @@ void AnnotationManagerImpl::ExecuteInsertAnnotation(SfxRequest& rReq)
     InsertAnnotation(sText);
 }
 
-void AnnotationManagerImpl::ExecuteDeleteAnnotation(SfxRequest& rReq)
+void AnnotationManagerImpl::ExecuteDeleteAnnotation(SfxRequest const & rReq)
 {
     ShowAnnotations( true );
 
@@ -396,139 +385,158 @@ void AnnotationManagerImpl::ExecuteDeleteAnnotation(SfxRequest& rReq)
     UpdateTags();
 }
 
-void AnnotationManagerImpl::ExecuteEditAnnotation(SfxRequest& rReq)
+void AnnotationManagerImpl::ExecuteEditAnnotation(SfxRequest const & rReq)
 {
     const SfxItemSet* pArgs = rReq.GetArgs();
     Reference< XAnnotation > xAnnotation;
     sal_uInt32 nId = 0;
     OUString sText;
-    if (pArgs)
+    sal_Int32 nPositionX = -1;
+    sal_Int32 nPositionY = -1;
+
+    if (!pArgs)
+        return;
+
+    if (mpDoc->IsUndoEnabled())
+        mpDoc->BegUndo(SdResId(STR_ANNOTATION_UNDO_EDIT));
+
+    const SfxPoolItem* pPoolItem = nullptr;
+    if (SfxItemState::SET == pArgs->GetItemState(SID_ATTR_POSTIT_ID, true, &pPoolItem))
     {
-        if (mpDoc->IsUndoEnabled())
-            mpDoc->BegUndo(SdResId(STR_ANNOTATION_UNDO_EDIT));
+        nId = static_cast<const SvxPostItIdItem*>(pPoolItem)->GetValue().toUInt32();
+        xAnnotation = GetAnnotationById(nId);
+    }
+    if (SfxItemState::SET == pArgs->GetItemState(SID_ATTR_POSTIT_TEXT, true, &pPoolItem))
+        sText = static_cast<const SfxStringItem*>(pPoolItem)->GetValue();
 
-        const SfxPoolItem* pPoolItem = nullptr;
-        if (SfxItemState::SET == pArgs->GetItemState(SID_ATTR_POSTIT_ID, true, &pPoolItem))
+    if (SfxItemState::SET == pArgs->GetItemState(SID_ATTR_POSTIT_POSITION_X, true, &pPoolItem))
+        nPositionX = static_cast<const SfxInt32Item*>(pPoolItem)->GetValue();
+
+    if (SfxItemState::SET == pArgs->GetItemState(SID_ATTR_POSTIT_POSITION_Y, true, &pPoolItem))
+        nPositionY = static_cast<const SfxInt32Item*>(pPoolItem)->GetValue();
+
+    if (xAnnotation.is())
+    {
+        CreateChangeUndo(xAnnotation);
+
+        if (nPositionX >= 0 && nPositionY >= 0)
         {
-            nId = static_cast<const SvxPostItIdItem*>(pPoolItem)->GetValue().toUInt32();
-            xAnnotation = GetAnnotationById(nId);
+            double fX = convertTwipToMm100(nPositionX) / 100.0;
+            double fY = convertTwipToMm100(nPositionY) / 100.0;
+            xAnnotation->setPosition({fX, fY});
         }
-        if (SfxItemState::SET == pArgs->GetItemState(SID_ATTR_POSTIT_TEXT, true, &pPoolItem))
-            sText = static_cast<const SfxStringItem*>(pPoolItem)->GetValue();
 
-        if (xAnnotation.is() && !sText.isEmpty())
+        if (!sText.isEmpty())
         {
-            CreateChangeUndo(xAnnotation);
-
             // TODO: Not allow other authors to change others' comments ?
             Reference<XText> xText(xAnnotation->getTextRange());
             xText->setString(sText);
-
-            LOKCommentNotifyAll(CommentNotificationType::Modify, xAnnotation);
         }
 
-        if (mpDoc->IsUndoEnabled())
-            mpDoc->EndUndo();
-
-        UpdateTags(true);
+        LOKCommentNotifyAll(CommentNotificationType::Modify, xAnnotation);
     }
+
+    if (mpDoc->IsUndoEnabled())
+        mpDoc->EndUndo();
+
+    UpdateTags(true);
 }
 
 void AnnotationManagerImpl::InsertAnnotation(const OUString& rText)
 {
     SdPage* pPage = GetCurrentPage();
-    if( pPage )
+    if( !pPage )
+        return;
+
+    if( mpDoc->IsUndoEnabled() )
+        mpDoc->BegUndo( SdResId( STR_ANNOTATION_UNDO_INSERT ) );
+
+    // find free space for new annotation
+    int y = 0, x = 0;
+
+    AnnotationVector aAnnotations( pPage->getAnnotations() );
+    if( !aAnnotations.empty() )
     {
-        if( mpDoc->IsUndoEnabled() )
-            mpDoc->BegUndo( SdResId( STR_ANNOTATION_UNDO_INSERT ) );
+        const int page_width = pPage->GetSize().Width();
+        const int width = 1000;
+        const int height = 800;
+        ::tools::Rectangle aTagRect;
 
-        // find free space for new annotation
-        int y = 0, x = 0;
-
-        AnnotationVector aAnnotations( pPage->getAnnotations() );
-        if( !aAnnotations.empty() )
+        while( true )
         {
-            const int page_width = pPage->GetSize().Width();
-            const int width = 1000;
-            const int height = 800;
-            ::tools::Rectangle aTagRect;
+            ::tools::Rectangle aNewRect( x, y, x + width - 1, y + height - 1 );
+            bool bFree = true;
 
-            while( true )
+            for( const auto& rxAnnotation : aAnnotations )
             {
-                ::tools::Rectangle aNewRect( x, y, x + width - 1, y + height - 1 );
-                bool bFree = true;
+                RealPoint2D aPoint( rxAnnotation->getPosition() );
+                aTagRect.SetLeft( sal::static_int_cast< long >( aPoint.X * 100.0 ) );
+                aTagRect.SetTop( sal::static_int_cast< long >( aPoint.Y * 100.0 ) );
+                aTagRect.SetRight( aTagRect.Left() + width - 1 );
+                aTagRect.SetBottom( aTagRect.Top() + height - 1 );
 
-                for( AnnotationVector::iterator iter = aAnnotations.begin(); iter != aAnnotations.end(); ++iter )
+                if( aNewRect.IsOver( aTagRect ) )
                 {
-                    RealPoint2D aPoint( (*iter)->getPosition() );
-                    aTagRect.Left()   = sal::static_int_cast< long >( aPoint.X * 100.0 );
-                    aTagRect.Top()    = sal::static_int_cast< long >( aPoint.Y * 100.0 );
-                    aTagRect.Right()  = aTagRect.Left() + width - 1;
-                    aTagRect.Bottom() = aTagRect.Top() + height - 1;
-
-                    if( aNewRect.IsOver( aTagRect ) )
-                    {
-                        bFree = false;
-                        break;
-                    }
-                }
-
-                if( !bFree )
-                {
-                    x += width;
-                    if( x > page_width )
-                    {
-                        x = 0;
-                        y += height;
-                    }
-                }
-                else
-                {
+                    bFree = false;
                     break;
                 }
             }
+
+            if( !bFree )
+            {
+                x += width;
+                if( x > page_width )
+                {
+                    x = 0;
+                    y += height;
+                }
+            }
+            else
+            {
+                break;
+            }
         }
-
-        Reference< XAnnotation > xAnnotation;
-        pPage->createAnnotation( xAnnotation );
-
-        OUString sAuthor;
-        if (comphelper::LibreOfficeKit::isActive())
-            sAuthor = mrBase.GetMainViewShell()->GetView()->GetAuthor();
-        else
-        {
-            SvtUserOptions aUserOptions;
-            sAuthor = aUserOptions.GetFullName();
-            xAnnotation->setInitials( aUserOptions.GetID() );
-        }
-
-        if (!rText.isEmpty())
-        {
-            Reference<XText> xText(xAnnotation->getTextRange());
-            xText->setString(rText);
-        }
-
-        // set current author to new annotation
-        xAnnotation->setAuthor( sAuthor );
-        // set current time to new annotation
-        xAnnotation->setDateTime( getCurrentDateTime() );
-
-        // set position
-        RealPoint2D aPos( ((double)x) / 100.0, ((double)y) / 100.0 );
-        xAnnotation->setPosition( aPos );
-
-        if( mpDoc->IsUndoEnabled() )
-            mpDoc->EndUndo();
-
-        // Tell our LOK clients about new comment added
-        LOKCommentNotifyAll(CommentNotificationType::Add, xAnnotation);
-
-        UpdateTags(true);
-        SelectAnnotation( xAnnotation, true );
     }
+
+    Reference< XAnnotation > xAnnotation;
+    pPage->createAnnotation( xAnnotation );
+
+    OUString sAuthor;
+    if (comphelper::LibreOfficeKit::isActive())
+        sAuthor = mrBase.GetMainViewShell()->GetView()->GetAuthor();
+    else
+    {
+        SvtUserOptions aUserOptions;
+        sAuthor = aUserOptions.GetFullName();
+        xAnnotation->setInitials( aUserOptions.GetID() );
+    }
+
+    if (!rText.isEmpty())
+    {
+        Reference<XText> xText(xAnnotation->getTextRange());
+        xText->setString(rText);
+    }
+
+    // set current author to new annotation
+    xAnnotation->setAuthor( sAuthor );
+    // set current time to new annotation
+    xAnnotation->setDateTime( getCurrentDateTime() );
+
+    // set position
+    RealPoint2D aPos( static_cast<double>(x) / 100.0, static_cast<double>(y) / 100.0 );
+    xAnnotation->setPosition( aPos );
+
+    if( mpDoc->IsUndoEnabled() )
+        mpDoc->EndUndo();
+
+    // Tell our LOK clients about new comment added
+    LOKCommentNotifyAll(CommentNotificationType::Add, xAnnotation);
+
+    UpdateTags(true);
+    SelectAnnotation( xAnnotation, true );
 }
 
-void AnnotationManagerImpl::ExecuteReplyToAnnotation( SfxRequest& rReq )
+void AnnotationManagerImpl::ExecuteReplyToAnnotation( SfxRequest const & rReq )
 {
     Reference< XAnnotation > xAnnotation;
     const SfxItemSet* pArgs = rReq.GetArgs();
@@ -550,70 +558,68 @@ void AnnotationManagerImpl::ExecuteReplyToAnnotation( SfxRequest& rReq )
     }
 
     TextApiObject* pTextApi = getTextApiObject( xAnnotation );
-    if( pTextApi )
+    if( !pTextApi )
+        return;
+
+    std::unique_ptr< ::Outliner > pOutliner( new ::Outliner(GetAnnotationPool(),OutlinerMode::TextObject) );
+
+    SdDrawDocument::SetCalcFieldValueHdl( pOutliner.get() );
+    pOutliner->SetUpdateMode( true );
+
+    OUString aStr(SdResId(STR_ANNOTATION_REPLY));
+    OUString sAuthor( xAnnotation->getAuthor() );
+    if( sAuthor.isEmpty() )
+        sAuthor = SdResId( STR_ANNOTATION_NOAUTHOR );
+
+    aStr = aStr.replaceFirst("%1", sAuthor) +
+        " (" + getAnnotationDateTimeString( xAnnotation ) + "): \"";
+
+    OUString sQuote( pTextApi->GetText() );
+
+    if( sQuote.isEmpty() )
+        sQuote = "...";
+    aStr += sQuote + "\"\n";
+
+    for( sal_Int32 nIdx = 0; nIdx >= 0; )
+        pOutliner->Insert( aStr.getToken( 0, '\n', nIdx ), EE_PARA_APPEND, -1 );
+
+    if( pOutliner->GetParagraphCount() > 1 )
     {
-        std::unique_ptr< ::Outliner > pOutliner( new ::Outliner(GetAnnotationPool(),OutlinerMode::TextObject) );
+        SfxItemSet aAnswerSet( pOutliner->GetEmptyItemSet() );
+        aAnswerSet.Put(SvxPostureItem(ITALIC_NORMAL,EE_CHAR_ITALIC));
 
-        SdDrawDocument::SetCalcFieldValueHdl( pOutliner.get() );
-        pOutliner->SetUpdateMode( true );
+        ESelection aSel;
+        aSel.nEndPara = pOutliner->GetParagraphCount()-2;
+        aSel.nEndPos = pOutliner->GetText( pOutliner->GetParagraph( aSel.nEndPara ) ).getLength();
 
-        OUString aStr(SdResId(STR_ANNOTATION_REPLY));
-        OUString sAuthor( xAnnotation->getAuthor() );
-        if( sAuthor.isEmpty() )
-            sAuthor = SdResId( STR_ANNOTATION_NOAUTHOR );
-
-        aStr = aStr.replaceFirst("%1", sAuthor);
-
-        aStr += " (" + getAnnotationDateTimeString( xAnnotation ) + "): \"";
-
-        OUString sQuote( pTextApi->GetText() );
-
-        if( sQuote.isEmpty() )
-            sQuote = "...";
-        aStr += sQuote + "\"\n";
-
-        sal_Int32 nParaCount = comphelper::string::getTokenCount(aStr, '\n');
-        for( sal_Int32 nPara = 0; nPara < nParaCount; nPara++ )
-            pOutliner->Insert( aStr.getToken( nPara, '\n' ), EE_PARA_APPEND, -1 );
-
-        if( pOutliner->GetParagraphCount() > 1 )
-        {
-            SfxItemSet aAnswerSet( pOutliner->GetEmptyItemSet() );
-            aAnswerSet.Put(SvxPostureItem(ITALIC_NORMAL,EE_CHAR_ITALIC));
-
-            ESelection aSel;
-            aSel.nEndPara = pOutliner->GetParagraphCount()-2;
-            aSel.nEndPos = pOutliner->GetText( pOutliner->GetParagraph( aSel.nEndPara ) ).getLength();
-
-            pOutliner->QuickSetAttribs( aAnswerSet, aSel );
-        }
-
-        if (!sReplyText.isEmpty())
-            pOutliner->Insert(sReplyText);
-
-        std::unique_ptr< OutlinerParaObject > pOPO( pOutliner->CreateParaObject() );
-        pTextApi->SetText( *pOPO.get() );
-
-        OUString sReplyAuthor;
-        if (comphelper::LibreOfficeKit::isActive())
-            sReplyAuthor = mrBase.GetMainViewShell()->GetView()->GetAuthor();
-        else
-        {
-            SvtUserOptions aUserOptions;
-            sReplyAuthor = aUserOptions.GetFullName();
-            xAnnotation->setInitials( aUserOptions.GetID() );
-        }
-
-        xAnnotation->setAuthor( sReplyAuthor );
-        // set current time to reply
-        xAnnotation->setDateTime( getCurrentDateTime() );
-
-        // Tell our LOK clients about this (comment modification)
-        LOKCommentNotifyAll(CommentNotificationType::Modify, xAnnotation);
-
-        UpdateTags(true);
-        SelectAnnotation( xAnnotation, true );
+        pOutliner->QuickSetAttribs( aAnswerSet, aSel );
     }
+
+    if (!sReplyText.isEmpty())
+        pOutliner->Insert(sReplyText);
+
+    std::unique_ptr< OutlinerParaObject > pOPO( pOutliner->CreateParaObject() );
+    pTextApi->SetText(*pOPO);
+
+    OUString sReplyAuthor;
+    if (comphelper::LibreOfficeKit::isActive())
+        sReplyAuthor = mrBase.GetMainViewShell()->GetView()->GetAuthor();
+    else
+    {
+        SvtUserOptions aUserOptions;
+        sReplyAuthor = aUserOptions.GetFullName();
+        xAnnotation->setInitials( aUserOptions.GetID() );
+    }
+
+    xAnnotation->setAuthor( sReplyAuthor );
+    // set current time to reply
+    xAnnotation->setDateTime( getCurrentDateTime() );
+
+    // Tell our LOK clients about this (comment modification)
+    LOKCommentNotifyAll(CommentNotificationType::Modify, xAnnotation);
+
+    UpdateTags(true);
+    SelectAnnotation( xAnnotation, true );
 }
 
 void AnnotationManagerImpl::DeleteAnnotation( const Reference< XAnnotation >& xAnnotation )
@@ -647,9 +653,8 @@ void AnnotationManagerImpl::DeleteAnnotationsByAuthor( const OUString& sAuthor )
         if( pPage && !pPage->getAnnotations().empty() )
         {
             AnnotationVector aAnnotations( pPage->getAnnotations() );
-            for( AnnotationVector::iterator iter = aAnnotations.begin(); iter != aAnnotations.end(); ++iter )
+            for( Reference< XAnnotation >& xAnnotation : aAnnotations )
             {
-                Reference< XAnnotation > xAnnotation( *iter );
                 if( xAnnotation->getAuthor() == sAuthor )
                 {
                     if( mxSelectedAnnotation == xAnnotation )
@@ -678,9 +683,9 @@ void AnnotationManagerImpl::DeleteAllAnnotations()
         {
 
             AnnotationVector aAnnotations( pPage->getAnnotations() );
-            for( AnnotationVector::iterator iter = aAnnotations.begin(); iter != aAnnotations.end(); ++iter )
+            for( const auto& rxAnnotation : aAnnotations )
             {
-                pPage->removeAnnotation( (*iter) );
+                pPage->removeAnnotation( rxAnnotation );
             }
         }
     }
@@ -699,9 +704,9 @@ void AnnotationManagerImpl::GetAnnotationState(SfxItemSet& rSet)
     const bool bReadOnly = mrBase.GetDocShell()->IsReadOnly();
     const bool bWrongPageKind = (pCurrentPage == nullptr) || (pCurrentPage->GetPageKind() != PageKind::Standard);
 
-    const SvtSaveOptions::ODFDefaultVersion nCurrentODFVersion( SvtSaveOptions().GetODFDefaultVersion() );
+    const SvtSaveOptions::ODFSaneDefaultVersion nCurrentODFVersion( SvtSaveOptions().GetODFSaneDefaultVersion() );
 
-    if( bReadOnly || bWrongPageKind || (nCurrentODFVersion <= SvtSaveOptions::ODFVER_012) )
+    if (bReadOnly || bWrongPageKind || (nCurrentODFVersion <= SvtSaveOptions::ODFSVER_012))
         rSet.DisableItem( SID_INSERT_POSTIT );
 
     rSet.Put(SfxBoolItem(SID_TOGGLE_NOTES, mbShowAnnotations));
@@ -757,17 +762,14 @@ void AnnotationManagerImpl::SelectNextAnnotation(bool bForeward)
     {
         if( xCurrent.is() )
         {
-            for( AnnotationVector::iterator iter = aAnnotations.begin(); iter != aAnnotations.end(); ++iter )
+            auto iter = std::find(aAnnotations.begin(), aAnnotations.end(), xCurrent);
+            if (iter != aAnnotations.end())
             {
-                if( (*iter) == xCurrent )
+                ++iter;
+                if( iter != aAnnotations.end() )
                 {
-                    ++iter;
-                    if( iter != aAnnotations.end() )
-                    {
-                        SelectAnnotation( (*iter) );
-                        return;
-                    }
-                    break;
+                    SelectAnnotation( (*iter) );
+                    return;
                 }
             }
         }
@@ -781,18 +783,12 @@ void AnnotationManagerImpl::SelectNextAnnotation(bool bForeward)
     {
         if( xCurrent.is() )
         {
-            for( AnnotationVector::iterator iter = aAnnotations.begin(); iter != aAnnotations.end(); ++iter )
+            auto iter = std::find(aAnnotations.begin(), aAnnotations.end(), xCurrent);
+            if (iter != aAnnotations.end() && iter != aAnnotations.begin())
             {
-                if( (*iter) == xCurrent )
-                {
-                    if( iter != aAnnotations.begin() )
-                    {
-                        --iter;
-                        SelectAnnotation( (*iter) );
-                        return;
-                    }
-                    break;
-                }
+                --iter;
+                SelectAnnotation( (*iter) );
+                return;
             }
         }
         else if( !aAnnotations.empty() )
@@ -814,7 +810,7 @@ void AnnotationManagerImpl::SelectNextAnnotation(bool bForeward)
             {
                 // switch to next/previous slide with annotations
                 std::shared_ptr<DrawViewShell> pDrawViewShell(std::dynamic_pointer_cast<DrawViewShell>(mrBase.GetMainViewShell()));
-                if (pDrawViewShell.get() != nullptr)
+                if (pDrawViewShell != nullptr)
                 {
                     pDrawViewShell->ChangeEditMode(pPage->IsMasterPage() ? EditMode::MasterPage : EditMode::Page, false);
                     pDrawViewShell->SwitchPage((pPage->GetPageNum() - 1) >> 1);
@@ -831,29 +827,31 @@ void AnnotationManagerImpl::SelectNextAnnotation(bool bForeward)
 
         // The question text depends on the search direction.
         bool bImpress = mpDoc->GetDocumentType() == DocumentType::Impress;
-        sal_uInt16 nStringId;
+        const char* pStringId;
         if(bForeward)
-            nStringId = bImpress ? STR_ANNOTATION_WRAP_FORWARD : STR_ANNOTATION_WRAP_FORWARD_DRAW;
+            pStringId = bImpress ? STR_ANNOTATION_WRAP_FORWARD : STR_ANNOTATION_WRAP_FORWARD_DRAW;
         else
-            nStringId = bImpress ? STR_ANNOTATION_WRAP_BACKWARD : STR_ANNOTATION_WRAP_BACKWARD_DRAW;
+            pStringId = bImpress ? STR_ANNOTATION_WRAP_BACKWARD : STR_ANNOTATION_WRAP_BACKWARD_DRAW;
 
         // Pop up question box that asks the user whether to wrap around.
         // The dialog is made modal with respect to the whole application.
-        ScopedVclPtrInstance< QueryBox > aQuestionBox( nullptr, (WB_YES_NO | WB_DEF_YES), SdResId(nStringId));
-        aQuestionBox->SetImage( QueryBox::GetStandardImage() );
-        if (aQuestionBox->Execute() != RET_YES)
+        std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(nullptr,
+                                                       VclMessageType::Question, VclButtonsType::YesNo,
+                                                       SdResId(pStringId)));
+        xQueryBox->set_default_response(RET_YES);
+        if (xQueryBox->run() != RET_YES)
             break;
     }
     while( true );
 }
 
-void AnnotationManagerImpl::onTagSelected( AnnotationTag& rTag )
+void AnnotationManagerImpl::onTagSelected( AnnotationTag const & rTag )
 {
     mxSelectedAnnotation = rTag.GetAnnotation();
     invalidateSlots();
 }
 
-void AnnotationManagerImpl::onTagDeselected( AnnotationTag& rTag )
+void AnnotationManagerImpl::onTagDeselected( AnnotationTag const & rTag )
 {
     if( rTag.GetAnnotation() == mxSelectedAnnotation )
     {
@@ -866,17 +864,13 @@ void AnnotationManagerImpl::SelectAnnotation( const css::uno::Reference< css::of
 {
     mxSelectedAnnotation = xAnnotation;
 
-    const AnnotationTagVector::const_iterator aEnd( maTagVector.end() );
-    for( AnnotationTagVector::const_iterator iter( maTagVector.begin() );
-        iter != aEnd; ++iter)
+    auto iter = std::find_if(maTagVector.begin(), maTagVector.end(),
+        [&xAnnotation](const rtl::Reference<AnnotationTag>& rxTag) { return rxTag->GetAnnotation() == xAnnotation; });
+    if (iter != maTagVector.end())
     {
-        if( (*iter)->GetAnnotation() == xAnnotation )
-        {
-            SmartTagReference xTag( (*iter).get() );
-            mrBase.GetMainViewShell()->GetView()->getSmartTags().select( xTag );
-            (*iter)->OpenPopup( bEdit );
-            break;
-        }
+        SmartTagReference xTag( (*iter).get() );
+        mrBase.GetMainViewShell()->GetView()->getSmartTags().select( xTag );
+        (*iter)->OpenPopup( bEdit );
     }
 }
 
@@ -902,7 +896,10 @@ void AnnotationManagerImpl::invalidateSlots()
 
 void AnnotationManagerImpl::onSelectionChanged()
 {
-    if( mxView.is() && mrBase.GetDrawView() ) try
+    if( !(mxView.is() && mrBase.GetDrawView()) )
+        return;
+
+    try
     {
         Reference< XAnnotationAccess > xPage( mxView->getCurrentPage(), UNO_QUERY );
 
@@ -952,7 +949,10 @@ IMPL_LINK_NOARG(AnnotationManagerImpl, UpdateTagsHdl, void*, void)
 void AnnotationManagerImpl::CreateTags()
 {
 
-    if( mxCurrentPage.is() && mpDoc ) try
+    if( !(mxCurrentPage.is() && mpDoc) )
+        return;
+
+    try
     {
         int nIndex = 1;
         maFont = Application::GetSettings().GetStyleSettings().GetAppFont();
@@ -992,17 +992,12 @@ void AnnotationManagerImpl::CreateTags()
 
 void AnnotationManagerImpl::DisposeTags()
 {
-    if( !maTagVector.empty() )
+    for (auto& rxTag : maTagVector)
     {
-        AnnotationTagVector::iterator iter = maTagVector.begin();
-        do
-        {
-            (*iter++)->Dispose();
-        }
-        while( iter != maTagVector.end() );
-
-        maTagVector.clear();
+        rxTag->Dispose();
     }
+
+    maTagVector.clear();
 }
 
 void AnnotationManagerImpl::addListener()
@@ -1087,7 +1082,7 @@ void AnnotationManagerImpl::ExecuteAnnotationContextMenu( const Reference< XAnno
         sUIFile = "modules/simpress/ui/annotationmenu.ui";
     else
         sUIFile = "modules/simpress/ui/annotationtagmenu.ui";
-    VclBuilder aBuilder(nullptr, VclBuilderContainer::getUIRootDir(), sUIFile, "");
+    VclBuilder aBuilder(nullptr, AllSettings::GetUIRootDir(), sUIFile, "");
     VclPtr<PopupMenu> pMenu(aBuilder.get_menu("menu"));
 
     SvtUserOptions aUserOptions;
@@ -1121,26 +1116,26 @@ void AnnotationManagerImpl::ExecuteAnnotationContextMenu( const Reference< XAnno
 
             if ( aSet.GetItemState( EE_CHAR_WEIGHT ) == SfxItemState::SET )
             {
-                if( static_cast<const SvxWeightItem&>(aSet.Get( EE_CHAR_WEIGHT )).GetWeight() == WEIGHT_BOLD )
-                    pMenu->CheckItem(pMenu->GetItemId("bold"));
+                if( aSet.Get( EE_CHAR_WEIGHT ).GetWeight() == WEIGHT_BOLD )
+                    pMenu->CheckItem("bold");
             }
 
             if ( aSet.GetItemState( EE_CHAR_ITALIC ) == SfxItemState::SET )
             {
-                if( static_cast<const SvxPostureItem&>(aSet.Get( EE_CHAR_ITALIC )).GetPosture() != ITALIC_NONE )
-                    pMenu->CheckItem(pMenu->GetItemId("italic"));
+                if( aSet.Get( EE_CHAR_ITALIC ).GetPosture() != ITALIC_NONE )
+                    pMenu->CheckItem("italic");
 
             }
             if ( aSet.GetItemState( EE_CHAR_UNDERLINE ) == SfxItemState::SET )
             {
-                if( static_cast<const SvxUnderlineItem&>(aSet.Get( EE_CHAR_UNDERLINE )).GetLineStyle() != LINESTYLE_NONE )
-                    pMenu->CheckItem(pMenu->GetItemId("underline"));
+                if( aSet.Get( EE_CHAR_UNDERLINE ).GetLineStyle() != LINESTYLE_NONE )
+                    pMenu->CheckItem("underline");
             }
 
             if ( aSet.GetItemState( EE_CHAR_STRIKEOUT ) == SfxItemState::SET )
             {
-                if( static_cast<const SvxCrossedOutItem&>(aSet.Get( EE_CHAR_STRIKEOUT )).GetStrikeout() != STRIKEOUT_NONE )
-                    pMenu->CheckItem(pMenu->GetItemId("strike"));
+                if( aSet.Get( EE_CHAR_STRIKEOUT ).GetStrikeout() != STRIKEOUT_NONE )
+                    pMenu->CheckItem("strike");
             }
             TransferableDataHelper aDataHelper( TransferableDataHelper::CreateFromSystemClipboard( pAnnotationWindow ) );
             pMenu->EnableItem(pMenu->GetItemId("paste"), aDataHelper.GetFormatCount() != 0);
@@ -1223,10 +1218,10 @@ Color AnnotationManagerImpl::GetColor(sal_uInt16 aAuthorIndex)
             COL_AUTHOR4_NORMAL,     COL_AUTHOR5_NORMAL,     COL_AUTHOR6_NORMAL,
             COL_AUTHOR7_NORMAL,     COL_AUTHOR8_NORMAL,     COL_AUTHOR9_NORMAL };
 
-        return Color( aArrayNormal[ aAuthorIndex % SAL_N_ELEMENTS( aArrayNormal ) ] );
+        return aArrayNormal[ aAuthorIndex % SAL_N_ELEMENTS( aArrayNormal ) ];
     }
 
-    return Color(COL_WHITE);
+    return COL_WHITE;
 }
 
 Color AnnotationManagerImpl::GetColorLight(sal_uInt16 aAuthorIndex)
@@ -1238,10 +1233,10 @@ Color AnnotationManagerImpl::GetColorLight(sal_uInt16 aAuthorIndex)
             COL_AUTHOR4_LIGHT,      COL_AUTHOR5_LIGHT,      COL_AUTHOR6_LIGHT,
             COL_AUTHOR7_LIGHT,      COL_AUTHOR8_LIGHT,      COL_AUTHOR9_LIGHT };
 
-        return Color( aArrayLight[ aAuthorIndex % SAL_N_ELEMENTS( aArrayLight ) ] );
+        return aArrayLight[ aAuthorIndex % SAL_N_ELEMENTS( aArrayLight ) ];
     }
 
-    return Color(COL_WHITE);
+    return COL_WHITE;
 }
 
 Color AnnotationManagerImpl::GetColorDark(sal_uInt16 aAuthorIndex)
@@ -1253,13 +1248,13 @@ Color AnnotationManagerImpl::GetColorDark(sal_uInt16 aAuthorIndex)
             COL_AUTHOR4_DARK,       COL_AUTHOR5_DARK,       COL_AUTHOR6_DARK,
             COL_AUTHOR7_DARK,       COL_AUTHOR8_DARK,       COL_AUTHOR9_DARK };
 
-        return Color( aArrayAnkor[  aAuthorIndex % SAL_N_ELEMENTS( aArrayAnkor ) ] );
+        return aArrayAnkor[  aAuthorIndex % SAL_N_ELEMENTS( aArrayAnkor ) ];
     }
 
-    return Color(COL_WHITE);
+    return COL_WHITE;
 }
 
-SdPage* AnnotationManagerImpl::GetNextPage( SdPage* pPage, bool bForward )
+SdPage* AnnotationManagerImpl::GetNextPage( SdPage const * pPage, bool bForward )
 {
     if( pPage == nullptr )
     {
@@ -1318,7 +1313,7 @@ SdPage* AnnotationManagerImpl::GetNextPage( SdPage* pPage, bool bForward )
 
 SdPage* AnnotationManagerImpl::GetCurrentPage()
 {
-    if (mrBase.GetMainViewShell().get())
+    if (mrBase.GetMainViewShell())
         return mrBase.GetMainViewShell()->getCurrentPage();
     return nullptr;
 }
@@ -1334,7 +1329,7 @@ AnnotationManager::~AnnotationManager()
     mxImpl->dispose();
 }
 
-void AnnotationManager::ExecuteAnnotation(SfxRequest& rRequest)
+void AnnotationManager::ExecuteAnnotation(SfxRequest const & rRequest)
 {
     mxImpl->ExecuteAnnotation( rRequest );
 }

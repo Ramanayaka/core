@@ -20,24 +20,20 @@
 #ifndef INCLUDED_OOX_CORE_FASTPARSER_HXX
 #define INCLUDED_OOX_CORE_FASTPARSER_HXX
 
-#include <com/sun/star/io/IOException.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <rtl/ustring.hxx>
 #include <rtl/ref.hxx>
 #include <sal/types.h>
 #include <oox/dllapi.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XInputStream; }
     namespace uno { class XComponentContext; }
-    namespace xml { namespace sax { class XFastDocumentHandler; } }
-    namespace xml { namespace sax { class XFastParser; } }
-    namespace xml { namespace sax { class XFastTokenHandler; } }
-    namespace xml { namespace sax { struct InputSource; } }
-} } }
+    namespace xml::sax { class XFastDocumentHandler; }
+    namespace xml::sax { class XFastParser; }
+    namespace xml::sax { class XFastTokenHandler; }
+    namespace xml::sax { struct InputSource; }
+}
 
 namespace oox {
     struct NamespaceMap;
@@ -48,8 +44,7 @@ namespace sax_fastparser {
     class FastSaxParser;
 }
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 
 /** Wrapper for a fast SAX parser that works on automatically generated OOXML
@@ -116,8 +111,7 @@ private:
 };
 
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 #endif
 

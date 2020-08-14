@@ -21,19 +21,23 @@
 #include <vcl/menu.hxx>
 #include <svl/stritem.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/viewfrm.hxx>
+#include <vcl/commandevent.hxx>
 #include <vcl/status.hxx>
 
 #include <swtypes.hxx>
-#include <utlui.hrc>
+#include <strings.hrc>
 
-#include "wrtsh.hxx"
-#include "view.hxx"
-#include "swmodule.hxx"
-#include "cmdid.h"
-#include "docsh.hxx"
-#include "tmplctrl.hxx"
+#include <wrtsh.hxx>
+#include <view.hxx>
+#include <swmodule.hxx>
+#include <cmdid.h>
+#include <docsh.hxx>
+#include <tmplctrl.hxx>
 
 SFX_IMPL_STATUSBAR_CONTROL( SwTemplateControl, SfxStringItem );
+
+namespace {
 
 class SwTemplatePopup_Impl : public PopupMenu
 {
@@ -47,6 +51,8 @@ private:
 
     virtual void    Select() override;
 };
+
+}
 
 SwTemplatePopup_Impl::SwTemplatePopup_Impl() :
     PopupMenu(),
@@ -86,48 +92,47 @@ void SwTemplateControl::StateChanged(
 
 void SwTemplateControl::Paint( const UserDrawEvent&  )
 {
-    GetStatusBar().SetItemText( GetId(), sTemplate );
 }
 
 void SwTemplateControl::Command( const CommandEvent& rCEvt )
 {
-    if ( rCEvt.GetCommand() == CommandEventId::ContextMenu &&
-            !GetStatusBar().GetItemText( GetId() ).isEmpty() )
-    {
-        ScopedVclPtrInstance<SwTemplatePopup_Impl> aPop;
-        {
-            SwView* pView = ::GetActiveView();
-            SwWrtShell *const pWrtShell(pView ? pView->GetWrtShellPtr() : nullptr);
-            if (nullptr != pWrtShell &&
-                !pWrtShell->SwCursorShell::HasSelection()&&
-                !pWrtShell->IsSelFrameMode() &&
-                !pWrtShell->IsObjSelected())
-            {
-                SfxStyleSheetBasePool* pPool = pView->GetDocShell()->
-                                                            GetStyleSheetPool();
-                pPool->SetSearchMask(SfxStyleFamily::Page);
-                if( pPool->Count() > 1 )
-                {
-                    sal_uInt16 nCount = 0;
-                    SfxStyleSheetBase* pStyle = pPool->First();
-                    while( pStyle )
-                    {
-                        aPop->InsertItem( ++nCount, pStyle->GetName() );
-                        pStyle = pPool->Next();
-                    }
+    if ( rCEvt.GetCommand() != CommandEventId::ContextMenu ||
+            GetStatusBar().GetItemText( GetId() ).isEmpty())
+        return;
 
-                    aPop->Execute( &GetStatusBar(), rCEvt.GetMousePosPixel());
-                    const sal_uInt16 nCurrId = aPop->GetCurId();
-                    if( nCurrId != USHRT_MAX)
-                    {
-                        // looks a bit awkward, but another way is not possible
-                        pStyle = pPool->operator[]( nCurrId - 1 );
-                        SfxStringItem aStyle( FN_SET_PAGE_STYLE, pStyle->GetName() );
-                        pWrtShell->GetView().GetViewFrame()->GetDispatcher()->ExecuteList(
-                                    FN_SET_PAGE_STYLE,
-                                    SfxCallMode::SLOT|SfxCallMode::RECORD,
-                                    { &aStyle });
-                    }
+    ScopedVclPtrInstance<SwTemplatePopup_Impl> aPop;
+    {
+        SwView* pView = ::GetActiveView();
+        SwWrtShell *const pWrtShell(pView ? pView->GetWrtShellPtr() : nullptr);
+        if (nullptr != pWrtShell &&
+            !pWrtShell->SwCursorShell::HasSelection()&&
+            !pWrtShell->IsSelFrameMode() &&
+            !pWrtShell->IsObjSelected())
+        {
+            SfxStyleSheetBasePool* pPool = pView->GetDocShell()->
+                                                        GetStyleSheetPool();
+            auto xIter = pPool->CreateIterator(SfxStyleFamily::Page);
+            if (xIter->Count() > 1)
+            {
+                sal_uInt16 nCount = 0;
+                SfxStyleSheetBase* pStyle = xIter->First();
+                while( pStyle )
+                {
+                    aPop->InsertItem( ++nCount, pStyle->GetName() );
+                    pStyle = xIter->Next();
+                }
+
+                aPop->Execute( &GetStatusBar(), rCEvt.GetMousePosPixel());
+                const sal_uInt16 nCurrId = aPop->GetCurId();
+                if( nCurrId != USHRT_MAX)
+                {
+                    // looks a bit awkward, but another way is not possible
+                    pStyle = xIter->operator[]( nCurrId - 1 );
+                    SfxStringItem aStyle( FN_SET_PAGE_STYLE, pStyle->GetName() );
+                    pWrtShell->GetView().GetViewFrame()->GetDispatcher()->ExecuteList(
+                                FN_SET_PAGE_STYLE,
+                                SfxCallMode::SLOT|SfxCallMode::RECORD,
+                                { &aStyle });
                 }
             }
         }

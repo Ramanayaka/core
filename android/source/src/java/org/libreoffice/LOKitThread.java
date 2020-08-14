@@ -156,6 +156,9 @@ class LOKitThread extends Thread {
         mLayerClient.clearAndResetlayers();
         redraw();
         updatePartPageRectangles();
+        if (mTileProvider != null && mTileProvider.isSpreadsheet()) {
+            updateCalcHeaders();
+        }
     }
 
     /**
@@ -163,18 +166,26 @@ class LOKitThread extends Thread {
      * Result is stored in DocumentOverlayView class.
      */
     private void updatePartPageRectangles() {
+        if (mTileProvider == null) {
+            Log.d(LOGTAG, "mTileProvider==null when calling updatePartPageRectangles");
+            return;
+        }
         String partPageRectString = ((LOKitTileProvider) mTileProvider).getPartPageRectangles();
         List<RectF> partPageRectangles = mInvalidationHandler.convertPayloadToRectangles(partPageRectString);
         mContext.getDocumentOverlay().setPartPageRectangles(partPageRectangles);
     }
 
-    private void updateZoomConstraints() {
-        mLayerClient = mContext.getLayerClient();
+    private void updatePageSize(int pageWidth, int pageHeight){
+        mTileProvider.setDocumentSize(pageWidth, pageHeight);
+        redraw();
+    }
 
+    private void updateZoomConstraints() {
+        if (mTileProvider == null) return;
+        mLayerClient = mContext.getLayerClient();
         // Set min zoom to the page width so that you cannot zoom below page width
-        // applies to all types of document; in the future spreadsheets may be singled out
-        float minZoom = mLayerClient.getViewportMetrics().getWidth()/mTileProvider.getPageWidth();
-        mLayerClient.setZoomConstraints(new ZoomConstraints(true, 0.0f, minZoom, 0.0f));
+        final float minZoom = mLayerClient.getViewportMetrics().getWidth()/mTileProvider.getPageWidth();
+        mLayerClient.setZoomConstraints(new ZoomConstraints(true, 1f, minZoom, 0f));
     }
 
 
@@ -204,7 +215,7 @@ class LOKitThread extends Thread {
         LOKitShell.showProgressSpinner(mContext);
         mTileProvider.changePart(partIndex);
         mViewportMetrics = mLayerClient.getViewportMetrics();
-        mLayerClient.setViewportMetrics(mViewportMetrics.scaleTo(0.9f, new PointF()));
+        // mLayerClient.setViewportMetrics(mViewportMetrics.scaleTo(0.9f, new PointF()));
         refresh();
         LOKitShell.hideProgressSpinner(mContext);
     }
@@ -222,7 +233,15 @@ class LOKitThread extends Thread {
         if (mTileProvider.isReady()) {
             LOKitShell.showProgressSpinner(mContext);
             updateZoomConstraints();
-            refresh();
+            LOKitShell.getMainHandler().post(new Runnable() {
+                @Override
+                public void run() {
+                    // synchronize to avoid deletion while loading
+                    synchronized (LOKitThread.this) {
+                        refresh();
+                    }
+                }
+            });
             LOKitShell.hideProgressSpinner(mContext);
         } else {
             closeDocument();
@@ -274,7 +293,8 @@ class LOKitThread extends Thread {
     /**
      * Close the currently loaded document.
      */
-    private void closeDocument() {
+    // needs to be synchronized to not destroy doc while it's loaded
+    private synchronized void closeDocument() {
         if (mTileProvider != null) {
             mTileProvider.close();
             mTileProvider = null;
@@ -326,16 +346,19 @@ class LOKitThread extends Thread {
                 changeHandlePosition(event.mHandleType, event.mDocumentCoordinate);
                 break;
             case LOEvent.SWIPE_LEFT:
-                onSwipeLeft();
+                if (null != mTileProvider) onSwipeLeft();
                 break;
             case LOEvent.SWIPE_RIGHT:
-                onSwipeRight();
+                if (null != mTileProvider) onSwipeRight();
                 break;
             case LOEvent.NAVIGATION_CLICK:
                 mInvalidationHandler.changeStateTo(InvalidationHandler.OverlayState.NONE);
                 break;
             case LOEvent.UNO_COMMAND:
-                mTileProvider.postUnoCommand(event.mString, event.mValue);
+                if (null == mTileProvider)
+                    Log.e(LOGTAG, "no mTileProvider when trying to process "+event.mValue+" from UNO_COMMAND "+event.mString);
+                else
+                    mTileProvider.postUnoCommand(event.mString, event.mValue);
                 break;
             case LOEvent.UPDATE_PART_PAGE_RECT:
                 updatePartPageRectangles();
@@ -343,19 +366,45 @@ class LOKitThread extends Thread {
             case LOEvent.UPDATE_ZOOM_CONSTRAINTS:
                 updateZoomConstraints();
                 break;
+            case LOEvent.UPDATE_CALC_HEADERS:
+                updateCalcHeaders();
+                break;
+            case LOEvent.UNO_COMMAND_NOTIFY:
+                if (null == mTileProvider)
+                    Log.e(LOGTAG, "no mTileProvider when trying to process "+event.mValue+" from UNO_COMMAND "+event.mString);
+                else
+                    mTileProvider.postUnoCommand(event.mString, event.mValue, event.mNotify);
+                break;
+            case LOEvent.REFRESH:
+                refresh();
+                break;
+            case LOEvent.PAGE_SIZE_CHANGED:
+                updatePageSize(event.mPageWidth, event.mPageHeight);
+                break;
         }
+    }
+
+    private void updateCalcHeaders() {
+        if (null == mTileProvider) return;
+        LOKitTileProvider tileProvider = (LOKitTileProvider)mTileProvider;
+        String values = tileProvider.getCalcHeaders();
+        mContext.getCalcHeadersController().setHeaders(values);
     }
 
     /**
      * Request a change of the handle position.
      */
     private void changeHandlePosition(SelectionHandle.HandleType handleType, PointF documentCoordinate) {
-        if (handleType == SelectionHandle.HandleType.MIDDLE) {
-            mTileProvider.setTextSelectionReset(documentCoordinate);
-        } else if (handleType == SelectionHandle.HandleType.START) {
-            mTileProvider.setTextSelectionStart(documentCoordinate);
-        } else if (handleType == SelectionHandle.HandleType.END) {
-            mTileProvider.setTextSelectionEnd(documentCoordinate);
+        switch (handleType) {
+            case MIDDLE:
+                mTileProvider.setTextSelectionReset(documentCoordinate);
+                break;
+            case START:
+                mTileProvider.setTextSelectionStart(documentCoordinate);
+                break;
+            case END:
+                mTileProvider.setTextSelectionEnd(documentCoordinate);
+                break;
         }
     }
 
@@ -391,7 +440,7 @@ class LOKitThread extends Thread {
      * Processes touch events.
      */
     private void touch(String touchType, PointF documentCoordinate) {
-        if (mTileProvider == null) {
+        if (mTileProvider == null || mViewportMetrics == null) {
             return;
         }
 

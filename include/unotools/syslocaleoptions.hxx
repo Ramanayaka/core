@@ -23,21 +23,18 @@
 #include <unotools/unotoolsdllapi.h>
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
-#include <tools/solar.h>
-#include <tools/link.hxx>
 #include <i18nlangtag/lang.h>
 #include <i18nlangtag/languagetag.hxx>
 #include <unotools/options.hxx>
 
 class SvtSysLocaleOptions_Impl;
-class SvtListener;
-namespace osl { class Mutex; }
+class LinkParamNone;
+template <typename Arg, typename Ret> class Link;
 
-class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtSysLocaleOptions : public utl::detail::Options
+class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtSysLocaleOptions final : public utl::detail::Options
 {
     std::shared_ptr<SvtSysLocaleOptions_Impl>  pImpl;
 
-    UNOTOOLS_DLLPRIVATE static  ::osl::Mutex&       GetMutex();
     virtual void ConfigurationChanged( utl::ConfigurationBroadcaster* p, ConfigurationHints nHint ) override;
 
 public:
@@ -53,7 +50,7 @@ public:
 
     // ConfigItem methods
 
-            bool                IsModified();
+            bool                IsModified() const;
             void                Commit();
 
                                 /** Add a listener to react on config changes

@@ -22,11 +22,12 @@
 
 #include <comphelper/interfacecontainer2.hxx>
 
-#include <com/sun/star/lang/XEventListener.hpp>
+#include <com/sun/star/lang/EventObject.hpp>
 #include <comphelper/comphelperdllapi.h>
 
 #include <memory>
 
+namespace com::sun::star::lang { class XEventListener; }
 
 namespace comphelper
 {
@@ -36,7 +37,7 @@ namespace comphelper
 
     /** abstract base class which manages a listener container, including
         THB's listener notification pattern which cares for removing listeners
-        which throw an DisposedException upon notification
+        which throw a DisposedException upon notification
 
         Using this class is pretty easy:
         <ul>
@@ -152,7 +153,7 @@ namespace comphelper
             the event type to notify, e.g. css::lang::EventObject
     */
     template< class LISTENER, class EVENT >
-    class OSimpleListenerContainer : protected OListenerContainer
+    class OSimpleListenerContainer final : protected OListenerContainer
     {
     public:
         typedef LISTENER    ListenerClass;
@@ -186,9 +187,9 @@ namespace comphelper
         using OListenerContainer::createIterator;
 
         /// typed notification
-        inline bool    notify( const EventClass& _rEvent, NotificationMethod _pNotify );
+        inline void    notify( const EventClass& _rEvent, NotificationMethod _pNotify );
 
-    protected:
+    private:
         virtual bool    implNotify(
                             const css::uno::Reference< css::lang::XEventListener >& _rxListener,
                             const css::lang::EventObject& _rEvent
@@ -203,12 +204,11 @@ namespace comphelper
 
 
     template< class LISTENER, class EVENT >
-    inline bool OSimpleListenerContainer< LISTENER, EVENT >::notify( const EventClass& _rEvent, NotificationMethod _pNotify )
+    inline void OSimpleListenerContainer< LISTENER, EVENT >::notify( const EventClass& _rEvent, NotificationMethod _pNotify )
     {
         m_pNotificationMethod = _pNotify;
-        bool bRet = OListenerContainer::impl_notify( _rEvent );
+        OListenerContainer::impl_notify( _rEvent );
         m_pNotificationMethod = nullptr;
-        return bRet;
     }
 
     //= OListenerContainerBase
@@ -216,13 +216,9 @@ namespace comphelper
     /** is a specialization of OListenerContainer which saves you some additional type casts,
         by making the required listener and event types template arguments.
     */
-    template< class LISTENER, class EVENT >
+    template< class ListenerClass, class EventClass >
     class OListenerContainerBase : public OListenerContainer
     {
-    public:
-        typedef LISTENER    ListenerClass;
-        typedef EVENT       EventClass;
-
     public:
         OListenerContainerBase( ::osl::Mutex& _rMutex ) : OListenerContainer( _rMutex )
         {

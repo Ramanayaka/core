@@ -23,7 +23,7 @@
 #include <unotools/options.hxx>
 
 struct SvtLoadSaveOptions_Impl;
-class UNOTOOLS_DLLPUBLIC SvtSaveOptions: public utl::detail::Options
+class UNOTOOLS_DLLPUBLIC SvtSaveOptions final : public utl::detail::Options
 {
     SvtLoadSaveOptions_Impl*    pImp;
 
@@ -58,12 +58,14 @@ public:
      */
     enum ODFDefaultVersion
     {
-        ODFVER_UNKNOWN = 0, // unknown
+        ODFVER_UNKNOWN = 0, // unknown - very dubious, avoid using
         ODFVER_010 = 1,         // ODF 1.0
         ODFVER_011 = 2,         // ODF 1.1
         DO_NOT_USE = 3,         // Do not use this, only here for compatibility with pre OOo 3.2 configuration
         ODFVER_012 = 4,         // ODF 1.2
         ODFVER_012_EXT_COMPAT = 8, // ODF 1.2 extended, but with compatibility fallbacks
+        ODFVER_012_EXTENDED = 9, // ODF 1.2 extended
+        ODFVER_013 = 10,        // ODF 1.3
 
         ODFVER_LATEST = SAL_MAX_ENUM,      // ODF latest version with enhancements
     };
@@ -79,10 +81,11 @@ public:
         ODFSVER_012_EXTENDED = 11,  ///< ODF 1.2 extended
         ODFSVER_013 = 12,           ///< ODF 1.3
         ODFSVER_013_EXTENDED = 13,  ///< ODF 1.3 extended
+        ODFSVER_FUTURE_EXTENDED = 1000 | ODFSVER_EXTENDED, ///< current extension, unknown future ODF version
 
         // The latest defined standard. Adapt when a new one is published.
-        ODFSVER_LATEST = ODFSVER_012,                               ///< @internal DO NOT USE in comparisons
-        ODFSVER_LATEST_EXTENDED = ODFSVER_LATEST | ODFSVER_EXTENDED ///< @internal DO NOT USE in comparisons
+        ODFSVER_LATEST = ODFSVER_013,                   ///< @internal DO NOT USE in comparisons
+        ODFSVER_LATEST_EXTENDED = ODFSVER_013_EXTENDED  ///< @internal DO NOT USE in comparisons
     };
 
     SvtSaveOptions();
@@ -121,8 +124,6 @@ public:
     void                    SetSaveRelFSys( bool b );
     bool                IsSaveRelFSys() const;
 
-    bool                IsSaveUnpacked() const;
-
     void                    SetLoadUserSettings(bool b);
     bool                IsLoadUserSettings() const;
 
@@ -138,10 +139,6 @@ public:
     void                    SetODFDefaultVersion( ODFDefaultVersion eVersion );
     ODFDefaultVersion       GetODFDefaultVersion() const;
     ODFSaneDefaultVersion   GetODFSaneDefaultVersion() const;
-
-    bool                IsUseSHA1InODF12() const;
-
-    bool                IsUseBlowfishInODF12() const;
 
     bool                IsReadOnly( EOption eOption ) const;
 };

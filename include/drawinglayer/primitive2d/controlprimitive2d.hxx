@@ -17,95 +17,101 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_CONTROLPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_CONTROLPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <com/sun/star/awt/XControlModel.hpp>
-#include <com/sun/star/awt/XControl.hpp>
 
-
-namespace drawinglayer
+namespace com::sun::star::awt
 {
-    namespace primitive2d
-    {
-        /** ControlPrimitive2D class
+class XControl;
+}
+namespace com::sun::star::awt
+{
+class XControlModel;
+}
 
-            Base class for ControlPrimitive handling. It decomposes to a
-            graphical representation (Bitmap data) of the control. This
-            representation is limited to a quadratic pixel maximum defined
-            in the application settings.
-         */
-        class DRAWINGLAYER_DLLPUBLIC ControlPrimitive2D : public BufferedDecompositionPrimitive2D
-        {
-        private:
-            /// object's base data
-            basegfx::B2DHomMatrix                             maTransform;
-            css::uno::Reference< css::awt::XControlModel >    mxControlModel;
+namespace drawinglayer::primitive2d
+{
+/** ControlPrimitive2D class
 
-            /// the created an cached awt::XControl
-            css::uno::Reference< css::awt::XControl >         mxXControl;
+    Base class for ControlPrimitive handling. It decomposes to a
+    graphical representation (Bitmap data) of the control. This
+    representation is limited to a quadratic pixel maximum defined
+    in the application settings.
+ */
+class DRAWINGLAYER_DLLPUBLIC ControlPrimitive2D final : public BufferedDecompositionPrimitive2D
+{
+private:
+    /// object's base data
+    basegfx::B2DHomMatrix maTransform;
+    css::uno::Reference<css::awt::XControlModel> mxControlModel;
 
-            /// the last used scaling, used from getDecomposition for buffering
-            basegfx::B2DVector                                maLastViewScaling;
+    /// the created and cached awt::XControl
+    css::uno::Reference<css::awt::XControl> mxXControl;
 
-            /** used from getXControl() to create a local awt::XControl which is remembered in mxXControl
+    /// the last used scaling, used from getDecomposition for buffering
+    basegfx::B2DVector maLastViewScaling;
+
+    /** used from getXControl() to create a local awt::XControl which is remembered in mxXControl
                 and from thereon always used and returned by getXControl()
              */
-            void createXControl();
+    void createXControl();
 
-            /// single local decompositions, used from create2DDecomposition()
-            Primitive2DReference createBitmapDecomposition(const geometry::ViewInformation2D& rViewInformation) const;
-            Primitive2DReference createPlaceholderDecomposition() const;
+    /// single local decompositions, used from create2DDecomposition()
+    Primitive2DReference
+    createBitmapDecomposition(const geometry::ViewInformation2D& rViewInformation) const;
+    Primitive2DReference createPlaceholderDecomposition() const;
 
-        protected:
-            /// local decomposition
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
+    /// local decomposition
+    virtual void
+    create2DDecomposition(Primitive2DContainer& rContainer,
+                          const geometry::ViewInformation2D& rViewInformation) const override;
 
-        public:
-            /// constructor
-            ControlPrimitive2D(
-                const basegfx::B2DHomMatrix& rTransform,
-                const css::uno::Reference< css::awt::XControlModel >& rxControlModel);
+public:
+    /// constructor
+    ControlPrimitive2D(const basegfx::B2DHomMatrix& rTransform,
+                       const css::uno::Reference<css::awt::XControlModel>& rxControlModel);
 
-            /** constructor with an additional XControl as parameter to allow to hand it over at incarnation time
-                if it exists. This will avoid to create a 2nd one on demand in createXControl()
-                and thus double the XControls.
-             */
-            ControlPrimitive2D(
-                const basegfx::B2DHomMatrix& rTransform,
-                const css::uno::Reference< css::awt::XControlModel >& rxControlModel,
-                const css::uno::Reference< css::awt::XControl >& rxXControl);
+    /** constructor with an additional XControl as parameter to allow to hand it over at incarnation time
+        if it exists. This will avoid to create a 2nd one on demand in createXControl()
+        and thus double the XControls.
+     */
+    ControlPrimitive2D(const basegfx::B2DHomMatrix& rTransform,
+                       const css::uno::Reference<css::awt::XControlModel>& rxControlModel,
+                       const css::uno::Reference<css::awt::XControl>& rxXControl);
 
-            /// data read access
-            const basegfx::B2DHomMatrix& getTransform() const { return maTransform; }
-            const css::uno::Reference< css::awt::XControlModel >& getControlModel() const { return mxControlModel; }
+    /// data read access
+    const basegfx::B2DHomMatrix& getTransform() const { return maTransform; }
+    const css::uno::Reference<css::awt::XControlModel>& getControlModel() const
+    {
+        return mxControlModel;
+    }
 
-            /** mxControl access. This will on demand create the awt::XControl using createXControl()
-                if it does not exist. It may already have been created or even handed over at
-                incarnation
-             */
-            const css::uno::Reference< css::awt::XControl >& getXControl() const;
+    /** mxControl access. This will on demand create the awt::XControl using createXControl()
+        if it does not exist. It may already have been created or even handed over at
+        incarnation
+     */
+    const css::uno::Reference<css::awt::XControl>& getXControl() const;
 
-            /// compare operator
-            virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
+    /// compare operator
+    virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
-            /// get range
-            virtual basegfx::B2DRange getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
+    /// get range
+    virtual basegfx::B2DRange
+    getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
 
-            /// provide unique ID
-            DeclPrimitive2DIDBlock()
+    /// provide unique ID
+    virtual sal_uInt32 getPrimitive2DID() const override;
 
-            /// Override standard getDecomposition to be view-dependent here
-            virtual void get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const override;
-        };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+    /// Override standard getDecomposition to be view-dependent here
+    virtual void
+    get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor,
+                       const geometry::ViewInformation2D& rViewInformation) const override;
+};
 
-
-#endif // INCLUDED_DRAWINGLAYER_PRIMITIVE2D_CONTROLPRIMITIVE2D_HXX
+} // end of namespace drawinglayer::primitive2d
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

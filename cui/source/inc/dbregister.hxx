@@ -22,15 +22,7 @@
 
 #include <rtl/ustring.hxx>
 #include <sfx2/basedlgs.hxx>
-#include <svl/poolitem.hxx>
-#include <svtools/simptabl.hxx>
-#include "optpath.hxx"
-
-class SvTreeListEntry;
-namespace svx
-{
-    class OptHeaderTabListBox;
-}
+#include <sfx2/tabdlg.hxx>
 
 namespace svx
 {
@@ -38,30 +30,24 @@ namespace svx
     class DbRegistrationOptionsPage : public SfxTabPage
     {
     private:
-        OUString            m_aTypeText;
-        OUString            m_aPathText;
-
-        VclPtr<SvSimpleTableContainer> m_pPathCtrl;
-        VclPtr<PushButton>         m_pNew;
-        VclPtr<PushButton>         m_pEdit;
-        VclPtr<PushButton>         m_pDelete;
-
-        VclPtr<svx::OptHeaderTabListBox> m_pPathBox;
-        SvTreeListEntry*        m_pCurEntry;
         sal_uLong               m_nOldCount;
         bool                m_bModified;
 
-        DECL_LINK( NewHdl, Button*, void );
-        DECL_LINK( EditHdl, Button*, void );
-        DECL_LINK( DeleteHdl, Button*, void );
-        DECL_LINK( PathBoxDoubleClickHdl, SvTreeListBox*, bool);
+        std::unique_ptr<weld::Button> m_xNew;
+        std::unique_ptr<weld::Button> m_xEdit;
+        std::unique_ptr<weld::Button> m_xDelete;
+        std::unique_ptr<weld::TreeView> m_xPathBox;
+        std::unique_ptr<weld::TreeIter> m_xIter;
 
-        DECL_LINK( PathSelect_Impl, SvTreeListBox*, void);
+        DECL_LINK( NewHdl, weld::Button&, void );
+        DECL_LINK( EditHdl, weld::Button&, void );
+        DECL_LINK( DeleteHdl, weld::Button&, void );
+        DECL_LINK( PathBoxDoubleClickHdl, weld::TreeView&, bool);
 
-        DECL_LINK( HeaderSelect_Impl, HeaderBar *, void );
-        DECL_LINK( HeaderEndDrag_Impl, HeaderBar *, void );
+        DECL_LINK( PathSelect_Impl, weld::TreeView&, void);
+
+        DECL_LINK( HeaderSelect_Impl, int, void );
         DECL_LINK( NameValidator, const OUString&, bool);
-
 
         /** inserts a new entry in the tablistbox
             @param  _sName
@@ -72,21 +58,20 @@ namespace svx
         void insertNewEntry( const OUString& _sName,const OUString& _sLocation, const bool bReadOnly );
 
         /** opens the LinkDialog to create a register pair
-            @param  _sOldName
+            @param  sOldName
                 The old name of the entry may be empty.
-            @param  _sOldLocation
+            @param  sOldLocation
                 The old location of the entry may be empty.
-            @param  _pEntry
+            @param  nEntry
                 The entry to remove if the entry will be changed
         */
-        void openLinkDialog(const OUString& _sOldName,const OUString& _sOldLocation,SvTreeListEntry* _pEntry = nullptr);
+        void openLinkDialog(const OUString& sOldName, const OUString& sOldLocation, int nEntry = -1);
 
     public:
-        DbRegistrationOptionsPage( vcl::Window* pParent, const SfxItemSet& rSet );
+        DbRegistrationOptionsPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
         virtual ~DbRegistrationOptionsPage() override;
-        virtual void dispose() override;
 
-        static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rSet );
+        static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet );
 
         virtual bool        FillItemSet( SfxItemSet* rSet ) override;
         virtual void        Reset( const SfxItemSet* rSet ) override;
@@ -112,17 +97,14 @@ namespace svx
     };
 
     class DatabaseRegistrationDialog    :public RegistrationItemSetHolder
-                                        ,public SfxSingleTabDialog
+                                        ,public SfxSingleTabDialogController
     {
     public:
-        DatabaseRegistrationDialog( vcl::Window* pParent, const SfxItemSet& rAttr );
+        DatabaseRegistrationDialog(weld::Window* pParent, const SfxItemSet& rAttr);
 
-        virtual short   Execute() override;
+        virtual short   run() override;
     };
-
-
 }
-
 
 #endif // INCLUDED_CUI_SOURCE_INC_DBREGISTER_HXX
 

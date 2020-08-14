@@ -21,11 +21,12 @@
 
 #include <unotools/unotoolsdllapi.h>
 #include <sal/types.h>
-#include <osl/mutex.hxx>
 #include <com/sun/star/uno/Sequence.h>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <unotools/options.hxx>
 #include <memory>
+
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace osl { class Mutex; }
 
 /*-************************************************************************************************************
     @descr          The method GetList() returns a list of property values.
@@ -60,7 +61,7 @@ class SvtDynamicMenuOptions_Impl;
     @devstatus      ready to use
 *//*-*************************************************************************************************************/
 
-class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtDynamicMenuOptions : public utl::detail::Options
+class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtDynamicMenuOptions final : public utl::detail::Options
 {
     public:
          SvtDynamicMenuOptions();
@@ -69,7 +70,7 @@ class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtDynamicMenuOptions : public utl::det
         /*-****************************************************************************************************
             @short      return complete specified list
             @descr      Call it to get all entries of an dynamic menu.
-                        We return a list of all nodes with his names and properties.
+                        We return a list of all nodes with its names and properties.
             @param      "eMenu" select right menu.
             @return     A list of menu items is returned.
 
@@ -82,7 +83,7 @@ class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtDynamicMenuOptions : public utl::det
         /*-****************************************************************************************************
             @short      return a reference to a static mutex
             @descr      These class is partially threadsafe (for de-/initialization only).
-                        All access methods are'nt safe!
+                        All access methods aren't safe!
                         We create a static mutex only for one ime and use at different times.
             @return     A reference to a static mutex member.
         *//*-*****************************************************************************************************/

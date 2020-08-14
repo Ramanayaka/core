@@ -19,19 +19,16 @@
 #ifndef INCLUDED_WRITERFILTER_SOURCE_DMAPPER_PAGEBORDERSHANDLER_HXX
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_PAGEBORDERSHANDLER_HXX
 
-#include "BorderHandler.hxx"
 #include "PropertyMap.hxx"
 
 #include "LoggedResources.hxx"
-#include <memory>
 
 #include <com/sun/star/table/BorderLine2.hpp>
 
 #include <vector>
 
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 class PgBorder
 {
@@ -42,7 +39,6 @@ public:
     bool m_bShadow;
 
     PgBorder( );
-    ~PgBorder( );
 };
 
 class PageBordersHandler : public LoggedProperties
@@ -50,8 +46,8 @@ class PageBordersHandler : public LoggedProperties
 private:
 
     // See implementation of SectionPropertyMap::ApplyBorderToPageStyles
-    sal_Int32 m_nDisplay;
-    sal_Int32 m_nOffset;
+    SectionPropertyMap::BorderApply m_eBorderApply;
+    SectionPropertyMap::BorderOffsetFrom m_eOffsetFrom;
     std::vector<PgBorder> m_aBorders;
 
     // Properties
@@ -62,14 +58,10 @@ public:
     PageBordersHandler( );
     virtual ~PageBordersHandler( ) override;
 
-    sal_Int32 GetDisplayOffset( )
-    {
-        return ( m_nOffset << 5 ) + m_nDisplay;
-    };
     void SetBorders( SectionPropertyMap* pSectContext );
 };
 
-} }
+}
 
 #endif
 

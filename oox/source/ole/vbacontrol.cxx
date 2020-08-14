@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ole/vbacontrol.hxx"
+#include <oox/ole/vbacontrol.hxx>
 
 #include <algorithm>
 #include <set>
@@ -29,21 +29,21 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <osl/diagnose.h>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <xmlscript/xmldlg_imexp.hxx>
-#include "oox/helper/attributelist.hxx"
-#include "oox/helper/binaryinputstream.hxx"
-#include "oox/helper/containerhelper.hxx"
-#include "oox/helper/propertymap.hxx"
-#include "oox/helper/propertyset.hxx"
-#include "oox/helper/storagebase.hxx"
-#include "oox/helper/textinputstream.hxx"
-#include "oox/ole/vbahelper.hxx"
+#include <oox/helper/attributelist.hxx>
+#include <oox/helper/binaryinputstream.hxx>
+#include <oox/helper/containerhelper.hxx>
+#include <oox/helper/propertymap.hxx>
+#include <oox/helper/propertyset.hxx>
+#include <oox/helper/storagebase.hxx>
+#include <oox/helper/textinputstream.hxx>
+#include <oox/ole/vbahelper.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
 #include <unordered_map>
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::container;
@@ -95,14 +95,14 @@ public:
     OUString            generateDummyName();
 
 private:
-    typedef ::std::set< OUString > OUStringSet;
-    OUStringSet         maCtrlNames;
-    const OUString      maDummyBaseName;
+    ::std::set< OUString >
+                        maCtrlNames;
     sal_Int32           mnIndex;
 };
 
+const OUStringLiteral gaDummyBaseName( "DummyGroupSep" );
+
 VbaControlNamesSet::VbaControlNamesSet() :
-    maDummyBaseName( "DummyGroupSep" ),
     mnIndex( 0 )
 {
 }
@@ -119,7 +119,7 @@ OUString VbaControlNamesSet::generateDummyName()
     OUString aCtrlName;
     do
     {
-        aCtrlName = maDummyBaseName + OUString::number( ++mnIndex );
+        aCtrlName = gaDummyBaseName + OUString::number( ++mnIndex );
     }
     while( maCtrlNames.count( aCtrlName ) > 0 );
     maCtrlNames.insert( aCtrlName );
@@ -146,11 +146,11 @@ public:
 
 VbaDummyFormControl::VbaDummyFormControl( const OUString& rName )
 {
-    mxSiteModel.reset( new VbaSiteModel );
+    mxSiteModel = std::make_shared<VbaSiteModel>();
     mxSiteModel->importProperty( XML_Name, rName );
     mxSiteModel->importProperty( XML_VariousPropertyBits, OUString( '0' ) );
 
-    mxCtrlModel.reset( new AxLabelModel );
+    mxCtrlModel = std::make_shared<AxLabelModel>();
     mxCtrlModel->setAwtModelMode();
     mxCtrlModel->importProperty( XML_Size, "10;10" );
 }
@@ -243,23 +243,23 @@ ControlModelRef VbaSiteModel::createControlModel( const AxClassTable& rClassTabl
     {
         switch( nTypeIndex )
         {
-            case VBA_SITE_COMMANDBUTTON:    xCtrlModel.reset( new AxCommandButtonModel );   break;
-            case VBA_SITE_LABEL:            xCtrlModel.reset( new AxLabelModel );           break;
-            case VBA_SITE_IMAGE:            xCtrlModel.reset( new AxImageModel );           break;
-            case VBA_SITE_TOGGLEBUTTON:     xCtrlModel.reset( new AxToggleButtonModel );    break;
-            case VBA_SITE_CHECKBOX:         xCtrlModel.reset( new AxCheckBoxModel );        break;
-            case VBA_SITE_OPTIONBUTTON:     xCtrlModel.reset( new AxOptionButtonModel );    break;
-            case VBA_SITE_TEXTBOX:          xCtrlModel.reset( new AxTextBoxModel );         break;
-            case VBA_SITE_LISTBOX:          xCtrlModel.reset( new AxListBoxModel );         break;
-            case VBA_SITE_COMBOBOX:         xCtrlModel.reset( new AxComboBoxModel );        break;
-            case VBA_SITE_SPINBUTTON:       xCtrlModel.reset( new AxSpinButtonModel );      break;
-            case VBA_SITE_SCROLLBAR:        xCtrlModel.reset( new AxScrollBarModel );       break;
-            case VBA_SITE_TABSTRIP:         xCtrlModel.reset( new AxTabStripModel );
+            case VBA_SITE_COMMANDBUTTON:    xCtrlModel= std::make_shared<AxCommandButtonModel>();   break;
+            case VBA_SITE_LABEL:            xCtrlModel= std::make_shared<AxLabelModel>();           break;
+            case VBA_SITE_IMAGE:            xCtrlModel= std::make_shared<AxImageModel>();           break;
+            case VBA_SITE_TOGGLEBUTTON:     xCtrlModel= std::make_shared<AxToggleButtonModel>();    break;
+            case VBA_SITE_CHECKBOX:         xCtrlModel= std::make_shared<AxCheckBoxModel>();        break;
+            case VBA_SITE_OPTIONBUTTON:     xCtrlModel= std::make_shared<AxOptionButtonModel>();    break;
+            case VBA_SITE_TEXTBOX:          xCtrlModel= std::make_shared<AxTextBoxModel>();         break;
+            case VBA_SITE_LISTBOX:          xCtrlModel= std::make_shared<AxListBoxModel>();         break;
+            case VBA_SITE_COMBOBOX:         xCtrlModel= std::make_shared<AxComboBoxModel>();        break;
+            case VBA_SITE_SPINBUTTON:       xCtrlModel= std::make_shared<AxSpinButtonModel>();      break;
+            case VBA_SITE_SCROLLBAR:        xCtrlModel= std::make_shared<AxScrollBarModel>();       break;
+            case VBA_SITE_TABSTRIP:         xCtrlModel= std::make_shared<AxTabStripModel>();
             break;
-            case VBA_SITE_FRAME:            xCtrlModel.reset( new AxFrameModel );           break;
-            case VBA_SITE_MULTIPAGE:        xCtrlModel.reset( new AxMultiPageModel );
+            case VBA_SITE_FRAME:            xCtrlModel= std::make_shared<AxFrameModel>();           break;
+            case VBA_SITE_MULTIPAGE:        xCtrlModel= std::make_shared<AxMultiPageModel>();
             break;
-            case VBA_SITE_FORM:             xCtrlModel.reset( new AxPageModel );
+            case VBA_SITE_FORM:             xCtrlModel= std::make_shared<AxPageModel>();
             break;
             default:    OSL_FAIL( "VbaSiteModel::createControlModel - unknown type index" );
         }
@@ -271,15 +271,15 @@ ControlModelRef VbaSiteModel::createControlModel( const AxClassTable& rClassTabl
         if( pGuid )
         {
             if( *pGuid == COMCTL_GUID_SCROLLBAR_60 )
-                xCtrlModel.reset( new ComCtlScrollBarModel( 6 ) );
+                xCtrlModel = std::make_shared<ComCtlScrollBarModel>( 6 );
             else if( *pGuid == COMCTL_GUID_PROGRESSBAR_50 )
-                xCtrlModel.reset( new ComCtlProgressBarModel( 5 ) );
+                xCtrlModel = std::make_shared<ComCtlProgressBarModel>( 5 );
             else if( *pGuid == COMCTL_GUID_PROGRESSBAR_60 )
-                xCtrlModel.reset( new ComCtlProgressBarModel( 6 ) );
+                xCtrlModel = std::make_shared<ComCtlProgressBarModel>( 6 );
         }
     }
 
-    if( xCtrlModel.get() )
+    if( xCtrlModel )
     {
         // user form controls are AWT models
         xCtrlModel->setAwtModelMode();
@@ -324,33 +324,36 @@ VbaFormControl::~VbaFormControl()
 
 void VbaFormControl::importModelOrStorage( BinaryInputStream& rInStrm, StorageBase& rStrg, const AxClassTable& rClassTable )
 {
-    if( mxSiteModel.get() )
+    if( !mxSiteModel )
+        return;
+
+    if( mxSiteModel->isContainer() )
     {
-        if( mxSiteModel->isContainer() )
-        {
-            StorageRef xSubStrg = rStrg.openSubStorage( mxSiteModel->getSubStorageName(), false );
-            OSL_ENSURE( xSubStrg.get(), "VbaFormControl::importModelOrStorage - cannot find storage for embedded control" );
-            if( xSubStrg.get() )
-                importStorage( *xSubStrg, rClassTable );
-        }
-        else if( !rInStrm.isEof() )
-        {
-            sal_Int64 nNextStrmPos = rInStrm.tell() + mxSiteModel->getStreamLength();
-            importControlModel( rInStrm, rClassTable );
-            rInStrm.seek( nNextStrmPos );
-        }
+        StorageRef xSubStrg = rStrg.openSubStorage( mxSiteModel->getSubStorageName(), false );
+        OSL_ENSURE( xSubStrg, "VbaFormControl::importModelOrStorage - cannot find storage for embedded control" );
+        if( xSubStrg )
+            importStorage( *xSubStrg, rClassTable );
+    }
+    else if( !rInStrm.isEof() )
+    {
+        sal_Int64 nNextStrmPos = rInStrm.tell() + mxSiteModel->getStreamLength();
+        importControlModel( rInStrm, rClassTable );
+        rInStrm.seek( nNextStrmPos );
     }
 }
 
 OUString VbaFormControl::getControlName() const
 {
-    return mxSiteModel.get() ? mxSiteModel->getName() : OUString();
+    return mxSiteModel ? mxSiteModel->getName() : OUString();
 }
 
 void VbaFormControl::createAndConvert( sal_Int32 nCtrlIndex,
         const Reference< XNameContainer >& rxParentNC, const ControlConverter& rConv ) const
 {
-    if( rxParentNC.is() && mxSiteModel.get() && mxCtrlModel.get() ) try
+    if( !(rxParentNC.is() && mxSiteModel && mxCtrlModel) )
+        return;
+
+    try
     {
         // create the control model
         OUString aServiceName = mxCtrlModel->getServiceName();
@@ -376,7 +379,7 @@ void VbaFormControl::createAndConvert( sal_Int32 nCtrlIndex,
 void VbaFormControl::importControlModel( BinaryInputStream& rInStrm, const AxClassTable& rClassTable )
 {
     createControlModel( rClassTable );
-    if( mxCtrlModel.get() )
+    if( mxCtrlModel )
         mxCtrlModel->importBinaryModel( rInStrm );
 }
 
@@ -385,98 +388,103 @@ void VbaFormControl::importStorage( StorageBase& rStrg, const AxClassTable& rCla
     createControlModel( rClassTable );
     AxContainerModelBase* pContainerModel = dynamic_cast< AxContainerModelBase* >( mxCtrlModel.get() );
     OSL_ENSURE( pContainerModel, "VbaFormControl::importStorage - missing container control model" );
-    if( pContainerModel )
+    if( !pContainerModel )
+        return;
+
+    /*  Open the 'f' stream containing the model of this control and a list
+        of site models for all child controls. */
+    BinaryXInputStream aFStrm( rStrg.openInputStream( "f" ), true );
+    OSL_ENSURE( !aFStrm.isEof(), "VbaFormControl::importStorage - missing 'f' stream" );
+
+    /*  Read the properties of this container control and the class table
+        (into the maClassTable vector) containing a list of GUIDs for
+        exotic embedded controls. */
+    if( !(!aFStrm.isEof() && pContainerModel->importBinaryModel( aFStrm ) && pContainerModel->importClassTable( aFStrm, maClassTable )) )
+        return;
+
+    /*  Read the site models of all embedded controls (this fills the
+        maControls vector). Ignore failure of importSiteModels() but
+        try to import as much controls as possible. */
+    importEmbeddedSiteModels( aFStrm );
+    /*  Open the 'o' stream containing models of embedded simple
+        controls. Stream may be empty or missing, if this control
+        contains no controls or only container controls. */
+    BinaryXInputStream aOStrm( rStrg.openInputStream( "o" ), true );
+
+    /*  Iterate over all embedded controls, import model from 'o'
+        stream (for embedded simple controls) or from the substorage
+        (for embedded container controls). */
+    maControls.forEachMem( &VbaFormControl::importModelOrStorage,
+        ::std::ref( aOStrm ), ::std::ref( rStrg ), ::std::cref( maClassTable ) );
+
+    // Special handling for multi-page which has non-standard
+    // containment and additionally needs to re-order Page children
+    if ( pContainerModel->getControlType() == API_CONTROL_MULTIPAGE )
     {
-        /*  Open the 'f' stream containing the model of this control and a list
-            of site models for all child controls. */
-        BinaryXInputStream aFStrm( rStrg.openInputStream( "f" ), true );
-        OSL_ENSURE( !aFStrm.isEof(), "VbaFormControl::importStorage - missing 'f' stream" );
-
-        /*  Read the properties of this container control and the class table
-            (into the maClassTable vector) containing a list of GUIDs for
-            exotic embedded controls. */
-        if( !aFStrm.isEof() && pContainerModel->importBinaryModel( aFStrm ) && pContainerModel->importClassTable( aFStrm, maClassTable ) )
+        AxMultiPageModel* pMultiPage = dynamic_cast< AxMultiPageModel* >( pContainerModel );
+        assert(pMultiPage);
         {
-            /*  Read the site models of all embedded controls (this fills the
-                maControls vector). Ignore failure of importSiteModels() but
-                try to import as much controls as possible. */
-            importEmbeddedSiteModels( aFStrm );
-            /*  Open the 'o' stream containing models of embedded simple
-                controls. Stream may be empty or missing, if this control
-                contains no controls or only container controls. */
-            BinaryXInputStream aOStrm( rStrg.openInputStream( "o" ), true );
+            BinaryXInputStream aXStrm( rStrg.openInputStream( "x" ), true );
+            pMultiPage->importPageAndMultiPageProperties( aXStrm, maControls.size() );
+        }
+        typedef std::unordered_map< sal_uInt32, std::shared_ptr< VbaFormControl > > IdToPageMap;
+        IdToPageMap idToPage;
+        AxArrayString sCaptions;
 
-            /*  Iterate over all embedded controls, import model from 'o'
-                stream (for embedded simple controls) or from the substorage
-                (for embedded container controls). */
-            maControls.forEachMem( &VbaFormControl::importModelOrStorage,
-                ::std::ref( aOStrm ), ::std::ref( rStrg ), ::std::cref( maClassTable ) );
-
-            // Special handling for multi-page which has non-standard
-            // containment and additionally needs to re-order Page children
-            if ( pContainerModel->getControlType() == API_CONTROL_MULTIPAGE )
+        for (auto const& control : maControls)
+        {
+            auto& elem = control->mxCtrlModel;
+            if (!elem)
             {
-                AxMultiPageModel* pMultiPage = dynamic_cast< AxMultiPageModel* >( pContainerModel );
-                if ( pMultiPage )
-                {
-                    BinaryXInputStream aXStrm( rStrg.openInputStream( "x" ), true );
-                    pMultiPage->importPageAndMultiPageProperties( aXStrm, maControls.size() );
-                }
-                typedef std::unordered_map< sal_uInt32, std::shared_ptr< VbaFormControl > > IdToPageMap;
-                IdToPageMap idToPage;
-                VbaFormControlVector::iterator it = maControls.begin();
-                VbaFormControlVector::iterator it_end = maControls.end();
-                typedef std::vector< sal_uInt32 > UInt32Array;
-                AxArrayString sCaptions;
-
-                for ( ; it != it_end; ++it )
-                {
-                    if ( (*it)->mxCtrlModel->getControlType() == API_CONTROL_PAGE )
-                    {
-                        VbaSiteModelRef xPageSiteRef = (*it)->mxSiteModel;
-                        if ( xPageSiteRef.get() )
-                            idToPage[ xPageSiteRef->getId() ] = (*it);
-                    }
-                    else
-                    {
-                        AxTabStripModel* pTabStrip = static_cast<AxTabStripModel*> ( (*it)->mxCtrlModel.get() );
-                        sCaptions = pTabStrip->maItems;
-                        pMultiPage->mnActiveTab = pTabStrip->mnListIndex;
-                        pMultiPage->mnTabStyle = pTabStrip->mnTabStyle;
-                    }
-                }
-                // apply caption/titles to pages
-                UInt32Array::iterator itCtrlId = pMultiPage->mnIDs.begin();
-                UInt32Array::iterator itCtrlId_end = pMultiPage->mnIDs.end();
-                AxArrayString::iterator itCaption = sCaptions.begin();
-
-                maControls.clear();
-                // need to sort the controls according to the order of the ids
-                for ( sal_Int32 index = 1 ; ( sCaptions.size() == idToPage.size() ) && itCtrlId != itCtrlId_end; ++itCtrlId, ++itCaption, ++index )
-                {
-                    IdToPageMap::iterator iter = idToPage.find( *itCtrlId );
-                    if ( iter != idToPage.end() )
-                    {
-                        AxPageModel* pPage = static_cast<AxPageModel*> ( iter->second->mxCtrlModel.get() );
-
-                        pPage->importProperty( XML_Caption, *itCaption );
-                        maControls.push_back( iter->second );
-                    }
-                }
+                SAL_WARN("oox", "empty control model");
+                continue;
             }
-            /*  Reorder the controls (sorts all option buttons of an option
-                group together), and move all children of all embedded frames
-                (group boxes) to this control (UNO group boxes cannot contain
-                other controls). */
-            finalizeEmbeddedControls();
+            if (elem->getControlType() == API_CONTROL_PAGE)
+            {
+                VbaSiteModelRef xPageSiteRef = control->mxSiteModel;
+                if ( xPageSiteRef )
+                    idToPage[ xPageSiteRef->getId() ] = control;
+            }
+            else
+            {
+                AxTabStripModel* pTabStrip = static_cast<AxTabStripModel*>(elem.get());
+                sCaptions = pTabStrip->maItems;
+                pMultiPage->mnActiveTab = pTabStrip->mnListIndex;
+                pMultiPage->mnTabStyle = pTabStrip->mnTabStyle;
+            }
+        }
+        // apply caption/titles to pages
+
+        maControls.clear();
+        // need to sort the controls according to the order of the ids
+        if ( sCaptions.size() == idToPage.size() )
+        {
+            AxArrayString::iterator itCaption = sCaptions.begin();
+            for ( const auto& rCtrlId : pMultiPage->mnIDs )
+            {
+                IdToPageMap::iterator iter = idToPage.find( rCtrlId );
+                if ( iter != idToPage.end() )
+                {
+                    AxPageModel* pPage = static_cast<AxPageModel*> ( iter->second->mxCtrlModel.get() );
+
+                    pPage->importProperty( XML_Caption, *itCaption );
+                    maControls.push_back( iter->second );
+                }
+                ++itCaption;
+            }
         }
     }
+    /*  Reorder the controls (sorts all option buttons of an option
+        group together), and move all children of all embedded frames
+        (group boxes) to this control (UNO group boxes cannot contain
+        other controls). */
+    finalizeEmbeddedControls();
 }
 
 bool VbaFormControl::convertProperties( const Reference< XControlModel >& rxCtrlModel,
         const ControlConverter& rConv, sal_Int32 nCtrlIndex ) const
 {
-    if( rxCtrlModel.is() && mxSiteModel.get() && mxCtrlModel.get() )
+    if( rxCtrlModel.is() && mxSiteModel && mxCtrlModel )
     {
         const OUString& rCtrlName = mxSiteModel->getName();
         OSL_ENSURE( !rCtrlName.isEmpty(), "VbaFormControl::convertProperties - control without name" );
@@ -516,13 +524,13 @@ bool VbaFormControl::convertProperties( const Reference< XControlModel >& rxCtrl
 void VbaFormControl::createControlModel( const AxClassTable& rClassTable )
 {
     // derived classes may have created their own control model
-    if( !mxCtrlModel && mxSiteModel.get() )
+    if( !mxCtrlModel && mxSiteModel )
         mxCtrlModel = mxSiteModel->createControlModel( rClassTable );
 }
 
 bool VbaFormControl::importSiteModel( BinaryInputStream& rInStrm )
 {
-    mxSiteModel.reset( new VbaSiteModel );
+    mxSiteModel = std::make_shared<VbaSiteModel>();
     return mxSiteModel->importBinaryModel( rInStrm );
 }
 
@@ -565,7 +573,7 @@ void VbaFormControl::importEmbeddedSiteModels( BinaryInputStream& rInStrm )
     bool bValid = !rInStrm.isEof();
     for( nSiteIndex = 0; bValid && (nSiteIndex < nSiteCount); ++nSiteIndex )
     {
-        VbaFormControlRef xControl( new VbaFormControl );
+        VbaFormControlRef xControl = std::make_shared<VbaFormControl>();
         maControls.push_back( xControl );
         bValid = xControl->importSiteModel( rInStrm );
     }
@@ -594,9 +602,9 @@ void VbaFormControl::finalizeEmbeddedControls()
     VbaControlNamesSet aControlNames;
     VbaControlNameInserter aInserter( aControlNames );
     maControls.forEach( aInserter );
-    for( VbaFormControlVector::iterator aIt = maControls.begin(), aEnd = maControls.end(); aIt != aEnd; ++aIt )
-        if( (*aIt)->mxCtrlModel.get() && ((*aIt)->mxCtrlModel->getControlType() == API_CONTROL_GROUPBOX) )
-            (*aIt)->maControls.forEach( aInserter );
+    for (auto const& control : maControls)
+        if( control->mxCtrlModel && (control->mxCtrlModel->getControlType() == API_CONTROL_GROUPBOX) )
+            control->maControls.forEach( aInserter );
 
     /*  Reprocess the sorted list and collect all option button controls that
         are part of the same option group (determined by group name). All
@@ -613,10 +621,9 @@ void VbaFormControl::finalizeEmbeddedControls()
 
     typedef VbaFormControlVectorMap::mapped_type VbaFormControlVectorRef;
     bool bLastWasOptionButton = false;
-    for( VbaFormControlVector::iterator aIt = maControls.begin(), aEnd = maControls.end(); aIt != aEnd; ++aIt )
+    for (auto const& control : maControls)
     {
-        VbaFormControlRef xControl = *aIt;
-        const ControlModelBase* pCtrlModel = xControl->mxCtrlModel.get();
+        const ControlModelBase* pCtrlModel = control->mxCtrlModel.get();
 
         if( const AxOptionButtonModel* pOptButtonModel = dynamic_cast< const AxOptionButtonModel* >( pCtrlModel ) )
         {
@@ -630,19 +637,19 @@ void VbaFormControl::finalizeEmbeddedControls()
                     control is needed. */
                 if( bLastWasOptionButton )
                 {
-                    VbaFormControlVectorRef xDummyGroup( new VbaFormControlVector );
+                    VbaFormControlVectorRef xDummyGroup = std::make_shared<VbaFormControlVector>();
                     aControlGroups.push_back( xDummyGroup );
                     OUString aName = aControlNames.generateDummyName();
-                    VbaFormControlRef xDummyControl( new VbaDummyFormControl( aName ) );
+                    VbaFormControlRef xDummyControl = std::make_shared<VbaDummyFormControl>( aName );
                     xDummyGroup->push_back( xDummyControl );
                 }
-                rxOptionGroup.reset( new VbaFormControlVector );
+                rxOptionGroup = std::make_shared<VbaFormControlVector>();
                 aControlGroups.push_back( rxOptionGroup );
             }
             /*  Append the option button to the control group (which is now
                 referred by the vector aControlGroups and by the map
                 aOptionGroups). */
-            rxOptionGroup->push_back( xControl );
+            rxOptionGroup->push_back(control);
             bLastWasOptionButton = true;
         }
         else
@@ -650,12 +657,12 @@ void VbaFormControl::finalizeEmbeddedControls()
             // open a new control group, if the last group is an option group
             if( bLastWasOptionButton || aControlGroups.empty() )
             {
-                VbaFormControlVectorRef xControlGroup( new VbaFormControlVector );
+                VbaFormControlVectorRef xControlGroup = std::make_shared<VbaFormControlVector>();
                 aControlGroups.push_back( xControlGroup );
             }
             // append the control to the last control group
             VbaFormControlVector& rLastGroup = *aControlGroups.back();
-            rLastGroup.push_back( xControl );
+            rLastGroup.push_back(control);
             bLastWasOptionButton = false;
 
             // if control is a group box, move all its children to this control
@@ -663,11 +670,11 @@ void VbaFormControl::finalizeEmbeddedControls()
             {
                 /*  Move all embedded controls of the group box relative to the
                     position of the group box. */
-                xControl->moveEmbeddedToAbsoluteParent();
+                control->moveEmbeddedToAbsoluteParent();
                 /*  Insert all children of the group box into the last control
                     group (following the group box). */
-                rLastGroup.insert( rLastGroup.end(), xControl->maControls.begin(), xControl->maControls.end() );
-                xControl->maControls.clear();
+                rLastGroup.insert( rLastGroup.end(), control->maControls.begin(), control->maControls.end() );
+                control->maControls.clear();
                 // check if last control of the group box is an option button
                 bLastWasOptionButton = dynamic_cast< const AxOptionButtonModel* >( rLastGroup.back()->mxCtrlModel.get() ) != nullptr;
             }
@@ -676,43 +683,43 @@ void VbaFormControl::finalizeEmbeddedControls()
 
     // flatten the vector of vectors of form controls to a single vector
     maControls.clear();
-    for( VbaFormControlVectorVector::iterator aIt = aControlGroups.begin(), aEnd = aControlGroups.end(); aIt != aEnd; ++aIt )
-        maControls.insert( maControls.end(), (*aIt)->begin(), (*aIt)->end() );
+    for (auto const& controlGroup : aControlGroups)
+        maControls.insert( maControls.end(), controlGroup->begin(), controlGroup->end() );
 }
 
 void VbaFormControl::moveRelative( const AxPairData& rDistance )
 {
-    if( mxSiteModel.get() )
+    if( mxSiteModel )
         mxSiteModel->moveRelative( rDistance );
 }
 
 void VbaFormControl::moveEmbeddedToAbsoluteParent()
 {
-    if( mxSiteModel.get() && !maControls.empty() )
+    if( !(mxSiteModel && !maControls.empty()) )
+        return;
+
+    // distance to move is equal to position of this control in its parent
+    AxPairData aDistance = mxSiteModel->getPosition();
+
+    /*  For group boxes: add half of the font height to Y position (VBA
+        positions relative to frame border line, not to 'top' of frame). */
+    const AxFontDataModel* pFontModel = dynamic_cast< const AxFontDataModel* >( mxCtrlModel.get() );
+    if( pFontModel && (pFontModel->getControlType() == API_CONTROL_GROUPBOX) )
     {
-        // distance to move is equal to position of this control in its parent
-        AxPairData aDistance = mxSiteModel->getPosition();
-
-        /*  For group boxes: add half of the font height to Y position (VBA
-            positions relative to frame border line, not to 'top' of frame). */
-        const AxFontDataModel* pFontModel = dynamic_cast< const AxFontDataModel* >( mxCtrlModel.get() );
-        if( pFontModel && (pFontModel->getControlType() == API_CONTROL_GROUPBOX) )
-        {
-            // convert points to 1/100 mm (1 pt = 1/72 inch = 2.54/72 cm = 2540/72 1/100 mm)
-            sal_Int32 nFontHeight = static_cast< sal_Int32 >( pFontModel->getFontHeight() * 2540 / 72 );
-            aDistance.second += nFontHeight / 2;
-        }
-
-        // move the embedded controls
-        maControls.forEachMem( &VbaFormControl::moveRelative, ::std::cref( aDistance ) );
+        // convert points to 1/100 mm (1 pt = 1/72 inch = 2.54/72 cm = 2540/72 1/100 mm)
+        sal_Int32 nFontHeight = static_cast< sal_Int32 >( pFontModel->getFontHeight() * 2540 / 72 );
+        aDistance.second += nFontHeight / 2;
     }
+
+    // move the embedded controls
+    maControls.forEachMem( &VbaFormControl::moveRelative, ::std::cref( aDistance ) );
 }
 
 bool VbaFormControl::compareByTabIndex( const VbaFormControlRef& rxLeft, const VbaFormControlRef& rxRight )
 {
     // sort controls without model to the end
-    sal_Int32 nLeftTabIndex = rxLeft->mxSiteModel.get() ? rxLeft->mxSiteModel->getTabIndex() : SAL_MAX_INT32;
-    sal_Int32 nRightTabIndex = rxRight->mxSiteModel.get() ? rxRight->mxSiteModel->getTabIndex() : SAL_MAX_INT32;
+    sal_Int32 nLeftTabIndex = rxLeft->mxSiteModel ? rxLeft->mxSiteModel->getTabIndex() : SAL_MAX_INT32;
+    sal_Int32 nRightTabIndex = rxRight->mxSiteModel ? rxRight->mxSiteModel->getTabIndex() : SAL_MAX_INT32;
     return nLeftTabIndex < nRightTabIndex;
 }
 
@@ -813,11 +820,11 @@ void VbaUserForm::importForm( const Reference< XNameContainer >& rxDialogLib,
         aFormName = rModuleName;
     if( aFormName.isEmpty() )
         return;
-    mxSiteModel.reset( new VbaSiteModel );
+    mxSiteModel = std::make_shared<VbaSiteModel>();
     mxSiteModel->importProperty( XML_Name, aFormName );
 
     // read the form properties (caption is contained in this '03VBFrame' stream, not in the 'f' stream)
-    mxCtrlModel.reset( new AxUserFormModel );
+    mxCtrlModel = std::make_shared<AxUserFormModel>();
     OUString aKey, aValue;
     bool bExitLoop = false;
     while( !bExitLoop && !aFrameTextStrm.isEof() )
@@ -858,7 +865,6 @@ void VbaUserForm::importForm( const Reference< XNameContainer >& rxDialogLib,
     }
 }
 
-} // namespace ole
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

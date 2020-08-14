@@ -69,8 +69,8 @@ public class ParcelContainer implements XNameAccess {
     private boolean isPkgContainer = false;
 
     /**
-     * Tests if this <tt>ParcelContainer</tt> represents an UNO package
-     * or sub package within an UNO package
+     * Tests if this <tt>ParcelContainer</tt> represents a UNO package
+     * or sub package within a UNO package
      *
      * @return    <tt>true</tt> if has parent <tt>false</tt> otherwise
      */
@@ -304,7 +304,7 @@ public class ParcelContainer implements XNameAccess {
     }
 
     public String getParcelContainerDir() {
-        // If this container does not represent an uno-package
+        // If this container does not represent a uno-package
         // then it is a document, user or share
         // in each case the convention is to have a Scripts/[language]
         // dir where scripts reside
@@ -615,7 +615,7 @@ public class ParcelContainer implements XNameAccess {
         com.sun.star.lang.WrappedTargetException {
 
         LogUtils.DEBUG("deleteParcel for containerURL " + containerUrl
-                       + " name = " + name  + " Langueg = " + language);
+                       + " name = " + name  + " Language = " + language);
 
         Parcel p = (Parcel)getByName(name);
 
@@ -711,9 +711,9 @@ public class ParcelContainer implements XNameAccess {
         // parse location
         parsedUri.location = sfUri.getParameter("location");
 
-        // TODO basic sanity check on language, location, functioname, parcel
-        // should be correct e.g. verified  by MSP and LangProvider by the
-        // time its got to here
+        // TODO basic sanity check on language, location, function name, parcel
+        // should be correct e.g. verified by MSP and LangProvider by the
+        // time it's got to here
 
         LogUtils.DEBUG("** location = " + parsedUri.location +
                        "\nfunction = " + parsedUri.function +

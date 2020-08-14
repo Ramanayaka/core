@@ -38,7 +38,7 @@ SvXMLAttrContainerData::~SvXMLAttrContainerData()
 
 bool SvXMLAttrContainerData::operator ==( const SvXMLAttrContainerData& rCmp ) const
 {
-    return ( *(rCmp.pimpl) == *(pimpl) );
+    return ( *(rCmp.pimpl) == *pimpl );
 }
 
 bool SvXMLAttrContainerData::AddAttr( const OUString& rLName,
@@ -106,12 +106,12 @@ const OUString& SvXMLAttrContainerData::GetAttrValue(size_t i) const
     return pimpl->GetAttrValue(i);
 }
 
-const OUString SvXMLAttrContainerData::GetAttrNamespace( size_t i ) const
+OUString SvXMLAttrContainerData::GetAttrNamespace( size_t i ) const
 {
     return pimpl->GetAttrNamespace(i);
 }
 
-const OUString SvXMLAttrContainerData::GetAttrPrefix( size_t i ) const
+OUString SvXMLAttrContainerData::GetAttrPrefix( size_t i ) const
 {
     return pimpl->GetAttrPrefix(i);
 }

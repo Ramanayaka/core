@@ -42,9 +42,6 @@
       <prop oor:name="TemplateRepositoryURL" oor:type="xs:string">
         <value>${STARTCENTER_TEMPLREP_URL}</value>
       </prop>
-      <prop oor:name="StartCenterHideExternalLinks" oor:type="xs:int">
-        <value>${STARTCENTER_HIDE_EXTERNAL_LINKS}</value>
-      </prop>
     </node>
     <prop oor:name="System">
       <value install:module="unx">UNIX</value>
@@ -59,6 +56,11 @@
   </node>
   <node oor:name="VCL">
     <prop oor:name="UseOpenGL" oor:type="xs:boolean">
+      <value install:module="macosx">false</value>
+      <value install:module="unx">false</value>
+      <value install:module="wnt">false</value>
+    </prop>
+    <prop oor:name="UseSkia" oor:type="xs:boolean">
       <value install:module="macosx">false</value>
       <value install:module="unx">false</value>
       <value install:module="wnt">true</value>
@@ -155,7 +157,18 @@
           <value>_default</value>
         </prop>
       </node>
-      <node oor:name="m4" oor:op="replace" install:module="base">
+      <node oor:name="m4" oor:op="replace" install:module="math">
+        <prop oor:name="URL" oor:type="xs:string">
+          <value>private:factory/smath</value>
+        </prop>
+        <prop oor:name="Title">
+          <value xml:lang="en-US">F~ormula</value>
+        </prop>
+        <prop oor:name="TargetName" oor:type="xs:string">
+          <value>_default</value>
+        </prop>
+      </node>
+      <node oor:name="m5" oor:op="replace" install:module="base">
         <prop oor:name="URL" oor:type="xs:string">
           <value>private:factory/sdatabase?Interactive</value>
         </prop>
@@ -169,7 +182,7 @@
           <value>private:image/3245</value>
         </prop>
       </node>
-      <node oor:name="m5" oor:op="replace">
+      <node oor:name="m6" oor:op="replace">
         <prop oor:name="URL" oor:type="xs:string">
           <value>private:separator</value>
         </prop>
@@ -177,7 +190,7 @@
           <value>_default</value>
         </prop>
       </node>
-      <node oor:name="m6" oor:op="replace" install:module="writer">
+      <node oor:name="m7" oor:op="replace" install:module="writer">
         <prop oor:name="URL" oor:type="xs:string">
           <value>private:factory/swriter/web</value>
         </prop>
@@ -188,23 +201,12 @@
           <value>_default</value>
         </prop>
       </node>
-      <node oor:name="m7" oor:op="replace" install:module="writer">
+      <node oor:name="m8" oor:op="replace" install:module="writer">
         <prop oor:name="URL" oor:type="xs:string">
           <value>private:factory/swriter?slot=21053</value>
         </prop>
         <prop oor:name="Title">
           <value xml:lang="en-US">~XML Form Document</value>
-        </prop>
-        <prop oor:name="TargetName" oor:type="xs:string">
-          <value>_default</value>
-        </prop>
-      </node>
-      <node oor:name="m8" oor:op="replace" install:module="writer">
-        <prop oor:name="URL" oor:type="xs:string">
-          <value>private:factory/swriter/GlobalDocument</value>
-        </prop>
-        <prop oor:name="Title">
-          <value xml:lang="en-US">M~aster Document</value>
         </prop>
         <prop oor:name="TargetName" oor:type="xs:string">
           <value>_default</value>
@@ -218,18 +220,7 @@
           <value>_default</value>
         </prop>
       </node>
-      <node oor:name="m10" oor:op="replace" install:module="math">
-        <prop oor:name="URL" oor:type="xs:string">
-          <value>private:factory/smath</value>
-        </prop>
-        <prop oor:name="Title">
-          <value xml:lang="en-US">F~ormula</value>
-        </prop>
-        <prop oor:name="TargetName" oor:type="xs:string">
-          <value>_default</value>
-        </prop>
-      </node>
-      <node oor:name="m11" oor:op="replace" install:module="writer">
+      <node oor:name="m10" oor:op="replace" install:module="writer">
         <prop oor:name="URL" oor:type="xs:string">
           <value>private:factory/swriter?slot=21051</value>
         </prop>
@@ -243,7 +234,7 @@
           <value>private:image/3255</value>
         </prop>
       </node>
-      <node oor:name="m12" oor:op="replace" install:module="writer">
+      <node oor:name="m11" oor:op="replace" install:module="writer">
         <prop oor:name="URL" oor:type="xs:string">
           <value>private:factory/swriter?slot=21052</value>
         </prop>
@@ -257,9 +248,20 @@
           <value>private:image/3255</value>
         </prop>
       </node>
-      <node oor:name="m13" oor:op="replace">
+      <node oor:name="m12" oor:op="replace">
         <prop oor:name="URL" oor:type="xs:string">
           <value>private:separator</value>
+        </prop>
+        <prop oor:name="TargetName" oor:type="xs:string">
+          <value>_default</value>
+        </prop>
+      </node>
+      <node oor:name="m13" oor:op="replace" install:module="writer">
+        <prop oor:name="URL" oor:type="xs:string">
+          <value>private:factory/swriter/GlobalDocument</value>
+        </prop>
+        <prop oor:name="Title">
+          <value xml:lang="en-US">M~aster Document</value>
         </prop>
         <prop oor:name="TargetName" oor:type="xs:string">
           <value>_default</value>
@@ -270,13 +272,10 @@
           <value>.uno:NewDoc</value>
         </prop>
         <prop oor:name="Title">
-          <value xml:lang="en-US">Templates</value>
+          <value xml:lang="en-US">Templates...</value>
         </prop>
         <prop oor:name="TargetName" oor:type="xs:string">
           <value>_self</value>
-        </prop>
-        <prop oor:name="ImageIdentifier" oor:type="xs:string">
-          <value>private:image/3242</value>
         </prop>
       </node>
     </node>
@@ -291,9 +290,6 @@
         <prop oor:name="TargetName" oor:type="xs:string">
           <value>_self</value>
         </prop>
-        <prop oor:name="ImageIdentifier" oor:type="xs:string">
-          <value>private:image/3216</value>
-        </prop>
       </node>
       <node oor:name="m1" oor:op="replace" install:module="writer">
         <prop oor:name="URL" oor:type="xs:string">
@@ -305,9 +301,6 @@
         <prop oor:name="TargetName" oor:type="xs:string">
           <value>_self</value>
         </prop>
-        <prop oor:name="ImageIdentifier" oor:type="xs:string">
-          <value>private:image/3216</value>
-        </prop>
       </node>
       <node oor:name="m2" oor:op="replace" install:module="writer">
         <prop oor:name="URL" oor:type="xs:string">
@@ -318,9 +311,6 @@
         </prop>
         <prop oor:name="TargetName" oor:type="xs:string">
           <value>_self</value>
-        </prop>
-        <prop oor:name="ImageIdentifier" oor:type="xs:string">
-          <value>private:image/3216</value>
         </prop>
       </node>
       <node oor:name="m10" oor:op="replace">
@@ -341,9 +331,6 @@
         <prop oor:name="TargetName" oor:type="xs:string">
           <value>_self</value>
         </prop>
-        <prop oor:name="ImageIdentifier" oor:type="xs:string">
-          <value>private:image/3216</value>
-        </prop>
       </node>
       <node oor:name="m12" oor:op="replace" install:module="writer">
         <prop oor:name="URL" oor:type="xs:string">
@@ -354,9 +341,6 @@
         </prop>
         <prop oor:name="TargetName" oor:type="xs:string">
           <value>_self</value>
-        </prop>
-        <prop oor:name="ImageIdentifier" oor:type="xs:string">
-          <value>private:image/3216</value>
         </prop>
       </node>
       <node oor:name="m13" oor:op="replace">
@@ -377,11 +361,26 @@
         <prop oor:name="TargetName" oor:type="xs:string">
           <value>_self</value>
         </prop>
-        <prop oor:name="ImageIdentifier" oor:type="xs:string">
-          <value>private:image/3216</value>
-        </prop>
       </node>
     </node>
+    <prop oor:name="SendFeedbackURL" oor:type="xs:string">
+      <value>https://hub.libreoffice.org/send-feedback/</value>
+    </prop>
+    <prop oor:name="QA_URL" oor:type="xs:string">
+      <value>https://hub.libreoffice.org/forum/</value>
+    </prop>
+    <prop oor:name="DocumentationURL" oor:type="xs:string">
+      <value>https://hub.libreoffice.org/documentation/</value>
+    </prop>
+    <prop oor:name="GetInvolvedURL" oor:type="xs:string">
+      <value>https://hub.libreoffice.org/joinus/</value>
+    </prop>
+    <prop oor:name="DonationURL" oor:type="xs:string">
+      <value>https://hub.libreoffice.org/donation/</value>
+    </prop>
+    <prop oor:name="ReleaseNotesURL" oor:type="xs:string">
+      <value>https://hub.libreoffice.org/ReleaseNotes/</value>
+    </prop>
   </node>
   <node oor:name="Forms">
     <node oor:name="ControlLayout">
@@ -433,12 +432,6 @@
     <prop oor:name="UseSystemPrintDialog" install:module="macosx">
       <value>true</value>
     </prop>
-    <prop oor:name="TemplateRepositoryUrls">
-      <value/>
-    </prop>
-    <prop oor:name="TemplateRepositoryNames">
-      <value/>
-    </prop>
     <prop oor:name="FilePickerPlacesUrls">
       <value/>
     </prop>
@@ -486,13 +479,11 @@
         <it>--------------------</it>
       </value>
     </prop>
+    <prop oor:name="FindReplaceRememberedSearches">
+     <value>10</value>
+    </prop>
   </node>
   <node oor:name="Save">
-    <node oor:name="Document">
-      <prop oor:name="SaveBackwardCompatibleODF" oor:type="xs:boolean">
-        <value>false</value>
-      </prop>
-    </node>
     <node oor:name="ODF">
       <prop oor:name="DefaultVersion" oor:type="xs:short">
         <value>3</value>
@@ -503,6 +494,13 @@
     <node oor:name="Scripting">
       <prop oor:name="HyperlinksWithCtrlClick" oor:type="xs:boolean">
         <value>true</value>
+      </prop>
+    </node>
+  </node>
+  <node oor:name="Cache">
+    <node oor:name="GraphicManager">
+      <prop oor:name="TotalCacheSize" oor:type="xs:int">
+        <value install:module="32bit">200000000</value>
       </prop>
     </node>
   </node>
@@ -529,5 +527,24 @@
         <value oor:external="com.sun.star.configuration.backend.DesktopBackend SourceViewFontHeight"/>
       </prop>
     </node>
+  </node>
+  <node oor:name="PackageKit">
+      <prop oor:name="EnableFontInstallation" oor:type="xs:boolean">
+        <value install:module="unx">true</value>
+      </prop>
+      <prop oor:name="EnableLangpackInstallation" oor:type="xs:boolean">
+        <value install:module="unx">true</value>
+      </prop>
+      <prop oor:name="EnableBaseInstallation" oor:type="xs:boolean">
+        <value install:module="unx">true</value>
+      </prop>
+  </node>
+  <node oor:name="Classification">
+      <prop oor:name="Policy" oor:type="xs:short">
+      </prop>
+      <prop oor:name="IntellectualPropertySectionExpanded" oor:type="xs:boolean">
+      </prop>
+      <prop oor:name="IntellectualPropertyTextInputIsFreeForm" oor:type="xs:boolean">
+      </prop>
   </node>
 </oor:component-data>

@@ -12,15 +12,15 @@
 
 #include <sal/config.h>
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/uno/Reference.h>
 #include <comphelper/comphelperdllapi.h>
 #include <comphelper/processfactory.hxx>
 #include <sal/types.h>
 #include <memory>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace configuration { class XReadWriteAccess; }
     namespace container {
         class XHierarchicalNameAccess;
@@ -29,7 +29,7 @@ namespace com { namespace sun { namespace star {
         class XNameContainer;
     }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 namespace comphelper {
 
@@ -135,7 +135,7 @@ private:
     css::uno::Reference< css::uno::XComponentContext >          context_;
 
     css::uno::Reference< css::configuration::XReadWriteAccess > access_;
-        // should really be an css.configuration.ReadOnlyAccess (with added
+        // should really be a css.configuration.ReadOnlyAccess (with added
         // css.beans.XHierarchicalPropertySetInfo), but then
         // configmgr::Access::asProperty() would report all properties as
         // READONLY, so isReadOnly() would not work
@@ -158,18 +158,18 @@ private:
 };
 
 /// @internal
-template< typename T > struct Convert< boost::optional< T > >
+template< typename T > struct Convert< std::optional< T > >
 {
-    static css::uno::Any toAny(boost::optional< T > const & value) {
+    static css::uno::Any toAny(std::optional< T > const & value) {
         return value
-            ? css::uno::makeAny(value.get())
+            ? css::uno::makeAny(*value)
             : css::uno::Any();
     }
 
-    static boost::optional< T > fromAny(css::uno::Any const & value)
+    static std::optional< T > fromAny(css::uno::Any const & value)
     {
         return value.hasValue()
-            ? boost::optional< T >(value.get< T >()) : boost::optional< T >();
+            ? std::optional< T >(value.get< T >()) : std::optional< T >();
     }
 
 private:
@@ -200,7 +200,7 @@ template< typename T, typename U > struct ConfigurationProperty
 
     /// Get the value of the given (non-localized) configuration property.
     ///
-    /// For nillable properties, U is of type boost::optional<U'>.
+    /// For nillable properties, U is of type std::optional<U'>.
     static U get(
         css::uno::Reference< css::uno::XComponentContext >
             const & context = comphelper::getProcessComponentContext())
@@ -216,7 +216,7 @@ template< typename T, typename U > struct ConfigurationProperty
     /// Set the value of the given (non-localized) configuration property, via a
     /// given changes batch.
     ///
-    /// For nillable properties, U is of type boost::optional<U'>.
+    /// For nillable properties, U is of type std::optional<U'>.
     static void set(
         U const & value,
         std::shared_ptr< ConfigurationChanges > const & batch)
@@ -244,7 +244,7 @@ template< typename T, typename U > struct ConfigurationLocalizedProperty
     /// locale currently set at the
     /// com.sun.star.configuration.theDefaultProvider.
     ///
-    /// For nillable properties, U is of type boost::optional<U'>.
+    /// For nillable properties, U is of type std::optional<U'>.
     static U get(css::uno::Reference< css::uno::XComponentContext > const & context)
     {
         // Folding this into one statement causes a bogus error at least with
@@ -260,7 +260,7 @@ template< typename T, typename U > struct ConfigurationLocalizedProperty
     /// com.sun.star.configuration.theDefaultProvider, via a given changes
     /// batch.
     ///
-    /// For nillable properties, U is of type boost::optional<U'>.
+    /// For nillable properties, U is of type std::optional<U'>.
     static void set(
         U const & value,
         std::shared_ptr< ConfigurationChanges > const & batch)

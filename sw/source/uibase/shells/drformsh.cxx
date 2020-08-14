@@ -17,42 +17,34 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
 #include <svx/hlnkitem.hxx>
 #include <svx/svdview.hxx>
 #include <svl/whiter.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/objface.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/dispatch.hxx>
 #include <vcl/EnumContext.hxx>
-#include <svl/srchitem.hxx>
-#include <svx/fmglob.hxx>
 #include <svx/svdouno.hxx>
 #include <com/sun/star/form/FormButtonType.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <sfx2/htmlmode.hxx>
 #include <tools/urlobj.hxx>
 
-#include "viewopt.hxx"
-#include "swmodule.hxx"
-#include "wrtsh.hxx"
-#include "cmdid.h"
-#include "globals.hrc"
-#include "helpid.h"
-#include "shells.hrc"
-#include "drwbassh.hxx"
-#include "drformsh.hxx"
+#include <viewopt.hxx>
+#include <wrtsh.hxx>
+#include <cmdid.h>
+#include <drwbassh.hxx>
+#include <drformsh.hxx>
 #include <svl/urihelper.hxx>
 #include <view.hxx>
 #include <sfx2/docfile.hxx>
 #include <docsh.hxx>
 
-#define SwDrawFormShell
+#define ShellClass_SwDrawFormShell
 #include <sfx2/msg.hxx>
-#include "swslots.hxx"
-
-#include <unomid.h>
+#include <swslots.hxx>
 
 using namespace ::com::sun::star;
 
@@ -66,7 +58,7 @@ void SwDrawFormShell::InitInterface_Impl()
 }
 
 
-void SwDrawFormShell::Execute(SfxRequest &rReq)
+void SwDrawFormShell::Execute(SfxRequest const &rReq)
 {
     SwWrtShell &rSh = GetShell();
     const SfxPoolItem* pItem = nullptr;
@@ -103,7 +95,7 @@ void SwDrawFormShell::Execute(SfxRequest &rReq)
                     }
                     else
                     {
-                        uno::Reference< awt::XControlModel >  xControlModel = pUnoCtrl->GetUnoControlModel();
+                        const uno::Reference< awt::XControlModel >&  xControlModel = pUnoCtrl->GetUnoControlModel();
 
                         OSL_ENSURE( xControlModel.is(), "UNO-Control without Model" );
                         if( !xControlModel.is() )
@@ -111,7 +103,7 @@ void SwDrawFormShell::Execute(SfxRequest &rReq)
 
                         uno::Reference< beans::XPropertySet >  xPropSet(xControlModel, uno::UNO_QUERY);
 
-                        // Can we set an URL to the object?
+                        // Can we set a URL to the object?
                         OUString sTargetURL( "TargetURL" );
                         uno::Reference< beans::XPropertySetInfo >  xPropInfoSet = xPropSet->getPropertySetInfo();
                         if( xPropInfoSet->hasPropertyByName( sTargetURL ))
@@ -178,7 +170,7 @@ void SwDrawFormShell::GetState(SfxItemSet& rSet)
                     SdrUnoObj* pUnoCtrl = dynamic_cast<SdrUnoObj*>( rMarkList.GetMark(0)->GetMarkedSdrObj() );
                     if (pUnoCtrl && SdrInventor::FmForm == pUnoCtrl->GetObjInventor())
                     {
-                        uno::Reference< awt::XControlModel >  xControlModel = pUnoCtrl->GetUnoControlModel();
+                        const uno::Reference< awt::XControlModel >&  xControlModel = pUnoCtrl->GetUnoControlModel();
 
                         OSL_ENSURE( xControlModel.is(), "UNO-Control without Model" );
                         if( !xControlModel.is() )
@@ -190,7 +182,7 @@ void SwDrawFormShell::GetState(SfxItemSet& rSet)
                         uno::Reference< beans::XPropertySetInfo >  xInfo = xPropSet->getPropertySetInfo();
                         if(xInfo->hasPropertyByName( "ButtonType" ))
                         {
-                             form::FormButtonType eButtonType = form::FormButtonType_URL;
+                            form::FormButtonType eButtonType = form::FormButtonType_URL;
                             aTmp = xPropSet->getPropertyValue( "ButtonType" );
                             if( aTmp >>= eButtonType )
                             {
@@ -232,7 +224,7 @@ void SwDrawFormShell::GetState(SfxItemSet& rSet)
                     }
                 }
                 sal_uInt16 nHtmlMode = ::GetHtmlMode(GetView().GetDocShell());
-                aHLinkItem.SetInsertMode((SvxLinkInsertMode)(aHLinkItem.GetInsertMode() |
+                aHLinkItem.SetInsertMode(static_cast<SvxLinkInsertMode>(aHLinkItem.GetInsertMode() |
                     ((nHtmlMode & HTMLMODE_ON) != 0 ? HLINK_HTMLMODE : 0)));
 
                 rSet.Put(aHLinkItem);

@@ -25,16 +25,15 @@
 
 #include <xmloff/xmlstyle.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace style { class XStyle; }
-} } }
+}
 
 class XMLOFF_DLLPUBLIC XMLTextMasterPageContext : public SvXMLStyleContext
 {
-    const OUString sIsPhysical;
-    const OUString sFollowStyle;
     OUString       sFollow;
     OUString       sPageMasterName;
+    OUString m_sDrawingPageStyle;
 
     css::uno::Reference < css::style::XStyle > xStyle;
 
@@ -49,7 +48,7 @@ class XMLOFF_DLLPUBLIC XMLTextMasterPageContext : public SvXMLStyleContext
 
     SAL_DLLPRIVATE css::uno::Reference< css::style::XStyle > Create();
 protected:
-    const css::uno::Reference< css::style::XStyle >& GetStyle() { return xStyle; }
+    const css::uno::Reference< css::style::XStyle >& GetStyle() const { return xStyle; }
 public:
 
 
@@ -59,7 +58,7 @@ public:
             bool bOverwrite );
     virtual ~XMLTextMasterPageContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 nPrefix,
             const OUString& rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
@@ -74,6 +73,11 @@ public:
 
     virtual void Finish( bool bOverwrite ) override;
 };
+
+struct ContextID_Index_Pair;
+
+XMLOFF_DLLPUBLIC extern ContextID_Index_Pair const g_MasterPageContextIDs[];
+XMLOFF_DLLPUBLIC extern XmlStyleFamily const g_MasterPageFamilies[];
 
 #endif
 

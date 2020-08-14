@@ -24,7 +24,7 @@
 #include <com/sun/star/xml/dom/XCDATASection.hpp>
 
 #include <cppuhelper/implbase.hxx>
-#include <text.hxx>
+#include "text.hxx"
 
 namespace DOM
 {
@@ -36,7 +36,6 @@ namespace DOM
     {
         friend class CDocument;
 
-    protected:
         CCDATASection(CDocument const& rDocument, ::osl::Mutex const& rMutex,
                 xmlNodePtr const pNode);
 

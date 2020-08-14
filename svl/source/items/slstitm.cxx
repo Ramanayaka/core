@@ -22,20 +22,12 @@
 #include <svl/poolitem.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <comphelper/sequence.hxx>
 #include <osl/diagnose.h>
-#include <tools/stream.hxx>
-#include <stringio.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <tools/lineend.hxx>
 
 SfxPoolItem* SfxStringListItem::CreateDefault() { return new SfxStringListItem; }
-
-class SfxImpStringList
-{
-public:
-    std::vector<OUString>  aList;
-
-    SfxImpStringList() {}
-};
-
 
 SfxStringListItem::SfxStringListItem()
 {
@@ -49,35 +41,9 @@ SfxStringListItem::SfxStringListItem( sal_uInt16 which, const std::vector<OUStri
     // Therefore the query after the count is commented out
     if( pList /*!!! && pList->Count() */ )
     {
-        pImpl.reset(new SfxImpStringList);
-        pImpl->aList = *pList;
+        mpList = std::make_shared<std::vector<OUString>>();
+        *mpList = *pList;
     }
-}
-
-
-SfxStringListItem::SfxStringListItem( sal_uInt16 which, SvStream& rStream ) :
-    SfxPoolItem( which )
-{
-    sal_Int32 nEntryCount;
-    rStream.ReadInt32( nEntryCount );
-
-    if( nEntryCount )
-        pImpl.reset(new SfxImpStringList);
-
-    if (pImpl)
-    {
-        for( sal_Int32 i=0; i < nEntryCount; i++ )
-        {
-            pImpl->aList.push_back( readByteString(rStream) );
-        }
-    }
-}
-
-
-SfxStringListItem::SfxStringListItem( const SfxStringListItem& rItem ) :
-    SfxPoolItem( rItem ),
-    pImpl(rItem.pImpl)
-{
 }
 
 
@@ -88,14 +54,14 @@ SfxStringListItem::~SfxStringListItem()
 
 std::vector<OUString>& SfxStringListItem::GetList()
 {
-    if( !pImpl )
-        pImpl.reset( new SfxImpStringList );
-    return pImpl->aList;
+    if( !mpList )
+        mpList = std::make_shared<std::vector<OUString>>();
+    return *mpList;
 }
 
 const std::vector<OUString>& SfxStringListItem::GetList () const
 {
-    return (const_cast< SfxStringListItem * >(this))->GetList();
+    return const_cast< SfxStringListItem * >(this)->GetList();
 }
 
 
@@ -105,7 +71,7 @@ bool SfxStringListItem::operator==( const SfxPoolItem& rItem ) const
 
     const SfxStringListItem& rSSLItem = static_cast<const SfxStringListItem&>(rItem);
 
-    return pImpl == rSSLItem.pImpl;
+    return mpList == rSSLItem.mpList;
 }
 
 
@@ -115,47 +81,21 @@ bool SfxStringListItem::GetPresentation
     MapUnit                 /*eCoreMetric*/,
     MapUnit                 /*ePresentationMetric*/,
     OUString&               rText,
-    const IntlWrapper *
+    const IntlWrapper&
 )   const
 {
     rText = "(List)";
     return false;
 }
 
-
-SfxPoolItem* SfxStringListItem::Clone( SfxItemPool *) const
+SfxStringListItem* SfxStringListItem::Clone( SfxItemPool *) const
 {
     return new SfxStringListItem( *this );
 }
 
-
-SfxPoolItem* SfxStringListItem::Create( SvStream & rStream, sal_uInt16 ) const
-{
-    return new SfxStringListItem( Which(), rStream );
-}
-
-
-SvStream& SfxStringListItem::Store( SvStream & rStream, sal_uInt16 ) const
-{
-    if( !pImpl )
-    {
-        rStream.WriteInt32( 0 );
-        return rStream;
-    }
-
-    sal_uInt32 nCount = pImpl->aList.size();
-    rStream.WriteUInt32( nCount );
-
-    for( sal_uInt32 i=0; i < nCount; i++ )
-        writeByteString(rStream, pImpl->aList[i]);
-
-    return rStream;
-}
-
-
 void SfxStringListItem::SetString( const OUString& rStr )
 {
-    pImpl.reset( new SfxImpStringList );
+    mpList = std::make_shared<std::vector<OUString>>();
 
     sal_Int32 nStart = 0;
     OUString aStr(convertLineEnd(rStr, LINEEND_CR));
@@ -167,12 +107,12 @@ void SfxStringListItem::SetString( const OUString& rStr )
             if (nStart<aStr.getLength())
             {
                 // put last string only if not empty
-                pImpl->aList.push_back(aStr.copy(nStart));
+                mpList->push_back(aStr.copy(nStart));
             }
             break;
         }
 
-        pImpl->aList.push_back(aStr.copy(nStart, nDelimPos-nStart));
+        mpList->push_back(aStr.copy(nStart, nDelimPos-nStart));
 
         // skip both inserted string and delimiter
         nStart = nDelimPos + 1 ;
@@ -182,41 +122,40 @@ void SfxStringListItem::SetString( const OUString& rStr )
 
 OUString SfxStringListItem::GetString()
 {
-    OUString aStr;
-    if ( pImpl )
+    OUStringBuffer aStr;
+    if ( mpList )
     {
-        std::vector<OUString>::const_iterator iter = pImpl->aList.begin();
+        std::vector<OUString>::const_iterator iter = mpList->begin();
         for (;;)
         {
-            aStr += *iter;
+            aStr.append(*iter);
             ++iter;
 
-            if (iter == pImpl->aList.end())
+            if (iter == mpList->end())
                 break;
 
-            aStr += "\r";
+            aStr.append("\r");
         }
     }
-    return convertLineEnd(aStr, GetSystemLineEnd());
+    return convertLineEnd(aStr.makeStringAndClear(), GetSystemLineEnd());
 }
 
 
 void SfxStringListItem::SetStringList( const css::uno::Sequence< OUString >& rList )
 {
-    pImpl.reset(new SfxImpStringList);
+    mpList = std::make_shared<std::vector<OUString>>();
 
     // String belongs to the list
-    for ( sal_Int32 n = 0; n < rList.getLength(); n++ )
-        pImpl->aList.push_back(rList[n]);
+    comphelper::sequenceToContainer(*mpList, rList);
 }
 
 void SfxStringListItem::GetStringList( css::uno::Sequence< OUString >& rList ) const
 {
-    long nCount = pImpl->aList.size();
+    size_t nCount = mpList->size();
 
     rList.realloc( nCount );
-    for( long i=0; i < nCount; i++ )
-        rList[i] = pImpl->aList[i];
+    for( size_t i=0; i < nCount; i++ )
+        rList[i] = (*mpList)[i];
 }
 
 // virtual

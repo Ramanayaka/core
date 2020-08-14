@@ -20,6 +20,7 @@
 #define INCLUDED_SW_INC_EDGLBLDC_HXX
 
 #include <o3tl/sorted_vector.hxx>
+#include <tools/solar.h>
 
 class SwSection;
 class SwTOXBase;
@@ -60,10 +61,7 @@ public:
         {   return GetDocPos() < rCmp.GetDocPos(); }
 };
 
-class SwGlblDocContents : public o3tl::sorted_vector<SwGlblDocContent*, o3tl::less_ptr_to<SwGlblDocContent> > {
-public:
-    ~SwGlblDocContents() { DeleteAndDestroyAll(); }
-};
+class SwGlblDocContents : public o3tl::sorted_vector<std::unique_ptr<SwGlblDocContent>, o3tl::less_uniqueptr_to<SwGlblDocContent> > {};
 
 #endif
 

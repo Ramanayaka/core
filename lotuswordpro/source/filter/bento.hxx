@@ -59,9 +59,9 @@
 #include <sal/config.h>
 
 #include <cstring>
-#include <string>
+#include <memory>
 #include <vector>
-#include "lwpsvstream.hxx"
+#include <lwpsvstream.hxx>
 
 #define BEN_CC __stdcall
 #ifdef COMP_BENTO
@@ -70,10 +70,9 @@
 #define BEN_EXPORT
 #endif
 
-#include "ut.hxx"
 #include "utlist.hxx"
 #include <tools/stream.hxx>
-#include <sot/storage.hxx>
+#include <tools/solar.h>
 
 namespace OpenStormBento
 {
@@ -112,7 +111,7 @@ enum BenError
     BenErr_NotBentoContainer = 22,
     BenErr_PropertyWithMoreThanOneValue = 23
 
-    // IMPORTANT - UtStream errors (UtErr_....) are also valid Bento
+    // IMPORTANT - UtStream errors (UtErr_...) are also valid Bento
     // errors.  They have codes of 100 and higher.  When, say, a Bento
     // container open fails due to an access violation (somebody else, say,
     // has it open exclusive), will get a UtErr code.  If define own
@@ -128,23 +127,23 @@ class CBenValueSegment;
 class CBenNamedObject;
 class CBenPropertyName;
 
-typedef unsigned char BenByte;
-typedef unsigned short BenWord;
-typedef unsigned long BenDWord;
+typedef sal_uInt8 BenByte;
+typedef sal_uInt16 BenWord;
+typedef sal_uInt32 BenDWord;
 
-typedef unsigned long BenContainerPos;
-typedef unsigned long BenObjectID;
-typedef unsigned long BenGeneration;
+typedef sal_uInt32 BenContainerPos;
+typedef sal_uInt32 BenObjectID;
+typedef sal_uInt32 BenGeneration;
 
-sal_uLong BenOpenContainer(LwpSvStream * pStream, LtcBenContainer ** ppContainer);
+sal_uLong BenOpenContainer(LwpSvStream * pStream, std::unique_ptr<LtcBenContainer>* ppContainer);
 
 class CBenIDListElmt : public CUtListElmt
 {
 public: // Internal methods
-    CBenIDListElmt(BenObjectID ID, CUtListElmt * pPrev) : CUtListElmt(pPrev)
-      { cID = ID; }
-    explicit CBenIDListElmt(BenObjectID ID) { cID = ID; }
-    BenObjectID GetID() { return cID; }
+    CBenIDListElmt(BenObjectID ID, CUtListElmt * pPrev) : CUtListElmt(pPrev), cID(ID)
+      { }
+    explicit CBenIDListElmt(BenObjectID ID) : cID(ID) { }
+    BenObjectID GetID() const { return cID; }
 
 private: // Data
     BenObjectID cID;
@@ -176,7 +175,7 @@ public:
 public: // Overridden methods
 
     /* added by  */
-    sal_uLong GetSize() { return m_ulValueLength; };
+    sal_uLong GetSize() const { return m_ulValueLength; };
 protected: // Overridden methods
 
     virtual std::size_t GetData(void* pData, std::size_t nSize) override;
@@ -187,10 +186,9 @@ protected: // Overridden methods
 
 private: // Data
     CBenValue * cpValue;
-    unsigned long cCurrentPosition;
+    size_t cCurrentPosition;
 
     sal_uLong m_ulValueLength;      // Added by , sum of length of all sub-valuesegments
-//  void    GetAmountLeft(sal_uLong * pAmtLeft);    useless in SODC
 };
 
 class LtcBenContainer
@@ -201,7 +199,7 @@ public:
       CBenPropertyName ** ppPropertyName);
     // Pass NULL to begin iteration.  Done when returns NULL.
     // Objects are returned in order of increasing ID
-    CBenObject * GetNextObject(CBenObject * pCurrObject);
+    CBenObject * GetNextObject(CBenObject const * pCurrObject);
     CBenObject * FindNextObjectWithProperty(CBenObject * pCurrObject,
       BenObjectID PropertyID);
 
@@ -210,11 +208,11 @@ public: // Internal methods
     ~LtcBenContainer();
 
     sal_uLong remainingSize() const;
-    BenError Read(void * pBuffer, unsigned long MaxSize,
-      unsigned long * pAmtRead);
-    BenError ReadKnownSize(void * pBuffer, unsigned long Amt);
-    BenError SeekToPosition(BenContainerPos Pos);
-    BenError SeekFromEnd(long Offset);
+    void Read(void * pBuffer, size_t MaxSize,
+      size_t* pAmtRead);
+    BenError ReadKnownSize(void * pBuffer, size_t Amt);
+    void SeekToPosition(BenContainerPos Pos);
+    void SeekFromEnd(long Offset);
 
     void SetNextAvailObjectID(BenObjectID ID) { cNextAvailObjectID = ID; }
     CUtList& GetObjects() { return cObjects; }
@@ -222,7 +220,7 @@ public: // Internal methods
 
     LtcUtBenValueStream * FindNextValueStreamWithPropertyName(const char * sPropertyName);
     LtcUtBenValueStream * FindValueStreamWithPropertyName(const char * sPropertyName);
-    void CreateGraphicStream(SvStream * &pStream,  const char *pObjectName);
+    std::vector<sal_uInt8> GetGraphicData(const char *pObjectName);
 
     sal_uLong GetSize() const { return m_ulLength; }
 private: // Data
@@ -253,9 +251,9 @@ private: // Data
 class CBenValue : public CBenIDListElmt
 {
 public:
-    unsigned long GetValueSize();
+    size_t GetValueSize();
     void ReadValueData(void * pBuffer,
-      unsigned long Offset, unsigned long MaxSize, unsigned long * pAmtRead);
+      size_t Offset, size_t MaxSize, size_t* pAmtRead);
 
     CBenProperty * BEN_EXPORT GetProperty() { return cpProperty; }
 
@@ -271,7 +269,7 @@ public: // Internal methods
         cpProperty = pProperty;
     }
 
-    inline CBenValueSegment * GetNextValueSegment(CBenValueSegment *
+    inline CBenValueSegment * GetNextValueSegment(CBenValueSegment const *
       pCurrValueSegment);
     CUtList& GetValueSegments() { return cValueSegments; }
 
@@ -309,30 +307,29 @@ class CBenValueSegment : public CUtListElmt
 {
 public: // Internal methods
     CBenValueSegment(CBenValue * pValue, BenContainerPos Pos,
-      unsigned long Size) : CUtListElmt(&pValue->GetValueSegments())
-      { cpValue = pValue; cImmediate = false; cPos = Pos;
-      cSize = Size; }
+      size_t Size) : CUtListElmt(&pValue->GetValueSegments())
+      { cImmediate = false; cPos = Pos;
+        cSize = Size; }
     CBenValueSegment(CBenValue * pValue, const void  * pImmData,
       unsigned short Size) : CUtListElmt(&pValue->GetValueSegments())
-      { cpValue = pValue; cImmediate = true;
-      std::memcpy(cImmData, pImmData, Size); cSize = Size; }
-    bool IsImmediate() { return cImmediate; }
-    BenContainerPos GetPosition() { return cPos; }
-    unsigned long GetSize() { return cSize; }
+      { cImmediate = true;
+        std::memcpy(cImmData, pImmData, Size); cSize = Size; }
+    bool IsImmediate() const { return cImmediate; }
+    BenContainerPos GetPosition() const { return cPos; }
+    size_t GetSize() const { return cSize; }
     BenByte * GetImmediateData() { return cImmData; }
 
 private: // Data
-    CBenValue * cpValue;
     bool cImmediate;
     union
     {
         BenContainerPos cPos;
         BenByte cImmData[4];
     };
-    unsigned long cSize;
+    size_t cSize;
 };
 
-inline CBenValueSegment * CBenValue::GetNextValueSegment(CBenValueSegment *
+inline CBenValueSegment * CBenValue::GetNextValueSegment(CBenValueSegment const *
   pCurrValueSegment)
 { return static_cast<CBenValueSegment *>( cValueSegments.GetNextOrNULL(pCurrValueSegment) ); }
 
@@ -347,7 +344,7 @@ public: // Internal methods
     CUtListElmt * pPrevObject, const OString& rName,
     CUtListElmt * pPrevNamedObjectListElmt);
 
-    const OString& GetName() { return csName; }
+    const OString& GetName() const { return csName; }
 
 private: // Data
     OString csName;
@@ -369,7 +366,7 @@ class CBenTypeName : public CBenNamedObject
 {
 public: // Internal methods
     CBenTypeName(LtcBenContainer * pContainer, BenObjectID ObjectID,
-    CBenObject * pPrevObject, const OString& rName,
+    CUtListElmt * pPrevObject, const OString& rName,
     CUtListElmt * pPrevNamedObjectListElmt) :
     CBenNamedObject(pContainer, ObjectID, pPrevObject, rName,
     pPrevNamedObjectListElmt) { ; }

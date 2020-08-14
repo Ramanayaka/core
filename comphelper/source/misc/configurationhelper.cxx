@@ -18,13 +18,15 @@
  */
 
 #include <comphelper/configurationhelper.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/util/XChangesBatch.hpp>
 
 
 namespace comphelper{
@@ -43,21 +45,15 @@ css::uno::Reference< css::uno::XInterface > ConfigurationHelper::openConfig(cons
     // set root path
     aParam.Name    = "nodepath";
     aParam.Value <<= sPackage;
-    lParams.push_back(css::uno::Any(aParam));
+    lParams.emplace_back(aParam);
 
     // enable all locales mode
     if (eMode & EConfigurationModes::AllLocales)
     {
         aParam.Name    = "locale";
         aParam.Value <<= OUString("*");
-        lParams.push_back(css::uno::Any(aParam));
+        lParams.emplace_back(aParam);
     }
-
-    // enable lazy writing
-    bool bLazy(eMode & EConfigurationModes::LazyWrite);
-    aParam.Name    = "lazywrite";
-    aParam.Value   <<= bLazy;
-    lParams.push_back(css::uno::Any(aParam));
 
     // open it
     css::uno::Reference< css::uno::XInterface > xCFG;

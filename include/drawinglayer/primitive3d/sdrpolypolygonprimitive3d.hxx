@@ -25,9 +25,7 @@
 #include <drawinglayer/primitive3d/sdrprimitive3d.hxx>
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
+namespace drawinglayer::primitive3d
     {
         /** SdrPolyPolygonPrimitive3D class
 
@@ -39,13 +37,12 @@ namespace drawinglayer
             The decomposition will include all needed 3D data for visualisation,
             including FatLines and fill styles.
          */
-        class DRAWINGLAYER_DLLPUBLIC SdrPolyPolygonPrimitive3D : public SdrPrimitive3D
+        class DRAWINGLAYER_DLLPUBLIC SdrPolyPolygonPrimitive3D final : public SdrPrimitive3D
         {
         private:
             /// the planar polyPolygon evtl with normals and texture coordinates
             basegfx::B3DPolyPolygon                 maPolyPolygon3D;
 
-        protected:
             /// local decomposition.
             virtual Primitive3DContainer create3DDecomposition(const geometry::ViewInformation3D& rViewInformation) const override;
 
@@ -70,8 +67,8 @@ namespace drawinglayer
             /// provide unique ID
             DeclPrimitive3DIDBlock()
         };
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::primitive3d
 
 
 #endif //INCLUDED_DRAWINGLAYER_PRIMITIVE3D_SDRPOLYPOLYGONPRIMITIVE3D_HXX

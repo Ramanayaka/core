@@ -17,15 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "file/FDriver.hxx"
-#include "file/FConnection.hxx"
-#include "file/fcode.hxx"
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <file/FDriver.hxx>
+#include <file/FConnection.hxx>
+#include <file/fcode.hxx>
 #include <comphelper/types.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <connectivity/dbexception.hxx>
-#include "resource/common_res.hrc"
-#include "resource/sharedresources.hxx"
+#include <strings.hrc>
+#include <resource/sharedresources.hxx>
 
 
 using namespace connectivity::file;
@@ -47,9 +46,9 @@ void OFileDriver::disposing()
     ::osl::MutexGuard aGuard(m_aMutex);
 
 
-    for (OWeakRefArray::iterator i = m_xConnections.begin(); m_xConnections.end() != i; ++i)
+    for (auto const& connection : m_xConnections)
     {
-        Reference< XComponent > xComp(i->get(), UNO_QUERY);
+        Reference< XComponent > xComp(connection.get(), UNO_QUERY);
         if (xComp.is())
             xComp->dispose();
     }
@@ -58,25 +57,11 @@ void OFileDriver::disposing()
     ODriver_BASE::disposing();
 }
 
-// static ServiceInfo
-
-OUString OFileDriver::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.sdbc.driver.file.Driver");
-}
-
-Sequence< OUString > OFileDriver::getSupportedServiceNames_Static(  )
-{
-    Sequence< OUString > aSNS( 2 );
-    aSNS[0] = "com.sun.star.sdbc.Driver";
-    aSNS[1] = "com.sun.star.sdbcx.Driver";
-    return aSNS;
-}
-
+// XServiceInfo
 
 OUString SAL_CALL OFileDriver::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return "com.sun.star.sdbc.driver.file.Driver";
 }
 
 sal_Bool SAL_CALL OFileDriver::supportsService( const OUString& _rServiceName )
@@ -87,7 +72,7 @@ sal_Bool SAL_CALL OFileDriver::supportsService( const OUString& _rServiceName )
 
 Sequence< OUString > SAL_CALL OFileDriver::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
+    return { "com.sun.star.sdbc.Driver", "com.sun.star.sdbcx.Driver" };
 }
 
 
@@ -161,7 +146,7 @@ Sequence< DriverPropertyInfo > SAL_CALL OFileDriver::getPropertyInfo( const OUSt
                 ,OUString()
                 ,Sequence< OUString >())
                 );
-        return Sequence< DriverPropertyInfo >(&(aDriverInfo[0]),aDriverInfo.size());
+        return Sequence< DriverPropertyInfo >(aDriverInfo.data(),aDriverInfo.size());
     } // if ( acceptsURL(url) )
     {
         ::connectivity::SharedResources aResources;
@@ -188,15 +173,15 @@ Reference< XTablesSupplier > SAL_CALL OFileDriver::getDataDefinitionByConnection
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(ODriver_BASE::rBHelper.bDisposed);
 
-    Reference< XTablesSupplier > xTab = nullptr;
+    Reference< XTablesSupplier > xTab;
     Reference< css::lang::XUnoTunnel> xTunnel(connection,UNO_QUERY);
     if(xTunnel.is())
     {
-        OConnection* pSearchConnection = reinterpret_cast< OConnection* >( xTunnel->getSomething(OConnection::getUnoTunnelImplementationId()) );
+        OConnection* pSearchConnection = reinterpret_cast< OConnection* >( xTunnel->getSomething(OConnection::getUnoTunnelId()) );
         OConnection* pConnection = nullptr;
-        for (OWeakRefArray::const_iterator i = m_xConnections.begin(); m_xConnections.end() != i; ++i)
+        for (auto const& elem : m_xConnections)
         {
-            if (static_cast<OConnection*>( Reference< XConnection >::query(i->get().get()).get() ) == pSearchConnection)
+            if (static_cast<OConnection*>( Reference< XConnection >::query(elem.get().get()).get() ) == pSearchConnection)
             {
                 pConnection = pSearchConnection;
                 break;

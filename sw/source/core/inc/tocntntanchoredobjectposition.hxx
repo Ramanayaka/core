@@ -18,7 +18,7 @@
  */
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_TOCNTNTANCHOREDOBJECTPOSITION_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_TOCNTNTANCHOREDOBJECTPOSITION_HXX
-#include <anchoredobjectposition.hxx>
+#include "anchoredobjectposition.hxx"
 
 class SwFrame;
 class SwTextFrame;
@@ -81,6 +81,10 @@ namespace objectpositioning
             /** frame, at which the vertical position is oriented at
             */
             const SwLayoutFrame& GetVertPosOrientFrame() const { return *mpVertPosOrientFrame;}
+
+            /// In case overlap is not allowed, re-position the current object.
+            void CalcOverlap(const SwTextFrame* pAnchorFrameForVertPos, Point& rRelPos,
+                             const SwTwips nTopOfAnch);
     };
 } // namespace objectpositioning
 

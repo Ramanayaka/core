@@ -18,18 +18,16 @@
  */
 
 #include "CheckBox.hxx"
-#include "property.hxx"
-#include "property.hrc"
-#include "services.hxx"
+#include <property.hxx>
+#include <services.hxx>
 #include <comphelper/basicio.hxx>
-#include <comphelper/processfactory.hxx>
+#include <com/sun/star/form/FormComponentType.hpp>
 
 namespace frm
 {
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -119,7 +117,7 @@ void OCheckBoxModel::describeFixedProperties( Sequence< Property >& _rProps ) co
 
 OUString SAL_CALL OCheckBoxModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_CHECKBOX);  // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_CHECKBOX;  // old (non-sun) name for compatibility !
 }
 
 
@@ -131,7 +129,7 @@ void SAL_CALL OCheckBoxModel::write(const Reference<css::io::XObjectOutputStream
     _rxOutStream->writeShort(0x0003);
     // Properties
     _rxOutStream << getReferenceValue();
-    _rxOutStream << (sal_Int16)getDefaultChecked();
+    _rxOutStream << static_cast<sal_Int16>(getDefaultChecked());
     writeHelpTextCompatibly(_rxOutStream);
     // from version 0x0003 : common properties
     writeCommonProperties(_rxOutStream);
@@ -211,7 +209,7 @@ Any OCheckBoxModel::translateDbColumnToControlValue()
         bool bTriState = true;
         if ( m_xAggregateSet.is() )
             m_xAggregateSet->getPropertyValue( PROPERTY_TRISTATE ) >>= bTriState;
-        aValue <<= (sal_Int16)( bTriState ? TRISTATE_INDET : getDefaultChecked() );
+        aValue <<= static_cast<sal_Int16>( bTriState ? TRISTATE_INDET : getDefaultChecked() );
     }
     else if ( !aValue.hasValue() )
     {
@@ -219,7 +217,7 @@ Any OCheckBoxModel::translateDbColumnToControlValue()
         // bValue cannot be used uninitialised here.
         // But GCC does not see/understand that, which breaks -Werror builds,
         // so we explicitly default-initialise it.
-        aValue <<= (sal_Int16)( bValue ? TRISTATE_TRUE : TRISTATE_FALSE );
+        aValue <<= static_cast<sal_Int16>( bValue ? TRISTATE_TRUE : TRISTATE_FALSE );
     }
 
     return aValue;
@@ -267,14 +265,14 @@ bool OCheckBoxModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OCheckBoxModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::OCheckBoxModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OCheckBoxControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

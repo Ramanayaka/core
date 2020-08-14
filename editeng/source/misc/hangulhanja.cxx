@@ -18,14 +18,11 @@
  */
 
 #include <editeng/hangulhanja.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/button.hxx>
 #include <unotools/lingucfg.hxx>
 #include <unotools/linguprops.hxx>
 
 #include <set>
 #include <map>
-#include <comphelper/processfactory.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/i18n/BreakIterator.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
@@ -34,13 +31,14 @@
 #include <com/sun/star/i18n/XExtendedTextConversion.hpp>
 #include <com/sun/star/i18n/TextConversionType.hpp>
 #include <com/sun/star/i18n/TextConversionOption.hpp>
-#include <com/sun/star/i18n/WordType.hpp>
-#include <vcl/stdtext.hxx>
+#include <vcl/weld.hxx>
 #include <unotools/charclass.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+#include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <editeng/edtdlg.hxx>
-#include <editeng/editrids.hrc>
-#include <editeng/unolingu.hxx>
 
 #define HHC HangulHanjaConversion
 
@@ -69,7 +67,7 @@ namespace editeng
         // general
         VclPtr<AbstractHangulHanjaConversionDialog>
                                 m_pConversionDialog;    // the dialog to display for user interaction
-        VclPtr<vcl::Window>     m_pUIParent;            // the parent window for any UI we raise
+        weld::Window*           m_pUIParent;            // the parent window for any UI we raise
         Reference< XComponentContext >
                                 m_xContext;             // the service factory to use
         Reference< XExtendedTextConversion >
@@ -119,7 +117,7 @@ namespace editeng
 
     public:
         HangulHanjaConversion_Impl(
-            vcl::Window* _pUIParent,
+            weld::Window* pUIParent,
             const Reference< XComponentContext >& rxContext,
             const lang::Locale& _rSourceLocale,
             const lang::Locale& _rTargetLocale,
@@ -151,13 +149,13 @@ namespace editeng
 
     private:
         DECL_LINK( OnOptionsChanged, LinkParamNone*, void );
-        DECL_LINK( OnIgnore, Button*, void );
-        DECL_LINK( OnIgnoreAll, Button*, void );
-        DECL_LINK( OnChange, Button*, void );
-        DECL_LINK( OnChangeAll, Button*, void );
-        DECL_LINK( OnByCharClicked, CheckBox*, void );
-        DECL_LINK( OnConversionTypeChanged, Button*, void );
-        DECL_LINK( OnFind, Button*, void );
+        DECL_LINK( OnIgnore, weld::Button&, void );
+        DECL_LINK( OnIgnoreAll, weld::Button&, void );
+        DECL_LINK( OnChange, weld::Button&, void );
+        DECL_LINK( OnChangeAll, weld::Button&, void );
+        DECL_LINK( OnByCharClicked, weld::ToggleButton&, void );
+        DECL_LINK( OnConversionTypeChanged, weld::Button&, void );
+        DECL_LINK( OnFind, weld::Button&, void );
 
         /** proceed, after the current convertible has been handled
 
@@ -227,7 +225,7 @@ namespace editeng
 
     HangulHanjaConversion_Impl::StringMap HangulHanjaConversion_Impl::m_aRecentlyUsedList = HangulHanjaConversion_Impl::StringMap();
 
-    HangulHanjaConversion_Impl::HangulHanjaConversion_Impl( vcl::Window* _pUIParent,
+    HangulHanjaConversion_Impl::HangulHanjaConversion_Impl( weld::Window* pUIParent,
                                                             const Reference< XComponentContext >& rxContext,
                                                             const lang::Locale& _rSourceLocale,
                                                             const lang::Locale& _rTargetLocale,
@@ -236,7 +234,7 @@ namespace editeng
                                                             bool _bIsInteractive,
                                                             HangulHanjaConversion* _pAntiImpl )
         : m_pConversionDialog()
-        , m_pUIParent( _pUIParent )
+        , m_pUIParent( pUIParent )
         , m_xContext( rxContext )
         , m_aSourceLocale( _rSourceLocale )
         , m_nSourceLang( LanguageTag::convertToLanguageType( _rSourceLocale ) )
@@ -279,31 +277,27 @@ namespace editeng
     void HangulHanjaConversion_Impl::createDialog()
     {
         DBG_ASSERT( m_bIsInteractive, "createDialog when the conversion should not be interactive?" );
-        if ( m_bIsInteractive && !m_pConversionDialog )
-        {
-            EditAbstractDialogFactory* pFact = EditAbstractDialogFactory::Create();
-            if(pFact)
-            {
-                m_pConversionDialog = pFact->CreateHangulHanjaConversionDialog(m_pUIParent, m_ePrimaryConversionDirection );
-                DBG_ASSERT(m_pConversionDialog, "Dialog creation failed!");
+        if ( !(m_bIsInteractive && !m_pConversionDialog) )
+            return;
 
-                m_pConversionDialog->EnableRubySupport( m_pAntiImpl->HasRubySupport() );
+        EditAbstractDialogFactory* pFact = EditAbstractDialogFactory::Create();
+        m_pConversionDialog = pFact->CreateHangulHanjaConversionDialog(m_pUIParent);
 
-                m_pConversionDialog->SetByCharacter( m_bByCharacter );
-                m_pConversionDialog->SetConversionFormat( m_eConversionFormat );
-                m_pConversionDialog->SetConversionDirectionState( m_bTryBothDirections, m_ePrimaryConversionDirection );
+        m_pConversionDialog->EnableRubySupport( m_pAntiImpl->HasRubySupport() );
 
-                // the handlers
-                m_pConversionDialog->SetOptionsChangedHdl( LINK( this, HangulHanjaConversion_Impl, OnOptionsChanged ) );
-                m_pConversionDialog->SetIgnoreHdl( LINK( this, HangulHanjaConversion_Impl, OnIgnore ) );
-                m_pConversionDialog->SetIgnoreAllHdl( LINK( this, HangulHanjaConversion_Impl, OnIgnoreAll ) );
-                m_pConversionDialog->SetChangeHdl( LINK( this, HangulHanjaConversion_Impl, OnChange ) );
-                m_pConversionDialog->SetChangeAllHdl( LINK( this, HangulHanjaConversion_Impl, OnChangeAll ) );
-                m_pConversionDialog->SetClickByCharacterHdl( LINK( this, HangulHanjaConversion_Impl, OnByCharClicked ) );
-                m_pConversionDialog->SetConversionFormatChangedHdl( LINK( this, HangulHanjaConversion_Impl, OnConversionTypeChanged ) );
-                m_pConversionDialog->SetFindHdl( LINK( this, HangulHanjaConversion_Impl, OnFind ) );
-            }
-        }
+        m_pConversionDialog->SetByCharacter( m_bByCharacter );
+        m_pConversionDialog->SetConversionFormat( m_eConversionFormat );
+        m_pConversionDialog->SetConversionDirectionState( m_bTryBothDirections, m_ePrimaryConversionDirection );
+
+        // the handlers
+        m_pConversionDialog->SetOptionsChangedHdl( LINK( this, HangulHanjaConversion_Impl, OnOptionsChanged ) );
+        m_pConversionDialog->SetIgnoreHdl( LINK( this, HangulHanjaConversion_Impl, OnIgnore ) );
+        m_pConversionDialog->SetIgnoreAllHdl( LINK( this, HangulHanjaConversion_Impl, OnIgnoreAll ) );
+        m_pConversionDialog->SetChangeHdl( LINK( this, HangulHanjaConversion_Impl, OnChange ) );
+        m_pConversionDialog->SetChangeAllHdl( LINK( this, HangulHanjaConversion_Impl, OnChangeAll ) );
+        m_pConversionDialog->SetClickByCharacterHdl( LINK( this, HangulHanjaConversion_Impl, OnByCharClicked ) );
+        m_pConversionDialog->SetConversionFormatChangedHdl( LINK( this, HangulHanjaConversion_Impl, OnConversionTypeChanged ) );
+        m_pConversionDialog->SetFindHdl( LINK( this, HangulHanjaConversion_Impl, OnFind ) );
     }
 
     sal_Int16 HangulHanjaConversion_Impl::implGetConversionType( bool bSwitchDirection ) const
@@ -427,7 +421,7 @@ namespace editeng
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "HangulHanjaConversion_Impl::implNextConvertibleUnit: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "editeng", "HangulHanjaConversion_Impl::implNextConvertibleUnit" );
 
             //!!! at least we want to move on in the text in order
             //!!! to avoid an endless loop...
@@ -446,8 +440,7 @@ namespace editeng
         if( m_eConvType == HHC::eConvHangulHanja && m_pConversionDialog )
         {
             m_bTryBothDirections = m_pConversionDialog->GetUseBothDirections();
-            HHC::ConversionDirection eDialogDirection = HHC::eHangulToHanja;
-            eDialogDirection = m_pConversionDialog->GetDirection( eDialogDirection );
+            HHC::ConversionDirection eDialogDirection = m_pConversionDialog->GetDirection( HHC::eHangulToHanja );
 
             if( !m_bTryBothDirections && eDialogDirection != m_eCurrentConversionDirection )
             {
@@ -545,7 +538,7 @@ namespace editeng
             if (!m_bIsInteractive)
             {
                 // silent conversion (e.g. for simplified/traditional Chinese)...
-                if(m_aCurrentSuggestions.getLength()>0)
+                if(m_aCurrentSuggestions.hasElements())
                     implChange( m_aCurrentSuggestions.getConstArray()[0] );
             }
             else if (bAutoChange)
@@ -617,7 +610,7 @@ namespace editeng
             }
             catch( const Exception& )
             {
-                OSL_FAIL( "HangulHanjaConversion_Impl::implGetConversionDirectionForCurrentPortion: caught an exception!" );
+                TOOLS_WARN_EXCEPTION( "editeng", "HangulHanjaConversion_Impl::implGetConversionDirectionForCurrentPortion" );
             }
         }
 
@@ -753,12 +746,11 @@ namespace editeng
         // exactly which characters are really changed in order to keep as much
         // from attributation for the text as possible.
         Sequence< sal_Int32 > aOffsets;
-        Reference< XExtendedTextConversion > xExtConverter( m_xConverter, UNO_QUERY );
-        if (m_eConvType == HHC::eConvSimplifiedTraditional && xExtConverter.is())
+        if (m_eConvType == HHC::eConvSimplifiedTraditional && m_xConverter.is())
         {
             try
             {
-                xExtConverter->getConversionWithOffset(
+                m_xConverter->getConversionWithOffset(
                     m_sCurrentPortion,
                     m_nCurrentStartIndex,
                     m_nCurrentEndIndex - m_nCurrentStartIndex,
@@ -815,13 +807,13 @@ namespace editeng
         implUpdateData();
     }
 
-    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnIgnore, Button*, void)
+    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnIgnore, weld::Button&, void)
     {
         // simply ignore, and proceed
         implProceed( false );
     }
 
-    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnIgnoreAll, Button*, void)
+    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnIgnoreAll, weld::Button&, void)
     {
         DBG_ASSERT( m_pConversionDialog, "HangulHanjaConversion_Impl::OnIgnoreAll: no dialog! How this?" );
 
@@ -839,7 +831,7 @@ namespace editeng
         }
     }
 
-    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnChange, Button*, void)
+    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnChange, weld::Button&, void)
     {
         // change
         DBG_ASSERT( m_pConversionDialog, "we should always have a dialog here!" );
@@ -849,98 +841,98 @@ namespace editeng
         implProceed( false );
     }
 
-    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnChangeAll, Button*, void)
+    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnChangeAll, weld::Button&, void)
     {
         DBG_ASSERT( m_pConversionDialog, "HangulHanjaConversion_Impl::OnChangeAll: no dialog! How this?" );
-        if ( m_pConversionDialog )
+        if ( !m_pConversionDialog )
+            return;
+
+        OUString sCurrentUnit( m_pConversionDialog->GetCurrentString() );
+        OUString sChangeInto( m_pConversionDialog->GetCurrentSuggestion( ) );
+
+        if( !sChangeInto.isEmpty() )
         {
-            OUString sCurrentUnit( m_pConversionDialog->GetCurrentString() );
-            OUString sChangeInto( m_pConversionDialog->GetCurrentSuggestion( ) );
+            // change the current occurrence
+            implChange( sChangeInto );
 
-            if( !sChangeInto.isEmpty() )
-            {
-                // change the current occurrence
-                implChange( sChangeInto );
-
-                // put into the "change all" list
-                m_aChangeList.insert( StringMap::value_type( sCurrentUnit, sChangeInto ) );
-            }
-
-            // and proceed
-            implProceed( false );
+            // put into the "change all" list
+            m_aChangeList.emplace( sCurrentUnit, sChangeInto );
         }
+
+        // and proceed
+        implProceed( false );
     }
 
-    IMPL_LINK( HangulHanjaConversion_Impl, OnByCharClicked, CheckBox*, _pBox, void )
+    IMPL_LINK(HangulHanjaConversion_Impl, OnByCharClicked, weld::ToggleButton&, rBox, void)
     {
-        m_bByCharacter = _pBox->IsChecked();
+        m_bByCharacter = rBox.get_active();
 
         // continue conversion, without advancing to the next unit, but instead continuing with the current unit
         implProceed( true );
     }
 
-    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnConversionTypeChanged, Button*, void)
+    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnConversionTypeChanged, weld::Button&, void)
     {
         DBG_ASSERT( m_pConversionDialog, "we should always have a dialog here!" );
         if( m_pConversionDialog )
             m_eConversionFormat = m_pConversionDialog->GetConversionFormat( );
     }
 
-    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnFind, Button*, void)
+    IMPL_LINK_NOARG(HangulHanjaConversion_Impl, OnFind, weld::Button&, void)
     {
         DBG_ASSERT( m_pConversionDialog, "HangulHanjaConversion_Impl::OnFind: where did this come from?" );
-        if ( m_pConversionDialog )
+        if ( !m_pConversionDialog )
+            return;
+
+        try
         {
-            try
-            {
-                OUString sNewOriginal( m_pConversionDialog->GetCurrentSuggestion( ) );
-                Sequence< OUString > aSuggestions;
+            OUString sNewOriginal( m_pConversionDialog->GetCurrentSuggestion( ) );
+            Sequence< OUString > aSuggestions;
 
-                DBG_ASSERT( m_xConverter.is(), "HangulHanjaConversion_Impl::OnFind: no converter!" );
-                TextConversionResult aToHanja = m_xConverter->getConversions(
-                    sNewOriginal,
-                    0, sNewOriginal.getLength(),
-                    m_aSourceLocale,
-                    TextConversionType::TO_HANJA,
-                    TextConversionOption::NONE
-                );
-                TextConversionResult aToHangul = m_xConverter->getConversions(
-                    sNewOriginal,
-                    0, sNewOriginal.getLength(),
-                    m_aSourceLocale,
-                    TextConversionType::TO_HANGUL,
-                    TextConversionOption::NONE
-                );
+            DBG_ASSERT( m_xConverter.is(), "HangulHanjaConversion_Impl::OnFind: no converter!" );
+            TextConversionResult aToHanja = m_xConverter->getConversions(
+                sNewOriginal,
+                0, sNewOriginal.getLength(),
+                m_aSourceLocale,
+                TextConversionType::TO_HANJA,
+                TextConversionOption::NONE
+            );
+            TextConversionResult aToHangul = m_xConverter->getConversions(
+                sNewOriginal,
+                0, sNewOriginal.getLength(),
+                m_aSourceLocale,
+                TextConversionType::TO_HANGUL,
+                TextConversionOption::NONE
+            );
 
-                bool bHaveToHanja = ( aToHanja.Boundary.startPos < aToHanja.Boundary.endPos );
-                bool bHaveToHangul = ( aToHangul.Boundary.startPos < aToHangul.Boundary.endPos );
+            bool bHaveToHanja = ( aToHanja.Boundary.startPos < aToHanja.Boundary.endPos );
+            bool bHaveToHangul = ( aToHangul.Boundary.startPos < aToHangul.Boundary.endPos );
 
-                TextConversionResult* pResult = nullptr;
-                if ( bHaveToHanja && bHaveToHangul )
-                {   // it found convertibles in both directions -> use the first
-                    if ( aToHangul.Boundary.startPos < aToHanja.Boundary.startPos )
-                        pResult = &aToHangul;
-                    else
-                        pResult = &aToHanja;
-                }
-                else if ( bHaveToHanja )
-                {   // only found toHanja
-                    pResult = &aToHanja;
-                }
-                else
-                {   // only found toHangul
+            TextConversionResult* pResult = nullptr;
+            if ( bHaveToHanja && bHaveToHangul )
+            {   // it found convertibles in both directions -> use the first
+                if ( aToHangul.Boundary.startPos < aToHanja.Boundary.startPos )
                     pResult = &aToHangul;
-                }
-                if ( pResult )
-                    aSuggestions = pResult->Candidates;
+                else
+                    pResult = &aToHanja;
+            }
+            else if ( bHaveToHanja )
+            {   // only found toHanja
+                pResult = &aToHanja;
+            }
+            else
+            {   // only found toHangul
+                pResult = &aToHangul;
+            }
+            if ( pResult )
+                aSuggestions = pResult->Candidates;
 
-                m_pConversionDialog->SetCurrentString( sNewOriginal, aSuggestions, false );
-                m_pConversionDialog->FocusSuggestion();
-            }
-            catch( const Exception& )
-            {
-                OSL_FAIL( "HangulHanjaConversion_Impl::OnFind: caught an exception!" );
-            }
+            m_pConversionDialog->SetCurrentString( sNewOriginal, aSuggestions, false );
+            m_pConversionDialog->FocusSuggestion();
+        }
+        catch( const Exception& )
+        {
+            TOOLS_WARN_EXCEPTION( "editeng", "HangulHanjaConversion_Impl::OnFind" );
         }
     }
 
@@ -948,12 +940,12 @@ namespace editeng
     bool    HangulHanjaConversion::m_bTryBothDirectionsSave = false;
     HHC::ConversionDirection HangulHanjaConversion::m_ePrimaryConversionDirectionSave   = HHC::eHangulToHanja;
 
-    HangulHanjaConversion::HangulHanjaConversion( vcl::Window* _pUIParent,
+    HangulHanjaConversion::HangulHanjaConversion( weld::Window* pUIParent,
         const Reference< XComponentContext >& rxContext,
         const lang::Locale& _rSourceLocale, const lang::Locale& _rTargetLocale,
         const vcl::Font* _pTargetFont,
         sal_Int32 _nOptions, bool _bIsInteractive)
-        :m_pImpl( new HangulHanjaConversion_Impl( _pUIParent, rxContext, _rSourceLocale, _rTargetLocale, _pTargetFont, _nOptions, _bIsInteractive, this ) )
+        :m_pImpl( new HangulHanjaConversion_Impl( pUIParent, rxContext, _rSourceLocale, _rTargetLocale, _pTargetFont, _nOptions, _bIsInteractive, this ) )
     {
     }
 

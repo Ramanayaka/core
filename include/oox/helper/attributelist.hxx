@@ -20,16 +20,19 @@
 #ifndef INCLUDED_OOX_HELPER_ATTRIBUTELIST_HXX
 #define INCLUDED_OOX_HELPER_ATTRIBUTELIST_HXX
 
+#include <vector>
+
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/util/DateTime.hpp>
 #include <oox/helper/helper.hxx>
 #include <oox/dllapi.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
+#include <oox/drawingml/color.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XFastAttributeList; } }
-} } }
+namespace com::sun::star {
+    namespace xml::sax { class XFastAttributeList; }
+}
 
 namespace sax_fastparser {
     class FastAttributeList;
@@ -37,6 +40,8 @@ namespace sax_fastparser {
 
 namespace oox {
 
+    /* Get the color tokens from their string representatives. */
+    sal_Int32 getHighlightColorTokenFromString(const OUString& sColorName);
 
 /** Static helpers for conversion of strings to attribute values of various
     different data types.
@@ -88,6 +93,9 @@ public:
 
     /** Returns the token identifier of the value of the specified attribute. */
     OptValue< sal_Int32 > getToken( sal_Int32 nAttrToken ) const;
+
+    /** Returns the Color object of highlight of the text. */
+    oox::drawingml::Color getHighlightColor(sal_Int32 nAttrToken) const;
 
     /** Returns the string value of the specified attribute. */
     OptValue< OUString > getString( sal_Int32 nAttrToken ) const;
@@ -163,6 +171,8 @@ public:
     /** Returns the date/time value of the specified attribute, or the default
         value if the attribute is missing or not convertible to a date/time value. */
     css::util::DateTime getDateTime( sal_Int32 nAttrToken, const css::util::DateTime& rDefault ) const;
+
+    std::vector<sal_Int32> getTokenList(sal_Int32 nAttrToken) const;
 
 private:
     css::uno::Reference< css::xml::sax::XFastAttributeList >

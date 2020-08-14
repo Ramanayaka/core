@@ -17,22 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <svx/sdr/attribute/sdrallfillattributeshelper.hxx>
-#include <svx/sdr/primitive2d/sdrattributecreator.hxx>
-#include <svx/sdr/primitive2d/sdrdecompositiontools.hxx>
+#include <sdr/primitive2d/sdrattributecreator.hxx>
+#include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <drawinglayer/attribute/fillhatchattribute.hxx>
 #include <drawinglayer/attribute/sdrfillgraphicattribute.hxx>
-#include <svx/xfillit0.hxx>
 #include <vcl/graph.hxx>
 
 //////////////////////////////////////////////////////////////////////////////
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         void SdrAllFillAttributesHelper::createPrimitive2DSequence(
             const basegfx::B2DRange& rPaintRange,
             const basegfx::B2DRange& rDefineRange)
@@ -46,11 +42,11 @@ namespace drawinglayer
                 maPrimitives.resize(1);
                 maPrimitives[0] = drawinglayer::primitive2d::createPolyPolygonFillPrimitive(
                     basegfx::B2DPolyPolygon(
-                        basegfx::tools::createPolygonFromRect(
+                        basegfx::utils::createPolygonFromRect(
                             maLastPaintRange)),
                         maLastDefineRange,
-                    maFillAttribute.get() ? *maFillAttribute.get() : drawinglayer::attribute::SdrFillAttribute(),
-                    maFillGradientAttribute.get() ? *maFillGradientAttribute.get() : drawinglayer::attribute::FillGradientAttribute());
+                    maFillAttribute ? *maFillAttribute : drawinglayer::attribute::SdrFillAttribute(),
+                    maFillGradientAttribute ? *maFillGradientAttribute : drawinglayer::attribute::FillGradientAttribute());
             }
         }
 
@@ -61,23 +57,23 @@ namespace drawinglayer
             maFillGradientAttribute(),
             maPrimitives()
         {
-            maFillAttribute.reset(
-                new drawinglayer::attribute::SdrFillAttribute(
+            maFillAttribute =
+                std::make_shared<drawinglayer::attribute::SdrFillAttribute>(
                     0.0,
-                    Color(rColor.GetRGBColor()).getBColor(),
+                    rColor.GetRGBColor().getBColor(),
                     drawinglayer::attribute::FillGradientAttribute(),
                     drawinglayer::attribute::FillHatchAttribute(),
-                    drawinglayer::attribute::SdrFillGraphicAttribute()));
+                    drawinglayer::attribute::SdrFillGraphicAttribute());
         }
 
         SdrAllFillAttributesHelper::SdrAllFillAttributesHelper(const SfxItemSet& rSet)
         :   maLastPaintRange(),
             maLastDefineRange(),
             maFillAttribute(
-                new drawinglayer::attribute::SdrFillAttribute(
+                std::make_shared<drawinglayer::attribute::SdrFillAttribute>(
                     drawinglayer::primitive2d::createNewSdrFillAttribute(rSet))),
             maFillGradientAttribute(
-                new drawinglayer::attribute::FillGradientAttribute(
+                std::make_shared<drawinglayer::attribute::FillGradientAttribute>(
                     drawinglayer::primitive2d::createNewTransparenceGradientAttribute(rSet))),
             maPrimitives()
         {
@@ -90,7 +86,7 @@ namespace drawinglayer
         bool SdrAllFillAttributesHelper::isUsed() const
         {
             // only depends on fill, FillGradientAttribute alone defines no fill
-            return maFillAttribute.get() && !maFillAttribute->isDefault();
+            return maFillAttribute && !maFillAttribute->isDefault();
         }
 
         bool SdrAllFillAttributesHelper::isTransparent() const
@@ -100,7 +96,7 @@ namespace drawinglayer
                 return true;
             }
 
-            if(maFillGradientAttribute.get() && !maFillGradientAttribute->isDefault())
+            if(maFillGradientAttribute && !maFillGradientAttribute->isDefault())
             {
                 return true;
             }
@@ -117,34 +113,36 @@ namespace drawinglayer
 
         const drawinglayer::attribute::SdrFillAttribute& SdrAllFillAttributesHelper::getFillAttribute() const
         {
-            if(!maFillAttribute.get())
+            if(!maFillAttribute)
             {
-                const_cast< SdrAllFillAttributesHelper* >(this)->maFillAttribute.reset(new drawinglayer::attribute::SdrFillAttribute());
+                const_cast< SdrAllFillAttributesHelper* >(this)->maFillAttribute =
+                    std::make_shared<drawinglayer::attribute::SdrFillAttribute>();
             }
 
-            return *maFillAttribute.get();
+            return *maFillAttribute;
         }
 
         const drawinglayer::attribute::FillGradientAttribute& SdrAllFillAttributesHelper::getFillGradientAttribute() const
         {
-            if(!maFillGradientAttribute.get())
+            if(!maFillGradientAttribute)
             {
-                const_cast< SdrAllFillAttributesHelper* >(this)->maFillGradientAttribute.reset(new drawinglayer::attribute::FillGradientAttribute());
+                const_cast< SdrAllFillAttributesHelper* >(this)->maFillGradientAttribute =
+                    std::make_shared<drawinglayer::attribute::FillGradientAttribute>();
             }
 
-            return *maFillGradientAttribute.get();
+            return *maFillGradientAttribute;
         }
 
         const drawinglayer::primitive2d::Primitive2DContainer& SdrAllFillAttributesHelper::getPrimitive2DSequence(
             const basegfx::B2DRange& rPaintRange,
             const basegfx::B2DRange& rDefineRange) const
         {
-            if(maPrimitives.size() && (maLastPaintRange != rPaintRange || maLastDefineRange != rDefineRange))
+            if(!maPrimitives.empty() && (maLastPaintRange != rPaintRange || maLastDefineRange != rDefineRange))
             {
                 const_cast< SdrAllFillAttributesHelper* >(this)->maPrimitives.clear();
             }
 
-            if(!maPrimitives.size())
+            if(maPrimitives.empty())
             {
                 const_cast< SdrAllFillAttributesHelper* >(this)->createPrimitive2DSequence(rPaintRange, rDefineRange);
             }
@@ -156,7 +154,7 @@ namespace drawinglayer
         {
             basegfx::BColor aRetval(rFallback);
 
-            if(maFillAttribute.get() && !maFillAttribute->isDefault())
+            if(maFillAttribute && !maFillAttribute->isDefault())
             {
                 const drawinglayer::attribute::FillGradientAttribute& rFillGradientAttribute = maFillAttribute->getGradient();
                 const drawinglayer::attribute::FillHatchAttribute& rFillHatchAttribute = maFillAttribute->getHatch();
@@ -253,7 +251,7 @@ namespace drawinglayer
             // color fill
             return false;
         }
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

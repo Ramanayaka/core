@@ -18,6 +18,8 @@
  */
 
 #include <memory>
+#include <numeric>
+
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/Xrender.h>
@@ -25,31 +27,27 @@
 
 #include "gdiimpl.hxx"
 
-#include <vcl/salbtype.hxx>
 #include <vcl/gradient.hxx>
+#include <sal/log.hxx>
 
-#include "unx/salunx.h"
-#include "unx/saldisp.hxx"
-#include "unx/salbmp.h"
-#include "unx/salgdi.h"
-#include "unx/salvd.h"
+#include <unx/saldisp.hxx>
+#include <unx/salbmp.h>
+#include <unx/salgdi.h>
+#include <unx/salvd.h>
 #include <unx/x11/xlimits.hxx>
-#include "salframe.hxx"
-#include "xrender_peer.hxx"
+#include <salframe.hxx>
+#include <unx/x11/xrender_peer.hxx>
 
-#include "outdata.hxx"
-
-#include "basegfx/polygon/b2dpolygon.hxx"
-#include "basegfx/polygon/b2dpolypolygon.hxx"
-#include "basegfx/polygon/b2dpolypolygontools.hxx"
-#include "basegfx/polygon/b2dpolygontools.hxx"
-#include "basegfx/polygon/b2dpolygonclipper.hxx"
-#include "basegfx/polygon/b2dlinegeometry.hxx"
-#include "basegfx/matrix/b2dhommatrix.hxx"
-#include "basegfx/matrix/b2dhommatrixtools.hxx"
-#include "basegfx/polygon/b2dpolypolygoncutter.hxx"
-#include "basegfx/polygon/b2dtrapezoid.hxx"
-#include "ControlCacheKey.hxx"
+#include <basegfx/polygon/b2dpolygon.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <basegfx/polygon/b2dpolypolygontools.hxx>
+#include <basegfx/polygon/b2dpolygontools.hxx>
+#include <basegfx/polygon/b2dpolygonclipper.hxx>
+#include <basegfx/polygon/b2dlinegeometry.hxx>
+#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <basegfx/polygon/b2dtrapezoid.hxx>
+#include <basegfx/utils/systemdependentdata.hxx>
 
 #undef SALGDI2_TESTTRANS
 
@@ -77,8 +75,8 @@ public:
     {
         for (sal_uLong i = 0; i < nPoints; ++i)
         {
-            Points_[i].x = (short)p[i].mnX;
-            Points_[i].y = (short)p[i].mnY;
+            Points_[i].x = static_cast<short>(p[i].mnX);
+            Points_[i].y = static_cast<short>(p[i].mnY);
         }
         Points_[nPoints] = Points_[0]; // close polyline
     }
@@ -104,25 +102,26 @@ namespace
         //fdo#33455 and fdo#80160 handle 1 bit depth pngs with palette entries
         //to set fore/back colors
         SalBitmap& rBitmap = const_cast<SalBitmap&>(rSalBitmap);
-        if (BitmapBuffer* pBitmapBuffer = rBitmap.AcquireBuffer(BitmapAccessMode::Read))
-        {
-            const BitmapPalette& rPalette = pBitmapBuffer->maPalette;
-            if (rPalette.GetEntryCount() == 2)
-            {
-                const BitmapColor aWhite(rPalette[rPalette.GetBestIndex(Color(COL_WHITE))]);
-                rValues.foreground = rColMap.GetPixel(ImplColorToSal(aWhite));
+        BitmapBuffer* pBitmapBuffer = rBitmap.AcquireBuffer(BitmapAccessMode::Read);
+        if (!pBitmapBuffer)
+            return;
 
-                const BitmapColor aBlack(rPalette[rPalette.GetBestIndex(Color(COL_BLACK))]);
-                rValues.background = rColMap.GetPixel(ImplColorToSal(aBlack));
-            }
-            rBitmap.ReleaseBuffer(pBitmapBuffer, BitmapAccessMode::Read);
+        const BitmapPalette& rPalette = pBitmapBuffer->maPalette;
+        if (rPalette.GetEntryCount() == 2)
+        {
+            const BitmapColor aWhite(rPalette[rPalette.GetBestIndex(COL_WHITE)]);
+            rValues.foreground = rColMap.GetPixel(aWhite);
+
+            const BitmapColor aBlack(rPalette[rPalette.GetBestIndex(COL_BLACK)]);
+            rValues.background = rColMap.GetPixel(aBlack);
         }
+        rBitmap.ReleaseBuffer(pBitmapBuffer, BitmapAccessMode::Read);
     }
 }
 
 X11SalGraphicsImpl::X11SalGraphicsImpl(X11SalGraphics& rParent):
     mrParent(rParent),
-    mnBrushColor( MAKE_SALCOLOR( 0xFF, 0xFF, 0XFF ) ),
+    mnBrushColor( 0xFF, 0xFF, 0XFF ),
     mpBrushGC(nullptr),
     mnBrushPixel(0),
     mbPenGC(false),
@@ -135,7 +134,7 @@ X11SalGraphicsImpl::X11SalGraphicsImpl(X11SalGraphics& rParent):
     mbDitherBrush(false),
     mbXORMode(false),
     mpPenGC(nullptr),
-    mnPenColor( MAKE_SALCOLOR( 0x00, 0x00, 0x00 ) ),
+    mnPenColor( 0x00, 0x00, 0x00 ),
     mnPenPixel(0),
     mpMonoGC(nullptr),
     mpCopyGC(nullptr),
@@ -155,70 +154,6 @@ void X11SalGraphicsImpl::Init()
 {
     mnPenPixel = mrParent.GetPixel( mnPenColor );
     mnBrushPixel = mrParent.GetPixel( mnBrushColor );
-}
-
-bool X11SalGraphicsImpl::FillPixmapFromScreen( X11Pixmap* pPixmap, int nX, int nY )
-{
-    //TODO lfrb: don't hardcode the depth
-    Display* pDpy = mrParent.GetXDisplay();
-    GC aTmpGC = XCreateGC( pDpy, pPixmap->GetPixmap(), 0, nullptr );
-
-    if( !aTmpGC )
-    {
-        SAL_WARN( "vcl", "Could not create GC from screen" );
-        return false;
-    }
-
-    // Copy the background of the screen into a composite pixmap
-    X11SalGraphics::CopyScreenArea( mrParent.GetXDisplay(),
-                             mrParent.GetDrawable(), mrParent.GetScreenNumber(),
-                             mrParent.GetVisual().GetDepth(),
-                             pPixmap->GetDrawable(), pPixmap->GetScreen(),
-                             pPixmap->GetDepth(),
-                             aTmpGC,
-                             nX, nY, pPixmap->GetWidth(), pPixmap->GetHeight(),
-                             0, 0 );
-
-    XFreeGC( pDpy, aTmpGC );
-    return true;
-}
-
-bool X11SalGraphicsImpl::RenderPixmapToScreen( X11Pixmap* pPixmap, X11Pixmap* /*Mask*/, int nX, int nY )
-{
-    // TODO: lfrb: Use the mask
-    GC aFontGC = mrParent.GetFontGC();
-
-    // The GC can't be null, otherwise we'd have no clip region
-    if( aFontGC == nullptr )
-    {
-        SAL_WARN( "vcl", "no valid GC to render pixmap" );
-        return false;
-    }
-
-    if( !pPixmap )
-        return false;
-
-    X11SalGraphics::CopyScreenArea( mrParent.GetXDisplay(),
-                             pPixmap->GetDrawable(), pPixmap->GetScreen(),
-                             pPixmap->GetDepth(),
-                             mrParent.GetDrawable(), mrParent.m_nXScreen,
-                             mrParent.GetVisual().GetDepth(),
-                             aFontGC,
-                             0, 0,
-                             pPixmap->GetWidth(), pPixmap->GetHeight(),
-                             nX, nY );
-    return true;
-}
-
-bool X11SalGraphicsImpl::TryRenderCachedNativeControl(ControlCacheKey& /*rControlCacheKey*/, int /*nX*/, int /*nY*/)
-{
-    return false;
-}
-
-bool X11SalGraphicsImpl::RenderAndCacheNativeControl(X11Pixmap* pPixmap, X11Pixmap* pMask, int nX, int nY,
-                                              ControlCacheKey& /*rControlCacheKey*/)
-{
-    return RenderPixmapToScreen(pPixmap, pMask, nX, nY);
 }
 
 XID X11SalGraphicsImpl::GetXRenderPicture()
@@ -430,8 +365,6 @@ GC X11SalGraphicsImpl::SelectBrush()
         {
             XSetFillStyle ( pDisplay, mpBrushGC, FillSolid );
             XSetForeground( pDisplay, mpBrushGC, mnBrushPixel );
-            if( mrParent.bPrinter_ )
-                XSetTile( pDisplay, mpBrushGC, None );
         }
         else
         {
@@ -475,7 +408,7 @@ GC X11SalGraphicsImpl::SelectPen()
     return mpPenGC;
 }
 
-void X11SalGraphicsImpl::DrawLines(sal_uLong              nPoints,
+void X11SalGraphicsImpl::DrawLines(sal_uInt32              nPoints,
                                    const SalPolyLine &rPoints,
                                    GC                 pGC,
                                    bool               bClose)
@@ -542,11 +475,7 @@ void X11SalGraphicsImpl::copyBits( const SalTwoRect& rPosAry,
     }
     else if( pSrcGraphics->bVirDev_ )
     {
-        // printer compatible virtual device
-        if( mrParent.bPrinter_ )
-            n = 2; // printer or compatible virtual device == same display
-        else
-            n = 1; // window or compatible virtual device
+        n = 1; // window or compatible virtual device
     }
     else
         n = 0;
@@ -593,7 +522,7 @@ void X11SalGraphicsImpl::copyBits( const SalTwoRect& rPosAry,
         // #i60699# No chance to handle graphics exposures - we copy
         // to a temp bitmap first, into which no repaints are
         // technically possible.
-        std::unique_ptr<SalBitmap> xDDB(pSrcGraphics->getBitmap( rPosAry.mnSrcX,
+        std::shared_ptr<SalBitmap> xDDB(pSrcGraphics->getBitmap( rPosAry.mnSrcX,
                                                                    rPosAry.mnSrcY,
                                                                    rPosAry.mnSrcWidth,
                                                                    rPosAry.mnSrcHeight ));
@@ -654,8 +583,6 @@ void X11SalGraphicsImpl::drawBitmap( const SalTwoRect& rPosAry,
                                  const SalBitmap& rSrcBitmap,
                                  const SalBitmap& rMaskBitmap )
 {
-    SAL_WARN_IF( mrParent.bPrinter_, "vcl", "Drawing of transparent bitmaps on printer devices is strictly forbidden" );
-
     // decide if alpha masking or transparency masking is needed
     BitmapBuffer* pAlphaBuffer = const_cast<SalBitmap&>(rMaskBitmap).AcquireBuffer( BitmapAccessMode::Read );
     if( pAlphaBuffer != nullptr )
@@ -788,6 +715,11 @@ bool X11SalGraphicsImpl::drawAlphaBitmap( const SalTwoRect& rTR,
     // non 8-bit alpha not implemented yet
     if( rAlphaBmp.GetBitCount() != 8 )
         return false;
+    // #i75531# the workaround below can go when
+    // X11SalGraphics::drawAlphaBitmap()'s render acceleration
+    // can handle the bitmap depth mismatch directly
+    if( rSrcBitmap.GetBitCount() < rAlphaBmp.GetBitCount() )
+        return false;
 
     // horizontal mirroring not implemented yet
     if( rTR.mnDestWidth < 0 )
@@ -910,14 +842,13 @@ bool X11SalGraphicsImpl::drawAlphaBitmap( const SalTwoRect& rTR,
 }
 
 bool X11SalGraphicsImpl::drawTransformedBitmap(
-    const basegfx::B2DPoint& rNull,
-    const basegfx::B2DPoint& rX,
-    const basegfx::B2DPoint& rY,
-    const SalBitmap& rSourceBitmap,
-    const SalBitmap* pAlphaBitmap)
+    const basegfx::B2DPoint&,
+    const basegfx::B2DPoint&,
+    const basegfx::B2DPoint&,
+    const SalBitmap&,
+    const SalBitmap*)
 {
     // here direct support for transformed bitmaps can be implemented
-    (void)rNull; (void)rX; (void)rY; (void)rSourceBitmap; (void)pAlphaBitmap;
     return false;
 }
 
@@ -952,7 +883,7 @@ bool X11SalGraphicsImpl::drawAlphaRect( long nX, long nY, long nWidth,
 
 void X11SalGraphicsImpl::drawMask( const SalTwoRect& rPosAry,
                                const SalBitmap &rSalBitmap,
-                               SalColor nMaskColor )
+                               Color nMaskColor )
 {
     const SalDisplay*   pSalDisp = mrParent.GetDisplay();
     Display*            pXDisp = pSalDisp->GetDisplay();
@@ -995,20 +926,19 @@ void X11SalGraphicsImpl::drawMask( const SalTwoRect& rPosAry,
 
 void X11SalGraphicsImpl::ResetClipRegion()
 {
-    if( mrParent.mpClipRegion )
-    {
-        mbPenGC         = false;
-        mrParent.bFontGC_ = false;
-        mbBrushGC       = false;
-        mbCopyGC        = false;
-        mbInvertGC      = false;
-        mbInvert50GC    = false;
-        mbStippleGC     = false;
-        mbTrackingGC    = false;
+    if( !mrParent.mpClipRegion )
+        return;
 
-        XDestroyRegion( mrParent.mpClipRegion );
-        mrParent.mpClipRegion    = nullptr;
-    }
+    mbPenGC         = false;
+    mbBrushGC       = false;
+    mbCopyGC        = false;
+    mbInvertGC      = false;
+    mbInvert50GC    = false;
+    mbStippleGC     = false;
+    mbTrackingGC    = false;
+
+    XDestroyRegion( mrParent.mpClipRegion );
+    mrParent.mpClipRegion    = nullptr;
 }
 
 bool X11SalGraphicsImpl::setClipRegion( const vcl::Region& i_rClip )
@@ -1020,22 +950,22 @@ bool X11SalGraphicsImpl::setClipRegion( const vcl::Region& i_rClip )
     RectangleVector aRectangles;
     i_rClip.GetRegionRectangles(aRectangles);
 
-    for(RectangleVector::const_iterator aRectIter(aRectangles.begin()); aRectIter != aRectangles.end(); ++aRectIter)
+    for (auto const& rectangle : aRectangles)
     {
-        const long nW(aRectIter->GetWidth());
+        const long nW(rectangle.GetWidth());
 
         if(nW)
         {
-            const long nH(aRectIter->GetHeight());
+            const long nH(rectangle.GetHeight());
 
             if(nH)
             {
                 XRectangle aRect;
 
-                aRect.x = (short)aRectIter->Left();
-                aRect.y = (short)aRectIter->Top();
-                aRect.width = (unsigned short)nW;
-                aRect.height = (unsigned short)nH;
+                aRect.x = static_cast<short>(rectangle.Left());
+                aRect.y = static_cast<short>(rectangle.Top());
+                aRect.width = static_cast<unsigned short>(nW);
+                aRect.height = static_cast<unsigned short>(nH);
                 XUnionRectWithRegion(&aRect, mrParent.mpClipRegion, mrParent.mpClipRegion);
             }
         }
@@ -1061,7 +991,6 @@ bool X11SalGraphicsImpl::setClipRegion( const vcl::Region& i_rClip )
 
     // done, invalidate GCs
     mbPenGC         = false;
-    mrParent.bFontGC_ = false;
     mbBrushGC       = false;
     mbCopyGC        = false;
     mbInvertGC      = false;
@@ -1086,12 +1015,12 @@ void X11SalGraphicsImpl::SetLineColor()
     }
 }
 
-void X11SalGraphicsImpl::SetLineColor( SalColor nSalColor )
+void X11SalGraphicsImpl::SetLineColor( Color nColor )
 {
-    if( mnPenColor != nSalColor )
+    if( mnPenColor != nColor )
     {
-        mnPenColor      = nSalColor;
-        mnPenPixel      = mrParent.GetPixel( nSalColor );
+        mnPenColor      = nColor;
+        mnPenPixel      = mrParent.GetPixel( nColor );
         mbPenGC         = false;
     }
 }
@@ -1106,34 +1035,34 @@ void X11SalGraphicsImpl::SetFillColor()
     }
 }
 
-void X11SalGraphicsImpl::SetFillColor( SalColor nSalColor )
+void X11SalGraphicsImpl::SetFillColor( Color nColor )
 {
-    if( mnBrushColor != nSalColor )
-    {
-        mbDitherBrush   = false;
-        mnBrushColor    = nSalColor;
-        mnBrushPixel    = mrParent.GetPixel( nSalColor );
-        if( TrueColor != mrParent.GetColormap().GetVisual().GetClass()
-            && mrParent.GetColormap().GetColor( mnBrushPixel ) != mnBrushColor
-            && nSalColor != MAKE_SALCOLOR( 0x00, 0x00, 0x00 ) // black
-            && nSalColor != MAKE_SALCOLOR( 0x00, 0x00, 0x80 ) // blue
-            && nSalColor != MAKE_SALCOLOR( 0x00, 0x80, 0x00 ) // green
-            && nSalColor != MAKE_SALCOLOR( 0x00, 0x80, 0x80 ) // cyan
-            && nSalColor != MAKE_SALCOLOR( 0x80, 0x00, 0x00 ) // red
-            && nSalColor != MAKE_SALCOLOR( 0x80, 0x00, 0x80 ) // magenta
-            && nSalColor != MAKE_SALCOLOR( 0x80, 0x80, 0x00 ) // brown
-            && nSalColor != MAKE_SALCOLOR( 0x80, 0x80, 0x80 ) // gray
-            && nSalColor != MAKE_SALCOLOR( 0xC0, 0xC0, 0xC0 ) // light gray
-            && nSalColor != MAKE_SALCOLOR( 0x00, 0x00, 0xFF ) // light blue
-            && nSalColor != MAKE_SALCOLOR( 0x00, 0xFF, 0x00 ) // light green
-            && nSalColor != MAKE_SALCOLOR( 0x00, 0xFF, 0xFF ) // light cyan
-            && nSalColor != MAKE_SALCOLOR( 0xFF, 0x00, 0x00 ) // light red
-            && nSalColor != MAKE_SALCOLOR( 0xFF, 0x00, 0xFF ) // light magenta
-            && nSalColor != MAKE_SALCOLOR( 0xFF, 0xFF, 0x00 ) // light brown
-            && nSalColor != MAKE_SALCOLOR( 0xFF, 0xFF, 0xFF ) )
-            mbDitherBrush = mrParent.GetDitherPixmap(nSalColor);
-        mbBrushGC       = false;
-    }
+    if( mnBrushColor == nColor )
+        return;
+
+    mbDitherBrush   = false;
+    mnBrushColor    = nColor;
+    mnBrushPixel    = mrParent.GetPixel( nColor );
+    if( TrueColor != mrParent.GetColormap().GetVisual().GetClass()
+        && mrParent.GetColormap().GetColor( mnBrushPixel ) != mnBrushColor
+        && nColor != Color( 0x00, 0x00, 0x00 ) // black
+        && nColor != Color( 0x00, 0x00, 0x80 ) // blue
+        && nColor != Color( 0x00, 0x80, 0x00 ) // green
+        && nColor != Color( 0x00, 0x80, 0x80 ) // cyan
+        && nColor != Color( 0x80, 0x00, 0x00 ) // red
+        && nColor != Color( 0x80, 0x00, 0x80 ) // magenta
+        && nColor != Color( 0x80, 0x80, 0x00 ) // brown
+        && nColor != Color( 0x80, 0x80, 0x80 ) // gray
+        && nColor != Color( 0xC0, 0xC0, 0xC0 ) // light gray
+        && nColor != Color( 0x00, 0x00, 0xFF ) // light blue
+        && nColor != Color( 0x00, 0xFF, 0x00 ) // light green
+        && nColor != Color( 0x00, 0xFF, 0xFF ) // light cyan
+        && nColor != Color( 0xFF, 0x00, 0x00 ) // light red
+        && nColor != Color( 0xFF, 0x00, 0xFF ) // light magenta
+        && nColor != Color( 0xFF, 0xFF, 0x00 ) // light brown
+        && nColor != Color( 0xFF, 0xFF, 0xFF ) )
+        mbDitherBrush = mrParent.GetDitherPixmap(nColor);
+    mbBrushGC       = false;
 }
 
 void X11SalGraphicsImpl::SetROPLineColor( SalROPColor nROPColor )
@@ -1141,13 +1070,13 @@ void X11SalGraphicsImpl::SetROPLineColor( SalROPColor nROPColor )
     switch( nROPColor )
     {
         case SalROPColor::N0 : // 0
-            mnPenPixel = (Pixel)0;
+            mnPenPixel = Pixel(0);
             break;
         case SalROPColor::N1 : // 1
-            mnPenPixel = (Pixel)(1 << mrParent.GetVisual().GetDepth()) - 1;
+            mnPenPixel = static_cast<Pixel>(1 << mrParent.GetVisual().GetDepth()) - 1;
             break;
         case SalROPColor::Invert : // 2
-            mnPenPixel = (Pixel)(1 << mrParent.GetVisual().GetDepth()) - 1;
+            mnPenPixel = static_cast<Pixel>(1 << mrParent.GetVisual().GetDepth()) - 1;
             break;
     }
     mnPenColor  = mrParent.GetColormap().GetColor( mnPenPixel );
@@ -1159,13 +1088,13 @@ void X11SalGraphicsImpl::SetROPFillColor( SalROPColor nROPColor )
     switch( nROPColor )
     {
         case SalROPColor::N0 : // 0
-            mnBrushPixel = (Pixel)0;
+            mnBrushPixel = Pixel(0);
             break;
         case SalROPColor::N1 : // 1
-            mnBrushPixel = (Pixel)(1 << mrParent.GetVisual().GetDepth()) - 1;
+            mnBrushPixel = static_cast<Pixel>(1 << mrParent.GetVisual().GetDepth()) - 1;
             break;
         case SalROPColor::Invert : // 2
-            mnBrushPixel = (Pixel)(1 << mrParent.GetVisual().GetDepth()) - 1;
+            mnBrushPixel = static_cast<Pixel>(1 << mrParent.GetVisual().GetDepth()) - 1;
             break;
     }
     mbDitherBrush   = false;
@@ -1173,13 +1102,12 @@ void X11SalGraphicsImpl::SetROPFillColor( SalROPColor nROPColor )
     mbBrushGC       = false;
 }
 
-void X11SalGraphicsImpl::SetXORMode( bool bSet )
+void X11SalGraphicsImpl::SetXORMode( bool bSet, bool )
 {
     if (mbXORMode != bSet)
     {
         mbXORMode   = bSet;
         mbPenGC     = false;
-        mrParent.bFontGC_ = false;
         mbBrushGC   = false;
         mbCopyGC        = false;
         mbInvertGC  = false;
@@ -1195,31 +1123,31 @@ void X11SalGraphicsImpl::drawPixel( long nX, long nY )
         XDrawPoint( mrParent.GetXDisplay(), mrParent.GetDrawable(), SelectPen(), nX, nY );
 }
 
-void X11SalGraphicsImpl::drawPixel( long nX, long nY, SalColor nSalColor )
+void X11SalGraphicsImpl::drawPixel( long nX, long nY, Color nColor )
 {
-    if( nSalColor != SALCOLOR_NONE )
+    if( nColor == SALCOLOR_NONE )
+        return;
+
+    Display *pDisplay = mrParent.GetXDisplay();
+
+    if( (mnPenColor == SALCOLOR_NONE) && !mbPenGC )
     {
-        Display *pDisplay = mrParent.GetXDisplay();
+        SetLineColor( nColor );
+        XDrawPoint( pDisplay, mrParent.GetDrawable(), SelectPen(), nX, nY );
+        mnPenColor = SALCOLOR_NONE;
+        mbPenGC = False;
+    }
+    else
+    {
+        GC pGC = SelectPen();
 
-        if( (mnPenColor == SALCOLOR_NONE) && !mbPenGC )
-        {
-            SetLineColor( nSalColor );
-            XDrawPoint( pDisplay, mrParent.GetDrawable(), SelectPen(), nX, nY );
-            mnPenColor = SALCOLOR_NONE;
-            mbPenGC = False;
-        }
-        else
-        {
-            GC pGC = SelectPen();
+        if( nColor != mnPenColor )
+            XSetForeground( pDisplay, pGC, mrParent.GetPixel( nColor ) );
 
-            if( nSalColor != mnPenColor )
-                XSetForeground( pDisplay, pGC, mrParent.GetPixel( nSalColor ) );
+        XDrawPoint( pDisplay, mrParent.GetDrawable(), pGC, nX, nY );
 
-            XDrawPoint( pDisplay, mrParent.GetDrawable(), pGC, nX, nY );
-
-            if( nSalColor != mnPenColor )
-                XSetForeground( pDisplay, pGC, mnPenPixel );
-        }
+        if( nColor != mnPenColor )
+            XSetForeground( pDisplay, pGC, mnPenPixel );
     }
 }
 
@@ -1370,11 +1298,11 @@ void X11SalGraphicsImpl::drawPolyPolygon( sal_uInt32 nPoly,
                             pGC,
                             aXRect.x, aXRect.y, aXRect.width, aXRect.height );
         }
-   }
+    }
 
-   if( mnPenColor != SALCOLOR_NONE )
-       for( sal_uInt32 i = 0; i < nPoly; i++ )
-           drawPolyLine( pPoints[i], pPtAry[i], true );
+    if( mnPenColor != SALCOLOR_NONE )
+        for( sal_uInt32 i = 0; i < nPoly; i++ )
+            drawPolyLine( pPoints[i], pPtAry[i], true );
 }
 
 bool X11SalGraphicsImpl::drawPolyLineBezier( sal_uInt32, const SalPoint*, const PolyFlags* )
@@ -1445,16 +1373,19 @@ void X11SalGraphicsImpl::invert( sal_uInt32 nPoints,
                       Complex, CoordModeOrigin );
 }
 
-bool X11SalGraphicsImpl::drawEPS( long,long,long,long,void*,sal_uLong )
+bool X11SalGraphicsImpl::drawEPS( long,long,long,long,void*,sal_uInt32 )
 {
     return false;
 }
 
 // draw a poly-polygon
-bool X11SalGraphicsImpl::drawPolyPolygon( const basegfx::B2DPolyPolygon& rOrigPolyPoly, double fTransparency )
+bool X11SalGraphicsImpl::drawPolyPolygon(
+    const basegfx::B2DHomMatrix& rObjectToDevice,
+    const basegfx::B2DPolyPolygon& rPolyPolygon,
+    double fTransparency)
 {
     // nothing to do for empty polypolygons
-    const int nOrigPolyCount = rOrigPolyPoly.count();
+    const int nOrigPolyCount = rPolyPolygon.count();
     if( nOrigPolyCount <= 0 )
         return true;
 
@@ -1473,25 +1404,28 @@ bool X11SalGraphicsImpl::drawPolyPolygon( const basegfx::B2DPolyPolygon& rOrigPo
     if( pRenderEnv )
         return false;
 
+    // Fallback: Transform to DeviceCoordinates
+    basegfx::B2DPolyPolygon aPolyPolygon(rPolyPolygon);
+    aPolyPolygon.transform(rObjectToDevice);
+
     // snap to raster if requested
-    basegfx::B2DPolyPolygon aPolyPoly = rOrigPolyPoly;
     const bool bSnapToRaster = !mrParent.getAntiAliasB2DDraw();
     if( bSnapToRaster )
-        aPolyPoly = basegfx::tools::snapPointsOfHorizontalOrVerticalEdges( aPolyPoly );
+        aPolyPolygon = basegfx::utils::snapPointsOfHorizontalOrVerticalEdges( aPolyPolygon );
 
     // don't bother with polygons outside of visible area
     const basegfx::B2DRange aViewRange( 0, 0, GetGraphicsWidth(), GetGraphicsHeight() );
-    aPolyPoly = basegfx::tools::clipPolyPolygonOnRange( aPolyPoly, aViewRange, true, false );
-    if( !aPolyPoly.count() )
+    aPolyPolygon = basegfx::utils::clipPolyPolygonOnRange( aPolyPolygon, aViewRange, true, false );
+    if( !aPolyPolygon.count() )
         return true;
 
-    // tesselate the polypolygon into trapezoids
+    // tessellate the polypolygon into trapezoids
     basegfx::B2DTrapezoidVector aB2DTrapVector;
-    basegfx::tools::trapezoidSubdivide( aB2DTrapVector, aPolyPoly );
+    basegfx::utils::trapezoidSubdivide( aB2DTrapVector, aPolyPolygon );
     const int nTrapCount = aB2DTrapVector.size();
     if( !nTrapCount )
         return true;
-    const bool bDrawn = drawFilledTrapezoids( &aB2DTrapVector[0], nTrapCount, fTransparency );
+    const bool bDrawn = drawFilledTrapezoids( aB2DTrapVector.data(), nTrapCount, fTransparency );
     return bDrawn;
 }
 
@@ -1516,8 +1450,7 @@ bool X11SalGraphicsImpl::drawFilledTrapezoids( const basegfx::B2DTrapezoid* pB2D
         return false;
 
      // convert the B2DTrapezoids into XRender-Trapezoids
-    typedef std::vector<XTrapezoid> TrapezoidVector;
-    TrapezoidVector aTrapVector( nTrapCount );
+    std::vector<XTrapezoid> aTrapVector( nTrapCount );
     const basegfx::B2DTrapezoid* pB2DTrap = pB2DTraps;
     for( int i = 0; i < nTrapCount; ++pB2DTrap, ++i )
     {
@@ -1568,100 +1501,357 @@ bool X11SalGraphicsImpl::drawFilledTrapezoids( const basegfx::B2DTrapezoid* pB2D
     // render the trapezoids
     const XRenderPictFormat* pMaskFormat = rRenderPeer.GetStandardFormatA8();
     rRenderPeer.CompositeTrapezoids( PictOpOver,
-        rEntry.m_aPicture, aDstPic, pMaskFormat, 0, 0, &aTrapVector[0], aTrapVector.size() );
+        rEntry.m_aPicture, aDstPic, pMaskFormat, 0, 0, aTrapVector.data(), aTrapVector.size() );
 
     return true;
 }
 
+bool X11SalGraphicsImpl::drawFilledTriangles(
+    const basegfx::B2DHomMatrix& rObjectToDevice,
+     const basegfx::triangulator::B2DTriangleVector& rTriangles,
+     double fTransparency)
+{
+    if(rTriangles.empty())
+        return true;
+
+    Picture aDstPic = GetXRenderPicture();
+    // check xrender support for this drawable
+    if( !aDstPic )
+    {
+        return false;
+    }
+
+    // prepare transformation for ObjectToDevice coordinate system
+    basegfx::B2DHomMatrix aObjectToDevice = basegfx::utils::createTranslateB2DHomMatrix(0.5, 0.5) * rObjectToDevice;
+
+     // convert the Triangles into XRender-Triangles
+    std::vector<XTriangle> aTriVector(rTriangles.size());
+    sal_uInt32 nIndex(0);
+
+    for(const auto& rCandidate : rTriangles)
+    {
+        const basegfx::B2DPoint aP1(aObjectToDevice * rCandidate.getA());
+        const basegfx::B2DPoint aP2(aObjectToDevice * rCandidate.getB());
+        const basegfx::B2DPoint aP3(aObjectToDevice * rCandidate.getC());
+        XTriangle& rTri(aTriVector[nIndex++]);
+
+        rTri.p1.x = XDoubleToFixed(aP1.getX());
+        rTri.p1.y = XDoubleToFixed(aP1.getY());
+
+        rTri.p2.x = XDoubleToFixed(aP2.getX());
+        rTri.p2.y = XDoubleToFixed(aP2.getY());
+
+        rTri.p3.x = XDoubleToFixed(aP3.getX());
+        rTri.p3.y = XDoubleToFixed(aP3.getY());
+    }
+
+    // get xrender Picture for polygon foreground
+    // TODO: cache it like the target picture which uses GetXRenderPicture()
+    XRenderPeer& rRenderPeer = XRenderPeer::GetInstance();
+    SalDisplay::RenderEntry& rEntry = mrParent.GetDisplay()->GetRenderEntries( mrParent.m_nXScreen )[ 32 ];
+    if( !rEntry.m_aPicture )
+    {
+        Display* pXDisplay = mrParent.GetXDisplay();
+
+        rEntry.m_aPixmap = limitXCreatePixmap( pXDisplay, mrParent.hDrawable_, 1, 1, 32 );
+        XRenderPictureAttributes aAttr;
+        aAttr.repeat = int(true);
+
+        XRenderPictFormat* pXRPF = rRenderPeer.FindStandardFormat( PictStandardARGB32 );
+        rEntry.m_aPicture = rRenderPeer.CreatePicture( rEntry.m_aPixmap, pXRPF, CPRepeat, &aAttr );
+    }
+
+    // set polygon foreground color and opacity
+    XRenderColor aRenderColor = GetXRenderColor( mnBrushColor , fTransparency );
+    rRenderPeer.FillRectangle( PictOpSrc, rEntry.m_aPicture, &aRenderColor, 0, 0, 1, 1 );
+
+    // set clipping
+    // TODO: move into GetXRenderPicture?
+    if( mrParent.mpClipRegion && !XEmptyRegion( mrParent.mpClipRegion ) )
+        rRenderPeer.SetPictureClipRegion( aDstPic, mrParent.mpClipRegion );
+
+    // render the trapezoids
+    const XRenderPictFormat* pMaskFormat = rRenderPeer.GetStandardFormatA8();
+    rRenderPeer.CompositeTriangles( PictOpOver,
+        rEntry.m_aPicture, aDstPic, pMaskFormat, 0, 0, aTriVector.data(), aTriVector.size() );
+
+    return true;
+}
+
+namespace {
+
+class SystemDependentData_Triangulation : public basegfx::SystemDependentData
+{
+private:
+    // the triangulation itself
+    basegfx::triangulator::B2DTriangleVector    maTriangles;
+
+    // all other values the triangulation is based on and
+    // need to be compared with to check for data validity
+    double                                      mfLineWidth;
+    basegfx::B2DLineJoin                        meJoin;
+    css::drawing::LineCap                       meCap;
+    double                                      mfMiterMinimumAngle;
+    std::vector< double >                       maStroke;
+
+public:
+    SystemDependentData_Triangulation(
+        basegfx::SystemDependentDataManager& rSystemDependentDataManager,
+        const basegfx::triangulator::B2DTriangleVector& rTriangles,
+        double fLineWidth,
+        basegfx::B2DLineJoin eJoin,
+        css::drawing::LineCap eCap,
+        double fMiterMinimumAngle,
+        const std::vector< double >* pStroke); // MM01
+
+    // read access
+    const basegfx::triangulator::B2DTriangleVector& getTriangles() const { return maTriangles; }
+    double getLineWidth() const { return mfLineWidth; }
+    const basegfx::B2DLineJoin& getJoin() const { return meJoin; }
+    const css::drawing::LineCap& getCap() const { return meCap; }
+    double getMiterMinimumAngle() const { return mfMiterMinimumAngle; }
+    const std::vector< double >& getStroke() const { return maStroke; }
+
+    virtual sal_Int64 estimateUsageInBytes() const override;
+};
+
+}
+
+SystemDependentData_Triangulation::SystemDependentData_Triangulation(
+    basegfx::SystemDependentDataManager& rSystemDependentDataManager,
+    const basegfx::triangulator::B2DTriangleVector& rTriangles,
+    double fLineWidth,
+    basegfx::B2DLineJoin eJoin,
+    css::drawing::LineCap eCap,
+    double fMiterMinimumAngle,
+    const std::vector< double >* pStroke)
+:   basegfx::SystemDependentData(rSystemDependentDataManager),
+    maTriangles(rTriangles),
+    mfLineWidth(fLineWidth),
+    meJoin(eJoin),
+    meCap(eCap),
+    mfMiterMinimumAngle(fMiterMinimumAngle),
+    maStroke()
+{
+    if(nullptr != pStroke)
+    {
+        maStroke = *pStroke;
+    }
+}
+
+sal_Int64 SystemDependentData_Triangulation::estimateUsageInBytes() const
+{
+    sal_Int64 nRetval(0);
+
+    if(!maTriangles.empty())
+    {
+        nRetval = maTriangles.size() * sizeof(basegfx::triangulator::B2DTriangle);
+    }
+
+    return nRetval;
+}
+
 bool X11SalGraphicsImpl::drawPolyLine(
+    const basegfx::B2DHomMatrix& rObjectToDevice,
     const basegfx::B2DPolygon& rPolygon,
     double fTransparency,
-    const basegfx::B2DVector& rLineWidth,
+    double fLineWidth,
+    const std::vector< double >* pStroke, // MM01
     basegfx::B2DLineJoin eLineJoin,
     css::drawing::LineCap eLineCap,
-    double fMiterMinimumAngle)
+    double fMiterMinimumAngle,
+    bool bPixelSnapHairline)
 {
-    const bool bIsHairline = (rLineWidth.getX() == rLineWidth.getY()) && (rLineWidth.getX() <= 1.2);
-
-    // #i101491#
-    if( !bIsHairline && (rPolygon.count() > 1000) )
+    // short circuit if there is nothing to do
+    if(0 == rPolygon.count() || fTransparency < 0.0 || fTransparency >= 1.0)
     {
-        // the used basegfx::tools::createAreaGeometry is simply too
-        // expensive with very big polygons; fallback to caller (who
-        // should use ImplLineConverter normally)
-        // AW: ImplLineConverter had to be removed since it does not even
-        // know LineJoins, so the fallback will now prepare the line geometry
-        // the same way.
+        return true;
+    }
+
+    // need to check/handle LineWidth when ObjectToDevice transformation is used
+    const bool bObjectToDeviceIsIdentity(rObjectToDevice.isIdentity());
+    basegfx::B2DHomMatrix aObjectToDeviceInv;
+
+    // tdf#124848 calculate-back logical LineWidth for a hairline.
+    // This implementation does not hand over the transformation to
+    // the graphic sub-system, but the triangulation data is prepared
+    // view-independent based on the logic LineWidth, so we need to
+    // know it
+    if(fLineWidth == 0)
+    {
+        fLineWidth = 1.0;
+
+        if(!bObjectToDeviceIsIdentity)
+        {
+            if(aObjectToDeviceInv.isIdentity())
+            {
+                aObjectToDeviceInv = rObjectToDevice;
+                aObjectToDeviceInv.invert();
+            }
+
+            fLineWidth = (aObjectToDeviceInv * basegfx::B2DVector(fLineWidth, 0)).getLength();
+        }
+    }
+
+    // try to access buffered data
+    std::shared_ptr<SystemDependentData_Triangulation> pSystemDependentData_Triangulation(
+        rPolygon.getSystemDependentData<SystemDependentData_Triangulation>());
+
+    // MM01 need to do line dashing as fallback stuff here now
+    const double fDotDashLength(nullptr != pStroke ? std::accumulate(pStroke->begin(), pStroke->end(), 0.0) : 0.0);
+    const bool bStrokeUsed(0.0 != fDotDashLength);
+    assert(!bStrokeUsed || (bStrokeUsed && pStroke));
+
+    if(pSystemDependentData_Triangulation)
+    {
+        // MM01 - check on stroke change. Used against not used, or if oth used,
+        // equal or different? Triangulation geometry creation depends heavily
+        // on stroke, independent of being transformation independent
+        const bool bStrokeWasUsed(!pSystemDependentData_Triangulation->getStroke().empty());
+
+        if(bStrokeWasUsed != bStrokeUsed
+        || (bStrokeUsed && *pStroke != pSystemDependentData_Triangulation->getStroke()))
+        {
+            // data invalid, forget
+            pSystemDependentData_Triangulation.reset();
+        }
+    }
+
+    if(pSystemDependentData_Triangulation)
+    {
+        // check data validity (I)
+        if(pSystemDependentData_Triangulation->getJoin() != eLineJoin
+        || pSystemDependentData_Triangulation->getCap() != eLineCap
+        || pSystemDependentData_Triangulation->getMiterMinimumAngle() != fMiterMinimumAngle)
+        {
+            // data invalid, forget
+            pSystemDependentData_Triangulation.reset();
+        }
+    }
+
+    if(pSystemDependentData_Triangulation)
+    {
+        // check data validity (II)
+        if(pSystemDependentData_Triangulation->getLineWidth() != fLineWidth)
+        {
+            // sometimes small inconsistencies, use a percentage tolerance
+            const double fFactor(basegfx::fTools::equalZero(fLineWidth)
+                ? 0.0
+                : fabs(1.0 - (pSystemDependentData_Triangulation->getLineWidth() / fLineWidth)));
+            // compare with 5.0% tolerance
+            if(basegfx::fTools::more(fFactor, 0.05))
+            {
+                // data invalid, forget
+                pSystemDependentData_Triangulation.reset();
+            }
+        }
+    }
+
+    if(!pSystemDependentData_Triangulation)
+    {
+        // MM01 need to do line dashing as fallback stuff here now
+        basegfx::B2DPolyPolygon aPolyPolygonLine;
+
+        if(bStrokeUsed)
+        {
+            // apply LineStyle
+            basegfx::utils::applyLineDashing(
+                rPolygon, // source
+                *pStroke, // pattern
+                &aPolyPolygonLine, // target for lines
+                nullptr, // target for gaps
+                fDotDashLength); // full length if available
+        }
+        else
+        {
+            // no line dashing, just copy
+            aPolyPolygonLine.append(rPolygon);
+        }
+
+        // try to create data
+        if(bPixelSnapHairline)
+        {
+            // Do NOT transform, but keep device-independent. To
+            // do so, transform to device for snap, but back again after
+            if(!bObjectToDeviceIsIdentity)
+            {
+                aPolyPolygonLine.transform(rObjectToDevice);
+            }
+
+            aPolyPolygonLine = basegfx::utils::snapPointsOfHorizontalOrVerticalEdges(aPolyPolygonLine);
+
+            if(!bObjectToDeviceIsIdentity)
+            {
+                if(aObjectToDeviceInv.isIdentity())
+                {
+                    aObjectToDeviceInv = rObjectToDevice;
+                    aObjectToDeviceInv.invert();
+                }
+
+                aPolyPolygonLine.transform(aObjectToDeviceInv);
+            }
+        }
+
+        basegfx::triangulator::B2DTriangleVector aTriangles;
+
+        // MM01 checked/verified for X11 (linux)
+        for(sal_uInt32 a(0); a < aPolyPolygonLine.count(); a++)
+        {
+            const basegfx::B2DPolygon aPolyLine(aPolyPolygonLine.getB2DPolygon(a));
+            // MM01 upps - commit 51b5b93092d6231615de470c62494c24e54828a1 removed
+            // this *central* geometry-creating lines (!) probably due to aAreaPolyPoly
+            // *not* being used - that's true, but the work is inside of filling
+            // aTriangles data (!)
+            basegfx::utils::createAreaGeometry(
+                aPolyLine,
+                0.5 * fLineWidth,
+                eLineJoin,
+                eLineCap,
+                basegfx::deg2rad(12.5),
+                0.4,
+                fMiterMinimumAngle,
+                &aTriangles); // CAUTION! This is *needed* since it creates the data!
+        }
+
+        if(!aTriangles.empty())
+        {
+            // Add to buffering mechanism
+            // Add all values the triangulation is based off, too, to check for
+            // validity (see above)
+            pSystemDependentData_Triangulation = rPolygon.addOrReplaceSystemDependentData<SystemDependentData_Triangulation>(
+                ImplGetSystemDependentDataManager(),
+                aTriangles,
+                fLineWidth,
+                eLineJoin,
+                eLineCap,
+                fMiterMinimumAngle,
+                pStroke);
+        }
+    }
+
+    if(!pSystemDependentData_Triangulation)
+    {
         return false;
     }
 
     // temporarily adjust brush color to pen color
     // since the line is drawn as an area-polygon
-    const SalColor aKeepBrushColor = mnBrushColor;
+    const Color aKeepBrushColor = mnBrushColor;
     mnBrushColor = mnPenColor;
 
-    // #i11575#desc5#b adjust B2D tesselation result to raster positions
-    basegfx::B2DPolygon aPolygon = rPolygon;
-    const double fHalfWidth = 0.5 * rLineWidth.getX();
-
-    // #i122456# This is probably thought to happen to align hairlines to pixel positions, so
-    // it should be a 0.5 translation, not more. It will definitely go wrong with fat lines
-    aPolygon.transform( basegfx::tools::createTranslateB2DHomMatrix(0.5, 0.5) );
-
-    // shortcut for hairline drawing to improve performance
-    bool bDrawnOk = true;
-    if( bIsHairline )
-    {
-        // hairlines can benefit from a simplified tesselation
-        // e.g. for hairlines the linejoin style can be ignored
-        basegfx::B2DTrapezoidVector aB2DTrapVector;
-        basegfx::tools::createLineTrapezoidFromB2DPolygon( aB2DTrapVector, aPolygon, rLineWidth.getX() );
-
-        // draw tesselation result
-        const int nTrapCount = aB2DTrapVector.size();
-        if( nTrapCount > 0 )
-            bDrawnOk = drawFilledTrapezoids( &aB2DTrapVector[0], nTrapCount, fTransparency );
-
-        // restore the original brush GC
-        mnBrushColor = aKeepBrushColor;
-        return bDrawnOk;
-    }
-
-    // get the area polygon for the line polygon
-    if( (rLineWidth.getX() != rLineWidth.getY())
-    && !basegfx::fTools::equalZero( rLineWidth.getY() ) )
-    {
-        // prepare for createAreaGeometry() with anisotropic linewidth
-        aPolygon.transform( basegfx::tools::createScaleB2DHomMatrix(1.0, rLineWidth.getX() / rLineWidth.getY()));
-    }
-
     // create the area-polygon for the line
-    const basegfx::B2DPolyPolygon aAreaPolyPoly( basegfx::tools::createAreaGeometry(aPolygon, fHalfWidth, eLineJoin, eLineCap, fMiterMinimumAngle) );
-
-    if( (rLineWidth.getX() != rLineWidth.getY())
-    && !basegfx::fTools::equalZero( rLineWidth.getX() ) )
-    {
-        // postprocess createAreaGeometry() for anisotropic linewidth
-        aPolygon.transform(basegfx::tools::createScaleB2DHomMatrix(1.0, rLineWidth.getY() / rLineWidth.getX()));
-    }
-
-    // draw each area polypolygon component individually
-    // to emulate the polypolygon winding rule "non-zero"
-    const int nPolyCount = aAreaPolyPoly.count();
-    for( int nPolyIdx = 0; nPolyIdx < nPolyCount; ++nPolyIdx )
-    {
-        const basegfx::B2DPolyPolygon aOnePoly( aAreaPolyPoly.getB2DPolygon( nPolyIdx ) );
-        bDrawnOk = drawPolyPolygon( aOnePoly, fTransparency );
-        if( !bDrawnOk )
-            break;
-    }
+    const bool bDrawnOk(
+        drawFilledTriangles(
+            rObjectToDevice,
+            pSystemDependentData_Triangulation->getTriangles(),
+            fTransparency));
 
     // restore the original brush GC
     mnBrushColor = aKeepBrushColor;
     return bDrawnOk;
 }
 
-SalColor X11SalGraphicsImpl::getPixel( long nX, long nY )
+Color X11SalGraphicsImpl::getPixel( long nX, long nY )
 {
     if( mrParent.bWindow_ && !mrParent.bVirDev_ )
     {
@@ -1695,11 +1885,8 @@ SalColor X11SalGraphicsImpl::getPixel( long nX, long nY )
     return mrParent.GetColormap().GetColor( aXColor.pixel );
 }
 
-SalBitmap *X11SalGraphicsImpl::getBitmap( long nX, long nY, long nDX, long nDY )
+std::shared_ptr<SalBitmap> X11SalGraphicsImpl::getBitmap( long nX, long nY, long nDX, long nDY )
 {
-    if( mrParent.bPrinter_ && !mrParent.bVirDev_ )
-        return nullptr;
-
     bool bFakeWindowBG = false;
 
     // normalize
@@ -1751,7 +1938,7 @@ SalBitmap *X11SalGraphicsImpl::getBitmap( long nX, long nY, long nDX, long nDY )
         }
     }
 
-    X11SalBitmap* pSalBitmap = new X11SalBitmap;
+    std::shared_ptr<X11SalBitmap> pSalBitmap = std::make_shared<X11SalBitmap>();
     sal_uInt16 nBitCount = GetBitCount();
 
     if( &mrParent.GetDisplay()->GetColormap( mrParent.m_nXScreen ) != &mrParent.GetColormap() )
@@ -1783,6 +1970,30 @@ long X11SalGraphicsImpl::GetGraphicsWidth() const
 bool X11SalGraphicsImpl::drawGradient(const tools::PolyPolygon& /*rPolygon*/, const Gradient& /*rGradient*/)
 {
     return false;
+}
+
+bool X11SalGraphicsImpl::supportsOperation(OutDevSupportType eType) const
+{
+    bool bRet = false;
+    switch (eType)
+    {
+        case OutDevSupportType::TransparentRect:
+        case OutDevSupportType::B2DDraw:
+        {
+            XRenderPeer& rPeer = XRenderPeer::GetInstance();
+            const SalDisplay* pSalDisp = mrParent.GetDisplay();
+            const SalVisual& rSalVis = pSalDisp->GetVisual(mrParent.GetScreenNumber());
+
+            Visual* pDstXVisual = rSalVis.GetVisual();
+            XRenderPictFormat* pDstVisFmt = rPeer.FindVisualFormat(pDstXVisual);
+            if (pDstVisFmt)
+                bRet = true;
+        }
+        break;
+        default:
+            break;
+    }
+    return bRet;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

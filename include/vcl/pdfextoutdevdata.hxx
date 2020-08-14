@@ -24,14 +24,11 @@
 
 #include <vcl/pdfwriter.hxx>
 #include <vcl/extoutdevdata.hxx>
-#include <vcl/gdimtf.hxx>
-#include <vcl/mapmod.hxx>
 #include <vector>
-#include <deque>
+#include <memory>
 
 class Graphic;
-
-namespace vcl { class PDFWriter; }
+class GDIMetaFile;
 
 namespace vcl
 {
@@ -83,22 +80,24 @@ class VCL_DLLPUBLIC PDFExtOutDevData : public ExtOutDevData
     bool                        mbExportFormFields;
     bool                        mbExportBookmarks;
     bool                        mbExportHiddenSlides;
+    bool                        mbSinglePageSheets;
     bool                        mbExportNDests; //i56629
     sal_Int32                   mnPage;
     sal_Int32                   mnCompressionQuality;
     css::lang::Locale           maDocLocale;
 
-    PageSyncData*               mpPageSyncData;
-    GlobalSyncData*             mpGlobalSyncData;
+    std::unique_ptr<PageSyncData> mpPageSyncData;
+    std::unique_ptr<GlobalSyncData> mpGlobalSyncData;
 
     std::vector< PDFExtOutDevBookmarkEntry > maBookmarks;
+    std::vector<OUString> maChapterNames;
 
 public:
 
     PDFExtOutDevData( const OutputDevice& rOutDev );
     virtual ~PDFExtOutDevData() override;
 
-    bool PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rCurGDIMtfAction );
+    bool PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rCurGDIMtfAction, const GDIMetaFile& rMtf );
     void ResetSyncData();
 
     void PlayGlobalActions( PDFWriter& rWriter );
@@ -124,6 +123,8 @@ public:
     bool    GetIsExportHiddenSlides() const { return mbExportHiddenSlides;}
     void        SetIsExportHiddenSlides( const bool bExportHiddenSlides );
 
+    void        SetIsSinglePageSheets( const bool bSinglePageSheets );
+
     bool    GetIsExportNamedDestinations() const { return mbExportNDests;} //i56629
     void        SetIsExportNamedDestinations( const bool bExportNDests ); //i56629
 
@@ -143,6 +144,7 @@ public:
     void        SetDocumentLocale( const css::lang::Locale& rLoc );
 
     std::vector< PDFExtOutDevBookmarkEntry >& GetBookmarks() { return maBookmarks;}
+    const std::vector<OUString>& GetChapterNames() const { return maChapterNames; }
 
     const Graphic& GetCurrentGraphic() const;
 
@@ -181,7 +183,9 @@ public:
                           const tools::Rectangle&  rVisibleOutputRect );
 
     /// Detect if stream is compressed enough to avoid de-compress / scale & re-compress
-    bool        HasAdequateCompression( const Graphic &rGraphic ) const;
+    bool        HasAdequateCompression( const Graphic &rGraphic,
+                                        const tools::Rectangle &rOutputRect,
+                                        const tools::Rectangle &rVisibleOutputRect ) const;
 
 //--->i56629
     /** Create a new named destination to be used in a link to this document from another PDF document
@@ -266,14 +270,10 @@ public:
 
         @param nDestId
         the dest the link shall point to
-        @returns
-        0 for success
-        -1 in case the link id does not exist
-        -2 in case the dest id does not exist
     */
-    sal_Int32 SetLinkDest( sal_Int32 nLinkId, sal_Int32 nDestId );
+    void SetLinkDest( sal_Int32 nLinkId, sal_Int32 nDestId );
     /** Set the URL for a link
-        <p>will change a dest type link to an URL type link if necessary</p>
+        <p>will change a dest type link to a URL type link if necessary</p>
         @param nLinkId
         the link to be changed
 
@@ -283,12 +283,8 @@ public:
         conversion done to this parameter execept this:
         it will be output as 7bit Ascii. The URL
         will appear literally in the PDF file produced
-
-        @returns
-        0 for success
-        -1 in case the link id does not exist
     */
-    sal_Int32 SetLinkURL( sal_Int32 nLinkId, const OUString& rURL );
+    void SetLinkURL( sal_Int32 nLinkId, const OUString& rURL );
 
     /// Set URL for a linked Screen annotation.
     void SetScreenURL(sal_Int32 nScreenId, const OUString& rURL);
@@ -373,9 +369,9 @@ public:
 
     <p>
     For different purposes it may be useful to paint a structure element's
-    content discontinously. In that case an already existing structure element
+    content discontinuously. In that case an already existing structure element
     can be appended to by using SetCurrentStructureElement. The
-    refenrenced structure element becomes the current structure element with
+    referenced structure element becomes the current structure element with
     all consequences: all following structure elements are appended as children
     of the current element.
     </p>
@@ -394,7 +390,7 @@ public:
     @returns
     the id of the current structure element
     */
-    sal_Int32 GetCurrentStructureElement();
+    sal_Int32 GetCurrentStructureElement() const;
 
     /** set a structure attribute on the current structural element
 
@@ -408,12 +404,8 @@ public:
 
     @param eVal
     the value to set the attribute to
-
-    @returns
-    True if the value was valid and the change has been performed,
-    False if the attribute or value was invalid; attribute remains unchanged
      */
-    bool SetStructureAttribute( PDFWriter::StructAttribute eAttr, PDFWriter::StructAttributeValue eVal );
+    void SetStructureAttribute( PDFWriter::StructAttribute eAttr, PDFWriter::StructAttributeValue eVal );
     /** set a structure attribute on the current structural element
 
     SetStructureAttributeNumerical sets an attribute of the current structural element
@@ -426,12 +418,8 @@ public:
 
     @param nValue
     the value to set the attribute to
-
-    @returns
-    True if the value was valid and the change has been performed,
-    False if the attribute or value was invalid; attribute remains unchanged
      */
-    bool SetStructureAttributeNumerical( PDFWriter::StructAttribute eAttr, sal_Int32 nValue );
+    void SetStructureAttributeNumerical( PDFWriter::StructAttribute eAttr, sal_Int32 nValue );
     /** set the bounding box of a structural element
 
     SetStructureBoundingBox sets the BBox attribute to a new value. Since the BBox

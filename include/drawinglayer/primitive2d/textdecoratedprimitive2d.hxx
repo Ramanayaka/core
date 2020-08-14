@@ -17,26 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_TEXTDECORATEDPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_TEXTDECORATEDPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <drawinglayer/primitive2d/textprimitive2d.hxx>
 #include <drawinglayer/primitive2d/textenumsprimitive2d.hxx>
 
-namespace basegfx { namespace tools {
+namespace basegfx::utils {
     class B2DHomMatrixBufferedOnDemandDecompose;
-}}
+}
 
-namespace com { namespace sun { namespace star { namespace i18n {
-    struct Boundary;
-}}}}
-
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** TextDecoratedPortionPrimitive2D class
 
             This primitive expands the TextSimplePortionPrimitive2D by common
@@ -44,7 +37,7 @@ namespace drawinglayer
             a TextSimplePortionPrimitive2D and all the contained decorations (if used)
             as geometry.
          */
-        class DRAWINGLAYER_DLLPUBLIC TextDecoratedPortionPrimitive2D : public TextSimplePortionPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC TextDecoratedPortionPrimitive2D final : public TextSimplePortionPrimitive2D
         {
         private:
             /// decoration definitions
@@ -65,14 +58,13 @@ namespace drawinglayer
             /// helper methods
             void impCreateGeometryContent(
                 std::vector< Primitive2DReference >& rTarget,
-                basegfx::tools::B2DHomMatrixBufferedOnDemandDecompose& rDecTrans,
+                basegfx::utils::B2DHomMatrixBufferedOnDemandDecompose const & rDecTrans,
                 const OUString& rText,
                 sal_Int32 nTextPosition,
                 sal_Int32 nTextLength,
                 const ::std::vector< double >& rDXArray,
                 const attribute::FontAttribute& rFontAttribute) const;
 
-        protected:
             /// local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
@@ -125,11 +117,8 @@ namespace drawinglayer
             virtual basegfx::B2DRange getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_TEXTDECORATEDPRIMITIVE2D_HXX
+} // end of namespace drawinglayer::primitive2d
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

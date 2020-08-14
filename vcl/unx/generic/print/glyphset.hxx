@@ -20,13 +20,12 @@
 #ifndef INCLUDED_VCL_GENERIC_PRINT_GLYPHSET_HXX
 #define INCLUDED_VCL_GENERIC_PRINT_GLYPHSET_HXX
 
-#include "unx/fontmanager.hxx"
+#include <osl/file.hxx>
 
-#include "osl/file.hxx"
+#include <rtl/string.hxx>
+#include <vcl/glyphitem.hxx>
 
-#include "rtl/string.hxx"
-
-#include <list>
+#include <vector>
 #include <unordered_map>
 
 class Point;
@@ -45,17 +44,15 @@ private:
     OString             maBaseName;
 
     typedef std::unordered_map< sal_GlyphId, sal_uInt8 > glyph_map_t;
-    typedef std::list< glyph_map_t > glyph_list_t;
-
-    glyph_list_t        maGlyphList;
+    std::vector< glyph_map_t > maGlyphList;
 
     OString     GetGlyphSetName (sal_Int32 nGlyphSetID);
 
-    bool        GetGlyphID (sal_GlyphId nGlyphId,
+    void        GetGlyphID (sal_GlyphId nGlyphId,
                                 unsigned char* nOutGlyphID, sal_Int32* nOutGlyphSetID);
     bool        LookupGlyphID (sal_GlyphId nGlyphId,
                                    unsigned char* nOutGlyphID, sal_Int32* nOutGlyphSetID);
-    bool        AddGlyphID (sal_GlyphId nGlyphId,
+    void        AddGlyphID (sal_GlyphId nGlyphId,
                                 unsigned char* nOutGlyphID,
                                 sal_Int32* nOutGlyphSetID);
     static void     AddNotdef (glyph_map_t &rGlyphMap);
@@ -63,20 +60,19 @@ private:
 public:
 
     GlyphSet (sal_Int32 nFontID, bool bVertical);
-    ~GlyphSet ();
+    /* FIXME delete the glyphlist in ~GlyphSet ??? */
 
-    sal_Int32       GetFontID () { return mnFontID;}
+    sal_Int32       GetFontID () const { return mnFontID;}
     static OString
     GetReencodedFontName (rtl_TextEncoding nEnc,
                           const OString &rFontName);
 
-    bool            IsVertical () { return mbVertical;}
+    bool            IsVertical () const { return mbVertical;}
 
     void            DrawGlyph (PrinterGfx& rGfx,
                                const Point& rPoint,
-                               const sal_GlyphId nGlyphId,
-                               const sal_Int32 nDelta);
-    void        PSUploadFont (osl::File& rOutFile, PrinterGfx &rGfx, bool bAsType42, std::list< OString >& rSuppliedFonts );
+                               const sal_GlyphId nGlyphId);
+    void        PSUploadFont (osl::File& rOutFile, PrinterGfx &rGfx, bool bAsType42, std::vector< OString >& rSuppliedFonts );
 };
 
 } /* namespace psp */

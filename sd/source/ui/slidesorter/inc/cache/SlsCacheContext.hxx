@@ -21,14 +21,15 @@
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CACHE_SLSCACHECONTEXT_HXX
 
 #include <sal/types.h>
-#include <com/sun/star/uno/XInterface.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 #include <memory>
 #include <vector>
 
-class SdrPage;
-class Bitmap;
+namespace com::sun::star::uno { class XInterface; }
 
-namespace sd { namespace slidesorter { namespace cache {
+class SdrPage;
+
+namespace sd::slidesorter::cache {
 
 typedef const SdrPage* CacheKey;
 
@@ -44,12 +45,8 @@ public:
         has been finished.
         @param aKey
             The key of the page for which the preview has been created.
-        @param aPreview
-            The newly created preview.
     */
-    virtual void NotifyPreviewCreation (
-        CacheKey aKey,
-        const Bitmap& rPreview) = 0;
+    virtual void NotifyPreviewCreation (CacheKey aKey) = 0;
 
     /** Called to determine whether the system is idle and a preview can be
         created without annoying the user.
@@ -57,7 +54,7 @@ public:
     virtual bool IsIdle() = 0;
 
     /** This method is used to determine whether a page is currently visible
-        or not.  It is called when the cache becomes to large and some
+        or not.  It is called when the cache becomes too large and some
         previews have to be released or scaled down.
     */
     virtual bool IsVisible (CacheKey aKey) = 0;
@@ -94,7 +91,7 @@ public:
 
 typedef std::shared_ptr<CacheContext> SharedCacheContext;
 
-} } } // end of namespace ::sd::slidesorter::cache
+} // end of namespace ::sd::slidesorter::cache
 
 #endif
 

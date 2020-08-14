@@ -35,7 +35,7 @@ $(eval $(call gb_Library_use_custom_headers,basctl,\
 	officecfg/registry \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,basctl,$(SRCDIR)/basctl/inc/pch/precompiled_basctl))
+$(eval $(call gb_Library_set_precompiled_header,basctl,basctl/inc/pch/precompiled_basctl))
 
 $(eval $(call gb_Library_use_sdk_api,basctl))
 
@@ -44,7 +44,7 @@ $(eval $(call gb_Library_use_libraries,basctl,\
 	cppu \
 	cppuhelper \
 	editeng \
-	fwe \
+	fwk \
 	sal \
 	i18nlangtag \
 	sb \
@@ -66,7 +66,7 @@ $(eval $(call gb_Library_add_exception_objects,basctl,\
 	basctl/source/accessibility/accessibledialogcontrolshape \
 	basctl/source/accessibility/accessibledialogwindow \
 	basctl/source/basicide/basdoc \
-	basctl/source/basicide/basicbox \
+	basctl/source/basicide/IDEComboBox \
 	basctl/source/basicide/basicrenderable \
 	basctl/source/basicide/baside2b \
 	basctl/source/basicide/baside2 \
@@ -93,10 +93,10 @@ $(eval $(call gb_Library_add_exception_objects,basctl,\
 	basctl/source/basicide/macrodlg \
 	basctl/source/basicide/moduldl2 \
 	basctl/source/basicide/moduldlg \
-	basctl/source/basicide/objdlg \
-	basctl/source/basicide/register \
+	basctl/source/basicide/ObjectCatalog \
 	basctl/source/basicide/sbxitem \
 	basctl/source/basicide/scriptdocument \
+	basctl/source/basicide/uiobject \
 	basctl/source/basicide/unomodel \
 	basctl/source/dlged/dlgedclip \
 	basctl/source/dlged/dlged \

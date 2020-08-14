@@ -17,14 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cstddef>
 #include <sal/types.h>
 
-#include "cppunit/TestAssert.h"
-#include "cppunit/TestFixture.h"
-#include "cppunit/extensions/HelperMacros.h"
-#include "cppunit/plugin/TestPlugIn.h"
-#include <rtl/ustring.h>
+#include <cppunit/TestAssert.h>
+#include <cppunit/TestFixture.h>
+#include <cppunit/extensions/HelperMacros.h>
+#include <cppunit/plugin/TestPlugIn.h>
 #include <rtl/ustring.hxx>
 #include <cppuhelper/bootstrap.hxx>
 #include <com/sun/star/uno/Reference.hxx>
@@ -49,7 +47,7 @@ class TestSupplier : public desktop::CommandLineArgs::Supplier {
 public:
     explicit TestSupplier(const std::initializer_list<OUString>& args) : m_args(args) {}
 
-    virtual boost::optional< OUString > getCwdUrl() override { return boost::optional< OUString >(); }
+    virtual std::optional< OUString > getCwdUrl() override { return std::optional< OUString >(); }
     virtual bool next(OUString * argument) override {
         CPPUNIT_ASSERT(argument != nullptr);
         if (m_index < m_args.size()) {
@@ -109,6 +107,29 @@ void Test::testTdf100837() {
         CPPUNIT_ASSERT_EQUAL(decltype(vForceOpenList.size())(2), vForceOpenList.size());
         CPPUNIT_ASSERT_EQUAL(OUString("bar"),  vForceOpenList[0]);
         CPPUNIT_ASSERT_EQUAL(OUString("baz"), vForceOpenList[1]);
+    }
+
+    {
+        // 3. Test encoded URLs
+        TestSupplier supplier{ "foo", "ms-word:ofe%7Cu%7cbar1", "ms-word:ofv%7cu%7Cbar2", "ms-word:nft%7Cu%7cbar3", "baz" };
+        desktop::CommandLineArgs args(supplier);
+        auto vOpenList = args.GetOpenList();
+        auto vForceOpenList = args.GetForceOpenList();
+        auto vViewList = args.GetViewList();
+        auto vForceNewList = args.GetForceNewList();
+        // 2 documents go to Open list: foo; baz
+        CPPUNIT_ASSERT_EQUAL(decltype(vOpenList.size())(2), vOpenList.size());
+        CPPUNIT_ASSERT_EQUAL(OUString("foo"), vOpenList[0]);
+        CPPUNIT_ASSERT_EQUAL(OUString("baz"), vOpenList[1]);
+        // 1 document goes to ForceOpen list: bar1
+        CPPUNIT_ASSERT_EQUAL(decltype(vForceOpenList.size())(1), vForceOpenList.size());
+        CPPUNIT_ASSERT_EQUAL(OUString("bar1"), vForceOpenList[0]);
+        // 1 document goes to View list: bar2
+        CPPUNIT_ASSERT_EQUAL(decltype(vViewList.size())(1), vViewList.size());
+        CPPUNIT_ASSERT_EQUAL(OUString("bar2"), vViewList[0]);
+        // 1 document goes to ForceNew list: bar3
+        CPPUNIT_ASSERT_EQUAL(decltype(vForceNewList.size())(1), vForceNewList.size());
+        CPPUNIT_ASSERT_EQUAL(OUString("bar3"), vForceNewList[0]);
     }
 }
 

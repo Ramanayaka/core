@@ -19,10 +19,9 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_SQL_RESULTSETMETADATA_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_SQL_RESULTSETMETADATA_HXX
 
-#include "java/lang/Object.hxx"
+#include <java/lang/Object.hxx>
 #include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include <cppuhelper/implbase.hxx>
-#include "java/sql/ConnectionLog.hxx"
 
 namespace connectivity
 {
@@ -30,10 +29,9 @@ namespace connectivity
     //************ Class: java.sql.ResultSetMetaData
 
     class java_sql_Connection;
-    class java_sql_ResultSetMetaData :  public ::cppu::WeakImplHelper< css::sdbc::XResultSetMetaData>,
+    class java_sql_ResultSetMetaData final :  public ::cppu::WeakImplHelper< css::sdbc::XResultSetMetaData>,
                                         public java_lang_Object
     {
-    protected:
         java_sql_Connection*        m_pConnection;
         sal_Int32                   m_nColumnCount;
 

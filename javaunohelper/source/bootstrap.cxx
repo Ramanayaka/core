@@ -17,26 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
+#include <sal/log.hxx>
 
-#include "osl/diagnose.h"
+#include <osl/diagnose.h>
 
-#include "rtl/alloc.h"
-#include "rtl/bootstrap.hxx"
-#include "rtl/string.hxx"
+#include <rtl/bootstrap.hxx>
+#include <rtl/string.hxx>
 
 #include <uno/lbnames.h>
-#include "uno/mapping.hxx"
-#include "uno/environment.hxx"
+#include <uno/mapping.hxx>
+#include <uno/environment.hxx>
 
-#include "cppuhelper/bootstrap.hxx"
+#include <cppuhelper/bootstrap.hxx>
 
-#include "com/sun/star/lang/XComponent.hpp"
-#include "com/sun/star/lang/XSingleComponentFactory.hpp"
+#include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
-#include "jni.h"
-#include "jvmaccess/virtualmachine.hxx"
-#include "jvmaccess/unovirtualmachine.hxx"
+#include <jni.h>
+#include <jvmaccess/unovirtualmachine.hxx>
+#include <tools/diagnose_ex.h>
 
 #include "juhx-export-functions.hxx"
 #include "vm.hxx"
@@ -47,12 +47,13 @@ using namespace ::com::sun::star::uno;
 namespace javaunohelper
 {
 
-inline OUString jstring_to_oustring( jstring jstr, JNIEnv * jni_env )
+static OUString jstring_to_oustring( jstring jstr, JNIEnv * jni_env )
 {
     OSL_ASSERT( sizeof (sal_Unicode) == sizeof (jchar) );
     jsize len = jni_env->GetStringLength( jstr );
     rtl_uString * ustr =
-        static_cast<rtl_uString *>(rtl_allocateMemory( sizeof (rtl_uString) + (len * sizeof (sal_Unicode)) ));
+        static_cast<rtl_uString *>(std::malloc( sizeof (rtl_uString) + (len * sizeof (sal_Unicode)) ));
+    assert(ustr);
     jni_env->GetStringRegion( jstr, 0, len, reinterpret_cast<jchar *>(ustr->buffer) );
     OSL_ASSERT( !jni_env->ExceptionCheck() );
     ustr->refCount = 1;
@@ -147,10 +148,11 @@ jobject Java_com_sun_star_comp_helper_Bootstrap_cppuhelper_1bootstrap(
     }
     catch (const RuntimeException & exc)
     {
+        css::uno::Any exAny( cppu::getCaughtException() );
         jclass c = jni_env->FindClass( "com/sun/star/uno/RuntimeException" );
         if (nullptr != c)
         {
-            SAL_WARN("javaunohelper", "forwarding RuntimeException: " << exc.Message );
+            SAL_WARN("javaunohelper", "forwarding RuntimeException: " << exceptionToString(exAny) );
             OString cstr( OUStringToOString(
                               exc.Message, RTL_TEXTENCODING_JAVA_UTF8 ) );
             jni_env->ThrowNew( c, cstr.getStr() );
@@ -158,10 +160,11 @@ jobject Java_com_sun_star_comp_helper_Bootstrap_cppuhelper_1bootstrap(
     }
     catch (const Exception & exc)
     {
+        css::uno::Any ex( cppu::getCaughtException() );
         jclass c = jni_env->FindClass( "com/sun/star/uno/Exception" );
         if (nullptr != c)
         {
-            SAL_WARN("javaunohelper",  "forwarding Exception: " << exc.Message );
+            SAL_WARN("javaunohelper",  "forwarding Exception: " << exceptionToString(ex) );
             OString cstr( OUStringToOString(
                               exc.Message, RTL_TEXTENCODING_JAVA_UTF8 ) );
             jni_env->ThrowNew( c, cstr.getStr() );

@@ -18,29 +18,21 @@
  */
 
 
-#include <vcl/wrkwin.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/svapp.hxx>
-
-#include <impedit.hxx>
+#include "impedit.hxx"
 #include <editeng/editview.hxx>
 #include <editeng/editeng.hxx>
-#include <editeng/unolingu.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 #include <editeng/langitem.hxx>
 #include <editeng/fontitem.hxx>
-#include <textconv.hxx>
-
+#include "textconv.hxx"
+#include <osl/diagnose.h>
+#include <vcl/weld.hxx>
 
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::linguistic2;
 
-
-TextConvWrapper::TextConvWrapper( vcl::Window* pWindow,
+TextConvWrapper::TextConvWrapper( weld::Window* pWindow,
         const Reference< XComponentContext >& rxContext,
         const lang::Locale& rSourceLocale,
         const lang::Locale& rTargetLocale,
@@ -114,21 +106,16 @@ bool TextConvWrapper::ConvNext_impl()
     return false;
 }
 
-
 void TextConvWrapper::FindConvText_impl()
 {
     // modified version of SvxSpellWrapper::FindSpellError
-
-    m_pWin->EnterWait();
-
+    weld::WaitObject aWait(m_pWin);
     while ( true )
     {
         if (ConvContinue_impl() || !ConvNext_impl())
             break;
     }
-    m_pWin->LeaveWait();
 }
-
 
 bool TextConvWrapper::ConvMore_impl()
 {

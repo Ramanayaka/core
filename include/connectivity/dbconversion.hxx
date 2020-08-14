@@ -20,53 +20,41 @@
 #ifndef INCLUDED_CONNECTIVITY_DBCONVERSION_HXX
 #define INCLUDED_CONNECTIVITY_DBCONVERSION_HXX
 
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/util/Date.hpp>
-#include <com/sun/star/uno/Reference.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
 
-namespace com
+namespace com::sun::star::uno { template <typename > class Reference; }
+
+namespace com::sun::star
 {
-    namespace sun
+    namespace lang
     {
-        namespace star
-        {
-            namespace lang
-            {
-                struct Locale;
-            }
-            namespace sdb
-            {
-                class XColumn;
-                class XColumnUpdate;
-            }
-            namespace sdbc
-            {
-                class SQLException;
-            }
-            namespace beans
-            {
-                class XPropertySet;
-            }
-            namespace util
-            {
-                class XNumberFormatter;
-                class XNumberFormatsSupplier;
-                struct Time;
-                struct DateTime;
-            }
-            namespace script
-            {
-                class XTypeConverter;
-            }
-        }
+        struct Locale;
+    }
+    namespace sdb
+    {
+        class XColumn;
+        class XColumnUpdate;
+    }
+    namespace beans
+    {
+        class XPropertySet;
+    }
+    namespace util
+    {
+        class XNumberFormatter;
+        class XNumberFormatsSupplier;
+        struct Time;
+        struct DateTime;
+    }
+    namespace script
+    {
+        class XTypeConverter;
     }
 }
 
-namespace dbtools
+namespace dbtools::DBTypeConversion
 {
-    namespace DBTypeConversion
-    {
         OOO_DLLPUBLIC_DBTOOLS css::util::Date const & getStandardDate();
         /// @throws css::lang::IllegalArgumentException
         OOO_DLLPUBLIC_DBTOOLS void setValue(const css::uno::Reference< css::sdb::XColumnUpdate>& xVariant,
@@ -135,7 +123,7 @@ namespace dbtools
         // return the DateTime in the format %04d-%02d-%02d %02d:%02d:%02d.%09d
         OOO_DLLPUBLIC_DBTOOLS OUString toDateTimeString(const css::util::DateTime& _rDateTime);
         // return the any in an sql standard format
-        OOO_DLLPUBLIC_DBTOOLS OUString toSQLString(sal_Int32 eType, const css::uno::Any& _rVal, bool bQuote,
+        OOO_DLLPUBLIC_DBTOOLS OUString toSQLString(sal_Int32 eType, const css::uno::Any& _rVal,
             const css::uno::Reference< css::script::XTypeConverter >&  _rxTypeConverter);
 
         /** converts a Unicode string into a 8-bit string, using the given encoding
@@ -189,9 +177,8 @@ namespace dbtools
             sal_Int32 _nMaxLen,
             rtl_TextEncoding _eEncoding
        );
-    }
 
-} // namespace dbtools
+} // namespace dbtools::DBTypeConversion
 
 #endif // INCLUDED_CONNECTIVITY_DBCONVERSION_HXX
 

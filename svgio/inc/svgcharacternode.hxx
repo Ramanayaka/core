@@ -20,13 +20,11 @@
 #ifndef INCLUDED_SVGIO_INC_SVGCHARACTERNODE_HXX
 #define INCLUDED_SVGIO_INC_SVGCHARACTERNODE_HXX
 
-#include <svgnode.hxx>
+#include "svgnode.hxx"
 
-namespace drawinglayer { namespace primitive2d { class TextSimplePortionPrimitive2D; }}
+namespace drawinglayer::primitive2d { class TextSimplePortionPrimitive2D; }
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
         class SvgTextPositions
         {
@@ -73,13 +71,11 @@ namespace svgio
             bool getLengthAdjust() const { return mbLengthAdjust; }
             void setLengthAdjust(bool bNew) { mbLengthAdjust = bNew; }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
         class SvgTextPosition
         {
@@ -120,15 +116,13 @@ namespace svgio
             bool isRotated() const;
             double consumeRotation();
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
-        class SvgCharacterNode : public SvgNode
+        class SvgCharacterNode final : public SvgNode
         {
         private:
             /// the string data
@@ -159,8 +153,8 @@ namespace svgio
             /// Text content
             const OUString& getText() const { return maText; }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGCHARACTERNODE_HXX
 

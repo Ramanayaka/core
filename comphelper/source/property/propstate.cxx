@@ -18,7 +18,6 @@
  */
 
 #include <comphelper/propstate.hxx>
-#include <com/sun/star/uno/genfunc.h>
 #include <cppuhelper/queryinterface.hxx>
 #include <comphelper/sequence.hxx>
 
@@ -27,7 +26,6 @@ namespace comphelper
 
 
     using ::com::sun::star::uno::Type;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::lang::XTypeProvider;
     using ::com::sun::star::uno::Any;
@@ -82,7 +80,7 @@ namespace comphelper
         sal_Int32 nHandle = rPH.getHandleByName(_rsName);
 
         if (nHandle == -1)
-            throw  css::beans::UnknownPropertyException();
+            throw  css::beans::UnknownPropertyException(_rsName);
 
         return getPropertyStateByHandle(nHandle);
     }
@@ -94,7 +92,7 @@ namespace comphelper
         sal_Int32 nHandle = rPH.getHandleByName(_rsName);
 
         if (nHandle == -1)
-            throw css::beans::UnknownPropertyException();
+            throw css::beans::UnknownPropertyException(_rsName);
 
         setPropertyToDefaultByHandle(nHandle);
     }
@@ -106,7 +104,7 @@ namespace comphelper
         sal_Int32 nHandle = rPH.getHandleByName(_rsName);
 
         if (nHandle == -1)
-            throw css::beans::UnknownPropertyException();
+            throw css::beans::UnknownPropertyException(_rsName);
 
         return getPropertyDefaultByHandle(nHandle);
     }
@@ -129,7 +127,7 @@ namespace comphelper
         for (sal_Int32 i=0, j=0; i<nPropCount && j<nLen; ++i, ++pProps)
         {
             // get the values only for valid properties
-            if (pProps->Name.equals(*pNames))
+            if (pProps->Name == *pNames)
             {
                 *pValues = getPropertyState(*pNames);
                 ++pValues;
@@ -146,7 +144,8 @@ namespace comphelper
     {
         // simply compare the current and the default value
         Any aCurrentValue = getPropertyDefaultByHandle( _nHandle );
-        Any aDefaultValue;  getFastPropertyValue( aDefaultValue, _nHandle );
+        Any aDefaultValue;
+        getFastPropertyValue( aDefaultValue, _nHandle );
 
         bool bEqual = uno_type_equalData(
                 const_cast< void* >( aCurrentValue.getValue() ), aCurrentValue.getValueType().getTypeLibType(),
@@ -186,12 +185,10 @@ namespace comphelper
 
     Sequence< Type > SAL_CALL OStatefulPropertySet::getTypes()
     {
-        Sequence< Type > aOwnTypes( 2 );
-        aOwnTypes[0] = cppu::UnoType<XWeak>::get();
-        aOwnTypes[1] = cppu::UnoType<XTypeProvider>::get();
-
         return concatSequences(
-            aOwnTypes,
+            Sequence {
+                cppu::UnoType<XWeak>::get(),
+                cppu::UnoType<XTypeProvider>::get() },
             OPropertyStateHelper::getTypes()
         );
     }

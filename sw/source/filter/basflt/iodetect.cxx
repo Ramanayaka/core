@@ -21,10 +21,13 @@
 #include <memory>
 #include <osl/endian.h>
 #include <sot/storage.hxx>
-#include <svtools/parhtml.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/moduleoptions.hxx>
-
+#include <sfx2/docfilt.hxx>
+#include <sfx2/fcontnr.hxx>
+#include <sfx2/docfile.hxx>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
+#include <com/sun/star/embed/XStorage.hpp>
 
 using namespace ::com::sun::star;
 
@@ -48,16 +51,16 @@ SwIoDetect aFilterDetect[] =
     SwIoDetect( FILTER_DOCX )
 };
 
-const OUString SwIoSystem::GetSubStorageName( const SfxFilter& rFltr )
+OUString SwIoSystem::GetSubStorageName( const SfxFilter& rFltr )
 {
     // for StorageFilters also set the SubStorageName
     const OUString& rUserData = rFltr.GetUserData();
     if (rUserData == FILTER_XML ||
         rUserData == FILTER_XMLV ||
         rUserData == FILTER_XMLVW)
-        return OUString("content.xml");
+        return "content.xml";
     if (rUserData == sWW6 || rUserData == FILTER_WW8)
-        return OUString("WordDocument");
+        return "WordDocument";
     return OUString();
 }
 
@@ -76,7 +79,7 @@ std::shared_ptr<const SfxFilter> SwIoSystem::GetFilterOfFormat(const OUString& r
             std::shared_ptr<const SfxFilter> pFilter = aIter.First();
             while ( pFilter )
             {
-                if( pFilter->GetUserData().equals(rFormatNm) )
+                if( pFilter->GetUserData() == rFormatNm )
                     return pFilter;
                 pFilter = aIter.Next();
             }
@@ -234,7 +237,7 @@ std::shared_ptr<const SfxFilter> SwIoSystem::GetFileFilter(const OUString& rFile
     return SwIoSystem::GetFilterOfFormat(FILTER_TEXT);
 }
 
-bool SwIoSystem::IsDetectableText(const sal_Char* pBuf, sal_uLong &rLen,
+bool SwIoSystem::IsDetectableText(const char* pBuf, sal_uLong &rLen,
     rtl_TextEncoding *pCharSet, bool *pSwap, LineEnd *pLineEnd)
 {
     bool bSwap = false;
@@ -303,11 +306,11 @@ bool SwIoSystem::IsDetectableText(const sal_Char* pBuf, sal_uLong &rLen,
             if (bLE != bNativeLE)
             {
                 bSwap = true;
-                sal_Char* pF = reinterpret_cast<char*>(pNewBuf);
-                sal_Char* pN = pF+1;
+                char* pF = reinterpret_cast<char*>(pNewBuf);
+                char* pN = pF+1;
                 for(sal_uLong n = 0; n < nNewLen; ++n, pF+=2, pN+=2 )
                 {
-                    sal_Char c = *pF;
+                    char c = *pF;
                     *pF = *pN;
                     *pN = c;
                 }

@@ -19,9 +19,8 @@
 
 
 #include <sfx2/sfxsids.hrc>
-#include "sorgitm.hxx"
+#include <sorgitm.hxx>
 #include <osl/diagnose.h>
-#include <typeinfo>
 
 SfxPoolItem* SfxScriptOrganizerItem::CreateDefault() { return new SfxScriptOrganizerItem; }
 
@@ -33,32 +32,14 @@ SfxScriptOrganizerItem::SfxScriptOrganizerItem() :
 {
 }
 
-
-SfxScriptOrganizerItem::SfxScriptOrganizerItem( const SfxScriptOrganizerItem& rItem ) :
-
-    SfxStringItem( rItem ),
-
-    aLanguage( rItem.aLanguage )
-
-{
-}
-
-
-SfxScriptOrganizerItem::~SfxScriptOrganizerItem()
-{
-}
-
-
-SfxPoolItem* SfxScriptOrganizerItem::Clone( SfxItemPool * ) const
+SfxScriptOrganizerItem* SfxScriptOrganizerItem::Clone( SfxItemPool * ) const
 {
     return new SfxScriptOrganizerItem( *this );
 }
 
-
 bool SfxScriptOrganizerItem::operator==( const SfxPoolItem& rItem) const
 {
-     return typeid(rItem) == typeid(*this) &&
-         SfxStringItem::operator==(rItem) &&
+     return SfxStringItem::operator==(rItem) &&
          aLanguage == static_cast<const SfxScriptOrganizerItem &>(rItem).aLanguage;
 }
 

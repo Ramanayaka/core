@@ -63,12 +63,11 @@
 
 #include <memory>
 
-#include "lwpheader.hxx"
-#include "lwpfoundry.hxx"
-#include "lwpobjid.hxx"
-#include "lwpnumberingoverride.hxx"
+#include <config_lgpl.h>
+#include <lwpfoundry.hxx>
+#include <lwpobjid.hxx>
 #include <utility>
-#include "xfilter/xfcontentcontainer.hxx"
+#include <xfilter/xfcontentcontainer.hxx>
 
 class XFList;
 class LwpPara;
@@ -80,16 +79,16 @@ class LwpBulletStyleMgr final
 public:
     LwpBulletStyleMgr();
     ~LwpBulletStyleMgr();
-    OUString RegisterBulletStyle(LwpPara* pPara, LwpBulletOverride* pBullOver,
-        LwpIndentOverride* pIndent);
+    OUString RegisterBulletStyle(LwpPara* pPara, const LwpBulletOverride* pBullOver,
+        LwpIndentOverride const * pIndent);
     inline void SetFoundry(LwpFoundry* pFoundry);
     inline void SetContinueFlag(bool bFlag);
-    XFContentContainer* AddBulletList(XFContentContainer* pCont, bool bIsOrdered,
+    rtl::Reference<XFContentContainer> AddBulletList(XFContentContainer* pCont, bool bIsOrdered,
         const OUString& rStyleName, sal_Int16 nLevel, bool bIsBulletSkiped);
     inline void SetCurrentSilverBullet(const LwpObjectID& rNewID);
 
 private:
-    typedef std::pair<std::shared_ptr<LwpBulletOverride>, LwpObjectID> OverridePair;
+    typedef std::pair<std::unique_ptr<LwpBulletOverride>, LwpObjectID> OverridePair;
     std::vector <OUString> m_vStyleNameList;
     std::vector <OverridePair> m_vIDsPairList;
     LwpFoundry* m_pFoundry;

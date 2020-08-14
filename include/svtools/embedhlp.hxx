@@ -22,22 +22,21 @@
 
 #include <svtools/svtdllapi.h>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/io/XInputStream.hpp>
 #include <vcl/graph.hxx>
-#include <tools/mapunit.hxx>
 #include <rtl/ustring.hxx>
 #include <memory>
+
+namespace com :: sun :: star :: io { class XInputStream; }
 
 namespace comphelper
 {
     class EmbeddedObjectContainer;
 }
 
-namespace com { namespace sun { namespace star { namespace embed {
+namespace com::sun::star::embed {
     class XEmbeddedObject;
-}}}}
+}
 
-namespace tools { class Rectangle; }
 class OutputDevice;
 
 namespace svt {
@@ -48,7 +47,7 @@ class SVT_DLLPUBLIC EmbeddedObjectRef
 {
     std::unique_ptr<EmbeddedObjectRef_Impl> mpImpl;
 
-    SVT_DLLPRIVATE SvStream* GetGraphicStream( bool bUpdate ) const;
+    SVT_DLLPRIVATE std::unique_ptr<SvStream> GetGraphicStream( bool bUpdate ) const;
     SVT_DLLPRIVATE void GetReplacement( bool bUpdate );
 
     EmbeddedObjectRef& operator = ( const EmbeddedObjectRef& ) = delete;
@@ -69,7 +68,6 @@ public:
                             throw();
 
     static bool IsChart(const css::uno::Reference < css::embed::XEmbeddedObject >& xObj);
-    static bool IsGLChart(const css::uno::Reference < css::embed::XEmbeddedObject >& xObj);
 
     const css::uno::Reference <css::embed::XEmbeddedObject>& operator->() const;
     const css::uno::Reference <css::embed::XEmbeddedObject>& GetObject() const;
@@ -96,7 +94,7 @@ public:
 
     // the original size of the object ( size of the icon for iconified object )
     // no conversion is done if no target mode is provided
-    Size            GetSize( MapMode* pTargetMapMode ) const;
+    Size            GetSize( MapMode const * pTargetMapMode ) const;
 
     void            SetGraphic( const Graphic& rGraphic, const OUString& rMediaType );
     void            SetGraphicStream(
@@ -111,7 +109,6 @@ public:
 
     bool IsLocked() const;
     bool IsChart() const;
-    bool IsGLChart() const;
 
     OUString GetChartType();
 
@@ -121,7 +118,7 @@ public:
     // remembered Graphic (e.g. primitives) has changed compared to the current one, but without actively
     // fetching the Graphic what would be too expensive e.g. for charts
     sal_uInt32 getGraphicVersion() const;
-    void            SetDefaultSizeForChart( const Size& rSizeIn_100TH_MM );//#i103460# charts do not necessaryly have an own size within ODF files, in this case they need to use the size settings from the surrounding frame, which is made available with this method
+    void            SetDefaultSizeForChart( const Size& rSizeIn_100TH_MM );//#i103460# charts do not necessarily have an own size within ODF files, in this case they need to use the size settings from the surrounding frame, which is made available with this method
 };
 
 }

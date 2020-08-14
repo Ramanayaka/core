@@ -22,7 +22,7 @@
 
 #include <osl/interlck.h>
 #include <osl/mutex.hxx>
-#include <platform.h>
+#include "platform.h"
 
 class OleComponent;
 class OleWrapperClientSite : public IOleClientSite
@@ -42,8 +42,8 @@ public:
     STDMETHODIMP_(ULONG) Release() override;
 
     STDMETHODIMP SaveObject() override;
-    STDMETHODIMP GetMoniker(DWORD, DWORD, LPMONIKER *) override;
-    STDMETHODIMP GetContainer(LPOLECONTAINER *) override;
+    STDMETHODIMP GetMoniker(DWORD, DWORD, IMoniker**) override;
+    STDMETHODIMP GetContainer(IOleContainer**) override;
     STDMETHODIMP ShowObject() override;
     STDMETHODIMP OnShowWindow(BOOL) override;
     STDMETHODIMP RequestNewObjectLayout() override;

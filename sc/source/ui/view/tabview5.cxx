@@ -17,9 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
-
 #include <svx/fmshell.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdocapt.hxx>
@@ -28,29 +25,28 @@
 #include <sfx2/dispatch.hxx>
 #include <sfx2/lokhelper.hxx>
 #include <sfx2/objsh.hxx>
+#include <sfx2/viewfrm.hxx>
 
-#include "tabview.hxx"
-#include "tabvwsh.hxx"
-#include "document.hxx"
-#include "gridwin.hxx"
-#include "olinewin.hxx"
-#include "tabsplit.hxx"
-#include "colrowba.hxx"
-#include "tabcont.hxx"
-#include "sc.hrc"
-#include "pagedata.hxx"
-#include "hiranges.hxx"
-#include "drawview.hxx"
-#include "drwlayer.hxx"
-#include "fusel.hxx"
-#include "seltrans.hxx"
-#include "scmod.hxx"
-#include "AccessibilityHints.hxx"
-#include "docsh.hxx"
-#include "viewuno.hxx"
-#include "postit.hxx"
+#include <tabview.hxx>
+#include <tabvwsh.hxx>
+#include <document.hxx>
+#include <gridwin.hxx>
+#include <olinewin.hxx>
+#include <tabsplit.hxx>
+#include <colrowba.hxx>
+#include <tabcont.hxx>
+#include <sc.hrc>
+#include <pagedata.hxx>
+#include <hiranges.hxx>
+#include <drawview.hxx>
+#include <drwlayer.hxx>
+#include <fusel.hxx>
+#include <seltrans.hxx>
+#include <scmod.hxx>
+#include <docsh.hxx>
+#include <viewuno.hxx>
+#include <postit.hxx>
 
-#include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
 #include <comphelper/lok.hxx>
@@ -78,17 +74,17 @@ void ScTabView::Init()
         pGridWin[i] = nullptr;
     pGridWin[SC_SPLIT_BOTTOMLEFT] = VclPtr<ScGridWindow>::Create( pFrameWin, &aViewData, SC_SPLIT_BOTTOMLEFT );
 
-    pSelEngine = new ScViewSelectionEngine( pGridWin[SC_SPLIT_BOTTOMLEFT], this,
-                                                SC_SPLIT_BOTTOMLEFT );
-    aFunctionSet.SetSelectionEngine( pSelEngine );
+    pSelEngine.reset( new ScViewSelectionEngine( pGridWin[SC_SPLIT_BOTTOMLEFT], this,
+                                                SC_SPLIT_BOTTOMLEFT ) );
+    aFunctionSet.SetSelectionEngine( pSelEngine.get() );
 
-    pHdrSelEng = new ScHeaderSelectionEngine( pFrameWin, &aHdrFunc );
+    pHdrSelEng.reset( new ScHeaderSelectionEngine( pFrameWin, &aHdrFunc ) );
 
     pColBar[SC_SPLIT_LEFT] = VclPtr<ScColBar>::Create( pFrameWin, SC_SPLIT_LEFT,
-                                                       &aHdrFunc, pHdrSelEng, this );
+                                                       &aHdrFunc, pHdrSelEng.get(), this );
     pColBar[SC_SPLIT_RIGHT] = nullptr;
     pRowBar[SC_SPLIT_BOTTOM] = VclPtr<ScRowBar>::Create( pFrameWin, SC_SPLIT_BOTTOM,
-                                                         &aHdrFunc, pHdrSelEng, this );
+                                                         &aHdrFunc, pHdrSelEng.get(), this );
     pRowBar[SC_SPLIT_TOP] = nullptr;
     for (i=0; i<2; i++)
         pColOutline[i] = pRowOutline[i] = nullptr;
@@ -110,10 +106,10 @@ void ScTabView::Init()
         explicitly because the parent frame window is already RTL disabled. */
     pTabControl->EnableRTL( AllSettings::GetLayoutRTL() );
 
-    InitScrollBar( *aHScrollLeft.get(),    MAXCOL+1 );
-    InitScrollBar( *aHScrollRight.get(),   MAXCOL+1 );
-    InitScrollBar( *aVScrollTop.get(),     MAXROW+1 );
-    InitScrollBar( *aVScrollBottom.get(),  MAXROW+1 );
+    InitScrollBar( *aHScrollLeft,    aViewData.GetDocument()->MaxCol()+1 );
+    InitScrollBar( *aHScrollRight,   aViewData.GetDocument()->MaxCol()+1 );
+    InitScrollBar( *aVScrollTop,     aViewData.GetDocument()->MaxRow()+1 );
+    InitScrollBar( *aVScrollBottom,  aViewData.GetDocument()->MaxRow()+1 );
     /*  #i97900# scrollbars remain in correct RTL mode, needed mirroring etc.
         is now handled correctly at the respective places. */
 
@@ -130,7 +126,7 @@ void ScTabView::Init()
     //  UpdateShow is done during resize or a copy of an existing view from ctor
 
     pDrawActual = nullptr;
-    pDrawOld    = nullptr;
+    pDrawOld = nullptr;
 
     //  DrawView cannot be create in the TabView - ctor
     //  when the ViewShell isn't constructed yet...
@@ -153,13 +149,15 @@ ScTabView::~ScTabView()
         TransferableHelper::ClearSelection( GetActiveWin() );       // may delete pOld
     }
 
-    DELETEZ(pBrushDocument);
-    DELETEZ(pDrawBrushSet);
+    pBrushDocument.reset();
+    pDrawBrushSet.reset();
 
-    DELETEZ(pPageBreakData);
+    pPageBreakData.reset();
 
-    DELETEZ(pDrawOld);
-    DELETEZ(pDrawActual);
+    delete pDrawActual;
+    pDrawActual = nullptr;
+    delete pDrawOld;
+    pDrawOld = nullptr;
 
     if (comphelper::LibreOfficeKit::isActive())
     {
@@ -171,8 +169,8 @@ ScTabView::~ScTabView()
                     ScViewData& rOtherViewData = pOtherViewShell->GetViewData();
                     for (int k = 0; k < 4; ++k)
                     {
-                        if (rOtherViewData.HasEditView((ScSplitPos)(k)))
-                            pThisViewShell->RemoveWindowFromForeignEditView(pOtherViewShell, (ScSplitPos)(k));
+                        if (rOtherViewData.HasEditView(static_cast<ScSplitPos>(k)))
+                            pThisViewShell->RemoveWindowFromForeignEditView(pOtherViewShell, static_cast<ScSplitPos>(k));
                     }
                 };
 
@@ -190,16 +188,16 @@ ScTabView::~ScTabView()
             }
 
         pDrawView->HideSdrPage();
-        delete pDrawView;
+        pDrawView.reset();
     }
 
-    delete pSelEngine;
+    pSelEngine.reset();
 
     mxInputHintOO.reset();
     for (i=0; i<4; i++)
         pGridWin[i].disposeAndClear();
 
-    delete pHdrSelEng;
+    pHdrSelEng.reset();
 
     for (i=0; i<2; i++)
     {
@@ -224,46 +222,45 @@ ScTabView::~ScTabView()
 
 void ScTabView::MakeDrawView( TriState nForceDesignMode )
 {
-    if (!pDrawView)
-    {
-        ScDrawLayer* pLayer = aViewData.GetDocument()->GetDrawLayer();
-        OSL_ENSURE(pLayer, "Where is the Draw Layer ??");
+    if (pDrawView)
+        return;
 
-        sal_uInt16 i;
-        pDrawView = new ScDrawView( pGridWin[SC_SPLIT_BOTTOMLEFT], &aViewData );
-        for (i=0; i<4; i++)
-            if (pGridWin[i])
-            {
-                if ( SC_SPLIT_BOTTOMLEFT != (ScSplitPos)i )
-                    pDrawView->AddWindowToPaintView(pGridWin[i], nullptr);
-            }
-        pDrawView->RecalcScale();
-        for (i=0; i<4; i++)
-            if (pGridWin[i])
-            {
-                pGridWin[i]->SetMapMode(pGridWin[i]->GetDrawMapMode());
+    ScDrawLayer* pLayer = aViewData.GetDocument()->GetDrawLayer();
+    OSL_ENSURE(pLayer, "Where is the Draw Layer ??");
 
-                pGridWin[i]->Update();      // because of Invalidate in DrawView ctor (ShowPage),
-                                            // so that immediately can be drawn
-            }
-        SfxRequest aSfxRequest(SID_OBJECT_SELECT, SfxCallMode::SLOT, aViewData.GetViewShell()->GetPool());
-        SetDrawFuncPtr(new FuSelection( aViewData.GetViewShell(), GetActiveWin(), pDrawView,
-                                        pLayer,aSfxRequest));
+    sal_uInt16 i;
+    pDrawView.reset( new ScDrawView( pGridWin[SC_SPLIT_BOTTOMLEFT], &aViewData ) );
+    for (i=0; i<4; i++)
+        if (pGridWin[i])
+        {
+            if ( SC_SPLIT_BOTTOMLEFT != static_cast<ScSplitPos>(i) )
+                pDrawView->AddWindowToPaintView(pGridWin[i], nullptr);
+        }
+    pDrawView->RecalcScale();
+    for (i=0; i<4; i++)
+        if (pGridWin[i])
+        {
+            pGridWin[i]->SetMapMode(pGridWin[i]->GetDrawMapMode());
 
-        //  used when switching back from page preview: restore saved design mode state
-        //  (otherwise, keep the default from the draw view ctor)
-        if ( nForceDesignMode != TRISTATE_INDET )
-            pDrawView->SetDesignMode( nForceDesignMode );
+            pGridWin[i]->PaintImmediately(); // because of Invalidate in DrawView ctor (ShowPage),
+                                             // so that immediately can be drawn
+        }
+    SfxRequest aSfxRequest(SID_OBJECT_SELECT, SfxCallMode::SLOT, aViewData.GetViewShell()->GetPool());
+    SetDrawFuncPtr(new FuSelection(*aViewData.GetViewShell(), GetActiveWin(), pDrawView.get(),
+                                   pLayer,aSfxRequest));
 
-        //  register at FormShell
-        FmFormShell* pFormSh = aViewData.GetViewShell()->GetFormShell();
-        if (pFormSh)
-            pFormSh->SetView(pDrawView);
+    //  used when switching back from page preview: restore saved design mode state
+    //  (otherwise, keep the default from the draw view ctor)
+    if ( nForceDesignMode != TRISTATE_INDET )
+        pDrawView->SetDesignMode( nForceDesignMode != TRISTATE_FALSE );
 
-        if (aViewData.GetViewShell()->HasAccessibilityObjects())
-            aViewData.GetViewShell()->BroadcastAccessibility(SfxHint(SfxHintId::ScAccMakeDrawLayer));
+    //  register at FormShell
+    FmFormShell* pFormSh = aViewData.GetViewShell()->GetFormShell();
+    if (pFormSh)
+        pFormSh->SetView(pDrawView.get());
 
-    }
+    if (aViewData.GetViewShell()->HasAccessibilityObjects())
+        aViewData.GetViewShell()->BroadcastAccessibility(SfxHint(SfxHintId::ScAccMakeDrawLayer));
 }
 
 void ScTabView::DoAddWin( ScGridWindow* pWin )
@@ -311,80 +308,88 @@ void ScTabView::TabChanged( bool bSameTabButMoved )
         uno::Reference<frame::XController> xController = pViewFrame->GetFrame().GetController();
         if (xController.is())
         {
-            ScTabViewObj* pImp = ScTabViewObj::getImplementation( xController );
+            ScTabViewObj* pImp = comphelper::getUnoTunnelImplementation<ScTabViewObj>( xController );
             if (pImp)
                 pImp->SheetChanged( bSameTabButMoved );
         }
     }
 
-    if (comphelper::LibreOfficeKit::isActive())
-    {
-        ScDocShell* pDocSh = GetViewData().GetDocShell();
-        ScModelObj* pModelObj = pDocSh ? ScModelObj::getImplementation( pDocSh->GetModel()) : nullptr;
+    if (!comphelper::LibreOfficeKit::isActive())
+        return;
 
-        if (pModelObj)
-        {
-            Size aDocSize = pModelObj->getDocumentSize();
-            std::stringstream ss;
-            ss << aDocSize.Width() << ", " << aDocSize.Height();
-            OString sRect = ss.str().c_str();
-            ScTabViewShell* pViewShell = aViewData.GetViewShell();
-            pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_DOCUMENT_SIZE_CHANGED, sRect.getStr());
-        }
-    }
+    ScDocShell* pDocSh = GetViewData().GetDocShell();
+    ScModelObj* pModelObj = pDocSh ? comphelper::getUnoTunnelImplementation<ScModelObj>( pDocSh->GetModel()) : nullptr;
+
+    if (!(pModelObj && GetViewData().GetDocument()))
+        return;
+
+    Size aDocSize = pModelObj->getDocumentSize();
+    std::stringstream ss;
+    ss << aDocSize.Width() << ", " << aDocSize.Height();
+    OString sRect = ss.str().c_str();
+    ScTabViewShell* pViewShell = aViewData.GetViewShell();
+
+    // Invalidate first
+    tools::Rectangle aRectangle(0, 0, 1000000000, 1000000000);
+    OString sPayload = aRectangle.toString() + ", " + OString::number(aViewData.GetTabNo());
+    pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_INVALIDATE_TILES, sPayload.getStr());
+
+    ScModelObj* pModel = comphelper::getUnoTunnelImplementation<ScModelObj>(pViewShell->GetCurrentDocument());
+    SfxLokHelper::notifyDocumentSizeChanged(pViewShell, sRect, pModel, false);
 }
 
 void ScTabView::UpdateLayerLocks()
 {
-    if (pDrawView)
-    {
-        SCTAB nTab = aViewData.GetTabNo();
-        bool bEx = aViewData.GetViewShell()->IsDrawSelMode();
-        bool bProt = aViewData.GetDocument()->IsTabProtected( nTab ) ||
-                     aViewData.GetSfxDocShell()->IsReadOnly();
-        bool bShared = aViewData.GetDocShell()->IsDocShared();
+    if (!pDrawView)
+        return;
 
-        SdrLayer* pLayer;
-        SdrLayerAdmin& rAdmin = pDrawView->GetModel()->GetLayerAdmin();
-        pLayer = rAdmin.GetLayerPerID(SC_LAYER_BACK);
-        if (pLayer)
-            pDrawView->SetLayerLocked( pLayer->GetName(), bProt || !bEx || bShared );
-        pLayer = rAdmin.GetLayerPerID(SC_LAYER_INTERN);
-        if (pLayer)
-            pDrawView->SetLayerLocked( pLayer->GetName() );
-        pLayer = rAdmin.GetLayerPerID(SC_LAYER_FRONT);
-        if (pLayer)
-            pDrawView->SetLayerLocked( pLayer->GetName(), bProt || bShared );
-        pLayer = rAdmin.GetLayerPerID(SC_LAYER_CONTROLS);
-        if (pLayer)
-            pDrawView->SetLayerLocked( pLayer->GetName(), bProt || bShared );
-        pLayer = rAdmin.GetLayerPerID(SC_LAYER_HIDDEN);
-        if (pLayer)
-        {
-            pDrawView->SetLayerLocked( pLayer->GetName(), bProt || bShared );
-            pDrawView->SetLayerVisible( pLayer->GetName(), false);
-        }
+    SCTAB nTab = aViewData.GetTabNo();
+    bool bEx = aViewData.GetViewShell()->IsDrawSelMode();
+    bool bProt = aViewData.GetDocument()->IsTabProtected( nTab ) ||
+                 aViewData.GetSfxDocShell()->IsReadOnly();
+    bool bShared = aViewData.GetDocShell()->IsDocShared();
+
+    SdrLayer* pLayer;
+    SdrLayerAdmin& rAdmin = pDrawView->GetModel()->GetLayerAdmin();
+    pLayer = rAdmin.GetLayerPerID(SC_LAYER_BACK);
+    if (pLayer)
+        pDrawView->SetLayerLocked( pLayer->GetName(), bProt || !bEx || bShared );
+    pLayer = rAdmin.GetLayerPerID(SC_LAYER_INTERN);
+    if (pLayer)
+        pDrawView->SetLayerLocked( pLayer->GetName() );
+    pLayer = rAdmin.GetLayerPerID(SC_LAYER_FRONT);
+    if (pLayer)
+        pDrawView->SetLayerLocked( pLayer->GetName(), bProt || bShared );
+    pLayer = rAdmin.GetLayerPerID(SC_LAYER_CONTROLS);
+    if (pLayer)
+        pDrawView->SetLayerLocked( pLayer->GetName(), bProt || bShared );
+    pLayer = rAdmin.GetLayerPerID(SC_LAYER_HIDDEN);
+    if (pLayer)
+    {
+        pDrawView->SetLayerLocked( pLayer->GetName(), bProt || bShared );
+        pDrawView->SetLayerVisible( pLayer->GetName(), false);
     }
 }
 
 void ScTabView::DrawDeselectAll()
 {
-    if (pDrawView)
+    if (!pDrawView)
+        return;
+
+    ScTabViewShell* pViewSh = aViewData.GetViewShell();
+    if ( pDrawActual &&
+        ( pViewSh->IsDrawTextShell() || pDrawActual->GetSlotID() == SID_DRAW_NOTEEDIT ) )
     {
-        ScTabViewShell* pViewSh = aViewData.GetViewShell();
-        if (pDrawActual && pViewSh->IsDrawTextShell())
-        {
-            // end text edit (as if escape pressed, in FuDraw)
-            aViewData.GetDispatcher().Execute( pDrawActual->GetSlotID(),
-                                        SfxCallMode::SLOT | SfxCallMode::RECORD );
-        }
-
-        pDrawView->ScEndTextEdit();
-        pDrawView->UnmarkAll();
-
-        if (!pViewSh->IsDrawSelMode())
-            pViewSh->SetDrawShell( false );
+        // end text edit (as if escape pressed, in FuDraw)
+        aViewData.GetDispatcher().Execute( pDrawActual->GetSlotID(),
+                                    SfxCallMode::SLOT | SfxCallMode::RECORD );
     }
+
+    pDrawView->ScEndTextEdit();
+    pDrawView->UnmarkAll();
+
+    if (!pViewSh->IsDrawSelMode())
+        pViewSh->SetDrawShell( false );
 }
 
 bool ScTabView::IsDrawTextEdit() const
@@ -457,7 +462,7 @@ void ScTabView::ViewOptionsHasChanged( bool bHScrollChanged, bool bGraphicsChang
     if ( bGrow || bShrink )
     {
         Size aSize = pTabControl->GetSizePixel();
-        aSize.Width() = SC_TABBAR_DEFWIDTH;             // initial size
+        aSize.setWidth( SC_TABBAR_DEFWIDTH );             // initial size
         pTabControl->SetSizePixel(aSize);               // DoResize is called later...
     }
 }
@@ -485,27 +490,27 @@ void ScTabView::UpdateIMap( SdrObject* pObj )
 void ScTabView::DrawEnableAnim(bool bSet)
 {
     sal_uInt16 i;
-    if ( pDrawView )
-    {
-        //  don't start animations if display of graphics is disabled
-        //  graphics are controlled by VOBJ_TYPE_OLE
-        if ( bSet && aViewData.GetOptions().GetObjMode(VOBJ_TYPE_OLE) == VOBJ_MODE_SHOW )
-        {
-            if ( !pDrawView->IsAnimationEnabled() )
-            {
-                pDrawView->SetAnimationEnabled();
+    if ( !pDrawView )
+        return;
 
-                //  animated GIFs must be restarted:
-                ScDocument* pDoc = aViewData.GetDocument();
-                for (i=0; i<4; i++)
-                    if ( pGridWin[i] && pGridWin[i]->IsVisible() )
-                        pDoc->StartAnimations( aViewData.GetTabNo() );
-            }
-        }
-        else
+    //  don't start animations if display of graphics is disabled
+    //  graphics are controlled by VOBJ_TYPE_OLE
+    if ( bSet && aViewData.GetOptions().GetObjMode(VOBJ_TYPE_OLE) == VOBJ_MODE_SHOW )
+    {
+        if ( !pDrawView->IsAnimationEnabled() )
         {
-            pDrawView->SetAnimationEnabled(false);
+            pDrawView->SetAnimationEnabled();
+
+            //  animated GIFs must be restarted:
+            ScDocument* pDoc = aViewData.GetDocument();
+            for (i=0; i<4; i++)
+                if ( pGridWin[i] && pGridWin[i]->IsVisible() )
+                    pDoc->StartAnimations( aViewData.GetTabNo() );
         }
+    }
+    else
+    {
+        pDrawView->SetAnimationEnabled(false);
     }
 }
 
@@ -527,7 +532,7 @@ void ScTabView::DigitLanguageChanged()
             pWin->SetDigitLanguage( eNewLang );
 }
 
-void ScTabView::ScrollToObject( SdrObject* pDrawObj )
+void ScTabView::ScrollToObject( const SdrObject* pDrawObj )
 {
     if ( pDrawObj )
     {
@@ -564,74 +569,68 @@ void ScTabView::MakeVisible( const tools::Rectangle& rHMMRect )
     if ( aRect.Top() < 0 )              // top out
         nScrollY = aRect.Top();         // top border visible
 
-    if (nScrollX || nScrollY)
-    {
-        ScDocument* pDoc = aViewData.GetDocument();
-        if ( pDoc->IsNegativePage( nTab ) )
-            nScrollX = -nScrollX;
+    if (!(nScrollX || nScrollY))
+        return;
 
-        double nPPTX = aViewData.GetPPTX();
-        double nPPTY = aViewData.GetPPTY();
-        ScSplitPos eWhich = aViewData.GetActivePart();
-        SCCOL nPosX = aViewData.GetPosX(WhichH(eWhich));
-        SCROW nPosY = aViewData.GetPosY(WhichV(eWhich));
+    ScDocument* pDoc = aViewData.GetDocument();
+    if ( pDoc->IsNegativePage( nTab ) )
+        nScrollX = -nScrollX;
 
-        long nLinesX=0, nLinesY=0;      // columns/rows - scroll at least nScrollX/Y
+    double nPPTX = aViewData.GetPPTX();
+    double nPPTY = aViewData.GetPPTY();
+    ScSplitPos eWhich = aViewData.GetActivePart();
+    SCCOL nPosX = aViewData.GetPosX(WhichH(eWhich));
+    SCROW nPosY = aViewData.GetPosY(WhichV(eWhich));
 
-        if (nScrollX > 0)
-            while (nScrollX > 0 && nPosX < MAXCOL)
-            {
-                nScrollX -= (long) ( pDoc->GetColWidth(nPosX, nTab) * nPPTX );
-                ++nPosX;
-                ++nLinesX;
-            }
-        else if (nScrollX < 0)
-            while (nScrollX < 0 && nPosX > 0)
-            {
-                --nPosX;
-                nScrollX += (long) ( pDoc->GetColWidth(nPosX, nTab) * nPPTX );
-                --nLinesX;
-            }
+    long nLinesX=0, nLinesY=0;      // columns/rows - scroll at least nScrollX/Y
 
-        if (nScrollY > 0)
-            while (nScrollY > 0 && nPosY < MAXROW)
-            {
-                nScrollY -= (long) ( pDoc->GetRowHeight(nPosY, nTab) * nPPTY );
-                ++nPosY;
-                ++nLinesY;
-            }
-        else if (nScrollY < 0)
-            while (nScrollY < 0 && nPosY > 0)
-            {
-                --nPosY;
-                nScrollY += (long) ( pDoc->GetRowHeight(nPosY, nTab) * nPPTY );
-                --nLinesY;
-            }
+    if (nScrollX > 0)
+        while (nScrollX > 0 && nPosX < pDoc->MaxCol())
+        {
+            nScrollX -= static_cast<long>( pDoc->GetColWidth(nPosX, nTab) * nPPTX );
+            ++nPosX;
+            ++nLinesX;
+        }
+    else if (nScrollX < 0)
+        while (nScrollX < 0 && nPosX > 0)
+        {
+            --nPosX;
+            nScrollX += static_cast<long>( pDoc->GetColWidth(nPosX, nTab) * nPPTX );
+            --nLinesX;
+        }
 
-        ScrollLines( nLinesX, nLinesY );                    // execute
-    }
+    if (nScrollY > 0)
+        while (nScrollY > 0 && nPosY < pDoc->MaxRow())
+        {
+            nScrollY -= static_cast<long>( pDoc->GetRowHeight(nPosY, nTab) * nPPTY );
+            ++nPosY;
+            ++nLinesY;
+        }
+    else if (nScrollY < 0)
+        while (nScrollY < 0 && nPosY > 0)
+        {
+            --nPosY;
+            nScrollY += static_cast<long>( pDoc->GetRowHeight(nPosY, nTab) * nPPTY );
+            --nLinesY;
+        }
+
+    ScrollLines( nLinesX, nLinesY );                    // execute
 }
 
-void ScTabView::SetBrushDocument( ScDocument* pNew, bool bLock )
+void ScTabView::SetBrushDocument( ScDocumentUniquePtr pNew, bool bLock )
 {
-    delete pBrushDocument;
-    delete pDrawBrushSet;
-
-    pBrushDocument = pNew;
-    pDrawBrushSet = nullptr;
+    pDrawBrushSet.reset();
+    pBrushDocument = std::move(pNew);
 
     bLockPaintBrush = bLock;
 
     aViewData.GetBindings().Invalidate(SID_FORMATPAINTBRUSH);
 }
 
-void ScTabView::SetDrawBrushSet( SfxItemSet* pNew, bool bLock )
+void ScTabView::SetDrawBrushSet( std::unique_ptr<SfxItemSet> pNew, bool bLock )
 {
-    delete pBrushDocument;
-    delete pDrawBrushSet;
-
-    pBrushDocument = nullptr;
-    pDrawBrushSet = pNew;
+    pBrushDocument.reset();
+    pDrawBrushSet = std::move(pNew);
 
     bLockPaintBrush = bLock;
 
@@ -643,7 +642,7 @@ void ScTabView::ResetBrushDocument()
     if ( HasPaintBrush() )
     {
         SetBrushDocument( nullptr, false );
-        SetActivePointer( Pointer( PointerStyle::Arrow ) );   // switch pointers also when ended with escape key
+        SetActivePointer( PointerStyle::Arrow );   // switch pointers also when ended with escape key
     }
 }
 
@@ -667,16 +666,17 @@ void ScTabView::OnLOKNoteStateChanged(const ScPostIt* pNote)
     // placed, invalidated.
     const int nBorderSize = 200;
     tools::Rectangle aInvalidRect = aRect;
-    aInvalidRect.Left() -= nBorderSize;
-    aInvalidRect.Right() += nBorderSize;
-    aInvalidRect.Top() -= nBorderSize;
-    aInvalidRect.Bottom() += nBorderSize;
+    aInvalidRect.AdjustLeft( -nBorderSize );
+    aInvalidRect.AdjustRight( nBorderSize );
+    aInvalidRect.AdjustTop( -nBorderSize );
+    aInvalidRect.AdjustBottom( nBorderSize );
 
+    SfxViewShell* pCurrentViewShell = SfxViewShell::Current();
     SfxViewShell* pViewShell = SfxViewShell::GetFirst();
     while (pViewShell)
     {
         ScTabViewShell* pTabViewShell = dynamic_cast<ScTabViewShell*>(pViewShell);
-        if (pTabViewShell)
+        if (pTabViewShell && pViewShell->GetDocId() == pCurrentViewShell->GetDocId())
         {
             for (auto& pWin: pTabViewShell->pGridWin)
             {

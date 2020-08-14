@@ -18,14 +18,12 @@
  */
 #include "vbarow.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <ooo/vba/word/WdRowHeightRule.hpp>
 #include <ooo/vba/word/WdConstants.hpp>
-#include <rtl/ustrbuf.hxx>
-#include "wordvbahelper.hxx"
 #include "vbatablehelper.hxx"
 
 using namespace ::ooo::vba;
@@ -49,7 +47,7 @@ uno::Any SAL_CALL SwVbaRow::getHeight()
 
     sal_Int32 nHeight = 0;
     mxRowProps->getPropertyValue("Height") >>= nHeight;
-    return uno::makeAny( (float)Millimeter::getInPoints( nHeight ) );
+    return uno::makeAny( static_cast<float>(Millimeter::getInPoints( nHeight )) );
 }
 
 void SAL_CALL SwVbaRow::setHeight( const uno::Any& _height )
@@ -82,18 +80,16 @@ SwVbaRow::Select( )
 
 void SwVbaRow::SelectRow( const uno::Reference< frame::XModel >& xModel, const uno::Reference< text::XTextTable >& xTextTable, sal_Int32 nStartRow, sal_Int32 nEndRow )
 {
-    OUStringBuffer aRangeName;
-    aRangeName.append('A').append(sal_Int32( nStartRow + 1 ) );
+    OUString sRangeName = "A" + OUString::number(nStartRow + 1);
     SwVbaTableHelper aTableHelper( xTextTable );
     sal_Int32 nColCount = aTableHelper.getTabColumnsCount( nEndRow );
     // FIXME: the column count > 26
-    //sal_Char cCol = 'A' + nColCount - 1;
+    //char cCol = 'A' + nColCount - 1;
     OUString sCol = SwVbaTableHelper::getColumnStr( nColCount - 1);
-    aRangeName.append(':').append( sCol ).append( sal_Int32( nEndRow + 1 ) );
+    sRangeName += ":" + sCol + OUString::number(nEndRow + 1);
 
     uno::Reference< table::XCellRange > xCellRange( xTextTable, uno::UNO_QUERY_THROW );
-    OUString sSelRange = aRangeName.makeStringAndClear();
-    uno::Reference< table::XCellRange > xSelRange = xCellRange->getCellRangeByName( sSelRange );
+    uno::Reference< table::XCellRange > xSelRange = xCellRange->getCellRangeByName( sRangeName );
 
     uno::Reference< view::XSelectionSupplier > xSelection( xModel->getCurrentController(), uno::UNO_QUERY_THROW );
     xSelection->select( uno::makeAny( xSelRange ) );
@@ -108,18 +104,16 @@ void SAL_CALL SwVbaRow::SetHeight( float height, sal_Int32 heightrule )
 OUString
 SwVbaRow::getServiceImplName()
 {
-    return OUString("SwVbaRow");
+    return "SwVbaRow";
 }
 
 uno::Sequence< OUString >
 SwVbaRow::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Row";
-    }
+        "ooo.vba.word.Row"
+    };
     return aServiceNames;
 }
 

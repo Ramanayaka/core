@@ -19,18 +19,20 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_AXISITEMCONVERTER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_AXISITEMCONVERTER_HXX
 
-#include <chartview/ExplicitScaleValues.hxx>
-#include <com/sun/star/chart2/XAxis.hpp>
-#include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/awt/Size.hpp>
-
 #include "ItemConverter.hxx"
 
 #include <vector>
 
+namespace com::sun::star::awt { struct Size; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::chart2 { class XAxis; }
+namespace com::sun::star::chart2 { class XChartDocument; }
+namespace chart { struct ExplicitIncrementData; }
+namespace chart { struct ExplicitScaleData; }
+
 class SdrModel;
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
 class AxisItemConverter : public ItemConverter
 {
@@ -39,9 +41,9 @@ public:
         const css::uno::Reference<css::beans::XPropertySet>& rPropertySet,
         SfxItemPool& rItemPool, SdrModel& rDrawModel,
         const css::uno::Reference<css::chart2::XChartDocument> & xChartDoc,
-        ExplicitScaleData* pScale = nullptr,
-        ExplicitIncrementData* pIncrement = nullptr,
-        const css::awt::Size* pRefSize = nullptr );
+        ExplicitScaleData const * pScale,
+        ExplicitIncrementData const * pIncrement,
+        const css::awt::Size* pRefSize );
 
     virtual ~AxisItemConverter() override;
 
@@ -56,18 +58,18 @@ protected:
     virtual bool ApplySpecialItem( sal_uInt16 nWhichId, const SfxItemSet & rItemSet ) override;
 
 private:
-    std::vector< ItemConverter * >               m_aConverters;
+    std::vector< std::unique_ptr<ItemConverter> >  m_aConverters;
     css::uno::Reference<
         css::chart2::XAxis >  m_xAxis;
 
     css::uno::Reference<
         css::chart2::XChartDocument >      m_xChartDoc;
 
-    ExplicitScaleData*      m_pExplicitScale;
-    ExplicitIncrementData*  m_pExplicitIncrement;
+    std::unique_ptr<ExplicitScaleData>  m_pExplicitScale;
+    std::unique_ptr<ExplicitIncrementData>  m_pExplicitIncrement;
 };
 
-}}
+}
 
 #endif
 

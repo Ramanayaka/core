@@ -19,13 +19,12 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_TABPAGENOTIFIABLE_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_TABPAGENOTIFIABLE_HXX
 
-#include <vcl/tabpage.hxx>
-#include <tools/color.hxx>
-
 // color to use as foreground for an invalid range
 #define RANGE_SELECTION_INVALID_RANGE_FOREGROUND_COLOR COL_WHITE
 // color to use as background for an invalid range
-#define RANGE_SELECTION_INVALID_RANGE_BACKGROUND_COLOR 0xff6563
+#define RANGE_SELECTION_INVALID_RANGE_BACKGROUND_COLOR Color(0xff6563)
+
+class BuilderPage;
 
 namespace chart
 {
@@ -33,8 +32,8 @@ namespace chart
 class TabPageNotifiable
 {
 public:
-    virtual void setInvalidPage( TabPage * pTabPage ) = 0;
-    virtual void setValidPage( TabPage * pTabPage ) = 0;
+    virtual void setInvalidPage( BuilderPage * pTabPage ) = 0;
+    virtual void setValidPage( BuilderPage * pTabPage ) = 0;
 
 protected:
     ~TabPageNotifiable() {}

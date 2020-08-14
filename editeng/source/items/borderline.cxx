@@ -17,12 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <algorithm>
+
 #include <basegfx/color/bcolor.hxx>
 #include <basegfx/color/bcolortools.hxx>
 
 #include <editeng/borderline.hxx>
 #include <editeng/itemtype.hxx>
-
+#include <editeng/editrids.hrc>
+#include <editeng/eerdll.hxx>
 
 using namespace ::com::sun::star::table::BorderLineStyle;
 
@@ -33,7 +38,7 @@ namespace {
     Color lcl_compute3DColor( Color aMain, int nLight, int nMedium, int nDark )
     {
         basegfx::BColor color = aMain.getBColor( );
-        basegfx::BColor hsl = basegfx::tools::rgb2hsl( color );
+        basegfx::BColor hsl = basegfx::utils::rgb2hsl( color );
 
         int nCoef = 0;
         if ( hsl.getZ( ) >= 0.5 )
@@ -43,9 +48,9 @@ namespace {
         else
             nCoef = nDark;
 
-        double L = hsl.getZ() * 255.0 + nCoef;
+        double L = std::min(hsl.getZ() * 255.0 + nCoef, 255.0);
         hsl.setZ( L / 255.0 );
-        color = basegfx::tools::hsl2rgb( hsl );
+        color = basegfx::utils::hsl2rgb( hsl );
 
         return Color( color );
     }
@@ -63,9 +68,9 @@ Color SvxBorderLine::lightColor( Color aMain )
 
     // Divide Luminance by 2
     basegfx::BColor color = aMain.getBColor( );
-    basegfx::BColor hsl = basegfx::tools::rgb2hsl( color );
+    basegfx::BColor hsl = basegfx::utils::rgb2hsl( color );
     hsl.setZ( hsl.getZ() * 0.5 );
-    color = basegfx::tools::hsl2rgb( hsl );
+    color = basegfx::utils::hsl2rgb( hsl );
 
     return Color( color );
 }
@@ -166,16 +171,16 @@ ConvertBorderStyleFromWord(int const nWordLineStyle)
     }
 }
 
-static const double THINTHICK_SMALLGAP_line2 = 15.0;
-static const double THINTHICK_SMALLGAP_gap   = 15.0;
-static const double THINTHICK_LARGEGAP_line1 = 30.0;
-static const double THINTHICK_LARGEGAP_line2 = 15.0;
-static const double THICKTHIN_SMALLGAP_line1 = 15.0;
-static const double THICKTHIN_SMALLGAP_gap   = 15.0;
-static const double THICKTHIN_LARGEGAP_line1 = 15.0;
-static const double THICKTHIN_LARGEGAP_line2 = 30.0;
-static const double OUTSET_line1 = 15.0;
-static const double INSET_line2  = 15.0;
+const double THINTHICK_SMALLGAP_line2 = 15.0;
+const double THINTHICK_SMALLGAP_gap   = 15.0;
+const double THINTHICK_LARGEGAP_line1 = 30.0;
+const double THINTHICK_LARGEGAP_line2 = 15.0;
+const double THICKTHIN_SMALLGAP_line1 = 15.0;
+const double THICKTHIN_SMALLGAP_gap   = 15.0;
+const double THICKTHIN_LARGEGAP_line1 = 15.0;
+const double THICKTHIN_LARGEGAP_line2 = 30.0;
+const double OUTSET_line1 = 15.0;
+const double INSET_line2  = 15.0;
 
 double
 ConvertBorderWidthFromWord(SvxBorderLineStyle const eStyle, double const i_fWidth,
@@ -192,7 +197,7 @@ ConvertBorderWidthFromWord(SvxBorderLineStyle const eStyle, double const i_fWidt
                 case 2:
                     return (fWidth * 2.0); // thick
                 case 5: // fdo#55526: map 0 hairline width to > 0
-                    return (fWidth > 1.0) ? fWidth : 1.0;
+                    return std::max(fWidth, 1.0);
                 default:
                     return fWidth;
             }
@@ -238,13 +243,16 @@ ConvertBorderWidthFromWord(SvxBorderLineStyle const eStyle, double const i_fWidt
 
         default:
             assert(false); // should only be called for known border style
-            return 0;
     }
+    return 0;
 }
 
 double
 ConvertBorderWidthToWord(SvxBorderLineStyle const eStyle, double const fWidth)
 {
+    if ( !fWidth )
+        return 0;
+
     switch (eStyle)
     {
         // Single lines
@@ -259,31 +267,31 @@ ConvertBorderWidthToWord(SvxBorderLineStyle const eStyle, double const fWidth)
         // Double lines
         case SvxBorderLineStyle::DOUBLE:
         case SvxBorderLineStyle::DOUBLE_THIN:
-            return fWidth / 3.0;
+            return std::max(1.0, fWidth / 3.0);
 
         case SvxBorderLineStyle::THINTHICK_MEDIUMGAP:
         case SvxBorderLineStyle::THICKTHIN_MEDIUMGAP:
         case SvxBorderLineStyle::EMBOSSED:
         case SvxBorderLineStyle::ENGRAVED:
-            return fWidth / 2.0;
+            return std::max(1.0, fWidth / 2.0);
 
         case SvxBorderLineStyle::THINTHICK_SMALLGAP:
-            return fWidth - THINTHICK_SMALLGAP_line2 - THINTHICK_SMALLGAP_gap;
+            return std::max(1.0, fWidth - THINTHICK_SMALLGAP_line2 - THINTHICK_SMALLGAP_gap);
 
         case SvxBorderLineStyle::THINTHICK_LARGEGAP:
-            return fWidth - THINTHICK_LARGEGAP_line1 - THINTHICK_LARGEGAP_line2;
+            return std::max(1.0, fWidth - THINTHICK_LARGEGAP_line1 - THINTHICK_LARGEGAP_line2);
 
         case SvxBorderLineStyle::THICKTHIN_SMALLGAP:
-            return fWidth - THICKTHIN_SMALLGAP_line1 - THICKTHIN_SMALLGAP_gap;
+            return std::max(1.0, fWidth - THICKTHIN_SMALLGAP_line1 - THICKTHIN_SMALLGAP_gap);
 
         case SvxBorderLineStyle::THICKTHIN_LARGEGAP:
-            return fWidth - THICKTHIN_LARGEGAP_line1 - THICKTHIN_LARGEGAP_line2;
+            return std::max(1.0, fWidth - THICKTHIN_LARGEGAP_line1 - THICKTHIN_LARGEGAP_line2);
 
         case SvxBorderLineStyle::OUTSET:
-            return (fWidth - OUTSET_line1) / 2.0;
+            return std::max(1.0, (fWidth - OUTSET_line1) / 2.0);
 
         case SvxBorderLineStyle::INSET:
-            return (fWidth - INSET_line2) / 2.0;
+            return std::max(1.0, (fWidth - INSET_line2) / 2.0);
 
         case SvxBorderLineStyle::NONE:
             return 0;
@@ -399,30 +407,6 @@ BorderWidthImpl SvxBorderLine::getWidthImpl( SvxBorderLineStyle nStyle )
     return aImpl;
 }
 
-
-SvxBorderLine::SvxBorderLine( const SvxBorderLine& r )
-{
-    *this = r;
-}
-
-
-SvxBorderLine& SvxBorderLine::operator=( const SvxBorderLine& r )
-{
-    aColor = r.aColor;
-    m_nWidth = r.m_nWidth;
-    m_aWidthImpl = r.m_aWidthImpl;
-    m_bMirrorWidths = r.m_bMirrorWidths;
-    m_nMult = r.m_nMult;
-    m_nDiv = r.m_nDiv;
-    m_nStyle = r.m_nStyle;
-    m_bUseLeftTop = r.m_bUseLeftTop;
-    m_pColorOutFn = r.m_pColorOutFn;
-    m_pColorInFn = r.m_pColorInFn;
-    m_pColorGapFn = r.m_pColorGapFn;
-    return *this;
-}
-
-
 void SvxBorderLine::ScaleMetrics( long nMult, long nDiv )
 {
     m_nMult = nMult;
@@ -512,23 +496,23 @@ void SvxBorderLine::GuessLinesWidths( SvxBorderLineStyle nStyle, sal_uInt16 nOut
 
 sal_uInt16 SvxBorderLine::GetOutWidth() const
 {
-    sal_uInt16 nOut = (sal_uInt16)Scale( m_aWidthImpl.GetLine1( m_nWidth ), m_nMult, m_nDiv );
+    sal_uInt16 nOut = static_cast<sal_uInt16>(Scale( m_aWidthImpl.GetLine1( m_nWidth ), m_nMult, m_nDiv ));
     if ( m_bMirrorWidths )
-        nOut = (sal_uInt16)Scale( m_aWidthImpl.GetLine2( m_nWidth ), m_nMult, m_nDiv );
+        nOut = static_cast<sal_uInt16>(Scale( m_aWidthImpl.GetLine2( m_nWidth ), m_nMult, m_nDiv ));
     return nOut;
 }
 
 sal_uInt16 SvxBorderLine::GetInWidth() const
 {
-    sal_uInt16 nIn = (sal_uInt16)Scale( m_aWidthImpl.GetLine2( m_nWidth ), m_nMult, m_nDiv );
+    sal_uInt16 nIn = static_cast<sal_uInt16>(Scale( m_aWidthImpl.GetLine2( m_nWidth ), m_nMult, m_nDiv ));
     if ( m_bMirrorWidths )
-        nIn = (sal_uInt16)Scale( m_aWidthImpl.GetLine1( m_nWidth ), m_nMult, m_nDiv );
+        nIn = static_cast<sal_uInt16>(Scale( m_aWidthImpl.GetLine1( m_nWidth ), m_nMult, m_nDiv ));
     return nIn;
 }
 
 sal_uInt16 SvxBorderLine::GetDistance() const
 {
-    return (sal_uInt16)Scale( m_aWidthImpl.GetGap( m_nWidth ), m_nMult, m_nDiv );
+    return static_cast<sal_uInt16>(Scale( m_aWidthImpl.GetGap( m_nWidth ), m_nMult, m_nDiv ));
 }
 
 
@@ -637,7 +621,7 @@ OUString SvxBorderLine::GetValueString(MapUnit eSrcUnit,
                                        const IntlWrapper* pIntl,
                                        bool bMetricStr) const
 {
-    static const sal_uInt16 aStyleIds[] =
+    static const char* aStyleIds[] =
     {
         RID_SOLID,
         RID_DOTTED,
@@ -658,25 +642,25 @@ OUString SvxBorderLine::GetValueString(MapUnit eSrcUnit,
         RID_DASH_DOT,
         RID_DASH_DOT_DOT
     };
-    OUString aStr = "(" + ::GetColorString( aColor ) + OUString(cpDelim);
+    OUString aStr = "(" + ::GetColorString( aColor ) + cpDelim;
 
-    if ( (int)m_nStyle < int(SAL_N_ELEMENTS(aStyleIds)) )
+    if ( static_cast<int>(m_nStyle) < int(SAL_N_ELEMENTS(aStyleIds)) )
     {
-        sal_uInt16 nResId = aStyleIds[(int)m_nStyle];
-        aStr += EditResId::GetString(nResId);
+        const char* pResId = aStyleIds[static_cast<int>(m_nStyle)];
+        aStr += EditResId(pResId);
     }
     else
     {
-        OUString sMetric = EditResId::GetString(GetMetricId( eDestUnit ));
-        aStr += GetMetricText( (long)GetInWidth(), eSrcUnit, eDestUnit, pIntl );
+        OUString sMetric = EditResId(GetMetricId( eDestUnit ));
+        aStr += GetMetricText( static_cast<long>(GetInWidth()), eSrcUnit, eDestUnit, pIntl );
         if ( bMetricStr )
             aStr += sMetric;
-        aStr += cpDelim;
-        aStr += GetMetricText( (long)GetOutWidth(), eSrcUnit, eDestUnit, pIntl );
+        aStr += cpDelim +
+            GetMetricText( static_cast<long>(GetOutWidth()), eSrcUnit, eDestUnit, pIntl );
         if ( bMetricStr )
             aStr += sMetric;
-        aStr += cpDelim;
-        aStr += GetMetricText( (long)GetDistance(), eSrcUnit, eDestUnit, pIntl );
+        aStr += cpDelim +
+            GetMetricText( static_cast<long>(GetDistance()), eSrcUnit, eDestUnit, pIntl );
         if ( bMetricStr )
             aStr += sMetric;
     }

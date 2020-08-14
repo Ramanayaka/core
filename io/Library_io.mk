@@ -17,6 +17,7 @@ $(eval $(call gb_Library_use_libraries,io,\
     cppu \
     cppuhelper \
     sal \
+    tl \
 ))
 
 $(eval $(call gb_Library_set_componentfile,io,io/source/io))
@@ -27,7 +28,6 @@ $(eval $(call gb_Library_set_include,io,\
 ))
 
 $(eval $(call gb_Library_add_exception_objects,io,\
-	io/source/services \
     io/source/acceptor/acc_pipe \
     io/source/acceptor/acc_socket \
     io/source/acceptor/acceptor \

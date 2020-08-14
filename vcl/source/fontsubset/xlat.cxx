@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "rtl/textcvt.h"
+#include <rtl/textcvt.h>
 #include "xlat.hxx"
 
 namespace {
@@ -30,9 +30,8 @@ public:
     explicit    ConverterCache();
                 ~ConverterCache();
     sal_uInt16  convertOne( int nSelect, sal_Unicode );
-protected:
-    void        ensureConverter( int nSelect );
 private:
+    void        ensureConverter( int nSelect );
     rtl_UnicodeToTextConverter maConverterCache[ MAX_CVT_SELECT+1 ];
     rtl_UnicodeToTextContext maContexts[ MAX_CVT_SELECT+1 ];
 };
@@ -66,7 +65,7 @@ void ConverterCache::ensureConverter( int nSelect )
         rtl_TextEncoding eRecodeFrom = RTL_TEXTENCODING_UNICODE;
         switch( nSelect )
         {
-            default: nSelect = 1; SAL_FALLTHROUGH; // to unicode recoding
+            default: nSelect = 1; [[fallthrough]]; // to unicode recoding
             case 1: eRecodeFrom = RTL_TEXTENCODING_UNICODE; break;
             case 2: eRecodeFrom = RTL_TEXTENCODING_SHIFT_JIS; break;
             case 3: eRecodeFrom = RTL_TEXTENCODING_GB_2312; break;
@@ -89,7 +88,7 @@ sal_uInt16 ConverterCache::convertOne( int nSelect, sal_Unicode aChar )
     ensureConverter( nSelect );
 
     sal_Unicode aUCS2Char = aChar;
-    sal_Char aTempArray[8];
+    char aTempArray[8];
     sal_Size nTempSize;
     sal_uInt32 nCvtInfo;
 

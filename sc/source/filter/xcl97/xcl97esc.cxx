@@ -20,37 +20,32 @@
 #include <memory>
 #include <com/sun/star/awt/XControlModel.hpp>
 #include <com/sun/star/embed/XClassifiedObject.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/form/XFormsSupplier.hpp>
-#include <com/sun/star/script/ScriptEventDescriptor.hpp>
 #include <com/sun/star/script/XEventAttacherManager.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <svx/svdpage.hxx>
-#include <editeng/outlobj.hxx>
 #include <svx/svdotext.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/unoapi.hxx>
-#include <svx/fmglob.hxx>
-#include <vcl/outdev.hxx>
 #include <unotools/tempfile.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <svx/sdasitm.hxx>
 #include <sfx2/docfile.hxx>
+#include <sal/log.hxx>
 
 #include <sot/exchange.hxx>
-#include "xeescher.hxx"
+#include <sot/storage.hxx>
+#include <xeescher.hxx>
 
-#include "global.hxx"
-#include "document.hxx"
-#include "drwlayer.hxx"
-#include "xecontent.hxx"
+#include <drwlayer.hxx>
+#include <xecontent.hxx>
 #include <editeng/flditem.hxx>
-#include "userdat.hxx"
-#include "xcl97rec.hxx"
-#include "xehelper.hxx"
-#include "xechart.hxx"
-#include "xcl97esc.hxx"
+#include <userdat.hxx>
+#include <xcl97rec.hxx>
+#include <xcl97esc.hxx>
 #include <unotools/streamwrap.hxx>
 #include <oox/ole/olehelper.hxx>
 #include <sfx2/objsh.hxx>
@@ -84,18 +79,17 @@ SvStream* XclEscherExGlobal::ImplQueryPictureStream()
     if( mxPicTempFile->IsValid() )
     {
         mxPicTempFile->EnableKillingFile();
-        mxPicStrm.reset( ::utl::UcbStreamHelper::CreateStream( mxPicTempFile->GetURL(), StreamMode::STD_READWRITE ) );
+        mxPicStrm = ::utl::UcbStreamHelper::CreateStream( mxPicTempFile->GetURL(), StreamMode::STD_READWRITE );
         mxPicStrm->SetEndian( SvStreamEndian::LITTLE );
     }
     return mxPicStrm.get();
 }
 
 XclEscherEx::XclEscherEx( const XclExpRoot& rRoot, XclExpObjectManager& rObjMgr, SvStream& rStrm, const XclEscherEx* pParent ) :
-    EscherEx( pParent ? pParent->mxGlobal : std::shared_ptr<EscherExGlobal>( new XclEscherExGlobal( rRoot ) ), &rStrm ),
+    EscherEx( pParent ? pParent->mxGlobal : std::make_shared<XclEscherExGlobal>( rRoot ), &rStrm ),
     XclExpRoot( rRoot ),
     mrObjMgr( rObjMgr ),
     pCurrXclObj( nullptr ),
-    pCurrAppData( nullptr ),
     pTheClientData( new XclEscherClientData ),
     pAdditionalText( nullptr ),
     nAdditionalText( 0 ),
@@ -109,7 +103,7 @@ XclEscherEx::~XclEscherEx()
 {
     OSL_ENSURE( aStack.empty(), "~XclEscherEx: stack not empty" );
     DeleteCurrAppData();
-    delete pTheClientData;
+    pTheClientData.reset();
 }
 
 sal_uInt32 XclEscherEx::InitNextDffFragment()
@@ -175,8 +169,8 @@ bool lcl_IsFontwork( const SdrObject* pObj )
     if( pObj->GetObjIdentifier() == OBJ_CUSTOMSHAPE )
     {
         const OUString aTextPath = "TextPath";
-        const SdrCustomShapeGeometryItem& rGeometryItem = static_cast<const SdrCustomShapeGeometryItem&>(
-            pObj->GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ) );
+        const SdrCustomShapeGeometryItem& rGeometryItem =
+            pObj->GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY );
         if( const Any* pAny = rGeometryItem.GetPropertyValueByName( aTextPath, aTextPath ) )
             *pAny >>= bIsFontwork;
     }
@@ -198,13 +192,13 @@ EscherExHostAppData* XclEscherEx::StartShape( const Reference< XShape >& rxShape
             UpdateDffFragmentEnd();
         }
     }
-    aStack.push( std::make_pair( pCurrXclObj, pCurrAppData ) );
-    pCurrAppData = new XclEscherHostAppData;
+    aStack.push( std::make_pair( pCurrXclObj, std::move(pCurrAppData) ) );
+    pCurrAppData.reset( new XclEscherHostAppData );
     SdrObject* pObj = GetSdrObjectFromXShape( rxShape );
     //added for exporting OCX control
     sal_Int16 nMsCtlType = 0;
     if ( !pObj )
-        pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDocRef() );  // just what is it?!?
+        pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDoc() );  // just what is it?!?
     else
     {
         pCurrXclObj = nullptr;
@@ -216,23 +210,23 @@ EscherExHostAppData* XclEscherEx::StartShape( const Reference< XShape >& rxShape
             if( mbIsRootDff )
             {
                 //! not-const because GetObjRef may load the OLE object
-                Reference < XClassifiedObject > xObj( static_cast<SdrOle2Obj*>(pObj)->GetObjRef(), UNO_QUERY );
+                Reference < XClassifiedObject > xObj( static_cast<SdrOle2Obj*>(pObj)->GetObjRef() );
                 if ( xObj.is() )
                 {
                     SvGlobalName aObjClsId( xObj->getClassID() );
                     if ( SotExchange::IsChart( aObjClsId ) )
                     {   // yes, it's a chart diagram
-                        mrObjMgr.AddObj( new XclExpChartObj( mrObjMgr, rxShape, pChildAnchor ) );
+                        mrObjMgr.AddObj( std::make_unique<XclExpChartObj>( mrObjMgr, rxShape, pChildAnchor, &GetDoc() ) );
                         pCurrXclObj = nullptr;     // no metafile or whatsoever
                     }
                     else    // metafile and OLE object
                         pCurrXclObj = new XclObjOle( mrObjMgr, *pObj );
                 }
                 else    // just a metafile
-                    pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDocRef() );
+                    pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDoc() );
             }
             else
-                pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDocRef() );
+                pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDoc() );
         }
         else if( nObjType == OBJ_UNO )
         {
@@ -253,25 +247,25 @@ EscherExHostAppData* XclEscherEx::StartShape( const Reference< XShape >& rxShape
             else  //TBX Form Control
                 pCurrXclObj = CreateTBXCtrlObj( rxShape, pChildAnchor ).release();
             if( !pCurrXclObj )
-                pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDocRef() );   // just a metafile
+                pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDoc() );   // just a metafile
         }
         else if( !ScDrawLayer::IsNoteCaption( pObj ) )
         {
             // ignore permanent note shapes
             // #i12190# do not ignore callouts (do not filter by object type ID)
-            pCurrXclObj = ShapeInteractionHelper::CreateShapeObj( mrObjMgr, rxShape, &GetDocRef() );
+            pCurrXclObj = ShapeInteractionHelper::CreateShapeObj( mrObjMgr, rxShape, &GetDoc() );
             ShapeInteractionHelper::PopulateShapeInteractionInfo( mrObjMgr, rxShape, *pCurrAppData );
         }
     }
     if ( pCurrXclObj )
     {
-        if ( !mrObjMgr.AddObj( pCurrXclObj ) )
+        if ( !mrObjMgr.AddObj( std::unique_ptr<XclObj>(pCurrXclObj) ) )
         {   // maximum count reached, object got deleted
             pCurrXclObj = nullptr;
         }
         else
         {
-            pCurrAppData->SetClientData( pTheClientData );
+            pCurrAppData->SetClientData( pTheClientData.get() );
             if ( nAdditionalText == 0 )
             {
                 if ( pObj )
@@ -339,7 +333,7 @@ EscherExHostAppData* XclEscherEx::StartShape( const Reference< XShape >& rxShape
     }
     if ( !pCurrXclObj )
         pCurrAppData->SetDontWriteShape( true );
-    return pCurrAppData;
+    return pCurrAppData.get();
 }
 
 void XclEscherEx::EndShape( sal_uInt16 nShapeType, sal_uInt32 nShapeID )
@@ -353,9 +347,8 @@ void XclEscherEx::EndShape( sal_uInt16 nShapeType, sal_uInt32 nShapeID )
         // escher data of last shape not written? -> delete it from object list
         if( nShapeID == 0 )
         {
-            XclObj* pLastObj = mrObjMgr.RemoveLastObj();
-            OSL_ENSURE( pLastObj == pCurrXclObj, "XclEscherEx::EndShape - wrong object" );
-            DELETEZ( pLastObj );
+            std::unique_ptr<XclObj> pLastObj = mrObjMgr.RemoveLastObj();
+            OSL_ENSURE( pLastObj.get() == pCurrXclObj, "XclEscherEx::EndShape - wrong object" );
             pCurrXclObj = nullptr;
         }
 
@@ -382,7 +375,7 @@ void XclEscherEx::EndShape( sal_uInt16 nShapeType, sal_uInt32 nShapeID )
     else
     {
         pCurrXclObj = aStack.top().first;
-        pCurrAppData = aStack.top().second;
+        pCurrAppData = std::move(aStack.top().second);
         aStack.pop();
     }
     if( nAdditionalText == 3 )
@@ -394,7 +387,7 @@ EscherExHostAppData* XclEscherEx::EnterAdditionalTextGroup()
     nAdditionalText = 1;
     pAdditionalText = static_cast<XclEscherClientTextbox*>( pCurrAppData->GetClientTextbox() );
     pCurrAppData->SetClientTextbox( nullptr );
-    return pCurrAppData;
+    return pCurrAppData.get();
 }
 
 void XclEscherEx::EndDocument()
@@ -442,7 +435,7 @@ std::unique_ptr<XclExpTbxControlObj> XclEscherEx::CreateTBXCtrlObj( Reference< X
     if( xTbxCtrl->GetObjType() == EXC_OBJTYPE_UNKNOWN )
         xTbxCtrl.reset();
 
-    if( xTbxCtrl.get() )
+    if (xTbxCtrl)
     {
         // find attached macro
         Reference< XControlModel > xCtrlModel = XclControlHelper::GetControlModel( xShape );
@@ -454,7 +447,10 @@ std::unique_ptr<XclExpTbxControlObj> XclEscherEx::CreateTBXCtrlObj( Reference< X
 void XclEscherEx::ConvertTbxMacro( XclExpTbxControlObj& rTbxCtrlObj, Reference< XControlModel > const & xCtrlModel )
 {
     SdrPage* pSdrPage = GetSdrPage( GetCurrScTab() );
-    if( xCtrlModel.is() && GetDocShell() && pSdrPage ) try
+    if( !(xCtrlModel.is() && GetDocShell() && pSdrPage) )
+        return;
+
+    try
     {
         Reference< XFormsSupplier > xFormsSupplier( pSdrPage->getUnoPage(), UNO_QUERY_THROW );
         Reference< XIndexAccess > xFormsIA( xFormsSupplier->getForms(), UNO_QUERY_THROW );
@@ -490,12 +486,11 @@ void XclEscherEx::ConvertTbxMacro( XclExpTbxControlObj& rTbxCtrlObj, Reference< 
             Reference< XEventAttacherManager > xEventMgr( xFormIA, UNO_QUERY_THROW );
             // loop over all events attached to the found control
             const Sequence< ScriptEventDescriptor > aEventSeq( xEventMgr->getScriptEvents( nFoundIdx ) );
-            bool bFound = false;
-            for( sal_Int32 nEventIdx = 0, nEventCount = aEventSeq.getLength();
-                    !bFound && (nEventIdx < nEventCount); ++nEventIdx )
+            for( const auto& rEvent : aEventSeq )
             {
                 // try to set the event data at the Excel control object, returns true on success
-                bFound = rTbxCtrlObj.SetMacroLink( aEventSeq[ nEventIdx ] );
+                if (rTbxCtrlObj.SetMacroLink( rEvent ))
+                    break;
             }
         }
     }
@@ -511,8 +506,8 @@ void XclEscherEx::DeleteCurrAppData()
         delete pCurrAppData->GetClientAnchor();
 //      delete pCurrAppData->GetClientData();
         delete pCurrAppData->GetClientTextbox();
-    delete pCurrAppData->GetInteractionInfo();
-        delete pCurrAppData;
+        delete pCurrAppData->GetInteractionInfo();
+        pCurrAppData.reset();
     }
 }
 
@@ -546,7 +541,7 @@ ShapeInteractionHelper::CreateShapeObj( XclExpObjectManager& rObjMgr, const Refe
 }
 
 void
-ShapeInteractionHelper::PopulateShapeInteractionInfo( XclExpObjectManager& rObjMgr, const Reference< XShape >& xShape, EscherExHostAppData& rHostAppData )
+ShapeInteractionHelper::PopulateShapeInteractionInfo( const XclExpObjectManager& rObjMgr, const Reference< XShape >& xShape, EscherExHostAppData& rHostAppData )
 {
    try
    {

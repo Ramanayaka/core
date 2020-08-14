@@ -20,17 +20,18 @@
 #ifndef INCLUDED_SW_INC_CALBCK_HXX
 #define INCLUDED_SW_INC_CALBCK_HXX
 
-#include "swdllapi.h"
-#include <ring.hxx>
-#include <hintids.hxx>
-#include <hints.hxx>
-#include <typeinfo>
-#include <type_traits>
+#include <cassert>
 
+#include <svl/hint.hxx>
+#include <svl/broadcast.hxx>
+#include "swdllapi.h"
+#include "ring.hxx"
+#include <type_traits>
+#include <vector>
+#include <memory>
 
 class SwModify;
 class SfxPoolItem;
-class SfxHint;
 
 /*
     SwModify and SwClient cooperate in propagating attribute changes.
@@ -56,21 +57,42 @@ class SfxHint;
     This is still subject to refactoring.
  */
 
-class SwModify;
-class SwClient;
-template<typename E, typename S> class SwIterator;
-
 namespace sw
 {
     class ClientIteratorBase;
-    struct SW_DLLPUBLIC LegacyModifyHint final: SfxHint
+    struct LegacyModifyHint final: SfxHint
     {
         LegacyModifyHint(const SfxPoolItem* pOld, const SfxPoolItem* pNew) : m_pOld(pOld), m_pNew(pNew) {};
         virtual ~LegacyModifyHint() override;
         const SfxPoolItem* m_pOld;
         const SfxPoolItem* m_pNew;
     };
-    /// refactoring out the some of the more sane SwClient functionality
+    struct ModifyChangedHint final: SfxHint
+    {
+        ModifyChangedHint(const SwModify* pNew) : m_pNew(pNew) {};
+        virtual ~ModifyChangedHint() override;
+        const SwModify* m_pNew;
+    };
+    // Observer pattern using svl implementation
+    // use this instead of SwClient/SwModify wherever possible
+    // In writer layout, this might not always be possible,
+    // but for listeners outside of it (e.g. unocore) this should be used.
+    // The only "magic" signal this class issues is a ModifyChangedHint
+    // proclaiming its death. It does NOT however provide a new SwModify for
+    // listeners to switch to like the old SwModify/SwClient did, as that leads
+    // to madness.
+    class SW_DLLPUBLIC BroadcasterMixin {
+        SvtBroadcaster m_aNotifier;
+        public:
+            BroadcasterMixin() = default;
+            BroadcasterMixin(BroadcasterMixin const &) = default;
+            BroadcasterMixin& operator=(const BroadcasterMixin&)
+            {
+                return *this; // Listeners are never copied or moved.
+            }
+            SvtBroadcaster& GetNotifier() { return m_aNotifier; }
+    };
+    /// refactoring out the same of the more sane SwClient functionality
     class SW_DLLPUBLIC WriterListener
     {
         friend class ::SwModify;
@@ -91,14 +113,16 @@ namespace sw
         public:
             bool IsLast() const { return !m_pLeft && !m_pRight; }
     };
+    enum class IteratorMode { Exact, UnwrapMulti };
 }
+
 // SwClient
 class SW_DLLPUBLIC SwClient : public ::sw::WriterListener
 {
     // avoids making the details of the linked list and the callback method public
     friend class SwModify;
     friend class sw::ClientIteratorBase;
-    template<typename E, typename S> friend class SwIterator;
+    template<typename E, typename S, sw::IteratorMode> friend class SwIterator;
 
     SwModify *m_pRegisteredIn;        ///< event source
 
@@ -110,8 +134,8 @@ protected:
     SwModify* GetRegisteredInNonConst() const { return m_pRegisteredIn; }
 
 public:
-
     SwClient() : m_pRegisteredIn(nullptr) {}
+    SwClient(SwClient&&) noexcept;
     virtual ~SwClient() override;
     // callbacks received from SwModify (friend class - so these methods can be private)
     // should be called only from SwModify the client is registered in
@@ -123,15 +147,17 @@ public:
 
     // in case an SwModify object is destroyed that itself is registered in another SwModify,
     // its SwClient objects can decide to get registered to the latter instead by calling this method
-    void CheckRegistration( const SfxPoolItem *pOldValue );
+    std::unique_ptr<sw::ModifyChangedHint> CheckRegistration( const SfxPoolItem* pOldValue );
 
     // controlled access to Modify method
     // mba: this is still considered a hack and it should be fixed; the name makes grep-ing easier
-    void ModifyNotification( const SfxPoolItem *pOldValue, const SfxPoolItem *pNewValue ) { this->Modify ( pOldValue, pNewValue ); }
+    virtual void ModifyNotification( const SfxPoolItem *pOldValue, const SfxPoolItem *pNewValue ) { Modify ( pOldValue, pNewValue ); }
     void SwClientNotifyCall( const SwModify& rModify, const SfxHint& rHint ) { SwClientNotify( rModify, rHint ); }
 
     const SwModify* GetRegisteredIn() const { return m_pRegisteredIn; }
     SwModify* GetRegisteredIn() { return m_pRegisteredIn; }
+    void EndListeningAll();
+    void StartListeningToSameModifyAs(const SwClient&);
 
 
     // get information about attribute
@@ -145,7 +171,7 @@ public:
 class SW_DLLPUBLIC SwModify: public SwClient
 {
     friend class sw::ClientIteratorBase;
-    template<typename E, typename S> friend class SwIterator;
+    template<typename E, typename S, sw::IteratorMode> friend class SwIterator;
     sw::WriterListener* m_pWriterListeners;                // the start of the linked list of clients
     bool m_bModifyLocked : 1;         // don't broadcast changes now
     bool m_bLockClientList : 1;       // may be set when this instance notifies its clients
@@ -157,14 +183,11 @@ class SW_DLLPUBLIC SwModify: public SwClient
     virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override
         { NotifyClients( pOld, pNew ); };
 
-    SwModify(SwModify&) = delete;
+    SwModify(SwModify const &) = delete;
     SwModify &operator =(const SwModify&) = delete;
 public:
     SwModify()
-        : SwClient(nullptr), m_pWriterListeners(nullptr), m_bModifyLocked(false), m_bLockClientList(false), m_bInCache(false), m_bInSwFntCache(false)
-    {}
-    explicit SwModify( SwModify* pToRegisterIn )
-        : SwClient(pToRegisterIn), m_pWriterListeners(nullptr), m_bModifyLocked(false), m_bLockClientList(false), m_bInCache(false), m_bInSwFntCache(false)
+        : SwClient(), m_pWriterListeners(nullptr), m_bModifyLocked(false), m_bLockClientList(false), m_bInCache(false), m_bInSwFntCache(false)
     {}
 
     // broadcasting: send notifications to all clients
@@ -176,7 +199,7 @@ public:
         { CallSwClientNotify( sw::LegacyModifyHint{ pOldValue, pNewValue } ); };
 
     // a more universal broadcasting mechanism
-    inline void CallSwClientNotify( const SfxHint& rHint ) const;
+    virtual void CallSwClientNotify( const SfxHint& rHint ) const;
 
     virtual ~SwModify() override;
 
@@ -197,40 +220,69 @@ public:
     bool IsInSwFntCache() const     { return m_bInSwFntCache;  }
 
     void CheckCaching( const sal_uInt16 nWhich );
-    bool HasOnlyOneListener() { return m_pWriterListeners && m_pWriterListeners->IsLast(); }
+    bool HasOnlyOneListener() const { return m_pWriterListeners && m_pWriterListeners->IsLast(); }
 };
 
-// SwDepend
-
-/*
- * Helper class for objects that need to depend on more than one SwClient
- */
-class SW_DLLPUBLIC SwDepend final : public SwClient
-{
-    SwClient *m_pToTell;
-
-public:
-    SwDepend(SwClient *pTellHim, SwModify *pDepend) : SwClient(pDepend), m_pToTell(pTellHim) {}
-
-    SwClient* GetToTell() { return m_pToTell; }
-
-    /** get Client information */
-    virtual bool GetInfo( SfxPoolItem& rInfo) const override
-        { return m_pToTell == nullptr || m_pToTell->GetInfo( rInfo ); }
-private:
-    virtual void Modify( const SfxPoolItem* pOldValue, const SfxPoolItem *pNewValue ) override
-    {
-        if( pNewValue && pNewValue->Which() == RES_OBJECTDYING )
-            CheckRegistration(pOldValue);
-        else if( m_pToTell )
-            m_pToTell->ModifyNotification(pOldValue, pNewValue);
-    }
-    virtual void SwClientNotify( const SwModify& rModify, const SfxHint& rHint ) override
-        { if(m_pToTell) m_pToTell->SwClientNotifyCall(rModify, rHint); }
-};
+template<typename TElementType, typename TSource, sw::IteratorMode eMode> class SwIterator;
 
 namespace sw
 {
+    // this class is part of the migration: it still forwards the "old"
+    // SwModify events and announces them both to the old SwClients still
+    // registered and also to the new SvtListeners.
+    // Still: in the long run the SwClient/SwModify interface should not be
+    // used anymore, in which case a BroadcasterMixin should be enough instead
+    // then.
+    class SW_DLLPUBLIC BroadcastingModify : public SwModify, public BroadcasterMixin {
+        public:
+            virtual void CallSwClientNotify(const SfxHint& rHint) const override;
+    };
+    // this should be hidden but sadly SwIterator template needs it...
+    class ListenerEntry final : public SwClient
+    {
+    private:
+        template<typename E, typename S, sw::IteratorMode> friend class ::SwIterator;
+        SwClient *m_pToTell;
+
+    public:
+        ListenerEntry(SwClient *const pTellHim, SwModify *const pDepend)
+            : SwClient(pDepend), m_pToTell(pTellHim)
+        {}
+        ListenerEntry(ListenerEntry const &) = delete;
+        ListenerEntry& operator=(ListenerEntry const&) = delete;
+        ListenerEntry(ListenerEntry&& other) noexcept
+            : SwClient(std::move(other))
+            , m_pToTell(other.m_pToTell)
+        { }
+        ListenerEntry& operator=(ListenerEntry&& other) noexcept
+        {
+            m_pToTell = other.m_pToTell;
+            other.GetRegisteredIn()->Add(this);
+            other.EndListeningAll();
+            return *this;
+        }
+
+        /** get Client information */
+        virtual bool GetInfo( SfxPoolItem& rInfo) const override;
+    private:
+        virtual void Modify(const SfxPoolItem* pOldValue, const SfxPoolItem *pNewValue) override;
+        virtual void SwClientNotify(const SwModify& rModify, const SfxHint& rHint) override;
+    };
+
+    class SW_DLLPUBLIC WriterMultiListener final
+    {
+        SwClient& m_rToTell;
+        std::vector<ListenerEntry> m_vDepends;
+        public:
+            WriterMultiListener(SwClient& rToTell);
+            WriterMultiListener& operator=(WriterMultiListener const&) = delete; // MSVC2015 workaround
+            WriterMultiListener(WriterMultiListener const&) = delete; // MSVC2015 workaround
+            ~WriterMultiListener();
+            void StartListening(SwModify* pDepend);
+            void EndListening(SwModify* pDepend);
+            bool IsListeningTo(const SwModify* const pDepend) const;
+            void EndListeningAll();
+    };
     class ClientIteratorBase : public sw::Ring< ::sw::ClientIteratorBase >
     {
             friend SwClient* SwModify::Remove(SwClient*);
@@ -243,13 +295,13 @@ namespace sw
             // is marked down to become the current object in the next step
             // this is necessary because iteration requires access to members of the current object
             WriterListener* m_pPosition;
-            static SW_DLLPUBLIC ClientIteratorBase* our_pClientIters;
+            static SW_DLLPUBLIC ClientIteratorBase* s_pClientIters;
 
             ClientIteratorBase( const SwModify& rModify )
                 : m_rRoot(rModify)
             {
-                MoveTo(our_pClientIters);
-                our_pClientIters = this;
+                MoveTo(s_pClientIters);
+                s_pClientIters = this;
                 m_pCurrent = m_pPosition = m_rRoot.m_pWriterListeners;
             }
             WriterListener* GetLeftOfPos() { return m_pPosition->m_pLeft; }
@@ -260,13 +312,14 @@ namespace sw
                 if(m_pPosition)
                     while( m_pPosition->m_pLeft )
                         m_pPosition = m_pPosition->m_pLeft;
-                return m_pCurrent = m_pPosition;
+                m_pCurrent = m_pPosition;
+                return m_pCurrent;
             }
             ~ClientIteratorBase() override
             {
-                assert(our_pClientIters);
-                if(our_pClientIters == this)
-                    our_pClientIters = unique() ? nullptr : GetNextInRing();
+                assert(s_pClientIters);
+                if(s_pClientIters == this)
+                    s_pClientIters = unique() ? nullptr : GetNextInRing();
                 MoveTo(nullptr);
             }
             // return "true" if an object was removed from a client chain in iteration
@@ -274,13 +327,13 @@ namespace sw
             // SwModify::Add() asserts this
             bool IsChanged() const { return m_pPosition != m_pCurrent; }
             // ensures the iterator to point at a current client
-            WriterListener* Sync() { return m_pCurrent = m_pPosition; }
+            WriterListener* Sync() { m_pCurrent = m_pPosition; return m_pCurrent; }
     };
 }
 
-class SwPageDesc;
-
-template< typename TElementType, typename TSource > class SwIterator final : private sw::ClientIteratorBase
+template<typename TElementType, typename TSource,
+        sw::IteratorMode eMode = sw::IteratorMode::Exact> class SwIterator final
+    : private sw::ClientIteratorBase
 {
     //static_assert(!std::is_base_of<SwPageDesc,TSource>::value, "SwPageDesc as TSource is deprecated.");
     static_assert(std::is_base_of<SwClient,TElementType>::value, "TElementType needs to be derived from SwClient.");
@@ -295,32 +348,30 @@ public:
         m_pCurrent = nullptr;
         return Next();
     }
-    TElementType* Last()
-    {
-        if(!m_pPosition)
-            m_pPosition = m_rRoot.m_pWriterListeners;
-        if(!m_pPosition)
-            return static_cast<TElementType*>(Sync());
-        while(GetRightOfPos())
-            m_pPosition = GetRightOfPos();
-        if(dynamic_cast<const TElementType *>(m_pPosition) != nullptr)
-            return static_cast<TElementType*>(Sync());
-        return Previous();
-    }
     TElementType* Next()
     {
         if(!IsChanged())
             m_pPosition = GetRightOfPos();
-        while(m_pPosition && dynamic_cast<const TElementType *>(m_pPosition) == nullptr)
-            m_pPosition = GetRightOfPos();
-        return static_cast<TElementType*>(Sync());
-    }
-    TElementType* Previous()
-    {
-        m_pPosition = GetLeftOfPos();
-        while(m_pPosition && dynamic_cast<const TElementType *>(m_pPosition) == nullptr)
-            m_pPosition = GetLeftOfPos();
-        return static_cast<TElementType*>(Sync());
+        sw::WriterListener *pCurrent(m_pPosition);
+        while (m_pPosition)
+        {
+            if (eMode == sw::IteratorMode::UnwrapMulti)
+            {
+                if (auto const pLE = dynamic_cast<sw::ListenerEntry const*>(m_pPosition))
+                {
+                    pCurrent = pLE->m_pToTell;
+                }
+            }
+            if (dynamic_cast<const TElementType *>(pCurrent) == nullptr)
+            {
+                m_pPosition = GetRightOfPos();
+                pCurrent = m_pPosition;
+            }
+            else
+                break;
+        }
+        Sync();
+        return static_cast<TElementType*>(pCurrent);
     }
     using sw::ClientIteratorBase::IsChanged;
 };
@@ -348,12 +399,6 @@ SwClient::SwClient( SwModify* pToRegisterIn )
         pToRegisterIn->Add(this);
 }
 
-void SwModify::CallSwClientNotify( const SfxHint& rHint ) const
-{
-    SwIterator<SwClient,SwModify> aIter(*this);
-    for(SwClient* pClient = aIter.First(); pClient; pClient = aIter.Next())
-        pClient->SwClientNotify( *this, rHint );
-}
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

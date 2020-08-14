@@ -17,18 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xmlsec/errorcallback.hxx"
+#include <sal/config.h>
+#include <xmlsec-wrapper.h>
 
-#include "xmlsec-wrapper.h"
+#include <xmlsec/errorcallback.hxx>
+
+#include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 #ifdef _WIN32
 #include <prewin.h>
 #include <postwin.h>
-#include "comphelper/windowserrorstring.hxx"
+#include <comphelper/windowserrorstring.hxx>
 #endif
 
-extern "C"
-void errorCallback(const char* file,
+extern "C" {
+
+static void errorCallback(const char* file,
                    int line,
                    const char* func,
                    const char* errorObject,
@@ -48,12 +53,14 @@ void errorCallback(const char* file,
     SAL_WARN("xmlsecurity.xmlsec", file << ":" << line << ": " << func << "() '" << pErrorObject << "' '" << pErrorSubject << "' " << reason << " '" << pMsg << "'" << systemErrorString);
 }
 
-XSECXMLSEC_DLLPUBLIC void setErrorRecorder()
+}
+
+void setErrorRecorder()
 {
     xmlSecErrorsSetCallback(errorCallback);
 }
 
-XSECXMLSEC_DLLPUBLIC void clearErrorRecorder()
+void clearErrorRecorder()
 {
     xmlSecErrorsSetCallback(nullptr);
 }

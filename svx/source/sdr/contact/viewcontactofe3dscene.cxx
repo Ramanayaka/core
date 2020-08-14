@@ -18,17 +18,13 @@
  */
 
 #include <svx/sdr/contact/viewcontactofe3dscene.hxx>
-#include <svx/sdr/contact/displayinfo.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/color/bcolor.hxx>
-#include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <svx/sdr/primitive2d/sdrattributecreator.hxx>
+#include <sdr/primitive2d/sdrattributecreator.hxx>
 #include <sdr/contact/viewobjectcontactofe3dscene.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/range/b3drange.hxx>
 #include <drawinglayer/primitive3d/baseprimitive3d.hxx>
-#include <svx/sdr/contact/viewcontactofe3d.hxx>
+#include <sdr/contact/viewcontactofe3d.hxx>
 #include <drawinglayer/primitive2d/sceneprimitive2d.hxx>
 #include <drawinglayer/primitive3d/transformprimitive3d.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
@@ -58,7 +54,7 @@ void createSubPrimitive3DVector(
             drawinglayer::primitive3d::Primitive3DContainer aNewVisibleTarget;
 
             // add children recursively
-            for(sal_uInt32 a(0L); a < nChildrenCount; a++)
+            for(sal_uInt32 a(0); a < nChildrenCount; a++)
             {
                 createSubPrimitive3DVector(
                     rCandidate.GetViewContact(a),
@@ -119,7 +115,7 @@ void createSubPrimitive3DVector(
                         bVisible = rE3dObject.GetSelected();
                     }
 
-                    if(bVisible && o_pVisibleTarget)
+                    if (bVisible)
                     {
                         // add to visible target vector
                         o_pVisibleTarget->append(xPrimitive3DSeq);
@@ -132,9 +128,9 @@ void createSubPrimitive3DVector(
 
 }
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
-// Create a Object-Specific ViewObjectContact, set ViewContact and
+// Create an Object-Specific ViewObjectContact, set ViewContact and
 // ObjectContact. Always needs to return something.
 ViewObjectContact& ViewContactOfE3dScene::CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact)
 {
@@ -244,11 +240,8 @@ void ViewContactOfE3dScene::createViewInformation3D(const basegfx::B3DRange& rCo
 void ViewContactOfE3dScene::createObjectTransformation()
 {
     // create 2d Object Transformation from relative point in 2d scene to world
-    tools::Rectangle aRectangle = GetE3dScene().GetSnapRect();
-    // Hack for calc, transform position of object according
-    // to current zoom so as objects relative position to grid
-    // appears stable
-    aRectangle += GetE3dScene().GetGridOffset();
+    const tools::Rectangle aRectangle(GetE3dScene().GetSnapRect());
+
     maObjectTransformation.set(0, 0, aRectangle.getWidth());
     maObjectTransformation.set(1, 1, aRectangle.getHeight());
     maObjectTransformation.set(0, 2, aRectangle.Left());
@@ -286,7 +279,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfE3dScene::createSce
         // a 3D transformPrimitive for the start scene. While this is theoretically not
         // a bad thing, for historical reasons the transformation of the outmost scene
         // is seen as part of the ViewTransformation (see text in createViewInformation3D)
-        for(sal_uInt32 a(0L); a < nChildrenCount; a++)
+        for(sal_uInt32 a(0); a < nChildrenCount; a++)
         {
             createSubPrimitive3DVector(
                 GetViewContact(a),
@@ -429,7 +422,7 @@ drawinglayer::primitive3d::Primitive3DContainer ViewContactOfE3dScene::getAllPri
     // a 3D transformPrimitive for the start scene. While this is theoretically not
     // a bad thing, for historical reasons the transformation of the outmost scene
     // is seen as part of the ViewTransformation (see text in createViewInformation3D)
-    for(sal_uInt32 a(0L); a < nChildrenCount; a++)
+    for(sal_uInt32 a(0); a < nChildrenCount; a++)
     {
         createSubPrimitive3DVector(GetViewContact(a), aAllPrimitive3DContainer, nullptr, nullptr, false);
     }
@@ -456,6 +449,6 @@ basegfx::B3DRange ViewContactOfE3dScene::getAllContentRange3D() const
     return aAllContentRange3D;
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

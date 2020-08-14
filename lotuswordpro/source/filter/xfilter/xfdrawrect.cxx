@@ -57,7 +57,8 @@
  * @file
  * Rect object.
  ************************************************************************/
-#include "xfdrawrect.hxx"
+#include <xfilter/xfdrawrect.hxx>
+#include <xfilter/ixfattrlist.hxx>
 
 XFDrawRect::XFDrawRect()
 {

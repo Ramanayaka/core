@@ -23,11 +23,7 @@
 #include <cppunit/extensions/HelperMacros.h>
 #include <cppunit/plugin/TestPlugIn.h>
 
-#include <rtl/ustrbuf.hxx>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/util/DateTime.hpp>
-#include <com/sun/star/util/Date.hpp>
-#include <com/sun/star/util/Duration.hpp>
 
 #include <sfx2/Metadatable.hxx>
 #include <sfx2/XmlIdRegistry.hxx>
@@ -88,15 +84,12 @@ void MetadatableTest::test()
     MockMetadatable m5(*pReg);
     OUString empty;
     OUString content( "content.xml" );
-    OUString const styles( "styles.xml" );
-    OUString const sid1( "id1" );
-    OUString const sid2( "id2" );
     OUString sid3( "id3" );
     OUString sid4( "id4" );
-    beans::StringPair id1(content, sid1);
-    beans::StringPair id2(content, sid2);
+    beans::StringPair id1(content, "id1");
+    beans::StringPair id2(content, "id2");
     beans::StringPair id3(content, sid3);
-    beans::StringPair id4(styles,  sid4);
+    beans::StringPair id4("styles.xml",  sid4);
     beans::StringPair id3e(empty,  sid3);
     beans::StringPair id4e(empty,  sid4);
     m1.SetMetadataReference(id1);

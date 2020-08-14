@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xiformula.hxx"
-#include "rangelst.hxx"
-#include "xistream.hxx"
+#include <xiformula.hxx>
+#include <rangelst.hxx>
+#include <xistream.hxx>
 
-#include "excform.hxx"
+#include <excform.hxx>
 
 // Formula compiler ===========================================================
 
@@ -36,7 +36,7 @@ public:
                             ScRangeList& rScRanges, XclFormulaType eType,
                             const XclTokenArray& rXclTokArr, XclImpStream& rStrm );
 
-    const ScTokenArray* CreateFormula( XclFormulaType eType, const XclTokenArray& rXclTokArr );
+    std::unique_ptr<ScTokenArray> CreateFormula( XclFormulaType eType, const XclTokenArray& rXclTokArr );
 
 };
 
@@ -63,7 +63,7 @@ void XclImpFmlaCompImpl::CreateRangeList(
     }
 }
 
-const ScTokenArray* XclImpFmlaCompImpl::CreateFormula(
+std::unique_ptr<ScTokenArray> XclImpFmlaCompImpl::CreateFormula(
         XclFormulaType /*eType*/, const XclTokenArray& rXclTokArr )
 {
     if (rXclTokArr.Empty())
@@ -75,7 +75,7 @@ const ScTokenArray* XclImpFmlaCompImpl::CreateFormula(
     aMemStrm.WriteBytes(rXclTokArr.GetData(), rXclTokArr.GetSize());
     XclImpStream aFmlaStrm( aMemStrm, GetRoot() );
     aFmlaStrm.StartNextRecord();
-    const ScTokenArray* pArray = nullptr;
+    std::unique_ptr<ScTokenArray> pArray;
     GetOldFmlaConverter().Reset();
     GetOldFmlaConverter().Convert(pArray, aFmlaStrm, aFmlaStrm.GetRecSize(), true);
     return pArray;
@@ -83,7 +83,7 @@ const ScTokenArray* XclImpFmlaCompImpl::CreateFormula(
 
 XclImpFormulaCompiler::XclImpFormulaCompiler( const XclImpRoot& rRoot ) :
     XclImpRoot( rRoot ),
-    mxImpl( new XclImpFmlaCompImpl( rRoot ) )
+    mxImpl( std::make_shared<XclImpFmlaCompImpl>( rRoot ) )
 {
 }
 
@@ -98,7 +98,7 @@ void XclImpFormulaCompiler::CreateRangeList(
     mxImpl->CreateRangeList( rScRanges, eType, rXclTokArr, rStrm );
 }
 
-const ScTokenArray* XclImpFormulaCompiler::CreateFormula(
+std::unique_ptr<ScTokenArray> XclImpFormulaCompiler::CreateFormula(
         XclFormulaType eType, const XclTokenArray& rXclTokArr )
 {
     return mxImpl->CreateFormula(eType, rXclTokArr);

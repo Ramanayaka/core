@@ -20,14 +20,9 @@
 #include "xmlLogin.hxx"
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
-#include "xmlEnums.hxx"
-#include "xmlstrings.hrc"
-#include <tools/debug.hxx>
+#include <strings.hxx>
 #include <tools/diagnose_ex.h>
 #include <com/sun/star/sdbc/XDataSource.hpp>
-#include <vector>
 
 namespace dbaxml
 {
@@ -36,32 +31,25 @@ namespace dbaxml
     using namespace ::com::sun::star::xml::sax;
 
 OXMLLogin::OXMLLogin( ODBFilter& rImport,
-                sal_uInt16 nPrfx, const OUString& _sLocalName,
-                const Reference< XAttributeList > & _xAttrList ) :
-    SvXMLImportContext( rImport, nPrfx, _sLocalName )
+                const Reference< XFastAttributeList > & _xAttrList ) :
+    SvXMLImportContext( rImport )
 {
-
-    OSL_ENSURE(_xAttrList.is(),"Attribute list is NULL!");
-    const SvXMLNamespaceMap& rMap = rImport.GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = rImport.GetLoginElemTokenMap();
-
     Reference<XPropertySet> xDataSource(rImport.getDataSource());
 
-    const sal_Int16 nLength = (xDataSource.is() && _xAttrList.is()) ? _xAttrList->getLength() : 0;
     static const OUString s_sTRUE = ::xmloff::token::GetXMLToken(XML_TRUE);
     bool bUserFound = false;
-    for(sal_Int16 i = 0; i < nLength; ++i)
+    if (!xDataSource.is())
+        return;
+
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
     {
-        OUString sLocalName;
-        OUString sAttrName = _xAttrList->getNameByIndex( i );
-        sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-        OUString sValue = _xAttrList->getValueByIndex( i );
+        OUString sValue = aIter.toString();
 
         try
         {
-            switch( rTokenMap.Get( nPrefix, sLocalName ) )
+            switch( aIter.getToken() & TOKEN_MASK )
             {
-                case XML_TOK_USER_NAME:
+                case XML_USER_NAME:
                     if ( !bUserFound )
                     {
                         bUserFound = true;
@@ -71,21 +59,21 @@ OXMLLogin::OXMLLogin( ODBFilter& rImport,
                         }
                         catch(const Exception&)
                         {
-                            DBG_UNHANDLED_EXCEPTION();
+                            DBG_UNHANDLED_EXCEPTION("dbaccess");
                         }
                     }
                     break;
-                case XML_TOK_IS_PASSWORD_REQUIRED:
+                case XML_IS_PASSWORD_REQUIRED:
                     try
                     {
                         xDataSource->setPropertyValue(PROPERTY_ISPASSWORDREQUIRED,makeAny(sValue == s_sTRUE));
                     }
                     catch(const Exception&)
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("dbaccess");
                     }
                     break;
-                case XML_TOK_USE_SYSTEM_USER:
+                case XML_USE_SYSTEM_USER:
                     if ( !bUserFound )
                     {
                         bUserFound = true;
@@ -95,21 +83,23 @@ OXMLLogin::OXMLLogin( ODBFilter& rImport,
                         rImport.addInfo(aProperty);
                     }
                     break;
-                case XML_TOK_LOGIN_TIMEOUT:
+                case XML_LOGIN_TIMEOUT:
                     try
                     {
                         Reference< XDataSource>(xDataSource,UNO_QUERY_THROW)->setLoginTimeout(sValue.toInt32());
                     }
                     catch(const Exception&)
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("dbaccess");
                     }
                     break;
+                default:
+                    SAL_WARN("dbaccess", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << "=" << aIter.toString());
             }
         }
         catch(const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 }

@@ -16,24 +16,26 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "vbachart.hxx"
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/document/XEmbeddedObjectSupplier.hpp>
+
 #include <com/sun/star/table/XTableChartsSupplier.hpp>
 #include <com/sun/star/table/XTableChart.hpp>
+#include <com/sun/star/script/BasicErrorException.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <ooo/vba/excel/XlChartType.hpp>
 
 #include "vbachartobjects.hxx"
 #include "vbachartobject.hxx"
-#include "vbaglobals.hxx"
-#include "cellsuno.hxx"
+#include <docsh.hxx>
+#include <cellsuno.hxx>
 #include <vector>
 #include <basic/sberrors.hxx>
 #include <comphelper/sequence.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
+
+namespace {
 
 class ChartObjectEnumerationImpl : public EnumerationHelperImpl
 {
@@ -64,16 +66,19 @@ public:
         {
             throw;
         }
-        catch (const uno::Exception& e)
+        catch (const uno::Exception&)
         {
+            css::uno::Any anyEx(cppu::getCaughtException());
             throw lang::WrappedTargetException(
                     "Error creating ScVbaChartObject!",
                     static_cast < OWeakObject * > ( this ),
-                    makeAny( e ) );
+                    anyEx );
         }
         return ret;
     }
 };
+
+}
 
 ScVbaChartObjects::ScVbaChartObjects( const css::uno::Reference< ov::XHelperInterface >& _xParent, const css::uno::Reference< css::uno::XComponentContext >& _xContext, const css::uno::Reference< css::table::XTableCharts >& _xTableCharts, const uno::Reference< drawing::XDrawPageSupplier >& _xDrawPageSupplier ) : ChartObjects_BASE(_xParent, _xContext, css::uno::Reference< css::container::XIndexAccess >( _xTableCharts, css::uno::UNO_QUERY ) ), xTableCharts( _xTableCharts ) , xDrawPageSupplier( _xDrawPageSupplier )
 {
@@ -87,7 +92,7 @@ ScVbaChartObjects::removeByName(const OUString& _sChartName)
 }
 
 uno::Sequence< OUString >
-ScVbaChartObjects::getChartObjectNames()
+ScVbaChartObjects::getChartObjectNames() const
 {
     uno::Sequence< OUString > sChartNames;
     try
@@ -106,15 +111,12 @@ ScVbaChartObjects::getChartObjectNames()
         uno::Reference< sheet::XSpreadsheets > xSpreadsheets = xSpreadsheetDocument->getSheets();
         std::vector< OUString > aChartNamesVector;
 
-        uno::Sequence< OUString > sSheetNames = xSpreadsheets->getElementNames();
-        sal_Int32 nItems = sSheetNames.getLength();
-        for (sal_Int32 i = 0; i < nItems; i++)
+        const uno::Sequence< OUString > sSheetNames = xSpreadsheets->getElementNames();
+        for (const auto& rSheetName : sSheetNames)
         {
-            uno::Reference< table::XTableChartsSupplier > xLocTableChartsSupplier( xSpreadsheets->getByName(sSheetNames[i]), uno::UNO_QUERY_THROW );
-            uno::Sequence< OUString > scurchartnames = xLocTableChartsSupplier->getCharts()->getElementNames();
-            sal_Int32 nChartNames = scurchartnames.getLength();
-            for (sal_Int32 n = 0; n < nChartNames; n++ )
-                aChartNamesVector.push_back(scurchartnames[n]);
+            uno::Reference< table::XTableChartsSupplier > xLocTableChartsSupplier( xSpreadsheets->getByName(rSheetName), uno::UNO_QUERY_THROW );
+            const uno::Sequence< OUString > scurchartnames = xLocTableChartsSupplier->getCharts()->getElementNames();
+            aChartNamesVector.insert( aChartNamesVector.end(), scurchartnames.begin(), scurchartnames.end() );
         }
         sChartNames = comphelper::containerToSequence( aChartNamesVector );
     }
@@ -144,18 +146,17 @@ ScVbaChartObjects::Add( double _nX, double _nY, double _nWidth, double _nHeight 
         xChartObject->getChart()->setChartType(excel::XlChartType::xlColumnClustered);
         return uno::makeAny( xChartObject );
     }
-    catch (const uno::Exception& ex)
+    catch (const uno::Exception&)
     {
-        SAL_WARN("sc", "AddItem caught exception " << ex.Message );
+        DBG_UNHANDLED_EXCEPTION("sc");
     }
     return aNULL();
 }
 void SAL_CALL ScVbaChartObjects::Delete(  )
 {
-    uno::Sequence< OUString > sChartNames = xTableCharts->getElementNames();
-    sal_Int32 ncount = sChartNames.getLength();
-    for (sal_Int32 i = 0; i < ncount ; i++)
-        removeByName(sChartNames[i]);
+    const uno::Sequence< OUString > sChartNames = xTableCharts->getElementNames();
+    for (const auto& rChartName : sChartNames)
+        removeByName(rChartName);
 }
 
 // XEnumerationAccess
@@ -187,18 +188,16 @@ ScVbaChartObjects::createCollectionObject( const css::uno::Any& aSource )
 OUString
 ScVbaChartObjects::getServiceImplName()
 {
-    return OUString("ScVbaChartObjects");
+    return "ScVbaChartObjects";
 }
 
 css::uno::Sequence<OUString>
 ScVbaChartObjects::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.excel.ChartObjects";
-    }
+        "ooo.vba.excel.ChartObjects"
+    };
     return sNames;
 }
 

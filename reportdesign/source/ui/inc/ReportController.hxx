@@ -20,22 +20,17 @@
 #define INCLUDED_REPORTDESIGN_SOURCE_UI_INC_REPORTCONTROLLER_HXX
 
 #include "DesignView.hxx"
-#include "ModuleHelper.hxx"
 #include "ReportControllerObserver.hxx"
-#include "RptDef.hxx"
+#include <RptDef.hxx>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/embed/XVisualObject.hpp>
 #include <com/sun/star/frame/XDesktop2.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/io/XObjectInputStream.hpp>
-#include <com/sun/star/io/XObjectOutputStream.hpp>
 #include <com/sun/star/report/XReportDefinition.hpp>
 #include <com/sun/star/report/XReportEngine.hpp>
 #include <com/sun/star/report/XSection.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -50,8 +45,7 @@
 #include <comphelper/interfacecontainer2.hxx>
 #include <dbaccess/dbsubcomponentcontroller.hxx>
 #include <svl/lstner.hxx>
-#include <svtools/transfer.hxx>
-#include <svx/svdedtv.hxx>
+#include <vcl/transfer.hxx>
 #include <sfx2/zoomitem.hxx>
 
 #include <functional>
@@ -83,7 +77,6 @@ namespace rptui
                                 ,public ::comphelper::OPropertyArrayUsageHelper < OReportController_BASE >
     {
     private:
-        OModuleClient           m_aModuleClient;
         ::comphelper::OInterfaceContainerHelper2
                                 m_aSelectionListeners;
         css::uno::Sequence< css::beans::PropertyValue>
@@ -91,7 +84,7 @@ namespace rptui
         TransferableDataHelper  m_aSystemClipboard;     // content of the clipboard
         rtl::Reference<TransferableClipboardListener>
                                 m_pClipboardNotifier;    /// notifier for changes in the clipboard
-        VclPtr<OGroupsSortingDialog>   m_pGroupsFloater;
+        std::shared_ptr<OGroupsSortingDialog> m_xGroupsFloater;
 
         rtl::Reference<OXReportControllerObserver> m_pReportControllerObserver;
 
@@ -149,7 +142,7 @@ namespace rptui
         /** append a new group or remove it with undo.
         *
         * \param _bAppend
-        * \param _aArgs The args which contains a element named PROPERTY_GROUP of type report::XGroup.
+        * \param _aArgs The args which contains an element named PROPERTY_GROUP of type report::XGroup.
         */
         void modifyGroup(const bool _bAppend, const css::uno::Sequence< css::beans::PropertyValue >& _aArgs);
 
@@ -157,7 +150,7 @@ namespace rptui
         *
         * \param _bUndo true when undo action should be created
         * \param _bHeader true when it is a header otherwise it is a footer
-        * \param _aArgs The args which contains a element named PROPERTY_GROUP of type report::XGroup.
+        * \param _aArgs The args which contains an element named PROPERTY_GROUP of type report::XGroup.
         */
         void createGroupSection(const bool _bUndo,const bool _bHeader,const css::uno::Sequence< css::beans::PropertyValue >&_aArgs);
 
@@ -201,22 +194,22 @@ namespace rptui
                          ,sal_Int32 _nGroupPos
                          ,bool _bShow);
 
-        void executeMethodWithUndo(sal_uInt16 _nUndoStrId,const ::std::mem_fun_t<void,ODesignView>& _pMemfun);
-        void alignControlsWithUndo(sal_uInt16 _nUndoStrId, ControlModification _nControlModification, bool _bAlignAtSection = false);
+        void executeMethodWithUndo(const char* pUndoStrId,const ::std::function<void(ODesignView *)>& _pMemfun);
+        void alignControlsWithUndo(const char* pUndoStrId, ControlModification _nControlModification, bool _bAlignAtSection = false);
 
         css::uno::Reference< css::frame::XFrame > getXFrame();
 
         /** shrink a section
-        @param _nUndoStrId the string id of the string which is shown in undo menu
+        @param pUndoStrId the string id of the string which is shown in undo menu
         @param _nShrinkId  ID of what you would like to shrink.
         */
         static void shrinkSectionBottom(const css::uno::Reference< css::report::XSection >& _xSection);
         static void shrinkSectionTop(const css::uno::Reference< css::report::XSection >& _xSection);
 
     public:
-        void shrinkSection(sal_uInt16 _nUndoStrId, const css::uno::Reference< css::report::XSection >& _xSection, sal_Int32 _nShrinkId);
+        void shrinkSection(const char* pUndoStrId, const css::uno::Reference< css::report::XSection >& _xSection, sal_Int32 _nShrinkId);
 
-        /** opens the file open dialog to allow the user to select a image which will be
+        /** opens the file open dialog to allow the user to select an image which will be
         * bound to a newly created image button.
         */
         void insertGraphic();
@@ -239,7 +232,7 @@ namespace rptui
         */
         void createPageNumber(const css::uno::Sequence< css::beans::PropertyValue >& _aArgs);
 
-        /** creates a formatted filed with TODAY() function and if set also an NOW() function
+        /** creates a formatted field with TODAY() function and if set also a NOW() function
         *
         * \param _aArgs
         */
@@ -285,7 +278,7 @@ namespace rptui
         bool isUiVisible() const;
 
         /** creates a new default control for the currently set type when the modifier KEY_MOD1 was pressed
-        * \param _aArgs must contain a properyvalue with name "KeyModifier" and value KEY_MOD1 when control should be created.
+        * \param _aArgs must contain a propertyvalue with name "KeyModifier" and value KEY_MOD1 when control should be created.
         */
         void createDefaultControl(const css::uno::Sequence< css::beans::PropertyValue>& _aArgs);
 
@@ -299,7 +292,7 @@ namespace rptui
         /** set the property at all selected controls.
             @return <TRUE/> when the selection is not empty
         */
-        bool impl_setPropertyAtControls_throw(const sal_uInt16 _nUndoResId
+        bool impl_setPropertyAtControls_throw(const char* pUndoResId
             ,const OUString& _sProperty
             ,const css::uno::Any& _aValue
             ,const css::uno::Sequence< css::beans::PropertyValue >& _aArgs);
@@ -325,7 +318,6 @@ namespace rptui
         OReportController(const OReportController&) = delete;
         OReportController& operator=(const OReportController&) = delete;
 
-        DECL_LINK( EventLstHdl, VclWindowEvent&, void );
         DECL_LINK( OnCreateHdl, OAddFieldWindow&, void);
 
         DECLARE_XINTERFACE( )
@@ -354,13 +346,6 @@ namespace rptui
         // XServiceInfo
         virtual OUString SAL_CALL getImplementationName() override;
         virtual css::uno::Sequence< OUString> SAL_CALL getSupportedServiceNames() override;
-        // need by registration
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static();
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL
-            create(css::uno::Reference< css::uno::XComponentContext > const & xContext);
 
         // css::container::XContainerListener
         virtual void SAL_CALL elementInserted(const css::container::ContainerEvent& Event) override;
@@ -457,7 +442,7 @@ namespace rptui
 
         SfxUndoManager& getUndoManager() const;
         void            clearUndoManager() const;
-        void            addUndoAction( SfxUndoAction* i_pAction );
+        void            addUndoAction( std::unique_ptr<SfxUndoAction> i_pAction );
     };
 }
 #endif // INCLUDED_REPORTDESIGN_SOURCE_UI_INC_REPORTCONTROLLER_HXX

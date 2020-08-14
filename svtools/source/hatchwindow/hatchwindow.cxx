@@ -20,12 +20,13 @@
 #include <com/sun/star/embed/XHatchWindowController.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
-#include "hatchwindow.hxx"
+#include <hatchwindow.hxx>
 #include "ipwin.hxx"
 
 #include <toolkit/helper/convert.hxx>
 #include <cppuhelper/queryinterface.hxx>
-#include <osl/mutex.hxx>
+#include <cppuhelper/typeprovider.hxx>
+#include <osl/diagnose.h>
 #include <vcl/svapp.hxx>
 
 using namespace ::com::sun::star;
@@ -47,7 +48,7 @@ void VCLXHatchWindow::initializeWindow( const uno::Reference< awt::XWindowPeer >
     SolarMutexGuard aGuard;
 
     VclPtr<vcl::Window> pParent;
-    VCLXWindow* pParentComponent = VCLXWindow::GetImplementation( xParent );
+    VCLXWindow* pParentComponent = comphelper::getUnoTunnelImplementation<VCLXWindow>( xParent );
 
     if ( pParentComponent )
         pParent = pParentComponent->GetWindow();
@@ -69,18 +70,18 @@ void VCLXHatchWindow::initializeWindow( const uno::Reference< awt::XWindowPeer >
 
 void VCLXHatchWindow::QueryObjAreaPixel( tools::Rectangle & aRect )
 {
-    if ( m_xController.is() )
-    {
-        awt::Rectangle aUnoRequestRect = AWTRectangle( aRect );
+    if ( !m_xController.is() )
+        return;
 
-        try {
-            awt::Rectangle aUnoResultRect = m_xController->calcAdjustedRectangle( aUnoRequestRect );
-            aRect = VCLRectangle( aUnoResultRect );
-        }
-        catch( uno::Exception& )
-        {
-            OSL_FAIL( "Can't adjust rectangle size!" );
-        }
+    awt::Rectangle aUnoRequestRect = AWTRectangle( aRect );
+
+    try {
+        awt::Rectangle aUnoResultRect = m_xController->calcAdjustedRectangle( aUnoRequestRect );
+        aRect = VCLRectangle( aUnoResultRect );
+    }
+    catch( uno::Exception& )
+    {
+        OSL_FAIL( "Can't adjust rectangle size!" );
     }
 }
 
@@ -139,23 +140,10 @@ void SAL_CALL VCLXHatchWindow::release()
 
 uno::Sequence< uno::Type > SAL_CALL VCLXHatchWindow::getTypes()
 {
-    static ::cppu::OTypeCollection* pTypeCollection = nullptr ;
+    static cppu::OTypeCollection aTypeCollection(cppu::UnoType<embed::XHatchWindow>::get(),
+                                                 VCLXWindow::getTypes());
 
-    if ( pTypeCollection == nullptr )
-    {
-        ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() ) ;
-
-        if ( pTypeCollection == nullptr )
-        {
-            static ::cppu::OTypeCollection aTypeCollection(
-                    cppu::UnoType<embed::XHatchWindow>::get(),
-                    VCLXHatchWindow::getTypes() );
-
-            pTypeCollection = &aTypeCollection ;
-        }
-    }
-
-    return pTypeCollection->getTypes() ;
+    return aTypeCollection.getTypes();
 }
 
 uno::Sequence< sal_Int8 > SAL_CALL VCLXHatchWindow::getImplementationId()

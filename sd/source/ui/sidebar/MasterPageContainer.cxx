@@ -19,40 +19,34 @@
 
 #include "MasterPageContainer.hxx"
 
+#include "MasterPageContainerProviders.hxx"
 #include "MasterPageDescriptor.hxx"
 #include "MasterPageContainerFiller.hxx"
 #include "MasterPageContainerQueue.hxx"
-#include "TemplateScanner.hxx"
-#include "tools/AsynchronousTask.hxx"
-#include "strings.hrc"
+#include <PreviewRenderer.hxx>
+#include <tools/AsynchronousTask.hxx>
+#include <tools/SdGlobalResourceContainer.hxx>
+#include <strings.hrc>
 #include <algorithm>
-#include <list>
 #include <memory>
-#include <set>
 
-#include "unomodel.hxx"
+#include <unomodel.hxx>
 #include <com/sun/star/frame/Desktop.hpp>
-#include <com/sun/star/io/XStream.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/util/XCloseable.hpp>
+#include <com/sun/star/util/CloseVetoException.hpp>
 #include <comphelper/processfactory.hxx>
-#include <sfx2/app.hxx>
-#include <svx/svdpage.hxx>
-#include "DrawDocShell.hxx"
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
-#include <svl/itemset.hxx>
-#include <svl/eitem.hxx>
-#include "sdresid.hxx"
-#include "tools/TimerBasedTaskExecution.hxx"
-#include "pres.hxx"
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
+#include <sdresid.hxx>
+#include <tools/TimerBasedTaskExecution.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/mutex.hxx>
 #include <osl/getglobalmutex.hxx>
 #include <xmloff/autolayout.hxx>
+#include <tools/debug.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -63,7 +57,7 @@ typedef ::std::vector<sd::sidebar::SharedMasterPageDescriptor> MasterPageContain
 
 } // end of anonymous namespace
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 /** Inner implementation class of the MasterPageContainer.
 */
@@ -87,8 +81,7 @@ public:
     const Size& GetPreviewSizePixel (PreviewSize eSize) const;
 
     bool HasToken (Token aToken) const;
-    const SharedMasterPageDescriptor GetDescriptor (MasterPageContainer::Token aToken) const;
-    SharedMasterPageDescriptor GetDescriptor (MasterPageContainer::Token aToken);
+    SharedMasterPageDescriptor GetDescriptor (MasterPageContainer::Token aToken) const;
     virtual Token PutMasterPage (const SharedMasterPageDescriptor& rDescriptor) override;
     void InvalidatePreview (Token aToken);
     Image GetPreviewForToken (
@@ -126,7 +119,8 @@ private:
     };
     friend class Deleter;
 
-    enum InitializationState { NOT_INITIALIZED, INITIALIZING, INITIALIZED } meInitializationState;
+    enum class InitializationState { NotInitialized, Initializing, Initialized };
+    InitializationState meInitializationState;
 
     std::unique_ptr<MasterPageContainerQueue> mpRequestQueue;
     css::uno::Reference<css::frame::XModel> mxModel;
@@ -142,13 +136,13 @@ private:
     static const int SMALL_PREVIEW_WIDTH = 72 + 2;
     static const int LARGE_PREVIEW_WIDTH = 2*72 + 2;
 
-    /** This substition of page preview shows "Preparing preview" and is
+    /** This substitution of page preview shows "Preparing preview" and is
         shown as long as the actual previews are not being present.
     */
     Image maLargePreviewBeingCreated;
     Image maSmallPreviewBeingCreated;
 
-    /** This substition of page preview is shown when a preview can not be
+    /** This substitution of page preview is shown when a preview can not be
         created and thus is not available.
     */
     Image maLargePreviewNotAvailable;
@@ -164,9 +158,7 @@ private:
     Size maSmallPreviewSizePixel;
     Size maLargePreviewSizePixel;
 
-    typedef ::std::pair<MasterPageContainerChangeEvent::EventType,Token> EventData;
-
-    Image GetPreviewSubstitution (sal_uInt16 nId, PreviewSize ePreviewSize);
+    Image GetPreviewSubstitution(const char* pId, PreviewSize ePreviewSize);
 
     void CleanContainer();
 };
@@ -205,8 +197,8 @@ std::shared_ptr<MasterPageContainer::Implementation>
             Implementation::mpInstance);
     }
 
-    DBG_ASSERT (pInstance.get()!=nullptr,
-        "MasterPageContainer::Implementation::Instance(): instance is nullptr");
+    DBG_ASSERT(pInstance != nullptr,
+               "MasterPageContainer::Implementation::Instance(): instance is nullptr");
     return pInstance;
 }
 
@@ -239,13 +231,13 @@ void MasterPageContainer::SetPreviewSize (PreviewSize eSize)
         NIL_TOKEN);
 }
 
-Size MasterPageContainer::GetPreviewSizePixel() const
+Size const & MasterPageContainer::GetPreviewSizePixel() const
 {
     return mpImpl->GetPreviewSizePixel(mePreviewSize);
 }
 
 MasterPageContainer::Token MasterPageContainer::PutMasterPage (
-    const SharedMasterPageDescriptor& rDescriptor)
+    const std::shared_ptr<MasterPageDescriptor>& rDescriptor)
 {
     return mpImpl->PutMasterPage(rDescriptor);
 }
@@ -253,7 +245,7 @@ MasterPageContainer::Token MasterPageContainer::PutMasterPage (
 void MasterPageContainer::AcquireToken (Token aToken)
 {
     SharedMasterPageDescriptor pDescriptor = mpImpl->GetDescriptor(aToken);
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
     {
         ++pDescriptor->mnUseCount;
     }
@@ -262,24 +254,24 @@ void MasterPageContainer::AcquireToken (Token aToken)
 void MasterPageContainer::ReleaseToken (Token aToken)
 {
     SharedMasterPageDescriptor pDescriptor = mpImpl->GetDescriptor(aToken);
-    if (pDescriptor.get() != nullptr)
-    {
-        OSL_ASSERT(pDescriptor->mnUseCount>0);
-        --pDescriptor->mnUseCount;
-        if (pDescriptor->mnUseCount <= 0)
-        {
-            switch (pDescriptor->meOrigin)
-            {
-                case DEFAULT:
-                case TEMPLATE:
-                default:
-                    break;
+    if (!pDescriptor)
+        return;
 
-                case MASTERPAGE:
-                    mpImpl->ReleaseDescriptor(aToken);
-                    break;
-            }
-        }
+    OSL_ASSERT(pDescriptor->mnUseCount>0);
+    --pDescriptor->mnUseCount;
+    if (pDescriptor->mnUseCount > 0)
+        return;
+
+    switch (pDescriptor->meOrigin)
+    {
+        case DEFAULT:
+        case TEMPLATE:
+        default:
+            break;
+
+        case MASTERPAGE:
+            mpImpl->ReleaseDescriptor(aToken);
+            break;
     }
 }
 
@@ -369,7 +361,7 @@ OUString MasterPageContainer::GetURLForToken (
     const ::osl::MutexGuard aGuard (mpImpl->maMutex);
 
     SharedMasterPageDescriptor pDescriptor = mpImpl->GetDescriptor(aToken);
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
         return pDescriptor->msURL;
     else
         return OUString();
@@ -381,7 +373,7 @@ OUString MasterPageContainer::GetPageNameForToken (
     const ::osl::MutexGuard aGuard (mpImpl->maMutex);
 
     SharedMasterPageDescriptor pDescriptor = mpImpl->GetDescriptor(aToken);
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
         return pDescriptor->msPageName;
     else
         return OUString();
@@ -393,7 +385,7 @@ OUString MasterPageContainer::GetStyleNameForToken (
     const ::osl::MutexGuard aGuard (mpImpl->maMutex);
 
     SharedMasterPageDescriptor pDescriptor = mpImpl->GetDescriptor(aToken);
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
         return pDescriptor->msStyleName;
     else
         return OUString();
@@ -407,7 +399,7 @@ SdPage* MasterPageContainer::GetPageObjectForToken (
 
     SdPage* pPageObject = nullptr;
     SharedMasterPageDescriptor pDescriptor = mpImpl->GetDescriptor(aToken);
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
     {
         pPageObject = pDescriptor->mpMasterPage;
         if (pPageObject == nullptr)
@@ -429,7 +421,7 @@ MasterPageContainer::Origin MasterPageContainer::GetOriginForToken (Token aToken
     const ::osl::MutexGuard aGuard (mpImpl->maMutex);
 
     SharedMasterPageDescriptor pDescriptor = mpImpl->GetDescriptor(aToken);
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
         return pDescriptor->meOrigin;
     else
         return UNKNOWN;
@@ -440,13 +432,13 @@ sal_Int32 MasterPageContainer::GetTemplateIndexForToken (Token aToken)
     const ::osl::MutexGuard aGuard (mpImpl->maMutex);
 
     SharedMasterPageDescriptor pDescriptor = mpImpl->GetDescriptor(aToken);
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
         return pDescriptor->mnTemplateIndex;
     else
         return -1;
 }
 
-SharedMasterPageDescriptor MasterPageContainer::GetDescriptorForToken (
+std::shared_ptr<MasterPageDescriptor> MasterPageContainer::GetDescriptorForToken (
     MasterPageContainer::Token aToken)
 {
     const ::osl::MutexGuard aGuard (mpImpl->maMutex);
@@ -479,9 +471,7 @@ bool MasterPageContainer::RequestPreview (Token aToken)
 MasterPageContainer::Implementation::Implementation()
     : maMutex(),
       maContainer(),
-      meInitializationState(NOT_INITIALIZED),
-      mpRequestQueue(nullptr),
-      mxModel(nullptr),
+      meInitializationState(InitializationState::NotInitialized),
       mpDocument(nullptr),
       maPreviewRenderer(),
       mbFirstPageObjectSeen(false),
@@ -522,21 +512,21 @@ void MasterPageContainer::Implementation::LateInit()
 {
     const ::osl::MutexGuard aGuard (maMutex);
 
-    if (meInitializationState == NOT_INITIALIZED)
-    {
-        meInitializationState = INITIALIZING;
+    if (meInitializationState != InitializationState::NotInitialized)
+        return;
 
-        OSL_ASSERT(Instance().get()==this);
-        mpRequestQueue.reset(MasterPageContainerQueue::Create(
-            std::shared_ptr<MasterPageContainerQueue::ContainerAdapter>(Instance())));
+    meInitializationState = InitializationState::Initializing;
 
-        mpFillerTask = ::sd::tools::TimerBasedTaskExecution::Create(
-            std::shared_ptr<tools::AsynchronousTask>(new MasterPageContainerFiller(*this)),
-            5,
-            50);
+    OSL_ASSERT(Instance().get()==this);
+    mpRequestQueue.reset(MasterPageContainerQueue::Create(
+        std::shared_ptr<MasterPageContainerQueue::ContainerAdapter>(Instance())));
 
-        meInitializationState = INITIALIZED;
-    }
+    mpFillerTask = ::sd::tools::TimerBasedTaskExecution::Create(
+        std::make_shared<MasterPageContainerFiller>(*this),
+        5,
+        50);
+
+    meInitializationState = InitializationState::Initialized;
 }
 
 void MasterPageContainer::Implementation::AddChangeListener (const Link<MasterPageContainerChangeEvent&,void>& rLink)
@@ -569,23 +559,23 @@ void MasterPageContainer::Implementation::UpdatePreviewSizePixel()
     int nHeight (3);
 
     // Search for the first entry with an existing master page.
-    MasterPageContainerType::const_iterator iDescriptor;
-    MasterPageContainerType::const_iterator iContainerEnd(maContainer.end());
-    for (iDescriptor=maContainer.begin(); iDescriptor!=iContainerEnd; ++iDescriptor)
-        if (*iDescriptor!=nullptr && (*iDescriptor)->mpMasterPage != nullptr)
-        {
-            Size aPageSize ((*iDescriptor)->mpMasterPage->GetSize());
-            OSL_ASSERT(aPageSize.Width() > 0 && aPageSize.Height() > 0);
-            if (aPageSize.Width() > 0)
-                nWidth = aPageSize.Width();
-            if (aPageSize.Height() > 0)
-                nHeight = aPageSize.Height();
-            mbFirstPageObjectSeen = true;
-            break;
-        }
+    auto iDescriptor = std::find_if(maContainer.begin(), maContainer.end(),
+        [](const SharedMasterPageDescriptor& rxDescriptor) {
+            return rxDescriptor != nullptr && rxDescriptor->mpMasterPage != nullptr;
+        });
+    if (iDescriptor != maContainer.end())
+    {
+        Size aPageSize ((*iDescriptor)->mpMasterPage->GetSize());
+        OSL_ASSERT(!aPageSize.IsEmpty());
+        if (aPageSize.Width() > 0)
+            nWidth = aPageSize.Width();
+        if (aPageSize.Height() > 0)
+            nHeight = aPageSize.Height();
+        mbFirstPageObjectSeen = true;
+    }
 
-    maSmallPreviewSizePixel.Width() = SMALL_PREVIEW_WIDTH;
-    maLargePreviewSizePixel.Width() = LARGE_PREVIEW_WIDTH;
+    maSmallPreviewSizePixel.setWidth( SMALL_PREVIEW_WIDTH );
+    maLargePreviewSizePixel.setWidth( LARGE_PREVIEW_WIDTH );
 
     int nNewSmallHeight ((maSmallPreviewSizePixel.Width()-2) * nHeight / nWidth + 2);
     int nNewLargeHeight ((maLargePreviewSizePixel.Width()-2) * nHeight / nWidth + 2);
@@ -593,8 +583,8 @@ void MasterPageContainer::Implementation::UpdatePreviewSizePixel()
     if (nNewSmallHeight!=maSmallPreviewSizePixel.Height()
         || nNewLargeHeight!=maLargePreviewSizePixel.Height())
     {
-        maSmallPreviewSizePixel.Height() = nNewSmallHeight;
-        maLargePreviewSizePixel.Height() = nNewLargeHeight;
+        maSmallPreviewSizePixel.setHeight( nNewSmallHeight );
+        maLargePreviewSizePixel.setHeight( nNewLargeHeight );
         FireContainerChange(
             MasterPageContainerChangeEvent::EventType::SIZE_CHANGED,
             NIL_TOKEN);
@@ -629,8 +619,8 @@ MasterPageContainer::Token MasterPageContainer::Implementation::PutMasterPage (
     if (aEntry == maContainer.end())
     {
         // Insert a new MasterPageDescriptor.
-        bool bIgnore (rpDescriptor->mpPageObjectProvider.get()==nullptr
-            && rpDescriptor->msURL.isEmpty());
+        bool bIgnore(rpDescriptor->mpPageObjectProvider == nullptr
+                     && rpDescriptor->msURL.isEmpty());
 
         if ( ! bIgnore)
         {
@@ -665,16 +655,15 @@ MasterPageContainer::Token MasterPageContainer::Implementation::PutMasterPage (
         aResult = (*aEntry)->maToken;
         std::unique_ptr<std::vector<MasterPageContainerChangeEvent::EventType> > pEventTypes(
             (*aEntry)->Update(*rpDescriptor));
-        if (pEventTypes.get()!=nullptr && pEventTypes->size()>0)
+        if (pEventTypes != nullptr && !pEventTypes->empty())
         {
             // One or more aspects of the descriptor have changed.  Send
             // appropriate events to the listeners.
             UpdateDescriptor(*aEntry,false,false, true);
 
-            std::vector<MasterPageContainerChangeEvent::EventType>::const_iterator iEventType;
-            for (iEventType=pEventTypes->begin(); iEventType!=pEventTypes->end(); ++iEventType)
+            for (const auto& rEventType : *pEventTypes)
             {
-                FireContainerChange( *iEventType,(*aEntry)->maToken);
+                FireContainerChange(rEventType, (*aEntry)->maToken);
             }
         }
     }
@@ -685,22 +674,13 @@ MasterPageContainer::Token MasterPageContainer::Implementation::PutMasterPage (
 bool MasterPageContainer::Implementation::HasToken (Token aToken) const
 {
     return aToken>=0
-        && (unsigned)aToken<maContainer.size()
-        && maContainer[aToken].get()!=nullptr;
+        && o3tl::make_unsigned(aToken)<maContainer.size()
+        && maContainer[aToken];
 }
 
-const SharedMasterPageDescriptor MasterPageContainer::Implementation::GetDescriptor (
-    Token aToken) const
+SharedMasterPageDescriptor MasterPageContainer::Implementation::GetDescriptor (Token aToken) const
 {
-    if (aToken>=0 && (unsigned)aToken<maContainer.size())
-        return maContainer[aToken];
-    else
-        return SharedMasterPageDescriptor();
-}
-
-SharedMasterPageDescriptor MasterPageContainer::Implementation::GetDescriptor (Token aToken)
-{
-    if (aToken>=0 && (unsigned)aToken<maContainer.size())
+    if (aToken>=0 && o3tl::make_unsigned(aToken)<maContainer.size())
         return maContainer[aToken];
     else
         return SharedMasterPageDescriptor();
@@ -711,7 +691,7 @@ void MasterPageContainer::Implementation::InvalidatePreview (Token aToken)
     const ::osl::MutexGuard aGuard (maMutex);
 
     SharedMasterPageDescriptor pDescriptor (GetDescriptor(aToken));
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
     {
         pDescriptor->maSmallPreview = Image();
         pDescriptor->maLargePreview = Image();
@@ -732,7 +712,7 @@ Image MasterPageContainer::Implementation::GetPreviewForToken (
 
     // When the preview is missing but inexpensively creatable then do that
     // now.
-    if (pDescriptor.get()!=nullptr)
+    if (pDescriptor)
     {
         if (ePreviewState == PS_CREATABLE)
             if (UpdateDescriptor(pDescriptor, false,false, true))
@@ -780,11 +760,11 @@ MasterPageContainer::PreviewState MasterPageContainer::Implementation::GetPrevie
     PreviewState eState (PS_NOT_AVAILABLE);
 
     SharedMasterPageDescriptor pDescriptor = GetDescriptor(aToken);
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
     {
         if (pDescriptor->maLargePreview.GetSizePixel().Width() != 0)
             eState = PS_AVAILABLE;
-        else if (pDescriptor->mpPreviewProvider.get() != nullptr)
+        else if (pDescriptor->mpPreviewProvider != nullptr)
         {
             // The preview does not exist but can be created.  When that is
             // not expensive then do it at once.
@@ -803,7 +783,7 @@ MasterPageContainer::PreviewState MasterPageContainer::Implementation::GetPrevie
 bool MasterPageContainer::Implementation::RequestPreview (Token aToken)
 {
     SharedMasterPageDescriptor pDescriptor = GetDescriptor(aToken);
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
         return mpRequestQueue->RequestPreview(pDescriptor);
     else
         return false;
@@ -815,15 +795,10 @@ Reference<frame::XModel> MasterPageContainer::Implementation::GetModel()
 
     if ( ! mxModel.is())
     {
-        // Get the desktop a s service factory.
-        uno::Reference<frame::XDesktop2> xDesktop  = frame::Desktop::create(
-            ::comphelper::getProcessComponentContext() );
-
         // Create a new model.
-        OUString sModelServiceName ( "com.sun.star.presentation.PresentationDocument");
         mxModel.set(
             ::comphelper::getProcessServiceFactory()->createInstance(
-                sModelServiceName),
+                "com.sun.star.presentation.PresentationDocument"),
             uno::UNO_QUERY);
 
         // Initialize the model.
@@ -844,8 +819,8 @@ Reference<frame::XModel> MasterPageContainer::Implementation::GetModel()
         uno::Reference<drawing::XDrawPagesSupplier> xSlideSupplier (mxModel, uno::UNO_QUERY);
         if (xSlideSupplier.is())
         {
-            uno::Reference<drawing::XDrawPages> xSlides (
-                xSlideSupplier->getDrawPages(), uno::UNO_QUERY);
+            uno::Reference<drawing::XDrawPages> xSlides =
+                xSlideSupplier->getDrawPages();
             if (xSlides.is())
             {
                 uno::Reference<drawing::XDrawPage> xNewPage (xSlides->insertNewByIndex(0));
@@ -853,7 +828,7 @@ Reference<frame::XModel> MasterPageContainer::Implementation::GetModel()
                 if (xProperties.is())
                     xProperties->setPropertyValue(
                         "Layout",
-                        makeAny((sal_Int16)AUTOLAYOUT_TITLE));
+                        makeAny(sal_Int16(AUTOLAYOUT_TITLE)));
             }
         }
     }
@@ -867,44 +842,38 @@ SdDrawDocument* MasterPageContainer::Implementation::GetDocument()
 }
 
 Image MasterPageContainer::Implementation::GetPreviewSubstitution (
-    sal_uInt16 nId,
+    const char* pId,
     PreviewSize ePreviewSize)
 {
     const ::osl::MutexGuard aGuard (maMutex);
 
     Image aPreview;
 
-    switch (nId)
+    if (strcmp(pId, STR_TASKPANEL_PREPARING_PREVIEW_SUBSTITUTION) == 0)
     {
-        case STR_TASKPANEL_PREPARING_PREVIEW_SUBSTITUTION:
+        Image& rPreview (ePreviewSize==SMALL
+            ? maSmallPreviewBeingCreated
+            : maLargePreviewBeingCreated);
+        if (rPreview.GetSizePixel().Width() == 0)
         {
-            Image& rPreview (ePreviewSize==SMALL
-                ? maSmallPreviewBeingCreated
-                : maLargePreviewBeingCreated);
-            if (rPreview.GetSizePixel().Width() == 0)
-            {
-                rPreview = maPreviewRenderer.RenderSubstitution(
-                    ePreviewSize==SMALL ? maSmallPreviewSizePixel : maLargePreviewSizePixel,
-                    SdResId(STR_TASKPANEL_PREPARING_PREVIEW_SUBSTITUTION));
-            }
-            aPreview = rPreview;
+            rPreview = maPreviewRenderer.RenderSubstitution(
+                ePreviewSize==SMALL ? maSmallPreviewSizePixel : maLargePreviewSizePixel,
+                SdResId(STR_TASKPANEL_PREPARING_PREVIEW_SUBSTITUTION));
         }
-        break;
-
-        case STR_TASKPANEL_NOT_AVAILABLE_SUBSTITUTION:
+        aPreview = rPreview;
+    }
+    else if (strcmp(pId, STR_TASKPANEL_NOT_AVAILABLE_SUBSTITUTION) == 0)
+    {
+        Image& rPreview (ePreviewSize==SMALL
+            ? maSmallPreviewNotAvailable
+            : maLargePreviewNotAvailable);
+        if (rPreview.GetSizePixel().Width() == 0)
         {
-            Image& rPreview (ePreviewSize==SMALL
-                ? maSmallPreviewNotAvailable
-                : maLargePreviewNotAvailable);
-            if (rPreview.GetSizePixel().Width() == 0)
-            {
-                rPreview = maPreviewRenderer.RenderSubstitution(
-                    ePreviewSize==SMALL ? maSmallPreviewSizePixel : maLargePreviewSizePixel,
-                    SdResId(STR_TASKPANEL_NOT_AVAILABLE_SUBSTITUTION));
-            }
-            aPreview = rPreview;
+            rPreview = maPreviewRenderer.RenderSubstitution(
+                ePreviewSize==SMALL ? maSmallPreviewSizePixel : maLargePreviewSizePixel,
+                SdResId(STR_TASKPANEL_NOT_AVAILABLE_SUBSTITUTION));
         }
-        break;
+        aPreview = rPreview;
     }
 
     return aPreview;
@@ -916,7 +885,7 @@ void MasterPageContainer::Implementation::CleanContainer()
     // elements in the middle can not be removed because that would
     // invalidate the references still held by others.
     int nIndex (maContainer.size()-1);
-    while (nIndex>=0 && maContainer[nIndex].get()==nullptr)
+    while (nIndex>=0 && !maContainer[nIndex])
         --nIndex;
     maContainer.resize(++nIndex);
 }
@@ -925,13 +894,12 @@ void MasterPageContainer::Implementation::FireContainerChange (
     MasterPageContainerChangeEvent::EventType eType,
     Token aToken)
 {
-    ::std::vector<Link<MasterPageContainerChangeEvent&,void>> aCopy(maChangeListeners.begin(),maChangeListeners.end());
-    ::std::vector<Link<MasterPageContainerChangeEvent&,void>>::iterator iListener;
+    ::std::vector<Link<MasterPageContainerChangeEvent&,void>> aCopy(maChangeListeners);
     MasterPageContainerChangeEvent aEvent;
     aEvent.meEventType = eType;
     aEvent.maChildToken = aToken;
-    for (iListener=aCopy.begin(); iListener!=aCopy.end(); ++iListener)
-        iListener->Call(aEvent);
+    for (const auto& rListener : aCopy)
+        rListener.Call(aEvent);
 }
 
 bool MasterPageContainer::Implementation::UpdateDescriptor (
@@ -987,7 +955,7 @@ bool MasterPageContainer::Implementation::UpdateDescriptor (
 
 void MasterPageContainer::Implementation::ReleaseDescriptor (Token aToken)
 {
-    if (aToken>=0 && (unsigned)aToken<maContainer.size())
+    if (aToken>=0 && o3tl::make_unsigned(aToken)<maContainer.size())
     {
         maContainer[aToken].reset();
     }
@@ -998,6 +966,6 @@ void MasterPageContainer::Implementation::FillingDone()
     mpRequestQueue->ProcessAllRequests();
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

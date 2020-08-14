@@ -18,7 +18,6 @@
  */
 
 #include <svx/imapdlg.hxx>
-#include <sfx2/viewfrm.hxx>
 
 #include "imapwrap.hxx"
 
@@ -33,7 +32,7 @@ void ScIMapDlgSet( const Graphic& rGraphic, const ImageMap* pImageMap,
     SvxIMapDlgChildWindow::UpdateIMapDlg( rGraphic, pImageMap, pTargetList, pEditingObj );
 }
 
-const void* ScIMapDlgGetObj( SvxIMapDlg* pDlg )
+const void* ScIMapDlgGetObj( const SvxIMapDlg* pDlg )
 {
     if ( pDlg )
         return pDlg->GetEditingObject();
@@ -41,7 +40,7 @@ const void* ScIMapDlgGetObj( SvxIMapDlg* pDlg )
         return nullptr;
 }
 
-const ImageMap& ScIMapDlgGetMap( SvxIMapDlg* pDlg )
+const ImageMap& ScIMapDlgGetMap( const SvxIMapDlg* pDlg )
 {
     return pDlg->GetImageMap();
 }

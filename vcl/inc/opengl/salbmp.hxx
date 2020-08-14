@@ -22,18 +22,20 @@
 
 #include <vcl/opengl/OpenGLContext.hxx>
 
-#include <vcl/salbtype.hxx>
-#include "opengl/texture.hxx"
+#include <opengl/texture.hxx>
 
 #include <salbmp.hxx>
 
-#include <deque>
 #include <memory>
 
 struct  BitmapBuffer;
 class   BitmapPalette;
+namespace vcl
+{
+    class Kernel;
+}
 
-class VCL_PLUGIN_PUBLIC OpenGLSalBitmap : public SalBitmap
+class VCL_PLUGIN_PUBLIC OpenGLSalBitmap final : public SalBitmap
 {
 private:
     OpenGLTexture                       maTexture;
@@ -41,13 +43,13 @@ private:
     BitmapPalette                       maPalette;
     std::shared_ptr<sal_uInt8>          mpUserBuffer;
     sal_uInt16                          mnBits;
-    sal_uInt16                          mnBytesPerRow;
+    sal_uInt32                          mnBytesPerRow;
     int                                 mnWidth;
     int                                 mnHeight;
 
     virtual void updateChecksum() const override;
 
-    bool calcChecksumGL(OpenGLTexture& rInputTexture, ChecksumType& rChecksum) const;
+    bool calcChecksumGL(OpenGLTexture& rInputTexture, BitmapChecksum& rChecksum) const;
 
 public:
     OpenGLSalBitmap();
@@ -76,12 +78,13 @@ public:
 
     bool            ScalingSupported() const override;
     bool            Scale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag ) override;
-    bool            Replace( const Color& rSearchColor, const Color& rReplaceColor, sal_uLong nTol ) override;
+    bool            Replace( const Color& rSearchColor, const Color& rReplaceColor, sal_uInt8 nTol ) override;
     bool            ConvertToGreyscale() override;
+    bool            InterpretAs8Bit() override;
 
 public:
 
-    bool            Create( const OpenGLTexture& rTex, long nX, long nY, long nWidth, long nHeight );
+    void            Create( const OpenGLTexture& rTex, long nX, long nY, long nWidth, long nHeight );
     OpenGLTexture&  GetTexture() const;
     const BitmapPalette& GetBitmapPalette() const { return maPalette; }
 
@@ -89,6 +92,7 @@ private:
 
     GLuint          CreateTexture();
     bool            AllocateUserData();
+    void            DeallocateUserData();
     bool            ReadTexture();
 
 private:
@@ -101,7 +105,7 @@ private:
 
 public:
 
-    bool ImplScale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag );
+    void ImplScale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag );
 };
 
 #endif // INCLUDED_VCL_INC_OPENGL_SALBMP_H

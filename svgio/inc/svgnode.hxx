@@ -20,32 +20,26 @@
 #ifndef INCLUDED_SVGIO_INC_SVGNODE_HXX
 #define INCLUDED_SVGIO_INC_SVGNODE_HXX
 
-#include <svgtools.hxx>
-#include <svgtoken.hxx>
-#include <svgpaint.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
+#include "svgtools.hxx"
+#include "svgtoken.hxx"
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
+#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
+#include <memory>
 #include <vector>
+#include <optional>
 
 // predefines
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
-        class SvgNode;
-        class SvgDocument;
-        class SvgStyleAttributes;
-    }
+    class SvgNode;
+    class SvgDocument;
+    class SvgStyleAttributes;
 }
 
 
-namespace svgio
-{
-    namespace svgreader
-    {
-        typedef ::std::vector< SvgNode* > SvgNodeVector;
-        typedef ::std::vector< const SvgStyleAttributes* > SvgStyleAttributeVector;
 
+namespace svgio::svgreader
+    {
         enum XmlSpace
         {
             XmlSpace_notset,
@@ -81,6 +75,8 @@ namespace svgio
         // which members should be initialized
         Display getDisplayFromContent(const OUString& aContent);
 
+      class Visitor;
+
         class SvgNode : public InfoProvider
         {
         private:
@@ -91,13 +87,13 @@ namespace svgio
             const SvgNode*              mpAlternativeParent;
 
             /// sub hierarchy
-            SvgNodeVector               maChildren;
+            std::vector< std::unique_ptr<SvgNode> >  maChildren;
 
             /// Id svan value
-            OUString*              mpId;
+            std::optional<OUString>   mpId;
 
             /// Class svan value
-            OUString*              mpClass;
+            std::optional<OUString>   mpClass;
 
             /// XmlSpace value
             XmlSpace                    maXmlSpace;
@@ -106,12 +102,14 @@ namespace svgio
             Display                     maDisplay;
 
             // CSS style vector chain, used in decompose phase and built up once per node.
-            // It contains the StyleHierarchy for the local node. INdependent from the
+            // It contains the StyleHierarchy for the local node. Independent from the
             // node hierarchy itself which also needs to be used in style entry solving
-            SvgStyleAttributeVector     maCssStyleVector;
+            ::std::vector< const SvgStyleAttributes* > maCssStyleVector;
 
             /// possible local CssStyle, e.g. style="fill:red; stroke:red;"
-            SvgStyleAttributes*         mpLocalCssStyle;
+            std::unique_ptr<SvgStyleAttributes>        mpLocalCssStyle;
+
+            mutable bool                mbDecomposing;
 
             // flag if maCssStyleVector is already computed (done only once)
             bool                        mbCssStyleVectorBuilt : 1;
@@ -136,6 +134,8 @@ namespace svgio
             SvgNode(const SvgNode&) = delete;
             SvgNode& operator=(const SvgNode&) = delete;
 
+            void accept(Visitor& rVisitor);
+
             /// scan helper to read and interpret a local CssStyle to mpLocalCssStyle
             void readLocalCssStyle(const OUString& aContent);
 
@@ -152,10 +152,10 @@ namespace svgio
             SVGToken getType() const { return maType; }
             const SvgDocument& getDocument() const { return mrDocument; }
             const SvgNode* getParent() const { if(mpAlternativeParent) return mpAlternativeParent; return mpParent; }
-            const SvgNodeVector& getChildren() const { return maChildren; }
+            const std::vector< std::unique_ptr<SvgNode> > & getChildren() const { return maChildren; }
 
             /// InfoProvider support for %, em and ex values
-            virtual const basegfx::B2DRange getCurrentViewPort() const override;
+            virtual basegfx::B2DRange getCurrentViewPort() const override;
             virtual double getCurrentFontSizeInherited() const override;
             virtual double getCurrentXHeightInherited() const override;
 
@@ -163,12 +163,12 @@ namespace svgio
             double getCurrentXHeight() const;
 
             /// Id access
-            const OUString* getId() const { return mpId; }
-            void setId(const OUString* pfId);
+            std::optional<OUString> const & getId() const { return mpId; }
+            void setId(OUString const &);
 
             /// Class access
-            const OUString* getClass() const { return mpClass; }
-            void setClass(const OUString* pfClass);
+            std::optional<OUString> const & getClass() const { return mpClass; }
+            void setClass(OUString const &);
 
             /// XmlSpace access
             XmlSpace getXmlSpace() const;
@@ -181,8 +181,15 @@ namespace svgio
             /// alternative parent
             void setAlternativeParent(const SvgNode* pAlternativeParent = nullptr) { mpAlternativeParent = pAlternativeParent; }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+      class Visitor
+      {
+      public:
+            virtual ~Visitor() = default;
+            virtual void visit(SvgNode const & pNode) = 0;
+      };
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGNODE_HXX
 

@@ -21,9 +21,7 @@
 #include <connectivity/TColumnsHelper.hxx>
 #include <connectivity/sdbcx/VColumn.hxx>
 
-namespace connectivity
-{
-    namespace hsqldb
+namespace connectivity::hsqldb
     {
         class OHSQLColumns : public OColumnsHelper
         {
@@ -32,15 +30,14 @@ namespace connectivity
         public:
             OHSQLColumns(   ::cppu::OWeakObject& _rParent
                             ,::osl::Mutex& _rMutex
-                            ,const TStringVector &_rVector
+                            ,const ::std::vector< OUString> &_rVector
                         );
         };
 
         class OHSQLColumn;
-        typedef sdbcx::OColumn OHSQLColumn_BASE;
         typedef ::comphelper::OIdPropertyArrayUsageHelper<OHSQLColumn> OHSQLColumn_PROP;
 
-        class OHSQLColumn : public OHSQLColumn_BASE,
+        class OHSQLColumn : public sdbcx::OColumn,
                                 public OHSQLColumn_PROP
         {
             OUString m_sAutoIncrement;
@@ -54,7 +51,7 @@ namespace connectivity
 
             virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_HSQLDB_HCOLUMNS_HXX
 

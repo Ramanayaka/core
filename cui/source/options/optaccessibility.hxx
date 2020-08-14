@@ -16,32 +16,27 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_CUI_SOURCE_OPTIONS_OPTACCESSIBILITY_HXX
-#define INCLUDED_CUI_SOURCE_OPTIONS_OPTACCESSIBILITY_HXX
+#pragma once
 
 #include <sfx2/tabdlg.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/field.hxx>
+
 class SvxAccessibilityOptionsTabPage : public SfxTabPage
 {
-    VclPtr<CheckBox>       m_pAccessibilityTool;
-    VclPtr<CheckBox>       m_pTextSelectionInReadonly;
-    VclPtr<CheckBox>       m_pAnimatedGraphics;
-    VclPtr<CheckBox>       m_pAnimatedTexts;
-    VclPtr<CheckBox>       m_pAutoDetectHC;
-    VclPtr<CheckBox>       m_pAutomaticFontColor;
-    VclPtr<CheckBox>       m_pPagePreviews;
+    std::unique_ptr<weld::CheckButton> m_xAccessibilityTool;
+    std::unique_ptr<weld::CheckButton> m_xTextSelectionInReadonly;
+    std::unique_ptr<weld::CheckButton> m_xAnimatedGraphics;
+    std::unique_ptr<weld::CheckButton> m_xAnimatedTexts;
+    std::unique_ptr<weld::CheckButton> m_xAutoDetectHC;
+    std::unique_ptr<weld::CheckButton> m_xAutomaticFontColor;
+    std::unique_ptr<weld::CheckButton> m_xPagePreviews;
 
 public:
-    SvxAccessibilityOptionsTabPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    SvxAccessibilityOptionsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SvxAccessibilityOptionsTabPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rAttrSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

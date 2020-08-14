@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scenariocontext.hxx"
+#include <scenariocontext.hxx>
+#include <biffhelper.hxx>
 
-#include "scenariobuffer.hxx"
+#include <scenariobuffer.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using ::oox::core::ContextHandlerRef;
 
@@ -108,7 +107,6 @@ void ScenariosContext::onStartRecord( SequenceInputStream& rStrm )
         mrSheetScenarios.importScenarios( rStrm );
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

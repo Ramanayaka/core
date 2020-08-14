@@ -45,7 +45,7 @@ enum class RegAccessMode
 };
 namespace o3tl
 {
-    template<> struct typed_flags<RegAccessMode> : is_typed_flags<RegAccessMode, 0x07> {};
+    template<> struct typed_flags<RegAccessMode> : is_typed_flags<RegAccessMode, 0x03> {};
 }
 
 /** defines the type of a key value.
@@ -120,7 +120,7 @@ enum class SAL_DLLPUBLIC_RTTI RegError
     SET_VALUE_FAILED,
     /// deleting of the key value failed.
     DELETE_VALUE_FAILED,
-    /// the key has a invalid value or the value type is unknown.
+    /// the key has an invalid value or the value type is unknown.
     INVALID_VALUE,
 
     /// merging a key, the value and all subkeys failed.

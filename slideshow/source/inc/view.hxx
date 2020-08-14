@@ -31,9 +31,7 @@ namespace basegfx { class B2DRange; class B2DVector; }
 
 /* Definition of View interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         class View : public ViewLayer
         {
@@ -68,7 +66,7 @@ namespace slideshow
                 underlying view transformation, returned by the
                 getTransformation() method.
             */
-            virtual void setViewSize( const ::basegfx::B2DVector& ) = 0;
+            virtual void setViewSize( const ::basegfx::B2DSize& ) = 0;
 
             /** Change the view's mouse cursor.
 
@@ -81,7 +79,7 @@ namespace slideshow
 
         typedef std::shared_ptr< View >     ViewSharedPtr;
         typedef std::vector< ViewSharedPtr >  ViewVector;
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_VIEW_HXX

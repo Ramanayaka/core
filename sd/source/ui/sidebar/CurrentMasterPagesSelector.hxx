@@ -20,13 +20,14 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SIDEBAR_CURRENTMASTERPAGESSELECTOR_HXX
 #define INCLUDED_SD_SOURCE_UI_SIDEBAR_CURRENTMASTERPAGESSELECTOR_HXX
 
+#include <svl/lstner.hxx>
+
 #include "MasterPagesSelector.hxx"
-#include <com/sun/star/lang/XComponent.hpp>
 
 
-namespace sd { namespace tools { class EventMultiplexerEvent; } }
+namespace sd::tools { class EventMultiplexerEvent; }
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 /** Show the master pages currently used by a SdDrawDocument.
 */
@@ -45,7 +46,7 @@ public:
         used by the currently selected page of the document in the
         center pane.
     */
-    virtual void UpdateSelection() override;
+    void UpdateSelection();
 
     /** Copy all master pages that are to be shown into the given list.
     */
@@ -74,7 +75,7 @@ private:
     DECL_LINK(EventMultiplexerListener,sd::tools::EventMultiplexerEvent&, void);
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

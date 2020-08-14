@@ -22,89 +22,71 @@
 
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/interfacecontainer.h>
-#include <cppuhelper/exc_hlp.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
-#include <comphelper/anytostring.hxx>
-#include <comphelper/make_shared_from_uno.hxx>
 #include <comphelper/scopeguard.hxx>
-#include <comphelper/servicedecl.hxx>
-#include <comphelper/namecontainer.hxx>
-
-#include <cppcanvas/spritecanvas.hxx>
-#include <cppcanvas/vclfactory.hxx>
-#include <cppcanvas/basegfxfactory.hxx>
+#include <comphelper/storagehelper.hxx>
+#include <cppcanvas/polypolygon.hxx>
 
 #include <tools/debug.hxx>
 
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 
-#include <vcl/font.hxx>
-#include "rtl/ref.hxx"
+#include <sal/log.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/util/XModifyListener.hpp>
 #include <com/sun/star/util/XUpdatable.hpp>
-#include <com/sun/star/awt/XPaintListener.hpp>
 #include <com/sun/star/awt/SystemPointer.hpp>
-#include <com/sun/star/animations/TransitionType.hpp>
-#include <com/sun/star/animations/TransitionSubType.hpp>
 #include <com/sun/star/presentation/XSlideShow.hpp>
 #include <com/sun/star/presentation/XSlideShowListener.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/drawing/PointSequenceSequence.hpp>
 #include <com/sun/star/drawing/PointSequence.hpp>
 #include <com/sun/star/drawing/XLayer.hpp>
 #include <com/sun/star/drawing/XLayerSupplier.hpp>
 #include <com/sun/star/drawing/XLayerManager.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/document/XStorageBasedDocument.hpp>
 
-#include "com/sun/star/uno/Reference.hxx"
+#include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/loader/CannotActivateFactoryException.hpp>
 
-#include "unoviewcontainer.hxx"
-#include "transitionfactory.hxx"
-#include "eventmultiplexer.hxx"
-#include "usereventqueue.hxx"
-#include "eventqueue.hxx"
-#include "cursormanager.hxx"
-#include "slideshowcontext.hxx"
-#include "activitiesqueue.hxx"
-#include "activitiesfactory.hxx"
-#include "interruptabledelayevent.hxx"
-#include "slide.hxx"
-#include "shapemaps.hxx"
-#include "slideview.hxx"
-#include "tools.hxx"
-#include "unoview.hxx"
-#include "slidebitmap.hxx"
+#include <unoviewcontainer.hxx>
+#include <transitionfactory.hxx>
+#include <eventmultiplexer.hxx>
+#include <usereventqueue.hxx>
+#include <eventqueue.hxx>
+#include <cursormanager.hxx>
+#include <mediafilemanager.hxx>
+#include <slideshowcontext.hxx>
+#include <activitiesqueue.hxx>
+#include <activitiesfactory.hxx>
+#include <interruptabledelayevent.hxx>
+#include <slide.hxx>
+#include <shapemaps.hxx>
+#include <slideview.hxx>
+#include <tools.hxx>
+#include <unoview.hxx>
 #include "rehearsetimingsactivity.hxx"
 #include "waitsymbol.hxx"
 #include "effectrewinder.hxx"
-#include "framerate.hxx"
+#include <framerate.hxx>
 #include "pointersymbol.hxx"
 
 #include <map>
 #include <vector>
-#include <iterator>
-#include <string>
 #include <algorithm>
-#include <stdio.h>
-#include <iostream>
 
 using namespace com::sun::star;
 using namespace ::slideshow::internal;
+
+namespace box2d::utils { class box2DWorld;
+                         typedef ::std::shared_ptr< box2DWorld > Box2DWorldSharedPtr; }
 
 namespace {
 
@@ -199,7 +181,7 @@ private:
 
  ******************************************************************************/
 
-typedef cppu::WeakComponentImplHelper<presentation::XSlideShow> SlideShowImplBase;
+typedef cppu::WeakComponentImplHelper<css::lang::XServiceInfo, presentation::XSlideShow> SlideShowImplBase;
 
 typedef ::std::vector< ::cppcanvas::PolyPolygonSharedPtr> PolyPolygonVector;
 
@@ -210,6 +192,7 @@ typedef ::std::map< css::uno::Reference<
 
 class SlideShowImpl : private cppu::BaseMutex,
                       public CursorManager,
+                      public MediaFileManager,
                       public SlideShowImplBase
 {
 public:
@@ -267,12 +250,20 @@ public:
     */
     bool notifyHyperLinkClicked( OUString const& hyperLink );
 
-    /** Notification from eventmultiplexer that an animation event has occoured.
-        This will be forewarded to all registered XSlideShowListener
+    /** Notification from eventmultiplexer that an animation event has occurred.
+        This will be forwarded to all registered XSlideShowListener
      */
     bool handleAnimationEvent( const AnimationNodeSharedPtr& rNode );
 
+    /** Obtain a MediaTempFile for the specified url. */
+    virtual std::shared_ptr<avmedia::MediaTempFile> getMediaTempFile(const OUString& aUrl) override;
+
 private:
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames () override;
+
     // XSlideShow:
     virtual sal_Bool SAL_CALL nextEffect() override;
     virtual sal_Bool SAL_CALL previousEffect() override;
@@ -418,15 +409,13 @@ private:
     //map of vector of Polygons, containing polygons drawn on each slide.
     PolygonMap                              maPolygons;
 
-    boost::optional<RGBColor>               maUserPaintColor;
+    std::optional<RGBColor>               maUserPaintColor;
 
     double                                  maUserPaintStrokeWidth;
 
     //changed for the eraser project
-    boost::optional<bool>           maEraseAllInk;
-    boost::optional<bool>           maSwitchPenMode;
-    boost::optional<bool>           maSwitchEraserMode;
-    boost::optional<sal_Int32>          maEraseInk;
+    std::optional<bool>           maEraseAllInk;
+    std::optional<sal_Int32>          maEraseInk;
     //end changed
 
     std::shared_ptr<canvas::tools::ElapsedTime> mpPresTimer;
@@ -436,6 +425,7 @@ private:
     ActivitiesQueue                         maActivitiesQueue;
     UserEventQueue                          maUserEventQueue;
     SubsettableShapeManagerSharedPtr        mpDummyPtr;
+    box2d::utils::Box2DWorldSharedPtr       mpBox2DDummyPtr;
 
     std::shared_ptr<SeparateListenerImpl> mpListener;
 
@@ -461,6 +451,8 @@ private:
     uno::Reference<drawing::XDrawPage>      mxPrefetchSlide;
     ///  save the XDrawPagesSupplier to retrieve polygons
     uno::Reference<drawing::XDrawPagesSupplier>  mxDrawPagesSupplier;
+    ///  Used by MediaFileManager, for media files with package url.
+    uno::Reference<document::XStorageBasedDocument> mxSBD;
     /// slide animation to be prefetched:
     uno::Reference<animations::XAnimationNode> mxPrefetchAnimationNode;
 
@@ -552,7 +544,7 @@ SlideShowImpl::SlideShowImpl(
       maShapeCursors(),
       maUserPaintColor(),
       maUserPaintStrokeWidth(4.0),
-      mpPresTimer( new canvas::tools::ElapsedTime ),
+      mpPresTimer( std::make_shared<canvas::tools::ElapsedTime>() ),
       maScreenUpdater(maViewContainer),
       maEventQueue( mpPresTimer ),
       maEventMultiplexer( maEventQueue,
@@ -562,6 +554,7 @@ SlideShowImpl::SlideShowImpl(
                         maEventQueue,
                         *this ),
       mpDummyPtr(),
+      mpBox2DDummyPtr(),
       mpListener(),
       mpRehearseTimingsActivity(),
       mpWaitSymbol(),
@@ -573,6 +566,7 @@ SlideShowImpl::SlideShowImpl(
       mpPrefetchSlide(),
       mxPrefetchSlide(),
       mxDrawPagesSupplier(),
+      mxSBD(),
       mxPrefetchAnimationNode(),
       mnCurrentCursor(awt::SystemPointer::ARROW),
       mnWaitSymbolRequestCount(0),
@@ -610,10 +604,10 @@ SlideShowImpl::SlideShowImpl(
     }
     }
 
-    mpListener.reset( new SeparateListenerImpl(
+    mpListener = std::make_shared<SeparateListenerImpl>(
                           *this,
                           maScreenUpdater,
-                          maEventQueue ));
+                          maEventQueue );
     maEventMultiplexer.addSlideAnimationsEndHandler( mpListener );
     maEventMultiplexer.addViewRepaintHandler( mpListener );
     maEventMultiplexer.addHyperlinkHandler( mpListener, 0.0 );
@@ -681,6 +675,21 @@ void SlideShowImpl::disposing()
     mpPreviousSlide.reset();
 }
 
+uno::Sequence< OUString > SAL_CALL SlideShowImpl::getSupportedServiceNames()
+{
+    return { "com.sun.star.presentation.SlideShow" };
+}
+
+OUString SAL_CALL SlideShowImpl::getImplementationName()
+{
+    return "com.sun.star.comp.presentation.SlideShow";
+}
+
+sal_Bool SAL_CALL SlideShowImpl::supportsService(const OUString& aServiceName)
+{
+    return cppu::supportsService(this, aServiceName);
+}
+
 /// stops the current slide transition sound
 void SlideShowImpl::stopSlideTransitionSound()
 {
@@ -711,7 +720,7 @@ SoundPlayerSharedPtr SlideShowImpl::resetSlideTransitionSound( const uno::Any& r
         try
         {
             mpCurrentSlideTransitionSound = SoundPlayer::create(
-                maEventMultiplexer, url, mxComponentContext );
+                maEventMultiplexer, url, mxComponentContext, *this);
             mpCurrentSlideTransitionSound->setPlaybackLoop( bLoopSound );
         }
         catch (lang::NoSupportException const&)
@@ -845,9 +854,7 @@ ActivitySharedPtr SlideShowImpl::createSlideTransition(
     // reached final size
     maEventQueue.addEvent(
         makeEvent( [pTransition] () {
-                        pTransition->prefetch(
-                            AnimatableShapeSharedPtr(),
-                            ShapeAttributeLayerSharedPtr()); },
+                        pTransition->prefetch(); },
             "Animation::prefetch"));
 
     return ActivitySharedPtr(
@@ -859,7 +866,7 @@ ActivitySharedPtr SlideShowImpl::createSlideTransition(
                 nTransitionDuration,
                 nMinFrames,
                 false,
-                boost::optional<double>(1.0),
+                std::optional<double>(1.0),
                 0.0,
                 0.0,
                 ShapeSharedPtr(),
@@ -871,14 +878,7 @@ ActivitySharedPtr SlideShowImpl::createSlideTransition(
 PolygonMap::iterator SlideShowImpl::findPolygons( uno::Reference<drawing::XDrawPage> const& xDrawPage)
 {
     // TODO(P2): optimize research in the map.
-    PolygonMap::iterator aEnd = maPolygons.end();
-    for( PolygonMap::iterator aIter = maPolygons.begin();
-         aIter != aEnd;
-         ++aIter )
-        if( aIter->first == xDrawPage )
-            return aIter;
-
-    return aEnd;
+    return maPolygons.find(xDrawPage);
 }
 
 SlideSharedPtr SlideShowImpl::makeSlide(
@@ -890,8 +890,7 @@ SlideSharedPtr SlideShowImpl::makeSlide(
         return SlideSharedPtr();
 
     //Retrieve polygons for the current slide
-    PolygonMap::iterator aIter;
-    aIter = findPolygons(xDrawPage);
+    PolygonMap::iterator aIter = findPolygons(xDrawPage);
 
     const SlideSharedPtr pSlide( createSlide(xDrawPage,
                                              xDrawPages,
@@ -901,6 +900,7 @@ SlideSharedPtr SlideShowImpl::makeSlide(
                                              maScreenUpdater,
                                              maActivitiesQueue,
                                              maUserEventQueue,
+                                             *this,
                                              *this,
                                              maViewContainer,
                                              mxComponentContext,
@@ -1063,6 +1063,7 @@ void SlideShowImpl::displaySlide(
     DBG_TESTSOLARMUTEX();
 
     mxDrawPagesSupplier = xDrawPages;
+    mxSBD = uno::Reference<document::XStorageBasedDocument>(mxDrawPagesSupplier, uno::UNO_QUERY);
 
     stopShow();  // MUST call that: results in
     // maUserEventQueue.clear(). What's more,
@@ -1075,8 +1076,8 @@ void SlideShowImpl::displaySlide(
 
     bool bSkipAllMainSequenceEffects (false);
     bool bSkipSlideTransition (false);
-    std::for_each( rProperties.getConstArray(),
-                   rProperties.getConstArray() + rProperties.getLength(),
+    std::for_each( rProperties.begin(),
+                   rProperties.end(),
         PrefetchPropertiesFunc(this, bSkipAllMainSequenceEffects, bSkipSlideTransition) );
 
     OSL_ENSURE( !maViewContainer.empty(), "### no views!" );
@@ -1355,7 +1356,7 @@ sal_Bool SlideShowImpl::addView(
                                               slideSize.getY() ) );
     }
 
-    // clear view area (since its newly added,
+    // clear view area (since it's newly added,
     // we need a clean slate)
     pView->clearAll();
 
@@ -1401,35 +1402,41 @@ void SlideShowImpl::registerUserPaintPolygons( const uno::Reference< lang::XMult
         maPolygons.insert(make_pair(mpCurrentSlide->getXDrawPage(),mpCurrentSlide->getPolygons()));
     }
 
-    //Creating the layer for shapes
+    //Creating the layer for shapes drawn during slideshow
     // query for the XLayerManager
     uno::Reference< drawing::XLayerSupplier > xLayerSupplier(xDocFactory, uno::UNO_QUERY);
     uno::Reference< container::XNameAccess > xNameAccess = xLayerSupplier->getLayerManager();
-
     uno::Reference< drawing::XLayerManager > xLayerManager(xNameAccess, uno::UNO_QUERY);
-    // create a layer and set its properties
-    uno::Reference< drawing::XLayer > xDrawnInSlideshow = xLayerManager->insertNewByIndex(xLayerManager->getCount());
-    uno::Reference< beans::XPropertySet > xLayerPropSet(xDrawnInSlideshow, uno::UNO_QUERY);
 
-    //Layer Name which enables to catch annotations
-    OUString layerName = "DrawnInSlideshow";
+    // create layer
+    uno::Reference< drawing::XLayer > xDrawnInSlideshow;
     uno::Any aPropLayer;
+    OUString sLayerName = "DrawnInSlideshow";
+    if (xNameAccess->hasByName(sLayerName))
+    {
+        xNameAccess->getByName(sLayerName) >>= xDrawnInSlideshow;
+    }
+    else
+    {
+        xDrawnInSlideshow = xLayerManager->insertNewByIndex(xLayerManager->getCount());
+        aPropLayer <<= sLayerName;
+        xDrawnInSlideshow->setPropertyValue("Name", aPropLayer);
+    }
 
-    aPropLayer <<= layerName;
-    xLayerPropSet->setPropertyValue("Name", aPropLayer);
-
+    // ODF defaults from ctor of SdrLayer are not automatically set on the here
+    // created XLayer. Need to be done explicitly here.
     aPropLayer <<= true;
-    xLayerPropSet->setPropertyValue("IsVisible", aPropLayer);
-
+    xDrawnInSlideshow->setPropertyValue("IsVisible", aPropLayer);
+    xDrawnInSlideshow->setPropertyValue("IsPrintable", aPropLayer);
     aPropLayer <<= false;
-    xLayerPropSet->setPropertyValue("IsLocked", aPropLayer);
+    xDrawnInSlideshow->setPropertyValue("IsLocked", aPropLayer);
 
     //Register polygons for each slide
     for( const auto& rPoly : maPolygons )
     {
         PolyPolygonVector aPolygons = rPoly.second;
         //Get shapes for the slide
-        css::uno::Reference< css::drawing::XShapes > Shapes(rPoly.first, css::uno::UNO_QUERY);
+        css::uno::Reference< css::drawing::XShapes > Shapes = rPoly.first;
         //Retrieve polygons for one slide
         for( const auto& pPolyPoly : aPolygons )
         {
@@ -1491,7 +1498,7 @@ void SlideShowImpl::registerUserPaintPolygons( const uno::Reference< lang::XMult
                     //LineWidth
                     double              fLineWidth;
                     fLineWidth = pPolyPoly->getStrokeWidth();
-                    aXPropSet->setPropertyValue("LineWidth", uno::Any((sal_Int32)fLineWidth) );
+                    aXPropSet->setPropertyValue("LineWidth", uno::Any(static_cast<sal_Int32>(fLineWidth)) );
 
                     // make polygons special
                     xLayerManager->attachShapeToLayer(rPolyShape, xDrawnInSlideshow);
@@ -1532,7 +1539,7 @@ sal_Bool SlideShowImpl::setProperty( beans::PropertyValue const& rProperty )
                         "setProperty(): User paint overrides invisible mouse" );
 
             // enable user paint
-            maUserPaintColor.reset( unoColor2RGBColor( nColor ) );
+            maUserPaintColor = unoColor2RGBColor(nColor);
             if( mpCurrentSlide && !mpCurrentSlide->isPaintOverlayActive() )
                 mpCurrentSlide->enablePaintOverlay();
 
@@ -1543,8 +1550,6 @@ sal_Bool SlideShowImpl::setProperty( beans::PropertyValue const& rProperty )
             // disable user paint
             maUserPaintColor.reset();
             maEventMultiplexer.notifyUserPaintDisabled();
-            if( mpCurrentSlide )
-                mpCurrentSlide->disablePaintOverlay();
         }
 
         resetCursor();
@@ -1562,7 +1567,7 @@ sal_Bool SlideShowImpl::setProperty( beans::PropertyValue const& rProperty )
                         "setProperty(): User paint overrides invisible mouse" );
 
             // enable user paint
-            maEraseAllInk.reset( bEraseAllInk );
+            maEraseAllInk = bEraseAllInk;
             maEventMultiplexer.notifyEraseAllInk( *maEraseAllInk );
         }
 
@@ -1578,9 +1583,8 @@ sal_Bool SlideShowImpl::setProperty( beans::PropertyValue const& rProperty )
                         "setProperty(): User paint overrides invisible mouse" );
 
             if(bSwitchPenMode){
-            // Switch to Pen Mode
-            maSwitchPenMode.reset( bSwitchPenMode );
-            maEventMultiplexer.notifySwitchPenMode();
+                // Switch to Pen Mode
+                maEventMultiplexer.notifySwitchPenMode();
             }
         }
         return true;
@@ -1594,9 +1598,8 @@ sal_Bool SlideShowImpl::setProperty( beans::PropertyValue const& rProperty )
             OSL_ENSURE( mbMouseVisible,
                         "setProperty(): User paint overrides invisible mouse" );
             if(bSwitchEraserMode){
-            // switch to Eraser mode
-            maSwitchEraserMode.reset( bSwitchEraserMode );
-            maEventMultiplexer.notifySwitchEraserMode();
+                // switch to Eraser mode
+                maEventMultiplexer.notifySwitchEraserMode();
             }
         }
 
@@ -1612,7 +1615,7 @@ sal_Bool SlideShowImpl::setProperty( beans::PropertyValue const& rProperty )
                         "setProperty(): User paint overrides invisible mouse" );
 
             // enable user paint
-            maEraseInk.reset( nEraseInk );
+            maEraseInk = nEraseInk;
             maEventMultiplexer.notifyEraseInkWidth( *maEraseInk );
         }
 
@@ -1694,8 +1697,10 @@ sal_Bool SlideShowImpl::setProperty( beans::PropertyValue const& rProperty )
                     maActivitiesQueue,
                     maUserEventQueue,
                     *this,
+                    *this,
                     maViewContainer,
-                    mxComponentContext) );
+                    mxComponentContext,
+                    mpBox2DDummyPtr ) );
         }
         else if (mpRehearseTimingsActivity)
         {
@@ -1770,19 +1775,14 @@ sal_Bool SlideShowImpl::setProperty( beans::PropertyValue const& rProperty )
             && (aValues[1] >>= bValue))
         {
             // Look up the view.
-            for (UnoViewVector::const_iterator
-                     iView (maViewContainer.begin()),
-                     iEnd (maViewContainer.end());
-                 iView!=iEnd;
-                 ++iView)
+            auto iView = std::find_if(maViewContainer.begin(), maViewContainer.end(),
+                [&xView](const UnoViewSharedPtr& rxView) { return rxView && rxView->getUnoView() == xView; });
+            if (iView != maViewContainer.end())
             {
-                if (*iView && (*iView)->getUnoView()==xView)
-                {
-                    // Store the flag at the view so that media shapes have
-                    // access to it.
-                    (*iView)->setIsSoundEnabled(bValue);
-                    return true;
-                }
+                // Store the flag at the view so that media shapes have
+                // access to it.
+                (*iView)->setIsSoundEnabled(bValue);
+                return true;
             }
         }
     }
@@ -1828,19 +1828,17 @@ void SlideShowImpl::addShapeEventListener(
         maShapeEventListeners.end() )
     {
         // no entry for this shape -> create one
-        aIter = maShapeEventListeners.insert(
-            ShapeEventListenerMap::value_type(
+        aIter = maShapeEventListeners.emplace(
                 xShape,
                 std::make_shared<comphelper::OInterfaceContainerHelper2>(
-                    m_aMutex))).first;
+                    m_aMutex)).first;
     }
 
     // add new listener to broadcaster
-    if( aIter->second.get() )
+    if( aIter->second )
         aIter->second->addInterface( xListener );
 
-    maEventMultiplexer.notifyShapeListenerAdded(xListener,
-                                                xShape);
+    maEventMultiplexer.notifyShapeListenerAdded(xShape);
 }
 
 void SlideShowImpl::removeShapeEventListener(
@@ -1859,15 +1857,14 @@ void SlideShowImpl::removeShapeEventListener(
         // entry for this shape found -> remove listener from
         // helper object
         ENSURE_OR_THROW(
-            aIter->second.get(),
+            aIter->second,
             "SlideShowImpl::removeShapeEventListener(): "
             "listener map contains NULL broadcast helper" );
 
         aIter->second->removeInterface( xListener );
     }
 
-    maEventMultiplexer.notifyShapeListenerRemoved(xListener,
-                                                  xShape);
+    maEventMultiplexer.notifyShapeListenerRemoved(xShape);
 }
 
 void SlideShowImpl::setShapeCursor(
@@ -1890,9 +1887,7 @@ void SlideShowImpl::setShapeCursor(
             // add new entry, unless shape shall display
             // normal pointer arrow -> no need to handle that
             // case
-            maShapeCursors.insert(
-                ShapeCursorMap::value_type(xShape,
-                                           nPointerShape) );
+            maShapeCursors.emplace(xShape, nPointerShape);
         }
     }
     else if( nPointerShape == awt::SystemPointer::ARROW )
@@ -2019,8 +2014,8 @@ sal_Bool SlideShowImpl::update( double & nNextTimeout )
         }
         // Time held until here
 
-        const bool bActivitiesLeft = (! maActivitiesQueue.isEmpty());
-        const bool bTimerEventsLeft = (! maEventQueue.isEmpty());
+        const bool bActivitiesLeft = ! maActivitiesQueue.isEmpty();
+        const bool bTimerEventsLeft = ! maEventQueue.isEmpty();
         const bool bRet = (bActivitiesLeft || bTimerEventsLeft);
 
         if (bRet)
@@ -2073,7 +2068,7 @@ sal_Bool SlideShowImpl::update( double & nNextTimeout )
                 try
                 {
                     uno::Reference< presentation::XSlideShowView > xView( pView->getUnoView(),
-                                                                          uno::UNO_QUERY_THROW );
+                                                                          uno::UNO_SET_THROW );
                     uno::Reference<util::XUpdatable> const xUpdatable(
                             xView->getCanvas(), uno::UNO_QUERY);
                     if (xUpdatable.is()) // not supported in PresenterCanvas
@@ -2087,7 +2082,7 @@ sal_Bool SlideShowImpl::update( double & nNextTimeout )
                 }
                 catch( uno::Exception& )
                 {
-                    SAL_WARN( "slideshow", comphelper::anyToString( cppu::getCaughtException() ) );
+                    TOOLS_WARN_EXCEPTION( "slideshow", "" );
                 }
             }
 
@@ -2316,8 +2311,8 @@ bool SlideShowImpl::notifyHyperLinkClicked( OUString const& hyperLink )
     return true;
 }
 
-/** Notification from eventmultiplexer that an animation event has occoured.
-    This will be forewarded to all registered XSlideShoeListener
+/** Notification from eventmultiplexer that an animation event has occurred.
+    This will be forwarded to all registered XSlideShoeListener
  */
 bool SlideShowImpl::handleAnimationEvent( const AnimationNodeSharedPtr& rNode )
 {
@@ -2346,6 +2341,37 @@ bool SlideShowImpl::handleAnimationEvent( const AnimationNodeSharedPtr& rNode )
     }
 
     return true;
+}
+
+std::shared_ptr<avmedia::MediaTempFile> SlideShowImpl::getMediaTempFile(const OUString& aUrl)
+{
+    std::shared_ptr<avmedia::MediaTempFile> aRet;
+
+    if (!mxSBD.is())
+        return aRet;
+
+    comphelper::LifecycleProxy aProxy;
+    uno::Reference<io::XStream> xStream =
+        comphelper::OStorageHelper::GetStreamAtPackageURL(mxSBD->getDocumentStorage(), aUrl,
+                css::embed::ElementModes::READ, aProxy);
+
+    uno::Reference<io::XInputStream> xInStream = xStream->getInputStream();
+    if (xInStream.is())
+    {
+        sal_Int32 nLastDot = aUrl.lastIndexOf('.');
+        sal_Int32 nLastSlash = aUrl.lastIndexOf('/');
+        OUString sDesiredExtension;
+        if (nLastDot > nLastSlash && nLastDot+1 < aUrl.getLength())
+            sDesiredExtension = aUrl.copy(nLastDot);
+
+        OUString sTempUrl;
+        if (::avmedia::CreateMediaTempFile(xInStream, sTempUrl, sDesiredExtension))
+            aRet = std::make_shared<avmedia::MediaTempFile>(sTempUrl);
+
+        xInStream->closeInput();
+    }
+
+    return aRet;
 }
 
 //===== FrameSynchronization ==================================================
@@ -2388,18 +2414,10 @@ void FrameSynchronization::Deactivate()
 
 } // anon namespace
 
-namespace sdecl = comphelper::service_decl;
-const sdecl::ServiceDecl slideShowDecl(
-     sdecl::class_<SlideShowImpl>(),
-    "com.sun.star.comp.presentation.SlideShow",
-    "com.sun.star.presentation.SlideShow" );
-
-// The C shared lib entry points
-extern "C"
-SAL_DLLPUBLIC_EXPORT void* SAL_CALL slideshow_component_getFactory( sal_Char const* pImplName,
-                                         void*, void* )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+slideshow_SlideShowImpl_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
 {
-    return sdecl::component_getFactoryHelper( pImplName, {&slideShowDecl} );
+    return cppu::acquire(new SlideShowImpl(context));
 }
-
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

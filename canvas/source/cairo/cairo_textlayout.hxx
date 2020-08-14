@@ -24,9 +24,9 @@
 #include <cppuhelper/basemutex.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/rendering/RenderState.hpp>
+#include <com/sun/star/rendering/ViewState.hpp>
 #include <com/sun/star/rendering/XTextLayout.hpp>
-
-#include <basegfx/vector/b2isize.hxx>
 
 #include <vcl/outdev.hxx>
 
@@ -82,8 +82,7 @@ namespace cairocanvas
         virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-        bool draw( ::cairo::CairoSharedPtr&                        pSCairo,
-                   OutputDevice&                                   rOutDev,
+        void draw( OutputDevice&                                   rOutDev,
                    const Point&                                    rOutpos,
                    const css::rendering::ViewState&   viewState,
                    const css::rendering::RenderState& renderState ) const;
@@ -102,8 +101,6 @@ namespace cairocanvas
         CanvasFont::Reference                      mpFont;
         SurfaceProviderRef                         mpRefDevice;
         sal_Int8                                   mnTextDirection;
-
-        bool isCairoRenderable(SystemFontData aSysFontData) const;
     };
 
 }

@@ -18,78 +18,70 @@
  */
 
 #include <svx/svdorect.hxx>
-#include <math.h>
-#include <stdlib.h>
-#include <svx/xpool.hxx>
 #include <svx/xpoly.hxx>
-#include <svx/svdattr.hxx>
-#include <svx/svdpool.hxx>
 #include <svx/svdtrans.hxx>
-#include <svx/svdetc.hxx>
 #include <svx/svddrag.hxx>
 #include <svx/svdmodel.hxx>
-#include <svx/svdpage.hxx>
-#include <svx/svdocapt.hxx>
-#include <svx/svdpagv.hxx>
 #include <svx/svdview.hxx>
-#include <svx/svdundo.hxx>
 #include <svx/svdopath.hxx>
-#include "svdglob.hxx"
-#include "svx/svdstr.hrc"
-#include <svx/xflclit.hxx>
-#include <svx/xlnclit.hxx>
-#include <svx/xlnwtit.hxx>
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
 #include <sdr/properties/rectangleproperties.hxx>
-#include <svx/sdr/contact/viewcontactofsdrrectobj.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
+#include <sdr/contact/viewcontactofsdrrectobj.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <tools/debug.hxx>
+#include <vcl/ptrstyle.hxx>
 
 using namespace com::sun::star;
 
 // BaseProperties section
 
-sdr::properties::BaseProperties* SdrRectObj::CreateObjectSpecificProperties()
+std::unique_ptr<sdr::properties::BaseProperties> SdrRectObj::CreateObjectSpecificProperties()
 {
-    return new sdr::properties::RectangleProperties(*this);
+    return std::make_unique<sdr::properties::RectangleProperties>(*this);
 }
 
 
 // DrawContact section
 
-sdr::contact::ViewContact* SdrRectObj::CreateObjectSpecificViewContact()
+std::unique_ptr<sdr::contact::ViewContact> SdrRectObj::CreateObjectSpecificViewContact()
 {
-    return new sdr::contact::ViewContactOfSdrRectObj(*this);
+    return std::make_unique<sdr::contact::ViewContactOfSdrRectObj>(*this);
 }
 
 
-SdrRectObj::SdrRectObj()
-:   mpXPoly(nullptr)
+SdrRectObj::SdrRectObj(SdrModel& rSdrModel)
+:   SdrTextObj(rSdrModel)
 {
     bClosedObj=true;
 }
 
-SdrRectObj::SdrRectObj(const tools::Rectangle& rRect)
-:   SdrTextObj(rRect),
-    mpXPoly(nullptr)
+SdrRectObj::SdrRectObj(
+    SdrModel& rSdrModel,
+    const tools::Rectangle& rRect)
+:   SdrTextObj(rSdrModel, rRect)
 {
     bClosedObj=true;
 }
 
-SdrRectObj::SdrRectObj(SdrObjKind eNewTextKind)
-:   SdrTextObj(eNewTextKind),
-    mpXPoly(nullptr)
+SdrRectObj::SdrRectObj(
+    SdrModel& rSdrModel,
+    SdrObjKind eNewTextKind)
+:   SdrTextObj(rSdrModel, eNewTextKind)
 {
-    DBG_ASSERT(eTextKind==OBJ_TEXT || eTextKind==OBJ_TEXTEXT ||
+    DBG_ASSERT(eTextKind==OBJ_TEXT ||
                eTextKind==OBJ_OUTLINETEXT || eTextKind==OBJ_TITLETEXT,
                "SdrRectObj::SdrRectObj(SdrObjKind) can only be applied to text frames.");
     bClosedObj=true;
 }
 
-SdrRectObj::SdrRectObj(SdrObjKind eNewTextKind, const tools::Rectangle& rRect)
-:   SdrTextObj(eNewTextKind,rRect),
-    mpXPoly(nullptr)
+SdrRectObj::SdrRectObj(
+    SdrModel& rSdrModel,
+    SdrObjKind eNewTextKind,
+    const tools::Rectangle& rRect)
+:   SdrTextObj(rSdrModel, eNewTextKind, rRect)
 {
-    DBG_ASSERT(eTextKind==OBJ_TEXT || eTextKind==OBJ_TEXTEXT ||
+    DBG_ASSERT(eTextKind==OBJ_TEXT ||
                eTextKind==OBJ_OUTLINETEXT || eTextKind==OBJ_TITLETEXT,
                "SdrRectObj::SdrRectObj(SdrObjKind,...) can only be applied to text frames.");
     bClosedObj=true;
@@ -97,21 +89,6 @@ SdrRectObj::SdrRectObj(SdrObjKind eNewTextKind, const tools::Rectangle& rRect)
 
 SdrRectObj::~SdrRectObj()
 {
-}
-
-SdrRectObj& SdrRectObj::operator=(const SdrRectObj& rCopy)
-{
-    if ( this == &rCopy )
-        return *this;
-
-    SdrTextObj::operator=( rCopy );
-
-    if ( rCopy.mpXPoly )
-        mpXPoly.reset( new XPolygon( *rCopy.mpXPoly ) );
-    else
-        mpXPoly.reset();
-
-    return *this;
 }
 
 void SdrRectObj::SetXPolyDirty()
@@ -122,20 +99,20 @@ void SdrRectObj::SetXPolyDirty()
 XPolygon SdrRectObj::ImpCalcXPoly(const tools::Rectangle& rRect1, long nRad1) const
 {
     XPolygon aXPoly(rRect1,nRad1,nRad1);
-    const sal_uInt16 nPointAnz(aXPoly.GetPointCount());
-    XPolygon aNeuPoly(nPointAnz+1);
-    sal_uInt16 nShift=nPointAnz-2;
-    if (nRad1!=0) nShift=nPointAnz-5;
+    const sal_uInt16 nPointCnt(aXPoly.GetPointCount());
+    XPolygon aNewPoly(nPointCnt+1);
+    sal_uInt16 nShift=nPointCnt-2;
+    if (nRad1!=0) nShift=nPointCnt-5;
     sal_uInt16 j=nShift;
-    for (sal_uInt16 i=1; i<nPointAnz; i++) {
-        aNeuPoly[i]=aXPoly[j];
-        aNeuPoly.SetFlags(i,aXPoly.GetFlags(j));
+    for (sal_uInt16 i=1; i<nPointCnt; i++) {
+        aNewPoly[i]=aXPoly[j];
+        aNewPoly.SetFlags(i,aXPoly.GetFlags(j));
         j++;
-        if (j>=nPointAnz) j=1;
+        if (j>=nPointCnt) j=1;
     }
-    aNeuPoly[0]=rRect1.BottomCenter();
-    aNeuPoly[nPointAnz]=aNeuPoly[0];
-    aXPoly=aNeuPoly;
+    aNewPoly[0]=rRect1.BottomCenter();
+    aNewPoly[nPointCnt]=aNewPoly[0];
+    aXPoly=aNewPoly;
 
     // these angles always relate to the top left corner of aRect
     if (aGeo.nShearAngle!=0) ShearXPoly(aXPoly,maRect.TopLeft(),aGeo.nTan);
@@ -193,22 +170,22 @@ sal_uInt16 SdrRectObj::GetObjIdentifier() const
 void SdrRectObj::TakeUnrotatedSnapRect(tools::Rectangle& rRect) const
 {
     rRect = maRect;
-    if (aGeo.nShearAngle!=0)
+    if (aGeo.nShearAngle==0)
+        return;
+
+    long nDst=FRound((maRect.Bottom()-maRect.Top())*aGeo.nTan);
+    if (aGeo.nShearAngle>0)
     {
-        long nDst=svx::Round((maRect.Bottom()-maRect.Top())*aGeo.nTan);
-        if (aGeo.nShearAngle>0)
-        {
-            Point aRef(rRect.TopLeft());
-            rRect.Left()-=nDst;
-            Point aTmpPt(rRect.TopLeft());
-            RotatePoint(aTmpPt,aRef,aGeo.nSin,aGeo.nCos);
-            aTmpPt-=rRect.TopLeft();
-            rRect.Move(aTmpPt.X(),aTmpPt.Y());
-        }
-        else
-        {
-            rRect.Right()-=nDst;
-        }
+        Point aRef(rRect.TopLeft());
+        rRect.AdjustLeft( -nDst );
+        Point aTmpPt(rRect.TopLeft());
+        RotatePoint(aTmpPt,aRef,aGeo.nSin,aGeo.nCos);
+        aTmpPt-=rRect.TopLeft();
+        rRect.Move(aTmpPt.X(),aTmpPt.Y());
+    }
+    else
+    {
+        rRect.AdjustRight( -nDst );
     }
 }
 
@@ -221,14 +198,17 @@ OUString SdrRectObj::TakeObjNameSingul() const
 
     OUStringBuffer sName;
 
-    sal_uInt16 nResId=STR_ObjNameSingulRECT;
-    if (aGeo.nShearAngle!=0) {
-        nResId+=4;  // parallelogram or, maybe, rhombus
-    } else {
-        if (maRect.GetWidth() == maRect.GetHeight()) nResId+=2; // square
+    bool bRounded = GetEckenradius() != 0; // rounded down
+    const char* pResId = bRounded ? STR_ObjNameSingulRECTRND : STR_ObjNameSingulRECT;
+    if (aGeo.nShearAngle!=0)
+    {
+        pResId = bRounded ? STR_ObjNameSingulPARALRND : STR_ObjNameSingulPARAL;  // parallelogram or, maybe, rhombus
     }
-    if (GetEckenradius()!=0) nResId+=8; // rounded down
-    sName.append(ImpGetResStr(nResId));
+    else if (maRect.GetWidth() == maRect.GetHeight())
+    {
+        pResId = bRounded ? STR_ObjNameSingulQUADRND : STR_ObjNameSingulQUAD; // square
+    }
+    sName.append(SvxResId(pResId));
 
     OUString aName(GetName());
     if (!aName.isEmpty())
@@ -249,27 +229,38 @@ OUString SdrRectObj::TakeObjNamePlural() const
         return SdrTextObj::TakeObjNamePlural();
     }
 
-    sal_uInt16 nResId=STR_ObjNamePluralRECT;
-
+    bool bRounded = GetEckenradius() != 0; // rounded down
+    const char* pResId = bRounded ? STR_ObjNamePluralRECTRND : STR_ObjNamePluralRECT;
     if (aGeo.nShearAngle!=0)
     {
-        nResId+=4;  // parallelogram or rhombus
+        pResId = bRounded ? STR_ObjNamePluralPARALRND : STR_ObjNamePluralPARAL;  // parallelogram or rhombus
     }
-    else
+    else if (maRect.GetWidth() == maRect.GetHeight())
     {
-        if (maRect.GetWidth() == maRect.GetHeight())
-            nResId+=2; // square
+        pResId = bRounded ? STR_ObjNamePluralQUADRND : STR_ObjNamePluralQUAD; // square
     }
 
-    if (GetEckenradius()!=0)
-        nResId+=8; // rounded down
-
-    return ImpGetResStr(nResId);
+    return SvxResId(pResId);
 }
 
-SdrRectObj* SdrRectObj::Clone() const
+SdrRectObj* SdrRectObj::CloneSdrObject(SdrModel& rTargetModel) const
 {
-    return CloneHelper< SdrRectObj >();
+    return CloneHelper< SdrRectObj >(rTargetModel);
+}
+
+SdrRectObj& SdrRectObj::operator=(const SdrRectObj& rCopy)
+{
+    if ( this == &rCopy )
+        return *this;
+
+    SdrTextObj::operator=( rCopy );
+
+    if ( rCopy.mpXPoly )
+        mpXPoly.reset( new XPolygon( *rCopy.mpXPoly ) );
+    else
+        mpXPoly.reset();
+
+    return *this;
 }
 
 basegfx::B2DPolyPolygon SdrRectObj::TakeXorPoly() const
@@ -306,70 +297,61 @@ sal_uInt32 SdrRectObj::GetHdlCount() const
     return IsTextFrame() ? 10 : 9;
 }
 
-SdrHdl* SdrRectObj::GetHdl(sal_uInt32 nHdlNum) const
+void SdrRectObj::AddToHdlList(SdrHdlList& rHdlList) const
 {
-    SdrHdl* pH = nullptr;
-    Point aPnt;
-    SdrHdlKind eKind = SdrHdlKind::Move;
-
-    if(!IsTextFrame())
+    // A text box has an additional (pseudo-)handle for the blinking frame.
+    if(IsTextFrame())
     {
-        nHdlNum++;
+        OSL_ENSURE(!IsTextEditActive(), "Do not use an ImpTextframeHdl for highlighting text in active text edit, this will collide with EditEngine paints (!)");
+        std::unique_ptr<SdrHdl> pH(new ImpTextframeHdl(maRect));
+        pH->SetObj(const_cast<SdrRectObj*>(this));
+        pH->SetRotationAngle(aGeo.nRotationAngle);
+        rHdlList.AddHdl(std::move(pH));
     }
 
-    switch(nHdlNum)
+    for(sal_Int32 nHdlNum = 1; nHdlNum <= 9; ++nHdlNum)
     {
-        case 0:
-        {
-            OSL_ENSURE(!IsTextEditActive(), "Do not use a ImpTextframeHdl for hilighting text in active text edit, this will collide with EditEngine paints (!)");
-            // hack for calc grid sync to ensure the hatched area
-            // for a textbox is displayed at correct position
-            pH = new ImpTextframeHdl(maRect + GetGridOffset() );
-            pH->SetObj(const_cast<SdrRectObj*>(this));
-            pH->SetRotationAngle(aGeo.nRotationAngle);
-            break;
-        }
-        case 1:
-        {
-            long a = GetEckenradius();
-            long b = std::max(maRect.GetWidth(),maRect.GetHeight())/2; // rounded up, because GetWidth() adds 1
-            if (a>b) a=b;
-            if (a<0) a=0;
-            aPnt=maRect.TopLeft();
-            aPnt.X()+=a;
-            eKind = SdrHdlKind::Circle;
-            break;
-        }
-        case 2: aPnt=maRect.TopLeft();      eKind = SdrHdlKind::UpperLeft; break;
-        case 3: aPnt=maRect.TopCenter();    eKind = SdrHdlKind::Upper; break;
-        case 4: aPnt=maRect.TopRight();     eKind = SdrHdlKind::UpperRight; break;
-        case 5: aPnt=maRect.LeftCenter();   eKind = SdrHdlKind::Left ; break;
-        case 6: aPnt=maRect.RightCenter();  eKind = SdrHdlKind::Right; break;
-        case 7: aPnt=maRect.BottomLeft();   eKind = SdrHdlKind::LowerLeft; break;
-        case 8: aPnt=maRect.BottomCenter(); eKind = SdrHdlKind::Lower; break;
-        case 9: aPnt=maRect.BottomRight();  eKind = SdrHdlKind::LowerRight; break;
-    }
+        Point aPnt;
+        SdrHdlKind eKind = SdrHdlKind::Move;
 
-    if(!pH)
-    {
+        switch(nHdlNum)
+        {
+            case 1: // Handle for changing the corner radius
+            {
+                long a = GetEckenradius();
+                long b = std::max(maRect.GetWidth(),maRect.GetHeight())/2; // rounded up, because GetWidth() adds 1
+                if (a>b) a=b;
+                if (a<0) a=0;
+                aPnt=maRect.TopLeft();
+                aPnt.AdjustX(a );
+                eKind = SdrHdlKind::Circle;
+                break;
+            }
+            case 2: aPnt=maRect.TopLeft();      eKind = SdrHdlKind::UpperLeft; break;
+            case 3: aPnt=maRect.TopCenter();    eKind = SdrHdlKind::Upper; break;
+            case 4: aPnt=maRect.TopRight();     eKind = SdrHdlKind::UpperRight; break;
+            case 5: aPnt=maRect.LeftCenter();   eKind = SdrHdlKind::Left ; break;
+            case 6: aPnt=maRect.RightCenter();  eKind = SdrHdlKind::Right; break;
+            case 7: aPnt=maRect.BottomLeft();   eKind = SdrHdlKind::LowerLeft; break;
+            case 8: aPnt=maRect.BottomCenter(); eKind = SdrHdlKind::Lower; break;
+            case 9: aPnt=maRect.BottomRight();  eKind = SdrHdlKind::LowerRight; break;
+        }
+
         if(aGeo.nShearAngle)
         {
             ShearPoint(aPnt,maRect.TopLeft(),aGeo.nTan);
         }
-
         if(aGeo.nRotationAngle)
         {
             RotatePoint(aPnt,maRect.TopLeft(),aGeo.nSin,aGeo.nCos);
         }
 
-        pH = new SdrHdl(aPnt,eKind);
+        std::unique_ptr<SdrHdl> pH(new SdrHdl(aPnt,eKind));
         pH->SetObj(const_cast<SdrRectObj*>(this));
         pH->SetRotationAngle(aGeo.nRotationAngle);
+        rHdlList.AddHdl(std::move(pH));
     }
-
-    return pH;
 }
-
 
 bool SdrRectObj::hasSpecialDrag() const
 {
@@ -444,9 +426,7 @@ OUString SdrRectObj::getSpecialDragComment(const SdrDragStat& rDrag) const
             if(nRad < 0)
                 nRad = 0;
 
-            OUString aStr;
-            ImpTakeDescriptionStr(STR_DragRectEckRad, aStr);
-            OUStringBuffer aBuf(aStr);
+            OUStringBuffer aBuf(ImpGetDescriptionStr(STR_DragRectEckRad));
             aBuf.append(" (");
             aBuf.append(GetMetrStr(nRad));
             aBuf.append(')');
@@ -472,10 +452,10 @@ basegfx::B2DPolyPolygon SdrRectObj::TakeCreatePoly(const SdrDragStat& rDrag) con
     return aRetval;
 }
 
-Pointer SdrRectObj::GetCreatePointer() const
+PointerStyle SdrRectObj::GetCreatePointer() const
 {
-    if (IsTextFrame()) return Pointer(PointerStyle::DrawText);
-    return Pointer(PointerStyle::DrawRect);
+    if (IsTextFrame()) return PointerStyle::DrawText;
+    return PointerStyle::DrawRect;
 }
 
 void SdrRectObj::NbcMove(const Size& rSiz)
@@ -521,10 +501,10 @@ SdrGluePoint SdrRectObj::GetVertexGluePoint(sal_uInt16 nPosNum) const
 
     Point aPt;
     switch (nPosNum) {
-        case 0: aPt=maRect.TopCenter();    aPt.Y()-=nWdt; break;
-        case 1: aPt=maRect.RightCenter();  aPt.X()+=nWdt; break;
-        case 2: aPt=maRect.BottomCenter(); aPt.Y()+=nWdt; break;
-        case 3: aPt=maRect.LeftCenter();   aPt.X()-=nWdt; break;
+        case 0: aPt=maRect.TopCenter();    aPt.AdjustY( -nWdt ); break;
+        case 1: aPt=maRect.RightCenter();  aPt.AdjustX(nWdt ); break;
+        case 2: aPt=maRect.BottomCenter(); aPt.AdjustY(nWdt ); break;
+        case 3: aPt=maRect.LeftCenter();   aPt.AdjustX( -nWdt ); break;
     }
     if (aGeo.nShearAngle!=0) ShearPoint(aPt,maRect.TopLeft(),aGeo.nTan);
     if (aGeo.nRotationAngle!=0) RotatePoint(aPt,maRect.TopLeft(),aGeo.nSin,aGeo.nCos);
@@ -547,10 +527,10 @@ SdrGluePoint SdrRectObj::GetCornerGluePoint(sal_uInt16 nPosNum) const
 
     Point aPt;
     switch (nPosNum) {
-        case 0: aPt=maRect.TopLeft();     aPt.X()-=nWdt; aPt.Y()-=nWdt; break;
-        case 1: aPt=maRect.TopRight();    aPt.X()+=nWdt; aPt.Y()-=nWdt; break;
-        case 2: aPt=maRect.BottomRight(); aPt.X()+=nWdt; aPt.Y()+=nWdt; break;
-        case 3: aPt=maRect.BottomLeft();  aPt.X()-=nWdt; aPt.Y()+=nWdt; break;
+        case 0: aPt=maRect.TopLeft();     aPt.AdjustX( -nWdt ); aPt.AdjustY( -nWdt ); break;
+        case 1: aPt=maRect.TopRight();    aPt.AdjustX(nWdt ); aPt.AdjustY( -nWdt ); break;
+        case 2: aPt=maRect.BottomRight(); aPt.AdjustX(nWdt ); aPt.AdjustY(nWdt ); break;
+        case 3: aPt=maRect.BottomLeft();  aPt.AdjustX( -nWdt ); aPt.AdjustY(nWdt ); break;
     }
     if (aGeo.nShearAngle!=0) ShearPoint(aPt,maRect.TopLeft(),aGeo.nTan);
     if (aGeo.nRotationAngle!=0) RotatePoint(aPt,maRect.TopLeft(),aGeo.nSin,aGeo.nCos);
@@ -560,7 +540,7 @@ SdrGluePoint SdrRectObj::GetCornerGluePoint(sal_uInt16 nPosNum) const
     return aGP;
 }
 
-SdrObject* SdrRectObj::DoConvertToPolyObj(bool bBezier, bool bAddText) const
+SdrObjectUniquePtr SdrRectObj::DoConvertToPolyObj(bool bBezier, bool bAddText) const
 {
     XPolygon aXP(ImpCalcXPoly(maRect,GetEckenradius()));
     { // TODO: this is only for the moment, until we have the new TakeContour()
@@ -570,7 +550,7 @@ SdrObject* SdrRectObj::DoConvertToPolyObj(bool bBezier, bool bAddText) const
 
     basegfx::B2DPolyPolygon aPolyPolygon(aXP.getB2DPolygon());
     aPolyPolygon.removeDoublePoints();
-    SdrObject* pRet = nullptr;
+    SdrObjectUniquePtr pRet;
 
     // small correction: Do not create something when no fill and no line. To
     // be sure to not damage something with non-text frames, do this only
@@ -582,7 +562,7 @@ SdrObject* SdrRectObj::DoConvertToPolyObj(bool bBezier, bool bAddText) const
 
     if(bAddText)
     {
-        pRet = ImpConvertAddText(pRet, bBezier);
+        pRet = ImpConvertAddText(std::move(pRet), bBezier);
     }
 
     return pRet;

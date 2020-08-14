@@ -24,7 +24,6 @@
 #include "address.hxx"
 #include "scdllapi.h"
 
-#include <map>
 #include <memory>
 
 class EditTextObject;
@@ -46,15 +45,18 @@ public:
     ScCaptionPtr();
     explicit ScCaptionPtr( SdrCaptionObj* p );
     ScCaptionPtr( const ScCaptionPtr& r );
-    ScCaptionPtr( ScCaptionPtr&& r );
+    ScCaptionPtr(ScCaptionPtr&& r) noexcept;
     ~ScCaptionPtr();
 
     ScCaptionPtr& operator=( const ScCaptionPtr& r );
-    ScCaptionPtr& operator=( ScCaptionPtr&& r );
+    ScCaptionPtr& operator=(ScCaptionPtr&& r) noexcept;
     explicit operator bool() const    { return mpCaption != nullptr; }
-    SdrCaptionObj* get() const        { return mpCaption; }
-    SdrCaptionObj* operator->() const { return mpCaption; }
-    SdrCaptionObj& operator*() const  { return *mpCaption; }
+    const SdrCaptionObj* get() const        { return mpCaption; }
+    SdrCaptionObj* get()        { return mpCaption; }
+    const SdrCaptionObj* operator->() const { return mpCaption; }
+    SdrCaptionObj* operator->() { return mpCaption; }
+    const SdrCaptionObj& operator*() const  { return *mpCaption; }
+    SdrCaptionObj& operator*()  { return *mpCaption; }
 
     // Does not default to nullptr to make it visually obvious where such is used.
     void reset( SdrCaptionObj* p );
@@ -80,10 +82,9 @@ public:
 
     /** Forget the SdrCaptionObj pointer in this one instance.
         Decrements a use count but does not destroy the object, it's up to the
-        caller to manage this mess..
-        @returns <TRUE/> if the last reference was decremented.
+        caller to manage this mess...
      */
-    bool forget();
+    void forget();
 
     /** Flag that this instance is in Undo, so drawing layer owns it. */
     void setNotOwner();
@@ -130,7 +131,7 @@ private:
 
         Used by move-ctor and move assignment operator.
      */
-    void replaceInList( ScCaptionPtr* pNew );
+    void replaceInList(ScCaptionPtr* pNew) noexcept;
 
     /** Dissolve list when the caption object is released or gone. */
     void dissolve();
@@ -140,7 +141,7 @@ private:
 };
 
 /** Internal data for a cell annotation. */
-struct SC_DLLPUBLIC ScNoteData
+struct ScNoteData
 {
     typedef std::shared_ptr< ScCaptionInitData > ScCaptionInitDataRef;
 
@@ -151,7 +152,6 @@ struct SC_DLLPUBLIC ScNoteData
     bool                mbShown;            /// True = note is visible.
 
     explicit            ScNoteData( bool bShown = false );
-                        ~ScNoteData();
 };
 
 /**
@@ -194,7 +194,7 @@ public:
             object (used e.g. in Undo documents to restore the pointer to the
             existing caption object).
      */
-    ScPostIt*           Clone(
+    std::unique_ptr<ScPostIt> Clone(
                             const ScAddress& rOwnPos,
                             ScDocument& rDestDoc, const ScAddress& rDestPos,
                             bool bCloneCaption ) const;
@@ -304,7 +304,7 @@ public:
      */
     static ScPostIt*    CreateNoteFromCaption(
                             ScDocument& rDoc, const ScAddress& rPos,
-                            SdrCaptionObj* pCaption, bool bShown );
+                            SdrCaptionObj* pCaption );
 
     /** Creates a cell note based on the passed caption object data.
 
@@ -327,21 +327,14 @@ public:
             object. The rectangle may be empty, in this case the default
             position and size is used.
 
-        @param bAlwaysCreateCaption  If sal_True is passed, the caption drawing
-            object will be created immediately. If sal_False is passed, the caption
-            drawing object will not be created if the note is not visible
-            (bShown = sal_False), but the cell note will cache the passed data.
-            MUST be set to sal_False outside of import filter implementations!
-
         @return  Pointer to the new cell note object if insertion was
             successful (i.e. the passed cell position was valid), null
             otherwise. The Calc document is the owner of the note object.
      */
     static ScPostIt*    CreateNoteFromObjectData(
                             ScDocument& rDoc, const ScAddress& rPos,
-                            SfxItemSet* pItemSet, OutlinerParaObject* pOutlinerObj,
-                            const tools::Rectangle& rCaptionRect, bool bShown,
-                            bool bAlwaysCreateCaption, sal_uInt32 nPostItId = 0 );
+                            std::unique_ptr<SfxItemSet> pItemSet, OutlinerParaObject* pOutlinerObj,
+                            const tools::Rectangle& rCaptionRect, bool bShown );
 
     /** Creates a cell note based on the passed string and inserts it into the
         document.

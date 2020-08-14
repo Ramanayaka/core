@@ -18,20 +18,17 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/numeric/ftools.hxx>
-#include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/range/b2irange.hxx>
+#include <basegfx/utils/canvastools.hxx>
+#include <com/sun/star/awt/XTopWindow.hpp>
+#include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <osl/mutex.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
-
-#include <canvas/canvastools.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 #include "cairo_spritecanvas.hxx"
 
@@ -51,30 +48,29 @@ namespace cairocanvas
         SAL_INFO("canvas.cairo", "CairoSpriteCanvas created " << this);
 
         // #i64742# Only call initialize when not in probe mode
-        if( maArguments.getLength() == 0 )
+        if( !maArguments.hasElements() )
             return;
 
         /* maArguments:
            0: ptr to creating instance (Window or VirtualDevice)
-           1: SystemEnvData as a streamed Any (or empty for VirtualDevice)
-           2: current bounds of creating instance
-           3: bool, denoting always on top state for Window (always false for VirtualDevice)
-           4: XWindow for creating Window (or empty for VirtualDevice)
-           5: SystemGraphicsData as a streamed Any
+           1: current bounds of creating instance
+           2: bool, denoting always on top state for Window (always false for VirtualDevice)
+           3: XWindow for creating Window (or empty for VirtualDevice)
+           4: SystemGraphicsData as a streamed Any
          */
         ENSURE_ARG_OR_THROW( maArguments.getLength() >= 4 &&
                              maArguments[0].getValueTypeClass() == uno::TypeClass_HYPER &&
-                             maArguments[4].getValueTypeClass() == uno::TypeClass_INTERFACE,
+                             maArguments[3].getValueTypeClass() == uno::TypeClass_INTERFACE,
                              "CairoSpriteCanvas::initialize: wrong number of arguments, or wrong types" );
 
         awt::Rectangle aRect;
-        maArguments[2] >>= aRect;
+        maArguments[1] >>= aRect;
 
         bool bIsFullscreen( false );
-        maArguments[3] >>= bIsFullscreen;
+        maArguments[2] >>= bIsFullscreen;
 
         uno::Reference< awt::XWindow > xParentWindow;
-        maArguments[4] >>= xParentWindow;
+        maArguments[3] >>= xParentWindow;
 
         VclPtr<vcl::Window> pParentWindow = VCLUnoHelper::GetWindow(xParentWindow);
         if( !pParentWindow )
@@ -137,7 +133,22 @@ namespace cairocanvas
 
     OUString SAL_CALL SpriteCanvas::getServiceName(  )
     {
-        return OUString( SPRITECANVAS_SERVICE_NAME );
+        return "com.sun.star.rendering.SpriteCanvas.Cairo";
+    }
+
+    //  XServiceInfo
+    sal_Bool SpriteCanvas::supportsService(const OUString& sServiceName)
+    {
+        return cppu::supportsService(this, sServiceName);
+
+    }
+    OUString SpriteCanvas::getImplementationName()
+    {
+        return "com.sun.star.comp.rendering.Canvas.Cairo";
+    }
+    css::uno::Sequence< OUString > SpriteCanvas::getSupportedServiceNames()
+    {
+        return { getServiceName() };
     }
 
     SurfaceSharedPtr SpriteCanvas::getSurface()
@@ -173,17 +184,17 @@ namespace cairocanvas
         return maDeviceHelper.getOutputDevice();
     }
 
-    SurfaceSharedPtr SpriteCanvas::getBufferSurface()
+    SurfaceSharedPtr const & SpriteCanvas::getBufferSurface() const
     {
         return maDeviceHelper.getBufferSurface();
     }
 
-    SurfaceSharedPtr SpriteCanvas::getWindowSurface()
+    SurfaceSharedPtr const & SpriteCanvas::getWindowSurface() const
     {
         return maDeviceHelper.getWindowSurface();
     }
 
-    const ::basegfx::B2ISize& SpriteCanvas::getSizePixel()
+    const ::basegfx::B2ISize& SpriteCanvas::getSizePixel() const
     {
         return maDeviceHelper.getSizePixel();
     }
@@ -207,6 +218,16 @@ namespace cairocanvas
     {
         return maCanvasHelper.repaint( pSurface, viewState, renderState );
     }
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_rendering_SpriteCanvas_Cairo_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
+{
+    auto p = new cairocanvas::SpriteCanvas(args, context);
+    p->acquire();
+    p->initialize();
+    return static_cast<cppu::OWeakObject*>(p);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

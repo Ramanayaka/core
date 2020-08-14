@@ -24,13 +24,12 @@
 #include <rtl/ref.hxx>
 #include <tools/datetime.hxx>
 
-#include <unotools/securityoptions.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/docmacromode.hxx>
-#include "bitset.hxx"
+#include <bitset.hxx>
 #include <vcl/timer.hxx>
 
-#include <appbaslib.hxx>
+#include "appbaslib.hxx"
 
 namespace svtools { class AsynchronLink; }
 
@@ -51,7 +50,7 @@ public:
 
 struct SfxObjectShell_Impl : public ::sfx2::IMacroDocumentAccess
 {
-    ::comphelper::EmbeddedObjectContainer* mpObjectContainer;
+    std::unique_ptr<::comphelper::EmbeddedObjectContainer> mxObjectContainer;
     SfxBasicManagerHolder aBasicManager;
     SfxObjectShell&     rDocShell;
     css::uno::Reference< css::script::XLibraryContainer >
@@ -90,25 +89,23 @@ struct SfxObjectShell_Impl : public ::sfx2::IMacroDocumentAccess
                         bSaveVersionOnClose:1,
                         m_bSharedXMLFlag:1, // whether the document should be edited in shared mode
                         m_bAllowShareControlFileClean:1, // whether the flag should be stored in xml file
-                        m_bConfigOptionsChecked:1; // whether or not the user options are checked after the Options dialog is closed.
+                        m_bConfigOptionsChecked:1, // whether or not the user options are checked after the Options dialog is closed.
+                        m_bMacroCallsSeenWhileLoading:1; // whether or not the user options are checked after the Options dialog is closed.
 
     IndexBitSet         aBitSet;
     ErrCode             lErr;
     SfxEventHintId      nEventId;           // If Open/Create as to be sent
                                             // before Activate
-    AutoReloadTimer_Impl *pReloadTimer;
+    std::unique_ptr<AutoReloadTimer_Impl> pReloadTimer;
     SfxLoadedFlags      nLoadedFlags;
     SfxLoadedFlags      nFlagsInProgress;
     bool                bModalMode;
     bool                bRunningMacro;
-    sal_uInt16          nAutoLoadLocks;
-    SfxObjectShellFlags eFlags;
     bool                bReadOnlyUI;
     tools::SvRef<SvRefBase>  xHeaderAttributes;
     ::rtl::Reference< SfxBaseModel >
                         pBaseModel;
     sal_uInt16          nStyleFilter;
-    bool                bDisposing;
 
     bool                m_bEnableSetModified;
     bool                m_bIsModified;
@@ -131,6 +128,10 @@ struct SfxObjectShell_Impl : public ::sfx2::IMacroDocumentAccess
     bool                m_bModifyPasswordEntered;
     /// If true, then this is not a real save, just the signatures change.
     bool m_bSavingForSigning;
+    bool m_bAllowModifiedBackAfterSigning;
+
+    /// Holds Infobars until View is fully loaded
+    std::vector<InfobarData> m_aPendingInfobars;
 
     SfxObjectShell_Impl( SfxObjectShell& _rDocShell );
     virtual ~SfxObjectShell_Impl();
@@ -140,6 +141,7 @@ struct SfxObjectShell_Impl : public ::sfx2::IMacroDocumentAccess
     virtual void setCurrentMacroExecMode( sal_uInt16 nMacroMode ) override;
     virtual OUString getDocumentLocation() const override;
     virtual bool documentStorageHasMacros() const override;
+    virtual bool macroCallsSeenWhileLoading() const override;
     virtual css::uno::Reference< css::document::XEmbeddedScripts > getEmbeddedDocumentScripts() const override;
     virtual SignatureState getScriptingSignatureState() override;
 

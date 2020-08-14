@@ -25,11 +25,10 @@
 #include <memory>
 
 #include <svx/sdr/properties/properties.hxx>
+#include <svl/itemset.hxx>
 
 
-namespace sdr
-{
-    namespace properties
+namespace sdr::properties
     {
         class EmptyProperties : public BaseProperties
         {
@@ -57,7 +56,7 @@ namespace sdr
             explicit EmptyProperties(SdrObject& rObj);
 
             // Clone() operator, normally just calls the local copy constructor
-            virtual BaseProperties& Clone(SdrObject& rObj) const override;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
 
             // get itemset
             virtual const SfxItemSet& GetObjectItemSet() const override;
@@ -72,7 +71,7 @@ namespace sdr
             virtual void ClearObjectItem(const sal_uInt16 nWhich = 0) override;
 
             // clear single item direct, do not do any notifies or things like that.
-            // Also supports complete deleteion of items when default parameter 0 is used.
+            // Also supports complete deletion of items when default parameter 0 is used.
             virtual void ClearObjectItemDirect(const sal_uInt16 nWhich) override;
 
             // set complete item set
@@ -84,8 +83,7 @@ namespace sdr
             // get the installed StyleSheet
             virtual SfxStyleSheet* GetStyleSheet() const override;
         };
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace sdr::properties
 
 #endif // INCLUDED_SVX_SDR_PROPERTIES_EMPTYPROPERTIES_HXX
 

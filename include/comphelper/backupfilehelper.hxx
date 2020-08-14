@@ -14,8 +14,6 @@
 
 #include <comphelper/comphelperdllapi.h>
 #include <rtl/ustring.hxx>
-#include <osl/file.hxx>
-#include <memory>
 #include <set>
 #include <vector>
 
@@ -38,15 +36,15 @@ namespace comphelper
      *
      *  You need to hand over the URL of the file to look at and
      *  a maximum number of allowed copies. That number is internally
-     *  limited to a absolute max of 10 (see implementation). The number
+     *  limited to an absolute max of 10 (see implementation). The number
      *  of allowed copies is limited to [1..max].
      *
      *  Calling tryPush() will check if there is no backup yet or if
      *  there is one that the file has changed. If yes, a new copy is
-     *  created on a kind of 'stack' of copies. Tre return value can
+     *  created on a kind of 'stack' of copies. The return value can
      *  be used to see if a backup was indeed created.
      *
-     *  Calling tryPop() will do the opposite: If a backup is available,
+     *  Calling tryPop() will do the opposite: if a backup is available,
      *  delete the orig file and re-instantiate the backup. The backup
      *  is taken off the 'stack' of copies. The return value can be
      *  used to check if this was done.
@@ -121,13 +119,10 @@ namespace comphelper
          *  Also may cleanup older backups when NumBackups given in the
          *  constructor has changed.
          *
-         *  @return bool
-         *          returns true if a new backup was actually created
-         *
          * tryPushExtensionInfo is the specialized version for ExtensionInfo
          */
-        bool tryPush();
-        bool tryPushExtensionInfo();
+        void tryPush();
+        void tryPushExtensionInfo();
 
         /** finds out if a restore is possible
          *
@@ -137,20 +132,17 @@ namespace comphelper
          * isPopPossibleExtensionInfo is the specialized version for ExtensionInfo
          */
         bool isPopPossible();
-        bool isPopPossibleExtensionInfo();
+        bool isPopPossibleExtensionInfo() const;
 
         /** tries to execute a restore. Will overwrite the base file
          *  in that case and take one version off the 'stack' of copies.
          *  Also may cleanup older backups when NumBackups given in the
          *  constructor has changed.
          *
-         *  @return bool
-         *          returns true if a restore was actually created
-         *
          * tryPopExtensionInfo is the specialized version for ExtensionInfo
          */
-        bool tryPop();
-        bool tryPopExtensionInfo();
+        void tryPop();
+        void tryPopExtensionInfo();
 
         /** tries to iterate the extensions and to disable all of them
         */
@@ -192,7 +184,7 @@ namespace comphelper
 
     private:
         // internal helper methods
-        static const rtl::OUString getPackURL();
+        static OUString getPackURL();
         static const std::vector< OUString >& getCustomizationDirNames();
         static const std::vector< OUString >& getCustomizationFileNames();
 

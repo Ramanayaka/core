@@ -20,21 +20,20 @@
 #include "unocontroltablemodel.hxx"
 #include "unogridcolumnfacade.hxx"
 
-#include "table/defaultinputhandler.hxx"
-#include "table/gridtablerenderer.hxx"
-#include "table/tablecontrol.hxx"
+#include <table/defaultinputhandler.hxx>
+#include <table/gridtablerenderer.hxx>
 
 #include <com/sun/star/awt/grid/XGridColumn.hpp>
-#include <com/sun/star/view/SelectionType.hpp>
 #include <com/sun/star/awt/grid/XSortableGridData.hpp>
-
+#include <com/sun/star/util/Color.hpp>
+#include <o3tl/safeint.hxx>
+#include <sal/log.hxx>
 #include <cppuhelper/weakref.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include <vcl/svapp.hxx>
 
 
-namespace svt { namespace table
+namespace svt::table
 {
 
 
@@ -71,16 +70,16 @@ namespace svt { namespace table
         TableMetrics                                    nRowHeight;
         TableMetrics                                    nColumnHeaderHeight;
         TableMetrics                                    nRowHeaderWidth;
-        ::boost::optional< ::Color >                    m_aGridLineColor;
-        ::boost::optional< ::Color >                    m_aHeaderBackgroundColor;
-        ::boost::optional< ::Color >                    m_aHeaderTextColor;
-        ::boost::optional< ::Color >                    m_aActiveSelectionBackColor;
-        ::boost::optional< ::Color >                    m_aInactiveSelectionBackColor;
-        ::boost::optional< ::Color >                    m_aActiveSelectionTextColor;
-        ::boost::optional< ::Color >                    m_aInactiveSelectionTextColor;
-        ::boost::optional< ::Color >                    m_aTextColor;
-        ::boost::optional< ::Color >                    m_aTextLineColor;
-        ::boost::optional< ::std::vector< ::Color > >   m_aRowColors;
+        ::std::optional< ::Color >                    m_aGridLineColor;
+        ::std::optional< ::Color >                    m_aHeaderBackgroundColor;
+        ::std::optional< ::Color >                    m_aHeaderTextColor;
+        ::std::optional< ::Color >                    m_aActiveSelectionBackColor;
+        ::std::optional< ::Color >                    m_aInactiveSelectionBackColor;
+        ::std::optional< ::Color >                    m_aActiveSelectionTextColor;
+        ::std::optional< ::Color >                    m_aInactiveSelectionTextColor;
+        ::std::optional< ::Color >                    m_aTextColor;
+        ::std::optional< ::Color >                    m_aTextLineColor;
+        ::std::optional< ::std::vector< ::Color > >   m_aRowColors;
         VerticalAlignment                               m_eVerticalAlign;
         bool                                            bEnabled;
         ModellListeners                                 m_aListeners;
@@ -124,8 +123,8 @@ namespace svt { namespace table
         m_pImpl->bHasColumnHeaders = true;
         m_pImpl->bHasRowHeaders = false;
         m_pImpl->bEnabled = true;
-        m_pImpl->pRenderer.reset( new GridTableRenderer( *this ) );
-        m_pImpl->pInputHandler.reset( new DefaultInputHandler );
+        m_pImpl->pRenderer = std::make_shared<GridTableRenderer>( *this );
+        m_pImpl->pInputHandler = std::make_shared<DefaultInputHandler>();
     }
 
 
@@ -137,7 +136,7 @@ namespace svt { namespace table
     TableSize UnoControlTableModel::getColumnCount() const
     {
         DBG_CHECK_ME();
-        return (TableSize)m_pImpl->aColumns.size();
+        return static_cast<TableSize>(m_pImpl->aColumns.size());
     }
 
 
@@ -154,7 +153,7 @@ namespace svt { namespace table
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svtools.uno");
         }
         return nRowCount;
     }
@@ -215,20 +214,17 @@ namespace svt { namespace table
     void UnoControlTableModel::insertColumn( ColPos const i_position, Reference< XGridColumn > const & i_column )
     {
         DBG_CHECK_ME();
-        ENSURE_OR_RETURN_VOID( ( i_position >= 0 ) && ( size_t( i_position ) <= m_pImpl->aColumns.size() ),
+        ENSURE_OR_RETURN_VOID( ( i_position >= 0 ) && ( o3tl::make_unsigned( i_position ) <= m_pImpl->aColumns.size() ),
             "UnoControlTableModel::insertColumn: illegal position!" );
 
-        const PColumnModel pColumn( new UnoGridColumnFacade( *this, i_column ) );
+        const PColumnModel pColumn = std::make_shared<UnoGridColumnFacade>( *this, i_column );
         m_pImpl->aColumns.insert( m_pImpl->aColumns.begin() + i_position, pColumn );
 
         // notify listeners
         ModellListeners aListeners( m_pImpl->m_aListeners );
-        for (   ModellListeners::const_iterator loop = aListeners.begin();
-                loop != aListeners.end();
-                ++loop
-            )
+        for (auto const& listener : aListeners)
         {
-            (*loop)->columnInserted();
+            listener->columnInserted();
         }
     }
 
@@ -236,7 +232,7 @@ namespace svt { namespace table
     void UnoControlTableModel::removeColumn( ColPos const i_position )
     {
         DBG_CHECK_ME();
-        ENSURE_OR_RETURN_VOID( ( i_position >= 0 ) && ( size_t( i_position ) <= m_pImpl->aColumns.size() ),
+        ENSURE_OR_RETURN_VOID( ( i_position >= 0 ) && ( o3tl::make_unsigned( i_position ) <= m_pImpl->aColumns.size() ),
             "UnoControlTableModel::removeColumn: illegal position!" );
 
         // remove the column
@@ -246,12 +242,9 @@ namespace svt { namespace table
 
         // notify listeners
         ModellListeners aListeners( m_pImpl->m_aListeners );
-        for (   ModellListeners::const_iterator loop = aListeners.begin();
-                loop != aListeners.end();
-                ++loop
-            )
+        for (auto const& listener : aListeners)
         {
-            (*loop)->columnRemoved();
+            listener->columnRemoved();
         }
 
         // dispose the column
@@ -269,12 +262,9 @@ namespace svt { namespace table
             return;
 
         // dispose the column instances
-        for (   ColumnModels::const_iterator col = m_pImpl->aColumns.begin();
-                col != m_pImpl->aColumns.end();
-                ++col
-            )
+        for (auto const& col : m_pImpl->aColumns)
         {
-            UnoGridColumnFacade* pColumn = dynamic_cast< UnoGridColumnFacade* >( col->get() );
+            UnoGridColumnFacade* pColumn = dynamic_cast< UnoGridColumnFacade* >( col.get() );
             if ( !pColumn )
             {
                 SAL_WARN( "svtools.uno", "UnoControlTableModel::removeAllColumns: illegal column implementation!" );
@@ -287,12 +277,9 @@ namespace svt { namespace table
 
         // notify listeners
         ModellListeners aListeners( m_pImpl->m_aListeners );
-        for (   ModellListeners::const_iterator loop = aListeners.begin();
-                loop != aListeners.end();
-                ++loop
-            )
+        for (auto const& listener : aListeners)
         {
-            (*loop)->allColumnsRemoved();
+            listener->allColumnsRemoved();
         }
     }
 
@@ -300,12 +287,9 @@ namespace svt { namespace table
     void UnoControlTableModel::impl_notifyTableMetricsChanged() const
     {
         ModellListeners aListeners( m_pImpl->m_aListeners );
-        for (   ModellListeners::const_iterator loop = aListeners.begin();
-                loop != aListeners.end();
-                ++loop
-            )
+        for (auto const& listener : aListeners)
         {
-            (*loop)->tableMetricsChanged();
+            listener->tableMetricsChanged();
         }
     }
 
@@ -404,16 +388,11 @@ namespace svt { namespace table
     void UnoControlTableModel::removeTableModelListener( const PTableModelListener& i_listener )
     {
         DBG_CHECK_ME();
-        for (   ModellListeners::iterator lookup = m_pImpl->m_aListeners.begin();
-                lookup != m_pImpl->m_aListeners.end();
-                ++lookup
-            )
+        auto lookup = std::find(m_pImpl->m_aListeners.begin(), m_pImpl->m_aListeners.end(), i_listener);
+        if (lookup != m_pImpl->m_aListeners.end())
         {
-            if ( *lookup == i_listener )
-            {
-                m_pImpl->m_aListeners.erase( lookup );
-                return;
-            }
+            m_pImpl->m_aListeners.erase( lookup );
+            return;
         }
         OSL_ENSURE( false, "UnoControlTableModel::removeTableModelListener: listener is not registered - sure you're doing the right thing here?" );
     }
@@ -496,11 +475,9 @@ namespace svt { namespace table
                 // not (yet?) know about it.
                 // So, handle it gracefully.
             #if OSL_DEBUG_LEVEL > 0
-                {
-                    Reference< XGridColumnModel > const xColumnModel( m_pImpl->m_aColumnModel );
-                    OSL_ENSURE( xColumnModel.is() && i_col < xColumnModel->getColumnCount(),
-                        "UnoControlTableModel::getCellContent: request a column's value which the ColumnModel doesn't know about!" );
-                }
+                Reference< XGridColumnModel > const xColumnModel( m_pImpl->m_aColumnModel );
+                OSL_ENSURE( xColumnModel.is() && i_col < xColumnModel->getColumnCount(),
+                    "UnoControlTableModel::getCellContent: request a column's value which the ColumnModel doesn't know about!" );
             #endif
             }
             else
@@ -510,7 +487,7 @@ namespace svt { namespace table
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svtools.uno");
         }
     }
 
@@ -527,7 +504,7 @@ namespace svt { namespace table
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svtools.uno");
         }
     }
 
@@ -547,7 +524,7 @@ namespace svt { namespace table
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svtools.uno");
         }
         return aRowHeading;
     }
@@ -555,16 +532,16 @@ namespace svt { namespace table
 
     namespace
     {
-        void lcl_setColor( Any const & i_color, ::boost::optional< ::Color > & o_convertedColor )
+        void lcl_setColor( Any const & i_color, ::std::optional< ::Color > & o_convertedColor )
         {
             if ( !i_color.hasValue() )
                 o_convertedColor.reset();
             else
             {
-                sal_Int32 nColor = COL_TRANSPARENT;
+                Color nColor = COL_TRANSPARENT;
                 if ( i_color >>= nColor )
                 {
-                    o_convertedColor.reset( ::Color( nColor ) );
+                    o_convertedColor = nColor;
                 }
                 else
                 {
@@ -575,7 +552,7 @@ namespace svt { namespace table
     }
 
 
-    ::boost::optional< ::Color > UnoControlTableModel::getLineColor() const
+    ::std::optional< ::Color > UnoControlTableModel::getLineColor() const
     {
         DBG_CHECK_ME();
         return m_pImpl->m_aGridLineColor;
@@ -589,7 +566,7 @@ namespace svt { namespace table
     }
 
 
-    ::boost::optional< ::Color > UnoControlTableModel::getHeaderBackgroundColor() const
+    ::std::optional< ::Color > UnoControlTableModel::getHeaderBackgroundColor() const
     {
         DBG_CHECK_ME();
         return m_pImpl->m_aHeaderBackgroundColor;
@@ -603,35 +580,35 @@ namespace svt { namespace table
     }
 
 
-    ::boost::optional< ::Color > UnoControlTableModel::getHeaderTextColor() const
+    ::std::optional< ::Color > UnoControlTableModel::getHeaderTextColor() const
     {
         DBG_CHECK_ME();
         return m_pImpl->m_aHeaderTextColor;
     }
 
 
-    ::boost::optional< ::Color > UnoControlTableModel::getActiveSelectionBackColor() const
+    ::std::optional< ::Color > UnoControlTableModel::getActiveSelectionBackColor() const
     {
         DBG_CHECK_ME();
         return m_pImpl->m_aActiveSelectionBackColor;
     }
 
 
-    ::boost::optional< ::Color > UnoControlTableModel::getInactiveSelectionBackColor() const
+    ::std::optional< ::Color > UnoControlTableModel::getInactiveSelectionBackColor() const
     {
         DBG_CHECK_ME();
         return m_pImpl->m_aInactiveSelectionBackColor;
     }
 
 
-    ::boost::optional< ::Color > UnoControlTableModel::getActiveSelectionTextColor() const
+    ::std::optional< ::Color > UnoControlTableModel::getActiveSelectionTextColor() const
     {
         DBG_CHECK_ME();
         return m_pImpl->m_aActiveSelectionTextColor;
     }
 
 
-    ::boost::optional< ::Color > UnoControlTableModel::getInactiveSelectionTextColor() const
+    ::std::optional< ::Color > UnoControlTableModel::getInactiveSelectionTextColor() const
     {
         DBG_CHECK_ME();
         return m_pImpl->m_aInactiveSelectionTextColor;
@@ -673,7 +650,7 @@ namespace svt { namespace table
     }
 
 
-    ::boost::optional< ::Color > UnoControlTableModel::getTextColor() const
+    ::std::optional< ::Color > UnoControlTableModel::getTextColor() const
     {
         DBG_CHECK_ME();
         return m_pImpl->m_aTextColor;
@@ -687,7 +664,7 @@ namespace svt { namespace table
     }
 
 
-    ::boost::optional< ::Color > UnoControlTableModel::getTextLineColor() const
+    ::std::optional< ::Color > UnoControlTableModel::getTextLineColor() const
     {
         DBG_CHECK_ME();
         return m_pImpl->m_aTextColor;
@@ -701,7 +678,7 @@ namespace svt { namespace table
     }
 
 
-    ::boost::optional< ::std::vector< ::Color > > UnoControlTableModel::getRowBackgroundColors() const
+    ::std::optional< ::std::vector< ::Color > > UnoControlTableModel::getRowBackgroundColors() const
     {
         DBG_CHECK_ME();
         return m_pImpl->m_aRowColors;
@@ -717,11 +694,9 @@ namespace svt { namespace table
         else
         {
             ::std::vector< ::Color > aColors( aAPIColors.getLength() );
-            for ( sal_Int32 i=0; i<aAPIColors.getLength(); ++i )
-            {
-                aColors[i] = ::Color( aAPIColors[i] );
-            }
-            m_pImpl->m_aRowColors.reset( aColors );
+            std::transform(aAPIColors.begin(), aAPIColors.end(), aColors.begin(),
+                [](const css::util::Color& rAPIColor) -> ::Color { return Color(rAPIColor); });
+            m_pImpl->m_aRowColors = aColors;
         }
     }
 
@@ -743,13 +718,12 @@ namespace svt { namespace table
     ColPos UnoControlTableModel::getColumnPos( UnoGridColumnFacade const & i_column ) const
     {
         DBG_CHECK_ME();
-        for (   ColumnModels::const_iterator col = m_pImpl->aColumns.begin();
-                col != m_pImpl->aColumns.end();
-                ++col
-            )
+        ColPos nPos = 0;
+        for (auto const& col : m_pImpl->aColumns)
         {
-            if ( &i_column == col->get() )
-                return col - m_pImpl->aColumns.begin();
+            if ( &i_column == col.get() )
+                return nPos;
+            ++nPos;
         }
         OSL_ENSURE( false, "UnoControlTableModel::getColumnPos: column not found!" );
         return COL_INVALID;
@@ -792,7 +766,7 @@ namespace svt { namespace table
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svtools.uno");
         }
     }
 
@@ -811,7 +785,7 @@ namespace svt { namespace table
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svtools.uno");
         }
         return currentSort;
     }
@@ -824,12 +798,9 @@ namespace svt { namespace table
             "UnoControlTableModel::notifyColumnChange: invalid column index!" );
 
         ModellListeners aListeners( m_pImpl->m_aListeners );
-        for (   ModellListeners::const_iterator loop = aListeners.begin();
-                loop != aListeners.end();
-                ++loop
-            )
+        for (auto const& listener : aListeners)
         {
-            (*loop)->columnChanged( i_columnPos, i_attributeGroup );
+            listener->columnChanged( i_columnPos, i_attributeGroup );
         }
     }
 
@@ -861,12 +832,9 @@ namespace svt { namespace table
 
         // multiplex the event to our own listeners
         ModellListeners aListeners( m_pImpl->m_aListeners );
-        for (   ModellListeners::const_iterator loop = aListeners.begin();
-                loop != aListeners.end();
-                ++loop
-            )
+        for (auto const& listener : aListeners)
         {
-            (*loop)->rowsInserted( i_event.FirstRow, i_event.LastRow );
+            listener->rowsInserted( i_event.FirstRow, i_event.LastRow );
         }
     }
 
@@ -874,12 +842,9 @@ namespace svt { namespace table
     void UnoControlTableModel::notifyRowsRemoved( GridDataEvent const & i_event ) const
     {
         ModellListeners aListeners( m_pImpl->m_aListeners );
-        for (   ModellListeners::const_iterator loop = aListeners.begin();
-                loop != aListeners.end();
-                ++loop
-            )
+        for (auto const& listener : aListeners)
         {
-            (*loop)->rowsRemoved( i_event.FirstRow, i_event.LastRow );
+            listener->rowsRemoved( i_event.FirstRow, i_event.LastRow );
         }
     }
 
@@ -890,12 +855,9 @@ namespace svt { namespace table
         RowPos const lastRow = i_event.FirstRow == -1 ? getRowCount() - 1 : i_event.LastRow;
 
         ModellListeners aListeners( m_pImpl->m_aListeners );
-        for (   ModellListeners::const_iterator loop = aListeners.begin();
-                loop != aListeners.end();
-                ++loop
-            )
+        for (auto const& listener : aListeners)
         {
-            (*loop)->cellsUpdated( firstRow, lastRow );
+            listener->cellsUpdated( firstRow, lastRow );
         }
     }
 
@@ -903,16 +865,13 @@ namespace svt { namespace table
     void UnoControlTableModel::notifyAllDataChanged() const
     {
         ModellListeners aListeners( m_pImpl->m_aListeners );
-        for (   ModellListeners::const_iterator loop = aListeners.begin();
-                loop != aListeners.end();
-                ++loop
-            )
+        for (auto const& listener : aListeners)
         {
-            (*loop)->cellsUpdated( 0, getRowCount() - 1 );
+            listener->cellsUpdated( 0, getRowCount() - 1 );
         }
     }
 
 
-} } // svt::table
+} // svt::table
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

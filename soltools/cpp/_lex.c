@@ -58,14 +58,12 @@
 enum state
 {
     START = 0, NUM1, NUM2, NUM3, ID1, ST1, ST2, ST3, COM1, COM2, COM3, COM4,
-    CC1, CC2, WS1, PLUS1, MINUS1, STAR1, SLASH1, PCT1, SHARP1,
+    CC1, CC2, WS1, PLUS1, MINUS1, STAR1, PCT1, SHARP1,
     CIRC1, GT1, GT2, LT1, LT2, OR1, AND1, ASG1, NOT1, DOTS1,
     S_SELF = MAXSTATE, S_SELFB, S_EOF, S_NL, S_EOFSTR,
     S_STNL, S_COMNL, S_EOFCOM, S_COMMENT, S_EOB, S_WS, S_NAME
 };
 
-int tottok;
-int tokkind[256];
 struct fsm
 {
     int state;                          /* if in this state */
@@ -73,7 +71,7 @@ struct fsm
     int nextstate;                      /* enter this state if +ve */
 };
 
-static /*const*/ struct fsm fsm[] = {
+static const struct fsm fsm[] = {
     /* start state */
          {START, {C_XX}, ACT(UNCLASS, S_SELF)},
          {START, {' ', '\t', '\v'}, WS1},
@@ -256,12 +254,12 @@ static /*const*/ struct fsm fsm[] = {
 
 /* first index is char, second is state */
 /* increase #states to power of 2 to encourage use of shift */
-short bigfsm[256][MAXSTATE];
+static short bigfsm[256][MAXSTATE];
 
 void
     expandlex(void)
 {
-     /* const */ struct fsm *fp;
+    const struct fsm *fp;
     int i, j, nstate;
 
     for (fp = fsm; fp->state >= 0; fp++)
@@ -366,6 +364,7 @@ continue2:
         {
             trp->lp = tp;
             tp = growtokenrow(trp);
+            // coverity[overrun-local : FALSE] - a multiple of trp->max is allocated, not trp->max itself
             maxp = &trp->bp[trp->max];
         }
         tp->type = UNCLASS;
@@ -625,10 +624,14 @@ int
 int
     fillbuf(Source * s)
 {
-    int n;
+    int n = 0;
 
-    if (s->fd < 0 || (n = read(s->fd, (char *) s->inl, INS / 8)) <= 0)
-        n = 0;
+    if (s->fd >= 0)
+    {
+        n = read(s->fd, (char *) s->inl, INS / 8);
+        if (n <= 0)
+            n = 0;
+    }
     s->inl += n;
     s->inl[0] = s->inl[1] = s->inl[2] = s->inl[3] = EOB;
     if (n == 0)
@@ -645,7 +648,7 @@ int
  * if fd==-1 and str, then from the string.
  */
 Source *
-    setsource(char *name, int path, int fd, char *str, int wrap)
+    setsource(char *name, int path, int fd, char const *str, int wrap)
 {
     Source *s = new(Source);
     size_t len;
@@ -670,7 +673,7 @@ Source *
         len = strlen(str);
         s->inb = domalloc(len + 4);
         s->inp = s->inb;
-        strncpy((char *) s->inp, str, len);
+        memcpy((char *) s->inp, str, len);
     }
     else
     {

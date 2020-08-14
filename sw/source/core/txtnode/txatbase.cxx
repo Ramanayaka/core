@@ -17,12 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <libxml/xmlwriter.h>
 #include <svl/itempool.hxx>
 #include <txatbase.hxx>
 #include <fmtfld.hxx>
-#include <docufld.hxx>
 
 SwTextAttr::SwTextAttr( SfxPoolItem& rAttr, sal_Int32 nStart )
     : m_pAttr( &rAttr )
@@ -42,13 +41,18 @@ SwTextAttr::SwTextAttr( SfxPoolItem& rAttr, sal_Int32 nStart )
 {
 }
 
-SwTextAttr::~SwTextAttr( )
+SwTextAttr::~SwTextAttr() COVERITY_NOEXCEPT_FALSE
 {
 }
 
-sal_Int32* SwTextAttr::GetEnd()
+const sal_Int32* SwTextAttr::GetEnd() const
 {
     return nullptr;
+}
+
+void SwTextAttr::SetEnd(sal_Int32 )
+{
+    assert(false);
 }
 
 void SwTextAttr::Destroy( SwTextAttr * pToDestroy, SfxItemPool& rPool )
@@ -70,9 +74,16 @@ SwTextAttrEnd::SwTextAttrEnd( SfxPoolItem& rAttr,
 {
 }
 
-sal_Int32* SwTextAttrEnd::GetEnd()
+const sal_Int32* SwTextAttrEnd::GetEnd() const
 {
     return & m_nEnd;
+}
+
+void SwTextAttrEnd::SetEnd(sal_Int32 n)
+{
+    m_nEnd = n;
+    if (m_pHints)
+        m_pHints->EndPosChanged();
 }
 
 void SwTextAttr::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -84,7 +95,7 @@ void SwTextAttr::dumpAsXml(xmlTextWriterPtr pWriter) const
         xmlTextWriterWriteAttribute(pWriter, BAD_CAST("end"), BAD_CAST(OString::number(*End()).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
     const char* pWhich = nullptr;
-    boost::optional<OString> oValue;
+    std::optional<OString> oValue;
     switch (Which())
     {
     case RES_TXTATR_AUTOFMT:
@@ -100,26 +111,31 @@ void SwTextAttr::dumpAsXml(xmlTextWriterPtr pWriter) const
         {
             pWhich = "character format";
             if (SwCharFormat* pCharFormat = GetCharFormat().GetCharFormat())
-                oValue = "name: " + OUStringToOString(pCharFormat->GetName(), RTL_TEXTENCODING_UTF8);
+                oValue = OString("name: " + OUStringToOString(pCharFormat->GetName(), RTL_TEXTENCODING_UTF8));
             break;
         }
     case RES_TXTATR_INETFMT:
         {
             pWhich = "inet format";
             const SwFormatINetFormat& rFormat = GetINetFormat();
-            oValue = "url: " + rFormat.GetValue().toUtf8();
+            oValue = OString("url: " + rFormat.GetValue().toUtf8());
             break;
         }
     case RES_TXTATR_CJK_RUBY:
         {
             pWhich = "ruby";
             const SwFormatRuby& rFormat = GetRuby();
-            oValue = "rubytext: " + rFormat.GetText().toUtf8();
+            oValue = OString("rubytext: " + rFormat.GetText().toUtf8());
             break;
         }
     case RES_TXTATR_META:
         {
             pWhich = "meta";
+            break;
+        }
+    case RES_TXTATR_FIELD:
+        {
+            pWhich = "field";
             break;
         }
     default:
@@ -129,8 +145,19 @@ void SwTextAttr::dumpAsXml(xmlTextWriterPtr pWriter) const
         xmlTextWriterWriteAttribute(pWriter, BAD_CAST("which"), BAD_CAST(pWhich));
     if (oValue)
         xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"), BAD_CAST(oValue->getStr()));
-    if (Which() == RES_TXTATR_AUTOFMT)
-        GetAutoFormat().dumpAsXml(pWriter);
+    switch (Which())
+    {
+        case RES_TXTATR_AUTOFMT:
+            GetAutoFormat().dumpAsXml(pWriter);
+            break;
+        case RES_TXTATR_FIELD:
+        case RES_TXTATR_INPUTFIELD:
+            GetFormatField().dumpAsXml(pWriter);
+            break;
+        default:
+            SAL_WARN("sw.core", "Unhandled TXTATR");
+            break;
+    }
 
     xmlTextWriterEndElement(pWriter);
 }

@@ -22,8 +22,6 @@
 
 #include <com/sun/star/sdbc/XStatement.hpp>
 #include <com/sun/star/sdbc/XWarningsSupplier.hpp>
-#include <com/sun/star/sdbc/XMultipleResults.hpp>
-#include <com/sun/star/sdbc/XBatchExecution.hpp>
 #include <com/sun/star/sdbc/XCloseable.hpp>
 #include <com/sun/star/sdbc/SQLWarning.hpp>
 #include <com/sun/star/util/XCancellable.hpp>
@@ -31,19 +29,16 @@
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/implbase2.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <comphelper/uno3.hxx>
 #include <connectivity/CommonTools.hxx>
-#include "file/FConnection.hxx"
-#include "file/filedllapi.hxx"
-#include <list>
+#include <connectivity/sqlparse.hxx>
+#include <file/FConnection.hxx>
+#include <file/filedllapi.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <comphelper/propertycontainer.hxx>
-#include "file/fanalyzer.hxx"
-#include "TSortIndex.hxx"
+#include <file/fanalyzer.hxx>
+#include <TSortIndex.hxx>
 
-namespace connectivity
-{
-    namespace file
+namespace connectivity::file
     {
         class OResultSet;
         class OFileTable;
@@ -78,7 +73,7 @@ namespace connectivity
 
             rtl::Reference<OConnection>                 m_pConnection;// The owning Connection object
             connectivity::OSQLParseNode*                m_pParseTree;
-            OSQLAnalyzer*                               m_pSQLAnalyzer; //the sql analyzer used by the resultset
+            std::unique_ptr<OSQLAnalyzer>               m_pSQLAnalyzer; //the sql analyzer used by the resultset
 
             rtl::Reference<OFileTable>                  m_pTable;       // the current table
             OValueRefRow                                m_aSelectRow;
@@ -102,8 +97,8 @@ namespace connectivity
             void createColumnMapping();
             // searches the statement for sort criteria
             void anylizeSQL();
-            void setOrderbyColumn( connectivity::OSQLParseNode* pColumnRef,
-                                     connectivity::OSQLParseNode* pAscendingDescending);
+            void setOrderbyColumn( connectivity::OSQLParseNode const * pColumnRef,
+                                   connectivity::OSQLParseNode const * pAscendingDescending);
 
             virtual void initializeResultSet(OResultSet* _pResult);
 
@@ -162,15 +157,11 @@ namespace connectivity
             virtual void SAL_CALL close(  ) override;
         };
 
-        class OOO_DLLPUBLIC_FILE OStatement_BASE2 :
-                                    public OStatement_Base,
-                                    public connectivity::OSubComponent<OStatement_BASE2, OStatement_BASE>
+        class OOO_DLLPUBLIC_FILE OStatement_BASE2 : public OStatement_Base
 
         {
-            friend class connectivity::OSubComponent<OStatement_BASE2, OStatement_BASE>;
         public:
-            OStatement_BASE2(OConnection* _pConnection ) :  OStatement_Base(_pConnection ),
-                                    connectivity::OSubComponent<OStatement_BASE2, OStatement_BASE>(static_cast<cppu::OWeakObject*>(_pConnection), this){}
+            OStatement_BASE2(OConnection* _pConnection ) : OStatement_Base(_pConnection ) {}
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
             // XInterface
@@ -200,7 +191,7 @@ namespace connectivity
             virtual sal_Bool SAL_CALL execute( const OUString& sql ) override ;
             virtual css::uno::Reference< css::sdbc::XConnection > SAL_CALL getConnection(  ) override ;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FSTATEMENT_HXX
 

@@ -17,26 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/ControlFactory.hxx>
-
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/chart/ChartAxisLabelPosition.hpp>
+#include <com/sun/star/chart2/AxisOrientation.hpp>
+#include <com/sun/star/chart2/XAxis.hpp>
+#include <com/sun/star/util/XModifyBroadcaster.hpp>
+
+#include <vcl/svapp.hxx>
 
 #include "ChartAxisPanel.hxx"
-#include "ChartController.hxx"
-#include <sfx2/bindings.hxx>
-#include <sfx2/dispatch.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/field.hxx>
-#include <vcl/toolbox.hxx>
-#include <svl/intitem.hxx>
-#include <svl/stritem.hxx>
-#include <comphelper/processfactory.hxx>
+#include <ChartController.hxx>
 
 using namespace css;
 using namespace css::uno;
 
-namespace chart { namespace sidebar {
+namespace chart::sidebar {
 
 namespace {
 
@@ -76,7 +71,7 @@ struct AxisLabelPosMap
     css::chart::ChartAxisLabelPosition ePos;
 };
 
-AxisLabelPosMap aLabelPosMap[] = {
+AxisLabelPosMap const aLabelPosMap[] = {
     { 0, css::chart::ChartAxisLabelPosition_NEAR_AXIS },
     { 1, css::chart::ChartAxisLabelPosition_NEAR_AXIS_OTHER_SIDE },
     { 2, css::chart::ChartAxisLabelPosition_OUTSIDE_START },
@@ -98,7 +93,7 @@ sal_Int32 getLabelPosition(const css::uno::Reference<css::frame::XModel>& xModel
 
     css::chart::ChartAxisLabelPosition ePos;
     aAny >>= ePos;
-    for (AxisLabelPosMap & i : aLabelPosMap)
+    for (AxisLabelPosMap const & i : aLabelPosMap)
     {
         if (i.ePos == ePos)
             return i.nPos;
@@ -117,7 +112,7 @@ void setLabelPosition(const css::uno::Reference<css::frame::XModel>& xModel,
         return;
 
     css::chart::ChartAxisLabelPosition ePos;
-    for (AxisLabelPosMap & i : aLabelPosMap)
+    for (AxisLabelPosMap const & i : aLabelPosMap)
     {
         if (i.nPos == nPos)
             ePos = i.ePos;
@@ -129,8 +124,8 @@ void setLabelPosition(const css::uno::Reference<css::frame::XModel>& xModel,
 bool isReverse(const css::uno::Reference<css::frame::XModel>& xModel,
         const OUString& rCID)
 {
-    css::uno::Reference< css::chart2::XAxis > xAxis(
-        ObjectIdentifier::getAxisForCID(rCID, xModel), uno::UNO_QUERY );
+    css::uno::Reference< css::chart2::XAxis > xAxis =
+        ObjectIdentifier::getAxisForCID(rCID, xModel);
 
     if (!xAxis.is())
         return false;
@@ -143,8 +138,8 @@ bool isReverse(const css::uno::Reference<css::frame::XModel>& xModel,
 void setReverse(const css::uno::Reference<css::frame::XModel>& xModel,
         const OUString& rCID, bool bReverse)
 {
-    css::uno::Reference< css::chart2::XAxis > xAxis(
-        ObjectIdentifier::getAxisForCID(rCID, xModel), uno::UNO_QUERY );
+    css::uno::Reference< css::chart2::XAxis > xAxis =
+        ObjectIdentifier::getAxisForCID(rCID, xModel);
 
     if (!xAxis.is())
         return;
@@ -169,7 +164,7 @@ OUString getCID(const css::uno::Reference<css::frame::XModel>& xModel)
     assert(aAny.hasValue());
     OUString aCID;
     aAny >>= aCID;
-#ifdef DBG_UTIL
+#if defined DBG_UTIL && !defined NDEBUG
     ObjectType eType = ObjectIdentifier::getObjectType(aCID);
     assert(eType == OBJECTTYPE_AXIS);
 #endif
@@ -210,19 +205,17 @@ ChartAxisPanel::ChartAxisPanel(
     vcl::Window* pParent,
     const css::uno::Reference<css::frame::XFrame>& rxFrame,
     ChartController* pController)
-  : PanelLayout(pParent, "ChartAxisPanel", "modules/schart/ui/sidebaraxis.ui", rxFrame),
-    mxModel(pController->getModel()),
-    mxModifyListener(new ChartSidebarModifyListener(this)),
-    mxSelectionListener(new ChartSidebarSelectionListener(this, OBJECTTYPE_AXIS)),
-    mbModelValid(true)
+    : PanelLayout(pParent, "ChartAxisPanel", "modules/schart/ui/sidebaraxis.ui", rxFrame)
+    , mxCBShowLabel(m_xBuilder->weld_check_button("checkbutton_show_label"))
+    , mxCBReverse(m_xBuilder->weld_check_button("checkbutton_reverse"))
+    , mxLBLabelPos(m_xBuilder->weld_combo_box("comboboxtext_label_position"))
+    , mxGridLabel(m_xBuilder->weld_widget("label_props"))
+    , mxNFRotation(m_xBuilder->weld_metric_spin_button("spinbutton1", FieldUnit::DEGREE))
+    , mxModel(pController->getModel())
+    , mxModifyListener(new ChartSidebarModifyListener(this))
+    , mxSelectionListener(new ChartSidebarSelectionListener(this, OBJECTTYPE_AXIS))
+    , mbModelValid(true)
 {
-    get(mpCBShowLabel, "checkbutton_show_label");
-    get(mpCBReverse, "checkbutton_reverse");
-
-    get(mpLBLabelPos, "comboboxtext_label_position");
-    get(mpNFRotation, "spinbutton1");
-    get(mpGridLabel, "label_props");
-
     Initialize();
 }
 
@@ -240,13 +233,13 @@ void ChartAxisPanel::dispose()
     if (xSelectionSupplier.is())
         xSelectionSupplier->removeSelectionChangeListener(mxSelectionListener);
 
-    mpCBShowLabel.clear();
-    mpCBReverse.clear();
+    mxCBShowLabel.reset();
+    mxCBReverse.reset();
 
-    mpLBLabelPos.clear();
-    mpGridLabel.clear();
+    mxLBLabelPos.reset();
+    mxGridLabel.reset();
 
-    mpNFRotation.clear();
+    mxNFRotation.reset();
 
     PanelLayout::dispose();
 }
@@ -262,14 +255,14 @@ void ChartAxisPanel::Initialize()
 
     updateData();
 
-    Link<Button*,void> aLink = LINK(this, ChartAxisPanel, CheckBoxHdl);
-    mpCBShowLabel->SetClickHdl(aLink);
-    mpCBReverse->SetClickHdl(aLink);
+    Link<weld::ToggleButton&,void> aLink = LINK(this, ChartAxisPanel, CheckBoxHdl);
+    mxCBShowLabel->connect_toggled(aLink);
+    mxCBReverse->connect_toggled(aLink);
 
-    Link<Edit&, void> aSpinButtonLink = LINK(this, ChartAxisPanel, TextRotationHdl);
-    mpNFRotation->SetModifyHdl(aSpinButtonLink);
+    Link<weld::MetricSpinButton&, void> aSpinButtonLink = LINK(this, ChartAxisPanel, TextRotationHdl);
+    mxNFRotation->connect_value_changed(aSpinButtonLink);
 
-    mpLBLabelPos->SetSelectHdl(LINK(this, ChartAxisPanel, ListBoxHdl));
+    mxLBLabelPos->connect_changed(LINK(this, ChartAxisPanel, ListBoxHdl));
 }
 
 void ChartAxisPanel::updateData()
@@ -280,11 +273,11 @@ void ChartAxisPanel::updateData()
     OUString aCID = getCID(mxModel);
     SolarMutexGuard aGuard;
 
-    mpCBShowLabel->Check(isLabelShown(mxModel, aCID));
-    mpCBReverse->Check(isReverse(mxModel, aCID));
+    mxCBShowLabel->set_active(isLabelShown(mxModel, aCID));
+    mxCBReverse->set_active(isReverse(mxModel, aCID));
 
-    mpLBLabelPos->SelectEntryPos(getLabelPosition(mxModel, aCID));
-    mpNFRotation->SetValue(getAxisRotation(mxModel, aCID));
+    mxLBLabelPos->set_active(getLabelPosition(mxModel, aCID));
+    mxNFRotation->set_value(getAxisRotation(mxModel, aCID), FieldUnit::DEGREE);
 }
 
 VclPtr<vcl::Window> ChartAxisPanel::Create (
@@ -316,8 +309,7 @@ void ChartAxisPanel::HandleContextChange(
 void ChartAxisPanel::NotifyItemUpdate(
     sal_uInt16 /*nSID*/,
     SfxItemState /*eState*/,
-    const SfxPoolItem* /*pState*/,
-    const bool )
+    const SfxPoolItem* /*pState*/ )
 {
 }
 
@@ -333,6 +325,12 @@ void ChartAxisPanel::updateModel(
     {
         css::uno::Reference<css::util::XModifyBroadcaster> xBroadcaster(mxModel, css::uno::UNO_QUERY_THROW);
         xBroadcaster->removeModifyListener(mxModifyListener);
+    }
+
+    css::uno::Reference<css::view::XSelectionSupplier> oldSelectionSupplier(
+        mxModel->getCurrentController(), css::uno::UNO_QUERY);
+    if (oldSelectionSupplier.is()) {
+        oldSelectionSupplier->removeSelectionChangeListener(mxSelectionListener.get());
     }
 
     mxModel = xModel;
@@ -352,40 +350,35 @@ void ChartAxisPanel::selectionChanged(bool bCorrectType)
         updateData();
 }
 
-void ChartAxisPanel::SelectionInvalid()
+IMPL_LINK(ChartAxisPanel, CheckBoxHdl, weld::ToggleButton&, rCheckbox, void)
 {
-}
-
-IMPL_LINK(ChartAxisPanel, CheckBoxHdl, Button*, pButton, void)
-{
-    CheckBox* pCheckbox = static_cast<CheckBox*>(pButton);
     OUString aCID = getCID(mxModel);
-    bool bChecked = pCheckbox->IsChecked();
+    bool bChecked = rCheckbox.get_active();
 
-    if (pCheckbox == mpCBShowLabel.get())
+    if (&rCheckbox == mxCBShowLabel.get())
     {
-        mpGridLabel->Enable(bChecked);
+        mxGridLabel->set_sensitive(bChecked);
         setLabelShown(mxModel, aCID, bChecked);
     }
-    else if (pCheckbox == mpCBReverse.get())
+    else if (&rCheckbox == mxCBReverse.get())
         setReverse(mxModel, aCID, bChecked);
 }
 
-IMPL_LINK_NOARG(ChartAxisPanel, ListBoxHdl, ListBox&, void)
+IMPL_LINK_NOARG(ChartAxisPanel, ListBoxHdl, weld::ComboBox&, void)
 {
     OUString aCID = getCID(mxModel);
-    sal_Int32 nPos = mpLBLabelPos->GetSelectEntryPos();
+    sal_Int32 nPos = mxLBLabelPos->get_active();
 
     setLabelPosition(mxModel, aCID, nPos);
 }
 
-IMPL_LINK(ChartAxisPanel, TextRotationHdl, Edit&, rMetricField, void)
+IMPL_LINK(ChartAxisPanel, TextRotationHdl, weld::MetricSpinButton&, rMetricField, void)
 {
     OUString aCID = getCID(mxModel);
-    double nVal = static_cast<NumericField&>(rMetricField).GetValue();
+    double nVal = rMetricField.get_value(FieldUnit::DEGREE);
     setAxisRotation(mxModel, aCID, nVal);
 }
 
-}} // end of namespace ::chart::sidebar
+} // end of namespace ::chart::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

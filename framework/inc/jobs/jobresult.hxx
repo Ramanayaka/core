@@ -20,13 +20,10 @@
 #ifndef INCLUDED_FRAMEWORK_INC_JOBS_JOBRESULT_HXX
 #define INCLUDED_FRAMEWORK_INC_JOBS_JOBRESULT_HXX
 
-#include <stdtypes.h>
-#include <general.h>
-
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/frame/DispatchResultEvent.hpp>
 
-#include <rtl/ustring.hxx>
+#include <vector>
 
 namespace framework{
 
@@ -48,7 +45,7 @@ class JobResult final
             parts of an analyzed pure job execution result.
             An user of this class can decide, if a member of us can be valid
             or not. So it can indicate, if a job used the special part inside
-            his returned result protocol.
+            its returned result protocol.
             To be usable as flags - it must be values of set {0,1,2,4,8,16 ...}!
          */
         enum EParts
@@ -62,12 +59,6 @@ class JobResult final
     // member
 
     private:
-
-        /** hold the original pure result, which was given back by an
-            executed job
-            We analyze it and use it to set all our other members.
-         */
-        css::uno::Any m_aPureResult;
 
         /**
             an user of us must know, which (possible) parts of
@@ -86,17 +77,10 @@ class JobResult final
         std::vector< css::beans::NamedValue > m_lArguments;
 
         /**
-            an executed job can force his deactivation
-            But we provide this information here only.
-            Doing so is part of any user of us.
-         */
-        bool m_bDeactivate;
-
-        /**
             represent the part "DispatchResult"
             It's a fulfilled event type, which was given
             back by the executed job. Any user of us can send
-            it to his registered result listener directly.
+            it to its registered result listener directly.
          */
         css::frame::DispatchResultEvent m_aDispatchResult;
 
@@ -104,7 +88,6 @@ class JobResult final
 
     public:
 
-                 JobResult(                                         );
                  JobResult( const css::uno::Any& aResult );
                  JobResult( const JobResult&                rCopy   );
                  ~JobResult(                                         );

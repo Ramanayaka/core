@@ -22,14 +22,11 @@
 
 #include "SchemaRestrictionContext.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltkmap.hxx>
-#include <xmloff/xmluconv.hxx>
 
 #include <osl/diagnose.h>
-
-#include <com/sun/star/xsd/WhiteSpaceTreatment.hpp>
 
 using com::sun::star::uno::Reference;
 using com::sun::star::xml::sax::XAttributeList;
@@ -37,13 +34,13 @@ using com::sun::star::xforms::XDataTypeRepository;
 using namespace xmloff::token;
 
 
-static const SvXMLTokenMapEntry aAttributes[] =
+const SvXMLTokenMapEntry aAttributes[] =
 {
     TOKEN_MAP_ENTRY( NONE, NAME ),
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aChildren[] =
+const SvXMLTokenMapEntry aChildren[] =
 {
     TOKEN_MAP_ENTRY( XSD, RESTRICTION ),
     XML_TOKEN_MAP_END
@@ -75,21 +72,16 @@ SvXMLImportContext* SchemaSimpleTypeContext::HandleChild(
     const OUString& rLocalName,
     const Reference<XAttributeList>& )
 {
-    SvXMLImportContext* pContext = nullptr;
     switch( nToken )
     {
     case XML_RESTRICTION:
-        pContext = new SchemaRestrictionContext( GetImport(),
+        return new SchemaRestrictionContext( GetImport(),
                                                  nPrefix, rLocalName,
                                                  mxRepository, msTypeName );
         break;
-    default:
-        OSL_FAIL( "Booo!" );
     }
 
-    return ( pContext != nullptr )
-        ? pContext
-        : new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
+    return nullptr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

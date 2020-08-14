@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
 #include <rtl/uri.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
@@ -25,7 +24,7 @@
 #include "DAVException.hxx"
 #include "AprEnv.hxx"
 
-#include "urihelper.hxx"
+#include <urihelper.hxx>
 
 using namespace http_dav_ucp;
 
@@ -110,10 +109,6 @@ void SerfUri::init( const apr_uri_t * pUri )
     }
 }
 
-SerfUri::~SerfUri( )
-{
-}
-
 void SerfUri::calculateURI ()
 {
     OUStringBuffer aBuf( mScheme );
@@ -184,7 +179,7 @@ OUString SerfUri::GetPathBaseName () const
         return aTemp;
     }
     else
-        return OUString("/");
+        return "/";
 }
 
 bool SerfUri::operator== ( const SerfUri & rOther ) const

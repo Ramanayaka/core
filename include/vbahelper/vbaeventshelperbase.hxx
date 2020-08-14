@@ -21,7 +21,6 @@
 #define INCLUDED_VBAHELPER_VBAEVENTSHELPERBASE_HXX
 
 #include <deque>
-#include <exception>
 #include <map>
 #include <unordered_map>
 
@@ -32,22 +31,20 @@
 #include <com/sun/star/script/vba/XVBAEventProcessor.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/util/VetoException.hpp>
 #include <com/sun/star/util/XChangesListener.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <vbahelper/vbadllapi.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace document { struct EventObject; }
     namespace frame { class XModel; }
-    namespace script { namespace vba { class XVBAModuleInfo; } }
+    namespace script::vba { class XVBAModuleInfo; }
     namespace uno { class XComponentContext; }
     namespace util { struct ChangesEvent; }
-} } }
+}
 
 class SfxObjectShell;
 
@@ -61,8 +58,7 @@ class VBAHELPER_DLLPUBLIC VbaEventsHelperBase : public VbaEventsHelperBase_BASE
 {
 public:
     VbaEventsHelperBase(
-        const css::uno::Sequence< css::uno::Any >& rArgs,
-        const css::uno::Reference< css::uno::XComponentContext >& xContext );
+        const css::uno::Sequence< css::uno::Any >& rArgs );
     virtual ~VbaEventsHelperBase() override;
 
     // script::vba::XVBAEventProcessor
@@ -116,7 +112,7 @@ protected:
     void registerEventHandler(
             sal_Int32 nEventId,
             sal_Int32 nModuleType,
-            const sal_Char* pcMacroName,
+            const char* pcMacroName,
             sal_Int32 nCancelIndex = -1,
             const css::uno::Any& rUserData = css::uno::Any() );
 
@@ -217,7 +213,7 @@ protected:
 
 private:
     typedef std::map< sal_Int32, EventHandlerInfo > EventHandlerInfoMap;
-    typedef std::unordered_map< OUString, ModulePathMap, OUStringHash > EventHandlerPathMap;
+    typedef std::unordered_map< OUString, ModulePathMap > EventHandlerPathMap;
 
     EventHandlerInfoMap maEventInfos;
     EventHandlerPathMap maEventPaths;

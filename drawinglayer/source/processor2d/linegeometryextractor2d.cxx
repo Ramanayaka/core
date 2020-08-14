@@ -20,17 +20,15 @@
 #include <drawinglayer/processor2d/linegeometryextractor2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::processor2d
 {
-    namespace processor2d
-    {
         LineGeometryExtractor2D::LineGeometryExtractor2D(const geometry::ViewInformation2D& rViewInformation)
         :   BaseProcessor2D(rViewInformation),
             maExtractedHairlines(),
@@ -124,7 +122,7 @@ namespace drawinglayer
                 }
             }
         }
-    } // end of namespace processor2d
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

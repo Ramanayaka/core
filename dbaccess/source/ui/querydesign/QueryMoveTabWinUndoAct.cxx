@@ -18,8 +18,8 @@
  */
 
 #include "QueryMoveTabWinUndoAct.hxx"
-#include "JoinTableView.hxx"
-#include "QTableWindow.hxx"
+#include <JoinTableView.hxx>
+
 using namespace dbaui;
 void OJoinMoveTabWinUndoAct::TogglePosition()
 {

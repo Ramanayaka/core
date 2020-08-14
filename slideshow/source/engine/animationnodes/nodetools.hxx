@@ -20,13 +20,11 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_NODETOOLS_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_NODETOOLS_HXX
 
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/drawing/XShape.hpp>
 
-#include "shapemanager.hxx"
-#include "basenode.hxx"
-#include "doctreenode.hxx"
-#include "attributableshape.hxx"
+#include <shapemanager.hxx>
+#include <basenode.hxx>
+#include <attributableshape.hxx>
 
 
 #if defined(DBG_UTIL)
@@ -35,9 +33,7 @@
 # define DEBUG_NODES_SHOWTREE(a)
 #endif
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
 
         // Tools
@@ -65,7 +61,6 @@ namespace slideshow
         */
         bool isIndefiniteTiming( const css::uno::Any& rAny );
 
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_NODETOOLS_HXX

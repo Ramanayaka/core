@@ -24,9 +24,9 @@
 #include <vcl/bitmapex.hxx>
 #include <basegfx/vector/b2dsize.hxx>
 
-namespace drawinglayer { namespace primitive2d {
+namespace drawinglayer::primitive2d {
 
-class OverlayStaticRectanglePrimitive : public DiscreteMetricDependentPrimitive2D
+class OverlayStaticRectanglePrimitive final : public DiscreteMetricDependentPrimitive2D
 {
 private:
     basegfx::B2DPoint maPosition;
@@ -40,7 +40,6 @@ private:
     // the rotation of the primitive itself
     double mfRotation;
 
-protected:
     virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
 public:
@@ -55,20 +54,18 @@ public:
     // compare operator
     virtual bool operator==( const BasePrimitive2D& rPrimitive ) const override;
 
-    DeclPrimitive2DIDBlock()
+    virtual sal_uInt32 getPrimitive2DID() const override;
 };
 
-}} // end of namespace drawinglayer::primitive2d
+} // end of namespace drawinglayer::primitive2d
 
 // Overlay helper class which holds a BotmapEx which is to be visualized
 // at the given logic position with the Bitmap's pixel size, unscaled and
 // unrotated (like a marker). The discrete pixel on the bitmap assocciated
 // with the target position is given in discrete X,Y coordinates
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class OverlayBitmapExPrimitive : public DiscreteMetricDependentPrimitive2D
+        class OverlayBitmapExPrimitive final : public DiscreteMetricDependentPrimitive2D
         {
         private:
             // The BitmapEx to use, PixelSize is used
@@ -86,7 +83,6 @@ namespace drawinglayer
             double                                  mfShearX;
             double                                  mfRotation;
 
-        protected:
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
@@ -109,29 +105,25 @@ namespace drawinglayer
             // compare operator
             virtual bool operator==( const BasePrimitive2D& rPrimitive ) const override;
 
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 // Overlay helper class for a crosshair
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class OverlayCrosshairPrimitive : public ViewportDependentPrimitive2D
+        class OverlayCrosshairPrimitive final : public ViewportDependentPrimitive2D
         {
         private:
             // The logic position
             basegfx::B2DPoint                       maBasePosition;
 
-            // The stripe colors and legth
-            basegfx::BColor                         maRGBColorA;
-            basegfx::BColor                         maRGBColorB;
-            double                                  mfDiscreteDashLength;
+            // The stripe colors and length
+            basegfx::BColor                          maRGBColorA;
+            basegfx::BColor                          maRGBColorB;
+            double                                   mfDiscreteDashLength;
 
-        protected:
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
@@ -150,19 +142,16 @@ namespace drawinglayer
             // compare operator
             virtual bool operator==( const BasePrimitive2D& rPrimitive ) const override;
 
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 // Overlay helper class for a hatch rectangle as used e.g. for text object
-// selection hilighting
-namespace drawinglayer
-{
-    namespace primitive2d
+// selection highlighting
+namespace drawinglayer::primitive2d
     {
-        class OverlayRectanglePrimitive : public DiscreteMetricDependentPrimitive2D
+        class OverlayRectanglePrimitive final : public DiscreteMetricDependentPrimitive2D
         {
         private:
             // the logic rectangle definition
@@ -179,7 +168,6 @@ namespace drawinglayer
             // the rotation of the primitive itself
             double                          mfRotation;
 
-        protected:
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
@@ -202,17 +190,14 @@ namespace drawinglayer
             // compare operator
             virtual bool operator==( const BasePrimitive2D& rPrimitive ) const override;
 
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 // Overlay helper class for a striped helpline
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
         enum HelplineStyle
         {
@@ -221,7 +206,7 @@ namespace drawinglayer
             HELPLINESTYLE_HORIZONTAL
         };
 
-        class OverlayHelplineStripedPrimitive : public ViewportDependentPrimitive2D
+        class OverlayHelplineStripedPrimitive final : public ViewportDependentPrimitive2D
         {
         private:
             // The logic position
@@ -230,12 +215,11 @@ namespace drawinglayer
             // the style
             HelplineStyle                           meStyle;
 
-            // The stripe colors and legth
+            // The stripe colors and length
             basegfx::BColor                         maRGBColorA;
             basegfx::BColor                         maRGBColorB;
             double                                  mfDiscreteDashLength;
 
-        protected:
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
@@ -256,31 +240,27 @@ namespace drawinglayer
             // compare operator
             virtual bool operator==( const BasePrimitive2D& rPrimitive ) const override;
 
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 // Overlay helper class for rolling rectangle helplines. This primitive is
 // only for the extended lines to the ends of the view
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class OverlayRollingRectanglePrimitive : public ViewportDependentPrimitive2D
+        class OverlayRollingRectanglePrimitive final : public ViewportDependentPrimitive2D
         {
         private:
             // The logic range
             basegfx::B2DRange                       maRollingRectangle;
 
-            // The stripe colors and legth
+            // The stripe colors and length
             basegfx::BColor                         maRGBColorA;
             basegfx::BColor                         maRGBColorB;
             double                                  mfDiscreteDashLength;
 
-        protected:
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
@@ -299,10 +279,9 @@ namespace drawinglayer
             // compare operator
             virtual bool operator==( const BasePrimitive2D& rPrimitive ) const override;
 
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 #endif // INCLUDED_SVX_INC_SDR_OVERLAY_OVERLAYTOOLS_HXX

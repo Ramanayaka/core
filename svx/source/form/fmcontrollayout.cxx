@@ -18,8 +18,8 @@
  */
 
 
-#include "fmcontrollayout.hxx"
-#include "fmprop.hrc"
+#include <fmcontrollayout.hxx>
+#include <fmprop.hxx>
 
 #include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/awt/VisualEffect.hpp>
@@ -33,7 +33,9 @@
 #include <comphelper/processfactory.hxx>
 #include <i18nlangtag/mslangid.hxx>
 #include <i18nlangtag/languagetag.hxx>
+#include <unotools/confignode.hxx>
 #include <unotools/syslocale.hxx>
+#include <unotools/localedatawrapper.hxx>
 
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/debug.hxx>
@@ -73,8 +75,8 @@ namespace svxform
     {
         ::utl::OConfigurationNode getLayoutSettings( DocumentType _eDocType )
         {
-            OUString sConfigName = "/org.openoffice.Office.Common/Forms/ControlLayout/";
-            sConfigName += DocumentClassification::getModuleIdentifierForDocumentType( _eDocType );
+            OUString sConfigName = "/org.openoffice.Office.Common/Forms/ControlLayout/" +
+                DocumentClassification::getModuleIdentifierForDocumentType( _eDocType );
             return OConfigurationTreeRoot::createWithComponentContext(
                 ::comphelper::getProcessComponentContext(),    // TODO
                 sConfigName );
@@ -143,7 +145,7 @@ namespace svxform
 
                 // depending on this script type, use the right property from the document's style which controls the
                 // default locale for document content
-                const sal_Char* pCharLocalePropertyName = "CharLocale";
+                const char* pCharLocalePropertyName = "CharLocale";
                 switch ( eSysLocaleScriptType )
                 {
                 case ScriptType::LATIN:
@@ -189,7 +191,7 @@ namespace svxform
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("svx");
             }
         }
     }
@@ -263,7 +265,7 @@ namespace svxform
                             &&  ( xPSI->hasPropertyByName( FM_PROP_BORDERCOLOR ) )
                             )
                             // light gray flat border
-                            _rxControlModel->setPropertyValue( FM_PROP_BORDERCOLOR, makeAny( (sal_Int32)0x00C0C0C0 ) );
+                            _rxControlModel->setPropertyValue( FM_PROP_BORDERCOLOR, makeAny( sal_Int32(0x00C0C0C0) ) );
                     }
                 }
                 if ( xPSI->hasPropertyByName( FM_PROP_VISUALEFFECT ) )
@@ -279,7 +281,7 @@ namespace svxform
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "ControlLayouter::initializeControlLayout: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "svx", "ControlLayouter::initializeControlLayout" );
         }
     }
 

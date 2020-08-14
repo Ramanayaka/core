@@ -17,13 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <transliteration_Ignore.hxx>
+#include <com/sun/star/i18n/TransliterationType.hpp>
 
+#include <transliteration_Ignore.hxx>
+#include <i18nutil/oneToOneMapping.hxx>
+
+using namespace com::sun::star::i18n;
 using namespace com::sun::star::uno;
 
-namespace com { namespace sun { namespace star { namespace i18n {
-
-inline sal_Int32 Min( sal_Int32 a, sal_Int32 b ) { return a > b ? b : a; }
+namespace i18npool {
 
 sal_Bool SAL_CALL
 transliteration_Ignore::equals(const OUString& str1, sal_Int32 pos1, sal_Int32 nCount1, sal_Int32& nMatch1,
@@ -33,12 +35,12 @@ transliteration_Ignore::equals(const OUString& str1, sal_Int32 pos1, sal_Int32 n
     Sequence< sal_Int32 > offset2;
 
     // The method folding is defined in a sub class.
-    OUString s1 = this->folding( str1, pos1, nCount1, offset1);
-    OUString s2 = this->folding( str2, pos2, nCount2, offset2);
+    OUString s1 = folding( str1, pos1, nCount1, offset1);
+    OUString s2 = folding( str2, pos2, nCount2, offset2);
 
     const sal_Unicode * p1 = s1.getStr();
     const sal_Unicode * p2 = s2.getStr();
-    sal_Int32 length = Min(s1.getLength(), s2.getLength());
+    sal_Int32 length = std::min(s1.getLength(), s2.getLength());
     sal_Int32 nmatch;
 
     for ( nmatch = 0; nmatch < length; nmatch++)
@@ -79,15 +81,15 @@ transliteration_Ignore::getType()
 }
 
 
-OUString SAL_CALL
-transliteration_Ignore::transliterate( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
-        Sequence< sal_Int32 >& offset  )
+OUString
+transliteration_Ignore::transliterateImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
+        Sequence< sal_Int32 >& offset, bool useOffset)
 {
     // The method folding is defined in a sub class.
-    return this->folding( inStr, startPos, nCount, offset);
+    return foldingImpl( inStr, startPos, nCount, offset, useOffset);
 }
 
-Sequence< OUString > SAL_CALL
+Sequence< OUString >
 transliteration_Ignore::transliterateRange( const OUString& str1, const OUString& str2,
         XTransliteration& t1, XTransliteration& t2 )
 {
@@ -115,9 +117,9 @@ transliteration_Ignore::transliterateRange( const OUString& str1, const OUString
     return r;
 }
 
-OUString SAL_CALL
-transliteration_Ignore::folding( const OUString& inStr, sal_Int32 startPos,
-    sal_Int32 nCount, Sequence< sal_Int32 >& offset)
+OUString
+transliteration_Ignore::foldingImpl( const OUString& inStr, sal_Int32 startPos,
+    sal_Int32 nCount, Sequence< sal_Int32 >& offset, bool useOffset)
 {
     // Create a string buffer which can hold nCount + 1 characters.
     // The reference count is 1 now.
@@ -201,6 +203,6 @@ transliteration_Ignore::transliterateChar2Char( sal_Unicode inChar)
     return func ? func( inChar) : table ? (*table)[ inChar ] : inChar;
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

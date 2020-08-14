@@ -28,15 +28,15 @@
  *************************************************************************/
 #include "hierarchydata.hxx"
 
-#include <vector>
 #include <osl/diagnose.h>
 #include <rtl/ustrbuf.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/XNameReplace.hpp>
 #include <com/sun/star/util/XChangesBatch.hpp>
 #include <com/sun/star/util/XOfficeInstallationDirectories.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <comphelper/propertysequence.hxx>
 #include "hierarchyprovider.hxx"
 #include "hierarchyuri.hxx"
 
@@ -54,11 +54,11 @@ struct HierarchyEntry::iterator_Impl
     uno::Sequence< OUString>                          names;
     sal_Int32                                              pos;
     iterator_Impl()
-    : officeDirs( nullptr ), pos( -1 /* before first */ ) {};
+    : pos( -1 /* before first */ ) {};
 };
 
 
-void makeXMLName( const OUString & rIn, OUStringBuffer & rBuffer  )
+static void makeXMLName( const OUString & rIn, OUStringBuffer & rBuffer  )
 {
     sal_Int32 nCount = rIn.getLength();
     for ( sal_Int32 n = 0; n < nCount; ++n )
@@ -162,8 +162,7 @@ bool HierarchyEntry::getData( HierarchyEntryData& rData )
 
         if ( xRootReadAccess.is() )
         {
-            OUString aTitlePath = m_aPath;
-            aTitlePath += "/Title";
+            OUString aTitlePath = m_aPath + "/Title";
 
             // Note: Avoid NoSuchElementExceptions, because exceptions are
             //       relatively 'expensive'. Checking for availability of
@@ -186,8 +185,7 @@ bool HierarchyEntry::getData( HierarchyEntryData& rData )
             rData.setTitle( aValue );
 
             // Get TargetURL value.
-            OUString aTargetURLPath = m_aPath;
-            aTargetURLPath += "/TargetURL";
+            OUString aTargetURLPath = m_aPath + "/TargetURL";
             if ( !( xRootReadAccess->getByHierarchicalName( aTargetURLPath )
                     >>= aValue ) )
             {
@@ -198,15 +196,14 @@ bool HierarchyEntry::getData( HierarchyEntryData& rData )
 
             // TargetURL property may contain a reference to the Office
             // installation directory. To ensure a reloctable office
-            // installation, the path to the office installtion directory must
+            // installation, the path to the office installation directory must
             // never be stored directly. A placeholder is used instead. Replace
             // it by actual installation directory.
             if ( m_xOfficeInstDirs.is() &&  !aValue.isEmpty()  )
                 aValue = m_xOfficeInstDirs->makeAbsoluteURL( aValue );
             rData.setTargetURL( aValue );
 
-            OUString aTypePath = m_aPath;
-            aTypePath += "/Type";
+            OUString aTypePath = m_aPath + "/Type";
             if ( xRootReadAccess->hasByHierarchicalName( aTypePath ) )
             {
                 // Might not be present since it was introduced long after
@@ -284,12 +281,10 @@ bool HierarchyEntry::setData( const HierarchyEntryData& rData )
                 bRoot = false;
             }
 
-            uno::Sequence< uno::Any > aArguments( 1 );
-            beans::PropertyValue      aProperty;
-
-            aProperty.Name    = CFGPROPERTY_NODEPATH;
-            aProperty.Value <<= aParentPath;
-            aArguments[ 0 ] <<= aProperty;
+            uno::Sequence<uno::Any> aArguments(comphelper::InitAnyPropertySequence(
+            {
+                {CFGPROPERTY_NODEPATH, uno::Any(aParentPath)}
+            }));
 
             uno::Reference< util::XChangesBatch > xBatch(
                     m_xConfigProvider->createInstanceWithArguments(
@@ -399,7 +394,7 @@ bool HierarchyEntry::setData( const HierarchyEntryData& rData )
 
                     // TargetURL property may contain a reference to the Office
                     // installation directory. To ensure a reloctable office
-                    // installation, the path to the office installtion
+                    // installation, the path to the office installation
                     // directory must never be stored directly. Use a
                     // placeholder instead.
                     OUString aValue( rData.getTargetURL() );
@@ -537,12 +532,10 @@ bool HierarchyEntry::move(
             bNewRoot = false;
         }
 
-        uno::Sequence< uno::Any > aArguments( 1 );
-        beans::PropertyValue      aProperty;
-
-        aProperty.Name  = CFGPROPERTY_NODEPATH;
-        aProperty.Value <<= aOldParentPath;
-        aArguments[ 0 ] <<= aProperty;
+        uno::Sequence<uno::Any> aArguments(comphelper::InitAnyPropertySequence(
+        {
+            {CFGPROPERTY_NODEPATH, uno::Any(aOldParentPath)}
+        }));
 
         xOldParentBatch.set(
             m_xConfigProvider->createInstanceWithArguments(
@@ -564,14 +557,15 @@ bool HierarchyEntry::move(
         {
             bDifferentParents = true;
 
-            aProperty.Name    = CFGPROPERTY_NODEPATH;
-            aProperty.Value <<= aNewParentPath;
-            aArguments[ 0 ] <<= aProperty;
+            uno::Sequence<uno::Any> aArguments2(comphelper::InitAnyPropertySequence(
+            {
+                {CFGPROPERTY_NODEPATH, uno::Any(aNewParentPath)}
+            }));
 
             xNewParentBatch.set(
                 m_xConfigProvider->createInstanceWithArguments(
                     READWRITE_SERVICE_NAME,
-                    aArguments ),
+                    aArguments2 ),
                 uno::UNO_QUERY );
 
             OSL_ENSURE(
@@ -705,7 +699,7 @@ bool HierarchyEntry::move(
 
         // TargetURL property may contain a reference to the Office
         // installation directory. To ensure a reloctable office
-        // installation, the path to the office installtion
+        // installation, the path to the office installation
         // directory must never be stored directly. Use a placeholder
         // instead.
         OUString aValue( rData.getTargetURL() );
@@ -787,12 +781,10 @@ bool HierarchyEntry::remove()
                 bRoot = false;
             }
 
-            uno::Sequence< uno::Any > aArguments( 1 );
-            beans::PropertyValue      aProperty;
-
-            aProperty.Name    = CFGPROPERTY_NODEPATH;
-            aProperty.Value <<= aParentPath;
-            aArguments[ 0 ] <<= aProperty;
+            uno::Sequence<uno::Any> aArguments(comphelper::InitAnyPropertySequence(
+            {
+                {CFGPROPERTY_NODEPATH, uno::Any(aParentPath)}
+            }));
 
             uno::Reference< util::XChangesBatch > xBatch(
                 m_xConfigProvider->createInstanceWithArguments(
@@ -868,7 +860,7 @@ bool HierarchyEntry::remove()
 }
 
 
-bool HierarchyEntry::first( iterator& it )
+bool HierarchyEntry::first( iterator const & it )
 {
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
 
@@ -887,8 +879,7 @@ bool HierarchyEntry::first( iterator& it )
 
                 if ( !m_aPath.isEmpty() )
                 {
-                    OUString aPath = m_aPath;
-                    aPath += "/Children";
+                    OUString aPath = m_aPath + "/Children";
 
                     xRootHierNameAccess->getByHierarchicalName( aPath )
                         >>= xNameAccess;
@@ -930,7 +921,7 @@ bool HierarchyEntry::first( iterator& it )
         }
     }
 
-    if ( it.m_pImpl->names.getLength() == 0 )
+    if ( !it.m_pImpl->names.hasElements() )
         return false;
 
     it.m_pImpl->pos = 0;
@@ -938,7 +929,7 @@ bool HierarchyEntry::first( iterator& it )
 }
 
 
-bool HierarchyEntry::next( iterator& it )
+bool HierarchyEntry::next( iterator const & it )
 {
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
 
@@ -954,7 +945,7 @@ bool HierarchyEntry::next( iterator& it )
 OUString HierarchyEntry::createPathFromHierarchyURL(
     const HierarchyUri& rURI )
 {
-    // Transform path....
+    // Transform path...
     // folder/subfolder/subsubfolder
     //      --> ['folder']/Children/['subfolder']/Children/['subsubfolder']
 
@@ -1021,11 +1012,10 @@ HierarchyEntry::getRootReadAccess()
                 {
                     // Create Root object.
 
-                    uno::Sequence< uno::Any > aArguments( 1 );
-                    beans::PropertyValue      aProperty;
-                    aProperty.Name = CFGPROPERTY_NODEPATH;
-                    aProperty.Value <<= OUString(); // root path
-                    aArguments[ 0 ] <<= aProperty;
+                    uno::Sequence<uno::Any> aArguments(comphelper::InitAnyPropertySequence(
+                    {
+                        {CFGPROPERTY_NODEPATH, uno::Any(OUString())} // root path
+                    }));
 
                     m_bTriedToGetRootReadAccess = true;
 
@@ -1096,7 +1086,7 @@ const HierarchyEntryData& HierarchyEntry::iterator::operator*() const
 
             // TargetURL property may contain a reference to the Office
             // installation directory. To ensure a reloctable office
-            // installation, the path to the office installtion directory must
+            // installation, the path to the office installation directory must
             // never be stored directly. A placeholder is used instead. Replace
             // it by actual installation directory.
             if ( m_pImpl->officeDirs.is() && !aValue.isEmpty() )

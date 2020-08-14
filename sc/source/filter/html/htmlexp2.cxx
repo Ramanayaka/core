@@ -23,19 +23,16 @@
 #include <svx/svdpage.hxx>
 #include <svx/xoutbmp.hxx>
 #include <svx/svdxcgv.hxx>
-#include <sot/exchange.hxx>
 #include <svtools/htmlkywd.hxx>
 #include <svtools/htmlout.hxx>
-#include <svtools/transfer.hxx>
-#include <svtools/embedtransfer.hxx>
 #include <svl/urihelper.hxx>
+#include <tools/stream.hxx>
 #include <tools/urlobj.hxx>
 
-#include "htmlexp.hxx"
-#include "global.hxx"
-#include "document.hxx"
-#include "drwlayer.hxx"
-#include "ftools.hxx"
+#include <htmlexp.hxx>
+#include <global.hxx>
+#include <document.hxx>
+#include <drwlayer.hxx>
 #include <rtl/strbuf.hxx>
 
 using namespace com::sun::star;
@@ -43,23 +40,23 @@ using namespace com::sun::star;
 void ScHTMLExport::PrepareGraphics( ScDrawLayer* pDrawLayer, SCTAB nTab,
         SCCOL nStartCol, SCROW nStartRow,   SCCOL nEndCol, SCROW nEndRow )
 {
-    if ( pDrawLayer->HasObjectsInRows( nTab, nStartRow, nEndRow ) )
+    if ( !pDrawLayer->HasObjectsInRows( nTab, nStartRow, nEndRow ) )
+        return;
+
+    SdrPage* pDrawPage = pDrawLayer->GetPage( static_cast<sal_uInt16>(nTab) );
+    if ( !pDrawPage )
+        return;
+
+    bTabHasGraphics = true;
+    FillGraphList( pDrawPage, nTab, nStartCol, nStartRow, nEndCol, nEndRow );
+    size_t ListSize = aGraphList.size();
+    for ( size_t i = 0; i < ListSize; ++i )
     {
-        SdrPage* pDrawPage = pDrawLayer->GetPage( static_cast<sal_uInt16>(nTab) );
-        if ( pDrawPage )
-        {
-            bTabHasGraphics = true;
-            FillGraphList( pDrawPage, nTab, nStartCol, nStartRow, nEndCol, nEndRow );
-            size_t ListSize = aGraphList.size();
-            for ( size_t i = 0; i < ListSize; ++i )
-            {
-                ScHTMLGraphEntry* pE = &aGraphList[ i ];
-                if ( !pE->bInCell )
-                {   // not all cells: table next to some
-                    bTabAlignedLeft = true;
-                    break;
-                }
-            }
+        ScHTMLGraphEntry* pE = &aGraphList[ i ];
+        if ( !pE->bInCell )
+        {   // not all cells: table next to some
+            bTabAlignedLeft = true;
+            break;
         }
     }
 }
@@ -67,50 +64,50 @@ void ScHTMLExport::PrepareGraphics( ScDrawLayer* pDrawLayer, SCTAB nTab,
 void ScHTMLExport::FillGraphList( const SdrPage* pPage, SCTAB nTab,
         SCCOL nStartCol, SCROW nStartRow,   SCCOL nEndCol, SCROW nEndRow )
 {
-    if ( pPage->GetObjCount() )
+    if ( !pPage->GetObjCount() )
+        return;
+
+    tools::Rectangle aRect;
+    if ( !bAll )
+        aRect = pDoc->GetMMRect( nStartCol, nStartRow, nEndCol, nEndRow, nTab );
+    SdrObjListIter aIter( pPage, SdrIterMode::Flat );
+    SdrObject* pObject = aIter.Next();
+    while ( pObject )
     {
-        tools::Rectangle aRect;
-        if ( !bAll )
-            aRect = pDoc->GetMMRect( nStartCol, nStartRow, nEndCol, nEndRow, nTab );
-        SdrObjListIter aIter( *pPage, SdrIterMode::Flat );
-        SdrObject* pObject = aIter.Next();
-        while ( pObject )
+        tools::Rectangle aObjRect = pObject->GetCurrentBoundRect();
+        if ( (bAll || aRect.IsInside( aObjRect )) && !ScDrawLayer::IsNoteCaption(pObject) )
         {
-            tools::Rectangle aObjRect = pObject->GetCurrentBoundRect();
-            if ( (bAll || aRect.IsInside( aObjRect )) && !ScDrawLayer::IsNoteCaption(pObject) )
-            {
-                Size aSpace;
-                ScRange aR = pDoc->GetRange( nTab, aObjRect );
-                // Rectangle in mm/100
-                Size aSize( MMToPixel( aObjRect.GetSize() ) );
-                // If the image is somewhere in a merged range we must
-                // move the anchor to the upper left (THE span cell).
-                pDoc->ExtendOverlapped( aR );
-                SCCOL nCol1 = aR.aStart.Col();
-                SCROW nRow1 = aR.aStart.Row();
-                SCCOL nCol2 = aR.aEnd.Col();
-                SCROW nRow2 = aR.aEnd.Row();
-                // All cells empty under object?
-                bool bInCell = (pDoc->GetEmptyLinesInBlock(
-                    nCol1, nRow1, nTab, nCol2, nRow2, nTab, DIR_TOP )
-                    == static_cast< SCSIZE >( nRow2 - nRow1 ));    // rows-1 !
-                if ( bInCell )
-                {   // Spacing in spanning cell
-                    tools::Rectangle aCellRect = pDoc->GetMMRect(
-                        nCol1, nRow1, nCol2, nRow2, nTab );
-                    aSpace = MMToPixel( Size(
-                        aCellRect.GetWidth() - aObjRect.GetWidth(),
-                        aCellRect.GetHeight() - aObjRect.GetHeight() ));
-                    aSpace.Width() += (nCol2-nCol1) * (nCellSpacing+1);
-                    aSpace.Height() += (nRow2-nRow1) * (nCellSpacing+1);
-                    aSpace.Width() /= 2;
-                    aSpace.Height() /= 2;
-                }
-                aGraphList.push_back( ScHTMLGraphEntry( pObject,
-                    aR, aSize, bInCell, aSpace ) );
+            Size aSpace;
+            ScRange aR = pDoc->GetRange( nTab, aObjRect );
+            // Rectangle in mm/100
+            Size aSize( MMToPixel( aObjRect.GetSize() ) );
+            // If the image is somewhere in a merged range we must
+            // move the anchor to the upper left (THE span cell).
+            pDoc->ExtendOverlapped( aR );
+            SCCOL nCol1 = aR.aStart.Col();
+            SCROW nRow1 = aR.aStart.Row();
+            SCCOL nCol2 = aR.aEnd.Col();
+            SCROW nRow2 = aR.aEnd.Row();
+            // All cells empty under object?
+            bool bInCell = (pDoc->GetEmptyLinesInBlock(
+                nCol1, nRow1, nTab, nCol2, nRow2, nTab, DIR_TOP )
+                == static_cast< SCSIZE >( nRow2 - nRow1 ));    // rows-1 !
+            if ( bInCell )
+            {   // Spacing in spanning cell
+                tools::Rectangle aCellRect = pDoc->GetMMRect(
+                    nCol1, nRow1, nCol2, nRow2, nTab );
+                aSpace = MMToPixel( Size(
+                    aCellRect.GetWidth() - aObjRect.GetWidth(),
+                    aCellRect.GetHeight() - aObjRect.GetHeight() ));
+                aSpace.AdjustWidth((nCol2-nCol1) * (nCellSpacing+1) );
+                aSpace.AdjustHeight((nRow2-nRow1) * (nCellSpacing+1) );
+                aSpace.setWidth( aSpace.Width() / 2 );
+                aSpace.setHeight( aSpace.Height() / 2 );
             }
-            pObject = aIter.Next();
+            aGraphList.emplace_back( pObject,
+                aR, aSize, bInCell, aSpace );
         }
+        pObject = aIter.Next();
     }
 }
 
@@ -165,8 +162,7 @@ void ScHTMLExport::WriteGraphEntry( ScHTMLGraphEntry* pE )
         break;
         default:
         {
-            Graphic aGraph( SdrExchangeView::GetObjGraphic(
-                pDoc->GetDrawLayer(), pObject ) );
+            Graphic aGraph(SdrExchangeView::GetObjGraphic(*pObject));
             OUString aLinkName;
             WriteImage( aLinkName, aGraph, aOpt );
             pE->bWritten = true;
@@ -195,19 +191,15 @@ void ScHTMLExport::WriteImage( OUString& rLinkName, const Graphic& rGrf,
                         INetURLObject(aBaseURL),
                         aGrfNm,
                         URIHelper::GetMaybeFileHdl());
-                if ( HasCId() )
-                    MakeCIdURL( rLinkName );
             }
         }
     }
     else
     {
         // Linked graphic - figure out the URL for the IMG tag
-        if( bCopyLocalFileToINet || HasCId() )
+        if( bCopyLocalFileToINet )
         {
             CopyLocalFileToINet( rLinkName, aStreamPath );
-            if ( HasCId() )
-                MakeCIdURL( rLinkName );
         }
         else
             rLinkName = URIHelper::SmartRel2Abs(
@@ -225,7 +217,7 @@ void ScHTMLExport::WriteImage( OUString& rLinkName, const Graphic& rGrf,
                     aBaseURL,
                     rLinkName ), eDestEnc ).WriteChar( '\"' );
         if ( !rImgOptions.isEmpty() )
-            rStrm.WriteCharPtr( rImgOptions.getStr() );
+            rStrm.WriteOString( rImgOptions );
         rStrm.WriteChar( '>' ).WriteCharPtr( SAL_NEWLINE_STRING ).WriteCharPtr( GetIndentStr() );
     }
 }

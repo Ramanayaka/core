@@ -24,7 +24,6 @@
 #include "mutexhlp.hxx"
 
 #include <svl/lstner.hxx>
-#include <svl/itemprop.hxx>
 #include <editeng/editdata.hxx>
 #include <com/sun/star/text/XTextField.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -35,21 +34,23 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/util/XRefreshable.hpp>
 #include <com/sun/star/util/DateTime.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/component.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/interfacecontainer2.hxx>
 #include <osl/mutex.hxx>
 
 #include <memory>
 
+namespace comphelper { class OInterfaceContainerHelper2; }
+
 class ScEditSource;
 class SvxFieldItem;
 class SvxFieldData;
-class ScEditFieldObj;
 class ScDocShell;
 class ScHeaderFooterTextData;
+class SfxItemPropertySet;
 
-class ScCellFieldsObj : public cppu::WeakImplHelper<
+class ScCellFieldsObj final : public cppu::WeakImplHelper<
                             css::container::XEnumerationAccess,
                             css::container::XIndexAccess,
                             css::container::XContainer,
@@ -61,9 +62,9 @@ private:
     css::uno::Reference<css::text::XTextRange> mxContent;
     ScDocShell*             pDocShell;
     ScAddress               aCellPos;
-    ScEditSource* mpEditSource;
+    std::unique_ptr<ScEditSource> mpEditSource;
     /// List of refresh listeners.
-    comphelper::OInterfaceContainerHelper2* mpRefreshListeners;
+    std::unique_ptr<comphelper::OInterfaceContainerHelper2> mpRefreshListeners;
     /// mutex to lock the InterfaceContainerHelper
     osl::Mutex              aMutex;
 
@@ -105,7 +106,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScHeaderFieldsObj : public cppu::WeakImplHelper<
+class ScHeaderFieldsObj final : public cppu::WeakImplHelper<
                             css::container::XEnumerationAccess,
                             css::container::XIndexAccess,
                             css::container::XContainer,
@@ -114,10 +115,10 @@ class ScHeaderFieldsObj : public cppu::WeakImplHelper<
 {
 private:
     ScHeaderFooterTextData& mrData;
-    ScEditSource* mpEditSource;
+    std::unique_ptr<ScEditSource> mpEditSource;
 
     /// List of refresh listeners.
-    comphelper::OInterfaceContainerHelper2* mpRefreshListeners;
+    std::unique_ptr<comphelper::OInterfaceContainerHelper2> mpRefreshListeners;
     /// mutex to lock the InterfaceContainerHelper
     osl::Mutex                  aMutex;
 
@@ -159,7 +160,7 @@ public:
  * Generic UNO wrapper for edit engine's field item in cells, headers, and
  * footers.
  */
-class ScEditFieldObj : public cppu::WeakImplHelper<
+class ScEditFieldObj final : public cppu::WeakImplHelper<
                             css::text::XTextField,
                             css::beans::XPropertySet,
                             css::lang::XUnoTunnel,
@@ -185,7 +186,7 @@ class ScEditFieldObj : public cppu::WeakImplHelper<
     bool mbIsFixed:1;
 
 private:
-    SvxFieldData* getData();
+    SvxFieldData& getData();
 
     void setPropertyValueURL(const OUString& rName, const css::uno::Any& rVal);
     css::uno::Any getPropertyValueURL(const OUString& rName);
@@ -199,12 +200,9 @@ private:
     void setPropertyValueSheet(const OUString& rName, const css::uno::Any& rVal);
 
 public:
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScEditFieldObj* getImplementation(const css::uno::Reference<css::text::XTextContent>& xObj);
-
     ScEditFieldObj(
         const css::uno::Reference<css::text::XTextRange>& rContent,
-        ScEditSource* pEditSrc, sal_Int32 eType, const ESelection& rSel);
+        std::unique_ptr<ScEditSource> pEditSrc, sal_Int32 eType, const ESelection& rSel);
     virtual ~ScEditFieldObj() override;
 
     sal_Int32 GetFieldType() const { return meType;}
@@ -213,7 +211,7 @@ public:
     SvxFieldItem CreateFieldItem();
     void InitDoc(
         const css::uno::Reference<css::text::XTextRange>& rContent,
-        ScEditSource* pEditSrc, const ESelection& rSel);
+        std::unique_ptr<ScEditSource> pEditSrc, const ESelection& rSel);
 
                             // XTextField
     virtual OUString SAL_CALL getPresentation( sal_Bool bShowCommand ) override;
@@ -244,7 +242,7 @@ public:
                                     const css::uno::Reference< css::beans::XVetoableChangeListener >& aListener ) override;
 
                             // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
+    UNO3_GETIMPLEMENTATION_DECL(ScEditFieldObj)
 
                             // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;

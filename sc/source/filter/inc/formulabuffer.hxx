@@ -10,18 +10,11 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_FORMULABUFFER_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_FORMULABUFFER_HXX
 
-#include <utility>
-#include <oox/helper/refmap.hxx>
-#include <oox/helper/refvector.hxx>
-#include <salhelper/thread.hxx>
 #include <osl/mutex.hxx>
 #include "workbookhelper.hxx"
-#include <map>
 #include <vector>
-#include "worksheethelper.hxx"
-#include "sheetdatabuffer.hxx"
 
-namespace oox { namespace xls {
+namespace oox::xls {
 
 class FormulaBuffer : public WorkbookHelper
 {
@@ -75,7 +68,6 @@ public:
         OUString maValueStr;
         sal_Int32 mnCellType;
     };
-    typedef std::pair<ScAddress, double> ValueAddressPair;
 
     struct SheetItem
     {
@@ -89,21 +81,14 @@ public:
     };
 
 private:
-    // Vectors indexed by SCTAB - cf. SetSheetCount
-    typedef ::std::vector< std::vector<TokenAddressItem> > FormulaDataArray;
-    typedef ::std::vector< std::vector<TokenRangeAddressItem> > ArrayFormulaDataArray;
-    // sheet -> list of shared formula descriptions
-    typedef ::std::vector< std::vector<SharedFormulaDesc> > SheetToSharedFormulaid;
-    // sheet -> stuff needed to create shared formulae
-    typedef ::std::vector< std::vector<SharedFormulaEntry> >  SheetToFormulaEntryArray;
-    typedef ::std::vector< std::vector<FormulaValue> > FormulaValueArray;
 
     osl::Mutex maMtxData;
-    FormulaDataArray         maCellFormulas;
-    ArrayFormulaDataArray    maCellArrayFormulas;
-    SheetToFormulaEntryArray maSharedFormulas;
-    SheetToSharedFormulaid   maSharedFormulaIds;
-    FormulaValueArray        maCellFormulaValues;
+    // Vectors indexed by SCTAB - cf. SetSheetCount
+    std::vector< std::vector<TokenAddressItem> >         maCellFormulas;
+    std::vector< std::vector<TokenRangeAddressItem> >    maCellArrayFormulas;
+    std::vector< std::vector<SharedFormulaEntry> >  maSharedFormulas; // sheet -> stuff needed to create shared formulae
+    std::vector< std::vector<SharedFormulaDesc> >   maSharedFormulaIds; // sheet -> list of shared formula descriptions
+    std::vector< std::vector<FormulaValue> >        maCellFormulaValues; // sheet -> stuff needed to create shared formulae
 
     SheetItem getSheetItem( SCTAB nTab );
 
@@ -130,7 +115,7 @@ public:
     void SetSheetCount( SCTAB nSheets );
 };
 
-}}
+}
 
 #endif
 

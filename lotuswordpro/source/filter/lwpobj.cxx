@@ -54,13 +54,13 @@
  *
  ************************************************************************/
 
-#include "lwpobj.hxx"
+#include <lwpobj.hxx>
 
 /**
  * @descr  construct lwpobject from stream
  */
 LwpObject::LwpObject(LwpObjectHeader objHdr, LwpSvStream* pStrm)
-    : m_ObjHdr(objHdr), m_pObjStrm(nullptr), m_pFoundry(nullptr)
+    : m_ObjHdr(objHdr), m_pFoundry(nullptr)
     , m_pStrm(pStrm), m_bRegisteringStyle(false), m_bParsingStyle(false)
     , m_bConvertingContent(false)
 {

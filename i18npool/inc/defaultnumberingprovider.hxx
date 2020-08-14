@@ -23,18 +23,21 @@
 #include <com/sun/star/text/XNumberingFormatter.hpp>
 #include <com/sun/star/text/XNumberingTypeInfo.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/i18n/XTransliteration.hpp>
-#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
+#include <map>
 
-#include <transliterationImpl.hxx>
+namespace com::sun::star::container { class XHierarchicalNameAccess; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace i18npool {
+    class TransliterationImpl;
+    class NativeNumberSupplierService;
+    struct Supported_NumberingType;
+}
 
-#include <memory>
+namespace i18npool {
 
-namespace com { namespace sun { namespace star { namespace i18n {
-
-class DefaultNumberingProvider : public cppu::WeakImplHelper
+class DefaultNumberingProvider final : public cppu::WeakImplHelper
 <
     css::text::XDefaultNumberingProvider,
     css::text::XNumberingFormatter,
@@ -76,12 +79,17 @@ private:
     css::uno::Reference < css::uno::XComponentContext > m_xContext;
     css::uno::Reference < css::container::XHierarchicalNameAccess > xHierarchicalNameAccess;
     rtl::Reference<TransliterationImpl> translit;
+    rtl::Reference<NativeNumberSupplierService> mxNatNum;
+    std::map<OUString, const Supported_NumberingType*> maSupportedTypesCache;
+
     /// @throws css::uno::RuntimeException
-    OUString SAL_CALL makeNumberingIdentifier( sal_Int16 index );
+    OUString makeNumberingIdentifier( sal_Int16 index );
     /// @throws css::uno::RuntimeException
-    bool SAL_CALL isScriptFlagEnabled(const OUString& aName );
+    bool isScriptFlagEnabled(const OUString& aName );
 };
-} } } }
+
+}
+
 
 #endif
 

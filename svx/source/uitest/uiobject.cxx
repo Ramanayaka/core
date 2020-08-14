@@ -8,21 +8,16 @@
  */
 
 #include <memory>
-#include "uiobject.hxx"
-
+#include <uiobject.hxx>
 #include <svx/charmap.hxx>
+#include <vcl/layout.hxx>
 
-SvxShowCharSetUIObject::SvxShowCharSetUIObject(const VclPtr<SvxShowCharSet>& xCharSet):
-    WindowUIObject(xCharSet),
-    mxCharSet(xCharSet)
+#include <svx/numvset.hxx>
+
+SvxShowCharSetUIObject::SvxShowCharSetUIObject(const VclPtr<vcl::Window>& xCharSetWin, SvxShowCharSet* pCharSet):
+    WindowUIObject(xCharSetWin),
+    mpCharSet(pCharSet)
 {
-}
-
-StringMap SvxShowCharSetUIObject::get_state()
-{
-    StringMap aMap = WindowUIObject::get_state();
-
-    return aMap;
 }
 
 void SvxShowCharSetUIObject::execute(const OUString& rAction,
@@ -35,7 +30,7 @@ void SvxShowCharSetUIObject::execute(const OUString& rAction,
             OUString aIndexStr = rParameters.find("INDEX")->second;
 
             sal_Int32 nIndex = aIndexStr.toInt32();
-            mxCharSet->OutputIndex(nIndex);
+            mpCharSet->OutputIndex(nIndex);
         }
         else if (rParameters.find("COLUMN") != rParameters.end() &&
                 rParameters.find("ROW") != rParameters.end())
@@ -47,7 +42,7 @@ void SvxShowCharSetUIObject::execute(const OUString& rAction,
             sal_Int32 nRow = aRowStr.toInt32();
 
             sal_Int32 nIndex = nColumn * COLUMN_COUNT + nRow;
-            mxCharSet->OutputIndex(nIndex);
+            mpCharSet->OutputIndex(nIndex);
         }
     }
     else
@@ -56,14 +51,59 @@ void SvxShowCharSetUIObject::execute(const OUString& rAction,
 
 std::unique_ptr<UIObject> SvxShowCharSetUIObject::create(vcl::Window* pWindow)
 {
-    SvxShowCharSet* pCharSet = dynamic_cast<SvxShowCharSet*>(pWindow);
-    assert(pCharSet);
-    return std::unique_ptr<UIObject>(new SvxShowCharSetUIObject(pCharSet));
+    VclDrawingArea* pCharSetWin = dynamic_cast<VclDrawingArea*>(pWindow);
+    assert(pCharSetWin);
+    return std::unique_ptr<UIObject>(new SvxShowCharSetUIObject(pCharSetWin, static_cast<SvxShowCharSet*>(pCharSetWin->GetUserData())));
 }
 
 OUString SvxShowCharSetUIObject::get_name() const
 {
-    return OUString("SvxShowCharSetUIObject");
+    return "SvxShowCharSetUIObject";
 }
 
+
+SvxNumValueSetUIObject::SvxNumValueSetUIObject(vcl::Window*  xNumValueSetWin , SvxNumValueSet* pNumValueSet):
+    WindowUIObject(xNumValueSetWin),
+    mpNumValueSet(pNumValueSet)
+{
+}
+
+void SvxNumValueSetUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    if (rAction == "CHOOSE")
+    {
+        if (rParameters.find("POS") != rParameters.end())
+        {
+            OUString aIndexStr = rParameters.find("POS")->second;
+            sal_Int32 nIndex = aIndexStr.toInt32();
+            mpNumValueSet->SelectItem(nIndex);
+            mpNumValueSet->Select();
+        }
+    }
+    else
+       WindowUIObject::execute(rAction, rParameters);
+}
+
+std::unique_ptr<UIObject> SvxNumValueSetUIObject::create(vcl::Window* pWindow)
+{
+    VclDrawingArea* pNumValueSetWin = dynamic_cast<VclDrawingArea*>(pWindow);
+    assert(pNumValueSetWin);
+    return std::unique_ptr<UIObject>(new SvxNumValueSetUIObject(pNumValueSetWin, static_cast<SvxNumValueSet*>(pNumValueSetWin->GetUserData())));
+}
+
+OUString SvxNumValueSetUIObject::get_name() const
+{
+    return "SvxNumValueSetUIObject";
+}
+
+StringMap SvxNumValueSetUIObject::get_state()
+{
+    StringMap aMap = WindowUIObject::get_state();
+    aMap["SelectedItemId"] = OUString::number( mpNumValueSet->GetSelectedItemId() );
+    aMap["SelectedItemPos"] = OUString::number( mpNumValueSet->GetSelectItemPos() );
+    aMap["ItemsCount"] = OUString::number(mpNumValueSet->GetItemCount());
+    aMap["ItemText"] = mpNumValueSet->GetItemText(mpNumValueSet->GetSelectedItemId());
+    return aMap;
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

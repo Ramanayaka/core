@@ -30,7 +30,7 @@ $(eval $(call gb_Library_use_custom_headers,xof,\
 	xmloff/generated \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,xof,$(SRCDIR)/xmloff/inc/pch/precompiled_xof))
+$(eval $(call gb_Library_set_precompiled_header,xof,xmloff/inc/pch/precompiled_xof))
 
 $(eval $(call gb_Library_use_external,xof,boost_headers))
 
@@ -85,7 +85,6 @@ $(eval $(call gb_Library_add_exception_objects,xof,\
     xmloff/source/transform/TransformerBase \
     xmloff/source/transform/TransformerContext \
     xmloff/source/transform/TransformerTokenMap \
-    xmloff/source/transform/XMLFilterRegistration \
 ))
 
 # vim: set noet sw=4 ts=4:

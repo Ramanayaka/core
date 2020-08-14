@@ -7,18 +7,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <cppuhelper/bootstrap.hxx>
-#include <cppuhelper/basemutex.hxx>
 #include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <com/sun/star/i18n/CharacterIteratorMode.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
 #include <com/sun/star/i18n/WordType.hpp>
+#include <o3tl/cppunittraitshelper.hxx>
 #include <unotest/bootstrapfixturebase.hxx>
 
-#include <unicode/uversion.h>
+#include <unicode/uvernum.h>
 
 #include <rtl/strbuf.hxx>
-#include <rtl/ustrbuf.hxx>
 
 #include <string.h>
 
@@ -68,7 +66,7 @@ public:
 
 private:
     uno::Reference<i18n::XBreakIterator> m_xBreak;
-    void doTestJapanese(uno::Reference< i18n::XBreakIterator > &xBreak);
+    void doTestJapanese(uno::Reference< i18n::XBreakIterator > const &xBreak);
 };
 
 void TestBreakIterator::testLineBreaking()
@@ -115,14 +113,12 @@ void TestBreakIterator::testLineBreaking()
 
     //See https://bz.apache.org/ooo/show_bug.cgi?id=17155
     {
-        OUString const aTest("foo /bar/baz");
-
         aLocale.Language = "en";
         aLocale.Country = "US";
 
         {
             //Here we want the line break to leave /bar/ba clumped together on the next line
-            i18n::LineBreakResults aResult = m_xBreak->getLineBreak(aTest, strlen("foo /bar/ba"), aLocale, 0,
+            i18n::LineBreakResults aResult = m_xBreak->getLineBreak("foo /bar/baz", strlen("foo /bar/ba"), aLocale, 0,
                 aHyphOptions, aUserOptions);
             CPPUNIT_ASSERT_EQUAL_MESSAGE("Expected a break at the first slash", static_cast<sal_Int32>(4), aResult.breakIndex);
         }
@@ -156,6 +152,22 @@ void TestBreakIterator::testLineBreaking()
         {
             //This must not assert/crash
             (void)m_xBreak->getLineBreak(aTest, 0, aLocale, 0, aHyphOptions, aUserOptions);
+        }
+    }
+
+    //See https://bugs.documentfoundation.org/show_bug.cgi?id=96197
+    {
+        const sal_Unicode HANGUL[] = { 0xc560, 0xad6D, 0xac00, 0xc758, 0x0020, 0xac00,
+                                       0xc0ac, 0xb294};
+        OUString aTest(HANGUL, SAL_N_ELEMENTS(HANGUL));
+
+        aLocale.Language = "ko";
+        aLocale.Country = "KR";
+
+        {
+            i18n::LineBreakResults aResult = m_xBreak->getLineBreak(aTest, aTest.getLength()-2, aLocale, 0,
+                aHyphOptions, aUserOptions);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE("Expected a break don't split the Korean word!", static_cast<sal_Int32>(5), aResult.breakIndex);
         }
     }
 }
@@ -267,7 +279,7 @@ void TestBreakIterator::testWordBoundaries()
             if (aBreakTests[i] == 0x200B)
                 continue;
 #endif
-            OUString aTest = "Word" + OUStringLiteral1(aBreakTests[i]) + "Word";
+            OUString aTest = "Word" + OUStringChar(aBreakTests[i]) + "Word";
             aBounds = m_xBreak->getWordBoundary(aTest, 0, aLocale, mode, true);
             switch (mode)
             {
@@ -296,7 +308,7 @@ void TestBreakIterator::testWordBoundaries()
         //make sure that in all cases isBeginWord and isEndWord matches getWordBoundary
         for (size_t i = 0; i < SAL_N_ELEMENTS(aJoinTests); ++i)
         {
-            OUString aTest = "Word" + OUStringLiteral1(aJoinTests[i]) + "Word";
+            OUString aTest = "Word" + OUStringChar(aJoinTests[i]) + "Word";
             aBounds = m_xBreak->getWordBoundary(aTest, 0, aLocale, mode, true);
             switch (mode)
             {
@@ -357,7 +369,7 @@ void TestBreakIterator::testWordBoundaries()
         const sal_Int32 aSinglePositions[] = {0, 1, 3, 4, 6, 7, 9, 10};
         for (size_t j = 1; j < SAL_N_ELEMENTS(aTests); ++j)
         {
-            OUString aTest = aBase.replaceAll("xx", OUStringLiteral1(aTests[j]));
+            OUString aTest = aBase.replaceAll("xx", OUStringChar(aTests[j]));
             sal_Int32 nPos = -1;
             size_t i = 0;
             do
@@ -382,7 +394,7 @@ void TestBreakIterator::testWordBoundaries()
         const sal_Int32 aSingleQuotePositions[] = {0, 1, 9, 10};
         CPPUNIT_ASSERT_EQUAL(u'\'', aTests[0]);
         {
-            OUString aTest = aBase.replaceAll("xx", OUStringLiteral1(aTests[0]));
+            OUString aTest = aBase.replaceAll("xx", OUStringChar(aTests[0]));
             sal_Int32 nPos = -1;
             size_t i = 0;
             do
@@ -779,10 +791,10 @@ void TestBreakIterator::testWeak()
         for (sal_Int32 i = 0; i < aWeaks.getLength(); ++i)
         {
             sal_Int16 nScript = m_xBreak->getScriptType(aWeaks, i);
-            OStringBuffer aMsg;
-            aMsg.append("Char 0x");
-            aMsg.append(static_cast<sal_Int32>(aWeaks[i]), 16);
-            aMsg.append(" should have been weak");
+            OString aMsg =
+                "Char 0x" +
+                OString::number(static_cast<sal_Int32>(aWeaks[i]), 16) +
+                " should have been weak";
             CPPUNIT_ASSERT_EQUAL_MESSAGE(aMsg.getStr(),
                 i18n::ScriptType::WEAK, nScript);
         }
@@ -818,10 +830,10 @@ void TestBreakIterator::testAsian()
         for (sal_Int32 i = 0; i < aAsians.getLength(); ++i)
         {
             sal_Int16 nScript = m_xBreak->getScriptType(aAsians, i);
-            OStringBuffer aMsg;
-            aMsg.append("Char 0x");
-            aMsg.append(static_cast<sal_Int32>(aAsians[i]), 16);
-            aMsg.append(" should have been asian");
+            OString aMsg =
+                "Char 0x" +
+                OString::number(static_cast<sal_Int32>(aAsians[i]), 16) +
+                " should have been asian";
             CPPUNIT_ASSERT_EQUAL_MESSAGE(aMsg.getStr(),
                 i18n::ScriptType::ASIAN, nScript);
         }
@@ -903,6 +915,29 @@ void TestBreakIterator::testThai()
         }
         while (nPos > 0);
     }
+
+    // tdf#113694
+    {
+        const sal_Unicode NON_BMP[] = { 0xD800, 0xDC00 };
+        OUString aTest(NON_BMP, SAL_N_ELEMENTS(NON_BMP));
+
+        sal_Int32 nDone=0;
+        sal_Int32 nPos;
+
+        nPos = m_xBreak->nextCharacters(aTest, 0, aLocale,
+            i18n::CharacterIteratorMode::SKIPCELL, 1, nDone);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Should skip full surrogate pair", static_cast<sal_Int32>(SAL_N_ELEMENTS(NON_BMP)), nPos);
+        nPos = m_xBreak->previousCharacters(aTest, SAL_N_ELEMENTS(NON_BMP), aLocale,
+            i18n::CharacterIteratorMode::SKIPCELL, 1, nDone);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Should skip full surrogate pair", static_cast<sal_Int32>(0), nPos);
+
+        nPos = m_xBreak->nextCharacters(aTest, 0, aLocale,
+            i18n::CharacterIteratorMode::SKIPCHARACTER, 1, nDone);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Should skip full surrogate pair", static_cast<sal_Int32>(SAL_N_ELEMENTS(NON_BMP)), nPos);
+        nPos = m_xBreak->previousCharacters(aTest, SAL_N_ELEMENTS(NON_BMP), aLocale,
+            i18n::CharacterIteratorMode::SKIPCHARACTER, 1, nDone);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Should skip full surrogate pair", static_cast<sal_Int32>(0), nPos);
+    }
 }
 
 #ifdef TODO
@@ -949,7 +984,7 @@ void TestBreakIterator::testKhmer()
 }
 #endif
 
-void TestBreakIterator::doTestJapanese(uno::Reference< i18n::XBreakIterator > &xBreak)
+void TestBreakIterator::doTestJapanese(uno::Reference< i18n::XBreakIterator > const &xBreak)
 {
     lang::Locale aLocale;
     aLocale.Language = "ja";

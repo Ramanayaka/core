@@ -18,10 +18,7 @@
  */
 
 
-#include <com/sun/star/rendering/XSprite.hpp>
-#include <com/sun/star/rendering/XAnimatedSprite.hpp>
-
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <canvas/canvastools.hxx>
 
@@ -30,10 +27,8 @@
 
 using namespace ::com::sun::star;
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
 
         ImplSprite::ImplSprite( const uno::Reference< rendering::XSpriteCanvas >&       rParentCanvas,
                                 const uno::Reference< rendering::XSprite >&             rSprite,
@@ -51,7 +46,7 @@ namespace cppcanvas
             OSL_ENSURE( rParentCanvas.is() , "ImplSprite::ImplSprite(): Invalid canvas");
             OSL_ENSURE( mxGraphicDevice.is(), "ImplSprite::ImplSprite(): Invalid graphic device");
             OSL_ENSURE( mxSprite.is(), "ImplSprite::ImplSprite(): Invalid sprite");
-            OSL_ENSURE( mpTransformArbiter.get(), "ImplSprite::ImplSprite(): Invalid transformation arbiter");
+            OSL_ENSURE( mpTransformArbiter, "ImplSprite::ImplSprite(): Invalid transformation arbiter");
         }
 
         ImplSprite::~ImplSprite()
@@ -95,21 +90,21 @@ namespace cppcanvas
         {
             OSL_ENSURE( mxSprite.is(), "ImplSprite::move(): Invalid sprite");
 
-            if( mxSprite.is() )
-            {
-                rendering::ViewState    aViewState;
-                rendering::RenderState  aRenderState;
+            if( !mxSprite.is() )
+                return;
 
-                ::canvas::tools::initViewState( aViewState );
-                ::canvas::tools::initRenderState( aRenderState );
+            rendering::ViewState    aViewState;
+            rendering::RenderState  aRenderState;
 
-                ::canvas::tools::setViewStateTransform( aViewState,
-                                                        mpTransformArbiter->getTransformation() );
+            ::canvas::tools::initViewState( aViewState );
+            ::canvas::tools::initRenderState( aRenderState );
 
-                mxSprite->move( ::basegfx::unotools::point2DFromB2DPoint( rNewPos ),
-                                aViewState,
-                                aRenderState );
-            }
+            ::canvas::tools::setViewStateTransform( aViewState,
+                                                    mpTransformArbiter->getTransformation() );
+
+            mxSprite->move( ::basegfx::unotools::point2DFromB2DPoint( rNewPos ),
+                            aViewState,
+                            aRenderState );
         }
 
         void ImplSprite::transform( const ::basegfx::B2DHomMatrix& rMatrix )
@@ -140,22 +135,22 @@ namespace cppcanvas
             OSL_ENSURE( mxGraphicDevice.is(), "ImplSprite::setClip(): Invalid canvas");
             OSL_ENSURE( mxSprite.is(), "ImplSprite::transform(): Invalid sprite");
 
-            if( mxSprite.is() && mxGraphicDevice.is() )
-            {
-                ::basegfx::B2DPolyPolygon   aTransformedClipPoly( rClipPoly );
+            if( !(mxSprite.is() && mxGraphicDevice.is()) )
+                return;
 
-                // extract linear part of canvas view transformation (linear means:
-                // without translational components)
-                ::basegfx::B2DHomMatrix     aViewTransform( mpTransformArbiter->getTransformation() );
-                aViewTransform.set( 0, 2, 0.0 );
-                aViewTransform.set( 1, 2, 0.0 );
+            ::basegfx::B2DPolyPolygon   aTransformedClipPoly( rClipPoly );
 
-                // transform polygon from view to device coordinate space
-                aTransformedClipPoly.transform( aViewTransform );
+            // extract linear part of canvas view transformation (linear means:
+            // without translational components)
+            ::basegfx::B2DHomMatrix     aViewTransform( mpTransformArbiter->getTransformation() );
+            aViewTransform.set( 0, 2, 0.0 );
+            aViewTransform.set( 1, 2, 0.0 );
 
-                mxSprite->clip( ::basegfx::unotools::xPolyPolygonFromB2DPolyPolygon( mxGraphicDevice,
-                                                                                     aTransformedClipPoly ) );
-            }
+            // transform polygon from view to device coordinate space
+            aTransformedClipPoly.transform( aViewTransform );
+
+            mxSprite->clip( ::basegfx::unotools::xPolyPolygonFromB2DPolyPolygon( mxGraphicDevice,
+                                                                                 aTransformedClipPoly ) );
         }
 
         void ImplSprite::setClip()
@@ -190,7 +185,6 @@ namespace cppcanvas
             if( mxSprite.is() )
                 mxSprite->setPriority(fPriority);
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

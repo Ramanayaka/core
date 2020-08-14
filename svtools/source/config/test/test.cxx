@@ -39,11 +39,10 @@
 #include <rtl/ustring>
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 #include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
-#include <vcl/msgbox.hxx>
 
 using namespace ::osl                       ;
 using namespace ::comphelper                ;
@@ -199,7 +198,7 @@ void TestApplication::impl_testDynamicMenuOptions()
 
 
 // create new uno servicemanager by using normal applicat.rdb and user.rdb of an office installation!
-// Don't use this application at same time like the office!
+// Don't use this application at the same time like the office!
 
 Reference< XMultiServiceFactory > TestApplication::getUNOServiceManager()
 {

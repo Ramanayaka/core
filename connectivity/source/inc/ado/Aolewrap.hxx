@@ -23,16 +23,13 @@
 #include <osl/thread.h>
 #include <map>
 #include <vector>
-#include <connectivity/StdTypeDefs.hxx>
 
 namespace rtl
 {
     class OUString;
 }
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class OLEVariant;
         class WpBase
         {
@@ -168,8 +165,7 @@ namespace connectivity
                 if (FAILED(pInterface->get_Item(OLEVariant(sStr), &pT)))
                 {
 #if OSL_DEBUG_LEVEL > 0
-                    OString sTemp("Unknown Item: ");
-                    sTemp += OString(sStr.getStr(),sStr.getLength(),osl_getThreadTextEncoding());
+                    OString sTemp("Unknown Item: " + OString(sStr.getStr(),sStr.getLength(),osl_getThreadTextEncoding()));
                     OSL_FAIL(sTemp.getStr());
 #endif
                 }
@@ -177,7 +173,7 @@ namespace connectivity
                     aRet.setWithOutAddRef(pT);
                 return aRet;
             }
-            void fillElementNames(TStringVector& _rVector)
+            void fillElementNames(::std::vector< OUString>& _rVector)
             {
                 if(IsValid())
                 {
@@ -220,8 +216,8 @@ namespace connectivity
 
 
         };
-    }
 }
+
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AOLEWRAP_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

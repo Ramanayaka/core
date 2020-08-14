@@ -23,13 +23,11 @@
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <uno/environment.h>
 
 #include <functional>
 #include <initializer_list>
 
-namespace comphelper {
-namespace service_decl {
+namespace comphelper::service_decl {
 
 class ServiceDecl;
 
@@ -115,7 +113,7 @@ public:
           m_pServiceNames(pSupportedServiceNames) {}
 
     /// @internal gets called by component_getFactoryHelper()
-    void * getFactory( sal_Char const* pImplName ) const;
+    void * getFactory( char const* pImplName ) const;
 
     /// @return supported service names
     css::uno::Sequence< OUString> getSupportedServiceNames() const;
@@ -142,195 +140,15 @@ template <bool> struct with_args;
 
 /// @internal
 namespace detail {
-template <typename ImplT>
-class OwnServiceImpl
-    : public ImplT
-{
-    typedef ImplT BaseT;
-
-public:
-    OwnServiceImpl( const OwnServiceImpl& ) = delete;
-    OwnServiceImpl& operator=( const OwnServiceImpl& ) = delete;
-    OwnServiceImpl(
-        ServiceDecl const& rServiceDecl,
-        css::uno::Sequence<css::uno::Any> const& args,
-        css::uno::Reference<css::uno::XComponentContext> const& xContext )
-        :BaseT(args, xContext), m_rServiceDecl(rServiceDecl) {}
-    OwnServiceImpl(
-        ServiceDecl const& rServiceDecl,
-        css::uno::Reference<css::uno::XComponentContext> const& xContext )
-        : BaseT(xContext), m_rServiceDecl(rServiceDecl) {}
-
-    // XServiceInfo
-    virtual OUString SAL_CALL getImplementationName() override {
-        return m_rServiceDecl.getImplementationName();
-    }
-    virtual sal_Bool SAL_CALL supportsService( OUString const& name ) override {
-        return m_rServiceDecl.supportsService(name);
-    }
-    virtual css::uno::Sequence< OUString>
-    SAL_CALL getSupportedServiceNames() override {
-        return m_rServiceDecl.getSupportedServiceNames();
-    }
-
-private:
-    ServiceDecl const& m_rServiceDecl;
-};
-
-template <typename ImplT>
-class ServiceImpl : public OwnServiceImpl< ::cppu::ImplInheritanceHelper<ImplT,css::lang::XServiceInfo> >
-{
-typedef OwnServiceImpl< ::cppu::ImplInheritanceHelper<ImplT,css::lang::XServiceInfo> > ServiceImpl_BASE;
-public:
-    ServiceImpl(
-        ServiceDecl const& rServiceDecl,
-        css::uno::Sequence<css::uno::Any> const& args,
-        css::uno::Reference<css::uno::XComponentContext> const& xContext )
-        : ServiceImpl_BASE(rServiceDecl, args, xContext) {}
-    ServiceImpl(
-        ServiceDecl const& rServiceDecl,
-        css::uno::Reference<css::uno::XComponentContext> const& xContext )
-        : ServiceImpl_BASE(rServiceDecl, xContext) {}
-};
-
-template <typename ImplT>
-class InheritingServiceImpl : public OwnServiceImpl< ImplT >
-{
-typedef OwnServiceImpl< ImplT > ServiceImpl_BASE;
-public:
-    InheritingServiceImpl(
-        ServiceDecl const& rServiceDecl,
-        css::uno::Sequence<css::uno::Any> const& args,
-        css::uno::Reference<css::uno::XComponentContext> const& xContext )
-        : ServiceImpl_BASE(rServiceDecl, args, xContext) {}
-};
-
-template <typename ServiceImplT>
-struct PostProcessDefault {
-    css::uno::Reference<css::uno::XInterface>
-    operator()( ServiceImplT * p ) const {
-        return static_cast<css::lang::XServiceInfo *>(p);
-    }
-};
-
-template <typename ImplT, typename PostProcessFuncT, typename WithArgsT>
-struct CreateFunc;
-
-template <typename ImplT, typename PostProcessFuncT>
-struct CreateFunc<ImplT, PostProcessFuncT, with_args<false> > {
-    PostProcessFuncT const m_postProcessFunc;
-    explicit CreateFunc( PostProcessFuncT const& postProcessFunc )
-        : m_postProcessFunc(postProcessFunc) {}
-
-    css::uno::Reference<css::uno::XInterface>
-    operator()( ServiceDecl const& rServiceDecl,
-                css::uno::Sequence<css::uno::Any> const&,
-                css::uno::Reference<css::uno::XComponentContext>
-                const& xContext ) const
-    {
-        return m_postProcessFunc(
-            new ImplT( rServiceDecl, xContext ) );
-    }
-};
-
-template <typename ImplT, typename PostProcessFuncT>
-struct CreateFunc<ImplT, PostProcessFuncT, with_args<true> > {
-    PostProcessFuncT const m_postProcessFunc;
-    explicit CreateFunc( PostProcessFuncT const& postProcessFunc )
-        : m_postProcessFunc(postProcessFunc) {}
-
-    css::uno::Reference<css::uno::XInterface>
-    operator()( ServiceDecl const& rServiceDecl,
-                css::uno::Sequence<css::uno::Any> const& args,
-                css::uno::Reference<css::uno::XComponentContext>
-                const& xContext ) const
-    {
-        return m_postProcessFunc(
-            new ImplT( rServiceDecl, args, xContext ) );
-    }
-};
 
 } // namespace detail
 
-/** Defines a service implementation class.
-
-    @tpl ImplT_ service implementation class
-    @WithArgsT whether the implementation class ctor expects arguments
-               (uno::Sequence<uno::Any>, uno::Reference<uno::XComponentContext>)
-               or just (uno::Reference<uno::XComponentContext>)
-*/
-template <typename ImplT_, typename WithArgsT = with_args<false> >
-struct serviceimpl_base {
-    typedef ImplT_ ImplT;
-
-    detail::CreateFuncF const m_createFunc;
-
-    typedef detail::PostProcessDefault<ImplT> PostProcessDefaultT;
-
-    /** Default ctor.  Implementation class without args, expecting
-        component context as single argument.
-    */
-    serviceimpl_base() : m_createFunc(
-        detail::CreateFunc<ImplT, PostProcessDefaultT, WithArgsT>(
-            PostProcessDefaultT() ) ) {}
-
-    /** Ctor to pass a post processing function/functor.
-
-        @tpl PostProcessDefaultT let your compiler deduce this
-        @param postProcessFunc function/functor that gets the yet unacquired
-                               ImplT_ pointer returning a
-                               uno::Reference<uno::XInterface>
-    */
-    template <typename PostProcessFuncT>
-    explicit serviceimpl_base( PostProcessFuncT const& postProcessFunc )
-        : m_createFunc( detail::CreateFunc<ImplT, PostProcessFuncT, WithArgsT>(
-                            postProcessFunc ) ) {}
-};
-
-template <typename ImplT_, typename WithArgsT = with_args<false> >
-struct class_ : public serviceimpl_base< detail::ServiceImpl<ImplT_>, WithArgsT >
-{
-    typedef serviceimpl_base< detail::ServiceImpl<ImplT_>, WithArgsT > baseT;
-    /** Default ctor.  Implementation class without args, expecting
-        component context as single argument.
-    */
-    class_() : baseT() {}
-    template <typename PostProcessFuncT>
-    /** Ctor to pass a post processing function/functor.
-
-        @tpl PostProcessDefaultT let your compiler deduce this
-        @param postProcessFunc function/functor that gets the yet unacquired
-                               ImplT_ pointer returning a
-                               uno::Reference<uno::XInterface>
-    */
-    explicit class_( PostProcessFuncT const& postProcessFunc ) : baseT( postProcessFunc ) {}
-};
-
-template <typename ImplT_, typename WithArgsT = with_args<false> >
-struct inheritingClass_ : public serviceimpl_base< detail::InheritingServiceImpl<ImplT_>, WithArgsT >
-{
-    typedef serviceimpl_base< detail::InheritingServiceImpl<ImplT_>, WithArgsT > baseT;
-    /** Default ctor.  Implementation class without args, expecting
-        component context as single argument.
-    */
-    inheritingClass_() : baseT() {}
-    template <typename PostProcessFuncT>
-    /** Ctor to pass a post processing function/functor.
-
-        @tpl PostProcessDefaultT let your compiler deduce this
-        @param postProcessFunc function/functor that gets the yet unacquired
-                               ImplT_ pointer returning a
-                               uno::Reference<uno::XInterface>
-    */
-    explicit inheritingClass_( PostProcessFuncT const& postProcessFunc ) : baseT( postProcessFunc ) {}
-};
 
 COMPHELPER_DLLPUBLIC
-void* component_getFactoryHelper( const sal_Char* pImplName,
+void* component_getFactoryHelper( const char* pImplName,
                                   std::initializer_list<ServiceDecl const *> args );
 
-} // namespace service_decl
-} // namespace comphelper
+} // namespace comphelper::service_decl
 
 
 #endif //  ! defined( INCLUDED_COMPHELPER_SERVICEDECL_HXX)

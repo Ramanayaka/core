@@ -14,14 +14,16 @@ $(eval $(call gb_Executable_set_include,tilebench,\
     -I$(SRCDIR)/desktop/inc \
 ))
 
+$(eval $(call gb_Executable_use_externals,tilebench,\
+    boost_headers \
+))
+
 $(eval $(call gb_Executable_use_libraries,tilebench,\
-    libreofficekitgtk \
 	sal \
 ))
 
 $(eval $(call gb_Executable_add_libs,tilebench,\
     -lm $(DLOPEN_LIBS) \
-    -lpthread \
 ))
 
 $(eval $(call gb_Executable_add_exception_objects,tilebench,\

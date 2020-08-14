@@ -22,25 +22,25 @@
 
 #include <oox/core/contexthandler2.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 struct TextCharacterProperties;
 
-class TextCharacterPropertiesContext : public ::oox::core::ContextHandler2
+class TextCharacterPropertiesContext final : public ::oox::core::ContextHandler2
 {
 public:
-    TextCharacterPropertiesContext( ::oox::core::ContextHandler2Helper& rParent,
+    TextCharacterPropertiesContext( ::oox::core::ContextHandler2Helper const & rParent,
             const ::oox::AttributeList& rAttribs,
             TextCharacterProperties& rTextCharacterProperties );
     virtual ~TextCharacterPropertiesContext() override;
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
-protected:
+private:
     TextCharacterProperties& mrTextCharacterProperties;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TEXTCHARACTERPROPERTIESCONTEXT_HXX
 

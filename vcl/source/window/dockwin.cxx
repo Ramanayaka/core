@@ -18,6 +18,8 @@
  */
 
 #include <tools/time.hxx>
+#include <sal/log.hxx>
+#include <vcl/accel.hxx>
 #include <vcl/event.hxx>
 #include <vcl/floatwin.hxx>
 #include <vcl/dockwin.hxx>
@@ -25,13 +27,11 @@
 #include <vcl/svapp.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
-#include <vcl/unowrap.hxx>
 #include <vcl/settings.hxx>
 
 #include <svdata.hxx>
 #include <window.h>
 #include <brdwin.hxx>
-#include <salframe.hxx>
 
 #define DOCKWIN_FLOATSTYLES         (WB_SIZEABLE | WB_MOVEABLE | WB_CLOSEABLE | WB_STANDALONE | WB_ROLLABLE )
 
@@ -49,6 +49,8 @@ DockingWindow::ImplData::ImplData()
     mpParent = nullptr;
     maMaxOutSize = Size( SHRT_MAX, SHRT_MAX );
 }
+
+namespace {
 
 class ImplDockFloatWin : public FloatingWindow
 {
@@ -75,6 +77,8 @@ public:
     virtual bool    Close() override;
 };
 
+}
+
 ImplDockFloatWin::ImplDockFloatWin( vcl::Window* pParent, WinBits nWinBits,
                                     DockingWindow* pDockingWin ) :
         FloatingWindow( pParent, nWinBits ),
@@ -97,7 +101,7 @@ ImplDockFloatWin::ImplDockFloatWin( vcl::Window* pParent, WinBits nWinBits,
     SetBackground();
 
     maDockIdle.SetInvokeHandler( LINK( this, ImplDockFloatWin, DockTimerHdl ) );
-    maDockIdle.SetPriority( TaskPriority::MEDIUM );
+    maDockIdle.SetPriority( TaskPriority::HIGH_IDLE );
     maDockIdle.SetDebugName( "vcl::ImplDockFloatWin maDockIdle" );
 }
 
@@ -220,13 +224,12 @@ bool ImplDockFloatWin::Close()
     return mpDockWin->Close();
 }
 
-bool DockingWindow::ImplStartDocking( const Point& rPos )
+void DockingWindow::ImplStartDocking( const Point& rPos )
 {
     if ( !mbDockable )
-        return false;
+        return;
 
     maMouseOff      = rPos;
-    maMouseStart    = maMouseOff;
     mbDocking       = true;
     mbLastFloatMode = IsFloatingMode();
     mbStartFloat    = mbLastFloatMode;
@@ -250,8 +253,8 @@ bool DockingWindow::ImplStartDocking( const Point& rPos )
 
     if ( mbLastFloatMode )
     {
-        maMouseOff.X()  += mnDockLeft;
-        maMouseOff.Y()  += mnDockTop;
+        maMouseOff.AdjustX(mnDockLeft );
+        maMouseOff.AdjustY(mnDockTop );
         mnTrackX        -= mnDockLeft;
         mnTrackY        -= mnDockTop;
         mnTrackWidth    += mnDockLeft+mnDockRight;
@@ -270,7 +273,6 @@ bool DockingWindow::ImplStartDocking( const Point& rPos )
     }
 
     StartTracking( StartTrackingFlags::KeyMod );
-    return true;
 }
 
 void DockingWindow::ImplInitDockingWindowData()
@@ -278,7 +280,7 @@ void DockingWindow::ImplInitDockingWindowData()
     mpWindowImpl->mbDockWin = true;
     mpFloatWin     = nullptr;
     mpOldBorderWin = nullptr;
-    mpImplData     = new ImplData;
+    mpImplData.reset(new ImplData);
     mnTrackX       = 0;
     mnTrackY       = 0;
     mnTrackWidth   = 0;
@@ -297,7 +299,7 @@ void DockingWindow::ImplInitDockingWindowData()
     mbRollUp       = false;
     mbDockBtn      = false;
     mbHideBtn      = false;
-    mbIsDefferedInit = false;
+    mbIsDeferredInit = false;
     mbIsCalculatingInitialLayoutSize = false;
     mpDialogParent = nullptr;
 
@@ -316,8 +318,6 @@ void DockingWindow::ImplInit( vcl::Window* pParent, WinBits nStyle )
     mbDockable              = (nStyle & WB_DOCKABLE) != 0;
     mnFloatBits             = WB_BORDER | (nStyle & DOCKWIN_FLOATSTYLES);
     nStyle                 &= ~(DOCKWIN_FLOATSTYLES | WB_BORDER);
-    if ( nStyle & WB_DOCKBORDER )
-        nStyle |= WB_BORDER;
 
     Window::ImplInit( pParent, nStyle, nullptr );
 
@@ -328,19 +328,19 @@ void DockingWindow::ImplInitSettings()
 {
     // Hack: to be able to build DockingWindows w/o background before switching
     // TODO: Hack
-    if ( IsBackground() )
-    {
-        const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
+    if ( !IsBackground() )
+        return;
 
-        Color aColor;
-        if ( IsControlBackground() )
-            aColor = GetControlBackground();
-        else if ( Window::GetStyle() & WB_3DLOOK )
-            aColor = rStyleSettings.GetFaceColor();
-        else
-            aColor = rStyleSettings.GetWindowColor();
-        SetBackground( aColor );
-    }
+    const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
+
+    Color aColor;
+    if ( IsControlBackground() )
+        aColor = GetControlBackground();
+    else if ( Window::GetStyle() & WB_3DLOOK )
+        aColor = rStyleSettings.GetFaceColor();
+    else
+        aColor = rStyleSettings.GetWindowColor();
+    SetBackground( aColor );
 }
 
 DockingWindow::DockingWindow( WindowType nType ) :
@@ -362,15 +362,15 @@ void DockingWindow::doDeferredInit(WinBits nBits)
     vcl::Window *pParent = mpDialogParent;
     mpDialogParent = nullptr;
     ImplInit(pParent, nBits);
-    mbIsDefferedInit = false;
+    mbIsDeferredInit = false;
 }
 
 void DockingWindow::loadUI(vcl::Window* pParent, const OString& rID, const OUString& rUIXMLDescription,
     const css::uno::Reference<css::frame::XFrame> &rFrame)
 {
-    mbIsDefferedInit = true;
+    mbIsDeferredInit = true;
     mpDialogParent = pParent; //should be unset in doDeferredInit
-    m_pUIBuilder.reset( new VclBuilder(this, getUIRootDir(), rUIXMLDescription, rID, rFrame) );
+    m_pUIBuilder.reset( new VclBuilder(this, AllSettings::GetUIRootDir(), rUIXMLDescription, rID, rFrame) );
 }
 
 DockingWindow::DockingWindow(vcl::Window* pParent, const OString& rID,
@@ -394,8 +394,7 @@ void DockingWindow::dispose()
         Show( false, ShowFlags::NoFocusChange );
         SetFloatingMode(false);
     }
-    delete mpImplData;
-    mpImplData = nullptr;
+    mpImplData.reset();
     mpFloatWin.clear();
     mpOldBorderWin.clear();
     mpDialogParent.clear();
@@ -408,113 +407,113 @@ void DockingWindow::Tracking( const TrackingEvent& rTEvt )
     if( GetDockingManager()->IsDockable( this ) )   // new docking interface
         return Window::Tracking( rTEvt );
 
-    if ( mbDocking )
+    if ( !mbDocking )
+        return;
+
+    if ( rTEvt.IsTrackingEnded() )
     {
-        if ( rTEvt.IsTrackingEnded() )
+        mbDocking = false;
+        if ( mbDragFull )
         {
-            mbDocking = false;
-            if ( mbDragFull )
+            // reset old state on Cancel
+            if ( rTEvt.IsTrackingCanceled() )
             {
-                // reset old state on Cancel
-                if ( rTEvt.IsTrackingCanceled() )
-                {
-                    StartDocking();
-                    tools::Rectangle aRect( Point( mnTrackX, mnTrackY ), Size( mnTrackWidth, mnTrackHeight ) );
-                    EndDocking( aRect, mbStartFloat );
-                }
-            }
-            else
-            {
-                HideTracking();
-                if ( rTEvt.IsTrackingCanceled() )
-                {
-                    mbDockCanceled = true;
-                    EndDocking( tools::Rectangle( Point( mnTrackX, mnTrackY ), Size( mnTrackWidth, mnTrackHeight ) ), mbLastFloatMode );
-                    mbDockCanceled = false;
-                }
-                else
-                    EndDocking( tools::Rectangle( Point( mnTrackX, mnTrackY ), Size( mnTrackWidth, mnTrackHeight ) ), mbLastFloatMode );
-            }
-        }
-        // dock only for non-synthetic MouseEvents
-        else if ( !rTEvt.GetMouseEvent().IsSynthetic() || rTEvt.GetMouseEvent().IsModifierChanged() )
-        {
-            Point   aMousePos = rTEvt.GetMouseEvent().GetPosPixel();
-            Point   aFrameMousePos = ImplOutputToFrame( aMousePos );
-            Size    aFrameSize = mpWindowImpl->mpFrameWindow->GetOutputSizePixel();
-            if ( aFrameMousePos.X() < 0 )
-                aFrameMousePos.X() = 0;
-            if ( aFrameMousePos.Y() < 0 )
-                aFrameMousePos.Y() = 0;
-            if ( aFrameMousePos.X() > aFrameSize.Width()-1 )
-                aFrameMousePos.X() = aFrameSize.Width()-1;
-            if ( aFrameMousePos.Y() > aFrameSize.Height()-1 )
-                aFrameMousePos.Y() = aFrameSize.Height()-1;
-            aMousePos = ImplFrameToOutput( aFrameMousePos );
-            aMousePos.X() -= maMouseOff.X();
-            aMousePos.Y() -= maMouseOff.Y();
-            Point aFramePos = ImplOutputToFrame( aMousePos );
-            tools::Rectangle aTrackRect( aFramePos, Size( mnTrackWidth, mnTrackHeight ) );
-            tools::Rectangle aCompRect = aTrackRect;
-            aFramePos.X()    += maMouseOff.X();
-            aFramePos.Y()    += maMouseOff.Y();
-            if ( mbDragFull )
                 StartDocking();
-            bool bFloatMode = Docking( aFramePos, aTrackRect );
-            if ( mbLastFloatMode != bFloatMode )
-            {
-                if ( bFloatMode )
-                {
-                    aTrackRect.Left()   -= mnDockLeft;
-                    aTrackRect.Top()    -= mnDockTop;
-                    aTrackRect.Right()  += mnDockRight;
-                    aTrackRect.Bottom() += mnDockBottom;
-                }
-                else
-                {
-                    if ( aCompRect == aTrackRect )
-                    {
-                        aTrackRect.Left()   += mnDockLeft;
-                        aTrackRect.Top()    += mnDockTop;
-                        aTrackRect.Right()  -= mnDockRight;
-                        aTrackRect.Bottom() -= mnDockBottom;
-                    }
-                }
-                mbLastFloatMode = bFloatMode;
+                tools::Rectangle aRect( Point( mnTrackX, mnTrackY ), Size( mnTrackWidth, mnTrackHeight ) );
+                EndDocking( aRect, mbStartFloat );
             }
-            if ( mbDragFull )
+        }
+        else
+        {
+            HideTracking();
+            if ( rTEvt.IsTrackingCanceled() )
             {
-                Point aOldPos = OutputToScreenPixel( Point() );
-                EndDocking( aTrackRect, mbLastFloatMode );
-                // repaint if state or position has changed
-                if ( aOldPos != OutputToScreenPixel( Point() ) )
-                {
-                    ImplUpdateAll();
-                    ImplGetFrameWindow()->ImplUpdateAll();
-                }
-//                EndDocking( aTrackRect, mbLastFloatMode );
+                mbDockCanceled = true;
+                EndDocking( tools::Rectangle( Point( mnTrackX, mnTrackY ), Size( mnTrackWidth, mnTrackHeight ) ), mbLastFloatMode );
+                mbDockCanceled = false;
+            }
+            else
+                EndDocking( tools::Rectangle( Point( mnTrackX, mnTrackY ), Size( mnTrackWidth, mnTrackHeight ) ), mbLastFloatMode );
+        }
+    }
+    // dock only for non-synthetic MouseEvents
+    else if ( !rTEvt.GetMouseEvent().IsSynthetic() || rTEvt.GetMouseEvent().IsModifierChanged() )
+    {
+        Point   aMousePos = rTEvt.GetMouseEvent().GetPosPixel();
+        Point   aFrameMousePos = ImplOutputToFrame( aMousePos );
+        Size    aFrameSize = mpWindowImpl->mpFrameWindow->GetOutputSizePixel();
+        if ( aFrameMousePos.X() < 0 )
+            aFrameMousePos.setX( 0 );
+        if ( aFrameMousePos.Y() < 0 )
+            aFrameMousePos.setY( 0 );
+        if ( aFrameMousePos.X() > aFrameSize.Width()-1 )
+            aFrameMousePos.setX( aFrameSize.Width()-1 );
+        if ( aFrameMousePos.Y() > aFrameSize.Height()-1 )
+            aFrameMousePos.setY( aFrameSize.Height()-1 );
+        aMousePos = ImplFrameToOutput( aFrameMousePos );
+        aMousePos.AdjustX( -(maMouseOff.X()) );
+        aMousePos.AdjustY( -(maMouseOff.Y()) );
+        Point aFramePos = ImplOutputToFrame( aMousePos );
+        tools::Rectangle aTrackRect( aFramePos, Size( mnTrackWidth, mnTrackHeight ) );
+        tools::Rectangle aCompRect = aTrackRect;
+        aFramePos.AdjustX(maMouseOff.X() );
+        aFramePos.AdjustY(maMouseOff.Y() );
+        if ( mbDragFull )
+            StartDocking();
+        bool bFloatMode = Docking( aFramePos, aTrackRect );
+        if ( mbLastFloatMode != bFloatMode )
+        {
+            if ( bFloatMode )
+            {
+                aTrackRect.AdjustLeft( -mnDockLeft );
+                aTrackRect.AdjustTop( -mnDockTop );
+                aTrackRect.AdjustRight(mnDockRight );
+                aTrackRect.AdjustBottom(mnDockBottom );
             }
             else
             {
-                ShowTrackFlags nTrackStyle;
-                if ( bFloatMode )
-                    nTrackStyle = ShowTrackFlags::Big;
-                else
-                    nTrackStyle = ShowTrackFlags::Object;
-                tools::Rectangle aShowTrackRect = aTrackRect;
-                aShowTrackRect.SetPos( ImplFrameToOutput( aShowTrackRect.TopLeft() ) );
-                ShowTracking( aShowTrackRect, nTrackStyle );
-
-                // recalculate mouse offset, as the rectangle was changed
-                maMouseOff.X()  = aFramePos.X() - aTrackRect.Left();
-                maMouseOff.Y()  = aFramePos.Y() - aTrackRect.Top();
+                if ( aCompRect == aTrackRect )
+                {
+                    aTrackRect.AdjustLeft(mnDockLeft );
+                    aTrackRect.AdjustTop(mnDockTop );
+                    aTrackRect.AdjustRight( -mnDockRight );
+                    aTrackRect.AdjustBottom( -mnDockBottom );
+                }
             }
-
-            mnTrackX        = aTrackRect.Left();
-            mnTrackY        = aTrackRect.Top();
-            mnTrackWidth    = aTrackRect.GetWidth();
-            mnTrackHeight   = aTrackRect.GetHeight();
+            mbLastFloatMode = bFloatMode;
         }
+        if ( mbDragFull )
+        {
+            Point aOldPos = OutputToScreenPixel( Point() );
+            EndDocking( aTrackRect, mbLastFloatMode );
+            // repaint if state or position has changed
+            if ( aOldPos != OutputToScreenPixel( Point() ) )
+            {
+                ImplUpdateAll();
+                ImplGetFrameWindow()->ImplUpdateAll();
+            }
+//                EndDocking( aTrackRect, mbLastFloatMode );
+        }
+        else
+        {
+            ShowTrackFlags nTrackStyle;
+            if ( bFloatMode )
+                nTrackStyle = ShowTrackFlags::Big;
+            else
+                nTrackStyle = ShowTrackFlags::Object;
+            tools::Rectangle aShowTrackRect = aTrackRect;
+            aShowTrackRect.SetPos( ImplFrameToOutput( aShowTrackRect.TopLeft() ) );
+            ShowTracking( aShowTrackRect, nTrackStyle );
+
+            // recalculate mouse offset, as the rectangle was changed
+            maMouseOff.setX( aFramePos.X() - aTrackRect.Left() );
+            maMouseOff.setY( aFramePos.Y() - aTrackRect.Top() );
+        }
+
+        mnTrackX        = aTrackRect.Left();
+        mnTrackY        = aTrackRect.Top();
+        mnTrackWidth    = aTrackRect.GetWidth();
+        mnTrackHeight   = aTrackRect.GetHeight();
     }
 }
 
@@ -535,6 +534,8 @@ bool DockingWindow::EventNotify( NotifyEvent& rNEvt )
                 if (!bDockingSupportCrippled && pMEvt->IsMod1() && (pMEvt->GetClicks() == 2) )
                 {
                     SetFloatingMode( !IsFloatingMode() );
+                    if ( IsFloatingMode() )
+                        ToTop( ToTopFlags::GrabFocusOnly );
                     return true;
                 }
                 else if ( pMEvt->GetClicks() == 1 )
@@ -564,6 +565,8 @@ bool DockingWindow::EventNotify( NotifyEvent& rNEvt )
                 rKey.IsShift() && rKey.IsMod1() && !bDockingSupportCrippled )
             {
                 SetFloatingMode( !IsFloatingMode() );
+                if ( IsFloatingMode() )
+                    ToTop( ToTopFlags::GrabFocusOnly );
                 return true;
             }
         }
@@ -590,12 +593,11 @@ void DockingWindow::EndDocking( const tools::Rectangle& rRect, bool bFloatMode )
 
     if ( !IsDockingCanceled() )
     {
-        bool bShow = false;
         if ( bFloatMode != IsFloatingMode() )
         {
-            Show( false, ShowFlags::NoFocusChange );
             SetFloatingMode( bFloatMode );
-            bShow = true;
+            if ( IsFloatingMode() )
+                ToTop( ToTopFlags::GrabFocusOnly );
             if ( bFloatMode && mpFloatWin )
                 mpFloatWin->SetPosSizePixel( rRect.TopLeft(), rRect.GetSize() );
         }
@@ -605,9 +607,6 @@ void DockingWindow::EndDocking( const tools::Rectangle& rRect, bool bFloatMode )
             aPos = GetParent()->ScreenToOutputPixel( aPos );
             Window::SetPosSizePixel( aPos, rRect.GetSize() );
         }
-
-        if ( bShow )
-            Show();
     }
     mbDocking = false;
     mbDockCanceled = bOrigDockCanceled;
@@ -699,108 +698,103 @@ void DockingWindow::SetFloatingMode( bool bFloatMode )
         pWrapper->SetFloatingMode( bFloatMode );
         return;
     }
-    if ( IsFloatingMode() != bFloatMode )
+    if ( IsFloatingMode() == bFloatMode )
+        return;
+
+    if ( !PrepareToggleFloatingMode() ) // changes to floating mode can be vetoed
+        return;
+
+    bool bVisible = IsVisible();
+
+    if ( bFloatMode )
     {
-        if ( PrepareToggleFloatingMode() ) // changes to floating mode can be vetoed
+        // set deferred properties early, so border width will end up
+        // in our mpWindowImpl->mnBorderWidth, not in mpBorderWindow.
+        // (see its usage in setPosSizeOnContainee and GetOptimalSize.)
+        setDeferredProperties();
+
+        Show( false, ShowFlags::NoFocusChange );
+
+        maDockPos = Window::GetPosPixel();
+
+        vcl::Window* pRealParent = mpWindowImpl->mpRealParent;
+        mpOldBorderWin = mpWindowImpl->mpBorderWindow;
+
+        VclPtrInstance<ImplDockFloatWin> pWin(
+                                 mpImplData->mpParent,
+                                 mnFloatBits & ( WB_MOVEABLE | WB_SIZEABLE | WB_CLOSEABLE ) ?  mnFloatBits | WB_SYSTEMWINDOW : mnFloatBits,
+                                 this );
+        mpFloatWin      = pWin;
+        mpWindowImpl->mpBorderWindow  = nullptr;
+        mpWindowImpl->mnLeftBorder    = 0;
+        mpWindowImpl->mnTopBorder     = 0;
+        mpWindowImpl->mnRightBorder   = 0;
+        mpWindowImpl->mnBottomBorder  = 0;
+        // if the parent gets destroyed, we also have to reset the parent of the BorderWindow
+        if ( mpOldBorderWin )
+            mpOldBorderWin->SetParent( pWin );
+
+        // #i123765# reset the buffered DropTargets when undocking, else it may not
+        // be correctly initialized
+        mpWindowImpl->mxDNDListenerContainer.clear();
+
+        SetParent( pWin );
+        SetPosPixel( Point() );
+        mpWindowImpl->mpBorderWindow = pWin;
+        pWin->mpWindowImpl->mpClientWindow = this;
+        mpWindowImpl->mpRealParent = pRealParent;
+        pWin->SetText( Window::GetText() );
+        Size aSize(Window::GetSizePixel());
+        pWin->SetOutputSizePixel(aSize);
+        pWin->SetPosPixel( maFloatPos );
+        // pass on DockingData to FloatingWindow
+        pWin->ShowTitleButton( TitleButton::Docking, mbDockBtn );
+        pWin->ShowTitleButton( TitleButton::Hide, mbHideBtn );
+        if ( mbRollUp )
+            pWin->RollUp();
+        else
+            pWin->RollDown();
+        pWin->SetRollUpOutputSizePixel( maRollUpOutSize );
+        pWin->SetMinOutputSizePixel( maMinOutSize );
+
+        pWin->SetMaxOutputSizePixel( mpImplData->maMaxOutSize );
+
+        ToggleFloatingMode();
+
+        if ( bVisible )
+            Show();
+    }
+    else
+    {
+        Show( false, ShowFlags::NoFocusChange );
+
+        // store FloatingData in FloatingWindow
+        maFloatPos      = mpFloatWin->GetPosPixel();
+        mbDockBtn       = mpFloatWin->IsTitleButtonVisible( TitleButton::Docking );
+        mbHideBtn       = mpFloatWin->IsTitleButtonVisible( TitleButton::Hide );
+        mbRollUp        = mpFloatWin->IsRollUp();
+        maRollUpOutSize = mpFloatWin->GetRollUpOutputSizePixel();
+        maMinOutSize    = mpFloatWin->GetMinOutputSizePixel();
+        mpImplData->maMaxOutSize = mpFloatWin->GetMaxOutputSizePixel();
+
+        vcl::Window* pRealParent = mpWindowImpl->mpRealParent;
+        mpWindowImpl->mpBorderWindow = nullptr;
+        if ( mpOldBorderWin )
         {
-            bool bVisible = IsVisible();
-
-            if ( bFloatMode )
-            {
-                Show( false, ShowFlags::NoFocusChange );
-
-                sal_Int32 nBorderWidth = get_border_width();
-
-                maDockPos = Window::GetPosPixel();
-
-                vcl::Window* pRealParent = mpWindowImpl->mpRealParent;
-                mpOldBorderWin = mpWindowImpl->mpBorderWindow;
-
-                VclPtrInstance<ImplDockFloatWin> pWin(
-                                         mpImplData->mpParent,
-                                         mnFloatBits & ( WB_MOVEABLE | WB_SIZEABLE | WB_CLOSEABLE ) ?  mnFloatBits | WB_SYSTEMWINDOW : mnFloatBits,
-                                         this );
-                mpFloatWin      = pWin;
-                mpWindowImpl->mpBorderWindow  = nullptr;
-                mpWindowImpl->mnLeftBorder    = 0;
-                mpWindowImpl->mnTopBorder     = 0;
-                mpWindowImpl->mnRightBorder   = 0;
-                mpWindowImpl->mnBottomBorder  = 0;
-                // if the parent gets destroyed, we also have to reset the parent of the BorderWindow
-                if ( mpOldBorderWin )
-                    mpOldBorderWin->SetParent( pWin );
-
-                // #i123765# reset the buffered DropTargets when undocking, else it may not
-                // be correctly initialized
-                mpWindowImpl->mxDNDListenerContainer.clear();
-
-                SetParent( pWin );
-                SetPosPixel( Point() );
-                mpWindowImpl->mpBorderWindow = pWin;
-                pWin->mpWindowImpl->mpClientWindow = this;
-                mpWindowImpl->mpRealParent = pRealParent;
-                pWin->SetText( Window::GetText() );
-                Size aSize(Window::GetSizePixel());
-                pWin->SetOutputSizePixel(aSize);
-                pWin->SetPosPixel( maFloatPos );
-                // pass on DockingData to FloatingWindow
-                pWin->ShowTitleButton( TitleButton::Docking, mbDockBtn );
-                pWin->ShowTitleButton( TitleButton::Hide, mbHideBtn );
-                if ( mbRollUp )
-                    pWin->RollUp();
-                else
-                    pWin->RollDown();
-                pWin->SetRollUpOutputSizePixel( maRollUpOutSize );
-                pWin->SetMinOutputSizePixel( maMinOutSize );
-
-                pWin->SetMaxOutputSizePixel( mpImplData->maMaxOutSize );
-
-                ToggleFloatingMode();
-
-                set_border_width(nBorderWidth);
-
-                if ( bVisible )
-                    Show();
-
-                mpFloatWin->queue_resize();
-            }
-            else
-            {
-                Show( false, ShowFlags::NoFocusChange );
-
-                sal_Int32 nBorderWidth = get_border_width();
-
-                // store FloatingData in FloatingWindow
-                maFloatPos      = mpFloatWin->GetPosPixel();
-                mbDockBtn       = mpFloatWin->IsTitleButtonVisible( TitleButton::Docking );
-                mbHideBtn       = mpFloatWin->IsTitleButtonVisible( TitleButton::Hide );
-                mbRollUp        = mpFloatWin->IsRollUp();
-                maRollUpOutSize = mpFloatWin->GetRollUpOutputSizePixel();
-                maMinOutSize    = mpFloatWin->GetMinOutputSizePixel();
-                mpImplData->maMaxOutSize = mpFloatWin->GetMaxOutputSizePixel();
-
-                vcl::Window* pRealParent = mpWindowImpl->mpRealParent;
-                mpWindowImpl->mpBorderWindow = nullptr;
-                if ( mpOldBorderWin )
-                {
-                    SetParent( mpOldBorderWin );
-                    static_cast<ImplBorderWindow*>(mpOldBorderWin.get())->GetBorder( mpWindowImpl->mnLeftBorder, mpWindowImpl->mnTopBorder, mpWindowImpl->mnRightBorder, mpWindowImpl->mnBottomBorder );
-                    mpOldBorderWin->Resize();
-                }
-                mpWindowImpl->mpBorderWindow = mpOldBorderWin;
-                SetParent( pRealParent );
-                mpWindowImpl->mpRealParent = pRealParent;
-                mpFloatWin.disposeAndClear();
-                SetPosPixel( maDockPos );
-
-                ToggleFloatingMode();
-
-                set_border_width(nBorderWidth);
-
-                if ( bVisible )
-                    Show();
-            }
+            SetParent( mpOldBorderWin );
+            static_cast<ImplBorderWindow*>(mpOldBorderWin.get())->GetBorder( mpWindowImpl->mnLeftBorder, mpWindowImpl->mnTopBorder, mpWindowImpl->mnRightBorder, mpWindowImpl->mnBottomBorder );
+            mpOldBorderWin->Resize();
         }
+        mpWindowImpl->mpBorderWindow = mpOldBorderWin;
+        SetParent( pRealParent );
+        mpWindowImpl->mpRealParent = pRealParent;
+        mpFloatWin.disposeAndClear();
+        SetPosPixel( maDockPos );
+
+        ToggleFloatingMode();
+
+        if ( bVisible )
+            Show();
     }
 }
 
@@ -841,22 +835,15 @@ void DockingWindow::setPosSizePixel( long nX, long nY,
     {
         if (!mpFloatWin)
             Window::setPosSizePixel( nX, nY, nWidth, nHeight, nFlags );
+        else
+        {
+            mpFloatWin->SetOutputSizePixel(Size(nWidth, nHeight));
+            mpFloatWin->SetPosPixel(Point(nX, nY));
+        }
     }
 
     if (::isLayoutEnabled(this))
-    {
-        Size aSize(GetSizePixel());
-
-        sal_Int32 nBorderWidth = get_border_width();
-
-        aSize.Width() -= 2 * nBorderWidth;
-        aSize.Height() -= 2 * nBorderWidth;
-
-        Point aPos(nBorderWidth, nBorderWidth);
-        Window *pBox = GetWindow(GetWindowType::FirstChild);
-        assert(pBox);
-        VclContainer::setLayoutAllocation(*pBox, aPos, aSize);
-    }
+        setPosSizeOnContainee();
 }
 
 Point DockingWindow::GetPosPixel() const
@@ -998,29 +985,31 @@ void DockingWindow::setOptimalLayoutSize()
     maLayoutIdle.Stop();
 
     //resize DockingWindow to fit requisition on initial show
-    Window *pBox = GetWindow(GetWindowType::FirstChild);
-
     Size aSize = get_preferred_size();
 
     Size aMax(bestmaxFrameSizeForScreenSize(GetDesktopRectPixel().GetSize()));
 
-    aSize.Width() = std::min(aMax.Width(), aSize.Width());
-    aSize.Height() = std::min(aMax.Height(), aSize.Height());
+    aSize.setWidth( std::min(aMax.Width(), aSize.Width()) );
+    aSize.setHeight( std::min(aMax.Height(), aSize.Height()) );
 
     SetMinOutputSizePixel(aSize);
-    SetSizePixel(aSize);
-    setPosSizeOnContainee(aSize, *pBox);
+    setPosSizeOnContainee();
 }
 
-void DockingWindow::setPosSizeOnContainee(Size aSize, Window &rBox)
+void DockingWindow::setPosSizeOnContainee()
 {
-    sal_Int32 nBorderWidth = get_border_width();
+    Size aSize = GetOutputSizePixel();
 
-    aSize.Width() -= 2 * nBorderWidth;
-    aSize.Height() -= 2 * nBorderWidth;
+    // Don't make the border width accessible via get_border_width(),
+    // otherwise the floating window will handle the border as well.
+    sal_Int32 nBorderWidth = mpWindowImpl->mnBorderWidth;
 
-    Point aPos(nBorderWidth, nBorderWidth);
-    VclContainer::setLayoutAllocation(rBox, aPos, aSize);
+    aSize.AdjustWidth( -(2 * nBorderWidth) );
+    aSize.AdjustHeight( -(2 * nBorderWidth) );
+
+    Window* pBox = GetWindow(GetWindowType::FirstChild);
+    assert(pBox);
+    VclContainer::setLayoutAllocation(*pBox, Point(nBorderWidth, nBorderWidth), aSize);
 }
 
 Size DockingWindow::GetOptimalSize() const
@@ -1030,12 +1019,14 @@ Size DockingWindow::GetOptimalSize() const
 
     Size aSize = VclContainer::getLayoutRequisition(*GetWindow(GetWindowType::FirstChild));
 
-    sal_Int32 nBorderWidth = get_border_width();
+    // Don't make the border width accessible via get_border_width(),
+    // otherwise the floating window will handle the border as well.
+    sal_Int32 nBorderWidth = mpWindowImpl->mnBorderWidth;
 
-    aSize.Height() += 2 * nBorderWidth;
-    aSize.Width()  += 2 * nBorderWidth;
+    aSize.AdjustHeight(2 * nBorderWidth );
+    aSize.AdjustWidth(2 * nBorderWidth );
 
-    return Window::CalcWindowSize(aSize);
+    return aSize;
 }
 
 void DockingWindow::queue_resize(StateChangedType eReason)
@@ -1061,13 +1052,10 @@ IMPL_LINK_NOARG(DockingWindow, ImplHandleLayoutTimerHdl, Timer*, void)
 {
     if (!isLayoutEnabled())
     {
-        SAL_WARN("vcl.layout", "DockingWindow has become non-layout because extra children have been added directly to it.");
+        SAL_WARN_IF(GetWindow(GetWindowType::FirstChild), "vcl.layout", "DockingWindow has become non-layout because extra children have been added directly to it.");
         return;
     }
-
-    Window *pBox = GetWindow(GetWindowType::FirstChild);
-    assert(pBox);
-    setPosSizeOnContainee(GetSizePixel(), *pBox);
+    setPosSizeOnContainee();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

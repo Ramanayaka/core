@@ -21,18 +21,13 @@
 #include <uielement/statusbarmerger.hxx>
 
 #include <vcl/svapp.hxx>
-#include <vcl/status.hxx>
-#include <vcl/image.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <toolkit/helper/convert.hxx>
 
 #include <com/sun/star/ui/ItemStyle.hpp>
+#include <com/sun/star/ui/XStatusbarItem.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/awt/ImageDrawMode.hpp>
 #include <com/sun/star/awt/XGraphics2.hpp>
 #include <com/sun/star/graphic/GraphicType.hpp>
-
-using ::rtl::OUString;
 
 using namespace ::cppu;
 using namespace ::com::sun::star;
@@ -57,6 +52,7 @@ GenericStatusbarController::GenericStatusbarController(
     m_xStatusbarItem = rxItem;
     if ( m_xStatusbarItem.is() )
     {
+        assert(m_aCommandURL.pData);
         m_aCommandURL = m_xStatusbarItem->getCommand();
         m_nID = m_xStatusbarItem->getItemId();
         m_bOwnerDraw = ( m_xStatusbarItem->getStyle() & ui::ItemStyle::OWNER_DRAW ) == ui::ItemStyle::OWNER_DRAW;
@@ -90,7 +86,7 @@ void SAL_CALL GenericStatusbarController::statusChanged(
 
     m_bEnabled = rEvent.IsEnabled;
 
-    rtl::OUString aStrValue;
+    OUString aStrValue;
     Reference< graphic::XGraphic > aGraphic;
 
     if ( rEvent.State >>= aStrValue )

@@ -22,9 +22,7 @@
 
 using ::comphelper::PropertyInfo;
 using ::comphelper::MasterPropertySetInfo;
-using ::com::sun::star::uno::Type;
 using ::com::sun::star::uno::Sequence;
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::beans::Property;
 using ::com::sun::star::beans::UnknownPropertyException;
 
@@ -42,13 +40,13 @@ MasterPropertySetInfo::MasterPropertySetInfo( PropertyInfo const * pMap )
 MasterPropertySetInfo::~MasterPropertySetInfo()
     throw()
 {
-    for( auto& rObj : maMap )
+    for( const auto& rObj : maMap )
         delete rObj.second;
 }
 
 void MasterPropertySetInfo::add( PropertyInfoHash &rHash, sal_uInt8 nMapId )
 {
-    if( maProperties.getLength() )
+    if( maProperties.hasElements() )
         maProperties.realloc( 0 );
 
     for( const auto& rObj : rHash )
@@ -68,14 +66,15 @@ Sequence< ::Property > SAL_CALL MasterPropertySetInfo::getProperties()
         maProperties.realloc ( nSize );
         Property* pProperties = maProperties.getArray();
 
-        for (PropertyDataHash::const_iterator aIter(maMap.begin()), aEnd(maMap.end()) ; aIter != aEnd; ++aIter, ++pProperties)
+        for (auto const& elem : maMap)
         {
-            PropertyInfo const * pInfo = (*aIter).second->mpInfo;
+            PropertyInfo const * pInfo = elem.second->mpInfo;
 
             pProperties->Name = pInfo->maName;
             pProperties->Handle = pInfo->mnHandle;
             pProperties->Type = pInfo->maType;
             pProperties->Attributes = pInfo->mnAttributes;
+            ++pProperties;
         }
     }
     return maProperties;

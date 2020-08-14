@@ -17,18 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ThreeDHelper.hxx"
-#include "macros.hxx"
-#include "DiagramHelper.hxx"
-#include "ChartTypeHelper.hxx"
-#include "BaseGFXHelper.hxx"
-#include "DataSeriesHelper.hxx"
-#include "defines.hxx"
+#include <ThreeDHelper.hxx>
+#include <DiagramHelper.hxx>
+#include <ChartTypeHelper.hxx>
+#include <BaseGFXHelper.hxx>
+#include <DataSeriesHelper.hxx>
+#include <defines.hxx>
 
 #include <editeng/unoprnms.hxx>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/chart2/XDiagram.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
+#include <com/sun/star/drawing/ShadeMode.hpp>
+#include <tools/diagnose_ex.h>
+#include <tools/helpers.hxx>
+#include <rtl/math.hxx>
 
 namespace chart
 {
@@ -67,23 +70,23 @@ void lcl_RotateLightSource( const Reference< beans::XPropertySet >& xSceneProper
                            , const OUString& rLightSourceOn
                            , const ::basegfx::B3DHomMatrix& rRotationMatrix )
 {
-    if( xSceneProperties.is() )
-    {
-        bool bLightOn = false;
-        if( xSceneProperties->getPropertyValue( rLightSourceOn ) >>= bLightOn )
-        {
-            if( bLightOn )
-            {
-                drawing::Direction3D aLight;
-                if( xSceneProperties->getPropertyValue( rLightSourceDirection ) >>= aLight )
-                {
-                    ::basegfx::B3DVector aLightVector( BaseGFXHelper::Direction3DToB3DVector( aLight ) );
-                    aLightVector = rRotationMatrix*aLightVector;
+    if( !xSceneProperties.is() )
+        return;
 
-                    xSceneProperties->setPropertyValue( rLightSourceDirection
-                        , uno::Any( BaseGFXHelper::B3DVectorToDirection3D( aLightVector ) ) );
-                }
-            }
+    bool bLightOn = false;
+    if( !(xSceneProperties->getPropertyValue( rLightSourceOn ) >>= bLightOn) )
+        return;
+
+    if( bLightOn )
+    {
+        drawing::Direction3D aLight;
+        if( xSceneProperties->getPropertyValue( rLightSourceDirection ) >>= aLight )
+        {
+            ::basegfx::B3DVector aLightVector( BaseGFXHelper::Direction3DToB3DVector( aLight ) );
+            aLightVector = rRotationMatrix*aLightVector;
+
+            xSceneProperties->setPropertyValue( rLightSourceDirection
+                , uno::Any( BaseGFXHelper::B3DVectorToDirection3D( aLightVector ) ) );
         }
     }
 }
@@ -367,24 +370,6 @@ double lcl_shiftAngleToIntervalMinusPiToPi( double fAngleRad )
     return fAngleRad;
 }
 
-void lcl_shiftAngleToIntervalMinus180To180( sal_Int32& rnAngleDegree )
-{
-    //valid range:  ]-180,180]
-    while( rnAngleDegree<=-180 )
-        rnAngleDegree+=360;
-    while( rnAngleDegree>180 )
-        rnAngleDegree-=360;
-}
-
-void lcl_shiftAngleToIntervalZeroTo360( sal_Int32& rnAngleDegree )
-{
-    //valid range:  [0,360[
-    while( rnAngleDegree<0 )
-        rnAngleDegree+=360;
-    while( rnAngleDegree>=360 )
-        rnAngleDegree-=360;
-}
-
 void lcl_ensureIntervalMinus1To1( double& rSinOrCos )
 {
     if (rSinOrCos < -1.0)
@@ -409,18 +394,18 @@ void ThreeDHelper::convertElevationRotationDegToXYZAngleRad(
     double& rfXAngleRad, double& rfYAngleRad, double& rfZAngleRad)
 {
     // for a description of the algorithm see issue 72994
-    //http://www.openoffice.org/issues/show_bug.cgi?id=72994
-    //http://www.openoffice.org/nonav/issues/showattachment.cgi/50608/DescriptionCorrected.odt
+    //https://bz.apache.org/ooo/show_bug.cgi?id=72994
+    //https://bz.apache.org/ooo/attachment.cgi?id=50608
 
-    lcl_shiftAngleToIntervalZeroTo360( nElevationDeg );
-    lcl_shiftAngleToIntervalZeroTo360( nRotationDeg );
+    nElevationDeg = NormAngle360(nElevationDeg);
+    nRotationDeg = NormAngle360(nRotationDeg);
 
     double& x = rfXAngleRad;
     double& y = rfYAngleRad;
     double& z = rfZAngleRad;
 
-    double E = F_PI*nElevationDeg/180; //elevation in Rad
-    double R = F_PI*nRotationDeg/180; //rotation in Rad
+    double E = basegfx::deg2rad(nElevationDeg); //elevation in Rad
+    double R = basegfx::deg2rad(nRotationDeg); //rotation in Rad
 
     if( (nRotationDeg == 0 || nRotationDeg == 180 )
         && ( nElevationDeg == 90 || nElevationDeg == 270 ) )
@@ -430,20 +415,20 @@ void ThreeDHelper::convertElevationRotationDegToXYZAngleRad(
         //element 23
         double f23 = cos(R)*sin(E);
         if(f23>0)
-            x = F_PI/2;
+            x = F_PI2;
         else
-            x = -F_PI/2;
+            x = -F_PI2;
         y = R;
     }
     else if( ( nRotationDeg == 90 || nRotationDeg == 270 )
         && ( nElevationDeg == 90 || nElevationDeg == 270 ) )
     {
         //cR==0 && cE==0
-        z = F_PI/2;
+        z = F_PI2;
         if( sin(R)>0 )
-            x = F_PI/2.0;
+            x = F_PI2;
         else
-            x = -F_PI/2.0;
+            x = -F_PI2;
 
         if( (sin(R)*sin(E))>0 )
             y = 0.0;
@@ -465,9 +450,9 @@ void ThreeDHelper::convertElevationRotationDegToXYZAngleRad(
         z = 0.0;
 
         if( (sin(R)/cos(E))>0 )
-            y = F_PI/2;
+            y = F_PI2;
         else
-            y = -F_PI/2;
+            y = -F_PI2;
 
         if( (cos(E))>0 )
             x = 0;
@@ -492,9 +477,9 @@ void ThreeDHelper::convertElevationRotationDegToXYZAngleRad(
         z = atan(sin(R)/(cos(R)*sin(E)));
         //use element 13 for sign for x
         if( (sin(R)*sin(z))>0.0 )
-            x = F_PI/2;
+            x = F_PI2;
         else
-            x = -F_PI/2;
+            x = -F_PI2;
         //use element 21 for y
         if( (sin(R)*sin(E)*sin(z))>0.0)
             y = 0.0;
@@ -516,8 +501,8 @@ void ThreeDHelper::convertElevationRotationDegToXYZAngleRad(
         //sE!=0 cE!=0 cR==0
         //z = +- F_PI/2;
         //x = +- F_PI/2;
-        z = F_PI/2;
-        x = F_PI/2;
+        z = F_PI2;
+        x = F_PI2;
         double sR = sin(R);
         if( sR<0.0 )
             x *= -1.0; //different signs for x and z
@@ -591,8 +576,8 @@ void ThreeDHelper::convertXYZAngleRadToElevationRotationDeg(
     double fXRad, double fYRad, double fZRad)
 {
     // for a description of the algorithm see issue 72994
-    //http://www.openoffice.org/issues/show_bug.cgi?id=72994
-    //http://www.openoffice.org/nonav/issues/showattachment.cgi/50608/DescriptionCorrected.odt
+    //https://bz.apache.org/ooo/show_bug.cgi?id=72994
+    //https://bz.apache.org/ooo/attachment.cgi?id=50608
 
     double R = 0.0; //Rotation in Rad
     double E = 0.0; //Elevation in Rad
@@ -625,9 +610,9 @@ void ThreeDHelper::convertXYZAngleRadToElevationRotationDeg(
                 //element 23
                 double f23 = cos(z)*sin(x) / cos(R);
                 if( f23 > 0 )
-                    E = F_PI/2.0;
+                    E = F_PI2;
                 else
-                    E = -F_PI/2.0;
+                    E = -F_PI2;
             }
             else if( lcl_isCosZero(z) )
             {
@@ -637,16 +622,16 @@ void ThreeDHelper::convertXYZAngleRadToElevationRotationDeg(
                 double f13 = sin(x)*sin(z);
                 //element 13+11
                 if( f13 > 0 )
-                    R = F_PI/2.0;
+                    R = F_PI2;
                 else
-                    R = -F_PI/2.0;
+                    R = -F_PI2;
 
                 //element 21
                 double f21 = cos(y)*sin(z) / sin(R);
                 if( f21 > 0 )
-                    E = F_PI/2.0;
+                    E = F_PI2;
                 else
-                    E = -F_PI/2.0;
+                    E = -F_PI2;
             }
             else
             {
@@ -661,9 +646,9 @@ void ThreeDHelper::convertXYZAngleRadToElevationRotationDeg(
                 //element 23
                 double f23 = cos(z)*sin(x);
                 if( f23/cos(R) > 0 )
-                    E = F_PI/2.0;
+                    E = F_PI2;
                 else
-                    E = -F_PI/2.0;
+                    E = -F_PI2;
             }
         }
         else if( lcl_isSinZero(x) )
@@ -703,16 +688,16 @@ void ThreeDHelper::convertXYZAngleRadToElevationRotationDeg(
             double f13 = sin(x)*sin(z);
             //element 13+11
             if( f13 > 0 )
-                R = F_PI/2.0;
+                R = F_PI2;
             else
-                R = -F_PI/2.0;
+                R = -F_PI2;
 
             //element 21+22
             double f21 = cos(y)*sin(z);
             if( f21/sin(R) > 0 )
-                E = F_PI/2.0;
+                E = F_PI2;
             else
-                E = -F_PI/2.0;
+                E = -F_PI2;
         }
         else
         {
@@ -737,9 +722,9 @@ void ThreeDHelper::convertXYZAngleRadToElevationRotationDeg(
 
         double f13 = sin(x)*sin(z)+cos(x)*cos(z)*sin(y);
         if( f13 >= 0 )
-            R = F_PI/2.0;
+            R = F_PI2;
         else
-            R = -F_PI/2.0;
+            R = -F_PI2;
 
         double f22 = cos(x)*cos(z)+sin(x)*sin(y)*sin(z);
         if( f22 >= 0 )
@@ -805,20 +790,20 @@ void ThreeDHelper::convertXYZAngleRadToElevationRotationDeg(
             R=0;//13 -> R=0 or F_PI
             if( f11<0.0 )
                 R=F_PI;
-            E=F_PI/2;//22 -> E=+-F_PI/2
+            E=F_PI2;//22 -> E=+-F_PI/2
             //use element 11 and 23 for sign
             double f23 = cos(z)*sin(x);
             if( (f11*f23*sin(E))<0.0 )
-                E=-F_PI/2.0;
+                E=-F_PI2;
         }
         else if( lcl_isCosZero(z) )
         {
             //cosY!=0 sinY!=0 cosX=0 cosZ=0
             //element 11 & 13:
             if( (sin(x)*sin(z))>0.0 )
-                R=F_PI/2.0;
+                R=F_PI2;
             else
-                R=-F_PI/2.0;
+                R=-F_PI2;
             //element 22:
             E=acos( sin(x)*sin(y)*sin(z));
             //use element 21 for sign:
@@ -935,7 +920,7 @@ void ThreeDHelper::getRotationAngleFromDiagram(
     rfYAngleRad = lcl_shiftAngleToIntervalMinusPiToPi(aRotation.getY());
     rfZAngleRad = lcl_shiftAngleToIntervalMinusPiToPi(aRotation.getZ());
 
-    if(rfZAngleRad<(-F_PI/2) || rfZAngleRad>(F_PI/2))
+    if(rfZAngleRad<-F_PI2 || rfZAngleRad>F_PI2)
     {
         rfZAngleRad-=F_PI;
         rfXAngleRad-=F_PI;
@@ -971,9 +956,9 @@ void ThreeDHelper::switchRightAngledAxes( const Reference< beans::XPropertySet >
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -991,7 +976,7 @@ void ThreeDHelper::setRotationAngleToDiagram(
 
     try
     {
-        //remind old rotation for adaption of light directions
+        //remind old rotation for adaptation of light directions
         ::basegfx::B3DHomMatrix aInverseOldRotation( lcl_getInverseRotationMatrix( xSceneProperties ) );
 
         ::basegfx::B3DHomMatrix aInverseCameraRotation;
@@ -1026,9 +1011,9 @@ void ThreeDHelper::setRotationAngleToDiagram(
             lcl_rotateLights( aNewRotation*aInverseOldRotation, xSceneProperties );
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -1051,8 +1036,8 @@ void ThreeDHelper::getRotationFromDiagram( const uno::Reference< beans::XPropert
         // nZRotation = basegfx::fround(-1.0 * basegfx::rad2deg(fZAngle));
     }
 
-    lcl_shiftAngleToIntervalMinus180To180( rnHorizontalAngleDegree );
-    lcl_shiftAngleToIntervalMinus180To180( rnVerticalAngleDegree );
+    rnHorizontalAngleDegree = NormAngle180(rnHorizontalAngleDegree);
+    rnVerticalAngleDegree = NormAngle180(rnVerticalAngleDegree);
 }
 
 void ThreeDHelper::setRotationToDiagram( const uno::Reference< beans::XPropertySet >& xSceneProperties
@@ -1103,9 +1088,9 @@ double ThreeDHelper::getCameraDistance(
 
         ensureCameraDistanceRange( fCameraDistance );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
     return fCameraDistance;
 }
@@ -1131,9 +1116,9 @@ void ThreeDHelper::setCameraDistance(
 
         xSceneProperties->setPropertyValue( "D3DCameraGeometry", uno::Any( aCG ));
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -1181,9 +1166,9 @@ ThreeDLookScheme ThreeDHelper::detectScheme( const uno::Reference< XDiagram >& x
         if( xDiagramProps.is() )
             xDiagramProps->getPropertyValue( "D3DSceneShadeMode" )>>= aShadeMode;
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     if( lcl_isSimpleScheme( aShadeMode, nRoundedEdges, nObjectLines, xDiagram ) )
@@ -1231,9 +1216,9 @@ void ThreeDHelper::setScheme( const uno::Reference< XDiagram >& xDiagram, ThreeD
 
         lcl_setLightsForScheme( xProp, aScheme );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
 }
@@ -1288,9 +1273,9 @@ void ThreeDHelper::setDefaultIllumination( const uno::Reference< beans::XPropert
         xSceneProperties->setPropertyValue( UNO_NAME_3D_SCENE_LIGHTON_7, uno::Any( false ) );
         xSceneProperties->setPropertyValue( UNO_NAME_3D_SCENE_LIGHTON_8, uno::Any( false ) );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     ThreeDLookScheme aScheme = (aShadeMode==drawing::ShadeMode_FLAT) ? ThreeDLookScheme_Simple : ThreeDLookScheme_Realistic;
@@ -1335,9 +1320,9 @@ void ThreeDHelper::getRoundedEdgesAndObjectLines(
                         , aPercentDiagonalPropertyName, uno::Any(nPercentDiagonal) ) )
                         bDifferentRoundedEdges = true;
                 }
-                catch( const uno::Exception& e )
+                catch( const uno::Exception& )
                 {
-                    ASSERT_EXCEPTION( e );
+                    TOOLS_WARN_EXCEPTION("chart2", "" );
                     bDifferentRoundedEdges = true;
                 }
                 try
@@ -1348,9 +1333,9 @@ void ThreeDHelper::getRoundedEdgesAndObjectLines(
                         , aBorderStylePropertyName, uno::Any(aLineStyle) ) )
                         bDifferentObjectLines = true;
                 }
-                catch( const uno::Exception& e )
+                catch( const uno::Exception& )
                 {
-                    ASSERT_EXCEPTION( e );
+                    TOOLS_WARN_EXCEPTION("chart2", "" );
                     bDifferentObjectLines = true;
                 }
             }
@@ -1390,9 +1375,9 @@ void ThreeDHelper::getRoundedEdgesAndObjectLines(
         else if( aLineStyle == drawing::LineStyle_SOLID )
             rnObjectLines = 1;
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 }
 

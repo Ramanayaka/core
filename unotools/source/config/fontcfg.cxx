@@ -18,23 +18,25 @@
  */
 
 #include <i18nlangtag/mslangid.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <o3tl/any.hxx>
+#include <unotools/configmgr.hxx>
 #include <unotools/fontcfg.hxx>
 #include <unotools/fontdefs.hxx>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
-#include <unotools/configpaths.hxx>
+#include <com/sun/star/container/XNameAccess.hpp>
+#include <comphelper/propertysequence.hxx>
 #include <unotools/syslocale.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/instance.hxx>
 #include <osl/diagnose.h>
 #include <sal/macros.h>
+#include <sal/log.hxx>
 
 #include <string.h>
-#include <list>
 #include <algorithm>
 
 using namespace utl;
@@ -97,16 +99,17 @@ DefaultFontConfiguration& DefaultFontConfiguration::get()
 
 DefaultFontConfiguration::DefaultFontConfiguration()
 {
+    if (utl::ConfigManager::IsFuzzing())
+        return;
     // create configuration hierarchical access name
     try
     {
         // get service provider
         m_xConfigProvider = theDefaultProvider::get(comphelper::getProcessComponentContext());
-        Sequence< Any > aArgs(1);
-        PropertyValue aVal;
-        aVal.Name = "nodepath";
-        aVal.Value <<= OUString( "/org.openoffice.VCL/DefaultFonts" );
-        aArgs.getArray()[0] <<= aVal;
+        Sequence<Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", Any(OUString( "/org.openoffice.VCL/DefaultFonts" ))}
+        }));
         m_xConfigAccess =
             Reference< XNameAccess >(
                 m_xConfigProvider->createInstanceWithArguments( "com.sun.star.configuration.ConfigurationAccess",
@@ -114,16 +117,14 @@ DefaultFontConfiguration::DefaultFontConfiguration()
                 UNO_QUERY );
         if( m_xConfigAccess.is() )
         {
-            Sequence< OUString > aLocales = m_xConfigAccess->getElementNames();
+            const Sequence< OUString > aLocales = m_xConfigAccess->getElementNames();
             // fill config hash with empty interfaces
-            int nLocales = aLocales.getLength();
-            const OUString* pLocaleStrings = aLocales.getConstArray();
-            for( int i = 0; i < nLocales; i++ )
+            for( const OUString& rLocaleString : aLocales )
             {
                 // Feed through LanguageTag for casing.
-                OUString aLoc( LanguageTag( pLocaleStrings[i], true).getBcp47( false));
+                OUString aLoc( LanguageTag( rLocaleString, true).getBcp47( false));
                 m_aConfig[ aLoc ] = LocaleAccess();
-                m_aConfig[ aLoc ].aConfigLocaleString = pLocaleStrings[i];
+                m_aConfig[ aLoc ].aConfigLocaleString = rLocaleString;
             }
         }
     }
@@ -151,7 +152,7 @@ OUString DefaultFontConfiguration::tryLocale( const OUString& rBcp47, const OUSt
 {
     OUString aRet;
 
-    std::unordered_map< OUString, LocaleAccess, OUStringHash >::const_iterator it = m_aConfig.find( rBcp47 );
+    std::unordered_map< OUString, LocaleAccess >::const_iterator it = m_aConfig.find( rBcp47 );
     if( it != m_aConfig.end() )
     {
         if( !it->second.xAccess.is() )
@@ -212,10 +213,11 @@ OUString DefaultFontConfiguration::getDefaultFont( const LanguageTag& rLanguageT
         else
         {
             ::std::vector< OUString > aFallbacks( rLanguageTag.getFallbackStrings( false));
-            for (::std::vector< OUString >::const_iterator it( aFallbacks.begin());
-                    it != aFallbacks.end() && aRet.isEmpty(); ++it)
+            for (const auto& rFallback : aFallbacks)
             {
-                aRet = tryLocale( *it, aType );
+                aRet = tryLocale( rFallback, aType );
+                if (!aRet.isEmpty())
+                    break;
             }
         }
     }
@@ -243,9 +245,7 @@ OUString DefaultFontConfiguration::getUserInterfaceFont( const LanguageTag& rLan
     #define FALLBACKFONT_UI_SANS_LATIN2 "Andale Sans UI;Albany;Albany AMT;Tahoma;Arial Unicode MS;Arial;Nimbus Sans L;Luxi Sans;Bitstream Vera Sans;Interface User;Geneva;WarpSans;Dialog;Swiss;Lucida;Helvetica;Charcoal;Chicago;MS Sans Serif;Helv;Times;Times New Roman;Interface System"
     #define FALLBACKFONT_UI_SANS_ARABIC "Tahoma;Traditional Arabic;Simplified Arabic;Lucidasans;Lucida Sans;Supplement;Andale Sans UI;clearlyU;Interface User;Arial Unicode MS;Lucida Sans Unicode;WarpSans;Geneva;MS Sans Serif;Helv;Dialog;Albany;Lucida;Helvetica;Charcoal;Chicago;Arial;Helmet;Interface System;Sans Serif"
     #define FALLBACKFONT_UI_SANS_THAI "OONaksit;Tahoma;Lucidasans;Arial Unicode MS"
-    #define FALLBACKFONT_UI_SANS_KOREAN "SunGulim;BaekmukGulim;Gulim;Roundgothic;Arial Unicode MS;Lucida Sans Unicode;gnu-unifont;Andale Sans UI"
-    #define FALLBACKFONT_UI_SANS_JAPANESE1 "HG-GothicB-Sun;Andale Sans UI;HG MhinchoLightJ"
-    #define FALLBACKFONT_UI_SANS_JAPANESE2 "Kochi Gothic;Gothic"
+    #define FALLBACKFONT_UI_SANS_KOREAN "Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;NanumGothic;NanumBarunGothic;NanumBarunGothic YetHangul;KoPubWorld Dotum;Malgun Gothic;Apple SD Gothic Neo;Dotum;Gulim;Apple Gothic;UnDotum;Baekmuk Gulim;Arial Unicode MS;Lucida Sans Unicode;gnu-unifont;Andale Sans UI"
     #define FALLBACKFONT_UI_SANS_CHINSIM "Andale Sans UI;Arial Unicode MS;ZYSong18030;AR PL SungtiL GB;AR PL KaitiM GB;SimSun;Lucida Sans Unicode;Fangsong;Hei;Song;Kai;Ming;gnu-unifont;Interface User;"
     #define FALLBACKFONT_UI_SANS_CHINTRD "Andale Sans UI;Arial Unicode MS;AR PL Mingti2L Big5;AR PL KaitiM Big5;Kai;PMingLiU;MingLiU;Ming;Lucida Sans Unicode;gnu-unifont;Interface User;"
 
@@ -254,26 +254,15 @@ OUString DefaultFontConfiguration::getUserInterfaceFont( const LanguageTag& rLan
     // optimize font list for some locales, as long as Andale Sans UI does not support them
     if( aLanguage == "ar" || aLanguage == "he" || aLanguage == "iw"  )
     {
-        return OUString(FALLBACKFONT_UI_SANS_ARABIC);
+        return FALLBACKFONT_UI_SANS_ARABIC;
     }
     else if ( aLanguage == "th" )
     {
-        return OUString(FALLBACKFONT_UI_SANS_THAI);
+        return FALLBACKFONT_UI_SANS_THAI;
     }
     else if ( aLanguage == "ko" )
     {
-        // we need localized names for korean fonts
-        const sal_Unicode aSunGulim[] = { 0xC36C, 0xAD74, 0xB9BC, 0 };
-        const sal_Unicode aBaekmukGulim[] = { 0xBC31, 0xBC35, 0xAD74, 0xB9BC, 0 };
-
-        OUStringBuffer aFallBackKoreanLocalized;
-        aFallBackKoreanLocalized.append(aSunGulim);
-        aFallBackKoreanLocalized.append(';');
-        aFallBackKoreanLocalized.append(aBaekmukGulim);
-        aFallBackKoreanLocalized.append(";");
-        aFallBackKoreanLocalized.append(FALLBACKFONT_UI_SANS_KOREAN);
-
-        return aFallBackKoreanLocalized.makeStringAndClear();
+        return FALLBACKFONT_UI_SANS_KOREAN;
     }
     else if( aLanguage == "cs" ||
              aLanguage == "hu" ||
@@ -285,44 +274,18 @@ OUString DefaultFontConfiguration::getUserInterfaceFont( const LanguageTag& rLan
              aLanguage == "sl" ||
              aLanguage == "sb")
     {
-        return OUString(FALLBACKFONT_UI_SANS_LATIN2);
-    }
-    else if ( aLanguage == "ja" )
-    {
-        // we need localized names for japanese fonts
-        const sal_Unicode aMSGothic[] = { 0xFF2D, 0xFF33, ' ', 0x30B4, 0x30B7, 0x30C3, 0x30AF, 0 };
-        const sal_Unicode aMSPGothic[] = { 0xFF2D, 0xFF33, ' ', 0xFF30, 0x30B4, 0x30B7, 0x30C3, 0x30AF, 0 };
-        const sal_Unicode aTLPGothic[] = { 0x0054, 0x004C, 0x0050, 0x30B4, 0x30B7, 0x30C3, 0x30AF, 0 };
-        const sal_Unicode aLXGothic[] = { 0x004C, 0x0058, 0x30B4, 0x30B7, 0x30C3, 0x30AF, 0 };
-        const sal_Unicode aKochiGothic[] = { 0x6771, 0x98A8, 0x30B4, 0x30B7, 0x30C3, 0x30AF, 0 };
-
-        OUStringBuffer aFallBackJapaneseLocalized;
-        aFallBackJapaneseLocalized.append("MS UI Gothic;");
-        aFallBackJapaneseLocalized.append(FALLBACKFONT_UI_SANS_JAPANESE1);
-        aFallBackJapaneseLocalized.append(aMSPGothic);
-        aFallBackJapaneseLocalized.append(';');
-        aFallBackJapaneseLocalized.append(aMSGothic);
-        aFallBackJapaneseLocalized.append(';');
-        aFallBackJapaneseLocalized.append(aTLPGothic);
-        aFallBackJapaneseLocalized.append(';');
-        aFallBackJapaneseLocalized.append(aLXGothic);
-        aFallBackJapaneseLocalized.append(';');
-        aFallBackJapaneseLocalized.append(aKochiGothic);
-        aFallBackJapaneseLocalized.append(';');
-        aFallBackJapaneseLocalized.append(FALLBACKFONT_UI_SANS_JAPANESE2);
-
-        return aFallBackJapaneseLocalized.makeStringAndClear();
+        return FALLBACKFONT_UI_SANS_LATIN2;
     }
     else
     {
-        Locale aLocale( aLanguageTag.getLocale());
+        const Locale& aLocale( aLanguageTag.getLocale());
         if (MsLangId::isTraditionalChinese(aLocale))
-            return OUString(FALLBACKFONT_UI_SANS_CHINTRD);
+            return FALLBACKFONT_UI_SANS_CHINTRD;
         else if (MsLangId::isSimplifiedChinese(aLocale))
-            return OUString(FALLBACKFONT_UI_SANS_CHINSIM);
+            return FALLBACKFONT_UI_SANS_CHINSIM;
     }
 
-    return OUString(FALLBACKFONT_UI_SANS);
+    return FALLBACKFONT_UI_SANS;
 }
 
 /*
@@ -349,17 +312,18 @@ FontSubstConfiguration& FontSubstConfiguration::get()
 FontSubstConfiguration::FontSubstConfiguration() :
     maSubstHash( 300 )
 {
+    if (utl::ConfigManager::IsFuzzing())
+        return;
     try
     {
         // get service provider
         Reference< XComponentContext > xContext( comphelper::getProcessComponentContext() );
         // create configuration hierarchical access name
         m_xConfigProvider = theDefaultProvider::get( xContext );
-        Sequence< Any > aArgs(1);
-        PropertyValue aVal;
-        aVal.Name = "nodepath";
-        aVal.Value <<= OUString( "/org.openoffice.VCL/FontSubstitutions" );
-        aArgs.getArray()[0] <<= aVal;
+        Sequence<Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", Any(OUString( "/org.openoffice.VCL/FontSubstitutions" ))}
+        }));
         m_xConfigAccess =
             Reference< XNameAccess >(
                 m_xConfigProvider->createInstanceWithArguments( "com.sun.star.configuration.ConfigurationAccess",
@@ -367,16 +331,14 @@ FontSubstConfiguration::FontSubstConfiguration() :
                 UNO_QUERY );
         if( m_xConfigAccess.is() )
         {
-            Sequence< OUString > aLocales = m_xConfigAccess->getElementNames();
+            const Sequence< OUString > aLocales = m_xConfigAccess->getElementNames();
             // fill config hash with empty interfaces
-            int nLocales = aLocales.getLength();
-            const OUString* pLocaleStrings = aLocales.getConstArray();
-            for( int i = 0; i < nLocales; i++ )
+            for( const OUString& rLocaleString : aLocales )
             {
                 // Feed through LanguageTag for casing.
-                OUString aLoc( LanguageTag( pLocaleStrings[i], true).getBcp47( false));
+                OUString aLoc( LanguageTag( rLocaleString, true).getBcp47( false));
                 m_aSubst[ aLoc ] = LocaleSubst();
-                m_aSubst[ aLoc ].aConfigLocaleString = pLocaleStrings[i];
+                m_aSubst[ aLoc ].aConfigLocaleString = rLocaleString;
             }
         }
     }
@@ -406,7 +368,7 @@ FontSubstConfiguration::~FontSubstConfiguration()
  *  FontSubstConfigItem::getMapName
  */
 
-static const char* const aImplKillLeadingList[] =
+const char* const aImplKillLeadingList[] =
 {
     "microsoft",
     "monotype",
@@ -429,7 +391,7 @@ static const char* const aImplKillLeadingList[] =
     nullptr
 };
 
-static const char* const aImplKillTrailingList[] =
+const char* const aImplKillTrailingList[] =
 {
     "microsoft",
     "monotype",
@@ -479,12 +441,14 @@ static const char* const aImplKillTrailingList[] =
     nullptr
 };
 
-static const char* const aImplKillTrailingWithExceptionsList[] =
+const char* const aImplKillTrailingWithExceptionsList[] =
 {
     "ce", "monospace", "oldface", nullptr,
     "ps", "caps", nullptr,
     nullptr
 };
+
+namespace {
 
 struct ImplFontAttrWeightSearchData
 {
@@ -492,7 +456,9 @@ struct ImplFontAttrWeightSearchData
     FontWeight              meWeight;
 };
 
-static ImplFontAttrWeightSearchData const aImplWeightAttrSearchList[] =
+}
+
+ImplFontAttrWeightSearchData const aImplWeightAttrSearchList[] =
 {
 // the attribute names are ordered by "first match wins"
 // e.g. "semilight" should wins over "semi"
@@ -512,13 +478,17 @@ static ImplFontAttrWeightSearchData const aImplWeightAttrSearchList[] =
 {   nullptr,                   WEIGHT_DONTKNOW },
 };
 
+namespace {
+
 struct ImplFontAttrWidthSearchData
 {
     const char*             mpStr;
     FontWidth               meWidth;
 };
 
-static ImplFontAttrWidthSearchData const aImplWidthAttrSearchList[] =
+}
+
+ImplFontAttrWidthSearchData const aImplWidthAttrSearchList[] =
 {
 {   "narrow",               WIDTH_CONDENSED },
 {   "semicondensed",        WIDTH_SEMI_CONDENSED },
@@ -533,13 +503,17 @@ static ImplFontAttrWidthSearchData const aImplWidthAttrSearchList[] =
 {   nullptr,                   WIDTH_DONTKNOW },
 };
 
+namespace {
+
 struct ImplFontAttrTypeSearchData
 {
     const char*             mpStr;
     ImplFontAttrs           mnType;
 };
 
-static ImplFontAttrTypeSearchData const aImplTypeAttrSearchList[] =
+}
+
+ImplFontAttrTypeSearchData const aImplTypeAttrSearchList[] =
 {
 {   "monotype",             ImplFontAttrs::None },
 {   "linotype",             ImplFontAttrs::None },
@@ -609,14 +583,14 @@ static bool ImplKillLeading( OUString& rName, const char* const* ppStr )
     {
         const char*         pStr = *ppStr;
         const sal_Unicode*  pNameStr = rName.getStr();
-        while ( (*pNameStr == (sal_Unicode)(unsigned char)*pStr) && *pStr )
+        while ( (*pNameStr == static_cast<sal_Unicode>(static_cast<unsigned char>(*pStr))) && *pStr )
         {
             pNameStr++;
             pStr++;
         }
         if ( !*pStr )
         {
-            sal_Int32 nLen = (sal_Int32)(pNameStr - rName.getStr());
+            sal_Int32 nLen = static_cast<sal_Int32>(pNameStr - rName.getStr());
             rName = rName.copy(nLen);
             return true;
         }
@@ -637,7 +611,7 @@ static bool ImplKillLeading( OUString& rName, const char* const* ppStr )
 
 static sal_Int32 ImplIsTrailing( const OUString& rName, const char* pStr )
 {
-    sal_Int32 nStrLen = (sal_Int32)strlen( pStr );
+    sal_Int32 nStrLen = static_cast<sal_Int32>(strlen( pStr ));
     if( nStrLen >= rName.getLength() )
         return 0;
 
@@ -692,7 +666,7 @@ static bool ImplKillTrailingWithExceptions( OUString& rName, const char* const* 
 
 static bool ImplFindAndErase( OUString& rName, const char* pStr )
 {
-    sal_Int32 nLen = (sal_Int32)strlen(pStr);
+    sal_Int32 nLen = static_cast<sal_Int32>(strlen(pStr));
     sal_Int32 nPos = rName.indexOfAsciiL(pStr, nLen );
     if ( nPos < 0 )
         return false;
@@ -772,15 +746,19 @@ void FontSubstConfiguration::getMapName( const OUString& rOrgName, OUString& rSh
     }
 }
 
-struct StrictStringSort : public ::std::binary_function< const FontNameAttr&, const FontNameAttr&, bool >
+namespace {
+
+struct StrictStringSort
 {
     bool operator()( const FontNameAttr& rLeft, const FontNameAttr& rRight )
     { return rLeft.Name.compareTo( rRight.Name ) < 0; }
 };
 
+}
+
 // The entries in this table must match the bits in the ImplFontAttrs enum.
 
-static const char* const pAttribNames[] =
+const char* const pAttribNames[] =
 {
     "default",
     "standard",
@@ -816,13 +794,17 @@ static const char* const pAttribNames[] =
     "other"
 };
 
+namespace {
+
 struct enum_convert
 {
     const char* pName;
     int          nEnum;
 };
 
-static const enum_convert pWeightNames[] =
+}
+
+const enum_convert pWeightNames[] =
 {
     { "normal", WEIGHT_NORMAL },
     { "medium", WEIGHT_MEDIUM },
@@ -840,7 +822,7 @@ static const enum_convert pWeightNames[] =
     { "ultralight", WEIGHT_ULTRALIGHT }
 };
 
-static const enum_convert pWidthNames[] =
+const enum_convert pWidthNames[] =
 {
     { "normal", WIDTH_NORMAL },
     { "condensed", WIDTH_CONDENSED },
@@ -883,11 +865,9 @@ void FontSubstConfiguration::fillSubstVector( const css::uno::Reference< XNameAc
                     OUString aSubst( pLine->getToken( 0, ';', nIndex ) );
                     if( !aSubst.isEmpty() )
                     {
-                        UniqueSubstHash::iterator aEntry = maSubstHash.find( aSubst );
-                        if (aEntry != maSubstHash.end())
-                            aSubst = *aEntry;
-                        else
-                            maSubstHash.insert( aSubst );
+                        auto itPair = maSubstHash.insert( aSubst );
+                        if (!itPair.second)
+                            aSubst = *itPair.first;
                         rSubstVector.push_back( aSubst );
                     }
                 }
@@ -926,7 +906,7 @@ FontWeight FontSubstConfiguration::getSubstWeight( const css::uno::Reference< XN
     catch (const WrappedTargetException&)
     {
     }
-    return (FontWeight)( weight >= 0 ? pWeightNames[weight].nEnum : WEIGHT_DONTKNOW );
+    return static_cast<FontWeight>( weight >= 0 ? pWeightNames[weight].nEnum : WEIGHT_DONTKNOW );
 }
 
 FontWidth FontSubstConfiguration::getSubstWidth( const css::uno::Reference< XNameAccess >& rFont,
@@ -953,7 +933,7 @@ FontWidth FontSubstConfiguration::getSubstWidth( const css::uno::Reference< XNam
     catch (const WrappedTargetException&)
     {
     }
-    return (FontWidth)( width >= 0 ? pWidthNames[width].nEnum : WIDTH_DONTKNOW );
+    return static_cast<FontWidth>( width >= 0 ? pWidthNames[width].nEnum : WIDTH_DONTKNOW );
 }
 
 ImplFontAttrs FontSubstConfiguration::getSubstType( const css::uno::Reference< XNameAccess >& rFont,
@@ -993,78 +973,73 @@ ImplFontAttrs FontSubstConfiguration::getSubstType( const css::uno::Reference< X
 
 void FontSubstConfiguration::readLocaleSubst( const OUString& rBcp47 ) const
 {
-    std::unordered_map< OUString, LocaleSubst, OUStringHash >::const_iterator it = m_aSubst.find( rBcp47 );
-    if( it != m_aSubst.end() )
+    std::unordered_map< OUString, LocaleSubst >::const_iterator it = m_aSubst.find( rBcp47 );
+    if( it == m_aSubst.end() )
+        return;
+
+    if(  it->second.bConfigRead )
+        return;
+
+    it->second.bConfigRead = true;
+    Reference< XNameAccess > xNode;
+    try
     {
-        if( ! it->second.bConfigRead )
-        {
-            it->second.bConfigRead = true;
-            Reference< XNameAccess > xNode;
-            try
-            {
-                Any aAny = m_xConfigAccess->getByName( it->second.aConfigLocaleString );
-                aAny >>= xNode;
-            }
-            catch (const NoSuchElementException&)
-            {
-            }
-            catch (const WrappedTargetException&)
-            {
-            }
-            if( xNode.is() )
-            {
-                Sequence< OUString > aFonts = xNode->getElementNames();
-                int nFonts = aFonts.getLength();
-                const OUString* pFontNames = aFonts.getConstArray();
-                // improve performance, heap fragmentation
-                it->second.aSubstAttributes.reserve( nFonts );
-
-                // strings for subst retrieval, construct only once
-                OUString const aSubstFontsStr     ( "SubstFonts" );
-                OUString const aSubstFontsMSStr   ( "SubstFontsMS" );
-                OUString const aSubstFontsPSStr   ( "SubstFontsPS" );
-                OUString const aSubstFontsHTMLStr ( "SubstFontsHTML" );
-                OUString const aSubstWeightStr    ( "FontWeight" );
-                OUString const aSubstWidthStr     ( "FontWidth" );
-                OUString const aSubstTypeStr      ( "FontType" );
-                for( int i = 0; i < nFonts; i++ )
-                {
-                    Reference< XNameAccess > xFont;
-                    try
-                    {
-                        Any aAny = xNode->getByName( pFontNames[i] );
-                        aAny >>= xFont;
-                    }
-                    catch (const NoSuchElementException&)
-                    {
-                    }
-                    catch (const WrappedTargetException&)
-                    {
-                    }
-                    if( ! xFont.is() )
-                    {
-                        SAL_WARN("unotools.config", "did not get font attributes for " << pFontNames[i]);
-                        continue;
-                    }
-
-                    FontNameAttr aAttr;
-                    // read subst attributes from config
-                    aAttr.Name = pFontNames[i];
-                    fillSubstVector( xFont, aSubstFontsStr, aAttr.Substitutions );
-                    fillSubstVector( xFont, aSubstFontsMSStr, aAttr.MSSubstitutions );
-                    fillSubstVector( xFont, aSubstFontsPSStr, aAttr.PSSubstitutions );
-                    fillSubstVector( xFont, aSubstFontsHTMLStr, aAttr.HTMLSubstitutions );
-                    aAttr.Weight = getSubstWeight( xFont, aSubstWeightStr );
-                    aAttr.Width = getSubstWidth( xFont, aSubstWidthStr );
-                    aAttr.Type = getSubstType( xFont, aSubstTypeStr );
-
-                    // finally insert this entry
-                    it->second.aSubstAttributes.push_back( aAttr );
-                }
-                std::sort( it->second.aSubstAttributes.begin(), it->second.aSubstAttributes.end(), StrictStringSort() );
-            }
-        }
+        Any aAny = m_xConfigAccess->getByName( it->second.aConfigLocaleString );
+        aAny >>= xNode;
     }
+    catch (const NoSuchElementException&)
+    {
+    }
+    catch (const WrappedTargetException&)
+    {
+    }
+    if( !xNode.is() )
+        return;
+
+    const Sequence< OUString > aFonts = xNode->getElementNames();
+    int nFonts = aFonts.getLength();
+    // improve performance, heap fragmentation
+    it->second.aSubstAttributes.reserve( nFonts );
+
+    // strings for subst retrieval, construct only once
+    OUString const aSubstFontsStr     ( "SubstFonts" );
+    OUString const aSubstFontsMSStr   ( "SubstFontsMS" );
+    OUString const aSubstWeightStr    ( "FontWeight" );
+    OUString const aSubstWidthStr     ( "FontWidth" );
+    OUString const aSubstTypeStr      ( "FontType" );
+    for( const OUString& rFontName : aFonts )
+    {
+        Reference< XNameAccess > xFont;
+        try
+        {
+            Any aAny = xNode->getByName( rFontName );
+            aAny >>= xFont;
+        }
+        catch (const NoSuchElementException&)
+        {
+        }
+        catch (const WrappedTargetException&)
+        {
+        }
+        if( ! xFont.is() )
+        {
+            SAL_WARN("unotools.config", "did not get font attributes for " << rFontName);
+            continue;
+        }
+
+        FontNameAttr aAttr;
+        // read subst attributes from config
+        aAttr.Name = rFontName;
+        fillSubstVector( xFont, aSubstFontsStr, aAttr.Substitutions );
+        fillSubstVector( xFont, aSubstFontsMSStr, aAttr.MSSubstitutions );
+        aAttr.Weight = getSubstWeight( xFont, aSubstWeightStr );
+        aAttr.Width = getSubstWidth( xFont, aSubstWidthStr );
+        aAttr.Type = getSubstType( xFont, aSubstTypeStr );
+
+        // finally insert this entry
+        it->second.aSubstAttributes.push_back( aAttr );
+    }
+    std::sort( it->second.aSubstAttributes.begin(), it->second.aSubstAttributes.end(), StrictStringSort() );
 }
 
 const FontNameAttr* FontSubstConfiguration::getSubstInfo( const OUString& rFontName ) const
@@ -1085,15 +1060,15 @@ const FontNameAttr* FontSubstConfiguration::getSubstInfo( const OUString& rFontN
 
     ::std::vector< OUString > aFallbacks( aLanguageTag.getFallbackStrings( true));
     if (aLanguageTag.getLanguage() != "en")
-        aFallbacks.push_back("en");
+        aFallbacks.emplace_back("en");
 
-    for (::std::vector< OUString >::const_iterator fb( aFallbacks.begin()); fb != aFallbacks.end(); ++fb)
+    for (const auto& rFallback : aFallbacks)
     {
-        std::unordered_map< OUString, LocaleSubst, OUStringHash >::const_iterator lang = m_aSubst.find( *fb );
+        std::unordered_map< OUString, LocaleSubst >::const_iterator lang = m_aSubst.find( rFallback );
         if( lang != m_aSubst.end() )
         {
             if( ! lang->second.bConfigRead )
-                readLocaleSubst( *fb );
+                readLocaleSubst( rFallback );
             // try to find an exact match
             // because the list is sorted this will also find fontnames of the form searchfontname*
             std::vector< FontNameAttr >::const_iterator it = ::std::lower_bound( lang->second.aSubstAttributes.begin(), lang->second.aSubstAttributes.end(), aSearchAttr, StrictStringSort() );

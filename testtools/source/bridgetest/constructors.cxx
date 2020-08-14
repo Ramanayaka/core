@@ -18,32 +18,32 @@
  */
 
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "com/sun/star/lang/XInitialization.hpp"
-#include "com/sun/star/lang/XComponent.hpp"
-#include "com/sun/star/uno/Any.hxx"
-#include "com/sun/star/uno/Exception.hpp"
-#include "com/sun/star/uno/Reference.hxx"
-#include "com/sun/star/uno/Sequence.hxx"
-#include "com/sun/star/uno/Type.hxx"
-#include "com/sun/star/uno/XComponentContext.hpp"
-#include "com/sun/star/uno/XInterface.hpp"
-#include "cppu/unotype.hxx"
-#include "cppuhelper/factory.hxx"
+#include <com/sun/star/lang/XInitialization.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Exception.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/Type.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/uno/XInterface.hpp>
+#include <cppu/unotype.hxx>
+#include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
-#include "cppuhelper/implementationentry.hxx"
-#include "cppuhelper/weak.hxx"
-#include "rtl/string.h"
-#include "rtl/ustring.h"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
-#include "test/testtools/bridgetest/BadConstructorArguments.hpp"
-#include "test/testtools/bridgetest/TestEnum.hpp"
-#include "test/testtools/bridgetest/TestStruct.hpp"
-#include "test/testtools/bridgetest/TestPolyStruct.hpp"
-#include "test/testtools/bridgetest/TestPolyStruct2.hpp"
-#include "test/testtools/bridgetest/XMultiBase1.hpp"
+#include <cppuhelper/implementationentry.hxx>
+#include <cppuhelper/weak.hxx>
+#include <rtl/string.h>
+#include <rtl/ustring.h>
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
+#include <test/testtools/bridgetest/BadConstructorArguments.hpp>
+#include <test/testtools/bridgetest/TestEnum.hpp>
+#include <test/testtools/bridgetest/TestStruct.hpp>
+#include <test/testtools/bridgetest/TestPolyStruct.hpp>
+#include <test/testtools/bridgetest/TestPolyStruct2.hpp>
+#include <test/testtools/bridgetest/XMultiBase1.hpp>
 
 namespace {
 
@@ -405,41 +405,38 @@ OUString Impl2::fn12( const OUString& arg )
     return "12" + arg;
 }
 
-css::uno::Reference< css::uno::XInterface > SAL_CALL create(
+css::uno::Reference< css::uno::XInterface > create(
     SAL_UNUSED_PARAMETER css::uno::Reference< css::uno::XComponentContext >
         const &)
 {
     return static_cast< ::cppu::OWeakObject * >(new Impl);
 }
 
-OUString SAL_CALL getImplementationName() {
-    return OUString(
-            "comp.test.testtools.bridgetest.Constructors");
+OUString getImplementationName() {
+    return
+            "comp.test.testtools.bridgetest.Constructors";
 }
 
-css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() {
-    css::uno::Sequence< OUString > s { "test.testtools.bridgetest.Constructors" };
-    return s;
+css::uno::Sequence< OUString > getSupportedServiceNames() {
+    return { "test.testtools.bridgetest.Constructors" };
 }
 
-css::uno::Reference< css::uno::XInterface > SAL_CALL create2(
+css::uno::Reference< css::uno::XInterface > create2(
     SAL_UNUSED_PARAMETER css::uno::Reference< css::uno::XComponentContext >
         const &)
 {
     return static_cast< ::cppu::OWeakObject * >(new Impl2);
 }
 
-OUString SAL_CALL getImplementationName2() {
-    return OUString(
-            "comp.test.testtools.bridgetest.Constructors2");
+OUString getImplementationName2() {
+    return "comp.test.testtools.bridgetest.Constructors2";
 }
 
-css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames2() {
-    css::uno::Sequence< OUString > s { "test.testtools.bridgetest.Constructors2" };
-    return s;
+css::uno::Sequence< OUString > getSupportedServiceNames2() {
+    return { "test.testtools.bridgetest.Constructors2" };
 }
 
-::cppu::ImplementationEntry entries[] = {
+::cppu::ImplementationEntry const entries[] = {
     { &create, &getImplementationName, &getSupportedServiceNames,
       &::cppu::createSingleComponentFactory, nullptr, 0 },
     { &create2, &getImplementationName2, &getSupportedServiceNames2,
@@ -447,7 +444,7 @@ css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames2() {
     { nullptr, nullptr, nullptr, nullptr, nullptr, 0 } };
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL component_getFactory(
+extern "C" SAL_DLLPUBLIC_EXPORT void * component_getFactory(
     char const * implName, void * serviceManager, void * registryKey)
 {
     return ::cppu::component_getFactoryHelper(

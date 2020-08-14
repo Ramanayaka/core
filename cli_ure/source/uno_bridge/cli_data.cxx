@@ -17,9 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#pragma warning(push, 1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include "windows.h"
-#pragma warning(pop)
+#include <ole2.h>
 
 #include <memory>
 
@@ -78,7 +80,7 @@ System::Object^ Bridge::map_uno2cli(uno_Interface * pUnoI, typelib_InterfaceType
         retVal = CliEnvHolder::g_cli_env->getRegisteredInterface(sOid, ifaceType);
         if (retVal)
         {
-            // There is already an registered object. It can either be a proxy
+            // There is already a registered object. It can either be a proxy
             // for the UNO object or a real cli object. In the first case we
             // tell the proxy that it shall also represent the current UNO
             // interface. If it already does that, then it does nothing
@@ -553,7 +555,7 @@ System::String^ mapPolymorphicName(System::String^ unoName, bool bCliToUno)
     builder->Append(unoName->Substring(0, index +1 ));
 
     //Find the first occurrence of ','
-    //If the parameter is a polymorphic struct then we neede to ignore everything
+    //If the parameter is a polymorphic struct then we need to ignore everything
     //between the brackets because it can also contain commas
     //get the type list within < and >
     int endIndex = unoName->Length - 1;
@@ -1328,7 +1330,7 @@ void Bridge::map_to_uno(void * uno_data, System::Object^ cli_data,
                             {
                                 void * p= ((uno_Sequence *) seq.get())->elements +
                                     (nPos * element_td.get()->nSize);
-                                System::Object^ elemData= dynamic_cast<System::Array^>(cli_data)->GetValue(nPos);
+                                System::Object^ elemData= safe_cast<System::Array^>(cli_data)->GetValue(nPos);
                                 map_to_uno(
                                     p, elemData, element_td.get()->pWeakRef,
                                     false /* no assign */);
@@ -1441,7 +1443,7 @@ void Bridge::map_to_uno(void * uno_data, System::Object^ cli_data,
        cli_data.
        true - cli_data already contains the newly constructed object. This is the case if
        a struct is converted then on the first call to map_to_cli the new object is created.
-       If the struct inherits another struct then this function is called recursivly while the
+       If the struct inherits another struct then this function is called recursively while the
        newly created object is passed in cli_data.
  */
 void Bridge::map_to_cli(
@@ -1541,7 +1543,7 @@ void Bridge::map_to_cli(
 
         //create the type
         System::Type^ cliType= loadCliType(td.get()->pTypeName);
-        //detect if we recursivly convert inherited structures
+        //detect if we recursively convert inherited structures
         //If this point is reached because of a recursive call during covering a
         //struct then we must not create a new object rather we use the one in
         // cli_data argument.

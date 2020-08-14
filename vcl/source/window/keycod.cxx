@@ -17,14 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <salinst.hxx>
+#include <sal/config.h>
+
+#include <accel.h>
 #include <salframe.hxx>
 #include <svdata.hxx>
 
 #include <vcl/window.hxx>
 #include <vcl/keycod.hxx>
 
-static const sal_uInt16 aImplKeyFuncTab[(static_cast<int>(KeyFuncType::FRONT)+1)*4] =
+const sal_uInt16 aImplKeyFuncTab[(static_cast<int>(KeyFuncType::FRONT)+1)*4] =
 {
     0, 0, 0, 0,                                                    // KeyFuncType::DONTKNOW
     KEY_N | KEY_MOD1, 0, 0, 0,                                     // KeyFuncType::NEW
@@ -88,15 +90,15 @@ KeyFuncType vcl::KeyCode::GetFunction() const
     sal_uInt16 nCompCode = GetModifier() | GetCode();
     if ( nCompCode )
     {
-        for ( sal_uInt16 i = (sal_uInt16)KeyFuncType::NEW; i < (sal_uInt16)KeyFuncType::FRONT; i++ )
+        for ( sal_uInt16 i = sal_uInt16(KeyFuncType::NEW); i < sal_uInt16(KeyFuncType::FRONT); i++ )
         {
             sal_uInt16 nKeyCode1;
             sal_uInt16 nKeyCode2;
             sal_uInt16 nKeyCode3;
             sal_uInt16 nKeyCode4;
-            ImplGetKeyCode( (KeyFuncType)i, nKeyCode1, nKeyCode2, nKeyCode3, nKeyCode4 );
+            ImplGetKeyCode( static_cast<KeyFuncType>(i), nKeyCode1, nKeyCode2, nKeyCode3, nKeyCode4 );
             if ( (nCompCode == nKeyCode1) || (nCompCode == nKeyCode2) || (nCompCode == nKeyCode3) || (nCompCode == nKeyCode4) )
-                return (KeyFuncType)i;
+                return static_cast<KeyFuncType>(i);
         }
     }
 

@@ -8,15 +8,8 @@
 #
 
 ifeq ($(DISABLE_DYNLOADING),TRUE)
-# Link with -lgnustl_static
-gb_STDLIBS := \
-	-lgnustl_static \
-	-lm
 
-else
-# Link almost everything with -lgnustl_shared
-gb_STDLIBS := \
-	-lgnustl_shared \
+gb_STDLIBS := -static-libstdc++
 
 endif
 
@@ -39,7 +32,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		-shared \
 		$(if $(filter Library CppunitTest,$(TARGETTYPE)),$(gb_Library_TARGETTYPEFLAGS)) \
 		$(subst \d,$$,$(RPATH)) \
-		$(T_LDFLAGS) \
+		$(T_USE_LD) $(T_LDFLAGS) \
 		$(foreach object,$(COBJECTS),$(call gb_CObject_get_target,$(object))) \
 		$(foreach object,$(CXXOBJECTS),$(call gb_CxxObject_get_target,$(object))) \
 		$(foreach object,$(ASMOBJECTS),$(call gb_AsmObject_get_target,$(object))) \
@@ -109,9 +102,11 @@ gb_CppunitTest_get_filename = libtest_$(1).a
 # static archives), they are just a waste of disk space.
 define gb_LinkTarget__command
 $(call gb_Output_announce,$(2),$(true),LNK,4)
+	$(call gb_Trace_StartRange,$(2),LNK)
 $(if $(filter CppunitTest,$(TARGETTYPE)), \
 	touch $(1), \
 	$(call gb_LinkTarget__command_staticlink,$(1)))
+	$(call gb_Trace_EndRange,$(2),LNK)
 endef
 
 endif

@@ -19,16 +19,15 @@
 
 #include "PaneHider.hxx"
 
-#include "ViewShell.hxx"
-#include "ViewShellBase.hxx"
-#include "slideshow.hxx"
+#include <ViewShell.hxx>
+#include <ViewShellBase.hxx>
 #include "slideshowimpl.hxx"
-#include "framework/FrameworkHelper.hxx"
-#include "framework/ConfigurationController.hxx"
+#include <framework/FrameworkHelper.hxx>
 
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationController.hpp>
 #include <com/sun/star/drawing/framework/XConfiguration.hpp>
+#include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 
 #include <tools/diagnose_ex.h>
@@ -41,14 +40,16 @@ using ::com::sun::star::lang::DisposedException;
 namespace sd {
 
 PaneHider::PaneHider (const ViewShell& rViewShell, SlideshowImpl* pSlideShow)
-    : mrViewShell(rViewShell)
 {
      // Hide the left and right pane windows when a slideshow exists and is
     // not full screen.
-    if (pSlideShow!=nullptr && !pSlideShow->isFullScreen()) try
+    if (pSlideShow==nullptr || pSlideShow->isFullScreen())
+        return;
+
+    try
     {
         Reference<XControllerManager> xControllerManager (
-            mrViewShell.GetViewShellBase().GetController(), UNO_QUERY_THROW);
+            rViewShell.GetViewShellBase().GetController(), UNO_QUERY_THROW);
         mxConfigurationController = xControllerManager->getConfigurationController();
         if (mxConfigurationController.is())
         {
@@ -57,26 +58,25 @@ PaneHider::PaneHider (const ViewShell& rViewShell, SlideshowImpl* pSlideShow)
             if (mxConfiguration.is())
             {
                 // Iterate over the resources and deactivate the panes.
-                Sequence<Reference<XResourceId> > aResources (
+                const Sequence<Reference<XResourceId> > aResources (
                     mxConfiguration->getResources(
                         nullptr,
                         framework::FrameworkHelper::msPaneURLPrefix,
                         AnchorBindingMode_DIRECT));
-                for (sal_Int32 nIndex=0; nIndex<aResources.getLength(); ++nIndex)
+                for (const Reference<XResourceId>& xPaneId : aResources)
                 {
-                    Reference<XResourceId> xPaneId (aResources[nIndex]);
-                    if ( ! xPaneId->getResourceURL().equals(FrameworkHelper::msCenterPaneURL))
+                    if ( xPaneId->getResourceURL() != FrameworkHelper::msCenterPaneURL )
                     {
                         mxConfigurationController->requestResourceDeactivation(xPaneId);
                     }
                 }
             }
         }
-        FrameworkHelper::Instance(mrViewShell.GetViewShellBase())->WaitForUpdate();
+        FrameworkHelper::Instance(rViewShell.GetViewShellBase())->WaitForUpdate();
     }
     catch (RuntimeException&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sd");
     }
 }
 

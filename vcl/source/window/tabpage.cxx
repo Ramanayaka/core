@@ -17,17 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <vcl/accel.hxx>
 #include <vcl/event.hxx>
 #include <vcl/layout.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/tabpage.hxx>
-#include <vcl/tabctrl.hxx>
 #include <vcl/bitmapex.hxx>
 #include <vcl/settings.hxx>
-
-#include <svdata.hxx>
-
-#include <com/sun/star/accessibility/XAccessible.hpp>
 
 void TabPage::ImplInit( vcl::Window* pParent, WinBits nStyle )
 {
@@ -47,7 +42,7 @@ void TabPage::ImplInit( vcl::Window* pParent, WinBits nStyle )
 void TabPage::ImplInitSettings()
 {
     vcl::Window* pParent = GetParent();
-    if ( pParent->IsChildTransparentModeEnabled() && !IsControlBackground() )
+    if (pParent && pParent->IsChildTransparentModeEnabled() && !IsControlBackground())
     {
         EnableChildTransparentMode();
         SetParentClipMode( ParentClipMode::NoClip );
@@ -60,7 +55,7 @@ void TabPage::ImplInitSettings()
         SetParentClipMode();
         SetPaintTransparent( false );
 
-        if ( IsControlBackground() )
+        if (IsControlBackground() || !pParent)
             SetBackground( GetControlBackground() );
         else
             SetBackground( pParent->GetBackground() );
@@ -79,7 +74,7 @@ TabPage::TabPage(vcl::Window *pParent, const OString& rID, const OUString& rUIXM
     , IContext()
 {
     ImplInit(pParent, 0);
-    m_pUIBuilder.reset( new VclBuilder(this, getUIRootDir(), rUIXMLDescription, rID) );
+    m_pUIBuilder.reset( new VclBuilder(this, AllSettings::GetUIRootDir(), rUIXMLDescription, rID) );
     set_hexpand(true);
     set_vexpand(true);
     set_expand(true);
@@ -129,27 +124,27 @@ void TabPage::DataChanged( const DataChangedEvent& rDCEvt )
 void TabPage::Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& )
 {
     // draw native tabpage only inside tabcontrols, standalone tabpages look ugly (due to bad dialog design)
-    if( IsNativeControlSupported(ControlType::TabBody, ControlPart::Entire) && GetParent() && (GetParent()->GetType() == WindowType::TABCONTROL) )
-    {
-        const ImplControlValue aControlValue;
+    if( !(IsNativeControlSupported(ControlType::TabBody, ControlPart::Entire) && GetParent() && (GetParent()->GetType() == WindowType::TABCONTROL)) )
+        return;
 
-        ControlState nState = ControlState::ENABLED;
-        if ( !IsEnabled() )
-            nState &= ~ControlState::ENABLED;
-        if ( HasFocus() )
-            nState |= ControlState::FOCUSED;
-        // pass the whole window region to NWF as the tab body might be a gradient or bitmap
-        // that has to be scaled properly, clipping makes sure that we do not paint too much
-        tools::Rectangle aCtrlRegion( Point(), GetOutputSizePixel() );
-        rRenderContext.DrawNativeControl( ControlType::TabBody, ControlPart::Entire, aCtrlRegion, nState,
-                aControlValue, OUString() );
-    }
+    const ImplControlValue aControlValue;
+
+    ControlState nState = ControlState::ENABLED;
+    if ( !IsEnabled() )
+        nState &= ~ControlState::ENABLED;
+    if ( HasFocus() )
+        nState |= ControlState::FOCUSED;
+    // pass the whole window region to NWF as the tab body might be a gradient or bitmap
+    // that has to be scaled properly, clipping makes sure that we do not paint too much
+    tools::Rectangle aCtrlRegion( Point(), GetOutputSizePixel() );
+    rRenderContext.DrawNativeControl( ControlType::TabBody, ControlPart::Entire, aCtrlRegion, nState,
+            aControlValue, OUString() );
 }
 
-void TabPage::Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags )
+void TabPage::Draw( OutputDevice* pDev, const Point& rPos, DrawFlags )
 {
     Point aPos = pDev->LogicToPixel( rPos );
-    Size aSize = pDev->LogicToPixel( rSize );
+    Size aSize = GetSizePixel();
 
     Wallpaper aWallpaper = GetBackground();
     if ( !aWallpaper.IsBitmap() )
@@ -171,22 +166,6 @@ void TabPage::Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, Dr
     }
 
     pDev->Pop();
-}
-
-void TabPage::ActivatePage()
-{
-}
-
-void TabPage::DeactivatePage()
-{
-}
-
-OString TabPage::GetConfigId() const
-{
-    OString sId(GetHelpId());
-    if (sId.isEmpty() && isLayoutEnabled(this))
-        sId = GetWindow(GetWindowType::FirstChild)->GetHelpId();
-    return sId;
 }
 
 Size TabPage::GetOptimalSize() const

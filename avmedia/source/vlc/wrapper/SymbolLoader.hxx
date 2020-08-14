@@ -7,9 +7,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_VLC_WRAPPER_SYMBOLLOADER_HXX
-#define INCLUDED_AVMEDIA_SOURCE_VLC_WRAPPER_SYMBOLLOADER_HXX
+#pragma once
 #if defined(_WIN32)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 # include <windows.h>
 # include <winreg.h>
 #endif
@@ -19,17 +21,13 @@
 
 #define SYM_MAP(a) { #a, reinterpret_cast<SymbolFunc *>(&a) }
 
-namespace avmedia
-{
-namespace vlc
-{
-namespace wrapper
+namespace avmedia::vlc::wrapper
 {
 typedef void (*SymbolFunc) (void);
 
 struct ApiMap
 {
-    const char *symName;
+    OUStringLiteral symName;
     SymbolFunc *refValue;
 };
 
@@ -37,27 +35,27 @@ struct ApiMap
     const char LibName[] = "libvlc.so.5";
 #elif defined( MACOSX )
     const char LibName[] = "/Applications/VLC.app/Contents/MacOS/lib/libvlc.dylib";
-#elif defined( WNT )
+#elif defined( _WIN32 )
     const char LibName[] = "libvlc.dll";
 
     inline OUString GetVLCPath()
     {
         HKEY hKey;
-        wchar_t arCurrent[MAX_PATH];
+        sal_Unicode arCurrent[MAX_PATH];
         DWORD dwType, dwCurrentSize = sizeof( arCurrent );
 
         //TODO: This one will work only with LibreOffice 32-bit + VLC 32-bit on Win x86_64.
         const LONG errorCore = ::RegOpenKeyExW( HKEY_LOCAL_MACHINE, L"SOFTWARE\\Wow6432Node\\VideoLAN\\VLC", 0, KEY_READ | KEY_WOW64_64KEY, &hKey );
         if ( errorCore == ERROR_SUCCESS )
         {
-            if ( ::RegQueryValueExW( hKey, L"InstallDir", NULL, &dwType, (LPBYTE) arCurrent, &dwCurrentSize ) == ERROR_SUCCESS &&
+            if ( ::RegQueryValueExW( hKey, L"InstallDir", nullptr, &dwType, reinterpret_cast<LPBYTE>(arCurrent), &dwCurrentSize ) == ERROR_SUCCESS &&
                  dwType == REG_SZ )
             {
                 ::RegCloseKey( hKey );
                 dwCurrentSize -= 2;
                 dwCurrentSize /= 2;
 
-                return OUString( arCurrent, dwCurrentSize ) + OUString::createFromAscii("\\");
+                return OUString( arCurrent, dwCurrentSize ) + "\\";
             }
 
             ::RegCloseKey( hKey );
@@ -73,7 +71,7 @@ struct ApiMap
         for (size_t i = 0; i < N; ++i)
         {
             SymbolFunc aMethod = reinterpret_cast<SymbolFunc>(osl_getFunctionSymbol
-                ( aModule, OUString::createFromAscii( pMap[ i ].symName ).pData ));
+                ( aModule, OUString( pMap[ i ].symName ).pData ));
             if ( !aMethod )
             {
                 SAL_WARN("avmedia", "Cannot load method " << pMap[ i ].symName);
@@ -92,7 +90,7 @@ struct ApiMap
     {
 #if defined( LINUX ) || defined( MACOSX )
         OUString const fullPath(LibName);
-#elif defined( WNT )
+#elif defined( _WIN32 )
         OUString const fullPath(GetVLCPath() + LibName);
 #endif
         SAL_INFO("avmedia", fullPath);
@@ -118,9 +116,7 @@ struct ApiMap
         return false;
     }
 }
-}
-}
 
-#endif
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

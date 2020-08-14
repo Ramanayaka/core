@@ -21,9 +21,11 @@
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "tvfactory.hxx"
-#include "tvread.hxx"
+#include <cppuhelper/factory.hxx>
+#include <tvfactory.hxx>
+#include <tvread.hxx>
 
 using namespace treeview;
 using namespace com::sun::star;
@@ -46,7 +48,7 @@ TVFactory::~TVFactory()
 OUString SAL_CALL
 TVFactory::getImplementationName()
 {
-    return TVFactory::getImplementationName_static();
+    return "com.sun.star.help.TreeViewImpl";
 }
 
 sal_Bool SAL_CALL TVFactory::supportsService( const OUString& ServiceName )
@@ -57,7 +59,7 @@ sal_Bool SAL_CALL TVFactory::supportsService( const OUString& ServiceName )
 Sequence< OUString > SAL_CALL
 TVFactory::getSupportedServiceNames()
 {
-    return TVFactory::getSupportedServiceNames_static();
+    return { "com.sun.star.help.TreeView", "com.sun.star.ucb.HiearchyDataSource" };
 }
 
 // XMultiServiceFactory
@@ -66,15 +68,12 @@ Reference< XInterface > SAL_CALL
 TVFactory::createInstance(
     const OUString& aServiceSpecifier )
 {
-    Sequence< Any > seq( 1 );
-    seq[0] <<= PropertyValue(
-        "nodepath",
-        -1,
-        Any( OUString() ),
-        PropertyState_DIRECT_VALUE );
+    uno::Sequence<uno::Any> seq(comphelper::InitAnyPropertySequence(
+    {
+        {"nodepath", uno::Any(OUString())}
+    }));
 
-    return createInstanceWithArguments( aServiceSpecifier,
-                                        seq );
+    return createInstanceWithArguments( aServiceSpecifier, seq );
 }
 
 Reference< XInterface > SAL_CALL
@@ -89,10 +88,10 @@ TVFactory::createInstanceWithArguments(
     }
 
     OUString hierview;
-    for( int i = 0; i < Arguments.getLength(); ++i )
+    for( const auto& rArgument : Arguments )
     {
         PropertyValue pV;
-        if( ! ( Arguments[i] >>= pV ) )
+        if( ! ( rArgument >>= pV ) )
             continue;
 
         if( pV.Name != "nodepath" )
@@ -119,45 +118,15 @@ TVFactory::createInstanceWithArguments(
 Sequence< OUString > SAL_CALL
 TVFactory::getAvailableServiceNames( )
 {
-    Sequence<OUString> seq { "com.sun.star.ucb.HierarchyDataReadAccess" };
-    return seq;
+    return { "com.sun.star.ucb.HierarchyDataReadAccess" };
 }
 
-// static
-
-OUString SAL_CALL
-TVFactory::getImplementationName_static()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_help_TreeViewImpl_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return OUString( "com.sun.star.help.TreeViewImpl" );
+    return cppu::acquire(new TVFactory(context));
 }
 
-Sequence< OUString > SAL_CALL
-TVFactory::getSupportedServiceNames_static()
-{
-    Sequence< OUString > seq( 2 );
-    seq[0] = "com.sun.star.help.TreeView";
-    seq[1] = "com.sun.star.ucb.HiearchyDataSource";
-    return seq;
-}
-
-Reference< XSingleServiceFactory > SAL_CALL
-TVFactory::createServiceFactory(
-    const Reference< XMultiServiceFactory >& rxServiceMgr )
-{
-    return Reference< XSingleServiceFactory > (
-        cppu::createSingleFactory(
-            rxServiceMgr,
-            TVFactory::getImplementationName_static(),
-            TVFactory::CreateInstance,
-            TVFactory::getSupportedServiceNames_static() ) );
-}
-
-Reference< XInterface > SAL_CALL
-TVFactory::CreateInstance(
-    const Reference< XMultiServiceFactory >& xMultiServiceFactory )
-{
-    XServiceInfo* xP = static_cast<XServiceInfo*>(new TVFactory( comphelper::getComponentContext(xMultiServiceFactory) ));
-    return Reference< XInterface >::query( xP );
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

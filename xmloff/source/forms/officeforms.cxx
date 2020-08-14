@@ -22,11 +22,13 @@
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <com/sun/star/frame/XModel.hpp>
 #include <comphelper/extract.hxx>
+#include <tools/diagnose_ex.h>
 #include "strings.hxx"
 
 namespace xmloff
@@ -48,16 +50,16 @@ namespace xmloff
     {
     }
 
-    SvXMLImportContext* OFormsRootImport::CreateChildContext( sal_uInt16 _nPrefix, const OUString& _rLocalName,
+    SvXMLImportContextRef OFormsRootImport::CreateChildContext( sal_uInt16 _nPrefix, const OUString& _rLocalName,
             const Reference< XAttributeList>& xAttrList )
     {
         SvXMLImportContext* pRet = nullptr;
         try
         {
             pRet = GetImport().GetFormImport()->createContext( _nPrefix, _rLocalName, xAttrList );
-        } catch (const Exception& rException)
+        } catch (const Exception&)
         {
-            SAL_WARN("xmloff.forms", "OFormsRootImport::CreateChildContext: " << rException.Message);
+            DBG_UNHANDLED_EXCEPTION("xmloff.forms");
         }
         return pRet;
     }
@@ -116,7 +118,6 @@ namespace xmloff
 
     //= OFormsRootExport
     OFormsRootExport::OFormsRootExport( SvXMLExport& _rExp )
-        :m_pImplElement(nullptr)
     {
         addModelAttributes(_rExp);
 

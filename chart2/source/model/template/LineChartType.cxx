@@ -18,14 +18,15 @@
  */
 
 #include "LineChartType.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include "servicenames_charttypes.hxx"
+#include <PropertyHelper.hxx>
+#include <servicenames_charttypes.hxx>
 #include <unonames.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/chart2/CurveStyle.hpp>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
@@ -45,25 +46,22 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_CURVE_STYLE,
+    rOutProperties.emplace_back( CHART_UNONAME_CURVE_STYLE,
                   PROP_LINECHARTTYPE_CURVE_STYLE,
                   cppu::UnoType<chart2::CurveStyle>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_CURVE_RESOLUTION,
+    rOutProperties.emplace_back( CHART_UNONAME_CURVE_RESOLUTION,
                   PROP_LINECHARTTYPE_CURVE_RESOLUTION,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_SPLINE_ORDER,
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+    rOutProperties.emplace_back( CHART_UNONAME_SPLINE_ORDER,
                   PROP_LINECHARTTYPE_SPLINE_ORDER,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
 struct StaticLineChartTypeDefaults_Initializer
@@ -135,9 +133,7 @@ struct StaticLineChartTypeInfo : public rtl::StaticAggregate< uno::Reference< be
 namespace chart
 {
 
-LineChartType::LineChartType(
-    const uno::Reference< uno::XComponentContext > & xContext ) :
-        ChartType( xContext )
+LineChartType::LineChartType()
 {
 }
 
@@ -158,7 +154,7 @@ uno::Reference< util::XCloneable > SAL_CALL LineChartType::createClone()
 // ____ XChartType ____
 OUString SAL_CALL LineChartType::getChartType()
 {
-    return OUString(CHART2_SERVICE_NAME_CHARTTYPE_LINE);
+    return CHART2_SERVICE_NAME_CHARTTYPE_LINE;
 }
 
 // ____ OPropertySet ____
@@ -184,7 +180,7 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL LineChartType::getPropertySet
 
 OUString SAL_CALL LineChartType::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.LineChartType");
+    return "com.sun.star.comp.chart.LineChartType";
 }
 
 sal_Bool SAL_CALL LineChartType::supportsService( const OUString& rServiceName )
@@ -202,11 +198,11 @@ css::uno::Sequence< OUString > SAL_CALL LineChartType::getSupportedServiceNames(
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart_LineChartType_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart_LineChartType_get_implementation(css::uno::XComponentContext * /*context*/,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::LineChartType(context));
+    return cppu::acquire(new ::chart::LineChartType);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,16 +19,14 @@
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/document/XDocumentLanguages.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/linguistic2/LanguageGuessing.hpp>
 
+#include <sal/log.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <svtools/langtab.hxx>
-#include <comphelper/processfactory.hxx>
 #include <helper/mischelper.hxx>
-#include <services.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -89,7 +87,7 @@ void FillLangItems( std::set< OUString > &rLangItems,
     }
 
     //4--guessed language
-    uno::Reference< linguistic2::XLanguageGuessing > xLangGuesser( rLangGuessHelper.GetGuesser() );
+    const uno::Reference< linguistic2::XLanguageGuessing >& xLangGuesser( rLangGuessHelper.GetGuesser() );
     if ( xLangGuesser.is() && !rGuessedTextLang.isEmpty())
     {
         css::lang::Locale aLocale(xLangGuesser->guessPrimaryLanguage( rGuessedTextLang, 0, rGuessedTextLang.getLength()) );
@@ -110,7 +108,7 @@ void FillLangItems( std::set< OUString > &rLangItems,
     Reference< css::frame::XModel > xModel;
     if ( rxFrame.is() )
     {
-       Reference< css::frame::XController > xController( rxFrame->getController(), UNO_QUERY );
+       Reference< css::frame::XController > xController = rxFrame->getController();
        if ( xController.is() )
            xModel = xController->getModel();
     }
@@ -121,20 +119,16 @@ void FillLangItems( std::set< OUString > &rLangItems,
       COMPLEX:  0x004
     */
     const sal_Int16 nMaxCount = 7;
-    if ( xDocumentLanguages.is() )
+    if ( !xDocumentLanguages.is() )
+        return;
+
+    const Sequence< Locale > rLocales( xDocumentLanguages->getDocumentLanguages( static_cast<sal_Int16>(nScriptType), nMaxCount ));
+    for ( const Locale& rLocale : rLocales )
     {
-        Sequence< Locale > rLocales( xDocumentLanguages->getDocumentLanguages( static_cast<sal_Int16>(nScriptType), nMaxCount ));
-        if ( rLocales.getLength() > 0 )
-        {
-            for ( sal_Int32 i = 0; i < rLocales.getLength(); ++i )
-            {
-                if ( rLangItems.size() == static_cast< size_t >(nMaxCount) )
-                    break;
-                const Locale& rLocale=rLocales[i];
-                if( IsScriptTypeMatchingToLanguage( nScriptType, SvtLanguageTable::GetLanguageType( rLocale.Language )))
-                    rLangItems.insert( rLocale.Language );
-            }
-        }
+        if ( rLangItems.size() == static_cast< size_t >(nMaxCount) )
+            break;
+        if( IsScriptTypeMatchingToLanguage( nScriptType, SvtLanguageTable::GetLanguageType( rLocale.Language )))
+            rLangItems.insert( rLocale.Language );
     }
 }
 

@@ -17,23 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <i18nlangtag/languagetag.hxx>
 #include <i18nlangtag/languagetagicu.hxx>
 #include <sal/log.hxx>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <string.h>
-#include "ordinalsuffix.hxx"
+#include <ordinalsuffix.hxx>
 
 #include <unicode/rbnf.h>
 #include <unicode/normlzr.h>
 #include <memory>
 
+namespace com::sun::star::uno { class XComponentContext; }
+
 using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 
 OrdinalSuffixService::OrdinalSuffixService()
@@ -79,12 +80,12 @@ uno::Sequence< OUString > SAL_CALL OrdinalSuffixService::getOrdinalSuffix( sal_I
     if (!U_SUCCESS(nCode))
         return retValue;
 
-    std::unique_ptr<NumberFormat> xNumberFormat(icu::NumberFormat::createInstance(aIcuLocale, nCode));
+    std::unique_ptr<icu::NumberFormat> xNumberFormat(icu::NumberFormat::createInstance(aIcuLocale, nCode));
     if (!U_SUCCESS(nCode))
         return retValue;
 
     icu::UnicodeString sFormatWithNoOrdinal;
-    icu::Formattable ftmNumber((int32_t)nNumber);
+    icu::Formattable ftmNumber(static_cast<int32_t>(nNumber));
     icu::FieldPosition icuPosA;
     xNumberFormat->format(ftmNumber, sFormatWithNoOrdinal, icuPosA, nCode);
     if (!U_SUCCESS(nCode))
@@ -95,6 +96,8 @@ uno::Sequence< OUString > SAL_CALL OrdinalSuffixService::getOrdinalSuffix( sal_I
         return retValue;
 
     int32_t nRuleSets = formatter.getNumberOfRuleSetNames( );
+    std::vector<OUString> retVec;
+    retVec.reserve(nRuleSets);
     for (int32_t i = 0; i < nRuleSets; ++i)
     {
         icu::UnicodeString ruleSet = formatter.getRuleSetName(i);
@@ -102,7 +105,7 @@ uno::Sequence< OUString > SAL_CALL OrdinalSuffixService::getOrdinalSuffix( sal_I
         // format the string
         icu::UnicodeString sFormatWithOrdinal;
         icu::FieldPosition icuPosB;
-        formatter.format((int32_t)nNumber, ruleSet, sFormatWithOrdinal, icuPosB, nCode);
+        formatter.format(static_cast<int32_t>(nNumber), ruleSet, sFormatWithOrdinal, icuPosB, nCode);
 
         if (!U_SUCCESS(nCode))
             continue;
@@ -125,20 +128,17 @@ uno::Sequence< OUString > SAL_CALL OrdinalSuffixService::getOrdinalSuffix( sal_I
 
         // Remove the number to get the prefix
         sal_Int32 len = sValueWithNoOrdinal.getLength();
-
-        sal_Int32 newLength = retValue.getLength() + 1;
-        retValue.realloc( newLength );
-        retValue[ newLength - 1 ] = sValueWithOrdinal.copy( len );
+        retVec.push_back(sValueWithOrdinal.copy(len));
     }
 
-    return retValue;
+    return comphelper::containerToSequence(retVec);
 }
 
-const sal_Char cOrdinalSuffix[] = "com.sun.star.i18n.OrdinalSuffix";
+const char cOrdinalSuffix[] = "com.sun.star.i18n.OrdinalSuffix";
 
 OUString SAL_CALL OrdinalSuffixService::getImplementationName()
 {
-    return OUString(cOrdinalSuffix);
+    return cOrdinalSuffix;
 }
 
 sal_Bool SAL_CALL OrdinalSuffixService::supportsService( const OUString& rServiceName)
@@ -148,18 +148,17 @@ sal_Bool SAL_CALL OrdinalSuffixService::supportsService( const OUString& rServic
 
 Sequence< OUString > SAL_CALL OrdinalSuffixService::getSupportedServiceNames()
 {
-    Sequence< OUString > aRet { cOrdinalSuffix };
-    return aRet;
+    return { cOrdinalSuffix };
 }
 
-} } } }
+}
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_i18n_OrdinalSuffix_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new css::i18n::OrdinalSuffixService());
+    return cppu::acquire(new i18npool::OrdinalSuffixService());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

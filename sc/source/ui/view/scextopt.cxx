@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scextopt.hxx"
+#include <scextopt.hxx>
 
 #include <osl/diagnose.h>
 
@@ -28,7 +28,7 @@
 ScExtDocSettings::ScExtDocSettings() :
     mfTabBarWidth( -1.0 ),
     mnLinkCnt( 0 ),
-    mnDisplTab( 0 )
+    mnDisplTab( -1 )
 {
 }
 
@@ -49,6 +49,8 @@ ScExtTabSettings::ScExtTabSettings() :
     mbShowGrid( true )
 {
 }
+
+namespace {
 
 /** A container for ScExtTabSettings objects.
     @descr  Internally, a std::map with shared pointers to ScExtTabSettings is
@@ -76,6 +78,8 @@ private:
     ScExtTabSettingsMap maMap;
 };
 
+}
+
 ScExtTabSettingsCont::ScExtTabSettingsCont()
 {
 }
@@ -101,7 +105,7 @@ ScExtTabSettings& ScExtTabSettingsCont::GetOrCreateTabSettings( SCTAB nTab )
 {
     ScExtTabSettingsRef& rxTabSett = maMap[ nTab ];
     if( !rxTabSett )
-        rxTabSett.reset( new ScExtTabSettings );
+        rxTabSett = std::make_shared<ScExtTabSettings>();
     return *rxTabSett;
 }
 
@@ -113,8 +117,8 @@ SCTAB ScExtTabSettingsCont::GetLastTab() const
 void ScExtTabSettingsCont::CopyFromMap( const ScExtTabSettingsMap& rMap )
 {
     maMap.clear();
-    for( ScExtTabSettingsMap::const_iterator aIt = rMap.begin(), aEnd = rMap.end(); aIt != aEnd; ++aIt )
-        maMap[ aIt->first ].reset( new ScExtTabSettings( *aIt->second ) );
+    for( const auto& [rTab, rxSettings] : rMap )
+        maMap[ rTab ] = std::make_shared<ScExtTabSettings>( *rxSettings );
 }
 
 /** Implementation struct for ScExtDocOptions containing all members. */

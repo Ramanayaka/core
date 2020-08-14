@@ -18,9 +18,10 @@
  */
 
 #include <memory>
-#include "tokenuno.hxx"
+#include <tokenuno.hxx>
 
 #include <sal/macros.h>
+#include <sal/log.hxx>
 
 #include <com/sun/star/sheet/ComplexReference.hpp>
 #include <com/sun/star/sheet/ExternalReference.hpp>
@@ -32,15 +33,14 @@
 #include <svl/itemprop.hxx>
 #include <vcl/svapp.hxx>
 
-#include "miscuno.hxx"
-#include "convuno.hxx"
-#include "unonames.hxx"
-#include "token.hxx"
-#include "compiler.hxx"
-#include "tokenarray.hxx"
-#include "docsh.hxx"
-#include "rangeseq.hxx"
-#include "externalrefmgr.hxx"
+#include <miscuno.hxx>
+#include <convuno.hxx>
+#include <unonames.hxx>
+#include <compiler.hxx>
+#include <tokenarray.hxx>
+#include <docsh.hxx>
+#include <rangeseq.hxx>
+#include <externalrefmgr.hxx>
 
 using namespace ::formula;
 using namespace ::com::sun::star;
@@ -49,12 +49,12 @@ static const SfxItemPropertyMapEntry* lcl_GetFormulaParserMap()
 {
     static const SfxItemPropertyMapEntry aFormulaParserMap_Impl[] =
     {
-        {OUString(SC_UNO_COMPILEFAP),           0,  cppu::UnoType<bool>::get(),                   0, 0 },
-        {OUString(SC_UNO_COMPILEENGLISH),       0,  cppu::UnoType<bool>::get(),                   0, 0 },
-        {OUString(SC_UNO_IGNORELEADING),        0,  cppu::UnoType<bool>::get(),                   0, 0 },
-        {OUString(SC_UNO_FORMULACONVENTION),    0,  cppu::UnoType<decltype(sheet::AddressConvention::UNSPECIFIED)>::get(), 0, 0 },
-        {OUString(SC_UNO_OPCODEMAP),            0,  cppu::UnoType<uno::Sequence< sheet::FormulaOpCodeMapEntry >>::get(), 0, 0 },
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        {SC_UNO_COMPILEFAP,           0,  cppu::UnoType<bool>::get(),                   0, 0 },
+        {SC_UNO_COMPILEENGLISH,       0,  cppu::UnoType<bool>::get(),                   0, 0 },
+        {SC_UNO_IGNORELEADING,        0,  cppu::UnoType<bool>::get(),                   0, 0 },
+        {SC_UNO_FORMULACONVENTION,    0,  cppu::UnoType<decltype(sheet::AddressConvention::UNSPECIFIED)>::get(), 0, 0 },
+        {SC_UNO_OPCODEMAP,            0,  cppu::UnoType<uno::Sequence< sheet::FormulaOpCodeMapEntry >>::get(), 0, 0 },
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aFormulaParserMap_Impl;
 }
@@ -100,7 +100,7 @@ void ScFormulaParserObj::SetCompilerFlags( ScCompiler& rCompiler ) const
 
     // If mxOpCodeMap is not empty it overrides mbEnglish, and vice versa. We
     // don't need to initialize things twice.
-    if (mxOpCodeMap.get())
+    if (mxOpCodeMap)
         rCompiler.SetFormulaLanguage( mxOpCodeMap );
     else
     {
@@ -138,9 +138,8 @@ uno::Sequence<sheet::FormulaToken> SAL_CALL ScFormulaParserObj::parseFormula(
         ScCompiler aCompiler( &rDoc, aRefPos, rDoc.GetGrammar());
         SetCompilerFlags( aCompiler );
 
-        ScTokenArray* pCode = aCompiler.CompileString( aFormula );
-        (void)ScTokenConversion::ConvertToTokenSequence( rDoc, aRet, *pCode );
-        delete pCode;
+        std::unique_ptr<ScTokenArray> pCode = aCompiler.CompileString( aFormula );
+        ScTokenConversion::ConvertToTokenSequence( rDoc, aRet, *pCode );
     }
 
     return aRet;
@@ -155,7 +154,7 @@ OUString SAL_CALL ScFormulaParserObj::printFormula(
     if (mpDocShell)
     {
         ScDocument& rDoc = mpDocShell->GetDocument();
-        ScTokenArray aCode;
+        ScTokenArray aCode(&rDoc);
         (void)ScTokenConversion::ConvertToTokenArray( rDoc, aCode, aTokens );
         ScAddress aRefPos( ScAddress::UNINITIALIZED );
         ScUnoConversion::FillScAddress( aRefPos, rReferencePos );
@@ -190,20 +189,19 @@ void SAL_CALL ScFormulaParserObj::setPropertyValue(
     else if ( aPropertyName == SC_UNO_COMPILEENGLISH )
     {
         bool bOldEnglish = mbEnglish;
-        if (aValue >>= mbEnglish)
-        {
-            // Need to recreate the symbol map to change English property
-            // because the map is const. So for performance reasons set
-            // CompileEnglish _before_ OpCodeMap!
-            if (mxOpCodeMap.get() && mbEnglish != bOldEnglish)
-            {
-                ScDocument& rDoc = mpDocShell->GetDocument();
-                ScCompiler aCompiler( &rDoc, ScAddress(), rDoc.GetGrammar());
-                mxOpCodeMap = formula::FormulaCompiler::CreateOpCodeMap( maOpCodeMapping, mbEnglish);
-            }
-        }
-        else
+        if (!(aValue >>= mbEnglish))
             throw lang::IllegalArgumentException();
+
+        // Need to recreate the symbol map to change English property
+        // because the map is const. So for performance reasons set
+        // CompileEnglish _before_ OpCodeMap!
+        if (mxOpCodeMap && mbEnglish != bOldEnglish)
+        {
+            ScDocument& rDoc = mpDocShell->GetDocument();
+            ScCompiler aCompiler( &rDoc, ScAddress(), rDoc.GetGrammar());
+            mxOpCodeMap = formula::FormulaCompiler::CreateOpCodeMap( maOpCodeMapping, mbEnglish);
+        }
+
     }
     else if ( aPropertyName == SC_UNO_FORMULACONVENTION )
     {
@@ -215,14 +213,13 @@ void SAL_CALL ScFormulaParserObj::setPropertyValue(
     }
     else if ( aPropertyName == SC_UNO_OPCODEMAP )
     {
-        if (aValue >>= maOpCodeMapping)
-        {
-            ScDocument& rDoc = mpDocShell->GetDocument();
-            ScCompiler aCompiler( &rDoc, ScAddress(), rDoc.GetGrammar());
-            mxOpCodeMap = formula::FormulaCompiler::CreateOpCodeMap( maOpCodeMapping, mbEnglish);
-        }
-        else
+        if (!(aValue >>= maOpCodeMapping))
             throw lang::IllegalArgumentException();
+
+        ScDocument& rDoc = mpDocShell->GetDocument();
+        ScCompiler aCompiler( &rDoc, ScAddress(), rDoc.GetGrammar());
+        mxOpCodeMap = formula::FormulaCompiler::CreateOpCodeMap( maOpCodeMapping, mbEnglish);
+
     }
     else if ( aPropertyName == SC_UNO_EXTERNALLINKS )
     {
@@ -230,7 +227,7 @@ void SAL_CALL ScFormulaParserObj::setPropertyValue(
             throw lang::IllegalArgumentException();
     }
     else
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 }
 
 uno::Any SAL_CALL ScFormulaParserObj::getPropertyValue( const OUString& aPropertyName )
@@ -262,7 +259,7 @@ uno::Any SAL_CALL ScFormulaParserObj::getPropertyValue( const OUString& aPropert
         aRet <<= maExternalLinks;
     }
     else
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
     return aRet;
 }
 
@@ -354,7 +351,7 @@ bool ScTokenConversion::ConvertToTokenArray( ScDocument& rDoc,
     return !rTokenArray.Fill(rSequence, rDoc.GetSharedStringPool(), rDoc.GetExternalRefManager());
 }
 
-bool ScTokenConversion::ConvertToTokenSequence( const ScDocument& rDoc,
+void ScTokenConversion::ConvertToTokenSequence( const ScDocument& rDoc,
         uno::Sequence<sheet::FormulaToken>& rSequence, const ScTokenArray& rTokenArray )
 {
     sal_Int32 nLen = static_cast<sal_Int32>(rTokenArray.GetLen());
@@ -374,7 +371,7 @@ bool ScTokenConversion::ConvertToTokenSequence( const ScDocument& rDoc,
                 case svByte:
                     // Only the count of spaces is stored as "long". Parameter count is ignored.
                     if ( eOpCode == ocSpaces )
-                        rAPI.Data <<= (sal_Int32) rToken.GetByte();
+                        rAPI.Data <<= static_cast<sal_Int32>(rToken.GetByte());
                     else
                         rAPI.Data.clear();      // no data
                     break;
@@ -462,7 +459,7 @@ bool ScTokenConversion::ConvertToTokenSequence( const ScDocument& rDoc,
                     break;
                 default:
                     SAL_WARN("sc",  "ScTokenConversion::ConvertToTokenSequence: unhandled token type " << StackVarEnumToString(rToken.GetType()));
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
                 case svJump:    // occurs with ocIf, ocChoose
                 case svError:   // seems to be fairly common, and probably not exceptional and not worth a warning?
                 case svMissing: // occurs with ocMissing
@@ -474,8 +471,6 @@ bool ScTokenConversion::ConvertToTokenSequence( const ScDocument& rDoc,
     }
     else
         rSequence.realloc(0);
-
-    return true;
 }
 
 ScFormulaOpCodeMapperObj::ScFormulaOpCodeMapperObj(::std::unique_ptr<formula::FormulaCompiler> && _pCompiler)

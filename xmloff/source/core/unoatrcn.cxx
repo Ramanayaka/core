@@ -18,10 +18,8 @@
  */
 
 #include <memory>
-#include <string.h>
 #include <com/sun/star/xml/AttributeData.hpp>
 #include <o3tl/any.hxx>
-#include <o3tl/make_unique.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -44,7 +42,7 @@ SvUnoAttributeContainer::SvUnoAttributeContainer( std::unique_ptr<SvXMLAttrConta
 : mpContainer( std::move( pContainer ) )
 {
     if( !mpContainer )
-        mpContainer = o3tl::make_unique<SvXMLAttrContainerData>();
+        mpContainer = std::make_unique<SvXMLAttrContainerData>();
 }
 
 // container::XElementAccess
@@ -63,7 +61,7 @@ sal_uInt16 SvUnoAttributeContainer::getIndexByName(const OUString& aName ) const
     const sal_uInt16 nAttrCount = mpContainer->GetAttrCount();
 
     sal_Int32 nPos = aName.indexOf( ':' );
-    if( nPos == -1L )
+    if( nPos == -1 )
     {
         for( sal_uInt16 nAttr = 0; nAttr < nAttrCount; nAttr++ )
         {
@@ -75,7 +73,7 @@ sal_uInt16 SvUnoAttributeContainer::getIndexByName(const OUString& aName ) const
     else
     {
         const OUString aPrefix( aName.copy( 0L, nPos ) );
-        const OUString aLName( aName.copy( nPos+1L ) );
+        const OUString aLName( aName.copy( nPos+1 ) );
 
         for( sal_uInt16 nAttr = 0; nAttr < nAttrCount; nAttr++ )
         {
@@ -100,8 +98,7 @@ const css::uno::Sequence< sal_Int8 > & SvUnoAttributeContainer::getUnoTunnelId()
 
 sal_Int64 SAL_CALL SvUnoAttributeContainer::getSomething( const css::uno::Sequence< sal_Int8 >& rId )
 {
-    if( rId.getLength() == 16 && 0 == memcmp( getUnoTunnelId().getConstArray(),
-                                                         rId.getConstArray(), 16 ) )
+    if( isUnoTunnelId<SvUnoAttributeContainer>(rId) )
     {
         return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_uIntPtr>(this));
     }
@@ -128,7 +125,7 @@ uno::Sequence< OUString > SAL_CALL SvUnoAttributeContainer::getElementNames()
 {
     const sal_uInt16 nAttrCount = mpContainer->GetAttrCount();
 
-    uno::Sequence< OUString > aElementNames( (sal_Int32)nAttrCount );
+    uno::Sequence< OUString > aElementNames( static_cast<sal_Int32>(nAttrCount) );
     OUString *pNames = aElementNames.getArray();
 
     for( sal_uInt16 nAttr = 0; nAttr < nAttrCount; nAttr++ )
@@ -158,10 +155,10 @@ void SAL_CALL SvUnoAttributeContainer::replaceByName(const OUString& aName, cons
             throw container::NoSuchElementException();
 
         sal_Int32 nPos = aName.indexOf( ':' );
-        if( nPos != -1L )
+        if( nPos != -1 )
         {
             const OUString aPrefix( aName.copy( 0L, nPos ));
-            const OUString aLName( aName.copy( nPos+1L ));
+            const OUString aLName( aName.copy( nPos+1 ));
 
             if( pData->Namespace.isEmpty() )
             {
@@ -199,10 +196,10 @@ void SAL_CALL SvUnoAttributeContainer::insertByName(const OUString& aName, const
         throw container::ElementExistException();
 
     sal_Int32 nPos = aName.indexOf( ':' );
-    if( nPos != -1L )
+    if( nPos != -1 )
     {
         const OUString aPrefix( aName.copy( 0L, nPos ));
-        const OUString aLName( aName.copy( nPos+1L ));
+        const OUString aLName( aName.copy( nPos+1 ));
 
         if( pData->Namespace.isEmpty() )
         {
@@ -237,14 +234,12 @@ void SAL_CALL SvUnoAttributeContainer::removeByName(const OUString& Name)
 //XServiceInfo
 OUString SAL_CALL SvUnoAttributeContainer::getImplementationName()
 {
-    return OUString( "SvUnoAttributeContainer" );
+    return "SvUnoAttributeContainer";
 }
 
 uno::Sequence< OUString > SvUnoAttributeContainer::getSupportedServiceNames()
 {
-    OUString aSN( "com.sun.star.xml.AttributeContainer" );
-    uno::Sequence< OUString > aNS( &aSN, 1L );
-    return aNS;
+    return { "com.sun.star.xml.AttributeContainer" };
 }
 
 sal_Bool SvUnoAttributeContainer::supportsService(const OUString& ServiceName)

@@ -18,10 +18,13 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <math.h>
 #include <memory>
 
+#include <com/sun/star/rendering/TextDirection.hpp>
+#include <canvas/canvastools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/numeric/ftools.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -31,8 +34,9 @@
 #include <vcl/virdev.hxx>
 
 
-#include "cairo_spritecanvas.hxx"
 #include "cairo_textlayout.hxx"
+
+#include <cairo.h>
 
 #if defined CAIRO_HAS_FT_FONT
 # include <cairo-ft.h>
@@ -72,11 +76,6 @@ namespace cairocanvas
             // set calculated layout mode. Origin is always the left edge,
             // as required at the API spec
             rOutDev.SetLayoutMode( nLayoutMode | ComplexTextLayoutFlags::TextOriginLeft );
-        }
-
-        bool compareFallbacks(const SystemGlyphData&rA, const SystemGlyphData &rB)
-        {
-            return rA.fallbacklevel < rB.fallbacklevel;
         }
     }
 
@@ -160,12 +159,12 @@ namespace cairocanvas
         // relative to baseline
         const ::FontMetric& aMetric( pVDev->GetFontMetric() );
 
-        setupLayoutMode( *pVDev.get(), mnTextDirection );
+        setupLayoutMode( *pVDev, mnTextDirection );
 
-        const sal_Int32 nAboveBaseline( -aMetric.GetInternalLeading() - aMetric.GetAscent() );
+        const sal_Int32 nAboveBaseline( -aMetric.GetAscent() );
         const sal_Int32 nBelowBaseline( aMetric.GetDescent() );
 
-        if( maLogicalAdvancements.getLength() )
+        if( maLogicalAdvancements.hasElements() )
         {
             return geometry::RealRectangle2D( 0, nAboveBaseline,
                                               maLogicalAdvancements[ maLogicalAdvancements.getLength()-1 ],
@@ -258,33 +257,6 @@ namespace cairocanvas
     }
 
   /**
-   * TextLayout::isCairoRenderable
-   *
-   * Features currently not supported by Cairo (VCL rendering is used as fallback):
-   * - vertical glyphs
-   *
-   * @return true, if text/font can be rendered with cairo
-   **/
-    bool TextLayout::isCairoRenderable(SystemFontData aSysFontData) const
-    {
-#if defined CAIRO_HAS_FT_FONT
-        // is font usable?
-        if (!aSysFontData.nFontId)
-            return false;
-#endif
-
-        // vertical glyph rendering is not supported in cairo for now
-        if (aSysFontData.bVerticalCharacterType)
-        {
-            SAL_WARN("canvas.cairo", ":cairocanvas::TextLayout::isCairoRenderable(): Vertical Character Style not supported");
-            return false;
-        }
-
-        return true;
-    }
-
-
-  /**
    * TextLayout::draw
    *
    * Cairo-based text rendering. Draw text directly on the cairo surface with cairo fonts.
@@ -292,218 +264,32 @@ namespace cairocanvas
    *
    * Note: some text effects are not rendered due to lacking generic canvas or cairo canvas
    *       implementation. See issues 92657, 92658, 92659, 92660, 97529
-   *
-   * @return true, if successful
    **/
-    bool TextLayout::draw( CairoSharedPtr&               pSCairo,
-                           OutputDevice&                 rOutDev,
+    void TextLayout::draw( OutputDevice&                 rOutDev,
                            const Point&                  rOutpos,
                            const rendering::ViewState&   viewState,
                            const rendering::RenderState& renderState ) const
     {
         ::osl::MutexGuard aGuard( m_aMutex );
-        SystemTextLayoutData aSysLayoutData;
         setupLayoutMode( rOutDev, mnTextDirection );
 
-        // TODO(P2): cache that
         std::unique_ptr< long []> aOffsets(new long[maLogicalAdvancements.getLength()]);
 
-        if( maLogicalAdvancements.getLength() )
-        {
+        if( maLogicalAdvancements.hasElements() )
             setupTextOffsets( aOffsets.get(), maLogicalAdvancements, viewState, renderState );
 
-            // TODO(F3): ensure correct length and termination for DX
-            // array (last entry _must_ contain the overall width)
-        }
-
-        aSysLayoutData = rOutDev.GetSysTextLayoutData(rOutpos, maText.Text,
-                                                      ::canvas::tools::numeric_cast<sal_uInt16>(maText.StartPosition),
-                                                      ::canvas::tools::numeric_cast<sal_uInt16>(maText.Length),
-                                                      maLogicalAdvancements.getLength() ? aOffsets.get() : nullptr);
-
-        // Sort them so that all glyphs on the same glyph fallback level are consecutive
-        std::sort(aSysLayoutData.rGlyphData.begin(), aSysLayoutData.rGlyphData.end(), compareFallbacks);
-        bool bCairoRenderable = true;
-
-        //Pull all the fonts we need to render the text
-        typedef std::pair<SystemFontData,int> FontLevel;
-        std::vector<FontLevel> aFontData;
-        SystemGlyphDataVector::const_iterator aGlyphIter=aSysLayoutData.rGlyphData.begin();
-        const SystemGlyphDataVector::const_iterator aGlyphEnd=aSysLayoutData.rGlyphData.end();
-        for( ; aGlyphIter != aGlyphEnd; ++aGlyphIter )
+        if (maLogicalAdvancements.hasElements())
         {
-            if( aFontData.empty() || aGlyphIter->fallbacklevel != aFontData.back().second )
-            {
-                aFontData.push_back(FontLevel(rOutDev.GetSysFontData(aGlyphIter->fallbacklevel),
-                                              aGlyphIter->fallbacklevel));
-                if( !isCairoRenderable(aFontData.back().first) )
-                {
-                    bCairoRenderable = false;
-                    SAL_INFO("canvas.cairo", ":cairocanvas::TextLayout::draw(S,O,p,v,r): VCL FALLBACK " <<
-                             (maLogicalAdvancements.getLength() ? "ADV " : "") <<
-                             (aFontData.back().first.bAntialias ? "AA " : "") <<
-                             (aFontData.back().first.bFakeBold ? "FB " : "") <<
-                             (aFontData.back().first.bFakeItalic ? "FI " : "") <<
-                             " - " <<
-                             maText.Text.copy( maText.StartPosition, maText.Length));
-                    break;
-                }
-            }
+            rOutDev.DrawTextArray( rOutpos, maText.Text, aOffsets.get(),
+                                   ::canvas::tools::numeric_cast<sal_uInt16>(maText.StartPosition),
+                                   ::canvas::tools::numeric_cast<sal_uInt16>(maText.Length) );
         }
-
-        // The ::GetSysTextLayoutData(), i.e. layouting of text to glyphs can change the font being used.
-        // The fallback checks need to be done after final font is known.
-        if (!bCairoRenderable)    // VCL FALLBACKS
+        else
         {
-            if (maLogicalAdvancements.getLength())        // VCL FALLBACK - with glyph advances
-            {
-                rOutDev.DrawTextArray( rOutpos, maText.Text, aOffsets.get(),
-                                       ::canvas::tools::numeric_cast<sal_uInt16>(maText.StartPosition),
-                                       ::canvas::tools::numeric_cast<sal_uInt16>(maText.Length) );
-                return true;
-            }
-            else                                               // VCL FALLBACK - without advances
-            {
-                rOutDev.DrawText( rOutpos, maText.Text,
-                                  ::canvas::tools::numeric_cast<sal_uInt16>(maText.StartPosition),
-                                  ::canvas::tools::numeric_cast<sal_uInt16>(maText.Length) );
-                return true;
-            }
+            rOutDev.DrawText( rOutpos, maText.Text,
+                              ::canvas::tools::numeric_cast<sal_uInt16>(maText.StartPosition),
+                              ::canvas::tools::numeric_cast<sal_uInt16>(maText.Length) );
         }
-
-        if (aSysLayoutData.rGlyphData.empty())
-            return false; //??? false?
-
-        /**
-         * Setup platform independent glyph vector into cairo-based glyphs vector.
-         **/
-
-        // Loop through the fonts used and render the matching glyphs for each
-        std::vector<FontLevel>::const_iterator aFontDataIter = aFontData.begin();
-        const std::vector<FontLevel>::const_iterator aFontDataEnd = aFontData.end();
-        for( ; aFontDataIter != aFontDataEnd; ++aFontDataIter )
-        {
-            const SystemFontData &rSysFontData = aFontDataIter->first;
-
-            // setup glyphs
-            std::vector<cairo_glyph_t> cairo_glyphs;
-            cairo_glyphs.reserve( 256 );
-
-            aGlyphIter=aSysLayoutData.rGlyphData.begin();
-            for( ; aGlyphIter != aGlyphEnd; ++aGlyphIter )
-            {
-                SystemGlyphData systemGlyph = *aGlyphIter;
-                if( systemGlyph.fallbacklevel != aFontDataIter->second )
-                    continue;
-
-                cairo_glyph_t aGlyph;
-                aGlyph.index = systemGlyph.index;
-                aGlyph.x = systemGlyph.x;
-                aGlyph.y = systemGlyph.y;
-                cairo_glyphs.push_back(aGlyph);
-            }
-
-            if (cairo_glyphs.empty())
-                continue;
-
-            vcl::Font aFont = rOutDev.GetFont();
-            long nWidth = aFont.GetAverageFontWidth();
-            long nHeight = aFont.GetFontHeight();
-            if (nWidth == 0)
-                nWidth = nHeight;
-            if (nWidth == 0 || nHeight == 0)
-                continue;
-
-            /**
-             * Setup font
-             **/
-            cairo_font_face_t* font_face = nullptr;
-
-#if defined CAIRO_HAS_FT_FONT
-            font_face = cairo_ft_font_face_create_for_ft_face(static_cast<FT_Face>(rSysFontData.nFontId),
-                                                              rSysFontData.nFontFlags);
-#else
-# error Native API needed.
-#endif
-
-            cairo_set_font_face( pSCairo.get(), font_face);
-
-            // create default font options. cairo_get_font_options() does not retrieve the surface defaults,
-            // only what has been set before with cairo_set_font_options()
-            cairo_font_options_t* options = cairo_font_options_create();
-            if (rSysFontData.bAntialias)
-            {
-                // CAIRO_ANTIALIAS_GRAY provides more similar result to VCL Canvas,
-                // so we're not using CAIRO_ANTIALIAS_SUBPIXEL
-                cairo_font_options_set_antialias(options, CAIRO_ANTIALIAS_GRAY);
-            }
-            cairo_set_font_options( pSCairo.get(), options);
-
-            // Font color
-            Color aTextColor = rOutDev.GetTextColor();
-            cairo_set_source_rgb(pSCairo.get(),
-                                 aTextColor.GetRed()/255.0,
-                                 aTextColor.GetGreen()/255.0,
-                                 aTextColor.GetBlue()/255.0);
-
-            // Font rotation and scaling
-            cairo_matrix_t m;
-
-            cairo_matrix_init_identity(&m);
-
-            if (aSysLayoutData.orientation)
-                cairo_matrix_rotate(&m, (3600 - aSysLayoutData.orientation) * M_PI / 1800.0);
-
-            cairo_matrix_scale(&m, nWidth, nHeight);
-
-            //faux italics
-            if (rSysFontData.bFakeItalic)
-                m.xy = -m.xx * 0x6000 / 0x10000;
-
-            cairo_set_font_matrix(pSCairo.get(), &m);
-
-            SAL_INFO(
-                "canvas.cairo",
-                "Size:(" << aFont.GetAverageFontWidth() << "," << aFont.GetFontHeight()
-                    << "), Pos (" << rOutpos.X() << "," << rOutpos.Y()
-                    << "), G("
-                    << (cairo_glyphs.size() > 0 ? cairo_glyphs[0].index : -1)
-                    << ","
-                    << (cairo_glyphs.size() > 1 ? cairo_glyphs[1].index : -1)
-                    << ","
-                    << (cairo_glyphs.size() > 2 ? cairo_glyphs[2].index : -1)
-                    << ") " << (maLogicalAdvancements.getLength() ? "ADV " : "")
-                    << (rSysFontData.bAntialias ? "AA " : "")
-                    << (rSysFontData.bFakeBold ? "FB " : "")
-                    << (rSysFontData.bFakeItalic ? "FI " : "") << " || Name:"
-                    << aFont.GetFamilyName() << " - "
-                    << maText.Text.copy(maText.StartPosition, maText.Length));
-
-            cairo_show_glyphs(pSCairo.get(), &cairo_glyphs[0], cairo_glyphs.size());
-
-            //faux bold
-            if (rSysFontData.bFakeBold)
-            {
-                double bold_dx = 0.5 * sqrt( 0.7 * aFont.GetFontHeight() );
-                int total_steps = 1 * ((int) (bold_dx + 0.5));
-
-                // loop to draw the text for every half pixel of displacement
-                for (int nSteps = 0; nSteps < total_steps; nSteps++)
-                {
-                    for(cairo_glyph_t & cairo_glyph : cairo_glyphs)
-                    {
-                        cairo_glyph.x += (bold_dx * nSteps / total_steps) / 4;
-                        cairo_glyph.y -= (bold_dx * nSteps / total_steps) / 4;
-                    }
-                    cairo_show_glyphs(pSCairo.get(), &cairo_glyphs[0], cairo_glyphs.size());
-                }
-                SAL_INFO("canvas.cairo",":cairocanvas::TextLayout::draw(S,O,p,v,r): FAKEBOLD - dx:" << (int) bold_dx);
-            }
-
-            cairo_font_face_destroy(font_face);
-            cairo_font_options_destroy(options);
-        }
-        return true;
     }
 
     namespace
@@ -553,15 +339,15 @@ namespace cairocanvas
                                                      renderState);
 
         // fill integer offsets
-        std::transform( inputOffsets.getConstArray(),
-                          inputOffsets.getConstArray()+inputOffsets.getLength(),
+        std::transform( inputOffsets.begin(),
+                          inputOffsets.end(),
                           outputOffsets,
                           OffsetTransformer( aMatrix ) );
     }
 
     OUString SAL_CALL TextLayout::getImplementationName()
     {
-        return OUString( "CairoCanvas::TextLayout" );
+        return "CairoCanvas::TextLayout";
     }
 
     sal_Bool SAL_CALL TextLayout::supportsService( const OUString& ServiceName )

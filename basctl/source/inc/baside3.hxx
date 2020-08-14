@@ -17,19 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASCTL_SOURCE_INC_BASIDE3_HXX
-#define INCLUDED_BASCTL_SOURCE_INC_BASIDE3_HXX
+#pragma once
 
+#include "dlged.hxx"
 #include "layout.hxx"
 #include "bastypes.hxx"
 #include "propbrw.hxx"
-
 #include <svl/undo.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/button.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/fixed.hxx>
-
 #include <memory>
 
 class Printer;
@@ -49,7 +43,7 @@ class DlgEdView;
 class DialogWindowLayout;
 class ObjectCatalog;
 
-bool implImportDialog( vcl::Window* pWin, const OUString& rCurPath, const ScriptDocument& rDocument, const OUString& aLibName );
+bool implImportDialog(weld::Window* pWin, const OUString& rCurPath, const ScriptDocument& rDocument, const OUString& rLibName);
 
 class DialogWindow: public BaseWindow
 {
@@ -72,7 +66,7 @@ protected:
     virtual void        Command( const CommandEvent& rCEvt ) override;
     virtual void        LoseFocus() override;
 
-    DECL_STATIC_LINK( DialogWindow, NotifyUndoActionHdl, SdrUndoAction *, void );
+    static void         NotifyUndoActionHdl( std::unique_ptr<SdrUndoAction> );
     virtual void        DoInit() override;
     virtual void        DoScroll( ScrollBar* pCurScrollBar ) override;
     virtual void        DataChanged( const DataChangedEvent& rDCEvt ) override;
@@ -84,7 +78,7 @@ public:
     virtual void        ExecuteCommand( SfxRequest& rReq ) override;
     virtual void        GetState( SfxItemSet& ) override;
     DlgEditor&          GetEditor() const   { return *m_pEditor; }
-    css::uno::Reference< css::container::XNameContainer > GetDialog() const;
+    css::uno::Reference< css::container::XNameContainer > const & GetDialog() const;
     DlgEdModel&         GetModel() const;
     DlgEdPage&          GetPage() const;
     DlgEdView&          GetView() const;
@@ -101,9 +95,9 @@ public:
 
     virtual void        StoreData() override;
     virtual bool        IsModified() override;
-    virtual bool        IsPasteAllowed() override;
+    bool                IsPasteAllowed();
 
-    virtual svl::IUndoManager* GetUndoManager() override;
+    virtual SfxUndoManager* GetUndoManager() override;
     // return number of pages to be printed
     virtual sal_Int32 countPages( Printer* pPrinter ) override;
     // print page
@@ -143,8 +137,6 @@ protected:
     virtual void OnFirstSize (long nWidth, long nHeight) override;
 
 private:
-    // child window
-    VclPtr<DialogWindow> pChild;
     // dockable windows:
     // object catalog (owned by Shell)
     ObjectCatalog& rObjectCatalog;
@@ -159,7 +151,5 @@ private:
 
 
 } // namespace basctl
-
-#endif // INCLUDED_BASCTL_SOURCE_INC_BASIDE3_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

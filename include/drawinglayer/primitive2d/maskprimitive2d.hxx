@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_MASKPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_MASKPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
@@ -26,10 +25,8 @@
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** MaskPrimitive2D class
 
             This is the central masking primitive. It's a grouping
@@ -44,7 +41,7 @@ namespace drawinglayer
             The geometry range of this primitive is completely defined by the Mask
             tools::PolyPolygon since by definition nothing outside of the mask is visible.
          */
-        class DRAWINGLAYER_DLLPUBLIC MaskPrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC MaskPrimitive2D final : public GroupPrimitive2D
         {
         private:
             /// the mask PolyPolygon
@@ -66,12 +63,9 @@ namespace drawinglayer
             virtual basegfx::B2DRange getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_MASKPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

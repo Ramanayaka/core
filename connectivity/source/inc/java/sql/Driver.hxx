@@ -21,17 +21,14 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_SQL_DRIVER_HXX
 
 #include <com/sun/star/sdbc/XDriver.hpp>
-#include "java/lang/Object.hxx"
 #include <cppuhelper/implbase.hxx>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
 #include <comphelper/logging.hxx>
 
 namespace connectivity
 {
-    /// @throws css::uno::Exception
-    css::uno::Reference< css::uno::XInterface > SAL_CALL java_sql_Driver_CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory);
-
     class java_sql_Driver : public ::cppu::WeakImplHelper< css::sdbc::XDriver,css::lang::XServiceInfo>
     {
         css::uno::Reference<css::uno::XComponentContext> m_aContext;
@@ -42,11 +39,6 @@ namespace connectivity
 
     public:
         java_sql_Driver(const css::uno::Reference< css::uno::XComponentContext >& _rxContext);
-
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static(  );
 
         // XServiceInfo
         virtual OUString SAL_CALL getImplementationName(  ) override;

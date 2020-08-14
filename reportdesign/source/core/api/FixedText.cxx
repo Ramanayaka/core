@@ -16,27 +16,22 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "FixedText.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include "corestrings.hrc"
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include "core_resource.hrc"
-#include "core_resource.hxx"
-#include "Tools.hxx"
+#include <FixedText.hxx>
+#include <strings.hxx>
+#include <strings.hrc>
+#include <core_resource.hxx>
+#include <Tools.hxx>
 #include <tools/color.hxx>
-#include <comphelper/property.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "FormatCondition.hxx"
-#include <com/sun/star/text/ParagraphVertAlign.hpp>
-#include "ReportHelperImpl.hxx"
+#include <FormatCondition.hxx>
+#include <ReportHelperImpl.hxx>
 
 namespace reportdesign
 {
 
     using namespace com::sun::star;
-    using namespace comphelper;
 
-uno::Sequence< OUString > lcl_getFixedTextOptionals()
+static uno::Sequence< OUString > lcl_getFixedTextOptionals()
 {
     OUString pProps[] = { OUString(PROPERTY_DATAFIELD),OUString(PROPERTY_MASTERFIELDS),OUString(PROPERTY_DETAILFIELDS) };
     return uno::Sequence< OUString >(pProps,SAL_N_ELEMENTS(pProps));
@@ -47,7 +42,7 @@ OFixedText::OFixedText(uno::Reference< uno::XComponentContext > const & _xContex
 ,FixedTextPropertySet(_xContext,IMPLEMENTS_PROPERTY_SET,lcl_getFixedTextOptionals())
 ,m_aProps(m_aMutex,static_cast< container::XContainer*>( this ),_xContext)
 {
-    m_aProps.aComponent.m_sName  = RPT_RESSTRING(RID_STR_FIXEDTEXT);
+    m_aProps.aComponent.m_sName  = RptResId(RID_STR_FIXEDTEXT);
     m_aProps.aComponent.m_nBorder = 0; // no border
 }
 
@@ -58,7 +53,7 @@ OFixedText::OFixedText(uno::Reference< uno::XComponentContext > const & _xContex
 ,FixedTextPropertySet(_xContext,IMPLEMENTS_PROPERTY_SET,lcl_getFixedTextOptionals())
 ,m_aProps(m_aMutex,static_cast< container::XContainer*>( this ),_xContext)
 {
-    m_aProps.aComponent.m_sName  = RPT_RESSTRING(RID_STR_FIXEDTEXT);
+    m_aProps.aComponent.m_sName  = RptResId(RID_STR_FIXEDTEXT);
     m_aProps.aComponent.m_nBorder = 0; // no border
     m_aProps.aComponent.m_xFactory = _xFactory;
     osl_atomic_increment( &m_refCount );
@@ -93,33 +88,14 @@ void SAL_CALL OFixedText::dispose()
     uno::Reference< report::XFixedText> xHoldAlive = this;
 }
 
-OUString OFixedText::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.report.OFixedText");
-}
-
-
 OUString SAL_CALL OFixedText::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return "com.sun.star.comp.report.OFixedText";
 }
-
-uno::Sequence< OUString > OFixedText::getSupportedServiceNames_Static(  )
-{
-    uno::Sequence< OUString > aServices { SERVICE_FIXEDTEXT };
-
-    return aServices;
-}
-
-uno::Reference< uno::XInterface > OFixedText::create(uno::Reference< uno::XComponentContext > const & xContext)
-{
-    return *(new OFixedText(xContext));
-}
-
 
 uno::Sequence< OUString > SAL_CALL OFixedText::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
+    return { SERVICE_FIXEDTEXT };
 }
 
 sal_Bool SAL_CALL OFixedText::supportsService(const OUString& ServiceName)
@@ -318,11 +294,18 @@ OUString SAL_CALL OFixedText::getShapeType(  )
     ::osl::MutexGuard aGuard(m_aMutex);
     if ( m_aProps.aComponent.m_xShape.is() )
         return m_aProps.aComponent.m_xShape->getShapeType();
-    return OUString("com.sun.star.drawing.ControlShape");
+    return "com.sun.star.drawing.ControlShape";
 }
 
 
 } // namespace reportdesign
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_OFixedText_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new reportdesign::OFixedText(context));
+}
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

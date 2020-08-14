@@ -22,10 +22,11 @@
 #include <string.h>
 
 #include <cppuhelper/implbase.hxx>
-#include <osl/diagnose.h>
+#include <o3tl/safeint.hxx>
+#include <tools/diagnose_ex.h>
 
-#include <element.hxx>
-#include <document.hxx>
+#include "element.hxx"
+#include "document.hxx"
 
 using namespace css::uno;
 using namespace css::xml::dom;
@@ -82,7 +83,7 @@ namespace DOM
         : m_pElement(pElement)
         , m_rMutex(rMutex)
         , m_pName(lcl_initXmlString(rName))
-        , m_pURI((pURI) ? lcl_initXmlString(*pURI) : nullptr)
+        , m_pURI(pURI ? lcl_initXmlString(*pURI) : nullptr)
         , m_bRebuild(true)
     {
     }
@@ -106,9 +107,8 @@ namespace DOM
                     static_cast<XElement*>(& rElement), UNO_QUERY_THROW);
             m_xEventListener = new WeakEventListener(this);
             xTarget->addEventListener("DOMSubtreeModified", m_xEventListener, false/*capture*/);
-        } catch (const Exception &e){
-            SAL_WARN( "unoxml", "Exception caught while registering NodeList as listener: "
-                << e.Message);
+        } catch (const Exception &){
+            TOOLS_WARN_EXCEPTION( "unoxml", "Exception caught while registering NodeList as listener");
         }
     }
 
@@ -120,7 +120,7 @@ namespace DOM
             {
                 return;
             } else {
-                m_nodevector.erase(m_nodevector.begin(), m_nodevector.end());
+                m_nodevector.clear();
                 m_bRebuild = false; // don't rebuild until tree is mutated
             }
         }
@@ -172,7 +172,7 @@ namespace DOM
         if (!m_pElement.is()) { return nullptr; }
 
         buildlist(m_pElement->GetNodePtr());
-        if (m_nodevector.size() <= static_cast<size_t>(index)) {
+        if (m_nodevector.size() <= o3tl::make_unsigned(index)) {
             throw RuntimeException();
         }
         Reference< XNode > const xRet(

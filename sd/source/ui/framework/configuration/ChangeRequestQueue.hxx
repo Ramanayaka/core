@@ -20,18 +20,20 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_CHANGEREQUESTQUEUE_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_CHANGEREQUESTQUEUE_HXX
 
-#include <com/sun/star/drawing/framework/XConfigurationChangeRequest.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 
-#include <list>
+#include <queue>
 
-namespace sd { namespace framework {
+namespace com::sun::star::drawing::framework { class XConfigurationChangeRequest; }
+
+namespace sd::framework {
 
 /** The ChangeRequestQueue stores the pending requests for changes to the
     requested configuration.  It is the task of the
     ChangeRequestQueueProcessor to process these requests.
 */
 class ChangeRequestQueue
-    : public ::std::list<css::uno::Reference< css::drawing::framework::XConfigurationChangeRequest> >
+    : public ::std::queue<css::uno::Reference< css::drawing::framework::XConfigurationChangeRequest> >
 {
 public:
     /** Create an empty queue.
@@ -39,7 +41,7 @@ public:
     ChangeRequestQueue();
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

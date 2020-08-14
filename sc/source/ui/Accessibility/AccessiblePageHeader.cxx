@@ -17,34 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "AccessiblePageHeader.hxx"
-#include "AccessiblePageHeaderArea.hxx"
-#include "AccessibilityHints.hxx"
-#include "prevwsh.hxx"
-#include "miscuno.hxx"
-#include "prevloc.hxx"
-#include "document.hxx"
-#include "stlpool.hxx"
-#include "scitems.hxx"
-#include "attrib.hxx"
-#include "scresid.hxx"
-#include "scres.hrc"
-#include "strings.hxx"
+#include <AccessiblePageHeader.hxx>
+#include <AccessiblePageHeaderArea.hxx>
+#include <prevwsh.hxx>
+#include <prevloc.hxx>
+#include <document.hxx>
+#include <stlpool.hxx>
+#include <scitems.hxx>
+#include <attrib.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
+#include <strings.hxx>
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
 #include <vcl/window.hxx>
 #include <svl/hint.hxx>
+#include <svl/itemset.hxx>
 #include <vcl/svapp.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <svl/style.hxx>
-#include <svl/itempool.hxx>
 #include <editeng/editobj.hxx>
-#include <toolkit/helper/convert.hxx>
-
-#include <algorithm>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
@@ -174,7 +170,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeader::getAccessibleAtPo
 
 void SAL_CALL ScAccessiblePageHeader::grabFocus()
 {
-     SolarMutexGuard aGuard;
+    SolarMutexGuard aGuard;
     IsObjectValid();
     if (getAccessibleParent().is())
     {
@@ -226,20 +222,20 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeader::getAccessibleChil
     if(mnChildCount < 0)
         getAccessibleChildCount();
 
-    auto aItr = maAreas.begin();
-    auto aEndItr = maAreas.end();
-    while (!xRet.is() && (nIndex >= 0) && (aItr != aEndItr))
-    {
-        if (aItr->is())
+    if (nIndex >= 0)
+        for (const auto& rxArea : maAreas)
         {
-            if (nIndex == 0)
-                xRet = aItr->get();
-            else
-                --nIndex;
+            if (rxArea.is())
+            {
+                if (nIndex == 0)
+                {
+                    xRet = rxArea.get();
+                    break;
+                }
+                else
+                    --nIndex;
+            }
         }
-        else
-            ++aItr;
-    }
 
     if ( !xRet.is() )
         throw lang::IndexOutOfBoundsException();
@@ -280,7 +276,7 @@ uno::Reference< XAccessibleStateSet > SAL_CALL ScAccessiblePageHeader::getAccess
 
 OUString SAL_CALL ScAccessiblePageHeader::getImplementationName()
 {
-    return OUString("ScAccessiblePageHeader");
+    return "ScAccessiblePageHeader";
 }
 
 uno::Sequence<OUString> SAL_CALL ScAccessiblePageHeader::getSupportedServiceNames()
@@ -296,13 +292,13 @@ uno::Sequence<OUString> SAL_CALL ScAccessiblePageHeader::getSupportedServiceName
 
 //====  internal  =========================================================
 
-OUString SAL_CALL ScAccessiblePageHeader::createAccessibleDescription()
+OUString ScAccessiblePageHeader::createAccessibleDescription()
 {
     OUString sDesc(mbHeader ? OUString(STR_ACC_HEADER_DESCR) : OUString(STR_ACC_FOOTER_DESCR));
     return sDesc.replaceFirst("%1", ScResId(SCSTR_UNKNOWN));
 }
 
-OUString SAL_CALL ScAccessiblePageHeader::createAccessibleName()
+OUString ScAccessiblePageHeader::createAccessibleName()
 {
     OUString sName(ScResId(mbHeader ? STR_ACC_HEADER_NAME : STR_ACC_FOOTER_NAME));
     return sName.replaceFirst("%1", ScResId(SCSTR_UNKNOWN));
@@ -362,12 +358,12 @@ void ScAccessiblePageHeader::AddChild(const EditTextObject* pArea, sal_uInt32 nI
         {
             if (!ScGlobal::EETextObjEqual(maAreas[nIndex]->GetEditTextObject(), pArea))
             {
-                maAreas[nIndex] = new ScAccessiblePageHeaderArea(this, mpViewShell, pArea, mbHeader, eAdjust);
+                maAreas[nIndex] = new ScAccessiblePageHeaderArea(this, mpViewShell, pArea, eAdjust);
             }
         }
         else
         {
-            maAreas[nIndex] = new ScAccessiblePageHeaderArea(this, mpViewShell, pArea, mbHeader, eAdjust);
+            maAreas[nIndex] = new ScAccessiblePageHeaderArea(this, mpViewShell, pArea, eAdjust);
         }
         ++mnChildCount;
     }

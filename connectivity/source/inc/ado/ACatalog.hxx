@@ -19,13 +19,11 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ACATALOG_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ACATALOG_HXX
 
-#include <connectivity/sdbcx/VCatalog.hxx>
-#include "ado/Awrapadox.hxx"
+#include <sdbcx/VCatalog.hxx>
+#include <ado/Awrapadox.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class OConnection;
 
         class OCatalog : public connectivity::sdbcx::OCatalog
@@ -44,10 +42,9 @@ namespace connectivity
             ~OCatalog() override;
 
             OConnection*        getConnection()     const { return m_pConnection;   }
-            sdbcx::OCollection* getPrivateTables()  const { return m_pTables;       }
+            sdbcx::OCollection* getPrivateTables()  const { return m_pTables.get(); }
             WpADOCatalog        getCatalog()        const { return m_aCatalog;      }
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ACATALOG_HXX
 

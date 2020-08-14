@@ -17,15 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/core/relationshandler.hxx"
+#include <sal/config.h>
 
-#include <rtl/ustrbuf.hxx>
-#include "oox/helper/attributelist.hxx"
+#include <oox/core/relationshandler.hxx>
+
+#include <sal/log.hxx>
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
@@ -40,12 +41,10 @@ namespace {
 OUString lclGetRelationsPath( const OUString& rFragmentPath )
 {
     sal_Int32 nPathLen = ::std::max< sal_Int32 >( rFragmentPath.lastIndexOf( '/' ) + 1, 0 );
-    return
-        OUStringBuffer( rFragmentPath.copy( 0, nPathLen ) ).    // file path including slash
-        append( "_rels/" ).                                // additional '_rels/' path
-        append( rFragmentPath.copy( nPathLen ) ).               // file name after path
-        append( ".rels" ).                                 // '.rels' suffix
-        makeStringAndClear();
+    return rtl::OUStringView(rFragmentPath.getStr(), nPathLen ) +    // file path including slash
+        "_rels/" +                                // additional '_rels/' path
+        rtl::OUStringView(rFragmentPath.getStr() + nPathLen) +  // file name after path
+        ".rels";                                 // '.rels' suffix
 }
 
 } // namespace
@@ -78,7 +77,7 @@ Reference< XFastContextHandler > RelationsFragment::createFastChildContext(
 
                 SAL_WARN_IF( mxRelations->count( aRelation.maId ) != 0, "oox",
                     "RelationsFragment::createFastChildContext - relation identifier exists already" );
-                mxRelations->insert( ::std::map< OUString, Relation >::value_type( aRelation.maId, aRelation ) );
+                mxRelations->emplace( aRelation.maId, aRelation );
             }
         }
         break;
@@ -89,7 +88,6 @@ Reference< XFastContextHandler > RelationsFragment::createFastChildContext(
     return xRet;
 }
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

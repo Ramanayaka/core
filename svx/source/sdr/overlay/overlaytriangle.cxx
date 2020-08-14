@@ -17,28 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/sdr/overlay/overlaytriangle.hxx>
-#include <tools/poly.hxx>
-#include <vcl/outdev.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
+#include <sdr/overlay/overlaytriangle.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <svx/sdr/overlay/overlaymanager.hxx>
-#include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         drawinglayer::primitive2d::Primitive2DContainer OverlayTriangle::createOverlayObjectPrimitive2DSequence()
         {
             basegfx::B2DPolygon aPolygon;
 
             aPolygon.append(getBasePosition());
-            aPolygon.append(getSecondPosition());
-            aPolygon.append(getThirdPosition());
+            aPolygon.append(maSecondPosition);
+            aPolygon.append(maThirdPosition);
             aPolygon.setClosed(true);
 
             const drawinglayer::primitive2d::Primitive2DReference aReference(
@@ -64,7 +56,6 @@ namespace sdr
         {
         }
 
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

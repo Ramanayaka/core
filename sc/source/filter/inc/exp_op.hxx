@@ -21,13 +21,8 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_EXP_OP_HXX
 
 #include <memory>
-#include "filter.hxx"
-#include "root.hxx"
 #include "xeroot.hxx"
 
-class ScDocument;
-class ScPatternAttr;
-class ScFormulaCell;
 class ExcDocument;
 
 class ExportTyp
@@ -36,15 +31,8 @@ protected:
                         ~ExportTyp() {}
 
     SvStream&           aOut;
-    ScDocument*         pD;
-    rtl_TextEncoding    eTargetCharset;      // target character set
 public:
-                        ExportTyp( SvStream& aStream, ScDocument* pDoc, rtl_TextEncoding eDest ):
-                            aOut( aStream )
-                        {
-                            eTargetCharset = eDest;
-                            pD = pDoc;
-                        }
+                        ExportTyp( SvStream& aStream ) : aOut( aStream ) {}
 
     virtual ErrCode     Write() = 0;
 };

@@ -25,23 +25,15 @@
 */
 #include <vector>
 
-#include <stdtypes.h>
-#include <properties.h>
 #include <uiconfiguration/globalsettings.hxx>
 #include <framework/addonsoptions.hxx>
 #include <uielement/uielement.hxx>
 #include <services/layoutmanager.hxx>
 
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/ui/XUIConfigurationManager.hpp>
-#include <com/sun/star/ui/XUIConfiguration.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/ui/XUIElementFactory.hpp>
 #include <com/sun/star/ui/DockingArea.hpp>
-#include <com/sun/star/awt/XToolkit2.hpp>
-#include <com/sun/star/awt/XTopWindow2.hpp>
 #include <com/sun/star/awt/XWindow2.hpp>
 #include <com/sun/star/awt/XDockableWindow.hpp>
 #include <com/sun/star/awt/XDockableWindowListener.hpp>
@@ -87,7 +79,7 @@ class ToolbarLayoutManager : public ::cppu::WeakImplHelper< css::awt::XDockableW
         bool isPreviewFrame();
 
         // layouting
-        bool isLayoutDirty() { return m_bLayoutDirty;}
+        bool isLayoutDirty() const { return m_bLayoutDirty;}
         void doLayout(const ::Size& aContainerSize);
 
         // creation/destruction
@@ -125,7 +117,7 @@ class ToolbarLayoutManager : public ::cppu::WeakImplHelper< css::awt::XDockableW
         css::uno::Sequence< css::uno::Reference< css::ui::XUIElement > > getToolbars();
 
         // child window notifications
-        long childWindowEvent( VclSimpleEvent* pEvent );
+        void childWindowEvent( VclSimpleEvent const * pEvent );
 
         // XInterface
 
@@ -271,14 +263,13 @@ class ToolbarLayoutManager : public ::cppu::WeakImplHelper< css::awt::XDockableW
 
         UIElementVector                                                      m_aUIElements;
         UIElement                                                            m_aDockUIElement;
-        Point                                                                m_aStartDockMousePos;
         tools::Rectangle                                                            m_aDockingArea;
         tools::Rectangle                                                            m_aDockingAreaOffsets;
         DockingOperation                                                     m_eDockOperation;
         PreviewFrameDetection                                                m_ePreviewDetection;
 
-        AddonsOptions*                                                       m_pAddonOptions;
-        GlobalSettings*                                                      m_pGlobalSettings;
+        std::unique_ptr<AddonsOptions>                                       m_pAddonOptions;
+        std::unique_ptr<GlobalSettings>                                      m_pGlobalSettings;
 
         bool                                                                 m_bComponentAttached;
         bool                                                                 m_bLayoutDirty;

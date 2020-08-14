@@ -19,11 +19,10 @@
 #ifndef INCLUDED_EDITENG_LSPCITEM_HXX
 #define INCLUDED_EDITENG_LSPCITEM_HXX
 
-#include <svl/eitem.hxx>
+#include <svl/cenumitm.hxx>
+#include <tools/mapunit.hxx>
 #include <editeng/svxenum.hxx>
 #include <editeng/editengdllapi.h>
-
-class SvXMLUnitConverter;
 
 // class SvxLineSpacingItem ----------------------------------------------
 
@@ -32,7 +31,7 @@ class SvXMLUnitConverter;
 */
 
 #define LINE_SPACE_DEFAULT_HEIGHT 200
-class EDITENG_DLLPUBLIC SvxLineSpacingItem : public SfxEnumItemInterface
+class EDITENG_DLLPUBLIC SvxLineSpacingItem final : public SfxEnumItemInterface
 {
     short                 nInterLineSpace;
     sal_uInt16            nLineHeight;
@@ -58,11 +57,9 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion ) const override;
+    virtual SvxLineSpacingItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     // Methods to query and edit. InterlineSpace is added to the height.
     short GetInterLineSpace() const { return nInterLineSpace; }
@@ -82,7 +79,7 @@ public:
 
     // To increase or decrease the row height.
     sal_uInt16 GetPropLineSpace() const { return nPropLineSpace; }
-    void SetPropLineSpace( const sal_uInt8 nProp )
+    void SetPropLineSpace( const sal_uInt16 nProp )
     {
         nPropLineSpace = nProp;
         eInterLineSpaceRule = SvxInterLineSpaceRule::Prop;
@@ -95,7 +92,6 @@ public:
     SvxInterLineSpaceRule GetInterLineSpaceRule() const { return eInterLineSpaceRule; }
 
     virtual sal_uInt16      GetValueCount() const override;
-    virtual OUString        GetValueTextByPos( sal_uInt16 nPos ) const override;
     virtual sal_uInt16      GetEnumValue() const override;
     virtual void            SetEnumValue( sal_uInt16 nNewVal ) override;
 };

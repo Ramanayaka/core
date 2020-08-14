@@ -19,20 +19,23 @@
 #ifndef INCLUDED_CPPUHELPER_FACTORY_HXX
 #define INCLUDED_CPPUHELPER_FACTORY_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cstddef>
 
-#include <rtl/ustring.hxx>
-#include <rtl/unload.h>
+#include "rtl/ustring.hxx"
+#include "rtl/unload.h"
 
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
-#include <cppuhelper/cppuhelperdllapi.h>
+#include "com/sun/star/uno/Reference.h"
+#include "cppuhelper/cppuhelperdllapi.h"
 
+namespace com { namespace sun { namespace star { namespace lang { class XMultiServiceFactory; } } } }
+namespace com { namespace sun { namespace star { namespace lang { class XSingleComponentFactory; } } } }
+namespace com { namespace sun { namespace star { namespace lang { class XSingleServiceFactory; } } } }
+namespace com { namespace sun { namespace star { namespace registry { class XRegistryKey; } } } }
+namespace com { namespace sun { namespace star { namespace uno { class XComponentContext; } } } }
+namespace com { namespace sun { namespace star { namespace uno { class XInterface; } } } }
+namespace com { namespace sun { namespace star { namespace uno { template <class E> class Sequence; } } } }
 
 #define COMPONENT_GETENV            "component_getImplementationEnvironment"
 #define COMPONENT_GETENVEXT         "component_getImplementationEnvironmentExt"

@@ -17,20 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ViewTabBar.hxx"
+#include <ViewTabBar.hxx>
 
-#include "ViewShell.hxx"
-#include "ViewShellBase.hxx"
-#include "DrawViewShell.hxx"
-#include "FrameView.hxx"
-#include "framework/FrameworkHelper.hxx"
-#include "framework/Pane.hxx"
-#include "DrawController.hxx"
+#include <ViewShellBase.hxx>
+#include <framework/FrameworkHelper.hxx>
+#include <framework/Pane.hxx>
+#include <DrawController.hxx>
 
-#include "sdresid.hxx"
-#include "strings.hrc"
-#include "helpids.h"
-#include "Client.hxx"
+#include <Client.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/tabpage.hxx>
 #include <vcl/settings.hxx>
@@ -38,8 +32,8 @@
 #include <sfx2/viewfrm.hxx>
 #include <com/sun/star/drawing/framework/ResourceId.hpp>
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/drawing/framework/XView.hpp>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <tools/diagnose_ex.h>
@@ -235,7 +229,7 @@ vcl::Window* ViewTabBar::GetAnchorWindow(
 void SAL_CALL  ViewTabBar::notifyConfigurationChange (
     const ConfigurationChangeEvent& rEvent)
 {
-    if (rEvent.Type.equals(FrameworkHelper::msResourceActivationEvent)
+    if (rEvent.Type == FrameworkHelper::msResourceActivationEvent
         && rEvent.ResourceId->getResourceURL().match(FrameworkHelper::msViewURLPrefix)
         && rEvent.ResourceId->isBoundTo(mxViewTabBarId->getAnchor(), AnchorBindingMode_DIRECT))
     {
@@ -317,8 +311,7 @@ sal_Int64 SAL_CALL ViewTabBar::getSomething (const Sequence<sal_Int8>& rId)
 {
     sal_Int64 nResult = 0;
 
-    if (rId.getLength() == 16
-        && memcmp(getUnoTunnelId().getConstArray(), rId.getConstArray(), 16) == 0)
+    if (isUnoTunnelId<ViewTabBar>(rId))
     {
         nResult = reinterpret_cast<sal_Int64>(this);
     }
@@ -373,13 +366,13 @@ bool ViewTabBar::ActivatePage()
     }
     catch (const RuntimeException&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sd.view");
     }
 
     return false;
 }
 
-int ViewTabBar::GetHeight()
+int ViewTabBar::GetHeight() const
 {
     int nHeight (0);
 
@@ -440,7 +433,7 @@ void ViewTabBar::AddTabBarButton (
     if (nPosition>=0
         && nPosition<=mpTabControl->GetPageCount())
     {
-        sal_uInt16 nIndex ((sal_uInt16)nPosition);
+        sal_uInt16 nIndex (static_cast<sal_uInt16>(nPosition));
 
         // Insert the button into our local array.
         maTabBarButtons.insert(maTabBarButtons.begin()+nIndex, rButton);
@@ -469,7 +462,7 @@ bool ViewTabBar::HasTabBarButton (
 {
     bool bResult (false);
 
-    for (css::drawing::framework::TabBarButton & r : maTabBarButtons)
+    for (const css::drawing::framework::TabBarButton & r : maTabBarButtons)
     {
         if (IsEqual(r, rButton))
         {
@@ -500,36 +493,37 @@ void ViewTabBar::UpdateActiveButton()
     if (mpViewShellBase != nullptr)
         xView = FrameworkHelper::Instance(*mpViewShellBase)->GetView(
             mxViewTabBarId->getAnchor());
-    if (xView.is())
+    if (!xView.is())
+        return;
+
+    Reference<XResourceId> xViewId (xView->getResourceId());
+    for (size_t nIndex=0; nIndex<maTabBarButtons.size(); ++nIndex)
     {
-        Reference<XResourceId> xViewId (xView->getResourceId());
-        for (size_t nIndex=0; nIndex<maTabBarButtons.size(); ++nIndex)
+        if (maTabBarButtons[nIndex].ResourceId->compareTo(xViewId) == 0)
         {
-            if (maTabBarButtons[nIndex].ResourceId->compareTo(xViewId) == 0)
-            {
-                mpTabControl->SetCurPageId(nIndex+1);
-                mpTabControl->::TabControl::ActivatePage();
-                break;
-            }
+            mpTabControl->SetCurPageId(nIndex+1);
+            mpTabControl->::TabControl::ActivatePage();
+            break;
         }
     }
 }
 
 void ViewTabBar::UpdateTabBarButtons()
 {
-    TabBarButtonList::const_iterator iTab;
     sal_uInt16 nPageCount (mpTabControl->GetPageCount());
-    sal_uInt16 nIndex;
-    for (iTab=maTabBarButtons.begin(),nIndex=1; iTab!=maTabBarButtons.end(); ++iTab,++nIndex)
+    sal_uInt16 nIndex = 1;
+    for (const auto& rTab : maTabBarButtons)
     {
         // Create a new tab when there are not enough.
         if (nPageCount < nIndex)
-            mpTabControl->InsertPage(nIndex, iTab->ButtonLabel);
+            mpTabControl->InsertPage(nIndex, rTab.ButtonLabel);
 
         // Update the tab.
-        mpTabControl->SetPageText(nIndex, iTab->ButtonLabel);
-        mpTabControl->SetHelpText(nIndex, iTab->HelpText);
+        mpTabControl->SetPageText(nIndex, rTab.ButtonLabel);
+        mpTabControl->SetHelpText(nIndex, rTab.HelpText);
         mpTabControl->SetTabPage(nIndex, mpTabPage.get());
+
+        ++nIndex;
     }
 
     // Delete tabs that are no longer used.

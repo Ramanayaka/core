@@ -27,8 +27,6 @@
 #include <com/sun/star/rendering/StringContext.hpp>
 #include <com/sun/star/rendering/XTextLayout.hpp>
 
-#include <canvas/vclwrapper.hxx>
-
 #include "canvasfont.hxx"
 #include "impltools.hxx"
 
@@ -82,7 +80,7 @@ namespace vclcanvas
         virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-        bool draw( OutputDevice&                                   rOutDev,
+        void draw( OutputDevice&                                   rOutDev,
                    const Point&                                    rOutpos,
                    const css::rendering::ViewState&                viewState,
                    const css::rendering::RenderState&              renderState ) const;

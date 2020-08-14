@@ -18,21 +18,23 @@
  */
 
 #include <arraysumfunctor.hxx>
-#include "scmatrix.hxx"
-#include "global.hxx"
-#include "address.hxx"
+#include <scmatrix.hxx>
+#include <global.hxx>
+#include <address.hxx>
 #include <formula/errorcodes.hxx>
 #include <formula/vectortoken.hxx>
-#include "interpre.hxx"
-#include "mtvelements.hxx"
-#include "compare.hxx"
-#include "matrixoperators.hxx"
-#include "math.hxx"
+#include <interpre.hxx>
+#include <mtvelements.hxx>
+#include <compare.hxx>
+#include <matrixoperators.hxx>
+#include <math.hxx>
 
 #include <svl/zforlist.hxx>
 #include <svl/sharedstring.hxx>
 #include <tools/stream.hxx>
 #include <rtl/math.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 #include <math.h>
 
@@ -53,6 +55,8 @@ using std::endl;
 using ::std::pair;
 using ::std::advance;
 
+namespace {
+
 /**
  * Custom string trait struct to tell mdds::multi_type_matrix about the
  * custom string type and how to handle blocks storing them.
@@ -65,6 +69,8 @@ struct matrix_trait
     typedef mdds::mtv::custom_block_func1<sc::string_block> element_block_func;
 };
 
+}
+
 typedef mdds::multi_type_matrix<matrix_trait> MatrixImplType;
 
 namespace {
@@ -74,7 +80,7 @@ double convertStringToValue( ScInterpreter* pErrorInterpreter, const OUString& r
     if (pErrorInterpreter)
     {
         FormulaError nError = FormulaError::NONE;
-        short nCurFmtType = 0;
+        SvNumFormatType nCurFmtType = SvNumFormatType::ALL;
         double fValue = pErrorInterpreter->ConvertStringToValue( rStr, nError, nCurFmtType);
         if (nError != FormulaError::NONE)
         {
@@ -90,7 +96,7 @@ struct ElemEqualZero
 {
     double operator() (double val) const
     {
-        if (!::rtl::math::isFinite(val))
+        if (!std::isfinite(val))
             return val;
         return val == 0.0 ? 1.0 : 0.0;
     }
@@ -100,7 +106,7 @@ struct ElemNotEqualZero
 {
     double operator() (double val) const
     {
-        if (!::rtl::math::isFinite(val))
+        if (!std::isfinite(val))
             return val;
         return val != 0.0 ? 1.0 : 0.0;
     }
@@ -110,7 +116,7 @@ struct ElemGreaterZero
 {
     double operator() (double val) const
     {
-        if (!::rtl::math::isFinite(val))
+        if (!std::isfinite(val))
             return val;
         return val > 0.0 ? 1.0 : 0.0;
     }
@@ -120,7 +126,7 @@ struct ElemLessZero
 {
     double operator() (double val) const
     {
-        if (!::rtl::math::isFinite(val))
+        if (!std::isfinite(val))
             return val;
         return val < 0.0 ? 1.0 : 0.0;
     }
@@ -130,7 +136,7 @@ struct ElemGreaterEqualZero
 {
     double operator() (double val) const
     {
-        if (!::rtl::math::isFinite(val))
+        if (!std::isfinite(val))
             return val;
         return val >= 0.0 ? 1.0 : 0.0;
     }
@@ -140,7 +146,7 @@ struct ElemLessEqualZero
 {
     double operator() (double val) const
     {
-        if (!::rtl::math::isFinite(val))
+        if (!std::isfinite(val))
             return val;
         return val <= 0.0 ? 1.0 : 0.0;
     }
@@ -159,6 +165,12 @@ public:
     {
         maNewMatValues.reserve(nRow*nCol);
     }
+
+    CompareMatrixElemFunc( const CompareMatrixElemFunc& ) = delete;
+    CompareMatrixElemFunc& operator= ( const CompareMatrixElemFunc& ) = delete;
+
+    CompareMatrixElemFunc( CompareMatrixElemFunc&& ) = default;
+    CompareMatrixElemFunc& operator= ( CompareMatrixElemFunc&& ) = default;
 
     void operator() (const MatrixImplType::element_block_node_type& node)
     {
@@ -266,8 +278,8 @@ public:
     svl::SharedString GetString( SCSIZE nIndex) const;
     svl::SharedString GetString( SvNumberFormatter& rFormatter, SCSIZE nC, SCSIZE nR) const;
     ScMatrixValue Get(SCSIZE nC, SCSIZE nR) const;
-    bool IsString( SCSIZE nIndex ) const;
-    bool IsString( SCSIZE nC, SCSIZE nR ) const;
+    bool IsStringOrEmpty( SCSIZE nIndex ) const;
+    bool IsStringOrEmpty( SCSIZE nC, SCSIZE nR ) const;
     bool IsEmpty( SCSIZE nC, SCSIZE nR ) const;
     bool IsEmptyCell( SCSIZE nC, SCSIZE nR ) const;
     bool IsEmptyResult( SCSIZE nC, SCSIZE nR ) const;
@@ -296,34 +308,33 @@ public:
     double Or() const;
     double Xor() const;
 
-    ScMatrix::IterateResult Sum(bool bTextAsZero) const;
-    ScMatrix::IterateResult SumSquare(bool bTextAsZero) const;
-    ScMatrix::IterateResult Product(bool bTextAsZero) const;
+    ScMatrix::IterateResult Sum( bool bTextAsZero, bool bIgnoreErrorValues ) const;
+    ScMatrix::IterateResult SumSquare( bool bTextAsZero, bool bIgnoreErrorValues ) const;
+    ScMatrix::IterateResult Product( bool bTextAsZero, bool bIgnoreErrorValues ) const;
     size_t Count(bool bCountStrings, bool bCountErrors) const;
     size_t MatchDoubleInColumns(double fValue, size_t nCol1, size_t nCol2) const;
     size_t MatchStringInColumns(const svl::SharedString& rStr, size_t nCol1, size_t nCol2) const;
 
-    double GetMaxValue( bool bTextAsZero ) const;
-    double GetMinValue( bool bTextAsZero ) const;
+    double GetMaxValue( bool bTextAsZero, bool bIgnoreErrorValues ) const;
+    double GetMinValue( bool bTextAsZero, bool bIgnoreErrorValues ) const;
     double GetGcd() const;
     double GetLcm() const;
 
     ScMatrixRef CompareMatrix( sc::Compare& rComp, size_t nMatPos, sc::CompareOptions* pOptions ) const;
 
     void GetDoubleArray( std::vector<double>& rArray, bool bEmptyAsZero ) const;
-    void MergeDoubleArray( std::vector<double>& rArray, ScFullMatrix::Op eOp ) const;
-    void AddValues( const ScMatrixImpl& rMat );
+    void MergeDoubleArrayMultiply( std::vector<double>& rArray ) const;
 
     template<typename T>
     void ApplyOperation(T aOp, ScMatrixImpl& rMat);
 
     void ExecuteOperation(const std::pair<size_t, size_t>& rStartPos,
-            const std::pair<size_t, size_t>& rEndPos, const ScFullMatrix::DoubleOpFunction& aDoubleFunc,
-            const ScFullMatrix::BoolOpFunction& aBoolFunc, const ScFullMatrix::StringOpFunction& aStringFunc,
-            const ScFullMatrix::EmptyOpFunction& aEmptyFunc) const;
+            const std::pair<size_t, size_t>& rEndPos, const ScMatrix::DoubleOpFunction& aDoubleFunc,
+            const ScMatrix::BoolOpFunction& aBoolFunc, const ScMatrix::StringOpFunction& aStringFunc,
+            const ScMatrix::EmptyOpFunction& aEmptyFunc) const;
 
     template<typename T>
-    std::vector<ScMatrix::IterateResult> ApplyCollectOperation(bool bTextAsZero, const std::vector<std::unique_ptr<T>>& aOp);
+    std::vector<ScMatrix::IterateResult> ApplyCollectOperation(const std::vector<T>& aOp);
 
     void MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& xMat1, const ScMatrixRef& xMat2,
             SvNumberFormatter& rFormatter, svl::SharedStringPool& rPool);
@@ -336,17 +347,57 @@ private:
     void CalcPosition(SCSIZE nIndex, SCSIZE& rC, SCSIZE& rR) const;
 };
 
+static bool bElementsMaxFetched;
+static size_t nElementsMax;
+
+/** The maximum number of elements a matrix or the pool may have at runtime.
+
+    @param  nMemory
+            If 0, the arbitrary limit of one matrix is returned.
+            If >0, the given memory pool divided by the average size of a
+            matrix element is returned, which is used to initialize
+            nElementsMax.
+ */
+static size_t GetElementsMax( size_t nMemory )
+{
+    // Arbitrarily assuming 12 bytes per element, 8 bytes double plus
+    // overhead. Stored as an array in an mdds container it's less, but for
+    // strings or mixed matrix it can be much more...
+    constexpr size_t nPerElem = 12;
+    if (nMemory)
+        return nMemory / nPerElem;
+
+    // Arbitrarily assuming 1GB memory. Could be dynamic at some point.
+    constexpr size_t nMemMax = 0x40000000;
+    // With 1GB that's ~85M elements, or 85 whole columns.
+    constexpr size_t nElemMax = nMemMax / nPerElem;
+    // With MAXROWCOUNT==1048576 and 128 columns => 128M elements, 1.5GB
+    constexpr size_t nArbitraryLimit = size_t(MAXROWCOUNT) * 128;
+    // With the constant 1GB from above that's the actual value.
+    return std::min(nElemMax, nArbitraryLimit);
+}
+
 ScMatrixImpl::ScMatrixImpl(SCSIZE nC, SCSIZE nR) :
-    maMat(nR, nC), maMatFlag(nR, nC), pErrorInterpreter(nullptr) {}
+    maMat(nR, nC), maMatFlag(nR, nC), pErrorInterpreter(nullptr)
+{
+    nElementsMax -= GetElementCount();
+}
 
 ScMatrixImpl::ScMatrixImpl(SCSIZE nC, SCSIZE nR, double fInitVal) :
-    maMat(nR, nC, fInitVal), maMatFlag(nR, nC), pErrorInterpreter(nullptr) {}
+    maMat(nR, nC, fInitVal), maMatFlag(nR, nC), pErrorInterpreter(nullptr)
+{
+    nElementsMax -= GetElementCount();
+}
 
 ScMatrixImpl::ScMatrixImpl( size_t nC, size_t nR, const std::vector<double>& rInitVals ) :
-    maMat(nR, nC, rInitVals.begin(), rInitVals.end()), maMatFlag(nR, nC), pErrorInterpreter(nullptr) {}
+    maMat(nR, nC, rInitVals.begin(), rInitVals.end()), maMatFlag(nR, nC), pErrorInterpreter(nullptr)
+{
+    nElementsMax -= GetElementCount();
+}
 
 ScMatrixImpl::~ScMatrixImpl() COVERITY_NOEXCEPT_FALSE
 {
+    nElementsMax += GetElementCount();
     Clear();
 }
 
@@ -358,6 +409,7 @@ void ScMatrixImpl::Clear()
 
 void ScMatrixImpl::Resize(SCSIZE nC, SCSIZE nR)
 {
+    nElementsMax += GetElementCount();
     if (ScMatrix::IsSizeAllocatable( nC, nR))
     {
         maMat.resize(nR, nC);
@@ -369,10 +421,12 @@ void ScMatrixImpl::Resize(SCSIZE nC, SCSIZE nR)
         maMat.resize(1, 1, CreateDoubleError( FormulaError::MatrixSize));
         maMatFlag.resize(1, 1);
     }
+    nElementsMax -= GetElementCount();
 }
 
 void ScMatrixImpl::Resize(SCSIZE nC, SCSIZE nR, double fVal)
 {
+    nElementsMax += GetElementCount();
     if (ScMatrix::IsSizeAllocatable( nC, nR))
     {
         maMat.resize(nR, nC, fVal);
@@ -384,6 +438,7 @@ void ScMatrixImpl::Resize(SCSIZE nC, SCSIZE nR, double fVal)
         maMat.resize(1, 1, CreateDoubleError( FormulaError::StackOverflow));
         maMatFlag.resize(1, 1);
     }
+    nElementsMax -= GetElementCount();
 }
 
 void ScMatrixImpl::SetErrorInterpreter( ScInterpreter* p)
@@ -604,7 +659,7 @@ svl::SharedString ScMatrixImpl::GetString(SCSIZE nC, SCSIZE nR) const
             case mdds::mtm::element_numeric:
             case mdds::mtm::element_boolean:
                 fErr = maMat.get_numeric(aPos);
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             default:
                 OSL_FAIL("ScMatrixImpl::GetString: access error, no string");
         }
@@ -645,7 +700,7 @@ svl::SharedString ScMatrixImpl::GetString( SvNumberFormatter& rFormatter, SCSIZE
                 return svl::SharedString::getEmptyString();
 
             // result of empty FALSE jump path
-            sal_uLong nKey = rFormatter.GetStandardFormat( css::util::NumberFormat::LOGICAL,
+            sal_uInt32 nKey = rFormatter.GetStandardFormat( SvNumFormatType::LOGICAL,
                     ScGlobal::eLnge);
             OUString aStr;
             Color* pColor = nullptr;
@@ -667,7 +722,7 @@ svl::SharedString ScMatrixImpl::GetString( SvNumberFormatter& rFormatter, SCSIZE
         return svl::SharedString( ScGlobal::GetErrorString( nError));   // string not interned
     }
 
-    sal_uLong nKey = rFormatter.GetStandardFormat( css::util::NumberFormat::NUMBER,
+    sal_uInt32 nKey = rFormatter.GetStandardFormat( SvNumFormatType::NUMBER,
             ScGlobal::eLnge);
     OUString aStr;
     rFormatter.GetInputLineString( fVal, nKey, aStr);
@@ -723,14 +778,14 @@ ScMatrixValue ScMatrixImpl::Get(SCSIZE nC, SCSIZE nR) const
     return aVal;
 }
 
-bool ScMatrixImpl::IsString( SCSIZE nIndex ) const
+bool ScMatrixImpl::IsStringOrEmpty( SCSIZE nIndex ) const
 {
     SCSIZE nC, nR;
     CalcPosition(nIndex, nC, nR);
-    return IsString(nC, nR);
+    return IsStringOrEmpty(nC, nR);
 }
 
-bool ScMatrixImpl::IsString( SCSIZE nC, SCSIZE nR ) const
+bool ScMatrixImpl::IsStringOrEmpty( SCSIZE nC, SCSIZE nR ) const
 {
     ValidColRowReplicated( nC, nR );
     switch (maMat.get_type(nR, nC))
@@ -935,7 +990,7 @@ void ScMatrixImpl::CompareEqual()
 {
     MatrixImplType::size_pair_type aSize = maMat.size();
     CompareMatrixElemFunc<ElemEqualZero> aFunc(aSize.row, aSize.column);
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(std::move(aFunc));
     aFunc.swap(maMat);
 }
 
@@ -943,7 +998,7 @@ void ScMatrixImpl::CompareNotEqual()
 {
     MatrixImplType::size_pair_type aSize = maMat.size();
     CompareMatrixElemFunc<ElemNotEqualZero> aFunc(aSize.row, aSize.column);
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(std::move(aFunc));
     aFunc.swap(maMat);
 }
 
@@ -951,7 +1006,7 @@ void ScMatrixImpl::CompareLess()
 {
     MatrixImplType::size_pair_type aSize = maMat.size();
     CompareMatrixElemFunc<ElemLessZero> aFunc(aSize.row, aSize.column);
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(std::move(aFunc));
     aFunc.swap(maMat);
 }
 
@@ -959,7 +1014,7 @@ void ScMatrixImpl::CompareGreater()
 {
     MatrixImplType::size_pair_type aSize = maMat.size();
     CompareMatrixElemFunc<ElemGreaterZero> aFunc(aSize.row, aSize.column);
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(std::move(aFunc));
     aFunc.swap(maMat);
 }
 
@@ -967,7 +1022,7 @@ void ScMatrixImpl::CompareLessEqual()
 {
     MatrixImplType::size_pair_type aSize = maMat.size();
     CompareMatrixElemFunc<ElemLessEqualZero> aFunc(aSize.row, aSize.column);
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(std::move(aFunc));
     aFunc.swap(maMat);
 }
 
@@ -975,7 +1030,7 @@ void ScMatrixImpl::CompareGreaterEqual()
 {
     MatrixImplType::size_pair_type aSize = maMat.size();
     CompareMatrixElemFunc<ElemGreaterEqualZero> aFunc(aSize.row, aSize.column);
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(std::move(aFunc));
     aFunc.swap(maMat);
 }
 
@@ -1023,7 +1078,7 @@ double EvalMatrix(const MatrixImplType& rMat)
                 return CreateDoubleError(FormulaError::IllegalArgument);
 
             double fVal = rMat.get_numeric(aPos);
-            if (!::rtl::math::isFinite(fVal))
+            if (!std::isfinite(fVal))
                 // DoubleError
                 return fVal;
 
@@ -1065,8 +1120,12 @@ class WalkElementBlocks
     ScMatrix::IterateResult maRes;
     bool mbFirst:1;
     bool mbTextAsZero:1;
+    bool mbIgnoreErrorValues:1;
 public:
-    WalkElementBlocks(bool bTextAsZero) : maRes(Op::InitVal, Op::InitVal, 0), mbFirst(true), mbTextAsZero(bTextAsZero) {}
+    WalkElementBlocks(bool bTextAsZero, bool bIgnoreErrorValues) :
+        maRes(Op::InitVal, Op::InitVal, 0), mbFirst(true),
+        mbTextAsZero(bTextAsZero), mbIgnoreErrorValues(bIgnoreErrorValues)
+    {}
 
     const ScMatrix::IterateResult& getResult() const { return maRes; }
 
@@ -1078,10 +1137,17 @@ public:
             {
                 typedef MatrixImplType::numeric_block_type block_type;
 
+                size_t nIgnored = 0;
                 block_type::const_iterator it = block_type::begin(*node.data);
                 block_type::const_iterator itEnd = block_type::end(*node.data);
                 for (; it != itEnd; ++it)
                 {
+                    if (mbIgnoreErrorValues && !std::isfinite(*it))
+                    {
+                        ++nIgnored;
+                        continue;
+                    }
+
                     if (mbFirst)
                     {
                         maOp(maRes.mfFirst, *it);
@@ -1092,7 +1158,7 @@ public:
                         maOp(maRes.mfRest, *it);
                     }
                 }
-                maRes.mnCount += node.size;
+                maRes.mnCount += node.size - nIgnored;
             }
             break;
             case mdds::mtm::element_boolean:
@@ -1130,19 +1196,32 @@ public:
 template<typename Op>
 class WalkElementBlocksMultipleValues
 {
-    const std::vector<std::unique_ptr<Op>>& maOp;
+    const std::vector<Op>* mpOp;
     std::vector<ScMatrix::IterateResult> maRes;
     bool mbFirst:1;
-    bool mbTextAsZero:1;
 public:
-    WalkElementBlocksMultipleValues(bool bTextAsZero, const std::vector<std::unique_ptr<Op>>& aOp) :
-        maOp(aOp), mbFirst(true), mbTextAsZero(bTextAsZero)
+    WalkElementBlocksMultipleValues(const std::vector<Op>& aOp) :
+        mpOp(&aOp), mbFirst(true)
     {
-        for (const auto& rpOp : maOp)
+        for (const auto& rpOp : *mpOp)
         {
-            maRes.emplace_back(rpOp->mInitVal, rpOp->mInitVal, 0);
+            maRes.emplace_back(rpOp.mInitVal, rpOp.mInitVal, 0);
         }
         maRes.emplace_back(0.0, 0.0, 0); // count
+    }
+
+    WalkElementBlocksMultipleValues( const WalkElementBlocksMultipleValues& ) = delete;
+    WalkElementBlocksMultipleValues& operator= ( const WalkElementBlocksMultipleValues& ) = delete;
+
+    WalkElementBlocksMultipleValues(WalkElementBlocksMultipleValues&& r) noexcept :
+        mpOp(r.mpOp), maRes(std::move(r.maRes)), mbFirst(r.mbFirst) {}
+
+    WalkElementBlocksMultipleValues& operator=(WalkElementBlocksMultipleValues&& r) noexcept
+    {
+        mpOp = r.mpOp;
+        maRes = std::move(r.maRes);
+        mbFirst = r.mbFirst;
+        return *this;
     }
 
     const std::vector<ScMatrix::IterateResult>& getResult() const { return maRes; }
@@ -1161,17 +1240,17 @@ public:
                 {
                     if (mbFirst)
                     {
-                        for (auto i = 0u; i < maOp.size(); ++i)
+                        for (size_t i = 0u; i < mpOp->size(); ++i)
                         {
-                            (*maOp[i])(maRes[i].mfFirst, *it);
+                            (*mpOp)[i](maRes[i].mfFirst, *it);
                         }
                         mbFirst = false;
                     }
                     else
                     {
-                        for (auto i = 0u; i < maOp.size(); ++i)
+                        for (size_t i = 0u; i < mpOp->size(); ++i)
                         {
-                            (*maOp[i])(maRes[i].mfRest, *it);
+                            (*mpOp)[i](maRes[i].mfRest, *it);
                         }
                     }
                 }
@@ -1188,17 +1267,17 @@ public:
                 {
                     if (mbFirst)
                     {
-                        for (auto i = 0u; i < maOp.size(); ++i)
+                        for (size_t i = 0u; i < mpOp->size(); ++i)
                         {
-                            (*maOp[i])(maRes[i].mfFirst, *it);
+                            (*mpOp)[i](maRes[i].mfFirst, *it);
                         }
                         mbFirst = false;
                     }
                     else
                     {
-                        for (auto i = 0u; i < maOp.size(); ++i)
+                        for (size_t i = 0u; i < mpOp->size(); ++i)
                         {
-                            (*maOp[i])(maRes[i].mfRest, *it);
+                            (*mpOp)[i](maRes[i].mfRest, *it);
                         }
                     }
                 }
@@ -1206,9 +1285,6 @@ public:
             }
             break;
             case mdds::mtm::element_string:
-                if (mbTextAsZero)
-                    maRes.back().mnCount += node.size;
-            break;
             case mdds::mtm::element_empty:
             default:
                 ;
@@ -1241,7 +1317,7 @@ public:
                     block_type::const_iterator itEnd = block_type::end(*node.data);
                     for (; it != itEnd; ++it)
                     {
-                        if (!::rtl::math::isFinite(*it))
+                        if (!std::isfinite(*it))
                             --mnCount;
                     }
                 }
@@ -1266,24 +1342,28 @@ template<typename Type>
 class WalkAndMatchElements
 {
     Type maMatchValue;
-    MatrixImplType::size_pair_type maSize;
-    size_t mnCol1;
-    size_t mnCol2;
+    size_t mnStartIndex;
+    size_t mnStopIndex;
     size_t mnResult;
     size_t mnIndex;
 
 public:
     WalkAndMatchElements(Type aMatchValue, const MatrixImplType::size_pair_type& aSize, size_t nCol1, size_t nCol2) :
         maMatchValue(aMatchValue),
-        maSize(aSize),
-        mnCol1(nCol1),
-        mnCol2(nCol2),
+        mnStartIndex( nCol1 * aSize.row ),
+        mnStopIndex( (nCol2 + 1) * aSize.row ),
         mnResult(ResultNotSet),
-        mnIndex(0) {}
+        mnIndex(0)
+    {
+        assert( nCol1 < aSize.column && nCol2 < aSize.column);
+    }
 
     size_t getMatching() const { return mnResult; }
 
-    size_t getRemainingCount() const { return ((mnCol2 + 1) * maSize.row) - mnIndex; }
+    size_t getRemainingCount() const
+    {
+        return mnIndex < mnStopIndex ? mnStopIndex - mnIndex : 0;
+    }
 
     size_t compare(const MatrixImplType::element_block_node_type& node) const;
 
@@ -1294,7 +1374,7 @@ public:
             return;
 
         // limit lookup to the requested columns
-        if ((mnCol1 * maSize.row) <= mnIndex && getRemainingCount() > 0)
+        if (mnStartIndex <= mnIndex && getRemainingCount() > 0)
         {
             mnResult = compare(node);
         }
@@ -1386,6 +1466,10 @@ struct MaxOp
     static double init() { return -std::numeric_limits<double>::max(); }
     static double compare(double left, double right)
     {
+        if (!std::isfinite(left))
+            return left;
+        if (!std::isfinite(right))
+            return right;
         return std::max(left, right);
     }
 
@@ -1404,6 +1488,10 @@ struct MinOp
     static double init() { return std::numeric_limits<double>::max(); }
     static double compare(double left, double right)
     {
+        if (!std::isfinite(left))
+            return left;
+        if (!std::isfinite(right))
+            return right;
         return std::min(left, right);
     }
 
@@ -1458,11 +1546,13 @@ class CalcMaxMinValue
 {
     double mfVal;
     bool mbTextAsZero;
+    bool mbIgnoreErrorValues;
     bool mbHasValue;
 public:
-    CalcMaxMinValue( bool bTextAsZero ) :
+    CalcMaxMinValue( bool bTextAsZero, bool bIgnoreErrorValues ) :
         mfVal(Op::init()),
         mbTextAsZero(bTextAsZero),
+        mbIgnoreErrorValues(bIgnoreErrorValues),
         mbHasValue(false) {}
 
     double getValue() const { return mbHasValue ? mfVal : 0.0; }
@@ -1478,8 +1568,19 @@ public:
 
                 block_type::const_iterator it = block_type::begin(*node.data);
                 block_type::const_iterator itEnd = block_type::end(*node.data);
-                for (; it != itEnd; ++it)
-                    mfVal = Op::compare(mfVal, *it);
+                if (mbIgnoreErrorValues)
+                {
+                    for (; it != itEnd; ++it)
+                    {
+                        if (std::isfinite(*it))
+                            mfVal = Op::compare(mfVal, *it);
+                    }
+                }
+                else
+                {
+                    for (; it != itEnd; ++it)
+                        mfVal = Op::compare(mfVal, *it);
+                }
 
                 mbHasValue = true;
             }
@@ -1562,9 +1663,9 @@ public:
     }
 };
 
-inline double evaluate( double fVal, ScQueryOp eOp )
+double evaluate( double fVal, ScQueryOp eOp )
 {
-    if (!rtl::math::isFinite(fVal))
+    if (!std::isfinite(fVal))
         return fVal;
 
     switch (eOp)
@@ -1589,7 +1690,7 @@ inline double evaluate( double fVal, ScQueryOp eOp )
             ;
     }
 
-    SAL_WARN("sc.core",  "evaluate: unhandled comparison operator: " << (int)eOp);
+    SAL_WARN("sc.core",  "evaluate: unhandled comparison operator: " << static_cast<int>(eOp));
     return CreateDoubleError( FormulaError::UnknownState);
 }
 
@@ -1611,6 +1712,24 @@ public:
         mrComp(rComp), mnMatPos(nMatPos), mpOptions(pOptions)
     {
         maResValues.reserve(nResSize);
+    }
+
+    CompareMatrixFunc( const CompareMatrixFunc& ) = delete;
+    CompareMatrixFunc& operator= ( const CompareMatrixFunc& ) = delete;
+
+    CompareMatrixFunc(CompareMatrixFunc&& r) noexcept :
+        mrComp(r.mrComp),
+        mnMatPos(r.mnMatPos),
+        mpOptions(r.mpOptions),
+        maResValues(std::move(r.maResValues)) {}
+
+    CompareMatrixFunc& operator=(CompareMatrixFunc&& r) noexcept
+    {
+        mrComp = r.mrComp;
+        mnMatPos = r.mnMatPos;
+        mpOptions = r.mpOptions;
+        maResValues = std::move(r.maResValues);
+        return *this;
     }
 
     void operator() (const MatrixImplType::element_block_node_type& node)
@@ -1721,10 +1840,26 @@ public:
         maResValues.reserve(nResSize);
     }
 
+    CompareMatrixToNumericFunc( const CompareMatrixToNumericFunc& ) = delete;
+    CompareMatrixToNumericFunc& operator= ( const CompareMatrixToNumericFunc& ) = delete;
+
+    CompareMatrixToNumericFunc(CompareMatrixToNumericFunc&& r) noexcept :
+        mrComp(r.mrComp),
+        mfRightValue(r.mfRightValue),
+        mpOptions(r.mpOptions),
+        maResValues(std::move(r.maResValues)) {}
+
+    CompareMatrixToNumericFunc& operator=(CompareMatrixToNumericFunc&& r) noexcept
+    {
+        mrComp = r.mrComp;
+        mfRightValue = r.mfRightValue;
+        mpOptions = r.mpOptions;
+        maResValues = std::move(r.maResValues);
+        return *this;
+    }
+
     void operator() (const MatrixImplType::element_block_node_type& node)
     {
-        sc::Compare::Cell& rCell = mrComp.maCells[0];
-
         switch (node.type)
         {
             case mdds::mtm::element_numeric:
@@ -1756,6 +1891,7 @@ public:
                 for (; it != itEnd; ++it)
                 {
                     const svl::SharedString& rStr = *it;
+                    sc::Compare::Cell& rCell = mrComp.maCells[0];
                     rCell.mbValue = false;
                     rCell.mbEmpty = false;
                     rCell.maStr = rStr;
@@ -1784,11 +1920,39 @@ class ToDoubleArray
     double mfNaN;
     bool mbEmptyAsZero;
 
+    void moveArray( ToDoubleArray& r )
+    {
+        // Re-create the iterator from the new array after the array has been
+        // moved, to ensure that the iterator points to a valid array
+        // position.
+        size_t n = std::distance(r.maArray.begin(), r.miPos);
+        maArray = std::move(r.maArray);
+        miPos = maArray.begin();
+        std::advance(miPos, n);
+    }
+
 public:
     ToDoubleArray( size_t nSize, bool bEmptyAsZero ) :
         maArray(nSize, 0.0), miPos(maArray.begin()), mbEmptyAsZero(bEmptyAsZero)
     {
         mfNaN = CreateDoubleError( FormulaError::ElementNaN);
+    }
+
+    ToDoubleArray( const ToDoubleArray& ) = delete;
+    ToDoubleArray& operator= ( const ToDoubleArray& ) = delete;
+
+    ToDoubleArray(ToDoubleArray&& r) noexcept :
+        mfNaN(r.mfNaN), mbEmptyAsZero(r.mbEmptyAsZero)
+    {
+        moveArray(r);
+    }
+
+    ToDoubleArray& operator=(ToDoubleArray&& r) noexcept
+    {
+        mfNaN = r.mfNaN;
+        mbEmptyAsZero = r.mbEmptyAsZero;
+        moveArray(r);
+        return *this;
     }
 
     void operator() (const MatrixImplType::element_block_node_type& node)
@@ -1799,8 +1963,8 @@ public:
         {
             case mdds::mtm::element_numeric:
             {
-                numeric_element_block::const_iterator it = numeric_element_block::begin(*node.data);
-                numeric_element_block::const_iterator itEnd = numeric_element_block::end(*node.data);
+                double_element_block::const_iterator it = double_element_block::begin(*node.data);
+                double_element_block::const_iterator itEnd = double_element_block::end(*node.data);
                 for (; it != itEnd; ++it, ++miPos)
                     *miPos = *it;
             }
@@ -1842,7 +2006,7 @@ public:
     }
 };
 
-struct ArrayMul : public std::binary_function<double, double, double>
+struct ArrayMul
 {
     double operator() (const double& lhs, const double& rhs) const
     {
@@ -1853,26 +2017,31 @@ struct ArrayMul : public std::binary_function<double, double, double>
 template<typename Op>
 class MergeDoubleArrayFunc
 {
-    std::vector<double>& mrArray;
     std::vector<double>::iterator miPos;
     double mfNaN;
 public:
-    MergeDoubleArrayFunc(std::vector<double>& rArray) : mrArray(rArray), miPos(mrArray.begin())
+    MergeDoubleArrayFunc(std::vector<double>& rArray) : miPos(rArray.begin())
     {
         mfNaN = CreateDoubleError( FormulaError::ElementNaN);
     }
 
+    MergeDoubleArrayFunc( const MergeDoubleArrayFunc& ) = delete;
+    MergeDoubleArrayFunc& operator= ( const MergeDoubleArrayFunc& ) = delete;
+
+    MergeDoubleArrayFunc( MergeDoubleArrayFunc&& ) = default;
+    MergeDoubleArrayFunc& operator= ( MergeDoubleArrayFunc&& ) = default;
+
     void operator() (const MatrixImplType::element_block_node_type& node)
     {
         using namespace mdds::mtv;
-        static Op op;
+        static const Op op;
 
         switch (node.type)
         {
             case mdds::mtm::element_numeric:
             {
-                numeric_element_block::const_iterator it = numeric_element_block::begin(*node.data);
-                numeric_element_block::const_iterator itEnd = numeric_element_block::end(*node.data);
+                double_element_block::const_iterator it = double_element_block::begin(*node.data);
+                double_element_block::const_iterator itEnd = double_element_block::end(*node.data);
                 for (; it != itEnd; ++it, ++miPos)
                 {
                     if (GetDoubleErrorValue(*miPos) == FormulaError::ElementNaN)
@@ -1924,76 +2093,76 @@ public:
 namespace {
 
 template<typename TOp>
-ScMatrix::IterateResult GetValueWithCount(bool bTextAsZero, const MatrixImplType& maMat)
+ScMatrix::IterateResult GetValueWithCount(bool bTextAsZero, bool bIgnoreErrorValues, const MatrixImplType& maMat)
 {
-    WalkElementBlocks<TOp> aFunc(bTextAsZero);
-    maMat.walk(aFunc);
+    WalkElementBlocks<TOp> aFunc(bTextAsZero, bIgnoreErrorValues);
+    aFunc = maMat.walk(aFunc);
     return aFunc.getResult();
 }
 
 }
 
-ScMatrix::IterateResult ScMatrixImpl::Sum(bool bTextAsZero) const
+ScMatrix::IterateResult ScMatrixImpl::Sum(bool bTextAsZero, bool bIgnoreErrorValues) const
 {
-    return GetValueWithCount<sc::op::Sum>(bTextAsZero, maMat);
+    return GetValueWithCount<sc::op::Sum>(bTextAsZero, bIgnoreErrorValues, maMat);
 }
 
-ScMatrix::IterateResult ScMatrixImpl::SumSquare(bool bTextAsZero) const
+ScMatrix::IterateResult ScMatrixImpl::SumSquare(bool bTextAsZero, bool bIgnoreErrorValues) const
 {
-    return GetValueWithCount<sc::op::SumSquare>(bTextAsZero, maMat);
+    return GetValueWithCount<sc::op::SumSquare>(bTextAsZero, bIgnoreErrorValues, maMat);
 }
 
-ScMatrix::IterateResult ScMatrixImpl::Product(bool bTextAsZero) const
+ScMatrix::IterateResult ScMatrixImpl::Product(bool bTextAsZero, bool bIgnoreErrorValues) const
 {
-    return GetValueWithCount<sc::op::Product>(bTextAsZero, maMat);
+    return GetValueWithCount<sc::op::Product>(bTextAsZero, bIgnoreErrorValues, maMat);
 }
 
 size_t ScMatrixImpl::Count(bool bCountStrings, bool bCountErrors) const
 {
     CountElements aFunc(bCountStrings, bCountErrors);
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(aFunc);
     return aFunc.getCount();
 }
 
 size_t ScMatrixImpl::MatchDoubleInColumns(double fValue, size_t nCol1, size_t nCol2) const
 {
     WalkAndMatchElements<double> aFunc(fValue, maMat.size(), nCol1, nCol2);
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(aFunc);
     return aFunc.getMatching();
 }
 
 size_t ScMatrixImpl::MatchStringInColumns(const svl::SharedString& rStr, size_t nCol1, size_t nCol2) const
 {
     WalkAndMatchElements<svl::SharedString> aFunc(rStr, maMat.size(), nCol1, nCol2);
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(aFunc);
     return aFunc.getMatching();
 }
 
-double ScMatrixImpl::GetMaxValue( bool bTextAsZero ) const
+double ScMatrixImpl::GetMaxValue( bool bTextAsZero, bool bIgnoreErrorValues ) const
 {
-    CalcMaxMinValue<MaxOp> aFunc(bTextAsZero);
-    maMat.walk(aFunc);
+    CalcMaxMinValue<MaxOp> aFunc(bTextAsZero, bIgnoreErrorValues);
+    aFunc = maMat.walk(aFunc);
     return aFunc.getValue();
 }
 
-double ScMatrixImpl::GetMinValue( bool bTextAsZero ) const
+double ScMatrixImpl::GetMinValue( bool bTextAsZero, bool bIgnoreErrorValues ) const
 {
-    CalcMaxMinValue<MinOp> aFunc(bTextAsZero);
-    maMat.walk(aFunc);
+    CalcMaxMinValue<MinOp> aFunc(bTextAsZero, bIgnoreErrorValues);
+    aFunc = maMat.walk(aFunc);
     return aFunc.getValue();
 }
 
 double ScMatrixImpl::GetGcd() const
 {
     CalcGcdLcm<Gcd> aFunc;
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(aFunc);
     return aFunc.getResult();
 }
 
 double ScMatrixImpl::GetLcm() const
 {
     CalcGcdLcm<Lcm> aFunc;
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(aFunc);
     return aFunc.getResult();
 }
 
@@ -2010,132 +2179,50 @@ ScMatrixRef ScMatrixImpl::CompareMatrix(
             // function object that has much less branching for much better
             // performance.
             CompareMatrixToNumericFunc aFunc(nSize, rComp, rComp.maCells[1].mfValue, pOptions);
-            maMat.walk(aFunc);
+            aFunc = maMat.walk(std::move(aFunc));
 
             // We assume the result matrix has the same dimension as this matrix.
             const std::vector<double>& rResVal = aFunc.getValues();
+            assert (nSize == rResVal.size());
             if (nSize != rResVal.size())
-                ScMatrixRef();
+                return ScMatrixRef();
 
-            return ScMatrixRef(new ScFullMatrix(aSize.column, aSize.row, rResVal));
+            return ScMatrixRef(new ScMatrix(aSize.column, aSize.row, rResVal));
         }
     }
 
     CompareMatrixFunc aFunc(nSize, rComp, nMatPos, pOptions);
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(std::move(aFunc));
 
     // We assume the result matrix has the same dimension as this matrix.
     const std::vector<double>& rResVal = aFunc.getValues();
+    assert (nSize == rResVal.size());
     if (nSize != rResVal.size())
-        ScMatrixRef();
+        return ScMatrixRef();
 
-    return ScMatrixRef(new ScFullMatrix(aSize.column, aSize.row, rResVal));
+    return ScMatrixRef(new ScMatrix(aSize.column, aSize.row, rResVal));
 }
 
 void ScMatrixImpl::GetDoubleArray( std::vector<double>& rArray, bool bEmptyAsZero ) const
 {
     MatrixImplType::size_pair_type aSize = maMat.size();
     ToDoubleArray aFunc(aSize.row*aSize.column, bEmptyAsZero);
-    maMat.walk(aFunc);
+    aFunc = maMat.walk(std::move(aFunc));
     aFunc.swap(rArray);
 }
 
-void ScMatrixImpl::MergeDoubleArray( std::vector<double>& rArray, ScFullMatrix::Op eOp ) const
+void ScMatrixImpl::MergeDoubleArrayMultiply( std::vector<double>& rArray ) const
 {
     MatrixImplType::size_pair_type aSize = maMat.size();
     size_t nSize = aSize.row*aSize.column;
     if (nSize != rArray.size())
         return;
 
-    switch (eOp)
-    {
-        case ScFullMatrix::Mul:
-        {
-            MergeDoubleArrayFunc<ArrayMul> aFunc(rArray);
-            maMat.walk(aFunc);
-        }
-        break;
-        default:
-            ;
-    }
+    MergeDoubleArrayFunc<ArrayMul> aFunc(rArray);
+    maMat.walk(std::move(aFunc));
 }
 
-void ScMatrixImpl::AddValues( const ScMatrixImpl& rMat )
-{
-    const MatrixImplType& rOther = rMat.maMat;
-    MatrixImplType::size_pair_type aSize = maMat.size();
-    if (aSize != rOther.size())
-        // Geometry must match.
-        return;
-
-    // For now, we only add two matricies if and only if 1) the receiving
-    // matrix consists only of one numeric block, and 2) the other matrix
-    // consists of either one numeric block or one boolean block.  In the
-    // future, we may want to be more flexible support matricies that consist
-    // of multiple blocks.
-
-    MatrixImplType::position_type aPos1 = maMat.position(0, 0);
-    MatrixImplType::const_position_type aPos2 = rOther.position(0, 0);
-    if (MatrixImplType::to_mtm_type(aPos1.first->type) != mdds::mtm::element_numeric)
-        return;
-
-    if (aPos1.first->size != aPos2.first->size)
-        return;
-
-    if (aPos1.first->size != aSize.row * aSize.column)
-        return;
-
-    MatrixImplType::numeric_block_type::iterator it =
-        MatrixImplType::numeric_block_type::begin(*aPos1.first->data);
-    MatrixImplType::numeric_block_type::iterator itEnd =
-        MatrixImplType::numeric_block_type::end(*aPos1.first->data);
-
-    switch (MatrixImplType::to_mtm_type(aPos2.first->type))
-    {
-        case mdds::mtm::element_boolean:
-        {
-            MatrixImplType::boolean_block_type::iterator it2 =
-                MatrixImplType::boolean_block_type::begin(*aPos2.first->data);
-
-            for (; it != itEnd; ++it, ++it2)
-                *it += *it2;
-        }
-        break;
-        case mdds::mtm::element_numeric:
-        {
-            MatrixImplType::numeric_block_type::iterator it2 =
-                MatrixImplType::numeric_block_type::begin(*aPos2.first->data);
-
-            for (; it != itEnd; ++it, ++it2)
-                *it += *it2;
-        }
-        break;
-        default:
-            ;
-    }
-}
-
-namespace Op {
-
-template<typename T>
-struct return_type
-{
-    typedef T type;
-};
-
-template<>
-struct return_type<bool>
-{
-    typedef double type;
-};
-
-template<>
-struct return_type<char>
-{
-    typedef svl::SharedString type;
-};
-
-}
+namespace {
 
 template<typename T, typename U, typename return_type>
 struct wrapped_iterator
@@ -2243,8 +2330,6 @@ public:
     }
 };
 
-namespace {
-
 MatrixImplType::position_type increment_position(const MatrixImplType::position_type& pos, size_t n)
 {
     MatrixImplType::position_type ret = pos;
@@ -2266,23 +2351,25 @@ MatrixImplType::position_type increment_position(const MatrixImplType::position_
     return ret;
 }
 
-}
-
 template<typename T>
 struct MatrixOpWrapper
 {
 private:
     MatrixImplType& mrMat;
     MatrixImplType::position_type pos;
-    T maOp;
+    const T* mpOp;
 
 public:
-    MatrixOpWrapper(MatrixImplType& rMat, T const & aOp):
+    MatrixOpWrapper(MatrixImplType& rMat, const T& aOp):
         mrMat(rMat),
         pos(rMat.position(0,0)),
-        maOp(aOp)
+        mpOp(&aOp)
     {
     }
+
+    MatrixOpWrapper( const MatrixOpWrapper& r ) : mrMat(r.mrMat), pos(r.pos), mpOp(r.mpOp) {}
+
+    MatrixOpWrapper& operator= ( const MatrixOpWrapper& r ) = default;
 
     void operator()(const MatrixImplType::element_block_node_type& node)
     {
@@ -2294,7 +2381,7 @@ public:
 
                 block_type::const_iterator it = block_type::begin(*node.data);
                 block_type::const_iterator itEnd = block_type::end(*node.data);
-                MatrixIteratorWrapper<block_type, T, typename T::number_value_type> aFunc(it, itEnd, maOp);
+                MatrixIteratorWrapper<block_type, T, typename T::number_value_type> aFunc(it, itEnd, *mpOp);
                 pos = mrMat.set(pos,aFunc.begin(), aFunc.end());
             }
             break;
@@ -2305,7 +2392,7 @@ public:
                 block_type::const_iterator it = block_type::begin(*node.data);
                 block_type::const_iterator itEnd = block_type::end(*node.data);
 
-                MatrixIteratorWrapper<block_type, T, typename T::number_value_type> aFunc(it, itEnd, maOp);
+                MatrixIteratorWrapper<block_type, T, typename T::number_value_type> aFunc(it, itEnd, *mpOp);
                 pos = mrMat.set(pos, aFunc.begin(), aFunc.end());
             }
             break;
@@ -2316,17 +2403,17 @@ public:
                 block_type::const_iterator it = block_type::begin(*node.data);
                 block_type::const_iterator itEnd = block_type::end(*node.data);
 
-                MatrixIteratorWrapper<block_type, T, typename T::number_value_type> aFunc(it, itEnd, maOp);
+                MatrixIteratorWrapper<block_type, T, typename T::number_value_type> aFunc(it, itEnd, *mpOp);
                 pos = mrMat.set(pos, aFunc.begin(), aFunc.end());
             }
             break;
             case mdds::mtm::element_empty:
             {
-                if (maOp.useFunctionForEmpty())
+                if (mpOp->useFunctionForEmpty())
                 {
                     std::vector<char> aVec(node.size);
                     MatrixIteratorWrapper<std::vector<char>, T, typename T::number_value_type>
-                        aFunc(aVec.begin(), aVec.end(), maOp);
+                        aFunc(aVec.begin(), aVec.end(), *mpOp);
                     pos = mrMat.set(pos, aFunc.begin(), aFunc.end());
                 }
             }
@@ -2338,6 +2425,8 @@ public:
     }
 };
 
+}
+
 template<typename T>
 void ScMatrixImpl::ApplyOperation(T aOp, ScMatrixImpl& rMat)
 {
@@ -2346,24 +2435,22 @@ void ScMatrixImpl::ApplyOperation(T aOp, ScMatrixImpl& rMat)
 }
 
 template<typename T>
-std::vector<ScMatrix::IterateResult> ScMatrixImpl::ApplyCollectOperation(bool bTextAsZero, const std::vector<std::unique_ptr<T>>& aOp)
+std::vector<ScMatrix::IterateResult> ScMatrixImpl::ApplyCollectOperation(const std::vector<T>& aOp)
 {
-    WalkElementBlocksMultipleValues<T> aFunc(bTextAsZero, aOp);
-    maMat.walk(aFunc);
+    WalkElementBlocksMultipleValues<T> aFunc(aOp);
+    aFunc = maMat.walk(std::move(aFunc));
     return aFunc.getResult();
 }
 
 namespace {
 
-class WalkElementBlockOperation
+struct ElementBlock
 {
-public:
-
-    WalkElementBlockOperation(size_t nRowSize,
-            ScFullMatrix::DoubleOpFunction const & aDoubleFunc,
-            ScFullMatrix::BoolOpFunction const & aBoolFunc,
-            ScFullMatrix::StringOpFunction const & aStringFunc,
-            ScFullMatrix::EmptyOpFunction const & aEmptyFunc):
+    ElementBlock(size_t nRowSize,
+            ScMatrix::DoubleOpFunction const & aDoubleFunc,
+            ScMatrix::BoolOpFunction const & aBoolFunc,
+            ScMatrix::StringOpFunction const & aStringFunc,
+            ScMatrix::EmptyOpFunction const & aEmptyFunc):
         mnRowSize(nRowSize),
         mnRowPos(0),
         mnColPos(0),
@@ -2371,6 +2458,25 @@ public:
         maBoolFunc(aBoolFunc),
         maStringFunc(aStringFunc),
         maEmptyFunc(aEmptyFunc)
+    {
+    }
+
+    size_t mnRowSize;
+    size_t mnRowPos;
+    size_t mnColPos;
+
+    ScMatrix::DoubleOpFunction maDoubleFunc;
+    ScMatrix::BoolOpFunction maBoolFunc;
+    ScMatrix::StringOpFunction maStringFunc;
+    ScMatrix::EmptyOpFunction maEmptyFunc;
+};
+
+class WalkElementBlockOperation
+{
+public:
+
+    WalkElementBlockOperation(ElementBlock& rElementBlock)
+        : mrElementBlock(rElementBlock)
     {
     }
 
@@ -2388,12 +2494,12 @@ public:
                 std::advance(itEnd, node.size);
                 for (auto itr = it; itr != itEnd; ++itr)
                 {
-                    maDoubleFunc(mnRowPos, mnColPos, *itr);
-                    ++mnRowPos;
-                    if (mnRowPos >= mnRowSize)
+                    mrElementBlock.maDoubleFunc(mrElementBlock.mnRowPos, mrElementBlock.mnColPos, *itr);
+                    ++mrElementBlock.mnRowPos;
+                    if (mrElementBlock.mnRowPos >= mrElementBlock.mnRowSize)
                     {
-                        mnRowPos = 0;
-                        ++mnColPos;
+                        mrElementBlock.mnRowPos = 0;
+                        ++mrElementBlock.mnColPos;
                     }
                 }
             }
@@ -2408,12 +2514,12 @@ public:
                 std::advance(itEnd, node.size);
                 for (auto itr = it; itr != itEnd; ++itr)
                 {
-                    maStringFunc(mnRowPos, mnColPos, *itr);
-                    ++mnRowPos;
-                    if (mnRowPos >= mnRowSize)
+                    mrElementBlock.maStringFunc(mrElementBlock.mnRowPos, mrElementBlock.mnColPos, *itr);
+                    ++mrElementBlock.mnRowPos;
+                    if (mrElementBlock.mnRowPos >= mrElementBlock.mnRowSize)
                     {
-                        mnRowPos = 0;
-                        ++mnColPos;
+                        mrElementBlock.mnRowPos = 0;
+                        ++mrElementBlock.mnColPos;
                     }
                 }
             }
@@ -2428,12 +2534,12 @@ public:
                 std::advance(itEnd, node.size);
                 for (auto itr = it; itr != itEnd; ++itr)
                 {
-                    maBoolFunc(mnRowPos, mnColPos, *itr);
-                    ++mnRowPos;
-                    if (mnRowPos >= mnRowSize)
+                    mrElementBlock.maBoolFunc(mrElementBlock.mnRowPos, mrElementBlock.mnColPos, *itr);
+                    ++mrElementBlock.mnRowPos;
+                    if (mrElementBlock.mnRowPos >= mrElementBlock.mnRowSize)
                     {
-                        mnRowPos = 0;
-                        ++mnColPos;
+                        mrElementBlock.mnRowPos = 0;
+                        ++mrElementBlock.mnColPos;
                     }
                 }
             }
@@ -2442,12 +2548,12 @@ public:
             {
                 for (size_t i=0; i < node.size; ++i)
                 {
-                    maEmptyFunc(mnRowPos, mnColPos);
-                    ++mnRowPos;
-                    if (mnRowPos >= mnRowSize)
+                    mrElementBlock.maEmptyFunc(mrElementBlock.mnRowPos, mrElementBlock.mnColPos);
+                    ++mrElementBlock.mnRowPos;
+                    if (mrElementBlock.mnRowPos >= mrElementBlock.mnRowSize)
                     {
-                        mnRowPos = 0;
-                        ++mnColPos;
+                        mrElementBlock.mnRowPos = 0;
+                        ++mrElementBlock.mnColPos;
                     }
                 }
             }
@@ -2456,12 +2562,12 @@ public:
             {
                 SAL_WARN("sc.core","WalkElementBlockOperation - unhandled element_integer");
                 // No function (yet?), but advance row and column count.
-                mnColPos += node.size / mnRowSize;
-                mnRowPos += node.size % mnRowSize;
-                if (mnRowPos >= mnRowSize)
+                mrElementBlock.mnColPos += node.size / mrElementBlock.mnRowSize;
+                mrElementBlock.mnRowPos += node.size % mrElementBlock.mnRowSize;
+                if (mrElementBlock.mnRowPos >= mrElementBlock.mnRowSize)
                 {
-                    mnRowPos = 0;
-                    ++mnColPos;
+                    mrElementBlock.mnRowPos = 0;
+                    ++mrElementBlock.mnColPos;
                 }
             }
             break;
@@ -2470,14 +2576,7 @@ public:
 
 private:
 
-    size_t mnRowSize;
-    size_t mnRowPos;
-    size_t mnColPos;
-
-    ScFullMatrix::DoubleOpFunction maDoubleFunc;
-    ScFullMatrix::BoolOpFunction maBoolFunc;
-    ScFullMatrix::StringOpFunction maStringFunc;
-    ScFullMatrix::EmptyOpFunction maEmptyFunc;
+    ElementBlock& mrElementBlock;
 };
 
 }
@@ -2487,10 +2586,12 @@ void ScMatrixImpl::ExecuteOperation(const std::pair<size_t, size_t>& rStartPos,
         const ScMatrix::BoolOpFunction& aBoolFunc, const ScMatrix::StringOpFunction& aStringFunc,
         const ScMatrix::EmptyOpFunction& aEmptyFunc) const
 {
-    WalkElementBlockOperation aFunc(maMat.size().row,
-            aDoubleFunc, aBoolFunc, aStringFunc, aEmptyFunc);
-    maMat.walk(aFunc, MatrixImplType::size_pair_type(rStartPos.first, rStartPos.second),
-            MatrixImplType::size_pair_type(rEndPos.first, rEndPos.second));
+    ElementBlock aPayload(maMat.size().row, aDoubleFunc, aBoolFunc, aStringFunc, aEmptyFunc);
+    WalkElementBlockOperation aFunc(aPayload);
+    maMat.walk(
+        aFunc,
+        MatrixImplType::size_pair_type(rStartPos.first, rStartPos.second),
+        MatrixImplType::size_pair_type(rEndPos.first, rEndPos.second));
 }
 
 #if DEBUG_MATRIX
@@ -2539,7 +2640,7 @@ void ScMatrixImpl::CalcPosition(SCSIZE nIndex, SCSIZE& rC, SCSIZE& rR) const
 
 namespace {
 
-size_t get_index(SCSIZE nMaxRow, SCSIZE /*nMaxCol*/, size_t nRow, size_t nCol, size_t nRowOffset, size_t nColOffset)
+size_t get_index(SCSIZE nMaxRow, size_t nRow, size_t nCol, size_t nRowOffset, size_t nColOffset)
 {
     return nMaxRow * (nCol + nColOffset) + nRow + nRowOffset;
 }
@@ -2554,7 +2655,7 @@ void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& 
     xMat1->GetDimensions(nC1, nR1);
     xMat2->GetDimensions(nC2, nR2);
 
-    sal_uLong nKey = rFormatter.GetStandardFormat( css::util::NumberFormat::NUMBER,
+    sal_uInt32 nKey = rFormatter.GetStandardFormat( SvNumFormatType::NUMBER,
             ScGlobal::eLnge);
 
     std::vector<OUString> aString(nMaxCol * nMaxRow);
@@ -2569,13 +2670,13 @@ void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& 
             FormulaError nErr = GetDoubleErrorValue(nVal);
             if (nErr != FormulaError::NONE)
             {
-                aValid[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] = false;
-                nErrors[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] = nErr;
+                aValid[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = false;
+                nErrors[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = nErr;
                 return;
             }
             OUString aStr;
             rFormatter.GetInputLineString( nVal, nKey, aStr);
-            aString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] = aString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] + aStr;
+            aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr;
         };
 
     std::function<void(size_t, size_t, bool)> aBoolFunc =
@@ -2583,13 +2684,13 @@ void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& 
         {
             OUString aStr;
             rFormatter.GetInputLineString( nVal ? 1.0 : 0.0, nKey, aStr);
-            aString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] = aString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] + aStr;
+            aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr;
         };
 
     std::function<void(size_t, size_t, const svl::SharedString&)> aStringFunc =
         [&](size_t nRow, size_t nCol, const svl::SharedString& aStr)
         {
-            aString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] = aString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] + aStr.getString();
+            aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr.getString();
         };
 
     std::function<void(size_t, size_t)> aEmptyFunc =
@@ -2631,13 +2732,13 @@ void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& 
             FormulaError nErr = GetDoubleErrorValue(nVal);
             if (nErr != FormulaError::NONE)
             {
-                aValid[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] = false;
-                nErrors[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] = nErr;
+                aValid[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = false;
+                nErrors[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = nErr;
                 return;
             }
             OUString aStr;
             rFormatter.GetInputLineString( nVal, nKey, aStr);
-            aSharedString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] = rStringPool.intern(aString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] + aStr);
+            aSharedString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = rStringPool.intern(aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr);
         };
 
     std::function<void(size_t, size_t, bool)> aBoolFunc2 =
@@ -2645,21 +2746,21 @@ void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& 
         {
             OUString aStr;
             rFormatter.GetInputLineString( nVal ? 1.0 : 0.0, nKey, aStr);
-            aSharedString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] = rStringPool.intern(aString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] + aStr);
+            aSharedString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = rStringPool.intern(aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr);
         };
 
     std::function<void(size_t, size_t, const svl::SharedString&)> aStringFunc2 =
         [&](size_t nRow, size_t nCol, const svl::SharedString& aStr)
         {
-            aSharedString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] =
-                rStringPool.intern(aString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] + aStr.getString());
+            aSharedString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] =
+                rStringPool.intern(aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr.getString());
         };
 
     std::function<void(size_t, size_t)> aEmptyFunc2 =
         [&](size_t nRow, size_t nCol)
         {
-            aSharedString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)] =
-                rStringPool.intern(aString[get_index(nMaxRow, nMaxCol, nRow, nCol, nRowOffset, nColOffset)]);
+            aSharedString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] =
+                rStringPool.intern(aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)]);
         };
 
     nRowOffset = 0;
@@ -2746,7 +2847,35 @@ bool ScMatrix::IsSizeAllocatable( SCSIZE nC, SCSIZE nR )
         SAL_WARN( "sc.core", "ScMatrix one-dimensional zero: " << nC << " columns * " << nR << " rows");
         return false;
     }
-    if (nC && nR && (nC > (ScMatrix::GetElementsMax() / nR)))
+    if (!nC || !nR)
+        return true;
+
+    if (!bElementsMaxFetched)
+    {
+        const char* pEnv = std::getenv("SC_MAX_MATRIX_ELEMENTS");
+        if (pEnv)
+        {
+            // Environment specifies the overall elements pool.
+            nElementsMax = std::atoi(pEnv);
+        }
+        else
+        {
+            // GetElementsMax() uses an (~arbitrary) elements limit.
+            // The actual allocation depends on the types of individual matrix
+            // elements and is averaged for type double.
+#if SAL_TYPES_SIZEOFPOINTER < 8
+            // Assume 1GB memory could be consumed by matrices.
+            constexpr size_t nMemMax = 0x40000000;
+#else
+            // Assume 6GB memory could be consumed by matrices.
+            constexpr size_t nMemMax = 0x180000000;
+#endif
+            nElementsMax = GetElementsMax( nMemMax);
+        }
+        bElementsMaxFetched = true;
+    }
+
+    if (nC > (nElementsMax / nR))
     {
         SAL_WARN( "sc.core", "ScMatrix overflow: " << nC << " columns * " << nR << " rows");
         return false;
@@ -2754,8 +2883,8 @@ bool ScMatrix::IsSizeAllocatable( SCSIZE nC, SCSIZE nR )
     return true;
 }
 
-ScFullMatrix::ScFullMatrix( SCSIZE nC, SCSIZE nR) :
-    ScMatrix()
+ScMatrix::ScMatrix( SCSIZE nC, SCSIZE nR) :
+    nRefCnt(0), mbCloneIfConst(true)
 {
     if (ScMatrix::IsSizeAllocatable( nC, nR))
         pImpl.reset( new ScMatrixImpl( nC, nR));
@@ -2764,8 +2893,8 @@ ScFullMatrix::ScFullMatrix( SCSIZE nC, SCSIZE nR) :
         pImpl.reset( new ScMatrixImpl( 1,1, CreateDoubleError( FormulaError::MatrixSize)));
 }
 
-ScFullMatrix::ScFullMatrix(SCSIZE nC, SCSIZE nR, double fInitVal) :
-    ScMatrix()
+ScMatrix::ScMatrix(SCSIZE nC, SCSIZE nR, double fInitVal) :
+    nRefCnt(0), mbCloneIfConst(true)
 {
     if (ScMatrix::IsSizeAllocatable( nC, nR))
         pImpl.reset( new ScMatrixImpl( nC, nR, fInitVal));
@@ -2774,8 +2903,8 @@ ScFullMatrix::ScFullMatrix(SCSIZE nC, SCSIZE nR, double fInitVal) :
         pImpl.reset( new ScMatrixImpl( 1,1, CreateDoubleError( FormulaError::MatrixSize)));
 }
 
-ScFullMatrix::ScFullMatrix( size_t nC, size_t nR, const std::vector<double>& rInitVals ) :
-    ScMatrix()
+ScMatrix::ScMatrix( size_t nC, size_t nR, const std::vector<double>& rInitVals ) :
+    nRefCnt(0), mbCloneIfConst(true)
 {
     if (ScMatrix::IsSizeAllocatable( nC, nR))
         pImpl.reset( new ScMatrixImpl( nC, nR, rInitVals));
@@ -2784,15 +2913,15 @@ ScFullMatrix::ScFullMatrix( size_t nC, size_t nR, const std::vector<double>& rIn
         pImpl.reset( new ScMatrixImpl( 1,1, CreateDoubleError( FormulaError::MatrixSize)));
 }
 
-ScFullMatrix::~ScFullMatrix()
+ScMatrix::~ScMatrix()
 {
 }
 
-ScMatrix* ScFullMatrix::Clone() const
+ScMatrix* ScMatrix::Clone() const
 {
     SCSIZE nC, nR;
     pImpl->GetDimensions(nC, nR);
-    ScMatrix* pScMat = new ScFullMatrix(nC, nR);
+    ScMatrix* pScMat = new ScMatrix(nC, nR);
     MatCopy(*pScMat);
     pScMat->SetErrorInterpreter(pImpl->GetErrorInterpreter());    // TODO: really?
     return pScMat;
@@ -2813,358 +2942,354 @@ void ScMatrix::SetImmutable() const
     mbCloneIfConst = true;
 }
 
-void ScFullMatrix::Resize( SCSIZE nC, SCSIZE nR)
+void ScMatrix::Resize( SCSIZE nC, SCSIZE nR)
 {
     pImpl->Resize(nC, nR);
 }
 
-void ScFullMatrix::Resize(SCSIZE nC, SCSIZE nR, double fVal)
+void ScMatrix::Resize(SCSIZE nC, SCSIZE nR, double fVal)
 {
     pImpl->Resize(nC, nR, fVal);
 }
 
-ScMatrix* ScFullMatrix::CloneAndExtend(SCSIZE nNewCols, SCSIZE nNewRows) const
+ScMatrix* ScMatrix::CloneAndExtend(SCSIZE nNewCols, SCSIZE nNewRows) const
 {
-    ScMatrix* pScMat = new ScFullMatrix(nNewCols, nNewRows);
+    ScMatrix* pScMat = new ScMatrix(nNewCols, nNewRows);
     MatCopy(*pScMat);
     pScMat->SetErrorInterpreter(pImpl->GetErrorInterpreter());
     return pScMat;
 }
 
-void ScFullMatrix::SetErrorInterpreter( ScInterpreter* p)
+void ScMatrix::SetErrorInterpreter( ScInterpreter* p)
 {
     pImpl->SetErrorInterpreter(p);
 }
 
-void ScFullMatrix::GetDimensions( SCSIZE& rC, SCSIZE& rR) const
+void ScMatrix::GetDimensions( SCSIZE& rC, SCSIZE& rR) const
 {
     pImpl->GetDimensions(rC, rR);
 }
 
-SCSIZE ScFullMatrix::GetElementCount() const
+SCSIZE ScMatrix::GetElementCount() const
 {
     return pImpl->GetElementCount();
 }
 
-bool ScFullMatrix::ValidColRow( SCSIZE nC, SCSIZE nR) const
+bool ScMatrix::ValidColRow( SCSIZE nC, SCSIZE nR) const
 {
     return pImpl->ValidColRow(nC, nR);
 }
 
-bool ScFullMatrix::ValidColRowReplicated( SCSIZE & rC, SCSIZE & rR ) const
+bool ScMatrix::ValidColRowReplicated( SCSIZE & rC, SCSIZE & rR ) const
 {
     return pImpl->ValidColRowReplicated(rC, rR);
 }
 
-bool ScFullMatrix::ValidColRowOrReplicated( SCSIZE & rC, SCSIZE & rR ) const
+bool ScMatrix::ValidColRowOrReplicated( SCSIZE & rC, SCSIZE & rR ) const
 {
     return ValidColRow( rC, rR) || ValidColRowReplicated( rC, rR);
 }
 
-void ScFullMatrix::PutDouble(double fVal, SCSIZE nC, SCSIZE nR)
+void ScMatrix::PutDouble(double fVal, SCSIZE nC, SCSIZE nR)
 {
     pImpl->PutDouble(fVal, nC, nR);
 }
 
-void ScFullMatrix::PutDouble( double fVal, SCSIZE nIndex)
+void ScMatrix::PutDouble( double fVal, SCSIZE nIndex)
 {
     pImpl->PutDouble(fVal, nIndex);
 }
 
-void ScFullMatrix::PutDouble(const double* pArray, size_t nLen, SCSIZE nC, SCSIZE nR)
+void ScMatrix::PutDouble(const double* pArray, size_t nLen, SCSIZE nC, SCSIZE nR)
 {
     pImpl->PutDouble(pArray, nLen, nC, nR);
 }
 
-void ScFullMatrix::PutString(const svl::SharedString& rStr, SCSIZE nC, SCSIZE nR)
+void ScMatrix::PutString(const svl::SharedString& rStr, SCSIZE nC, SCSIZE nR)
 {
     pImpl->PutString(rStr, nC, nR);
 }
 
-void ScFullMatrix::PutString(const svl::SharedString& rStr, SCSIZE nIndex)
+void ScMatrix::PutString(const svl::SharedString& rStr, SCSIZE nIndex)
 {
     pImpl->PutString(rStr, nIndex);
 }
 
-void ScFullMatrix::PutString(const svl::SharedString* pArray, size_t nLen, SCSIZE nC, SCSIZE nR)
+void ScMatrix::PutString(const svl::SharedString* pArray, size_t nLen, SCSIZE nC, SCSIZE nR)
 {
     pImpl->PutString(pArray, nLen, nC, nR);
 }
 
-void ScFullMatrix::PutEmpty(SCSIZE nC, SCSIZE nR)
+void ScMatrix::PutEmpty(SCSIZE nC, SCSIZE nR)
 {
     pImpl->PutEmpty(nC, nR);
 }
 
-void ScFullMatrix::PutEmptyPath(SCSIZE nC, SCSIZE nR)
+void ScMatrix::PutEmptyPath(SCSIZE nC, SCSIZE nR)
 {
     pImpl->PutEmptyPath(nC, nR);
 }
 
-void ScFullMatrix::PutError( FormulaError nErrorCode, SCSIZE nC, SCSIZE nR )
+void ScMatrix::PutError( FormulaError nErrorCode, SCSIZE nC, SCSIZE nR )
 {
     pImpl->PutError(nErrorCode, nC, nR);
 }
 
-void ScFullMatrix::PutBoolean(bool bVal, SCSIZE nC, SCSIZE nR)
+void ScMatrix::PutBoolean(bool bVal, SCSIZE nC, SCSIZE nR)
 {
     pImpl->PutBoolean(bVal, nC, nR);
 }
 
-FormulaError ScFullMatrix::GetError( SCSIZE nC, SCSIZE nR) const
+FormulaError ScMatrix::GetError( SCSIZE nC, SCSIZE nR) const
 {
     return pImpl->GetError(nC, nR);
 }
 
-double ScFullMatrix::GetDouble(SCSIZE nC, SCSIZE nR) const
+double ScMatrix::GetDouble(SCSIZE nC, SCSIZE nR) const
 {
     return pImpl->GetDouble(nC, nR);
 }
 
-double ScFullMatrix::GetDouble( SCSIZE nIndex) const
+double ScMatrix::GetDouble( SCSIZE nIndex) const
 {
     return pImpl->GetDouble(nIndex);
 }
 
-double ScFullMatrix::GetDoubleWithStringConversion(SCSIZE nC, SCSIZE nR) const
+double ScMatrix::GetDoubleWithStringConversion(SCSIZE nC, SCSIZE nR) const
 {
     return pImpl->GetDoubleWithStringConversion(nC, nR);
 }
 
-svl::SharedString ScFullMatrix::GetString(SCSIZE nC, SCSIZE nR) const
+svl::SharedString ScMatrix::GetString(SCSIZE nC, SCSIZE nR) const
 {
     return pImpl->GetString(nC, nR);
 }
 
-svl::SharedString ScFullMatrix::GetString( SCSIZE nIndex) const
+svl::SharedString ScMatrix::GetString( SCSIZE nIndex) const
 {
     return pImpl->GetString(nIndex);
 }
 
-svl::SharedString ScFullMatrix::GetString( SvNumberFormatter& rFormatter, SCSIZE nC, SCSIZE nR) const
+svl::SharedString ScMatrix::GetString( SvNumberFormatter& rFormatter, SCSIZE nC, SCSIZE nR) const
 {
     return pImpl->GetString(rFormatter, nC, nR);
 }
 
-ScMatrixValue ScFullMatrix::Get(SCSIZE nC, SCSIZE nR) const
+ScMatrixValue ScMatrix::Get(SCSIZE nC, SCSIZE nR) const
 {
     return pImpl->Get(nC, nR);
 }
 
-bool ScFullMatrix::IsString( SCSIZE nIndex ) const
+bool ScMatrix::IsStringOrEmpty( SCSIZE nIndex ) const
 {
-    return pImpl->IsString(nIndex);
+    return pImpl->IsStringOrEmpty(nIndex);
 }
 
-bool ScFullMatrix::IsString( SCSIZE nC, SCSIZE nR ) const
+bool ScMatrix::IsStringOrEmpty( SCSIZE nC, SCSIZE nR ) const
 {
-    return pImpl->IsString(nC, nR);
+    return pImpl->IsStringOrEmpty(nC, nR);
 }
 
-bool ScFullMatrix::IsEmpty( SCSIZE nC, SCSIZE nR ) const
+bool ScMatrix::IsEmpty( SCSIZE nC, SCSIZE nR ) const
 {
     return pImpl->IsEmpty(nC, nR);
 }
 
-bool ScFullMatrix::IsEmptyCell( SCSIZE nC, SCSIZE nR ) const
+bool ScMatrix::IsEmptyCell( SCSIZE nC, SCSIZE nR ) const
 {
     return pImpl->IsEmptyCell(nC, nR);
 }
 
-bool ScFullMatrix::IsEmptyResult( SCSIZE nC, SCSIZE nR ) const
+bool ScMatrix::IsEmptyResult( SCSIZE nC, SCSIZE nR ) const
 {
     return pImpl->IsEmptyResult(nC, nR);
 }
 
-bool ScFullMatrix::IsEmptyPath( SCSIZE nC, SCSIZE nR ) const
+bool ScMatrix::IsEmptyPath( SCSIZE nC, SCSIZE nR ) const
 {
     return pImpl->IsEmptyPath(nC, nR);
 }
 
-bool ScFullMatrix::IsValue( SCSIZE nIndex ) const
+bool ScMatrix::IsValue( SCSIZE nIndex ) const
 {
     return pImpl->IsValue(nIndex);
 }
 
-bool ScFullMatrix::IsValue( SCSIZE nC, SCSIZE nR ) const
+bool ScMatrix::IsValue( SCSIZE nC, SCSIZE nR ) const
 {
     return pImpl->IsValue(nC, nR);
 }
 
-bool ScFullMatrix::IsValueOrEmpty( SCSIZE nC, SCSIZE nR ) const
+bool ScMatrix::IsValueOrEmpty( SCSIZE nC, SCSIZE nR ) const
 {
     return pImpl->IsValueOrEmpty(nC, nR);
 }
 
-bool ScFullMatrix::IsBoolean( SCSIZE nC, SCSIZE nR ) const
+bool ScMatrix::IsBoolean( SCSIZE nC, SCSIZE nR ) const
 {
     return pImpl->IsBoolean(nC, nR);
 }
 
-bool ScFullMatrix::IsNumeric() const
+bool ScMatrix::IsNumeric() const
 {
     return pImpl->IsNumeric();
 }
 
-void ScFullMatrix::MatCopy(ScMatrix& mRes) const
+void ScMatrix::MatCopy(const ScMatrix& mRes) const
 {
-    // FIXME
-    ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&mRes);
-    assert(pMatrix);
-    pImpl->MatCopy(*pMatrix->pImpl);
+    pImpl->MatCopy(*mRes.pImpl);
 }
 
-void ScFullMatrix::MatTrans(ScMatrix& mRes) const
+void ScMatrix::MatTrans(const ScMatrix& mRes) const
 {
-    // FIXME
-    ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&mRes);
-    assert(pMatrix);
-    pImpl->MatTrans(*pMatrix->pImpl);
+    pImpl->MatTrans(*mRes.pImpl);
 }
 
-void ScFullMatrix::FillDouble( double fVal, SCSIZE nC1, SCSIZE nR1, SCSIZE nC2, SCSIZE nR2 )
+void ScMatrix::FillDouble( double fVal, SCSIZE nC1, SCSIZE nR1, SCSIZE nC2, SCSIZE nR2 )
 {
     pImpl->FillDouble(fVal, nC1, nR1, nC2, nR2);
 }
 
-void ScFullMatrix::PutDoubleVector( const ::std::vector< double > & rVec, SCSIZE nC, SCSIZE nR )
+void ScMatrix::PutDoubleVector( const ::std::vector< double > & rVec, SCSIZE nC, SCSIZE nR )
 {
     pImpl->PutDoubleVector(rVec, nC, nR);
 }
 
-void ScFullMatrix::PutStringVector( const ::std::vector< svl::SharedString > & rVec, SCSIZE nC, SCSIZE nR )
+void ScMatrix::PutStringVector( const ::std::vector< svl::SharedString > & rVec, SCSIZE nC, SCSIZE nR )
 {
     pImpl->PutStringVector(rVec, nC, nR);
 }
 
-void ScFullMatrix::PutEmptyVector( SCSIZE nCount, SCSIZE nC, SCSIZE nR )
+void ScMatrix::PutEmptyVector( SCSIZE nCount, SCSIZE nC, SCSIZE nR )
 {
     pImpl->PutEmptyVector(nCount, nC, nR);
 }
 
-void ScFullMatrix::PutEmptyResultVector( SCSIZE nCount, SCSIZE nC, SCSIZE nR )
+void ScMatrix::PutEmptyResultVector( SCSIZE nCount, SCSIZE nC, SCSIZE nR )
 {
     pImpl->PutEmptyResultVector(nCount, nC, nR);
 }
 
-void ScFullMatrix::PutEmptyPathVector( SCSIZE nCount, SCSIZE nC, SCSIZE nR )
+void ScMatrix::PutEmptyPathVector( SCSIZE nCount, SCSIZE nC, SCSIZE nR )
 {
     pImpl->PutEmptyPathVector(nCount, nC, nR);
 }
 
-void ScFullMatrix::CompareEqual()
+void ScMatrix::CompareEqual()
 {
     pImpl->CompareEqual();
 }
 
-void ScFullMatrix::CompareNotEqual()
+void ScMatrix::CompareNotEqual()
 {
     pImpl->CompareNotEqual();
 }
 
-void ScFullMatrix::CompareLess()
+void ScMatrix::CompareLess()
 {
     pImpl->CompareLess();
 }
 
-void ScFullMatrix::CompareGreater()
+void ScMatrix::CompareGreater()
 {
     pImpl->CompareGreater();
 }
 
-void ScFullMatrix::CompareLessEqual()
+void ScMatrix::CompareLessEqual()
 {
     pImpl->CompareLessEqual();
 }
 
-void ScFullMatrix::CompareGreaterEqual()
+void ScMatrix::CompareGreaterEqual()
 {
     pImpl->CompareGreaterEqual();
 }
 
-double ScFullMatrix::And() const
+double ScMatrix::And() const
 {
     return pImpl->And();
 }
 
-double ScFullMatrix::Or() const
+double ScMatrix::Or() const
 {
     return pImpl->Or();
 }
 
-double ScFullMatrix::Xor() const
+double ScMatrix::Xor() const
 {
     return pImpl->Xor();
 }
 
-ScMatrix::IterateResult ScFullMatrix::Sum(bool bTextAsZero) const
+ScMatrix::IterateResult ScMatrix::Sum(bool bTextAsZero, bool bIgnoreErrorValues) const
 {
-    return pImpl->Sum(bTextAsZero);
+    return pImpl->Sum(bTextAsZero, bIgnoreErrorValues);
 }
 
-ScMatrix::IterateResult ScFullMatrix::SumSquare(bool bTextAsZero) const
+ScMatrix::IterateResult ScMatrix::SumSquare(bool bTextAsZero, bool bIgnoreErrorValues) const
 {
-    return pImpl->SumSquare(bTextAsZero);
+    return pImpl->SumSquare(bTextAsZero, bIgnoreErrorValues);
 }
 
-ScMatrix::IterateResult ScFullMatrix::Product(bool bTextAsZero) const
+ScMatrix::IterateResult ScMatrix::Product(bool bTextAsZero, bool bIgnoreErrorValues) const
 {
-    return pImpl->Product(bTextAsZero);
+    return pImpl->Product(bTextAsZero, bIgnoreErrorValues);
 }
 
-size_t ScFullMatrix::Count(bool bCountStrings, bool bCountErrors) const
+size_t ScMatrix::Count(bool bCountStrings, bool bCountErrors) const
 {
     return pImpl->Count(bCountStrings, bCountErrors);
 }
 
-size_t ScFullMatrix::MatchDoubleInColumns(double fValue, size_t nCol1, size_t nCol2) const
+size_t ScMatrix::MatchDoubleInColumns(double fValue, size_t nCol1, size_t nCol2) const
 {
     return pImpl->MatchDoubleInColumns(fValue, nCol1, nCol2);
 }
 
-size_t ScFullMatrix::MatchStringInColumns(const svl::SharedString& rStr, size_t nCol1, size_t nCol2) const
+size_t ScMatrix::MatchStringInColumns(const svl::SharedString& rStr, size_t nCol1, size_t nCol2) const
 {
     return pImpl->MatchStringInColumns(rStr, nCol1, nCol2);
 }
 
-double ScFullMatrix::GetMaxValue( bool bTextAsZero ) const
+double ScMatrix::GetMaxValue( bool bTextAsZero, bool bIgnoreErrorValues ) const
 {
-    return pImpl->GetMaxValue(bTextAsZero);
+    return pImpl->GetMaxValue(bTextAsZero, bIgnoreErrorValues);
 }
 
-double ScFullMatrix::GetMinValue( bool bTextAsZero ) const
+double ScMatrix::GetMinValue( bool bTextAsZero, bool bIgnoreErrorValues ) const
 {
-    return pImpl->GetMinValue(bTextAsZero);
+    return pImpl->GetMinValue(bTextAsZero, bIgnoreErrorValues);
 }
 
-double ScFullMatrix::GetGcd() const
+double ScMatrix::GetGcd() const
 {
     return pImpl->GetGcd();
 }
 
-double ScFullMatrix::GetLcm() const
+double ScMatrix::GetLcm() const
 {
     return pImpl->GetLcm();
 }
 
 
-ScMatrixRef ScFullMatrix::CompareMatrix(
+ScMatrixRef ScMatrix::CompareMatrix(
     sc::Compare& rComp, size_t nMatPos, sc::CompareOptions* pOptions ) const
 {
     return pImpl->CompareMatrix(rComp, nMatPos, pOptions);
 }
 
-void ScFullMatrix::GetDoubleArray( std::vector<double>& rArray, bool bEmptyAsZero ) const
+void ScMatrix::GetDoubleArray( std::vector<double>& rArray, bool bEmptyAsZero ) const
 {
     pImpl->GetDoubleArray(rArray, bEmptyAsZero);
 }
 
-void ScFullMatrix::MergeDoubleArray( std::vector<double>& rArray, Op eOp ) const
+void ScMatrix::MergeDoubleArrayMultiply( std::vector<double>& rArray ) const
 {
-    pImpl->MergeDoubleArray(rArray, eOp);
+    pImpl->MergeDoubleArrayMultiply(rArray);
 }
 
 namespace matop {
+
+namespace {
 
 /**
  * COp struct is used in MatOp class to provide (through template specialization)
@@ -3172,6 +3297,8 @@ namespace matop {
  */
 template <typename T, typename S>
 struct COp {};
+
+}
 
 template <typename T>
 struct COp<T, svl::SharedString>
@@ -3191,9 +3318,11 @@ struct COp<T, double>
     }
 };
 
+namespace {
+
 /** A template for operations where operands are supposed to be numeric.
     A non-numeric (string) operand leads to the configured conversion to number
-    method being called if in interpreter context and an FormulaError::NoValue DoubleError
+    method being called if in interpreter context and a FormulaError::NoValue DoubleError
     if conversion was not possible, else to an unconditional FormulaError::NoValue
     DoubleError.
     An empty operand evaluates to 0.
@@ -3211,9 +3340,7 @@ private:
     COp<TOp, TEmptyRes> maCOp;
 
 public:
-    typedef TEmptyRes empty_value_type;
     typedef TRet number_value_type;
-    typedef svl::SharedString string_value_type;
 
     MatOp( TOp aOp, ScInterpreter* pErrorInterpreter,
             double fVal = 0.0, const svl::SharedString& rString = svl::SharedString() ):
@@ -3237,12 +3364,12 @@ public:
 
     TRet operator()(bool bVal) const
     {
-        return maOp((double)bVal, mfVal);
+        return maOp(static_cast<double>(bVal), mfVal);
     }
 
     double operator()(const svl::SharedString& rStr) const
     {
-        return convertStringToValue( mpErrorInterpreter, rStr.getString());
+        return maOp( convertStringToValue( mpErrorInterpreter, rStr.getString()), mfVal);
     }
 
     TEmptyRes operator()(char) const
@@ -3258,908 +3385,107 @@ public:
 
 }
 
-void ScFullMatrix::NotOp( ScMatrix& rMat)
+}
+
+void ScMatrix::NotOp( const ScMatrix& rMat)
 {
     auto not_ = [](double a, double){return double(a == 0.0);};
     matop::MatOp<decltype(not_), double> aOp(not_, pImpl->GetErrorInterpreter());
-    // FIXME
-    ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&rMat);
-    assert(pMatrix);
-    pImpl->ApplyOperation(aOp, *pMatrix->pImpl);
+    pImpl->ApplyOperation(aOp, *rMat.pImpl);
 }
 
-void ScFullMatrix::NegOp( ScMatrix& rMat)
+void ScMatrix::NegOp( const ScMatrix& rMat)
 {
     auto neg_ = [](double a, double){return -a;};
     matop::MatOp<decltype(neg_), double> aOp(neg_, pImpl->GetErrorInterpreter());
-    // FIXME
-    ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&rMat);
-    assert(pMatrix);
-    pImpl->ApplyOperation(aOp, *pMatrix->pImpl);
+    pImpl->ApplyOperation(aOp, *rMat.pImpl);
 }
 
-void ScFullMatrix::AddOp( double fVal, ScMatrix& rMat)
+void ScMatrix::AddOp( double fVal, const ScMatrix& rMat)
 {
     auto add_ = [](double a, double b){return a + b;};
     matop::MatOp<decltype(add_)> aOp(add_, pImpl->GetErrorInterpreter(), fVal);
-    // FIXME
-    ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&rMat);
-    assert(pMatrix);
-    pImpl->ApplyOperation(aOp, *pMatrix->pImpl);
+    pImpl->ApplyOperation(aOp, *rMat.pImpl);
 }
 
-void ScFullMatrix::SubOp( bool bFlag, double fVal, ScMatrix& rMat)
+void ScMatrix::SubOp( bool bFlag, double fVal, const ScMatrix& rMat)
 {
     if (bFlag)
     {
         auto sub_ = [](double a, double b){return b - a;};
         matop::MatOp<decltype(sub_)> aOp(sub_, pImpl->GetErrorInterpreter(), fVal);
-        // FIXME
-        ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&rMat);
-        assert(pMatrix);
-        pImpl->ApplyOperation(aOp, *pMatrix->pImpl);
+        pImpl->ApplyOperation(aOp, *rMat.pImpl);
     }
     else
     {
         auto sub_ = [](double a, double b){return a - b;};
         matop::MatOp<decltype(sub_)> aOp(sub_, pImpl->GetErrorInterpreter(), fVal);
-        // FIXME
-        ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&rMat);
-        assert(pMatrix);
-        pImpl->ApplyOperation(aOp, *pMatrix->pImpl);
+        pImpl->ApplyOperation(aOp, *rMat.pImpl);
     }
 }
 
-void ScFullMatrix::MulOp( double fVal, ScMatrix& rMat)
+void ScMatrix::MulOp( double fVal, const ScMatrix& rMat)
 {
     auto mul_ = [](double a, double b){return a * b;};
     matop::MatOp<decltype(mul_)> aOp(mul_, pImpl->GetErrorInterpreter(), fVal);
-    // FIXME
-    ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&rMat);
-    assert(pMatrix);
-    pImpl->ApplyOperation(aOp, *pMatrix->pImpl);
+    pImpl->ApplyOperation(aOp, *rMat.pImpl);
 }
 
-void ScFullMatrix::DivOp( bool bFlag, double fVal, ScMatrix& rMat)
+void ScMatrix::DivOp( bool bFlag, double fVal, const ScMatrix& rMat)
 {
     if (bFlag)
     {
         auto div_ = [](double a, double b){return sc::div(b, a);};
         matop::MatOp<decltype(div_)> aOp(div_, pImpl->GetErrorInterpreter(), fVal);
-        // FIXME
-        ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&rMat);
-        assert(pMatrix);
-        pImpl->ApplyOperation(aOp, *pMatrix->pImpl);
+        pImpl->ApplyOperation(aOp, *rMat.pImpl);
     }
     else
     {
         auto div_ = [](double a, double b){return sc::div(a, b);};
         matop::MatOp<decltype(div_)> aOp(div_, pImpl->GetErrorInterpreter(), fVal);
-        // FIXME
-        ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&rMat);
-        assert(pMatrix);
-        pImpl->ApplyOperation(aOp, *pMatrix->pImpl);
+        pImpl->ApplyOperation(aOp, *rMat.pImpl);
     }
 }
 
-void ScFullMatrix::PowOp( bool bFlag, double fVal, ScMatrix& rMat)
+void ScMatrix::PowOp( bool bFlag, double fVal, const ScMatrix& rMat)
 {
     if (bFlag)
     {
-        auto pow_ = [](double a, double b){return pow(b, a);};
+        auto pow_ = [](double a, double b){return sc::power(b, a);};
         matop::MatOp<decltype(pow_)> aOp(pow_, pImpl->GetErrorInterpreter(), fVal);
-        // FIXME
-        ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&rMat);
-        assert(pMatrix);
-        pImpl->ApplyOperation(aOp, *pMatrix->pImpl);
+        pImpl->ApplyOperation(aOp, *rMat.pImpl);
     }
     else
     {
-        auto pow_ = [](double a, double b){return pow(a, b);};
+        auto pow_ = [](double a, double b){return sc::power(a, b);};
         matop::MatOp<decltype(pow_)> aOp(pow_, pImpl->GetErrorInterpreter(), fVal);
-        // FIXME
-        ScFullMatrix* pMatrix = dynamic_cast<ScFullMatrix*>(&rMat);
-        assert(pMatrix);
-        pImpl->ApplyOperation(aOp, *pMatrix->pImpl);
+        pImpl->ApplyOperation(aOp, *rMat.pImpl);
     }
 }
 
-void ScFullMatrix::ExecuteOperation(const std::pair<size_t, size_t>& rStartPos,
+void ScMatrix::ExecuteOperation(const std::pair<size_t, size_t>& rStartPos,
         const std::pair<size_t, size_t>& rEndPos, DoubleOpFunction aDoubleFunc,
         BoolOpFunction aBoolFunc, StringOpFunction aStringFunc, EmptyOpFunction aEmptyFunc) const
 {
     pImpl->ExecuteOperation(rStartPos, rEndPos, aDoubleFunc, aBoolFunc, aStringFunc, aEmptyFunc);
 }
 
-std::vector<ScMatrix::IterateResult> ScFullMatrix::Collect(bool bTextAsZero, const std::vector<std::unique_ptr<sc::op::Op>>& aOp)
+std::vector<ScMatrix::IterateResult> ScMatrix::Collect(const std::vector<sc::op::Op>& aOp)
 {
-    return pImpl->ApplyCollectOperation(bTextAsZero, aOp);
-}
-
-ScFullMatrix& ScFullMatrix::operator+= ( const ScFullMatrix& r )
-{
-    pImpl->AddValues(*r.pImpl);
-    return *this;
+    return pImpl->ApplyCollectOperation(aOp);
 }
 
 #if DEBUG_MATRIX
-void ScFullMatrix::Dump() const
+void ScMatrix::Dump() const
 {
     pImpl->Dump();
 }
 #endif
 
-namespace {
-
-/**
- * Input double array consists of segments of NaN's and normal values.
- * Insert only the normal values into the matrix while skipping the NaN's.
- */
-void fillMatrix( ScMatrix& rMat, size_t nCol, const double* pNums, size_t nLen )
-{
-    const double* pNum = pNums;
-    const double* pNumEnd = pNum + nLen;
-    const double* pNumHead = nullptr;
-    for (; pNum != pNumEnd; ++pNum)
-    {
-        if (!rtl::math::isNan(*pNum))
-        {
-            if (!pNumHead)
-                // Store the first non-NaN position.
-                pNumHead = pNum;
-
-            continue;
-        }
-
-        if (pNumHead)
-        {
-            // Flush this non-NaN segment to the matrix.
-            rMat.PutDouble(pNumHead, pNum - pNumHead, nCol, pNumHead - pNums);
-            pNumHead = nullptr;
-        }
-    }
-
-    if (pNumHead)
-    {
-        // Flush last non-NaN segment to the matrix.
-        rMat.PutDouble(pNumHead, pNum - pNumHead, nCol, pNumHead - pNums);
-    }
-}
-
-void flushStrSegment(
-    ScMatrix& rMat, size_t nCol, rtl_uString** pHead, rtl_uString** pCur, rtl_uString** pTop )
-{
-    size_t nOffset = pHead - pTop;
-    std::vector<svl::SharedString> aStrs;
-    aStrs.reserve(pCur - pHead);
-    for (; pHead != pCur; ++pHead)
-        aStrs.push_back(svl::SharedString(*pHead, *pHead));
-
-    rMat.PutString(&aStrs[0], aStrs.size(), nCol, nOffset);
-}
-
-void fillMatrix( ScMatrix& rMat, size_t nCol, rtl_uString** pStrs, size_t nLen )
-{
-    rtl_uString** p = pStrs;
-    rtl_uString** pEnd = p + nLen;
-    rtl_uString** pHead = nullptr;
-    for (; p != pEnd; ++p)
-    {
-        if (*p)
-        {
-            if (!pHead)
-                // Store the first non-empty string position.
-                pHead = p;
-
-            continue;
-        }
-
-        if (pHead)
-        {
-            // Flush this non-empty segment to the matrix.
-            flushStrSegment(rMat, nCol, pHead, p, pStrs);
-            pHead = nullptr;
-        }
-    }
-
-    if (pHead)
-    {
-        // Flush last non-empty segment to the matrix.
-        flushStrSegment(rMat, nCol, pHead, p, pStrs);
-    }
-}
-
-void fillMatrix( ScMatrix& rMat, size_t nCol, const double* pNums, rtl_uString** pStrs, size_t nLen )
-{
-    if (!pStrs)
-    {
-        fillMatrix(rMat, nCol, pNums, nLen);
-        return;
-    }
-
-    const double* pNum = pNums;
-    const double* pNumHead = nullptr;
-    rtl_uString** pStr = pStrs;
-    rtl_uString** pStrEnd = pStr + nLen;
-    rtl_uString** pStrHead = nullptr;
-
-    for (; pStr != pStrEnd; ++pStr, ++pNum)
-    {
-        if (*pStr)
-        {
-            // String cell exists.
-
-            if (pNumHead)
-            {
-                // Flush this numeric segment to the matrix.
-                rMat.PutDouble(pNumHead, pNum - pNumHead, nCol, pNumHead - pNums);
-                pNumHead = nullptr;
-            }
-
-            if (!pStrHead)
-                // Store the first non-empty string position.
-                pStrHead = pStr;
-
-            continue;
-        }
-
-        // No string cell. Check the numeric cell value.
-
-        if (pStrHead)
-        {
-            // Flush this non-empty string segment to the matrix.
-            flushStrSegment(rMat, nCol, pStrHead, pStr, pStrs);
-            pStrHead = nullptr;
-        }
-
-        if (!rtl::math::isNan(*pNum))
-        {
-            // Numeric cell exists.
-            if (!pNumHead)
-                // Store the first non-NaN position.
-                pNumHead = pNum;
-
-            continue;
-        }
-
-        // it's a NaN, need to flush the non-NaN segment if it exists
-
-        if (pNumHead)
-        {
-            // Flush this non-NaN segment to the matrix.
-            rMat.PutDouble(pNumHead, pNum - pNumHead, nCol, pNumHead - pNums);
-            pNumHead = nullptr;
-        }
-    }
-
-    if (pStrHead)
-    {
-        // Flush the last non-empty segment to the matrix.
-        flushStrSegment(rMat, nCol, pStrHead, pStr, pStrs);
-    }
-    else if (pNumHead)
-    {
-        // Flush the last numeric segment to the matrix.
-        rMat.PutDouble(pNumHead, pNum - pNumHead, nCol, pNumHead - pNums);
-    }
-}
-
-} // anonymous namespace
-
-void ScVectorRefMatrix::ensureFullMatrix()
-{
-    if (mpFullMatrix)
-        return;
-
-    const std::vector<formula::VectorRefArray>& rArrays = mpToken->GetArrays();
-    size_t nColSize = rArrays.size();
-    mpFullMatrix.reset(new ScFullMatrix(nColSize, mnRowSize));
-
-    if (mpErrorInterpreter)
-        mpFullMatrix->SetErrorInterpreter(mpErrorInterpreter);
-
-    size_t nRowSize = mnRowSize;
-    size_t nRowEnd = mnRowStart + mnRowSize;
-    size_t nDataRowEnd = mpToken->GetArrayLength();
-
-    if (mnRowStart >= nDataRowEnd)
-        return;
-
-    if (nRowEnd > nDataRowEnd)
-    {
-        // Data array is shorter than the row size of the reference. Truncate
-        // it to the data.
-        nRowSize -= nRowEnd - nDataRowEnd;
-    }
-
-    for (size_t nCol = 0; nCol < nColSize; ++nCol)
-    {
-        const formula::VectorRefArray& rArray = rArrays[nCol];
-        if (rArray.mpStringArray)
-        {
-            if (rArray.mpNumericArray)
-            {
-                // Mixture of string and numeric values.
-                const double* pNums = rArray.mpNumericArray;
-                pNums += mnRowStart;
-                rtl_uString** pStrs = rArray.mpStringArray;
-                pStrs += mnRowStart;
-                fillMatrix(*mpFullMatrix, nCol, pNums, pStrs, nRowSize);
-            }
-            else
-            {
-                // String cells only.
-                rtl_uString** pStrs = rArray.mpStringArray;
-                pStrs += mnRowStart;
-                fillMatrix(*mpFullMatrix, nCol, pStrs, nRowSize);
-            }
-        }
-        else if (rArray.mpNumericArray)
-        {
-            // Numeric cells only.
-            const double* pNums = rArray.mpNumericArray;
-            pNums += mnRowStart;
-            fillMatrix(*mpFullMatrix, nCol, pNums, nRowSize);
-        }
-    }
-}
-
-ScVectorRefMatrix::ScVectorRefMatrix(const formula::DoubleVectorRefToken* pToken, SCSIZE nRowStart, SCSIZE nRowSize)
-    : ScMatrix()
-    , mpToken(pToken)
-    , mpErrorInterpreter(nullptr)
-    , mnRowStart(nRowStart)
-    , mnRowSize(nRowSize)
-{
-}
-
-ScVectorRefMatrix::~ScVectorRefMatrix()
-{
-}
-
-ScMatrix* ScVectorRefMatrix::Clone() const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->Clone();
-}
-
-void ScVectorRefMatrix::Resize(SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->Resize(nC, nR);
-}
-
-void ScVectorRefMatrix::Resize(SCSIZE nC, SCSIZE nR, double fVal)
-{
-    ensureFullMatrix();
-    mpFullMatrix->Resize(nC, nR, fVal);
-}
-
-ScMatrix* ScVectorRefMatrix::CloneAndExtend(SCSIZE nNewCols, SCSIZE nNewRows) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->CloneAndExtend(nNewCols, nNewRows);
-}
-
-void ScVectorRefMatrix::SetErrorInterpreter(ScInterpreter* p)
-{
-    if (mpFullMatrix)
-    {
-        mpFullMatrix->SetErrorInterpreter(p);
-        return;
-    }
-
-    mpErrorInterpreter = p;
-}
-
-void ScVectorRefMatrix::GetDimensions(SCSIZE& rC, SCSIZE& rR) const
-{
-    if (mpFullMatrix)
-    {
-        mpFullMatrix->GetDimensions(rC, rR);
-        return;
-    }
-
-    rC = mpToken->GetArrays().size();
-    rR = mnRowSize;
-}
-
-SCSIZE ScVectorRefMatrix::GetElementCount() const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetElementCount();
-}
-
-bool ScVectorRefMatrix::ValidColRow(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->ValidColRow(nC, nR);
-}
-
-bool ScVectorRefMatrix::ValidColRowReplicated(SCSIZE & rC, SCSIZE & rR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->ValidColRowReplicated(rC, rR);
-}
-
-bool ScVectorRefMatrix::ValidColRowOrReplicated(SCSIZE & rC, SCSIZE & rR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->ValidColRowOrReplicated(rC, rR);
-}
-
-void ScVectorRefMatrix::PutDouble(double fVal, SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutDouble(fVal, nC, nR);
-}
-
-void ScVectorRefMatrix::PutDouble(double fVal, SCSIZE nIndex)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutDouble(fVal, nIndex);
-}
-
-void ScVectorRefMatrix::PutDouble(const double* pArray, size_t nLen, SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutDouble(pArray, nLen, nC, nR);
-}
-
-void ScVectorRefMatrix::PutString(const svl::SharedString& rStr, SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutString(rStr, nC, nR);
-}
-
-void ScVectorRefMatrix::PutString(const svl::SharedString& rStr, SCSIZE nIndex)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutString(rStr, nIndex);
-}
-
-void ScVectorRefMatrix::PutString(const svl::SharedString* pArray, size_t nLen, SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutString(pArray, nLen, nC, nR);
-}
-
-void ScVectorRefMatrix::PutEmpty(SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutEmpty(nC, nR);
-}
-
-void ScVectorRefMatrix::PutEmptyPath(SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutEmptyPath(nC, nR);
-}
-
-void ScVectorRefMatrix::PutError(FormulaError nErrorCode, SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutError(nErrorCode, nC, nR);
-}
-
-void ScVectorRefMatrix::PutBoolean(bool bVal, SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutBoolean(bVal, nC, nR);
-}
-
-void ScVectorRefMatrix::FillDouble(double fVal, SCSIZE nC1, SCSIZE nR1, SCSIZE nC2, SCSIZE nR2)
-{
-    ensureFullMatrix();
-    mpFullMatrix->FillDouble(fVal, nC1, nR1, nC2, nR2);
-}
-
-void ScVectorRefMatrix::PutDoubleVector(const ::std::vector< double > & rVec, SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutDoubleVector(rVec, nC, nR);
-}
-
-void ScVectorRefMatrix::PutStringVector(const ::std::vector< svl::SharedString > & rVec, SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutStringVector(rVec, nC, nR);
-}
-
-void ScVectorRefMatrix::PutEmptyVector(SCSIZE nCount, SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutEmptyVector(nCount, nC, nR);
-}
-
-void ScVectorRefMatrix::PutEmptyResultVector(SCSIZE nCount, SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutEmptyResultVector(nCount, nC, nR);
-}
-
-void ScVectorRefMatrix::PutEmptyPathVector(SCSIZE nCount, SCSIZE nC, SCSIZE nR)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PutEmptyPathVector(nCount, nC, nR);
-}
-
-FormulaError ScVectorRefMatrix::GetError(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetError(nC, nR);
-}
-
-double ScVectorRefMatrix::GetDouble(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetDouble(nC, nR);
-}
-
-double ScVectorRefMatrix::GetDouble(SCSIZE nIndex) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetDouble(nIndex);
-}
-
-double ScVectorRefMatrix::GetDoubleWithStringConversion(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetDoubleWithStringConversion(nC, nR);
-}
-
-svl::SharedString ScVectorRefMatrix::GetString(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetString(nC, nR);
-}
-
-svl::SharedString ScVectorRefMatrix::GetString(SCSIZE nIndex) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetString(nIndex);
-}
-
-svl::SharedString ScVectorRefMatrix::GetString(SvNumberFormatter& rFormatter, SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetString(rFormatter, nC, nR);
-}
-
-ScMatrixValue ScVectorRefMatrix::Get(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->Get(nC, nR);
-}
-
-bool ScVectorRefMatrix::IsString(SCSIZE nIndex) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->IsString(nIndex);
-}
-
-bool ScVectorRefMatrix::IsString(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->IsString(nC, nR);
-}
-
-bool ScVectorRefMatrix::IsEmpty(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->IsEmpty(nC, nR);
-}
-
-bool ScVectorRefMatrix::IsEmptyCell(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->IsEmptyCell(nC, nR);
-}
-
-bool ScVectorRefMatrix::IsEmptyResult(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->IsEmptyResult(nC, nR);
-}
-
-bool ScVectorRefMatrix::IsEmptyPath(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->IsEmptyPath(nC, nR);
-}
-
-bool ScVectorRefMatrix::IsValue(SCSIZE nIndex) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->IsValue(nIndex);
-}
-
-bool ScVectorRefMatrix::IsValue(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->IsValue(nC, nR);
-}
-
-bool ScVectorRefMatrix::IsValueOrEmpty(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->IsValueOrEmpty(nC, nR);
-}
-
-bool ScVectorRefMatrix::IsBoolean(SCSIZE nC, SCSIZE nR) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->IsBoolean(nC, nR);
-}
-
-bool ScVectorRefMatrix::IsNumeric() const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->IsNumeric();
-}
-
-void ScVectorRefMatrix::MatTrans(ScMatrix& mRes) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    mpFullMatrix->MatTrans(mRes);
-}
-
-void ScVectorRefMatrix::MatCopy(ScMatrix& mRes) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    mpFullMatrix->MatCopy(mRes);
-}
-
-void ScVectorRefMatrix::CompareEqual()
-{
-    ensureFullMatrix();
-    mpFullMatrix->CompareEqual();
-}
-
-void ScVectorRefMatrix::CompareNotEqual()
-{
-    ensureFullMatrix();
-    mpFullMatrix->CompareNotEqual();
-}
-
-void ScVectorRefMatrix::CompareLess()
-{
-    ensureFullMatrix();
-    mpFullMatrix->CompareLess();
-}
-
-void ScVectorRefMatrix::CompareGreater()
-{
-    ensureFullMatrix();
-    mpFullMatrix->CompareGreater();
-}
-
-void ScVectorRefMatrix::CompareLessEqual()
-{
-    ensureFullMatrix();
-    mpFullMatrix->CompareLessEqual();
-}
-
-void ScVectorRefMatrix::CompareGreaterEqual()
-{
-    ensureFullMatrix();
-    mpFullMatrix->CompareGreaterEqual();
-}
-
-double ScVectorRefMatrix::And() const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->And();
-}
-
-double ScVectorRefMatrix::Or() const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->Or();
-}
-
-double ScVectorRefMatrix::Xor() const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->Xor();
-}
-
-ScMatrix::IterateResult ScVectorRefMatrix::Sum(bool bTextAsZero) const
-{
-    if (mpFullMatrix)
-        return mpFullMatrix->Sum(bTextAsZero);
-
-    const std::vector<formula::VectorRefArray>& rArrays = mpToken->GetArrays();
-    size_t nDataSize = mnRowSize;
-
-    if (mnRowStart >= mpToken->GetArrayLength())
-    {
-        return ScMatrix::IterateResult(0.0, 0.0, 0);
-    }
-    else if (nDataSize > mpToken->GetArrayLength() - mnRowStart)
-    {
-        nDataSize = mpToken->GetArrayLength() - mnRowStart;
-    }
-
-    double mfFirst = 0.0;
-    double mfRest = 0.0;
-    for (const formula::VectorRefArray& rArray : rArrays)
-    {
-        if (rArray.mpStringArray)
-        {
-            // FIXME operate directly on the array too
-            const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-            return mpFullMatrix->Sum(bTextAsZero);
-        }
-        else if (rArray.mpNumericArray)
-        {
-            // Numeric cells only.
-            const double* p = rArray.mpNumericArray + mnRowStart;
-            size_t i = 0;
-
-            // Store the first non-zero value in mfFirst (for some reason).
-            if (!mfFirst)
-            {
-                for (i = 0; i < nDataSize; ++i)
-                {
-                    if (!mfFirst)
-                        mfFirst = p[i];
-                    else
-                        break;
-                }
-            }
-            p += i;
-            if (i == nDataSize)
-                continue;
-
-            sc::ArraySumFunctor functor(p, nDataSize-i);
-
-            mfRest += functor();
-        }
-    }
-
-    return ScMatrix::IterateResult(mfFirst, mfRest, mpToken->GetArrays().size()*nDataSize);
-}
-
-ScMatrix::IterateResult ScVectorRefMatrix::SumSquare(bool bTextAsZero) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->SumSquare(bTextAsZero);
-}
-
-ScMatrix::IterateResult ScVectorRefMatrix::Product(bool bTextAsZero) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->Product(bTextAsZero);
-}
-
-size_t ScVectorRefMatrix::Count(bool bCountStrings, bool bCountErrors) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->Count(bCountStrings, bCountErrors);
-}
-
-size_t ScVectorRefMatrix::MatchDoubleInColumns(double fValue, size_t nCol1, size_t nCol2) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->MatchDoubleInColumns(fValue, nCol1, nCol2);
-}
-
-size_t ScVectorRefMatrix::MatchStringInColumns(const svl::SharedString& rStr, size_t nCol1, size_t nCol2) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->MatchStringInColumns(rStr, nCol1, nCol2);
-}
-
-double ScVectorRefMatrix::GetMaxValue(bool bTextAsZero) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetMaxValue(bTextAsZero);
-}
-
-double ScVectorRefMatrix::GetMinValue(bool bTextAsZero) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetMinValue(bTextAsZero);
-}
-
-double ScVectorRefMatrix::GetGcd() const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetGcd();
-}
-
-double ScVectorRefMatrix::GetLcm() const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->GetLcm();
-}
-
-ScMatrixRef ScVectorRefMatrix::CompareMatrix(sc::Compare& rComp, size_t nMatPos, sc::CompareOptions* pOptions) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    return mpFullMatrix->CompareMatrix(rComp, nMatPos, pOptions);
-}
-
-void ScVectorRefMatrix::GetDoubleArray(std::vector<double>& rVector, bool bEmptyAsZero) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    mpFullMatrix->GetDoubleArray(rVector, bEmptyAsZero);
-}
-
-void ScVectorRefMatrix::MergeDoubleArray(std::vector<double>& rVector, Op eOp) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    mpFullMatrix->MergeDoubleArray(rVector, eOp);
-}
-
-void ScVectorRefMatrix::NotOp(ScMatrix& rMat)
-{
-    ensureFullMatrix();
-    mpFullMatrix->NotOp(rMat);
-}
-
-void ScVectorRefMatrix::NegOp(ScMatrix& rMat)
-{
-    ensureFullMatrix();
-    mpFullMatrix->NegOp(rMat);
-}
-
-void ScVectorRefMatrix::AddOp(double fVal, ScMatrix& rMat)
-{
-    ensureFullMatrix();
-    mpFullMatrix->AddOp(fVal, rMat);
-}
-
-void ScVectorRefMatrix::SubOp(bool bFlag, double fVal, ScMatrix& rMat)
-{
-    ensureFullMatrix();
-    mpFullMatrix->SubOp(bFlag, fVal, rMat);
-}
-
-void ScVectorRefMatrix::MulOp(double fVal, ScMatrix& rMat)
-{
-    ensureFullMatrix();
-    mpFullMatrix->MulOp(fVal, rMat);
-}
-
-void ScVectorRefMatrix::DivOp(bool bFlag, double fVal, ScMatrix& rMat)
-{
-    ensureFullMatrix();
-    mpFullMatrix->DivOp(bFlag, fVal, rMat);
-}
-
-void ScVectorRefMatrix::PowOp(bool bFlag, double fVal, ScMatrix& rMat)
-{
-    ensureFullMatrix();
-    mpFullMatrix->PowOp(bFlag, fVal, rMat);
-}
-
-std::vector<ScMatrix::IterateResult> ScVectorRefMatrix::Collect(bool bTextAsZero, const std::vector<std::unique_ptr<sc::op::Op>>& aOp)
-{
-    ensureFullMatrix();
-    return mpFullMatrix->Collect(bTextAsZero, aOp);
-}
-
-void ScVectorRefMatrix::ExecuteOperation(const std::pair<size_t, size_t>& rStartPos,
-        const std::pair<size_t, size_t>& rEndPos, DoubleOpFunction aDoubleFunc,
-        BoolOpFunction aBoolFunc, StringOpFunction aStringFunc, EmptyOpFunction aEmptyFunc) const
-{
-    const_cast<ScVectorRefMatrix*>(this)->ensureFullMatrix();
-    mpFullMatrix->ExecuteOperation(rStartPos, rEndPos, aDoubleFunc, aBoolFunc, aStringFunc, aEmptyFunc);
-}
-
-void ScFullMatrix::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow,
+void ScMatrix::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow,
         const ScMatrixRef& xMat1, const ScMatrixRef& xMat2, SvNumberFormatter& rFormatter, svl::SharedStringPool& rPool)
 {
     pImpl->MatConcat(nMaxCol, nMaxRow, xMat1, xMat2, rFormatter, rPool);
-}
-
-void ScVectorRefMatrix::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow,
-        const ScMatrixRef& xMat1, const ScMatrixRef& xMat2, SvNumberFormatter& rFormatter, svl::SharedStringPool& rPool)
-{
-    ensureFullMatrix();
-    mpFullMatrix->MatConcat(nMaxCol, nMaxRow, xMat1, xMat2, rFormatter, rPool);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

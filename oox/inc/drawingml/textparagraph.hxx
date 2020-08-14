@@ -29,12 +29,14 @@
 #include <drawingml/textliststyle.hxx>
 #include <drawingml/textparagraphproperties.hxx>
 
+// The height the bullet is relative to is different in OOXML
+#define OOX_BULLET_LIST_SCALE_FACTOR 0.7f
 
-namespace oox { namespace formulaimport {
+namespace oox::formulaimport {
     class XmlStreamBuilder;
-} }
+}
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 typedef RefVector< TextRun > TextRunVector;
 
@@ -84,7 +86,7 @@ private:
     std::unique_ptr<formulaimport::XmlStreamBuilder> m_pMathXml;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TEXTPARAGRAPH_HXX
 

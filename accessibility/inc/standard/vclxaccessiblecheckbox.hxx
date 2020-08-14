@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLECHECKBOX_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLECHECKBOX_HXX
+#pragma once
 
 #include <standard/vclxaccessibletextcomponent.hxx>
 
@@ -28,25 +27,25 @@
 #include <cppuhelper/implbase2.hxx>
 
 
-//  class VCLXAccessibleCheckBox
 
 
 typedef ::cppu::ImplHelper2<
     css::accessibility::XAccessibleAction,
     css::accessibility::XAccessibleValue > VCLXAccessibleCheckBox_BASE;
 
-class VCLXAccessibleCheckBox : public VCLXAccessibleTextComponent,
+class VCLXAccessibleCheckBox final : public VCLXAccessibleTextComponent,
                                public VCLXAccessibleCheckBox_BASE
 {
 private:
     bool    m_bChecked;
     bool    m_bIndeterminate;
 
-protected:
-    virtual ~VCLXAccessibleCheckBox() override;
+    virtual ~VCLXAccessibleCheckBox() override = default;
 
-    bool    IsChecked();
-    bool    IsIndeterminate();
+    sal_Int32 implGetMaximumValue();
+
+    bool    IsChecked() const;
+    bool    IsIndeterminate() const;
 
     void    SetChecked( bool bChecked );
     void    SetIndeterminate( bool bIndeterminate );
@@ -80,6 +79,5 @@ public:
     virtual css::uno::Any SAL_CALL getMinimumValue(  ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLECHECKBOX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

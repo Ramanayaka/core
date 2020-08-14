@@ -20,8 +20,6 @@
 #ifndef INCLUDED_TOOLS_MAPUNIT_HXX
 #define INCLUDED_TOOLS_MAPUNIT_HXX
 
-#include <sal/types.h>
-
 enum class MapUnit
 {
     Map100thMM, Map10thMM, MapMM, MapCM,
@@ -33,16 +31,6 @@ enum class MapUnit
     LAST = MapRelative,
     LASTENUMDUMMY // used as an error return
 };
-
-constexpr sal_Int64 convertTwipToMm100(sal_Int64 n)
-{
-    return (n >= 0)? (n*127+36)/72: (n*127-36)/72;
-}
-
-constexpr sal_Int64 convertMm100ToTwip(sal_Int64 n)
-{
-    return (n >= 0)? (n*72+63)/127: (n*72-63)/127;
-}
 
 #endif
 

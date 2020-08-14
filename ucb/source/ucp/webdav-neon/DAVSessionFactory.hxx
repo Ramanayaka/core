@@ -39,17 +39,16 @@
 #include <rtl/ref.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <ucbhelper/proxydecider.hxx>
-#include "DAVException.hxx"
 
 using namespace com::sun::star;
 
-namespace com { namespace sun { namespace star { namespace beans {
+namespace com::sun::star::beans {
     struct NamedValue;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace lang {
+namespace com::sun::star::lang {
     class XMultiServiceFactory;
-} } } }
+}
 
 namespace webdav_ucp
 {
@@ -67,7 +66,7 @@ public:
                           const ::uno::Sequence< css::beans::NamedValue >& rFlags,
                           const ::uno::Reference< ::uno::XComponentContext >& rxContext );
 
-    const ::uno::Reference< ::uno::XComponentContext >& getComponentContext() {  return m_xContext; }
+    const ::uno::Reference< ::uno::XComponentContext >& getComponentContext() const { return m_xContext; }
 private:
     typedef std::map< OUString, DAVSession * > Map;
 
@@ -77,7 +76,7 @@ private:
 
     ::uno::Reference< ::uno::XComponentContext > m_xContext;
 
-    void releaseElement( DAVSession * pElement );
+    void releaseElement( DAVSession const * pElement );
 
     friend class DAVSession;
 };

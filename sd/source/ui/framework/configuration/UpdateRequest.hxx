@@ -20,13 +20,14 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_UPDATEREQUEST_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_UPDATEREQUEST_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 #include <com/sun/star/drawing/framework/XConfigurationChangeRequest.hpp>
 #include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
 #include <cppuhelper/compbase.hxx>
 
-namespace sd { namespace framework {
+namespace com::sun::star::drawing::framework { class XConfiguration; }
+
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
       css::drawing::framework::XConfigurationChangeRequest,
@@ -67,7 +68,7 @@ public:
     virtual void SAL_CALL setName (const OUString& rName) override;
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

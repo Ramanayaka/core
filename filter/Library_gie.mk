@@ -19,6 +19,11 @@
 
 $(eval $(call gb_Library_Library,gie))
 
+$(eval $(call gb_Library_set_include,gie,\
+    $$(INCLUDE) \
+    -I$(SRCDIR)/filter/inc \
+))
+
 $(eval $(call gb_Library_use_external,gie,boost_headers))
 
 $(eval $(call gb_Library_use_sdk_api,gie))
@@ -26,6 +31,8 @@ $(eval $(call gb_Library_use_sdk_api,gie))
 $(eval $(call gb_Library_use_custom_headers,gie,\
 	officecfg/registry \
 ))
+
+$(eval $(call gb_Library_use_common_precompiled_header,gie))
 
 $(eval $(call gb_Library_use_libraries,gie,\
     basegfx \
@@ -38,6 +45,7 @@ $(eval $(call gb_Library_use_libraries,gie,\
     tk \
     cppu \
     sal \
+    salhelper \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,gie,\

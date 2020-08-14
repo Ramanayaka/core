@@ -17,28 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TabControl.hxx"
+#include <TabControl.hxx>
 
 #include <sfx2/viewfrm.hxx>
-#include <svx/svdlayer.hxx>
-#include <svx/svdpagv.hxx>
 #include <sfx2/dispatch.hxx>
+#include <vcl/commandevent.hxx>
+#include <vcl/vclevent.hxx>
 
-#include "sdattr.hxx"
-#include "sdmod.hxx"
-#include "app.hrc"
-#include "glob.hrc"
-#include "res_bmp.hrc"
-#include "DrawViewShell.hxx"
-#include "GraphicViewShell.hxx"
-#include "helpids.h"
-#include "View.hxx"
-#include "sdpage.hxx"
-#include "drawdoc.hxx"
-#include "Window.hxx"
-#include "unmodpg.hxx"
-#include "DrawDocShell.hxx"
-#include "sdresid.hxx"
+#include <app.hrc>
+
+#include <DrawViewShell.hxx>
+#include <helpids.h>
+#include <View.hxx>
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
 
 namespace sd {
 
@@ -66,7 +58,6 @@ TabControl::TabControl(DrawViewShell* pViewSh, vcl::Window* pParent) :
     TabBar( pParent, WinBits( WB_BORDER | WB_3DLOOK | WB_SCROLL | WB_SIZEABLE | WB_DRAG) ),
     DragSourceHelper( this ),
     DropTargetHelper( this ),
-    RrePageID(1),
     pDrViewSh(pViewSh),
     bInternalMove(false)
 {
@@ -106,9 +97,6 @@ void  TabControl::MouseButtonDown(const MouseEvent& rMEvt)
         sal_uInt16 aPageId = GetPageId(aPos);
 
         //initialize
-        if(RrePageID!=aPageId)
-            pDrViewSh->FreshNavigatrEntry();
-        RrePageID=aPageId;
         if (aPageId == 0)
         {
             SfxDispatcher* pDispatcher = pDrViewSh->GetViewFrame()->GetDispatcher();
@@ -196,9 +184,9 @@ sal_Int8 TabControl::AcceptDrop( const AcceptDropEvent& rEvt )
 
             sal_Int32 nPageId = GetPageId( aPos ) - 1;
 
-            if( ( nPageId >= 0 ) && pDoc->GetPage( (sal_uInt16)nPageId ) )
+            if( ( nPageId >= 0 ) && pDoc->GetPage( static_cast<sal_uInt16>(nPageId) ) )
             {
-                nRet = pDrViewSh->AcceptDrop( rEvt, *this, nullptr, (sal_uInt16)nPageId, SDRLAYER_NOTFOUND );
+                nRet = pDrViewSh->AcceptDrop( rEvt, *this, nullptr, static_cast<sal_uInt16>(nPageId), SDRLAYER_NOTFOUND );
                 SwitchPage( aPos );
             }
         }
@@ -245,14 +233,14 @@ sal_Int8 TabControl::ExecuteDrop( const ExecuteDropEvent& rEvt )
                     // Adapt target page id when necessary, i.e. page copy
                     // has been inserted in front of the target page.
                     sal_uInt16 nPageNum = nPageId;
-                    if ((nPageNumOfCopy <= nPageNum) && (nPageNum != (sal_uInt16)-1))
+                    if ((nPageNumOfCopy <= nPageNum) && (nPageNum != sal_uInt16(-1)))
                         nPageNum += 1;
                     if (pDoc->MovePages(nPageNum))
                     {
                         // 3. Switch to the copy that has been moved to its
                         // final destination.  Use an asynchron slot call to
                         // be executed after the still pending ones.
-                        if (nPageNumOfCopy >= nPageNum || (nPageNum == (sal_uInt16)-1))
+                        if (nPageNumOfCopy >= nPageNum || (nPageNum == sal_uInt16(-1)))
                             nPageNum += 1;
                         SetCurPageId (GetPageId(nPageNum));
                         SfxDispatcher* pDispatcher = pDrViewSh->GetViewFrame()->GetDispatcher();
@@ -271,9 +259,9 @@ sal_Int8 TabControl::ExecuteDrop( const ExecuteDropEvent& rEvt )
     {
         sal_Int32 nPageId = GetPageId( aPos ) - 1;
 
-        if( ( nPageId >= 0 ) && pDoc->GetPage( (sal_uInt16)nPageId ) )
+        if( ( nPageId >= 0 ) && pDoc->GetPage( static_cast<sal_uInt16>(nPageId) ) )
         {
-            nRet = pDrViewSh->ExecuteDrop( rEvt, *this, nullptr, (sal_uInt16)nPageId, SDRLAYER_NOTFOUND );
+            nRet = pDrViewSh->ExecuteDrop( rEvt, *this, nullptr, static_cast<sal_uInt16>(nPageId), SDRLAYER_NOTFOUND );
         }
     }
 
@@ -319,7 +307,7 @@ TabBarAllowRenamingReturnCode TabControl::AllowRenaming()
     if( aCompareName != aNewName )
     {
         // rename page
-        if( pDrViewSh->GetDocSh()->CheckPageName( this, aNewName ) )
+        if (pDrViewSh->GetDocSh()->CheckPageName(GetFrameWeld(), aNewName))
         {
             SetEditText( aNewName );
             EndRenaming();

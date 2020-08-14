@@ -17,10 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/EnhancedCustomShape2d.hxx"
+#include <sal/config.h>
+
+#include <svx/EnhancedCustomShape2d.hxx>
 #include <rtl/ustring.hxx>
-#include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <tools/fract.hxx>
+
+#include <com/sun/star/drawing/EnhancedCustomShapeParameterType.hpp>
 
 // Makes parser a static resource,
 // we're synchronized externally.
@@ -50,7 +54,7 @@ void EnhancedCustomShape::FillEquationParameter( const EnhancedCustomShapeParame
     {
         double fValue(0.0);
         if ( rSource.Value >>= fValue )
-            nValue = (sal_Int32)fValue;
+            nValue = static_cast<sal_Int32>(fValue);
     }
     else
         rSource.Value >>= nValue;
@@ -117,17 +121,17 @@ public:
         if ( aFract.GetDenominator() == 1 )
         {
             aRet.Type = EnhancedCustomShapeParameterType::NORMAL;
-            aRet.Value <<= (sal_Int32)aFract.GetNumerator();
+            aRet.Value <<= aFract.GetNumerator();
         }
         else
         {
             EnhancedCustomShapeEquation aEquation;
             aEquation.nOperation = 1;
             aEquation.nPara[ 0 ] = 1;
-            aEquation.nPara[ 1 ] = (sal_Int16)aFract.GetNumerator();
-            aEquation.nPara[ 2 ] = (sal_Int16)aFract.GetDenominator();
+            aEquation.nPara[ 1 ] = static_cast<sal_Int16>(aFract.GetNumerator());
+            aEquation.nPara[ 2 ] = static_cast<sal_Int16>(aFract.GetDenominator());
             aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-            aRet.Value <<= (sal_Int32)rEquations.size();
+            aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
             rEquations.push_back( aEquation );
         }
         return aRet;
@@ -331,7 +335,7 @@ public:
                 aEquation.nOperation |= 3;
                 FillEquationParameter( mpArg->fillNode( rEquations, nullptr, nFlags ), 0, aEquation );
                 aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                aRet.Value <<= (sal_Int32)rEquations.size();
+                aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                 rEquations.push_back( aEquation );
             }
             break;
@@ -341,7 +345,7 @@ public:
                 aEquation.nOperation |= 13;
                 FillEquationParameter( mpArg->fillNode( rEquations, nullptr, nFlags ), 0, aEquation );
                 aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                aRet.Value <<= (sal_Int32)rEquations.size();
+                aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                 rEquations.push_back( aEquation );
             }
             break;
@@ -361,12 +365,12 @@ public:
                     _aEquation.nOperation |= 0xe;   // sumangle
                     FillEquationParameter( aSource, 1, _aEquation );
                     aSource.Type = EnhancedCustomShapeParameterType::EQUATION;
-                    aSource.Value <<= (sal_Int32)rEquations.size();
+                    aSource.Value <<= static_cast<sal_Int32>(rEquations.size());
                     rEquations.push_back( _aEquation );
                 }
                 FillEquationParameter( aSource, 1, aEquation );
                 aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                aRet.Value <<= (sal_Int32)rEquations.size();
+                aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                 rEquations.push_back( aEquation );
             }
             break;
@@ -386,12 +390,12 @@ public:
                     aTmpEquation.nOperation |= 0xe; // sumangle
                     FillEquationParameter( aSource, 1, aTmpEquation );
                     aSource.Type = EnhancedCustomShapeParameterType::EQUATION;
-                    aSource.Value <<= (sal_Int32)rEquations.size();
+                    aSource.Value <<= static_cast<sal_Int32>(rEquations.size());
                     rEquations.push_back( aTmpEquation );
                 }
                 FillEquationParameter( aSource, 1, aEquation );
                 aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                aRet.Value <<= (sal_Int32)rEquations.size();
+                aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                 rEquations.push_back( aEquation );
             }
             break;
@@ -411,12 +415,12 @@ public:
                     aTmpEquation.nOperation |= 0xe; // sumangle
                     FillEquationParameter( aSource, 1, aTmpEquation );
                     aSource.Type = EnhancedCustomShapeParameterType::EQUATION;
-                    aSource.Value <<= (sal_Int32)rEquations.size();
+                    aSource.Value <<= static_cast<sal_Int32>(rEquations.size());
                     rEquations.push_back( aTmpEquation );
                 }
                 FillEquationParameter( aSource, 1, aEquation );
                 aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                aRet.Value <<= (sal_Int32)rEquations.size();
+                aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                 rEquations.push_back( aEquation );
             }
             break;
@@ -434,7 +438,7 @@ public:
                 aEquation.nPara[ 2 ] = 1;
                 FillEquationParameter( mpArg->fillNode( rEquations, nullptr, nFlags ), 0, aEquation );
                 aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                aRet.Value <<= (sal_Int32)rEquations.size();
+                aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                 rEquations.push_back( aEquation );
             }
             break;
@@ -462,6 +466,10 @@ public:
         mpSecondArg( rSecondArg )
     {
     }
+#if defined(__clang__) || (defined (__GNUC__) && __GNUC__ >= 8)
+    //GetEquationValueAsDouble calls isFinite on the result
+    __attribute__((no_sanitize("float-divide-by-zero")))
+#endif
     static double getValue( const ExpressionFunct eFunct, const std::shared_ptr<ExpressionNode>& rFirstArg, const std::shared_ptr<ExpressionNode>& rSecondArg )
     {
         double fRet = 0;
@@ -507,7 +515,7 @@ public:
                         FillEquationParameter( mpFirstArg->fillNode( rEquations, nullptr, nFlags ), 0, aEquation );
                         FillEquationParameter( mpSecondArg->fillNode( rEquations, nullptr, nFlags ), 1, aEquation );
                         aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                        aRet.Value <<= (sal_Int32)rEquations.size();
+                        aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                         rEquations.push_back( aEquation );
                     }
                     else if ( mpSecondArg->getType() == ExpressionFunct::EnumAdjustment )
@@ -517,7 +525,7 @@ public:
                         FillEquationParameter( mpSecondArg->fillNode( rEquations, nullptr, nFlags ), 0, aEquation );
                         FillEquationParameter( mpFirstArg->fillNode( rEquations, nullptr, nFlags ), 1, aEquation );
                         aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                        aRet.Value <<= (sal_Int32)rEquations.size();
+                        aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                         rEquations.push_back( aEquation );
                     }
                     else
@@ -526,14 +534,14 @@ public:
                         aSumangle1.nOperation |= 0xe;   // sumangle
                         FillEquationParameter( mpFirstArg->fillNode( rEquations, nullptr, nFlags &~EXPRESSION_FLAG_SUMANGLE_MODE ), 1, aSumangle1 );
                         aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                        aRet.Value <<= (sal_Int32)rEquations.size();
+                        aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                         rEquations.push_back( aSumangle1 );
 
                         EnhancedCustomShapeEquation aSumangle2;
                         aSumangle2.nOperation |= 0xe;   // sumangle
                         FillEquationParameter( mpSecondArg->fillNode( rEquations, nullptr, nFlags &~EXPRESSION_FLAG_SUMANGLE_MODE ), 1, aSumangle2 );
                         aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                        aRet.Value <<= (sal_Int32)rEquations.size();
+                        aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                         rEquations.push_back( aSumangle2 );
 
                         EnhancedCustomShapeEquation aEquation;
@@ -541,7 +549,7 @@ public:
                         aEquation.nPara[ 0 ] = ( rEquations.size() - 2 ) | 0x400;
                         aEquation.nPara[ 1 ] = ( rEquations.size() - 1 ) | 0x400;
                         aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                        aRet.Value <<= (sal_Int32)rEquations.size();
+                        aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                         rEquations.push_back( aEquation );
                     }
                 }
@@ -561,7 +569,7 @@ public:
                         FillEquationParameter( mpFirstArg->fillNode( rEquations, nullptr, nFlags ), 0, aEquation );
                         FillEquationParameter( mpSecondArg->fillNode( rEquations, nullptr, nFlags ), 1, aEquation );
                         aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                        aRet.Value <<= (sal_Int32)rEquations.size();
+                        aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                         rEquations.push_back( aEquation );
                     }
                 }
@@ -574,7 +582,7 @@ public:
                 FillEquationParameter( mpFirstArg->fillNode( rEquations, nullptr, nFlags ), 0, aEquation );
                 FillEquationParameter( mpSecondArg->fillNode( rEquations, nullptr, nFlags ), 2, aEquation );
                 aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                aRet.Value <<= (sal_Int32)rEquations.size();
+                aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                 rEquations.push_back( aEquation );
             }
             break;
@@ -593,14 +601,14 @@ public:
                     else if ( mpSecondArg->isConstant() && (*mpSecondArg)() == 1 )
                         aRet = mpFirstArg->fillNode( rEquations, nullptr, nFlags );
                     else if ( ( mpFirstArg->getType() == ExpressionFunct::BinaryDiv )      // don't care of (pi/180)
-                        && ( static_cast<BinaryFunctionExpression*>(mpFirstArg.get())->mpFirstArg.get()->getType() == ExpressionFunct::EnumPi )
-                        && ( static_cast<BinaryFunctionExpression*>(mpFirstArg.get())->mpSecondArg.get()->getType() == ExpressionFunct::Const ) )
+                        && ( static_cast<BinaryFunctionExpression*>(mpFirstArg.get())->mpFirstArg->getType() == ExpressionFunct::EnumPi )
+                        && ( static_cast<BinaryFunctionExpression*>(mpFirstArg.get())->mpSecondArg->getType() == ExpressionFunct::Const ) )
                     {
                         aRet = mpSecondArg->fillNode( rEquations, nullptr, nFlags );
                     }
                     else if ( ( mpSecondArg->getType() == ExpressionFunct::BinaryDiv )     // don't care of (pi/180)
-                        && ( static_cast<BinaryFunctionExpression*>(mpSecondArg.get())->mpFirstArg.get()->getType() == ExpressionFunct::EnumPi )
-                        && ( static_cast<BinaryFunctionExpression*>(mpSecondArg.get())->mpSecondArg.get()->getType() == ExpressionFunct::Const ) )
+                        && ( static_cast<BinaryFunctionExpression*>(mpSecondArg.get())->mpFirstArg->getType() == ExpressionFunct::EnumPi )
+                        && ( static_cast<BinaryFunctionExpression*>(mpSecondArg.get())->mpSecondArg->getType() == ExpressionFunct::Const ) )
                     {
                         aRet = mpFirstArg->fillNode( rEquations, nullptr, nFlags );
                     }
@@ -612,7 +620,7 @@ public:
                         FillEquationParameter( mpSecondArg->fillNode( rEquations, nullptr, nFlags ), 1, aEquation );
                         aEquation.nPara[ 2 ] = 1;
                         aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                        aRet.Value <<= (sal_Int32)rEquations.size();
+                        aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                         rEquations.push_back( aEquation );
                     }
                 }
@@ -626,7 +634,7 @@ public:
                 aEquation.nPara[ 1 ] = 1;
                 FillEquationParameter( mpSecondArg->fillNode( rEquations, nullptr, nFlags ), 2, aEquation );
                 aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                aRet.Value <<= (sal_Int32)rEquations.size();
+                aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                 rEquations.push_back( aEquation );
             }
             break;
@@ -637,7 +645,7 @@ public:
                 FillEquationParameter( mpFirstArg->fillNode( rEquations, nullptr, nFlags ), 0, aEquation );
                 FillEquationParameter( mpSecondArg->fillNode( rEquations, nullptr, nFlags ), 1, aEquation );
                 aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                aRet.Value <<= (sal_Int32)rEquations.size();
+                aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                 rEquations.push_back( aEquation );
             }
             break;
@@ -648,7 +656,7 @@ public:
                 FillEquationParameter( mpFirstArg->fillNode( rEquations, nullptr, nFlags ), 0, aEquation );
                 FillEquationParameter( mpSecondArg->fillNode( rEquations, nullptr, nFlags ), 1, aEquation );
                 aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                aRet.Value <<= (sal_Int32)rEquations.size();
+                aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                 rEquations.push_back( aEquation );
             }
             break;
@@ -659,7 +667,7 @@ public:
                 FillEquationParameter( mpSecondArg->fillNode( rEquations, nullptr, nFlags ), 0, aEquation );
                 FillEquationParameter( mpFirstArg->fillNode( rEquations, nullptr, nFlags ), 1, aEquation );
                 aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-                aRet.Value <<= (sal_Int32)rEquations.size();
+                aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
                 rEquations.push_back( aEquation );
             }
             break;
@@ -705,7 +713,7 @@ public:
     {
         EnhancedCustomShapeParameter aRet;
         aRet.Type = EnhancedCustomShapeParameterType::EQUATION;
-        aRet.Value <<= (sal_Int32)rEquations.size();
+        aRet.Value <<= static_cast<sal_Int32>(rEquations.size());
         {
             EnhancedCustomShapeEquation aEquation;
             aEquation.nOperation |= 6;
@@ -722,7 +730,7 @@ public:
 // FUNCTION PARSER
 
 
-typedef const sal_Char* StringIteratorT;
+typedef const char* StringIteratorT;
 
 struct ParserContext
 {
@@ -754,7 +762,7 @@ public:
     }
     void operator()( double n ) const
     {
-        mxContext->maOperandStack.push( std::shared_ptr<ExpressionNode>( new ConstantValueExpression( n ) ) );
+        mxContext->maOperandStack.push( std::make_shared<ConstantValueExpression>( n ) );
     }
 };
 
@@ -778,17 +786,17 @@ public:
             case ExpressionFunct::EnumAdjustment :
             {
                 OUString aVal( rFirst + 1, rSecond - rFirst, RTL_TEXTENCODING_UTF8 );
-                mxContext->maOperandStack.push( std::shared_ptr<ExpressionNode>( new AdjustmentExpression( *mxContext->mpCustoShape, aVal.toInt32() ) ) );
+                mxContext->maOperandStack.push( std::make_shared<AdjustmentExpression>( *mxContext->mpCustoShape, aVal.toInt32() ) );
             }
             break;
             case ExpressionFunct::EnumEquation :
                 {
                 OUString aVal( rFirst + 1, rSecond - rFirst, RTL_TEXTENCODING_UTF8 );
-                mxContext->maOperandStack.push( std::shared_ptr<ExpressionNode>( new EquationExpression( *mxContext->mpCustoShape, aVal.toInt32() ) ) );
+                mxContext->maOperandStack.push( std::make_shared<EquationExpression>( *mxContext->mpCustoShape, aVal.toInt32() ) );
             }
             break;
             default:
-                mxContext->maOperandStack.push( std::shared_ptr<ExpressionNode>( new EnumValueExpression( *mxContext->mpCustoShape, meFunct ) ) );
+                mxContext->maOperandStack.push( std::make_shared<EnumValueExpression>( *mxContext->mpCustoShape, meFunct ) );
         }
     }
 };
@@ -809,17 +817,17 @@ public:
     {
         ParserContext::OperandStack& rNodeStack( mxContext->maOperandStack );
 
-        if( rNodeStack.size() < 1 )
+        if( rNodeStack.empty() )
             throw ParseError( "Not enough arguments for unary operator" );
 
         // retrieve arguments
-        std::shared_ptr<ExpressionNode> pArg( rNodeStack.top() );
+        std::shared_ptr<ExpressionNode> pArg( std::move(rNodeStack.top()) );
         rNodeStack.pop();
 
         if( pArg->isConstant() )    // check for constness
-            rNodeStack.push( std::shared_ptr<ExpressionNode>( new ConstantValueExpression( UnaryFunctionExpression::getValue( meFunct, pArg ) ) ) );
+            rNodeStack.push( std::make_shared<ConstantValueExpression>( UnaryFunctionExpression::getValue( meFunct, pArg ) ) );
         else                        // push complex node, that calcs the value on demand
-            rNodeStack.push( std::shared_ptr<ExpressionNode>( new UnaryFunctionExpression( meFunct, pArg ) ) );
+            rNodeStack.push( std::make_shared<UnaryFunctionExpression>( meFunct, pArg ) );
     }
 };
 
@@ -851,16 +859,16 @@ public:
             throw ParseError( "Not enough arguments for binary operator" );
 
         // retrieve arguments
-        std::shared_ptr<ExpressionNode> pSecondArg( rNodeStack.top() );
+        std::shared_ptr<ExpressionNode> pSecondArg( std::move(rNodeStack.top()) );
         rNodeStack.pop();
-        std::shared_ptr<ExpressionNode> pFirstArg( rNodeStack.top() );
+        std::shared_ptr<ExpressionNode> pFirstArg( std::move(rNodeStack.top()) );
         rNodeStack.pop();
 
         // create combined ExpressionNode
-        std::shared_ptr<ExpressionNode> pNode = std::shared_ptr<ExpressionNode>( new BinaryFunctionExpression( meFunct, pFirstArg, pSecondArg ) );
+        auto pNode = std::make_shared<BinaryFunctionExpression>( meFunct, pFirstArg, pSecondArg );
         // check for constness
         if( pFirstArg->isConstant() && pSecondArg->isConstant() )   // call the operator() at pNode, store result in constant value ExpressionNode.
-            rNodeStack.push( std::shared_ptr<ExpressionNode>( new ConstantValueExpression( (*pNode)() ) ) );
+            rNodeStack.push( std::make_shared<ConstantValueExpression>( (*pNode)() ) );
         else                                                        // push complex node, that calcs the value on demand
             rNodeStack.push( pNode );
     }
@@ -884,18 +892,18 @@ public:
             throw ParseError( "Not enough arguments for ternary operator" );
 
         // retrieve arguments
-        std::shared_ptr<ExpressionNode> pThirdArg( rNodeStack.top() );
+        std::shared_ptr<ExpressionNode> pThirdArg( std::move(rNodeStack.top()) );
         rNodeStack.pop();
-        std::shared_ptr<ExpressionNode> pSecondArg( rNodeStack.top() );
+        std::shared_ptr<ExpressionNode> pSecondArg( std::move(rNodeStack.top()) );
         rNodeStack.pop();
-        std::shared_ptr<ExpressionNode> pFirstArg( rNodeStack.top() );
+        std::shared_ptr<ExpressionNode> pFirstArg( std::move(rNodeStack.top()) );
         rNodeStack.pop();
 
         // create combined ExpressionNode
-        std::shared_ptr<ExpressionNode> pNode( new IfExpression( pFirstArg, pSecondArg, pThirdArg ) );
+        auto pNode = std::make_shared<IfExpression>( pFirstArg, pSecondArg, pThirdArg );
         // check for constness
         if( pFirstArg->isConstant() && pSecondArg->isConstant() && pThirdArg->isConstant() )
-            rNodeStack.push( std::shared_ptr<ExpressionNode>( new ConstantValueExpression( (*pNode)() ) ) );    // call the operator() at pNode, store result in constant value ExpressionNode.
+            rNodeStack.push( std::make_shared<ConstantValueExpression>( (*pNode)() ) );    // call the operator() at pNode, store result in constant value ExpressionNode.
         else
             rNodeStack.push( pNode );                                       // push complex node, that calcs the value on demand
     }
@@ -913,14 +921,14 @@ public:
 // notation, not the 1.0e10 one.
 
 // TODO(F1): Also handle the 1.0e10 case here.
-template< typename T > struct custom_real_parser_policies : public ::boost::spirit::ureal_parser_policies<T>
+template< typename T > struct custom_real_parser_policies : public ::boost::spirit::classic::ureal_parser_policies<T>
 {
     template< typename ScannerT >
-        static typename ::boost::spirit::parser_result< ::boost::spirit::chlit<>, ScannerT >::type
+        static typename ::boost::spirit::classic::parser_result< ::boost::spirit::classic::chlit<>, ScannerT >::type
     parse_exp(ScannerT& scan)
     {
         // as_lower_d somehow breaks MSVC7
-        return ::boost::spirit::ch_p('E').parse(scan);
+        return ::boost::spirit::classic::ch_p('E').parse(scan);
     }
 };
 
@@ -952,7 +960,7 @@ template< typename T > struct custom_real_parser_policies : public ::boost::spir
 
     */
 
-class ExpressionGrammar : public ::boost::spirit::grammar< ExpressionGrammar >
+class ExpressionGrammar : public ::boost::spirit::classic::grammar< ExpressionGrammar >
 {
 public:
     /** Create an arithmetic expression grammar
@@ -971,10 +979,10 @@ public:
         // grammar definition
         explicit definition( const ExpressionGrammar& self )
         {
-            using ::boost::spirit::str_p;
-            using ::boost::spirit::range_p;
-            using ::boost::spirit::lexeme_d;
-            using ::boost::spirit::real_parser;
+            using ::boost::spirit::classic::str_p;
+            using ::boost::spirit::classic::range_p;
+            using ::boost::spirit::classic::lexeme_d;
+            using ::boost::spirit::classic::real_parser;
 
             identifier =
                             str_p( "pi"         )[ EnumFunctor(ExpressionFunct::EnumPi,        self.getContext() ) ]
@@ -1063,7 +1071,7 @@ public:
             BOOST_SPIRIT_DEBUG_RULE(identifier);
         }
 
-        const ::boost::spirit::rule< ScannerT >& start() const
+        const ::boost::spirit::classic::rule< ScannerT >& start() const
         {
             return additiveExpression;
         }
@@ -1071,18 +1079,18 @@ public:
     private:
         // the constituents of the Spirit arithmetic expression grammar.
         // For the sake of readability, without 'ma' prefix.
-        ::boost::spirit::rule< ScannerT >   additiveExpression;
-        ::boost::spirit::rule< ScannerT >   multiplicativeExpression;
-        ::boost::spirit::rule< ScannerT >   unaryExpression;
-        ::boost::spirit::rule< ScannerT >   basicExpression;
-        ::boost::spirit::rule< ScannerT >   unaryFunction;
-        ::boost::spirit::rule< ScannerT >   binaryFunction;
-        ::boost::spirit::rule< ScannerT >   ternaryFunction;
-        ::boost::spirit::rule< ScannerT >   funcRef_decl;
-        ::boost::spirit::rule< ScannerT >   functionReference;
-        ::boost::spirit::rule< ScannerT >   modRef_decl;
-        ::boost::spirit::rule< ScannerT >   modifierReference;
-        ::boost::spirit::rule< ScannerT >   identifier;
+        ::boost::spirit::classic::rule< ScannerT >   additiveExpression;
+        ::boost::spirit::classic::rule< ScannerT >   multiplicativeExpression;
+        ::boost::spirit::classic::rule< ScannerT >   unaryExpression;
+        ::boost::spirit::classic::rule< ScannerT >   basicExpression;
+        ::boost::spirit::classic::rule< ScannerT >   unaryFunction;
+        ::boost::spirit::classic::rule< ScannerT >   binaryFunction;
+        ::boost::spirit::classic::rule< ScannerT >   ternaryFunction;
+        ::boost::spirit::classic::rule< ScannerT >   funcRef_decl;
+        ::boost::spirit::classic::rule< ScannerT >   functionReference;
+        ::boost::spirit::classic::rule< ScannerT >   modRef_decl;
+        ::boost::spirit::classic::rule< ScannerT >   modifierReference;
+        ::boost::spirit::classic::rule< ScannerT >   identifier;
     };
 
     const ParserContextSharedPtr& getContext() const
@@ -1096,7 +1104,7 @@ private:
 
 const ParserContextSharedPtr& getParserContext()
 {
-    static ParserContextSharedPtr lcl_parserContext( new ParserContext );
+    static ParserContextSharedPtr lcl_parserContext = std::make_shared<ParserContext>();
 
     // clear node stack (since we reuse the static object, that's
     // the whole point here)
@@ -1111,7 +1119,7 @@ const ParserContextSharedPtr& getParserContext()
 namespace EnhancedCustomShape  {
 
 
-std::shared_ptr<ExpressionNode> FunctionParser::parseFunction( const OUString& rFunction, const EnhancedCustomShape2d& rCustoShape )
+std::shared_ptr<ExpressionNode> const & FunctionParser::parseFunction( const OUString& rFunction, const EnhancedCustomShape2d& rCustoShape )
 {
     // TODO(Q1): Check if a combination of the RTL_UNICODETOTEXT_FLAGS_*
     // gives better conversion robustness here (we might want to map space
@@ -1122,19 +1130,17 @@ std::shared_ptr<ExpressionNode> FunctionParser::parseFunction( const OUString& r
     StringIteratorT aStart( rAsciiFunction.getStr() );
     StringIteratorT aEnd( rAsciiFunction.getStr()+rAsciiFunction.getLength() );
 
-    ParserContextSharedPtr pContext;
-
     // static parser context, because the actual
     // Spirit parser is also a static object
-    pContext = getParserContext();
+    ParserContextSharedPtr pContext = getParserContext();
     pContext->mpCustoShape = &rCustoShape;
 
     ExpressionGrammar aExpressionGrammer( pContext );
-    const ::boost::spirit::parse_info<StringIteratorT> aParseInfo(
-            ::boost::spirit::parse( aStart,
+    const ::boost::spirit::classic::parse_info<StringIteratorT> aParseInfo(
+            ::boost::spirit::classic::parse( aStart,
                                     aEnd,
-                                    aExpressionGrammer >> ::boost::spirit::end_p,
-                                    ::boost::spirit::space_p ) );
+                                    aExpressionGrammer >> ::boost::spirit::classic::end_p,
+                                    ::boost::spirit::classic::space_p ) );
 
     // input fully congested by the parser?
     if( !aParseInfo.full )

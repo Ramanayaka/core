@@ -22,7 +22,8 @@
 using namespace com::sun::star;
 using namespace ooo::vba;
 
-ScVbaSpinButton::ScVbaSpinButton(  const css::uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, AbstractGeometryAttributes* pGeomHelper ) : SpinButtonImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+ScVbaSpinButton::ScVbaSpinButton(  const css::uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<AbstractGeometryAttributes> pGeomHelper )
+    : SpinButtonImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 {
 }
 
@@ -70,18 +71,16 @@ ScVbaSpinButton::setMin( sal_Int32 nVal )
 OUString
 ScVbaSpinButton::getServiceImplName()
 {
-    return OUString( "ScVbaSpinButton" );
+    return "ScVbaSpinButton";
 }
 
 uno::Sequence< OUString >
 ScVbaSpinButton::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.Frame";
-    }
+        "ooo.vba.msforms.Frame"
+    };
     return aServiceNames;
 }
 

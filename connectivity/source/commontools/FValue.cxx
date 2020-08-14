@@ -20,11 +20,16 @@
 
 #include <string.h>
 #include <connectivity/FValue.hxx>
-#include <connectivity/CommonTools.hxx>
 #include <connectivity/dbconversion.hxx>
 #include <comphelper/extract.hxx>
 #include <com/sun/star/io/XInputStream.hpp>
+#include <com/sun/star/sdbc/XClob.hpp>
+#include <com/sun/star/sdbc/XBlob.hpp>
+#include <com/sun/star/sdb/XColumn.hpp>
+#include <com/sun/star/sdbc/XRow.hpp>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 using namespace ::dbtools;
 using namespace ::com::sun::star::sdbc;
@@ -253,66 +258,66 @@ void ORowSetValue::setTypeKind(sal_Int32 _eType)
 }
 
 
-void ORowSetValue::free()
+void ORowSetValue::free() noexcept
 {
-    if(!m_bNull)
+    if(m_bNull)
+        return;
+
+    switch(m_eTypeKind)
     {
-        switch(m_eTypeKind)
-        {
-            case DataType::CHAR:
-            case DataType::VARCHAR:
-            case DataType::DECIMAL:
-            case DataType::NUMERIC:
-            case DataType::LONGVARCHAR:
-                OSL_ENSURE(m_aValue.m_pString,"String pointer is null!");
-                rtl_uString_release(m_aValue.m_pString);
-                m_aValue.m_pString = nullptr;
-                break;
-            case DataType::DATE:
-                delete static_cast<css::util::Date*>(m_aValue.m_pValue);
-                m_aValue.m_pValue = nullptr;
-                break;
-            case DataType::TIME:
-                delete static_cast<css::util::Time*>(m_aValue.m_pValue);
-                m_aValue.m_pValue = nullptr;
-                break;
-            case DataType::TIMESTAMP:
-                delete static_cast<css::util::DateTime*>(m_aValue.m_pValue);
-                m_aValue.m_pValue = nullptr;
-                break;
-            case DataType::BINARY:
-            case DataType::VARBINARY:
-            case DataType::LONGVARBINARY:
-                delete static_cast<Sequence<sal_Int8>*>(m_aValue.m_pValue);
-                m_aValue.m_pValue = nullptr;
-                break;
-            case DataType::BLOB:
-            case DataType::CLOB:
-            case DataType::OBJECT:
+        case DataType::CHAR:
+        case DataType::VARCHAR:
+        case DataType::DECIMAL:
+        case DataType::NUMERIC:
+        case DataType::LONGVARCHAR:
+            OSL_ENSURE(m_aValue.m_pString,"String pointer is null!");
+            rtl_uString_release(m_aValue.m_pString);
+            m_aValue.m_pString = nullptr;
+            break;
+        case DataType::DATE:
+            delete static_cast<css::util::Date*>(m_aValue.m_pValue);
+            m_aValue.m_pValue = nullptr;
+            break;
+        case DataType::TIME:
+            delete static_cast<css::util::Time*>(m_aValue.m_pValue);
+            m_aValue.m_pValue = nullptr;
+            break;
+        case DataType::TIMESTAMP:
+            delete static_cast<css::util::DateTime*>(m_aValue.m_pValue);
+            m_aValue.m_pValue = nullptr;
+            break;
+        case DataType::BINARY:
+        case DataType::VARBINARY:
+        case DataType::LONGVARBINARY:
+            delete static_cast<Sequence<sal_Int8>*>(m_aValue.m_pValue);
+            m_aValue.m_pValue = nullptr;
+            break;
+        case DataType::BLOB:
+        case DataType::CLOB:
+        case DataType::OBJECT:
+            delete static_cast<Any*>(m_aValue.m_pValue);
+            m_aValue.m_pValue = nullptr;
+            break;
+        case DataType::BIT:
+        case DataType::TINYINT:
+        case DataType::SMALLINT:
+        case DataType::INTEGER:
+        case DataType::BIGINT:
+        case DataType::BOOLEAN:
+        case DataType::FLOAT:
+        case DataType::DOUBLE:
+        case DataType::REAL:
+            break;
+        default:
+            if ( m_aValue.m_pValue )
+            {
                 delete static_cast<Any*>(m_aValue.m_pValue);
                 m_aValue.m_pValue = nullptr;
-                break;
-            case DataType::BIT:
-            case DataType::TINYINT:
-            case DataType::SMALLINT:
-            case DataType::INTEGER:
-            case DataType::BIGINT:
-            case DataType::BOOLEAN:
-            case DataType::FLOAT:
-            case DataType::DOUBLE:
-            case DataType::REAL:
-                break;
-            default:
-                if ( m_aValue.m_pValue )
-                {
-                    delete static_cast<Any*>(m_aValue.m_pValue);
-                    m_aValue.m_pValue = nullptr;
-                }
-                break;
+            }
+            break;
 
-        }
-        m_bNull = true;
     }
+    m_bNull = true;
 }
 
 ORowSetValue& ORowSetValue::operator=(const ORowSetValue& _rRH)
@@ -464,7 +469,7 @@ ORowSetValue& ORowSetValue::operator=(const ORowSetValue& _rRH)
     return *this;
 }
 
-ORowSetValue& ORowSetValue::operator=(ORowSetValue&& _rRH)
+ORowSetValue& ORowSetValue::operator=(ORowSetValue&& _rRH) noexcept
 {
     if ( m_eTypeKind != _rRH.m_eTypeKind || !m_bNull)
         free();
@@ -751,7 +756,7 @@ bool ORowSetValue::operator==(const ORowSetValue& _rRH) const
     }
 
     bool bRet = false;
-    OSL_ENSURE(!m_bNull,"SHould not be null!");
+    OSL_ENSURE(!m_bNull,"Should not be null!");
     switch(m_eTypeKind)
     {
         case DataType::VARCHAR:
@@ -964,7 +969,7 @@ OUString ORowSetValue::getString( ) const
                     const sal_Int8* pBegin  = aSeq.getConstArray();
                     const sal_Int8* pEnd    = pBegin + aSeq.getLength();
                     for(;pBegin != pEnd;++pBegin)
-                        sVal.append((sal_Int32)*pBegin,16);
+                        sVal.append(static_cast<sal_Int32>(*pBegin),16);
                     aRet = sVal.makeStringAndClear();
                 }
                 break;
@@ -992,12 +997,9 @@ OUString ORowSetValue::getString( ) const
                 {
                     Any aValue( getAny() );
                     Reference< XClob > xClob;
-                    if ( aValue >>= xClob )
+                    if ( (aValue >>= xClob) && xClob.is() )
                     {
-                        if ( xClob.is() )
-                        {
-                            aRet = xClob->getSubString(1,(sal_Int32)xClob->length() );
-                        }
+                        aRet = xClob->getSubString(1,static_cast<sal_Int32>(xClob->length()) );
                     }
                 }
                 break;
@@ -1035,7 +1037,7 @@ bool ORowSetValue::getBool()    const
                         break;
                     }
                 }
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case DataType::DECIMAL:
             case DataType::NUMERIC:
 
@@ -1683,16 +1685,16 @@ float ORowSetValue::getFloat()  const
                 break;
             case DataType::DOUBLE:
             case DataType::REAL:
-                nRet = (float)m_aValue.m_nDouble;
+                nRet = static_cast<float>(m_aValue.m_nDouble);
                 break;
             case DataType::DATE:
-                nRet = (float)dbtools::DBTypeConversion::toDouble(*static_cast<css::util::Date*>(m_aValue.m_pValue));
+                nRet = static_cast<float>(dbtools::DBTypeConversion::toDouble(*static_cast<css::util::Date*>(m_aValue.m_pValue)));
                 break;
             case DataType::TIME:
-                nRet = (float)dbtools::DBTypeConversion::toDouble(*static_cast<css::util::Time*>(m_aValue.m_pValue));
+                nRet = static_cast<float>(dbtools::DBTypeConversion::toDouble(*static_cast<css::util::Time*>(m_aValue.m_pValue)));
                 break;
             case DataType::TIMESTAMP:
-                nRet = (float)dbtools::DBTypeConversion::toDouble(*static_cast<css::util::DateTime*>(m_aValue.m_pValue));
+                nRet = static_cast<float>(dbtools::DBTypeConversion::toDouble(*static_cast<css::util::DateTime*>(m_aValue.m_pValue)));
                 break;
             case DataType::BINARY:
             case DataType::VARBINARY:
@@ -1715,19 +1717,19 @@ float ORowSetValue::getFloat()  const
                 if ( m_bSigned )
                     nRet = m_aValue.m_nInt16;
                 else
-                    nRet = (float)m_aValue.m_uInt16;
+                    nRet = static_cast<float>(m_aValue.m_uInt16);
                 break;
             case DataType::INTEGER:
                 if ( m_bSigned )
-                    nRet = (float)m_aValue.m_nInt32;
+                    nRet = static_cast<float>(m_aValue.m_nInt32);
                 else
-                    nRet = (float)m_aValue.m_uInt32;
+                    nRet = static_cast<float>(m_aValue.m_uInt32);
                 break;
             case DataType::BIGINT:
                 if ( m_bSigned )
-                    nRet = (float)m_aValue.m_nInt64;
+                    nRet = static_cast<float>(m_aValue.m_nInt64);
                 else
-                    nRet = (float)m_aValue.m_uInt64;
+                    nRet = static_cast<float>(m_aValue.m_uInt64);
                 break;
             default:
                 {
@@ -1867,8 +1869,8 @@ Sequence<sal_Int8>  ORowSetValue::getSequence() const
             case DataType::VARCHAR:
             case DataType::LONGVARCHAR:
                 {
-                    OUString sVal(m_aValue.m_pString);
-                    aSeq = Sequence<sal_Int8>(reinterpret_cast<const sal_Int8*>(sVal.getStr()),sizeof(sal_Unicode)*sVal.getLength());
+                    aSeq = Sequence<sal_Int8>(reinterpret_cast<const sal_Int8*>(m_aValue.m_pString->buffer),
+                                              sizeof(sal_Unicode) * m_aValue.m_pString->length);
                 }
                 break;
             case DataType::BINARY:
@@ -1905,7 +1907,7 @@ css::util::Date ORowSetValue::getDate() const
             case DataType::FLOAT:
             case DataType::DOUBLE:
             case DataType::REAL:
-                aValue = DBTypeConversion::toDate((double)*this);
+                aValue = DBTypeConversion::toDate(static_cast<double>(*this));
                 break;
 
             case DataType::DATE:
@@ -1933,13 +1935,13 @@ css::util::Date ORowSetValue::getDate() const
             case DataType::OBJECT:
             default:
                 OSL_ENSURE( false, "ORowSetValue::getDate: cannot retrieve the data!" );
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
 
             case DataType::BINARY:
             case DataType::VARBINARY:
             case DataType::LONGVARBINARY:
             case DataType::TIME:
-                aValue = DBTypeConversion::toDate( (double)0 );
+                aValue = DBTypeConversion::toDate( double(0) );
                 break;
         }
     }
@@ -1960,12 +1962,12 @@ css::util::Time ORowSetValue::getTime()        const
                 break;
             case DataType::DECIMAL:
             case DataType::NUMERIC:
-                aValue = DBTypeConversion::toTime((double)*this);
+                aValue = DBTypeConversion::toTime(static_cast<double>(*this));
                 break;
             case DataType::FLOAT:
             case DataType::DOUBLE:
             case DataType::REAL:
-                aValue = DBTypeConversion::toTime((double)*this);
+                aValue = DBTypeConversion::toTime(static_cast<double>(*this));
                 break;
             case DataType::TIMESTAMP:
                 {
@@ -2004,12 +2006,12 @@ css::util::DateTime ORowSetValue::getDateTime()    const
                 break;
             case DataType::DECIMAL:
             case DataType::NUMERIC:
-                aValue = DBTypeConversion::toDateTime((double)*this);
+                aValue = DBTypeConversion::toDateTime(static_cast<double>(*this));
                 break;
             case DataType::FLOAT:
             case DataType::DOUBLE:
             case DataType::REAL:
-                aValue = DBTypeConversion::toDateTime((double)*this);
+                aValue = DBTypeConversion::toDateTime(static_cast<double>(*this));
                 break;
             case DataType::DATE:
                 {
@@ -2044,54 +2046,62 @@ css::util::DateTime ORowSetValue::getDateTime()    const
 
 void ORowSetValue::setSigned(bool _bMod)
 {
-    if ( m_bSigned != _bMod )
+    if ( m_bSigned == _bMod )
+        return;
+
+    m_bSigned = _bMod;
+    if ( m_bNull )
+        return;
+
+    sal_Int32 nType = m_eTypeKind;
+    switch(m_eTypeKind)
     {
-        m_bSigned = _bMod;
-        if ( !m_bNull )
-        {
-            sal_Int32 nType = m_eTypeKind;
-            switch(m_eTypeKind)
+        case DataType::TINYINT:
+            if ( m_bSigned )
+                (*this) = getInt8();
+            else
             {
-                case DataType::TINYINT:
-                    if ( m_bSigned )
-                        (*this) = getInt8();
-                    else
-                    {
-                        m_bSigned = !m_bSigned;
-                        (*this) = getInt16();
-                        m_bSigned = !m_bSigned;
-                    }
-                    break;
-                case DataType::SMALLINT:
-                    if ( m_bSigned )
-                        (*this) = getInt16();
-                    else
-                    {
-                        m_bSigned = !m_bSigned;
-                        (*this) = getInt32();
-                        m_bSigned = !m_bSigned;
-                    }
-                    break;
-                case DataType::INTEGER:
-                    if ( m_bSigned )
-                        (*this) = getInt32();
-                    else
-                    {
-                        m_bSigned = !m_bSigned;
-                        (*this) = getLong();
-                        m_bSigned = !m_bSigned;
-                    }
-                    break;
-                case DataType::BIGINT:
-                    if ( m_bSigned )
-                        m_aValue.m_nInt64 = static_cast<sal_Int64>(m_aValue.m_uInt64);
-                    else
-                        m_aValue.m_uInt64 = static_cast<sal_uInt64>(m_aValue.m_nInt64);
-                    break;
+                m_bSigned = !m_bSigned;
+                (*this) = getInt16();
+                m_bSigned = !m_bSigned;
             }
-            m_eTypeKind = nType;
+            break;
+        case DataType::SMALLINT:
+            if ( m_bSigned )
+                (*this) = getInt16();
+            else
+            {
+                m_bSigned = !m_bSigned;
+                (*this) = getInt32();
+                m_bSigned = !m_bSigned;
+            }
+            break;
+        case DataType::INTEGER:
+            if ( m_bSigned )
+                (*this) = getInt32();
+            else
+            {
+                m_bSigned = !m_bSigned;
+                (*this) = getLong();
+                m_bSigned = !m_bSigned;
+            }
+            break;
+        case DataType::BIGINT:
+        {
+            if ( m_bSigned )
+            {
+                auto nTmp = static_cast<sal_Int64>(m_aValue.m_uInt64);
+                m_aValue.m_nInt64 = nTmp;
+            }
+            else
+            {
+                auto nTmp = static_cast<sal_uInt64>(m_aValue.m_nInt64);
+                m_aValue.m_uInt64 = nTmp;
+            }
+            break;
         }
     }
+    m_eTypeKind = nType;
 }
 
 
@@ -2119,6 +2129,8 @@ namespace detail
 
         virtual ~IValueSource() { }
     };
+
+    namespace {
 
     class RowValue : public IValueSource
     {
@@ -2181,6 +2193,8 @@ namespace detail
     private:
         const Reference< XColumn >  m_xColumn;
     };
+
+    }
 }
 
 

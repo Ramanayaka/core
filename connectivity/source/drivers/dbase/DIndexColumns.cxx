@@ -17,12 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbase/DIndexColumns.hxx"
-#include "dbase/DTable.hxx"
-#include <connectivity/sdbcx/VIndexColumn.hxx>
+#include <dbase/DIndexColumns.hxx>
+#include <dbase/DTable.hxx>
+#include <sdbcx/VIndexColumn.hxx>
 #include <comphelper/types.hxx>
-#include <comphelper/property.hxx>
-#include <connectivity/dbexception.hxx>
 
 using namespace ::comphelper;
 
@@ -39,11 +37,11 @@ sdbcx::ObjectType ODbaseIndexColumns::createObject(const OUString& _rName)
 {
     const ODbaseTable* pTable = m_pIndex->getTable();
 
-    ::rtl::Reference<OSQLColumns> aCols = pTable->getTableColumns();
-    OSQLColumns::Vector::const_iterator aIter = find(aCols->get().begin(),aCols->get().end(),_rName,::comphelper::UStringMixEqual(isCaseSensitive()));
+    const ::rtl::Reference<OSQLColumns>& aCols = pTable->getTableColumns();
+    OSQLColumns::const_iterator aIter = find(aCols->begin(),aCols->end(),_rName,::comphelper::UStringMixEqual(isCaseSensitive()));
 
     Reference< XPropertySet > xCol;
-    if(aIter != aCols->get().end())
+    if(aIter != aCols->end())
         xCol = *aIter;
 
     if(!xCol.is())

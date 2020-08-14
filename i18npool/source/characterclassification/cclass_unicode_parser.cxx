@@ -20,24 +20,25 @@
 
 #include <cclass_unicode.hxx>
 #include <unicode/uchar.h>
+#include <rtl/character.hxx>
 #include <rtl/math.hxx>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/i18n/KParseTokens.hpp>
 #include <com/sun/star/i18n/KParseType.hpp>
-#include <com/sun/star/i18n/UnicodeType.hpp>
-#include <com/sun/star/i18n/LocaleData.hpp>
+#include <com/sun/star/i18n/LocaleData2.hpp>
 #include <com/sun/star/i18n/NativeNumberMode.hpp>
 #include <com/sun/star/i18n/NativeNumberSupplier.hpp>
-#include <comphelper/processfactory.hxx>
 
 #include <string.h>
+#include <string_view>
 
 using namespace ::com::sun::star::uno;
+using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
 
 #define TOKEN_DIGIT_FLAGS (ParserFlags::CHAR_VALUE | ParserFlags::VALUE | ParserFlags::VALUE_EXP | ParserFlags::VALUE_EXP_VALUE | ParserFlags::VALUE_DIGIT)
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 // Default identifier/name specification is [A-Za-z_][A-Za-z0-9_]*
 
@@ -317,13 +318,15 @@ const sal_Int32 cclass_Unicode::pParseTokensType[ nDefCnt ] =
 
 
 // static
-const sal_Unicode* cclass_Unicode::StrChr( const sal_Unicode* pStr, sal_Unicode c )
+const sal_Unicode* cclass_Unicode::StrChr( const sal_Unicode* pStr, sal_uInt32 c )
 {
     if ( !pStr )
         return nullptr;
+    sal_Unicode cs[2];
+    auto const n = rtl::splitSurrogates(c, cs);
     while ( *pStr )
     {
-        if ( *pStr == c )
+        if ( *pStr == cs[0] && (n == 1 || pStr[1] == cs[1]) )
             return pStr;
         pStr++;
     }
@@ -352,7 +355,7 @@ sal_Int32 cclass_Unicode::getParseTokensType(sal_uInt32 const c, bool const isFi
             case U_OTHER_LETTER :
                 // Non_Spacing_Mark could not be as leading character
                 if (isFirst) break;
-                SAL_FALLTHROUGH; // treat it as Other_Letter.
+                [[fallthrough]]; // treat it as Other_Letter.
             case U_NON_SPACING_MARK :
                 return KParseTokens::UNI_OTHER_LETTER;
             case U_DECIMAL_DIGIT_NUMBER :
@@ -367,7 +370,7 @@ sal_Int32 cclass_Unicode::getParseTokensType(sal_uInt32 const c, bool const isFi
     }
 }
 
-bool cclass_Unicode::setupInternational( const Locale& rLocale )
+void cclass_Unicode::setupInternational( const Locale& rLocale )
 {
     bool bChanged = (aParserLocale.Language != rLocale.Language
         || aParserLocale.Country != rLocale.Country
@@ -380,9 +383,8 @@ bool cclass_Unicode::setupInternational( const Locale& rLocale )
     }
     if ( !mxLocaleData.is() )
     {
-        mxLocaleData.set( LocaleData::create(m_xContext) );
+        mxLocaleData.set( LocaleData2::create(m_xContext) );
     }
-    return bChanged;
 }
 
 
@@ -411,18 +413,16 @@ void cclass_Unicode::initParserTable( const Locale& rLocale, sal_Int32 startChar
     setupInternational( rLocale );
     // Memory of pTable is reused.
     if ( !pTable )
-        pTable = new ParserFlags[nDefCnt];
-    memcpy( pTable, pDefaultParserTable, sizeof(ParserFlags) * nDefCnt );
+        pTable.reset(new ParserFlags[nDefCnt]);
+    memcpy( pTable.get(), pDefaultParserTable, sizeof(ParserFlags) * nDefCnt );
     // Start and cont tables only need reallocation if different length.
     if ( pStart && userDefinedCharactersStart.getLength() != aStartChars.getLength() )
     {
-        delete [] pStart;
-        pStart = nullptr;
+        pStart.reset();
     }
     if ( pCont && userDefinedCharactersCont.getLength() != aContChars.getLength() )
     {
-        delete [] pCont;
-        pCont = nullptr;
+        pCont.reset();
     }
     nStartTypes = startCharTokenType;
     nContTypes = contCharTokenType;
@@ -432,18 +432,28 @@ void cclass_Unicode::initParserTable( const Locale& rLocale, sal_Int32 startChar
     // specials
     if( mxLocaleData.is() )
     {
-        LocaleDataItem aItem =
-            mxLocaleData->getLocaleItem( aParserLocale );
+        LocaleDataItem2 aItem =
+            mxLocaleData->getLocaleItem2( aParserLocale );
 //!TODO: theoretically separators may be a string, adjustment would have to be
 //! done here and in parsing and in ::rtl::math::stringToDouble()
         cGroupSep = aItem.thousandSeparator[0];
         cDecimalSep = aItem.decimalSeparator[0];
+        cDecimalSepAlt = aItem.decimalSeparatorAlternative.toChar();
     }
 
-    if ( cGroupSep < nDefCnt )
-        pTable[cGroupSep] |= ParserFlags::VALUE;
+    if (nContTypes & KParseTokens::GROUP_SEPARATOR_IN_NUMBER)
+    {
+        if ( cGroupSep < nDefCnt )
+            pTable[cGroupSep] |= ParserFlags::VALUE;
+    }
+    else
+    {
+        cGroupSep = 0;
+    }
     if ( cDecimalSep < nDefCnt )
         pTable[cDecimalSep] |= ParserFlags::CHAR_VALUE | ParserFlags::VALUE;
+    if ( cDecimalSepAlt && cDecimalSepAlt < nDefCnt )
+        pTable[cDecimalSepAlt] |= ParserFlags::CHAR_VALUE | ParserFlags::VALUE;
 
     // Modify characters according to KParseTokens definitions.
     {
@@ -513,7 +523,7 @@ void cclass_Unicode::initParserTable( const Locale& rLocale, sal_Int32 startChar
     if ( nLen )
     {
         if ( !pStart )
-            pStart = new ParserFlags[ nLen ];
+            pStart.reset(new ParserFlags[ nLen ]);
         const sal_Unicode* p = aStartChars.getStr();
         for ( sal_Int32 j=0; j<nLen; j++, p++ )
         {
@@ -527,7 +537,7 @@ void cclass_Unicode::initParserTable( const Locale& rLocale, sal_Int32 startChar
     if ( nLen )
     {
         if ( !pCont )
-            pCont = new ParserFlags[ nLen ];
+            pCont.reset(new ParserFlags[ nLen ]);
         const sal_Unicode* p = aContChars.getStr();
         for ( sal_Int32 j=0; j<nLen; j++ )
         {
@@ -541,12 +551,9 @@ void cclass_Unicode::initParserTable( const Locale& rLocale, sal_Int32 startChar
 
 void cclass_Unicode::destroyParserTable()
 {
-    if ( pCont )
-        delete [] pCont;
-    if ( pStart )
-        delete [] pStart;
-    if ( pTable )
-        delete [] pTable;
+    pCont.reset();
+    pStart.reset();
+    pTable.reset();
 }
 
 
@@ -592,7 +599,8 @@ ParserFlags cclass_Unicode::getFlagsExtended(sal_uInt32 const c)
         return ParserFlags::VALUE;
     else if ( c == cDecimalSep )
         return ParserFlags::CHAR_VALUE | ParserFlags::VALUE;
-    using namespace i18n;
+    else if ( cDecimalSepAlt && c == cDecimalSepAlt )
+        return ParserFlags::CHAR_VALUE | ParserFlags::VALUE;
     bool bStart = (eState == ssGetChar || eState == ssGetWordFirstChar ||
             eState == ssRewindFromValue || eState == ssIgnoreLeadingInRewind);
     sal_Int32 nTypes = (bStart ? nStartTypes : nContTypes);
@@ -622,7 +630,7 @@ ParserFlags cclass_Unicode::getFlagsExtended(sal_uInt32 const c)
             // nor can a spacing combining mark.
             if (bStart)
                 return ParserFlags::ILLEGAL;
-            SAL_FALLTHROUGH; // treat it as Other_Letter.
+            [[fallthrough]]; // treat it as Other_Letter.
         case U_OTHER_LETTER :
             return (nTypes & KParseTokens::UNI_OTHER_LETTER) ?
                 (bStart ? ParserFlags::CHAR_WORD : ParserFlags::WORD) :
@@ -645,8 +653,12 @@ ParserFlags cclass_Unicode::getFlagsExtended(sal_uInt32 const c)
         case U_OTHER_PUNCTUATION:
             // fdo#61754 Lets see (if we not at the start) if this is midletter
             // punctuation and allow it in a word if it is similarly to
-            // U_NON_SPACING_MARK
-            if (bStart || U_WB_MIDLETTER != u_getIntPropertyValue(c, UCHAR_WORD_BREAK))
+            // U_NON_SPACING_MARK, for example U+00B7 MIDDLE DOT.
+            // tdf#123575 for U+30FB KATAKANA MIDDLE DOT property is not
+            // U_WB_MIDLETTER but U_WB_KATAKANA instead, explicitly test that
+            // and U+FF65 HALFWIDTH KATAKANA MIDDLE DOT.
+            if (bStart || (U_WB_MIDLETTER != u_getIntPropertyValue(c, UCHAR_WORD_BREAK)
+                        && c != 0x30FB && c != 0xFF65))
                 return ParserFlags::ILLEGAL;
             else
             {
@@ -661,7 +673,7 @@ ParserFlags cclass_Unicode::getFlagsExtended(sal_uInt32 const c)
 }
 
 
-ParserFlags cclass_Unicode::getStartCharsFlags( sal_Unicode c )
+ParserFlags cclass_Unicode::getStartCharsFlags( sal_uInt32 c )
 {
     if ( pStart )
     {
@@ -690,11 +702,10 @@ ParserFlags cclass_Unicode::getContCharsFlags( sal_Unicode c )
 void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32 nPos, sal_Int32 nTokenType )
 {
     assert(r.LeadingWhiteSpace == 0);
-    using namespace i18n;
     eState = ssGetChar;
 
-    //! All the variables below (plus ParseResult) have to be resetted on ssRewindFromValue!
-    OUString aSymbol;
+    //! All the variables below (plus ParseResult) have to be reset on ssRewindFromValue!
+    OUStringBuffer aSymbol;
     bool isFirst(true);
     sal_Int32 index(nPos); // index of next code point after current
     sal_Int32 postSymbolIndex(index); // index of code point following last quote
@@ -705,7 +716,8 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
     bool bQuote = false;
     bool bMightBeWord = true;
     bool bMightBeWordLast = true;
-    //! All the variables above (plus ParseResult) have to be resetted on ssRewindFromValue!
+    bool bDecSepAltUsed = false;
+    //! All the variables above (plus ParseResult) have to be reset on ssRewindFromValue!
     sal_Int32 nextCharIndex(nPos); // == index of nextChar
 
     while ((current != 0) && (eState != ssStop))
@@ -744,7 +756,7 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
                         else
                             r.TokenType = KParseType::ASC_NUMBER;
                     }
-                    else if (current == cDecimalSep)
+                    else if (current == cDecimalSep || (bDecSepAltUsed = (cDecimalSepAlt && current == cDecimalSepAlt)))
                     {
                         if (nextChar)
                             ++nDecSeps;
@@ -813,7 +825,20 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
                 }
                 if ( nMask & ParserFlags::VALUE )
                 {
-                    if (current == cDecimalSep && ++nDecSeps > 1)
+                    if (current == cGroupSep)
+                    {
+                        if (getFlags(nextChar) & ParserFlags::VALUE_DIGIT)
+                            nParseTokensType |= KParseTokens::GROUP_SEPARATOR_IN_NUMBER;
+                        else
+                        {
+                            // Trailing group separator character is not a
+                            // group separator.
+                            eState = ssStopBack;
+                        }
+                    }
+                    else if ((current == cDecimalSep ||
+                                (bDecSepAltUsed = (cDecimalSepAlt && current == cDecimalSepAlt))) &&
+                            ++nDecSeps > 1)
                     {
                         if (nCodePoints == 2)
                             eState = ssRewindFromValue;
@@ -870,7 +895,7 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
             break;
             case ssGetWordFirstChar :
                 eState = ssGetWord;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case ssGetWord :
             {
                 if ( nMask & ParserFlags::WORD )
@@ -881,13 +906,13 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
                     {
                         if ( cLast == '\\' )
                         {   // escaped
-                            aSymbol += rText.copy(postSymbolIndex, nextCharIndex - postSymbolIndex - 2);
-                            aSymbol += OUString(&current, 1);
+                            aSymbol.append(std::u16string_view(rText).substr(postSymbolIndex, nextCharIndex - postSymbolIndex - 2));
+                            aSymbol.append(OUString(&current, 1));
                         }
                         else
                         {
                             eState = ssStop;
-                            aSymbol += rText.copy(postSymbolIndex, nextCharIndex - postSymbolIndex - 1);
+                            aSymbol.append(std::u16string_view(rText).substr(postSymbolIndex, nextCharIndex - postSymbolIndex - 1));
                         }
                         postSymbolIndex = nextCharIndex;
                     }
@@ -906,13 +931,13 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
                 {
                     if ( cLast == '\\' )
                     {   // escaped
-                        aSymbol += rText.copy(postSymbolIndex, nextCharIndex - postSymbolIndex - 2);
-                        aSymbol += OUString(&current, 1);
+                        aSymbol.append(std::u16string_view(rText).substr(postSymbolIndex, nextCharIndex - postSymbolIndex - 2));
+                        aSymbol.append(OUString(&current, 1));
                     }
                     else if (current == nextChar &&
                             !(nContTypes & KParseTokens::TWO_DOUBLE_QUOTES_BREAK_STRING) )
                     {   // "" => literal " escaped
-                        aSymbol += rText.copy(postSymbolIndex, nextCharIndex - postSymbolIndex);
+                        aSymbol.append(std::u16string_view(rText).substr(postSymbolIndex, nextCharIndex - postSymbolIndex));
                         nextCharIndex = index;
                         if (index < rText.getLength()) { ++nCodePoints; }
                         nextChar = (index < rText.getLength()) ? rText.iterateCodePoints(&index) : 0;
@@ -920,7 +945,7 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
                     else
                     {
                         eState = ssStop;
-                        aSymbol += rText.copy(postSymbolIndex, nextCharIndex - postSymbolIndex - 1);
+                        aSymbol.append(std::u16string_view(rText).substr(postSymbolIndex, nextCharIndex - postSymbolIndex - 1));
                     }
                     postSymbolIndex = nextCharIndex;
                 }
@@ -928,7 +953,7 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
             break;
             case ssGetBool :
             {
-                if ( (nMask & ParserFlags::BOOL) )
+                if ( nMask & ParserFlags::BOOL )
                     eState = ssStop;    // maximum 2: <, >, <>, <=, >=
                 else
                     eState = ssStopBack;
@@ -946,7 +971,7 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
             index = nPos;
             postSymbolIndex = nPos;
             nextCharIndex = nPos;
-            aSymbol.clear();
+            aSymbol.setLength(0);
             current = (index < rText.getLength()) ? rText.iterateCodePoints(&index) : 0;
             nCodePoints = (nPos < rText.getLength()) ? 1 : 0;
             isFirst = true;
@@ -955,6 +980,7 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
             bQuote = false;
             bMightBeWord = true;
             bMightBeWordLast = true;
+            bDecSepAltUsed = false;
         }
         else
         {
@@ -1002,7 +1028,7 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
     if ( r.TokenType & KParseType::ASC_NUMBER )
     {
         r.Value = rtl_math_uStringToDouble(rText.getStr() + nPos + r.LeadingWhiteSpace,
-            rText.getStr() + r.EndPos, cDecimalSep, cGroupSep, nullptr, nullptr);
+            rText.getStr() + r.EndPos, (bDecSepAltUsed ? cDecimalSepAlt : cDecimalSep), cGroupSep, nullptr, nullptr);
         if ( bMightBeWord )
             r.TokenType |= KParseType::IDENTNAME;
     }
@@ -1028,13 +1054,13 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
     {
         if (postSymbolIndex < nextCharIndex)
         {   //! open quote
-            aSymbol += rText.copy(postSymbolIndex, nextCharIndex - postSymbolIndex - 1);
+            aSymbol.append(std::u16string_view(rText).substr(postSymbolIndex, nextCharIndex - postSymbolIndex - 1));
             r.TokenType |= KParseType::MISSING_QUOTE;
         }
-        r.DequotedNameOrString = aSymbol;
+        r.DequotedNameOrString = aSymbol.toString();
     }
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

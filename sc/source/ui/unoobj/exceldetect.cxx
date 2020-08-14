@@ -10,26 +10,24 @@
 #include "exceldetect.hxx"
 
 #include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/ucb/XContent.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
 
-#include <svl/itemset.hxx>
-#include <svl/eitem.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/docfile.hxx>
-#include <sfx2/sfxsids.hrc>
 #include <unotools/mediadescriptor.hxx>
 #include <sot/storage.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace com::sun::star;
 using utl::MediaDescriptor;
 
-ScExcelBiffDetect::ScExcelBiffDetect( const uno::Reference<uno::XComponentContext>& /*xContext*/ ) {}
+ScExcelBiffDetect::ScExcelBiffDetect() {}
 ScExcelBiffDetect::~ScExcelBiffDetect() {}
 
 OUString ScExcelBiffDetect::getImplementationName()
 {
-    return OUString("com.sun.star.comp.calc.ExcelBiffFormatDetector");
+    return "com.sun.star.comp.calc.ExcelBiffFormatDetector";
 }
 
 sal_Bool ScExcelBiffDetect::supportsService( const OUString& aName )
@@ -39,8 +37,7 @@ sal_Bool ScExcelBiffDetect::supportsService( const OUString& aName )
 
 uno::Sequence<OUString> ScExcelBiffDetect::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> aNames { "com.sun.star.frame.ExtendedTypeDetection" };
-    return aNames;
+    return { "com.sun.star.frame.ExtendedTypeDetection" };
 }
 
 namespace {
@@ -54,8 +51,7 @@ bool hasStream(const uno::Reference<io::XInputStream>& xInStream, const OUString
     if (!pStream)
         return false;
 
-    pStream->Seek(STREAM_SEEK_TO_END);
-    sal_uInt64 const nSize = pStream->Tell();
+    sal_uInt64 const nSize = pStream->TellEnd();
     pStream->Seek(0);
 
     if (!nSize)
@@ -71,9 +67,9 @@ bool hasStream(const uno::Reference<io::XInputStream>& xInStream, const OUString
             return false;
         return xStorage->IsStream(rName);
     }
-    catch (const css::ucb::ContentCreationException &e)
+    catch (const css::ucb::ContentCreationException &)
     {
-        SAL_WARN("sc", "hasStream caught " << e.Message);
+        TOOLS_WARN_EXCEPTION("sc", "hasStream");
     }
 
     return false;
@@ -92,8 +88,7 @@ bool isExcel40(const uno::Reference<io::XInputStream>& xInStream)
     if (!pStream)
         return false;
 
-    pStream->Seek(STREAM_SEEK_TO_END);
-    sal_uInt64 const nSize = pStream->Tell();
+    sal_uInt64 const nSize = pStream->TellEnd();
     pStream->Seek(0);
 
     if (nSize < 4)
@@ -149,7 +144,7 @@ OUString ScExcelBiffDetect::detect( uno::Sequence<beans::PropertyValue>& lDescri
 
     if (aType == "calc_MS_Excel_97" || aType == "calc_MS_Excel_97_VorlageTemplate")
     {
-        // See if this stream is a Excel 97/XP/2003 (BIFF8) stream.
+        // See if this stream is an Excel 97/XP/2003 (BIFF8) stream.
         if (!hasStream(xInStream, "Workbook"))
             // BIFF8 is expected to contain a stream named "Workbook".
             return OUString();
@@ -159,7 +154,7 @@ OUString ScExcelBiffDetect::detect( uno::Sequence<beans::PropertyValue>& lDescri
 
     else if (aType == "calc_MS_Excel_95" || aType == "calc_MS_Excel_95_VorlageTemplate")
     {
-        // See if this stream is a Excel 95 (BIFF5) stream.
+        // See if this stream is an Excel 95 (BIFF5) stream.
         if (!hasStream(xInStream, "Book"))
             return OUString();
 
@@ -168,7 +163,7 @@ OUString ScExcelBiffDetect::detect( uno::Sequence<beans::PropertyValue>& lDescri
 
     else if (aType == "calc_MS_Excel_5095" || aType == "calc_MS_Excel_5095_VorlageTemplate")
     {
-        // See if this stream is a Excel 5.0/95 stream.
+        // See if this stream is an Excel 5.0/95 stream.
         if (!hasStream(xInStream, "Book"))
             return OUString();
 
@@ -177,7 +172,7 @@ OUString ScExcelBiffDetect::detect( uno::Sequence<beans::PropertyValue>& lDescri
 
     else if (aType == "calc_MS_Excel_40" || aType == "calc_MS_Excel_40_VorlageTemplate")
     {
-        // See if this stream is a Excel 4.0 stream.
+        // See if this stream is an Excel 4.0 stream.
         if (!isExcel40(xInStream))
             return OUString();
 
@@ -192,11 +187,11 @@ OUString ScExcelBiffDetect::detect( uno::Sequence<beans::PropertyValue>& lDescri
     return aType;
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
-com_sun_star_comp_calc_ExcelBiffFormatDetector_get_implementation(css::uno::XComponentContext* context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_calc_ExcelBiffFormatDetector_get_implementation(css::uno::XComponentContext* /*context*/,
                                                                   css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ScExcelBiffDetect(context));
+    return cppu::acquire(new ScExcelBiffDetect);
 }
 
 

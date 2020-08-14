@@ -21,13 +21,9 @@
 #include <doc.hxx>
 #include <IDocumentLayoutAccess.hxx>
 #include <swtable.hxx>
-#include <docary.hxx>
 #include <rootfrm.hxx>
-#include <calbck.hxx>
 
 sw::UnoCursorHint::~UnoCursorHint() {}
-
-IMPL_FIXEDMEMPOOL_NEWDEL( SwUnoCursor )
 
 SwUnoCursor::SwUnoCursor( const SwPosition &rPos )
     : SwCursor( rPos, nullptr )
@@ -47,7 +43,7 @@ SwUnoCursor::~SwUnoCursor()
     // delete the whole ring
     while( GetNext() != this )
     {
-        Ring* pNxt = GetNext();
+        Ring* pNxt = GetNextInRing();
         pNxt->MoveTo(nullptr); // remove from chain
         delete pNxt;       // and delete
     }

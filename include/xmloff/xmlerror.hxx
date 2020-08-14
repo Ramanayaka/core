@@ -20,8 +20,8 @@
 #ifndef INCLUDED_XMLOFF_XMLERROR_HXX
 #define INCLUDED_XMLOFF_XMLERROR_HXX
 
-#include <com/sun/star/xml/sax/SAXParseException.hpp>
 #include <sal/types.h>
+#include <rtl/ustring.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 #include <vector>
@@ -87,11 +87,11 @@ namespace o3tl
     template<> struct typed_flags<SvXMLErrorFlags> : is_typed_flags<SvXMLErrorFlags, 0x7> {};
 }
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno { template<class X> class Sequence; }
     namespace uno { template<class X> class Reference; }
-    namespace xml { namespace sax { class XLocator; } }
-} } }
+    namespace xml::sax { class XLocator; }
+}
 
 class ErrorRecord;
 

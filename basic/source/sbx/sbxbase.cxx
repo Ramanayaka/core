@@ -18,24 +18,25 @@
  */
 
 #include <memory>
-#include <o3tl/make_unique.hxx>
 #include <tools/debug.hxx>
 #include <tools/stream.hxx>
 #include <vcl/svapp.hxx>
 
 #include <basic/sbx.hxx>
-#include <basic/sbxfac.hxx>
-#include "sbxbase.hxx"
+#include <sbxfac.hxx>
+#include <sbxform.hxx>
+#include <basic/sbxmeth.hxx>
+#include <sbxprop.hxx>
+#include <sbxbase.hxx>
 
-#include <rtl/instance.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 // AppData-Structure for SBX:
 
 
 SbxAppData::SbxAppData()
     : eErrCode(ERRCODE_NONE)
-    , pBasicFormater(nullptr)
     , eBasicFormaterLangType(LANGUAGE_DONTKNOW)
 {
 }
@@ -45,7 +46,8 @@ SbxAppData::~SbxAppData()
     SolarMutexGuard g;
 
     pBasicFormater.reset();
-    m_Factories.clear();
+    // basic manager repository must be destroyed before factories
+    mrImplRepository.clear();
 }
 
 SbxBase::SbxBase()
@@ -74,11 +76,6 @@ SbxDataType SbxBase::GetType() const
     return SbxEMPTY;
 }
 
-SbxClassType SbxBase::GetClass() const
-{
-    return SbxClassType::DontCare;
-}
-
 bool SbxBase::IsFixed() const
 {
     return IsSet( SbxFlagBits::Fixed );
@@ -94,7 +91,7 @@ void SbxBase::SetModified( bool b )
         ResetFlag( SbxFlagBits::Modified );
 }
 
-ErrCode SbxBase::GetError()
+ErrCode const & SbxBase::GetError()
 {
     return GetSbxData_Impl().eErrCode;
 }
@@ -118,24 +115,17 @@ void SbxBase::ResetError()
 
 void SbxBase::AddFactory( SbxFactory* pFac )
 {
-    SbxAppData& r = GetSbxData_Impl();
-
-    r.m_Factories.insert(r.m_Factories.begin(), std::unique_ptr<SbxFactory>(pFac));
+    GetSbxData_Impl().m_Factories.emplace_back(pFac);
 }
 
-void SbxBase::RemoveFactory( SbxFactory* pFac )
+void SbxBase::RemoveFactory( SbxFactory const * pFac )
 {
+    if (!IsSbxData_Impl())
+        return;
     SbxAppData& r = GetSbxData_Impl();
-    for (auto it = r.m_Factories.begin(); it != r.m_Factories.end(); ++it)
-    {
-        if ((*it).get() == pFac)
-        {
-            std::unique_ptr<SbxFactory> tmp(std::move(*it));
-            r.m_Factories.erase( it );
-            tmp.release();
-            break;
-        }
-    }
+    auto it = std::find(r.m_Factories.begin(), r.m_Factories.end(), pFac);
+    if (it != r.m_Factories.end())
+        r.m_Factories.erase( it );
 }
 
 
@@ -215,7 +205,7 @@ SbxBase* SbxBase::Load( SvStream& rStrm )
             if( !p->LoadCompleted() )
             {
                 // Deleting of the object
-                SbxBaseRef aRef( p );
+                SbxBaseRef xDeleteRef( p );
                 p = nullptr;
             }
         }
@@ -223,7 +213,7 @@ SbxBase* SbxBase::Load( SvStream& rStrm )
         {
             rStrm.SetError( SVSTREAM_FILEFORMAT_ERROR );
             // Deleting of the object
-            SbxBaseRef aRef( p );
+            SbxBaseRef xDeleteRef( p );
             p = nullptr;
         }
     }
@@ -285,7 +275,7 @@ SbxInfo::~SbxInfo()
 
 void SbxInfo::AddParam(const OUString& rName, SbxDataType eType, SbxFlagBits nFlags)
 {
-    m_Params.push_back(o3tl::make_unique<SbxParamInfo>(rName, eType, nFlags));
+    m_Params.push_back(std::make_unique<SbxParamInfo>(rName, eType, nFlags));
 }
 
 const SbxParamInfo* SbxInfo::GetParam( sal_uInt16 n ) const
@@ -315,7 +305,7 @@ void SbxInfo::LoadData( SvStream& rStrm, sal_uInt16 nVer )
         SbxFlagBits nFlags = static_cast<SbxFlagBits>(nFlagsTmp);
         if( nVer > 1 )
             rStrm.ReadUInt32( nUserData );
-        AddParam( aName, (SbxDataType) nType, nFlags );
+        AddParam( aName, static_cast<SbxDataType>(nType), nFlags );
         SbxParamInfo& p(*m_Params.back());
         p.nUserData = nUserData;
     }

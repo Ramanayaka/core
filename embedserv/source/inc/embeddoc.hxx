@@ -19,9 +19,6 @@
 
 #ifndef INCLUDED_EMBEDSERV_SOURCE_INC_EMBEDDOC_HXX
 #define INCLUDED_EMBEDSERV_SOURCE_INC_EMBEDDOC_HXX
-#ifdef _MSC_VER
-#pragma warning(disable : 4917 4555)
-#endif
 
 #include "common.h"
 #include <oleidl.h>
@@ -35,7 +32,6 @@
 #include "docholder.hxx"
 
 typedef std::unordered_map< DWORD, IAdviseSink* > AdviseSinkHashMap;
-typedef std::unordered_map< DWORD, IAdviseSink* >::iterator AdviseSinkHashMapIterator;
 
 class GDIMetaFile;
 class CIIAObj;

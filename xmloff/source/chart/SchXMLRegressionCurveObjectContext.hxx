@@ -19,11 +19,9 @@
 #ifndef INCLUDED_XMLOFF_SOURCE_CHART_SCHXMLREGRESSIONCURVEOBJECTCONTEXT_HXX
 #define INCLUDED_XMLOFF_SOURCE_CHART_SCHXMLREGRESSIONCURVEOBJECTCONTEXT_HXX
 
-#include "SchXMLImport.hxx"
-
+#include <com/sun/star/awt/Size.hpp>
 #include <xmloff/xmlictxt.hxx>
-#include <xmloff/shapeimport.hxx>
-#include <list>
+#include <xmloff/SchXMLImportHelper.hxx>
 
 #include "transporttypes.hxx"
 
@@ -35,14 +33,14 @@ public:
         SvXMLImport& rImport,
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
-        std::list< RegressionStyle >& rRegressionStyleList,
+        std::vector< RegressionStyle >& rRegressionStyleVector,
         const css::uno::Reference< css::chart2::XDataSeries >& xSeries,
         const css::awt::Size & rChartSize );
 
     virtual ~SchXMLRegressionCurveObjectContext() override;
 
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
@@ -52,7 +50,7 @@ private:
     SchXMLImportHelper&                mrImportHelper;
     css::uno::Reference<css::chart2::XDataSeries > mxSeries;
     css::awt::Size                     maChartSize;
-    std::list< RegressionStyle >&      mrRegressionStyleList;
+    std::vector< RegressionStyle >&    mrRegressionStyleVector;
 };
 
 class SchXMLEquationContext : public SvXMLImportContext

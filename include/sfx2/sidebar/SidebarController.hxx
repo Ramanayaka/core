@@ -24,23 +24,25 @@
 
 #include <sfx2/sidebar/AsynchronousCall.hxx>
 #include <sfx2/sidebar/Context.hxx>
+#include <sfx2/sidebar/Deck.hxx>
 #include <sfx2/sidebar/FocusManager.hxx>
-#include <sfx2/sidebar/Panel.hxx>
 #include <sfx2/sidebar/ResourceManager.hxx>
 #include <sfx2/sidebar/TabBar.hxx>
+#include <sfx2/viewfrm.hxx>
 
-#include <vcl/menu.hxx>
-
-#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
-#include <com/sun/star/frame/XDispatch.hpp>
+#include <com/sun/star/frame/XStatusListener.hpp>
+#include <com/sun/star/frame/XFrameActionListener.hpp>
 #include <com/sun/star/ui/XContextChangeEventListener.hpp>
-#include <com/sun/star/ui/XUIElement.hpp>
 #include <com/sun/star/ui/XSidebar.hpp>
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
+
+namespace com::sun::star::awt { class XWindowPeer; }
+namespace com::sun::star::frame { class XDispatch; }
+namespace com::sun::star::ui { class XUIElement; }
 
 typedef cppu::WeakComponentImplHelper <
     css::ui::XContextChangeEventListener,
@@ -51,25 +53,19 @@ typedef cppu::WeakComponentImplHelper <
     > SidebarControllerInterfaceBase;
 
 class SfxSplitWindow;
-class FixedBitmap;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
-class ContentPanelDescriptor;
-class Deck;
 class DeckDescriptor;
 class SidebarDockingWindow;
-class TabBar;
-class TabBarConfiguration;
 
 class SFX2_DLLPUBLIC SidebarController
     : private ::cppu::BaseMutex,
       public SidebarControllerInterfaceBase
 {
 public:
-    static rtl::Reference<SidebarController> create(
-        SidebarDockingWindow* pParentWindow,
-        const css::uno::Reference<css::frame::XFrame>& rxFrame);
+    static rtl::Reference<SidebarController> create(SidebarDockingWindow* pParentWindow,
+                                                    const SfxViewFrame* pViewFrame);
     virtual ~SidebarController() override;
     SidebarController(const SidebarController&) = delete;
     SidebarController& operator=( const SidebarController& ) = delete;
@@ -118,8 +114,6 @@ public:
     const static sal_Int32 SwitchFlag_ForceNewDeck = 0x02;
     const static sal_Int32 SwitchFlag_ForceNewPanels = 0x02;
 
-    const static sal_Int32 gnMaximumSidebarWidth = 400;
-
     void OpenThenSwitchToDeck(const OUString& rsDeckId);
     void OpenThenToggleDeck(const OUString& rsDeckId);
 
@@ -135,9 +129,12 @@ public:
      */
     bool IsDeckVisible(const OUString& rsDeckId);
 
+    bool IsDeckOpen(const sal_Int32 nIndex = -1);
+
     FocusManager& GetFocusManager() { return maFocusManager;}
 
     ResourceManager* GetResourceManager() { return mpResourceManager.get();}
+    auto& GetCurrentDeckId() const { return msCurrentDeckId; }
 
    // std::unique_ptr<ResourceManager> GetResourceManager() { return mpResourceManager;}
 
@@ -146,6 +143,8 @@ public:
 
     void SwitchToDeck(const OUString& rsDeckId);
     void SwitchToDefaultDeck();
+    bool WasFloatingDeckClosed() const { return mbFloatingDeckClosed; }
+    void SetFloatingDeckClosed(bool bWasClosed) { mbFloatingDeckClosed = bWasClosed; }
 
     void CreateDeck(const OUString& rDeckId);
     void CreateDeck(const OUString& rDeckId, const Context& rContext, bool bForceCreate = false);
@@ -162,24 +161,34 @@ public:
     void FadeIn();
     void FadeOut();
 
+    tools::Rectangle GetDeckDragArea() const;
+
+    css::uno::Reference<css::frame::XFrame> const & getXFrame() const {return mxFrame;}
+
+    sal_Int32 getMaximumWidth() const { return mnMaximumSidebarWidth; }
+    void setMaximumWidth(sal_Int32 nMaximumWidth) { mnMaximumSidebarWidth = nMaximumWidth; }
+
+    void saveDeckState();
+
+    void SyncUpdate();
+
 private:
-    SidebarController(
-        SidebarDockingWindow* pParentWindow,
-        const css::uno::Reference<css::frame::XFrame>& rxFrame);
+    SidebarController(SidebarDockingWindow* pParentWindow, const SfxViewFrame* pViewFrame);
 
     VclPtr<Deck> mpCurrentDeck;
     VclPtr<SidebarDockingWindow> mpParentWindow;
-    VclPtr<TabBar> mpTabBar;
+    const SfxViewFrame* mpViewFrame;
     css::uno::Reference<css::frame::XFrame> mxFrame;
+    VclPtr<TabBar> mpTabBar;
     Context maCurrentContext;
     Context maRequestedContext;
     css::uno::Reference<css::frame::XController> mxCurrentController;
     /// Use a combination of SwitchFlag_* as value.
     sal_Int32 mnRequestedForceFlags;
+    sal_Int32 mnMaximumSidebarWidth;
     OUString msCurrentDeckId;
     AsynchronousCall maPropertyChangeForwarder;
     AsynchronousCall maContextChangeUpdate;
-    AsynchronousCall maAsynchronousDeckSwitch;
 
     /** Two flags control whether the deck is displayed or if only the
         tab bar remains visible.
@@ -189,8 +198,10 @@ private:
         mbIsDeckRequestedOpen.  Normally both flags have the same
         value.  A document being read-only can prevent the deck from opening.
     */
-    ::boost::optional<bool> mbIsDeckRequestedOpen;
-    ::boost::optional<bool> mbIsDeckOpen;
+    ::std::optional<bool> mbIsDeckRequestedOpen;
+    ::std::optional<bool> mbIsDeckOpen;
+
+    bool mbFloatingDeckClosed;
 
     /** Before the deck is closed the sidebar width is saved into this variable,
         so that it can be restored when the deck is reopened.
@@ -278,7 +289,7 @@ private:
 
 };
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

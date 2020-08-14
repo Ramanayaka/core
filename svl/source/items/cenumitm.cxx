@@ -18,12 +18,12 @@
  */
 
 #include <com/sun/star/uno/Any.hxx>
-#include <tools/stream.hxx>
 #include <svl/cenumitm.hxx>
 #include <svl/eitem.hxx>
 
 #include <comphelper/extract.hxx>
 #include <libxml/xmlwriter.h>
+#include <sal/log.hxx>
 
 
 // virtual
@@ -38,7 +38,7 @@ bool SfxEnumItemInterface::operator ==(const SfxPoolItem & rItem) const
 // virtual
 bool SfxEnumItemInterface::GetPresentation(SfxItemPresentation, MapUnit,
                                       MapUnit, OUString & rText,
-                                      const IntlWrapper *) const
+                                      const IntlWrapper&) const
 {
     rText = OUString::number( GetEnumValue() );
     return true;
@@ -67,18 +67,6 @@ bool SfxEnumItemInterface::PutValue(const css::uno::Any& rVal,
     return false;
 }
 
-OUString SfxEnumItemInterface::GetValueTextByPos(sal_uInt16) const
-{
-    SAL_INFO("svl.items", "SfxEnumItemInterface::GetValueTextByPos(): Pure virtual");
-    return OUString();
-}
-
-// virtual
-sal_uInt16 SfxEnumItemInterface::GetValueByPos(sal_uInt16 nPos) const
-{
-    return nPos;
-}
-
 // virtual
 bool SfxEnumItemInterface::HasBoolValue() const
 {
@@ -100,14 +88,6 @@ SfxPoolItem* SfxBoolItem::CreateDefault()
     return new SfxBoolItem();
 }
 
-SfxBoolItem::SfxBoolItem(sal_uInt16 const nWhich, SvStream & rStream)
-    : SfxPoolItem(nWhich)
-{
-    bool tmp = false;
-    rStream.ReadCharAsBool( tmp );
-    m_bValue = tmp;
-}
-
 // virtual
 bool SfxBoolItem::operator ==(const SfxPoolItem & rItem) const
 {
@@ -119,13 +99,13 @@ bool SfxBoolItem::operator ==(const SfxPoolItem & rItem) const
 bool SfxBoolItem::GetPresentation(SfxItemPresentation,
                                                  MapUnit, MapUnit,
                                                  OUString & rText,
-                                                 const IntlWrapper *) const
+                                                 const IntlWrapper&) const
 {
     rText = GetValueTextByVal(m_bValue);
     return true;
 }
 
-void SfxBoolItem::dumpAsXml(struct _xmlTextWriter* pWriter) const
+void SfxBoolItem::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     xmlTextWriterStartElement(pWriter, BAD_CAST("SfxBoolItem"));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
@@ -154,20 +134,7 @@ bool SfxBoolItem::PutValue(const css::uno::Any& rVal, sal_uInt8)
 }
 
 // virtual
-SfxPoolItem * SfxBoolItem::Create(SvStream & rStream, sal_uInt16) const
-{
-    return new SfxBoolItem(Which(), rStream);
-}
-
-// virtual
-SvStream & SfxBoolItem::Store(SvStream & rStream, sal_uInt16) const
-{
-    rStream.WriteBool( m_bValue ); // not bool for serialization!
-    return rStream;
-}
-
-// virtual
-SfxPoolItem * SfxBoolItem::Clone(SfxItemPool *) const
+SfxBoolItem* SfxBoolItem::Clone(SfxItemPool *) const
 {
     return new SfxBoolItem(*this);
 }

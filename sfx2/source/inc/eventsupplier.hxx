@@ -22,22 +22,13 @@
 
 #include <sal/types.h>
 
+#include <com/sun/star/document/DocumentEvent.hpp>
 #include <com/sun/star/container/XNameReplace.hpp>
 #include <com/sun/star/document/XEventListener.hpp>
 #include <com/sun/star/document/XEventBroadcaster.hpp>
-#include <com/sun/star/document/XDocumentEventListener.hpp>
-#include <com/sun/star/document/XEventsSupplier.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/task/XJobExecutor.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Type.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/sequenceashashmap.hxx>
-#include <sfx2/sfxuno.hxx>
-
-#include <cppuhelper/interfacecontainer.hxx>
-#include <svl/lstner.hxx>
-#include <unotools/eventcfg.hxx>
 
 namespace comphelper
 {
@@ -79,13 +70,14 @@ public:
     // --- ::lang::XEventListener ---
     virtual void SAL_CALL       disposing( const css::lang::EventObject& Source ) override;
 
-    static SvxMacro*            ConvertToMacro( const css::uno::Any& rElement, SfxObjectShell* pDoc, bool bNormalizeMacro );
+    // convert and normalize
+    static std::unique_ptr<SvxMacro>  ConvertToMacro( const css::uno::Any& rElement, SfxObjectShell* pDoc );
     static void                 NormalizeMacro( const css::uno::Any& rIn, css::uno::Any& rOut, SfxObjectShell* pDoc );
     static void                 NormalizeMacro(
                                     const ::comphelper::NamedValueCollection& i_eventDescriptor,
                                     ::comphelper::NamedValueCollection& o_normalizedDescriptor,
                                     SfxObjectShell* i_document );
-    static void Execute( css::uno::Any& aEventData, const css::document::DocumentEvent& aTrigger, SfxObjectShell* pDoc );
+    static void Execute( css::uno::Any const & aEventData, const css::document::DocumentEvent& aTrigger, SfxObjectShell* pDoc );
 };
 
 #endif

@@ -10,7 +10,10 @@
 #include <sal/config.h>
 #include <rtl/ustring.hxx>
 #include <rtl/bootstrap.hxx>
+#include <sal/log.hxx>
+#include <osl/file.hxx>
 #include <comphelper/backupfilehelper.hxx>
+#include <comphelper/DirectoryHelper.hxx>
 #include <rtl/crc.h>
 #include <algorithm>
 #include <deque>
@@ -19,6 +22,7 @@
 #include <zlib.h>
 
 #include <comphelper/processfactory.hxx>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/ucb/CommandAbortedException.hpp>
 #include <com/sun/star/ucb/CommandFailedException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
@@ -38,40 +42,19 @@
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 
+using namespace comphelper;
 using namespace css;
 using namespace css::xml::dom;
 
-static const sal_uInt32 BACKUP_FILE_HELPER_BLOCK_SIZE = 16384;
+const sal_uInt32 BACKUP_FILE_HELPER_BLOCK_SIZE = 16384;
 
 namespace
 {
     typedef std::shared_ptr< osl::File > FileSharedPtr;
 
-    OUString splitAtLastToken(const OUString& rSrc, sal_Unicode aToken, OUString& rRight)
-    {
-        const sal_Int32 nIndex(rSrc.lastIndexOf(aToken));
-        OUString aRetval;
-
-        if (-1 == nIndex)
-        {
-            aRetval = rSrc;
-            rRight.clear();
-        }
-        else if (nIndex > 0)
-        {
-            aRetval = rSrc.copy(0, nIndex);
-
-            if (rSrc.getLength() > nIndex + 1)
-            {
-                rRight = rSrc.copy(nIndex + 1);
-            }
-        }
-
-        return aRetval;
-    }
-
-    sal_uInt32 createCrc32(FileSharedPtr& rCandidate, sal_uInt32 nOffset)
+    sal_uInt32 createCrc32(FileSharedPtr const & rCandidate, sal_uInt32 nOffset)
     {
         sal_uInt32 nCrc32(0);
 
@@ -90,7 +73,7 @@ namespace
             {
                 while (nSize != 0)
                 {
-                    const sal_uInt64 nToTransfer(std::min(nSize, (sal_uInt64)BACKUP_FILE_HELPER_BLOCK_SIZE));
+                    const sal_uInt64 nToTransfer(std::min(nSize, sal_uInt64(BACKUP_FILE_HELPER_BLOCK_SIZE)));
 
                     if (osl::File::E_None == rCandidate->read(static_cast<void*>(aArray), nToTransfer, nBytesTransfer) && nBytesTransfer == nToTransfer)
                     {
@@ -112,7 +95,7 @@ namespace
         return nCrc32;
     }
 
-    bool read_sal_uInt32(FileSharedPtr& rFile, sal_uInt32& rTarget)
+    bool read_sal_uInt32(FileSharedPtr const & rFile, sal_uInt32& rTarget)
     {
         sal_uInt8 aArray[4];
         sal_uInt64 nBaseRead(0);
@@ -141,7 +124,7 @@ namespace
         return osl_File_E_None == osl_writeFile(rHandle, static_cast<const void*>(aArray), 4, &nBaseWritten) && 4 == nBaseWritten;
     }
 
-    bool read_OString(FileSharedPtr& rFile, OString& rTarget)
+    bool read_OString(FileSharedPtr const & rFile, OString& rTarget)
     {
         sal_uInt32 nLength(0);
 
@@ -150,13 +133,25 @@ namespace
             return false;
         }
 
-        std::vector< sal_Char > aTarget(nLength);
+        sal_uInt64 nPos;
+        if (osl::File::E_None != rFile->getPos(nPos))
+            return false;
+
+        sal_uInt64 nSize;
+        if (osl::File::E_None != rFile->getSize(nSize))
+            return false;
+
+        const auto nRemainingSize = nSize - nPos;
+        if (nLength > nRemainingSize)
+            return false;
+
+        std::vector<char> aTarget(nLength);
         sal_uInt64 nBaseRead(0);
 
         // read rTarget
-        if (osl::File::E_None == rFile->read(static_cast<void*>(&aTarget[0]), nLength, nBaseRead) && nLength == nBaseRead)
+        if (osl::File::E_None == rFile->read(static_cast<void*>(aTarget.data()), nLength, nBaseRead) && nLength == nBaseRead)
         {
-            rTarget = OString(&aTarget[0], static_cast< sal_Int32 >(nLength));
+            rTarget = OString(aTarget.data(), static_cast<sal_Int32>(nBaseRead));
             return true;
         }
 
@@ -183,14 +178,11 @@ namespace
 
         if (!rURL.isEmpty() && !rName.isEmpty())
         {
-            aRetval = rURL;
-            aRetval += "/";
-            aRetval += rName;
+            aRetval = rURL + "/" + rName;
 
             if (!rExt.isEmpty())
             {
-                aRetval += ".";
-                aRetval += rExt;
+                aRetval += "." + rExt;
             }
         }
 
@@ -203,191 +195,10 @@ namespace
 
         if (!rURL.isEmpty() && !rName.isEmpty())
         {
-            aRetval = rURL;
-            aRetval += "/";
-            aRetval += rName;
-            aRetval += ".pack";
+            aRetval = rURL + "/" + rName + ".pack";
         }
 
         return aRetval;
-    }
-
-    bool fileExists(const OUString& rBaseURL)
-    {
-        if (!rBaseURL.isEmpty())
-        {
-            FileSharedPtr aBaseFile(new osl::File(rBaseURL));
-
-            return (osl::File::E_None == aBaseFile->open(osl_File_OpenFlag_Read));
-        }
-
-        return false;
-    }
-
-    bool dirExists(const OUString& rDirURL)
-    {
-        if (!rDirURL.isEmpty())
-        {
-            osl::Directory aDirectory(rDirURL);
-
-            return (osl::FileBase::E_None == aDirectory.open());
-        }
-
-        return false;
-    }
-
-    void scanDirsAndFiles(
-        const OUString& rDirURL,
-        std::set< OUString >& rDirs,
-        std::set< std::pair< OUString, OUString > >& rFiles)
-    {
-        if (!rDirURL.isEmpty())
-        {
-            osl::Directory aDirectory(rDirURL);
-
-            if (osl::FileBase::E_None == aDirectory.open())
-            {
-                osl::DirectoryItem aDirectoryItem;
-
-                while (osl::FileBase::E_None == aDirectory.getNextItem(aDirectoryItem))
-                {
-                    osl::FileStatus aFileStatus(osl_FileStatus_Mask_Type | osl_FileStatus_Mask_FileURL | osl_FileStatus_Mask_FileName);
-
-                    if (osl::FileBase::E_None == aDirectoryItem.getFileStatus(aFileStatus))
-                    {
-                        if (aFileStatus.isDirectory())
-                        {
-                            const OUString aFileName(aFileStatus.getFileName());
-
-                            if (!aFileName.isEmpty())
-                            {
-                                rDirs.insert(aFileName);
-                            }
-                        }
-                        else if (aFileStatus.isRegular())
-                        {
-                            OUString aFileName(aFileStatus.getFileName());
-                            OUString aExtension;
-                            aFileName = splitAtLastToken(aFileName, '.', aExtension);
-
-                            if (!aFileName.isEmpty())
-                            {
-                                rFiles.insert(std::pair< OUString, OUString >(aFileName, aExtension));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    bool deleteDirRecursively(const OUString& rDirURL)
-    {
-        std::set< OUString > aDirs;
-        std::set< std::pair< OUString, OUString > > aFiles;
-        bool bError(false);
-
-        scanDirsAndFiles(
-            rDirURL,
-            aDirs,
-            aFiles);
-
-        for (const auto& dir : aDirs)
-        {
-            const OUString aNewDirURL(rDirURL + "/" + dir);
-
-            bError |= deleteDirRecursively(aNewDirURL);
-        }
-
-        for (const auto& file : aFiles)
-        {
-            OUString aNewFileURL(rDirURL + "/" + file.first);
-
-            if (!file.second.isEmpty())
-            {
-                aNewFileURL += ".";
-                aNewFileURL += file.second;
-            }
-
-            bError |= (osl::FileBase::E_None != osl::File::remove(aNewFileURL));
-        }
-
-        bError |= (osl::FileBase::E_None != osl::Directory::remove(rDirURL));
-
-        return bError;
-    }
-
-    // both exist, move content
-    bool moveDirContent(
-        const OUString& rSourceDirURL,
-        const OUString& rTargetDirURL,
-        const std::set< OUString >& rExcludeList)
-    {
-        std::set< OUString > aDirs;
-        std::set< std::pair< OUString, OUString > > aFiles;
-        bool bError(false);
-
-        scanDirsAndFiles(
-            rSourceDirURL,
-            aDirs,
-            aFiles);
-
-        for (const auto& dir : aDirs)
-        {
-            const bool bExcluded(
-                !rExcludeList.empty() &&
-                rExcludeList.find(dir) != rExcludeList.end());
-
-            if (!bExcluded)
-            {
-                const OUString aNewSourceDirURL(rSourceDirURL + "/" + dir);
-
-                if (dirExists(aNewSourceDirURL))
-                {
-                    const OUString aNewTargetDirURL(rTargetDirURL + "/" + dir);
-
-                    if (dirExists(aNewTargetDirURL))
-                    {
-                        deleteDirRecursively(aNewTargetDirURL);
-                    }
-
-                    bError |= (osl::FileBase::E_None != osl::File::move(
-                        aNewSourceDirURL,
-                        aNewTargetDirURL));
-                }
-            }
-        }
-
-        for (const auto& file : aFiles)
-        {
-            OUString aSourceFileURL(rSourceDirURL + "/" + file.first);
-
-            if (!file.second.isEmpty())
-            {
-                aSourceFileURL += ".";
-                aSourceFileURL += file.second;
-            }
-
-            if (fileExists(aSourceFileURL))
-            {
-                OUString aTargetFileURL(rTargetDirURL + "/" + file.first);
-
-                if (!file.second.isEmpty())
-                {
-                    aTargetFileURL += ".";
-                    aTargetFileURL += file.second;
-                }
-
-                if (fileExists(aTargetFileURL))
-                {
-                    osl::File::remove(aTargetFileURL);
-                }
-
-                bError |= (osl::FileBase::E_None != osl::File::move(aSourceFileURL, aTargetFileURL));
-            }
-        }
-
-        return bError;
     }
 }
 
@@ -452,14 +263,14 @@ namespace
 
         bool isSameExtension(const ExtensionInfoEntry& rComp) const
         {
-            return (maRepository == rComp.maRepository && 0 == maName.compareTo(rComp.maName));
+            return (maRepository == rComp.maRepository && maName == rComp.maName);
         }
 
         bool operator<(const ExtensionInfoEntry& rComp) const
         {
             if (maRepository == rComp.maRepository)
             {
-                if (0 == maName.compareTo(rComp.maName))
+                if (maName == rComp.maName)
                 {
                     return mbEnabled < rComp.mbEnabled;
                 }
@@ -474,7 +285,7 @@ namespace
             }
         }
 
-        bool read_entry(FileSharedPtr& rFile)
+        bool read_entry(FileSharedPtr const & rFile)
         {
             // read maName
             if (!read_OString(rFile, maName))
@@ -542,16 +353,16 @@ namespace
 
     typedef std::vector< ExtensionInfoEntry > ExtensionInfoEntryVector;
 
+    const OUStringLiteral gaRegPath { "/registry/com.sun.star.comp.deployment.bundle.PackageRegistryBackend/backenddb.xml" };
+
     class ExtensionInfo
     {
     private:
         ExtensionInfoEntryVector    maEntries;
-        OUString maRegPath;
 
     public:
         ExtensionInfo()
-            : maEntries(),
-              maRegPath("/registry/com.sun.star.comp.deployment.bundle.PackageRegistryBackend/backenddb.xml")
+            : maEntries()
         {
         }
 
@@ -595,20 +406,18 @@ namespace
             }
             catch (const lang::IllegalArgumentException & e)
             {
-                throw uno::RuntimeException(e.Message, e.Context);
+                css::uno::Any anyEx = cppu::getCaughtException();
+                throw css::lang::WrappedTargetRuntimeException( e.Message,
+                                e.Context, anyEx );
             }
 
-            for (sal_Int32 i = 0; i < xAllPackages.getLength(); ++i)
+            for (const uno::Sequence< uno::Reference< deployment::XPackage > > & xPackageList : std::as_const(xAllPackages))
             {
-                uno::Sequence< uno::Reference< deployment::XPackage > > xPackageList = xAllPackages[i];
-
-                for (sal_Int32 j = 0; j < xPackageList.getLength(); ++j)
+                for (const uno::Reference< deployment::XPackage > & xPackage : xPackageList)
                 {
-                    uno::Reference< deployment::XPackage > xPackage = xPackageList[j];
-
                     if (xPackage.is())
                     {
-                        maEntries.push_back(ExtensionInfoEntry(xPackage));
+                        maEntries.emplace_back(xPackage);
                     }
                 }
             }
@@ -623,47 +432,46 @@ namespace
     private:
         void visitNodesXMLRead(const uno::Reference< xml::dom::XElement >& rElement)
         {
-            if (rElement.is())
+            if (!rElement.is())
+                return;
+
+            const OUString aTagName(rElement->getTagName());
+
+            if (aTagName == "extension")
             {
-                const OUString aTagName(rElement->getTagName());
+                OUString aAttrUrl(rElement->getAttribute("url"));
+                const OUString aAttrRevoked(rElement->getAttribute("revoked"));
 
-                if (aTagName == "extension")
+                if (!aAttrUrl.isEmpty())
                 {
-                    OUString aAttrUrl(rElement->getAttribute("url"));
-                    const OUString aAttrRevoked(rElement->getAttribute("revoked"));
+                    const sal_Int32 nIndex(aAttrUrl.lastIndexOf('/'));
 
-                    if (!aAttrUrl.isEmpty())
+                    if (nIndex > 0 && aAttrUrl.getLength() > nIndex + 1)
                     {
-                        const sal_Int32 nIndex(aAttrUrl.lastIndexOf('/'));
-
-                        if (nIndex > 0 && aAttrUrl.getLength() > nIndex + 1)
-                        {
-                            aAttrUrl = aAttrUrl.copy(nIndex + 1);
-                        }
-
-                        const bool bEnabled(aAttrRevoked.isEmpty() || !aAttrRevoked.toBoolean());
-                        maEntries.push_back(
-                            ExtensionInfoEntry(
-                                OUStringToOString(aAttrUrl, RTL_TEXTENCODING_ASCII_US),
-                                bEnabled));
+                        aAttrUrl = aAttrUrl.copy(nIndex + 1);
                     }
+
+                    const bool bEnabled(aAttrRevoked.isEmpty() || !aAttrRevoked.toBoolean());
+                    maEntries.emplace_back(
+                            OUStringToOString(aAttrUrl, RTL_TEXTENCODING_ASCII_US),
+                            bEnabled);
                 }
-                else
+            }
+            else
+            {
+                uno::Reference< xml::dom::XNodeList > aList = rElement->getChildNodes();
+
+                if (aList.is())
                 {
-                    uno::Reference< xml::dom::XNodeList > aList = rElement->getChildNodes();
+                    const sal_Int32 nLength(aList->getLength());
 
-                    if (aList.is())
+                    for (sal_Int32 a(0); a < nLength; a++)
                     {
-                        const long nLength(aList->getLength());
+                        const uno::Reference< xml::dom::XElement > aChild(aList->item(a), uno::UNO_QUERY);
 
-                        for (long a(0); a < nLength; a++)
+                        if (aChild.is())
                         {
-                            const uno::Reference< xml::dom::XElement > aChild(aList->item(a), uno::UNO_QUERY);
-
-                            if (aChild.is())
-                            {
-                                visitNodesXMLRead(aChild);
-                            }
+                            visitNodesXMLRead(aChild);
                         }
                     }
                 }
@@ -673,26 +481,26 @@ namespace
     public:
         void createUserExtensionRegistryEntriesFromXML(const OUString& rUserConfigWorkURL)
         {
-            const OUString aPath(rUserConfigWorkURL + "/uno_packages/cache" + maRegPath);
+            const OUString aPath(rUserConfigWorkURL + "/uno_packages/cache" + gaRegPath);
             createExtensionRegistryEntriesFromXML(aPath);
         }
 
         void createSharedExtensionRegistryEntriesFromXML(const OUString& rUserConfigWorkURL)
         {
-            const OUString aPath(rUserConfigWorkURL + "/extensions/shared" + maRegPath);
+            const OUString aPath(rUserConfigWorkURL + "/extensions/shared" + gaRegPath);
             createExtensionRegistryEntriesFromXML(aPath);
         }
 
         void createBundledExtensionRegistryEntriesFromXML(const OUString& rUserConfigWorkURL)
         {
-            const OUString aPath(rUserConfigWorkURL + "/extensions/bundled" + maRegPath);
+            const OUString aPath(rUserConfigWorkURL + "/extensions/bundled" + gaRegPath);
             createExtensionRegistryEntriesFromXML(aPath);
         }
 
 
         void createExtensionRegistryEntriesFromXML(const OUString& aPath)
         {
-            if (fileExists(aPath))
+            if (DirectoryHelper::fileExists(aPath))
             {
                 uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
                 uno::Reference< xml::dom::XDocumentBuilder > xBuilder(xml::dom::DocumentBuilder::create(xContext));
@@ -765,9 +573,9 @@ namespace
 
                     if (aList.is())
                     {
-                        const long nLength(aList->getLength());
+                        const sal_Int32 nLength(aList->getLength());
 
-                        for (long a(0); a < nLength; a++)
+                        for (sal_Int32 a(0); a < nLength; a++)
                         {
                             const uno::Reference< xml::dom::XElement > aChild(aList->item(a), uno::UNO_QUERY);
 
@@ -793,58 +601,58 @@ namespace
             const ExtensionInfoEntryVector& rToBeEnabled,
             const ExtensionInfoEntryVector& rToBeDisabled)
         {
-            if (fileExists(rUnoPackagReg))
+            if (!DirectoryHelper::fileExists(rUnoPackagReg))
+                return;
+
+            uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+            uno::Reference< xml::dom::XDocumentBuilder > xBuilder = xml::dom::DocumentBuilder::create(xContext);
+            uno::Reference< xml::dom::XDocument > aDocument = xBuilder->parseURI(rUnoPackagReg);
+
+            if (!aDocument.is())
+                return;
+
+            if (!visitNodesXMLChange(
+                rTagToSearch,
+                aDocument->getDocumentElement(),
+                rToBeEnabled,
+                rToBeDisabled))
+                return;
+
+            // did change - write back
+            uno::Reference< xml::sax::XSAXSerializable > xSerializer(aDocument, uno::UNO_QUERY);
+
+            if (!xSerializer.is())
+                return;
+
+            // create a SAXWriter
+            uno::Reference< xml::sax::XWriter > const xSaxWriter = xml::sax::Writer::create(xContext);
+            uno::Reference< io::XStream > xTempFile = io::TempFile::create(xContext);
+            uno::Reference< io::XOutputStream > xOutStrm = xTempFile->getOutputStream();
+
+            // set output stream and do the serialization
+            xSaxWriter->setOutputStream(xOutStrm);
+            xSerializer->serialize(xSaxWriter, uno::Sequence< beans::StringPair >());
+
+            // get URL from temp file
+            uno::Reference < beans::XPropertySet > xTempFileProps(xTempFile, uno::UNO_QUERY);
+            uno::Any aUrl = xTempFileProps->getPropertyValue("Uri");
+            OUString aTempURL;
+            aUrl >>= aTempURL;
+
+            // copy back file
+            if (!(!aTempURL.isEmpty() && DirectoryHelper::fileExists(aTempURL)))
+                return;
+
+            if (DirectoryHelper::fileExists(rUnoPackagReg))
             {
-                uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
-                uno::Reference< xml::dom::XDocumentBuilder > xBuilder = xml::dom::DocumentBuilder::create(xContext);
-                uno::Reference< xml::dom::XDocument > aDocument = xBuilder->parseURI(rUnoPackagReg);
-
-                if (aDocument.is())
-                {
-                    if (visitNodesXMLChange(
-                        rTagToSearch,
-                        aDocument->getDocumentElement(),
-                        rToBeEnabled,
-                        rToBeDisabled))
-                    {
-                        // did change - write back
-                        uno::Reference< xml::sax::XSAXSerializable > xSerializer(aDocument, uno::UNO_QUERY);
-
-                        if (xSerializer.is())
-                        {
-                            // create a SAXWriter
-                            uno::Reference< xml::sax::XWriter > const xSaxWriter = xml::sax::Writer::create(xContext);
-                            uno::Reference< io::XStream > xTempFile(io::TempFile::create(xContext), uno::UNO_QUERY);
-                            uno::Reference< io::XOutputStream > xOutStrm(xTempFile->getOutputStream(), uno::UNO_QUERY);
-
-                            // set output stream and do the serialization
-                            xSaxWriter->setOutputStream(uno::Reference< css::io::XOutputStream >(xOutStrm, uno::UNO_QUERY));
-                            xSerializer->serialize(uno::Reference< xml::sax::XDocumentHandler >(xSaxWriter, uno::UNO_QUERY), uno::Sequence< beans::StringPair >());
-
-                            // get URL from temp file
-                            uno::Reference < beans::XPropertySet > xTempFileProps(xTempFile, uno::UNO_QUERY);
-                            uno::Any aUrl = xTempFileProps->getPropertyValue("Uri");
-                            OUString aTempURL;
-                            aUrl >>= aTempURL;
-
-                            // copy back file
-                            if (!aTempURL.isEmpty() && fileExists(aTempURL))
-                            {
-                                if (fileExists(rUnoPackagReg))
-                                {
-                                    osl::File::remove(rUnoPackagReg);
-                                }
+                osl::File::remove(rUnoPackagReg);
+            }
 
 #if OSL_DEBUG_LEVEL > 1
-                                SAL_WARN_IF(osl::FileBase::E_None != osl::File::move(aTempURL, rUnoPackagReg), "comphelper.backupfilehelper", "could not copy back modified Extension configuration file");
+            SAL_WARN_IF(osl::FileBase::E_None != osl::File::move(aTempURL, rUnoPackagReg), "comphelper.backupfilehelper", "could not copy back modified Extension configuration file");
 #else
-                                osl::File::move(aTempURL, rUnoPackagReg);
+            osl::File::move(aTempURL, rUnoPackagReg);
 #endif
-                            }
-                        }
-                    }
-                }
-            }
         }
 
     public:
@@ -858,11 +666,10 @@ namespace
             // first appearance to check
             {
                 const OUString aUnoPackagReg(rUserConfigWorkURL + aRegPathFront + "bundle" + aRegPathBack);
-                const OUString aTagToSearch("extension");
 
                 visitNodesXMLChangeOneCase(
                     aUnoPackagReg,
-                    aTagToSearch,
+                    "extension",
                     rToBeEnabled,
                     rToBeDisabled);
             }
@@ -870,11 +677,10 @@ namespace
             // second appearance to check
             {
                 const OUString aUnoPackagReg(rUserConfigWorkURL + aRegPathFront + "configuration" + aRegPathBack);
-                const OUString aTagToSearch("configuration");
 
                 visitNodesXMLChangeOneCase(
                     aUnoPackagReg,
-                    aTagToSearch,
+                    "configuration",
                     rToBeEnabled,
                     rToBeDisabled);
             }
@@ -882,17 +688,16 @@ namespace
             // third appearance to check
             {
                 const OUString aUnoPackagReg(rUserConfigWorkURL + aRegPathFront + "script" + aRegPathBack);
-                const OUString aTagToSearch("script");
 
                 visitNodesXMLChangeOneCase(
                     aUnoPackagReg,
-                    aTagToSearch,
+                    "script",
                     rToBeEnabled,
                     rToBeDisabled);
             }
         }
 
-        bool read_entries(FileSharedPtr& rFile)
+        bool read_entries(FileSharedPtr const & rFile)
         {
             // read NumExtensionEntries
             sal_uInt32 nExtEntries(0);
@@ -994,7 +799,7 @@ namespace
         sal_uInt32          mnOffset;           // offset in File (zero identifies new file)
         sal_uInt32          mnCrc32;            // checksum
         FileSharedPtr       maFile;             // file where to find the data (at offset)
-        bool                mbDoCompress;       // flag if this file is scheduled to be compressed when written
+        bool const          mbDoCompress;       // flag if this file is scheduled to be compressed when written
 
         bool copy_content_straight(oslFileHandle& rTargetHandle)
         {
@@ -1009,7 +814,7 @@ namespace
                 {
                     while (nSize != 0)
                     {
-                        const sal_uInt64 nToTransfer(std::min(nSize, (sal_uInt64)BACKUP_FILE_HELPER_BLOCK_SIZE));
+                        const sal_uInt64 nToTransfer(std::min(nSize, sal_uInt64(BACKUP_FILE_HELPER_BLOCK_SIZE)));
 
                         if (osl::File::E_None != maFile->read(static_cast<void*>(aArray), nToTransfer, nBytesTransfer) || nBytesTransfer != nToTransfer)
                         {
@@ -1052,7 +857,7 @@ namespace
 
                         while (bOkay && nSize != 0)
                         {
-                            const sal_uInt64 nToTransfer(std::min(nSize, (sal_uInt64)BACKUP_FILE_HELPER_BLOCK_SIZE));
+                            const sal_uInt64 nToTransfer(std::min(nSize, sal_uInt64(BACKUP_FILE_HELPER_BLOCK_SIZE)));
 
                             if (osl::File::E_None != maFile->read(static_cast<void*>(aArray), nToTransfer, nBytesTransfer) || nBytesTransfer != nToTransfer)
                             {
@@ -1135,7 +940,7 @@ namespace
 
                         while (bOkay && nSize != 0)
                         {
-                            const sal_uInt64 nToTransfer(std::min(nSize, (sal_uInt64)BACKUP_FILE_HELPER_BLOCK_SIZE));
+                            const sal_uInt64 nToTransfer(std::min(nSize, sal_uInt64(BACKUP_FILE_HELPER_BLOCK_SIZE)));
 
                             if (osl::File::E_None != maFile->read(static_cast<void*>(aArray), nToTransfer, nBytesTransfer) || nBytesTransfer != nToTransfer)
                             {
@@ -1197,7 +1002,7 @@ namespace
         PackedFileEntry(
             sal_uInt32 nFullFileSize,
             sal_uInt32 nCrc32,
-            FileSharedPtr& rFile,
+            FileSharedPtr const & rFile,
             bool bDoCompress)
         :   mnFullFileSize(nFullFileSize),
             mnPackFileSize(nFullFileSize),
@@ -1249,7 +1054,7 @@ namespace
             return mnCrc32;
         }
 
-        bool read_header(FileSharedPtr& rFile)
+        bool read_header(FileSharedPtr const & rFile)
         {
             if (!rFile)
             {
@@ -1340,13 +1145,12 @@ namespace
 
 namespace
 {
-    typedef std::deque< PackedFileEntry > PackedFileEntryVector;
-
     class PackedFile
     {
     private:
         const OUString          maURL;
-        PackedFileEntryVector   maPackedFileEntryVector;
+        std::deque< PackedFileEntry >
+                                maPackedFileEntryVector;
         bool                    mbChanged;
 
     public:
@@ -1355,7 +1159,7 @@ namespace
             maPackedFileEntryVector(),
             mbChanged(false)
         {
-            FileSharedPtr aSourceFile(new osl::File(rURL));
+            FileSharedPtr aSourceFile = std::make_shared<osl::File>(rURL);
 
             if (osl::File::E_None == aSourceFile->open(osl_File_OpenFlag_Read))
             {
@@ -1435,7 +1239,7 @@ namespace
             }
         }
 
-        bool flush()
+        void flush()
         {
             bool bRetval(true);
 
@@ -1470,24 +1274,21 @@ namespace
                         // write number of entries
                         if (write_sal_uInt32(aHandle, nSize))
                         {
-                            if (bRetval)
+                            // write placeholder for headers. Due to the fact that
+                            // PackFileSize for newly added files gets set during
+                            // writing the content entry, write headers after content
+                            // is written. To do so, write placeholders here
+                            sal_uInt32 nWriteSize(0);
+
+                            nWriteSize += maPackedFileEntryVector.size() * PackedFileEntry::getEntrySize();
+
+                            aArray[0] = aArray[1] = aArray[2] = aArray[3] = 0;
+
+                            for (sal_uInt32 a(0); bRetval && a < nWriteSize; a++)
                             {
-                                // write placeholder for headers. Due to the fact that
-                                // PackFileSize for newly added files gets set during
-                                // writing the content entry, write headers after content
-                                // is written. To do so, write placeholders here
-                                sal_uInt32 nWriteSize(0);
-
-                                nWriteSize += maPackedFileEntryVector.size() * PackedFileEntry::getEntrySize();
-
-                                aArray[0] = aArray[1] = aArray[2] = aArray[3] = 0;
-
-                                for (sal_uInt32 a(0); bRetval && a < nWriteSize; a++)
+                                if (osl_File_E_None != osl_writeFile(aHandle, static_cast<const void*>(aArray), 1, &nBaseWritten) || 1 != nBaseWritten)
                                 {
-                                    if (osl_File_E_None != osl_writeFile(aHandle, static_cast<const void*>(aArray), 1, &nBaseWritten) || 1 != nBaseWritten)
-                                    {
-                                        bRetval = false;
-                                    }
+                                    bRetval = false;
                                 }
                             }
 
@@ -1517,7 +1318,7 @@ namespace
                             if (bRetval)
                             {
                                 // write headers
-                                for (auto& candidate : maPackedFileEntryVector)
+                                for (const auto& candidate : maPackedFileEntryVector)
                                 {
                                     if (!candidate.write_header(aHandle))
                                     {
@@ -1545,11 +1346,9 @@ namespace
                 // delete temp file (in all cases - it may be moved already)
                 osl::File::remove(aTempURL);
             }
-
-            return bRetval;
         }
 
-        bool tryPush(FileSharedPtr& rFileCandidate, bool bCompress)
+        bool tryPush(FileSharedPtr const & rFileCandidate, bool bCompress)
         {
             sal_uInt64 nFileSize(0);
 
@@ -1607,12 +1406,11 @@ namespace
 
                 // create a file entry for a new file. Offset is set automatically
                 // to 0 to mark the entry as new file entry
-                maPackedFileEntryVector.push_back(
-                    PackedFileEntry(
+                maPackedFileEntryVector.emplace_back(
                         static_cast< sal_uInt32 >(nFileSize),
                         nCrc32,
                         rFileCandidate,
-                        bCompress));
+                        bCompress);
 
                 mbChanged = true;
             }
@@ -1622,8 +1420,6 @@ namespace
 
         bool tryPop(oslFileHandle& rHandle)
         {
-            bool bRetval(false);
-
             if (!maPackedFileEntryVector.empty())
             {
                 // already backups there, check if different from last entry
@@ -1632,7 +1428,7 @@ namespace
                 // here the uncompress flag has to be determined, true
                 // means to add the file compressed, false means to add it
                 // uncompressed
-                bRetval = aLastEntry.copy_content(rHandle, true);
+                bool bRetval = aLastEntry.copy_content(rHandle, true);
 
                 if (bRetval)
                 {
@@ -1655,7 +1451,7 @@ namespace
             }
         }
 
-        bool empty()
+        bool empty() const
         {
             return maPackedFileEntryVector.empty();
         }
@@ -1701,13 +1497,15 @@ namespace comphelper
             if (!maInitialBaseURL.isEmpty())
             {
                 // split URL at extension and at last path separator
-                maUserConfigBaseURL = splitAtLastToken(splitAtLastToken(maInitialBaseURL, '.', maExt), '/', maRegModName);
+                maUserConfigBaseURL = DirectoryHelper::splitAtLastToken(
+                    DirectoryHelper::splitAtLastToken(maInitialBaseURL, '.', maExt), '/',
+                    maRegModName);
             }
 
             if (!maUserConfigBaseURL.isEmpty())
             {
                 // check if SafeModeDir exists
-                mbSafeModeDirExists = dirExists(maUserConfigBaseURL + "/" + getSafeModeName());
+                mbSafeModeDirExists = DirectoryHelper::dirExists(maUserConfigBaseURL + "/" + getSafeModeName());
             }
 
             maUserConfigWorkURL = maUserConfigBaseURL;
@@ -1715,8 +1513,7 @@ namespace comphelper
             if (mbSafeModeDirExists)
             {
                 // adapt work URL to do all repair op's in the correct directory
-                maUserConfigWorkURL += "/";
-                maUserConfigWorkURL += getSafeModeName();
+                maUserConfigWorkURL += "/" + getSafeModeName();
             }
         }
 
@@ -1798,81 +1595,75 @@ namespace comphelper
         // ensure existence of needed paths
         getInitialBaseURL();
 
-        if (!maUserConfigBaseURL.isEmpty())
+        if (maUserConfigBaseURL.isEmpty())
+            return;
+
+        if (bSafeMode)
         {
-            if (bSafeMode)
+            if (!mbSafeModeDirExists)
             {
-                if (!mbSafeModeDirExists)
-                {
-                    std::set< OUString > aExcludeList;
+                std::set< OUString > aExcludeList;
 
-                    // do not move SafeMode directory itself
-                    aExcludeList.insert(getSafeModeName());
+                // do not move SafeMode directory itself
+                aExcludeList.insert(getSafeModeName());
 
-                    // init SafeMode by creating the 'SafeMode' directory and moving
-                    // all stuff there. All repairs will happen there. Both Dirs have to exist.
-                    // extend maUserConfigWorkURL as needed
-                    maUserConfigWorkURL = maUserConfigBaseURL + "/" + getSafeModeName();
+                // init SafeMode by creating the 'SafeMode' directory and moving
+                // all stuff there. All repairs will happen there. Both Dirs have to exist.
+                // extend maUserConfigWorkURL as needed
+                maUserConfigWorkURL = maUserConfigBaseURL + "/" + getSafeModeName();
 
-                    osl::Directory::createPath(maUserConfigWorkURL);
-                    moveDirContent(maUserConfigBaseURL, maUserConfigWorkURL, aExcludeList);
+                osl::Directory::createPath(maUserConfigWorkURL);
+                DirectoryHelper::moveDirContent(maUserConfigBaseURL, maUserConfigWorkURL, aExcludeList);
 
-                    // switch local flag, maUserConfigWorkURL is already reset
-                    mbSafeModeDirExists = true;
-                }
+                // switch local flag, maUserConfigWorkURL is already reset
+                mbSafeModeDirExists = true;
             }
-            else
+        }
+        else
+        {
+            if (mbSafeModeDirExists)
             {
-                if (mbSafeModeDirExists)
-                {
-                    // SafeMode has ended, return to normal mode by moving all content
-                    // from 'SafeMode' directory back to UserDirectory and deleting it.
-                    // Both Dirs have to exist
-                    std::set< OUString > aExcludeList;
+                // SafeMode has ended, return to normal mode by moving all content
+                // from 'SafeMode' directory back to UserDirectory and deleting it.
+                // Both Dirs have to exist
+                std::set< OUString > aExcludeList;
 
-                    moveDirContent(maUserConfigWorkURL, maUserConfigBaseURL, aExcludeList);
-                    osl::Directory::remove(maUserConfigWorkURL);
+                DirectoryHelper::moveDirContent(maUserConfigWorkURL, maUserConfigBaseURL, aExcludeList);
+                osl::Directory::remove(maUserConfigWorkURL);
 
-                    // switch local flag and reset maUserConfigWorkURL
-                    mbSafeModeDirExists = false;
-                    maUserConfigWorkURL = maUserConfigBaseURL;
-                }
+                // switch local flag and reset maUserConfigWorkURL
+                mbSafeModeDirExists = false;
+                maUserConfigWorkURL = maUserConfigBaseURL;
             }
         }
     }
 
-    bool BackupFileHelper::tryPush()
+    void BackupFileHelper::tryPush()
     {
-        bool bDidPush(false);
-
         // no push when SafeModeDir exists, it may be Office's exit after SafeMode
         // where SafeMode flag is already deleted, but SafeModeDir cleanup is not
         // done yet (is done at next startup)
-        if (mbActive && !mbSafeModeDirExists)
+        if (!(mbActive && !mbSafeModeDirExists))
+            return;
+
+        const OUString aPackURL(getPackURL());
+
+        // ensure dir and file vectors
+        fillDirFileInfo();
+
+        // process all files in question recursively
+        if (!maDirs.empty() || !maFiles.empty())
         {
-            const OUString aPackURL(getPackURL());
-
-            // ensure dir and file vectors
-            fillDirFileInfo();
-
-            // process all files in question recursively
-            if (!maDirs.empty() || !maFiles.empty())
-            {
-                bDidPush = tryPush_Files(
-                    maDirs,
-                    maFiles,
-                    maUserConfigWorkURL,
-                    aPackURL);
-            }
+            tryPush_Files(
+                maDirs,
+                maFiles,
+                maUserConfigWorkURL,
+                aPackURL);
         }
-
-        return bDidPush;
     }
 
-    bool BackupFileHelper::tryPushExtensionInfo()
+    void BackupFileHelper::tryPushExtensionInfo()
     {
-        bool bDidPush(false);
-
         // no push when SafeModeDir exists, it may be Office's exit after SafeMode
         // where SafeMode flag is already deleted, but SafeModeDir cleanup is not
         // done yet (is done at next startup)
@@ -1880,10 +1671,8 @@ namespace comphelper
         {
             const OUString aPackURL(getPackURL());
 
-            bDidPush = tryPush_extensionInfo(aPackURL);
+            tryPush_extensionInfo(aPackURL);
         }
-
-        return bDidPush;
     }
 
     bool BackupFileHelper::isPopPossible()
@@ -1911,38 +1700,35 @@ namespace comphelper
         return bPopPossible;
     }
 
-    bool BackupFileHelper::tryPop()
+    void BackupFileHelper::tryPop()
     {
+        if (!mbActive)
+            return;
+
         bool bDidPop(false);
+        const OUString aPackURL(getPackURL());
 
-        if (mbActive)
+        // ensure dir and file vectors
+        fillDirFileInfo();
+
+        // process all files in question recursively
+        if (!maDirs.empty() || !maFiles.empty())
         {
-            const OUString aPackURL(getPackURL());
-
-            // ensure dir and file vectors
-            fillDirFileInfo();
-
-            // process all files in question recursively
-            if (!maDirs.empty() || !maFiles.empty())
-            {
-                bDidPop = tryPop_files(
-                    maDirs,
-                    maFiles,
-                    maUserConfigWorkURL,
-                    aPackURL);
-            }
-
-            if (bDidPop)
-            {
-                // try removal of evtl. empty directory
-                osl::Directory::remove(aPackURL);
-            }
+            bDidPop = tryPop_files(
+                maDirs,
+                maFiles,
+                maUserConfigWorkURL,
+                aPackURL);
         }
 
-        return bDidPop;
+        if (bDidPop)
+        {
+            // try removal of evtl. empty directory
+            osl::Directory::remove(aPackURL);
+        }
     }
 
-    bool BackupFileHelper::isPopPossibleExtensionInfo()
+    bool BackupFileHelper::isPopPossibleExtensionInfo() const
     {
         bool bPopPossible(false);
 
@@ -1956,24 +1742,21 @@ namespace comphelper
         return bPopPossible;
     }
 
-    bool BackupFileHelper::tryPopExtensionInfo()
+    void BackupFileHelper::tryPopExtensionInfo()
     {
+        if (!(mbActive && mbExtensions))
+            return;
+
         bool bDidPop(false);
+        const OUString aPackURL(getPackURL());
 
-        if (mbActive && mbExtensions)
+        bDidPop = tryPop_extensionInfo(aPackURL);
+
+        if (bDidPop)
         {
-            const OUString aPackURL(getPackURL());
-
-            bDidPop = tryPop_extensionInfo(aPackURL);
-
-            if (bDidPop)
-            {
-                // try removal of evtl. empty directory
-                osl::Directory::remove(aPackURL);
-            }
+            // try removal of evtl. empty directory
+            osl::Directory::remove(aPackURL);
         }
-
-        return bDidPop;
     }
 
     bool BackupFileHelper::isTryDisableAllExtensionsPossible()
@@ -2025,7 +1808,7 @@ namespace comphelper
     void BackupFileHelper::tryDeinstallUserExtensions()
     {
         // delete User Extension installs
-        deleteDirRecursively(maUserConfigWorkURL + "/uno_packages");
+        DirectoryHelper::deleteDirRecursively(maUserConfigWorkURL + "/uno_packages");
     }
 
     bool BackupFileHelper::isTryResetSharedExtensionsPossible()
@@ -2041,7 +1824,7 @@ namespace comphelper
     void BackupFileHelper::tryResetSharedExtensions()
     {
         // reset shared extension info
-        deleteDirRecursively(maUserConfigWorkURL + "/extensions/shared");
+        DirectoryHelper::deleteDirRecursively(maUserConfigWorkURL + "/extensions/shared");
     }
 
     bool BackupFileHelper::isTryResetBundledExtensionsPossible()
@@ -2057,34 +1840,30 @@ namespace comphelper
     void BackupFileHelper::tryResetBundledExtensions()
     {
         // reset shared extension info
-        deleteDirRecursively(maUserConfigWorkURL + "/extensions/bundled");
+        DirectoryHelper::deleteDirRecursively(maUserConfigWorkURL + "/extensions/bundled");
     }
 
     const std::vector< OUString >& BackupFileHelper::getCustomizationDirNames()
     {
-        static std::vector< OUString > aDirNames;
-
-        if (aDirNames.empty())
+        static std::vector< OUString > aDirNames =
         {
-            aDirNames.push_back("config");     // UI config stuff
-            aDirNames.push_back("registry");   // most of the registry stuff
-            aDirNames.push_back("psprint");    // not really needed, can be abandoned
-            aDirNames.push_back("store");      // not really needed, can be abandoned
-            aDirNames.push_back("temp");       // not really needed, can be abandoned
-            aDirNames.push_back("pack");       // own backup dir
-        }
+            "config",     // UI config stuff
+            "registry",   // most of the registry stuff
+            "psprint",    // not really needed, can be abandoned
+            "store",      // not really needed, can be abandoned
+            "temp",       // not really needed, can be abandoned
+            "pack"       // own backup dir
+        };
 
         return aDirNames;
     }
 
     const std::vector< OUString >& BackupFileHelper::getCustomizationFileNames()
     {
-        static std::vector< OUString > aFileNames;
-
-        if (aFileNames.empty())
+        static std::vector< OUString > aFileNames =
         {
-            aFileNames.push_back("registrymodifications.xcu"); // personal registry stuff
-        }
+            "registrymodifications.xcu" // personal registry stuff
+        };
 
         return aFileNames;
     }
@@ -2114,7 +1893,7 @@ namespace comphelper
     void BackupFileHelper::tryDisableHWAcceleration()
     {
         const OUString aRegistryModifications(maUserConfigWorkURL + "/registrymodifications.xcu");
-        if (!fileExists(aRegistryModifications))
+        if (!DirectoryHelper::fileExists(aRegistryModifications))
             return;
 
         uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
@@ -2128,8 +1907,11 @@ namespace comphelper
                                                        "ForceOpenGL", "false"));
         xRootElement->appendChild(lcl_getConfigElement(xDocument, "/org.openoffice.Office.Common/Misc",
                                                        "UseOpenCL", "false"));
-        xRootElement->appendChild(lcl_getConfigElement(xDocument, "/org.openoffice.Office.Common/Misc",
-                                                       "UseSwInterpreter", "false"));
+        // Do not disable Skia entirely, just force it's CPU-based raster mode.
+        xRootElement->appendChild(lcl_getConfigElement(xDocument, "/org.openoffice.Office.Common/VCL",
+                                                       "ForceSkia", "false"));
+        xRootElement->appendChild(lcl_getConfigElement(xDocument, "/org.openoffice.Office.Common/VCL",
+                                                       "ForceSkiaRaster", "true"));
 
         // write back
         uno::Reference< xml::sax::XSAXSerializable > xSerializer(xDocument, uno::UNO_QUERY);
@@ -2139,12 +1921,12 @@ namespace comphelper
 
         // create a SAXWriter
         uno::Reference< xml::sax::XWriter > const xSaxWriter = xml::sax::Writer::create(xContext);
-        uno::Reference< io::XStream > xTempFile(io::TempFile::create(xContext), uno::UNO_QUERY);
-        uno::Reference< io::XOutputStream > xOutStrm(xTempFile->getOutputStream(), uno::UNO_QUERY);
+        uno::Reference< io::XStream > xTempFile = io::TempFile::create(xContext);
+        uno::Reference< io::XOutputStream > xOutStrm = xTempFile->getOutputStream();
 
         // set output stream and do the serialization
-        xSaxWriter->setOutputStream(uno::Reference< css::io::XOutputStream >(xOutStrm, uno::UNO_QUERY));
-        xSerializer->serialize(uno::Reference< xml::sax::XDocumentHandler >(xSaxWriter, uno::UNO_QUERY), uno::Sequence< beans::StringPair >());
+        xSaxWriter->setOutputStream(xOutStrm);
+        xSerializer->serialize(xSaxWriter, uno::Sequence< beans::StringPair >());
 
         // get URL from temp file
         uno::Reference < beans::XPropertySet > xTempFileProps(xTempFile, uno::UNO_QUERY);
@@ -2153,10 +1935,10 @@ namespace comphelper
         aUrl >>= aTempURL;
 
         // copy back file
-        if (aTempURL.isEmpty() || !fileExists(aTempURL))
+        if (aTempURL.isEmpty() || !DirectoryHelper::fileExists(aTempURL))
             return;
 
-        if (fileExists(aRegistryModifications))
+        if (DirectoryHelper::fileExists(aRegistryModifications))
         {
             osl::File::remove(aRegistryModifications);
         }
@@ -2172,7 +1954,7 @@ namespace comphelper
 
         for (const auto& a : rDirs)
         {
-            if (dirExists(maUserConfigWorkURL + "/" + a))
+            if (DirectoryHelper::dirExists(maUserConfigWorkURL + "/" + a))
             {
                 return true;
             }
@@ -2182,7 +1964,7 @@ namespace comphelper
 
         for (const auto& b : rFiles)
         {
-            if (fileExists(maUserConfigWorkURL + "/" + b))
+            if (DirectoryHelper::fileExists(maUserConfigWorkURL + "/" + b))
             {
                 return true;
             }
@@ -2198,7 +1980,7 @@ namespace comphelper
 
         for (const auto& a : rDirs)
         {
-            deleteDirRecursively(maUserConfigWorkURL + "/" + a);
+            DirectoryHelper::deleteDirRecursively(maUserConfigWorkURL + "/" + a);
         }
 
         const std::vector< OUString >& rFiles = getCustomizationFileNames();
@@ -2212,7 +1994,7 @@ namespace comphelper
     void BackupFileHelper::tryResetUserProfile()
     {
         // completely delete the current UserProfile
-        deleteDirRecursively(maUserConfigWorkURL);
+        DirectoryHelper::deleteDirRecursively(maUserConfigWorkURL);
     }
 
     const OUString& BackupFileHelper::getUserProfileURL()
@@ -2227,9 +2009,9 @@ namespace comphelper
 
     /////////////////// helpers ///////////////////////
 
-    const rtl::OUString BackupFileHelper::getPackURL()
+    OUString BackupFileHelper::getPackURL()
     {
-        return rtl::OUString(maUserConfigWorkURL + "/pack");
+        return OUString(maUserConfigWorkURL + "/pack");
     }
 
     /////////////////// file push helpers ///////////////////////
@@ -2262,7 +2044,7 @@ namespace comphelper
             std::set< OUString > aNewDirs;
             std::set< std::pair< OUString, OUString > > aNewFiles;
 
-            scanDirsAndFiles(
+            DirectoryHelper::scanDirsAndFiles(
                 aNewSourceURL,
                 aNewDirs,
                 aNewFiles);
@@ -2295,11 +2077,11 @@ namespace comphelper
     {
         const OUString aFileURL(createFileURL(rSourceURL, rName, rExt));
 
-        if (fileExists(aFileURL))
+        if (DirectoryHelper::fileExists(aFileURL))
         {
             const OUString aPackURL(createPackURL(rTargetURL, rName));
             PackedFile aPackedFile(aPackURL);
-            FileSharedPtr aBaseFile(new osl::File(aFileURL));
+            FileSharedPtr aBaseFile = std::make_shared<osl::File>(aFileURL);
 
             if (aPackedFile.tryPush(aBaseFile, mbCompress))
             {
@@ -2343,7 +2125,7 @@ namespace comphelper
             std::set< OUString > aNewDirs;
             std::set< std::pair< OUString, OUString > > aNewFiles;
 
-            scanDirsAndFiles(
+            DirectoryHelper::scanDirsAndFiles(
                 aNewSourceURL,
                 aNewDirs,
                 aNewFiles);
@@ -2370,7 +2152,7 @@ namespace comphelper
     {
         const OUString aFileURL(createFileURL(rSourceURL, rName, rExt));
 
-        if (fileExists(aFileURL))
+        if (DirectoryHelper::fileExists(aFileURL))
         {
             const OUString aPackURL(createPackURL(rTargetURL, rName));
             PackedFile aPackedFile(aPackURL);
@@ -2410,7 +2192,7 @@ namespace comphelper
             std::set< OUString > aNewDirs;
             std::set< std::pair< OUString, OUString > > aNewFiles;
 
-            scanDirsAndFiles(
+            DirectoryHelper::scanDirsAndFiles(
                 aNewSourceURL,
                 aNewDirs,
                 aNewFiles);
@@ -2443,7 +2225,7 @@ namespace comphelper
     {
         const OUString aFileURL(createFileURL(rSourceURL, rName, rExt));
 
-        if (fileExists(aFileURL))
+        if (DirectoryHelper::fileExists(aFileURL))
         {
             // try Pop for base file
             const OUString aPackURL(createPackURL(rTargetURL, rName));
@@ -2500,7 +2282,7 @@ namespace comphelper
         {
             const OUString aPackURL(createPackURL(rTargetURL, "ExtensionInfo"));
             PackedFile aPackedFile(aPackURL);
-            FileSharedPtr aBaseFile(new osl::File(aTempURL));
+            FileSharedPtr aBaseFile = std::make_shared<osl::File>(aTempURL);
 
             if (aPackedFile.tryPush(aBaseFile, mbCompress))
             {
@@ -2552,7 +2334,7 @@ namespace comphelper
                 {
                     // last config is in temp file, load it to ExtensionInfo
                     ExtensionInfo aLoadedExtensionInfo;
-                    FileSharedPtr aBaseFile(new osl::File(aTempURL));
+                    FileSharedPtr aBaseFile = std::make_shared<osl::File>(aTempURL);
 
                     if (osl::File::E_None == aBaseFile->open(osl_File_OpenFlag_Read))
                     {
@@ -2707,7 +2489,7 @@ namespace comphelper
             // whole directory. To do so, scan directory and exclude some dirs
             // from which we know they do not need to be secured explicitly. This
             // should already include registrymodifications, too.
-            scanDirsAndFiles(
+            DirectoryHelper::scanDirsAndFiles(
                 maUserConfigWorkURL,
                 maDirs,
                 maFiles);

@@ -20,6 +20,7 @@
 #define INCLUDED_XMLOFF_SOURCE_STYLE_PAGEHEADERFOOTERCONTEXT_HXX
 
 #include <xmloff/xmlimp.hxx>
+#include <xmloff/maptype.hxx>
 
 class PageHeaderFooterContext : public SvXMLImportContext
 {
@@ -41,7 +42,7 @@ public:
 
     virtual ~PageHeaderFooterContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                      const OUString& rLocalName,
                                      const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
 

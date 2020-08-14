@@ -19,21 +19,21 @@
 #ifndef INCLUDED_SFX2_SIDEBAR_SIDEBARTOOLBOX_HXX
 #define INCLUDED_SFX2_SIDEBAR_SIDEBARTOOLBOX_HXX
 
+#include <config_options.h>
 #include <sfx2/dllapi.h>
 #include <vcl/toolbox.hxx>
-#include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/frame/XToolbarController.hpp>
-#include <com/sun/star/util/URL.hpp>
 #include <map>
 
-namespace sfx2 { namespace sidebar {
+namespace com::sun::star::frame { class XToolbarController; }
+
+namespace sfx2::sidebar {
 
 /** The sidebar tool box has two responsibilities:
     1. Coordinated location, size, and other states with its parent
        background window.
     2. Create and handle tool bar controller for its items.
 */
-class SFX2_DLLPUBLIC SidebarToolBox : public ToolBox
+class UNLESS_MERGELIBS(SFX2_DLLPUBLIC) SidebarToolBox : public ToolBox
 {
 public:
     SidebarToolBox(vcl::Window* pParentWindow);
@@ -50,11 +50,10 @@ public:
             ImplToolItems::size_type nPos = APPEND) override;
 
     virtual bool EventNotify(NotifyEvent& rEvent) override;
+    virtual void KeyInput( const KeyEvent& rKEvt ) override;
 
     void SetController(const sal_uInt16 nItemId,
                        const css::uno::Reference<css::frame::XToolbarController>& rxController);
-
-    css::uno::Reference<css::frame::XToolbarController> GetFirstController();
 
     void InitToolBox(VclBuilder::stringmap& rMap);
 
@@ -63,6 +62,7 @@ protected:
     ControllerContainer maControllers;
     bool mbAreHandlersRegistered;
     bool mbUseDefaultButtonSize;
+    bool mbSideBar;
 
     DECL_LINK(DropDownClickHandler, ToolBox*, void);
     DECL_LINK(ClickHandler, ToolBox*, void);
@@ -74,12 +74,12 @@ protected:
 
     void CreateController(const sal_uInt16 nItemId,
                           const css::uno::Reference<css::frame::XFrame>& rxFrame,
-                          const sal_Int32 nItemWidth);
+                          const sal_Int32 nItemWidth, bool bSideBar);
     void RegisterHandlers();
 };
 
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

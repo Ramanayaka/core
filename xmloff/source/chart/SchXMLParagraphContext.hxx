@@ -23,9 +23,9 @@
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
 
-namespace com { namespace sun { namespace star { namespace xml { namespace sax {
+namespace com::sun::star::xml::sax {
         class XAttributeList;
-}}}}}
+}
 
 class SchXMLParagraphContext : public SvXMLImportContext
 {
@@ -43,7 +43,7 @@ public:
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
     virtual void EndElement() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;

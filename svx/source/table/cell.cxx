@@ -23,37 +23,38 @@
 #include <com/sun/star/text/WritingMode.hpp>
 #include <com/sun/star/table/TableBorder.hpp>
 #include <com/sun/star/table/BorderLine2.hpp>
+#include <com/sun/star/lang/Locale.hpp>
 
-#include <comphelper/string.hxx>
-
-#include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
+#include <comphelper/sequence.hxx>
 #include <o3tl/any.hxx>
-#include <o3tl/make_unique.hxx>
 #include <svl/style.hxx>
 #include <svl/itemset.hxx>
 
 #include <vcl/svapp.hxx>
 #include <libxml/xmlwriter.h>
 
-#include "sdr/properties/textproperties.hxx"
-#include "editeng/outlobj.hxx"
-#include "editeng/writingmodeitem.hxx"
-#include "svx/svdotable.hxx"
-#include "svx/svdoutl.hxx"
-#include "svx/unoshtxt.hxx"
-#include "svx/svdmodel.hxx"
-
-#include "getallcharpropids.hxx"
+#include <sdr/properties/textproperties.hxx>
+#include <editeng/outlobj.hxx>
+#include <editeng/writingmodeitem.hxx>
+#include <svx/svdotable.hxx>
+#include <svx/svdoutl.hxx>
+#include <svx/unoshtxt.hxx>
+#include <svx/svdmodel.hxx>
+#include <svx/sdooitm.hxx>
+#include <svx/sdtagitm.hxx>
+#include <svx/sdmetitm.hxx>
+#include <svx/xit.hxx>
+#include <getallcharpropids.hxx>
 #include "tableundo.hxx"
-#include "cell.hxx"
-#include "svx/unoshprp.hxx"
-#include "svx/unoshape.hxx"
-#include "editeng/editobj.hxx"
-#include "editeng/boxitem.hxx"
+#include <cell.hxx>
+#include <svx/unoshprp.hxx>
+#include <svx/unoshape.hxx>
+#include <editeng/editobj.hxx>
+#include <editeng/borderline.hxx>
+#include <editeng/boxitem.hxx>
 #include <editeng/charrotateitem.hxx>
-#include "svx/xflbstit.hxx"
-#include "svx/xflbmtit.hxx"
+#include <svx/xflbstit.hxx>
+#include <svx/xflbmtit.hxx>
 #include <svx/svdpool.hxx>
 
 
@@ -75,27 +76,27 @@ static const SvxItemPropertySet* ImplGetSvxCellPropertySet()
     {
         FILL_PROPERTIES
 //      { "HasLevels",                    OWN_ATTR_HASLEVELS,             cppu::UnoType<bool>::get(), css::beans::PropertyAttribute::READONLY,      0},
-        { OUString("Style"),                        OWN_ATTR_STYLE,                 cppu::UnoType< css::style::XStyle >::get(),                                    css::beans::PropertyAttribute::MAYBEVOID, 0},
-        { OUString(UNO_NAME_TEXT_WRITINGMODE),      SDRATTR_TEXTDIRECTION,          cppu::UnoType<css::text::WritingMode>::get(),                         0,      0},
-        { OUString(UNO_NAME_TEXT_HORZADJUST),       SDRATTR_TEXT_HORZADJUST,        cppu::UnoType<css::drawing::TextHorizontalAdjust>::get(),  0,      0},
-        { OUString(UNO_NAME_TEXT_LEFTDIST),         SDRATTR_TEXT_LEFTDIST,          cppu::UnoType<sal_Int32>::get(),        0,      SFX_METRIC_ITEM},
-        { OUString(UNO_NAME_TEXT_LOWERDIST),        SDRATTR_TEXT_LOWERDIST,         cppu::UnoType<sal_Int32>::get(),        0,      SFX_METRIC_ITEM},
-        { OUString(UNO_NAME_TEXT_RIGHTDIST),        SDRATTR_TEXT_RIGHTDIST,         cppu::UnoType<sal_Int32>::get(),        0,      SFX_METRIC_ITEM},
-        { OUString(UNO_NAME_TEXT_UPPERDIST),        SDRATTR_TEXT_UPPERDIST,         cppu::UnoType<sal_Int32>::get(),        0,      SFX_METRIC_ITEM},
-        { OUString(UNO_NAME_TEXT_VERTADJUST),       SDRATTR_TEXT_VERTADJUST,        cppu::UnoType<css::drawing::TextVerticalAdjust>::get(),    0,      0},
-        { OUString(UNO_NAME_TEXT_WORDWRAP),         SDRATTR_TEXT_WORDWRAP,          cppu::UnoType<bool>::get(),        0,      0},
+        { "Style",                        OWN_ATTR_STYLE,                 cppu::UnoType< css::style::XStyle >::get(),                                    css::beans::PropertyAttribute::MAYBEVOID, 0},
+        { UNO_NAME_TEXT_WRITINGMODE,      SDRATTR_TEXTDIRECTION,          cppu::UnoType<css::text::WritingMode>::get(),                         0,      0},
+        { UNO_NAME_TEXT_HORZADJUST,       SDRATTR_TEXT_HORZADJUST,        cppu::UnoType<css::drawing::TextHorizontalAdjust>::get(),  0,      0},
+        { UNO_NAME_TEXT_LEFTDIST,         SDRATTR_TEXT_LEFTDIST,          cppu::UnoType<sal_Int32>::get(),        0,      0, PropertyMoreFlags::METRIC_ITEM},
+        { UNO_NAME_TEXT_LOWERDIST,        SDRATTR_TEXT_LOWERDIST,         cppu::UnoType<sal_Int32>::get(),        0,      0, PropertyMoreFlags::METRIC_ITEM},
+        { UNO_NAME_TEXT_RIGHTDIST,        SDRATTR_TEXT_RIGHTDIST,         cppu::UnoType<sal_Int32>::get(),        0,      0, PropertyMoreFlags::METRIC_ITEM},
+        { UNO_NAME_TEXT_UPPERDIST,        SDRATTR_TEXT_UPPERDIST,         cppu::UnoType<sal_Int32>::get(),        0,      0, PropertyMoreFlags::METRIC_ITEM},
+        { UNO_NAME_TEXT_VERTADJUST,       SDRATTR_TEXT_VERTADJUST,        cppu::UnoType<css::drawing::TextVerticalAdjust>::get(),    0,      0},
+        { UNO_NAME_TEXT_WORDWRAP,         SDRATTR_TEXT_WORDWRAP,          cppu::UnoType<bool>::get(),        0,      0},
 
-        { OUString("TableBorder"),                  OWN_ATTR_TABLEBORDER,           cppu::UnoType<TableBorder>::get(), 0, 0 },
-        { OUString("TopBorder"),                    SDRATTR_TABLE_BORDER,           cppu::UnoType<BorderLine>::get(), 0, TOP_BORDER },
-        { OUString("BottomBorder"),                 SDRATTR_TABLE_BORDER,           cppu::UnoType<BorderLine>::get(), 0, BOTTOM_BORDER },
-        { OUString("LeftBorder"),                   SDRATTR_TABLE_BORDER,           cppu::UnoType<BorderLine>::get(), 0, LEFT_BORDER },
-        { OUString("RightBorder"),                  SDRATTR_TABLE_BORDER,           cppu::UnoType<BorderLine>::get(), 0, RIGHT_BORDER },
-        { OUString("RotateAngle"),                  SDRATTR_TABLE_TEXT_ROTATION,    cppu::UnoType<sal_Int32>::get(), 0, 0 },
+        { "TableBorder",                  OWN_ATTR_TABLEBORDER,           cppu::UnoType<TableBorder>::get(), 0, 0 },
+        { "TopBorder",                    SDRATTR_TABLE_BORDER,           cppu::UnoType<BorderLine>::get(), 0, TOP_BORDER },
+        { "BottomBorder",                 SDRATTR_TABLE_BORDER,           cppu::UnoType<BorderLine>::get(), 0, BOTTOM_BORDER },
+        { "LeftBorder",                   SDRATTR_TABLE_BORDER,           cppu::UnoType<BorderLine>::get(), 0, LEFT_BORDER },
+        { "RightBorder",                  SDRATTR_TABLE_BORDER,           cppu::UnoType<BorderLine>::get(), 0, RIGHT_BORDER },
+        { "RotateAngle",                  SDRATTR_TABLE_TEXT_ROTATION,    cppu::UnoType<sal_Int32>::get(), 0, 0 },
 
         SVX_UNOEDIT_OUTLINER_PROPERTIES,
         SVX_UNOEDIT_CHAR_PROPERTIES,
         SVX_UNOEDIT_PARA_PROPERTIES,
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        { "", 0, css::uno::Type(), 0, 0 }
     };
 
     static SvxItemPropertySet aSvxCellPropertySet( aSvxCellPropertyMap, SdrObject::GetGlobalDrawObjectItemPool() );
@@ -142,10 +143,8 @@ SdrText* CellTextProvider::getText(sal_Int32 nIndex) const
 
 }
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         class CellProperties : public TextProperties
         {
         protected:
@@ -162,7 +161,7 @@ namespace sdr
             CellProperties(const CellProperties& rProps, SdrObject& rObj, sdr::table::Cell* pCell);
 
             // Clone() operator, normally just calls the local copy constructor
-            BaseProperties& Clone(SdrObject& rObj) const override;
+            std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
 
             void ForceDefaultAttributes() override;
 
@@ -179,7 +178,7 @@ namespace sdr
         // create a new itemset
         std::unique_ptr<SfxItemSet> CellProperties::CreateObjectSpecificItemSet(SfxItemPool& rPool)
         {
-            return o3tl::make_unique<SfxItemSet>(rPool,
+            return std::make_unique<SfxItemSet>(rPool,
 
                 // range from SdrAttrObj
                 svl::Items<SDRATTR_START, SDRATTR_SHADOW_LAST,
@@ -212,10 +211,10 @@ namespace sdr
         {
         }
 
-        BaseProperties& CellProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> CellProperties::Clone(SdrObject& rObj) const
         {
             OSL_FAIL("CellProperties::Clone(), does not work yet!");
-            return *(new CellProperties(*this, rObj,nullptr));
+            return std::unique_ptr<BaseProperties>(new CellProperties(*this, rObj,nullptr));
         }
 
         void CellProperties::ForceDefaultAttributes()
@@ -228,7 +227,7 @@ namespace sdr
 
             if( mxCell.is() )
             {
-                OutlinerParaObject* pParaObj = mxCell->GetEditOutlinerParaObject();
+                OutlinerParaObject* pParaObj = mxCell->CreateEditOutlinerParaObject().release();
 
                 const bool bOwnParaObj = pParaObj != nullptr;
 
@@ -262,9 +261,9 @@ namespace sdr
                         SfxItemSet aSet(pOutliner->GetParaAttribs(nPara));
                         aSet.Put(rSet);
 
-                        for (std::vector<sal_uInt16>::const_iterator aI = aCharWhichIds.begin(); aI != aCharWhichIds.end(); ++aI)
+                        for (const auto& rWhichId : aCharWhichIds)
                         {
-                            pOutliner->RemoveCharAttribs(nPara, *aI);
+                            pOutliner->RemoveCharAttribs(nPara, rWhichId);
                         }
 
                         pOutliner->SetParaAttribs(nPara, aSet);
@@ -277,13 +276,13 @@ namespace sdr
                             // force ItemSet
                             GetObjectItemSet();
 
-                            SfxItemSet aNewSet(pOutliner->GetParaAttribs(0L));
+                            SfxItemSet aNewSet(pOutliner->GetParaAttribs(0));
                             mpItemSet->Put(aNewSet);
                         }
 
-                        OutlinerParaObject* pTemp = pOutliner->CreateParaObject(0, nParaCount);
+                        std::unique_ptr<OutlinerParaObject> pTemp = pOutliner->CreateParaObject(0, nParaCount);
                         pOutliner->Clear();
-                        mxCell->SetOutlinerParaObject(pTemp);
+                        mxCell->SetOutlinerParaObject(std::move(pTemp));
                     }
 
                     if( bOwnParaObj )
@@ -308,7 +307,7 @@ namespace sdr
                 rObj.SetVerticalWriting(bVertical);
 
                 // Set a cell vertical property
-                OutlinerParaObject* pParaObj = mxCell->GetEditOutlinerParaObject();
+                OutlinerParaObject* pParaObj = mxCell->CreateEditOutlinerParaObject().release();
 
                 const bool bOwnParaObj = pParaObj != nullptr;
 
@@ -329,7 +328,7 @@ namespace sdr
                 const SvxTextRotateItem* pRotateItem = static_cast<const SvxTextRotateItem*>(pNewItem);
 
                 // Set a cell vertical property
-                OutlinerParaObject* pParaObj = mxCell->GetEditOutlinerParaObject();
+                OutlinerParaObject* pParaObj = mxCell->CreateEditOutlinerParaObject().release();
 
                 const bool bOwnParaObj = pParaObj != nullptr;
 
@@ -338,7 +337,12 @@ namespace sdr
 
                 if (pParaObj)
                 {
-                    pParaObj->SetVertical(pRotateItem->IsVertical(), pRotateItem->IsTopToBottom());
+                    if(pRotateItem->IsVertical() && pRotateItem->IsTopToBottom())
+                        pParaObj->SetRotation(TextRotation::TOPTOBOTTOM);
+                    else if (pRotateItem->IsVertical())
+                        pParaObj->SetRotation(TextRotation::BOTTOMTOTOP);
+                    else
+                        pParaObj->SetRotation(TextRotation::NONE);
 
                     if (bOwnParaObj)
                         delete pParaObj;
@@ -351,8 +355,8 @@ namespace sdr
                 tools::Rectangle aObjectRect = rObj.GetSnapRect();
 
                 const SfxItemSet& rSet = rObj.GetObjectItemSet();
-                bool bAutoGrowWidth = static_cast<const SdrOnOffItem&>(rSet.Get(SDRATTR_TEXT_AUTOGROWWIDTH)).GetValue();
-                bool bAutoGrowHeight = static_cast<const SdrOnOffItem&>(rSet.Get(SDRATTR_TEXT_AUTOGROWHEIGHT)).GetValue();
+                bool bAutoGrowWidth = rSet.Get(SDRATTR_TEXT_AUTOGROWWIDTH).GetValue();
+                bool bAutoGrowHeight = rSet.Get(SDRATTR_TEXT_AUTOGROWHEIGHT).GetValue();
 
                 // prepare ItemSet to set exchanged width and height items
                 SfxItemSet aNewSet(*rSet.GetPool(),
@@ -371,18 +375,17 @@ namespace sdr
             AttributeProperties::ItemChange( nWhich, pNewItem );
         }
 
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace sdr::properties
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 
 // Cell
 
 
-rtl::Reference< Cell > Cell::create( SdrTableObj& rTableObj, OutlinerParaObject* pOutlinerParaObject )
+rtl::Reference< Cell > Cell::create( SdrTableObj& rTableObj )
 {
-    rtl::Reference< Cell > xCell( new Cell( rTableObj, pOutlinerParaObject ) );
+    rtl::Reference< Cell > xCell( new Cell( rTableObj ) );
     if( xCell->mxTable.is() )
     {
         Reference< XEventListener > xListener( xCell.get() );
@@ -392,21 +395,31 @@ rtl::Reference< Cell > Cell::create( SdrTableObj& rTableObj, OutlinerParaObject*
 }
 
 
-Cell::Cell( SdrTableObj& rTableObj, OutlinerParaObject* pOutlinerParaObject )
-: SdrText( rTableObj, pOutlinerParaObject )
-, SvxUnoTextBase( ImplGetSvxUnoOutlinerTextCursorSvxPropertySet() )
-, mpPropSet( ImplGetSvxCellPropertySet() )
-, mpProperties( new sdr::properties::CellProperties( rTableObj, this ) )
-, mnCellContentType( CellContentType_EMPTY )
-, mfValue( 0.0 )
-, mnError( 0 )
-, mbMerged( false )
-, mnRowSpan( 1 )
-, mnColSpan( 1 )
-, mxTable( rTableObj.getTable() )
+Cell::Cell(
+    SdrTableObj& rTableObj)
+:   SdrText(rTableObj)
+    ,SvxUnoTextBase( ImplGetSvxUnoOutlinerTextCursorSvxPropertySet() )
+    ,mpPropSet( ImplGetSvxCellPropertySet() )
+    ,mpProperties( new sdr::properties::CellProperties( rTableObj, this ) )
+    ,mnCellContentType( CellContentType_EMPTY )
+    ,mfValue( 0.0 )
+    ,mnError( 0 )
+    ,mbMerged( false )
+    ,mnRowSpan( 1 )
+    ,mnColSpan( 1 )
+    ,mxTable( rTableObj.getTable() )
 {
-    if( rTableObj.GetModel() )
-        SetModel( rTableObj.GetModel() );
+    // Caution: Old SetModel() indirectly did a very necessary thing here,
+    // it created a valid SvxTextEditSource which is needed to bind contained
+    // Text to the UNO API and thus to save/load and more. Added version without
+    // model change.
+    // Also done was (not needed, for reference):
+    //         SetStyleSheet( nullptr, true );
+    //         ForceOutlinerParaObject( OutlinerMode::TextObject );
+    if(nullptr == GetEditSource())
+    {
+        SetEditSource(new SvxTextEditSource(&GetObject(), this));
+    }
 }
 
 
@@ -432,44 +445,14 @@ void Cell::dispose()
         mxTable.clear();
     }
 
+    // tdf#118199 avoid double dispose, detect by using mpProperties
+    // as indicator. Only use SetOutlinerParaObject once
     if( mpProperties )
     {
-        delete mpProperties;
-        mpProperties = nullptr;
-    }
-    SetOutlinerParaObject( nullptr );
-}
-
-
-void Cell::SetModel(SdrModel* pNewModel)
-{
-    SvxTextEditSource* pTextEditSource = dynamic_cast< SvxTextEditSource* >( GetEditSource() );
-    if( (GetModel() != pNewModel) || ( pNewModel && !pTextEditSource) )
-    {
-        if( mpProperties )
-        {
-            SfxItemPool* pItemPool = mpProperties->GetObjectItemSet().GetPool();
-
-            // test for correct pool in ItemSet; move to new pool if necessary
-            if( pNewModel && pItemPool && pItemPool != &pNewModel->GetItemPool())
-                mpProperties->MoveToItemPool(pItemPool, &pNewModel->GetItemPool(), pNewModel);
-        }
-
-        if( pTextEditSource )
-        {
-            pTextEditSource->ChangeModel( pNewModel );
-        }
-        else
-        {
-            SetEditSource( new SvxTextEditSource( &GetObject(), this ) );
-        }
-
-        SetStyleSheet( nullptr, true );
-        SdrText::SetModel( pNewModel );
-        ForceOutlinerParaObject( OutlinerMode::TextObject );
+        mpProperties.reset();
+        SetOutlinerParaObject( nullptr );
     }
 }
-
 
 void Cell::merge( sal_Int32 nColumnSpan, sal_Int32 nRowSpan )
 {
@@ -487,27 +470,27 @@ void Cell::mergeContent( const CellRef& xSourceCell )
 {
     SdrTableObj& rTableObj = dynamic_cast< SdrTableObj& >( GetObject() );
 
-    if( xSourceCell->hasText() )
+    if( !xSourceCell->hasText() )
+        return;
+
+    SdrOutliner& rOutliner=rTableObj.ImpGetDrawOutliner();
+    rOutliner.SetUpdateMode(true);
+
+    if( hasText() )
     {
-        SdrOutliner& rOutliner=rTableObj.ImpGetDrawOutliner();
-        rOutliner.SetUpdateMode(true);
-
-        if( hasText() )
-        {
-            rOutliner.SetText(*GetOutlinerParaObject());
-            rOutliner.AddText(*xSourceCell->GetOutlinerParaObject());
-        }
-        else
-        {
-            rOutliner.SetText(*xSourceCell->GetOutlinerParaObject());
-        }
-
-        SetOutlinerParaObject( rOutliner.CreateParaObject() );
-        rOutliner.Clear();
-        xSourceCell->SetOutlinerParaObject(rOutliner.CreateParaObject());
-        rOutliner.Clear();
-        SetStyleSheet( GetStyleSheet(), true );
+        rOutliner.SetText(*GetOutlinerParaObject());
+        rOutliner.AddText(*xSourceCell->GetOutlinerParaObject());
     }
+    else
+    {
+        rOutliner.SetText(*xSourceCell->GetOutlinerParaObject());
+    }
+
+    SetOutlinerParaObject( rOutliner.CreateParaObject() );
+    rOutliner.Clear();
+    xSourceCell->SetOutlinerParaObject(rOutliner.CreateParaObject());
+    rOutliner.Clear();
+    SetStyleSheet( GetStyleSheet(), true );
 }
 
 
@@ -533,18 +516,26 @@ void Cell::cloneFrom( const CellRef& xCell )
 
 void Cell::replaceContentAndFormating( const CellRef& xSourceCell )
 {
-    if( xSourceCell.is() && mpProperties )
+    if( !(xSourceCell.is() && mpProperties) )
+        return;
+
+    mpProperties->SetMergedItemSet( xSourceCell->GetObjectItemSet() );
+
+    // tdf#118354 OutlinerParaObject may be nullptr, do not dereference when
+    // not set (!)
+    if(nullptr != xSourceCell->GetOutlinerParaObject())
     {
-        mpProperties->SetMergedItemSet( xSourceCell->GetObjectItemSet() );
-        SetOutlinerParaObject( new OutlinerParaObject(*xSourceCell->GetOutlinerParaObject()) );
+        SetOutlinerParaObject( std::make_unique<OutlinerParaObject>(*xSourceCell->GetOutlinerParaObject()) );
+    }
 
-        SdrTableObj& rTableObj = dynamic_cast< SdrTableObj& >( GetObject() );
-        SdrTableObj& rSourceTableObj = dynamic_cast< SdrTableObj& >( xSourceCell->GetObject() );
+    SdrTableObj& rTableObj = dynamic_cast< SdrTableObj& >( GetObject() );
+    SdrTableObj& rSourceTableObj = dynamic_cast< SdrTableObj& >( xSourceCell->GetObject() );
 
-        if(rSourceTableObj.GetModel() != rTableObj.GetModel())
-        {
-            SetStyleSheet( nullptr, true );
-        }
+    if(&rSourceTableObj.getSdrModelFromSdrObject() != &rTableObj.getSdrModelFromSdrObject())
+    {
+        // TTTT should not happen - if, then a clone may be needed
+        // Maybe add an assertion here later
+        SetStyleSheet( nullptr, true );
     }
 }
 
@@ -561,20 +552,21 @@ void Cell::setMerged()
 
 void Cell::copyFormatFrom( const CellRef& xSourceCell )
 {
-    if( xSourceCell.is() && mpProperties )
+    if( !(xSourceCell.is() && mpProperties) )
+        return;
+
+    mpProperties->SetMergedItemSet( xSourceCell->GetObjectItemSet() );
+    SdrTableObj& rTableObj = dynamic_cast< SdrTableObj& >( GetObject() );
+    SdrTableObj& rSourceTableObj = dynamic_cast< SdrTableObj& >( xSourceCell->GetObject() );
+
+    if(&rSourceTableObj.getSdrModelFromSdrObject() != &rTableObj.getSdrModelFromSdrObject())
     {
-        mpProperties->SetMergedItemSet( xSourceCell->GetObjectItemSet() );
-
-        SdrTableObj& rTableObj = dynamic_cast< SdrTableObj& >( GetObject() );
-        SdrTableObj& rSourceTableObj = dynamic_cast< SdrTableObj& >( xSourceCell->GetObject() );
-
-        if(rSourceTableObj.GetModel() != rTableObj.GetModel())
-        {
-            SetStyleSheet( nullptr, true );
-        }
-
-        notifyModified();
+        // TTTT should not happen - if, then a clone may be needed
+        // Maybe add an assertion here later
+        SetStyleSheet( nullptr, true );
     }
+
+    notifyModified();
 }
 
 
@@ -588,7 +580,7 @@ void Cell::notifyModified()
 // SdrTextShape proxy
 
 
-bool Cell::IsActiveCell()
+bool Cell::IsActiveCell() const
 {
     bool isActive = false;
     SdrTableObj& rTableObj = dynamic_cast< SdrTableObj& >( GetObject() );
@@ -598,17 +590,15 @@ bool Cell::IsActiveCell()
     return isActive;
 }
 
-bool Cell::IsTextEditActive()
+bool Cell::IsTextEditActive() const
 {
     bool isActive = false;
     SdrTableObj& rTableObj = dynamic_cast< SdrTableObj& >( GetObject() );
     if(rTableObj.getActiveCell().get() == this )
     {
-        OutlinerParaObject* pParaObj = rTableObj.GetEditOutlinerParaObject();
-        if( pParaObj != nullptr )
+        if( rTableObj.CanCreateEditOutlinerParaObject() )
         {
             isActive = true;
-            delete pParaObj;
         }
     }
     return isActive;
@@ -635,12 +625,19 @@ bool Cell::hasText() const
     return false;
 }
 
-
-OutlinerParaObject* Cell::GetEditOutlinerParaObject() const
+bool Cell::CanCreateEditOutlinerParaObject() const
 {
     SdrTableObj& rTableObj = dynamic_cast< SdrTableObj& >( GetObject() );
     if( rTableObj.getActiveCell().get() == this )
-        return rTableObj.GetEditOutlinerParaObject();
+        return rTableObj.CanCreateEditOutlinerParaObject();
+    return false;
+}
+
+std::unique_ptr<OutlinerParaObject> Cell::CreateEditOutlinerParaObject() const
+{
+    SdrTableObj& rTableObj = dynamic_cast< SdrTableObj& >( GetObject() );
+    if( rTableObj.getActiveCell().get() == this )
+        return rTableObj.CreateEditOutlinerParaObject();
     return nullptr;
 }
 
@@ -695,16 +692,10 @@ SfxStyleSheet* Cell::GetStyleSheet() const
 
 void Cell::TakeTextAnchorRect(tools::Rectangle& rAnchorRect) const
 {
-    rAnchorRect.Left() = maCellRect.Left() + GetTextLeftDistance();
-    rAnchorRect.Right() = maCellRect.Right() - GetTextRightDistance();
-    rAnchorRect.Top() = maCellRect.Top() + GetTextUpperDistance();
-    rAnchorRect.Bottom() = maCellRect.Bottom() - GetTextLowerDistance();
-}
-
-
-const SfxItemSet& Cell::GetItemSet() const
-{
-    return mpProperties->GetObjectItemSet();
+    rAnchorRect.SetLeft( maCellRect.Left() + GetTextLeftDistance() );
+    rAnchorRect.SetRight( maCellRect.Right() - GetTextRightDistance() );
+    rAnchorRect.SetTop( maCellRect.Top() + GetTextUpperDistance() );
+    rAnchorRect.SetBottom( maCellRect.Bottom() - GetTextLowerDistance() );
 }
 
 
@@ -718,7 +709,26 @@ void Cell::SetMergedItemSetAndBroadcast(const SfxItemSet& rSet, bool bClearAllIt
 }
 
 
-sal_Int32 Cell::getMinimumWidth()
+sal_Int32 Cell::calcPreferredWidth( const Size aSize )
+{
+    if ( !hasText() )
+        return getMinimumWidth();
+
+    Outliner& rOutliner=static_cast< SdrTableObj& >( GetObject() ).ImpGetDrawOutliner();
+    rOutliner.SetPaperSize(aSize);
+    rOutliner.SetUpdateMode(true);
+    ForceOutlinerParaObject( OutlinerMode::TextObject );
+
+    if( GetOutlinerParaObject() )
+        rOutliner.SetText(*GetOutlinerParaObject());
+
+    sal_Int32 nPreferredWidth = const_cast<EditEngine&>(rOutliner.GetEditEngine()).CalcTextWidth();
+    rOutliner.Clear();
+
+    return GetTextLeftDistance() + GetTextRightDistance() + nPreferredWidth;
+}
+
+sal_Int32 Cell::getMinimumWidth() const
 {
     return GetTextLeftDistance() + GetTextRightDistance() + 100;
 }
@@ -735,7 +745,7 @@ sal_Int32 Cell::getMinimumHeight()
     tools::Rectangle aTextRect;
     TakeTextAnchorRect( aTextRect );
     Size aSize( aTextRect.GetSize() );
-    aSize.Height()=0x0FFFFFFF;
+    aSize.setHeight(0x0FFFFFFF );
 
     SdrOutliner* pEditOutliner = rTableObj.GetCellTextEditOutliner( *this );
     if(pEditOutliner)
@@ -765,46 +775,47 @@ sal_Int32 Cell::getMinimumHeight()
 
 long Cell::GetTextLeftDistance() const
 {
-    return static_cast<const SdrMetricItem&>(GetItemSet().Get(SDRATTR_TEXT_LEFTDIST)).GetValue();
+    return GetItemSet().Get(SDRATTR_TEXT_LEFTDIST).GetValue();
 }
 
 
 long Cell::GetTextRightDistance() const
 {
-    return static_cast<const SdrMetricItem&>(GetItemSet().Get(SDRATTR_TEXT_RIGHTDIST)).GetValue();
+    return GetItemSet().Get(SDRATTR_TEXT_RIGHTDIST).GetValue();
 }
 
 
 long Cell::GetTextUpperDistance() const
 {
-    return static_cast<const SdrMetricItem&>(GetItemSet().Get(SDRATTR_TEXT_UPPERDIST)).GetValue();
+    return GetItemSet().Get(SDRATTR_TEXT_UPPERDIST).GetValue();
 }
 
 
 long Cell::GetTextLowerDistance() const
 {
-    return static_cast<const SdrMetricItem&>(GetItemSet().Get(SDRATTR_TEXT_LOWERDIST)).GetValue();
+    return GetItemSet().Get(SDRATTR_TEXT_LOWERDIST).GetValue();
 }
 
 
 SdrTextVertAdjust Cell::GetTextVerticalAdjust() const
 {
-    return static_cast<const SdrTextVertAdjustItem&>(GetItemSet().Get(SDRATTR_TEXT_VERTADJUST)).GetValue();
+    return GetItemSet().Get(SDRATTR_TEXT_VERTADJUST).GetValue();
 }
 
 
 SdrTextHorzAdjust Cell::GetTextHorizontalAdjust() const
 {
-    return static_cast<const SdrTextHorzAdjustItem&>(GetItemSet().Get(SDRATTR_TEXT_HORZADJUST)).GetValue();
+    return GetItemSet().Get(SDRATTR_TEXT_HORZADJUST).GetValue();
 }
 
 
-void Cell::SetOutlinerParaObject( OutlinerParaObject* pTextObject )
+void Cell::SetOutlinerParaObject( std::unique_ptr<OutlinerParaObject> pTextObject )
 {
-    SdrText::SetOutlinerParaObject( pTextObject );
+    bool bNullTextObject = pTextObject == nullptr;
+    SdrText::SetOutlinerParaObject( std::move(pTextObject) );
     maSelection.nStartPara = EE_PARA_MAX_COUNT;
 
-    if( pTextObject == nullptr )
+    if( bNullTextObject )
         ForceOutlinerParaObject( OutlinerMode::TextObject );
 }
 
@@ -812,10 +823,11 @@ void Cell::SetOutlinerParaObject( OutlinerParaObject* pTextObject )
 void Cell::AddUndo()
 {
     SdrObject& rObj = GetObject();
-    if( rObj.IsInserted() && GetModel() && GetModel()->IsUndoEnabled() )
+
+    if( rObj.IsInserted() && rObj.getSdrModelFromSdrObject().IsUndoEnabled() )
     {
         CellRef xCell( this );
-        GetModel()->AddUndo( new CellUndo( &rObj, xCell ) );
+        rObj.getSdrModelFromSdrObject().AddUndo( std::make_unique<CellUndo>( &rObj, xCell ) );
 
         // Undo action for the after-text-edit-ended stack.
         SdrTableObj* pTableObj = dynamic_cast<sdr::table::SdrTableObj*>(&rObj);
@@ -825,10 +837,10 @@ void Cell::AddUndo()
 }
 
 
-sdr::properties::TextProperties* Cell::CloneProperties( sdr::properties::TextProperties* pProperties, SdrObject& rNewObj, Cell& rNewCell )
+sdr::properties::TextProperties* Cell::CloneProperties( sdr::properties::TextProperties const * pProperties, SdrObject& rNewObj, Cell& rNewCell )
 {
     if( pProperties )
-        return new sdr::properties::CellProperties( *static_cast<sdr::properties::CellProperties*>(pProperties), rNewObj, &rNewCell );
+        return new sdr::properties::CellProperties( *static_cast<sdr::properties::CellProperties const *>(pProperties), rNewObj, &rNewCell );
     else
         return nullptr;
 }
@@ -836,7 +848,7 @@ sdr::properties::TextProperties* Cell::CloneProperties( sdr::properties::TextPro
 
 sdr::properties::TextProperties* Cell::CloneProperties( SdrObject& rNewObj, Cell& rNewCell )
 {
-    return CloneProperties(mpProperties,rNewObj,rNewCell);
+    return CloneProperties(mpProperties.get(),rNewObj,rNewCell);
 }
 
 
@@ -882,14 +894,10 @@ void SAL_CALL Cell::release() throw ()
 
 Sequence< Type > SAL_CALL Cell::getTypes(  )
 {
-    Sequence< Type > aTypes( SvxUnoTextBase::getTypes() );
-
-    sal_Int32 nLen = aTypes.getLength();
-    aTypes.realloc(nLen + 2);
-    aTypes[nLen++] = cppu::UnoType<XMergeableCell>::get();
-    aTypes[nLen++] = cppu::UnoType<XLayoutConstrains>::get();
-
-    return aTypes;
+    return comphelper::concatSequences( SvxUnoTextBase::getTypes(),
+        Sequence {
+            cppu::UnoType<XMergeableCell>::get(),
+            cppu::UnoType<XLayoutConstrains>::get() });
 }
 
 
@@ -987,7 +995,7 @@ sal_Int32 SAL_CALL Cell::getError(  )
 // XPropertySet
 
 
-Any Cell::GetAnyForItem( SfxItemSet& aSet, const SfxItemPropertySimpleEntry* pMap )
+Any Cell::GetAnyForItem( SfxItemSet const & aSet, const SfxItemPropertySimpleEntry* pMap )
 {
     Any aAny( SvxItemPropertySet_getPropertyValue( pMap, aSet ) );
 
@@ -998,7 +1006,7 @@ Any Cell::GetAnyForItem( SfxItemSet& aSet, const SfxItemPropertySimpleEntry* pMa
         {
             sal_Int32 nValue = 0;
             aAny >>= nValue;
-            aAny <<= (sal_Int16)nValue;
+            aAny <<= static_cast<sal_Int16>(nValue);
         }
         else
         {
@@ -1019,7 +1027,7 @@ void SAL_CALL Cell::setPropertyValue( const OUString& rPropertyName, const Any& 
 {
     ::SolarMutexGuard aGuard;
 
-    if( (mpProperties == nullptr) || (GetModel() == nullptr) )
+    if(mpProperties == nullptr)
         throw DisposedException();
 
     const SfxItemPropertySimpleEntry* pMap = mpPropSet->getPropertyMapEntry(rPropertyName);
@@ -1090,7 +1098,7 @@ void SAL_CALL Cell::setPropertyValue( const OUString& rPropertyName, const Any& 
                 if(!(rValue >>= nMode))
                     throw IllegalArgumentException();
 
-                eMode = (BitmapMode)nMode;
+                eMode = static_cast<BitmapMode>(nMode);
             }
 
             mpProperties->SetObjectItem( XFillBmpStretchItem( eMode == BitmapMode_STRETCH ) );
@@ -1111,7 +1119,7 @@ void SAL_CALL Cell::setPropertyValue( const OUString& rPropertyName, const Any& 
         }
         default:
         {
-            SfxItemSet aSet( GetModel()->GetItemPool(), {{pMap->nWID, pMap->nWID}});
+            SfxItemSet aSet(GetObject().getSdrModelFromSdrObject().GetItemPool(), {{pMap->nWID, pMap->nWID}});
             aSet.Put(mpProperties->GetItem(pMap->nWID));
 
             bool bSpecial = false;
@@ -1131,7 +1139,7 @@ void SAL_CALL Cell::setPropertyValue( const OUString& rPropertyName, const Any& 
                         OUString aApiName;
                         if( rValue >>= aApiName )
                         {
-                            if( SvxShape::SetFillAttribute( pMap->nWID, aApiName, aSet, GetModel() ) )
+                            if(SvxShape::SetFillAttribute(pMap->nWID, aApiName, aSet, &GetObject().getSdrModelFromSdrObject()))
                                 bSpecial = true;
                         }
                     }
@@ -1148,7 +1156,7 @@ void SAL_CALL Cell::setPropertyValue( const OUString& rPropertyName, const Any& 
                     {
                         // fetch the default from ItemPool
                         if(SfxItemPool::IsWhich(pMap->nWID))
-                            aSet.Put(GetModel()->GetItemPool().GetDefaultItem(pMap->nWID));
+                            aSet.Put(GetObject().getSdrModelFromSdrObject().GetItemPool().GetDefaultItem(pMap->nWID));
                     }
 
                     if( aSet.GetItemState( pMap->nWID ) == SfxItemState::SET )
@@ -1158,7 +1166,7 @@ void SAL_CALL Cell::setPropertyValue( const OUString& rPropertyName, const Any& 
                 }
             }
 
-            GetModel()->SetChanged();
+            GetObject().getSdrModelFromSdrObject().SetChanged();
             mpProperties->SetMergedItemSetAndBroadcast( aSet );
             return;
         }
@@ -1172,7 +1180,7 @@ Any SAL_CALL Cell::getPropertyValue( const OUString& PropertyName )
 {
     ::SolarMutexGuard aGuard;
 
-    if( (mpProperties == nullptr) || (GetModel() == nullptr) )
+    if(mpProperties == nullptr)
         throw DisposedException();
 
     const SfxItemPropertySimpleEntry* pMap = mpPropSet->getPropertyMapEntry(PropertyName);
@@ -1186,10 +1194,10 @@ Any SAL_CALL Cell::getPropertyValue( const OUString& PropertyName )
         }
         case OWN_ATTR_TABLEBORDER:
         {
-            const SvxBoxInfoItem& rBoxInfoItem = static_cast<const SvxBoxInfoItem&>(mpProperties->GetItem(SDRATTR_TABLE_BORDER_INNER));
-            const SvxBoxItem& rBox = static_cast<const SvxBoxItem&>(mpProperties->GetItem(SDRATTR_TABLE_BORDER));
+            const SvxBoxInfoItem& rBoxInfoItem = mpProperties->GetItem(SDRATTR_TABLE_BORDER_INNER);
+            const SvxBoxItem& rBox = mpProperties->GetItem(SDRATTR_TABLE_BORDER);
 
-             TableBorder aTableBorder;
+            TableBorder aTableBorder;
             aTableBorder.TopLine                = SvxBoxItem::SvxLineToLine(rBox.GetTop(), false);
             aTableBorder.IsTopLineValid         = rBoxInfoItem.IsValid(SvxBoxInfoItemValidFlags::TOP);
             aTableBorder.BottomLine             = SvxBoxItem::SvxLineToLine(rBox.GetBottom(), false);
@@ -1209,8 +1217,8 @@ Any SAL_CALL Cell::getPropertyValue( const OUString& PropertyName )
         }
         case OWN_ATTR_FILLBMP_MODE:
         {
-            const XFillBmpStretchItem& rStretchItem = static_cast<const XFillBmpStretchItem&>(mpProperties->GetItem(XATTR_FILLBMP_STRETCH));
-            const XFillBmpTileItem& rTileItem = static_cast<const XFillBmpTileItem&>(mpProperties->GetItem(XATTR_FILLBMP_TILE));
+            const XFillBmpStretchItem& rStretchItem = mpProperties->GetItem(XATTR_FILLBMP_STRETCH);
+            const XFillBmpTileItem& rTileItem = mpProperties->GetItem(XATTR_FILLBMP_TILE);
             if( rTileItem.GetValue() )
             {
                 return Any( BitmapMode_REPEAT );
@@ -1226,12 +1234,12 @@ Any SAL_CALL Cell::getPropertyValue( const OUString& PropertyName )
         }
         case SDRATTR_TABLE_TEXT_ROTATION:
         {
-            const SvxTextRotateItem& rTextRotate = static_cast<const SvxTextRotateItem&>(mpProperties->GetItem(SDRATTR_TABLE_TEXT_ROTATION));
+            const SvxTextRotateItem& rTextRotate = mpProperties->GetItem(SDRATTR_TABLE_TEXT_ROTATION);
             return Any(sal_Int32(rTextRotate.GetValue() * 10));
         }
         default:
         {
-            SfxItemSet aSet( GetModel()->GetItemPool(), {{pMap->nWID, pMap->nWID}});
+            SfxItemSet aSet(GetObject().getSdrModelFromSdrObject().GetItemPool(), {{pMap->nWID, pMap->nWID}});
             aSet.Put(mpProperties->GetItem(pMap->nWID));
 
             Any aAny;
@@ -1241,7 +1249,7 @@ Any SAL_CALL Cell::getPropertyValue( const OUString& PropertyName )
                 {
                     // fetch the default from ItemPool
                     if(SfxItemPool::IsWhich(pMap->nWID))
-                        aSet.Put(GetModel()->GetItemPool().GetDefaultItem(pMap->nWID));
+                        aSet.Put(GetObject().getSdrModelFromSdrObject().GetItemPool().GetDefaultItem(pMap->nWID));
                 }
 
                 if( aSet.Count() )
@@ -1283,7 +1291,7 @@ void SAL_CALL Cell::setPropertyValues( const Sequence< OUString >& aPropertyName
 {
     ::SolarMutexGuard aSolarGuard;
 
-    if( (mpProperties == nullptr) || (GetModel() == nullptr) )
+    if(mpProperties == nullptr)
         throw DisposedException();
 
     const sal_Int32 nCount = aPropertyNames.getLength();
@@ -1313,20 +1321,18 @@ Sequence< Any > SAL_CALL Cell::getPropertyValues( const Sequence< OUString >& aP
 {
     ::SolarMutexGuard aSolarGuard;
 
-    if( (mpProperties == nullptr) || (GetModel() == nullptr) )
+    if(mpProperties == nullptr)
         throw DisposedException();
 
     const sal_Int32 nCount = aPropertyNames.getLength();
-    const OUString* pNames = aPropertyNames.getConstArray();
-
     Sequence< Any > aRet( nCount );
     Any* pValue = aRet.getArray();
 
-    for( sal_Int32 nIdx = 0; nIdx < nCount; nIdx++, pValue++, pNames++ )
+    for( const OUString& rName : aPropertyNames )
     {
         try
         {
-            *pValue = getPropertyValue( *pNames );
+            *pValue = getPropertyValue( rName );
         }
         catch( UnknownPropertyException& )
         {
@@ -1336,6 +1342,7 @@ Sequence< Any > SAL_CALL Cell::getPropertyValues( const Sequence< OUString >& aP
         {
             OSL_FAIL( "svx::Cell::getPropertyValues(), Exception caught!" );
         }
+        pValue++;
     }
 
     return aRet;
@@ -1364,7 +1371,7 @@ PropertyState SAL_CALL Cell::getPropertyState( const OUString& PropertyName )
 {
     ::SolarMutexGuard aGuard;
 
-    if( (mpProperties == nullptr) || (GetModel() == nullptr) )
+    if(mpProperties == nullptr)
         throw DisposedException();
 
     const SfxItemPropertySimpleEntry* pMap = mpPropSet->getPropertyMapEntry(PropertyName);
@@ -1420,7 +1427,7 @@ PropertyState SAL_CALL Cell::getPropertyState( const OUString& PropertyName )
                 break;
             }
 
-            // if a item is set, this doesn't mean we want it :)
+            // if an item is set, this doesn't mean we want it :)
             if( PropertyState_DIRECT_VALUE == eState )
             {
                 switch( pMap->nWID )
@@ -1433,7 +1440,7 @@ PropertyState SAL_CALL Cell::getPropertyState( const OUString& PropertyName )
                 case XATTR_FILLHATCH:
                 case XATTR_LINEDASH:
                     {
-                        const NameOrIndex* pItem = rSet.GetItem<NameOrIndex>((sal_uInt16)pMap->nWID);
+                        const NameOrIndex* pItem = rSet.GetItem<NameOrIndex>(pMap->nWID);
                         if( ( pItem == nullptr ) || pItem->GetName().isEmpty() )
                             eState = PropertyState_DEFAULT_VALUE;
                     }
@@ -1448,7 +1455,7 @@ PropertyState SAL_CALL Cell::getPropertyState( const OUString& PropertyName )
                 case XATTR_LINESTART:
                 case XATTR_FILLFLOATTRANSPARENCE:
                     {
-                        const NameOrIndex* pItem = rSet.GetItem<NameOrIndex>((sal_uInt16)pMap->nWID);
+                        const NameOrIndex* pItem = rSet.GetItem<NameOrIndex>(pMap->nWID);
                         if( pItem == nullptr )
                             eState = PropertyState_DEFAULT_VALUE;
                     }
@@ -1459,7 +1466,7 @@ PropertyState SAL_CALL Cell::getPropertyState( const OUString& PropertyName )
         }
         return eState;
     }
-    throw UnknownPropertyException();
+    throw UnknownPropertyException(PropertyName);
 }
 
 
@@ -1467,27 +1474,23 @@ Sequence< PropertyState > SAL_CALL Cell::getPropertyStates( const Sequence< OUSt
 {
     ::SolarMutexGuard aGuard;
 
-    if( (mpProperties == nullptr) || (GetModel() == nullptr) )
+    if(mpProperties == nullptr)
         throw DisposedException();
 
     const sal_Int32 nCount = aPropertyName.getLength();
-
     Sequence< PropertyState > aRet( nCount );
 
-    const OUString* pNames = aPropertyName.getConstArray();
-    PropertyState* pState = aRet.getArray();
-
-    for( sal_Int32 nIdx = 0; nIdx < nCount; nIdx++, pNames++, pState++ )
-    {
-        try
-        {
-            *pState = getPropertyState( *pNames );
-        }
-        catch( Exception& )
-        {
-            *pState = PropertyState_AMBIGUOUS_VALUE;
-        }
-    }
+    std::transform(aPropertyName.begin(), aPropertyName.end(), aRet.begin(),
+        [this](const OUString& rName) -> PropertyState {
+            try
+            {
+                return getPropertyState( rName );
+            }
+            catch( Exception& )
+            {
+                return PropertyState_AMBIGUOUS_VALUE;
+            }
+        });
 
     return aRet;
 }
@@ -1497,7 +1500,7 @@ void SAL_CALL Cell::setPropertyToDefault( const OUString& PropertyName )
 {
     ::SolarMutexGuard aGuard;
 
-    if( (mpProperties == nullptr) || (GetModel() == nullptr) )
+    if(mpProperties == nullptr)
         throw DisposedException();
 
     const SfxItemPropertySimpleEntry* pMap = mpPropSet->getPropertyMapEntry(PropertyName);
@@ -1527,7 +1530,7 @@ void SAL_CALL Cell::setPropertyToDefault( const OUString& PropertyName )
         }
         }
 
-        GetModel()->SetChanged();
+        GetObject().getSdrModelFromSdrObject().SetChanged();
         return;
     }
     throw UnknownPropertyException( PropertyName, static_cast<cppu::OWeakObject*>(this));
@@ -1538,7 +1541,7 @@ Any SAL_CALL Cell::getPropertyDefault( const OUString& aPropertyName )
 {
     ::SolarMutexGuard aGuard;
 
-    if( (mpProperties == nullptr) || (GetModel() == nullptr) )
+    if(mpProperties == nullptr)
         throw DisposedException();
 
     const SfxItemPropertySimpleEntry* pMap = mpPropSet->getPropertyMapEntry(aPropertyName);
@@ -1565,8 +1568,8 @@ Any SAL_CALL Cell::getPropertyDefault( const OUString& aPropertyName )
         {
             if( SfxItemPool::IsWhich(pMap->nWID) )
             {
-                SfxItemSet aSet( GetModel()->GetItemPool(), {{pMap->nWID, pMap->nWID}});
-                aSet.Put(GetModel()->GetItemPool().GetDefaultItem(pMap->nWID));
+                SfxItemSet aSet(GetObject().getSdrModelFromSdrObject().GetItemPool(), {{pMap->nWID, pMap->nWID}});
+                aSet.Put(GetObject().getSdrModelFromSdrObject().GetItemPool().GetDefaultItem(pMap->nWID));
                 return GetAnyForItem( aSet, pMap );
             }
         }
@@ -1581,38 +1584,34 @@ Any SAL_CALL Cell::getPropertyDefault( const OUString& aPropertyName )
 
 void SAL_CALL Cell::setAllPropertiesToDefault()
 {
-    delete mpProperties;
-    mpProperties = new sdr::properties::CellProperties( static_cast< SdrTableObj& >( GetObject() ), this );
+    mpProperties.reset(new sdr::properties::CellProperties( static_cast< SdrTableObj& >( GetObject() ), this ));
 
     SdrOutliner& rOutliner = GetObject().ImpGetDrawOutliner();
 
     OutlinerParaObject* pParaObj = GetOutlinerParaObject();
-    if( pParaObj )
+    if( !pParaObj )
+        return;
+
+    rOutliner.SetText(*pParaObj);
+    sal_Int32 nParaCount(rOutliner.GetParagraphCount());
+
+    if(nParaCount)
     {
-        rOutliner.SetText(*pParaObj);
-        sal_Int32 nParaCount(rOutliner.GetParagraphCount());
+        ESelection aSelection( 0, 0, EE_PARA_ALL, EE_TEXTPOS_ALL);
+        rOutliner.RemoveAttribs(aSelection, true, 0);
 
-        if(nParaCount)
-        {
-            ESelection aSelection( 0, 0, EE_PARA_ALL, EE_TEXTPOS_ALL);
-            rOutliner.RemoveAttribs(aSelection, true, 0);
+        std::unique_ptr<OutlinerParaObject> pTemp = rOutliner.CreateParaObject(0, nParaCount);
+        rOutliner.Clear();
 
-            OutlinerParaObject* pTemp = rOutliner.CreateParaObject(0, nParaCount);
-            rOutliner.Clear();
-
-            SetOutlinerParaObject(pTemp);
-        }
+        SetOutlinerParaObject(std::move(pTemp));
     }
 }
 
 
 void SAL_CALL Cell::setPropertiesToDefault( const Sequence< OUString >& aPropertyNames )
 {
-    sal_Int32 nCount = aPropertyNames.getLength();
-    const OUString* pName = aPropertyNames.getConstArray();
-
-    while(nCount--)
-        setPropertyToDefault( *pName++ );
+    for(const OUString& rName : aPropertyNames)
+        setPropertyToDefault( rName );
 }
 
 
@@ -1620,11 +1619,9 @@ Sequence< Any > SAL_CALL Cell::getPropertyDefaults( const Sequence< OUString >& 
 {
     sal_Int32 nCount = aPropertyNames.getLength();
     Sequence< Any > aDefaults( nCount );
-    Any* pDefaults = aDefaults.getArray();
-    const OUString* pName = aPropertyNames.getConstArray();
 
-    while(nCount--)
-        *pDefaults++ = getPropertyDefault( *pName++ );
+    std::transform(aPropertyNames.begin(), aPropertyNames.end(), aDefaults.begin(),
+        [this](const OUString& rName) -> Any { return getPropertyDefault(rName); });
 
     return aDefaults;
 }
@@ -1687,7 +1684,7 @@ void SAL_CALL Cell::disposing( const EventObject& /*Source*/ )
     dispose();
 }
 
-void Cell::dumpAsXml(struct _xmlTextWriter * pWriter, sal_Int32 nRow, sal_Int32 nCol) const
+void Cell::dumpAsXml(xmlTextWriterPtr pWriter, sal_Int32 nRow, sal_Int32 nCol) const
 {
     xmlTextWriterStartElement(pWriter, BAD_CAST("Cell"));
     xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("row"), "%" SAL_PRIdINT32, nRow);
@@ -1699,6 +1696,6 @@ void Cell::dumpAsXml(struct _xmlTextWriter * pWriter, sal_Int32 nRow, sal_Int32 
     xmlTextWriterEndElement(pWriter);
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

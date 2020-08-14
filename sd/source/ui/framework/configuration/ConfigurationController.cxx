@@ -17,23 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "framework/ConfigurationController.hxx"
-#include "framework/Configuration.hxx"
-#include "framework/FrameworkHelper.hxx"
+#include <framework/ConfigurationController.hxx>
+#include <framework/Configuration.hxx>
+#include <framework/FrameworkHelper.hxx>
 #include "ConfigurationUpdater.hxx"
 #include "ConfigurationControllerBroadcaster.hxx"
 #include "ConfigurationTracer.hxx"
 #include "GenericConfigurationChangeRequest.hxx"
+#include "ConfigurationControllerResourceManager.hxx"
 #include "ResourceFactoryManager.hxx"
 #include "UpdateRequest.hxx"
 #include "ChangeRequestQueueProcessor.hxx"
 #include "ConfigurationClassifier.hxx"
-#include "ViewShellBase.hxx"
-#include "DrawController.hxx"
-#include "facreg.hxx"
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
+#include <com/sun/star/frame/XController.hpp>
 
+#include <sal/log.hxx>
 #include <osl/mutex.hxx>
 #include <vcl/svapp.hxx>
 #include <memory>
@@ -43,7 +42,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 using ::sd::framework::FrameworkHelper;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 //----- ConfigurationController::Implementation -------------------------------
 
@@ -73,7 +72,7 @@ public:
 
     std::shared_ptr<ConfigurationUpdater> mpConfigurationUpdater;
 
-    /** The queue processor ownes the queue of configuration change request
+    /** The queue processor owns the queue of configuration change request
         objects and processes the objects.
     */
     std::unique_ptr<ChangeRequestQueueProcessor> mpQueueProcessor;
@@ -115,7 +114,7 @@ ConfigurationController::~ConfigurationController() throw()
 
 void SAL_CALL ConfigurationController::disposing()
 {
-    if (mpImplementation.get() == nullptr)
+    if (mpImplementation == nullptr)
         return;
 
     SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": ConfigurationController::disposing");
@@ -147,9 +146,9 @@ void SAL_CALL ConfigurationController::disposing()
 
 void ConfigurationController::ProcessEvent()
 {
-    if (mpImplementation.get() != nullptr)
+    if (mpImplementation != nullptr)
     {
-        OSL_ASSERT(mpImplementation->mpQueueProcessor.get()!=nullptr);
+        OSL_ASSERT(mpImplementation->mpQueueProcessor != nullptr);
 
         mpImplementation->mpQueueProcessor->ProcessOneEvent();
     }
@@ -157,9 +156,9 @@ void ConfigurationController::ProcessEvent()
 
 void ConfigurationController::RequestSynchronousUpdate()
 {
-    if (mpImplementation.get() == nullptr)
+    if (mpImplementation == nullptr)
         return;
-    if (mpImplementation->mpQueueProcessor.get() == nullptr)
+    if (mpImplementation->mpQueueProcessor == nullptr)
         return;
     mpImplementation->mpQueueProcessor->ProcessUntilEmpty();
 }
@@ -174,7 +173,7 @@ void SAL_CALL ConfigurationController::addConfigurationChangeListener (
     ::osl::MutexGuard aGuard (maMutex);
 
     ThrowIfDisposed();
-    OSL_ASSERT(mpImplementation.get()!=nullptr);
+    OSL_ASSERT(mpImplementation != nullptr);
     mpImplementation->mpBroadcaster->AddListener(rxListener, rsEventType, rUserData);
 }
 
@@ -198,14 +197,14 @@ void SAL_CALL ConfigurationController::notifyEvent (
 
 void SAL_CALL ConfigurationController::lock()
 {
-    OSL_ASSERT(mpImplementation.get()!=nullptr);
-    OSL_ASSERT(mpImplementation->mpConfigurationUpdater.get()!=nullptr);
+    OSL_ASSERT(mpImplementation != nullptr);
+    OSL_ASSERT(mpImplementation->mpConfigurationUpdater != nullptr);
 
     ::osl::MutexGuard aGuard (maMutex);
     ThrowIfDisposed();
 
     ++mpImplementation->mnLockCount;
-    if (mpImplementation->mpConfigurationUpdaterLock.get()==nullptr)
+    if (mpImplementation->mpConfigurationUpdaterLock == nullptr)
         mpImplementation->mpConfigurationUpdaterLock
             = mpImplementation->mpConfigurationUpdater->GetLock();
 }
@@ -230,7 +229,7 @@ void SAL_CALL ConfigurationController::requestResourceActivation (
     ResourceActivationMode eMode)
 {
     ::osl::MutexGuard aGuard (maMutex);
-       ThrowIfDisposed();
+    ThrowIfDisposed();
 
     // Check whether we are being disposed.  This is handled differently
     // then being completely disposed because the first thing disposing()
@@ -247,38 +246,38 @@ void SAL_CALL ConfigurationController::requestResourceActivation (
     SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": ConfigurationController::requestResourceActivation() " <<
             FrameworkHelper::ResourceIdToString(rxResourceId));
 
-    if (rxResourceId.is())
+    if (!rxResourceId.is())
+        return;
+
+    if (eMode == ResourceActivationMode_REPLACE)
     {
-        if (eMode == ResourceActivationMode_REPLACE)
+        // Get a list of the matching resources and create deactivation
+        // requests for them.
+        const Sequence<Reference<XResourceId> > aResourceList (
+            mpImplementation->mxRequestedConfiguration->getResources(
+                rxResourceId->getAnchor(),
+                rxResourceId->getResourceTypePrefix(),
+                AnchorBindingMode_DIRECT));
+
+        for (const auto& rResource : aResourceList)
         {
-            // Get a list of the matching resources and create deactivation
-            // requests for them.
-            Sequence<Reference<XResourceId> > aResourceList (
-                mpImplementation->mxRequestedConfiguration->getResources(
-                    rxResourceId->getAnchor(),
-                    rxResourceId->getResourceTypePrefix(),
-                    AnchorBindingMode_DIRECT));
+            // Do not request the deactivation of the resource for which
+            // this method was called.  Doing it would not change the
+            // outcome but would result in unnecessary work.
+            if (rxResourceId->compareTo(rResource) == 0)
+                continue;
 
-            for (sal_Int32 nIndex=0; nIndex<aResourceList.getLength(); ++nIndex)
-            {
-                // Do not request the deactivation of the resource for which
-                // this method was called.  Doing it would not change the
-                // outcome but would result in unnecessary work.
-                if (rxResourceId->compareTo(aResourceList[nIndex]) == 0)
-                    continue;
-
-                // Request the deactivation of a resource and all resources
-                // linked to it.
-                requestResourceDeactivation(aResourceList[nIndex]);
-            }
+            // Request the deactivation of a resource and all resources
+            // linked to it.
+            requestResourceDeactivation(rResource);
         }
-
-        Reference<XConfigurationChangeRequest> xRequest(
-            new GenericConfigurationChangeRequest(
-                rxResourceId,
-                GenericConfigurationChangeRequest::Activation));
-        postChangeRequest(xRequest);
     }
+
+    Reference<XConfigurationChangeRequest> xRequest(
+        new GenericConfigurationChangeRequest(
+            rxResourceId,
+            GenericConfigurationChangeRequest::Activation));
+    postChangeRequest(xRequest);
 }
 
 void SAL_CALL ConfigurationController::requestResourceDeactivation (
@@ -290,31 +289,30 @@ void SAL_CALL ConfigurationController::requestResourceDeactivation (
     SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": ConfigurationController::requestResourceDeactivation() " <<
                 FrameworkHelper::ResourceIdToString(rxResourceId));
 
-    if (rxResourceId.is())
-    {
-        // Request deactivation of all resources linked to the specified one
-        // as well.
-        const Sequence<Reference<XResourceId> > aLinkedResources (
-            mpImplementation->mxRequestedConfiguration->getResources(
-                rxResourceId,
-                OUString(),
-                AnchorBindingMode_DIRECT));
-        const sal_Int32 nCount (aLinkedResources.getLength());
-        for (sal_Int32 nIndex=0; nIndex<nCount; ++nIndex)
-        {
-            // We do not add deactivation requests directly but call this
-            // method recursively, so that when one time there are resources
-            // linked to linked resources, these are handled correctly, too.
-            requestResourceDeactivation(aLinkedResources[nIndex]);
-        }
+    if (!rxResourceId.is())
+        return;
 
-        // Add a deactivation request for the specified resource.
-        Reference<XConfigurationChangeRequest> xRequest(
-            new GenericConfigurationChangeRequest(
-                rxResourceId,
-                GenericConfigurationChangeRequest::Deactivation));
-        postChangeRequest(xRequest);
+    // Request deactivation of all resources linked to the specified one
+    // as well.
+    const Sequence<Reference<XResourceId> > aLinkedResources (
+        mpImplementation->mxRequestedConfiguration->getResources(
+            rxResourceId,
+            OUString(),
+            AnchorBindingMode_DIRECT));
+    for (const auto& rLinkedResource : aLinkedResources)
+    {
+        // We do not add deactivation requests directly but call this
+        // method recursively, so that when one time there are resources
+        // linked to linked resources, these are handled correctly, too.
+        requestResourceDeactivation(rLinkedResource);
     }
+
+    // Add a deactivation request for the specified resource.
+    Reference<XConfigurationChangeRequest> xRequest(
+        new GenericConfigurationChangeRequest(
+            rxResourceId,
+            GenericConfigurationChangeRequest::Deactivation));
+    postChangeRequest(xRequest);
 }
 
 Reference<XResource> SAL_CALL ConfigurationController::getResource (
@@ -421,28 +419,22 @@ void SAL_CALL ConfigurationController::restoreConfiguration (
         "requested and current resources:\n", aClassifier.GetC1andC2());
 #endif
 
-    ConfigurationClassifier::ResourceIdVector::const_iterator iResource;
-
     // Request the deactivation of resources that are not requested in the
     // new configuration.
     const ConfigurationClassifier::ResourceIdVector& rResourcesToDeactivate (
         aClassifier.GetC2minusC1());
-    for (iResource=rResourcesToDeactivate.begin();
-         iResource!=rResourcesToDeactivate.end();
-         ++iResource)
+    for (const auto& rxResource : rResourcesToDeactivate)
     {
-        requestResourceDeactivation(*iResource);
+        requestResourceDeactivation(rxResource);
     }
 
     // Request the activation of resources that are requested in the
     // new configuration but are not part of the current configuration.
     const ConfigurationClassifier::ResourceIdVector& rResourcesToActivate (
         aClassifier.GetC1minusC2());
-    for (iResource=rResourcesToActivate.begin();
-         iResource!=rResourcesToActivate.end();
-         ++iResource)
+    for (const auto& rxResource : rResourcesToActivate)
     {
-        requestResourceActivation(*iResource, ResourceActivationMode_ADD);
+        requestResourceActivation(rxResource, ResourceActivationMode_ADD);
     }
 
     pLock.reset();
@@ -508,9 +500,9 @@ void ConfigurationController::ThrowIfDisposed () const
             const_cast<uno::XWeak*>(static_cast<const uno::XWeak*>(this)));
     }
 
-    if (mpImplementation.get() == nullptr)
+    if (mpImplementation == nullptr)
     {
-        OSL_ASSERT(mpImplementation.get() != nullptr);
+        OSL_ASSERT(mpImplementation != nullptr);
         throw RuntimeException("ConfigurationController not initialized",
             const_cast<uno::XWeak*>(static_cast<const uno::XWeak*>(this)));
     }
@@ -522,13 +514,13 @@ ConfigurationController::Implementation::Implementation (
     ConfigurationController& rController,
     const Reference<frame::XController>& rxController)
     : mxControllerManager(rxController, UNO_QUERY_THROW),
-      mpBroadcaster(new ConfigurationControllerBroadcaster(&rController)),
+      mpBroadcaster(std::make_shared<ConfigurationControllerBroadcaster>(&rController)),
       mxRequestedConfiguration(new Configuration(&rController, true)),
-      mpResourceFactoryContainer(new ResourceFactoryManager(mxControllerManager)),
+      mpResourceFactoryContainer(std::make_shared<ResourceFactoryManager>(mxControllerManager)),
       mpResourceManager(
-          new ConfigurationControllerResourceManager(mpResourceFactoryContainer,mpBroadcaster)),
+          std::make_shared<ConfigurationControllerResourceManager>(mpResourceFactoryContainer,mpBroadcaster)),
       mpConfigurationUpdater(
-          new ConfigurationUpdater(mpBroadcaster, mpResourceManager,mxControllerManager)),
+          std::make_shared<ConfigurationUpdater>(mpBroadcaster, mpResourceManager,mxControllerManager)),
       mpQueueProcessor(new ChangeRequestQueueProcessor(mpConfigurationUpdater)),
       mpConfigurationUpdaterLock(),
       mnLockCount(0)
@@ -536,10 +528,10 @@ ConfigurationController::Implementation::Implementation (
     mpQueueProcessor->SetConfiguration(mxRequestedConfiguration);
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_framework_configuration_ConfigurationController_get_implementation(
         css::uno::XComponentContext*,
         css::uno::Sequence<css::uno::Any> const &)

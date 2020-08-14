@@ -20,8 +20,8 @@
 #include "swdetect.hxx"
 
 #include <cppuhelper/supportsservice.hxx>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <sfx2/docfile.hxx>
 #include <sot/storage.hxx>
 #include <unotools/mediadescriptor.hxx>
@@ -95,7 +95,29 @@ OUString SAL_CALL SwFilterDetect::detect( Sequence< PropertyValue >& lDescriptor
             {
                 bIsDetected = aStorage->IsContained( "WordDocument" );
                 if ( bIsDetected && aTypeName.startsWith( "writer_MS_Word_97" ) )
+                {
                     bIsDetected = ( aStorage->IsContained("0Table") || aStorage->IsContained("1Table") );
+
+                    // If we are checking the template type, and the document is not a .dot, don't
+                    // mis-detect it.
+                    if ( bIsDetected && aTypeName == "writer_MS_Word_97_Vorlage" )
+                    {
+                        // Super ugly hack, but we don't want to use the whole WW8Fib thing here in
+                        // the swd library, apparently. We know (do we?) that the "aBits1" byte, as
+                        // the variable is called in WW8Fib::WW8Fib(SvStream&,sal_uInt8,sal_uInt32),
+                        // is at offset 10 in the WordDocument stream. The fDot bit is bit 0x01 of
+                        // that byte.
+                        tools::SvRef<SotStorageStream> xWordDocument = aStorage->OpenSotStream("WordDocument", StreamMode::STD_READ);
+                        xWordDocument->Seek( 10 );
+                        if ( xWordDocument->Tell() == 10 )
+                        {
+                            sal_uInt8 aBits1;
+                            xWordDocument->ReadUChar( aBits1 );
+                            // Check fDot bit
+                            bIsDetected = ((aBits1 & 0x01) == 0x01);
+                        }
+                    }
+                }
             }
         }
         catch (...)
@@ -113,7 +135,7 @@ OUString SAL_CALL SwFilterDetect::detect( Sequence< PropertyValue >& lDescriptor
 /* XServiceInfo */
 OUString SAL_CALL SwFilterDetect::getImplementationName()
 {
-    return OUString("com.sun.star.comp.writer.FormatDetector" );
+    return "com.sun.star.comp.writer.FormatDetector";
 }
 
 /* XServiceInfo */
@@ -125,14 +147,10 @@ sal_Bool SAL_CALL SwFilterDetect::supportsService( const OUString& sServiceName 
 /* XServiceInfo */
 Sequence< OUString > SAL_CALL SwFilterDetect::getSupportedServiceNames()
 {
-    Sequence< OUString > seqServiceNames( 3 );
-    seqServiceNames.getArray() [0] = "com.sun.star.frame.ExtendedTypeDetection";
-    seqServiceNames.getArray() [1] = "com.sun.star.text.FormatDetector";
-    seqServiceNames.getArray() [2] = "com.sun.star.text.W4WFormatDetector";
-    return seqServiceNames ;
+    return { "com.sun.star.frame.ExtendedTypeDetection", "com.sun.star.text.FormatDetector", "com.sun.star.text.W4WFormatDetector" };
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_writer_FormatDetector_get_implementation(css::uno::XComponentContext*,
                                                            css::uno::Sequence<css::uno::Any> const &)
 {

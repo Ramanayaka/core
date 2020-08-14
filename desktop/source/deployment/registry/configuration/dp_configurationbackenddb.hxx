@@ -22,19 +22,13 @@
 
 #include <rtl/ustring.hxx>
 #include <rtl/string.hxx>
-#include <list>
-#include <boost/optional.hpp>
-#include "dp_backenddb.hxx"
+#include <vector>
+#include <optional>
+#include <dp_backenddb.hxx>
 
-namespace com { namespace sun { namespace star {
-        namespace uno {
-        class XComponentContext;
-        }
-}}}
+namespace com::sun::star::uno { class XComponentContext; }
 
-namespace dp_registry {
-namespace backend {
-namespace configuration {
+namespace dp_registry::backend::configuration {
 
 /* The XML file stores the extensions which are currently registered.
    They will be removed when they are revoked.
@@ -69,14 +63,14 @@ public:
 
     void addEntry(OUString const & url, Data const & data);
 
-    ::boost::optional<Data> getEntry(OUString const & url);
-    std::list< OUString> getAllDataUrls();
+    ::std::optional<Data> getEntry(OUString const & url);
+    std::vector< OUString> getAllDataUrls();
 };
 
 
 }
-}
-}
+
+
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -26,7 +26,6 @@ namespace
 /// Tests the handling of the .uno:ClassificationApply command in various applications.
 class ClassificationTest : public test::BootstrapFixture, public unotest::MacrosTest
 {
-    uno::Reference<uno::XComponentContext> mxComponentContext;
     uno::Reference<lang::XComponent> mxComponent;
     void dispatchCommand(const uno::Reference<lang::XComponent>& xComponent, const OUString& rCommand, const uno::Sequence<beans::PropertyValue>& rPropertyValues);
     void testClassification();
@@ -49,7 +48,6 @@ void ClassificationTest::setUp()
 {
     test::BootstrapFixture::setUp();
 
-    mxComponentContext.set(comphelper::getComponentContext(getMultiServiceFactory()));
     mxDesktop.set(frame::Desktop::create(mxComponentContext));
 }
 
@@ -63,7 +61,7 @@ void ClassificationTest::tearDown()
 
 void ClassificationTest::dispatchCommand(const uno::Reference<lang::XComponent>& xComponent, const OUString& rCommand, const uno::Sequence<beans::PropertyValue>& rPropertyValues)
 {
-    uno::Reference<frame::XController> xController = uno::Reference<frame::XModel>(xComponent, uno::UNO_QUERY)->getCurrentController();
+    uno::Reference<frame::XController> xController = uno::Reference<frame::XModel>(xComponent, uno::UNO_QUERY_THROW)->getCurrentController();
     CPPUNIT_ASSERT(xController.is());
     uno::Reference<frame::XDispatchProvider> xFrame(xController->getFrame(), uno::UNO_QUERY);
     CPPUNIT_ASSERT(xFrame.is());

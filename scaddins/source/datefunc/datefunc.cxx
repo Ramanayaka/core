@@ -18,13 +18,16 @@
  */
 
 #include "datefunc.hxx"
-#include "datefunc.hrc"
+#include <datefunc.hrc>
+#include <strings.hrc>
 #include <com/sun/star/util/Date.hpp>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <rtl/ustrbuf.hxx>
-#include <tools/rcid.h>
-#include <tools/resmgr.hxx>
+#include <rtl/ref.hxx>
+#include <unotools/resmgr.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <algorithm>
 #include "deffuncname.hxx"
 
@@ -33,11 +36,6 @@ using namespace ::com::sun::star;
 #define ADDIN_SERVICE           "com.sun.star.sheet.AddIn"
 #define MY_SERVICE              "com.sun.star.sheet.addin.DateFunctions"
 #define MY_IMPLNAME             "com.sun.star.sheet.addin.DateFunctionsImpl"
-
-ScaResId::ScaResId( sal_uInt16 nId, ResMgr& rResMgr ) :
-    ResId( nId, rResMgr )
-{
-}
 
 #define UNIQUE              false   // function name does not exist in Calc
 
@@ -63,8 +61,8 @@ const ScaFuncDataBase pFuncDataArr[] =
 
 ScaFuncData::ScaFuncData(const ScaFuncDataBase& rBaseData) :
     aIntName( OUString::createFromAscii( rBaseData.pIntName ) ),
-    nUINameID( rBaseData.nUINameID ),
-    nDescrID( rBaseData.nDescrID ),
+    pUINameID( rBaseData.pUINameID ),
+    pDescrID( rBaseData.pDescrID ),
     nParamCount( rBaseData.nParamCount ),
     eCat( rBaseData.eCat ),
     bDouble( rBaseData.bDouble ),
@@ -74,10 +72,6 @@ ScaFuncData::ScaFuncData(const ScaFuncDataBase& rBaseData) :
     aCompList.push_back(OUString::createFromAscii(rBaseData.pCompListID[1]));
 }
 
-ScaFuncData::~ScaFuncData()
-{
-}
-
 sal_uInt16 ScaFuncData::GetStrIndex( sal_uInt16 nParam ) const
 {
     if( !bWithOpt )
@@ -85,58 +79,32 @@ sal_uInt16 ScaFuncData::GetStrIndex( sal_uInt16 nParam ) const
     return (nParam > nParamCount) ? (nParamCount * 2) : (nParam * 2);
 }
 
-void InitScaFuncDataList(ScaFuncDataList& rList)
+static void InitScaFuncDataList(ScaFuncDataList& rList)
 {
     for (const auto & nIndex : pFuncDataArr)
         rList.push_back(ScaFuncData(nIndex));
 }
 
 //  entry points for service registration / instantiation
-uno::Reference< uno::XInterface > SAL_CALL ScaDateAddIn_CreateInstance(
-        const uno::Reference< lang::XMultiServiceFactory >& )
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+scaddins_ScaDateAddIn_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    return static_cast<cppu::OWeakObject*>(new ScaDateAddIn());
+    static rtl::Reference<ScaDateAddIn> g_Instance(new ScaDateAddIn());
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
-extern "C" {
-
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL date_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * /*pRegistryKey*/ )
-{
-    void* pRet = nullptr;
-
-    if ( pServiceManager &&
-            OUString::createFromAscii( pImplName ) == ScaDateAddIn::getImplementationName_Static() )
-    {
-        uno::Reference< lang::XSingleServiceFactory > xFactory( cppu::createOneInstanceFactory(
-                static_cast< lang::XMultiServiceFactory* >( pServiceManager ),
-                ScaDateAddIn::getImplementationName_Static(),
-                ScaDateAddIn_CreateInstance,
-                ScaDateAddIn::getSupportedServiceNames_Static() ) );
-
-        if (xFactory.is())
-        {
-            xFactory->acquire();
-            pRet = xFactory.get();
-        }
-    }
-
-    return pRet;
-}
-
-}   // extern C
 
 //  "normal" service implementation
-ScaDateAddIn::ScaDateAddIn() :
-    pDefLocales( nullptr ),
-    pResMgr( nullptr ),
-    pFuncDataList( nullptr )
+ScaDateAddIn::ScaDateAddIn()
 {
 }
 
-static const sal_Char*  pLang[] = { "de", "en" };
-static const sal_Char*  pCoun[] = { "DE", "US" };
-static const sal_uInt32 nNumOfLoc = SAL_N_ELEMENTS( pLang );
+static const char*  pLang[] = { "de", "en" };
+static const char*  pCoun[] = { "DE", "US" };
+const sal_uInt32 nNumOfLoc = SAL_N_ELEMENTS( pLang );
 
 void ScaDateAddIn::InitDefLocales()
 {
@@ -157,20 +125,9 @@ const lang::Locale& ScaDateAddIn::GetLocale( sal_uInt32 nIndex )
     return (nIndex < sizeof( pLang )) ? pDefLocales[ nIndex ] : aFuncLoc;
 }
 
-ResMgr& ScaDateAddIn::GetResMgr()
-{
-    if( !pResMgr )
-    {
-        InitData();     // try to get resource manager
-        if( !pResMgr )
-            throw uno::RuntimeException();
-    }
-    return *pResMgr;
-}
-
 void ScaDateAddIn::InitData()
 {
-    pResMgr.reset(ResMgr::CreateResMgr("date", LanguageTag(aFuncLoc)));
+    aResLocale = Translate::Create("sca", LanguageTag(aFuncLoc));
     pFuncDataList.reset();
 
     pFuncDataList.reset(new ScaFuncDataList);
@@ -182,37 +139,22 @@ void ScaDateAddIn::InitData()
     }
 }
 
-OUString ScaDateAddIn::GetFuncDescrStr( sal_uInt16 nResId, sal_uInt16 nStrIndex )
+OUString ScaDateAddIn::GetFuncDescrStr(const char** pResId, sal_uInt16 nStrIndex)
 {
-    ResStringArray aArr(ScaResId(nResId, GetResMgr()));
-    return aArr.GetString(nStrIndex - 1);
-}
-
-OUString ScaDateAddIn::getImplementationName_Static()
-{
-    return OUString( MY_IMPLNAME );
-}
-
-uno::Sequence< OUString > ScaDateAddIn::getSupportedServiceNames_Static()
-{
-    uno::Sequence< OUString > aRet( 2 );
-    OUString* pArray = aRet.getArray();
-    pArray[0] = ADDIN_SERVICE;
-    pArray[1] = MY_SERVICE;
-    return aRet;
+    return ScaResId(pResId[nStrIndex - 1]);
 }
 
 // XServiceName
 OUString SAL_CALL ScaDateAddIn::getServiceName()
 {
     // name of specific AddIn service
-    return OUString( MY_SERVICE );
+    return MY_SERVICE;
 }
 
 // XServiceInfo
 OUString SAL_CALL ScaDateAddIn::getImplementationName()
 {
-    return getImplementationName_Static();
+    return MY_IMPLNAME;
 }
 
 sal_Bool SAL_CALL ScaDateAddIn::supportsService( const OUString& aServiceName )
@@ -222,7 +164,7 @@ sal_Bool SAL_CALL ScaDateAddIn::supportsService( const OUString& aServiceName )
 
 uno::Sequence< OUString > SAL_CALL ScaDateAddIn::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
+    return { ADDIN_SERVICE, MY_SERVICE };
 }
 
 // XLocalizable
@@ -252,14 +194,13 @@ OUString SAL_CALL ScaDateAddIn::getDisplayFunctionName( const OUString& aProgram
                                 FindScaFuncData( aProgrammaticName ) );
     if( fDataIt != pFuncDataList->end() )
     {
-        aRet = ScaResId(fDataIt->GetUINameID(), GetResMgr());
+        aRet = ScaResId(fDataIt->GetUINameID());
         if( fDataIt->IsDouble() )
             aRet += "_ADD";
     }
     else
     {
-        aRet = "UNKNOWNFUNC_";
-        aRet += aProgrammaticName;
+        aRet = "UNKNOWNFUNC_" + aProgrammaticName;
     }
 
     return aRet;
@@ -402,7 +343,7 @@ sal_uInt16 DaysInMonth( sal_uInt16 nMonth, sal_uInt16 nYear )
 
 sal_Int32 DateToDays( sal_uInt16 nDay, sal_uInt16 nMonth, sal_uInt16 nYear )
 {
-    sal_Int32 nDays = ((sal_Int32)nYear-1) * 365;
+    sal_Int32 nDays = (static_cast<sal_Int32>(nYear)-1) * 365;
     nDays += ((nYear-1) / 4) - ((nYear-1) / 100) + ((nYear-1) / 400);
 
     for( sal_uInt16 i = 1; i < nMonth; i++ )
@@ -436,8 +377,8 @@ void DaysToDate( sal_Int32 nDays,
     do
     {
         nTempDays = nDays;
-        rYear = (sal_uInt16)((nTempDays / 365) - i);
-        nTempDays -= ((sal_Int32) rYear -1) * 365;
+        rYear = static_cast<sal_uInt16>((nTempDays / 365) - i);
+        nTempDays -= (static_cast<sal_Int32>(rYear) -1) * 365;
         nTempDays -= (( rYear -1) / 4) - (( rYear -1) / 100) + ((rYear -1) / 400);
         bCalc = false;
         if ( nTempDays < 1 )
@@ -465,7 +406,7 @@ void DaysToDate( sal_Int32 nDays,
         nTempDays -= DaysInMonth( rMonth, rYear );
         rMonth++;
     }
-    rDay = (sal_uInt16)nTempDays;
+    rDay = static_cast<sal_uInt16>(nTempDays);
 }
 
 /**
@@ -531,7 +472,7 @@ sal_Int32 GetNullDate( const uno::Reference< beans::XPropertySet >& xOptions )
  * where 0 means that this week belonged to the year before.
  *
  * If a day in the same or another year is used in this formula this calculates
- * an calendar week offset from a given 4. January
+ * a calendar week offset from a given 4. January
  *
  *  nWeek2 = ( nDays2 - nJan4 + ( (nJan4-1) % 7 ) ) / 7 + 1;
  *
@@ -677,7 +618,7 @@ sal_Int32 SAL_CALL ScaDateAddIn::getIsLeapYear(
     sal_uInt16 nDay, nMonth, nYear;
     DaysToDate(nDays,nDay,nMonth,nYear);
 
-    return (sal_Int32)IsLeapYear(nYear);
+    return static_cast<sal_Int32>(IsLeapYear(nYear));
 }
 
 /**
@@ -722,7 +663,7 @@ sal_Int32 SAL_CALL ScaDateAddIn::getDaysInYear(
  * shall be the first day of the week.
  *
  * A WeekDay can be calculated by subtracting 1 and calculating the rest of
- * a division by 7 from the internal date represention
+ * a division by 7 from the internal date representation
  * which gives a 0 - 6 value for Monday - Sunday
  *
  * @see #IsLeapYear #WeekNumber
@@ -762,12 +703,26 @@ OUString SAL_CALL ScaDateAddIn::getRot13( const OUString& aSrcString )
     for( sal_Int32 nIndex = 0; nIndex < aBuffer.getLength(); nIndex++ )
     {
         sal_Unicode cChar = aBuffer[nIndex];
-        if( ((cChar >= 'a') && (cChar <= 'z') && ((cChar += 13) > 'z')) ||
-            ((cChar >= 'A') && (cChar <= 'Z') && ((cChar += 13) > 'Z')) )
-            cChar -= 26;
+        if( (cChar >= 'a') && (cChar <= 'z'))
+        {
+            cChar += 13;
+            if (cChar > 'z')
+                cChar -= 26;
+        }
+        else if( (cChar >= 'A') && (cChar <= 'Z') )
+        {
+            cChar += 13;
+            if (cChar > 'Z')
+                cChar -= 26;
+        }
         aBuffer[nIndex] = cChar;
     }
     return aBuffer.makeStringAndClear();
+}
+
+OUString ScaDateAddIn::ScaResId(const char* pId)
+{
+    return Translate::get(pId, aResLocale);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

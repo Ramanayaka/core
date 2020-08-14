@@ -18,15 +18,17 @@
  */
 
 #include <sal/config.h>
+#include <xmlsec-wrapper.h>
+
+#include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
 #include "securityenvironment_mscryptimpl.hxx"
 
-#include "xmlsecuritycontext_mscryptimpl.hxx"
-#include "xmlsec/xmlstreamio.hxx"
-#include "xmlsec/mscrypto/akmngr.h"
+#include <xmlsec/xmlstreamio.hxx>
+#include "akmngr.hxx"
 
-#include "xmlsec-wrapper.h"
+#include <cppuhelper/supportsservice.hxx>
 
-using namespace ::com::sun::star::uno ;
+using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang ;
 using ::com::sun::star::lang::XMultiServiceFactory ;
 using ::com::sun::star::lang::XSingleServiceFactory ;
@@ -34,13 +36,52 @@ using ::com::sun::star::lang::XSingleServiceFactory ;
 using ::com::sun::star::xml::crypto::XSecurityEnvironment ;
 using ::com::sun::star::xml::crypto::XXMLSecurityContext ;
 
-XMLSecurityContext_MSCryptImpl::XMLSecurityContext_MSCryptImpl()
-    ://m_pKeysMngr( NULL ) ,
-     m_xSecurityEnvironment( nullptr )
+namespace {
+
+class XMLSecurityContext_MSCryptImpl : public ::cppu::WeakImplHelper<
+    css::xml::crypto::XXMLSecurityContext ,
+    css::lang::XServiceInfo >
 {
+    private:
+        //xmlSecKeysMngrPtr m_pKeysMngr ;
+        css::uno::Reference< css::xml::crypto::XSecurityEnvironment > m_xSecurityEnvironment ;
+
+    public:
+        XMLSecurityContext_MSCryptImpl();
+
+        //Methods from XXMLSecurityContext
+        virtual sal_Int32 SAL_CALL addSecurityEnvironment(
+            const css::uno::Reference< css::xml::crypto::XSecurityEnvironment >& aSecurityEnvironment
+            ) override;
+
+        virtual ::sal_Int32 SAL_CALL getSecurityEnvironmentNumber(  ) override;
+
+        virtual css::uno::Reference<
+            css::xml::crypto::XSecurityEnvironment > SAL_CALL
+            getSecurityEnvironmentByIndex( ::sal_Int32 index ) override;
+
+        virtual css::uno::Reference<
+            css::xml::crypto::XSecurityEnvironment > SAL_CALL
+            getSecurityEnvironment(  ) override;
+
+        virtual ::sal_Int32 SAL_CALL getDefaultSecurityEnvironmentIndex(  ) override;
+
+        virtual void SAL_CALL setDefaultSecurityEnvironmentIndex( sal_Int32 nDefaultEnvIndex ) override;
+
+
+        //Methods from XServiceInfo
+        virtual OUString SAL_CALL getImplementationName() override;
+
+        virtual sal_Bool SAL_CALL supportsService(
+            const OUString& ServiceName
+        ) override;
+
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+};
+
 }
 
-XMLSecurityContext_MSCryptImpl::~XMLSecurityContext_MSCryptImpl()
+XMLSecurityContext_MSCryptImpl::XMLSecurityContext_MSCryptImpl()
 {
 }
 
@@ -49,7 +90,7 @@ sal_Int32 SAL_CALL XMLSecurityContext_MSCryptImpl::addSecurityEnvironment(
 {
     if( !aSecurityEnvironment.is() )
     {
-        throw RuntimeException() ;
+        throw uno::RuntimeException() ;
     }
 
     m_xSecurityEnvironment = aSecurityEnvironment;
@@ -66,12 +107,11 @@ sal_Int32 SAL_CALL XMLSecurityContext_MSCryptImpl::getSecurityEnvironmentNumber(
 css::uno::Reference< css::xml::crypto::XSecurityEnvironment > SAL_CALL
     XMLSecurityContext_MSCryptImpl::getSecurityEnvironmentByIndex( sal_Int32 index )
 {
-    if (index == 0)
+    if (index != 0)
     {
-        return m_xSecurityEnvironment;
+        throw uno::RuntimeException() ;
     }
-    else
-        throw RuntimeException() ;
+    return m_xSecurityEnvironment;
 }
 
 css::uno::Reference< css::xml::crypto::XSecurityEnvironment > SAL_CALL
@@ -92,46 +132,25 @@ void SAL_CALL XMLSecurityContext_MSCryptImpl::setDefaultSecurityEnvironmentIndex
 
 /* XServiceInfo */
 OUString SAL_CALL XMLSecurityContext_MSCryptImpl::getImplementationName() {
-    return impl_getImplementationName() ;
+    return "com.sun.star.xml.crypto.XMLSecurityContext" ;
 }
 
 /* XServiceInfo */
 sal_Bool SAL_CALL XMLSecurityContext_MSCryptImpl::supportsService( const OUString& serviceName) {
-    Sequence< OUString > seqServiceNames = getSupportedServiceNames() ;
-    const OUString* pArray = seqServiceNames.getConstArray() ;
-    for( sal_Int32 i = 0 ; i < seqServiceNames.getLength() ; i ++ ) {
-        if( *( pArray + i ) == serviceName )
-            return true ;
-    }
-    return false ;
+    return cppu::supportsService(this, serviceName);
 }
 
 /* XServiceInfo */
-Sequence< OUString > SAL_CALL XMLSecurityContext_MSCryptImpl::getSupportedServiceNames() {
-    return impl_getSupportedServiceNames() ;
-}
-
-//Helper for XServiceInfo
-Sequence< OUString > XMLSecurityContext_MSCryptImpl::impl_getSupportedServiceNames() {
-    ::osl::Guard< ::osl::Mutex > aGuard( ::osl::Mutex::getGlobalMutex() ) ;
-    Sequence<OUString> seqServiceNames { "com.sun.star.xml.crypto.XMLSecurityContext" };
+uno::Sequence< OUString > SAL_CALL XMLSecurityContext_MSCryptImpl::getSupportedServiceNames() {
+    uno::Sequence<OUString> seqServiceNames { "com.sun.star.xml.crypto.XMLSecurityContext" };
     return seqServiceNames ;
 }
 
-OUString XMLSecurityContext_MSCryptImpl::impl_getImplementationName() {
-    return OUString("com.sun.star.xml.security.bridge.xmlsec.XMLSecurityContext_MSCryptImpl") ;
-}
-
-//Helper for registry
-Reference< XInterface > SAL_CALL XMLSecurityContext_MSCryptImpl::impl_createInstance( const Reference< XMultiServiceFactory >& ) {
-    return Reference< XInterface >( *new XMLSecurityContext_MSCryptImpl ) ;
-}
-
-Reference< XSingleServiceFactory > XMLSecurityContext_MSCryptImpl::impl_createFactory( const Reference< XMultiServiceFactory >& aServiceManager ) {
-    //Reference< XSingleServiceFactory > xFactory ;
-    //xFactory = ::cppu::createSingleFactory( aServiceManager , impl_getImplementationName , impl_createInstance , impl_getSupportedServiceNames ) ;
-    //return xFactory ;
-    return ::cppu::createSingleFactory( aServiceManager , impl_getImplementationName() , impl_createInstance , impl_getSupportedServiceNames() ) ;
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_xml_crypto_XMLSecurityContext_get_implementation(
+    uno::XComponentContext* /*pCtx*/, uno::Sequence<uno::Any> const& /*rSeq*/)
+{
+    return cppu::acquire(new XMLSecurityContext_MSCryptImpl);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

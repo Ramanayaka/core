@@ -17,12 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/typegroupmodel.hxx"
+#include <drawingml/chart/typegroupmodel.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 UpDownBarsModel::UpDownBarsModel() :
     mnGapWidth( 150 )
@@ -56,7 +54,8 @@ TypeGroupModel::TypeGroupModel( sal_Int32 nTypeId, bool bMSO2007Doc ) :
     mbShowNegBubbles( !bMSO2007Doc ),
     mbSmooth( !bMSO2007Doc ),
     mbVaryColors( !bMSO2007Doc ),
-    mbWireframe( !bMSO2007Doc )
+    mbWireframe( !bMSO2007Doc ),
+    mbCatAxisVisible( true )
 {
 }
 
@@ -64,8 +63,6 @@ TypeGroupModel::~TypeGroupModel()
 {
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

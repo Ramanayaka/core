@@ -22,6 +22,7 @@
 
 #include <sal/types.h>
 #include <svx/msdffdef.hxx>
+#include <svx/svxdllapi.h>
 #include <o3tl/typed_flags_set.hxx>
 
 struct SvxMSDffVertPair
@@ -59,7 +60,7 @@ enum class SvxMSDffHandleFlags
 };
 namespace o3tl
 {
-    template<> struct typed_flags<SvxMSDffHandleFlags> : is_typed_flags<SvxMSDffHandleFlags, 0x3fff> {};
+    template<> struct typed_flags<SvxMSDffHandleFlags> : is_typed_flags<SvxMSDffHandleFlags, 0x3fbf> {};
 }
 
 struct SvxMSDffHandle
@@ -88,16 +89,16 @@ struct mso_CustomShape
     sal_uInt32                              nHandles;
 };
 
-#define MSO_I | (sal_Int32)0x80000000
+#define MSO_I | sal_Int32(0x80000000)
 
 bool                        SortFilledObjectsToBackByDefault( MSO_SPT eSpType );
-SVX_DLLPUBLIC bool          IsCustomShapeFilledByDefault( MSO_SPT eSpType );
-SVX_DLLPUBLIC sal_Int16     GetCustomShapeConnectionTypeDefault( MSO_SPT eSpType );
+SVXCORE_DLLPUBLIC bool          IsCustomShapeFilledByDefault( MSO_SPT eSpType );
+SVXCORE_DLLPUBLIC sal_Int16     GetCustomShapeConnectionTypeDefault( MSO_SPT eSpType );
 
 // #i28269#
-SVX_DLLPUBLIC bool          IsCustomShapeStrokedByDefault( MSO_SPT eSpType );
+SVXCORE_DLLPUBLIC bool          IsCustomShapeStrokedByDefault( MSO_SPT eSpType );
 
-SVX_DLLPUBLIC const mso_CustomShape*    GetCustomShapeContent( MSO_SPT eSpType );
+SVXCORE_DLLPUBLIC const mso_CustomShape*    GetCustomShapeContent( MSO_SPT eSpType );
 
 #endif
 

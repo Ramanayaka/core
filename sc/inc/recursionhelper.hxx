@@ -23,7 +23,9 @@
 #include "formularesult.hxx"
 
 #include <list>
+#include <vector>
 #include <stack>
+#include <o3tl/sorted_vector.hxx>
 
 class ScFormulaCell;
 
@@ -48,12 +50,22 @@ class ScRecursionHelper
     ScFormulaRecursionList::iterator    aInsertPos;
     ScFormulaRecursionList::iterator    aLastIterationStart;
     ScRecursionInIterationStack         aRecursionInIterationStack;
+    std::vector< ScFormulaCell* >       aFGList;
+    // Flag list corresponding to aFGList to indicate whether each formula-group
+    // is in a dependency evaluation mode or not.
+    std::vector< bool >                 aInDependencyEvalMode;
     sal_uInt16                              nRecursionCount;
     sal_uInt16                              nIteration;
+    // Count of ScFormulaCell::CheckComputeDependencies in current call-stack.
+    sal_uInt16                              nDependencyComputationLevel;
     bool                                bInRecursionReturn;
     bool                                bDoingRecursion;
     bool                                bInIterationReturn;
     bool                                bConverging;
+    bool                                bGroupsIndependent;
+    bool                                bAbortingDependencyComputation;
+    std::vector< ScFormulaCell* >       aTemporaryGroupCells;
+    o3tl::sorted_vector< ScFormulaCellGroup* >* pFGSet;
 
     void Init();
     void ResetIteration();
@@ -64,6 +76,9 @@ public:
     sal_uInt16  GetRecursionCount() const       { return nRecursionCount; }
     void    IncRecursionCount()             { ++nRecursionCount; }
     void    DecRecursionCount()             { --nRecursionCount; }
+    sal_uInt16 GetDepComputeLevel() const   { return nDependencyComputationLevel; }
+    void    IncDepComputeLevel();
+    void    DecDepComputeLevel();
     /// A pure recursion return, no iteration.
     bool    IsInRecursionReturn() const     { return bInRecursionReturn &&
         !bInIterationReturn; }
@@ -83,7 +98,7 @@ public:
     void IncIteration();
     void EndIteration();
 
-    const ScFormulaRecursionList::iterator& GetLastIterationStart() { return aLastIterationStart; }
+    const ScFormulaRecursionList::iterator& GetLastIterationStart() const { return aLastIterationStart; }
     ScFormulaRecursionList::iterator GetIterationStart();
     ScFormulaRecursionList::iterator GetIterationEnd();
     /** Any return, recursion or iteration, iteration is always coupled with
@@ -94,6 +109,63 @@ public:
     ScRecursionInIterationStack&    GetRecursionInIterationStack()  { return aRecursionInIterationStack; }
 
     void Clear();
+
+    /** Detects a simple cycle involving formula-groups and singleton formula-cells. */
+    bool PushFormulaGroup(ScFormulaCell* pCell);
+    void PopFormulaGroup();
+    bool AnyCycleMemberInDependencyEvalMode(ScFormulaCell* pCell);
+    bool AnyParentFGInCycle();
+    void SetFormulaGroupDepEvalMode(bool bSet);
+    // When dependency computation detects a cycle, it may not compute proper cell values.
+    // This sets a flag that ScFormulaCell will use to avoid setting those new values
+    // and resetting the dirty flag, until the dependency computation bails out.
+    void AbortDependencyComputation();
+    bool IsAbortingDependencyComputation() const { return bAbortingDependencyComputation; }
+
+    void AddTemporaryGroupCell(ScFormulaCell* cell);
+    void CleanTemporaryGroupCells();
+
+    void SetFormulaGroupSet(o3tl::sorted_vector<ScFormulaCellGroup*>* pSet) { pFGSet = pSet; }
+    bool HasFormulaGroupSet() { return pFGSet != nullptr; }
+    bool CheckFGIndependence(ScFormulaCellGroup* pFG);
+    void SetGroupsIndependent(bool bSet) { bGroupsIndependent = bSet; }
+    bool AreGroupsIndependent() { return bGroupsIndependent; }
+};
+
+/** A class to wrap ScRecursionHelper::PushFormulaGroup(),
+    ScRecursionHelper::PopFormulaGroup() and make these calls
+    exception safe. */
+class ScFormulaGroupCycleCheckGuard
+{
+    ScRecursionHelper& mrRecHelper;
+    bool mbShouldPop;
+public:
+    ScFormulaGroupCycleCheckGuard() = delete;
+    ScFormulaGroupCycleCheckGuard(ScRecursionHelper& rRecursionHelper, ScFormulaCell* pCell);
+    ~ScFormulaGroupCycleCheckGuard();
+
+};
+
+class ScFormulaGroupDependencyComputeGuard
+{
+    ScRecursionHelper& mrRecHelper;
+public:
+    ScFormulaGroupDependencyComputeGuard() = delete;
+    ScFormulaGroupDependencyComputeGuard(ScRecursionHelper& rRecursionHelper);
+    ~ScFormulaGroupDependencyComputeGuard();
+};
+
+class ScCheckIndependentFGGuard
+{
+    ScRecursionHelper& mrRecHelper;
+    bool mbUsedFGSet;
+public:
+    ScCheckIndependentFGGuard() = delete;
+    ScCheckIndependentFGGuard(ScRecursionHelper& rRecursionHelper,
+                              o3tl::sorted_vector<ScFormulaCellGroup*>* pSet);
+    ~ScCheckIndependentFGGuard();
+
+    bool AreGroupsIndependent();
 };
 
 #endif // INCLUDED_SC_INC_RECURSIONHELPER_HXX

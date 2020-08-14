@@ -21,14 +21,9 @@
 #define INCLUDED_UCBHELPER_MACROS_HXX
 
 #include <sal/types.h>
-#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/factory.hxx>
-#include <cppuhelper/weakref.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/typeprovider.hxx>
-
-#include <ucbhelper/getcomponentcontext.hxx>
-
 
 #define CPPU_TYPE( T )      cppu::UnoType<T>::get()
 #define CPPU_TYPE_REF( T )  CPPU_TYPE( T )
@@ -145,60 +140,6 @@ GETTYPES_IMPL_START( Class )                                                \
     CPPU_TYPE_REF( I10 ),                                                   \
     CPPU_TYPE_REF( I11 )                                                    \
 GETTYPES_IMPL_END
-
-// XServiceInfo impl. internals
-
-
-#define XSERVICEINFO_COMMOM_IMPL( Class, ImplName )                         \
-OUString SAL_CALL Class::getImplementationName()                       \
-{                                                                           \
-    return getImplementationName_Static();                                  \
-}                                                                           \
-                                                                            \
-OUString Class::getImplementationName_Static()                         \
-{                                                                           \
-    return ImplName;                                                        \
-}                                                                           \
-                                                                            \
-sal_Bool SAL_CALL                                                           \
-Class::supportsService( const OUString& ServiceName )                  \
-{                                                                           \
-    return cppu::supportsService( this, ServiceName );                      \
-}                                                                           \
-                                                                            \
-css::uno::Sequence< OUString > SAL_CALL                     \
-Class::getSupportedServiceNames()                                           \
-{                                                                           \
-    return getSupportedServiceNames_Static();                               \
-}
-
-// XServiceInfo impl.
-
-
-#define ONE_INSTANCE_SERVICE_FACTORY_IMPL( Class )                          \
-css::uno::Reference< css::lang::XSingleServiceFactory >       \
-Class::createServiceFactory( const css::uno::Reference< css::lang::XMultiServiceFactory >& rxServiceMgr )    \
-{                                                                           \
-    return css::uno::Reference<                                  \
-        css::lang::XSingleServiceFactory >(                      \
-            cppu::createOneInstanceFactory(                                 \
-                rxServiceMgr,                                               \
-                Class::getImplementationName_Static(),                      \
-                Class##_CreateInstance,                                     \
-                Class::getSupportedServiceNames_Static() ) );               \
-}
-
-// Service without service factory.
-
-// 1 service name
-#define XSERVICEINFO_NOFACTORY_IMPL_1( Class, ImplName, Service1 )          \
-XSERVICEINFO_COMMOM_IMPL( Class, ImplName )                                 \
-                                                                            \
-css::uno::Sequence< OUString >                              \
-Class::getSupportedServiceNames_Static()                                    \
-{                                                                           \
-    return { Service1 };                       \
-}
 
 #endif /* ! INCLUDED_UCBHELPER_MACROS_HXX */
 

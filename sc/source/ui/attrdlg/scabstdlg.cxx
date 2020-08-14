@@ -17,18 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
-
-#include "scabstdlg.hxx"
+#include <scabstdlg.hxx>
 
 #include <osl/module.hxx>
+#include <tools/svlibrary.h>
 #include <rtl/ustrbuf.hxx>
 
-typedef ScAbstractDialogFactory* (SAL_CALL *ScFuncPtrCreateDialogFactory)();
+typedef ScAbstractDialogFactory* (*ScFuncPtrCreateDialogFactory)();
 
 #ifndef DISABLE_DYNLOADING
 
-extern "C" { static void SAL_CALL thisModule() {} }
+extern "C" { static void thisModule() {} }
 
 #else
 
@@ -39,20 +38,15 @@ extern "C" ScAbstractDialogFactory* ScCreateDialogFactory();
 ScAbstractDialogFactory* ScAbstractDialogFactory::Create()
 {
     ScFuncPtrCreateDialogFactory fp = nullptr;
-#if HAVE_FEATURE_DESKTOP
 #ifndef DISABLE_DYNLOADING
     static ::osl::Module aDialogLibrary;
 
-    OUStringBuffer aStrBuf;
-    aStrBuf.append( SVLIBRARY("scui") );
-
-    if ( aDialogLibrary.is() || aDialogLibrary.loadRelative( &thisModule, aStrBuf.makeStringAndClear(),
+    if ( aDialogLibrary.is() || aDialogLibrary.loadRelative( &thisModule, SVLIBRARY("scui"),
                                                              SAL_LOADMODULE_GLOBAL | SAL_LOADMODULE_LAZY ) )
         fp = reinterpret_cast<ScAbstractDialogFactory* (SAL_CALL*)()>(
             aDialogLibrary.getFunctionSymbol( "ScCreateDialogFactory" ));
 #else
-    fp = ScCreateDialogFactory();
-#endif
+    fp = ScCreateDialogFactory;
 #endif
     if ( fp )
         return fp();

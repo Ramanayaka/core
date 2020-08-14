@@ -7,14 +7,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <sal/config.h>
+
+#include <cassert>
+
 #include "converter.hxx"
 #include "unichars.hxx"
 #include "convertisciidevangari.hxx"
 #include "convertsinglebytetobmpunicode.hxx"
+
+#include <rtl/character.hxx>
 #include <rtl/textcvt.h>
 
 using namespace sal::detail::textenc;
 using namespace rtl::textenc;
+
+namespace {
 
 struct IsciiDevanagariToUnicode
 {
@@ -51,7 +59,9 @@ struct UnicodeToIsciiDevanagari
         sal_uInt32 * pInfo, sal_Size * pSrcCvtChars);
 };
 
-static const sal_Unicode IsciiDevanagariMap[256] =
+}
+
+const sal_Unicode IsciiDevanagariMap[256] =
 {
     0x0000,0x0001,0x0002,0x0003,0x0004,0x0005,0x0006,0x0007,
     0x0008,0x0009,0x000A,0x000B,0x000C,0x000D,0x000E,0x000F,
@@ -96,12 +106,13 @@ sal_Size IsciiDevanagariToUnicode::convert(
     sal_Size nConverted = 0;
     sal_Unicode* pDestBufPtr = pDestBuf;
     sal_Unicode* pDestBufEnd = pDestBuf + nDestChars;
+    sal_Size startOfCurrentChar = 0;
 
     while (nConverted < nSrcBytes)
     {
         if (pDestBufPtr == pDestBufEnd)
         {
-            nInfo |= RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL;
+            nInfo |= RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL;
             break;
         }
 
@@ -180,6 +191,10 @@ sal_Size IsciiDevanagariToUnicode::convert(
             }
         }
 
+        ++nConverted;
+        if (bDouble)
+            ++nConverted;
+
         if (bNormal)
             cChar = IsciiDevanagariMap[nIn];
 
@@ -190,22 +205,24 @@ sal_Size IsciiDevanagariToUnicode::convert(
             BadInputConversionAction eAction = handleBadInputTextToUnicodeConversion(
                         bUndefined, true, 0, nFlags, &pDestBufPtr, pDestBufEnd,
                         &nInfo);
-            if (eAction == BAD_INPUT_CONTINUE)
+            if (eAction == BAD_INPUT_CONTINUE) {
+                startOfCurrentChar = nConverted;
                 continue;
-            if (eAction == BAD_INPUT_STOP)
-                break;
-            if (eAction == BAD_INPUT_NO_OUTPUT)
-            {
-                nInfo |= RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL;
+            }
+            if (eAction == BAD_INPUT_STOP) {
+                if ((nFlags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) != 0) {
+                    nConverted = startOfCurrentChar;
+                }
                 break;
             }
+            assert(eAction == BAD_INPUT_NO_OUTPUT);
+            nInfo |= RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL;
+            break;
         }
-        ++nConverted;
-        if (bDouble)
-            ++nConverted;
 
         *pDestBufPtr++ = cChar;
         m_cPrevChar = bNormal ? nIn : 0;
+        startOfCurrentChar = nConverted;
     }
 
     if (pInfo)
@@ -240,19 +257,24 @@ sal_Size UnicodeToIsciiDevanagari::convert(sal_Unicode const* pSrcBuf, sal_Size 
     sal_Unicode cHighSurrogate = m_cHighSurrogate;
     sal_uInt32 nInfo = 0;
     sal_Size nConverted = 0;
-    sal_Char* pDestBufPtr = pDestBuf;
-    sal_Char* pDestBufEnd = pDestBuf + nDestBytes;
+    char* pDestBufPtr = pDestBuf;
+    char* pDestBufEnd = pDestBuf + nDestBytes;
     for (; nConverted < nSrcChars; ++nConverted)
     {
         bool bUndefined = true;
         sal_uInt32 c = *pSrcBuf++;
-        sal_Char cSpecialChar = 0;
+        char cSpecialChar = 0;
         if (cHighSurrogate == 0)
         {
             if (ImplIsHighSurrogate(c))
             {
                 cHighSurrogate = static_cast< sal_Unicode >(c);
                 continue;
+            }
+            else if (ImplIsLowSurrogate(c))
+            {
+                bUndefined = false;
+                goto bad_input;
             }
         }
         else if (ImplIsLowSurrogate(c))
@@ -264,11 +286,7 @@ sal_Size UnicodeToIsciiDevanagari::convert(sal_Unicode const* pSrcBuf, sal_Size 
             bUndefined = false;
             goto bad_input;
         }
-        if (ImplIsLowSurrogate(c) || ImplIsNoncharacter(c))
-        {
-            bUndefined = false;
-            goto bad_input;
-        }
+        assert(rtl::isUnicodeScalarValue(c));
 
         //halant + halant     E8 E8  -> halant + ZWNJ   094D 200C
         //halant + nukta    E8 E9   halant + ZWJ    094D 200D
@@ -365,7 +383,7 @@ sal_Size UnicodeToIsciiDevanagari::convert(sal_Unicode const* pSrcBuf, sal_Size 
                 {
                     goto no_output;
                 }
-                *pDestBufPtr++ = static_cast< sal_Char >(
+                *pDestBufPtr++ = static_cast< char >(
                     ranges[i].byte + (c - ranges[i].unicode));
                 m_cPrevChar = c;
                 goto done;

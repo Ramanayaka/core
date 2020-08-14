@@ -19,15 +19,15 @@
 #ifndef INCLUDED_UNO_ANY2_H
 #define INCLUDED_UNO_ANY2_H
 
-#include <cppu/cppudllapi.h>
-#include <uno/data.h>
+#include "cppu/cppudllapi.h"
+#include "uno/data.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-#if defined( SAL_W32)
+#if defined( _WIN32)
 #pragma pack(push, 8)
 #endif
 
@@ -35,7 +35,7 @@ struct _typelib_TypeDescriptionReference;
 struct _typelib_TypeDescription;
 struct _uno_Mapping;
 
-/** This is the binary specification of an UNO any.
+/** This is the binary specification of a UNO any.
 */
 typedef struct SAL_DLLPUBLIC_RTTI _uno_Any
 {
@@ -52,7 +52,7 @@ typedef struct SAL_DLLPUBLIC_RTTI _uno_Any
     void * pReserved;
 } uno_Any;
 
-#if defined( SAL_W32)
+#if defined( _WIN32)
 #pragma pack(pop)
 #endif
 

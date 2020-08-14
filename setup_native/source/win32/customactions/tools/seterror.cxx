@@ -17,15 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#define UNICODE
-
-#ifdef _MSC_VER
-#pragma warning(push,1) // disable warnings within system headers
-#endif
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
 #include <string.h>
 #include <malloc.h>
@@ -47,7 +40,7 @@ inline void OutputDebugStringFormatW( PCWSTR pFormat, ... )
     va_end(args);
 }
 #else
-static inline void OutputDebugStringFormatW( PCWSTR, ... )
+static void OutputDebugStringFormatW( PCWSTR, ... )
 {
 }
 #endif

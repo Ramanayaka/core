@@ -19,15 +19,19 @@
 #ifndef INCLUDED_SC_SOURCE_UI_VBA_VBAAPPLICATION_HXX
 #define INCLUDED_SC_SOURCE_UI_VBA_VBAAPPLICATION_HXX
 
-#include <ooo/vba/excel/XWorksheetFunction.hpp>
-#include <ooo/vba/excel/XApplication.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <vector>
 
-#include <vbahelper/vbahelperinterface.hxx>
+#include <ooo/vba/XSinkCaller.hpp>
+#include <ooo/vba/excel/XApplication.hpp>
+
 #include <vbahelper/vbaapplicationbase.hxx>
 #include <cppuhelper/implbase.hxx>
 
-typedef cppu::ImplInheritanceHelper< VbaApplicationBase, ov::excel::XApplication > ScVbaApplication_BASE;
+namespace com::sun::star::uno { class XComponentContext; }
+namespace ooo::vba { class XSink; }
+namespace ooo::vba::excel { class XFileDialog; }
+
+typedef cppu::ImplInheritanceHelper< VbaApplicationBase, ov::excel::XApplication, ov::XSinkCaller > ScVbaApplication_BASE;
 
 struct ScVbaAppSettings;
 
@@ -37,8 +41,14 @@ private:
     // note: member variables moved to struct "ScVbaAppSettings", see cxx file, to be shared by all application instances
     ScVbaAppSettings& mrAppSettings;
 
+    // must be stored in order to get result paths from the same instance
+    css::uno::Reference< ov::excel::XFileDialog > m_xFileDialog;
+    sal_Int32 m_nDialogType;
+
     /// @throws css::uno::RuntimeException
     OUString getOfficePath( const OUString& sPath );
+
+    std::vector<css::uno::Reference< ooo::vba::XSink >> mvSinks;
 
 protected:
     virtual css::uno::Reference< css::frame::XModel > getCurrentDocument() override;
@@ -49,6 +59,9 @@ public:
 
     /** Returns true, if VBA document events are enabled. */
     static bool getDocumentEventsEnabled();
+
+    sal_uInt32 AddSink( const css::uno::Reference< ooo::vba::XSink >& xSink );
+    void RemoveSink( sal_uInt32 nNumber );
 
     // XExactName
     virtual OUString SAL_CALL getExactName( const OUString& aApproximateName ) override;
@@ -85,6 +98,7 @@ public:
     virtual css::uno::Reference< ov::XAssistant > SAL_CALL getAssistant() override;
     virtual css::uno::Reference< ov::excel::XWorkbook > SAL_CALL getThisWorkbook() override;
     virtual css::uno::Any SAL_CALL International( sal_Int32 Index ) override;
+    virtual css::uno::Any SAL_CALL FileDialog( const css::uno::Any& DialogType ) override;
     virtual css::uno::Any SAL_CALL Workbooks( const css::uno::Any& aIndex ) override;
     virtual css::uno::Any SAL_CALL Worksheets( const css::uno::Any& aIndex ) override;
     virtual css::uno::Any SAL_CALL WorksheetFunction( ) override;
@@ -97,6 +111,7 @@ public:
     virtual ::sal_Int32 SAL_CALL getCursor() override;
     virtual void SAL_CALL setCursor( ::sal_Int32 _cursor ) override;
     virtual void SAL_CALL OnKey( const OUString& Key, const css::uno::Any& Procedure ) override;
+    virtual void SAL_CALL setScreenUpdating( sal_Bool bUpdate ) override;
     virtual sal_Bool SAL_CALL getEnableEvents() override;
     virtual void SAL_CALL setEnableEvents( sal_Bool bEnable ) override;
     virtual sal_Bool SAL_CALL getEnableCancelKey() override;
@@ -127,11 +142,24 @@ public:
     virtual double SAL_CALL InchesToPoints( double InchesToPoints ) override;
     virtual void SAL_CALL Volatile( const css::uno::Any& Volatile ) override;
     virtual css::uno::Any SAL_CALL MenuBars( const css::uno::Any& aIndex ) override;
+    virtual css::uno::Any SAL_CALL Rows( const css::uno::Any& aIndex ) override;
     virtual css::uno::Any SAL_CALL Caller( const css::uno::Any& aIndex ) override;
     virtual void SAL_CALL Undo() override;
+
     // XHelperInterface
     virtual OUString getServiceImplName() override;
     virtual css::uno::Sequence<OUString> getServiceNames() override;
+
+    // XInterfaceWithIID
+    virtual OUString SAL_CALL getIID() override;
+
+    // XConnectable
+    virtual OUString SAL_CALL GetIIDForClassItselfNotCoclass() override;
+    virtual ov::TypeAndIID SAL_CALL GetConnectionPoint() override;
+    virtual css::uno::Reference<ov::XConnectionPoint> SAL_CALL FindConnectionPoint() override;
+
+    // XSinkCaller
+    virtual void SAL_CALL CallSinks( const OUString& Method, css::uno::Sequence< css::uno::Any >& Arguments ) override;
 };
 #endif // INCLUDED_SC_SOURCE_UI_VBA_VBAAPPLICATION_HXX
 

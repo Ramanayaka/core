@@ -17,18 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <ManifestWriter.hxx>
-#include <ManifestExport.hxx>
+#include "ManifestWriter.hxx"
+#include "ManifestExport.hxx"
+#include <cppuhelper/exc_hlp.hxx>
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/xml/sax/SAXException.hpp>
 
 #include <osl/diagnose.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -63,30 +66,15 @@ void SAL_CALL ManifestWriter::writeManifestSequence( const Reference< XOutputStr
     }
     catch( SAXException& )
     {
-        throw RuntimeException( THROW_WHERE );
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException( THROW_WHERE,
+                        nullptr, anyEx );
     }
-}
-
-// Component methods
-Reference < XInterface > SAL_CALL ManifestWriter_createInstance( Reference< XMultiServiceFactory > const & rServiceFactory )
-{
-    return *new ManifestWriter( comphelper::getComponentContext(rServiceFactory) );
-}
-
-OUString ManifestWriter::static_getImplementationName()
-{
-    return OUString ( "com.sun.star.packages.manifest.comp.ManifestWriter" );
-}
-
-Sequence < OUString > ManifestWriter::static_getSupportedServiceNames()
-{
-    Sequence<OUString> aNames { "com.sun.star.packages.manifest.ManifestWriter" };
-    return aNames;
 }
 
 OUString ManifestWriter::getImplementationName()
 {
-    return static_getImplementationName();
+    return "com.sun.star.packages.manifest.comp.ManifestWriter";
 }
 
 sal_Bool SAL_CALL ManifestWriter::supportsService(OUString const & rServiceName)
@@ -95,14 +83,15 @@ sal_Bool SAL_CALL ManifestWriter::supportsService(OUString const & rServiceName)
 }
 Sequence < OUString > ManifestWriter::getSupportedServiceNames()
 {
-    return static_getSupportedServiceNames();
+    return { "com.sun.star.packages.manifest.ManifestWriter" };
 }
-Reference < XSingleServiceFactory > ManifestWriter::createServiceFactory( Reference < XMultiServiceFactory > const & rServiceFactory )
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+package_ManifestWriter_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
 {
-    return cppu::createSingleFactory (rServiceFactory,
-                                           static_getImplementationName(),
-                                           ManifestWriter_createInstance,
-                                           static_getSupportedServiceNames());
+    return cppu::acquire(new ManifestWriter(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

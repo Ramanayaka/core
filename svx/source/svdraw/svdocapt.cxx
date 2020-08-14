@@ -26,42 +26,38 @@
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/tuple/b2dtuple.hxx>
-#include <editeng/eeitem.hxx>
-#include <svl/style.hxx>
 #include <tools/bigint.hxx>
 #include <tools/helpers.hxx>
+#include <rtl/ustrbuf.hxx>
 
-#include "svdconv.hxx"
-#include "svdglob.hxx"
-#include "svx/svdstr.hrc"
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
 
 #include <sdr/contact/viewcontactofsdrcaptionobj.hxx>
 #include <sdr/properties/captionproperties.hxx>
 #include <svx/sdrhittesthelper.hxx>
+#include <svx/sdooitm.hxx>
 #include <svx/svddrag.hxx>
-#include <svx/svdetc.hxx>
 #include <svx/svdhdl.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/svdocapt.hxx>
+#include <svx/svdopath.hxx>
 #include <svx/svdogrp.hxx>
 #include <svx/svdpage.hxx>
-#include <svx/svdpool.hxx>
 #include <svx/svdtrans.hxx>
 #include <svx/svdview.hxx>
-#include <svx/sxcaitm.hxx>
 #include <svx/sxcecitm.hxx>
 #include <svx/sxcgitm.hxx>
 #include <svx/sxcllitm.hxx>
 #include <svx/sxctitm.hxx>
-#include <svx/xflclit.hxx>
-#include <svx/xflhtit.hxx>
-#include <svx/xfltrit.hxx>
-#include <svx/xlnwtit.hxx>
-#include <svx/xpoly.hxx>
-#include <svx/xpool.hxx>
+#include <vcl/canvastools.hxx>
+#include <vcl/ptrstyle.hxx>
 
+namespace {
 
 enum EscDir {LKS,RTS,OBN,UNT};
+
+}
 
 class ImpCaptParams
 {
@@ -78,16 +74,11 @@ public:
 
 public:
     ImpCaptParams()
+      : eType(SdrCaptionType::Type3),
+        nGap(0), nEscRel(5000), nEscAbs(0),
+        nLineLen(0), eEscDir(SdrCaptionEscDir::Horizontal),
+        bFitLineLen(true), bEscRel(true), bFixedAngle(false)
     {
-        eType      =SdrCaptionType::Type3;
-        bFixedAngle=false;
-        nGap       =0;
-        eEscDir    =SdrCaptionEscDir::Horizontal;
-        bEscRel    =true;
-        nEscRel    =5000;
-        nEscAbs    =0;
-        nLineLen   =0;
-        bFitLineLen=true;
     }
     void CalcEscPos(const Point& rTail, const tools::Rectangle& rRect, Point& rPt, EscDir& rDir) const;
 };
@@ -175,33 +166,40 @@ void ImpCaptParams::CalcEscPos(const Point& rTailPt, const tools::Rectangle& rRe
 
 // BaseProperties section
 
-sdr::properties::BaseProperties* SdrCaptionObj::CreateObjectSpecificProperties()
+std::unique_ptr<sdr::properties::BaseProperties> SdrCaptionObj::CreateObjectSpecificProperties()
 {
-    return new sdr::properties::CaptionProperties(*this);
+    return std::make_unique<sdr::properties::CaptionProperties>(*this);
 }
 
 
 // DrawContact section
 
-sdr::contact::ViewContact* SdrCaptionObj::CreateObjectSpecificViewContact()
+std::unique_ptr<sdr::contact::ViewContact> SdrCaptionObj::CreateObjectSpecificViewContact()
 {
-    return new sdr::contact::ViewContactOfSdrCaptionObj(*this);
+    return std::make_unique<sdr::contact::ViewContactOfSdrCaptionObj>(*this);
 }
 
 
-SdrCaptionObj::SdrCaptionObj():
-    SdrRectObj(OBJ_TEXT),
+SdrCaptionObj::SdrCaptionObj(SdrModel& rSdrModel)
+:   SdrRectObj(rSdrModel, OBJ_TEXT),
     aTailPoly(3),  // default size: 3 points = 2 lines
     mbSpecialTextBoxShadow(false),
-    mbFixedTail(false)
+    mbFixedTail(false),
+    mbSuppressGetBitmap(false),
+    maFixedTailPos()
 {
 }
 
-SdrCaptionObj::SdrCaptionObj(const tools::Rectangle& rRect, const Point& rTail):
-    SdrRectObj(OBJ_TEXT,rRect),
+SdrCaptionObj::SdrCaptionObj(
+    SdrModel& rSdrModel,
+    const tools::Rectangle& rRect,
+    const Point& rTail)
+:   SdrRectObj(rSdrModel, OBJ_TEXT,rRect),
     aTailPoly(3),  // default size: 3 points = 2 lines
     mbSpecialTextBoxShadow(false),
-    mbFixedTail(false)
+    mbFixedTail(false),
+    mbSuppressGetBitmap(false),
+    maFixedTailPos()
 {
     aTailPoly[0]=maFixedTailPos=rTail;
 }
@@ -232,14 +230,28 @@ sal_uInt16 SdrCaptionObj::GetObjIdentifier() const
     return sal_uInt16(OBJ_CAPTION);
 }
 
-SdrCaptionObj* SdrCaptionObj::Clone() const
+SdrCaptionObj* SdrCaptionObj::CloneSdrObject(SdrModel& rTargetModel) const
 {
-    return CloneHelper< SdrCaptionObj >();
+    return CloneHelper< SdrCaptionObj >(rTargetModel);
+}
+
+SdrCaptionObj& SdrCaptionObj::operator=(const SdrCaptionObj& rObj)
+{
+    if( this == &rObj )
+        return *this;
+    SdrRectObj::operator=(rObj);
+
+    aTailPoly = rObj.aTailPoly;
+    mbSpecialTextBoxShadow = rObj.mbSpecialTextBoxShadow;
+    mbFixedTail = rObj.mbFixedTail;
+    maFixedTailPos = rObj.maFixedTailPos;
+
+    return *this;
 }
 
 OUString SdrCaptionObj::TakeObjNameSingul() const
 {
-    OUStringBuffer sName(ImpGetResStr(STR_ObjNameSingulCAPTION));
+    OUStringBuffer sName(SvxResId(STR_ObjNameSingulCAPTION));
 
     OUString aName(GetName());
     if (!aName.isEmpty())
@@ -255,7 +267,7 @@ OUString SdrCaptionObj::TakeObjNameSingul() const
 
 OUString SdrCaptionObj::TakeObjNamePlural() const
 {
-    return ImpGetResStr(STR_ObjNamePluralCAPTION);
+    return SvxResId(STR_ObjNamePluralCAPTION);
 }
 
 basegfx::B2DPolyPolygon SdrCaptionObj::TakeXorPoly() const
@@ -270,36 +282,18 @@ sal_uInt32 SdrCaptionObj::GetHdlCount() const
 {
     sal_uInt32 nCount1(SdrRectObj::GetHdlCount());
     // Currently only dragging the tail's end is implemented.
-    return nCount1 + 1L;
+    return nCount1 + 1;
 }
 
-SdrHdl* SdrCaptionObj::GetHdl(sal_uInt32 nHdlNum) const
+void SdrCaptionObj::AddToHdlList(SdrHdlList& rHdlList) const
 {
-    const sal_uInt32 nRectHdlAnz(SdrRectObj::GetHdlCount());
-
-    if(nHdlNum < nRectHdlAnz)
-    {
-        return SdrRectObj::GetHdl(nHdlNum);
-    }
-    else
-    {
-        sal_uInt32 nPntNum(nHdlNum);
-        nPntNum -= nRectHdlAnz;
-
-        if(nPntNum < aTailPoly.GetSize())
-        {
-            SdrHdl* pHdl = new SdrHdl(aTailPoly.GetPoint((sal_uInt16)nPntNum), SdrHdlKind::Poly);
-            pHdl->SetPolyNum(1L);
-            pHdl->SetPointNum(nPntNum);
-            return pHdl;
-        }
-        else
-        {
-            return nullptr;
-        }
-    }
+    SdrRectObj::AddToHdlList(rHdlList);
+    // Currently only dragging the tail's end is implemented.
+    std::unique_ptr<SdrHdl> pHdl(new SdrHdl(aTailPoly.GetPoint(0), SdrHdlKind::Poly));
+    pHdl->SetPolyNum(1);
+    pHdl->SetPointNum(0);
+    rHdlList.AddHdl(std::move(pHdl));
 }
-
 
 bool SdrCaptionObj::hasSpecialDrag() const
 {
@@ -395,18 +389,14 @@ OUString SdrCaptionObj::getSpecialDragComment(const SdrDragStat& rDrag) const
         }
         else
         {
-            OUString aStr;
-
             if(!pHdl)
             {
-                ImpTakeDescriptionStr(STR_DragCaptFram, aStr);
+                return ImpGetDescriptionStr(STR_DragCaptFram);
             }
             else
             {
-                ImpTakeDescriptionStr(STR_DragCaptTail, aStr);
+                return ImpGetDescriptionStr(STR_DragCaptTail);
             }
-
-            return aStr;
         }
     }
 }
@@ -415,15 +405,15 @@ OUString SdrCaptionObj::getSpecialDragComment(const SdrDragStat& rDrag) const
 void SdrCaptionObj::ImpGetCaptParams(ImpCaptParams& rPara) const
 {
     const SfxItemSet& rSet = GetObjectItemSet();
-    rPara.eType      =static_cast<const SdrCaptionTypeItem&>      (rSet.Get(SDRATTR_CAPTIONTYPE      )).GetValue();
-    rPara.bFixedAngle=static_cast<const SdrOnOffItem&>            (rSet.Get(SDRATTR_CAPTIONFIXEDANGLE)).GetValue();
+    rPara.eType      =rSet.Get(SDRATTR_CAPTIONTYPE      ).GetValue();
+    rPara.bFixedAngle=rSet.Get(SDRATTR_CAPTIONFIXEDANGLE).GetValue();
     rPara.nGap       =static_cast<const SdrCaptionGapItem&>       (rSet.Get(SDRATTR_CAPTIONGAP       )).GetValue();
-    rPara.eEscDir    =static_cast<const SdrCaptionEscDirItem&>    (rSet.Get(SDRATTR_CAPTIONESCDIR    )).GetValue();
-    rPara.bEscRel    =static_cast<const SdrCaptionEscIsRelItem&>  (rSet.Get(SDRATTR_CAPTIONESCISREL  )).GetValue();
-    rPara.nEscRel    =static_cast<const SdrCaptionEscRelItem&>    (rSet.Get(SDRATTR_CAPTIONESCREL    )).GetValue();
-    rPara.nEscAbs    =static_cast<const SdrCaptionEscAbsItem&>    (rSet.Get(SDRATTR_CAPTIONESCABS    )).GetValue();
-    rPara.nLineLen   =static_cast<const SdrCaptionLineLenItem&>   (rSet.Get(SDRATTR_CAPTIONLINELEN   )).GetValue();
-    rPara.bFitLineLen=static_cast<const SdrCaptionFitLineLenItem&>(rSet.Get(SDRATTR_CAPTIONFITLINELEN)).GetValue();
+    rPara.eEscDir    =rSet.Get(SDRATTR_CAPTIONESCDIR    ).GetValue();
+    rPara.bEscRel    =rSet.Get(SDRATTR_CAPTIONESCISREL  ).GetValue();
+    rPara.nEscRel    =rSet.Get(SDRATTR_CAPTIONESCREL    ).GetValue();
+    rPara.nEscAbs    =rSet.Get(SDRATTR_CAPTIONESCABS    ).GetValue();
+    rPara.nLineLen   =rSet.Get(SDRATTR_CAPTIONLINELEN   ).GetValue();
+    rPara.bFitLineLen=rSet.Get(SDRATTR_CAPTIONFITLINELEN).GetValue();
 }
 
 void SdrCaptionObj::ImpRecalcTail()
@@ -445,7 +435,7 @@ void SdrCaptionObj::ImpRecalcTail()
 // tail end pos for SdrCaptionType::Type1. This sure was the simplest method
 // to achieve this, at the cost of making a whole group of const methods
 // of this object implicitly change the object's position.
-void SdrCaptionObj::ImpCalcTail1(const ImpCaptParams& rPara, tools::Polygon& rPoly, tools::Rectangle& rRect)
+void SdrCaptionObj::ImpCalcTail1(const ImpCaptParams& rPara, tools::Polygon& rPoly, tools::Rectangle const & rRect)
 {
     tools::Polygon aPol(2);
     Point aTl(rPoly[0]);
@@ -461,17 +451,17 @@ void SdrCaptionObj::ImpCalcTail1(const ImpCaptParams& rPara, tools::Polygon& rPo
 
     if(eEscDir==LKS || eEscDir==RTS)
     {
-        aPol[0].X() = aEscPos.X();
+        aPol[0].setX( aEscPos.X() );
     }
     else
     {
-        aPol[0].Y() = aEscPos.Y();
+        aPol[0].setY( aEscPos.Y() );
     }
 
     rPoly = aPol;
 }
 
-void SdrCaptionObj::ImpCalcTail2(const ImpCaptParams& rPara, tools::Polygon& rPoly, tools::Rectangle& rRect)
+void SdrCaptionObj::ImpCalcTail2(const ImpCaptParams& rPara, tools::Polygon& rPoly, tools::Rectangle const & rRect)
 { // Gap/EscDir/EscPos/Angle
     tools::Polygon aPol(2);
     Point aTl(rPoly[0]);
@@ -488,7 +478,7 @@ void SdrCaptionObj::ImpCalcTail2(const ImpCaptParams& rPara, tools::Polygon& rPo
     rPoly=aPol;
 }
 
-void SdrCaptionObj::ImpCalcTail3(const ImpCaptParams& rPara, tools::Polygon& rPoly, tools::Rectangle& rRect)
+void SdrCaptionObj::ImpCalcTail3(const ImpCaptParams& rPara, tools::Polygon& rPoly, tools::Rectangle const & rRect)
 { // Gap/EscDir/EscPos/Angle/LineLen
     tools::Polygon aPol(3);
     Point aTl(rPoly[0]);
@@ -502,17 +492,17 @@ void SdrCaptionObj::ImpCalcTail3(const ImpCaptParams& rPara, tools::Polygon& rPo
 
     if (eEscDir==LKS || eEscDir==RTS) {
         if (rPara.bFitLineLen) {
-            aPol[1].X()=(aTl.X()+aEscPos.X())/2;
+            aPol[1].setX((aTl.X()+aEscPos.X())/2 );
         } else {
-            if (eEscDir==LKS) aPol[1].X()-=rPara.nLineLen;
-            else aPol[1].X()+=rPara.nLineLen;
+            if (eEscDir==LKS) aPol[1].AdjustX( -(rPara.nLineLen) );
+            else aPol[1].AdjustX(rPara.nLineLen );
         }
     } else {
         if (rPara.bFitLineLen) {
-            aPol[1].Y()=(aTl.Y()+aEscPos.Y())/2;
+            aPol[1].setY((aTl.Y()+aEscPos.Y())/2 );
         } else {
-            if (eEscDir==OBN) aPol[1].Y()-=rPara.nLineLen;
-            else aPol[1].Y()+=rPara.nLineLen;
+            if (eEscDir==OBN) aPol[1].AdjustY( -(rPara.nLineLen) );
+            else aPol[1].AdjustY(rPara.nLineLen );
         }
     }
     if (!rPara.bFixedAngle) {
@@ -521,7 +511,7 @@ void SdrCaptionObj::ImpCalcTail3(const ImpCaptParams& rPara, tools::Polygon& rPo
     rPoly=aPol;
 }
 
-void SdrCaptionObj::ImpCalcTail(const ImpCaptParams& rPara, tools::Polygon& rPoly, tools::Rectangle& rRect)
+void SdrCaptionObj::ImpCalcTail(const ImpCaptParams& rPara, tools::Polygon& rPoly, tools::Rectangle const & rRect)
 {
     switch (rPara.eType) {
         case SdrCaptionType::Type1: ImpCalcTail1(rPara,rPoly,rRect); break;
@@ -578,15 +568,15 @@ void SdrCaptionObj::BrkCreate(SdrDragStat& /*rStat*/)
 basegfx::B2DPolyPolygon SdrCaptionObj::TakeCreatePoly(const SdrDragStat& /*rDrag*/) const
 {
     basegfx::B2DPolyPolygon aRetval;
-    const basegfx::B2DRange aRange(maRect.Left(), maRect.Top(), maRect.Right(), maRect.Bottom());
-    aRetval.append(basegfx::tools::createPolygonFromRect(aRange));
+    const basegfx::B2DRange aRange =vcl::unotools::b2DRectangleFromRectangle(maRect);
+    aRetval.append(basegfx::utils::createPolygonFromRect(aRange));
     aRetval.append(aTailPoly.getB2DPolygon());
     return aRetval;
 }
 
-Pointer SdrCaptionObj::GetCreatePointer() const
+PointerStyle SdrCaptionObj::GetCreatePointer() const
 {
-    return Pointer(PointerStyle::DrawCaption);
+    return PointerStyle::DrawCaption;
 }
 
 void SdrCaptionObj::NbcMove(const Size& rSiz)
@@ -654,19 +644,13 @@ void SdrCaptionObj::NbcSetTailPos(const Point& rPos)
 sal_uInt32 SdrCaptionObj::GetSnapPointCount() const
 {
     // TODO: Implementation missing.
-    return 0L;
+    return 0;
 }
 
 Point SdrCaptionObj::GetSnapPoint(sal_uInt32 /*i*/) const
 {
     // TODO: Implementation missing.
     return Point(0,0);
-}
-
-void SdrCaptionObj::SetModel(SdrModel* pNewModel)
-{
-    SdrRectObj::SetModel(pNewModel);
-    ImpRecalcTail();
 }
 
 void SdrCaptionObj::Notify(SfxBroadcaster& rBC, const SfxHint& rHint)
@@ -694,25 +678,34 @@ void SdrCaptionObj::RestGeoData(const SdrObjGeoData& rGeo)
     aTailPoly=rCGeo.aTailPoly;
 }
 
-SdrObject* SdrCaptionObj::DoConvertToPolyObj(bool bBezier, bool bAddText) const
+SdrObjectUniquePtr SdrCaptionObj::DoConvertToPolyObj(bool bBezier, bool bAddText) const
 {
-    SdrObject* pRect=SdrRectObj::DoConvertToPolyObj(bBezier, bAddText);
-    SdrObject* pTail = ImpConvertMakeObj(basegfx::B2DPolyPolygon(aTailPoly.getB2DPolygon()), false, bBezier);
-    SdrObject* pRet=(pTail!=nullptr) ? pTail : pRect;
-    if (pTail!=nullptr && pRect!=nullptr) {
-        bool bInsRect = true;
-        bool bInsTail = true;
-        SdrObjList* pOL=pTail->GetSubList();
-        if (pOL!=nullptr) { pRet=pRect; bInsTail = false; }
-        if (pOL==nullptr) pOL=pRect->GetSubList();
-        if (pOL!=nullptr) { pRet=pRect; bInsRect = false; }
-        if (pOL==nullptr) {
-            SdrObjGroup* pGrp=new SdrObjGroup;
-            pOL=pGrp->GetSubList();
-            pRet=pGrp;
+    SdrObjectUniquePtr pRect = SdrRectObj::DoConvertToPolyObj(bBezier, bAddText);
+    SdrObjectUniquePtr pTail = ImpConvertMakeObj(basegfx::B2DPolyPolygon(aTailPoly.getB2DPolygon()), false, bBezier);
+    SdrObjectUniquePtr pRet;
+    if (pTail && !pRect)
+        pRet = std::move(pTail);
+    else if (pRect && !pTail)
+        pRet = std::move(pRect);
+    else if (pTail && pRect)
+    {
+        if (pTail->GetSubList())
+        {
+            pTail->GetSubList()->NbcInsertObject(pRect.release());
+            pRet = std::move(pTail);
         }
-        if (bInsRect) pOL->NbcInsertObject(pRect);
-        if (bInsTail) pOL->NbcInsertObject(pTail,0);
+        else if (pRect->GetSubList())
+        {
+            pRect->GetSubList()->NbcInsertObject(pTail.release(),0);
+            pRet = std::move(pRect);
+        }
+        else
+        {
+            SdrObjGroup* pGrp = new SdrObjGroup(getSdrModelFromSdrObject());
+            pGrp->GetSubList()->NbcInsertObject(pRect.release());
+            pGrp->GetSubList()->NbcInsertObject(pTail.release(),0);
+            pRet.reset(pGrp);
+        }
     }
     return pRet;
 }
@@ -746,33 +739,8 @@ void SdrCaptionObj::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, cons
 
     handleNegativeScale(aScale, &fRotate);
 
-    // force metric to pool metric
-    MapUnit eMapUnit = pModel->GetItemPool().GetMetric(0);
-    if(eMapUnit != MapUnit::Map100thMM)
-    {
-        switch(eMapUnit)
-        {
-            case MapUnit::MapTwip :
-            {
-                // position
-                aTranslate.setX(ImplMMToTwips(aTranslate.getX()));
-                aTranslate.setY(ImplMMToTwips(aTranslate.getY()));
-
-                // size
-                aScale.setX(ImplMMToTwips(aScale.getX()));
-                aScale.setY(ImplMMToTwips(aScale.getY()));
-
-                break;
-            }
-            default:
-            {
-                OSL_FAIL("TRSetBaseGeometry: Missing unit translation to PoolMetric!");
-            }
-        }
-    }
-
     // if anchor is used, make position relative to it
-    if( pModel->IsWriter() )
+    if(getSdrModelFromSdrObject().IsWriter())
     {
         if(GetAnchorPos().X() || GetAnchorPos().Y())
         {

@@ -20,18 +20,18 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_MODEL_SLSPAGEDESCRIPTOR_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_MODEL_SLSPAGEDESCRIPTOR_HXX
 
-#include "model/SlsVisualState.hxx"
-#include <com/sun/star/drawing/XDrawPage.hpp>
+#include <model/SlsVisualState.hxx>
 #include <tools/gen.hxx>
-#include <vcl/bitmap.hxx>
-#include <sfx2/viewfrm.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <memory>
+
+namespace com::sun::star::drawing { class XDrawPage; }
 
 class SdPage;
 class SdrPage;
 
-namespace sd { namespace slidesorter { namespace model {
+namespace sd::slidesorter::model {
 
 /** Each PageDescriptor object represents the preview of one draw page,
     slide, or master page of a Draw or Impress document as they are displayed
@@ -140,7 +140,7 @@ private:
     PageDescriptor& operator= (const PageDescriptor& rDescriptor) = delete;
 };
 
-} } } // end of namespace ::sd::slidesorter::model
+} // end of namespace ::sd::slidesorter::model
 
 #endif
 

@@ -17,14 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hintids.hxx"
-#include <svl/aeitem.hxx>
+#include <hintids.hxx>
 #include <svl/itempool.hxx>
+#include <svl/stritem.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdview.hxx>
 #include <svx/svdpage.hxx>
-#include <editeng/editview.hxx>
-#include <editeng/editeng.hxx>
 #include <editeng/outliner.hxx>
 #include <svx/fmview.hxx>
 #include <svx/dataaccessdescriptor.hxx>
@@ -33,8 +31,6 @@
 #include <IDocumentDeviceAccess.hxx>
 #include <textboxhelper.hxx>
 #include <editeng/langitem.hxx>
-#include <linguistic/lngprops.hxx>
-#include <editeng/unolingu.hxx>
 #include <svx/fontworkbar.hxx>
 #include <svx/fontworkgallery.hxx>
 #include <editeng/eeitem.hxx>
@@ -43,31 +39,28 @@
 #include <editeng/editstat.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/bindings.hxx>
-#include <sfx2/printer.hxx>
-#include <svx/fmglob.hxx>
 #include <sfx2/dispatch.hxx>
 #include <svx/svdoutl.hxx>
+#include <vcl/ptrstyle.hxx>
 
-#include "view.hxx"
-#include "wrtsh.hxx"
-#include "viewopt.hxx"
-#include "cmdid.h"
-#include "drawsh.hxx"
-#include "drwbassh.hxx"
-#include "beziersh.hxx"
-#include "conrect.hxx"
-#include "conpoly.hxx"
-#include "conarc.hxx"
-#include "conform.hxx"
-#include "concustomshape.hxx"
-#include "dselect.hxx"
-#include "edtwin.hxx"
+#include <view.hxx>
+#include <wrtsh.hxx>
+#include <viewopt.hxx>
+#include <cmdid.h>
+#include <drwbassh.hxx>
+#include <beziersh.hxx>
+#include <conrect.hxx>
+#include <conpoly.hxx>
+#include <conarc.hxx>
+#include <conform.hxx>
+#include <concustomshape.hxx>
+#include <dselect.hxx>
+#include <edtwin.hxx>
 
 #include <dcontact.hxx>
 
 #include <svx/svdpagv.hxx>
 #include <svx/extrusionbar.hxx>
-#include <vcl/svapp.hxx>
 #include <comphelper/lok.hxx>
 #include <sfx2/lokhelper.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
@@ -115,7 +108,7 @@ void SwView::ExecDraw(SfxRequest& rReq)
             if( pDescriptorItem )
             {
                 svx::ODataAccessDescriptor aDescriptor( pDescriptorItem->GetValue() );
-                SdrObject* pObj = pFormView->CreateFieldControl( aDescriptor );
+                SdrObjectUniquePtr pObj = pFormView->CreateFieldControl( aDescriptor );
 
                 if ( pObj )
                 {
@@ -123,42 +116,41 @@ void SwView::ExecDraw(SfxRequest& rReq)
                     const SwRect& rVisArea = m_pWrtShell->VisArea();
                     Point aStartPos = rVisArea.Center();
                     if(rVisArea.Width() > aDocSize.Width())
-                        aStartPos.X() = aDocSize.Width() / 2 + rVisArea.Left();
+                        aStartPos.setX( aDocSize.Width() / 2 + rVisArea.Left() );
                     if(rVisArea.Height() > aDocSize.Height())
-                        aStartPos.Y() = aDocSize.Height() / 2 + rVisArea.Top();
+                        aStartPos.setY( aDocSize.Height() / 2 + rVisArea.Top() );
 
                     //determine the size of the object
                     if(pObj->IsGroupObject())
                     {
-                        const tools::Rectangle& rBoundRect = static_cast<SdrObjGroup*>(pObj)->GetCurrentBoundRect();
-                        aStartPos.X() -= rBoundRect.GetWidth()/2;
-                        aStartPos.Y() -= rBoundRect.GetHeight()/2;
+                        const tools::Rectangle& rBoundRect = static_cast<SdrObjGroup*>(pObj.get())->GetCurrentBoundRect();
+                        aStartPos.AdjustX( -(rBoundRect.GetWidth()/2) );
+                        aStartPos.AdjustY( -(rBoundRect.GetHeight()/2) );
                     }
 
                     // TODO: unmark all other
                     m_pWrtShell->EnterStdMode();
-                    m_pWrtShell->SwFEShell::InsertDrawObj( *pObj, aStartPos );
+                    m_pWrtShell->SwFEShell::InsertDrawObj( *(pObj.release()), aStartPos );
                 }
             }
         }
     }
     else if ( nSlotId == SID_FONTWORK_GALLERY_FLOATER )
     {
-        vcl::Window*  pWin = &( m_pWrtShell->GetView().GetViewFrame()->GetWindow() );
+        vcl::Window& rWin = m_pWrtShell->GetView().GetViewFrame()->GetWindow();
 
-        if ( pWin )
-            pWin->EnterWait();
+        rWin.EnterWait();
 
         if( !m_pWrtShell->HasDrawView() )
             m_pWrtShell->MakeDrawView();
 
         pSdrView = m_pWrtShell->GetDrawView();
-        if ( pSdrView )
+        if (pSdrView)
         {
             SdrObject* pObj = nullptr;
-            ScopedVclPtrInstance< svx::FontWorkGalleryDialog > aDlg( pSdrView, pWin );
-            aDlg->SetSdrObjectRef( &pObj, pSdrView->GetModel() );
-            aDlg->Execute();
+            svx::FontWorkGalleryDialog aDlg(rWin.GetFrameWeld(), *pSdrView);
+            aDlg.SetSdrObjectRef( &pObj, pSdrView->GetModel() );
+            aDlg.run();
             if ( pObj )
             {
                 Size            aDocSize( m_pWrtShell->GetDocSize() );
@@ -168,18 +160,13 @@ void SwView::ExecDraw(SfxRequest& rReq)
                 Size            aPrefSize( pObj->GetSnapRect().GetSize() );
 
                 if( rVisArea.Width() > aDocSize.Width())
-                    aPos.X() = aDocSize.Width() / 2 + rVisArea.Left();
+                    aPos.setX( aDocSize.Width() / 2 + rVisArea.Left() );
 
                 if(rVisArea.Height() > aDocSize.Height())
-                    aPos.Y() = aDocSize.Height() / 2 + rVisArea.Top();
+                    aPos.setY( aDocSize.Height() / 2 + rVisArea.Top() );
 
                 if( aPrefSize.Width() && aPrefSize.Height() )
-                {
-                    if( pWin )
-                        aSize = pWin->PixelToLogic( aPrefSize, MapUnit::MapTwip );
-                    else
-                        aSize = Application::GetDefaultDevice()->PixelToLogic( aPrefSize, MapUnit::MapTwip );
-                }
+                    aSize = rWin.PixelToLogic(aPrefSize, MapMode(MapUnit::MapTwip));
                 else
                     aSize = Size( 2835, 2835 );
 
@@ -188,8 +175,7 @@ void SwView::ExecDraw(SfxRequest& rReq)
                 rReq.Ignore ();
             }
         }
-        if( pWin )
-            pWin->LeaveWait();
+        rWin.LeaveWait();
     }
     else if ( m_nFormSfxId != USHRT_MAX )
         GetViewFrame()->GetDispatcher()->Execute( SID_FM_LEAVE_CREATE );
@@ -202,7 +188,7 @@ void SwView::ExecDraw(SfxRequest& rReq)
         {
             ConstCustomShape* pConstCustomShape = static_cast<ConstCustomShape*>(pFuncPtr);
             OUString aNew = ConstCustomShape::GetShapeTypeFromRequest( rReq );
-            OUString aOld = pConstCustomShape->GetShapeType();
+            const OUString& aOld = pConstCustomShape->GetShapeType();
             if( aNew == aOld )
             {
                 bDeselect = true;
@@ -225,7 +211,7 @@ void SwView::ExecDraw(SfxRequest& rReq)
             m_pWrtShell->EnterSelFrameMode();
         LeaveDrawCreate();
 
-        AttrChangedNotify(m_pWrtShell);
+        AttrChangedNotify(nullptr);
         return;
     }
 
@@ -234,13 +220,16 @@ void SwView::ExecDraw(SfxRequest& rReq)
     if (m_pWrtShell->IsFrameSelected())
         m_pWrtShell->EnterStdMode();  // because bug #45639
 
-    SwDrawBase* pFuncPtr = nullptr;
+    std::unique_ptr<SwDrawBase> pFuncPtr;
+
+    // for LibreOfficeKit - choosing a shape should construct it directly
+    bool bCreateDirectly = false;
 
     switch (nSlotId)
     {
         case SID_OBJECT_SELECT:
         case SID_DRAW_SELECT:
-            pFuncPtr = new DrawSelection(m_pWrtShell, m_pEditWin, this);
+            pFuncPtr.reset( new DrawSelection(m_pWrtShell.get(), m_pEditWin, this) );
             m_nDrawSfxId = m_nFormSfxId = SID_OBJECT_SELECT;
             m_sDrawCustom.clear();
             break;
@@ -262,7 +251,7 @@ void SwView::ExecDraw(SfxRequest& rReq)
         case SID_DRAW_TEXT_MARQUEE:
         case SID_DRAW_CAPTION:
         case SID_DRAW_CAPTION_VERTICAL:
-            pFuncPtr = new ConstRectangle(m_pWrtShell, m_pEditWin, this);
+            pFuncPtr.reset( new ConstRectangle(m_pWrtShell.get(), m_pEditWin, this) );
             m_nDrawSfxId = nSlotId;
             m_sDrawCustom.clear();
             break;
@@ -275,7 +264,7 @@ void SwView::ExecDraw(SfxRequest& rReq)
         case SID_DRAW_BEZIER_FILL:
         case SID_DRAW_FREELINE_NOFILL:
         case SID_DRAW_FREELINE:
-            pFuncPtr = new ConstPolygon(m_pWrtShell, m_pEditWin, this);
+            pFuncPtr.reset( new ConstPolygon(m_pWrtShell.get(), m_pEditWin, this) );
             m_nDrawSfxId = nSlotId;
             m_sDrawCustom.clear();
             break;
@@ -283,7 +272,7 @@ void SwView::ExecDraw(SfxRequest& rReq)
         case SID_DRAW_ARC:
         case SID_DRAW_PIE:
         case SID_DRAW_CIRCLECUT:
-            pFuncPtr = new ConstArc(m_pWrtShell, m_pEditWin, this);
+            pFuncPtr.reset( new ConstArc(m_pWrtShell.get(), m_pEditWin, this) );
             m_nDrawSfxId = nSlotId;
             m_sDrawCustom.clear();
             break;
@@ -293,7 +282,7 @@ void SwView::ExecDraw(SfxRequest& rReq)
             const SfxUInt16Item* pIdentifierItem = rReq.GetArg<SfxUInt16Item>(SID_FM_CONTROL_IDENTIFIER);
             if( pIdentifierItem )
                 nSlotId = pIdentifierItem->GetValue();
-            pFuncPtr = new ConstFormControl(m_pWrtShell, m_pEditWin, this);
+            pFuncPtr.reset( new ConstFormControl(m_pWrtShell.get(), m_pEditWin, this) );
             m_nFormSfxId = nSlotId;
         }
         break;
@@ -306,7 +295,10 @@ void SwView::ExecDraw(SfxRequest& rReq)
         case SID_DRAWTBX_CS_STAR :
         case SID_DRAW_CS_ID :
         {
-            pFuncPtr = new ConstCustomShape(m_pWrtShell, m_pEditWin, this, rReq );
+            pFuncPtr.reset( new ConstCustomShape(m_pWrtShell.get(), m_pEditWin, this, rReq ) );
+
+            bCreateDirectly = comphelper::LibreOfficeKit::isActive();
+
             m_nDrawSfxId = nSlotId;
             if ( nSlotId != SID_DRAW_CS_ID )
             {
@@ -333,24 +325,28 @@ void SwView::ExecDraw(SfxRequest& rReq)
         if (GetDrawFuncPtr())
         {
             GetDrawFuncPtr()->Deactivate();
-            SetDrawFuncPtr(nullptr);
         }
 
-        SetDrawFuncPtr(pFuncPtr);
-        AttrChangedNotify(m_pWrtShell);
+        auto pTempFuncPtr = pFuncPtr.get();
+        SetDrawFuncPtr(std::move(pFuncPtr));
+        AttrChangedNotify(nullptr);
 
-        pFuncPtr->Activate(nSlotId);
+        pTempFuncPtr->Activate(nSlotId);
         NoRotate();
-        if(rReq.GetModifier() == KEY_MOD1)
+        if(rReq.GetModifier() == KEY_MOD1 || bCreateDirectly)
         {
             if(SID_OBJECT_SELECT == m_nDrawSfxId )
             {
                 m_pWrtShell->GotoObj(true);
             }
+            else if (dynamic_cast<ConstCustomShape*>(pTempFuncPtr))
+            {
+                pTempFuncPtr->CreateDefaultObject();
+            }
             else
             {
-                pFuncPtr->CreateDefaultObject();
-                pFuncPtr->Deactivate();
+                pTempFuncPtr->CreateDefaultObject();
+                pTempFuncPtr->Deactivate();
                 SetDrawFuncPtr(nullptr);
                 LeaveDrawCreate();
                 m_pWrtShell->EnterStdMode();
@@ -376,7 +372,7 @@ void SwView::ExecDraw(SfxRequest& rReq)
     if(bEndTextEdit && pSdrView && pSdrView->IsTextEdit())
         pSdrView->SdrEndTextEdit( true );
 
-    AttrChangedNotify(m_pWrtShell);
+    AttrChangedNotify(nullptr);
 }
 
 // End drawing
@@ -385,48 +381,48 @@ void SwView::ExitDraw()
 {
     NoRotate();
 
-    if(m_pShell)
+    if(!m_pShell)
+        return;
+
+    // the shell may be invalid at close/reload/SwitchToViewShell
+    SfxDispatcher* pDispatch = GetViewFrame()->GetDispatcher();
+    sal_uInt16 nIdx = 0;
+    SfxShell* pTest = nullptr;
+    do
     {
-        // the shell may be invalid at close/reload/SwitchToViewShell
-        SfxDispatcher* pDispatch = GetViewFrame()->GetDispatcher();
-        sal_uInt16 nIdx = 0;
-        SfxShell* pTest = nullptr;
-        do
-        {
-            pTest = pDispatch->GetShell(nIdx++);
-        }
-        while( pTest && pTest != this && pTest != m_pShell);
-        if(pTest == m_pShell &&
-            // don't call LeaveSelFrameMode() etc. for the below,
-            // because objects may still be selected:
-            dynamic_cast< const SwDrawBaseShell *>( m_pShell ) ==  nullptr &&
-            dynamic_cast< const SwBezierShell *>( m_pShell ) ==  nullptr &&
-            dynamic_cast< const svx::ExtrusionBar *>( m_pShell ) ==  nullptr &&
-            dynamic_cast< const svx::FontworkBar *>( m_pShell ) ==  nullptr)
-        {
-            SdrView *pSdrView = m_pWrtShell->GetDrawView();
-
-            if (pSdrView && pSdrView->IsGroupEntered())
-            {
-                pSdrView->LeaveOneGroup();
-                pSdrView->UnmarkAll();
-                GetViewFrame()->GetBindings().Invalidate(SID_ENTER_GROUP);
-            }
-
-            if (GetDrawFuncPtr())
-            {
-                if (m_pWrtShell->IsSelFrameMode())
-                    m_pWrtShell->LeaveSelFrameMode();
-                GetDrawFuncPtr()->Deactivate();
-
-                SetDrawFuncPtr(nullptr);
-                LeaveDrawCreate();
-
-                GetViewFrame()->GetBindings().Invalidate(SID_INSERT_DRAW);
-            }
-            GetEditWin().SetPointer(Pointer(PointerStyle::Text));
-        }
+        pTest = pDispatch->GetShell(nIdx++);
     }
+    while( pTest && pTest != this && pTest != m_pShell);
+    if(!(pTest == m_pShell &&
+        // don't call LeaveSelFrameMode() etc. for the below,
+        // because objects may still be selected:
+        dynamic_cast< const SwDrawBaseShell *>( m_pShell ) ==  nullptr &&
+        dynamic_cast< const SwBezierShell *>( m_pShell ) ==  nullptr &&
+        dynamic_cast< const svx::ExtrusionBar *>( m_pShell ) ==  nullptr &&
+        dynamic_cast< const svx::FontworkBar *>( m_pShell ) ==  nullptr))
+        return;
+
+    SdrView *pSdrView = m_pWrtShell->GetDrawView();
+
+    if (pSdrView && pSdrView->IsGroupEntered())
+    {
+        pSdrView->LeaveOneGroup();
+        pSdrView->UnmarkAll();
+        GetViewFrame()->GetBindings().Invalidate(SID_ENTER_GROUP);
+    }
+
+    if (GetDrawFuncPtr())
+    {
+        if (m_pWrtShell->IsSelFrameMode())
+            m_pWrtShell->LeaveSelFrameMode();
+        GetDrawFuncPtr()->Deactivate();
+
+        SetDrawFuncPtr(nullptr);
+        LeaveDrawCreate();
+
+        GetViewFrame()->GetBindings().Invalidate(SID_INSERT_DRAW);
+    }
+    GetEditWin().SetPointer(PointerStyle::Text);
 }
 
 // Disable rotate mode
@@ -445,7 +441,7 @@ void SwView::NoRotate()
 
 // Enable DrawTextEditMode
 
-static bool lcl_isTextBox(SdrObject* pObject)
+static bool lcl_isTextBox(SdrObject const * pObject)
 {
     if (SwDrawContact* pDrawContact = static_cast<SwDrawContact*>(pObject->GetUserCall()))
     {
@@ -503,7 +499,7 @@ bool SwView::BeginTextEdit(SdrObject* pObj, SdrPageView* pPV, vcl::Window* pWin,
 {
     SwWrtShell *pSh = &GetWrtShell();
     SdrView *pSdrView = pSh->GetDrawView();
-    SdrOutliner* pOutliner = ::SdrMakeOutliner(OutlinerMode::TextObject, *pSdrView->GetModel());
+    std::unique_ptr<SdrOutliner> pOutliner = ::SdrMakeOutliner(OutlinerMode::TextObject, *pSdrView->GetModel());
     uno::Reference< linguistic2::XSpellChecker1 >  xSpell( ::GetSpellChecker() );
     if (pOutliner)
     {
@@ -511,7 +507,7 @@ bool SwView::BeginTextEdit(SdrObject* pObj, SdrPageView* pPV, vcl::Window* pWin,
         pOutliner->SetSpeller(xSpell);
         uno::Reference<linguistic2::XHyphenator> xHyphenator( ::GetHyphenator() );
         pOutliner->SetHyphenator( xHyphenator );
-        pSh->SetCalcFieldValueHdl(pOutliner);
+        pSh->SetCalcFieldValueHdl(pOutliner.get());
 
         EEControlBits nCntrl = pOutliner->GetControlWord();
         nCntrl |= EEControlBits::ALLOWBIGOBJS;
@@ -538,7 +534,7 @@ bool SwView::BeginTextEdit(SdrObject* pObj, SdrPageView* pPV, vcl::Window* pWin,
 
         // set default horizontal text direction at outliner
         EEHorizontalTextDirection aDefHoriTextDir =
-            pSh->IsShapeDefaultHoriTextDirR2L() ? EE_HTEXTDIR_R2L : EE_HTEXTDIR_L2R;
+            pSh->IsShapeDefaultHoriTextDirR2L() ? EEHorizontalTextDirection::R2L : EEHorizontalTextDirection::L2R;
         pOutliner->SetDefaultHorizontalTextDirection( aDefHoriTextDir );
     }
 
@@ -548,7 +544,7 @@ bool SwView::BeginTextEdit(SdrObject* pObj, SdrPageView* pPV, vcl::Window* pWin,
     SdrObject* pToBeActivated = pObj;
 
     // Always the original object is edited. To allow the TextEdit to happen
-    // where the VirtObj is positioned, on demand a occurring offset is set at
+    // where the VirtObj is positioned, on demand an occurring offset is set at
     // the TextEdit object. That offset is used for creating and managing the
     // OutlinerView.
     Point aNewTextEditOffset(0, 0);
@@ -562,7 +558,7 @@ bool SwView::BeginTextEdit(SdrObject* pObj, SdrPageView* pPV, vcl::Window* pWin,
     // set in each case, thus it will be correct for all objects
     static_cast<SdrTextObj*>(pToBeActivated)->SetTextEditOffset(aNewTextEditOffset);
 
-    bool bRet(pSdrView->SdrBeginTextEdit( pToBeActivated, pPV, pWin, true, pOutliner, nullptr, false, false, false ));
+    bool bRet(pSdrView->SdrBeginTextEdit( pToBeActivated, pPV, pWin, true, pOutliner.release(), nullptr, false, false, false ));
 
     // #i7672#
     // Since SdrBeginTextEdit actually creates the OutlinerView and thus also
@@ -618,7 +614,7 @@ SdrView* SwView::GetDrawView() const
     return GetWrtShell().GetDrawView();
 }
 
-bool SwView::IsBezierEditMode()
+bool SwView::IsBezierEditMode() const
 {
     return (!IsDrawSelMode() && GetWrtShell().GetDrawView()->HasMarkablePoints());
 }
@@ -627,16 +623,15 @@ bool SwView::IsFormMode() const
 {
     if (GetDrawFuncPtr() && GetDrawFuncPtr()->IsCreateObj())
     {
-        return (GetDrawFuncPtr()->IsInsertForm());
+        return GetDrawFuncPtr()->IsInsertForm();
     }
 
     return AreOnlyFormsSelected();
 }
 
-void SwView::SetDrawFuncPtr(SwDrawBase* pFuncPtr)
+void SwView::SetDrawFuncPtr(std::unique_ptr<SwDrawBase> pFuncPtr)
 {
-    delete m_pDrawActual;
-    m_pDrawActual = pFuncPtr;
+    m_pDrawActual = std::move(pFuncPtr);
 }
 
 void SwView::SetSelDrawSlot()
@@ -663,6 +658,8 @@ bool SwView::AreOnlyFormsSelected() const
         {
             // Except controls, are still normal draw objects selected?
             SdrObject *pSdrObj = rMarkList.GetMark(i)->GetMarkedSdrObj();
+            if (!pSdrObj)
+                continue;
 
             if (!HasOnlyObj(pSdrObj, SdrInventor::FmForm))
             {
@@ -677,29 +674,7 @@ bool SwView::AreOnlyFormsSelected() const
     return bForm;
 }
 
-bool SwView::HasDrwObj(SdrObject *pSdrObj) const
-{
-    bool bRet = false;
-
-    if (pSdrObj->IsGroupObject())
-    {
-        SdrObjList* pList = pSdrObj->GetSubList();
-        const size_t nCnt = pList->GetObjCount();
-
-        for (size_t i = 0; i < nCnt; ++i)
-        {
-            bRet = HasDrwObj(pList->GetObj(i));
-            if (bRet)
-                break;
-        }
-    }
-    else if (SdrInventor::Default == pSdrObj->GetObjInventor() || pSdrObj->Is3DObj())
-        return true;
-
-    return bRet;
-}
-
-bool SwView::HasOnlyObj(SdrObject *pSdrObj, SdrInventor eObjInventor) const
+bool SwView::HasOnlyObj(SdrObject const *pSdrObj, SdrInventor eObjInventor) const
 {
     bool bRet = false;
 
@@ -753,10 +728,9 @@ bool SwView::IsDrawTextHyphenate()
 
     SfxItemSet aNewAttr( pSdrView->GetModel()->GetItemPool(),
                             svl::Items<EE_PARA_HYPHENATE, EE_PARA_HYPHENATE>{} );
-    if( pSdrView->GetAttributes( aNewAttr ) &&
-        aNewAttr.GetItemState( EE_PARA_HYPHENATE ) >= SfxItemState::DEFAULT )
-        bHyphenate = static_cast<const SfxBoolItem&>(aNewAttr.Get( EE_PARA_HYPHENATE )).
-                        GetValue();
+    pSdrView->GetAttributes( aNewAttr );
+    if( aNewAttr.GetItemState( EE_PARA_HYPHENATE ) >= SfxItemState::DEFAULT )
+        bHyphenate = aNewAttr.Get( EE_PARA_HYPHENATE ).GetValue();
 
     return bHyphenate;
 }

@@ -19,6 +19,7 @@
 #include "vbaaddins.hxx"
 #include "vbaaddin.hxx"
 #include <unotools/pathoptions.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/ucb/SimpleFileAccess.hpp>
 
@@ -30,19 +31,17 @@ static uno::Reference< container::XIndexAccess > lcl_getAddinCollection( const u
     XNamedObjectCollectionHelper< word::XAddin >::XNamedVec aAddins;
 
     // first get the autoload addins in the directory STARTUP
-    uno::Reference< lang::XMultiComponentFactory > xMCF( xContext->getServiceManager(), uno::UNO_QUERY_THROW );
+    uno::Reference< lang::XMultiComponentFactory > xMCF( xContext->getServiceManager(), uno::UNO_SET_THROW );
     uno::Reference<ucb::XSimpleFileAccess3> xSFA(ucb::SimpleFileAccess::create(xContext));
     SvtPathOptions aPathOpt;
     // FIXME: temporary the STARTUP path is located in $OO/basic3.1/program/addin
-    OUString aAddinPath = aPathOpt.GetAddinPath();
-    SAL_INFO("sw", "lcl_getAddinCollection: " << aAddinPath );
+    const OUString& aAddinPath = aPathOpt.GetAddinPath();
+    SAL_INFO("sw.vba", "lcl_getAddinCollection: " << aAddinPath );
     if( xSFA->isFolder( aAddinPath ) )
     {
-        uno::Sequence< OUString > sEntries = xSFA->getFolderContents( aAddinPath, false );
-        sal_Int32 nEntry = sEntries.getLength();
-        for( sal_Int32 index = 0; index < nEntry; ++index )
+        const uno::Sequence< OUString > sEntries = xSFA->getFolderContents( aAddinPath, false );
+        for( const OUString& sUrl : sEntries )
         {
-            OUString sUrl = sEntries[ index ];
             if( !xSFA->isFolder( sUrl ) && sUrl.endsWithIgnoreAsciiCase( ".dot" ) )
             {
                 aAddins.push_back( uno::Reference< word::XAddin >( new SwVbaAddin( xParent, xContext, sUrl ) ) );
@@ -81,18 +80,16 @@ SwVbaAddins::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaAddins::getServiceImplName()
 {
-    return OUString("SwVbaAddins");
+    return "SwVbaAddins";
 }
 
 css::uno::Sequence<OUString>
 SwVbaAddins::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Addins";
-    }
+        "ooo.vba.word.Addins"
+    };
     return sNames;
 }
 

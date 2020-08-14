@@ -20,13 +20,12 @@
 
 // must be first
 
-#include <simplecontinuousactivitybase.hxx>
+#include "simplecontinuousactivitybase.hxx"
 
+#include <sal/log.hxx>
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         SimpleContinuousActivityBase::SimpleContinuousActivityBase(
             const ActivityParameters& rParms ) :
             ActivityBase( rParms ),
@@ -167,7 +166,7 @@ namespace slideshow
 
                 // for auto-reverse, map ranges [1,2), [3,4), ...
                 // to ranges [0,1), [1,2), etc.
-                if( ((int)nRepeats) % 2 )
+                if( static_cast<int>(nRepeats) % 2 )
                 {
                     // we're in an odd range, reverse sweep
                     nRelativeSimpleTime = 1.0 - nFractionalActiveDuration;
@@ -243,7 +242,6 @@ namespace slideshow
 
             return isActive();
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

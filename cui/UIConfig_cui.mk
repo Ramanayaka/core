@@ -14,6 +14,8 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/aboutconfigdialog\
 	cui/uiconfig/ui/aboutconfigvaluedialog \
 	cui/uiconfig/ui/accelconfigpage \
+	cui/uiconfig/ui/additionsdialog \
+	cui/uiconfig/ui/additionsfragment \
 	cui/uiconfig/ui/agingdialog \
 	cui/uiconfig/ui/acorexceptpage \
 	cui/uiconfig/ui/acoroptionspage \
@@ -25,20 +27,21 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/asiantypography \
 	cui/uiconfig/ui/assigncomponentdialog \
 	cui/uiconfig/ui/autocorrectdialog \
-	cui/uiconfig/ui/backgroundpage \
 	cui/uiconfig/ui/baselinksdialog \
 	cui/uiconfig/ui/bitmaptabpage \
-	cui/uiconfig/ui/blackorwhitelistentrydialog \
 	cui/uiconfig/ui/borderareatransparencydialog \
 	cui/uiconfig/ui/borderbackgrounddialog \
 	cui/uiconfig/ui/borderpage \
+	cui/uiconfig/ui/bulletandposition \
 	cui/uiconfig/ui/breaknumberoption \
 	cui/uiconfig/ui/calloutdialog \
 	cui/uiconfig/ui/calloutpage \
 	cui/uiconfig/ui/cellalignment \
 	cui/uiconfig/ui/certdialog \
+	cui/uiconfig/ui/chapterfragment \
 	cui/uiconfig/ui/charnamepage \
 	cui/uiconfig/ui/colorconfigwin \
+	cui/uiconfig/ui/colorfragment \
 	cui/uiconfig/ui/colorpage \
 	cui/uiconfig/ui/colorpickerdialog \
 	cui/uiconfig/ui/comment \
@@ -47,12 +50,15 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/croppage \
 	cui/uiconfig/ui/cuiimapdlg \
 	cui/uiconfig/ui/databaselinkdialog \
+	cui/uiconfig/ui/diagramdialog \
 	cui/uiconfig/ui/dimensionlinestabpage \
 	cui/uiconfig/ui/editdictionarydialog \
 	cui/uiconfig/ui/editmodulesdialog \
 	cui/uiconfig/ui/embossdialog \
+	cui/uiconfig/ui/entrycontextmenu \
 	cui/uiconfig/ui/eventassigndialog \
 	cui/uiconfig/ui/eventassignpage \
+	cui/uiconfig/ui/fontfragment \
 	cui/uiconfig/ui/formatnumberdialog \
 	cui/uiconfig/ui/fmsearchdialog \
 	cui/uiconfig/ui/gradientpage \
@@ -63,6 +69,7 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/effectspage \
 	cui/uiconfig/ui/eventsconfigpage \
 	cui/uiconfig/ui/formatcellsdialog \
+	cui/uiconfig/ui/fontfeaturesdialog \
 	cui/uiconfig/ui/galleryapplyprogress \
 	cui/uiconfig/ui/galleryfilespage \
 	cui/uiconfig/ui/gallerygeneralpage \
@@ -85,6 +92,7 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/hyphenate \
 	cui/uiconfig/ui/iconchangedialog \
 	cui/uiconfig/ui/iconselectordialog \
+	cui/uiconfig/ui/tipofthedaydialog \
 	cui/uiconfig/ui/insertfloatingframe \
 	cui/uiconfig/ui/insertoleobject \
 	cui/uiconfig/ui/insertrowcolumn \
@@ -98,7 +106,6 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/macroassignpage \
 	cui/uiconfig/ui/macroselectordialog \
 	cui/uiconfig/ui/menuassignpage \
-	cui/uiconfig/ui/messbox \
 	cui/uiconfig/ui/mosaicdialog \
 	cui/uiconfig/ui/movemenu \
 	cui/uiconfig/ui/multipathdialog \
@@ -128,7 +135,6 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/optjsearchpage \
 	cui/uiconfig/ui/optlanguagespage \
 	cui/uiconfig/ui/optlingupage \
-	cui/uiconfig/ui/optmemorypage \
 	cui/uiconfig/ui/optnewdictionarydialog \
 	cui/uiconfig/ui/optonlineupdatepage \
 	$(call gb_Helper_optional,OPENCL, \
@@ -157,6 +163,7 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/positionsizedialog \
 	cui/uiconfig/ui/possizetabpage \
 	cui/uiconfig/ui/posterdialog \
+	cui/uiconfig/ui/qrcodegen \
 	cui/uiconfig/ui/querychangelineenddialog \
 	cui/uiconfig/ui/querydeletebitmapdialog \
 	cui/uiconfig/ui/querydeletechartcolordialog \
@@ -177,11 +184,12 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/searchattrdialog \
 	cui/uiconfig/ui/searchformatdialog \
 	cui/uiconfig/ui/securityoptionsdialog \
-	cui/uiconfig/ui/select_persona_dialog \
 	cui/uiconfig/ui/selectpathdialog \
 	cui/uiconfig/ui/shadowtabpage \
 	cui/uiconfig/ui/showcoldialog \
 	cui/uiconfig/ui/similaritysearchdialog \
+	cui/uiconfig/ui/signatureline \
+	cui/uiconfig/ui/signsignatureline \
 	cui/uiconfig/ui/slantcornertabpage \
 	cui/uiconfig/ui/smarttagoptionspage \
 	cui/uiconfig/ui/smoothdialog \
@@ -201,6 +209,7 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/tsaurldialog \
 	cui/uiconfig/ui/twolinespage \
 	cui/uiconfig/ui/wordcompletionpage \
+	cui/uiconfig/ui/spinbox \
 	cui/uiconfig/ui/zoomdialog \
 ))
 

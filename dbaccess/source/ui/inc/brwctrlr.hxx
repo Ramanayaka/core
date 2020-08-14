@@ -21,7 +21,6 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_BRWCTRLR_HXX
 
 #include <dbaccess/genericcontroller.hxx>
-#include "moduledbu.hxx"
 #include "brwview.hxx"
 #include "sbagrid.hxx"
 
@@ -40,8 +39,7 @@
 #include <com/sun/star/frame/XModule.hpp>
 
 #include <vcl/timer.hxx>
-#include <svtools/transfer.hxx>
-#include <osl/thread.hxx>
+#include <vcl/transfer.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <svtools/cliplistener.hxx>
 
@@ -76,7 +74,6 @@ namespace dbaui
         // for implementing the XFormController
         class FormControllerImpl;
         friend class FormControllerImpl;
-        OModuleClient                                         m_aModuleClient;
 
         css::uno::Reference< css::sdbc::XRowSet >             m_xRowSet;      // our rowset
         css::uno::Reference< css::sdbcx::XColumnsSupplier >   m_xColumnsSupplier; // queried from the rowset member
@@ -109,7 +106,7 @@ namespace dbaui
         sal_uInt16              m_nFormActionNestingLevel;      // see enter-/leaveFormAction
 
         bool                    m_bLoadCanceled : 1;            // the load was canceled somehow
-        bool                    m_bCannotSelectUnfiltered : 1;  // received an DATA_CANNOT_SELECT_UNFILTERED error
+        bool                    m_bCannotSelectUnfiltered : 1;  // received a DATA_CANNOT_SELECT_UNFILTERED error
 
     protected:
         class FormErrorHelper final
@@ -237,8 +234,6 @@ namespace dbaui
             // do any initialization (data source etc.) here. the form should be fully functional after that.
             // return sal_False if you didn't succeed (don't throw exceptions, they won't be caught)
 
-        virtual bool InitializeGridModel(const css::uno::Reference< css::form::XFormComponent > & xGrid);
-
         css::uno::Reference< css::form::XFormComponent >  CreateGridModel();
             // our default implementation simply instantiates a stardiv.one.form.component.Grid service
             // you most probably don't want to override this behavior
@@ -264,7 +259,7 @@ namespace dbaui
 
         virtual bool LoadForm();
             // load the form
-            // the default implementation does an direct load or starts a load thread, depending on the multithread capabilities
+            // the default implementation does a direct load or starts a load thread, depending on the multithread capabilities
             // of the data source.
             // the default implementation also calls LoadFinished after a synchronous load, so be sure to do the same if you override
             // this method and don't call the base class' method
@@ -274,7 +269,7 @@ namespace dbaui
 
         virtual void criticalFail();
             // called whenever a reload operation on the rowset failed
-            // (a "operation" is not only a simple reload: If the user sets a filter, an reloading the form
+            // (an "operation" is not only a simple reload: if the user sets a filter, and reloading the form
             // after setting this filter fails, the filter is reset and the form is reloaded, again. Only the
             // whole process (_both_ XLoadable::reload calls _together_) form the "reload operation"
 
@@ -316,7 +311,7 @@ namespace dbaui
         void        applyParserFilter(const OUString& _rOldFilter, bool _bOldFilterApplied,const ::OUString& _sOldHaving,const css::uno::Reference< css::sdb::XSingleSelectQueryComposer >& _xParser);
         void        applyParserOrder(const OUString& _rOldOrder,const css::uno::Reference< css::sdb::XSingleSelectQueryComposer >& _xParser);
 
-        sal_Int16   getCurrentColumnPosition();
+        sal_Int16   getCurrentColumnPosition() const;
         void        setCurrentColumnPosition( sal_Int16 _nPos );
         void        addColumnListeners(const css::uno::Reference< css::awt::XControlModel > & _xGridControlModel);
 

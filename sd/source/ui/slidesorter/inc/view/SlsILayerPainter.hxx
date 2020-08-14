@@ -20,13 +20,12 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSILAYERPAINTER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSILAYERPAINTER_HXX
 
-#include <sal/types.h>
 #include <memory>
 
 class OutputDevice;
 namespace tools { class Rectangle; }
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 
 class ILayerInvalidator
 {
@@ -50,7 +49,7 @@ public:
 };
 typedef std::shared_ptr<ILayerPainter> SharedILayerPainter;
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 #endif
 

@@ -22,29 +22,24 @@
 
 #include <svx/svxdllapi.h>
 #include <svl/eitem.hxx>
-#include <svx/xenum.hxx>
 #include <com/sun/star/drawing/LineCap.hpp>
 
 
-// class XLineCapItem
 
 
-class SVX_DLLPUBLIC XLineCapItem : public SfxEnumItem<css::drawing::LineCap>
+class SVXCORE_DLLPUBLIC XLineCapItem final : public SfxEnumItem<css::drawing::LineCap>
 {
 public:
     static SfxPoolItem* CreateDefault();
     XLineCapItem(css::drawing::LineCap eLineCap = css::drawing::LineCap_BUTT);
-    XLineCapItem(SvStream& rIn);
 
-    virtual sal_uInt16      GetVersion( sal_uInt16 nFileFormatVersion ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    virtual XLineCapItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric, MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     css::drawing::LineCap   GetValue() const;
     virtual sal_uInt16      GetValueCount() const override;

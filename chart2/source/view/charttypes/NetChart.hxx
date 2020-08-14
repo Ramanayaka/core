@@ -21,7 +21,7 @@
 #define INCLUDED_CHART2_SOURCE_VIEW_CHARTTYPES_NETCHART_HXX
 
 #include <memory>
-#include "VSeriesPlotter.hxx"
+#include <VSeriesPlotter.hxx>
 
 namespace chart
 {
@@ -35,7 +35,7 @@ public:
     NetChart( const css::uno::Reference< css::chart2::XChartType >& xChartTypeModel
              , sal_Int32 nDimensionCount
              , bool bNoArea
-             , PlottingPositionHelper* pPlottingPositionHelper //takes ownership
+             , std::unique_ptr<PlottingPositionHelper> pPlottingPositionHelper //takes ownership
              );
     virtual ~NetChart() override;
 
@@ -55,11 +55,11 @@ private: //methods
     void impl_createSeriesShapes();
     bool impl_createArea( VDataSeries* pSeries
                 , css::drawing::PolyPolygonShape3D* pSeriesPoly
-                , css::drawing::PolyPolygonShape3D* pPreviousSeriesPoly
-                , PlottingPositionHelper* pPosHelper );
+                , css::drawing::PolyPolygonShape3D const * pPreviousSeriesPoly
+                , PlottingPositionHelper const * pPosHelper );
     bool impl_createLine( VDataSeries* pSeries
                 , css::drawing::PolyPolygonShape3D* pSeriesPoly
-                , PlottingPositionHelper* pPosHelper );
+                , PlottingPositionHelper const * pPosHelper );
 
 private: //member
     std::unique_ptr<PlottingPositionHelper> m_pMainPosHelper;

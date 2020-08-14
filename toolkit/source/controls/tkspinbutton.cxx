@@ -24,13 +24,11 @@
 
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase2.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <toolkit/controls/unocontrolmodel.hxx>
 #include <toolkit/controls/unocontrolbase.hxx>
-#include <toolkit/helper/macros.hxx>
 #include <toolkit/helper/property.hxx>
 
-#include "helper/unopropertyarrayhelper.hxx"
+#include <helper/unopropertyarrayhelper.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::awt;
@@ -47,9 +45,8 @@ protected:
 
 public:
     explicit UnoSpinButtonModel( const css::uno::Reference< css::uno::XComponentContext >& i_factory );
-    UnoSpinButtonModel( const UnoSpinButtonModel& rModel ) : UnoControlModel( rModel ) {}
 
-    UnoControlModel*    Clone() const override { return new UnoSpinButtonModel( *this ); }
+    rtl::Reference<UnoControlModel> Clone() const override { return new UnoSpinButtonModel( *this ); }
 
     // XMultiPropertySet
     css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  ) override;
@@ -145,7 +142,7 @@ public:
 
     OUString UnoSpinButtonModel::getServiceName( )
     {
-        return OUString("com.sun.star.awt.UnoControlSpinButtonModel");
+        return "com.sun.star.awt.UnoControlSpinButtonModel";
     }
 
 
@@ -157,7 +154,7 @@ public:
             return makeAny( OUString("com.sun.star.awt.UnoControlSpinButton") );
 
         case BASEPROPERTY_BORDER:
-            return makeAny( (sal_Int16) 0 );
+            return makeAny( sal_Int16(0) );
 
         case BASEPROPERTY_REPEAT:
             return makeAny( true );
@@ -170,13 +167,8 @@ public:
 
     ::cppu::IPropertyArrayHelper& UnoSpinButtonModel::getInfoHelper()
     {
-        static UnoPropertyArrayHelper* pHelper = nullptr;
-        if ( !pHelper )
-        {
-            Sequence<sal_Int32> aIDs = ImplGetPropertyIds();
-            pHelper = new UnoPropertyArrayHelper( aIDs );
-        }
-        return *pHelper;
+        static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+        return aHelper;
     }
 
 
@@ -189,16 +181,14 @@ public:
 
     OUString SAL_CALL UnoSpinButtonModel::getImplementationName(  )
     {
-        return OUString( "stardiv.Toolkit.UnoSpinButtonModel" );
+        return "stardiv.Toolkit.UnoSpinButtonModel";
     }
 
 
     Sequence< OUString > SAL_CALL UnoSpinButtonModel::getSupportedServiceNames()
     {
-        Sequence< OUString > aServices( UnoControlModel::getSupportedServiceNames() );
-        aServices.realloc( aServices.getLength() + 1 );
-        aServices[ aServices.getLength() - 1 ] = "com.sun.star.awt.UnoControlSpinButtonModel";
-        return aServices;
+        const css::uno::Sequence<OUString> vals { "com.sun.star.awt.UnoControlSpinButtonModel" };
+        return comphelper::concatSequences( UnoControlModel::getSupportedServiceNames(), vals );
     }
 
 
@@ -214,7 +204,7 @@ public:
 
     OUString UnoSpinButtonControl::GetComponentServiceName()
     {
-        return OUString("SpinButton");
+        return "SpinButton";
     }
 
 
@@ -252,16 +242,14 @@ public:
 
     OUString SAL_CALL UnoSpinButtonControl::getImplementationName(  )
     {
-        return OUString( "stardiv.Toolkit.UnoSpinButtonControl" );
+        return "stardiv.Toolkit.UnoSpinButtonControl";
     }
 
 
     Sequence< OUString > SAL_CALL UnoSpinButtonControl::getSupportedServiceNames()
     {
-        Sequence< OUString > aServices( UnoControlBase::getSupportedServiceNames() );
-        aServices.realloc( aServices.getLength() + 1 );
-        aServices[ aServices.getLength() - 1 ] = "com.sun.star.awt.UnoControlSpinButton";
-        return aServices;
+        const css::uno::Sequence<OUString> vals { "com.sun.star.awt.UnoControlSpinButton" };
+        return comphelper::concatSequences( UnoControlBase::getSupportedServiceNames(), vals );
     }
 
 
@@ -415,7 +403,7 @@ public:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoSpinButtonModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -423,7 +411,7 @@ stardiv_Toolkit_UnoSpinButtonModel_get_implementation(
     return cppu::acquire(new UnoSpinButtonModel(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoSpinButtonControl_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

@@ -27,6 +27,7 @@
 #include <msiquery.h>
 #include <malloc.h>
 
+#include <cassert>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,21 +36,22 @@
 #include <systools/win32/uwinapi.h>
 #include <algorithm>
 
-#include "spellchecker_selection.hxx"
+#include <spellchecker_selection.hxx>
 
-BOOL GetMsiPropA( MSIHANDLE hMSI, const char* pPropName, char** ppValue )
+static bool GetMsiPropA( MSIHANDLE hMSI, const char* pPropName, char** ppValue )
 {
     DWORD sz = 0;
     if ( MsiGetPropertyA( hMSI, pPropName, const_cast<char *>(""), &sz ) == ERROR_MORE_DATA ) {
         sz++;
         DWORD nbytes = sz * sizeof( char );
         char* buff = static_cast<char*>( malloc( nbytes ) );
+        assert(buff); // Don't handle OOM conditions
         ZeroMemory( buff, nbytes );
         MsiGetPropertyA( hMSI, pPropName, buff, &sz );
         *ppValue = buff;
         return ( strlen(buff) > 0 );
     }
-    return FALSE;
+    return false;
 }
 
 static const char *
@@ -95,6 +97,7 @@ langid_to_string( LANGID langid )
     case LANG_ITALIAN: return "it";
     case LANG_JAPANESE: return "ja";
     case LANG_GEORGIAN: return "ka";
+    case LANG_KAZAK: return "kk";
     case LANG_KHMER: return "km";
     case LANG_KANNADA: return "kn";
     case LANG_KOREAN: return "ko";
@@ -162,37 +165,37 @@ langid_to_string( LANGID langid )
 static const char *ui_langs[MAX_LANGUAGES];
 static int num_ui_langs = 0;
 
-void add_ui_lang(char const * lang)
+static void add_ui_lang(char const * lang)
 {
     if (lang != nullptr && num_ui_langs != SAL_N_ELEMENTS(ui_langs)) {
         ui_langs[num_ui_langs++] = lang;
     }
 }
 
-BOOL CALLBACK
+static BOOL CALLBACK
 enum_ui_lang_proc (LPTSTR language, LONG_PTR /* unused_lParam */)
 {
     long langid = strtol(language, nullptr, 16);
     if (langid > 0xFFFF)
         return TRUE;
-    add_ui_lang(langid_to_string((LANGID) langid));
+    add_ui_lang(langid_to_string(static_cast<LANGID>(langid)));
     if (num_ui_langs == SAL_N_ELEMENTS(ui_langs) )
         return FALSE;
     return TRUE;
 }
 
-static BOOL
+static bool
 present_in_ui_langs(const char *lang)
 {
     for (int i = 0; i < num_ui_langs; i++)
     {
         if (strchr (lang, '_') != nullptr)
             if (memcmp (ui_langs[i], lang, std::min(strlen(ui_langs[i]), strlen(lang))) == 0)
-                return TRUE;
+                return true;
         if (strcmp (ui_langs[i], lang) == 0)
-            return TRUE;
+            return true;
     }
-    return FALSE;
+    return false;
 }
 
 namespace {
@@ -231,7 +234,7 @@ void addMatchingDictionaries(
 
 }
 
-extern "C" UINT __stdcall SelectLanguage( MSIHANDLE handle )
+extern "C" __declspec(dllexport) UINT __stdcall SelectLanguage( MSIHANDLE handle )
 {
     char feature[100];
     MSIHANDLE database, view, record;
@@ -327,6 +330,15 @@ extern "C" UINT __stdcall SelectLanguage( MSIHANDLE handle )
             //TODO: are the above two explicit additions necessary, or will
             // those values always be included in the below EnumUILanguages
             // anyway?
+        if (GetMsiPropA(handle, "ProductLanguage", &pVal))
+        {
+            // This addition might refer to a language without an installed system language pack
+            // If the installer is run in this language, then this language is likely needed
+            long langid = strtol(pVal, nullptr, 10);
+            if (langid > 0xFFFF)
+                return TRUE;
+            add_ui_lang(langid_to_string(static_cast<LANGID>(langid)));
+        }
         EnumUILanguagesA(enum_ui_lang_proc, 0, 0);
     }
 

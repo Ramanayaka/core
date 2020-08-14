@@ -24,47 +24,40 @@
 #include <com/sun/star/sheet/XAddIn.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sheet/addin/XAnalysis.hpp>
-#include <com/sun/star/sheet/LocalizedName.hpp>
 #include <com/sun/star/sheet/XCompatibilityNames.hpp>
-#include <com/sun/star/sheet/NoConvergenceException.hpp>
 
-#include <cppuhelper/implbase.hxx>
+#include <cppuhelper/compbase.hxx>
+#include <cppuhelper/basemutex.hxx>
 
-#include "analysisdefs.hxx"
 #include "analysishelper.hxx"
 
-namespace sca { namespace analysis {
-    class ConvertDataList;
-} }
-class ResMgr;
+#include <memory>
 
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+namespace com::sun::star::sheet { struct LocalizedName; }
 
-css::uno::Reference< css::uno::XInterface > SAL_CALL AnalysisAddIn_CreateInstance( const css::uno::Reference< css::lang::XMultiServiceFactory >& );
-
-
-class AnalysisAddIn : public cppu::WeakImplHelper<
+typedef cppu::WeakComponentImplHelper<
                             css::sheet::XAddIn,
                             css::sheet::XCompatibilityNames,
                             css::sheet::addin::XAnalysis,
                             css::lang::XServiceName,
-                            css::lang::XServiceInfo >
+                            css::lang::XServiceInfo > AnalysisAddIn_Base;
+
+class AnalysisAddIn : private cppu::BaseMutex, public AnalysisAddIn_Base
 {
 private:
     css::lang::Locale           aFuncLoc;
-    css::lang::Locale*          pDefLocales;
-    sca::analysis::FuncDataList* pFD;
-    double*                     pFactDoubles;
-    sca::analysis::ConvertDataList* pCDL;
-    ResMgr*                     pResMgr;
+    std::unique_ptr<css::lang::Locale[]> pDefLocales;
+    std::unique_ptr<sca::analysis::FuncDataList> pFD;
+    std::unique_ptr<double[]>   pFactDoubles;
+    std::unique_ptr<sca::analysis::ConvertDataList> pCDL;
+    std::locale                 aResLocale;
 
     sca::analysis::ScaAnyConverter aAnyConv;
 
     /// @throws css::uno::RuntimeException
-    ResMgr&                     GetResMgr();
-    /// @throws css::uno::RuntimeException
-    OUString                    GetFuncDescrStr( sal_uInt16 nResId, sal_uInt16 nStrIndex );
+    OUString                    GetFuncDescrStr(const char** pResId, sal_uInt16 nStrIndex);
     void                        InitDefLocales();
     inline const css::lang::Locale& GetLocale( sal_uInt32 nInd );
     void                        InitData();
@@ -80,14 +73,17 @@ private:
 public:
     explicit                    AnalysisAddIn(
                                     const css::uno::Reference< css::uno::XComponentContext >& xContext );
+
+    OUString AnalysisResId(const char* pId);
+
     virtual                     ~AnalysisAddIn() override;
+
+    // XComponent
+    virtual void SAL_CALL       dispose() override;
 
     /// @throws css::uno::RuntimeException
     /// @throws css::lang::IllegalArgumentException
     double                      FactDouble( sal_Int32 nNum );
-
-    static OUString               getImplementationName_Static();
-    static css::uno::Sequence< OUString >        getSupportedServiceNames_Static();
 
                                 // XAddIn
     virtual OUString SAL_CALL     getProgrammaticFuntionName( const OUString& aDisplayName ) override;

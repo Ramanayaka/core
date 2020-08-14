@@ -24,10 +24,10 @@
 #include <xmloff/dllapi.h>
 #include <xmloff/xmlictxt.hxx>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/document/XDocumentProperties.hpp>
-#include <com/sun/star/xml/dom/XSAXDocumentBuilder2.hpp>
 
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::document { class XDocumentProperties; }
+namespace com::sun::star::xml::dom { class XSAXDocumentBuilder2; }
 
 /// handles the top-level office:document-meta element of meta.xml documents
 // NB: virtual inheritance is needed so that the context that handles the
@@ -40,24 +40,24 @@ private:
     css::uno::Reference< css::xml::dom::XSAXDocumentBuilder2> mxDocBuilder;
 
 public:
-    SvXMLMetaDocumentContext(SvXMLImport& rImport, sal_uInt16 nPrfx,
-        const OUString& rLName,
-        const css::uno::Reference< css::document::XDocumentProperties>& xDocProps);
-
     SvXMLMetaDocumentContext(SvXMLImport& rImport,
         const css::uno::Reference< css::document::XDocumentProperties>& xDocProps);
 
     virtual ~SvXMLMetaDocumentContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual void SAL_CALL characters( const OUString& aChars ) override;
 
-    virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
+    virtual void SAL_CALL startFastElement( sal_Int32 nElement,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
-    virtual void EndElement() override;
+    virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
 public:
+    void FinishMetaElement();
+
     static void setBuildId(const OUString & rGenerator,
         const css::uno::Reference< css::beans::XPropertySet>& xImportInfo );
 };

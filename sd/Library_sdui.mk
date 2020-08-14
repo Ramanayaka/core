@@ -32,7 +32,7 @@ $(eval $(call gb_Library_use_custom_headers,sdui,\
 	officecfg/registry \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,sdui,$(SRCDIR)/sd/inc/pch/precompiled_sdui))
+$(eval $(call gb_Library_set_precompiled_header,sdui,sd/inc/pch/precompiled_sdui))
 
 $(eval $(call gb_Library_use_external,sdui,boost_headers))
 
@@ -46,9 +46,9 @@ $(eval $(call gb_Library_use_libraries,sdui,\
     cppuhelper \
     editeng \
     i18nlangtag \
-    fwl \
-    fwe \
+    fwk \
     sal \
+    salhelper \
     sd \
     sfx \
     sot \
@@ -59,6 +59,7 @@ $(eval $(call gb_Library_use_libraries,sdui,\
     tl \
     utl \
     vcl \
+    cui \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,sdui,\
@@ -90,6 +91,7 @@ $(eval $(call gb_Library_add_exception_objects,sdui,\
     sd/source/ui/dlg/tpoption \
     sd/source/ui/dlg/vectdlg \
     sd/source/ui/dlg/PhotoAlbumDialog \
+    sd/source/ui/dlg/BulletAndPositionDlg \
 ))
 
 # $(WORKDIR)/inc/sd/sddll0.hxx :

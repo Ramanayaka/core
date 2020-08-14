@@ -21,16 +21,16 @@
 #define INCLUDED_OOX_DRAWINGML_SCENE3DCONTEXT_HXX
 
 #include <oox/core/contexthandler2.hxx>
-#include "drawingml/shape3dproperties.hxx"
+#include <drawingml/shape3dproperties.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 struct Shape3DProperties;
 
-class Scene3DRotationPropertiesContext : public ::oox::core::ContextHandler2
+class Scene3DRotationPropertiesContext final : public ::oox::core::ContextHandler2
 {
 public:
-    Scene3DRotationPropertiesContext( ::oox::core::ContextHandler2Helper& rParent, RotationProperties& rRotationProperties ) throw();
+    Scene3DRotationPropertiesContext( ::oox::core::ContextHandler2Helper const & rParent, RotationProperties& rRotationProperties ) throw();
 
     ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
@@ -38,10 +38,10 @@ private:
     RotationProperties& mrRotationProperties;
 };
 
-class Scene3DPropertiesContext : public ::oox::core::ContextHandler2
+class Scene3DPropertiesContext final : public ::oox::core::ContextHandler2
 {
 public:
-    Scene3DPropertiesContext( ::oox::core::ContextHandler2Helper& rParent, Shape3DProperties& r3DProperties ) throw();
+    Scene3DPropertiesContext( ::oox::core::ContextHandler2Helper const & rParent, Shape3DProperties& r3DProperties ) throw();
 
     ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
@@ -49,10 +49,10 @@ private:
     Shape3DProperties& mr3DProperties;
 };
 
-class Shape3DPropertiesContext : public ::oox::core::ContextHandler2
+class Shape3DPropertiesContext final : public ::oox::core::ContextHandler2
 {
 public:
-    Shape3DPropertiesContext( ::oox::core::ContextHandler2Helper& rParent, const ::oox::AttributeList& rAttribs, Shape3DProperties& r3DProperties ) throw();
+    Shape3DPropertiesContext( ::oox::core::ContextHandler2Helper const & rParent, const ::oox::AttributeList& rAttribs, Shape3DProperties& r3DProperties ) throw();
 
     ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
@@ -60,7 +60,7 @@ private:
     Shape3DProperties& mr3DProperties;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_SCENE3DCONTEXT_HXX
 

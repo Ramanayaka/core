@@ -30,7 +30,7 @@ GBUILDDIR:=$(SRCDIR)/solenv/gbuild
 
 # PTHREAD_CFLAGS (Linux)
 # SYSTEM_ICU (Linux)
-# SYSTEM_JPEG (Linux)
+# SYSTEM_LIBJPEG (Linux)
 # SYSTEM_LIBXML (Linux)
 
 .DELETE_ON_ERROR:
@@ -60,6 +60,8 @@ COMMA :=,
 OPEN_PAREN :=(
 CLOSE_PAREN :=)
 
+gb_SPACE:=$(gb_SPACE) $(gb_SPACE)
+
 gb_VERBOSE := $(verbose)
 
 include $(GBUILDDIR)/Helper.mk
@@ -82,20 +84,33 @@ else
 gb_ENABLE_DBGUTIL := $(false)
 endif
 
+gb_ENABLE_SYMBOLS_FOR := $(ENABLE_SYMBOLS_FOR)
+
+# ENABLE_SYMBOLS (presumably from the command line)
+ifneq ($(strip $(ENABLE_SYMBOLS)),)
+gb_ENABLE_SYMBOLS_FOR := $(ENABLE_SYMBOLS)
+endif
+ifneq ($(strip $(enable_symbols)),)
+gb_ENABLE_SYMBOLS_FOR := $(enable_symbols)
+endif
+
+# note: ENABLE_BREAKPAD turns on symbols
+ifneq ($(strip $(ENABLE_BREAKPAD)),)
+gb_ENABLE_SYMBOLS_FOR := all
+endif
+
 gb_DEBUGLEVEL := 0
 ifneq ($(strip $(DEBUG)),)
 gb_DEBUGLEVEL := 1
 # make DEBUG=true should force -g
 ifeq ($(origin DEBUG),command line)
-ENABLE_DEBUGINFO_FOR := all
-ENABLE_SYMBOLS := TRUE
+gb_ENABLE_SYMBOLS_FOR := all
 endif
 endif
 ifneq ($(strip $(debug)),)
 gb_DEBUGLEVEL := 1
 ifeq ($(origin debug),command line)
-ENABLE_DEBUGINFO_FOR := all
-ENABLE_SYMBOLS := TRUE
+gb_ENABLE_SYMBOLS_FOR := all
 endif
 endif
 ifeq ($(gb_ENABLE_DBGUTIL),$(true))
@@ -105,27 +120,37 @@ endif
 ifneq ($(strip $(DBGLEVEL)),)
 gb_DEBUGLEVEL := $(strip $(DBGLEVEL))
 ifeq ($(origin DBGLEVEL),command line)
-ENABLE_DEBUGINFO_FOR := all
+gb_ENABLE_SYMBOLS_FOR := all
 endif
 endif
 ifneq ($(strip $(dbglevel)),)
 gb_DEBUGLEVEL := $(strip $(dbglevel))
 ifeq ($(origin dbglevel),command line)
-ENABLE_DEBUGINFO_FOR := all
+gb_ENABLE_SYMBOLS_FOR := all
 endif
 endif
 
-# note: ENABLE_BREAKPAD turns on gb_SYMBOL
-ifneq ($(strip $(ENABLE_SYMBOLS)$(enable_symbols)$(ENABLE_BREAKPAD)),)
-gb_SYMBOL := $(true)
-else
-gb_SYMBOL := $(false)
+# handle special cases
+ifeq ($(gb_ENABLE_SYMBOLS_FOR),1)
+gb_ENABLE_SYMBOLS_FOR := all
+endif
+ifeq ($(gb_ENABLE_SYMBOLS_FOR),0)
+gb_ENABLE_SYMBOLS_FOR :=
+endif
+ifeq ($(gb_ENABLE_SYMBOLS_FOR),yes)
+gb_ENABLE_SYMBOLS_FOR := all
+endif
+ifeq ($(gb_ENABLE_SYMBOLS_FOR),no)
+gb_ENABLE_SYMBOLS_FOR :=
 endif
 
-ifneq ($(strip $(ENABLE_PCH)),)
-gb_ENABLE_PCH := $(true)
+ifeq ($(BLOCK_PCH),)
+gb_ENABLE_PCH := $(ENABLE_PCH)
 else
-gb_ENABLE_PCH := $(false)
+# Setting BLOCK_PCH effectively disables PCH, but the extra object file will be still linked in.
+# This is useful for rebuilding only some files with PCH disabled, e.g. to check #include's,
+# disabling the whole ENABLE_PCH would lead to unresolved symbols at link time.
+gb_ENABLE_PCH :=
 endif
 
 ifneq ($(nodep)$(ENABLE_PRINT_DEPS),)
@@ -166,6 +191,7 @@ $(eval $(call gb_Helper_collect_knownlibs))
 gb_Library_DLLPOSTFIX := lo
 
 # Include platform/cpu/compiler specific config/definitions
+
 include $(GBUILDDIR)/platform/$(OS)_$(CPUNAME)_$(COM).mk
 
 # this is optional
@@ -204,8 +230,6 @@ gb_GLOBALDEFS += -DTIMELOG \
 
 endif
 
-ifeq ($(gb_DEBUGLEVEL),0)
-
 ifeq ($(strip $(ASSERT_ALWAYS_ABORT)),FALSE)
 gb_GLOBALDEFS += -DNDEBUG \
 
@@ -217,19 +241,11 @@ gb_GLOBALDEFS += -DSAL_LOG_INFO \
 
 endif
 
-else
-gb_GLOBALDEFS += -DSAL_LOG_INFO \
-				 -DSAL_LOG_WARN \
-
+ifneq ($(gb_DEBUGLEVEL),0)
 ifneq ($(gb_DEBUGLEVEL),1) # 2 or more
 gb_GLOBALDEFS += -DDEBUG \
 
 endif
-endif
-
-ifeq ($(ENABLE_HEADLESS),TRUE)
-gb_GLOBALDEFS += -DLIBO_HEADLESS \
-
 endif
 
 gb_GLOBALDEFS += \
@@ -239,6 +255,17 @@ gb_GLOBALDEFS += \
 	)
 
 gb_GLOBALDEFS := $(sort $(gb_GLOBALDEFS))
+
+# Common environment variables passed into all gb_*Test classes:
+# * Cap the number of threads unittests use:
+gb_TEST_ENV_VARS := MAX_CONCURRENCY=4
+# * Disable searching for certificates by default:
+gb_TEST_ENV_VARS += MOZILLA_CERTIFICATE_FOLDER=
+# Avoid hanging if the cups daemon requests a password:
+gb_TEST_ENV_VARS += SAL_DISABLE_SYNCHRONOUS_PRINTER_DETECTION=1
+ifeq (,$(SAL_USE_VCLPLUGIN))
+gb_TEST_ENV_VARS += SAL_USE_VCLPLUGIN=svp
+endif
 
 # This is used to detect whether LibreOffice is being built (as opposed to building
 # 3rd-party code). Used for tag deprecation for API we want to
@@ -250,6 +277,8 @@ gb_DEFS_INTERNAL := \
 include $(GBUILDDIR)/Deliver.mk
 
 $(eval $(call gb_Deliver_init))
+
+include $(GBUILDDIR)/Trace.mk
 
 # We are using a set of scopes that we might as well call classes.
 
@@ -266,7 +295,7 @@ $(eval $(call gb_Deliver_init))
 include $(foreach class, \
 	ComponentTarget \
 	Postprocess \
-	AllLangResTarget \
+	AllLangMoTarget \
 	WinResTarget \
 	LinkTarget \
 	Library \

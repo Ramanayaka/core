@@ -34,13 +34,16 @@ class SwField;
 class SwMsgPoolItem;
 class DateTime;
 class SetGetExpField;
-struct SwHash;
 class SwNode;
 enum class SwFieldIds : sal_uInt16;
+template <class T> class SwHashTable;
+struct HashStr;
+class SwRootFrame;
+class IDocumentRedlineAccess;
 
 namespace rtl { class OUString; }
 using rtl::OUString;
-namespace com { namespace sun { namespace star { namespace uno { class Any; } } } }
+namespace com::sun::star::uno { class Any; }
 
  /** Document fields related interfaces
  */
@@ -73,7 +76,7 @@ namespace com { namespace sun { namespace star { namespace uno { class Any; } } 
        @retval true            putting of value was successful
        @retval false           else
     */
-    virtual bool PutValueToField(const SwPosition & rPos, const css::uno::Any& rVal, sal_uInt16 nWhich) = 0;
+    virtual void PutValueToField(const SwPosition & rPos, const css::uno::Any& rVal, sal_uInt16 nWhich) = 0;
 
     // Call update of expression fields. All expressions are re-evaluated.
 
@@ -119,11 +122,11 @@ namespace com { namespace sun { namespace star { namespace uno { class Any; } } 
     // (Node [ + css::ucb::Content]).
     // A generated list of all fields may be passed along too
     // (if the address != 0 and the pointer == 0 a new list will be returned).
-    virtual void FieldsToCalc(SwCalc& rCalc, sal_uLong nLastNd, sal_uInt16 nLastCnt) = 0;
+    virtual void FieldsToCalc(SwCalc& rCalc, sal_uLong nLastNd, sal_Int32 nLastCnt) = 0;
 
-    virtual void FieldsToCalc(SwCalc& rCalc, const SetGetExpField& rToThisField) = 0;
+    virtual void FieldsToCalc(SwCalc& rCalc, const SetGetExpField& rToThisField, SwRootFrame const* pLayout) = 0;
 
-    virtual void FieldsToExpand(SwHash**& ppTable, sal_uInt16& rTableSize, const SetGetExpField& rToThisField) = 0;
+    virtual void FieldsToExpand(SwHashTable<HashStr> & rTable, const SetGetExpField& rToThisField, SwRootFrame const& rLayout) = 0;
 
     virtual bool IsNewFieldLst() const = 0;
 
@@ -136,6 +139,11 @@ namespace com { namespace sun { namespace star { namespace uno { class Any; } } 
 protected:
     virtual ~IDocumentFieldsAccess() {};
  };
+
+namespace sw {
+bool IsFieldDeletedInModel(IDocumentRedlineAccess const& rIDRA,
+        SwTextField const& rTextField);
+}
 
 #endif // INCLUDED_SW_INC_IDOCUMENTFIELDSACCESS_HXX
 

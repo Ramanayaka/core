@@ -18,24 +18,19 @@
  */
 
 #include "ImagePreparer.hxx"
+#include "Transmitter.hxx"
 
+#include <comphelper/base64.hxx>
 #include <comphelper/processfactory.hxx>
 #include <osl/file.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <sax/tools/converter.hxx>
 #include <rtl/strbuf.hxx>
-#include <unotools/streamwrap.hxx>
-
-#include <svl/itemset.hxx>
-#include <sfx2/docfile.hxx>
+#include <sal/log.hxx>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/document/XFilter.hpp>
-#include <com/sun/star/document/XImporter.hpp>
-#include <com/sun/star/document/XExporter.hpp>
 #include <com/sun/star/drawing/GraphicExportFilter.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
+#include <com/sun/star/presentation/XSlideShowController.hpp>
 #include <com/sun/star/presentation/XPresentationPage.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
 
@@ -88,7 +83,7 @@ void ImagePreparer::sendPreview( sal_uInt32 aSlideNumber )
         return;
 
     OUStringBuffer aStrBuffer;
-    ::sax::Converter::encodeBase64( aStrBuffer, aImageData );
+    ::comphelper::Base64::encode( aStrBuffer, aImageData );
 
     OString aEncodedShortString = OUStringToOString(
         aStrBuffer.makeStringAndClear(), RTL_TEXTENCODING_UTF8 );
@@ -98,7 +93,7 @@ void ImagePreparer::sendPreview( sal_uInt32 aSlideNumber )
 
     aBuffer.append( "slide_preview\n" );
 
-    aBuffer.append( (sal_Int32)aSlideNumber );
+    aBuffer.append( static_cast<sal_Int32>(aSlideNumber) );
     aBuffer.append( "\n" );
 
     aBuffer.append( aEncodedShortString.getStr() );
@@ -151,16 +146,19 @@ uno::Sequence<sal_Int8> ImagePreparer::preparePreview(
 
     xFilter->filter( aProps );
 
-    // FIXME: error handling.
+    File aFile(aFileURL);
+    if (aFile.open(0) != osl::File::E_None)
+        return uno::Sequence<sal_Int8>();
 
-    File aFile( aFileURL );
-    aFile.open(0);
     sal_uInt64 aRead;
     rSize = 0;
     aFile.getSize( rSize );
     uno::Sequence<sal_Int8> aContents( rSize );
 
     aFile.read( aContents.getArray(), rSize, aRead );
+    if (aRead != rSize)
+        aContents.realloc(aRead);
+
     aFile.close();
     File::remove( aFileURL );
     return aContents;
@@ -179,18 +177,15 @@ void ImagePreparer::sendNotes( sal_uInt32 aSlideNumber )
         return;
 
     // Start the writing
-    OStringBuffer aBuffer;
-
-    aBuffer.append( "slide_notes\n" );
-
-    aBuffer.append( (sal_Int32) aSlideNumber );
-    aBuffer.append( "\n" );
-
-    aBuffer.append( "<html><body>" );
-    aBuffer.append( aNotes );
-    aBuffer.append( "</body></html>" );
-    aBuffer.append( "\n\n" );
-    pTransmitter->addMessage( aBuffer.makeStringAndClear(),
+    OString aBuffer =
+        "slide_notes\n" +
+        OString::number( static_cast<sal_Int32>(aSlideNumber) ) +
+        "\n"
+        "<html><body>" +
+        aNotes +
+        "</body></html>"
+        "\n\n";
+    pTransmitter->addMessage( aBuffer,
         Transmitter::PRIORITY_LOW );
 }
 
@@ -205,7 +200,7 @@ OString ImagePreparer::prepareNotes( sal_uInt32 aSlideNumber )
     uno::Reference<css::drawing::XDrawPage> aNotesPage;
     uno::Reference< drawing::XDrawPage > xSourceDoc(
         xController->getSlideByIndex( aSlideNumber ),
-        uno::UNO_QUERY_THROW );
+        uno::UNO_SET_THROW );
     uno::Reference<presentation::XPresentationPage> xPresentationPage(
         xSourceDoc, UNO_QUERY);
     if (xPresentationPage.is())
@@ -213,24 +208,23 @@ OString ImagePreparer::prepareNotes( sal_uInt32 aSlideNumber )
     else
         return "";
 
-    static const OUString sNotesShapeName (
+    static const OUStringLiteral sNotesShapeName (
         "com.sun.star.presentation.NotesShape" );
-    static const OUString sTextShapeName (
+    static const OUStringLiteral sTextShapeName (
         "com.sun.star.drawing.TextShape" );
 
-    uno::Reference<container::XIndexAccess> xIndexAccess ( aNotesPage, UNO_QUERY);
-    if (xIndexAccess.is())
+    if (aNotesPage.is())
     {
 
         // Iterate over all shapes and find the one that holds the text.
-        sal_Int32 nCount (xIndexAccess->getCount());
+        sal_Int32 nCount (aNotesPage->getCount());
         for (sal_Int32 nIndex=0; nIndex<nCount; ++nIndex)
         {
 
             uno::Reference<lang::XServiceName> xServiceName (
-                xIndexAccess->getByIndex(nIndex), UNO_QUERY);
+                aNotesPage->getByIndex(nIndex), UNO_QUERY);
             if (xServiceName.is()
-                && xServiceName->getServiceName().equals(sNotesShapeName))
+                && xServiceName->getServiceName() == sNotesShapeName)
             {
                 uno::Reference<text::XTextRange> xText (xServiceName, UNO_QUERY);
                 if (xText.is())
@@ -242,14 +236,14 @@ OString ImagePreparer::prepareNotes( sal_uInt32 aSlideNumber )
             else
             {
                 uno::Reference<drawing::XShapeDescriptor> xShapeDescriptor (
-                    xIndexAccess->getByIndex(nIndex), UNO_QUERY);
+                    aNotesPage->getByIndex(nIndex), UNO_QUERY);
                 if (xShapeDescriptor.is())
                 {
                     OUString sType (xShapeDescriptor->getShapeType());
-                    if (sType.equals(sNotesShapeName) || sType.equals(sTextShapeName))
+                    if (sType == sNotesShapeName || sType == sTextShapeName)
                     {
                         uno::Reference<text::XTextRange> xText (
-                            xIndexAccess->getByIndex(nIndex), UNO_QUERY);
+                            aNotesPage->getByIndex(nIndex), UNO_QUERY);
                         if (xText.is())
                         {
                             aRet.append(xText->getString());

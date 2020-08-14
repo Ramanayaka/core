@@ -33,7 +33,7 @@ namespace o3tl {
 ///  Use like this:
 ///     enum class COLOR { RED, GREEN, BLUE, LAST=BLUE };
 ///     for( auto e : o3tl::enumrange<Color>() )
-///        .....;
+///        ....;
 ///
 /// \param T the 'enum class' type.
 template< typename T>
@@ -58,7 +58,7 @@ public:
             ++m_value;
         }
 
-        bool operator!=( Iterator rhs )
+        bool operator!=( Iterator rhs ) const
         {
             return m_value != rhs.m_value;
         }
@@ -71,13 +71,13 @@ public:
 template< typename T >
 typename enumrange<T>::Iterator begin( enumrange<T> )
 {
-    return typename enumrange<T>::Iterator( (int)0 );
+    return typename enumrange<T>::Iterator( int(0) );
 }
 
 template< typename T >
 typename enumrange<T>::Iterator end( enumrange<T> )
 {
-    return typename enumrange<T>::Iterator( (static_cast<int>(T::LAST)) + 1 );
+    return typename enumrange<T>::Iterator( static_cast<int>(T::LAST) + 1 );
 }
 
 }; // namespace o3tl

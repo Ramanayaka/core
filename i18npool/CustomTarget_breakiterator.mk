@@ -11,7 +11,7 @@ $(eval $(call gb_CustomTarget_CustomTarget,i18npool/breakiterator))
 
 i18npool_BIDIR := $(call gb_CustomTarget_get_workdir,i18npool/breakiterator)
 
-ifeq ($(OS),IOS)
+ifneq ($(filter iOS ANDROID,$(OS)),)
 
 $(call gb_CustomTarget_get_target,i18npool/breakiterator) : \
 	$(i18npool_BIDIR)/dict_ja.data $(i18npool_BIDIR)/dict_zh.data $(i18npool_BIDIR)/OpenOffice_dat.c
@@ -21,8 +21,10 @@ $(i18npool_BIDIR)/dict_%.data : \
 		$(call gb_Executable_get_runtime_dependencies,gendict) \
 		| $(i18npool_BIDIR)/.dir
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),DIC,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),DIC)
 	$(call gb_Helper_abbreviate_dirs,\
 		$(call gb_Helper_execute,gendict) $< $@ $(patsubst $(i18npool_BIDIR)/dict_%.cxx,%,$@))
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),DIC)
 else
 
 $(call gb_CustomTarget_get_target,i18npool/breakiterator) : \
@@ -33,8 +35,10 @@ $(i18npool_BIDIR)/dict_%.cxx : \
 		$(call gb_Executable_get_runtime_dependencies,gendict) \
 		| $(i18npool_BIDIR)/.dir
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),DIC,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),DIC)
 	$(call gb_Helper_abbreviate_dirs,\
 		$(call gb_Helper_execute,gendict) $< $@ $(patsubst $(i18npool_BIDIR)/dict_%.cxx,%,$@))
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),DIC)
 
 endif
 
@@ -68,28 +72,34 @@ $(i18npool_BIDIR)/OpenOffice_dat.c : $(SRCDIR)/i18npool/CustomTarget_breakiterat
 		$(patsubst %.brk,$(i18npool_BIDIR)/%_brk.c,$(i18npool_BRKTXTS)) \
 		$(call gb_ExternalExecutable_get_dependencies,gencmn)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),CMN,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),CMN)
 	$(call gb_Helper_abbreviate_dirs,\
 		RESPONSEFILE=$(shell $(gb_MKTEMP)) && \
 		$(foreach brk,$(i18npool_BRKTXTS),echo '$(brk)' >> $${RESPONSEFILE} && ) \
 		$(call gb_ExternalExecutable_get_command,gencmn) -n OpenOffice -t tmp -S -d $(i18npool_BIDIR)/ 0 $${RESPONSEFILE} && \
 		rm -f $${RESPONSEFILE} && \
 		echo '#ifdef _MSC_VER' > $@ && \
-		echo '#pragma warning( disable : 4229 4668 )' >> $@ && \
+		echo '#pragma warning( disable : 4229 )' >> $@ && \
 		echo '#endif' >> $@ && \
 		cat $(subst _dat,_tmp,$@) >> $@)
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),CMN)
 
 $(i18npool_BIDIR)/%_brk.c : $(i18npool_BIDIR)/%.brk $(call gb_ExternalExecutable_get_dependencies,genccode)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),CCD,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),CCD)
 	$(call gb_Helper_abbreviate_dirs,\
 		$(call gb_ExternalExecutable_get_command,genccode) -n OpenOffice -d $(i18npool_BIDIR)/ $< \
 			$(if $(findstring s,$(MAKEFLAGS)),> /dev/null))
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),CCD)
 
 $(i18npool_BIDIR)/%.brk : $(i18npool_BIDIR)/%.txt $(call gb_ExternalExecutable_get_dependencies,genbrk)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),BRK,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),BRK)
 	$(call gb_Helper_abbreviate_dirs,\
 		$(call gb_ExternalExecutable_get_command,genbrk) \
 		$(if $(SYSTEM_ICU),,-i $(call gb_UnpackedTarball_get_dir,icu)/source/data/out/tmp) \
 		-r $< -o $@ $(if $(findstring s,$(MAKEFLAGS)),> /dev/null))
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),BRK)
 
 # fdo#31271 ")" reclassified in more recent Unicode Standards / ICU 4.4
 # * Prepend set empty as of Unicode Version 6.1 / ICU 49, which bails out if used.

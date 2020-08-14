@@ -19,11 +19,9 @@
 
 #include <sal/config.h>
 
-#include <algorithm>
 #include <cassert>
 #include <chrono>
-#include <cstddef>
-#include <list>
+#include <vector>
 #include <set>
 
 #include <com/sun/star/beans/Optional.hpp>
@@ -31,12 +29,14 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/lang/WrappedTargetException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 #include <config_dconf.h>
 #include <config_folders.h>
 #include <osl/conditn.hxx>
@@ -46,10 +46,10 @@
 #include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
-#include <rtl/instance.hxx>
 #include <sal/log.hxx>
 #include <sal/types.h>
 #include <salhelper/thread.hxx>
+#include <tools/diagnose_ex.h>
 #include <comphelper/backupfilehelper.hxx>
 
 #include "additions.hxx"
@@ -68,7 +68,7 @@
 #include "xcsparser.hxx"
 
 #if ENABLE_DCONF
-#include <dconf.hxx>
+#include "dconf.hxx"
 #endif
 
 #if defined(_WIN32)
@@ -79,17 +79,17 @@ namespace configmgr {
 
 namespace {
 
-struct UnresolvedListItem {
+struct UnresolvedVectorItem {
     OUString name;
     rtl::Reference< ParseManager > manager;
 
-    UnresolvedListItem(
+    UnresolvedVectorItem(
         OUString const & theName,
         rtl::Reference< ParseManager > const & theManager):
         name(theName), manager(theManager) {}
 };
 
-typedef std::list< UnresolvedListItem > UnresolvedList;
+typedef std::vector< UnresolvedVectorItem > UnresolvedVector;
 
 void parseXcsFile(
     OUString const & url, int layer, Data & data, Partial const * partial,
@@ -130,10 +130,9 @@ bool canRemoveFromLayer(int layer, rtl::Reference< Node > const & node) {
     switch (node->kind()) {
     case Node::KIND_LOCALIZED_PROPERTY:
     case Node::KIND_GROUP:
-        for (NodeMap::const_iterator i(node->getMembers().begin());
-             i != node->getMembers().end(); ++i)
+        for (auto const& member : node->getMembers())
         {
-            if (!canRemoveFromLayer(layer, i->second)) {
+            if (!canRemoveFromLayer(layer, member.second)) {
                 return false;
             }
         }
@@ -184,11 +183,9 @@ void Components::WriteThread::execute() {
     try {
         try {
             writeModFile(components_, url_, data_);
-        } catch (css::uno::RuntimeException & e) {
+        } catch (css::uno::RuntimeException &) {
             // Ignore write errors, instead of aborting:
-            SAL_WARN(
-                "configmgr",
-                "error writing modifications: \"" << e.Message << '"');
+            TOOLS_WARN_EXCEPTION("configmgr", "error writing modifications");
         }
     } catch (...) {
         reference_->clear();
@@ -197,19 +194,12 @@ void Components::WriteThread::execute() {
     reference_->clear();
 }
 
-class theComponentsSingleton :
-    public rtl::StaticWithArg<
-        Components,
-        css::uno::Reference< css::uno::XComponentContext >,
-        theComponentsSingleton>
-{
-};
-
 Components & Components::getSingleton(
     css::uno::Reference< css::uno::XComponentContext > const & context)
 {
     assert(context.is());
-    return theComponentsSingleton::get(context);
+    static Components singleton(context);
+    return singleton;
 }
 
 bool Components::allLocales(OUString const & locale) {
@@ -243,19 +233,21 @@ void Components::initGlobalBroadcaster(
     rtl::Reference< RootAccess > const & exclude, Broadcaster * broadcaster)
 {
     //TODO: Iterate only over roots w/ listeners:
-    for (WeakRootSet::iterator i(roots_.begin()); i != roots_.end(); ++i) {
+    for (auto const& elemRoot : roots_)
+    {
         rtl::Reference< RootAccess > root;
-        if ((*i)->acquireCounting() > 1) {
-            root.set(*i); // must not throw
+        if (elemRoot->acquireCounting() > 1) {
+            root.set(elemRoot); // must not throw
         }
-        (*i)->releaseNondeleting();
+        elemRoot->releaseNondeleting();
         if (root.is()) {
             if (root != exclude) {
                 std::vector<OUString> path(root->getAbsolutePath());
                 Modifications::Node const * mods = &modifications.getRoot();
-                for (auto j(path.begin()); j != path.end(); ++j) {
+                for (auto const& pathElem : path)
+                {
                     Modifications::Node::Children::const_iterator k(
-                        mods->children.find(*j));
+                        mods->children.find(pathElem));
                     if (k == mods->children.end()) {
                         mods = nullptr;
                         break;
@@ -279,23 +271,24 @@ void Components::addModification(std::vector<OUString> const & path) {
 
 void Components::writeModifications() {
 
-    if (!data_.modifications.empty()) {
-        switch (modificationTarget_) {
-        case ModificationTarget::None:
-            break;
-        case ModificationTarget::File:
-            if (!writeThread_.is()) {
-                writeThread_ = new WriteThread(
-                    &writeThread_, *this, modificationFileUrl_, data_);
-                writeThread_->launch();
-            }
-            break;
-        case ModificationTarget::Dconf:
-#if ENABLE_DCONF
-            dconf::writeModifications(*this, data_);
-#endif
-            break;
+    if (data_.modifications.empty())
+        return;
+
+    switch (modificationTarget_) {
+    case ModificationTarget::None:
+        break;
+    case ModificationTarget::File:
+        if (!writeThread_.is()) {
+            writeThread_ = new WriteThread(
+                &writeThread_, *this, modificationFileUrl_, data_);
+            writeThread_->launch();
         }
+        break;
+    case ModificationTarget::Dconf:
+#if ENABLE_DCONF
+        dconf::writeModifications(*this, data_);
+#endif
+        break;
     }
 }
 
@@ -357,37 +350,39 @@ void Components::removeExtensionXcuFile(
     assert(modifications != nullptr);
     rtl::Reference< Data::ExtensionXcu > item(
         data_.removeExtensionXcuAdditions(fileUri));
-    if (item.is()) {
-        for (Additions::reverse_iterator i(item->additions.rbegin());
-             i != item->additions.rend(); ++i)
+    if (!item.is())
+        return;
+
+    for (Additions::reverse_iterator i(item->additions.rbegin());
+         i != item->additions.rend(); ++i)
+    {
+        rtl::Reference< Node > parent;
+        NodeMap const * map = &data_.getComponents();
+        rtl::Reference< Node > node;
+        for (auto const& j : *i)
         {
-            rtl::Reference< Node > parent;
-            NodeMap const * map = &data_.getComponents();
-            rtl::Reference< Node > node;
-            for (auto j(i->begin()); j != i->end(); ++j) {
-                parent = node;
-                node = map->findNode(Data::NO_LAYER, *j);
-                if (!node.is()) {
-                    break;
-                }
-                map = &node->getMembers();
+            parent = node;
+            node = map->findNode(Data::NO_LAYER, j);
+            if (!node.is()) {
+                break;
             }
-            if (node.is()) {
-                assert(parent.is());
-                if (parent->kind() == Node::KIND_SET) {
-                    assert(
-                        node->kind() == Node::KIND_GROUP ||
-                        node->kind() == Node::KIND_SET);
-                    if (canRemoveFromLayer(item->layer, node)) {
-                        parent->getMembers().erase(i->back());
-                        data_.modifications.remove(*i);
-                        modifications->add(*i);
-                    }
+            map = &node->getMembers();
+        }
+        if (node.is()) {
+            assert(parent.is());
+            if (parent->kind() == Node::KIND_SET) {
+                assert(
+                    node->kind() == Node::KIND_GROUP ||
+                    node->kind() == Node::KIND_SET);
+                if (canRemoveFromLayer(item->layer, node)) {
+                    parent->getMembers().erase(i->back());
+                    data_.modifications.remove(*i);
+                    modifications->add(*i);
                 }
             }
         }
-        writeModifications();
     }
+    writeModifications();
 }
 
 void Components::insertModificationXcuFile(
@@ -401,11 +396,10 @@ void Components::insertModificationXcuFile(
     try {
         parseFileLeniently(
             &parseXcuFile, fileUri, Data::NO_LAYER, &part, modifications, nullptr);
-    } catch (css::container::NoSuchElementException & e) {
-        SAL_WARN(
+    } catch (const css::container::NoSuchElementException &) {
+        TOOLS_WARN_EXCEPTION(
             "configmgr",
-            "error inserting non-existing \"" << fileUri << "\": \""
-                << e.Message << '"');
+            "error inserting non-existing \"" << fileUri << "\"");
     }
 }
 
@@ -425,23 +419,21 @@ css::beans::Optional< css::uno::Any > Components::getExternalValue(
         try {
             service = context_->getServiceManager()->createInstanceWithContext(
                 name, context_);
-        } catch (css::uno::RuntimeException &) {
+        } catch (const css::uno::RuntimeException &) {
             // Assuming these exceptions are real errors:
             throw;
-        } catch (css::uno::Exception & e) {
+        } catch (const css::uno::Exception &)  {
             // Assuming these exceptions indicate that the service is not
             // installed:
-            SAL_WARN(
+            TOOLS_WARN_EXCEPTION(
                 "configmgr",
-                "createInstance(" << name << ") failed with \"" << e.Message
-                    << '"');
+                "createInstance(" << name << ") failed");
         }
         css::uno::Reference< css::beans::XPropertySet > propset;
         if (service.is()) {
             propset.set( service, css::uno::UNO_QUERY_THROW);
         }
-        j = externalServices_.insert(
-            ExternalServices::value_type(name, propset)).first;
+        j = externalServices_.emplace(name, propset).first;
     }
     css::beans::Optional< css::uno::Any > value;
     if (j->second.is()) {
@@ -456,8 +448,10 @@ css::beans::Optional< css::uno::Any > Components::getExternalValue(
             throw css::uno::RuntimeException(
                 "unknown external value descriptor ID: " + e.Message);
         } catch (css::lang::WrappedTargetException & e) {
-            throw css::uno::RuntimeException(
-                "cannot obtain external value: " + e.Message);
+            css::uno::Any anyEx = cppu::getCaughtException();
+            throw css::lang::WrappedTargetRuntimeException(
+                "cannot obtain external value: " + e.Message,
+                nullptr, anyEx );
         }
     }
     return value;
@@ -524,9 +518,6 @@ Components::Components(
             userExtensionLayer_ = layer;
             parseXcsXcuIniLayer(layer, url, true);
             layer += 2; //TODO: overflow
-        } else if (type == "module") {
-            parseModuleLayer(layer, url);
-            ++layer; //TODO: overflow
         } else if (type == "res") {
             sal_uInt32 nStartTime = osl_getGlobalTimer();
             parseResLayer(layer, url);
@@ -620,7 +611,7 @@ Components::~Components()
     // (unknown yet) but can do no harm
     const bool bExitWasCalled(comphelper::BackupFileHelper::getExitWasCalled());
 
-#ifndef WNT
+#ifndef _WIN32
     // we can add a SAL_WARN here for other systems where the destructor gets called after
     // an _exit() call. Still safe - the getExitWasCalled() is used, but a hint that _exit
     // behaves different on a system
@@ -643,8 +634,9 @@ Components::~Components()
         flushModifications();
     }
 
-    for (WeakRootSet::iterator i(roots_.begin()); i != roots_.end(); ++i) {
-        (*i)->setAlive(false);
+    for (auto const& rootElem : roots_)
+    {
+        rootElem->setAlive(false);
     }
 }
 
@@ -656,14 +648,14 @@ void Components::parseFileLeniently(
     assert(parseFile != nullptr);
     try {
         (*parseFile)(url, layer, data_, partial, modifications, additions);
-    } catch (css::container::NoSuchElementException &) {
+    } catch (const css::container::NoSuchElementException &) {
         throw;
-    } catch (css::uno::Exception & e) { //TODO: more specific exception catching
+    } catch (const css::uno::Exception &) { //TODO: more specific exception catching
         // Ignore invalid XML files, instead of completely preventing OOo from
         // starting:
-        SAL_WARN(
+        TOOLS_WARN_EXCEPTION(
             "configmgr",
-            "error reading \"" << url << "\": \"" << e.Message << '"');
+            "error reading \"" << url << "\"");
     }
 }
 
@@ -679,7 +671,7 @@ void Components::parseFiles(
         if (!recursive) {
             return;
         }
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     default:
         throw css::uno::RuntimeException(
             "cannot open directory " + url);
@@ -710,6 +702,10 @@ void Components::parseFiles(
                     parseFileLeniently(
                         parseFile, stat.getFileURL(), layer, nullptr, nullptr, nullptr);
                 } catch (css::container::NoSuchElementException & e) {
+                    if (stat.getFileType() == osl::FileStatus::Link) {
+                        SAL_WARN("configmgr", "dangling link <" << stat.getFileURL() << ">");
+                        continue;
+                    }
                     throw css::uno::RuntimeException(
                         "stat'ed file does not exist: " + e.Message);
                 }
@@ -731,9 +727,8 @@ void Components::parseFileList(
             }
             try {
                 parseFileLeniently(parseFile, url, layer, nullptr, nullptr, adds);
-            } catch (css::container::NoSuchElementException & e) {
-                SAL_WARN(
-                    "configmgr", "file does not exist: \"" << e.Message << '"');
+            } catch (const css::container::NoSuchElementException &) {
+                TOOLS_WARN_EXCEPTION("configmgr", "file does not exist");
                 if (adds != nullptr) {
                     data_.removeExtensionXcuAdditions(url);
                 }
@@ -756,7 +751,7 @@ void Components::parseXcdFiles(int layer, OUString const & url) {
         throw css::uno::RuntimeException(
             "cannot open directory " + url);
     }
-    UnresolvedList unres;
+    UnresolvedVector unres;
     std::set< OUString > existingDeps;
     std::set< OUString > processedDeps;
     for (;;) {
@@ -787,29 +782,33 @@ void Components::parseXcdFiles(int layer, OUString const & url) {
                         stat.getFileURL(),
                         new XcdParser(layer, processedDeps, data_));
                 } catch (css::container::NoSuchElementException & e) {
+                    if (stat.getFileType() == osl::FileStatus::Link) {
+                        SAL_WARN("configmgr", "dangling link <" << stat.getFileURL() << ">");
+                        continue;
+                    }
                     throw css::uno::RuntimeException(
                         "stat'ed file does not exist: " + e.Message);
                 }
                 if (manager->parse(nullptr)) {
                     processedDeps.insert(name);
                 } else {
-                    unres.push_back(UnresolvedListItem(name, manager));
+                    unres.emplace_back(name, manager);
                 }
             }
         }
     }
     while (!unres.empty()) {
-        bool isResolved = false;
-        for (UnresolvedList::iterator i(unres.begin()); i != unres.end();) {
+        bool resolved = false;
+        for (UnresolvedVector::iterator i(unres.begin()); i != unres.end();) {
             if (i->manager->parse(&existingDeps)) {
                 processedDeps.insert(i->name);
                 i = unres.erase(i);
-                isResolved = true;
+                resolved = true;
             } else {
                 ++i;
             }
         }
-        if (!isResolved) {
+        if (!resolved) {
             throw css::uno::RuntimeException(
                 "xcd: unresolved dependencies in " + url);
         }
@@ -828,36 +827,32 @@ void Components::parseXcsXcuIniLayer(
     // Check if ini file exists (otherwise .override would still read global
     // SCHEMA/DATA variables, which could interfere with unrelated environment
     // variables):
-    if (rtl::Bootstrap(url).getHandle() != nullptr) {
-        OUStringBuffer prefix("${.override:");
-        for (sal_Int32 i = 0; i != url.getLength(); ++i) {
-            sal_Unicode c = url[i];
-            switch (c) {
-            case '$':
-            case ':':
-            case '\\':
-                prefix.append('\\');
-                SAL_FALLTHROUGH;
-            default:
-                prefix.append(c);
-            }
-        }
-        prefix.append(':');
-        OUString urls(prefix.toString() + "SCHEMA}");
-        rtl::Bootstrap::expandMacros(urls);
-        if (!urls.isEmpty()) {
-            parseFileList(layer, &parseXcsFile, urls, false);
-        }
-        urls = prefix.makeStringAndClear() + "DATA}";
-        rtl::Bootstrap::expandMacros(urls);
-        if (!urls.isEmpty()) {
-            parseFileList(layer + 1, &parseXcuFile, urls, recordAdditions);
+    if (rtl::Bootstrap(url).getHandle() == nullptr)        return;
+
+    OUStringBuffer prefix("${.override:");
+    for (sal_Int32 i = 0; i != url.getLength(); ++i) {
+        sal_Unicode c = url[i];
+        switch (c) {
+        case '$':
+        case ':':
+        case '\\':
+            prefix.append('\\');
+            [[fallthrough]];
+        default:
+            prefix.append(c);
         }
     }
-}
-
-void Components::parseModuleLayer(int layer, OUString const & url) {
-    parseFiles(layer, ".xcu", &parseXcuFile, url, false);
+    prefix.append(':');
+    OUString urls(prefix.toString() + "SCHEMA}");
+    rtl::Bootstrap::expandMacros(urls);
+    if (!urls.isEmpty()) {
+        parseFileList(layer, &parseXcsFile, urls, false);
+    }
+    urls = prefix.makeStringAndClear() + "DATA}";
+    rtl::Bootstrap::expandMacros(urls);
+    if (!urls.isEmpty()) {
+        parseFileList(layer + 1, &parseXcuFile, urls, recordAdditions);
+    }
 }
 
 void Components::parseResLayer(int layer, OUString const & url) {
@@ -884,7 +879,7 @@ void Components::parseModificationLayer(int layer, OUString const & url) {
     }
 }
 
-int Components::getExtensionLayer(bool shared) {
+int Components::getExtensionLayer(bool shared) const {
     int layer = shared ? sharedExtensionLayer_ : userExtensionLayer_;
     if (layer == -1) {
         throw css::uno::RuntimeException(

@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ucbhelper/fd_inputstream.hxx"
+#include <ucbhelper/fd_inputstream.hxx>
 
 #include <com/sun/star/io/IOException.hpp>
-#include <rtl/alloc.h>
 #include <osl/diagnose.h>
 #include <sal/log.hxx>
 #include <algorithm>
@@ -99,7 +98,7 @@ namespace ucbhelper
 
     sal_Int32 SAL_CALL FdInputStream::available()
     {
-        return sal::static_int_cast<sal_Int32>(m_nLength - getPosition());
+        return std::min<sal_Int64>(SAL_MAX_INT32, m_nLength - getPosition());
     }
 
 

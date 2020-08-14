@@ -24,14 +24,15 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
-#include <vcl/layout.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <vcl/svapp.hxx>
-#include "app.hrc"
+#include <vcl/weld.hxx>
+#include <sfx2/strings.hrc>
 #include <sfx2/sfxresid.hxx>
 #include <sfx2/filedlghelper.hxx>
 #include <tools/debug.hxx>
 #include <svl/svdde.hxx>
+#include <osl/diagnose.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -39,14 +40,17 @@ using namespace ::com::sun::star::uno;
 namespace sfx2
 {
 
+namespace {
 
 class  ImplDdeItem;
+
+}
 
 struct BaseLink_Impl
 {
     Link<SvBaseLink&,void> m_aEndEditLink;
     LinkManager*        m_pLinkMgr;
-    VclPtr<vcl::Window> m_pParentWin;
+    weld::Window*       m_pParentWin;
     std::unique_ptr<FileDialogHelper>
                         m_pFileDlg;
     bool                m_bIsConnect;
@@ -54,7 +58,6 @@ struct BaseLink_Impl
     BaseLink_Impl() :
           m_pLinkMgr( nullptr )
         , m_pParentWin( nullptr )
-        , m_pFileDlg( nullptr )
         , m_bIsConnect( false )
         {}
 };
@@ -89,6 +92,7 @@ struct ImplBaseLinkData
     }
 };
 
+namespace {
 
 class ImplDdeItem : public DdeGetPutItem
 {
@@ -119,14 +123,15 @@ public:
     bool IsInDTOR() const { return bIsInDTOR; }
 };
 
+}
 
 SvBaseLink::SvBaseLink()
     : pImpl ( new BaseLink_Impl ),
       m_bIsReadOnly(false)
 {
-    nObjType = OBJECT_CLIENT_SO;
-    pImplData = new ImplBaseLinkData;
-    bVisible = bSynchron = bUseCache = true;
+    mnObjType = SvBaseLinkObjectType::ClientSo;
+    pImplData.reset( new ImplBaseLinkData );
+    bVisible = bSynchron = true;
     bWasLastEditOK = false;
 }
 
@@ -135,12 +140,12 @@ SvBaseLink::SvBaseLink( SfxLinkUpdateMode nUpdateMode, SotClipboardFormatId nCon
    : pImpl( new BaseLink_Impl ),
      m_bIsReadOnly(false)
 {
-    nObjType = OBJECT_CLIENT_SO;
-    pImplData = new ImplBaseLinkData;
-    bVisible = bSynchron = bUseCache = true;
+    mnObjType = SvBaseLinkObjectType::ClientSo;
+    pImplData.reset( new ImplBaseLinkData );
+    bVisible = bSynchron = true;
     bWasLastEditOK = false;
 
-    // It is going to be a Ole-Link,
+    // It is going to be an OLE-Link,
     pImplData->ClientType.nUpdateMode = nUpdateMode;
     pImplData->ClientType.nCntntType = nContentType;
     pImplData->ClientType.bIntrnlLnk = false;
@@ -158,37 +163,35 @@ static DdeTopic* FindTopic( const OUString & rLinkName, sal_uInt16* pItemStt )
     OUString sService( sNm.getToken( 0, cTokenSeparator, nTokenPos ) );
 
     DdeServices& rSvc = DdeService::GetServices();
-    for (DdeServices::iterator aI = rSvc.begin(); aI != rSvc.end(); ++aI)
+    for (auto const& elem : rSvc)
     {
-        DdeService* pService = *aI;
-        if( pService->GetName() == sService )
+        if(elem->GetName() == sService)
         {
             // then we search for the Topic
             OUString sTopic( sNm.getToken( 0, cTokenSeparator, nTokenPos ) );
             if( pItemStt )
                 *pItemStt = nTokenPos;
 
-            std::vector<DdeTopic*>& rTopics = pService->GetTopics();
+            std::vector<DdeTopic*>& rTopics = elem->GetTopics();
 
-            for( std::vector<DdeTopic*>::iterator iterTopic = rTopics.begin();
-                 iterTopic != rTopics.end(); ++iterTopic )
-                if( (*iterTopic)->GetName() == sTopic )
-                    return *iterTopic;
+            for (auto const& topic : rTopics)
+                if( topic->GetName() == sTopic )
+                    return topic;
             break;
         }
     }
     return nullptr;
 }
 
-SvBaseLink::SvBaseLink( const OUString& rLinkName, sal_uInt16 nObjectType, SvLinkSource* pObj )
+SvBaseLink::SvBaseLink( const OUString& rLinkName, SvBaseLinkObjectType nObjectType, SvLinkSource* pObj )
     : pImpl()
     , m_bIsReadOnly(false)
 {
-    bVisible = bSynchron = bUseCache = true;
+    bVisible = bSynchron = true;
     bWasLastEditOK = false;
     aLinkName = rLinkName;
-    pImplData = new ImplBaseLinkData;
-    nObjType = nObjectType;
+    pImplData.reset( new ImplBaseLinkData );
+    mnObjType = nObjectType;
 
     if( !pObj )
     {
@@ -196,7 +199,7 @@ SvBaseLink::SvBaseLink( const OUString& rLinkName, sal_uInt16 nObjectType, SvLin
         return;
     }
 
-    if( OBJECT_DDE_EXTERN == nObjType )
+    if( SvBaseLinkObjectType::DdeExternal == mnObjType )
     {
         sal_uInt16 nItemStt = 0;
         DdeTopic* pTopic = FindTopic( aLinkName, &nItemStt );
@@ -223,15 +226,13 @@ SvBaseLink::~SvBaseLink()
 {
     Disconnect();
 
-    switch( nObjType )
+    if( mnObjType == SvBaseLinkObjectType::DdeExternal )
     {
-    case OBJECT_DDE_EXTERN:
         if( !pImplData->DDEType.pItem->IsInDTOR() )
             delete pImplData->DDEType.pItem;
-        break;
     }
 
-    delete pImplData;
+    pImplData.reset();
 }
 
 IMPL_LINK( SvBaseLink, EndEditHdl, const OUString&, _rNewName, void )
@@ -244,12 +245,12 @@ IMPL_LINK( SvBaseLink, EndEditHdl, const OUString&, _rNewName, void )
 }
 
 
-void SvBaseLink::SetObjType( sal_uInt16 nObjTypeP )
+void SvBaseLink::SetObjType( SvBaseLinkObjectType mnObjTypeP )
 {
-    DBG_ASSERT( nObjType != OBJECT_CLIENT_DDE, "type already set" );
+    DBG_ASSERT( mnObjType != SvBaseLinkObjectType::ClientDde, "type already set" );
     DBG_ASSERT( !xObj.is(), "object exist" );
 
-    nObjType = nObjTypeP;
+    mnObjType = mnObjTypeP;
 }
 
 
@@ -261,9 +262,9 @@ void SvBaseLink::SetName( const OUString & rNm )
 
 void SvBaseLink::SetObj( SvLinkSource * pObj )
 {
-    DBG_ASSERT( (nObjType & OBJECT_CLIENT_SO &&
-                pImplData->ClientType.bIntrnlLnk) ||
-                nObjType == OBJECT_CLIENT_GRF,
+    DBG_ASSERT( (isClientType(mnObjType) &&
+                 pImplData->ClientType.bIntrnlLnk) ||
+                mnObjType == SvBaseLinkObjectType::ClientGraphic,
                 "no intern link" );
     xObj = pObj;
 }
@@ -288,7 +289,7 @@ void SvBaseLink::SetLinkSourceName( const OUString & rLnkNm )
 
 void SvBaseLink::SetUpdateMode( SfxLinkUpdateMode nMode )
 {
-    if( ( OBJECT_CLIENT_SO & nObjType ) &&
+    if( isClientType(mnObjType) &&
         pImplData->ClientType.nUpdateMode != nMode )
     {
         AddNextRef();
@@ -312,7 +313,7 @@ void SvBaseLink::clearStreamToLoadFrom()
 
 bool SvBaseLink::Update()
 {
-    if( OBJECT_CLIENT_SO & nObjType )
+    if( isClientType(mnObjType) )
     {
         AddNextRef();
         Disconnect();
@@ -331,7 +332,7 @@ bool SvBaseLink::Update()
                 UpdateResult eRes = DataChanged(sMimeType, aData);
                 bool bSuccess = eRes == SUCCESS;
                 //for manual Updates there is no need to hold the ServerObject
-                if( OBJECT_CLIENT_DDE == nObjType &&
+                if( SvBaseLinkObjectType::ClientDde == mnObjType &&
                     SfxLinkUpdateMode::ONCALL == GetUpdateMode() && xObj.is() )
                     xObj->RemoveAllDataAdvise( this );
                 return bSuccess;
@@ -355,7 +356,7 @@ bool SvBaseLink::Update()
 
 SfxLinkUpdateMode SvBaseLink::GetUpdateMode() const
 {
-    return ( OBJECT_CLIENT_SO & nObjType )
+    return isClientType(mnObjType)
             ? pImplData->ClientType.nUpdateMode
             : SfxLinkUpdateMode::ONCALL;
 }
@@ -368,18 +369,18 @@ void SvBaseLink::GetRealObject_( bool bConnect)
 
     DBG_ASSERT( !xObj.is(), "object already exist" );
 
-    if( OBJECT_CLIENT_DDE == nObjType )
+    if( SvBaseLinkObjectType::ClientDde == mnObjType )
     {
         OUString sServer;
         if( sfx2::LinkManager::GetDisplayNames( this, &sServer ) &&
             sServer == Application::GetAppName() )  // internal Link !!!
         {
             // so that the Internal link can be created!
-            nObjType = OBJECT_INTERN;
+            mnObjType = SvBaseLinkObjectType::Internal;
             xObj = sfx2::LinkManager::CreateObj( this );
 
             pImplData->ClientType.bIntrnlLnk = true;
-            nObjType = OBJECT_CLIENT_DDE;  // so we know what it once was!
+            mnObjType = SvBaseLinkObjectType::ClientDde;  // so we know what it once was!
         }
         else
         {
@@ -387,7 +388,7 @@ void SvBaseLink::GetRealObject_( bool bConnect)
             xObj = sfx2::LinkManager::CreateObj( this );
         }
     }
-    else if( (OBJECT_CLIENT_SO & nObjType) )
+    else if( isClientType(mnObjType) )
         xObj = sfx2::LinkManager::CreateObj( this );
 
     if( bConnect && ( !xObj.is() || !xObj->Connect( this ) ) )
@@ -396,7 +397,7 @@ void SvBaseLink::GetRealObject_( bool bConnect)
 
 SotClipboardFormatId SvBaseLink::GetContentType() const
 {
-    if( OBJECT_CLIENT_SO & nObjType )
+    if( isClientType(mnObjType) )
         return pImplData->ClientType.nCntntType;
 
     return SotClipboardFormatId::NONE;  // all Formats ?
@@ -405,7 +406,7 @@ SotClipboardFormatId SvBaseLink::GetContentType() const
 
 void SvBaseLink::SetContentType( SotClipboardFormatId nType )
 {
-    if( OBJECT_CLIENT_SO & nObjType )
+    if( isClientType(mnObjType) )
     {
         pImplData->ClientType.nCntntType = nType;
     }
@@ -438,17 +439,15 @@ void SvBaseLink::Disconnect()
 
 SvBaseLink::UpdateResult SvBaseLink::DataChanged( const OUString &, const css::uno::Any & )
 {
-    switch( nObjType )
+    if ( mnObjType == SvBaseLinkObjectType::DdeExternal )
     {
-    case OBJECT_DDE_EXTERN:
         if( pImplData->DDEType.pItem )
             pImplData->DDEType.pItem->Notify();
-        break;
     }
     return SUCCESS;
 }
 
-void SvBaseLink::Edit( vcl::Window* pParent, const Link<SvBaseLink&,void>& rEndEditHdl )
+void SvBaseLink::Edit(weld::Window* pParent, const Link<SvBaseLink&,void>& rEndEditHdl )
 {
     pImpl->m_pParentWin = pParent;
     pImpl->m_aEndEditLink = rEndEditHdl;
@@ -459,7 +458,7 @@ void SvBaseLink::Edit( vcl::Window* pParent, const Link<SvBaseLink&,void>& rEndE
     bool bAsync = false;
     Link<const OUString&, void> aLink = LINK( this, SvBaseLink, EndEditHdl );
 
-    if( OBJECT_CLIENT_SO & nObjType && pImplData->ClientType.bIntrnlLnk )
+    if( isClientType(mnObjType) && pImplData->ClientType.bIntrnlLnk )
     {
         if( pImpl->m_pLinkMgr )
         {
@@ -494,7 +493,7 @@ bool SvBaseLink::ExecuteEdit( const OUString& _rNewName )
         {
             OUString sApp, sTopic, sItem, sError;
             sfx2::LinkManager::GetDisplayNames( this, &sApp, &sTopic, &sItem );
-            if( nObjType == OBJECT_CLIENT_DDE )
+            if( mnObjType == SvBaseLinkObjectType::ClientDde )
             {
                 sError = SfxResId(STR_DDE_ERROR);
 
@@ -517,7 +516,9 @@ bool SvBaseLink::ExecuteEdit( const OUString& _rNewName )
             else
                 return false;
 
-            ScopedVclPtrInstance<MessageDialog>(pImpl->m_pParentWin, sError)->Execute();
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pImpl->m_pParentWin,
+                                                                     VclMessageType::Warning, VclButtonsType::Ok, sError));
+            xBox->run();
         }
     }
     else if( !pImpl->m_bIsConnect )
@@ -536,7 +537,7 @@ FileDialogHelper & SvBaseLink::GetInsertFileDialog(const OUString& rFactory) con
 {
     pImpl->m_pFileDlg.reset( new FileDialogHelper(
             ui::dialogs::TemplateDescription::FILEOPEN_SIMPLE,
-            FileDialogFlags::Insert, rFactory) );
+            FileDialogFlags::Insert, rFactory, SfxFilterFlags::NONE, SfxFilterFlags::NONE, pImpl->m_pParentWin) );
     return *pImpl->m_pFileDlg;
 }
 
@@ -585,24 +586,24 @@ bool ImplDdeItem::Put( const DdeData*  )
 void ImplDdeItem::AdviseLoop( bool bOpen )
 {
     // Connection is closed, so also unsubscribe link
-    if( pLink->GetObj() )
+    if( !pLink->GetObj() )
+        return;
+
+    if( bOpen )
     {
-        if( bOpen )
+        // A connection is re-established
+        if( SvBaseLinkObjectType::DdeExternal == pLink->GetObjType() )
         {
-            // A connection is re-established
-            if( OBJECT_DDE_EXTERN == pLink->GetObjType() )
-            {
-                pLink->GetObj()->AddDataAdvise( pLink, "text/plain;charset=utf-16",  ADVISEMODE_NODATA );
-                pLink->GetObj()->AddConnectAdvise( pLink );
-            }
+            pLink->GetObj()->AddDataAdvise( pLink, "text/plain;charset=utf-16",  ADVISEMODE_NODATA );
+            pLink->GetObj()->AddConnectAdvise( pLink );
         }
-        else
-        {
-            // So that no-one gets the idea to delete the pointer
-            // when Disconnecting!
-            tools::SvRef<SvBaseLink> aRef( pLink );
-            aRef->Disconnect();
-        }
+    }
+    else
+    {
+        // So that no-one gets the idea to delete the pointer
+        // when Disconnecting!
+        tools::SvRef<SvBaseLink> aRef( pLink );
+        aRef->Disconnect();
     }
 }
 

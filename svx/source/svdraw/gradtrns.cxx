@@ -24,16 +24,16 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <tools/helpers.hxx>
-#include <vcl/outdev.hxx>
+#include <vcl/canvastools.hxx>
 
 
-void GradTransformer::GradToVec(GradTransGradient& rG, GradTransVector& rV, const SdrObject* pObj)
+void GradTransformer::GradToVec(GradTransGradient const & rG, GradTransVector& rV, const SdrObject* pObj)
 {
     // handle start color
     rV.aCol1 = rG.aGradient.GetStartColor();
     if(100 != rG.aGradient.GetStartIntens())
     {
-        const double fFact((double)rG.aGradient.GetStartIntens() / 100.0);
+        const double fFact(static_cast<double>(rG.aGradient.GetStartIntens()) / 100.0);
         rV.aCol1 = Color(rV.aCol1.getBColor() * fFact);
     }
 
@@ -41,13 +41,13 @@ void GradTransformer::GradToVec(GradTransGradient& rG, GradTransVector& rV, cons
     rV.aCol2 = rG.aGradient.GetEndColor();
     if(100 != rG.aGradient.GetEndIntens())
     {
-        const double fFact((double)rG.aGradient.GetEndIntens() / 100.0);
+        const double fFact(static_cast<double>(rG.aGradient.GetEndIntens()) / 100.0);
         rV.aCol2 = Color(rV.aCol2.getBColor() * fFact);
     }
 
     // calc the basic positions
     const tools::Rectangle aObjectSnapRectangle(pObj->GetSnapRect());
-    const basegfx::B2DRange aRange(aObjectSnapRectangle.Left(), aObjectSnapRectangle.Top(), aObjectSnapRectangle.Right(), aObjectSnapRectangle.Bottom());
+    const basegfx::B2DRange aRange = vcl::unotools::b2DRectangleFromRectangle(aObjectSnapRectangle);
     const basegfx::B2DPoint aCenter(aRange.getCenter());
     basegfx::B2DPoint aStartPos, aEndPos;
 
@@ -61,15 +61,15 @@ void GradTransformer::GradToVec(GradTransGradient& rG, GradTransVector& rV, cons
             if(rG.aGradient.GetBorder())
             {
                 basegfx::B2DVector aFullVec(aStartPos - aEndPos);
-                const double fLen = (aFullVec.getLength() * (100.0 - (double)rG.aGradient.GetBorder())) / 100.0;
+                const double fLen = (aFullVec.getLength() * (100.0 - static_cast<double>(rG.aGradient.GetBorder()))) / 100.0;
                 aFullVec.normalize();
                 aStartPos = aEndPos + (aFullVec * fLen);
             }
 
             if(rG.aGradient.GetAngle())
             {
-                const double fAngle = (double)rG.aGradient.GetAngle() * (F_PI180 / 10.0);
-                const basegfx::B2DHomMatrix aTransformation(basegfx::tools::createRotateAroundPoint(aCenter, -fAngle));
+                const double fAngle = basegfx::deg2rad(rG.aGradient.GetAngle() / 10.0);
+                const basegfx::B2DHomMatrix aTransformation(basegfx::utils::createRotateAroundPoint(aCenter, -fAngle));
 
                 aStartPos *= aTransformation;
                 aEndPos *= aTransformation;
@@ -84,15 +84,15 @@ void GradTransformer::GradToVec(GradTransGradient& rG, GradTransVector& rV, cons
             if(rG.aGradient.GetBorder())
             {
                 basegfx::B2DVector aFullVec(aEndPos - aStartPos);
-                const double fLen = (aFullVec.getLength() * (100.0 - (double)rG.aGradient.GetBorder())) / 100.0;
+                const double fLen = (aFullVec.getLength() * (100.0 - static_cast<double>(rG.aGradient.GetBorder()))) / 100.0;
                 aFullVec.normalize();
                 aEndPos = aStartPos + (aFullVec * fLen);
             }
 
             if(rG.aGradient.GetAngle())
             {
-                const double fAngle = (double)rG.aGradient.GetAngle() * (F_PI180 / 10.0);
-                const basegfx::B2DHomMatrix aTransformation(basegfx::tools::createRotateAroundPoint(aCenter, -fAngle));
+                const double fAngle = basegfx::deg2rad(rG.aGradient.GetAngle() / 10.0);
+                const basegfx::B2DHomMatrix aTransformation(basegfx::utils::createRotateAroundPoint(aCenter, -fAngle));
 
                 aStartPos *= aTransformation;
                 aEndPos *= aTransformation;
@@ -108,15 +108,15 @@ void GradTransformer::GradToVec(GradTransGradient& rG, GradTransVector& rV, cons
             if(rG.aGradient.GetBorder())
             {
                 basegfx::B2DVector aFullVec(aStartPos - aEndPos);
-                const double fLen = (aFullVec.getLength() * (100.0 - (double)rG.aGradient.GetBorder())) / 100.0;
+                const double fLen = (aFullVec.getLength() * (100.0 - static_cast<double>(rG.aGradient.GetBorder()))) / 100.0;
                 aFullVec.normalize();
                 aStartPos = aEndPos + (aFullVec * fLen);
             }
 
             if(rG.aGradient.GetAngle())
             {
-                const double fAngle = (double)rG.aGradient.GetAngle() * (F_PI180 / 10.0);
-                const basegfx::B2DHomMatrix aTransformation(basegfx::tools::createRotateAroundPoint(aEndPos, -fAngle));
+                const double fAngle = basegfx::deg2rad(rG.aGradient.GetAngle() / 10.0);
+                const basegfx::B2DHomMatrix aTransformation(basegfx::utils::createRotateAroundPoint(aEndPos, -fAngle));
 
                 aStartPos *= aTransformation;
                 aEndPos *= aTransformation;
@@ -143,15 +143,15 @@ void GradTransformer::GradToVec(GradTransGradient& rG, GradTransVector& rV, cons
             if(rG.aGradient.GetBorder())
             {
                 basegfx::B2DVector aFullVec(aStartPos - aEndPos);
-                const double fLen = (aFullVec.getLength() * (100.0 - (double)rG.aGradient.GetBorder())) / 100.0;
+                const double fLen = (aFullVec.getLength() * (100.0 - static_cast<double>(rG.aGradient.GetBorder()))) / 100.0;
                 aFullVec.normalize();
                 aStartPos = aEndPos + (aFullVec * fLen);
             }
 
             if(rG.aGradient.GetAngle())
             {
-                const double fAngle = (double)rG.aGradient.GetAngle() * (F_PI180 / 10.0);
-                const basegfx::B2DHomMatrix aTransformation(basegfx::tools::createRotateAroundPoint(aEndPos, -fAngle));
+                const double fAngle = basegfx::deg2rad(rG.aGradient.GetAngle() / 10.0);
+                const basegfx::B2DHomMatrix aTransformation(basegfx::utils::createRotateAroundPoint(aEndPos, -fAngle));
 
                 aStartPos *= aTransformation;
                 aEndPos *= aTransformation;
@@ -179,7 +179,7 @@ void GradTransformer::GradToVec(GradTransGradient& rG, GradTransVector& rV, cons
 }
 
 
-void GradTransformer::VecToGrad(GradTransVector& rV, GradTransGradient& rG, GradTransGradient& rGOld, const SdrObject* pObj,
+void GradTransformer::VecToGrad(GradTransVector const & rV, GradTransGradient& rG, GradTransGradient const & rGOld, const SdrObject* pObj,
     bool bMoveSingle, bool bMoveFirst)
 {
     // fill old gradient to new gradient to have a base
@@ -199,7 +199,7 @@ void GradTransformer::VecToGrad(GradTransVector& rV, GradTransGradient& rG, Grad
 
     // calc the basic positions
     const tools::Rectangle aObjectSnapRectangle(pObj->GetSnapRect());
-    const basegfx::B2DRange aRange(aObjectSnapRectangle.Left(), aObjectSnapRectangle.Top(), aObjectSnapRectangle.Right(), aObjectSnapRectangle.Bottom());
+    const basegfx::B2DRange aRange = vcl::unotools::b2DRectangleFromRectangle(aObjectSnapRectangle);
     const basegfx::B2DPoint aCenter(aRange.getCenter());
     basegfx::B2DPoint aStartPos(rV.maPositionA);
     basegfx::B2DPoint aEndPos(rV.maPositionB);
@@ -219,8 +219,7 @@ void GradTransformer::VecToGrad(GradTransVector& rV, GradTransGradient& rG, Grad
 
                 aFullVec.normalize();
 
-                double fNewFullAngle(atan2(aFullVec.getY(), aFullVec.getX()));
-                fNewFullAngle /= F_PI180;
+                double fNewFullAngle(basegfx::rad2deg(atan2(aFullVec.getY(), aFullVec.getX())));
                 fNewFullAngle *= -10.0;
                 fNewFullAngle += 900.0;
 
@@ -269,7 +268,7 @@ void GradTransformer::VecToGrad(GradTransVector& rV, GradTransGradient& rG, Grad
                 // set
                 if(nNewBorder != rG.aGradient.GetBorder())
                 {
-                    rG.aGradient.SetBorder((sal_uInt16)nNewBorder);
+                    rG.aGradient.SetBorder(static_cast<sal_uInt16>(nNewBorder));
                 }
             }
 
@@ -300,12 +299,11 @@ void GradTransformer::VecToGrad(GradTransVector& rV, GradTransGradient& rG, Grad
                 // set
                 if(nNewBorder != rG.aGradient.GetBorder())
                 {
-                    rG.aGradient.SetBorder((sal_uInt16)nNewBorder);
+                    rG.aGradient.SetBorder(static_cast<sal_uInt16>(nNewBorder));
                 }
 
                 aFullVec.normalize();
-                double fNewFullAngle(atan2(aFullVec.getY(), aFullVec.getX()));
-                fNewFullAngle /= F_PI180;
+                double fNewFullAngle(basegfx::rad2deg(atan2(aFullVec.getY(), aFullVec.getX())));
                 fNewFullAngle *= -10.0;
                 fNewFullAngle += 900.0;
 
@@ -362,8 +360,8 @@ void GradTransformer::VecToGrad(GradTransVector& rV, GradTransGradient& rG, Grad
                     nNewYOffset = 100;
                 }
 
-                rG.aGradient.SetXOffset((sal_uInt16)nNewXOffset);
-                rG.aGradient.SetYOffset((sal_uInt16)nNewYOffset);
+                rG.aGradient.SetXOffset(static_cast<sal_uInt16>(nNewXOffset));
+                rG.aGradient.SetYOffset(static_cast<sal_uInt16>(nNewYOffset));
 
                 aStartPos -= aOffset;
                 aEndPos -= aOffset;
@@ -394,14 +392,13 @@ void GradTransformer::VecToGrad(GradTransVector& rV, GradTransGradient& rG, Grad
                 // set
                 if(nNewBorder != rG.aGradient.GetBorder())
                 {
-                    rG.aGradient.SetBorder((sal_uInt16)nNewBorder);
+                    rG.aGradient.SetBorder(static_cast<sal_uInt16>(nNewBorder));
                 }
 
                 // angle is not definitely necessary for these modes, but it makes
                 // controlling more fun for the user
                 aFullVec.normalize();
-                double fNewFullAngle(atan2(aFullVec.getY(), aFullVec.getX()));
-                fNewFullAngle /= F_PI180;
+                double fNewFullAngle(basegfx::rad2deg(atan2(aFullVec.getY(), aFullVec.getX())));
                 fNewFullAngle *= -10.0;
                 fNewFullAngle += 900.0;
 
@@ -458,8 +455,8 @@ void GradTransformer::VecToGrad(GradTransVector& rV, GradTransGradient& rG, Grad
                     nNewYOffset = 100;
                 }
 
-                rG.aGradient.SetXOffset((sal_uInt16)nNewXOffset);
-                rG.aGradient.SetYOffset((sal_uInt16)nNewYOffset);
+                rG.aGradient.SetXOffset(static_cast<sal_uInt16>(nNewXOffset));
+                rG.aGradient.SetYOffset(static_cast<sal_uInt16>(nNewYOffset));
 
                 aStartPos -= aOffset;
                 aEndPos -= aOffset;
@@ -490,14 +487,13 @@ void GradTransformer::VecToGrad(GradTransVector& rV, GradTransGradient& rG, Grad
                 // set
                 if(nNewBorder != rG.aGradient.GetBorder())
                 {
-                    rG.aGradient.SetBorder((sal_uInt16)nNewBorder);
+                    rG.aGradient.SetBorder(static_cast<sal_uInt16>(nNewBorder));
                 }
 
                 // angle is not definitely necessary for these modes, but it makes
                 // controlling more fun for the user
                 aFullVec.normalize();
-                double fNewFullAngle(atan2(aFullVec.getY(), aFullVec.getX()));
-                fNewFullAngle /= F_PI180;
+                double fNewFullAngle(basegfx::rad2deg(atan2(aFullVec.getY(), aFullVec.getX())));
                 fNewFullAngle *= -10.0;
                 fNewFullAngle += 900.0;
 

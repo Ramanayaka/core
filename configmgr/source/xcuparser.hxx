@@ -35,7 +35,6 @@
 #include "parser.hxx"
 #include "type.hxx"
 #include "valueparser.hxx"
-#include "xmldata.hxx"
 
 namespace xmlreader { struct Span; }
 
@@ -85,7 +84,7 @@ private:
     void handleGroupProp(xmlreader::XmlReader & reader, GroupNode * group);
 
     void handleUnknownGroupProp(
-        xmlreader::XmlReader const & reader, GroupNode * group,
+        xmlreader::XmlReader const & reader, GroupNode const * group,
         OUString const & name, Type type, Operation operation,
         bool finalized);
 
@@ -135,8 +134,6 @@ private:
         {}
     };
 
-    typedef std::stack< State > StateStack;
-
     ValueParser valueParser_;
     Data & data_;
     Partial const * partial_;
@@ -145,7 +142,7 @@ private:
     bool recordModifications_;
     bool trackPath_;
     OUString componentName_;
-    StateStack state_;
+    std::stack< State > state_;
     std::vector<OUString> path_;
 };
 

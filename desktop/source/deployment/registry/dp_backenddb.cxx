@@ -18,9 +18,6 @@
  */
 
 
-#include <rtl/string.h>
-#include <rtl/strbuf.hxx>
-#include <rtl/bootstrap.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <osl/file.hxx>
 #include <com/sun/star/deployment/DeploymentException.hpp>
@@ -29,18 +26,16 @@
 #include <com/sun/star/xml/xpath/XPathAPI.hpp>
 #include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/io/XActiveDataControl.hpp>
-#include "dp_ucb.h"
-#include "dp_misc.h"
+#include <dp_misc.h>
 #include <ucbhelper/content.hxx>
 #include <xmlscript/xml_helper.hxx>
-#include "dp_backenddb.hxx"
+#include <dp_backenddb.hxx>
 
 
 using namespace ::com::sun::star::uno;
 
 
-namespace dp_registry {
-namespace backend {
+namespace dp_registry::backend {
 
 BackendDb::BackendDb(
     Reference<css::uno::XComponentContext> const &  xContext,
@@ -156,15 +151,15 @@ void BackendDb::removeEntry(OUString const & url)
 {
     const OUString sKeyElement = getKeyElementName();
     const OUString sPrefix = getNSPrefix();
-    OUStringBuffer sExpression(500);
-    sExpression.append(sPrefix);
-    sExpression.append(":");
-    sExpression.append(sKeyElement);
-    sExpression.append("[@url = \"");
-    sExpression.append(url);
-    sExpression.append("\"]");
+    OUString sExpression =
+        sPrefix +
+        ":" +
+        sKeyElement +
+        "[@url = \"" +
+        url +
+        "\"]";
 
-    removeElement(sExpression.makeStringAndClear());
+    removeElement(sExpression);
 }
 
 void BackendDb::revokeEntry(OUString const & url)
@@ -242,18 +237,18 @@ Reference<css::xml::dom::XNode> BackendDb::getKeyElement(
     {
         const OUString sPrefix = getNSPrefix();
         const OUString sKeyElement = getKeyElementName();
-        OUStringBuffer sExpression(500);
-        sExpression.append(sPrefix);
-        sExpression.append(":");
-        sExpression.append(sKeyElement);
-        sExpression.append("[@url = \"");
-        sExpression.append(url);
-        sExpression.append("\"]");
+        OUString sExpression =
+            sPrefix +
+            ":" +
+            sKeyElement +
+            "[@url = \"" +
+            url +
+            "\"]";
 
         const Reference<css::xml::dom::XDocument> doc = getDocument();
         const Reference<css::xml::dom::XNode> root = doc->getFirstChild();
         const Reference<css::xml::xpath::XXPathAPI> xpathApi = getXPathAPI();
-        return xpathApi->selectSingleNode(root, sExpression.makeStringAndClear());
+        return xpathApi->selectSingleNode(root, sExpression);
     }
     catch(const css::uno::Exception &)
     {
@@ -280,7 +275,6 @@ void BackendDb::writeVectorOfPair(
         OSL_ASSERT(!sNameSpace.isEmpty());
         const OUString sPrefix(getNSPrefix() + ":");
         const Reference<css::xml::dom::XDocument> doc = getDocument();
-        const Reference<css::xml::dom::XNode> root = doc->getFirstChild();
 
         const Reference<css::xml::dom::XElement> vectorNode(
             doc->createElementNS(sNameSpace, sPrefix + sVectorTagName));
@@ -288,8 +282,7 @@ void BackendDb::writeVectorOfPair(
         xParent->appendChild(
             Reference<css::xml::dom::XNode>(
                 vectorNode, css::uno::UNO_QUERY_THROW));
-        typedef std::vector< std::pair< OUString, OUString > >::const_iterator CIT;
-        for (CIT i = vecPairs.begin(); i != vecPairs.end(); ++i)
+        for (auto const& vecPair : vecPairs)
         {
             const Reference<css::xml::dom::XElement> pairNode(
                 doc->createElementNS(sNameSpace, sPrefix + sPairTagName));
@@ -306,7 +299,7 @@ void BackendDb::writeVectorOfPair(
                     firstNode, css::uno::UNO_QUERY_THROW));
 
             const Reference<css::xml::dom::XText> firstTextNode(
-                doc->createTextNode( i->first));
+                doc->createTextNode( vecPair.first));
 
             firstNode->appendChild(
                 Reference<css::xml::dom::XNode>(
@@ -320,7 +313,7 @@ void BackendDb::writeVectorOfPair(
                     secondNode, css::uno::UNO_QUERY_THROW));
 
             const Reference<css::xml::dom::XText> secondTextNode(
-                doc->createTextNode( i->second));
+                doc->createTextNode( vecPair.second));
 
             secondNode->appendChild(
                 Reference<css::xml::dom::XNode>(
@@ -368,8 +361,8 @@ BackendDb::readVectorOfPair(
                 xpathApi->selectSingleNode(aPair, sExprSecond);
             OSL_ASSERT(first.is() && second.is());
 
-            retVector.push_back(std::make_pair(
-                                    first->getNodeValue(), second->getNodeValue()));
+            retVector.emplace_back(
+                                    first->getNodeValue(), second->getNodeValue());
         }
         return retVector;
     }
@@ -384,7 +377,7 @@ BackendDb::readVectorOfPair(
 
 //Only writes the data if there is at least one entry
 void BackendDb::writeSimpleList(
-    std::list< OUString> const & list,
+    std::deque< OUString> const & list,
     OUString const & sListTagName,
     OUString const & sMemberTagName,
     Reference<css::xml::dom::XNode> const & xParent)
@@ -404,8 +397,7 @@ void BackendDb::writeSimpleList(
             Reference<css::xml::dom::XNode>(
                 listNode, css::uno::UNO_QUERY_THROW));
 
-        typedef std::list<OUString>::const_iterator ITC_ITEMS;
-        for (ITC_ITEMS i = list.begin(); i != list.end(); ++i)
+        for (auto const& elem : list)
         {
             const Reference<css::xml::dom::XNode> memberNode(
                 doc->createElementNS(sNameSpace, sPrefix + sMemberTagName), css::uno::UNO_QUERY_THROW);
@@ -413,7 +405,7 @@ void BackendDb::writeSimpleList(
             listNode->appendChild(memberNode);
 
             const Reference<css::xml::dom::XNode> textNode(
-                doc->createTextNode( *i), css::uno::UNO_QUERY_THROW);
+                doc->createTextNode(elem), css::uno::UNO_QUERY_THROW);
 
             memberNode->appendChild(textNode);
         }
@@ -459,7 +451,7 @@ void BackendDb::writeSimpleElement(
 
 }
 
-/// The key elements have an url attribute and are always children of the root element.
+/// The key elements have a url attribute and are always children of the root element.
 Reference<css::xml::dom::XNode> BackendDb::writeKeyElement(
     OUString const & url)
 {
@@ -532,7 +524,7 @@ OUString BackendDb::readSimpleElement(
 }
 
 
-std::list< OUString> BackendDb::readList(
+std::deque< OUString> BackendDb::readList(
     Reference<css::xml::dom::XNode> const & parent,
     OUString const & sListTagName,
     OUString const & sMemberTagName)
@@ -547,7 +539,7 @@ std::list< OUString> BackendDb::readList(
         const Reference<css::xml::dom::XNodeList> list =
             xpathApi->selectNodeList(parent, sExprList);
 
-        std::list<OUString > retList;
+        std::deque<OUString > retList;
         sal_Int32 length = list->getLength();
         for (sal_Int32 i = 0; i < length; i++)
         {
@@ -565,30 +557,30 @@ std::list< OUString> BackendDb::readList(
     }
 }
 
-std::list<OUString> BackendDb::getOneChildFromAllEntries(
+std::vector<OUString> BackendDb::getOneChildFromAllEntries(
     OUString const & name)
 {
     try
     {
-        std::list<OUString> listRet;
+        std::vector<OUString> listRet;
         Reference<css::xml::dom::XDocument> doc = getDocument();
         Reference<css::xml::dom::XNode> root = doc->getFirstChild();
 
         Reference<css::xml::xpath::XXPathAPI> xpathApi = getXPathAPI();
         const OUString sPrefix = getNSPrefix();
         const OUString sKeyElement = getKeyElementName();
-        OUStringBuffer buf(512);
-        buf.append(sPrefix);
-        buf.append(":");
-        buf.append(sKeyElement);
-        buf.append("/");
-        buf.append(sPrefix);
-        buf.append(":");
-        buf.append(name);
-        buf.append("/text()");
+        OUString sNodeSelectExpr =
+            sPrefix +
+            ":" +
+            sKeyElement +
+            "/" +
+            sPrefix +
+            ":" +
+            name +
+            "/text()";
 
         Reference<css::xml::dom::XNodeList> nodes =
-            xpathApi->selectNodeList(root, buf.makeStringAndClear());
+            xpathApi->selectNodeList(root, sNodeSelectExpr);
         if (nodes.is())
         {
             sal_Int32 length = nodes->getLength();
@@ -658,7 +650,6 @@ void RegisteredDb::addEntry(OUString const & url)
     }
 }
 
-} // namespace backend
 } // namespace dp_registry
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

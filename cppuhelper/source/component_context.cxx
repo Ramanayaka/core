@@ -22,7 +22,6 @@
 #include <osl/diagnose.h>
 #include <osl/mutex.hxx>
 
-#include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 
 #include <uno/lbnames.h>
@@ -30,11 +29,9 @@
 
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/component_context.hxx>
-#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/XSingleComponentFactory.hpp>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
@@ -42,6 +39,8 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/uno/DeploymentException.hpp>
 #include <com/sun/star/uno/RuntimeException.hpp>
+
+#include <comphelper/sequence.hxx>
 
 #include <memory>
 
@@ -53,14 +52,10 @@ using namespace ::osl;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 
-using rtl::OUString;
-using rtl::OUStringBuffer;
-using rtl::OUStringHash;
-
 namespace cppu
 {
 
-static inline void try_dispose( Reference< XInterface > const & xInstance )
+static void try_dispose( Reference< XInterface > const & xInstance )
 {
     Reference< lang::XComponent > xComp( xInstance, UNO_QUERY );
     if (xComp.is())
@@ -69,13 +64,15 @@ static inline void try_dispose( Reference< XInterface > const & xInstance )
     }
 }
 
-static inline void try_dispose( Reference< lang::XComponent > const & xComp )
+static void try_dispose( Reference< lang::XComponent > const & xComp )
 {
     if (xComp.is())
     {
         xComp->dispose();
     }
 }
+
+namespace {
 
 class DisposingForwarder
     : public WeakImplHelper< lang::XEventListener >
@@ -96,6 +93,8 @@ public:
     virtual void SAL_CALL disposing( lang::EventObject const & rSource ) override;
 };
 
+}
+
 inline void DisposingForwarder::listen(
     Reference< lang::XComponent > const & xSource,
     Reference< lang::XComponent > const & xTarget )
@@ -112,6 +111,7 @@ void DisposingForwarder::disposing( lang::EventObject const & )
     m_xTarget.clear();
 }
 
+namespace {
 
 struct MutexHolder
 {
@@ -138,7 +138,7 @@ protected:
             , lateInit( lateInit_ )
             {}
     };
-    typedef std::unordered_map< OUString, ContextEntry * , OUStringHash > t_map;
+    typedef std::unordered_map< OUString, ContextEntry  > t_map;
     t_map m_map;
 
     Reference< lang::XMultiComponentFactory > m_xSMgr;
@@ -151,7 +151,6 @@ public:
     ComponentContext(
         ContextEntry_Init const * pEntries, sal_Int32 nEntries,
         Reference< XComponentContext > const & xDelegate );
-    virtual ~ComponentContext() override;
 
     // XComponentContext
     virtual Any SAL_CALL getValueByName( OUString const & rName ) override;
@@ -173,20 +172,21 @@ public:
     virtual sal_Bool SAL_CALL hasElements() override;
 };
 
+}
+
 // XNameContainer
 
 void ComponentContext::insertByName(
     OUString const & name, Any const & element )
 {
-    t_map::mapped_type entry(
-        new ContextEntry(
+    ContextEntry entry(
             element,
             /* lateInit_: */
             name.startsWith( "/singletons/" ) &&
-            !element.hasValue() ) );
+            !element.hasValue() );
     MutexGuard guard( m_mutex );
-    std::pair<t_map::iterator, bool> insertion( m_map.insert(
-        t_map::value_type( name, entry ) ) );
+    std::pair<t_map::iterator, bool> insertion( m_map.emplace(
+        name, entry ) );
     if (! insertion.second)
         throw container::ElementExistException(
             "element already exists: " + name,
@@ -203,7 +203,6 @@ void ComponentContext::removeByName( OUString const & name )
             "no such element: " + name,
             static_cast<OWeakObject *>(this) );
 
-    delete iFind->second;
     m_map.erase(iFind);
 }
 
@@ -213,7 +212,7 @@ void ComponentContext::replaceByName(
     OUString const & name, Any const & element )
 {
     MutexGuard guard( m_mutex );
-    t_map::const_iterator const iFind( m_map.find( name ) );
+    t_map::iterator iFind( m_map.find( name ) );
     if (iFind == m_map.end())
         throw container::NoSuchElementException(
             "no such element: " + name,
@@ -221,13 +220,13 @@ void ComponentContext::replaceByName(
     if (name.startsWith( "/singletons/" ) &&
         !element.hasValue())
     {
-        iFind->second->value.clear();
-        iFind->second->lateInit = true;
+        iFind->second.value.clear();
+        iFind->second.lateInit = true;
     }
     else
     {
-        iFind->second->value = element;
-        iFind->second->lateInit = false;
+        iFind->second.value = element;
+        iFind->second.lateInit = false;
     }
 }
 
@@ -242,14 +241,7 @@ Any ComponentContext::getByName( OUString const & name )
 Sequence<OUString> ComponentContext::getElementNames()
 {
     MutexGuard guard( m_mutex );
-    Sequence<OUString> ret( m_map.size() );
-    OUString * pret = ret.getArray();
-    sal_Int32 pos = 0;
-    t_map::const_iterator iPos( m_map.begin() );
-    t_map::const_iterator const iEnd( m_map.end() );
-    for ( ; iPos != iEnd; ++iPos )
-        pret[pos++] = iPos->first;
-    return ret;
+    return comphelper::mapKeysToSequence(m_map);
 }
 
 
@@ -277,13 +269,13 @@ sal_Bool ComponentContext::hasElements()
 Any ComponentContext::lookupMap( OUString const & rName )
 {
     ResettableMutexGuard guard( m_mutex );
-    t_map::const_iterator iFind( m_map.find( rName ) );
+    t_map::iterator iFind( m_map.find( rName ) );
     if (iFind == m_map.end())
         return Any();
 
-    t_map::mapped_type pEntry = iFind->second;
-    if (! pEntry->lateInit)
-        return pEntry->value;
+    ContextEntry& rFindEntry = iFind->second;
+    if (! rFindEntry.lateInit)
+        return rFindEntry.value;
 
     // late init singleton entry
     Reference< XInterface > xInstance;
@@ -303,7 +295,7 @@ Any ComponentContext::lookupMap( OUString const & rName )
         Reference< lang::XSingleComponentFactory > xFac;
         if (usesService >>= xFac) // try via factory
         {
-            xInstance = args.getLength()
+            xInstance = args.hasElements()
                 ? xFac->createInstanceWithArgumentsAndContext( args, this )
                 : xFac->createInstanceWithContext( this );
         }
@@ -313,7 +305,7 @@ Any ComponentContext::lookupMap( OUString const & rName )
             if (usesService >>= xFac2)
             {
                 // try via old XSingleServiceFactory
-                xInstance = args.getLength()
+                xInstance = args.hasElements()
                     ? xFac2->createInstanceWithArguments( args )
                     : xFac2->createInstance();
             }
@@ -323,7 +315,7 @@ Any ComponentContext::lookupMap( OUString const & rName )
                 if ((usesService >>= serviceName) &&
                     !serviceName.isEmpty())
                 {
-                    xInstance = args.getLength()
+                    xInstance = args.hasElements()
                         ? m_xSMgr->createInstanceWithArgumentsAndContext(
                             serviceName, args, this )
                         : m_xSMgr->createInstanceWithContext(
@@ -341,7 +333,7 @@ Any ComponentContext::lookupMap( OUString const & rName )
         SAL_WARN(
             "cppuhelper",
             "exception occurred raising singleton \"" << rName << "\": "
-            << exc.Message);
+            << exc);
     }
 
     SAL_WARN_IF(!xInstance.is(),
@@ -352,14 +344,14 @@ Any ComponentContext::lookupMap( OUString const & rName )
     iFind = m_map.find( rName );
     if (iFind != m_map.end())
     {
-        pEntry = iFind->second;
-        if (pEntry->lateInit)
+        ContextEntry & rEntry = iFind->second;
+        if (rEntry.lateInit)
         {
-            pEntry->value <<= xInstance;
-            pEntry->lateInit = false;
-            return pEntry->value;
+            rEntry.value <<= xInstance;
+            rEntry.lateInit = false;
+            return rEntry.value;
         }
-        ret = pEntry->value;
+        ret = rEntry.value;
     }
     guard.clear();
     if (ret != xInstance) {
@@ -398,51 +390,38 @@ Reference< lang::XMultiComponentFactory > ComponentContext::getServiceManager()
     return m_xSMgr;
 }
 
-ComponentContext::~ComponentContext()
-{
-    t_map::const_iterator iPos( m_map.begin() );
-    t_map::const_iterator const iEnd( m_map.end() );
-    for ( ; iPos != iEnd; ++iPos )
-        delete iPos->second;
-    m_map.clear();
-}
-
 void ComponentContext::disposing()
 {
     Reference< lang::XComponent > xTDMgr, xAC; // to be disposed separately
 
     // dispose all context objects
-    t_map::const_iterator iPos( m_map.begin() );
-    t_map::const_iterator const iEnd( m_map.end() );
-    for ( ; iPos != iEnd; ++iPos )
+    for ( auto& [rName, rEntry] : m_map )
     {
-        t_map::mapped_type pEntry = iPos->second;
-
         // service manager disposed separately
         if (!m_xSMgr.is() ||
-            !iPos->first.startsWith( SMGR_SINGLETON ))
+            !rName.startsWith( SMGR_SINGLETON ))
         {
-            if (pEntry->lateInit)
+            if (rEntry.lateInit)
             {
                 // late init
                 MutexGuard guard( m_mutex );
-                if (pEntry->lateInit)
+                if (rEntry.lateInit)
                 {
-                    pEntry->value.clear(); // release factory
-                    pEntry->lateInit = false;
+                    rEntry.value.clear(); // release factory
+                    rEntry.lateInit = false;
                     continue;
                 }
             }
 
             Reference< lang::XComponent > xComp;
-            pEntry->value >>= xComp;
+            rEntry.value >>= xComp;
             if (xComp.is())
             {
-                if ( iPos->first == TDMGR_SINGLETON )
+                if ( rName == TDMGR_SINGLETON )
                 {
                     xTDMgr = xComp;
                 }
-                else if ( iPos->first == AC_SINGLETON )
+                else if ( rName == AC_SINGLETON )
                 {
                     xAC = xComp;
                 }
@@ -462,9 +441,6 @@ void ComponentContext::disposing()
     // dispose tdmgr; revokes callback from cppu runtime
     try_dispose( xTDMgr );
 
-    iPos = m_map.begin();
-    for ( ; iPos != iEnd; ++iPos )
-        delete iPos->second;
     m_map.clear();
 
     // Hack to terminate any JNI bridge's AsynchronousFinalizer thread (as JNI
@@ -482,7 +458,7 @@ void ComponentContext::disposing()
             assert(envs[i]->dispose != nullptr);
             (*envs[i]->dispose)(envs[i]);
         }
-        rtl_freeMemory(envs);
+        std::free(envs);
     }
 }
 
@@ -504,50 +480,50 @@ ComponentContext::ComponentContext(
         if (rEntry.bLateInitService)
         {
             // singleton entry
-            m_map[ rEntry.name ] = new ContextEntry( Any(), true );
+            m_map.emplace( rEntry.name, ContextEntry( Any(), true ) );
             // service
-            m_map[ rEntry.name + "/service" ] = new ContextEntry( rEntry.value, false );
+            m_map.emplace( rEntry.name + "/service", ContextEntry( rEntry.value, false ) );
             // initial-arguments are provided as optional context entry
         }
         else
         {
             // only value, no late init factory nor string
-            m_map[ rEntry.name ] = new ContextEntry( rEntry.value, false );
+            m_map.emplace( rEntry.name, ContextEntry( rEntry.value, false ) );
         }
     }
 
-    if (!m_xSMgr.is() && m_xDelegate.is())
+    if (!(!m_xSMgr.is() && m_xDelegate.is()))
+        return;
+
+    // wrap delegate's smgr XPropertySet into new smgr
+    Reference< lang::XMultiComponentFactory > xMgr( m_xDelegate->getServiceManager() );
+    if (!xMgr.is())
+        return;
+
+    osl_atomic_increment( &m_refCount );
+    try
     {
-        // wrap delegate's smgr XPropertySet into new smgr
-        Reference< lang::XMultiComponentFactory > xMgr( m_xDelegate->getServiceManager() );
-        if (xMgr.is())
+        // create new smgr based on delegate's one
+        m_xSMgr.set(
+            xMgr->createInstanceWithContext(
+                "com.sun.star.comp.stoc.OServiceManagerWrapper", xDelegate ),
+            UNO_QUERY );
+        // patch DefaultContext property of new one
+        Reference< beans::XPropertySet > xProps( m_xSMgr, UNO_QUERY );
+        OSL_ASSERT( xProps.is() );
+        if (xProps.is())
         {
-            osl_atomic_increment( &m_refCount );
-            try
-            {
-                // create new smgr based on delegate's one
-                m_xSMgr.set(
-                    xMgr->createInstanceWithContext(
-                        "com.sun.star.comp.stoc.OServiceManagerWrapper", xDelegate ),
-                    UNO_QUERY );
-                // patch DefaultContext property of new one
-                Reference< beans::XPropertySet > xProps( m_xSMgr, UNO_QUERY );
-                OSL_ASSERT( xProps.is() );
-                if (xProps.is())
-                {
-                    Reference< XComponentContext > xThis( this );
-                    xProps->setPropertyValue( "DefaultContext", Any( xThis ) );
-                }
-            }
-            catch (...)
-            {
-                osl_atomic_decrement( &m_refCount );
-                throw;
-            }
-            osl_atomic_decrement( &m_refCount );
-            OSL_ASSERT( m_xSMgr.is() );
+            Reference< XComponentContext > xThis( this );
+            xProps->setPropertyValue( "DefaultContext", Any( xThis ) );
         }
     }
+    catch (...)
+    {
+        osl_atomic_decrement( &m_refCount );
+        throw;
+    }
+    osl_atomic_decrement( &m_refCount );
+    OSL_ASSERT( m_xSMgr.is() );
 }
 
 
@@ -573,7 +549,7 @@ extern "C" { static void s_createComponentContext_v(va_list * pParam)
         }
         catch (Exception & exc)
         {
-            SAL_WARN( "cppuhelper", exc.Message );
+            SAL_WARN( "cppuhelper", exc );
             xContext.clear();
         }
     }

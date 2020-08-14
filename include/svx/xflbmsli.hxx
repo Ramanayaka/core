@@ -23,19 +23,17 @@
 #include <svl/eitem.hxx>
 #include <svx/svxdllapi.h>
 
-class SVX_DLLPUBLIC XFillBmpSizeLogItem : public SfxBoolItem
+class SVXCORE_DLLPUBLIC XFillBmpSizeLogItem final : public SfxBoolItem
 {
 public:
                             XFillBmpSizeLogItem( bool bLog = true );
-                            SVX_DLLPRIVATE XFillBmpSizeLogItem( SvStream& rIn );
 
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    SVX_DLLPRIVATE virtual XFillBmpSizeLogItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     SVX_DLLPRIVATE virtual bool GetPresentation( SfxItemPresentation ePres,
                                                  MapUnit eCoreMetric,
                                                  MapUnit ePresMetric,
-                                                 OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                                 OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

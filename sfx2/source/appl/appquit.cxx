@@ -19,44 +19,25 @@
 
 #include <config_features.h>
 
-#include <basic/basmgr.hxx>
 #include <basic/sbstar.hxx>
+#include <tools/solar.h>
+#include <tools/debug.hxx>
 
-#include <svl/svdde.hxx>
-#include <vcl/layout.hxx>
-#include <svl/eitem.hxx>
-
-#include <unotools/saveopt.hxx>
-#include <unotools/misccfg.hxx>
-
-#include "app.hrc"
 #include <sfx2/app.hxx>
-#include <sfx2/evntconf.hxx>
-#include <sfx2/unoctitm.hxx>
-#include "appdata.hxx"
+#include <appdata.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/dispatch.hxx>
-#include <sfx2/printer.hxx>
-#include "arrdecl.hxx"
-#include <sfx2/sfxresid.hxx>
-#include <sfx2/event.hxx>
-#include <sfx2/templdlg.hxx>
 #include <sfx2/msgpool.hxx>
-#include <sfx2/docfile.hxx>
-#include "sfxtypes.hxx"
-#include "sfxlocal.hrc"
 #include <sfx2/fcontnr.hxx>
-#include "nochaos.hxx"
+#include <nochaos.hxx>
 #include <sfx2/doctempl.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/objsh.hxx>
-#include <sfx2/docfac.hxx>
-#include "appbaslib.hxx"
-#include "childwinimpl.hxx"
+#include <appbaslib.hxx>
+#include <childwinimpl.hxx>
 #include <ctrlfactoryimpl.hxx>
 #include <shellimpl.hxx>
 #include <basic/basicmanagerrepository.hxx>
-#include <svtools/svtresid.hxx>
 
 using ::basic::BasicManagerRepository;
 
@@ -73,7 +54,7 @@ void SfxApplication::Deinitialize()
 
     pImpl->bDowning = true; // due to Timer from DecAliveCount and QueryExit
 
-    DELETEZ( pImpl->pTemplates );
+    pImpl->pTemplates.reset();
 
     // By definition there shouldn't be any open view frames when we reach
     // this method. Therefore this call makes no sense and is the source of
@@ -94,28 +75,26 @@ void SfxApplication::Deinitialize()
 
 #if HAVE_FEATURE_SCRIPTING
     BasicManagerRepository::resetApplicationBasicManager();
-    pImpl->pBasicManager->reset( nullptr );
+    pImpl->pBasicManager->reset(nullptr);
         // this will also delete pBasMgr
 #endif
 
     DBG_ASSERT( pImpl->pViewFrame == nullptr, "active foreign ViewFrame" );
 
     // free administration managers
-    DELETEZ(pImpl->pAppDispat);
-    SfxResMgr::DeleteResMgr();
-    SvtResMgr::DeleteResMgr();
+    pImpl->pAppDispat.reset();
 
     // from here no SvObjects have to exists
-    DELETEZ(pImpl->pMatcher);
+    pImpl->pMatcher.reset();
 
-    DELETEX(SfxSlotPool, pImpl->pSlotPool);
-    DELETEX(SfxChildWinFactArr_Impl, pImpl->pFactArr);
+    pImpl->pSlotPool.reset();
+    pImpl->pFactArr.reset();
 
-    DELETEX(SfxTbxCtrlFactArr_Impl, pImpl->pTbxCtrlFac);
-    DELETEX(SfxStbCtrlFactArr_Impl, pImpl->pStbCtrlFac);
-    DELETEX(SfxViewFrameArr_Impl, pImpl->pViewFrames);
-    DELETEX(SfxViewShellArr_Impl, pImpl->pViewShells);
-    DELETEX(SfxObjectShellArr_Impl, pImpl->pObjShells);
+    pImpl->pTbxCtrlFac.reset();
+    pImpl->pStbCtrlFac.reset();
+    pImpl->pViewFrames.reset();
+    pImpl->pViewShells.reset();
+    pImpl->pObjShells.reset();
 
     //TODO/CLEANUP
     //ReleaseArgs could be used instead!
@@ -123,15 +102,10 @@ void SfxApplication::Deinitialize()
     NoChaos::ReleaseItemPool();
 
 #if HAVE_FEATURE_SCRIPTING
-    DELETEZ(pImpl->pBasicResMgr);
+    pImpl->m_pSbxErrorHdl.reset();
 #endif
-    DELETEZ(pImpl->pSvtResMgr);
-
-#if HAVE_FEATURE_SCRIPTING
-    delete pImpl->m_pSbxErrorHdl;
-#endif
-    delete pImpl->m_pSoErrorHdl;
-    delete pImpl->m_pToolsErrorHdl;
+    pImpl->m_pSoErrorHdl.reset();
+    pImpl->m_pToolsErrorHdl.reset();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

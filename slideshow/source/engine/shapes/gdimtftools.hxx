@@ -27,7 +27,7 @@
 
 #include <basegfx/range/b2drectangle.hxx>
 
-#include "tools.hxx"
+#include <tools.hxx>
 
 #include <vector>
 
@@ -36,9 +36,7 @@ class GDIMetaFile;
 class Graphic;
 
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /// meta file loading specialities:
         enum mtf_load_flags {
@@ -46,7 +44,7 @@ namespace slideshow
             MTF_LOAD_NONE = 0,
             /// the source of the metafile might be a foreign
             /// application. The metafile is checked against unsupported
-            /// content, and, if necessary, returned as a pre-rendererd
+            /// content, and, if necessary, returned as a pre-rendered
             /// bitmap.
             MTF_LOAD_FOREIGN_SOURCE = 2,
             /// retrieve a meta file for the page background only
@@ -112,9 +110,9 @@ namespace slideshow
             @param rGraphic
             Input graphic object, to extract animations from
          */
-        bool getAnimationFromGraphic( VectorOfMtfAnimationFrames& o_rFrames,
-                                      ::std::size_t&              o_rLoopCount,
-                                      const Graphic&              rGraphic );
+        bool getAnimationFromGraphic(VectorOfMtfAnimationFrames& o_rFrames,
+                                     sal_uInt32&                 o_rLoopCount,
+                                     const Graphic&              rGraphic);
 
         /** Retrieve scroll text animation rectangles from given metafile
 
@@ -124,7 +122,6 @@ namespace slideshow
         bool getRectanglesFromScrollMtf( ::basegfx::B2DRectangle&       o_rScrollRect,
                                          ::basegfx::B2DRectangle&       o_rPaintRect,
                                          const GDIMetaFileSharedPtr&    rMtf );
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_GDIMTFTOOLS_HXX

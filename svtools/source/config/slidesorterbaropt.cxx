@@ -18,7 +18,6 @@
  */
 
 #include <svtools/slidesorterbaropt.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/configitem.hxx>
 #include <tools/debug.hxx>
 #include <osl/diagnose.h>
@@ -26,6 +25,7 @@
 #include <com/sun/star/uno/Sequence.hxx>
 
 #include <comphelper/lok.hxx>
+#include <comphelper/sequence.hxx>
 #include <rtl/instance.hxx>
 
 using namespace ::utl;
@@ -120,7 +120,7 @@ class SvtSlideSorterBarOptions_Impl : public ConfigItem
 SvtSlideSorterBarOptions_Impl::SvtSlideSorterBarOptions_Impl()
     // Init baseclasses first
     : ConfigItem( ROOTNODE_SLIDESORTERBAR )
-
+    , m_seqPropertyNames(GetPropertyNames())
     , m_bVisibleImpressView( false )
     , m_bVisibleOutlineView( false )
     , m_bVisibleNotesView( false )
@@ -129,8 +129,6 @@ SvtSlideSorterBarOptions_Impl::SvtSlideSorterBarOptions_Impl()
     , m_bVisibleDrawView( false )
 
 {
-    m_seqPropertyNames = GetPropertyNames( );
-
     // Use our static list of configuration keys to get his values.
     Sequence< Any > seqValues = GetProperties( m_seqPropertyNames  );
 
@@ -197,17 +195,6 @@ SvtSlideSorterBarOptions_Impl::~SvtSlideSorterBarOptions_Impl()
         Commit();
 }
 
-static int lcl_MapPropertyName( const OUString& rCompare,
-                const uno::Sequence< OUString>& aInternalPropertyNames)
-{
-    for(int nProp = 0; nProp < aInternalPropertyNames.getLength(); ++nProp)
-    {
-        if( aInternalPropertyNames[nProp] == rCompare )
-            return nProp;
-    }
-    return -1;
-}
-
 void SvtSlideSorterBarOptions_Impl::Load( const Sequence< OUString >& rPropertyNames )
 {
     const uno::Sequence< OUString> aInternalPropertyNames( GetPropertyNames());
@@ -224,7 +211,7 @@ void SvtSlideSorterBarOptions_Impl::Load( const Sequence< OUString >& rPropertyN
     {
         if (!seqValues[nProperty].hasValue())
             continue;
-        switch( lcl_MapPropertyName(rPropertyNames[nProperty], aInternalPropertyNames) )
+        switch( comphelper::findValue(aInternalPropertyNames, rPropertyNames[nProperty]) )
         {
             case PROPERTYHANDLE_VISIBLE_IMPRESSVIEW:
             {
@@ -321,7 +308,7 @@ void SvtSlideSorterBarOptions_Impl::ImplCommit()
 Sequence< OUString > SvtSlideSorterBarOptions_Impl::GetPropertyNames()
 {
     // Build list of configuration key names.
-    OUString pProperties[] =
+    const OUString pProperties[] =
     {
         PROPERTYNAME_VISIBLE_IMPRESSVIEW,
         PROPERTYNAME_VISIBLE_OUTLINEVIEW,
@@ -371,7 +358,8 @@ SvtSlideSorterBarOptions::~SvtSlideSorterBarOptions()
 
 bool SvtSlideSorterBarOptions::GetVisibleImpressView() const
 {
-    return m_pImpl->m_bVisibleImpressView && !comphelper::LibreOfficeKit::isActive();
+    static const bool bRunningUnitTest = getenv("LO_TESTNAME");
+    return m_pImpl->m_bVisibleImpressView && (!bRunningUnitTest || !comphelper::LibreOfficeKit::isActive());
 }
 
 void SvtSlideSorterBarOptions::SetVisibleImpressView(bool bVisible)

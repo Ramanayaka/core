@@ -17,14 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "tools/TimerBasedTaskExecution.hxx"
-#include "tools/AsynchronousTask.hxx"
+#include <tools/TimerBasedTaskExecution.hxx>
+#include <tools/AsynchronousTask.hxx>
 #include <tools/time.hxx>
 #include <osl/diagnose.h>
-#include "sal/log.hxx"
+#include <sal/log.hxx>
 #include <memory>
 
-namespace sd { namespace tools {
+namespace sd::tools {
 
 /** Used by the shared_ptr instead of the private destructor.
 */
@@ -48,7 +48,7 @@ std::shared_ptr<TimerBasedTaskExecution> TimerBasedTaskExecution::Create (
     // Let the new object have a shared_ptr to itself, so that it can
     // release itself when the AsynchronousTask has been executed
     // completely.
-    if (pExecution->mpTask.get() != nullptr)
+    if (pExecution->mpTask != nullptr)
         pExecution->mpSelf = pExecution;
     return pExecution;
 }
@@ -63,20 +63,20 @@ void TimerBasedTaskExecution::Release()
 void TimerBasedTaskExecution::ReleaseTask (
     const std::weak_ptr<TimerBasedTaskExecution>& rpExecution)
 {
-    if ( ! rpExecution.expired())
+    if (  rpExecution.expired())
+        return;
+
+    try
     {
-        try
-        {
-            std::shared_ptr<tools::TimerBasedTaskExecution> pExecution (rpExecution);
-            pExecution->Release();
-        }
-        catch (const std::bad_weak_ptr&)
-        {
-            // When a bad_weak_ptr has been thrown then the object pointed
-            // to by rpTask has been released right after we checked that it
-            // still existed.  Too bad, but that means, that we have nothing
-            // more do.
-        }
+        std::shared_ptr<tools::TimerBasedTaskExecution> pExecution (rpExecution);
+        pExecution->Release();
+    }
+    catch (const std::bad_weak_ptr&)
+    {
+        // When a bad_weak_ptr has been thrown then the object pointed
+        // to by rpTask has been released right after we checked that it
+        // still existed.  Too bad, but that means, that we have nothing
+        // more do.
     }
 }
 
@@ -101,32 +101,32 @@ TimerBasedTaskExecution::~TimerBasedTaskExecution()
 
 IMPL_LINK_NOARG(TimerBasedTaskExecution, TimerCallback, Timer *, void)
 {
-    if (mpTask.get() != nullptr)
+    if (mpTask == nullptr)
+        return;
+
+    if (mpTask->HasNextStep())
     {
-        if (mpTask->HasNextStep())
+        // Execute as many steps as fit into the time span of length
+        // mnMaxTimePerStep.  Note that the last step may take longer
+        // than allowed.
+        sal_uInt32 nStartTime (::tools::Time( ::tools::Time::SYSTEM ).GetMSFromTime());
+        SAL_INFO("sd.tools", OSL_THIS_FUNC << ": starting TimerBasedTaskExecution at " << nStartTime);
+        do
         {
-            // Execute as many steps as fit into the time span of length
-            // mnMaxTimePerStep.  Note that the last step may take longer
-            // than allowed.
-            sal_uInt32 nStartTime (::tools::Time( ::tools::Time::SYSTEM ).GetMSFromTime());
-            SAL_INFO("sd.tools", OSL_THIS_FUNC << ": starting TimerBasedTaskExecution at " << nStartTime);
-            do
-            {
-                mpTask->RunNextStep();
-                sal_uInt32 nDuration (::tools::Time( ::tools::Time::SYSTEM ).GetMSFromTime()-nStartTime);
-                SAL_INFO("sd.tools", OSL_THIS_FUNC << ": executed step in " << nDuration);
-                if (nDuration > mnMaxTimePerStep)
-                    break;
-            }
-            while (mpTask->HasNextStep());
-            SAL_INFO("sd.tools", OSL_THIS_FUNC << ": TimerBasedTaskExecution sleeping");
-            maTimer.Start();
+            mpTask->RunNextStep();
+            sal_uInt32 nDuration (::tools::Time( ::tools::Time::SYSTEM ).GetMSFromTime()-nStartTime);
+            SAL_INFO("sd.tools", OSL_THIS_FUNC << ": executed step in " << nDuration);
+            if (nDuration > mnMaxTimePerStep)
+                break;
         }
-        else
-            mpSelf.reset();
+        while (mpTask->HasNextStep());
+        SAL_INFO("sd.tools", OSL_THIS_FUNC << ": TimerBasedTaskExecution sleeping");
+        maTimer.Start();
     }
+    else
+        mpSelf.reset();
 }
 
-} } // end of namespace ::sd::tools
+} // end of namespace ::sd::tools
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

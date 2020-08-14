@@ -216,7 +216,7 @@ public class AsciiReplaceFilter
         * For external user of us we must provide our internal filter name
         * (which is registered inside configuration package TypeDetection).
         * User will be able then to ask there for further information about us.
-        * Otherwhise we must implement a full featured XPropertySet...
+        * Otherwise we must implement a full featured XPropertySet...
         *
         * @return our internal filter name of configuration
         */
@@ -231,7 +231,7 @@ public class AsciiReplaceFilter
         /**
         * It's not allowed for us - neither very easy to change our internal
         * name during runtime of an office. Because every filter name must
-        * be unambigous ...
+        * be unambiguous...
         * So we don't implement this method here.
         */
         public void setName( String sName )
@@ -316,12 +316,12 @@ public class AsciiReplaceFilter
         /**
         * Implements the real filter method. We detect if it must be an import or an export.
         * Depends on that we use an existing stream (given inside the MediaDescriptor)
-        * or open it by using an URL (must be a part of the descriptor too).
+        * or open it by using a URL (must be a part of the descriptor too).
         *
         * @param lDescriptor
         *          the MediaDescriptor which describes the document
         *
-        * @return a bool value which describes if method was successfully or not.
+        * @return a bool value which describes if method was successful.
         */
 
         public boolean filter( com.sun.star.beans.PropertyValue[] lDescriptor )
@@ -362,7 +362,7 @@ public class AsciiReplaceFilter
 
         /**
         * Makes the filter process breakable. To do so the outside code may use threads.
-        * We use a internal "condition" variable which is queried by the real filter method on
+        * We use an internal "condition" variable which is queried by the real filter method on
         * every loop they do. So it's more a polling mechanism.
         */
         public void cancel()
@@ -406,7 +406,7 @@ public class AsciiReplaceFilter
          *          capsulate all other necessary information for this filter request
          *          (streams, replace values ...)
          *
-         * @return a bool value which describes if method was successfully or not.
+         * @return a bool value which describes if method was successful.
          */
         private boolean implts_import( com.sun.star.text.XTextDocument xTarget  ,
                                        FilterOptions                   aOptions )
@@ -456,7 +456,7 @@ public class AsciiReplaceFilter
 
                 // copy current buffer to the document model.
                 // Create a new paragraph for every line inside original file.
-                // May not all data could be readed - but that doesn't matter here.
+                // May not all data could be read - but that doesn't matter here.
                 // Reason: somewhere cancelled this function.
                 // But check for optional replace request before...
                 int nStart  =  0;
@@ -538,7 +538,7 @@ public class AsciiReplaceFilter
          *          capsulate all other necessary information for this filter request
          *          (streams, replace values ...)
          *
-         * @return a bool value which describes if method was successfully or not.
+         * @return a bool value which describes if method was successful.
          */
         private boolean implts_export( com.sun.star.text.XTextDocument xSource ,
                                        FilterOptions                   aOptions)

@@ -26,7 +26,8 @@
 using namespace com::sun::star;
 using namespace ooo::vba;
 
-ScVbaTextBox::ScVbaTextBox( const uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, AbstractGeometryAttributes* pGeomHelper, bool bDialog ) : TextBoxImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper ), mbDialog( bDialog )
+ScVbaTextBox::ScVbaTextBox( const uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<AbstractGeometryAttributes> pGeomHelper, bool bDialog )
+    : TextBoxImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) ), mbDialog( bDialog )
 {
 }
 
@@ -49,8 +50,7 @@ ScVbaTextBox::setValue( const uno::Any& _value )
 OUString SAL_CALL
 ScVbaTextBox::getText()
 {
-    uno::Any aValue;
-    aValue = m_xProps->getPropertyValue( "Text" );
+    uno::Any aValue = m_xProps->getPropertyValue( "Text" );
     OUString sString;
     aValue >>= sString;
     return sString;
@@ -74,11 +74,10 @@ ScVbaTextBox::setText( const OUString& _text )
 sal_Int32 SAL_CALL
 ScVbaTextBox::getMaxLength()
 {
-    uno::Any aValue;
-    aValue = m_xProps->getPropertyValue( "MaxTextLen" );
+    uno::Any aValue = m_xProps->getPropertyValue( "MaxTextLen" );
     sal_Int16 nMaxLength = 0;
     aValue >>= nMaxLength;
-    return (sal_Int32)nMaxLength;
+    return static_cast<sal_Int32>(nMaxLength);
 }
 
 void SAL_CALL
@@ -92,8 +91,7 @@ ScVbaTextBox::setMaxLength( sal_Int32 _maxlength )
 sal_Bool SAL_CALL
 ScVbaTextBox::getMultiline()
 {
-    uno::Any aValue;
-    aValue = m_xProps->getPropertyValue( "MultiLine" );
+    uno::Any aValue = m_xProps->getPropertyValue( "MultiLine" );
     bool bRet = false;
     aValue >>= bRet;
     return bRet;
@@ -169,18 +167,16 @@ void SAL_CALL ScVbaTextBox::setLocked( sal_Bool bLocked )
 OUString
 ScVbaTextBox::getServiceImplName()
 {
-    return OUString( "ScVbaTextBox" );
+    return "ScVbaTextBox";
 }
 
 uno::Sequence< OUString >
 ScVbaTextBox::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.TextBox";
-    }
+        "ooo.vba.msforms.TextBox"
+    };
     return aServiceNames;
 }
 

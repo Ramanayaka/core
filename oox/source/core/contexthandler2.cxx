@@ -17,15 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/core/contexthandler2.hxx"
+#include <oox/core/contexthandler2.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
@@ -41,7 +41,7 @@ struct ElementInfo
 };
 
 ContextHandler2Helper::ContextHandler2Helper( bool bEnableTrimSpace ) :
-    mxContextStack( new ContextStack ),
+    mxContextStack( std::make_shared<ContextStack>() ),
     mnRootStackSize( 0 ),
     mbEnableTrimSpace( bEnableTrimSpace )
 {
@@ -66,16 +66,16 @@ sal_Int32 ContextHandler2Helper::getCurrentElementWithMce() const
 
 sal_Int32 ContextHandler2Helper::getCurrentElement() const
 {
-    for ( ContextStack::reverse_iterator It = mxContextStack->rbegin();
-          It != mxContextStack->rend(); ++It )
-        if( getNamespace( It->mnElement ) != NMSP_mce )
-            return It->mnElement;
+    auto It = std::find_if(mxContextStack->rbegin(), mxContextStack->rend(),
+        [](const ElementInfo& rItem) { return getNamespace(rItem.mnElement) != NMSP_mce; });
+    if (It != mxContextStack->rend())
+        return It->mnElement;
     return XML_ROOT_CONTEXT;
 }
 
 sal_Int32 ContextHandler2Helper::getParentElement( sal_Int32 nCountBack ) const
 {
-    if( (nCountBack < 0) || (mxContextStack->size() < static_cast< size_t >( nCountBack )) )
+    if( (nCountBack < 0) || (mxContextStack->size() < o3tl::make_unsigned( nCountBack )) )
         return XML_TOKEN_INVALID;
     return (mxContextStack->size() == static_cast< size_t >( nCountBack )) ?
         XML_ROOT_CONTEXT : (*mxContextStack)[ mxContextStack->size() - nCountBack - 1 ].mnElement;
@@ -144,7 +144,7 @@ void ContextHandler2Helper::implEndRecord( sal_Int32 nRecId )
 
 ElementInfo& ContextHandler2Helper::pushElementInfo( sal_Int32 nElement )
 {
-    mxContextStack->resize( mxContextStack->size() + 1 );
+    mxContextStack->emplace_back();
     ElementInfo& rInfo = mxContextStack->back();
     rInfo.mnElement = nElement;
     return rInfo;
@@ -173,8 +173,8 @@ void ContextHandler2Helper::processCollectedChars()
     }
 }
 
-ContextHandler2::ContextHandler2( ContextHandler2Helper& rParent ) :
-    ContextHandler( dynamic_cast< ContextHandler& >( rParent ) ),
+ContextHandler2::ContextHandler2( ContextHandler2Helper const & rParent ) :
+    ContextHandler( dynamic_cast< ContextHandler const & >( rParent ) ),
     ContextHandler2Helper( rParent )
 {
 }
@@ -256,7 +256,6 @@ void ContextHandler2::onEndRecord()
 {
 }
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

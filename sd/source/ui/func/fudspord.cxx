@@ -17,40 +17,33 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fudspord.hxx"
+#include <fudspord.hxx>
 
-#include <svx/svxids.hrc>
-#include <vcl/pointr.hxx>
+#include <vcl/ptrstyle.hxx>
 
-#include "app.hrc"
-#include "fupoor.hxx"
-#include "ViewShell.hxx"
-#include "View.hxx"
-#include "Window.hxx"
-#include "drawdoc.hxx"
+#include <app.hrc>
+#include <fupoor.hxx>
+#include <ViewShell.hxx>
+#include <View.hxx>
+#include <Window.hxx>
 
 namespace sd {
 
 
 FuDisplayOrder::FuDisplayOrder( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq)
 : FuPoor(pViewSh, pWin, pView, pDoc, rReq)
+, maPtr(PointerStyle::Arrow)
 , mpRefObj(nullptr)
-, mpOverlay(nullptr)
 {
 }
 
 FuDisplayOrder::~FuDisplayOrder()
 {
-    implClearOverlay();
 }
 
 void FuDisplayOrder::implClearOverlay()
 {
-    if(mpOverlay)
-    {
-        delete mpOverlay;
-        mpOverlay = nullptr;
-    }
+    mpOverlay.reset();
 }
 
 rtl::Reference<FuPoor> FuDisplayOrder::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
@@ -81,7 +74,7 @@ bool FuDisplayOrder::MouseMove(const MouseEvent& rMEvt)
             implClearOverlay();
 
             // create new one
-            mpOverlay = new SdrDropMarkerOverlay(*mpView, *pPickObj);
+            mpOverlay.reset( new SdrDropMarkerOverlay(*mpView, *pPickObj) );
 
             // remember referenced object
             mpRefObj = pPickObj;
@@ -125,7 +118,7 @@ bool FuDisplayOrder::MouseButtonUp(const MouseEvent& rMEvt)
 void FuDisplayOrder::Activate()
 {
     maPtr = mpWindow->GetPointer();
-    mpWindow->SetPointer( Pointer( PointerStyle::RefHand ) );
+    mpWindow->SetPointer( PointerStyle::RefHand );
 }
 
 void FuDisplayOrder::Deactivate()

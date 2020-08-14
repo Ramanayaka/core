@@ -20,13 +20,12 @@
 #ifndef INCLUDED_SVGIO_INC_SVGMASKNODE_HXX
 #define INCLUDED_SVGIO_INC_SVGMASKNODE_HXX
 
-#include <svgnode.hxx>
-#include <svgstyleattributes.hxx>
+#include "svgnode.hxx"
+#include "svgstyleattributes.hxx"
+#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <memory>
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
         class SvgMaskNode : public SvgNode
         {
@@ -81,8 +80,8 @@ namespace svgio
             /// MaskContentUnits content
             void setMaskContentUnits(const SvgUnits aMaskContentUnits) { maMaskContentUnits = aMaskContentUnits; }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGMASKNODE_HXX
 

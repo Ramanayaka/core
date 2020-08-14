@@ -23,10 +23,11 @@
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
-#include <comphelper/processfactory.hxx>
 #include <svx/svdouno.hxx>
 
-#include <boost/optional.hpp>
+#include <optional>
+
+#include <map>
 
 namespace basctl
 {
@@ -58,9 +59,14 @@ private:
     DlgEditor& GetDialogEditor ();
 
 protected:
-    DlgEdObj();
-    DlgEdObj(const OUString& rModelName,
-             const css::uno::Reference< css::lang::XMultiServiceFactory >& rxSFac);
+    DlgEdObj(SdrModel& rSdrModel);
+    DlgEdObj(
+        SdrModel& rSdrModel,
+        const OUString& rModelName,
+        const css::uno::Reference< css::lang::XMultiServiceFactory >& rxSFac);
+
+    // protected destructor
+    virtual ~DlgEdObj() override;
 
     virtual void NbcMove( const Size& rSize ) override;
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
@@ -86,8 +92,10 @@ protected:
         sal_Int32& nXOut, sal_Int32& nYOut, sal_Int32& nWidthOut, sal_Int32& nHeightOut );
 
 public:
-
-    virtual ~DlgEdObj() override;
+    DlgEdObj(DlgEdObj const &) = delete; // due to SdrUnoObj
+    DlgEdObj(DlgEdObj &&) = delete; // due to SdrUnoObj
+    DlgEdObj & operator =(DlgEdObj const &) = default;
+    DlgEdObj & operator =(DlgEdObj &&) = default;
 
     void SetDlgEdForm( DlgEdForm* pForm ) { pDlgEdForm = pForm; }
     DlgEdForm* GetDlgEdForm() const { return pDlgEdForm; }
@@ -95,11 +103,11 @@ public:
     virtual SdrInventor GetObjInventor() const override;
     virtual sal_uInt16 GetObjIdentifier() const override;
 
-    virtual DlgEdObj*   Clone() const override;                                          // not working yet
+    virtual DlgEdObj* CloneSdrObject(SdrModel& rTargetModel) const override;                                          // not working yet
     void clonedFrom(const DlgEdObj* _pSource);                          // not working yet
 
     // FullDrag support
-    virtual SdrObject* getFullDragClone() const override;
+    virtual SdrObjectUniquePtr getFullDragClone() const override;
 
     bool supportsService( OUString const & serviceName ) const;
     OUString GetDefaultName() const;
@@ -117,21 +125,21 @@ public:
     virtual void PositionAndSizeChange( const css::beans::PropertyChangeEvent& evt );
     /// @throws css::container::NoSuchElementException
     /// @throws css::uno::RuntimeException
-    void SAL_CALL NameChange( const  css::beans::PropertyChangeEvent& evt );
+    void NameChange( const  css::beans::PropertyChangeEvent& evt );
     /// @throws css::uno::RuntimeException
-    void SAL_CALL TabIndexChange( const  css::beans::PropertyChangeEvent& evt );
+    void TabIndexChange( const  css::beans::PropertyChangeEvent& evt );
 
     // PropertyChangeListener
     /// @throws css::uno::RuntimeException
-    void SAL_CALL _propertyChange(const css::beans::PropertyChangeEvent& evt);
+    void _propertyChange(const css::beans::PropertyChangeEvent& evt);
 
     // ContainerListener
     /// @throws css::uno::RuntimeException
-    void SAL_CALL _elementInserted();
+    void _elementInserted();
     /// @throws css::uno::RuntimeException
-    void SAL_CALL _elementReplaced();
+    void _elementReplaced();
     /// @throws css::uno::RuntimeException
-    void SAL_CALL _elementRemoved();
+    void _elementRemoved();
 
     virtual void SetLayer(SdrLayerID nLayer) override;
     void MakeDataAware( const css::uno::Reference< css::frame::XModel >& xModel );
@@ -150,20 +158,22 @@ private:
     DlgEditor& rDlgEditor;
     std::vector<DlgEdObj*> pChildren;
 
-    mutable ::boost::optional< css::awt::DeviceInfo >   mpDeviceInfo;
+    mutable ::std::optional< css::awt::DeviceInfo >   mpDeviceInfo;
 
 private:
-    explicit DlgEdForm (DlgEditor&);
+    explicit DlgEdForm(
+        SdrModel& rSdrModel,
+        DlgEditor&);
 
 protected:
     virtual void NbcMove( const Size& rSize ) override;
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
     virtual bool EndCreate(SdrDragStat& rStat, SdrCreateCmd eCmd) override;
 
-public:
-
+    // protected destructor
     virtual ~DlgEdForm() override;
 
+public:
     DlgEditor& GetDlgEditor () const { return rDlgEditor; }
 
     void AddChild( DlgEdObj* pDlgEdObj );

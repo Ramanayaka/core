@@ -17,60 +17,33 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "extended/AccessibleGridControl.hxx"
-#include "extended/AccessibleGridControlTable.hxx"
-#include "extended/AccessibleGridControlHeader.hxx"
+#include <extended/AccessibleGridControl.hxx>
+#include <extended/AccessibleGridControlTable.hxx>
+#include <extended/AccessibleGridControlHeader.hxx>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleTableModelChange.hpp>
 #include <com/sun/star/accessibility/AccessibleTableModelChangeType.hpp>
-#include <svtools/accessibletable.hxx>
-#include <comphelper/types.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <toolkit/helper/convert.hxx>
+#include <vcl/accessibletable.hxx>
+#include <vcl/svapp.hxx>
 
 namespace accessibility
 {
-
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::accessibility;
-using namespace ::svt;
-using namespace ::svt::table;
-
-
-class AccessibleGridControl_Impl
-{
-public:
-    /// the css::accessibility::XAccessible which created the AccessibleGridControl
-    css::uno::WeakReference< css::accessibility::XAccessible >                    m_aCreator;
-
-    /** The data table child. */
-    rtl::Reference<AccessibleGridControlTable>                m_xTable;
-
-    /** The header bar for rows. */
-    rtl::Reference<AccessibleGridControlHeader>               m_xRowHeaderBar;
-
-    /** The header bar for columns (first row of the table). */
-    rtl::Reference<AccessibleGridControlHeader>               m_xColumnHeaderBar;
-
-    /** The table cell child. */
-    rtl::Reference<AccessibleGridControlTableCell>            m_xCell;
-
-};
+using namespace ::vcl;
+using namespace ::vcl::table;
 
 AccessibleGridControl::AccessibleGridControl(
             const css::uno::Reference< css::accessibility::XAccessible >& _rxParent, const css::uno::Reference< css::accessibility::XAccessible >& _rxCreator,
-            ::svt::table::IAccessibleTable& _rTable )
-    : AccessibleGridControlBase( _rxParent, _rTable, TCTYPE_GRIDCONTROL )
-{
-    m_xImpl.reset( new AccessibleGridControl_Impl );
-    m_xImpl->m_aCreator = _rxCreator;
-}
-
-
-AccessibleGridControl::~AccessibleGridControl()
+            ::vcl::table::IAccessibleTable& _rTable )
+    : AccessibleGridControlBase( _rxParent, _rTable, TCTYPE_GRIDCONTROL ),
+      m_aCreator(_rxCreator)
 {
 }
 
@@ -79,27 +52,27 @@ void SAL_CALL AccessibleGridControl::disposing()
 {
     SolarMutexGuard g;
 
-    m_xImpl->m_aCreator.clear();
+    m_aCreator.clear();
 
-    if ( m_xImpl->m_xTable.is() )
+    if ( m_xTable.is() )
     {
-        m_xImpl->m_xTable->dispose();
-        m_xImpl->m_xTable.clear();
+        m_xTable->dispose();
+        m_xTable.clear();
     }
-    if ( m_xImpl->m_xCell.is() )
+    if ( m_xCell.is() )
     {
-        m_xImpl->m_xCell->dispose();
-        m_xImpl->m_xCell.clear();
+        m_xCell->dispose();
+        m_xCell.clear();
     }
-    if ( m_xImpl->m_xRowHeaderBar.is() )
+    if ( m_xRowHeaderBar.is() )
     {
-        m_xImpl->m_xRowHeaderBar->dispose();
-        m_xImpl->m_xRowHeaderBar.clear();
+        m_xRowHeaderBar->dispose();
+        m_xRowHeaderBar.clear();
     }
-    if ( m_xImpl->m_xColumnHeaderBar.is() )
+    if ( m_xColumnHeaderBar.is() )
     {
-        m_xImpl->m_xColumnHeaderBar->dispose();
-        m_xImpl->m_xColumnHeaderBar.clear();
+        m_xColumnHeaderBar->dispose();
+        m_xColumnHeaderBar.clear();
     }
     AccessibleGridControlBase::disposing();
 }
@@ -128,27 +101,27 @@ AccessibleGridControl::getAccessibleChild( sal_Int32 nChildIndex )
     {
         if(nChildIndex == 0 && m_aTable.HasColHeader())
         {
-            if(!m_xImpl->m_xColumnHeaderBar.is())
+            if(!m_xColumnHeaderBar.is())
             {
-                m_xImpl->m_xColumnHeaderBar = new AccessibleGridControlHeader(m_xImpl->m_aCreator, m_aTable, svt::table::TCTYPE_COLUMNHEADERBAR);
+                m_xColumnHeaderBar = new AccessibleGridControlHeader(m_aCreator, m_aTable, vcl::table::TCTYPE_COLUMNHEADERBAR);
             }
-            xChild = m_xImpl->m_xColumnHeaderBar.get();
+            xChild = m_xColumnHeaderBar.get();
         }
         else if(m_aTable.HasRowHeader() && (nChildIndex == 1 || nChildIndex == 0))
         {
-            if(!m_xImpl->m_xRowHeaderBar.is())
+            if(!m_xRowHeaderBar.is())
             {
-                m_xImpl->m_xRowHeaderBar = new AccessibleGridControlHeader(m_xImpl->m_aCreator, m_aTable, svt::table::TCTYPE_ROWHEADERBAR);
+                m_xRowHeaderBar = new AccessibleGridControlHeader(m_aCreator, m_aTable, vcl::table::TCTYPE_ROWHEADERBAR);
             }
-            xChild = m_xImpl->m_xRowHeaderBar.get();
+            xChild = m_xRowHeaderBar.get();
         }
         else
         {
-            if(!m_xImpl->m_xTable.is())
+            if(!m_xTable.is())
             {
-                m_xImpl->m_xTable = new AccessibleGridControlTable(m_xImpl->m_aCreator, m_aTable);
+                m_xTable = new AccessibleGridControlTable(m_aCreator, m_aTable);
             }
-            xChild = m_xImpl->m_xTable.get();
+            xChild = m_xTable.get();
         }
     }
     return xChild;
@@ -189,7 +162,7 @@ AccessibleGridControl::getAccessibleAtPoint( const awt::Point& rPoint )
 
             if( xCurrChildComp.is() &&
                 VCLRectangle( xCurrChildComp->getBounds() ).IsInside( aPoint ) )
-            xChild = xCurrChild;
+                xChild = xCurrChild;
         }
     }
     return xChild;
@@ -200,14 +173,14 @@ void SAL_CALL AccessibleGridControl::grabFocus()
 {
     SolarMutexGuard aSolarGuard;
     ensureIsAlive();
-        m_aTable.GrabFocus();
+    m_aTable.GrabFocus();
 }
 
 // XServiceInfo ---------------------------------------------------------------
 
 OUString SAL_CALL AccessibleGridControl::getImplementationName()
 {
-    return OUString( "com.sun.star.accessibility.AccessibleGridControl" );
+    return "com.sun.star.accessibility.AccessibleGridControl";
 }
 
 
@@ -229,11 +202,11 @@ tools::Rectangle AccessibleGridControl::implGetBoundingBoxOnScreen()
 
 css::uno::Reference< css::accessibility::XAccessible > AccessibleGridControl::implGetTable()
 {
-    if( !m_xImpl->m_xTable.is() )
+    if( !m_xTable.is() )
     {
-        m_xImpl->m_xTable = createAccessibleTable();
+        m_xTable = createAccessibleTable();
     }
-    return m_xImpl->m_xTable.get();
+    return m_xTable.get();
 }
 
 
@@ -244,16 +217,16 @@ AccessibleGridControl::implGetHeaderBar( AccessibleTableControlObjType eObjType 
     rtl::Reference< AccessibleGridControlHeader >* pxMember = nullptr;
 
     if( eObjType == TCTYPE_ROWHEADERBAR )
-        pxMember = &m_xImpl->m_xRowHeaderBar;
+        pxMember = &m_xRowHeaderBar;
     else if( eObjType ==  TCTYPE_COLUMNHEADERBAR )
-        pxMember = &m_xImpl->m_xColumnHeaderBar;
+        pxMember = &m_xColumnHeaderBar;
 
     if( pxMember )
     {
         if( !pxMember->is() )
         {
             *pxMember = new AccessibleGridControlHeader(
-                m_xImpl->m_aCreator, m_aTable, eObjType );
+                m_aCreator, m_aTable, eObjType );
         }
         xRet = pxMember->get();
     }
@@ -284,7 +257,7 @@ AccessibleGridControl::implGetFixedChild( sal_Int32 nChildIndex )
 
 AccessibleGridControlTable* AccessibleGridControl::createAccessibleTable()
 {
-    css::uno::Reference< css::accessibility::XAccessible > xCreator(m_xImpl->m_aCreator);
+    css::uno::Reference< css::accessibility::XAccessible > xCreator(m_aCreator);
     OSL_ENSURE( xCreator.is(), "extended/AccessibleGridControl::createAccessibleTable: my creator died - how this?" );
     return new AccessibleGridControlTable( xCreator, m_aTable );
 }
@@ -297,86 +270,86 @@ void AccessibleGridControl::commitCellEvent(sal_Int16 _nEventId,const Any& _rNew
         for(sal_Int32 i=0;i<nChildCount;i++)
         {
             css::uno::Reference< css::accessibility::XAccessible > xAccessible = getAccessibleChild(i);
-            if(css::uno::Reference< css::accessibility::XAccessible >(m_xImpl->m_xTable.get()) == xAccessible)
+            if(css::uno::Reference< css::accessibility::XAccessible >(m_xTable.get()) == xAccessible)
             {
                 std::vector< AccessibleGridControlTableCell* >& rCells =
-                    m_xImpl->m_xTable->getCellVector();
+                    m_xTable->getCellVector();
                 size_t nIndex = m_aTable.GetCurrentRow() * m_aTable.GetColumnCount()
                               + m_aTable.GetCurrentColumn();
                 if (nIndex < rCells.size() && rCells[nIndex])
                 {
-                    m_xImpl->m_xCell = rCells[nIndex];
-                    m_xImpl->m_xCell->commitEvent( _nEventId, _rNewValue, _rOldValue );
+                    m_xCell = rCells[nIndex];
+                    m_xCell->commitEvent( _nEventId, _rNewValue, _rOldValue );
                 }
             }
         }
     }
     else
     {
-        if ( m_xImpl->m_xTable.is() )
-            m_xImpl->m_xTable->commitEvent(_nEventId,_rNewValue,_rOldValue);
+        if ( m_xTable.is() )
+            m_xTable->commitEvent(_nEventId,_rNewValue,_rOldValue);
     }
 }
 
 void AccessibleGridControl::commitTableEvent(sal_Int16 _nEventId,const Any& _rNewValue,const Any& _rOldValue)
 {
-    if ( m_xImpl->m_xTable.is() )
+    if ( !m_xTable.is() )
+        return;
+
+    if(_nEventId == AccessibleEventId::ACTIVE_DESCENDANT_CHANGED)
     {
-        if(_nEventId == AccessibleEventId::ACTIVE_DESCENDANT_CHANGED)
+        const sal_Int32 nCurrentRow = m_aTable.GetCurrentRow();
+        const sal_Int32 nCurrentCol = m_aTable.GetCurrentColumn();
+        css::uno::Reference< css::accessibility::XAccessible > xChild;
+        if (nCurrentRow > -1 && nCurrentCol > -1)
         {
-            const sal_Int32 nCurrentRow = m_aTable.GetCurrentRow();
-            const sal_Int32 nCurrentCol = m_aTable.GetCurrentColumn();
-            css::uno::Reference< css::accessibility::XAccessible > xChild;
-            if (nCurrentRow > -1 && nCurrentCol > -1)
-            {
-                sal_Int32 nColumnCount = m_aTable.GetColumnCount();
-                xChild = m_xImpl->m_xTable->getAccessibleChild(nCurrentRow * nColumnCount + nCurrentCol);
-            }
-            m_xImpl->m_xTable->commitEvent(_nEventId, Any(xChild),_rOldValue);
+            sal_Int32 nColumnCount = m_aTable.GetColumnCount();
+            xChild = m_xTable->getAccessibleChild(nCurrentRow * nColumnCount + nCurrentCol);
         }
-        else if(_nEventId == AccessibleEventId::TABLE_MODEL_CHANGED)
-        {
-            AccessibleTableModelChange aChange;
-            if(_rNewValue >>= aChange)
-            {
-                if(aChange.Type == AccessibleTableModelChangeType::DELETE)
-                {
-                    std::vector< AccessibleGridControlTableCell* >& rCells =
-                        m_xImpl->m_xTable->getCellVector();
-                    std::vector< css::uno::Reference< css::accessibility::XAccessible > >& rAccCells =
-                        m_xImpl->m_xTable->getAccessibleCellVector();
-                    int nColCount = m_aTable.GetColumnCount();
-                    // check valid index - entries are inserted lazily
-                    size_t const nStart = nColCount * aChange.FirstRow;
-                    size_t const nEnd   = nColCount * aChange.LastRow;
-                    if (nStart < rCells.size())
-                    {
-                        m_xImpl->m_xTable->getCellVector().erase(
-                            rCells.begin() + nStart,
-                            rCells.begin() + std::min(rCells.size(), nEnd));
-                    }
-                    if (nStart < rAccCells.size())
-                    {
-                        m_xImpl->m_xTable->getAccessibleCellVector().erase(
-                            rAccCells.begin() + nStart,
-                            rAccCells.begin() + std::min(rAccCells.size(), nEnd));
-                    }
-                    m_xImpl->m_xTable->commitEvent(_nEventId,_rNewValue,_rOldValue);
-                }
-                else
-                    m_xImpl->m_xTable->commitEvent(_nEventId,_rNewValue,_rOldValue);
-            }
-        }
-        else
-            m_xImpl->m_xTable->commitEvent(_nEventId,_rNewValue,_rOldValue);
+        m_xTable->commitEvent(_nEventId, Any(xChild),_rOldValue);
     }
+    else if(_nEventId == AccessibleEventId::TABLE_MODEL_CHANGED)
+    {
+        AccessibleTableModelChange aChange;
+        if(_rNewValue >>= aChange)
+        {
+            if(aChange.Type == AccessibleTableModelChangeType::DELETE)
+            {
+                std::vector< AccessibleGridControlTableCell* >& rCells =
+                    m_xTable->getCellVector();
+                std::vector< css::uno::Reference< css::accessibility::XAccessible > >& rAccCells =
+                    m_xTable->getAccessibleCellVector();
+                int nColCount = m_aTable.GetColumnCount();
+                // check valid index - entries are inserted lazily
+                size_t const nStart = nColCount * aChange.FirstRow;
+                size_t const nEnd   = nColCount * aChange.LastRow;
+                if (nStart < rCells.size())
+                {
+                    m_xTable->getCellVector().erase(
+                        rCells.begin() + nStart,
+                        rCells.begin() + std::min(rCells.size(), nEnd));
+                }
+                if (nStart < rAccCells.size())
+                {
+                    m_xTable->getAccessibleCellVector().erase(
+                        rAccCells.begin() + nStart,
+                        rAccCells.begin() + std::min(rAccCells.size(), nEnd));
+                }
+                m_xTable->commitEvent(_nEventId,_rNewValue,_rOldValue);
+            }
+            else
+                m_xTable->commitEvent(_nEventId,_rNewValue,_rOldValue);
+        }
+    }
+    else
+        m_xTable->commitEvent(_nEventId,_rNewValue,_rOldValue);
 }
 
 // = AccessibleGridControlAccess
 
 
 AccessibleGridControlAccess::AccessibleGridControlAccess(
-        const css::uno::Reference< css::accessibility::XAccessible >& rxParent, ::svt::table::IAccessibleTable& rTable )
+        const css::uno::Reference< css::accessibility::XAccessible >& rxParent, ::vcl::table::IAccessibleTable& rTable )
     : m_xParent( rxParent )
     , m_pTable( & rTable )
 {
@@ -406,7 +379,7 @@ css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL Accessibl
     SolarMutexGuard g;
 
     // if the context died meanwhile (we're no listener, so it won't tell us explicitly when this happens),
-    // then reset an re-create.
+    // then reset and re-create.
     if ( m_xContext.is() && !m_xContext->isAlive() )
         m_xContext = nullptr;
 

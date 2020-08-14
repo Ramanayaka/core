@@ -20,13 +20,11 @@
 #ifndef INCLUDED_COMPHELPER_INTERACTION_HXX
 #define INCLUDED_COMPHELPER_INTERACTION_HXX
 
-#include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/task/XInteractionApprove.hpp>
 #include <com/sun/star/task/XInteractionDisapprove.hpp>
 #include <com/sun/star/task/XInteractionAbort.hpp>
 #include <com/sun/star/task/XInteractionRetry.hpp>
-#include <com/sun/star/task/XInteractionPassword.hpp>
 #include <com/sun/star/task/XInteractionRequest.hpp>
 #include <comphelper/comphelperdllapi.h>
 #include <vector>
@@ -85,25 +83,6 @@ namespace comphelper
     typedef OInteraction< css::task::XInteractionRetry >   OInteractionRetry;
 
 
-    //= OInteractionPassword
-
-    class COMPHELPER_DLLPUBLIC OInteractionPassword : public OInteraction< css::task::XInteractionPassword >
-    {
-    public:
-        OInteractionPassword( const OUString& _rInitialPassword )
-            :m_sPassword( _rInitialPassword )
-        {
-        }
-
-        // XInteractionPassword
-        virtual void SAL_CALL setPassword( const OUString& Password ) override;
-        virtual OUString SAL_CALL getPassword(  ) override;
-
-    private:
-        OUString m_sPassword;
-    };
-
-
     //= OInteractionRequest
 
     typedef ::cppu::WeakImplHelper <   css::task::XInteractionRequest
@@ -111,9 +90,9 @@ namespace comphelper
     /** implements an interaction request (com.sun.star.task::XInteractionRequest)<p/>
         at run time, you can freely add any interaction continuation objects
     */
-    class COMPHELPER_DLLPUBLIC OInteractionRequest : public OInteractionRequest_Base
+    class COMPHELPER_DLLPUBLIC OInteractionRequest final : public OInteractionRequest_Base
     {
-        css::uno::Any
+        css::uno::Any const
                     m_aRequest;         /// the request we represent
         std::vector< css::uno::Reference< css::task::XInteractionContinuation > >
                     m_aContinuations;   /// all registered continuations

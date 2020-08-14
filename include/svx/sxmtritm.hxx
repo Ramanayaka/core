@@ -23,20 +23,30 @@
 #include <svx/sdynitm.hxx>
 
 // text across the dimension line (90deg counter-clockwise rotation)
-class SVX_DLLPUBLIC SdrMeasureTextRota90Item: public SdrYesNoItem {
+class SVXCORE_DLLPUBLIC SdrMeasureTextRota90Item: public SdrYesNoItem {
 public:
     SdrMeasureTextRota90Item(bool bOn=false): SdrYesNoItem(SDRATTR_MEASURETEXTROTA90,bOn) {}
     virtual ~SdrMeasureTextRota90Item() override;
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool=nullptr) const override;
+    virtual SdrMeasureTextRota90Item* Clone(SfxItemPool* pPool=nullptr) const override;
+
+    SdrMeasureTextRota90Item(SdrMeasureTextRota90Item const &) = default;
+    SdrMeasureTextRota90Item(SdrMeasureTextRota90Item &&) = default;
+    SdrMeasureTextRota90Item & operator =(SdrMeasureTextRota90Item const &) = delete; // due to SdrYesNoItem
+    SdrMeasureTextRota90Item & operator =(SdrMeasureTextRota90Item &&) = delete; // due to SdrYesNoItem
 };
 
 // Turn the calculated TextRect through 180 deg
 // Text is also switched to the other side of the dimension line, if not Rota90
-class SVX_DLLPUBLIC SdrMeasureTextUpsideDownItem: public SdrYesNoItem {
+class SdrMeasureTextUpsideDownItem final : public SdrYesNoItem {
 public:
     SdrMeasureTextUpsideDownItem(bool bOn=false): SdrYesNoItem(SDRATTR_MEASURETEXTUPSIDEDOWN,bOn) {}
     virtual ~SdrMeasureTextUpsideDownItem() override;
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool=nullptr) const override;
+    virtual SdrMeasureTextUpsideDownItem* Clone(SfxItemPool* pPool=nullptr) const override;
+
+    SdrMeasureTextUpsideDownItem(SdrMeasureTextUpsideDownItem const &) = default;
+    SdrMeasureTextUpsideDownItem(SdrMeasureTextUpsideDownItem &&) = default;
+    SdrMeasureTextUpsideDownItem & operator =(SdrMeasureTextUpsideDownItem const &) = delete; // due to SdrYesNoItem
+    SdrMeasureTextUpsideDownItem & operator =(SdrMeasureTextUpsideDownItem &&) = delete; // due to SdrYesNoItem
 };
 
 #endif

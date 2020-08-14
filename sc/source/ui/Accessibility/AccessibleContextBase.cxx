@@ -17,17 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "AccessibleContextBase.hxx"
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <AccessibleContextBase.hxx>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <com/sun/star/beans/PropertyChangeEvent.hpp>
+#include <com/sun/star/accessibility/IllegalAccessibleComponentStateException.hpp>
 #include <tools/gen.hxx>
-#include <unotools/accessiblestatesethelper.hxx>
+#include <tools/color.hxx>
 #include <toolkit/helper/convert.hxx>
 #include <svl/hint.hxx>
 #include <comphelper/sequence.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
 #include <vcl/unohelp.hxx>
@@ -62,7 +60,7 @@ ScAccessibleContextBase::~ScAccessibleContextBase()
 void ScAccessibleContextBase::Init()
 {
     // hold reference to make sure that the destructor is not called
-    uno::Reference< XAccessibleContext > xOwnContext(this);
+    uno::Reference< XAccessibleContext > xKeepAlive(this);
 
     if (mxParent.is())
     {
@@ -80,7 +78,7 @@ void SAL_CALL ScAccessibleContextBase::disposing()
 //  CommitDefunc(); not necessary and should not be send, because it cost a lot of time
 
     // hold reference to make sure that the destructor is not called
-    uno::Reference< XAccessibleContext > xOwnContext(this);
+    uno::Reference< XAccessibleContext > xKeepAlive(this);
 
     if ( mnClientId )
     {
@@ -183,7 +181,7 @@ awt::Size SAL_CALL ScAccessibleContextBase::getSize(  )
     return AWTSize(GetBoundingBox().GetSize());
 }
 
-bool SAL_CALL ScAccessibleContextBase::isShowing(  )
+bool ScAccessibleContextBase::isShowing(  )
 {
     SolarMutexGuard aGuard;
     IsObjectValid();
@@ -201,7 +199,7 @@ bool SAL_CALL ScAccessibleContextBase::isShowing(  )
     return bShowing;
 }
 
-bool SAL_CALL ScAccessibleContextBase::isVisible()
+bool ScAccessibleContextBase::isVisible()
 {
     return true;
 }
@@ -213,12 +211,12 @@ void SAL_CALL ScAccessibleContextBase::grabFocus(  )
 
 sal_Int32 SAL_CALL ScAccessibleContextBase::getForeground(  )
 {
-    return COL_BLACK;
+    return sal_Int32(COL_BLACK);
 }
 
 sal_Int32 SAL_CALL ScAccessibleContextBase::getBackground(  )
 {
-    return COL_WHITE;
+    return sal_Int32(COL_WHITE);
 }
 
 //=====  XAccessibleContext  ==================================================
@@ -263,16 +261,13 @@ sal_Int32 SAL_CALL
             for (sal_Int32 i=0; i<nChildCount; ++i)
             {
                 uno::Reference<XAccessible> xChild (xParentContext->getAccessibleChild (i));
-                if (xChild.is())
-                {
-                    if (xChild.get() == this)
-                        nIndex = i;
-                }
+                if (xChild.is() && xChild.get() == this)
+                    nIndex = i;
             }
         }
-   }
+    }
 
-   return nIndex;
+    return nIndex;
 }
 
 sal_Int16 SAL_CALL
@@ -385,22 +380,22 @@ void SAL_CALL
        ScAccessibleContextBase::removeAccessibleEventListener(
         const uno::Reference<XAccessibleEventListener>& xListener)
 {
-    if (xListener.is())
+    if (!xListener.is())
+        return;
+
+    SolarMutexGuard aGuard;
+    if (!(!IsDefunc() && mnClientId))
+        return;
+
+    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, xListener );
+    if ( !nListenerCount )
     {
-        SolarMutexGuard aGuard;
-        if (!IsDefunc() && mnClientId)
-        {
-            sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, xListener );
-            if ( !nListenerCount )
-            {
-                // no listeners anymore
-                // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-                // and at least to us not firing any events anymore, in case somebody calls
-                // NotifyAccessibleEvent, again
-                comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
-                mnClientId = 0;
-            }
-        }
+        // no listeners anymore
+        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+        // and at least to us not firing any events anymore, in case somebody calls
+        // NotifyAccessibleEvent, again
+        comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
+        mnClientId = 0;
     }
 }
 
@@ -422,7 +417,7 @@ void SAL_CALL ScAccessibleContextBase::notifyEvent(
 // XServiceInfo
 OUString SAL_CALL ScAccessibleContextBase::getImplementationName()
 {
-    return OUString("ScAccessibleContextBase");
+    return "ScAccessibleContextBase";
 }
 
 sal_Bool SAL_CALL ScAccessibleContextBase::supportsService(const OUString& sServiceName)
@@ -452,14 +447,14 @@ uno::Sequence<sal_Int8> SAL_CALL
 
 //=====  internal  ============================================================
 
-OUString SAL_CALL
+OUString
     ScAccessibleContextBase::createAccessibleDescription()
 {
     OSL_FAIL("should be implemented in the abrevated class");
     return OUString();
 }
 
-OUString SAL_CALL ScAccessibleContextBase::createAccessibleName()
+OUString ScAccessibleContextBase::createAccessibleName()
 {
     OSL_FAIL("should be implemented in the abrevated class");
     return OUString();

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.20.0 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="cui">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkAdjustment" id="adjustment1">
     <property name="lower">2</property>
     <property name="upper">9</property>
@@ -16,45 +16,62 @@
   </object>
   <object class="GtkAdjustment" id="adjustment3">
     <property name="upper">9999</property>
+    <property name="value">1</property>
     <property name="step_increment">1</property>
     <property name="page_increment">10</property>
-    <property name="value">1</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustment4">
+    <property name="lower">2</property>
+    <property name="upper">9</property>
+    <property name="value">2</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustment5">
+    <property name="lower">2</property>
+    <property name="upper">9</property>
+    <property name="value">2</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustment6">
+    <property name="lower">2</property>
+    <property name="upper">9</property>
+    <property name="value">2</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
   </object>
   <object class="GtkGrid" id="TextFlowPage">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
     <property name="border_width">6</property>
     <property name="row_spacing">12</property>
+    <property name="column_spacing">12</property>
     <child>
       <object class="GtkFrame" id="FrameHyphenation">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="events">GDK_EXPOSURE_MASK</property>
-        <property name="hexpand">True</property>
         <property name="label_xalign">0</property>
         <property name="shadow_type">none</property>
         <child>
           <object class="GtkAlignment" id="protection1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="hexpand">True</property>
-            <property name="vexpand">True</property>
             <property name="top_padding">6</property>
             <property name="left_padding">12</property>
             <child>
               <object class="GtkGrid" id="grid1">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="hexpand">True</property>
                 <property name="row_spacing">6</property>
                 <property name="column_spacing">12</property>
                 <child>
                   <object class="GtkCheckButton" id="checkAuto">
-                    <property name="label" translatable="yes">A_utomatically</property>
+                    <property name="label" translatable="yes" context="textflowpage|checkAuto">A_utomatically</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
-                    <property name="has_tooltip">True</property>
                     <property name="use_underline">True</property>
                     <property name="xalign">0</property>
                     <property name="always_show_image">True</property>
@@ -73,12 +90,12 @@
                     <property name="can_focus">True</property>
                     <property name="halign">start</property>
                     <property name="margin_left">25</property>
-                    <property name="invisible_char">•</property>
+                    <property name="activates_default">True</property>
                     <property name="adjustment">adjustment2</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
-                    <property name="top_attach">3</property>
+                    <property name="top_attach">4</property>
                   </packing>
                 </child>
                 <child>
@@ -87,12 +104,12 @@
                     <property name="can_focus">True</property>
                     <property name="halign">start</property>
                     <property name="margin_left">25</property>
-                    <property name="invisible_char">•</property>
-                    <property name="adjustment">adjustment1</property>
+                    <property name="activates_default">True</property>
+                    <property name="adjustment">adjustment4</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
-                    <property name="top_attach">2</property>
+                    <property name="top_attach">3</property>
                   </packing>
                 </child>
                 <child>
@@ -101,13 +118,13 @@
                     <property name="can_focus">True</property>
                     <property name="halign">start</property>
                     <property name="margin_left">25</property>
-                    <property name="invisible_char">•</property>
+                    <property name="activates_default">True</property>
                     <property name="input_purpose">number</property>
                     <property name="adjustment">adjustment1</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
-                    <property name="top_attach">1</property>
+                    <property name="top_attach">2</property>
                   </packing>
                 </child>
                 <child>
@@ -115,23 +132,9 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="label" translatable="yes">C_haracters at line end</property>
+                    <property name="label" translatable="yes" context="textflowpage|labelLineEnd">C_haracters at line end</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">spinLineEnd</property>
-                  </object>
-                  <packing>
-                    <property name="left_attach">1</property>
-                    <property name="top_attach">1</property>
-                  </packing>
-                </child>
-                <child>
-                  <object class="GtkLabel" id="labelLineBegin">
-                    <property name="visible">True</property>
-                    <property name="can_focus">False</property>
-                    <property name="halign">start</property>
-                    <property name="label" translatable="yes">Cha_racters at line begin</property>
-                    <property name="use_underline">True</property>
-                    <property name="mnemonic_widget">spinLineBegin</property>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
@@ -139,17 +142,48 @@
                   </packing>
                 </child>
                 <child>
+                  <object class="GtkLabel" id="labelLineBegin">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="halign">start</property>
+                    <property name="label" translatable="yes" context="textflowpage|labelLineBegin">Cha_racters at line begin</property>
+                    <property name="use_underline">True</property>
+                    <property name="mnemonic_widget">spinLineBegin</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">3</property>
+                  </packing>
+                </child>
+                <child>
                   <object class="GtkLabel" id="labelMaxNum">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="label" translatable="yes">_Maximum number of consecutive hyphens</property>
+                    <property name="label" translatable="yes" context="textflowpage|labelMaxNum">_Maximum number of consecutive hyphens</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">spinMaxNum</property>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
-                    <property name="top_attach">3</property>
+                    <property name="top_attach">4</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkCheckButton" id="checkNoCaps">
+                    <property name="label" translatable="yes" context="textflowpage|checkNoCaps">Don't hyphenate words in _CAPS</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="receives_default">False</property>
+                    <property name="use_underline">True</property>
+                    <property name="xalign">0</property>
+                    <property name="always_show_image">True</property>
+                    <property name="draw_indicator">True</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">0</property>
+                    <property name="top_attach">1</property>
+                    <property name="width">2</property>
                   </packing>
                 </child>
               </object>
@@ -160,7 +194,7 @@
           <object class="GtkLabel" id="LabelHyphenation">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Hyphenation</property>
+            <property name="label" translatable="yes" context="textflowpage|LabelHyphenation">Hyphenation</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -176,7 +210,6 @@
       <object class="GtkFrame" id="frameBreaks">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="hexpand">True</property>
         <property name="label_xalign">0</property>
         <property name="shadow_type">none</property>
         <child>
@@ -189,11 +222,11 @@
               <object class="GtkGrid" id="grid2">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="row_spacing">6</property>
-                <property name="column_spacing">12</property>
+                <property name="row_spacing">3</property>
+                <property name="column_spacing">6</property>
                 <child>
                   <object class="GtkCheckButton" id="checkInsert">
-                    <property name="label" translatable="yes">_Insert</property>
+                    <property name="label" translatable="yes" context="textflowpage|checkInsert">_Insert</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
@@ -209,15 +242,31 @@
                 </child>
                 <child>
                   <object class="GtkCheckButton" id="checkPageStyle">
-                    <property name="label" translatable="yes">With page st_yle:</property>
+                    <property name="label" translatable="yes" context="textflowpage|checkPageStyle">With page st_yle:</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
-                    <property name="margin_left">22</property>
                     <property name="use_underline">True</property>
                     <property name="xalign">0</property>
                     <property name="inconsistent">True</property>
                     <property name="draw_indicator">True</property>
+                    <accessibility>
+                      <relation type="label-for" target="comboPageStyle"/>
+                    </accessibility>
+                  </object>
+                  <packing>
+                    <property name="left_attach">0</property>
+                    <property name="top_attach">3</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="labelType">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="label" translatable="yes" context="textflowpage|labelType">_Type:</property>
+                    <property name="use_underline">True</property>
+                    <property name="mnemonic_widget">comboBreakType</property>
+                    <property name="xalign">1</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -225,66 +274,56 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkLabel" id="labelType">
-                    <property name="visible">True</property>
-                    <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">_Type:</property>
-                    <property name="use_underline">True</property>
-                    <property name="mnemonic_widget">comboBreakType</property>
-                    <property name="xalign">0</property>
-                  </object>
-                  <packing>
-                    <property name="left_attach">1</property>
-                    <property name="top_attach">0</property>
-                  </packing>
-                </child>
-                <child>
                   <object class="GtkSpinButton" id="spinPageNumber">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="invisible_char">•</property>
+                    <property name="activates_default">True</property>
                     <property name="adjustment">adjustment3</property>
                     <accessibility>
                       <relation type="labelled-by" target="labelPageNum"/>
                     </accessibility>
                   </object>
                   <packing>
-                    <property name="left_attach">4</property>
-                    <property name="top_attach">1</property>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">4</property>
                   </packing>
                 </child>
                 <child>
                   <object class="GtkCheckButton" id="labelPageNum">
+                    <property name="label" translatable="yes" context="textflowpage|labelPageNum">Page _number:</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="label" translatable="yes">Page _number:</property>
+                    <property name="receives_default">False</property>
                     <property name="use_underline">True</property>
+                    <property name="xalign">0</property>
                     <property name="inconsistent">True</property>
-                    <property name="justify">right</property>
-                    <property name="xalign">1</property>
+                    <property name="draw_indicator">True</property>
+                    <accessibility>
+                      <relation type="label-for" target="spinPageNumber"/>
+                    </accessibility>
                   </object>
                   <packing>
-                    <property name="left_attach">3</property>
-                    <property name="top_attach">1</property>
+                    <property name="left_attach">0</property>
+                    <property name="top_attach">4</property>
                   </packing>
                 </child>
                 <child>
                   <object class="GtkLabel" id="labelPosition">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Position:</property>
+                    <property name="label" translatable="yes" context="textflowpage|labelPosition">Position:</property>
                     <property name="use_underline">True</property>
                     <property name="justify">right</property>
                     <property name="mnemonic_widget">comboBreakPosition</property>
                     <property name="xalign">1</property>
                   </object>
                   <packing>
-                    <property name="left_attach">3</property>
-                    <property name="top_attach">0</property>
+                    <property name="left_attach">0</property>
+                    <property name="top_attach">2</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkComboBox" id="comboPageStyle">
+                  <object class="GtkComboBoxText" id="comboPageStyle">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <accessibility>
@@ -292,13 +331,13 @@
                     </accessibility>
                     <child internal-child="accessible">
                       <object class="AtkObject" id="comboPageStyle-atkobject">
-                        <property name="AtkObject::accessible-name" translatable="yes">Page Style</property>
+                        <property name="AtkObject::accessible-name" translatable="yes" context="textflowpage|comboPageStyle-atkobject">Page Style</property>
                       </object>
                     </child>
                   </object>
                   <packing>
-                    <property name="left_attach">2</property>
-                    <property name="top_attach">1</property>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">3</property>
                   </packing>
                 </child>
                 <child>
@@ -306,13 +345,13 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <items>
-                      <item translatable="yes">Page</item>
-                      <item translatable="yes">Column</item>
+                      <item translatable="yes" context="textflowpage|comboBreakType">Page</item>
+                      <item translatable="yes" context="textflowpage|comboBreakType">Column</item>
                     </items>
                   </object>
                   <packing>
-                    <property name="left_attach">2</property>
-                    <property name="top_attach">0</property>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">1</property>
                   </packing>
                 </child>
                 <child>
@@ -320,13 +359,13 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <items>
-                      <item translatable="yes">Before</item>
-                      <item translatable="yes">After</item>
+                      <item translatable="yes" context="textflowpage|comboBreakPosition">Before</item>
+                      <item translatable="yes" context="textflowpage|comboBreakPosition">After</item>
                     </items>
                   </object>
                   <packing>
-                    <property name="left_attach">4</property>
-                    <property name="top_attach">0</property>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">2</property>
                   </packing>
                 </child>
                 <child>
@@ -340,7 +379,7 @@
           <object class="GtkLabel" id="label3">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Breaks</property>
+            <property name="label" translatable="yes" context="textflowpage|label3">Breaks</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -348,8 +387,8 @@
         </child>
       </object>
       <packing>
-        <property name="left_attach">0</property>
-        <property name="top_attach">1</property>
+        <property name="left_attach">1</property>
+        <property name="top_attach">0</property>
       </packing>
     </child>
     <child>
@@ -372,7 +411,7 @@
                 <property name="column_spacing">12</property>
                 <child>
                   <object class="GtkCheckButton" id="checkSplitPara">
-                    <property name="label" translatable="yes">_Do not split paragraph</property>
+                    <property name="label" translatable="yes" context="textflowpage|checkSplitPara">_Do not split paragraph</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
@@ -384,11 +423,12 @@
                   <packing>
                     <property name="left_attach">0</property>
                     <property name="top_attach">0</property>
+                    <property name="width">3</property>
                   </packing>
                 </child>
                 <child>
                   <object class="GtkCheckButton" id="checkKeepPara">
-                    <property name="label" translatable="yes">_Keep with next paragraph</property>
+                    <property name="label" translatable="yes" context="textflowpage|checkKeepPara">_Keep with next paragraph</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
@@ -400,11 +440,12 @@
                   <packing>
                     <property name="left_attach">0</property>
                     <property name="top_attach">1</property>
+                    <property name="width">3</property>
                   </packing>
                 </child>
                 <child>
                   <object class="GtkCheckButton" id="checkOrphan">
-                    <property name="label" translatable="yes">_Orphan control</property>
+                    <property name="label" translatable="yes" context="textflowpage|checkOrphan">_Orphan control</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
@@ -412,6 +453,9 @@
                     <property name="xalign">0</property>
                     <property name="inconsistent">True</property>
                     <property name="draw_indicator">True</property>
+                    <accessibility>
+                      <relation type="label-for" target="spinOrphan"/>
+                    </accessibility>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -420,7 +464,7 @@
                 </child>
                 <child>
                   <object class="GtkCheckButton" id="checkWidow">
-                    <property name="label" translatable="yes">_Widow control</property>
+                    <property name="label" translatable="yes" context="textflowpage|checkWidow">_Widow control</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
@@ -428,6 +472,9 @@
                     <property name="xalign">0</property>
                     <property name="inconsistent">True</property>
                     <property name="draw_indicator">True</property>
+                    <accessibility>
+                      <relation type="label-for" target="spinWidow"/>
+                    </accessibility>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -438,8 +485,8 @@
                   <object class="GtkSpinButton" id="spinOrphan">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="invisible_char">•</property>
-                    <property name="adjustment">adjustment1</property>
+                    <property name="activates_default">True</property>
+                    <property name="adjustment">adjustment5</property>
                     <accessibility>
                       <relation type="labelled-by" target="checkOrphan"/>
                     </accessibility>
@@ -453,9 +500,8 @@
                   <object class="GtkSpinButton" id="spinWidow">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="invisible_char">•</property>
-                    <property name="adjustment">adjustment1</property>
-                    <property name="climb_rate">1</property>
+                    <property name="activates_default">True</property>
+                    <property name="adjustment">adjustment6</property>
                     <property name="numeric">True</property>
                     <accessibility>
                       <relation type="labelled-by" target="checkWidow"/>
@@ -470,7 +516,7 @@
                   <object class="GtkLabel" id="labelOrphan">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">lines</property>
+                    <property name="label" translatable="yes" context="textflowpage|labelOrphan">lines</property>
                     <property name="xalign">0</property>
                   </object>
                   <packing>
@@ -482,25 +528,13 @@
                   <object class="GtkLabel" id="labelWidow">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">lines</property>
+                    <property name="label" translatable="yes" context="textflowpage|labelWidow">lines</property>
                     <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">2</property>
                     <property name="top_attach">3</property>
                   </packing>
-                </child>
-                <child>
-                  <placeholder/>
-                </child>
-                <child>
-                  <placeholder/>
-                </child>
-                <child>
-                  <placeholder/>
-                </child>
-                <child>
-                  <placeholder/>
                 </child>
               </object>
             </child>
@@ -510,7 +544,7 @@
           <object class="GtkLabel" id="labelOptions">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Options</property>
+            <property name="label" translatable="yes" context="textflowpage|labelOptions">Options</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -519,8 +553,11 @@
       </object>
       <packing>
         <property name="left_attach">0</property>
-        <property name="top_attach">2</property>
+        <property name="top_attach">1</property>
       </packing>
+    </child>
+    <child>
+      <placeholder/>
     </child>
   </object>
 </interface>

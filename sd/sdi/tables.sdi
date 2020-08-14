@@ -113,6 +113,11 @@ shell TableObjectBar
         ExecMethod = Execute;
         StateMethod = GetState;
     ]
+    SID_TABLE_DELETE_TABLE
+    [
+        ExecMethod = Execute;
+        StateMethod = GetState;
+    ]
     SID_TABLE_SELECT_ALL
     [
         ExecMethod = Execute;
@@ -144,7 +149,31 @@ shell TableObjectBar
         StateMethod = GetState;
     ]
 
+    SID_TABLE_MINIMAL_COLUMN_WIDTH
+    [
+        ExecMethod = Execute;
+        StateMethod = GetState;
+    ]
+
+    SID_TABLE_OPTIMAL_COLUMN_WIDTH
+    [
+        ExecMethod = Execute;
+        StateMethod = GetState;
+    ]
+
     SID_TABLE_DISTRIBUTE_COLUMNS
+    [
+        ExecMethod = Execute;
+        StateMethod = GetState;
+    ]
+
+    SID_TABLE_MINIMAL_ROW_HEIGHT
+    [
+        ExecMethod = Execute;
+        StateMethod = GetState;
+    ]
+
+    SID_TABLE_OPTIMAL_ROW_HEIGHT
     [
         ExecMethod = Execute;
         StateMethod = GetState;
@@ -155,5 +184,10 @@ shell TableObjectBar
         ExecMethod = Execute;
         StateMethod = GetState;
     ]
+    SID_TABLE_CHANGE_CURRENT_BORDER_POSITION
+    [
+        ExecMethod = Execute;
+    ]
+
 }
 

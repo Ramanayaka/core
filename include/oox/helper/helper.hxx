@@ -22,29 +22,38 @@
 
 #include <sal/config.h>
 
-#include <algorithm>
 #include <cstring>
 #include <limits>
 
+#include <o3tl/safeint.hxx>
 #include <osl/endian.h>
 #include <rtl/math.hxx>
-#include <rtl/string.hxx>
-#include <rtl/textenc.h>
 #include <sal/macros.h>
 #include <sal/types.h>
+#include <tools/color.hxx>
 
 namespace oox {
 
 // Helper macros ==============================================================
 
+namespace detail {
+
+//TODO: Temporary helper for STATIC_ARRAY_SELECT; ultimately, the latter should be replaced by a
+// proper function (template):
+template<typename T> constexpr std::make_unsigned_t<T> make_unsigned(T value) {
+    if constexpr (std::is_signed_v<T>) {
+        return o3tl::make_unsigned(value);
+    } else {
+        return value;
+    }
+}
+
+}
+
 /** Expands to the 'index'-th element of a STATIC data array, or to 'def', if
     'index' is out of the array limits. */
 #define STATIC_ARRAY_SELECT( array, index, def ) \
-    ((static_cast<size_t>(index) < SAL_N_ELEMENTS(array)) ? ((array)[static_cast<size_t>(index)]) : (def))
-
-/** Convert an OUString to an ASCII C string. Use for debug purposes only. */
-#define OUSTRING_TO_CSTR( str ) \
-    OUStringToOString( str, RTL_TEXTENCODING_ASCII_US ).getStr()
+    ((detail::make_unsigned(index) < SAL_N_ELEMENTS(array)) ? ((array)[static_cast<size_t>(index)]) : (def))
 
 // Common constants ===========================================================
 
@@ -69,11 +78,11 @@ const sal_uInt8 WINDOWS_CHARSET_EASTERN     = 238;
 const sal_uInt8 WINDOWS_CHARSET_OEM         = 255;
 
 
-const sal_Int32 API_RGB_TRANSPARENT         = -1;       ///< Transparent color for API calls.
-const sal_uInt32 UNSIGNED_RGB_TRANSPARENT         = static_cast<sal_uInt32>(-1);       ///< Transparent color for unsigned int32 places.
-const sal_Int32 API_RGB_BLACK               = 0x000000;  ///< Black color for API calls.
-const sal_Int32 API_RGB_GRAY                = 0x808080;  ///< Gray color for API calls.
-const sal_Int32 API_RGB_WHITE               = 0xFFFFFF;  ///< White color for API calls.
+const ::Color API_RGB_TRANSPARENT         (0xffffffff); ///< Transparent color for API calls.
+const sal_uInt32 UNSIGNED_RGB_TRANSPARENT = static_cast<sal_uInt32>(-1); ///< Transparent color for unsigned int32 places.
+const ::Color API_RGB_BLACK               (0x000000);  ///< Black color for API calls.
+const ::Color API_RGB_GRAY                (0x808080);  ///< Gray color for API calls.
+const ::Color API_RGB_WHITE               (0xFFFFFF);  ///< White color for API calls.
 
 const sal_Int16 API_LINE_SOLID              = 0;
 const sal_Int16 API_LINE_DOTTED             = 1;
@@ -159,7 +168,7 @@ inline void setFlag( Type& ornBitField, Type nMask, bool bSet = true )
 }
 
 
-/** Optional value, similar to ::boost::optional<>, with convenience accessors.
+/** Optional value, similar to ::std::optional<>, with convenience accessors.
  */
 template< typename Type >
 class OptValue

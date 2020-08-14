@@ -20,15 +20,18 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_REDCOM_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_REDCOM_HXX
 
-#include "chgtrack.hxx"
+#include <rtl/ustring.hxx>
+#include <tools/link.hxx>
+#include <vcl/vclptr.hxx>
 
+namespace weld { class Window; }
+class ScChangeAction;
+class SfxItemSet;
 class ScDocShell;
 class AbstractSvxPostItDialog;
 
-class ScRedComDialog
+class ScRedComDialog final
 {
-private:
-
     ScChangeAction  *pChangeAction;
     ScDocShell      *pDocShell;
     OUString        aComment;
@@ -36,8 +39,6 @@ private:
 
     DECL_LINK( PrevHdl, AbstractSvxPostItDialog&, void );
     DECL_LINK( NextHdl, AbstractSvxPostItDialog&, void );
-
-protected:
 
     void    ReInit(ScChangeAction *);
     void    SelectCell();
@@ -47,7 +48,7 @@ protected:
 
 public:
 
-    ScRedComDialog( vcl::Window* pParent, const SfxItemSet& rCoreSet,
+    ScRedComDialog( weld::Window* pParent, const SfxItemSet& rCoreSet,
                     ScDocShell *pShell, ScChangeAction *pAction, bool bPrevNext);
     ~ScRedComDialog();
 

@@ -57,7 +57,9 @@
  * @file
  * Draw path object.
  ************************************************************************/
-#include "xfdrawpath.hxx"
+#include <xfilter/xfdrawpath.hxx>
+#include <xfilter/ixfattrlist.hxx>
+#include <rtl/ustrbuf.hxx>
 
 XFSvgPathEntry::XFSvgPathEntry()
 {
@@ -66,15 +68,14 @@ XFSvgPathEntry::XFSvgPathEntry()
 OUString XFSvgPathEntry::ToString()
 {
     assert(!m_strCommand.isEmpty());
-    OUString str = m_strCommand;
-    std::vector<XFPoint>::iterator it;
+    OUStringBuffer str = m_strCommand;
 
-    for( it = m_aPoints.begin(); it != m_aPoints.end(); ++it )
+    for (auto const& point : m_aPoints)
     {
-        XFPoint aPt= *it;
-        str += OUString::number(aPt.GetX()*1000) + " " + OUString::number(aPt.GetY()*1000) + " ";
+        str.append(OUString::number(point.GetX()*1000)).append(" ").append(OUString::number(point.GetY()*1000)).append(" ");
     }
-    return str.trim();
+    str.stripEnd(' ');
+    return str.makeStringAndClear();
 }
 
 XFDrawPath::XFDrawPath()
@@ -128,21 +129,20 @@ void    XFDrawPath::ToXml(IXFStream *pStrm)
     //view-box:
     XFRect  rect = m_aRect;
 
-    OUString strViewBox = "0 0 ";
-    strViewBox += OUString::number(rect.GetWidth()*1000) + " ";
-    strViewBox += OUString::number(rect.GetHeight()*1000);
+    OUString strViewBox = "0 0 " +
+        OUString::number(rect.GetWidth()*1000) + " " +
+        OUString::number(rect.GetHeight()*1000);
     pAttrList->AddAttribute( "svg:viewBox", strViewBox);
 
     //points
-    OUString   strPath;
-    std::vector<XFSvgPathEntry>::iterator it;
-    for( it = m_aPaths.begin(); it != m_aPaths.end(); ++it )
+    OUStringBuffer strPath;
+    for (auto & path : m_aPaths)
     {
-        XFSvgPathEntry  aSvg = *it;
-        strPath += aSvg.ToString();
+        strPath.append(path.ToString());
     }
-    strPath = strPath.trim();
-    pAttrList->AddAttribute( "svg:d", strPath);
+    if (!strPath.isEmpty())
+        strPath.setLength(strPath.getLength()-1);
+    pAttrList->AddAttribute( "svg:d", strPath.makeStringAndClear());
 
     SetPosition(rect);
     XFDrawObject::ToXml(pStrm);

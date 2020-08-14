@@ -21,10 +21,11 @@
 
 #include <editeng/borderline.hxx>
 #include <tools/color.hxx>
+#include <tools/solar.h>
 #include <svl/poolitem.hxx>
 #include "swdllapi.h"
-#include <hintids.hxx>
-#include <format.hxx>
+#include "hintids.hxx"
+#include "format.hxx"
 
 #include <vector>
 
@@ -50,7 +51,7 @@ public:
     sal_uInt16 GetLeft () const { return m_nLeft; }
     sal_uInt16 GetRight() const { return m_nRight; }
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 typedef std::vector<SwColumn> SwColumns;
@@ -98,12 +99,12 @@ public:
 
     /// "pure virtual methods" of SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatCol*    Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -158,11 +159,11 @@ public:
      that corresponds to what constitutes the column for the user. */
     sal_uInt16 CalcPrtColWidth( sal_uInt16 nCol, sal_uInt16 nAct ) const;
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 inline const SwFormatCol &SwAttrSet::GetCol(bool bInP) const
-    { return static_cast<const SwFormatCol&>(Get( RES_COL,bInP)); }
+    { return Get( RES_COL,bInP); }
 
 inline const SwFormatCol &SwFormat::GetCol(bool bInP) const
     { return m_aSet.GetCol(bInP); }

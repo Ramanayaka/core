@@ -24,8 +24,10 @@
 #include <vcl/timer.hxx>
 
 enum class QuickHelpFlags;
+struct ImplSVHelpData;
 
-class HelpTextWindow : public FloatingWindow
+/// A tooltip: adds tips to widgets in a floating / popup window.
+class HelpTextWindow final : public FloatingWindow
 {
 private:
     tools::Rectangle           maHelpArea; // If next Help for the same rectangle w/ same text, then keep window
@@ -33,7 +35,6 @@ private:
     tools::Rectangle           maTextRect; // For wrapped text in QuickHelp
 
     OUString            maHelpText;
-    OUString            maStatusText;
 
     Timer               maShowTimer;
     Timer               maHideTimer;
@@ -47,7 +48,6 @@ private:
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&) override;
     virtual void RequestHelp( const HelpEvent& rHEvt ) override;
     virtual void ApplySettings(vcl::RenderContext& rRenderContext) override;
-    virtual void StateChanged(StateChangedType nType) override;
 
     virtual OUString GetText() const override;
     void ImplShow();
@@ -63,19 +63,19 @@ public:
     QuickHelpFlags      GetStyle() const { return mnStyle; }
 
     // only remember:
-    void                SetStatusText( const OUString& rStatusText ) { maStatusText = rStatusText; }
     void                SetHelpArea( const tools::Rectangle& rRect ) { maHelpArea = rRect; }
 
-    void                ShowHelp( sal_uInt16 nDelayMode );
+    void                ShowHelp(bool bNoDelay);
 
     Size                CalcOutSize() const;
     const tools::Rectangle&    GetHelpArea() const { return maHelpArea; }
 };
 
 void ImplShowHelpWindow( vcl::Window* pParent, sal_uInt16 nHelpWinStyle, QuickHelpFlags nStyle,
-        const OUString& rHelpText, const OUString& rStatusText,
+        const OUString& rHelpText,
         const Point& rScreenPos, const tools::Rectangle& rHelpArea );
-void ImplDestroyHelpWindow( bool bUpdateHideTime );
+VCL_DLLPUBLIC void ImplDestroyHelpWindow( bool bUpdateHideTime );
+void ImplDestroyHelpWindow(ImplSVHelpData& rHelpData, bool bUpdateHideTime);
 void ImplSetHelpWindowPos( vcl::Window* pHelpWindow, sal_uInt16 nHelpWinStyle, QuickHelpFlags nStyle,
                             const Point& rPos, const tools::Rectangle& rHelpArea );
 

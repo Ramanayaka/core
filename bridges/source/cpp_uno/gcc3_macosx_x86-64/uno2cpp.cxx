@@ -22,17 +22,17 @@
 #include <exception>
 #include <typeinfo>
 
-#include "rtl/alloc.h"
+#include <rtl/alloc.h>
 
 #include <com/sun/star/uno/genfunc.hxx>
-#include "com/sun/star/uno/RuntimeException.hpp"
+#include <com/sun/star/uno/RuntimeException.hpp>
 #include <o3tl/runtimetooustring.hxx>
 #include <uno/data.h>
 
 #include <bridge.hxx>
 #include <types.hxx>
-#include "unointerfaceproxy.hxx"
-#include "vtables.hxx"
+#include <unointerfaceproxy.hxx>
+#include <vtables.hxx>
 
 #include "abi.hxx"
 #include "callvirtualmethod.hxx"
@@ -106,8 +106,8 @@ static void cpp_call(
 {
     // Maximum space for [complex ret ptr], values | ptr ...
     // (but will be used less - some of the values will be in pGPR and pFPR)
-      sal_uInt64 *pStack = static_cast<sal_uInt64 *>(__builtin_alloca( (nParams + 3) * sizeof(sal_uInt64) ));
-      sal_uInt64 *pStackStart = pStack;
+    sal_uInt64 *pStack = static_cast<sal_uInt64 *>(__builtin_alloca( (nParams + 3) * sizeof(sal_uInt64) ));
+    sal_uInt64 *pStackStart = pStack;
 
     sal_uInt64 pGPR[x86_64::MAX_GPR_REGS];
     sal_uInt32 nGPR = 0;
@@ -280,10 +280,10 @@ static void cpp_call(
             uno_destructData( pCppReturn, pReturnTypeDescr, cpp_release );
         }
     }
-     catch (...)
-     {
-          // fill uno exception
-        fillUnoException( __cxa_get_globals()->caughtExceptions, *ppUnoExc, pThis->getBridge()->getCpp2Uno() );
+    catch (...)
+    {
+        // fill uno exception
+        CPPU_CURRENT_NAMESPACE::fillUnoException(*ppUnoExc, pThis->getBridge()->getCpp2Uno());
 
         // temporary params
         for ( ; nTempIndices--; )
@@ -300,7 +300,7 @@ static void cpp_call(
 }
 
 
-namespace bridges { namespace cpp_uno { namespace shared {
+namespace bridges::cpp_uno::shared {
 
 void unoInterfaceProxyDispatch(
     uno_Interface * pUnoI, const typelib_TypeDescription * pMemberDescr,
@@ -411,7 +411,7 @@ void unoInterfaceProxyDispatch(
                 }
                 TYPELIB_DANGER_RELEASE( pTD );
             }
-            SAL_FALLTHROUGH; // else perform queryInterface()
+            [[fallthrough]]; // else perform queryInterface()
         }
         default:
             // dependent dispatch
@@ -437,6 +437,6 @@ void unoInterfaceProxyDispatch(
     }
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

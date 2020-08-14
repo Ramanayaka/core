@@ -22,18 +22,13 @@
 #include <o3tl/any.hxx>
 #include <osl/mutex.hxx>
 #include <osl/diagnose.h>
-#include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
-#include <uno/mapping.hxx>
-#include <uno/dispatcher.h>
-#include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/factory.hxx>
 #include <cppuhelper/weakref.hxx>
-#include <cppuhelper/component.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
-#include <cppuhelper/component_context.hxx>
-#include <cppuhelper/bootstrap.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/sequence.hxx>
@@ -42,6 +37,7 @@
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/lang/XSingleComponentFactory.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
@@ -53,9 +49,9 @@
 #include <com/sun/star/container/XElementAccess.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/container/XContentEnumerationAccess.hpp>
-#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
-#include <com/sun/star/uno/XUnloadingPreference.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
+#include <iterator>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -87,18 +83,13 @@ Sequence< OUString > retrieveAsciiValueList(
             {
                 Sequence< OUString > seq2 = retrieveAsciiValueList( xTempReg, keyName );
 
-                if( seq2.getLength() )
+                if( seq2.hasElements() )
                 {
                     sal_Int32 n1Len = seq.getLength();
                     sal_Int32 n2Len = seq2.getLength();
 
                     seq.realloc( n1Len + n2Len );
-                    const OUString *pSource = seq2.getConstArray();
-                    OUString *pTarget = seq.getArray();
-                    for( int i = 0 ; i < n2Len ; i ++ )
-                    {
-                        pTarget[i+n1Len] = pSource[i];
-                    }
+                    std::copy(seq2.begin(), seq2.end(), std::next(seq.begin(), n1Len));
                 }
             }
         }
@@ -130,28 +121,8 @@ Sequence< OUString > retrieveAsciiValueList(
 /*****************************************************************************
     Enumeration by ServiceName
 *****************************************************************************/
-struct hashRef_Impl
-{
-    size_t operator()(const Reference<XInterface > & rName) const
-    {
-        // query to XInterface. The cast to XInterface* must be the same for the same object
-        Reference<XInterface > x( Reference<XInterface >::query( rName ) );
-        return reinterpret_cast<size_t>(x.get());
-    }
-};
 
-struct equaltoRef_Impl
-{
-    bool operator()(const Reference<XInterface > & rName1, const Reference<XInterface > & rName2 ) const
-        { return rName1 == rName2; }
-};
-
-typedef std::unordered_set
-<
-    Reference<XInterface >,
-    hashRef_Impl,
-    equaltoRef_Impl
-> HashSet_Ref;
+typedef std::unordered_set< Reference<XInterface > > HashSet_Ref;
 
 
 class ServiceEnumeration_Impl : public WeakImplHelper< XEnumeration >
@@ -214,7 +185,7 @@ beans::Property PropertySetInfo_Impl::getPropertyByName( OUString const & name )
     beans::Property const * p = m_properties.getConstArray();
     for ( sal_Int32 nPos = m_properties.getLength(); nPos--; )
     {
-        if (p[ nPos ].Name.equals( name ))
+        if (p[ nPos ].Name == name)
             return p[ nPos ];
     }
     throw beans::UnknownPropertyException(
@@ -223,13 +194,8 @@ beans::Property PropertySetInfo_Impl::getPropertyByName( OUString const & name )
 
 sal_Bool PropertySetInfo_Impl::hasPropertyByName( OUString const & name )
 {
-    beans::Property const * p = m_properties.getConstArray();
-    for ( sal_Int32 nPos = m_properties.getLength(); nPos--; )
-    {
-        if (p[ nPos ].Name.equals( name ))
-            return true;
-    }
-    return false;
+    return std::any_of(m_properties.begin(), m_properties.end(),
+        [&name](const beans::Property& rProp) { return rProp.Name == name; });
 }
 
 
@@ -278,22 +244,19 @@ Any ImplementationEnumeration_Impl::nextElement()
 *****************************************************************************/
 typedef std::unordered_set
 <
-    OUString,
-    OUStringHash
+    OUString
 > HashSet_OWString;
 
 typedef std::unordered_multimap
 <
     OUString,
-    Reference<XInterface >,
-    OUStringHash
+    Reference<XInterface >
 > HashMultimap_OWString_Interface;
 
 typedef std::unordered_map
 <
     OUString,
-    Reference<XInterface >,
-    OUStringHash
+    Reference<XInterface >
 > HashMap_OWString_Interface;
 
 /*****************************************************************************
@@ -316,20 +279,20 @@ public:
 void OServiceManager_Listener::disposing(const EventObject & rEvt )
 {
     Reference<XSet > x( xSMgr );
-    if( x.is() )
+    if( !x.is() )
+        return;
+
+    try
     {
-        try
-        {
-            x->remove( Any( &rEvt.Source, cppu::UnoType<XInterface>::get()) );
-        }
-        catch( const IllegalArgumentException & )
-        {
-            OSL_FAIL( "IllegalArgumentException caught" );
-        }
-        catch( const NoSuchElementException & )
-        {
-            OSL_FAIL( "NoSuchElementException caught" );
-        }
+        x->remove( Any( &rEvt.Source, cppu::UnoType<XInterface>::get()) );
+    }
+    catch( const IllegalArgumentException & )
+    {
+        OSL_FAIL( "IllegalArgumentException caught" );
+    }
+    catch( const NoSuchElementException & )
+    {
+        OSL_FAIL( "NoSuchElementException caught" );
     }
 }
 
@@ -411,8 +374,8 @@ public:
     void SAL_CALL removeVetoableChangeListener(const OUString& PropertyName, const Reference<XVetoableChangeListener >& aListener) override;
 
 protected:
-    inline bool is_disposed() const;
-    inline void check_undisposed() const;
+    bool is_disposed() const;
+    void check_undisposed() const;
     virtual void SAL_CALL disposing() override;
 
     bool haveFactoryWithThisImplementation(const OUString& aImplName);
@@ -440,14 +403,14 @@ private:
 };
 
 
-inline bool OServiceManager::is_disposed() const
+bool OServiceManager::is_disposed() const
 {
     // ought to be guarded by m_mutex:
     return (m_bInDisposing || rBHelper.bDisposed);
 }
 
 
-inline void OServiceManager::check_undisposed() const
+void OServiceManager::check_undisposed() const
 {
     if (is_disposed())
     {
@@ -467,7 +430,7 @@ class OServiceManagerWrapper : public OServiceManagerMutex, public t_OServiceMan
 {
     Reference< XComponentContext > m_xContext;
     Reference< XMultiComponentFactory > m_root;
-    Reference< XMultiComponentFactory > const & getRoot()
+    Reference< XMultiComponentFactory > const & getRoot() const
     {
         if (! m_root.is())
         {
@@ -558,17 +521,16 @@ void SAL_CALL OServiceManagerWrapper::setPropertyValue(
     if ( PropertyName == "DefaultContext" )
     {
         Reference< XComponentContext > xContext;
-        if (aValue >>= xContext)
-        {
-            MutexGuard aGuard( m_mutex );
-            m_xContext = xContext;
-        }
-        else
+        if (!(aValue >>= xContext))
         {
             throw IllegalArgumentException(
                 "no XComponentContext given!",
                 static_cast<OWeakObject *>(this), 1 );
         }
+
+        MutexGuard aGuard( m_mutex );
+        m_xContext = xContext;
+
     }
     else
     {
@@ -641,18 +603,17 @@ void OServiceManager::disposing()
         m_bInDisposing = true;
         aImpls = m_ImplementationMap;
     }
-    HashSet_Ref::iterator aIt = aImpls.begin();
-    while( aIt != aImpls.end() )
+    for( const auto& rxImpl : aImpls )
     {
         try
         {
-            Reference<XComponent > xComp( Reference<XComponent >::query( *aIt++ ) );
+            Reference<XComponent > xComp( Reference<XComponent >::query( rxImpl ) );
             if( xComp.is() )
                 xComp->dispose();
         }
-        catch (const RuntimeException & exc)
+        catch (const RuntimeException &)
         {
-            SAL_INFO("stoc", "RuntimeException occurred upon disposing factory: " << exc.Message);
+            TOOLS_INFO_EXCEPTION("stoc", "RuntimeException occurred upon disposing factory:");
         }
     }
 
@@ -698,27 +659,23 @@ void OServiceManager::setPropertyValue(
     const OUString& PropertyName, const Any& aValue )
 {
     check_undisposed();
-    if ( PropertyName == "DefaultContext" )
-    {
-        Reference< XComponentContext > xContext;
-        if (aValue >>= xContext)
-        {
-            MutexGuard aGuard( m_mutex );
-            m_xContext = xContext;
-        }
-        else
-        {
-            throw IllegalArgumentException(
-                "no XComponentContext given!",
-                static_cast<OWeakObject *>(this), 1 );
-        }
-    }
-    else
+    if ( PropertyName != "DefaultContext" )
     {
         throw UnknownPropertyException(
             "unknown property " + PropertyName,
             static_cast<OWeakObject *>(this) );
     }
+
+    Reference< XComponentContext > xContext;
+    if (!(aValue >>= xContext))
+    {
+        throw IllegalArgumentException(
+            "no XComponentContext given!",
+            static_cast<OWeakObject *>(this), 1 );
+    }
+
+    MutexGuard aGuard( m_mutex );
+    m_xContext = xContext;
 }
 
 Any OServiceManager::getPropertyValue(const OUString& PropertyName)
@@ -784,9 +741,8 @@ Sequence< OUString > OServiceManager::getUniqueAvailableServiceNames(
 {
     check_undisposed();
     MutexGuard aGuard( m_mutex );
-    HashMultimap_OWString_Interface::iterator aSIt = m_ServiceMap.begin();
-    while( aSIt != m_ServiceMap.end() )
-        aNameSet.insert( (*aSIt++).first );
+    for( const auto& rEntry : m_ServiceMap )
+        aNameSet.insert( rEntry.first );
 
     /* do not return the implementation names
     HashMap_OWString_Interface      m_ImplementationNameMap;
@@ -817,14 +773,12 @@ Reference< XInterface > OServiceManager::createInstanceWithContext(
     }
 #endif
 
-    Sequence< Reference< XInterface > > factories(
+    const Sequence< Reference< XInterface > > factories(
         queryServiceFactories( rServiceSpecifier, xContext ) );
-    Reference< XInterface > const * p = factories.getConstArray();
-    for ( sal_Int32 nPos = 0; nPos < factories.getLength(); ++nPos )
+    for ( Reference< XInterface > const & xFactory : factories )
     {
         try
         {
-            Reference< XInterface > const & xFactory = p[ nPos ];
             if (xFactory.is())
             {
                 Reference< XSingleComponentFactory > xFac( xFactory, UNO_QUERY );
@@ -843,9 +797,9 @@ Reference< XInterface > OServiceManager::createInstanceWithContext(
                 }
             }
         }
-        catch (const lang::DisposedException & exc)
+        catch (const lang::DisposedException &)
         {
-            SAL_INFO("stoc", "DisposedException occurred: " << exc.Message);
+            TOOLS_INFO_EXCEPTION("stoc", "");
         }
     }
 
@@ -871,14 +825,12 @@ Reference< XInterface > OServiceManager::createInstanceWithArgumentsAndContext(
     }
 #endif
 
-    Sequence< Reference< XInterface > > factories(
+    const Sequence< Reference< XInterface > > factories(
         queryServiceFactories( rServiceSpecifier, xContext ) );
-    Reference< XInterface > const * p = factories.getConstArray();
-    for ( sal_Int32 nPos = 0; nPos < factories.getLength(); ++nPos )
+    for ( Reference< XInterface > const & xFactory : factories )
     {
         try
         {
-            Reference< XInterface > const & xFactory = p[ nPos ];
             if (xFactory.is())
             {
                 Reference< XSingleComponentFactory > xFac( xFactory, UNO_QUERY );
@@ -897,9 +849,9 @@ Reference< XInterface > OServiceManager::createInstanceWithArgumentsAndContext(
                 }
             }
         }
-        catch (const lang::DisposedException & exc)
+        catch (const lang::DisposedException &)
         {
-            SAL_INFO("stoc", "DisposedException occurred: " << exc.Message);
+            TOOLS_INFO_EXCEPTION("stoc", "DisposedException occurred:");
         }
     }
 
@@ -942,7 +894,7 @@ void OServiceManager::initialize( Sequence< Any > const & )
 // XServiceInfo
 OUString OServiceManager::getImplementationName()
 {
-    return OUString("com.sun.star.comp.stoc.OServiceManager");
+    return "com.sun.star.comp.stoc.OServiceManager";
 }
 
 // XServiceInfo
@@ -954,10 +906,7 @@ sal_Bool OServiceManager::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > OServiceManager::getSupportedServiceNames()
 {
-    Sequence< OUString > seqNames(2);
-    seqNames[0] = "com.sun.star.lang.MultiServiceFactory";
-    seqNames[1] = "com.sun.star.lang.ServiceManager";
-    return seqNames;
+    return { "com.sun.star.lang.MultiServiceFactory", "com.sun.star.lang.ServiceManager" };
 }
 
 
@@ -1005,7 +954,7 @@ Reference<XEnumeration > OServiceManager::createContentEnumeration(
     check_undisposed();
     Sequence< Reference< XInterface > > factories(
         OServiceManager::queryServiceFactories( aServiceName, m_xContext ) );
-    if (factories.getLength())
+    if (factories.hasElements())
         return new ServiceEnumeration_Impl( factories );
     else
         return Reference< XEnumeration >();
@@ -1086,12 +1035,11 @@ void OServiceManager::insert( const Any & Element )
             m_ImplementationNameMap[ aImplName ] = xEle;
 
         //put into the service map
-        Sequence< OUString > aServiceNames = xInfo->getSupportedServiceNames();
-        const OUString * pArray = aServiceNames.getConstArray();
-        for( sal_Int32 i = 0; i < aServiceNames.getLength(); i++ )
+        const Sequence< OUString > aServiceNames = xInfo->getSupportedServiceNames();
+        for( const OUString& rServiceName : aServiceNames )
         {
-            m_ServiceMap.insert( HashMultimap_OWString_Interface::value_type(
-                pArray[i], *o3tl::doAccess<Reference<XInterface>>(Element) ) );
+            m_ServiceMap.emplace(
+                rServiceName, *o3tl::doAccess<Reference<XInterface>>(Element) );
         }
     }
     }
@@ -1168,24 +1116,23 @@ void OServiceManager::remove( const Any & Element )
 
     //remove from the service map
     Reference<XServiceInfo > xSF( Reference<XServiceInfo >::query( xEle ) );
-    if( xSF.is() )
-    {
-        Sequence< OUString > aServiceNames = xSF->getSupportedServiceNames();
-        const OUString * pArray = aServiceNames.getConstArray();
-        for( sal_Int32 i = 0; i < aServiceNames.getLength(); i++ )
-        {
-            pair<HashMultimap_OWString_Interface::iterator, HashMultimap_OWString_Interface::iterator> p =
-                m_ServiceMap.equal_range( pArray[i] );
+    if( !xSF.is() )
+        return;
 
-            while( p.first != p.second )
+    const Sequence< OUString > aServiceNames = xSF->getSupportedServiceNames();
+    for( const OUString& rServiceName : aServiceNames )
+    {
+        pair<HashMultimap_OWString_Interface::iterator, HashMultimap_OWString_Interface::iterator> p =
+            m_ServiceMap.equal_range( rServiceName );
+
+        while( p.first != p.second )
+        {
+            if( xEle == (*p.first).second )
             {
-                if( xEle == (*p.first).second )
-                {
-                    m_ServiceMap.erase( p.first );
-                    break;
-                }
-                ++p.first;
+                m_ServiceMap.erase( p.first );
+                break;
             }
+            ++p.first;
         }
     }
 }
@@ -1203,7 +1150,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-        { return OUString("com.sun.star.comp.stoc.ORegistryServiceManager"); }
+        { return "com.sun.star.comp.stoc.ORegistryServiceManager"; }
 
     Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
@@ -1229,7 +1176,7 @@ private:
     Reference<XRegistryKey >        getRootKey();
     Reference<XInterface > loadWithImplementationName(
         const OUString & rImplName, Reference< XComponentContext > const & xContext );
-    Sequence<OUString>          getFromServiceName(const OUString& serviceName);
+    Sequence<OUString>          getFromServiceName(const OUString& serviceName) const;
     Reference<XInterface > loadWithServiceName(
         const OUString & rImplName, Reference< XComponentContext > const & xContext );
     void                        fillAllNamesFromRegistry( HashSet_OWString & );
@@ -1341,12 +1288,10 @@ Reference<XInterface > ORegistryServiceManager::loadWithImplementationName(
  * Return all implementation out of the registry.
  */
 Sequence<OUString> ORegistryServiceManager::getFromServiceName(
-    const OUString& serviceName )
+    const OUString& serviceName ) const
 {
-    OUStringBuffer buf;
-    buf.append( "/SERVICES/" );
-    buf.append( serviceName );
-    return retrieveAsciiValueList( m_xRegistry, buf.makeStringAndClear() );
+    OUString buf = "/SERVICES/" + serviceName;
+    return retrieveAsciiValueList( m_xRegistry, buf );
 }
 
 /**
@@ -1355,11 +1300,10 @@ Sequence<OUString> ORegistryServiceManager::getFromServiceName(
 Reference<XInterface > ORegistryServiceManager::loadWithServiceName(
     const OUString& serviceName, Reference< XComponentContext > const & xContext )
 {
-    Sequence<OUString> implEntries = getFromServiceName( serviceName );
-    for (sal_Int32 i = 0; i < implEntries.getLength(); i++)
+    const Sequence<OUString> implEntries = getFromServiceName( serviceName );
+    for (const auto& rEntry : implEntries)
     {
-        Reference< XInterface > x(
-            loadWithImplementationName( implEntries.getConstArray()[i], xContext ) );
+        Reference< XInterface > x( loadWithImplementationName( rEntry, xContext ) );
         if (x.is())
             return x;
     }
@@ -1384,8 +1328,9 @@ void ORegistryServiceManager::fillAllNamesFromRegistry( HashSet_OWString & rSet 
         {
             sal_Int32 nPrefix = xServicesKey->getKeyName().getLength() +1;
             Sequence<Reference<XRegistryKey > > aKeys = xServicesKey->openKeys();
-            for( sal_Int32 i = 0; i < aKeys.getLength(); i++ )
-                rSet.insert( aKeys.getConstArray()[i]->getKeyName().copy( nPrefix ) );
+            std::transform(aKeys.begin(), aKeys.end(), std::inserter(rSet, rSet.end()),
+                [nPrefix](const Reference<XRegistryKey>& rKey) -> OUString {
+                    return rKey->getKeyName().copy( nPrefix ); });
         }
     }
     catch (InvalidRegistryException &)
@@ -1398,7 +1343,7 @@ void ORegistryServiceManager::initialize(const Sequence< Any >& Arguments)
 {
     check_undisposed();
     MutexGuard aGuard( m_mutex );
-    if (Arguments.getLength() > 0)
+    if (Arguments.hasElements())
     {
         m_xRootKey.clear();
         Arguments[ 0 ] >>= m_xRegistry;
@@ -1427,10 +1372,7 @@ Sequence< OUString > ORegistryServiceManager::getAvailableServiceNames()
 // XServiceInfo
 Sequence< OUString > ORegistryServiceManager::getSupportedServiceNames()
 {
-    Sequence< OUString > seqNames(2);
-    seqNames[0] = "com.sun.star.lang.MultiServiceFactory";
-    seqNames[1] = "com.sun.star.lang.RegistryServiceManager";
-    return seqNames;
+    return { "com.sun.star.lang.MultiServiceFactory", "com.sun.star.lang.RegistryServiceManager" };
 }
 
 
@@ -1440,7 +1382,7 @@ Sequence< Reference< XInterface > > ORegistryServiceManager::queryServiceFactori
 {
     Sequence< Reference< XInterface > > ret(
         OServiceManager::queryServiceFactories( aServiceName, xContext ) );
-    if (ret.getLength())
+    if (ret.hasElements())
     {
         return ret;
     }
@@ -1461,13 +1403,10 @@ Reference<XEnumeration > ORegistryServiceManager::createContentEnumeration(
     check_undisposed();
     MutexGuard aGuard(m_mutex);
     // get all implementation names registered under this service name from the registry
-    Sequence<OUString> aImpls = getFromServiceName( aServiceName );
+    const Sequence<OUString> aImpls = getFromServiceName( aServiceName );
     // load and insert all factories specified by the registry
-    sal_Int32 i;
-    OUString aImplName;
-    for( i = 0; i < aImpls.getLength(); i++ )
+    for( const OUString& aImplName : aImpls )
     {
-        aImplName = aImpls.getConstArray()[i];
         if ( !haveFactoryWithThisImplementation(aImplName) )
         {
             loadWithImplementationName( aImplName, m_xContext );
@@ -1516,7 +1455,7 @@ Any ORegistryServiceManager::getPropertyValue(const OUString& PropertyName)
 
 } // namespace
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_stoc_OServiceManager_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -1524,7 +1463,7 @@ com_sun_star_comp_stoc_OServiceManager_get_implementation(
     return cppu::acquire(new OServiceManager(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_stoc_ORegistryServiceManager_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -1532,7 +1471,7 @@ com_sun_star_comp_stoc_ORegistryServiceManager_get_implementation(
     return cppu::acquire(new ORegistryServiceManager(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_stoc_OServiceManagerWrapper_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

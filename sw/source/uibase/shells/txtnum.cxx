@@ -17,8 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
-#include <vcl/msgbox.hxx>
 #include <sfx2/request.hxx>
 #include <svl/eitem.hxx>
 #include <svl/stritem.hxx>
@@ -26,17 +24,15 @@
 #include <editeng/brushitem.hxx>
 #include <numrule.hxx>
 
-#include "cmdid.h"
-#include "wrtsh.hxx"
-#include "view.hxx"
-#include "viewopt.hxx"
-#include "wdocsh.hxx"
-#include "poolfmt.hxx"
-#include "textsh.hxx"
-#include "uiitems.hxx"
-#include "swabstdlg.hxx"
-#include "SwStyleNameMapper.hxx"
-#include <globals.hrc>
+#include <cmdid.h>
+#include <wrtsh.hxx>
+#include <view.hxx>
+#include <viewopt.hxx>
+#include <wdocsh.hxx>
+#include <poolfmt.hxx>
+#include <textsh.hxx>
+#include <swabstdlg.hxx>
+#include <SwStyleNameMapper.hxx>
 #include <sfx2/tabdlg.hxx>
 #include <svx/nbdtmg.hxx>
 #include <svx/nbdtmgfact.hxx>
@@ -183,55 +179,59 @@ void SwTextShell::ExecEnterNum(SfxRequest &rReq)
         pDocSh->PutItem(SfxUInt16Item(SID_HTML_MODE, ::GetHtmlMode(pDocSh)));
 
         SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-        OSL_ENSURE(pFact, "Dialog creation failed!");
-        ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSwTabDialog( DLG_SVXTEST_NUM_BULLET,
-                                                        GetView().GetWindow(), &aSet, GetShell()));
-        OSL_ENSURE(pDlg, "Dialog creation failed!");
+        weld::Window *pParent = rReq.GetFrameWeld();
+        VclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSvxNumBulletTabDialog(pParent, &aSet, GetShell()));
         const SfxStringItem* pPageItem = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
         if ( pPageItem )
             pDlg->SetCurPageId( OUStringToOString( pPageItem->GetValue(), RTL_TEXTENCODING_UTF8 ) );
-        const short nRet = pDlg->Execute();
-        const SfxPoolItem* pItem;
-        if ( RET_OK == nRet )
-        {
-            if( SfxItemState::SET == pDlg->GetOutputItemSet()->GetItemState( SID_ATTR_NUMBERING_RULE, false, &pItem ))
+
+        auto pRequest = std::make_shared<SfxRequest>(rReq);
+        rReq.Ignore(); // the 'old' request is not relevant any more
+
+        pDlg->StartExecuteAsync([aSet, pDlg, pNumRuleAtCurrentSelection, pRequest, this](sal_Int32 nResult){
+            if (RET_OK == nResult)
             {
-                rReq.AppendItem( *pItem );
-                rReq.Done();
-                SvxNumRule* pSetRule = static_cast<const SvxNumBulletItem*>( pItem )->GetNumRule();
-                pSetRule->UnLinkGraphics();
-                SwNumRule aSetRule( pNumRuleAtCurrentSelection != nullptr
-                                    ? pNumRuleAtCurrentSelection->GetName()
-                                    : GetShell().GetUniqueNumRuleName(),
-                    numfunc::GetDefaultPositionAndSpaceMode() );
-                aSetRule.SetSvxRule( *pSetRule, GetShell().GetDoc() );
-                aSetRule.SetAutoRule( true );
-                // No start of new list, if an existing list style is edited.
-                // Otherwise start a new list.
-                const bool bCreateList = ( pNumRuleAtCurrentSelection == nullptr );
-                GetShell().SetCurNumRule( aSetRule, bCreateList );
+                const SfxPoolItem* pItem;
+                if (SfxItemState::SET == pDlg->GetOutputItemSet()->GetItemState(SID_ATTR_NUMBERING_RULE, false, &pItem))
+                {
+                    pRequest->AppendItem(*pItem);
+                    pRequest->Done();
+                    SvxNumRule* pSetRule = static_cast<const SvxNumBulletItem*>(pItem)->GetNumRule();
+                    pSetRule->UnLinkGraphics();
+                    SwNumRule aSetRule(pNumRuleAtCurrentSelection != nullptr
+                                       ? pNumRuleAtCurrentSelection->GetName()
+                                       : GetShell().GetUniqueNumRuleName(),
+                        numfunc::GetDefaultPositionAndSpaceMode());
+                    aSetRule.SetSvxRule(*pSetRule, GetShell().GetDoc());
+                    aSetRule.SetAutoRule(true);
+                    // No start of new list, if an existing list style is edited.
+                    // Otherwise start a new list.
+                    const bool bCreateList = (pNumRuleAtCurrentSelection == nullptr);
+                    GetShell().SetCurNumRule(aSetRule, bCreateList);
+                }
+                // If the Dialog was leaved with OK but nothing was chosen then the
+                // numbering must be at least activated, if it is not already.
+                else if (pNumRuleAtCurrentSelection == nullptr
+                         && SfxItemState::SET == aSet.GetItemState(SID_ATTR_NUMBERING_RULE, false, &pItem))
+                {
+                    pRequest->AppendItem(*pItem);
+                    pRequest->Done();
+                    SvxNumRule* pSetRule = static_cast<const SvxNumBulletItem*>(pItem)->GetNumRule();
+                    SwNumRule aSetRule(
+                        GetShell().GetUniqueNumRuleName(),
+                        numfunc::GetDefaultPositionAndSpaceMode());
+                    aSetRule.SetSvxRule(*pSetRule, GetShell().GetDoc());
+                    aSetRule.SetAutoRule(true);
+                    // start new list
+                    GetShell().SetCurNumRule(aSetRule, true);
+                }
             }
-            // If the Dialog was leaved with OK but nothing was chosen then the
-            // numbering must be at least activated, if it is not already.
-            else if ( pNumRuleAtCurrentSelection == nullptr
-                      && SfxItemState::SET == aSet.GetItemState( SID_ATTR_NUMBERING_RULE, false, &pItem ) )
-            {
-                rReq.AppendItem( *pItem );
-                rReq.Done();
-                SvxNumRule* pSetRule = static_cast<const SvxNumBulletItem*>( pItem )->GetNumRule();
-                SwNumRule aSetRule(
-                    GetShell().GetUniqueNumRuleName(),
-                    numfunc::GetDefaultPositionAndSpaceMode() );
-                aSetRule.SetSvxRule( *pSetRule, GetShell().GetDoc() );
-                aSetRule.SetAutoRule( true );
-                // start new list
-                GetShell().SetCurNumRule( aSetRule, true );
-            }
-        }
-        else if ( RET_USER == nRet )
-            GetShell().DelNumRules();
+            else if (RET_USER == nResult)
+                GetShell().DelNumRules();
+            pDlg->disposeOnce();
+        });
     }
-        break;
+    break;
 
     default:
         OSL_FAIL("wrong dispatcher");
@@ -240,7 +240,7 @@ void SwTextShell::ExecEnterNum(SfxRequest &rReq)
 }
 
 
-void SwTextShell::ExecSetNumber(SfxRequest &rReq)
+void SwTextShell::ExecSetNumber(SfxRequest const &rReq)
 {
     const sal_uInt16 nSlot = rReq.GetSlot();
     switch ( nSlot )
@@ -282,7 +282,7 @@ void SwTextShell::ExecSetNumber(SfxRequest &rReq)
 
                     OUString aNumCharFormat, aBulletCharFormat;
                     SwStyleNameMapper::FillUIName( RES_POOLCHR_NUM_LEVEL, aNumCharFormat );
-                    SwStyleNameMapper::FillUIName( RES_POOLCHR_BUL_LEVEL, aBulletCharFormat );
+                    SwStyleNameMapper::FillUIName( RES_POOLCHR_BULLET_LEVEL, aBulletCharFormat );
 
                     SfxAllItemSet aSet( GetPool() );
                     aSet.Put( SfxStringItem( SID_NUM_CHAR_FMT, aNumCharFormat ) );

@@ -19,11 +19,11 @@
 #ifndef INCLUDED_IDLC_INC_ASTSCOPE_HXX
 #define INCLUDED_IDLC_INC_ASTSCOPE_HXX
 
-#include <idlc.hxx>
+#include "idlc.hxx"
 
 class AstExpression;
-#include <astdeclaration.hxx>
-#include <astexpression.hxx>
+#include "astdeclaration.hxx"
+#include "astexpression.hxx"
 
 class AstScope
 {
@@ -37,12 +37,12 @@ public:
     AstDeclaration* addDeclaration(AstDeclaration* pDecl);
 
     sal_uInt32 nMembers() const
-        { return (sal_uInt32)(m_declarations.size()); }
+        { return static_cast<sal_uInt32>(m_declarations.size()); }
     DeclList::const_iterator getIteratorBegin() const
         { return m_declarations.begin(); }
     DeclList::const_iterator getIteratorEnd() const
         { return m_declarations.end(); }
-    sal_uInt16 getNodeCount(NodeType nType);
+    sal_uInt16 getNodeCount(NodeType nType) const;
 
     // Name look up mechanism
     AstDeclaration* lookupByName(const OString& scopedName);
@@ -54,7 +54,7 @@ public:
     // Look up a predefined type by its ExprType
     AstDeclaration* lookupPrimitiveType(ExprType type);
 
-    AstDeclaration* lookupForAdd(AstDeclaration* pDecl);
+    AstDeclaration* lookupForAdd(AstDeclaration const * pDecl) const;
 
 protected:
     AstDeclaration const * getLast() const

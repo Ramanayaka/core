@@ -17,20 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "uiconfiguration/globalsettings.hxx"
-#include "services.h"
+#include <uiconfiguration/globalsettings.hxx>
+#include <services.h>
 
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/container/XContainer.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
 
-#include <rtl/ustrbuf.hxx>
 #include <rtl/instance.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <cppuhelper/implbase.hxx>
 
 //  Defines
@@ -43,6 +39,8 @@ namespace framework
 {
 
 //  Configuration access class for WindowState supplier implementation
+
+namespace {
 
 class GlobalSettings_Access : public ::cppu::WeakImplHelper<
                                   css::lang::XComponent,
@@ -76,6 +74,8 @@ class GlobalSettings_Access : public ::cppu::WeakImplHelper<
         css::uno::Reference< css::container::XNameAccess >        m_xConfigAccess;
         css::uno::Reference< css::uno::XComponentContext>         m_xContext;
 };
+
+}
 
 GlobalSettings_Access::GlobalSettings_Access( const css::uno::Reference< css::uno::XComponentContext >& rxContext ) :
     m_bDisposed( false ),
@@ -163,8 +163,7 @@ bool GlobalSettings_Access::GetToolbarStateInfo( GlobalSettings::StateInfo eStat
     {
         try
         {
-            css::uno::Any a;
-            a = m_xConfigAccess->getByName( m_aNodeRefStates );
+            css::uno::Any a = m_xConfigAccess->getByName( m_aNodeRefStates );
             css::uno::Reference< css::container::XNameAccess > xNameAccess;
             if ( a >>= xNameAccess )
             {
@@ -190,9 +189,6 @@ bool GlobalSettings_Access::GetToolbarStateInfo( GlobalSettings::StateInfo eStat
 
 void GlobalSettings_Access::impl_initConfigAccess()
 {
-    css::uno::Sequence< css::uno::Any > aArgs( 2 );
-    css::beans::PropertyValue           aPropValue;
-
     try
     {
         if ( m_xContext.is() )
@@ -200,13 +196,10 @@ void GlobalSettings_Access::impl_initConfigAccess()
             css::uno::Reference< css::lang::XMultiServiceFactory > xConfigProvider =
                  css::configuration::theDefaultProvider::get( m_xContext );
 
-            aPropValue.Name  = "nodepath";
-            aPropValue.Value <<= OUString("/org.openoffice.Office.UI.GlobalSettings/Toolbars");
-            aArgs[0] <<= aPropValue;
-            aPropValue.Name = "lazywrite";
-            aPropValue.Value <<= true;
-            aArgs[1] <<= aPropValue;
-
+            uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+            {
+                {"nodepath", uno::Any(OUString("/org.openoffice.Office.UI.GlobalSettings/Toolbars"))}
+            }));
             m_xConfigAccess.set(xConfigProvider->createInstanceWithArguments(
                                     SERVICENAME_CFGREADACCESS, aArgs ),
                                 css::uno::UNO_QUERY );
@@ -228,7 +221,12 @@ void GlobalSettings_Access::impl_initConfigAccess()
 
 //  global class
 
+namespace {
+
 struct mutexGlobalSettings : public rtl::Static< osl::Mutex, mutexGlobalSettings > {};
+
+}
+
 static GlobalSettings_Access* pStaticSettings = nullptr;
 
 static GlobalSettings_Access* GetGlobalSettings( const css::uno::Reference< css::uno::XComponentContext >& rxContext )
@@ -249,7 +247,7 @@ GlobalSettings::~GlobalSettings()
 }
 
 // settings access
-bool GlobalSettings::HasToolbarStatesInfo()
+bool GlobalSettings::HasToolbarStatesInfo() const
 {
     GlobalSettings_Access* pSettings( GetGlobalSettings( m_xContext ));
 

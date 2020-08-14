@@ -17,367 +17,258 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
+#include <about.hxx>
 
-#include <vcl/layout.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
+#include <osl/diagnose.h>    //OSL_ENSURE
+#include <osl/process.h>     //osl_getProcessLocale
+#include <rtl/character.hxx> //rtl::isAsciiHexDigit
+#include <sal/log.hxx>       //SAL_WARN
+#include <vcl/settings.hxx>  //GetSettings
+#include <vcl/svapp.hxx>     //Application::
+#include <vcl/virdev.hxx>    //VirtualDevice
+#include <vcl/weld.hxx>
+#include <unotools/resmgr.hxx> //Translate
 
-#include <tools/stream.hxx>
-#include <rtl/bootstrap.hxx>
-#include <unotools/configmgr.hxx>
-#include <unotools/bootstrap.hxx>
-#include <com/sun/star/uno/Any.h>
-#include <vcl/graph.hxx>
-#include <vcl/graphicfilter.hxx>
+#include <config_buildid.h> //EXTRA_BUILDID
+#include <dialmgr.hxx>      //CuiResId
+#include <i18nlangtag/languagetag.hxx>
+#include <sfx2/app.hxx> //SfxApplication::loadBrandSvg
+#include <strings.hrc>
 #include <svtools/langhelp.hxx>
+#include <unotools/bootstrap.hxx> //utl::Bootstrap::getBuildVersion
+#include <unotools/configmgr.hxx> //ConfigManager::
 
-#include "com/sun/star/system/SystemShellExecuteFlags.hpp"
-#include "com/sun/star/system/SystemShellExecute.hpp"
-#include <comphelper/processfactory.hxx>
-#include "comphelper/anytostring.hxx"
-#include "cppuhelper/exc_hlp.hxx"
-#include "cppuhelper/bootstrap.hxx"
-#include <basegfx/numeric/ftools.hxx>
-#include <com/sun/star/geometry/RealRectangle2D.hpp>
-#include <svtools/optionsdrawinglayer.hxx>
+#include <com/sun/star/datatransfer/clipboard/SystemClipboard.hpp>
+#include <vcl/unohelp2.hxx>
 
-#include <sfx2/sfxuno.hxx>
-#include "about.hxx"
-#include <config_buildid.h>
-#include <sfx2/app.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <vcl/bitmap.hxx>
-
+#include <config_feature_opencl.h>
 #if HAVE_FEATURE_OPENCL
 #include <opencl/openclwrapper.hxx>
 #endif
+#include <officecfg/Office/Calc.hxx>
 #include <officecfg/Office/Common.hxx>
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star;
 
-AboutDialog::AboutDialog(vcl::Window* pParent)
-    : SfxModalDialog(pParent, "AboutDialog", "cui/ui/aboutdialog.ui")
-{
-    get(m_pLogoReplacement, "logoreplacement");
-    get(m_pLogoImage, "logo");
-    get(m_pVersion, "version");
-    get(m_pDescriptionText, "description");
-    get(m_pCopyrightText, "copyright");
-    get(m_pBuildIdLink, "buildIdLink");
-    m_aCopyrightTextStr = m_pCopyrightText->GetText();
-    get(m_pWebsiteButton, "website");
-    get(m_pCreditsButton, "credits");
-    m_aCreditsLinkStr = get<FixedText>("link")->GetText();
-    m_sBuildStr = get<FixedText>("buildid")->GetText();
-    m_aVendorTextStr = get<FixedText>("vendor")->GetText();
-    m_aVersionTextStr = m_pVersion->GetText();
-    m_aBasedTextStr = get<FixedText>("libreoffice")->GetText();
-    m_aBasedDerivedTextStr = get<FixedText>("derived")->GetText();
-    m_aLocaleStr = get<FixedText>("locale")->GetText();
-    m_buildIdLinkString = m_pBuildIdLink->GetText();
+AboutDialog::AboutDialog(weld::Window *pParent)
+    : GenericDialogController(pParent, "cui/ui/aboutdialog.ui", "AboutDialog"),
+      m_pCreditsButton(m_xBuilder->weld_link_button("btnCredits")),
+      m_pWebsiteButton(m_xBuilder->weld_link_button("btnWebsite")),
+      m_pReleaseNotesButton(m_xBuilder->weld_link_button("btnReleaseNotes")),
+      m_pCloseButton(m_xBuilder->weld_button("btnClose")),
+      m_pCopyButton(m_xBuilder->weld_button("btnCopyVersion")),
+      m_pBrandImage(m_xBuilder->weld_image("imBrand")),
+      m_pAboutImage(m_xBuilder->weld_image("imAbout")),
+      m_pVersionLabel(m_xBuilder->weld_label("lbVersionString")),
+      m_pBuildCaption(m_xBuilder->weld_label("lbBuild")),
+      m_pBuildLabel(m_xBuilder->weld_link_button("lbBuildString")),
+      m_pEnvLabel(m_xBuilder->weld_label("lbEnvString")),
+      m_pUILabel(m_xBuilder->weld_label("lbUIString")),
+      m_pLocaleLabel(m_xBuilder->weld_label("lbLocaleString")),
+      m_pMiscLabel(m_xBuilder->weld_label("lbMiscString")),
+      m_pCopyrightLabel(m_xBuilder->weld_label("lbCopyright")) {
 
-    m_pVersion->SetText(GetVersionString());
+  // Labels
+  m_pVersionLabel->set_label(GetVersionString());
 
-    OUString aCopyrightString = GetCopyrightString();
-    m_pCopyrightText->SetText( aCopyrightString );
+  OUString sbuildId = GetBuildString();
+  const long nMaxChar = 25;
+  if (IsStringValidGitHash(sbuildId)) {
+    m_pBuildLabel->set_uri("https://gerrit.libreoffice.org/gitweb?p=core.git;a=log;h="
+                           + sbuildId);
+    m_pBuildLabel->set_label(sbuildId.getLength() > nMaxChar ? sbuildId.replaceAt(
+                                 nMaxChar, sbuildId.getLength() - nMaxChar, "...")
+                                                             : sbuildId);
+  } else {
+    m_pBuildCaption->hide();
+    m_pBuildLabel->hide();
+  }
 
-    SetBuildIdLink();
+  m_pEnvLabel->set_label(Application::GetHWOSConfInfo(1));
+  m_pUILabel->set_label(Application::GetHWOSConfInfo(2));
+  m_pLocaleLabel->set_label(GetLocaleString());
+  m_pMiscLabel->set_label(GetMiscString());
+  m_pCopyrightLabel->set_label(GetCopyrightString());
 
-    StyleControls();
+  // Images
+  const long nWidth(m_pCopyrightLabel->get_preferred_size().getWidth());
+  BitmapEx aBackgroundBitmap;
 
-    SetLogo();
+  if (SfxApplication::loadBrandSvg(Application::GetSettings()
+                                           .GetStyleSettings()
+                                           .GetDialogColor()
+                                           .IsDark()
+                                       ? "shell/logo_inverted"
+                                       : "shell/logo",
+                                   aBackgroundBitmap, nWidth * 0.8)) {
+    ScopedVclPtr<VirtualDevice> m_pVirDev =
+        m_pBrandImage->create_virtual_device();
+    m_pVirDev->SetOutputSizePixel(aBackgroundBitmap.GetSizePixel());
+    m_pVirDev->DrawBitmapEx(Point(0, 0), aBackgroundBitmap);
+    m_pBrandImage->set_image(m_pVirDev.get());
+    m_pVirDev.disposeAndClear();
+  }
+  if (SfxApplication::loadBrandSvg("shell/about", aBackgroundBitmap, nWidth * 0.9)) {
+    ScopedVclPtr<VirtualDevice> m_pVirDev =
+        m_pAboutImage->create_virtual_device();
+    m_pVirDev->SetOutputSizePixel(aBackgroundBitmap.GetSizePixel());
+    m_pVirDev->DrawBitmapEx(Point(0, 0), aBackgroundBitmap);
+    m_pAboutImage->set_image(m_pVirDev.get());
+    m_pVirDev.disposeAndClear();
+  }
 
-    // Connect all handlers
-    m_pCreditsButton->SetClickHdl( LINK( this, AboutDialog, HandleClick ) );
-    m_pWebsiteButton->SetClickHdl( LINK( this, AboutDialog, HandleClick ) );
+  // Links
+  m_pCreditsButton->set_uri(CuiResId(RID_SVXSTR_ABOUT_CREDITS_URL));
 
-    get<PushButton>("close")->GrabFocus();
+  OUString sURL(officecfg::Office::Common::Help::StartCenter::InfoURL::get());
+  localizeWebserviceURI(sURL);
+  m_pWebsiteButton->set_uri(sURL);
+
+  sURL = officecfg::Office::Common::Menus::ReleaseNotesURL::get() +
+         "?LOvers=" + utl::ConfigManager::getProductVersion() + "&LOlocale=" +
+         LanguageTag(utl::ConfigManager::getUILocale()).getLanguage();
+  m_pReleaseNotesButton->set_uri(sURL);
+
+  // Handler
+  m_pCopyButton->connect_clicked(LINK(this, AboutDialog, HandleClick));
+  m_pCloseButton->grab_focus();
 }
 
-AboutDialog::~AboutDialog()
-{
-    disposeOnce();
+AboutDialog::~AboutDialog() {}
+
+bool AboutDialog::IsStringValidGitHash(const OUString &hash) {
+  for (int i = 0; i < hash.getLength(); i++) {
+    if (!std::isxdigit(hash[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
-void AboutDialog::dispose()
-{
-    m_pVersion.clear();
-    m_pDescriptionText.clear();
-    m_pCopyrightText.clear();
-    m_pLogoImage.clear();
-    m_pLogoReplacement.clear();
-    m_pCreditsButton.clear();
-    m_pWebsiteButton.clear();
-    m_pBuildIdLink.clear();
-    SfxModalDialog::dispose();
-}
-
-IMPL_LINK( AboutDialog, HandleClick, Button*, pButton, void )
-{
-    OUString sURL = "";
-
-    // Find which button was pressed and from this, get the URL to be opened
-    if (pButton == m_pCreditsButton)
-        sURL = m_aCreditsLinkStr;
-    else if (pButton == m_pWebsiteButton)
-    {
-        sURL = officecfg::Office::Common::Help::StartCenter::InfoURL::get();
-        localizeWebserviceURI(sURL);
-    }
-
-    // If the URL is empty, don't do anything
-    if ( sURL.isEmpty() )
-        return;
-    try
-    {
-        Reference< css::system::XSystemShellExecute > xSystemShellExecute(
-            css::system::SystemShellExecute::create(::comphelper::getProcessComponentContext() ) );
-        xSystemShellExecute->execute( sURL, OUString(), css::system::SystemShellExecuteFlags::URIS_ONLY );
-    }
-    catch (const Exception&)
-    {
-        Any exc( ::cppu::getCaughtException() );
-        OUString msg( ::comphelper::anyToString( exc ) );
-        const SolarMutexGuard guard;
-        ScopedVclPtrInstance< MessageDialog > aErrorBox(nullptr, msg);
-        aErrorBox->SetText( GetText() );
-        aErrorBox->Execute();
-    }
-}
-
-void AboutDialog::SetBuildIdLink()
-{
-    const OUString buildId = GetBuildId();
-
-    if (IsStringValidGitHash(buildId))
-    {
-        if (m_buildIdLinkString.indexOf("$GITHASH") == -1)
-        {
-            SAL_WARN( "cui.dialogs", "translated git hash string in translations doesn't contain $GITHASH placeholder" );
-            m_buildIdLinkString += " $GITHASH";
-        }
-
-        m_pBuildIdLink->SetText(m_buildIdLinkString.replaceAll("$GITHASH", buildId));
-        m_pBuildIdLink->SetURL("https://hub.libreoffice.org/git-core/" + buildId);
-    }
-    else
-    {
-        m_pBuildIdLink->Hide();
-    }
-}
-
-void AboutDialog::StyleControls()
-{
-    // Make all the controls have a transparent background
-    m_pLogoImage->SetBackground();
-    m_pLogoReplacement->SetPaintTransparent(true);
-    m_pVersion->SetPaintTransparent(true);
-    m_pDescriptionText->SetPaintTransparent(true);
-    m_pCopyrightText->SetPaintTransparent(true);
-
-    const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
-
-    const vcl::Font& aLabelFont = rStyleSettings.GetLabelFont();
-    vcl::Font aLargeFont = aLabelFont;
-    aLargeFont.SetFontSize(Size( 0, aLabelFont.GetFontSize().Height() * 3));
-
-    // Logo Replacement Text
-    m_pLogoReplacement->SetControlFont(aLargeFont);
-
-    // Description Text
-    aLargeFont.SetFontSize(Size(0, aLabelFont.GetFontSize().Height() * 1.3));
-    m_pDescriptionText->SetControlFont(aLargeFont);
-
-    // Version Text
-    aLargeFont.SetFontSize(Size(0, aLabelFont.GetFontSize().Height() * 1.2));
-    m_pVersion->SetControlFont(aLargeFont);
-
-    // If not in high-contrast mode, hard-code colors
-    if (!rStyleSettings.GetHighContrastMode())
-    {
-        m_pLogoReplacement->SetControlForeground(Color(51, 51, 51));
-        m_pVersion->SetControlForeground(Color(102, 102, 102));
-        m_pDescriptionText->SetControlForeground(Color(51, 51, 51));
-        m_pCopyrightText->SetControlForeground(Color(102, 102, 102));
-    }
-}
-
-void AboutDialog::SetLogo()
-{
-    long nWidth = get_content_area()->get_preferred_size().Width();
-
-    // fdo#67401 set AntiAliasing for SVG logo
-    SvtOptionsDrawinglayer aDrawOpt;
-    bool bOldAntiAliasSetting = aDrawOpt.IsAntiAliasing();
-    aDrawOpt.SetAntiAliasing(true);
-
-    // load svg logo, specify desired width, scale height isotrophically
-    if (SfxApplication::loadBrandSvg("flat_logo", aLogoBitmap, nWidth) &&
-        !aLogoBitmap.IsEmpty())
-    {
-        m_pLogoImage->SetImage(Image(aLogoBitmap));
-        m_pLogoReplacement->Hide();
-        m_pLogoImage->Show();
-    }
-    else
-    {
-        m_pLogoImage->Hide();
-        m_pLogoReplacement->Show();
-    }
-    aDrawOpt.SetAntiAliasing(bOldAntiAliasSetting);
-}
-
-void AboutDialog::Resize()
-{
-    SfxModalDialog::Resize();
-
-    // Load background image
-    if (isInitialLayout(this) && !(Application::GetSettings().GetStyleSettings().GetHighContrastMode()))
-    {
-        SfxApplication::loadBrandSvg("shell/about", aBackgroundBitmap, GetSizePixel().Width());
-    }
-}
-
-void AboutDialog::Paint(vcl::RenderContext& rRenderContext, const ::tools::Rectangle& rRect)
-{
-    rRenderContext.SetClipRegion(vcl::Region(rRect));
-
-    Size aSize(GetOutputSizePixel());
-    Point aPos(aSize.Width() - aBackgroundBitmap.GetSizePixel().Width(),
-               aSize.Height() - aBackgroundBitmap.GetSizePixel().Height());
-
-    rRenderContext.DrawBitmapEx(aPos, aBackgroundBitmap);
-}
-
-OUString AboutDialog::GetBuildId()
-{
-    OUString sDefault;
-    OUString sBuildId(utl::Bootstrap::getBuildVersion(sDefault));
-    if (!sBuildId.isEmpty())
-        return sBuildId;
-
-    sBuildId = utl::Bootstrap::getBuildIdData(sDefault);
-
-    if (!sBuildId.isEmpty())
-    {
-        sal_Int32 nIndex = 0;
-        return sBuildId.getToken( 0, '-', nIndex );
-    }
-
-    OSL_ENSURE( !sBuildId.isEmpty(), "No BUILDID in bootstrap file" );
-    return sBuildId;
-}
-
-OUString AboutDialog::GetLocaleString()
-{
-    OUString aLocaleStr;
-    rtl_Locale * pLocale;
-
-    osl_getProcessLocale( &pLocale );
-
-    if ( pLocale && pLocale->Language )
-    {
-        if (pLocale->Country && rtl_uString_getLength( pLocale->Country) > 0)
-            aLocaleStr = OUString(pLocale->Language) + "_" + OUString(pLocale->Country);
-        else
-            aLocaleStr = OUString(pLocale->Language);
-        if (pLocale->Variant && rtl_uString_getLength( pLocale->Variant) > 0)
-            aLocaleStr += OUString(pLocale->Variant);
-    }
-
-    return aLocaleStr;
-}
-
-bool AboutDialog::IsStringValidGitHash(const OUString& hash)
-{
-    for (int i = 0; i < hash.getLength(); i++)
-    {
-        if (!rtl::isAsciiHexDigit(hash[i]))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-OUString AboutDialog::GetVersionString()
-{
-    OUString sVersion = m_aVersionTextStr;
+OUString AboutDialog::GetVersionString() {
+  OUString sVersion = CuiResId("%ABOUTBOXPRODUCTVERSION%ABOUTBOXPRODUCTVERSIONSUFFIX");
 
 #ifdef _WIN64
-    sVersion += " (x64)";
+  sVersion += " (x64)";
+#elif defined(_WIN32)
+  sVersion += " (x86)";
 #endif
+  return sVersion;
+}
 
-    OUString sBuildId = GetBuildId();
+OUString AboutDialog::GetBuildString() {
 
-    OUString aLocaleStr = Application::GetSettings().GetLanguageTag().getBcp47() + " (" + GetLocaleString() + ")";
+  OUString sDefault;
+  OUString sBuildId(utl::Bootstrap::getBuildVersion(sDefault));
+  if (sBuildId.isEmpty())
+    sBuildId = utl::Bootstrap::getBuildIdData(sDefault);
+  if (sBuildId.isEmpty()) {
+    sBuildId = sBuildId.getToken(0, '-');
+  }
+  OSL_ENSURE(!sBuildId.isEmpty(), "No BUILDID in bootstrap file");
 
-    if (!sBuildId.trim().isEmpty())
-    {
-        sVersion += "\n";
-        if (m_sBuildStr.indexOf("$BUILDID") == -1)
-        {
-            SAL_WARN( "cui.dialogs", "translated Build Id string in translations doesn't contain $BUILDID placeholder" );
-            m_sBuildStr += " $BUILDID";
-        }
-        sVersion += m_sBuildStr.replaceAll("$BUILDID", sBuildId);
-    }
+  return sBuildId;
+}
 
-    sVersion += "\n" + Application::GetHWOSConfInfo();
+OUString AboutDialog::GetLocaleString(const bool bLocalized) {
 
-    if (EXTRA_BUILDID[0] != '\0')
-    {
-        sVersion += "\n" EXTRA_BUILDID;
-    }
+  OUString sLocaleStr;
 
-    if (!aLocaleStr.trim().isEmpty())
-    {
-        sVersion += "\n";
-        if (m_aLocaleStr.indexOf("$LOCALE") == -1)
-        {
-            SAL_WARN( "cui.dialogs", "translated locale string in translations doesn't contain $LOCALE placeholder" );
-            m_aLocaleStr += " $LOCALE";
-        }
-        sVersion += m_aLocaleStr.replaceAll("$LOCALE", aLocaleStr);
-    }
+  rtl_Locale *pLocale;
+  osl_getProcessLocale(&pLocale);
+  if (pLocale && pLocale->Language) {
+    if (pLocale->Country && rtl_uString_getLength(pLocale->Country) > 0)
+      sLocaleStr = OUString::unacquired(&pLocale->Language) + "_" +
+                   OUString::unacquired(&pLocale->Country);
+    else
+      sLocaleStr = OUString(pLocale->Language);
+    if (pLocale->Variant && rtl_uString_getLength(pLocale->Variant) > 0)
+      sLocaleStr += OUString(pLocale->Variant);
+  }
+
+  sLocaleStr = Application::GetSettings().GetLanguageTag().getBcp47() + " (" +
+               sLocaleStr + ")";
+
+  OUString aUILocaleStr =
+      Application::GetSettings().GetUILanguageTag().getBcp47();
+  OUString sUILocaleStr;
+  if (bLocalized)
+     sUILocaleStr = CuiResId(RID_SVXSTR_ABOUT_UILOCALE);
+  else
+     sUILocaleStr = Translate::get(RID_SVXSTR_ABOUT_UILOCALE, Translate::Create("cui", LanguageTag("en-US")));
+
+  if (sUILocaleStr.indexOf("$LOCALE") == -1) {
+    SAL_WARN("cui.dialogs", "translated uilocale string in translations "
+                            "doesn't contain $LOCALE placeholder");
+    sUILocaleStr += " $LOCALE";
+  }
+  sUILocaleStr = sUILocaleStr.replaceAll("$LOCALE", aUILocaleStr);
+
+  return sLocaleStr + "; " + sUILocaleStr;
+}
+
+OUString AboutDialog::GetMiscString() {
+
+  OUString sMisc;
+
+  bool const extra = EXTRA_BUILDID[0] != '\0';
+  // extracted from the 'if' to avoid Clang -Wunreachable-code
+  if (extra) {
+    sMisc = EXTRA_BUILDID "\n";
+  }
+
+  OUString aCalcMode = "Calc: "; // Calc calculation mode
 
 #if HAVE_FEATURE_OPENCL
-    OUString aCalcMode = "Calc: "; // Calc calculation mode
-    bool bSWInterp = officecfg::Office::Common::Misc::UseSwInterpreter::get();
-    bool bOpenCL = opencl::GPUEnv::isOpenCLEnabled();
-    if (bOpenCL)
-        aCalcMode += "CL";
-    else if (bSWInterp)
-        aCalcMode += "group";
-    else
-        aCalcMode += "single";
-    sVersion += "; " + aCalcMode;
+  bool bOpenCL = openclwrapper::GPUEnv::isOpenCLEnabled();
+  if (bOpenCL)
+    aCalcMode += "CL";
+#else
+  const bool bOpenCL = false;
 #endif
 
-    return sVersion;
+  static const bool bThreadingProhibited =
+      std::getenv("SC_NO_THREADED_CALCULATION");
+  bool bThreadedCalc = officecfg::Office::Calc::Formula::Calculation::
+      UseThreadedCalculationForFormulaGroups::get();
+
+  if (!bThreadingProhibited && !bOpenCL && bThreadedCalc) {
+    if (!aCalcMode.endsWith(" "))
+      aCalcMode += " ";
+    aCalcMode += "threaded";
+  }
+
+  sMisc += aCalcMode;
+
+  return sMisc;
 }
 
-OUString AboutDialog::GetCopyrightString()
-{
-    OUString aCopyrightString  = m_aVendorTextStr + "\n"
-                               + m_aCopyrightTextStr + "\n";
+OUString AboutDialog::GetCopyrightString() {
+  OUString sVendorTextStr(CuiResId(RID_SVXSTR_ABOUT_VENDOR));
+  OUString aCopyrightString =
+      sVendorTextStr + "\n" + CuiResId(RID_SVXSTR_ABOUT_COPYRIGHT) + "\n";
 
-    if (utl::ConfigManager::getProductName() == "LibreOffice")
-        aCopyrightString += m_aBasedTextStr;
-    else
-        aCopyrightString += m_aBasedDerivedTextStr;
+  if (utl::ConfigManager::getProductName() == "LibreOffice")
+    aCopyrightString += CuiResId(RID_SVXSTR_ABOUT_BASED_ON);
+  else
+    aCopyrightString += CuiResId(RID_SVXSTR_ABOUT_DERIVED);
 
-    return aCopyrightString;
+  return aCopyrightString;
 }
 
-bool AboutDialog::Close()
-{
-    EndDialog( RET_OK );
-    return false;
-}
+// special labels to comply with previous version info
+// untranslated English for QA
+IMPL_LINK_NOARG(AboutDialog, HandleClick, weld::Button &, void) {
+  css::uno::Reference<css::datatransfer::clipboard::XClipboard> xClipboard =
+      css::datatransfer::clipboard::SystemClipboard::create(
+          comphelper::getProcessComponentContext());
 
+  OUString sInfo = "Version: " + m_pVersionLabel->get_label() + "\n" // version
+                   "Build ID: " + GetBuildString() + "\n" + // build id
+                   Application::GetHWOSConfInfo(0,false) + "\n" // env+UI
+                   "Locale: " + GetLocaleString(false) + "\n" + // locale
+                   GetMiscString(); // misc
+
+  vcl::unohelper::TextDataObject::CopyStringTo(sInfo, xClipboard);
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

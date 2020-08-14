@@ -28,11 +28,11 @@
 #include <oox/dllapi.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
+#include <tools/color.hxx>
 
 namespace oox { class GraphicHelper; }
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 
 class OOX_DLLPUBLIC Color
@@ -41,20 +41,25 @@ public:
     Color();
 
     /** Returns the RGB value for the passed DrawingML color token, or nDefaultRgb on error. */
-    static sal_Int32    getDmlPresetColor( sal_Int32 nToken, sal_Int32 nDefaultRgb );
+    static ::Color      getDmlPresetColor( sal_Int32 nToken, ::Color nDefaultRgb );
     /** Returns the RGB value for the passed VML color token, or nDefaultRgb on error. */
-    static sal_Int32    getVmlPresetColor( sal_Int32 nToken, sal_Int32 nDefaultRgb );
+    static ::Color      getVmlPresetColor( sal_Int32 nToken, ::Color nDefaultRgb );
+    /** Returns the RGB value for the passed VML color token, or nDefaultRgb on error. */
+    static ::Color      getHighlightColor(sal_Int32 nToken, ::Color nDefaultRgb);
 
     /** Sets the color to unused state. */
     void                setUnused();
     /** Sets an RGB value (hexadecimal RRGGBB) from the a:srgbClr element. */
     void                setSrgbClr( sal_Int32 nRgb );
+    void                setSrgbClr( ::Color nRgb );
     /** Sets the percentual RGB values from the a:scrgbClr element. */
     void                setScrgbClr( sal_Int32 nR, sal_Int32 nG, sal_Int32 nB );
     /** Sets the HSL values from the a:hslClr element. */
     void                setHslClr( sal_Int32 nHue, sal_Int32 nSat, sal_Int32 nLum );
     /** Sets a predefined color from the a:prstClr element. */
     void                setPrstClr( sal_Int32 nToken );
+    /** Sets a predefined color from the w:highlight element. */
+    void                setHighlight(sal_Int32 nToken);
     /** Sets a scheme color from the a:schemeClr element. */
     void                setSchemeClr( sal_Int32 nToken );
     /** Sets the scheme name from the a:schemeClr element for interoperability purposes */
@@ -84,7 +89,7 @@ public:
     bool                isPlaceHolder() const { return meMode == COLOR_PH; }
     /** Returns the final RGB color value.
         @param nPhClr  Actual color for the phClr placeholder color used in theme style lists. */
-    sal_Int32           getColor( const GraphicHelper& rGraphicHelper, sal_Int32 nPhClr = API_RGB_TRANSPARENT ) const;
+    ::Color             getColor( const GraphicHelper& rGraphicHelper, ::Color nPhClr = API_RGB_TRANSPARENT ) const;
 
     /** Returns true, if the color is transparent. */
     bool                hasTransparency() const;
@@ -101,9 +106,12 @@ public:
     /** Translates between color transformation token names and the corresponding token */
     static sal_Int32    getColorTransformationToken( const OUString& sName );
 
+    /// Compares this color with rOther.
+    bool equals(const Color& rOther, const GraphicHelper& rGraphicHelper, ::Color nPhClr) const;
+
 private:
     /** Internal helper for getColor(). */
-    void                setResolvedRgb( sal_Int32 nRgb ) const;
+    void                setResolvedRgb( ::Color nRgb ) const;
 
     /** Converts the color components to RGB values. */
     void                toRgb() const;
@@ -133,10 +141,10 @@ private:
 
         explicit            Transformation( sal_Int32 nToken, sal_Int32 nValue ) : mnToken( nToken ), mnValue( nValue ) {}
     };
-    typedef ::std::vector< Transformation > TransformVec;
 
     mutable ColorMode   meMode;         /// Current color mode.
-    mutable TransformVec maTransforms;  /// Color transformations.
+    mutable std::vector< Transformation >
+                        maTransforms;  /// Color transformations.
     mutable sal_Int32   mnC1;           /// Red, red%, hue, scheme token, palette index, system token, or final RGB.
     mutable sal_Int32   mnC2;           /// Green, green%, saturation, or system default RGB.
     mutable sal_Int32   mnC3;           /// Blue, blue%, or luminance.
@@ -147,8 +155,7 @@ private:
                         maInteropTransformations;   /// Unaltered list of transformations for interoperability purposes
 };
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 #endif
 

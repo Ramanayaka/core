@@ -19,15 +19,12 @@
 
 
 #include "xsecparser.hxx"
-#include "xmlsignaturehelper.hxx"
+#include <xsecctl.hxx>
+#include <xmlsignaturehelper.hxx>
 #include <com/sun/star/xml/sax/SAXException.hpp>
 #include <cppuhelper/exc_hlp.hxx>
+#include <sal/log.hxx>
 
-#include <string.h>
-
-namespace cssu = com::sun::star::uno;
-namespace cssxc = com::sun::star::xml::crypto;
-namespace cssxs = com::sun::star::xml::sax;
 
 XSecParser::XSecParser(XMLSignatureHelper& rXMLSignatureHelper,
     XSecController* pXSecController)
@@ -36,6 +33,7 @@ XSecParser::XSecParser(XMLSignatureHelper& rXMLSignatureHelper,
     , m_bInX509Certificate(false)
     , m_bInGpgCertificate(false)
     , m_bInGpgKeyID(false)
+    , m_bInGpgOwner(false)
     , m_bInCertDigest(false)
     , m_bInEncapsulatedX509Certificate(false)
     , m_bInSigningTime(false)
@@ -43,14 +41,17 @@ XSecParser::XSecParser(XMLSignatureHelper& rXMLSignatureHelper,
     , m_bInSignatureValue(false)
     , m_bInDate(false)
     , m_bInDescription(false)
+    , m_bInSignatureLineId(false)
+    , m_bInSignatureLineValidImage(false)
+    , m_bInSignatureLineInvalidImage(false)
     , m_pXSecController(pXSecController)
     , m_bReferenceUnresolved(false)
-    , m_nReferenceDigestID(cssxc::DigestID::SHA1)
+    , m_nReferenceDigestID(css::xml::crypto::DigestID::SHA1)
     , m_rXMLSignatureHelper(rXMLSignatureHelper)
 {
 }
 
-OUString XSecParser::getIdAttr(const cssu::Reference< cssxs::XAttributeList >& xAttribs )
+OUString XSecParser::getIdAttr(const css::uno::Reference< css::xml::sax::XAttributeList >& xAttribs )
 {
     OUString ouIdAttr = xAttribs->getValueByName("id");
 
@@ -72,6 +73,7 @@ void SAL_CALL XSecParser::startDocument(  )
     m_bInX509Certificate = false;
     m_bInGpgCertificate = false;
     m_bInGpgKeyID = false;
+    m_bInGpgOwner = false;
     m_bInSignatureValue = false;
     m_bInDigestValue = false;
     m_bInDate = false;
@@ -93,7 +95,7 @@ void SAL_CALL XSecParser::endDocument(  )
 
 void SAL_CALL XSecParser::startElement(
     const OUString& aName,
-    const cssu::Reference< cssxs::XAttributeList >& xAttribs )
+    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttribs )
 {
     try
     {
@@ -112,16 +114,25 @@ void SAL_CALL XSecParser::startElement(
                 m_pXSecController->setId( ouIdAttr );
             }
         }
+        else if (aName == "SignatureMethod")
+        {
+            OUString ouAlgorithm = xAttribs->getValueByName("Algorithm");
+            if (ouAlgorithm == ALGO_ECDSASHA1 || ouAlgorithm == ALGO_ECDSASHA256
+                || ouAlgorithm == ALGO_ECDSASHA512)
+                m_pXSecController->setSignatureMethod(svl::crypto::SignatureMethodAlgorithm::ECDSA);
+        }
         else if ( aName == "Reference" )
         {
             OUString ouUri = xAttribs->getValueByName("URI");
             SAL_WARN_IF( ouUri.isEmpty(), "xmlsecurity.helper", "URI is empty" );
+            // Remember the type of this reference.
+            OUString ouType = xAttribs->getValueByName("Type");
             if (ouUri.startsWith("#"))
             {
                 /*
                 * remove the first character '#' from the attribute value
                 */
-                m_pXSecController->addReference( ouUri.copy(1), m_nReferenceDigestID );
+                m_pXSecController->addReference( ouUri.copy(1), m_nReferenceDigestID, ouType );
             }
             else
             {
@@ -139,12 +150,18 @@ void SAL_CALL XSecParser::startElement(
             SAL_WARN_IF( ouAlgorithm.isEmpty(), "xmlsecurity.helper", "no Algorithm in Reference" );
             if (!ouAlgorithm.isEmpty())
             {
-                SAL_WARN_IF( ouAlgorithm != ALGO_XMLDSIGSHA1 && ouAlgorithm != ALGO_XMLDSIGSHA256,
-                             "xmlsecurity.helper", "Algorithm neither SHA1 or SHA256");
+                SAL_WARN_IF( ouAlgorithm != ALGO_XMLDSIGSHA1
+                             && ouAlgorithm != ALGO_XMLDSIGSHA256
+                             && ouAlgorithm != ALGO_XMLDSIGSHA512,
+                             "xmlsecurity.helper", "Algorithm neither SHA1, SHA256 nor SHA512");
                 if (ouAlgorithm == ALGO_XMLDSIGSHA1)
-                    m_nReferenceDigestID = cssxc::DigestID::SHA1;
+                    m_nReferenceDigestID = css::xml::crypto::DigestID::SHA1;
                 else if (ouAlgorithm == ALGO_XMLDSIGSHA256)
-                    m_nReferenceDigestID = cssxc::DigestID::SHA256;
+                    m_nReferenceDigestID = css::xml::crypto::DigestID::SHA256;
+                else if (ouAlgorithm == ALGO_XMLDSIGSHA512)
+                    m_nReferenceDigestID = css::xml::crypto::DigestID::SHA512;
+                else
+                    m_nReferenceDigestID = 0;
             }
         }
         else if (aName == "Transform")
@@ -191,6 +208,11 @@ void SAL_CALL XSecParser::startElement(
         {
             m_ouGpgCertificate.clear();
             m_bInGpgCertificate = true;
+        }
+        else if (aName == "loext:PGPOwner")
+        {
+            m_ouGpgOwner.clear();
+            m_bInGpgOwner = true;
         }
         else if (aName == "SignatureValue")
         {
@@ -239,24 +261,39 @@ void SAL_CALL XSecParser::startElement(
             m_ouDescription.clear();
             m_bInDescription = true;
         }
+        else if (aName == "loext:SignatureLineId")
+        {
+            m_ouSignatureLineId.clear();
+            m_bInSignatureLineId = true;
+        }
+        else if (aName == "loext:SignatureLineValidImage")
+        {
+            m_ouSignatureLineValidImage.clear();
+            m_bInSignatureLineValidImage = true;
+        }
+        else if (aName == "loext:SignatureLineInvalidImage")
+        {
+            m_ouSignatureLineInvalidImage.clear();
+            m_bInSignatureLineInvalidImage = true;
+        }
 
         if (m_xNextHandler.is())
         {
             m_xNextHandler->startElement(aName, xAttribs);
         }
     }
-    catch (cssu::Exception& )
+    catch (css::uno::Exception& )
     {//getCaughtException MUST be the first line in the catch block
-        cssu::Any exc =  cppu::getCaughtException();
-        throw cssxs::SAXException(
+        css::uno::Any exc =  cppu::getCaughtException();
+        throw css::xml::sax::SAXException(
             "xmlsecurity: Exception in XSecParser::startElement",
             nullptr, exc);
     }
     catch (...)
     {
-        throw cssxs::SAXException(
+        throw css::xml::sax::SAXException(
             "xmlsecurity: unexpected exception in XSecParser::startElement", nullptr,
-            cssu::Any());
+            css::uno::Any());
     }
 }
 
@@ -272,7 +309,7 @@ void SAL_CALL XSecParser::endElement( const OUString& aName )
         {
             if ( m_bReferenceUnresolved )
             /*
-            * it must be a octet stream
+            * it must be an octet stream
             */
             {
                 m_pXSecController->addStreamReference( m_currentReferenceURI, true, m_nReferenceDigestID );
@@ -315,6 +352,11 @@ void SAL_CALL XSecParser::endElement( const OUString& aName )
             m_pXSecController->setGpgCertificate( m_ouGpgCertificate );
             m_bInGpgCertificate = false;
         }
+        else if (aName == "loext:PGPOwner")
+        {
+            m_pXSecController->setGpgOwner( m_ouGpgOwner );
+            m_bInGpgOwner = false;
+        }
         else if (aName == "xd:CertDigest")
         {
             m_pXSecController->setCertDigest( m_ouCertDigest );
@@ -343,24 +385,39 @@ void SAL_CALL XSecParser::endElement( const OUString& aName )
             m_pXSecController->setDescription( m_ouDescription );
             m_bInDescription = false;
         }
+        else if (aName == "loext:SignatureLineId")
+        {
+            m_pXSecController->setSignatureLineId( m_ouSignatureLineId );
+            m_bInSignatureLineId = false;
+        }
+        else if (aName == "loext:SignatureLineValidImage")
+        {
+            m_pXSecController->setValidSignatureImage( m_ouSignatureLineValidImage );
+            m_bInSignatureLineValidImage = false;
+        }
+        else if (aName == "loext:SignatureLineInvalidImage")
+        {
+            m_pXSecController->setInvalidSignatureImage( m_ouSignatureLineInvalidImage );
+            m_bInSignatureLineInvalidImage = false;
+        }
 
         if (m_xNextHandler.is())
         {
             m_xNextHandler->endElement(aName);
         }
     }
-    catch (cssu::Exception& )
+    catch (css::uno::Exception& )
     {//getCaughtException MUST be the first line in the catch block
-        cssu::Any exc =  cppu::getCaughtException();
-        throw cssxs::SAXException(
+        css::uno::Any exc =  cppu::getCaughtException();
+        throw css::xml::sax::SAXException(
             "xmlsecurity: Exception in XSecParser::endElement",
             nullptr, exc);
     }
     catch (...)
     {
-        throw cssxs::SAXException(
+        throw css::xml::sax::SAXException(
             "xmlsecurity: unexpected exception in XSecParser::endElement", nullptr,
-            cssu::Any());
+            css::uno::Any());
     }
 }
 
@@ -385,6 +442,10 @@ void SAL_CALL XSecParser::characters( const OUString& aChars )
     else if (m_bInGpgKeyID)
     {
         m_ouGpgKeyID += aChars;
+    }
+    else if (m_bInGpgOwner)
+    {
+        m_ouGpgOwner += aChars;
     }
     else if (m_bInSignatureValue)
     {
@@ -414,6 +475,18 @@ void SAL_CALL XSecParser::characters( const OUString& aChars )
     {
         m_ouDate += aChars;
     }
+    else if (m_bInSignatureLineId)
+    {
+        m_ouSignatureLineId += aChars;
+    }
+    else if (m_bInSignatureLineValidImage)
+    {
+        m_ouSignatureLineValidImage += aChars;
+    }
+    else if (m_bInSignatureLineInvalidImage)
+    {
+        m_ouSignatureLineInvalidImage += aChars;
+    }
 
     if (m_xNextHandler.is())
     {
@@ -437,7 +510,7 @@ void SAL_CALL XSecParser::processingInstruction( const OUString& aTarget, const 
     }
 }
 
-void SAL_CALL XSecParser::setDocumentLocator( const cssu::Reference< cssxs::XLocator >& xLocator )
+void SAL_CALL XSecParser::setDocumentLocator( const css::uno::Reference< css::xml::sax::XLocator >& xLocator )
 {
     if (m_xNextHandler.is())
     {
@@ -449,7 +522,7 @@ void SAL_CALL XSecParser::setDocumentLocator( const cssu::Reference< cssxs::XLoc
  * XInitialization
  */
 void SAL_CALL XSecParser::initialize(
-    const cssu::Sequence< cssu::Any >& aArguments )
+    const css::uno::Sequence< css::uno::Any >& aArguments )
 {
     aArguments[0] >>= m_xNextHandler;
 }

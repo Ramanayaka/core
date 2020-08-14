@@ -23,58 +23,24 @@
 #include <vector>
 #include "escherex.hxx"
 #include <sal/types.h>
-#include <sot/storage.hxx>
-#include <vcl/graph.hxx>
-#include <unotools/fontcvt.hxx>
-#include "pptexanimations.hxx"
-#include <pptexsoundcollection.hxx>
+#include "pptexsoundcollection.hxx"
 
 #include "text.hxx"
 
-#include <vcl/mapmod.hxx>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/drawing/FillStyle.hpp>
-#include <com/sun/star/drawing/LineStyle.hpp>
-#include <com/sun/star/drawing/DashStyle.hpp>
-#include <com/sun/star/drawing/HatchStyle.hpp>
-#include <com/sun/star/drawing/LineEndType.hpp>
-#include <com/sun/star/drawing/Alignment.hpp>
-#include <com/sun/star/drawing/TextAdjust.hpp>
-#include <com/sun/star/drawing/CircleKind.hpp>
-#include <com/sun/star/drawing/PolygonKind.hpp>
-#include <com/sun/star/drawing/PolygonFlags.hpp>
-#include <com/sun/star/drawing/XUniversalShapeDescriptor.hpp>
-#include <com/sun/star/drawing/XShapeGrouper.hpp>
-#include <com/sun/star/text/XSimpleText.hpp>
-#include <com/sun/star/drawing/XConnectorShape.hpp>
-#include <com/sun/star/drawing/BezierPoint.hpp>
-#include <com/sun/star/drawing/Hatch.hpp>
-#include <com/sun/star/drawing/LineDash.hpp>
-#include <com/sun/star/drawing/PolyPolygonBezierCoords.hpp>
-#include <com/sun/star/drawing/XMasterPageTarget.hpp>
-#include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
-#include <com/sun/star/drawing/XMasterPagesSupplier.hpp>
-#include <com/sun/star/awt/XGraphics.hpp>
-#include <com/sun/star/task/XStatusIndicatorSupplier.hpp>
 #include <com/sun/star/presentation/AnimationEffect.hpp>
 #include <com/sun/star/presentation/ClickAction.hpp>
-#include <com/sun/star/text/XTextFieldsSupplier.hpp>
-#include <com/sun/star/text/XTextField.hpp>
-#include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/awt/FontDescriptor.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/awt/XControlModel.hpp>
-#include <com/sun/star/style/TabStop.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/beans/XPropertySetInfo.hpp>
-#include <com/sun/star/awt/FontFamily.hpp>
-#include <com/sun/star/awt/FontPitch.hpp>
-#include <com/sun/star/awt/CharSet.hpp>
-#include <com/sun/star/text/WritingMode.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 
-#include <epptbase.hxx>
+#include "epptbase.hxx"
+
+namespace com::sun::star::awt { class XControlModel; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::task { class XStatusIndicator; }
+namespace com::sun::star::text { class XSimpleText; }
+
+class SotStorage;
 
 #define EPP_MAINMASTER_PERSIST_KEY      0x80010000
 #define EPP_MAINNOTESMASTER_PERSIST_KEY 0x80020000
@@ -137,14 +103,14 @@ struct TextRuleEntry
 class TextObjBinary : public TextObj
 {
 public:
-    TextObjBinary( css::uno::Reference< css::text::XSimpleText > &
-                   rXText, int nInstance, FontCollection& rFontCollection, PPTExBulletProvider& rBuProv ) : TextObj( rXText, nInstance, rFontCollection, rBuProv ) {}
+    TextObjBinary( css::uno::Reference< css::text::XSimpleText > const & rXText,
+                   int nInstance, FontCollection& rFontCollection, PPTExBulletProvider& rBuProv ) : TextObj( rXText, nInstance, rFontCollection, rBuProv ) {}
     void            Write( SvStream* pStrm );
     void            WriteTextSpecInfo( SvStream* pStrm );
 };
 
 struct CellBorder;
-class PPTWriter : public PPTWriterBase, public PPTExBulletProvider
+class PPTWriter final : public PPTWriterBase, public PPTExBulletProvider
 {
         sal_uInt32                      mnCnvrtFlags;
         bool                        mbStatus;
@@ -161,16 +127,16 @@ class PPTWriter : public PPTWriterBase, public PPTExBulletProvider
         sal_uInt32          mnTextSize;
 
         tools::SvRef<SotStorage>        mrStg;
-        SvStream*           mpCurUserStrm;
-        SvStream*           mpStrm;
-        SvStream*           mpPicStrm;
-        PptEscherEx*        mpPptEscherEx;
+        std::unique_ptr<SvStream>       mpCurUserStrm;
+        std::unique_ptr<SvStream>       mpStrm;
+        std::unique_ptr<SvStream>       mpPicStrm;
+        std::unique_ptr<PptEscherEx>    mpPptEscherEx;
 
-        std::vector<PPTExOleObjEntry*> maExOleObj;
+        std::vector<std::unique_ptr<PPTExOleObjEntry>> maExOleObj;
         sal_uInt32          mnVBAOleOfs;
         SvMemoryStream*     mpVBA;
         sal_uInt32          mnExEmbed;
-        SvMemoryStream*     mpExEmbed;
+        std::unique_ptr<SvMemoryStream> mpExEmbed;
 
         sal_uInt32          mnPagesWritten;
         sal_uInt32          mnTxId;             // Identifier determined by the HOST (PP) ????
@@ -199,13 +165,13 @@ class PPTWriter : public PPTWriterBase, public PPTExBulletProvider
     public:
         static void         WriteCString( SvStream&, const OUString&, sal_uInt32 nInstance = 0 );
 
-    protected:
+    private:
 
-        bool                ImplCreateDocumentSummaryInformation();
+        void                ImplCreateDocumentSummaryInformation();
         bool                ImplCreateCurrentUserStream();
         static void         ImplCreateHeaderFooterStrings( SvStream& rOut,
-                                css::uno::Reference< css::beans::XPropertySet >& rXPagePropSet );
-        void                ImplCreateHeaderFooters( css::uno::Reference< css::beans::XPropertySet >& rXPagePropSet );
+                                css::uno::Reference< css::beans::XPropertySet > const & rXPagePropSet );
+        void                ImplCreateHeaderFooters( css::uno::Reference< css::beans::XPropertySet > const & rXPagePropSet );
         virtual bool        ImplCreateDocument() override;
         void                ImplCreateHyperBlob( SvMemoryStream& rStream );
         sal_uInt32          ImplInsertBookmarkURL( const OUString& rBookmark, const sal_uInt32 nType,
@@ -214,7 +180,7 @@ class PPTWriter : public PPTWriterBase, public PPTExBulletProvider
         void                ImplWriteBackground( css::uno::Reference< css::beans::XPropertySet > const & rXBackgroundPropSet );
         void                ImplWriteVBA();
         void                ImplWriteOLE();
-        bool                ImplWriteAtomEnding();
+        void                ImplWriteAtomEnding();
 
         void                ImplFlipBoundingBox( EscherPropertyContainer& rPropOpt );
         bool                ImplGetText();
@@ -230,7 +196,7 @@ class PPTWriter : public PPTWriterBase, public PPTExBulletProvider
         void                ImplWriteTextStyleAtom( SvStream& rOut, int nTextInstance, sal_uInt32 nAtomInstance,
                                 TextRuleEntry* pTextRule, SvStream& rExtBu, EscherPropertyContainer* );
         void                ImplAdjustFirstLineLineSpacing( TextObj& rTextObj, EscherPropertyContainer& rPropOpt );
-        void                ImplCreateShape( sal_uInt32 nType, sal_uInt32 nFlags, EscherSolverContainer& );
+        void                ImplCreateShape( sal_uInt32 nType, ShapeFlag nFlags, EscherSolverContainer& );
         void                ImplCreateTextShape( EscherPropertyContainer&, EscherSolverContainer&, bool bFill );
 
         void                ImplWritePage( const PHLayout& rLayout,
@@ -239,7 +205,7 @@ class PPTWriter : public PPTWriterBase, public PPTExBulletProvider
                                            bool bMaster,
                                            int nPageNumber = 0 );
         bool                ImplCreateCellBorder( const CellBorder* pCellBorder, sal_Int32 nX1, sal_Int32 nY1, sal_Int32 nX2, sal_Int32 nY2 );
-        void                ImplCreateTable( css::uno::Reference< css::drawing::XShape >& rXShape, EscherSolverContainer& aSolverContainer,
+        void                ImplCreateTable( css::uno::Reference< css::drawing::XShape > const & rXShape, EscherSolverContainer& aSolverContainer,
                                 EscherPropertyContainer& aPropOpt );
 
         bool                ImplCloseDocument();        // we write the font, hyper and sound list
@@ -250,9 +216,9 @@ class PPTWriter : public PPTWriterBase, public PPTExBulletProvider
         virtual void        ImplWriteSlideMaster( sal_uInt32 nPageNum, css::uno::Reference< css::beans::XPropertySet > const & aXBackgroundPropSet ) override;
 
     public:
-                                PPTWriter( tools::SvRef<SotStorage>& rSvStorage,
-                                            css::uno::Reference< css::frame::XModel > & rModel,
-                                            css::uno::Reference< css::task::XStatusIndicator > & rStatInd,
+                                PPTWriter( tools::SvRef<SotStorage> const & rSvStorage,
+                                            css::uno::Reference< css::frame::XModel > const & rModel,
+                                            css::uno::Reference< css::task::XStatusIndicator > const & rStatInd,
                                             SvMemoryStream* pVBA, sal_uInt32 nCnvrtFlags );
 
                                 virtual ~PPTWriter() override;

@@ -17,23 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <o3tl/make_unique.hxx>
-
 #include <svl/itemset.hxx>
 #include <svl/style.hxx>
 #include <svl/hint.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdpool.hxx>
+#include <tools/debug.hxx>
 
-#include "unchss.hxx"
+#include <unchss.hxx>
 
-#include "strings.hrc"
-#include "glob.hxx"
-#include "sdresid.hxx"
-#include "drawdoc.hxx"
-#include "stlsheet.hxx"
-#include "glob.hrc"
-#include "strings.hxx"
+#include <strings.hrc>
+#include <glob.hxx>
+#include <sdresid.hxx>
+#include <drawdoc.hxx>
+#include <stlsheet.hxx>
+#include <strings.hxx>
 
 StyleSheetUndoAction::StyleSheetUndoAction(SdDrawDocument* pTheDoc,
                                            SfxStyleSheet* pTheStyleSheet,
@@ -45,10 +43,10 @@ StyleSheetUndoAction::StyleSheetUndoAction(SdDrawDocument* pTheDoc,
 
     // Create ItemSets; Attention, it is possible that the new one is from a,
     // different pool. Therefore we clone it with its items.
-    mpNewSet = o3tl::make_unique<SfxItemSet>(static_cast<SfxItemPool&>(SdrObject::GetGlobalDrawObjectItemPool()), pTheNewItemSet->GetRanges());
+    mpNewSet = std::make_unique<SfxItemSet>(static_cast<SfxItemPool&>(SdrObject::GetGlobalDrawObjectItemPool()), pTheNewItemSet->GetRanges());
     SdrModel::MigrateItemSet( pTheNewItemSet, mpNewSet.get(), pTheDoc );
 
-    mpOldSet = o3tl::make_unique<SfxItemSet>(static_cast<SfxItemPool&>(SdrObject::GetGlobalDrawObjectItemPool()), mpStyleSheet->GetItemSet().GetRanges());
+    mpOldSet = std::make_unique<SfxItemSet>(static_cast<SfxItemPool&>(SdrObject::GetGlobalDrawObjectItemPool()), mpStyleSheet->GetItemSet().GetRanges());
     SdrModel::MigrateItemSet( &mpStyleSheet->GetItemSet(), mpOldSet.get(), pTheDoc );
 
     OUString aComment(SdResId(STR_UNDO_CHANGE_PRES_OBJECT));
@@ -100,7 +98,7 @@ void StyleSheetUndoAction::Undo()
     SdrModel::MigrateItemSet( mpOldSet.get(), &aNewSet, mpDoc );
 
     mpStyleSheet->GetItemSet().Set(aNewSet);
-    if( mpStyleSheet->GetFamily() == SD_STYLE_FAMILY_PSEUDO )
+    if( mpStyleSheet->GetFamily() == SfxStyleFamily::Pseudo )
         static_cast<SdStyleSheet*>(mpStyleSheet)->GetRealStyleSheet()->Broadcast(SfxHint(SfxHintId::DataChanged));
     else
         mpStyleSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
@@ -112,7 +110,7 @@ void StyleSheetUndoAction::Redo()
     SdrModel::MigrateItemSet( mpNewSet.get(), &aNewSet, mpDoc );
 
     mpStyleSheet->GetItemSet().Set(aNewSet);
-    if( mpStyleSheet->GetFamily() == SD_STYLE_FAMILY_PSEUDO )
+    if( mpStyleSheet->GetFamily() == SfxStyleFamily::Pseudo )
         static_cast<SdStyleSheet*>(mpStyleSheet)->GetRealStyleSheet()->Broadcast(SfxHint(SfxHintId::DataChanged));
     else
         mpStyleSheet->Broadcast(SfxHint(SfxHintId::DataChanged));

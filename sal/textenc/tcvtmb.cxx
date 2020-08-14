@@ -17,22 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "rtl/textcvt.h"
+#include <rtl/textcvt.h>
 
 #include "handleundefinedunicodetotextchar.hxx"
 #include "tenchelp.hxx"
 #include "unichars.hxx"
 
-/* ======================================================================= */
-
 /* DBCS to Unicode conversion routine use a lead table for the first byte, */
 /* where we determine the trail table or for single byte chars the unicode */
 /* value. We have for all lead byte a separate table, because we can */
 /* then share many tables for different charset encodings. */
-
-/* ======================================================================= */
 
 sal_Size ImplDBCSToUnicode( const void* pData, SAL_UNUSED_PARAMETER void*,
                             const char* pSrcBuf, sal_Size nSrcBytes,
@@ -47,13 +43,14 @@ sal_Size ImplDBCSToUnicode( const void* pData, SAL_UNUSED_PARAMETER void*,
     const ImplDBCSToUniLeadTab* pLeadTab = pConvertData->mpToUniLeadTab;
     sal_Unicode*                pEndDestBuf;
     const char*             pEndSrcBuf;
+    char const * startOfCurrentChar = pSrcBuf;
 
     *pInfo = 0;
     pEndDestBuf = pDestBuf+nDestChars;
     pEndSrcBuf  = pSrcBuf+nSrcBytes;
     while ( pSrcBuf < pEndSrcBuf )
     {
-        unsigned char cLead = (unsigned char)*pSrcBuf;
+        unsigned char cLead = static_cast<unsigned char>(*pSrcBuf);
 
         /* get entry for the lead byte */
         pLeadEntry = pLeadTab+cLead;
@@ -69,12 +66,18 @@ sal_Size ImplDBCSToUnicode( const void* pData, SAL_UNUSED_PARAMETER void*,
                 *pInfo |= RTL_TEXTTOUNICODE_INFO_UNDEFINED;
                 if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_MASK) == RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR )
                 {
+                    if ((nFlags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) == 0) {
+                        ++pSrcBuf;
+                    } else {
+                        pSrcBuf = startOfCurrentChar;
+                    }
                     *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR;
                     break;
                 }
                 if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_MASK) == RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_IGNORE )
                 {
                     pSrcBuf++;
+                    startOfCurrentChar = pSrcBuf;
                     continue;
                 }
                 cConv = ImplGetUndefinedUnicodeChar(cLead, nFlags);
@@ -82,12 +85,12 @@ sal_Size ImplDBCSToUnicode( const void* pData, SAL_UNUSED_PARAMETER void*,
         }
         else
         {
-            /* Source buffer to small */
+            /* Source buffer too small */
             if ( pSrcBuf +1 == pEndSrcBuf )
             {
                 if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) == 0 )
                 {
-                    *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL;
+                    *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL;
                     break;
                 }
                 cConv = 0;
@@ -95,7 +98,7 @@ sal_Size ImplDBCSToUnicode( const void* pData, SAL_UNUSED_PARAMETER void*,
             else
             {
                 pSrcBuf++;
-                cTrail = (unsigned char)*pSrcBuf;
+                cTrail = static_cast<unsigned char>(*pSrcBuf);
                 if ( (cTrail >= pLeadEntry->mnTrailStart) && (cTrail <= pLeadEntry->mnTrailEnd) )
                     cConv = pLeadEntry->mpToUniTrailTab[cTrail-pLeadEntry->mnTrailStart];
                 else
@@ -162,12 +165,18 @@ sal_Size ImplDBCSToUnicode( const void* pData, SAL_UNUSED_PARAMETER void*,
                             *pInfo |= RTL_TEXTTOUNICODE_INFO_INVALID;
                             if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_INVALID_MASK) == RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR )
                             {
+                                if ((nFlags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) == 0) {
+                                    ++pSrcBuf;
+                                } else {
+                                    pSrcBuf = startOfCurrentChar;
+                                }
                                 *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR;
                                 break;
                             }
                             if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_INVALID_MASK) == RTL_TEXTTOUNICODE_FLAGS_INVALID_IGNORE )
                             {
                                 pSrcBuf++;
+                                startOfCurrentChar = pSrcBuf;
                                 continue;
                             }
                             cConv = RTL_TEXTENC_UNICODE_REPLACEMENT_CHARACTER;
@@ -180,12 +189,18 @@ sal_Size ImplDBCSToUnicode( const void* pData, SAL_UNUSED_PARAMETER void*,
                 *pInfo |= RTL_TEXTTOUNICODE_INFO_MBUNDEFINED;
                 if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_MASK) == RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR )
                 {
+                    if ((nFlags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) == 0) {
+                        ++pSrcBuf;
+                    } else {
+                        pSrcBuf = startOfCurrentChar;
+                    }
                     *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR;
                     break;
                 }
                 if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_MASK) == RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_IGNORE )
                 {
                     pSrcBuf++;
+                    startOfCurrentChar = pSrcBuf;
                     continue;
                 }
                 cConv = RTL_TEXTENC_UNICODE_REPLACEMENT_CHARACTER;
@@ -194,20 +209,19 @@ sal_Size ImplDBCSToUnicode( const void* pData, SAL_UNUSED_PARAMETER void*,
 
         if ( pDestBuf == pEndDestBuf )
         {
-            *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL;
+            *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL;
             break;
         }
 
         *pDestBuf = cConv;
         pDestBuf++;
         pSrcBuf++;
+        startOfCurrentChar = pSrcBuf;
     }
 
     *pSrcCvtBytes = nSrcBytes - (pEndSrcBuf-pSrcBuf);
     return (nDestChars - (pEndDestBuf-pDestBuf));
 }
-
-/* ----------------------------------------------------------------------- */
 
 sal_Size ImplUnicodeToDBCS( const void* pData, SAL_UNUSED_PARAMETER void*,
                             const sal_Unicode* pSrcBuf, sal_Size nSrcChars,
@@ -235,8 +249,8 @@ sal_Size ImplUnicodeToDBCS( const void* pData, SAL_UNUSED_PARAMETER void*,
     while ( pSrcBuf < pEndSrcBuf )
     {
         c = *pSrcBuf;
-        unsigned char nHighChar = (unsigned char)((c >> 8) & 0xFF);
-        unsigned char nLowChar = (unsigned char)(c & 0xFF);
+        unsigned char nHighChar = static_cast<unsigned char>((c >> 8) & 0xFF);
+        unsigned char nLowChar = static_cast<unsigned char>(c & 0xFF);
 
         /* get entry for the high byte */
         pHighEntry = pHighTab+nHighChar;
@@ -270,8 +284,7 @@ sal_Size ImplUnicodeToDBCS( const void* pData, SAL_UNUSED_PARAMETER void*,
                     sal_uInt32 nTrailOff
                         = nIndex % pEUDCTab->mnTrailRangeCount;
                     sal_uInt32 nSize;
-                    cConv = (sal_uInt16)
-                                ((pEUDCTab->mnLeadStart + nLeadOff) << 8);
+                    cConv = static_cast<sal_uInt16>((pEUDCTab->mnLeadStart + nLeadOff) << 8);
                     nSize
                         = pEUDCTab->mnTrail1End - pEUDCTab->mnTrail1Start + 1;
                     if (nTrailOff < nSize)
@@ -307,7 +320,7 @@ sal_Size ImplUnicodeToDBCS( const void* pData, SAL_UNUSED_PARAMETER void*,
             }
         }
 
-        if ( !cConv )
+        if (cConv == 0 && c != 0)
         {
             if ( nFlags & RTL_UNICODETOTEXT_FLAGS_UNDEFINED_REPLACE )
             {
@@ -361,12 +374,8 @@ sal_Size ImplUnicodeToDBCS( const void* pData, SAL_UNUSED_PARAMETER void*,
     return (nDestBytes - (pEndDestBuf-pDestBuf));
 }
 
-/* ======================================================================= */
-
 #define JIS_EUC_LEAD_OFF                                        0x80
 #define JIS_EUC_TRAIL_OFF                                       0x80
-
-/* ----------------------------------------------------------------------- */
 
 sal_Size ImplEUCJPToUnicode( const void* pData,
                              SAL_UNUSED_PARAMETER void*,
@@ -383,13 +392,14 @@ sal_Size ImplEUCJPToUnicode( const void* pData,
     const ImplEUCJPConvertData* pConvertData = static_cast<const ImplEUCJPConvertData*>(pData);
     sal_Unicode*                pEndDestBuf;
     const char*             pEndSrcBuf;
+    char const * startOfCurrentChar = pSrcBuf;
 
     *pInfo = 0;
     pEndDestBuf = pDestBuf+nDestChars;
     pEndSrcBuf  = pSrcBuf+nSrcBytes;
     while ( pSrcBuf < pEndSrcBuf )
     {
-        unsigned char c = (unsigned char)*pSrcBuf;
+        unsigned char c = static_cast<unsigned char>(*pSrcBuf);
 
         /* ASCII */
         if ( c <= 0x7F )
@@ -400,15 +410,15 @@ sal_Size ImplEUCJPToUnicode( const void* pData,
             /* 8E + A1-DF */
             if ( c == 0x8E )
             {
-                /* Source buffer to small */
+                /* Source buffer too small */
                 if ( pSrcBuf + 1 == pEndSrcBuf )
                 {
-                    *pInfo |= RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL;
+                    *pInfo |= RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL;
                     break;
                 }
 
                 pSrcBuf++;
-                c = (unsigned char)*pSrcBuf;
+                c = static_cast<unsigned char>(*pSrcBuf);
                 if ( (c >= 0xA1) && (c <= 0xDF) )
                     cConv = 0xFF61+(c-0xA1);
                 else
@@ -424,33 +434,33 @@ sal_Size ImplEUCJPToUnicode( const void* pData,
                 /* 8F + A1-FE + A1-FE */
                 if ( c == 0x8F )
                 {
-                    /* Source buffer to small */
+                    /* Source buffer too small */
                     if (pEndSrcBuf - pSrcBuf < 3)
                     {
-                        *pInfo |= RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL;
+                        *pInfo |= RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL;
                         break;
                     }
 
                     pSrcBuf++;
-                    cLead = (unsigned char)*pSrcBuf;
+                    cLead = static_cast<unsigned char>(*pSrcBuf);
                     pSrcBuf++;
-                    cTrail = (unsigned char)*pSrcBuf;
+                    cTrail = static_cast<unsigned char>(*pSrcBuf);
                     pLeadTab = pConvertData->mpJIS0212ToUniLeadTab;
                 }
                 /* CodeSet 2 JIS 0208-1997 */
                 /* A1-FE + A1-FE */
                 else
                 {
-                    /* Source buffer to small */
+                    /* Source buffer too small */
                     if ( pSrcBuf + 1 == pEndSrcBuf )
                     {
-                        *pInfo |= RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL;
+                        *pInfo |= RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL;
                         break;
                     }
 
                     cLead = c;
                     pSrcBuf++;
-                    cTrail = (unsigned char)*pSrcBuf;
+                    cTrail = static_cast<unsigned char>(*pSrcBuf);
                     pLeadTab = pConvertData->mpJIS0208ToUniLeadTab;
                 }
 
@@ -482,18 +492,29 @@ sal_Size ImplEUCJPToUnicode( const void* pData,
                     *pInfo |= RTL_TEXTTOUNICODE_INFO_INVALID;
                     if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_INVALID_MASK) == RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR )
                     {
+                        if ((nFlags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) == 0) {
+                            ++pSrcBuf;
+                        } else {
+                            pSrcBuf = startOfCurrentChar;
+                        }
                         *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR;
                         break;
                     }
                     if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_INVALID_MASK) == RTL_TEXTTOUNICODE_FLAGS_INVALID_IGNORE )
                     {
                         pSrcBuf++;
+                        startOfCurrentChar = pSrcBuf;
                         continue;
                     }
                     cConv = RTL_TEXTENC_UNICODE_REPLACEMENT_CHARACTER;
                 }
                 else
                 {
+                    if ((nFlags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) == 0) {
+                        ++pSrcBuf;
+                    } else {
+                        pSrcBuf = startOfCurrentChar;
+                    }
                     *pInfo |= RTL_TEXTTOUNICODE_INFO_MBUNDEFINED;
                     if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_MASK) == RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR )
                     {
@@ -503,6 +524,7 @@ sal_Size ImplEUCJPToUnicode( const void* pData,
                     if ( (nFlags & RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_MASK) == RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_IGNORE )
                     {
                         pSrcBuf++;
+                        startOfCurrentChar = pSrcBuf;
                         continue;
                     }
                     cConv = RTL_TEXTENC_UNICODE_REPLACEMENT_CHARACTER;
@@ -512,20 +534,19 @@ sal_Size ImplEUCJPToUnicode( const void* pData,
 
         if ( pDestBuf == pEndDestBuf )
         {
-            *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL;
+            *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL;
             break;
         }
 
         *pDestBuf = cConv;
         pDestBuf++;
         pSrcBuf++;
+        startOfCurrentChar = pSrcBuf;
     }
 
     *pSrcCvtBytes = nSrcBytes - (pEndSrcBuf-pSrcBuf);
     return (nDestChars - (pEndDestBuf-pDestBuf));
 }
-
-/* ----------------------------------------------------------------------- */
 
 sal_Size ImplUnicodeToEUCJP( const void* pData,
                              SAL_UNUSED_PARAMETER void*,
@@ -559,8 +580,8 @@ sal_Size ImplUnicodeToEUCJP( const void* pData,
             cConv = 0x8E00+0xA1+(c-0xFF61);
         else
         {
-            nHighChar = (unsigned char)((c >> 8) & 0xFF);
-            nLowChar = (unsigned char)(c & 0xFF);
+            nHighChar = static_cast<unsigned char>((c >> 8) & 0xFF);
+            nLowChar = static_cast<unsigned char>(c & 0xFF);
 
             /* JIS 0208 */
             pHighTab = pConvertData->mpUniToJIS0208HighTab;

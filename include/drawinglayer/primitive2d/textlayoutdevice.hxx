@@ -17,37 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_TEXTLAYOUTDEVICE_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_TEXTLAYOUTDEVICE_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <basegfx/range/b2drange.hxx>
 #include <vector>
-#include <com/sun/star/lang/Locale.hpp>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <vcl/svapp.hxx>
 
 // predefines
 class VirtualDevice;
 namespace vcl { class Font; }
-namespace rtl {
-   class OUString;
-};
-class OutputDevice;
 class GDIMetaFile;
 namespace tools { class Rectangle; }
 enum class DrawTextFlags;
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class FontAttribute;
-}}
+}
+
+namespace com::sun::star::lang { struct Locale; }
 
 // access to one global impTimedRefDev incarnation in namespace drawinglayer::primitive
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** TextLayouterDevice class
 
             This helper class exists to isolate all accesses to VCL
@@ -64,7 +58,7 @@ namespace drawinglayer
         public:
             /// constructor/destructor
             TextLayouterDevice();
-            ~TextLayouterDevice();
+            ~TextLayouterDevice() COVERITY_NOEXCEPT_FALSE;
 
             /// tooling methods
             void setFont(const vcl::Font& rFont);
@@ -82,19 +76,19 @@ namespace drawinglayer
             double getStrikeoutOffset() const;
 
             double getTextWidth(
-                const rtl::OUString& rText,
+                const OUString& rText,
                 sal_uInt32 nIndex,
                 sal_uInt32 nLength) const;
 
-            bool getTextOutlines(
+            void getTextOutlines(
                 basegfx::B2DPolyPolygonVector&,
-                const rtl::OUString& rText,
+                const OUString& rText,
                 sal_uInt32 nIndex,
                 sal_uInt32 nLength,
                 const ::std::vector< double >& rDXArray) const;
 
             basegfx::B2DRange getTextBoundRect(
-                const rtl::OUString& rText,
+                const OUString& rText,
                 sal_uInt32 nIndex,
                 sal_uInt32 nLength) const;
 
@@ -103,24 +97,18 @@ namespace drawinglayer
 
             void addTextRectActions(
                 const tools::Rectangle& rRectangle,
-                const rtl::OUString& rText,
+                const OUString& rText,
                 DrawTextFlags nStyle,
                 GDIMetaFile& rGDIMetaFile) const;
 
             ::std::vector< double > getTextArray(
-                const rtl::OUString& rText,
+                const OUString& rText,
                 sal_uInt32 nIndex,
                 sal_uInt32 nLength) const;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
-// helper methods for vcl font handling
+        // helper methods for vcl font handling
 
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         /** Create a VCL-Font based on the definitions in FontAttribute
             and the given FontScaling. The FontScaling defines the FontHeight
             (fFontScaleY) and the FontWidth (fFontScaleX). The combination of
@@ -145,9 +133,6 @@ namespace drawinglayer
             bool bRTL,
             bool bBiDiStrong);
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
-
-#endif //_DRAWINGLAYER_TEXTLAYOUTDEVICE_HXX
+} // end of namespace drawinglayer::primitive2d
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -16,15 +16,15 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "EndMarker.hxx"
-#include "ColorChanger.hxx"
-#include "SectionWindow.hxx"
-#include "helpids.hrc"
+#include <EndMarker.hxx>
+#include <ColorChanger.hxx>
+#include <SectionWindow.hxx>
 
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/gradient.hxx>
 #include <vcl/lineinfo.hxx>
+#include <vcl/event.hxx>
 
 
 #define CORNER_SPACE    5
@@ -46,10 +46,10 @@ void OEndMarker::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangl
 {
     Fraction aCornerSpace(long(CORNER_SPACE));
     aCornerSpace *= rRenderContext.GetMapMode().GetScaleX();
-    const long nCornerSpace = aCornerSpace;
+    const long nCornerSpace = long(aCornerSpace);
 
     Size aSize = GetSizePixel();
-    aSize.Width() += nCornerSpace;
+    aSize.AdjustWidth(nCornerSpace );
     tools::Rectangle aWholeRect(Point(-nCornerSpace,0),aSize);
     tools::PolyPolygon aPoly;
     aPoly.Insert( tools::Polygon(aWholeRect,nCornerSpace,nCornerSpace));

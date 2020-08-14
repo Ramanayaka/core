@@ -23,14 +23,14 @@
 #include <com/sun/star/awt/FontFamily.hpp>
 #include <com/sun/star/awt/FontPitch.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
+#include <com/sun/star/embed/XStorage.hpp>
 
 #include <comphelper/seqstream.hxx>
 
-#include <osl/file.hxx>
+#include <sal/log.hxx>
 #include <vcl/embeddedfontshelper.hxx>
 
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include "fonthdl.hxx"
 #include <xmloff/xmlimp.hxx>
@@ -48,7 +48,9 @@ using namespace ::com::sun::star::awt;
 using namespace ::xmloff::token;
 
 
-#define XML_STYLE_FAMILY_FONT 1
+#define XML_STYLE_FAMILY_FONT XmlStyleFamily::PAGE_MASTER
+
+namespace {
 
 enum XMLFontStyleAttrTokens
 {
@@ -58,6 +60,8 @@ enum XMLFontStyleAttrTokens
     XML_TOK_FONT_STYLE_ATTR_PITCH,
     XML_TOK_FONT_STYLE_ATTR_CHARSET,
 };
+
+}
 
 static const SvXMLTokenMapEntry* lcl_getFontStyleAttrTokenMap()
 {
@@ -89,9 +93,9 @@ XMLFontStyleContextFontFace::XMLFontStyleContextFontFace( SvXMLImport& rImport,
 {
     aFamilyName <<= OUString();
     aStyleName <<= OUString();
-    aFamily <<= (sal_Int16)awt::FontFamily::DONTKNOW;
-    aPitch <<= (sal_Int16)awt::FontPitch::DONTKNOW;
-    aEnc <<= (sal_Int16)rStyles.GetDfltCharset();
+    aFamily <<= sal_Int16(awt::FontFamily::DONTKNOW);
+    aPitch <<= sal_Int16(awt::FontPitch::DONTKNOW);
+    aEnc <<= static_cast<sal_Int16>(rStyles.GetDfltCharset());
 }
 
 void XMLFontStyleContextFontFace::SetAttribute( sal_uInt16 nPrefixKey,
@@ -172,7 +176,7 @@ void XMLFontStyleContextFontFace::FillProperties(
     }
 }
 
-SvXMLImportContext * XMLFontStyleContextFontFace::CreateChildContext(
+SvXMLImportContextRef XMLFontStyleContextFontFace::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList )
@@ -217,14 +221,14 @@ XMLFontStyleContextFontFaceSrc::XMLFontStyleContextFontFaceSrc( SvXMLImport& rIm
 {
 }
 
-SvXMLImportContext * XMLFontStyleContextFontFaceSrc::CreateChildContext(
+SvXMLImportContextRef XMLFontStyleContextFontFaceSrc::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList )
 {
     if( nPrefix == XML_NAMESPACE_SVG && IsXMLToken( rLocalName, XML_FONT_FACE_URI ))
         return new XMLFontStyleContextFontFaceUri( GetImport(), nPrefix, rLocalName, xAttrList, font );
-    return SvXMLImportContext::CreateChildContext( nPrefix, rLocalName, xAttrList );
+    return nullptr;
 }
 
 
@@ -237,7 +241,7 @@ XMLFontStyleContextFontFaceUri::XMLFontStyleContextFontFaceUri( SvXMLImport& rIm
 {
 }
 
-SvXMLImportContext * XMLFontStyleContextFontFaceUri::CreateChildContext(
+SvXMLImportContextRef XMLFontStyleContextFontFaceUri::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList )
@@ -250,7 +254,7 @@ SvXMLImportContext * XMLFontStyleContextFontFaceUri::CreateChildContext(
         if( mxBase64Stream.is() )
             return new XMLBase64ImportContext( GetImport(), nPrefix, rLocalName, xAttrList, mxBase64Stream );
     }
-    return SvXMLImportContext::CreateChildContext( nPrefix, rLocalName, xAttrList );
+    return nullptr;
 }
 
 void XMLFontStyleContextFontFaceUri::SetAttribute( sal_uInt16 nPrefixKey, const OUString& rLocalName,
@@ -275,7 +279,7 @@ const char EOT_FORMAT[]      = "embedded-opentype";
 
 void XMLFontStyleContextFontFaceUri::EndElement()
 {
-    if( ( linkPath.getLength() == 0 ) && ( maFontData.getLength() == 0 ) )
+    if( ( linkPath.getLength() == 0 ) && ( !maFontData.hasElements() ) )
     {
         SAL_WARN( "xmloff", "svg:font-face-uri tag with no link or base64 data; ignoring." );
         return;
@@ -297,7 +301,7 @@ void XMLFontStyleContextFontFaceUri::EndElement()
         SAL_WARN( "xmloff", "Unknown format of embedded font; assuming TTF." );
         eot = false;
     }
-    if ( maFontData.getLength() == 0 )
+    if ( !maFontData.hasElements() )
         handleEmbeddedFont( linkPath, eot );
     else
         handleEmbeddedFont( maFontData, eot );
@@ -315,10 +319,10 @@ void XMLFontStyleContextFontFaceUri::handleEmbeddedFont( const OUString& url, bo
     if( GetImport().IsPackageURL( url ))
     {
         uno::Reference< embed::XStorage > storage;
-        storage.set( GetImport().GetSourceStorage(), UNO_QUERY_THROW );
+        storage.set( GetImport().GetSourceStorage(), UNO_SET_THROW );
         if( url.indexOf( '/' ) > -1 ) // TODO what if more levels?
             storage.set( storage->openStorageElement( url.copy( 0, url.indexOf( '/' )),
-                ::embed::ElementModes::READ ), uno::UNO_QUERY_THROW );
+                ::embed::ElementModes::READ ), uno::UNO_SET_THROW );
         uno::Reference< io::XInputStream > inputStream;
         inputStream.set( storage->openStreamElement( url.copy( url.indexOf( '/' ) + 1 ), ::embed::ElementModes::READ ),
             UNO_QUERY_THROW );
@@ -362,10 +366,8 @@ SvXMLStyleContext *XMLFontStylesContext::CreateStyleChildContext(
 
 
 XMLFontStylesContext::XMLFontStylesContext( SvXMLImport& rImport,
-        sal_uInt16 nPrfx, const OUString& rLName,
-        const Reference< XAttributeList > & xAttrList,
         rtl_TextEncoding eDfltEnc ) :
-    SvXMLStylesContext( rImport, nPrfx, rLName, xAttrList ),
+    SvXMLStylesContext( rImport ),
     pFamilyNameHdl( new XMLFontFamilyNamePropHdl ),
     pFamilyHdl( new XMLFontFamilyPropHdl ),
     pPitchHdl( new XMLFontPitchPropHdl ),

@@ -19,16 +19,15 @@
 
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/frame/TaskCreator.hpp>
+#include <com/sun/star/frame/XTitle.hpp>
 #include <com/sun/star/frame/TerminationVetoException.hpp>
 #include <com/sun/star/frame/XComponentLoader.hpp>
 #include <com/sun/star/frame/XSynchronousFrameLoader.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/XSingleComponentFactory.hpp>
 #include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/util/XCloseBroadcaster.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
@@ -41,14 +40,10 @@
 #include <com/sun/star/awt/Toolkit.hpp>
 #include <com/sun/star/awt/XTopWindow.hpp>
 #include <com/sun/star/awt/PosSize.hpp>
-#include <com/sun/star/awt/XView.hpp>
 #include <com/sun/star/awt/WindowAttribute.hpp>
 #include <com/sun/star/awt/VclWindowPeerAttribute.hpp>
-#include <com/sun/star/bridge/XBridgeSupplier2.hpp>
-#include <com/sun/star/bridge/ModelDependent.hpp>
 #include <com/sun/star/embed/XHatchWindow.hpp>
 #include <com/sun/star/embed/HatchWindowFactory.hpp>
-#include <com/sun/star/embed/XInplaceClient.hpp>
 #include <com/sun/star/frame/XLayoutManager.hpp>
 #include <com/sun/star/frame/XMenuBarMergingAcceptor.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
@@ -62,21 +57,23 @@
 #include <com/sun/star/embed/EmbedMisc.hpp>
 #include <com/sun/star/embed/EmbedStates.hpp>
 #include <osl/diagnose.h>
-#include <rtl/process.h>
 #include <vcl/svapp.hxx>
-#include <svtools/embedhlp.hxx>
+#include <unotools/resmgr.hxx>
+#include <sfx2/strings.hrc>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 
-#include "docholder.hxx"
-#include "commonembobj.hxx"
-#include "intercept.hxx"
+#include <docholder.hxx>
+#include <commonembobj.hxx>
+#include <intercept.hxx>
 
 #define HATCH_BORDER_WIDTH (((m_pEmbedObj->getStatus(embed::Aspects::MSOLE_CONTENT)&embed::EmbedMisc::MS_EMBED_ACTIVATEWHENVISIBLE) && \
                             m_pEmbedObj->getCurrentState()!=embed::EmbedStates::UI_ACTIVE) ? 0 : 4 )
 
 using namespace ::com::sun::star;
+
+namespace {
 
 class IntCounterGuard
 {
@@ -94,6 +91,8 @@ public:
             --m_rFlag;
     }
 };
+
+}
 
 static void InsertMenu_Impl( const uno::Reference< container::XIndexContainer >& xTargetMenu,
                             sal_Int32 nTargetIndex,
@@ -114,12 +113,12 @@ static void InsertMenu_Impl( const uno::Reference< container::XIndexContainer >&
     for ( nInd = 0; nInd < aSourceProps.getLength(); nInd++ )
     {
         aTargetProps[nInd].Name = aSourceProps[nInd].Name;
-        if ( !aContModuleName.isEmpty() && aTargetProps[nInd].Name.equals( aModuleIdentPropName ) )
+        if ( !aContModuleName.isEmpty() && aTargetProps[nInd].Name == aModuleIdentPropName )
         {
             aTargetProps[nInd].Value <<= aContModuleName;
             bModuleNameSet = true;
         }
-        else if ( aTargetProps[nInd].Name.equals( aDispProvPropName ) )
+        else if ( aTargetProps[nInd].Name == aDispProvPropName )
         {
             aTargetProps[nInd].Value <<= xSourceDisp;
             bDispProvSet = true;
@@ -169,7 +168,7 @@ DocumentHolder::DocumentHolder( const uno::Reference< uno::XComponentContext >& 
     m_aOutplaceFrameProps[1] <<= aArg;
 
     uno::Reference< frame::XDesktop2 > xDesktop = frame::Desktop::create( m_xContext );
-    m_refCount++;
+    osl_atomic_increment(&m_refCount);
     try
     {
         xDesktop->addTerminateListener( this );
@@ -177,7 +176,7 @@ DocumentHolder::DocumentHolder( const uno::Reference< uno::XComponentContext >& 
     catch ( const uno::Exception& )
     {
     }
-    m_refCount--;
+    osl_atomic_decrement(&m_refCount);
 
     aArg.Name = "ParentFrame";
     aArg.Value <<= xDesktop; //TODO/LATER: should use parent document frame
@@ -187,7 +186,7 @@ DocumentHolder::DocumentHolder( const uno::Reference< uno::XComponentContext >& 
 
 DocumentHolder::~DocumentHolder()
 {
-    m_refCount++; // to allow deregistration as a listener
+    osl_atomic_increment(&m_refCount); // to allow deregistration as a listener
 
     if( m_xFrame.is() )
         CloseFrame();
@@ -225,14 +224,12 @@ void DocumentHolder::CloseFrame()
         catch( const uno::Exception& ) {
         }
     else {
-        uno::Reference<lang::XComponent> xComp( m_xFrame,uno::UNO_QUERY );
-        if( xComp.is() )
-            xComp->dispose();
+        if( m_xFrame.is() )
+            m_xFrame->dispose();
     }
 
-    uno::Reference< lang::XComponent > xComp( m_xHatchWindow, uno::UNO_QUERY );
-    if ( xComp.is() )
-        xComp->dispose();
+    if ( m_xHatchWindow.is() )
+        m_xHatchWindow->dispose();
 
     m_xHatchWindow.clear();
     m_xOwnWindow.clear();
@@ -268,8 +265,7 @@ void DocumentHolder::FreeOffice()
 
 void DocumentHolder::CloseDocument( bool bDeliverOwnership, bool bWaitForClose )
 {
-    uno::Reference< util::XCloseBroadcaster > xBroadcaster( m_xComponent, uno::UNO_QUERY );
-    if ( xBroadcaster.is() )
+    if ( m_xComponent.is() )
     {
         uno::Reference< document::XEventBroadcaster > xEventBroadcaster( m_xComponent, uno::UNO_QUERY );
         if ( xEventBroadcaster.is() )
@@ -283,13 +279,9 @@ void DocumentHolder::CloseDocument( bool bDeliverOwnership, bool bWaitForClose )
                 xModifyBroadcaster->removeModifyListener( static_cast<util::XModifyListener*>(this) );
         }
 
-        uno::Reference< util::XCloseable > xCloseable( xBroadcaster, uno::UNO_QUERY );
-        if ( xCloseable.is() )
-        {
-            m_bAllowClosing = true;
-            m_bWaitForClose = bWaitForClose;
-            xCloseable->close( bDeliverOwnership );
-        }
+        m_bAllowClosing = true;
+        m_bWaitForClose = bWaitForClose;
+        m_xComponent->close( bDeliverOwnership );
     }
 
     m_xComponent = nullptr;
@@ -302,27 +294,27 @@ void DocumentHolder::PlaceFrame( const awt::Rectangle& aNewRect )
                 "The object does not have windows required for inplace mode!" );
 
     //TODO: may need mutex locking???
-    if ( m_xFrame.is() && m_xOwnWindow.is() )
+    if ( !(m_xFrame.is() && m_xOwnWindow.is()) )
+        return;
+
+    // the frame can be replaced only in inplace mode
+    frame::BorderWidths aOldWidths;
+    IntCounterGuard aGuard( m_nNoBorderResizeReact );
+
+    do
     {
-        // the frame can be replaced only in inplace mode
-        frame::BorderWidths aOldWidths;
-        IntCounterGuard aGuard( m_nNoBorderResizeReact );
+        aOldWidths = m_aBorderWidths;
 
-        do
-        {
-            aOldWidths = m_aBorderWidths;
+        awt::Rectangle aHatchRect = AddBorderToArea( aNewRect );
 
-            awt::Rectangle aHatchRect = AddBorderToArea( aNewRect );
+        ResizeWindows_Impl( aHatchRect );
 
-            ResizeWindows_Impl( aHatchRect );
+    } while ( aOldWidths.Left != m_aBorderWidths.Left
+           || aOldWidths.Top != m_aBorderWidths.Top
+           || aOldWidths.Right != m_aBorderWidths.Right
+           || aOldWidths.Bottom != m_aBorderWidths.Bottom );
 
-        } while ( aOldWidths.Left != m_aBorderWidths.Left
-               || aOldWidths.Top != m_aBorderWidths.Top
-               || aOldWidths.Right != m_aBorderWidths.Right
-               || aOldWidths.Bottom != m_aBorderWidths.Bottom );
-
-        m_aObjRect = aNewRect;
-    }
+    m_aObjRect = aNewRect;
 }
 
 
@@ -519,7 +511,7 @@ uno::Reference< container::XIndexAccess > DocumentHolder::RetrieveOwnMenu_Impl()
     {
         xUIConfigManager.set(
             xUIConfSupplier->getUIConfigurationManager(),
-            uno::UNO_QUERY_THROW );
+            uno::UNO_SET_THROW );
     }
 
     try
@@ -547,7 +539,7 @@ uno::Reference< container::XIndexAccess > DocumentHolder::RetrieveOwnMenu_Impl()
                     ui::theModuleUIConfigurationManagerSupplier::get(m_xContext);
             uno::Reference< css::ui::XUIConfigurationManager > xModUIConfMan(
                     xModConfSupplier->getUIConfigurationManager( aModuleIdent ),
-                    uno::UNO_QUERY_THROW );
+                    uno::UNO_SET_THROW );
             xResult = xModUIConfMan->getSettings(
                     "private:resource/menubar/menubar",
                     false );
@@ -572,10 +564,10 @@ void DocumentHolder::FindConnectPoints(
         uno::Sequence< beans::PropertyValue > aProps;
         xMenu->getByIndex( nInd ) >>= aProps;
         OUString aCommand;
-        for ( sal_Int32 nSeqInd = 0; nSeqInd < aProps.getLength(); nSeqInd++ )
-            if ( aProps[nSeqInd].Name == "CommandURL" )
+        for ( beans::PropertyValue const & prop : std::as_const(aProps) )
+            if ( prop.Name == "CommandURL" )
             {
-                aProps[nSeqInd].Value >>= aCommand;
+                prop.Value >>= aCommand;
                 break;
             }
 
@@ -687,8 +679,8 @@ bool DocumentHolder::ShowUI( const uno::Reference< css::frame::XLayoutManager >&
         if ( xOwnLM.is() && xDocAreaAcc.is() )
         {
             // make sure that lock state of LM is correct even if an exception is thrown in between
-            bool bUnlock = false;
-            bool bLock = false;
+            bool bUnlockContainerLM = false;
+            bool bLockOwnLM = false;
             try
             {
                 // take over the control over the containers window
@@ -702,28 +694,24 @@ bool DocumentHolder::ShowUI( const uno::Reference< css::frame::XLayoutManager >&
                     // this must be done after merging menus as we won't get the container menu otherwise
                     xContainerLM->setDockingAreaAcceptor( uno::Reference < ui::XDockingAreaAcceptor >() );
 
-                    bool bIsChart = false;
                     uno::Reference< lang::XServiceInfo> xServiceInfo(m_xComponent, uno::UNO_QUERY);
-                    if (xServiceInfo.is() && xServiceInfo->supportsService("com.sun.star.chart2.ChartDocument"))
-                        bIsChart = true;
-                    // prevent further changes at this LM
-                    // TODO: moggi: why is this necessary?
-                    if (!bIsChart)
+                    if (!xServiceInfo.is() || !xServiceInfo->supportsService("com.sun.star.chart2.ChartDocument"))
                     {
-                        xContainerLM->setVisible( false );
+                        // prevent further changes at this LM
+                        xContainerLM->setVisible(false);
                         xContainerLM->lock();
+                        bUnlockContainerLM = true;
                     }
-                    bUnlock = true;
 
                     // by unlocking the LM each layout change will now resize the containers window; pending layouts will be processed now
                     xOwnLM->setVisible( true );
 
-                    uno::Reference< frame::XFramesSupplier > xSupp( m_xFrame->getCreator(), uno::UNO_QUERY );
+                    uno::Reference< frame::XFramesSupplier > xSupp = m_xFrame->getCreator();
                     if ( xSupp.is() )
                         xSupp->setActiveFrame( m_xFrame );
 
                     xOwnLM->unlock();
-                    bLock = true;
+                    bLockOwnLM = true;
                     bResult = true;
 
                     // TODO/LATER: The following action should be done only if the window is not hidden
@@ -737,12 +725,12 @@ bool DocumentHolder::ShowUI( const uno::Reference< css::frame::XLayoutManager >&
                 // activation failed; reestablish old state
                 try
                 {
-                    uno::Reference< frame::XFramesSupplier > xSupp( m_xFrame->getCreator(), uno::UNO_QUERY );
+                    uno::Reference< frame::XFramesSupplier > xSupp = m_xFrame->getCreator();
                     if ( xSupp.is() )
                         xSupp->setActiveFrame( nullptr );
 
                     // remove control about containers window from own LM
-                    if ( bLock )
+                    if (bLockOwnLM)
                         xOwnLM->lock();
                     xOwnLM->setVisible( false );
                     xOwnLM->setDockingAreaAcceptor( uno::Reference< css::ui::XDockingAreaAcceptor >() );
@@ -758,7 +746,7 @@ bool DocumentHolder::ShowUI( const uno::Reference< css::frame::XLayoutManager >&
                     // reestablish control of containers window
                     xContainerLM->setDockingAreaAcceptor( xDocAreaAcc );
                     xContainerLM->setVisible( true );
-                    if ( bUnlock )
+                    if (bUnlockContainerLM)
                         xContainerLM->unlock();
                 }
                 catch( const uno::Exception& ) {}
@@ -787,7 +775,7 @@ bool DocumentHolder::HideUI( const uno::Reference< css::frame::XLayoutManager >&
         if ( xOwnLM.is() )
         {
             try {
-                uno::Reference< frame::XFramesSupplier > xSupp( m_xFrame->getCreator(), uno::UNO_QUERY );
+                uno::Reference< frame::XFramesSupplier > xSupp = m_xFrame->getCreator();
                 if ( xSupp.is() )
                     xSupp->setActiveFrame( nullptr );
 
@@ -801,8 +789,12 @@ bool DocumentHolder::HideUI( const uno::Reference< css::frame::XLayoutManager >&
                 xMerge->removeMergedMenuBar();
 
                 xContainerLM->setDockingAreaAcceptor( xDocAreaAcc );
-                xContainerLM->setVisible( true );
-                xContainerLM->unlock();
+                uno::Reference< lang::XServiceInfo> xServiceInfo(m_xComponent, uno::UNO_QUERY);
+                if (!xServiceInfo.is() || !xServiceInfo->supportsService("com.sun.star.chart2.ChartDocument"))
+                {
+                    xContainerLM->setVisible(true);
+                    xContainerLM->unlock();
+                }
 
                 xContainerLM->doLayout();
                 bResult = true;
@@ -864,7 +856,6 @@ uno::Reference< frame::XFrame > const & DocumentHolder::GetDocFrame()
 
         // TODO/LATER: get it for the real aspect
         awt::Size aSize;
-        GetExtent( embed::Aspects::MSOLE_CONTENT, &aSize );
         LoadDocToFrame(false);
 
         if ( xOwnLM.is() )
@@ -873,7 +864,8 @@ uno::Reference< frame::XFrame > const & DocumentHolder::GetDocFrame()
             xOwnLM->lock();
         }
 
-        SetExtent( embed::Aspects::MSOLE_CONTENT, aSize );
+        GetExtent(embed::Aspects::MSOLE_CONTENT, &aSize);
+        SetExtent(embed::Aspects::MSOLE_CONTENT, aSize);
 
         if ( xOwnLM.is() )
             xOwnLM->unlock();
@@ -928,9 +920,8 @@ void DocumentHolder::SetComponent( const uno::Reference< util::XCloseable >& xDo
     m_bReadOnly = bReadOnly;
     m_bAllowClosing = false;
 
-    uno::Reference< util::XCloseBroadcaster > xBroadcaster( m_xComponent, uno::UNO_QUERY );
-    if ( xBroadcaster.is() )
-        xBroadcaster->addCloseListener( static_cast<util::XCloseListener*>(this) );
+    if ( m_xComponent.is() )
+        m_xComponent->addCloseListener( static_cast<util::XCloseListener*>(this) );
 
     uno::Reference< document::XEventBroadcaster > xEventBroadcaster( m_xComponent, uno::UNO_QUERY );
     if ( xEventBroadcaster.is() )
@@ -956,12 +947,25 @@ bool DocumentHolder::LoadDocToFrame( bool bInPlace )
         uno::Reference < frame::XModel > xDoc( m_xComponent, uno::UNO_QUERY );
         if ( xDoc.is() )
         {
-            // load new document in to the frame
+            // load new document into the frame
             uno::Reference< frame::XComponentLoader > xComponentLoader( m_xFrame, uno::UNO_QUERY_THROW );
 
             ::comphelper::NamedValueCollection aArgs;
             aArgs.put( "Model", m_xComponent );
             aArgs.put( "ReadOnly", m_bReadOnly );
+
+            // set document title to show in the title bar
+            css::uno::Reference< css::frame::XTitle > xModelTitle( xDoc, css::uno::UNO_QUERY );
+            if( xModelTitle.is() && m_pEmbedObj && !m_pEmbedObj->getContainerName().isEmpty() )
+            {
+                std::locale aResLoc = Translate::Create("sfx");
+                OUString sEmbedded = Translate::get(STR_EMBEDDED_TITLE, aResLoc);
+                xModelTitle->setTitle( m_pEmbedObj->getContainerName() + sEmbedded );
+                m_aContainerName = m_pEmbedObj->getContainerName();
+                // TODO: get real m_aDocumentNamePart
+                m_aDocumentNamePart = sEmbedded;
+            }
+
             if ( bInPlace )
                 aArgs.put( "PluginMode", sal_Int16(1) );
             OUString sUrl;
@@ -1240,31 +1244,30 @@ awt::Rectangle SAL_CALL DocumentHolder::calcAdjustedRectangle( const awt::Rectan
 
 void SAL_CALL DocumentHolder::activated(  )
 {
-    if ( (m_pEmbedObj->getStatus(embed::Aspects::MSOLE_CONTENT)&embed::EmbedMisc::MS_EMBED_ACTIVATEWHENVISIBLE) ||
-        svt::EmbeddedObjectRef::IsGLChart(m_pEmbedObj) )
+    if ( !(m_pEmbedObj->getStatus(embed::Aspects::MSOLE_CONTENT)&embed::EmbedMisc::MS_EMBED_ACTIVATEWHENVISIBLE) )
+        return;
+
+    if ( m_pEmbedObj->getCurrentState() != embed::EmbedStates::UI_ACTIVE &&
+    !(m_pEmbedObj->getStatus(embed::Aspects::MSOLE_CONTENT)&embed::EmbedMisc::MS_EMBED_NOUIACTIVATE) )
     {
-        if ( m_pEmbedObj->getCurrentState() != embed::EmbedStates::UI_ACTIVE &&
-        !(m_pEmbedObj->getStatus(embed::Aspects::MSOLE_CONTENT)&embed::EmbedMisc::MS_EMBED_NOUIACTIVATE) )
+        try
         {
-            try
-            {
-                m_pEmbedObj->changeState( embed::EmbedStates::UI_ACTIVE );
-            }
-            catch ( const css::embed::StateChangeInProgressException& )
-            {
-                // must catch this exception because focus is grabbed while UI activation in doVerb()
-            }
-            catch ( const css::uno::Exception& )
-            {
-                // no outgoing exceptions specified here
-            }
+            m_pEmbedObj->changeState( embed::EmbedStates::UI_ACTIVE );
         }
-        else
+        catch ( const css::embed::StateChangeInProgressException& )
         {
-            uno::Reference< frame::XFramesSupplier > xSupp( m_xFrame->getCreator(), uno::UNO_QUERY );
-            if ( xSupp.is() )
-                xSupp->setActiveFrame( m_xFrame );
+            // must catch this exception because focus is grabbed while UI activation in doVerb()
         }
+        catch ( const css::uno::Exception& )
+        {
+            // no outgoing exceptions specified here
+        }
+    }
+    else
+    {
+        uno::Reference< frame::XFramesSupplier > xSupp = m_xFrame->getCreator();
+        if ( xSupp.is() )
+            xSupp->setActiveFrame( m_xFrame );
     }
 }
 

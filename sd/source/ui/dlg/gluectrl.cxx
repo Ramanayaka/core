@@ -17,20 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string>
-
-#include <svx/dialogs.hrc>
 #include <svx/svdglue.hxx>
 #include <svl/intitem.hxx>
-#include <sfx2/app.hxx>
-#include <sfx2/dispatch.hxx>
 #include <vcl/toolbox.hxx>
-#include <sfx2/viewfrm.hxx>
 
-#include "strings.hrc"
-#include "gluectrl.hxx"
-#include "sdresid.hxx"
-#include "app.hrc"
+#include <strings.hrc>
+#include <gluectrl.hxx>
+#include <sdresid.hxx>
+#include <app.hrc>
+
+#include <com/sun/star/frame/XDispatchProvider.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
@@ -38,7 +35,7 @@ using namespace ::com::sun::star::frame;
 
 // at the moment, Joe only supports the methods specified below
 #define ESCDIR_COUNT 5
-static const SdrEscapeDirection aEscDirArray[] =
+const SdrEscapeDirection aEscDirArray[] =
 {
     SdrEscapeDirection::SMART,
     SdrEscapeDirection::LEFT,
@@ -52,26 +49,51 @@ SFX_IMPL_TOOLBOX_CONTROL( SdTbxCtlGlueEscDir, SfxUInt16Item )
 /**
  * Constructor for glue point escape direction Listbox
  */
-GlueEscDirLB::GlueEscDirLB( vcl::Window* pParent, const Reference< XFrame >& rFrame ) :
-        ListBox( pParent, WinBits( WB_BORDER | WB_DROPDOWN ) ),
-        m_xFrame( rFrame )
+GlueEscDirLB::GlueEscDirLB(vcl::Window* pParent, const Reference<XFrame>& rFrame)
+    : InterimItemWindow(pParent, "modules/simpress/ui/gluebox.ui", "GlueBox")
+    , m_xFrame(rFrame)
+    , m_xWidget(m_xBuilder->weld_combo_box("gluetype"))
 {
-    Size aXSize( GetTextWidth( "X" ), GetTextHeight() );
-    SetSizePixel( Size( aXSize.Width() * 12, aXSize.Height() * 10 ) );
+    InitControlBase(m_xWidget.get());
+
     Fill();
+
+    m_xWidget->connect_changed(LINK(this, GlueEscDirLB, SelectHdl));
+    m_xWidget->connect_key_press(LINK(this, GlueEscDirLB, KeyInputHdl));
+
+    SetSizePixel(m_xWidget->get_preferred_size());
+
     Show();
+}
+
+void GlueEscDirLB::dispose()
+{
+    m_xWidget.reset();
+    InterimItemWindow::dispose();
 }
 
 GlueEscDirLB::~GlueEscDirLB()
 {
+    disposeOnce();
+}
+
+void GlueEscDirLB::set_sensitive(bool bSensitive)
+{
+    Enable(bSensitive);
+    m_xWidget->set_sensitive(bSensitive);
+}
+
+IMPL_LINK(GlueEscDirLB, KeyInputHdl, const KeyEvent&, rKEvt, bool)
+{
+    return ChildKeyInput(rKEvt);
 }
 
 /**
  * Determines the escape direction and sends the corresponding slot
  */
-void GlueEscDirLB::Select()
+IMPL_LINK(GlueEscDirLB, SelectHdl, weld::ComboBox&, rBox, void)
 {
-    sal_Int32 nPos = GetSelectEntryPos();
+    sal_Int32 nPos = rBox.get_active();
     SfxUInt16Item aItem( SID_GLUE_ESCDIR, static_cast<sal_uInt16>(aEscDirArray[ nPos ]) );
 
     if ( m_xFrame.is() )
@@ -92,19 +114,19 @@ void GlueEscDirLB::Select()
  */
 void GlueEscDirLB::Fill()
 {
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_SMART ) );
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_LEFT ) );
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_RIGHT ) );
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_TOP ) );
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_BOTTOM ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_SMART ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_LEFT ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_RIGHT ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_TOP ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_BOTTOM ) );
     /*
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_LO ) );
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_LU ) );
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_RO ) );
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_RU ) );
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_HORZ ) );
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_VERT ) );
-    InsertEntry( SdResId( STR_GLUE_ESCDIR_ALL ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_LO ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_LU ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_RO ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_RU ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_HORZ ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_VERT ) );
+    m_xWidget->append_text( SdResId( STR_GLUE_ESCDIR_ALL ) );
     */
 }
 
@@ -131,21 +153,21 @@ void SdTbxCtlGlueEscDir::StateChanged( sal_uInt16 nSId,
         {
             if( pState )
             {
-                pGlueEscDirLB->Enable();
+                pGlueEscDirLB->set_sensitive(true);
                 if ( IsInvalidItem( pState ) )
                 {
-                    pGlueEscDirLB->SetNoSelection();
+                    pGlueEscDirLB->set_active(-1);
                 }
                 else
                 {
                     SdrEscapeDirection nEscDir = static_cast<SdrEscapeDirection>(static_cast<const SfxUInt16Item*>( pState )->GetValue());
-                    pGlueEscDirLB->SelectEntryPos( GetEscDirPos( nEscDir ) );
+                    pGlueEscDirLB->set_active( GetEscDirPos( nEscDir ) );
                 }
             }
             else
             {
-                pGlueEscDirLB->Disable();
-                pGlueEscDirLB->SetNoSelection();
+                pGlueEscDirLB->set_sensitive(false);
+                pGlueEscDirLB->set_active(-1);
             }
         }
     }
@@ -153,12 +175,12 @@ void SdTbxCtlGlueEscDir::StateChanged( sal_uInt16 nSId,
     SfxToolBoxControl::StateChanged( nSId, eState, pState );
 }
 
-VclPtr<vcl::Window> SdTbxCtlGlueEscDir::CreateItemWindow( vcl::Window *pParent )
+VclPtr<InterimItemWindow> SdTbxCtlGlueEscDir::CreateItemWindow( vcl::Window *pParent )
 {
     if( GetSlotId() == SID_GLUE_ESCDIR )
         return VclPtr<GlueEscDirLB>::Create( pParent, m_xFrame ).get();
 
-    return VclPtr<vcl::Window>();
+    return VclPtr<InterimItemWindow>();
 }
 
 /**

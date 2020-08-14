@@ -21,7 +21,7 @@
 
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno {
         class XInterface;
         template<class T> class Reference;
@@ -29,13 +29,13 @@ namespace com { namespace sun { namespace star {
     namespace beans {
         class XPropertySet;
     }
-} } }
+}
 
 namespace xforms
 {
 
 /** copy the properties from one PropertySet into the next */
-void copy( const css::uno::Reference<css::beans::XPropertySet>& , css::uno::Reference<css::beans::XPropertySet>& );
+void copy( const css::uno::Reference<css::beans::XPropertySet>& , css::uno::Reference<css::beans::XPropertySet> const & );
 
 }
 

@@ -21,12 +21,13 @@
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/io/XStream.hpp>
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <rtl/ref.hxx>
 #include <sfx2/objsh.hxx>
 #include <tools/globname.hxx>
 
@@ -94,7 +95,7 @@ void SAL_CALL OwnSubFilterService::cancel()
 
 OUString SAL_CALL OwnSubFilterService::getImplementationName()
 {
-    return OUString("com.sun.star.comp.document.OwnSubFilter");
+    return "com.sun.star.comp.document.OwnSubFilter";
 }
 
 sal_Bool SAL_CALL OwnSubFilterService::supportsService( const OUString& ServiceName )
@@ -104,15 +105,12 @@ sal_Bool SAL_CALL OwnSubFilterService::supportsService( const OUString& ServiceN
 
 uno::Sequence< OUString > SAL_CALL OwnSubFilterService::getSupportedServiceNames()
 {
-    uno::Sequence< OUString > aRet(2);
-    aRet[0] = "com.sun.star.document.OwnSubFilter";
-    aRet[1] = "com.sun.star.comp.document.OwnSubFilter";
-    return aRet;
+    return { "com.sun.star.document.OwnSubFilter", "com.sun.star.comp.document.OwnSubFilter" };
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_document_OwnSubFilter_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &arguments)

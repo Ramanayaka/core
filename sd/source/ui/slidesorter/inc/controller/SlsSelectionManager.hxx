@@ -20,21 +20,16 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSSELECTIONMANAGER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSSELECTIONMANAGER_HXX
 
-#include "model/SlsSharedPageDescriptor.hxx"
-#include "controller/SlsAnimator.hxx"
 #include <sal/types.h>
-#include <tools/gen.hxx>
 #include <tools/link.hxx>
-#include <basegfx/range/b2irectangle.hxx>
 #include <vector>
+#include <memory>
 
 class SdPage;
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter { class SlideSorter; }
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 class SlideSorterController;
 class SelectionObserver;
@@ -134,7 +129,7 @@ private:
     void DeleteSelectedMasterPages (const ::std::vector<SdPage*>& rSelectedMasterPages);
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

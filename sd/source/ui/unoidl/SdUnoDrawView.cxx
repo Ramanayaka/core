@@ -17,23 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "SdUnoDrawView.hxx"
+#include <SdUnoDrawView.hxx>
 
-#include "DrawController.hxx"
-#include "DrawDocShell.hxx"
-#include "DrawViewShell.hxx"
-#include "drawdoc.hxx"
+#include <DrawController.hxx>
+#include <DrawDocShell.hxx>
+#include <DrawViewShell.hxx>
+#include <drawdoc.hxx>
 #include "unolayer.hxx"
-#include "unomodel.hxx"
-#include "unopage.hxx"
-#include "Window.hxx"
-#include "pres.hxx"
+#include <unomodel.hxx>
+#include <Window.hxx>
+#include <pres.hxx>
 
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <svx/svdpagv.hxx>
+#include <svx/unopage.hxx>
 #include <svx/unoshape.hxx>
 #include <sfx2/zoomitem.hxx>
 #include <com/sun/star/drawing/DrawViewMode.hpp>
@@ -92,7 +92,7 @@ void SdUnoDrawView::setLayerMode (bool bLayerMode) throw()
     }
 }
 
-Reference<drawing::XLayer> SdUnoDrawView::getActiveLayer() throw ()
+Reference<drawing::XLayer> SdUnoDrawView::getActiveLayer() const
 {
     Reference<drawing::XLayer> xCurrentLayer;
 
@@ -116,7 +116,7 @@ Reference<drawing::XLayer> SdUnoDrawView::getActiveLayer() throw ()
         // Get the corresponding XLayer object from the implementation
         // object of the layer manager.
         Reference<drawing::XLayerManager> xManager (pModel->getLayerManager(), uno::UNO_QUERY);
-        SdLayerManager* pManager = SdLayerManager::getImplementation (xManager);
+        SdLayerManager* pManager = comphelper::getUnoTunnelImplementation<SdLayerManager> (xManager);
         if (pManager != nullptr)
             xCurrentLayer = pManager->GetLayer (pLayer);
     }
@@ -131,7 +131,7 @@ void SdUnoDrawView::setActiveLayer (const Reference<drawing::XLayer>& rxLayer)
     if ( ! rxLayer.is())
         return;
 
-    SdLayer* pLayer = SdLayer::getImplementation (rxLayer);
+    SdLayer* pLayer = comphelper::getUnoTunnelImplementation<SdLayer> (rxLayer);
     if (pLayer == nullptr)
         return;
 
@@ -159,11 +159,11 @@ sal_Bool SAL_CALL SdUnoDrawView::select( const Any& aSelection )
 
     if(xShape.is())
     {
-        SvxShape* pShape = SvxShape::getImplementation( xShape );
+        SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>( xShape );
         if( pShape && (pShape->GetSdrObject() != nullptr) )
         {
             SdrObject* pObj = pShape->GetSdrObject();
-            pSdrPage = pObj->GetPage();
+            pSdrPage = pObj->getSdrPageFromSdrObject();
             aObjects.push_back( pObj );
         }
         else
@@ -183,7 +183,7 @@ sal_Bool SAL_CALL SdUnoDrawView::select( const Any& aSelection )
                 xShapes->getByIndex(i) >>= xShape;
                 if( xShape.is() )
                 {
-                    SvxShape* pShape = SvxShape::getImplementation(xShape);
+                    SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>(xShape);
                     if( (pShape == nullptr) || (pShape->GetSdrObject() == nullptr) )
                     {
                         bOk = false;
@@ -194,9 +194,9 @@ sal_Bool SAL_CALL SdUnoDrawView::select( const Any& aSelection )
 
                     if( pSdrPage == nullptr )
                     {
-                        pSdrPage = pObj->GetPage();
+                        pSdrPage = pObj->getSdrPageFromSdrObject();
                     }
-                    else if( pSdrPage != pObj->GetPage() )
+                    else if( pSdrPage != pObj->getSdrPageFromSdrObject() )
                     {
                         bOk = false;
                         break;
@@ -224,11 +224,8 @@ sal_Bool SAL_CALL SdUnoDrawView::select( const Any& aSelection )
             // first deselect all
             mrView.UnmarkAllObj( pPV );
 
-            ::std::vector<SdrObject*>::iterator aIter( aObjects.begin() );
-            const ::std::vector<SdrObject*>::iterator aEnd( aObjects.end() );
-            while( aIter != aEnd )
+            for( SdrObject* pObj : aObjects )
             {
-                SdrObject* pObj = (*aIter++);
                 mrView.MarkObj( pObj, pPV );
             }
         }
@@ -254,8 +251,8 @@ Any SAL_CALL SdUnoDrawView::getSelection()
         const size_t nCount = rMarkList.GetMarkCount();
         if( nCount )
         {
-            Reference< drawing::XShapes > xShapes( drawing::ShapeCollection::create(
-                        comphelper::getProcessComponentContext()), UNO_QUERY );
+            Reference< drawing::XShapes > xShapes = drawing::ShapeCollection::create(
+                        comphelper::getProcessComponentContext());
             for( size_t nNum = 0; nNum < nCount; ++nNum)
             {
                 SdrMark *pMark = rMarkList.GetMark(nNum);
@@ -263,15 +260,15 @@ Any SAL_CALL SdUnoDrawView::getSelection()
                     continue;
 
                 SdrObject *pObj = pMark->GetMarkedSdrObj();
-                if(pObj==nullptr || pObj->GetPage() == nullptr)
+                if(pObj==nullptr || pObj->getSdrPageFromSdrObject() == nullptr)
                     continue;
 
-                Reference< drawing::XDrawPage > xPage( pObj->GetPage()->getUnoPage(), UNO_QUERY);
+                Reference< drawing::XDrawPage > xPage( pObj->getSdrPageFromSdrObject()->getUnoPage(), UNO_QUERY);
 
                 if(!xPage.is())
                     continue;
 
-                SvxDrawPage* pDrawPage = SvxDrawPage::getImplementation( xPage );
+                SvxDrawPage* pDrawPage = comphelper::getUnoTunnelImplementation<SvxDrawPage>( xPage );
 
                 if(pDrawPage==nullptr)
                     continue;
@@ -384,7 +381,7 @@ Any SAL_CALL SdUnoDrawView::getFastPropertyValue (
             aValue <<= GetZoom();
             break;
         case DrawController::PROPERTY_ZOOMTYPE:
-            aValue <<= (sal_Int16)css::view::DocumentZoomType::BY_VALUE;
+            aValue <<= sal_Int16(css::view::DocumentZoomType::BY_VALUE);
             break;
         case DrawController::PROPERTY_VIEWOFFSET:
             aValue <<= GetViewOffset();
@@ -406,7 +403,7 @@ Any SAL_CALL SdUnoDrawView::getFastPropertyValue (
 void SAL_CALL SdUnoDrawView::setCurrentPage (
     const Reference< drawing::XDrawPage >& xPage )
 {
-    SvxDrawPage* pDrawPage = SvxDrawPage::getImplementation( xPage );
+    SvxDrawPage* pDrawPage = comphelper::getUnoTunnelImplementation<SvxDrawPage>( xPage );
     SdrPage *pSdrPage = pDrawPage ? pDrawPage->GetSdrPage() : nullptr;
 
     if(pSdrPage)
@@ -438,7 +435,7 @@ sal_Int16 SdUnoDrawView::GetZoom() const
 {
     if (mrDrawViewShell.GetActiveWindow() )
     {
-        return (sal_Int16)mrDrawViewShell.GetActiveWindow()->GetZoom();
+        return static_cast<sal_Int16>(mrDrawViewShell.GetActiveWindow()->GetZoom());
     }
     else
     {
@@ -471,9 +468,7 @@ void SdUnoDrawView::SetViewOffset(const awt::Point& rWinPos )
 
 awt::Point SdUnoDrawView::GetViewOffset() const
 {
-    Point aRet;
-
-    aRet = mrDrawViewShell.GetWinViewPos();
+    Point aRet = mrDrawViewShell.GetWinViewPos();
     aRet -= mrDrawViewShell.GetViewOrigin();
 
     return awt::Point( aRet.X(), aRet.Y() );
@@ -482,35 +477,35 @@ awt::Point SdUnoDrawView::GetViewOffset() const
 void SdUnoDrawView::SetZoomType ( sal_Int16 nType )
 {
     SfxViewFrame* pViewFrame = mrDrawViewShell.GetViewFrame();
-    if( pViewFrame )
+    if( !pViewFrame )
+        return;
+
+    SfxDispatcher* pDispatcher = pViewFrame->GetDispatcher();
+    if( !pDispatcher )
+        return;
+
+    SvxZoomType eZoomType;
+    switch( nType )
     {
-        SfxDispatcher* pDispatcher = pViewFrame->GetDispatcher();
-        if( pDispatcher )
-        {
-            SvxZoomType eZoomType;
-            switch( nType )
-            {
-                case css::view::DocumentZoomType::OPTIMAL:
-                    eZoomType = SvxZoomType::OPTIMAL;
-                    break;
+        case css::view::DocumentZoomType::OPTIMAL:
+            eZoomType = SvxZoomType::OPTIMAL;
+            break;
 
-                case css::view::DocumentZoomType::PAGE_WIDTH:
-                case css::view::DocumentZoomType::PAGE_WIDTH_EXACT:
-                    eZoomType = SvxZoomType::PAGEWIDTH;
-                    break;
+        case css::view::DocumentZoomType::PAGE_WIDTH:
+        case css::view::DocumentZoomType::PAGE_WIDTH_EXACT:
+            eZoomType = SvxZoomType::PAGEWIDTH;
+            break;
 
-                case css::view::DocumentZoomType::ENTIRE_PAGE:
-                    eZoomType = SvxZoomType::WHOLEPAGE;
-                    break;
+        case css::view::DocumentZoomType::ENTIRE_PAGE:
+            eZoomType = SvxZoomType::WHOLEPAGE;
+            break;
 
-                default:
-                    return;
-            }
-            SvxZoomItem aZoomItem( eZoomType );
-            pDispatcher->ExecuteList(SID_ATTR_ZOOM, SfxCallMode::SYNCHRON,
-                    { &aZoomItem });
-        }
+        default:
+            return;
     }
+    SvxZoomItem aZoomItem( eZoomType );
+    pDispatcher->ExecuteList(SID_ATTR_ZOOM, SfxCallMode::SYNCHRON,
+            { &aZoomItem });
 }
 
 SdXImpressDocument* SdUnoDrawView::GetModel() const throw()
@@ -518,7 +513,7 @@ SdXImpressDocument* SdUnoDrawView::GetModel() const throw()
     if (mrView.GetDocSh()!=nullptr)
     {
         Reference<frame::XModel> xModel (mrView.GetDocSh()->GetModel());
-        return SdXImpressDocument::getImplementation(xModel);
+        return comphelper::getUnoTunnelImplementation<SdXImpressDocument>(xModel);
     }
     else
         return nullptr;
@@ -539,7 +534,7 @@ Any SdUnoDrawView::getDrawViewMode() const
 // XServiceInfo
 OUString SAL_CALL SdUnoDrawView::getImplementationName(  )
 {
-    return OUString( "com.sun.star.comp.sd.SdUnoDrawView") ;
+    return "com.sun.star.comp.sd.SdUnoDrawView" ;
 }
 
 sal_Bool SAL_CALL SdUnoDrawView::supportsService( const OUString& ServiceName )
@@ -549,9 +544,7 @@ sal_Bool SAL_CALL SdUnoDrawView::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL SdUnoDrawView::getSupportedServiceNames(  )
 {
-    OUString aSN("com.sun.star.drawing.DrawingDocumentDrawView");
-    uno::Sequence< OUString > aSeq( &aSN, 1 );
-    return aSeq;
+    return { "com.sun.star.drawing.DrawingDocumentDrawView" };
 }
 
 } // end of namespace sd

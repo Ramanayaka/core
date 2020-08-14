@@ -29,7 +29,7 @@ $(eval $(call gb_Library_add_defs,cppcanvas,\
 	-DCPPCANVAS_DLLIMPLEMENTATION \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,cppcanvas,$(SRCDIR)/cppcanvas/inc/pch/precompiled_cppcanvas))
+$(eval $(call gb_Library_set_precompiled_header,cppcanvas,cppcanvas/inc/pch/precompiled_cppcanvas))
 
 $(eval $(call gb_Library_use_external,cppcanvas,boost_headers))
 
@@ -41,6 +41,7 @@ $(eval $(call gb_Library_use_libraries,cppcanvas,\
 	cppuhelper \
 	i18nlangtag \
 	sal \
+	salhelper \
 	svt \
 	tl \
 	vcl \
@@ -49,21 +50,13 @@ $(eval $(call gb_Library_use_libraries,cppcanvas,\
 $(eval $(call gb_Library_add_exception_objects,cppcanvas,\
 	cppcanvas/source/mtfrenderer/bitmapaction \
 	cppcanvas/source/mtfrenderer/cachedprimitivebase \
-	cppcanvas/source/mtfrenderer/emfpbrush \
-	cppcanvas/source/mtfrenderer/emfpcustomlinecap \
-	cppcanvas/source/mtfrenderer/emfpfont \
-	cppcanvas/source/mtfrenderer/emfpimage \
-	cppcanvas/source/mtfrenderer/emfplus \
-	cppcanvas/source/mtfrenderer/emfppen \
-	cppcanvas/source/mtfrenderer/emfppath \
-	cppcanvas/source/mtfrenderer/emfpregion \
 	cppcanvas/source/mtfrenderer/implrenderer \
 	cppcanvas/source/mtfrenderer/lineaction \
 	cppcanvas/source/mtfrenderer/mtftools \
 	cppcanvas/source/mtfrenderer/pointaction \
 	cppcanvas/source/mtfrenderer/polypolyaction \
-	cppcanvas/source/mtfrenderer/emfpstringformat \
 	cppcanvas/source/mtfrenderer/textaction \
+	cppcanvas/source/mtfrenderer/textlineshelper \
 	cppcanvas/source/mtfrenderer/transparencygroupaction \
 	cppcanvas/source/tools/canvasgraphichelper \
 	cppcanvas/source/tools/tools \
@@ -71,9 +64,7 @@ $(eval $(call gb_Library_add_exception_objects,cppcanvas,\
 	cppcanvas/source/wrapper/implbitmap \
 	cppcanvas/source/wrapper/implbitmapcanvas \
 	cppcanvas/source/wrapper/implcanvas \
-	cppcanvas/source/wrapper/implcolor \
 	cppcanvas/source/wrapper/implcustomsprite \
-	cppcanvas/source/wrapper/implfont \
 	cppcanvas/source/wrapper/implpolypolygon \
 	cppcanvas/source/wrapper/implsprite \
 	cppcanvas/source/wrapper/implspritecanvas \

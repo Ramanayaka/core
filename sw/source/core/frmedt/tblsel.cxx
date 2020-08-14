@@ -32,21 +32,19 @@
 #include <docary.hxx>
 #include <pam.hxx>
 #include <ndtxt.hxx>
-#include <ndole.hxx>
 #include <swtable.hxx>
 #include <cntfrm.hxx>
 #include <tabfrm.hxx>
 #include <rowfrm.hxx>
 #include <cellfrm.hxx>
-#include <pagefrm.hxx>
 #include <rootfrm.hxx>
 #include <viscrs.hxx>
 #include <swtblfmt.hxx>
 #include <UndoTable.hxx>
-#include <mvsave.hxx>
 #include <sectfrm.hxx>
 #include <frmtool.hxx>
 #include <calbck.hxx>
+#include <frameformats.hxx>
 #include <deque>
 #include <memory>
 
@@ -64,6 +62,8 @@
 
 #undef      DEL_ONLY_EMPTY_LINES
 #undef      DEL_EMPTY_BOXES_AT_START_AND_END
+
+namespace {
 
 struct CmpLPt
 {
@@ -85,8 +85,11 @@ struct CmpLPt
     long Y() const { return aPos.Y(); }
 };
 
+}
+
 typedef o3tl::sorted_vector<CmpLPt> MergePos;
 
+namespace {
 
 struct Sort_CellFrame
 {
@@ -95,6 +98,8 @@ struct Sort_CellFrame
     explicit Sort_CellFrame( const SwCellFrame& rCFrame )
         : pFrame( &rCFrame ) {}
 };
+
+}
 
 static const SwLayoutFrame *lcl_FindCellFrame( const SwLayoutFrame *pLay )
 {
@@ -227,11 +232,13 @@ void GetTableSel( const SwCursor& rCursor, SwSelBoxes& rBoxes,
             aMkPos = pShCursor->GetMkPos();
         }
         const SwContentNode *pCntNd = rCursor.GetContentNode();
+        std::pair<Point, bool> tmp(aPtPos, true);
         const SwLayoutFrame *pStart = pCntNd ?
-            pCntNd->getLayoutFrame( pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), &aPtPos )->GetUpper() : nullptr;
+            pCntNd->getLayoutFrame(pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, &tmp)->GetUpper() : nullptr;
         pCntNd = rCursor.GetContentNode(false);
+        tmp.first = aMkPos;
         const SwLayoutFrame *pEnd = pCntNd ?
-            pCntNd->getLayoutFrame( pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), &aMkPos )->GetUpper() : nullptr;
+            pCntNd->getLayoutFrame(pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, &tmp)->GetUpper() : nullptr;
         if( pStart && pEnd )
             GetTableSel( pStart, pEnd, rBoxes, nullptr, eSearchType );
     }
@@ -274,7 +281,8 @@ void GetTableSel( const SwLayoutFrame* pStart, const SwLayoutFrame* pEnd,
         {
             SwSelUnion *pUnion = &aUnions[i];
             const SwTabFrame *pTable = pUnion->GetTable();
-            if( !pTable->IsValid() && nLoopMax )
+
+            if( !pTable->isFrameAreaDefinitionValid() && nLoopMax )
             {
                 bTableIsValid = false;
                 break;
@@ -287,19 +295,19 @@ void GetTableSel( const SwLayoutFrame* pStart, const SwLayoutFrame* pEnd,
 
             while( pRow && bTableIsValid )
             {
-                if( !pRow->IsValid() && nLoopMax )
+                if( !pRow->isFrameAreaDefinitionValid() && nLoopMax )
                 {
                     bTableIsValid = false;
                     break;
                 }
 
-                if ( pRow->Frame().IsOver( pUnion->GetUnion() ) )
+                if ( pRow->getFrameArea().IsOver( pUnion->GetUnion() ) )
                 {
                     const SwLayoutFrame *pCell = pRow->FirstCell();
 
-                    while( bTableIsValid && pCell && pRow->IsAnLower( pCell ) )
+                    while (pCell && pRow->IsAnLower(pCell))
                     {
-                        if( !pCell->IsValid() && nLoopMax )
+                        if( !pCell->isFrameAreaDefinitionValid() && nLoopMax )
                         {
                             bTableIsValid = false;
                             break;
@@ -317,10 +325,10 @@ void GetTableSel( const SwLayoutFrame* pStart, const SwLayoutFrame* pEnd,
 
                             if ( pCells )
                             {
-                                const Point aTopLeft( pCell->Frame().TopLeft() );
-                                const Point aTopRight( pCell->Frame().TopRight() );
-                                const Point aBottomLeft( pCell->Frame().BottomLeft() );
-                                const Point aBottomRight( pCell->Frame().BottomRight() );
+                                const Point aTopLeft( pCell->getFrameArea().TopLeft() );
+                                const Point aTopRight( pCell->getFrameArea().TopRight() );
+                                const Point aBottomLeft( pCell->getFrameArea().BottomLeft() );
+                                const Point aBottomRight( pCell->getFrameArea().BottomRight() );
 
                                 if ( aTopLeft.getY() < aCurrentTopLeft.getY() ||
                                      ( aTopLeft.getY() == aCurrentTopLeft.getY() &&
@@ -388,12 +396,17 @@ void GetTableSel( const SwLayoutFrame* pStart, const SwLayoutFrame* pEnd,
         SwTabFrame *pTable = aUnions.front().GetTable();
         while( pTable )
         {
-            if( pTable->IsValid() )
+            if( pTable->isFrameAreaDefinitionValid() )
+            {
                 pTable->InvalidatePos();
+            }
+
             pTable->SetONECalcLowers();
             pTable->Calc(pTable->getRootFrame()->GetCurrShell()->GetOut());
             pTable->SetCompletePaint();
-            if( nullptr == (pTable = pTable->GetFollow()) )
+
+            pTable = pTable->GetFollow();
+            if( nullptr == pTable )
                 break;
         }
 
@@ -433,7 +446,10 @@ bool ChkChartSel( const SwNode& rSttNd, const SwNode& rEndNd )
     if ( !pCNd || pCNd->getLayoutFrame( pCNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout() ) == nullptr )
             return false;
 
-    const SwLayoutFrame *pStart = pCNd->getLayoutFrame( pCNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), &aNullPos )->GetUpper();
+    std::pair<Point, bool> tmp(aNullPos, true);
+    const SwLayoutFrame *const pStart = pCNd->getLayoutFrame(
+            pCNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
+            nullptr, &tmp)->GetUpper();
     OSL_ENSURE( pStart, "without frame nothing works" );
 
     aIdx = rEndNd;
@@ -447,7 +463,9 @@ bool ChkChartSel( const SwNode& rSttNd, const SwNode& rEndNd )
         return false;
     }
 
-    const SwLayoutFrame *pEnd = pCNd->getLayoutFrame( pCNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), &aNullPos )->GetUpper();
+    const SwLayoutFrame *const pEnd = pCNd->getLayoutFrame(
+            pCNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
+            nullptr, &tmp)->GetUpper();
     OSL_ENSURE( pEnd, "without frame nothing works" );
 
     bool bValidChartSel;
@@ -476,7 +494,7 @@ bool ChkChartSel( const SwNode& rSttNd, const SwNode& rEndNd )
             SwRectFnSet aRectFnSet(pTable);
             bool bRTL = pTable->IsRightToLeft();
 
-            if( !pTable->IsValid() && nLoopMax  )
+            if( !pTable->isFrameAreaDefinitionValid() && nLoopMax  )
             {
                 bTableIsValid = false;
                 break;
@@ -491,20 +509,19 @@ bool ChkChartSel( const SwNode& rSttNd, const SwNode& rEndNd )
 
             while( pRow && bTableIsValid && bValidChartSel )
             {
-                if( !pRow->IsValid() && nLoopMax )
+                if( !pRow->isFrameAreaDefinitionValid() && nLoopMax )
                 {
                     bTableIsValid = false;
                     break;
                 }
 
-                if( pRow->Frame().IsOver( pUnion->GetUnion() ) )
+                if( pRow->getFrameArea().IsOver( pUnion->GetUnion() ) )
                 {
                     const SwLayoutFrame *pCell = pRow->FirstCell();
 
-                    while( bValidChartSel && bTableIsValid && pCell &&
-                            pRow->IsAnLower( pCell ) )
+                    while (pCell && pRow->IsAnLower(pCell))
                     {
-                        if( !pCell->IsValid() && nLoopMax  )
+                        if( !pCell->isFrameAreaDefinitionValid() && nLoopMax  )
                         {
                             bTableIsValid = false;
                             break;
@@ -512,7 +529,7 @@ bool ChkChartSel( const SwNode& rSttNd, const SwNode& rEndNd )
 
                         OSL_ENSURE( pCell->IsCellFrame(), "Frame without Cell" );
                         const SwRect& rUnion = pUnion->GetUnion(),
-                                    & rFrameRect = pCell->Frame();
+                                    & rFrameRect = pCell->getFrameArea();
 
                         const long nUnionRight = rUnion.Right();
                         const long nUnionBottom = rUnion.Bottom();
@@ -542,8 +559,7 @@ bool ChkChartSel( const SwNode& rSttNd, const SwNode& rEndNd )
                                 rUnion.Top()    <= nFrameBottom &&
                                 nFrameBottom      <= nUnionBottom+ nYFuzzy )
 
-                                aCellFrames.push_back(
-                                        Sort_CellFrame( *static_cast<const SwCellFrame*>(pCell)) );
+                                aCellFrames.emplace_back( *static_cast<const SwCellFrame*>(pCell) );
                             else
                             {
                                 bValidChartSel = false;
@@ -577,7 +593,7 @@ bool ChkChartSel( const SwNode& rSttNd, const SwNode& rEndNd )
             for( n = 0 ; n < aCellFrames.size(); ++n )
             {
                 const Sort_CellFrame& rCF = aCellFrames[ n ];
-                if( aRectFnSet.GetTop(rCF.pFrame->Frame()) != nYPos )
+                if( aRectFnSet.GetTop(rCF.pFrame->getFrameArea()) != nYPos )
                 {
                     // new row
                     if( n )
@@ -591,20 +607,20 @@ bool ChkChartSel( const SwNode& rSttNd, const SwNode& rEndNd )
                         }
                     }
                     nCellCnt = 1;
-                    nYPos = aRectFnSet.GetTop(rCF.pFrame->Frame());
-                    nHeight = aRectFnSet.GetHeight(rCF.pFrame->Frame());
+                    nYPos = aRectFnSet.GetTop(rCF.pFrame->getFrameArea());
+                    nHeight = aRectFnSet.GetHeight(rCF.pFrame->getFrameArea());
 
                     nXPos = bRTL ?
-                            aRectFnSet.GetLeft(rCF.pFrame->Frame()) :
-                            aRectFnSet.GetRight(rCF.pFrame->Frame());
+                            aRectFnSet.GetLeft(rCF.pFrame->getFrameArea()) :
+                            aRectFnSet.GetRight(rCF.pFrame->getFrameArea());
                 }
                 else if( nXPos == ( bRTL ?
-                                    aRectFnSet.GetRight(rCF.pFrame->Frame()) :
-                                    aRectFnSet.GetLeft(rCF.pFrame->Frame()) ) &&
-                         nHeight == aRectFnSet.GetHeight(rCF.pFrame->Frame()) )
+                                    aRectFnSet.GetRight(rCF.pFrame->getFrameArea()) :
+                                    aRectFnSet.GetLeft(rCF.pFrame->getFrameArea()) ) &&
+                         nHeight == aRectFnSet.GetHeight(rCF.pFrame->getFrameArea()) )
                 {
-                    nXPos += ( bRTL ? (-1) : 1 ) *
-                             aRectFnSet.GetWidth(rCF.pFrame->Frame());
+                    nXPos += ( bRTL ? -1 : 1 ) *
+                             aRectFnSet.GetWidth(rCF.pFrame->getFrameArea());
                     ++nCellCnt;
                 }
                 else
@@ -627,14 +643,20 @@ bool ChkChartSel( const SwNode& rSttNd, const SwNode& rEndNd )
 
         // otherwise quickly "calculate" table layout and start over
         SwTabFrame *pTable = aUnions.front().GetTable();
+
         for( SwSelUnions::size_type i = 0; i < aUnions.size(); ++i )
         {
-            if( pTable->IsValid() )
+            if( pTable->isFrameAreaDefinitionValid() )
+            {
                 pTable->InvalidatePos();
+            }
+
             pTable->SetONECalcLowers();
             pTable->Calc(pTable->getRootFrame()->GetCurrShell()->GetOut());
             pTable->SetCompletePaint();
-            if( nullptr == (pTable = pTable->GetFollow()) )
+
+            pTable = pTable->GetFollow();
+            if( nullptr == pTable )
                 break;
         }
         --nLoopMax;
@@ -650,22 +672,22 @@ bool IsFrameInTableSel( const SwRect& rUnion, const SwFrame* pCell )
     OSL_ENSURE( pCell->IsCellFrame(), "Frame without Gazelle" );
 
     if( pCell->FindTabFrame()->IsVertical() )
-        return   rUnion.Right() >= pCell->Frame().Right() &&
-                 rUnion.Left() <= pCell->Frame().Left() &&
-            (( rUnion.Top() <= pCell->Frame().Top()+20 &&
-               rUnion.Bottom() > pCell->Frame().Top() ) ||
-             ( rUnion.Top() >= pCell->Frame().Top() &&
-               rUnion.Bottom() < pCell->Frame().Bottom() ));
+        return   rUnion.Right() >= pCell->getFrameArea().Right() &&
+                 rUnion.Left() <= pCell->getFrameArea().Left() &&
+            (( rUnion.Top() <= pCell->getFrameArea().Top()+20 &&
+               rUnion.Bottom() > pCell->getFrameArea().Top() ) ||
+             ( rUnion.Top() >= pCell->getFrameArea().Top() &&
+               rUnion.Bottom() < pCell->getFrameArea().Bottom() ));
 
     return
-        rUnion.Top() <= pCell->Frame().Top() &&
-        rUnion.Bottom() >= pCell->Frame().Bottom() &&
+        rUnion.Top() <= pCell->getFrameArea().Top() &&
+        rUnion.Bottom() >= pCell->getFrameArea().Bottom() &&
 
-        (( rUnion.Left() <= pCell->Frame().Left()+20 &&
-           rUnion.Right() > pCell->Frame().Left() ) ||
+        (( rUnion.Left() <= pCell->getFrameArea().Left()+20 &&
+           rUnion.Right() > pCell->getFrameArea().Left() ) ||
 
-         ( rUnion.Left() >= pCell->Frame().Left() &&
-           rUnion.Right() < pCell->Frame().Right() ));
+         ( rUnion.Left() >= pCell->getFrameArea().Left() &&
+           rUnion.Right() < pCell->getFrameArea().Right() ));
 }
 
 bool GetAutoSumSel( const SwCursorShell& rShell, SwCellFrames& rBoxes )
@@ -674,10 +696,12 @@ bool GetAutoSumSel( const SwCursorShell& rShell, SwCellFrames& rBoxes )
     if ( rShell.IsTableMode() )
         pCursor = rShell.m_pTableCursor;
 
-    const SwLayoutFrame *pStart = pCursor->GetContentNode()->getLayoutFrame( rShell.GetLayout(),
-                      &pCursor->GetPtPos() )->GetUpper(),
-                      *pEnd   = pCursor->GetContentNode(false)->getLayoutFrame( rShell.GetLayout(),
-                      &pCursor->GetMkPos() )->GetUpper();
+    std::pair<Point, bool> tmp(pCursor->GetPtPos(), true);
+    const SwLayoutFrame *const pStart = pCursor->GetContentNode()->getLayoutFrame(
+            rShell.GetLayout(), nullptr, &tmp)->GetUpper();
+    tmp.first = pCursor->GetMkPos();
+    const SwLayoutFrame *const pEnd = pCursor->GetContentNode(false)->getLayoutFrame(
+            rShell.GetLayout(), nullptr, &tmp)->GetUpper();
 
     const SwLayoutFrame* pSttCell = pStart;
     while( pSttCell && !pSttCell->IsCellFrame() )
@@ -704,7 +728,7 @@ bool GetAutoSumSel( const SwCursorShell& rShell, SwCellFrames& rBoxes )
 
         while( pRow )
         {
-            if( pRow->Frame().IsOver( pUnion->GetUnion() ) )
+            if( pRow->getFrameArea().IsOver( pUnion->GetUnion() ) )
             {
                 const SwCellFrame* pUpperCell = nullptr;
                 const SwLayoutFrame *pCell = pRow->FirstCell();
@@ -715,9 +739,11 @@ bool GetAutoSumSel( const SwCursorShell& rShell, SwCellFrames& rBoxes )
                     {
                         sal_uInt16 nWhichId = 0;
                         for( size_t n = rBoxes.size(); n; )
-                            if( USHRT_MAX != ( nWhichId = rBoxes[ --n ]
-                                ->GetTabBox()->IsFormulaOrValueBox() ))
+                        {
+                            nWhichId = rBoxes[ --n ]->GetTabBox()->IsFormulaOrValueBox();
+                            if( USHRT_MAX != nWhichId )
                                 break;
+                        }
 
                         // all boxes together, do not check the
                         // row, if a formula or value was found
@@ -773,7 +799,7 @@ bool GetAutoSumSel( const SwCursorShell& rShell, SwCellFrames& rBoxes )
 
             while( pRow )
             {
-                if( pRow->Frame().IsOver( pUnion->GetUnion() ) )
+                if( pRow->getFrameArea().IsOver( pUnion->GetUnion() ) )
                 {
                     const SwLayoutFrame *pCell = pRow->FirstCell();
 
@@ -783,9 +809,12 @@ bool GetAutoSumSel( const SwCursorShell& rShell, SwCellFrames& rBoxes )
                         {
                             sal_uInt16 nWhichId = 0;
                             for( size_t n = rBoxes.size(); n; )
-                                if( USHRT_MAX != ( nWhichId = rBoxes[ --n ]
-                                    ->GetTabBox()->IsFormulaOrValueBox() ))
+                            {
+                                nWhichId = rBoxes[ --n ]
+                                    ->GetTabBox()->IsFormulaOrValueBox();
+                                if( USHRT_MAX != nWhichId )
                                     break;
+                            }
 
                             // all boxes together, do not check the
                             // row if a formula or value was found
@@ -911,11 +940,14 @@ void GetMergeSel( const SwPaM& rPam, SwSelBoxes& rBoxes,
     Point aPt( 0, 0 );
 
     const SwContentNode* pCntNd = rPam.GetContentNode();
-    const SwLayoutFrame *pStart = pCntNd->getLayoutFrame( pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
-                                                        &aPt )->GetUpper();
+    std::pair<Point, bool> const tmp(aPt, true);
+    const SwLayoutFrame *const pStart = pCntNd->getLayoutFrame(
+            pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
+            nullptr, &tmp)->GetUpper();
     pCntNd = rPam.GetContentNode(false);
-    const SwLayoutFrame *pEnd = pCntNd->getLayoutFrame( pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
-                                                        &aPt )->GetUpper();
+    const SwLayoutFrame *const pEnd = pCntNd->getLayoutFrame(
+            pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
+            nullptr, &tmp)->GetUpper();
 
     // First, compute tables and rectangles
     SwSelUnions aUnions;
@@ -947,7 +979,7 @@ void GetMergeSel( const SwPaM& rPam, SwSelBoxes& rBoxes,
 
         while ( pRow )
         {
-            if ( pRow->Frame().IsOver( rUnion ) )
+            if ( pRow->getFrameArea().IsOver( rUnion ) )
             {
                 const SwLayoutFrame *pCell = pRow->FirstCell();
 
@@ -955,25 +987,25 @@ void GetMergeSel( const SwPaM& rPam, SwSelBoxes& rBoxes,
                 {
                     OSL_ENSURE( pCell->IsCellFrame(), "Frame without cell" );
                     // overlap in full width?
-                    if( rUnion.Top() <= pCell->Frame().Top() &&
-                        rUnion.Bottom() >= pCell->Frame().Bottom() )
+                    if( rUnion.Top() <= pCell->getFrameArea().Top() &&
+                        rUnion.Bottom() >= pCell->getFrameArea().Bottom() )
                     {
                         SwTableBox* pBox = const_cast<SwTableBox*>(static_cast<const SwCellFrame*>(pCell)->GetTabBox());
 
                         // only overlap to the right?
-                        if( ( rUnion.Left() - COLFUZZY ) <= pCell->Frame().Left() &&
-                            ( rUnion.Right() - COLFUZZY ) > pCell->Frame().Left() )
+                        if( ( rUnion.Left() - COLFUZZY ) <= pCell->getFrameArea().Left() &&
+                            ( rUnion.Right() - COLFUZZY ) > pCell->getFrameArea().Left() )
                         {
-                            if( ( rUnion.Right() + COLFUZZY ) < pCell->Frame().Right() )
+                            if( ( rUnion.Right() + COLFUZZY ) < pCell->getFrameArea().Right() )
                             {
                                 sal_uInt16 nInsPos = pBox->GetUpper()->GetBoxPos( pBox )+1;
                                 lcl_InsTableBox( pTableNd, pDoc, pBox, nInsPos );
                                 pBox->ClaimFrameFormat();
                                 SwFormatFrameSize aNew(
                                         pBox->GetFrameFormat()->GetFrameSize() );
-                                nWidth = rUnion.Right() - pCell->Frame().Left();
+                                nWidth = rUnion.Right() - pCell->getFrameArea().Left();
                                 nWidth = nWidth * aNew.GetWidth() /
-                                         pCell->Frame().Width();
+                                         pCell->getFrameArea().Width();
                                 long nTmpWidth = aNew.GetWidth() - nWidth;
                                 aNew.SetWidth( nWidth );
                                 pBox->GetFrameFormat()->SetFormatAttr( aNew );
@@ -981,7 +1013,7 @@ void GetMergeSel( const SwPaM& rPam, SwSelBoxes& rBoxes,
                                 pLastBox = pBox;
                                 rBoxes.insert( pBox );
                                 aPosArr.insert(
-                                    CmpLPt( aRectFnSet.GetPos(pCell->Frame()),
+                                    CmpLPt( aRectFnSet.GetPos(pCell->getFrameArea()),
                                     pBox, aRectFnSet.IsVert() ) );
 
                                 pBox = pBox->GetUpper()->GetTabBoxes()[ nInsPos ];
@@ -998,25 +1030,25 @@ void GetMergeSel( const SwPaM& rPam, SwSelBoxes& rBoxes,
                                 pLastBox = pBox;
                                 rBoxes.insert( pBox );
                                 aPosArr.insert(
-                                    CmpLPt( aRectFnSet.GetPos(pCell->Frame()),
+                                    CmpLPt( aRectFnSet.GetPos(pCell->getFrameArea()),
                                     pBox, aRectFnSet.IsVert() ) );
                             }
                         }
                         // overlapping on left- or right-side
-                        else if( ( rUnion.Left() - COLFUZZY ) >= pCell->Frame().Left() &&
-                                ( rUnion.Right() + COLFUZZY ) < pCell->Frame().Right() )
+                        else if( ( rUnion.Left() - COLFUZZY ) >= pCell->getFrameArea().Left() &&
+                                ( rUnion.Right() + COLFUZZY ) < pCell->getFrameArea().Right() )
                         {
                             sal_uInt16 nInsPos = pBox->GetUpper()->GetBoxPos( pBox )+1;
                             lcl_InsTableBox( pTableNd, pDoc, pBox, nInsPos, 2 );
                             pBox->ClaimFrameFormat();
                             SwFormatFrameSize aNew(
                                         pBox->GetFrameFormat()->GetFrameSize() );
-                            long nLeft = rUnion.Left() - pCell->Frame().Left();
+                            long nLeft = rUnion.Left() - pCell->getFrameArea().Left();
                             nLeft = nLeft * aNew.GetWidth() /
-                                    pCell->Frame().Width();
-                            long nRight = pCell->Frame().Right() - rUnion.Right();
+                                    pCell->getFrameArea().Width();
+                            long nRight = pCell->getFrameArea().Right() - rUnion.Right();
                             nRight = nRight * aNew.GetWidth() /
-                                     pCell->Frame().Width();
+                                     pCell->getFrameArea().Width();
                             nWidth = aNew.GetWidth() - nLeft - nRight;
 
                             aNew.SetWidth( nLeft );
@@ -1045,7 +1077,7 @@ void GetMergeSel( const SwPaM& rPam, SwSelBoxes& rBoxes,
                             pLastBox = pBox;
                             rBoxes.insert( pBox );
                             aPosArr.insert(
-                                CmpLPt( aRectFnSet.GetPos(pCell->Frame()),
+                                CmpLPt( aRectFnSet.GetPos(pCell->getFrameArea()),
                                 pBox, aRectFnSet.IsVert() ) );
 
                             pBox = pBox->GetUpper()->GetTabBoxes()[ nInsPos+1 ];
@@ -1057,22 +1089,22 @@ void GetMergeSel( const SwPaM& rPam, SwSelBoxes& rBoxes,
                                 pUndo->AddNewBox( pBox->GetSttIdx() );
                         }
                        // is right side of box part of the selected area?
-                        else if( ( pCell->Frame().Right() - COLFUZZY ) < rUnion.Right() &&
-                                 ( pCell->Frame().Right() - COLFUZZY ) > rUnion.Left() &&
-                                 ( pCell->Frame().Left() + COLFUZZY ) < rUnion.Left() )
+                        else if( ( pCell->getFrameArea().Right() - COLFUZZY ) < rUnion.Right() &&
+                                 ( pCell->getFrameArea().Right() - COLFUZZY ) > rUnion.Left() &&
+                                 ( pCell->getFrameArea().Left() + COLFUZZY ) < rUnion.Left() )
                         {
                             // then we should insert a new box and adjust the widths
                             sal_uInt16 nInsPos = pBox->GetUpper()->GetBoxPos( pBox )+1;
                             lcl_InsTableBox( pTableNd, pDoc, pBox, nInsPos );
 
                             SwFormatFrameSize aNew(pBox->GetFrameFormat()->GetFrameSize() );
-                            long nLeft = rUnion.Left() - pCell->Frame().Left(),
-                                nRight = pCell->Frame().Right() - rUnion.Left();
+                            long nLeft = rUnion.Left() - pCell->getFrameArea().Left(),
+                                nRight = pCell->getFrameArea().Right() - rUnion.Left();
 
                             nLeft = nLeft * aNew.GetWidth() /
-                                    pCell->Frame().Width();
+                                    pCell->getFrameArea().Width();
                             nRight = nRight * aNew.GetWidth() /
-                                    pCell->Frame().Width();
+                                    pCell->getFrameArea().Width();
 
                             aNew.SetWidth( nLeft );
                             pBox->ClaimFrameFormat()->SetFormatAttr( aNew );
@@ -1086,7 +1118,7 @@ void GetMergeSel( const SwPaM& rPam, SwSelBoxes& rBoxes,
                             pLastBox = pBox;
                             rBoxes.insert( pBox );
                             aPosArr.insert( CmpLPt( Point( rUnion.Left(),
-                                                pCell->Frame().Top()), pBox, aRectFnSet.IsVert() ));
+                                                pCell->getFrameArea().Top()), pBox, aRectFnSet.IsVert() ));
 
                             if( pUndo )
                                 pUndo->AddNewBox( pBox->GetSttIdx() );
@@ -1378,7 +1410,7 @@ void GetMergeSel( const SwPaM& rPam, SwSelBoxes& rBoxes,
     }
 
     // set width of the box
-    (*ppMergeBox)->GetFrameFormat()->SetFormatAttr( SwFormatFrameSize( ATT_VAR_SIZE, nWidth, 0 ));
+    (*ppMergeBox)->GetFrameFormat()->SetFormatAttr( SwFormatFrameSize( SwFrameSize::Variable, nWidth, 0 ));
     if( pUndo )
         pUndo->AddNewBox( (*ppMergeBox)->GetSttIdx() );
 }
@@ -1426,11 +1458,14 @@ TableMergeErr CheckMergeSel( const SwPaM& rPam )
 
     Point aPt;
     const SwContentNode* pCntNd = rPam.GetContentNode();
-    const SwLayoutFrame *pStart = pCntNd->getLayoutFrame( pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
-                                                        &aPt )->GetUpper();
+    std::pair<Point, bool> tmp(aPt, true);
+    const SwLayoutFrame *const pStart = pCntNd->getLayoutFrame(
+            pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
+            nullptr, &tmp)->GetUpper();
     pCntNd = rPam.GetContentNode(false);
-    const SwLayoutFrame *pEnd = pCntNd->getLayoutFrame( pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
-                                                    &aPt )->GetUpper();
+    const SwLayoutFrame *const pEnd = pCntNd->getLayoutFrame(
+            pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
+            nullptr, &tmp)->GetUpper();
     GetTableSel( pStart, pEnd, aBoxes, nullptr );
     return CheckMergeSel( aBoxes );
 }
@@ -1491,7 +1526,7 @@ static SwTwips lcl_CalcWish( const SwLayoutFrame *pCell, long nWish,
 
     const bool bRTL = pCell->IsRightToLeft();
     SwTwips nRet = bRTL ?
-        nAct - pCell->Frame().Width() :
+        nAct - pCell->getFrameArea().Width() :
         0;
 
     while ( pTmp )
@@ -1501,7 +1536,7 @@ static SwTwips lcl_CalcWish( const SwLayoutFrame *pCell, long nWish,
             pTmp = static_cast<const SwLayoutFrame*>(pTmp->GetPrev());
             sal_Int64 nTmp = pTmp->GetFormat()->GetFrameSize().GetWidth();
             // multiply in 64-bit to avoid overflow here!
-            nRet += ( bRTL ? ( -1 ) : 1 ) * nTmp * nAct / nWish;
+            nRet += ( bRTL ? -1 : 1 ) * nTmp * nAct / nWish;
         }
         pTmp = pTmp->GetUpper()->GetUpper();
         if ( pTmp && !pTmp->IsCellFrame() )
@@ -1546,7 +1581,7 @@ static void lcl_FindStartEndRow( const SwLayoutFrame *&rpStart,
             {
                 // check if start & end line are the first & last Line of the
                 // box. If not return these cells.
-                // Else the hole line with all Boxes has to be deleted.
+                // Else the whole line with all Boxes has to be deleted.
                 rpStart = aSttArr[ n+1 ];
                 rpEnd = aEndArr[ n+1 ];
                 if( n )
@@ -1609,12 +1644,12 @@ static void lcl_FindStartEndCol( const SwLayoutFrame *&rpStart,
 
     if ( pTab->GetTable()->IsNewModel() )
     {
-        nSX  = aRectFnSet.GetLeft(rpStart->Frame());
-        nSX2 = aRectFnSet.GetRight(rpStart->Frame());
+        nSX  = aRectFnSet.GetLeft(rpStart->getFrameArea());
+        nSX2 = aRectFnSet.GetRight(rpStart->getFrameArea());
     }
     else
     {
-        const SwTwips nPrtWidth = aRectFnSet.GetWidth(pTab->Prt());
+        const SwTwips nPrtWidth = aRectFnSet.GetWidth(pTab->getFramePrintArea());
         nSX = ::lcl_CalcWish( rpStart, nWish, nPrtWidth ) + aRectFnSet.GetPrtLeft(*pTab);
         nSX2 = nSX + (rpStart->GetFormat()->GetFrameSize().GetWidth() * nPrtWidth / nWish);
     }
@@ -1623,10 +1658,10 @@ static void lcl_FindStartEndCol( const SwLayoutFrame *&rpStart,
 
     while ( pTmp &&
             (!pTmp->IsCellFrame() ||
-             ( ( ! bRTL && aRectFnSet.GetLeft(pTmp->Frame()) < nSX &&
-                           aRectFnSet.GetRight(pTmp->Frame())< nSX2 ) ||
-               (   bRTL && aRectFnSet.GetLeft(pTmp->Frame()) > nSX &&
-                           aRectFnSet.GetRight(pTmp->Frame())> nSX2 ) ) ) )
+             ( ( ! bRTL && aRectFnSet.GetLeft(pTmp->getFrameArea()) < nSX &&
+                           aRectFnSet.GetRight(pTmp->getFrameArea())< nSX2 ) ||
+               (   bRTL && aRectFnSet.GetLeft(pTmp->getFrameArea()) > nSX &&
+                           aRectFnSet.GetRight(pTmp->getFrameArea())> nSX2 ) ) ) )
         pTmp = pTmp->GetNextLayoutLeaf();
 
     if ( pTmp )
@@ -1658,15 +1693,15 @@ static void lcl_FindStartEndCol( const SwLayoutFrame *&rpStart,
 
     if ( pTab->GetTable()->IsNewModel() )
     {
-        nEX = aRectFnSet.GetLeft(rpEnd->Frame());
+        nEX = aRectFnSet.GetLeft(rpEnd->getFrameArea());
     }
     else
     {
-        const SwTwips nPrtWidth = aRectFnSet.GetWidth(pTab->Prt());
+        const SwTwips nPrtWidth = aRectFnSet.GetWidth(pTab->getFramePrintArea());
         nEX = ::lcl_CalcWish( rpEnd, nWish, nPrtWidth ) + aRectFnSet.GetPrtLeft(*pTab);
     }
 
-    const SwContentFrame* pLastContent = pTab->FindLastContent();
+    SwFrame const*const pLastContent = pTab->FindLastContentOrTable();
     rpEnd = pLastContent ? pLastContent->GetUpper() : nullptr;
     // --> Made code robust. If pTab does not have a lower,
     // we would crash here.
@@ -1675,8 +1710,8 @@ static void lcl_FindStartEndCol( const SwLayoutFrame *&rpStart,
     while( !rpEnd->IsCellFrame() )
         rpEnd = rpEnd->GetUpper();
 
-    while ( (   bRTL && aRectFnSet.GetLeft(rpEnd->Frame()) < nEX ) ||
-            ( ! bRTL && aRectFnSet.GetLeft(rpEnd->Frame()) > nEX ) )
+    while ( (   bRTL && aRectFnSet.GetLeft(rpEnd->getFrameArea()) < nEX ) ||
+            ( ! bRTL && aRectFnSet.GetLeft(rpEnd->getFrameArea()) > nEX ) )
     {
         const SwLayoutFrame* pTmpLeaf = rpEnd->GetPrevLayoutLeaf();
         if( !pTmpLeaf || !pTab->IsAnLower( pTmpLeaf ) )
@@ -1691,12 +1726,11 @@ static void lcl_FindStartEndCol( const SwLayoutFrame *&rpStart,
     // If necessary we should search backwards again
     while ( rpStart->GetFormat()->GetProtect().IsContentProtected() )
     {
-        const SwLayoutFrame *pTmpLeaf = rpStart;
-        pTmpLeaf = pTmpLeaf->GetNextLayoutLeaf();
-        while ( pTmpLeaf && aRectFnSet.GetLeft(pTmpLeaf->Frame()) > nEX ) // first skip line
+        const SwLayoutFrame *pTmpLeaf = rpStart->GetNextLayoutLeaf();
+        while ( pTmpLeaf && aRectFnSet.GetLeft(pTmpLeaf->getFrameArea()) > nEX ) // first skip line
             pTmpLeaf = pTmpLeaf->GetNextLayoutLeaf();
-        while ( pTmpLeaf && aRectFnSet.GetLeft(pTmpLeaf->Frame()) < nSX &&
-                            aRectFnSet.GetRight(pTmpLeaf->Frame())< nSX2 )
+        while ( pTmpLeaf && aRectFnSet.GetLeft(pTmpLeaf->getFrameArea()) < nSX &&
+                            aRectFnSet.GetRight(pTmpLeaf->getFrameArea())< nSX2 )
             pTmpLeaf = pTmpLeaf->GetNextLayoutLeaf();
         const SwTabFrame *pTmpTab = rpStart->FindTabFrame();
         if ( !pTmpTab->IsAnLower( pTmpLeaf ) )
@@ -1704,8 +1738,8 @@ static void lcl_FindStartEndCol( const SwLayoutFrame *&rpStart,
             pTmpTab = pTmpTab->GetFollow();
             rpStart = pTmpTab->FirstCell();
             while ( rpStart &&
-                    aRectFnSet.GetLeft(rpStart->Frame()) < nSX &&
-                    aRectFnSet.GetRight(rpStart->Frame())< nSX2 )
+                    aRectFnSet.GetLeft(rpStart->getFrameArea()) < nSX &&
+                    aRectFnSet.GetRight(rpStart->getFrameArea())< nSX2 )
                 rpStart = rpStart->GetNextLayoutLeaf();
         }
         else
@@ -1713,21 +1747,20 @@ static void lcl_FindStartEndCol( const SwLayoutFrame *&rpStart,
     }
     while ( rpEnd->GetFormat()->GetProtect().IsContentProtected() )
     {
-        const SwLayoutFrame *pTmpLeaf = rpEnd;
-        pTmpLeaf = pTmpLeaf->GetPrevLayoutLeaf();
-        while ( pTmpLeaf && aRectFnSet.GetLeft(pTmpLeaf->Frame()) < nEX )//erstmal die Zeile ueberspr.
+        const SwLayoutFrame *pTmpLeaf = rpEnd->GetPrevLayoutLeaf();
+        while ( pTmpLeaf && aRectFnSet.GetLeft(pTmpLeaf->getFrameArea()) < nEX ) // skip the line for now
             pTmpLeaf = pTmpLeaf->GetPrevLayoutLeaf();
-        while ( pTmpLeaf && aRectFnSet.GetLeft(pTmpLeaf->Frame()) > nEX )
+        while ( pTmpLeaf && aRectFnSet.GetLeft(pTmpLeaf->getFrameArea()) > nEX )
             pTmpLeaf = pTmpLeaf->GetPrevLayoutLeaf();
         const SwTabFrame *pTmpTab = rpEnd->FindTabFrame();
         if ( !pTmpLeaf || !pTmpTab->IsAnLower( pTmpLeaf ) )
         {
             pTmpTab = static_cast<const SwTabFrame*>(pTmpTab->FindPrev());
             OSL_ENSURE( pTmpTab->IsTabFrame(), "Predecessor of Follow not Master.");
-            rpEnd = pTmpTab->FindLastContent()->GetUpper();
+            rpEnd = pTmpTab->FindLastContentOrTable()->GetUpper();
             while( !rpEnd->IsCellFrame() )
                 rpEnd = rpEnd->GetUpper();
-            while ( aRectFnSet.GetLeft(rpEnd->Frame()) > nEX )
+            while ( aRectFnSet.GetLeft(rpEnd->getFrameArea()) > nEX )
                 rpEnd = rpEnd->GetPrevLayoutLeaf();
         }
         else
@@ -1766,12 +1799,12 @@ void MakeSelUnions( SwSelUnions& rUnions, const SwLayoutFrame *pStart,
     else
     {
         SwRectFnSet aRectFnSet(pTable);
-        long nSttTop = aRectFnSet.GetTop(pStart->Frame());
-        long nEndTop = aRectFnSet.GetTop(pEnd->Frame());
+        long nSttTop = aRectFnSet.GetTop(pStart->getFrameArea());
+        long nEndTop = aRectFnSet.GetTop(pEnd->getFrameArea());
         if( nSttTop == nEndTop )
         {
-            if( aRectFnSet.GetLeft(pStart->Frame()) >
-                aRectFnSet.GetLeft(pEnd->Frame()) )
+            if( aRectFnSet.GetLeft(pStart->getFrameArea()) >
+                aRectFnSet.GetLeft(pEnd->getFrameArea()) )
                 bExchange = true;
         }
         else if( aRectFnSet.IsVert() == ( nSttTop < nEndTop ) )
@@ -1806,25 +1839,25 @@ void MakeSelUnions( SwSelUnions& rUnions, const SwLayoutFrame *pStart,
     {
         SwRectFnSet aRectFnSet(pTable);
         const long nOfst = aRectFnSet.GetPrtLeft(*pTable);
-        const long nPrtWidth = aRectFnSet.GetWidth(pTable->Prt());
+        const long nPrtWidth = aRectFnSet.GetWidth(pTable->getFramePrintArea());
         long nSt1 = ::lcl_CalcWish( pStart, nWish, nPrtWidth ) + nOfst;
         long nEd1 = ::lcl_CalcWish( pEnd,   nWish, nPrtWidth ) + nOfst;
 
         if ( nSt1 <= nEd1 )
-            nEd1 += (long)((nEdSz * nPrtWidth) / nWish) - 1;
+            nEd1 += static_cast<long>((nEdSz * nPrtWidth) / nWish) - 1;
         else
-            nSt1 += (long)((nStSz * nPrtWidth) / nWish) - 1;
+            nSt1 += static_cast<long>((nStSz * nPrtWidth) / nWish) - 1;
 
         long nSt2;
         long nEd2;
         if( pTable->IsAnLower( pStart ) )
-            nSt2 = aRectFnSet.GetTop(pStart->Frame());
+            nSt2 = aRectFnSet.GetTop(pStart->getFrameArea());
         else
-            nSt2 = aRectFnSet.GetTop(pTable->Frame());
+            nSt2 = aRectFnSet.GetTop(pTable->getFrameArea());
         if( pTable->IsAnLower( pEnd ) )
-            nEd2 = aRectFnSet.GetBottom(pEnd->Frame());
+            nEd2 = aRectFnSet.GetBottom(pEnd->getFrameArea());
         else
-            nEd2 = aRectFnSet.GetBottom(pTable->Frame());
+            nEd2 = aRectFnSet.GetBottom(pTable->getFrameArea());
         Point aSt, aEd;
         if( nSt1 > nEd1 )
         {
@@ -1863,7 +1896,7 @@ void MakeSelUnions( SwSelUnions& rUnions, const SwLayoutFrame *pStart,
                                       pTable->GetFirstNonHeadlineRow() :
                                       static_cast<const SwLayoutFrame*>(pTable->Lower());
 
-            while ( pRow && !pRow->Frame().IsOver( aUnion ) )
+            while ( pRow && !pRow->getFrameArea().IsOver( aUnion ) )
                 pRow = static_cast<const SwLayoutFrame*>(pRow->GetNext());
 
             // #i31976#
@@ -1900,7 +1933,7 @@ void MakeSelUnions( SwSelUnions& rUnions, const SwLayoutFrame *pStart,
                     pFirst = ::lcl_FindNextCellFrame( pFirst );
             }
             const SwLayoutFrame* pLast = nullptr;
-            const SwFrame* pLastContent = pTable->FindLastContent();
+            SwFrame const*const pLastContent = pTable->FindLastContentOrTable();
             if ( pLastContent )
                 pLast = ::lcl_FindCellFrame( pLastContent->GetUpper() );
 
@@ -1909,8 +1942,8 @@ void MakeSelUnions( SwSelUnions& rUnions, const SwLayoutFrame *pStart,
 
             if ( pFirst && pLast ) //Robust
             {
-                aUnion = pFirst->Frame();
-                aUnion.Union( pLast->Frame() );
+                aUnion = pFirst->getFrameArea();
+                aUnion.Union( pLast->getFrameArea() );
             }
             else
                 aUnion.Width( 0 );
@@ -1918,7 +1951,7 @@ void MakeSelUnions( SwSelUnions& rUnions, const SwLayoutFrame *pStart,
 
         if( aRectFnSet.GetWidth(aUnion) )
         {
-            rUnions.push_back(SwSelUnion(aUnion, const_cast<SwTabFrame*>(pTable)));
+            rUnions.emplace_back(aUnion, const_cast<SwTabFrame*>(pTable));
         }
 
         pTable = pTable->GetFollow();
@@ -1954,11 +1987,15 @@ bool CheckSplitCells( const SwCursor& rCursor, sal_uInt16 nDiv,
     }
 
     const SwContentNode* pCntNd = rCursor.GetContentNode();
-    const SwLayoutFrame *pStart = pCntNd->getLayoutFrame( pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
-                                                        &aPtPos )->GetUpper();
+    std::pair<Point, bool> tmp(aPtPos, true);
+    const SwLayoutFrame *const pStart = pCntNd->getLayoutFrame(
+            pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
+            nullptr, &tmp)->GetUpper();
     pCntNd = rCursor.GetContentNode(false);
-    const SwLayoutFrame *pEnd = pCntNd->getLayoutFrame( pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
-                                &aMkPos )->GetUpper();
+    tmp.first = aMkPos;
+    const SwLayoutFrame *const pEnd = pCntNd->getLayoutFrame(
+            pCntNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(),
+            nullptr, &tmp)->GetUpper();
 
     SwRectFnSet aRectFnSet(pStart->GetUpper());
 
@@ -1979,7 +2016,7 @@ bool CheckSplitCells( const SwCursor& rCursor, sal_uInt16 nDiv,
 
         while ( pRow )
         {
-            if ( pRow->Frame().IsOver( rSelUnion.GetUnion() ) )
+            if ( pRow->getFrameArea().IsOver( rSelUnion.GetUnion() ) )
             {
                 const SwLayoutFrame *pCell = pRow->FirstCell();
 
@@ -1988,7 +2025,7 @@ bool CheckSplitCells( const SwCursor& rCursor, sal_uInt16 nDiv,
                     OSL_ENSURE( pCell->IsCellFrame(), "Frame without cell" );
                     if( ::IsFrameInTableSel( rSelUnion.GetUnion(), pCell ) )
                     {
-                        if( aRectFnSet.GetWidth(pCell->Frame()) < nMinValue )
+                        if( aRectFnSet.GetWidth(pCell->getFrameArea()) < nMinValue )
                             return false;
                     }
 
@@ -2012,7 +2049,7 @@ bool CheckSplitCells( const SwCursor& rCursor, sal_uInt16 nDiv,
 // into a new structure, retaining the table structure
 // new: SS for targeted erasing/restoring of the layout
 
-static void lcl_InsertRow( SwTableLine &rLine, SwLayoutFrame *pUpper, SwFrame *pSibling )
+static void lcl_InsertRow( SwTableLine const &rLine, SwLayoutFrame *pUpper, SwFrame *pSibling )
 {
     SwRowFrame *pRow = new SwRowFrame( rLine, pUpper );
     if ( pUpper->IsTabFrame() && static_cast<SwTabFrame*>(pUpper)->IsFollow() )
@@ -2033,7 +2070,7 @@ static void lcl_InsertRow( SwTableLine &rLine, SwLayoutFrame *pUpper, SwFrame *p
 static void FndBoxCopyCol( SwTableBox* pBox, FndPara* pFndPara )
 {
     std::unique_ptr<FndBox_> pFndBox(new FndBox_( pBox, pFndPara->pFndLine ));
-    if( pBox->GetTabLines().size() )
+    if( !pBox->GetTabLines().empty() )
     {
         FndPara aPara( *pFndPara, pFndBox.get() );
         ForEach_FndLineCopyCol( pFndBox->GetBox()->GetTabLines(), &aPara );
@@ -2056,10 +2093,9 @@ static void FndLineCopyCol( SwTableLine* pLine, FndPara* pFndPara )
 {
     std::unique_ptr<FndLine_> pFndLine(new FndLine_(pLine, pFndPara->pFndBox));
     FndPara aPara(*pFndPara, pFndLine.get());
-    for( SwTableBoxes::iterator it = pFndLine->GetLine()->GetTabBoxes().begin();
-             it != pFndLine->GetLine()->GetTabBoxes().end(); ++it)
-        FndBoxCopyCol(*it, &aPara );
-    if( pFndLine->GetBoxes().size() )
+    for( auto& rpBox : pFndLine->GetLine()->GetTabBoxes() )
+        FndBoxCopyCol(rpBox, &aPara );
+    if( !pFndLine->GetBoxes().empty() )
     {
         pFndPara->pFndBox->GetLines().push_back( std::move(pFndLine) );
     }
@@ -2485,24 +2521,24 @@ void FndBox_::MakeNewFrames( SwTable &rTable, const sal_uInt16 nNumber,
     }
 
     // If necessary headlines should be processed. In order to
-    // not to fragment good code, we interate once more.
+    // not to fragment good code, we iterate once more.
     const sal_uInt16 nRowsToRepeat = rTable.GetRowsToRepeat();
-    if ( nRowsToRepeat > 0 &&
+    if ( !(nRowsToRepeat > 0 &&
          ( ( !bBehind && ( nBfPos == USHRT_MAX || nBfPos + 1 < nRowsToRepeat ) ) ||
-           (  bBehind && ( ( nBfPos == USHRT_MAX && nRowsToRepeat > 1 ) || nBfPos + 2 < nRowsToRepeat ) ) ) )
-    {
-        for ( pTable = aTabIter.First(); pTable; pTable = aTabIter.Next() )
-        {
-            if ( pTable->Lower() )
-            {
-                if ( pTable->IsFollow() )
-                {
-                    lcl_UpdateRepeatedHeadlines( *pTable, true );
-                }
+           (  bBehind && ( ( nBfPos == USHRT_MAX && nRowsToRepeat > 1 ) || nBfPos + 2 < nRowsToRepeat ) ) )) )
+        return;
 
-                OSL_ENSURE( static_cast<SwRowFrame*>(pTable->Lower())->GetTabLine() ==
-                        rTable.GetTabLines()[0], "MakeNewFrames: Table corruption!" );
+    for ( pTable = aTabIter.First(); pTable; pTable = aTabIter.Next() )
+    {
+        if ( pTable->Lower() )
+        {
+            if ( pTable->IsFollow() )
+            {
+                lcl_UpdateRepeatedHeadlines( *pTable, true );
             }
+
+            OSL_ENSURE( static_cast<SwRowFrame*>(pTable->Lower())->GetTabLine() ==
+                    rTable.GetTabLines()[0], "MakeNewFrames: Table corruption!" );
         }
     }
 }
@@ -2511,7 +2547,7 @@ bool FndBox_::AreLinesToRestore( const SwTable &rTable ) const
 {
     // Should we call MakeFrames here?
 
-    if ( !m_pLineBefore && !m_pLineBehind && rTable.GetTabLines().size() )
+    if ( !m_pLineBefore && !m_pLineBehind && !rTable.GetTabLines().empty() )
         return true;
 
     sal_uInt16 nBfPos;

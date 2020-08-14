@@ -17,14 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "segmenttree.hxx"
-
+#include <segmenttree.hxx>
+#include <o3tl/safeint.hxx>
 #include <mdds/flat_segment_tree.hpp>
-
+#include <sal/log.hxx>
 #include <algorithm>
 #include <limits>
+#include <address.hxx>
 
 using ::std::numeric_limits;
+
+namespace {
 
 template<typename ValueType_, typename ExtValueType_ = ValueType_>
 class ScFlatSegmentsImpl
@@ -52,7 +55,7 @@ public:
     void removeSegment(SCCOLROW nPos1, SCCOLROW nPos2);
     void insertSegment(SCCOLROW nPos, SCCOLROW nSize, bool bSkipStartBoundary);
 
-    SCROW findLastTrue(ValueType nValue) const;
+    SCCOLROW findLastTrue(ValueType nValue) const;
 
     // range iteration
     bool getFirst(RangeData& rData);
@@ -70,6 +73,8 @@ private:
 
     bool mbTreeSearchEnabled:1;
 };
+
+}
 
 template<typename ValueType_, typename ExtValueType_>
 ScFlatSegmentsImpl<ValueType_, ExtValueType_>::ScFlatSegmentsImpl(SCCOLROW nMax, ValueType nDefault) :
@@ -105,7 +110,9 @@ void ScFlatSegmentsImpl<ValueType_, ExtValueType_>::setValueIf(SCCOLROW nPos1, S
         getRangeData(nCurrentStartRow, aRangeData);
         if (rPredicate(aRangeData.mnValue))
         {
-            setValue(nPos1, std::min<SCCOLROW>(nPos2, aRangeData.mnPos2), nValue);
+            // set value from current iteration point on, til end of range.
+            // Note that aRangeData may well contain much lower values for nPos1
+            setValue(nCurrentStartRow, std::min<SCCOLROW>(nPos2, aRangeData.mnPos2), nValue);
         }
 
         // even if nPos2 is bigger than nPos2 this should terminate the loop
@@ -144,7 +151,13 @@ ScFlatSegmentsImpl<ValueType_, ExtValueType_>::getSumValue(SCCOLROW nPos1, SCCOL
     SCROW nEndPos = aData.mnPos2;
     while (nEndPos <= nPos2)
     {
-        nValue += aData.mnValue * (nEndPos - nCurPos + 1);
+        sal_uInt32 nRes;
+        if (o3tl::checked_multiply<sal_uInt32>(aData.mnValue, nEndPos - nCurPos + 1, nRes))
+        {
+            SAL_WARN("sc.core", "row height overflow");
+            nRes = SAL_MAX_INT32;
+        }
+        nValue = o3tl::saturating_add(nValue, nRes);
         nCurPos = nEndPos + 1;
         if (!getRangeData(nCurPos, aData))
             break;
@@ -154,7 +167,13 @@ ScFlatSegmentsImpl<ValueType_, ExtValueType_>::getSumValue(SCCOLROW nPos1, SCCOL
     if (nCurPos <= nPos2)
     {
         nEndPos = ::std::min(nEndPos, nPos2);
-        nValue += aData.mnValue * (nEndPos - nCurPos + 1);
+        sal_uInt32 nRes;
+        if (o3tl::checked_multiply<sal_uInt32>(aData.mnValue, nEndPos - nCurPos + 1, nRes))
+        {
+            SAL_WARN("sc.core", "row height overflow");
+            nRes = SAL_MAX_INT32;
+        }
+        nValue = o3tl::saturating_add(nValue, nRes);
     }
     return nValue;
 }
@@ -305,7 +324,7 @@ bool ScFlatBoolRowSegments::ForwardIterator::getValue(SCROW nPos, bool& rVal)
     return true;
 }
 
-ScFlatBoolRowSegments::RangeIterator::RangeIterator(ScFlatBoolRowSegments& rSegs) :
+ScFlatBoolRowSegments::RangeIterator::RangeIterator(ScFlatBoolRowSegments const & rSegs) :
     mrSegs(rSegs)
 {
 }
@@ -334,8 +353,8 @@ bool ScFlatBoolRowSegments::RangeIterator::getNext(RangeData& rRange)
     return true;
 }
 
-ScFlatBoolRowSegments::ScFlatBoolRowSegments() :
-    mpImpl(new ScFlatBoolSegmentsImpl(static_cast<SCCOLROW>(MAXROW)))
+ScFlatBoolRowSegments::ScFlatBoolRowSegments(SCROW nMaxRow) :
+    mpImpl(new ScFlatBoolSegmentsImpl(nMaxRow))
 {
 }
 
@@ -397,8 +416,29 @@ SCROW ScFlatBoolRowSegments::findLastTrue() const
     return mpImpl->findLastTrue(false);
 }
 
-ScFlatBoolColSegments::ScFlatBoolColSegments() :
-    mpImpl(new ScFlatBoolSegmentsImpl(static_cast<SCCOLROW>(MAXCOL)))
+OString ScFlatBoolRowSegments::dumpAsString()
+{
+    OString aOutput;
+    OString aSegment;
+    RangeData aRange;
+    SCROW nRow = 0;
+    while (getRangeData(nRow, aRange))
+    {
+        if (!nRow)
+            aSegment = (aRange.mbValue ? OStringLiteral("1") : OStringLiteral("0")) + OStringLiteral(":");
+        else
+            aSegment.clear();
+
+        aSegment += OString::number(aRange.mnRow2) + " ";
+        aOutput += aSegment;
+        nRow = aRange.mnRow2 + 1;
+    }
+
+    return aOutput;
+}
+
+ScFlatBoolColSegments::ScFlatBoolColSegments(SCCOL nMaxCol) :
+    mpImpl(new ScFlatBoolSegmentsImpl(nMaxCol))
 {
 }
 
@@ -443,6 +483,27 @@ void ScFlatBoolColSegments::insertSegment(SCCOL nCol, SCCOL nSize)
     mpImpl->insertSegment(static_cast<SCCOLROW>(nCol), static_cast<SCCOLROW>(nSize), true/*bSkipStartBoundary*/);
 }
 
+OString ScFlatBoolColSegments::dumpAsString()
+{
+    OString aOutput;
+    OString aSegment;
+    RangeData aRange;
+    SCCOL nCol = 0;
+    while (getRangeData(nCol, aRange))
+    {
+        if (!nCol)
+            aSegment = (aRange.mbValue ? OStringLiteral("1") : OStringLiteral("0")) + OStringLiteral(":");
+        else
+            aSegment.clear();
+
+        aSegment += OString::number(aRange.mnCol2) + " ";
+        aOutput += aSegment;
+        nCol = aRange.mnCol2 + 1;
+    }
+
+    return aOutput;
+}
+
 ScFlatUInt16RowSegments::ForwardIterator::ForwardIterator(ScFlatUInt16RowSegments& rSegs) :
     mrSegs(rSegs), mnCurPos(0), mnLastPos(-1), mnCurValue(0)
 {
@@ -469,8 +530,8 @@ bool ScFlatUInt16RowSegments::ForwardIterator::getValue(SCROW nPos, sal_uInt16& 
     return true;
 }
 
-ScFlatUInt16RowSegments::ScFlatUInt16RowSegments(sal_uInt16 nDefault) :
-    mpImpl(new ScFlatUInt16SegmentsImpl(static_cast<SCCOLROW>(MAXROW), nDefault))
+ScFlatUInt16RowSegments::ScFlatUInt16RowSegments(SCROW nMaxRow, sal_uInt16 nDefault) :
+    mpImpl(new ScFlatUInt16SegmentsImpl(nMaxRow, nDefault))
 {
 }
 
@@ -533,6 +594,23 @@ void ScFlatUInt16RowSegments::enableTreeSearch(bool bEnable)
 void ScFlatUInt16RowSegments::setValueIf(SCROW nRow1, SCROW nRow2, sal_uInt16 nValue, const std::function<bool(sal_uInt16)>& rPredicate)
 {
     mpImpl->setValueIf(static_cast<SCCOLROW>(nRow1), static_cast<SCCOLROW>(nRow2), nValue, rPredicate);
+}
+
+OString ScFlatUInt16RowSegments::dumpAsString()
+{
+    OString aOutput;
+    OString aSegment;
+    RangeData aRange;
+    SCROW nRow = 0;
+    while (getRangeData(nRow, aRange))
+    {
+        aSegment = OString::number(aRange.mnValue) + ":" +
+            OString::number(aRange.mnRow2) + " ";
+        aOutput += aSegment;
+        nRow = aRange.mnRow2 + 1;
+    }
+
+    return aOutput;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

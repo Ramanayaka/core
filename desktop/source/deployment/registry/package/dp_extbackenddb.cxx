@@ -18,13 +18,9 @@
  */
 
 
-#include <rtl/bootstrap.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <com/sun/star/deployment/DeploymentException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/xml/dom/XDocumentBuilder.hpp>
-#include <com/sun/star/xml/xpath/XXPathAPI.hpp>
-#include "dp_misc.h"
 
 #include "dp_extbackenddb.hxx"
 
@@ -36,9 +32,7 @@ using namespace ::com::sun::star::uno;
 #define ROOT_ELEMENT_NAME "extension-backend-db"
 #define KEY_ELEMENT_NAME "extension"
 
-namespace dp_registry {
-namespace backend {
-namespace bundle {
+namespace dp_registry::backend::bundle {
 
 ExtensionBackendDb::ExtensionBackendDb(
     Reference<XComponentContext> const &  xContext,
@@ -49,22 +43,22 @@ ExtensionBackendDb::ExtensionBackendDb(
 
 OUString ExtensionBackendDb::getDbNSName()
 {
-    return OUString(EXTENSION_REG_NS);
+    return EXTENSION_REG_NS;
 }
 
 OUString ExtensionBackendDb::getNSPrefix()
 {
-    return OUString(NS_PREFIX);
+    return NS_PREFIX;
 }
 
 OUString ExtensionBackendDb::getRootElementName()
 {
-    return OUString(ROOT_ELEMENT_NAME);
+    return ROOT_ELEMENT_NAME;
 }
 
 OUString ExtensionBackendDb::getKeyElementName()
 {
-    return OUString(KEY_ELEMENT_NAME);
+    return KEY_ELEMENT_NAME;
 }
 
 void ExtensionBackendDb::addEntry(OUString const & url, Data const & data)
@@ -112,8 +106,6 @@ ExtensionBackendDb::Data ExtensionBackendDb::getEntry(OUString const & url)
     }
 }
 
-} // namespace bundle
-} // namespace backend
-} // namespace dp_registry
+} // namespace dp_registry::backend::bundle
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -15,7 +15,7 @@
 
 #include <formula/formuladllapi.h>
 #include <formula/token.hxx>
-#include <rtl/ustring.hxx>
+#include <rtl/ustring.h>
 
 namespace formula {
 
@@ -59,14 +59,13 @@ struct FORMULA_DLLPUBLIC VectorRefArray
  * This token represents a single cell reference in a vectorized formula
  * calculation context.
  */
-class FORMULA_DLLPUBLIC SingleVectorRefToken : public FormulaToken
+class FORMULA_DLLPUBLIC SingleVectorRefToken final : public FormulaToken
 {
     VectorRefArray maArray;
-    size_t mnRequestedLength;
     size_t mnArrayLength;
 
 public:
-    SingleVectorRefToken( const VectorRefArray& rArray, size_t nReqLength, size_t nArrayLength );
+    SingleVectorRefToken( const VectorRefArray& rArray, size_t nArrayLength );
 
     virtual FormulaToken* Clone() const override;
 
@@ -78,11 +77,10 @@ public:
  * This token represents a range reference in a vectorized formula
  * calculation context.
  */
-class FORMULA_DLLPUBLIC DoubleVectorRefToken : public FormulaToken
+class FORMULA_DLLPUBLIC DoubleVectorRefToken final : public FormulaToken
 {
     std::vector<VectorRefArray> maArrays;
 
-    size_t mnRequestedLength; /// requested length of all arrays which include trailing empty region.
     size_t mnArrayLength; /// length of all arrays which does not include trailing empty region.
     size_t mnRefRowSize; /// original reference row size. The row size may
                          /// change as it goes down the array if either the
@@ -93,7 +91,7 @@ class FORMULA_DLLPUBLIC DoubleVectorRefToken : public FormulaToken
 
 public:
     DoubleVectorRefToken(
-        const std::vector<VectorRefArray>& rArrays, size_t nReqLength, size_t nArrayLength,
+        const std::vector<VectorRefArray>& rArrays, size_t nArrayLength,
         size_t nRefRowSize, bool bStartFixed, bool bEndFixed );
 
     virtual FormulaToken* Clone() const override;

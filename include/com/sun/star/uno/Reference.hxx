@@ -19,16 +19,16 @@
 #ifndef INCLUDED_COM_SUN_STAR_UNO_REFERENCE_HXX
 #define INCLUDED_COM_SUN_STAR_UNO_REFERENCE_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cstddef>
 #include <ostream>
 
-#include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
-#include <com/sun/star/uno/Any.hxx>
-#include <cppu/cppudllapi.h>
+#include "com/sun/star/uno/Reference.h"
+#include "com/sun/star/uno/RuntimeException.hpp"
+#include "com/sun/star/uno/XInterface.hpp"
+#include "com/sun/star/uno/Any.hxx"
+#include "cppu/cppudllapi.h"
 
 extern "C" CPPU_DLLPUBLIC rtl_uString * SAL_CALL cppu_unsatisfied_iquery_msg(
     typelib_TypeDescriptionReference * pType )
@@ -126,23 +126,25 @@ inline Reference< interface_type >::Reference( const Reference< interface_type >
 
 #if defined LIBO_INTERNAL_ONLY
 template< class interface_type >
-inline Reference< interface_type >::Reference( Reference< interface_type > && rRef )
+inline Reference< interface_type >::Reference( Reference< interface_type > && rRef ) noexcept
 {
     _pInterface = rRef._pInterface;
     rRef._pInterface = nullptr;
 }
-#endif
 
 template< class interface_type > template< class derived_type >
 inline Reference< interface_type >::Reference(
     const Reference< derived_type > & rRef,
-    typename detail::UpCast< interface_type, derived_type >::t )
+    std::enable_if_t<
+        std::is_base_of_v<interface_type, derived_type>
+        && !std::is_same_v<interface_type, XInterface>, void *>)
 {
     interface_type * p = rRef.get();
     _pInterface = p;
     if (_pInterface)
         _pInterface->acquire();
 }
+#endif
 
 template< class interface_type >
 inline Reference< interface_type >::Reference( interface_type * pInterface )
@@ -353,7 +355,7 @@ inline Reference< interface_type > & Reference< interface_type >::operator = (
 #if defined LIBO_INTERNAL_ONLY
 template< class interface_type >
 inline Reference< interface_type > & Reference< interface_type >::operator = (
-     Reference< interface_type > && rRef )
+     Reference< interface_type > && rRef ) noexcept
 {
     if (_pInterface)
         _pInterface->release();
@@ -449,6 +451,26 @@ operator <<(
 }
 }
 }
+
+#if defined LIBO_INTERNAL_ONLY
+namespace std
+{
+
+/**
+  Make css::uno::Reference hashable by default for use in STL containers.
+
+  @since LibreOffice 6.3
+*/
+template<typename T>
+struct hash<::css::uno::Reference<T>>
+{
+    std::size_t operator()(::css::uno::Reference<T> const & s) const
+    { return size_t(s.get()); }
+};
+
+}
+
+#endif
 
 #endif
 

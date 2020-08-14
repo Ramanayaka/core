@@ -23,7 +23,7 @@
 #include <svl/hint.hxx>
 #include <svl/SfxBroadcaster.hxx>
 #include "utility.hxx"
-#include <types.hxx>
+#include "types.hxx"
 
 
 #define FNTNAME_TIMES   "Times New Roman"
@@ -88,9 +88,7 @@ enum class SmHorAlign {
     Right
 };
 
-OUString GetDefaultFontName( LanguageType nLang, sal_uInt16 nIdent );
-
-class SmFormat : public SfxBroadcaster
+class SmFormat final : public SfxBroadcaster
 {
     SmFace      vFont[FNT_END + 1];
     bool        bDefaultFont[FNT_END + 1];

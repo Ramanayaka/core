@@ -11,10 +11,10 @@
 
 namespace sc {
 
-RowHeightContext::RowHeightContext(
+RowHeightContext::RowHeightContext(SCROW nMaxRow,
     double fPPTX, double fPPTY, const Fraction& rZoomX, const Fraction& rZoomY,
     OutputDevice* pOutDev ) :
-    maHeights(0),
+    maHeights(nMaxRow, 0),
     mfPPTX(fPPTX), mfPPTY(fPPTY),
     maZoomX(rZoomX), maZoomY(rZoomY),
     mpOutDev(pOutDev),
@@ -31,11 +31,6 @@ void RowHeightContext::setExtraHeight( sal_uInt16 nH )
 void RowHeightContext::setForceAutoSize( bool b )
 {
     mbForceAutoSize = b;
-}
-
-ScFlatUInt16RowSegments& RowHeightContext::getHeightArray()
-{
-    return maHeights;
 }
 
 }

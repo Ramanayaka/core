@@ -18,10 +18,9 @@
  */
 
 #include "FormsCollection.hxx"
-#include "services.hxx"
 #include <comphelper/sequence.hxx>
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/form/XForm.hpp>
 
 using namespace frm;
@@ -33,7 +32,7 @@ using namespace ::com::sun::star::util;
 
 OUString SAL_CALL OFormsCollection::getServiceName()
 {
-    return OUString("com.sun.star.form.Forms");
+    return "com.sun.star.form.Forms";
 }
 
 Sequence< sal_Int8 > SAL_CALL OFormsCollection::getImplementationId(  )
@@ -85,7 +84,7 @@ Any SAL_CALL OFormsCollection::queryAggregation(const Type& _rType)
 
 OUString SAL_CALL OFormsCollection::getImplementationName()
 {
-    return OUString("com.sun.star.form.OFormsCollection");
+    return "com.sun.star.form.OFormsCollection";
 }
 
 sal_Bool SAL_CALL OFormsCollection::supportsService( const OUString& _rServiceName )
@@ -95,12 +94,7 @@ sal_Bool SAL_CALL OFormsCollection::supportsService( const OUString& _rServiceNa
 
 css::uno::Sequence<OUString> SAL_CALL OFormsCollection::getSupportedServiceNames()
 {
-    css::uno::Sequence<OUString> aReturn(2);
-
-    aReturn[0] = "com.sun.star.form.Forms";
-    aReturn[1] = "com.sun.star.form.FormComponents";
-
-    return aReturn;
+    return { "com.sun.star.form.Forms", "com.sun.star.form.FormComponents" };
 }
 
 // XCloneable
@@ -138,7 +132,7 @@ css::uno::Reference<css::uno::XInterface>  OFormsCollection::getParent()
     return m_xParent;
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OFormsCollection_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {

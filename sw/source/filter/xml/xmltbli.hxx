@@ -22,6 +22,8 @@
 
 #include <xmloff/XMLTextTableContext.hxx>
 
+#include "xmlimp.hxx"
+
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -40,10 +42,10 @@ class SwXMLDDETableContext_Impl;
 class TableBoxIndexHasher;
 class TableBoxIndex;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace text { class XTextContent; }
     namespace text { class XTextCursor; }
-} } }
+}
 
 class SwXMLTableContext : public XMLTextTableContext
 {
@@ -58,15 +60,16 @@ class SwXMLTableContext : public XMLTextTableContext
         ColumnWidthInfo(sal_uInt16 wdth, bool isRel) : width(wdth), isRelative(isRel) {};
     };
     std::vector<ColumnWidthInfo> m_aColumnWidths;
-    std::vector<OUString> *m_pColumnDefaultCellStyleNames;
+    std::unique_ptr<std::vector<OUString>> m_pColumnDefaultCellStyleNames;
 
     css::uno::Reference< css::text::XTextCursor > m_xOldCursor;
     css::uno::Reference< css::text::XTextContent > m_xTextContent;
 
-    SwXMLTableRows_Impl * m_pRows;
+    std::unique_ptr<SwXMLTableRows_Impl> m_pRows;
 
     SwTableNode         *m_pTableNode;
     SwTableBox          *m_pBox1;
+    bool                 m_bOwnsBox1;
     const SwStartNode   *m_pSttNd1;
 
     SwTableBoxFormat       *m_pBoxFormat;
@@ -76,7 +79,7 @@ class SwXMLTableContext : public XMLTextTableContext
     // the column width, and protection flag
     typedef std::unordered_map<TableBoxIndex,SwTableBoxFormat*,
                           TableBoxIndexHasher> map_BoxFormat;
-    map_BoxFormat* m_pSharedBoxFormats;
+    std::unique_ptr<map_BoxFormat> m_pSharedBoxFormats;
 
     SvXMLImportContextRef   m_xParentTable;   // if table is a sub table
 
@@ -90,6 +93,11 @@ class SwXMLTableContext : public XMLTextTableContext
     sal_uInt32          m_nCurRow;
     sal_uInt32          m_nCurCol;
     sal_Int32           m_nWidth;
+
+    // The maximum table width (i.e., maximum value for m_nWidth); must be >= MINLAY and must also
+    // fit into ColumnWidthInfo::width (of type sal_uInt16), see e.g. the emplacement of
+    // MINLAY<=nWidth2<=MAX_WIDTH into m_aColumnWidths in SwXMLTableContext::InsertColumn:
+    static constexpr sal_Int32 MAX_WIDTH = SAL_MAX_UINT16;
 
     SwTableBox *NewTableBox( const SwStartNode *pStNd,
                              SwTableLine *pUpper );
@@ -133,12 +141,11 @@ public:
                        const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList );
     SwXMLTableContext( SwXMLImport& rImport, sal_uInt16 nPrfx,
                        const OUString& rLName,
-                       const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
                        SwXMLTableContext *pTable );
 
     virtual ~SwXMLTableContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                 const OUString& rLocalName,
                 const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 
@@ -158,7 +165,6 @@ public:
     void InsertCell( const OUString& rStyleName,
                      sal_uInt32 nRowSpan, sal_uInt32 nColSpan,
                      const SwStartNode *pStNd,
-                     const OUString & i_rXmlId = OUString(),
                      SwXMLTableContext *pTable=nullptr,
                      bool bIsProtected = false,
                      const OUString *pFormula=nullptr,
@@ -167,8 +173,7 @@ public:
                      OUString const*const pStringValue = nullptr);
     void InsertRow( const OUString& rStyleName,
                     const OUString& rDfltCellStyleName,
-                    bool bInHead,
-                    const OUString & i_rXmlId = OUString() );
+                    bool bInHead );
     void FinishRow();
     void InsertRepRows( sal_uInt32 nCount );
     const SwXMLTableCell_Impl *GetCell( sal_uInt32 nRow, sal_uInt32 nCol ) const;

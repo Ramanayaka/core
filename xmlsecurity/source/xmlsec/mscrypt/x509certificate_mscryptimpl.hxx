@@ -20,20 +20,19 @@
 #ifndef INCLUDED_XMLSECURITY_SOURCE_XMLSEC_MSCRYPT_X509CERTIFICATE_MSCRYPTIMPL_HXX
 #define INCLUDED_XMLSECURITY_SOURCE_XMLSEC_MSCRYPT_X509CERTIFICATE_MSCRYPTIMPL_HXX
 
-#ifdef _MSC_VER
-#pragma warning(push,1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
-#include "Windows.h"
-#include "WinCrypt.h"
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include <Windows.h>
+#include <WinCrypt.h>
 #include <sal/config.h>
 #include <rtl/ustring.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/SecurityException.hpp>
 #include <com/sun/star/security/CertificateKind.hpp>
 #include <com/sun/star/security/XCertificate.hpp>
@@ -41,7 +40,8 @@
 
 class X509Certificate_MSCryptImpl : public ::cppu::WeakImplHelper<
     css::security::XCertificate ,
-    css::lang::XUnoTunnel > , public xmlsecurity::Certificate
+    css::lang::XUnoTunnel,
+    css::lang::XServiceInfo > , public xmlsecurity::Certificate
 {
     private:
         const CERT_CONTEXT* m_pCertContext ;
@@ -74,19 +74,24 @@ class X509Certificate_MSCryptImpl : public ::cppu::WeakImplHelper<
         virtual sal_Int32 SAL_CALL getCertificateUsage( ) override;
 
         //Methods from XUnoTunnel
-        virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
+        UNO3_GETIMPLEMENTATION_DECL(X509Certificate_MSCryptImpl)
 
         /// @see xmlsecurity::Certificate::getSHA256Thumbprint().
         virtual css::uno::Sequence<sal_Int8> getSHA256Thumbprint() override;
 
-        static const css::uno::Sequence< sal_Int8 >& getUnoTunnelId() ;
-        static X509Certificate_MSCryptImpl* getImplementation( const css::uno::Reference< css::uno::XInterface >& rObj ) ;
+        /// @see xmlsecurity::Certificate::getSignatureMethodAlgorithm().
+        virtual svl::crypto::SignatureMethodAlgorithm getSignatureMethodAlgorithm() override;
 
         //Helper methods
         void setMswcryCert( const CERT_CONTEXT* cert ) ;
         const CERT_CONTEXT* getMswcryCert() const ;
         /// @throws css::uno::RuntimeException
         void setRawCert( css::uno::Sequence< sal_Int8 > const & rawCert ) ;
+
+        // XServiceInfo
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
+        virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 } ;
 
 #endif // INCLUDED_XMLSECURITY_SOURCE_XMLSEC_MSCRYPT_X509CERTIFICATE_MSCRYPTIMPL_HXX

@@ -11,11 +11,18 @@ $(eval $(call gb_StaticLibrary_StaticLibrary,boost_date_time))
 
 $(eval $(call gb_StaticLibrary_use_unpacked,boost_date_time,boost))
 
-$(eval $(call gb_StaticLibrary_set_warnings_not_errors,boost_date_time))
+$(eval $(call gb_StaticLibrary_set_warnings_disabled,boost_date_time))
 
 # disable "auto link" "feature" on MSVC
 $(eval $(call gb_StaticLibrary_add_defs,boost_date_time,\
 	-DBOOST_ALL_NO_LIB \
+))
+
+# Needed when building against MSVC in C++17 mode, as
+# workdir/UnpackedTarball/boost/boost/numeric/conversion/detail/converter.hpp uses
+# std::unary_function:
+$(eval $(call gb_StaticLibrary_add_defs,boost_date_time, \
+    -D_HAS_AUTO_PTR_ETC=1 \
 ))
 
 $(eval $(call gb_StaticLibrary_use_external,boost_date_time,boost_headers))

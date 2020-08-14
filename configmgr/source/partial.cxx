@@ -20,12 +20,9 @@
 #include <sal/config.h>
 
 #include <cassert>
-#include <map>
 #include <set>
 
 #include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
@@ -68,13 +65,12 @@ Partial::Partial(
     // * Inner node, !startInclude: contains in-/excluded sub-trees
     // * Leaf node, startInclude: an include starts here
     // * Leaf node, !startInclude: an exclude starts here
-    for (std::set< OUString >::const_iterator i(includedPaths.begin());
-         i != includedPaths.end(); ++i)
+    for (auto const& includedPath : includedPaths)
     {
         sal_Int32 n = 0;
         for (Node * p = &root_;;) {
             OUString seg;
-            bool end = parseSegment(*i, &n, &seg);
+            bool end = parseSegment(includedPath, &n, &seg);
             p = &p->children[seg];
             if (p->startInclude) {
                 break;
@@ -86,13 +82,12 @@ Partial::Partial(
             }
         }
     }
-    for (std::set< OUString >::const_iterator i(excludedPaths.begin());
-         i != excludedPaths.end(); ++i)
+    for (auto const& excludedPath : excludedPaths)
     {
         sal_Int32 n = 0;
         for (Node * p = &root_;;) {
             OUString seg;
-            bool end = parseSegment(*i, &n, &seg);
+            bool end = parseSegment(excludedPath, &n, &seg);
             if (end) {
                 p->children[seg].clear();
                 break;
@@ -120,8 +115,9 @@ Partial::Containment Partial::contains(std::vector<OUString> const & path) const
     // ** If there is no startInclude along its trace: => CONTAINS_SUBNODES
     Node const * p = &root_;
     bool bIncludes = false;
-    for (auto i(path.begin()); i != path.end(); ++i) {
-        Node::Children::const_iterator j(p->children.find(*i));
+    for (auto const& elemPath : path)
+    {
+        Node::Children::const_iterator j(p->children.find(elemPath));
         if (j == p->children.end()) {
             return p->startInclude ? CONTAINS_NODE : CONTAINS_NOT;
         }

@@ -20,14 +20,13 @@
 #ifndef INCLUDED_SW_INC_UNOTEXTBODYHF_HXX
 #define INCLUDED_SW_INC_UNOTEXTBODYHF_HXX
 
-#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/implbase2.hxx>
 
-#include <unotext.hxx>
+#include "unotext.hxx"
 
 class SwDoc;
 class SwFrameFormat;
@@ -38,12 +37,10 @@ typedef ::cppu::WeakAggImplHelper2
 ,   css::container::XEnumerationAccess
 > SwXBodyText_Base;
 
-class SwXBodyText
+class SwXBodyText final
     : public SwXBodyText_Base
     , public SwXText
 {
-
-protected:
 
     virtual ~SwXBodyText() override;
 
@@ -98,17 +95,12 @@ typedef ::cppu::WeakImplHelper
 ,   css::container::XEnumerationAccess
 > SwXHeadFootText_Base;
 
-class SwXHeadFootText
+class SwXHeadFootText final
     : public SwXHeadFootText_Base
     , public SwXText
 {
-
-private:
-
     class Impl;
     ::sw::UnoImplPtr<Impl> m_pImpl;
-
-protected:
 
     virtual const SwStartNode *GetStartNode() const override;
     virtual css::uno::Reference< css::text::XTextCursor >
@@ -122,7 +114,6 @@ public:
 
     static css::uno::Reference< css::text::XText >
         CreateXHeadFootText(SwFrameFormat & rHeadFootFormat, const bool bIsHeader);
-    static bool IsXHeadFootText(SwClient *const pClient);
 
     // XInterface
     virtual css::uno::Any SAL_CALL queryInterface(

@@ -19,9 +19,9 @@
 #ifndef INCLUDED_IDLC_INC_ASTNEEDS_HXX
 #define INCLUDED_IDLC_INC_ASTNEEDS_HXX
 
-#include <astservice.hxx>
+#include "astservice.hxx"
 
-class AstNeeds : public AstDeclaration
+class AstNeeds final : public AstDeclaration
 {
 public:
     AstNeeds(AstService* pRealService, const OString& name, AstScope* pScope)

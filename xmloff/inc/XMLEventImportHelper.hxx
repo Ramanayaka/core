@@ -24,17 +24,18 @@
 #include <xmloff/xmlevent.hxx>
 
 #include <map>
-#include <list>
+#include <vector>
+#include <memory>
 
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
-} } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
+}
 class XMLEventContextFactory;
 class XMLEventsImportContext;
 struct XMLEventNameTranslation;
 
-typedef ::std::map< OUString, XMLEventContextFactory* > FactoryMap;
+typedef ::std::map< OUString, std::unique_ptr<XMLEventContextFactory> > FactoryMap;
 typedef ::std::map< XMLEventName, OUString > NameMap;
 
 
@@ -57,10 +58,10 @@ class XMLEventImportHelper
     FactoryMap aFactoryMap;
 
     /// map from XML to API names
-    NameMap* pEventNameMap;
+    std::unique_ptr<NameMap> pEventNameMap;
 
     /// stack of previous aEventNameMap
-    std::list< NameMap* > aEventNameMapList;
+    std::vector< std::unique_ptr<NameMap> > aEventNameMapVector;
 
 public:
     XMLEventImportHelper();
@@ -69,7 +70,7 @@ public:
 
     /// register a handler for a particular language type
     void RegisterFactory( const OUString& rLanguage,
-                          XMLEventContextFactory* aFactory );
+                          std::unique_ptr<XMLEventContextFactory> aFactory );
 
     /// add event name translation to the internal table
     void AddTranslationTable( const XMLEventNameTranslation* pTransTable );
@@ -83,8 +84,6 @@ public:
     /// create an appropriate import context for a particular event
     SvXMLImportContext* CreateContext(
         SvXMLImport& rImport,
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList> & xAttrList,
         XMLEventsImportContext* rEvents,
         const OUString& rXmlEventName,

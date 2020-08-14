@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FORMS_SOURCE_COMPONENT_CLICKABLEIMAGE_HXX
-#define INCLUDED_FORMS_SOURCE_COMPONENT_CLICKABLEIMAGE_HXX
+#pragma once
 
 #include <memory>
-#include "FormComponent.hxx"
+#include <FormComponent.hxx>
 #include "EventThread.hxx"
 #include "imgprod.hxx"
 #include <tools/link.hxx>
@@ -36,9 +35,8 @@
 #include <com/sun/star/graphic/XGraphicObject.hpp>
 #include <cppuhelper/implbase3.hxx>
 
-
 class SfxMedium;
-
+class SfxObjectShell;
 
 namespace frm
 {
@@ -66,7 +64,7 @@ namespace frm
         // ImageProducer stuff
         // Store the image in a graphic object to make it accessible via graphic cache using graphic ID.
         css::uno::Reference< css::graphic::XGraphicObject > m_xGraphicObject;
-        SfxMedium*                          m_pMedium;     // Download medium
+        std::unique_ptr<SfxMedium>          m_pMedium;     // Download medium
         rtl::Reference<ImageProducer>       m_xProducer;
         bool                                m_bDispatchUrlInternal; // property: is not allowed to set : 1
         bool                                m_bProdStarted : 1;
@@ -82,7 +80,6 @@ namespace frm
         void StartProduction();
         void SetURL(const OUString& rURL);
         void DataAvailable();
-        void DownloadDone();
 
         css::uno::Sequence< css::uno::Type> _getTypes() override;
         bool isDispatchUrlInternal() const { return m_bDispatchUrlInternal; }
@@ -150,17 +147,16 @@ namespace frm
         // to be called from within the cloning-ctor of your derived class
         void implInitializeImageURL( );
 
+        SfxObjectShell* GetObjectShell();
+
         DECL_LINK( OnImageImportDone, ::Graphic*, void );
     };
 
     class ImageModelMethodGuard : public ::osl::MutexGuard
     {
-    private:
-        typedef ::osl::MutexGuard   GuardBase;
-
     public:
         explicit ImageModelMethodGuard( OClickableImageBaseModel& _rModel )
-            :GuardBase( _rModel.getMutex( OClickableImageBaseModel::GuardAccess() ) )
+            : ::osl::MutexGuard( _rModel.getMutex( OClickableImageBaseModel::GuardAccess() ) )
         {
             if ( nullptr == _rModel.getImageProducer( OClickableImageBaseModel::GuardAccess() ) )
                 throw css::lang::DisposedException(
@@ -255,9 +251,6 @@ namespace frm
     {
     protected:
 
-        // This method was called to duplicate the Event by taking its type into account
-        virtual css::lang::EventObject* cloneEvent( const css::lang::EventObject* _pEvt ) const override;
-
         // Process an Event.
         // The mutex is not locked, pCompImpl stays valid in any case
         virtual void processEvent( ::cppu::OComponentHelper *pCompImpl,
@@ -270,7 +263,7 @@ namespace frm
             OComponentEventThread( pControl )
         {}
 
-        void addEvent() { css::lang::EventObject aEvt; OComponentEventThread::addEvent( &aEvt ); }
+        void addEvent() { OComponentEventThread::addEvent( std::make_unique<css::lang::EventObject>() ); }
 
     protected:
         using OComponentEventThread::addEvent;
@@ -278,8 +271,5 @@ namespace frm
 
 
 }   // namespace frm
-
-
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_CLICKABLEIMAGE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

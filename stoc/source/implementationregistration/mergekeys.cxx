@@ -23,7 +23,6 @@
 #include <osl/diagnose.h>
 
 #include <com/sun/star/registry/XRegistryKey.hpp>
-#include <com/sun/star/registry/MergeConflictException.hpp>
 
 #include "mergekeys.hxx"
 
@@ -33,6 +32,8 @@ using namespace ::com::sun::star;
 
 namespace stoc_impreg
 {
+
+namespace {
 
 struct Link
 {
@@ -44,6 +45,9 @@ struct Link
         , m_target( target )
         {}
 };
+
+}
+
 typedef ::std::vector< Link > t_links;
 
 
@@ -108,7 +112,7 @@ static void mergeKeys(
 
         if (xSource->getKeyType( name ) == registry::RegistryKeyType_KEY)
         {
-            // try to open exisiting dest key or create new one
+            // try to open existing dest key or create new one
             Reference< registry::XRegistryKey > xDestKey( xDest->createKey( name ) );
             Reference< registry::XRegistryKey > xSourceKey( xSource->openKey( name ) );
             mergeKeys( xDestKey, xSourceKey, links );

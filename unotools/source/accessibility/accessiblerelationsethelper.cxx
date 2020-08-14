@@ -20,10 +20,10 @@
 #include <sal/config.h>
 
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <o3tl/safeint.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
 #include <vector>
 #include <comphelper/sequence.hxx>
-#include <comphelper/servicehelper.hxx>
 
 using namespace ::utl;
 using namespace ::com::sun::star;
@@ -36,14 +36,14 @@ public:
     AccessibleRelationSetHelperImpl(const AccessibleRelationSetHelperImpl& rImpl);
 
     /// @throws uno::RuntimeException
-    sal_Int32 getRelationCount(  );
+    sal_Int32 getRelationCount() const;
     /// @throws lang::IndexOutOfBoundsException
     /// @throws uno::RuntimeException
-    AccessibleRelation getRelation( sal_Int32 nIndex );
+    AccessibleRelation const & getRelation( sal_Int32 nIndex ) const;
     /// @throws uno::RuntimeException
-    bool containsRelation( sal_Int16 aRelationType );
+    bool containsRelation( sal_Int16 aRelationType ) const;
     /// @throws uno::RuntimeException
-    AccessibleRelation getRelationByType( sal_Int16 aRelationType );
+    AccessibleRelation getRelationByType( sal_Int16 aRelationType ) const;
     /// @throws uno::RuntimeException
     void AddRelation(const AccessibleRelation& rRelation);
 
@@ -60,26 +60,26 @@ AccessibleRelationSetHelperImpl::AccessibleRelationSetHelperImpl(const Accessibl
 {
 }
 
-sal_Int32 AccessibleRelationSetHelperImpl::getRelationCount(  )
+sal_Int32 AccessibleRelationSetHelperImpl::getRelationCount() const
 {
     return maRelations.size();
 }
 
-AccessibleRelation AccessibleRelationSetHelperImpl::getRelation( sal_Int32 nIndex )
+AccessibleRelation const & AccessibleRelationSetHelperImpl::getRelation( sal_Int32 nIndex ) const
 {
-    if ((nIndex < 0) || (static_cast<sal_uInt32>(nIndex) >= maRelations.size()))
+    if ((nIndex < 0) || (o3tl::make_unsigned(nIndex) >= maRelations.size()))
         throw lang::IndexOutOfBoundsException();
     return maRelations[nIndex];
 }
 
-bool AccessibleRelationSetHelperImpl::containsRelation( sal_Int16 aRelationType )
+bool AccessibleRelationSetHelperImpl::containsRelation( sal_Int16 aRelationType ) const
 {
     AccessibleRelation defaultRelation; // default is INVALID
     AccessibleRelation relationByType = getRelationByType(aRelationType);
     return relationByType.RelationType != defaultRelation.RelationType;
 }
 
-AccessibleRelation AccessibleRelationSetHelperImpl::getRelationByType( sal_Int16 aRelationType )
+AccessibleRelation AccessibleRelationSetHelperImpl::getRelationByType( sal_Int16 aRelationType ) const
 {
     sal_Int32 nCount(getRelationCount());
     sal_Int32 i(0);
@@ -118,7 +118,7 @@ AccessibleRelationSetHelper::AccessibleRelationSetHelper ()
 }
 
 AccessibleRelationSetHelper::AccessibleRelationSetHelper (const AccessibleRelationSetHelper& rHelper)
-    : cppu::WeakImplHelper<XAccessibleRelationSet>()
+    : cppu::WeakImplHelper<XAccessibleRelationSet>(rHelper)
 {
     if (rHelper.mpHelperImpl)
         mpHelperImpl.reset(new AccessibleRelationSetHelperImpl(*rHelper.mpHelperImpl));
@@ -211,12 +211,11 @@ void AccessibleRelationSetHelper::AddRelation(const AccessibleRelation& rRelatio
 
 uno::Sequence< css::uno::Type> AccessibleRelationSetHelper::getTypes()
 {
-    osl::MutexGuard aGuard (maMutex);
-    css::uno::Sequence< css::uno::Type> aTypeSequence {
+    static const uno::Sequence< css::uno::Type> aTypes {
         cppu::UnoType<XAccessibleRelationSet>::get(),
         cppu::UnoType<lang::XTypeProvider>::get()
     };
-    return aTypeSequence;
+    return aTypes;
 }
 
 uno::Sequence<sal_Int8> SAL_CALL AccessibleRelationSetHelper::getImplementationId()

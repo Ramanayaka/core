@@ -17,37 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "cmdid.h"
-#include "hintids.hxx"
-#include <editeng/sizeitem.hxx>
-#include <editeng/brushitem.hxx>
-#include <sfx2/app.hxx>
+#include <cmdid.h>
 #include <sfx2/request.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/bindings.hxx>
-#include <svl/stritem.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <svl/eitem.hxx>
 #include <svl/whiter.hxx>
-#include <svl/intitem.hxx>
-#include <svl/srchitem.hxx>
 
 #include <numrule.hxx>
-#include <fmtornt.hxx>
-#include "wrtsh.hxx"
-#include "swmodule.hxx"
-#include "frmatr.hxx"
-#include "helpid.h"
-#include "globals.hrc"
-#include "shells.hrc"
-#include "uinums.hxx"
-#include "listsh.hxx"
-#include "poolfmt.hxx"
-#include "view.hxx"
-#include "edtwin.hxx"
+#include <wrtsh.hxx>
+#include <listsh.hxx>
+#include <view.hxx>
 
-#define SwListShell
+#define ShellClass_SwListShell
 #include <sfx2/msg.hxx>
-#include "swslots.hxx"
+#include <swslots.hxx>
 
 #include <IDocumentOutlineNodes.hxx>
 
@@ -66,67 +51,76 @@ void SwListShell::InitInterface_Impl()
 static void lcl_OutlineUpDownWithSubPoints( SwWrtShell& rSh, bool bMove, bool bUp )
 {
     const SwOutlineNodes::size_type nActPos = rSh.GetOutlinePos();
-    if ( nActPos < SwOutlineNodes::npos && rSh.IsOutlineMovable( nActPos ) )
+    if ( !(nActPos < SwOutlineNodes::npos && rSh.IsOutlineMovable( nActPos )) )
+        return;
+
+    rSh.Push();
+    rSh.MakeOutlineSel( nActPos, nActPos, true );
+
+    if ( bMove )
     {
-        rSh.Push();
-        rSh.MakeOutlineSel( nActPos, nActPos, true );
+        const IDocumentOutlineNodes* pIDoc( rSh.getIDocumentOutlineNodesAccess() );
+        const int nActLevel = pIDoc->getOutlineLevel( nActPos );
+        SwOutlineNodes::difference_type nDir = 0;
 
-        if ( bMove )
+        if ( !bUp )
         {
-            const IDocumentOutlineNodes* pIDoc( rSh.getIDocumentOutlineNodesAccess() );
-            const int nActLevel = pIDoc->getOutlineLevel( nActPos );
+            // Move down with subpoints:
             SwOutlineNodes::size_type nActEndPos = nActPos + 1;
-            SwOutlineNodes::difference_type nDir = 0;
-
-            if ( !bUp )
+            while ( nActEndPos < pIDoc->getOutlineNodesCount() &&
+                   (!pIDoc->isOutlineInLayout(nActEndPos, *rSh.GetLayout())
+                    || nActLevel < pIDoc->getOutlineLevel(nActEndPos)))
             {
-                // Move down with subpoints:
-                while ( nActEndPos < pIDoc->getOutlineNodesCount() &&
-                        pIDoc->getOutlineLevel( nActEndPos ) > nActLevel )
-                    ++nActEndPos;
-
-                if ( nActEndPos < pIDoc->getOutlineNodesCount() )
-                {
-                    // The current subpoint which should be moved
-                    // starts at nActPos and ends at nActEndPos - 1
-                    --nActEndPos;
-                    SwOutlineNodes::size_type nDest = nActEndPos + 2;
-                    while ( nDest < pIDoc->getOutlineNodesCount() &&
-                            pIDoc->getOutlineLevel( nDest ) > nActLevel )
-                        ++nDest;
-
-                    nDir = nDest - 1 - nActEndPos;
-                }
-            }
-            else
-            {
-                // Move up with subpoints:
-                if ( nActPos > 0 )
-                {
-                    --nActEndPos;
-                    SwOutlineNodes::size_type nDest = nActPos - 1;
-                    while ( nDest > 0 && pIDoc->getOutlineLevel( nDest ) > nActLevel )
-                        --nDest;
-
-                    nDir = nDest - nActPos;
-                }
+                ++nActEndPos;
             }
 
-            if ( nDir )
+            if ( nActEndPos < pIDoc->getOutlineNodesCount() )
             {
-                rSh.MoveOutlinePara( nDir );
-                rSh.GotoOutline( nActPos + nDir );
+                // The current subpoint which should be moved
+                // starts at nActPos and ends at nActEndPos - 1
+                --nActEndPos;
+                SwOutlineNodes::size_type nDest = nActEndPos + 2;
+                while ( nDest < pIDoc->getOutlineNodesCount() &&
+                       (!pIDoc->isOutlineInLayout(nDest, *rSh.GetLayout())
+                        || nActLevel < pIDoc->getOutlineLevel(nDest)))
+                {
+                    ++nDest;
+                }
+
+                nDir = nDest - 1 - nActEndPos;
             }
         }
         else
         {
-            // Up/down with subpoints:
-            rSh.OutlineUpDown( bUp ? -1 : 1 );
+            // Move up with subpoints:
+            if ( nActPos > 0 )
+            {
+                SwOutlineNodes::size_type nDest = nActPos - 1;
+                while (nDest > 0 &&
+                       (!pIDoc->isOutlineInLayout(nDest, *rSh.GetLayout())
+                        || nActLevel < pIDoc->getOutlineLevel(nDest)))
+                {
+                    --nDest;
+                }
+
+                nDir = nDest - nActPos;
+            }
         }
 
-        rSh.ClearMark();
-        rSh.Pop(SwCursorShell::PopMode::DeleteCurrent);
+        if ( nDir )
+        {
+            rSh.MoveOutlinePara( nDir );
+            rSh.GotoOutline( nActPos + nDir );
+        }
     }
+    else
+    {
+        // Up/down with subpoints:
+        rSh.OutlineUpDown( bUp ? -1 : 1 );
+    }
+
+    rSh.ClearMark();
+    rSh.Pop(SwCursorShell::PopMode::DeleteCurrent);
 }
 
 void SwListShell::Execute(SfxRequest &rReq)

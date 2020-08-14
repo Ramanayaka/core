@@ -20,13 +20,12 @@
 #ifndef INCLUDED_SVX_SVDETC_HXX
 #define INCLUDED_SVX_SVDETC_HXX
 
-#include <rtl/ustring.hxx>
 #include <editeng/outliner.hxx>
 #include <svx/svxdllapi.h>
 #include <tools/link.hxx>
 #include <tools/fract.hxx>
-#include <vcl/outdev.hxx>
 #include <svx/svdobj.hxx>
+#include <memory>
 
 
 /**
@@ -39,15 +38,14 @@
  * is set.
  */
 
-class ResMgr;
 class SdrOutliner;
 class SdrModel;
 class SvtSysLocale;
 class LocaleDataWrapper;
 
-namespace com { namespace sun { namespace star { namespace lang {
+namespace com::sun::star::lang {
     struct Locale;
-}}}}
+}
 
 /**
  * Create an Outliner with the engine-global default settings on the heap.
@@ -55,7 +53,7 @@ namespace com { namespace sun { namespace star { namespace lang {
  * The resulting default font height, however, stays the same (the logical
  * font height is converted).
  */
-SVX_DLLPUBLIC SdrOutliner* SdrMakeOutliner(OutlinerMode nOutlinerMode, SdrModel& rMod);
+SVXCORE_DLLPUBLIC std::unique_ptr<SdrOutliner> SdrMakeOutliner(OutlinerMode nOutlinerMode, SdrModel& rMod);
 
 /**
  * Global default settings for the DrawingEngine.
@@ -63,39 +61,24 @@ SVX_DLLPUBLIC SdrOutliner* SdrMakeOutliner(OutlinerMode nOutlinerMode, SdrModel&
  * One should set these default settings as the first
  * thing at program start, before any other method is called.
  */
-class SVX_DLLPUBLIC SdrEngineDefaults
+namespace SdrEngineDefaults
 {
-friend class SdrAttrObj;
-    Color            aFontColor;
-    Fraction         aMapFraction;
-
-private:
-    static SdrEngineDefaults& GetDefaults();
-
-public:
-    SdrEngineDefaults();
-
-    // Default FontColor is COL_BLACK
-    static Color      GetFontColor()                       { return GetDefaults().aFontColor; }
+    // Default FontColor is COL_AUTO
+    inline Color GetFontColor() { return COL_AUTO; }
 
     // Default FontHeight is 847. The font height uses logical units (MapUnit/MapFraction
     // see below for further details). The default setting 847/100mm corresponds to about
     // 24 Point. If e.g. one would use Twips (SetMapUnit(MapUnit::MapTwip)) (20 Twip = 1 Point)
     // instead, one would need to set the font height to 480, in order to get a 24 Point height.
-    static size_t      GetFontHeight()                      { return 847; }
+    inline size_t GetFontHeight() { return 847; }
 
     // The MapMode is needed for the global Outliner.
     // Incidentally, every newly instantiated SdrModel is assigned this MapMode by default.
     // Default MapUnit is MapUnit::Map100thMM
-    static MapUnit    GetMapUnit()                         { return MapUnit::Map100thMM; }
+    inline MapUnit GetMapUnit() { return MapUnit::Map100thMM; }
 
     // Default MapFraction is 1/1.
-    static Fraction   GetMapFraction()                     { return GetDefaults().aMapFraction; }
-
-    // Create an Outliner with the engine-global default values on the heap.
-    // If pMod != nullptr, the MapMode of the passed model is used.
-    // The resulting default font height, however, stays the same (the logical font height is converted).
-    friend SVX_DLLPUBLIC SdrOutliner* SdrMakeOutliner(OutlinerMode nOutlinerMode, SdrModel& rMod);
+    inline Fraction GetMapFraction() { return Fraction(1, 1); }
 };
 
 class SfxItemSet;
@@ -105,7 +88,7 @@ class SfxItemSet;
  *
  * @returns false for XFILL_NONE and rCol remains unchanged
  */
-SVX_DLLPUBLIC bool GetDraftFillColor(const SfxItemSet& rSet, Color& rCol);
+SVXCORE_DLLPUBLIC bool GetDraftFillColor(const SfxItemSet& rSet, Color& rCol);
 
 
 /**
@@ -118,14 +101,14 @@ bool SearchOutlinerItems(const SfxItemSet& rSet, bool bInklDefaults, bool* pbOnl
 /**
  * @returns a new WhichTable, which we need to squash at some point with a delete
  */
-sal_uInt16* RemoveWhichRange(const sal_uInt16* pOldWhichTable, sal_uInt16 nRangeBeg, sal_uInt16 nRangeEnd);
+std::unique_ptr<sal_uInt16[]> RemoveWhichRange(const sal_uInt16* pOldWhichTable, sal_uInt16 nRangeBeg, sal_uInt16 nRangeEnd);
 
 /**
  * Helper class for the communication between the dialog
  * In order to break open Metafiles (sd/source/ui/dlg/brkdlg.cxx),
  * SdrEditView::DoImportMarkedMtf() and ImpSdrGDIMetaFileImport::DoImport()
  */
-class SVX_DLLPUBLIC SvdProgressInfo
+class SVXCORE_DLLPUBLIC SvdProgressInfo
 {
 private:
     size_t      m_nSumCurAction;   // Sum of all handled Actions
@@ -169,7 +152,6 @@ public:
 
 
 std::vector<Link<SdrObjCreatorParams, SdrObject*>>& ImpGetUserMakeObjHdl();
-std::vector<Link<SdrObjUserDataCreatorParams, SdrObjUserData*>>& ImpGetUserMakeObjUserDataHdl();
 
 class SdrOle2Obj;
 class AutoTimer;
@@ -179,36 +161,31 @@ class OLEObjCache
     std::vector<SdrOle2Obj*> maObjs;
 
     size_t         nSize;
-    AutoTimer*          pTimer;
+    std::unique_ptr<AutoTimer>  pTimer;
 
-    void UnloadOnDemand();
     static bool UnloadObj( SdrOle2Obj* pObj );
     DECL_LINK( UnloadCheckHdl, Timer*, void );
 
 public:
     OLEObjCache();
-    SVX_DLLPUBLIC ~OLEObjCache();
+    SVXCORE_DLLPUBLIC ~OLEObjCache();
 
     void InsertObj(SdrOle2Obj* pObj);
     void RemoveObj(SdrOle2Obj* pObj);
 
-    SVX_DLLPUBLIC size_t size() const;
-    SVX_DLLPUBLIC SdrOle2Obj* operator[](size_t nPos);
-    SVX_DLLPUBLIC const SdrOle2Obj* operator[](size_t nPos) const;
+    SVXCORE_DLLPUBLIC size_t size() const;
+    SVXCORE_DLLPUBLIC SdrOle2Obj* operator[](size_t nPos);
+    SVXCORE_DLLPUBLIC const SdrOle2Obj* operator[](size_t nPos) const;
 };
 
 
-class SVX_DLLPUBLIC SdrGlobalData
+class SVXCORE_DLLPUBLIC SdrGlobalData
 {
     const SvtSysLocale*         pSysLocale;     // follows always locale settings
     const LocaleDataWrapper*    pLocaleData;    // follows always SysLocale
 public:
     std::vector<Link<SdrObjCreatorParams, SdrObject*>>
                         aUserMakeObjHdl;
-    std::vector<Link<SdrObjUserDataCreatorParams, SdrObjUserData*>>
-                        aUserMakeObjUserDataHdl;
-    SdrEngineDefaults*  pDefaults;
-    ResMgr*             pResMgr;
     OLEObjCache         aOLEObjCache;
 
 
@@ -220,18 +197,13 @@ public:
     OLEObjCache&        GetOLEObjCache() { return aOLEObjCache; }
 };
 
-SVX_DLLPUBLIC SdrGlobalData & GetSdrGlobalData();
-
-namespace sdr
-{
-    SVX_DLLPUBLIC OUString GetResourceString(sal_uInt16 nResID);
-}
+SVXCORE_DLLPUBLIC SdrGlobalData & GetSdrGlobalData();
 
 
 // #i101872# isolated GetTextEditBackgroundColor for tooling
 class SdrObjEditView;
 
-SVX_DLLPUBLIC Color GetTextEditBackgroundColor(const SdrObjEditView& rView);
+SVXCORE_DLLPUBLIC Color GetTextEditBackgroundColor(const SdrObjEditView& rView);
 
 
 #endif // INCLUDED_SVX_SVDETC_HXX

@@ -18,33 +18,35 @@
  */
 
 #include <memory>
+
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <utility>
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/linguistic2/XThesaurus.hpp>
-#include <svx/fmglob.hxx>
-#include <svx/globl3d.hxx>
+#include <svx/pageitem.hxx>
+#include <svx/rulritem.hxx>
 #include <svx/svdouno.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/flditem.hxx>
 #include <editeng/outlobj.hxx>
 #include <editeng/sizeitem.hxx>
-#include <officecfg/Office/Common.hxx>
+#include <editeng/urlfieldhelper.hxx>
 #include <officecfg/Office/Impress.hxx>
 #include <svx/svxids.hrc>
 #include <svx/svdpagv.hxx>
 #include <svx/clipfmtitem.hxx>
-#include <svx/fmshell.hxx>
 #include <svl/eitem.hxx>
-#include <svl/aeitem.hxx>
+#include <svl/intitem.hxx>
+#include <svl/itempool.hxx>
+#include <svl/itemset.hxx>
 #include <svl/stritem.hxx>
 #include <svl/visitem.hxx>
 #include <svl/whiter.hxx>
-#include <sfx2/dispatch.hxx>
 #include <svx/svdograf.hxx>
+#include <svx/xfillit0.hxx>
 #include <svx/xflclit.hxx>
 #include <svx/xflgrit.hxx>
 #include <svx/xflhtit.hxx>
@@ -54,44 +56,39 @@
 #include <svx/fontworkbar.hxx>
 
 // #UndoRedo#
-#include <svl/slstitm.hxx>
-#include <sfx2/app.hxx>
 #include <svtools/insdlg.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <svl/languageoptions.hxx>
 #include <comphelper/processfactory.hxx>
 #include <sfx2/request.hxx>
 
-#include <svx/grafctrl.hxx>
 #include <svtools/cliplistener.hxx>
+#include <sfx2/bindings.hxx>
 #include <sfx2/viewfrm.hxx>
 
-#include "app.hrc"
-#include "glob.hrc"
-#include "res_bmp.hrc"
-#include "PresentationViewShell.hxx"
+#include <app.hrc>
 
-#include "Outliner.hxx"
-#include "drawdoc.hxx"
-#include "sdresid.hxx"
-#include "sdpage.hxx"
-#include "Client.hxx"
-#include "DrawDocShell.hxx"
-#include "zoomlist.hxx"
-#include "slideshow.hxx"
-#include "drawview.hxx"
-#include "ViewShellBase.hxx"
-#include "ViewShellManager.hxx"
-#include "LayerTabBar.hxx"
-#include "fupoor.hxx"
-#include "Window.hxx"
-#include "fuediglu.hxx"
-#include "fubullet.hxx"
-#include "fuconcs.hxx"
-#include "fuformatpaintbrush.hxx"
-#include "stlsheet.hxx"
+#include <PresentationViewShell.hxx>
 
-#include <config_features.h>
+#include <drawdoc.hxx>
+#include <DrawViewShell.hxx>
+#include <sdmod.hxx>
+#include <unokywds.hxx>
+#include <sdpage.hxx>
+#include <DrawDocShell.hxx>
+#include <zoomlist.hxx>
+#include <slideshow.hxx>
+#include <drawview.hxx>
+#include <ViewShellBase.hxx>
+#include <ViewShellManager.hxx>
+#include <LayerTabBar.hxx>
+#include <fupoor.hxx>
+#include <Window.hxx>
+#include <fuediglu.hxx>
+#include <fubullet.hxx>
+#include <fuconcs.hxx>
+#include <fuformatpaintbrush.hxx>
+#include <stlsheet.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -102,7 +99,7 @@ using namespace ::com::sun::star::linguistic2;
     current clipboard content and the DrawViewShell.
     The list is stored in a new instance of SvxClipboardFormatItem.
 */
-::std::unique_ptr<SvxClipboardFormatItem> GetSupportedClipboardFormats (
+static ::std::unique_ptr<SvxClipboardFormatItem> GetSupportedClipboardFormats (
     TransferableDataHelper& rDataHelper)
 {
     ::std::unique_ptr<SvxClipboardFormatItem> pResult (
@@ -149,6 +146,7 @@ using namespace ::com::sun::star::linguistic2;
                     break;
                 }
 
+
                 case SotClipboardFormatId::LINK_SOURCE:
                 case SotClipboardFormatId::DRAWING:
                 case SotClipboardFormatId::SVXB:
@@ -159,7 +157,6 @@ using namespace ::com::sun::star::linguistic2;
                 case SotClipboardFormatId::HTML:
                 case SotClipboardFormatId::RTF:
                 case SotClipboardFormatId::RICHTEXT:
-                case SotClipboardFormatId::EDITENGINE:
                 case SotClipboardFormatId::EDITENGINE_ODF_TEXT_FLAT:
                     pResult->AddClipbrdFormat(nTestFormat);
                     break;
@@ -249,6 +246,44 @@ void DrawViewShell::GetDrawAttrState(SfxItemSet& rSet)
     return pOL;
 }
 
+void DrawViewShell::GetMarginProperties( SfxItemSet &rSet )
+{
+    SdPage *pPage = getCurrentPage();
+    SfxWhichIter aIter( rSet );
+    sal_uInt16 nWhich = aIter.FirstWhich();
+    while ( nWhich )
+    {
+        switch ( nWhich )
+        {
+            case SID_ATTR_PAGE_LRSPACE:
+            {
+                // const SvxLRSpaceItem aTmpPageLRSpace ( rDesc.GetMaster().GetLRSpace() );
+                const SvxLongLRSpaceItem aLongLR(
+                    static_cast<long>(pPage->GetLeftBorder()),
+                    static_cast<long>(pPage->GetRightBorder()),
+                    SID_ATTR_PAGE_LRSPACE );
+                rSet.Put( aLongLR );
+            }
+            break;
+
+            case SID_ATTR_PAGE_ULSPACE:
+            {
+                // const SvxULSpaceItem aUL( rDesc.GetMaster().GetULSpace() );
+                SvxLongULSpaceItem aLongUL(
+                    static_cast<long>(pPage->GetUpperBorder()),
+                    static_cast<long>(pPage->GetLowerBorder()),
+                    SID_ATTR_PAGE_ULSPACE );
+                rSet.Put( aLongUL );
+            }
+            break;
+
+            default:
+            break;
+        }
+        nWhich = aIter.NextWhich();
+    }
+}
+
 void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 {
     if (mpDrawView == nullptr)
@@ -273,6 +308,20 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 
     const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
     const size_t nMarkCount = rMarkList.GetMarkCount();
+
+    if( nMarkCount == 1 )
+    {
+        bool bDisable = true;
+        SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
+        if( dynamic_cast<const SdrGrafObj*>( pObj) && ( static_cast<SdrGrafObj*>(pObj)->getQrCode()))
+        {
+            bDisable = false;
+        }
+        if(bDisable)
+        {
+            rSet.DisableItem(SID_EDIT_QRCODE);
+        }
+    }
 
     //format paintbrush
     FuFormatPaintBrush::GetMenuState( *this, rSet );
@@ -319,7 +368,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 
             if( pPage && (pPage->GetPageKind() == PageKind::Standard) && !pPage->IsMasterPage() )
             {
-                SdrObject* pObj = pPage->GetPresObj(PRESOBJ_OUTLINE);
+                SdrObject* pObj = pPage->GetPresObj(PresObjKind::Outline);
 
                 if (pObj!=nullptr )
                 {
@@ -329,14 +378,12 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
                     }
                     else
                     {
-                        // check if the object is in edit, than its temporarely not empty
+                        // check if the object is in edit, then if it's temporarily not empty
                         SdrTextObj* pTextObj = dynamic_cast< SdrTextObj* >( pObj );
                         if( pTextObj )
                         {
-                            OutlinerParaObject* pParaObj = pTextObj->GetEditOutlinerParaObject();
-                            if( pParaObj )
+                            if( pTextObj->CanCreateEditOutlinerParaObject() )
                             {
-                                delete pParaObj;
                                 bDisable = false;
                             }
                         }
@@ -360,7 +407,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 
             if( pPage && (pPage->GetPageKind() == PageKind::Standard) && !pPage->IsMasterPage() )
             {
-                SdrObject* pObj = pPage->GetPresObj(PRESOBJ_TITLE);
+                SdrObject* pObj = pPage->GetPresObj(PresObjKind::Title);
 
                 if(pObj && !pObj->IsEmptyPresObj())
                 {
@@ -434,7 +481,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
         SfxItemState::DEFAULT == rSet.GetItemState( SID_GLUE_VERTALIGN_BOTTOM ) )
     {
         // percent
-        SDR_TRISTATE eState = mpDrawView->IsMarkedGluePointsPercent();
+        TriState eState = mpDrawView->IsMarkedGluePointsPercent();
         if( eState == TRISTATE_INDET )
             rSet.InvalidateItem( SID_GLUE_PERCENT );
         else
@@ -636,7 +683,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
         }
         else if( SfxItemState::DEFAULT == rSet.GetItemState( SID_CLIPBOARD_FORMAT_ITEMS ) )
         {
-            if (mpCurrentClipboardFormats.get() != nullptr)
+            if (mpCurrentClipboardFormats != nullptr)
                 rSet.Put(*mpCurrentClipboardFormats);
         }
     }
@@ -650,7 +697,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
     {
         // The mpDrawView was not NULL but is now.
         // The reason for this may be that the DrawViewShell has been
-        // destroyed in the mean time.
+        // destroyed in the meantime.
         // We can only return immediately and hope that the deleted
         // DrawViewShell is not called again.
         DBG_ASSERT(mpDrawView!=nullptr, "Please report this assertion to the Impress team.");
@@ -694,6 +741,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
         rSet.ClearItem(SID_ANIMATION_OBJECTS);
         rSet.DisableItem(SID_ANIMATION_OBJECTS);
         rSet.DisableItem(SID_ANIMATION_EFFECTS);
+        rSet.DisableItem(SID_EXECUTE_ANIMATION_EFFECT);
 
         if (meEditMode == EditMode::MasterPage)
             rSet.DisableItem(SID_MODIFYPAGE);
@@ -711,6 +759,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
         rSet.ClearItem(SID_ANIMATION_OBJECTS);
         rSet.DisableItem(SID_ANIMATION_OBJECTS);
         rSet.DisableItem(SID_ANIMATION_EFFECTS);
+        rSet.DisableItem(SID_EXECUTE_ANIMATION_EFFECT);
         rSet.DisableItem(SID_RENAMEPAGE);
         rSet.DisableItem(SID_RENAMEPAGE_QUICK);
         rSet.DisableItem(SID_INSERTLAYER);
@@ -811,21 +860,15 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
     }
 
     // is it allowed to delete the current layer?
-    if( SfxItemState::DEFAULT == rSet.GetItemState( SID_DELETE_LAYER ) )
+    if( SfxItemState::DEFAULT == rSet.GetItemState( SID_DELETE_LAYER )
+        || SfxItemState::DEFAULT == rSet.GetItemState( SID_RENAMELAYER ) )
     {
         if(GetLayerTabControl()) // #i87182#
         {
             sal_uInt16 nCurrentLayer = GetLayerTabControl()->GetCurPageId();
-            const OUString& rName = GetLayerTabControl()->GetPageText(nCurrentLayer);
+            const OUString& rName = GetLayerTabControl()->GetLayerName(nCurrentLayer);
 
-            bool bDisableIt = !IsLayerModeActive();
-            bDisableIt |= (rName == SdResId(STR_LAYER_LAYOUT));
-            bDisableIt |= (rName == SdResId(STR_LAYER_BCKGRND));
-            bDisableIt |= (rName == SdResId(STR_LAYER_BCKGRNDOBJ));
-            bDisableIt |= (rName == SdResId(STR_LAYER_CONTROLS));
-            bDisableIt |= (rName == SdResId(STR_LAYER_MEASURELINES));
-
-            if (bDisableIt)
+            if (!IsLayerModeActive() || LayerTabBar::IsRealNameOfStandardLayer(rName))
             {
                 rSet.DisableItem(SID_DELETE_LAYER);
                 rSet.DisableItem(SID_RENAMELAYER);
@@ -872,7 +915,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 
         if (pOlView)
         {
-            if (pOlView->GetSelected().isEmpty())
+            if (pOlView->GetSelected().isEmpty() || GetObjectShell()->isContentExtractionLocked())
             {
                 rSet.DisableItem( SID_CUT );
                 rSet.DisableItem( SID_COPY );
@@ -1245,6 +1288,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
             rSet.ClearItem(SID_OBJECT_ROTATE);
             rSet.ClearItem(SID_FM_CONFIG);
             rSet.ClearItem(SID_ANIMATION_EFFECTS);
+            rSet.ClearItem(SID_EXECUTE_ANIMATION_EFFECT);
             rSet.ClearItem(SID_ANIMATION_OBJECTS);
             rSet.ClearItem(SID_3D_WIN);
 
@@ -1265,6 +1309,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
             rSet.DisableItem(SID_POSITION);
             rSet.DisableItem(SID_FM_CONFIG);
             rSet.DisableItem(SID_ANIMATION_EFFECTS);
+            rSet.DisableItem(SID_EXECUTE_ANIMATION_EFFECT);
             rSet.DisableItem(SID_ANIMATION_OBJECTS);
             rSet.DisableItem(SID_3D_WIN);
         }
@@ -1341,7 +1386,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
                         {
                             case GraphicType::Bitmap :
                                 bFoundBitmap = true;
-                                if(pSdrGrafObj->isEmbeddedSvg())
+                                if(pSdrGrafObj->isEmbeddedVectorGraphicData())
                                 {
                                     bFoundMetafile = true;
                                 }
@@ -1403,21 +1448,8 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
     {
         if( mpDrawView->IsTextEdit() )
         {
-            OutlinerView* pOLV = mpDrawView->GetTextEditOutlinerView();
-            if (pOLV)
-            {
-                const SvxFieldItem* pFieldItem = pOLV->GetFieldAtSelection();
-                if (pFieldItem)
-                {
-                    ESelection aSel = pOLV->GetSelection();
-                    if ( abs( aSel.nEndPos - aSel.nStartPos ) == 1 )
-                    {
-                        const SvxFieldData* pField = pFieldItem->GetField();
-                        if ( dynamic_cast< const SvxURLField *>( pField ) !=  nullptr )
-                            bDisableEditHyperlink = false;
-                    }
-                }
-            }
+            if (URLFieldHelper::IsCursorAtURLField(mpDrawView->GetTextEditOutlinerView()))
+                bDisableEditHyperlink = false;
         }
         else
         {
@@ -1425,7 +1457,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 
             if ( pUnoCtrl && SdrInventor::FmForm == pUnoCtrl->GetObjInventor() )
             {
-                uno::Reference< awt::XControlModel > xControlModel( pUnoCtrl->GetUnoControlModel() );
+                const uno::Reference< awt::XControlModel >& xControlModel( pUnoCtrl->GetUnoControlModel() );
                 if( xControlModel.is() )
                 {
                     uno::Reference< beans::XPropertySet > xPropSet( xControlModel, uno::UNO_QUERY );
@@ -1467,10 +1499,13 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
         rSet.DisableItem( SID_EDIT_HYPERLINK );
 
     if ( bDisableEditHyperlink )
+    {
         rSet.DisableItem( SID_OPEN_HYPERLINK );
+        rSet.DisableItem( SID_COPY_HYPERLINK_LOCATION );
+    }
 
     //fdo#78151 enable show next level/hide last level if editing a master page
-    //PRESOBJ_OUTLINE object and the current selection allow that to happen
+    //PresObjKind::Outline object and the current selection allow that to happen
     {
         bool bDisableShowNextLevel = true;
         bool bDisableHideLastLevel = true;
@@ -1523,22 +1558,14 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
         {
             SdrLayerIDSet aVisibleLayers = pPage->TRG_GetMasterPageVisibleLayers();
             SdrLayerAdmin& rLayerAdmin = GetDoc()->GetLayerAdmin();
-            SdrLayerID aBackgroundId = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRND));
-            SdrLayerID aObjectId = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRNDOBJ));
+            SdrLayerID aBackgroundId = rLayerAdmin.GetLayerID(sUNO_LayerName_background);
+            SdrLayerID aObjectId = rLayerAdmin.GetLayerID(sUNO_LayerName_background_objects);
             rSet.Put(SfxBoolItem(SID_DISPLAY_MASTER_BACKGROUND,
                     aVisibleLayers.IsSet(aBackgroundId)));
             rSet.Put(SfxBoolItem(SID_DISPLAY_MASTER_OBJECTS,
                     aVisibleLayers.IsSet(aObjectId)));
         }
     }
-
-#if !HAVE_FEATURE_GLTF
-    if (SfxItemState::DEFAULT == rSet.GetItemState(SID_INSERT_3DMODEL))
-    {
-        rSet.DisableItem(SID_INSERT_3DMODEL);
-        rSet.Put(SfxVisibilityItem(SID_INSERT_3DMODEL, false));
-    }
-#endif
 
     if (rSet.GetItemState(SID_SAVE_BACKGROUND) == SfxItemState::DEFAULT)
     {
@@ -1549,13 +1576,26 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
             SfxItemSet aMergedAttr(GetDoc()->GetPool(), svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST>{});
             SdStyleSheet* pStyleSheet = pPage->getPresentationStyle(HID_PSEUDOSHEET_BACKGROUND);
             MergePageBackgroundFilling(pPage, pStyleSheet, meEditMode == EditMode::MasterPage, aMergedAttr);
-            if (drawing::FillStyle_BITMAP == static_cast<const XFillStyleItem&>(aMergedAttr.Get(XATTR_FILLSTYLE)).GetValue())
+            if (drawing::FillStyle_BITMAP == aMergedAttr.Get(XATTR_FILLSTYLE).GetValue())
             {
                 bDisableSaveBackground = false;
             }
         }
         if (bDisableSaveBackground)
             rSet.DisableItem(SID_SAVE_BACKGROUND);
+    }
+
+    if (GetObjectShell()->isExportLocked())
+        rSet.DisableItem(SID_PRESENTATION_MINIMIZER);
+
+    if (rSet.GetItemState(SID_INSERT_SIGNATURELINE) == SfxItemState::DEFAULT)
+    {
+        if (!GetObjectShell()->IsSignPDF())
+        {
+            // Currently SID_INSERT_SIGNATURELINE assumes a PDF that was opened for signing, disable
+            // it otherwise.
+            rSet.DisableItem(SID_INSERT_SIGNATURELINE);
+        }
     }
 
     GetModeSwitchingMenuState (rSet);
@@ -1642,151 +1682,238 @@ void DrawViewShell::GetModeSwitchingMenuState (SfxItemSet &rSet)
         rSet.DisableItem( SID_NOTES_MASTER_MODE );
     }
 
-    svx::ExtrusionBar::getState( mpDrawView, rSet );
-    svx::FontworkBar::getState( mpDrawView, rSet );
+    svx::ExtrusionBar::getState( mpDrawView.get(), rSet );
+    svx::FontworkBar::getState( mpDrawView.get(), rSet );
 }
 
 void DrawViewShell::GetPageProperties( SfxItemSet &rSet )
 {
     SdPage *pPage = getCurrentPage();
 
-    if (pPage != nullptr && GetDoc() != nullptr)
+    if (pPage == nullptr || GetDoc() == nullptr)
+        return;
+
+    SvxPageItem aPageItem(SID_ATTR_PAGE);
+    aPageItem.SetLandscape( pPage->GetOrientation() == Orientation::Landscape );
+
+    rSet.Put(SvxSizeItem( SID_ATTR_PAGE_SIZE, pPage->GetSize() ));
+    rSet.Put(aPageItem);
+
+    const SfxItemSet &rPageAttr = pPage->getSdrPageProperties().GetItemSet();
+    const XFillStyleItem* pFillStyle = rPageAttr.GetItem(XATTR_FILLSTYLE);
+    if (!pFillStyle)
+        return;
+
+    drawing::FillStyle eXFS = pFillStyle->GetValue();
+    XFillStyleItem aFillStyleItem( eXFS );
+    aFillStyleItem.SetWhich( SID_ATTR_PAGE_FILLSTYLE );
+    rSet.Put(aFillStyleItem);
+
+    switch (eXFS)
     {
-        SvxPageItem aPageItem(SID_ATTR_PAGE);
-        aPageItem.SetLandscape( pPage->GetOrientation() == Orientation::Landscape );
-
-        rSet.Put(SvxSizeItem( SID_ATTR_PAGE_SIZE, pPage->GetSize() ));
-        rSet.Put(aPageItem);
-
-        const SfxItemSet &rPageAttr = pPage->getSdrPageProperties().GetItemSet();
-        drawing::FillStyle eXFS = (drawing::FillStyle) static_cast<const XFillStyleItem*>( rPageAttr.GetItem( XATTR_FILLSTYLE ) )->GetValue();
-        XFillStyleItem aFillStyleItem( eXFS );
-        aFillStyleItem.SetWhich( SID_ATTR_PAGE_FILLSTYLE );
-        rSet.Put(aFillStyleItem);
-
-        switch (eXFS)
+        case drawing::FillStyle_SOLID:
+        if (const XFillColorItem* pColorItem = rPageAttr.GetItem(XATTR_FILLCOLOR))
         {
-            case (drawing::FillStyle_SOLID):
-            {
-                Color aColor =  static_cast<const XFillColorItem*>( rPageAttr.GetItem( XATTR_FILLCOLOR ) )->GetColorValue();
-                XFillColorItem aFillColorItem( OUString(), aColor );
-                aFillColorItem.SetWhich( SID_ATTR_PAGE_COLOR );
-                rSet.Put( aFillColorItem );
-            }
-            break;
-
-            case (drawing::FillStyle_GRADIENT):
-            {
-                const XFillGradientItem *pGradient =  static_cast<const XFillGradientItem*>( rPageAttr.GetItem( XATTR_FILLGRADIENT ) );
-                XFillGradientItem aFillGradientItem( pGradient->GetName(), pGradient->GetGradientValue(), SID_ATTR_PAGE_GRADIENT );
-                rSet.Put( aFillGradientItem );
-            }
-            break;
-
-            case (drawing::FillStyle_HATCH):
-            {
-                const XFillHatchItem *pFillHatchItem( static_cast<const XFillHatchItem*>( rPageAttr.GetItem( XATTR_FILLHATCH ) ) );
-                XFillHatchItem aFillHatchItem( pFillHatchItem->GetName(), pFillHatchItem->GetHatchValue());
-                aFillHatchItem.SetWhich( SID_ATTR_PAGE_HATCH );
-                rSet.Put( aFillHatchItem );
-            }
-            break;
-
-            case (drawing::FillStyle_BITMAP):
-            {
-                const XFillBitmapItem *pFillBitmapItem = static_cast<const XFillBitmapItem*>( rPageAttr.GetItem( XATTR_FILLBITMAP ) );
-                XFillBitmapItem aFillBitmapItem( pFillBitmapItem->GetName(), pFillBitmapItem->GetGraphicObject() );
-                aFillBitmapItem.SetWhich( SID_ATTR_PAGE_BITMAP );
-                rSet.Put( aFillBitmapItem );
-            }
-            break;
-
-            default:
-            break;
+            Color aColor = pColorItem->GetColorValue();
+            XFillColorItem aFillColorItem( OUString(), aColor );
+            aFillColorItem.SetWhich( SID_ATTR_PAGE_COLOR );
+            rSet.Put( aFillColorItem );
         }
+        break;
+
+        case drawing::FillStyle_GRADIENT:
+        {
+            const XFillGradientItem *pGradient =  rPageAttr.GetItem( XATTR_FILLGRADIENT );
+            XFillGradientItem aFillGradientItem( pGradient->GetName(), pGradient->GetGradientValue(), SID_ATTR_PAGE_GRADIENT );
+            rSet.Put( aFillGradientItem );
+        }
+        break;
+
+        case drawing::FillStyle_HATCH:
+        {
+            const XFillHatchItem *pFillHatchItem( rPageAttr.GetItem( XATTR_FILLHATCH ) );
+            XFillHatchItem aFillHatchItem( pFillHatchItem->GetName(), pFillHatchItem->GetHatchValue());
+            aFillHatchItem.SetWhich( SID_ATTR_PAGE_HATCH );
+            rSet.Put( aFillHatchItem );
+        }
+        break;
+
+        case drawing::FillStyle_BITMAP:
+        {
+            const XFillBitmapItem *pFillBitmapItem = rPageAttr.GetItem( XATTR_FILLBITMAP );
+            XFillBitmapItem aFillBitmapItem( pFillBitmapItem->GetName(), pFillBitmapItem->GetGraphicObject() );
+            aFillBitmapItem.SetWhich( SID_ATTR_PAGE_BITMAP );
+            rSet.Put( aFillBitmapItem );
+        }
+        break;
+
+        default:
+        break;
     }
 }
 
 void DrawViewShell::SetPageProperties (SfxRequest& rReq)
 {
     SdPage *pPage = getCurrentPage();
+    if (!pPage)
+        return;
     sal_uInt16 nSlotId = rReq.GetSlot();
     const SfxItemSet *pArgs = rReq.GetArgs();
+    if (!pArgs)
+        return;
 
-    if ( pPage && pArgs )
+    if ( ( nSlotId >= SID_ATTR_PAGE_COLOR ) && ( nSlotId <= SID_ATTR_PAGE_FILLSTYLE ) )
     {
-        if ( ( nSlotId >= SID_ATTR_PAGE_COLOR ) && ( nSlotId <= SID_ATTR_PAGE_FILLSTYLE ) )
+        SdrPageProperties& rPageProperties = pPage->getSdrPageProperties();
+        const SfxItemSet &aPageItemSet = rPageProperties.GetItemSet();
+        std::unique_ptr<SfxItemSet> pTempSet = aPageItemSet.Clone(false, &mpDrawView->GetModel()->GetItemPool());
+        const SfxPoolItem* pItem = nullptr;
+
+        rPageProperties.ClearItem(XATTR_FILLSTYLE);
+        rPageProperties.ClearItem(XATTR_FILLGRADIENT);
+        rPageProperties.ClearItem(XATTR_FILLHATCH);
+        rPageProperties.ClearItem(XATTR_FILLBITMAP);
+
+        switch (nSlotId)
         {
-            SdrPageProperties& rPageProperties = pPage->getSdrPageProperties();
-            const SfxItemSet &aPageItemSet = rPageProperties.GetItemSet();
-            SfxItemSet *pTempSet = aPageItemSet.Clone(false, &mpDrawView->GetModel()->GetItemPool());
-
-            rPageProperties.ClearItem(XATTR_FILLSTYLE);
-            rPageProperties.ClearItem(XATTR_FILLGRADIENT);
-            rPageProperties.ClearItem(XATTR_FILLHATCH);
-            rPageProperties.ClearItem(XATTR_FILLBITMAP);
-
-            switch (nSlotId)
+            case SID_ATTR_PAGE_FILLSTYLE:
             {
-                case(SID_ATTR_PAGE_FILLSTYLE):
-                {
-                    XFillStyleItem aFSItem( static_cast<const XFillStyleItem&>(pArgs->Get( XATTR_FILLSTYLE )) );
-                    drawing::FillStyle eXFS = aFSItem.GetValue();
+                XFillStyleItem aFSItem( pArgs->Get( XATTR_FILLSTYLE ) );
+                drawing::FillStyle eXFS = aFSItem.GetValue();
 
-                    if ( eXFS == drawing::FillStyle_NONE )
-                         rPageProperties.PutItem( XFillStyleItem( eXFS ) );
-                }
-                break;
+                if ( eXFS == drawing::FillStyle_NONE )
+                     rPageProperties.PutItem( XFillStyleItem( eXFS ) );
+            }
+            break;
 
-                case(SID_ATTR_PAGE_COLOR):
+            case SID_ATTR_PAGE_COLOR:
+            {
+                if (SfxItemState::SET == pArgs->GetItemState(SID_ATTR_COLOR_STR, false, &pItem))
                 {
-                    XFillColorItem aColorItem( static_cast<const XFillColorItem&>(pArgs->Get( XATTR_FILLCOLOR )) );
+                    Color aColor;
+                    OUString sColor;
+
+                    sColor = static_cast<const SfxStringItem*>(pItem)->GetValue();
+
+                    if (sColor == "transparent")
+                        aColor = COL_TRANSPARENT;
+                    else
+                        aColor = Color(sColor.toInt32(16));
+
+                    XFillColorItem aColorItem(OUString(), aColor);
                     rPageProperties.PutItem( XFillStyleItem( drawing::FillStyle_SOLID ) );
                     rPageProperties.PutItem( aColorItem );
                 }
-                break;
-
-                case(SID_ATTR_PAGE_GRADIENT):
+                else
                 {
-                    XFillGradientItem aGradientItem( static_cast<const XFillGradientItem&>(pArgs->Get( XATTR_FILLGRADIENT )) );
+                    XFillColorItem aColorItem( pArgs->Get( XATTR_FILLCOLOR ) );
+                    rPageProperties.PutItem( XFillStyleItem( drawing::FillStyle_SOLID ) );
+                    rPageProperties.PutItem( aColorItem );
+                }
+            }
+            break;
+
+            case SID_ATTR_PAGE_GRADIENT:
+            {
+                if (SfxItemState::SET == pArgs->GetItemState(SID_FILL_GRADIENT_JSON, false, &pItem))
+                {
+                    const SfxStringItem* pJSON = static_cast<const SfxStringItem*>(pItem);
+                    XFillGradientItem aGradientItem( XGradient::fromJSON(pJSON->GetValue()) );
 
                     // MigrateItemSet guarantees unique gradient names
                     SfxItemSet aMigrateSet( mpDrawView->GetModel()->GetItemPool(), svl::Items<XATTR_FILLGRADIENT, XATTR_FILLGRADIENT>{} );
                     aMigrateSet.Put( aGradientItem );
-                    SdrModel::MigrateItemSet( &aMigrateSet, pTempSet, mpDrawView->GetModel() );
+                    SdrModel::MigrateItemSet( &aMigrateSet, pTempSet.get(), mpDrawView->GetModel() );
 
-                    rPageProperties.PutItemSet( *pTempSet );
                     rPageProperties.PutItem( XFillStyleItem( drawing::FillStyle_GRADIENT ) );
+                    rPageProperties.PutItemSet( *pTempSet );
                 }
-                break;
-
-                case(SID_ATTR_PAGE_HATCH):
+                else
                 {
-                    XFillHatchItem aHatchItem( static_cast<const XFillHatchItem&>(pArgs->Get( XATTR_FILLHATCH )) );
-                    rPageProperties.PutItem( XFillStyleItem( drawing::FillStyle_HATCH ) );
-                    rPageProperties.PutItem( aHatchItem );
-                }
-                break;
+                    XFillGradientItem aGradientItem( pArgs->Get( XATTR_FILLGRADIENT ) );
 
-                case(SID_ATTR_PAGE_BITMAP):
-                {
-                    XFillBitmapItem aBitmapItem( static_cast<const XFillBitmapItem&>(pArgs->Get( XATTR_FILLBITMAP )) );
-                    rPageProperties.PutItem( XFillStyleItem( drawing::FillStyle_BITMAP ) );
-                    rPageProperties.PutItem( aBitmapItem );
-                }
-                break;
+                    // MigrateItemSet guarantees unique gradient names
+                    SfxItemSet aMigrateSet( mpDrawView->GetModel()->GetItemPool(), svl::Items<XATTR_FILLGRADIENT, XATTR_FILLGRADIENT>{} );
+                    aMigrateSet.Put( aGradientItem );
+                    SdrModel::MigrateItemSet( &aMigrateSet, pTempSet.get(), mpDrawView->GetModel() );
 
-                default:
-                break;
+                    rPageProperties.PutItem( XFillStyleItem( drawing::FillStyle_GRADIENT ) );
+                    rPageProperties.PutItemSet( *pTempSet );
+                }
             }
+            break;
 
-            delete pTempSet;
+            case SID_ATTR_PAGE_HATCH:
+            {
+                XFillHatchItem aHatchItem( pArgs->Get( XATTR_FILLHATCH ) );
+                rPageProperties.PutItem( XFillStyleItem( drawing::FillStyle_HATCH ) );
+                rPageProperties.PutItem( aHatchItem );
+            }
+            break;
 
-            rReq.Done();
+            case SID_ATTR_PAGE_BITMAP:
+            {
+                XFillBitmapItem aBitmapItem( pArgs->Get( XATTR_FILLBITMAP ) );
+                rPageProperties.PutItem( XFillStyleItem( drawing::FillStyle_BITMAP ) );
+                rPageProperties.PutItem( aBitmapItem );
+            }
+            break;
+
+            default:
+            break;
+        }
+
+        rReq.Done();
+    }
+    else
+    {
+        PageKind            ePageKind = GetPageKind();
+        const SfxPoolItem*  pPoolItem = nullptr;
+        Size                aNewSize(pPage->GetSize());
+        sal_Int32           nLeft  = -1, nRight = -1, nUpper = -1, nLower = -1;
+        bool                bScaleAll = true;
+        Orientation         eOrientation = pPage->GetOrientation();
+        SdPage*             pMasterPage = pPage->IsMasterPage() ? pPage : &static_cast<SdPage&>(pPage->TRG_GetMasterPage());
+        bool                bFullSize = pMasterPage->IsBackgroundFullSize();
+        sal_uInt16          nPaperBin = pPage->GetPaperBin();
+
+        switch (nSlotId)
+        {
+            case SID_ATTR_PAGE_LRSPACE:
+                if( pArgs->GetItemState(GetPool().GetWhich(SID_ATTR_PAGE_LRSPACE),
+                                        true,&pPoolItem) == SfxItemState::SET )
+                {
+                    nLeft = static_cast<const SvxLongLRSpaceItem*>(pPoolItem)->GetLeft();
+                    nRight = static_cast<const SvxLongLRSpaceItem*>(pPoolItem)->GetRight();
+                    if (nLeft != -1)
+                    {
+                        nUpper  = pPage->GetUpperBorder();
+                        nLower  = pPage->GetLowerBorder();
+                    }
+                    SetPageSizeAndBorder(ePageKind, aNewSize, nLeft, nRight, nUpper, nLower, bScaleAll, eOrientation, nPaperBin, bFullSize );
+                }
+                break;
+
+            case SID_ATTR_PAGE_ULSPACE:
+                if( pArgs->GetItemState(SID_ATTR_PAGE_ULSPACE,
+                                        true,&pPoolItem) == SfxItemState::SET )
+                {
+                    nUpper = static_cast<const SvxLongULSpaceItem*>(pPoolItem)->GetUpper();
+                    nLower = static_cast<const SvxLongULSpaceItem*>(pPoolItem)->GetLower();
+                    if (nUpper != -1)
+                    {
+                        nLeft   = pPage->GetLeftBorder();
+                        nRight  = pPage->GetRightBorder();
+                    }
+                    SetPageSizeAndBorder(ePageKind, aNewSize, nLeft, nRight, nUpper, nLower, bScaleAll, eOrientation, nPaperBin, bFullSize );
+                }
+                break;
+
+            default:
+            break;
         }
     }
 }
-
 
 void DrawViewShell::GetState (SfxItemSet& rSet)
 {

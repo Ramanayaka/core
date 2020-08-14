@@ -16,11 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "ColorListener.hxx"
+#include <ColorListener.hxx>
 #include <svl/hint.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/event.hxx>
 
-#include "uistrings.hrc"
+#include <strings.hxx>
 
 
 namespace rptui

@@ -59,25 +59,21 @@
 ************************************************************************/
 #include "lwpborderstuff.hxx"
 #include "lwpstyledef.hxx"
-#include "lwpfilehdr.hxx"
-#include "lwptools.hxx"
+#include <lwpfilehdr.hxx>
+#include <lwptools.hxx>
 
 LwpBorderStuff::LwpBorderStuff()
+  : m_nSides(0), m_nValid(0),
+    m_nBorderGroupIDLeft(0),
+    m_nBorderGroupIDRight(0),
+    m_nBorderGroupIDTop(0),
+    m_nBorderGroupIDBottom(0),
+    m_nGroupIndent(0),
+    m_nWidthLeft(0),
+    m_nWidthTop(0),
+    m_nWidthRight(0),
+    m_nWidthBottom(0)
 {
-    m_nSides = 0;
-    m_nValid = 0;
-
-    m_nBorderGroupIDLeft = 0;
-    m_nBorderGroupIDRight = 0;
-    m_nBorderGroupIDTop = 0;
-    m_nBorderGroupIDBottom = 0;
-
-    m_nGroupIndent = 0;
-
-    m_nWidthLeft = 0;
-    m_nWidthTop = 0;
-    m_nWidthRight = 0;
-    m_nWidthBottom = 0;
 }
 
 void    LwpBorderStuff::Read(LwpObjectStream *pStrm)
@@ -135,24 +131,24 @@ void    LwpBorderStuff::Read(LwpObjectStream *pStrm)
     m_nValid = pStrm->QuickReaduInt16();
     pStrm->SkipExtra();
 
-    if( LwpFileHeader::m_nFileRevision < 0x0010 )
+    if( LwpFileHeader::m_nFileRevision >= 0x0010 )
+        return;
+
+    if( m_nBorderGroupIDLeft&EXTERNAL_ID )
     {
-        if( m_nBorderGroupIDLeft&EXTERNAL_ID )
-        {
-            m_nBorderGroupIDLeft = BGRP_SOLID;
-        }
-        if( m_nBorderGroupIDRight&EXTERNAL_ID )
-        {
-            m_nBorderGroupIDRight = BGRP_SOLID;
-        }
-        if( m_nBorderGroupIDTop&EXTERNAL_ID )
-        {
-            m_nBorderGroupIDTop = BGRP_SOLID;
-        }
-        if( m_nBorderGroupIDBottom&EXTERNAL_ID )
-        {
-            m_nBorderGroupIDBottom = BGRP_SOLID;
-        }
+        m_nBorderGroupIDLeft = BGRP_SOLID;
+    }
+    if( m_nBorderGroupIDRight&EXTERNAL_ID )
+    {
+        m_nBorderGroupIDRight = BGRP_SOLID;
+    }
+    if( m_nBorderGroupIDTop&EXTERNAL_ID )
+    {
+        m_nBorderGroupIDTop = BGRP_SOLID;
+    }
+    if( m_nBorderGroupIDBottom&EXTERNAL_ID )
+    {
+        m_nBorderGroupIDBottom = BGRP_SOLID;
     }
 }
 

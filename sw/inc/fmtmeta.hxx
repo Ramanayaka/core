@@ -20,6 +20,8 @@
 #ifndef INCLUDED_SW_INC_FMTMETA_HXX
 #define INCLUDED_SW_INC_FMTMETA_HXX
 
+#include "calbck.hxx"
+
 #include <cppuhelper/weakref.hxx>
 
 #include <svl/poolitem.hxx>
@@ -28,14 +30,14 @@
 #include <memory>
 #include <vector>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace document {
         class XDocumentProperties;
     }
     namespace text {
         class XTextField;
     }
-}}}
+}
 
 /**
  * The classes that make up a meta entity are:
@@ -79,6 +81,7 @@ class SwTextMeta;
 class SwXMeta;
 class SwXMetaField;
 class SwTextNode;
+class SwDoc;
 namespace sw {
     class Meta;
     class MetaFieldManager;
@@ -111,7 +114,7 @@ public:
 
     /// SfxPoolItem
     virtual bool             operator==( const SfxPoolItem & ) const override;
-    virtual SfxPoolItem *    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwFormatMeta*    Clone( SfxItemPool *pPool = nullptr ) const override;
 
     /// notify clients registered at m_pMeta that this meta is being (re-)moved
     void NotifyChangeTextNode(SwTextNode *const pTextNode);
@@ -124,8 +127,8 @@ namespace sw {
 class Meta
     : public ::sfx2::Metadatable
     , public SwModify
+    , public sw::BroadcasterMixin
 {
-protected:
     friend class ::SwFormatMeta; ///< SetFormatMeta, NotifyChangeTextNode
     friend class ::SwXMeta;   ///< GetTextNode, GetTextAttr, Get/SetXMeta
 
@@ -134,6 +137,8 @@ protected:
 
     SwFormatMeta * m_pFormat;
     SwTextNode * m_pTextNode;
+
+protected:
 
     SwTextMeta * GetTextAttr() const;
     SwTextNode * GetTextNode() const { return m_pTextNode;} ///< @return 0 if not in document (undo)
@@ -152,7 +157,7 @@ protected:
     virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew ) override;
 
 public:
-    explicit Meta(SwFormatMeta * const i_pFormat = nullptr);
+    explicit Meta(SwFormatMeta * const i_pFormat);
     virtual ~Meta() override;
 
     /// sfx2::Metadatable
@@ -163,7 +168,7 @@ public:
     virtual css::uno::Reference< css::rdf::XMetadatable > MakeUnoObject() override;
 };
 
-class MetaField
+class MetaField final
     : public Meta
 {
 private:
@@ -179,9 +184,9 @@ private:
     bool IsFixedLanguage() const    { return m_bIsFixedLanguage; }
     void SetIsFixedLanguage(bool b) { m_bIsFixedLanguage = b; }
 
-    explicit MetaField(SwFormatMeta * const i_pFormat = nullptr,
-            const sal_uInt32 nNumberFormat = SAL_MAX_UINT32,
-            const bool bIsFixedLanguage = false );
+    explicit MetaField(SwFormatMeta * const i_pFormat,
+            const sal_uInt32 nNumberFormat,
+            const bool bIsFixedLanguage );
 
 public:
     /// get prefix/suffix from the RDF repository. @throws RuntimeException
@@ -211,7 +216,7 @@ public:
     std::vector< css::uno::Reference<css::text::XTextField> > getMetaFields();
     /// Copy document properties from rSource to m_xDocumentProperties.
     void copyDocumentProperties(const SwDoc& rSource);
-    const css::uno::Reference<css::document::XDocumentProperties>& getDocumentProperties();
+    const css::uno::Reference<css::document::XDocumentProperties>& getDocumentProperties() const;
 };
 
 } // namespace sw

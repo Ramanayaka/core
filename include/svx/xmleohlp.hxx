@@ -22,12 +22,15 @@
 
 #include <cppuhelper/compbase.hxx>
 #include <osl/mutex.hxx>
-#include <map>
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/document/XEmbeddedObjectResolver.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
+#include <com/sun/star/embed/XStorage.hpp>
 #include <svx/svxdllapi.h>
+#include <rtl/ref.hxx>
+#include <tools/stream.hxx>
+#include <map>
+#include <memory>
 
 enum class SvXMLEmbeddedObjectHelperMode
 {
@@ -40,16 +43,11 @@ class SvGlobalName;
 class OutputStorageWrapper_Impl;
 
 
-class SVX_DLLPUBLIC SvXMLEmbeddedObjectHelper :
+class SVXCORE_DLLPUBLIC SvXMLEmbeddedObjectHelper final :
     public cppu::WeakComponentImplHelper< css::document::XEmbeddedObjectResolver, css::container::XNameAccess >
 {
-    typedef ::std::map< OUString, OutputStorageWrapper_Impl* > SvXMLEmbeddedObjectHelper_Impl;
-private:
-
     ::osl::Mutex                maMutex;
 
-    const OUString       maReplacementGraphicsContainerStorageName;
-    const OUString       maReplacementGraphicsContainerStorageName60;
     OUString             maCurContainerStorageName;
 
 
@@ -59,7 +57,8 @@ private:
     css::uno::Reference < css::embed::XStorage > mxTempStorage;  // package
                                                 // objects
     SvXMLEmbeddedObjectHelperMode       meCreateMode;
-    SvXMLEmbeddedObjectHelper_Impl      *mpStreamMap;
+    std::unique_ptr<std::map< OUString, rtl::Reference<OutputStorageWrapper_Impl> >>
+                                                 mpStreamMap;
 
     SVX_DLLPRIVATE bool                 ImplGetStorageNames(
                                        const OUString& rURLStr,
@@ -84,8 +83,6 @@ private:
     SVX_DLLPRIVATE css::uno::Reference< css::io::XInputStream > ImplGetReplacementImage(
                                 const css::uno::Reference< css::embed::XEmbeddedObject >& xObj );
 
-protected:
-
                                 SvXMLEmbeddedObjectHelper();
                                 virtual ~SvXMLEmbeddedObjectHelper() override;
     void                        Init( const css::uno::Reference < css::embed::XStorage >&,
@@ -99,14 +96,13 @@ public:
                                     ::comphelper::IEmbeddedHelper& rDocPersist,
                                     SvXMLEmbeddedObjectHelperMode eCreateMode );
 
-    static SvXMLEmbeddedObjectHelper*   Create(
+    static rtl::Reference<SvXMLEmbeddedObjectHelper> Create(
                                     const css::uno::Reference < css::embed::XStorage >&,
                                     ::comphelper::IEmbeddedHelper& rDocPersist,
                                     SvXMLEmbeddedObjectHelperMode eCreateMode );
-    static SvXMLEmbeddedObjectHelper*   Create(
+    static rtl::Reference<SvXMLEmbeddedObjectHelper>   Create(
                                     ::comphelper::IEmbeddedHelper& rDocPersist,
                                     SvXMLEmbeddedObjectHelperMode eCreateMode );
-    static void                 Destroy( SvXMLEmbeddedObjectHelper* pSvXMLEmbeddedObjectHelper );
 
     // XEmbeddedObjectResolver
     virtual OUString SAL_CALL resolveEmbeddedObjectURL( const OUString& aURL ) override;

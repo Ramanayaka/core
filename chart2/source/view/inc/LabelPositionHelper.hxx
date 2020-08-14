@@ -23,14 +23,16 @@
 #include "LabelAlignment.hxx"
 #include "PropertyMapper.hxx"
 #include <com/sun/star/awt/Point.hpp>
-#include <com/sun/star/drawing/Position3D.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
+
+namespace com::sun::star::drawing { struct Position3D; }
+namespace com::sun::star::drawing { class XShapes; }
+namespace com::sun::star::awt { struct Size; }
+namespace com::sun::star::drawing { class XShape; }
 
 namespace chart
 {
 
-class PlottingPositionHelper;
-class AbstractShapeFactory;
+class ShapeFactory;
 
 class LabelPositionHelper
 {
@@ -39,7 +41,7 @@ public:
     LabelPositionHelper(
           sal_Int32 nDimensionCount
         , const css::uno::Reference< css::drawing::XShapes >& xLogicTarget
-        , AbstractShapeFactory* pShapeFactory );
+        , ShapeFactory* pShapeFactory );
     virtual ~LabelPositionHelper();
 
     css::awt::Point transformSceneToScreenPosition(
@@ -59,7 +61,7 @@ protected:
 private:
     //these members are only necessary for transformation from 3D to 2D
     css::uno::Reference< css::drawing::XShapes >    m_xLogicTarget;
-    AbstractShapeFactory* m_pShapeFactory;
+    ShapeFactory* m_pShapeFactory;
 };
 
 } //namespace chart

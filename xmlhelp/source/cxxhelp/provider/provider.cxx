@@ -19,17 +19,16 @@
 
 #include <config_folders.h>
 
-#include <stdio.h>
 #include <officecfg/Office/Common.hxx>
 #include <officecfg/Setup.hxx>
-#include <osl/file.hxx>
-#include <ucbhelper/contentidentifier.hxx>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XContainer.hpp>
+#include <com/sun/star/ucb/IllegalIdentifierException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/typeprovider.hxx>
+#include <cppuhelper/factory.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/pathoptions.hxx>
 
@@ -40,13 +39,12 @@
 using namespace com::sun::star;
 using namespace chelp;
 
+
 // ContentProvider Implementation.
 
 ContentProvider::ContentProvider( const uno::Reference< uno::XComponentContext >& rxContext )
     : ::ucbhelper::ContentProviderImplHelper( rxContext )
     , isInitialized( false )
-    , m_aScheme(MYUCP_URL_SCHEME)
-    , m_pDatabases( nullptr )
 {
 }
 
@@ -71,12 +69,12 @@ void SAL_CALL ContentProvider::release()
 css::uno::Any SAL_CALL ContentProvider::queryInterface( const css::uno::Type & rType )
 {
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< lang::XTypeProvider* >(this)),
-                                               (static_cast< lang::XServiceInfo* >(this)),
-                                               (static_cast< ucb::XContentProvider* >(this)),
-                                               (static_cast< lang::XComponent* >(this)),
-                                               (static_cast< lang::XEventListener* >(this)),
-                                               (static_cast< container::XContainerListener* >(this))
+                                               static_cast< lang::XTypeProvider* >(this),
+                                               static_cast< lang::XServiceInfo* >(this),
+                                               static_cast< ucb::XContentProvider* >(this),
+                                               static_cast< lang::XComponent* >(this),
+                                               static_cast< lang::XEventListener* >(this),
+                                               static_cast< container::XContainerListener* >(this)
                                                );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -106,12 +104,7 @@ css::uno::Sequence< css::uno::Type > SAL_CALL ContentProvider::getTypes()
 
 OUString SAL_CALL ContentProvider::getImplementationName()
 {
-    return getImplementationName_Static();
-}
-
-OUString ContentProvider::getImplementationName_Static()
-{
-    return OUString("CHelpContentProvider" );
+    return "CHelpContentProvider";
 }
 
 sal_Bool SAL_CALL
@@ -123,42 +116,7 @@ ContentProvider::supportsService(const OUString& ServiceName )
 uno::Sequence< OUString > SAL_CALL
 ContentProvider::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-/// @throws uno::Exception
-static uno::Reference< uno::XInterface > SAL_CALL
-ContentProvider_CreateInstance(
-         const uno::Reference< lang::XMultiServiceFactory> & rSMgr )
-{
-    lang::XServiceInfo * pX = static_cast< lang::XServiceInfo * >(
-        new ContentProvider( comphelper::getComponentContext(rSMgr) ) );
-    return uno::Reference< uno::XInterface >::query( pX );
-}
-
-uno::Sequence< OUString >
-ContentProvider::getSupportedServiceNames_Static()
-{
-    uno::Sequence< OUString > aSNS( 2 );
-    aSNS.getArray()[ 0 ] = MYUCP_CONTENT_PROVIDER_SERVICE_NAME1;
-    aSNS.getArray()[ 1 ] = MYUCP_CONTENT_PROVIDER_SERVICE_NAME2;
-
-    return aSNS;
-}
-
-// Service factory implementation.
-
-css::uno::Reference< css::lang::XSingleServiceFactory >
-ContentProvider::createServiceFactory( const css::uno::Reference<
-            css::lang::XMultiServiceFactory >& rxServiceMgr )
-{
-    return css::uno::Reference<
-        css::lang::XSingleServiceFactory >(
-            cppu::createOneInstanceFactory(
-                rxServiceMgr,
-                ContentProvider::getImplementationName_Static(),
-                ContentProvider_CreateInstance,
-                ContentProvider::getSupportedServiceNames_Static() ) );
+    return { "com.sun.star.help.XMLHelp", "com.sun.star.ucb.HelpContentProvider" };
 }
 
 // XContentProvider methods.
@@ -169,7 +127,7 @@ ContentProvider::queryContent(
         const uno::Reference< ucb::XContentIdentifier >& xCanonicId )
 {
     if ( !xCanonicId->getContentProviderScheme()
-             .equalsIgnoreAsciiCase( m_aScheme ) )
+             .equalsIgnoreAsciiCase( MYUCP_URL_SCHEME ) )
     {   // Wrong URL-scheme
         throw ucb::IllegalIdentifierException();
     }
@@ -276,6 +234,13 @@ void ContentProvider::subst( OUString& instpath )
 {
     SvtPathOptions aOptions;
     instpath = aOptions.SubstituteVariable( instpath );
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+CHelpContentProvider_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new ContentProvider(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

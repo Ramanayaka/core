@@ -17,11 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "extended/accessibletabbarbase.hxx"
+#include <extended/accessibletabbarbase.hxx>
 #ifndef ACCESSIBILITY_EXT_ACCESSIBLETABBARPAGELIST
-#include "extended/accessibletabbarpagelist.hxx"
+#include <extended/accessibletabbarpagelist.hxx>
 #endif
 #include <svtools/tabbar.hxx>
+#include <vcl/vclevent.hxx>
 
 
 namespace accessibility
@@ -45,7 +46,7 @@ IMPL_LINK( AccessibleTabBarBase, WindowEventListener, VclWindowEvent&, rEvent, v
     OSL_ENSURE( pEventWindow, "AccessibleTabBarBase::WindowEventListener: no window!" );
 
     if( ( rEvent.GetId() == VclEventId::TabbarPageRemoved ) &&
-        ( (sal_uInt16)reinterpret_cast<sal_IntPtr>(rEvent.GetData()) == TabBar::PAGE_NOT_FOUND ) &&
+        ( static_cast<sal_uInt16>(reinterpret_cast<sal_IntPtr>(rEvent.GetData())) == TabBar::PAGE_NOT_FOUND ) &&
         (dynamic_cast<AccessibleTabBarPageList *>(this) == nullptr))
     {
         return;

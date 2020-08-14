@@ -22,16 +22,18 @@
 
 #include <ucbhelper/providerhelper.hxx>
 #include <com/sun/star/lang/XInitialization.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <unordered_map>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container {
         class XHierarchicalNameAccess;
     }
     namespace util {
         class XOfficeInstallationDirectories;
     }
-} } }
+}
 
 namespace hierarchy_ucp {
 
@@ -56,9 +58,8 @@ struct ConfigProviderMapEntry
 
 typedef std::unordered_map
 <
-    OUString,  // servcie specifier
-    ConfigProviderMapEntry,
-    OUStringHash
+    OUString,  // service specifier
+    ConfigProviderMapEntry
 >
 ConfigProviderMap;
 
@@ -89,13 +90,6 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    static OUString getImplementationName_Static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-
-    static css::uno::Reference< css::lang::XSingleServiceFactory >
-    createServiceFactory( const css::uno::Reference<
-                          css::lang::XMultiServiceFactory >& rxServiceMgr );
-
     // XContentProvider
     virtual css::uno::Reference< css::ucb::XContent > SAL_CALL
     queryContent( const css::uno::Reference< css::ucb::XContentIdentifier >& Identifier ) override;
@@ -110,7 +104,7 @@ public:
     css::uno::Reference< css::container::XHierarchicalNameAccess >
     getRootConfigReadNameAccess( const OUString & rServiceSpecifier );
 
-    // Note: may retrun an empty reference.
+    // Note: may return an empty reference.
     css::uno::Reference< css::util::XOfficeInstallationDirectories >
     getOfficeInstallationDirectories();
 };

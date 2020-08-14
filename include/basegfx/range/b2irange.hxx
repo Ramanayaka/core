@@ -17,14 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_RANGE_B2IRANGE_HXX
-#define INCLUDED_BASEGFX_RANGE_B2IRANGE_HXX
+#pragma once
 
 #include <ostream>
 #include <vector>
 
 #include <basegfx/point/b2ipoint.hxx>
-#include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/tuple/b2ituple.hxx>
 #include <basegfx/tuple/b2i64tuple.hxx>
 #include <basegfx/range/basicrange.hxx>
@@ -208,6 +206,13 @@ namespace basegfx
             maRangeY.intersect(rRange.maRangeY);
         }
 
+        B2ITuple clamp(const B2ITuple& rTuple) const
+        {
+            return B2ITuple(
+                maRangeX.clamp(rTuple.getX()),
+                maRangeY.clamp(rTuple.getY()));
+        }
+
     private:
         typedef ::basegfx::BasicRange< ValueType, TraitsType >  MyBasicRange;
 
@@ -250,7 +255,5 @@ namespace basegfx
     }
 
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_RANGE_B2IRANGE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

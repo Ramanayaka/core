@@ -18,9 +18,10 @@
  */
 
 
+#include <climits>
 #include <set>
 
-#include "svx/UnoNamespaceMap.hxx"
+#include <svx/UnoNamespaceMap.hxx>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
@@ -28,19 +29,18 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <svl/itempool.hxx>
-#include "svx/unoapi.hxx"
-#include "editeng/xmlcnitm.hxx"
+#include <editeng/xmlcnitm.hxx>
 
 using namespace ::cppu;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::beans;
 
 namespace svx
 {
+    namespace {
+
     /** implements a component to export namespaces of all SvXMLAttrContainerItem inside
         one or two pools with a variable count of which ids.
     */
@@ -68,24 +68,27 @@ namespace svx
         virtual Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
     };
 
-    Reference< XInterface > SAL_CALL NamespaceMap_createInstance( sal_uInt16* pWhichIds, SfxItemPool* pPool )
+    }
+
+    Reference< XInterface > NamespaceMap_createInstance( sal_uInt16* pWhichIds, SfxItemPool* pPool )
     {
         return static_cast<XWeak*>(new NamespaceMap( pWhichIds, pPool ));
     }
 
-    Sequence< OUString > SAL_CALL NamespaceMap_getSupportedServiceNames()
+    static Sequence< OUString > NamespaceMap_getSupportedServiceNames()
         throw()
     {
         Sequence<OUString> aSupportedServiceNames { "com.sun.star.xml.NamespaceMap" };
         return aSupportedServiceNames;
     }
 
-    OUString SAL_CALL NamespaceMap_getImplementationName()
+    static OUString NamespaceMap_getImplementationName()
         throw()
     {
-        return OUString( "com.sun.star.comp.Svx.NamespaceMap" );
+        return "com.sun.star.comp.Svx.NamespaceMap";
     }
 
+    namespace {
 
     class NamespaceIteratorImpl
     {
@@ -94,8 +97,8 @@ namespace svx
 
         sal_uInt16* mpWhichId;
 
-        sal_uInt32 mnItemCount;
-        sal_uInt32 mnItem;
+        std::vector<const SvXMLAttrContainerItem*> mvItems;
+        sal_Int32 mnItem;
 
         const SvXMLAttrContainerItem* mpCurrentAttr;
         sal_uInt16 mnCurrentAttr;
@@ -106,6 +109,8 @@ namespace svx
 
         bool next( OUString& rPrefix, OUString& rURL );
     };
+
+    }
 }
 
 using namespace ::svx;
@@ -119,8 +124,13 @@ NamespaceIteratorImpl::NamespaceIteratorImpl( sal_uInt16* pWhichIds, SfxItemPool
 
     mpWhichId = pWhichIds;
 
-    mnItem = 0;
-    mnItemCount = (mpWhichId && (0 != *mpWhichId) && mpPool) ? mpPool->GetItemCount2( *mpWhichId ) : 0;
+    mnItem = -1;
+    if (mpWhichId && (0 != *mpWhichId) && mpPool)
+    {
+        mvItems.reserve(mpPool->GetItemCount2( *mpWhichId ));
+        for (const SfxPoolItem* pItem : mpPool->GetItemSurrogates( *mpWhichId ))
+            mvItems.push_back(static_cast<const SvXMLAttrContainerItem*>(pItem));
+    }
 }
 
 bool NamespaceIteratorImpl::next( OUString& rPrefix, OUString& rURL )
@@ -137,43 +147,36 @@ bool NamespaceIteratorImpl::next( OUString& rPrefix, OUString& rURL )
 
     // we need the next namespace item
     mpCurrentAttr = nullptr;
-
-    const SfxPoolItem* pItem = nullptr;
-    // look for the next available item in the current pool
-    while( (mnItem < mnItemCount) && ( nullptr == (pItem = mpPool->GetItem2( *mpWhichId, mnItem ) ) ) )
-        mnItem++;
+    mnItem++;
 
     // are we finished with the current whichid?
-    if( mnItem == mnItemCount )
+    if( mnItem == static_cast<sal_Int32>(mvItems.size()) )
     {
         mpWhichId++;
 
         // are we finished with the current pool?
-        if( 0 != *mpWhichId )
+        if( 0 == *mpWhichId )
+            return false;
+
+        mnItem = -1;
+        mvItems.clear();
+        if (mpPool)
         {
-            mnItem = 0;
-            mnItemCount = mpPool ? mpPool->GetItemCount2( *mpWhichId ) : 0;
-            return next( rPrefix, rURL );
-        }
-
-        pItem = nullptr;
-    }
-
-    if( pItem )
-    {
-        mnItem++;
-
-        // get that item and see if there namespaces inside
-        const SvXMLAttrContainerItem *pUnknown = static_cast<const SvXMLAttrContainerItem *>(pItem);
-        if( (pUnknown->GetAttrCount() > 0) )
-        {
-            mpCurrentAttr = pUnknown;
-            mnCurrentAttr = pUnknown->GetFirstNamespaceIndex();
+            mvItems.reserve(mpPool->GetItemCount2( *mpWhichId ));
+            for (const SfxPoolItem* pItem2 : mpPool->GetItemSurrogates( *mpWhichId ))
+                mvItems.push_back(static_cast<const SvXMLAttrContainerItem*>(pItem2));
         }
         return next( rPrefix, rURL );
     }
 
-    return false;
+    auto pItem = mvItems[mnItem];
+    // get that item and see if there namespaces inside
+    if( pItem->GetAttrCount() > 0 )
+    {
+        mpCurrentAttr = pItem;
+        mnCurrentAttr = pItem->GetFirstNamespaceIndex();
+    }
+    return next( rPrefix, rURL );
 }
 
 

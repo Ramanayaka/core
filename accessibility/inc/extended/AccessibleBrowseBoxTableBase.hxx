@@ -18,10 +18,9 @@
  */
 
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXTABLEBASE_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXTABLEBASE_HXX
+#pragma once
 
-#include "extended/AccessibleBrowseBoxBase.hxx"
+#include <extended/AccessibleBrowseBoxBase.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include <com/sun/star/accessibility/XAccessibleTable.hpp>
 
@@ -50,11 +49,11 @@ public:
         @param eObjType         Type of BrowseBox object. */
     AccessibleBrowseBoxTableBase(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::IAccessibleTableProvider& rBrowseBox,
-        ::svt::AccessibleBrowseBoxObjType eObjType );
+        ::vcl::IAccessibleTableProvider& rBrowseBox,
+        ::vcl::AccessibleBrowseBoxObjType eObjType );
 
 protected:
-    virtual ~AccessibleBrowseBoxTableBase() override;
+    virtual ~AccessibleBrowseBoxTableBase() override = default;
 
 public:
     // XAccessibleContext
@@ -127,7 +126,7 @@ public:
     /** Queries for a new interface. */
     css::uno::Any SAL_CALL queryInterface( const css::uno::Type& rType ) override;
 
-    /** Aquires the object (calls acquire() on base class). */
+    /** Acquires the object (calls acquire() on base class). */
     virtual void SAL_CALL acquire() throw () override;
 
     /** Releases the object (calls release() on base class). */
@@ -135,10 +134,10 @@ public:
 
     // XTypeProvider
 
-    /** @return  A sequence of possible types (received from base classes). */
+    /** @return  a sequence of possible types (received from base classes). */
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
 
-    /** @return  An unique implementation ID. */
+    /** @return  a unique implementation ID. */
     virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 
     // XServiceInfo
@@ -236,6 +235,5 @@ protected:
 } // namespace accessibility
 
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,8 +22,10 @@
 #include <vcl/svapp.hxx>
 #include <osl/mutex.hxx>
 #include <comphelper/basicio.hxx>
-#include <comphelper/processfactory.hxx>
 #include <com/sun/star/awt/MouseButton.hpp>
+#include <com/sun/star/form/FormComponentType.hpp>
+#include <property.hxx>
+#include <services.hxx>
 
 namespace frm
 {
@@ -32,7 +34,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -85,7 +86,7 @@ void OImageButtonModel::describeFixedProperties( Sequence< Property >& _rProps )
 
 OUString OImageButtonModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_IMAGEBUTTON);   // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_IMAGEBUTTON;   // old (non-sun) name for compatibility !
 }
 
 void OImageButtonModel::write(const Reference<XObjectOutputStream>& _rxOutStream)
@@ -94,7 +95,7 @@ void OImageButtonModel::write(const Reference<XObjectOutputStream>& _rxOutStream
 
     // Version
     _rxOutStream->writeShort(0x0003);
-    _rxOutStream->writeShort((sal_uInt16)m_eButtonType);
+    _rxOutStream->writeShort(static_cast<sal_uInt16>(m_eButtonType));
 
     OUString sTmp(INetURLObject::decode( m_sTargetURL, INetURLObject::DecodeMechanism::Unambiguous));
     _rxOutStream << sTmp;
@@ -113,19 +114,19 @@ void OImageButtonModel::read(const Reference<XObjectInputStream>& _rxInStream)
     {
         case 0x0001:
         {
-            m_eButtonType = (FormButtonType)_rxInStream->readShort();
+            m_eButtonType = static_cast<FormButtonType>(_rxInStream->readShort());
         }
         break;
         case 0x0002:
         {
-            m_eButtonType = (FormButtonType)_rxInStream->readShort();
+            m_eButtonType = static_cast<FormButtonType>(_rxInStream->readShort());
             _rxInStream >> m_sTargetURL;
             _rxInStream >> m_sTargetFrame;
         }
         break;
         case 0x0003:
         {
-            m_eButtonType = (FormButtonType)_rxInStream->readShort();
+            m_eButtonType = static_cast<FormButtonType>(_rxInStream->readShort());
             _rxInStream >> m_sTargetURL;
             _rxInStream >> m_sTargetFrame;
             readHelpTextCompatibly(_rxInStream);
@@ -144,9 +145,8 @@ void OImageButtonModel::read(const Reference<XObjectInputStream>& _rxInStream)
 // OImageButtonControl
 Sequence<Type> OImageButtonControl::_getTypes()
 {
-    static Sequence<Type> aTypes;
-    if (!aTypes.getLength())
-        aTypes = concatSequences(OClickableImageBaseControl::_getTypes(), OImageButtonControl_BASE::getTypes());
+    static Sequence<Type> const aTypes =
+        concatSequences(OClickableImageBaseControl::_getTypes(), OImageButtonControl_BASE::getTypes());
     return aTypes;
 }
 
@@ -197,12 +197,12 @@ void OImageButtonControl::mousePressed(const awt::MouseEvent& e)
     {
         // if there are listeners, start the action in an own thread, to not allow
         // them to block us here (we're in the application's main thread)
-        getImageProducerThread()->OComponentEventThread::addEvent( &e );
+        getImageProducerThread()->OComponentEventThread::addEvent( std::make_unique<awt::MouseEvent>(e) );
     }
     else
     {
         // Or else don't; we must not notify the listeners in that case.
-        // Even not if its added later on.
+        // Even not if it's added later on.
         aGuard.clear();
         actionPerformed_Impl( false, e );
     }
@@ -222,14 +222,14 @@ void SAL_CALL OImageButtonControl::mouseExited(const awt::MouseEvent& /*e*/)
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OImageButtonModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::OImageButtonModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OImageButtonControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

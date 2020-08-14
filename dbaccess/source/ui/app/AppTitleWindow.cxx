@@ -18,14 +18,15 @@
  */
 
 #include "AppTitleWindow.hxx"
-#include "moduledbu.hxx"
+#include <core_resource.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/event.hxx>
 
 namespace dbaui
 {
 
-OTitleWindow::OTitleWindow(vcl::Window* _pParent,sal_uInt16 _nTitleId,WinBits _nBits,bool _bShift)
+OTitleWindow::OTitleWindow(vcl::Window* _pParent, const char* pTitleId, WinBits _nBits, bool _bShift)
 : Window(_pParent,_nBits | WB_DIALOGCONTROL)
 , m_aSpace1(VclPtr<FixedText>::Create(this))
 , m_aSpace2(VclPtr<FixedText>::Create(this))
@@ -33,8 +34,7 @@ OTitleWindow::OTitleWindow(vcl::Window* _pParent,sal_uInt16 _nTitleId,WinBits _n
 , m_pChild(nullptr)
 , m_bShift(_bShift)
 {
-
-    setTitle(_nTitleId);
+    setTitle(pTitleId);
     SetBorderStyle(WindowBorderStyle::MONO);
     ImplInitSettings();
 
@@ -82,7 +82,7 @@ void OTitleWindow::Resize()
     long nOutputWidth   = aOutputSize.Width();
     long nOutputHeight  = aOutputSize.Height();
 
-    Size aTextSize = LogicToPixel( Size( 6, 3 ), MapUnit::MapAppFont );
+    Size aTextSize = LogicToPixel(Size(6, 3), MapMode(MapUnit::MapAppFont));
     sal_Int32 nXOffset = aTextSize.Width();
     sal_Int32 nYOffset = aTextSize.Height();
     sal_Int32 nHeight = GetTextHeight() + 2*nYOffset;
@@ -100,11 +100,11 @@ void OTitleWindow::Resize()
     }
 }
 
-void OTitleWindow::setTitle(sal_uInt16 _nTitleId)
+void OTitleWindow::setTitle(const char* pTitleId)
 {
-    if ( _nTitleId != 0 )
+    if (pTitleId)
     {
-        m_aTitle->SetText(ModuleRes(_nTitleId));
+        m_aTitle->SetText(DBA_RES(pTitleId));
     }
 }
 
@@ -117,7 +117,7 @@ void OTitleWindow::GetFocus()
 
 long OTitleWindow::GetWidthPixel() const
 {
-    Size aTextSize = LogicToPixel( Size( 12, 0 ), MapUnit::MapAppFont );
+    Size aTextSize = LogicToPixel(Size(12, 0), MapMode(MapUnit::MapAppFont));
     sal_Int32 nWidth = GetTextWidth(m_aTitle->GetText()) + 2*aTextSize.Width();
 
     return nWidth;
@@ -148,8 +148,7 @@ void OTitleWindow::ImplInitSettings()
     SetSettings(aAllSettings);
 
     const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
-    vcl::Font aFont;
-    aFont = rStyleSettings.GetFieldFont();
+    vcl::Font aFont = rStyleSettings.GetFieldFont();
     aFont.SetColor( rStyleSettings.GetWindowTextColor() );
     SetPointFont(*this, aFont);
 
@@ -169,8 +168,7 @@ void OTitleWindow::ApplySettings(vcl::RenderContext& rRenderContext)
     rRenderContext.SetSettings(aAllSettings);
 
     const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
-    vcl::Font aFont;
-    aFont = rStyleSettings.GetFieldFont();
+    vcl::Font aFont = rStyleSettings.GetFieldFont();
     aFont.SetColor(rStyleSettings.GetWindowTextColor());
     SetPointFont(*this, aFont);
 

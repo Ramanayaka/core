@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "toolkit/controls/geometrycontrolmodel.hxx"
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <controls/geometrycontrolmodel.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/resource/XStringResourceResolver.hpp>
 #include <osl/diagnose.h>
 #include <rtl/instance.hxx>
-#include <comphelper/property.hxx>
 #include <comphelper/sequence.hxx>
-#include <toolkit/controls/eventcontainer.hxx>
+#include <controls/eventcontainer.hxx>
 #include <toolkit/helper/property.hxx>
 #include <algorithm>
 #include <functional>
@@ -87,7 +86,7 @@
         {
             m_xAggregate = _pAggregateInstance;
 
-            {   // check if the aggregate is cloneable
+            {   // check if the aggregate is clonable
                 Reference< XCloneable > xCloneAccess(m_xAggregate, UNO_QUERY);
                 m_bCloneable = xCloneAccess.is();
             }
@@ -157,8 +156,8 @@
             sal_Int32 nOldSize = aTypes.getLength();
             aTypes.realloc( nOldSize + aAggTypes.getLength() );
             ::std::copy(
-                aAggTypes.getConstArray(),
-                aAggTypes.getConstArray() + aAggTypes.getLength(),
+                aAggTypes.begin(),
+                aAggTypes.end(),
                 aTypes.getArray() + nOldSize
             );
         }
@@ -188,13 +187,13 @@
 
         switch ( nHandle )
         {
-            case GCM_PROPERTY_ID_POS_X:             aDefault <<= (sal_Int32) 0; break;
-            case GCM_PROPERTY_ID_POS_Y:             aDefault <<= (sal_Int32) 0; break;
-            case GCM_PROPERTY_ID_WIDTH:             aDefault <<= (sal_Int32) 0; break;
-            case GCM_PROPERTY_ID_HEIGHT:            aDefault <<= (sal_Int32) 0; break;
+            case GCM_PROPERTY_ID_POS_X:             aDefault <<= sal_Int32(0); break;
+            case GCM_PROPERTY_ID_POS_Y:             aDefault <<= sal_Int32(0); break;
+            case GCM_PROPERTY_ID_WIDTH:             aDefault <<= sal_Int32(0); break;
+            case GCM_PROPERTY_ID_HEIGHT:            aDefault <<= sal_Int32(0); break;
             case GCM_PROPERTY_ID_NAME:              aDefault <<= OUString(); break;
-            case GCM_PROPERTY_ID_TABINDEX:          aDefault <<= (sal_Int16) -1; break;
-            case GCM_PROPERTY_ID_STEP:              aDefault <<= (sal_Int32) 0; break;
+            case GCM_PROPERTY_ID_TABINDEX:          aDefault <<= sal_Int16(-1); break;
+            case GCM_PROPERTY_ID_STEP:              aDefault <<= sal_Int32(0); break;
             case GCM_PROPERTY_ID_TAG:               aDefault <<= OUString(); break;
             case GCM_PROPERTY_ID_RESOURCERESOLVER:  aDefault <<= Reference< resource::XStringResourceResolver >(); break;
             default:                            OSL_FAIL( "ImplGetDefaultValueByHandle - unknown Property" );
@@ -361,7 +360,7 @@
         if (!m_bCloneable)
             return Reference< XCloneable >();
 
-        // let the aggregate create it's own clone
+        // let the aggregate create its own clone
         // the interface
         Reference< XCloneable > xCloneAccess;
         m_xAggregate->queryAggregation(cppu::UnoType<decltype(xCloneAccess)>::get()) >>= xCloneAccess;
@@ -400,14 +399,11 @@
             Reference< XNameContainer > xEventCont = xEventsSupplier->getEvents();
             Reference< XNameContainer > xCloneEventCont = xCloneEventsSupplier->getEvents();
 
-            css::uno::Sequence< OUString > aNames =
+            const css::uno::Sequence< OUString > aNames =
                 xEventCont->getElementNames();
-            const OUString* pNames = aNames.getConstArray();
-            sal_Int32 i, nNameCount = aNames.getLength();
 
-            for( i = 0 ; i < nNameCount ; i++ )
+            for( const OUString& aName : aNames )
             {
-                OUString aName = pNames[ i ];
                 css::uno::Any aElement = xEventCont->getByName( aName );
                 xCloneEventCont->insertByName( aName, aElement );
             }
@@ -420,7 +416,7 @@
     Reference< XNameContainer > SAL_CALL OGeometryControlModel_Base::getEvents()
     {
         if( !mxEventContainer.is() )
-            mxEventContainer = static_cast<XNameContainer*>(new toolkit::ScriptEventContainer());
+            mxEventContainer = new toolkit::ScriptEventContainer();
         return mxEventContainer;
     }
 
@@ -439,7 +435,7 @@
     //= OCommonGeometryControlModel
 
 
-    typedef std::unordered_map< OUString, sal_Int32, OUStringHash > HashMapString2Int;
+    typedef std::unordered_map< OUString, sal_Int32 > HashMapString2Int;
     typedef std::vector< css::uno::Sequence< css::beans::Property > >   PropSeqArray;
     typedef std::vector< ::std::vector< sal_Int32 > > IntArrayArray;
 
@@ -476,14 +472,14 @@
             throw IllegalArgumentException();
         }
 
-            HashMapString2Int &rMap = ServiceSpecifierMap::get();
+        HashMapString2Int &rMap = ServiceSpecifierMap::get();
         HashMapString2Int::iterator aPropMapIdPos = rMap.find( m_sServiceSpecifier );
         if ( rMap.end() == aPropMapIdPos )
         {
             PropSeqArray &rAggProperties = AggregateProperties::get();
             m_nPropertyMapId = rAggProperties.size();
             rAggProperties.push_back( xPI->getProperties() );
-            AmbiguousPropertyIds::get().push_back( IntArrayArray::value_type() );
+            AmbiguousPropertyIds::get().emplace_back( );
 
             rMap[ m_sServiceSpecifier ] = m_nPropertyMapId;
         }
@@ -491,8 +487,9 @@
             m_nPropertyMapId = aPropMapIdPos->second;
     }
 
+    namespace {
 
-    struct PropertyNameLess : public ::std::binary_function< Property, Property, bool >
+    struct PropertyNameLess
     {
         bool operator()( const Property& _rLHS, const Property& _rRHS )
         {
@@ -512,52 +509,43 @@
         }
     };
 
+    }
 
     ::cppu::IPropertyArrayHelper* OCommonGeometryControlModel::createArrayHelper( sal_Int32 _nId ) const
     {
         OSL_ENSURE( _nId == m_nPropertyMapId, "OCommonGeometryControlModel::createArrayHelper: invalid argument!" );
-        OSL_ENSURE( _nId < (sal_Int32)AggregateProperties::get().size(), "OCommonGeometryControlModel::createArrayHelper: invalid status info (1)!" );
-        OSL_ENSURE( _nId < (sal_Int32)AmbiguousPropertyIds::get().size(), "OCommonGeometryControlModel::createArrayHelper: invalid status info (2)!" );
+        OSL_ENSURE( _nId < static_cast<sal_Int32>(AggregateProperties::get().size()), "OCommonGeometryControlModel::createArrayHelper: invalid status info (1)!" );
+        OSL_ENSURE( _nId < static_cast<sal_Int32>(AmbiguousPropertyIds::get().size()), "OCommonGeometryControlModel::createArrayHelper: invalid status info (2)!" );
 
         // our own properties
         Sequence< Property > aProps;
         OPropertyContainer::describeProperties( aProps );
 
         // the aggregate properties
-        Sequence< Property > aAggregateProps;
-        aAggregateProps = AggregateProperties::get()[ _nId ];
+        Sequence< Property > aAggregateProps = AggregateProperties::get()[ _nId ];
 
         // look for duplicates, and remember them
         IntArrayArray::value_type& rDuplicateIds = AmbiguousPropertyIds::get()[ _nId ];
         // for this, sort the aggregate properties
         ::std::sort(
-            aAggregateProps.getArray(),
-            aAggregateProps.getArray() + aAggregateProps.getLength(),
+            aAggregateProps.begin(),
+            aAggregateProps.end(),
             PropertyNameLess()
         );
-        const Property* pAggProps = aAggregateProps.getConstArray();
-        const Property* pAggPropsEnd = aAggregateProps.getConstArray() + aAggregateProps.getLength();
 
         // now loop through our own props
-        const Property* pProp = aProps.getConstArray();
-        const Property* pPropEnd = aProps.getConstArray() + aProps.getLength();
-        while ( pProp < pPropEnd )
+        for ( const Property& rProp : std::as_const(aProps) )
         {
             // look for the current property in the properties of our aggregate
-            const Property* pAggPropPos = ::std::find_if( pAggProps, pAggPropsEnd, PropertyNameEqual( pProp->Name ) );
-            if ( pAggPropPos != pAggPropsEnd )
+            const Property* pAggPropPos = ::std::find_if( aAggregateProps.begin(), aAggregateProps.end(), PropertyNameEqual( rProp.Name ) );
+            if ( pAggPropPos != aAggregateProps.end() )
             {   // found a duplicate
                 // -> remove from the aggregate property sequence
-                ::comphelper::removeElementAt( aAggregateProps, pAggPropPos - pAggProps );
-                // which means we have to adjust the pointers
-                pAggProps = aAggregateProps.getConstArray();
-                pAggPropsEnd = aAggregateProps.getConstArray() + aAggregateProps.getLength();
+                ::comphelper::removeElementAt( aAggregateProps, pAggPropPos - aAggregateProps.begin() );
 
                 // and additionally, remember the id of this property
-                rDuplicateIds.push_back( pProp->Handle );
+                rDuplicateIds.push_back( rProp.Handle );
             }
-
-            ++pProp;
         }
 
         // now, finally, sort the duplicates
@@ -583,6 +571,7 @@
         return css::uno::Sequence<sal_Int8>();
     }
 
+    namespace {
 
     struct Int32Equal
     {
@@ -595,6 +584,7 @@
         }
     };
 
+    }
 
     void SAL_CALL OCommonGeometryControlModel::setFastPropertyValue_NoBroadcast( sal_Int32 _nHandle, const Any& _rValue )
     {
@@ -603,13 +593,7 @@
         // look if this id is one we recognized as duplicate
         IntArrayArray::value_type& rDuplicateIds = AmbiguousPropertyIds::get()[ m_nPropertyMapId ];
 
-        IntArrayArray::value_type::const_iterator aPos = ::std::find_if(
-            rDuplicateIds.begin(),
-            rDuplicateIds.end(),
-            Int32Equal( _nHandle )
-        );
-
-        if ( rDuplicateIds.end() != aPos )
+        if ( std::any_of(rDuplicateIds.begin(), rDuplicateIds.end(), Int32Equal( _nHandle )) )
         {
             // yes, it is such a property
             OUString sPropName;

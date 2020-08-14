@@ -20,10 +20,10 @@
 #include <sal/config.h>
 
 #include <o3tl/any.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/mutex.hxx>
 #include <osl/diagnose.h>
 #include <comphelper/eventattachermgr.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <com/sun/star/beans/theIntrospection.hpp>
 #include <com/sun/star/io/XObjectInputStream.hpp>
@@ -32,7 +32,6 @@
 #include <com/sun/star/io/XMarkableStream.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/reflection/theCoreReflection.hpp>
 #include <com/sun/star/reflection/XIdlClass.hpp>
 #include <com/sun/star/reflection/XIdlReflection.hpp>
@@ -44,12 +43,12 @@
 #include <com/sun/star/script/XScriptListener.hpp>
 #include <cppuhelper/weak.hxx>
 #include <comphelper/interfacecontainer2.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
 
 #include <deque>
 #include <algorithm>
-#include <functional>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::io;
@@ -64,6 +63,7 @@ using namespace osl;
 namespace comphelper
 {
 
+namespace {
 
 struct AttachedObject_Impl
 {
@@ -134,8 +134,8 @@ private:
 class AttacherAllListener_Impl : public WeakImplHelper< XAllListener >
 {
     rtl::Reference<ImplEventAttacherManager> mxManager;
-    OUString                            aScriptType;
-    OUString                            aScriptCode;
+    OUString const                           aScriptType;
+    OUString const                           aScriptCode;
 
     /// @throws CannotConvertException
     void convertToEventReturn( Any & rRet, const Type & rRetType );
@@ -151,6 +151,7 @@ public:
     virtual void SAL_CALL disposing(const EventObject& Source) override;
 };
 
+}
 
 AttacherAllListener_Impl::AttacherAllListener_Impl
 (
@@ -221,10 +222,9 @@ void AttacherAllListener_Impl::convertToEventReturn( Any & rRet, const Type & rR
     }
     else if( !rRet.getValueType().equals( rRetType ) )
     {
-        if( mxManager->xConverter.is() )
-            rRet = mxManager->xConverter->convertTo( rRet, rRetType );
-        else
+        if( !mxManager->xConverter.is() )
             throw CannotConvertException();
+        rRet = mxManager->xConverter->convertTo( rRet, rRetType );
     }
 }
 
@@ -313,9 +313,10 @@ Any SAL_CALL AttacherAllListener_Impl::approveFiring( const AllEventObject& Even
                 }
                 catch (const CannotConvertException& e)
                 {
+                    css::uno::Any anyEx = cppu::getCaughtException();
                     throw css::lang::WrappedTargetRuntimeException(
                         "wrapped CannotConvertException " + e.Message,
-                        css::uno::Reference<css::uno::XInterface>(), Any(e));
+                        css::uno::Reference<css::uno::XInterface>(), anyEx);
                 }
             }
         }
@@ -377,7 +378,7 @@ Reference< XIdlReflection > ImplEventAttacherManager::getReflection()
 
 std::deque< AttacherIndex_Impl >::iterator ImplEventAttacherManager::implCheckIndex( sal_Int32 _nIndex )
 {
-    if ( (_nIndex < 0) || (static_cast<sal_uInt32>(_nIndex) >= aIndex.size()) )
+    if ( (_nIndex < 0) || (o3tl::make_unsigned(_nIndex) >= aIndex.size()) )
         throw IllegalArgumentException();
 
     std::deque<AttacherIndex_Impl>::iterator aIt = aIndex.begin() + _nIndex;
@@ -402,7 +403,7 @@ void SAL_CALL ImplEventAttacherManager::registerScriptEvent
         aEvt.ListenerType = aEvt.ListenerType.copy(nLastDot+1);
     aIt->aEventList.push_back( aEvt );
 
-    // register new new Event
+    // register new Event
     for( auto& rObj : aIt->aObjList )
     {
         Reference< XAllListener > xAll =
@@ -431,7 +432,7 @@ void SAL_CALL ImplEventAttacherManager::registerScriptEvents
     // Examine the index and apply the array
     std::deque< AttachedObject_Impl > aList = implCheckIndex( nIndex )->aObjList;
     for( const auto& rObj : aList )
-        this->detach( nIndex, rObj.xTarget );
+        detach( nIndex, rObj.xTarget );
 
     const ScriptEventDescriptor* pArray = ScriptEvents.getConstArray();
     sal_Int32 nLen = ScriptEvents.getLength();
@@ -439,7 +440,7 @@ void SAL_CALL ImplEventAttacherManager::registerScriptEvents
         registerScriptEvent( nIndex, pArray[ i ] );
 
     for( const auto& rObj : aList )
-        this->attach( nIndex, rObj.xTarget, rObj.aHelper );
+        attach( nIndex, rObj.xTarget, rObj.aHelper );
 }
 
 
@@ -457,29 +458,24 @@ void SAL_CALL ImplEventAttacherManager::revokeScriptEvent
 
     std::deque< AttachedObject_Impl > aList = aIt->aObjList;
     for( const auto& rObj : aList )
-        this->detach( nIndex, rObj.xTarget );
+        detach( nIndex, rObj.xTarget );
 
     OUString aLstType = ListenerType;
     sal_Int32 nLastDot = aLstType.lastIndexOf('.');
     if (nLastDot != -1)
         aLstType = aLstType.copy(nLastDot+1);
 
-    std::deque< ScriptEventDescriptor >::const_iterator aEvtEnd = aIt->aEventList.end();
-    for( std::deque< ScriptEventDescriptor >::iterator aEvtIt =  aIt->aEventList.begin();
-         aEvtIt != aEvtEnd;
-         ++aEvtIt )
-    {
-        if( aLstType              == aEvtIt->ListenerType &&
-            EventMethod           == aEvtIt->EventMethod &&
-            ToRemoveListenerParam == aEvtIt->AddListenerParam )
-        {
-            aIt->aEventList.erase( aEvtIt );
-            break;
-        }
-    }
+    auto aEvtIt = std::find_if(aIt->aEventList.begin(), aIt->aEventList.end(),
+        [&aLstType, &EventMethod, &ToRemoveListenerParam](const ScriptEventDescriptor& rEvent) {
+            return aLstType              == rEvent.ListenerType
+                && EventMethod           == rEvent.EventMethod
+                && ToRemoveListenerParam == rEvent.AddListenerParam;
+        });
+    if (aEvtIt != aIt->aEventList.end())
+        aIt->aEventList.erase( aEvtIt );
 
     for( const auto& rObj : aList )
-        this->attach( nIndex, rObj.xTarget, rObj.aHelper );
+        attach( nIndex, rObj.xTarget, rObj.aHelper );
 }
 
 
@@ -490,10 +486,10 @@ void SAL_CALL ImplEventAttacherManager::revokeScriptEvents(sal_Int32 nIndex )
 
     std::deque< AttachedObject_Impl > aList = aIt->aObjList;
     for( const auto& rObj : aList )
-        this->detach( nIndex, rObj.xTarget );
+        detach( nIndex, rObj.xTarget );
     aIt->aEventList.clear();
     for( const auto& rObj : aList )
-        this->attach( nIndex, rObj.xTarget, rObj.aHelper );
+        attach( nIndex, rObj.xTarget, rObj.aHelper );
 }
 
 
@@ -503,7 +499,7 @@ void SAL_CALL ImplEventAttacherManager::insertEntry(sal_Int32 nIndex)
     if( nIndex < 0 )
         throw IllegalArgumentException();
 
-    if ( static_cast< std::deque< AttacherIndex_Impl >::size_type>(nIndex) >= aIndex.size() )
+    if ( o3tl::make_unsigned(nIndex) >= aIndex.size() )
         aIndex.resize(nIndex+1);
 
     AttacherIndex_Impl aTmp;
@@ -518,7 +514,7 @@ void SAL_CALL ImplEventAttacherManager::removeEntry(sal_Int32 nIndex)
 
     std::deque< AttachedObject_Impl > aList = aIt->aObjList;
     for( const auto& rObj : aList )
-        this->detach( nIndex, rObj.xTarget );
+        detach( nIndex, rObj.xTarget );
 
     aIndex.erase( aIt );
 }
@@ -538,17 +534,14 @@ void SAL_CALL ImplEventAttacherManager::attach(sal_Int32 nIndex, const Reference
     if( nIndex < 0 || !xObject.is() )
         throw IllegalArgumentException();
 
-    if( static_cast< std::deque< AttacherIndex_Impl >::size_type>(nIndex) >= aIndex.size() )
+    if( o3tl::make_unsigned(nIndex) >= aIndex.size() )
     {
         // read older files
-        if( nVersion == 1 )
-        {
-            insertEntry( nIndex );
-            attach( nIndex, xObject, Helper );
-            return;
-        }
-        else
+        if( nVersion != 1 )
             throw IllegalArgumentException();
+        insertEntry( nIndex );
+        attach( nIndex, xObject, Helper );
+        return;
     }
 
     std::deque< AttacherIndex_Impl >::iterator aCurrentPosition = aIndex.begin() + nIndex;
@@ -565,19 +558,17 @@ void SAL_CALL ImplEventAttacherManager::attach(sal_Int32 nIndex, const Reference
         return;
 
     Sequence<css::script::EventListener> aEvents(aCurrentPosition->aEventList.size());
-    std::deque<ScriptEventDescriptor>::iterator itr = aCurrentPosition->aEventList.begin();
-    std::deque<ScriptEventDescriptor>::iterator itrEnd = aCurrentPosition->aEventList.end();
     css::script::EventListener* p = aEvents.getArray();
     size_t i = 0;
-    for (; itr != itrEnd; ++itr)
+    for (const auto& rEvent : aCurrentPosition->aEventList)
     {
         css::script::EventListener aListener;
         aListener.AllListener =
-            new AttacherAllListener_Impl(this, itr->ScriptType, itr->ScriptCode);
+            new AttacherAllListener_Impl(this, rEvent.ScriptType, rEvent.ScriptCode);
         aListener.Helper = rCurObj.aHelper;
-        aListener.ListenerType = itr->ListenerType;
-        aListener.EventMethod = itr->EventMethod;
-        aListener.AddListenerParam = itr->AddListenerParam;
+        aListener.ListenerType = rEvent.ListenerType;
+        aListener.EventMethod = rEvent.EventMethod;
+        aListener.AddListenerParam = rEvent.AddListenerParam;
         p[i++] = aListener;
     }
 
@@ -597,37 +588,32 @@ void SAL_CALL ImplEventAttacherManager::detach(sal_Int32 nIndex, const Reference
 {
     Guard< Mutex > aGuard( aLock );
     //return;
-    if( nIndex < 0 || static_cast< std::deque< AttacherIndex_Impl >::size_type>(nIndex) >= aIndex.size() || !xObject.is() )
+    if( nIndex < 0 || o3tl::make_unsigned(nIndex) >= aIndex.size() || !xObject.is() )
         throw IllegalArgumentException();
 
     std::deque< AttacherIndex_Impl >::iterator aCurrentPosition = aIndex.begin() + nIndex;
-    std::deque< AttachedObject_Impl >::iterator aObjEnd = aCurrentPosition->aObjList.end();
-    for( std::deque< AttachedObject_Impl >::iterator aObjIt =  aCurrentPosition->aObjList.begin();
-         aObjIt != aObjEnd;
-         ++aObjIt )
+    auto aObjIt = std::find_if(aCurrentPosition->aObjList.begin(), aCurrentPosition->aObjList.end(),
+        [&xObject](const AttachedObject_Impl& rObj) { return rObj.xTarget == xObject; });
+    if (aObjIt == aCurrentPosition->aObjList.end())
+        return;
+
+    sal_Int32 i = 0;
+    for( const auto& rEvt : aCurrentPosition->aEventList )
     {
-        if( aObjIt->xTarget == xObject )
+        if( aObjIt->aAttachedListenerSeq[i].is() )
         {
-            sal_Int32 i = 0;
-            for( const auto& rEvt : aCurrentPosition->aEventList )
+            try
             {
-                if( aObjIt->aAttachedListenerSeq[i].is() )
-                {
-                    try
-                    {
-                        xAttacher->removeListener( aObjIt->xTarget, rEvt.ListenerType,
-                                               rEvt.AddListenerParam, aObjIt->aAttachedListenerSeq[i] );
-                    }
-                    catch( Exception& )
-                    {
-                    }
-                }
-                ++i;
+                xAttacher->removeListener( aObjIt->xTarget, rEvt.ListenerType,
+                                       rEvt.AddListenerParam, aObjIt->aAttachedListenerSeq[i] );
             }
-            aCurrentPosition->aObjList.erase( aObjIt );
-            break;
+            catch( Exception& )
+            {
+            }
         }
+        ++i;
     }
+    aCurrentPosition->aObjList.erase( aObjIt );
 }
 
 void SAL_CALL ImplEventAttacherManager::addScriptListener(const Reference< XScriptListener >& aListener)
@@ -646,7 +632,7 @@ void SAL_CALL ImplEventAttacherManager::removeScriptListener(const Reference< XS
 // Methods of XPersistObject
 OUString SAL_CALL ImplEventAttacherManager::getServiceName()
 {
-    return OUString( "com.sun.star.uno.script.EventAttacherManager" );
+    return "com.sun.star.uno.script.EventAttacherManager";
 }
 
 void SAL_CALL ImplEventAttacherManager::write(const Reference< XObjectOutputStream >& OutStream)
@@ -662,7 +648,7 @@ void SAL_CALL ImplEventAttacherManager::write(const Reference< XObjectOutputStre
 
     // Remember position for length
     sal_Int32 nObjLenMark = xMarkStream->createMark();
-    OutStream->writeLong( 0L );
+    OutStream->writeLong( 0 );
 
     OutStream->writeLong( aIndex.size() );
 

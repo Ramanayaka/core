@@ -25,17 +25,11 @@
 
 #include <rtl/ustring.hxx>
 
-#include "dp_backenddb.hxx"
+#include <dp_backenddb.hxx>
 
-namespace com { namespace sun { namespace star {
-        namespace uno {
-        class XComponentContext;
-        }
-}}}
+namespace com::sun::star::uno { class XComponentContext; }
 
-namespace dp_registry {
-namespace backend {
-namespace bundle {
+namespace dp_registry::backend::bundle {
 
 /* The XML file stores the extensions which are currently registered.
    They will be removed when they are revoked.
@@ -55,8 +49,6 @@ public:
            and the media type
          */
         std::vector< std::pair< OUString, OUString> > items;
-        typedef std::vector<
-            std::pair< OUString, OUString> >::const_iterator ITC_ITEMS;
     };
 
 public:
@@ -70,8 +62,8 @@ public:
 };
 
 }
-}
-}
+
+
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -23,16 +23,12 @@
 #include <vector>
 #include <com/sun/star/linguistic2/XSpellAlternatives.hpp>
 #include <com/sun/star/linguistic2/XSetSpellAlternatives.hpp>
-#include <com/sun/star/linguistic2/XSearchableDictionaryList.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <linguistic/lngdllapi.h>
 #include <i18nlangtag/lang.h>
+#include <config_options.h>
 
-namespace com { namespace sun { namespace star {
-    namespace linguistic2 {
-        class XDictionaryList;
-    }
-} } }
+namespace com::sun::star::linguistic2 { class XSearchableDictionaryList; }
 
 
 namespace linguistic
@@ -41,20 +37,19 @@ namespace linguistic
 std::vector< OUString >
         MergeProposalSeqs(
                 std::vector< OUString > &rAlt1,
-                std::vector< OUString > &rAlt2,
-                bool bAllowDuplicates );
+                std::vector< OUString > &rAlt2 );
 
 void    SeqRemoveNegEntries(
                 std::vector< OUString > &rSeq,
-                css::uno::Reference< css::linguistic2::XSearchableDictionaryList > &rxDicList,
+                css::uno::Reference< css::linguistic2::XSearchableDictionaryList > const &rxDicList,
                 LanguageType nLanguage );
 
 void SearchSimilarText( const OUString &rText, LanguageType nLanguage,
-        css::uno::Reference< css::linguistic2::XSearchableDictionaryList > &xDicList,
+        css::uno::Reference< css::linguistic2::XSearchableDictionaryList > const &xDicList,
         std::vector< OUString > & rDicListProps );
 
 
-class SpellAlternatives
+class SpellAlternatives final
     : public cppu::WeakImplHelper
     <
         css::linguistic2::XSpellAlternatives,
@@ -67,7 +62,7 @@ class SpellAlternatives
     LanguageType                    nLanguage;
 
 public:
-    LNG_DLLPUBLIC SpellAlternatives();
+    UNLESS_MERGELIBS(LNG_DLLPUBLIC) SpellAlternatives();
     SpellAlternatives(const OUString &rWord, LanguageType nLang,
                       const css::uno::Sequence< OUString > &rAlternatives );
     virtual ~SpellAlternatives() override;
@@ -86,10 +81,10 @@ public:
     virtual void SAL_CALL setFailureType( ::sal_Int16 nFailureType ) override;
 
     // non-interface specific functions
-    void    LNG_DLLPUBLIC SetWordLanguage(const OUString &rWord, LanguageType nLang);
-    void    LNG_DLLPUBLIC SetFailureType(sal_Int16 nTypeP);
-    void    LNG_DLLPUBLIC SetAlternatives( const css::uno::Sequence< OUString > &rAlt );
-    static css::uno::Reference < css::linguistic2::XSpellAlternatives > LNG_DLLPUBLIC CreateSpellAlternatives(
+    void    UNLESS_MERGELIBS(LNG_DLLPUBLIC) SetWordLanguage(const OUString &rWord, LanguageType nLang);
+    void    UNLESS_MERGELIBS(LNG_DLLPUBLIC) SetFailureType(sal_Int16 nTypeP);
+    void    UNLESS_MERGELIBS(LNG_DLLPUBLIC) SetAlternatives( const css::uno::Sequence< OUString > &rAlt );
+    static css::uno::Reference < css::linguistic2::XSpellAlternatives > UNLESS_MERGELIBS(LNG_DLLPUBLIC) CreateSpellAlternatives(
         const OUString &rWord, LanguageType nLang, sal_Int16 nTypeP, const css::uno::Sequence< OUString > &rAlt );
 };
 

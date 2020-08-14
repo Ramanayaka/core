@@ -26,7 +26,7 @@
 #    if defined(__cplusplus) && ( defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L )
         /*
          * Magic template to calculate at compile time the number of elements
-         * in an array. Enforcing that the argument must be a array and not
+         * in an array. Enforcing that the argument must be an array and not
          * a pointer, e.g.
          *  char *pFoo="foo";
          *  SAL_N_ELEMENTS(pFoo);
@@ -46,10 +46,6 @@
 #    else
 #        define SAL_N_ELEMENTS(arr)     (sizeof (arr) / sizeof ((arr)[0]))
 #    endif
-#endif
-
-#ifndef SAL_BOUND
-#    define SAL_BOUND(x,l,h)        ((x) <= (l) ? (l) : ((x) >= (h) ? (h) : (x)))
 #endif
 
 #ifndef SAL_STRINGIFY

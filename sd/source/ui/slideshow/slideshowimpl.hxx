@@ -21,72 +21,38 @@
 #define INCLUDED_SD_SOURCE_UI_SLIDESHOW_SLIDESHOWIMPL_HXX
 
 #include <memory>
-#include "sal/config.h"
-#include "com/sun/star/uno/XComponentContext.hpp"
+#include <sal/config.h>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/implbase.hxx>
-#include "cppuhelper/basemutex.hxx"
-#include "cppuhelper/propertysetmixin.hxx"
+#include <cppuhelper/basemutex.hxx>
 #include <comphelper/interfacecontainer2.hxx>
-#include <com/sun/star/awt/XActivateListener.hpp>
-#include <com/sun/star/presentation/XSlideShow.hpp>
+#include <vcl/menu.hxx>
+#include <com/sun/star/presentation/ClickAction.hpp>
 #include <com/sun/star/presentation/XSlideShowListener.hpp>
 #include <com/sun/star/presentation/XSlideShowController.hpp>
-#include "com/sun/star/presentation/XShapeEventListener.hpp"
-#include <com/sun/star/awt/WindowEvent.hpp>
-#include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/XWindowPeer.hpp>
-#include <com/sun/star/util/XModifyListener.hpp>
-#include <com/sun/star/awt/XPaintListener.hpp>
-#include <com/sun/star/awt/XPointer.hpp>
-#include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
-#include <com/sun/star/presentation/ClickAction.hpp>
-#include <com/sun/star/media/XManager.hpp>
-#include <com/sun/star/media/XPlayer.hpp>
+#include <com/sun/star/presentation/XShapeEventListener.hpp>
 
-#include <toolkit/helper/vclunohelper.hxx>
-
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <vcl/help.hxx>
-#include <unotools/pathoptions.hxx>
-#include <unotools/saveopt.hxx>
-#include <sfx2/bindings.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/viewfrm.hxx>
-#include <basic/sbstar.hxx>
-#include <svx/svdpagv.hxx>
-#include <svx/fmshell.hxx>
-
-#include <svx/svxids.hrc>
-#include "sdmod.hxx"
-#include "cusshow.hxx"
-#include "ViewShellBase.hxx"
-#include "PresentationViewShell.hxx"
-#include "ViewShell.hxx"
-#include "drawview.hxx"
-#include "drawdoc.hxx"
+#include <drawdoc.hxx>
 
 #include "showwindow.hxx"
 
-#include "optsitem.hxx"
-#include "FrameView.hxx"
-#include "DrawDocShell.hxx"
+#include <slideshow.hxx>
 
-#include "app.hrc"
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::media { class XPlayer; }
+namespace sd { class DrawDocShell; }
+namespace sd { class ViewShell; }
 
-#include "slideshow.hxx"
-
+class SfxBindings;
+class SfxDispatcher;
 class SfxViewFrame;
-class SfxRequest;
+class StarBASIC;
 
 namespace sd
 {
 class SlideShowView;
 class AnimationSlideController;
 class PaneHider;
-class ShowWindow;
 
 struct PresentationSettingsEx : public PresentationSettings
 {
@@ -97,7 +63,7 @@ struct PresentationSettingsEx : public PresentationSettings
     css::uno::Reference< css::animations::XAnimationNode > mxAnimationNode;
 
     PresentationSettingsEx( const PresentationSettingsEx& );
-    explicit PresentationSettingsEx( PresentationSettings& );
+    explicit PresentationSettingsEx( PresentationSettings const & );
 
     /// @throws css::lang::IllegalArgumentException
     void SetArguments( const css::uno::Sequence< css::beans::PropertyValue >& rArguments );
@@ -115,7 +81,6 @@ struct WrappedShapeEventImpl
 };
 
 typedef std::shared_ptr< WrappedShapeEventImpl > WrappedShapeEventImplPtr;
-typedef std::map< css::uno::Reference< css::drawing::XShape >, WrappedShapeEventImplPtr > WrappedShapeEventImplMap;
 
 class SlideShowListenerProxy : private ::cppu::BaseMutex,
         public ::cppu::WeakImplHelper< css::presentation::XSlideShowListener, css::presentation::XShapeEventListener >
@@ -153,15 +118,15 @@ public:
     // css::presentation::XShapeEventListener:
     virtual void SAL_CALL click(const css::uno::Reference< css::drawing::XShape > & xShape, const css::awt::MouseEvent & aOriginalEvent) override;
 
+private:
     ::comphelper::OInterfaceContainerHelper2 maListeners;
-
     rtl::Reference< SlideshowImpl > mxController;
     css::uno::Reference< css::presentation::XSlideShow > mxSlideShow;
 };
 
 typedef ::cppu::WeakComponentImplHelper< css::presentation::XSlideShowController, css::container::XIndexAccess > SlideshowImplBase;
 
-class SlideshowImpl : private ::cppu::BaseMutex, public SlideshowImplBase
+class SlideshowImpl final : private ::cppu::BaseMutex, public SlideshowImplBase
 {
 friend class SlideShow;
 friend class SlideShowView;
@@ -181,7 +146,7 @@ public:
     virtual double SAL_CALL getPenWidth() override;
     virtual void SAL_CALL setPenWidth( double dStrokeWidth ) override;
     /// @throws css::uno::RuntimeException
-    void SAL_CALL setEraseAllInk( bool bEraseAllInk );
+    void setEraseAllInk( bool bEraseAllInk );
     virtual sal_Bool SAL_CALL isRunning(  ) override;
     virtual ::sal_Int32 SAL_CALL getSlideCount(  ) override;
     virtual css::uno::Reference< css::drawing::XDrawPage > SAL_CALL getSlideByIndex( ::sal_Int32 Index ) override;
@@ -235,8 +200,8 @@ public:
     void mouseButtonUp(const MouseEvent& rMEvt);
 
 private:
-    SlideshowImpl(SlideshowImpl &) = delete;
-    void operator =(SlideshowImpl &) = delete;
+    SlideshowImpl(SlideshowImpl const &) = delete;
+    void operator =(SlideshowImpl const &) = delete;
 
     virtual ~SlideshowImpl() override;
 
@@ -247,7 +212,7 @@ private:
     virtual void SAL_CALL disposing() override;
 
     // internal
-    bool startShow( PresentationSettingsEx* pPresSettings );
+    bool startShow( PresentationSettingsEx const * pPresSettings );
     bool startPreview(
         const css::uno::Reference< css::drawing::XDrawPage >& xDrawPage,
         const css::uno::Reference< css::animations::XAnimationNode >& xAnimationNode,
@@ -264,7 +229,7 @@ private:
 
     void displaySlideNumber( sal_Int32 nSlide );
     void displaySlideIndex( sal_Int32 nIndex );
-    sal_Int32 getCurrentSlideNumber();
+    sal_Int32 getCurrentSlideNumber() const;
     bool isInputFreezed() const { return mbInputFreeze; }
 
     void jumpToBookmark( const OUString& sBookmark );
@@ -303,7 +268,7 @@ private:
     void removeShapeEvents();
     void registerShapeEvents( sal_Int32 nSlideNumber );
     /// @throws css::uno::Exception
-    void registerShapeEvents( css::uno::Reference< css::drawing::XShapes >& xShapes );
+    void registerShapeEvents( css::uno::Reference< css::drawing::XShapes > const & xShapes );
 
     static css::uno::Reference< css::presentation::XSlideShow > createSlideShow();
 
@@ -332,7 +297,6 @@ private:
 
     VclPtr<vcl::Window>    mpParentWindow;
     VclPtr<sd::ShowWindow>     mpShowWindow;
-    VclPtr<PushButton>     mpTimeButton;
 
     std::shared_ptr< AnimationSlideController > mpSlideController;
 
@@ -358,11 +322,8 @@ private:
     bool            mbUsePen;
     double          mdUserPaintStrokeWidth;
 
-    WrappedShapeEventImplMap    maShapeEventMap;
-
-    OUString msOnClick;
-    OUString msBookmark;
-    OUString msVerb;
+    std::map< css::uno::Reference< css::drawing::XShape >, WrappedShapeEventImplPtr >
+                    maShapeEventMap;
 
     css::uno::Reference< css::drawing::XDrawPage > mxPreviewDrawPage;
     css::uno::Reference< css::animations::XAnimationNode > mxPreviewAnimationNode;

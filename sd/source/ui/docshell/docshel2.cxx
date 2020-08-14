@@ -18,28 +18,25 @@
  */
 
 #include <memory>
-#include "DrawDocShell.hxx"
-#include <vcl/msgbox.hxx>
+#include <DrawDocShell.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svxdlg.hxx>
-#include <svx/dialogs.hrc>
 
-#include "helpids.h"
-#include "ViewShell.hxx"
-#include "drawview.hxx"
-#include "FrameView.hxx"
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
-#include "View.hxx"
-#include "ClientView.hxx"
-#include "Window.hxx"
-#include "strings.hrc"
-#include "res_bmp.hrc"
-#include "sdresid.hxx"
-#include "strmname.h"
-#include "fupoor.hxx"
+#include <helpids.h>
+#include <ViewShell.hxx>
+#include <FrameView.hxx>
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
+#include <ClientView.hxx>
+#include <Window.hxx>
+#include <strings.hrc>
+
+#include <sdresid.hxx>
+#include <fupoor.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/virdev.hxx>
+#include <rtl/character.hxx>
+#include <tools/debug.hxx>
 
 namespace sd {
 
@@ -63,10 +60,10 @@ void DrawDocShell::Draw(OutputDevice* pOut, const JobSetup&, sal_uInt16 nAspect)
 
     SdPage* pSelectedPage = nullptr;
 
-    const std::vector<sd::FrameView*> &rViews = mpDoc->GetFrameViewList();
+    const std::vector<std::unique_ptr<sd::FrameView>> &rViews = mpDoc->GetFrameViewList();
     if( !rViews.empty() )
     {
-        sd::FrameView* pFrameView = rViews[0];
+        sd::FrameView* pFrameView = rViews[0].get();
         if( pFrameView->GetPageKind() == PageKind::Standard )
         {
             sal_uInt16 nSelectedPage = pFrameView->GetSelectedPage();
@@ -95,27 +92,27 @@ void DrawDocShell::Draw(OutputDevice* pOut, const JobSetup&, sal_uInt16 nAspect)
     pOut->IntersectClipRegion(aVisArea);
     pView->ShowSdrPage(pSelectedPage);
 
-    if (pOut->GetOutDevType() != OUTDEV_WINDOW)
+    if (pOut->GetOutDevType() == OUTDEV_WINDOW)
+        return;
+
+    MapMode aOldMapMode = pOut->GetMapMode();
+
+    if (pOut->GetOutDevType() == OUTDEV_PRINTER)
     {
-        MapMode aOldMapMode = pOut->GetMapMode();
+        MapMode aMapMode = aOldMapMode;
+        Point aOrigin = aMapMode.GetOrigin();
+        aOrigin.AdjustX(1 );
+        aOrigin.AdjustY(1 );
+        aMapMode.SetOrigin(aOrigin);
+        pOut->SetMapMode(aMapMode);
+    }
 
-        if (pOut->GetOutDevType() == OUTDEV_PRINTER)
-        {
-            MapMode aMapMode = aOldMapMode;
-            Point aOrigin = aMapMode.GetOrigin();
-            aOrigin.X() += 1;
-            aOrigin.Y() += 1;
-            aMapMode.SetOrigin(aOrigin);
-            pOut->SetMapMode(aMapMode);
-        }
+    vcl::Region aRegion(aVisArea);
+    pView->CompleteRedraw(pOut, aRegion);
 
-        vcl::Region aRegion(aVisArea);
-        pView->CompleteRedraw(pOut, aRegion);
-
-        if (pOut->GetOutDevType() == OUTDEV_PRINTER)
-        {
-            pOut->SetMapMode(aOldMapMode);
-        }
+    if (pOut->GetOutDevType() == OUTDEV_PRINTER)
+    {
+        pOut->SetMapMode(aOldMapMode);
     }
 }
 
@@ -157,7 +154,7 @@ void DrawDocShell::Connect(ViewShell* pViewSh)
     mpViewShell = pViewSh;
 }
 
-void DrawDocShell::Disconnect(ViewShell* pViewSh)
+void DrawDocShell::Disconnect(ViewShell const * pViewSh)
 {
     if (mpViewShell == pViewSh)
     {
@@ -180,7 +177,7 @@ FrameView* DrawDocShell::GetFrameView()
 /**
  * Creates a bitmap of an arbitrary page
  */
-Bitmap DrawDocShell::GetPagePreviewBitmap(SdPage* pPage)
+BitmapEx DrawDocShell::GetPagePreviewBitmap(SdPage* pPage)
 {
     const sal_uInt16 nMaxEdgePixel = 90;
     MapMode         aMapMode( MapUnit::Map100thMM );
@@ -205,7 +202,7 @@ Bitmap DrawDocShell::GetPagePreviewBitmap(SdPage* pPage)
     aMapMode.SetScaleY( aFrac );
     pVDev->SetMapMode( aMapMode );
 
-    ClientView* pView = new ClientView( this, pVDev );
+    std::unique_ptr<ClientView> pView(new ClientView( this, pVDev ));
     FrameView*      pFrameView = GetFrameView();
     pView->ShowSdrPage( pPage );
 
@@ -259,11 +256,11 @@ Bitmap DrawDocShell::GetPagePreviewBitmap(SdPage* pPage)
     pView->CompleteRedraw( pVDev, vcl::Region(::tools::Rectangle(aNullPt, aSize)) );
 
     // IsRedrawReady() always gives sal_True while ( !pView->IsRedrawReady() ) {}
-    delete pView;
+    pView.reset();
 
     pVDev->SetMapMode( MapMode() );
 
-    Bitmap aPreview( pVDev->GetBitmap( aNullPt, pVDev->GetOutputSizePixel() ) );
+    BitmapEx aPreview( pVDev->GetBitmapEx( aNullPt, pVDev->GetOutputSizePixel() ) );
 
     DBG_ASSERT(!!aPreview, "Preview-Bitmap could not be generated");
 
@@ -275,32 +272,34 @@ Bitmap DrawDocShell::GetPagePreviewBitmap(SdPage* pPage)
  * name.
  * @return sal_False if the user cancels the action.
  */
-bool DrawDocShell::CheckPageName (vcl::Window* pWin, OUString& rName )
+bool DrawDocShell::CheckPageName(weld::Window* pWin, OUString& rName)
 {
     const OUString aStrForDlg( rName );
     bool bIsNameValid = IsNewPageNameValid( rName, true );
 
     if( ! bIsNameValid )
     {
-        OUString aDesc( SdResId( STR_WARN_PAGE_EXISTS ) );
+        OUString aDesc;
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        VclPtr<AbstractSvxNameDialog> aNameDlg = pFact ? pFact->CreateSvxNameDialog( pWin, aStrForDlg, aDesc ) : nullptr;
-        if( aNameDlg )
+
+        if (GetDocumentType() == DocumentType::Draw)
+            aDesc = SdResId( STR_WARN_PAGE_EXISTS_DRAW );
+        else
+            aDesc = SdResId( STR_WARN_PAGE_EXISTS );
+
+        ScopedVclPtr<AbstractSvxNameDialog> aNameDlg(pFact->CreateSvxNameDialog(pWin, aStrForDlg, aDesc));
+        aNameDlg->SetEditHelpId( HID_SD_NAMEDIALOG_PAGE );
+
+        aNameDlg->SetCheckNameHdl( LINK( this, DrawDocShell, RenameSlideHdl ) );
+
+        rtl::Reference<FuPoor> xFunc( mpViewShell->GetCurrentFunction() );
+        if( xFunc.is() )
+            xFunc->cancel();
+
+        if( aNameDlg->Execute() == RET_OK )
         {
-            aNameDlg->SetEditHelpId( HID_SD_NAMEDIALOG_PAGE );
-
-            aNameDlg->SetCheckNameHdl( LINK( this, DrawDocShell, RenameSlideHdl ) );
-
-            rtl::Reference<FuPoor> xFunc( mpViewShell->GetCurrentFunction() );
-            if( xFunc.is() )
-                xFunc->cancel();
-
-            if( aNameDlg->Execute() == RET_OK )
-            {
-                aNameDlg->GetName( rName );
-                bIsNameValid = IsNewPageNameValid( rName );
-            }
-            aNameDlg.disposeAndClear();
+            aNameDlg->GetName( rName );
+            bIsNameValid = IsNewPageNameValid( rName );
         }
     }
 
@@ -321,7 +320,8 @@ bool DrawDocShell::IsNewPageNameValid( OUString & rInOutPageName, bool bResetStr
     if (rInOutPageName.startsWith(aStrPage) &&
         rInOutPageName.getLength() > aStrPage.getLength())
     {
-        OUString sRemainder = rInOutPageName.getToken(1, ' ');
+        sal_Int32 nIdx{ aStrPage.getLength() };
+        OUString sRemainder = rInOutPageName.getToken(0, ' ', nIdx);
         if (sRemainder[0] >= '0' && sRemainder[0] <= '9')
         {
             // check for arabic numbering

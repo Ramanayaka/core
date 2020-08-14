@@ -20,14 +20,15 @@
 #define INCLUDED_SVTOOLS_BRWBOX_HXX
 
 #include <svtools/svtdllapi.h>
-#include <vcl/scrbar.hxx>
 #include <vcl/ctrl.hxx>
 #include <vcl/vclptr.hxx>
 #include <tools/multisel.hxx>
-#include <svtools/headbar.hxx>
-#include <svtools/transfer.hxx>
-#include <svtools/AccessibleBrowseBoxObjType.hxx>
-#include <svtools/accessibletableprovider.hxx>
+#include <vcl/event.hxx>
+#include <vcl/headbar.hxx>
+#include <vcl/transfer.hxx>
+#include <vcl/timer.hxx>
+#include <vcl/AccessibleBrowseBoxObjType.hxx>
+#include <vcl/accessibletableprovider.hxx>
 #include <vector>
 #include <stack>
 
@@ -36,18 +37,20 @@
 #include <o3tl/typed_flags_set.hxx>
 
 class BrowserColumn;
-class BrowserDataWin;
-class MultiSelection;
 class BrowserHeader;
-typedef ::std::vector< BrowserColumn* > BrowserColumns;
+class ScrollBar;
+class MeasureStatusBar;
 
 namespace svt {
     class BrowseBoxImpl;
-    class IAccessibleFactory;
 }
 
 namespace utl {
     class AccessibleStateSetHelper;
+}
+
+namespace vcl {
+    class IAccessibleFactory;
 }
 
 #define BROWSER_INVALIDID           SAL_MAX_UINT16
@@ -58,7 +61,6 @@ enum class BrowserMode
     NONE                 = 0x000000,
     COLUMNSELECTION      = 0x000001,
     MULTISELECTION       = 0x000002,
-    THUMBDRAGGING        = 0x000004,
     KEEPHIGHLIGHT        = 0x000008,
     HLINES               = 0x000010,
     VLINES               = 0x000020,
@@ -67,7 +69,6 @@ enum class BrowserMode
     HIDECURSOR           = 0x000200,
 
     NO_HSCROLL           = 0x000400,
-    NO_SCROLLBACK        = 0x000800,
 
     AUTO_VSCROLL         = 0x001000,
     AUTO_HSCROLL         = 0x002000,
@@ -78,21 +79,15 @@ enum class BrowserMode
 
     HEADERBAR_NEW        = 0x040000,
     AUTOSIZE_LASTCOL     = 0x080000,
-    OWN_DATACHANGED      = 0x100000,
 
     CURSOR_WO_FOCUS      = 0x200000,
     // Allows a cursor which is shown even if the control does not have the focus. This does not affect other
     // situations which require to temporarily hide the cursor (such as scrolling).
 
-    SMART_HIDECURSOR     = 0x400000,
-    // is an enhanced version of BrowserMode::HIDECURSOR.
-    // When set, BrowserMode::HIDECURSOR is overruled, and the cursor is hidden as long as no selection exists,
-    // but shown otherwise. This does not affect other situations which require to temporarily hide the
-    // cursor (such as scrolling).
 };
 namespace o3tl
 {
-    template<> struct typed_flags<BrowserMode> : is_typed_flags<BrowserMode, 0x7cff3f> {};
+    template<> struct typed_flags<BrowserMode> : is_typed_flags<BrowserMode, 0x2cf73b> {};
 }
 
 #define BROWSER_NONE                      0
@@ -125,7 +120,7 @@ class BrowseEvent
 {
     VclPtr<vcl::Window>     pWin;
     long                    nRow;
-    tools::Rectangle               aRect;
+    tools::Rectangle        aRect;
     sal_uInt16              nCol;
     sal_uInt16              nColId;
 
@@ -142,6 +137,88 @@ public:
     const tools::Rectangle&    GetRect() const { return aRect; }
 };
 
+class BrowseBox;
+class ScrollBarBox;
+class BrowserMouseEvent;
+
+class BrowserDataWin
+            :public Control
+            ,public DragSourceHelper
+            ,public DropTargetHelper
+{
+public:
+    VclPtr<BrowserHeader> pHeaderBar;     // only for BrowserMode::HEADERBAR_NEW
+    VclPtr<ScrollBarBox>  pCornerWin;     // Window in the corner btw the ScrollBars
+    bool            bInDtor;
+    AutoTimer       aMouseTimer;    // recalls MouseMove on dragging out
+    MouseEvent      aRepeatEvt;     // a MouseEvent to repeat
+    Point           aLastMousePos;  // prevents pseudo-MouseMoves
+
+    OUString        aRealRowCount;  // to show in VScrollBar
+
+    std::vector<tools::Rectangle> aInvalidRegion; // invalidated Rectangles during !UpdateMode
+    bool            bInPaint;       // TRUE while in Paint
+    bool            bInCommand;     // TRUE while in Command
+    bool            bNoHScroll;     // no horizontal scrollbar
+    bool            bNoVScroll;     // no vertical scrollbar
+    bool            bAutoHScroll;   // autohide horizontaler Scrollbar
+    bool            bAutoVScroll;   // autohide horizontaler Scrollbar
+    bool            bUpdateMode;    // not SV-UpdateMode because of Invalidate()
+    bool            bAutoSizeLastCol; // last column always fills up window
+    bool            bResizeOnPaint;   // outstanding resize-event
+    bool            bUpdateOnUnlock;  // Update() while locked
+    bool            bInUpdateScrollbars;  // prevents recursions
+    bool            bHadRecursion;        // a recursion occurred
+    bool            bCallingDropCallback; // we're in a callback to AcceptDrop or ExecuteDrop currently
+    sal_uInt16          nUpdateLock;    // lock count, don't call Control::Update()!
+    short           nCursorHidden;  // new counter for DoHide/ShowCursor
+
+    long            m_nDragRowDividerLimit;
+    long            m_nDragRowDividerOffset;
+
+public:
+                    explicit BrowserDataWin( BrowseBox* pParent );
+    virtual         ~BrowserDataWin() override;
+    virtual void    dispose() override;
+
+    virtual void    DataChanged( const DataChangedEvent& rDCEvt ) override;
+    virtual void    Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
+    virtual void    RequestHelp( const HelpEvent& rHEvt ) override;
+    virtual void    Command( const CommandEvent& rEvt ) override;
+    virtual void    MouseButtonDown( const MouseEvent& rEvt ) override;
+    virtual void    MouseMove( const MouseEvent& rEvt ) override;
+                    DECL_LINK( RepeatedMouseMove, Timer *, void );
+
+    virtual void    MouseButtonUp( const MouseEvent& rEvt ) override;
+    virtual void    KeyInput( const KeyEvent& rEvt ) override;
+    virtual void    Tracking( const TrackingEvent& rTEvt ) override;
+
+    // DropTargetHelper overridables
+    virtual sal_Int8 AcceptDrop( const AcceptDropEvent& rEvt ) override;
+    virtual sal_Int8 ExecuteDrop( const ExecuteDropEvent& rEvt ) override;
+
+    // DragSourceHelper overridables
+    virtual void    StartDrag( sal_Int8 _nAction, const Point& _rPosPixel ) override;
+
+
+    BrowseEvent     CreateBrowseEvent( const Point& rPosPixel );
+    BrowseBox*      GetParent() const;
+    const OUString& GetRealRowCount() const { return aRealRowCount; }
+
+    void            SetUpdateMode( bool bMode );
+    bool            GetUpdateMode() const { return bUpdateMode; }
+    void            EnterUpdateLock() { ++nUpdateLock; }
+    void            LeaveUpdateLock();
+    void            Update();
+    void            DoOutstandingInvalidations();
+    void            Invalidate( InvalidateFlags nFlags = InvalidateFlags::NONE ) override;
+    void            Invalidate( const tools::Rectangle& rRect, InvalidateFlags nFlags = InvalidateFlags::NONE ) override;
+    using Control::Invalidate;
+
+protected:
+    void            StartRowDividerDrag( const Point& _rStartPos );
+    bool            ImplRowDividerHitTest( const BrowserMouseEvent& _rEvent );
+};
 
 class BrowserMouseEvent: public MouseEvent, public BrowseEvent
 {
@@ -166,9 +243,8 @@ public:
     BrowserExecuteDropEvent( BrowserDataWin* pWin, const ExecuteDropEvent& rEvt );
 };
 
-
 // TODO
-// The whole selection thingie in this class is somewhat .... suspicious to me.
+// The whole selection thingie in this class is somewhat... suspicious to me.
 // some oddities:
 // * method parameters named like members (and used in both semantics within the method!)
 // * the multi selection flag is sometimes used as if it is for row selection, sometimes as if
@@ -187,7 +263,7 @@ class SVT_DLLPUBLIC BrowseBox
         :public Control
         ,public DragSourceHelper
         ,public DropTargetHelper
-        ,public svt::IAccessibleTableProvider
+        ,public vcl::IAccessibleTableProvider
 {
     friend class BrowserDataWin;
     friend class ::svt::BrowseBoxImpl;
@@ -199,6 +275,7 @@ private:
     VclPtr<BrowserDataWin> pDataWin;       // window to display data rows
     VclPtr<ScrollBar>      pVScroll;       // vertical scrollbar
     VclPtr<ScrollBar>      aHScroll;       // horizontal scrollbar
+    VclPtr<MeasureStatusBar> aStatusBarHeight; // statusbar, just to measure its height
 
     long            nDataRowHeight; // height of a single data-row
     sal_uInt16      nTitleLines;    // number of lines in title row
@@ -209,7 +286,6 @@ private:
 
     bool            bHLines;        // draw lines between rows
     bool            bVLines;        // draw lines between columns
-    Color           aGridLineColor;     // color for lines, default dark grey
     bool            bBootstrapped;  // child windows resized etc.
     long            nTopRow;        // no. of first visible row (0...)
     long            nCurRow;        // no. of row with cursor
@@ -221,8 +297,6 @@ private:
     bool            bRowDividerDrag;
     bool            bHit;
     bool            mbInteractiveRowHeight;
-    Point           a1stPoint;
-    Point           a2ndPoint;
 
     long            nResizeX;       // mouse position at start of resizing
     long            nMinResizeX;    // never drag more left
@@ -239,13 +313,13 @@ private:
     TriState        bHideCursor;    // hide cursor (frame)
     Range           aSelRange;      // for selection expansion
 
-    BrowserColumns pCols;           // array of column-descriptions
+    ::std::vector< std::unique_ptr<BrowserColumn> > mvCols; // array of column-descriptions
     union
     {
         MultiSelection* pSel;       // selected rows for multi-selection
         long            nSel;       // selected row for single-selection
     }               uRow;
-    MultiSelection* pColSel;        // selected column-ids
+    std::unique_ptr<MultiSelection> pColSel; // selected column-ids
 
     // fdo#83943, detect if making the cursor position visible is impossible to achieve
     struct CursorMoveAttempt
@@ -267,8 +341,8 @@ private:
         }
         bool operator!=(const CursorMoveAttempt& r) const { return !(*this == r); }
     };
-    typedef std::stack<CursorMoveAttempt> GotoStack;
-    GotoStack       m_aGotoStack;
+    std::stack<CursorMoveAttempt>
+                    m_aGotoStack;
 
     ::std::unique_ptr< ::svt::BrowseBoxImpl >  m_pImpl;       // impl structure of the BrowseBox object
 
@@ -291,17 +365,18 @@ private:
     SVT_DLLPRIVATE void            ColumnInserted( sal_uInt16 nPos );
 
     DECL_DLLPRIVATE_LINK(    ScrollHdl, ScrollBar*, void );
-    DECL_DLLPRIVATE_LINK(    EndScrollHdl, ScrollBar*, void );
     DECL_DLLPRIVATE_LINK(    StartDragHdl, HeaderBar*, void );
 
-    SVT_DLLPRIVATE long            GetFrozenWidth() const;
+    SVT_DLLPRIVATE long GetFrozenWidth() const;
+
+    SVT_DLLPRIVATE long GetBarHeight() const;
 
     bool            GoToRow(long nRow, bool bRowColMove, bool bDoNotModifySelection = false );
 
     bool            GoToColumnId( sal_uInt16 nColId, bool bMakeVisible, bool bRowColMove = false);
     void            SelectColumnPos( sal_uInt16 nCol, bool _bSelect, bool bMakeVisible);
 
-    void            ImplPaintData(OutputDevice& _rOut, const tools::Rectangle& _rRect, bool _bForeignDevice, bool _bDrawSelections);
+    void            ImplPaintData(OutputDevice& _rOut, const tools::Rectangle& _rRect, bool _bForeignDevice);
 
     bool            PaintCursorIfHiddenOnce() const { return !m_bFocusOnlyCursor && !HasFocus(); }
 
@@ -310,7 +385,7 @@ private:
 
 protected:
     /// retrieves the XAccessible implementation associated with the BrowseBox instance
-    ::svt::IAccessibleFactory&   getAccessibleFactory();
+    ::vcl::IAccessibleFactory&   getAccessibleFactory();
 
 protected:
     sal_uInt16          ColCount() const;
@@ -335,8 +410,8 @@ protected:
     */
     virtual bool    SeekRow( long nRow ) = 0;
     void            DrawCursor();
-    void            PaintData(vcl::Window& rWin, vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect);
-    virtual void    PaintField(OutputDevice& rDev, const tools::Rectangle& rRect, sal_uInt16 nColumnId) const = 0;
+    void            PaintData(vcl::Window const & rWin, vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect);
+    virtual void    PaintField(vcl::RenderContext& rDev, const tools::Rectangle& rRect, sal_uInt16 nColumnId) const = 0;
     // Advice for the subclass: the visible scope of rows has changed.
     // The subclass is able to announce changes of the model with the
     // help of the methods RowInserted and RowRemoved. Because of the
@@ -354,8 +429,8 @@ protected:
     virtual void    VisibleRowsChanged( long nNewTopRow, sal_uInt16 nNumRows);
 
     // number of visible rows in the window (incl. "truncated" rows)
-    sal_uInt16      GetVisibleRows();
-    long            GetTopRow() { return nTopRow; }
+    sal_uInt16      GetVisibleRows() const;
+    long            GetTopRow() const { return nTopRow; }
     sal_uInt16      GetFirstVisibleColNumber() const { return nFirstCol; }
 
     // Focus-Rect enable / disable
@@ -396,7 +471,7 @@ public:
     virtual void    GetFocus() override;
     virtual void    Resize() override;
     virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual void    Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags nFlags ) override;
+    virtual void    Draw( OutputDevice* pDev, const Point& rPos, DrawFlags nFlags ) override;
     virtual void    Command( const CommandEvent& rEvt ) override;
     virtual void    StartDrag( sal_Int8 _nAction, const Point& _rPosPixel ) override;
 
@@ -417,7 +492,6 @@ public:
     virtual void    CursorMoved();
     virtual void    ColumnMoved( sal_uInt16 nColId );
     virtual void    ColumnResized( sal_uInt16 nColId );
-    static long     QueryColumnResize( sal_uInt16 nColId, long nWidth );
     /// called when the row height has been changed interactively
     virtual void    RowHeightChanged();
     virtual long    QueryMinimumRowHeight();
@@ -431,9 +505,6 @@ public:
     const vcl::Font& GetFont() const;
     void            SetTitleFont( const vcl::Font& rNewFont )
                         { Control::SetFont( rNewFont ); }
-
-    // color for line painting
-    void            SetGridLineColor(const Color& rColor) {aGridLineColor = rColor;}
 
     // inserting, changing, removing and freezing of columns
     void            InsertHandleColumn( sal_uLong nWidth );
@@ -488,7 +559,7 @@ public:
     long            FirstSelectedRow();
     long            LastSelectedRow();
     long            NextSelectedRow();
-    const MultiSelection* GetColumnSelection() const { return pColSel; }
+    const MultiSelection* GetColumnSelection() const { return pColSel.get(); }
     const MultiSelection* GetSelection() const
                     { return bMultiSelection ? uRow.pSel : nullptr; }
 
@@ -497,7 +568,7 @@ public:
     bool            IsResizing() const { return bResizing; }
 
     // access to positions of fields, column and rows
-    vcl::Window&    GetDataWindow() const;
+    BrowserDataWin&        GetDataWindow() const;
     tools::Rectangle       GetRowRectPixel( long nRow ) const;
     tools::Rectangle       GetFieldRectPixel( long nRow, sal_uInt16 nColId,
                                        bool bRelToBrowser = true) const;
@@ -516,7 +587,7 @@ public:
     // miscellaneous
     bool            ReserveControlArea(sal_uInt16 nWidth = USHRT_MAX);
     tools::Rectangle       GetControlArea() const;
-    bool            ProcessKey( const KeyEvent& rEvt );
+    virtual bool    ProcessKey(const KeyEvent& rEvt);
     void            Dispatch( sal_uInt16 nId );
     void            SetMode( BrowserMode nMode );
     BrowserMode     GetMode( ) const { return m_nCurrentMode; }
@@ -541,7 +612,7 @@ public:
 
     /** suggests a default width for a column containing a given text
 
-        The width is calculated so that the text fits completely, plus som margin.
+        The width is calculated so that the text fits completely, plus some margin.
     */
     sal_uLong         GetDefaultColumnWidth( const OUString& _rText ) const;
 
@@ -708,7 +779,7 @@ public:
         @return
             The name of the specified object.
     */
-    virtual OUString GetAccessibleObjectName( ::svt::AccessibleBrowseBoxObjType eObjType,sal_Int32 _nPosition = -1) const override;
+    virtual OUString GetAccessibleObjectName( ::vcl::AccessibleBrowseBoxObjType eObjType,sal_Int32 _nPosition = -1) const override;
 
     /** return the description of the specified object.
         @param  eObjType
@@ -718,7 +789,7 @@ public:
         @return
             The description of the specified object.
     */
-    virtual OUString GetAccessibleObjectDescription( ::svt::AccessibleBrowseBoxObjType eObjType,sal_Int32 _nPosition = -1) const override;
+    virtual OUString GetAccessibleObjectDescription( ::vcl::AccessibleBrowseBoxObjType eObjType,sal_Int32 _nPosition = -1) const override;
 
     /** @return  The header text of the specified row. */
     virtual OUString GetRowDescription( sal_Int32 nRow ) const override;
@@ -730,7 +801,7 @@ public:
         the accessible object), depending on the specified object type. */
     virtual void FillAccessibleStateSet(
             ::utl::AccessibleStateSetHelper& rStateSet,
-            ::svt::AccessibleBrowseBoxObjType eObjType ) const override;
+            ::vcl::AccessibleBrowseBoxObjType eObjType ) const override;
 
     /** Fills the StateSet with all states for one cell (except DEFUNC and SHOWING, done by
         the accessible object). */

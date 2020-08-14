@@ -17,15 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/misccontexts.hxx"
-#include "oox/helper/attributelist.hxx"
-#include "oox/helper/graphichelper.hxx"
-#include "oox/core/xmlfilterbase.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
-#include "drawingml/fillproperties.hxx"
+#include <drawingml/misccontexts.hxx>
+#include <oox/helper/attributelist.hxx>
+#include <oox/helper/graphichelper.hxx>
+#include <oox/core/xmlfilterbase.hxx>
+#include <oox/drawingml/drawingmltypes.hxx>
+#include <drawingml/fillproperties.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
-#include <sfx2/docfile.hxx>
+#include <vcl/GraphicExternalLink.hxx>
+#include <vcl/graph.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -33,16 +34,15 @@ using namespace ::com::sun::star::xml::sax;
 using ::oox::core::ContextHandler2;
 using ::oox::core::ContextHandlerRef;
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
-SolidFillContext::SolidFillContext( ContextHandler2Helper& rParent,
+SolidFillContext::SolidFillContext( ContextHandler2Helper const & rParent,
         FillProperties& rFillProps ) :
     ColorContext( rParent, rFillProps.maFillColor )
 {
 }
 
-GradientFillContext::GradientFillContext( ContextHandler2Helper& rParent,
+GradientFillContext::GradientFillContext( ContextHandler2Helper const & rParent,
         const AttributeList& rAttribs, GradientFillProperties& rGradientProps ) :
     ContextHandler2( rParent ),
     mrGradientProps( rGradientProps )
@@ -63,7 +63,8 @@ ContextHandlerRef GradientFillContext::onCreateContext(
             if( rAttribs.hasAttribute( XML_pos ) )
             {
                 double fPosition = getLimitedValue< double >( rAttribs.getDouble( XML_pos, 0.0 ) / 100000.0, 0.0, 1.0 );
-                return new ColorContext( *this, mrGradientProps.maGradientStops[ fPosition ] );
+                auto aElement = mrGradientProps.maGradientStops.emplace( fPosition, Color() );
+                return new ColorContext( *this, aElement->second );
             }
         break;
 
@@ -88,7 +89,7 @@ ContextHandlerRef GradientFillContext::onCreateContext(
     return nullptr;
 }
 
-PatternFillContext::PatternFillContext( ContextHandler2Helper& rParent,
+PatternFillContext::PatternFillContext( ContextHandler2Helper const & rParent,
         const AttributeList& rAttribs, PatternFillProperties& rPatternProps ) :
     ContextHandler2( rParent ),
     mrPatternProps( rPatternProps )
@@ -109,7 +110,7 @@ ContextHandlerRef PatternFillContext::onCreateContext(
     return nullptr;
 }
 
-ColorChangeContext::ColorChangeContext( ContextHandler2Helper& rParent,
+ColorChangeContext::ColorChangeContext( ContextHandler2Helper const & rParent,
         const AttributeList& rAttribs, BlipFillProperties& rBlipProps ) :
     ContextHandler2( rParent ),
     mrBlipProps( rBlipProps )
@@ -138,7 +139,7 @@ ContextHandlerRef ColorChangeContext::onCreateContext(
     return nullptr;
 }
 
-BlipContext::BlipContext( ContextHandler2Helper& rParent,
+BlipContext::BlipContext( ContextHandler2Helper const & rParent,
         const AttributeList& rAttribs, BlipFillProperties& rBlipProps ) :
     ContextHandler2( rParent ),
     mrBlipProps( rBlipProps )
@@ -147,23 +148,21 @@ BlipContext::BlipContext( ContextHandler2Helper& rParent,
     {
         // internal picture URL
         OUString aFragmentPath = getFragmentPathFromRelId( rAttribs.getString( R_TOKEN( embed ), OUString() ) );
-        if( !aFragmentPath.isEmpty() )
-            mrBlipProps.mxGraphic = getFilter().getGraphicHelper().importEmbeddedGraphic( aFragmentPath );
+        if (!aFragmentPath.isEmpty())
+            mrBlipProps.mxFillGraphic = getFilter().getGraphicHelper().importEmbeddedGraphic( aFragmentPath );
     }
     else if( rAttribs.hasAttribute( R_TOKEN( link ) ) )
     {
         // external URL
 
-        // we will embed this link, this is better than just doing nothing..
+        // we will embed this link, this is better than just doing nothing...
         // TODO: import this graphic as real link, but this requires some
         // code rework.
         OUString aRelId = rAttribs.getString( R_TOKEN( link ), OUString() );
         OUString aTargetLink = getFilter().getAbsoluteUrl( getRelations().getExternalTargetFromRelId( aRelId ) );
-        SfxMedium aMed( aTargetLink, StreamMode::STD_READ );
-        aMed.Download();
-        Reference< io::XInputStream > xInStrm = aMed.GetInputStream();
-        if ( xInStrm.is() )
-            mrBlipProps.mxGraphic = getFilter().getGraphicHelper().importGraphic( xInStrm );
+        GraphicExternalLink aLink(aTargetLink);
+        Graphic aGraphic(aLink);
+        mrBlipProps.mxFillGraphic = aGraphic.GetXGraphic();
     }
 }
 
@@ -197,7 +196,7 @@ ContextHandlerRef BlipContext::onCreateContext(
     return nullptr;
 }
 
-DuotoneContext::DuotoneContext( ContextHandler2Helper& rParent,
+DuotoneContext::DuotoneContext( ContextHandler2Helper const & rParent,
         BlipFillProperties& rBlipProps ) :
     ContextHandler2( rParent ),
     mrBlipProps( rBlipProps ),
@@ -219,7 +218,7 @@ DuotoneContext::~DuotoneContext()
     return nullptr;
 }
 
-BlipFillContext::BlipFillContext( ContextHandler2Helper& rParent,
+BlipFillContext::BlipFillContext( ContextHandler2Helper const & rParent,
         const AttributeList& rAttribs, BlipFillProperties& rBlipProps ) :
     ContextHandler2( rParent ),
     mrBlipProps( rBlipProps )
@@ -260,7 +259,7 @@ ContextHandlerRef BlipFillContext::onCreateContext(
     return nullptr;
 }
 
-FillPropertiesContext::FillPropertiesContext( ContextHandler2Helper& rParent, FillProperties& rFillProps ) :
+FillPropertiesContext::FillPropertiesContext( ContextHandler2Helper const & rParent, FillProperties& rFillProps ) :
     ContextHandler2( rParent ),
     mrFillProps( rFillProps )
 {
@@ -273,7 +272,7 @@ ContextHandlerRef FillPropertiesContext::onCreateContext(
 }
 
 ContextHandlerRef FillPropertiesContext::createFillContext(
-        ContextHandler2Helper& rParent, sal_Int32 nElement,
+        ContextHandler2Helper const & rParent, sal_Int32 nElement,
         const AttributeList& rAttribs, FillProperties& rFillProps )
 {
     switch( nElement )
@@ -288,7 +287,7 @@ ContextHandlerRef FillPropertiesContext::createFillContext(
     return nullptr;
 }
 
-SimpleFillPropertiesContext::SimpleFillPropertiesContext( ContextHandler2Helper& rParent, Color& rColor ) :
+SimpleFillPropertiesContext::SimpleFillPropertiesContext( ContextHandler2Helper const & rParent, Color& rColor ) :
     FillPropertiesContext( rParent, *this ),
     mrColor( rColor )
 {
@@ -299,7 +298,7 @@ SimpleFillPropertiesContext::~SimpleFillPropertiesContext()
     mrColor = getBestSolidColor();
 }
 
-BlipExtensionContext::BlipExtensionContext( ContextHandler2Helper& rParent, BlipFillProperties& rBlipProps ) :
+BlipExtensionContext::BlipExtensionContext( ContextHandler2Helper const & rParent, BlipFillProperties& rBlipProps ) :
     ContextHandler2( rParent ),
     mrBlipProps( rBlipProps )
 {
@@ -323,7 +322,7 @@ ContextHandlerRef BlipExtensionContext::onCreateContext(
     return nullptr;
 }
 
-ArtisticEffectContext::ArtisticEffectContext( ContextHandler2Helper& rParent, ArtisticEffectProperties& rEffect ) :
+ArtisticEffectContext::ArtisticEffectContext( ContextHandler2Helper const & rParent, ArtisticEffectProperties& rEffect ) :
     ContextHandler2( rParent ),
     maEffect( rEffect )
 {
@@ -359,7 +358,7 @@ ContextHandlerRef ArtisticEffectContext::onCreateContext(
         return nullptr;
 
     // effect attributes
-    sal_Int32 aAttribs[19] = {
+    sal_Int32 const aAttribs[19] = {
             XML_visible, XML_trans, XML_crackSpacing, XML_pressure, XML_numberOfShades,
             XML_grainSize, XML_intensity, XML_smoothness, XML_gridSize, XML_pencilSize,
             XML_size, XML_brushSize, XML_scaling, XML_detail, XML_bright, XML_contrast,
@@ -378,7 +377,6 @@ ContextHandlerRef ArtisticEffectContext::onCreateContext(
     return nullptr;
 }
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

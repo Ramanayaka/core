@@ -26,9 +26,9 @@
 #include <com/sun/star/report/meta/XFormulaParser.hpp>
 #include <memory>
 
-namespace com { namespace sun { namespace star { namespace lang {
+namespace com::sun::star::lang {
     class XMultiServiceFactory;
-} } } }
+}
 
 namespace svl {
 
@@ -45,13 +45,13 @@ class OAddFieldWindow;
 class FormulaDialog : public formula::FormulaModalDialog,
                       public formula::IControlReferenceHandler
 {
-    std::shared_ptr< formula::IFunctionManager > m_aFunctionManager;
-    formula::FormEditData*             m_pFormulaData;
-    VclPtr<OAddFieldWindow>            m_pAddField;
+    std::shared_ptr<formula::IFunctionManager> m_aFunctionManager;
+    std::unique_ptr<formula::FormEditData> m_xFormulaData;
+    std::shared_ptr<OAddFieldWindow> m_xAddField;
     css::uno::Reference < css::beans::XPropertySet >          m_xRowSet;
     css::uno::Reference< css::report::meta::XFormulaParser>   m_xParser;
     css::uno::Reference< css::sheet::XFormulaOpCodeMapper>    m_xOpCodeMapper;
-    VclPtr<formula::RefEdit>           m_pEdit;
+    formula::RefEdit*              m_pEdit;
     OUString                           m_sFormula;
     sal_Int32                          m_nStart;
     sal_Int32                          m_nEnd;
@@ -60,7 +60,7 @@ class FormulaDialog : public formula::FormulaModalDialog,
 
     DECL_LINK( OnClickHdl, OAddFieldWindow&, void );
 public:
-    FormulaDialog( vcl::Window* pParent
+    FormulaDialog( weld::Window* pParent
         , const css::uno::Reference< css::lang::XMultiServiceFactory>& _xServiceFactory
         , const std::shared_ptr< formula::IFunctionManager >& _pFunctionMgr
         , const OUString& _sFormula
@@ -68,12 +68,13 @@ public:
         , svl::SharedStringPool& rStrPool );
 
     virtual ~FormulaDialog() override;
-    virtual void dispose() override;
 
     // IFormulaEditorHelper
     virtual void notifyChange() override;
     virtual void fill() override;
     virtual bool calculateValue(const OUString& _sExpression, OUString& _rResult, bool bMatrixFormula) override;
+    virtual std::shared_ptr<formula::FormulaCompiler> getCompiler() const override;
+    virtual std::unique_ptr<formula::FormulaCompiler> createCompiler( formula::FormulaTokenArray& rArray ) const override;
     virtual void doClose(bool _bOk) override;
     virtual void insertEntryToLRUList(const formula::IFunctionDescription*  pDesc) override;
     virtual void showReference(const OUString& _sFormula) override;

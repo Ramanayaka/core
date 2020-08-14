@@ -21,6 +21,7 @@ $(eval $(call gb_ExternalProject_use_externals,libwpg,\
 ))
 
 $(call gb_ExternalProject_get_state_target,libwpg,build) :
+	$(call gb_Trace_StartRange,libwpg,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		export PKG_CONFIG="" \
 		&& MAKE=$(MAKE) ./configure \
@@ -35,14 +36,16 @@ $(call gb_ExternalProject_get_state_target,libwpg,build) :
 			$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
+			CXXFLAGS="$(gb_CXXFLAGS) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))" \
 			$(if $(filter LINUX,$(OS)), \
 				'LDFLAGS=-Wl$(COMMA)-z$(COMMA)origin \
 					-Wl$(COMMA)-rpath$(COMMA)\$$$$ORIGIN') \
 		&& $(MAKE) \
 		$(if $(filter MACOSX,$(OS)),\
 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
-				$(gb_Package_SOURCEDIR_libwpg)/src/lib/.libs/libwpg-0.3.3.dylib \
+				$(EXTERNAL_WORKDIR)/src/lib/.libs/libwpg-0.3.3.dylib \
 		) \
 	)
+	$(call gb_Trace_EndRange,libwpg,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

@@ -19,14 +19,7 @@
 
 
 #include "intercept.hxx"
-#include "dbastrings.hrc"
 
-#include <com/sun/star/embed/EmbedStates.hpp>
-#include <com/sun/star/util/XModifiable.hpp>
-#include <cppuhelper/weak.hxx>
-
-#include <comphelper/types.hxx>
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 
 #include <memory>
@@ -54,14 +47,11 @@ using namespace ::cppu;
 #define DISPATCH_RELOAD     5
 // the OSL_ENSURE in CTOR has to be changed too, when adding new defines
 
-void SAL_CALL OInterceptor::dispose()
+void OInterceptor::dispose()
 {
     EventObject aEvt( *this );
 
     osl::MutexGuard aGuard(m_aMutex);
-
-    if ( m_pDisposeEventListeners && m_pDisposeEventListeners->getLength() )
-        m_pDisposeEventListeners->disposeAndClear( aEvt );
 
     if ( m_pStatCL )
         m_pStatCL->disposeAndClear( aEvt );
@@ -76,8 +66,6 @@ void SAL_CALL OInterceptor::dispose()
 OInterceptor::OInterceptor( ODocumentDefinition* _pContentHolder )
     :m_pContentHolder( _pContentHolder )
     ,m_aInterceptedURL(7)
-    ,m_pDisposeEventListeners(nullptr)
-    ,m_pStatCL(nullptr)
 {
 
     OSL_ENSURE(DISPATCH_RELOAD < m_aInterceptedURL.getLength(),"Illegal size.");
@@ -93,15 +81,17 @@ OInterceptor::OInterceptor( ODocumentDefinition* _pContentHolder )
 
 OInterceptor::~OInterceptor()
 {
-    delete m_pDisposeEventListeners;
-    delete m_pStatCL;
 }
+
+namespace {
 
 struct DispatchHelper
 {
     URL aURL;
     Sequence<PropertyValue > aArguments;
 };
+
+}
 
 //XDispatch
 void SAL_CALL OInterceptor::dispatch( const URL& URL,const Sequence<PropertyValue >& Arguments )
@@ -112,7 +102,7 @@ void SAL_CALL OInterceptor::dispatch( const URL& URL,const Sequence<PropertyValu
 
     if ( URL.Complete == m_aInterceptedURL[ DISPATCH_SAVE ] )
     {
-        m_pContentHolder->save( false );
+        m_pContentHolder->save(false, css::uno::Reference<css::awt::XTopWindow>());
         return;
     }
 
@@ -191,7 +181,7 @@ IMPL_LINK( OInterceptor, OnDispatch, void*, _pDispatcher, void )
     }
     catch ( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -220,7 +210,7 @@ void SAL_CALL OInterceptor::addStatusListener(
         {
             osl::MutexGuard aGuard(m_aMutex);
             if(!m_pStatCL)
-                m_pStatCL = new PropertyChangeListenerContainer(m_aMutex);
+                m_pStatCL.reset( new PropertyChangeListenerContainer(m_aMutex) );
         }
 
         m_pStatCL->addInterface(URL.Complete,Control);
@@ -237,7 +227,7 @@ void SAL_CALL OInterceptor::addStatusListener(
         {
             osl::MutexGuard aGuard(m_aMutex);
             if(!m_pStatCL)
-                m_pStatCL = new PropertyChangeListenerContainer(m_aMutex);
+                m_pStatCL.reset( new PropertyChangeListenerContainer(m_aMutex) );
         }
 
         m_pStatCL->addInterface(URL.Complete,Control);
@@ -261,7 +251,7 @@ void SAL_CALL OInterceptor::addStatusListener(
             {
                 osl::MutexGuard aGuard(m_aMutex);
                 if(!m_pStatCL)
-                    m_pStatCL = new PropertyChangeListenerContainer(m_aMutex);
+                    m_pStatCL.reset( new PropertyChangeListenerContainer(m_aMutex) );
             }
 
             m_pStatCL->addInterface(URL.Complete,Control);

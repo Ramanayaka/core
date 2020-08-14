@@ -19,9 +19,10 @@
 #ifndef INCLUDED_SW_INC_NDOLE_HXX
 #define INCLUDED_SW_INC_NDOLE_HXX
 
-#include <ndnotxt.hxx>
+#include "ndnotxt.hxx"
 #include <svtools/embedhlp.hxx>
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
+#include <rtl/ref.hxx>
 
 class SwGrfFormatColl;
 class SwDoc;
@@ -34,18 +35,18 @@ class SW_DLLPUBLIC SwOLEObj
 {
     friend class SwOLENode;
 
-    const SwOLENode* pOLENd;
-    SwOLEListener_Impl* pListener;
+    const SwOLENode* m_pOLENode;
+    rtl::Reference<SwOLEListener_Impl> m_xListener;
 
     /** Either ref or name are known. If only name is known, ref is obtained
        on demand by GetOleRef() from Sfx. */
-    svt::EmbeddedObjectRef xOLERef;
-    OUString aName;
+    svt::EmbeddedObjectRef m_xOLERef;
+    OUString m_aName;
 
     // eventually buffered data if it is a chart OLE
     drawinglayer::primitive2d::Primitive2DContainer     m_aPrimitive2DSequence;
     basegfx::B2DRange                                   m_aRange;
-    class DeflateData*                                  m_pDeflateData;
+    std::unique_ptr<DeflateData>                        m_pDeflateData;
 
     SwOLEObj( const SwOLEObj& rObj ) = delete;
 
@@ -63,9 +64,9 @@ public:
 
     OUString GetDescription();
 
-    const css::uno::Reference < css::embed::XEmbeddedObject > GetOleRef();
+    css::uno::Reference < css::embed::XEmbeddedObject > const & GetOleRef();
     svt::EmbeddedObjectRef& GetObject();
-    const OUString& GetCurrentPersistName() const { return aName; }
+    const OUString& GetCurrentPersistName() const { return m_aName; }
     OUString GetStyleString();
     bool IsOleRef() const;  ///< To avoid unnecessary loading of object.
 
@@ -75,6 +76,8 @@ public:
         basegfx::B2DRange& rRange,
         bool bSynchron);
     void resetBufferedData();
+
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 // SwOLENode
@@ -82,9 +85,9 @@ public:
 class SW_DLLPUBLIC SwOLENode: public SwNoTextNode
 {
     friend class SwNodes;
-    mutable SwOLEObj aOLEObj;
-    OUString sChartTableName;     ///< with chart objects: name of referenced table.
-    bool   bOLESizeInvalid; /**< Should be considered at SwDoc::PrtOLENotify
+    mutable SwOLEObj maOLEObj;
+    OUString msChartTableName;     ///< with chart objects: name of referenced table.
+    bool   mbOLESizeInvalid; /**< Should be considered at SwDoc::PrtOLENotify
                                    (e.g. copied). Is not persistent. */
 
     SwEmbedObjectLink*  mpObjectLink;
@@ -93,27 +96,25 @@ class SW_DLLPUBLIC SwOLENode: public SwNoTextNode
     SwOLENode(  const SwNodeIndex &rWhere,
                 const svt::EmbeddedObjectRef&,
                 SwGrfFormatColl *pGrfColl,
-                SwAttrSet* pAutoAttr );
+                SwAttrSet const * pAutoAttr );
 
     SwOLENode(  const SwNodeIndex &rWhere,
                 const OUString &rName,
                 sal_Int64 nAspect,
                 SwGrfFormatColl *pGrfColl,
-                SwAttrSet* pAutoAttr );
+                SwAttrSet const * pAutoAttr );
 
     SwOLENode( const SwOLENode & ) = delete;
 
     using SwNoTextNode::GetGraphic;
 
 public:
-    const SwOLEObj& GetOLEObj() const { return aOLEObj; }
-          SwOLEObj& GetOLEObj()       { return aOLEObj; }
+    const SwOLEObj& GetOLEObj() const { return maOLEObj; }
+          SwOLEObj& GetOLEObj()       { return maOLEObj; }
     virtual ~SwOLENode() override;
 
-    virtual SwContentNode *SplitContentNode( const SwPosition & ) override;
-
     /// Is in ndcopy.cxx.
-    virtual SwContentNode* MakeCopy( SwDoc*, const SwNodeIndex& ) const override;
+    virtual SwContentNode* MakeCopy(SwDoc*, const SwNodeIndex&, bool bNewFrames) const override;
 
     virtual Size GetTwipSize() const override;
 
@@ -124,18 +125,20 @@ public:
     virtual bool SavePersistentData() override;
     virtual bool RestorePersistentData() override;
 
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+
     bool IsInGlobalDocSection() const;
     bool IsOLEObjectDeleted() const;
 
-    bool IsOLESizeInvalid() const   { return bOLESizeInvalid; }
-    void SetOLESizeInvalid( bool b ){ bOLESizeInvalid = b; }
+    bool IsOLESizeInvalid() const   { return mbOLESizeInvalid; }
+    void SetOLESizeInvalid( bool b ){ mbOLESizeInvalid = b; }
 
-    sal_Int64 GetAspect() const { return aOLEObj.GetObject().GetViewAspect(); }
-    void SetAspect( sal_Int64 nAspect) { aOLEObj.GetObject().SetViewAspect( nAspect ); }
+    sal_Int64 GetAspect() const { return maOLEObj.GetObject().GetViewAspect(); }
+    void SetAspect( sal_Int64 nAspect) { maOLEObj.GetObject().SetViewAspect( nAspect ); }
 
     /** Remove OLE-object from "memory".
        inline void Unload() { aOLEObj.Unload(); } */
-    OUString GetDescription() const { return aOLEObj.GetDescription(); }
+    OUString GetDescription() const { return maOLEObj.GetDescription(); }
 
     bool UpdateLinkURL_Impl();
     void BreakFileLink_Impl();
@@ -146,8 +149,12 @@ public:
     // #i99665#
     bool IsChart() const;
 
-    const OUString& GetChartTableName() const { return sChartTableName; }
-    void SetChartTableName( const OUString& rNm ) { sChartTableName = rNm; }
+    const OUString& GetChartTableName() const { return msChartTableName; }
+    void SetChartTableName( const OUString& rNm ) { msChartTableName = rNm; }
+
+
+    // react on visual change (invalidate)
+    void SetChanged();
 };
 
 /// Inline methods from Node.hxx
@@ -160,6 +167,21 @@ inline const SwOLENode *SwNode::GetOLENode() const
 {
      return SwNodeType::Ole == m_nNodeType ? static_cast<const SwOLENode*>(this) : nullptr;
 }
+
+namespace sw
+{
+    class DocumentSettingManager;
+}
+
+class PurgeGuard
+{
+private:
+    ::sw::DocumentSettingManager &m_rManager;
+    bool m_bOrigPurgeOle;
+public:
+    PurgeGuard(const SwDoc& rDoc);
+    ~PurgeGuard();
+};
 
 #endif  // _ INCLUDED_SW_INC_NDOLE_HXX
 

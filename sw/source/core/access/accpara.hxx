@@ -19,23 +19,21 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_ACCESS_ACCPARA_HXX
 #define INCLUDED_SW_SOURCE_CORE_ACCESS_ACCPARA_HXX
 
-#include <acccontext.hxx>
+#include "acccontext.hxx"
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessibleEditableText.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <com/sun/star/accessibility/XAccessibleHypertext.hpp>
 #include <com/sun/star/accessibility/XAccessibleTextMarkup.hpp>
 #include <com/sun/star/accessibility/XAccessibleMultiLineText.hpp>
 #include <com/sun/star/accessibility/XAccessibleTextSelection.hpp>
-#include <txmsrt.hxx>
 #include <com/sun/star/accessibility/XAccessibleExtendedAttributes.hpp>
 #include <com/sun/star/accessibility/XAccessibleTextAttributes.hpp>
-#include <accselectionhelper.hxx>
-#include <calbck.hxx>
+#include "accselectionhelper.hxx"
 #include <unordered_map>
+#include <svl/lstner.hxx>
 
-class SwField;
 class SwTextFrame;
-class SwTextNode;
 class SwPaM;
 class SwAccessiblePortionData;
 class SwAccessibleHyperTextData;
@@ -43,18 +41,17 @@ class SwRangeRedline;
 class SwXTextPortion;
 class SwParaChangeTrackingInfo; //#i108125#
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace i18n { struct Boundary; }
     namespace accessibility { class XAccessibleHyperlink; }
     namespace style { struct TabStop; }
-} } }
+}
 
 typedef std::unordered_map< OUString,
-                         css::beans::PropertyValue,
-                         OUStringHash > tAccParaPropValMap;
+                         css::beans::PropertyValue > tAccParaPropValMap;
 
 class SwAccessibleParagraph :
-        public SwClient, // #i108125#
+        public SfxListener,
         public SwAccessibleContext,
         public css::accessibility::XAccessibleEditableText,
         public css::accessibility::XAccessibleSelection,
@@ -74,8 +71,8 @@ class SwAccessibleParagraph :
     // string.
     // pPortionData may be NULL; it should only be accessed through the
     // Get/Clear/Has/UpdatePortionData() methods
-    SwAccessiblePortionData* m_pPortionData;
-    SwAccessibleHyperTextData *m_pHyperTextData;
+    std::unique_ptr<SwAccessiblePortionData> m_pPortionData;
+    std::unique_ptr<SwAccessibleHyperTextData> m_pHyperTextData;
 
     sal_Int32 m_nOldCaretPos; // The 'old' caret pos. It's only valid as long
                             // as the cursor is inside this object (protected by
@@ -87,13 +84,13 @@ class SwAccessibleParagraph :
     // implementation for XAccessibleSelection
     SwAccessibleSelectionHelper m_aSelectionHelper;
 
-    SwParaChangeTrackingInfo* mpParaChangeTrackInfo; // #i108125#
+    std::unique_ptr<SwParaChangeTrackingInfo> mpParaChangeTrackInfo; // #i108125#
 
-    /// get the SwTextNode (requires frame; check before)
-    const SwTextNode* GetTextNode() const;
+    // XAccessibleComponent
+    bool m_bLastHasSelection;
 
     /// get the (accessible) text string (requires frame; check before)
-    OUString GetString();
+    OUString const & GetString();
 
     static OUString GetDescription();
 
@@ -102,7 +99,11 @@ class SwAccessibleParagraph :
 
     // determine the current selection. Fill the values with
     // -1 if there is no selection in the this paragraph
-    bool GetSelection(sal_Int32& nStart, sal_Int32& nEnd);
+    // @param pSelection (optional) check only Nth selection in ring
+    bool GetSelectionAtIndex(sal_Int32 * pSelection, sal_Int32& nStart, sal_Int32& nEnd);
+    bool GetSelection(sal_Int32& nStart, sal_Int32& nEnd) {
+        return GetSelectionAtIndex(nullptr, nStart, nEnd);
+    }
 
     // helper for GetSelection and getCaretPosition
     // #i27301# - add parameter <_bForSelection>, which indicates,
@@ -159,8 +160,6 @@ class SwAccessibleParagraph :
             std::vector< css::beans::PropertyValue >& rValues );
 
 public:
-    SwTOXSortTabBase* GetTOXSortTabBase();
-
     bool IsHeading() const;
 
 protected:
@@ -209,8 +208,7 @@ protected:
                               const OUString& rText,
                               sal_Int32 nPos );
     static bool GetParagraphBoundary( css::i18n::Boundary& rBound,
-                                   const OUString& rText,
-                                   sal_Int32 nPos );
+                                   const OUString& rText );
     bool GetAttributeBoundary( css::i18n::Boundary& rBound,
                                    sal_Int32 nPos );
     bool GetGlyphBoundary( css::i18n::Boundary& rBound,
@@ -227,7 +225,7 @@ protected:
                               sal_Int32 nPos,
                               sal_Int16 aTextType );
 
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem* pNew) override;
+    virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
 
 public:
 
@@ -316,6 +314,7 @@ public:
     virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+    virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
     // XAccessibleEditableText
     virtual sal_Bool SAL_CALL cutText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
@@ -370,10 +369,7 @@ public:
     virtual sal_Int32 SAL_CALL  addSelection( sal_Int32 selectionIndex, sal_Int32 startOffset, sal_Int32 endOffset) override;
     // XAccessibleExtendedAttributes
     virtual css::uno::Any SAL_CALL getExtendedAttributes() override ;
-    bool GetSelectionAtIndex(sal_Int32& nIndex, sal_Int32& nStart, sal_Int32& nEnd);
     sal_Int32 GetRealHeadingLevel();
-    // XAccessibleComponent
-    bool m_bLastHasSelection;
 
     // #i89175#
     // XAccessibleMultiLineText

@@ -25,35 +25,35 @@
 
 // include others
 
-#include <osl/file.hxx>
 #include <osl/process.h>
-#include <vcl/svapp.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 
 // include interfaces
 
 #include <com/sun/star/util/PathSubstitution.hpp>
 #include <com/sun/star/util/XStringSubstitution.hpp>
+#include <cppuhelper/supportsservice.hxx>
 
 namespace framework{
 
 
-DEFINE_XSERVICEINFO_MULTISERVICE_2(ShellJob                   ,
-                                   ::cppu::OWeakObject        ,
-                                   SERVICENAME_JOB            ,
-                                   IMPLEMENTATIONNAME_SHELLJOB)
+// XInterface, XTypeProvider, XServiceInfo
 
-DEFINE_INIT_SERVICE(ShellJob,
-                    {
-                        /*  Attention
-                            I think we don't need any mutex or lock here ... because we are called by our own static method impl_createInstance()
-                            to create a new instance of this class by our own supported service factory.
-                            see macro DEFINE_XSERVICEINFO_MULTISERVICE and "impl_initService()" for further information!
-                        */
-                    }
-                   )
+OUString SAL_CALL ShellJob::getImplementationName()
+{
+    return "com.sun.star.comp.framework.ShellJob";
+}
+
+sal_Bool SAL_CALL ShellJob::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL ShellJob::getSupportedServiceNames()
+{
+    return { SERVICENAME_JOB };
+}
+
 
 ShellJob::ShellJob(const css::uno::Reference< css::uno::XComponentContext >& xContext)
     : m_xContext    (xContext)
@@ -101,7 +101,7 @@ css::uno::Any SAL_CALL ShellJob::execute(const css::uno::Sequence< css::beans::N
 
 css::uno::Any ShellJob::impl_generateAnswer4Deactivation()
 {
-    css::uno::Sequence< css::beans::NamedValue > aAnswer { { JobConst::ANSWER_DEACTIVATE_JOB(), css::uno::makeAny(true) } };
+    css::uno::Sequence< css::beans::NamedValue > aAnswer { { JobConst::ANSWER_DEACTIVATE_JOB, css::uno::makeAny(true) } };
     return css::uno::makeAny(aAnswer);
 }
 
@@ -125,16 +125,16 @@ bool ShellJob::impl_execute(const OUString&                       sCommand      
                             const css::uno::Sequence< OUString >& lArguments    ,
                                   bool                            bCheckExitCode)
 {
-          ::rtl_uString**  pArgs    = nullptr;
-    const ::sal_Int32      nArgs    = lArguments.getLength ();
-          oslProcess       hProcess(nullptr);
+    ::rtl_uString**   pArgs    = nullptr;
+    const ::sal_Int32 nArgs    = lArguments.getLength ();
+    oslProcess        hProcess(nullptr);
 
     if (nArgs > 0)
         pArgs = reinterpret_cast< ::rtl_uString** >(const_cast< OUString* >(lArguments.getConstArray()));
 
     oslProcessError eError = osl_executeProcess(sCommand.pData, pArgs, nArgs, osl_Process_WAIT, nullptr, nullptr, nullptr, 0, &hProcess);
 
-    // executable not found or couldnt be started
+    // executable not found or couldn't be started
     if (eError != osl_Process_E_None)
         return false;
 
@@ -156,5 +156,12 @@ bool ShellJob::impl_execute(const OUString&                       sCommand      
 }
 
 } // namespace framework
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_ShellJob_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::ShellJob(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -46,27 +46,23 @@ using namespace com::sun::star::lang;
 using namespace com::sun::star::bridge;
 using namespace com::sun::star::bridge::oleautomation;
 
-namespace ole_adapter
-{
+typedef std::unordered_map<OUString, pair<DISPID, unsigned short>> DispIdMap;
 
-
-typedef std::unordered_map<OUString, pair<DISPID, unsigned short>, OUStringHash> DispIdMap;
-
-typedef std::unordered_multimap<OUString, unsigned int, OUStringHash> TLBFuncIndexMap;
+typedef std::unordered_multimap<OUString, unsigned int> TLBFuncIndexMap;
 
 // This class wraps an IDispatch and maps XInvocation calls to IDispatch calls on the wrapped object.
-// If m_TypeDescription is set then this class represents an UNO interface implemented in a COM component.
+// If m_TypeDescription is set then this class represents a UNO interface implemented in a COM component.
 // The interface is not a real interface in terms of an abstract class but is realized through IDispatch.
-class IUnknownWrapper_Impl : public WeakImplHelper< XBridgeSupplier2, XInitialization, XAutomationObject, XDefaultProperty, XDefaultMethod, XDirectInvocation, XAutomationInvocation >,
+class IUnknownWrapper : public WeakImplHelper< XBridgeSupplier2, XInitialization, XAutomationObject, XDefaultProperty, XDefaultMethod, XDirectInvocation, XAutomationInvocation >,
 
-                             public UnoConversionUtilities<IUnknownWrapper_Impl>
+                             public UnoConversionUtilities<IUnknownWrapper>
 
 {
 public:
-    IUnknownWrapper_Impl(Reference<XMultiServiceFactory> &xFactory,
-                         sal_uInt8 unoWrapperClass, sal_uInt8 comWrapperClass);
+    IUnknownWrapper(Reference<XMultiServiceFactory> const &xFactory,
+                    sal_uInt8 unoWrapperClass, sal_uInt8 comWrapperClass);
 
-    ~IUnknownWrapper_Impl() override;
+    ~IUnknownWrapper() override;
 
     //XInterface
     Any SAL_CALL queryInterface(const Type& t) override;
@@ -203,7 +199,7 @@ protected:
     void getFuncDescForInvoke(const OUString & sFuncName,
                               const Sequence<Any> & seqArgs, FUNCDESC** pFuncDesc);
 
-    // Finds out whether the wrapped IDispatch is an JScript Object. This is
+    // Finds out whether the wrapped IDispatch is a JScript Object. This is
     // done by
     // asking for the property "_environment". If it has the value "JScript"
     // (case insensitive) then the IDispatch is considered a JScript object.
@@ -218,13 +214,13 @@ protected:
     // wrapper class knows what type it is represting. The member m_TypeDescription holds this
     // information.
     // m_TypeDescription is only useful when an object wraps an IDispatch object that implements
-    // an UNO interface. The value is set during a call to XInitialization::initialize.
+    // a UNO interface. The value is set during a call to XInitialization::initialize.
     Sequence<Type> m_seqTypes;
     CComPtr<IUnknown> m_spUnknown;
     CComPtr<IDispatch> m_spDispatch;
         OUString m_sTypeName; // is "" ( not initialised ), "IDispatch" ( we have no idea ) or "SomeLibrary.SomeTypeName" if we managed to get a type
     /** This value is set during XInitialization::initialize. It indicates that the COM interface
-    was transported as VT_DISPATCH in a VARIANT rather then a VT_UNKNOWN
+    was transported as VT_DISPATCH in a VARIANT rather than a VT_UNKNOWN
     */
     bool  m_bOriginalDispatch;
     DispIdMap           m_dispIdMap;
@@ -245,8 +241,6 @@ protected:
     bool m_bHasDfltMethod;
     bool m_bHasDfltProperty;
 };
-
-} // end namespace
 
 #endif
 

@@ -20,7 +20,7 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_SELTRANS_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_SELTRANS_HXX
 
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <rtl/ref.hxx>
 
 class ScTabView;
@@ -67,6 +67,7 @@ public:
     virtual void        AddSupportedFormats() override;
     virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
     virtual void        ObjectReleased() override;
+    virtual sal_Bool SAL_CALL isComplex() override;
 };
 
 #endif

@@ -20,7 +20,7 @@
 #include <connectivity/sqliterator.hxx>
 #include <connectivity/sdbcx/VTable.hxx>
 #include <connectivity/sqlparse.hxx>
-#include "sqlbison.hxx"
+#include <sqlbison.hxx>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/sqlerror.hxx>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
@@ -33,10 +33,11 @@
 #endif
 #include <connectivity/PColumn.hxx>
 #include <tools/diagnose_ex.h>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/dbmetadata.hxx>
 #include <com/sun/star/sdb/SQLFilterOperator.hpp>
+#include <sal/log.hxx>
 
 #include <iterator>
 #include <memory>
@@ -81,8 +82,8 @@ namespace connectivity
             m_xDatabaseMetaData = m_xConnection->getMetaData();
 
             m_bIsCaseSensitive = m_xDatabaseMetaData.is() && m_xDatabaseMetaData->supportsMixedCaseQuotedIdentifiers();
-            m_pTables.reset( new OSQLTables( m_bIsCaseSensitive ) );
-            m_pSubTables.reset( new OSQLTables( m_bIsCaseSensitive ) );
+            m_pTables = std::make_shared<OSQLTables>( m_bIsCaseSensitive );
+            m_pSubTables = std::make_shared<OSQLTables>( m_bIsCaseSensitive );
 
             m_xTableContainer = _rxTables;
 
@@ -100,7 +101,7 @@ namespace connectivity
     public:
         bool    isQueryAllowed( const OUString& _rQueryName )
         {
-            if ( !m_pForbiddenQueryNames.get() )
+            if ( !m_pForbiddenQueryNames )
                 return true;
             if ( m_pForbiddenQueryNames->find( _rQueryName ) == m_pForbiddenQueryNames->end() )
                 return true;
@@ -108,6 +109,7 @@ namespace connectivity
         }
     };
 
+    namespace {
 
     /** helper class for temporarily adding a query name to a list of forbidden query names
     */
@@ -121,8 +123,8 @@ namespace connectivity
             :m_rpAllForbiddenNames( _rIteratorImpl.m_pForbiddenQueryNames )
             ,m_sForbiddenQueryName( _rForbiddenQueryName )
         {
-            if ( !m_rpAllForbiddenNames.get() )
-                m_rpAllForbiddenNames.reset( new QueryNameSet );
+            if ( !m_rpAllForbiddenNames )
+                m_rpAllForbiddenNames = std::make_shared<QueryNameSet>();
             m_rpAllForbiddenNames->insert( m_sForbiddenQueryName );
         }
 
@@ -131,6 +133,8 @@ namespace connectivity
             m_rpAllForbiddenNames->erase( m_sForbiddenQueryName );
         }
     };
+
+    }
 }
 
 OSQLParseTreeIterator::OSQLParseTreeIterator(const Reference< XConnection >& _rxConnection,
@@ -205,7 +209,7 @@ void OSQLParseTreeIterator::setParseTree(const OSQLParseNode * pNewParseTree)
     if ( !m_pImpl->m_xTableContainer.is() )
         return;
 
-    m_aErrors = SQLException();
+    m_xErrors.reset();
 
 
     // Determine statement type ...
@@ -266,7 +270,7 @@ namespace
         Sequence< OUString > sTableTypes(3);
         sTableTypes[0] = "VIEW";
         sTableTypes[1] = "TABLE";
-        sTableTypes[2] = s_sWildcard;   // just to be sure to include anything else ....
+        sTableTypes[2] = s_sWildcard;   // just to be sure to include anything else...
 
         if ( _rxDBMeta.is() )
         {
@@ -305,7 +309,7 @@ void OSQLParseTreeIterator::impl_getQueryParameterColumns( const OSQLTable& _rQu
         // parameters not to be included in the traversal
         return;
 
-    ::rtl::Reference< OSQLColumns > pSubQueryParameterColumns( new OSQLColumns() );
+    ::rtl::Reference pSubQueryParameterColumns( new OSQLColumns() );
 
     // get the command and the EscapeProcessing properties from the sub query
     OUString sSubQueryCommand;
@@ -318,7 +322,7 @@ void OSQLParseTreeIterator::impl_getQueryParameterColumns( const OSQLTable& _rQu
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("connectivity.parse");
     }
 
     // parse the sub query
@@ -329,7 +333,7 @@ void OSQLParseTreeIterator::impl_getQueryParameterColumns( const OSQLTable& _rQu
 
     OUString sError;
     std::unique_ptr< OSQLParseNode > pSubQueryNode( const_cast< OSQLParser& >( m_rParser ).parseTree( sError, sSubQueryCommand ) );
-    if ( !pSubQueryNode.get() )
+    if (!pSubQueryNode)
         break;
 
     OSQLParseTreeIterator aSubQueryIterator( *this, m_rParser, pSubQueryNode.get() );
@@ -341,8 +345,7 @@ void OSQLParseTreeIterator::impl_getQueryParameterColumns( const OSQLTable& _rQu
     } while ( false );
 
     // copy the parameters of the sub query to our own parameter array
-    std::copy( pSubQueryParameterColumns->get().begin(), pSubQueryParameterColumns->get().end(),
-        std::insert_iterator< OSQLColumns::Vector >( m_aParameters->get(), m_aParameters->get().end() ) );
+    m_aParameters->insert( m_aParameters->end(), pSubQueryParameterColumns->begin(), pSubQueryParameterColumns->end() );
 }
 
 
@@ -573,7 +576,7 @@ const OSQLParseNode* OSQLParseTreeIterator::getTableNode( OSQLTables& _rTables, 
                 if ( SQL_ISRULE( pQueryExpression, select_statement ) )
                 {
                     getSelect_statement( *m_pImpl->m_pSubTables, pQueryExpression );
-                    // TODO: now, we need to setup a OSQLTable from pQueryExpression in some way
+                    // TODO: now, we need to setup an OSQLTable from pQueryExpression in some way
                     //       and stick it in _rTables[rTableRange]. Probably fake it by
                     //       setting up a full OSQLParseTreeIterator on pQueryExpression
                     //       and using its m_aSelectColumns
@@ -681,8 +684,7 @@ bool OSQLParseTreeIterator::traverseTableNames(OSQLTables& _rTables)
 
     if ( pTableName )
     {
-        OUString sTableRange;
-        traverseOneTableName( _rTables, pTableName, sTableRange );
+        traverseOneTableName( _rTables, pTableName, OUString() );
     }
 
     return !hasErrors();
@@ -713,22 +715,18 @@ namespace
         {
             if( _pColumnRef->count() > 1 )
             {
-                for ( sal_Int32 i=0; i<((sal_Int32)_pColumnRef->count())-2; ++i )
+                for ( sal_Int32 i=0; i<static_cast<sal_Int32>(_pColumnRef->count())-2; ++i )
                     _pColumnRef->getChild(i)->parseNodeToStr( _out_rTableRange, _rxConnection, nullptr, false, false );
                 _out_rColumnName = _pColumnRef->getChild( _pColumnRef->count()-1 )->getChild(0)->getTokenValue();
             }
             else
                 _out_rColumnName = _pColumnRef->getChild(0)->getTokenValue();
 
-            // look up the column in the select column, to find an possible alias
+            // look up the column in the select column, to find a possible alias
             if ( _pSelectColumns )
             {
-                for (   OSQLColumns::Vector::const_iterator lookupColumn = _pSelectColumns->get().begin();
-                        lookupColumn != _pSelectColumns->get().end();
-                        ++lookupColumn
-                    )
+                for (const Reference< XPropertySet >& xColumn : *_pSelectColumns)
                 {
-                    Reference< XPropertySet > xColumn( *lookupColumn );
                     try
                     {
                         OUString sName, sTableName;
@@ -742,7 +740,7 @@ namespace
                     }
                     catch( const Exception& )
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("connectivity.parse");
                     }
                 }
             }
@@ -780,73 +778,6 @@ void OSQLParseTreeIterator::getColumnRange( const OSQLParseNode* _pColumnRef,
 {
     OUString sDummy;
     lcl_getColumnRange( _pColumnRef, _rxConnection, _out_rColumnName, _out_rTableRange, nullptr, sDummy );
-}
-
-
-bool OSQLParseTreeIterator::getColumnTableRange(const OSQLParseNode* pNode, OUString &rTableRange) const
-{
-    OUString tmp;
-    if(impl_getColumnTableRange(pNode, tmp))
-    {
-        rTableRange = tmp;
-        return true;
-    }
-    else
-        return false;
-}
-
-bool OSQLParseTreeIterator::impl_getColumnTableRange(const OSQLParseNode* pNode, OUString &rTableRange) const
-{
-    // See if all columns belong to one table
-    if (SQL_ISRULE(pNode,column_ref))
-    {
-        OUString aColName, aTableRange;
-        getColumnRange(pNode, aColName, aTableRange);
-        if (aTableRange.isEmpty())   // None found
-        {
-            // Look for the columns in the tables
-            for (OSQLTables::const_iterator aIter = m_pImpl->m_pTables->begin(); aIter != m_pImpl->m_pTables->end(); ++aIter)
-            {
-                if (aIter->second.is())
-                {
-                    try
-                    {
-                        Reference< XNameAccess > xColumns = aIter->second->getColumns();
-                        if(xColumns->hasByName(aColName))
-                        {
-                            Reference< XPropertySet > xColumn;
-                            if (xColumns->getByName(aColName) >>= xColumn)
-                            {
-                                OSL_ENSURE(xColumn.is(),"Column isn't a propertyset!");
-                                aTableRange = aIter->first;
-                                break;
-                            }
-                        }
-                    }
-                    catch(Exception&)
-                    {
-                    }
-                }
-            }
-            if (aTableRange.isEmpty())
-                return false;
-        }
-
-
-        if (rTableRange.isEmpty())
-            rTableRange = aTableRange;
-        else if (rTableRange != aTableRange)
-            return false;
-    }
-    else
-    {
-        for (sal_uInt32 i = 0, ncount = pNode->count(); i < ncount; i++)
-        {
-            if (!getColumnTableRange(pNode->getChild(i), rTableRange))
-                return false;
-        }
-    }
-    return true;
 }
 
 
@@ -896,7 +827,7 @@ void OSQLParseTreeIterator::traverseCreateColumns(const OSQLParseNode* pSelectNo
                 pColumn->setRealName(aColumnName);
 
                 Reference< XPropertySet> xCol = pColumn;
-                m_aCreateColumns->get().push_back(xCol);
+                m_aCreateColumns->push_back(xCol);
             }
         }
 
@@ -1107,7 +1038,7 @@ namespace
     OUString lcl_generateParameterName( const OSQLParseNode& _rParentNode, const OSQLParseNode& _rParamNode )
     {
         OUString sColumnName(  "param"  );
-        const sal_Int32 nCount = (sal_Int32)_rParentNode.count();
+        const sal_Int32 nCount = static_cast<sal_Int32>(_rParentNode.count());
         for ( sal_Int32 i = 0; i < nCount; ++i )
         {
             if ( _rParentNode.getChild(i) == &_rParamNode )
@@ -1236,7 +1167,7 @@ bool OSQLParseTreeIterator::traverseSelectionCriteria(const OSQLParseNode* pSele
 }
 
 
-void OSQLParseTreeIterator::traverseSearchCondition(OSQLParseNode * pSearchCondition)
+void OSQLParseTreeIterator::traverseSearchCondition(OSQLParseNode const * pSearchCondition)
 {
     if (
             SQL_ISRULE(pSearchCondition,boolean_primary) &&
@@ -1430,22 +1361,22 @@ void OSQLParseTreeIterator::traverseParameter(const OSQLParseNode* _pParseNode
         pColumn->setFunction(true);
         pColumn->setAggregateFunction(true);
         pColumn->setRealName(sFunctionName);
-        m_aParameters->get().push_back(pColumn);
+        m_aParameters->push_back(pColumn);
     }
     else
     {
         bool bNotFound = true;
-        OSQLColumns::Vector::const_iterator aIter = ::connectivity::find(
-            m_aSelectColumns->get().begin(),
-            m_aSelectColumns->get().end(),
+        OSQLColumns::const_iterator aIter = ::connectivity::find(
+            m_aSelectColumns->begin(),
+            m_aSelectColumns->end(),
             _aColumnName,::comphelper::UStringMixEqual( isCaseSensitive() )
         );
-        if(aIter != m_aSelectColumns->get().end())
+        if(aIter != m_aSelectColumns->end())
         {
             OParseColumn* pNewColumn = new OParseColumn(*aIter,isCaseSensitive());
             pNewColumn->setName(sParameterName);
             pNewColumn->setRealName(_aColumnName);
-            m_aParameters->get().push_back(pNewColumn);
+            m_aParameters->push_back(pNewColumn);
             bNotFound = false;
         }
         else if(!_aColumnName.isEmpty())// search in the tables for the right one
@@ -1458,7 +1389,7 @@ void OSQLParseTreeIterator::traverseParameter(const OSQLParseNode* _pParseNode
                 OParseColumn* pNewColumn = new OParseColumn(xColumn,isCaseSensitive());
                 pNewColumn->setName(sParameterName);
                 pNewColumn->setRealName(_aColumnName);
-                m_aParameters->get().push_back(pNewColumn);
+                m_aParameters->push_back(pNewColumn);
                 bNotFound = false;
             }
         }
@@ -1496,15 +1427,15 @@ void OSQLParseTreeIterator::traverseParameter(const OSQLParseNode* _pParseNode
                                                     OUString());
             pColumn->setName(aNewColName);
             pColumn->setRealName(sParameterName);
-            m_aParameters->get().push_back(pColumn);
+            m_aParameters->push_back(pColumn);
         }
     }
 }
 
 void OSQLParseTreeIterator::traverseOnePredicate(
-                                OSQLParseNode * pColumnRef,
+                                OSQLParseNode const * pColumnRef,
                                 OUString& rValue,
-                                OSQLParseNode * pParseNode)
+                                OSQLParseNode const * pParseNode)
 {
     if ( !pParseNode )
         return;
@@ -1536,7 +1467,7 @@ void OSQLParseTreeIterator::traverseAll()
 void OSQLParseTreeIterator::impl_traverse( TraversalParts _nIncludeMask )
 {
     // resets our errors
-    m_aErrors = css::sdbc::SQLException();
+    m_xErrors.reset();
 
     m_pImpl->m_nIncludeMask = _nIncludeMask;
 
@@ -1595,7 +1526,7 @@ OSQLTable OSQLParseTreeIterator::impl_createTableObject( const OUString& rTableN
     return aReturnTable;
 }
 
-void OSQLParseTreeIterator::appendColumns(::rtl::Reference<OSQLColumns>& _rColumns,const OUString& _rTableAlias,const OSQLTable& _rTable)
+void OSQLParseTreeIterator::appendColumns(::rtl::Reference<OSQLColumns> const & _rColumns,const OUString& _rTableAlias,const OSQLTable& _rTable)
 {
     if (!_rTable.is())
         return;
@@ -1633,20 +1564,20 @@ void OSQLParseTreeIterator::appendColumns(::rtl::Reference<OSQLColumns>& _rColum
             pColumn->setTableName(_rTableAlias);
             pColumn->setRealName(*pBegin);
             Reference< XPropertySet> xCol = pColumn;
-            _rColumns->get().push_back(xCol);
+            _rColumns->push_back(xCol);
         }
         else
             impl_appendError( IParseContext::ErrorCode::InvalidColumn, pBegin, &_rTableAlias );
     }
 }
 
-void OSQLParseTreeIterator::setSelectColumnName(::rtl::Reference<OSQLColumns>& _rColumns,const OUString & rColumnName,const OUString & rColumnAlias, const OUString & rTableRange, bool bFkt, sal_Int32 _nType, bool bAggFkt)
+void OSQLParseTreeIterator::setSelectColumnName(::rtl::Reference<OSQLColumns> const & _rColumns,const OUString & rColumnName,const OUString & rColumnAlias, const OUString & rTableRange, bool bFkt, sal_Int32 _nType, bool bAggFkt)
 {
     if(rColumnName.toChar() == '*' && rTableRange.isEmpty())
     {   // SELECT * ...
         OSL_ENSURE(_rColumns == m_aSelectColumns,"Invalid columns used here!");
-        for(OSQLTables::const_iterator aIter = m_pImpl->m_pTables->begin(); aIter != m_pImpl->m_pTables->end();++aIter)
-            appendColumns(_rColumns,aIter->first,aIter->second);
+        for (auto const& table : *m_pImpl->m_pTables)
+            appendColumns(_rColumns,table.first,table.second);
     }
     else if( rColumnName.toChar() == '*' && !rTableRange.isEmpty() )
     {   // SELECT <table>.*
@@ -1663,12 +1594,12 @@ void OSQLParseTreeIterator::setSelectColumnName(::rtl::Reference<OSQLColumns>& _
         {
             Reference< XPropertySet> xNewColumn;
 
-            for ( OSQLTables::const_iterator aIter = m_pImpl->m_pTables->begin(); aIter != m_pImpl->m_pTables->end(); ++aIter )
+            for (auto const& table : *m_pImpl->m_pTables)
             {
-                if ( !aIter->second.is() )
+                if ( !table.second.is() )
                     continue;
 
-                Reference<XNameAccess> xColumns = aIter->second->getColumns();
+                Reference<XNameAccess> xColumns = table.second->getColumns();
                 Reference< XPropertySet > xColumn;
                 if  (   !xColumns->hasByName( rColumnName )
                     ||  !( xColumns->getByName( rColumnName ) >>= xColumn )
@@ -1679,7 +1610,7 @@ void OSQLParseTreeIterator::setSelectColumnName(::rtl::Reference<OSQLColumns>& _
 
                 OParseColumn* pColumn = new OParseColumn(xColumn,isCaseSensitive());
                 xNewColumn = pColumn;
-                pColumn->setTableName(aIter->first);
+                pColumn->setTableName(table.first);
                 pColumn->setName(aNewColName);
                 pColumn->setRealName(rColumnName);
 
@@ -1715,7 +1646,7 @@ void OSQLParseTreeIterator::setSelectColumnName(::rtl::Reference<OSQLColumns>& _
                 pColumn->setRealName( rColumnName );
             }
 
-            _rColumns->get().push_back( xNewColumn );
+            _rColumns->push_back( xNewColumn );
         }
         else
         {
@@ -1729,7 +1660,7 @@ void OSQLParseTreeIterator::setSelectColumnName(::rtl::Reference<OSQLColumns>& _
             pColumn->setRealName(rColumnName);
 
             Reference< XPropertySet> xCol = pColumn;
-            _rColumns->get().push_back(xCol);
+            _rColumns->push_back(xCol);
         }
     }
     else    // ColumnName and TableName exist
@@ -1754,7 +1685,7 @@ void OSQLParseTreeIterator::setSelectColumnName(::rtl::Reference<OSQLColumns>& _
                 pColumn->setTableName(aFind->first);
 
                 Reference< XPropertySet> xCol = pColumn;
-                _rColumns->get().push_back(xCol);
+                _rColumns->push_back(xCol);
             }
             else
             {
@@ -1769,7 +1700,7 @@ void OSQLParseTreeIterator::setSelectColumnName(::rtl::Reference<OSQLColumns>& _
                     pColumn->setTableName(aFind->first);
 
                     Reference< XPropertySet> xCol = pColumn;
-                    _rColumns->get().push_back(xCol);
+                    _rColumns->push_back(xCol);
                 }
                 else
                     bError = true;
@@ -1790,7 +1721,7 @@ void OSQLParseTreeIterator::setSelectColumnName(::rtl::Reference<OSQLColumns>& _
             pColumn->setAggregateFunction(bAggFkt);
 
             Reference< XPropertySet> xCol = pColumn;
-            _rColumns->get().push_back(xCol);
+            _rColumns->push_back(xCol);
         }
     }
 }
@@ -1799,19 +1730,19 @@ OUString OSQLParseTreeIterator::getUniqueColumnName(const OUString & rColumnName
 {
     OUString aAlias(rColumnName);
 
-    OSQLColumns::Vector::const_iterator aIter = find(
-        m_aSelectColumns->get().begin(),
-        m_aSelectColumns->get().end(),
+    OSQLColumns::const_iterator aIter = find(
+        m_aSelectColumns->begin(),
+        m_aSelectColumns->end(),
         aAlias,
         ::comphelper::UStringMixEqual( isCaseSensitive() )
     );
     sal_Int32 i=1;
-    while(aIter != m_aSelectColumns->get().end())
+    while(aIter != m_aSelectColumns->end())
     {
-        (aAlias = rColumnName) += OUString::number(i++);
+        aAlias = rColumnName + OUString::number(i++);
         aIter = find(
-            m_aSelectColumns->get().begin(),
-            m_aSelectColumns->get().end(),
+            m_aSelectColumns->begin(),
+            m_aSelectColumns->end(),
             aAlias,
             ::comphelper::UStringMixEqual( isCaseSensitive() )
         );
@@ -1825,12 +1756,12 @@ void OSQLParseTreeIterator::setOrderByColumnName(const OUString & rColumnName, O
     if ( !xColumn.is() )
         xColumn = findColumn ( rColumnName, rTableRange, false );
     if ( xColumn.is() )
-        m_aOrderColumns->get().push_back(new OOrderColumn( xColumn, rTableRange, isCaseSensitive(), bAscending ) );
+        m_aOrderColumns->push_back(new OOrderColumn( xColumn, rTableRange, isCaseSensitive(), bAscending ) );
     else
     {
         sal_Int32 nId = rColumnName.toInt32();
-        if ( nId > 0 && nId < static_cast<sal_Int32>(m_aSelectColumns->get().size()) )
-            m_aOrderColumns->get().push_back( new OOrderColumn( ( m_aSelectColumns->get() )[nId-1], isCaseSensitive(), bAscending ) );
+        if ( nId > 0 && nId < static_cast<sal_Int32>(m_aSelectColumns->size()) )
+            m_aOrderColumns->push_back( new OOrderColumn( (*m_aSelectColumns)[nId-1], isCaseSensitive(), bAscending ) );
     }
 
 #ifdef SQL_TEST_PARSETREEITERATOR
@@ -1846,12 +1777,12 @@ void OSQLParseTreeIterator::setGroupByColumnName(const OUString & rColumnName, O
 {
     Reference<XPropertySet> xColumn = findColumn( rColumnName, rTableRange, false );
     if ( xColumn.is() )
-        m_aGroupColumns->get().push_back(new OParseColumn(xColumn,isCaseSensitive()));
+        m_aGroupColumns->push_back(new OParseColumn(xColumn,isCaseSensitive()));
     else
     {
         sal_Int32 nId = rColumnName.toInt32();
-        if ( nId > 0 && nId < static_cast<sal_Int32>(m_aSelectColumns->get().size()) )
-            m_aGroupColumns->get().push_back(new OParseColumn((m_aSelectColumns->get())[nId-1],isCaseSensitive()));
+        if ( nId > 0 && nId < static_cast<sal_Int32>(m_aSelectColumns->size()) )
+            m_aGroupColumns->push_back(new OParseColumn((*m_aSelectColumns)[nId-1],isCaseSensitive()));
     }
 
 #ifdef SQL_TEST_PARSETREEITERATOR
@@ -1908,7 +1839,7 @@ const OSQLParseNode* OSQLParseTreeIterator::getOrderTree() const
     OSL_ENSURE(pTableExp->count() == TABLE_EXPRESSION_CHILD_COUNT,"OSQLParseTreeIterator: error in parse tree!");
 
     pOrderClause = pTableExp->getChild(ORDER_BY_CHILD_POS);
-    // If it is a order_by, it must not be empty
+    // If it is an order_by, it must not be empty
     if(pOrderClause->count() != 3)
         pOrderClause = nullptr;
     return pOrderClause;
@@ -1990,11 +1921,9 @@ const OSQLParseNode* OSQLParseTreeIterator::getSimpleHavingTree() const
 
 Reference< XPropertySet > OSQLParseTreeIterator::findSelectColumn( const OUString & rColumnName )
 {
-    for ( OSQLColumns::Vector::const_iterator lookupColumn = m_aSelectColumns->get().begin();
-          lookupColumn != m_aSelectColumns->get().end();
-          ++lookupColumn )
+    for (auto const& lookupColumn : *m_aSelectColumns)
     {
-        Reference< XPropertySet > xColumn( *lookupColumn );
+        Reference< XPropertySet > xColumn( lookupColumn );
         try
         {
             OUString sName;
@@ -2004,7 +1933,7 @@ Reference< XPropertySet > OSQLParseTreeIterator::findSelectColumn( const OUStrin
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.parse");
         }
     }
     return nullptr;
@@ -2035,16 +1964,15 @@ Reference< XPropertySet > OSQLParseTreeIterator::findColumn(const OSQLTables& _r
     }
     if ( !xColumn.is() )
     {
-        const OSQLTables::const_iterator aEnd = _rTables.end();
-        for(OSQLTables::const_iterator aIter = _rTables.begin(); aIter != aEnd; ++aIter)
+        for (auto const& table : _rTables)
         {
-            if ( aIter->second.is() )
+            if ( table.second.is() )
             {
-                Reference<XNameAccess> xColumns = aIter->second->getColumns();
+                Reference<XNameAccess> xColumns = table.second->getColumns();
                 if( xColumns.is() && xColumns->hasByName(rColumnName) && (xColumns->getByName(rColumnName) >>= xColumn) )
                 {
                     OSL_ENSURE(xColumn.is(),"Column isn't a propertyset!");
-                    // Cannot take "rTableRange = aIter->first" because that is the fully composed name
+                    // Cannot take "rTableRange = table.first" because that is the fully composed name
                     // that is, catalogName.schemaName.tableName
                     rTableRange = getString(xColumn->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TABLENAME)));
                     break; // This column must only exits once
@@ -2062,7 +1990,7 @@ void OSQLParseTreeIterator::impl_appendError( IParseContext::ErrorCode _eError, 
     if ( _pReplaceToken1 )
     {
         bool bTwoTokens = ( _pReplaceToken2 != nullptr );
-        const sal_Char* pPlaceHolder1 = bTwoTokens ? "#1" : "#";
+        const char* pPlaceHolder1 = bTwoTokens ? "#1" : "#";
         const OUString sPlaceHolder1 = OUString::createFromAscii( pPlaceHolder1 );
 
         sErrorMessage = sErrorMessage.replaceFirst( sPlaceHolder1, *_pReplaceToken1 );
@@ -2077,15 +2005,16 @@ void OSQLParseTreeIterator::impl_appendError( IParseContext::ErrorCode _eError, 
 
 void OSQLParseTreeIterator::impl_appendError( const SQLException& _rError )
 {
-    if ( !m_aErrors.Message.isEmpty() )
+    SAL_WARN("connectivity.parse", "Adding error " << exceptionToString(Any(_rError)));
+    if ( m_xErrors )
     {
-        SQLException* pErrorChain = &m_aErrors;
+        SQLException* pErrorChain = &*m_xErrors;
         while ( pErrorChain->NextException.hasValue() )
             pErrorChain = static_cast< SQLException* >( pErrorChain->NextException.pData );
         pErrorChain->NextException <<= _rError;
     }
     else
-        m_aErrors = _rError;
+        m_xErrors = _rError;
 }
 
 sal_Int32 OSQLParseTreeIterator::getFunctionReturnType(const OSQLParseNode* _pNode )

@@ -21,13 +21,11 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <osl/diagnose.h>
 
-#include "cfgids.hxx"
-#include "inputopt.hxx"
-#include "rechead.hxx"
-#include "scresid.hxx"
-#include "global.hxx"
-#include "sc.hrc"
-#include "miscuno.hxx"
+#include <inputopt.hxx>
+#include <rechead.hxx>
+#include <global.hxx>
+#include <sc.hrc>
+#include <miscuno.hxx>
 
 using namespace utl;
 using namespace com::sun::star::uno;
@@ -37,15 +35,6 @@ using namespace com::sun::star::uno;
 ScInputOptions::ScInputOptions()
 {
     SetDefaults();
-}
-
-ScInputOptions::ScInputOptions( const ScInputOptions& rCpy )
-{
-    *this = rCpy;
-}
-
-ScInputOptions::~ScInputOptions()
-{
 }
 
 void ScInputOptions::SetDefaults()
@@ -62,24 +51,6 @@ void ScInputOptions::SetDefaults()
     bTextWysiwyg    = false;
     bReplCellsWarn  = true;
     bLegacyCellSelection = false;
-}
-
-ScInputOptions& ScInputOptions::operator=( const ScInputOptions& rCpy )
-{
-    nMoveDir        = rCpy.nMoveDir;
-    bMoveSelection  = rCpy.bMoveSelection;
-    bEnterEdit      = rCpy.bEnterEdit;
-    bExtendFormat   = rCpy.bExtendFormat;
-    bRangeFinder    = rCpy.bRangeFinder;
-    bExpandRefs     = rCpy.bExpandRefs;
-    mbSortRefUpdate = rCpy.mbSortRefUpdate;
-    bMarkHeader     = rCpy.bMarkHeader;
-    bUseTabCol      = rCpy.bUseTabCol;
-    bTextWysiwyg    = rCpy.bTextWysiwyg;
-    bReplCellsWarn  = rCpy.bReplCellsWarn;
-    bLegacyCellSelection = rCpy.bLegacyCellSelection;
-
-    return *this;
 }
 
 //  Config Item containing input options
@@ -123,54 +94,54 @@ ScInputCfg::ScInputCfg() :
     EnableNotification(aNames);
     const Any* pValues = aValues.getConstArray();
     OSL_ENSURE(aValues.getLength() == aNames.getLength(), "GetProperties failed");
-    if(aValues.getLength() == aNames.getLength())
+    if(aValues.getLength() != aNames.getLength())
+        return;
+
+    for(int nProp = 0; nProp < aNames.getLength(); nProp++)
     {
-        for(int nProp = 0; nProp < aNames.getLength(); nProp++)
+        OSL_ENSURE(pValues[nProp].hasValue(), "property value missing");
+        if(pValues[nProp].hasValue())
         {
-            OSL_ENSURE(pValues[nProp].hasValue(), "property value missing");
-            if(pValues[nProp].hasValue())
+            sal_Int32 nIntVal = 0;
+            switch(nProp)
             {
-                sal_Int32 nIntVal = 0;
-                switch(nProp)
-                {
-                    case SCINPUTOPT_MOVEDIR:
-                        if ( pValues[nProp] >>= nIntVal )
-                            SetMoveDir( (sal_uInt16)nIntVal );
-                        break;
-                    case SCINPUTOPT_MOVESEL:
-                        SetMoveSelection( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
-                        break;
-                    case SCINPUTOPT_EDTEREDIT:
-                        SetEnterEdit( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
-                        break;
-                    case SCINPUTOPT_EXTENDFMT:
-                        SetExtendFormat( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
-                        break;
-                    case SCINPUTOPT_RANGEFIND:
-                        SetRangeFinder( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
-                        break;
-                    case SCINPUTOPT_EXPANDREFS:
-                        SetExpandRefs( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
-                        break;
-                    case SCINPUTOPT_SORT_REF_UPDATE:
-                        SetSortRefUpdate(ScUnoHelpFunctions::GetBoolFromAny(pValues[nProp]));
-                        break;
-                    case SCINPUTOPT_MARKHEADER:
-                        SetMarkHeader( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
-                        break;
-                    case SCINPUTOPT_USETABCOL:
-                        SetUseTabCol( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
-                        break;
-                    case SCINPUTOPT_TEXTWYSIWYG:
-                        SetTextWysiwyg( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
-                        break;
-                    case SCINPUTOPT_REPLCELLSWARN:
-                        SetReplaceCellsWarn( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
-                        break;
-                    case SCINPUTOPT_LEGACY_CELL_SELECTION:
-                        SetLegacyCellSelection( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
-                        break;
-                }
+                case SCINPUTOPT_MOVEDIR:
+                    if ( pValues[nProp] >>= nIntVal )
+                        SetMoveDir( static_cast<sal_uInt16>(nIntVal) );
+                    break;
+                case SCINPUTOPT_MOVESEL:
+                    SetMoveSelection( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                    break;
+                case SCINPUTOPT_EDTEREDIT:
+                    SetEnterEdit( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                    break;
+                case SCINPUTOPT_EXTENDFMT:
+                    SetExtendFormat( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                    break;
+                case SCINPUTOPT_RANGEFIND:
+                    SetRangeFinder( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                    break;
+                case SCINPUTOPT_EXPANDREFS:
+                    SetExpandRefs( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                    break;
+                case SCINPUTOPT_SORT_REF_UPDATE:
+                    SetSortRefUpdate(ScUnoHelpFunctions::GetBoolFromAny(pValues[nProp]));
+                    break;
+                case SCINPUTOPT_MARKHEADER:
+                    SetMarkHeader( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                    break;
+                case SCINPUTOPT_USETABCOL:
+                    SetUseTabCol( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                    break;
+                case SCINPUTOPT_TEXTWYSIWYG:
+                    SetTextWysiwyg( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                    break;
+                case SCINPUTOPT_REPLCELLSWARN:
+                    SetReplaceCellsWarn( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                    break;
+                case SCINPUTOPT_LEGACY_CELL_SELECTION:
+                    SetLegacyCellSelection( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                    break;
             }
         }
     }
@@ -187,7 +158,7 @@ void ScInputCfg::ImplCommit()
         switch(nProp)
         {
             case SCINPUTOPT_MOVEDIR:
-                pValues[nProp] <<= (sal_Int32) GetMoveDir();
+                pValues[nProp] <<= static_cast<sal_Int32>(GetMoveDir());
                 break;
             case SCINPUTOPT_MOVESEL:
                 pValues[nProp] <<= GetMoveSelection();

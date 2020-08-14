@@ -28,7 +28,7 @@
 
 class SvXMLExport;
 class XMLTextParagraphExport;
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace text
     {
         class XTextSection;
@@ -43,7 +43,7 @@ namespace com { namespace sun { namespace star {
     {
         class XIndexReplace;
     }
-} } }
+}
 
 
 enum SectionTypeEnum
@@ -132,7 +132,7 @@ public:
     void ExportMasterDocHeadingDummies();
 
 
-protected:
+private:
 
     SvXMLExport& GetExport() { return rExport; }
     XMLTextParagraphExport& GetParaExport() { return rParaExport; }
@@ -238,18 +238,17 @@ protected:
         SectionTypeEnum eType,                /// index type
         sal_Int32 nLevel,                     /// outline level (if applicable)
         const css::uno::Reference< css::beans::XPropertySet> & rPropSet,
-        css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue> > & rValues);
+        const css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue> > & rValues);
 
     /// export a single template element (e.g. span or tab-stop)
     void ExportIndexTemplateElement(
         SectionTypeEnum eType, //i90246, needed for ODF 1.0, 1.0 and 1.2 management
-        css::uno::Sequence<
+        const css::uno::Sequence<
             css::beans::PropertyValue> & rValues);
 
     /// export level paragraph styles
     void ExportLevelParagraphStyles(
-        css::uno::Reference<
-            css::container::XIndexReplace> & xStyles);
+        css::uno::Reference< css::container::XIndexReplace> const & xStyles);
 
 
     /// helper to export boolean properties

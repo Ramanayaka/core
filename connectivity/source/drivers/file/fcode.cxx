@@ -17,14 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "file/fcode.hxx"
+#include <file/fcode.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <connectivity/sqlparse.hxx>
-#include "sqlbison.hxx"
-#include <i18nlangtag/mslangid.hxx>
-#include "TConnection.hxx"
+#include <sqlbison.hxx>
 #include <com/sun/star/sdb/SQLFilterOperator.hpp>
-#include <comphelper/types.hxx>
 
 using namespace ::comphelper;
 using namespace connectivity;
@@ -43,20 +41,20 @@ void OOperandRow::bindValue(const OValueRefRow& _pRow)
 {
     OSL_ENSURE(_pRow.is(),"NO EMPTY row allowed!");
     m_pRow = _pRow;
-    OSL_ENSURE(m_pRow.is() && m_nRowPos < m_pRow->get().size(),"Invalid RowPos is >= vector.size()");
-    (m_pRow->get())[m_nRowPos]->setBound(true);
+    OSL_ENSURE(m_pRow.is() && m_nRowPos < m_pRow->size(),"Invalid RowPos is >= vector.size()");
+    (*m_pRow)[m_nRowPos]->setBound(true);
 }
 
 void OOperandRow::setValue(const ORowSetValue& _rVal)
 {
-    OSL_ENSURE(m_pRow.is() && m_nRowPos < m_pRow->get().size(),"Invalid RowPos is >= vector.size()");
-    (*(m_pRow->get())[m_nRowPos]) = _rVal;
+    OSL_ENSURE(m_pRow.is() && m_nRowPos < m_pRow->size(),"Invalid RowPos is >= vector.size()");
+    (*(*m_pRow)[m_nRowPos]) = _rVal;
 }
 
 const ORowSetValue& OOperandRow::getValue() const
 {
-    OSL_ENSURE(m_pRow.is() && m_nRowPos < m_pRow->get().size(),"Invalid RowPos is >= vector.size()");
-    return (m_pRow->get())[m_nRowPos]->getValue();
+    OSL_ENSURE(m_pRow.is() && m_nRowPos < m_pRow->size(),"Invalid RowPos is >= vector.size()");
+    return (*m_pRow)[m_nRowPos]->getValue();
 }
 
 
@@ -65,7 +63,7 @@ void OOperandValue::setValue(const ORowSetValue& _rVal)
     m_aValue = _rVal;
 }
 
-OOperandParam::OOperandParam(OSQLParseNode* pNode, sal_Int32 _nPos)
+OOperandParam::OOperandParam(OSQLParseNode const * pNode, sal_Int32 _nPos)
     : OOperandRow(static_cast<sal_uInt16>(_nPos), DataType::VARCHAR)         // Standard-Type
 {
     OSL_ENSURE(SQL_ISRULE(pNode,parameter),"Argument is not a parameter");
@@ -84,7 +82,7 @@ OOperandParam::OOperandParam(OSQLParseNode* pNode, sal_Int32 _nPos)
 
     // set up Parameter-Column with default type, can be specified more precisely later using Describe-Parameter
 
-    // save Identity (not escpecially necessary here, just for the sake of symmetry)
+    // save Identity (not especially necessary here, just for the sake of symmetry)
 
     // todo
     //  OColumn* pColumn = new OFILEColumn(aParameterName,eDBType,255,0,SQL_FLAGS_NULLALLOWED);
@@ -214,8 +212,8 @@ bool OOp_ISNOTNULL::operate(const OOperand* pOperand, const OOperand*) const
 bool OOp_LIKE::operate(const OOperand* pLeft, const OOperand* pRight) const
 {
     bool bMatch;
-    ORowSetValue aLH(pLeft->getValue());
-    ORowSetValue aRH(pRight->getValue());
+    const ORowSetValue& aLH(pLeft->getValue());
+    const ORowSetValue& aRH(pRight->getValue());
 
     if (aLH.isNull() || aRH.isNull())
         bMatch = false;
@@ -235,8 +233,8 @@ bool OOp_NOTLIKE::operate(const OOperand* pLeft, const OOperand* pRight) const
 
 bool OOp_COMPARE::operate(const OOperand* pLeft, const OOperand* pRight) const
 {
-    ORowSetValue aLH(pLeft->getValue());
-    ORowSetValue aRH(pRight->getValue());
+    const ORowSetValue& aLH(pLeft->getValue());
+    const ORowSetValue& aRH(pRight->getValue());
 
     if (aLH.isNull() || aRH.isNull()) // if (!aLH.getValue() || !aRH.getValue())
         return false;
@@ -354,12 +352,10 @@ void ONthOperator::Exec(OCodeStack& rCodeStack)
 
     rCodeStack.push(new OOperandResult(operate(aValues)));
 
-    std::vector<OOperand*>::iterator aIter = aOperands.begin();
-    std::vector<OOperand*>::const_iterator aEnd = aOperands.end();
-    for (; aIter != aEnd; ++aIter)
+    for (const auto& rpOperand : aOperands)
     {
-        if (typeid(OOperandResult) == typeid(*(*aIter)))
-            delete *aIter;
+        if (typeid(OOperandResult) == typeid(*rpOperand))
+            delete rpOperand;
     }
 }
 

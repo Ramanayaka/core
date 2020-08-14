@@ -10,21 +10,24 @@
 #include <desktop/crashreport.hxx>
 #include <rtl/bootstrap.hxx>
 #include <osl/file.hxx>
+#include <comphelper/processfactory.hxx>
+#include <ucbhelper/proxydecider.hxx>
 #include <unotools/bootstrap.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
+#include <desktop/minidump.hxx>
 
 #include <config_version.h>
 #include <config_folders.h>
 
 #include <string>
-#include <fstream>
 
-osl::Mutex CrashReporter::maMutex;
 
 #if HAVE_FEATURE_BREAKPAD
 
+#include <fstream>
 #if defined( UNX ) && !defined MACOSX && !defined IOS && !defined ANDROID
 #include <client/linux/handler/exception_handler.h>
-#elif defined WNT
+#elif defined _WIN32
 #if defined __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmicrosoft-enum-value"
@@ -33,60 +36,113 @@ osl::Mutex CrashReporter::maMutex;
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
+#include <locale>
+#include <codecvt>
 #endif
 
-google_breakpad::ExceptionHandler* CrashReporter::mpExceptionHandler = nullptr;
+osl::Mutex CrashReporter::maMutex;
+std::unique_ptr<google_breakpad::ExceptionHandler> CrashReporter::mpExceptionHandler;
 bool CrashReporter::mbInit = false;
-std::map<OUString, OUString> CrashReporter::maKeyValues;
+CrashReporter::vmaKeyValues CrashReporter::maKeyValues;
 
-namespace {
 
-void writeToStream(std::ofstream& strm, const OUString& rKey, const OUString& rValue)
+#if defined( UNX ) && !defined MACOSX && !defined IOS && !defined ANDROID
+static bool dumpCallback(const google_breakpad::MinidumpDescriptor& descriptor, void* /*context*/, bool succeeded)
 {
-    strm << rtl::OUStringToOString(rKey, RTL_TEXTENCODING_UTF8).getStr() << "=";
-    strm << rtl::OUStringToOString(rValue, RTL_TEXTENCODING_UTF8).getStr() << "\n";
+    CrashReporter::addKeyValue("DumpFile", OStringToOUString(descriptor.path(), RTL_TEXTENCODING_UTF8), CrashReporter::Write);
+    SAL_WARN("desktop", "minidump generated: " << descriptor.path());
+
+    return succeeded;
+}
+#elif defined _WIN32
+static bool dumpCallback(const wchar_t* path, const wchar_t* id,
+    void* /*context*/, EXCEPTION_POINTERS* /*exinfo*/,
+    MDRawAssertionInfo* /*assertion*/,
+    bool succeeded)
+{
+    // TODO: moggi: can we avoid this conversion
+#ifdef _MSC_VER
+#pragma warning (disable: 4996)
+#endif
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> conv1;
+    std::string aPath = conv1.to_bytes(std::wstring(path)) + conv1.to_bytes(std::wstring(id)) + ".dmp";
+    CrashReporter::addKeyValue("DumpFile", OStringToOUString(aPath.c_str(), RTL_TEXTENCODING_UTF8), CrashReporter::AddItem);
+    CrashReporter::addKeyValue("GDIHandles", OUString::number(::GetGuiResources(::GetCurrentProcess(), GR_GDIOBJECTS)), CrashReporter::Write);
+    SAL_WARN("desktop", "minidump generated: " << aPath);
+    return succeeded;
+}
+#endif
+
+
+void CrashReporter::writeToFile(std::ios_base::openmode Openmode)
+{
+    std::ofstream ini_file(getIniFileName(), Openmode);
+
+    for (auto& keyValue : maKeyValues)
+    {
+        ini_file << OUStringToOString(keyValue.first, RTL_TEXTENCODING_UTF8) << "=";
+        ini_file << OUStringToOString(keyValue.second, RTL_TEXTENCODING_UTF8) << "\n";
+    }
+
+    maKeyValues.clear();
+    ini_file.close();
 }
 
-}
-
-void CrashReporter::AddKeyValue(const OUString& rKey, const OUString& rValue)
+void CrashReporter::addKeyValue(const OUString& rKey, const OUString& rValue, tAddKeyHandling AddKeyHandling)
 {
     osl::MutexGuard aGuard(maMutex);
-    if (mbInit)
+
+    if (IsDumpEnable())
     {
-        std::string ini_path = getIniFileName();
-        std::ofstream ini_file(ini_path, std::ios_base::app);
-        writeToStream(ini_file, rKey, rValue);
-    }
-    else
-    {
-        maKeyValues.insert(std::pair<OUString, OUString>(rKey, rValue));
+        if (!rKey.isEmpty())
+            maKeyValues.push_back(mpair(rKey, rValue));
+
+        if (AddKeyHandling != AddItem)
+        {
+            if (mbInit)
+                writeToFile(std::ios_base::app);
+            else if (AddKeyHandling == Create)
+                writeCommonInfo();
+        }
     }
 }
-
-#endif
 
 void CrashReporter::writeCommonInfo()
 {
-    osl::MutexGuard aGuard(maMutex);
-    // limit the amount of code that needs to be executed before the crash reporting
-    std::string ini_path = CrashReporter::getIniFileName();
-    std::ofstream minidump_file(ini_path, std::ios_base::trunc);
-    minidump_file << "ProductName=LibreOffice\n";
-    minidump_file << "Version=" LIBO_VERSION_DOTTED "\n";
-    minidump_file << "BuildID=" << utl::Bootstrap::getBuildIdData("") << "\n";
-    minidump_file << "URL=https://crashreport.libreoffice.org/submit/\n";
-    for (auto& keyValue : maKeyValues)
-    {
-        writeToStream(minidump_file, keyValue.first, keyValue.second);
-    }
+    ucbhelper::InternetProxyDecider proxy_decider(::comphelper::getProcessComponentContext());
+
+    const OUString protocol = "https";
+    const OUString url = "crashreport.libreoffice.org";
+    const sal_Int32 port = 443;
+
+    const ucbhelper::InternetProxyServer proxy_server = proxy_decider.getProxy(protocol, url, port);
+
+    // save the new Keys
+    vmaKeyValues atlast = maKeyValues;
+    // clear the keys, the following Keys should be at the begin
     maKeyValues.clear();
-    minidump_file.close();
+
+    // limit the amount of code that needs to be executed before the crash reporting
+    addKeyValue("ProductName", "LibreOffice", AddItem);
+    addKeyValue("Version", LIBO_VERSION_DOTTED, AddItem);
+    addKeyValue("BuildID", utl::Bootstrap::getBuildIdData(""), AddItem);
+    addKeyValue("URL", protocol + "://" + url + "/submit/", AddItem);
+
+    if (proxy_server.aName != OUString())
+    {
+        addKeyValue("Proxy", proxy_server.aName + ":" + OUString::number(proxy_server.nPort), AddItem);
+    }
+
+    // write the new keys at the end
+    maKeyValues.insert(maKeyValues.end(), atlast.begin(), atlast.end());
 
     mbInit = true;
 
+    writeToFile(std::ios_base::trunc);
+
     updateMinidumpLocation();
 }
+
 
 namespace {
 
@@ -120,17 +176,64 @@ void CrashReporter::updateMinidumpLocation()
     OString aOStringUrl = OUStringToOString(aURL, RTL_TEXTENCODING_UTF8);
     google_breakpad::MinidumpDescriptor descriptor(aOStringUrl.getStr());
     mpExceptionHandler->set_minidump_descriptor(descriptor);
-#elif defined WNT
+#elif defined _WIN32
     OUString aURL = getCrashDirectory();
-    mpExceptionHandler->set_dump_path(
-        reinterpret_cast<wchar_t const *>(aURL.getStr()));
+    mpExceptionHandler->set_dump_path(o3tl::toW(aURL.getStr()));
 #endif
 }
 
-void CrashReporter::storeExceptionHandler(google_breakpad::ExceptionHandler* pExceptionHandler)
+bool CrashReporter::crashReportInfoExists()
 {
-    mpExceptionHandler = pExceptionHandler;
+    static bool first = true;
+    static bool InfoExist = false;
+
+    if (first)
+    {
+        first = false;
+        InfoExist = crashreport::readConfig(CrashReporter::getIniFileName(), nullptr);
+    }
+
+    return InfoExist;
 }
+
+bool CrashReporter::readSendConfig(std::string& response)
+{
+    return crashreport::readConfig(CrashReporter::getIniFileName(), &response);
+}
+
+void CrashReporter::installExceptionHandler()
+{
+    if (!IsDumpEnable())
+        return;
+#if defined( UNX ) && !defined MACOSX && !defined IOS && !defined ANDROID
+    google_breakpad::MinidumpDescriptor descriptor("/tmp");
+    mpExceptionHandler = std::make_unique<google_breakpad::ExceptionHandler>(descriptor, nullptr, dumpCallback, nullptr, true, -1);
+#elif defined _WIN32
+    mpExceptionHandler = std::make_unique<google_breakpad::ExceptionHandler>(L".", nullptr, dumpCallback, nullptr, google_breakpad::ExceptionHandler::HANDLER_ALL);
+#endif
+}
+
+void CrashReporter::removeExceptionHandler()
+{
+    mpExceptionHandler.reset();
+}
+
+
+
+bool CrashReporter::IsDumpEnable()
+{
+    OUString sToken;
+    OString  sEnvVar(std::getenv("CRASH_DUMP_ENABLE"));
+    bool     bEnable = true;   // default, always on
+    // read configuration item 'CrashDumpEnable' -> bool on/off
+    if (rtl::Bootstrap::get("CrashDumpEnable", sToken) && sEnvVar.isEmpty())
+    {
+        bEnable = sToken.toBoolean();
+    }
+
+    return bEnable;
+}
+
 
 std::string CrashReporter::getIniFileName()
 {
@@ -139,5 +242,8 @@ std::string CrashReporter::getIniFileName()
     std::string aRet(aUrl.getStr());
     return aRet;
 }
+
+
+#endif //HAVE_FEATURE_BREAKPAD
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

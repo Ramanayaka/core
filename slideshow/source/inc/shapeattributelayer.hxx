@@ -26,18 +26,14 @@
 
 #include <basegfx/vector/b2dsize.hxx>
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/range/b2drectangle.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 
 #include "rgbcolor.hxx"
 
-#include <stack>
 #include <memory>
 
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
 
         /** This interface represents a stateful object.
@@ -63,7 +59,7 @@ namespace slideshow
 
             This class holds all modifiable attributes of a shape, and
             at the same time provides means to layer attributes on top
-            of each other..
+            of each other...
 
             And yes, there's a reason why we even pass bools and ints
             by const reference. Namely, that makes the set* methods
@@ -375,21 +371,6 @@ namespace slideshow
              */
             void setCharColor( const RGBColor& nNewColor );
 
-            /** Query whether the char rotation angle attribute is valid
-             */
-            bool isCharRotationAngleValid() const;
-            /** Query the current text rotation angle of the shape
-
-                @return the text rotation angle in degrees.
-             */
-            double getCharRotationAngle() const;
-            /** Set the new text rotation angle of the shape
-
-                @param rNewAngle
-                New text rotation angle in degrees.
-             */
-            void setCharRotationAngle( const double& rNewAngle );
-
             /** Query whether the char weight attribute is valid
              */
             bool isCharWeightValid() const;
@@ -457,7 +438,7 @@ namespace slideshow
                 the shape.
 
                 The char scaling changes the scale of the whole shape
-                text (uniformely, i.e. both in x and in y direction).
+                text (uniformly, i.e. both in x and in y direction).
              */
             double getCharScale() const;
             /** Set the new char scale globally for the shape
@@ -502,7 +483,6 @@ namespace slideshow
             double                                      mnShearXAngle;
             double                                      mnShearYAngle;
             double                                      mnAlpha;
-            double                                      mnCharRotationAngle;
             double                                      mnCharScale;
             double                                      mnCharWeight;
 
@@ -541,7 +521,6 @@ namespace slideshow
 
             bool                                        mbAlphaValid            : 1;
 
-            bool                                        mbCharRotationAngleValid: 1;
             bool                                        mbCharScaleValid        : 1;
 
             bool                                        mbDimColorValid         : 1;
@@ -557,7 +536,6 @@ namespace slideshow
             bool                                        mbVisibilityValid       : 1;
         };
 
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_SHAPEATTRIBUTELAYER_HXX

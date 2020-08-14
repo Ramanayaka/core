@@ -17,12 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <backhdl.hxx>
+#include "backhdl.hxx"
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
+#include <xmloff/xmlement.hxx>
 #include <sax/tools/converter.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::xmloff::token;
@@ -31,18 +33,17 @@ SvXMLEnumMapEntry<style::GraphicLocation> const pXML_BrushHorizontalPos[] =
 {
     { XML_LEFT,             style::GraphicLocation_LEFT_MIDDLE   },
     { XML_RIGHT,            style::GraphicLocation_RIGHT_MIDDLE },
-    { XML_TOKEN_INVALID,    (style::GraphicLocation)0       }
+    { XML_TOKEN_INVALID,    style::GraphicLocation(0)       }
 };
 
 SvXMLEnumMapEntry<style::GraphicLocation> const pXML_BrushVerticalPos[] =
 {
     { XML_TOP,              style::GraphicLocation_MIDDLE_TOP   },
     { XML_BOTTOM,           style::GraphicLocation_MIDDLE_BOTTOM    },
-    { XML_TOKEN_INVALID,    (style::GraphicLocation)0       }
+    { XML_TOKEN_INVALID,    style::GraphicLocation(0)       }
 };
 
 
-// class XMLBackGraphicPositionPropHdl
 
 
 XMLBackGraphicPositionPropHdl::~XMLBackGraphicPositionPropHdl()
@@ -130,7 +131,7 @@ bool XMLBackGraphicPositionPropHdl::importXML( const OUString& rStrImpValue, uno
 
     bRet &= style::GraphicLocation_NONE != ePos;
     if( bRet )
-        rValue <<= (style::GraphicLocation)(sal_uInt16)ePos;
+        rValue <<= static_cast<style::GraphicLocation>(static_cast<sal_uInt16>(ePos));
 
     return bRet;
 }
@@ -145,7 +146,7 @@ bool XMLBackGraphicPositionPropHdl::exportXML( OUString& rStrExpValue, const uno
     {
         sal_Int32 nValue = 0;
         if( rValue >>= nValue )
-            eLocation = (style::GraphicLocation)nValue;
+            eLocation = static_cast<style::GraphicLocation>(nValue);
         else
             bRet = false;
     }

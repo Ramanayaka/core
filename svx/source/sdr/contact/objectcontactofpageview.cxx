@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
+#include <config_feature_desktop.h>
 
-#include <sdr/contact/objectcontactofpageview.hxx>
+#include <svx/sdr/contact/objectcontactofpageview.hxx>
 #include <sdr/contact/viewobjectcontactofunocontrol.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdpage.hxx>
@@ -31,37 +31,36 @@
 #include <svx/sdrpagewindow.hxx>
 #include <svx/sdrpaintwindow.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <drawinglayer/primitive2d/transformprimitive2d.hxx>
-#include <com/sun/star/rendering/XSpriteCanvas.hpp>
+#include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processor2dtools.hxx>
 #include <svx/unoapi.hxx>
 #include <unotools/configmgr.hxx>
+#include <vcl/canvastools.hxx>
 #include <comphelper/lok.hxx>
 
-#include "eventhandler.hxx"
 #include <memory>
 
 using namespace com::sun::star;
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         // internal access to SdrPage of SdrPageView
         SdrPage* ObjectContactOfPageView::GetSdrPage() const
         {
             return GetPageWindow().GetPageView().GetPage();
         }
 
-        ObjectContactOfPageView::ObjectContactOfPageView(SdrPageWindow& rPageWindow)
-        :   ObjectContact(),
-            mrPageWindow(rPageWindow)
+        ObjectContactOfPageView::ObjectContactOfPageView(
+                SdrPageWindow& rPageWindow, const char *pDebugName)
+            : ObjectContact()
+            , Idle(pDebugName)
+            , mrPageWindow(rPageWindow)
         {
             // init PreviewRenderer flag
             setPreviewRenderer(static_cast<SdrPaintView&>(rPageWindow.GetPageView().GetView()).IsPreviewRenderer());
 
             // init timer
-            SetPriority(TaskPriority::HIGH);
+            SetPriority(TaskPriority::HIGH_IDLE);
             Stop();
         }
 
@@ -83,15 +82,8 @@ namespace sdr
         void ObjectContactOfPageView::PrepareProcessDisplay()
         {
             if(IsActive())
-            {
-                static bool bInvalidateDuringPaint(true);
-
-                if(bInvalidateDuringPaint)
-                {
-                    // there are still non-triggered LazyInvalidate events, trigger these
-                    Invoke();
-                }
-            }
+                // there are still non-triggered LazyInvalidate events, trigger these
+                Invoke();
         }
 
         // From baseclass Timer, the timeout call triggered by the LazyInvalidate mechanism
@@ -122,19 +114,6 @@ namespace sdr
                 if(rDrawPageVC.GetObjectCount())
                 {
                     DoProcessDisplay(rDisplayInfo);
-                }
-            }
-
-            // after paint take care of the evtl. scheduled asynchronious commands.
-            // Do this by resetting the timer contained there. Thus, after the paint
-            // that timer will be triggered and the events will be executed.
-            if(HasEventHandler())
-            {
-                sdr::event::TimerEventHandler& rEventHandler = GetEventHandler();
-
-                if(!rEventHandler.IsEmpty())
-                {
-                    rEventHandler.Restart();
                 }
             }
         }
@@ -196,9 +175,7 @@ namespace sdr
                     //           export, so why not do it always
                     const tools::Rectangle aLogicClipRectangle(rDisplayInfo.GetRedrawArea().GetBoundRect());
 
-                    aViewRange = basegfx::B2DRange(
-                        aLogicClipRectangle.Left(), aLogicClipRectangle.Top(),
-                        aLogicClipRectangle.Right(), aLogicClipRectangle.Bottom());
+                    aViewRange = vcl::unotools::b2DRectangleFromRectangle(aLogicClipRectangle);
                 }
             }
             else
@@ -210,9 +187,7 @@ namespace sdr
                 {
                     // get logic clip range and create discrete one
                     const tools::Rectangle aLogicClipRectangle(rDisplayInfo.GetRedrawArea().GetBoundRect());
-                    basegfx::B2DRange aLogicClipRange(
-                        aLogicClipRectangle.Left(), aLogicClipRectangle.Top(),
-                        aLogicClipRectangle.Right(), aLogicClipRectangle.Bottom());
+                    basegfx::B2DRange aLogicClipRange = vcl::unotools::b2DRectangleFromRectangle(aLogicClipRectangle);
                     basegfx::B2DRange aDiscreteClipRange(aLogicClipRange);
                     aDiscreteClipRange.transform(rTargetOutDev.GetViewTransformation());
 
@@ -250,7 +225,7 @@ namespace sdr
             xPrimitiveSequence = rDrawPageVOContact.getPrimitive2DSequenceHierarchy(rDisplayInfo);
 #else
             // Hmm, !HAVE_FEATURE_DESKTOP && !ANDROID means iOS,
-            // right? But does it make sense to use a different code
+            // right? But does it makes sense to use a different code
             // path for iOS than for Android; both use tiled rendering
             // etc now.
 
@@ -297,9 +272,6 @@ namespace sdr
                 rDisplayInfo.ClearGhostedDrawMode(); // reset, else the VCL-paint with the processor will not do the right thing
                 pOutDev->SetLayoutMode(ComplexTextLayoutFlags::Default); // reset, default is no BiDi/RTL
 
-                // Save the map-mode since creating the 2D processor will replace it.
-                const MapMode aOrigMapMode = pOutDev->GetMapMode();
-
                 // create renderer
                 std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor2D(
                     drawinglayer::processor2d::createProcessor2DFromOutputDevice(
@@ -337,15 +309,15 @@ namespace sdr
 
             if(pActiveGroupList)
             {
-                if(dynamic_cast<const SdrPage*>( pActiveGroupList) !=  nullptr)
+                if(nullptr != pActiveGroupList->getSdrPageFromSdrObjList())
                 {
                     // It's a Page itself
-                    return &(static_cast<SdrPage*>(pActiveGroupList)->GetViewContact());
+                    return &(pActiveGroupList->getSdrPageFromSdrObjList()->GetViewContact());
                 }
-                else if(pActiveGroupList->GetOwnerObj())
+                else if(pActiveGroupList->getSdrObjectFromSdrObjList())
                 {
                     // Group object
-                    return &(pActiveGroupList->GetOwnerObj()->GetViewContact());
+                    return &(pActiveGroupList->getSdrObjectFromSdrObjList()->GetViewContact());
                 }
             }
             else if(GetSdrPage())
@@ -365,33 +337,6 @@ namespace sdr
             GetPageWindow().InvalidatePageWindow(rRange);
         }
 
-        // Get info if given Rectangle is visible in this view
-        bool ObjectContactOfPageView::IsAreaVisible(const basegfx::B2DRange& rRange) const
-        {
-            // compare with the visible rectangle
-            if(rRange.isEmpty())
-            {
-                // no range -> not visible
-                return false;
-            }
-            else
-            {
-                const OutputDevice& rTargetOutDev = GetPageWindow().GetPaintWindow().GetTargetOutputDevice();
-                const Size aOutputSizePixel(rTargetOutDev.GetOutputSizePixel());
-                basegfx::B2DRange aLogicViewRange(0.0, 0.0, aOutputSizePixel.getWidth(), aOutputSizePixel.getHeight());
-
-                aLogicViewRange.transform(rTargetOutDev.GetInverseViewTransformation());
-
-                if(!aLogicViewRange.isEmpty() && !aLogicViewRange.overlaps(rRange))
-                {
-                    return false;
-                }
-            }
-
-            // call parent
-            return ObjectContact::IsAreaVisible(rRange);
-        }
-
         // Get info about the need to visualize GluePoints
         bool ObjectContactOfPageView::AreGluePointsVisible() const
         {
@@ -401,7 +346,7 @@ namespace sdr
         // check if text animation is allowed.
         bool ObjectContactOfPageView::IsTextAnimationAllowed() const
         {
-            if (utl::ConfigManager::IsAvoidConfig())
+            if (utl::ConfigManager::IsFuzzing())
                 return true;
             SdrView& rView = GetPageWindow().GetPageView().GetView();
             const SvtAccessibilityOptions& rOpt = rView.getAccessibilityOptions();
@@ -411,36 +356,17 @@ namespace sdr
         // check if graphic animation is allowed.
         bool ObjectContactOfPageView::IsGraphicAnimationAllowed() const
         {
-            if (utl::ConfigManager::IsAvoidConfig())
+            if (utl::ConfigManager::IsFuzzing())
                 return true;
             SdrView& rView = GetPageWindow().GetPageView().GetView();
             const SvtAccessibilityOptions& rOpt = rView.getAccessibilityOptions();
             return rOpt.GetIsAllowAnimatedGraphics();
         }
 
-        // check if asynchronious graphis loading is allowed. Default is sal_False.
-        bool ObjectContactOfPageView::IsAsynchronGraphicsLoadingAllowed() const
-        {
-            SdrView& rView = GetPageWindow().GetPageView().GetView();
-            return rView.IsSwapAsynchron();
-        }
-
         // print?
         bool ObjectContactOfPageView::isOutputToPrinter() const
         {
             return (OUTDEV_PRINTER == mrPageWindow.GetPaintWindow().GetOutputDevice().GetOutDevType());
-        }
-
-        // window?
-        bool ObjectContactOfPageView::isOutputToWindow() const
-        {
-            return (OUTDEV_WINDOW == mrPageWindow.GetPaintWindow().GetOutputDevice().GetOutDevType());
-        }
-
-        // VirtualDevice?
-        bool ObjectContactOfPageView::isOutputToVirtualDevice() const
-        {
-            return (OUTDEV_VIRDEV == mrPageWindow.GetPaintWindow().GetOutputDevice().GetOutDevType());
         }
 
         // recording MetaFile?
@@ -453,7 +379,7 @@ namespace sdr
         // pdf export?
         bool ObjectContactOfPageView::isOutputToPDFFile() const
         {
-            return (nullptr != mrPageWindow.GetPaintWindow().GetOutputDevice().GetPDFWriter());
+            return OUTDEV_PDF == mrPageWindow.GetPaintWindow().GetOutputDevice().GetOutDevType();
         }
 
         // gray display mode
@@ -461,13 +387,6 @@ namespace sdr
         {
             const DrawModeFlags nDrawMode(mrPageWindow.GetPaintWindow().GetOutputDevice().GetDrawMode());
             return (nDrawMode == (DrawModeFlags::GrayLine|DrawModeFlags::GrayFill|DrawModeFlags::BlackText|DrawModeFlags::GrayBitmap|DrawModeFlags::GrayGradient));
-        }
-
-        // gray display mode
-        bool ObjectContactOfPageView::isDrawModeBlackWhite() const
-        {
-            const DrawModeFlags nDrawMode(mrPageWindow.GetPaintWindow().GetOutputDevice().GetDrawMode());
-            return (nDrawMode == (DrawModeFlags::BlackLine|DrawModeFlags::BlackText|DrawModeFlags::WhiteFill|DrawModeFlags::GrayBitmap|DrawModeFlags::WhiteGradient));
         }
 
         // high contrast display mode
@@ -515,7 +434,7 @@ namespace sdr
                 }
             }
         }
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

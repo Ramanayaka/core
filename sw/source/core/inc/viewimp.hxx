@@ -19,14 +19,13 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_VIEWIMP_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_VIEWIMP_HXX
 
-#include <rtl/ustring.hxx>
 #include <tools/color.hxx>
 #include <svx/svdtypes.hxx>
-#include <vcl/timer.hxx>
 #include <swrect.hxx>
-#include <swtypes.hxx>
 #include <vector>
+#include <memory>
 
+class OutputDevice;
 class SwViewShell;
 class SwFlyFrame;
 class SwViewOption;
@@ -37,7 +36,6 @@ class SwLayIdle;
 class SwDrawView;
 class SdrPageView;
 class SwPageFrame;
-class SwRegionRects;
 class SwAccessibleMap;
 class SdrObject;
 class Fraction;
@@ -46,9 +44,7 @@ class SwPagePreviewLayout;
 struct PreviewPage;
 class SwTextFrame;
 // --> OD #i76669#
-namespace sdr { namespace contact {
-        class ViewObjectContactRedirector;
-} }
+namespace sdr::contact { class ViewObjectContactRedirector; }
 // <--
 
 class SwViewShellImp
@@ -64,11 +60,11 @@ class SwViewShellImp
     SwViewShell *m_pShell;           // If someone passes an Imp, but needs a SwViewShell, we
                                 // keep a backlink here
 
-    SwDrawView  *m_pDrawView;     // Our DrawView
+    std::unique_ptr<SwDrawView> m_pDrawView; // Our DrawView
     SdrPageView *m_pSdrPageView;  // Exactly one Page for our DrawView
 
     SwPageFrame     *m_pFirstVisiblePage; // Always points to the first visible Page
-    SwRegionRects *m_pRegion;       // Collector of Paintrects from the LayAction
+    std::unique_ptr<SwRegionRects> m_pRegion; // Collector of Paintrects from the LayAction
 
     SwLayAction   *m_pLayAction;      // Is set if an Action object exists
                                  // Is registered by the SwLayAction ctor and deregistered by the dtor
@@ -86,9 +82,9 @@ class SwViewShellImp
     sal_uInt16 m_nRestoreActions  ; // Count for the Action that need to be restored (UNO)
     SwRect m_aSmoothRect;
 
-    SwPagePreviewLayout* m_pPagePreviewLayout;
+    std::unique_ptr<SwPagePreviewLayout> m_pPagePreviewLayout;
 
-    void SetFirstVisPage(OutputDevice* pRenderContext); // Recalculate the first visible Page
+    void SetFirstVisPage(OutputDevice const * pRenderContext); // Recalculate the first visible Page
 
     void StartAction();         // Show handle and hide
     void EndAction();           // Called by SwViewShell::ImplXXXAction
@@ -145,18 +141,18 @@ public:
     Color GetRetoucheColor() const;
 
     /// Management of the first visible Page
-    const SwPageFrame *GetFirstVisPage(OutputDevice* pRenderContext) const;
-          SwPageFrame *GetFirstVisPage(OutputDevice* pRenderContext);
+    const SwPageFrame *GetFirstVisPage(OutputDevice const * pRenderContext) const;
+          SwPageFrame *GetFirstVisPage(OutputDevice const * pRenderContext);
     void SetFirstVisPageInvalid() { m_bFirstPageInvalid = true; }
 
     bool AddPaintRect( const SwRect &rRect );
-    SwRegionRects *GetRegion()      { return m_pRegion; }
+    SwRegionRects *GetRegion()      { return m_pRegion.get(); }
     void DelRegion();
 
     /// New Interface for StarView Drawing
     bool  HasDrawView()             const { return nullptr != m_pDrawView; }
-          SwDrawView* GetDrawView()       { return m_pDrawView; }
-    const SwDrawView* GetDrawView() const { return m_pDrawView; }
+          SwDrawView* GetDrawView()       { return m_pDrawView.get(); }
+    const SwDrawView* GetDrawView() const { return m_pDrawView.get(); }
           SdrPageView*GetPageView()       { return m_pSdrPageView; }
     const SdrPageView*GetPageView() const { return m_pSdrPageView; }
     void MakeDrawView();
@@ -174,8 +170,8 @@ public:
                        SwPageFrame const& rPageFrame,
                        const SwRect& _rRect,
                        const Color* _pPageBackgrdColor,
-                       const bool _bIsPageRightToLeft = false,
-                       sdr::contact::ViewObjectContactRedirector* pRedirector = nullptr );
+                       const bool _bIsPageRightToLeft,
+                       sdr::contact::ViewObjectContactRedirector* pRedirector );
 
     /**
      * Is passed to the DrawEngine as a Link and decides what is painted
@@ -215,7 +211,7 @@ public:
 
     SwPagePreviewLayout* PagePreviewLayout()
     {
-        return m_pPagePreviewLayout;
+        return m_pPagePreviewLayout.get();
     }
 
     /// Is this view accessible?
@@ -243,7 +239,7 @@ public:
 
     inline void AddAccessibleObj( const SdrObject *pObj );
 
-    /// Invalidate accessible frame's frame's content
+    /// Invalidate accessible frame's content
     void InvalidateAccessibleFrameContent( const SwFrame *pFrame );
 
     /// Invalidate accessible frame's cursor position
@@ -259,7 +255,7 @@ public:
 
     /// update data for accessible preview
     /// change method signature due to new page preview functionality
-    void UpdateAccessiblePreview( const std::vector<PreviewPage*>& _rPreviewPages,
+    void UpdateAccessiblePreview( const std::vector<std::unique_ptr<PreviewPage>>& _rPreviewPages,
                                   const Fraction&  _rScale,
                                   const SwPageFrame* _pSelectedPageFrame,
                                   const Size&      _rPreviewWinSize );

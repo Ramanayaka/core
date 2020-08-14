@@ -20,11 +20,10 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_ACCESSIBLEOUTLINEEDITSOURCE_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_ACCESSIBLEOUTLINEEDITSOURCE_HXX
 
-#include <vcl/svapp.hxx>
 #include <svl/SfxBroadcaster.hxx>
 #include <svl/lstner.hxx>
+#include <tools/link.hxx>
 #include <editeng/unoedsrc.hxx>
-#include <editeng/editdata.hxx>
 #include <editeng/unoforou.hxx>
 #include <editeng/unoviwou.hxx>
 
@@ -56,7 +55,7 @@ namespace accessibility
         virtual ~AccessibleOutlineEditSource() override;
 
         /// This method is disabled and always returns NULL
-        virtual SvxEditSource*          Clone() const override;
+        virtual std::unique_ptr<SvxEditSource> Clone() const override;
         virtual SvxTextForwarder*       GetTextForwarder() override;
         virtual SvxViewForwarder*       GetViewForwarder() override;
         virtual SvxEditViewForwarder*   GetEditViewForwarder( bool bCreate = false ) override;
@@ -65,7 +64,6 @@ namespace accessibility
 
         // the view forwarder
         virtual bool        IsValid() const override;
-        virtual ::tools::Rectangle   GetVisArea() const override;
         virtual Point       LogicToPixel( const Point& rPoint, const MapMode& rMapMode ) const override;
         virtual Point       PixelToLogic( const Point& rPoint, const MapMode& rMapMode ) const override;
 

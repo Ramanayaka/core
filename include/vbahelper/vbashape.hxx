@@ -37,21 +37,21 @@
 #include <vbahelper/vbahelper.hxx>
 #include <vbahelper/vbahelperinterface.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { class XPropertySet; }
     namespace drawing { class XShape; }
     namespace drawing { class XShapes; }
     namespace frame { class XModel; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
-namespace ooo { namespace vba {
+namespace ooo::vba {
     class ShapeHelper;
     class XHelperInterface;
     namespace msforms { class XFillFormat; }
     namespace msforms { class XLineFormat; }
     namespace msforms { class XPictureFormat; }
-} }
+}
 
 typedef  ::cppu::WeakImplHelper< ov::msforms::XShape, css::lang::XEventListener > ListeningShape;
 
@@ -66,7 +66,6 @@ protected:
     css::uno::Reference< css::beans::XPropertySet > m_xPropertySet;
     sal_Int32 m_nType;
     css::uno::Reference< css::frame::XModel > m_xModel;
-    css::uno::Any m_aRange;
     void addListeners();
     /// @throws css::uno::RuntimeException
     void removeShapeListener();
@@ -79,10 +78,11 @@ public:
     /// @throws css::uno::RuntimeException
     ScVbaShape( const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext >& xContext, const css::uno::Reference< css::drawing::XShape >& xShape, const css::uno::Reference< css::drawing::XShapes >& xShapes, const css::uno::Reference< css::frame::XModel >& xModel, sal_Int32 nType );
     virtual ~ScVbaShape() override;
-    void setRange( css::uno::Any aRange ) { m_aRange = aRange; };
 
     /// @throws css::uno::RuntimeException
     static sal_Int32 getType( const css::uno::Reference< css::drawing::XShape >& rShape );
+
+    static sal_Int32 getAutoShapeType( const css::uno::Reference< css::drawing::XShape >& rShape );
 
     // Attributes
     virtual OUString SAL_CALL getName() override;
@@ -116,8 +116,8 @@ public:
     virtual void SAL_CALL setRelativeVerticalPosition(::sal_Int32 _relativeverticalposition) override;
 
     // Methods
-    virtual css::uno::Any SAL_CALL SAL_CALL TextFrame(  ) override;
-    virtual css::uno::Any SAL_CALL SAL_CALL WrapFormat(  ) override;
+    virtual css::uno::Any SAL_CALL TextFrame(  ) override;
+    virtual css::uno::Any SAL_CALL WrapFormat(  ) override;
     virtual void SAL_CALL Delete() override;
     virtual void SAL_CALL ZOrder( sal_Int32 ZOrderCmd ) override;
     virtual void SAL_CALL IncrementRotation( double Increment ) override;

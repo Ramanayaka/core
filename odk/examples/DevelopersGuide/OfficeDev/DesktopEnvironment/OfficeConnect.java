@@ -39,7 +39,7 @@
 // __________ Implementation __________
 
 /**
- * support ONE singleton uno connection to an running office installation!
+ * support ONE singleton uno connection to a running office installation!
  * Can be used to open/use/close connection to uno environment of an office. If
  * necessary a new office instance is started.
  * ctor isn't available from outside. You should call static function
@@ -71,7 +71,7 @@ public class OfficeConnect
     /**
      * ctor
      * We try to open the connection in our ctor ... transparently for user.
-     * After it was successfully you will find an internal set member
+     * After it was successful you will find an internal set member
      * m_xRemoteContext which means remote component context of the connected office.
      * The context can be used to get the remote service manager from the office.
      * We made it private to support singleton pattern of these implementation.

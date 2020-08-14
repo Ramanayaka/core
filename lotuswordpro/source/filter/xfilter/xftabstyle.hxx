@@ -60,9 +60,7 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_XFILTER_XFTABSTYLE_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_XFILTER_XFTABSTYLE_HXX
 
-#include "xfglobal.hxx"
-#include "xfstyle.hxx"
-#include <vector>
+#include <xfilter/xfstyle.hxx>
 
 class XFTabStyle : public XFStyle
 {

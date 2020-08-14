@@ -18,25 +18,25 @@
  */
 
 #include "PresenterCanvas.hxx"
+#include "CanvasUpdateRequester.hxx"
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/polygon/b2dpolygonclipper.hxx>
 #include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <canvas/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
+#include <com/sun/star/awt/XWindow.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <rtl/ref.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/window.hxx>
-#include <vcl/svapp.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace presenter {
+namespace sd::presenter {
 
 //===== PresenterCustomSprite =================================================
 
@@ -46,7 +46,7 @@ namespace {
     typedef ::cppu::WeakComponentImplHelper <
         css::rendering::XCustomSprite
     > PresenterCustomSpriteInterfaceBase;
-}
+
 class PresenterCustomSprite
     : protected ::cppu::BaseMutex,
       public PresenterCustomSpriteInterfaceBase
@@ -92,6 +92,8 @@ private:
     void ThrowIfDisposed();
 };
 
+}
+
 //===== PresenterCanvas =======================================================
 
 PresenterCanvas::PresenterCanvas (
@@ -107,7 +109,6 @@ PresenterCanvas::PresenterCanvas (
       mxSharedWindow(rxSharedWindow),
       mxWindow(rxWindow),
       maOffset(),
-      maClipRectangle(),
       mbOffsetUpdatePending(true)
 {
     if (mxWindow.is())
@@ -411,7 +412,7 @@ sal_Bool SAL_CALL PresenterCanvas::updateScreen (sal_Bool bUpdateAll)
     ThrowIfDisposed();
 
     mbOffsetUpdatePending = true;
-    if (m_pUpdateRequester.get() != nullptr)
+    if (m_pUpdateRequester != nullptr)
     {
         m_pUpdateRequester->RequestUpdate(bUpdateAll);
         return true;
@@ -529,7 +530,7 @@ css::rendering::ViewState PresenterCanvas::MergeViewState (
         // transformation.
         aViewState.Clip = ::basegfx::unotools::xPolyPolygonFromB2DPolyPolygon(
             xDevice,
-            ::basegfx::B2DPolyPolygon(::basegfx::tools::createPolygonFromRect(aWindowRange)));
+            ::basegfx::B2DPolyPolygon(::basegfx::utils::createPolygonFromRect(aWindowRange)));
     }
     else
     {
@@ -541,7 +542,7 @@ css::rendering::ViewState PresenterCanvas::MergeViewState (
             ::basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(
                 aViewState.Clip));
         const ::basegfx::B2DPolyPolygon aClippedClipPolygon (
-            ::basegfx::tools::clipPolyPolygonOnRange(
+            ::basegfx::utils::clipPolyPolygonOnRange(
                 aClipPolygon,
                 aWindowRange,
                 true, /* bInside */
@@ -589,22 +590,8 @@ awt::Point PresenterCanvas::GetOffset (const Reference<awt::XWindow>& rxBaseWind
 
     // Get the bounding box of the window and create a range in the
     // coordinate system of the child window.
-    ::tools::Rectangle aLocalClip;
-    if (maClipRectangle.Width <= 0 || maClipRectangle.Height <= 0)
-    {
-        // No clip rectangle has been set via SetClip by the pane.
-        // Use the window extents instead.
-        aLocalClip = pWindow->GetWindowExtentsRelative(pSharedWindow);
-    }
-    else
-    {
-        // Use a previously given clip rectangle.
-        aLocalClip = ::tools::Rectangle(
-            maClipRectangle.X + rOffset.X,
-            maClipRectangle.Y + rOffset.Y,
-            maClipRectangle.X + maClipRectangle.Width + rOffset.X,
-            maClipRectangle.Y + maClipRectangle.Height + rOffset.Y);
-    }
+    // Use the window extents.
+    ::tools::Rectangle aLocalClip = pWindow->GetWindowExtentsRelative(pSharedWindow);
 
     // The local clip rectangle is used to clip the view state clipping
     // polygon.
@@ -661,7 +648,7 @@ Reference<rendering::XPolyPolygon2D> PresenterCanvas::UpdateSpriteClip (
             ::basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(rxOriginalClip));
         ::basegfx::B2DRectangle aWindowRange (nMinX, nMinY, nMaxX, nMaxY);
         const ::basegfx::B2DPolyPolygon aClippedClipPolygon (
-            ::basegfx::tools::clipPolyPolygonOnRange(
+            ::basegfx::utils::clipPolyPolygonOnRange(
                 aOriginalClip,
                 aWindowRange,
                 true, /* bInside */
@@ -683,7 +670,7 @@ Reference<rendering::XPolyPolygon2D> PresenterCanvas::UpdateSpriteClip (
             xDevice->createCompatibleLinePolyPolygon(aPoints));
         if (xLinePolygon.is())
             xLinePolygon->setClosed(0, true);
-        xPolygon.set(xLinePolygon, UNO_QUERY);
+        xPolygon = xLinePolygon;
     }
 
     return xPolygon;
@@ -797,6 +784,6 @@ void PresenterCustomSprite::ThrowIfDisposed()
     }
 }
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

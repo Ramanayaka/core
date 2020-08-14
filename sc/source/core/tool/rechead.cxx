@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "rechead.hxx"
-#include "scerrors.hxx"
+#include <rechead.hxx>
+#include <scerrors.hxx>
 
 #include <osl/diagnose.h>
 
@@ -27,7 +27,7 @@ ScMultipleReadHeader::ScMultipleReadHeader(SvStream& rNewStream) :
 {
     sal_uInt32 nDataSize;
     rStream.ReadUInt32( nDataSize );
-    sal_uLong nDataPos = rStream.Tell();
+    sal_uInt64 nDataPos = rStream.Tell();
     nTotalEnd = nDataPos + nDataSize;
     nEntryEnd = nTotalEnd;
 
@@ -41,16 +41,16 @@ ScMultipleReadHeader::ScMultipleReadHeader(SvStream& rNewStream) :
             rStream.SetError( SVSTREAM_FILEFORMAT_ERROR );
 
         //  everything to 0, so  BytesLeft() aborts at least
-        pBuf = nullptr; pMemStream = nullptr;
+        pBuf = nullptr; pMemStream.reset();
         nEntryEnd = nDataPos;
     }
     else
     {
         sal_uInt32 nSizeTableLen;
         rStream.ReadUInt32( nSizeTableLen );
-        pBuf = new sal_uInt8[nSizeTableLen];
-        rStream.ReadBytes( pBuf, nSizeTableLen );
-        pMemStream = new SvMemoryStream( pBuf, nSizeTableLen, StreamMode::READ );
+        pBuf.reset( new sal_uInt8[nSizeTableLen] );
+        rStream.ReadBytes( pBuf.get(), nSizeTableLen );
+        pMemStream.reset(new SvMemoryStream( pBuf.get(), nSizeTableLen, StreamMode::READ ));
     }
 
     nEndPos = rStream.Tell();
@@ -65,15 +65,14 @@ ScMultipleReadHeader::~ScMultipleReadHeader()
         if ( rStream.GetError() == ERRCODE_NONE )
             rStream.SetError( SCWARN_IMPORT_INFOLOST );
     }
-    delete pMemStream;
-    delete[] pBuf;
+    pMemStream.reset();
 
     rStream.Seek(nEndPos);
 }
 
 void ScMultipleReadHeader::EndEntry()
 {
-    sal_uLong nPos = rStream.Tell();
+    sal_uInt64 nPos = rStream.Tell();
     OSL_ENSURE( nPos <= nEntryEnd, "read too much" );
     if ( nPos != nEntryEnd )
     {
@@ -87,7 +86,7 @@ void ScMultipleReadHeader::EndEntry()
 
 void ScMultipleReadHeader::StartEntry()
 {
-    sal_uLong nPos = rStream.Tell();
+    sal_uInt64 nPos = rStream.Tell();
     sal_uInt32 nEntrySize;
     (*pMemStream).ReadUInt32( nEntrySize );
 
@@ -95,9 +94,9 @@ void ScMultipleReadHeader::StartEntry()
     OSL_ENSURE( nEntryEnd <= nTotalEnd, "read too many entries" );
 }
 
-sal_uLong ScMultipleReadHeader::BytesLeft() const
+sal_uInt64 ScMultipleReadHeader::BytesLeft() const
 {
-    sal_uLong nReadEnd = rStream.Tell();
+    sal_uInt64 nReadEnd = rStream.Tell();
     if (nReadEnd <= nEntryEnd)
         return nEntryEnd-nReadEnd;
 
@@ -118,7 +117,7 @@ ScMultipleWriteHeader::ScMultipleWriteHeader(SvStream& rNewStream) :
 
 ScMultipleWriteHeader::~ScMultipleWriteHeader()
 {
-    sal_uLong nDataEnd = rStream.Tell();
+    sal_uInt64 nDataEnd = rStream.Tell();
 
     rStream.WriteUInt16( SCID_SIZES );
     rStream.WriteUInt32( aMemStream.Tell() );
@@ -127,7 +126,7 @@ ScMultipleWriteHeader::~ScMultipleWriteHeader()
     if ( nDataEnd - nDataPos != nDataSize )                 // matched default ?
     {
         nDataSize = nDataEnd - nDataPos;
-        sal_uLong nPos = rStream.Tell();
+        sal_uInt64 nPos = rStream.Tell();
         rStream.Seek(nDataPos-sizeof(sal_uInt32));
         rStream.WriteUInt32( nDataSize );                               // record size at the beginning
         rStream.Seek(nPos);
@@ -136,13 +135,13 @@ ScMultipleWriteHeader::~ScMultipleWriteHeader()
 
 void ScMultipleWriteHeader::EndEntry()
 {
-    sal_uLong nPos = rStream.Tell();
+    sal_uInt64 nPos = rStream.Tell();
     aMemStream.WriteUInt32( nPos - nEntryStart );
 }
 
 void ScMultipleWriteHeader::StartEntry()
 {
-    sal_uLong nPos = rStream.Tell();
+    sal_uInt64 nPos = rStream.Tell();
     nEntryStart = nPos;
 }
 

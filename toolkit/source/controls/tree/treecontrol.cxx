@@ -18,17 +18,18 @@
  */
 
 
-#include <treecontrol.hxx>
+#include "treecontrol.hxx"
 
 #include <com/sun/star/awt/tree/XTreeControl.hpp>
 #include <com/sun/star/awt/tree/XTreeDataModel.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/view/SelectionType.hpp>
+#include <toolkit/controls/unocontrolbase.hxx>
 #include <toolkit/helper/property.hxx>
 #include <osl/diagnose.h>
 #include <cppuhelper/implbase.hxx>
 
-#include "helper/unopropertyarrayhelper.hxx"
+#include <helper/unopropertyarrayhelper.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -42,7 +43,6 @@ using namespace ::com::sun::star::view;
 namespace toolkit
 {
 
-//  class UnoTreeModel
 
 UnoTreeModel::UnoTreeModel( const css::uno::Reference< css::uno::XComponentContext >& i_factory )
     :UnoControlModel( i_factory )
@@ -69,19 +69,14 @@ UnoTreeModel::UnoTreeModel( const css::uno::Reference< css::uno::XComponentConte
     ImplRegisterProperty( BASEPROPERTY_HIDEINACTIVESELECTION );
 }
 
-UnoTreeModel::UnoTreeModel( const UnoTreeModel& rModel )
-: UnoControlModel( rModel )
-{
-}
-
-UnoControlModel* UnoTreeModel::Clone() const
+rtl::Reference<UnoControlModel> UnoTreeModel::Clone() const
 {
     return new UnoTreeModel( *this );
 }
 
 OUString UnoTreeModel::getServiceName()
 {
-    return OUString( "com.sun.star.awt.tree.TreeControlModel" );
+    return "com.sun.star.awt.tree.TreeControlModel";
 }
 
 Any UnoTreeModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
@@ -110,13 +105,8 @@ Any UnoTreeModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
 
 ::cppu::IPropertyArrayHelper& UnoTreeModel::getInfoHelper()
 {
-    static UnoPropertyArrayHelper* pHelper = nullptr;
-    if ( !pHelper )
-    {
-        Sequence<sal_Int32> aIDs = ImplGetPropertyIds();
-        pHelper = new UnoPropertyArrayHelper( aIDs );
-    }
-    return *pHelper;
+    static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+    return aHelper;
 }
 
 // XMultiPropertySet
@@ -200,7 +190,7 @@ UnoTreeControl::UnoTreeControl()
 
 OUString UnoTreeControl::GetComponentServiceName()
 {
-    return OUString("Tree");
+    return "Tree";
 }
 
 
@@ -476,9 +466,9 @@ void SAL_CALL TreeEditListenerMultiplexer::nodeEditing( const Reference< XTreeNo
             if ( e.Context == xListener || !e.Context.is() )
                 aIt.remove();
         }
-        catch( const RuntimeException& e )
+        catch( const RuntimeException& )
         {
-            DISPLAY_EXCEPTION( TreeEditListenerMultiplexer, nodeEditing, e )
+            DISPLAY_EXCEPTION( TreeEditListenerMultiplexer, nodeEditing )
         }
     }
 }
@@ -499,14 +489,14 @@ void SAL_CALL TreeEditListenerMultiplexer::nodeEdited( const Reference< XTreeNod
             if ( e.Context == xListener || !e.Context.is() )
                 aIt.remove();
         }
-        catch( const RuntimeException& e )
+        catch( const RuntimeException& )
         {
-            DISPLAY_EXCEPTION( TreeEditListenerMultiplexer, nodeEdited, e )
+            DISPLAY_EXCEPTION( TreeEditListenerMultiplexer, nodeEdited )
         }
     }
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_TreeControlModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -514,7 +504,7 @@ stardiv_Toolkit_TreeControlModel_get_implementation(
     return cppu::acquire(new toolkit::UnoTreeModel(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_TreeControl_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

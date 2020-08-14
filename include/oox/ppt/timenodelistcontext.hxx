@@ -26,13 +26,13 @@
 #include <oox/ppt/timenode.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XFastAttributeList; } }
-} } }
+namespace com::sun::star {
+    namespace xml::sax { class XFastAttributeList; }
+}
 
 namespace oox { class AttributeList; }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
 
     class TimeNodeContext : public ::oox::core::FragmentHandler2
@@ -40,10 +40,10 @@ namespace oox { namespace ppt {
     public:
         virtual ~TimeNodeContext() throw() override;
 
-        static TimeNodeContext * SAL_CALL makeContext( ::oox::core::FragmentHandler2& rParent, sal_Int32  aElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttribs, const TimeNodePtr & pNode );
+        static TimeNodeContext * makeContext( ::oox::core::FragmentHandler2 const & rParent, sal_Int32  aElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttribs, const TimeNodePtr & pNode );
 
     protected:
-        TimeNodeContext( ::oox::core::FragmentHandler2& rParent, sal_Int32  aElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttribs, const TimeNodePtr & pNode ) throw();
+        TimeNodeContext( ::oox::core::FragmentHandler2 const & rParent, sal_Int32  aElement, const TimeNodePtr & pNode ) throw();
 
         sal_Int32 mnElement;
         TimeNodePtr mpNode;
@@ -51,10 +51,10 @@ namespace oox { namespace ppt {
 
 
 /** FastParser context for XML_tnLst, XML_subTnLst and XML_childTnLst */
-class TimeNodeListContext : public ::oox::core::FragmentHandler2
+class TimeNodeListContext final : public ::oox::core::FragmentHandler2
 {
 public:
-    TimeNodeListContext( ::oox::core::FragmentHandler2& rParent, TimeNodePtrList & aList ) throw();
+    TimeNodeListContext( ::oox::core::FragmentHandler2 const & rParent, TimeNodePtrList & aList ) throw();
 
     virtual ~TimeNodeListContext() throw() override;
     virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs ) override;
@@ -64,7 +64,7 @@ private:
     TimeNodePtrList & maList;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_PPT_TIMENODELISTCONTEXT_HXX
 

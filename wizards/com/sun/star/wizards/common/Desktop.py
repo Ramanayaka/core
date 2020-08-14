@@ -22,9 +22,6 @@ from com.sun.star.frame.FrameSearchFlag import ALL
 from com.sun.star.util import URL
 from com.sun.star.i18n.KParseTokens import ANY_LETTER_OR_NUMBER, ASC_UNDERSCORE
 
-from com.sun.star.util import URL
-
-
 class Desktop(object):
 
     @classmethod
@@ -84,33 +81,6 @@ class Desktop(object):
 
         return sIncSuffix
 
-    @classmethod
-    def checkforfirstSpecialCharacter(self, _xMSF, _sString, _aLocale):
-        try:
-            nStartFlags = ANY_LETTER_OR_NUMBER + ASC_UNDERSCORE
-            ocharservice = _xMSF.createInstance(
-                "com.sun.star.i18n.CharacterClassification")
-            aResult = ocharservice.parsePredefinedToken(KParseType.IDENTNAME,
-                _sString, 0, _aLocale, nStartFlags, "", nStartFlags, " ")
-            return aResult.EndPos
-        except Exception:
-            traceback.print_exc()
-            return -1
-
-    @classmethod
-    def removeSpecialCharacters(self, _xMSF, _aLocale, _sname):
-        snewname = _sname
-        i = 0
-        while i < snewname.length():
-            i = Desktop.checkforfirstSpecialCharacter(_xMSF, snewname,
-                _aLocale)
-            if i < snewname.length():
-                sspecialchar = snewname.substring(i, i + 1)
-                snewname = JavaTools.replaceSubString(snewname, "",
-                    sspecialchar)
-
-        return snewname
-
     '''
     Checks if the passed Element Name already exists in the  ElementContainer.
     If yes it appends a suffix to make it unique
@@ -124,16 +94,3 @@ class Desktop(object):
         sIncSuffix = self.getIncrementSuffix(xElementContainer, sElementName)
         return sElementName + sIncSuffix
 
-    @classmethod
-    def getDispatchURL(self, xMSF, _sURL):
-        try:
-            oTransformer = xMSF.createInstance("com.sun.star.util.URLTransformer")
-            oURL = URL()
-            oURL.Complete = _sURL
-            ok, oURL = oTransformer.parseStrict(oURL)
-            if (not ok):
-                return None
-            return oURL
-        except Exception:
-            traceback.print_exc()
-        return None

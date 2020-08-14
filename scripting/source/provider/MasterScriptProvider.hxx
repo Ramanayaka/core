@@ -26,7 +26,6 @@
 
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/document/XScriptInvocationContext.hpp>
 
@@ -95,7 +94,7 @@ public:
     virtual void SAL_CALL initialize( const css::uno::Sequence < css::uno::Any > & args ) override;
 
     // returns context string for this provider, eg
-    const OUString& getContextString() { return m_sCtxString; }
+    const OUString& getContextString() const { return m_sCtxString; }
 
 private:
     static OUString parseLocationName( const OUString& location );
@@ -127,17 +126,6 @@ private:
     OUString m_sCtxString;
 };
 
-OUString SAL_CALL mspf_getImplementationName() ;
-css::uno::Reference< css::uno::XInterface > SAL_CALL mspf_create( css::uno::Reference< css::uno::XComponentContext > const & xComponentContext );
-css::uno::Sequence< OUString > SAL_CALL mspf_getSupportedServiceNames();
-
-}
-
-namespace browsenodefactory
-{
-OUString SAL_CALL bnf_getImplementationName() ;
-css::uno::Reference< css::uno::XInterface > SAL_CALL bnf_create( css::uno::Reference< css::uno::XComponentContext > const & xComponentContext );
-css::uno::Sequence< OUString > SAL_CALL bnf_getSupportedServiceNames();
 }
 
 #endif // INCLUDED_SCRIPTING_SOURCE_PROVIDER_MASTERSCRIPTPROVIDER_HXX

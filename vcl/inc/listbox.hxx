@@ -20,10 +20,16 @@
 #ifndef INCLUDED_VCL_INC_LISTBOX_HXX
 #define INCLUDED_VCL_INC_LISTBOX_HXX
 
-#include <vcl/button.hxx>
+#include <sal/config.h>
+
+#include <o3tl/safeint.hxx>
+#include <vcl/toolkit/button.hxx>
 #include <vcl/floatwin.hxx>
 #include <vcl/quickselectionengine.hxx>
+#include <vcl/glyphitem.hxx>
+#include <vcl/vcllayout.hxx>
 
+#include <set>
 #include <vector>
 #include <memory>
 
@@ -44,11 +50,14 @@ enum LB_EVENT_TYPE
 struct ImplEntryType
 {
     OUString    maStr;
+    SalLayoutGlyphs maStrGlyphs;
     Image       maImage;
     void*       mpUserData;
     bool        mbIsSelected;
     ListBoxEntryFlags mnFlags;
     long        mnHeight;
+
+    long getHeightWithMargin() const;
 
     ImplEntryType( const OUString& rStr, const Image& rImage ) :
         maStr( rStr ),
@@ -68,6 +77,9 @@ struct ImplEntryType
         mbIsSelected = false;
         mpUserData = nullptr;
     }
+
+    /// Computes maStr's text layout (glyphs), cached in maStrGlyphs.
+    SalLayoutGlyphs* GetTextGlyphs(const OutputDevice* pOutputDevice);
 };
 
 class ImplEntryList
@@ -87,7 +99,7 @@ private:
 
     ImplEntryType*  GetEntry( sal_Int32  nPos ) const
     {
-        if (nPos < 0 || static_cast<size_t>(nPos) >= maEntries.size())
+        if (nPos < 0 || o3tl::make_unsigned(nPos) >= maEntries.size())
             return nullptr;
         return maEntries[nPos].get();
     }
@@ -104,7 +116,6 @@ public:
 
     sal_Int32           FindMatchingEntry( const OUString& rStr, sal_Int32  nStart, bool bLazy ) const;
     sal_Int32           FindEntry( const OUString& rStr, bool bSearchMRUArea = false ) const;
-    sal_Int32           FindEntry( const void* pData ) const;
 
     /// helper: add up heights up to index nEndIndex.
     /// GetAddedHeight( 0 ) @return 0
@@ -113,7 +124,7 @@ public:
     long            GetAddedHeight( sal_Int32  nEndIndex, sal_Int32  nBeginIndex ) const;
     long            GetEntryHeight( sal_Int32  nPos ) const;
 
-    sal_Int32       GetEntryCount() const { return (sal_Int32 )maEntries.size(); }
+    sal_Int32       GetEntryCount() const { return static_cast<sal_Int32>(maEntries.size()); }
     bool            HasImages() const { return mnImages != 0; }
 
     OUString        GetEntryText( sal_Int32  nPos ) const;
@@ -125,13 +136,12 @@ public:
     void*           GetEntryData( sal_Int32  nPos ) const;
 
     void              SetEntryFlags( sal_Int32  nPos, ListBoxEntryFlags nFlags );
-    ListBoxEntryFlags GetEntryFlags( sal_Int32  nPos ) const;
 
     void            SelectEntry( sal_Int32  nPos, bool bSelect );
 
-    sal_Int32       GetSelectEntryCount() const;
-    OUString        GetSelectEntry( sal_Int32  nIndex ) const;
-    sal_Int32       GetSelectEntryPos( sal_Int32  nIndex ) const;
+    sal_Int32       GetSelectedEntryCount() const;
+    OUString        GetSelectedEntry( sal_Int32  nIndex ) const;
+    sal_Int32       GetSelectedEntryPos( sal_Int32  nIndex ) const;
     bool            IsEntryPosSelected( sal_Int32  nIndex ) const;
 
     void            SetLastSelected( sal_Int32  nPos )  { mnLastSelected = nPos; }
@@ -164,7 +174,7 @@ public:
 class ImplListBoxWindow : public Control, public vcl::ISearchableStringList
 {
 private:
-    ImplEntryList*  mpEntryList;     ///< EntryList
+    std::unique_ptr<ImplEntryList> mpEntryList;     ///< EntryList
     tools::Rectangle       maFocusRect;
 
     Size            maUserItemSize;
@@ -182,15 +192,13 @@ private:
     sal_Int32       mnCurrentPos;    ///< Position (Focus)
     sal_Int32       mnTrackingSaveSelection; ///< Selection before Tracking();
 
-    sal_Int32       mnSeparatorPos; ///< Separator
+    std::set< sal_Int32 > maSeparators; ///< Separator positions
 
     sal_Int32       mnUserDrawEntry;
 
     sal_Int32       mnTop;           ///< output from line on
     long            mnLeft;          ///< output from column on
-    long            mnBorder;        ///< distance border - text
     long            mnTextHeight;    ///< text height
-    ProminentEntry  meProminentType; ///< where is the "prominent" entry
 
     sal_uInt16      mnSelectModifier;   ///< Modifiers
 
@@ -198,7 +206,6 @@ private:
     bool mbSort : 1;             ///< ListBox sorted
     bool mbTrack : 1;            ///< Tracking
     bool mbMulti : 1;            ///< MultiListBox
-    bool mbStackMode : 1;        ///< StackSelection
     bool mbSimpleMode : 1;       ///< SimpleMode for MultiListBox
     bool mbTravelSelect : 1;     ///< TravelSelect
     bool mbTrackingSelect : 1;   ///< Selected at a MouseMove
@@ -208,10 +215,11 @@ private:
     bool mbUserDrawEnabled : 1;  ///< UserDraw possible
     bool mbInUserDraw : 1;       ///< In UserDraw
     bool mbReadOnly : 1;         ///< ReadOnly
-    bool mbMirroring : 1;        ///< pb: #106948# explicit mirroring for calc
-    bool mbRight : 1;            ///< right align Text output
     bool mbCenter : 1;           ///< center Text output
+    bool mbRight : 1;            ///< right align Text output
     bool mbEdgeBlending : 1;
+    /// Listbox is actually a dropdown (either combobox, or popup window treated as dropdown)
+    bool mbIsDropdown : 1;
 
     Link<ImplListBoxWindow*,void>  maScrollHdl;
     Link<LinkParamNone*,void>      maSelectHdl;
@@ -254,9 +262,10 @@ public:
     virtual         ~ImplListBoxWindow() override;
     virtual void    dispose() override;
 
-    ImplEntryList*  GetEntryList() const { return mpEntryList; }
+    ImplEntryList*  GetEntryList() const { return mpEntryList.get(); }
 
-    sal_Int32       InsertEntry( sal_Int32  nPos, ImplEntryType* pNewEntry );
+    sal_Int32       InsertEntry( sal_Int32  nPos, ImplEntryType* pNewEntry ); // sorts using mbSort
+    sal_Int32       InsertEntry( sal_Int32  nPos, ImplEntryType* pNewEntry, bool bSort ); // to insert ignoring mbSort, e.g. mru
     void            RemoveEntry( sal_Int32  nPos );
     void            Clear();
     void            ResetCurrentPos()               { mnCurrentPos = LISTBOX_ENTRY_NOTFOUND; }
@@ -264,7 +273,7 @@ public:
     sal_uInt16      GetDisplayLineCount() const;
     void            SetEntryFlags( sal_Int32  nPos, ListBoxEntryFlags nFlags );
 
-    void            DrawEntry(vcl::RenderContext& rRenderContext, sal_Int32  nPos, bool bDrawImage, bool bDrawText, bool bDrawTextAtImagePos = false);
+    void            DrawEntry(vcl::RenderContext& rRenderContext, sal_Int32  nPos, bool bDrawImage, bool bDrawText);
 
     void            SelectEntry( sal_Int32  nPos, bool bSelect );
     void            DeselectAll();
@@ -278,7 +287,6 @@ public:
     /** ShowProminentEntry will set the entry corresponding to nEntryPos
         either at top or in the middle depending on the chosen style*/
     void            ShowProminentEntry( sal_Int32  nEntryPos );
-    void            SetProminentEntryType( ProminentEntry eType ) { meProminentType = eType; }
     using Window::IsVisible;
     bool            IsVisible( sal_Int32  nEntry ) const;
 
@@ -289,8 +297,25 @@ public:
     void            AllowGrabFocus( bool b )        { mbGrabFocus = b; }
     bool            IsGrabFocusAllowed() const      { return mbGrabFocus; }
 
-    void            SetSeparatorPos( sal_Int32  n )     { mnSeparatorPos = n; }
-    sal_Int32       GetSeparatorPos() const         { return mnSeparatorPos; }
+    /**
+     * Removes existing separators, and sets the position of the
+     * one and only separator.
+     */
+    void            SetSeparatorPos( sal_Int32  n );
+    /**
+     * Gets the position of the separator which was added first.
+     * Returns LISTBOX_ENTRY_NOTFOUND if there is no separator.
+     */
+    sal_Int32       GetSeparatorPos() const;
+
+    /**
+     * Adds a new separator at the given position n.
+     */
+    void            AddSeparator( sal_Int32 n )     { maSeparators.insert( n ); }
+    /**
+     * Checks if the given number n is an element of the separator positions set.
+     */
+    bool            isSeparator( const sal_Int32 &n ) const;
 
     void            SetTravelSelect( bool bTravelSelect ) { mbTravelSelect = bTravelSelect; }
     bool            IsTravelSelect() const          { return mbTravelSelect; }
@@ -301,18 +326,19 @@ public:
     void            EnableUserDraw( bool bUserDraw ) { mbUserDrawEnabled = bUserDraw; }
     bool            IsUserDrawEnabled() const   { return mbUserDrawEnabled; }
 
-    void            EnableMultiSelection( bool bMulti, bool bStackMode ) { mbMulti = bMulti; mbStackMode = bStackMode; }
+    void            EnableMultiSelection( bool bMulti ) { mbMulti = bMulti; }
     bool            IsMultiSelectionEnabled() const     { return mbMulti; }
 
     void            SetMultiSelectionSimpleMode( bool bSimple ) { mbSimpleMode = bSimple; }
 
     void            EnableMouseMoveSelect( bool bMouseMoveSelect ) { mbMouseMoveSelect = bMouseMoveSelect; }
-    bool            IsMouseMoveSelect() const   { return mbMouseMoveSelect||mbStackMode; }
+    bool            IsMouseMoveSelect() const   { return mbMouseMoveSelect; }
 
     Size            CalcSize(sal_Int32 nMaxLines) const;
     tools::Rectangle       GetBoundingRectangle( sal_Int32  nItem ) const;
 
     long            GetEntryHeight() const              { return mnMaxHeight; }
+    long            GetEntryHeightWithMargin() const;
     long            GetMaxEntryWidth() const            { return mnMaxWidth; }
 
     void            SetScrollHdl( const Link<ImplListBoxWindow*,void>& rLink ) { maScrollHdl = rLink; }
@@ -334,13 +360,8 @@ public:
 
     DrawTextFlags   ImplGetTextStyle() const;
 
-    /// pb: #106948# explicit mirroring for calc
-    void     EnableMirroring()       { mbMirroring = true; }
-    bool     IsMirroring() const { return mbMirroring; }
-
     bool GetEdgeBlending() const { return mbEdgeBlending; }
     void SetEdgeBlending(bool bNew) { mbEdgeBlending = bNew; }
-    void EnableQuickSelection( bool b );
 
     using Control::ImplInitSettings;
     virtual void ApplySettings(vcl::RenderContext& rRenderContext) override;
@@ -366,7 +387,6 @@ private:
     bool mbEdgeBlending : 1;
 
     Link<ImplListBox*,void>   maScrollHdl;    // because it is needed by ImplListBoxWindow itself
-    css::uno::Reference< css::uno::XInterface > mxDNDListenerContainer;
 
 protected:
     virtual void        GetFocus() override;
@@ -409,16 +429,27 @@ public:
     bool            ProcessKeyInput( const KeyEvent& rKEvt )    { return maLBWindow->ProcessKeyInput( rKEvt ); }
     bool            HandleWheelAsCursorTravel( const CommandEvent& rCEvt );
 
+    /**
+     * Removes existing separators, and sets the position of the
+     * one and only separator.
+     */
     void            SetSeparatorPos( sal_Int32  n )     { maLBWindow->SetSeparatorPos( n ); }
+    /**
+     * Gets the position of the separator which was added first.
+     * Returns LISTBOX_ENTRY_NOTFOUND if there is no separator.
+     */
     sal_Int32       GetSeparatorPos() const         { return maLBWindow->GetSeparatorPos(); }
+
+    /**
+     * Adds a new separator at the given position n.
+     */
+    void            AddSeparator( sal_Int32 n )     { maLBWindow->AddSeparator( n ); }
 
     void            SetTopEntry( sal_Int32  nTop )      { maLBWindow->SetTopEntry( nTop ); }
     sal_Int32       GetTopEntry() const             { return maLBWindow->GetTopEntry(); }
     void            ShowProminentEntry( sal_Int32  nPos ) { maLBWindow->ShowProminentEntry( nPos ); }
     using Window::IsVisible;
     bool            IsVisible( sal_Int32  nEntry ) const { return maLBWindow->IsVisible( nEntry ); }
-
-    void            SetProminentEntryType( ProminentEntry eType ) { maLBWindow->SetProminentEntryType( eType ); }
 
     long            GetLeftIndent() const           { return maLBWindow->GetLeftIndent(); }
     void            SetLeftIndent( sal_uInt16 n )       { maLBWindow->SetLeftIndent( n ); }
@@ -427,7 +458,7 @@ public:
     bool            IsTravelSelect() const          { return maLBWindow->IsTravelSelect(); }
     bool            IsTrackingSelect() const            { return maLBWindow->IsTrackingSelect(); }
 
-    void            EnableMultiSelection( bool bMulti, bool bStackMode ) { maLBWindow->EnableMultiSelection( bMulti, bStackMode ); }
+    void            EnableMultiSelection( bool bMulti ) { maLBWindow->EnableMultiSelection( bMulti ); }
     bool            IsMultiSelectionEnabled() const     { return maLBWindow->IsMultiSelectionEnabled(); }
 
     void            SetMultiSelectionSimpleMode( bool bSimple ) { maLBWindow->SetMultiSelectionSimpleMode( bSimple ); }
@@ -437,6 +468,7 @@ public:
 
     Size            CalcSize( sal_Int32  nMaxLines ) const              { return maLBWindow->CalcSize( nMaxLines ); }
     long            GetEntryHeight() const          { return maLBWindow->GetEntryHeight(); }
+    long            GetEntryHeightWithMargin() const{ return maLBWindow->GetEntryHeightWithMargin(); }
     long            GetMaxEntryWidth() const        { return maLBWindow->GetMaxEntryWidth(); }
 
     void            SetScrollHdl( const Link<ImplListBox*,void>& rLink ) { maScrollHdl = rLink; }
@@ -460,10 +492,6 @@ public:
 
     bool GetEdgeBlending() const { return mbEdgeBlending; }
     void SetEdgeBlending(bool bNew);
-
-    /// pb: #106948# explicit mirroring for calc
-    void     EnableMirroring()   { maLBWindow->EnableMirroring(); }
-    void     SetDropTraget(const css::uno::Reference< css::uno::XInterface >& i_xDNDListenerContainer){ mxDNDListenerContainer= i_xDNDListenerContainer; }
 };
 
 class ImplListBoxFloatingWindow : public FloatingWindow
@@ -514,9 +542,7 @@ private:
     tools::Rectangle       maFocusRect;
 
     Link<void*,void> maMBDownHdl;
-    Link<UserDrawEvent*, void> maUserDrawHdl;
 
-    bool            mbUserDrawEnabled : 1;
     bool            mbEdgeBlending : 1;
 
     void ImplDraw(vcl::RenderContext& rRenderContext, bool bLayout = false);
@@ -541,10 +567,6 @@ public:
     void            SetImage( const Image& rImg ) { maImage = rImg; }
 
     void            SetMBDownHdl( const Link<void*,void>& rLink ) { maMBDownHdl = rLink; }
-    void            SetUserDrawHdl( const Link<UserDrawEvent*, void>& rLink ) { maUserDrawHdl = rLink; }
-
-    void            EnableUserDraw( bool bUserDraw )    { mbUserDrawEnabled = bUserDraw; }
-    bool            IsUserDrawEnabled() const           { return mbUserDrawEnabled; }
 
     void DrawEntry(vcl::RenderContext& rRenderContext, bool bLayout);
 

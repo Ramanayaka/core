@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASCTL_SOURCE_BASICIDE_BREAKPOINT_HXX
-#define INCLUDED_BASCTL_SOURCE_BASICIDE_BREAKPOINT_HXX
+#pragma once
 
 #include <cstddef>
 #include <vector>
@@ -29,15 +28,14 @@ class SbModule;
 
 namespace basctl
 {
-
 struct BreakPoint
 {
     bool bEnabled;
-    size_t nLine;
+    sal_uInt16 nLine;
     size_t nStopAfter;
     size_t nHitCount;
 
-    explicit BreakPoint(size_t nL)
+    explicit BreakPoint(sal_uInt16 nL)
         : bEnabled(true)
         , nLine(nL)
         , nStopAfter(0)
@@ -49,34 +47,33 @@ struct BreakPoint
 class BreakPointList
 {
 private:
-    void operator =(BreakPointList) = delete;
-    std::vector<BreakPoint*> maBreakPoints;
+    BreakPointList& operator=(BreakPointList const&) = delete;
+    std::vector<BreakPoint> maBreakPoints;
 
 public:
     BreakPointList();
 
-    BreakPointList(BreakPointList const & rList);
+    BreakPointList(BreakPointList const& rList);
 
     ~BreakPointList();
 
     void reset();
 
-    void transfer(BreakPointList & rList);
+    void transfer(BreakPointList& rList);
 
-    void InsertSorted(BreakPoint* pBrk);
-    BreakPoint* FindBreakPoint(size_t nLine);
-    void AdjustBreakPoints(size_t nLine, bool bInserted);
+    void InsertSorted(BreakPoint pBrk);
+    BreakPoint* FindBreakPoint(sal_uInt16 nLine);
+    void AdjustBreakPoints(sal_uInt16 nLine, bool bInserted);
     void SetBreakPointsInBasic(SbModule* pModule);
     void ResetHitCount();
 
     size_t size() const;
-    BreakPoint* at(size_t i);
-    const BreakPoint* at(size_t i) const;
-    BreakPoint* remove(BreakPoint* ptr);
+    BreakPoint& at(size_t i);
+    const BreakPoint& at(size_t i) const;
+    void remove(const BreakPoint* ptr);
+    void remove(size_t i);
 };
 
 } // namespace basctl
-
-#endif // INCLUDED_BASCTL_SOURCE_BASICIDE_BREAKPOINT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

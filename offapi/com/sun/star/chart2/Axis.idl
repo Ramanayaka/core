@@ -123,7 +123,7 @@ service Axis
      */
     [optional, property] com::sun::star::chart::ChartAxisMarkPosition MarkPosition;
 
-    /** Determines display units are avaiblable for axis
+    /** Determines display units are available for axis
 
         @since LibreOffice 4.3
      */
@@ -140,6 +140,12 @@ service Axis
         @since LibreOffice 5.1
      */
     [optional, property] boolean TryStaggeringFirst;
+
+    /** This attribute specifies the shift of the first major tick from the origin.
+
+        @since LibreOffice 7.0
+     */
+    [optional, property] long MajorOrigin;
 
 };
 

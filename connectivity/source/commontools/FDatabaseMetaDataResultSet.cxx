@@ -18,19 +18,10 @@
  */
 
 
-#include "ParameterSubstitution.hxx"
-#include "FDatabaseMetaDataResultSet.hxx"
-#include "FDatabaseMetaDataResultSetMetaData.hxx"
-#include <com/sun/star/sdbc/DataType.hpp>
+#include <ParameterSubstitution.hxx>
+#include <FDatabaseMetaDataResultSet.hxx>
+#include <FDatabaseMetaDataResultSetMetaData.hxx>
 #include <com/sun/star/sdbc/ColumnSearch.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
-#include <com/sun/star/sdbc/ProcedureResult.hpp>
-#include <com/sun/star/sdbc/IndexType.hpp>
-#include <comphelper/property.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
-#include <com/sun/star/sdbc/ResultSetType.hpp>
-#include <com/sun/star/sdbc/FetchDirection.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <cppuhelper/typeprovider.hxx>
 #include <comphelper/sequence.hxx>
@@ -38,8 +29,7 @@
 #include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <connectivity/dbexception.hxx>
-#include "resource/common_res.hrc"
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
 using namespace connectivity;
 using namespace dbtools;
@@ -56,7 +46,6 @@ ODatabaseMetaDataResultSet::ODatabaseMetaDataResultSet()
     :ODatabaseMetaDataResultSet_BASE(m_aMutex)
     ,::comphelper::OPropertyContainer(ODatabaseMetaDataResultSet_BASE::rBHelper)
     ,m_aStatement(nullptr)
-    ,m_xMetaData(nullptr)
     ,m_nColPos(0)
     ,m_bBOF(true)
     ,m_bEOF(true)
@@ -69,7 +58,6 @@ ODatabaseMetaDataResultSet::ODatabaseMetaDataResultSet( MetaDataResultSetType _e
     :ODatabaseMetaDataResultSet_BASE(m_aMutex)
     ,::comphelper::OPropertyContainer(ODatabaseMetaDataResultSet_BASE::rBHelper)
     ,m_aStatement(nullptr)
-    ,m_xMetaData(nullptr)
     ,m_nColPos(0)
     ,m_bBOF(true)
     ,m_bEOF(true)
@@ -125,7 +113,7 @@ void ODatabaseMetaDataResultSet::disposing()
 
     ::osl::MutexGuard aGuard(m_aMutex);
     m_aStatement    = nullptr;
-m_xMetaData.clear();
+    m_xMetaData.clear();
     m_aRowsIter = m_aRows.end();
     m_aRows.clear();
     m_aRowsIter = m_aRows.end();
@@ -189,7 +177,7 @@ sal_Int32 SAL_CALL ODatabaseMetaDataResultSet::findColumn( const OUString& colum
 
 void ODatabaseMetaDataResultSet::checkIndex(sal_Int32 columnIndex )
 {
-    if(columnIndex >= (sal_Int32)(*m_aRowsIter).size() || columnIndex < 1)
+    if(columnIndex >= static_cast<sal_Int32>((*m_aRowsIter).size()) || columnIndex < 1)
         ::dbtools::throwInvalidIndexException(*this);
 }
 
@@ -675,14 +663,14 @@ ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getEmptyValue()
 /// return an ORowSetValueDecorator with 0 as value
 ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::get0Value()
 {
-    static ORowSetValueDecoratorRef a0ValueRef = new ORowSetValueDecorator((sal_Int32)0);
+    static ORowSetValueDecoratorRef a0ValueRef = new ORowSetValueDecorator(sal_Int32(0));
     return a0ValueRef;
 }
 
 /// return an ORowSetValueDecorator with 1 as value
 ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::get1Value()
 {
-    static ORowSetValueDecoratorRef a1ValueRef = new ORowSetValueDecorator((sal_Int32)1);
+    static ORowSetValueDecoratorRef a1ValueRef = new ORowSetValueDecorator(sal_Int32(1));
     return a1ValueRef;
 }
 
@@ -749,116 +737,105 @@ ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getQuoteValue()
 
 void SAL_CALL ODatabaseMetaDataResultSet::initialize( const Sequence< Any >& _aArguments )
 {
-    if ( _aArguments.getLength() == 2 )
+    if ( _aArguments.getLength() != 2 )
+        return;
+
+    sal_Int32 nResultSetType = 0;
+    if ( !(_aArguments[0] >>= nResultSetType))
+        return;
+
+    setType(static_cast<MetaDataResultSetType>(nResultSetType));
+    Sequence< Sequence<Any> > aRows;
+    if ( !(_aArguments[1] >>= aRows) )
+        return;
+
+    ORows aRowsToSet;
+    const Sequence<Any>* pRowsIter = aRows.getConstArray();
+    const Sequence<Any>* pRowsEnd  = pRowsIter + aRows.getLength();
+    for (; pRowsIter != pRowsEnd;++pRowsIter)
     {
-        sal_Int32 nResultSetType = 0;
-        if ( _aArguments[0] >>= nResultSetType)
+        ORow aRowToSet;
+        const Any* pRowIter = pRowsIter->getConstArray();
+        const Any* pRowEnd = pRowIter + pRowsIter->getLength();
+        for (; pRowIter != pRowEnd;++pRowIter)
         {
-            setType(static_cast<MetaDataResultSetType>(nResultSetType));
-            Sequence< Sequence<Any> > aRows;
-            if ( _aArguments[1] >>= aRows )
+            ORowSetValueDecoratorRef aValue;
+            switch( pRowIter->getValueTypeClass() )
             {
-                ORows aRowsToSet;
-                const Sequence<Any>* pRowsIter = aRows.getConstArray();
-                const Sequence<Any>* pRowsEnd  = pRowsIter + aRows.getLength();
-                for (; pRowsIter != pRowsEnd;++pRowsIter)
-                {
-                    ORow aRowToSet;
-                    const Any* pRowIter = pRowsIter->getConstArray();
-                    const Any* pRowEnd = pRowIter + pRowsIter->getLength();
-                    for (; pRowIter != pRowEnd;++pRowIter)
+                case TypeClass_BOOLEAN:
                     {
-                        ORowSetValueDecoratorRef aValue;
-                        switch( pRowIter->getValueTypeClass() )
-                        {
-                            case TypeClass_BOOLEAN:
-                                {
-                                    bool bValue = false;
-                                    *pRowIter >>= bValue;
-                                    aValue = new ORowSetValueDecorator(ORowSetValue(bValue));
-                                }
-                                break;
-                            case TypeClass_BYTE:
-                                {
-                                    sal_Int8 nValue(0);
-                                    *pRowIter >>= nValue;
-                                    aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
-                                }
-                                break;
-                            case TypeClass_SHORT:
-                            case TypeClass_UNSIGNED_SHORT:
-                                {
-                                    sal_Int16 nValue(0);
-                                    *pRowIter >>= nValue;
-                                    aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
-                                }
-                                break;
-                            case TypeClass_LONG:
-                            case TypeClass_UNSIGNED_LONG:
-                                {
-                                    sal_Int32 nValue(0);
-                                    *pRowIter >>= nValue;
-                                    aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
-                                }
-                                break;
-                            case TypeClass_HYPER:
-                            case TypeClass_UNSIGNED_HYPER:
-                                {
-                                    sal_Int64 nValue(0);
-                                    *pRowIter >>= nValue;
-                                    aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
-                                }
-                                break;
-                            case TypeClass_FLOAT:
-                                {
-                                    float nValue(0.0);
-                                    *pRowIter >>= nValue;
-                                    aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
-                                }
-                                break;
-                            case TypeClass_DOUBLE:
-                                {
-                                    double nValue(0.0);
-                                    *pRowIter >>= nValue;
-                                    aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
-                                }
-                                break;
-                            case TypeClass_STRING:
-                                {
-                                    OUString sValue;
-                                    *pRowIter >>= sValue;
-                                    aValue = new ORowSetValueDecorator(ORowSetValue(sValue));
-                                }
-                                break;
-                            default:
-                                break;
-                        }
-                        aRowToSet.push_back(aValue);
+                        bool bValue = false;
+                        *pRowIter >>= bValue;
+                        aValue = new ORowSetValueDecorator(ORowSetValue(bValue));
                     }
-                    aRowsToSet.push_back(aRowToSet);
-                } // for (; pRowsIter != pRowsEnd;++pRowsIter
-                setRows(aRowsToSet);
+                    break;
+                case TypeClass_BYTE:
+                    {
+                        sal_Int8 nValue(0);
+                        *pRowIter >>= nValue;
+                        aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
+                    }
+                    break;
+                case TypeClass_SHORT:
+                case TypeClass_UNSIGNED_SHORT:
+                    {
+                        sal_Int16 nValue(0);
+                        *pRowIter >>= nValue;
+                        aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
+                    }
+                    break;
+                case TypeClass_LONG:
+                case TypeClass_UNSIGNED_LONG:
+                    {
+                        sal_Int32 nValue(0);
+                        *pRowIter >>= nValue;
+                        aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
+                    }
+                    break;
+                case TypeClass_HYPER:
+                case TypeClass_UNSIGNED_HYPER:
+                    {
+                        sal_Int64 nValue(0);
+                        *pRowIter >>= nValue;
+                        aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
+                    }
+                    break;
+                case TypeClass_FLOAT:
+                    {
+                        float nValue(0.0);
+                        *pRowIter >>= nValue;
+                        aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
+                    }
+                    break;
+                case TypeClass_DOUBLE:
+                    {
+                        double nValue(0.0);
+                        *pRowIter >>= nValue;
+                        aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
+                    }
+                    break;
+                case TypeClass_STRING:
+                    {
+                        OUString sValue;
+                        *pRowIter >>= sValue;
+                        aValue = new ORowSetValueDecorator(ORowSetValue(sValue));
+                    }
+                    break;
+                default:
+                    break;
             }
+            aRowToSet.push_back(aValue);
         }
-    }
+        aRowsToSet.push_back(aRowToSet);
+    } // for (; pRowsIter != pRowsEnd;++pRowsIter
+    setRows(aRowsToSet);
 }
 // XServiceInfo
 
 
-    OUString ODatabaseMetaDataResultSet::getImplementationName_Static(  )
-    {
-        return OUString("org.openoffice.comp.helper.DatabaseMetaDataResultSet");
-    }
-
-    Sequence< OUString > ODatabaseMetaDataResultSet::getSupportedServiceNames_Static(  )
-    {
-        Sequence<OUString> aSNS { "com.sun.star.sdbc.ResultSet" };
-        return aSNS;
-    }
-
     OUString SAL_CALL ODatabaseMetaDataResultSet::getImplementationName(  )
     {
-        return getImplementationName_Static();
+        return "org.openoffice.comp.helper.DatabaseMetaDataResultSet";
     }
 
     sal_Bool SAL_CALL ODatabaseMetaDataResultSet::supportsService( const OUString& _rServiceName )
@@ -868,39 +845,14 @@ void SAL_CALL ODatabaseMetaDataResultSet::initialize( const Sequence< Any >& _aA
 
     Sequence< OUString > SAL_CALL ODatabaseMetaDataResultSet::getSupportedServiceNames(  )
     {
-        return getSupportedServiceNames_Static();
+        return Sequence<OUString>{ "com.sun.star.sdbc.ResultSet" };
     }
 
-    namespace connectivity
-    {
-        /// @throws Exception
-        Reference< XInterface >  SAL_CALL ODatabaseMetaDataResultSet_CreateInstance(const Reference< XComponentContext >& )
-        {
-            return *(new ODatabaseMetaDataResultSet());
-        }
-    }
-
-
-namespace
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+connectivity_dbtools_ODatabaseMetaDataResultSet_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    cppu::ImplementationEntry entries[] = {
-        { &ODatabaseMetaDataResultSet_CreateInstance, &ODatabaseMetaDataResultSet::getImplementationName_Static, &ODatabaseMetaDataResultSet::getSupportedServiceNames_Static,
-            &cppu::createSingleComponentFactory, nullptr, 0 },
-        { &ParameterSubstitution::create, &ParameterSubstitution::getImplementationName_Static, &ParameterSubstitution::getSupportedServiceNames_Static,
-            &cppu::createSingleComponentFactory, nullptr, 0 },
-        { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-    };
-}
-
-extern "C"
-{
-
-
-SAL_DLLPUBLIC_EXPORT void* SAL_CALL dbtools_component_getFactory(const sal_Char* implName, void* serviceManager, void* registryKey)
-{
-    return cppu::component_getFactoryHelper(implName, serviceManager, registryKey, entries);
-}
-
+    return cppu::acquire(new ODatabaseMetaDataResultSet());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,15 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "imageprovider.hxx"
-#include "dbu_resource.hrc"
-#include "moduledbu.hxx"
-#include "dbustrings.hrc"
-#include "bitmaps.hlst"
+#include <imageprovider.hxx>
+#include <bitmaps.hlst>
 
-#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/graphic/GraphicColorMode.hpp>
 #include <com/sun/star/sdb/application/XTableUIProvider.hpp>
+#include <com/sun/star/sdb/application/DatabaseObject.hpp>
 #include <com/sun/star/sdbcx/XViewsSupplier.hpp>
 
 #include <tools/diagnose_ex.h>
@@ -69,7 +66,7 @@ namespace dbaui
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
         }
 
@@ -91,18 +88,18 @@ namespace dbaui
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
         }
     }
     // ImageProvider
     ImageProvider::ImageProvider()
-        :m_pData( new ImageProvider_Data )
+        :m_pData( std::make_shared<ImageProvider_Data>() )
     {
     }
 
     ImageProvider::ImageProvider( const Reference< XConnection >& _rxConnection )
-        :m_pData( new ImageProvider_Data )
+        :m_pData( std::make_shared<ImageProvider_Data>() )
     {
         m_pData->xConnection = _rxConnection;
         try
@@ -115,7 +112,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 
@@ -141,9 +138,36 @@ namespace dbaui
                 lcl_getTableImageResourceID_nothrow( *m_pData, _rName, sImageResourceID );
 
                 if (!sImageResourceID.isEmpty() && !_out_rImage)
-                    _out_rImage = Image(BitmapEx(sImageResourceID));
+                    _out_rImage = Image(StockImage::Yes, sImageResourceID);
             }
         }
+    }
+
+    OUString ImageProvider::getImageId(const OUString& _rName, const sal_Int32 _nDatabaseObjectType)
+    {
+        if (_nDatabaseObjectType != DatabaseObject::TABLE)
+        {
+            // for types other than tables, the icon does not depend on the concrete object
+            return getDefaultImageResourceID( _nDatabaseObjectType );
+        }
+        else
+        {
+            // no -> determine by type
+            OUString sImageResourceID;
+            lcl_getTableImageResourceID_nothrow( *m_pData, _rName, sImageResourceID );
+            return sImageResourceID;
+        }
+    }
+
+    Reference<XGraphic> ImageProvider::getXGraphic(const OUString& _rName, const sal_Int32 _nDatabaseObjectType)
+    {
+        Reference<XGraphic> xGraphic;
+        if (_nDatabaseObjectType == DatabaseObject::TABLE)
+        {
+            // check whether the connection can give us an icon
+            lcl_getConnectionProvidedTableIcon_nothrow( *m_pData, _rName, xGraphic );
+        }
+        return xGraphic;
     }
 
     Image ImageProvider::getDefaultImage( sal_Int32 _nDatabaseObjectType )
@@ -151,7 +175,7 @@ namespace dbaui
         Image aObjectImage;
         OUString sImageResourceID( getDefaultImageResourceID( _nDatabaseObjectType) );
         if (!sImageResourceID.isEmpty())
-            aObjectImage = Image(BitmapEx(sImageResourceID));
+            aObjectImage = Image(StockImage::Yes, sImageResourceID);
         return aObjectImage;
     }
 
@@ -203,13 +227,38 @@ namespace dbaui
 
         Image aFolderImage;
         if (!sImageResourceID.isEmpty())
-            aFolderImage = Image(BitmapEx(sImageResourceID));
+            aFolderImage = Image(StockImage::Yes, sImageResourceID);
         return aFolderImage;
     }
 
-    Image ImageProvider::getDatabaseImage()
+    OUString ImageProvider::getFolderImageId( sal_Int32 _nDatabaseObjectType )
     {
-        return Image(BitmapEx(DATABASE_TREE_ICON));
+        OUString sImageResourceID;
+        switch ( _nDatabaseObjectType )
+        {
+        case DatabaseObject::QUERY:
+            sImageResourceID = QUERYFOLDER_TREE_ICON;
+            break;
+        case DatabaseObject::FORM:
+            sImageResourceID = FORMFOLDER_TREE_ICON;
+            break;
+        case DatabaseObject::REPORT:
+            sImageResourceID = REPORTFOLDER_TREE_ICON;
+            break;
+        case DatabaseObject::TABLE:
+            sImageResourceID = TABLEFOLDER_TREE_ICON;
+            break;
+        default:
+            OSL_FAIL( "ImageProvider::getDefaultImage: invalid database object type!" );
+            break;
+        }
+
+        return sImageResourceID;
+    }
+
+    OUString ImageProvider::getDatabaseImage()
+    {
+        return DATABASE_TREE_ICON;
     }
 
 } // namespace dbaui

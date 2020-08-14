@@ -20,15 +20,12 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DTABLE_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DTABLE_HXX
 
-#include "file/FTable.hxx"
-#include <connectivity/sdbcx/VColumn.hxx>
+#include <file/FTable.hxx>
 #include <connectivity/CommonTools.hxx>
 #include <tools/urlobj.hxx>
 
 
-namespace connectivity
-{
-    namespace dbase
+namespace connectivity::dbase
     {
         typedef file::OFileTable ODbaseTable_BASE;
         class ODbaseConnection;
@@ -86,7 +83,7 @@ namespace connectivity
                                 sal_uInt32   db_adr;                         /* Field address               */
                                 sal_uInt8    db_flng;                        /* Field length                */
                                 sal_uInt8    db_dez;                         /* Decimal places for N        */
-                                sal_uInt8    db_frei2[14];                   /* Reserved                    */
+                                sal_uInt8    db_free2[14];                   /* Reserved                    */
                             };
             struct DBFMemoHeader
             {
@@ -105,9 +102,9 @@ namespace connectivity
             std::vector<sal_Int32> m_aPrecisions; // same as above
             std::vector<sal_Int32> m_aScales;
             std::vector<sal_Int32> m_aRealFieldLengths;
-            DBFHeader       m_aHeader;
+            DBFHeader       m_aHeader = {};
             DBFMemoHeader   m_aMemoHeader;
-            SvStream*       m_pMemoStream;
+            std::unique_ptr<SvStream> m_pMemoStream;
             rtl_TextEncoding m_eEncoding;
 
             void alterColumn(sal_Int32 index,
@@ -120,10 +117,10 @@ namespace connectivity
             bool CreateFile(const INetURLObject& aFile, bool& bCreateMemo);
             bool CreateMemoFile(const INetURLObject& aFile);
             bool HasMemoFields() const { return m_aHeader.type > dBaseIV;}
-            bool ReadMemoHeader();
+            void ReadMemoHeader();
             bool ReadMemo(std::size_t nBlockNo, ORowSetValue& aVariable);
 
-            bool WriteMemo(const ORowSetValue& aVariable, std::size_t& rBlockNr);
+            void WriteMemo(const ORowSetValue& aVariable, std::size_t& rBlockNr);
             bool WriteBuffer();
             bool UpdateBuffer(OValueRefVector& rRow, const OValueRefRow& pOrgRow, const css::uno::Reference< css::container::XIndexAccess>& _xCols, bool bForceAllFields);
             css::uno::Reference< css::beans::XPropertySet> isUniqueByColumnName(sal_Int32 _nColumnPos);
@@ -133,8 +130,8 @@ namespace connectivity
             /// @throws css::sdbc::SQLException
             /// @throws css::container::ElementExistException
             /// @throws css::uno::RuntimeException
-            void SAL_CALL renameImpl( const OUString& newName );
-            void throwInvalidColumnType(const sal_uInt16 _nErrorId,const OUString& _sColumnName);
+            void renameImpl( const OUString& newName );
+            void throwInvalidColumnType(const char* pErrorId, const OUString& _sColumnName);
 
         protected:
             virtual void FileClose() override;
@@ -167,7 +164,7 @@ namespace connectivity
 
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
             // XAlterTable
             virtual void SAL_CALL alterColumnByName( const OUString& colName, const css::uno::Reference< css::beans::XPropertySet >& descriptor ) override;
             virtual void SAL_CALL alterColumnByIndex( sal_Int32 index, const css::uno::Reference< css::beans::XPropertySet >& descriptor ) override;
@@ -185,14 +182,14 @@ namespace connectivity
             virtual void addColumn(const css::uno::Reference< css::beans::XPropertySet>& descriptor) override;
             virtual void dropColumn(sal_Int32 _nPos) override;
 
-            static OUString   getEntry(file::OConnection* _pConnection,const OUString& _sURL );
+            static OUString   getEntry(file::OConnection const * _pConnection,const OUString& _sURL );
             static bool     Drop_Static(const OUString& _sUrl, bool _bHasMemoFields, sdbcx::OCollection* _pIndexes );
 
             virtual void refreshHeader() override;
 
             virtual css::uno::Reference< css::sdbc::XDatabaseMetaData> getMetaData() const override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DTABLE_HXX
 

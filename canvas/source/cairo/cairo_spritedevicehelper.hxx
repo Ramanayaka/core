@@ -21,11 +21,8 @@
 #define INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_SPRITEDEVICEHELPER_HXX
 
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/rendering/XGraphicDevice.hpp>
-#include <com/sun/star/rendering/XBufferController.hpp>
 
 #include <vcl/window.hxx>
-#include <vcl/bitmap.hxx>
 #include <vcl/cairo.hxx>
 
 #include "cairo_devicehelper.hxx"
@@ -60,11 +57,11 @@ namespace cairocanvas
         void notifySizeUpdate( const css::awt::Rectangle& rBounds );
         void setSize( const ::basegfx::B2ISize& rSize );
 
-        const ::cairo::SurfaceSharedPtr& getBufferSurface() { return mpBufferSurface; }
-        ::cairo::SurfaceSharedPtr getWindowSurface();
+        const ::cairo::SurfaceSharedPtr& getBufferSurface() const { return mpBufferSurface; }
+        ::cairo::SurfaceSharedPtr const & getWindowSurface() const;
         ::cairo::SurfaceSharedPtr createSurface( const ::basegfx::B2ISize& rSize, int aContent );
-        ::cairo::SurfaceSharedPtr createSurface( BitmapSystemData& rData, const Size& rSize );
-        const ::basegfx::B2ISize& getSizePixel() { return maSize; }
+        ::cairo::SurfaceSharedPtr createSurface( BitmapSystemData const & rData, const Size& rSize );
+        const ::basegfx::B2ISize& getSizePixel() const { return maSize; }
         void flush();
 
     private:

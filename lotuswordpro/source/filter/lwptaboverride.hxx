@@ -60,10 +60,10 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPTABOVERRIDE_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPTABOVERRIDE_HXX
 
-#include "lwpoverride.hxx"
-#include "lwpobjid.hxx"
+#include <lwpoverride.hxx>
+#include <lwpobjid.hxx>
 
-class   LwpTabOverride : public LwpOverride
+class LwpTabOverride final : public LwpOverride
 {
 public:
     LwpTabOverride()
@@ -86,13 +86,10 @@ public:
     inline LwpObjectID& GetTabRackID();
     inline void Override(LwpTabOverride* pOther);
 
-protected:
-    LwpTabOverride(LwpTabOverride const& rOther);
-
 private:
+    LwpTabOverride(LwpTabOverride const& rOther);
     LwpTabOverride& operator=(LwpTabOverride const& rOther) = delete;
 
-private:
     LwpObjectID m_aTabRackID;
     enum
     {

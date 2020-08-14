@@ -17,28 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DrawViewShell.hxx"
-#include <svl/aeitem.hxx>
-#include <svl/itemset.hxx>
-#include <sfx2/request.hxx>
-#include <svx/svxids.hrc>
+#include <DrawViewShell.hxx>
 
-#include <svx/fmshell.hxx>
-#include <sfx2/dispatch.hxx>
+#include <sal/log.hxx>
+#include <rtl/math.hxx>
 #include <comphelper/lok.hxx>
 
-#include "app.hrc"
-#include "strings.hrc"
-#include "sdpage.hxx"
-#include "FrameView.hxx"
-#include "sdresid.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "Window.hxx"
-#include "GraphicViewShell.hxx"
-#include "drawview.hxx"
+#include <DrawDocShell.hxx>
 
-#include "slideshow.hxx"
+#include <slideshow.hxx>
 
 namespace sd {
 
@@ -60,11 +47,14 @@ void DrawViewShell::GotoBookmark(const OUString& rBookmark)
 
 void DrawViewShell::MakeVisible(const ::tools::Rectangle& rRect, vcl::Window& rWin)
 {
+    if ( (IsMouseButtonDown() && !IsMouseSelecting()) || SlideShow::IsRunning( GetViewShellBase() ) )
+        return;
+
     // tdf#98646 check if Rectangle which contains the bounds of the region to
     // be shown eventually contains values that cause overflows when processing
     // e.g. when calling GetWidth()
-    const bool bOverflowInX(!rtl::math::approxEqual((double)rRect.getWidth(), (double)rRect.Right() - (double)rRect.Left()));
-    const bool bOverflowInY(!rtl::math::approxEqual((double)rRect.getHeight(), (double)rRect.Bottom() - (double)rRect.Top()));
+    const bool bOverflowInX(!rtl::math::approxEqual(static_cast<double>(rRect.getWidth()), static_cast<double>(rRect.Right()) - static_cast<double>(rRect.Left())));
+    const bool bOverflowInY(!rtl::math::approxEqual(static_cast<double>(rRect.getHeight()), static_cast<double>(rRect.Bottom()) - static_cast<double>(rRect.Top())));
 
     if(bOverflowInX || bOverflowInY)
     {
@@ -74,7 +64,8 @@ void DrawViewShell::MakeVisible(const ::tools::Rectangle& rRect, vcl::Window& rW
 
     // In older versions, if in X or Y the size of the object was
     // smaller than the visible area, the user-defined zoom was
-    // changed. This was decided to be a bug for 6.x, thus I developed a
+    // changed. This was decided to be a bug for
+    // StarOffice 6.x (Apr 2002), thus I developed a
     // version which instead handles X/Y bigger/smaller and visibility
     // questions separately
     const Size aLogicSize(rRect.GetSize());
@@ -92,118 +83,118 @@ void DrawViewShell::MakeVisible(const ::tools::Rectangle& rRect, vcl::Window& rW
         rWin.Pop();
     Size aVisAreaSize(aVisArea.GetSize());
 
-    if (!aVisArea.IsInside(rRect) && !SlideShow::IsRunning( GetViewShellBase() ) )
+    if ( aVisArea.IsInside(rRect) )
+        return;
+
+    // object is not entirely in visible area
+    sal_Int32 nFreeSpaceX(aVisAreaSize.Width() - aLogicSize.Width());
+    sal_Int32 nFreeSpaceY(aVisAreaSize.Height() - aLogicSize.Height());
+
+    // allow a mode for move-only visibility without zooming.
+    const sal_Int32 nPercentBorder(30);
+    const ::tools::Rectangle aInnerRectangle(
+        aVisArea.Left() + ((aVisAreaSize.Width() * nPercentBorder) / 200),
+        aVisArea.Top() + ((aVisAreaSize.Height() * nPercentBorder) / 200),
+        aVisArea.Right() - ((aVisAreaSize.Width() * nPercentBorder) / 200),
+        aVisArea.Bottom() - ((aVisAreaSize.Height() * nPercentBorder) / 200)
+        );
+    Point aNewPos(aVisArea.TopLeft());
+
+    if(nFreeSpaceX < 0)
     {
-        // object is not entirely in visible area
-        sal_Int32 nFreeSpaceX(aVisAreaSize.Width() - aLogicSize.Width());
-        sal_Int32 nFreeSpaceY(aVisAreaSize.Height() - aLogicSize.Height());
-
-        // allow a mode for move-only visibility without zooming.
-        const sal_Int32 nPercentBorder(30);
-        const ::tools::Rectangle aInnerRectangle(
-            aVisArea.Left() + ((aVisAreaSize.Width() * nPercentBorder) / 200),
-            aVisArea.Top() + ((aVisAreaSize.Height() * nPercentBorder) / 200),
-            aVisArea.Right() - ((aVisAreaSize.Width() * nPercentBorder) / 200),
-            aVisArea.Bottom() - ((aVisAreaSize.Height() * nPercentBorder) / 200)
-            );
-        Point aNewPos(aVisArea.TopLeft());
-
-        if(nFreeSpaceX < 0)
+        if(aInnerRectangle.Left() > rRect.Right())
         {
-            if(aInnerRectangle.Left() > rRect.Right())
-            {
-                // object moves out to the left
-                aNewPos.X() -= aVisAreaSize.Width() / 2;
-            }
+            // object moves out to the left
+            aNewPos.AdjustX( -(aVisAreaSize.Width() / 2) );
+        }
 
-            if(aInnerRectangle.Right() < rRect.Left())
-            {
-                // object moves out to the right
-                aNewPos.X() += aVisAreaSize.Width() / 2;
-            }
+        if(aInnerRectangle.Right() < rRect.Left())
+        {
+            // object moves out to the right
+            aNewPos.AdjustX(aVisAreaSize.Width() / 2 );
+        }
+    }
+    else
+    {
+        if(nFreeSpaceX > rRect.GetWidth())
+        {
+            nFreeSpaceX = rRect.GetWidth();
+        }
+
+        if(nFreeSpaceX <= 0)
+        {
+            SAL_WARN("sd", "The given Rectangle contains values that lead to numerical overflows (!)");
         }
         else
         {
-            if(nFreeSpaceX > rRect.GetWidth())
+            const long distRight(rRect.Right() - aNewPos.X() - aVisAreaSize.Width());
+
+            if(distRight > 0)
             {
-                nFreeSpaceX = rRect.GetWidth();
+                long mult = (distRight / nFreeSpaceX) + 1;
+                aNewPos.AdjustX(mult * nFreeSpaceX );
             }
 
-            if(nFreeSpaceX <= 0)
+            const long distLeft(aNewPos.X() - rRect.Left());
+
+            if(distLeft > 0)
             {
-                SAL_WARN("sd", "The given Rectangle contains values that lead to numerical overflows (!)");
-            }
-            else
-            {
-                const long distRight(rRect.Right() - aNewPos.X() + aVisAreaSize.Width());
-
-                if(distRight > 0)
-                {
-                    long mult = (distRight / nFreeSpaceX) + 1;
-                    aNewPos.X() += mult * nFreeSpaceX;
-                }
-
-                const long distLeft(aNewPos.X() - rRect.Left());
-
-                if(distLeft > 0)
-                {
-                    long mult = (distLeft / nFreeSpaceX) + 1;
-                    aNewPos.X() -= mult * nFreeSpaceX;
-                }
+                long mult = (distLeft / nFreeSpaceX) + 1;
+                aNewPos.AdjustX( -(mult * nFreeSpaceX) );
             }
         }
+    }
 
-        if(nFreeSpaceY < 0)
+    if(nFreeSpaceY < 0)
+    {
+        if(aInnerRectangle.Top() > rRect.Bottom())
         {
-            if(aInnerRectangle.Top() > rRect.Bottom())
-            {
-                // object moves out to the top
-                aNewPos.Y() -= aVisAreaSize.Height() / 2;
-            }
+            // object moves out to the top
+            aNewPos.AdjustY( -(aVisAreaSize.Height() / 2) );
+        }
 
-            if(aInnerRectangle.Bottom() < rRect.Top())
-            {
-                // object moves out to the right
-                aNewPos.Y() += aVisAreaSize.Height() / 2;
-            }
+        if(aInnerRectangle.Bottom() < rRect.Top())
+        {
+            // object moves out to the right
+            aNewPos.AdjustY(aVisAreaSize.Height() / 2 );
+        }
+    }
+    else
+    {
+        if(nFreeSpaceY > rRect.GetHeight())
+        {
+            nFreeSpaceY = rRect.GetHeight();
+        }
+
+        if(nFreeSpaceY <= 0)
+        {
+            SAL_WARN("sd", "The given Rectangle contains values that lead to numerical overflows (!)");
         }
         else
         {
-            if(nFreeSpaceY > rRect.GetHeight())
+            const long distBottom(rRect.Bottom() - aNewPos.Y() - aVisAreaSize.Height());
+
+            if(distBottom > 0)
             {
-                nFreeSpaceY = rRect.GetHeight();
+                long mult = (distBottom / nFreeSpaceY) + 1;
+                aNewPos.AdjustY(mult * nFreeSpaceY );
             }
 
-            if(nFreeSpaceY <= 0)
+            const long distTop(aNewPos.Y() - rRect.Top());
+
+            if(distTop > 0)
             {
-                SAL_WARN("sd", "The given Rectangle contains values that lead to numerical overflows (!)");
-            }
-            else
-            {
-                const long distBottom(rRect.Bottom() - aNewPos.Y() + aVisAreaSize.Height());
-
-                if(distBottom > 0)
-                {
-                    long mult = (distBottom / nFreeSpaceY) + 1;
-                    aNewPos.Y() += mult * nFreeSpaceY;
-                }
-
-                const long distTop(aNewPos.Y() - rRect.Top());
-
-                if(distTop > 0)
-                {
-                    long mult = (distTop / nFreeSpaceY) + 1;
-                    aNewPos.Y() -= mult * nFreeSpaceY;
-                }
+                long mult = (distTop / nFreeSpaceY) + 1;
+                aNewPos.AdjustY( -(mult * nFreeSpaceY) );
             }
         }
+    }
 
-        // did position change? Does it need to be set?
-        if(aNewPos != aVisArea.TopLeft())
-        {
-            aVisArea.SetPos(aNewPos);
-            SetZoomRect(aVisArea);
-        }
+    // did position change? Does it need to be set?
+    if(aNewPos != aVisArea.TopLeft())
+    {
+        aVisArea.SetPos(aNewPos);
+        SetZoomRect(aVisArea);
     }
 }
 

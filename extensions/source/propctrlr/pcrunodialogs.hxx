@@ -20,9 +20,9 @@
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_PCRUNODIALOGS_HXX
 
 #include <svtools/genericunodialog.hxx>
-#include "modulepcr.hxx"
 #include <com/sun/star/awt/XTabControllerModel.hpp>
 #include <com/sun/star/awt/XControlContainer.hpp>
+#include <comphelper/proparrhlp.hxx>
 
 
 namespace pcr
@@ -38,7 +38,6 @@ namespace pcr
     class OTabOrderDialog
                 :public OTabOrderDialog_DBase
                 ,public OTabOrderDialog_PBase
-                ,public PcrClient
     {
     protected:
         // <properties>
@@ -59,14 +58,6 @@ namespace pcr
         virtual OUString SAL_CALL getImplementationName() override;
         virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
-        // XServiceInfo - static methods
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_static();
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_static();
-        static css::uno::Reference< css::uno::XInterface >
-                SAL_CALL Create(const css::uno::Reference< css::uno::XComponentContext >&);
-
         // XInitialization
         virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
 
@@ -78,8 +69,8 @@ namespace pcr
         virtual ::cppu::IPropertyArrayHelper* createArrayHelper( ) const override;
 
     protected:
-    // OGenericUnoDialog overridables
-        virtual VclPtr<Dialog> createDialog(vcl::Window* _pParent) override;
+        // OGenericUnoDialog overridables
+        virtual std::unique_ptr<weld::DialogController> createDialog(const css::uno::Reference<css::awt::XWindow>& rParent) override;
     };
 
 

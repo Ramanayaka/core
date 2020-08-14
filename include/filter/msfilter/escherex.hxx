@@ -26,35 +26,37 @@
 #include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/beans/PropertyState.hpp>
 #include <com/sun/star/drawing/BitmapMode.hpp>
+#include <com/sun/star/awt/XBitmap.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <filter/msfilter/msfilterdllapi.h>
 #include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
-#include <svtools/grfmgr.hxx>
+#include <vcl/GraphicObject.hxx>
 #include <svx/svdtypes.hxx>
 #include <svx/msdffdef.hxx>
-#include <tools/color.hxx>
 #include <tools/gen.hxx>
 #include <tools/solar.h>
 #include <tools/stream.hxx>
 #include <vcl/mapmod.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
-namespace com { namespace sun { namespace star {
+class Color;
+
+namespace com::sun::star {
     namespace awt { struct Rectangle; }
     namespace beans { class XPropertySet; }
     namespace drawing { struct EnhancedCustomShapeParameter; }
     namespace drawing { struct Hatch; }
-} } }
+}
 
 namespace tools {
     class Polygon;
     class PolyPolygon;
 }
 
-        /*Record Name       FBT-Value   Instance                  Contents                                                          Wrd Exl PPt Ver*/
+        /*Record Name       FBT-Value   Instance                  Contents                                                          Wrd Exl PPT Ver*/
 // In the Microsoft documentation the naming scheme is msofbt... instead of ESCHER_...
 #define ESCHER_DggContainer     0xF000u /*                           per-document data                                                  X   X   X     */
 #define ESCHER_Dgg              0xF006u /*                           an FDGG and several FIDCLs                                         X   X   X   0 */
@@ -79,12 +81,26 @@ namespace tools {
 #define ESCHER_ConnectorRule    0xF012u /*                           an FConnectorRule                                                      X   X   1 */
 #define ESCHER_UDefProp         0xF122u
 
-#define SHAPEFLAG_OLESHAPE      0x010   /* The shape is an OLE object */
-#define SHAPEFLAG_FLIPH         0x040   /* Shape is flipped horizontally */
-#define SHAPEFLAG_FLIPV         0x080   /* Shape is flipped vertically */
-#define SHAPEFLAG_CONNECTOR     0x100   /* Connector type of shape */
-#define SHAPEFLAG_HAVEANCHOR    0x200   /* Shape has an anchor of some kind */
-#define SHAPEFLAG_HAVESPT       0x800   /* Shape has a shape type property */
+enum class ShapeFlag : sal_uInt32
+{
+    NONE                = 0x000,
+    Group               = 0x001,   /* shape is a group shape */
+    Child               = 0x002,   /* shape is a child shape */
+    Patriarch           = 0x004,   /* shape is the topmost group shape.
+                                      Exactly one of these per drawing. */
+    Deleted             = 0x008,   /* shape has been deleted */
+    OLEShape            = 0x010,   /* shape is an OLE object */
+    HaveMaster          = 0x020,   /* shape has a valid master in hspMaster property */
+    FlipH               = 0x040,   /* shape is flipped horizontally */
+    FlipV               = 0x080,   /* shape is flipped vertically */
+    Connector           = 0x100,   /* shape is a connector shape */
+    HaveAnchor          = 0x200,   /* shape has an anchor of some kind */
+    Background          = 0x400,   /* shape is a background shape */
+    HaveShapeProperty   = 0x800    /* shape has a shape type property */
+};  /* 20 bits unused */
+namespace o3tl {
+    template<> struct typed_flags<ShapeFlag> : is_typed_flags<ShapeFlag, 0x00000FFF> {};
+}
 
 #define ESCHER_ShpInst_Min                          0
 #define ESCHER_ShpInst_NotPrimitive                 ESCHER_ShpInst_Min
@@ -120,6 +136,7 @@ enum ESCHER_BlibType
    FirstClient = 32,        // First client defined blip type
    LastClient  = 255        // Last client defined blip type
 };
+
 
 enum ESCHER_FillStyle
 {
@@ -394,16 +411,13 @@ enum MSOPATHTYPE
 #define ESCHER_Prop_shadowOffsetX               517  /*  LONG              Offset shadow             */
 #define ESCHER_Prop_shadowOffsetY               518  /*  LONG              Offset shadow             */
 #define ESCHER_Prop_fshadowObscured             575  /*  bool              Excel5-style shadow       */
-// PerspectiveStyle
 // 3D Object
 #define ESCHER_Prop_fc3DLightFace               703  /*  bool                                                                                                                             */
-// 3D Style
 // Shape
 #define ESCHER_Prop_hspMaster                   769  /*  MSOHSP          master shape                                        */
 #define ESCHER_Prop_cxstyle                     771  /*  MSOCXSTYLE      Type of connector                                   */
 #define ESCHER_Prop_bWMode                      772  /*  ESCHERwMode     Settings for modifications to                       */
 #define ESCHER_Prop_fBackground                 831  /*  bool            If sal_True, this is the background shape.              */
-// Callout
 // GroupShape
 #define ESCHER_Prop_wzName                      896  /*  WCHAR*          Shape Name (present only if explicitly set)                                                            */
 #define ESCHER_Prop_wzDescription               897  /*  WCHAR*          alternate text                                                                                         */
@@ -427,7 +441,7 @@ enum MSOPATHTYPE
 
 const sal_uInt32 DFF_DGG_CLUSTER_SIZE       = 0x00000400;   /// Shape IDs per cluster in DGG atom.
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt {
         struct Gradient;
     }
@@ -436,7 +450,7 @@ namespace com { namespace sun { namespace star {
         class XShape;
         class XShapes;
     }
-}}}
+}
 
 struct MSFILTER_DLLPUBLIC EscherConnectorListEntry
 {
@@ -450,9 +464,9 @@ struct MSFILTER_DLLPUBLIC EscherConnectorListEntry
 
                     EscherConnectorListEntry( const css::uno::Reference< css::drawing::XShape > & rC,
                                         const css::awt::Point& rPA,
-                                        css::uno::Reference< css::drawing::XShape > & rSA ,
+                                        css::uno::Reference< css::drawing::XShape > const & rSA ,
                                         const css::awt::Point& rPB,
-                                        css::uno::Reference< css::drawing::XShape > & rSB ) :
+                                        css::uno::Reference< css::drawing::XShape > const & rSB ) :
                                             mXConnector ( rC ),
                                             maPointA    ( rPA ),
                                             mXConnectToA( rSA ),
@@ -508,11 +522,8 @@ struct EscherPersistEntry
 
 class EscherBlibEntry
 {
-
     friend class EscherGraphicProvider;
     friend class EscherEx;
-
-protected:
 
     sal_uInt32      mnIdentifier[ 4 ];
     sal_uInt32      mnPictureOffset;        // offset to the graphic in PictureStreams
@@ -559,10 +570,8 @@ class MSFILTER_DLLPUBLIC EscherGraphicProvider
 {
     EscherGraphicProviderFlags
                             mnFlags;
-    EscherBlibEntry**       mpBlibEntrys;
-    sal_uInt32              mnBlibBufSize;
-    sal_uInt32              mnBlibEntrys;
-
+    std::vector<std::unique_ptr<EscherBlibEntry>>
+                            mvBlibEntrys;
     OUString                maBaseURI;
 
 protected:
@@ -571,35 +580,38 @@ protected:
 
 public:
 
-    sal_uInt32  GetBlibStoreContainerSize( SvStream* pMergePicStreamBSE = nullptr ) const;
+    sal_uInt32  GetBlibStoreContainerSize( SvStream const * pMergePicStreamBSE = nullptr ) const;
     void        WriteBlibStoreContainer( SvStream& rStrm, SvStream* pMergePicStreamBSE = nullptr  );
     void        WriteBlibStoreEntry(SvStream& rStrm, sal_uInt32 nBlipId, sal_uInt32 nResize);
     sal_uInt32  GetBlibID(
                     SvStream& rPicOutStream,
-                    const OString& rGraphicId,
+                    GraphicObject const & pGraphicObject,
                     const css::awt::Rectangle* pVisArea = nullptr,
                     const GraphicAttr* pGrafikAttr = nullptr,
                     const bool ooxmlExport = false
                 );
-    bool        HasGraphics() const { return mnBlibEntrys != 0; };
+    bool        HasGraphics() const { return !mvBlibEntrys.empty(); };
 
     void        SetNewBlipStreamOffset( sal_Int32 nOffset );
 
     bool        GetPrefSize( const sal_uInt32 nBlibId, Size& rSize, MapMode& rMapMode );
 
     void        SetBaseURI( const OUString& rBaseURI ) { maBaseURI = rBaseURI; };
-    const OUString& GetBaseURI() { return maBaseURI; };
+    const OUString& GetBaseURI() const { return maBaseURI; };
 
     EscherGraphicProvider( EscherGraphicProviderFlags nFlags  = EscherGraphicProviderFlags::NONE );
     virtual ~EscherGraphicProvider();
+
+    EscherGraphicProvider& operator=( EscherGraphicProvider const & ) = delete; // MSVC2015 workaround
+    EscherGraphicProvider( EscherGraphicProvider const & ) = delete; // MSVC2015 workaround
 };
 
 struct EscherShapeListEntry;
 
 class MSFILTER_DLLPUBLIC EscherSolverContainer
 {
-    ::std::vector< EscherShapeListEntry* >     maShapeList;
-    ::std::vector< EscherConnectorListEntry* > maConnectorList;
+    ::std::vector< std::unique_ptr<EscherShapeListEntry> >     maShapeList;
+    ::std::vector< std::unique_ptr<EscherConnectorListEntry> > maConnectorList;
 
 public:
 
@@ -615,15 +627,18 @@ public:
     void            AddConnector(
                         const css::uno::Reference< css::drawing::XShape > &,
                         const css::awt::Point& rA,
-                        css::uno::Reference< css::drawing::XShape > &,
+                        css::uno::Reference< css::drawing::XShape > const &,
                         const css::awt::Point& rB,
-                        css::uno::Reference< css::drawing::XShape > & rConB
+                        css::uno::Reference< css::drawing::XShape > const & rConB
                     );
 
     void            WriteSolver( SvStream& );
 
-                    EscherSolverContainer(){};
+                    EscherSolverContainer();
                     ~EscherSolverContainer();
+
+    EscherSolverContainer& operator=( EscherSolverContainer const & ) = delete; // MSVC2015 workaround
+    EscherSolverContainer( EscherSolverContainer const & ) = delete; // MSVC2015 workaround
 };
 
 
@@ -635,8 +650,7 @@ class SdrObjCustomShape;
 
 struct EscherPropSortStruct
 {
-    sal_uInt8*  pBuf;
-    sal_uInt32  nPropSize;
+    std::vector<sal_uInt8>    nProp;
     sal_uInt32  nPropValue;
     sal_uInt16  nPropId;
 };
@@ -649,12 +663,11 @@ class MSFILTER_DLLPUBLIC EscherPropertyContainer
     SvStream*               pPicOutStrm;
     tools::Rectangle*              pShapeBoundRect;
 
-    sal_uInt32              nSortCount;
-    sal_uInt32              nSortBufSize;
     sal_uInt32              nCountCount;
     sal_uInt32              nCountSize;
 
-    EscherPropSortStruct*   pSortStruct;
+    std::vector<EscherPropSortStruct>
+                            pSortStruct;
 
     bool                    bHasComplexData;
 
@@ -665,7 +678,7 @@ class MSFILTER_DLLPUBLIC EscherPropertyContainer
                     sal_uInt32 nBlibId,
                     bool bCreateCroppingAttributes
                 );
-    bool        ImplCreateEmbeddedBmp( const OString& rUniqueId );
+    bool        ImplCreateEmbeddedBmp(GraphicObject const & rGraphicObject);
 
     SAL_DLLPRIVATE explicit EscherPropertyContainer(
         EscherGraphicProvider * pGraphProv, SvStream * pPiOutStrm,
@@ -683,21 +696,26 @@ public:
                                                     // GraphicObjects are saved to PowerPoint
     ~EscherPropertyContainer();
 
-    void        AddOpt( sal_uInt16 nPropertyID, const OUString& rString );
+    void AddOpt(
+        sal_uInt16 nPropID,
+        bool bBlib,
+        sal_uInt32 nSizeReduction,
+        SvMemoryStream& rStream);
 
-    void        AddOpt(
-                    sal_uInt16 nPropertyID,
-                    sal_uInt32 nPropValue,
-                    bool bBlib = false
-                );
+    void AddOpt(
+        sal_uInt16 nPropertyID,
+        const OUString& rString);
 
-    void        AddOpt(
-                    sal_uInt16 nPropertyID,
-                    bool bBlib,
-                    sal_uInt32 nPropValue,
-                    sal_uInt8* pProp,
-                    sal_uInt32 nPropSize
-                );
+    void AddOpt(
+        sal_uInt16 nPropertyID,
+        sal_uInt32 nPropValue,
+        bool bBlib = false);
+
+    void AddOpt(
+        sal_uInt16 nPropertyID,
+        bool bBlib,
+        sal_uInt32 nPropValue,
+        const std::vector<sal_uInt8>& rProp);
 
     bool        GetOpt( sal_uInt16 nPropertyID, sal_uInt32& rPropValue ) const;
 
@@ -723,7 +741,7 @@ public:
 
     /** Creates a complex ESCHER_Prop_fillBlip containing the BLIP directly (for Excel charts). */
     void        CreateEmbeddedBitmapProperties(
-                    const OUString& rBitmapUrl,
+                    css::uno::Reference<css::awt::XBitmap> const & rxBitmap,
                     css::drawing::BitmapMode eBitmapMode
                 );
     /** Creates a complex ESCHER_Prop_fillBlip containing a hatch style (for Excel charts). */
@@ -752,7 +770,7 @@ public:
                     sal_uInt32 nFlags,
                     bool bBezier,
                     css::awt::Rectangle& rGeoRect,
-                    tools::Polygon* pPolygon = nullptr
+                    tools::Polygon const * pPolygon = nullptr
                 );
 
     static sal_uInt32 GetGradientColor(
@@ -790,11 +808,11 @@ public:
                     EscherSolverContainer& rSolver,
                     css::awt::Rectangle& rGeoRect,
                     sal_uInt16& rShapeType,
-                    sal_uInt16& rShapeFlags
+                    ShapeFlag& rShapeFlags
                 );
 
                 // Because shadow properties depends to the line and fillstyle, the CreateShadowProperties method should be called at last.
-                // It activ only when at least a FillStyle or LineStyle is set.
+                // It's active only when at least a FillStyle or LineStyle is set.
     void        CreateShadowProperties(
                     const css::uno::Reference< css::beans::XPropertySet > &
                 );
@@ -815,7 +833,7 @@ public:
     static tools::PolyPolygon  GetPolyPolygon( const css::uno::Any& rSource );
     static MSO_SPT      GetCustomShapeType(
                             const css::uno::Reference< css::drawing::XShape > & rXShape,
-                            sal_uInt32& nMirrorFlags,
+                            ShapeFlag& nMirrorFlags,
                             OUString& rShapeType,
                             bool bOOXML = false
                         );
@@ -828,7 +846,11 @@ public:
                             sal_Int32& rnArrowLength,
                             sal_Int32& rnArrowWidth
                         );
-    static bool         IsDefaultObject( SdrObjCustomShape* pCustoShape, const MSO_SPT eShapeType );
+
+    static bool IsDefaultObject(
+        const SdrObjCustomShape& rSdrObjCustomShape,
+        const MSO_SPT eShapeType);
+
     static void         LookForPolarHandles(
                             const MSO_SPT eShapeType,
                             sal_Int32& nAdjustmentsWhichNeedsToBeConverted
@@ -841,7 +863,7 @@ class MSFILTER_DLLPUBLIC EscherPersistTable
 {
 
 public:
-    ::std::vector< EscherPersistEntry* > maPersistTable;
+    ::std::vector< std::unique_ptr<EscherPersistEntry> > maPersistTable;
 
     bool        PtIsID( sal_uInt32 nID );
     void        PtInsert( sal_uInt32 nID, sal_uInt32 nOfs );
@@ -852,6 +874,9 @@ public:
 
                 EscherPersistTable();
     virtual     ~EscherPersistTable();
+
+    EscherPersistTable& operator=( EscherPersistTable const & ) = delete; // MSVC2015 workaround
+    EscherPersistTable( EscherPersistTable const & ) = delete; // MSVC2015 workaround
 };
 
 
@@ -894,7 +919,7 @@ public:
     {
         mpHyperlinkRecord.reset( pStream );
     }
-    const std::unique_ptr< SvMemoryStream >&  getHyperlinkRecord() { return mpHyperlinkRecord; }
+    const std::unique_ptr< SvMemoryStream >&  getHyperlinkRecord() const { return mpHyperlinkRecord; }
 };
 
 class EscherExHostAppData
@@ -952,7 +977,7 @@ public:
     /** Creates and returns a new shape identifier, updates the internal shape
         counters and registers the identifier in the DGG cluster table.
         @param nDrawingId  Drawing identifier has to be passed to be able to
-            generate shape identifiers for multiple drawings simultaniously. */
+            generate shape identifiers for multiple drawings simultaneously. */
     sal_uInt32          GenerateShapeId( sal_uInt32 nDrawingId, bool bIsInSpgr );
     /** Returns the number of shapes in the current drawing, based on number of
         calls to the GenerateShapeId() function. */
@@ -1000,7 +1025,6 @@ private:
         sal_uInt32          mnNextShapeId;      /// Next free shape identifier in this cluster.
         explicit     ClusterEntry( sal_uInt32 nDrawingId ) : mnDrawingId( nDrawingId ), mnNextShapeId( 0 ) {}
     };
-    typedef ::std::vector< ClusterEntry > ClusterTable;
 
     struct DrawingInfo
     {
@@ -1011,7 +1035,7 @@ private:
     };
     typedef ::std::vector< DrawingInfo > DrawingInfoVector;
 
-    ClusterTable        maClusterTable;     /// List with cluster IDs (used object IDs in drawings).
+    std::vector< ClusterEntry > maClusterTable;     /// List with cluster IDs (used object IDs in drawings).
     DrawingInfoVector   maDrawingInfos;     /// Data about all used drawings.
     SvStream*           mpPicStrm;          /// Cached result of ImplQueryPictureStream().
     bool                mbHasDggCont;       /// True = the DGGCONTAINER has been initialized.
@@ -1053,7 +1077,7 @@ public:
 
     /** Creates and returns a new shape identifier, updates the internal shape
         counters and registers the identifier in the DGG cluster table. */
-    sal_uInt32   GenerateShapeId() { return mxGlobal->GenerateShapeId( mnCurrentDg, mbEscherSpgr ); }
+    virtual sal_uInt32   GenerateShapeId() { return mxGlobal->GenerateShapeId( mnCurrentDg, mbEscherSpgr ); }
 
     /** Returns the graphic provider from the global object that has been
         passed to the constructor.
@@ -1097,14 +1121,14 @@ public:
     void            InsertAtPersistOffset( sal_uInt32 nKey, sal_uInt32 nValue );   // nValue is being inserted into the Stream where it's appropriate (overwrite mode), without that the
                                                                                     // current StreamPosition changes
     void            SetEditAs( const OUString& rEditAs );
-    const OUString& GetEditAs() { return mEditAs; }
+    const OUString& GetEditAs() const { return mEditAs; }
     SvStream&       GetStream() const   { return *mpOutStrm; }
     sal_uLong       GetStreamPos() const    { return mpOutStrm->Tell(); }
 
                 // features during the creation of the following Containers:
 
-                //      ESCHER_DggContainer:    a EscherDgg Atom is automatically being created and managed
-                //      ESCHER_DgContainer:     a EscherDg Atom is automatically being created and managed
+                //      ESCHER_DggContainer:    an EscherDgg Atom is automatically being created and managed
+                //      ESCHER_DgContainer:     an EscherDg Atom is automatically being created and managed
                 //      ESCHER_SpgrContainer:
                 //      ESCHER_SpContainer:
 
@@ -1125,12 +1149,12 @@ public:
     virtual void LeaveGroup();
 
                 // a ESCHER_Sp is being written ( a ESCHER_DgContainer has to be opened for this purpose!)
-    virtual void AddShape( sal_uInt32 nShpInstance, sal_uInt32 nFlagIds, sal_uInt32 nShapeID = 0 );
+    virtual void AddShape( sal_uInt32 nShpInstance, ShapeFlag nFlagIds, sal_uInt32 nShapeID = 0 );
 
     virtual void Commit( EscherPropertyContainer& rProps, const tools::Rectangle& rRect);
 
     static sal_uInt32  GetColor( const sal_uInt32 nColor );
-    static sal_uInt32  GetColor( const Color& rColor, bool bSwap );
+    static sal_uInt32  GetColor( const Color& rColor );
 
                 // ...Sdr... implemented in eschesdo.cxx
 
@@ -1180,7 +1204,7 @@ public:
 
                 /// Called if an ESCHER_Prop_lTxid shall be written
     virtual sal_uInt32  QueryTextID( const css::uno::Reference< css::drawing::XShape >&, sal_uInt32 nShapeId );
-            // add an dummy rectangle shape into the escher stream
+            // add a dummy rectangle shape into the escher stream
         sal_uInt32  AddDummyShape();
 
     static const SdrObject* GetSdrObject( const css::uno::Reference< css::drawing::XShape >& rXShape );

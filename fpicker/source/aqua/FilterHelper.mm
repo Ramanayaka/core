@@ -17,7 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <algorithm>
 #include <osl/mutex.hxx>
@@ -31,10 +32,10 @@
 
 namespace {
 
-void fillSuffixList(OUStringList& aSuffixList, const ::rtl::OUString& suffixString) {
+void fillSuffixList(OUStringList& aSuffixList, const OUString& suffixString) {
     sal_Int32 nIndex = 0;
     do {
-        rtl::OUString aToken = suffixString.getToken( 0, ';', nIndex );
+        OUString aToken = suffixString.getToken( 0, ';', nIndex );
         aSuffixList.push_back(aToken.copy(1));
     } while ( nIndex >= 0 );
 }
@@ -45,7 +46,7 @@ void fillSuffixList(OUStringList& aSuffixList, const ::rtl::OUString& suffixStri
 
 #pragma mark FilterEntry
 
-FilterEntry::FilterEntry( const rtl::OUString& _rTitle, const UnoFilterList& _rSubFilters )
+FilterEntry::FilterEntry( const OUString& _rTitle, const UnoFilterList& _rSubFilters )
 :m_sTitle( _rTitle )
 ,m_aSubFilters( _rSubFilters )
 {
@@ -70,13 +71,13 @@ sal_Int32 FilterEntry::getSubFilters( UnoFilterList& _rSubFilterList )
 
 #pragma mark statics
 static bool
-isFilterString( const rtl::OUString& rFilterString, const char *pMatch )
+isFilterString( const OUString& rFilterString, const char *pMatch )
 {
     sal_Int32 nIndex = 0;
-    rtl::OUString aToken;
+    OUString aToken;
     bool bIsFilter = true;
 
-    rtl::OUString aMatch(rtl::OUString::createFromAscii(pMatch));
+    OUString aMatch(OUString::createFromAscii(pMatch));
 
     do
     {
@@ -94,11 +95,11 @@ isFilterString( const rtl::OUString& rFilterString, const char *pMatch )
 
 
 
-static rtl::OUString
-shrinkFilterName( const rtl::OUString& aFilterName, bool bAllowNoStar = false )
+static OUString
+shrinkFilterName( const OUString& aFilterName, bool bAllowNoStar = false )
 {
     sal_Int32 nBracketEnd = -1;
-    rtl::OUString aRealName(aFilterName);
+    OUString aRealName(aFilterName);
 
     for( sal_Int32 i = aRealName.getLength() - 1; i > 0; i-- )
     {
@@ -110,11 +111,11 @@ shrinkFilterName( const rtl::OUString& aFilterName, bool bAllowNoStar = false )
             if( nBracketEnd <= 0 )
                 continue;
             if( isFilterString( aFilterName.copy( i + 1, nBracketLen - 1 ), "*." ) )
-                aRealName = aRealName.replaceAt( i, nBracketLen + 1, rtl::OUString() );
+                aRealName = aRealName.replaceAt( i, nBracketLen + 1, OUString() );
             else if (bAllowNoStar)
             {
                 if( isFilterString( aFilterName.copy( i + 1, nBracketLen - 1 ), ".") )
-                    aRealName = aRealName.replaceAt( i, nBracketLen + 1, rtl::OUString() );
+                    aRealName = aRealName.replaceAt( i, nBracketLen + 1, OUString() );
             }
         }
     }
@@ -128,10 +129,10 @@ namespace {
     struct FilterTitleMatch
     {
 protected:
-        const rtl::OUString rTitle;
+        const OUString rTitle;
 
 public:
-        FilterTitleMatch( const rtl::OUString& _rTitle ) : rTitle( _rTitle ) { }
+        FilterTitleMatch( const OUString& _rTitle ) : rTitle( _rTitle ) { }
 
 
         bool operator () ( const FilterEntry& _rEntry )
@@ -139,12 +140,12 @@ public:
             bool bMatch;
             if( !_rEntry.hasSubFilters() ) {
                 //first try the complete filter name
-                rtl::OUString title = _rEntry.getTitle();
+                OUString title = _rEntry.getTitle();
                 bMatch = title.equals(rTitle);
                 if (!bMatch) {
                     //we didn't find a match using the full name, let's give it another
                     //try using the shrunk version
-                    rtl::OUString aShrunkName = shrinkFilterName( _rEntry.getTitle() ).trim();
+                    OUString aShrunkName = shrinkFilterName( _rEntry.getTitle() ).trim();
                     bMatch = aShrunkName.equals(rTitle);
                 }
             }
@@ -160,7 +161,7 @@ public:
 
         bool operator () ( const UnoFilterEntry& _rEntry )
         {
-            rtl::OUString aShrunkName = shrinkFilterName( _rEntry.First );
+            OUString aShrunkName = shrinkFilterName( _rEntry.First );
             bool retVal = aShrunkName.equals(rTitle);
             return retVal;
         }
@@ -183,7 +184,7 @@ FilterHelper::~FilterHelper()
 
     if (nullptr != m_pFilterNames) {
         //we called retain when we added the strings to the list, so we should release them now
-        for (NSStringList::iterator iter = m_pFilterNames->begin(); iter != m_pFilterNames->end(); iter++) {
+        for (NSStringList::iterator iter = m_pFilterNames->begin(); iter != m_pFilterNames->end(); ++iter) {
             [*iter release];
         }
         delete m_pFilterNames;
@@ -193,7 +194,7 @@ FilterHelper::~FilterHelper()
 }
 
 
-bool FilterHelper::FilterNameExists( const rtl::OUString& rTitle )
+bool FilterHelper::FilterNameExists( const OUString& rTitle )
 {
     bool bRet = false;
 
@@ -228,7 +229,7 @@ bool FilterHelper::FilterNameExists( const UnoFilterList& _rGroupedFilters )
 }
 
 
-void FilterHelper::ensureFilterList( const ::rtl::OUString& _rInitialCurrentFilter )
+void FilterHelper::ensureFilterList( const OUString& _rInitialCurrentFilter )
 {
     if( nullptr == m_pFilterList )
     {
@@ -239,7 +240,7 @@ void FilterHelper::ensureFilterList( const ::rtl::OUString& _rInitialCurrentFilt
     }
 }
 
-void FilterHelper::SetCurFilter( const rtl::OUString& rFilter )
+void FilterHelper::SetCurFilter( const OUString& rFilter )
 {
     SolarMutexGuard aGuard;
 
@@ -259,7 +260,7 @@ void FilterHelper::SetFilters()
     }
 }
 
-void FilterHelper::appendFilter(const ::rtl::OUString& aTitle, const ::rtl::OUString& aFilterString)
+void FilterHelper::appendFilter(const OUString& aTitle, const OUString& aFilterString)
 {
     SolarMutexGuard aGuard;
 
@@ -276,19 +277,19 @@ void FilterHelper::appendFilter(const ::rtl::OUString& aTitle, const ::rtl::OUSt
     m_pFilterList->push_back(FilterEntry( aTitle, suffixList ) );
 }
 
-void FilterHelper::setCurrentFilter( const ::rtl::OUString& aTitle )
+void FilterHelper::setCurrentFilter( const OUString& aTitle )
 {
     SetCurFilter(aTitle);
 }
 
-::rtl::OUString SAL_CALL FilterHelper::getCurrentFilter(  )
+OUString FilterHelper::getCurrentFilter(  )
 {
-    ::rtl::OUString sReturn = (m_aCurrentFilter);
+    OUString sReturn = m_aCurrentFilter;
 
     return sReturn;
 }
 
-void SAL_CALL FilterHelper::appendFilterGroup( const ::rtl::OUString& /* sGroupTitle */, const css::uno::Sequence< css::beans::StringPair >& aFilters )
+void FilterHelper::appendFilterGroup( const OUString& /* sGroupTitle */, const css::uno::Sequence< css::beans::StringPair >& aFilters )
 {
     SolarMutexGuard aGuard;
 
@@ -296,7 +297,7 @@ void SAL_CALL FilterHelper::appendFilterGroup( const ::rtl::OUString& /* sGroupT
     bool bPrependSeparator = m_pFilterList != nullptr;
 
     // ensure that we have a filter list
-    ::rtl::OUString sInitialCurrentFilter;
+    OUString sInitialCurrentFilter;
     if( aFilters.getLength() > 0)
         sInitialCurrentFilter = aFilters[0].First;
     ensureFilterList( sInitialCurrentFilter );
@@ -328,7 +329,7 @@ bool FilterHelper::filenameMatchesFilter(NSString* sFilename)
         NSObject* pType = [pAttribs objectForKey: NSFileType];
         if( pType && [pType isKindOfClass: [NSString class]] )
         {
-            NSString* pT = (NSString*)pType;
+            NSString* pT = static_cast<NSString*>(pType);
             if( [pT isEqualToString: NSFileTypeDirectory]    ||
                 [pT isEqualToString: NSFileTypeSymbolicLink] )
                 return true;
@@ -344,8 +345,8 @@ bool FilterHelper::filenameMatchesFilter(NSString* sFilename)
     OUStringList suffixList = filter->getFilterSuffixList();
 
     {
-        rtl::OUString aName = [sFilename OUString];
-        for(OUStringList::iterator iter = suffixList.begin(); iter != suffixList.end(); iter++) {
+        OUString aName = [sFilename OUString];
+        for(OUStringList::iterator iter = suffixList.begin(); iter != suffixList.end(); ++iter) {
             if (*iter == ".*" || aName.endsWithIgnoreAsciiCase(*iter)) {
                 return true;
             }
@@ -377,7 +378,7 @@ NSStringList* FilterHelper::getFilterNames()
     if (nullptr == m_pFilterNames) {
         //build filter names list
         m_pFilterNames = new NSStringList;
-        for (FilterList::iterator iter = m_pFilterList->begin(); iter != m_pFilterList->end(); iter++) {
+        for (FilterList::iterator iter = m_pFilterList->begin(); iter != m_pFilterList->end(); ++iter) {
             m_pFilterNames->push_back([[NSString stringWithOUString:iter->getTitle()] retain]);
         }
     }
@@ -399,8 +400,8 @@ int FilterHelper::getCurrentFilterIndex()
     int result = 0;//default to first filter
     if (m_aCurrentFilter.getLength() > 0) {
         int i = 0;
-        for (FilterList::iterator iter = m_pFilterList->begin(); iter != m_pFilterList->end(); iter++, i++) {
-            rtl::OUString aTitle = iter->getTitle();
+        for (FilterList::iterator iter = m_pFilterList->begin(); iter != m_pFilterList->end(); ++iter, ++i) {
+            OUString aTitle = iter->getTitle();
             if (m_aCurrentFilter.equals(aTitle)) {
                 result = i;
                 break;
@@ -421,8 +422,8 @@ OUStringList FilterHelper::getCurrentFilterSuffixList()
 {
     OUStringList retVal;
     if (m_aCurrentFilter.getLength() > 0) {
-        for (FilterList::iterator iter = m_pFilterList->begin(); iter != m_pFilterList->end(); iter++) {
-            rtl::OUString aTitle = iter->getTitle();
+        for (FilterList::iterator iter = m_pFilterList->begin(); iter != m_pFilterList->end(); ++iter) {
+            OUString aTitle = iter->getTitle();
             if (m_aCurrentFilter.equals(aTitle)) {
                 retVal = iter->getFilterSuffixList();
                 break;

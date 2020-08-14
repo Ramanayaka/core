@@ -19,57 +19,41 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
 #include <sfx2/objface.hxx>
 #include <svl/whiter.hxx>
-#include <sfx2/sfx.hrc>
 #include <sfx2/viewsh.hxx>
 #include <svx/svxids.hrc>
+#include <unotools/resmgr.hxx>
 #include <vcl/virdev.hxx>
 #include <unotools/syslocale.hxx>
-#include "smmod.hxx"
-#include "symbol.hxx"
+#include <smmod.hxx>
 #include "cfgitem.hxx"
-#include "dialog.hxx"
-#include "edit.hxx"
-#include "view.hxx"
-#include "starmath.hrc"
-#include "svx/modctrl.hxx"
+#include <dialog.hxx>
+#include <edit.hxx>
+#include <view.hxx>
+#include <smmod.hrc>
+#include <starmath.hrc>
+#include <svx/modctrl.hxx>
+#include <svtools/colorcfg.hxx>
 
 
-#define SmModule
-#include "smslots.hxx"
+#define ShellClass_SmModule
+#include <smslots.hxx>
 
-OUString SmResId(sal_uInt16 nId)
+OUString SmResId(const char* pId)
 {
-    return ResId(nId, *SM_MOD()->GetResMgr());
+    return Translate::get(pId, SM_MOD()->GetResLocale());
 }
 
-SmLocalizedSymbolData::SmLocalizedSymbolData() :
-    aUiSymbolNamesAry       (ResId(RID_UI_SYMBOL_NAMES, *SM_MOD()->GetResMgr())),
-    aExportSymbolNamesAry   (ResId(RID_EXPORT_SYMBOL_NAMES, *SM_MOD()->GetResMgr())),
-    aUiSymbolSetNamesAry    (ResId(RID_UI_SYMBOLSET_NAMES, *SM_MOD()->GetResMgr())),
-    aExportSymbolSetNamesAry(ResId(RID_EXPORT_SYMBOLSET_NAMES, *SM_MOD()->GetResMgr()))
-{
-}
-
-SmLocalizedSymbolData::~SmLocalizedSymbolData()
-{
-}
-
-const OUString SmLocalizedSymbolData::GetUiSymbolName( const OUString &rExportName )
+OUString SmLocalizedSymbolData::GetUiSymbolName( const OUString &rExportName )
 {
     OUString aRes;
 
-    const SmLocalizedSymbolData &rData = SM_MOD()->GetLocSymbolData();
-    const ResStringArray &rUiNames = rData.GetUiSymbolNamesArray();
-    const ResStringArray &rExportNames = rData.GetExportSymbolNamesArray();
-    sal_uInt32 nCount = rExportNames.Count();
-    for (sal_uInt32 i = 0;  i < nCount;  ++i)
+    for (size_t i = 0; i < SAL_N_ELEMENTS(RID_UI_SYMBOL_NAMES); ++i)
     {
-        if (rExportNames.GetString(i).equals(rExportName))
+        if (rExportName.equalsAscii(strchr(RID_UI_SYMBOL_NAMES[i], '\004') + 1))
         {
-            aRes = rUiNames.GetString(i);
+            aRes = SmResId(RID_UI_SYMBOL_NAMES[i]);
             break;
         }
     }
@@ -77,19 +61,16 @@ const OUString SmLocalizedSymbolData::GetUiSymbolName( const OUString &rExportNa
     return aRes;
 }
 
-const OUString SmLocalizedSymbolData::GetExportSymbolName( const OUString &rUiName )
+OUString SmLocalizedSymbolData::GetExportSymbolName( const OUString &rUiName )
 {
     OUString aRes;
 
-    const SmLocalizedSymbolData &rData = SM_MOD()->GetLocSymbolData();
-    const ResStringArray &rUiNames = rData.GetUiSymbolNamesArray();
-    const ResStringArray &rExportNames = rData.GetExportSymbolNamesArray();
-    sal_uInt32 nCount = rUiNames.Count();
-    for (sal_uInt32 i = 0;  i < nCount;  ++i)
+    for (size_t i = 0; i < SAL_N_ELEMENTS(RID_UI_SYMBOL_NAMES); ++i)
     {
-        if (rUiNames.GetString(i).equals(rUiName))
+        if (rUiName == SmResId(RID_UI_SYMBOL_NAMES[i]))
         {
-            aRes = rExportNames.GetString(i);
+            const char *pKey = strchr(RID_UI_SYMBOL_NAMES[i], '\004') + 1;
+            aRes = OUString(pKey, strlen(pKey), RTL_TEXTENCODING_UTF8);
             break;
         }
     }
@@ -97,19 +78,15 @@ const OUString SmLocalizedSymbolData::GetExportSymbolName( const OUString &rUiNa
     return aRes;
 }
 
-const OUString SmLocalizedSymbolData::GetUiSymbolSetName( const OUString &rExportName )
+OUString SmLocalizedSymbolData::GetUiSymbolSetName( const OUString &rExportName )
 {
     OUString aRes;
 
-    const SmLocalizedSymbolData &rData = SM_MOD()->GetLocSymbolData();
-    const ResStringArray &rUiNames = rData.GetUiSymbolSetNamesArray();
-    const ResStringArray &rExportNames = rData.GetExportSymbolSetNamesArray();
-    sal_uInt32 nCount = rExportNames.Count();
-    for (sal_uInt32 i = 0;  i < nCount;  ++i)
+    for (size_t i = 0; i < SAL_N_ELEMENTS(RID_UI_SYMBOLSET_NAMES); ++i)
     {
-        if (rExportNames.GetString(i).equals(rExportName))
+        if (rExportName.equalsAscii(strchr(RID_UI_SYMBOLSET_NAMES[i], '\004') + 1))
         {
-            aRes = rUiNames.GetString(i);
+            aRes = SmResId(RID_UI_SYMBOLSET_NAMES[i]);
             break;
         }
     }
@@ -117,19 +94,16 @@ const OUString SmLocalizedSymbolData::GetUiSymbolSetName( const OUString &rExpor
     return aRes;
 }
 
-const OUString SmLocalizedSymbolData::GetExportSymbolSetName( const OUString &rUiName )
+OUString SmLocalizedSymbolData::GetExportSymbolSetName( const OUString &rUiName )
 {
     OUString aRes;
 
-    const SmLocalizedSymbolData &rData = SM_MOD()->GetLocSymbolData();
-    const ResStringArray &rUiNames = rData.GetUiSymbolSetNamesArray();
-    const ResStringArray &rExportNames = rData.GetExportSymbolSetNamesArray();
-    sal_uInt32 nCount = rUiNames.Count();
-    for (sal_uInt32 i = 0;  i < nCount;  ++i)
+    for (size_t i = 0; i < SAL_N_ELEMENTS(RID_UI_SYMBOLSET_NAMES); ++i)
     {
-        if (rUiNames.GetString(i).equals(rUiName))
+        if (rUiName == SmResId(RID_UI_SYMBOLSET_NAMES[i]))
         {
-            aRes = rExportNames.GetString(i);
+            const char *pKey = strchr(RID_UI_SYMBOLSET_NAMES[i], '\004') + 1;
+            aRes = OUString(pKey, strlen(pKey), RTL_TEXTENCODING_UTF8);
             break;
         }
     }
@@ -141,11 +115,11 @@ SFX_IMPL_INTERFACE(SmModule, SfxModule)
 
 void SmModule::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterStatusBar(RID_STATUSBAR);
+    GetStaticInterface()->RegisterStatusBar(StatusBarId::MathStatusBar);
 }
 
-SmModule::SmModule(SfxObjectFactory* pObjFact) :
-    SfxModule(ResMgr::CreateResMgr("sm"), {pObjFact})
+SmModule::SmModule(SfxObjectFactory* pObjFact)
+    : SfxModule("sm", {pObjFact})
 {
     SetName("StarMath");
 
@@ -159,38 +133,31 @@ SmModule::~SmModule()
     mpVirtualDev.disposeAndClear();
 }
 
-void SmModule::ApplyColorConfigValues( const svtools::ColorConfig &rColorCfg )
-{
-    //invalidate all graphic and edit windows
-    SfxViewShell* pViewShell = SfxViewShell::GetFirst();
-    while (pViewShell)
-    {
-        if ((dynamic_cast<const SmViewShell *>(pViewShell) != nullptr))
-        {
-            SmViewShell *pSmView = static_cast<SmViewShell *>(pViewShell);
-            pSmView->GetGraphicWindow().ApplyColorConfigValues( rColorCfg );
-            SmEditWindow *pEditWin = pSmView->GetEditWindow();
-            if (pEditWin)
-                pEditWin->ApplyColorConfigValues( rColorCfg );
-        }
-        pViewShell = SfxViewShell::GetNext( *pViewShell );
-    }
-}
-
 svtools::ColorConfig & SmModule::GetColorConfig()
 {
     if(!mpColorConfig)
     {
         mpColorConfig.reset(new svtools::ColorConfig);
-        ApplyColorConfigValues( *mpColorConfig );
         mpColorConfig->AddListener(this);
     }
     return *mpColorConfig;
 }
 
-void SmModule::ConfigurationChanged( utl::ConfigurationBroadcaster*, ConfigurationHints )
+void SmModule::ConfigurationChanged(utl::ConfigurationBroadcaster* pBrdCst, ConfigurationHints)
 {
-    ApplyColorConfigValues(*mpColorConfig);
+    if (pBrdCst != mpColorConfig.get())
+        return;
+
+    SfxViewShell* pViewShell = SfxViewShell::GetFirst();
+    while (pViewShell)
+    {
+        // FIXME: What if pViewShell is for a different document,
+        // but OTOH Math is presumably never used through
+        // LibreOfficeKit, so maybe an irrelevant concern?
+        if (dynamic_cast<const SmViewShell *>(pViewShell) != nullptr)
+            pViewShell->GetWindow()->Invalidate();
+        pViewShell = SfxViewShell::GetNext(*pViewShell);
+    }
 }
 
 SmMathConfig * SmModule::GetConfig()
@@ -203,13 +170,6 @@ SmMathConfig * SmModule::GetConfig()
 SmSymbolManager & SmModule::GetSymbolManager()
 {
     return GetConfig()->GetSymbolManager();
-}
-
-SmLocalizedSymbolData & SmModule::GetLocSymbolData()
-{
-    if (!mpLocSymbolData)
-        mpLocSymbolData.reset(new SmLocalizedSymbolData);
-    return *mpLocSymbolData;
 }
 
 const SvtSysLocale& SmModule::GetSysLocale()
@@ -247,14 +207,14 @@ std::unique_ptr<SfxItemSet> SmModule::CreateItemSet( sal_uInt16 nId )
     std::unique_ptr<SfxItemSet> pRet;
     if(nId == SID_SM_EDITOPTIONS)
     {
-        pRet = o3tl::make_unique<SfxItemSet>(
+        pRet = std::make_unique<SfxItemSet>(
             GetPool(),
             svl::Items< //TP_SMPRINT
                 SID_PRINTTITLE, SID_PRINTZOOM,
                 SID_NO_RIGHT_SPACES, SID_SAVE_ONLY_USED_SYMBOLS,
                 SID_AUTO_CLOSE_BRACKETS, SID_AUTO_CLOSE_BRACKETS>{});
 
-            GetConfig()->ConfigToItemSet(*pRet);
+        GetConfig()->ConfigToItemSet(*pRet);
     }
     return pRet;
 }
@@ -267,13 +227,12 @@ void SmModule::ApplyItemSet( sal_uInt16 nId, const SfxItemSet& rSet )
     }
 }
 
-VclPtr<SfxTabPage> SmModule::CreateTabPage( sal_uInt16 nId, vcl::Window* pParent, const SfxItemSet& rSet )
+std::unique_ptr<SfxTabPage> SmModule::CreateTabPage( sal_uInt16 nId, weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet )
 {
-    VclPtr<SfxTabPage> pRet;
-    if(nId == SID_SM_TP_PRINTOPTIONS)
-        pRet = SmPrintOptionsTabPage::Create( pParent, rSet );
-    return pRet;
-
+    std::unique_ptr<SfxTabPage> xRet;
+    if (nId == SID_SM_TP_PRINTOPTIONS)
+        xRet = SmPrintOptionsTabPage::Create(pPage, pController, rSet);
+    return xRet;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

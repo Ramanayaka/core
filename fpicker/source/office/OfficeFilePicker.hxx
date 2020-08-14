@@ -30,19 +30,18 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 
 
-#include <tools/wintypes.hxx>
 #include "commonpicker.hxx"
 #include "pickercallbacks.hxx"
 
-#include <list>
+#include <vector>
 
 class Dialog;
 struct FilterEntry;
 struct ElementEntry_Impl;
 enum class PickerFlags;
 
-typedef ::std::list< FilterEntry >             FilterList;     // can be maintained more effectively
-typedef ::std::list < ElementEntry_Impl >      ElementList;
+typedef ::std::vector< FilterEntry >           FilterList;     // can be maintained more effectively
+typedef ::std::vector< ElementEntry_Impl >     ElementList;
 
 typedef css::beans::StringPair                 UnoFilterEntry;
 typedef css::uno::Sequence< UnoFilterEntry >   UnoFilterList;  // can be transported more effectively
@@ -61,8 +60,10 @@ class SvtFilePicker :public SvtFilePicker_Base
                     ,public ::svt::IFilePickerListener
 {
 protected:
-    FilterList*         m_pFilterList;
-    ElementList*        m_pElemList;
+    std::unique_ptr<FilterList>
+                        m_pFilterList;
+    std::unique_ptr<ElementList>
+                        m_pElemList;
 
     bool                m_bMultiSelection;
     sal_Int16           m_nServiceType;
@@ -74,7 +75,7 @@ protected:
 
     OUString            m_aStandardDir;
     css::uno::Sequence< OUString >
-                        m_aBlackList;
+                        m_aDenyList;
 
     css::uno::Reference< css::ui::dialogs::XFilePickerListener >
                         m_xListener;
@@ -188,21 +189,11 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL
                                     getSupportedServiceNames() override;
 
-    /* Helper for XServiceInfo */
-    static css::uno::Sequence< OUString >
-                                    impl_getStaticSupportedServiceNames();
-    static OUString                 impl_getStaticImplementationName();
-
-    /* Helper for registry */
-    /// @throws css::uno::Exception
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL impl_createInstance (
-        const css::uno::Reference< css::uno::XComponentContext >& rxContext );
-
 protected:
 
     // OCommonPicker overridables
 
-    virtual VclPtr<SvtFileDialog_Base> implCreateDialog( vcl::Window* _pParent ) override;
+    virtual std::shared_ptr<SvtFileDialog_Base> implCreateDialog( weld::Window* pParent ) override;
     virtual sal_Int16       implExecutePicker( ) override;
     virtual bool            implHandleInitializationArgument(
                                 const OUString& _rName,
@@ -210,7 +201,7 @@ protected:
                             ) override;
 
 protected:
-    PickerFlags         getPickerFlags();
+    PickerFlags         getPickerFlags() const;
     virtual void        notify( sal_Int16 _nEventId, sal_Int16 _nControlId ) override;
 
     bool                FilterNameExists( const OUString& rTitle );
@@ -220,7 +211,7 @@ protected:
 
     void                prepareExecute( );
 
-    DECL_LINK(    DialogClosedHdl, Dialog&, void );
+    void                DialogClosedHdl(sal_Int32 nResult);
 };
 
 // SvtRemoteFilePicker
@@ -230,7 +221,7 @@ class SvtRemoteFilePicker : public SvtFilePicker
 public:
     SvtRemoteFilePicker();
 
-    virtual VclPtr<SvtFileDialog_Base> implCreateDialog( vcl::Window* _pParent ) override;
+    virtual std::shared_ptr<SvtFileDialog_Base> implCreateDialog( weld::Window* pParent ) override;
 
     // disambiguate XInterface
 
@@ -245,15 +236,6 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL
                                     getSupportedServiceNames() override;
-
-    /* Helper for XServiceInfo */
-    static css::uno::Sequence< OUString > impl_getStaticSupportedServiceNames();
-    static OUString impl_getStaticImplementationName();
-
-    /* Helper for registry */
-    /// @throws css::uno::Exception
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL impl_createInstance (
-        const css::uno::Reference< css::uno::XComponentContext >& rxContext );
 };
 
 #endif // INCLUDED_FPICKER_SOURCE_OFFICE_OFFICEFILEPICKER_HXX

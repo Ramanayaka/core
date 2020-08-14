@@ -18,7 +18,6 @@
  */
 #include "vbasection.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include "vbapagesetup.hxx"
 #include "vbaheadersfooters.hxx"
 
@@ -68,18 +67,16 @@ SwVbaSection::PageSetup( )
 OUString
 SwVbaSection::getServiceImplName()
 {
-    return OUString("SwVbaSection");
+    return "SwVbaSection";
 }
 
 uno::Sequence< OUString >
 SwVbaSection::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Section";
-    }
+        "ooo.vba.word.Section"
+    };
     return aServiceNames;
 }
 

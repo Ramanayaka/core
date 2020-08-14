@@ -7,12 +7,12 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-# See cui-dailog-test.txt for explanations
+# See cui-dialogs-test.txt for explanations
 
 # covering f to n
 
+cui/ui/eventsconfigpage.ui
 cui/ui/fmsearchdialog.ui
-cui/ui/formatcellsdialog.ui
 cui/ui/galleryapplyprogress.ui
 cui/ui/galleryfilespage.ui
 cui/ui/gallerygeneralpage.ui
@@ -49,7 +49,6 @@ cui/ui/macroassigndialog.ui
 cui/ui/macroassignpage.ui
 cui/ui/macroselectordialog.ui
 cui/ui/menuassignpage.ui
-cui/ui/messbox.ui
 cui/ui/mosaicdialog.ui
 cui/ui/movemenu.ui
 cui/ui/multipathdialog.ui

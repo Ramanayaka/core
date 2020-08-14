@@ -17,23 +17,33 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/layout.hxx>
+#include <vcl/errinf.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <basic/basmgr.hxx>
 #include <basic/sbmeth.hxx>
 #include <unotools/moduleoptions.hxx>
 
 #include <iderdll.hxx>
-#include <iderdll2.hxx>
-#include <basdoc.hxx>
-#include <basidesh.hrc>
+#include "iderdll2.hxx"
+#include "basdoc.hxx"
+#include <iderid.hxx>
+#include <strings.hrc>
 
-#include <baside2.hxx>
 #include <baside3.hxx>
+#include <basidesh.hxx>
+#include <basobj.hxx>
 #include <localizationmgr.hxx>
-#include "dlged.hxx"
+#include <dlged.hxx>
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
+#include <sfx2/app.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/sfxsids.hrc>
 #include <sfx2/request.hxx>
+#include <sfx2/viewfrm.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+#include <tools/debug.hxx>
 
 namespace basctl
 {
@@ -44,9 +54,9 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::container;
 
 extern "C" {
-    SAL_DLLPUBLIC_EXPORT long basicide_handle_basic_error( void* pPtr )
+    SAL_DLLPUBLIC_EXPORT long basicide_handle_basic_error( void const * pPtr )
     {
-        return HandleBasicError( static_cast<StarBASIC*>(pPtr) );
+        return HandleBasicError( static_cast<StarBASIC const *>(pPtr) );
     }
 }
 
@@ -64,7 +74,7 @@ SbMethod* CreateMacro( SbModule* pModule, const OUString& rMacroName )
     OUString aMacroName( rMacroName );
     if ( aMacroName.isEmpty() )
     {
-        if ( !pModule->GetMethods()->Count() )
+        if ( !pModule->GetMethods()->Count32() )
             aMacroName = "Main" ;
         else
         {
@@ -109,8 +119,8 @@ SbMethod* CreateMacro( SbModule* pModule, const OUString& rMacroName )
 
     if (aDocument.isValid())
     {
-        OUString aLibName = pBasic->GetName();
-        OUString aModName = pModule->GetName();
+        const OUString& aLibName = pBasic->GetName();
+        const OUString& aModName = pModule->GetName();
         OSL_VERIFY( aDocument.updateModule( aLibName, aModName, aOUSource ) );
     }
 
@@ -128,7 +138,7 @@ SbMethod* CreateMacro( SbModule* pModule, const OUString& rMacroName )
 }
 
 bool RenameDialog (
-    vcl::Window* pErrorParent,
+    weld::Widget* pErrorParent,
     ScriptDocument const& rDocument,
     OUString const& rLibName,
     OUString const& rOldName,
@@ -143,16 +153,18 @@ bool RenameDialog (
 
     if ( rDocument.hasDialog( rLibName, rNewName ) )
     {
-        ScopedVclPtrInstance< MessageDialog > aError(pErrorParent, IDEResId(RID_STR_SBXNAMEALLREADYUSED2));
-        aError->Execute();
+        std::unique_ptr<weld::MessageDialog> xError(Application::CreateMessageDialog(pErrorParent,
+                                                    VclMessageType::Warning, VclButtonsType::Ok, IDEResId(RID_STR_SBXNAMEALLREADYUSED2)));
+        xError->run();
         return false;
     }
 
     // #i74440
     if ( rNewName.isEmpty() )
     {
-        ScopedVclPtrInstance< MessageDialog > aError(pErrorParent, IDEResId(RID_STR_BADSBXNAME));
-        aError->Execute();
+        std::unique_ptr<weld::MessageDialog> xError(Application::CreateMessageDialog(pErrorParent,
+                                                    VclMessageType::Warning, VclButtonsType::Ok, IDEResId(RID_STR_BADSBXNAME)));
+        xError->run();
         return false;
     }
 
@@ -212,20 +224,17 @@ StarBASIC* FindBasic( const SbxVariable* pVar )
     return const_cast<StarBASIC*>(static_cast<const StarBASIC*>(pSbx));
 }
 
-BasicManager* FindBasicManager( StarBASIC* pLib )
+BasicManager* FindBasicManager( StarBASIC const * pLib )
 {
     ScriptDocuments aDocuments( ScriptDocument::getAllScriptDocuments( ScriptDocument::AllWithApplication ) );
-    for (   ScriptDocuments::const_iterator doc = aDocuments.begin();
-            doc != aDocuments.end();
-            ++doc
-        )
+    for (auto const& doc : aDocuments)
     {
-        BasicManager* pBasicMgr = doc->getBasicManager();
+        BasicManager* pBasicMgr = doc.getBasicManager();
         OSL_ENSURE( pBasicMgr, "basctl::FindBasicManager: no basic manager for the document!" );
         if ( !pBasicMgr )
             continue;
 
-        Sequence< OUString > aLibNames( doc->getLibraryNames() );
+        Sequence< OUString > aLibNames( doc.getLibraryNames() );
         sal_Int32 nLibCount = aLibNames.getLength();
         const OUString* pLibNames = aLibNames.getConstArray();
 
@@ -241,19 +250,22 @@ BasicManager* FindBasicManager( StarBASIC* pLib )
 
 void MarkDocumentModified( const ScriptDocument& rDocument )
 {
+    Shell* pShell = GetShell();
+
     // does not have to come from a document...
     if ( rDocument.isApplication() )
     {
-        if (Shell* pShell = GetShell())
-        {
+        if (pShell)
             pShell->SetAppBasicModified(true);
-            pShell->UpdateObjectCatalog();
-        }
     }
     else
     {
         rDocument.setDocumentModified();
     }
+
+    // tdf#130161 in all cases call UpdateObjectCatalog
+    if (pShell)
+        pShell->UpdateObjectCatalog();
 
     if (SfxBindings* pBindings = GetBindingsPtr())
     {
@@ -263,7 +275,7 @@ void MarkDocumentModified( const ScriptDocument& rDocument )
     }
 }
 
-void RunMethod( SbMethod* pMethod )
+void RunMethod( SbMethod const * pMethod )
 {
     SbxValues aRes;
     aRes.eType = SbxVOID;
@@ -276,9 +288,9 @@ void StopBasic()
     if (Shell* pShell = GetShell())
     {
         Shell::WindowTable& rWindows = pShell->GetWindowTable();
-        for (Shell::WindowTableIt it = rWindows.begin(); it != rWindows.end(); ++it )
+        for (auto const& window : rWindows)
         {
-            BaseWindow* pWin = it->second;
+            BaseWindow* pWin = window.second;
             // call BasicStopped manually because the Stop-Notify
             // might not get through otherwise
             pWin->BasicStopped();
@@ -332,30 +344,31 @@ void BasicStopped(
 
 void InvalidateDebuggerSlots()
 {
-    if (SfxBindings* pBindings = GetBindingsPtr())
-    {
-        pBindings->Invalidate( SID_BASICSTOP );
-        pBindings->Update( SID_BASICSTOP );
-        pBindings->Invalidate( SID_BASICRUN );
-        pBindings->Update( SID_BASICRUN );
-        pBindings->Invalidate( SID_BASICCOMPILE );
-        pBindings->Update( SID_BASICCOMPILE );
-        pBindings->Invalidate( SID_BASICSTEPOVER );
-        pBindings->Update( SID_BASICSTEPOVER );
-        pBindings->Invalidate( SID_BASICSTEPINTO );
-        pBindings->Update( SID_BASICSTEPINTO );
-        pBindings->Invalidate( SID_BASICSTEPOUT );
-        pBindings->Update( SID_BASICSTEPOUT );
-        pBindings->Invalidate( SID_BASICIDE_TOGGLEBRKPNT );
-        pBindings->Update( SID_BASICIDE_TOGGLEBRKPNT );
-        pBindings->Invalidate( SID_BASICIDE_STAT_POS );
-        pBindings->Update( SID_BASICIDE_STAT_POS );
-        pBindings->Invalidate( SID_BASICIDE_STAT_TITLE );
-        pBindings->Update( SID_BASICIDE_STAT_TITLE );
-    }
+    SfxBindings* pBindings = GetBindingsPtr();
+    if (!pBindings)
+        return;
+
+    pBindings->Invalidate( SID_BASICSTOP );
+    pBindings->Update( SID_BASICSTOP );
+    pBindings->Invalidate( SID_BASICRUN );
+    pBindings->Update( SID_BASICRUN );
+    pBindings->Invalidate( SID_BASICCOMPILE );
+    pBindings->Update( SID_BASICCOMPILE );
+    pBindings->Invalidate( SID_BASICSTEPOVER );
+    pBindings->Update( SID_BASICSTEPOVER );
+    pBindings->Invalidate( SID_BASICSTEPINTO );
+    pBindings->Update( SID_BASICSTEPINTO );
+    pBindings->Invalidate( SID_BASICSTEPOUT );
+    pBindings->Update( SID_BASICSTEPOUT );
+    pBindings->Invalidate( SID_BASICIDE_TOGGLEBRKPNT );
+    pBindings->Update( SID_BASICIDE_TOGGLEBRKPNT );
+    pBindings->Invalidate( SID_BASICIDE_STAT_POS );
+    pBindings->Update( SID_BASICIDE_STAT_POS );
+    pBindings->Invalidate( SID_BASICIDE_STAT_TITLE );
+    pBindings->Update( SID_BASICIDE_STAT_TITLE );
 }
 
-long HandleBasicError( StarBASIC* pBasic )
+long HandleBasicError( StarBASIC const * pBasic )
 {
     EnsureIde();
     BasicStopped();
@@ -378,7 +391,7 @@ long HandleBasicError( StarBASIC* pBasic )
             OSL_ENSURE( aDocument.isValid(), "basctl::HandleBasicError: no document for the given BasicManager!" );
             if ( aDocument.isValid() )
             {
-                OUString aOULibName( pBasic->GetName() );
+                const OUString& aOULibName( pBasic->GetName() );
                 Reference< script::XLibraryContainer > xModLibContainer( aDocument.getLibraryContainer( E_SCRIPTS ) );
                 if ( xModLibContainer.is() && xModLibContainer->hasByName( aOULibName ) )
                 {

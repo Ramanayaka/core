@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <csmaphdl.hxx>
+#include "csmaphdl.hxx"
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
+#include <xmloff/xmlement.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <com/sun/star/style/CaseMap.hpp>
 #include <com/sun/star/uno/Any.hxx>
@@ -27,7 +28,7 @@
 using namespace ::com::sun::star;
 using namespace ::xmloff::token;
 
-static SvXMLEnumMapEntry<sal_uInt16> pXML_Casemap_Enum[] =
+const SvXMLEnumMapEntry<sal_uInt16> pXML_Casemap_Enum[] =
 {
     { XML_NONE,                 style::CaseMap::NONE },
     { XML_CASEMAP_LOWERCASE,    style::CaseMap::LOWERCASE },
@@ -36,7 +37,6 @@ static SvXMLEnumMapEntry<sal_uInt16> pXML_Casemap_Enum[] =
     { XML_TOKEN_INVALID,        0 }
 };
 
-// class XMLPosturePropHdl
 
 XMLCaseMapPropHdl::~XMLCaseMapPropHdl()
 {
@@ -48,7 +48,7 @@ bool XMLCaseMapPropHdl::importXML( const OUString& rStrImpValue, uno::Any& rValu
     sal_uInt16 nVal;
     bool bRet = SvXMLUnitConverter::convertEnum(
         nVal, rStrImpValue, pXML_Casemap_Enum );
-    if( ( bRet ) )
+    if( bRet )
         rValue <<= nVal;
 
     return bRet;
@@ -71,7 +71,6 @@ bool XMLCaseMapPropHdl::exportXML( OUString& rStrExpValue, const uno::Any& rValu
     return bRet;
 }
 
-// class XMLCaseMapVariantHdl
 
 XMLCaseMapVariantHdl::~XMLCaseMapVariantHdl()
 {
@@ -84,12 +83,12 @@ bool XMLCaseMapVariantHdl::importXML( const OUString& rStrImpValue, uno::Any& rV
 
     if( IsXMLToken( rStrImpValue, XML_CASEMAP_SMALL_CAPS ) )
     {
-        rValue <<= (sal_Int16)style::CaseMap::SMALLCAPS;
+        rValue <<= sal_Int16(style::CaseMap::SMALLCAPS);
         bRet = true;
     }
-    else if( IsXMLToken( rStrImpValue, XML_CASEMAP_NORMAL ) )
+    else if( IsXMLToken( rStrImpValue, XML_NORMAL ) )
     {
-        rValue <<= (sal_Int16)style::CaseMap::NONE;
+        rValue <<= sal_Int16(style::CaseMap::NONE);
         bRet = true;
     }
 
@@ -106,7 +105,7 @@ bool XMLCaseMapVariantHdl::exportXML( OUString& rStrExpValue, const uno::Any& rV
         switch( nValue )
         {
         case style::CaseMap::NONE:
-            aOut.append( GetXMLToken(XML_CASEMAP_NORMAL) );
+            aOut.append( GetXMLToken(XML_NORMAL) );
             break;
         case style::CaseMap::SMALLCAPS:
             aOut.append( GetXMLToken(XML_CASEMAP_SMALL_CAPS) );

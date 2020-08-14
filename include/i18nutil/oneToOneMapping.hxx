@@ -19,12 +19,11 @@
 #ifndef INCLUDED_I18NUTIL_ONETOONEMAPPING_HXX
 #define INCLUDED_I18NUTIL_ONETOONEMAPPING_HXX
 
-#include <rtl/ustring.hxx>
 #include <i18nutil/i18nutildllapi.h>
+#include <memory>
+#include <config_options.h>
 
-namespace com { namespace sun { namespace star { namespace i18n {
-
-class widthfolding;
+namespace i18nutil {
 
 struct OneToOneMappingTable_t
 {
@@ -40,7 +39,7 @@ struct UnicodePairWithFlag
     UnicodePairFlag flag;
 };
 
-class I18NUTIL_DLLPUBLIC oneToOneMapping
+class UNLESS_MERGELIBS(I18NUTIL_DLLPUBLIC) oneToOneMapping
 {
 private:
     oneToOneMapping(const oneToOneMapping&) = delete;
@@ -60,7 +59,7 @@ protected:
     size_t                  mnSize;
 };
 
-class I18NUTIL_DLLPUBLIC oneToOneMappingWithFlag : public oneToOneMapping
+class oneToOneMappingWithFlag final : public oneToOneMapping
 {
 private:
     oneToOneMappingWithFlag(const oneToOneMappingWithFlag&) = delete;
@@ -69,7 +68,7 @@ private:
     friend class widthfolding;
 
 public:
-    oneToOneMappingWithFlag( UnicodePairWithFlag *rpTableWF, const size_t rnSize, const UnicodePairFlag rnFlag );
+    oneToOneMappingWithFlag( UnicodePairWithFlag const *rpTableWF, const size_t rnSize, const UnicodePairFlag rnFlag );
     virtual ~oneToOneMappingWithFlag() override;
 
     // make index for fast search
@@ -77,14 +76,14 @@ public:
 
     // index search
     virtual sal_Unicode find( const sal_Unicode nKey ) const override;
-protected:
-    UnicodePairWithFlag  *mpTableWF;
+private:
+    UnicodePairWithFlag const *mpTableWF;
     UnicodePairFlag       mnFlag;
-    UnicodePairWithFlag **mpIndex[256];
+    std::unique_ptr<UnicodePairWithFlag const *[]> mpIndex[256];
     bool                  mbHasIndex;
 };
 
-} } } }
+}
 
 #endif // _I18N_TRANSLITERATION_ONETOONEMAPPING_HXX_
 

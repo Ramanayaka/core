@@ -43,13 +43,16 @@ void SAL_CALL StatusIndicator::start(const OUString& sText ,
 
         comphelper::LibreOfficeKit::statusIndicatorStart();
     }
-
+#if !defined(IOS) && !defined(ANDROID)
     css::uno::Reference< css::task::XStatusIndicatorFactory > xFactory(m_xFactory);
     if (xFactory.is())
     {
         StatusIndicatorFactory* pFactory = static_cast<StatusIndicatorFactory*>(xFactory.get());
         pFactory->start(this, sText, nRange);
     }
+#else
+    (void) sText;
+#endif
 }
 
 void SAL_CALL StatusIndicator::end()
@@ -58,60 +61,69 @@ void SAL_CALL StatusIndicator::end()
     {
         comphelper::LibreOfficeKit::statusIndicatorFinish();
     }
-
+#if !defined(IOS) && !defined(ANDROID)
     css::uno::Reference< css::task::XStatusIndicatorFactory > xFactory(m_xFactory);
     if (xFactory.is())
     {
         StatusIndicatorFactory* pFactory = static_cast<StatusIndicatorFactory*>(xFactory.get());
         pFactory->end(this);
     }
+#endif
 }
 
 void SAL_CALL StatusIndicator::reset()
 {
     if (comphelper::LibreOfficeKit::isActive())
         return;
-
+#if !defined(IOS) && !defined(ANDROID)
     css::uno::Reference< css::task::XStatusIndicatorFactory > xFactory(m_xFactory);
     if (xFactory.is())
     {
         StatusIndicatorFactory* pFactory = static_cast<StatusIndicatorFactory*>(xFactory.get());
         pFactory->reset(this);
     }
+#endif
 }
 
 void SAL_CALL StatusIndicator::setText(const OUString& sText)
 {
     if (comphelper::LibreOfficeKit::isActive())
         return;
-
+#if !defined(IOS) && !defined(ANDROID)
     css::uno::Reference< css::task::XStatusIndicatorFactory > xFactory(m_xFactory);
     if (xFactory.is())
     {
         StatusIndicatorFactory* pFactory = static_cast<StatusIndicatorFactory*>(xFactory.get());
         pFactory->setText(this, sText);
     }
+#else
+    (void) sText;
+#endif
 }
 
 void SAL_CALL StatusIndicator::setValue(sal_Int32 nValue)
 {
     if (comphelper::LibreOfficeKit::isActive())
     {
-        int nPercent = (100*nValue)/m_nRange;
-        if (nPercent >= m_nLastCallbackPercent)
+        if (m_nRange > 0)
         {
-            comphelper::LibreOfficeKit::statusIndicatorSetValue(nPercent);
-            m_nLastCallbackPercent = nPercent;
+            int nPercent = (100*nValue)/m_nRange;
+            if (nPercent >= m_nLastCallbackPercent)
+            {
+                comphelper::LibreOfficeKit::statusIndicatorSetValue(nPercent);
+                m_nLastCallbackPercent = nPercent;
+            }
         }
         return;
     }
-
+#if !defined(IOS) && !defined(ANDROID)
     css::uno::Reference< css::task::XStatusIndicatorFactory > xFactory(m_xFactory);
     if (xFactory.is())
     {
         StatusIndicatorFactory* pFactory = static_cast<StatusIndicatorFactory*>(xFactory.get());
         pFactory->setValue(this, nValue);
     }
+#endif
 }
 
 } // namespace framework

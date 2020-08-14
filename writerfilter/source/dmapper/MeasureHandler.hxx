@@ -20,12 +20,10 @@
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_MEASUREHANDLER_HXX
 
 #include "LoggedResources.hxx"
-#include <memory>
 #include <vector>
 #include <com/sun/star/beans/PropertyValue.hpp>
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 /** Handler for sprms that contain a measure and a unit
     - Left indent of tables
@@ -57,9 +55,9 @@ public:
     void enableInteropGrabBag(const OUString& aName);
     css::beans::PropertyValue getInteropGrabBag();
 };
-typedef std::shared_ptr
+typedef tools::SvRef
     < MeasureHandler >  MeasureHandlerPtr;
-}}
+}
 
 #endif
 

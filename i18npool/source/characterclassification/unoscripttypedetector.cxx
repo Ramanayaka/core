@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include "unoscripttypedetector.hxx"
+#include <unoscripttypedetector.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <i18nutil/scripttypedetector.hxx>
 
-//      class UnoScriptTypeDetector
+namespace com::sun::star::uno { class XComponentContext; }
+
 sal_Int16 SAL_CALL
 UnoScriptTypeDetector::getScriptDirection( const OUString& Text, sal_Int32 nPos, sal_Int16 defaultScriptDirection )
 {
@@ -65,7 +65,7 @@ UnoScriptTypeDetector::endOfCTLScriptType( const OUString& Text, sal_Int32 nPos 
 OUString SAL_CALL
 UnoScriptTypeDetector::getImplementationName()
 {
-    return OUString("com.sun.star.i18n.ScriptTypeDetector");
+    return "com.sun.star.i18n.ScriptTypeDetector";
 }
 
 sal_Bool SAL_CALL
@@ -77,11 +77,10 @@ UnoScriptTypeDetector::supportsService(const OUString& ServiceName)
 css::uno::Sequence< OUString > SAL_CALL
 UnoScriptTypeDetector::getSupportedServiceNames()
 {
-    css::uno::Sequence< OUString > aRet { "com.sun.star.i18n.ScriptTypeDetector" };
-    return aRet;
+    return { "com.sun.star.i18n.ScriptTypeDetector" };
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_i18n_ScriptTypeDetector_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

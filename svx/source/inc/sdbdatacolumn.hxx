@@ -23,7 +23,6 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sdb/XColumn.hpp>
 #include <com/sun/star/sdb/XColumnUpdate.hpp>
-#include <osl/diagnose.h>
 
 
 namespace svxform
@@ -53,10 +52,8 @@ namespace svxform
         }
     };
 
-#endif // INCLUDED_SVX_SOURCE_INC_SDBDATACOLUMN_HXX
-
-
 }
 
+#endif // INCLUDED_SVX_SOURCE_INC_SDBDATACOLUMN_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

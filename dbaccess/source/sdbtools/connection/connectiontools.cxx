@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "connectiontools.hxx"
-#include "sdbt_services.hxx"
+#include <connectiontools.hxx>
 #include "tablename.hxx"
 #include "objectnames.hxx"
 #include "datasourcemetadata.hxx"
@@ -28,27 +27,18 @@
 #include <connectivity/dbtools.hxx>
 #include <connectivity/statementcomposer.hxx>
 
-#include <algorithm>
-
-extern "C" void SAL_CALL createRegistryInfo_ConnectionTools()
-{
-    ::sdbtools::OAutoRegistration< ::sdbtools::ConnectionTools > aRegistration;
-}
-
 namespace sdbtools
 {
 
     using namespace ::com::sun::star;
     using namespace ::com::sun::star::uno;
     using ::com::sun::star::uno::Reference;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::sdb::tools::XTableName;
     using ::com::sun::star::sdb::tools::XObjectNames;
     using ::com::sun::star::sdb::tools::XDataSourceMetaData;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::XInterface;
     using ::com::sun::star::uno::Any;
-    using ::com::sun::star::uno::Exception;
     using ::com::sun::star::sdbc::XConnection;
     using ::com::sun::star::lang::IllegalArgumentException;
     using ::com::sun::star::uno::XComponentContext;
@@ -99,7 +89,7 @@ namespace sdbtools
 
     OUString SAL_CALL ConnectionTools::getImplementationName()
     {
-        return getImplementationName_static();
+        return "com.sun.star.comp.dbaccess.ConnectionTools";
     }
 
     sal_Bool SAL_CALL ConnectionTools::supportsService(const OUString & ServiceName)
@@ -109,23 +99,7 @@ namespace sdbtools
 
     Sequence< OUString > SAL_CALL ConnectionTools::getSupportedServiceNames()
     {
-        return getSupportedServiceNames_static();
-    }
-
-    OUString SAL_CALL ConnectionTools::getImplementationName_static()
-    {
-        return OUString( "com.sun.star.comp.dbaccess.ConnectionTools" );
-    }
-
-    Sequence< OUString > SAL_CALL ConnectionTools::getSupportedServiceNames_static()
-    {
-        Sequence<OUString> aSupported { "com.sun.star.sdb.tools.ConnectionTools" };
-        return aSupported;
-    }
-
-    Reference< XInterface > SAL_CALL ConnectionTools::Create(const Reference< XComponentContext >& _rxContext )
-    {
-        return *( new ConnectionTools( Reference<XComponentContext>( _rxContext ) ) );
+        return  { "com.sun.star.sdb.tools.ConnectionTools" };
     }
 
     void SAL_CALL ConnectionTools::initialize(const Sequence< Any > & _rArguments)
@@ -149,4 +123,10 @@ namespace sdbtools
 
 } // namespace sdbtools
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_dbaccess_ConnectionTools_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(static_cast<cppu::OWeakObject*>(new sdbtools::ConnectionTools(context)));
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

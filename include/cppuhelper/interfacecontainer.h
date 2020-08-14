@@ -19,22 +19,23 @@
 #ifndef INCLUDED_CPPUHELPER_INTERFACECONTAINER_H
 #define INCLUDED_CPPUHELPER_INTERFACECONTAINER_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cstddef>
 #include <functional>
 #include <vector>
 #include <utility>
 
-#include <osl/diagnose.h>
-#include <osl/mutex.hxx>
-#include <rtl/alloc.h>
-#include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XInterface.hpp>
-#include <com/sun/star/lang/EventObject.hpp>
+#include "osl/diagnose.h"
+#include "osl/mutex.hxx"
+#include "rtl/alloc.h"
+#include "com/sun/star/uno/Sequence.hxx"
+#include "com/sun/star/lang/EventObject.hpp"
 
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <cppuhelper/cppuhelperdllapi.h>
+#include "com/sun/star/lang/DisposedException.hpp"
+#include "cppuhelper/cppuhelperdllapi.h"
+
+namespace com { namespace sun { namespace star { namespace uno { class XInterface; } } } }
 
 /** */ //for docpp
 namespace cppu
@@ -48,7 +49,7 @@ namespace detail {
     */
     union element_alias
     {
-        css::uno::Sequence< css::uno::Reference< css::uno::XInterface > > *pAsSequence;
+        std::vector< css::uno::Reference< css::uno::XInterface > > *pAsVector;
         css::uno::XInterface * pAsInterface;
         element_alias() : pAsInterface(NULL) {}
     };
@@ -58,7 +59,7 @@ namespace detail {
 
 class OInterfaceContainerHelper;
 /**
-  This is the iterator of a InterfaceContainerHelper. Typically
+  This is the iterator of an InterfaceContainerHelper. Typically
   one constructs an instance on the stack for one firing session.
   It is not allowed to assign or copy an instance of this class.
 
@@ -188,7 +189,7 @@ public:
     sal_Int32 SAL_CALL removeInterface( const css::uno::Reference< css::uno::XInterface > & rxIFace );
     /**
       Call disposing on all object in the container that
-      support XEventListener. Than clear the container.
+      support XEventListener. Then clear the container.
      */
     void SAL_CALL disposeAndClear( const css::lang::EventObject & rEvt );
     /**
@@ -501,7 +502,7 @@ struct SAL_WARN_UNUSED OBroadcastHelperVar
 struct hashType_Impl
 {
     size_t operator()(const css::uno::Type & s) const
-    { return (size_t) s.getTypeName().hashCode(); }
+    { return static_cast<size_t>(s.getTypeName().hashCode()); }
 };
 
 
@@ -584,7 +585,7 @@ public:
 
     /**
       Call disposing on all object in the container that
-      support XEventListener. Than clear the container.
+      support XEventListener. Then clear the container.
      */
     void SAL_CALL disposeAndClear( const css::lang::EventObject & rEvt );
     /**

@@ -23,43 +23,47 @@
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/util/DateTime.hpp>
-#include "redline.hxx"
+#include <redline.hxx>
 
 #include <map>
 
+class SvXMLImport;
 class RedlineInfo;
 class SwRedlineData;
 class SwDoc;
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace text { class XTextCursor; }
     namespace text { class XTextRange; }
     namespace frame { class XModel; }
-} } }
+}
 
 typedef std::map< OUString, RedlineInfo* > RedlineMapType;
 
 class XMLRedlineImportHelper final
 {
-    const OUString sInsertion;
-    const OUString sDeletion;
-    const OUString sFormatChange;
+    SvXMLImport & m_rImport;
 
-    RedlineMapType aRedlineMap;
+    const OUString m_sInsertion;
+    const OUString m_sDeletion;
+    const OUString m_sFormatChange;
+
+    RedlineMapType m_aRedlineMap;
 
     // if true, no redlines should be inserted into document
     // (This typically happen when a document is loaded in 'insert'-mode.)
-    bool bIgnoreRedlines;
+    bool m_bIgnoreRedlines;
 
     // save information for saving and reconstruction of the redline mode
-    css::uno::Reference<css::beans::XPropertySet> xModelPropertySet;
-    css::uno::Reference<css::beans::XPropertySet> xImportInfoPropertySet;
-    bool bShowChanges;
-    bool bRecordChanges;
-    css::uno::Sequence<sal_Int8> aProtectionKey;
+    css::uno::Reference<css::beans::XPropertySet> m_xModelPropertySet;
+    css::uno::Reference<css::beans::XPropertySet> m_xImportInfoPropertySet;
+    bool m_bShowChanges;
+    bool m_bRecordChanges;
+    css::uno::Sequence<sal_Int8> m_aProtectionKey;
 
 public:
 
     XMLRedlineImportHelper(
+        SvXMLImport & rImport,
         bool bIgnoreRedlines,       // ignore redlines mode
         // property sets of model + import info for saving + restoring the
         // redline mode
@@ -89,7 +93,7 @@ public:
     void SetCursor(
         const OUString& rId,     // ID used in RedlineAdd() call
         bool bStart,                // start or end Range
-        css::uno::Reference<css::text::XTextRange> & rRange, // the actual XTextRange
+        css::uno::Reference<css::text::XTextRange> const & rRange, // the actual XTextRange
         // text range is (from an XML view) outside of a paragraph
         // (i.e. before a table)
         bool bIsOusideOfParagraph);
@@ -113,7 +117,7 @@ public:
 
 private:
 
-    static inline bool IsReady(RedlineInfo* pRedline);
+    static inline bool IsReady(const RedlineInfo* pRedline);
 
     void InsertIntoDocument(RedlineInfo* pRedline);
 

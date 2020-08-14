@@ -19,26 +19,24 @@
 #ifndef INCLUDED_SVX_SXMUITM_HXX
 #define INCLUDED_SVX_SXMUITM_HXX
 
-#include <vcl/field.hxx>
 #include <svx/svddef.hxx>
 #include <svl/eitem.hxx>
 #include <svx/svxdllapi.h>
+#include <tools/fldunit.hxx>
 
 // specification of the unit if measurement. The numerical quantity value is converted in this unity.
 // (based on the facts of the MapUnit of the model). This unity is displayed if necessary.
-class SVX_DLLPUBLIC SdrMeasureUnitItem: public SfxEnumItem<FieldUnit> {
+class SVXCORE_DLLPUBLIC SdrMeasureUnitItem: public SfxEnumItem<FieldUnit> {
 public:
-    SdrMeasureUnitItem(FieldUnit eUnit=FUNIT_NONE): SfxEnumItem(SDRATTR_MEASUREUNIT, eUnit) {}
-    SdrMeasureUnitItem(SvStream& rIn)             : SfxEnumItem(SDRATTR_MEASUREUNIT,rIn)   {}
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool=nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    SdrMeasureUnitItem(FieldUnit eUnit=FieldUnit::NONE): SfxEnumItem(SDRATTR_MEASUREUNIT, eUnit) {}
+    virtual SdrMeasureUnitItem* Clone(SfxItemPool* pPool=nullptr) const override;
     virtual sal_uInt16   GetValueCount() const override; // { return 14; }
 
     virtual bool         QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool         PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual OUString GetValueTextByPos(sal_uInt16 nPos) const override;
-    virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper * = nullptr) const override;
+    static OUString GetValueTextByPos(sal_uInt16 nPos);
+    virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper&) const override;
 };
 
 #endif

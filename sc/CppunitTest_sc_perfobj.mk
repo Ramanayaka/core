@@ -13,6 +13,8 @@ $(eval $(call gb_CppunitTest_CppunitTest,sc_perfobj))
 
 $(eval $(call gb_CppunitTest_use_external,sc_perfobj,boost_headers))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sc_perfobj))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sc_perfobj, \
     sc/qa/perf/scperfobj \
 ))
@@ -56,6 +58,10 @@ $(eval $(call gb_CppunitTest_set_include,sc_perfobj,\
     -I$(SRCDIR)/sc/source/ui/inc \
     -I$(SRCDIR)/sc/inc \
     $$(INCLUDE) \
+))
+
+$(eval $(call gb_CppunitTest_use_api,sc_perfobj, \
+    oovbaapi \
 ))
 
 $(eval $(call gb_CppunitTest_use_sdk_api,sc_perfobj))

@@ -21,8 +21,6 @@
 #include <uielement/statusbarwrapper.hxx>
 
 #include <cppuhelper/supportsservice.hxx>
-#include <vcl/svapp.hxx>
-#include <rtl/ustrbuf.hxx>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
@@ -41,7 +39,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.StatusBarFactory");
+        return "com.sun.star.comp.framework.StatusBarFactory";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -70,13 +68,13 @@ Reference< XUIElement > SAL_CALL StatusBarFactory::createUIElement(
 {
     Reference< css::ui::XUIElement > xStatusBar(
             static_cast<OWeakObject *>(new StatusBarWrapper(m_xContext)), UNO_QUERY);
-    MenuBarFactory::CreateUIElement(ResourceURL, Args, nullptr, "private:resource/statusbar/", xStatusBar, m_xContext);
+    MenuBarFactory::CreateUIElement(ResourceURL, Args, "private:resource/statusbar/", xStatusBar, m_xContext);
     return xStatusBar;
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_StatusBarFactory_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

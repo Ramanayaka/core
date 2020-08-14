@@ -19,17 +19,17 @@
 
 #include <com/sun/star/beans/XPropertyAccess.hpp>
 #include <com/sun/star/container/XContainerQuery.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/document/FilterOptionsRequest.hpp>
 #include <com/sun/star/document/NoSuchFilterRequest.hpp>
 #include <com/sun/star/document/XImporter.hpp>
 #include <com/sun/star/document/XInteractionFilterOptions.hpp>
 #include <com/sun/star/document/XInteractionFilterSelect.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/task/XInteractionAbort.hpp>
 #include <com/sun/star/task/XInteractionRequest.hpp>
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
 
+#include <comphelper/propertysequence.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <vcl/svapp.hxx>
 
@@ -44,35 +44,28 @@ namespace {
 
 void
 executeFilterDialog(
-    vcl::Window          * pParent ,
+    weld::Window* pParent ,
     OUString       const & rURL    ,
     uui::FilterNameList const & rFilters,
     OUString             & rFilter )
 {
-    try
+    SolarMutexGuard aGuard;
+
+    uui::FilterDialog aDialog(pParent);
+
+    aDialog.SetURL(rURL);
+    aDialog.ChangeFilters(&rFilters);
+
+    uui::FilterNameListPtr pSelected = rFilters.end();
+    if (aDialog.AskForFilter(pSelected))
     {
-        SolarMutexGuard aGuard;
-
-        ScopedVclPtrInstance< uui::FilterDialog > xDialog(pParent);
-
-        xDialog->SetURL(rURL);
-        xDialog->ChangeFilters(&rFilters);
-
-        uui::FilterNameListPtr pSelected = rFilters.end();
-        if( xDialog->AskForFilter( pSelected ) )
-        {
-            rFilter = pSelected->sInternal;
-        }
-    }
-    catch (std::bad_alloc const &)
-    {
-        throw uno::RuntimeException("out of memory");
+        rFilter = pSelected->sInternal;
     }
 }
 
 void
 handleNoSuchFilterRequest_(
-    vcl::Window * pParent,
+    weld::Window* pParent,
     uno::Reference< uno::XComponentContext > const & xContext,
     document::NoSuchFilterRequest const & rRequest,
     uno::Sequence< uno::Reference< task::XInteractionContinuation > > const &
@@ -157,7 +150,7 @@ handleNoSuchFilterRequest_(
 
     // no list available for showing
     // -> abort operation
-    if (lNames.size()<1)
+    if (lNames.empty())
     {
         xAbort->select();
         return;
@@ -185,6 +178,7 @@ handleNoSuchFilterRequest_(
 
 void
 handleFilterOptionsRequest_(
+    uno::Reference<awt::XWindow> const & rWindow,
     uno::Reference< uno::XComponentContext > const & xContext,
     document::FilterOptionsRequest const & rRequest,
     uno::Sequence< uno::Reference< task::XInteractionContinuation > > const &
@@ -205,67 +199,65 @@ handleFilterOptionsRequest_(
     {
     }
 
-    if( xFilterCFG.is() && rRequest.rProperties.getLength() )
+    if( xFilterCFG.is() && rRequest.rProperties.hasElements() )
     {
         try
         {
             OUString aFilterName;
-            sal_Int32 nPropCount = rRequest.rProperties.getLength();
-            for( sal_Int32 ind = 0; ind < nPropCount; ++ind )
+            auto pProperty = std::find_if(rRequest.rProperties.begin(), rRequest.rProperties.end(),
+                [](const beans::PropertyValue& rProp) { return rProp.Name == "FilterName"; });
+            if (pProperty != rRequest.rProperties.end())
             {
-                if( rRequest.rProperties[ind].Name == "FilterName" )
-                {
-                    rRequest.rProperties[ind].Value >>= aFilterName;
-                    break;
-                }
+                pProperty->Value >>= aFilterName;
             }
 
             uno::Sequence < beans::PropertyValue > aProps;
             if ( xFilterCFG->getByName( aFilterName ) >>= aProps )
             {
-                sal_Int32 nPropertyCount = aProps.getLength();
-                for( sal_Int32 nProperty=0;
-                     nProperty < nPropertyCount;
-                     ++nProperty )
-                    if( aProps[nProperty].Name == "UIComponent" )
+                auto pProp = std::find_if(aProps.begin(), aProps.end(),
+                    [](const beans::PropertyValue& rProp) { return rProp.Name == "UIComponent"; });
+                if (pProp != aProps.end())
+                {
+                    OUString aServiceName;
+                    pProp->Value >>= aServiceName;
+                    if( !aServiceName.isEmpty() )
                     {
-                        OUString aServiceName;
-                        aProps[nProperty].Value >>= aServiceName;
-                        if( !aServiceName.isEmpty() )
+                        uno::Sequence<uno::Any> aDialogArgs(comphelper::InitAnyPropertySequence(
+                        {
+                            {"ParentWindow", uno::Any(rWindow)},
+                        }));
+
+                        uno::Reference<
+                            ui::dialogs::XExecutableDialog > xFilterDialog(
+                                xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
+                                    aServiceName, aDialogArgs, xContext ),
+                                uno::UNO_QUERY );
+
+                        uno::Reference< beans::XPropertyAccess >
+                            xFilterProperties( xFilterDialog,
+                                               uno::UNO_QUERY );
+
+                        if( xFilterDialog.is() && xFilterProperties.is() )
                         {
                             uno::Reference<
-                                ui::dialogs::XExecutableDialog > xFilterDialog(
-                                    xContext->getServiceManager()->createInstanceWithContext(
-                                        aServiceName, xContext ),
-                                    uno::UNO_QUERY );
-                            uno::Reference< beans::XPropertyAccess >
-                                xFilterProperties( xFilterDialog,
-                                                   uno::UNO_QUERY );
+                                document::XImporter > xImporter(
+                                    xFilterDialog, uno::UNO_QUERY );
+                            if( xImporter.is() )
+                                xImporter->setTargetDocument( rRequest.rModel );
 
-                            if( xFilterDialog.is() && xFilterProperties.is() )
+                            xFilterProperties->setPropertyValues(
+                                rRequest.rProperties );
+
+                            if( xFilterDialog->execute() )
                             {
-                                uno::Reference<
-                                    document::XImporter > xImporter(
-                                        xFilterDialog, uno::UNO_QUERY );
-                                if( xImporter.is() )
-                                    xImporter->setTargetDocument(
-                                        uno::Reference< lang::XComponent >(
-                                            rRequest.rModel, uno::UNO_QUERY ) );
-
-                                xFilterProperties->setPropertyValues(
-                                    rRequest.rProperties );
-
-                                if( xFilterDialog->execute() )
-                                {
-                                    xFilterOptions->setFilterOptions(
-                                        xFilterProperties->getPropertyValues() );
-                                    xFilterOptions->select();
-                                    return;
-                                }
+                                xFilterOptions->setFilterOptions(
+                                    xFilterProperties->getPropertyValues() );
+                                xFilterOptions->select();
+                                return;
                             }
                         }
-                        break;
                     }
+                }
             }
         }
         catch( container::NoSuchElementException& )
@@ -291,7 +283,8 @@ UUIInteractionHelper::handleNoSuchFilterRequest(
     document::NoSuchFilterRequest aNoSuchFilterRequest;
     if (aAnyRequest >>= aNoSuchFilterRequest)
     {
-        handleNoSuchFilterRequest_(getParentProperty(),
+        uno::Reference<awt::XWindow> xParent = getParentXWindow();
+        handleNoSuchFilterRequest_(Application::GetFrameWeld(xParent),
                                    m_xContext,
                                    aNoSuchFilterRequest,
                                    rRequest->getContinuations());
@@ -309,7 +302,8 @@ UUIInteractionHelper::handleFilterOptionsRequest(
     document::FilterOptionsRequest aFilterOptionsRequest;
     if (aAnyRequest >>= aFilterOptionsRequest)
     {
-        handleFilterOptionsRequest_(m_xContext,
+        handleFilterOptionsRequest_(getParentXWindow(),
+                                    m_xContext,
                                     aFilterOptionsRequest,
                                     rRequest->getContinuations());
         return true;

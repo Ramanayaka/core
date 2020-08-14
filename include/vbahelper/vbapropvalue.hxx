@@ -30,8 +30,6 @@
 #include <vbahelper/vbadllapi.h>
 #include <vbahelper/vbahelper.hxx>
 
-typedef ::cppu::WeakImplHelper< ov::XPropValue > PropValueImpl_BASE;
-
 class VBAHELPER_DLLPUBLIC PropListener
 {
 public:
@@ -43,7 +41,7 @@ protected:
 };
 
 
-class VBAHELPER_DLLPUBLIC ScVbaPropValue : public PropValueImpl_BASE
+class VBAHELPER_DLLPUBLIC ScVbaPropValue final : public ::cppu::WeakImplHelper< ov::XPropValue >
 {
     PropListener* m_pListener;
 public:
@@ -53,7 +51,7 @@ public:
     virtual css::uno::Any SAL_CALL getValue() override;
     virtual void SAL_CALL setValue( const css::uno::Any& _value ) override;
 
-    OUString SAL_CALL getDefaultPropertyName() override { return OUString("Value"); }
+    OUString SAL_CALL getDefaultPropertyName() override { return "Value"; }
 
 };
 #endif //SC_VBA_PROPVALULE_HXX

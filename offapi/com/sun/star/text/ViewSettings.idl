@@ -265,6 +265,31 @@ published service ViewSettings
         @since LibreOffice 5.1
     */
     [optional, property] boolean HideWhitespace;
+
+    /** If this property is `TRUE`, tooltips for tracked changes are shown.
+
+        @since LibreOffice 6.1
+    */
+    [optional, property] boolean ShowInlineTooltips;
+
+    /** If this property is `TRUE`, the advanced menu for header/footer is shown
+
+        @since LibreOffice 6.2
+    */
+    [optional, property] boolean UseHeaderFooterMenu;
+
+    /** If this property is `TRUE`, bookmark positions are displayed.
+
+        @since LibreOffice 7.0
+     */
+    [optional, property] boolean ShowBookmarks;
+
+    /** If this property is `TRUE`, the outline content visibility toggle button is shown.
+
+        @since LibreOffice 7.1
+    */
+    [optional, property] boolean ShowOutlineContentVisibilityButton;
+
 };
 
 }; }; }; };

@@ -20,12 +20,12 @@
 #ifndef INCLUDED_SC_SOURCE_UI_VBA_VBAPALETTE_HXX
 #define INCLUDED_SC_SOURCE_UI_VBA_VBAPALETTE_HXX
 
-#include <vbahelper/vbahelper.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XIndexAccess; }
     namespace frame { class XModel; }
-} } }
+}
 
 class SfxObjectShell;
 
@@ -34,7 +34,7 @@ class ScVbaPalette
 private:
     SfxObjectShell* m_pShell;
 public:
-    explicit ScVbaPalette( SfxObjectShell* pShell = nullptr ) : m_pShell( pShell ) {}
+    explicit ScVbaPalette( SfxObjectShell* pShell ) : m_pShell( pShell ) {}
     explicit ScVbaPalette( const css::uno::Reference< css::frame::XModel >& rxModel );
     // if no palette available e.g. because the document doesn't have a
     // palette defined then a default palette will be returned.

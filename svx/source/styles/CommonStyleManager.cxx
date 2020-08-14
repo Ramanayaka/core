@@ -9,16 +9,16 @@
  */
 
 #include <svx/CommonStyleManager.hxx>
-#include <svx/CommonStylePreviewRenderer.hxx>
+#include <CommonStylePreviewRenderer.hxx>
 
 namespace svx
 {
 
-sfx2::StylePreviewRenderer* CommonStyleManager::CreateStylePreviewRenderer(
+std::unique_ptr<sfx2::StylePreviewRenderer> CommonStyleManager::CreateStylePreviewRenderer(
                                             OutputDevice& rOutputDev, SfxStyleSheetBase* pStyle,
                                             long nMaxHeight)
 {
-    return new CommonStylePreviewRenderer(mrShell, rOutputDev, pStyle, nMaxHeight);
+    return std::unique_ptr<sfx2::StylePreviewRenderer>(new CommonStylePreviewRenderer(mrShell, rOutputDev, pStyle, nMaxHeight));
 }
 
 } // end svx namespace

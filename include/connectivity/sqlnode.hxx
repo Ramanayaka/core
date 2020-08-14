@@ -21,36 +21,29 @@
 
 #include <connectivity/dbtoolsdllapi.hxx>
 #include <connectivity/dbmetadata.hxx>
-#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/util/XNumberFormatTypes.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <functional>
 #include <memory>
 #include <set>
 #include <vector>
 #include <rtl/ustrbuf.hxx>
-#include <osl/diagnose.h>
 
-namespace com
+namespace com::sun::star::lang { struct Locale; }
+namespace com::sun::star::sdbc { class SQLException; }
+namespace com::sun::star::sdbc { class XDatabaseMetaData; }
+
+namespace com::sun::star
 {
-    namespace sun
+    namespace beans
     {
-        namespace star
-        {
-            namespace beans
-            {
-                class XPropertySet;
-            }
-            namespace util
-            {
-                class XNumberFormatter;
-            }
-            namespace container
-            {
-                class XNameAccess;
-            }
-        }
+        class XPropertySet;
+    }
+    namespace util
+    {
+        class XNumberFormatter;
+    }
+    namespace container
+    {
+        class XNameAccess;
     }
 }
 
@@ -60,10 +53,7 @@ namespace com
 namespace connectivity
 {
     class OSQLParser;
-    class OSQLParseNode;
     class IParseContext;
-
-    typedef ::std::vector< OSQLParseNode* >                  OSQLParseNodes;
 
     enum class SQLNodeType { Rule, ListRule, CommaListRule,
                          Keyword, Name,
@@ -75,7 +65,7 @@ namespace connectivity
 
     //= SQLParseNodeParameter
 
-    struct OOO_DLLPUBLIC_DBTOOLS SQLParseNodeParameter
+    struct SQLParseNodeParameter
     {
         const css::lang::Locale&                              rLocale;
         ::dbtools::DatabaseMetaData                           aMetaData;
@@ -86,7 +76,7 @@ namespace connectivity
         OUString                                              sPredicateTableAlias;
         css::uno::Reference< css::container::XNameAccess >    xQueries;  // see bParseToSDBCLevel
         const IParseContext&                                  m_rContext;
-        sal_Char            cDecSep;
+        OUString            sDecSep;
         bool                bQuote                      : 1;    /// should we quote identifiers?
         bool                bInternational              : 1;    /// should we internationalize keywords and placeholders?
         bool                bPredicate                  : 1;    /// are we going to parse a mere predicate?
@@ -101,11 +91,10 @@ namespace connectivity
             const IParseContext* _pContext,
             bool _bIntl,
             bool _bQuote,
-            sal_Char _cDecSep,
+            OUString _sDecSep,
             bool _bPredicate,
             bool _bParseToSDBC
         );
-        ~SQLParseNodeParameter();
     };
 
     //= OSQLParseNode
@@ -114,14 +103,15 @@ namespace connectivity
     {
         friend class OSQLParser;
 
-        OSQLParseNodes                  m_aChildren;
-        OSQLParseNode*                  m_pParent;      // pParent for reverse linkage in the tree
+        std::vector< std::unique_ptr<OSQLParseNode> >
+                                 m_aChildren;
+        OSQLParseNode*           m_pParent;      // pParent for reverse linkage in the tree
         OUString                 m_aNodeValue;   // token name, or empty in case of rules,
-                                                        // or OUString in case of
-                                                        // OUString, INT, etc.
-        SQLNodeType                     m_eNodeType;    // see above
-        sal_uInt32                      m_nNodeID;      // Rule ID (if IsRule())
-                                                        // or Token ID (if !IsRule())
+                                                 // or OUString in case of
+                                                 // OUString, INT, etc.
+        SQLNodeType              m_eNodeType;    // see above
+        sal_uInt32               m_nNodeID;      // Rule ID (if IsRule())
+                                                 // or Token ID (if !IsRule())
                                             // Rule IDs and Token IDs can't
                                             // be distinguished by their values,
                                             // IsRule has to be used for that!
@@ -236,7 +226,7 @@ namespace connectivity
         };
 
         // must be ascii encoding for the value
-        OSQLParseNode(const sal_Char* _pValueStr,
+        OSQLParseNode(const char* _pValueStr,
                       SQLNodeType _eNodeType,
                       sal_uInt32 _nNodeID = 0);
 
@@ -252,7 +242,7 @@ namespace connectivity
         OSQLParseNode(const OSQLParseNode& rParseNode);
         OSQLParseNode& operator=(const OSQLParseNode& rParseNode);
 
-        bool operator==(OSQLParseNode& rParseNode) const;
+        bool operator==(OSQLParseNode const & rParseNode) const;
 
         // destructor destructs the tree recursively
         virtual ~OSQLParseNode();
@@ -294,7 +284,7 @@ namespace connectivity
 
             @param _pErrorHolder
                 takes the error which occurred while generating the statement, if any. Might be <NULL/>,
-                in this case the error is not reported back, and can only be recognized by examing the
+                in this case the error is not reported back, and can only be recognized by examining the
                 return value.
 
             @return
@@ -325,7 +315,7 @@ namespace connectivity
                                      const css::uno::Reference< css::sdbc::XConnection >& _rxConnection,
                                      const css::uno::Reference< css::util::XNumberFormatter > & xFormatter,
                                      const css::lang::Locale& rIntl,
-                                     sal_Char _cDec,
+                                     OUString _sDec,
                                      const IParseContext* pContext = nullptr ) const;
 
         void parseNodeToPredicateStr(OUString& rString,
@@ -334,7 +324,7 @@ namespace connectivity
                                      const css::uno::Reference< css::beans::XPropertySet > & _xField,
                                      const OUString &_sTableAlias,
                                      const css::lang::Locale& rIntl,
-                                     sal_Char _cDec,
+                                     OUString strDec,
                                      const IParseContext* pContext = nullptr ) const;
 
         OSQLParseNode* getByRule(OSQLParseNode::Rule eRule) const;
@@ -390,7 +380,7 @@ namespace connectivity
 
         // makes the logic formula a little smaller
         static void compress(OSQLParseNode*& pSearchCondition);
-        // return the catalog, schema and tablename form this node
+        // return the catalog, schema and tablename from this node
         // _pTableNode must be a rule of that above or a SQL_TOKEN_NAME
         static bool getTableComponents(const OSQLParseNode* _pTableNode,
                                             css::uno::Any &_rCatalog,
@@ -400,7 +390,7 @@ namespace connectivity
 
         // substitute all occurrences of :var or [name] into the dynamic parameter ?
         // _pNode will be modified if parameters exists
-        static void substituteParameterNames(OSQLParseNode* _pNode);
+        static void substituteParameterNames(OSQLParseNode const * _pNode);
 
         /** return a table range when it exists.
         */
@@ -417,7 +407,7 @@ namespace connectivity
                             const IParseContext* pContext,
                             bool _bIntl,
                             bool _bQuote,
-                            sal_Char _cDecSep,
+                            OUString _sDecSep,
                             bool _bPredicate) const;
 
     private:
@@ -441,9 +431,7 @@ namespace connectivity
 
     inline OSQLParseNode* OSQLParseNode::getChild(sal_uInt32 nPos) const
     {
-        assert(nPos < m_aChildren.size());
-
-        return m_aChildren[nPos];
+        return m_aChildren[nPos].get();
     }
 
     // utilities to query for a specific rule, token or punctuation

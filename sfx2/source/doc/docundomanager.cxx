@@ -18,20 +18,19 @@
  */
 
 
-#include "docundomanager.hxx"
+#include <docundomanager.hxx>
 #include <sfx2/sfxbasemodel.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/bindings.hxx>
+#include <sfx2/sfxsids.hrc>
 #include <com/sun/star/lang/NoSupportException.hpp>
-#include <comphelper/anytostring.hxx>
-#include <comphelper/flagguard.hxx>
+#include <com/sun/star/lang/NotInitializedException.hpp>
 #include <svl/undo.hxx>
 #include <tools/diagnose_ex.h>
 #include <framework/undomanagerhelper.hxx>
-
-#include <stack>
+#include <framework/imutex.hxx>
 
 
 namespace sfx2
@@ -43,22 +42,18 @@ namespace sfx2
     using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::document::XUndoAction;
-    using ::com::sun::star::lang::IllegalArgumentException;
     using ::com::sun::star::lang::NotInitializedException;
     using ::com::sun::star::document::XUndoManagerListener;
     using ::com::sun::star::document::XUndoManager;
     using ::com::sun::star::lang::NoSupportException;
     using ::com::sun::star::frame::XModel;
 
-    using ::svl::IUndoManager;
-
-
     //= DocumentUndoManager_Impl
 
     struct DocumentUndoManager_Impl : public ::framework::IUndoManagerImplementation
     {
         DocumentUndoManager&                rAntiImpl;
-        IUndoManager*                       pUndoManager;
+        SfxUndoManager*                     pUndoManager;
         ::framework::UndoManagerHelper      aUndoHelper;
 
         explicit DocumentUndoManager_Impl( DocumentUndoManager& i_antiImpl )
@@ -75,7 +70,7 @@ namespace sfx2
         };
 
         // IUndoManagerImplementation
-        virtual ::svl::IUndoManager&        getImplUndoManager() override;
+        virtual SfxUndoManager&        getImplUndoManager() override;
         virtual Reference< XUndoManager >   getThis() override;
 
         void disposing()
@@ -88,20 +83,20 @@ namespace sfx2
         void invalidateXDo_nolck();
 
     private:
-        static IUndoManager* impl_retrieveUndoManager( SfxBaseModel& i_baseModel )
+        static SfxUndoManager* impl_retrieveUndoManager( SfxBaseModel& i_baseModel )
         {
-            IUndoManager* pUndoManager( nullptr );
+            SfxUndoManager* pUndoManager( nullptr );
             SfxObjectShell* pObjectShell = i_baseModel.GetObjectShell();
             if ( pObjectShell != nullptr )
                 pUndoManager = pObjectShell->GetUndoManager();
             if ( !pUndoManager )
-                throw NotInitializedException( OUString(), *&i_baseModel );
+                throw NotInitializedException( OUString(), i_baseModel );
             return pUndoManager;
         }
     };
 
 
-    ::svl::IUndoManager& DocumentUndoManager_Impl::getImplUndoManager()
+    SfxUndoManager& DocumentUndoManager_Impl::getImplUndoManager()
     {
         ENSURE_OR_THROW( pUndoManager != nullptr, "DocumentUndoManager_Impl::getImplUndoManager: no access to the doc's UndoManager implementation!" );
 
@@ -140,6 +135,8 @@ namespace sfx2
 
 
     //= SolarMutexFacade
+
+    namespace {
 
     /** a facade for the SolarMutex, implementing ::framework::IMutex
     */
@@ -199,6 +196,7 @@ namespace sfx2
         SolarMutexFacade    m_solarMutexFacade;
     };
 
+    }
 
     //= DocumentUndoManager
 

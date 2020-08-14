@@ -23,21 +23,19 @@
 #include "iriswipe.hxx"
 
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 ::basegfx::B2DPolyPolygon IrisWipe::operator () ( double t )
 {
     const double d = ::basegfx::pruneScaleValue(t);
-    basegfx::B2DHomMatrix aTransform(basegfx::tools::createTranslateB2DHomMatrix(-0.5, -0.5));
-    aTransform = basegfx::tools::createScaleTranslateB2DHomMatrix(d, d, 0.5, 0.5) * aTransform;
+    basegfx::B2DHomMatrix aTransform(basegfx::utils::createTranslateB2DHomMatrix(-0.5, -0.5));
+    aTransform = basegfx::utils::createScaleTranslateB2DHomMatrix(d, d, 0.5, 0.5) * aTransform;
 
     ::basegfx::B2DPolyPolygon res( m_unitRect );
     res.transform( aTransform );
     return res;
 }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

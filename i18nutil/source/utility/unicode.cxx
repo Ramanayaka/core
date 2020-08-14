@@ -18,7 +18,6 @@
  */
 
 #include <com/sun/star/i18n/UnicodeType.hpp>
-#include <com/sun/star/i18n/KCharacterType.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
 #include <i18nlangtag/languagetag.hxx>
 #include <i18nlangtag/languagetagicu.hxx>
@@ -37,35 +36,35 @@
 using namespace ::com::sun::star::i18n;
 
 template<class L, typename T>
-T getScriptType( const sal_Unicode ch, const L* typeList, T unknownType ) {
+static T getScriptType( const sal_Unicode ch, const L* typeList, T unknownType ) {
 
     sal_Int16 i = 0;
     css::i18n::UnicodeScript type = typeList[0].to;
-    while (type < UnicodeScript_kScriptCount && ch > UnicodeScriptType[(int)type][UnicodeScriptTypeTo]) {
+    while (type < UnicodeScript_kScriptCount && ch > UnicodeScriptType[static_cast<int>(type)][UnicodeScriptTypeTo]) {
         type = typeList[++i].to;
     }
 
     return (type < UnicodeScript_kScriptCount &&
-            ch >= UnicodeScriptType[static_cast<int>(typeList[i].from)][(int)UnicodeScriptTypeFrom]) ?
+            ch >= UnicodeScriptType[static_cast<int>(typeList[i].from)][int(UnicodeScriptTypeFrom)]) ?
             typeList[i].value : unknownType;
 }
 
-sal_Int16 SAL_CALL
+sal_Int16
 unicode::getUnicodeScriptType( const sal_Unicode ch, const ScriptTypeList* typeList, sal_Int16 unknownType ) {
     return getScriptType(ch, typeList, unknownType);
 }
 
-sal_Unicode SAL_CALL
+sal_Unicode
 unicode::getUnicodeScriptStart( UnicodeScript type) {
-    return UnicodeScriptType[(int)type][UnicodeScriptTypeFrom];
+    return UnicodeScriptType[static_cast<int>(type)][UnicodeScriptTypeFrom];
 }
 
-sal_Unicode SAL_CALL
+sal_Unicode
 unicode::getUnicodeScriptEnd( UnicodeScript type) {
-    return UnicodeScriptType[(int)type][UnicodeScriptTypeTo];
+    return UnicodeScriptType[static_cast<int>(type)][UnicodeScriptTypeTo];
 }
 
-sal_Int16 SAL_CALL
+sal_Int16
 unicode::getUnicodeType( const sal_Unicode ch ) {
     static sal_Unicode c = 0x00;
     static sal_Int16 r = 0x00;
@@ -74,11 +73,14 @@ unicode::getUnicodeType( const sal_Unicode ch ) {
     else c = ch;
 
     sal_Int16 address = UnicodeTypeIndex[ch >> 8];
-    return r = (sal_Int16)((address < UnicodeTypeNumberBlock) ? UnicodeTypeBlockValue[address] :
-        UnicodeTypeValue[((address - UnicodeTypeNumberBlock) << 8) + (ch & 0xff)]);
+    r = static_cast<sal_Int16>(
+            (address < UnicodeTypeNumberBlock)
+            ? UnicodeTypeBlockValue[address]
+            : UnicodeTypeValue[((address - UnicodeTypeNumberBlock) << 8) + (ch & 0xff)]);
+    return r;
 }
 
-sal_uInt8 SAL_CALL
+sal_uInt8
 unicode::getUnicodeDirection( const sal_Unicode ch ) {
     static sal_Unicode c = 0x00;
     static sal_uInt8 r = 0x00;
@@ -87,9 +89,10 @@ unicode::getUnicodeDirection( const sal_Unicode ch ) {
     else c = ch;
 
     sal_Int16 address = UnicodeDirectionIndex[ch >> 8];
-    return r = ((address < UnicodeDirectionNumberBlock) ? UnicodeDirectionBlockValue[address] :
-        UnicodeDirectionValue[((address - UnicodeDirectionNumberBlock) << 8) + (ch & 0xff)]);
-
+    r = (address < UnicodeDirectionNumberBlock)
+            ? UnicodeDirectionBlockValue[address]
+            : UnicodeDirectionValue[((address - UnicodeDirectionNumberBlock) << 8) + (ch & 0xff)];
+    return r;
 }
 
 #define bit(name)   (1U << name)
@@ -114,7 +117,7 @@ unicode::getUnicodeDirection( const sal_Unicode ch ) {
             bit(UnicodeType::PARAGRAPH_SEPARATOR)
 
 #define IsType(func, mask)  \
-bool SAL_CALL func( const sal_Unicode ch) {\
+bool func( const sal_Unicode ch) {\
     return (bit(getUnicodeType(ch)) & (mask)) != 0;\
 }
 
@@ -125,11 +128,11 @@ IsType(unicode::isSpace, SPACEMASK)
 #define CONTROLSPACE    bit(0x09)|bit(0x0a)|bit(0x0b)|bit(0x0c)|bit(0x0d)|\
             bit(0x1c)|bit(0x1d)|bit(0x1e)|bit(0x1f)
 
-bool SAL_CALL unicode::isWhiteSpace( const sal_Unicode ch) {
+bool unicode::isWhiteSpace( const sal_Unicode ch) {
     return (ch != 0xa0 && isSpace(ch)) || (ch <= 0x1F && (bit(ch) & (CONTROLSPACE)));
 }
 
-sal_Int16 SAL_CALL unicode::getScriptClassFromUScriptCode(UScriptCode eScript)
+sal_Int16 unicode::getScriptClassFromUScriptCode(UScriptCode eScript)
 {
     //See unicode/uscript.h
     static const sal_Int16 scriptTypes[] =
@@ -186,7 +189,7 @@ sal_Int16 SAL_CALL unicode::getScriptClassFromUScriptCode(UScriptCode eScript)
     return nRet;
 }
 
-OString SAL_CALL unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
+OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
 {
     OString sRet;
     switch (eScript)
@@ -710,10 +713,72 @@ OString SAL_CALL unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
             sRet = "mis";   // Hanb - Han with Bopomofo, zh-Hanb ?
             break;
         case USCRIPT_JAMO:
-            sRet = "mis";   // Jamo - Jamo subset of Hangul, ko-Jamo ?
+            sRet = "ko";   // Jamo - elements of Hangul Syllables
             break;
         case USCRIPT_SYMBOLS_EMOJI:
             sRet = "mis";   // Zsye - Emoji variant
+            break;
+#endif
+#if (U_ICU_VERSION_MAJOR_NUM >= 60)
+        case USCRIPT_MASARAM_GONDI:
+            sRet = "gon-Gonm";  // macro language code, could be wsg,esg,gno
+            break;
+        case USCRIPT_SOYOMBO:
+            sRet = "mn-Soyo";   // abugida to write Mongolian, also Tibetan and Sanskrit
+            break;
+        case USCRIPT_ZANABAZAR_SQUARE:
+            sRet = "mn-Zanb";   // abugida to write Mongolian
+            break;
+#endif
+#if (U_ICU_VERSION_MAJOR_NUM >= 62)
+        case USCRIPT_DOGRA:
+            sRet = "dgo";       // Dogri proper
+            break;
+        case USCRIPT_GUNJALA_GONDI:
+            sRet = "wsg";       // Adilabad Gondi
+            break;
+        case USCRIPT_MAKASAR:
+            sRet = "mak";
+            break;
+        case USCRIPT_MEDEFAIDRIN:
+            sRet = "mis-Medf";  // Uncoded with script
+            break;
+        case USCRIPT_HANIFI_ROHINGYA:
+            sRet = "rhg";
+            break;
+        case USCRIPT_SOGDIAN:
+            sRet = "sog";
+            break;
+        case USCRIPT_OLD_SOGDIAN:
+            sRet = "sog";
+            break;
+#endif
+#if (U_ICU_VERSION_MAJOR_NUM >= 64)
+        case USCRIPT_ELYMAIC:
+            sRet = "arc-Elym";
+            break;
+        case USCRIPT_NYIAKENG_PUACHUE_HMONG:
+            sRet = "hmn-Hmnp";  // macrolanguage code
+            break;
+        case USCRIPT_NANDINAGARI:
+            sRet = "sa-Nand";
+            break;
+        case USCRIPT_WANCHO:
+            sRet = "nnp-Wcho";
+            break;
+#endif
+#if (U_ICU_VERSION_MAJOR_NUM >= 66)
+        case USCRIPT_CHORASMIAN:
+            sRet = "xco-Chrs";
+            break;
+        case USCRIPT_DIVES_AKURU:
+            sRet = "dv-Diak";
+            break;
+        case USCRIPT_KHITAN_SMALL_SCRIPT:
+            sRet = "zkt-Kits";
+            break;
+        case USCRIPT_YEZIDI:
+            sRet = "kmr-Yezi";
             break;
 #endif
     }
@@ -722,7 +787,7 @@ OString SAL_CALL unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
 
 //Format a number as a percentage according to the rules of the given
 //language, e.g. 100 -> "100%" for en-US vs "100 %" for de-DE
-OUString SAL_CALL unicode::formatPercent(double dNumber,
+OUString unicode::formatPercent(double dNumber,
     const LanguageTag &rLangTag)
 {
     // get a currency formatter for this locale ID
@@ -739,15 +804,15 @@ OUString SAL_CALL unicode::formatPercent(double dNumber,
 
     icu::Locale aLocale = LanguageTagIcu::getIcuLocale(aLangTag);
 
-    std::unique_ptr<NumberFormat> xF(
-        NumberFormat::createPercentInstance(aLocale, errorCode));
+    std::unique_ptr<icu::NumberFormat> xF(
+        icu::NumberFormat::createPercentInstance(aLocale, errorCode));
     if(U_FAILURE(errorCode))
     {
-        SAL_WARN("i18n", "NumberFormat::createPercentInstance failed");
+        SAL_WARN("i18n", "icu::NumberFormat::createPercentInstance failed");
         return OUString::number(dNumber) + "%";
     }
 
-    UnicodeString output;
+    icu::UnicodeString output;
     xF->format(dNumber/100, output);
     OUString aRet(reinterpret_cast<const sal_Unicode *>(output.getBuffer()),
         output.length());
@@ -932,7 +997,7 @@ OUString ToggleUnicodeCodepoint::StringToReplace()
     if( nUPlus != -1 )
     {
         maInput.remove(0, nUPlus);
-        sIn = maInput.copy(2).toString();
+        sIn = maInput.copy(2).makeStringAndClear();
         nUPlus = sIn.indexOf("U+");
     }
     else

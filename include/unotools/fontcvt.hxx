@@ -22,20 +22,13 @@
 
 #include <unotools/unotoolsdllapi.h>
 #include <rtl/ustring.hxx>
-#include <tools/solar.h>
-#include <o3tl/typed_flags_set.hxx>
 
 
 enum class FontToSubsFontFlags
 {
     IMPORT                   = 0x01,
-    EXPORT                   = 0x02,
-    ONLYOLDSOSYMBOLFONTS     = 0x04,
+    EXPORT                   = 0x02
 };
-namespace o3tl
-{
-    template<> struct typed_flags<FontToSubsFontFlags> : is_typed_flags<FontToSubsFontFlags, 0x07> {};
-}
 
 typedef void* FontToSubsFontConverter;
 UNOTOOLS_DLLPUBLIC FontToSubsFontConverter     CreateFontToSubsFontConverter( const OUString& rFontName, FontToSubsFontFlags nFlags );

@@ -18,35 +18,18 @@
  */
 
 #include "ChartDataWrapper.hxx"
-#include "macros.hxx"
-#include "DiagramHelper.hxx"
-#include "DataSourceHelper.hxx"
-#include "servicenames_charttypes.hxx"
-#include "CommonFunctors.hxx"
-#include "ChartModelHelper.hxx"
-#include "DataSeriesHelper.hxx"
-#include "ControllerLockGuard.hxx"
+#include <DiagramHelper.hxx>
+#include <DataSourceHelper.hxx>
+#include <ChartModelHelper.hxx>
+#include <ControllerLockGuard.hxx>
 #include "Chart2ModelContact.hxx"
 #include <cppuhelper/supportsservice.hxx>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/chart2/XTitled.hpp>
-#include <com/sun/star/chart2/data/XNumericalDataSequence.hpp>
-#include <com/sun/star/chart2/data/XTextualDataSequence.hpp>
-#include <com/sun/star/chart2/data/XDataSource.hpp>
-#include <com/sun/star/chart2/XDataSeries.hpp>
-#include <com/sun/star/chart2/XDataSeriesContainer.hpp>
-#include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
-#include <com/sun/star/chart2/XChartTypeContainer.hpp>
-#include <com/sun/star/chart2/data/XDataReceiver.hpp>
-#include <com/sun/star/chart/ChartDataRowSource.hpp>
+#include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart/XChartDocument.hpp>
 
-#include "CharacterProperties.hxx"
-#include "FillProperties.hxx"
-
-#include <map>
-#include <algorithm>
+#include <float.h>
 #include <rtl/math.hxx>
+#include <osl/diagnose.h>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Reference;
@@ -93,7 +76,7 @@ uno::Sequence< uno::Sequence< double > > lcl_getDBL_MINInsteadNAN( const uno::Se
         {
             aRet[nOuter][nInner] = rData[nOuter][nInner];
             double& rValue = aRet[nOuter][nInner];
-            if( ::rtl::math::isNan( rValue ) )
+            if( std::isnan( rValue ) )
                 rValue = DBL_MIN;
         }
     }
@@ -102,9 +85,7 @@ uno::Sequence< uno::Sequence< double > > lcl_getDBL_MINInsteadNAN( const uno::Se
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 struct lcl_Operator
@@ -122,6 +103,8 @@ struct lcl_Operator
         return false;
     }
 };
+
+namespace {
 
 struct lcl_AllOperator : public lcl_Operator
 {
@@ -382,6 +365,8 @@ struct lcl_DateCategoriesOperator : public lcl_Operator
     const Sequence< double >& m_rDates;
 };
 
+}
+
 ChartDataWrapper::ChartDataWrapper(const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
     : m_spChart2ModelContact(spChart2ModelContact)
     , m_aEventListenerContainer(m_aMutex)
@@ -521,7 +506,7 @@ void SAL_CALL ChartDataWrapper::setAnyColumnDescriptions( const Sequence< Sequen
 void SAL_CALL ChartDataWrapper::setDateCategories( const Sequence< double >& rDates )
 {
     Reference< chart2::XChartDocument > xChartDoc( m_spChart2ModelContact->getChart2Document() );
-    ControllerLockGuardUNO aCtrlLockGuard( uno::Reference< frame::XModel >( xChartDoc, uno::UNO_QUERY ));
+    ControllerLockGuardUNO aCtrlLockGuard( xChartDoc );
     lcl_DateCategoriesOperator aOperator( rDates );
     applyData( aOperator );
     DiagramHelper::switchToDateCategories( xChartDoc );
@@ -548,8 +533,8 @@ double SAL_CALL ChartDataWrapper::getNotANumber()
 sal_Bool SAL_CALL ChartDataWrapper::isNotANumber( double nNumber )
 {
     return nNumber == DBL_MIN
-        || ::rtl::math::isNan( nNumber )
-        || ::rtl::math::isInf( nNumber );
+        || std::isnan( nNumber )
+        || std::isinf( nNumber );
 }
 
 // ____ XComponent ____
@@ -642,7 +627,7 @@ void ChartDataWrapper::applyData( lcl_Operator& rDataOperator )
     uno::Sequence< sal_Int32 > aSequenceMapping;
 
     DataSourceHelper::detectRangeSegmentation(
-        uno::Reference< frame::XModel >( xChartDoc, uno::UNO_QUERY ),
+        xChartDoc,
         aRangeString, aSequenceMapping, bUseColumns, bFirstCellAsLabel, bHasCategories );
 
     if( !bHasCategories && rDataOperator.setsCategories( bUseColumns ) )
@@ -653,7 +638,7 @@ void ChartDataWrapper::applyData( lcl_Operator& rDataOperator )
             aRangeString, aSequenceMapping, bUseColumns, bFirstCellAsLabel, bHasCategories ) );
 
     // -- locked controllers
-    ControllerLockGuardUNO aCtrlLockGuard( uno::Reference< frame::XModel >( xChartDoc, uno::UNO_QUERY ));
+    ControllerLockGuardUNO aCtrlLockGuard( xChartDoc );
 
     // create and attach new data source
     switchToInternalDataProvider();
@@ -689,7 +674,7 @@ void ChartDataWrapper::applyData( lcl_Operator& rDataOperator )
 
 OUString SAL_CALL ChartDataWrapper::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.ChartData");
+    return "com.sun.star.comp.chart.ChartData";
 }
 
 sal_Bool SAL_CALL ChartDataWrapper::supportsService( const OUString& rServiceName )
@@ -705,7 +690,6 @@ css::uno::Sequence< OUString > SAL_CALL ChartDataWrapper::getSupportedServiceNam
     };
 }
 
-} //  namespace wrapper
 } //  namespace chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

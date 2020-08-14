@@ -21,30 +21,26 @@
 #define INCLUDED_OOX_CORE_CONTEXTHANDLER2_HXX
 
 #include <cstddef>
-#include <exception>
 #include <memory>
 #include <vector>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <oox/core/contexthandler.hxx>
 #include <oox/dllapi.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XFastAttributeList; } }
-    namespace xml { namespace sax { class XFastContextHandler; } }
-} } }
+namespace com::sun::star {
+    namespace xml::sax { class XFastAttributeList; }
+    namespace xml::sax { class XFastContextHandler; }
+}
 
 namespace oox {
     class AttributeList;
     class SequenceInputStream;
 }
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 const sal_Int32 XML_ROOT_CONTEXT    = SAL_MAX_INT32;
 
@@ -226,8 +222,13 @@ protected:
 class OOX_DLLPUBLIC ContextHandler2 : public ContextHandler, public ContextHandler2Helper
 {
 public:
-    explicit            ContextHandler2( ContextHandler2Helper& rParent );
+    explicit            ContextHandler2( ContextHandler2Helper const & rParent );
     virtual             ~ContextHandler2() override;
+
+    ContextHandler2(ContextHandler2 const &) = default;
+    ContextHandler2(ContextHandler2 &&) = default;
+    ContextHandler2 & operator =(ContextHandler2 const &) = delete; // due to ContextHandler
+    ContextHandler2 & operator =(ContextHandler2 &&) = delete; // due to ContextHandler
 
     // resolve ambiguity from base classes
     virtual void SAL_CALL acquire() throw() override { ContextHandler::acquire(); }
@@ -266,8 +267,7 @@ public:
     virtual void        onEndRecord() override;
 };
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 #endif
 

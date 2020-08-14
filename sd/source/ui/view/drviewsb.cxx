@@ -17,51 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/ui/dialogs/XSLTFilterDialog.hpp>
-#include <comphelper/processfactory.hxx>
 #include <svx/svdlayer.hxx>
-#include <svx/svxids.hrc>
-#include <sfx2/msgpool.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <svx/hlnkitem.hxx>
-#include <editeng/eeitem.hxx>
-#include <editeng/flditem.hxx>
-#include <vcl/msgbox.hxx>
-#include <sfx2/request.hxx>
 #include <sfx2/dispatch.hxx>
-#include <svx/svdorect.hxx>
-#include <sfx2/docfile.hxx>
-#include <basic/sbstar.hxx>
-#include <basic/sberrors.hxx>
 #include <svx/fmshell.hxx>
 #include <svx/svxdlg.hxx>
-#include <svx/dialogs.hrc>
-#include <unotools/useroptions.hxx>
-#include <tools/diagnose_ex.h>
 
-#include "app.hrc"
-#include "strings.hrc"
-#include "res_bmp.hrc"
-#include "glob.hrc"
-#include "Outliner.hxx"
-#include "Window.hxx"
-#include "sdmod.hxx"
-#include "sdattr.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "sdresid.hxx"
-#include "sdpage.hxx"
-#include "DrawViewShell.hxx"
-#include "drawview.hxx"
-#include "unmodpg.hxx"
-#include "undolayer.hxx"
-#include "ViewShellBase.hxx"
-#include "FormShellManager.hxx"
-#include "LayerTabBar.hxx"
-#include "sdabstdlg.hxx"
-#include "SlideSorterViewShell.hxx"
-#include "SlideSorter.hxx"
-#include "controller/SlideSorterController.hxx"
+#include <app.hrc>
+
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
+#include <unokywds.hxx>
+#include <sdpage.hxx>
+#include <DrawViewShell.hxx>
+#include <drawview.hxx>
+#include <unmodpg.hxx>
+#include <ViewShellBase.hxx>
+#include <FormShellManager.hxx>
+#include <LayerTabBar.hxx>
+#include <SlideSorterViewShell.hxx>
+#include <SlideSorter.hxx>
+#include <controller/SlideSorterController.hxx>
 
 namespace sd {
 
@@ -81,16 +57,16 @@ bool DrawViewShell::RenameSlide( sal_uInt16 nPageId, const OUString & rName  )
         // Undo
         SdPage* pUndoPage = pPageToRename;
         SdrLayerAdmin &  rLayerAdmin = GetDoc()->GetLayerAdmin();
-        SdrLayerID nBackground = rLayerAdmin.GetLayerID( SdResId(STR_LAYER_BCKGRND) );
-        SdrLayerID nBgObj = rLayerAdmin.GetLayerID( SdResId(STR_LAYER_BCKGRNDOBJ) );
+        SdrLayerID nBackground = rLayerAdmin.GetLayerID(sUNO_LayerName_background);
+        SdrLayerID nBgObj = rLayerAdmin.GetLayerID(sUNO_LayerName_background_objects);
         SdrLayerIDSet aVisibleLayers = mpActualPage->TRG_GetMasterPageVisibleLayers();
 
-        ::svl::IUndoManager* pManager = GetDoc()->GetDocSh()->GetUndoManager();
-        ModifyPageUndoAction* pAction = new ModifyPageUndoAction(
-            GetDoc(), pUndoPage, rName, pUndoPage->GetAutoLayout(),
-            aVisibleLayers.IsSet( nBackground ),
-            aVisibleLayers.IsSet( nBgObj ));
-        pManager->AddUndoAction( pAction );
+        SfxUndoManager* pManager = GetDoc()->GetDocSh()->GetUndoManager();
+        pManager->AddUndoAction(
+            std::make_unique<ModifyPageUndoAction>(
+                GetDoc(), pUndoPage, rName, pUndoPage->GetAutoLayout(),
+                aVisibleLayers.IsSet( nBackground ),
+                aVisibleLayers.IsSet( nBgObj )));
 
         // rename
         pPageToRename->SetName( rName );
@@ -163,51 +139,62 @@ void DrawViewShell::ModifyLayer (
         return;
     }
 
-    if( pLayer )
+    if( !pLayer )
+        return;
+
+    const sal_uInt16 nPageCount = GetLayerTabControl()->GetPageCount();
+    sal_uInt16 nCurPage = 0;
+    sal_uInt16 nPos;
+    for( nPos = 0; nPos < nPageCount; nPos++ )
     {
-        const sal_uInt16 nPageCount = GetLayerTabControl()->GetPageCount();
-        sal_uInt16 nCurPage = 0;
-        sal_uInt16 nPos;
-        for( nPos = 0; nPos < nPageCount; nPos++ )
+        sal_uInt16 nId = GetLayerTabControl()->GetPageId( nPos );
+        if (GetLayerTabControl()->GetLayerName(nId) == pLayer->GetName())
         {
-            sal_uInt16 nId = GetLayerTabControl()->GetPageId( nPos );
-            if (GetLayerTabControl()->GetPageText(nId).equals(pLayer->GetName()))
-            {
-                nCurPage = nId;
-                break;
-            }
+            nCurPage = nId;
+            break;
         }
-
-        pLayer->SetName( rLayerName );
-        pLayer->SetTitle( rLayerTitle );
-        pLayer->SetDescription( rLayerDesc );
-        mpDrawView->SetLayerVisible( rLayerName, bIsVisible );
-        mpDrawView->SetLayerLocked( rLayerName, bIsLocked);
-        mpDrawView->SetLayerPrintable(rLayerName, bIsPrintable);
-
-        GetDoc()->SetChanged();
-
-        GetLayerTabControl()->SetPageText(nCurPage, rLayerName);
-
-        TabBarPageBits nBits = 0;
-
-        if (!bIsVisible)
-        {
-            // invisible layers are presented different
-            nBits = TPB_SPECIAL;
-        }
-
-        GetLayerTabControl()->SetPageBits(nCurPage, nBits);
-
-        GetViewFrame()->GetDispatcher()->Execute(
-            SID_SWITCHLAYER,
-            SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
-
-        // Call Invalidate at the form shell.
-        FmFormShell* pFormShell = GetViewShellBase().GetFormShellManager()->GetFormShell();
-        if (pFormShell != nullptr)
-            pFormShell->Invalidate();
     }
+
+    pLayer->SetName( rLayerName );
+    pLayer->SetTitle( rLayerTitle );
+    pLayer->SetDescription( rLayerDesc );
+    mpDrawView->SetLayerVisible( rLayerName, bIsVisible );
+    mpDrawView->SetLayerLocked( rLayerName, bIsLocked);
+    mpDrawView->SetLayerPrintable(rLayerName, bIsPrintable);
+
+    GetDoc()->SetChanged();
+
+    GetLayerTabControl()->SetPageText(nCurPage, rLayerName);
+
+    // Set page bits for modified tab name display
+
+    TabBarPageBits nBits = TabBarPageBits::NONE;
+
+    if (!bIsVisible)
+    {
+        nBits = TabBarPageBits::Blue;
+    }
+    if (bIsLocked)
+    {
+        nBits |= TabBarPageBits::Italic;
+    }
+    if (!bIsPrintable)
+    {
+        nBits |= TabBarPageBits::Underline;
+    }
+
+    // Save the bits
+
+    GetLayerTabControl()->SetPageBits(nCurPage, nBits);
+
+    GetViewFrame()->GetDispatcher()->Execute(
+        SID_SWITCHLAYER,
+        SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
+
+    // Call Invalidate at the form shell.
+    FmFormShell* pFormShell = GetViewShellBase().GetFormShellManager()->GetFormShell();
+    if (pFormShell != nullptr)
+        pFormShell->Invalidate();
 }
 
 } // end of namespace sd

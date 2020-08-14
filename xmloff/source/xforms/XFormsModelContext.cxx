@@ -27,14 +27,13 @@
 #include "xformsapi.hxx"
 
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlerror.hxx>
 
 #include <osl/diagnose.h>
 
-#include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/util/XUpdatable.hpp>
 #include <com/sun/star/xforms/XModel2.hpp>
 
@@ -45,14 +44,14 @@ using namespace com::sun::star::uno;
 using namespace xmloff::token;
 
 
-static const SvXMLTokenMapEntry aAttributes[] =
+const SvXMLTokenMapEntry aAttributes[] =
 {
     TOKEN_MAP_ENTRY( NONE, ID ),
     TOKEN_MAP_ENTRY( NONE, SCHEMA ),
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aChildren[] =
+const SvXMLTokenMapEntry aChildren[] =
 {
     TOKEN_MAP_ENTRY( XFORMS, INSTANCE ),
     TOKEN_MAP_ENTRY( XFORMS, BIND ),
@@ -130,7 +129,7 @@ void XFormsModelContext::EndElement()
         xUpdate->update();
 
     GetImport().initXForms();
-    xforms_addXFormsModel( GetImport().GetModel(), getModel() );
+    xforms_addXFormsModel( GetImport().GetModel(), mxModel );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

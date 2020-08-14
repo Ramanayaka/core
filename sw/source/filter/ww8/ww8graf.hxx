@@ -22,7 +22,12 @@
 
 #include <vector>
 #include <stack>
+
+#include <filter/msfilter/msdffimp.hxx>
+#include <svx/svdpage.hxx>
+
 #include "writerhelper.hxx"
+#include "ww8struc.hxx"
 
 struct EscherShape
 {
@@ -51,7 +56,6 @@ private:
     typedef std::vector<EscherShape>::iterator myeiter;
 
     std::vector<short> maDrawHeight;
-    typedef std::vector<short>::iterator myditer;
 
     std::stack<sal_uInt16> maIndexes;
 
@@ -87,7 +91,7 @@ public:
     void OutsideEscher();
 };
 
-void WW8FSPAShadowToReal( WW8_FSPA_SHADOW* pFSPAS, WW8_FSPA* pPic );
+void WW8FSPAShadowToReal( WW8_FSPA_SHADOW const * pFSPAS, WW8_FSPA* pPic );
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -37,25 +37,50 @@ class I18NUTIL_DLLPUBLIC unicode
 {
 public:
 
-    static sal_Int16 SAL_CALL getUnicodeType( const sal_Unicode ch );
-    static sal_Int16 SAL_CALL getUnicodeScriptType( const sal_Unicode ch, const ScriptTypeList *typeList, sal_Int16 unknownType = 0 );
-    static sal_Unicode SAL_CALL getUnicodeScriptStart(css::i18n::UnicodeScript type);
-    static sal_Unicode SAL_CALL getUnicodeScriptEnd(css::i18n::UnicodeScript type);
-    static sal_uInt8 SAL_CALL getUnicodeDirection( const sal_Unicode ch );
-    static bool SAL_CALL isControl( const sal_Unicode ch);
-    static bool SAL_CALL isAlpha( const sal_Unicode ch);
-    static bool SAL_CALL isSpace( const sal_Unicode ch);
-    static bool SAL_CALL isWhiteSpace( const sal_Unicode ch);
+    static sal_Int16 getUnicodeType( const sal_Unicode ch );
+    static sal_Int16 getUnicodeScriptType( const sal_Unicode ch, const ScriptTypeList *typeList, sal_Int16 unknownType = 0 );
+    static sal_Unicode getUnicodeScriptStart(css::i18n::UnicodeScript type);
+    static sal_Unicode getUnicodeScriptEnd(css::i18n::UnicodeScript type);
+    static sal_uInt8 getUnicodeDirection( const sal_Unicode ch );
+    static bool isControl( const sal_Unicode ch);
+    static bool isAlpha( const sal_Unicode ch);
+    static bool isSpace( const sal_Unicode ch);
+    static bool isWhiteSpace( const sal_Unicode ch);
+
+    /** Check for Unicode variation sequence selectors
+
+        @param nCode  A Unicode code point.
+
+        @return  True if code is a Unicode variation sequence selector.
+     */
+    static bool isIVSSelector(sal_uInt32 nCode)
+    {
+        return (nCode >= 0xFE00 && nCode <= 0xFE0F)   // Variation Selectors block
+            || (nCode >= 0xE0100 && nCode <= 0xE01EF);// Variation Selectors Supplement block
+    }
+
+    /** Check for base characters of a CJK ideographic variation sequence (IVS)
+
+        @param nCode  A Unicode code point.
+
+        @return  True if code is a Unicode base character part of CJK IVS
+     */
+    static bool isCJKIVSCharacter(sal_uInt32 nCode)
+    {
+        return (nCode >= 0x4E00 && nCode <= 0x9FFF)       // CJK Unified Ideographs
+            || (nCode >= 0x3400 && nCode <= 0x4DBF)       // CJK Unified Ideographs Extension A
+            || (nCode >= 0x20000 && nCode <= 0x2A6DF);    // CJK Unified Ideographs Extension B
+    }
 
     //Map an ISO 15924 script code to Latin/Asian/Complex/Weak
-    static sal_Int16 SAL_CALL getScriptClassFromUScriptCode(UScriptCode eScript);
+    static sal_Int16 getScriptClassFromUScriptCode(UScriptCode eScript);
 
     //Return a language that can be written in a given ISO 15924 script code
-    static OString SAL_CALL getExemplarLanguageForUScriptCode(UScriptCode eScript);
+    static OString getExemplarLanguageForUScriptCode(UScriptCode eScript);
 
     //Format a number as a percentage according to the rules of the given
     //language, e.g. 100 -> "100%" for en-US vs "100 %" for de-DE
-    static OUString SAL_CALL formatPercent(double dNumber,
+    static OUString formatPercent(double dNumber,
         const LanguageTag &rLangTag);
 };
 

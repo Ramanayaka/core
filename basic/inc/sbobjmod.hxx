@@ -22,16 +22,14 @@
 
 #include <rtl/ref.hxx>
 #include <basic/sbmod.hxx>
-#include <basic/sbstar.hxx>
 #include <com/sun/star/script/ModuleInfo.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/awt/XDialog.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <basic/basicdllapi.h>
 
 // Basic-Module for excel object.
 
-class BASIC_DLLPUBLIC SbObjModule : public SbModule
+class SbObjModule : public SbModule
 {
 protected:
     virtual ~SbObjModule() override;
@@ -50,7 +48,7 @@ public:
 
 class FormObjEventListenerImpl;
 
-class BASIC_DLLPUBLIC SbUserFormModule : public SbObjModule
+class SbUserFormModule : public SbObjModule
 {
     css::script::ModuleInfo m_mInfo;
     ::rtl::Reference< FormObjEventListenerImpl > m_DialogListener;
@@ -76,7 +74,7 @@ public:
     void triggerLayoutEvent();
     void triggerResizeEvent();
 
-    bool getInitState()
+    bool getInitState() const
         { return mbInit; }
     void setInitState( bool bInit )
         { mbInit = bInit; }
@@ -84,7 +82,7 @@ public:
     class SbUserFormModuleInstance* CreateInstance();
 };
 
-class BASIC_DLLPUBLIC SbUserFormModuleInstance : public SbUserFormModule
+class SbUserFormModuleInstance : public SbUserFormModule
 {
     SbUserFormModule* m_pParentModule;
 

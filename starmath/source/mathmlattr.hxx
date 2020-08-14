@@ -18,11 +18,6 @@
 // <https://www.w3.org/TR/MathML/chapter2.html#id.2.1.5.1>
 // MathML 2: 2.4.4.2 Attributes with units
 // <https://www.w3.org/TR/MathML2/chapter2.html#fund.attval>
-
-sal_Int32 ParseMathMLUnsignedNumber(const OUString &rStr, Fraction *pUN);
-
-sal_Int32 ParseMathMLNumber(const OUString &rStr, Fraction *pN);
-
 // MathML 3: 2.1.5.2 Length Valued Attributes
 // <https://www.w3.org/TR/MathML/chapter2.html#fund.units>
 
@@ -43,9 +38,13 @@ struct MathMLAttributeLengthValue
 {
     Fraction aNumber;
     MathMLLengthUnit eUnit;
+    MathMLAttributeLengthValue()
+        : eUnit(MathMLLengthUnit::None)
+    {
+    }
 };
 
-sal_Int32 ParseMathMLAttributeLengthValue(const OUString &rStr, MathMLAttributeLengthValue *pV);
+sal_Int32 ParseMathMLAttributeLengthValue(const OUString &rStr, MathMLAttributeLengthValue& rV);
 
 
 // MathML 3: 3.2.2 Mathematics style attributes common to token elements
@@ -72,7 +71,7 @@ enum class MathMLMathvariantValue {
     Stretched
 };
 
-bool GetMathMLMathvariantValue(const OUString &rStr, MathMLMathvariantValue *pV);
+bool GetMathMLMathvariantValue(const OUString &rStr, MathMLMathvariantValue& rV);
 
 #endif
 

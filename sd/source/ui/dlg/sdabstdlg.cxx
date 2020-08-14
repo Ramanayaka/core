@@ -17,18 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
-
-#include "sdabstdlg.hxx"
+#include <sdabstdlg.hxx>
 
 #include <osl/module.hxx>
 #include <rtl/ustring.hxx>
 
-typedef SdAbstractDialogFactory* (SAL_CALL *SdFuncPtrCreateDialogFactory)();
+typedef SdAbstractDialogFactory* (*SdFuncPtrCreateDialogFactory)();
 
 #ifndef DISABLE_DYNLOADING
 
-extern "C" { static void SAL_CALL thisModule() {} }
+extern "C" { static void thisModule() {} }
 
 #else
 
@@ -39,16 +37,14 @@ extern "C" SdAbstractDialogFactory* SdCreateDialogFactory();
 SdAbstractDialogFactory* SdAbstractDialogFactory::Create()
 {
     SdFuncPtrCreateDialogFactory fp = nullptr;
-#if HAVE_FEATURE_DESKTOP
 #ifndef DISABLE_DYNLOADING
     static ::osl::Module aDialogLibrary;
-    static const OUString sLibName(SDUI_DLL_NAME);
+    static const OUStringLiteral sLibName(SDUI_DLL_NAME);
     if ( aDialogLibrary.is() || aDialogLibrary.loadRelative( &thisModule, sLibName ) )
         fp = reinterpret_cast<SdAbstractDialogFactory* (SAL_CALL*)()>(
             aDialogLibrary.getFunctionSymbol( "SdCreateDialogFactory" ));
 #else
-    fp = SdCreateDialogFactory();
-#endif
+    fp = SdCreateDialogFactory;
 #endif
     if ( fp )
         return fp();

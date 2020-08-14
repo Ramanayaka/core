@@ -20,7 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_TOGGLEBUTTONTOOLBARCONTROLLER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_TOGGLEBUTTONTOOLBARCONTROLLER_HXX
 
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/frame/ControlCommand.hpp>
 
 #include <uielement/complextoolbarcontroller.hxx>
@@ -32,10 +31,17 @@ class ToolBox;
 namespace framework
 {
 
-class ToggleButtonToolbarController : public ComplexToolbarController
+class ToggleButtonToolbarController final : public ComplexToolbarController
 
 {
     public:
+        class DropdownMenuItem
+        {
+        public:
+            OUString mLabel;
+            OUString mTipHelpText;
+        };
+
         enum class Style
         {
             DropDownButton,
@@ -56,15 +62,14 @@ class ToggleButtonToolbarController : public ComplexToolbarController
         // XToolbarController
         virtual css::uno::Reference< css::awt::XWindow > SAL_CALL createPopupWindow() override;
 
-    protected:
+    private:
         virtual void executeControlCommand( const css::frame::ControlCommand& rControlCommand ) override;
         virtual css::uno::Sequence< css::beans::PropertyValue> getExecuteArgs(sal_Int16 KeyModifier) const override;
 
-    private:
         DECL_LINK( MenuSelectHdl, Menu *, bool);
 
         OUString                m_aCurrentSelection;
-        std::vector< OUString > m_aDropdownMenuList;
+        std::vector< DropdownMenuItem > m_aDropdownMenuList;
 };
 
 }

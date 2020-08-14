@@ -23,16 +23,12 @@
 #include <memory>
 #include "propertyhandler.hxx"
 #include "sqlcommanddesign.hxx"
-#include "pcrcommon.hxx"
 #include <comphelper/uno3.hxx>
 #include <comphelper/proparrhlp.hxx>
 #include <comphelper/propertycontainer.hxx>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/awt/XControlContainer.hpp>
-#include <com/sun/star/form/XForm.hpp>
-#include <tools/fldunit.hxx>
-#include <vcl/waitobj.hxx>
 #include <connectivity/dbtools.hxx>
 
 #include <set>
@@ -55,11 +51,10 @@ namespace pcr
     //= FormComponentPropertyHandler
 
     class FormComponentPropertyHandler;
-    typedef HandlerComponentBase< FormComponentPropertyHandler > FormComponentPropertyHandler_Base;
     typedef ::comphelper::OPropertyArrayUsageHelper<FormComponentPropertyHandler> FormComponentPropertyHandler_PROP;
     /** default ->XPropertyHandler for all form components.
     */
-    class FormComponentPropertyHandler :    public FormComponentPropertyHandler_Base,
+    class FormComponentPropertyHandler :    public PropertyHandlerComponent,
                                             public ::comphelper::OPropertyContainer,
                                             public FormComponentPropertyHandler_PROP
     {
@@ -103,15 +98,14 @@ namespace pcr
         // XPropertySet
         virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  ) override;
 
-        /// @throws css::uno::RuntimeException
-        static OUString SAL_CALL getImplementationName_static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_static(  );
-
     protected:
         virtual ~FormComponentPropertyHandler() override;
 
     protected:
+        // XServiceInfo
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames () override;
+
         virtual ::cppu::IPropertyArrayHelper* createArrayHelper( ) const override;
         virtual ::cppu::IPropertyArrayHelper& SAL_CALL getInfoHelper() override;
         // XPropertyHandler overridables
@@ -135,7 +129,7 @@ namespace pcr
 
         // PropertyHandler
         virtual css::uno::Sequence< css::beans::Property >
-                                                       SAL_CALL doDescribeSupportedProperties() const override;
+                                                    doDescribeSupportedProperties() const override;
         virtual void onNewComponent() override;
 
     private:
@@ -163,7 +157,7 @@ namespace pcr
         */
         void impl_initFieldList_nothrow( std::vector< OUString >& rFieldNames ) const;
 
-        /** obtaines the RowSet to which our component belongs
+        /** obtains the RowSet to which our component belongs
 
             If the component is a RowSet itself, it's returned directly. Else, the parent
             is examined for the XRowSet interface. If the parent is no XRowSet, then
@@ -249,7 +243,7 @@ namespace pcr
         */
         bool impl_dialogListSelection_nothrow( const OUString& _rProperty, ::osl::ClearableMutexGuard& _rClearBeforeDialog ) const;
 
-        /** executes a dialog for chosing a filter or sort criterion for a database form
+        /** executes a dialog for choosing a filter or sort criterion for a database form
             @param _bFilter
                 <TRUE/> if the Filter property should be used, <FALSE/> if it's the Order
                 property
@@ -273,7 +267,7 @@ namespace pcr
         bool impl_dialogLinkedFormFields_nothrow( ::osl::ClearableMutexGuard& _rClearBeforeDialog ) const;
 
         /** executes a dialog which allows the user to modify the FormatKey
-            property of our component, by chosing a (number) format.
+            property of our component, by choosing a (number) format.
             @precond
                 Our component actually has a FormatKey property.
             @param _out_rNewValue
@@ -287,7 +281,7 @@ namespace pcr
         /** executes a dialog which allows to the user to change the ImageURL property
             of our component by browsing for an image file.
             @precond
-                our component actually has a ImageURL property
+                our component actually has an ImageURL property
             @param _out_rNewValue
                 the new property value, if the user chose a new image url
             @return
@@ -433,24 +427,6 @@ namespace pcr
     private:
         using ::comphelper::OPropertyContainer::addPropertyChangeListener;
         using ::comphelper::OPropertyContainer::removePropertyChangeListener;
-    };
-
-
-    //= WaitCursor
-
-    /** wrapper around a ->WaitObject which can cope with a NULL window
-    */
-    class WaitCursor
-    {
-    private:
-        std::unique_ptr< WaitObject >       m_aWaitObject;
-
-    public:
-        explicit WaitCursor( vcl::Window* _pWindow )
-        {
-            if ( _pWindow )
-                m_aWaitObject.reset( new WaitObject( _pWindow ) );
-        }
     };
 
 

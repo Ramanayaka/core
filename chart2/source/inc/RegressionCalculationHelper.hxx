@@ -19,16 +19,14 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_REGRESSIONCALCULATIONHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_REGRESSIONCALCULATIONHELPER_HXX
 
+#include <com/sun/star/uno/Sequence.hxx>
+
 #include <rtl/math.hxx>
 
 #include <utility>
-#include <algorithm>
-#include <functional>
 #include <vector>
 
-namespace chart
-{
-namespace RegressionCalculationHelper
+namespace chart::RegressionCalculationHelper
 {
 
 typedef std::pair< std::vector< double >, std::vector< double > > tDoubleVectorPair;
@@ -60,81 +58,80 @@ tDoubleVectorPair
     return aResult;
 }
 
-class isValid : public std::binary_function< double, double, bool >
+class isValid
 {
 public:
     bool operator()( double x, double y )
-    { return ! ( ::rtl::math::isNan( x ) ||
-                 ::rtl::math::isNan( y ) ||
-                 ::rtl::math::isInf( x ) ||
-                 ::rtl::math::isInf( y ) );
+    { return ! ( std::isnan( x ) ||
+                 std::isnan( y ) ||
+                 std::isinf( x ) ||
+                 std::isinf( y ) );
     }
 };
 
-class isValidAndXPositive : public std::binary_function< double, double, bool >
+class isValidAndXPositive
 {
 public:
     bool operator()( double x, double y )
-    { return ! ( ::rtl::math::isNan( x ) ||
-                 ::rtl::math::isNan( y ) ||
-                 ::rtl::math::isInf( x ) ||
-                 ::rtl::math::isInf( y ) ||
+    { return ! ( std::isnan( x ) ||
+                 std::isnan( y ) ||
+                 std::isinf( x ) ||
+                 std::isinf( y ) ||
                  x <= 0.0 );
     }
 };
 
-class isValidAndYPositive : public std::binary_function< double, double, bool >
+class isValidAndYPositive
 {
 public:
     bool operator()( double x, double y )
-    { return ! ( ::rtl::math::isNan( x ) ||
-                 ::rtl::math::isNan( y ) ||
-                 ::rtl::math::isInf( x ) ||
-                 ::rtl::math::isInf( y ) ||
+    { return ! ( std::isnan( x ) ||
+                 std::isnan( y ) ||
+                 std::isinf( x ) ||
+                 std::isinf( y ) ||
                  y <= 0.0 );
     }
 };
 
-class isValidAndYNegative : public std::binary_function< double, double, bool >
+class isValidAndYNegative
 {
 public:
     bool operator()( double x, double y )
-    { return ! ( ::rtl::math::isNan( x ) ||
-                 ::rtl::math::isNan( y ) ||
-                 ::rtl::math::isInf( x ) ||
-                 ::rtl::math::isInf( y ) ||
+    { return ! ( std::isnan( x ) ||
+                 std::isnan( y ) ||
+                 std::isinf( x ) ||
+                 std::isinf( y ) ||
                  y >= 0.0 );
     }
 };
 
-class isValidAndBothPositive : public std::binary_function< double, double, bool >
+class isValidAndBothPositive
 {
 public:
     bool operator()( double x, double y )
-    { return ! ( ::rtl::math::isNan( x ) ||
-                 ::rtl::math::isNan( y ) ||
-                 ::rtl::math::isInf( x ) ||
-                 ::rtl::math::isInf( y ) ||
+    { return ! ( std::isnan( x ) ||
+                 std::isnan( y ) ||
+                 std::isinf( x ) ||
+                 std::isinf( y ) ||
                  x <= 0.0 ||
                  y <= 0.0 );
     }
 };
 
-class isValidAndXPositiveAndYNegative : public std::binary_function< double, double, bool >
+class isValidAndXPositiveAndYNegative
 {
 public:
     bool operator()( double x, double y )
-    { return ! ( ::rtl::math::isNan( x ) ||
-                 ::rtl::math::isNan( y ) ||
-                 ::rtl::math::isInf( x ) ||
-                 ::rtl::math::isInf( y ) ||
+    { return ! ( std::isnan( x ) ||
+                 std::isnan( y ) ||
+                 std::isinf( x ) ||
+                 std::isinf( y ) ||
                  x <= 0.0 ||
                  y >= 0.0 );
     }
 };
 
-} //  namespace RegressionCalculationHelper
-} //  namespace chart
+} //  namespace chart::RegressionCalculationHelper
 
 // INCLUDED_CHART2_SOURCE_INC_REGRESSIONCALCULATIONHELPER_HXX
 #endif

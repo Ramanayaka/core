@@ -19,26 +19,28 @@
 #ifndef INCLUDED_XMLSCRIPT_XMLDLG_IMEXP_HXX
 #define INCLUDED_XMLSCRIPT_XMLDLG_IMEXP_HXX
 
-#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/io/XInputStreamProvider.hpp>
-#include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-
-#include <xmlscript/xmlns.h>
 #include <xmlscript/xmlscriptdllapi.h>
+
+namespace com::sun::star::container { class XNameContainer; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::io { class XInputStream; }
+namespace com::sun::star::io { class XInputStreamProvider; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::xml::sax { class XDocumentHandler; }
+namespace com::sun::star::xml::sax { class XExtendedDocumentHandler; }
 
 namespace xmlscript
 {
 
-XMLSCRIPT_DLLPUBLIC void SAL_CALL exportDialogModel(
+XMLSCRIPT_DLLPUBLIC void exportDialogModel(
     css::uno::Reference< css::xml::sax::XExtendedDocumentHandler > const & xOut,
     css::uno::Reference< css::container::XNameContainer > const & xDialogModel,
     css::uno::Reference< css::frame::XModel > const & xDocument );
 
 XMLSCRIPT_DLLPUBLIC css::uno::Reference< css::xml::sax::XDocumentHandler >
-SAL_CALL importDialogModel(
+importDialogModel(
     css::uno::Reference< css::container::XNameContainer > const & xDialogModel,
     css::uno::Reference< css::uno::XComponentContext > const & xContext,
     css::uno::Reference< css::frame::XModel > const & xDocument );
@@ -46,12 +48,12 @@ SAL_CALL importDialogModel(
 // additional functions for convenience
 
 XMLSCRIPT_DLLPUBLIC css::uno::Reference< css::io::XInputStreamProvider >
-SAL_CALL exportDialogModel(
+exportDialogModel(
     css::uno::Reference< css::container::XNameContainer > const & xDialogModel,
     css::uno::Reference< css::uno::XComponentContext > const & xContext,
     css::uno::Reference< css::frame::XModel > const & xDocument );
 
-XMLSCRIPT_DLLPUBLIC void SAL_CALL importDialogModel(
+XMLSCRIPT_DLLPUBLIC void importDialogModel(
     css::uno::Reference< css::io::XInputStream > const & xInput,
     css::uno::Reference< css::container::XNameContainer > const & xDialogModel,
     css::uno::Reference< css::uno::XComponentContext > const & xContext,

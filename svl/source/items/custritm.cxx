@@ -21,24 +21,30 @@
 
 #include <osl/diagnose.h>
 #include <unotools/intlwrapper.hxx>
-#include <tools/stream.hxx>
 #include <svl/custritm.hxx>
 
 
 // virtual
 bool CntUnencodedStringItem::operator ==(const SfxPoolItem & rItem) const
 {
-    DBG_ASSERT(dynamic_cast<const CntUnencodedStringItem*>( &rItem ) !=  nullptr,
-               "CntUnencodedStringItem::operator ==(): Bad type");
+    assert(dynamic_cast<const CntUnencodedStringItem*>( &rItem ));
     return m_aValue
-            == (static_cast< const CntUnencodedStringItem * >(&rItem))->
+            == static_cast< const CntUnencodedStringItem * >(&rItem)->
+                m_aValue;
+}
+
+bool CntUnencodedStringItem::operator<(const SfxPoolItem & rItem) const
+{
+    assert(dynamic_cast<const CntUnencodedStringItem*>( &rItem ));
+    return m_aValue
+            < static_cast< const CntUnencodedStringItem * >(&rItem)->
                 m_aValue;
 }
 
 // virtual
 bool CntUnencodedStringItem::GetPresentation(SfxItemPresentation, MapUnit,
                                         MapUnit, OUString & rText,
-                                        const IntlWrapper *) const
+                                        const IntlWrapper&) const
 {
     rText = m_aValue;
     return true;
@@ -66,7 +72,7 @@ bool CntUnencodedStringItem::PutValue(const css::uno::Any& rVal,
 }
 
 // virtual
-SfxPoolItem * CntUnencodedStringItem::Clone(SfxItemPool *) const
+CntUnencodedStringItem* CntUnencodedStringItem::Clone(SfxItemPool *) const
 {
     return new CntUnencodedStringItem(*this);
 }

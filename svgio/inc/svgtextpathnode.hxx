@@ -20,15 +20,12 @@
 #ifndef INCLUDED_SVGIO_INC_SVGTEXTPATHNODE_HXX
 #define INCLUDED_SVGIO_INC_SVGTEXTPATHNODE_HXX
 
-#include <svgnode.hxx>
-#include <svgstyleattributes.hxx>
-#include <svgpathnode.hxx>
+#include "svgnode.hxx"
+#include "svgstyleattributes.hxx"
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
-        class SvgTextPathNode : public SvgNode
+        class SvgTextPathNode final : public SvgNode
         {
         private:
             /// use styles
@@ -58,8 +55,8 @@ namespace svgio
             /// StartOffset content
             const SvgNumber& getStartOffset() const { return maStartOffset; }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGTEXTPATHNODE_HXX
 

@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column:100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -23,19 +23,24 @@
 #include <rtl/ustrbuf.hxx>
 #include <rtl/strbuf.hxx>
 
+#include <array>
 #include <limits>
+#include <ostream>
+
 #include "scdllapi.h"
 #include "types.hxx"
 #include <formula/grammar.hxx>
 
 #include <o3tl/typed_flags_set.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
+#include <o3tl/underlyingenumvalue.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sheet {
         struct ExternalLinkInfo;
     }
-}}}
+}
+
+namespace com::sun::star::uno { template <typename > class Sequence; }
 
 class ScDocument;
 
@@ -54,24 +59,21 @@ const SCTAB    SCTAB_MAX    = ::std::numeric_limits<SCTAB>::max();
 const SCCOLROW SCCOLROW_MAX = ::std::numeric_limits<SCCOLROW>::max();
 const SCSIZE   SCSIZE_MAX   = ::std::numeric_limits<SCSIZE>::max();
 
-// The maximum values. Defines are needed for preprocessor checks, for example
-// in bcaslot.cxx, otherwise type safe constants are preferred.
-#define MAXROWCOUNT_DEFINE 1048576
-#define MAXCOLCOUNT_DEFINE 1024
-
 // Count values
-const SCROW       MAXROWCOUNT    = MAXROWCOUNT_DEFINE;
-const SCCOL       MAXCOLCOUNT    = MAXCOLCOUNT_DEFINE;
+const SCROW       MAXROWCOUNT    = 1048576;
+const SCCOL       MAXCOLCOUNT    = 1024;
+const SCCOL       INITIALCOLCOUNT = 64; // initial number of columns we allocate memory for
 /// limiting to 10000 for now, problem with 32 bit builds for now
 const SCTAB       MAXTABCOUNT    = 10000;
-const SCCOLROW    MAXCOLROWCOUNT = MAXROWCOUNT;
 // Maximum values
 const SCROW       MAXROW         = MAXROWCOUNT - 1;
 const SCCOL       MAXCOL         = MAXCOLCOUNT - 1;
 const SCTAB       MAXTAB         = MAXTABCOUNT - 1;
 const SCCOLROW    MAXCOLROW      = MAXROW;
-// Maximun tiled rendering values
-const SCROW       MAXTILEDROW    = 10000;
+const SCROW       MAXROW_JUMBO   = 16 * 1000 * 1000;
+const SCCOL       MAXCOL_JUMBO   = 16384;
+// Maximum tiled rendering values
+const SCROW       MAXTILEDROW    = 500000;
 // Limit the initial tab count to prevent users to set the count too high,
 // which could cause the memory usage of blank documents to exceed the
 // available system memory.
@@ -81,53 +83,60 @@ const SCTAB       MININITTAB = 1;
 // Special values
 const SCTAB SC_TAB_APPEND     = SCTAB_MAX;
 const SCTAB TABLEID_DOC       = SCTAB_MAX;  // entire document, e.g. protect
-const SCROW SCROWS32K         = 32000;
+const SCROW SCROWS32K         = 32000; // for fuzzing
 const SCCOL SCCOL_REPEAT_NONE = SCCOL_MAX;
 const SCROW SCROW_REPEAT_NONE = SCROW_MAX;
+const SCCOL SC_TABSTART_NONE  = SCCOL_MAX;
 
-#define MAXROW_30   8191
+const SCROW MAXROW_30         = 8191;
 
-SAL_WARN_UNUSED_RESULT inline bool ValidCol( SCCOL nCol )
+[[nodiscard]] inline bool ValidCol( SCCOL nCol, SCCOL nMaxCol )
 {
-    return nCol >= 0 && nCol <= MAXCOL;
+    assert(nMaxCol == MAXCOL || nMaxCol == MAXCOL_JUMBO); // temporary to debug jumbo sheets work
+    return nCol >= 0 && nCol <= nMaxCol;
 }
 
-SAL_WARN_UNUSED_RESULT inline bool ValidRow( SCROW nRow )
+[[nodiscard]] inline bool ValidRow( SCROW nRow, SCROW nMaxRow)
 {
-    return nRow >= 0 && nRow <= MAXROW;
+    assert(nMaxRow == MAXROW || nMaxRow == MAXROW_JUMBO); // temporary to debug jumbo sheets work
+    return nRow >= 0 && nRow <= nMaxRow;
 }
 
-SAL_WARN_UNUSED_RESULT inline bool ValidTab( SCTAB nTab )
+[[nodiscard]] inline bool ValidTab( SCTAB nTab )
 {
     return nTab >= 0 && nTab <= MAXTAB;
 }
 
-SAL_WARN_UNUSED_RESULT inline bool ValidTab( SCTAB nTab, SCTAB nMaxTab )
+[[nodiscard]] inline bool ValidTab( SCTAB nTab, SCTAB nMaxTab )
 {
     return nTab >= 0 && nTab <= nMaxTab;
 }
 
-SAL_WARN_UNUSED_RESULT inline bool ValidColRow( SCCOL nCol, SCROW nRow )
+[[nodiscard]] inline bool ValidColRow( SCCOL nCol, SCROW nRow, SCCOL nMaxCol, SCROW nMaxRow )
 {
-    return ValidCol( nCol) && ValidRow( nRow);
+    assert(nMaxRow == MAXROW || nMaxRow == MAXROW_JUMBO); // temporary to debug jumbo sheets work
+    return ValidCol(nCol,nMaxCol) && ValidRow(nRow,nMaxRow);
 }
 
-SAL_WARN_UNUSED_RESULT inline bool ValidColRowTab( SCCOL nCol, SCROW nRow, SCTAB nTab )
+[[nodiscard]] inline bool ValidColRowTab( SCCOL nCol, SCROW nRow, SCTAB nTab, SCCOL nMaxCol, SCROW nMaxRow )
 {
-    return ValidCol( nCol) && ValidRow( nRow) && ValidTab( nTab);
+    assert(nMaxRow == MAXROW || nMaxRow == MAXROW_JUMBO); // temporary to debug jumbo sheets work
+    return ValidCol(nCol,nMaxCol) && ValidRow(nRow,nMaxRow) && ValidTab( nTab);
 }
 
-SAL_WARN_UNUSED_RESULT inline SCCOL SanitizeCol( SCCOL nCol )
+[[nodiscard]] inline SCCOL SanitizeCol( SCCOL nCol, SCCOL nMaxCol )
 {
-    return nCol < 0 ? 0 : (nCol > MAXCOL ? MAXCOL : nCol);
+    assert(nMaxCol == MAXCOL || nMaxCol == MAXCOL_JUMBO); // temporary to debug jumbo sheets work
+    return nCol < 0 ? 0 : (nCol > nMaxCol ? nMaxCol : nCol);
 }
 
-SAL_WARN_UNUSED_RESULT inline SCROW SanitizeRow( SCROW nRow )
+[[nodiscard]] inline SCROW SanitizeRow( SCROW nRow, SCROW nMaxRow )
 {
-    return nRow < 0 ? 0 : (nRow > MAXROW ? MAXROW : nRow);
+    assert(nMaxRow == MAXROW || nMaxRow == MAXROW_JUMBO); // temporary to debug jumbo sheets work
+    return nRow < 0 ? 0 : (nRow > nMaxRow ? nMaxRow : nRow);
 }
 
-SAL_WARN_UNUSED_RESULT inline SCTAB SanitizeTab( SCTAB nTab )
+[[nodiscard]] inline SCTAB SanitizeTab( SCTAB nTab )
 {
     return nTab < 0 ? 0 : (nTab > MAXTAB ? MAXTAB : nTab);
 }
@@ -147,7 +156,7 @@ enum class ScRefFlags : sal_uInt16
     ROW_VALID     = 0x0100,
     COL_VALID     = 0x0200,
     TAB_VALID     = 0x0400,
-    // BITS for convience
+    // BITS for convenience
     BITS          = COL_ABS | ROW_ABS | TAB_ABS | TAB_3D
                     | ROW_VALID | COL_VALID | TAB_VALID,
     // somewhat cheesy kludge to force the display of the document name even for
@@ -174,17 +183,22 @@ namespace o3tl
 }
 inline void applyStartToEndFlags(ScRefFlags &target,const ScRefFlags source)
 {
-    target |= ScRefFlags((std::underlying_type<ScRefFlags>::type)source << 4);
+    target |= ScRefFlags(o3tl::underlyingEnumValue(source) << 4);
 }
 inline void applyStartToEndFlags(ScRefFlags &target)
 {
-    target |= ScRefFlags((std::underlying_type<ScRefFlags>::type)target << 4);
+    target |= ScRefFlags(o3tl::underlyingEnumValue(target) << 4);
 }
 
 //  ScAddress
 class SAL_WARN_UNUSED ScAddress
 {
 private:
+    // Even if the fields are in the order "row, column, tab", in all (?) the ScAddress and
+    // ScDocument APIs that take separate row, column, and tab parameters, the parameters are in the
+    // order "column, row, tab", which matches the most common (A1) address syntax, if you ignore
+    // the sheet (tab). Don't let this confuse you, like it confused me for a while.
+
     SCROW   nRow;
     SCCOL   nCol;
     SCTAB   nTab;
@@ -210,7 +224,7 @@ public:
             eConv(eConvP), nRow(0), nCol(0)
         {}
         /* Use the formula::FormulaGrammar::AddressConvention associated with rAddr::Tab() */
-        Details( const ScDocument* pDoc, const ScAddress & rAddr );
+        Details( const ScDocument& rDoc, const ScAddress& rAddr );
     };
     SC_DLLPUBLIC static const Details detailsOOOa1;
 
@@ -310,7 +324,7 @@ public:
                 resulting reference is fully valid or not.
      */
     SC_DLLPUBLIC ScRefFlags Parse(
-                    const OUString&, ScDocument* = nullptr,
+                    const OUString&, const ScDocument* = nullptr,
                     const Details& rDetails = detailsOOOa1,
                     ExternalInfo* pExtInfo = nullptr,
                     const css::uno::Sequence<css::sheet::ExternalLinkInfo>* pExternalLinks = nullptr,
@@ -332,8 +346,8 @@ public:
         @param  pDocument
                 The document for the maximum defined sheet number.
      */
-    SC_DLLPUBLIC SAL_WARN_UNUSED_RESULT bool Move( SCCOL nDeltaX, SCROW nDeltaY, SCTAB nDeltaZ,
-            ScAddress& rErrorPos, ScDocument* pDocument = nullptr );
+    [[nodiscard]] SC_DLLPUBLIC bool Move( SCCOL nDeltaX, SCROW nDeltaY, SCTAB nDeltaZ,
+            ScAddress& rErrorPos, const ScDocument* pDocument = nullptr );
 
     inline bool operator==( const ScAddress& rAddress ) const;
     inline bool operator!=( const ScAddress& rAddress ) const;
@@ -354,6 +368,18 @@ public:
      */
     OUString GetColRowString() const;
 };
+
+// For use in SAL_DEBUG etc. Output format not guaranteed to be stable.
+template<typename charT, typename traits>
+inline std::basic_ostream<charT, traits> & operator <<(std::basic_ostream<charT, traits> & stream, const ScAddress& rAddress)
+{
+    stream <<
+        rAddress.Tab()+1 << "!"
+        "R" << rAddress.Row()+1 <<
+        "C" << rAddress.Col()+1;
+
+    return stream;
+}
 
 inline void ScAddress::PutInOrder( ScAddress& rAddress )
 {
@@ -437,6 +463,12 @@ inline bool ScAddress::lessThanByRow( const ScAddress& rAddress ) const
 
 inline size_t ScAddress::hash() const
 {
+#if SAL_TYPES_SIZEOFPOINTER == 8
+    // 16 bits for the columns, and 20 bits for the rows
+    return (static_cast<size_t>(nTab) << 36) ^
+           (static_cast<size_t>(nCol) << 20) ^
+            static_cast<size_t>(nRow);
+#else
     // Assume that there are not that many addresses with row > 2^16 AND column
     // > 2^8 AND sheet > 2^8 so we won't have too many collisions.
     if (nRow <= 0xffff)
@@ -445,6 +477,7 @@ inline size_t ScAddress::hash() const
     else
         return (static_cast<size_t>(nTab) << 28) ^
             (static_cast<size_t>(nCol) << 24) ^ static_cast<size_t>(nRow);
+#endif
 }
 
 struct ScAddressHashFunctor
@@ -455,13 +488,13 @@ struct ScAddressHashFunctor
     }
 };
 
-inline bool ValidAddress( const ScAddress& rAddress )
+inline bool ValidAddress( const ScAddress& rAddress, SCCOL nMaxCol = MAXCOL, SCROW nMaxRow = MAXROW )
 {
-    return ValidCol(rAddress.Col()) && ValidRow(rAddress.Row()) && ValidTab(rAddress.Tab());
+    return ValidCol(rAddress.Col(), nMaxCol) && ValidRow(rAddress.Row(), nMaxRow) && ValidTab(rAddress.Tab());
 }
 
 //  ScRange
-class SAL_WARN_UNUSED ScRange
+class SAL_WARN_UNUSED ScRange final
 {
 public:
     ScAddress aStart;
@@ -518,17 +551,19 @@ public:
     inline bool In( const ScAddress& ) const;   ///< is Address& in Range?
     inline bool In( const ScRange& ) const;     ///< is Range& in Range?
 
-    SC_DLLPUBLIC ScRefFlags Parse( const OUString&, ScDocument* = nullptr,
+    SC_DLLPUBLIC ScRefFlags Parse( const OUString&, const ScDocument* = nullptr,
                                    const ScAddress::Details& rDetails = ScAddress::detailsOOOa1,
                                    ScAddress::ExternalInfo* pExtInfo = nullptr,
                                    const css::uno::Sequence<css::sheet::ExternalLinkInfo>* pExternalLinks = nullptr,
                                    const OUString* pErrRef = nullptr );
 
-    SC_DLLPUBLIC ScRefFlags ParseAny( const OUString&, ScDocument*,
+    SC_DLLPUBLIC ScRefFlags ParseAny( const OUString&, const ScDocument*,
                                       const ScAddress::Details& rDetails = ScAddress::detailsOOOa1 );
-    SC_DLLPUBLIC ScRefFlags ParseCols( const OUString&,
+    SC_DLLPUBLIC ScRefFlags ParseCols( const ScDocument* pDoc,
+                                       const OUString&,
                                        const ScAddress::Details& rDetails = ScAddress::detailsOOOa1 );
-    SC_DLLPUBLIC void ParseRows( const OUString&,
+    SC_DLLPUBLIC void ParseRows( const ScDocument* pDoc,
+                                       const OUString&,
                                        const ScAddress::Details& rDetails = ScAddress::detailsOOOa1 );
 
     /** Parse an Excel style reference up to and including the sheet name
@@ -579,8 +614,8 @@ public:
         @returns
             String contains formatted cell range in address convention
      */
-    SC_DLLPUBLIC OUString Format( ScRefFlags nFlags = ScRefFlags::ZERO,
-                                  const ScDocument* pDocument = nullptr,
+    SC_DLLPUBLIC OUString Format( const ScDocument& rDocument,
+                                  ScRefFlags nFlags = ScRefFlags::ZERO,
                                   const ScAddress::Details& rDetails = ScAddress::detailsOOOa1,
                                   bool bFullAddressNotation = false ) const;
 
@@ -595,12 +630,15 @@ public:
         @param  pDocument
                 The document for the maximum defined sheet number.
      */
-    SC_DLLPUBLIC SAL_WARN_UNUSED_RESULT bool Move( SCCOL aDeltaX, SCROW aDeltaY, SCTAB aDeltaZ,
-            ScRange& rErrorRange, ScDocument* pDocument = nullptr );
+    [[nodiscard]] SC_DLLPUBLIC bool Move( SCCOL aDeltaX, SCROW aDeltaY, SCTAB aDeltaZ,
+            ScRange& rErrorRange, const ScDocument* pDocument = nullptr );
 
     /** Same as Move() but with sticky end col/row anchors. */
-    SC_DLLPUBLIC SAL_WARN_UNUSED_RESULT bool MoveSticky( SCCOL aDeltaX, SCROW aDeltaY, SCTAB aDeltaZ,
+    [[nodiscard]] SC_DLLPUBLIC bool MoveSticky( const ScDocument& rDoc, SCCOL aDeltaX, SCROW aDeltaY, SCTAB aDeltaZ,
             ScRange& rErrorRange );
+
+    SC_DLLPUBLIC void IncColIfNotLessThan(const ScDocument* pDoc, SCCOL nStartCol, SCCOL nOffset);
+    SC_DLLPUBLIC void IncRowIfNotLessThan(const ScDocument* pDoc, SCROW nStartRow, SCROW nOffset);
 
     SC_DLLPUBLIC void ExtendTo( const ScRange& rRange );
     SC_DLLPUBLIC bool Intersects( const ScRange& rRange ) const;    // do two ranges intersect?
@@ -615,12 +653,12 @@ public:
     /** Increment or decrement end column unless sticky or until it becomes
         sticky. Checks if the range encompasses at least two columns so should
         be called before adjusting the start column. */
-    void IncEndColSticky( SCCOL nDelta );
+    void IncEndColSticky( const ScDocument* pDoc, SCCOL nDelta );
 
     /** Increment or decrement end row unless sticky or until it becomes
         sticky. Checks if the range encompasses at least two rows so should
         be called before adjusting the start row. */
-    void IncEndRowSticky( SCROW nDelta );
+    void IncEndRowSticky( const ScDocument* pDoc, SCROW nDelta );
 
     inline bool operator==( const ScRange& rRange ) const;
     inline bool operator!=( const ScRange& rRange ) const;
@@ -632,6 +670,25 @@ public:
     /// Hash start column and start and end rows.
     inline size_t hashStartColumn() const;
 };
+
+// For use in SAL_DEBUG etc. Output format not guaranteed to be stable.
+template<typename charT, typename traits>
+inline std::basic_ostream<charT, traits> & operator <<(std::basic_ostream<charT, traits> & stream, const ScRange& rRange)
+{
+    stream << rRange.aStart;
+    if (rRange.aEnd != rRange.aStart)
+    {
+        stream << ":";
+        if (rRange.aEnd.Tab() != rRange.aStart.Tab())
+            stream << rRange.aEnd;
+        else
+            stream <<
+                "R" << rRange.aEnd.Row()+1 <<
+                "C" << rRange.aEnd.Col()+1;
+    }
+
+    return stream;
+}
 
 inline void ScRange::GetVars( SCCOL& nCol1, SCROW& nRow1, SCTAB& nTab1,
                               SCCOL& nCol2, SCROW& nRow2, SCTAB& nTab2 ) const
@@ -691,6 +748,14 @@ inline bool ScRange::In( const ScRange& rRange ) const
 
 inline size_t ScRange::hashArea() const
 {
+#if SAL_TYPES_SIZEOFPOINTER == 8
+    // 12 bits for the columns and 20 bits for the rows
+    return
+        (static_cast<size_t>(aStart.Row()) << 44) ^
+        (static_cast<size_t>(aStart.Col()) << 32) ^
+        (static_cast<size_t>(aEnd.Col())   << 20) ^
+         static_cast<size_t>(aEnd.Row());
+#else
     // Assume that there are not that many ranges with identical corners so we
     // won't have too many collisions. Also assume that more lower row and
     // column numbers are used so that there are not too many conflicts with
@@ -703,10 +768,18 @@ inline size_t ScRange::hashArea() const
         (static_cast<size_t>(aStart.Col()) << 21) ^ // start column <= 2^5
         (static_cast<size_t>(aEnd.Col())   << 15) ^ // end column <= 2^6
          static_cast<size_t>(aEnd.Row());           // end row <= 2^15
+#endif
 }
 
 inline size_t ScRange::hashStartColumn() const
 {
+#if SAL_TYPES_SIZEOFPOINTER == 8
+    // 20 bits for the rows
+    return
+        (static_cast<size_t>(aStart.Col()) << 40) ^
+        (static_cast<size_t>(aStart.Row()) << 20) ^
+         static_cast<size_t>(aEnd.Row());
+#else
     // Assume that for the start row more lower row numbers are used so that
     // there are not too many conflicts with the column hashed into the higher
     // values.
@@ -714,18 +787,19 @@ inline size_t ScRange::hashStartColumn() const
         (static_cast<size_t>(aStart.Col()) << 24) ^ // start column <= 2^8
         (static_cast<size_t>(aStart.Row()) << 16) ^ // start row <= 2^8
          static_cast<size_t>(aEnd.Row());
+#endif
 }
 
-inline bool ValidRange( const ScRange& rRange )
+inline bool ValidRange( const ScRange& rRange, SCCOL nMaxCol = MAXCOL, SCROW nMaxRow = MAXROW )
 {
-    return ValidAddress(rRange.aStart) && ValidAddress(rRange.aEnd);
+    return ValidAddress(rRange.aStart, nMaxCol, nMaxRow) && ValidAddress(rRange.aEnd, nMaxCol, nMaxRow);
 }
 
 //  ScRangePair
-class SAL_WARN_UNUSED ScRangePair
+class SAL_WARN_UNUSED ScRangePair final
 {
 private:
-    ScRange aRange[2];
+    std::array<ScRange,2> aRange;
 
 public:
     ScRangePair( const ScRangePair& r )
@@ -831,7 +905,7 @@ public:
 
     inline bool operator == ( const ScRefAddress& r ) const;
 
-    OUString  GetRefString( ScDocument* pDocument, SCTAB nActTab,
+    OUString  GetRefString( const ScDocument* pDocument, SCTAB nActTab,
                             const ScAddress::Details& rDetails = ScAddress::detailsOOOa1) const;
 };
 
@@ -877,23 +951,20 @@ inline bool ScRefAddress::operator==( const ScRefAddress& rRefAddress ) const
 #define BCA_BRDCST_ALWAYS ScAddress( 0, SCROW_MAX, 0 )
 #define BCA_LISTEN_ALWAYS ScRange( BCA_BRDCST_ALWAYS, BCA_BRDCST_ALWAYS )
 
-template< typename T > void PutInOrder( T& nStart, T& nEnd )
+template< typename T > inline void PutInOrder( T& nStart, T& nEnd )
 {
     if (nEnd < nStart)
     {
-        T nTemp;
-        nTemp = nEnd;
-        nEnd = nStart;
-        nStart = nTemp;
+        std::swap(nStart, nEnd);
     }
 }
 
-bool ConvertSingleRef( ScDocument* pDocument, const OUString& rRefString,
+bool ConvertSingleRef( const ScDocument* pDocument, const OUString& rRefString,
                        SCTAB nDefTab, ScRefAddress& rRefAddress,
                        const ScAddress::Details& rDetails,
                        ScAddress::ExternalInfo* pExtInfo = nullptr );
 
-bool ConvertDoubleRef( ScDocument* pDocument, const OUString& rRefString,
+bool ConvertDoubleRef( const ScDocument* pDocument, const OUString& rRefString,
                        SCTAB nDefTab, ScRefAddress& rStartRefAddress,
                        ScRefAddress& rEndRefAddress,
                        const ScAddress::Details& rDetails,
@@ -904,20 +975,20 @@ SC_DLLPUBLIC void ScColToAlpha( OUStringBuffer& rBuffer, SCCOL nCol);
 
 inline void ScColToAlpha( OUString& rStr, SCCOL nCol)
 {
-    OUStringBuffer aBuf(2);
+    OUStringBuffer aBuf(4);
     ScColToAlpha( aBuf, nCol);
-    rStr += aBuf.makeStringAndClear();
+    rStr += aBuf;
 }
 
 inline OUString ScColToAlpha( SCCOL nCol )
 {
-    OUStringBuffer aBuf(2);
+    OUStringBuffer aBuf(4);
     ScColToAlpha( aBuf, nCol);
     return aBuf.makeStringAndClear();
 }
 
 /// get column number of A..IV... string
-bool AlphaToCol( SCCOL& rCol, const OUString& rStr);
+bool AlphaToCol(const ScDocument& rDoc, SCCOL& rCol, const OUString& rStr);
 
 #endif // INCLUDED_SC_INC_ADDRESS_HXX
 

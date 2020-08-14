@@ -23,18 +23,17 @@
 #include "xltable.hxx"
 
 #include <vector>
-#include <tools/mempool.hxx>
 #include "xladdress.hxx"
 #include "xerecord.hxx"
-#include "xestring.hxx"
-#include "xeformula.hxx"
 #include "xestyle.hxx"
-#include "xeextlst.hxx"
+#include "xlformula.hxx"
 
 #include <map>
 #include <memory>
 #include <unordered_map>
-#include <unordered_set>
+#include <o3tl/sorted_vector.hxx>
+
+class XclExtLst;
 
 /* ============================================================================
 Export of cell tables including row and column description.
@@ -92,7 +91,7 @@ protected:
     XclAddress          maBaseXclPos;   /// Address of base cell (first FORMULA record).
 };
 
-typedef std::shared_ptr< XclExpRangeFmlaBase > XclExpRangeFmlaRef;
+typedef rtl::Reference< XclExpRangeFmlaBase > XclExpRangeFmlaRef;
 
 // Array formulas =============================================================
 
@@ -122,7 +121,7 @@ private:
     XclTokenArrayRef    mxTokArr;       /// The token array of a matrix formula.
 };
 
-typedef std::shared_ptr< XclExpArray > XclExpArrayRef;
+typedef rtl::Reference< XclExpArray > XclExpArrayRef;
 
 /** Caches all ARRAY records. */
 class XclExpArrayBuffer : protected XclExpRoot
@@ -171,7 +170,7 @@ private:
     sal_uInt8           mnUsedCount;    /// Number of FORMULA records referring to this record.
 };
 
-typedef std::shared_ptr< XclExpShrfmla > XclExpShrfmlaRef;
+typedef rtl::Reference< XclExpShrfmla > XclExpShrfmlaRef;
 
 /** Caches all SHRFMLA records and provides functions to update their ranges. */
 class XclExpShrfmlaBuffer : protected XclExpRoot
@@ -196,15 +195,13 @@ private:
     bool IsValidTokenArray( const ScTokenArray& rArray ) const;
 
     typedef std::unordered_map<const ScTokenArray*, XclExpShrfmlaRef> TokensType;
-    typedef std::unordered_set<const ScTokenArray*> BadTokenArraysType;
+    typedef o3tl::sorted_vector<const ScTokenArray*> BadTokenArraysType;
 
     TokensType         maRecMap;    /// Map containing the SHRFMLA records.
     BadTokenArraysType maBadTokens; /// shared tokens we should *not* export as SHRFMLA
 };
 
 // Multiple operations ========================================================
-
-struct XclMultipleOpRefs;
 
 /** Represents a TABLEOP record for a multiple operations range. */
 class XclExpTableop : public XclExpRangeFmlaBase
@@ -244,7 +241,7 @@ private:
     bool                mbValid;        /// true = Contains valid references.
 };
 
-typedef std::shared_ptr< XclExpTableop > XclExpTableopRef;
+typedef rtl::Reference< XclExpTableop > XclExpTableopRef;
 
 /** Contains all created TABLEOP records and supports creating or updating them. */
 class XclExpTableopBuffer : protected XclExpRoot
@@ -267,8 +264,7 @@ private:
     XclExpTableopRef    TryCreate( const ScAddress& rScPos, const XclMultipleOpRefs& rRefs );
 
 private:
-    typedef XclExpRecordList< XclExpTableop > XclExpTableopList;
-    XclExpTableopList   maTableopList;  /// List of all TABLEOP records.
+    XclExpRecordList< XclExpTableop > maTableopList;  /// List of all TABLEOP records.
 };
 
 // Cell records
@@ -314,7 +310,7 @@ private:
     XclAddress          maXclPos;       /// Address of the cell.
 };
 
-typedef std::shared_ptr< XclExpCellBase > XclExpCellRef;
+typedef rtl::Reference< XclExpCellBase > XclExpCellRef;
 
 // Single cell records ========================================================
 
@@ -361,8 +357,6 @@ private:
 /** Represents a NUMBER record that describes a cell with a double value. */
 class XclExpNumberCell : public XclExpSingleCellBase
 {
-    DECL_FIXEDMEMPOOL_NEWDEL( XclExpNumberCell )
-
 public:
     explicit            XclExpNumberCell( const XclExpRoot& rRoot, const XclAddress& rXclPos,
                             const ScPatternAttr* pPattern, sal_uInt32 nForcedXFId,
@@ -379,8 +373,6 @@ private:
 /** Represents a BOOLERR record that describes a cell with a Boolean value. */
 class XclExpBooleanCell : public XclExpSingleCellBase
 {
-    DECL_FIXEDMEMPOOL_NEWDEL( XclExpBooleanCell )
-
 public:
     explicit            XclExpBooleanCell( const XclExpRoot& rRoot, const XclAddress& rXclPos,
                             const ScPatternAttr* pPattern, sal_uInt32 nForcedXFId,
@@ -405,8 +397,6 @@ class EditTextObject;
  */
 class XclExpLabelCell : public XclExpSingleCellBase
 {
-    DECL_FIXEDMEMPOOL_NEWDEL( XclExpLabelCell )
-
 public:
     /** Constructs the record from an unformatted Calc string cell. */
     explicit            XclExpLabelCell( const XclExpRoot& rRoot, const XclAddress& rXclPos,
@@ -440,8 +430,6 @@ class ScFormulaCell;
 /** Represents a FORMULA record that describes a cell with a formula. */
 class XclExpFormulaCell : public XclExpSingleCellBase
 {
-    DECL_FIXEDMEMPOOL_NEWDEL( XclExpFormulaCell )
-
 public:
     explicit            XclExpFormulaCell( const XclExpRoot& rRoot, const XclAddress& rXclPos,
                             const ScPatternAttr* pPattern, sal_uInt32 nForcedXFId,
@@ -532,8 +520,6 @@ private:
 /** Represents a BLANK or MULBLANK record that describes empty but formatted cells. */
 class XclExpBlankCell : public XclExpMultiCellBase
 {
-    DECL_FIXEDMEMPOOL_NEWDEL( XclExpBlankCell )
-
 public:
     explicit            XclExpBlankCell( const XclAddress& rXclPos, const XclExpMultiXFId& rXFId );
 
@@ -557,8 +543,6 @@ private:
 /** Represents an RK or MULRK record that describes cells with a compressed double values. */
 class XclExpRkCell : public XclExpMultiCellBase
 {
-    DECL_FIXEDMEMPOOL_NEWDEL( XclExpRkCell )
-
 public:
     explicit            XclExpRkCell( const XclExpRoot& rRoot, const XclAddress& rXclPos,
                             const ScPatternAttr* pPattern, sal_uInt32 nForcedXFId,
@@ -605,10 +589,10 @@ private:
         bool                mbHidden;           /// true = Group in this level is hidden.
         explicit     XclExpLevelInfo() : mnScEndPos( 0 ), mbHidden( false ) {}
     };
-    typedef ::std::vector< XclExpLevelInfo > XclExpLevelInfoVec;
 
     const ScOutlineArray* mpScOLArray;      /// Pointer to Calc outline array.
-    XclExpLevelInfoVec  maLevelInfos;       /// Info for current row and all levels.
+    std::vector< XclExpLevelInfo >
+                        maLevelInfos;       /// Info for current row and all levels.
     sal_uInt8           mnCurrLevel;        /// Highest level of an open group for current position.
     bool                mbCurrCollapse;     /// true = Collapsed group ends at current position.
 };
@@ -670,6 +654,7 @@ private:
     virtual void        WriteBody( XclExpStream& rStrm ) override;
 
 private:
+    const XclExpRoot&   mrRoot;
     sal_uInt32          mnFirstUsedXclRow;  /// First used row.
     sal_uInt32          mnFirstFreeXclRow;  /// First unused row after used area.
     sal_uInt16          mnFirstUsedXclCol;  /// First used column.
@@ -691,7 +676,7 @@ private:
     default width. If the passed width is rounded up or down to get the default
     width, the function returns false.
  */
-class XclExpDefcolwidth : public XclExpUInt16Record, protected XclExpRoot
+class XclExpDefcolwidth : public XclExpDoubleRecord, protected XclExpRoot
 {
 public:
     explicit            XclExpDefcolwidth( const XclExpRoot& rRoot );
@@ -700,7 +685,9 @@ public:
     bool                IsDefWidth( sal_uInt16 nXclColWidth ) const;
 
     /** Sets the passed column width (in 1/256 character width) as default width. */
-    void                SetDefWidth( sal_uInt16 nXclColWidth );
+    void                SetDefWidth( sal_uInt16 nXclColWidth, bool bXLS );
+
+    virtual void        Save(XclExpStream& rStrm) override;
 };
 
 /** Contains the column settings for a range of columns.
@@ -732,8 +719,8 @@ public:
     /** Returns the number of columns represented by this record. */
     sal_uInt16   GetColCount() const { return mnLastXclCol - mnFirstXclCol + 1; }
 
-    /** Returns true, if the column has default format and width. */
-    bool                IsDefault( const XclExpDefcolwidth& rDefColWidth ) const;
+    /** Returns true, if the column has default format and width. Also sets mbCustomWidth */
+    bool                IsDefault( const XclExpDefcolwidth& rDefColWidth );
 
     virtual void        SaveXml( XclExpXmlStream& rStrm ) override;
 
@@ -769,12 +756,13 @@ public:
     void                Initialize( SCROW nLastScRow );
     /** Converts the XF identifiers into the Excel XF indexes and merges equal columns.
         @param rXFIndexes  Returns the final XF indexes of all columns. */
-    void                Finalize( ScfUInt16Vec& rXFIndexes );
+    void                Finalize( ScfUInt16Vec& rXFIndexes, bool bXLS );
 
     /** Writes all COLINFO records of this buffer. */
     virtual void        Save( XclExpStream& rStrm ) override;
     virtual void        SaveXml( XclExpXmlStream& rStrm ) override;
-    sal_uInt8           GetHighestOutlineLevel() { return mnHighestOutlineLevel; }
+    sal_uInt8           GetHighestOutlineLevel() const { return mnHighestOutlineLevel; }
+    double              GetDefColWidth() const { return maDefcolwidth.GetValue(); }
 
 private:
     typedef XclExpRecordList< XclExpColinfo >   XclExpColinfoList;
@@ -894,9 +882,8 @@ private:
     virtual void        WriteBody( XclExpStream& rStrm ) override;
 
 private:
-    typedef XclExpRecordList< XclExpCellBase > XclExpCellList;
-
-    XclExpCellList      maCellList;         /// List of cell records for this row.
+    XclExpRecordList< XclExpCellBase >
+                        maCellList;         /// List of cell records for this row.
     sal_uInt32          mnXclRow;           /// Excel row index of this row.
     sal_uInt16          mnHeight;           /// Row height in twips.
     sal_uInt16          mnFlags;            /// Flags for the ROW record.
@@ -935,7 +922,7 @@ public:
     virtual void        SaveXml( XclExpXmlStream& rStrm ) override;
 
     XclExpDimensions&   GetDimensions() { return maDimensions; }
-    sal_uInt8           GetHighestOutlineLevel() { return mnHighestOutlineLevel; }
+    sal_uInt8           GetHighestOutlineLevel() const { return mnHighestOutlineLevel; }
 
 private:
     /** Returns access to the specified ROW record. Inserts preceding missing ROW records.
@@ -990,7 +977,7 @@ public:
     explicit            XclExpCellTable( const XclExpRoot& rRoot );
 
     /** Converts all XF identifiers into the Excel XF indexes and calculates default formats. */
-    void                Finalize();
+    void                Finalize(bool bXLS);
 
     /** Returns the reference to an internal record specified by the passed record id.
         @param nRecId  The record identifier that specifies which record is
@@ -1005,12 +992,12 @@ private:
     typedef XclExpRecordList< XclExpNote >      XclExpNoteList;
     typedef XclExpRecordList< XclExpHyperlink > XclExpHyperlinkList;
 
-    typedef std::shared_ptr< XclExpDefrowheight >        XclExpDefrowhRef;
-    typedef std::shared_ptr< XclExpNoteList >            XclExpNoteListRef;
-    typedef std::shared_ptr< XclExpMergedcells >         XclExpMergedcellsRef;
-    typedef std::shared_ptr< XclExpHyperlinkList >       XclExpHyperlinkRef;
-    typedef std::shared_ptr< XclExpDval >                XclExpDvalRef;
-    typedef std::shared_ptr< XclExtLst >                 XclExtLstRef;
+    typedef rtl::Reference< XclExpDefrowheight >       XclExpDefrowhRef;
+    typedef rtl::Reference< XclExpNoteList >           XclExpNoteListRef;
+    typedef rtl::Reference< XclExpMergedcells >        XclExpMergedcellsRef;
+    typedef rtl::Reference< XclExpHyperlinkList >      XclExpHyperlinkRef;
+    typedef rtl::Reference< XclExpDval >               XclExpDvalRef;
+    typedef rtl::Reference< XclExtLst >                XclExtLstRef;
 
     XclExpColinfoBuffer maColInfoBfr;       /// Buffer for column formatting.
     XclExpRowBuffer     maRowBfr;           /// Rows and cell records.

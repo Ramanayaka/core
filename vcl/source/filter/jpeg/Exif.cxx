@@ -19,52 +19,52 @@
 
 #include "Exif.hxx"
 #include <memory>
+#include <osl/endian.h>
+#include <tools/stream.hxx>
 
 Exif::Exif() :
-    maOrientation(TOP_LEFT),
+    maOrientation(exif::TOP_LEFT),
     mbExifPresent(false)
 {}
 
 Exif::~Exif()
 {}
 
-
-void Exif::setOrientation(Orientation aOrientation) {
+void Exif::setOrientation(exif::Orientation aOrientation) {
     maOrientation = aOrientation;
 }
 
-Orientation Exif::convertToOrientation(sal_Int32 value)
+exif::Orientation Exif::convertToOrientation(sal_Int32 value)
 {
     switch(value) {
-        case 1: return TOP_LEFT;
-        case 2: return TOP_RIGHT;
-        case 3: return BOTTOM_RIGHT;
-        case 4: return BOTTOM_LEFT;
-        case 5: return LEFT_TOP;
-        case 6: return RIGHT_TOP;
-        case 7: return RIGHT_BOTTOM;
-        case 8: return LEFT_BOTTOM;
+        case 1: return exif::TOP_LEFT;
+        case 2: return exif::TOP_RIGHT;
+        case 3: return exif::BOTTOM_RIGHT;
+        case 4: return exif::BOTTOM_LEFT;
+        case 5: return exif::LEFT_TOP;
+        case 6: return exif::RIGHT_TOP;
+        case 7: return exif::RIGHT_BOTTOM;
+        case 8: return exif::LEFT_BOTTOM;
     }
-    return TOP_LEFT;
+    return exif::TOP_LEFT;
 }
 
-sal_Int32 Exif::getRotation()
+sal_Int32 Exif::getRotation() const
 {
     switch(maOrientation) {
-        case TOP_LEFT:
+        case exif::TOP_LEFT:
             return 0;
-        case BOTTOM_RIGHT:
+        case exif::BOTTOM_RIGHT:
             return 1800;
-        case RIGHT_TOP:
+        case exif::RIGHT_TOP:
             return 2700;
-        case LEFT_BOTTOM:
+        case exif::LEFT_BOTTOM:
             return 900;
         default:
             break;
     }
     return 0;
 }
-
 
 bool Exif::read(SvStream& rStream)
 {
@@ -87,8 +87,7 @@ bool Exif::processJpeg(SvStream& rStream, bool bSetValue)
     sal_uInt16  aMagic16;
     sal_uInt16  aLength;
 
-    rStream.Seek(STREAM_SEEK_TO_END);
-    sal_uInt32 aSize = rStream.Tell();
+    sal_uInt32 aSize = rStream.TellEnd();
     rStream.Seek(STREAM_SEEK_TO_BEGIN);
 
     rStream.SetEndian( SvStreamEndian::BIG );
@@ -148,38 +147,64 @@ bool Exif::processJpeg(SvStream& rStream, bool bSetValue)
     return false;
 }
 
-void Exif::processIFD(sal_uInt8* pExifData, sal_uInt16 aLength, sal_uInt16 aOffset, sal_uInt16 aNumberOfTags, bool bSetValue, bool bSwap)
+namespace {
+
+sal_uInt16 read16(sal_uInt8 const (& data)[2], bool littleEndian) {
+    if (littleEndian) {
+        return data[0] | (sal_uInt16(data[1]) << 8);
+    } else {
+        return data[1] | (sal_uInt16(data[0]) << 8);
+    }
+}
+
+void write16(sal_uInt16 value, sal_uInt8 (& data)[2], bool littleEndian) {
+    if (littleEndian) {
+        data[0] = value & 0xFF;
+        data[1] = value >> 8;
+    } else {
+        data[1] = value & 0xFF;
+        data[0] = value >> 8;
+    }
+}
+
+void write32(sal_uInt32 value, sal_uInt8 (& data)[4], bool littleEndian) {
+    if (littleEndian) {
+        data[0] = value & 0xFF;
+        data[1] = (value >> 8) & 0xFF;
+        data[2] = (value >> 16) & 0xFF;
+        data[3] = value >> 24;
+    } else {
+        data[3] = value & 0xFF;
+        data[2] = (value >> 8) & 0xFF;
+        data[1] = (value >> 16) & 0xFF;
+        data[0] = value >> 24;
+    }
+}
+
+}
+
+void Exif::processIFD(sal_uInt8* pExifData, sal_uInt16 aLength, sal_uInt16 aOffset, sal_uInt16 aNumberOfTags, bool bSetValue, bool littleEndian)
 {
     ExifIFD* ifd = nullptr;
 
     while (aOffset <= aLength - 12 && aNumberOfTags > 0)
     {
         ifd = reinterpret_cast<ExifIFD*>(&pExifData[aOffset]);
-        sal_uInt16 tag = ifd->tag;
-        if (bSwap)
-        {
-            tag = OSL_SWAPWORD(ifd->tag);
-        }
+        sal_uInt16 tag = read16(ifd->tag, littleEndian);
 
         if (tag == ORIENTATION)
         {
             if(bSetValue)
             {
-                ifd->tag = ORIENTATION;
-                ifd->type = 3;
-                ifd->count = 1;
-                ifd->offset = maOrientation;
-                if (bSwap)
-                {
-                    ifd->tag = OSL_SWAPWORD(ifd->tag);
-                    ifd->offset = OSL_SWAPWORD(ifd->offset);
-                }
+                write16(3, ifd->type, littleEndian);
+                write32(1, ifd->count, littleEndian);
+                write16(
+                    maOrientation, reinterpret_cast<sal_uInt8 (&)[2]>(ifd->offset), littleEndian);
             }
             else
             {
-                sal_uInt32 nIfdOffset = ifd->offset;
-                if (bSwap)
-                    nIfdOffset = OSL_SWAPWORD(ifd->offset);
+                sal_uInt16 nIfdOffset = read16(
+                    reinterpret_cast<sal_uInt8 (&)[2]>(ifd->offset), littleEndian);
                 maOrientation = convertToOrientation(nIfdOffset);
             }
         }
@@ -215,8 +240,8 @@ bool Exif::processExif(SvStream& rStream, sal_uInt16 aSectionLength, bool bSetVa
 
     TiffHeader* aTiffHeader = reinterpret_cast<TiffHeader*>(&aExifData[0]);
 
-    bool bIntel = aTiffHeader->byteOrder == 0x4949;      //big-endian
-    bool bMotorola = aTiffHeader->byteOrder == 0x4D4D;   //little-endian
+    bool bIntel = aTiffHeader->byteOrder == 0x4949;      //little-endian
+    bool bMotorola = aTiffHeader->byteOrder == 0x4D4D;   //big-endian
 
     if (!bIntel && !bMotorola)
     {
@@ -252,7 +277,7 @@ bool Exif::processExif(SvStream& rStream, sal_uInt16 aSectionLength, bool bSetVa
         aNumberOfTags = ((aExifData[aOffset] << 8) | aExifData[aOffset+1]);
     }
 
-    processIFD(aExifData.get(), aLength, aOffset+2, aNumberOfTags, bSetValue, bSwap);
+    processIFD(aExifData.get(), aLength, aOffset+2, aNumberOfTags, bSetValue, bIntel);
 
     if (bSetValue)
     {

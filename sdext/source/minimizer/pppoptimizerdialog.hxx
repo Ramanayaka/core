@@ -21,13 +21,9 @@
 #define INCLUDED_SDEXT_SOURCE_MINIMIZER_PPPOPTIMIZERDIALOG_HXX
 
 #include <com/sun/star/uno/Sequence.h>
-#include <com/sun/star/document/XExporter.hpp>
-#include <com/sun/star/beans/XPropertyAccess.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
@@ -79,12 +75,6 @@ public:
     virtual void SAL_CALL removeStatusListener( const css::uno::Reference< css::frame::XStatusListener >& xListener,
                                                 const css::util::URL& aURL ) override;
 };
-
-OUString PPPOptimizerDialog_getImplementationName();
-css::uno::Sequence< OUString > PPPOptimizerDialog_getSupportedServiceNames();
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface > PPPOptimizerDialog_createInstance( const css::uno::Reference< css::uno::XComponentContext > & rSMgr );
-
 
 #endif // INCLUDED_SDEXT_SOURCE_MINIMIZER_PPPOPTIMIZERDIALOG_HXX
 

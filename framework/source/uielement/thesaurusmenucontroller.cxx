@@ -17,14 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <i18nlangtag/languagetag.hxx>
 #include <svl/lngmisc.hxx>
 #include <svtools/popupmenucontrollerbase.hxx>
 #include <unotools/lingucfg.hxx>
+#include <toolkit/awt/vclxmenu.hxx>
 #include <vcl/commandinfoprovider.hxx>
 #include <vcl/image.hxx>
 #include <vcl/menu.hxx>
+#include <sal/log.hxx>
 
 #include <com/sun/star/linguistic2/LinguServiceManager.hpp>
+
+namespace {
 
 class ThesaurusMenuController : public svt::PopupMenuControllerBase
 {
@@ -47,6 +52,8 @@ private:
     OUString m_aLastWord;
 };
 
+}
+
 ThesaurusMenuController::ThesaurusMenuController( const css::uno::Reference< css::uno::XComponentContext >& rxContext ) :
     svt::PopupMenuControllerBase( rxContext ),
     m_xLinguServiceManager( css::linguistic2::LinguServiceManager::create( rxContext ) ),
@@ -64,8 +71,9 @@ void ThesaurusMenuController::statusChanged( const css::frame::FeatureStateEvent
 
 void ThesaurusMenuController::fillPopupMenu()
 {
-    OUString aText = m_aLastWord.getToken(0, '#');
-    OUString aIsoLang = m_aLastWord.getToken(1, '#');
+    sal_Int32 nIdx{ 0 };
+    OUString aText = m_aLastWord.getToken(0, '#', nIdx);
+    OUString aIsoLang = m_aLastWord.getToken(0, '#', nIdx);
     if ( aText.isEmpty() || aIsoLang.isEmpty() )
         return;
 
@@ -73,63 +81,64 @@ void ThesaurusMenuController::fillPopupMenu()
     css::lang::Locale aLocale = LanguageTag::convertToLocale( aIsoLang );
     getMeanings( aSynonyms, aText, aLocale, 7 /*max number of synonyms to retrieve*/ );
 
-    VCLXMenu* pAwtMenu = VCLXMenu::GetImplementation( m_xPopupMenu );
+    VCLXMenu* pAwtMenu = comphelper::getUnoTunnelImplementation<VCLXMenu>( m_xPopupMenu );
     Menu* pVCLMenu = pAwtMenu->GetMenu();
     pVCLMenu->SetMenuFlags( MenuFlags::NoAutoMnemonics );
-    if ( aSynonyms.size() > 0 )
+    if ( aSynonyms.empty() )
+        return;
+
+    SvtLinguConfig aCfg;
+    Image aImage;
+    OUString aThesImplName( getThesImplName( aLocale ) );
+    OUString aSynonymsImageUrl( aCfg.GetSynonymsContextImage( aThesImplName ) );
+    if ( !aThesImplName.isEmpty() && !aSynonymsImageUrl.isEmpty() )
+        aImage = Image( aSynonymsImageUrl );
+
+    sal_uInt16 nId = 1;
+    for ( const auto& aSynonym : aSynonyms )
     {
-        SvtLinguConfig aCfg;
-        Image aImage;
-        OUString aThesImplName( getThesImplName( aLocale ) );
-        OUString aSynonymsImageUrl( aCfg.GetSynonymsContextImage( aThesImplName ) );
-        if ( !aThesImplName.isEmpty() && !aSynonymsImageUrl.isEmpty() )
-            aImage = Image( aSynonymsImageUrl );
+        OUString aItemText( linguistic::GetThesaurusReplaceText( aSynonym ) );
+        pVCLMenu->InsertItem( nId, aItemText );
+        pVCLMenu->SetItemCommand( nId, ".uno:ThesaurusFromContext?WordReplace:string=" + aItemText );
 
-        sal_uInt16 nId = 1;
-        for ( const auto& aSynonym : aSynonyms )
-        {
-            OUString aItemText( linguistic::GetThesaurusReplaceText( aSynonym ) );
-            pVCLMenu->InsertItem( nId, aItemText );
-            pVCLMenu->SetItemCommand( nId, ".uno:ThesaurusFromContext?WordReplace:string=" + aItemText );
-
-            if ( !aSynonymsImageUrl.isEmpty() )
-                pVCLMenu->SetItemImage( nId, aImage );
-            nId++;
-        }
-
-        pVCLMenu->InsertSeparator();
-        OUString aThesaurusDialogCmd( ".uno:ThesaurusDialog" );
-        pVCLMenu->InsertItem( nId, vcl::CommandInfoProvider::GetPopupLabelForCommand( aThesaurusDialogCmd, m_aModuleName ) );
-        pVCLMenu->SetItemCommand( nId, aThesaurusDialogCmd );
+        if ( !aSynonymsImageUrl.isEmpty() )
+            pVCLMenu->SetItemImage( nId, aImage );
+        nId++;
     }
+
+    pVCLMenu->InsertSeparator();
+    OUString aThesaurusDialogCmd( ".uno:ThesaurusDialog" );
+    auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(aThesaurusDialogCmd, m_aModuleName);
+    pVCLMenu->InsertItem( nId, vcl::CommandInfoProvider::GetPopupLabelForCommand(aProperties) );
+    pVCLMenu->SetItemCommand( nId, aThesaurusDialogCmd );
 }
 
 void ThesaurusMenuController::getMeanings( std::vector< OUString >& rSynonyms, const OUString& rWord,
                                            const css::lang::Locale& rLocale, size_t nMaxSynonms )
 {
     rSynonyms.clear();
-    if ( m_xThesaurus.is() && m_xThesaurus->hasLocale( rLocale ) && !rWord.isEmpty() && nMaxSynonms > 0 )
-    {
-        try
-        {
-            const css::uno::Sequence< css::uno::Reference< css::linguistic2::XMeaning > > aMeaningSeq(
-                m_xThesaurus->queryMeanings( rWord, rLocale, css::uno::Sequence< css::beans::PropertyValue >() ) );
+    if ( !(m_xThesaurus.is() && m_xThesaurus->hasLocale( rLocale ) && !rWord.isEmpty() && nMaxSynonms > 0) )
+        return;
 
-            for ( const auto& xMeaning : aMeaningSeq )
+    try
+    {
+        const css::uno::Sequence< css::uno::Reference< css::linguistic2::XMeaning > > aMeaningSeq(
+            m_xThesaurus->queryMeanings( rWord, rLocale, css::uno::Sequence< css::beans::PropertyValue >() ) );
+
+        for ( const auto& xMeaning : aMeaningSeq )
+        {
+            const css::uno::Sequence< OUString > aSynonymSeq( xMeaning->querySynonyms() );
+            for ( const auto& aSynonym : aSynonymSeq )
             {
-                const css::uno::Sequence< OUString > aSynonymSeq( xMeaning->querySynonyms() );
-                for ( const auto& aSynonym : aSynonymSeq )
-                {
-                    rSynonyms.push_back( aSynonym );
-                    if ( rSynonyms.size() == nMaxSynonms )
-                        return;
-                }
+                rSynonyms.push_back( aSynonym );
+                if ( rSynonyms.size() == nMaxSynonms )
+                    return;
             }
         }
-        catch ( const css::uno::Exception& )
-        {
-            SAL_WARN( "fwk.uielement", "Failed to get synonyms" );
-        }
+    }
+    catch ( const css::uno::Exception& )
+    {
+        SAL_WARN( "fwk.uielement", "Failed to get synonyms" );
     }
 }
 
@@ -146,7 +155,7 @@ OUString ThesaurusMenuController::getThesImplName( const css::lang::Locale& rLoc
 
 OUString ThesaurusMenuController::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.framework.ThesaurusMenuController" );
+    return "com.sun.star.comp.framework.ThesaurusMenuController";
 }
 
 css::uno::Sequence< OUString > ThesaurusMenuController::getSupportedServiceNames()
@@ -154,7 +163,7 @@ css::uno::Sequence< OUString > ThesaurusMenuController::getSupportedServiceNames
     return { "com.sun.star.frame.PopupMenuController" };
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_ThesaurusMenuController_get_implementation(
     css::uno::XComponentContext* xContext,
     css::uno::Sequence< css::uno::Any > const & )

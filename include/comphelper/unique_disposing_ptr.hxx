@@ -17,6 +17,7 @@
 #include <com/sun/star/frame/XDesktop.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
+#include <o3tl/deleter.hxx>
 #include <vcl/svapp.hxx>
 
 namespace comphelper
@@ -25,7 +26,7 @@ namespace comphelper
 template<class T> class unique_disposing_ptr
 {
 private:
-    std::unique_ptr<T> m_xItem;
+    std::unique_ptr<T, o3tl::default_delete<T>> m_xItem;
     css::uno::Reference< css::frame::XTerminateListener> m_xTerminateListener;
 
     unique_disposing_ptr(const unique_disposing_ptr&) = delete;
@@ -62,18 +63,18 @@ public:
         return static_cast< bool >(m_xItem);
     }
 
-    virtual ~unique_disposing_ptr()
+    virtual ~unique_disposing_ptr() COVERITY_NOEXCEPT_FALSE
     {
         reset();
     }
 private:
-    class TerminateListener : public ::cppu::WeakImplHelper< css::frame::XTerminateListener,
+    class TerminateListener final : public ::cppu::WeakImplHelper< css::frame::XTerminateListener,
                                             css::lang::XServiceInfo>
     {
     private:
         css::uno::Reference< css::lang::XComponent > m_xComponent;
         unique_disposing_ptr<T>& m_rItem;
-        bool mbComponentDLL;
+        bool const mbComponentDLL;
     public:
         TerminateListener(const css::uno::Reference< css::lang::XComponent > &rComponent,
             unique_disposing_ptr<T>& rItem, bool bComponentDLL) :
@@ -135,9 +136,9 @@ private:
         virtual OUString SAL_CALL getImplementationName() override
         {
             if (mbComponentDLL)
-                return OUString("com.sun.star.comp.ComponentDLLListener");
+                return "com.sun.star.comp.ComponentDLLListener";
             else
-                return OUString("com.sun.star.comp.DisposingTerminateListener");
+                return "com.sun.star.comp.DisposingTerminateListener";
         }
 
         virtual sal_Bool SAL_CALL supportsService(const OUString& /*rName*/) override

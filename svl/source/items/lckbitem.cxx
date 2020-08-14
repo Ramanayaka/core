@@ -18,7 +18,6 @@
  */
 
 #include <svl/lckbitem.hxx>
-#include <svl/poolitem.hxx>
 #include <tools/stream.hxx>
 #include <osl/diagnose.h>
 #include <com/sun/star/uno/Any.hxx>
@@ -33,24 +32,6 @@ SfxLockBytesItem::SfxLockBytesItem()
 }
 
 
-SfxLockBytesItem::SfxLockBytesItem( sal_uInt16 nW, SvStream &rStream )
-:   SfxPoolItem( nW )
-{
-    rStream.Seek( 0L );
-    _xVal = new SvLockBytes( new SvMemoryStream(), true );
-
-    SvStream aLockBytesStream( _xVal.get() );
-    rStream.ReadStream( aLockBytesStream );
-}
-
-
-SfxLockBytesItem::SfxLockBytesItem( const SfxLockBytesItem& rItem )
-:   SfxPoolItem( rItem ),
-    _xVal( rItem._xVal )
-{
-}
-
-
 SfxLockBytesItem::~SfxLockBytesItem()
 {
 }
@@ -58,50 +39,12 @@ SfxLockBytesItem::~SfxLockBytesItem()
 
 bool SfxLockBytesItem::operator==( const SfxPoolItem& rItem ) const
 {
-    return static_cast<const SfxLockBytesItem&>(rItem)._xVal == _xVal;
+    return SfxPoolItem::operator==(rItem) && static_cast<const SfxLockBytesItem&>(rItem)._xVal == _xVal;
 }
 
-
-SfxPoolItem* SfxLockBytesItem::Clone(SfxItemPool *) const
+SfxLockBytesItem* SfxLockBytesItem::Clone(SfxItemPool *) const
 {
     return new SfxLockBytesItem( *this );
-}
-
-
-#define MAX_BUF 32000
-
-SfxPoolItem* SfxLockBytesItem::Create( SvStream &rStream, sal_uInt16 ) const
-{
-    sal_uInt32 nSize = 0;
-    sal_uLong nActRead = 0;
-    sal_Char cTmpBuf[MAX_BUF];
-    SvMemoryStream aNewStream;
-    rStream.ReadUInt32( nSize );
-
-    do {
-        sal_uLong nToRead;
-        if( (nSize - nActRead) > MAX_BUF )
-            nToRead = MAX_BUF;
-        else
-            nToRead = nSize - nActRead;
-        nActRead += rStream.ReadBytes( cTmpBuf, nToRead );
-        aNewStream.WriteBytes( cTmpBuf, nToRead );
-    } while( nSize > nActRead );
-
-    return new SfxLockBytesItem( Which(), aNewStream );
-}
-
-
-SvStream& SfxLockBytesItem::Store(SvStream &rStream, sal_uInt16 ) const
-{
-    SvStream aLockBytesStream( _xVal.get() );
-    sal_uInt32 nSize = aLockBytesStream.Seek( STREAM_SEEK_TO_END );
-    aLockBytesStream.Seek( 0L );
-
-    rStream.WriteUInt32( nSize );
-    rStream.WriteStream( aLockBytesStream );
-
-    return rStream;
 }
 
 // virtual
@@ -110,7 +53,7 @@ bool SfxLockBytesItem::PutValue( const css::uno::Any& rVal, sal_uInt8 )
     css::uno::Sequence< sal_Int8 > aSeq;
     if ( rVal >>= aSeq )
     {
-        if ( aSeq.getLength() )
+        if ( aSeq.hasElements() )
         {
             SvMemoryStream* pStream = new SvMemoryStream();
             pStream->WriteBytes( aSeq.getConstArray(), aSeq.getLength() );
@@ -136,7 +79,7 @@ bool SfxLockBytesItem::QueryValue( css::uno::Any& rVal, sal_uInt8 ) const
         sal_uInt32 nLen;
         SvLockBytesStat aStat;
 
-        if ( _xVal->Stat( &aStat, SVSTATFLAG_DEFAULT ) == ERRCODE_NONE )
+        if ( _xVal->Stat( &aStat ) == ERRCODE_NONE )
             nLen = aStat.nSize;
         else
             return false;

@@ -29,7 +29,7 @@
 
 namespace oox { class AttributeList; }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
 
     struct CustomShow
@@ -40,19 +40,19 @@ namespace oox { namespace ppt {
     };
 
     /** CT_ */
-    class CustomShowListContext : public ::oox::core::FragmentHandler2
+    class CustomShowListContext final : public ::oox::core::FragmentHandler2
     {
         std::vector< CustomShow >& mrCustomShowList;
 
     public:
-        CustomShowListContext( ::oox::core::FragmentHandler2& rParent,
+        CustomShowListContext( ::oox::core::FragmentHandler2 const & rParent,
                 std::vector< CustomShow >& rCustomShowList );
 
         virtual ~CustomShowListContext( ) override;
         virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs ) override;
     };
 
-} }
+}
 
 #endif
 

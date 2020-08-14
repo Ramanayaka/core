@@ -19,18 +19,18 @@
 #ifndef INCLUDED_UNOTOOLS_ZIPPACKAGEHELPER_HXX
 #define INCLUDED_UNOTOOLS_ZIPPACKAGEHELPER_HXX
 
+#include <config_options.h>
 #include <unotools/unotoolsdllapi.h>
 
-#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
+
+namespace com::sun::star::container { class XHierarchicalNameAccess; }
+namespace com::sun::star::lang { class XSingleServiceFactory; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace utl {
 
-class UNOTOOLS_DLLPUBLIC ZipPackageHelper
+class UNLESS_MERGELIBS(UNOTOOLS_DLLPUBLIC) ZipPackageHelper
 {
 public:
     ZipPackageHelper( const css::uno::Reference< css::uno::XComponentContext >& rxContext,
@@ -39,14 +39,14 @@ public:
     void savePackage();
 
     /// @throws css::uno::Exception
-    void addFile( css::uno::Reference< css::uno::XInterface >& xRootFolder,
+    void addFile( css::uno::Reference< css::uno::XInterface > const & xRootFolder,
                   const OUString& rSourceFile );
 
     /// @throws css::uno::Exception
-    css::uno::Reference< css::uno::XInterface > addFolder( css::uno::Reference< css::uno::XInterface >& xRootFolder,
+    css::uno::Reference< css::uno::XInterface > addFolder( css::uno::Reference< css::uno::XInterface > const & xRootFolder,
                                                            const OUString& rName );
 
-    void addFolderWithContent( css::uno::Reference< css::uno::XInterface >& xRootFolder,
+    void addFolderWithContent( css::uno::Reference< css::uno::XInterface > const & xRootFolder,
                                const OUString& rDirURL );
 
     css::uno::Reference< css::uno::XInterface >& getRootFolder();

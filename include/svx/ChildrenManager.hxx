@@ -22,25 +22,21 @@
 
 #include <sal/config.h>
 
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <rtl/ref.hxx>
-#include <svx/IAccessibleViewForwarderListener.hxx>
 #include <svx/svxdllapi.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
      namespace accessibility { class XAccessible; }
      namespace drawing { class XShape; }
      namespace drawing { class XShapes; }
-} } }
+}
 
 namespace accessibility {
 
 class AccessibleContextBase;
 class AccessibleShapeTreeInfo;
 class ChildrenManagerImpl;
-class IAccessibleViewForwarder;
 
 /** The AccessibleChildrenManager class acts as a cache of the
     accessible objects of the currently visible shapes of a draw page and as
@@ -92,9 +88,9 @@ public:
         @param rxShapeList
             List of UNO shapes to manage.
         @param rShapeTreeInfo
-            Bundel of information passed down the shape tree.
+            Bundle of information passed down the shape tree.
         @param rContext
-            An accessible context object that is called for fireing events
+            An accessible context object that is called for firing events
             for new and deleted children, i.e. that holds a list of
             listeners to be informed.
     */
@@ -132,11 +128,9 @@ public:
     css::uno::Reference<
             css::accessibility::XAccessible>
         GetChild (long nIndex);
-        /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::accessibility::XAccessible> GetChild (const css::uno::Reference< css::drawing::XShape>& xShape);
-        /// @throws css::lang::IndexOutOfBoundsException
-        /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::drawing::XShape> GetChildShape (long nIndex);
+    /// @throws css::lang::IndexOutOfBoundsException
+    /// @throws css::uno::RuntimeException
+    css::uno::Reference< css::drawing::XShape> GetChildShape (long nIndex);
 
     /** Update the child manager.  Take care of a modified set of children
         and modified visible area.  This method can optimize the update
@@ -177,7 +171,7 @@ public:
         @param rShapeTreeInfo
             The new info that replaces the current one.
     */
-    void SetInfo (AccessibleShapeTreeInfo& rShapeTreeInfo);
+    void SetInfo (AccessibleShapeTreeInfo const & rShapeTreeInfo);
 
     /** Update the SELECTED and FOCUSED states of all visible children
         according to the given selection.  This includes setting
@@ -191,7 +185,7 @@ public:
             Returns <true/> when there is a shape that has the focus and
             <false/> when there is no such shape.
     */
-    bool HasFocus();
+    bool HasFocus() const;
 
     /** When there is a shape that currently has the focus,
         i.e. <member>HasFocus()</member> returns <true/> then remove the

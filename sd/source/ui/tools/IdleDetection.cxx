@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "tools/IdleDetection.hxx"
+#include <tools/IdleDetection.hxx>
 
-#include "ViewShell.hxx"
-#include "slideshow.hxx"
-#include "ViewShellBase.hxx"
+#include <slideshow.hxx>
+#include <ViewShellBase.hxx>
 
 #include <vcl/window.hxx>
 #include <sfx2/viewfrm.hxx>
@@ -31,7 +30,7 @@
 
 using namespace ::com::sun::star;
 
-namespace sd { namespace tools {
+namespace sd::tools {
 
 IdleState IdleDetection::GetIdleState (const vcl::Window* pWindow)
 {
@@ -99,6 +98,6 @@ IdleState IdleDetection::CheckWindowPainting (const vcl::Window& rWindow)
         return IdleState::Idle;
 }
 
-} } // end of namespace ::sd::tools
+} // end of namespace ::sd::tools
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

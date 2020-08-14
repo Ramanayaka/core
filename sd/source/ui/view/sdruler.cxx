@@ -17,18 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "Ruler.hxx"
+#include <Ruler.hxx>
 #include <svl/ptitem.hxx>
 #include <svx/ruler.hxx>
 #include <svx/svxids.hrc>
 #include <sfx2/ctrlitem.hxx>
 #include <sfx2/bindings.hxx>
+#include <vcl/commandevent.hxx>
 
-#include "View.hxx"
-#include "DrawViewShell.hxx"
-#include "Window.hxx"
+#include <View.hxx>
+#include <DrawViewShell.hxx>
+#include <Window.hxx>
 
-#include "helpids.h"
+#include <helpids.h>
 
 namespace sd {
 
@@ -73,7 +74,7 @@ Ruler::Ruler( DrawViewShell& rViewSh, vcl::Window* pParent, ::sd::Window* pWin, 
     , pDrViewShell(&rViewSh)
 {
     rBindings.EnterRegistrations();
-    pCtrlItem = new RulerCtrlItem(*this, rBindings);
+    pCtrlItem.reset( new RulerCtrlItem(*this, rBindings) );
     rBindings.LeaveRegistrations();
 
     if ( nWinStyle & WB_HSCROLL )
@@ -97,7 +98,7 @@ void Ruler::dispose()
 {
     SfxBindings& rBindings = pCtrlItem->GetBindings();
     rBindings.EnterRegistrations();
-    DELETEZ( pCtrlItem );
+    pCtrlItem.reset();
     rBindings.LeaveRegistrations();
     SvxRuler::dispose();
 }

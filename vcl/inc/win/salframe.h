@@ -27,19 +27,19 @@
 class WinSalGraphics;
 
 
-class WinSalFrame : public SalFrame
+class WinSalFrame final: public SalFrame
 {
 public:
     HWND                    mhWnd;                  // Window handle
     HCURSOR                 mhCursor;               // cursor handle
     HIMC                    mhDefIMEContext;        // default IME-Context
-    WinSalGraphics*         mpGraphics;             // current frame graphics
-    WinSalGraphics*         mpGraphics2;            // current frame graphics for other threads
+    WinSalGraphics*         mpLocalGraphics;        // current main thread frame graphics
+    WinSalGraphics*         mpThreadGraphics;       // current frame graphics for other threads (DCX_CACHE)
     WinSalFrame*            mpNextFrame;            // pointer to next frame
     HMENU                   mSelectedhMenu;         // the menu where highlighting is currently going on
     HMENU                   mLastActivatedhMenu;    // the menu that was most recently opened
     SystemEnvData           maSysData;              // system data
-    SalFrameState           maState;                // frame state
+    SalFrameState           maState = {};           // frame state
     int                     mnShowState;            // show state
     long                    mnWidth;                // client width in pixeln
     long                    mnHeight;               // client height in pixeln
@@ -49,6 +49,7 @@ public:
     int                     mnMaxHeight;            // max. client height in pixeln
     RECT                    maFullScreenRect;       // fullscreen rect
     int                     mnFullScreenShowState;  // fullscreen restore show state
+    bool                    mbFullScreenCaption;    // WS_CAPTION reset in full screen mode.
     UINT                    mnInputLang;            // current Input Language
     UINT                    mnInputCodePage;        // current Input CodePage
     SalFrameStyleFlags      mnStyle;                // style
@@ -57,7 +58,7 @@ public:
     bool                    mbBorder;               // has window a border
     bool                    mbFixBorder;            // has window a fixed border
     bool                    mbSizeBorder;           // has window a sizeable border
-    bool                    mbNoIcon;               // is an window without an icon
+    bool                    mbNoIcon;               // is a window without an icon
     bool                    mbFloatWin;             // is a FloatingWindow
     bool                    mbFullScreen;           // TRUE: in full screen mode
     bool                    mbPresentation;         // TRUE: Presentation Mode running
@@ -82,19 +83,25 @@ public:
     bool                    mbPropertiesStored;     // has values stored in the window property store
 
     void updateScreenNumber();
+
+private:
+    void ImplSetParentFrame( HWND hNewParentWnd, bool bAsChild );
+    bool InitFrameGraphicsDC( WinSalGraphics *pGraphics, HDC hDC, HWND hWnd );
+    bool ReleaseFrameGraphicsDC( WinSalGraphics* pGraphics );
+
 public:
     WinSalFrame();
     virtual ~WinSalFrame() override;
 
     virtual SalGraphics*        AcquireGraphics() override;
     virtual void                ReleaseGraphics( SalGraphics* pGraphics ) override;
-    virtual bool                PostEvent(ImplSVEvent* pData) override;
+    virtual bool                PostEvent(std::unique_ptr<ImplSVEvent> pData) override;
     virtual void                SetTitle( const OUString& rTitle ) override;
     virtual void                SetIcon( sal_uInt16 nIcon ) override;
     virtual void                SetMenu( SalMenu* pSalMenu ) override;
     virtual void                DrawMenuBar() override;
     virtual void                SetExtendedFrameStyle( SalExtStyle nExtStyle ) override;
-    virtual void                Show( bool bVisible, bool bNoActivate = FALSE ) override;
+    virtual void                Show( bool bVisible, bool bNoActivate = false ) override;
     virtual void                SetMinClientSize( long nWidth, long nHeight ) override;
     virtual void                SetMaxClientSize( long nWidth, long nHeight ) override;
     virtual void                SetPosSize( long nX, long nY, long nWidth, long nHeight, sal_uInt16 nFlags ) override;
@@ -128,7 +135,7 @@ public:
     virtual void                SetScreenNumber( unsigned int ) override;
     virtual void                SetApplicationID( const OUString &rApplicationID ) override;
     virtual void                ResetClipRegion() override;
-    virtual void                BeginSetClipRegion( sal_uIntPtr nRects ) override;
+    virtual void                BeginSetClipRegion( sal_uInt32 nRects ) override;
     virtual void                UnionClipRegion( long nX, long nY, long nWidth, long nHeight ) override;
     virtual void                EndSetClipRegion() override;
 };

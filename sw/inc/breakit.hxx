@@ -22,14 +22,13 @@
 
 #include <memory>
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/i18n/XBreakIterator.hpp>
-#include <com/sun/star/i18n/XScriptTypeDetector.hpp>
 #include <com/sun/star/i18n/ForbiddenCharacters.hpp>
 #include <i18nlangtag/languagetag.hxx>
-#include <swdllapi.h>
+#include "swdllapi.h"
 
 enum class SvtScriptType;
+namespace com::sun::star::i18n { class XBreakIterator; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 class SW_DLLPUBLIC SwBreakIt
 {
@@ -39,7 +38,7 @@ class SW_DLLPUBLIC SwBreakIt
     std::unique_ptr<LanguageTag> m_xLanguageTag;   ///< language tag of the current locale
     std::unique_ptr<css::i18n::ForbiddenCharacters> m_xForbidden;
 
-    LanguageType aForbiddenLang; ///< language of the current forbiddenChar struct
+    LanguageType m_aForbiddenLang; ///< language of the current forbiddenChar struct
 
     void GetLocale_( const LanguageType aLang );
     void GetLocale_( const LanguageTag& rLanguageTag );
@@ -60,7 +59,7 @@ public:
 public:
     static SwBreakIt * Get();
 
-    css::uno::Reference< css::i18n::XBreakIterator > const & GetBreakIter()
+    css::uno::Reference< css::i18n::XBreakIterator > const & GetBreakIter() const
     {
         return m_xBreak;
     }
@@ -103,7 +102,7 @@ public:
 
     const css::i18n::ForbiddenCharacters& GetForbidden( const LanguageType aLang )
     {
-        if (!m_xForbidden || aForbiddenLang != aLang)
+        if (!m_xForbidden || m_aForbiddenLang != aLang)
             GetForbidden_( aLang );
         return *m_xForbidden;
     }

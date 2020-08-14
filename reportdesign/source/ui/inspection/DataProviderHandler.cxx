@@ -16,25 +16,19 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "DataProviderHandler.hxx"
-#include <com/sun/star/lang/XInitialization.hpp>
+#include <DataProviderHandler.hxx>
 #include <comphelper/namedvaluecollection.hxx>
-#include <comphelper/property.hxx>
+#include <comphelper/sequence.hxx>
 #include <comphelper/types.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "uistrings.hrc"
-#include <toolkit/helper/vclunohelper.hxx>
-#include <unotools/syslocale.hxx>
+#include <strings.hxx>
 #include <com/sun/star/form/inspection/FormComponentPropertyHandler.hpp>
 #include <com/sun/star/inspection/PropertyControlType.hpp>
 #include <com/sun/star/inspection/PropertyLineElement.hpp>
 #include <com/sun/star/lang/NullPointerException.hpp>
 #include <com/sun/star/chart/ChartDataRowSource.hpp>
 #include <com/sun/star/chart2/FormattedString.hpp>
-#include <com/sun/star/chart2/XDiagram.hpp>
-#include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
-#include <com/sun/star/chart2/XChartTypeContainer.hpp>
-#include <com/sun/star/chart2/XChartType.hpp>
 #include <com/sun/star/chart2/XTitled.hpp>
 #include <com/sun/star/chart2/XTitle.hpp>
 #include <com/sun/star/chart2/data/XDataReceiver.hpp>
@@ -42,14 +36,12 @@
 #include <com/sun/star/report/XReportDefinition.hpp>
 #include <com/sun/star/script/Converter.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/util/MeasureUnit.hpp>
-#include <tools/fldunit.hxx>
-#include "metadata.hxx"
-#include <vcl/svapp.hxx>
+#include <metadata.hxx>
 #include <osl/mutex.hxx>
-#include "helpids.hrc"
-#include "RptResId.hrc"
-#include "PropertyForward.hxx"
+#include <core_resource.hxx>
+#include <helpids.h>
+#include <strings.hrc>
+#include <PropertyForward.hxx>
 
 namespace rptui
 {
@@ -72,7 +64,7 @@ DataProviderHandler::DataProviderHandler(uno::Reference< uno::XComponentContext 
 
 OUString SAL_CALL DataProviderHandler::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return "com.sun.star.comp.report.DataProviderHandler";
 }
 
 sal_Bool SAL_CALL DataProviderHandler::supportsService( const OUString& ServiceName )
@@ -82,24 +74,9 @@ sal_Bool SAL_CALL DataProviderHandler::supportsService( const OUString& ServiceN
 
 uno::Sequence< OUString > SAL_CALL DataProviderHandler::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_static();
+    return { "com.sun.star.report.inspection.DataProviderHandler" };
 }
 
-OUString DataProviderHandler::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.report.DataProviderHandler");
-}
-
-uno::Sequence< OUString > DataProviderHandler::getSupportedServiceNames_static(  )
-{
-    uno::Sequence< OUString > aSupported { "com.sun.star.report.inspection.DataProviderHandler" };
-    return aSupported;
-}
-
-uno::Reference< uno::XInterface > SAL_CALL DataProviderHandler::create( const uno::Reference< uno::XComponentContext >& _rxContext )
-{
-    return *(new DataProviderHandler( _rxContext ));
-}
 // override WeakComponentImplHelperBase::disposing()
 // This function is called upon disposing the component,
 // if your component needs special work when it becomes
@@ -144,10 +121,10 @@ void SAL_CALL DataProviderHandler::inspect(const uno::Reference< uno::XInterface
         m_xReportComponent.set( xNameCont->getByName("ReportComponent"), uno::UNO_QUERY );
         if ( m_xDataProvider.is() )
         {
-            std::shared_ptr<AnyConverter> aNoConverter(new AnyConverter);
+            auto aNoConverter = std::make_shared<AnyConverter>();
             TPropertyNamePair aPropertyMediation;
-            aPropertyMediation.insert( TPropertyNamePair::value_type( PROPERTY_MASTERFIELDS, TPropertyConverter(PROPERTY_MASTERFIELDS,aNoConverter) ) );
-            aPropertyMediation.insert( TPropertyNamePair::value_type( PROPERTY_DETAILFIELDS, TPropertyConverter(PROPERTY_DETAILFIELDS,aNoConverter) ) );
+            aPropertyMediation.emplace( PROPERTY_MASTERFIELDS, TPropertyConverter(PROPERTY_MASTERFIELDS,aNoConverter) );
+            aPropertyMediation.emplace( PROPERTY_DETAILFIELDS, TPropertyConverter(PROPERTY_DETAILFIELDS,aNoConverter) );
 
             m_xMasterDetails = new OPropertyMediator( m_xDataProvider.get(), m_xReportComponent.get(), aPropertyMediation,true );
         }
@@ -228,24 +205,24 @@ void SAL_CALL DataProviderHandler::setPropertyValue(const OUString & PropertyNam
 void DataProviderHandler::impl_updateChartTitle_throw(const uno::Any& _aValue)
 {
     uno::Reference<chart2::XTitled> xTitled(m_xChartModel,uno::UNO_QUERY);
-    if ( xTitled.is() )
+    if ( !xTitled.is() )
+        return;
+
+    uno::Reference<chart2::XTitle> xTitle = xTitled->getTitleObject();
+    if ( !xTitle.is() )
     {
-        uno::Reference<chart2::XTitle> xTitle = xTitled->getTitleObject();
-        if ( !xTitle.is() )
-        {
-            xTitle.set(m_xContext->getServiceManager()->createInstanceWithContext("com.sun.star.chart2.Title",m_xContext),uno::UNO_QUERY);
-            xTitled->setTitleObject(xTitle);
-        }
-        if ( xTitle.is() )
-        {
-            uno::Reference< chart2::XFormattedString2> xFormatted = chart2::FormattedString::create(m_xContext);
-            OUString sStr;
-            _aValue >>= sStr;
-            xFormatted->setString(sStr);
-            uno::Sequence< uno::Reference< chart2::XFormattedString> > aArgs(1);
-            aArgs[0] = xFormatted;
-            xTitle->setText(aArgs);
-        }
+        xTitle.set(m_xContext->getServiceManager()->createInstanceWithContext("com.sun.star.chart2.Title",m_xContext),uno::UNO_QUERY);
+        xTitled->setTitleObject(xTitle);
+    }
+    if ( xTitle.is() )
+    {
+        uno::Reference< chart2::XFormattedString2> xFormatted = chart2::FormattedString::create(m_xContext);
+        OUString sStr;
+        _aValue >>= sStr;
+        xFormatted->setString(sStr);
+        uno::Sequence< uno::Reference< chart2::XFormattedString> > aArgs(1);
+        aArgs[0] = xFormatted;
+        xTitle->setText(aArgs);
     }
 }
 
@@ -280,9 +257,9 @@ inspection::LineDescriptor SAL_CALL DataProviderHandler::describePropertyLine(co
     if ( nId != -1 )
     {
         aOut.Category = (OPropertyInfoService::getPropertyUIFlags(nId ) & PropUIFlags::DataProperty) ?
-                                    OUString("Data")
+                                    OUStringLiteral("Data")
                                                         :
-                                    OUString("General");
+                                    OUStringLiteral("General");
         aOut.HelpURL = HelpIdUrl::getHelpURL( OPropertyInfoService::getPropertyHelpId( nId ) );
         aOut.DisplayName = OPropertyInfoService::getPropertyTranslation(nId);
     }
@@ -430,7 +407,7 @@ inspection::InteractiveSelectionResult SAL_CALL DataProviderHandler::onInteracti
 
 void SAL_CALL DataProviderHandler::actuatingPropertyChanged(const OUString & ActuatingPropertyName, const uno::Any & NewValue, const uno::Any & OldValue, const uno::Reference< inspection::XObjectInspectorUI > & InspectorUI, sal_Bool FirstTimeInit)
 {
-    ::osl::ClearableMutexGuard aGuard( m_aMutex );
+    osl::MutexGuard aGuard( m_aMutex );
 
     if ( ActuatingPropertyName == PROPERTY_COMMAND )
     {
@@ -482,27 +459,15 @@ sal_Bool SAL_CALL DataProviderHandler::suspend(sal_Bool Suspend)
 }
 bool DataProviderHandler::impl_dialogLinkedFields_nothrow( ::osl::ClearableMutexGuard& _rClearBeforeDialog ) const
 {
-    uno::Sequence<uno::Any> aSeq(6);
-    beans::PropertyValue aParam;
-    aParam.Name = "ParentWindow";
-    aParam.Value = m_xContext->getValueByName("DialogParentWindow");
-    aSeq[0] <<= aParam;
-    aParam.Name = "Detail";
-    aParam.Value <<= m_xDataProvider;
-    aSeq[1] <<= aParam;
-    aParam.Name = "Master";
-    aParam.Value <<= m_xReportComponent->getSection()->getReportDefinition();
-    aSeq[2] <<= aParam;
-
-    aParam.Name = "Explanation";
-    aParam.Value <<= OUString(ModuleRes(RID_STR_EXPLANATION));
-    aSeq[3] <<= aParam;
-    aParam.Name = "DetailLabel";
-    aParam.Value <<= OUString(ModuleRes(RID_STR_DETAILLABEL));
-    aSeq[4] <<= aParam;
-    aParam.Name = "MasterLabel";
-    aParam.Value <<= OUString(ModuleRes(RID_STR_MASTERLABEL));
-    aSeq[5] <<= aParam;
+    uno::Sequence<uno::Any> aSeq(comphelper::InitAnyPropertySequence(
+    {
+        {"ParentWindow", m_xContext->getValueByName("DialogParentWindow")},
+        {"Detail", uno::Any(m_xDataProvider)},
+        {"Master", uno::Any(m_xReportComponent->getSection()->getReportDefinition())},
+        {"Explanation", uno::Any(RptResId(RID_STR_EXPLANATION))},
+        {"DetailLabel", uno::Any(RptResId(RID_STR_DETAILLABEL))},
+        {"MasterLabel", uno::Any(RptResId(RID_STR_MASTERLABEL))},
+    }));
 
     uno::Reference< ui::dialogs::XExecutableDialog > xDialog(
         m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
@@ -515,14 +480,11 @@ bool DataProviderHandler::impl_dialogLinkedFields_nothrow( ::osl::ClearableMutex
 
 bool DataProviderHandler::impl_dialogChartType_nothrow( ::osl::ClearableMutexGuard& _rClearBeforeDialog ) const
 {
-    uno::Sequence<uno::Any> aSeq(2);
-    beans::PropertyValue aParam;
-    aParam.Name = "ParentWindow";
-    aParam.Value = m_xContext->getValueByName("DialogParentWindow");
-    aSeq[0] <<= aParam;
-    aParam.Name = "ChartModel";
-    aParam.Value <<= m_xChartModel;
-    aSeq[1] <<= aParam;
+    uno::Sequence<uno::Any> aSeq(comphelper::InitAnyPropertySequence(
+    {
+        {"ParentWindow", m_xContext->getValueByName("DialogParentWindow")},
+        {"ChartModel", uno::Any(m_xChartModel)}
+    }));
 
     uno::Reference< ui::dialogs::XExecutableDialog > xDialog(
         m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
@@ -535,5 +497,12 @@ bool DataProviderHandler::impl_dialogChartType_nothrow( ::osl::ClearableMutexGua
 
 } // namespace rptui
 
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_DataProviderHandler_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new rptui::DataProviderHandler(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

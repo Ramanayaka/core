@@ -19,18 +19,16 @@
 
 #include <com/sun/star/drawing/ColorMode.hpp>
 #include <o3tl/any.hxx>
-#include <svtools/grfmgr.hxx>
-#include <swtypes.hxx>
+#include <vcl/GraphicObject.hxx>
 #include <grfatr.hxx>
 #include <swunohelper.hxx>
+#include <osl/diagnose.h>
 
-#include <cmdid.h>
 #include <unomid.h>
 
 using namespace ::com::sun::star;
 
-
-SfxPoolItem* SwMirrorGrf::Clone( SfxItemPool* ) const
+SwMirrorGrf* SwMirrorGrf::Clone( SfxItemPool* ) const
 {
     return new SwMirrorGrf( *this );
 }
@@ -50,14 +48,14 @@ static bool lcl_IsHoriOnEvenPages(MirrorGraph nEnum, bool bToggle)
 {
     bool bEnum = nEnum == MirrorGraph::Vertical ||
                    nEnum == MirrorGraph::Both;
-            return bEnum != bToggle;
+    return bEnum != bToggle;
 }
 
 static bool lcl_IsHoriOnOddPages(MirrorGraph nEnum)
 {
     bool bEnum = nEnum == MirrorGraph::Vertical ||
                    nEnum == MirrorGraph::Both;
-            return bEnum;
+    return bEnum;
 }
 
 bool SwMirrorGrf::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
@@ -142,14 +140,39 @@ SwCropGrf::SwCropGrf(sal_Int32 nL, sal_Int32 nR, sal_Int32 nT, sal_Int32 nB )
     : SvxGrfCrop( nL, nR, nT, nB, RES_GRFATR_CROPGRF )
 {}
 
-SfxPoolItem* SwCropGrf::Clone( SfxItemPool* ) const
+SwCropGrf* SwCropGrf::Clone( SfxItemPool* ) const
 {
     return new SwCropGrf( *this );
 }
 
-SfxPoolItem* SwRotationGrf::Clone( SfxItemPool * ) const
+sal_Int16 SwRotationGrf::checkAndCorrectValue(sal_Int16 nValue)
 {
-    return new SwRotationGrf( GetValue(), aUnrotatedSize );
+    if(nValue < 0)
+    {
+        // smaller zero, modulo (will keep negative) and add one range
+        DBG_ASSERT(false, "SwRotationGrf: Value is in 10th degree and *has* to be in [0 .. 3600[ (!)");
+        return 3600 + (nValue % 3600);
+    }
+    else if (nValue >= 3600)
+    {
+        // bigger range, use modulo
+        DBG_ASSERT(false, "SwRotationGrf: Value is in 10th degree and *has* to be in [0 .. 3600[ (!)");
+        return nValue % 3600;
+    }
+
+    return nValue;
+}
+
+SwRotationGrf::SwRotationGrf( sal_Int16 nVal, const Size& rSz )
+    // tdf#115529 check and evtl. correct value
+:   SfxUInt16Item( RES_GRFATR_ROTATION, checkAndCorrectValue(nVal) ),
+    m_aUnrotatedSize( rSz )
+{
+}
+
+SwRotationGrf* SwRotationGrf::Clone( SfxItemPool * ) const
+{
+    return new SwRotationGrf( *this );
 }
 
 bool SwRotationGrf::operator==( const SfxPoolItem& rCmp ) const
@@ -162,7 +185,7 @@ bool SwRotationGrf::QueryValue( uno::Any& rVal, sal_uInt8 ) const
 {
     // SfxUInt16Item::QueryValue returns sal_Int32 in Any now... (srx642w)
     // where we still want this to be a sal_Int16
-    rVal <<= (sal_Int16)GetValue();
+    rVal <<= static_cast<sal_Int16>(GetValue());
     return true;
 }
 
@@ -174,7 +197,8 @@ bool SwRotationGrf::PutValue( const uno::Any& rVal, sal_uInt8 )
     if (rVal >>= nValue)
     {
         // sal_uInt16 argument needed
-        SetValue( (sal_uInt16) nValue );
+        // tdf#115529 check and evtl. correct value
+        SetValue(static_cast<sal_uInt16>(checkAndCorrectValue(nValue)));
         return true;
     }
 
@@ -184,32 +208,32 @@ bool SwRotationGrf::PutValue( const uno::Any& rVal, sal_uInt8 )
 
 // Sw___Grf::Clone(..)
 
-SfxPoolItem* SwLuminanceGrf::Clone( SfxItemPool * ) const
+SwLuminanceGrf* SwLuminanceGrf::Clone( SfxItemPool * ) const
 {
     return new SwLuminanceGrf( *this );
 }
 
-SfxPoolItem* SwContrastGrf::Clone( SfxItemPool * ) const
+SwContrastGrf* SwContrastGrf::Clone( SfxItemPool * ) const
 {
     return new SwContrastGrf( *this );
 }
 
-SfxPoolItem* SwChannelRGrf::Clone( SfxItemPool * ) const
+SwChannelRGrf* SwChannelRGrf::Clone( SfxItemPool * ) const
 {
     return new SwChannelRGrf( *this );
 }
 
-SfxPoolItem* SwChannelGGrf::Clone( SfxItemPool * ) const
+SwChannelGGrf* SwChannelGGrf::Clone( SfxItemPool * ) const
 {
     return new SwChannelGGrf( *this );
 }
 
-SfxPoolItem* SwChannelBGrf::Clone( SfxItemPool * ) const
+SwChannelBGrf* SwChannelBGrf::Clone( SfxItemPool * ) const
 {
     return new SwChannelBGrf( *this );
 }
 
-SfxPoolItem* SwGammaGrf::Clone( SfxItemPool * ) const
+SwGammaGrf* SwGammaGrf::Clone( SfxItemPool * ) const
 {
     return new SwGammaGrf( *this );
 }
@@ -219,28 +243,28 @@ SfxPoolItem* SwGammaGrf::Clone( SfxItemPool * ) const
 bool SwGammaGrf::operator==( const SfxPoolItem& rCmp ) const
 {
     return SfxPoolItem::operator==( rCmp ) &&
-        nValue == static_cast<const SwGammaGrf&>(rCmp).GetValue();
+        m_nValue == static_cast<const SwGammaGrf&>(rCmp).GetValue();
 }
 
 bool SwGammaGrf::QueryValue( uno::Any& rVal, sal_uInt8 ) const
 {
-    rVal <<= nValue;
+    rVal <<= m_nValue;
     return true;
 }
 
 bool SwGammaGrf::PutValue( const uno::Any& rVal, sal_uInt8 )
 {
-    return rVal >>= nValue;
+    return rVal >>= m_nValue;
 }
 
 // Sw___Grf::Clone(..) cont'd
 
-SfxPoolItem* SwInvertGrf::Clone( SfxItemPool * ) const
+SwInvertGrf* SwInvertGrf::Clone( SfxItemPool * ) const
 {
     return new SwInvertGrf( *this );
 }
 
-SfxPoolItem* SwTransparencyGrf::Clone( SfxItemPool * ) const
+SwTransparencyGrf* SwTransparencyGrf::Clone( SfxItemPool * ) const
 {
     return new SwTransparencyGrf( *this );
 }
@@ -279,7 +303,7 @@ bool SwTransparencyGrf::PutValue( const uno::Any& rVal,
 
 // Sw___Grf::Clone(..) cont'd
 
-SfxPoolItem* SwDrawModeGrf::Clone( SfxItemPool * ) const
+SwDrawModeGrf* SwDrawModeGrf::Clone( SfxItemPool * ) const
 {
     return new SwDrawModeGrf( *this );
 }
@@ -288,13 +312,13 @@ SfxPoolItem* SwDrawModeGrf::Clone( SfxItemPool * ) const
 
 sal_uInt16 SwDrawModeGrf::GetValueCount() const
 {
-    return (sal_uInt16)GraphicDrawMode::Watermark + 1;
+    return sal_uInt16(GraphicDrawMode::Watermark) + 1;
 }
 
 bool SwDrawModeGrf::QueryValue( uno::Any& rVal,
                                 sal_uInt8 ) const
 {
-    drawing::ColorMode eRet = (drawing::ColorMode)GetEnumValue();
+    drawing::ColorMode eRet = static_cast<drawing::ColorMode>(GetEnumValue());
     rVal <<= eRet;
     return true;
 }
@@ -303,9 +327,9 @@ bool SwDrawModeGrf::PutValue( const uno::Any& rVal,
                                 sal_uInt8 )
 {
     sal_Int32 eVal = SWUnoHelper::GetEnumAsInt32( rVal );
-    if(eVal >= 0 && eVal <= (sal_uInt16)GraphicDrawMode::Watermark)
+    if(eVal >= 0 && eVal <= sal_uInt16(GraphicDrawMode::Watermark))
     {
-        SetEnumValue((sal_uInt16)eVal);
+        SetEnumValue(static_cast<sal_uInt16>(eVal));
         return true;
     }
     return false;

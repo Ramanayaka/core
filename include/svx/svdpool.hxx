@@ -21,29 +21,28 @@
 #define INCLUDED_SVX_SVDPOOL_HXX
 
 #include <svx/xpool.hxx>
-#include <svx/svddef.hxx>
 #include <svx/svxdllapi.h>
 
 class XLineAttrSetItem;
 class XFillAttrSetItem;
 
 
-class SVX_DLLPUBLIC SdrItemPool : public XOutdevItemPool
+class SVXCORE_DLLPUBLIC SdrItemPool final : public XOutdevItemPool
 {
 public:
-    SdrItemPool(SfxItemPool* pMaster = nullptr, bool bLoadRefCounts = true);
+    SdrItemPool(SfxItemPool* pMaster = nullptr);
     SdrItemPool(const SdrItemPool& rPool);
-protected:
+private:
     virtual ~SdrItemPool() override;
 public:
 
-    virtual SfxItemPool* Clone() const override;
+    virtual SdrItemPool* Clone() const override;
     virtual bool GetPresentation(const SfxPoolItem& rItem,
                                  MapUnit ePresentationMetric,
                                  OUString& rText,
-                                 const IntlWrapper * pIntlWrapper = nullptr) const override;
+                                 const IntlWrapper& rIntlWrapper) const override;
 
-    static void TakeItemName(sal_uInt16 nWhich, OUString& rItemName);
+    static OUString GetItemName(sal_uInt16 nWhich);
 };
 
 #endif // INCLUDED_SVX_SVDPOOL_HXX

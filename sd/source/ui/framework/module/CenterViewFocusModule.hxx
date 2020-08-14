@@ -20,12 +20,13 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_MODULE_CENTERVIEWFOCUSMODULE_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_MODULE_CENTERVIEWFOCUSMODULE_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 
 #include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/frame/XController.hpp>
 #include <cppuhelper/compbase.hxx>
+
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
+namespace com::sun::star::frame { class XController; }
 
 namespace sd {
 
@@ -33,7 +34,7 @@ class ViewShellBase;
 
 }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XConfigurationChangeListener
@@ -50,7 +51,7 @@ class CenterViewFocusModule
 {
 public:
     explicit CenterViewFocusModule (
-        css::uno::Reference<css::frame::XController>& rxController);
+        css::uno::Reference<css::frame::XController> const & rxController);
     virtual ~CenterViewFocusModule() override;
 
     virtual void SAL_CALL disposing() override;
@@ -86,7 +87,7 @@ private:
         const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

@@ -18,32 +18,28 @@
  */
 
 #include <iostream>
-#include <stdlib.h>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
 #include "XmlFilterAdaptor.hxx"
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/io/XActiveDataSource.hpp>
-#include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <com/sun/star/xml/sax/InputSource.hpp>
-#include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/XImportFilter.hpp>
 #include <com/sun/star/xml/XExportFilter.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
-#include <com/sun/star/task/XStatusIndicatorFactory.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/style/XStyleLoader.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <comphelper/fileurl.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <unotools/mediadescriptor.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <comphelper/genericpropertyset.hxx>
 #include <comphelper/propertysetinfo.hxx>
+#include <comphelper/scopeguard.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <unotools/pathoptions.hxx>
 
@@ -57,9 +53,10 @@ using namespace com::sun::star::document;
 using namespace com::sun::star::style;
 using namespace com::sun::star::xml;
 using namespace com::sun::star::xml::sax;
+using namespace com::sun::star::frame;
 using namespace ::com::sun::star::task;
 
-bool SAL_CALL XmlFilterAdaptor::importImpl( const Sequence< css::beans::PropertyValue >& aDescriptor )
+bool XmlFilterAdaptor::importImpl( const Sequence< css::beans::PropertyValue >& aDescriptor )
 {
     OUString udConvertClass    = msUserData[0];
     const OUString sXMLImportService = msUserData[2];
@@ -87,12 +84,26 @@ bool SAL_CALL XmlFilterAdaptor::importImpl( const Sequence< css::beans::Property
     PropertyMapEntry aImportInfoMap[] =
     {
         { OUString("BaseURI"), 0, ::cppu::UnoType<OUString>::get(), PropertyAttribute::MAYBEVOID, 0},
+        { OUString("BuildId"), 0, ::cppu::UnoType<OUString>::get(), PropertyAttribute::MAYBEVOID, 0 },
+        { OUString("DefaultDocumentSettings"), 0,
+          ::cppu::UnoType<Sequence<PropertyValue>>::get(), PropertyAttribute::MAYBEVOID, 0 },
         { OUString(), 0, css::uno::Type(), 0, 0 }
     };
 
     Reference< XPropertySet > xInfoSet(
             GenericPropertySet_CreateInstance( new PropertySetInfo( aImportInfoMap ) ) );
     xInfoSet->setPropertyValue( "BaseURI", makeAny( aBaseURI ));
+
+    OUString aFilterName;
+    auto It = aMediaMap.find(OUString("FilterName"));
+    if (It != aMediaMap.end() && (It->second >>= aFilterName)
+        && aFilterName == "OpenDocument Text Flat XML")
+    {
+        PropertyValue EmptyDbFieldHidesPara("EmptyDbFieldHidesPara", 0, Any(false),
+                                            PropertyState::PropertyState_DIRECT_VALUE);
+        Sequence<PropertyValue> aSettings{ EmptyDbFieldHidesPara };
+        xInfoSet->setPropertyValue("DefaultDocumentSettings", makeAny(aSettings));
+    }
     aAnys[0] <<= xInfoSet;
 
 
@@ -121,6 +132,15 @@ bool SAL_CALL XmlFilterAdaptor::importImpl( const Sequence< css::beans::Property
 
     Reference< XImportFilter > xConverter( xConvBridge, UNO_QUERY );
 
+    // prevent unnecessary broadcasting when loading
+    Reference< XModel > xModel( mxDoc, UNO_QUERY );
+    if( xModel.is() )
+        xModel->lockControllers();
+    comphelper::ScopeGuard guard([&]() {
+        // cleanup when leaving
+        if( xModel.is() )
+            xModel->unlockControllers();
+    });
 
     //Template Loading if Required
 
@@ -134,9 +154,7 @@ bool SAL_CALL XmlFilterAdaptor::importImpl( const Sequence< css::beans::Property
             if(!comphelper::isFileUrl(msTemplateName))
             {
                 SvtPathOptions aOptions;
-                OUString PathString = aOptions.SubstituteVariable("$(progurl)");
-                PathString = PathString.concat("/");
-                msTemplateName=PathString.concat(msTemplateName);
+                msTemplateName = aOptions.SubstituteVariable("$(progurl)") + "/" + msTemplateName;
             }
 
             xstyleLoader->loadStylesFromURL(msTemplateName,aValue);
@@ -158,12 +176,11 @@ bool SAL_CALL XmlFilterAdaptor::importImpl( const Sequence< css::beans::Property
             return false;
         }
     }
-    catch( const Exception& e )
+    catch( const Exception& )
     {
+        TOOLS_WARN_EXCEPTION("filter.xmlfa", "XmlFilterAdaptor");
         if (xStatusIndicator.is())
                xStatusIndicator->end();
-
-        SAL_WARN("filter.xmlfa", "XmlFilterAdaptor: exception: " << e.Message);
         return false;
     }
     if (xStatusIndicator.is()) {
@@ -173,7 +190,7 @@ bool SAL_CALL XmlFilterAdaptor::importImpl( const Sequence< css::beans::Property
     return true;
 }
 
-bool SAL_CALL XmlFilterAdaptor::exportImpl( const Sequence< css::beans::PropertyValue >& aDescriptor )
+bool XmlFilterAdaptor::exportImpl( const Sequence< css::beans::PropertyValue >& aDescriptor )
 {
 
     OUString udConvertClass = msUserData[0];
@@ -235,7 +252,7 @@ bool SAL_CALL XmlFilterAdaptor::exportImpl( const Sequence< css::beans::Property
         }
 
         // create an XProperty set to configure the exporter for pretty printing
-         PropertyMapEntry aImportInfoMap[] =
+        PropertyMapEntry aImportInfoMap[] =
          {
              { OUString("UsePrettyPrinting"), 0, cppu::UnoType<sal_Bool>::get(), PropertyAttribute::MAYBEVOID, 0},
              { OUString("ExportTextNumberElement"), 0, cppu::UnoType<sal_Bool>::get(), PropertyAttribute::MAYBEVOID, 0},
@@ -243,13 +260,13 @@ bool SAL_CALL XmlFilterAdaptor::exportImpl( const Sequence< css::beans::Property
              { OUString(), 0, css::uno::Type(), 0, 0 }
          };
 
-         Reference< XPropertySet > xInfoSet(
+        Reference< XPropertySet > xInfoSet(
             GenericPropertySet_CreateInstance( new PropertySetInfo( aImportInfoMap ) ) );
-         xInfoSet->setPropertyValue("UsePrettyPrinting", makeAny( bPrettyPrint ));
+        xInfoSet->setPropertyValue("UsePrettyPrinting", makeAny( bPrettyPrint ));
         xInfoSet->setPropertyValue(
                         "ExportTextNumberElement",
                         makeAny( bExportTextNumberElementForListItems ));
-         xInfoSet->setPropertyValue("BaseURI", makeAny( aBaseURI ));
+        xInfoSet->setPropertyValue("BaseURI", makeAny( aBaseURI ));
         aAnys[1] <<= xInfoSet;
 
         Reference< XExporter > xExporter( mxContext->getServiceManager()->createInstanceWithArgumentsAndContext(
@@ -272,9 +289,9 @@ bool SAL_CALL XmlFilterAdaptor::exportImpl( const Sequence< css::beans::Property
             return false;
         }
     }
-    catch (const Exception& e)
+    catch (const Exception&)
     {
-        SAL_WARN("filter.xmlfa", "XmlFilterAdaptor: exception: " << e.Message);
+        TOOLS_WARN_EXCEPTION("filter.xmlfa", "XmlFilterAdaptor");
         if (xStatusIndicator.is())
             xStatusIndicator->end();
         return false;
@@ -310,8 +327,7 @@ void SAL_CALL XmlFilterAdaptor::setTargetDocument( const Reference< css::lang::X
 void SAL_CALL XmlFilterAdaptor::initialize( const Sequence< Any >& aArguments )
 {
     Sequence < PropertyValue > aAnySeq;
-    sal_Int32 nLength = aArguments.getLength();
-    if ( nLength && ( aArguments[0] >>= aAnySeq ) )
+    if ( aArguments.hasElements() && ( aArguments[0] >>= aAnySeq ) )
     {
         comphelper::SequenceAsHashMap aMap(aAnySeq);
         msFilterName = aMap.getUnpackedValueOrDefault(
@@ -322,29 +338,11 @@ void SAL_CALL XmlFilterAdaptor::initialize( const Sequence< Any >& aArguments )
             "TemplateName", OUString());
     }
 }
-OUString XmlFilterAdaptor_getImplementationName ()
-{
-    return OUString( "com.sun.star.comp.Writer.XmlFilterAdaptor" );
-}
-
-Sequence< OUString > SAL_CALL XmlFilterAdaptor_getSupportedServiceNames(  )
-{
-    Sequence < OUString > aRet(2);
-    OUString* pArray = aRet.getArray();
-    pArray[0] =  "com.sun.star.document.ExportFilter";
-    pArray[1] =  "com.sun.star.document.ImportFilter";
-    return aRet;
-}
-
-Reference< XInterface > SAL_CALL XmlFilterAdaptor_createInstance( const Reference< XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new XmlFilterAdaptor( comphelper::getComponentContext(rSMgr) ));
-}
 
 // XServiceInfo
 OUString SAL_CALL XmlFilterAdaptor::getImplementationName(  )
 {
-    return XmlFilterAdaptor_getImplementationName();
+    return "com.sun.star.comp.Writer.XmlFilterAdaptor";
 }
 
 sal_Bool SAL_CALL XmlFilterAdaptor::supportsService( const OUString& rServiceName )
@@ -354,7 +352,14 @@ sal_Bool SAL_CALL XmlFilterAdaptor::supportsService( const OUString& rServiceNam
 
 Sequence< OUString > SAL_CALL XmlFilterAdaptor::getSupportedServiceNames(  )
 {
-    return XmlFilterAdaptor_getSupportedServiceNames();
+    return { "com.sun.star.document.ExportFilter", "com.sun.star.document.ImportFilter" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_XmlFilterAdaptor_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new XmlFilterAdaptor(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,23 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <i18nlangtag/languagetag.hxx>
 #include <i18nlangtag/mslangid.hxx>
 
 #include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
-#include <vcl/virdev.hxx>
 #include <vcl/settings.hxx>
 
-#include <unotools/fontcfg.hxx>
+#include <unotools/configmgr.hxx>
 #include <unotools/confignode.hxx>
 
 #include <comphelper/processfactory.hxx>
 
 #include <salframe.hxx>
-#include <svdata.hxx>
 #include <brdwin.hxx>
-#include <PhysicalFontCollection.hxx>
 
 #include <window.h>
 
@@ -91,7 +89,7 @@ void Window::UpdateSettings( const AllSettings& rSettings, bool bChild )
     }
 
     AllSettings aOldSettings(*mxSettings);
-    AllSettingsFlags nChangeFlags = mxSettings->Update( mxSettings->GetWindowUpdate(), rSettings );
+    AllSettingsFlags nChangeFlags = mxSettings->Update( AllSettings::GetWindowUpdate(), rSettings );
 
     // recalculate AppFont-resolution and DPI-resolution
     ImplInitResolutionSettings();
@@ -144,7 +142,7 @@ void Window::UpdateSettings( const AllSettings& rSettings, bool bChild )
     }
 }
 
-void Window::ImplUpdateGlobalSettings( AllSettings& rSettings, bool bCallHdl )
+void Window::ImplUpdateGlobalSettings( AllSettings& rSettings, bool bCallHdl ) const
 {
     StyleSettings aTmpSt( rSettings.GetStyleSettings() );
     aTmpSt.SetHighContrastMode( false );
@@ -152,18 +150,9 @@ void Window::ImplUpdateGlobalSettings( AllSettings& rSettings, bool bCallHdl )
     ImplGetFrame()->UpdateSettings( rSettings );
 
     StyleSettings aStyleSettings = rSettings.GetStyleSettings();
-    // #97047: Force all fonts except Menu and Help to a fixed height
-    // to avoid UI scaling due to large fonts
-    // - but allow bigger fonts on bigger screens (i16682, i21238)
-    //   dialogs were designed to fit 800x600 with an 8pt font, so scale accordingly
-    int maxFontheight = 9; // #107886#: 9 is default for some asian systems, so always allow if requested
-    if( GetDesktopRectPixel().getHeight() > 600 )
-        maxFontheight = (int) ((( 8.0 * (double) GetDesktopRectPixel().getHeight()) / 600.0) + 1.5);
 
     vcl::Font aFont = aStyleSettings.GetMenuFont();
     int defFontheight = aFont.GetFontHeight();
-    if( defFontheight > maxFontheight )
-        defFontheight = maxFontheight;
 
     // if the UI is korean, chinese or another locale
     // where the system font size is known to be often too small to
@@ -236,7 +225,7 @@ void Window::ImplUpdateGlobalSettings( AllSettings& rSettings, bool bCallHdl )
 
     // auto detect HC mode; if the system already set it to "yes"
     // (see above) then accept that
-    if( !rSettings.GetStyleSettings().GetHighContrastMode() )
+    if (!rSettings.GetStyleSettings().GetHighContrastMode() && !utl::ConfigManager::IsFuzzing())
     {
         bool bAutoHCMode = true;
         utl::OConfigurationNode aNode = utl::OConfigurationTreeRoot::tryCreateWithComponentContext(
@@ -244,7 +233,7 @@ void Window::ImplUpdateGlobalSettings( AllSettings& rSettings, bool bCallHdl )
             "org.openoffice.Office.Common/Accessibility" );    // note: case sensitive !
         if ( aNode.isValid() )
         {
-            css::uno::Any aValue = aNode.getNodeValue( OUString("AutoDetectSystemHC") );
+            css::uno::Any aValue = aNode.getNodeValue( "AutoDetectSystemHC" );
             bool bTmp = false;
             if( aValue >>= bTmp )
                 bAutoHCMode = bTmp;

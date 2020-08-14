@@ -18,22 +18,23 @@
  */
 #include "dbloader2.hxx"
 #include <tools/urlobj.hxx>
+#include <comphelper/documentconstants.hxx>
+#include <comphelper/sequenceashashmap.hxx>
+#include <comphelper/storagehelper.hxx>
+#include <comphelper/types.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/embed/XStorage.hpp>
 
 namespace rptxml
 {
 
-using namespace ::ucbhelper;
-using namespace ::com::sun::star::task;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::ucb;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::document;
-using namespace ::com::sun::star::registry;
 using namespace ::com::sun::star::embed;
 using namespace ::com::sun::star::ui::dialogs;
 
@@ -52,8 +53,8 @@ OUString SAL_CALL ORptTypeDetection::detect( Sequence< css::beans::PropertyValue
     if ( !sTemp.isEmpty() )
     {
         INetURLObject aURL(sTemp);
-        if ( aURL.GetExtension().equalsIgnoreAsciiCase("orp") )
-            return OUString("StarBaseReport");
+        if ( aURL.GetFileExtension().equalsIgnoreAsciiCase("orp") )
+            return "StarBaseReport";
         else
         {
             try
@@ -64,7 +65,7 @@ OUString SAL_CALL ORptTypeDetection::detect( Sequence< css::beans::PropertyValue
                     OUString sMediaType;
                     xProp->getPropertyValue("MediaType") >>= sMediaType;
                     if ( sMediaType == MIMETYPE_OASIS_OPENDOCUMENT_REPORT_ASCII )
-                        return OUString("StarBaseReport");
+                        return "StarBaseReport";
                     ::comphelper::disposeComponent(xProp);
                 }
             }
@@ -76,16 +77,10 @@ OUString SAL_CALL ORptTypeDetection::detect( Sequence< css::beans::PropertyValue
     return OUString();
 }
 
-Reference< XInterface > SAL_CALL
-        ORptTypeDetection::create(Reference< XComponentContext > const & xContext)
-{
-    return *(new ORptTypeDetection(xContext));
-}
-
 // XServiceInfo
 OUString SAL_CALL ORptTypeDetection::getImplementationName()
 {
-    return getImplementationName_Static();
+    return "com.sun.star.comp.report.ORptTypeDetection";
 }
 
 
@@ -98,18 +93,19 @@ sal_Bool SAL_CALL ORptTypeDetection::supportsService(const OUString& ServiceName
 // XServiceInfo
 Sequence< OUString > SAL_CALL ORptTypeDetection::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-// ORegistryServiceManager_Static
-Sequence< OUString > ORptTypeDetection::getSupportedServiceNames_Static()
-{
-    Sequence<OUString> aSNS { "com.sun.star.document.ExtendedTypeDetection" };
-    return aSNS;
+    return { "com.sun.star.document.ExtendedTypeDetection" };
 }
 
 
 }//rptxml
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_ORptTypeDetection_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new rptxml::ORptTypeDetection(context));
+}
+
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

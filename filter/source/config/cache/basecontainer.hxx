@@ -22,7 +22,6 @@
 #include <memory>
 
 #include "filtercache.hxx"
-#include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/util/XRefreshable.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -35,8 +34,7 @@
 #include <rtl/ustring.hxx>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config {
 
 
 /** @short      implements the interface css::container::XNameContainer
@@ -67,17 +65,17 @@ class BaseContainer : public BaseLock
         css::uno::WeakReference< css::util::XRefreshable > m_xRefreshBroadcaster;
 
         /** @short  the implementation name of our derived class, which we provide
-                    at the interface XServiceInfo of our class ... */
+                    at the interface XServiceInfo of our class... */
         OUString m_sImplementationName;
 
         /** @short  the list of supported uno service names of our derived class, which we provide
-                    at the interface XServiceInfo of our class ... */
+                    at the interface XServiceInfo of our class... */
         css::uno::Sequence< OUString > m_lServiceNames;
 
         /** @short  local filter cache, which is used to collect changes on the
                     filter configuration first and flush it later.
 
-            @descr  Normally this member isn't used nor initialized. Thats true,
+            @descr  Normally this member isn't used nor initialized. That's true,
                     if this container is used for reading only. The first write access
                     (e.g. by calling insertByName()) creates a copy of the current
                     global cache m_rCache to initialize the m_pFlushCache member.
@@ -109,7 +107,7 @@ class BaseContainer : public BaseLock
         /** @short  standard ctor.
 
             @descr  Because mostly this class is used as base class for own service
-                    implementations in combination with a ImplInheritanceHelper template ...
+                    implementations in combination with an ImplInheritanceHelper template...
                     there is no way to provide some initializing data through the ctor :-(
                     This base class will be created inside its default ctor and must be
                     initialized with its needed parameters explicitly by calling: "init()".
@@ -124,12 +122,12 @@ class BaseContainer : public BaseLock
         virtual ~BaseContainer() override;
 
 
-        /** @short  initialize this generic intsnace with some specialized values
+        /** @short  initialize this generic instance with some specialized values
                     from our derived object.
 
             @descr  Because an outside class must use ImplInheritanceHelper template to
-                    use us a base class ... and there is no way to pass such initializing
-                    parameters through a required default ctor ... we must be initialized
+                    use us a base class... and there is no way to pass such initializing
+                    parameters through a required default ctor... we must be initialized
                     by this special method. Of course this method must be called first before
                     any other interface method is used.
 
@@ -138,11 +136,11 @@ class BaseContainer : public BaseLock
 
             @param  sImplementationName
                     the implementation name of our derived class, which we provide
-                    at the interface XServiceInfo of our class ...
+                    at the interface XServiceInfo of our class...
 
             @param  lServiceNames
                     the list of supported uno service names of our derived class, which we provide
-                    at the interface XServiceInfo of our class ...
+                    at the interface XServiceInfo of our class...
 
             @param  eType
                     specify, which sub container of the used filter cache
@@ -241,7 +239,7 @@ class BaseContainer : public BaseLock
 
         // XContainerQuery
 
-        // must be implemented really by derived class ...
+        // must be implemented really by derived class...
         // We implement return of an empty result here only!
         // But we show an assertion :-)
         virtual css::uno::Reference< css::container::XEnumeration > SAL_CALL createSubSetEnumerationByQuery(const OUString& sQuery) override;
@@ -258,8 +256,7 @@ class BaseContainer : public BaseLock
         virtual void SAL_CALL removeFlushListener(const css::uno::Reference< css::util::XFlushListener >& xListener) override;
 };
 
-    } // namespace config
-} // namespace filter
+} // namespace filter::config
 
 #endif // INCLUDED_FILTER_SOURCE_CONFIG_CACHE_BASECONTAINER_HXX
 

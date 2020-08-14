@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_MTFTOOLS_HXX
-#define INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_MTFTOOLS_HXX
+#pragma once
 
 #include <action.hxx>
 #include <cppcanvas/canvas.hxx>
@@ -32,10 +31,10 @@ namespace basegfx
     class B2DVector;
     class B2DPoint;
 }
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
     struct RenderState;
-} } } }
+}
 
 
 namespace cppcanvas
@@ -199,9 +198,15 @@ namespace cppcanvas
         ::basegfx::B2DPolyPolygon createTextLinesPolyPolygon( const ::basegfx::B2DPoint& rStartPos,
                                                               const double&              rLineWidth,
                                                               const TextLineInfo&        rTextLineInfo );
+
+        void createTextLinesPolyPolygon( const double&              rStartOffset,
+                                         const double&              rLineWidth,
+                                         const TextLineInfo&        rTextLineInfo,
+                                         ::basegfx::B2DPolyPolygon& rOverlinePolyPoly,
+                                         ::basegfx::B2DPolyPolygon& rUnderlinePolyPoly,
+                                         ::basegfx::B2DPolyPolygon& rStrikeoutPolyPoly );
+
     }
 }
-
-#endif // INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_MTFTOOLS_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

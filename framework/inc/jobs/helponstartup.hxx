@@ -20,8 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_JOBS_HELPONSTARTUP_HXX
 #define INCLUDED_FRAMEWORK_INC_JOBS_HELPONSTARTUP_HXX
 
-#include <macros/xserviceinfo.hxx>
-
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/task/XJob.hpp>
@@ -29,23 +27,23 @@
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/frame/XDesktop2.hpp>
 #include <com/sun/star/frame/XModuleManager2.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 namespace framework{
 
 /** @short  implements a job component, which handle the special
             feature to show a suitable help page for every (visible!)
             loaded document.
-
-    @author as96863
  */
-class HelpOnStartup : public ::cppu::WeakImplHelper< css::lang::XServiceInfo,css::lang::XEventListener,css::task::XJob >
+class HelpOnStartup final : public ::cppu::WeakImplHelper< css::lang::XServiceInfo,css::lang::XEventListener,css::task::XJob >
 {
 
     // member
     private:
         osl::Mutex m_mutex;
 
-        /** @short  reference to an uno service manager. */
+        /** @short  reference to a uno service manager. */
         css::uno::Reference< css::uno::XComponentContext > m_xContext;
 
         /** @short  such module manager is used to classify new opened documents. */
@@ -89,12 +87,10 @@ class HelpOnStartup : public ::cppu::WeakImplHelper< css::lang::XServiceInfo,css
     // uno interface
     public:
 
-        // css.lang.XServiceInfo
-        DECLARE_XSERVICEINFO_NOFACTORY
-        /* Helper for registry */
-        /// @throws css::uno::Exception
-        static css::uno::Reference< css::uno::XInterface >             SAL_CALL impl_createInstance                ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
-        static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL impl_createFactory                 ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
+        /* interface XServiceInfo */
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
         // css.task.XJob
         virtual css::uno::Any SAL_CALL execute(const css::uno::Sequence< css::beans::NamedValue >& lArguments) override;
@@ -146,7 +142,7 @@ class HelpOnStartup : public ::cppu::WeakImplHelper< css::lang::XServiceInfo,css
         /** @short  checks, if the help module should be shown automatically for the
                     currently opened office module.
 
-            @descr  This value is readed from the module configuration.
+            @descr  This value is read from the module configuration.
                     In case the help should be shown, this method returns
                     a help URL, which can be used to show the right help content.
 

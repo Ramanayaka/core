@@ -20,11 +20,13 @@
 #include <sal/config.h>
 
 #include <basegfx/numeric/ftools.hxx>
+#include <canvas/canvastools.hxx>
 #include <com/sun/star/rendering/PanoseProportion.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <rtl/math.hxx>
 #include <vcl/metric.hxx>
+#include <vcl/virdev.hxx>
 
 #include "canvasfont.hxx"
 #include "textlayout.hxx"
@@ -35,7 +37,7 @@ using namespace ::com::sun::star;
 namespace vclcanvas
 {
     CanvasFont::CanvasFont( const rendering::FontRequest&                   rFontRequest,
-                            const uno::Sequence< beans::PropertyValue >&    ,
+                            const uno::Sequence< beans::PropertyValue >&    rExtraFontProperties,
                             const geometry::Matrix2D&                       rFontMatrix,
                             rendering::XGraphicDevice&                      rDevice,
                             const OutDevProviderSharedPtr&                  rOutDevProvider ) :
@@ -71,7 +73,7 @@ namespace vclcanvas
             const Size aSize = rOutDev.GetFontMetric( *maFont ).GetFontSize();
 
             const double fDividend( rFontMatrix.m10 + rFontMatrix.m11 );
-            double fStretch = (rFontMatrix.m00 + rFontMatrix.m01);
+            double fStretch = rFontMatrix.m00 + rFontMatrix.m01;
 
             if( !::basegfx::fTools::equalZero( fDividend) )
                 fStretch /= fDividend;
@@ -82,6 +84,13 @@ namespace vclcanvas
 
             rOutDev.EnableMapMode(bOldMapState);
         }
+
+        sal_uInt32 nEmphasisMark = 0;
+
+        ::canvas::tools::extractExtraFontProperties(rExtraFontProperties, nEmphasisMark);
+
+        if (nEmphasisMark)
+            maFont->SetEmphasisMark(FontEmphasisMark(nEmphasisMark));
     }
 
     void SAL_CALL CanvasFont::disposing()
@@ -146,7 +155,7 @@ namespace vclcanvas
 
     OUString SAL_CALL CanvasFont::getImplementationName()
     {
-        return OUString( "VCLCanvas::CanvasFont" );
+        return "VCLCanvas::CanvasFont";
     }
 
     sal_Bool SAL_CALL CanvasFont::supportsService( const OUString& ServiceName )
@@ -159,7 +168,7 @@ namespace vclcanvas
         return { "com.sun.star.rendering.CanvasFont" };
     }
 
-    vcl::Font CanvasFont::getVCLFont() const
+    vcl::Font const & CanvasFont::getVCLFont() const
     {
         return *maFont;
     }

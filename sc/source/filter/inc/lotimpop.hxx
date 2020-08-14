@@ -23,13 +23,10 @@
 #include <rtl/ustring.hxx>
 
 #include "imp_op.hxx"
-#include "flttypes.hxx"
 #include "ftools.hxx"
 #include "lotform.hxx"
 #include "lotattr.hxx"
 
-class ScFormulaCell;
-class LotusFontBuffer;
 struct LotusContext;
 
 class ImportLotus : public ImportTyp
@@ -65,7 +62,7 @@ private:
     inline void         Read( ScAddress& );
     inline void         Read( ScRange& );
         // for addresses/ranges in the format row(16)/tab(8)/col(8)
-    inline void         Read( sal_Char& );
+    inline void         Read( char& );
     inline void         Read( sal_uInt8& );
     inline void         Read( sal_uInt16& );
     inline void         Read( sal_Int16& );
@@ -79,7 +76,8 @@ public:
 
     virtual             ~ImportLotus() override;
 
-    ErrCode             Read() override;
+    ErrCode             parse(); //parse + CalcAfterLoad
+    ErrCode             Read();
     ErrCode             Read( SvStream& );                  // special for *.fm3 files
 };
 
@@ -101,7 +99,7 @@ inline void ImportLotus::Read( ScRange& rRange )
     Read( rRange.aEnd );
 }
 
-inline void ImportLotus::Read( sal_Char& r )
+inline void ImportLotus::Read( char& r )
 {
     pIn->ReadChar( r );
 }

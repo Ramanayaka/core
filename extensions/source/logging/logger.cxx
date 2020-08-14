@@ -43,12 +43,13 @@ namespace logging
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::XComponentContext;
     using ::com::sun::star::lang::XServiceInfo;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::XInterface;
     using ::com::sun::star::uno::WeakReference;
     using ::com::sun::star::logging::XLogHandler;
     using ::com::sun::star::logging::LogRecord;
+
+    namespace {
 
     class EventLogger : public cppu::BaseMutex,
                         public cppu::WeakImplHelper<css::logging::XLogger>
@@ -110,6 +111,8 @@ namespace logging
         virtual Reference< XLogger > SAL_CALL getNamedLogger( const OUString& Name ) override;
         virtual Reference< XLogger > SAL_CALL getDefaultLogger(  ) override;
     };
+
+    }
 
     EventLogger::EventLogger( const Reference< XComponentContext >& _rxContext, const OUString& _rName )
         :m_aHandlers( m_aMutex )
@@ -216,7 +219,7 @@ namespace logging
 
     OUString SAL_CALL LoggerPool::getImplementationName()
     {
-        return OUString("com.sun.star.comp.extensions.LoggerPool");
+        return "com.sun.star.comp.extensions.LoggerPool";
     }
 
     sal_Bool SAL_CALL LoggerPool::supportsService( const OUString& _rServiceName )
@@ -270,7 +273,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_extensions_LoggerPool(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

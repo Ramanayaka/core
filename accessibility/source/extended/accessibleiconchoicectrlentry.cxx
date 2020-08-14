@@ -18,26 +18,21 @@
  */
 
 #include <extended/accessibleiconchoicectrlentry.hxx>
-#include <svtools/ivctrl.hxx>
-#include <com/sun/star/awt/Point.hpp>
+#include <vcl/ivctrl.hxx>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <vcl/svapp.hxx>
-#include <vcl/controllayout.hxx>
+#include <vcl/toolkit/controllayout.hxx>
 #include <vcl/settings.hxx>
-#include <toolkit/awt/vclxwindow.hxx>
 #include <toolkit/helper/convert.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
 #include <svtools/stringtransfer.hxx>
 #include <comphelper/accessibleeventnotifier.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 #define ACCESSIBLE_ACTION_COUNT     1
 
@@ -56,7 +51,6 @@ namespace
 namespace accessibility
 {
 
-    // class AccessibleIconChoiceCtrlEntry
 
     using namespace ::com::sun::star::accessibility;
     using namespace ::com::sun::star::uno;
@@ -186,10 +180,7 @@ namespace accessibility
 
     Locale AccessibleIconChoiceCtrlEntry::implGetLocale()
     {
-        Locale aLocale;
-        aLocale = Application::GetSettings().GetUILanguageTag().getLocale();
-
-        return aLocale;
+        return Application::GetSettings().GetUILanguageTag().getLocale();
     }
     void AccessibleIconChoiceCtrlEntry::implGetSelection( sal_Int32& nStartIndex, sal_Int32& nEndIndex )
     {
@@ -231,7 +222,7 @@ namespace accessibility
 
     OUString SAL_CALL AccessibleIconChoiceCtrlEntry::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.svtools.AccessibleIconChoiceControlEntry" );
+        return "com.sun.star.comp.svtools.AccessibleIconChoiceControlEntry";
     }
 
     Sequence< OUString > SAL_CALL AccessibleIconChoiceCtrlEntry::getSupportedServiceNames()
@@ -316,9 +307,9 @@ namespace accessibility
 
         if ( IsAlive_Impl() )
         {
-               pStateSetHelper->AddState( AccessibleStateType::TRANSIENT );
-               pStateSetHelper->AddState( AccessibleStateType::SELECTABLE );
-               pStateSetHelper->AddState( AccessibleStateType::ENABLED );
+            pStateSetHelper->AddState( AccessibleStateType::TRANSIENT );
+            pStateSetHelper->AddState( AccessibleStateType::SELECTABLE );
+            pStateSetHelper->AddState( AccessibleStateType::ENABLED );
             pStateSetHelper->AddState( AccessibleStateType::SENSITIVE );
             if ( IsShowing_Impl() )
             {
@@ -422,7 +413,7 @@ namespace accessibility
         SolarMutexGuard aSolarGuard;
         ::osl::MutexGuard aGuard( m_aMutex );
 
-        if ( ( 0 > _nIndex ) || ( getCharacterCount() <= _nIndex ) )
+        if ( ( 0 > _nIndex ) || ( implGetText().getLength() <= _nIndex ) )
             throw IndexOutOfBoundsException();
 
         awt::Rectangle aBounds( 0, 0, 0, 0 );
@@ -470,8 +461,9 @@ namespace accessibility
     {
         SolarMutexGuard aSolarGuard;
         ::osl::MutexGuard aGuard( m_aMutex );
+        EnsureIsAlive();
 
-        OUString sText = getText();
+        OUString sText = implGetText();
         if  ( ( 0 > nStartIndex ) || ( sText.getLength() <= nStartIndex )
             || ( 0 > nEndIndex ) || ( sText.getLength() <= nEndIndex ) )
             throw IndexOutOfBoundsException();
@@ -480,6 +472,11 @@ namespace accessibility
         ::svt::OStringTransfer::CopyString( sText.copy( nStartIndex, nLen ), m_pIconCtrl );
 
         return true;
+    }
+
+    sal_Bool SAL_CALL AccessibleIconChoiceCtrlEntry::scrollSubstringTo( sal_Int32, sal_Int32, AccessibleScrollType )
+    {
+        return false;
     }
 
     // XAccessibleEventBroadcaster
@@ -497,21 +494,21 @@ namespace accessibility
 
     void SAL_CALL AccessibleIconChoiceCtrlEntry::removeAccessibleEventListener( const Reference< XAccessibleEventListener >& xListener )
     {
-        if (xListener.is())
-        {
-            ::osl::MutexGuard aGuard( m_aMutex );
+        if (!xListener.is())
+            return;
 
-            sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( m_nClientId, xListener );
-            if ( !nListenerCount )
-            {
-                // no listeners anymore
-                // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-                // and at least to us not firing any events anymore, in case somebody calls
-                // NotifyAccessibleEvent, again
-                sal_Int32 nId = m_nClientId;
-                m_nClientId = 0;
-                comphelper::AccessibleEventNotifier::revokeClient( nId );
-            }
+        ::osl::MutexGuard aGuard( m_aMutex );
+
+        sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( m_nClientId, xListener );
+        if ( !nListenerCount )
+        {
+            // no listeners anymore
+            // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+            // and at least to us not firing any events anymore, in case somebody calls
+            // NotifyAccessibleEvent, again
+            sal_Int32 nId = m_nClientId;
+            m_nClientId = 0;
+            comphelper::AccessibleEventNotifier::revokeClient( nId );
         }
     }
 
@@ -535,7 +532,7 @@ namespace accessibility
         SolarMutexGuard aSolarGuard;
         ::osl::MutexGuard aGuard( m_aMutex );
         EnsureIsAlive();
-        return OCommonAccessibleText::getCharacter( nIndex );
+        return OCommonAccessibleText::implGetCharacter( implGetText(), nIndex );
     }
     css::uno::Sequence< css::beans::PropertyValue > SAL_CALL AccessibleIconChoiceCtrlEntry::getCharacterAttributes( sal_Int32 nIndex, const css::uno::Sequence< OUString >& )
     {
@@ -555,7 +552,7 @@ namespace accessibility
         SolarMutexGuard aSolarGuard;
         ::osl::MutexGuard aGuard( m_aMutex );
         EnsureIsAlive();
-        return OCommonAccessibleText::getCharacterCount(  );
+        return implGetText().getLength();
     }
 
     OUString SAL_CALL AccessibleIconChoiceCtrlEntry::getSelectedText(  )
@@ -563,21 +560,21 @@ namespace accessibility
         SolarMutexGuard aSolarGuard;
         ::osl::MutexGuard aGuard( m_aMutex );
         EnsureIsAlive();
-        return OCommonAccessibleText::getSelectedText(  );
+        return OUString();
     }
     sal_Int32 SAL_CALL AccessibleIconChoiceCtrlEntry::getSelectionStart(  )
     {
         SolarMutexGuard aSolarGuard;
         ::osl::MutexGuard aGuard( m_aMutex );
         EnsureIsAlive();
-        return OCommonAccessibleText::getSelectionStart(  );
+        return 0;
     }
     sal_Int32 SAL_CALL AccessibleIconChoiceCtrlEntry::getSelectionEnd(  )
     {
         SolarMutexGuard aSolarGuard;
         ::osl::MutexGuard aGuard( m_aMutex );
         EnsureIsAlive();
-        return OCommonAccessibleText::getSelectionEnd(  );
+        return 0;
     }
     sal_Bool SAL_CALL AccessibleIconChoiceCtrlEntry::setSelection( sal_Int32 nStartIndex, sal_Int32 nEndIndex )
     {
@@ -595,14 +592,14 @@ namespace accessibility
         SolarMutexGuard aSolarGuard;
         ::osl::MutexGuard aGuard( m_aMutex );
         EnsureIsAlive();
-        return OCommonAccessibleText::getText(  );
+        return implGetText(  );
     }
     OUString SAL_CALL AccessibleIconChoiceCtrlEntry::getTextRange( sal_Int32 nStartIndex, sal_Int32 nEndIndex )
     {
         SolarMutexGuard aSolarGuard;
         ::osl::MutexGuard aGuard( m_aMutex );
         EnsureIsAlive();
-        return OCommonAccessibleText::getTextRange( nStartIndex, nEndIndex );
+        return OCommonAccessibleText::implGetTextRange( implGetText(), nStartIndex, nEndIndex );
     }
     css::accessibility::TextSegment SAL_CALL AccessibleIconChoiceCtrlEntry::getTextAtIndex( sal_Int32 nIndex, sal_Int16 aTextType )
     {
@@ -666,7 +663,7 @@ namespace accessibility
         checkActionIndex_Impl( nIndex );
         EnsureIsAlive();
 
-        return OUString( "Select" );
+        return "Select";
     }
 
     Reference< XAccessibleKeyBinding > AccessibleIconChoiceCtrlEntry::getAccessibleActionKeyBinding( sal_Int32 nIndex )

@@ -21,7 +21,6 @@ $(eval $(call gb_InstallModule_use_auto_install_libs,scp2/ooo,\
 ))
 
 $(eval $(call gb_InstallModule_define_if_set,scp2/ooo,\
-	ENABLE_SYSTRAY_GTK \
 	ENABLE_MACOSX_SANDBOX \
 	ENABLE_ONLINE_UPDATE \
 	SYSTEM_CURL \
@@ -34,7 +33,7 @@ $(eval $(call gb_InstallModule_define_if_set,scp2/ooo,\
 
 $(eval $(call gb_InstallModule_add_defs,scp2/ooo,\
 	$(if $(SYSTEM_HSQLDB),\
-		-DHSQLDB_JAR=\""$(call gb_Helper_make_path,$(HSQLDB_JAR))"\" \
+		-DHSQLDB_JAR=\""$(call gb_Helper_make_url,$(HSQLDB_JAR))"\" \
 	) \
 ))
 
@@ -64,7 +63,6 @@ $(eval $(call gb_InstallModule_add_scpfiles,scp2/ooo,\
     scp2/source/ooo/file_extra_ooo \
     scp2/source/ooo/file_library_ooo \
     scp2/source/ooo/file_ooo \
-    scp2/source/ooo/file_resource_ooo \
     scp2/source/ooo/installation_ooo \
     scp2/source/ooo/module_help_template \
     scp2/source/ooo/module_hidden_ooo \

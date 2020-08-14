@@ -19,12 +19,11 @@
 
 
 #include <osl/diagnose.h>
-#include "odbc/OStatement.hxx"
-#include "odbc/OConnection.hxx"
-#include "odbc/OResultSet.hxx"
+#include <odbc/OStatement.hxx>
+#include <odbc/OConnection.hxx>
+#include <odbc/OResultSet.hxx>
 #include <comphelper/property.hxx>
-#include "odbc/OTools.hxx"
-#include <osl/thread.h>
+#include <odbc/OTools.hxx>
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
 #include <com/sun/star/sdbc/FetchDirection.hpp>
@@ -32,10 +31,10 @@
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
-#include <comphelper/extract.hxx>
 #include <comphelper/types.hxx>
+#include <rtl/strbuf.hxx>
 #include <algorithm>
-#include "resource/common_res.hrc"
+#include <strings.hrc>
 #include <connectivity/dbexception.hxx>
 
 using namespace ::comphelper;
@@ -67,12 +66,12 @@ OStatement_Base::OStatement_Base(OConnection* _pConnection )
 
     //setMaxFieldSize(0);
     // Don't do this. By ODBC spec, "0" is the default for the SQL_ATTR_MAX_LENGTH attribute. We once introduced
-    // this line since an PostgreSQL ODBC driver had a default other than 0. However, current drivers (at least 8.3
+    // this line since a PostgreSQL ODBC driver had a default other than 0. However, current drivers (at least 8.3
     // and later) have a proper default of 0, so there should be no need anymore.
     // On the other hand, the NotesSQL driver (IBM's ODBC driver for the Lotus Notes series) wrongly interprets
     // "0" as "0", whereas the ODBC spec says it should in fact mean "unlimited".
     // So, removing this line seems to be the best option for now.
-    // If we ever again encounter a ODBC driver which needs this option, then we should introduce a data source
+    // If we ever again encounter an ODBC driver which needs this option, then we should introduce a data source
     // setting for it, instead of unconditionally doing it.
 
     osl_atomic_decrement( &m_refCount );
@@ -112,15 +111,8 @@ void SAL_CALL OStatement_Base::disposing()
 
 void OStatement_BASE2::disposing()
 {
-    ::osl::MutexGuard aGuard(m_aMutex);
-
-    dispose_ChildImpl();
+    ::osl::MutexGuard aGuard1(m_aMutex);
     OStatement_Base::disposing();
-}
-
-void SAL_CALL OStatement_BASE2::release() throw()
-{
-    release_ChildImpl();
 }
 
 Any SAL_CALL OStatement_Base::queryInterface( const Type & rType )
@@ -139,9 +131,9 @@ Sequence< Type > SAL_CALL OStatement_Base::getTypes(  )
     Sequence< Type > aOldTypes = OStatement_BASE::getTypes();
     if ( m_pConnection.is() && !m_pConnection->isAutoRetrievingEnabled() )
     {
-        std::remove(aOldTypes.begin(), aOldTypes.end(),
-                    cppu::UnoType<XGeneratedResultSet>::get());
-        aOldTypes.realloc(aOldTypes.getLength() - 1);
+        auto newEnd = std::remove(aOldTypes.begin(), aOldTypes.end(),
+                                  cppu::UnoType<XGeneratedResultSet>::get());
+        aOldTypes.realloc(std::distance(aOldTypes.begin(), newEnd));
     }
 
     return ::comphelper::concatSequences(aTypes.getTypes(),aOldTypes);
@@ -433,7 +425,7 @@ Reference< XResultSet > SAL_CALL OStatement_Base::executeQuery( const OUString& 
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
 
-    Reference< XResultSet > xRS = nullptr;
+    Reference< XResultSet > xRS;
 
     // Execute the statement.  If execute returns true, a result
     // set exists.
@@ -474,7 +466,7 @@ void SAL_CALL OStatement::addBatch( const OUString& sql )
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
 
-    m_aBatchList.push_back(sql);
+    m_aBatchVector.push_back(sql);
 }
 
 Sequence< sal_Int32 > SAL_CALL OStatement::executeBatch(  )
@@ -482,17 +474,18 @@ Sequence< sal_Int32 > SAL_CALL OStatement::executeBatch(  )
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
+    OStringBuffer aBatchSql;
+    sal_Int32 nLen = m_aBatchVector.size();
 
-    OString aBatchSql;
-    sal_Int32 nLen = 0;
-    for(std::list< OUString>::const_iterator i=m_aBatchList.begin();i != m_aBatchList.end();++i,++nLen)
+    for (auto const& elem : m_aBatchVector)
     {
-        aBatchSql += OUStringToOString(*i,getOwnConnection()->getTextEncoding());
-        aBatchSql += ";";
+        aBatchSql.append(OUStringToOString(elem,getOwnConnection()->getTextEncoding()));
+        aBatchSql.append(";");
     }
 
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
-    THROW_SQL(N3SQLExecDirect(m_aStatementHandle, reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(aBatchSql.getStr())), aBatchSql.getLength()));
+    auto s = aBatchSql.makeStringAndClear();
+    THROW_SQL(N3SQLExecDirect(m_aStatementHandle, reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(s.getStr())), s.getLength()));
 
     Sequence< sal_Int32 > aRet(nLen);
     sal_Int32* pArray = aRet.getArray();
@@ -828,8 +821,7 @@ void OStatement_Base::setFetchSize(sal_Int32 _par0)
     {
         setStmtOption<SQLULEN, SQL_IS_UINTEGER>(SQL_ATTR_ROW_ARRAY_SIZE, _par0);
 
-        if (m_pRowStatusArray)
-            delete[] m_pRowStatusArray;
+        delete[] m_pRowStatusArray;
         m_pRowStatusArray = new SQLUSMALLINT[_par0];
         setStmtOption<SQLUSMALLINT*, SQL_IS_POINTER>(SQL_ATTR_ROW_STATUS_PTR, m_pRowStatusArray);
     }
@@ -845,7 +837,7 @@ void OStatement_Base::setCursorName(const OUString &_par0)
 {
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
     OString aName(OUStringToOString(_par0,getOwnConnection()->getTextEncoding()));
-    N3SQLSetCursorName(m_aStatementHandle, reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(aName.getStr())), (SQLSMALLINT)aName.getLength());
+    N3SQLSetCursorName(m_aStatementHandle, reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(aName.getStr())), static_cast<SQLSMALLINT>(aName.getLength()));
 }
 
 bool OStatement_Base::isUsingBookmarks() const

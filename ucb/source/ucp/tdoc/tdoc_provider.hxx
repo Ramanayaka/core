@@ -20,21 +20,23 @@
 #ifndef INCLUDED_UCB_SOURCE_UCP_TDOC_TDOC_PROVIDER_HXX
 #define INCLUDED_UCB_SOURCE_UCP_TDOC_TDOC_PROVIDER_HXX
 
-#include "rtl/ref.hxx"
+#include <rtl/ref.hxx>
 #include <com/sun/star/frame/XTransientDocumentsDocumentContentFactory.hpp>
-#include <com/sun/star/packages/WrongPasswordException.hpp>
-#include "ucbhelper/providerhelper.hxx"
+#include <com/sun/star/frame/XTransientDocumentsDocumentContentIdentifierFactory.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <ucbhelper/providerhelper.hxx>
 #include "tdoc_uri.hxx"
 #include "tdoc_docmgr.hxx"
 #include "tdoc_storage.hxx"
 
-namespace com { namespace sun { namespace star { namespace embed {
+namespace com::sun::star::embed {
     class XStorage;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace frame {
+namespace com::sun::star::frame {
     class XModel;
-} } } }
+}
 
 namespace tdoc_ucp {
 
@@ -51,9 +53,10 @@ namespace tdoc_ucp {
 
 class StorageElementFactory;
 
-class ContentProvider :
-    public ::ucbhelper::ContentProviderImplHelper,
-    public css::frame::XTransientDocumentsDocumentContentFactory
+class ContentProvider
+    : public ::ucbhelper::ContentProviderImplHelper
+    , public css::frame::XTransientDocumentsDocumentContentIdentifierFactory
+    , public css::frame::XTransientDocumentsDocumentContentFactory
 {
 public:
     explicit ContentProvider( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
@@ -75,16 +78,14 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    static OUString getImplementationName_Static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-
-    static css::uno::Reference< css::lang::XSingleServiceFactory >
-    createServiceFactory( const css::uno::Reference<
-                          css::lang::XMultiServiceFactory >& rxServiceMgr );
-
     // XContentProvider
     virtual css::uno::Reference< css::ucb::XContent > SAL_CALL
     queryContent( const css::uno::Reference< css::ucb::XContentIdentifier >& Identifier ) override;
+
+    // XTransientDocumentsDocumentContentIdentifierFactory
+    virtual css::uno::Reference<css::ucb::XContentIdentifier> SAL_CALL
+    createDocumentContentIdentifier(
+        css::uno::Reference<css::frame::XModel> const& xModel) override;
 
     // XTransientDocumentsDocumentContentFactory
     virtual css::uno::Reference< css::ucb::XContent > SAL_CALL

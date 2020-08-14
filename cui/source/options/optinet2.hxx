@@ -20,80 +20,55 @@
 #define INCLUDED_CUI_SOURCE_OPTIONS_OPTINET2_HXX
 
 #include <memory>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <vcl/field.hxx>
-#include <vcl/group.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/lstbox.hxx>
-#include <svtools/svtabbx.hxx>
 #include <sfx2/tabdlg.hxx>
-#include <unotools/configitem.hxx>
-
-#include <svtools/headbar.hxx>
 
 namespace svx {
     class SecurityOptionsDialog;
 }
 
-
-// class SvxNoSpaceEdit --------------------------------------------------
-
-class SvxNoSpaceEdit : public Edit
-{
-private:
-    bool bOnlyNumeric;
-public:
-    SvxNoSpaceEdit(vcl::Window* pParent, WinBits nStyle)
-        : Edit(pParent, nStyle)
-        , bOnlyNumeric(false)
-    {}
-    virtual void KeyInput(const KeyEvent& rKEvent) override;
-    virtual void Modify() override;
-    virtual bool set_property(const OString &rKey, const OUString &rValue) override;
-};
-
 // class SvxProxyTabPage -------------------------------------------------
-
 class SvxProxyTabPage : public SfxTabPage
 {
 private:
 
-    VclPtr<ListBox>        m_pProxyModeLB;
+    std::unique_ptr<weld::ComboBox> m_xProxyModeLB;
 
-    VclPtr<FixedText>      m_pHttpProxyFT;
-    VclPtr<SvxNoSpaceEdit> m_pHttpProxyED;
-    VclPtr<FixedText>      m_pHttpPortFT;
-    VclPtr<SvxNoSpaceEdit> m_pHttpPortED;
+    std::unique_ptr<weld::Label> m_xHttpProxyFT;
+    std::unique_ptr<weld::Entry> m_xHttpProxyED;
+    std::unique_ptr<weld::Label> m_xHttpPortFT;
+    std::unique_ptr<weld::Entry> m_xHttpPortED;
 
-    VclPtr<FixedText>      m_pHttpsProxyFT;
-    VclPtr<SvxNoSpaceEdit> m_pHttpsProxyED;
-    VclPtr<FixedText>      m_pHttpsPortFT;
-    VclPtr<SvxNoSpaceEdit> m_pHttpsPortED;
+    std::unique_ptr<weld::Label> m_xHttpsProxyFT;
+    std::unique_ptr<weld::Entry> m_xHttpsProxyED;
+    std::unique_ptr<weld::Label> m_xHttpsPortFT;
+    std::unique_ptr<weld::Entry> m_xHttpsPortED;
 
-    VclPtr<FixedText>      m_pFtpProxyFT;
-    VclPtr<SvxNoSpaceEdit> m_pFtpProxyED;
-    VclPtr<FixedText>      m_pFtpPortFT;
-    VclPtr<SvxNoSpaceEdit> m_pFtpPortED;
+    std::unique_ptr<weld::Label> m_xFtpProxyFT;
+    std::unique_ptr<weld::Entry> m_xFtpProxyED;
+    std::unique_ptr<weld::Label> m_xFtpPortFT;
+    std::unique_ptr<weld::Entry> m_xFtpPortED;
 
-    VclPtr<FixedText>      m_pNoProxyForFT;
-    VclPtr<Edit>           m_pNoProxyForED;
-    VclPtr<FixedText>      m_pNoProxyDescFT;
+    std::unique_ptr<weld::Label> m_xNoProxyForFT;
+    std::unique_ptr<weld::Entry> m_xNoProxyForED;
+    std::unique_ptr<weld::Label> m_xNoProxyDescFT;
 
     css::uno::Reference< css::uno::XInterface > m_xConfigurationUpdateAccess;
 
-    void EnableControls_Impl(bool bEnable);
+    void EnableControls_Impl();
     void ReadConfigData_Impl();
     void ReadConfigDefaults_Impl();
     void RestoreConfigDefaults_Impl();
 
-    DECL_LINK( ProxyHdl_Impl, ListBox&, void );
-    DECL_STATIC_LINK( SvxProxyTabPage, LoseFocusHdl_Impl, Control&, void );
+    DECL_LINK(PortChangedHdl, weld::Entry&, void);
+    DECL_STATIC_LINK(SvxProxyTabPage, NumberOnlyTextFilterHdl, OUString&, bool);
+    DECL_STATIC_LINK(SvxProxyTabPage, NoSpaceTextFilterHdl, OUString&, bool);
+    DECL_LINK(ProxyHdl_Impl, weld::ComboBox&, void);
+    DECL_STATIC_LINK(SvxProxyTabPage, LoseFocusHdl_Impl, weld::Widget&, void);
 
 public:
-    SvxProxyTabPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    SvxProxyTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SvxProxyTabPage() override;
-    virtual void dispose() override;
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rAttrSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
 };
@@ -104,56 +79,53 @@ class SvtSecurityOptions;
 class CertPathDialog;
 class SvxSecurityTabPage : public SfxTabPage
 {
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
-    friend class VclPtr<SvxSecurityTabPage>;
 private:
-    VclPtr<PushButton>         m_pSecurityOptionsPB;
+    std::unique_ptr<SvtSecurityOptions>         mpSecOptions;
+    std::unique_ptr<svx::SecurityOptionsDialog> m_xSecOptDlg;
 
-    VclPtr<CheckBox>           m_pSavePasswordsCB;
-    VclPtr<PushButton>         m_pShowConnectionsPB;
+    std::unique_ptr<CertPathDialog> mpCertPathDlg;
 
-    VclPtr<CheckBox>           m_pMasterPasswordCB;
-    VclPtr<FixedText>          m_pMasterPasswordFT;
-    VclPtr<PushButton>         m_pMasterPasswordPB;
+    OUString m_sPasswordStoringDeactivateStr;
 
-    VclPtr<VclContainer>       m_pMacroSecFrame;
-    VclPtr<PushButton>         m_pMacroSecPB;
+    std::unique_ptr<weld::Button> m_xSecurityOptionsPB;
 
-    VclPtr<VclContainer>       m_pCertFrame;
-    VclPtr<PushButton>         m_pCertPathPB;
+    std::unique_ptr<weld::CheckButton> m_xSavePasswordsCB;
+    std::unique_ptr<weld::Button> m_xShowConnectionsPB;
 
-    VclPtr<VclContainer>       m_pTSAURLsFrame;
-    VclPtr<PushButton>         m_pTSAURLsPB;
+    std::unique_ptr<weld::CheckButton> m_xMasterPasswordCB;
+    std::unique_ptr<weld::Label> m_xMasterPasswordFT;
+    std::unique_ptr<weld::Button> m_xMasterPasswordPB;
 
-    SvtSecurityOptions*         mpSecOptions;
-    VclPtr<svx::SecurityOptionsDialog> mpSecOptDlg;
+    std::unique_ptr<weld::Container> m_xMacroSecFrame;
+    std::unique_ptr<weld::Button> m_xMacroSecPB;
 
-    VclPtr<CertPathDialog> mpCertPathDlg;
+    std::unique_ptr<weld::Container> m_xCertFrame;
+    std::unique_ptr<weld::Button> m_xCertPathPB;
 
-    OUString            m_sPasswordStoringDeactivateStr;
+    std::unique_ptr<weld::Container> m_xTSAURLsFrame;
+    std::unique_ptr<weld::Button> m_xTSAURLsPB;
 
-    DECL_LINK(SecurityOptionsHdl, Button*, void);
-    DECL_LINK(SavePasswordHdl, Button*, void);
-    DECL_STATIC_LINK(SvxSecurityTabPage, MasterPasswordHdl, Button*, void);
-    DECL_LINK(MasterPasswordCBHdl, Button*, void);
-    DECL_LINK(ShowPasswordsHdl, Button*, void);
-    DECL_STATIC_LINK(SvxSecurityTabPage, MacroSecPBHdl, Button*, void );
-    DECL_LINK(CertPathPBHdl, Button*, void );
-    DECL_LINK(TSAURLsPBHdl, Button*, void );
+    std::unique_ptr<weld::Label> m_xNoPasswordSaveFT;
+
+    DECL_LINK(SecurityOptionsHdl, weld::Button&, void);
+    DECL_LINK(SavePasswordHdl, weld::Button&, void);
+    DECL_LINK(MasterPasswordHdl, weld::Button&, void);
+    DECL_LINK(MasterPasswordCBHdl, weld::Button&, void);
+    DECL_LINK(ShowPasswordsHdl, weld::Button&, void);
+    DECL_LINK(MacroSecPBHdl, weld::Button&, void );
+    DECL_LINK(CertPathPBHdl, weld::Button&, void );
+    DECL_LINK(TSAURLsPBHdl, weld::Button&, void );
 
     void                InitControls();
-
-                SvxSecurityTabPage( vcl::Window* pParent, const SfxItemSet& rSet );
-    virtual     ~SvxSecurityTabPage() override;
-    virtual void dispose() override;
 
 protected:
     virtual void        ActivatePage( const SfxItemSet& rSet ) override;
     virtual DeactivateRC   DeactivatePage( SfxItemSet* pSet ) override;
 
 public:
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rAttrSet );
+    SvxSecurityTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
+    virtual ~SvxSecurityTabPage() override;
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
 };
@@ -161,32 +133,31 @@ public:
 struct SvxEMailTabPage_Impl;
 class SvxEMailTabPage : public SfxTabPage
 {
-    VclPtr<VclContainer> m_pMailContainer;
-    VclPtr<FixedImage>   m_pMailerURLFI;
-    VclPtr<Edit>         m_pMailerURLED;
-    VclPtr<PushButton>   m_pMailerURLPB;
-    VclPtr<VclContainer> m_pSuppressHiddenContainer;
-    VclPtr<FixedImage>   m_pSuppressHiddenFI;
-    VclPtr<CheckBox>     m_pSuppressHidden;
-
     OUString      m_sDefaultFilterName;
 
     std::unique_ptr<SvxEMailTabPage_Impl> pImpl;
 
-    DECL_LINK(  FileDialogHdl_Impl, Button*, void );
+    std::unique_ptr<weld::Container> m_xMailContainer;
+    std::unique_ptr<weld::Image> m_xMailerURLFI;
+    std::unique_ptr<weld::Entry> m_xMailerURLED;
+    std::unique_ptr<weld::Button> m_xMailerURLPB;
+    std::unique_ptr<weld::Container> m_xSuppressHiddenContainer;
+    std::unique_ptr<weld::Image> m_xSuppressHiddenFI;
+    std::unique_ptr<weld::CheckButton> m_xSuppressHidden;
+    std::unique_ptr<weld::Label> m_xDefaultFilterFT;
+
+    DECL_LINK(FileDialogHdl_Impl, weld::Button&, void);
 
 public:
-    SvxEMailTabPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    SvxEMailTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet );
     virtual ~SvxEMailTabPage() override;
-    virtual void        dispose() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rAttrSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
 };
 
 #endif // INCLUDED_CUI_SOURCE_OPTIONS_OPTINET2_HXX
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

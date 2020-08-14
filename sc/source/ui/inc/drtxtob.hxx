@@ -21,13 +21,14 @@
 #define INCLUDED_SC_SOURCE_UI_INC_DRTXTOB_HXX
 
 #include <sfx2/shell.hxx>
-#include <sfx2/module.hxx>
 #include <tools/link.hxx>
+#include <rtl/ref.hxx>
 
-#include "shellids.hxx"
+#include <shellids.hxx>
 
 sal_uInt16 ScGetFontWorkId();       // instead of SvxFontWorkChildWindow::GetChildWindowId()
 
+class SfxModule;
 class ScViewData;
 class TransferableDataHelper;
 class TransferableClipboardListener;
@@ -54,7 +55,7 @@ public:
     static void StateDisableItems( SfxItemSet &rSet );
 
     void Execute( SfxRequest &rReq );
-    void ExecuteTrans( SfxRequest& rReq );
+    void ExecuteTrans( const SfxRequest& rReq );
     void GetState( SfxItemSet& rSet );
     void GetClipState( SfxItemSet& rSet );
 
@@ -67,14 +68,14 @@ public:
     bool ExecuteParaDlg( const SfxItemSet& rArgs, SfxItemSet& rOutSet );
 
     void ExecuteExtra( SfxRequest &rReq );
-    void ExecFormText(SfxRequest& rReq);        // StarFontWork
+    void ExecFormText(const SfxRequest& rReq);        // StarFontWork
     void GetFormTextState(SfxItemSet& rSet);
 
 private:
     void ExecuteGlobal( SfxRequest &rReq );         // called by Execute for all objects
     static void GetGlobalClipState( SfxItemSet& rSet );
     void ExecutePasteContents( SfxRequest &rReq );
-    bool IsNoteEdit();
+    bool IsNoteEdit() const;
 };
 
 #endif

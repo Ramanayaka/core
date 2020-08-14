@@ -20,40 +20,24 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLIDESORTERVIEW_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLIDESORTERVIEW_HXX
 
-#include "SlideSorter.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "model/SlsSharedPageDescriptor.hxx"
-#include "view/SlsLayouter.hxx"
-#include "view/SlsILayerPainter.hxx"
+#include <model/SlsPageDescriptor.hxx>
+#include <model/SlsSharedPageDescriptor.hxx>
+#include <view/SlsLayouter.hxx>
+#include <view/SlsILayerPainter.hxx>
+#include <o3tl/deleter.hxx>
 
-#include "View.hxx"
-#include <sfx2/viewfrm.hxx>
-#include "pres.hxx"
+#include <View.hxx>
 #include <tools/gen.hxx>
-#include <svx/svdmodel.hxx>
 #include <vcl/region.hxx>
-#include <vcl/outdev.hxx>
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <memory>
 
-class Point;
-
-namespace sd { namespace slidesorter { namespace controller {
-class Properties;
-} } }
-
-namespace sd { namespace slidesorter { namespace cache {
-class PageCache;
-} } }
-
-namespace sd { namespace slidesorter { namespace model {
-class SlideSorterModel;
-} } }
-
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::cache { class PageCache; }
+namespace sd::slidesorter::model { class SlideSorterModel; }
+namespace sd { class Window; }
+namespace sd::slidesorter { class SlideSorter; }
+namespace sd::slidesorter::view {
 
 class LayeredDevice;
-class Layouter;
 class PageObjectPainter;
 class ToolTip;
 
@@ -88,7 +72,7 @@ public:
     void RequestRepaint (const ::tools::Rectangle& rRepaintBox);
     void RequestRepaint (const vcl::Region& rRepaintRegion);
 
-    ::tools::Rectangle GetModelArea();
+    ::tools::Rectangle GetModelArea() const;
 
     /** Return the index of the page that is rendered at the given position.
         @param rPosition
@@ -151,7 +135,7 @@ public:
             The returned pair of page object indices is empty when the
             second index is lower than the first.
     */
-    Pair const & GetVisiblePageRange();
+    Range const & GetVisiblePageRange();
 
     /** Add a shape to the page.  Typically used from inside
         PostModelChange().
@@ -193,7 +177,7 @@ public:
     class DrawLock
     {
     public:
-        DrawLock (SlideSorter& rSlideSorter);
+        DrawLock (SlideSorter const & rSlideSorter);
         ~DrawLock();
         /** When the DrawLock is disposed then it will not request a repaint
             on destruction.
@@ -224,7 +208,7 @@ private:
     std::shared_ptr<PageObjectPainter> mpPageObjectPainter;
     vcl::Region maRedrawRegion;
     SharedILayerPainter mpBackgroundPainter;
-    std::unique_ptr<ToolTip> mpToolTip;
+    std::unique_ptr<ToolTip, o3tl::default_delete<ToolTip>> mpToolTip;
     bool mbIsRearrangePending;
     ::std::vector<Link<LinkParamNone*,void>> maVisibilityChangeListeners;
 
@@ -237,7 +221,7 @@ private:
     void Rearrange();
 };
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 #endif
 

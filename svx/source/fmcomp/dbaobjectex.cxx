@@ -21,11 +21,9 @@
 #include <osl/diagnose.h>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/sdb/XSQLQueryComposerFactory.hpp>
-#include "fmprop.hrc"
-#include <comphelper/extract.hxx>
+#include <com/sun/star/ucb/XContent.hpp>
 #include <sot/formats.hxx>
 #include <sot/exchange.hxx>
-#include <comphelper/propertysetinfo.hxx>
 
 
 namespace svx
@@ -35,13 +33,11 @@ namespace svx
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::sdb;
-    using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::ucb;
     using namespace ::com::sun::star::sdbcx;
     using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::datatransfer;
-    using namespace ::comphelper;
 
     OComponentTransferable::OComponentTransferable(const OUString& _rDatasourceOrLocation
             ,const Reference< XContent>& _xContent)
@@ -97,17 +93,9 @@ namespace svx
 
     bool OComponentTransferable::canExtractComponentDescriptor(const DataFlavorExVector& _rFlavors, bool _bForm )
     {
-        DataFlavorExVector::const_iterator aEnd = _rFlavors.end();
-        for (   DataFlavorExVector::const_iterator aCheck = _rFlavors.begin();
-                aCheck != aEnd;
-                ++aCheck
-            )
-        {
-            if ( getDescriptorFormatId(_bForm) == aCheck->mnSotId )
-                return true;
-        }
-
-        return false;
+        SotClipboardFormatId nFormatId = getDescriptorFormatId(_bForm);
+        return std::any_of(_rFlavors.begin(), _rFlavors.end(),
+            [&nFormatId](const DataFlavorEx& rCheck) { return nFormatId == rCheck.mnSotId; });
     }
 
 

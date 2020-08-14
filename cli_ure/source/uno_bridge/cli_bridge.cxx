@@ -18,15 +18,16 @@
  */
 
 #include <vcclr.h>
-//ToDo: remove when build with .NET 2
-#pragma warning(push, 1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include "uno/environment.hxx"
-#pragma warning(pop)
 #include "uno/lbnames.h"
 #include "uno/mapping.hxx"
 #include "typelib/typedescription.hxx"
 #include "rtl/ustring.hxx"
+#include <sal/log.hxx>
 
 #include "cli_bridge.h"
 #include "cli_proxy.h"

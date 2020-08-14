@@ -20,38 +20,68 @@
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <osl/diagnose.h>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <rtl/instance.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-
-#include <functional>
+#include <basegfx/utils/systemdependentdata.hxx>
 #include <algorithm>
 
 class ImplB2DPolyPolygon
 {
-    basegfx::B2DPolygonVector                   maPolygons;
+    basegfx::B2DPolygonVector                               maPolygons;
+    std::unique_ptr< basegfx::SystemDependentDataHolder >   mpSystemDependentDataHolder;
 
 public:
-    ImplB2DPolyPolygon() : maPolygons()
+    ImplB2DPolyPolygon()
+    :   maPolygons(),
+        mpSystemDependentDataHolder()
     {
     }
 
-    explicit ImplB2DPolyPolygon(const basegfx::B2DPolygon& rToBeCopied) :
-        maPolygons(1,rToBeCopied)
+    explicit ImplB2DPolyPolygon(const ImplB2DPolyPolygon& rSource)
+    :   maPolygons(rSource.maPolygons),
+        mpSystemDependentDataHolder()
     {
+    }
+
+    explicit ImplB2DPolyPolygon(const basegfx::B2DPolygon& rToBeCopied)
+    :   maPolygons(1,rToBeCopied),
+        mpSystemDependentDataHolder()
+    {
+    }
+
+    ImplB2DPolyPolygon& operator=(const ImplB2DPolyPolygon& rSource)
+    {
+        if (this != &rSource)
+        {
+            maPolygons = rSource.maPolygons;
+            mpSystemDependentDataHolder.reset();
+        }
+
+        return *this;
+    }
+
+    void addOrReplaceSystemDependentData(basegfx::SystemDependentData_SharedPtr& rData)
+    {
+        if(!mpSystemDependentDataHolder)
+        {
+            mpSystemDependentDataHolder.reset(new basegfx::SystemDependentDataHolder());
+        }
+
+        mpSystemDependentDataHolder->addOrReplaceSystemDependentData(rData);
+    }
+
+    basegfx::SystemDependentData_SharedPtr getSystemDependentData(size_t hash_code) const
+    {
+        if(!mpSystemDependentDataHolder)
+        {
+            return basegfx::SystemDependentData_SharedPtr();
+        }
+
+        return mpSystemDependentDataHolder->getSystemDependentData(hash_code);
     }
 
     bool operator==(const ImplB2DPolyPolygon& rPolygonList) const
     {
-        // same polygon count?
-        if(maPolygons.size() != rPolygonList.maPolygons.size())
-            return false;
-
-        // compare polygon content
-        if(!(maPolygons == rPolygonList.maPolygons))
-            return false;
-
-        return true;
+        return maPolygons == rPolygonList.maPolygons;
     }
 
     const basegfx::B2DPolygon& getB2DPolygon(sal_uInt32 nIndex) const
@@ -170,44 +200,23 @@ public:
 
 namespace basegfx
 {
-    namespace { struct DefaultPolyPolygon: public rtl::Static<B2DPolyPolygon::ImplType,
-                                                              DefaultPolyPolygon> {}; }
 
-    B2DPolyPolygon::B2DPolyPolygon() :
-        mpPolyPolygon(DefaultPolyPolygon::get())
-    {
-    }
+    B2DPolyPolygon::B2DPolyPolygon() = default;
 
-    B2DPolyPolygon::B2DPolyPolygon(const B2DPolyPolygon& rPolyPolygon) :
-        mpPolyPolygon(rPolyPolygon.mpPolyPolygon)
-    {
-    }
+    B2DPolyPolygon::B2DPolyPolygon(const B2DPolyPolygon&) = default;
 
-    B2DPolyPolygon::B2DPolyPolygon(B2DPolyPolygon&& rPolyPolygon) :
-        mpPolyPolygon(std::move(rPolyPolygon.mpPolyPolygon))
-    {
-    }
+    B2DPolyPolygon::B2DPolyPolygon(B2DPolyPolygon&&) = default;
 
     B2DPolyPolygon::B2DPolyPolygon(const B2DPolygon& rPolygon) :
         mpPolyPolygon( ImplB2DPolyPolygon(rPolygon) )
     {
     }
 
-    B2DPolyPolygon::~B2DPolyPolygon()
-    {
-    }
+    B2DPolyPolygon::~B2DPolyPolygon() = default;
 
-    B2DPolyPolygon& B2DPolyPolygon::operator=(const B2DPolyPolygon& rPolyPolygon)
-    {
-        mpPolyPolygon = rPolyPolygon.mpPolyPolygon;
-        return *this;
-    }
+    B2DPolyPolygon& B2DPolyPolygon::operator=(const B2DPolyPolygon&) = default;
 
-    B2DPolyPolygon& B2DPolyPolygon::operator=(B2DPolyPolygon&& rPolyPolygon)
-    {
-        mpPolyPolygon = std::move(rPolyPolygon.mpPolyPolygon);
-        return *this;
-    }
+    B2DPolyPolygon& B2DPolyPolygon::operator=(B2DPolyPolygon&&) = default;
 
     void B2DPolyPolygon::makeUnique()
     {
@@ -233,7 +242,7 @@ namespace basegfx
         return mpPolyPolygon->count();
     }
 
-    B2DPolygon B2DPolyPolygon::getB2DPolygon(sal_uInt32 nIndex) const
+    B2DPolygon const & B2DPolyPolygon::getB2DPolygon(sal_uInt32 nIndex) const
     {
         OSL_ENSURE(nIndex < mpPolyPolygon->count(), "B2DPolyPolygon access outside range (!)");
 
@@ -325,7 +334,7 @@ namespace basegfx
 
     void B2DPolyPolygon::clear()
     {
-        mpPolyPolygon = DefaultPolyPolygon::get();
+        *mpPolyPolygon = ImplB2DPolyPolygon();
     }
 
     bool B2DPolyPolygon::isClosed() const
@@ -336,7 +345,7 @@ namespace basegfx
         // no Polygon exists.
         for(sal_uInt32 a(0); bRetval && a < mpPolyPolygon->count(); a++)
         {
-            if(!(mpPolyPolygon->getB2DPolygon(a)).isClosed())
+            if(!mpPolyPolygon->getB2DPolygon(a).isClosed())
             {
                 bRetval = false;
             }
@@ -365,7 +374,7 @@ namespace basegfx
 
         for(sal_uInt32 a(0); !bRetval && a < mpPolyPolygon->count(); a++)
         {
-            if((mpPolyPolygon->getB2DPolygon(a)).hasDoublePoints())
+            if(mpPolyPolygon->getB2DPolygon(a).hasDoublePoints())
             {
                 bRetval = true;
             }
@@ -407,6 +416,24 @@ namespace basegfx
     {
         return mpPolyPolygon->end();
     }
+
+    void B2DPolyPolygon::addOrReplaceSystemDependentDataInternal(SystemDependentData_SharedPtr& rData) const
+    {
+        // Need to get ImplB2DPolyPolygon* from cow_wrapper *without*
+        // calling make_unique() here - we do not want to
+        // 'modify' the ImplB2DPolyPolygon, but add buffered data that
+        // is valid for all referencing instances
+        const B2DPolyPolygon* pMe(this);
+        const ImplB2DPolyPolygon* pMyImpl(pMe->mpPolyPolygon.get());
+
+        const_cast<ImplB2DPolyPolygon*>(pMyImpl)->addOrReplaceSystemDependentData(rData);
+    }
+
+    SystemDependentData_SharedPtr B2DPolyPolygon::getSystemDependantDataInternal(size_t hash_code) const
+    {
+        return mpPolyPolygon->getSystemDependentData(hash_code);
+    }
+
 } // end of namespace basegfx
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

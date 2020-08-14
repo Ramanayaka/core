@@ -26,7 +26,7 @@ class SdOutliner;
 
 namespace sd {
 
-class FuHangulHanjaConversion : public FuPoor
+class FuHangulHanjaConversion final : public FuPoor
 {
 public:
 
@@ -39,13 +39,12 @@ public:
 
     void ConvertStyles( LanguageType nTargetLanguage, const vcl::Font *pTargetFont );
 
-protected:
+private:
     virtual ~FuHangulHanjaConversion() override;
 
     SdOutliner*     pSdOutliner;
     bool            bOwnOutliner;
 
-private:
     FuHangulHanjaConversion (
         ViewShell* pViewSh,
         ::sd::Window* pWin,
@@ -55,8 +54,8 @@ private:
 
 };
 
-#endif // INCLUDED_SD_SOURCE_UI_INC_FUHHCONV_HXX
-
 } // end of namespace sd
+
+#endif // INCLUDED_SD_SOURCE_UI_INC_FUHHCONV_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

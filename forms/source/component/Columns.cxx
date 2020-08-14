@@ -17,29 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
-
 #include "Columns.hxx"
-#include "property.hrc"
-#include "property.hxx"
-#include "componenttools.hxx"
+#include <property.hxx>
+#include <componenttools.hxx>
 #include "findpos.hxx"
 #include <com/sun/star/io/XPersistObject.hpp>
-#include <com/sun/star/io/XObjectOutputStream.hpp>
-#include <com/sun/star/io/XObjectInputStream.hpp>
 #include <com/sun/star/io/XMarkableStream.hpp>
 #include <com/sun/star/form/XFormComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/form/binding/XBindableValue.hpp>
 #include <com/sun/star/beans/XPropertyContainer.hpp>
 #include <com/sun/star/text/XText.hpp>
-#include <comphelper/sequence.hxx>
 #include <comphelper/property.hxx>
 #include <comphelper/basicio.hxx>
 #include <comphelper/servicehelper.hxx>
-#include "services.hxx"
-#include "frm_resource.hrc"
+#include <comphelper/types.hxx>
+#include <services.hxx>
 #include <tools/debug.hxx>
+#include <o3tl/sorted_vector.hxx>
 
 
 namespace frm
@@ -64,10 +59,10 @@ const sal_uInt16 COMPATIBLE_HIDDEN  = 0x0008;
 
 const css::uno::Sequence<OUString>& getColumnTypes()
 {
-    static css::uno::Sequence<OUString> aColumnTypes(10);
-    if (aColumnTypes.getConstArray()[0].isEmpty())
+    static css::uno::Sequence<OUString> aColumnTypes = [&]()
     {
-        OUString* pNames = aColumnTypes.getArray();
+        css::uno::Sequence<OUString> tmp(10);
+        OUString* pNames = tmp.getArray();
         pNames[TYPE_CHECKBOX]       = "CheckBox";
         pNames[TYPE_COMBOBOX]       = "ComboBox";
         pNames[TYPE_CURRENCYFIELD]  = "CurrencyField";
@@ -78,7 +73,8 @@ const css::uno::Sequence<OUString>& getColumnTypes()
         pNames[TYPE_PATTERNFIELD]   = "PatternField";
         pNames[TYPE_TEXTFIELD]      = "TextField";
         pNames[TYPE_TIMEFIELD]      = "TimeField";
-    }
+        return tmp;
+    }();
     return aColumnTypes;
 }
 
@@ -97,7 +93,7 @@ sal_Int32 getColumnTypeByModelName(const OUString& aModelName)
 #ifdef DBG_UTIL
         sal_Int32 nCompatiblePrefixPos = aModelName.indexOf(aCompatibleModelPrefix);
         DBG_ASSERT( (nPrefixPos != -1) ||   (nCompatiblePrefixPos != -1),
-                "::getColumnTypeByModelName() : wrong servivce !");
+                "::getColumnTypeByModelName() : wrong service!");
 #endif
 
         OUString aColumnType = (nPrefixPos != -1)
@@ -115,7 +111,7 @@ namespace
     class theOGridColumnImplementationId : public rtl::Static< UnoTunnelIdInit, theOGridColumnImplementationId > {};
 }
 
-const Sequence<sal_Int8>& OGridColumn::getUnoTunnelImplementationId()
+const Sequence<sal_Int8>& OGridColumn::getUnoTunnelId()
 {
     return theOGridColumnImplementationId::get().getSeq();
 }
@@ -125,9 +121,7 @@ sal_Int64 SAL_CALL OGridColumn::getSomething( const Sequence<sal_Int8>& _rIdenti
 {
     sal_Int64 nReturn(0);
 
-    if  (   (_rIdentifier.getLength() == 16)
-        &&  (0 == memcmp( getUnoTunnelImplementationId().getConstArray(), _rIdentifier.getConstArray(), 16 ))
-        )
+    if ( isUnoTunnelId<OGridColumn>(_rIdentifier) )
     {
         nReturn = reinterpret_cast<sal_Int64>(this);
     }
@@ -203,23 +197,23 @@ OGridColumn::OGridColumn( const Reference<XComponentContext>& _rContext, const O
 {
 
     // Create the UnoControlModel
-    if ( !m_aModelName.isEmpty() ) // is there a to-be-aggregated model?
+    if ( m_aModelName.isEmpty() ) // is there a to-be-aggregated model?
+        return;
+
+    osl_atomic_increment( &m_refCount );
+
     {
-        osl_atomic_increment( &m_refCount );
-
-        {
-            m_xAggregate.set( _rContext->getServiceManager()->createInstanceWithContext( m_aModelName, _rContext ), UNO_QUERY );
-            setAggregation( m_xAggregate );
-        }
-
-        if ( m_xAggregate.is() )
-        {   // don't omit those brackets - they ensure that the following temporary is properly deleted
-            m_xAggregate->setDelegator( static_cast< ::cppu::OWeakObject* >( this ) );
-        }
-
-        // Set refcount back to zero
-        osl_atomic_decrement( &m_refCount );
+        m_xAggregate.set( _rContext->getServiceManager()->createInstanceWithContext( m_aModelName, _rContext ), UNO_QUERY );
+        setAggregation( m_xAggregate );
     }
+
+    if ( m_xAggregate.is() )
+    {   // don't omit those brackets - they ensure that the following temporary is properly deleted
+        m_xAggregate->setDelegator( static_cast< ::cppu::OWeakObject* >( this ) );
+    }
+
+    // Set refcount back to zero
+    osl_atomic_decrement( &m_refCount );
 }
 
 
@@ -294,46 +288,45 @@ void OGridColumn::disposing()
 void OGridColumn::clearAggregateProperties( Sequence< Property >& _rProps, bool bAllowDropDown )
 {
     // some properties are not to be exposed to the outer world
-    ::std::set< OUString > aForbiddenProperties;
-    aForbiddenProperties.insert( PROPERTY_ALIGN );
-    aForbiddenProperties.insert( PROPERTY_AUTOCOMPLETE );
-    aForbiddenProperties.insert( PROPERTY_BACKGROUNDCOLOR );
-    aForbiddenProperties.insert( PROPERTY_BORDER );
-    aForbiddenProperties.insert( PROPERTY_BORDERCOLOR );
-    aForbiddenProperties.insert( PROPERTY_ECHO_CHAR );
-    aForbiddenProperties.insert( PROPERTY_FILLCOLOR );
-    aForbiddenProperties.insert( PROPERTY_FONT );
-    aForbiddenProperties.insert( PROPERTY_FONT_NAME );
-    aForbiddenProperties.insert( PROPERTY_FONT_STYLENAME );
-    aForbiddenProperties.insert( PROPERTY_FONT_FAMILY );
-    aForbiddenProperties.insert( PROPERTY_FONT_CHARSET );
-    aForbiddenProperties.insert( PROPERTY_FONT_HEIGHT );
-    aForbiddenProperties.insert( PROPERTY_FONT_WEIGHT );
-    aForbiddenProperties.insert( PROPERTY_FONT_SLANT );
-    aForbiddenProperties.insert( PROPERTY_FONT_UNDERLINE );
-    aForbiddenProperties.insert( PROPERTY_FONT_STRIKEOUT );
-    aForbiddenProperties.insert( PROPERTY_FONT_WORDLINEMODE );
-    aForbiddenProperties.insert( PROPERTY_TEXTLINECOLOR );
-    aForbiddenProperties.insert( PROPERTY_FONTEMPHASISMARK );
-    aForbiddenProperties.insert( PROPERTY_FONTRELIEF );
-    aForbiddenProperties.insert( PROPERTY_HARDLINEBREAKS );
-    aForbiddenProperties.insert( PROPERTY_HSCROLL );
-    aForbiddenProperties.insert( PROPERTY_LABEL );
-    aForbiddenProperties.insert( PROPERTY_LINECOLOR );
-    aForbiddenProperties.insert( PROPERTY_MULTISELECTION );
-    aForbiddenProperties.insert( PROPERTY_PRINTABLE );
-    aForbiddenProperties.insert( PROPERTY_TABINDEX );
-    aForbiddenProperties.insert( PROPERTY_TABSTOP );
-    aForbiddenProperties.insert( PROPERTY_TEXTCOLOR );
-    aForbiddenProperties.insert( PROPERTY_VSCROLL );
-    aForbiddenProperties.insert( PROPERTY_CONTROLLABEL );
-    aForbiddenProperties.insert( PROPERTY_RICH_TEXT );
-    aForbiddenProperties.insert( PROPERTY_VERTICAL_ALIGN );
-    aForbiddenProperties.insert( PROPERTY_IMAGE_URL );
-    aForbiddenProperties.insert( PROPERTY_IMAGE_POSITION );
-    aForbiddenProperties.insert( OUString( "EnableVisible" ) );
-    if ( !bAllowDropDown )
-        aForbiddenProperties.insert( PROPERTY_DROPDOWN );
+    static const o3tl::sorted_vector< OUString > aForbiddenProperties {
+      PROPERTY_ALIGN,
+      PROPERTY_AUTOCOMPLETE,
+      PROPERTY_BACKGROUNDCOLOR,
+      PROPERTY_BORDER,
+      PROPERTY_BORDERCOLOR,
+      PROPERTY_ECHO_CHAR,
+      PROPERTY_FILLCOLOR,
+      PROPERTY_FONT,
+      PROPERTY_FONT_NAME,
+      PROPERTY_FONT_STYLENAME,
+      PROPERTY_FONT_FAMILY,
+      PROPERTY_FONT_CHARSET,
+      PROPERTY_FONT_HEIGHT,
+      PROPERTY_FONT_WEIGHT,
+      PROPERTY_FONT_SLANT,
+      PROPERTY_FONT_UNDERLINE,
+      PROPERTY_FONT_STRIKEOUT,
+      PROPERTY_FONT_WORDLINEMODE,
+      PROPERTY_TEXTLINECOLOR,
+      PROPERTY_FONTEMPHASISMARK,
+      PROPERTY_FONTRELIEF,
+      PROPERTY_HARDLINEBREAKS,
+      PROPERTY_HSCROLL,
+      PROPERTY_LABEL,
+      PROPERTY_LINECOLOR,
+      PROPERTY_MULTISELECTION,
+      PROPERTY_PRINTABLE,
+      PROPERTY_TABINDEX,
+      PROPERTY_TABSTOP,
+      PROPERTY_TEXTCOLOR,
+      PROPERTY_VSCROLL,
+      PROPERTY_CONTROLLABEL,
+      PROPERTY_RICH_TEXT,
+      PROPERTY_VERTICAL_ALIGN,
+      PROPERTY_IMAGE_URL,
+      PROPERTY_IMAGE_POSITION,
+      PROPERTY_ENABLEVISIBLE
+    };
 
     Sequence< Property > aNewProps( _rProps.getLength() );
     Property* pNewProps = aNewProps.getArray();
@@ -342,7 +335,8 @@ void OGridColumn::clearAggregateProperties( Sequence< Property >& _rProps, bool 
     const Property* pPropsEnd = pProps + _rProps.getLength();
     for ( ; pProps != pPropsEnd; ++pProps )
     {
-        if ( aForbiddenProperties.find( pProps->Name ) == aForbiddenProperties.end() )
+        if ( aForbiddenProperties.find( pProps->Name ) == aForbiddenProperties.end()
+            && (bAllowDropDown || pProps->Name != PROPERTY_DROPDOWN))
             *pNewProps++ = *pProps;
     }
 
@@ -409,7 +403,7 @@ sal_Bool OGridColumn::convertFastPropertyValue( Any& rConvertedValue, Any& rOldV
             {
                 sal_Int32 nAlign( 0 );
                 if ( rConvertedValue >>= nAlign )
-                    rConvertedValue <<= (sal_Int16)nAlign;
+                    rConvertedValue <<= static_cast<sal_Int16>(nAlign);
             }
             break;
         case PROPERTY_ID_HIDDEN:
@@ -467,7 +461,7 @@ Reference< XCloneable > SAL_CALL OGridColumn::createClone(  )
 
 // XPersistObject
 
-void SAL_CALL OGridColumn::write(const Reference<XObjectOutputStream>& _rxOutStream)
+void OGridColumn::write(const Reference<XObjectOutputStream>& _rxOutStream)
 {
     // 1. Write the UnoControl
     Reference<XMarkableStream>  xMark(_rxOutStream, UNO_QUERY);
@@ -515,7 +509,7 @@ void SAL_CALL OGridColumn::write(const Reference<XObjectOutputStream>& _rxOutStr
 }
 
 
-void SAL_CALL OGridColumn::read(const Reference<XObjectInputStream>& _rxInStream)
+void OGridColumn::read(const Reference<XObjectInputStream>& _rxInStream)
 {
     // 1. Read the UnoControl
     sal_Int32 nLen = _rxInStream->readLong();

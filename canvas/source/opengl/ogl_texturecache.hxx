@@ -13,9 +13,8 @@
 #include <sal/types.h>
 #include <unordered_map>
 
-namespace com { namespace sun { namespace star {
-    namespace geometry { struct IntegerSize2D; }
-}}}
+namespace com::sun::star::geometry { struct IntegerSize2D; }
+
 
 namespace oglcanvas
 {

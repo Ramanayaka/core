@@ -20,13 +20,9 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_INC_EXPRESSIONNODE_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_INC_EXPRESSIONNODE_HXX
 
-#include <memory>
-
 /* Definition of ExpressionNode interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** Interface describing an abstract animation function.
 
@@ -53,8 +49,6 @@ namespace slideshow
 
         };
 
-        typedef ::std::shared_ptr< AnimationFunction > AnimationFunctionSharedPtr;
-
         /** Refinement of AnimationFunction
 
             This interface is used by the SMIL function parser, to
@@ -67,7 +61,7 @@ namespace slideshow
 
                 This predicate returns true, if this node is
                 neither time- nor ViewInfo dependent. This allows
-                for certain obtimizations, i.e. not the full
+                for certain optimizations, i.e. not the full
                 expression tree needs be represented by
                 ExpressionNodes.
 
@@ -76,7 +70,7 @@ namespace slideshow
             */
             virtual bool isConstant() const = 0;
         };
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_EXPRESSIONNODE_HXX

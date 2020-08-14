@@ -202,6 +202,10 @@ interface OfficeDocument : Document
         ExecMethod = ExecFile_Impl;
         StateMethod = GetState_Impl;
     ]
+    SID_DOC_REPAIR
+    [
+        StateMethod = GetState_Impl;
+    ]
 }
 
 
@@ -230,6 +234,31 @@ shell SfxObjectShell
         StateMethod = GetState_Impl ;
     ]
     SID_DIRECTEXPORTDOCASPDF
+    [
+        ExecMethod = ExecFile_Impl ;
+        StateMethod = GetState_Impl ;
+    ]
+    SID_EXPORTDOCASEPUB
+    [
+        ExecMethod = ExecFile_Impl ;
+        StateMethod = GetState_Impl ;
+    ]
+    SID_DIRECTEXPORTDOCASEPUB
+    [
+        ExecMethod = ExecFile_Impl ;
+        StateMethod = GetState_Impl ;
+    ]
+    SID_REDACTDOC
+    [
+        ExecMethod = ExecFile_Impl ;
+        StateMethod = GetState_Impl ;
+    ]
+    SID_AUTOREDACTDOC
+    [
+        ExecMethod = ExecFile_Impl ;
+        StateMethod = GetState_Impl ;
+    ]
+    SID_ADDITIONS_DIALOG
     [
         ExecMethod = ExecFile_Impl ;
         StateMethod = GetState_Impl ;

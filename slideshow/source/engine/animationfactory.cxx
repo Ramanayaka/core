@@ -19,6 +19,7 @@
 
 
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 #include <animationfactory.hxx>
 #include <attributemap.hxx>
@@ -29,21 +30,18 @@
 #include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
 #include <com/sun/star/awt/FontSlant.hpp>
-#include <com/sun/star/awt/FontUnderline.hpp>
-#include <com/sun/star/awt/FontWeight.hpp>
 
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 
+#include <box2dtools.hxx>
 
 using namespace ::com::sun::star;
 
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         namespace
         {
             // attention, there is a similar implementation of Animation in
@@ -87,8 +85,7 @@ namespace slideshow
 
                 // Animation interface
 
-                virtual void prefetch( const AnimatableShapeSharedPtr&,
-                                       const ShapeAttributeLayerSharedPtr& ) override
+                virtual void prefetch() override
                 {}
 
                 virtual void start( const AnimatableShapeSharedPtr&     rShape,
@@ -207,7 +204,8 @@ namespace slideshow
                                sal_Int16                    nAdditive,
                                const ShapeManagerSharedPtr& rShapeManager,
                                const ::basegfx::B2DVector&  rSlideSize,
-                               int                          nFlags ) :
+                               int                          nFlags,
+                               const box2d::utils::Box2DWorldSharedPtr& pBox2DWorld ) :
                     maPathPoly(),
                     mpShape(),
                     mpAttrLayer(),
@@ -216,22 +214,20 @@ namespace slideshow
                     maShapeOrig(),
                     mnFlags( nFlags ),
                     mbAnimationStarted( false ),
-                    mnAdditive( nAdditive )
+                    mnAdditive( nAdditive ),
+                    mpBox2DWorld( pBox2DWorld )
                 {
                     ENSURE_OR_THROW( rShapeManager,
                                       "PathAnimation::PathAnimation(): Invalid ShapeManager" );
 
                     ::basegfx::B2DPolyPolygon aPolyPoly;
 
-                    ENSURE_OR_THROW( ::basegfx::tools::importFromSvgD( aPolyPoly, rSVGDPath, false, nullptr ),
+                    ENSURE_OR_THROW( ::basegfx::utils::importFromSvgD( aPolyPoly, rSVGDPath, false, nullptr ),
                                       "PathAnimation::PathAnimation(): failed to parse SVG:d path" );
                     ENSURE_OR_THROW( aPolyPoly.count() == 1,
                                       "PathAnimation::PathAnimation(): motion path consists of multiple/zero polygon(s)" );
 
-                    // TODO(F2): Since getPositionRelative() currently
-                    // cannot handle beziers, have to subdivide.
-                    // AW: Should be no longer necessary; getPositionRelative is now bezier-safe
-                    maPathPoly = ::basegfx::tools::adaptiveSubdivideByAngle(aPolyPoly.getB2DPolygon(0) );
+                    maPathPoly = aPolyPoly.getB2DPolygon(0);
                 }
 
                 virtual ~PathAnimation() override
@@ -241,8 +237,7 @@ namespace slideshow
 
                 // Animation interface
 
-                virtual void prefetch( const AnimatableShapeSharedPtr&,
-                                       const ShapeAttributeLayerSharedPtr& ) override
+                virtual void prefetch() override
                 {}
 
                 virtual void start( const AnimatableShapeSharedPtr&     rShape,
@@ -291,6 +286,10 @@ namespace slideshow
 
                         if( mpShape->isContentChanged() )
                             mpShapeManager->notifyShapeUpdate( mpShape );
+
+                        // since animation ended zero out the linear velocity
+                        if( mpBox2DWorld->isInitialized() )
+                            mpBox2DWorld->queueLinearVelocityUpdate( mpShape->getXShape(), {0,0});
                     }
                 }
 
@@ -302,7 +301,7 @@ namespace slideshow
                     ENSURE_OR_RETURN_FALSE( mpAttrLayer && mpShape,
                                        "PathAnimation::operator(): Invalid ShapeAttributeLayer" );
 
-                    ::basegfx::B2DPoint rOutPos = ::basegfx::tools::getPositionRelative( maPathPoly,
+                    ::basegfx::B2DPoint rOutPos = ::basegfx::utils::getPositionRelative( maPathPoly,
                                                                                          nValue );
 
                     // TODO(F1): Determine whether the path is
@@ -321,7 +320,11 @@ namespace slideshow
                     mpAttrLayer->setPosition( rOutPos );
 
                     if( mpShape->isContentChanged() )
+                    {
                         mpShapeManager->notifyShapeUpdate( mpShape );
+                        if ( mpBox2DWorld->isInitialized() )
+                            mpBox2DWorld->queuePositionUpdate( mpShape->getXShape(), rOutPos );
+                    }
 
                     return true;
                 }
@@ -347,8 +350,152 @@ namespace slideshow
                 const int                          mnFlags;
                 bool                               mbAnimationStarted;
                 sal_Int16                          mnAdditive;
+                box2d::utils::Box2DWorldSharedPtr  mpBox2DWorld;
             };
 
+            class PhysicsAnimation : public NumberAnimation
+            {
+            public:
+                PhysicsAnimation( const ::box2d::utils::Box2DWorldSharedPtr& pBox2DWorld,
+                                    const double                 fDuration,
+                                    const ShapeManagerSharedPtr& rShapeManager,
+                                    const ::basegfx::B2DVector&  rSlideSize,
+                                    int                          nFlags ) :
+                    mpShape(),
+                    mpAttrLayer(),
+                    mpShapeManager( rShapeManager ),
+                    maPageSize( rSlideSize ),
+                    mnFlags( nFlags ),
+                    mbAnimationStarted( false ),
+                    mpBox2DBody(),
+                    mpBox2DWorld( pBox2DWorld ),
+                    mfDuration(fDuration),
+                    mfPreviousElapsedTime(0.00f),
+                    mbIsBox2dWorldStepper(false)
+                {
+                    ENSURE_OR_THROW( rShapeManager,
+                                     "PhysicsAnimation::PhysicsAnimation(): Invalid ShapeManager" );
+                }
+
+                virtual ~PhysicsAnimation() override
+                {
+                    end_();
+                }
+
+                // Animation interface
+
+                virtual void prefetch() override
+                {}
+
+                virtual void start( const AnimatableShapeSharedPtr&     rShape,
+                                    const ShapeAttributeLayerSharedPtr& rAttrLayer ) override
+                {
+                    OSL_ENSURE( !mpShape,
+                                "PhysicsAnimation::start(): Shape already set" );
+                    OSL_ENSURE( !mpAttrLayer,
+                                "PhysicsAnimation::start(): Attribute layer already set" );
+
+                    mpShape = rShape;
+                    mpAttrLayer = rAttrLayer;
+
+                    if( !(mpBox2DWorld->isInitialized()) )
+                        mpBox2DWorld->initiateWorld(maPageSize);
+
+                    if( !(mpBox2DWorld->shapesInitialized()) )
+                        mpBox2DWorld->initateAllShapesAsStaticBodies( mpShapeManager );
+
+                    ENSURE_OR_THROW( rShape,
+                                     "PhysicsAnimation::start(): Invalid shape" );
+                    ENSURE_OR_THROW( rAttrLayer,
+                                     "PhysicsAnimation::start(): Invalid attribute layer" );
+
+                    mpBox2DBody = mpBox2DWorld->makeShapeDynamic( rShape );
+
+                    if( !mbAnimationStarted )
+                    {
+                        mbAnimationStarted = true;
+
+                        if( !(mnFlags & AnimationFactory::FLAG_NO_SPRITE) )
+                            mpShapeManager->enterAnimationMode( mpShape );
+                    }
+                }
+
+                virtual void end() override { end_(); }
+                void end_()
+                {
+                    if( mbIsBox2dWorldStepper )
+                    {
+                        mbIsBox2dWorldStepper = false;
+                        mpBox2DWorld->setHasWorldStepper(false);
+                    }
+
+                    if( mbAnimationStarted )
+                    {
+                        mbAnimationStarted = false;
+
+                        // Animation have ended for this body, make it static
+                        mpBox2DWorld->makeBodyStatic( mpBox2DBody );
+
+                        if( !(mnFlags & AnimationFactory::FLAG_NO_SPRITE) )
+                            mpShapeManager->leaveAnimationMode( mpShape );
+
+                        if( mpShape->isContentChanged() )
+                            mpShapeManager->notifyShapeUpdate( mpShape );
+                    }
+                }
+
+                // NumberAnimation interface
+
+
+                virtual bool operator()( double nValue ) override
+                {
+                    ENSURE_OR_RETURN_FALSE( mpAttrLayer && mpShape,
+                                       "PhysicsAnimation::operator(): Invalid ShapeAttributeLayer" );
+
+                    // if there are multiple physics animations going in parallel
+                    // Only one of them should step the box2d world
+                    if( !mpBox2DWorld->hasWorldStepper() )
+                    {
+                        mbIsBox2dWorldStepper = true;
+                        mpBox2DWorld->setHasWorldStepper(true);
+                    }
+
+                    if( mbIsBox2dWorldStepper )
+                    {
+                        double fPassedTime = (mfDuration * nValue) - mfPreviousElapsedTime;
+                        mfPreviousElapsedTime += mpBox2DWorld->stepAmount( fPassedTime );
+                    }
+
+                    mpAttrLayer->setPosition( mpBox2DBody->getPosition() );
+                    mpAttrLayer->setRotationAngle( mpBox2DBody->getAngle() );
+
+                    if( mpShape->isContentChanged() )
+                        mpShapeManager->notifyShapeUpdate( mpShape );
+
+                    return true;
+                }
+
+                virtual double getUnderlyingValue() const override
+                {
+                    ENSURE_OR_THROW( mpAttrLayer,
+                                      "PhysicsAnimation::getUnderlyingValue(): Invalid ShapeAttributeLayer" );
+
+                    return 0.0;
+                }
+
+            private:
+                AnimatableShapeSharedPtr           mpShape;
+                ShapeAttributeLayerSharedPtr       mpAttrLayer;
+                ShapeManagerSharedPtr              mpShapeManager;
+                const ::basegfx::B2DSize           maPageSize;
+                const int                          mnFlags;
+                bool                               mbAnimationStarted;
+                box2d::utils::Box2DBodySharedPtr   mpBox2DBody;
+                box2d::utils::Box2DWorldSharedPtr  mpBox2DWorld;
+                double                             mfDuration;
+                double                             mfPreviousElapsedTime;
+                bool                               mbIsBox2dWorldStepper;
+            };
 
             /** GenericAnimation template
 
@@ -413,7 +560,9 @@ namespace slideshow
                                   ValueT         (ShapeAttributeLayer::*pGetValue)() const,
                                   void           (ShapeAttributeLayer::*pSetValue)( const ValueT& ),
                                   const ModifierFunctor&                rGetterModifier,
-                                  const ModifierFunctor&                rSetterModifier ) :
+                                  const ModifierFunctor&                rSetterModifier,
+                                  const AttributeType                   eAttrType,
+                                  const box2d::utils::Box2DWorldSharedPtr& pBox2DWorld ) :
                     mpShape(),
                     mpAttrLayer(),
                     mpShapeManager( rShapeManager ),
@@ -424,7 +573,9 @@ namespace slideshow
                     maSetterModifier( rSetterModifier ),
                     mnFlags( nFlags ),
                     maDefaultValue(rDefaultValue),
-                    mbAnimationStarted( false )
+                    mbAnimationStarted( false ),
+                    meAttrType( eAttrType ),
+                    mpBox2DWorld ( pBox2DWorld )
                 {
                     ENSURE_OR_THROW( rShapeManager,
                                       "GenericAnimation::GenericAnimation(): Invalid ShapeManager" );
@@ -439,8 +590,7 @@ namespace slideshow
 
                 // Animation interface
 
-                virtual void prefetch( const AnimatableShapeSharedPtr&,
-                                       const ShapeAttributeLayerSharedPtr& )
+                virtual void prefetch()
                 {}
 
                 virtual void start( const AnimatableShapeSharedPtr&     rShape,
@@ -477,38 +627,43 @@ namespace slideshow
 
                     // only stop animation once per repeated end() call,
                     // and only if sprites are used for display
-                    if( mbAnimationStarted )
+                    if( !mbAnimationStarted )
+                        return;
+
+                    mbAnimationStarted = false;
+
+                    if( mpBox2DWorld && mpBox2DWorld->isInitialized() )
                     {
-                        mbAnimationStarted = false;
-
-                        if( !(mnFlags & AnimationFactory::FLAG_NO_SPRITE) )
-                            mpShapeManager->leaveAnimationMode( mpShape );
-
-                        // Attention, this notifyShapeUpdate() is
-                        // somewhat delicate here. Calling it
-                        // unconditional (i.e. not guarded by
-                        // mbAnimationStarted) will lead to shapes
-                        // snapping back to their original state just
-                        // before the slide ends. Not calling it at
-                        // all might swallow final animation
-                        // states. The current implementation relies
-                        // on the fact that end() is either called by
-                        // the Activity (then, the last animation
-                        // state has been set, and corresponds to the
-                        // shape's hold state), or by the animation
-                        // node (then, it's a forced end, and we
-                        // _have_ to snap back).
-
-                        // To reiterate: normally, we're called from
-                        // the Activity first, thus the
-                        // notifyShapeUpdate() below will update to
-                        // the last activity value.
-
-                        // force shape update, activity might have changed
-                        // state in the last round.
-                        if( mpShape->isContentChanged() )
-                            mpShapeManager->notifyShapeUpdate( mpShape );
+                        mpBox2DWorld->queueShapeAnimationEndUpdate( mpShape->getXShape(), meAttrType );
                     }
+
+                    if( !(mnFlags & AnimationFactory::FLAG_NO_SPRITE) )
+                        mpShapeManager->leaveAnimationMode( mpShape );
+
+                    // Attention, this notifyShapeUpdate() is
+                    // somewhat delicate here. Calling it
+                    // unconditional (i.e. not guarded by
+                    // mbAnimationStarted) will lead to shapes
+                    // snapping back to their original state just
+                    // before the slide ends. Not calling it at
+                    // all might swallow final animation
+                    // states. The current implementation relies
+                    // on the fact that end() is either called by
+                    // the Activity (then, the last animation
+                    // state has been set, and corresponds to the
+                    // shape's hold state), or by the animation
+                    // node (then, it's a forced end, and we
+                    // _have_ to snap back).
+
+                    // To reiterate: normally, we're called from
+                    // the Activity first, thus the
+                    // notifyShapeUpdate() below will update to
+                    // the last activity value.
+
+                    // force shape update, activity might have changed
+                    // state in the last round.
+                    if( mpShape->isContentChanged() )
+                        mpShapeManager->notifyShapeUpdate( mpShape );
                 }
 
                 // Derived Animation interface
@@ -537,6 +692,11 @@ namespace slideshow
                                        "GenericAnimation::operator(): Invalid ShapeAttributeLayer" );
 
                     ((*mpAttrLayer).*mpSetValueFunc)( maSetterModifier( x ) );
+
+                    if( mpBox2DWorld && mpBox2DWorld->isInitialized() )
+                    {
+                        mpBox2DWorld->queueShapeAnimationUpdate( mpShape->getXShape(), mpAttrLayer, meAttrType );
+                    }
 
                     if( mpShape->isContentChanged() )
                         mpShapeManager->notifyShapeUpdate( mpShape );
@@ -573,6 +733,9 @@ namespace slideshow
 
                 const ValueT                       maDefaultValue;
                 bool                               mbAnimationStarted;
+
+                const AttributeType                meAttrType;
+                const box2d::utils::Box2DWorldSharedPtr mpBox2DWorld;
             };
 
             //Current c++0x draft (apparently) has std::identity, but not operator()
@@ -594,11 +757,12 @@ namespace slideshow
                                       bool                              (ShapeAttributeLayer::*pIsValid)() const,
                                       const typename AnimationBase::ValueType&                 rDefaultValue,
                                       typename AnimationBase::ValueType (ShapeAttributeLayer::*pGetValue)() const,
-                                      void                              (ShapeAttributeLayer::*pSetValue)( const typename AnimationBase::ValueType& ) )
+                                      void                              (ShapeAttributeLayer::*pSetValue)( const typename AnimationBase::ValueType& ),
+                                      const AttributeType                                      eAttrType,
+                                      const box2d::utils::Box2DWorldSharedPtr&                 pBox2DWorld )
             {
-                return ::std::shared_ptr< AnimationBase >(
-                    new GenericAnimation< AnimationBase,
-                                          SGI_identity< typename AnimationBase::ValueType > >(
+                return std::make_shared<GenericAnimation< AnimationBase,
+                                          SGI_identity< typename AnimationBase::ValueType > >>(
                                               rShapeManager,
                                               nFlags,
                                               pIsValid,
@@ -607,7 +771,9 @@ namespace slideshow
                                               pSetValue,
                                               // no modification necessary, use identity functor here
                                               SGI_identity< typename AnimationBase::ValueType >(),
-                                              SGI_identity< typename AnimationBase::ValueType >() ) );
+                                              SGI_identity< typename AnimationBase::ValueType >(),
+                                              eAttrType,
+                                              pBox2DWorld );
             }
 
             class Scaler
@@ -635,17 +801,20 @@ namespace slideshow
                                                            double                                                   nDefaultValue,
                                                            double                            (ShapeAttributeLayer::*pGetValue)() const,
                                                            void                              (ShapeAttributeLayer::*pSetValue)( const double& ),
-                                                           double                                                   nScaleValue )
+                                                           double                                                   nScaleValue,
+                                                           const AttributeType                                      eAttrType,
+                                                           const box2d::utils::Box2DWorldSharedPtr&                 pBox2DWorld )
             {
-                return NumberAnimationSharedPtr(
-                    new GenericAnimation< NumberAnimation, Scaler >( rShapeManager,
+                return std::make_shared<GenericAnimation< NumberAnimation, Scaler >>( rShapeManager,
                                                                      nFlags,
                                                                      pIsValid,
                                                                      nDefaultValue / nScaleValue,
                                                                      pGetValue,
                                                                      pSetValue,
                                                                      Scaler( 1.0/nScaleValue ),
-                                                                     Scaler( nScaleValue ) ) );
+                                                                     Scaler( nScaleValue ),
+                                                                     eAttrType,
+                                                                     pBox2DWorld );
             }
 
 
@@ -731,18 +900,13 @@ namespace slideshow
             switch( mapAttributeName( rAttrName ) )
             {
                 default:
-                    // FALLTHROUGH intended
                 case AttributeType::Invalid:
                     return CLASS_UNKNOWN_PROPERTY;
 
                 case AttributeType::CharColor:
-                    // FALLTHROUGH intended
                 case AttributeType::Color:
-                    // FALLTHROUGH intended
                 case AttributeType::DimColor:
-                    // FALLTHROUGH intended
                 case AttributeType::FillColor:
-                    // FALLTHROUGH intended
                 case AttributeType::LineColor:
                     return CLASS_COLOR_PROPERTY;
 
@@ -753,32 +917,20 @@ namespace slideshow
                     return CLASS_BOOL_PROPERTY;
 
                 case AttributeType::CharHeight:
-                    // FALLTHROUGH intended
                 case AttributeType::CharWeight:
-                    // FALLTHROUGH intended
                 case AttributeType::Height:
-                    // FALLTHROUGH intended
                 case AttributeType::Opacity:
-                    // FALLTHROUGH intended
                 case AttributeType::Rotate:
-                    // FALLTHROUGH intended
                 case AttributeType::SkewX:
-                    // FALLTHROUGH intended
                 case AttributeType::SkewY:
-                    // FALLTHROUGH intended
                 case AttributeType::Width:
-                    // FALLTHROUGH intended
                 case AttributeType::PosX:
-                    // FALLTHROUGH intended
                 case AttributeType::PosY:
                     return CLASS_NUMBER_PROPERTY;
 
                 case AttributeType::CharUnderline:
-                    // FALLTHROUGH intended
                 case AttributeType::FillStyle:
-                    // FALLTHROUGH intended
                 case AttributeType::LineStyle:
-                    // FALLTHROUGH intended
                 case AttributeType::CharPosture:
                     return CLASS_ENUM_PROPERTY;
             }
@@ -788,39 +940,30 @@ namespace slideshow
                                                                                   const AnimatableShapeSharedPtr&       rShape,
                                                                                   const ShapeManagerSharedPtr&          rShapeManager,
                                                                                   const ::basegfx::B2DVector&           rSlideSize,
+                                                                                  const box2d::utils::Box2DWorldSharedPtr& pBox2DWorld,
                                                                                   int                                   nFlags )
         {
             // ATTENTION: When changing this map, also the classifyAttributeName() method must
             // be checked and possibly adapted in their switch statement
-            switch( mapAttributeName( rAttrName ) )
+            AttributeType eAttrType = mapAttributeName(rAttrName);
+            switch( eAttrType )
             {
                 default:
-                    // FALLTHROUGH intended
                 case AttributeType::Invalid:
                     ENSURE_OR_THROW( false,
                                       "AnimationFactory::createNumberPropertyAnimation(): Unknown attribute" );
                     break;
 
                 case AttributeType::CharColor:
-                    // FALLTHROUGH intended
                 case AttributeType::CharFontName:
-                    // FALLTHROUGH intended
                 case AttributeType::CharPosture:
-                    // FALLTHROUGH intended
                 case AttributeType::CharUnderline:
-                    // FALLTHROUGH intended
                 case AttributeType::Color:
-                    // FALLTHROUGH intended
                 case AttributeType::DimColor:
-                    // FALLTHROUGH intended
                 case AttributeType::FillColor:
-                    // FALLTHROUGH intended
                 case AttributeType::FillStyle:
-                    // FALLTHROUGH intended
                 case AttributeType::LineColor:
-                    // FALLTHROUGH intended
                 case AttributeType::LineStyle:
-                    // FALLTHROUGH intended
                 case AttributeType::Visibility:
                     ENSURE_OR_THROW( false,
                                       "AnimationFactory::createNumberPropertyAnimation(): Attribute type mismatch" );
@@ -833,7 +976,9 @@ namespace slideshow
                                                                   1.0, // CharHeight is a relative attribute, thus
                                                                          // default is 1.0
                                                                   &ShapeAttributeLayer::getCharScale,
-                                                                  &ShapeAttributeLayer::setCharScale );
+                                                                  &ShapeAttributeLayer::setCharScale,
+                                                                  eAttrType,
+                                                                  pBox2DWorld );
 
                 case AttributeType::CharWeight:
                     return makeGenericAnimation<NumberAnimation>( rShapeManager,
@@ -841,7 +986,9 @@ namespace slideshow
                                                                   &ShapeAttributeLayer::isCharWeightValid,
                                                                   getDefault<double>( rShape, rAttrName ),
                                                                   &ShapeAttributeLayer::getCharWeight,
-                                                                  &ShapeAttributeLayer::setCharWeight );
+                                                                  &ShapeAttributeLayer::setCharWeight,
+                                                                  eAttrType,
+                                                                  pBox2DWorld );
 
                 case AttributeType::Height:
                     return makeGenericAnimation( rShapeManager,
@@ -855,7 +1002,9 @@ namespace slideshow
                                                  &ShapeAttributeLayer::getHeight,
                                                  &ShapeAttributeLayer::setHeight,
                                                  // convert expression parser value from relative page size
-                                                 rSlideSize.getY() );
+                                                 rSlideSize.getY(),
+                                                 eAttrType,
+                                                 pBox2DWorld );
 
                 case AttributeType::Opacity:
                     return makeGenericAnimation<NumberAnimation>( rShapeManager,
@@ -864,7 +1013,9 @@ namespace slideshow
                                                                   // TODO(F1): Provide shape default here (FillTransparency?)
                                                                   1.0,
                                                                   &ShapeAttributeLayer::getAlpha,
-                                                                  &ShapeAttributeLayer::setAlpha );
+                                                                  &ShapeAttributeLayer::setAlpha,
+                                                                  eAttrType,
+                                                                  pBox2DWorld );
 
                 case AttributeType::Rotate:
                     return makeGenericAnimation<NumberAnimation>( rShapeManager,
@@ -874,7 +1025,9 @@ namespace slideshow
                                                                   // rotation angle is always 0.0, even for rotated shapes
                                                                   0.0,
                                                                   &ShapeAttributeLayer::getRotationAngle,
-                                                                  &ShapeAttributeLayer::setRotationAngle );
+                                                                  &ShapeAttributeLayer::setRotationAngle,
+                                                                  eAttrType,
+                                                                  pBox2DWorld );
 
                 case AttributeType::SkewX:
                     return makeGenericAnimation<NumberAnimation>( rShapeManager,
@@ -883,7 +1036,9 @@ namespace slideshow
                                                                   // TODO(F1): Is there any shape property for skew?
                                                                   0.0,
                                                                   &ShapeAttributeLayer::getShearXAngle,
-                                                                  &ShapeAttributeLayer::setShearXAngle );
+                                                                  &ShapeAttributeLayer::setShearXAngle,
+                                                                  eAttrType,
+                                                                  pBox2DWorld );
 
                 case AttributeType::SkewY:
                     return makeGenericAnimation<NumberAnimation>( rShapeManager,
@@ -892,7 +1047,9 @@ namespace slideshow
                                                                   // TODO(F1): Is there any shape property for skew?
                                                                   0.0,
                                                                   &ShapeAttributeLayer::getShearYAngle,
-                                                                  &ShapeAttributeLayer::setShearYAngle );
+                                                                  &ShapeAttributeLayer::setShearYAngle,
+                                                                  eAttrType,
+                                                                  pBox2DWorld );
 
                 case AttributeType::Width:
                     return makeGenericAnimation( rShapeManager,
@@ -906,7 +1063,9 @@ namespace slideshow
                                                  &ShapeAttributeLayer::getWidth,
                                                  &ShapeAttributeLayer::setWidth,
                                                  // convert expression parser value from relative page size
-                                                 rSlideSize.getX() );
+                                                 rSlideSize.getX(),
+                                                 eAttrType,
+                                                 pBox2DWorld );
 
                 case AttributeType::PosX:
                     return makeGenericAnimation( rShapeManager,
@@ -920,7 +1079,9 @@ namespace slideshow
                                                  &ShapeAttributeLayer::getPosX,
                                                  &ShapeAttributeLayer::setPosX,
                                                  // convert expression parser value from relative page size
-                                                 rSlideSize.getX() );
+                                                 rSlideSize.getX(),
+                                                 eAttrType,
+                                                 pBox2DWorld );
 
                 case AttributeType::PosY:
                     return makeGenericAnimation( rShapeManager,
@@ -934,7 +1095,9 @@ namespace slideshow
                                                  &ShapeAttributeLayer::getPosY,
                                                  &ShapeAttributeLayer::setPosY,
                                                  // convert expression parser value from relative page size
-                                                 rSlideSize.getY() );
+                                                 rSlideSize.getY(),
+                                                 eAttrType,
+                                                 pBox2DWorld );
             }
 
             return NumberAnimationSharedPtr();
@@ -944,51 +1107,36 @@ namespace slideshow
                                                                               const AnimatableShapeSharedPtr&       rShape,
                                                                               const ShapeManagerSharedPtr&          rShapeManager,
                                                                               const ::basegfx::B2DVector&           /*rSlideSize*/,
+                                                                              const box2d::utils::Box2DWorldSharedPtr& pBox2DWorld,
                                                                               int                                   nFlags )
         {
             // ATTENTION: When changing this map, also the classifyAttributeName() method must
             // be checked and possibly adapted in their switch statement
-            switch( mapAttributeName( rAttrName ) )
+            AttributeType eAttrType = mapAttributeName( rAttrName );
+            switch( eAttrType )
             {
                 default:
-                    // FALLTHROUGH intended
                 case AttributeType::Invalid:
                     ENSURE_OR_THROW( false,
                                       "AnimationFactory::createEnumPropertyAnimation(): Unknown attribute" );
                     break;
 
                 case AttributeType::CharColor:
-                    // FALLTHROUGH intended
                 case AttributeType::CharFontName:
-                    // FALLTHROUGH intended
                 case AttributeType::Color:
-                    // FALLTHROUGH intended
                 case AttributeType::DimColor:
-                    // FALLTHROUGH intended
                 case AttributeType::FillColor:
-                    // FALLTHROUGH intended
                 case AttributeType::LineColor:
-                    // FALLTHROUGH intended
                 case AttributeType::Visibility:
-                    // FALLTHROUGH intended
                 case AttributeType::CharHeight:
-                    // FALLTHROUGH intended
                 case AttributeType::CharWeight:
-                    // FALLTHROUGH intended
                 case AttributeType::Height:
-                    // FALLTHROUGH intended
                 case AttributeType::Opacity:
-                    // FALLTHROUGH intended
                 case AttributeType::Rotate:
-                    // FALLTHROUGH intended
                 case AttributeType::SkewX:
-                    // FALLTHROUGH intended
                 case AttributeType::SkewY:
-                    // FALLTHROUGH intended
                 case AttributeType::Width:
-                    // FALLTHROUGH intended
                 case AttributeType::PosX:
-                    // FALLTHROUGH intended
                 case AttributeType::PosY:
                     ENSURE_OR_THROW( false,
                                       "AnimationFactory::createEnumPropertyAnimation(): Attribute type mismatch" );
@@ -1002,7 +1150,9 @@ namespace slideshow
                                                                 sal::static_int_cast<sal_Int16>(
                                                                     getDefault<drawing::FillStyle>( rShape, rAttrName )),
                                                                 &ShapeAttributeLayer::getFillStyle,
-                                                                &ShapeAttributeLayer::setFillStyle );
+                                                                &ShapeAttributeLayer::setFillStyle,
+                                                                eAttrType,
+                                                                pBox2DWorld );
 
                 case AttributeType::LineStyle:
                     return makeGenericAnimation<EnumAnimation>( rShapeManager,
@@ -1011,7 +1161,9 @@ namespace slideshow
                                                                 sal::static_int_cast<sal_Int16>(
                                                                     getDefault<drawing::LineStyle>( rShape, rAttrName )),
                                                                 &ShapeAttributeLayer::getLineStyle,
-                                                                &ShapeAttributeLayer::setLineStyle );
+                                                                &ShapeAttributeLayer::setLineStyle,
+                                                                eAttrType,
+                                                                pBox2DWorld );
 
                 case AttributeType::CharPosture:
                     return makeGenericAnimation<EnumAnimation>( rShapeManager,
@@ -1020,7 +1172,9 @@ namespace slideshow
                                                                 sal::static_int_cast<sal_Int16>(
                                                                     getDefault<awt::FontSlant>( rShape, rAttrName )),
                                                                 &ShapeAttributeLayer::getCharPosture,
-                                                                &ShapeAttributeLayer::setCharPosture );
+                                                                &ShapeAttributeLayer::setCharPosture,
+                                                                eAttrType,
+                                                                pBox2DWorld );
 
                 case AttributeType::CharUnderline:
                     return makeGenericAnimation<EnumAnimation>( rShapeManager,
@@ -1028,7 +1182,9 @@ namespace slideshow
                                                                 &ShapeAttributeLayer::isUnderlineModeValid,
                                                                 getDefault<sal_Int16>( rShape, rAttrName ),
                                                                 &ShapeAttributeLayer::getUnderlineMode,
-                                                                &ShapeAttributeLayer::setUnderlineMode );
+                                                                &ShapeAttributeLayer::setUnderlineMode,
+                                                                eAttrType,
+                                                                pBox2DWorld );
             }
 
             return EnumAnimationSharedPtr();
@@ -1038,49 +1194,35 @@ namespace slideshow
                                                                                 const AnimatableShapeSharedPtr&     rShape,
                                                                                 const ShapeManagerSharedPtr&        rShapeManager,
                                                                                 const ::basegfx::B2DVector&         /*rSlideSize*/,
+                                                                                const box2d::utils::Box2DWorldSharedPtr& pBox2DWorld,
                                                                                 int                                 nFlags )
         {
             // ATTENTION: When changing this map, also the classifyAttributeName() method must
             // be checked and possibly adapted in their switch statement
-            switch( mapAttributeName( rAttrName ) )
+            AttributeType eAttrType = mapAttributeName(rAttrName);
+            switch( eAttrType )
             {
                 default:
-                    // FALLTHROUGH intended
                 case AttributeType::Invalid:
                     ENSURE_OR_THROW( false,
                                       "AnimationFactory::createColorPropertyAnimation(): Unknown attribute" );
                     break;
 
                 case AttributeType::CharFontName:
-                    // FALLTHROUGH intended
                 case AttributeType::CharHeight:
-                    // FALLTHROUGH intended
                 case AttributeType::CharPosture:
-                    // FALLTHROUGH intended
                 case AttributeType::CharUnderline:
-                    // FALLTHROUGH intended
                 case AttributeType::CharWeight:
-                    // FALLTHROUGH intended
                 case AttributeType::FillStyle:
-                    // FALLTHROUGH intended
                 case AttributeType::Height:
-                    // FALLTHROUGH intended
                 case AttributeType::LineStyle:
-                    // FALLTHROUGH intended
                 case AttributeType::Opacity:
-                    // FALLTHROUGH intended
                 case AttributeType::Rotate:
-                    // FALLTHROUGH intended
                 case AttributeType::SkewX:
-                    // FALLTHROUGH intended
                 case AttributeType::SkewY:
-                    // FALLTHROUGH intended
                 case AttributeType::Visibility:
-                    // FALLTHROUGH intended
                 case AttributeType::Width:
-                    // FALLTHROUGH intended
                 case AttributeType::PosX:
-                    // FALLTHROUGH intended
                 case AttributeType::PosY:
                     ENSURE_OR_THROW( false,
                                       "AnimationFactory::createColorPropertyAnimation(): Attribute type mismatch" );
@@ -1092,7 +1234,9 @@ namespace slideshow
                                                                  &ShapeAttributeLayer::isCharColorValid,
                                                                  getDefault<RGBColor>( rShape, rAttrName ),
                                                                  &ShapeAttributeLayer::getCharColor,
-                                                                 &ShapeAttributeLayer::setCharColor );
+                                                                 &ShapeAttributeLayer::setCharColor,
+                                                                 eAttrType,
+                                                                 pBox2DWorld );
 
                 case AttributeType::Color:
                     // TODO(F2): This is just mapped to fill color to make it work
@@ -1101,7 +1245,9 @@ namespace slideshow
                                                                  &ShapeAttributeLayer::isFillColorValid,
                                                                  getDefault<RGBColor>( rShape, rAttrName ),
                                                                  &ShapeAttributeLayer::getFillColor,
-                                                                 &ShapeAttributeLayer::setFillColor );
+                                                                 &ShapeAttributeLayer::setFillColor,
+                                                                 eAttrType,
+                                                                 pBox2DWorld );
 
                 case AttributeType::DimColor:
                     return makeGenericAnimation<ColorAnimation>( rShapeManager,
@@ -1109,7 +1255,9 @@ namespace slideshow
                                                                  &ShapeAttributeLayer::isDimColorValid,
                                                                  getDefault<RGBColor>( rShape, rAttrName ),
                                                                  &ShapeAttributeLayer::getDimColor,
-                                                                 &ShapeAttributeLayer::setDimColor );
+                                                                 &ShapeAttributeLayer::setDimColor,
+                                                                 eAttrType,
+                                                                 pBox2DWorld );
 
                 case AttributeType::FillColor:
                     return makeGenericAnimation<ColorAnimation>( rShapeManager,
@@ -1117,7 +1265,9 @@ namespace slideshow
                                                                  &ShapeAttributeLayer::isFillColorValid,
                                                                  getDefault<RGBColor>( rShape, rAttrName ),
                                                                  &ShapeAttributeLayer::getFillColor,
-                                                                 &ShapeAttributeLayer::setFillColor );
+                                                                 &ShapeAttributeLayer::setFillColor,
+                                                                 eAttrType,
+                                                                 pBox2DWorld );
 
                 case AttributeType::LineColor:
                     return makeGenericAnimation<ColorAnimation>( rShapeManager,
@@ -1125,7 +1275,9 @@ namespace slideshow
                                                                  &ShapeAttributeLayer::isLineColorValid,
                                                                  getDefault<RGBColor>( rShape, rAttrName ),
                                                                  &ShapeAttributeLayer::getLineColor,
-                                                                 &ShapeAttributeLayer::setLineColor );
+                                                                 &ShapeAttributeLayer::setLineColor,
+                                                                 eAttrType,
+                                                                 pBox2DWorld );
             }
 
             return ColorAnimationSharedPtr();
@@ -1142,8 +1294,7 @@ namespace slideshow
             switch( nTransformType )
             {
                 case animations::AnimationTransformType::SCALE:
-                    return PairAnimationSharedPtr(
-                        new TupleAnimation< ::basegfx::B2DSize >(
+                    return std::make_shared<TupleAnimation< ::basegfx::B2DSize >>(
                             rShapeManager,
                             nFlags,
                             &ShapeAttributeLayer::isWidthValid,
@@ -1156,11 +1307,10 @@ namespace slideshow
                             rBounds.getRange(),
                             &ShapeAttributeLayer::getWidth,
                             &ShapeAttributeLayer::getHeight,
-                            &ShapeAttributeLayer::setSize ) );
+                            &ShapeAttributeLayer::setSize );
 
                 case animations::AnimationTransformType::TRANSLATE:
-                    return PairAnimationSharedPtr(
-                        new TupleAnimation< ::basegfx::B2DPoint >(
+                    return std::make_shared<TupleAnimation< ::basegfx::B2DPoint >>(
                             rShapeManager,
                             nFlags,
                             &ShapeAttributeLayer::isPosXValid,
@@ -1173,7 +1323,7 @@ namespace slideshow
                             rSlideSize,
                             &ShapeAttributeLayer::getPosX,
                             &ShapeAttributeLayer::getPosY,
-                            &ShapeAttributeLayer::setPosition ) );
+                            &ShapeAttributeLayer::setPosition );
 
                 default:
                     ENSURE_OR_THROW( false,
@@ -1188,57 +1338,39 @@ namespace slideshow
                                                                                   const AnimatableShapeSharedPtr&       rShape,
                                                                                   const ShapeManagerSharedPtr&          rShapeManager,
                                                                                   const ::basegfx::B2DVector&           /*rSlideSize*/,
+                                                                                  const box2d::utils::Box2DWorldSharedPtr& pBox2DWorld,
                                                                                   int                                   nFlags )
         {
             // ATTENTION: When changing this map, also the classifyAttributeName() method must
             // be checked and possibly adapted in their switch statement
-            switch( mapAttributeName( rAttrName ) )
+            AttributeType eAttrType = mapAttributeName(rAttrName);
+            switch( eAttrType )
             {
                 default:
-                    // FALLTHROUGH intended
                 case AttributeType::Invalid:
                     ENSURE_OR_THROW( false,
                                       "AnimationFactory::createStringPropertyAnimation(): Unknown attribute" );
                     break;
 
                 case AttributeType::CharColor:
-                    // FALLTHROUGH intended
                 case AttributeType::CharHeight:
-                    // FALLTHROUGH intended
                 case AttributeType::CharUnderline:
-                    // FALLTHROUGH intended
                 case AttributeType::Color:
-                    // FALLTHROUGH intended
                 case AttributeType::DimColor:
-                    // FALLTHROUGH intended
                 case AttributeType::FillColor:
-                    // FALLTHROUGH intended
                 case AttributeType::Height:
-                    // FALLTHROUGH intended
                 case AttributeType::LineColor:
-                    // FALLTHROUGH intended
                 case AttributeType::Opacity:
-                    // FALLTHROUGH intended
                 case AttributeType::Rotate:
-                    // FALLTHROUGH intended
                 case AttributeType::SkewX:
-                    // FALLTHROUGH intended
                 case AttributeType::SkewY:
-                    // FALLTHROUGH intended
                 case AttributeType::Visibility:
-                    // FALLTHROUGH intended
                 case AttributeType::Width:
-                    // FALLTHROUGH intended
                 case AttributeType::PosX:
-                    // FALLTHROUGH intended
                 case AttributeType::PosY:
-                    // FALLTHROUGH intended
                 case AttributeType::CharPosture:
-                    // FALLTHROUGH intended
                 case AttributeType::CharWeight:
-                    // FALLTHROUGH intended
                 case AttributeType::FillStyle:
-                    // FALLTHROUGH intended
                 case AttributeType::LineStyle:
                     ENSURE_OR_THROW( false,
                                       "AnimationFactory::createStringPropertyAnimation(): Attribute type mismatch" );
@@ -1250,7 +1382,9 @@ namespace slideshow
                                                                   &ShapeAttributeLayer::isFontFamilyValid,
                                                                   getDefault< OUString >( rShape, rAttrName ),
                                                                   &ShapeAttributeLayer::getFontFamily,
-                                                                  &ShapeAttributeLayer::setFontFamily );
+                                                                  &ShapeAttributeLayer::setFontFamily,
+                                                                  eAttrType,
+                                                                  pBox2DWorld );
             }
 
             return StringAnimationSharedPtr();
@@ -1260,57 +1394,39 @@ namespace slideshow
                                                                               const AnimatableShapeSharedPtr&       /*rShape*/,
                                                                               const ShapeManagerSharedPtr&          rShapeManager,
                                                                               const ::basegfx::B2DVector&           /*rSlideSize*/,
+                                                                              const box2d::utils::Box2DWorldSharedPtr& pBox2DWorld,
                                                                               int                                   nFlags )
         {
             // ATTENTION: When changing this map, also the classifyAttributeName() method must
             // be checked and possibly adapted in their switch statement
-            switch( mapAttributeName( rAttrName ) )
+            AttributeType eAttrType = mapAttributeName(rAttrName);
+            switch( eAttrType )
             {
                 default:
-                    // FALLTHROUGH intended
                 case AttributeType::Invalid:
                     ENSURE_OR_THROW( false,
                                       "AnimationFactory::createBoolPropertyAnimation(): Unknown attribute" );
                     break;
 
                 case AttributeType::CharColor:
-                    // FALLTHROUGH intended
                 case AttributeType::CharFontName:
-                    // FALLTHROUGH intended
                 case AttributeType::CharHeight:
-                    // FALLTHROUGH intended
                 case AttributeType::CharPosture:
-                    // FALLTHROUGH intended
                 case AttributeType::CharWeight:
-                    // FALLTHROUGH intended
                 case AttributeType::Color:
-                    // FALLTHROUGH intended
                 case AttributeType::DimColor:
-                    // FALLTHROUGH intended
                 case AttributeType::FillColor:
-                    // FALLTHROUGH intended
                 case AttributeType::FillStyle:
-                    // FALLTHROUGH intended
                 case AttributeType::Height:
-                    // FALLTHROUGH intended
                 case AttributeType::LineColor:
-                    // FALLTHROUGH intended
                 case AttributeType::LineStyle:
-                    // FALLTHROUGH intended
                 case AttributeType::Opacity:
-                    // FALLTHROUGH intended
                 case AttributeType::Rotate:
-                    // FALLTHROUGH intended
                 case AttributeType::SkewX:
-                    // FALLTHROUGH intended
                 case AttributeType::SkewY:
-                    // FALLTHROUGH intended
                 case AttributeType::Width:
-                    // FALLTHROUGH intended
                 case AttributeType::PosX:
-                    // FALLTHROUGH intended
                 case AttributeType::PosY:
-                    // FALLTHROUGH intended
                 case AttributeType::CharUnderline:
                     ENSURE_OR_THROW( false,
                                       "AnimationFactory::createBoolPropertyAnimation(): Attribute type mismatch" );
@@ -1323,7 +1439,9 @@ namespace slideshow
                                                                 // TODO(F1): Is there a corresponding shape property?
                                                                 true,
                                                                 &ShapeAttributeLayer::getVisibility,
-                                                                &ShapeAttributeLayer::setVisibility );
+                                                                &ShapeAttributeLayer::setVisibility,
+                                                                eAttrType,
+                                                                pBox2DWorld );
             }
 
             return BoolAnimationSharedPtr();
@@ -1334,16 +1452,28 @@ namespace slideshow
                                                                               const AnimatableShapeSharedPtr&   /*rShape*/,
                                                                               const ShapeManagerSharedPtr&      rShapeManager,
                                                                               const ::basegfx::B2DVector&       rSlideSize,
+                                                                              const box2d::utils::Box2DWorldSharedPtr& pBox2DWorld,
                                                                               int                               nFlags )
         {
-            return NumberAnimationSharedPtr(
-                new PathAnimation( rSVGDPath, nAdditive,
+            return std::make_shared<PathAnimation>( rSVGDPath, nAdditive,
                                    rShapeManager,
                                    rSlideSize,
-                                   nFlags ) );
+                                   nFlags,
+                                   pBox2DWorld);
         }
 
-    }
+        NumberAnimationSharedPtr AnimationFactory::createPhysicsAnimation(  const box2d::utils::Box2DWorldSharedPtr& pBox2DWorld,
+                                                                              const double                      fDuration,
+                                                                              const ShapeManagerSharedPtr&      rShapeManager,
+                                                                              const ::basegfx::B2DVector&       rSlideSize,
+                                                                              int                               nFlags )
+        {
+            return std::make_shared<PhysicsAnimation>( pBox2DWorld, fDuration,
+                                   rShapeManager,
+                                   rSlideSize,
+                                   nFlags );
+        }
+
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

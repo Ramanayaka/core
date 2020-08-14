@@ -10,15 +10,15 @@
 #ifndef INCLUDED_SAL_OSL_UNX_CREATEFILEHANDLEFROMFD_HXX
 #define INCLUDED_SAL_OSL_UNX_CREATEFILEHANDLEFROMFD_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "osl/file.h"
+#include <osl/file.h>
 
-namespace osl { namespace detail {
+namespace osl::detail {
 
 oslFileHandle createFileHandleFromFD(int fd); // defined in file.cxx
 
-} }
+}
 
 #endif
 

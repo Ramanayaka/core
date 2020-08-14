@@ -93,7 +93,7 @@ public class SwAccessibleFooterView extends TestCase {
         PropSet.setPropertyValue("FooterIsOn", Boolean.TRUE);
 
         //change zoom value to 10%
-        //footer should be in the vissible area of the document
+        //footer should be in the visible area of the document
         XController xController = xTextDoc.getCurrentController();
         XViewSettingsSupplier xViewSetSup = UnoRuntime.queryInterface(XViewSettingsSupplier.class,
         xController);
@@ -120,7 +120,7 @@ public class SwAccessibleFooterView extends TestCase {
                             Integer.valueOf(1000));
                     } catch (com.sun.star.uno.Exception e) {
                         e.printStackTrace();
-                        throw new StatusException("Cann't change footer.", e);
+                        throw new StatusException("Can't change footer.", e);
                     }
                 }
             });

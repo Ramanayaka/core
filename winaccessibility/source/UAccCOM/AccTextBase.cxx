@@ -24,8 +24,11 @@
 
 #include "AccTextBase.h"
 
+#include <rtl/ustrbuf.hxx>
 #include <vcl/svapp.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/AccessibleTextType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
@@ -56,7 +59,7 @@ CAccTextBase::~CAccTextBase()
    * @param success     Variant to accept the result of if the method call is successful.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_addSelection(long startOffset, long endOffset)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_addSelection(long startOffset, long endOffset)
 {
     SolarMutexGuard g;
 
@@ -92,7 +95,7 @@ STDMETHODIMP CAccTextBase::get_addSelection(long startOffset, long endOffset)
    * @param textAttributes     Variant to accept attributes.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_attributes(long offset, long * startOffset, long * endOffset, BSTR * textAttributes)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_attributes(long offset, long * startOffset, long * endOffset, BSTR * textAttributes)
 {
     SolarMutexGuard g;
 
@@ -111,7 +114,7 @@ STDMETHODIMP CAccTextBase::get_attributes(long offset, long * startOffset, long 
 
     OUStringBuffer strAttrs("Version:1;");
 
-    Sequence< css::beans::PropertyValue > pValues = GetXInterface()->getCharacterAttributes(offset, Sequence< rtl::OUString >());
+    Sequence< css::beans::PropertyValue > pValues = GetXInterface()->getCharacterAttributes(offset, Sequence< OUString >());
     int nCount = pValues.getLength();
 
     sal_Int16 numberingLevel = 0;
@@ -168,7 +171,7 @@ STDMETHODIMP CAccTextBase::get_attributes(long offset, long * startOffset, long 
             unsigned long nColor;
             pValue.Value >>= nColor;
             strAttrs.append('#');
-            auto const hex = OUString::number(nColor, 16).toAsciiUpperCase();
+            OUString const hex = OUString::number(nColor, 16).toAsciiUpperCase();
             for (sal_Int32 j = hex.getLength(); j < 8; ++j) {
                 strAttrs.append('0');
             }
@@ -183,9 +186,7 @@ STDMETHODIMP CAccTextBase::get_attributes(long offset, long * startOffset, long 
     // #CHECK#
     if(*textAttributes)
         SysFreeString(*textAttributes);
-    *textAttributes = SysAllocString(
-        reinterpret_cast<wchar_t const *>(
-            strAttrs.makeStringAndClear().getStr()));
+    *textAttributes = SysAllocString(o3tl::toW(strAttrs.makeStringAndClear().getStr()));
 
     if( offset < GetXInterface()->getCharacterCount() )
     {
@@ -209,7 +210,7 @@ STDMETHODIMP CAccTextBase::get_attributes(long offset, long * startOffset, long 
    * @param offset     Variant to accept caret offset.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_caretOffset(long * offset)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_caretOffset(long * offset)
 {
     SolarMutexGuard g;
 
@@ -235,7 +236,7 @@ STDMETHODIMP CAccTextBase::get_caretOffset(long * offset)
    * @param nCharacters  Variant to accept character count.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_characterCount(long * nCharacters)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_characterCount(long * nCharacters)
 {
     SolarMutexGuard g;
 
@@ -265,7 +266,7 @@ STDMETHODIMP CAccTextBase::get_characterCount(long * nCharacters)
    * @param Height Variant to accept height.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_characterExtents(long offset, IA2CoordinateType coordType, long * x, long * y, long * width, long * height)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_characterExtents(long offset, IA2CoordinateType coordType, long * x, long * y, long * width, long * height)
 {
     SolarMutexGuard g;
 
@@ -337,7 +338,7 @@ STDMETHODIMP CAccTextBase::get_characterExtents(long offset, IA2CoordinateType c
    * @param nSelections Variant to accept selections count.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_nSelections(long * nSelections)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_nSelections(long * nSelections)
 {
     SolarMutexGuard g;
 
@@ -383,7 +384,7 @@ STDMETHODIMP CAccTextBase::get_nSelections(long * nSelections)
    * @param offset Variant to accept offset.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_offsetAtPoint(long x, long y, IA2CoordinateType, long * offset)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_offsetAtPoint(long x, long y, IA2CoordinateType, long * offset)
 {
     SolarMutexGuard g;
 
@@ -412,7 +413,7 @@ STDMETHODIMP CAccTextBase::get_offsetAtPoint(long x, long y, IA2CoordinateType, 
    * @return Result.
 */
 
-STDMETHODIMP CAccTextBase::get_selection(long selectionIndex, long * startOffset, long * endOffset)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_selection(long selectionIndex, long * startOffset, long * endOffset)
 {
     SolarMutexGuard g;
 
@@ -461,7 +462,7 @@ STDMETHODIMP CAccTextBase::get_selection(long selectionIndex, long * startOffset
    * @param text        Variant to accept the text of special range.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_text(long startOffset, long endOffset, BSTR * text)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_text(long startOffset, long endOffset, BSTR * text)
 {
     SolarMutexGuard g;
 
@@ -478,7 +479,7 @@ STDMETHODIMP CAccTextBase::get_text(long startOffset, long endOffset, BSTR * tex
         return E_FAIL;
     }
 
-    ::rtl::OUString ouStr;
+    OUString ouStr;
     if (endOffset == -1 )
     {
         long nLen=0;
@@ -493,7 +494,7 @@ STDMETHODIMP CAccTextBase::get_text(long startOffset, long endOffset, BSTR * tex
     }
 
     SysFreeString(*text);
-    *text = SysAllocString(reinterpret_cast<wchar_t const *>(ouStr.getStr()));
+    *text = SysAllocString(o3tl::toW(ouStr.getStr()));
     return S_OK;
 
     LEAVE_PROTECTED_BLOCK
@@ -508,7 +509,7 @@ STDMETHODIMP CAccTextBase::get_text(long startOffset, long endOffset, BSTR * tex
    * @param text        Variant to accept the special text.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_textBeforeOffset(long offset, IA2TextBoundaryType boundaryType, long * startOffset, long * endOffset, BSTR * text)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_textBeforeOffset(long offset, IA2TextBoundaryType boundaryType, long * startOffset, long * endOffset, BSTR * text)
 {
     SolarMutexGuard g;
 
@@ -576,9 +577,9 @@ STDMETHODIMP CAccTextBase::get_textBeforeOffset(long offset, IA2TextBoundaryType
     }
 
     TextSegment segment = GetXInterface()->getTextBeforeIndex( offset, sal_Int16(lUnoBoundaryType));
-    ::rtl::OUString ouStr = segment.SegmentText;
+    OUString ouStr = segment.SegmentText;
     SysFreeString(*text);
-    *text = SysAllocString(reinterpret_cast<wchar_t const *>(ouStr.getStr()));
+    *text = SysAllocString(o3tl::toW(ouStr.getStr()));
     *startOffset = segment.SegmentStart;
     *endOffset = segment.SegmentEnd;
 
@@ -596,7 +597,7 @@ STDMETHODIMP CAccTextBase::get_textBeforeOffset(long offset, IA2TextBoundaryType
    * @param text        Variant to accept the special text.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_textAfterOffset(long offset, IA2TextBoundaryType boundaryType, long * startOffset, long * endOffset, BSTR * text)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_textAfterOffset(long offset, IA2TextBoundaryType boundaryType, long * startOffset, long * endOffset, BSTR * text)
 {
     SolarMutexGuard g;
 
@@ -662,9 +663,9 @@ STDMETHODIMP CAccTextBase::get_textAfterOffset(long offset, IA2TextBoundaryType 
     }
 
     TextSegment segment = GetXInterface()->getTextBehindIndex( offset, sal_Int16(lUnoBoundaryType));
-    ::rtl::OUString ouStr = segment.SegmentText;
+    OUString ouStr = segment.SegmentText;
     SysFreeString(*text);
-    *text = SysAllocString(reinterpret_cast<wchar_t const *>(ouStr.getStr()));
+    *text = SysAllocString(o3tl::toW(ouStr.getStr()));
     *startOffset = segment.SegmentStart;
     *endOffset = segment.SegmentEnd;
 
@@ -682,7 +683,7 @@ STDMETHODIMP CAccTextBase::get_textAfterOffset(long offset, IA2TextBoundaryType 
    * @param text        Variant to accept the special text.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_textAtOffset(long offset, IA2TextBoundaryType boundaryType, long * startOffset, long * endOffset, BSTR * text)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_textAtOffset(long offset, IA2TextBoundaryType boundaryType, long * startOffset, long * endOffset, BSTR * text)
 {
     SolarMutexGuard g;
 
@@ -749,9 +750,9 @@ STDMETHODIMP CAccTextBase::get_textAtOffset(long offset, IA2TextBoundaryType bou
     }
 
     TextSegment segment = GetXInterface()->getTextAtIndex( offset, sal_Int16(lUnoBoundaryType));
-    ::rtl::OUString ouStr = segment.SegmentText;
+    OUString ouStr = segment.SegmentText;
     SysFreeString(*text);
-    *text = SysAllocString(reinterpret_cast<wchar_t const *>(ouStr.getStr()));
+    *text = SysAllocString(o3tl::toW(ouStr.getStr()));
     *startOffset = segment.SegmentStart;
     *endOffset = segment.SegmentEnd;
 
@@ -766,7 +767,7 @@ STDMETHODIMP CAccTextBase::get_textAtOffset(long offset, IA2TextBoundaryType bou
    * @param success Variant to accept the memthod called result.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::removeSelection(long selectionIndex)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::removeSelection(long selectionIndex)
 {
     SolarMutexGuard g;
 
@@ -802,7 +803,7 @@ STDMETHODIMP CAccTextBase::removeSelection(long selectionIndex)
    * @param success Variant to accept the memthod called result.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::setCaretOffset(long offset)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::setCaretOffset(long offset)
 {
     SolarMutexGuard g;
 
@@ -827,7 +828,7 @@ STDMETHODIMP CAccTextBase::setCaretOffset(long offset)
    * @param success Variant to accept the memthod called result.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::setSelection(long, long startOffset, long endOffset)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::setSelection(long, long startOffset, long endOffset)
 {
     SolarMutexGuard g;
 
@@ -851,7 +852,7 @@ STDMETHODIMP CAccTextBase::setSelection(long, long startOffset, long endOffset)
    * @param nCharacters Variant to accept the characters count.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::get_nCharacters(long * nCharacters)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_nCharacters(long * nCharacters)
 {
     SolarMutexGuard g;
 
@@ -874,12 +875,12 @@ STDMETHODIMP CAccTextBase::get_nCharacters(long * nCharacters)
 }
 
 // added by qiuhd, 2006/07/03, for direver 07/11
-STDMETHODIMP CAccTextBase::get_newText( IA2TextSegment *)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_newText( IA2TextSegment *)
 {
     return E_NOTIMPL;
 }
 
-STDMETHODIMP CAccTextBase::get_oldText( IA2TextSegment *)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_oldText( IA2TextSegment *)
 {
     return E_NOTIMPL;
 }
@@ -890,14 +891,56 @@ STDMETHODIMP CAccTextBase::get_oldText( IA2TextSegment *)
    * @param endIndex   End index of sub string.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::scrollSubstringToPoint(long, long, IA2CoordinateType, long, long )
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::scrollSubstringToPoint(long, long, IA2CoordinateType, long, long )
 {
     return E_NOTIMPL;
 }
 
-STDMETHODIMP CAccTextBase::scrollSubstringTo(long, long, IA2ScrollType)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::scrollSubstringTo(long startIndex, long endIndex, IA2ScrollType type)
 {
+    SolarMutexGuard g;
+
+    ENTER_PROTECTED_BLOCK
+
+    // #CHECK XInterface#
+    if(!pRXText.is())
+        return E_FAIL;
+
+    AccessibleScrollType lUnoType;
+
+    switch(type)
+    {
+    case IA2_SCROLL_TYPE_TOP_LEFT:
+        lUnoType = AccessibleScrollType_SCROLL_TOP_LEFT;
+        break;
+    case IA2_SCROLL_TYPE_BOTTOM_RIGHT:
+        lUnoType = AccessibleScrollType_SCROLL_BOTTOM_RIGHT;
+        break;
+    case IA2_SCROLL_TYPE_TOP_EDGE:
+        lUnoType = AccessibleScrollType_SCROLL_TOP_EDGE;
+        break;
+    case IA2_SCROLL_TYPE_BOTTOM_EDGE:
+        lUnoType = AccessibleScrollType_SCROLL_BOTTOM_EDGE;
+        break;
+    case IA2_SCROLL_TYPE_LEFT_EDGE:
+        lUnoType = AccessibleScrollType_SCROLL_LEFT_EDGE;
+        break;
+    case IA2_SCROLL_TYPE_RIGHT_EDGE:
+        lUnoType = AccessibleScrollType_SCROLL_RIGHT_EDGE;
+        break;
+    case IA2_SCROLL_TYPE_ANYWHERE:
+        lUnoType = AccessibleScrollType_SCROLL_ANYWHERE;
+        break;
+    default:
+        return E_NOTIMPL;
+    }
+
+    if( GetXInterface()->scrollSubstringTo(startIndex, endIndex, lUnoType) )
+        return S_OK;
+
     return E_NOTIMPL;
+
+    LEAVE_PROTECTED_BLOCK
 }
 
 /**
@@ -905,7 +948,7 @@ STDMETHODIMP CAccTextBase::scrollSubstringTo(long, long, IA2ScrollType)
    * @param pXInterface UNO interface.
    * @return Result.
 */
-STDMETHODIMP CAccTextBase::put_XInterface(hyper pXInterface)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::put_XInterface(hyper pXInterface)
 {
     // internal IUNOXWrapper - no mutex meeded
 

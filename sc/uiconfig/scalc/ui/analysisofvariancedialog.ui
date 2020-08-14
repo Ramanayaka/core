@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.18.3 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
-  <requires lib="LibreOffice" version="1.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="sc">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkAdjustment" id="alpha-adjustment">
     <property name="lower">0.01</property>
     <property name="upper">0.98999999999999999</property>
@@ -13,9 +12,14 @@
   <object class="GtkDialog" id="AnalysisOfVarianceDialog">
     <property name="can_focus">False</property>
     <property name="border_width">6</property>
-    <property name="title" translatable="yes">Analysis of Variance (ANOVA)</property>
+    <property name="title" translatable="yes" context="analysisofvariancedialog|AnalysisOfVarianceDialog">Analysis of Variance (ANOVA)</property>
     <property name="resizable">False</property>
+    <property name="default_width">0</property>
+    <property name="default_height">0</property>
     <property name="type_hint">dialog</property>
+    <child>
+      <placeholder/>
+    </child>
     <child internal-child="vbox">
       <object class="GtkBox" id="dialog-vbox1">
         <property name="can_focus">False</property>
@@ -104,10 +108,10 @@
                       <object class="GtkLabel" id="input-range-label">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">0</property>
-                        <property name="label" translatable="yes">Input range:</property>
+                        <property name="label" translatable="yes" context="analysisofvariancedialog|input-range-label">Input range:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">input-range-edit</property>
+                        <property name="xalign">0</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -118,10 +122,10 @@
                       <object class="GtkLabel" id="output-range-label">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">0</property>
-                        <property name="label" translatable="yes">Results to:</property>
+                        <property name="label" translatable="yes" context="analysisofvariancedialog|output-range-label">Results to:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">output-range-edit</property>
+                        <property name="xalign">0</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -129,12 +133,12 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="foruilo-RefEdit" id="input-range-edit">
+                      <object class="GtkEntry" id="input-range-edit">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="valign">center</property>
                         <property name="hexpand">True</property>
-                        <property name="invisible_char">•</property>
+                        <property name="activates_default">True</property>
                         <property name="width_chars">30</property>
                       </object>
                       <packing>
@@ -143,12 +147,12 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="foruilo-RefEdit" id="output-range-edit">
+                      <object class="GtkEntry" id="output-range-edit">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="valign">center</property>
                         <property name="hexpand">True</property>
-                        <property name="invisible_char">•</property>
+                        <property name="activates_default">True</property>
                         <property name="width_chars">30</property>
                       </object>
                       <packing>
@@ -157,7 +161,7 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="foruilo-RefButton" id="input-range-button">
+                      <object class="GtkButton" id="input-range-button">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
@@ -168,7 +172,7 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="foruilo-RefButton" id="output-range-button">
+                      <object class="GtkButton" id="output-range-button">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
@@ -186,7 +190,7 @@
               <object class="GtkLabel" id="label4">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">Data</property>
+                <property name="label" translatable="yes" context="analysisofvariancedialog|label4">Data</property>
                 <attributes>
                   <attribute name="weight" value="bold"/>
                 </attributes>
@@ -221,14 +225,14 @@
                     <property name="column_spacing">12</property>
                     <child>
                       <object class="GtkRadioButton" id="radio-single-factor">
-                        <property name="label" translatable="yes">Single factor</property>
+                        <property name="label" translatable="yes" context="analysisofvariancedialog|radio-single-factor">Single factor</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
                         <property name="use_underline">True</property>
                         <property name="xalign">0</property>
+                        <property name="active">True</property>
                         <property name="draw_indicator">True</property>
-                        <property name="group">radio-two-factor</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -237,7 +241,7 @@
                     </child>
                     <child>
                       <object class="GtkRadioButton" id="radio-two-factor">
-                        <property name="label" translatable="yes">Two factor</property>
+                        <property name="label" translatable="yes" context="analysisofvariancedialog|radio-two-factor">Two factor</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -259,7 +263,7 @@
               <object class="GtkLabel" id="label3">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">Type</property>
+                <property name="label" translatable="yes" context="analysisofvariancedialog|label3">Type</property>
                 <attributes>
                   <attribute name="weight" value="bold"/>
                 </attributes>
@@ -294,7 +298,7 @@
                     <property name="column_spacing">12</property>
                     <child>
                       <object class="GtkRadioButton" id="groupedby-columns-radio">
-                        <property name="label" translatable="yes">Columns</property>
+                        <property name="label" translatable="yes" context="analysisofvariancedialog|groupedby-columns-radio">Columns</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -302,7 +306,6 @@
                         <property name="xalign">0</property>
                         <property name="active">True</property>
                         <property name="draw_indicator">True</property>
-                        <property name="group">groupedby-rows-radio</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -311,7 +314,7 @@
                     </child>
                     <child>
                       <object class="GtkRadioButton" id="groupedby-rows-radio">
-                        <property name="label" translatable="yes">Rows</property>
+                        <property name="label" translatable="yes" context="analysisofvariancedialog|groupedby-rows-radio">Rows</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -334,7 +337,7 @@
               <object class="GtkLabel" id="label2">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">Grouped by</property>
+                <property name="label" translatable="yes" context="analysisofvariancedialog|label2">Grouped by</property>
                 <attributes>
                   <attribute name="weight" value="bold"/>
                 </attributes>
@@ -371,10 +374,10 @@
                       <object class="GtkLabel" id="alpha-label">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">0</property>
-                        <property name="label" translatable="yes">Alpha:</property>
+                        <property name="label" translatable="yes" context="analysisofvariancedialog|alpha-label">Alpha:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">alpha-spin</property>
+                        <property name="xalign">0</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -385,8 +388,8 @@
                       <object class="GtkSpinButton" id="alpha-spin">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <property name="invisible_char">•</property>
-                        <property name="text" translatable="yes">0,05</property>
+                        <property name="activates_default">True</property>
+                        <property name="text" translatable="yes" context="analysisofvariancedialog|alpha-spin">0,05</property>
                         <property name="adjustment">alpha-adjustment</property>
                         <property name="digits">2</property>
                         <property name="value">0.050000000000000003</property>
@@ -400,10 +403,10 @@
                       <object class="GtkLabel" id="rows-per-sample-label">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">0</property>
-                        <property name="label" translatable="yes">Rows per sample:</property>
+                        <property name="label" translatable="yes" context="analysisofvariancedialog|rows-per-sample-label">Rows per sample:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">rows-per-sample-spin</property>
+                        <property name="xalign">0</property>
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
@@ -414,7 +417,7 @@
                       <object class="GtkSpinButton" id="rows-per-sample-spin">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <property name="invisible_char">•</property>
+                        <property name="activates_default">True</property>
                         <property name="text">1</property>
                         <property name="value">1</property>
                       </object>
@@ -431,7 +434,7 @@
               <object class="GtkLabel" id="label1">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">Parameters</property>
+                <property name="label" translatable="yes" context="analysisofvariancedialog|label1">Parameters</property>
                 <attributes>
                   <attribute name="weight" value="bold"/>
                 </attributes>
@@ -447,7 +450,9 @@
       </object>
     </child>
     <action-widgets>
-      <action-widget response="0">ok</action-widget>
+      <action-widget response="-5">ok</action-widget>
+      <action-widget response="-6">cancel</action-widget>
+      <action-widget response="-11">help</action-widget>
     </action-widgets>
   </object>
   <object class="GtkSizeGroup" id="sizegroup1">

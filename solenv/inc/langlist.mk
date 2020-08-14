@@ -32,11 +32,13 @@ brx \
 bs \
 ca \
 ca-valencia \
+ckb \
 cs \
 cy \
 da \
 de \
 dgo \
+dsb \
 dz \
 el \
 en-GB \
@@ -49,6 +51,8 @@ eu \
 fa \
 fi \
 fr \
+fur \
+fy \
 ga \
 gd \
 gl \
@@ -64,6 +68,7 @@ is \
 it \
 ja \
 ka \
+kab \
 kk \
 km \
 kmr-Latn \
@@ -112,6 +117,7 @@ ss \
 st \
 sv \
 sw-TZ \
+szl \
 ta \
 te \
 tg \

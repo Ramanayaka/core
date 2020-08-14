@@ -10,11 +10,10 @@
 #ifndef INCLUDED_CANVAS_SOURCE_OPENGL_OGL_BITMAPCANVASHELPER_HXX
 #define INCLUDED_CANVAS_SOURCE_OPENGL_OGL_BITMAPCANVASHELPER_HXX
 
-#include <com/sun/star/rendering/XBitmapCanvas.hpp>
-#include <com/sun/star/rendering/XIntegerBitmap.hpp>
+#include <com/sun/star/geometry/IntegerPoint2D.hpp>
+#include <com/sun/star/geometry/IntegerRectangle2D.hpp>
+#include <com/sun/star/rendering/IntegerBitmapLayout.hpp>
 
-#include <basegfx/vector/b2isize.hxx>
-#include <basegfx/vector/b2dsize.hxx>
 #include "ogl_canvashelper.hxx"
 
 namespace oglcanvas
@@ -49,7 +48,7 @@ namespace oglcanvas
         // BitmapCanvasHelper functionality
         // ================================
 
-        const css::geometry::IntegerSize2D& getSize() { return maSize; }
+        const css::geometry::IntegerSize2D& getSize() const { return maSize; }
 
         css::uno::Reference< css::rendering::XBitmap >
             getScaledBitmap( const css::geometry::RealSize2D&  newSize,
@@ -63,7 +62,7 @@ namespace oglcanvas
             getPixel( css::rendering::IntegerBitmapLayout& bitmapLayout,
                       const css::geometry::IntegerPoint2D& pos );
 
-        css::rendering::IntegerBitmapLayout getMemoryLayout();
+        css::rendering::IntegerBitmapLayout getMemoryLayout() const;
 
     private:
         css::geometry::IntegerSize2D maSize;

@@ -17,23 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <vcl/commandevent.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/status.hxx>
-#include <svl/style.hxx>
 #include <svl/stritem.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/viewfrm.hxx>
 
-#include "tmplctrl.hxx"
-#include "ViewShellBase.hxx"
-#include "drawdoc.hxx"
-#include "sdattr.hrc"
-#include "app.hrc"
+#include <tmplctrl.hxx>
+#include <ViewShellBase.hxx>
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
+#include <sdattr.hrc>
+#include <app.hrc>
 #include <sdresid.hxx>
-#include "strings.hrc"
+#include <strings.hrc>
 
 SFX_IMPL_STATUSBAR_CONTROL( SdTemplateControl, SfxStringItem );
 
 // class SdTemplatePopup_Impl --------------------------------------------------
+
+namespace {
 
 class SdTemplatePopup_Impl : public PopupMenu
 {
@@ -47,6 +51,8 @@ private:
 
     virtual void    Select() override;
 };
+
+}
 
 SdTemplatePopup_Impl::SdTemplatePopup_Impl() :
     PopupMenu(),
@@ -78,55 +84,54 @@ void SdTemplateControl::StateChanged(
 {
     if( eState != SfxItemState::DEFAULT || pState->IsVoidItem() )
         GetStatusBar().SetItemText( GetId(), OUString() );
-    else if ( dynamic_cast< const SfxStringItem *>( pState ) !=  nullptr )
+    else if ( auto pStringItem = dynamic_cast< const SfxStringItem *>( pState ) )
     {
-        msTemplate = static_cast<const SfxStringItem*>(pState)->GetValue();
+        msTemplate = pStringItem->GetValue();
         GetStatusBar().SetItemText( GetId(), msTemplate );
     }
 }
 
 void SdTemplateControl::Paint( const UserDrawEvent&  )
 {
-    GetStatusBar().SetItemText( GetId(), msTemplate );
 }
 
 void SdTemplateControl::Command( const CommandEvent& rCEvt )
 {
-    if ( rCEvt.GetCommand() == CommandEventId::ContextMenu && !GetStatusBar().GetItemText( GetId() ).isEmpty() )
+    if ( rCEvt.GetCommand() != CommandEventId::ContextMenu || GetStatusBar().GetItemText( GetId() ).isEmpty() )
+        return;
+
+    SfxViewFrame* pViewFrame = SfxViewFrame::Current();
+
+    sd::ViewShellBase* pViewShellBase = sd::ViewShellBase::GetViewShellBase( pViewFrame );
+    if( !pViewShellBase )
+        return;
+
+    SdDrawDocument* pDoc = pViewShellBase->GetDocument();
+    if( !pDoc )
+        return;
+
+    ScopedVclPtrInstance<SdTemplatePopup_Impl> aPop;
     {
-        SfxViewFrame* pViewFrame = SfxViewFrame::Current();
+        const sal_uInt16 nMasterCount = pDoc->GetMasterSdPageCount(PageKind::Standard);
 
-        sd::ViewShellBase* pViewShellBase = sd::ViewShellBase::GetViewShellBase( pViewFrame );
-        if( !pViewShellBase )
-            return;
-
-        SdDrawDocument* pDoc = pViewShellBase->GetDocument();
-        if( !pDoc )
-            return;
-
-        ScopedVclPtrInstance<SdTemplatePopup_Impl> aPop;
+        sal_uInt16 nCount = 0;
+        for( sal_uInt16 nPage = 0; nPage < nMasterCount; ++nPage )
         {
-            const sal_uInt16 nMasterCount = pDoc->GetMasterSdPageCount(PageKind::Standard);
+            SdPage* pMaster = pDoc->GetMasterSdPage(nPage, PageKind::Standard);
+            if( pMaster )
+                aPop->InsertItem( ++nCount, pMaster->GetName() );
+        }
+        aPop->Execute( &GetStatusBar(), rCEvt.GetMousePosPixel());
 
-            sal_uInt16 nCount = 0;
-            for( sal_uInt16 nPage = 0; nPage < nMasterCount; ++nPage )
-            {
-                SdPage* pMaster = pDoc->GetMasterSdPage(nPage, PageKind::Standard);
-                if( pMaster )
-                    aPop->InsertItem( ++nCount, pMaster->GetName() );
-            }
-            aPop->Execute( &GetStatusBar(), rCEvt.GetMousePosPixel());
-
-            sal_uInt16 nCurrId = aPop->GetCurId()-1;
-            if( nCurrId < nMasterCount )
-            {
-                SdPage* pMaster = pDoc->GetMasterSdPage(nCurrId, PageKind::Standard);
-                SfxStringItem aStyle( ATTR_PRESLAYOUT_NAME, pMaster->GetName() );
-                pViewFrame->GetDispatcher()->ExecuteList(
-                    SID_PRESENTATION_LAYOUT, SfxCallMode::SLOT, { &aStyle });
-                pViewFrame->GetBindings().Invalidate(SID_PRESENTATION_LAYOUT);
-                pViewFrame->GetBindings().Invalidate(SID_STATUS_LAYOUT);
-            }
+        sal_uInt16 nCurrId = aPop->GetCurId()-1;
+        if( nCurrId < nMasterCount )
+        {
+            SdPage* pMaster = pDoc->GetMasterSdPage(nCurrId, PageKind::Standard);
+            SfxStringItem aStyle( ATTR_PRESLAYOUT_NAME, pMaster->GetName() );
+            pViewFrame->GetDispatcher()->ExecuteList(
+                SID_PRESENTATION_LAYOUT, SfxCallMode::SLOT, { &aStyle });
+            pViewFrame->GetBindings().Invalidate(SID_PRESENTATION_LAYOUT);
+            pViewFrame->GetBindings().Invalidate(SID_STATUS_LAYOUT);
         }
     }
 }

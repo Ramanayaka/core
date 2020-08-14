@@ -20,12 +20,10 @@
 #ifndef INCLUDED_DESKTOP_INC_APP_HXX
 #define INCLUDED_DESKTOP_INC_APP_HXX
 
-#include <boost/optional.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <optional>
 #include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/timer.hxx>
-#include <tools/resmgr.hxx>
 #include <unotools/bootstrap.hxx>
 #include <com/sun/star/frame/XDesktop2.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
@@ -34,9 +32,7 @@
 #include <memory>
 #include <thread>
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class XComponentContext;
-} } } }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace desktop
 {
@@ -47,7 +43,7 @@ namespace desktop
 class CommandLineArgs;
 class Lockfile;
 struct ConvertData;
-class Desktop : public Application
+class Desktop final : public Application
 {
     int doShutdown();
 
@@ -77,6 +73,7 @@ class Desktop : public Application
         virtual void            InitFinished() override;
         virtual void            DeInit() override;
         virtual bool            QueryExit() override;
+        virtual void            Shutdown() override;
         virtual void            Exception(ExceptionCategory nCategory) override;
         virtual void            OverrideSystemSettings( AllSettings& rSettings ) override;
         virtual void            AppEvent( const ApplicationEvent& rAppEvent ) override;
@@ -90,7 +87,6 @@ class Desktop : public Application
         DECL_STATIC_LINK( Desktop, EnableAcceptors_Impl, void*, void);
 
         static void             HandleAppEvent( const ApplicationEvent& rAppEvent );
-        static ResMgr*          GetDesktopResManager();
         static CommandLineArgs& GetCommandLineArgs();
 
         static void             HandleBootstrapErrors(
@@ -118,7 +114,7 @@ class Desktop : public Application
         // first-start (ever) related methods
         static bool             CheckExtensionDependencies();
 
-        void                    SynchronizeExtensionRepositories();
+        static void             SynchronizeExtensionRepositories(bool bCleanedExtensionCache, Desktop* pDesktop = nullptr);
         void                    SetSplashScreenText( const OUString& rText );
         void                    SetSplashScreenProgress( sal_Int32 );
 
@@ -131,16 +127,18 @@ class Desktop : public Application
                                     css::uno::Reference< css::uno::XComponentContext > const & context);
         static void             DeregisterServices();
 
+    public:
         static void             CreateTemporaryDirectory();
         static void             RemoveTemporaryDirectory();
 
+    private:
         static bool             InitializeConfiguration();
         static void             FlushConfiguration();
         static bool             InitializeQuickstartMode( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
 
         static void             HandleBootstrapPathErrors( ::utl::Bootstrap::Status, const OUString& aMsg );
 
-        // Create a error message depending on bootstrap failure code and an optional file url
+        // Create an error message depending on bootstrap failure code and an optional file url
         static OUString         CreateErrorMsgString( utl::Bootstrap::FailureCode nFailureCode,
                                                       const OUString& aFileURL );
 
@@ -155,11 +153,6 @@ class Desktop : public Application
             respective flag in the configuration is reset.</p>
         */
         void                    CheckFirstRun( );
-
-        /** for ui-testing provide a mechanism to pseudo-restart by closing the
-            open frames and reopen the frame that appeared post initial startup
-        */
-        static void             DoExecute();
 
         static void             ShowBackingComponent(Desktop * progress);
 
@@ -176,20 +169,14 @@ class Desktop : public Application
         std::unique_ptr<Lockfile> m_xLockfile;
         Timer                   m_firstRunTimer;
         std::thread             m_aUpdateThread;
-
-        static ResMgr*          pResMgr;
 };
 
 OUString GetURL_Impl(
-    const OUString& rName, boost::optional< OUString > const & cwdUrl );
+    const OUString& rName, std::optional< OUString > const & cwdUrl );
 
 OUString ReplaceStringHookProc(const OUString& rStr);
 
 }
-
-#if defined( UNX ) && !defined MACOSX && !defined IOS && !defined ANDROID && !defined LIBO_HEADLESS
-bool fire_glxtest_process();
-#endif
 
 #endif // INCLUDED_DESKTOP_INC_APP_HXX
 

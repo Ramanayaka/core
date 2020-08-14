@@ -223,7 +223,7 @@ sub replace_variables_in_scriptfile
 # Creating the "simple" package.
 # "zip" for Windows
 # "tar.gz" for all other platforms
-# additionally "dmg" on Mac OS X
+# additionally "dmg" on macOS
 #############################################
 
 sub create_package
@@ -294,7 +294,7 @@ sub create_package
             $localtempdir = "$tempdir/$packagename";
             my $srcfolder = $localtempdir . "/" . $volume_name_classic_app . "\.app";
 
-            $volume_name             .= " Language Pack";
+            $volume_name             .= " " . $$languagestringref . " Language Pack";
             $volume_name_classic     .= " Language Pack";
             $volume_name_classic_app .= " Language Pack";
 
@@ -342,7 +342,6 @@ sub create_package
             if ( $installer::globals::languagepack ) { $scriptfilename = "osx_install_languagepack.applescript"; }
             if ( $installer::globals::helppack ) { $scriptfilename = "osx_install_helppack.applescript"; }
             my $scripthelperfilename = $ENV{'SRCDIR'} . "/setup_native/scripts/mac_install.script";
-            # my $scripthelperrealfilename = $volume_name;
             my $scripthelperrealfilename = $volume_name_classic_app;
 
             # Finding both files in source tree
@@ -362,7 +361,7 @@ sub create_package
             my $scriptfilecontent = installer::files::read_file($scriptfilename);
             my $translationfilecontent = installer::files::read_file($installer::globals::macinstallfilename);
             localize_scriptfile($scriptfilecontent, $translationfilecontent, $languagestringref);
-            # replace_variables_in_scriptfile($scriptfilecontent, $volume_name, $allvariables);
+
             replace_variables_in_scriptfile($scriptfilecontent, $volume_name_classic, $volume_name_classic_app, $allvariables);
             installer::files::save_file($scriptfilename, $scriptfilecontent);
 
@@ -384,14 +383,14 @@ sub create_package
             $destfile = "$contentsfolder/Info.plist";
             # Replacing variables in Info.plist
             $scriptfilecontent = installer::files::read_file($infoplistfile);
-            # replace_one_variable_in_shellscript($scriptfilecontent, $volume_name, "FULLPRODUCTNAME" );
+
             replace_one_variable_in_shellscript($scriptfilecontent, $volume_name_classic_app, "FULLAPPPRODUCTNAME" ); # OpenOffice.org Language Pack
             replace_one_variable_in_shellscript($scriptfilecontent, $ENV{'MACOSX_BUNDLE_IDENTIFIER'}, "BUNDLEIDENTIFIER" );
             installer::files::save_file($destfile, $scriptfilecontent);
 
             chdir $localfrom;
 
-            if ( defined($ENV{'MACOSX_CODESIGNING_IDENTITY'}) && $ENV{'MACOSX_CODESIGNING_IDENTITY'} ne "" ) {
+            if ( $ENV{'MACOSX_CODESIGNING_IDENTITY'} ) {
                 my @lp_sign = ('codesign', '--verbose', '--sign', $ENV{'MACOSX_CODESIGNING_IDENTITY'}, '--deep', $appfolder);
                 if (system(@lp_sign) == 0) {
                     $infoline = "Success: \"@lp_sign\" executed successfully!\n";
@@ -405,12 +404,7 @@ sub create_package
         {
             my $subdir = "$tempdir/$packagename/$volume_name_classic_app.app/Contents/Resources";
             if ( ! -d $subdir ) { installer::systemactions::create_directory($subdir); }
-            # iterate over OS X localizations
-            foreach $lang ("ca", "cs", "da", "de", "el", "en", "es", "fi", "fr", "hr", "hu", "id", "it", "ja", "ko", "ms", "nl", "no", "pl", "pt", "pt_PT", "ro", "ru", "sk", "sv", "th", "tr", "uk", "vi", "zh_CN", "zh_TW")
-            {
-                installer::systemactions::create_directory($subdir . "/" . $lang . ".lproj");
-            }
-            if ( defined($ENV{'MACOSX_CODESIGNING_IDENTITY'}) && $ENV{'MACOSX_CODESIGNING_IDENTITY'} ne "" )
+            if ( $ENV{'MACOSX_CODESIGNING_IDENTITY'} )
             {
                 $systemcall = "$ENV{'SRCDIR'}/solenv/bin/macosx-codesign-app-bundle $localtempdir/$folder/$volume_name_classic_app.app";
                 print "... $systemcall ...\n";
@@ -430,24 +424,52 @@ sub create_package
                 }
             }
         }
+        elsif ($volume_name_classic_app eq 'LibreOffice SDK' || $volume_name_classic_app eq 'LibreOfficeDev SDK')
+        {
+            if ( $ENV{'MACOSX_CODESIGNING_IDENTITY'} )
+            {
+                my $sdkbindir = "$localtempdir/$folder/$allvariables->{'PRODUCTNAME'}$allvariables->{'PRODUCTVERSION'}_SDK/bin";
+                opendir(my $dh, $sdkbindir);
+                foreach my $sdkbinary (readdir $dh) {
+                    next unless -f "$sdkbindir/$sdkbinary";
+                    $systemcall = "codesign --force --verbose --options=runtime --identifier='$ENV{MACOSX_BUNDLE_IDENTIFIER}.$sdkbinary' --sign '$ENV{MACOSX_CODESIGNING_IDENTITY}' --entitlements $ENV{BUILDDIR}/hardened_runtime.xcent $sdkbindir/$sdkbinary > /tmp/codesign_losdk_$sdkbinary.log 2>&1";
+                    print "... $systemcall ...\n";
+                    my $returnvalue = system($systemcall);
+                    $infoline = "Systemcall: $systemcall\n";
+                    push( @installer::globals::logfileinfo, $infoline);
 
-        $systemcall = "cd $localtempdir && hdiutil create -megabytes 1500 -srcfolder $folder $archive -ov -fs HFS+ -volname \"$volume_name\" -format UDBZ";
+                    if ($returnvalue)
+                    {
+                        $infoline = "ERROR: Could not execute \"$systemcall\"!\n";
+                        push( @installer::globals::logfileinfo, $infoline);
+                    }
+                    else
+                    {
+                        $infoline = "Success: Executed \"$systemcall\" successfully!\n";
+                        push( @installer::globals::logfileinfo, $infoline);
+                        unlink "/tmp/codesign_losdk_$sdkbinary.log";
+                    }
+                }
+                closedir($dh);
+            }
+        }
+        my $megabytes = 1500;
+        $megabytes = 2000 if $ENV{'ENABLE_DEBUG'};
+        $systemcall = "cd $localtempdir && hdiutil create -megabytes $megabytes -srcfolder $folder $archive -ov -fs HFS+ -volname \"$volume_name\" -format UDBZ";
         if (( $ref ne "" ) && ( $$ref ne "" )) {
             $systemcall .= " && hdiutil unflatten $archive && Rez -a $$ref -o $archive && hdiutil flatten $archive &&";
         }
     }
     else
     {
-        # getting the path of the getuid.so (only required for Solaris and Linux)
-        my $getuidlibrary = "";
-        my $ldpreloadstring = "";
+        # use fakeroot (only required for Solaris and Linux)
+        my $fakerootstring = "";
         if (( $installer::globals::issolarisbuild ) || ( $installer::globals::islinuxbuild ))
         {
-            $getuidlibrary = installer::download::get_path_for_library($includepatharrayref);
-            if ( $getuidlibrary ne "" ) { $ldpreloadstring = "LD_PRELOAD=" . $getuidlibrary; }
+            $fakerootstring = "fakeroot";
         }
 
-        $systemcall = "cd $tempdir; $ldpreloadstring tar -cf - . | gzip > $archive";
+        $systemcall = "cd $tempdir; $fakerootstring tar -cf - . | gzip > $archive";
     }
 
     if ( $makesystemcall )
@@ -459,7 +481,7 @@ sub create_package
 
         if ($returnvalue)
         {
-            $infoline = "ERROR: Could not execute \"$systemcall\"!\n";
+            $infoline = "ERROR: Could not execute \"$systemcall\": $returnvalue\n";
             push( @installer::globals::logfileinfo, $infoline);
         }
         else
@@ -654,10 +676,10 @@ sub create_simple_package
         my $target = $onelink->{'Target'};
         my $destination = $subfolderdir . $installer::globals::separator . $onelink->{'destination'};
 
-        my $localcall = "ln -sf \'$target\' \'$destination\' \>\/dev\/null 2\>\&1";
-        system($localcall);
+        my @localcall = ('ln', '-sf', $target, $destination);
+        system(@localcall) == 0 or die "system @localcall failed: $?";
 
-        $infoline = "Creating Unix link: \"ln -sf $target $destination\"\n";
+        $infoline = "Creating Unix link: \"@localcall\"\n";
         push(@installer::globals::logfileinfo, $infoline);
     }
 
@@ -700,3 +722,5 @@ sub create_simple_package
 }
 
 1;
+
+# vim: set shiftwidth=4 softtabstop=4 expandtab:

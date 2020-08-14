@@ -22,8 +22,6 @@
 #include <svl/eitem.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxShadowedItem -------------------------------------------------
 
 /*  [Description]
@@ -31,7 +29,7 @@ class SvXMLUnitConverter;
     This item describes, whether and how it is shaded.
 */
 
-class EDITENG_DLLPUBLIC SvxShadowedItem : public SfxBoolItem
+class EDITENG_DLLPUBLIC SvxShadowedItem final : public SfxBoolItem
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -40,20 +38,14 @@ public:
                      const sal_uInt16 nId  );
 
     // "pure virtual Methods" from SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
+    virtual SvxShadowedItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    SvxShadowedItem& operator=(const SvxShadowedItem& rShadow) {
-            SetValue(rShadow.GetValue());
-            return *this;
-        }
-
+    SvxShadowedItem(SvxShadowedItem const &) = default; // SfxPoolItem copy function dichotomy
 };
 
 #endif

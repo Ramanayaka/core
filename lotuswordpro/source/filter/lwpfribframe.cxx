@@ -59,9 +59,9 @@
  */
 
 #include "lwpfribframe.hxx"
-#include "xfilter/xfstylemanager.hxx"
-#include "lwpglobalmgr.hxx"
-#include "xfilter/xfchange.hxx"
+#include <xfilter/xfstylemanager.hxx>
+#include <lwpglobalmgr.hxx>
+#include <xfilter/xfchange.hxx>
 /**
  * @short:   Read frame frib
  */
@@ -74,7 +74,7 @@ void LwpFribFrame::Read(LwpObjectStream* pObjStrm, sal_uInt16 /*len*/)
 *  @descr:  Get the layout object which the frib points to
 *
 */
-rtl::Reference<LwpObject> LwpFribFrame::GetLayout()
+rtl::Reference<LwpObject> LwpFribFrame::GetLayout() const
 {
     return m_objLayout.obj();
 }
@@ -114,10 +114,10 @@ void LwpFribFrame::RegisterStyle(LwpFoundry* pFoundry)
                 m_StyleName = pOldStyle->GetStyleName();
             else
             {
-                XFParaStyle* pParaStyle = new XFParaStyle;
-                *pParaStyle = *(pOldStyle);
+                std::unique_ptr<XFParaStyle> pParaStyle(new XFParaStyle);
+                *pParaStyle = *pOldStyle;
                 XFStyleManager* pXFStyleManager = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
-                m_StyleName = pXFStyleManager->AddStyle(pParaStyle).m_pStyle->GetStyleName();
+                m_StyleName = pXFStyleManager->AddStyle(std::move(pParaStyle)).m_pStyle->GetStyleName();
             }
         }
         //remember the current paragraph font size which will be used in parsing frame

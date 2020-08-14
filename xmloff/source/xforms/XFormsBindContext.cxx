@@ -26,13 +26,14 @@
 #include <xmloff/xmlerror.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmltkmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/xforms/XModel2.hpp>
 
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::makeAny;
@@ -43,7 +44,7 @@ using com::sun::star::xforms::XModel2;
 using namespace xmloff::token;
 
 
-static const struct SvXMLTokenMapEntry aAttributeMap[] =
+const struct SvXMLTokenMapEntry aAttributeMap[] =
 {
     TOKEN_MAP_ENTRY( NONE, NODESET ),
     TOKEN_MAP_ENTRY( NONE, ID ),
@@ -58,7 +59,7 @@ static const struct SvXMLTokenMapEntry aAttributeMap[] =
 
 // helper function; see below
 static void lcl_fillNamespaceContainer( const SvXMLNamespaceMap&,
-                                 Reference<XNameContainer>& );
+                                 Reference<XNameContainer> const & );
 
 XFormsBindContext::XFormsBindContext(
     SvXMLImport& rImport,
@@ -66,8 +67,7 @@ XFormsBindContext::XFormsBindContext(
     const OUString& rLocalName,
     const Reference<XModel2>& xModel ) :
         TokenContext( rImport, nPrefix, rLocalName, aAttributeMap, aEmptyMap ),
-        mxModel( xModel ),
-        mxBinding( nullptr )
+        mxModel( xModel )
 {
     // attach binding to model
     mxBinding = mxModel->createBinding();
@@ -143,7 +143,7 @@ SvXMLImportContext* XFormsBindContext::HandleChild(
 
 static void lcl_fillNamespaceContainer(
     const SvXMLNamespaceMap& aMap,
-    Reference<XNameContainer>& xContainer )
+    Reference<XNameContainer> const & xContainer )
 {
     sal_uInt16 nKeyIter = aMap.GetFirstKey();
     do
@@ -155,7 +155,7 @@ static void lcl_fillNamespaceContainer(
         // as a hack, we will ignore our own 'default' namespaces
         SAL_WARN_IF( sPrefix.isEmpty(), "xmloff", "no prefix?" );
         if( !sPrefix.startsWith("_") &&
-            nKeyIter >= XML_OLD_NAMESPACE_META)
+            nKeyIter >= XML_NAMESPACE_META_SO52)
         {
             // insert prefix (use replace if already known)
             if( xContainer->hasByName( sPrefix ) )

@@ -17,19 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/sdr/contact/objectcontactofobjlistpainter.hxx>
+#include <sdr/contact/objectcontactofobjlistpainter.hxx>
 #include <svx/sdr/contact/displayinfo.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/sdr/contact/viewcontact.hxx>
-#include <svx/svdmodel.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processor2dtools.hxx>
 #include <svx/unoapi.hxx>
+#include <tools/debug.hxx>
+#include <vcl/gdimtf.hxx>
 #include <memory>
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 ObjectContactPainter::ObjectContactPainter()
 {
@@ -72,66 +74,60 @@ void ObjectContactOfObjListPainter::ProcessDisplay(DisplayInfo& rDisplayInfo)
 {
     const sal_uInt32 nCount(GetPaintObjectCount());
 
-    if(nCount)
+    if(!nCount)
+        return;
+
+    OutputDevice* pTargetDevice = TryToGetOutputDevice();
+
+    if(!pTargetDevice)
+        return;
+
+    // update current ViewInformation2D at the ObjectContact
+    const GDIMetaFile* pMetaFile = pTargetDevice->GetConnectMetaFile();
+    const bool bOutputToRecordingMetaFile(pMetaFile && pMetaFile->IsRecord() && !pMetaFile->IsPause());
+    basegfx::B2DRange aViewRange;
+
+    // create ViewRange
+    if(!bOutputToRecordingMetaFile)
     {
-        OutputDevice* pTargetDevice = TryToGetOutputDevice();
+        // use visible pixels, but transform to world coordinates
+        const Size aOutputSizePixel(pTargetDevice->GetOutputSizePixel());
+        aViewRange = ::basegfx::B2DRange(0.0, 0.0, aOutputSizePixel.getWidth(), aOutputSizePixel.getHeight());
+        aViewRange.transform(pTargetDevice->GetInverseViewTransformation());
+    }
 
-        if(pTargetDevice)
+    // update local ViewInformation2D
+    const drawinglayer::geometry::ViewInformation2D aNewViewInformation2D(
+        basegfx::B2DHomMatrix(),
+        pTargetDevice->GetViewTransformation(),
+        aViewRange,
+        GetXDrawPageForSdrPage(const_cast< SdrPage* >(mpProcessedPage)),
+        0.0,
+        css::uno::Sequence<css::beans::PropertyValue>());
+    updateViewInformation2D(aNewViewInformation2D);
+
+    // collect primitive data in a sequence; this will already use the updated ViewInformation2D
+    drawinglayer::primitive2d::Primitive2DContainer xPrimitiveSequence;
+
+    for(sal_uInt32 a(0); a < nCount; a++)
+    {
+        const ViewObjectContact& rViewObjectContact = GetPaintObjectViewContact(a).GetViewObjectContact(*this);
+
+        xPrimitiveSequence.append(rViewObjectContact.getPrimitive2DSequenceHierarchy(rDisplayInfo));
+    }
+
+    // if there is something to show, use a vclProcessor to render it
+    if(!xPrimitiveSequence.empty())
+    {
+        std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor2D(drawinglayer::processor2d::createProcessor2DFromOutputDevice(
+            *pTargetDevice,
+            getViewInformation2D()));
+
+        if(pProcessor2D)
         {
-            // update current ViewInformation2D at the ObjectContact
-            const GDIMetaFile* pMetaFile = pTargetDevice->GetConnectMetaFile();
-            const bool bOutputToRecordingMetaFile(pMetaFile && pMetaFile->IsRecord() && !pMetaFile->IsPause());
-            basegfx::B2DRange aViewRange;
-
-            // create ViewRange
-            if(!bOutputToRecordingMetaFile)
-            {
-                // use visible pixels, but transform to world coordinates
-                const Size aOutputSizePixel(pTargetDevice->GetOutputSizePixel());
-                aViewRange = ::basegfx::B2DRange(0.0, 0.0, aOutputSizePixel.getWidth(), aOutputSizePixel.getHeight());
-                aViewRange.transform(pTargetDevice->GetInverseViewTransformation());
-            }
-
-            // update local ViewInformation2D
-            const drawinglayer::geometry::ViewInformation2D aNewViewInformation2D(
-                basegfx::B2DHomMatrix(),
-                pTargetDevice->GetViewTransformation(),
-                aViewRange,
-                GetXDrawPageForSdrPage(const_cast< SdrPage* >(mpProcessedPage)),
-                0.0,
-                css::uno::Sequence<css::beans::PropertyValue>());
-            updateViewInformation2D(aNewViewInformation2D);
-
-            // collect primitive data in a sequence; this will already use the updated ViewInformation2D
-            drawinglayer::primitive2d::Primitive2DContainer xPrimitiveSequence;
-
-            for(sal_uInt32 a(0L); a < nCount; a++)
-            {
-                const ViewObjectContact& rViewObjectContact = GetPaintObjectViewContact(a).GetViewObjectContact(*this);
-
-                xPrimitiveSequence.append(rViewObjectContact.getPrimitive2DSequenceHierarchy(rDisplayInfo));
-            }
-
-            // if there is something to show, use a vclProcessor to render it
-            if(!xPrimitiveSequence.empty())
-            {
-                std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor2D(drawinglayer::processor2d::createProcessor2DFromOutputDevice(
-                    *pTargetDevice,
-                    getViewInformation2D()));
-
-                if(pProcessor2D)
-                {
-                    pProcessor2D->process(xPrimitiveSequence);
-                }
-            }
+            pProcessor2D->process(xPrimitiveSequence);
         }
     }
-}
-
-// VirtualDevice?
-bool ObjectContactOfObjListPainter::isOutputToVirtualDevice() const
-{
-    return (OUTDEV_VIRDEV == mrTargetOutputDevice.GetOutDevType());
 }
 
 // recording MetaFile?
@@ -144,7 +140,7 @@ bool ObjectContactOfObjListPainter::isOutputToRecordingMetaFile() const
 // pdf export?
 bool ObjectContactOfObjListPainter::isOutputToPDFFile() const
 {
-    return (nullptr != mrTargetOutputDevice.GetPDFWriter());
+    return OUTDEV_PDF == mrTargetOutputDevice.GetOutDevType();
 }
 
 OutputDevice* ObjectContactOfObjListPainter::TryToGetOutputDevice() const
@@ -154,7 +150,7 @@ OutputDevice* ObjectContactOfObjListPainter::TryToGetOutputDevice() const
 
 sal_uInt32 ObjectContactOfPagePainter::GetPaintObjectCount() const
 {
-    return (GetStartPage() ? 1L : 0L);
+    return (GetStartPage() ? 1 : 0);
 }
 
 ViewContact& ObjectContactOfPagePainter::GetPaintObjectViewContact(sal_uInt32 /*nIndex*/)
@@ -179,7 +175,7 @@ void ObjectContactOfPagePainter::SetStartPage(const SdrPage* pPage)
 {
     if(pPage != GetStartPage())
     {
-        mxStartPage.reset(const_cast< SdrPage* >(pPage)); // no SdrPageWeakRef available to hold a const SdrPage*
+        mxStartPage.reset(const_cast< SdrPage* >(pPage)); // no tools::WeakReference<SdrPage> available to hold a const SdrPage*
     }
 }
 
@@ -188,6 +184,6 @@ OutputDevice* ObjectContactOfPagePainter::TryToGetOutputDevice() const
     return mrOriginalObjectContact.TryToGetOutputDevice();
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

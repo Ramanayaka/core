@@ -13,16 +13,13 @@
 #include <functional>
 #include <epoxy/gl.h>
 
-#include <basegfx/polygon/b2dpolygontriangulator.hxx>
+#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
-#include <com/sun/star/rendering/PathCapType.hpp>
-#include <com/sun/star/rendering/PathJoinType.hpp>
-#include <com/sun/star/rendering/RepaintResult.hpp>
-#include <com/sun/star/rendering/TexturingMode.hpp>
 #include <rtl/crc.h>
+#include <rtl/math.hxx>
 #include <tools/diagnose_ex.h>
 #include <vcl/font.hxx>
 #include <vcl/metric.hxx>
@@ -31,7 +28,6 @@
 #include "ogl_canvasbitmap.hxx"
 #include "ogl_canvasfont.hxx"
 #include "ogl_canvastools.hxx"
-#include "ogl_spritecanvas.hxx"
 #include "ogl_texturecache.hxx"
 #include "ogl_tools.hxx"
 
@@ -92,23 +88,6 @@ namespace oglcanvas
 
     namespace
     {
-        bool lcl_drawPoint( const CanvasHelper&              /*rHelper*/,
-                            const ::basegfx::B2DHomMatrix&   rTransform,
-                            GLenum                           eSrcBlend,
-                            GLenum                           eDstBlend,
-                            const rendering::ARGBColor&      rColor,
-                            const geometry::RealPoint2D&     rPoint )
-        {
-            TransformationPreserver aPreserver;
-            setupState(rTransform, eSrcBlend, eDstBlend, rColor);
-
-            glBegin(GL_POINTS);
-            glVertex2d(rPoint.X, rPoint.Y);
-            glEnd();
-
-            return true;
-        }
-
         bool lcl_drawLine( const CanvasHelper&              /*rHelper*/,
                            const ::basegfx::B2DHomMatrix&   rTransform,
                            GLenum                           eSrcBlend,
@@ -182,7 +161,7 @@ namespace oglcanvas
                                                             rTexture.AffineTransform );
             ::basegfx::B2DRange aBounds;
             for( const auto& rPoly : rPolyPolygons )
-                aBounds.expand( ::basegfx::tools::getRange( rPoly ) );
+                aBounds.expand( ::basegfx::utils::getRange( rPoly ) );
             aTextureTransform.translate(-aBounds.getMinX(), -aBounds.getMinY());
             aTextureTransform.scale(1/aBounds.getWidth(), 1/aBounds.getHeight());
 
@@ -326,7 +305,7 @@ namespace oglcanvas
                                                             rTexture.AffineTransform );
             ::basegfx::B2DRange aBounds;
             for( const auto& rPolyPolygon : rPolyPolygons )
-                aBounds.expand( ::basegfx::tools::getRange( rPolyPolygon ) );
+                aBounds.expand( ::basegfx::utils::getRange( rPolyPolygon ) );
             aTextureTransform.translate(-aBounds.getMinX(), -aBounds.getMinY());
             aTextureTransform.scale(1/aBounds.getWidth(), 1/aBounds.getHeight());
             aTextureTransform.invert();
@@ -398,23 +377,6 @@ namespace oglcanvas
         mpRecordedActions->clear();
     }
 
-    void CanvasHelper::drawPoint( const rendering::XCanvas*     /*pCanvas*/,
-                                  const geometry::RealPoint2D&  aPoint,
-                                  const rendering::ViewState&   viewState,
-                                  const rendering::RenderState& renderState )
-    {
-        if( mpDevice )
-        {
-            mpRecordedActions->push_back( Action() );
-            Action& rAct=mpRecordedActions->back();
-
-            setupGraphicsState( rAct, viewState, renderState );
-            rAct.maFunction = std::bind(&lcl_drawPoint,
-                                            _1,_2,_3,_4,_5,
-                                            aPoint);
-        }
-    }
-
     void CanvasHelper::drawLine( const rendering::XCanvas*      /*pCanvas*/,
                                  const geometry::RealPoint2D&   aStartPoint,
                                  const geometry::RealPoint2D&   aEndPoint,
@@ -428,7 +390,7 @@ namespace oglcanvas
 
             setupGraphicsState( rAct, viewState, renderState );
             rAct.maFunction = std::bind(&lcl_drawLine,
-                                          _1, _2, _3, _4, _5,
+                                          std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5,
                                           aStartPoint, aEndPoint);
         }
     }
@@ -439,21 +401,21 @@ namespace oglcanvas
                                    const rendering::ViewState&          viewState,
                                    const rendering::RenderState&        renderState )
     {
-        if( mpDevice )
-        {
-            mpRecordedActions->push_back( Action() );
-            Action& rAct=mpRecordedActions->back();
+        if( !mpDevice )
+            return;
 
-            setupGraphicsState( rAct, viewState, renderState );
+        mpRecordedActions->push_back( Action() );
+        Action& rAct=mpRecordedActions->back();
 
-            // TODO(F2): subdivide&render whole curve
-            rAct.maFunction = std::bind(&lcl_drawLine,
-                                            _1,_2,_3,_4,_5,
-                                            geometry::RealPoint2D(
-                                                aBezierSegment.Px,
-                                                aBezierSegment.Py),
-                                            aEndPoint);
-        }
+        setupGraphicsState( rAct, viewState, renderState );
+
+        // TODO(F2): subdivide&render whole curve
+        rAct.maFunction = std::bind(&lcl_drawLine,
+                                        std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5,
+                                        geometry::RealPoint2D(
+                                            aBezierSegment.Px,
+                                            aBezierSegment.Py),
+                                        aEndPoint);
     }
 
     uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawPolyPolygon( const rendering::XCanvas*                          /*pCanvas*/,
@@ -601,10 +563,10 @@ namespace oglcanvas
                         pGradient->getValues() );
 
                     rAct.maFunction = std::bind(&lcl_fillGradientPolyPolygon,
-                                                    _1,_2,_3,_4,
+                                                    std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4,
                                                     rValues,
                                                     textures[0],
-                                                    _6);
+                                                    std::placeholders::_6);
                 }
                 else
                 {
@@ -644,14 +606,14 @@ namespace oglcanvas
                                 canvas::tools::getStdColorSpace()));
 
                         rAct.maFunction = std::bind(&lcl_fillTexturedPolyPolygon,
-                                                        _1,_2,_3,_4,
+                                                        std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4,
                                                         textures[0],
                                                         aSize,
                                                         aARGBBytes,
                                                         rtl_crc32(0,
                                                                   aARGBBytes.getConstArray(),
                                                                   aARGBBytes.getLength()),
-                                                        _6);
+                                                        std::placeholders::_6);
                     }
                     // TODO(F1): handle non-integer case
                 }
@@ -735,12 +697,15 @@ namespace oglcanvas
                 aFont.SetWeight( static_cast<FontWeight>(rFontRequest.FontDescription.FontDescription.Weight) );
                 aFont.SetItalic( (rFontRequest.FontDescription.FontDescription.Letterform<=8) ? ITALIC_NONE : ITALIC_NORMAL );
 
+                if (pFont->getEmphasisMark())
+                    aFont.SetEmphasisMark(FontEmphasisMark(pFont->getEmphasisMark()));
+
                 // adjust to stretched font
                 if(!::rtl::math::approxEqual(rFontMatrix.m00, rFontMatrix.m11))
                 {
                     const Size aSize = pVDev->GetFontMetric( aFont ).GetFontSize();
                     const double fDividend( rFontMatrix.m10 + rFontMatrix.m11 );
-                    double fStretch = (rFontMatrix.m00 + rFontMatrix.m01);
+                    double fStretch = rFontMatrix.m00 + rFontMatrix.m01;
 
                     if( !::basegfx::fTools::equalZero( fDividend) )
                         fStretch /= fDividend;
@@ -760,7 +725,7 @@ namespace oglcanvas
 
                 // handle custom spacing, if there
                 uno::Sequence<double> aLogicalAdvancements=xLayoutetText->queryLogicalAdvancements();
-                if( aLogicalAdvancements.getLength() )
+                if( aLogicalAdvancements.hasElements() )
                 {
                     // create the DXArray
                     const sal_Int32 nLen( aLogicalAdvancements.getLength() );
@@ -821,7 +786,7 @@ namespace oglcanvas
 
                 setupGraphicsState( rAct, viewState, renderState );
                 rAct.maFunction = std::bind(&lcl_drawOwnBitmap,
-                                                _1,_2,_3,_4,_5,
+                                                std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5,
                                                 *pOwnBitmap);
             }
             else
@@ -850,7 +815,7 @@ namespace oglcanvas
 
                     setupGraphicsState( rAct, viewState, renderState );
                     rAct.maFunction = std::bind(&lcl_drawGenericBitmap,
-                                                    _1,_2,_3,_4,_5,
+                                                    std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5,
                                                     aSize, aARGBBytes,
                                                     rtl_crc32(0,
                                                               aARGBBytes.getConstArray(),
@@ -906,7 +871,6 @@ namespace oglcanvas
                 o_action.meDstBlendMode=GL_ZERO;
                 break;
             case rendering::CompositeOperation::UNDER:
-                // FALLTHROUGH intended - but correct?!
             case rendering::CompositeOperation::DESTINATION:
                 o_action.meSrcBlendMode=GL_ZERO;
                 o_action.meDstBlendMode=GL_ONE;
@@ -953,7 +917,7 @@ namespace oglcanvas
                 break;
         }
 
-        if (renderState.DeviceColor.getLength())
+        if (renderState.DeviceColor.hasElements())
             o_action.maARGBColor =
                 mpDevice->getDeviceColorSpace()->convertToARGB(renderState.DeviceColor)[0];
     }

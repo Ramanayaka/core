@@ -17,20 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "VertSplitView.hxx"
+#include <VertSplitView.hxx>
 
 #include <vcl/split.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/event.hxx>
+#include <osl/diagnose.h>
 
 #define SPLITTER_WIDTH  80
 
 using namespace ::dbaui;
 
-// class OSplitterView
 OSplitterView::OSplitterView(vcl::Window* _pParent) : Window(_pParent,WB_DIALOGCONTROL) // ,WB_BORDER
     ,m_pSplitter( nullptr )
     ,m_pLeft(nullptr)
     ,m_pRight(nullptr)
+    ,m_pResizeId(nullptr)
 {
     ImplInitSettings();
 }
@@ -42,6 +44,11 @@ OSplitterView::~OSplitterView()
 
 void OSplitterView::dispose()
 {
+    if (m_pResizeId)
+    {
+        RemoveUserEvent(m_pResizeId);
+        m_pResizeId = nullptr;
+    }
     m_pSplitter.clear();
     m_pLeft.clear();
     m_pRight.clear();
@@ -101,9 +108,10 @@ void OSplitterView::GetFocus()
         m_pRight->GrabFocus();
 }
 
-void OSplitterView::Resize()
+IMPL_LINK_NOARG(OSplitterView, ResizeHdl, void*, void)
 {
-    Window::Resize();
+    m_pResizeId = nullptr;
+
     OSL_ENSURE( m_pRight, "No init called!");
 
     Point   aSplitPos;
@@ -115,14 +123,14 @@ void OSplitterView::Resize()
     {
         aSplitPos   = m_pSplitter->GetPosPixel();
         aSplitSize  = m_pSplitter->GetOutputSizePixel();
-        aSplitPos.X() = aPlaygroundPos.X();
-        aSplitSize.Width() = aPlaygroundSize.Width();
+        aSplitPos.setX( aPlaygroundPos.X() );
+        aSplitSize.setWidth( aPlaygroundSize.Width() );
 
         if( ( aSplitPos.Y() + aSplitSize.Height() ) > ( aPlaygroundSize.Height() ))
-            aSplitPos.Y() = aPlaygroundSize.Height() - aSplitSize.Height();
+            aSplitPos.setY( aPlaygroundSize.Height() - aSplitSize.Height() );
 
         if( aSplitPos.Y() <= aPlaygroundPos.Y() )
-            aSplitPos.Y() = aPlaygroundPos.Y() + sal_Int32(aPlaygroundSize.Height() * 0.3);
+            aSplitPos.setY( aPlaygroundPos.Y() + sal_Int32(aPlaygroundSize.Height() * 0.3) );
 
         // the tree pos and size
         Point   aTreeViewPos( aPlaygroundPos );
@@ -141,7 +149,14 @@ void OSplitterView::Resize()
         m_pRight->setPosSizePixel( aSplitPos.X(), aPlaygroundPos.Y() + aSplitPos.Y() + aSplitSize.Height(),
                                aPlaygroundSize.Width() , aPlaygroundSize.Height() - aSplitSize.Height() - aSplitPos.Y());
     }
+}
 
+void OSplitterView::Resize()
+{
+    Window::Resize();
+    if (m_pResizeId)
+        RemoveUserEvent(m_pResizeId);
+    m_pResizeId = PostUserEvent(LINK(this, OSplitterView, ResizeHdl), this, true);
 }
 
 void OSplitterView::set(vcl::Window* _pRight,Window* _pLeft)
@@ -155,7 +170,7 @@ void OSplitterView::setSplitter(Splitter* _pSplitter)
     m_pSplitter = _pSplitter;
     if ( m_pSplitter )
     {
-        m_pSplitter->SetSplitPosPixel( LogicToPixel( Size( SPLITTER_WIDTH, 0 ), MapUnit::MapAppFont ).Width() );
+        m_pSplitter->SetSplitPosPixel(LogicToPixel(Size(SPLITTER_WIDTH, 0), MapMode(MapUnit::MapAppFont)).Width());
         m_pSplitter->SetSplitHdl( LINK(this, OSplitterView, SplitHdl) );
         m_pSplitter->Show();
         LINK( this, OSplitterView, SplitHdl ).Call(m_pSplitter);

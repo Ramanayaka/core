@@ -19,7 +19,7 @@
 
 #include "errorbroadcaster.hxx"
 #include <connectivity/dbtools.hxx>
-#include <com/sun/star/sdb/SQLContext.hpp>
+#include <sal/log.hxx>
 
 
 namespace frm
@@ -43,7 +43,7 @@ namespace frm
     {
         SAL_WARN_IF( !m_rBHelper.bDisposed && !m_rBHelper.bInDispose, "forms.component",
             "OErrorBroadcaster::~OErrorBroadcaster: not disposed!" );
-        // herein, we don't have a chance to do the dispose ourself ....
+        // herein, we don't have a chance to do the dispose ourself...
 
         SAL_WARN_IF( m_aErrorListeners.getLength(), "forms.component",
             "OErrorBroadcaster::~OErrorBroadcaster: still have listeners!" );
@@ -51,14 +51,14 @@ namespace frm
     }
 
 
-    void SAL_CALL OErrorBroadcaster::disposing()
+    void OErrorBroadcaster::disposing()
     {
         EventObject aDisposeEvent( static_cast< XSQLErrorBroadcaster* >( this ) );
         m_aErrorListeners.disposeAndClear( aDisposeEvent );
     }
 
 
-    void SAL_CALL OErrorBroadcaster::onError( const SQLException& _rException, const OUString& _rContextDescription )
+    void OErrorBroadcaster::onError( const SQLException& _rException, const OUString& _rContextDescription )
     {
         Any aError;
         if ( !_rContextDescription.isEmpty() )
@@ -70,7 +70,7 @@ namespace frm
     }
 
 
-    void SAL_CALL OErrorBroadcaster::onError( const css::sdb::SQLErrorEvent& _rError )
+    void OErrorBroadcaster::onError( const css::sdb::SQLErrorEvent& _rError )
     {
         if ( m_aErrorListeners.getLength() )
         {

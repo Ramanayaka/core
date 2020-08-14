@@ -25,12 +25,11 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/interfacecontainer2.hxx>
+#include <i18nlangtag/lang.h>
 
 #include <memory>
 #include <set>
 #include <unordered_map>
-#include "linguistic/misc.hxx"
-#include "defs.hxx"
 
 // text conversion dictionary extension
 #define CONV_DIC_EXT            "tcd"
@@ -41,11 +40,11 @@
 
 bool    IsConvDic( const OUString &rFileURL, LanguageType &nLang, sal_Int16 &nConvType );
 
-typedef std::unordered_multimap<OUString, OUString, const OUStringHash> ConvMap;
+typedef std::unordered_multimap<OUString, OUString> ConvMap;
 
 typedef std::set<OUString> ConvMapKeySet;
 
-typedef std::unordered_multimap<OUString, sal_Int16, OUStringHash> PropTypeMap;
+typedef std::unordered_multimap<OUString, sal_Int16> PropTypeMap;
 
 class ConvDic :
     public ::cppu::WeakImplHelper

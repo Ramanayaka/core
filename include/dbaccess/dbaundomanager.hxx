@@ -20,30 +20,21 @@
 #ifndef INCLUDED_DBACCESS_DBAUNDOMANAGER_HXX
 #define INCLUDED_DBACCESS_DBAUNDOMANAGER_HXX
 
-#include <exception>
 #include <memory>
 
-#include <com/sun/star/document/EmptyUndoStackException.hpp>
-#include <com/sun/star/document/UndoContextNotClosedException.hpp>
-#include <com/sun/star/document/UndoFailedException.hpp>
 #include <com/sun/star/document/XUndoManager.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/util/InvalidStateException.hpp>
-#include <com/sun/star/util/NotLockedException.hpp>
 #include <cppuhelper/implbase1.hxx>
 #include <dbaccess/dbaccessdllapi.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace document { class XUndoAction; }
     namespace document { class XUndoManagerListener; }
     namespace uno { class XInterface; }
-} } }
+}
 
 namespace cppu {
     class OWeakObject;
@@ -64,7 +55,7 @@ namespace dbaui
 
     struct UndoManager_Impl;
     typedef ::cppu::ImplHelper1< css::document::XUndoManager > UndoManager_Base;
-    class DBACCESS_DLLPUBLIC UndoManager : public UndoManager_Base
+    class DBACCESS_DLLPUBLIC UndoManager final : public UndoManager_Base
     {
     public:
         UndoManager( ::cppu::OWeakObject& i_parent, ::osl::Mutex& i_mutex );

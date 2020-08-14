@@ -21,8 +21,7 @@
 #define INCLUDED_SC_SOURCE_UI_INC_ACCESSIBLETABLEBASE_HXX
 
 #include "AccessibleContextBase.hxx"
-#include "global.hxx"
-#include "address.hxx"
+#include <address.hxx>
 #include <com/sun/star/accessibility/XAccessibleTable.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <com/sun/star/accessibility/XAccessibleTableSelection.hpp>
@@ -166,11 +165,11 @@ public:
 
 protected:
     /// Return this object's description.
-    virtual OUString SAL_CALL
+    virtual OUString
         createAccessibleDescription() override;
 
     /// Return the object's current name.
-    virtual OUString SAL_CALL
+    virtual OUString
         createAccessibleName() override;
 
 public:
@@ -219,7 +218,7 @@ public:
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL
         getTypes() override;
 
-    /** Returns a implementation id.
+    /** Returns an implementation id.
     */
     virtual css::uno::Sequence<sal_Int8> SAL_CALL
         getImplementationId() override;

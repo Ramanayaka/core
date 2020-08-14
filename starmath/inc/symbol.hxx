@@ -20,16 +20,11 @@
 #ifndef INCLUDED_STARMATH_INC_SYMBOL_HXX
 #define INCLUDED_STARMATH_INC_SYMBOL_HXX
 
-#include <vcl/font.hxx>
-#include <svl/lstner.hxx>
-
 #include <map>
 #include <vector>
 #include <set>
 
-#include "unomodel.hxx"
 #include "utility.hxx"
-#include "smmod.hxx"
 
 
 #define SYMBOL_NONE     0xFFFF
@@ -87,9 +82,9 @@ public:
 
     // symbol sets are for UI purpose only, thus we assemble them here
     std::set< OUString >      GetSymbolSetNames() const;
-    const SymbolPtrVec_t    GetSymbolSet(  const OUString& rSymbolSetName );
+    SymbolPtrVec_t          GetSymbolSet(  const OUString& rSymbolSetName );
 
-    const SymbolPtrVec_t    GetSymbols() const;
+    SymbolPtrVec_t          GetSymbols() const;
     bool                    AddOrReplaceSymbol( const SmSym & rSymbol, bool bForceChange = false );
     void                    RemoveSymbol( const OUString & rSymbolName );
 

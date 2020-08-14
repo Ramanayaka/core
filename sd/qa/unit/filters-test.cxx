@@ -10,25 +10,13 @@
 #include <sal/config.h>
 #include <unotest/filters-test.hxx>
 #include <test/bootstrapfixture.hxx>
-#include <rtl/strbuf.hxx>
-#include <osl/file.hxx>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/document/XFilter.hpp>
 
-#include <sfx2/app.hxx>
 #include <sfx2/docfilt.hxx>
 #include <sfx2/docfile.hxx>
-#include <sfx2/sfxmodelfactory.hxx>
-#include <svl/stritem.hxx>
 
-#include <svx/svdtext.hxx>
-#include <svx/svdotext.hxx>
-
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-
-#include <osl/process.h>
-#include <osl/thread.h>
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
 
 using namespace ::com::sun::star;
 
@@ -63,13 +51,13 @@ bool SdFiltersTest::load(const OUString &rFilter, const OUString &rURL,
     const OUString &rUserData, SfxFilterFlags nFilterFlags, SotClipboardFormatId nClipboardID,
     unsigned int nFilterVersion)
 {
-    std::shared_ptr<const SfxFilter> pFilter(new SfxFilter(
+    auto pFilter = std::make_shared<SfxFilter>(
         rFilter,
         OUString(), nFilterFlags, nClipboardID, OUString(), OUString(),
-        rUserData, OUString() ));
-    const_cast<SfxFilter*>(pFilter.get())->SetVersion(nFilterVersion);
+        rUserData, OUString() );
+    pFilter->SetVersion(nFilterVersion);
 
-    ::sd::DrawDocShellRef xDocShRef = new ::sd::DrawDocShell(SfxObjectCreateMode::EMBEDDED, false);
+    ::sd::DrawDocShellRef xDocShRef = new ::sd::DrawDocShell(SfxObjectCreateMode::EMBEDDED, false, DocumentType::Impress);
     SfxMedium* pSrcMed = new SfxMedium(rURL, StreamMode::STD_READ);
     pSrcMed->SetFilter(pFilter);
     bool bLoaded = xDocShRef->DoLoad(pSrcMed);

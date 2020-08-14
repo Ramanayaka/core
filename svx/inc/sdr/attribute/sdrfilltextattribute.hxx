@@ -20,15 +20,12 @@
 #ifndef INCLUDED_SVX_INC_SDR_ATTRIBUTE_SDRFILLTEXTATTRIBUTE_HXX
 #define INCLUDED_SVX_INC_SDR_ATTRIBUTE_SDRFILLTEXTATTRIBUTE_HXX
 
-#include <sal/types.h>
 #include <drawinglayer/attribute/sdrfillattribute.hxx>
 #include <drawinglayer/attribute/fillgradientattribute.hxx>
-#include <svx/sdr/attribute/sdrtextattribute.hxx>
+#include <sdr/attribute/sdrtextattribute.hxx>
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class SdrFillTextAttribute
         {
@@ -54,8 +51,8 @@ namespace drawinglayer
             const FillGradientAttribute& getFillFloatTransGradient() const { return maFillFloatTransGradient; }
             const SdrTextAttribute& getText() const { return maTextAttribute; }
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif // INCLUDED_SVX_INC_SDR_ATTRIBUTE_SDRFILLTEXTATTRIBUTE_HXX

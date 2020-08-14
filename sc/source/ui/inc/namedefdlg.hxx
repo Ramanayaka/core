@@ -11,10 +11,6 @@
 #define INCLUDED_SC_SOURCE_UI_INC_NAMEDEFDLG_HXX
 
 #include "anyrefdg.hxx"
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/lstbox.hxx>
 
 #include <map>
 
@@ -23,30 +19,14 @@ class ScDocument;
 class ScDocShell;
 class ScViewData;
 
-class ScNameDefDlg : public ScAnyRefDlg
+class ScNameDefDlg : public ScAnyRefDlgController
 {
 private:
-    VclPtr<Edit> m_pEdName;
-
-    VclPtr<formula::RefEdit> m_pEdRange;
-    VclPtr<formula::RefButton> m_pRbRange;
-
-    VclPtr<ListBox> m_pLbScope;
-
-    VclPtr<CheckBox> m_pBtnRowHeader;
-    VclPtr<CheckBox> m_pBtnColHeader;
-    VclPtr<CheckBox> m_pBtnPrintArea;
-    VclPtr<CheckBox> m_pBtnCriteria;
-
-    VclPtr<PushButton> m_pBtnAdd;
-    VclPtr<PushButton> m_pBtnCancel;
-    VclPtr<FixedText> m_pFtInfo;
-
-    bool mbUndo; //if true we need to add an undo action after creating a range name
-    ScDocument* mpDoc;
+    bool        mbUndo; //if true we need to add an undo action after creating a range name
+    ScDocument& mrDoc;
     ScDocShell* mpDocShell;
 
-    ScAddress maCursorPos;
+    ScAddress      maCursorPos;
     OUString maStrInfoDefault;
     const OUString maGlobalNameStr;
     const OUString maErrInvalidNameStr;
@@ -59,33 +39,50 @@ private:
 
     std::map<OUString, ScRangeName*> maRangeMap;
 
+    std::unique_ptr<weld::Entry> m_xEdName;
+
+    std::unique_ptr<formula::RefEdit> m_xEdRange;
+    std::unique_ptr<formula::RefButton> m_xRbRange;
+
+    std::unique_ptr<weld::ComboBox> m_xLbScope;
+
+    std::unique_ptr<weld::CheckButton> m_xBtnRowHeader;
+    std::unique_ptr<weld::CheckButton> m_xBtnColHeader;
+    std::unique_ptr<weld::CheckButton> m_xBtnPrintArea;
+    std::unique_ptr<weld::CheckButton> m_xBtnCriteria;
+
+    std::unique_ptr<weld::Button> m_xBtnAdd;
+    std::unique_ptr<weld::Button> m_xBtnCancel;
+    std::unique_ptr<weld::Label> m_xFtInfo;
+    std::unique_ptr<weld::Expander> m_xExpander;
+    std::unique_ptr<weld::Label> m_xFtRange;
+
     void CancelPushed();
     void AddPushed();
 
     bool IsNameValid();
     bool IsFormulaValid();
 
-    DECL_LINK( CancelBtnHdl, Button*, void );
-    DECL_LINK( AddBtnHdl, Button*, void );
-    DECL_LINK( NameModifyHdl, Edit&, void );
-    DECL_LINK( AssignGetFocusHdl, Control&, void );
+    DECL_LINK( CancelBtnHdl, weld::Button&, void );
+    DECL_LINK( AddBtnHdl, weld::Button&, void );
+    DECL_LINK( NameModifyHdl, weld::Entry&, void );
+    DECL_LINK( AssignGetFocusHdl, formula::RefEdit&, void );
 
 protected:
     virtual void    RefInputDone( bool bForced = false ) override;
 
 public:
-    ScNameDefDlg( SfxBindings* pB, SfxChildWindow* pCW, vcl::Window* pParent,
-                    ScViewData* pViewData, const std::map<OUString, ScRangeName*>& aRangeMap,
+    ScNameDefDlg( SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent,
+                    const ScViewData* pViewData, const std::map<OUString, ScRangeName*>& aRangeMap,
                     const ScAddress& aCursorPos, const bool bUndo);
 
     virtual ~ScNameDefDlg() override;
-    virtual void    dispose() override;
 
-    virtual void    SetReference( const ScRange& rRef, ScDocument* pDoc ) override;
+    virtual void    SetReference( const ScRange& rRef, ScDocument& rDoc ) override;
     virtual bool    IsRefInputMode() const override;
 
     virtual void    SetActive() override;
-    virtual bool    Close() override;
+    virtual void    Close() override;
 
     void GetNewData( OUString& rName, OUString& rScope );
 };

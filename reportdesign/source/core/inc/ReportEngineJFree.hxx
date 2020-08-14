@@ -21,19 +21,13 @@
 
 #include <sal/config.h>
 
-#include <map>
-
 #include <com/sun/star/report/XReportEngine.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/broadcasthelper.hxx>
 #include <comphelper/uno3.hxx>
-#include <comphelper/types.hxx>
 #include <cppuhelper/propertysetmixin.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/sdbc/XRowSet.hpp>
-#include <comphelper/stl_types.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <rtl/ref.hxx>
 
 namespace reportdesign
 {
@@ -45,7 +39,6 @@ namespace reportdesign
                     public ReportEngineBase,
                     public ReportEnginePropertySet
     {
-        typedef ::std::multimap< OUString, css::uno::Any , ::comphelper::UStringMixLess>            TComponentMap;
         css::uno::Reference< css::uno::XComponentContext >        m_xContext;
         css::uno::Reference< css::report::XReportDefinition >     m_xReport;
         css::uno::Reference< css::task::XStatusIndicator>         m_StatusIndicator;
@@ -78,8 +71,6 @@ namespace reportdesign
 
         virtual ~OReportEngineJFree() override;
     public:
-        typedef rtl::Reference<OReportEngineJFree> TReportEngine;
-
         OReportEngineJFree(const css::uno::Reference< css::uno::XComponentContext >& context);
 
         DECLARE_XINTERFACE( )
@@ -88,12 +79,6 @@ namespace reportdesign
         virtual OUString SAL_CALL getImplementationName(  ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static();
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL
-            create(css::uno::Reference< css::uno::XComponentContext > const & xContext);
     private:
         // css::beans::XPropertySet
         virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  ) override;
@@ -121,7 +106,7 @@ namespace reportdesign
         /// @throws css::lang::IllegalArgumentException
         /// @throws css::uno::Exception
         /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::frame::XModel > SAL_CALL createDocumentAlive( const css::uno::Reference< css::frame::XFrame >& _frame ,bool _bHidden) ;
+        css::uno::Reference< css::frame::XModel > createDocumentAlive( const css::uno::Reference< css::frame::XFrame >& _frame ,bool _bHidden) ;
         virtual css::util::URL SAL_CALL createDocument(  ) override ;
         virtual void SAL_CALL interrupt(  ) override ;
 

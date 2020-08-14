@@ -43,7 +43,7 @@ import com.sun.star.uno.UnoRuntime;
 * This test needs the following object relations :
 * <ul>
 *  <li> <code>'FrameLoader.URL'</code> (of type <code>String</code>):
-*   an url or component to be loaded </li>
+*   a url or component to be loaded </li>
 *  <li> <code>'FrameLoader.Frame'</code> <b>(optional)</b>
 *  (of type <code>com.sun.star.frame.XFrame</code>):
 *   a target frame where component to be loaded. If this
@@ -65,7 +65,7 @@ public class _XFrameLoader extends MultiMethodTest {
     private PropertyValue[] args = new PropertyValue[0] ;
 
     /**
-    * Implementation of load listener which geristers all its calls.
+    * Implementation of load listener which registers all its calls.
     */
     protected static class TestListener implements XLoadEventListener {
         public boolean finished = false ;

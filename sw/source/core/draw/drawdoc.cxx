@@ -18,42 +18,23 @@
  */
 
 #include <svx/svxids.hrc>
-#include <tools/stream.hxx>
-#include <unotools/configmgr.hxx>
-#include <unotools/pathoptions.hxx>
-#include <sot/storage.hxx>
-#include <svl/intitem.hxx>
-#include <editeng/forbiddencharacterstable.hxx>
 
-#include <unotools/ucbstreamhelper.hxx>
-#include <svx/xtable.hxx>
+#include <com/sun/star/frame/XModel.hpp>
 #include <svx/drawitem.hxx>
-#include <viewsh.hxx>
 #include <doc.hxx>
-#include <rootfrm.hxx>
 #include <drawdoc.hxx>
 #include <dpage.hxx>
 #include <docsh.hxx>
-#include <shellio.hxx>
 #include <hintids.hxx>
 #include <DocumentSettingManager.hxx>
-#include <IDocumentDrawModelAccess.hxx>
 
 using namespace com::sun::star;
 
 // Constructor
-
-const OUString GetPalettePath()
-{
-    if (utl::ConfigManager::IsAvoidConfig())
-        return OUString();
-    SvtPathOptions aPathOpt;
-    return aPathOpt.GetPalettePath();
-}
-
 SwDrawModel::SwDrawModel(SwDoc *const pDoc)
-    : FmFormModel( ::GetPalettePath(), &pDoc->GetAttrPool(),
-                     pDoc->GetDocShell(), true )
+:   FmFormModel(
+        &pDoc->GetAttrPool(),
+        pDoc->GetDocShell())
     , m_pDoc( pDoc )
 {
     SetScaleUnit( MapUnit::MapTwip );
@@ -87,10 +68,9 @@ SwDrawModel::SwDrawModel(SwDoc *const pDoc)
                     0 != (nEdtWhich = pSdrPool->GetWhich( nSlotId )) &&
                     nSlotId != nEdtWhich )
                 {
-                    SfxPoolItem* pCpy = pItem->Clone();
+                    std::unique_ptr<SfxPoolItem> pCpy(pItem->Clone());
                     pCpy->SetWhich( nEdtWhich );
                     pSdrPool->SetPoolDefaultItem( *pCpy );
-                    delete pCpy;
                 }
     }
 

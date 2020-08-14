@@ -18,20 +18,18 @@
  */
 
 #include "GridWrapper.hxx"
-#include "macros.hxx"
-#include "AxisHelper.hxx"
+#include <AxisHelper.hxx>
 #include "Chart2ModelContact.hxx"
-#include "AxisIndexDefines.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <AxisIndexDefines.hxx>
 
-#include "LinePropertiesHelper.hxx"
-#include "UserDefinedProperties.hxx"
-#include "WrappedDefaultProperty.hxx"
+#include <LinePropertiesHelper.hxx>
+#include <UserDefinedProperties.hxx>
+#include <WrappedDefaultProperty.hxx>
 
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <algorithm>
-#include <rtl/ustrbuf.hxx>
-#include <rtl/math.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -70,9 +68,7 @@ struct StaticGridWrapperPropertyArray : public rtl::StaticAggregate< Sequence< P
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 GridWrapper::GridWrapper(tGridType eType, const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
@@ -145,9 +141,9 @@ Reference< beans::XPropertySet > GridWrapper::getInnerPropertySet()
         sal_Int32 nSubGridIndex = bSubGrid ? 0 : -1;
         xRet.set( AxisHelper::getGridProperties( xCooSys , nDimensionIndex, MAIN_AXIS_INDEX, nSubGridIndex ) );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
     return xRet;
 }
@@ -157,18 +153,18 @@ const Sequence< beans::Property >& GridWrapper::getPropertySequence()
     return *StaticGridWrapperPropertyArray::get();
 }
 
-const std::vector< WrappedProperty* > GridWrapper::createWrappedProperties()
+std::vector< std::unique_ptr<WrappedProperty> > GridWrapper::createWrappedProperties()
 {
-    std::vector< ::chart::WrappedProperty* > aWrappedProperties;
+    std::vector< std::unique_ptr<WrappedProperty> > aWrappedProperties;
 
-    aWrappedProperties.push_back( new WrappedDefaultProperty( "LineColor", "LineColor", uno::Any( sal_Int32( 0x000000) ) ) ); // black
+    aWrappedProperties.emplace_back( new WrappedDefaultProperty( "LineColor", "LineColor", uno::Any( sal_Int32( 0x000000) ) ) ); // black
 
     return aWrappedProperties;
 }
 
 OUString SAL_CALL GridWrapper::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.Grid");
+    return "com.sun.star.comp.chart.Grid";
 }
 
 sal_Bool SAL_CALL GridWrapper::supportsService( const OUString& rServiceName )
@@ -186,7 +182,6 @@ css::uno::Sequence< OUString > SAL_CALL GridWrapper::getSupportedServiceNames()
     };
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

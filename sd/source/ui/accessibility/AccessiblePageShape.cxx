@@ -17,17 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "AccessiblePageShape.hxx"
+#include <AccessiblePageShape.hxx>
 #include <svx/AccessibleShapeInfo.hxx>
 #include <svx/IAccessibleViewForwarder.hxx>
+#include <tools/diagnose_ex.h>
 #include <tools/gen.hxx>
+#include <sal/log.hxx>
 
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/drawing/XShapeDescriptor.hpp>
 #include <com/sun/star/drawing/XMasterPageTarget.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
@@ -146,8 +143,7 @@ sal_Int32 SAL_CALL AccessiblePageShape::getForeground()
         uno::Reference<beans::XPropertySet> aSet (mxPage, uno::UNO_QUERY);
         if (aSet.is())
         {
-            uno::Any aColor;
-            aColor = aSet->getPropertyValue ("LineColor");
+            uno::Any aColor = aSet->getPropertyValue ("LineColor");
             aColor >>= nColor;
         }
     }
@@ -171,8 +167,7 @@ sal_Int32 SAL_CALL AccessiblePageShape::getBackground()
         uno::Reference<beans::XPropertySet> xSet (mxPage, uno::UNO_QUERY);
         if (xSet.is())
         {
-            uno::Any aBGSet;
-            aBGSet = xSet->getPropertyValue ("Background");
+            uno::Any aBGSet = xSet->getPropertyValue ("Background");
             Reference<beans::XPropertySet> xBGSet (aBGSet, uno::UNO_QUERY);
             if ( ! xBGSet.is())
             {
@@ -190,8 +185,7 @@ sal_Int32 SAL_CALL AccessiblePageShape::getBackground()
             // gradients, hashes, and bitmaps.
             if (xBGSet.is())
             {
-                uno::Any aColor;
-                aColor = xBGSet->getPropertyValue ("FillColor");
+                uno::Any aColor = xBGSet->getPropertyValue ("FillColor");
                 aColor >>= nColor;
             }
             else
@@ -200,7 +194,7 @@ sal_Int32 SAL_CALL AccessiblePageShape::getBackground()
     }
     catch (const css::beans::UnknownPropertyException&)
     {
-        SAL_WARN("sd", "caught exception due to unknown property");
+        TOOLS_WARN_EXCEPTION("sd", "caught exception due to unknown property");
         // Ignore exception and return default color.
     }
     return nColor;
@@ -212,7 +206,7 @@ OUString SAL_CALL
     AccessiblePageShape::getImplementationName()
 {
     ThrowIfDisposed ();
-    return OUString("AccessiblePageShape");
+    return "AccessiblePageShape";
 }
 
 css::uno::Sequence< OUString> SAL_CALL
@@ -222,24 +216,10 @@ css::uno::Sequence< OUString> SAL_CALL
     return AccessibleShape::getSupportedServiceNames();
 }
 
-//=====  lang::XEventListener  ================================================
-
-void SAL_CALL
-    AccessiblePageShape::disposing (const css::lang::EventObject& aEvent)
-{
-    ThrowIfDisposed ();
-    AccessibleShape::disposing (aEvent);
-}
-
 //=====  XComponent  ==========================================================
 
 void AccessiblePageShape::dispose()
 {
-    // Unregister listeners.
-    Reference<lang::XComponent> xComponent (mxShape, uno::UNO_QUERY);
-    if (xComponent.is())
-        xComponent->removeEventListener (this);
-
     // Cleanup.
     mxShape = nullptr;
 
@@ -252,7 +232,7 @@ void AccessiblePageShape::dispose()
 OUString
     AccessiblePageShape::CreateAccessibleBaseName()
 {
-    return OUString ("PageShape");
+    return "PageShape";
 }
 
 OUString
@@ -274,12 +254,6 @@ OUString
     }
 
     return CreateAccessibleBaseName()+": "+sCurrentSlideName;
-}
-
-OUString
-    AccessiblePageShape::CreateAccessibleDescription()
-{
-    return OUString ("Page Shape");
 }
 
 } // end of namespace accessibility

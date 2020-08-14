@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
+#include <scitems.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/dispatch.hxx>
@@ -29,23 +29,21 @@
 #include <svl/cjkoptions.hxx>
 #include <svl/ctloptions.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/wrkwin.hxx>
 #include <vcl/settings.hxx>
-#include <sfx2/request.hxx>
+#include <vcl/window.hxx>
 #include <sfx2/objsh.hxx>
-#include <svl/stritem.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <svl/eitem.hxx>
+#include <osl/diagnose.h>
 
-#include "viewutil.hxx"
-#include "global.hxx"
-#include "chgtrack.hxx"
-#include "chgviset.hxx"
-#include "markdata.hxx"
-#include "document.hxx"
+#include <viewutil.hxx>
+#include <chgtrack.hxx>
+#include <chgviset.hxx>
+#include <markdata.hxx>
+#include <document.hxx>
 
 #include <svx/svxdlg.hxx>
-#include <svx/dialogs.hrc>
+#include <svx/svxids.hrc>
 #include <memory>
 
 void ScViewUtil::PutItemScript( SfxItemSet& rShellSet, const SfxItemSet& rCoreSet,
@@ -62,8 +60,7 @@ void ScViewUtil::PutItemScript( SfxItemSet& rShellSet, const SfxItemSet& rCoreSe
     const SfxPoolItem* pI = aSetItem.GetItemOfScript( nScript );
     if (pI)
     {
-        std::unique_ptr<SfxPoolItem> pNewItem(pI->CloneSetWhich(nWhichId));
-        rShellSet.Put( *pNewItem );
+        rShellSet.Put( pI->CloneSetWhich(nWhichId) );
     }
     else
         rShellSet.InvalidateItem( nWhichId );
@@ -127,7 +124,7 @@ TransliterationFlags ScViewUtil::GetTransliterationType( sal_uInt16 nSlotID )
         case SID_TRANSLITERATE_HIRAGANA:
             nType = TransliterationFlags::KATAKANA_HIRAGANA;
             break;
-        case SID_TRANSLITERATE_KATAGANA:
+        case SID_TRANSLITERATE_KATAKANA:
             nType = TransliterationFlags::HIRAGANA_KATAKANA;
             break;
     }
@@ -147,28 +144,14 @@ bool ScViewUtil::IsActionShown( const ScChangeAction& rAction,
     if ( !rSettings.IsShowAccepted() && rAction.IsAccepted() && !rAction.IsRejecting() )
         return false;
 
-    if ( rSettings.HasAuthor() )
-    {
-        if ( rSettings.IsEveryoneButMe() )
-        {
-            // GetUser() at ChangeTrack is the current user
-            ScChangeTrack* pTrack = rDocument.GetChangeTrack();
-            if ( !pTrack || rAction.GetUser().equals(pTrack->GetUser()) )
-                return false;
-        }
-        else if ( !rAction.GetUser().equals(rSettings.GetTheAuthorToShow()) )
-            return false;
-    }
+    if ( rSettings.HasAuthor() && rAction.GetUser() != rSettings.GetTheAuthorToShow() )
+        return false;
 
     if ( rSettings.HasComment() )
     {
-        OUStringBuffer aBuf(rAction.GetComment());
-        aBuf.append(" (");
         OUString aTmp;
         rAction.GetDescription(aTmp, &rDocument);
-        aBuf.append(aTmp);
-        aBuf.append(')');
-        OUString aComStr = aBuf.makeStringAndClear();
+        OUString aComStr = rAction.GetComment() + " (" + aTmp + ")";
 
         if(!rSettings.IsValidComment(&aComStr))
             return false;
@@ -237,7 +220,7 @@ bool ScViewUtil::IsActionShown( const ScChangeAction& rAction,
     return true;
 }
 
-void ScViewUtil::UnmarkFiltered( ScMarkData& rMark, ScDocument* pDoc )
+void ScViewUtil::UnmarkFiltered( ScMarkData& rMark, const ScDocument* pDoc )
 {
     rMark.MarkToMulti();
 
@@ -249,10 +232,8 @@ void ScViewUtil::UnmarkFiltered( ScMarkData& rMark, ScDocument* pDoc )
     SCROW nEndRow = aMultiArea.aEnd.Row();
 
     bool bChanged = false;
-    ScMarkData::iterator itr = rMark.begin(), itrEnd = rMark.end();
-    for (; itr != itrEnd; ++itr)
+    for (const SCTAB& nTab : rMark)
     {
-        SCTAB nTab = *itr;
         for (SCROW nRow = nStartRow; nRow <= nEndRow; ++nRow)
         {
             SCROW nLastRow = nRow;
@@ -274,21 +255,21 @@ void ScViewUtil::UnmarkFiltered( ScMarkData& rMark, ScDocument* pDoc )
     rMark.MarkToSimple();
 }
 
-bool ScViewUtil::FitToUnfilteredRows( ScRange & rRange, ScDocument * pDoc, size_t nRows )
+bool ScViewUtil::FitToUnfilteredRows( ScRange & rRange, const ScDocument * pDoc, size_t nRows )
 {
     SCTAB nTab = rRange.aStart.Tab();
     bool bOneTabOnly = (nTab == rRange.aEnd.Tab());
     // Always fit the range on its first sheet.
     OSL_ENSURE( bOneTabOnly, "ScViewUtil::ExtendToUnfilteredRows: works only on one sheet");
     SCROW nStartRow = rRange.aStart.Row();
-    SCROW nLastRow = pDoc->LastNonFilteredRow(nStartRow, MAXROW, nTab);
-    if (ValidRow(nLastRow))
+    SCROW nLastRow = pDoc->LastNonFilteredRow(nStartRow, pDoc->MaxRow(), nTab);
+    if (pDoc->ValidRow(nLastRow))
         rRange.aEnd.SetRow(nLastRow);
-    SCROW nCount = pDoc->CountNonFilteredRows(nStartRow, MAXROW, nTab);
+    SCROW nCount = pDoc->CountNonFilteredRows(nStartRow, pDoc->MaxRow(), nTab);
     return static_cast<size_t>(nCount) == nRows && bOneTabOnly;
 }
 
-bool ScViewUtil::HasFiltered( const ScRange& rRange, ScDocument* pDoc )
+bool ScViewUtil::HasFiltered( const ScRange& rRange, const ScDocument* pDoc )
 {
     SCROW nStartRow = rRange.aStart.Row();
     SCROW nEndRow = rRange.aEnd.Row();
@@ -317,7 +298,7 @@ void ScViewUtil::HideDisabledSlot( SfxItemSet& rSet, SfxBindings& rBindings, sal
         case SID_TRANSLITERATE_HALFWIDTH:
         case SID_TRANSLITERATE_FULLWIDTH:
         case SID_TRANSLITERATE_HIRAGANA:
-        case SID_TRANSLITERATE_KATAGANA:
+        case SID_TRANSLITERATE_KATAKANA:
             bEnabled = aCJKOptions.IsChangeCaseMapEnabled();
         break;
 
@@ -336,34 +317,19 @@ void ScViewUtil::HideDisabledSlot( SfxItemSet& rSet, SfxBindings& rBindings, sal
         rSet.DisableItem( nSlotId );
 }
 
-bool ScViewUtil::ExecuteCharMap( const SvxFontItem& rOldFont,
-                                 SfxViewFrame& rFrame,
-                                 SvxFontItem&       rNewFont,
-                                 OUString&          rString )
+void ScViewUtil::ExecuteCharMap( const SvxFontItem& rOldFont,
+                                 SfxViewFrame& rFrame )
 {
-    bool bRet = false;
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-    if(pFact)
-    {
-        SfxAllItemSet aSet( rFrame.GetObjectShell()->GetPool() );
-        aSet.Put( SfxBoolItem( FN_PARAM_1, false ) );
-        aSet.Put( SvxFontItem( rOldFont.GetFamily(), rOldFont.GetFamilyName(), rOldFont.GetStyleName(), rOldFont.GetPitch(), rOldFont.GetCharSet(), aSet.GetPool()->GetWhich( SID_ATTR_CHAR_FONT ) ) );
-        ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateSfxDialog( &rFrame.GetWindow(), aSet, rFrame.GetFrame().GetFrameInterface(), RID_SVXDLG_CHARMAP ));
-        if ( pDlg->Execute() == RET_OK )
-        {
-            const SfxStringItem* pItem = SfxItemSet::GetItem<SfxStringItem>(pDlg->GetOutputItemSet(), SID_CHARMAP, false);
-            const SvxFontItem* pFontItem = SfxItemSet::GetItem<SvxFontItem>(pDlg->GetOutputItemSet(), SID_ATTR_CHAR_FONT, false);
-            if ( pItem )
-                rString  = pItem->GetValue();
-            if ( pFontItem )
-                rNewFont = SvxFontItem( pFontItem->GetFamily(), pFontItem->GetFamilyName(), pFontItem->GetStyleName(), pFontItem->GetPitch(), pFontItem->GetCharSet(), rNewFont.Which() );
-            bRet = true;
-        }
-    }
-    return bRet;
+    SfxAllItemSet aSet( rFrame.GetObjectShell()->GetPool() );
+    aSet.Put( SfxBoolItem( FN_PARAM_1, false ) );
+    aSet.Put( SvxFontItem( rOldFont.GetFamily(), rOldFont.GetFamilyName(), rOldFont.GetStyleName(), rOldFont.GetPitch(), rOldFont.GetCharSet(), aSet.GetPool()->GetWhich( SID_ATTR_CHAR_FONT ) ) );
+    auto xFrame = rFrame.GetFrame().GetFrameInterface();
+    ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateCharMapDialog(rFrame.GetWindow().GetFrameWeld(), aSet, xFrame));
+    pDlg->Execute();
 }
 
-bool ScViewUtil::IsFullScreen( SfxViewShell& rViewShell )
+bool ScViewUtil::IsFullScreen( const SfxViewShell& rViewShell )
 {
     SfxBindings&    rBindings       = rViewShell.GetViewFrame()->GetBindings();
     std::unique_ptr<SfxPoolItem> pItem;
@@ -375,7 +341,7 @@ bool ScViewUtil::IsFullScreen( SfxViewShell& rViewShell )
     return bIsFullScreen;
 }
 
-void ScViewUtil::SetFullScreen( SfxViewShell& rViewShell, bool bSet )
+void ScViewUtil::SetFullScreen( const SfxViewShell& rViewShell, bool bSet )
 {
     if( IsFullScreen( rViewShell ) != bSet )
     {

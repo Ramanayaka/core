@@ -14,9 +14,7 @@
 
 #include <memory>
 
-namespace condformat {
-
-namespace dialog {
+namespace condformat::dialog {
 
 enum ScCondFormatDialogType
 {
@@ -30,8 +28,6 @@ enum ScCondFormatDialogType
 
 }
 
-}
-
 class ScConditionalFormatList;
 
 class ScCondFormatDlgItem : public SfxPoolItem
@@ -42,9 +38,13 @@ public:
 
     virtual ~ScCondFormatDlgItem() override;
 
+    ScCondFormatDlgItem(ScCondFormatDlgItem const &) = default;
+    ScCondFormatDlgItem(ScCondFormatDlgItem &&) = default;
+    ScCondFormatDlgItem & operator =(ScCondFormatDlgItem const &) = delete; // due to SfxPoolItem
+    ScCondFormatDlgItem & operator =(ScCondFormatDlgItem &&) = delete; // due to SfxPoolItem
+
     virtual bool operator==(const SfxPoolItem&) const override;
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rStream, sal_uInt16 nVer) const override;
+    virtual ScCondFormatDlgItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     bool IsManaged() const;
     condformat::dialog::ScCondFormatDialogType GetDialogType() const;

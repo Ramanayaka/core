@@ -20,17 +20,13 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_DBWIZSETUP_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_DBWIZSETUP_HXX
 
-#include <sfx2/tabdlg.hxx>
-#include "dsntypes.hxx"
+#include <dsntypes.hxx>
 #include "IItemSetHelper.hxx"
-#include <comphelper/uno3.hxx>
 #include <tools/urlobj.hxx>
 #include <memory>
-#include <svtools/roadmapwizard.hxx>
-#include <connectivity/dbtools.hxx>
-#include "moduledbu.hxx"
+#include <vcl/roadmapwizard.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans {
         class XPropertySet;
     }
@@ -40,7 +36,11 @@ namespace com { namespace sun { namespace star {
     namespace lang {
         class XMultiServiceFactory;
     }
-}}}
+}
+
+using vcl::WizardTypes::WizardState;
+using vcl::WizardTypes::CommitPageReason;
+using vcl::RoadmapWizardTypes::PathId;
 
 namespace dbaui
 {
@@ -56,13 +56,11 @@ class ODbDataSourceAdministrationHelper;
 class OMySQLIntroPageSetup;
 class OFinalDBPageSetup;
 
-class ODbTypeWizDialogSetup : public svt::RoadmapWizard , public IItemSetHelper, public IDatabaseSettingsDialog,public dbaui::OModuleClient
+class ODbTypeWizDialogSetup final : public vcl::RoadmapWizardMachine, public IItemSetHelper, public IDatabaseSettingsDialog
 {
-
 private:
-    OModuleClient           m_aModuleClient;
     std::unique_ptr<ODbDataSourceAdministrationHelper>  m_pImpl;
-    SfxItemSet*             m_pOutSet;
+    std::unique_ptr<SfxItemSet> m_pOutSet;
     OUString                m_sURL;
     OUString                m_sOldURL;
     bool                    m_bIsConnectable : 1;
@@ -77,14 +75,14 @@ private:
     OUString                m_sRM_OracleText;
     OUString                m_sRM_MySQLText;
     OUString                m_sRM_ODBCText;
-    OUString                m_sRM_SpreadSheetText;
+    OUString                m_sRM_DocumentOrSpreadSheetText;
     OUString                m_sRM_AuthentificationText;
     OUString                m_sRM_FinalText;
     INetURLObject           m_aDocURL;
     OUString                m_sWorkPath;
-    VclPtr<OGeneralPageWizard>     m_pGeneralPage;
-    VclPtr<OMySQLIntroPageSetup>   m_pMySQLIntroPage;
-    VclPtr<OFinalDBPageSetup>      m_pFinalPage;
+    OGeneralPageWizard*     m_pGeneralPage;
+    OMySQLIntroPageSetup*   m_pMySQLIntroPage;
+    OFinalDBPageSetup*      m_pFinalPage;
 
     ::dbaccess::ODsnTypeCollection*
                             m_pCollection;  /// the DSN type collection instance
@@ -93,20 +91,19 @@ public:
     /** ctor. The itemset given should have been created by <method>createItemSet</method> and should be destroyed
         after the dialog has been destroyed
     */
-    ODbTypeWizDialogSetup(vcl::Window* pParent
-        ,SfxItemSet* _pItems
+    ODbTypeWizDialogSetup(weld::Window* pParent
+        ,SfxItemSet const * _pItems
         ,const css::uno::Reference< css::uno::XComponentContext >& _rxORB
         ,const css::uno::Any& _aDataSourceName
         );
     virtual ~ODbTypeWizDialogSetup() override;
-    virtual void dispose() override;
 
     virtual const SfxItemSet* getOutputSet() const override;
     virtual SfxItemSet* getWriteOutputSet() override;
 
     // forwards to ODbDataSourceAdministrationHelper
     virtual css::uno::Reference< css::uno::XComponentContext > getORB() const override;
-    virtual std::pair< css::uno::Reference< css::sdbc::XConnection >,sal_Bool> createConnection() override;
+    virtual std::pair< css::uno::Reference< css::sdbc::XConnection >,bool> createConnection() override;
     virtual css::uno::Reference< css::sdbc::XDriver > getDriver() override;
     virtual OUString getDatasourceType(const SfxItemSet& _rSet) const override;
     virtual void clearPassword() override;
@@ -123,17 +120,20 @@ public:
     */
     bool IsTableWizardToBeStarted() const;
 
-protected:
+    void SetIntroPage(OMySQLIntroPageSetup* pPage);
+    void SetGeneralPage(OGeneralPageWizard* pPage);
+    void SetFinalPage(OFinalDBPageSetup* pPage);
+
+private:
     /// to override to create new pages
-    virtual VclPtr<TabPage> createPage(WizardState _nState) override;
+    virtual std::unique_ptr<BuilderPage> createPage(WizardState _nState) override;
     virtual bool        leaveState(WizardState _nState) override;
     virtual void        enterState(WizardState _nState) override;
-    virtual ::svt::IWizardPageController* getPageController( TabPage* _pCurrentPage ) const override;
+    virtual ::vcl::IWizardPageController* getPageController(BuilderPage* pCurrentPage) const override;
     virtual bool        onFinish() override;
 
     void resetPages(const css::uno::Reference< css::beans::XPropertySet >& _rxDatasource);
 
-private:
     /** declares a path with or without authentication, as indicated by the database type
 
         @param _sURL
@@ -146,7 +146,7 @@ private:
             the first state in this path, following by an arbitrary number of others, as in
             RoadmapWizard::declarePath.
     */
-    void declareAuthDepPath( const OUString& _sURL, PathId _nPathId, const svt::RoadmapWizardTypes::WizardPath& _rPaths);
+    void declareAuthDepPath( const OUString& _sURL, PathId _nPathId, const vcl::RoadmapWizardTypes::WizardPath& _rPaths);
 
     void RegisterDataSourceByLocation(const OUString& sPath);
     bool SaveDatabaseDocument();

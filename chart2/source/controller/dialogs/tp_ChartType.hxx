@@ -22,17 +22,16 @@
 
 #include <vector>
 
-#include "ChartTypeDialogController.hxx"
-#include "ChartTypeTemplateProvider.hxx"
-#include "TimerTriggeredControllerLock.hxx"
+#include <ChartTypeDialogController.hxx>
+#include <ChartTypeTemplateProvider.hxx>
+#include <TimerTriggeredControllerLock.hxx>
 
-#include <com/sun/star/chart2/XChartDocument.hpp>
-#include <svtools/wizardmachine.hxx>
-#include <svtools/valueset.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/field.hxx>
-#include <vcl/lstbox.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <vcl/wizardmachine.hxx>
+
+namespace com::sun::star::chart2 { class XChartDocument; }
+namespace weld { class CustomWeld; }
+
+class ValueSet;
 
 namespace chart
 {
@@ -41,58 +40,54 @@ class Dim3DLookResourceGroup;
 class StackingResourceGroup;
 class SplineResourceGroup;
 class GeometryResourceGroup;
-class ChartTypeParameter;
 class SortByXValuesResourceGroup;
-class GL3DResourceGroup;
 
-class ChartTypeTabPage : public ResourceChangeListener, public svt::OWizardPage, public ChartTypeTemplateProvider
+class ChartTypeTabPage final : public ResourceChangeListener, public vcl::OWizardPage, public ChartTypeTemplateProvider
 {
 public:
-    ChartTypeTabPage( vcl::Window* pParent
+    ChartTypeTabPage( weld::Container* pPage, weld::DialogController* pController
                 , const css::uno::Reference< css::chart2::XChartDocument >& xChartModel
                 , bool bShowDescription = true );
     virtual ~ChartTypeTabPage() override;
-    virtual void        dispose() override;
 
     virtual void        initializePage() override;
-    virtual bool        commitPage( ::svt::WizardTypes::CommitPageReason eReason ) override;
+    virtual bool        commitPage( ::vcl::WizardTypes::CommitPageReason eReason ) override;
 
     virtual css::uno::Reference< css::chart2::XChartTypeTemplate > getCurrentTemplate() const override;
 
-protected:
+private:
     ChartTypeDialogController* getSelectedMainType();
     void showAllControls( ChartTypeDialogController& rTypeController );
     void fillAllControls( const ChartTypeParameter& rParameter, bool bAlsoResetSubTypeList=true );
     ChartTypeParameter getCurrentParamter() const;
 
-    virtual void stateChanged( ChangingResource* pResource ) override;
+    virtual void stateChanged() override;
 
     void commitToModel( const ChartTypeParameter& rParameter );
     void selectMainType();
 
-    DECL_LINK( SelectMainTypeHdl, ListBox&, void );
-    DECL_LINK( SelectSubTypeHdl, ValueSet*, void );
+    DECL_LINK(SelectMainTypeHdl, weld::TreeView&, void);
+    DECL_LINK(SelectSubTypeHdl, ValueSet*, void );
 
-protected:
-    VclPtr<FixedText>  m_pFT_ChooseType;
-    VclPtr<ListBox>    m_pMainTypeList;
-    VclPtr<ValueSet>   m_pSubTypeList;
-
-    Dim3DLookResourceGroup*     m_pDim3DLookResourceGroup;
-    StackingResourceGroup*      m_pStackingResourceGroup;
-    SplineResourceGroup*        m_pSplineResourceGroup;
-    GeometryResourceGroup*      m_pGeometryResourceGroup;
-    SortByXValuesResourceGroup* m_pSortByXValuesResourceGroup;
-    GL3DResourceGroup* m_pGL3DResourceGroup;
+    std::unique_ptr<Dim3DLookResourceGroup>     m_pDim3DLookResourceGroup;
+    std::unique_ptr<StackingResourceGroup>      m_pStackingResourceGroup;
+    std::unique_ptr<SplineResourceGroup>        m_pSplineResourceGroup;
+    std::unique_ptr<GeometryResourceGroup>      m_pGeometryResourceGroup;
+    std::unique_ptr<SortByXValuesResourceGroup> m_pSortByXValuesResourceGroup;
 
     css::uno::Reference< css::chart2::XChartDocument >   m_xChartModel;
 
-    std::vector< ChartTypeDialogController* > m_aChartTypeDialogControllerList;
+    std::vector< std::unique_ptr<ChartTypeDialogController> > m_aChartTypeDialogControllerList;
     ChartTypeDialogController*                  m_pCurrentMainType;
 
     sal_Int32 m_nChangingCalls;
 
     TimerTriggeredControllerLock   m_aTimerTriggeredControllerLock;
+
+    std::unique_ptr<weld::Label>  m_xFT_ChooseType;
+    std::unique_ptr<weld::TreeView> m_xMainTypeList;
+    std::unique_ptr<ValueSet> m_xSubTypeList;
+    std::unique_ptr<weld::CustomWeld> m_xSubTypeListWin;
 };
 
 } //namespace chart

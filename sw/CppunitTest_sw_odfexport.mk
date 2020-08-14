@@ -11,6 +11,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sw_odfexport))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sw_odfexport))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sw_odfexport, \
     sw/qa/extras/odfexport/odfexport \
 ))
@@ -21,7 +23,9 @@ $(eval $(call gb_CppunitTest_use_libraries,sw_odfexport, \
     cppuhelper \
     sal \
 	sfx \
+	svl \
 	sw \
+	swqahelper \
     test \
     tl \
     unotest \
@@ -37,11 +41,15 @@ $(eval $(call gb_CppunitTest_use_externals,sw_odfexport,\
 $(eval $(call gb_CppunitTest_set_include,sw_odfexport,\
     -I$(SRCDIR)/sw/inc \
     -I$(SRCDIR)/sw/source/core/inc \
-    -I$(SRCDIR)/sw/qa/extras/inc \
+    -I$(SRCDIR)/sw/qa/inc \
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sw_odfexport))
+$(eval $(call gb_CppunitTest_use_api,sw_odfexport,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sw_odfexport))
 $(eval $(call gb_CppunitTest_use_vcl,sw_odfexport))
@@ -53,5 +61,12 @@ $(eval $(call gb_CppunitTest_use_custom_headers,sw_odfexport,\
 ))
 
 $(eval $(call gb_CppunitTest_use_configuration,sw_odfexport))
+
+$(eval $(call gb_CppunitTest_use_uiconfigs,sw_odfexport, \
+    modules/swriter \
+    svx \
+))
+
+$(eval $(call gb_CppunitTest_use_more_fonts,sw_odfexport))
 
 # vim: set noet sw=4 ts=4:

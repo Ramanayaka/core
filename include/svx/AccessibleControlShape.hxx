@@ -20,15 +20,10 @@
 #ifndef INCLUDED_SVX_ACCESSIBLECONTROLSHAPE_HXX
 #define INCLUDED_SVX_ACCESSIBLECONTROLSHAPE_HXX
 
-#include <exception>
-
-#include <com/sun/star/accessibility/XAccessibleEventListener.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/lang/EventObject.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/util/XModeChangeListener.hpp>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase4.hxx>
@@ -38,7 +33,7 @@
 #include <sal/types.h>
 #include <svx/AccessibleShape.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace accessibility { class XAccessible; }
     namespace accessibility { class XAccessibleContext; }
     namespace accessibility { struct AccessibleEventObject; }
@@ -52,14 +47,13 @@ namespace com { namespace sun { namespace star {
     namespace lang { class XTypeProvider; }
     namespace uno { class XAggregation; }
     namespace util { struct ModeChangeEvent; }
-} } }
+}
 
 namespace comphelper
 {
     class OWrappedAccessibleChildrenManager;
 }
 
-class SdrObject;
 namespace accessibility {
 
     class AccessibleShapeInfo;
@@ -72,7 +66,7 @@ namespace accessibility {
                                 >   AccessibleControlShape_Base;
 /** @descr
 */
-class AccessibleControlShape
+class SAL_DLLPUBLIC_RTTI AccessibleControlShape final
         :public AccessibleShape
         ,public AccessibleControlShape_Base
 {
@@ -83,10 +77,10 @@ public:
         const AccessibleShapeTreeInfo& rShapeTreeInfo);
     virtual ~AccessibleControlShape( ) override;
 
-    const css::uno::Reference< css::beans::XPropertySet >& SAL_CALL  GetControlModel( ) { return m_xControlModel;} ;
-    AccessibleControlShape* SAL_CALL GetLabeledByControlShape();
-protected:
+    const css::uno::Reference< css::beans::XPropertySet >&  GetControlModel( ) const { return m_xControlModel;}
+    AccessibleControlShape* GetLabeledByControlShape();
 
+private:
     //---  XAccessibleComponent  -------------------------------
     /// forward the focus to the contained control(in alive mode)
     virtual void SAL_CALL grabFocus( ) override;
@@ -120,15 +114,11 @@ protected:
     //---  XAccessibleEventListener ----------------------------
     virtual void SAL_CALL notifyEvent( const css::accessibility::AccessibleEventObject& aEvent ) override;
 
-    //---  document::XEventListener ----------------------------
-    using AccessibleShape::notifyEvent;
-
     // XVclContainerListener
     virtual void SAL_CALL elementInserted( const css::container::ContainerEvent& Event ) override;
     virtual void SAL_CALL elementRemoved( const css::container::ContainerEvent& Event ) override;
     virtual void SAL_CALL elementReplaced( const css::container::ContainerEvent& Event ) override;
 
-protected:
     /** Initialize a new shape.  See the documentation of the base' constructor
         for the reason of this method's existence.
     */
@@ -145,8 +135,7 @@ protected:
         CreateAccessibleName( ) override;
 
     /// Create a description string that contains the accessible description.
-    virtual OUString
-        CreateAccessibleDescription( ) override;
+    OUString CreateAccessibleDescription();
 
 #ifdef DBG_UTIL
     /// Set the specified state
@@ -182,7 +171,9 @@ protected:
     */
     void        initializeComposedState( );
 
-private:
+    AccessibleControlShape(const AccessibleControlShape&) = delete;
+    AccessibleControlShape& operator= (const AccessibleControlShape&) = delete;
+
     css::uno::Reference< css::beans::XPropertySet >
                     m_xControlModel;
     css::uno::Reference< css::beans::XPropertySetInfo >
@@ -207,11 +198,6 @@ private:
     bool        m_bMultiplexingStates   : 1;    // are we currently multiplexing state changes of the native context?
     bool        m_bDisposeNativeContext : 1;    // do we need to dispose mxNativeContextComponent?
     bool        m_bWaitingForControl    : 1;    // if we are created before our control exists, we need to wait for it to appear ...
-
-private:
-    AccessibleControlShape(const AccessibleControlShape&) = delete;
-
-    AccessibleControlShape& operator= (const AccessibleControlShape&) = delete;
 };
 
 } // end of namespace accessibility

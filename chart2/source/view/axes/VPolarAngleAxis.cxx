@@ -21,10 +21,11 @@
 
 #include "VPolarAngleAxis.hxx"
 #include "VPolarGrid.hxx"
-#include "AbstractShapeFactory.hxx"
-#include "macros.hxx"
-#include "NumberFormatterWrapper.hxx"
-#include "PolarLabelPositionHelper.hxx"
+#include <ShapeFactory.hxx>
+#include <NumberFormatterWrapper.hxx>
+#include <PolarLabelPositionHelper.hxx>
+#include <PlottingPositionHelper.hxx>
+#include <com/sun/star/chart2/XAxis.hpp>
 #include <tools/color.hxx>
 
 #include <memory>
@@ -46,14 +47,14 @@ VPolarAngleAxis::~VPolarAngleAxis()
 {
 }
 
-bool VPolarAngleAxis::createTextShapes_ForAngleAxis(
+void VPolarAngleAxis::createTextShapes_ForAngleAxis(
                        const uno::Reference< drawing::XShapes >& xTarget
                      , EquidistantTickIter& rTickIter
-                     , AxisLabelProperties& rAxisLabelProperties
+                     , AxisLabelProperties const & rAxisLabelProperties
                      , double fLogicRadius
                      , double fLogicZ )
 {
-    AbstractShapeFactory* pShapeFactory = AbstractShapeFactory::getOrCreateShapeFactory(m_xShapeFactory);
+    ShapeFactory* pShapeFactory = ShapeFactory::getOrCreateShapeFactory(m_xShapeFactory);
 
     FixedNumberFormatter aFixedNumberFormatter(
         m_xNumberFormatsSupplier, rAxisLabelProperties.nNumberFormatKey );
@@ -68,7 +69,7 @@ bool VPolarAngleAxis::createTextShapes_ForAngleAxis(
         , rAxisLabelProperties.m_aFontReferenceSize );
 
     uno::Any* pColorAny = PropertyMapper::getValuePointer(aPropValues,aPropNames,"CharColor");
-    sal_Int32 nColor = Color( COL_AUTO ).GetColor();
+    Color nColor = COL_AUTO;
     if(pColorAny)
         *pColorAny >>= nColor;
 
@@ -97,7 +98,7 @@ bool VPolarAngleAxis::createTextShapes_ForAngleAxis(
         {
             //create single label
             bool bHasExtraColor=false;
-            sal_Int32 nExtraColor=0;
+            Color nExtraColor;
 
             OUString aLabel;
             if(pLabels)
@@ -122,10 +123,10 @@ bool VPolarAngleAxis::createTextShapes_ForAngleAxis(
             LabelPositionHelper::changeTextAdjustment( aPropValues, aPropNames, eLabelAlignment );
 
             // #i78696# use mathematically correct rotation now
-            const double fRotationAnglePi(rAxisLabelProperties.fRotationAngleDegree * (F_PI / -180.0));
+            const double fRotationAnglePi(-basegfx::deg2rad(rAxisLabelProperties.fRotationAngleDegree));
 
-            uno::Any aATransformation = AbstractShapeFactory::makeTransformation( aAnchorScreenPosition2D, fRotationAnglePi );
-            OUString aStackedLabel = AbstractShapeFactory::getStackedString( aLabel, rAxisLabelProperties.bStackCharacters );
+            uno::Any aATransformation = ShapeFactory::makeTransformation( aAnchorScreenPosition2D, fRotationAnglePi );
+            OUString aStackedLabel = ShapeFactory::getStackedString( aLabel, rAxisLabelProperties.bStackCharacters );
 
             pTickInfo->xTextShape = pShapeFactory->createText( xTarget, aStackedLabel, aPropNames, aPropValues, aATransformation );
         }
@@ -133,7 +134,6 @@ bool VPolarAngleAxis::createTextShapes_ForAngleAxis(
         //if NO OVERLAP -> remove overlapping shapes
         //@todo
     }
-    return true;
 }
 
 void VPolarAngleAxis::createMaximumLabels()
@@ -161,31 +161,26 @@ void VPolarAngleAxis::createLabels()
 
     double fLogicRadius = m_pPosHelper->getOuterLogicRadius();
 
-    if( m_aAxisProperties.m_bDisplayLabels )
-    {
-        //get the transformed screen values for all tickmarks in aAllTickInfos
-        std::unique_ptr< TickFactory > apTickFactory( this->createTickFactory() );
+    if( !m_aAxisProperties.m_bDisplayLabels )
+        return;
 
-        //create tick mark text shapes
-        //@todo: iterate through all tick depth which should be labeled
+    //create tick mark text shapes
+    //@todo: iterate through all tick depth which should be labeled
 
-        EquidistantTickIter aTickIter( m_aAllTickInfos, m_aIncrement, 0 );
-        this->updateUnscaledValuesAtTicks( aTickIter );
+    EquidistantTickIter aTickIter( m_aAllTickInfos, m_aIncrement, 0 );
+    updateUnscaledValuesAtTicks( aTickIter );
 
-        removeTextShapesFromTicks();
+    removeTextShapesFromTicks();
 
-        AxisLabelProperties aAxisLabelProperties( m_aAxisLabelProperties );
-        aAxisLabelProperties.bOverlapAllowed = true;
-        double const fLogicZ = 1.0;//as defined
-        while( !createTextShapes_ForAngleAxis( m_xTextTarget, aTickIter
-                        , aAxisLabelProperties
-                        , fLogicRadius, fLogicZ
-                        ) )
-        {
-        }
+    AxisLabelProperties aAxisLabelProperties( m_aAxisLabelProperties );
+    aAxisLabelProperties.bOverlapAllowed = true;
+    double const fLogicZ = 1.0;//as defined
+    createTextShapes_ForAngleAxis( m_xTextTarget, aTickIter
+                    , aAxisLabelProperties
+                    , fLogicRadius, fLogicZ
+                    );
 
-        //no staggering for polar angle axis
-    }
+    //no staggering for polar angle axis
 }
 
 void VPolarAngleAxis::createShapes()
@@ -202,7 +197,7 @@ void VPolarAngleAxis::createShapes()
     uno::Reference< drawing::XShape > xShape = m_pShapeFactory->createLine2D(
             m_xGroupShape_Shapes, aPoints, &m_aAxisProperties.m_aLineProperties );
     //because of this name this line will be used for marking the axis
-    ::chart::AbstractShapeFactory::setShapeName( xShape, "MarkHandles" );
+    ::chart::ShapeFactory::setShapeName( xShape, "MarkHandles" );
 
     //create labels
     createLabels();

@@ -20,21 +20,23 @@
 #ifndef INCLUDED_BRIDGES_INC_VTABLEFACTORY_HXX
 #define INCLUDED_BRIDGES_INC_VTABLEFACTORY_HXX
 
-#include "osl/mutex.hxx"
-#include "rtl/alloc.h"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
-#include "typelib/typedescription.hxx"
+#include <osl/mutex.hxx>
+#include <rtl/alloc.h>
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
+#include <typelib/typedescription.hxx>
 
+#include <memory>
 #include <unordered_map>
 
 /*See: http://people.redhat.com/drepper/selinux-mem.html*/
 #if defined(LINUX) || defined(OPENBSD) || defined(FREEBSD) \
-    || defined(NETBSD) || defined(DRAGONFLY) || defined (ANDROID)
+    || defined(NETBSD) || defined(DRAGONFLY) || defined (ANDROID) \
+    || defined(HAIKU)
 #define USE_DOUBLE_MMAP
 #endif
 
-namespace bridges { namespace cpp_uno { namespace shared {
+namespace bridges::cpp_uno::shared {
 
 /** Hand out vtable structures for interface type descriptions.
  */
@@ -91,10 +93,10 @@ public:
             mapBlockToVtable).  Also, the block contains any generated code
             snippets, after the vtable itself.</p>
          */
-        Block * blocks;
+        std::unique_ptr<Block[]> blocks;
+
         Vtables()
             : count(0)
-            , blocks(nullptr)
         {
         }
     };
@@ -106,7 +108,7 @@ public:
     /** Given an interface type description, return its corresponding vtable
         structure.
      */
-    Vtables getVtables(typelib_InterfaceTypeDescription * type);
+    const Vtables& getVtables(typelib_InterfaceTypeDescription * type);
 
     // This function is not defined in the generic part, but instead has to be
     // defined individually for each CPP--UNO bridge:
@@ -120,8 +122,8 @@ private:
 
     class BaseOffset;
 
-    VtableFactory(VtableFactory &) = delete;
-    void operator =(const VtableFactory&) = delete;
+    VtableFactory(VtableFactory const &) = delete;
+    VtableFactory& operator =(const VtableFactory&) = delete;
 
     bool createBlock(Block &block, sal_Int32 slotCount) const;
 
@@ -181,8 +183,8 @@ private:
         @param functionOffset  the function offset of the first vtable slot
         (typically coded into the code snippet for that vtable slot)
         @param functionCount  the number of vtable slots to fill (the number of
-        local functions of the given type, passed in so that it need not be
-        recomputed)
+        local functions of the given type, passed in so that it doesn't need to
+        be recomputed)
         @param vtableOffset  the offset of this vtable (needed to adjust the
         this pointer, typically coded into the code snippets for all the filled
         vtable slots)
@@ -207,7 +209,7 @@ private:
     static void flushCode(
         unsigned char const * begin, unsigned char const * end);
 
-    typedef std::unordered_map< OUString, Vtables, OUStringHash > Map;
+    typedef std::unordered_map< OUString, Vtables > Map;
 
     osl::Mutex m_mutex;
     Map m_map;
@@ -215,7 +217,7 @@ private:
     rtl_arena_type * m_arena;
 };
 
-} } }
+}
 
 #endif
 

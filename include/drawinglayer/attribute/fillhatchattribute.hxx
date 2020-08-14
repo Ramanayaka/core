@@ -30,14 +30,12 @@ namespace basegfx {
     class BColor;
 }
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpFillHatchAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         enum class HatchStyle
         {
@@ -45,13 +43,11 @@ namespace drawinglayer
             Double,
             Triple
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC FillHatchAttribute
         {
@@ -71,10 +67,10 @@ namespace drawinglayer
                 sal_uInt32 nMinimalDiscreteDistance,
                 bool bFillBackground);
             FillHatchAttribute();
-            FillHatchAttribute(const FillHatchAttribute& rCandidate);
-            FillHatchAttribute(FillHatchAttribute&& rCandidate);
-            FillHatchAttribute& operator=(const FillHatchAttribute& rCandidate);
-            FillHatchAttribute& operator=(FillHatchAttribute&& rCandidate);
+            FillHatchAttribute(const FillHatchAttribute&);
+            FillHatchAttribute(FillHatchAttribute&&);
+            FillHatchAttribute& operator=(const FillHatchAttribute&);
+            FillHatchAttribute& operator=(FillHatchAttribute&&);
             ~FillHatchAttribute();
 
             // checks if the incarnation is default constructed
@@ -103,8 +99,8 @@ namespace drawinglayer
 
             bool isFillBackground() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_FILLHATCHATTRIBUTE_HXX

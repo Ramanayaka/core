@@ -23,33 +23,16 @@
 #include "columnsettings.hxx"
 
 #include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/io/IOException.hpp>
-#include <com/sun/star/io/XObjectInputStream.hpp>
-#include <com/sun/star/io/XObjectOutputStream.hpp>
-#include <com/sun/star/lang/WrappedTargetException.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbcx/XAppend.hpp>
-#include <com/sun/star/sdbcx/XDrop.hpp>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 
-#include <comphelper/proparrhlp.hxx>
 #include <comphelper/propertycontainer.hxx>
-#include <connectivity/CommonTools.hxx>
-#include <connectivity/FValue.hxx>
 #include <connectivity/TColumnsHelper.hxx>
 #include <connectivity/sdbcx/IRefreshable.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/implbase1.hxx>
-#include <cppuhelper/propshlp.hxx>
-#include <osl/diagnose.h>
 
 namespace dbaccess
 {
@@ -103,8 +86,6 @@ namespace dbaccess
         virtual OUString SAL_CALL getName(  ) override;
         virtual void SAL_CALL setName( const OUString& _rName ) override;
 
-        virtual void fireValueChange( const ::connectivity::ORowSetValue& _rOldValue );
-
     protected:
         // IPropertyContainer
         virtual void registerProperty( const OUString& _rName, sal_Int32 _nHandle, sal_Int32 _nAttributes, void* _pPointerToMember, const css::uno::Type& _rMemberType ) override;
@@ -115,7 +96,7 @@ namespace dbaccess
     class SAL_NO_VTABLE IColumnFactory
     {
     public:
-        /** creates a OColumn object which should represent the column with a given name
+        /** creates an OColumn object which should represent the column with a given name
         */
         virtual OColumn*
             createColumn( const OUString& _rName ) const = 0;
@@ -227,7 +208,7 @@ namespace dbaccess
         void append(const OUString& rName, OColumn*);
         void clearColumns();
         // only the name is identical to ::cppu::OComponentHelper
-        virtual void SAL_CALL disposing() override;
+        virtual void disposing() override;
 
     private:
         using OColumns_BASE::setParent;

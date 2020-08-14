@@ -19,21 +19,17 @@
 
 
 #include <svx/sdr/overlay/overlayprimitive2dsequenceobject.hxx>
-#include <drawinglayer/geometry/viewinformation2d.hxx>
-#include <svx/sdr/overlay/overlaymanager.hxx>
 
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         drawinglayer::primitive2d::Primitive2DContainer OverlayPrimitive2DSequenceObject::createOverlayObjectPrimitive2DSequence()
         {
             return maSequence;
         }
 
         OverlayPrimitive2DSequenceObject::OverlayPrimitive2DSequenceObject(const drawinglayer::primitive2d::Primitive2DContainer& rSequence)
-        :   OverlayObjectWithBasePosition(basegfx::B2DPoint(), Color(COL_BLACK)),
+        :   OverlayObjectWithBasePosition(basegfx::B2DPoint(), COL_BLACK),
             maSequence(rSequence)
         {
         }
@@ -41,7 +37,6 @@ namespace sdr
         OverlayPrimitive2DSequenceObject::~OverlayPrimitive2DSequenceObject()
         {
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace sdr::overlay
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

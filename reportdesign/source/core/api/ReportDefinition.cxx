@@ -21,25 +21,20 @@
 
 #include <vector>
 
-#include "ReportDefinition.hxx"
+#include <ReportDefinition.hxx>
 
-#include "FixedLine.hxx"
-#include "FixedText.hxx"
-#include "FormattedField.hxx"
-#include "Functions.hxx"
-#include "Groups.hxx"
-#include "ImageControl.hxx"
-#include "ReportComponent.hxx"
-#include "ReportHelperImpl.hxx"
-#include "RptDef.hxx"
-#include "RptModel.hxx"
-#include "Section.hxx"
-#include "Shape.hxx"
-#include "Tools.hxx"
-#include "UndoEnv.hxx"
-#include "core_resource.hrc"
-#include "core_resource.hxx"
-#include "corestrings.hrc"
+#include <Functions.hxx>
+#include <Groups.hxx>
+#include <ReportComponent.hxx>
+#include <ReportHelperImpl.hxx>
+#include <RptDef.hxx>
+#include <RptModel.hxx>
+#include <Section.hxx>
+#include <Tools.hxx>
+#include <UndoEnv.hxx>
+#include <strings.hrc>
+#include <core_resource.hxx>
+#include <strings.hxx>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/XMultiPropertyStates.hpp>
@@ -55,19 +50,16 @@
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/EmbedMapUnits.hpp>
-#include <com/sun/star/embed/EntryInitModes.hpp>
-#include <com/sun/star/embed/XEmbedPersist.hpp>
 #include <com/sun/star/embed/XTransactedObject.hpp>
 #include <com/sun/star/embed/StorageFactory.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/io/IOException.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/report/GroupKeepTogether.hpp>
 #include <com/sun/star/report/ReportPrintOption.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
-#include <com/sun/star/sdb/XOfficeDatabaseDocument.hpp>
 #include <com/sun/star/style/GraphicLocation.hpp>
 #include <com/sun/star/style/NumberingType.hpp>
 #include <com/sun/star/style/PageStyleLayout.hpp>
@@ -76,9 +68,7 @@
 #include <com/sun/star/table/ShadowFormat.hpp>
 #include <com/sun/star/task/InteractionHandler.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
-#include <com/sun/star/task/XStatusIndicatorFactory.hpp>
 #include <com/sun/star/ui/UIConfigurationManager.hpp>
-#include <com/sun/star/ui/XUIConfigurationStorage.hpp>
 #include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/util/NumberFormatsSupplier.hpp>
 #include <com/sun/star/xml/AttributeData.hpp>
@@ -88,25 +78,25 @@
 #include <comphelper/documentconstants.hxx>
 #include <comphelper/genericpropertyset.hxx>
 #include <unotools/mediadescriptor.hxx>
-#include <comphelper/mimeconfighelper.hxx>
 #include <comphelper/namecontainer.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/numberedcollection.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include <comphelper/property.hxx>
 #include <comphelper/propertysetinfo.hxx>
 #include <comphelper/propertystatecontainer.hxx>
 #include <comphelper/seqstream.hxx>
 #include <comphelper/sequence.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <comphelper/uno3.hxx>
 #include <connectivity/CommonTools.hxx>
-#include <connectivity/dbconversion.hxx>
 #include <connectivity/dbtools.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/interfacecontainer.h>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/typeprovider.hxx>
+#include <comphelper/types.hxx>
 #include <dbaccess/dbaundomanager.hxx>
 #include <editeng/paperinf.hxx>
 #include <framework/titlehelper.hxx>
@@ -116,13 +106,9 @@
 #include <svx/unofill.hxx>
 #include <svx/xmleohlp.hxx>
 #include <svx/xmlgrhlp.hxx>
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include <unotools/moduleoptions.hxx>
 #include <unotools/saveopt.hxx>
-#include <unotools/streamwrap.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/virdev.hxx>
 
 //  page styles
 #define SC_UNO_PAGE_LEFTBORDER      "LeftBorder"
@@ -144,7 +130,7 @@
 #define SC_UNO_PAGE_HDRBACKTRAN     "HeaderBackTransparent"
 #define SC_UNO_PAGE_HDRGRFFILT      "HeaderBackGraphicFilter"
 #define SC_UNO_PAGE_HDRGRFLOC       "HeaderBackGraphicLocation"
-#define SC_UNO_PAGE_HDRGRFURL       "HeaderBackGraphicURL"
+#define SC_UNO_PAGE_HDRGRF          "HeaderBackGraphic"
 #define SC_UNO_PAGE_HDRLEFTBOR      "HeaderLeftBorder"
 #define SC_UNO_PAGE_HDRRIGHTBOR     "HeaderRightBorder"
 #define SC_UNO_PAGE_HDRBOTTBOR      "HeaderBottomBorder"
@@ -166,7 +152,7 @@
 #define SC_UNO_PAGE_FTRBACKTRAN     "FooterBackTransparent"
 #define SC_UNO_PAGE_FTRGRFFILT      "FooterBackGraphicFilter"
 #define SC_UNO_PAGE_FTRGRFLOC       "FooterBackGraphicLocation"
-#define SC_UNO_PAGE_FTRGRFURL       "FooterBackGraphicURL"
+#define SC_UNO_PAGE_FTRGRF          "FooterBackGraphic"
 #define SC_UNO_PAGE_FTRLEFTBOR      "FooterLeftBorder"
 #define SC_UNO_PAGE_FTRRIGHTBOR     "FooterRightBorder"
 #define SC_UNO_PAGE_FTRBOTTBOR      "FooterBottomBorder"
@@ -188,10 +174,9 @@
 namespace reportdesign
 {
     using namespace com::sun::star;
-    using namespace comphelper;
     using namespace rptui;
 
-void lcl_setModelReadOnly(const uno::Reference< embed::XStorage >& _xStorage,std::shared_ptr<rptui::OReportModel>& _rModel)
+static void lcl_setModelReadOnly(const uno::Reference< embed::XStorage >& _xStorage,std::shared_ptr<rptui::OReportModel> const & _rModel)
 {
     uno::Reference<beans::XPropertySet> xProp(_xStorage,uno::UNO_QUERY);
     sal_Int32 nOpenMode = embed::ElementModes::READ;
@@ -200,15 +185,15 @@ void lcl_setModelReadOnly(const uno::Reference< embed::XStorage >& _xStorage,std
 
     _rModel->SetReadOnly((nOpenMode & embed::ElementModes::WRITE) != embed::ElementModes::WRITE);
 }
-void lcl_stripLoadArguments( utl::MediaDescriptor& _rDescriptor, uno::Sequence< beans::PropertyValue >& _rArgs )
+static void lcl_stripLoadArguments( utl::MediaDescriptor& _rDescriptor, uno::Sequence< beans::PropertyValue >& _rArgs )
 {
-    _rDescriptor.erase( OUString( "StatusIndicator" ) );
-    _rDescriptor.erase( OUString( "InteractionHandler" ) );
-    _rDescriptor.erase( OUString( "Model" ) );
+    _rDescriptor.erase( "StatusIndicator" );
+    _rDescriptor.erase( "InteractionHandler" );
+    _rDescriptor.erase( "Model" );
     _rDescriptor >> _rArgs;
 }
 
-void lcl_extractAndStartStatusIndicator( const utl::MediaDescriptor& _rDescriptor, uno::Reference< task::XStatusIndicator >& _rxStatusIndicator,
+static void lcl_extractAndStartStatusIndicator( const utl::MediaDescriptor& _rDescriptor, uno::Reference< task::XStatusIndicator >& _rxStatusIndicator,
     uno::Sequence< uno::Any >& _rCallArgs )
 {
     try
@@ -216,7 +201,7 @@ void lcl_extractAndStartStatusIndicator( const utl::MediaDescriptor& _rDescripto
         _rxStatusIndicator = _rDescriptor.getUnpackedValueOrDefault( utl::MediaDescriptor::PROP_STATUSINDICATOR(), _rxStatusIndicator );
         if ( _rxStatusIndicator.is() )
         {
-            _rxStatusIndicator->start( OUString(), (sal_Int32)1000000 );
+            _rxStatusIndicator->start( OUString(), sal_Int32(1000000) );
 
             sal_Int32 nLength = _rCallArgs.getLength();
             _rCallArgs.realloc( nLength + 1 );
@@ -225,15 +210,23 @@ void lcl_extractAndStartStatusIndicator( const utl::MediaDescriptor& _rDescripto
     }
     catch (const uno::Exception&)
     {
-        OSL_FAIL( "lcl_extractAndStartStatusIndicator: caught an exception!" );
+        TOOLS_WARN_EXCEPTION( "reportdesign", "lcl_extractAndStartStatusIndicator" );
     }
 }
 
 typedef ::comphelper::OPropertyStateContainer       OStyle_PBASE;
+
+namespace {
+
 class OStyle;
+
+}
+
 typedef ::comphelper::OPropertyArrayUsageHelper <   OStyle
                                                 >   OStyle_PABASE;
 typedef ::cppu::WeakImplHelper< style::XStyle, beans::XMultiPropertyStates> TStyleBASE;
+
+namespace {
 
 class OStyle :   public ::comphelper::OMutexAndBroadcastHelper
                 ,public TStyleBASE
@@ -276,6 +269,8 @@ public:
     uno::Sequence< uno::Any > SAL_CALL getPropertyDefaults( const uno::Sequence< OUString >& aPropertyNames ) override;
 };
 
+}
+
 OStyle::OStyle()
 :OStyle_PBASE(m_aBHelper)
 ,m_aSize(21000,29700)
@@ -291,7 +286,7 @@ OStyle::OStyle()
     sal_Int32 i = 0;
     registerPropertyNoMember( PROPERTY_NAME, ++i, nBound, cppu::UnoType<OUString>::get(), css::uno::Any(OUString("Default")) );
 
-    registerPropertyNoMember(PROPERTY_BACKCOLOR,                    ++i,nBound, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny<sal_Int32>(COL_TRANSPARENT));
+    registerPropertyNoMember(PROPERTY_BACKCOLOR,                    ++i,nBound, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny(COL_TRANSPARENT));
 
     registerPropertyNoMember(PROPERTY_BACKGRAPHICLOCATION,  ++i,nBound, cppu::UnoType<style::GraphicLocation>::get(), css::uno::Any(style::GraphicLocation_NONE));
     registerPropertyNoMember(PROPERTY_BACKTRANSPARENT,  ++i,nBound,cppu::UnoType<bool>::get(), css::uno::Any(true));
@@ -300,10 +295,10 @@ OStyle::OStyle()
     registerPropertyNoMember(SC_UNO_PAGE_BOTTBRDDIST, ++i,nBound, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny<sal_Int32>(0));
     registerPropertyNoMember(PROPERTY_BOTTOMMARGIN, ++i,nBound, cppu::UnoType<sal_Int32>::get(), css::uno::Any(nMargin));
     registerPropertyNoMember("DisplayName",       ++i,nBound, cppu::UnoType<OUString>::get(), css::uno::Any(OUString()));
-    registerPropertyNoMember(SC_UNO_PAGE_FTRBACKCOL,  ++i,nBound, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny<sal_Int32>(COL_TRANSPARENT));
+    registerPropertyNoMember(SC_UNO_PAGE_FTRBACKCOL,  ++i,nBound, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny(COL_TRANSPARENT));
     registerPropertyNoMember(SC_UNO_PAGE_FTRGRFFILT,  ++i,nBound, cppu::UnoType<OUString>::get(), css::uno::Any(OUString()));
     registerPropertyNoMember(SC_UNO_PAGE_FTRGRFLOC,   ++i,nBound, cppu::UnoType<style::GraphicLocation>::get(), css::uno::Any(style::GraphicLocation_NONE));
-    registerPropertyNoMember(SC_UNO_PAGE_FTRGRFURL,   ++i,nBound, cppu::UnoType<OUString>::get(), css::uno::Any(OUString()));
+    registerPropertyNoMember(SC_UNO_PAGE_FTRGRF,      ++i,nBound|nMayBeVoid, cppu::UnoType<graphic::XGraphic>::get(), css::uno::Any(uno::Reference<graphic::XGraphic>()));
     registerPropertyNoMember(SC_UNO_PAGE_FTRBACKTRAN, ++i,nBound,cppu::UnoType<bool>::get(), css::uno::Any(true));
     registerPropertyNoMember(SC_UNO_PAGE_FTRBODYDIST, ++i,nBound, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny<sal_Int32>(0));
     registerPropertyNoMember(SC_UNO_PAGE_FTRBRDDIST,  ++i,nBound, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny<sal_Int32>(0));
@@ -323,10 +318,10 @@ OStyle::OStyle()
     registerPropertyNoMember(SC_UNO_PAGE_FTRTOPBOR,   ++i,nBound, cppu::UnoType<table::BorderLine2>::get(), css::uno::Any(table::BorderLine2()));
     registerPropertyNoMember(SC_UNO_PAGE_FTRTOPBDIS,  ++i,nBound, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny<sal_Int32>(0));
 
-    registerPropertyNoMember(SC_UNO_PAGE_HDRBACKCOL,  ++i,nBound|nMayBeVoid, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny<sal_Int32>(COL_TRANSPARENT));
+    registerPropertyNoMember(SC_UNO_PAGE_HDRBACKCOL,  ++i,nBound|nMayBeVoid, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny(COL_TRANSPARENT));
     registerPropertyNoMember(SC_UNO_PAGE_HDRGRFFILT,  ++i,nBound|nMayBeVoid, cppu::UnoType<OUString>::get(), css::uno::Any(OUString()));
     registerPropertyNoMember(SC_UNO_PAGE_HDRGRFLOC,   ++i,nBound|nMayBeVoid, cppu::UnoType<style::GraphicLocation>::get(), css::uno::Any(style::GraphicLocation_NONE));
-    registerPropertyNoMember(SC_UNO_PAGE_HDRGRFURL,   ++i,nBound|nMayBeVoid, cppu::UnoType<OUString>::get(), css::uno::Any(OUString()));
+    registerPropertyNoMember(SC_UNO_PAGE_HDRGRF,      ++i,nBound|nMayBeVoid, cppu::UnoType<graphic::XGraphic>::get(), css::uno::Any(uno::Reference<graphic::XGraphic>()));
     registerPropertyNoMember(SC_UNO_PAGE_HDRBACKTRAN, ++i,nBound|nMayBeVoid,cppu::UnoType<bool>::get(), css::uno::Any(true));
     registerPropertyNoMember(SC_UNO_PAGE_HDRBODYDIST, ++i,nBound|nMayBeVoid, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny<sal_Int32>(0));
     registerPropertyNoMember(SC_UNO_PAGE_HDRBRDDIST,  ++i,nBound|nMayBeVoid, cppu::UnoType<sal_Int32>::get(), css::uno::makeAny<sal_Int32>(0));
@@ -436,19 +431,15 @@ void SAL_CALL OStyle::setAllPropertiesToDefault(  )
 
 void SAL_CALL OStyle::setPropertiesToDefault( const uno::Sequence< OUString >& aPropertyNames )
 {
-    const OUString* pIter = aPropertyNames.getConstArray();
-    const OUString* pEnd   = pIter + aPropertyNames.getLength();
-    for(;pIter != pEnd;++pIter)
-        setPropertyToDefault(*pIter);
+    for(const OUString& rName : aPropertyNames)
+        setPropertyToDefault(rName);
 }
 
 uno::Sequence< uno::Any > SAL_CALL OStyle::getPropertyDefaults( const uno::Sequence< OUString >& aPropertyNames )
 {
     uno::Sequence< uno::Any > aRet(aPropertyNames.getLength());
-    const OUString* pIter = aPropertyNames.getConstArray();
-    const OUString* pEnd   = pIter + aPropertyNames.getLength();
-    for(sal_Int32 i = 0;pIter != pEnd;++pIter,++i)
-        aRet[i] = getPropertyDefault(*pIter);
+    std::transform(aPropertyNames.begin(), aPropertyNames.end(), aRet.begin(),
+        [this](const OUString& rName) -> uno::Any { return getPropertyDefault(rName); });
     return aRet;
 }
 
@@ -532,31 +523,36 @@ struct OReportDefinitionImpl
 };
 
 OReportDefinition::OReportDefinition(uno::Reference< uno::XComponentContext > const & _xContext)
-: ReportDefinitionBase(m_aMutex)
-,ReportDefinitionPropertySet(_xContext,IMPLEMENTS_PROPERTY_SET,uno::Sequence< OUString >())
-,m_aProps(new OReportComponentProperties(_xContext))
-,m_pImpl(new OReportDefinitionImpl(m_aMutex))
+:   ::cppu::BaseMutex(),
+    ReportDefinitionBase(m_aMutex),
+    ReportDefinitionPropertySet(_xContext,IMPLEMENTS_PROPERTY_SET,uno::Sequence< OUString >()),
+    ::comphelper::IEmbeddedHelper(),
+    m_aProps(std::make_shared<OReportComponentProperties>(_xContext)),
+    m_pImpl(std::make_shared<OReportDefinitionImpl>(m_aMutex))
 {
-    m_aProps->m_sName  = RPT_RESSTRING(RID_STR_REPORT);
+    m_aProps->m_sName  = RptResId(RID_STR_REPORT);
     osl_atomic_increment(&m_refCount);
     {
         init();
         m_pImpl->m_xGroups = new OGroups(this,m_aProps->m_xContext);
         m_pImpl->m_xDetail = OSection::createOSection(this,m_aProps->m_xContext);
-        m_pImpl->m_xDetail->setName(RPT_RESSTRING(RID_STR_DETAIL));
+        m_pImpl->m_xDetail->setName(RptResId(RID_STR_DETAIL));
     }
     osl_atomic_decrement( &m_refCount );
 }
 
-OReportDefinition::OReportDefinition(uno::Reference< uno::XComponentContext > const & _xContext
-                                     ,const uno::Reference< lang::XMultiServiceFactory>& _xFactory
-                                     ,uno::Reference< drawing::XShape >& _xShape)
-: ReportDefinitionBase(m_aMutex)
-,ReportDefinitionPropertySet(_xContext,IMPLEMENTS_PROPERTY_SET,uno::Sequence< OUString >())
-,m_aProps(new OReportComponentProperties(_xContext))
-,m_pImpl(new OReportDefinitionImpl(m_aMutex))
+OReportDefinition::OReportDefinition(
+    uno::Reference< uno::XComponentContext > const & _xContext,
+    const uno::Reference< lang::XMultiServiceFactory>& _xFactory,
+    uno::Reference< drawing::XShape >& _xShape)
+:   ::cppu::BaseMutex(),
+    ReportDefinitionBase(m_aMutex),
+    ReportDefinitionPropertySet(_xContext,IMPLEMENTS_PROPERTY_SET,uno::Sequence< OUString >()),
+    ::comphelper::IEmbeddedHelper(),
+    m_aProps(std::make_shared<OReportComponentProperties>(_xContext)),
+    m_pImpl(std::make_shared<OReportDefinitionImpl>(m_aMutex))
 {
-    m_aProps->m_sName  = RPT_RESSTRING(RID_STR_REPORT);
+    m_aProps->m_sName  = RptResId(RID_STR_REPORT);
     m_aProps->m_xFactory = _xFactory;
     osl_atomic_increment(&m_refCount);
     {
@@ -564,7 +560,7 @@ OReportDefinition::OReportDefinition(uno::Reference< uno::XComponentContext > co
         init();
         m_pImpl->m_xGroups = new OGroups(this,m_aProps->m_xContext);
         m_pImpl->m_xDetail = OSection::createOSection(this,m_aProps->m_xContext);
-        m_pImpl->m_xDetail->setName(RPT_RESSTRING(RID_STR_DETAIL));
+        m_pImpl->m_xDetail->setName(RptResId(RID_STR_DETAIL));
     }
     osl_atomic_decrement( &m_refCount );
 }
@@ -583,11 +579,11 @@ void OReportDefinition::init()
 {
     try
     {
-        m_pImpl->m_pReportModel.reset(new OReportModel(this));
+        m_pImpl->m_pReportModel = std::make_shared<OReportModel>(this);
         m_pImpl->m_pReportModel->GetItemPool().FreezeIdRanges();
         m_pImpl->m_pReportModel->SetScaleUnit( MapUnit::Map100thMM );
         SdrLayerAdmin& rAdmin = m_pImpl->m_pReportModel->GetLayerAdmin();
-        rAdmin.NewStandardLayer(sal_uInt8(RPT_LAYER_FRONT));
+        rAdmin.NewLayer("front", sal_uInt8(RPT_LAYER_FRONT));
         rAdmin.NewLayer("back", sal_uInt8(RPT_LAYER_BACK));
         rAdmin.NewLayer("HiddenLayer", sal_uInt8(RPT_LAYER_HIDDEN));
 
@@ -606,11 +602,11 @@ void OReportDefinition::init()
             if ( sMediaType.isEmpty() )
                 xStorProps->setPropertyValue("MediaType",uno::makeAny<OUString>(MIMETYPE_OASIS_OPENDOCUMENT_REPORT_ASCII));
         }
-        m_pImpl->m_pObjectContainer.reset( new comphelper::EmbeddedObjectContainer(m_pImpl->m_xStorage , static_cast<cppu::OWeakObject*>(this) ) );
+        m_pImpl->m_pObjectContainer = std::make_shared<comphelper::EmbeddedObjectContainer>(m_pImpl->m_xStorage , static_cast<cppu::OWeakObject*>(this) );
     }
     catch (const uno::Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 }
 
@@ -636,7 +632,7 @@ void SAL_CALL OReportDefinition::disposing()
     // SYNCHRONIZED --->
     {
     SolarMutexGuard aSolarGuard;
-    ::osl::ResettableMutexGuard aGuard(m_aMutex);
+    osl::MutexGuard aGuard(m_aMutex);
 
     m_pImpl->m_aControllers.clear();
 
@@ -676,21 +672,9 @@ void SAL_CALL OReportDefinition::disposing()
 }
 
 
-OUString OReportDefinition::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.report.OReportDefinition");
-}
-
 OUString SAL_CALL OReportDefinition::getImplementationName(  )
 {
-    return getImplementationName_Static();
-}
-
-uno::Sequence< OUString > OReportDefinition::getSupportedServiceNames_Static(  )
-{
-    uno::Sequence< OUString > aServices { SERVICE_REPORTDEFINITION };
-
-    return aServices;
+    return "com.sun.star.comp.report.OReportDefinition";
 }
 
 uno::Sequence< OUString > SAL_CALL OReportDefinition::getSupportedServiceNames(  )
@@ -701,7 +685,7 @@ uno::Sequence< OUString > SAL_CALL OReportDefinition::getSupportedServiceNames( 
         aSupported = m_aProps->m_xServiceInfo->getSupportedServiceNames();
 
     // append our own service, if necessary
-    if ( 0 == ::comphelper::findValue( aSupported, SERVICE_REPORTDEFINITION, true ).getLength() )
+    if ( ::comphelper::findValue( aSupported, SERVICE_REPORTDEFINITION ) == -1 )
     {
         sal_Int32 nLen = aSupported.getLength();
         aSupported.realloc( nLen + 1 );
@@ -733,11 +717,6 @@ uno::Sequence< uno::Type > SAL_CALL OReportDefinition::getTypes(  )
             m_aProps->m_xTypeProvider->getTypes()
         );
     return ReportDefinitionBase::getTypes();
-}
-
-uno::Reference< uno::XInterface > OReportDefinition::create(uno::Reference< uno::XComponentContext > const & xContext)
-{
-    return *(new OReportDefinition(xContext));
 }
 
 // XReportDefinition
@@ -855,7 +834,7 @@ void SAL_CALL OReportDefinition::setReportHeaderOn( sal_Bool _reportheaderon )
 {
     if ( bool(_reportheaderon) != m_pImpl->m_xReportHeader.is() )
     {
-        setSection(PROPERTY_REPORTHEADERON,_reportheaderon,RPT_RESSTRING(RID_STR_REPORT_HEADER),m_pImpl->m_xReportHeader);
+        setSection(PROPERTY_REPORTHEADERON,_reportheaderon,RptResId(RID_STR_REPORT_HEADER),m_pImpl->m_xReportHeader);
     }
 }
 
@@ -869,7 +848,7 @@ void SAL_CALL OReportDefinition::setReportFooterOn( sal_Bool _reportfooteron )
 {
     if ( bool(_reportfooteron) != m_pImpl->m_xReportFooter.is() )
     {
-        setSection(PROPERTY_REPORTFOOTERON,_reportfooteron,RPT_RESSTRING(RID_STR_REPORT_FOOTER),m_pImpl->m_xReportFooter);
+        setSection(PROPERTY_REPORTFOOTERON,_reportfooteron,RptResId(RID_STR_REPORT_FOOTER),m_pImpl->m_xReportFooter);
     }
 }
 
@@ -883,7 +862,7 @@ void SAL_CALL OReportDefinition::setPageHeaderOn( sal_Bool _pageheaderon )
 {
     if ( bool(_pageheaderon) != m_pImpl->m_xPageHeader.is() )
     {
-        setSection(PROPERTY_PAGEHEADERON,_pageheaderon,RPT_RESSTRING(RID_STR_PAGE_HEADER),m_pImpl->m_xPageHeader);
+        setSection(PROPERTY_PAGEHEADERON,_pageheaderon,RptResId(RID_STR_PAGE_HEADER),m_pImpl->m_xPageHeader);
     }
 }
 
@@ -897,7 +876,7 @@ void SAL_CALL OReportDefinition::setPageFooterOn( sal_Bool _pagefooteron )
 {
     if ( bool(_pagefooteron) != m_pImpl->m_xPageFooter.is() )
     {
-        setSection(PROPERTY_PAGEFOOTERON,_pagefooteron,RPT_RESSTRING(RID_STR_PAGE_FOOTER),m_pImpl->m_xPageFooter);
+        setSection(PROPERTY_PAGEFOOTERON,_pagefooteron,RptResId(RID_STR_PAGE_FOOTER),m_pImpl->m_xPageFooter);
     }
 }
 
@@ -1076,15 +1055,13 @@ void SAL_CALL OReportDefinition::close(sal_Bool bDeliverOwnership)
 
 
     ::std::vector< uno::Reference< frame::XController> > aCopy = m_pImpl->m_aControllers;
-    ::std::vector< uno::Reference< frame::XController> >::iterator aIter = aCopy.begin();
-    ::std::vector< uno::Reference< frame::XController> >::const_iterator aEnd = aCopy.end();
-    for (;aIter != aEnd ; ++aIter)
+    for (auto& rxController : aCopy)
     {
-        if ( aIter->is() )
+        if ( rxController.is() )
         {
             try
             {
-                uno::Reference< util::XCloseable> xFrame( (*aIter)->getFrame(), uno::UNO_QUERY );
+                uno::Reference< util::XCloseable> xFrame( rxController->getFrame(), uno::UNO_QUERY );
                 if ( xFrame.is() )
                     xFrame->close( bDeliverOwnership );
             }
@@ -1132,7 +1109,7 @@ void OReportDefinition::fillArgs(utl::MediaDescriptor& _aDescriptor)
 {
     uno::Sequence<beans::PropertyValue> aComponentData;
     aComponentData = _aDescriptor.getUnpackedValueOrDefault("ComponentData",aComponentData);
-    if ( aComponentData.getLength() && (!m_pImpl->m_xActiveConnection.is() || !m_pImpl->m_xNumberFormatsSupplier.is()) )
+    if ( aComponentData.hasElements() && (!m_pImpl->m_xActiveConnection.is() || !m_pImpl->m_xNumberFormatsSupplier.is()) )
     {
         ::comphelper::SequenceAsHashMap aComponentDataMap( aComponentData );
         m_pImpl->m_xActiveConnection = aComponentDataMap.getUnpackedValueOrDefault("ActiveConnection",m_pImpl->m_xActiveConnection);
@@ -1165,10 +1142,11 @@ void SAL_CALL OReportDefinition::connectController( const uno::Reference< frame:
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(ReportDefinitionBase::rBHelper.bDisposed);
     m_pImpl->m_aControllers.push_back(_xController);
-    sal_Int32 nCount;
-    if ( _xController.is() && m_pImpl->m_xViewData.is() && ( nCount = m_pImpl->m_xViewData->getCount()) != 0)
+    if ( _xController.is() && m_pImpl->m_xViewData.is() )
     {
-        _xController->restoreViewData(m_pImpl->m_xViewData->getByIndex(nCount - 1));
+        sal_Int32 nCount = m_pImpl->m_xViewData->getCount();
+        if (nCount)
+            _xController->restoreViewData(m_pImpl->m_xViewData->getByIndex(nCount - 1));
     }
 }
 
@@ -1281,7 +1259,7 @@ void SAL_CALL OReportDefinition::loadFromStorage( const uno::Reference< embed::X
 void SAL_CALL OReportDefinition::storeToStorage( const uno::Reference< embed::XStorage >& _xStorageToSaveTo, const uno::Sequence< beans::PropertyValue >& _aMediaDescriptor )
 {
     if ( !_xStorageToSaveTo.is() )
-        throw lang::IllegalArgumentException(RPT_RESSTRING(RID_STR_ARGUMENT_IS_NULL),*this,1);
+        throw lang::IllegalArgumentException(RptResId(RID_STR_ARGUMENT_IS_NULL),*this,1);
 
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard(m_aMutex);
@@ -1296,9 +1274,6 @@ void SAL_CALL OReportDefinition::storeToStorage( const uno::Reference< embed::XS
     uno::Sequence < beans::PropertyValue > aProps;
 
     // export sub streams for package, else full stream into a file
-    bool bErr = false;
-    OUString sErrFile;
-
     uno::Reference< beans::XPropertySet> xProp(_xStorageToSaveTo,uno::UNO_QUERY);
     if ( xProp.is() )
     {
@@ -1335,59 +1310,35 @@ void SAL_CALL OReportDefinition::storeToStorage( const uno::Reference< embed::XS
     aDelegatorArguments.realloc(nArgsLen+1);
     aDelegatorArguments[nArgsLen++] <<= xInfoSet;
 
-     uno::Reference< document::XEmbeddedObjectResolver > xObjectResolver;
-    uno::Reference< document::XGraphicObjectResolver >      xGrfResolver;
-    SvXMLGraphicHelper* pGraphicHelper = SvXMLGraphicHelper::Create(_xStorageToSaveTo,SvXMLGraphicHelperMode::Write);
-    xGrfResolver = pGraphicHelper;
-    pGraphicHelper->release();
-    SvXMLEmbeddedObjectHelper* pEmbeddedObjectHelper = SvXMLEmbeddedObjectHelper::Create( _xStorageToSaveTo,*this, SvXMLEmbeddedObjectHelperMode::Write );
-    xObjectResolver = pEmbeddedObjectHelper;
-    pEmbeddedObjectHelper->release();
+    uno::Reference< document::XEmbeddedObjectResolver > xObjectResolver;
+    uno::Reference<document::XGraphicStorageHandler> xGraphicStorageHandler;
+    rtl::Reference<SvXMLGraphicHelper> xGraphicHelper = SvXMLGraphicHelper::Create(_xStorageToSaveTo,SvXMLGraphicHelperMode::Write);
+    xGraphicStorageHandler = xGraphicHelper.get();
+    xGraphicHelper.clear();
+    xObjectResolver = SvXMLEmbeddedObjectHelper::Create( _xStorageToSaveTo,*this, SvXMLEmbeddedObjectHelperMode::Write ).get();
 
     aDelegatorArguments.realloc(nArgsLen+2);
-    aDelegatorArguments[nArgsLen++] <<= xGrfResolver;
+    aDelegatorArguments[nArgsLen++] <<= xGraphicStorageHandler;
     aDelegatorArguments[nArgsLen++] <<= xObjectResolver;
 
     uno::Reference<XComponent> xCom(static_cast<OWeakObject*>(this),uno::UNO_QUERY);
-    if( !bErr )
-    {
-        xInfoSet->setPropertyValue("StreamName", uno::makeAny(OUString("settings.xml")));
-        WriteThroughComponent(
-            xCom, "settings.xml",
-            "com.sun.star.comp.report.XMLSettingsExporter",
-            aDelegatorArguments, aProps, _xStorageToSaveTo );
-    }
+    // Try to write to settings.xml, meta.xml, and styles.xml; only really care about success of
+    // write to content.xml (keeping logic of commit 94ccba3eebc83b58e74e18f0e028c6a995ce6aa6)
+    xInfoSet->setPropertyValue("StreamName", uno::makeAny(OUString("settings.xml")));
+    WriteThroughComponent(xCom, "settings.xml", "com.sun.star.comp.report.XMLSettingsExporter",
+                          aDelegatorArguments, aProps, _xStorageToSaveTo);
 
-    if( !bErr )
-    {
-        xInfoSet->setPropertyValue("StreamName", uno::makeAny(OUString("meta.xml")));
-        WriteThroughComponent(
-            xCom, "meta.xml",
-            "com.sun.star.comp.report.XMLMetaExporter",
-            aDelegatorArguments, aProps, _xStorageToSaveTo );
-    }
+    xInfoSet->setPropertyValue("StreamName", uno::makeAny(OUString("meta.xml")));
+    WriteThroughComponent(xCom, "meta.xml", "com.sun.star.comp.report.XMLMetaExporter",
+                          aDelegatorArguments, aProps, _xStorageToSaveTo);
 
-    if( !bErr )
-    {
-        xInfoSet->setPropertyValue("StreamName", uno::makeAny(OUString("styles.xml")));
-        WriteThroughComponent(
-            xCom, "styles.xml",
-            "com.sun.star.comp.report.XMLStylesExporter",
-            aDelegatorArguments, aProps, _xStorageToSaveTo );
-    }
+    xInfoSet->setPropertyValue("StreamName", uno::makeAny(OUString("styles.xml")));
+    WriteThroughComponent(xCom, "styles.xml", "com.sun.star.comp.report.XMLStylesExporter",
+                          aDelegatorArguments, aProps, _xStorageToSaveTo);
 
-    if ( !bErr )
-    {
-        xInfoSet->setPropertyValue("StreamName", uno::makeAny(OUString("content.xml")));
-        if( !WriteThroughComponent(
-                xCom, "content.xml",
-                "com.sun.star.comp.report.ExportFilter",
-                aDelegatorArguments, aProps, _xStorageToSaveTo ) )
-        {
-            bErr = true;
-            sErrFile = "content.xml";
-        }
-    }
+    xInfoSet->setPropertyValue("StreamName", uno::makeAny(OUString("content.xml")));
+    bool bOk = WriteThroughComponent(xCom, "content.xml", "com.sun.star.comp.report.ExportFilter",
+                                     aDelegatorArguments, aProps, _xStorageToSaveTo);
 
     uno::Any aImage;
     uno::Reference< embed::XVisualObject > xCurrentController(getCurrentController(),uno::UNO_QUERY);
@@ -1404,7 +1355,7 @@ void SAL_CALL OReportDefinition::storeToStorage( const uno::Reference< embed::XS
         m_pImpl->m_pObjectContainer->InsertGraphicStreamDirectly(xStream, "report", "image/png");
     }
 
-    if ( !bErr )
+    if (bOk)
     {
         bool bPersist = false;
         if ( _xStorageToSaveTo == m_pImpl->m_xStorage )
@@ -1437,7 +1388,7 @@ void SAL_CALL OReportDefinition::switchToStorage(
         const uno::Reference< embed::XStorage >& xStorage)
 {
     if (!xStorage.is())
-        throw lang::IllegalArgumentException(RPT_RESSTRING(RID_STR_ARGUMENT_IS_NULL),*this,1);
+        throw lang::IllegalArgumentException(RptResId(RID_STR_ARGUMENT_IS_NULL),*this,1);
     {
         ::osl::MutexGuard aGuard(m_aMutex);
         ::connectivity::checkDisposed(ReportDefinitionBase::rBHelper.bDisposed);
@@ -1476,60 +1427,54 @@ void SAL_CALL OReportDefinition::removeStorageChangeListener( const uno::Referen
 
 bool OReportDefinition::WriteThroughComponent(
     const uno::Reference<lang::XComponent> & xComponent,
-    const sal_Char* pStreamName,
-    const sal_Char* pServiceName,
+    const char* pStreamName,
+    const char* pServiceName,
     const uno::Sequence<uno::Any> & rArguments,
     const uno::Sequence<beans::PropertyValue> & rMediaDesc,
     const uno::Reference<embed::XStorage>& _xStorageToSaveTo)
 {
     OSL_ENSURE( nullptr != pStreamName, "Need stream name!" );
     OSL_ENSURE( nullptr != pServiceName, "Need service name!" );
-    try
+
+    // open stream
+    OUString sStreamName = OUString::createFromAscii( pStreamName );
+    uno::Reference<io::XStream> xStream = _xStorageToSaveTo->openStreamElement( sStreamName,embed::ElementModes::READWRITE | embed::ElementModes::TRUNCATE );
+    if ( !xStream.is() )
+        return false;
+    uno::Reference<io::XOutputStream> xOutputStream = xStream->getOutputStream();
+    OSL_ENSURE(xOutputStream.is(), "Can't create output stream in package!");
+    if ( ! xOutputStream.is() )
+        return false;
+
+    uno::Reference<beans::XPropertySet> xStreamProp(xOutputStream,uno::UNO_QUERY);
+    OSL_ENSURE(xStreamProp.is(),"No valid property set for the output stream!");
+
+    uno::Reference<io::XSeekable> xSeek(xStreamProp,uno::UNO_QUERY);
+    if ( xSeek.is() )
     {
-        // open stream
-        OUString sStreamName = OUString::createFromAscii( pStreamName );
-        uno::Reference<io::XStream> xStream = _xStorageToSaveTo->openStreamElement( sStreamName,embed::ElementModes::READWRITE | embed::ElementModes::TRUNCATE );
-        if ( !xStream.is() )
-            return false;
-        uno::Reference<io::XOutputStream> xOutputStream = xStream->getOutputStream();
-        OSL_ENSURE(xOutputStream.is(), "Can't create output stream in package!");
-        if ( ! xOutputStream.is() )
-            return false;
+        xSeek->seek(0);
+    }
 
-        uno::Reference<beans::XPropertySet> xStreamProp(xOutputStream,uno::UNO_QUERY);
-        OSL_ENSURE(xStreamProp.is(),"No valid property set for the output stream!");
+    xStreamProp->setPropertyValue( "MediaType", uno::Any(OUString("text/xml")) );
 
-        uno::Reference<io::XSeekable> xSeek(xStreamProp,uno::UNO_QUERY);
-        if ( xSeek.is() )
-        {
-            xSeek->seek(0);
-        }
-
-        xStreamProp->setPropertyValue( "MediaType", uno::Any(OUString("text/xml")) );
-
-        // encrypt all streams
-        xStreamProp->setPropertyValue( "UseCommonStoragePasswordEncryption",
+    // encrypt all streams
+    xStreamProp->setPropertyValue( "UseCommonStoragePasswordEncryption",
                                        uno::makeAny( true ) );
 
-        // set buffer and create outputstream
+    // set buffer and create outputstream
 
-        // write the stuff
-        bool bRet = WriteThroughComponent(
-            xOutputStream, xComponent,
-            pServiceName, rArguments, rMediaDesc );
-        // finally, commit stream.
-        return bRet;
-    }
-    catch (const uno::Exception&)
-    {
-        throw;
-    }
+    // write the stuff
+    bool bRet = WriteThroughComponent(
+        xOutputStream, xComponent,
+        pServiceName, rArguments, rMediaDesc );
+    // finally, commit stream.
+    return bRet;
 }
 
 bool OReportDefinition::WriteThroughComponent(
     const uno::Reference<io::XOutputStream> & xOutputStream,
     const uno::Reference<lang::XComponent> & xComponent,
-    const sal_Char* pServiceName,
+    const char* pServiceName,
     const uno::Sequence<uno::Any> & rArguments,
     const uno::Sequence<beans::PropertyValue> & rMediaDesc)
 {
@@ -1547,8 +1492,7 @@ bool OReportDefinition::WriteThroughComponent(
     // prepare arguments (prepend doc handler to given arguments)
     uno::Sequence<uno::Any> aArgs( 1 + rArguments.getLength() );
     aArgs[0] <<= xSaxWriter;
-    for(sal_Int32 i = 0; i < rArguments.getLength(); i++)
-        aArgs[i+1] = rArguments[i];
+    std::copy(rArguments.begin(), rArguments.end(), std::next(aArgs.begin()));
 
     // get filter component
     uno::Reference< document::XExporter > xExporter(
@@ -1584,7 +1528,7 @@ void SAL_CALL OReportDefinition::load( const uno::Sequence< beans::PropertyValue
 
     ::comphelper::NamedValueCollection aArguments( _rArguments );
 
-    // the source for the to-be-created storage: either an URL, or a stream
+    // the source for the to-be-created storage: either a URL, or a stream
     uno::Reference< io::XInputStream > xStream;
     OUString sURL;
 
@@ -1612,7 +1556,7 @@ void SAL_CALL OReportDefinition::load( const uno::Sequence< beans::PropertyValue
 
     uno::Any aStorageSource;
     if ( xStream.is() )
-        aStorageSource = aStorageSource;
+        aStorageSource <<= xStream;
     else if ( !sURL.isEmpty() )
         aStorageSource <<= sURL;
     else
@@ -1652,12 +1596,15 @@ void SAL_CALL OReportDefinition::load( const uno::Sequence< beans::PropertyValue
         catch (const uno::Exception&)
         {
             if ( i == nLastOpenMode )
+            {
+                css::uno::Any anyEx = cppu::getCaughtException();
                 throw lang::WrappedTargetException(
                     "An error occurred while creating the document storage.",
                         // TODO: resource
                     *this,
-                    ::cppu::getCaughtException()
+                    anyEx
                 );
+            }
         }
     }
 
@@ -1681,11 +1628,11 @@ void SAL_CALL OReportDefinition::setVisualAreaSize( ::sal_Int64 _nAspect, const 
 {
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(ReportDefinitionBase::rBHelper.bDisposed);
-        bool bChanged =
+    bool bChanged =
             (m_pImpl->m_aVisualAreaSize.Width != _aSize.Width ||
              m_pImpl->m_aVisualAreaSize.Height != _aSize.Height);
-        m_pImpl->m_aVisualAreaSize = _aSize;
-        if( bChanged )
+    m_pImpl->m_aVisualAreaSize = _aSize;
+    if( bChanged )
             setModified( true );
     m_pImpl->m_nAspect = _nAspect;
 }
@@ -1761,7 +1708,7 @@ sal_Bool SAL_CALL OReportDefinition::isModified(  )
 
 void SAL_CALL OReportDefinition::setModified( sal_Bool _bModified )
 {
-    ::osl::ResettableMutexGuard aGuard(m_aMutex);
+    osl::ClearableMutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(ReportDefinitionBase::rBHelper.bDisposed);
 
     if ( !m_pImpl->m_bSetModifiedEnabled )
@@ -1802,7 +1749,7 @@ void OReportDefinition::notifyEvent(const OUString& _sEventName)
 {
     try
     {
-        ::osl::ResettableMutexGuard aGuard(m_aMutex);
+        osl::ClearableMutexGuard aGuard(m_aMutex);
         ::connectivity::checkDisposed(ReportDefinitionBase::rBHelper.bDisposed);
         document::EventObject aEvt(*this, _sEventName);
         aGuard.clear();
@@ -1820,7 +1767,7 @@ void SAL_CALL OReportDefinition::notifyDocumentEvent( const OUString& rEventName
 {
     try
     {
-        ::osl::ResettableMutexGuard aGuard(m_aMutex);
+        osl::ClearableMutexGuard aGuard(m_aMutex);
         ::connectivity::checkDisposed(ReportDefinitionBase::rBHelper.bDisposed);
         document::DocumentEvent aEvt(*this, rEventName, rViewController, rSupplement);
         aGuard.clear();
@@ -1869,17 +1816,15 @@ uno::Reference< container::XIndexAccess > SAL_CALL OReportDefinition::getViewDat
     ::connectivity::checkDisposed(ReportDefinitionBase::rBHelper.bDisposed);
     if ( !m_pImpl->m_xViewData.is() )
     {
-        m_pImpl->m_xViewData.set( document::IndexedPropertyValues::create(m_aProps->m_xContext), uno::UNO_QUERY);
+        m_pImpl->m_xViewData = document::IndexedPropertyValues::create(m_aProps->m_xContext);
         uno::Reference< container::XIndexContainer > xContainer(m_pImpl->m_xViewData,uno::UNO_QUERY);
-        ::std::vector< uno::Reference< frame::XController> >::const_iterator aIter = m_pImpl->m_aControllers.begin();
-        ::std::vector< uno::Reference< frame::XController> >::const_iterator aEnd = m_pImpl->m_aControllers.end();
-        for (;aIter != aEnd ; ++aIter)
+        for (const auto& rxController : m_pImpl->m_aControllers)
         {
-            if ( aIter->is() )
+            if ( rxController.is() )
             {
                 try
                 {
-                    xContainer->insertByIndex(xContainer->getCount(),(*aIter)->getViewData());
+                    xContainer->insertByIndex(xContainer->getCount(), rxController->getViewData());
                 }
                 catch (const uno::Exception&)
                 {
@@ -1938,7 +1883,7 @@ uno::Sequence< OUString > SAL_CALL OReportDefinition::getDocumentSubStoragesName
 {
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(ReportDefinitionBase::rBHelper.bDisposed);
-    uno::Reference<container::XNameAccess> xNameAccess(m_pImpl->m_xStorage,uno::UNO_QUERY);
+    uno::Reference<container::XNameAccess> xNameAccess = m_pImpl->m_xStorage;
     return xNameAccess.is() ? xNameAccess->getElementNames() : uno::Sequence< OUString >();
 }
 
@@ -1954,8 +1899,7 @@ void SAL_CALL OReportDefinition::setMimeType( const OUString& _mimetype )
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(ReportDefinitionBase::rBHelper.bDisposed);
     uno::Sequence< OUString > aList = getAvailableMimeTypes();
-    const OUString* pEnd = aList.getConstArray()+aList.getLength();
-    if ( ::std::find(aList.getConstArray(),pEnd,_mimetype) == pEnd )
+    if ( ::std::find(aList.begin(), aList.end(), _mimetype) == aList.end() )
         throwIllegallArgumentException("getAvailableMimeTypes()"
                         ,*this
                         ,1);
@@ -1974,7 +1918,7 @@ uno::Sequence< OUString > SAL_CALL OReportDefinition::getAvailableMimeTypes(  )
 sal_Int64 SAL_CALL OReportDefinition::getSomething( const uno::Sequence< sal_Int8 >& rId )
 {
     sal_Int64 nRet = 0;
-    if (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    if (isUnoTunnelId<OReportDefinition>(rId) )
         nRet = reinterpret_cast<sal_Int64>(this);
     else
     {
@@ -1998,7 +1942,7 @@ uno::Sequence< sal_Int8 > SAL_CALL OReportDefinition::getImplementationId(  )
     return css::uno::Sequence<sal_Int8>();
 }
 
-uno::Sequence< sal_Int8 > OReportDefinition::getUnoTunnelImplementationId()
+uno::Sequence< sal_Int8 > OReportDefinition::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -2015,13 +1959,16 @@ uno::Reference< uno::XComponentContext > OReportDefinition::getContext()
 std::shared_ptr<rptui::OReportModel> OReportDefinition::getSdrModel(const uno::Reference< report::XReportDefinition >& _xReportDefinition)
 {
     std::shared_ptr<rptui::OReportModel> pReportModel;
-    uno::Reference< lang::XUnoTunnel > xUT( _xReportDefinition, uno::UNO_QUERY );
-    if( xUT.is() )
-        pReportModel = reinterpret_cast<OReportDefinition*>(
-                           sal::static_int_cast<sal_uIntPtr>(
-                               xUT->getSomething( OReportDefinition::getUnoTunnelImplementationId()))
-                        )->m_pImpl->m_pReportModel;
+    auto pReportDefinition = comphelper::getUnoTunnelImplementation<OReportDefinition>(_xReportDefinition);
+    if (pReportDefinition)
+        pReportModel = pReportDefinition->m_pImpl->m_pReportModel;
     return pReportModel;
+}
+
+SdrModel& OReportDefinition::getSdrModelFromUnoModel() const
+{
+    OSL_ENSURE(m_pImpl->m_pReportModel, "No SdrModel in ReportDesign, should not happen");
+    return *m_pImpl->m_pReportModel;
 }
 
 uno::Reference< uno::XInterface > SAL_CALL OReportDefinition::createInstanceWithArguments( const OUString& aServiceSpecifier, const uno::Sequence< uno::Any >& _aArgs)
@@ -2033,17 +1980,15 @@ uno::Reference< uno::XInterface > SAL_CALL OReportDefinition::createInstanceWith
     if ( aServiceSpecifier.startsWith( "com.sun.star.document.ImportEmbeddedObjectResolver") )
     {
         uno::Reference< embed::XStorage > xStorage;
-        const uno::Any* pIter = _aArgs.getConstArray();
-        const uno::Any* pEnd  = pIter + _aArgs.getLength();
-        for(;pIter != pEnd ;++pIter)
+        for(const uno::Any& rArg : _aArgs)
         {
             beans::NamedValue aValue;
-            *pIter >>= aValue;
+            rArg >>= aValue;
             if ( aValue.Name == "Storage" )
                 aValue.Value >>= xStorage;
         }
         m_pImpl->m_pObjectContainer->SwitchPersistence(xStorage);
-        xRet = static_cast< ::cppu::OWeakObject* >(SvXMLEmbeddedObjectHelper::Create( xStorage,*this, SvXMLEmbeddedObjectHelperMode::Read ));
+        xRet = static_cast< ::cppu::OWeakObject* >(SvXMLEmbeddedObjectHelper::Create( xStorage,*this, SvXMLEmbeddedObjectHelperMode::Read ).get());
     }
     return xRet;
 }
@@ -2076,10 +2021,6 @@ uno::Reference< uno::XInterface > SAL_CALL OReportDefinition::createInstance( co
     {
         uno::Reference< style::XStyle> xStyle = new OStyle();
         xStyle->setName("Default");
-        uno::Reference<beans::XPropertySet> xProp(xStyle,uno::UNO_QUERY);
-        OUString sTray;
-        xProp->getPropertyValue("PrinterPaperTray")>>= sTray;
-
         return xStyle.get();
     }
     else if ( aServiceSpecifier == "com.sun.star.document.Settings" )
@@ -2130,21 +2071,19 @@ uno::Reference< uno::XInterface > SAL_CALL OReportDefinition::createInstance( co
         return m_pImpl->m_xMarkerTable;
     }
     else if ( aServiceSpecifier == "com.sun.star.document.ImportEmbeddedObjectResolver" )
-        return static_cast< ::cppu::OWeakObject* >(SvXMLEmbeddedObjectHelper::Create( m_pImpl->m_xStorage,*this, SvXMLEmbeddedObjectHelperMode::Read ));
+        return static_cast< ::cppu::OWeakObject* >(SvXMLEmbeddedObjectHelper::Create( m_pImpl->m_xStorage,*this, SvXMLEmbeddedObjectHelperMode::Read ).get());
     else if ( aServiceSpecifier == "com.sun.star.document.ExportEmbeddedObjectResolver" )
-        return static_cast< ::cppu::OWeakObject* >(SvXMLEmbeddedObjectHelper::Create( m_pImpl->m_xStorage,*this, SvXMLEmbeddedObjectHelperMode::Write ));
-    else if ( aServiceSpecifier == "com.sun.star.document.ImportGraphicObjectResolver" )
+        return static_cast< ::cppu::OWeakObject* >(SvXMLEmbeddedObjectHelper::Create( m_pImpl->m_xStorage,*this, SvXMLEmbeddedObjectHelperMode::Write ).get());
+    else if (aServiceSpecifier == "com.sun.star.document.ImportGraphicStorageHandler")
     {
-        SvXMLGraphicHelper* pGraphicHelper = SvXMLGraphicHelper::Create(m_pImpl->m_xStorage,SvXMLGraphicHelperMode::Write);
-        uno::Reference< uno::XInterface> xRet(static_cast< ::cppu::OWeakObject* >(pGraphicHelper));
-        pGraphicHelper->release();
+        rtl::Reference<SvXMLGraphicHelper> xGraphicHelper = SvXMLGraphicHelper::Create(m_pImpl->m_xStorage,SvXMLGraphicHelperMode::Write);
+        uno::Reference< uno::XInterface> xRet(static_cast< ::cppu::OWeakObject* >(xGraphicHelper.get()));
         return xRet;
     }
-    else if ( aServiceSpecifier == "com.sun.star.document.ExportGraphicObjectResolver" )
+    else if (aServiceSpecifier == "com.sun.star.document.ExportGraphicStorageHandler")
     {
-        SvXMLGraphicHelper* pGraphicHelper = SvXMLGraphicHelper::Create(m_pImpl->m_xStorage,SvXMLGraphicHelperMode::Write);
-        uno::Reference< uno::XInterface> xRet(static_cast< ::cppu::OWeakObject* >(pGraphicHelper));
-        pGraphicHelper->release();
+        rtl::Reference<SvXMLGraphicHelper> xGraphicHelper = SvXMLGraphicHelper::Create(m_pImpl->m_xStorage,SvXMLGraphicHelperMode::Write);
+        uno::Reference< uno::XInterface> xRet(static_cast< ::cppu::OWeakObject* >(xGraphicHelper.get()));
         return xRet;
     }
     else if ( aServiceSpecifier == "com.sun.star.chart2.data.DataProvider" )
@@ -2180,8 +2119,8 @@ uno::Sequence< OUString > SAL_CALL OReportDefinition::getAvailableServiceNames()
         "com.sun.star.drawing.Defaults",
         "com.sun.star.document.ImportEmbeddedObjectResolver",
         "com.sun.star.document.ExportEmbeddedObjectResolver",
-        "com.sun.star.document.ImportGraphicObjectResolver",
-        "com.sun.star.document.ExportGraphicObjectResolver",
+        "com.sun.star.document.ImportGraphicStorageHandler",
+        "com.sun.star.document.ExportGraphicStorageHandler",
         "com.sun.star.chart2.data.DataProvider",
         "com.sun.star.xml.NamespaceMap",
         "com.sun.star.document.Settings",
@@ -2201,7 +2140,7 @@ uno::Sequence< OUString > SAL_CALL OReportDefinition::getAvailableServiceNames()
         pStrings[nIdx] = aSvxComponentServiceNameList[nIdx];
 
     uno::Sequence< OUString > aParentSeq( SvxUnoDrawMSFactory::getAvailableServiceNames() );
-    return concatServiceNames( aParentSeq, aSeq );
+    return comphelper::concatSequences( aParentSeq, aSeq );
 }
 
 // XShape
@@ -2251,12 +2190,15 @@ OUString SAL_CALL OReportDefinition::getShapeType(  )
     ::connectivity::checkDisposed(ReportDefinitionBase::rBHelper.bDisposed);
     if ( m_aProps->m_xShape.is() )
         return m_aProps->m_xShape->getShapeType();
-   return OUString("com.sun.star.drawing.OLE2Shape");
+    return "com.sun.star.drawing.OLE2Shape";
 }
 
 typedef ::cppu::WeakImplHelper< container::XNameContainer,
                              container::XIndexAccess
                             > TStylesBASE;
+
+namespace {
+
 class OStylesHelper:
     public cppu::BaseMutex, public TStylesBASE
 {
@@ -2291,6 +2233,8 @@ public:
     virtual uno::Sequence< OUString > SAL_CALL getElementNames(  ) override;
     virtual sal_Bool SAL_CALL hasByName( const OUString& aName ) override;
 };
+
+}
 
 OStylesHelper::OStylesHelper(const uno::Type& rType)
     : cppu::BaseMutex()
@@ -2342,9 +2286,11 @@ uno::Sequence< OUString > SAL_CALL OStylesHelper::getElementNames(  )
     uno::Sequence< OUString > aNameList(m_aElementsPos.size());
 
     OUString* pStringArray = aNameList.getArray();
-    ::std::vector<TStyleElements::iterator>::const_iterator aEnd = m_aElementsPos.end();
-    for(::std::vector<TStyleElements::iterator>::const_iterator aIter = m_aElementsPos.begin();         aIter != aEnd;++aIter,++pStringArray)
-        *pStringArray = (*aIter)->first;
+    for(const auto& rIter : m_aElementsPos)
+    {
+        *pStringArray = rIter->first;
+        ++pStringArray;
+    }
 
     return aNameList;
 }
@@ -2365,7 +2311,7 @@ void SAL_CALL OStylesHelper::insertByName( const OUString& aName, const uno::Any
     if ( !aElement.isExtractableTo(m_aType) )
         throw lang::IllegalArgumentException();
 
-    m_aElementsPos.push_back(m_aElements.insert(TStyleElements::value_type(aName,aElement)).first);
+    m_aElementsPos.push_back(m_aElements.emplace(aName,aElement).first);
 }
 
 void SAL_CALL OStylesHelper::removeByName( const OUString& aName )
@@ -2505,7 +2451,7 @@ OUString OReportDefinition::getDocumentBaseURL() const
 
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(ReportDefinitionBase::rBHelper.bDisposed);
-    for (beans::PropertyValue const& it : m_pImpl->m_aArgs)
+    for (beans::PropertyValue const& it : std::as_const(m_pImpl->m_aArgs))
     {
         if (it.Name == "DocumentBaseURL")
             return it.Value.get<OUString>();
@@ -2665,21 +2611,20 @@ uno::Reference< document::XDocumentProperties > SAL_CALL OReportDefinition::getD
 uno::Any SAL_CALL OReportDefinition::getTransferData( const datatransfer::DataFlavor& aFlavor )
 {
     uno::Any aResult;
-    if( isDataFlavorSupported( aFlavor ) )
-    {
-        try
-        {
-            aResult = getPreferredVisualRepresentation(0).Data;
-        }
-        catch (const uno::Exception &)
-        {
-            DBG_UNHANDLED_EXCEPTION();
-        }
-    }
-    else
+    if( !isDataFlavorSupported( aFlavor ) )
     {
         throw datatransfer::UnsupportedFlavorException(aFlavor.MimeType, static_cast< ::cppu::OWeakObject* >( this ));
     }
+
+    try
+    {
+        aResult = getPreferredVisualRepresentation(0).Data;
+    }
+    catch (const uno::Exception &)
+    {
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
+    }
+
 
     return aResult;
 }
@@ -2708,5 +2653,12 @@ uno::Reference< document::XUndoManager > SAL_CALL OReportDefinition::getUndoMana
 }
 
 }// namespace reportdesign
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_OReportDefinition_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new reportdesign::OReportDefinition(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

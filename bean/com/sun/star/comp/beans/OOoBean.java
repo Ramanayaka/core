@@ -119,6 +119,7 @@ public class OOoBean
         the dispose method of the OfficeConnection or the OOoBean's stopOOoConnection
         method would make all instances of OOoBean stop working.
      */
+    @Deprecated
     public OOoBean( OfficeConnection iConnection )
         throws NoConnectionException
     {
@@ -128,7 +129,7 @@ public class OOoBean
         { /* impossible here */ }
     }
 
-    /** Sets the timeout for methods which launch OOo in milli seconds.
+    /** Sets the timeout for methods which launch OOo in milliseconds.
 
         This method does not need a connection to an OOo instance.
      */
@@ -137,7 +138,7 @@ public class OOoBean
         nOOoStartTimeOut = nMilliSecs;
     }
 
-    /** Sets the timeout for normal OOO methods calls in milli seconds.
+    /** Sets the timeout for normal OOO methods calls in milliseconds.
 
         This method does not need a connection to an OOo instance.
      */
@@ -212,6 +213,7 @@ public class OOoBean
         make is method work. It is better to call OOoBean's methods and be prepared
         to catch a NoConnectionException.
      */
+    @Deprecated
     public boolean isOOoConnected()
     {
         return iConnection != null;
@@ -289,12 +291,16 @@ public class OOoBean
             // avoid concurrent access from multiple threads
             final OfficeConnection iConn = getOOoConnection();
 
+            com.sun.star.uno.XComponentContext xComponentContext = iConn.getComponentContext();
+            if (xComponentContext == null)
+                throw new NoConnectionException();
+
             Thread aConnectorThread = new Thread("getServiceManager") {
                 @Override
                 public void run()
                 {
                     com.sun.star.lang.XMultiComponentFactory aFactory =
-                        iConn.getComponentContext().getServiceManager();
+                        xComponentContext.getServiceManager();
                     xServiceFactory = UnoRuntime.queryInterface(
                         com.sun.star.lang.XMultiServiceFactory.class, aFactory );
                 }
@@ -353,6 +359,7 @@ public class OOoBean
         should call the clearDocument of the deriving class or {@link #clear} which discards
         the currently displayed document.
      */
+    @Deprecated
     public synchronized void clearDocument( boolean bClearStateToo )
     {
         // TBD
@@ -441,7 +448,7 @@ public class OOoBean
         was showing, then this method needs to be called after the container window
         was made visible (java.lang.Component.setVisible(true)).
         <p>
-        Another scenario is that a OOoBean contains a document and is removed
+        Another scenario is that an OOoBean contains a document and is removed
         from a Java container and later added again. Then aquireSystemWindow needs
         to be called after the container window is displayed.
         <p>
@@ -488,6 +495,7 @@ public class OOoBean
         office window is called, then the actions are performed for which this method
         needed to be called previously.
      */
+    @Deprecated
     public synchronized void releaseSystemWindow()
         throws
             SystemWindowException,
@@ -629,7 +637,7 @@ public class OOoBean
                             if ( aFrame != null && xOldController != null )
                                 if (!xOldController.suspend(true))
                                     throw new com.sun.star.util.CloseVetoException(
-                                            "Dokument is still being used and cannot be closed.", this);
+                                            "Document is still being used and cannot be closed.", this);
 
                         }
                         catch (java.lang.IllegalStateException exp)
@@ -651,7 +659,10 @@ public class OOoBean
                     {
                         // reactivate old document
                         if ( aFrame != null && aFrame.getController() != null )
-                            aFrame.getController().suspend(false);
+                        {
+                            boolean bResult = aFrame.getController().suspend(false);
+                            dbgPrint( "loadFromURL() .. suspend() -> " + bResult );
+                        }
                         aDocument.setModified(true);
 
                         // throw exception
@@ -716,7 +727,7 @@ public class OOoBean
     {
         // wrap Java stream into UNO stream
 
-                 // copy stream....
+                 // copy stream...
                  int s = 4096;
                  int r=0 ,n = 0;
                  byte[] buffer = new byte[s];
@@ -1024,6 +1035,7 @@ com.sun.star.frame.XLayoutManager xLayoutManager =
 xLayoutManager.showElement("private:resource/menubar/menubar");
         </pre>
      */
+    @Deprecated
     public void setAllBarsVisible( boolean bVisible )
     {
         bIgnoreVisibility = true;
@@ -1041,6 +1053,7 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
         which can be obtained from a frame, to control toolbars. See also
         {@link #setAllBarsVisible setAllBarsVisible}.
      */
+    @Deprecated
     protected void applyToolVisibilities()
     {
         bIgnoreVisibility = true;
@@ -1051,7 +1064,7 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
         bIgnoreVisibility = false;
     }
 
-    /** Helper method to set tool bar visibilty.
+    /** Helper method to set tool bar visibility.
 
          @param bNewValue
             If false, the tool bar is disabled,
@@ -1061,6 +1074,7 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
         which can be obtained from a frame, to control toolbars. See also
         {@link #setAllBarsVisible}.
      */
+    @Deprecated
     protected boolean setToolVisible( String aProperty, String aResourceURL,
         boolean bOldValue, boolean bNewValue )
 
@@ -1127,6 +1141,7 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
         which can be obtained from a frame, to control toolbars. See also
         {@link #setAllBarsVisible}.
      */
+    @Deprecated
     public void setMenuBarVisible(boolean bVisible)
     {
         try
@@ -1154,12 +1169,13 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
         which can be obtained from a frame, to control toolbars. See also
         {@link #setAllBarsVisible}.
      */
+    @Deprecated
     public boolean isMenuBarVisible()
     {
         return bMenuBarVisible;
     }
 
-    /** Sets the main function bar visibilty.
+    /** Sets the main function bar visibility.
 
         Initially the standard bar is visible.
 
@@ -1175,6 +1191,7 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
         which can be obtained from a frame, to control toolbars. See also
         {@link #setAllBarsVisible}.
      */
+    @Deprecated
     public void setStandardBarVisible(boolean bVisible)
     {
         try
@@ -1202,12 +1219,13 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
         which can be obtained from a frame, to control toolbars. See also
         {@link #setAllBarsVisible}.
     */
+    @Deprecated
     public boolean isStandardBarVisible()
     {
         return bStandardBarVisible;
     }
 
-    /** Sets the tool function bar visibilty.
+    /** Sets the tool function bar visibility.
 
         Initially the tool bar is visible.
 
@@ -1223,6 +1241,7 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
         which can be obtained from a frame, to control toolbars. See also
         {@link #setAllBarsVisible}.
      */
+    @Deprecated
     public void setToolBarVisible(boolean bVisible)
     {
         try
@@ -1250,12 +1269,13 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
         which can be obtained from a frame, to control toolbars. See also
         {@link #setAllBarsVisible}.
      */
+    @Deprecated
     public boolean isToolBarVisible()
     {
         return bToolBarVisible;
     }
 
-    /** Sets the status function bar visibilty.
+    /** Sets the status function bar visibility.
 
         Initially the status bar is visible.
 
@@ -1271,6 +1291,7 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
         which can be obtained from a frame, to control toolbars. See also
         {@link #setAllBarsVisible}.
      */
+    @Deprecated
     public void setStatusBarVisible(boolean bVisible)
     {
         try
@@ -1298,6 +1319,7 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
         which can be obtained from a frame, to control toolbars. See also
         {@link #setAllBarsVisible}.
      */
+    @Deprecated
     public boolean isStatusBarVisible()
     {
         return bStatusBarVisible;
@@ -1419,7 +1441,7 @@ xLayoutManager.showElement("private:resource/menubar/menubar");
            public void queryTermination( /*IN*/ com.sun.star.lang.EventObject Event )
             throws com.sun.star.frame.TerminationVetoException
         {
-            // disallow termination of OOo while a OOoBean exists
+            // disallow termination of OOo while an OOoBean exists
             throw new com.sun.star.frame.TerminationVetoException();
         }
 

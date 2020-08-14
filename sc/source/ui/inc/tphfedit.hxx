@@ -20,18 +20,16 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_TPHFEDIT_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_TPHFEDIT_HXX
 
-#include <sfx2/tabdlg.hxx>
-#include <svx/pageitem.hxx>
-#include <vcl/group.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/timer.hxx>
-#include <vcl/virdev.hxx>
-#include "scdllapi.h"
-#include "scitems.hxx"
-#include <com/sun/star/accessibility/XAccessible.hpp>
+#include <scdllapi.h>
 #include <cppuhelper/weakref.hxx>
+#include <tools/wintypes.hxx>
+#include <svx/weldeditview.hxx>
+#include <editeng/svxenum.hxx>
+#include <vcl/customweld.hxx>
 
 #include <functional>
+
+namespace com::sun::star::accessibility { class XAccessible; }
 
 class ScHeaderEditEngine;
 class ScPatternAttr;
@@ -39,7 +37,7 @@ class EditView;
 class EditTextObject;
 class SvxFieldItem;
 class ScAccessibleEditObject;
-class ScEditWindow;
+namespace vcl { class Window; }
 
 enum ScEditWindowLocation
 {
@@ -48,18 +46,16 @@ enum ScEditWindowLocation
     Right
 };
 
-class SC_DLLPUBLIC ScEditWindow : public Control
+class SC_DLLPUBLIC ScEditWindow : public WeldEditView
 {
 public:
-            ScEditWindow( vcl::Window* pParent,  WinBits nBits , ScEditWindowLocation eLoc );
-            virtual ~ScEditWindow() override;
-    virtual void dispose() override;
+    ScEditWindow(ScEditWindowLocation eLoc, weld::Window* pParent);
+    virtual void SetDrawingArea(weld::DrawingArea* pArea) override;
+    virtual ~ScEditWindow() override;
 
-    using Control::SetFont;
     void            SetFont( const ScPatternAttr& rPattern );
-    using Control::SetText;
     void            SetText( const EditTextObject& rTextObject );
-    EditTextObject* CreateTextObject();
+    std::unique_ptr<EditTextObject> CreateTextObject();
     void            SetCharAttributes();
 
     void            InsertField( const SvxFieldItem& rFld );
@@ -68,69 +64,28 @@ public:
 
     virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
 
-    ScHeaderEditEngine*  GetEditEngine() const { return pEdEngine; }
+    ScHeaderEditEngine* GetEditEngine() const;
     void SetObjectSelectHdl( const Link<ScEditWindow&,void>& aLink) { aObjectSelectLink = aLink; }
     void SetGetFocusHdl(const std::function<void (ScEditWindow&)>& rLink) { m_GetFocusLink = rLink; }
 
-    void SetLocation(ScEditWindowLocation eLoc) { eLocation = eLoc; }
 protected:
-    virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual void    MouseMove( const MouseEvent& rMEvt ) override;
-    virtual void    MouseButtonDown( const MouseEvent& rMEvt ) override;
-    virtual void    MouseButtonUp( const MouseEvent& rMEvt ) override;
-    virtual void    KeyInput( const KeyEvent& rKEvt ) override;
-    virtual void    Command( const CommandEvent& rCEvt ) override;
-    virtual void    GetFocus() override;
-    virtual void    LoseFocus() override;
-    virtual void    Resize() override;
+    virtual void makeEditEngine() override;
+    virtual bool KeyInput( const KeyEvent& rKEvt ) override;
+    virtual bool MouseButtonDown(const MouseEvent& rMEvt) override;
+    virtual void GetFocus() override;
+    virtual void LoseFocus() override;
 
 private:
-    ScHeaderEditEngine* pEdEngine;
-    EditView*           pEdView;
     ScEditWindowLocation eLocation;
     bool mbRTL;
+    weld::Window* mpDialog;
 
     css::uno::WeakReference< css::accessibility::XAccessible > xAcc;
     ScAccessibleEditObject* pAcc;
 
     Link<ScEditWindow&,void> aObjectSelectLink;
     std::function<void (ScEditWindow&)> m_GetFocusLink;
-};
 
-class SC_DLLPUBLIC ScExtIButton : public ImageButton
-{
-private:
-
-    Idle            aIdle;
-    VclPtr<PopupMenu>        pPopupMenu;
-    Link<ScExtIButton&,void> aMLink;
-    sal_uInt16      nSelected;
-    OString         aSelectedIdent;
-
-                    DECL_DLLPRIVATE_LINK( TimerHdl, Timer*, void );
-
-protected:
-
-    virtual void    MouseButtonDown( const MouseEvent& rMEvt ) override;
-    virtual void    MouseButtonUp( const MouseEvent& rMEvt) override;
-    virtual void    Click() override;
-
-    void            StartPopup();
-
-public:
-
-    ScExtIButton(vcl::Window* pParent, WinBits nBits );
-    virtual ~ScExtIButton() override;
-    virtual void dispose() override;
-
-    void            SetPopupMenu(PopupMenu* pPopUp);
-
-    sal_uInt16      GetSelected() const { return nSelected;}
-    const OString&  GetSelectedIdent() const { return aSelectedIdent;}
-
-    void            SetMenuHdl( const Link<ScExtIButton&,void>& rLink ) { aMLink = rLink; }
-
-    virtual bool    PreNotify( NotifyEvent& rNEvt ) override;
 };
 
 #endif // INCLUDED_SC_SOURCE_UI_INC_TPHFEDIT_HXX

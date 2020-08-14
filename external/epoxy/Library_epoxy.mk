@@ -11,21 +11,12 @@ $(eval $(call gb_Library_Library,epoxy))
 
 $(eval $(call gb_Library_use_unpacked,epoxy,epoxy))
 
-$(eval $(call gb_Library_set_warnings_not_errors,epoxy))
+$(eval $(call gb_Library_set_warnings_disabled,epoxy))
 
 $(eval $(call gb_Library_set_include,epoxy,\
-	-I$(WORKDIR)/UnpackedTarball/epoxy/include \
-	-I$(WORKDIR)/UnpackedTarball/epoxy/src \
+	-I$(call gb_UnpackedTarball_get_dir,epoxy)/include \
+	-I$(call gb_UnpackedTarball_get_dir,epoxy)/src \
 	$$(INCLUDE) \
-))
-
-# epoxy is riddled with warnings... let's spare use
-# the pointless spamming
-$(eval $(call gb_Library_add_cxxflags,epoxy,\
-	-w \
-))
-$(eval $(call gb_Library_add_cflags,epoxy,\
-	-w \
 ))
 
 ifeq ($(OS),LINUX)
@@ -44,7 +35,7 @@ $(eval $(call gb_Library_add_generated_cobjects,epoxy,\
 	UnpackedTarball/epoxy/src/dispatch_wgl \
 	UnpackedTarball/epoxy/src/wgl_generated_dispatch \
 ))
-else ifneq ($(filter IOS MACOSX,$(OS)),)
+else ifneq ($(filter iOS MACOSX,$(OS)),)
 # nothing
 else ifeq ($(OS),ANDROID)
 $(eval $(call gb_Library_add_generated_cobjects,epoxy,\

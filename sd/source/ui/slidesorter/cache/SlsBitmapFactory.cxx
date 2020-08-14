@@ -19,24 +19,16 @@
 
 #include "SlsBitmapFactory.hxx"
 
-#include "PreviewRenderer.hxx"
-#include "view/SlideSorterView.hxx"
-#include "sdpage.hxx"
-#include "Window.hxx"
-#include <drawdoc.hxx>
-#include "DrawDocShell.hxx"
-#include <svx/svdtypes.hxx>
-#include <svx/svdpage.hxx>
+#include <PreviewRenderer.hxx>
+#include <sdpage.hxx>
 #include <vcl/bitmapex.hxx>
-#include <vcl/bitmapaccess.hxx>
-#include <vcl/pngwrite.hxx>
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 class SlideSorterView;
 class PageObjectViewObjectContact;
-} } }
+}
 
-namespace sd { namespace slidesorter { namespace cache {
+namespace sd::slidesorter::cache {
 
 BitmapFactory::BitmapFactory()
     : maRenderer(false)
@@ -47,7 +39,7 @@ BitmapFactory::~BitmapFactory()
 {
 }
 
-Bitmap BitmapFactory::CreateBitmap (
+BitmapEx BitmapFactory::CreateBitmap (
     const SdPage& rPage,
     const Size& rPixelSize,
     const bool bDoSuperSampling)
@@ -57,15 +49,15 @@ Bitmap BitmapFactory::CreateBitmap (
     {
         // Supersampling factor
         int aSuperSamplingFactor = 2;
-        aSize.Width() *= aSuperSamplingFactor;
-        aSize.Height() *= aSuperSamplingFactor;
+        aSize.setWidth( aSize.Width() * aSuperSamplingFactor );
+        aSize.setHeight( aSize.Height() * aSuperSamplingFactor );
     }
 
-    Bitmap aPreview (maRenderer.RenderPage (
+    BitmapEx aPreview (maRenderer.RenderPage (
         &rPage,
         aSize,
         true,
-        false).GetBitmapEx().GetBitmap());
+        false).GetBitmapEx());
     if (bDoSuperSampling)
     {
         aPreview.Scale(rPixelSize, BmpScaleFlag::BestQuality);
@@ -74,6 +66,6 @@ Bitmap BitmapFactory::CreateBitmap (
     return aPreview;
 }
 
-} } } // end of namespace ::sd::slidesorter::cache
+} // end of namespace ::sd::slidesorter::cache
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

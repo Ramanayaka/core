@@ -9,7 +9,6 @@
 
 #include <com/sun/star/document/XExtendedFilterDetection.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <cppuhelper/implbase.hxx>
 
@@ -18,6 +17,8 @@
 #include <rtl/strbuf.hxx>
 
 #include <orcus/format_detection.hpp>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace {
 
@@ -67,28 +68,36 @@ OUString OrcusFormatDetect::detect(css::uno::Sequence<css::beans::PropertyValue>
         return OUString();
 
     css::uno::Reference<css::io::XInputStream> xInputStream(aMediaDescriptor[utl::MediaDescriptor::PROP_INPUTSTREAM()], css::uno::UNO_QUERY );
+    OStringBuffer aContent(xInputStream->available());
 
     static const sal_Int32 nBytes = 4096;
     css::uno::Sequence<sal_Int8> aSeq(nBytes);
     bool bEnd = false;
-    OStringBuffer aContent;
     while(!bEnd)
     {
         sal_Int32 nReadBytes = xInputStream->readBytes(aSeq, nBytes);
-        bEnd = !(nReadBytes == nBytes);
+        bEnd = (nReadBytes != nBytes);
         aContent.append(reinterpret_cast<const char*>(aSeq.getConstArray()), nReadBytes);
     }
 
     orcus::format_t eFormat = orcus::detect(reinterpret_cast<const unsigned char*>(aContent.getStr()), aContent.getLength());
-    if (eFormat == orcus::format_t::gnumeric)
-        return OUString("Gnumeric XML");
+
+    switch (eFormat)
+    {
+        case orcus::format_t::gnumeric:
+            return "Gnumeric XML";
+        case orcus::format_t::xls_xml:
+            return "calc_MS_Excel_2003_XML";
+        default:
+            ;
+    }
 
     return OUString();
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_sc_OrcusFormatDetect_get_implementation(css::uno::XComponentContext* ,
                                                            css::uno::Sequence<css::uno::Any> const &)
 {

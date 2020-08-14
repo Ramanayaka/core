@@ -30,7 +30,7 @@ class ItemHolder2 : private ItemHolderMutexBase
     // member
     private:
 
-        TItems m_lItems;
+        std::vector<TItemInfo> m_lItems;
 
     // c++ interface
     public:
@@ -50,7 +50,6 @@ class ItemHolder2 : private ItemHolderMutexBase
         void impl_addItem(EItem eItem);
         void impl_releaseAllItems();
         static void impl_newItem(TItemInfo& rItem);
-        static void impl_deleteItem(TItemInfo& rItem);
 };
 
 #endif // INCLUDED_SVTOOLS_ITEMHOLDER2_HXX_

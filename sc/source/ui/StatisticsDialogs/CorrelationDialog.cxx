@@ -8,32 +8,32 @@
  *
  */
 
-#include "docsh.hxx"
-#include "reffact.hxx"
-
-#include "CorrelationDialog.hxx"
+#include <reffact.hxx>
+#include <CorrelationDialog.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
 
 ScCorrelationDialog::ScCorrelationDialog(
                         SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
-                        vcl::Window* pParent, ScViewData* pViewData ) :
+                        weld::Window* pParent, ScViewData* pViewData ) :
     ScMatrixComparisonGenerator(
             pSfxBindings, pChildWindow, pParent, pViewData,
-            "CorrelationDialog", "modules/scalc/ui/correlationdialog.ui" )
+            "modules/scalc/ui/correlationdialog.ui", "CorrelationDialog")
 {}
 
-bool ScCorrelationDialog::Close()
+void ScCorrelationDialog::Close()
 {
-    return DoClose( ScCorrelationDialogWrapper::GetChildWindowId() );
+    DoClose(ScCorrelationDialogWrapper::GetChildWindowId());
 }
 
-const OUString ScCorrelationDialog::getLabel()
+OUString ScCorrelationDialog::getLabel()
 {
     return ScResId(STR_CORRELATION_LABEL);
 }
 
-const OUString ScCorrelationDialog::getTemplate()
+OUString ScCorrelationDialog::getTemplate()
 {
-    return OUString("=CORREL(%VAR1%; %VAR2%)");
+    return "=CORREL(%VAR1%; %VAR2%)";
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

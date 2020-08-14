@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.18.3 -->
-<interface>
-  <requires lib="gtk+" version="3.12"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="sw">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkGrid" id="PageFooterPanel">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
@@ -19,14 +19,21 @@
           <object class="GtkBox" id="box1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
+            <property name="halign">end</property>
             <property name="spacing">6</property>
             <child>
               <object class="GtkCheckButton" id="footertoggle">
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">False</property>
+                <property name="use_underline">True</property>
                 <property name="xalign">0</property>
                 <property name="draw_indicator">True</property>
+                <child internal-child="accessible">
+                  <object class="AtkObject" id="footertoggle-atkobject">
+                    <property name="AtkObject::accessible-name" translatable="yes" context="PageHeaderPanel|footertoggle-atkobject">Enable footer</property>
+                  </object>
+                </child>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -38,9 +45,9 @@
               <object class="GtkLabel" id="margins">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="halign">end</property>
-                <property name="hexpand">True</property>
-                <property name="label" translatable="yes">Margins:</property>
+                <property name="label" translatable="yes" context="pagefooterpanel|margins">Margins:</property>
+                <property name="mnemonic_widget">footermarginpreset</property>
+                <property name="xalign">1</property>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -57,7 +64,8 @@
         <child>
           <object class="GtkLabel" id="customlabel">
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Custom</property>
+            <property name="no_show_all">True</property>
+            <property name="label" translatable="yes" context="pagefooterpanel|customlabel">Custom</property>
           </object>
           <packing>
             <property name="left_attach">1</property>
@@ -68,8 +76,9 @@
           <object class="GtkLabel" id="spacing">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="halign">end</property>
-            <property name="label" translatable="yes">Spacing:</property>
+            <property name="label" translatable="yes" context="pagefooterpanel|spacing">Spacing:</property>
+            <property name="mnemonic_widget">spacingpreset</property>
+            <property name="xalign">1</property>
           </object>
           <packing>
             <property name="left_attach">0</property>
@@ -80,8 +89,9 @@
           <object class="GtkLabel" id="samecontent">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="halign">end</property>
-            <property name="label" translatable="yes">Same Content:</property>
+            <property name="label" translatable="yes" context="pagefooterpanel|samecontent">Same Content:</property>
+            <property name="mnemonic_widget">samecontentLB</property>
+            <property name="xalign">1</property>
           </object>
           <packing>
             <property name="left_attach">0</property>
@@ -89,10 +99,10 @@
           </packing>
         </child>
         <child>
-          <object class="svxcorelo-SpacingListBox" id="footermarginpreset">
+          <object class="GtkComboBoxText" id="footermarginpreset">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="halign">end</property>
+            <property name="hexpand">True</property>
           </object>
           <packing>
             <property name="left_attach">1</property>
@@ -100,10 +110,10 @@
           </packing>
         </child>
         <child>
-          <object class="svxcorelo-SpacingListBox" id="spacingpreset">
+          <object class="GtkComboBoxText" id="spacingpreset">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="halign">end</property>
+            <property name="hexpand">True</property>
           </object>
           <packing>
             <property name="left_attach">1</property>
@@ -111,10 +121,10 @@
           </packing>
         </child>
         <child>
-          <object class="svxcorelo-SameContentListBox" id="samecontentLB">
+          <object class="GtkComboBoxText" id="samecontentLB">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="halign">end</property>
+            <property name="hexpand">True</property>
           </object>
           <packing>
             <property name="left_attach">1</property>

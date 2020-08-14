@@ -20,21 +20,21 @@
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLCELLI_HXX
 
 #include "XMLDetectiveContext.hxx"
-#include "XMLCellRangeSourceContext.hxx"
 #include "importcontext.hxx"
 #include <formula/grammar.hxx>
 #include <svl/itemset.hxx>
 #include <editeng/editdata.hxx>
-#include <editeng/flditem.hxx>
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <memory>
 #include <vector>
 
 class ScXMLImport;
 class ScFormulaCell;
 class ScEditEngineDefaulter;
+class SvxFieldData;
 struct ScXMLAnnotationData;
+struct ScMyImpCellRangeSource;
 
 class ScXMLTableRowCellContext : public ScXMLImportContext
 {
@@ -48,13 +48,13 @@ class ScXMLTableRowCellContext : public ScXMLImportContext
 
     struct Field
     {
-        tools::SvRef<SvxFieldData> mpData;
+        std::unique_ptr<SvxFieldData> mpData;
         ESelection maSelection;
 
         Field(const Field&) = delete;
         const Field& operator=(const Field&) = delete;
 
-        explicit Field(SvxFieldData* pData);
+        explicit Field(std::unique_ptr<SvxFieldData> pData);
         ~Field();
     };
 
@@ -62,21 +62,21 @@ class ScXMLTableRowCellContext : public ScXMLImportContext
     typedef std::vector<std::unique_ptr<Field> > FieldsType;
     typedef std::pair<OUString, OUString> FormulaWithNamespace;
 
-    boost::optional<FormulaWithNamespace> maFormula; /// table:formula attribute
-    boost::optional<OUString> maStringValue;         /// office:string-value attribute
-    boost::optional<OUString> maContentValidationName;
-    boost::optional<OUString> maFirstParagraph; /// unformatted first paragraph, for better performance.
+    std::optional<FormulaWithNamespace> maFormula; /// table:formula attribute
+    std::optional<OUString> maStringValue;         /// office:string-value attribute
+    std::optional<OUString> maContentValidationName;
+    std::optional<OUString> maFirstParagraph; /// unformatted first paragraph, for better performance.
 
     ScEditEngineDefaulter* mpEditEngine;
-    OUStringBuffer maParagraph;
+    OUStringBuffer maParagraph{32};
     sal_Int32 mnCurParagraph;
 
     ParaFormatsType maFormats;
     FieldsType maFields;
 
     std::unique_ptr< ScXMLAnnotationData > mxAnnotationData;
-    ScMyImpDetectiveObjVec* pDetectiveObjVec;
-    ScMyImpCellRangeSource* pCellRangeSource;
+    std::unique_ptr< ScMyImpDetectiveObjVec > pDetectiveObjVec;
+    std::unique_ptr< ScMyImpCellRangeSource > pCellRangeSource;
     double      fValue;
     SCROW       nMergedRows, nMatrixRows, nRepeatedRows;
     SCCOL       nMergedCols, nMatrixCols, nColsRepeated;
@@ -109,10 +109,10 @@ class ScXMLTableRowCellContext : public ScXMLImportContext
 
     void SetFormulaCell             ( ScFormulaCell* pFCell ) const;
     void PutTextCell                ( const ScAddress& rScCurrentPos, const SCCOL nCurrentCol,
-                                      const ::boost::optional< OUString >& pOUText );
+                                      const ::std::optional< OUString >& pOUText );
     void PutValueCell               ( const ScAddress& rScCurrentPos );
     void AddTextAndValueCell       ( const ScAddress& rScCellPos,
-                                      const ::boost::optional< OUString >& pOUText, ScAddress& rScCurrentPos );
+                                      const ::std::optional< OUString >& pOUText, ScAddress& rScCurrentPos );
     void AddNonFormulaCell         ( const ScAddress& rScCellPos );
     void PutFormulaCell             ( const ScAddress& rScCurrentPos );
     void AddFormulaCell             ( const ScAddress& rScCellPos );
@@ -121,7 +121,7 @@ class ScXMLTableRowCellContext : public ScXMLImportContext
 
     bool IsPossibleErrorString() const;
 
-    void PushParagraphField(SvxFieldData* pData, const OUString& rStyleName);
+    void PushParagraphField(std::unique_ptr<SvxFieldData> pData, const OUString& rStyleName);
 
     void PushFormat(sal_Int32 nBegin, sal_Int32 nEnd, const OUString& rStyleName);
 
@@ -130,14 +130,17 @@ class ScXMLTableRowCellContext : public ScXMLImportContext
 public:
 
     ScXMLTableRowCellContext( ScXMLImport& rImport,
-                       const css::uno::Reference<css::xml::sax::XFastAttributeList>& xAttrList,
+                       const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                        const bool bIsCovered, const sal_Int32 nRepeatedRows );
 
     virtual ~ScXMLTableRowCellContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                      const OUString& rLocalName,
                                      const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
     void PushParagraphSpan(const OUString& rSpan, const OUString& rStyleName);
     void PushParagraphFieldDate(const OUString& rStyleName);

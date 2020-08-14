@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/drawingml/chart/datasourcemodel.hxx"
+#include <oox/drawingml/chart/datasourcemodel.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 DataSequenceModel::DataSequenceModel() :
-    mnPointCount( -1 )
+    mnPointCount( -1 ),
+    mnLevelCount( 1 )
 {
 }
 
@@ -40,8 +39,6 @@ DataSourceModel::~DataSourceModel()
 {
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

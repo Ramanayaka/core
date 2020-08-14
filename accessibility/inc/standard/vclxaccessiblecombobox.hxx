@@ -17,12 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLECOMBOBOX_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLECOMBOBOX_HXX
+#pragma once
 
-#include <map>
 #include <standard/vclxaccessiblebox.hxx>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
 
 
 /** The accessible combobox has two children.  The first is the text field
@@ -31,7 +28,7 @@
     object of the VCLXAccessibleList class which does not
     support selection at the moment.
 */
-class VCLXAccessibleComboBox
+class VCLXAccessibleComboBox final
     : public VCLXAccessibleBox
 {
 public:
@@ -43,12 +40,11 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL
         getSupportedServiceNames() override;
 
-protected:
-    virtual ~VCLXAccessibleComboBox() override;
+private:
+    virtual ~VCLXAccessibleComboBox() override = default;
 
     virtual bool IsValid() const override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLECOMBOBOX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,15 +19,16 @@
 #ifndef INCLUDED_I18NPOOL_INC_CHAPTERCOLLATOR_HXX
 #define INCLUDED_I18NPOOL_INC_CHAPTERCOLLATOR_HXX
 
-#include <collatorImpl.hxx>
-#include <com/sun/star/i18n/XCharacterClassification.hpp>
+#include "collatorImpl.hxx"
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace com::sun::star::i18n { class XCharacterClassification; }
+
+namespace i18npool {
 
 //      ----------------------------------------------------
 //      class ChapterCollator
 //      ----------------------------------------------------
-class ChapterCollator : public CollatorImpl
+class ChapterCollator final : public CollatorImpl
 {
 public:
     // Constructors
@@ -46,10 +47,10 @@ public:
 
 private:
     // CharacterClassification Implementation
-    css::uno::Reference< XCharacterClassification > cclass;
+    css::uno::Reference< css::i18n::XCharacterClassification > cclass;
 };
 
-} } } }
+}
 
 #endif
 

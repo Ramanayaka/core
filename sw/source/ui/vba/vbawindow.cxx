@@ -16,13 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <vbahelper/helperdecl.hxx>
+
 #include <ooo/vba/word/WdWindowState.hpp>
 #include <sfx2/viewfrm.hxx>
 #include <vcl/wrkwin.hxx>
 
 #include "vbawindow.hxx"
-#include "vbaglobals.hxx"
 #include "vbadocument.hxx"
 #include "vbaview.hxx"
 #include "vbapanes.hxx"
@@ -109,8 +108,39 @@ SwVbaWindow::setWindowState( const uno::Any& _windowstate )
         else if (nwindowState == word::WdWindowState::wdWindowStateNormal)
             pWork -> Restore();
         else
-            throw uno::RuntimeException("Invalid Parameter" );
+            SAL_WARN("sw.vba", "Unhandled window state " << nwindowState);
     }
+}
+
+OUString SAL_CALL
+SwVbaWindow::getCaption()
+{
+    SwView* pView = word::getView( m_xModel );
+    if( !pView )
+        return "";
+
+    uno::Reference< css::beans::XPropertySet > xFrameProps( pView->GetViewFrame()->GetFrame().GetFrameInterface()->getController()->getFrame(), uno::UNO_QUERY );
+    if( !xFrameProps.is() )
+        return "";
+
+    OUString sTitle;
+    xFrameProps->getPropertyValue( "Title" ) >>= sTitle;
+
+    return sTitle;
+}
+
+void SAL_CALL
+SwVbaWindow::setCaption( const OUString& _caption )
+{
+    SwView* pView = word::getView( m_xModel );
+    if( !pView )
+        return;
+
+    uno::Reference< css::beans::XPropertySet > xFrameProps( pView->GetViewFrame()->GetFrame().GetFrameInterface()->getController()->getFrame(), uno::UNO_QUERY );
+    if( !xFrameProps.is() )
+        return;
+
+    xFrameProps->setPropertyValue( "Title", uno::makeAny( _caption ) );
 }
 
 uno::Any SAL_CALL
@@ -120,7 +150,7 @@ SwVbaWindow::Panes( const uno::Any& aIndex )
     if(  aIndex.getValueTypeClass() == uno::TypeClass_VOID )
         return uno::makeAny( xPanes );
 
-    return uno::Any( xPanes->Item( aIndex, uno::Any() ) );
+    return xPanes->Item( aIndex, uno::Any() );
 }
 
 uno::Any SAL_CALL
@@ -132,18 +162,16 @@ SwVbaWindow::ActivePane()
 OUString
 SwVbaWindow::getServiceImplName()
 {
-    return OUString("SwVbaWindow");
+    return "SwVbaWindow";
 }
 
 uno::Sequence< OUString >
 SwVbaWindow::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Window";
-    }
+        "ooo.vba.word.Window"
+    };
     return aServiceNames;
 }
 

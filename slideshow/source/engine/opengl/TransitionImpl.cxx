@@ -30,15 +30,15 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <vcl/opengl/OpenGLHelper.hxx>
 #include <vcl/opengl/OpenGLContext.hxx>
+#include <sal/log.hxx>
 
 #include <algorithm>
 #include <array>
-#include <utility>
 
 #include <comphelper/random.hxx>
 
-#include "TransitionImpl.hxx"
 #include "Operation.hxx"
+#include "TransitionImpl.hxx"
 #include <math.h>
 
 TransitionScene::TransitionScene(TransitionScene const& rOther)
@@ -226,11 +226,11 @@ void OGLTransitionImpl::finish()
     CHECK_GL_ERROR();
 }
 
-void OGLTransitionImpl::prepare( double, double, double, double, double )
+void OGLTransitionImpl::prepare( double, double )
 {
 }
 
-void OGLTransitionImpl::finish( double, double, double, double, double )
+void OGLTransitionImpl::cleanup()
 {
 }
 
@@ -265,7 +265,7 @@ void OGLTransitionImpl::display( double nTime, sal_Int32 glLeavingSlideTex, sal_
 
     CHECK_GL_ERROR();
     glBindVertexArray(m_nVertexArrayObject);
-    prepare( nTime, SlideWidth, SlideHeight, DispWidth, DispHeight );
+    prepare( SlideWidth, SlideHeight );
 
     CHECK_GL_ERROR();
     displaySlides_( nTime, glLeavingSlideTex, glEnteringSlideTex, SlideWidthScale, SlideHeightScale, pContext );
@@ -729,7 +729,6 @@ std::shared_ptr<OGLTransitionImpl> makeTurnAround()
 {
     Primitive Slide;
     TransitionSettings aSettings;
-    aSettings.mnRequiredGLVersion = 3.0;
 
     Slide.pushTriangle(glm::vec2(0,0),glm::vec2(1,0),glm::vec2(0,1));
     Slide.pushTriangle(glm::vec2(1,0),glm::vec2(0,1),glm::vec2(1,1));
@@ -791,7 +790,7 @@ std::shared_ptr<OGLTransitionImpl> makeIris()
     aLeavingPrimitives.push_back (Slide);
 
 
-    Primitive irisPart, part;
+    Primitive irisPart;
     int i, nSteps = 24, nParts = 7;
     double t = 1.0/nSteps, lx = 1, ly = 0, of=2.2, f=1.42;
 
@@ -892,7 +891,6 @@ std::shared_ptr<OGLTransitionImpl> makeRochade()
 {
     Primitive Slide;
     TransitionSettings aSettings;
-    aSettings.mnRequiredGLVersion = 3.0;
 
     double w, h;
 
@@ -924,20 +922,20 @@ std::shared_ptr<OGLTransitionImpl> makeRochade()
     return makeRochadeTransition(aLeavingSlide, aEnteringSlide, aSettings);
 }
 
-inline double randFromNeg1to1()
+static double randFromNeg1to1()
 {
     return comphelper::rng::uniform_real_distribution(-1.0, std::nextafter(1.0, DBL_MAX));
 }
 
 // TODO(Q3): extract to basegfx
-inline glm::vec3 randNormVectorInXYPlane()
+static glm::vec3 randNormVectorInXYPlane()
 {
     glm::vec3 toReturn(randFromNeg1to1(),randFromNeg1to1(),0.0);
     return glm::normalize(toReturn);
 }
 
 template<typename T>
-T clamp(const T& rIn)
+static T clamp(const T& rIn)
 {
     return glm::clamp(rIn, T(-1.0), T(1.0));
 }
@@ -961,7 +959,7 @@ std::shared_ptr<OGLTransitionImpl> makeRevolvingCircles( sal_uInt16 nCircles , s
     float TempAngle(0.0);
     for(unsigned int Point(0); Point < nPointsOnCircles; ++Point)
     {
-        unScaledTexCoords.push_back( glm::vec2( cos(TempAngle - 3.1415926/2.0) , sin(TempAngle- 3.1415926/2.0) ) );
+        unScaledTexCoords.emplace_back( cos(TempAngle - 3.1415926/2.0) , sin(TempAngle- 3.1415926/2.0) );
 
         TempAngle += dAngle;
     }
@@ -1086,17 +1084,17 @@ std::shared_ptr<OGLTransitionImpl> makeHelix( sal_uInt16 nRows )
     return makeSimpleTransition(aLeavingSlide, aEnteringSlide);
 }
 
-float fdiv(int a, int b)
+static float fdiv(int a, int b)
 {
     return static_cast<float>(a)/b;
 }
 
-glm::vec2 vec(float x, float y, float nx, float ny)
+static glm::vec2 vec(float x, float y, float nx, float ny)
 {
     x = x < 0.0 ? 0.0 : x;
-    x = x > nx  ? nx  : x;
+    x = std::min(x, nx);
     y = y < 0.0 ? 0.0 : y;
-    y = y > ny  ? ny  : y;
+    y = std::min(y, ny);
     return glm::vec2(fdiv(x, nx), fdiv(y, ny));
 }
 
@@ -1157,9 +1155,9 @@ void Primitive::pushTriangle(const glm::vec2& SlideLocation0,const glm::vec2& Sl
     Verts.reserve(3);
     Texs.reserve(3);
 
-    Verts.push_back(glm::vec3( 2*SlideLocation0.x - 1, -2*SlideLocation0.y + 1 , 0.0 ));
-    Verts.push_back(glm::vec3( 2*SlideLocation1.x - 1, -2*SlideLocation1.y + 1 , 0.0 ));
-    Verts.push_back(glm::vec3( 2*SlideLocation2.x - 1, -2*SlideLocation2.y + 1 , 0.0 ));
+    Verts.emplace_back( 2*SlideLocation0.x - 1, -2*SlideLocation0.y + 1 , 0.0 );
+    Verts.emplace_back( 2*SlideLocation1.x - 1, -2*SlideLocation1.y + 1 , 0.0 );
+    Verts.emplace_back( 2*SlideLocation2.x - 1, -2*SlideLocation2.y + 1 , 0.0 );
 
     //figure out if they're facing the correct way, and make them face the correct way.
     glm::vec3 Normal( glm::cross( Verts[0] - Verts[1] , Verts[1] - Verts[2] ) );
@@ -1175,9 +1173,9 @@ void Primitive::pushTriangle(const glm::vec2& SlideLocation0,const glm::vec2& Sl
         Texs.push_back(SlideLocation2);
         Texs.push_back(SlideLocation1);
         Verts.clear();
-        Verts.push_back(glm::vec3( 2*SlideLocation0.x - 1, -2*SlideLocation0.y + 1 , 0.0 ));
-        Verts.push_back(glm::vec3( 2*SlideLocation2.x - 1, -2*SlideLocation2.y + 1 , 0.0 ));
-        Verts.push_back(glm::vec3( 2*SlideLocation1.x - 1, -2*SlideLocation1.y + 1 , 0.0 ));
+        Verts.emplace_back( 2*SlideLocation0.x - 1, -2*SlideLocation0.y + 1 , 0.0 );
+        Verts.emplace_back( 2*SlideLocation2.x - 1, -2*SlideLocation2.y + 1 , 0.0 );
+        Verts.emplace_back( 2*SlideLocation1.x - 1, -2*SlideLocation1.y + 1 , 0.0 );
     }
 
     Vertices.push_back({Verts[0], glm::vec3(0, 0, 1), Texs[0]}); //all normals always face the screen when untransformed.
@@ -1274,7 +1272,7 @@ std::shared_ptr<OGLTransitionImpl> makeVenetianBlinds( bool vertical, int parts 
     Primitives_t aEnteringSlide;
     for( int i=0; i<parts; i++ ) {
         Primitive Slide;
-        double n = (i + 1)/(double)parts;
+        double n = (i + 1)/static_cast<double>(parts);
         if( vertical ) {
             Slide.pushTriangle (glm::vec2 (ln,0), glm::vec2 (n,0), glm::vec2 (ln,1));
             Slide.pushTriangle (glm::vec2 (n,0), glm::vec2 (ln,1), glm::vec2 (n,1));
@@ -1353,37 +1351,40 @@ std::shared_ptr<OGLTransitionImpl> makeFadeSmoothly()
 namespace
 {
 
-class FadeThroughBlackTransition : public OGLTransitionImpl
+class FadeThroughColorTransition : public OGLTransitionImpl
 {
 public:
-    FadeThroughBlackTransition(const TransitionScene& rScene, const TransitionSettings& rSettings)
-        : OGLTransitionImpl(rScene, rSettings)
+    FadeThroughColorTransition(const TransitionScene& rScene, const TransitionSettings& rSettings, bool white)
+        : OGLTransitionImpl(rScene, rSettings), useWhite( white )
     {}
 
 private:
     virtual GLuint makeShader() const override;
+    bool useWhite;
 };
 
-GLuint FadeThroughBlackTransition::makeShader() const
+GLuint FadeThroughColorTransition::makeShader() const
 {
-    return OpenGLHelper::LoadShaders( "basicVertexShader", "fadeBlackFragmentShader" );
+    return OpenGLHelper::LoadShaders( "basicVertexShader", "fadeBlackFragmentShader",
+        useWhite ? "#define use_white" : "", "" );
 }
 
 std::shared_ptr<OGLTransitionImpl>
-makeFadeThroughBlackTransition(
+makeFadeThroughColorTransition(
         const Primitives_t& rLeavingSlidePrimitives,
         const Primitives_t& rEnteringSlidePrimitives,
-        const TransitionSettings& rSettings)
+        const TransitionSettings& rSettings,
+        bool white)
 {
-    return std::make_shared<FadeThroughBlackTransition>(
+    return std::make_shared<FadeThroughColorTransition>(
             TransitionScene(rLeavingSlidePrimitives, rEnteringSlidePrimitives),
-            rSettings)
+            rSettings, white)
         ;
 }
 
 }
 
-std::shared_ptr<OGLTransitionImpl> makeFadeThroughBlack()
+std::shared_ptr<OGLTransitionImpl> makeFadeThroughColor( bool white )
 {
     Primitive Slide;
 
@@ -1397,7 +1398,7 @@ std::shared_ptr<OGLTransitionImpl> makeFadeThroughBlack()
     TransitionSettings aSettings;
     aSettings.mbUseMipMapLeaving = aSettings.mbUseMipMapEntering = false;
 
-    return makeFadeThroughBlackTransition(aLeavingSlide, aEnteringSlide, aSettings);
+    return makeFadeThroughColorTransition(aLeavingSlide, aEnteringSlide, aSettings, white);
 }
 
 namespace
@@ -1468,12 +1469,12 @@ int permutation256 [256]= {
 void initPermTexture(GLuint *texID)
 {
     CHECK_GL_ERROR();
-  glGenTextures(1, texID);
-  glBindTexture(GL_TEXTURE_2D, *texID);
+    glGenTextures(1, texID);
+    glBindTexture(GL_TEXTURE_2D, *texID);
 
-  static bool initialized = false;
-  static unsigned char permutation2D[256*256*4];
-  if( !initialized ) {
+    static bool initialized = false;
+    static unsigned char permutation2D[256*256*4];
+    if( !initialized ) {
       int x, y;
 
       for( y=0; y < 256; y++ )
@@ -1481,11 +1482,11 @@ void initPermTexture(GLuint *texID)
               permutation2D[x*4 + y*1024] = permutation256[(y + permutation256[x]) & 0xff];
 
       initialized = true;
-  }
+    }
 
-  glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, permutation2D );
-  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
-  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, permutation2D );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
     CHECK_GL_ERROR();
 }
 
@@ -1879,7 +1880,7 @@ public:
 private:
     virtual GLuint makeShader() const override;
     virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext ) override;
-    virtual void prepare( double nTime, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight ) override;
+    virtual void prepare( double SlideWidth, double SlideHeight ) override;
 
     glm::vec2 maCenter;
     GLint maSlideRatioLocation = -1;
@@ -1902,7 +1903,7 @@ void RippleTransition::prepareTransition( sal_Int32, sal_Int32, OpenGLContext* )
     CHECK_GL_ERROR();
 }
 
-void RippleTransition::prepare( double /* nTime */, double SlideWidth, double SlideHeight, double /* DispWidth */, double /* DispHeight */ )
+void RippleTransition::prepare( double SlideWidth, double SlideHeight )
 {
     if( maSlideRatioLocation != -1 )
         glUniform1f( maSlideRatioLocation, SlideWidth / SlideHeight );
@@ -1940,7 +1941,7 @@ std::shared_ptr<OGLTransitionImpl> makeRipple()
     return makeRippleTransition(aLeavingSlide, aEnteringSlide, aSettings);
 }
 
-void createHexagon(Primitive& aHexagon, const int x, const int y, const int NX, const int NY)
+static void createHexagon(Primitive& aHexagon, const int x, const int y, const int NX, const int NY)
 {
     if (y % 4 == 0)
     {
@@ -1976,7 +1977,7 @@ public:
 private:
     virtual GLuint makeShader() const override;
     virtual void prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext ) override;
-    virtual void finish( double nTime, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight ) override;
+    virtual void cleanup() override;
 
     GLuint maBuffer = 0;
 };
@@ -2026,7 +2027,7 @@ void GlitterTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int3
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-void GlitterTransition::finish( double, double, double, double, double )
+void GlitterTransition::cleanup()
 {
     CHECK_GL_ERROR();
     glDeleteBuffers(1, &maBuffer);

@@ -20,19 +20,97 @@
 #define INCLUDED_SFX2_EVENT_HXX
 
 #include <sal/config.h>
+
+#include <ostream>
+
 #include <sfx2/dllapi.h>
-#include <sfx2/sfx.hrc>
 #include <svl/hint.hxx>
 #include <unotools/eventcfg.hxx>
 #include <rtl/ustring.hxx>
 
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/frame/XController2.hpp>
 #include <com/sun/star/view/PrintableState.hpp>
 
-class SfxObjectShell;
+namespace com::sun::star::beans { struct PropertyValue; }
 
+/**
+  these values get stored in streams in a 16-bit value
+*/
+enum class SvMacroItemId : sal_uInt16 {
+    NONE                 = 0,
+
+    // used by SwHTMLForm_Impl
+    HtmlOnSubmitForm,
+    HtmlOnResetForm,
+    HtmlOnGetFocus,
+    HtmlOnLoseFocus,
+    HtmlOnClick,
+    HtmlOnClickItem,
+    HtmlOnChange,
+    HtmlOnSelect,
+
+    // used by SwHTMLParser
+    OpenDoc,
+    PrepareCloseDoc,
+    ActivateDoc,
+    DeactivateDoc,
+
+    // Events for Controls etc.
+    OnMouseOver          =  5100,
+    OnClick              =  5101,
+    OnMouseOut           =  5102,
+
+    OnImageLoadDone      = 10000,
+    OnImageLoadCancel    = 10001,
+    OnImageLoadError     = 10002,
+
+    SwObjectSelect       = 20000,
+    SwStartInsGlossary   = 20001,
+    SwEndInsGlossary     = 20002,
+    SwFrmKeyInputAlpha   = 20004,
+    SwFrmKeyInputNoAlpha = 20005,
+    SwFrmResize          = 20006,
+    SwFrmMove            = 20007,
+};
+
+template< typename charT, typename traits >
+inline std::basic_ostream<charT, traits> & operator <<(
+    std::basic_ostream<charT, traits> & stream, const SvMacroItemId& id )
+{
+    switch(id)
+    {
+    case SvMacroItemId::NONE: return stream << "NONE";
+    case SvMacroItemId::HtmlOnSubmitForm: return stream << "HtmlOnSubmitForm";
+    case SvMacroItemId::HtmlOnResetForm: return stream << "HtmlOnResetForm";
+    case SvMacroItemId::HtmlOnGetFocus: return stream << "HtmlOnGetFocus";
+    case SvMacroItemId::HtmlOnLoseFocus: return stream << "HtmlOnLoseFocus";
+    case SvMacroItemId::HtmlOnClick: return stream << "HtmlOnClick";
+    case SvMacroItemId::HtmlOnClickItem: return stream << "HtmlOnClickItem";
+    case SvMacroItemId::HtmlOnChange: return stream << "HtmlOnChange";
+    case SvMacroItemId::HtmlOnSelect: return stream << "HtmlOnSelect";
+    case SvMacroItemId::OpenDoc: return stream << "OpenDoc";
+    case SvMacroItemId::PrepareCloseDoc: return stream << "PrepareCloseDoc";
+    case SvMacroItemId::ActivateDoc: return stream << "ActivateDoc";
+    case SvMacroItemId::DeactivateDoc: return stream << "DeactivateDoc";
+    case SvMacroItemId::OnMouseOver: return stream << "OnMouseOver";
+    case SvMacroItemId::OnClick: return stream << "OnClick";
+    case SvMacroItemId::OnMouseOut: return stream << "OnMouseOut";
+    case SvMacroItemId::OnImageLoadDone: return stream << "OnImageLoadDone";
+    case SvMacroItemId::OnImageLoadCancel: return stream << "OnImageLoadCancel";
+    case SvMacroItemId::OnImageLoadError: return stream << "OnImageLoadError";
+    case SvMacroItemId::SwObjectSelect: return stream << "SwObjectSelect";
+    case SvMacroItemId::SwStartInsGlossary: return stream << "SwStartInsGlossary";
+    case SvMacroItemId::SwEndInsGlossary: return stream << "SwEndInsGlossary";
+    case SvMacroItemId::SwFrmKeyInputAlpha: return stream << "SwFrmKeyInputAlpha";
+    case SvMacroItemId::SwFrmKeyInputNoAlpha: return stream << "SwFrmKeyInputNoAlpha";
+    case SvMacroItemId::SwFrmResize: return stream << "SwFrmResize";
+    case SvMacroItemId::SwFrmMove: return stream << "SwFrmMove";
+    default: return stream << "unk(" << std::to_string(int(id)) << ")";
+    }
+}
+
+class SfxObjectShell;
 
 enum class SfxEventHintId {
     NONE = 0,
@@ -68,6 +146,47 @@ enum class SfxEventHintId {
     SwEventFieldMergeFinished,
     SwEventLayoutFinished,
 };
+
+template< typename charT, typename traits >
+inline std::basic_ostream<charT, traits> & operator <<(
+    std::basic_ostream<charT, traits> & stream, const SfxEventHintId& id )
+{
+    switch(id)
+    {
+    case SfxEventHintId::NONE: return stream << "NONE";
+    case SfxEventHintId::ActivateDoc: return stream << "ActivateDoc";
+    case SfxEventHintId::CloseDoc: return stream << "CloseDoc";
+    case SfxEventHintId::CloseView: return stream << "CloseView";
+    case SfxEventHintId::CreateDoc: return stream << "CreateDoc";
+    case SfxEventHintId::DeactivateDoc: return stream << "DeactivateDoc";
+    case SfxEventHintId::DocCreated: return stream << "DocCreated";
+    case SfxEventHintId::LoadFinished: return stream << "LoadFinished";
+    case SfxEventHintId::ModifyChanged: return stream << "ModifyChanged";
+    case SfxEventHintId::OpenDoc: return stream << "OpenDoc";
+    case SfxEventHintId::PrepareCloseDoc: return stream << "PrepareCloseDoc";
+    case SfxEventHintId::PrepareCloseView: return stream << "PrepareCloseView";
+    case SfxEventHintId::PrintDoc: return stream << "PrintDoc";
+    case SfxEventHintId::SaveAsDoc: return stream << "SaveAsDoc";
+    case SfxEventHintId::SaveAsDocDone: return stream << "SaveAsDocDone";
+    case SfxEventHintId::SaveAsDocFailed: return stream << "SaveAsDocFailed";
+    case SfxEventHintId::SaveDoc: return stream << "SaveDoc";
+    case SfxEventHintId::SaveDocDone: return stream << "SaveDocDone";
+    case SfxEventHintId::SaveDocFailed: return stream << "SaveDocFailed";
+    case SfxEventHintId::SaveToDoc: return stream << "SaveToDoc";
+    case SfxEventHintId::SaveToDocDone: return stream << "SaveToDocDone";
+    case SfxEventHintId::SaveToDocFailed: return stream << "SaveToDocFailed";
+    case SfxEventHintId::StorageChanged: return stream << "StorageChanged";
+    case SfxEventHintId::ViewCreated: return stream << "ViewCreated";
+    case SfxEventHintId::VisAreaChanged: return stream << "VisAreaChanged";
+    case SfxEventHintId::SwMailMerge: return stream << "SwMailMerge";
+    case SfxEventHintId::SwMailMergeEnd: return stream << "SwMailMergeEnd";
+    case SfxEventHintId::SwEventPageCount: return stream << "SwEventPageCount";
+    case SfxEventHintId::SwEventFieldMerge: return stream << "SwEventFieldMerge";
+    case SfxEventHintId::SwEventFieldMergeFinished: return stream << "SwEventFieldMergeFinished";
+    case SfxEventHintId::SwEventLayoutFinished: return stream << "SwEventLayoutFinished";
+    default: return stream << "unk(" << std::to_string(int(id)) << ")";
+    }
+}
 
 class SFX2_DLLPUBLIC SfxEventHint : public SfxHint
 {
@@ -112,9 +231,7 @@ public:
                         { return xViewController; }
 };
 
-class Printer;
-
-class SfxPrintingHint : public SfxViewEventHint
+class SfxPrintingHint final : public SfxViewEventHint
 {
     css::view::PrintableState mnPrintableState;
     css::uno::Sequence < css::beans::PropertyValue > aOpts;
@@ -134,7 +251,11 @@ public:
         {}
 
         SfxPrintingHint( css::view::PrintableState nState )
-        : SfxViewEventHint( SfxEventHintId::PrintDoc, rtl::OUString(), nullptr, css::uno::Reference< css::frame::XController >() )
+        : SfxViewEventHint(
+            SfxEventHintId::PrintDoc,
+            GlobalEventConfig::GetEventName( GlobalEventId::PRINTDOC ),
+            nullptr,
+            css::uno::Reference< css::frame::XController >() )
         , mnPrintableState( nState )
         {}
 

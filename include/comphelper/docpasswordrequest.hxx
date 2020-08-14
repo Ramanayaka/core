@@ -22,10 +22,11 @@
 
 #include <comphelper/comphelperdllapi.h>
 #include <com/sun/star/task/PasswordRequestMode.hpp>
-#include <com/sun/star/task/XInteractionAbort.hpp>
 #include <com/sun/star/task/XInteractionRequest.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
+
+namespace com::sun::star::task { class XInteractionAbort; }
 
 namespace comphelper {
 
@@ -40,7 +41,7 @@ enum class DocPasswordRequestType
 };
 
 
-class COMPHELPER_DLLPUBLIC SimplePasswordRequest :
+class COMPHELPER_DLLPUBLIC SimplePasswordRequest final :
         public cppu::WeakImplHelper<css::task::XInteractionRequest>
 {
 public:
@@ -69,7 +70,7 @@ private:
 /** Implements the task.XInteractionRequest interface for requesting a password
     string for a document.
  */
-class COMPHELPER_DLLPUBLIC DocPasswordRequest :
+class COMPHELPER_DLLPUBLIC DocPasswordRequest final :
         public cppu::WeakImplHelper<css::task::XInteractionRequest>
 {
 public:

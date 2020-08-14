@@ -20,8 +20,6 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_INC_ACTIVITY_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_INC_ACTIVITY_HXX
 
-#include <sal/types.h>
-
 #include <memory>
 
 #include "disposable.hxx"
@@ -29,9 +27,7 @@
 
 /* Definition of Activity interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
 
         class Activity : public Disposable, public virtual SharedPtrAble
@@ -86,7 +82,6 @@ namespace slideshow
 
         typedef ::std::shared_ptr< Activity > ActivitySharedPtr;
 
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_ACTIVITY_HXX

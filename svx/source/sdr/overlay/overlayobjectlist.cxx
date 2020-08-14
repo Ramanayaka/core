@@ -19,9 +19,7 @@
 
 #include <svx/sdr/overlay/overlayobjectlist.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
-#include <svx/svdmodel.hxx>
 #include <vcl/outdev.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <tools/gen.hxx>
 
 #include <drawinglayer/processor2d/hittestprocessor2d.hxx>
@@ -30,10 +28,8 @@
 #define DEFAULT_VALUE_FOR_HITTEST_PIXEL         (2)
 #define DEFAULT_VALUE_FOR_HITTEST_TWIP          (30)
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         OverlayObjectList::~OverlayObjectList()
         {
             clear();
@@ -41,27 +37,25 @@ namespace sdr
 
         void OverlayObjectList::clear()
         {
-            for(OverlayObject* pCandidate : maVector)
+            for(auto & pCandidate : maVector)
             {
                 if(pCandidate->getOverlayManager())
                     pCandidate->getOverlayManager()->remove(*pCandidate);
-
-                delete pCandidate;
             }
             maVector.clear();
         }
 
-        void OverlayObjectList::append(OverlayObject* pOverlayObject)
+        void OverlayObjectList::append(std::unique_ptr<OverlayObject> pOverlayObject)
         {
             assert(pOverlayObject && "tried to add invalid OverlayObject to OverlayObjectList");
-            maVector.push_back(pOverlayObject);
+            maVector.push_back(std::move(pOverlayObject));
         }
 
         bool OverlayObjectList::isHitLogic(const basegfx::B2DPoint& rLogicPosition, double fLogicTolerance) const
         {
             if(!maVector.empty())
             {
-                OverlayObject* pFirst = maVector.front();
+                OverlayObject* pFirst = maVector.front().get();
                 OverlayManager* pManager = pFirst->getOverlayManager();
 
                 if(pManager)
@@ -76,20 +70,20 @@ namespace sdr
                         {
                             aSizeLogic = Size(DEFAULT_VALUE_FOR_HITTEST_TWIP, DEFAULT_VALUE_FOR_HITTEST_TWIP);
                             if (pManager->getOutputDevice().GetMapMode().GetMapUnit() == MapUnit::Map100thMM)
-                                aSizeLogic = OutputDevice::LogicToLogic(aSizeLogic, MapUnit::MapTwip, MapUnit::Map100thMM);
+                                aSizeLogic = OutputDevice::LogicToLogic(aSizeLogic, MapMode(MapUnit::MapTwip), MapMode(MapUnit::Map100thMM));
                         }
 
                         fLogicTolerance = aSizeLogic.Width();
                     }
 
-                    const drawinglayer::geometry::ViewInformation2D aViewInformation2D(pManager->getCurrentViewInformation2D());
+                    const drawinglayer::geometry::ViewInformation2D& aViewInformation2D(pManager->getCurrentViewInformation2D());
                     drawinglayer::processor2d::HitTestProcessor2D aHitTestProcessor2D(
                         aViewInformation2D,
                         rLogicPosition,
                         fLogicTolerance,
                         false);
 
-                    for(OverlayObject* pCandidate : maVector)
+                    for(auto & pCandidate : maVector)
                     {
                         if(pCandidate->isHittable())
                         {
@@ -117,7 +111,7 @@ namespace sdr
             sal_uInt32 nDiscreteTolerance = DEFAULT_VALUE_FOR_HITTEST_PIXEL;
             if(!maVector.empty())
             {
-                OverlayObject* pCandidate = maVector.front();
+                OverlayObject* pCandidate = maVector.front().get();
                 OverlayManager* pManager = pCandidate->getOverlayManager();
 
                 if(pManager)
@@ -126,7 +120,7 @@ namespace sdr
                     const basegfx::B2DPoint aPosition(aPosLogic.X(), aPosLogic.Y());
 
                     const Size aSizeLogic(pManager->getOutputDevice().PixelToLogic(Size(nDiscreteTolerance, nDiscreteTolerance)));
-                    return isHitLogic(aPosition, (double)aSizeLogic.Width());
+                    return isHitLogic(aPosition, static_cast<double>(aSizeLogic.Width()));
                 }
             }
 
@@ -137,14 +131,14 @@ namespace sdr
         {
             basegfx::B2DRange aRetval;
 
-            for(OverlayObject* pCandidate : maVector)
+            for(auto & pCandidate : maVector)
             {
                 aRetval.expand(pCandidate->getBaseRange());
             }
 
             return aRetval;
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

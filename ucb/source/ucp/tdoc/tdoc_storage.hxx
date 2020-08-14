@@ -22,11 +22,12 @@
 
 #include <map>
 
-#include "osl/mutex.hxx"
-#include "rtl/ref.hxx"
-#include "salhelper/simplereferenceobject.hxx"
+#include <osl/mutex.hxx>
+#include <rtl/ref.hxx>
+#include <salhelper/simplereferenceobject.hxx>
 
-#include "com/sun/star/embed/XStorage.hpp"
+#include <com/sun/star/embed/XStorage.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 namespace tdoc_ucp {
 
@@ -96,7 +97,7 @@ namespace tdoc_ucp {
     private:
         friend class Storage;
 
-        void releaseElement( Storage * pElement );
+        void releaseElement( Storage const * pElement );
 
         /// @throws css::embed::InvalidStorageException
         /// @throws css::lang::IllegalArgumentException
@@ -127,8 +128,8 @@ namespace tdoc_ucp {
         css::uno::Reference< css::io::XStream >
         queryStream( const css::uno::Reference<
                         css::embed::XStorage > & xParentStorage,
-                     const OUString & rPassword,
                      const OUString & rUri,
+                     const OUString & rPassword,
                      StorageAccessMode eMode,
                      bool bTruncate /* ignored for read-only streams */ );
 

@@ -28,7 +28,7 @@
 #include <memory>
 
 #define BR 0x8000
-bool FileMove_Impl( const OUString & rFile1, const OUString & rFile2, bool bMoveAlways )
+static bool FileMove_Impl( const OUString & rFile1, const OUString & rFile2, bool bMoveAlways )
 {
     //printf( "Move from %s to %s\n", rFile2.GetStr(), rFile1.GetStr() );
     sal_uLong nC1 = 0;
@@ -81,7 +81,7 @@ bool FileMove_Impl( const OUString & rFile1, const OUString & rFile2, bool bMove
 
 //This function gets a system path to a file [fname], creates a temp file in
 //the same folder as [fname] and returns the system path of the temp file.
-inline OUString tempFileHelper(OUString const & fname)
+static OUString tempFileHelper(OUString const & fname)
 {
     OUString aTmpFile;
 
@@ -95,8 +95,8 @@ inline OUString tempFileHelper(OUString const & fname)
     }
     else
     {
-        OStringBuffer aStr("invalid filename: ");
-        aStr.append(OUStringToOString(fname, RTL_TEXTENCODING_UTF8));
+        OString aStr = "invalid filename: " +
+            OUStringToOString(fname, RTL_TEXTENCODING_UTF8);
         fprintf(stderr, "%s\n", aStr.getStr());
     }
     return aTmpFile;
@@ -120,8 +120,8 @@ int main ( int argc, char ** argv)
     {
         osl::DirectoryItem aDI;
         osl::FileStatus fileStatus( osl_FileStatus_Mask_FileName );
-        osl::DirectoryItem::get( aCommand.aExportFile, aDI );
-        aDI.getFileStatus(fileStatus);
+        (void)osl::DirectoryItem::get( aCommand.aExportFile, aDI );
+        (void)aDI.getFileStatus(fileStatus);
         pDataBase->SetExportFile( fileStatus.getFileName() );
     }
 
@@ -134,8 +134,8 @@ int main ( int argc, char ** argv)
             if( !pDataBase->WriteSfx( aOutStm ) )
             {
                 nExit = -1;
-                OStringBuffer aStr("cannot write slotmap file: ");
-                aStr.append(OUStringToOString(aCommand.aSlotMapFile, RTL_TEXTENCODING_UTF8));
+                OString aStr = "cannot write slotmap file: " +
+                    OUStringToOString(aCommand.aSlotMapFile, RTL_TEXTENCODING_UTF8);
                 fprintf(stderr, "%s\n", aStr.getStr());
             }
         }
@@ -161,9 +161,9 @@ int main ( int argc, char ** argv)
         bool bErr = false;
         bool bDoMove = aCommand.aTargetFile.isEmpty();
         OUString aErrFile, aErrFile2;
-        if( !bErr && !aCommand.aSlotMapFile.isEmpty() )
+        if (!aCommand.aSlotMapFile.isEmpty())
         {
-            bErr |= !FileMove_Impl( aCommand.aSlotMapFile, aTmpSlotMapFile, bDoMove );
+            bErr = !FileMove_Impl( aCommand.aSlotMapFile, aTmpSlotMapFile, bDoMove );
             if( bErr ) {
                 aErrFile = aCommand.aSlotMapFile;
                 aErrFile2 = aTmpSlotMapFile;
@@ -181,12 +181,10 @@ int main ( int argc, char ** argv)
         if( bErr )
         {
             nExit = -1;
-            OStringBuffer aStr("cannot move file from: ");
-            aStr.append(OUStringToOString(aErrFile2,
-                RTL_TEXTENCODING_UTF8));
-            aStr.append("\n              to file: ");
-            aStr.append(OUStringToOString(aErrFile,
-                RTL_TEXTENCODING_UTF8));
+            OString aStr = "cannot move file from: " +
+                OUStringToOString(aErrFile2, RTL_TEXTENCODING_UTF8) +
+                "\n              to file: " +
+                OUStringToOString(aErrFile, RTL_TEXTENCODING_UTF8);
             fprintf( stderr, "%s\n", aStr.getStr() );
         }
         else

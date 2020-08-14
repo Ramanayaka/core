@@ -13,12 +13,10 @@
 #include <vcl/opengl/OpenGLContext.hxx>
 #include <vcl/opengl/OpenGLHelper.hxx>
 
-#include "opengl/framebuffer.hxx"
-#include "opengl/texture.hxx"
+#include <opengl/framebuffer.hxx>
+#include <opengl/texture.hxx>
 
-#include "opengl/FixedTextureAtlas.hxx"
-
-#include <o3tl/make_unique.hxx>
+#include <opengl/FixedTextureAtlas.hxx>
 
 struct FixedTexture
 {
@@ -27,7 +25,7 @@ struct FixedTexture
     std::vector<bool> maAllocatedSlots;
 
     FixedTexture(int nTextureWidth, int nTextureHeight, int nNumberOfSlots)
-        : mpTexture(new ImplOpenGLTexture(nTextureWidth, nTextureHeight, true))
+        : mpTexture(std::make_shared<ImplOpenGLTexture>(nTextureWidth, nTextureHeight, true))
         , mnFreeSlots(nNumberOfSlots)
         , maAllocatedSlots(nNumberOfSlots, false)
     {
@@ -90,7 +88,7 @@ void FixedTextureAtlasManager::CreateNewTexture()
 {
     int nTextureWidth = mWidthFactor  * mSubTextureSize;
     int nTextureHeight = mHeightFactor * mSubTextureSize;
-    maFixedTextures.push_back(o3tl::make_unique<FixedTexture>(nTextureWidth, nTextureHeight, mWidthFactor * mHeightFactor));
+    maFixedTextures.push_back(std::make_unique<FixedTexture>(nTextureWidth, nTextureHeight, mWidthFactor * mHeightFactor));
 }
 
 OpenGLTexture FixedTextureAtlasManager::Reserve(int nWidth, int nHeight)
@@ -125,7 +123,7 @@ OpenGLTexture FixedTextureAtlasManager::Reserve(int nWidth, int nHeight)
     return OpenGLTexture(pFixedTexture->mpTexture, aRectangle, nSlot);
 }
 
-OpenGLTexture FixedTextureAtlasManager::InsertBuffer(int nWidth, int nHeight, int nFormat, int nType, sal_uInt8* pData)
+OpenGLTexture FixedTextureAtlasManager::InsertBuffer(int nWidth, int nHeight, int nFormat, int nType, sal_uInt8 const * pData)
 {
     OpenGLTexture aTexture = Reserve(nWidth, nHeight);
     if (pData == nullptr)

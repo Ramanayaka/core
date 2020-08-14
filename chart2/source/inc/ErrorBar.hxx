@@ -20,27 +20,26 @@
 #define INCLUDED_CHART2_SOURCE_INC_ERRORBAR_HXX
 
 #include "MutexContainer.hxx"
-#include "ModifyListenerHelper.hxx"
 #include "charttoolsdllapi.hxx"
 
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/uno3.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/chart2/data/XDataSink.hpp>
 #include <com/sun/star/chart2/data/XDataSource.hpp>
-#include <com/sun/star/chart/ErrorBarStyle.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
 #include <com/sun/star/drawing/LineJoint.hpp>
 #include <com/sun/star/drawing/LineDash.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
-#include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/uno/Any.h>
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/util/Color.hpp>
+#include <com/sun/star/util/XModifyListener.hpp>
+#include <com/sun/star/util/XModifyBroadcaster.hpp>
+
+
+#include <vector>
 
 namespace chart
 {
@@ -59,7 +58,7 @@ typedef ::cppu::WeakImplHelper<
     ErrorBar_Base;
 }
 
-class ErrorBar :
+class ErrorBar final :
         public MutexContainer,
         public impl::ErrorBar_Base
 {
@@ -104,7 +103,7 @@ public:
     virtual void SAL_CALL setPropertyToDefault( const OUString& rPropName ) override;
     virtual css::uno::Any SAL_CALL getPropertyDefault( const OUString& rPropName ) override;
 
-protected:
+private:
     ErrorBar( const ErrorBar & rOther );
 
     // ____ XCloneable ____
@@ -130,7 +129,6 @@ protected:
     // ____ XDataSource ____
     virtual css::uno::Sequence< css::uno::Reference< css::chart2::data::XLabeledDataSequence > > SAL_CALL getDataSequences() override;
 
-private:
     typedef std::vector< css::uno::Reference<
             css::chart2::data::XLabeledDataSequence > > tDataSequenceContainer;
     tDataSequenceContainer m_aDataSequences;

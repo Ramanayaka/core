@@ -150,7 +150,7 @@ public class _XContentProviderManager extends MultiMethodTest {
         log.println("registering the second provider in non-replacing mode");
         try {
             oObj.registerContentProvider(contentProvider, myScheme, false);
-            Status.failed("registerContentProvider(.., .., false)");
+            throw new StatusException(Status.failed("registerContentProvider(.., .., false)"));
         } catch (DuplicateProviderException e) {
             log.println("DuplicateProviderException thrown - OK");
         }
@@ -234,7 +234,7 @@ public class _XContentProviderManager extends MultiMethodTest {
      * At first one provider is deregistered, after that provider
      * is queried, the second provider must be returned for the
      * specified scheme. Then the second provider is deregistered.
-     * Now <code>null</code> value must be retruned by the method
+     * Now <code>null</code> value must be returned by the method
      * <code>queryContentProvider</code> on the specified scheme. <p>
      *
      * Has <b>OK</b> status if in the first case the second provider

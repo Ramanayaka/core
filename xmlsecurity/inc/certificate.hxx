@@ -14,23 +14,31 @@
 
 #include <com/sun/star/uno/Sequence.hxx>
 
+namespace svl
+{
+namespace crypto
+{
+enum class SignatureMethodAlgorithm;
+}
+}
+
 namespace xmlsecurity
 {
-
 /// Extension of css::security::XCertificate for module-internal purposes.
 class SAL_NO_VTABLE SAL_DLLPUBLIC_RTTI Certificate
 {
 public:
-
     /// Returns the SHA-256 thumbprint.
     ///
     /// @throws css::uno::RuntimeException
     virtual css::uno::Sequence<sal_Int8> getSHA256Thumbprint() = 0;
 
-protected:
-    ~Certificate() throw () {}
-};
+    /// Same as getSubjectPublicKeyAlgorithm(), but returns an ID, not a string.
+    virtual svl::crypto::SignatureMethodAlgorithm getSignatureMethodAlgorithm() = 0;
 
+protected:
+    ~Certificate() noexcept = default;
+};
 }
 
 #endif // INCLUDED_XMLSECURITY_INC_CERTIFICATE_H

@@ -22,13 +22,13 @@
 
 #include <cppuhelper/implbase2.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <comphelper/broadcasthelper.hxx>
 #include <connectivity/CommonTools.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
+
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::sdbc { class XConnection; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace connectivity
 {
@@ -67,7 +67,7 @@ namespace connectivity
 
         // css::lang::XUnoTunnel
         virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-        static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+        static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
         /** method to create unique ids
             @param  _rURL
                 The URL.

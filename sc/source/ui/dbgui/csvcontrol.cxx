@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "csvcontrol.hxx"
-#include <vcl/svapp.hxx>
+#include <csvcontrol.hxx>
+#include <vcl/keycodes.hxx>
+#include <vcl/outdev.hxx>
 #include <vcl/settings.hxx>
-#include "AccessibleCsvControl.hxx"
 
 ScCsvLayoutData::ScCsvLayoutData() :
     mnPosCount( 1 ),
@@ -36,7 +36,7 @@ ScCsvLayoutData::ScCsvLayoutData() :
     mnPosCursor( CSV_POS_INVALID ),
     mnColCursor( 0 ),
     mnNoRepaint( 0 ),
-    mbAppRTL( !!AllSettings::GetLayoutRTL() )
+    mbAppRTL( AllSettings::GetLayoutRTL() )
 {
 }
 
@@ -56,47 +56,30 @@ ScCsvDiff ScCsvLayoutData::GetDiff( const ScCsvLayoutData& rData ) const
     return nRet;
 }
 
-ScCsvControl::ScCsvControl( ScCsvControl& rParent ) :
-    VclReferenceBase(),
-    Control( &rParent, WB_TABSTOP | WB_NODIALOGCONTROL ),
-    mrData( rParent.GetLayoutData() ),
-    mxAccessible( nullptr ),
-    mbValidGfx( false )
-{
-}
-
-ScCsvControl::ScCsvControl( vcl::Window* pParent, const ScCsvLayoutData& rData, WinBits nBits ) :
-    Control( pParent, nBits ),
-    mrData( rData ),
-    mxAccessible( nullptr ),
-    mbValidGfx( false )
+ScCsvControl::ScCsvControl(const ScCsvLayoutData& rData)
+    : mrData(rData)
+    , mbValidGfx(false)
 {
 }
 
 ScCsvControl::~ScCsvControl()
 {
-    disposeOnce();
-}
-
-void ScCsvControl::dispose()
-{
     if( mxAccessible.is() )
         mxAccessible->dispose();
     mxAccessible = nullptr; // lp#1566050: prevent cyclic reference zombies
-    Control::dispose();
 }
 
 // event handling -------------------------------------------------------------
 
 void ScCsvControl::GetFocus()
 {
-    Control::GetFocus();
+    weld::CustomWidgetController::GetFocus();
     AccSendFocusEvent( true );
 }
 
 void ScCsvControl::LoseFocus()
 {
-    Control::LoseFocus();
+    weld::CustomWidgetController::LoseFocus();
     AccSendFocusEvent( false );
 }
 
@@ -181,7 +164,7 @@ sal_Int32 ScCsvControl::GetVisPosCount() const
 
 sal_Int32 ScCsvControl::GetMaxPosOffset() const
 {
-    return std::max( GetPosCount() - GetVisPosCount() + 2L, 0L );
+    return std::max<sal_Int32>( GetPosCount() - GetVisPosCount() + 2, 0 );
 }
 
 bool ScCsvControl::IsValidSplitPos( sal_Int32 nPos ) const
@@ -231,7 +214,7 @@ sal_Int32 ScCsvControl::GetLastVisLine() const
 
 sal_Int32 ScCsvControl::GetMaxLineOffset() const
 {
-    return std::max( GetLineCount() - GetVisLineCount() + 1L, 0L );
+    return std::max<sal_Int32>( GetLineCount() - GetVisLineCount() + 1, 0 );
 }
 
 bool ScCsvControl::IsValidLine( sal_Int32 nLine ) const
@@ -259,8 +242,8 @@ sal_Int32 ScCsvControl::GetLineFromY( sal_Int32 nY ) const
 void ScCsvControl::ImplInvertRect( OutputDevice& rOutDev, const tools::Rectangle& rRect )
 {
     rOutDev.Push( PushFlags::LINECOLOR | PushFlags::FILLCOLOR | PushFlags::RASTEROP );
-    rOutDev.SetLineColor( Color( COL_BLACK ) );
-    rOutDev.SetFillColor( Color( COL_BLACK ) );
+    rOutDev.SetLineColor( COL_BLACK );
+    rOutDev.SetFillColor( COL_BLACK );
     rOutDev.SetRasterOp( RasterOp::Invert );
     rOutDev.DrawRect( rRect );
     rOutDev.Pop();
@@ -296,14 +279,6 @@ ScMoveMode ScCsvControl::GetVertDirection( sal_uInt16 nCode, bool bHomeEnd )
         case KEY_END:       return MOVE_LAST;
     }
     return MOVE_NONE;
-}
-
-// accessibility --------------------------------------------------------------
-
-css::uno::Reference< css::accessibility::XAccessible > ScCsvControl::CreateAccessible()
-{
-    mxAccessible = ImplCreateAccessible().get();
-    return css::uno::Reference< css::accessibility::XAccessible >(mxAccessible.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

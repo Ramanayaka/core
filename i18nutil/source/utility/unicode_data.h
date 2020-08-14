@@ -25,7 +25,7 @@
 
 #define UnicodeTypeNumberBlock  5
 
-static const sal_Int8 UnicodeTypeIndex[] = {
+const sal_Int8 UnicodeTypeIndex[] = {
     0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, // 0000 - 07ff
     0x00, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, // 0800 - 0fff
     0x14, 0x15, 0x16, 0x17, 0x18, 0x01, 0x19, 0x1a, // 1000 - 17ff
@@ -61,12 +61,12 @@ static const sal_Int8 UnicodeTypeIndex[] = {
 };
 
 
-static const sal_Int8 UnicodeTypeBlockValue[] = {
+const sal_Int8 UnicodeTypeBlockValue[] = {
      0,  5, 17, 18, 27,
 };
 
 
-static const sal_Int8 UnicodeTypeValue[] = {
+const sal_Int8 UnicodeTypeValue[] = {
     15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,// 0000 - 000f
     15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,// 0010 - 001f
     12,23,23,23,25,23,23,23,20,21,23,24,23,19,23,23,// 0020 - 002f
@@ -628,15 +628,15 @@ static const sal_Int8 UnicodeTypeValue[] = {
      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,// 27e0 - 27ef
      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,// 27f0 - 27ff
 
-     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,// 2c00 - 2c0f      Block index 0x26
-     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,// 2c10 - 2c1f      (Coptic inserted)
-     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,// 2c20 - 2c2f
-     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,// 2c30 - 2c3f
-     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,// 2c40 - 2c4f
-     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,// 2c50 - 2c5f
+     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,// 2c00 - 2c0f  Range U+2C00..U+2C5F: Glagolitic
+     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,// 2c10 - 2c1f
+     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,// 2c20 - 2c2f
+     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,// 2c30 - 2c3f
+     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,// 2c40 - 2c4f
+     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,// 2c50 - 2c5f
      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,// 2c60 - 2c6f
      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,// 2c70 - 2c7f
-     1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2,// 2c80 - 2c8f
+     1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2,// 2c80 - 2c8f  Range U+2C80..U+2CFF: Coptic
      1, 2, 1, 2, 1, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0,// 2c90 - 2c9f
      1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2,// 2ca0 - 2caf
      1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2,// 2cb0 - 2cbf
@@ -905,7 +905,7 @@ static const sal_Int8 UnicodeTypeValue[] = {
 
 #define UnicodeDirectionNumberBlock  3
 
-static const sal_Int8 UnicodeDirectionIndex[] = {
+const sal_Int8 UnicodeDirectionIndex[] = {
     0x03, 0x00, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, // 0000 - 07ff
     0x00, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, // 0800 - 0fff
     0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x13, // 1000 - 17ff
@@ -941,12 +941,12 @@ static const sal_Int8 UnicodeDirectionIndex[] = {
 };
 
 
-static const sal_Int8 UnicodeDirectionBlockValue[] = {
+const sal_Int8 UnicodeDirectionBlockValue[] = {
      0, 10, 13,
 };
 
 
-static const sal_Int8 UnicodeDirectionValue[] = {
+const sal_Int8 UnicodeDirectionValue[] = {
     18,18,18,18,18,18,18,18,18, 8, 7, 8, 9, 7,18,18,// 0000 - 000f
     18,18,18,18,18,18,18,18,18,18,18,18, 7, 7, 7, 8,// 0010 - 001f
      9,10,10, 4, 4, 4,10,10,10,10,10, 4, 6, 4, 6, 3,// 0020 - 002f
@@ -1548,7 +1548,7 @@ static const sal_Int8 UnicodeDirectionValue[] = {
 #define UnicodeScriptTypeFrom    0
 #define UnicodeScriptTypeTo      1
 
-static const sal_Unicode UnicodeScriptType[][2] = {
+const sal_Unicode UnicodeScriptType[][2] = {
     {0x0000, 0x007f}, //  0. Basic Latin
     {0x0080, 0x00ff}, //  1. Latin-1 Supplement
     {0x0100, 0x017f}, //  2. Latin Extended-A

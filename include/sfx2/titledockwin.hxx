@@ -47,8 +47,8 @@ namespace sfx2
         /** returns the content window, which is to be used as parent window for any content to be displayed
             in the docking window.
         */
-        vcl::Window&       GetContentWindow()          { return *m_aContentWindow.get(); }
-        const vcl::Window& GetContentWindow() const    { return *m_aContentWindow.get(); }
+        vcl::Window&       GetContentWindow()          { return *m_aContentWindow; }
+        const vcl::Window& GetContentWindow() const    { return *m_aContentWindow; }
 
         /** Return the border that is painted around the inner window as
             decoration.
@@ -63,9 +63,6 @@ namespace sfx2
         virtual void DataChanged( const DataChangedEvent& i_rDataChangedEvent ) override;
         virtual void SetText( const OUString& i_rText ) override;
 
-        // DockingWindow overridables
-        void EndDocking(const tools::Rectangle& rRect, bool bFloatMode) override;
-
         virtual void ApplySettings(vcl::RenderContext& rRenderContext) override;
     protected:
         /** internal version of ResetToolBox
@@ -75,7 +72,6 @@ namespace sfx2
     private:
         DECL_LINK( OnToolboxItemSelected, ToolBox*, void );
 
-        void    impl_construct();
         void    impl_layout();
         void    impl_scheduleLayout();
 
@@ -83,8 +79,6 @@ namespace sfx2
         OUString            m_sTitle;
         VclPtr<ToolBox>     m_aToolbox;
         VclPtr<Window>      m_aContentWindow;
-
-        Link<TitledDockingWindow*,void>  m_aEndDockingHdl;
 
         /** The border that is painted around the inner window.  The bevel
             shadow lines are part of the border, so where the border is 0 no

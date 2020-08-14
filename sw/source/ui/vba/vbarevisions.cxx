@@ -21,12 +21,15 @@
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/document/XRedlinesSupplier.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/text/XTextRangeCompare.hpp>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
 typedef std::vector< uno::Reference< beans::XPropertySet > > RevisionMap;
+
+namespace {
 
 class RedlinesEnumeration : public ::cppu::WeakImplHelper< container::XEnumeration >
 {
@@ -75,6 +78,8 @@ RevisionCollectionHelper( const uno::Reference< frame::XModel >& xModel, const u
     }
 };
 
+}
+
 RevisionCollectionHelper::RevisionCollectionHelper( const uno::Reference< frame::XModel >& xModel, const uno::Reference< text::XTextRange >& xTextRange )
     {
         uno::Reference< text::XTextRangeCompare > xTRC( xTextRange->getText(), uno::UNO_QUERY_THROW );
@@ -91,6 +96,9 @@ RevisionCollectionHelper::RevisionCollectionHelper( const uno::Reference< frame:
             }
         }
     }
+
+namespace {
+
 class RevisionsEnumeration : public EnumerationHelperImpl
 {
     uno::Reference< frame::XModel > m_xModel;
@@ -105,6 +113,8 @@ public:
     }
 
 };
+
+}
 
 SwVbaRevisions::SwVbaRevisions( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< frame::XModel >& xModel, const uno::Reference< text::XTextRange >& xTextRange ): SwVbaRevisions_BASE( xParent, xContext, new RevisionCollectionHelper( xModel, xTextRange ) ),  mxModel( xModel )
 {
@@ -146,12 +156,8 @@ void SAL_CALL SwVbaRevisions::AcceptAll(  )
         aRevisions.push_back( xRevision );
     }
 
-    std::vector< uno::Reference< word::XRevision > >::iterator it = aRevisions.begin();
-    for( ; it != aRevisions.end(); ++it )
-    {
-        uno::Reference< word::XRevision > xRevision( *it );
+    for( const auto& xRevision : aRevisions )
         xRevision->Accept();
-    }
 }
 
 void SAL_CALL SwVbaRevisions::RejectAll(  )
@@ -162,18 +168,16 @@ void SAL_CALL SwVbaRevisions::RejectAll(  )
 OUString
 SwVbaRevisions::getServiceImplName()
 {
-    return OUString("SwVbaRevisions");
+    return "SwVbaRevisions";
 }
 
 css::uno::Sequence<OUString>
 SwVbaRevisions::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Revisions";
-    }
+        "ooo.vba.word.Revisions"
+    };
     return sNames;
 }
 

@@ -20,26 +20,18 @@
 #ifndef INCLUDED_FRAMEWORK_INC_SERVICES_LAYOUTMANAGER_HXX
 #define INCLUDED_FRAMEWORK_INC_SERVICES_LAYOUTMANAGER_HXX
 
-#include <properties.h>
-#include <stdtypes.h>
 #include <uielement/menubarmanager.hxx>
-#include <framework/addonsoptions.hxx>
 #include <uielement/uielement.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/frame/XLayoutManager2.hpp>
 #include <com/sun/star/ui/XUIConfigurationManager.hpp>
-#include <com/sun/star/ui/XUIConfiguration.hpp>
 #include <com/sun/star/frame/XModuleManager2.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
-#include <com/sun/star/ui/XUIElementFactory.hpp>
 #include <com/sun/star/ui/XUIElementFactoryManager.hpp>
 #include <com/sun/star/ui/DockingArea.hpp>
 #include <com/sun/star/awt/XTopWindow2.hpp>
-#include <com/sun/star/awt/XDockableWindow.hpp>
-#include <com/sun/star/awt/XDockableWindowListener.hpp>
 
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/propshlp.hxx>
@@ -48,9 +40,6 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/propertycontainer.hxx>
 #include <comphelper/uno3.hxx>
-#include <tools/wintypes.hxx>
-#include <svtools/miscopt.hxx>
-#include <vcl/toolbox.hxx>
 #include <vcl/timer.hxx>
 
 class MenuBar;
@@ -68,7 +57,7 @@ namespace framework
                                     ,   css::awt::XWindowListener
                                     >   LayoutManager_Base;
     typedef ::comphelper::OPropertyContainer    LayoutManager_PBase;
-    class LayoutManager : public  LayoutManager_Base                    ,
+    class LayoutManager final : public  LayoutManager_Base                    ,
                           private cppu::BaseMutex,
                           public  ::cppu::OBroadcastHelper              ,
                           public  LayoutManager_PBase
@@ -82,7 +71,7 @@ namespace framework
             DECLARE_XTYPEPROVIDER()
             virtual OUString SAL_CALL getImplementationName() override
             {
-                return OUString("com.sun.star.comp.framework.LayoutManager");
+                return "com.sun.star.comp.framework.LayoutManager";
             }
 
             virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -165,22 +154,20 @@ namespace framework
             /// Reading of settings - shared with ToolbarLayoutManager.
             static bool readWindowStateData( const OUString& rName, UIElement& rElementData,
                     const css::uno::Reference< css::container::XNameAccess > &rPersistentWindowState,
-                    GlobalSettings* &rGlobalSettings, bool &bInGlobalSettings,
+                    std::unique_ptr<GlobalSettings> &rGlobalSettings, bool &bInGlobalSettings,
                     const css::uno::Reference< css::uno::XComponentContext > &rComponentContext );
 
-        protected:
-            DECL_LINK(AsyncLayoutHdl, Timer *, void);
-
         private:
-
-            //  helper
+            DECL_LINK(AsyncLayoutHdl, Timer *, void);
 
             //  menu bar
 
+            void implts_createMenuBar( const OUString& rMenuBarName );
             void impl_clearUpMenuBar();
             void implts_reset( bool bAttach );
             void implts_updateMenuBarClose();
             bool implts_resetMenuBar();
+            void implts_createMSCompatibleMenuBar(const OUString& rName);
 
             //  locking
 
@@ -248,7 +235,6 @@ namespace framework
             css::uno::Reference< css::frame::XFrame >                      m_xFrame;
             css::uno::Reference< css::ui::XUIConfigurationManager >        m_xModuleCfgMgr;
             css::uno::Reference< css::ui::XUIConfigurationManager >        m_xDocCfgMgr;
-            css::uno::WeakReference< css::frame::XModel >                  m_xModel;
             css::uno::Reference< css::awt::XWindow >                       m_xContainerWindow;
             css::uno::Reference< css::awt::XTopWindow2 >                   m_xContainerTopWindow;
             sal_Int32                                                      m_nLockCount;
@@ -273,7 +259,7 @@ namespace framework
             css::uno::Reference< css::ui::XUIElementFactoryManager >       m_xUIElementFactoryManager;
             css::uno::Reference< css::container::XNameAccess >             m_xPersistentWindowState;
             css::uno::Reference< css::container::XNameAccess >             m_xPersistentWindowStateSupplier;
-            GlobalSettings*                                                m_pGlobalSettings;
+            std::unique_ptr<GlobalSettings>                                m_pGlobalSettings;
             OUString                                                       m_aModuleIdentifier;
             Timer                                                          m_aAsyncLayoutTimer;
             ::cppu::OMultiTypeInterfaceContainerHelper                     m_aListenerContainer; // container for ALL Listener

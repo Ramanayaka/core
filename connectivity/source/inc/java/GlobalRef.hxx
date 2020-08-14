@@ -20,13 +20,11 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_GLOBALREF_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_GLOBALREF_HXX
 
-#include "java/LocalRef.hxx"
-#include "java/lang/Object.hxx"
-
-#include <jvmaccess/virtualmachine.hxx>
+#include <java/LocalRef.hxx>
+#include <java/lang/Object.hxx>
 
 
-namespace connectivity { namespace jdbc
+namespace connectivity::jdbc
 {
     /** helper class to hold a local ref to a JNI object
     */
@@ -55,7 +53,7 @@ namespace connectivity { namespace jdbc
             return *this;
         }
 
-        ~GlobalRef()
+        ~GlobalRef() COVERITY_NOEXCEPT_FALSE
         {
             reset();
         }
@@ -99,7 +97,7 @@ namespace connectivity { namespace jdbc
     };
 
 
-} } // namespace connectivity::jdbc
+} // namespace connectivity::jdbc
 
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_GLOBALREF_HXX

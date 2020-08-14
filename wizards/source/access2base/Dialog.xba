@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE script:module PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "module.dtd">
-<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Dialog" script:language="StarBasic">REM =======================================================================================================================
+<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Dialog" script:language="StarBasic">
+REM =======================================================================================================================
 REM ===					The Access2Base library is a part of the LibreOffice project.									===
 REM ===					Full documentation is available on http://www.access2base.com									===
 REM =======================================================================================================================
@@ -15,9 +16,13 @@ REM --- CLASS ROOT FIELDS 								        														---
 REM -----------------------------------------------------------------------------------------------------------------------
 
 Private	_Type					As String				&apos;	Must be DIALOG
+Private _This					As Object				&apos;	Workaround for absence of This builtin function
+Private _Parent					As Object
 Private	_Name					As String
 Private _Shortcut				As String
 Private _Dialog					As Object				&apos;	com.sun.star.io.XInputStreamProvider
+Private _Storage				As String				&apos;	GLOBAL or DOCUMENT
+Private _Library				As String
 Private UnoDialog				As Object				&apos;	com.sun.star.awt.XControl
 
 REM -----------------------------------------------------------------------------------------------------------------------
@@ -25,8 +30,12 @@ REM --- CONSTRUCTORS / DESTRUCTORS						        														---
 REM -----------------------------------------------------------------------------------------------------------------------
 Private Sub Class_Initialize()
 	_Type = OBJDIALOG
+	Set _This = Nothing
+	Set _Parent = Nothing
 	_Name = &quot;&quot;
 	Set _Dialog = Nothing
+	_Storage = &quot;&quot;
+	_Library = &quot;&quot;
 	Set UnoDialog = Nothing
 End Sub		&apos;	Constructor
 
@@ -247,6 +256,7 @@ Dim ogGroup As Object, vGroup() As Variant, vIndex() As Variant
 		ReDim vGroup(0 To iGroupCount - 1)
 		ReDim vIndex(0 To iGroupCount - 1)
 		With ogGroup
+			._This = ogGroup
 			._Name = sGroupName
 			._Count = iGroupCount
 			._ButtonsGroup = vGroup
@@ -284,6 +294,11 @@ Property Let Page(ByVal pvValue As Variant)
 End Property		&apos;	Page (set)
 
 REM -----------------------------------------------------------------------------------------------------------------------
+Public Function Parent() As Object
+	Parent = _Parent
+End Function		&apos;	Parent (get)	V6.4.0
+
+REM -----------------------------------------------------------------------------------------------------------------------
 Public Function Properties(ByVal Optional pvIndex As Variant) As Variant
 &apos;	Return
 &apos;		a Collection object if pvIndex absent
@@ -297,9 +312,9 @@ Dim vProperty As Variant, vPropertiesList() As Variant, sObject As String
 	vPropertiesList = _PropertiesList()
 	sObject = Utils._PCase(_Type)
 	If IsMissing(pvIndex) Then
-		vProperty = PropertiesGet._Properties(sObject, _Name, vPropertiesList)
+		vProperty = PropertiesGet._Properties(sObject, _This, vPropertiesList)
 	Else
-		vProperty = PropertiesGet._Properties(sObject, _Name, vPropertiesList, pvIndex)
+		vProperty = PropertiesGet._Properties(sObject, _This, vPropertiesList, pvIndex)
 		vProperty._Value = _PropertyGet(vPropertiesList(pvIndex))
 	End If
 	
@@ -344,6 +359,8 @@ Dim j As Integer
 	Set ocControl = Nothing
 	If Not IsLoaded Then Goto Trace_Error_NotOpen
 	Set ocControl = New Control
+	Set ocControl._This = ocControl
+	Set ocControl._Parent = _This
 	ocControl._ParentType = CTLPARENTISDIALOG
 	sParentShortcut = _Shortcut
 	sControls() = UnoDialog.Model.getElementNames()
@@ -351,8 +368,10 @@ Dim j As Integer
 	
 	If IsMissing(pvIndex) Then					&apos;	No argument, return Collection object
 		Set oCounter = New Collect
+		Set oCounter._This = oCounter
 		oCounter._CollType = COLLCONTROLS
 		oCounter._Count = iControlCount
+		Set oCounter._Parent = _This
 		Set Controls = oCounter
 		Goto Exit_Function
 	End If
@@ -506,7 +525,6 @@ Public Function Move(	  ByVal Optional pvLeft As Variant _
 						) As Variant
 &apos;	Execute Move method
 	Utils._SetCalledSub(&quot;Dialog.Move&quot;)
-	If IsMissing(pvLeft) Then Call _TraceArguments()
 	On Local Error Goto Error_Function
 	Move = False
 Dim iArgNr As Integer
@@ -514,7 +532,7 @@ Dim iArgNr As Integer
 		Case UCase(&quot;Move&quot;)					:	iArgNr = 1
 		Case UCase(&quot;Dialog.Move&quot;)			:	iArgNr = 0
 	End Select
-	If IsMissing(pvLeft) Then Call _TraceArguments()
+	If IsMissing(pvLeft) Then pvLeft = -1
 	If IsMissing(pvTop) Then pvTop = -1
 	If IsMissing(pvWidth) Then pvWidth = -1
 	If IsMissing(pvHeight) Then pvHeight = -1
@@ -757,19 +775,11 @@ Dim iArgNr As Integer
 				, UCase(&quot;OnMouseDragged&quot;), UCase(&quot;OnMouseEntered&quot;), UCase(&quot;OnMouseExited&quot;), UCase(&quot;OnMouseMoved&quot;) _
 				, UCase(&quot;OnMousePressed&quot;), UCase(&quot;OnMouseReleased&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, vbString, , False) Then Goto Trace_Error_Value
-			Set oDialogEvents = unoDialog.Model.getEvents()
-			sListener = _GetListener(psProperty)
-			sEvent = Utils._GetEventName(psProperty)
-			sEventName = &quot;com.sun.star.awt.&quot; &amp; sListener &amp; &quot;::&quot; &amp; sEvent
-			If oDialogEvents.hasByName(sEventName) Then oDialogEvents.removeByName(sEventName)
-			Set oEvent = CreateUnoStruct(&quot;com.sun.star.script.ScriptEventDescriptor&quot;)
-			With oEvent
-				.ListenerType = sListener
-				.EventMethod = sEvent
-				.ScriptType = &quot;Script&quot;			&apos;	Better than &quot;Basic&quot;
-				.ScriptCode = pvValue
-			End With
-			oDialogEvents.insertByName(sEventName, oEvent)
+			If Not Utils._RegisterDialogEventScript(UnoDialog.Model _
+						, psProperty _
+						, _GetListener(psProperty) _
+						, pvValue _
+						) Then GoTo Trace_Error_Dialog
 		Case UCase(&quot;Page&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, Utils._AddNumeric(), , False) Then Goto Trace_Error_Value
 			If pvValue &lt; 0 Then Goto Trace_Error_Value
@@ -804,4 +814,5 @@ Error_Function:
 	_PropertySet = False
 	GoTo Exit_Function
 End Function		&apos;	_PropertySet
+
 </script:module>

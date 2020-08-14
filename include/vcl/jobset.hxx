@@ -20,8 +20,8 @@
 #ifndef INCLUDED_VCL_JOBSET_HXX
 #define INCLUDED_VCL_JOBSET_HXX
 
+#include <rtl/ustring.hxx>
 #include <vcl/dllapi.h>
-#include <vcl/prntypes.hxx>
 #include <o3tl/cow_wrapper.hxx>
 
 class SvStream;
@@ -46,7 +46,7 @@ public:
     SAL_DLLPRIVATE ImplJobSetup&        ImplGetData();
     SAL_DLLPRIVATE const ImplJobSetup&  ImplGetConstData() const;
 
-    OUString              GetPrinterName() const;
+    OUString const &      GetPrinterName() const;
     bool                  IsDefault() const;
 
     friend VCL_DLLPUBLIC SvStream&  ReadJobSetup( SvStream& rIStream, JobSetup& rJobSetup );

@@ -28,9 +28,10 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
 
-#include "com/sun/star/frame/Desktop.hpp"
-#include "com/sun/star/frame/XTerminateListener.hpp"
+#include <com/sun/star/frame/Desktop.hpp>
+#include <com/sun/star/frame/XTerminateListener.hpp>
 #include <com/sun/star/task/XJob.hpp>
 
 namespace beans = com::sun::star::beans ;
@@ -73,9 +74,6 @@ public:
         css::uno::Reference<css::frame::XDesktop2> const & desktop):
         m_xContext(context), m_xDesktop(desktop)
     {}
-
-    static uno::Sequence< OUString > getServiceNames();
-    static OUString getImplName();
 
     // XJob
     virtual uno::Any SAL_CALL execute(const uno::Sequence<beans::NamedValue>&) override;
@@ -131,9 +129,9 @@ void SAL_CALL InitUpdateCheckJobThread::run()
 
         if ( m_bShowDialog )
             aController->showDialog( true );
-    } catch (const uno::Exception &e) {
+    } catch (const uno::Exception &) {
         // fdo#64962 - don't bring the app down on some unexpected exception.
-        SAL_WARN("extensions.update", "Caught init update exception, thread terminated. " << e.Message );
+        TOOLS_WARN_EXCEPTION("extensions.update", "Caught init update exception, thread terminated" );
     }
 }
 
@@ -145,21 +143,6 @@ void InitUpdateCheckJobThread::setTerminating() {
 UpdateCheckJob::~UpdateCheckJob()
 {
 }
-
-uno::Sequence< OUString >
-UpdateCheckJob::getServiceNames()
-{
-    uno::Sequence< OUString > aServiceList { "com.sun.star.setup.UpdateCheck" };
-    return aServiceList;
-};
-
-
-OUString
-UpdateCheckJob::getImplName()
-{
-    return OUString("vnd.sun.UpdateCheck");
-}
-
 
 uno::Any
 UpdateCheckJob::execute(const uno::Sequence<beans::NamedValue>& namedValues)
@@ -234,9 +217,9 @@ void UpdateCheckJob::handleExtensionUpdates( const uno::Sequence< beans::NamedVa
                 aController->setUIState( UPDATESTATE_NO_UPDATE_AVAIL, true );
         }
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-         SAL_WARN("extensions.update", "Caught exception, thread terminated. " << e.Message);
+        TOOLS_WARN_EXCEPTION("extensions.update", "Caught exception, thread terminated");
     }
 }
 
@@ -244,14 +227,14 @@ void UpdateCheckJob::handleExtensionUpdates( const uno::Sequence< beans::NamedVa
 OUString SAL_CALL
 UpdateCheckJob::getImplementationName()
 {
-    return getImplName();
+    return "vnd.sun.UpdateCheck";
 }
 
 
 uno::Sequence< OUString > SAL_CALL
 UpdateCheckJob::getSupportedServiceNames()
 {
-    return getServiceNames();
+    return { "com.sun.star.setup.UpdateCheck" };
 }
 
 sal_Bool SAL_CALL
@@ -282,7 +265,7 @@ void SAL_CALL UpdateCheckJob::queryTermination( lang::EventObject const & )
 
 void UpdateCheckJob::terminateAndJoinThread()
 {
-    if ( m_pInitThread.get() != nullptr )
+    if (m_pInitThread != nullptr)
     {
         m_pInitThread->setTerminating();
         m_pInitThread->join();
@@ -297,53 +280,16 @@ void SAL_CALL UpdateCheckJob::notifyTermination( lang::EventObject const & )
 
 } // anonymous namespace
 
-static uno::Reference<uno::XInterface> SAL_CALL
-createJobInstance(const uno::Reference<uno::XComponentContext>& xContext)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_update_UpdateCheckJob_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
 {
     css::uno::Reference<css::frame::XDesktop2> desktop(
-        css::frame::Desktop::create(xContext));
-    rtl::Reference<UpdateCheckJob> job(new UpdateCheckJob(xContext, desktop));
+        css::frame::Desktop::create(context));
+    rtl::Reference<UpdateCheckJob> job(new UpdateCheckJob(context, desktop));
     desktop->addTerminateListener(job.get());
-    return static_cast<cppu::OWeakObject *>(job.get());
+    return cppu::acquire(job.get());
 }
 
-
-static uno::Reference<uno::XInterface> SAL_CALL
-createConfigInstance(const uno::Reference<uno::XComponentContext>& xContext)
-{
-    return *UpdateCheckConfig::get(xContext, *UpdateCheck::get());
-}
-
-
-static const cppu::ImplementationEntry kImplementations_entries[] =
-{
-    {
-        createJobInstance,
-        UpdateCheckJob::getImplName,
-        UpdateCheckJob::getServiceNames,
-        cppu::createSingleComponentFactory,
-        nullptr,
-        0
-    },
-    {
-        createConfigInstance,
-        UpdateCheckConfig::getImplName,
-        UpdateCheckConfig::getServiceNames,
-        cppu::createSingleComponentFactory,
-        nullptr,
-        0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-} ;
-
-
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL updchk_component_getFactory(const sal_Char *pszImplementationName, void *pServiceManager, void *pRegistryKey)
-{
-    return cppu::component_getFactoryHelper(
-        pszImplementationName,
-        pServiceManager,
-        pRegistryKey,
-        kImplementations_entries) ;
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,16 +19,12 @@
 
 #include "NDatabaseMetaData.hxx"
 #include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/sdbc/ResultSetType.hpp>
-#include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
 #include <com/sun/star/sdbc/TransactionIsolation.hpp>
 #include <connectivity/dbexception.hxx>
 #include <connectivity/FValue.hxx>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbc/ColumnSearch.hpp>
 
 #include <cstddef>
-#include <vector>
 #include <string.h>
 #include "EApi.h"
 
@@ -48,19 +44,17 @@ namespace
     }
 }
 
-namespace connectivity
+namespace connectivity::evoab
 {
-    namespace evoab
-    {
-        static sal_Int32    const s_nCOLUMN_SIZE = 256;
-        static sal_Int32    const s_nDECIMAL_DIGITS = 0;
-        static sal_Int32    const s_nNULLABLE = 1;
-        static sal_Int32 const s_nCHAR_OCTET_LENGTH = 65535;
+        sal_Int32    const s_nCOLUMN_SIZE = 256;
+        sal_Int32    const s_nDECIMAL_DIGITS = 0;
+        sal_Int32    const s_nNULLABLE = 1;
+        sal_Int32 const s_nCHAR_OCTET_LENGTH = 65535;
 
         static ColumnProperty **pFields=nullptr;
         static guint        nFields = 0;
 
-        static const char *pBlackList[] =
+        static const char *pDenyList[] =
         {
             "id",
             "list-show-addresses",
@@ -96,53 +90,53 @@ namespace connectivity
     static void
     initFields()
     {
-        if( !pFields )
+        if( pFields )
+            return;
+
+        ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
+        if( pFields )
+            return;
+
+        guint        nProps;
+        ColumnProperty **pToBeFields;
+        GParamSpec **pProps;
+        nFields = 0;
+        pProps = g_object_class_list_properties
+            ( static_cast<GObjectClass *>(g_type_class_ref( E_TYPE_CONTACT )),
+                 &nProps );
+        pToBeFields = g_new0(ColumnProperty  *, (nProps + OTHER_ZIP)/* new column(s)*/ );
+        for ( guint i = 0; i < nProps; i++ )
         {
-            ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-            if( !pFields )
+            switch (pProps[i]->value_type)
             {
-                guint        nProps;
-                ColumnProperty **pToBeFields;
-                GParamSpec **pProps;
-                nFields = 0;
-                pProps = g_object_class_list_properties
-                    ( static_cast<GObjectClass *>(g_type_class_ref( E_TYPE_CONTACT )),
-                         &nProps );
-                pToBeFields = g_new0(ColumnProperty  *, (nProps + OTHER_ZIP)/* new column(s)*/ );
-                for ( guint i = 0; i < nProps; i++ )
+                case G_TYPE_STRING:
+                case G_TYPE_BOOLEAN:
                 {
-                    switch (pProps[i]->value_type)
+                    bool bAdd = true;
+                    const char *pName = g_param_spec_get_name( pProps[i] );
+                    for (unsigned int j = 0; j < G_N_ELEMENTS( pDenyList ); j++ )
                     {
-                        case G_TYPE_STRING:
-                        case G_TYPE_BOOLEAN:
+                        if( !strcmp( pDenyList[j], pName ) )
                         {
-                            bool bAdd = true;
-                            const char *pName = g_param_spec_get_name( pProps[i] );
-                            for (unsigned int j = 0; j < G_N_ELEMENTS( pBlackList ); j++ )
-                            {
-                                if( !strcmp( pBlackList[j], pName ) )
-                                {
-                                    bAdd = false;
-                                    break;
-                                }
-                            }
-                            if( bAdd )
-                            {
-                                pToBeFields[nFields]= g_new0(ColumnProperty,1);
-                                pToBeFields[nFields]->bIsSplittedValue=false;
-                                pToBeFields[ nFields++ ]->pField = g_param_spec_ref( pProps[i] );
-                            }
+                            bAdd = false;
                             break;
                         }
-                        default:
-                            break;
                     }
+                    if( bAdd )
+                    {
+                        pToBeFields[nFields]= g_new0(ColumnProperty,1);
+                        pToBeFields[nFields]->bIsSplittedValue=false;
+                        pToBeFields[ nFields++ ]->pField = g_param_spec_ref( pProps[i] );
+                    }
+                    break;
                 }
-
-                splitColumn(pToBeFields);
-                pFields = pToBeFields;
+                default:
+                    break;
             }
         }
+
+        splitColumn(pToBeFields);
+        pFields = pToBeFields;
     }
 
 
@@ -162,7 +156,7 @@ namespace connectivity
         initFields();
 
         if ( nCol < nFields )
-            return (pFields[nCol]->pField)->value_type;
+            return pFields[nCol]->pField->value_type;
         return G_TYPE_STRING;
     }
 
@@ -175,7 +169,7 @@ namespace connectivity
 
     guint findEvoabField(const OUString& aColName)
     {
-        guint nRet = (guint)-1;
+        guint nRet = guint(-1);
         bool bFound = false;
         initFields();
         for (guint i=0;(i < nFields) && !bFound;i++)
@@ -196,9 +190,9 @@ namespace connectivity
         switch( getFieldType( nCol ) )
         {
             case DataType::BIT:
-                return OUString("BIT");
+                return "BIT";
             case DataType::VARCHAR:
-                return OUString("VARCHAR");
+                return "VARCHAR";
             default:
                 break;
         }
@@ -233,7 +227,7 @@ namespace connectivity
                 g_free(pFields[i]);
             }
         }
-       if(pFields)
+        if(pFields)
         {
             g_free(pFields);
             pFields=nullptr;
@@ -242,7 +236,6 @@ namespace connectivity
     }
 
 
-    }
 }
 
 
@@ -257,11 +250,10 @@ OEvoabDatabaseMetaData::~OEvoabDatabaseMetaData()
 }
 
 
-ODatabaseMetaDataResultSet::ORows& OEvoabDatabaseMetaData::getColumnRows( const OUString& columnNamePattern )
+ODatabaseMetaDataResultSet::ORows OEvoabDatabaseMetaData::getColumnRows( const OUString& columnNamePattern )
 {
-    static ODatabaseMetaDataResultSet::ORows aRows;
+    ODatabaseMetaDataResultSet::ORows aRows;
     ODatabaseMetaDataResultSet::ORow  aRow(19);
-    aRows.clear();
 
     // ****************************************************
     // Some entries in a row never change, so set them now
@@ -278,7 +270,7 @@ ODatabaseMetaDataResultSet::ORows& OEvoabDatabaseMetaData::getColumnRows( const 
     // DECIMAL_DIGITS.
     aRow[9] = new ORowSetValueDecorator(s_nDECIMAL_DIGITS);
     // NUM_PREC_RADIX
-    aRow[10] = new ORowSetValueDecorator((sal_Int32)10);
+    aRow[10] = new ORowSetValueDecorator(sal_Int32(10));
     // NULLABLE
     aRow[11] = new ORowSetValueDecorator(s_nNULLABLE);
     // REMARKS
@@ -299,7 +291,7 @@ ODatabaseMetaDataResultSet::ORows& OEvoabDatabaseMetaData::getColumnRows( const 
     ::osl::MutexGuard aGuard( m_aMutex );
 
     initFields();
-    for (sal_Int32 i = 0; i < (sal_Int32) nFields; i++)
+    for (sal_Int32 i = 0; i < static_cast<sal_Int32>(nFields); i++)
     {
         if( match( columnNamePattern, getFieldName( i ), '\0' ) )
         {
@@ -441,20 +433,18 @@ sal_Bool SAL_CALL OEvoabDatabaseMetaData::supportsNonNullableColumns(  )
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getCatalogTerm(  )
 {
-    OUString aVal;
-    return aVal;
+    return OUString();
 }
 
 OUString OEvoabDatabaseMetaData::impl_getIdentifierQuoteString_throw(  )
 {
     // normally this is "
-    return OUString("\"");
+    return "\"";
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getExtraNameCharacters(  )
 {
-    OUString aVal;
-    return aVal;
+    return OUString();
 }
 
 sal_Bool SAL_CALL OEvoabDatabaseMetaData::supportsDifferentTableCorrelationNames(  )
@@ -795,42 +785,37 @@ OUString SAL_CALL OEvoabDatabaseMetaData::getURL(  )
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getUserName(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getDriverName(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getDriverVersion()
 {
-    return OUString( "1" );
+    return "1";
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getDatabaseProductVersion(  )
 {
-    return OUString( "0" );
+    return "0";
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getDatabaseProductName(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getProcedureTerm(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getSchemaTerm(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 sal_Int32 SAL_CALL OEvoabDatabaseMetaData::getDriverMajorVersion(  )
@@ -850,14 +835,12 @@ sal_Int32 SAL_CALL OEvoabDatabaseMetaData::getDriverMinorVersion(  )
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getSQLKeywords(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getSearchStringEscape(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getStringFunctions(  )
@@ -1027,23 +1010,22 @@ Reference< XResultSet > OEvoabDatabaseMetaData::impl_getTypeInfo_throw(  )
     ODatabaseMetaDataResultSet* pResultSet = new ODatabaseMetaDataResultSet(ODatabaseMetaDataResultSet::eTypeInfo);
 
     Reference< XResultSet > xResultSet = pResultSet;
-    static ODatabaseMetaDataResultSet::ORows aRows;
-
-    if(aRows.empty())
+    static ODatabaseMetaDataResultSet::ORows aRows = []()
     {
+        ODatabaseMetaDataResultSet::ORows tmp;
         ODatabaseMetaDataResultSet::ORow aRow;
         aRow.reserve(19);
         aRow.push_back(ODatabaseMetaDataResultSet::getEmptyValue());
         aRow.push_back(new ORowSetValueDecorator(OUString("VARCHAR")));
         aRow.push_back(new ORowSetValueDecorator(DataType::VARCHAR));
-        aRow.push_back(new ORowSetValueDecorator((sal_Int32)s_nCHAR_OCTET_LENGTH));
+        aRow.push_back(new ORowSetValueDecorator(sal_Int32(s_nCHAR_OCTET_LENGTH)));
         aRow.push_back(ODatabaseMetaDataResultSet::getQuoteValue());
         aRow.push_back(ODatabaseMetaDataResultSet::getQuoteValue());
         aRow.push_back(ODatabaseMetaDataResultSet::getEmptyValue());
         // aRow.push_back(new ORowSetValueDecorator((sal_Int32)ColumnValue::NULLABLE));
         aRow.push_back(ODatabaseMetaDataResultSet::get1Value());
         aRow.push_back(ODatabaseMetaDataResultSet::get1Value());
-        aRow.push_back(new ORowSetValueDecorator((sal_Int32)ColumnSearch::FULL));
+        aRow.push_back(new ORowSetValueDecorator(sal_Int32(ColumnSearch::FULL)));
         aRow.push_back(ODatabaseMetaDataResultSet::get1Value());
         aRow.push_back(ODatabaseMetaDataResultSet::get0Value());
         aRow.push_back(ODatabaseMetaDataResultSet::get0Value());
@@ -1052,15 +1034,16 @@ Reference< XResultSet > OEvoabDatabaseMetaData::impl_getTypeInfo_throw(  )
         aRow.push_back(ODatabaseMetaDataResultSet::get0Value());
         aRow.push_back(ODatabaseMetaDataResultSet::getEmptyValue());
         aRow.push_back(ODatabaseMetaDataResultSet::getEmptyValue());
-        aRow.push_back(new ORowSetValueDecorator((sal_Int32)10));
+        aRow.push_back(new ORowSetValueDecorator(sal_Int32(10)));
 
-        aRows.push_back(aRow);
+        tmp.push_back(aRow);
 
         aRow[1] = new ORowSetValueDecorator(OUString("VARCHAR"));
         aRow[2] = new ORowSetValueDecorator(DataType::VARCHAR);
-        aRow[3] = new ORowSetValueDecorator((sal_Int32)65535);
-        aRows.push_back(aRow);
-    }
+        aRow[3] = new ORowSetValueDecorator(sal_Int32(65535));
+        tmp.push_back(aRow);
+        return tmp;
+    }();
     pResultSet->setRows(aRows);
     return xResultSet;
 }

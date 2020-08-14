@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/app.hxx>
 #include <sfx2/viewfac.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/viewsh.hxx>
-#include <rtl/ustrbuf.hxx>
 
 SfxViewShell *SfxViewFactory::CreateInstance(SfxViewFrame *pFrame, SfxViewShell *pOldSh )
 {
@@ -39,7 +37,7 @@ OUString SfxViewFactory::GetAPIViewName() const
         return m_sViewName;
 
     if ( GetOrdinal() == SFX_INTERFACE_NONE )
-        return OUString( "Default" );
+        return "Default";
 
     return GetLegacyViewName();
 }
@@ -47,7 +45,7 @@ OUString SfxViewFactory::GetAPIViewName() const
 // CTOR / DTOR -----------------------------------------------------------
 
 SfxViewFactory::SfxViewFactory( SfxViewCtor fnC,
-                                SfxInterfaceId nOrdinal, const sal_Char* asciiViewName ):
+                                SfxInterfaceId nOrdinal, const char* asciiViewName ):
     fnCreate(fnC),
     nOrd(nOrdinal),
     m_sViewName( OUString::createFromAscii( asciiViewName ) )

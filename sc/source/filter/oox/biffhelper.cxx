@@ -17,17 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "biffhelper.hxx"
+#include <biffhelper.hxx>
 
 #include <rtl/math.hxx>
-#include <rtl/tencinfo.h>
 #include <osl/diagnose.h>
-#include "worksheethelper.hxx"
-#include <oox/helper/binaryoutputstream.hxx>
 #include <oox/helper/binaryinputstream.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 namespace {
 
@@ -35,39 +31,28 @@ const sal_Int32 BIFF_RK_100FLAG             = 0x00000001;
 const sal_Int32 BIFF_RK_INTFLAG             = 0x00000002;
 const sal_Int32 BIFF_RK_VALUEMASK           = 0xFFFFFFFC;
 
-union DecodedDouble
-{
-    double              mfValue;
-    sal_math_Double     maStruct;
-
-    explicit     DecodedDouble() {}
-    explicit     DecodedDouble( double fValue ) : mfValue( fValue ) {}
-};
-
 } // namespace
 
 // conversion -----------------------------------------------------------------
 
 /*static*/ double BiffHelper::calcDoubleFromRk( sal_Int32 nRkValue )
 {
-    DecodedDouble aDecDbl( 0.0 );
+    sal_math_Double  aMathDouble{};
     if( getFlag( nRkValue, BIFF_RK_INTFLAG ) )
     {
         sal_Int32 nTemp = nRkValue >> 2;
         setFlag< sal_Int32 >( nTemp, 0xE0000000, nRkValue < 0 );
-        aDecDbl.mfValue = nTemp;
+        aMathDouble.value = nTemp;
     }
     else
     {
-        aDecDbl.maStruct.w32_parts.msw = static_cast< sal_uInt32 >( nRkValue & BIFF_RK_VALUEMASK );
+        aMathDouble.w32_parts.msw = static_cast< sal_uInt32 >( nRkValue & BIFF_RK_VALUEMASK );
     }
-
     if( getFlag( nRkValue, BIFF_RK_100FLAG ) )
-        aDecDbl.mfValue /= 100.0;
+        aMathDouble.value /= 100.0;
 
-    return aDecDbl.mfValue;
+    return aMathDouble.value;
 }
-
 /*static*/ double BiffHelper::calcDoubleFromError( sal_uInt8 nErrorCode )
 {
     sal_uInt16 nApiError = 0x7FFF;
@@ -82,15 +67,15 @@ union DecodedDouble
         case BIFF_ERR_NA:       nApiError = 0x7FFF; break;
         default:    OSL_FAIL( "BiffHelper::calcDoubleFromError - unknown error code" );
     }
-    DecodedDouble aDecDbl;
-    ::rtl::math::setNan( &aDecDbl.mfValue );
-    aDecDbl.maStruct.nan_parts.fraction_lo = nApiError;
-    return aDecDbl.mfValue;
+    sal_math_Double  aMathDouble;
+    ::rtl::math::setNan( &aMathDouble.value );
+    aMathDouble.nan_parts.fraction_lo = nApiError;
+    return  aMathDouble.value;
 }
 
 // BIFF12 import --------------------------------------------------------------
 
-/*static*/ OUString BiffHelper::readString( SequenceInputStream& rStrm, bool b32BitLen, bool bAllowNulChars )
+/*static*/ OUString BiffHelper::readString( SequenceInputStream& rStrm, bool b32BitLen )
 {
     OUString aString;
     if( !rStrm.isEof() )
@@ -102,13 +87,12 @@ union DecodedDouble
         {
             // SequenceInputStream always supports getRemaining()
             nCharCount = ::std::min( nCharCount, static_cast< sal_Int32 >( rStrm.getRemaining() / 2 ) );
-            aString = rStrm.readUnicodeArray( nCharCount, bAllowNulChars );
+            aString = rStrm.readUnicodeArray( nCharCount );
         }
     }
     return aString;
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

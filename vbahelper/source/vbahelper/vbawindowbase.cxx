@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "vbahelper/vbawindowbase.hxx"
-#include "vbahelper/helperdecl.hxx"
+#include <vbahelper/vbawindowbase.hxx>
 #include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/awt/XWindow2.hpp>
@@ -59,7 +58,7 @@ VbaWindowBase::setVisible( sal_Bool _visible )
     getWindow2()->setVisible( _visible );
 }
 
-void setPosSize( const uno::Reference< awt::XWindow >& xWindow, sal_Int32 nValue, sal_Int16 nFlag )
+static void setPosSize( const uno::Reference< awt::XWindow >& xWindow, sal_Int32 nValue, sal_Int16 nFlag )
 {
     css::awt::Rectangle aRect = xWindow->getPosSize();
     switch( nFlag )
@@ -132,32 +131,30 @@ VbaWindowBase::setWidth( sal_Int32 _width )
 OUString
 VbaWindowBase::getServiceImplName()
 {
-    return OUString("VbaWindowBase");
+    return "VbaWindowBase";
 }
 
 uno::Sequence< OUString >
 VbaWindowBase::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.VbaWindowBase";
-    }
+        "ooo.vba.VbaWindowBase"
+    };
     return aServiceNames;
 }
 
-uno::Reference< frame::XController > VbaWindowBase::getController()
+uno::Reference< frame::XController > VbaWindowBase::getController() const
 {
     return uno::Reference< frame::XController >( m_xController, uno::UNO_SET_THROW );
 }
 
-uno::Reference< awt::XWindow > VbaWindowBase::getWindow()
+uno::Reference< awt::XWindow > VbaWindowBase::getWindow() const
 {
     return uno::Reference< awt::XWindow >( m_xWindow, uno::UNO_SET_THROW );
 }
 
-uno::Reference< awt::XWindow2 > VbaWindowBase::getWindow2()
+uno::Reference< awt::XWindow2 > VbaWindowBase::getWindow2() const
 {
     return uno::Reference< awt::XWindow2 >( getWindow(), uno::UNO_QUERY_THROW );
 }

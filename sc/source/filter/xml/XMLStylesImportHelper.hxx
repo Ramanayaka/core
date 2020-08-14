@@ -20,21 +20,23 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLSTYLESIMPORTHELPER_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLSTYLESIMPORTHELPER_HXX
 
-#include "rangelst.hxx"
-#include "simplerangelist.hxx"
+#include <rangelst.hxx>
 #include <rtl/ustring.hxx>
+#include <tools/ref.hxx>
 
 #include <list>
 #include <memory>
 #include <set>
+#include <map>
 #include <vector>
+#include <optional>
 
 class ScXMLImport;
 
 struct ScMyStyleNumberFormat
 {
     OUString       sStyleName;
-    sal_Int32           nNumberFormat;
+    sal_Int32      nNumberFormat;
 
     explicit ScMyStyleNumberFormat(const OUString& rStyleName) :
         sStyleName(rStyleName), nNumberFormat(-1) {}
@@ -64,10 +66,10 @@ public:
 struct ScMyCurrencyStyle
 {
     OUString       sCurrency;
-    std::shared_ptr<ScSimpleRangeList> mpRanges;
+    std::shared_ptr<ScRangeList> mpRanges;
 
     ScMyCurrencyStyle() :
-        mpRanges(new ScSimpleRangeList)
+        mpRanges(std::make_shared<ScRangeList>())
     {}
 };
 
@@ -81,81 +83,63 @@ struct LessCurrencyStyle
 
 typedef std::set<ScMyCurrencyStyle, LessCurrencyStyle>  ScMyCurrencyStylesSet;
 
-class ScMyStyleRanges : public SvRefBase
+class ScMyStyleRanges
 {
-    std::shared_ptr<ScSimpleRangeList>     mpTextList;
-    std::shared_ptr<ScSimpleRangeList>     mpNumberList;
-    std::shared_ptr<ScSimpleRangeList>     mpTimeList;
-    std::shared_ptr<ScSimpleRangeList>     mpDateTimeList;
-    std::shared_ptr<ScSimpleRangeList>     mpPercentList;
-    std::shared_ptr<ScSimpleRangeList>     mpLogicalList;
-    std::shared_ptr<ScSimpleRangeList>     mpUndefinedList;
+    std::shared_ptr<ScRangeList>     mpTextList;
+    std::shared_ptr<ScRangeList>     mpNumberList;
+    std::shared_ptr<ScRangeList>     mpTimeList;
+    std::shared_ptr<ScRangeList>     mpDateTimeList;
+    std::shared_ptr<ScRangeList>     mpPercentList;
+    std::shared_ptr<ScRangeList>     mpLogicalList;
+    std::shared_ptr<ScRangeList>     mpUndefinedList;
     std::unique_ptr<ScMyCurrencyStylesSet> pCurrencyList;
 
-    static void SetStylesToRanges(const ::std::list<ScRange>& rList,
+    static void SetStylesToRanges(const ScRangeList& rList,
         const OUString* pStyleName, const sal_Int16 nCellType,
         const OUString* pCurrency, ScXMLImport& rImport);
 public:
     ScMyStyleRanges();
-    virtual ~ScMyStyleRanges() override;
+    ~ScMyStyleRanges();
     void AddRange(const ScRange& rRange, const sal_Int16 nType);
-    void AddCurrencyRange(const ScRange& rRange, const OUString* pCurrency);
+    void AddCurrencyRange(const ScRange& rRange, const std::optional<OUString> & pCurrency);
     void InsertCol(const sal_Int32 nCol, const sal_Int32 nTab);
     void SetStylesToRanges(const OUString* pStyleName, ScXMLImport& rImport);
 };
 
-struct ScMyStyle
-{
-    OUString                      sStyleName;
-    tools::SvRef<ScMyStyleRanges> xRanges;
-
-    ScMyStyle() : xRanges(new ScMyStyleRanges()) {}
-};
-
-struct LessStyle
-{
-    bool operator() (const ScMyStyle& rValue1, const ScMyStyle& rValue2) const
-    {
-        return rValue1.sStyleName < rValue2.sStyleName;
-    }
-};
-
-typedef std::set<ScMyStyle, LessStyle>  ScMyStylesSet;
+/** map from style name to ScMyStyleRanges */
+typedef std::map<OUString, std::unique_ptr<ScMyStyleRanges>>  ScMyStylesMap;
 
 class ScMyStylesImportHelper
 {
-    ScMyStylesSet       aCellStyles;
-    std::vector<ScMyStylesSet::iterator>  aColDefaultStyles;
-    ScMyStylesSet::iterator aRowDefaultStyle;
+    ScMyStylesMap       aCellStyles;
+    std::vector<ScMyStylesMap::iterator>  aColDefaultStyles;
+    ScMyStylesMap::iterator aRowDefaultStyle;
     ScXMLImport&        rImport;
-    OUString*           pStyleName;
-    OUString*           pPrevStyleName;
-    OUString*           pCurrency;
-    OUString*           pPrevCurrency;
+    std::optional<OUString>
+                        pStyleName;
+    std::optional<OUString>
+                        pPrevStyleName;
+    std::optional<OUString>
+                        pCurrency;
+    std::optional<OUString>
+                        pPrevCurrency;
     ScRange             aPrevRange;
     sal_Int16           nCellType;
     sal_Int16           nPrevCellType;
     bool                bPrevRangeAdded;
 
     void ResetAttributes();
-    ScMyStylesSet::iterator GetIterator(const OUString* pStyleName);
+    ScMyStylesMap::iterator GetIterator(const OUString & rStyleName);
     void AddDefaultRange(const ScRange& rRange);
     void AddSingleRange(const ScRange& rRange);
     void AddRange();
-    static bool IsEqual(const OUString* pFirst, const OUString* pSecond)
-    {
-        return ((pFirst && pSecond && pFirst->equals(*pSecond)) ||
-                (!pFirst && !pSecond) ||
-                (!pFirst && pSecond && pSecond->isEmpty()) ||
-                (!pSecond && pFirst && pFirst->isEmpty()));
-    }
 public:
     explicit ScMyStylesImportHelper(ScXMLImport& rImport);
     ~ScMyStylesImportHelper();
     void AddColumnStyle(const OUString& rStyleName, const sal_Int32 nColumn, const sal_Int32 nRepeat);
     void SetRowStyle(const OUString& rStyleName);
-    void SetAttributes(OUString* pStyleName,
-        OUString* pCurrency, const sal_Int16 nCellType);
+    void SetAttributes(std::optional<OUString> pStyleName,
+        std::optional<OUString> pCurrency, const sal_Int16 nCellType);
     void AddRange(const ScRange& rRange);
     void AddCell(const ScAddress& rAddress);
     void InsertCol(const sal_Int32 nCol, const sal_Int32 nTab); // a col is inserted before nCol

@@ -23,7 +23,8 @@
 #include <com/sun/star/text/PositionLayoutDir.hpp>
 #include <cppuhelper/weakref.hxx>
 #include <tools/gen.hxx>
-#include <format.hxx>
+#include "format.hxx"
+#include "hintids.hxx"
 #include "swdllapi.h"
 #include <list>
 
@@ -34,10 +35,9 @@ class Graphic;
 class ImageMap;
 class IMapObject;
 class SwRect;
-class SwContact;
 class SdrObject;
 class SwRootFrame;
-class SwFlyDrawContact;
+
 namespace sw
 {
     class DocumentLayoutManager;
@@ -54,13 +54,15 @@ namespace sw
 class SwFrameFormats;
 
 /// Style of a layout element.
-class SW_DLLPUBLIC SwFrameFormat: public SwFormat
+class SW_DLLPUBLIC SwFrameFormat
+    : public SwFormat
 {
     friend class SwDoc;
     friend class SwPageDesc;    ///< Is allowed to call protected CTor.
     friend class ::sw::DocumentLayoutManager; ///< Is allowed to call protected CTor.
     friend class SwFrameFormats;     ///< Is allowed to update the list backref.
     friend class SwTextBoxHelper;
+    friend class SwUndoFlyBase; ///< calls SetOtherTextBoxFormat
 
     css::uno::WeakReference<css::uno::XInterface> m_wXObject;
 
@@ -82,7 +84,7 @@ class SW_DLLPUBLIC SwFrameFormat: public SwFormat
 protected:
     SwFrameFormat(
         SwAttrPool& rPool,
-        const sal_Char* pFormatNm,
+        const char* pFormatNm,
         SwFrameFormat *pDrvdFrame,
         sal_uInt16 nFormatWhich = RES_FRMFMT,
         const sal_uInt16* pWhichRange = nullptr);
@@ -101,6 +103,11 @@ protected:
 
 public:
     virtual ~SwFrameFormat() override;
+
+    SwFrameFormat(SwFrameFormat const &) = default;
+    SwFrameFormat(SwFrameFormat &&) = default;
+    SwFrameFormat & operator =(SwFrameFormat const &) = default;
+    SwFrameFormat & operator =(SwFrameFormat &&) = default;
 
     /// Destroys all Frames in aDepend (Frames are identified via dynamic_cast).
     virtual void DelFrames();
@@ -162,21 +169,20 @@ public:
     SAL_DLLPRIVATE void SetXObject(css::uno::Reference<css::uno::XInterface> const& xObject)
             { m_wXObject = xObject; }
 
-    DECL_FIXEDMEMPOOL_NEWDEL_DLL(SwFrameFormat)
     void RegisterToFormat( SwFormat& rFormat );
 
     // Access to DrawingLayer FillAttributes in a preprocessed form for primitive usage
     virtual drawinglayer::attribute::SdrAllFillAttributesHelperPtr getSdrAllFillAttributesHelper() const override;
     virtual bool supportsFullDrawingLayerFillAttributeSet() const override;
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
-    virtual void SetName( const OUString& rNewName, bool bBroadcast=false ) SAL_OVERRIDE;
+    virtual void SetName( const OUString& rNewName, bool bBroadcast=false ) override;
 };
 
 // The FlyFrame-Format
 
-class SW_DLLPUBLIC SwFlyFrameFormat: public SwFrameFormat
+class SW_DLLPUBLIC SwFlyFrameFormat final : public SwFrameFormat
 {
     friend class SwDoc;
     OUString msTitle;
@@ -192,8 +198,8 @@ class SW_DLLPUBLIC SwFlyFrameFormat: public SwFrameFormat
     SwFlyFrameFormat( const SwFlyFrameFormat &rCpy ) = delete;
     SwFlyFrameFormat &operator=( const SwFlyFrameFormat &rCpy ) = delete;
 
-protected:
     SwFlyFrameFormat( SwAttrPool& rPool, const OUString &rFormatNm, SwFrameFormat *pDrvdFrame );
+
 public:
     virtual ~SwFlyFrameFormat() override;
 
@@ -219,10 +225,8 @@ public:
         because format of fly frame provides transparent backgrounds.
         Method determines, if background of fly frame is transparent.
 
-        @author OD
-
         @return true, if background color is transparent, but not "no fill"
-        or a existing background graphic is transparent.
+        or an existing background graphic is transparent.
     */
     virtual bool IsBackgroundTransparent() const override;
 
@@ -233,8 +237,6 @@ public:
         This is the case, if no background graphic is set and the background
         color is "no fill"/"auto fill"
 
-        @author OD
-
         @return true, if background brush is "inherited" from parent/grandparent
     */
     bool IsBackgroundBrushInherited() const;
@@ -242,7 +244,6 @@ public:
     const Point & GetLastFlyFramePrtRectPos() const       { return m_aLastFlyFramePrtRectPos; }
     void SetLastFlyFramePrtRectPos( const Point &rPoint ) { m_aLastFlyFramePrtRectPos = rPoint; }
 
-    DECL_FIXEDMEMPOOL_NEWDEL(SwFlyFrameFormat)
     SwFlyDrawContact* GetOrCreateContact();
 };
 
@@ -265,25 +266,25 @@ namespace sw
         DELETE_FRAMES,
         POST_RESTORE_FLY_ANCHOR,
     };
-    struct SW_DLLPUBLIC DrawFrameFormatHint final: SfxHint
+    struct DrawFrameFormatHint final: SfxHint
     {
         DrawFrameFormatHintId m_eId;
         DrawFrameFormatHint(DrawFrameFormatHintId eId) : m_eId(eId) {};
         virtual ~DrawFrameFormatHint() override;
     };
-    struct SW_DLLPUBLIC CheckDrawFrameFormatLayerHint final: SfxHint
+    struct CheckDrawFrameFormatLayerHint final: SfxHint
     {
         bool* m_bCheckControlLayer;
         CheckDrawFrameFormatLayerHint(bool* bCheckControlLayer) : m_bCheckControlLayer(bCheckControlLayer) {};
         virtual ~CheckDrawFrameFormatLayerHint() override;
     };
-    struct SW_DLLPUBLIC ContactChangedHint final: SfxHint
+    struct ContactChangedHint final: SfxHint
     {
         SdrObject** m_ppObject;
         ContactChangedHint(SdrObject** ppObject) : m_ppObject(ppObject) {};
         virtual ~ContactChangedHint() override;
     };
-    struct SW_DLLPUBLIC DrawFormatLayoutCopyHint final : SfxHint
+    struct DrawFormatLayoutCopyHint final : SfxHint
     {
         SwDrawFrameFormat& m_rDestFormat;
         SwDoc& m_rDestDoc;
@@ -313,31 +314,31 @@ namespace sw
         WW8AnchorConvHint(WW8AnchorConvResult& rResult) : m_rResult(rResult) {};
         virtual ~WW8AnchorConvHint() override;
     };
-    struct SW_DLLPUBLIC RestoreFlyAnchorHint final : SfxHint
+    struct RestoreFlyAnchorHint final : SfxHint
     {
         const Point m_aPos;
         RestoreFlyAnchorHint(Point aPos) : m_aPos(aPos) {};
         virtual ~RestoreFlyAnchorHint() override;
     };
-    struct SW_DLLPUBLIC CreatePortionHint final : SfxHint
+    struct CreatePortionHint final : SfxHint
     {
         SwDrawContact** m_ppContact;
         CreatePortionHint(SwDrawContact** ppContact) : m_ppContact(ppContact) {};
         virtual ~CreatePortionHint() override;
     };
-    struct SW_DLLPUBLIC CollectTextObjectsHint final : SfxHint
+    struct CollectTextObjectsHint final : SfxHint
     {
         std::list<SdrTextObj*>& m_rTextObjects;
         CollectTextObjectsHint(std::list<SdrTextObj*>& rTextObjects) : m_rTextObjects(rTextObjects) {};
         virtual ~CollectTextObjectsHint() override;
     };
-    struct SW_DLLPUBLIC GetZOrderHint final : SfxHint
+    struct GetZOrderHint final : SfxHint
     {
         sal_uInt32& m_rnZOrder;
         GetZOrderHint(sal_uInt32& rnZOrder) : m_rnZOrder(rnZOrder) {};
         virtual ~GetZOrderHint() override;
     };
-    struct SW_DLLPUBLIC GetObjectConnectedHint final : SfxHint
+    struct GetObjectConnectedHint final : SfxHint
     {
         bool& m_risConnected;
         const SwRootFrame* m_pRoot;
@@ -397,8 +398,6 @@ public:
     void PosAttrSet() { mbPosAttrSet = true; }
 
     virtual OUString GetDescription() const override;
-
-    DECL_FIXEDMEMPOOL_NEWDEL(SwDrawFrameFormat);
 };
 
 namespace sw {

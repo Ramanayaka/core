@@ -17,11 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xladdress.hxx"
-#include "xestream.hxx"
-#include "xltracer.hxx"
-#include "xistream.hxx"
+#include <xladdress.hxx>
+#include <xestream.hxx>
+#include <xltracer.hxx>
+#include <xistream.hxx>
 
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
 
 void XclAddress::Read( XclImpStream& rStrm )
@@ -115,8 +116,8 @@ void XclRangeList::WriteSubList( XclExpStream& rStrm, size_t nBegin, size_t nCou
         rStrm << nXclCount;
     }
     rStrm.SetSliceSize( bCol16Bit ? 8 : 6 );
-    for( XclRangeVector::const_iterator aIt = mRanges.begin() + nBegin, aEnd = mRanges.begin() + nEnd; aIt != aEnd; ++aIt )
-        aIt->Write( rStrm, bCol16Bit );
+    std::for_each(mRanges.begin() + nBegin, mRanges.begin() + nEnd,
+        [&rStrm, &bCol16Bit](const XclRange& rRange) { rRange.Write(rStrm, bCol16Bit); });
 }
 
 XclAddressConverterBase::XclAddressConverterBase( XclTracer& rTracer, const ScAddress& rMaxPos ) :
@@ -128,8 +129,8 @@ XclAddressConverterBase::XclAddressConverterBase( XclTracer& rTracer, const ScAd
     mbRowTrunc( false ),
     mbTabTrunc( false )
 {
-    OSL_ENSURE( static_cast< size_t >( rMaxPos.Col() ) <= SAL_MAX_UINT16, "XclAddressConverterBase::XclAddressConverterBase - invalid max column" );
-    OSL_ENSURE( static_cast< size_t >( rMaxPos.Row() ) <= SAL_MAX_UINT32, "XclAddressConverterBase::XclAddressConverterBase - invalid max row" );
+    OSL_ENSURE( o3tl::make_unsigned( rMaxPos.Col() ) <= SAL_MAX_UINT16, "XclAddressConverterBase::XclAddressConverterBase - invalid max column" );
+    OSL_ENSURE( o3tl::make_unsigned( rMaxPos.Row() ) <= SAL_MAX_UINT32, "XclAddressConverterBase::XclAddressConverterBase - invalid max row" );
 }
 
 XclAddressConverterBase::~XclAddressConverterBase()

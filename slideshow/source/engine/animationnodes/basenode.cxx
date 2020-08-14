@@ -25,23 +25,23 @@
 #include <com/sun/star/presentation/EffectNodeType.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 
-#include "basenode.hxx"
-#include "eventmultiplexer.hxx"
-#include "basecontainernode.hxx"
-#include "eventqueue.hxx"
-#include "delayevent.hxx"
-#include "tools.hxx"
+#include <basenode.hxx>
+#include <eventmultiplexer.hxx>
+#include <basecontainernode.hxx>
+#include <eventqueue.hxx>
+#include <delayevent.hxx>
+#include <tools.hxx>
 #include "nodetools.hxx"
 #include "generateevent.hxx"
 
+#include <sal/log.hxx>
+
 #include <vector>
 #include <algorithm>
-#include <iterator>
 
 using namespace ::com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 namespace {
 
@@ -203,7 +203,7 @@ const int* getStateTransitionTable( sal_Int16 nRestartMode,
         // same value: animations::AnimationRestart::INHERIT:
         OSL_FAIL(
             "getStateTransitionTable(): unexpected case for restart" );
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case animations::AnimationRestart::NEVER:
         nRestartValue = 0;
         break;
@@ -223,7 +223,7 @@ const int* getStateTransitionTable( sal_Int16 nRestartMode,
         // same value: animations::AnimationFill::INHERIT:
         OSL_FAIL(
             "getStateTransitionTable(): unexpected case for fill" );
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case animations::AnimationFill::REMOVE:
         nFillValue = 0;
         break;
@@ -261,7 +261,7 @@ bool isMainSequenceRootNode_(
 class BaseNode::StateTransition
 {
 public:
-    enum Options { NONE, FORCE };
+    enum class Options { NONE, FORCE };
 
     explicit StateTransition( BaseNode * pNode )
         : mpNode(pNode), meToState(INVALID) {}
@@ -273,13 +273,13 @@ public:
     StateTransition(const StateTransition&) = delete;
     StateTransition& operator=(const StateTransition&) = delete;
 
-    bool enter( NodeState eToState, int options = NONE )
+    bool enter( NodeState eToState, Options options = Options::NONE )
     {
         OSL_ENSURE( meToState == INVALID,
                     "### commit() before enter()ing again!" );
         if (meToState != INVALID)
             return false;
-        bool const bForce = ((options & FORCE) != 0);
+        bool const bForce = options == Options::FORCE;
         if (!bForce && !mpNode->isTransition( mpNode->meCurrState, eToState ))
             return false;
         // recursion detection:
@@ -537,12 +537,26 @@ void BaseNode::scheduleDeactivationEvent( EventSharedPtr const& pEvent )
         // if anim base node has no activity, this is called to schedule deactivation,
         // but what if it does not schedule anything?
 
-        // TODO(F2): Handle end time attribute, too
         auto self(mpSelf);
-        mpCurrentEvent = generateEvent(
-            mxAnimationNode->getDuration(),
-            [self] () { self->deactivate(); },
-            maContext, 0.0 );
+        if (mxAnimationNode->getEnd().hasValue())
+        {
+            // TODO: We may need to calculate the duration if the end value is numeric.
+            // We expect that the end value contains EventTrigger::ON_NEXT here.
+            // LibreOffice does not generate numeric values, so we can leave it
+            // until we find a test case.
+            mpCurrentEvent = generateEvent(
+                mxAnimationNode->getEnd(),
+                [self] () { self->deactivate(); },
+                maContext, 0.0 );
+
+        }
+        else
+        {
+            mpCurrentEvent = generateEvent(
+                mxAnimationNode->getDuration(),
+                [self] () { self->deactivate(); },
+                maContext, 0.0 );
+        }
     }
 }
 
@@ -554,7 +568,7 @@ void BaseNode::deactivate()
     if (isTransition( meCurrState, FROZEN, false /* no OSL_ASSERT */ )) {
         // do transition to FROZEN:
         StateTransition st(this);
-        if (st.enter( FROZEN, StateTransition::FORCE )) {
+        if (st.enter( FROZEN, StateTransition::Options::FORCE )) {
 
             deactivate_st( FROZEN );
             st.commit();
@@ -591,21 +605,21 @@ void BaseNode::end()
                 "end state not reachable in transition table" );
 
     StateTransition st(this);
-    if (st.enter( ENDED, StateTransition::FORCE )) {
+    if (!st.enter( ENDED, StateTransition::Options::FORCE ))
+        return;
 
-        deactivate_st( ENDED );
-        st.commit(); // changing state
+    deactivate_st( ENDED );
+    st.commit(); // changing state
 
-        // if is FROZEN or is to be FROZEN, then
-        // will/already notified deactivating listeners
-        if (!bIsFrozenOrInTransitionToFrozen)
-            notifyEndListeners();
+    // if is FROZEN or is to be FROZEN, then
+    // will/already notified deactivating listeners
+    if (!bIsFrozenOrInTransitionToFrozen)
+        notifyEndListeners();
 
-        // discharge a loaded event, before going on:
-        if (mpCurrentEvent) {
-            mpCurrentEvent->dispose();
-            mpCurrentEvent.reset();
-        }
+    // discharge a loaded event, before going on:
+    if (mpCurrentEvent) {
+        mpCurrentEvent->dispose();
+        mpCurrentEvent.reset();
     }
 }
 
@@ -692,36 +706,36 @@ void BaseNode::showState() const
     // determine additional node information
     uno::Reference<animations::XAnimate> const xAnimate( mxAnimationNode,
                                                          uno::UNO_QUERY );
-    if( xAnimate.is() )
+    if( !xAnimate.is() )
+        return;
+
+    uno::Reference< drawing::XShape > xTargetShape( xAnimate->getTarget(),
+                                                    uno::UNO_QUERY );
+
+    if( !xTargetShape.is() )
     {
-        uno::Reference< drawing::XShape > xTargetShape( xAnimate->getTarget(),
-                                                        uno::UNO_QUERY );
+        css::presentation::ParagraphTarget aTarget;
 
-        if( !xTargetShape.is() )
-        {
-            css::presentation::ParagraphTarget aTarget;
+        // no shape provided. Maybe a ParagraphTarget?
+        if( xAnimate->getTarget() >>= aTarget )
+            xTargetShape = aTarget.Shape;
+    }
 
-            // no shape provided. Maybe a ParagraphTarget?
-            if( (xAnimate->getTarget() >>= aTarget) )
-                xTargetShape = aTarget.Shape;
-        }
+    if( !xTargetShape.is() )
+        return;
 
-        if( xTargetShape.is() )
-        {
-            uno::Reference< beans::XPropertySet > xPropSet( xTargetShape,
-                                                            uno::UNO_QUERY );
+    uno::Reference< beans::XPropertySet > xPropSet( xTargetShape,
+                                                    uno::UNO_QUERY );
 
-            // read shape name
-            OUString aName;
-            if( xPropSet->getPropertyValue("Name") >>= aName )
-            {
-                SAL_INFO("slideshow.verbose", "Node info: n" <<
-                         debugGetNodeName(this) <<
-                         ", name \"" <<
-                         aName <<
-                         "\"");
-            }
-        }
+    // read shape name
+    OUString aName;
+    if( xPropSet->getPropertyValue("Name") >>= aName )
+    {
+        SAL_INFO("slideshow.verbose", "Node info: n" <<
+                 debugGetNodeName(this) <<
+                 ", name \"" <<
+                 aName <<
+                 "\"");
     }
 }
 
@@ -732,7 +746,6 @@ const char* BaseNode::getDescription() const
 
 #endif
 
-} // namespace internal
 } // namespace slideshow
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

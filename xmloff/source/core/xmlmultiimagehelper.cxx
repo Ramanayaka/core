@@ -18,50 +18,71 @@
  */
 
 #include <rtl/ustring.hxx>
-#include "xmlmultiimagehelper.hxx"
+#include <xmlmultiimagehelper.hxx>
+
+#include <comphelper/graphicmimetype.hxx>
 
 using namespace ::com::sun::star;
 
 namespace
 {
-    sal_uInt32 getQualityIndex(const OUString& rString)
+    OUString getMimeTypeForURL(const OUString& rString)
+    {
+        OUString sMimeType;
+        if (rString.startsWith("vnd.sun.star.Package"))
+        {
+            OString aExtension = OUStringToOString(rString.copy(rString.lastIndexOf(".") + 1), RTL_TEXTENCODING_ASCII_US);
+            sMimeType = comphelper::GraphicMimeTypeHelper::GetMimeTypeForExtension(aExtension);
+        }
+        return sMimeType;
+    }
+
+    sal_uInt32 getQualityIndex(const OUString& rMimeType)
     {
         // pixel formats first
-        if(rString.endsWith(".bmp"))
+        if (rMimeType == "image/bmp")
         {
             return 10;
         }
-        if(rString.endsWith(".gif"))
+        if (rMimeType == "image/gif")
         {
             return 20;
         }
-        if(rString.endsWith(".jpg"))
+        if (rMimeType == "image/jpeg")
         {
             return 30;
         }
-        if(rString.endsWith(".png"))
+        if (rMimeType == "image/png")
         {
             return 40;
         }
 
         // vector formats, prefer always
-        if(rString.endsWith(".svm"))
+        if (rMimeType == "image/x-vclgraphic") // MIMETYPE_VCLGRAPHIC
+        {
+            return 990;
+        }
+        if (rMimeType == "image/x-svm")
         {
             return 1000;
         }
-        if(rString.endsWith(".wmf"))
+        if (rMimeType == "image/x-wmf")
         {
             return 1010;
         }
-        if(rString.endsWith(".emf"))
+        if (rMimeType == "image/x-emf")
         {
             return 1020;
         }
-        if(rString.endsWith(".pdf"))
+        if (rMimeType == "image/x-eps")
+        {
+            return 1025;
+        }
+        if (rMimeType == "application/pdf")
         {
             return 1030;
         }
-        if(rString.endsWith(".svg"))
+        if (rMimeType == "image/svg+xml")
         {
             return 1040;
         }
@@ -92,10 +113,25 @@ SvXMLImportContextRef MultiImageImportHelper::solveMultipleImages()
 
         for(std::vector<SvXMLImportContextRef>::size_type a = 0; a < maImplContextVector.size(); a++)
         {
-            const OUString aStreamURL(getGraphicURLFromImportContext(*maImplContextVector[a].get()));
-            const sal_uInt32 nNewQuality(getQualityIndex(aStreamURL));
+            const SvXMLImportContext& rContext = *maImplContextVector[a];
 
-            if(nNewQuality > nBestQuality)
+
+            OUString sMimeType;
+
+            const OUString aStreamURL(getGraphicPackageURLFromImportContext(rContext));
+            if (!aStreamURL.isEmpty())
+            {
+                sMimeType = getMimeTypeForURL(aStreamURL);
+            }
+            else
+            {
+                uno::Reference<graphic::XGraphic> xGraphic(getGraphicFromImportContext(rContext));
+                if (xGraphic.is())
+                    sMimeType = comphelper::GraphicMimeTypeHelper::GetMimeTypeForXGraphic(xGraphic);
+            }
+
+            sal_uInt32 nNewQuality = getQualityIndex(sMimeType);
+            if (nNewQuality > nBestQuality)
             {
                 nBestQuality = nNewQuality;
                 nIndexOfPreferred = a;
@@ -116,7 +152,7 @@ SvXMLImportContextRef MultiImageImportHelper::solveMultipleImages()
         // remove the rest from parent
         for(std::vector<SvXMLImportContextRef>::size_type a = 0; a < maImplContextVector.size(); a++)
         {
-            SvXMLImportContext& rCandidate = *maImplContextVector[a].get();
+            SvXMLImportContext& rCandidate = *maImplContextVector[a];
 
             removeGraphicFromImportContext(rCandidate);
         }
@@ -134,7 +170,7 @@ SvXMLImportContextRef MultiImageImportHelper::solveMultipleImages()
 
 void MultiImageImportHelper::addContent(const SvXMLImportContext& rSvXMLImportContext)
 {
-    maImplContextVector.push_back(SvXMLImportContextRef(const_cast< SvXMLImportContext* >(&rSvXMLImportContext)));
+    maImplContextVector.emplace_back(const_cast< SvXMLImportContext* >(&rSvXMLImportContext));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

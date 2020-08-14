@@ -21,32 +21,21 @@
 
 #include <com/sun/star/frame/XFrame.hpp>
 
-#include <svx/sidebar/PanelLayout.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 
 #include <sfx2/sidebar/ControllerItem.hxx>
-
-#include <i18nutil/paper.hxx>
 
 #include <svx/pageitem.hxx>
 #include <svx/rulritem.hxx>
 #include <svx/papersizelistbox.hxx>
-#include <editeng/sizeitem.hxx>
 
-#include <vcl/ctrl.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <vcl/toolbox.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/field.hxx>
-#include <svl/intitem.hxx>
 #include <tools/fldunit.hxx>
 #include <svl/poolitem.hxx>
 #include <svx/relfld.hxx>
 
 #include <memory>
-#include <vector>
 
-namespace sw { namespace sidebar {
+namespace sw::sidebar {
 
 class PageFormatPanel:
     public PanelLayout,
@@ -61,8 +50,11 @@ public:
     virtual void NotifyItemUpdate(
         const sal_uInt16 nSId,
         const SfxItemState eState,
-        const SfxPoolItem* pState,
-        const bool bIsEnabled) override;
+        const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
 
     PageFormatPanel(
         vcl::Window* pParent,
@@ -77,12 +69,12 @@ private:
 
     SfxBindings* mpBindings;
 
-    VclPtr<PaperSizeListBox> mpPaperSizeBox;
-    VclPtr<SvxRelativeField> mpPaperWidth;
-    VclPtr<SvxRelativeField> mpPaperHeight;
-    VclPtr<ListBox> mpPaperOrientation;
-    VclPtr<ListBox> mpMarginSelectBox;
-    VclPtr<FixedText> mpCustomEntry;
+    std::unique_ptr<SvxPaperSizeListBox> mxPaperSizeBox;
+    std::unique_ptr<SvxRelativeField> mxPaperWidth;
+    std::unique_ptr<SvxRelativeField> mxPaperHeight;
+    std::unique_ptr<weld::ComboBox> mxPaperOrientation;
+    std::unique_ptr<weld::ComboBox> mxMarginSelectBox;
+    std::unique_ptr<weld::Label> mxCustomEntry;
 
     ::sfx2::sidebar::ControllerItem maPaperSizeController;
     ::sfx2::sidebar::ControllerItem maPaperOrientationController;
@@ -94,7 +86,7 @@ private:
     std::unique_ptr<SvxLongLRSpaceItem> mpPageLRMarginItem;
     std::unique_ptr<SvxLongULSpaceItem> mpPageULMarginItem;
 
-    FieldUnit meFUnit, meLastFUnit;
+    FieldUnit meFUnit;
     MapUnit meUnit;
 
     long mnPageLeftMargin;
@@ -104,15 +96,16 @@ private:
     OUString aCustomEntry;
 
     void Initialize();
+    void SetMarginFieldUnit();
     void UpdateMarginBox();
     void ExecuteMarginLRChange( const long nPageLeftMargin, const long nPageRightMargin );
     void ExecuteMarginULChange( const long nPageTopMargin, const long  nPageBottomMargin);
-    DECL_LINK(PaperFormatModifyHdl, ListBox&, void);
-    DECL_LINK(PaperSizeModifyHdl, Edit&, void);
-    DECL_LINK(PaperModifyMarginHdl, ListBox&, void );
+    DECL_LINK(PaperFormatModifyHdl, weld::ComboBox&, void);
+    DECL_LINK(PaperSizeModifyHdl, weld::MetricSpinButton&, void);
+    DECL_LINK(PaperModifyMarginHdl, weld::ComboBox&, void );
 };
 
-} } //end of namespace sw::sidebar
+} //end of namespace sw::sidebar
 
 #endif
 

@@ -17,10 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RangeSelectionHelper.hxx"
-#include "RangeSelectionListener.hxx"
-#include "macros.hxx"
+#include <RangeSelectionHelper.hxx>
+#include <RangeSelectionListener.hxx>
 #include <com/sun/star/awt/XTopWindow.hpp>
+#include <com/sun/star/chart2/XChartDocument.hpp>
+#include <com/sun/star/chart2/data/XDataProvider.hpp>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 
@@ -54,9 +56,9 @@ Reference< sheet::XRangeSelection > const & RangeSelectionHelper::getRangeSelect
             if( xDataProvider.is())
                 m_xRangeSelection.set( xDataProvider->getRangeSelection());
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
 
             m_xRangeSelection.clear();
         }
@@ -68,27 +70,27 @@ Reference< sheet::XRangeSelection > const & RangeSelectionHelper::getRangeSelect
 void RangeSelectionHelper::raiseRangeSelectionDocument()
 {
     Reference< sheet::XRangeSelection > xRangeSel( getRangeSelection());
-    if( xRangeSel.is())
+    if( !xRangeSel.is())
+        return;
+
+    try
     {
-        try
+        // bring document to front
+        Reference< frame::XController > xCtrl( xRangeSel, uno::UNO_QUERY );
+        if( xCtrl.is())
         {
-            // bring document to front
-            Reference< frame::XController > xCtrl( xRangeSel, uno::UNO_QUERY );
-            if( xCtrl.is())
+            Reference< frame::XFrame > xFrame( xCtrl->getFrame());
+            if( xFrame.is())
             {
-                Reference< frame::XFrame > xFrame( xCtrl->getFrame());
-                if( xFrame.is())
-                {
-                    Reference< awt::XTopWindow > xWin( xFrame->getContainerWindow(),
-                                                       uno::UNO_QUERY_THROW );
-                    xWin->toFront();
-                }
+                Reference< awt::XTopWindow > xWin( xFrame->getContainerWindow(),
+                                                   uno::UNO_QUERY_THROW );
+                xWin->toFront();
             }
         }
-        catch( const uno::Exception & ex )
-        {
-            ASSERT_EXCEPTION( ex );
-        }
+    }
+    catch( const uno::Exception & )
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -97,7 +99,7 @@ bool RangeSelectionHelper::chooseRange(
     const OUString & aUIString,
     RangeSelectionListenerParent & rListenerParent )
 {
-    ControllerLockGuardUNO aGuard( Reference< frame::XModel >(m_xChartDocument, uno::UNO_QUERY ) );
+    ControllerLockGuardUNO aGuard( m_xChartDocument );
 
     bool bResult = true;
     raiseRangeSelectionDocument();
@@ -125,16 +127,16 @@ bool RangeSelectionHelper::chooseRange(
             if( m_xRangeSelectionListener.is() )
                 stopRangeListening();
             m_xRangeSelectionListener.set( Reference< sheet::XRangeSelectionListener >(
-                new RangeSelectionListener( rListenerParent, aCurrentRange, Reference< frame::XModel >(m_xChartDocument, uno::UNO_QUERY ) )));
+                new RangeSelectionListener( rListenerParent, aCurrentRange, m_xChartDocument )));
 
             xRangeSel->addRangeSelectionListener( m_xRangeSelectionListener );
             xRangeSel->startRangeSelection( aArgs );
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
+        DBG_UNHANDLED_EXCEPTION("chart2");
         bResult = false;
-        ASSERT_EXCEPTION( ex );
     }
 
     return bResult;

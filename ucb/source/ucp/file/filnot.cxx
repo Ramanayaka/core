@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/ucb/XContent.hpp>
 #include <com/sun/star/ucb/ContentAction.hpp>
 #include <com/sun/star/beans/PropertySetInfoChange.hpp>
 #include "filnot.hxx"
@@ -154,7 +153,7 @@ PropertySetInfoChangeNotifier::PropertySetInfoChangeNotifier(
 }
 
 
-void SAL_CALL
+void
 PropertySetInfoChangeNotifier::notifyPropertyAdded( const OUString & aPropertyName )
 {
     beans::PropertySetInfoChangeEvent aEvt( m_xCreatorContent,
@@ -171,7 +170,7 @@ PropertySetInfoChangeNotifier::notifyPropertyAdded( const OUString & aPropertyNa
 }
 
 
-void SAL_CALL
+void
 PropertySetInfoChangeNotifier::notifyPropertyRemoved( const OUString & aPropertyName )
 {
     beans::PropertySetInfoChangeEvent aEvt( m_xCreatorContent,
@@ -197,9 +196,9 @@ PropertySetInfoChangeNotifier::notifyPropertyRemoved( const OUString & aProperty
 
 PropertyChangeNotifier::PropertyChangeNotifier(
     const css::uno::Reference< XContent >& xCreatorContent,
-    ListenerMap* pListeners )
+    std::unique_ptr<ListenerMap> pListeners )
     : m_xCreatorContent( xCreatorContent ),
-      m_pListeners( pListeners )
+      m_pListeners( std::move(pListeners) )
 {
 }
 
@@ -210,20 +209,19 @@ PropertyChangeNotifier::~PropertyChangeNotifier()
 
 
 void PropertyChangeNotifier::notifyPropertyChanged(
-    const uno::Sequence< beans::PropertyChangeEvent >& Changes_ )
+    const uno::Sequence< beans::PropertyChangeEvent >& seqChanged )
 {
-    sal_Int32 j;
-    uno::Sequence< beans::PropertyChangeEvent > Changes  = Changes_;
+    uno::Sequence< beans::PropertyChangeEvent > Changes  = seqChanged;
 
-    for( j = 0; j < Changes.getLength(); ++j )
-        Changes[j].Source = m_xCreatorContent;
+    for( auto& rChange : Changes )
+        rChange.Source = m_xCreatorContent;
 
     // notify listeners for all Events
 
     uno::Sequence< uno::Reference< uno::XInterface > > seqList = (*m_pListeners)[ OUString() ];
-    for( j = 0; j < seqList.getLength(); ++j )
+    for( const auto& rListener : std::as_const(seqList) )
     {
-        uno::Reference< beans::XPropertiesChangeListener > aListener( seqList[j],uno::UNO_QUERY );
+        uno::Reference< beans::XPropertiesChangeListener > aListener( rListener,uno::UNO_QUERY );
         if( aListener.is() )
         {
             aListener->propertiesChange( Changes );
@@ -231,14 +229,14 @@ void PropertyChangeNotifier::notifyPropertyChanged(
     }
 
     uno::Sequence< beans::PropertyChangeEvent > seq(1);
-    for( j = 0; j < Changes.getLength(); ++j )
+    for( const auto& rChange : std::as_const(Changes) )
     {
-        seq[0] = Changes[j];
-        seqList = (*m_pListeners)[ seq[0].PropertyName ];
+        seq[0] = rChange;
+        seqList = (*m_pListeners)[ rChange.PropertyName ];
 
-        for( sal_Int32 i = 0; i < seqList.getLength(); ++i )
+        for( const auto& rListener : std::as_const(seqList) )
         {
-            uno::Reference< beans::XPropertiesChangeListener > aListener( seqList[j],uno::UNO_QUERY );
+            uno::Reference< beans::XPropertiesChangeListener > aListener( rListener,uno::UNO_QUERY );
             if( aListener.is() )
             {
                 aListener->propertiesChange( seq );

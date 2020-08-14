@@ -20,15 +20,16 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_MODULE_VIEWTABBARMODULE_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_MODULE_VIEWTABBARMODULE_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 
 #include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XTabBar.hpp>
-#include <com/sun/star/frame/XController.hpp>
 #include <cppuhelper/compbase.hxx>
 
-namespace sd { namespace framework {
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
+namespace com::sun::star::drawing::framework { class XTabBar; }
+namespace com::sun::star::frame { class XController; }
+
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XConfigurationChangeListener
@@ -81,7 +82,7 @@ private:
         const css::uno::Reference<css::drawing::framework::XTabBar>& rxTabBar);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

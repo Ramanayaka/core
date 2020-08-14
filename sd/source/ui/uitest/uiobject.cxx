@@ -8,13 +8,15 @@
  */
 
 #include <memory>
-#include "uiobject.hxx"
+#include <uiobject.hxx>
 
-#include "Window.hxx"
-#include "DrawViewShell.hxx"
-#include "sdpage.hxx"
+#include <Window.hxx>
+#include <DrawViewShell.hxx>
+#include <sdpage.hxx>
 
 #include <svx/uiobject.hxx>
+
+namespace {
 
 class ImpressSdrObject : public SdrUIObject
 {
@@ -29,8 +31,6 @@ private:
     OUString maName;
 };
 
-namespace {
-
 sd::DrawViewShell* getViewShell(const VclPtr<sd::Window>& xWindow)
 {
     sd::DrawViewShell* pViewShell = dynamic_cast<sd::DrawViewShell*>(xWindow->GetViewShell());
@@ -39,7 +39,7 @@ sd::DrawViewShell* getViewShell(const VclPtr<sd::Window>& xWindow)
     return pViewShell;
 }
 
-OUString getObjectName(SdrObject* pObject)
+OUString getObjectName(SdrObject const * pObject)
 {
     if (pObject->GetName().isEmpty())
         return "Unnamed Drawinglayer object " + OUString::number(pObject->GetOrdNum());
@@ -163,7 +163,7 @@ std::set<OUString> ImpressWindowUIObject::get_children() const
 
 OUString ImpressWindowUIObject::get_name() const
 {
-    return OUString("ImpressWindowUIObject");
+    return "ImpressWindowUIObject";
 }
 
 std::unique_ptr<UIObject> ImpressWindowUIObject::create(vcl::Window* pWindow)

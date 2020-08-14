@@ -61,29 +61,29 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPNUMERICFMT_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPNUMERICFMT_HXX
 
-#include "lwpatomholder.hxx"
-#include "lwptblcell.hxx"
-#include "lwpcolor.hxx"
+#include <map>
+
+#include <lwpatomholder.hxx>
+#include <lwpcolor.hxx>
 #include "lwppiece.hxx"
 
 //For converting to xml
-#include "xfilter/xfnumberstyle.hxx"
+#include <xfilter/xfnumberstyle.hxx>
 
 class LwpObjectStream;
 
-class LwpNumericFormatSubset
+class LwpNumericFormatSubset final
 {
 public:
     LwpNumericFormatSubset();
-    ~LwpNumericFormatSubset();
     void QuickRead(LwpObjectStream* pStrm);
-    OUString GetPrefix(){ return cPrefix.str();}
-    OUString GetSuffix(){ return cSuffix.str();}
-    bool IsDefaultPrefix(){ return !(cSubFlags&SF_OVER_PREFIX); }
-    bool IsDefaultSuffix(){ return !(cSubFlags&SF_OVER_SUFFIX); }
-    LwpColor GetColor();
+    OUString const & GetPrefix() const { return cPrefix.str();}
+    OUString const & GetSuffix() const { return cSuffix.str();}
+    bool IsDefaultPrefix() const { return !(cSubFlags&SF_OVER_PREFIX); }
+    bool IsDefaultSuffix() const { return !(cSubFlags&SF_OVER_SUFFIX); }
+    LwpColor GetColor() const;
 
-protected:
+private:
     LwpColor cColor;
     LwpAtomHolder cPrefix;
     LwpAtomHolder cSuffix;
@@ -103,21 +103,15 @@ struct LwpCurrencyInfo
     bool bPost;
     bool bShowSpace;
     explicit LwpCurrencyInfo(const OUString& sSym)
+      : sSymbol(sSym), bPost(false), bShowSpace(false)
     {
-        sSymbol = sSym;
-        bPost = false;
-        bShowSpace = false;
     }
-    LwpCurrencyInfo()
+    LwpCurrencyInfo() : bPost(false), bShowSpace(false)
     {
-        bPost = false;
-        bShowSpace = false;
     }
     LwpCurrencyInfo(const OUString& sSym, bool bPost_, bool bShowSpace_)
+        : sSymbol(sSym), bPost(bPost_), bShowSpace(bShowSpace_)
     {
-        sSymbol = sSym;
-        bPost = bPost_;
-        bShowSpace = bShowSpace_;
     }
 };
 
@@ -180,9 +174,6 @@ enum
     FMT_EURO                = 52
 };
 
-#define RTL_CONSTUTF8_USTRINGPARAM( constAsciiStr ) (&(constAsciiStr)[0]), \
-    ((sal_Int32)(SAL_N_ELEMENTS(constAsciiStr)-1)), RTL_TEXTENCODING_UTF8
-
 class LwpCurrencyPool
 {
 public:
@@ -201,9 +192,9 @@ private:
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("oS",true, true);//FMT_AUSTRIANSCHILLING = 3,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("BF",true, true);//FMT_BELGIANFRANC      = 4,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("R$",false, true);//FMT_BRAZILIANCRUZEIRO    = 5,
-        m_aCurrencyInfo[nC++]=LwpCurrencyInfo(OUString(RTL_CONSTUTF8_USTRINGPARAM("\357\277\241")));                 //FMT_BRITISHPOUND      = 6,
+        m_aCurrencyInfo[nC++]=LwpCurrencyInfo(OUString(u"\uFFE1"));                 //FMT_BRITISHPOUND      = 6,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("C$");                   //FMT_CANADIANDOLLAR        = 7,
-        m_aCurrencyInfo[nC++]=LwpCurrencyInfo(OUString(RTL_CONSTUTF8_USTRINGPARAM("PRC\357\277\245")),false,true);   //FMT_CHINESEYUAN           = 8,
+        m_aCurrencyInfo[nC++]=LwpCurrencyInfo(OUString(u"PRC\uFFE5"),false,true);   //FMT_CHINESEYUAN           = 8,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("Kc",true, true);//FMT_CZECHKORUNA           = 9,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("Dkr",false, true);//FMT_DANISHKRONE         = 10,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("ECU",true, true);//FMT_ECU                  = 11,
@@ -215,9 +206,9 @@ private:
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("Ft",true, true);//FMT_HUNGARIANFORINT       = 17,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("Rs",false, true);//FMT_INDIANRUPEE          = 18,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("Rp",false, true);//FMT_INDONESIANRUPIAH = 19,
-        m_aCurrencyInfo[nC++]=LwpCurrencyInfo(OUString(RTL_CONSTUTF8_USTRINGPARAM("IR\357\277\241")));                   //FMT_IRISHPUNT         = 20,
+        m_aCurrencyInfo[nC++]=LwpCurrencyInfo(OUString(u"IR\uFFE1"));                   //FMT_IRISHPUNT         = 20,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("L.",false, true);//FMT_ITALIANLIRA          = 21,
-        m_aCurrencyInfo[nC++]=LwpCurrencyInfo(OUString(RTL_CONSTUTF8_USTRINGPARAM("\357\277\245")));             //FMT_JAPANESEYEN           = 22,
+        m_aCurrencyInfo[nC++]=LwpCurrencyInfo(OUString(u"\uFFE5"));             //FMT_JAPANESEYEN           = 22,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("LF",true, true);//FMT_LUXEMBOURGFRANC       = 23,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("Rm",false, true);//FMT_MALAYSIANRINGGIT = 24,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("Mex$");                 //FMT_MEXICANPESO           = 25,
@@ -241,7 +232,7 @@ private:
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("$");                    //FMT_USDOLLAR          = 43,
         m_aCurrencyInfo[nC++]=LwpCurrencyInfo("OTH",false, true);//FMT_OTHERCURRENCY       = 44,
 
-        m_aCurrencyInfo[FMT_EURO]=LwpCurrencyInfo(OUString(RTL_CONSTUTF8_USTRINGPARAM("\342\202\254")));             //FMT_EURO              = 52
+        m_aCurrencyInfo[FMT_EURO]=LwpCurrencyInfo(OUString(u"\u20AC"));             //FMT_EURO              = 52
     }
 };
 
@@ -252,8 +243,8 @@ public:
     void Read();
     static bool IsCurrencyFormat(sal_uInt16 Format);
     sal_uInt16 GetDecimalPlaces();
-    bool IsDecimalPlacesOverridden();
-    bool IsNegativeOverridden();
+    bool IsDecimalPlacesOverridden() const;
+    bool IsNegativeOverridden() const;
     XFStyle* Convert();
 
 private:
@@ -284,30 +275,29 @@ private:
 };
 
 inline bool
-LwpNumericFormat::IsDecimalPlacesOverridden()
+LwpNumericFormat::IsDecimalPlacesOverridden() const
 {
     return (cFlags & NF_OVER_DECIMAL_PLACES) != 0;
 }
 
 inline bool
-LwpNumericFormat::IsNegativeOverridden()
+LwpNumericFormat::IsNegativeOverridden() const
 {
     return (cFlags & NF_OVER_NEGATIVE) != 0;
 }
 
-class LwpLayoutNumerics : public LwpVirtualPiece
+class LwpLayoutNumerics final : public LwpVirtualPiece
 {
 public:
-    LwpLayoutNumerics(LwpObjectHeader& objHdr, LwpSvStream* pStrm)
+    LwpLayoutNumerics(LwpObjectHeader const & objHdr, LwpSvStream* pStrm)
     :LwpVirtualPiece(objHdr, pStrm),cNumerics(m_pObjStrm.get()){}
     XFStyle* Convert();
     virtual void Read() override;
 
-protected:
-    LwpNumericFormat cNumerics;
-
 private:
     virtual ~LwpLayoutNumerics() override {}
+
+    LwpNumericFormat cNumerics;
 };
 
 #endif

@@ -17,18 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_TRANSPARENCEPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_TRANSPARENCEPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** TransparencePrimitive2D class
 
             This is the basic primitive for applying freely defined transparence
@@ -46,7 +43,7 @@ namespace drawinglayer
             rendering, not the transparent one. The transparent one should/will be clipped
             accordingly.
          */
-        class DRAWINGLAYER_DLLPUBLIC TransparencePrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC TransparencePrimitive2D final : public GroupPrimitive2D
         {
         private:
             /// The transparence-Mask who's RGB-Values are interpreted as Luminance
@@ -75,12 +72,9 @@ namespace drawinglayer
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_TRANSPARENCEPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

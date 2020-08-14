@@ -20,20 +20,18 @@
 #ifndef INCLUDED_STARMATH_SOURCE_MATHMLEXPORT_HXX
 #define INCLUDED_STARMATH_SOURCE_MATHMLEXPORT_HXX
 
-#include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlexp.hxx>
-#include <xmloff/DocumentSettingsContext.hxx>
 #include <xmloff/xmltoken.hxx>
 
-#include <node.hxx>
-
 class SfxMedium;
-namespace com { namespace sun { namespace star {
+class SmNode;
+class SmVerticalBraceNode;
+namespace com::sun::star {
     namespace io {
         class XOutputStream; }
     namespace beans {
         class XPropertySet; }
-} } }
+}
 
 
 class SmXMLExportWrapper
@@ -42,7 +40,7 @@ class SmXMLExportWrapper
     bool bFlat;     //set true for export to flat .mml, set false for
                         //export to a .sxm (or whatever) package
 public:
-    explicit SmXMLExportWrapper(css::uno::Reference<css::frame::XModel> &rRef)
+    explicit SmXMLExportWrapper(css::uno::Reference<css::frame::XModel> const &rRef)
         : xModel(rRef), bFlat(true) {}
 
     bool Export(SfxMedium &rMedium);
@@ -51,27 +49,26 @@ public:
     static bool WriteThroughComponent(
         const css::uno::Reference< css::io::XOutputStream >&   xOutputStream,
         const css::uno::Reference< css::lang::XComponent >&    xComponent,
-        css::uno::Reference< css::uno::XComponentContext > & rxContext,
-        css::uno::Reference< css::beans::XPropertySet > & rPropSet,
-        const sal_Char* pComponentName );
+        css::uno::Reference< css::uno::XComponentContext > const & rxContext,
+        css::uno::Reference< css::beans::XPropertySet > const & rPropSet,
+        const char* pComponentName );
 
     static bool WriteThroughComponent(
         const css::uno::Reference< css::embed::XStorage >& xStor,
         const css::uno::Reference< css::lang::XComponent >& xComponent,
-        const sal_Char* pStreamName,
-        css::uno::Reference< css::uno::XComponentContext > & rxContext,
-        css::uno::Reference< css::beans::XPropertySet > & rPropSet,
-        const sal_Char* pComponentName );
+        const char* pStreamName,
+        css::uno::Reference< css::uno::XComponentContext > const & rxContext,
+        css::uno::Reference< css::beans::XPropertySet > const & rPropSet,
+        const char* pComponentName );
 };
 
 
-class SmXMLExport : public SvXMLExport
+class SmXMLExport final : public SvXMLExport
 {
     const SmNode *  pTree;
     OUString        aText;
     bool        bSuccess;
 
-protected:
     void ExportNodes(const SmNode *pNode, int nLevel);
     void ExportTable(const SmNode *pNode, int nLevel);
     void ExportLine(const SmNode *pNode, int nLevel);
@@ -110,7 +107,7 @@ public:
     virtual void GetViewSettings(css::uno::Sequence<css::beans::PropertyValue>& aProps) override;
     virtual void GetConfigurationSettings(css::uno::Sequence<css::beans::PropertyValue>& aProps) override;
 
-    bool GetSuccess() {return bSuccess;}
+    bool GetSuccess() const {return bSuccess;}
 };
 
 

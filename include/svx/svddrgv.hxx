@@ -22,24 +22,28 @@
 
 #include <svx/svxdllapi.h>
 #include <svx/svdxcgv.hxx>
+#include <memory>
 
 class SdrUndoGeoObj;
 
-class SVX_DLLPUBLIC SdrDragView: public SdrExchangeView
+class SVXCORE_DLLPUBLIC SdrDragView : public SdrExchangeView
 {
     friend class                SdrPageView;
     friend class                SdrDragMethod;
 
+    // See GetDragXorPolyLimit/GetDragXorPointLimit
+    enum : size_t {
+        eDragXorPolyLimit = 100,
+        eDragXorPointLimit = 500
+    };
+
 protected:
     SdrHdl*                     mpDragHdl;
-    SdrDragMethod*              mpCurrentSdrDragMethod;
+    std::unique_ptr<SdrDragMethod> mpCurrentSdrDragMethod;
     SdrUndoGeoObj*              mpInsPointUndo;
     tools::Rectangle            maDragLimit;
     OUString                    maInsPointUndoStr;
     SdrHdlKind                  meDragHdl;
-
-    sal_uIntPtr                 mnDragXorPolyLimit;
-    sal_uIntPtr                 mnDragXorPointLimit;
 
     bool                        mbFramDrag : 1;        // currently frame dragging
     bool                        mbMarkedHitMovesAlways : 1; // Persistent
@@ -66,7 +70,10 @@ protected:
 
 protected:
     // #i71538# make constructors of SdrView sub-components protected to avoid incomplete incarnations which may get casted to SdrView
-    SdrDragView(SdrModel* pModel1, OutputDevice* pOut);
+    SdrDragView(
+        SdrModel& rSdrModel,
+        OutputDevice* pOut);
+
     virtual ~SdrDragView() override;
 
 public:
@@ -98,7 +105,7 @@ public:
     void BrkDragObj();
     bool IsDragObj() const { return mpCurrentSdrDragMethod && !mbInsPolyPoint && !mbInsGluePoint; }
     SdrHdl* GetDragHdl() const { return mpDragHdl; }
-    SdrDragMethod* GetDragMethod() const { return mpCurrentSdrDragMethod; }
+    SdrDragMethod* GetDragMethod() const { return mpCurrentSdrDragMethod.get(); }
     bool IsDraggingPoints() const { return meDragHdl==SdrHdlKind::Poly; }
     bool IsDraggingGluePoints() const { return meDragHdl==SdrHdlKind::Glue; }
 
@@ -150,14 +157,13 @@ public:
     // If the number of selected objects exceeds the value set here,
     // NoDragPolys is (temporarily) activated implicitly.
     // PolyPolygons etc. are regarded as multiple objects respectively.
-    // Default=100
-    sal_uIntPtr GetDragXorPolyLimit() const { return mnDragXorPolyLimit; }
+    static size_t GetDragXorPolyLimit() { return eDragXorPolyLimit; }
 
     // Like DragXorPolyLimit, but in respect to the total number of
-    // all polygons. Default=500.
+    // all polygons.
     // NoDragPolys is (temporarily) activated, if one of the limits
     // is exceeded.
-    sal_uIntPtr GetDragXorPointLimit() const { return mnDragXorPointLimit; }
+    static size_t GetDragXorPointLimit() { return eDragXorPointLimit; }
 
     void SetSolidDragging(bool bOn);
     bool IsSolidDragging() const;
@@ -217,7 +223,7 @@ public:
     // it must be taken into account that because of subsequent
     // recalculation of the SnapRect (on Resize), rounding errors can
     // occur, because of which the LimitRect might be exceeded by a
-    // very small extent....
+    // very small extent...
     // Implemented for Move and Resize
     virtual bool TakeDragLimit(SdrDragMode eMode, tools::Rectangle& rRect) const;
 };

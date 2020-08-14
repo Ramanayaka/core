@@ -19,7 +19,6 @@
 
 #include "WW8FFData.hxx"
 #include <tools/stream.hxx>
-#include <doc.hxx>
 #include "writerwordglue.hxx"
 #include "wrtww8.hxx"
 
@@ -146,15 +145,8 @@ void WW8FFData::Write(SvStream * pDataStrm)
         sal_uInt32 nListboxEntries = msListEntries.size();
         pDataStrm->WriteUInt32( nListboxEntries );
 
-        std::vector< OUString >::const_iterator aIt = msListEntries.begin();
-
-        while (aIt != msListEntries.end())
-        {
-            const OUString & rEntry = *aIt;
+        for (const OUString & rEntry : msListEntries)
             WriteOUString(pDataStrm, rEntry, false);
-
-            ++aIt;
-        }
     }
 
     SwWW8Writer::WriteLong( *pDataStrm, nDataStt,

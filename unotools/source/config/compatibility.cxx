@@ -18,12 +18,15 @@
  */
 
 #include <unotools/compatibility.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/configitem.hxx>
 #include <unotools/syslocale.hxx>
 #include <tools/debug.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/lang/Locale.hpp>
+#include <i18nlangtag/languagetag.hxx>
 
 #include "itemholder1.hxx"
 
@@ -62,12 +65,9 @@ SvtCompatibilityEntry::SvtCompatibilityEntry()
     setValue<bool>( Index::ProtectForm, false );
     setValue<bool>( Index::MsWordTrailingBlanks, false );
     setValue<bool>( Index::SubtractFlysAnchoredAtFlys, false );
+    setValue<bool>( Index::EmptyDbFieldHidesPara, true );
 
     setDefaultEntry( false );
-}
-
-SvtCompatibilityEntry::~SvtCompatibilityEntry()
-{
 }
 
 OUString SvtCompatibilityEntry::getName( const Index rIdx )
@@ -92,7 +92,8 @@ OUString SvtCompatibilityEntry::getName( const Index rIdx )
         "ExpandWordSpace",
         "ProtectForm",
         "MsWordCompTrailingBlanks",
-        "SubtractFlysAnchoredAtFlys"
+        "SubtractFlysAnchoredAtFlys",
+        "EmptyDbFieldHidesPara",
     };
 
     /* Size of sPropertyName array not equal size of the SvtCompatibilityEntry::Index enum class */
@@ -158,7 +159,6 @@ SvtCompatibilityOptions_Impl::SvtCompatibilityOptions_Impl() : ConfigItem( ROOTN
     // See impl_GetPropertyNames() for further information.
     Sequence< OUString > lNodes;
     Sequence< OUString > lNames  = impl_GetPropertyNames( lNodes );
-    sal_uInt32           nCount  = lNodes.getLength();
     Sequence< Any >      lValues = GetProperties( lNames );
 
     // Safe impossible cases.
@@ -169,14 +169,18 @@ SvtCompatibilityOptions_Impl::SvtCompatibilityOptions_Impl() : ConfigItem( ROOTN
     // Get names/values for new menu.
     // 4 subkeys for every item!
     bool bDefaultFound = false;
-    for ( sal_uInt32 nItem = 0; nItem < nCount; ++nItem )
+    sal_Int32 nDestStep    = 0;
+    for ( const auto& rNode : std::as_const(lNodes) )
     {
         SvtCompatibilityEntry aItem;
 
-        aItem.setValue<OUString>( SvtCompatibilityEntry::Index::Name, lNodes[ nItem ] );
+        aItem.setValue<OUString>( SvtCompatibilityEntry::Index::Name, rNode );
 
         for ( int i = static_cast<int>(SvtCompatibilityEntry::Index::Module); i < static_cast<int>(SvtCompatibilityEntry::Index::INVALID); ++i )
-            aItem.setValue( SvtCompatibilityEntry::Index(i), lValues[ i - 1 ] );
+        {
+            aItem.setValue( SvtCompatibilityEntry::Index(i), lValues[ nDestStep ] );
+            nDestStep++;
+        }
 
         m_aOptions.push_back( aItem );
 
@@ -241,10 +245,10 @@ Sequence< Sequence< PropertyValue > > SvtCompatibilityOptions_Impl::GetList() co
         lProperties[i].Name = SvtCompatibilityEntry::getName( SvtCompatibilityEntry::Index(i) );
 
     sal_Int32 j = 0;
-    for ( std::vector< SvtCompatibilityEntry >::const_iterator pItem = m_aOptions.begin(); pItem != m_aOptions.end(); ++pItem )
+    for ( const auto& rItem : m_aOptions )
     {
         for ( int i = static_cast<int>(SvtCompatibilityEntry::Index::Name); i < static_cast<int>(SvtCompatibilityEntry::Index::INVALID); ++i )
-            lProperties[i].Value = pItem->getValue( SvtCompatibilityEntry::Index(i) );
+            lProperties[i].Value = rItem.getValue( SvtCompatibilityEntry::Index(i) );
         lResult[ j++ ] = lProperties;
     }
 
@@ -287,16 +291,11 @@ Sequence< OUString > SvtCompatibilityOptions_Impl::impl_GetPropertyNames( Sequen
     // expand list to result list ...
     Sequence< OUString > lProperties( rItems.getLength() * ( SvtCompatibilityEntry::getElementCount() - 1 ) );
 
-    sal_Int32 nSourceCount = rItems.getLength();
     sal_Int32 nDestStep    = 0;
     // Copy entries to destination and expand every item with 2 supported sub properties.
-    for ( sal_Int32 nSourceStep = 0; nSourceStep < nSourceCount; ++nSourceStep )
+    for ( const auto& rItem : std::as_const(rItems) )
     {
-        OUString sFixPath;
-        sFixPath = SETNODE_ALLFILEFORMATS;
-        sFixPath += PATHDELIMITER;
-        sFixPath += rItems[ nSourceStep ];
-        sFixPath += PATHDELIMITER;
+        OUString sFixPath = SETNODE_ALLFILEFORMATS PATHDELIMITER + rItem + PATHDELIMITER;
         for ( int i = static_cast<int>(SvtCompatibilityEntry::Index::Module); i < static_cast<int>(SvtCompatibilityEntry::Index::INVALID); ++i )
         {
             lProperties[ nDestStep ] = sFixPath + SvtCompatibilityEntry::getName( SvtCompatibilityEntry::Index(i) );

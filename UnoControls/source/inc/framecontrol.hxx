@@ -17,37 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_UNOCONTROLS_SOURCE_INC_FRAMECONTROL_HXX
-#define INCLUDED_UNOCONTROLS_SOURCE_INC_FRAMECONTROL_HXX
+#pragma once
 
-#include <com/sun/star/frame/XFrame2.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XConnectionPointContainer.hpp>
 #include <cppuhelper/propshlp.hxx>
 #include <rtl/ref.hxx>
 
-#include "basecontrol.hxx"
-#include "OConnectionPointContainerHelper.hxx"
+#include <basecontrol.hxx>
 
-//  namespaces
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::frame { class XFrame2; }
+namespace unocontrols { class OConnectionPointContainerHelper; }
 
-namespace unocontrols{
+namespace unocontrols {
 
-//  class
-
-class FrameControl  : public css::awt::XControlModel
+class FrameControl final : public css::awt::XControlModel
                     , public css::lang::XConnectionPointContainer
                     , public BaseControl                                // This order is necessary for right initialization of m_aMutex!
                     , public ::cppu::OBroadcastHelper
                     , public ::cppu::OPropertySetHelper
 {
-
-//  public methods
-
 public:
-
-    //  construct/destruct
 
     FrameControl( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
 
@@ -59,7 +49,7 @@ public:
         const css::uno::Type& aType
     ) override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      increment refcount
         @seealso    XInterface
         @seealso    release()
@@ -68,7 +58,7 @@ public:
 
     virtual void SAL_CALL acquire() throw() override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      decrement refcount
         @seealso    XInterface
         @seealso    acquire()
@@ -134,15 +124,8 @@ public:
         const css::uno::Reference< css::uno::XInterface >&    xListener
     ) override;
 
-    //  impl but public methods to register service!
+private:
 
-    static const css::uno::Sequence< OUString > impl_getStaticSupportedServiceNames();
-
-    static const OUString impl_getStaticImplementationName();
-
-//  protected methods
-
-protected:
     using OPropertySetHelper::getFastPropertyValue;
 
     //  OPropertySetHelper
@@ -170,13 +153,9 @@ protected:
 
     //  BaseControl
 
-    virtual css::awt::WindowDescriptor* impl_getWindowDescriptor(
+    virtual css::awt::WindowDescriptor impl_getWindowDescriptor(
         const css::uno::Reference< css::awt::XWindowPeer >& xParentPeer
     ) override;
-
-//  private methods
-
-private:
 
     void impl_createFrame(  const css::uno::Reference< css::awt::XWindowPeer >&       xPeer           ,
                             const OUString&                                         sURL            ,
@@ -184,19 +163,14 @@ private:
 
     void impl_deleteFrame();
 
-//  private variables
-
-private:
-
     css::uno::Reference< css::frame::XFrame2 >              m_xFrame;
     OUString                                                m_sComponentURL;
     css::uno::Sequence< css::beans::PropertyValue >         m_seqLoaderArguments;
     rtl::Reference<OConnectionPointContainerHelper>         m_aConnectionPointContainer;
 
-};  // class FrameControl
+};
 
-}   // namespace unocontrols
+}
 
-#endif // INCLUDED_UNOCONTROLS_SOURCE_INC_FRAMECONTROL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -23,15 +23,12 @@
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/document/XEventListener.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/linguistic2/XDictionaryListEventListener.hpp>
 #include <com/sun/star/linguistic2/XSearchableDictionaryList.hpp>
 #include <com/sun/star/linguistic2/XLinguProperties.hpp>
 
 #include <rtl/ref.hxx>
-#include <rtl/string.hxx>
 #include <i18nlangtag/lang.h>
 
 #include <set>
@@ -42,7 +39,7 @@ namespace linguistic
 
 class SpellCache;
 
-class FlushListener :
+class FlushListener final :
     public cppu::WeakImplHelper
     <
         css::linguistic2::XDictionaryListEventListener,
@@ -59,8 +56,8 @@ class FlushListener :
 public:
     FlushListener( SpellCache& rFO ) : mrSpellCache(rFO) {}
 
-    void        SetDicList( css::uno::Reference< css::linguistic2::XSearchableDictionaryList > &rDL );
-    void        SetPropSet( css::uno::Reference< css::linguistic2::XLinguProperties > &rPS );
+    void        SetDicList( css::uno::Reference< css::linguistic2::XSearchableDictionaryList > const &rDL );
+    void        SetPropSet( css::uno::Reference< css::linguistic2::XLinguProperties > const &rPS );
 
     //XEventListener
     virtual void SAL_CALL disposing( const css::lang::EventObject& rSource ) override;

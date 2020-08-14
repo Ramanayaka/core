@@ -7,15 +7,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "test/sheet/xdatapilotdescriptor.hxx"
+#include <test/sheet/xdatapilotdescriptor.hxx>
 
 #include <com/sun/star/sheet/XDataPilotDescriptor.hpp>
 #include <com/sun/star/table/CellRangeAddress.hpp>
 #include <com/sun/star/sheet/DataPilotFieldOrientation.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 
-#include "cppunit/extensions/HelperMacros.h"
+#include <cppunit/TestAssert.h>
 
+#include <o3tl/safeint.hxx>
 #include <rtl/ustring.hxx>
 
 using namespace css;
@@ -47,8 +48,7 @@ void XDataPilotDescriptor::testSourceRange()
     aAddress.EndRow = 5;
     xDescr->setSourceRange(aAddress);
 
-    table::CellRangeAddress aReturn;
-    aReturn = xDescr->getSourceRange();
+    table::CellRangeAddress aReturn = xDescr->getSourceRange();
 
     CPPUNIT_ASSERT_EQUAL(aAddress.Sheet, aReturn.Sheet);
     CPPUNIT_ASSERT_EQUAL(aAddress.StartColumn, aReturn.StartColumn);
@@ -69,15 +69,7 @@ void XDataPilotDescriptor::testGetFilterDescriptor()
 
 void XDataPilotDescriptor::testGetDataPilotFields_Impl( uno::Reference< sheet::XDataPilotDescriptor > const & xDescr)
 {
-    //this method should only be called once but needs to be called before any of the other tests
-    static bool bCalled = false;
-    if (bCalled)
-        return;
-    else
-        bCalled = true;
-
-    uno::Reference< container::XIndexAccess > xIndex(xDescr->getDataPilotFields(), UNO_QUERY_THROW);
-    CPPUNIT_ASSERT( xIndex.is());
+    uno::Reference< container::XIndexAccess > xIndex(xDescr->getDataPilotFields(), UNO_SET_THROW);
 
     sal_Int32 nCount = xIndex->getCount();
 
@@ -85,13 +77,11 @@ void XDataPilotDescriptor::testGetDataPilotFields_Impl( uno::Reference< sheet::X
     for (sal_Int32 i = 0; i < nCount && i < 5; ++i)
     {
         uno::Reference< container::XNamed > xNamed( xIndex->getByIndex( i ), UNO_QUERY_THROW);
-        CPPUNIT_ASSERT(xNamed.is());
         OUString aName = xNamed->getName();
         maFieldNames.push_back(aName);
         CPPUNIT_ASSERT( aName != "Data" );
 
         uno::Reference< beans::XPropertySet > xPropSet( xNamed, UNO_QUERY_THROW);
-        CPPUNIT_ASSERT( xPropSet.is() );
 
         switch ( i % 5 )
         {
@@ -144,7 +134,7 @@ void XDataPilotDescriptor::testGetColumnFields()
 {
     uno::Reference< sheet::XDataPilotDescriptor > xDescr(init(),UNO_QUERY_THROW);
     testGetDataPilotFields_Impl( xDescr );
-    uno::Reference< container::XIndexAccess > xIndex(xDescr->getColumnFields(), UNO_QUERY_THROW);
+    uno::Reference< container::XIndexAccess > xIndex(xDescr->getColumnFields(), UNO_SET_THROW);
 
     checkName( xIndex, 0 );
 }
@@ -153,7 +143,7 @@ void XDataPilotDescriptor::testGetRowFields()
 {
     uno::Reference< sheet::XDataPilotDescriptor > xDescr(init(),UNO_QUERY_THROW);
     testGetDataPilotFields_Impl( xDescr );
-    uno::Reference< container::XIndexAccess > xIndex(xDescr->getRowFields(), UNO_QUERY_THROW);
+    uno::Reference< container::XIndexAccess > xIndex(xDescr->getRowFields(), UNO_SET_THROW);
 
     //checkName( xIndex, 1 );
 }
@@ -162,7 +152,7 @@ void XDataPilotDescriptor::testGetPageFields()
 {
     uno::Reference< sheet::XDataPilotDescriptor > xDescr(init(), UNO_QUERY_THROW);
     testGetDataPilotFields_Impl( xDescr );
-    uno::Reference< container::XIndexAccess > xIndex(xDescr->getPageFields(), UNO_QUERY_THROW);
+    uno::Reference< container::XIndexAccess > xIndex(xDescr->getPageFields(), UNO_SET_THROW);
 
     checkName( xIndex, 4 );
 }
@@ -171,7 +161,7 @@ void XDataPilotDescriptor::testGetDataFields()
 {
     uno::Reference< sheet::XDataPilotDescriptor > xDescr(init(),UNO_QUERY_THROW);
     testGetDataPilotFields_Impl( xDescr );
-    uno::Reference< container::XIndexAccess > xIndex(xDescr->getDataFields(), UNO_QUERY_THROW);
+    uno::Reference< container::XIndexAccess > xIndex(xDescr->getDataFields(), UNO_SET_THROW);
 
     checkName( xIndex, 2 );
 }
@@ -180,7 +170,7 @@ void XDataPilotDescriptor::testGetHiddenFields()
 {
     uno::Reference< sheet::XDataPilotDescriptor > xDescr(init(),UNO_QUERY_THROW);
     testGetDataPilotFields_Impl( xDescr );
-    uno::Reference< container::XIndexAccess > xIndex(xDescr->getHiddenFields(), UNO_QUERY_THROW);
+    uno::Reference< container::XIndexAccess > xIndex(xDescr->getHiddenFields(), UNO_SET_THROW);
 
     checkName( xIndex, 3 );
 }
@@ -188,7 +178,7 @@ void XDataPilotDescriptor::testGetHiddenFields()
 void XDataPilotDescriptor::checkName( uno::Reference< container::XIndexAccess > const & xIndex, sal_Int32 nIndex )
 {
     CPPUNIT_ASSERT(xIndex.is());
-    CPPUNIT_ASSERT(maFieldNames.size() >= static_cast<size_t>(nIndex));
+    CPPUNIT_ASSERT(maFieldNames.size() >= o3tl::make_unsigned(nIndex));
 
     for (sal_Int32 i = 0; i < xIndex->getCount(); ++i)
     {

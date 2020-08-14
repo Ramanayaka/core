@@ -20,18 +20,18 @@
 #ifndef INCLUDED_FRAMEWORK_INC_CLASSES_CONVERTER_HXX
 #define INCLUDED_FRAMEWORK_INC_CLASSES_CONVERTER_HXX
 
-#include <general.h>
-#include <stdtypes.h>
+#include <config_options.h>
+#include <vector>
 
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <tools/datetime.hxx>
-#include <fwidllapi.h>
+#include <framework/fwkdllapi.h>
 
 namespace framework{
 
-class FWI_DLLPUBLIC Converter
+class Converter
 {
     public:
         // Seq<beans.NamedValue> <=> Seq<beans.PropertyValue>

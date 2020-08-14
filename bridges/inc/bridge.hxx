@@ -20,37 +20,34 @@
 #ifndef INCLUDED_BRIDGES_INC_BRIDGE_HXX
 #define INCLUDED_BRIDGES_INC_BRIDGE_HXX
 
-#include "osl/interlck.h"
-#include "sal/types.h"
-#include "typelib/typedescription.h"
-#include "uno/environment.h"
-#include "uno/mapping.h"
+#include <sal/config.h>
 
-namespace bridges { namespace cpp_uno { namespace shared {
+#include <atomic>
+#include <cstddef>
 
-// private:
-extern "C" typedef void SAL_CALL FreeMapping(uno_Mapping *);
-FreeMapping freeMapping;
+#include <sal/types.h>
+#include <typelib/typedescription.h>
+#include <uno/environment.h>
+#include <uno/mapping.h>
 
-// private:
-extern "C"
-typedef void SAL_CALL AcquireMapping(uno_Mapping *);
-AcquireMapping acquireMapping;
+namespace bridges::cpp_uno::shared {
 
 // private:
-extern "C"
-typedef void SAL_CALL ReleaseMapping(uno_Mapping *);
-ReleaseMapping releaseMapping;
+extern "C" void freeMapping(uno_Mapping *);
 
 // private:
-extern "C" typedef void SAL_CALL Cpp2unoMapping(
+extern "C" void acquireMapping(uno_Mapping *);
+
+// private:
+extern "C" void releaseMapping(uno_Mapping *);
+
+// private:
+extern "C" void cpp2unoMapping(
     uno_Mapping *, void **, void *, typelib_InterfaceTypeDescription *);
-Cpp2unoMapping cpp2unoMapping;
 
 // private:
-extern "C" typedef void SAL_CALL Uno2cppMapping(
+extern "C" void uno2cppMapping(
     uno_Mapping *, void **, void *, typelib_InterfaceTypeDescription *);
-Uno2cppMapping uno2cppMapping;
 
 /**
  * Holding environments and mappings.
@@ -77,8 +74,8 @@ public:
     uno_Mapping * getUno2Cpp() { return &aUno2Cpp; }
 
 private:
-    Bridge(Bridge &) = delete;
-    void operator =(const Bridge&) = delete;
+    Bridge(Bridge const &) = delete;
+    Bridge& operator =(const Bridge&) = delete;
 
     Bridge(
         uno_ExtEnvironment * pCppEnv_, uno_ExtEnvironment * pUnoEnv_,
@@ -90,7 +87,7 @@ private:
         Bridge * pBridge;
     };
 
-    oslInterlockedCount nRef;
+    std::atomic<std::size_t> nRef;
 
     uno_ExtEnvironment * pCppEnv;
     uno_ExtEnvironment * pUnoEnv;
@@ -100,22 +97,22 @@ private:
 
     bool bExportCpp2Uno;
 
-    friend void SAL_CALL freeMapping(uno_Mapping * pMapping);
+    friend void freeMapping(uno_Mapping * pMapping);
 
-    friend void SAL_CALL acquireMapping(uno_Mapping * pMapping);
+    friend void acquireMapping(uno_Mapping * pMapping);
 
-    friend void SAL_CALL releaseMapping(uno_Mapping * pMapping);
+    friend void releaseMapping(uno_Mapping * pMapping);
 
-    friend void SAL_CALL cpp2unoMapping(
+    friend void cpp2unoMapping(
         uno_Mapping * pMapping, void ** ppUnoI, void * pCppI,
         typelib_InterfaceTypeDescription * pTypeDescr);
 
-    friend void SAL_CALL uno2cppMapping(
+    friend void uno2cppMapping(
         uno_Mapping * pMapping, void ** ppCppI, void * pUnoI,
         typelib_InterfaceTypeDescription * pTypeDescr);
 };
 
-} } }
+}
 
 #endif
 

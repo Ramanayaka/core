@@ -21,17 +21,13 @@
 #include "implbitmap.hxx"
 #include "implbitmapcanvas.hxx"
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <canvas/canvastools.hxx>
+#include <osl/diagnose.h>
 
 
 using namespace ::com::sun::star;
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-
-    namespace internal
-    {
 
         ImplBitmap::ImplBitmap( const CanvasSharedPtr&                      rParentCanvas,
                                 const uno::Reference< rendering::XBitmap >& rBitmap ) :
@@ -44,9 +40,9 @@ namespace cppcanvas
             uno::Reference< rendering::XBitmapCanvas > xBitmapCanvas( rBitmap,
                                                                       uno::UNO_QUERY );
             if( xBitmapCanvas.is() )
-                mpBitmapCanvas.reset( new ImplBitmapCanvas(
+                mpBitmapCanvas = std::make_shared<ImplBitmapCanvas>(
                                           uno::Reference< rendering::XBitmapCanvas >(rBitmap,
-                                                                                     uno::UNO_QUERY) ) );
+                                                                                     uno::UNO_QUERY) );
         }
 
         ImplBitmap::~ImplBitmap()
@@ -57,11 +53,10 @@ namespace cppcanvas
         {
             CanvasSharedPtr pCanvas( getCanvas() );
 
-            OSL_ENSURE( pCanvas.get() != nullptr &&
-                        pCanvas->getUNOCanvas().is(),
+            OSL_ENSURE( pCanvas && pCanvas->getUNOCanvas().is(),
                         "ImplBitmap::draw: invalid canvas" );
 
-            if( pCanvas.get() == nullptr ||
+            if( !pCanvas ||
                 !pCanvas->getUNOCanvas().is() )
             {
                 return false;
@@ -75,18 +70,17 @@ namespace cppcanvas
             return true;
         }
 
-        bool ImplBitmap::drawAlphaModulated( double nAlphaModulation ) const
+        void ImplBitmap::drawAlphaModulated( double nAlphaModulation ) const
         {
             CanvasSharedPtr pCanvas( getCanvas() );
 
-            OSL_ENSURE( pCanvas.get() != nullptr &&
-                        pCanvas->getUNOCanvas().is(),
+            OSL_ENSURE( pCanvas && pCanvas->getUNOCanvas().is(),
                         "ImplBitmap::drawAlphaModulated(): invalid canvas" );
 
-            if( pCanvas.get() == nullptr ||
+            if( !pCanvas ||
                 !pCanvas->getUNOCanvas().is() )
             {
-                return false;
+                return;
             }
 
             rendering::RenderState aLocalState( getRenderState() );
@@ -99,8 +93,6 @@ namespace cppcanvas
             pCanvas->getUNOCanvas()->drawBitmapModulated( mxBitmap,
                                                           pCanvas->getViewState(),
                                                           aLocalState );
-
-            return true;
         }
 
         BitmapCanvasSharedPtr ImplBitmap::getBitmapCanvas() const
@@ -112,7 +104,6 @@ namespace cppcanvas
         {
             return mxBitmap;
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

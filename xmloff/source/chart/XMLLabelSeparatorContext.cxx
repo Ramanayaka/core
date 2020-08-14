@@ -21,10 +21,7 @@
 
 #include "SchXMLParagraphContext.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmltkmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
 
 
 using namespace ::com::sun::star;
@@ -47,8 +44,8 @@ void XMLLabelSeparatorContext::StartElement( const uno::Reference< xml::sax::XAt
 {
 }
 
-SvXMLImportContext* XMLLabelSeparatorContext::CreateChildContext(
-    sal_uInt16 nPrefix, const OUString& rLocalName,
+SvXMLImportContextRef XMLLabelSeparatorContext::CreateChildContext(
+    sal_uInt16 /*nPrefix*/, const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList > & /*xAttrList*/ )
 {
     SvXMLImportContext* pContext = nullptr;
@@ -57,8 +54,6 @@ SvXMLImportContext* XMLLabelSeparatorContext::CreateChildContext(
         pContext = new SchXMLParagraphContext( GetImport(),
                             rLocalName, m_aSeparator );
     }
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }

@@ -20,13 +20,11 @@
 #ifndef INCLUDED_SD_INC_SDGRFFILTER_HXX
 #define INCLUDED_SD_INC_SDGRFFILTER_HXX
 
-#include <com/sun/star/drawing/XShape.hpp>
-
-#include <vcl/errinf.hxx>
 #include "sdfilter.hxx"
+class ErrCode;
 
 // SdCGMFilter
-class SdGRFFilter : public SdFilter
+class SdGRFFilter final : public SdFilter
 {
 public:
     SdGRFFilter ( SfxMedium& rMedium, ::sd::DrawDocShell& rDocShell );

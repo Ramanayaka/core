@@ -25,20 +25,19 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/xml/sax/XFastContextHandler.hpp>
 #include <com/sun/star/xml/sax/XFastShapeContextHandler.hpp>
-#include <oox/mathml/import.hxx>
 #include <oox/mathml/importutils.hxx>
+#include <rtl/ref.hxx>
 #include "OOXMLParserState.hxx"
 #include "OOXMLPropertySet.hxx"
 
-namespace writerfilter {
-namespace ooxml
+namespace writerfilter::ooxml
 {
 class OOXMLDocumentImpl;
 
 class OOXMLFastContextHandler: public ::cppu::WeakImplHelper<css::xml::sax::XFastContextHandler>
 {
 public:
-    typedef std::shared_ptr<OOXMLFastContextHandler> Pointer_t;
+    typedef tools::SvRef<OOXMLFastContextHandler> Pointer_t;
 
     enum ResourceEnum_t { UNKNOWN, STREAM, PROPERTIES, TABLE, SHAPE };
 
@@ -46,18 +45,20 @@ public:
 
     explicit OOXMLFastContextHandler(OOXMLFastContextHandler * pContext);
 
+    OOXMLFastContextHandler(OOXMLFastContextHandler const &) = default;
+
     virtual ~OOXMLFastContextHandler() override;
 
     // css::xml::sax::XFastContextHandler:
-    virtual void SAL_CALL startFastElement (Token_t Element, const css::uno::Reference< css::xml::sax::XFastAttributeList >& Attribs) override;
+    virtual void SAL_CALL startFastElement (sal_Int32 Element, const css::uno::Reference< css::xml::sax::XFastAttributeList >& Attribs) override final;
 
     virtual void SAL_CALL startUnknownElement(const OUString & Namespace, const OUString & Name, const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override;
 
-    virtual void SAL_CALL endFastElement(Token_t Element) override;
+    virtual void SAL_CALL endFastElement(sal_Int32 Element) override;
 
     virtual void SAL_CALL endUnknownElement(const OUString & Namespace, const OUString & Name) override;
 
-    virtual css::uno::Reference<css::xml::sax::XFastContextHandler> SAL_CALL createFastChildContext(Token_t Element,
+    virtual css::uno::Reference<css::xml::sax::XFastContextHandler> SAL_CALL createFastChildContext(sal_Int32 Element,
         const css::uno::Reference<css::xml::sax::XFastAttributeList>& Attribs) override;
 
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createUnknownChildContext(const OUString & Namespace, const OUString & Name,
@@ -117,7 +118,6 @@ public:
     sal_Int32 getXNoteId() const;
     void setForwardEvents(bool bForwardEvents);
     bool isForwardEvents() const;
-    virtual void setParent(OOXMLFastContextHandler * pParent);
     virtual void setId(Id nId);
     virtual Id getId() const;
 
@@ -137,6 +137,8 @@ public:
     void endParagraphGroup();
     void startCharacterGroup();
     void endCharacterGroup();
+    virtual void pushBiDiEmbedLevel();
+    virtual void popBiDiEmbedLevel();
     void startSdt();
     void endSdt();
 
@@ -166,7 +168,6 @@ public:
     void startTxbxContent();
     void endTxbxContent();
     void propagateCharacterProperties();
-    void propagateCharacterPropertiesAsSet(Id nId);
     void propagateTableProperties();
     void propagateRowProperties();
     void propagateCellProperties();
@@ -193,6 +194,16 @@ protected:
     Id mnDefine;
     Token_t mnToken;
 
+    // the formula insertion mode: inline/newline(left, center, right)
+    sal_Int8 mnMathJcVal;
+    bool mbIsMathPara;
+    enum eMathParaJc
+    {
+        INLINE, //The equation is anchored as inline to the text
+        CENTER, //The equation is center aligned
+        LEFT,   //The equation is left aligned
+        RIGHT  //The equation is right aligned
+    };
     // the stream to send the stream events to.
     Stream * mpStream;
 
@@ -221,19 +232,26 @@ protected:
     void startAction();
     void endAction();
 
-    const css::uno::Reference< css::uno::XComponentContext >& getComponentContext() { return m_xContext;}
+    const css::uno::Reference< css::uno::XComponentContext >& getComponentContext() const { return m_xContext;}
 
     bool inPositionV;
+    bool mbAllowInCell; // o:allowincell
+    bool mbIsVMLfound;
     OOXMLValue::Pointer_t mpGridAfter;
 
 private:
-    void operator =(OOXMLFastContextHandler &) = delete;
+    void operator =(OOXMLFastContextHandler const &) = delete;
     /// Handles AlternateContent. Returns true, if children of the current element should be ignored.
     bool prepareMceContext(Token_t nElement, const css::uno::Reference<css::xml::sax::XFastAttributeList>& Attribs);
+
+    // 2.10 of XML 1.0 specification
+    bool IsPreserveSpace() const;
 
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
     bool m_bDiscardChildren;
     bool m_bTookChoice; ///< Did we take the Choice or want Fallback instead?
+    bool mbPreserveSpace = false;
+    bool mbPreserveSpaceSet = false;
 
 };
 
@@ -286,7 +304,6 @@ protected:
     OOXMLPropertySet::Pointer_t mpPropertySet;
 
     virtual void lcl_endFastElement(Token_t Element) override;
-    virtual void setParent(OOXMLFastContextHandler * pParent) override;
 
 private:
 
@@ -300,11 +317,11 @@ public:
     explicit OOXMLFastContextHandlerPropertyTable(OOXMLFastContextHandler * pContext);
     virtual ~OOXMLFastContextHandlerPropertyTable() override;
 
-protected:
+private:
     OOXMLTable mTable;
 
     virtual void lcl_endFastElement(Token_t Element) override;
- };
+};
 
 class OOXMLFastContextHandlerValue :
     public OOXMLFastContextHandler
@@ -325,7 +342,12 @@ public:
     virtual void setDefaultHexValue() override;
     virtual void setDefaultStringValue() override;
 
-protected:
+    virtual void pushBiDiEmbedLevel() override;
+    virtual void popBiDiEmbedLevel() override;
+
+    void handleGridAfter();
+
+private:
     OOXMLValue::Pointer_t mpValue;
 };
 
@@ -335,10 +357,10 @@ public:
     explicit OOXMLFastContextHandlerTable(OOXMLFastContextHandler * pContext);
     virtual ~OOXMLFastContextHandlerTable() override;
 
-    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext (Token_t Element,
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext (sal_Int32 Element,
         const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override;
 
-protected:
+private:
     OOXMLTable mTable;
 
     css::uno::Reference<css::xml::sax::XFastContextHandler> mCurrentChild;
@@ -399,9 +421,6 @@ public:
     static void startRow();
     void endRow();
     void handleGridBefore( const OOXMLValue::Pointer_t& val );
-    void handleGridAfter(const OOXMLValue::Pointer_t& rValue);
-private:
-    static OOXMLProperty::Pointer_t fakeNoBorder( Id id );
 };
 
 class OOXMLFastContextHandlerTextTable : public OOXMLFastContextHandler
@@ -413,6 +432,10 @@ public:
 
     virtual std::string getType() const override { return "TextTable"; }
 
+    // tdf#111550
+    // when <w:tbl> appears as direct child of <w:p>, we need to rearrange this paragraph
+    // to merge with the table's first paragraph (that's what Word does in this case)
+    void start_P_Tbl();
 protected:
     virtual void lcl_startFastElement(Token_t Element, const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override;
 
@@ -421,9 +444,11 @@ protected:
 
 class OOXMLFastContextHandlerShape: public OOXMLFastContextHandlerProperties
 {
-private:
     bool m_bShapeSent;
     bool m_bShapeStarted;
+    /// Is it necessary to pop the stack in the dtor?
+    bool m_bShapeContextPushed;
+    css::uno::Reference<css::xml::sax::XFastShapeContextHandler> mrShapeContext;
 
 public:
     explicit OOXMLFastContextHandlerShape(OOXMLFastContextHandler * pContext);
@@ -444,11 +469,9 @@ public:
     virtual ResourceEnum_t getResource() const override { return SHAPE; }
 
     void sendShape( Token_t Element );
-    bool isShapeSent( ) { return m_bShapeSent; }
+    bool isShapeSent( ) const { return m_bShapeSent; }
 
 protected:
-    css::uno::Reference<css::xml::sax::XFastShapeContextHandler> mrShapeContext;
-
     virtual void lcl_startFastElement(Token_t Element, const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override;
 
     virtual void lcl_endFastElement(Token_t Element) override;
@@ -468,7 +491,9 @@ protected:
 class OOXMLFastContextHandlerWrapper : public OOXMLFastContextHandler
 {
 public:
-    explicit OOXMLFastContextHandlerWrapper(OOXMLFastContextHandler * pParent, css::uno::Reference<css::xml::sax::XFastContextHandler> const & xContext);
+    OOXMLFastContextHandlerWrapper(OOXMLFastContextHandler * pParent,
+                                   css::uno::Reference<css::xml::sax::XFastContextHandler> const & xContext,
+            rtl::Reference<OOXMLFastContextHandlerShape> const & xShapeHandler);
     virtual ~OOXMLFastContextHandlerWrapper() override;
 
     // css::xml::sax::XFastContextHandler:
@@ -508,7 +533,8 @@ protected:
     virtual Token_t getToken() const override;
 
 private:
-    css::uno::Reference<css::xml::sax::XFastContextHandler> mxContext;
+    css::uno::Reference<css::xml::sax::XFastContextHandler> mxWrappedContext;
+    rtl::Reference<OOXMLFastContextHandlerShape> mxShapeHandler;
     std::set<Id> mMyNamespaces;
     std::set<Token_t> mMyTokens;
     OOXMLPropertySet::Pointer_t mpPropertySet;
@@ -573,7 +599,7 @@ protected:
     virtual void process() override;
 };
 
-}}
+}
 #endif // INCLUDED_WRITERFILTER_SOURCE_OOXML_OOXMLFASTCONTEXTHANDLER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

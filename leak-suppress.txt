@@ -6,7 +6,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-# Use via environment variable LSAN_OPTIONS=.../leak-suppress.txt
+# Use via environment variable LSAN_OPTIONS=suppressions=.../leak-suppress.txt
 
 # uno typelib
 leak:cppu/source/typelib/typelib.cxx
@@ -19,9 +19,6 @@ leak:SfxFilterContainer::ReadSingleFilter_Impl
 
 # build-time tool soltools/cpp:
 leak:soltools/cpp/_cpp.c
-
-# resource managers, normally global objects
-leak:ResMgr::CreateResMgr
 
 # bridge's RTTI information, leaked knowingly
 leak:RTTI::getRTTI
@@ -48,3 +45,12 @@ leak:SfxObjectShell::DoInitUnitTest
 # ignore some libc related leaks
 leak:__new_exitfn
 leak:__GI___strdup
+
+# ignore python leaks
+leak:_PyMem_RawMalloc
+
+# ignore leak in gpgmepp external library
+leak:mkdefsinc
+
+# idlc deliberately leaks
+leak:idlc/source/idlcmain.cxx

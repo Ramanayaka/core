@@ -13,18 +13,12 @@
 #include <stdio.h>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/interfacecontainer.h>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <osl/mutex.hxx>
-#include <rtl/bootstrap.hxx>
 
 namespace desktop {
 
@@ -63,11 +57,6 @@ public:
 };
 
 }
-
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface > SAL_CALL UnxSplash_createInstance(const css::uno::Reference< css::uno::XComponentContext > & xCtx );
-OUString UnxSplash_getImplementationName();
-css::uno::Sequence< OUString > SAL_CALL UnxSplash_getSupportedServiceNames() throw ();
 
 #endif // INCLUDED_DESKTOP_SOURCE_SPLASH_UNXSPLASH_HXX
 

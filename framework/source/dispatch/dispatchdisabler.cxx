@@ -9,10 +9,11 @@
 
 #include <sal/config.h>
 
-#include "services.h"
-#include "dispatch/dispatchdisabler.hxx"
+#include <services.h>
+#include <dispatch/dispatchdisabler.hxx>
 
 #include <com/sun/star/frame/DispatchDescriptor.hpp>
+#include <cppuhelper/supportsservice.hxx>
 
 using namespace css;
 using namespace framework;
@@ -25,11 +26,11 @@ DispatchDisabler::DispatchDisabler(const uno::Reference< uno::XComponentContext 
 void SAL_CALL DispatchDisabler::initialize( const uno::Sequence< uno::Any >& aArguments )
 {
     uno::Sequence< OUString > aDisabledURLs;
-    if( aArguments.getLength() > 0 &&
+    if( aArguments.hasElements() &&
         ( aArguments[0] >>= aDisabledURLs ) )
     {
-        for( sal_Int32 i = 0; i < aDisabledURLs.getLength(); ++i )
-            maDisabledURLs.insert(aDisabledURLs[i]);
+        for( OUString const & url : std::as_const(aDisabledURLs) )
+            maDisabledURLs.insert(url);
     }
 }
 
@@ -87,8 +88,8 @@ uno::Sequence< OUString > SAL_CALL
 {
     uno::Sequence< OUString > aDisabledURLs(maDisabledURLs.size());
     sal_Int32 n = 0;
-    for (auto i = maDisabledURLs.begin(); i != maDisabledURLs.end(); ++i)
-        aDisabledURLs[n++] = *i;
+    for (auto const& disabledURL : maDisabledURLs)
+        aDisabledURLs[n++] = disabledURL;
     return aDisabledURLs;
 }
 
@@ -101,7 +102,7 @@ uno::Type SAL_CALL DispatchDisabler::getElementType()
 
 ::sal_Bool SAL_CALL DispatchDisabler::hasElements()
 {
-    return maDisabledURLs.size() > 0;
+    return !maDisabledURLs.empty();
 }
 
 // XNameAccess
@@ -140,12 +141,28 @@ void DispatchDisabler::removeByName( const OUString& rName )
         maDisabledURLs.erase(it);
 }
 
-DEFINE_INIT_SERVICE(DispatchDisabler, {})
+// XInterface, XTypeProvider, XServiceInfo
 
-// XServiceInfo
-DEFINE_XSERVICEINFO_MULTISERVICE_2(DispatchDisabler,
-                                   ::cppu::OWeakObject,
-                                   "com.sun.star.frame.DispatchDisabler",
-                                   IMPLEMENTATIONNAME_DISPATCHDISABLER)
+OUString SAL_CALL DispatchDisabler::getImplementationName()
+{
+    return "com.sun.star.comp.framework.services.DispatchDisabler";
+}
+
+sal_Bool SAL_CALL DispatchDisabler::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL DispatchDisabler::getSupportedServiceNames()
+{
+    return { "com.sun.star.frame.DispatchDisabler" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_DispatchDisabler_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::DispatchDisabler(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

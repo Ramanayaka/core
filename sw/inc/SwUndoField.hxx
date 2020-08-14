@@ -19,7 +19,7 @@
 #ifndef INCLUDED_SW_INC_SWUNDOFIELD_HXX
 #define INCLUDED_SW_INC_SWUNDOFIELD_HXX
 
-#include <undobj.hxx>
+#include "undobj.hxx"
 
 #include <com/sun/star/uno/Any.h>
 
@@ -29,11 +29,11 @@ class SwMsgPoolItem;
 
 class SwUndoField : public SwUndo
 {
-    sal_uLong nNodeIndex;
-    sal_Int32 nOffset;
+    sal_uLong m_nNodeIndex;
+    sal_Int32 m_nOffset;
 
 protected:
-    SwDoc * pDoc;
+    SwDoc * m_pDoc;
     SwPosition GetPosition();
 
 public:
@@ -41,11 +41,11 @@ public:
     virtual ~SwUndoField() override;
 };
 
-class SwUndoFieldFromDoc : public SwUndoField
+class SwUndoFieldFromDoc final : public SwUndoField
 {
-    SwField * pOldField, * pNewField;
-    SwMsgPoolItem * pHint;
-    bool bUpdate;
+    std::unique_ptr<SwField> m_pOldField, m_pNewField;
+    SwMsgPoolItem * m_pHint;
+    bool m_bUpdate;
 
     void DoImpl();
 
@@ -61,10 +61,10 @@ public:
     virtual void RepeatImpl( ::sw::RepeatContext & ) override;
 };
 
-class SwUndoFieldFromAPI : public SwUndoField
+class SwUndoFieldFromAPI final : public SwUndoField
 {
-    css::uno::Any aOldVal, aNewVal;
-    sal_uInt16 nWhich;
+    css::uno::Any m_aOldVal, m_aNewVal;
+    sal_uInt16 m_nWhich;
 
     void DoImpl();
 

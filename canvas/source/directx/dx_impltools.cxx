@@ -20,6 +20,7 @@
 #include <sal/config.h>
 
 #include <algorithm>
+#include <memory>
 #include <vector>
 
 
@@ -29,7 +30,7 @@
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/range/b2drectangle.hxx>
 #include <basegfx/range/b2irectangle.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <com/sun/star/geometry/IntegerRectangle2D.hpp>
 #include <com/sun/star/geometry/RealPoint2D.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -37,7 +38,7 @@
 #include <tools/diagnose_ex.h>
 
 #include <canvas/canvastools.hxx>
-#include <canvas/verifyinput.hxx>
+#include <verifyinput.hxx>
 
 #include "dx_canvas.hxx"
 #include "dx_canvasbitmap.hxx"
@@ -51,10 +52,8 @@
 using namespace ::com::sun::star;
 
 
-namespace dxcanvas
+namespace dxcanvas::tools
 {
-    namespace tools
-    {
         ::basegfx::B2DPolyPolygon polyPolygonFromXPolyPolygon2D( const uno::Reference< rendering::XPolyPolygon2D >& xPoly )
         {
             LinePolyPolygon* pPolyImpl = dynamic_cast< LinePolyPolygon* >( xPoly.get() );
@@ -133,9 +132,9 @@ namespace dxcanvas
             return pRet;
         }
 
-        Gdiplus::Graphics* createGraphicsFromBitmap(const BitmapSharedPtr& rBitmap)
+        GraphicsSharedPtr createGraphicsFromBitmap(const BitmapSharedPtr& rBitmap)
         {
-            Gdiplus::Graphics* pRet = Gdiplus::Graphics::FromImage(rBitmap.get());
+            GraphicsSharedPtr pRet(Gdiplus::Graphics::FromImage(rBitmap.get()));
             if( pRet )
                 setupGraphics( *pRet );
             return pRet;
@@ -166,13 +165,13 @@ namespace dxcanvas
         {
             // TODO(P2): Check whether this gets inlined. If not, make functor
             // out of it
-            inline Gdiplus::PointF implGdiPlusPointFromRealPoint2D( const css::geometry::RealPoint2D& rPoint )
+            Gdiplus::PointF implGdiPlusPointFromRealPoint2D( const css::geometry::RealPoint2D& rPoint )
             {
                 return Gdiplus::PointF( static_cast<Gdiplus::REAL>(rPoint.X),
                                         static_cast<Gdiplus::REAL>(rPoint.Y) );
             }
 
-            void graphicsPathFromB2DPolygon( GraphicsPathSharedPtr&             rOutput,
+            void graphicsPathFromB2DPolygon( GraphicsPathSharedPtr const & rOutput,
                                              std::vector< Gdiplus::PointF >&  rPoints,
                                              const ::basegfx::B2DPolygon&       rPoly,
                                              bool bNoLineJoin)
@@ -232,7 +231,7 @@ namespace dxcanvas
                         }
                         else
                         {
-                            rOutput->AddBeziers( &rPoints[0], nCurrOutput );
+                            rOutput->AddBeziers( rPoints.data(), nCurrOutput );
                         }
                     }
                     else
@@ -254,7 +253,7 @@ namespace dxcanvas
                             }
                             else
                             {
-                                rOutput->AddBeziers( &rPoints[0], nCurrOutput-2 );
+                                rOutput->AddBeziers( rPoints.data(), nCurrOutput-2 );
                             }
                         }
                     }
@@ -262,7 +261,7 @@ namespace dxcanvas
                 else
                 {
                     // no control points -> no curves, simply add
-                    // straigt lines to GraphicsPath
+                    // straight lines to GraphicsPath
                     rPoints.resize( nPoints );
 
                     for( sal_uInt32 nCurrPoint=0; nCurrPoint<nPoints; ++nCurrPoint )
@@ -288,7 +287,7 @@ namespace dxcanvas
                     }
                     else
                     {
-                        rOutput->AddLines( &rPoints[0], nPoints );
+                        rOutput->AddLines( rPoints.data(), nPoints );
                     }
                 }
 
@@ -404,13 +403,12 @@ namespace dxcanvas
 
         GraphicsPathSharedPtr graphicsPathFromRealPoint2DSequence( const uno::Sequence< uno::Sequence< geometry::RealPoint2D > >& points )
         {
-            GraphicsPathSharedPtr pRes( new Gdiplus::GraphicsPath() );
+            GraphicsPathSharedPtr pRes = std::make_shared<Gdiplus::GraphicsPath>();
             std::vector< Gdiplus::PointF > aPoints;
 
-            sal_Int32 nCurrPoly;
-            for( nCurrPoly=0; nCurrPoly<points.getLength(); ++nCurrPoly )
+            for( uno::Sequence< geometry::RealPoint2D > const & seqPoints : points )
             {
-                const sal_Int32 nCurrSize( points[nCurrPoly].getLength() );
+                const sal_Int32 nCurrSize( seqPoints.getLength() );
                 if( nCurrSize )
                 {
                     aPoints.resize( nCurrSize );
@@ -418,12 +416,12 @@ namespace dxcanvas
                     // TODO(F1): Closed/open polygons
 
                     // convert from RealPoint2D array to Gdiplus::PointF array
-                    std::transform( points[nCurrPoly].getConstArray(),
-                                      points[nCurrPoly].getConstArray()+nCurrSize,
+                    std::transform( seqPoints.getConstArray(),
+                                      seqPoints.getConstArray()+nCurrSize,
                                       aPoints.begin(),
                                       implGdiPlusPointFromRealPoint2D );
 
-                    pRes->AddLines( &aPoints[0], nCurrSize );
+                    pRes->AddLines( aPoints.data(), nCurrSize );
                 }
             }
 
@@ -432,7 +430,7 @@ namespace dxcanvas
 
         GraphicsPathSharedPtr graphicsPathFromB2DPolygon( const ::basegfx::B2DPolygon& rPoly, bool bNoLineJoin )
         {
-            GraphicsPathSharedPtr               pRes( new Gdiplus::GraphicsPath() );
+            GraphicsPathSharedPtr               pRes = std::make_shared<Gdiplus::GraphicsPath>();
             std::vector< Gdiplus::PointF >    aPoints;
 
             graphicsPathFromB2DPolygon( pRes, aPoints, rPoly, bNoLineJoin );
@@ -442,7 +440,7 @@ namespace dxcanvas
 
         GraphicsPathSharedPtr graphicsPathFromB2DPolyPolygon( const ::basegfx::B2DPolyPolygon& rPoly, bool bNoLineJoin )
         {
-            GraphicsPathSharedPtr               pRes( new Gdiplus::GraphicsPath() );
+            GraphicsPathSharedPtr               pRes = std::make_shared<Gdiplus::GraphicsPath>();
             std::vector< Gdiplus::PointF >    aPoints;
 
             const sal_uInt32 nPolies( rPoly.count() );
@@ -480,7 +478,7 @@ namespace dxcanvas
                                                          aPoint ) );
         }
 
-        bool drawDIBits( const GraphicsSharedPtr& rGraphics,
+        bool drawDIBits( const std::shared_ptr<Gdiplus::Graphics>& rGraphics,
                          const BITMAPINFO&        rBI,
                          const void*              pBits )
         {
@@ -492,19 +490,19 @@ namespace dxcanvas
                                       pBitmap );
         }
 
-        bool drawRGBABits( const GraphicsSharedPtr& rGraphics,
+        bool drawRGBABits( const std::shared_ptr<Gdiplus::Graphics>& rGraphics,
                            const RawRGBABitmap&     rRawRGBAData )
         {
-            BitmapSharedPtr pBitmap( new Gdiplus::Bitmap( rRawRGBAData.mnWidth,
+            BitmapSharedPtr pBitmap = std::make_shared<Gdiplus::Bitmap>( rRawRGBAData.mnWidth,
                                                           rRawRGBAData.mnHeight,
-                                                          PixelFormat32bppARGB ) );
+                                                          PixelFormat32bppARGB );
 
             Gdiplus::BitmapData aBmpData;
             aBmpData.Width       = rRawRGBAData.mnWidth;
             aBmpData.Height      = rRawRGBAData.mnHeight;
             aBmpData.Stride      = 4*aBmpData.Width; // bottom-up format
             aBmpData.PixelFormat = PixelFormat32bppARGB;
-            aBmpData.Scan0       = rRawRGBAData.mpBitmapData.get();
+            aBmpData.Scan0       = const_cast<sal_uInt8*>(rRawRGBAData.maBitmapData.data());
 
             const Gdiplus::Rect aRect( 0,0,aBmpData.Width,aBmpData.Height );
             if( Gdiplus::Ok != pBitmap->LockBits( &aRect,
@@ -545,9 +543,9 @@ namespace dxcanvas
                     // TODO(P2): At least for the alpha bitmap case, it
                     // would be possible to generate the corresponding
                     // bitmap directly
-                    pBitmap.reset( new Gdiplus::Bitmap( aBmpSize.Width,
+                    pBitmap = std::make_shared<Gdiplus::Bitmap>( aBmpSize.Width,
                                                         aBmpSize.Height,
-                                                        PixelFormat32bppARGB ) );
+                                                        PixelFormat32bppARGB );
                 }
                 else
                 {
@@ -555,9 +553,9 @@ namespace dxcanvas
                     // to the VCL bitmap. Also, check whether the VCL
                     // bitmap's system handles can be used to create the
                     // GDI+ bitmap (currently, it does not seem so).
-                    pBitmap.reset( new Gdiplus::Bitmap( aBmpSize.Width,
+                    pBitmap = std::make_shared<Gdiplus::Bitmap>( aBmpSize.Width,
                                                         aBmpSize.Height,
-                                                        PixelFormat24bppRGB ) );
+                                                        PixelFormat24bppRGB );
                 }
 
                 GraphicsSharedPtr pGraphics(createGraphicsFromBitmap(pBitmap));
@@ -627,7 +625,6 @@ namespace dxcanvas
             o_rAttr.SetColorMatrix( &aColorMatrix );
         }
 
-    } // namespace tools
-} // namespace dxcanvas
+} // namespace dxcanvas::tools
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,7 +20,7 @@
 #ifndef INCLUDED_XMLOFF_INC_FORMS_PROPERTY_HANDLER_HXX
 #define INCLUDED_XMLOFF_INC_FORMS_PROPERTY_HANDLER_HXX
 
-#include "forms/property_ids.hxx"
+#include <forms/property_ids.hxx>
 
 #include <com/sun/star/uno/Any.hxx>
 
@@ -38,11 +38,6 @@ namespace xmloff
     class PropertyHandlerBase : public ::salhelper::SimpleReferenceObject
     {
     public:
-        /** retrieves the XML attribute value for the given property values
-        */
-        virtual OUString
-            getAttributeValue( const PropertyValues& i_propertyValues ) const = 0;
-
         /** is a convenience method for XML attributes whose value comprises of only one UNO API property
         */
         virtual OUString

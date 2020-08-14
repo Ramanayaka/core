@@ -19,10 +19,8 @@ $(eval $(call gb_Module_add_targets,slideshow,\
  ))
 endif
 
-# not working
-    # CppunitTest_slideshow \
-
-# not built normally (and unbuildable anyway ;)
-    # Executable_demoshow \
+$(eval $(call gb_Module_add_check_targets,slideshow,\
+	CppunitTest_slideshow \
+))
 
 # vim: set noet sw=4 ts=4:

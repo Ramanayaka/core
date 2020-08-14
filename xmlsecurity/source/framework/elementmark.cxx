@@ -19,15 +19,12 @@
 
 
 #include "elementmark.hxx"
-#include "buffernode.hxx"
-
-namespace cssxc = com::sun::star::xml::crypto;
 
 ElementMark::ElementMark(sal_Int32 nSecurityId, sal_Int32 nBufferId)
     :m_pBufferNode(nullptr),
      m_nSecurityId(nSecurityId),
      m_nBufferId(nBufferId),
-     m_type(cssxc::sax::ElementMarkType_ELEMENTMARK)
+     m_type(css::xml::crypto::sax::ElementMarkType_ELEMENTMARK)
 /****** ElementMark/ElementMark ***********************************************
  *
  *   NAME
@@ -43,9 +40,9 @@ ElementMark::ElementMark(sal_Int32 nSecurityId, sal_Int32 nBufferId)
  *  nSecurityId -   represents which security entity the buffer node is
  *          related with. Either a signature or an encryption is
  *          a security entity.
- *  nBufferId - the id of the element bufferred in the document
+ *  nBufferId - the id of the element buffered in the document
  *          wrapper component. The document wrapper component
- *          uses this id to search the particular bufferred
+ *          uses this id to search the particular buffered
  *          element.
  ******************************************************************************/
 {

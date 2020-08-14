@@ -10,11 +10,17 @@
 #ifndef INCLUDED_LIBREOFFICEKIT_LIBREOFFICEKITINIT_H
 #define INCLUDED_LIBREOFFICEKIT_LIBREOFFICEKITINIT_H
 
-#include "LibreOfficeKit.h"
+#include <LibreOfficeKit/LibreOfficeKit.h>
 
 #ifdef __cplusplus
 extern "C"
 {
+#endif
+
+#if defined __GNUC__ || defined __clang__
+#  define LOK_TOLERATE_UNUSED __attribute__((used))
+#else
+#  define LOK_TOLERATE_UNUSED
 #endif
 
 #if defined(__linux__) || defined (__FreeBSD_kernel__) || defined(_AIX) ||\
@@ -28,7 +34,7 @@ extern "C"
 
 #ifndef _WIN32
 
-    #include "dlfcn.h"
+    #include <dlfcn.h>
 
     #ifdef  _AIX
     #  include <sys/ldr.h>
@@ -42,7 +48,7 @@ extern "C"
     #endif
     #define SEPARATOR         '/'
 
-#if !defined(TARGET_OS_IPHONE)
+#if !defined(IOS)
         static void *lok_loadlib(const char *pFN)
     {
         return dlopen(pFN, RTLD_LAZY
@@ -57,11 +63,17 @@ extern "C"
         return dlerror();
     }
 
+    // This function must be called to release memory allocated by lok_dlerror()
+    static void lok_dlerror_free(char *pErrMessage)
+    {
+        (void)pErrMessage;
+        // Do nothing for return of dlerror()
+    }
+
     static void extendUnoPath(const char *pPath)
     {
         (void)pPath;
     }
-#endif // TARGET_OS_IPHONE
 
     static void *lok_dlsym(void *Hnd, const char *pName)
     {
@@ -72,10 +84,13 @@ extern "C"
     {
         return dlclose(Hnd);
     }
+#endif // IOS
 
 
 #else
-    #pragma warning(disable:4996)
+    #if !defined WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
     #include  <windows.h>
     #define TARGET_LIB        "sofficeapp" ".dll"
     #define TARGET_MERGED_LIB "mergedlo" ".dll"
@@ -90,8 +105,15 @@ extern "C"
     static char *lok_dlerror(void)
     {
         LPSTR buf = NULL;
-        FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(), 0, reinterpret_cast<LPSTR>(&buf), 0, NULL);
+        FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL, GetLastError(), 0, reinterpret_cast<LPSTR>(&buf), 0, NULL);
         return buf;
+    }
+
+    // This function must be called to release memory allocated by lok_dlerror()
+    static void lok_dlerror_free(char *pErrMessage)
+    {
+        HeapFree(GetProcessHeap(), 0, pErrMessage);
     }
 
     static void *lok_dlsym(void *Hnd, const char *pName)
@@ -148,12 +170,12 @@ extern "C"
     }
 #endif
 
+#if !defined(IOS)
 static void *lok_dlopen( const char *install_path, char ** _imp_lib )
 {
     char *imp_lib;
     void *dlhandle;
 
-#if !defined(TARGET_OS_IPHONE)
     size_t partial_length, imp_lib_size;
     struct stat dir_st;
 
@@ -178,7 +200,7 @@ static void *lok_dlopen( const char *install_path, char ** _imp_lib )
         return NULL;
     }
 
-    strncpy(imp_lib, install_path, imp_lib_size);
+    memcpy(imp_lib, install_path, partial_length);
 
     extendUnoPath(install_path);
 
@@ -195,8 +217,10 @@ static void *lok_dlopen( const char *install_path, char ** _imp_lib )
         struct stat st;
         if (stat(imp_lib, &st) == 0 && st.st_size > 100)
         {
+            char *pErrMessage = lok_dlerror();
             fprintf(stderr, "failed to open library '%s': %s\n",
-                    imp_lib, lok_dlerror());
+                    imp_lib, pErrMessage);
+            lok_dlerror_free(pErrMessage);
             free(imp_lib);
             return NULL;
         }
@@ -206,19 +230,18 @@ static void *lok_dlopen( const char *install_path, char ** _imp_lib )
         dlhandle = lok_loadlib(imp_lib);
         if (!dlhandle)
         {
+            char *pErrMessage = lok_dlerror();
             fprintf(stderr, "failed to open library '%s': %s\n",
-                    imp_lib, lok_dlerror());
+                    imp_lib, pErrMessage);
+            lok_dlerror_free(pErrMessage);
             free(imp_lib);
             return NULL;
         }
     }
-#else
-    imp_lib = strdup("the app executable");
-    dlhandle = RTLD_MAIN_ONLY;
-#endif
     *_imp_lib = imp_lib;
     return dlhandle;
 }
+#endif
 
 typedef LibreOfficeKit *(LokHookFunction)( const char *install_path);
 
@@ -226,10 +249,15 @@ typedef LibreOfficeKit *(LokHookFunction2)( const char *install_path, const char
 
 typedef int             (LokHookPreInit)  ( const char *install_path, const char *user_profile_url );
 
+#if defined(IOS) || defined(ANDROID)
+LibreOfficeKit *libreofficekit_hook_2(const char* install_path, const char* user_profile_path);
+#endif
+
 static LibreOfficeKit *lok_init_2( const char *install_path,  const char *user_profile_url )
 {
-    char *imp_lib;
+#if !defined(IOS) && !defined(ANDROID)
     void *dlhandle;
+    char *imp_lib;
     LokHookFunction *pSym;
     LokHookFunction2 *pSym2;
 
@@ -258,24 +286,62 @@ static LibreOfficeKit *lok_init_2( const char *install_path,  const char *user_p
         }
         free( imp_lib );
         // dlhandle is "leaked"
-        // coverity[leaked_storage]
+        // coverity[leaked_storage] - on purpose
         return pSym( install_path );
+    }
+
+    if (user_profile_url != NULL && user_profile_url[0] == '/')
+    {
+        // It should be either a file: URL or a vnd.sun.star.pathname: URL.
+        fprintf( stderr, "second parameter to lok_init_2 '%s' should be a URL, not a pathname\n", user_profile_url );
+        lok_dlclose( dlhandle );
+        free( imp_lib );
+        return NULL;
     }
 
     free( imp_lib );
     // dlhandle is "leaked"
-    // coverity[leaked_storage]
+    // coverity[leaked_storage] - on purpose
     return pSym2( install_path, user_profile_url );
+#else
+    return libreofficekit_hook_2( install_path, user_profile_url );
+#endif
 }
 
-static
-#if defined __GNUC__ || defined __clang__
-__attribute__((used))
-#endif
+static LOK_TOLERATE_UNUSED
 LibreOfficeKit *lok_init( const char *install_path )
 {
     return lok_init_2( install_path, NULL );
 }
+
+#if !defined(IOS)
+static LOK_TOLERATE_UNUSED
+int lok_preinit( const char *install_path,  const char *user_profile_url )
+{
+    void *dlhandle;
+    char *imp_lib;
+    LokHookPreInit *pSym;
+
+    dlhandle = lok_dlopen(install_path, &imp_lib);
+    if (!dlhandle)
+        return -1;
+
+    pSym = (LokHookPreInit *) lok_dlsym(dlhandle, "lok_preinit");
+    if (!pSym)
+    {
+        fprintf( stderr, "failed to find pre-init hook in library '%s'\n", imp_lib );
+        lok_dlclose( dlhandle );
+        free( imp_lib );
+        return -1;
+    }
+
+    free( imp_lib );
+
+    // dlhandle is "leaked"
+    // coverity[leaked_storage] - on purpose
+    return pSym( install_path, user_profile_url );
+}
+#endif
 
 #undef SEPARATOR // It is used at least in enum class MenuItemType
 

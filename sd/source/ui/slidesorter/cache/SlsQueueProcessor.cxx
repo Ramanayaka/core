@@ -18,10 +18,13 @@
  */
 
 #include "SlsQueueProcessor.hxx"
-#include "SlsCacheConfiguration.hxx"
 #include "SlsRequestQueue.hxx"
+#include "SlsBitmapCache.hxx"
 
-namespace sd { namespace slidesorter { namespace cache {
+#include <sdpage.hxx>
+#include <comphelper/profilezone.hxx>
+
+namespace sd::slidesorter::cache {
 
 //=====  QueueProcessor  ======================================================
 
@@ -97,7 +100,7 @@ IMPL_LINK_NOARG(QueueProcessor, ProcessRequestHdl, Timer *, void)
 
 void QueueProcessor::ProcessRequests()
 {
-    assert(mpCacheContext.get()!=nullptr);
+    assert(mpCacheContext);
 
     // Never process more than one request at a time in order to prevent the
     // lock up of the edit view.
@@ -130,7 +133,7 @@ void QueueProcessor::ProcessRequests()
             Start(mrQueue.GetFrontPriorityClass());
         else
         {
-            ::comphelper::ProfileZone aZone("QueueProcessor finished processing all elements");
+            comphelper::ProfileZone aZone("QueueProcessor finished processing all elements");
         }
     }
 }
@@ -144,18 +147,17 @@ void QueueProcessor::ProcessOneRequest (
         ::osl::MutexGuard aGuard (maMutex);
 
         // Create a new preview bitmap and store it in the cache.
-        if (mpCache.get() != nullptr
-            && mpCacheContext.get() != nullptr)
+        if (mpCache != nullptr && mpCacheContext)
         {
             const SdPage* pSdPage = dynamic_cast<const SdPage*>(mpCacheContext->GetPage(aKey));
             if (pSdPage != nullptr)
             {
-                const Bitmap aPreview (
+                const BitmapEx aPreview (
                     maBitmapFactory.CreateBitmap(*pSdPage, maPreviewSize, mbDoSuperSampling));
                 mpCache->SetBitmap (pSdPage, aPreview, ePriorityClass!=NOT_VISIBLE);
 
                 // Initiate a repaint of the new preview.
-                mpCacheContext->NotifyPreviewCreation(aKey, aPreview);
+                mpCacheContext->NotifyPreviewCreation(aKey);
             }
         }
     }
@@ -175,6 +177,6 @@ void QueueProcessor::SetBitmapCache (
     mpCache = rpCache;
 }
 
-} } } // end of namespace ::sd::slidesorter::cache
+} // end of namespace ::sd::slidesorter::cache
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

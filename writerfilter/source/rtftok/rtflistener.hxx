@@ -10,11 +10,9 @@
 #ifndef INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFLISTENER_HXX
 #define INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFLISTENER_HXX
 
-#include <rtfcontrolwords.hxx>
+#include "rtfcontrolwords.hxx"
 
-namespace writerfilter
-{
-namespace rtftok
+namespace writerfilter::rtftok
 {
 enum class RTFInternalState
 {
@@ -67,8 +65,7 @@ public:
     virtual void finishSubstream() = 0;
     virtual bool isSubstream() const = 0;
 };
-} // namespace rtftok
-} // namespace writerfilter
+} // namespace writerfilter::rtftok
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFLISTENER_HXX
 

@@ -20,10 +20,10 @@
 #include <algorithm>
 
 #include <osl/diagnose.h>
-#include "oox/drawingml/clrscheme.hxx"
-#include "oox/token/tokens.hxx"
+#include <oox/drawingml/clrscheme.hxx>
+#include <oox/token/tokens.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 bool ClrMap::getColorMap( sal_Int32& nClrToken )
 {
@@ -45,6 +45,8 @@ void ClrMap::setColorMap( sal_Int32 nClrToken, sal_Int32 nMappedClrToken )
     maClrMap[ nClrToken ] = nMappedClrToken;
 }
 
+namespace {
+
 struct find_by_token
 {
     explicit find_by_token(sal_Int32 token):
@@ -52,7 +54,7 @@ struct find_by_token
     {
     }
 
-    bool operator()(const std::pair<sal_Int32, sal_Int32>& r)
+    bool operator()(const std::pair<sal_Int32, ::Color>& r)
     {
         return r.first == m_token;
     }
@@ -61,7 +63,9 @@ private:
     sal_Int32 m_token;
 };
 
-bool ClrScheme::getColor( sal_Int32 nSchemeClrToken, sal_Int32& rColor ) const
+}
+
+bool ClrScheme::getColor( sal_Int32 nSchemeClrToken, ::Color& rColor ) const
 {
     OSL_ASSERT((nSchemeClrToken & sal_Int32(0xFFFF0000))==0);
     switch( nSchemeClrToken )
@@ -80,12 +84,16 @@ bool ClrScheme::getColor( sal_Int32 nSchemeClrToken, sal_Int32& rColor ) const
     return aIter != maClrScheme.end();
 }
 
-void ClrScheme::setColor( sal_Int32 nSchemeClrToken, sal_Int32 nColor )
+void ClrScheme::setColor( sal_Int32 nSchemeClrToken, ::Color nColor )
 {
-    maClrScheme.push_back(std::pair<sal_Int32, sal_Int32>(nSchemeClrToken, nColor));
+    const auto aIter = std::find_if(maClrScheme.begin(), maClrScheme.end(), find_by_token(nSchemeClrToken) );
+    if ( aIter != maClrScheme.end() )
+        aIter->second = nColor;
+    else
+        maClrScheme.emplace_back(nSchemeClrToken, nColor);
 }
 
-bool ClrScheme::getColorByIndex(size_t nIndex, sal_Int32& rColor) const
+bool ClrScheme::getColorByIndex(size_t nIndex, ::Color& rColor) const
 {
     if (nIndex >= maClrScheme.size())
         return false;
@@ -94,6 +102,6 @@ bool ClrScheme::getColorByIndex(size_t nIndex, sal_Int32& rColor) const
     return true;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

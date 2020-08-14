@@ -19,9 +19,10 @@
 
 #include "PageListWatcher.hxx"
 
-#include "sdpage.hxx"
+#include <sdpage.hxx>
 #include <tools/debug.hxx>
 #include <svx/svdmodel.hxx>
+#include <sal/log.hxx>
 
 void ImpPageListWatcher::ImpRecreateSortedPageListOnDemand()
 {
@@ -33,7 +34,7 @@ void ImpPageListWatcher::ImpRecreateSortedPageListOnDemand()
     // build up vectors again
     const sal_uInt32 nPageCount(ImpGetPageCount());
 
-    for(sal_uInt32 a(0L); a < nPageCount; a++)
+    for(sal_uInt32 a(0); a < nPageCount; a++)
     {
         SdPage* pCandidate = ImpGetPage(a);
         DBG_ASSERT(pCandidate, "ImpPageListWatcher::ImpRecreateSortedPageListOnDemand: Invalid PageList in Model (!)");
@@ -87,7 +88,7 @@ SdPage* ImpPageListWatcher::GetSdPage(PageKind ePgKind, sal_uInt32 nPgNum)
     {
         case PageKind::Standard:
         {
-            if( nPgNum < (sal_uInt32)maPageVectorStandard.size() )
+            if( nPgNum < static_cast<sal_uInt32>(maPageVectorStandard.size()) )
                 pRetval = maPageVectorStandard[nPgNum];
             else
             {
@@ -98,7 +99,7 @@ SdPage* ImpPageListWatcher::GetSdPage(PageKind ePgKind, sal_uInt32 nPgNum)
         }
         case PageKind::Notes:
         {
-            if( nPgNum < (sal_uInt32)maPageVectorNotes.size() )
+            if( nPgNum < static_cast<sal_uInt32>(maPageVectorNotes.size()) )
                 pRetval = maPageVectorNotes[nPgNum];
             else
             {
@@ -110,12 +111,12 @@ SdPage* ImpPageListWatcher::GetSdPage(PageKind ePgKind, sal_uInt32 nPgNum)
         case PageKind::Handout:
         {
 //          #11420# for models used to transfer drawing shapes via clipboard it's ok to not have a handout page
-            DBG_ASSERT(nPgNum == 0L, "ImpPageListWatcher::GetSdPage: access to non existing handout page (!)");
+            DBG_ASSERT(nPgNum == 0, "ImpPageListWatcher::GetSdPage: access to non existing handout page (!)");
             if (nPgNum == 0)
                 pRetval = mpHandoutPage;
             else
             {
-                DBG_ASSERT(nPgNum == 0L,
+                DBG_ASSERT(nPgNum == 0,
                     "ImpPageListWatcher::GetSdPage: access to non existing handout page (!)");
             }
             break;
@@ -127,7 +128,7 @@ SdPage* ImpPageListWatcher::GetSdPage(PageKind ePgKind, sal_uInt32 nPgNum)
 
 sal_uInt32 ImpPageListWatcher::GetSdPageCount(PageKind ePgKind)
 {
-    sal_uInt32 nRetval(0L);
+    sal_uInt32 nRetval(0);
 
     if(!mbPageListValid)
     {
@@ -150,7 +151,7 @@ sal_uInt32 ImpPageListWatcher::GetSdPageCount(PageKind ePgKind)
         {
             if(mpHandoutPage)
             {
-                nRetval = 1L;
+                nRetval = 1;
             }
 
             break;
@@ -160,14 +161,14 @@ sal_uInt32 ImpPageListWatcher::GetSdPageCount(PageKind ePgKind)
     return nRetval;
 }
 
-sal_uInt32 ImpPageListWatcher::GetVisibleSdPageCount()
+sal_uInt32 ImpPageListWatcher::GetVisibleSdPageCount() const
 {
     sal_uInt32 nVisiblePageCount = 0;
 
     // build up vectors again
     const sal_uInt32 nPageCount(ImpGetPageCount());
 
-    for(sal_uInt32 a(0L); a < nPageCount; a++)
+    for(sal_uInt32 a(0); a < nPageCount; a++)
     {
         SdPage* pCandidate = ImpGetPage(a);
         if ((pCandidate->GetPageKind() == PageKind::Standard)&&(!pCandidate->IsExcluded())) nVisiblePageCount++;
@@ -177,12 +178,12 @@ sal_uInt32 ImpPageListWatcher::GetVisibleSdPageCount()
 
 sal_uInt32 ImpDrawPageListWatcher::ImpGetPageCount() const
 {
-    return (sal_uInt32)mrModel.GetPageCount();
+    return static_cast<sal_uInt32>(mrModel.GetPageCount());
 }
 
 SdPage* ImpDrawPageListWatcher::ImpGetPage(sal_uInt32 nIndex) const
 {
-    return const_cast<SdPage*>(static_cast<const SdPage*>(mrModel.GetPage((sal_uInt16)nIndex)));
+    return const_cast<SdPage*>(static_cast<const SdPage*>(mrModel.GetPage(static_cast<sal_uInt16>(nIndex))));
 }
 
 ImpDrawPageListWatcher::ImpDrawPageListWatcher(const SdrModel& rModel)
@@ -196,12 +197,12 @@ ImpDrawPageListWatcher::~ImpDrawPageListWatcher()
 
 sal_uInt32 ImpMasterPageListWatcher::ImpGetPageCount() const
 {
-    return (sal_uInt32)mrModel.GetMasterPageCount();
+    return static_cast<sal_uInt32>(mrModel.GetMasterPageCount());
 }
 
 SdPage* ImpMasterPageListWatcher::ImpGetPage(sal_uInt32 nIndex) const
 {
-    return const_cast<SdPage*>(static_cast<const SdPage*>(mrModel.GetMasterPage((sal_uInt16)nIndex)));
+    return const_cast<SdPage*>(static_cast<const SdPage*>(mrModel.GetMasterPage(static_cast<sal_uInt16>(nIndex))));
 }
 
 ImpMasterPageListWatcher::ImpMasterPageListWatcher(const SdrModel& rModel)

@@ -8,6 +8,16 @@
   <description>Java UNO helper</description>
   <url>https://www.libreoffice.org</url>
 
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.libreoffice</groupId>
+        <artifactId>libreoffice</artifactId>
+        <version>@version@</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <licenses>
     <license>
       <name>Mozilla Public License, Version 2.0</name>
@@ -17,7 +27,7 @@
   </licenses>
 
   <scm>
-    <url>http://cgit.freedesktop.org/libreoffice/core</url>
+    <url>https://cgit.freedesktop.org/libreoffice/core</url>
     <connection>https://gerrit.libreoffice.org/#/admin/projects/core</connection>
   </scm>
 

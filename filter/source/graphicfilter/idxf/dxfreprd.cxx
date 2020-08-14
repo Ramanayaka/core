@@ -18,11 +18,9 @@
  */
 
 
-#include <string.h>
 #include "dxfreprd.hxx"
-#include "osl/nlsupport.h"
-#include "officecfg/Setup.hxx"
-#include "officecfg/Office/Linguistic.hxx"
+#include <osl/nlsupport.h>
+#include <unotools/defaultencoding.hxx>
 #include <unotools/wincodepage.hxx>
 #include <unotools/configmgr.hxx>
 
@@ -58,10 +56,6 @@ DXFPalette::DXFPalette()
 {
     short i,j,nHue,nNSat,nVal,nC[3],nmax,nmed,nmin;
     sal_uInt8 nV;
-
-    pRed  =new sal_uInt8[256];
-    pGreen=new sal_uInt8[256];
-    pBlue =new sal_uInt8[256];
 
     // colors 0 - 9 (normal colors)
     SetColor(0, 0x00, 0x00, 0x00); // actually never being used
@@ -99,24 +93,21 @@ DXFPalette::DXFPalette()
                     for (j=0; j<3; j++) nC[j]=(nC[j]>>1)+128;
                 }
                 for (j=0; j<3; j++) nC[j]=nC[j]*nVal/5;
-                SetColor((sal_uInt8)(i++),(sal_uInt8)nC[0],(sal_uInt8)nC[1],(sal_uInt8)nC[2]);
+                SetColor(static_cast<sal_uInt8>(i++),static_cast<sal_uInt8>(nC[0]),static_cast<sal_uInt8>(nC[1]),static_cast<sal_uInt8>(nC[2]));
             }
         }
     }
 
     // Farben 250 - 255 (shades of gray)
     for (i=0; i<6; i++) {
-        nV=(sal_uInt8)(i*38+65);
-        SetColor((sal_uInt8)(250+i),nV,nV,nV);
+        nV=static_cast<sal_uInt8>(i*38+65);
+        SetColor(static_cast<sal_uInt8>(250+i),nV,nV,nV);
     }
 }
 
 
 DXFPalette::~DXFPalette()
 {
-    delete[] pBlue;
-    delete[] pGreen;
-    delete[] pRed;
 }
 
 
@@ -140,21 +131,6 @@ DXFRepresentation::DXFRepresentation()
 
 DXFRepresentation::~DXFRepresentation()
 {
-}
-
-namespace {
-
-OUString getLODefaultLanguage()
-{
-    if (utl::ConfigManager::IsAvoidConfig())
-        return OUString("en-US");
-
-    OUString result(officecfg::Office::Linguistic::General::DefaultLocale::get());
-    if (result.isEmpty())
-        result = officecfg::Setup::L10N::ooSetupSystemLocale::get();
-    return result;
-}
-
 }
 
 rtl_TextEncoding DXFRepresentation::getTextEncoding() const
@@ -237,7 +213,8 @@ void DXFRepresentation::ReadHeader(DXFGroupReader & rDGR)
                     // only if the encoding is not set yet
                     // e.g. by previous $DWGCODEPAGE
                     if (!isTextEncodingSet())
-                        setTextEncoding(utl_getWinTextEncodingFromLangStr(getLODefaultLanguage().toUtf8().getStr(), true));
+                        setTextEncoding(utl_getWinTextEncodingFromLangStr(
+                            utl_getLocaleForGlobalDefaultEncoding(), true));
                 }
                 else if (rDGR.GetS() >= "AC1021")
                     setTextEncoding(RTL_TEXTENCODING_UTF8);
@@ -247,7 +224,8 @@ void DXFRepresentation::ReadHeader(DXFGroupReader & rDGR)
                     // only if the encoding is not set yet
                     // e.g. by previous $DWGCODEPAGE
                     if (!isTextEncodingSet())
-                        setTextEncoding(utl_getWinTextEncodingFromLangStr(getLODefaultLanguage().toUtf8().getStr()));
+                        setTextEncoding(utl_getWinTextEncodingFromLangStr(
+                            utl_getLocaleForGlobalDefaultEncoding()));
                 }
             }
             else if (rDGR.GetS() == "$DWGCODEPAGE")
@@ -449,11 +427,11 @@ void DXFRepresentation::CalcBoundingBox(const DXFEntities & rEntities,
 }
 
 namespace {
-    inline bool lcl_isDec(sal_Unicode ch)
+    bool lcl_isDec(sal_Unicode ch)
     {
         return ch >= L'0' && ch <= L'9';
     }
-    inline bool lcl_isHex(sal_Unicode ch)
+    bool lcl_isHex(sal_Unicode ch)
     {
         return lcl_isDec(ch) || (ch >= L'A' && ch <= L'F') || (ch >= L'a' && ch <= L'f');
     }
@@ -461,12 +439,15 @@ namespace {
 
 OUString DXFRepresentation::ToOUString(const OString& s) const
 {
-    OUString result = OStringToOUString(s, getTextEncoding());
+    OUString result = OStringToOUString(s, getTextEncoding(),
+                                           RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+                                         | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+                                         | RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR);
     result = result.replaceAll("%%o", "")                     // Overscore - simply remove
                    .replaceAll("%%u", "")                     // Underscore - simply remove
-                   .replaceAll("%%d", OUStringLiteral1(0x00B0)) // Degrees symbol (°)
-                   .replaceAll("%%p", OUStringLiteral1(0x00B1)) // Tolerance symbol (±)
-                   .replaceAll("%%c", OUStringLiteral1(0x2205)) // Diameter symbol
+                   .replaceAll("%%d", u"\u00B0") // Degrees symbol (°)
+                   .replaceAll("%%p", u"\u00B1") // Tolerance symbol (±)
+                   .replaceAll("%%c", u"\u2205") // Diameter symbol
                    .replaceAll("%%%", "%");                   // Percent symbol
 
     sal_Int32 pos = result.indexOf("%%"); // %%nnn, where nnn - 3-digit decimal ASCII code

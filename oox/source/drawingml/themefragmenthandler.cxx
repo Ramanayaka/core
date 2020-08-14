@@ -17,17 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/drawingml/themefragmenthandler.hxx"
-#include "drawingml/objectdefaultcontext.hxx"
-#include "oox/drawingml/theme.hxx"
+#include <oox/drawingml/themefragmenthandler.hxx>
+#include <drawingml/objectdefaultcontext.hxx>
+#include <oox/drawingml/theme.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
-#include "drawingml/themeelementscontext.hxx"
+#include <drawingml/themeelementscontext.hxx>
 
 using namespace ::oox::core;
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 ThemeFragmentHandler::ThemeFragmentHandler( XmlFilterBase& rFilter, const OUString& rFragmentPath, Theme& rTheme ) :
     FragmentHandler2( rFilter, rFragmentPath ),
@@ -71,7 +69,6 @@ ContextHandlerRef ThemeFragmentHandler::onCreateContext( sal_Int32 nElement, con
     return nullptr;
 }
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

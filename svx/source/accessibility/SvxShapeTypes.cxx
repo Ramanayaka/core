@@ -23,11 +23,12 @@
 #include <svx/AccessibleGraphicShape.hxx>
 #include <svx/AccessibleOLEShape.hxx>
 #include <svx/AccessibleControlShape.hxx>
+#include <svx/ShapeTypeHandler.hxx>
 #include <AccessibleTableShape.hxx>
 
 namespace accessibility {
 
-AccessibleShape* CreateSvxAccessibleShape (
+static AccessibleShape* CreateSvxAccessibleShape (
     const AccessibleShapeInfo& rShapeInfo,
     const AccessibleShapeTreeInfo& rShapeTreeInfo,
     ShapeTypeId nId)
@@ -56,10 +57,10 @@ AccessibleShape* CreateSvxAccessibleShape (
         case DRAWING_POLY_LINE_PATH:
         case DRAWING_RECTANGLE:
         case DRAWING_TEXT:
-        // Default accessiblility shape for
+        // Default accessibility shape for
         // css::drawing::CustomShape (#i37790#)
         case DRAWING_CUSTOM:
-        // Default accessiblility shape for
+        // Default accessibility shape for
         // css::drawing::MediaShape (#i85429#)
         case DRAWING_MEDIA:
             return new AccessibleShape (rShapeInfo, rShapeTreeInfo);
@@ -89,7 +90,7 @@ void RegisterDrawShapeTypes()
     /** List of shape type descriptors corresponding to the
         <type>SvxShapeTypes</type> enum.
     */
-    ShapeTypeDescriptor aSvxShapeTypeList[] = {
+    static ShapeTypeDescriptor const aSvxShapeTypeList[] = {
         ShapeTypeDescriptor ( DRAWING_TEXT, "com.sun.star.drawing.TextShape",
             CreateSvxAccessibleShape),
         ShapeTypeDescriptor (DRAWING_RECTANGLE, "com.sun.star.drawing.RectangleShape",

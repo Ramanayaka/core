@@ -18,20 +18,20 @@
  */
 
 
-#include <algorithm>
+#include <osl/diagnose.h>
+#include <tools/debug.hxx>
 #include <editeng/eeitem.hxx>
 #include <com/sun/star/i18n/WordType.hpp>
 
 #include <svl/itemset.hxx>
 #include <editeng/editeng.hxx>
-#include <editeng/editview.hxx>
 #include <editeng/unoedhlp.hxx>
 #include <editeng/editdata.hxx>
 #include <editeng/outliner.hxx>
 #include <editeng/editobj.hxx>
 
 #include <editeng/unofored.hxx>
-#include <unofored_internal.hxx>
+#include "unofored_internal.hxx"
 
 using namespace ::com::sun::star;
 
@@ -151,17 +151,17 @@ bool SvxEditEngineForwarder::IsValid() const
     return rEditEngine.GetUpdateMode();
 }
 
-OUString SvxEditEngineForwarder::CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rpTxtColor, Color*& rpFldColor )
+OUString SvxEditEngineForwarder::CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor )
 {
     return rEditEngine.CalcFieldValue( rField, nPara, nPos, rpTxtColor, rpFldColor );
 }
 
-void SvxEditEngineForwarder::FieldClicked( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos )
+void SvxEditEngineForwarder::FieldClicked( const SvxFieldItem& rField )
 {
-    rEditEngine.FieldClicked( rField, nPara, nPos );
+    rEditEngine.FieldClicked( rField );
 }
 
-SfxItemState GetSvxEditEngineItemState( EditEngine& rEditEngine, const ESelection& rSel, sal_uInt16 nWhich )
+SfxItemState GetSvxEditEngineItemState( EditEngine const & rEditEngine, const ESelection& rSel, sal_uInt16 nWhich )
 {
     std::vector<EECharAttrib> aAttribs;
 
@@ -188,44 +188,44 @@ SfxItemState GetSvxEditEngineItemState( EditEngine& rEditEngine, const ESelectio
         rEditEngine.GetCharAttribs( nPara, aAttribs );
 
         bool bEmpty = true;     // we found no item inside the selection of this paragraph
-        bool bGaps  = false;    // we found items but theire gaps between them
+        bool bGaps  = false;    // we found items but there are gaps between them
         sal_Int32 nLastEnd = nPos;
 
         const SfxPoolItem* pParaItem = nullptr;
 
-        for(std::vector<EECharAttrib>::const_iterator i = aAttribs.begin(); i < aAttribs.end(); ++i)
+        for (auto const& attrib : aAttribs)
         {
-            DBG_ASSERT(i->pAttr, "GetCharAttribs gives corrupt data");
+            DBG_ASSERT(attrib.pAttr, "GetCharAttribs gives corrupt data");
 
-            const bool bEmptyPortion = i->nStart == i->nEnd;
-            if((!bEmptyPortion && i->nStart >= nEndPos) ||
-               (bEmptyPortion && i->nStart > nEndPos))
+            const bool bEmptyPortion = attrib.nStart == attrib.nEnd;
+            if((!bEmptyPortion && attrib.nStart >= nEndPos) ||
+               (bEmptyPortion && attrib.nStart > nEndPos))
                 break;  // break if we are already behind our selection
 
-            if((!bEmptyPortion && i->nEnd <= nPos) ||
-               (bEmptyPortion && i->nEnd < nPos))
+            if((!bEmptyPortion && attrib.nEnd <= nPos) ||
+               (bEmptyPortion && attrib.nEnd < nPos))
                 continue;   // or if the attribute ends before our selection
 
-            if(i->pAttr->Which() != nWhich)
+            if(attrib.pAttr->Which() != nWhich)
                 continue; // skip if is not the searched item
 
             // if we already found an item
             if( pParaItem )
             {
                 // ... and its different to this one than the state is don't care
-                if(*pParaItem != *(i->pAttr))
+                if(*pParaItem != *(attrib.pAttr))
                     return SfxItemState::DONTCARE;
             }
             else
-                pParaItem = i->pAttr;
+                pParaItem = attrib.pAttr;
 
             if( bEmpty )
                 bEmpty = false;
 
-            if(!bGaps && i->nStart > nLastEnd)
+            if(!bGaps && attrib.nStart > nLastEnd)
                 bGaps = true;
 
-            nLastEnd = i->nEnd;
+            nLastEnd = attrib.nEnd;
         }
 
         if( !bEmpty && !bGaps && nLastEnd < ( nEndPos - 1 ) )
@@ -290,7 +290,10 @@ tools::Rectangle SvxEditEngineForwarder::GetCharBounds( sal_Int32 nPara, sal_Int
     // EditEngine's 'internal' methods like GetCharacterBounds()
     // don't rotate for vertical text.
     Size aSize( rEditEngine.CalcTextWidth(), rEditEngine.GetTextHeight() );
-    std::swap( aSize.Width(), aSize.Height() );
+    // swap width and height
+    long tmp = aSize.Width();
+    aSize.setWidth(aSize.Height());
+    aSize.setHeight(tmp);
     bool bIsVertical( rEditEngine.IsVertical() );
 
     // #108900# Handle virtual position one-past-the end of the string
@@ -372,7 +375,10 @@ OutputDevice* SvxEditEngineForwarder::GetRefDevice() const
 bool SvxEditEngineForwarder::GetIndexAtPoint( const Point& rPos, sal_Int32& nPara, sal_Int32& nIndex ) const
 {
     Size aSize( rEditEngine.CalcTextWidth(), rEditEngine.GetTextHeight() );
-    std::swap( aSize.Width(), aSize.Height() );
+    // swap width and height
+    long tmp = aSize.Width();
+    aSize.setWidth(aSize.Height());
+    aSize.setHeight(tmp);
     Point aEEPos( SvxEditSourceHelper::UserSpaceToEE( rPos,
                                                       aSize,
                                                       rEditEngine.IsVertical() ));
@@ -403,7 +409,8 @@ bool SvxEditEngineForwarder::GetWordIndices( sal_Int32 nPara, sal_Int32 nIndex, 
 
 bool SvxEditEngineForwarder::GetAttributeRun( sal_Int32& nStartIndex, sal_Int32& nEndIndex, sal_Int32 nPara, sal_Int32 nIndex, bool bInCell ) const
 {
-    return SvxEditSourceHelper::GetAttributeRun( nStartIndex, nEndIndex, rEditEngine, nPara, nIndex, bInCell );
+    SvxEditSourceHelper::GetAttributeRun( nStartIndex, nEndIndex, rEditEngine, nPara, nIndex, bInCell );
+    return true;
 }
 
 sal_Int32 SvxEditEngineForwarder::GetLineCount( sal_Int32 nPara ) const
@@ -492,9 +499,8 @@ void SvxEditEngineForwarder::CopyText(const SvxTextForwarder& rSource)
     const SvxEditEngineForwarder* pSourceForwarder = dynamic_cast< const SvxEditEngineForwarder* >( &rSource );
     if( !pSourceForwarder )
         return;
-    EditTextObject* pNewTextObject = pSourceForwarder->rEditEngine.CreateTextObject();
+    std::unique_ptr<EditTextObject> pNewTextObject = pSourceForwarder->rEditEngine.CreateTextObject();
     rEditEngine.SetText( *pNewTextObject );
-    delete pNewTextObject;
 }
 
 

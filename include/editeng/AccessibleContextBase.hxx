@@ -23,22 +23,15 @@
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/accessibility/XAccessibleStateSet.hpp>
-#include <com/sun/star/accessibility/XAccessibleRelationSet.hpp>
-#include <com/sun/star/accessibility/AccessibleEventObject.hpp>
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <com/sun/star/accessibility/IllegalAccessibleComponentStateException.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <cppuhelper/weak.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <osl/mutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <editeng/editengdllapi.h>
 
+namespace com::sun::star::accessibility { class XAccessibleStateSet; }
+namespace com::sun::star::accessibility { class XAccessibleRelationSet; }
+namespace com::sun::star::accessibility { struct AccessibleEventObject; }
 
 namespace accessibility {
 
@@ -78,7 +71,7 @@ public:
     virtual ~AccessibleContextBase() override;
 
 
-    /** Call all accessiblity event listeners to inform them about the
+    /** Call all accessibility event listeners to inform them about the
         specified event.
         @param aEventId
             Id of the event type.
@@ -252,7 +245,7 @@ public:
 
     //=====  XTypeProvider  ===================================================
 
-    /** Returns a implementation id.
+    /** Returns an implementation id.
     */
     virtual css::uno::Sequence<sal_Int8> SAL_CALL
         getImplementationId() override;
@@ -279,15 +272,6 @@ protected:
     */
     virtual OUString CreateAccessibleName();
 
-    /** Create the accessible object's descriptive string.  May be called
-        more than once.
-        @return
-            Descriptive string.  Not necessarily unique.
-        @throws css::uno::RuntimeException
-    */
-    virtual OUString
-        CreateAccessibleDescription();
-
     void FireEvent (const css::accessibility::AccessibleEventObject& aEvent);
 
     /** Check whether or not the object has been disposed (or is in the
@@ -304,7 +288,7 @@ protected:
         @return TRUE, if the object is disposed or in the course
         of being disposed. Otherwise, FALSE is returned.
     */
-    bool IsDisposed();
+    bool IsDisposed() const;
 
     /** sets the role as returned by XaccessibleContext::getAccessibleRole
 

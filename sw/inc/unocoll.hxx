@@ -18,35 +18,25 @@
  */
 #ifndef INCLUDED_SW_INC_UNOCOLL_HXX
 #define INCLUDED_SW_INC_UNOCOLL_HXX
-#include <tools/solar.h>
-#include <flyenum.hxx>
-#include <vcl/timer.hxx>
+#include <limits.h>
+#include "flyenum.hxx"
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <IMark.hxx>
-#include <unobaseclass.hxx>
 #include "swdllapi.h"
 
 class SwDoc;
 class SwFrameFormat;
-namespace com{namespace sun {namespace star {namespace text
+namespace com::sun::star::text
 {
     class XTextTable;
     class XTextSection;
     class XFootnote;
-}}}}
-class SwXFrame;
-class SwFrameFormat;
+}
 class SwFormatFootnote;
-class XBookmark;
-class SwXReferenceMark;
 class SwSectionFormat;
-class SwFormatRefMark;
-class SwXReferenceMark;
-class SwXBookmark;
 struct SvEventDescription;
 
 const SvEventDescription* sw_GetSupportedMacroItems();
@@ -268,10 +258,9 @@ cppu::WeakImplHelper
     css::lang::XServiceInfo
 >
 SwCollectionBaseClass;
-class SW_DLLPUBLIC SwXTextTables : public SwCollectionBaseClass,
+class SW_DLLPUBLIC SwXTextTables final : public SwCollectionBaseClass,
     public SwUnoCollection
 {
-protected:
     virtual ~SwXTextTables() override;
 public:
     SwXTextTables(SwDoc* pDoc);
@@ -306,7 +295,7 @@ cppu::WeakImplHelper
     css::lang::XServiceInfo
 > SwXFramesBaseClass;
 
-class SW_DLLPUBLIC SwXFrames : public SwXFramesBaseClass,
+class SwXFrames : public SwXFramesBaseClass,
     public SwUnoCollection
 {
     const FlyCntType    m_eType;
@@ -337,9 +326,8 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class SwXTextFrames : public SwXFrames
+class SwXTextFrames final : public SwXFrames
 {
-protected:
     virtual ~SwXTextFrames() override;
 public:
     SwXTextFrames(SwDoc* pDoc);
@@ -351,9 +339,8 @@ public:
 
 };
 
-class SwXTextGraphicObjects : public SwXFrames
+class SwXTextGraphicObjects final : public SwXFrames
 {
-protected:
     virtual ~SwXTextGraphicObjects() override;
 public:
         SwXTextGraphicObjects(SwDoc* pDoc);
@@ -365,9 +352,8 @@ public:
 
 };
 
-class SwXTextEmbeddedObjects :  public SwXFrames
+class SwXTextEmbeddedObjects final : public SwXFrames
 {
-protected:
     virtual ~SwXTextEmbeddedObjects() override;
 public:
     SwXTextEmbeddedObjects(SwDoc* pDoc);
@@ -379,10 +365,9 @@ public:
 
 };
 
-class SwXTextSections : public SwCollectionBaseClass,
+class SwXTextSections final : public SwCollectionBaseClass,
                         public SwUnoCollection
 {
-protected:
     virtual ~SwXTextSections() override;
 public:
     SwXTextSections(SwDoc* pDoc);
@@ -408,10 +393,9 @@ public:
     static css::uno::Reference< css::text::XTextSection> GetObject( SwSectionFormat& rFormat );
 };
 
-class SwXBookmarks : public SwCollectionBaseClass,
+class SwXBookmarks final : public SwCollectionBaseClass,
     public SwUnoCollection
 {
-    protected:
         virtual ~SwXBookmarks() override;
     public:
         SwXBookmarks(SwDoc* pDoc);
@@ -436,20 +420,19 @@ class SwXBookmarks : public SwCollectionBaseClass,
 
 };
 
-class SwXNumberingRulesCollection : public cppu::WeakImplHelper
+class SwXNumberingRulesCollection final : public cppu::WeakImplHelper
 <
     css::container::XIndexAccess
 >,
     public SwUnoCollection
 {
-protected:
     virtual ~SwXNumberingRulesCollection() override;
 
 public:
     SwXNumberingRulesCollection( SwDoc* pDoc );
 
     //XIndexAccess
-    virtual sal_Int32 SAL_CALL SAL_CALL getCount() override;
+    virtual sal_Int32 SAL_CALL getCount() override;
     virtual css::uno::Any SAL_CALL getByIndex(sal_Int32 nIndex) override;
 
     //XElementAccess
@@ -465,18 +448,17 @@ cppu::WeakImplHelper
 >
 SwSimpleIndexAccessBaseClass;
 
-class SwXFootnotes : public SwSimpleIndexAccessBaseClass,
+class SwXFootnotes final : public SwSimpleIndexAccessBaseClass,
                      public SwUnoCollection
 {
     const bool m_bEndnote;
 
-protected:
     virtual ~SwXFootnotes() override;
 public:
     SwXFootnotes(bool bEnd, SwDoc* pDoc);
 
     //XIndexAccess
-    virtual sal_Int32 SAL_CALL SAL_CALL getCount() override;
+    virtual sal_Int32 SAL_CALL getCount() override;
     virtual css::uno::Any SAL_CALL getByIndex(sal_Int32 nIndex) override;
 
     //XElementAccess
@@ -491,10 +473,9 @@ public:
     static css::uno::Reference< css::text::XFootnote> GetObject( SwDoc& rDoc, const SwFormatFootnote& rFormat );
 };
 
-class SwXReferenceMarks : public SwCollectionBaseClass,
+class SwXReferenceMarks final : public SwCollectionBaseClass,
     public SwUnoCollection
 {
-protected:
     virtual ~SwXReferenceMarks() override;
 public:
     SwXReferenceMarks(SwDoc* pDoc);

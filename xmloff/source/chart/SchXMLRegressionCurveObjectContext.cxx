@@ -19,19 +19,22 @@
 
 #include "SchXMLRegressionCurveObjectContext.hxx"
 
+#include <SchXMLImport.hxx>
+
 #include <sax/tools/converter.hxx>
 
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/xmlement.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/prstylei.hxx>
 #include <xmloff/xmlstyle.hxx>
 
 #include <comphelper/processfactory.hxx>
 
+#include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/chart2/RegressionEquation.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
+#include <com/sun/star/xml/sax/XAttributeList.hpp>
 
 using namespace com::sun::star;
 using namespace xmloff::token;
@@ -41,7 +44,7 @@ SchXMLRegressionCurveObjectContext::SchXMLRegressionCurveObjectContext(
                                         SvXMLImport& rImport,
                                         sal_uInt16 nPrefix,
                                         const OUString& rLocalName,
-                                        std::list< RegressionStyle >& rRegressionStyleList,
+                                        std::vector< RegressionStyle >& rRegressionStyleVector,
                                         const css::uno::Reference<
                                                     css::chart2::XDataSeries >& xSeries,
                                         const awt::Size & rChartSize) :
@@ -49,7 +52,7 @@ SchXMLRegressionCurveObjectContext::SchXMLRegressionCurveObjectContext(
     mrImportHelper( rImpHelper ),
     mxSeries( xSeries ),
     maChartSize( rChartSize ),
-    mrRegressionStyleList( rRegressionStyleList )
+    mrRegressionStyleVector( rRegressionStyleVector )
 {
 }
 
@@ -79,27 +82,23 @@ void SchXMLRegressionCurveObjectContext::StartElement( const uno::Reference< xml
     }
 
     RegressionStyle aStyle( mxSeries, sAutoStyleName );
-    mrRegressionStyleList.push_back( aStyle );
+    mrRegressionStyleVector.push_back( aStyle );
 }
 
-SvXMLImportContext* SchXMLRegressionCurveObjectContext::CreateChildContext(
+SvXMLImportContextRef SchXMLRegressionCurveObjectContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
-    const uno::Reference< xml::sax::XAttributeList >& xAttrList )
+    const uno::Reference< xml::sax::XAttributeList >& /*xAttrList*/ )
 {
-    SvXMLImportContext* pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     if( nPrefix == XML_NAMESPACE_CHART && IsXMLToken( rLocalName, XML_EQUATION ) )
     {
-        pContext = new SchXMLEquationContext(
-            mrImportHelper, GetImport(), nPrefix, rLocalName, maChartSize, mrRegressionStyleList.back());
-    }
-    else
-    {
-        pContext = SvXMLImportContext::CreateChildContext( nPrefix, rLocalName, xAttrList );
+        xContext = new SchXMLEquationContext(
+            mrImportHelper, GetImport(), nPrefix, rLocalName, maChartSize, mrRegressionStyleVector.back());
     }
 
-    return pContext;
+    return xContext;
 }
 
 SchXMLEquationContext::SchXMLEquationContext(
@@ -164,37 +163,37 @@ void SchXMLEquationContext::StartElement( const uno::Reference< xml::sax::XAttri
         }
     }
 
-    if( !sAutoStyleName.isEmpty() || bShowEquation || bShowRSquare )
+    if( sAutoStyleName.isEmpty() && !bShowEquation && !bShowRSquare )
+        return;
+
+    uno::Reference< beans::XPropertySet > xEquationProperties = chart2::RegressionEquation::create( comphelper::getProcessComponentContext() );
+
+    if( !sAutoStyleName.isEmpty() )
     {
-        uno::Reference< beans::XPropertySet > xEqationProperties = chart2::RegressionEquation::create( comphelper::getProcessComponentContext() );
-
-        if( !sAutoStyleName.isEmpty() )
+        const SvXMLStylesContext* pStylesCtxt = mrImportHelper.GetAutoStylesContext();
+        if( pStylesCtxt )
         {
-            const SvXMLStylesContext* pStylesCtxt = mrImportHelper.GetAutoStylesContext();
-            if( pStylesCtxt )
-            {
-                const SvXMLStyleContext* pStyle = pStylesCtxt->FindStyleChildContext(
-                    SchXMLImportHelper::GetChartFamilyID(), sAutoStyleName );
+            const SvXMLStyleContext* pStyle = pStylesCtxt->FindStyleChildContext(
+                SchXMLImportHelper::GetChartFamilyID(), sAutoStyleName );
 
-                XMLPropStyleContext* pPropStyleContext =
-                    const_cast< XMLPropStyleContext* >( dynamic_cast< const XMLPropStyleContext* >( pStyle ));
+            XMLPropStyleContext* pPropStyleContext =
+                const_cast< XMLPropStyleContext* >( dynamic_cast< const XMLPropStyleContext* >( pStyle ));
 
-                if( pPropStyleContext )
-                    pPropStyleContext->FillPropertySet( xEqationProperties );
-            }
+            if( pPropStyleContext )
+                pPropStyleContext->FillPropertySet( xEquationProperties );
         }
-        xEqationProperties->setPropertyValue( "ShowEquation", uno::makeAny( bShowEquation ));
-        xEqationProperties->setPropertyValue( "ShowCorrelationCoefficient", uno::makeAny( bShowRSquare ));
-
-        if( bHasXPos && bHasYPos )
-        {
-            chart2::RelativePosition aRelPos;
-            aRelPos.Primary = static_cast< double >( aPosition.X ) / static_cast< double >( maChartSize.Width );
-            aRelPos.Secondary = static_cast< double >( aPosition.Y ) / static_cast< double >( maChartSize.Height );
-            xEqationProperties->setPropertyValue( "RelativePosition", uno::makeAny( aRelPos ));
-        }
-        mrRegressionStyle.m_xEquationProperties.set( xEqationProperties );
     }
+    xEquationProperties->setPropertyValue( "ShowEquation", uno::makeAny( bShowEquation ));
+    xEquationProperties->setPropertyValue( "ShowCorrelationCoefficient", uno::makeAny( bShowRSquare ));
+
+    if( bHasXPos && bHasYPos )
+    {
+        chart2::RelativePosition aRelPos;
+        aRelPos.Primary = static_cast< double >( aPosition.X ) / static_cast< double >( maChartSize.Width );
+        aRelPos.Secondary = static_cast< double >( aPosition.Y ) / static_cast< double >( maChartSize.Height );
+        xEquationProperties->setPropertyValue( "RelativePosition", uno::makeAny( aRelPos ));
+    }
+    mrRegressionStyle.m_xEquationProperties.set( xEquationProperties );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

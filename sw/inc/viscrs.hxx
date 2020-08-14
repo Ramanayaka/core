@@ -19,21 +19,22 @@
 #ifndef INCLUDED_SW_INC_VISCRS_HXX
 #define INCLUDED_SW_INC_VISCRS_HXX
 
-#include <config_features.h>
+#include <config_feature_desktop.h>
 
 #include <vcl/cursor.hxx>
 #include "swcrsr.hxx"
 #include "swrect.hxx"
 #include "swregion.hxx"
+#include "swdllapi.h"
+
+namespace sdr::overlay { class OverlayObject; }
 
 class SwCursorShell;
-class SwShellCursor;
-class SwTextInputField;
 class SfxViewShell;
 
 // From here classes/methods for non-text cursor.
 
-class SwVisibleCursor
+class SW_DLLPUBLIC SwVisibleCursor
 {
     friend void InitCore();
     friend void FinitCore();
@@ -56,13 +57,14 @@ public:
 
     bool IsVisible() const { return m_bIsVisible; }
     void SetDragCursor( bool bFlag = true ) { m_bIsDragCursor = bFlag; }
-    void SetPosAndShow(SfxViewShell* pViewShell);
+    void SetPosAndShow(SfxViewShell const * pViewShell);
+    const vcl::Cursor& GetTextCursor() const;
 };
 
 // From here classes/methods for selections.
 
-namespace sdr { namespace overlay { class OverlayObject; }}
-namespace sw { namespace overlay { class OverlayRangesOutline; }}
+namespace sw::overlay { class OverlayRangesOutline; }
+class MapMode;
 
 class SwSelPaintRects : public SwRects
 {
@@ -75,15 +77,11 @@ class SwSelPaintRects : public SwRects
     const SwCursorShell* m_pCursorShell;
 
 #if HAVE_FEATURE_DESKTOP || defined(ANDROID)
-    sdr::overlay::OverlayObject*    m_pCursorOverlay;
-
-    // access to m_pCursorOverlay for swapContent
-    sdr::overlay::OverlayObject* getCursorOverlay() const { return m_pCursorOverlay; }
-    void setCursorOverlay(sdr::overlay::OverlayObject* pNew) { m_pCursorOverlay = pNew; }
+    std::unique_ptr<sdr::overlay::OverlayObject> m_pCursorOverlay;
 #endif
 
     bool m_bShowTextInputFieldOverlay;
-    sw::overlay::OverlayRangesOutline* m_pTextInputFieldOverlay;
+    std::unique_ptr<sw::overlay::OverlayRangesOutline> m_pTextInputFieldOverlay;
 
     void HighlightInputField();
 
@@ -115,7 +113,7 @@ public:
                                     long* pX = nullptr, long* pY = nullptr );
 };
 
-class SwShellCursor : public virtual SwCursor, public SwSelPaintRects
+class SW_DLLPUBLIC SwShellCursor : public virtual SwCursor, public SwSelPaintRects
 {
 private:
     // Document positions of start/end characters of a SSelection.
@@ -137,7 +135,7 @@ public:
     /// @see SwSelPaintRects::FillStartEnd(), override for text selections.
     virtual void FillStartEnd(SwRect& rStart, SwRect& rEnd) const override;
 
-    void Show(SfxViewShell* pViewShell); // Update and display all selections.
+    void Show(SfxViewShell const * pViewShell); // Update and display all selections.
     void Hide();            // Hide all selections.
     void Invalidate( const SwRect& rRect );
 
@@ -164,10 +162,13 @@ public:
 
     virtual bool IsReadOnlyAvailable() const override;
 
-    DECL_FIXEDMEMPOOL_NEWDEL( SwShellCursor )
+    SwShellCursor* GetNext()             { return dynamic_cast<SwShellCursor *>(GetNextInRing()); }
+    const SwShellCursor* GetNext() const { return dynamic_cast<SwShellCursor const *>(GetNextInRing()); }
+    SwShellCursor* GetPrev()             { return dynamic_cast<SwShellCursor *>(GetPrevInRing()); }
+    const SwShellCursor* GetPrev() const { return dynamic_cast<SwShellCursor const *>(GetPrevInRing()); }
 };
 
-class SwShellTableCursor : public virtual SwShellCursor, public virtual SwTableCursor
+class SwShellTableCursor final : public virtual SwShellCursor, public virtual SwTableCursor
 {
     /// Left edge of the selection start (top left cell).
     SwRect m_aStart;
@@ -200,6 +201,10 @@ public:
     // true: Cursor can be set to this position.
     virtual bool IsAtValidPos( bool bPoint = true ) const override;
 
+    SwShellTableCursor* GetNext()             { return dynamic_cast<SwShellTableCursor *>(GetNextInRing()); }
+    const SwShellTableCursor* GetNext() const { return dynamic_cast<SwShellTableCursor const *>(GetNextInRing()); }
+    SwShellTableCursor* GetPrev()             { return dynamic_cast<SwShellTableCursor *>(GetPrevInRing()); }
+    const SwShellTableCursor* GetPrev() const { return dynamic_cast<SwShellTableCursor const *>(GetPrevInRing()); }
 };
 
 #endif // INCLUDED_SW_INC_VISCRS_HXX

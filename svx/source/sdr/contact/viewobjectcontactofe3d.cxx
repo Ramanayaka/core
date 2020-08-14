@@ -18,18 +18,12 @@
  */
 
 #include <sdr/contact/viewobjectcontactofe3d.hxx>
-#include <svx/sdr/contact/viewcontactofe3d.hxx>
+#include <sdr/contact/viewcontactofe3d.hxx>
 #include <basegfx/color/bcolor.hxx>
 #include <drawinglayer/primitive3d/modifiedcolorprimitive3d.hxx>
-#include <sdr/contact/viewobjectcontactofe3dscene.hxx>
-#include <drawinglayer/primitive2d/embedded3dprimitive2d.hxx>
-#include <svx/sdr/contact/viewcontactofe3dscene.hxx>
-#include <comphelper/sequence.hxx>
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         ViewObjectContactOfE3d::ViewObjectContactOfE3d(ObjectContact& rObjectContact, ViewContact& rViewContact)
         :   ViewObjectContactOfSdrObj(rObjectContact, rViewContact)
         {
@@ -49,10 +43,10 @@ namespace sdr
             if(isPrimitiveGhosted(rDisplayInfo))
             {
                 const ::basegfx::BColor aRGBWhite(1.0, 1.0, 1.0);
-                const ::basegfx::BColorModifierSharedPtr aBColorModifier(
-                    new basegfx::BColorModifier_interpolate(
+                const ::basegfx::BColorModifierSharedPtr aBColorModifier =
+                    std::make_shared<basegfx::BColorModifier_interpolate>(
                         aRGBWhite,
-                        0.5));
+                        0.5);
                 const drawinglayer::primitive3d::Primitive3DReference xReference(
                     new drawinglayer::primitive3d::ModifiedColorPrimitive3D(
                         xRetval,
@@ -86,7 +80,7 @@ namespace sdr
             // return current Primitive2DContainer
             return mxPrimitive3DContainer;
         }
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

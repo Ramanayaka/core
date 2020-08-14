@@ -20,38 +20,25 @@
 #define INCLUDED_FPICKER_SOURCE_OFFICE_IODLG_HXX
 
 #include <memory>
-#include <vcl/dialog.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/split.hxx>
 #include <com/sun/star/beans/StringPair.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/ucb/IOErrorCode.hpp>
-#include <com/sun/star/ui/dialogs/XDialogClosedListener.hpp>
 #include <unotools/confignode.hxx>
-#include "svl/inettype.hxx"
 #include "asyncfilepicker.hxx"
-#include "OfficeControlAccess.hxx"
 #include "fpsmartcontent.hxx"
-#include <comphelper/configuration.hxx>
-#include <comphelper/processfactory.hxx>
 #include "fpdialogbase.hxx"
 #include <o3tl/typed_flags_set.hxx>
+#include <vcl/timer.hxx>
 
 #include <set>
 
 
-class SvTabListBox;
 class SvtFileView;
 class SvtFileDialogFilter_Impl;
-class SvtURLBox;
 class SvtExpFileDlg_Impl;
-class CustomContainer;
+class SvtURLBox;
 
 enum class AdjustFilterFlags {
     NONE            = 0x0000,
@@ -64,28 +51,27 @@ namespace o3tl {
 }
 
 
-class SvtFileDialog : public SvtFileDialog_Base
+class SvtFileDialog final : public SvtFileDialog_Base
 {
 private:
-    VclPtr<CheckBox>            _pCbReadOnly;
-    VclPtr<CheckBox>            _pCbLinkBox;
-    VclPtr<CheckBox>            _pCbPreviewBox;
-    VclPtr<CheckBox>            _pCbSelection;
-    VclPtr<PushButton>          _pPbPlay;
-    VclPtr<vcl::Window>         _pPrevWin;
-    VclPtr<FixedBitmap>         _pPrevBmp;
-    VclPtr<CustomContainer>     _pContainer;
-    VclPtr<SvtFileView>         _pFileView;
-    VclPtr<Splitter>            _pSplitter;
-    ::svt::IFilePickerListener* _pFileNotifier;
-    std::unique_ptr<SvtExpFileDlg_Impl>  pImpl;
-    PickerFlags                 _nPickerFlags;
-    bool                        _bIsInExecute   :   1;
+    std::unique_ptr<weld::CheckButton> m_xCbReadOnly;
+    std::unique_ptr<weld::CheckButton> m_xCbLinkBox;
+    std::unique_ptr<weld::CheckButton> m_xCbPreviewBox;
+    std::unique_ptr<weld::CheckButton> m_xCbSelection;
+    std::unique_ptr<weld::Button> m_xPbPlay;
+    std::unique_ptr<weld::Widget> m_xPreviewFrame;
+    std::unique_ptr<weld::Image> m_xPrevBmp;
+    std::unique_ptr<weld::Container> m_xContainer;
+    std::unique_ptr<SvtFileView> m_xFileView;
+    ::svt::IFilePickerListener* m_pFileNotifier;
+    std::unique_ptr<SvtExpFileDlg_Impl> m_xImpl;
+    Size                        m_aPreviewSize;
+    PickerFlags                 m_nPickerFlags;
+    bool                        m_bIsInExecute   :   1;
 
     ::svt::SmartContent         m_aContent;
 
-    ::std::set< VclPtr<Control> >
-                                m_aDisabledControls;
+    ::std::set<weld::Widget*>   m_aDisabledControls;
 
     ::utl::OConfigurationNode   m_aConfiguration;
     ::rtl::Reference< ::svt::AsyncPickerAction >
@@ -93,26 +79,26 @@ private:
     bool                        m_bInExecuteAsync;
     bool                        m_bHasFilename;
     css::uno::Reference < css::uno::XComponentContext >
-                                m_context;
+                                m_xContext;
 
-    DECL_LINK(            FilterSelectHdl_Impl, ListBox&, void );
+    DECL_LINK(            FilterSelectHdl_Impl, weld::ComboBox&, void );
     DECL_LINK(            FilterSelectTimerHdl_Impl, Timer*, void );
-    DECL_LINK(            NewFolderHdl_Impl, Button*, void );
-    DECL_LINK(            OpenUrlHdl_Impl, SvtURLBox*, void );
-    DECL_LINK(            OpenClickHdl_Impl, Button*, void );
-    DECL_LINK(            CancelHdl_Impl, Button*, void );
-    DECL_LINK(            FileNameGetFocusHdl_Impl, Control&, void );
-    DECL_LINK(            FileNameModifiedHdl_Impl, Edit&, void );
+    DECL_LINK(            NewFolderHdl_Impl, weld::Button&, void );
+    DECL_LINK(            OpenUrlHdl_Impl, weld::ComboBox&, bool );
+    DECL_LINK(            OpenClickHdl_Impl, weld::Button&, void );
+    DECL_LINK(            CancelHdl_Impl, weld::Button&, void );
+    DECL_LINK(            FileNameGetFocusHdl_Impl, weld::Widget&, void );
+    DECL_LINK(            FileNameModifiedHdl_Impl, weld::ComboBox&, void );
 
-    DECL_LINK(            URLBoxModifiedHdl_Impl, SvtURLBox*, void );
-    DECL_LINK(            ConnectToServerPressed_Hdl, Button*, void );
+    DECL_LINK(            URLBoxModifiedHdl_Impl, weld::ComboBox&, bool );
+    DECL_LINK(            ConnectToServerPressed_Hdl, weld::Button&, void );
 
-    DECL_LINK(            AddPlacePressed_Hdl, Button*, void );
-    DECL_LINK(            RemovePlacePressed_Hdl, Button*, void );
-    DECL_LINK(            Split_Hdl, Splitter*, void );
+    DECL_LINK(            AddPlacePressed_Hdl, weld::Button&, void );
+    DECL_LINK(            RemovePlacePressed_Hdl, weld::Button&, void );
+    DECL_LINK(            PreviewSizeAllocHdl, const Size&, void);
 
-    void                        OpenHdl_Impl(void* pVoid);
-    void                        Init_Impl( PickerFlags nBits );
+    void                  OpenHdl_Impl(void const * pVoid);
+
     /** find a filter with the given wildcard
     @param _rFilter
         the wildcard pattern to look for in the filter list
@@ -131,25 +117,20 @@ private:
     void                        OpenMultiSelection_Impl();
     void                        AddControls_Impl( );
 
-    DECL_LINK( SelectHdl_Impl, SvTreeListBox*, void );
-    DECL_LINK( DblClickHdl_Impl, SvTreeListBox*, bool);
-    DECL_LINK( EntrySelectHdl_Impl, ComboBox&, void);
-    DECL_LINK( OpenDoneHdl_Impl, SvtFileView*, void );
-    DECL_LINK( AutoExtensionHdl_Impl, Button*, void);
-    DECL_LINK( ClickHdl_Impl, Button*, void );
-    DECL_LINK( PlayButtonHdl_Impl, Button*, void);
-
+    DECL_LINK(SelectHdl_Impl, SvtFileView*, void);
+    DECL_LINK(DblClickHdl_Impl, SvtFileView*, bool);
+    DECL_LINK(EntrySelectHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(OpenDoneHdl_Impl, SvtFileView*, void);
+    DECL_LINK(AutoExtensionHdl_Impl, weld::Button&, void);
+    DECL_LINK(ClickHdl_Impl, weld::Button&, void);
+    DECL_LINK(PlayButtonHdl_Impl, weld::Button&, void);
+    DECL_LINK(SizeAllocHdl, const Size&, void);
 
     // removes a filter with wildcards from the path and returns it
     static bool IsolateFilterFromPath_Impl( OUString& rPath, OUString& rFilter );
 
-    void    implUpdateImages( );
-
-protected:
-    virtual bool                EventNotify( NotifyEvent& rNEvt ) override;
-
-    OUString                    _aPath;
-    OUString                    _aDefExt;
+    OUString                    m_aPath;
+    OUString                    m_aDefExt;
 
     /** enables or disables the complete UI of the file picker, with only offering a
         cancel button
@@ -164,25 +145,23 @@ protected:
 
     /** enables or disables a control
 
-        You are strongly encouraged to prefer this method over pControl->Enable( _bEnable ). See
+        You are strongly encouraged to prefer this method over pControl->Enable( bEnable ). See
         <member>EnableUI</member> for details.
     */
-    void                        EnableControl( Control* _pControl, bool _bEnable );
-    short                       PrepareExecute();
+    void                        EnableControl(weld::Widget* pControl, bool bEnable);
+    virtual bool                PrepareExecute() override;
 
 public:
-                                SvtFileDialog( vcl::Window* _pParent, PickerFlags nBits );
+                                SvtFileDialog( weld::Window* pParent, PickerFlags nBits );
                                 virtual ~SvtFileDialog() override;
-    virtual void                dispose() override;
 
-    virtual short               Execute() override;
-    virtual void                StartExecuteModal( const Link<Dialog&,void>& rEndDialogHdl ) override;
+    virtual short               run() override;
 
             void                FileSelect();
             void                FilterSelect() override;
 
-    void                        SetBlackList( const css::uno::Sequence< OUString >& rBlackList ) override;
-    const css::uno::Sequence< OUString >& GetBlackList() const override;
+    void                        SetDenyList( const css::uno::Sequence< OUString >& rDenyList ) override;
+    const css::uno::Sequence< OUString >& GetDenyList() const override;
     void                        SetStandardDir( const OUString& rStdDir ) override;
     const OUString&             GetStandardDir() const override;
     std::vector<OUString>       GetPathList() const override;        // for MultiSelection
@@ -199,9 +178,6 @@ public:
             sal_uInt16          GetFilterCount() const;
             const OUString&     GetFilterName( sal_uInt16 nPos ) const;
 
-    virtual void                Resize() override;
-    virtual void                DataChanged( const DataChangedEvent& _rDCEvt ) override;
-
     void                        PrevLevel_Impl();
     void                        OpenURL_Impl( const OUString& rURL );
 
@@ -211,14 +187,13 @@ public:
     void                        UpdateControls( const OUString& rURL ) override;
     void                        EnableAutocompletion( bool _bEnable = true ) override;
 
-    void                        SetFileCallback( ::svt::IFilePickerListener *pNotifier ) override { _pFileNotifier = pNotifier; }
+    void                        SetFileCallback( ::svt::IFilePickerListener *pNotifier ) override { m_pFileNotifier = pNotifier; }
 
-    sal_Int32                   getTargetColorDepth() override;
     sal_Int32                   getAvailableWidth() override;
     sal_Int32                   getAvailableHeight() override;
-    void                        setImage( sal_Int16 aImageFormat, const css::uno::Any& rImage ) override;
+    void                        setImage( const css::uno::Any& rImage ) override;
     bool                        getShowState() override;
-    bool                        isAutoExtensionEnabled();
+    bool                        isAutoExtensionEnabled() const;
 
     OUString                    getCurrentFileText( ) const override;
     void                        setCurrentFileText( const OUString& _rText, bool _bSelectAll = false ) override;
@@ -238,8 +213,6 @@ public:
     inline void                 EraseDefaultExt( sal_Int32 _nIndex = 0 );
     inline const OUString&      GetDefaultExt() const;
 
-    static Image                GetButtonImage(const OUString& rButtonId);
-
     bool                        ContentIsFolder( const OUString& rURL ) override { return m_aContent.isFolder( rURL ) && m_aContent.isValid(); }
     bool                        ContentHasParentFolder( const OUString& rURL );
     bool                        ContentCanMakeFolder( const OUString& rURL );
@@ -248,7 +221,7 @@ public:
 private:
     SvtFileDialogFilter_Impl*   implAddFilter( const OUString& _rFilter, const OUString& _rType );
 
-    /** updates _pUserFilter with a new filter
+    /** updates m_xUserFilter with a new filter
         <p>No checks for necessity are made.</p>
     */
     void                        createNewUserFilter( const OUString& _rNewFilter );
@@ -256,7 +229,7 @@ private:
     AdjustFilterFlags           adjustFilter( const OUString& _rFilter );
 
     // IFilePickerController, needed by OControlAccess
-    virtual Control*            getControl( sal_Int16 _nControlId, bool _bLabelControl = false ) const override;
+    virtual weld::Widget*       getControl( sal_Int16 nControlId, bool bLabelControl = false ) const override;
     virtual void                enableControl( sal_Int16 _nControlId, bool _bEnable ) override;
     virtual OUString            getCurFilter( ) const override;
 
@@ -292,7 +265,7 @@ private:
 
 inline void SvtFileDialog::SetPath( const OUString& rNewURL )
 {
-    _aPath = rNewURL;
+    m_aPath = rNewURL;
 }
 
 
@@ -304,31 +277,30 @@ inline void SvtFileDialog::SetHasFilename( bool bHasFilename )
 
 inline const OUString& SvtFileDialog::GetPath()
 {
-    return _aPath;
+    return m_aPath;
 }
 
 
 inline void SvtFileDialog::SetDefaultExt( const OUString& rExt )
 {
-    _aDefExt = rExt;
+    m_aDefExt = rExt;
 }
 
 inline void SvtFileDialog::EraseDefaultExt( sal_Int32 _nIndex )
 {
-    _aDefExt = _aDefExt.copy( 0, _nIndex );
+    m_aDefExt = m_aDefExt.copy( 0, _nIndex );
 }
 
 inline const OUString& SvtFileDialog::GetDefaultExt() const
 {
-    return _aDefExt;
+    return m_aDefExt;
 }
 
 
 inline SvtFileView* SvtFileDialog::GetView()
 {
-    return _pFileView;
+    return m_xFileView.get();
 }
-
 
 #endif // INCLUDED_FPICKER_SOURCE_OFFICE_IODLG_HXX
 

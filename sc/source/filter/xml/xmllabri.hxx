@@ -19,24 +19,22 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLLABRI_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLLABRI_HXX
 
-#include <xmloff/xmlictxt.hxx>
-#include "xmlimprt.hxx"
 #include "importcontext.hxx"
+
+namespace sax_fastparser { class FastAttributeList; }
 
 class ScXMLLabelRangesContext : public ScXMLImportContext
 {
 public:
                                 ScXMLLabelRangesContext(
-                                    ScXMLImport& rImport,
-                                    sal_Int32 nElement,
-                                    const css::uno::Reference< css::xml::sax::XFastAttributeList>& xAttrList
+                                    ScXMLImport& rImport
                                     );
     virtual                     ~ScXMLLabelRangesContext() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
-                                    sal_uInt16 nPrefix,
-                                    const OUString& rLocalName,
-                                    const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL
+                                createFastChildContext(
+                                    sal_Int32 nElement,
+                                    const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList
                                     ) override;
 };
 
@@ -50,18 +48,11 @@ private:
 public:
                                 ScXMLLabelRangeContext(
                                     ScXMLImport& rImport,
-                                    sal_uInt16 nPrefix,
-                                    const OUString& rLName,
-                                    const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList
+                                    const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList
                                     );
     virtual                     ~ScXMLLabelRangeContext() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
-                                    sal_uInt16 nPrefix,
-                                    const OUString& rLocalName,
-                                    const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList
-                                    ) override;
-    virtual void                EndElement() override;
+    virtual void SAL_CALL       endFastElement( sal_Int32 nElement ) override;
 };
 
 #endif

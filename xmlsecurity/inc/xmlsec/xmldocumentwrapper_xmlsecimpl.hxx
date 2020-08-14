@@ -22,12 +22,11 @@
 
 #include <com/sun/star/xml/wrapper/XXMLDocumentWrapper.hpp>
 #include <com/sun/star/xml/csax/XCompressedDocumentHandler.hpp>
-#include <com/sun/star/xml/crypto/sax/XSAXEventKeeper.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
 
-#include "xmlsec/saxhelper.hxx"
-#include "xsecxmlsecdllapi.h"
+#include <xmlsec/saxhelper.hxx>
+#include <xsecxmlsecdllapi.h>
 
 #define NODEPOSITION_NORMAL        1
 #define NODEPOSITION_STARTELEMENT  2
@@ -35,11 +34,7 @@
 
 #include <libxml/tree.h>
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class XComponentContext;
-} } } }
-
-class XSECXMLSEC_DLLPUBLIC XMLDocumentWrapper_XmlSecImpl : public cppu::WeakImplHelper
+class XSECXMLSEC_DLLPUBLIC XMLDocumentWrapper_XmlSecImpl final : public cppu::WeakImplHelper
 <
     css::xml::wrapper::XXMLDocumentWrapper,
     css::xml::sax::XDocumentHandler,
@@ -210,18 +205,6 @@ public:
 
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
-
-/// @throws css::uno::RuntimeException
-OUString XMLDocumentWrapper_XmlSecImpl_getImplementationName();
-
-/// @throws css::uno::RuntimeException
-css::uno::Sequence< OUString > SAL_CALL
-    XMLDocumentWrapper_XmlSecImpl_getSupportedServiceNames(  );
-
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface >
-SAL_CALL XMLDocumentWrapper_XmlSecImpl_createInstance(
-    const css::uno::Reference< css::uno::XComponentContext > &);
 
 #endif
 

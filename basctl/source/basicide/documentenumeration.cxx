@@ -29,9 +29,7 @@
 
 #include <tools/diagnose_ex.h>
 
-#include <comphelper/stl_types.hxx>
-
-namespace basctl { namespace docs {
+namespace basctl::docs {
 
     using ::com::sun::star::uno::Exception;
     using ::com::sun::star::uno::Reference;
@@ -97,7 +95,7 @@ namespace basctl { namespace docs {
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("basctl.basicide");
             }
         }
 
@@ -105,19 +103,16 @@ namespace basctl { namespace docs {
             const IDocumentDescriptorFilter* _pFilter )
         {
             // ensure we don't encounter some models multiple times
-            std::set< Reference< XModel >, ::comphelper::OInterfaceCompare< XModel > > aEncounteredModels;
+            std::set< Reference< XModel > > aEncounteredModels;
 
-            for (   const Reference< XFrame >* pFrame = _rFrames.getConstArray();
-                    pFrame != _rFrames.getConstArray() + _rFrames.getLength();
-                    ++pFrame
-                )
+            for ( auto const & rFrame : _rFrames )
             {
                 try
                 {
-                    OSL_ENSURE( pFrame->is(), "lcl_getDocuments_nothrow: illegal frame!" );
-                    if ( !pFrame->is() )
+                    OSL_ENSURE( rFrame.is(), "lcl_getDocuments_nothrow: illegal frame!" );
+                    if ( !rFrame.is() )
                         continue;
-                    Reference< XController > xController( (*pFrame)->getController() );
+                    Reference< XController > xController( rFrame->getController() );
                     if ( !xController.is() )
                         continue;
 
@@ -127,11 +122,10 @@ namespace basctl { namespace docs {
                         // those
                         continue;
 
-                    if ( aEncounteredModels.find( xModel ) != aEncounteredModels.end() )
+                    if ( !aEncounteredModels.insert( xModel ).second )
                         // there might be multiple frames for the same model
                         // handle it only once
                         continue;
-                    aEncounteredModels.insert( xModel );
 
                     // create a DocumentDescriptor
                     DocumentDescriptor aDescriptor;
@@ -146,7 +140,7 @@ namespace basctl { namespace docs {
                 }
                 catch( const Exception& )
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("basctl.basicide");
                 }
             }
         }
@@ -166,10 +160,10 @@ namespace basctl { namespace docs {
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("basctl.basicide");
         }
     }
 
-} } // namespace basctl::docs
+} // namespace basctl::docs
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

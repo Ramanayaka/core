@@ -20,26 +20,22 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_CONFIGURATIONCONTROLLER_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_CONFIGURATIONCONTROLLER_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 
 #include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationChangeRequest.hpp>
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/drawing/framework/XResourceFactoryManager.hpp>
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
-#include <com/sun/star/drawing/framework/ConfigurationChangeEvent.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <cppuhelper/compbase.hxx>
-#include <rtl/ref.hxx>
 
 #include <memory>
 
-namespace sd { class ViewShellBase; }
 
-namespace sd { namespace framework {
+namespace com::sun::star::drawing::framework { class XConfiguration; }
+namespace com::sun::star::drawing::framework { class XConfigurationChangeRequest; }
+namespace com::sun::star::drawing::framework { class XResourceId; }
+namespace com::sun::star::drawing::framework { struct ConfigurationChangeEvent; }
+
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XConfigurationController,
@@ -181,7 +177,7 @@ private:
     void ThrowIfDisposed () const;
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

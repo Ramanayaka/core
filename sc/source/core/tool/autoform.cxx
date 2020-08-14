@@ -18,31 +18,60 @@
  */
 
 #include <memory>
-#include "autoform.hxx"
+#include <autoform.hxx>
 
 #include <sfx2/app.hxx>
 #include <sfx2/docfile.hxx>
 #include <unotools/pathoptions.hxx>
+#include <svl/intitem.hxx>
 #include <svl/itemset.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/outdev.hxx>
+#include <svx/algitem.hxx>
 #include <svx/dialmgr.hxx>
 #include <svx/dialogs.hrc>
+#include <svx/rotmodit.hxx>
+#include <svx/svxids.hrc>
+#include <svx/strings.hrc>
+#include <editeng/adjustitem.hxx>
+#include <editeng/borderline.hxx>
+#include <editeng/boxitem.hxx>
+#include <editeng/brushitem.hxx>
+#include <editeng/colritem.hxx>
+#include <editeng/contouritem.hxx>
+#include <editeng/crossedoutitem.hxx>
+#include <editeng/fhgtitem.hxx>
+#include <editeng/fontitem.hxx>
+#include <editeng/justifyitem.hxx>
 #include <editeng/langitem.hxx>
+#include <editeng/lineitem.hxx>
+#include <editeng/postitem.hxx>
+#include <editeng/shdditem.hxx>
+#include <editeng/udlnitem.hxx>
+#include <editeng/wghtitem.hxx>
 #include <tools/urlobj.hxx>
+#include <comphelper/fileformat.h>
+#include <unotools/collatorwrapper.hxx>
 #include <unotools/transliterationwrapper.hxx>
 #include <tools/tenccvt.hxx>
-#include <o3tl/make_unique.hxx>
+#include <osl/diagnose.h>
 
-#include "globstr.hrc"
-#include "document.hxx"
+#include <attrib.hxx>
+#include <globstr.hrc>
+#include <scitems.hxx>
+#include <scresid.hxx>
+#include <document.hxx>
+
+#include <svl/legacyitem.hxx>
+#include <editeng/legacyitem.hxx>
+#include <svx/legacyitem.hxx>
 
 /*
  * XXX: BIG RED NOTICE! Changes MUST be binary file format compatible and MUST
  * be synchronized with Writer's SwTableAutoFmtTbl sw/source/core/doc/tblafmt.cxx
  */
 
-static const sal_Char sAutoTblFmtName[] = "autotbl.fmt";
+const char sAutoTblFmtName[] = "autotbl.fmt";
 
 // till SO5PF
 const sal_uInt16 AUTOFORMAT_ID_X        = 9501;
@@ -56,19 +85,8 @@ const sal_uInt16 AUTOFORMAT_DATA_ID_504 = 9802;
 
 const sal_uInt16 AUTOFORMAT_DATA_ID_552 = 9902;
 
-// --- from 641 on: CJK and CTL font settings
-const sal_uInt16 AUTOFORMAT_DATA_ID_641 = 10002;
-
-// --- from 680/dr14 on: diagonal frame lines
-const sal_uInt16 AUTOFORMAT_ID_680DR14      = 10011;
-const sal_uInt16 AUTOFORMAT_DATA_ID_680DR14 = 10012;
-
 // --- from 680/dr25 on: store strings as UTF-8
 const sal_uInt16 AUTOFORMAT_ID_680DR25      = 10021;
-
-// --- from DEV300/overline2 on: overline support
-const sal_uInt16 AUTOFORMAT_ID_300OVRLN      = 10031;
-const sal_uInt16 AUTOFORMAT_DATA_ID_300OVRLN = 10032;
 
 // --- Bug fix to fdo#31005: Table Autoformats does not save/apply all properties (Writer and Calc)
 const sal_uInt16 AUTOFORMAT_ID_31005      = 10041;
@@ -94,183 +112,97 @@ namespace
         // since it (naturally) doesn't have any writer-specific data to write.
         if (blobSize)
         {
-            blob.pData = new sal_uInt8[blobSize];
+            blob.pData.reset(new sal_uInt8[blobSize]);
             blob.size = static_cast<std::size_t>(blobSize);
-            stream.ReadBytes(blob.pData, blob.size);
+            stream.ReadBytes(blob.pData.get(), blob.size);
         }
 
         return stream;
     }
 
     /// Write an AutoFormatSwBlob to stream.
-    SvStream& WriteAutoFormatSwBlob(SvStream &stream, AutoFormatSwBlob &blob)
+    SvStream& WriteAutoFormatSwBlob(SvStream &stream, const AutoFormatSwBlob &blob)
     {
         const sal_uInt64 endOfBlob = stream.Tell() + sizeof(sal_uInt64) + blob.size;
         stream.WriteUInt64( endOfBlob );
         if (blob.size)
-            stream.WriteBytes(blob.pData, blob.size);
+            stream.WriteBytes(blob.pData.get(), blob.size);
 
         return stream;
     }
 }
 
-ScAfVersions::ScAfVersions() :
-    nFontVersion(0),
-    nFontHeightVersion(0),
-    nWeightVersion(0),
-    nPostureVersion(0),
-    nUnderlineVersion(0),
-    nOverlineVersion(0),
-    nCrossedOutVersion(0),
-    nContourVersion(0),
-    nShadowedVersion(0),
-    nColorVersion(0),
-    nBoxVersion(0),
-    nLineVersion(0),
-    nBrushVersion(0),
-    nAdjustVersion(0),
-    nHorJustifyVersion(0),
-    nVerJustifyVersion(0),
-    nOrientationVersion(0),
-    nMarginVersion(0),
-    nBoolVersion(0),
-    nInt32Version(0),
-    nRotateModeVersion(0),
-    nNumFmtVersion(0)
+ScAfVersions::ScAfVersions()
+:   AutoFormatVersions(),
+    swVersions()
 {
 }
 
 void ScAfVersions::Load( SvStream& rStream, sal_uInt16 nVer )
 {
-    rStream.ReadUInt16( nFontVersion );
-    rStream.ReadUInt16( nFontHeightVersion );
-    rStream.ReadUInt16( nWeightVersion );
-    rStream.ReadUInt16( nPostureVersion );
-    rStream.ReadUInt16( nUnderlineVersion );
-    if ( nVer >= AUTOFORMAT_ID_300OVRLN )
-        rStream.ReadUInt16( nOverlineVersion );
-    rStream.ReadUInt16( nCrossedOutVersion );
-    rStream.ReadUInt16( nContourVersion );
-    rStream.ReadUInt16( nShadowedVersion );
-    rStream.ReadUInt16( nColorVersion );
-    rStream.ReadUInt16( nBoxVersion );
-    if ( nVer >= AUTOFORMAT_ID_680DR14 )
-        rStream.ReadUInt16( nLineVersion );
-    rStream.ReadUInt16( nBrushVersion );
-    rStream.ReadUInt16( nAdjustVersion );
+    LoadBlockA(rStream, nVer);
     if (nVer >= AUTOFORMAT_ID_31005)
-        rStream >> swVersions;
-    rStream.ReadUInt16( nHorJustifyVersion );
-    rStream.ReadUInt16( nVerJustifyVersion );
-    rStream.ReadUInt16( nOrientationVersion );
-    rStream.ReadUInt16( nMarginVersion );
-    rStream.ReadUInt16( nBoolVersion );
-    if ( nVer >= AUTOFORMAT_ID_504 )
     {
-        rStream.ReadUInt16( nInt32Version );
-        rStream.ReadUInt16( nRotateModeVersion );
+        rStream >> swVersions;
     }
-    rStream.ReadUInt16( nNumFmtVersion );
+    LoadBlockB(rStream, nVer);
 }
 
 void ScAfVersions::Write(SvStream& rStream, sal_uInt16 fileVersion)
 {
-    rStream.WriteUInt16( SvxFontItem(ATTR_FONT).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxFontHeightItem(240, 100, ATTR_FONT_HEIGHT).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxWeightItem(WEIGHT_NORMAL, ATTR_FONT_WEIGHT).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxPostureItem(ITALIC_NONE, ATTR_FONT_POSTURE).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxUnderlineItem(LINESTYLE_NONE, ATTR_FONT_UNDERLINE).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxOverlineItem(LINESTYLE_NONE, ATTR_FONT_OVERLINE).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxCrossedOutItem(STRIKEOUT_NONE, ATTR_FONT_CROSSEDOUT).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxContourItem(false, ATTR_FONT_CONTOUR).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxShadowedItem(false, ATTR_FONT_SHADOWED).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxColorItem(ATTR_FONT_COLOR).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxBoxItem(ATTR_BORDER).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxLineItem(SID_FRAME_LINESTYLE).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxBrushItem(ATTR_BACKGROUND).GetVersion(fileVersion) );
+    AutoFormatVersions::WriteBlockA(rStream, fileVersion);
 
-    rStream.WriteUInt16( SvxAdjustItem(SvxAdjust::Left, 0).GetVersion(fileVersion) );
     if (fileVersion >= SOFFICE_FILEFORMAT_50)
+    {
         WriteAutoFormatSwBlob( rStream, swVersions );
+    }
 
-    rStream.WriteUInt16( SvxHorJustifyItem(SvxCellHorJustify::Standard, ATTR_HOR_JUSTIFY).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxVerJustifyItem(SVX_VER_JUSTIFY_STANDARD, ATTR_VER_JUSTIFY).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxOrientationItem(SVX_ORIENTATION_STANDARD, 0).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxMarginItem(ATTR_MARGIN).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SfxBoolItem(ATTR_LINEBREAK).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SfxInt32Item(ATTR_ROTATE_VALUE).GetVersion(fileVersion) );
-    rStream.WriteUInt16( SvxRotateModeItem(SVX_ROTATE_MODE_STANDARD,0).GetVersion(fileVersion) );
-
-    rStream.WriteUInt16( 0 );       // Num-Format
+    AutoFormatVersions::WriteBlockB(rStream, fileVersion);
 }
 
-ScAutoFormatDataField::ScAutoFormatDataField() :
-    aFont( ATTR_FONT ),
-    aHeight( 240, 100, ATTR_FONT_HEIGHT ),
-    aWeight( WEIGHT_NORMAL, ATTR_FONT_WEIGHT ),
-    aPosture( ITALIC_NONE, ATTR_FONT_POSTURE ),
-
-    aCJKFont( ATTR_CJK_FONT ),
-    aCJKHeight( 240, 100, ATTR_CJK_FONT_HEIGHT ),
-    aCJKWeight( WEIGHT_NORMAL, ATTR_CJK_FONT_WEIGHT ),
-    aCJKPosture( ITALIC_NONE, ATTR_CJK_FONT_POSTURE ),
-
-    aCTLFont( ATTR_CTL_FONT ),
-    aCTLHeight( 240, 100, ATTR_CTL_FONT_HEIGHT ),
-    aCTLWeight( WEIGHT_NORMAL, ATTR_CTL_FONT_WEIGHT ),
-    aCTLPosture( ITALIC_NONE, ATTR_CTL_FONT_POSTURE ),
-
-    aUnderline( LINESTYLE_NONE,ATTR_FONT_UNDERLINE ),
-    aOverline( LINESTYLE_NONE,ATTR_FONT_OVERLINE ),
-    aCrossedOut( STRIKEOUT_NONE, ATTR_FONT_CROSSEDOUT ),
-    aContour( false, ATTR_FONT_CONTOUR ),
-    aShadowed( false, ATTR_FONT_SHADOWED ),
-    aColor( ATTR_FONT_COLOR ),
-    aBox( ATTR_BORDER ),
-    aTLBR( ATTR_BORDER_TLBR ),
-    aBLTR( ATTR_BORDER_BLTR ),
-    aBackground( ATTR_BACKGROUND ),
-    aAdjust( SvxAdjust::Left, 0 ),
-    aHorJustify( SvxCellHorJustify::Standard, ATTR_HOR_JUSTIFY ),
-    aVerJustify( SVX_VER_JUSTIFY_STANDARD, ATTR_VER_JUSTIFY ),
-    aMargin( ATTR_MARGIN ),
-    aLinebreak( ATTR_LINEBREAK ),
-    aRotateAngle( ATTR_ROTATE_VALUE ),
-    aRotateMode( SVX_ROTATE_MODE_STANDARD, ATTR_ROTATE_MODE )
+ScAutoFormatDataField::ScAutoFormatDataField()
+:   AutoFormatBase(),
+    m_swFields(),
+    aNumFormat()
 {
+    // need to set default instances for base class AutoFormatBase here
+    // due to resource defines (e.g. ATTR_FONT) which are not available
+    // in svx and different in the different usages of derivations
+    m_aFont = std::make_unique<SvxFontItem>(ATTR_FONT);
+    m_aHeight = std::make_unique<SvxFontHeightItem>(240, 100, ATTR_FONT_HEIGHT);
+    m_aWeight = std::make_unique<SvxWeightItem>(WEIGHT_NORMAL, ATTR_FONT_WEIGHT);
+    m_aPosture = std::make_unique<SvxPostureItem>(ITALIC_NONE, ATTR_FONT_POSTURE);
+    m_aCJKFont = std::make_unique<SvxFontItem>(ATTR_CJK_FONT);
+    m_aCJKHeight = std::make_unique<SvxFontHeightItem>(240, 100, ATTR_CJK_FONT_HEIGHT);
+    m_aCJKWeight = std::make_unique<SvxWeightItem>(WEIGHT_NORMAL, ATTR_CJK_FONT_WEIGHT);
+    m_aCJKPosture = std::make_unique<SvxPostureItem>(ITALIC_NONE, ATTR_CJK_FONT_POSTURE);
+    m_aCTLFont = std::make_unique<SvxFontItem>(ATTR_CTL_FONT);
+    m_aCTLHeight = std::make_unique<SvxFontHeightItem>(240, 100, ATTR_CTL_FONT_HEIGHT);
+    m_aCTLWeight = std::make_unique<SvxWeightItem>(WEIGHT_NORMAL, ATTR_CTL_FONT_WEIGHT);
+    m_aCTLPosture = std::make_unique<SvxPostureItem>(ITALIC_NONE, ATTR_CTL_FONT_POSTURE);
+    m_aUnderline = std::make_unique<SvxUnderlineItem>(LINESTYLE_NONE,ATTR_FONT_UNDERLINE);
+    m_aOverline = std::make_unique<SvxOverlineItem>(LINESTYLE_NONE,ATTR_FONT_OVERLINE);
+    m_aCrossedOut = std::make_unique<SvxCrossedOutItem>(STRIKEOUT_NONE, ATTR_FONT_CROSSEDOUT);
+    m_aContour = std::make_unique<SvxContourItem>(false, ATTR_FONT_CONTOUR);
+    m_aShadowed = std::make_unique<SvxShadowedItem>(false, ATTR_FONT_SHADOWED);
+    m_aColor = std::make_unique<SvxColorItem>(ATTR_FONT_COLOR);
+    m_aBox = std::make_unique<SvxBoxItem>(ATTR_BORDER);
+    m_aTLBR = std::make_unique<SvxLineItem>(ATTR_BORDER_TLBR);
+    m_aBLTR = std::make_unique<SvxLineItem>(ATTR_BORDER_BLTR);
+    m_aBackground = std::make_unique<SvxBrushItem>(ATTR_BACKGROUND);
+    m_aAdjust = std::make_unique<SvxAdjustItem>(SvxAdjust::Left, 0);
+    m_aHorJustify = std::make_unique<SvxHorJustifyItem>(SvxCellHorJustify::Standard, ATTR_HOR_JUSTIFY);
+    m_aVerJustify = std::make_unique<SvxVerJustifyItem>(SvxCellVerJustify::Standard, ATTR_VER_JUSTIFY);
+    m_aStacked = std::make_unique<ScVerticalStackCell>();
+    m_aMargin = std::make_unique<SvxMarginItem>(ATTR_MARGIN);
+    m_aLinebreak = std::make_unique<ScLineBreakCell>();
+    m_aRotateAngle = std::make_unique<ScRotateValueItem>(0);
+    m_aRotateMode = std::make_unique<SvxRotateModeItem>(SVX_ROTATE_MODE_STANDARD, ATTR_ROTATE_MODE);
 }
 
-ScAutoFormatDataField::ScAutoFormatDataField( const ScAutoFormatDataField& rCopy ) :
-    aFont( rCopy.aFont ),
-    aHeight( rCopy.aHeight ),
-    aWeight( rCopy.aWeight ),
-    aPosture( rCopy.aPosture ),
-    aCJKFont( rCopy.aCJKFont ),
-    aCJKHeight( rCopy.aCJKHeight ),
-    aCJKWeight( rCopy.aCJKWeight ),
-    aCJKPosture( rCopy.aCJKPosture ),
-    aCTLFont( rCopy.aCTLFont ),
-    aCTLHeight( rCopy.aCTLHeight ),
-    aCTLWeight( rCopy.aCTLWeight ),
-    aCTLPosture( rCopy.aCTLPosture ),
-    aUnderline( rCopy.aUnderline ),
-    aOverline( rCopy.aOverline ),
-    aCrossedOut( rCopy.aCrossedOut ),
-    aContour( rCopy.aContour ),
-    aShadowed( rCopy.aShadowed ),
-    aColor( rCopy.aColor ),
-    aBox( rCopy.aBox ),
-    aTLBR( rCopy.aTLBR ),
-    aBLTR( rCopy.aBLTR ),
-    aBackground( rCopy.aBackground ),
-    aAdjust( rCopy.aAdjust ),
-    aHorJustify( rCopy.aHorJustify ),
-    aVerJustify( rCopy.aVerJustify ),
-    aStacked( rCopy.aStacked ),
-    aMargin( rCopy.aMargin ),
-    aLinebreak( rCopy.aLinebreak ),
-    aRotateAngle( rCopy.aRotateAngle ),
-    aRotateMode( rCopy.aRotateMode ),
+ScAutoFormatDataField::ScAutoFormatDataField( const ScAutoFormatDataField& rCopy )
+:   AutoFormatBase(rCopy),
+    m_swFields(), // was not copied in original, needed?
     aNumFormat( rCopy.aNumFormat )
 {
 }
@@ -279,86 +211,18 @@ ScAutoFormatDataField::~ScAutoFormatDataField()
 {
 }
 
-void ScAutoFormatDataField::SetAdjust( const SvxAdjustItem& rAdjust )
-{
-    aAdjust.SetAdjust( rAdjust.GetAdjust() );
-    aAdjust.SetOneWord( rAdjust.GetOneWord() );
-    aAdjust.SetLastBlock( rAdjust.GetLastBlock() );
-}
-
-#define READ( aItem, ItemType, nVers )      \
-    pNew = aItem.Create( rStream, nVers );  \
-    aItem = *static_cast<ItemType*>(pNew);  \
-    delete pNew;
-
 bool ScAutoFormatDataField::Load( SvStream& rStream, const ScAfVersions& rVersions, sal_uInt16 nVer )
 {
-    SfxPoolItem* pNew;
-    SvxOrientationItem aOrientation( SVX_ORIENTATION_STANDARD, 0 );
-
-    READ( aFont,        SvxFontItem,        rVersions.nFontVersion)
-    READ( aHeight,      SvxFontHeightItem,  rVersions.nFontHeightVersion)
-    READ( aWeight,      SvxWeightItem,      rVersions.nWeightVersion)
-    READ( aPosture,     SvxPostureItem,     rVersions.nPostureVersion)
-    // --- from 641 on: CJK and CTL font settings
-    if( AUTOFORMAT_DATA_ID_641 <= nVer )
-    {
-        READ( aCJKFont,     SvxFontItem,        rVersions.nFontVersion)
-        READ( aCJKHeight,   SvxFontHeightItem,  rVersions.nFontHeightVersion)
-        READ( aCJKWeight,   SvxWeightItem,      rVersions.nWeightVersion)
-        READ( aCJKPosture,  SvxPostureItem,     rVersions.nPostureVersion)
-        READ( aCTLFont,     SvxFontItem,        rVersions.nFontVersion)
-        READ( aCTLHeight,   SvxFontHeightItem,  rVersions.nFontHeightVersion)
-        READ( aCTLWeight,   SvxWeightItem,      rVersions.nWeightVersion)
-        READ( aCTLPosture,  SvxPostureItem,     rVersions.nPostureVersion)
-    }
-    READ( aUnderline,   SvxUnderlineItem,   rVersions.nUnderlineVersion)
-    if ( nVer >= AUTOFORMAT_DATA_ID_300OVRLN )
-    {
-        READ( aOverline,    SvxOverlineItem,    rVersions.nOverlineVersion)
-    }
-    READ( aCrossedOut,  SvxCrossedOutItem,  rVersions.nCrossedOutVersion)
-    READ( aContour,     SvxContourItem,     rVersions.nContourVersion)
-    READ( aShadowed,    SvxShadowedItem,    rVersions.nShadowedVersion)
-    READ( aColor,       SvxColorItem,       rVersions.nColorVersion)
-    READ( aBox,         SvxBoxItem,         rVersions.nBoxVersion)
-
-    // --- from 680/dr14 on: diagonal frame lines
-    if( AUTOFORMAT_DATA_ID_680DR14 <= nVer )
-    {
-        READ( aTLBR, SvxLineItem, rVersions.nLineVersion)
-        READ( aBLTR, SvxLineItem, rVersions.nLineVersion)
-    }
-
-    READ( aBackground,  SvxBrushItem,       rVersions.nBrushVersion)
-
-    pNew = aAdjust.Create( rStream, rVersions.nAdjustVersion );
-    SetAdjust( *static_cast<SvxAdjustItem*>(pNew) );
-    delete pNew;
+    LoadBlockA( rStream, rVersions, nVer );
 
     if (nVer >= AUTOFORMAT_DATA_ID_31005)
-        rStream >> m_swFields;
-
-    READ( aHorJustify,   SvxHorJustifyItem,  rVersions.nHorJustifyVersion)
-    READ( aVerJustify,   SvxVerJustifyItem,  rVersions.nVerJustifyVersion)
-    READ( aOrientation,  SvxOrientationItem, rVersions.nOrientationVersion)
-    READ( aMargin,       SvxMarginItem,      rVersions.nMarginVersion)
-
-    pNew = aLinebreak.Create( rStream, rVersions.nBoolVersion );
-    SetLinebreak( *static_cast<SfxBoolItem*>(pNew) );
-    delete pNew;
-
-    if ( nVer >= AUTOFORMAT_DATA_ID_504 )
     {
-        pNew = aRotateAngle.Create( rStream, rVersions.nInt32Version );
-        SetRotateAngle( *static_cast<SfxInt32Item*>(pNew) );
-        delete pNew;
-        pNew = aRotateMode.Create( rStream, rVersions.nRotateModeVersion );
-        SetRotateMode( *static_cast<SvxRotateModeItem*>(pNew) );
-        delete pNew;
+        rStream >> m_swFields;
     }
 
-    if( 0 == rVersions.nNumFmtVersion )
+    LoadBlockB( rStream, rVersions, nVer );
+
+    if( 0 == rVersions.nNumFormatVersion )
     {
         // --- from 680/dr25 on: store strings as UTF-8
         rtl_TextEncoding eCharSet = (nVer >= AUTOFORMAT_ID_680DR25) ? RTL_TEXTENCODING_UTF8 : rStream.GetStreamCharSet();
@@ -368,60 +232,22 @@ bool ScAutoFormatDataField::Load( SvStream& rStream, const ScAfVersions& rVersio
     //  adjust charset in font
     rtl_TextEncoding eSysSet = osl_getThreadTextEncoding();
     rtl_TextEncoding eSrcSet = rStream.GetStreamCharSet();
-    if( eSrcSet != eSysSet && aFont.GetCharSet() == eSrcSet )
-        aFont.SetCharSet(eSysSet);
-
-    aStacked.SetValue( aOrientation.IsStacked() );
-    aRotateAngle.SetValue( aOrientation.GetRotation( aRotateAngle.GetValue() ) );
+    if( eSrcSet != eSysSet && m_aFont->GetCharSet() == eSrcSet )
+        m_aFont->SetCharSet(eSysSet);
 
     return (rStream.GetError() == ERRCODE_NONE);
 }
 
 bool ScAutoFormatDataField::Save( SvStream& rStream, sal_uInt16 fileVersion )
 {
-    SvxOrientationItem aOrientation( aRotateAngle.GetValue(), aStacked.GetValue(), 0 );
+    SaveBlockA( rStream, fileVersion );
 
-    aFont.Store         ( rStream, aFont.GetVersion( fileVersion ) );
-    aHeight.Store       ( rStream, aHeight.GetVersion( fileVersion ) );
-    aWeight.Store       ( rStream, aWeight.GetVersion( fileVersion ) );
-    aPosture.Store      ( rStream, aPosture.GetVersion( fileVersion ) );
-    // --- from 641 on: CJK and CTL font settings
-    aCJKFont.Store      ( rStream, aCJKFont.GetVersion( fileVersion ) );
-    aCJKHeight.Store    ( rStream, aCJKHeight.GetVersion( fileVersion ) );
-    aCJKWeight.Store    ( rStream, aCJKWeight.GetVersion( fileVersion ) );
-    aCJKPosture.Store   ( rStream, aCJKPosture.GetVersion( fileVersion ) );
-    aCTLFont.Store      ( rStream, aCTLFont.GetVersion( fileVersion ) );
-    aCTLHeight.Store    ( rStream, aCTLHeight.GetVersion( fileVersion ) );
-    aCTLWeight.Store    ( rStream, aCTLWeight.GetVersion( fileVersion ) );
-    aCTLPosture.Store   ( rStream, aCTLPosture.GetVersion( fileVersion ) );
-
-    aUnderline.Store    ( rStream, aUnderline.GetVersion( fileVersion ) );
-    // --- from DEV300/overline2 on: overline support
-    aOverline.Store     ( rStream, aOverline.GetVersion( fileVersion ) );
-    aCrossedOut.Store   ( rStream, aCrossedOut.GetVersion( fileVersion ) );
-    aContour.Store      ( rStream, aContour.GetVersion( fileVersion ) );
-    aShadowed.Store     ( rStream, aShadowed.GetVersion( fileVersion ) );
-    aColor.Store        ( rStream, aColor.GetVersion( fileVersion ) );
-    aBox.Store          ( rStream, aBox.GetVersion( fileVersion ) );
-
-    // --- from 680/dr14 on: diagonal frame lines
-    aTLBR.Store         ( rStream, aTLBR.GetVersion( fileVersion ) );
-    aBLTR.Store         ( rStream, aBLTR.GetVersion( fileVersion ) );
-
-    aBackground.Store   ( rStream, aBackground.GetVersion( fileVersion ) );
-
-    aAdjust.Store       ( rStream, aAdjust.GetVersion( fileVersion ) );
     if (fileVersion >= SOFFICE_FILEFORMAT_50)
+    {
         WriteAutoFormatSwBlob( rStream, m_swFields );
+    }
 
-    aHorJustify.Store   ( rStream, aHorJustify.GetVersion( fileVersion ) );
-    aVerJustify.Store   ( rStream, aVerJustify.GetVersion( fileVersion ) );
-    aOrientation.Store  ( rStream, aOrientation.GetVersion( fileVersion ) );
-    aMargin.Store       ( rStream, aMargin.GetVersion( fileVersion ) );
-    aLinebreak.Store    ( rStream, aLinebreak.GetVersion( fileVersion ) );
-    // Rotation ab SO5
-    aRotateAngle.Store  ( rStream, aRotateAngle.GetVersion( fileVersion ) );
-    aRotateMode.Store   ( rStream, aRotateMode.GetVersion( fileVersion ) );
+    SaveBlockB( rStream, fileVersion );
 
     // --- from 680/dr25 on: store strings as UTF-8
     aNumFormat.Save( rStream, RTL_TEXTENCODING_UTF8 );
@@ -440,9 +266,8 @@ ScAutoFormatData::ScAutoFormatData()
     bIncludeBackground =
     bIncludeWidthHeight = true;
 
-    ppDataField = new ScAutoFormatDataField*[ 16 ];
     for( sal_uInt16 nIndex = 0; nIndex < 16; ++nIndex )
-        ppDataField[ nIndex ] = new ScAutoFormatDataField;
+        ppDataField[ nIndex ].reset( new ScAutoFormatDataField );
 }
 
 ScAutoFormatData::ScAutoFormatData( const ScAutoFormatData& rData ) :
@@ -455,29 +280,25 @@ ScAutoFormatData::ScAutoFormatData( const ScAutoFormatData& rData ) :
         bIncludeValueFormat( rData.bIncludeValueFormat ),
         bIncludeWidthHeight( rData.bIncludeWidthHeight )
 {
-    ppDataField = new ScAutoFormatDataField*[ 16 ];
     for( sal_uInt16 nIndex = 0; nIndex < 16; ++nIndex )
-        ppDataField[ nIndex ] = new ScAutoFormatDataField( rData.GetField( nIndex ) );
+        ppDataField[ nIndex ].reset( new ScAutoFormatDataField( rData.GetField( nIndex ) ) );
 }
 
 ScAutoFormatData::~ScAutoFormatData()
 {
-    for( sal_uInt16 nIndex = 0; nIndex < 16; ++nIndex )
-        delete ppDataField[ nIndex ];
-    delete[] ppDataField;
 }
 
 ScAutoFormatDataField& ScAutoFormatData::GetField( sal_uInt16 nIndex )
 {
     OSL_ENSURE( nIndex < 16, "ScAutoFormatData::GetField - illegal index" );
-    OSL_ENSURE( ppDataField && ppDataField[ nIndex ], "ScAutoFormatData::GetField - no data" );
+    OSL_ENSURE( ppDataField[ nIndex ], "ScAutoFormatData::GetField - no data" );
     return *ppDataField[ nIndex ];
 }
 
 const ScAutoFormatDataField& ScAutoFormatData::GetField( sal_uInt16 nIndex ) const
 {
     OSL_ENSURE( nIndex < 16, "ScAutoFormatData::GetField - illegal index" );
-    OSL_ENSURE( ppDataField && ppDataField[ nIndex ], "ScAutoFormatData::GetField - no data" );
+    OSL_ENSURE( ppDataField[ nIndex ], "ScAutoFormatData::GetField - no data" );
     return *ppDataField[ nIndex ];
 }
 
@@ -548,10 +369,10 @@ void ScAutoFormatData::PutItem( sal_uInt16 nIndex, const SfxPoolItem& rItem )
         case ATTR_BACKGROUND:       rField.SetBackground( static_cast<const SvxBrushItem&>(rItem) );       break;
         case ATTR_HOR_JUSTIFY:      rField.SetHorJustify( static_cast<const SvxHorJustifyItem&>(rItem) );  break;
         case ATTR_VER_JUSTIFY:      rField.SetVerJustify( static_cast<const SvxVerJustifyItem&>(rItem) );  break;
-        case ATTR_STACKED:          rField.SetStacked( static_cast<const SfxBoolItem&>(rItem) );           break;
+        case ATTR_STACKED:          rField.SetStacked( static_cast<const ScVerticalStackCell&>(rItem) );   break;
         case ATTR_MARGIN:           rField.SetMargin( static_cast<const SvxMarginItem&>(rItem) );          break;
-        case ATTR_LINEBREAK:        rField.SetLinebreak( static_cast<const SfxBoolItem&>(rItem) );         break;
-        case ATTR_ROTATE_VALUE:     rField.SetRotateAngle( static_cast<const SfxInt32Item&>(rItem) );      break;
+        case ATTR_LINEBREAK:        rField.SetLinebreak( static_cast<const ScLineBreakCell&>(rItem) );         break;
+        case ATTR_ROTATE_VALUE:     rField.SetRotateAngle( static_cast<const ScRotateValueItem&>(rItem) ); break;
         case ATTR_ROTATE_MODE:      rField.SetRotateMode( static_cast<const SvxRotateModeItem&>(rItem) );  break;
     }
 }
@@ -627,7 +448,7 @@ bool ScAutoFormatData::IsEqualData( sal_uInt16 nIndex1, sal_uInt16 nIndex2 ) con
     return bEqual;
 }
 
-void ScAutoFormatData::FillToItemSet( sal_uInt16 nIndex, SfxItemSet& rItemSet, ScDocument& rDoc ) const
+void ScAutoFormatData::FillToItemSet( sal_uInt16 nIndex, SfxItemSet& rItemSet, const ScDocument& rDoc ) const
 {
     const ScAutoFormatDataField& rField = GetField( nIndex );
 
@@ -719,35 +540,65 @@ void ScAutoFormatData::GetFromItemSet( sal_uInt16 nIndex, const SfxItemSet& rIte
     ScAutoFormatDataField& rField = GetField( nIndex );
 
     rField.SetNumFormat     ( rNumFormat);
-    rField.SetFont          ( static_cast<const SvxFontItem&>          (rItemSet.Get( ATTR_FONT )) );
-    rField.SetHeight        ( static_cast<const SvxFontHeightItem&>    (rItemSet.Get( ATTR_FONT_HEIGHT )) );
-    rField.SetWeight        ( static_cast<const SvxWeightItem&>        (rItemSet.Get( ATTR_FONT_WEIGHT )) );
-    rField.SetPosture       ( static_cast<const SvxPostureItem&>       (rItemSet.Get( ATTR_FONT_POSTURE )) );
-    rField.SetCJKFont       ( static_cast<const SvxFontItem&>          (rItemSet.Get( ATTR_CJK_FONT )) );
-    rField.SetCJKHeight     ( static_cast<const SvxFontHeightItem&>    (rItemSet.Get( ATTR_CJK_FONT_HEIGHT )) );
-    rField.SetCJKWeight     ( static_cast<const SvxWeightItem&>        (rItemSet.Get( ATTR_CJK_FONT_WEIGHT )) );
-    rField.SetCJKPosture    ( static_cast<const SvxPostureItem&>       (rItemSet.Get( ATTR_CJK_FONT_POSTURE )) );
-    rField.SetCTLFont       ( static_cast<const SvxFontItem&>          (rItemSet.Get( ATTR_CTL_FONT )) );
-    rField.SetCTLHeight     ( static_cast<const SvxFontHeightItem&>    (rItemSet.Get( ATTR_CTL_FONT_HEIGHT )) );
-    rField.SetCTLWeight     ( static_cast<const SvxWeightItem&>        (rItemSet.Get( ATTR_CTL_FONT_WEIGHT )) );
-    rField.SetCTLPosture    ( static_cast<const SvxPostureItem&>       (rItemSet.Get( ATTR_CTL_FONT_POSTURE )) );
-    rField.SetUnderline     ( static_cast<const SvxUnderlineItem&>     (rItemSet.Get( ATTR_FONT_UNDERLINE )) );
-    rField.SetOverline      ( static_cast<const SvxOverlineItem&>      (rItemSet.Get( ATTR_FONT_OVERLINE )) );
-    rField.SetCrossedOut    ( static_cast<const SvxCrossedOutItem&>    (rItemSet.Get( ATTR_FONT_CROSSEDOUT )) );
-    rField.SetContour       ( static_cast<const SvxContourItem&>       (rItemSet.Get( ATTR_FONT_CONTOUR )) );
-    rField.SetShadowed      ( static_cast<const SvxShadowedItem&>      (rItemSet.Get( ATTR_FONT_SHADOWED )) );
-    rField.SetColor         ( static_cast<const SvxColorItem&>         (rItemSet.Get( ATTR_FONT_COLOR )) );
-    rField.SetTLBR          ( static_cast<const SvxLineItem&>          (rItemSet.Get( ATTR_BORDER_TLBR )) );
-    rField.SetBLTR          ( static_cast<const SvxLineItem&>          (rItemSet.Get( ATTR_BORDER_BLTR )) );
-    rField.SetHorJustify    ( static_cast<const SvxHorJustifyItem&>    (rItemSet.Get( ATTR_HOR_JUSTIFY )) );
-    rField.SetVerJustify    ( static_cast<const SvxVerJustifyItem&>    (rItemSet.Get( ATTR_VER_JUSTIFY )) );
-    rField.SetStacked       ( static_cast<const SfxBoolItem&>          (rItemSet.Get( ATTR_STACKED )) );
-    rField.SetLinebreak     ( static_cast<const SfxBoolItem&>          (rItemSet.Get( ATTR_LINEBREAK )) );
-    rField.SetMargin        ( static_cast<const SvxMarginItem&>        (rItemSet.Get( ATTR_MARGIN )) );
-    rField.SetBackground    ( static_cast<const SvxBrushItem&>         (rItemSet.Get( ATTR_BACKGROUND )) );
-    rField.SetRotateAngle   ( static_cast<const SfxInt32Item&>         (rItemSet.Get( ATTR_ROTATE_VALUE )) );
-    rField.SetRotateMode    ( static_cast<const SvxRotateModeItem&>    (rItemSet.Get( ATTR_ROTATE_MODE )) );
+    rField.SetFont          ( rItemSet.Get( ATTR_FONT ) );
+    rField.SetHeight        ( rItemSet.Get( ATTR_FONT_HEIGHT ) );
+    rField.SetWeight        ( rItemSet.Get( ATTR_FONT_WEIGHT ) );
+    rField.SetPosture       ( rItemSet.Get( ATTR_FONT_POSTURE ) );
+    rField.SetCJKFont       ( rItemSet.Get( ATTR_CJK_FONT ) );
+    rField.SetCJKHeight     ( rItemSet.Get( ATTR_CJK_FONT_HEIGHT ) );
+    rField.SetCJKWeight     ( rItemSet.Get( ATTR_CJK_FONT_WEIGHT ) );
+    rField.SetCJKPosture    ( rItemSet.Get( ATTR_CJK_FONT_POSTURE ) );
+    rField.SetCTLFont       ( rItemSet.Get( ATTR_CTL_FONT ) );
+    rField.SetCTLHeight     ( rItemSet.Get( ATTR_CTL_FONT_HEIGHT ) );
+    rField.SetCTLWeight     ( rItemSet.Get( ATTR_CTL_FONT_WEIGHT ) );
+    rField.SetCTLPosture    ( rItemSet.Get( ATTR_CTL_FONT_POSTURE ) );
+    rField.SetUnderline     ( rItemSet.Get( ATTR_FONT_UNDERLINE ) );
+    rField.SetOverline      ( rItemSet.Get( ATTR_FONT_OVERLINE ) );
+    rField.SetCrossedOut    ( rItemSet.Get( ATTR_FONT_CROSSEDOUT ) );
+    rField.SetContour       ( rItemSet.Get( ATTR_FONT_CONTOUR ) );
+    rField.SetShadowed      ( rItemSet.Get( ATTR_FONT_SHADOWED ) );
+    rField.SetColor         ( rItemSet.Get( ATTR_FONT_COLOR ) );
+    rField.SetTLBR          ( rItemSet.Get( ATTR_BORDER_TLBR ) );
+    rField.SetBLTR          ( rItemSet.Get( ATTR_BORDER_BLTR ) );
+    rField.SetHorJustify    ( rItemSet.Get( ATTR_HOR_JUSTIFY ) );
+    rField.SetVerJustify    ( rItemSet.Get( ATTR_VER_JUSTIFY ) );
+    rField.SetStacked       ( rItemSet.Get( ATTR_STACKED ) );
+    rField.SetLinebreak     ( rItemSet.Get( ATTR_LINEBREAK ) );
+    rField.SetMargin        ( rItemSet.Get( ATTR_MARGIN ) );
+    rField.SetBackground    ( rItemSet.Get( ATTR_BACKGROUND ) );
+    rField.SetRotateAngle   ( rItemSet.Get( ATTR_ROTATE_VALUE ) );
+    rField.SetRotateMode    ( rItemSet.Get( ATTR_ROTATE_MODE ) );
 }
+
+static const char* RID_SVXSTR_TBLAFMT[] =
+{
+    RID_SVXSTR_TBLAFMT_3D,
+    RID_SVXSTR_TBLAFMT_BLACK1,
+    RID_SVXSTR_TBLAFMT_BLACK2,
+    RID_SVXSTR_TBLAFMT_BLUE,
+    RID_SVXSTR_TBLAFMT_BROWN,
+    RID_SVXSTR_TBLAFMT_CURRENCY,
+    RID_SVXSTR_TBLAFMT_CURRENCY_3D,
+    RID_SVXSTR_TBLAFMT_CURRENCY_GRAY,
+    RID_SVXSTR_TBLAFMT_CURRENCY_LAVENDER,
+    RID_SVXSTR_TBLAFMT_CURRENCY_TURQUOISE,
+    RID_SVXSTR_TBLAFMT_GRAY,
+    RID_SVXSTR_TBLAFMT_GREEN,
+    RID_SVXSTR_TBLAFMT_LAVENDER,
+    RID_SVXSTR_TBLAFMT_RED,
+    RID_SVXSTR_TBLAFMT_TURQUOISE,
+    RID_SVXSTR_TBLAFMT_YELLOW,
+    RID_SVXSTR_TBLAFMT_LO6_ACADEMIC,
+    RID_SVXSTR_TBLAFMT_LO6_BOX_LIST_BLUE,
+    RID_SVXSTR_TBLAFMT_LO6_BOX_LIST_GREEN,
+    RID_SVXSTR_TBLAFMT_LO6_BOX_LIST_RED,
+    RID_SVXSTR_TBLAFMT_LO6_BOX_LIST_YELLOW,
+    RID_SVXSTR_TBLAFMT_LO6_ELEGANT,
+    RID_SVXSTR_TBLAFMT_LO6_FINANCIAL,
+    RID_SVXSTR_TBLAFMT_LO6_SIMPLE_GRID_COLUMNS,
+    RID_SVXSTR_TBLAFMT_LO6_SIMPLE_GRID_ROWS,
+    RID_SVXSTR_TBLAFMT_LO6_SIMPLE_LIST_SHADED
+};
 
 bool ScAutoFormatData::Load( SvStream& rStream, const ScAfVersions& rVersions )
 {
@@ -769,12 +620,8 @@ bool ScAutoFormatData::Load( SvStream& rStream, const ScAfVersions& rVersions )
         if( AUTOFORMAT_DATA_ID_552 <= nVer )
         {
             rStream.ReadUInt16( nStrResId );
-            sal_uInt16 nId = RID_SVXSTR_TBLAFMT_BEGIN + nStrResId;
-            if( RID_SVXSTR_TBLAFMT_BEGIN <= nId &&
-                nId < RID_SVXSTR_TBLAFMT_END )
-            {
-                aName = SvxResId( nId );
-            }
+            if (nStrResId < SAL_N_ELEMENTS(RID_SVXSTR_TBLAFMT))
+                aName = SvxResId(RID_SVXSTR_TBLAFMT[nStrResId]);
             else
                 nStrResId = USHRT_MAX;
         }
@@ -827,8 +674,8 @@ ScAutoFormat::ScAutoFormat() :
     mbSaveLater(false)
 {
     //  create default autoformat
-    ScAutoFormatData* pData = new ScAutoFormatData;
-    OUString aName(ScGlobal::GetRscString(STR_STYLENAME_STANDARD));
+    std::unique_ptr<ScAutoFormatData> pData(new ScAutoFormatData);
+    OUString aName(ScResId(STR_STYLENAME_STANDARD_CELL));
     pData->SetName(aName);
 
     //  default font, default height
@@ -862,10 +709,9 @@ ScAutoFormat::ScAutoFormat() :
     aBox.SetLine(&aLine, SvxBoxItemLine::BOTTOM);
 
     Color aWhite(COL_WHITE);
-    Color aBlue(COL_BLUE);
     SvxColorItem aWhiteText( aWhite, ATTR_FONT_COLOR );
     SvxColorItem aBlackText( aBlack, ATTR_FONT_COLOR );
-    SvxBrushItem aBlueBack( aBlue, ATTR_BACKGROUND );
+    SvxBrushItem aBlueBack( COL_BLUE, ATTR_BACKGROUND );
     SvxBrushItem aWhiteBack( aWhite, ATTR_BACKGROUND );
     SvxBrushItem aGray70Back( Color(0x4d, 0x4d, 0x4d), ATTR_BACKGROUND );
     SvxBrushItem aGray20Back( Color(0xcc, 0xcc, 0xcc), ATTR_BACKGROUND );
@@ -904,12 +750,12 @@ ScAutoFormat::ScAutoFormat() :
         }
     }
 
-    insert(pData);
+    insert(std::move(pData));
 }
 
 bool DefaultFirstEntry::operator() (const OUString& left, const OUString& right) const
 {
-    OUString aStrStandard(ScGlobal::GetRscString(STR_STYLENAME_STANDARD));
+    OUString aStrStandard(ScResId(STR_STYLENAME_STANDARD_CELL));
     if (ScGlobal::GetpTransliteration()->isEqual( left, right ) )
         return false;
     if ( ScGlobal::GetpTransliteration()->isEqual( left, aStrStandard ) )
@@ -944,26 +790,15 @@ ScAutoFormatData* ScAutoFormat::findByIndex(size_t nIndex)
     return it->second.get();
 }
 
-ScAutoFormat::iterator ScAutoFormat::find(const ScAutoFormatData* pData)
-{
-    MapType::iterator it = m_Data.begin(), itEnd = m_Data.end();
-    for (; it != itEnd; ++it)
-    {
-        if (it->second.get() == pData)
-            return it;
-    }
-    return itEnd;
-}
-
 ScAutoFormat::iterator ScAutoFormat::find(const OUString& rName)
 {
     return m_Data.find(rName);
 }
 
-bool ScAutoFormat::insert(ScAutoFormatData* pNew)
+ScAutoFormat::iterator ScAutoFormat::insert(std::unique_ptr<ScAutoFormatData> pNew)
 {
     OUString aName = pNew->GetName();
-    return m_Data.insert(std::make_pair(aName, std::unique_ptr<ScAutoFormatData>(pNew))).second;
+    return m_Data.insert(std::make_pair(aName, std::move(pNew))).first;
 }
 
 void ScAutoFormat::erase(const iterator& it)
@@ -1035,17 +870,16 @@ void ScAutoFormat::Load()
             if( nVal == AUTOFORMAT_ID_358 || nVal == AUTOFORMAT_ID_X ||
                     (AUTOFORMAT_ID_504 <= nVal && nVal <= AUTOFORMAT_ID) )
             {
-                m_aVersions.Load( rStream, nVal );        // Item-Versionen
+                m_aVersions.Load( rStream, nVal );        // item versions
 
-                ScAutoFormatData* pData;
-                sal_uInt16 nAnz = 0;
-                rStream.ReadUInt16( nAnz );
+                sal_uInt16 nCnt = 0;
+                rStream.ReadUInt16( nCnt );
                 bRet = (rStream.GetError() == ERRCODE_NONE);
-                for (sal_uInt16 i=0; bRet && (i < nAnz); i++)
+                for (sal_uInt16 i=0; bRet && (i < nCnt); i++)
                 {
-                    pData = new ScAutoFormatData();
+                    std::unique_ptr<ScAutoFormatData> pData(new ScAutoFormatData());
                     bRet = pData->Load(rStream, m_aVersions);
-                    insert(pData);
+                    insert(std::move(pData));
                 }
             }
         }

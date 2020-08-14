@@ -29,14 +29,8 @@
 
 #include <map>
 
-namespace com { namespace sun { namespace star { namespace container {
-    class XStringKeyMap;
-} } } }
-
-namespace com { namespace sun { namespace star { namespace text {
-    class XTextRange;
-} } } }
-
+namespace com::sun::star::container { class XStringKeyMap; }
+namespace com::sun::star::text { class XTextRange; }
 class SwTextNode;
 class ModelToViewHelper;
 
@@ -75,7 +69,7 @@ private:
 protected:
     SwTextNode* GetTextNode();
     void ClearTextNode();
-    const ModelToViewHelper& GetConversionMap();
+    const ModelToViewHelper& GetConversionMap() const;
 };
 
 /** Implementation of the css::container::XStringKeyMap interface
@@ -96,8 +90,8 @@ public:
     virtual css::uno::Any SAL_CALL getValueByIndex(::sal_Int32 nIndex) override;
 
 private:
-    SwXStringKeyMap(SwXStringKeyMap &) = delete;
-    void operator =(SwXStringKeyMap &) = delete;
+    SwXStringKeyMap(SwXStringKeyMap const &) = delete;
+    void operator =(SwXStringKeyMap const &) = delete;
 
     virtual ~SwXStringKeyMap() override {}
 

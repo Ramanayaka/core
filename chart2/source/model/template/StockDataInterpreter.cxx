@@ -18,16 +18,9 @@
  */
 
 #include "StockDataInterpreter.hxx"
-#include "DataSeries.hxx"
-#include "macros.hxx"
-#include "DataSeriesHelper.hxx"
-#include "CommonConverters.hxx"
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <DataSeries.hxx>
 #include <com/sun/star/chart2/data/XDataSink.hpp>
-
-#include <vector>
-#include <algorithm>
-#include <iterator>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -64,10 +57,10 @@ InterpretedData SAL_CALL StockDataInterpreter::interpretDataSource(
 
     // sub-type properties
     const StockChartTypeTemplate::StockVariant eVar( GetStockVariant());
-    const bool bHasOpenValues (( eVar == StockChartTypeTemplate::OPEN_LOW_HI_CLOSE ) ||
-                               ( eVar == StockChartTypeTemplate::VOL_OPEN_LOW_HI_CLOSE ));
-    const bool bHasVolume (( eVar == StockChartTypeTemplate::VOL_LOW_HI_CLOSE ) ||
-                           ( eVar == StockChartTypeTemplate::VOL_OPEN_LOW_HI_CLOSE ));
+    const bool bHasOpenValues (( eVar == StockChartTypeTemplate::StockVariant::Open ) ||
+                               ( eVar == StockChartTypeTemplate::StockVariant::VolumeOpen ));
+    const bool bHasVolume (( eVar == StockChartTypeTemplate::StockVariant::Volume ) ||
+                           ( eVar == StockChartTypeTemplate::StockVariant::VolumeOpen ));
     const bool bHasCategories( HasCategories( rArguments, aData ));
 
     // necessary roles for "full series"
@@ -240,13 +233,12 @@ InterpretedData SAL_CALL StockDataInterpreter::interpretDataSource(
                     xSeries.set( new DataSeries );
                 OSL_ASSERT( xSeries.is() );
                 Reference< data::XDataSink > xSink( xSeries, uno::UNO_QUERY_THROW );
-                OSL_ASSERT( xSink.is() );
                 xSink->setData( aSequences[nGroupIndex][nSeriesIdx] );
                 aResultSeries[nGroupIndex][nSeriesIdx].set( xSeries );
             }
-            catch( const uno::Exception & ex )
+            catch( const uno::Exception & )
             {
-                ASSERT_EXCEPTION( ex );
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
         }
     }
@@ -266,12 +258,12 @@ sal_Bool SAL_CALL StockDataInterpreter::isDataCompatible(
     sal_Int32 nNumberOfNecessarySequences = 3;
     // open
     StockChartTypeTemplate::StockVariant eVar( GetStockVariant());
-    if( ( eVar == StockChartTypeTemplate::OPEN_LOW_HI_CLOSE ) ||
-        ( eVar == StockChartTypeTemplate::VOL_OPEN_LOW_HI_CLOSE ))
+    if( ( eVar == StockChartTypeTemplate::StockVariant::Open ) ||
+        ( eVar == StockChartTypeTemplate::StockVariant::VolumeOpen ))
         ++nNumberOfNecessarySequences;
     // volume
-    bool bHasVolume = (( eVar == StockChartTypeTemplate::VOL_LOW_HI_CLOSE ) ||
-                       ( eVar == StockChartTypeTemplate::VOL_OPEN_LOW_HI_CLOSE ));
+    bool bHasVolume = (( eVar == StockChartTypeTemplate::StockVariant::Volume ) ||
+                       ( eVar == StockChartTypeTemplate::StockVariant::VolumeOpen ));
 
     // 1. correct number of sub-types
     if( aInterpretedData.Series.getLength() < (bHasVolume ? 2 : 1 ))
@@ -290,21 +282,21 @@ sal_Bool SAL_CALL StockDataInterpreter::isDataCompatible(
     // 2. b. candlestick
     {
         OSL_ASSERT( aInterpretedData.Series.getLength() > (bHasVolume ? 1 : 0));
-        Sequence< Reference< XDataSeries > > aSeries( aInterpretedData.Series[(bHasVolume ? 1 : 0)] );
-        if(!aSeries.getLength())
+        const Sequence< Reference< XDataSeries > > aSeries( aInterpretedData.Series[(bHasVolume ? 1 : 0)] );
+        if(!aSeries.hasElements())
             return false;
-        for( sal_Int32 i=0; i<aSeries.getLength(); ++i )
+        for( Reference< XDataSeries > const & dataSeries : aSeries )
         {
             try
             {
-                Reference< data::XDataSource > xSrc( aSeries[i], uno::UNO_QUERY_THROW );
+                Reference< data::XDataSource > xSrc( dataSeries, uno::UNO_QUERY_THROW );
                 Sequence< Reference< data::XLabeledDataSequence > > aSeq( xSrc->getDataSequences());
                 if( aSeq.getLength() != nNumberOfNecessarySequences )
                     return false;
             }
-            catch( const uno::Exception & ex )
+            catch( const uno::Exception & )
             {
-                ASSERT_EXCEPTION( ex );
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
         }
     }

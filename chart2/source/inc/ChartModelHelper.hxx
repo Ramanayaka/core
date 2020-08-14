@@ -19,21 +19,21 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_CHARTMODELHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_CHARTMODELHELPER_HXX
 
-#include <com/sun/star/chart2/XChartType.hpp>
-#include <com/sun/star/chart2/XDataSeries.hpp>
-#include <com/sun/star/chart2/XDiagram.hpp>
-#include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/chart2/data/XDataProvider.hpp>
-#include <com/sun/star/chart2/data/XRangeHighlighter.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
-
 #include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/frame/XModel.hpp>
 #include "charttoolsdllapi.hxx"
 
-#include "ChartModel.hxx"
-
 #include <vector>
+
+namespace chart { class ChartModel; }
+namespace com::sun::star::chart2 { class XChartDocument; }
+namespace com::sun::star::chart2 { class XChartType; }
+namespace com::sun::star::chart2 { class XCoordinateSystem; }
+namespace com::sun::star::chart2 { class XDataSeries; }
+namespace com::sun::star::chart2 { class XDiagram; }
+namespace com::sun::star::chart2::data { class XDataProvider; }
+namespace com::sun::star::chart2::data { class XRangeHighlighter; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::view { class XSelectionSupplier; }
 
 namespace chart
 {

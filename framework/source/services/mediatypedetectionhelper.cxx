@@ -20,6 +20,7 @@
 #include <services/mediatypedetectionhelper.hxx>
 #include <services.h>
 #include <svl/inettype.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 namespace framework
 {
@@ -28,7 +29,7 @@ using namespace ::com::sun::star;
 
 //  constructor
 
-MediaTypeDetectionHelper::MediaTypeDetectionHelper( const uno::Reference< lang::XMultiServiceFactory >&  )
+MediaTypeDetectionHelper::MediaTypeDetectionHelper()
 {
 }
 
@@ -38,16 +39,23 @@ MediaTypeDetectionHelper::~MediaTypeDetectionHelper()
 {
 }
 
-DEFINE_XSERVICEINFO_ONEINSTANCESERVICE  (   MediaTypeDetectionHelper
-                                        , ::cppu::OWeakObject
-                                        , "com.sun.star.frame.MediaTypeDetectionHelper"
-                                        , IMPLEMENTATIONNAME_MEDIATYPEDETECTIONHELPER
-                                    )
+// XInterface, XTypeProvider, XServiceInfo
 
-DEFINE_INIT_SERVICE                 (   MediaTypeDetectionHelper,
-                                        {
-                                        }
-                                    )
+OUString SAL_CALL MediaTypeDetectionHelper::getImplementationName()
+{
+    return "com.sun.star.comp.framework.MediaTypeDetectionHelper";
+}
+
+sal_Bool SAL_CALL MediaTypeDetectionHelper::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL MediaTypeDetectionHelper::getSupportedServiceNames()
+{
+    return { "com.sun.star.frame.MediaTypeDetectionHelper" };
+}
+
 
 //   XStringMapping
 
@@ -71,5 +79,13 @@ sal_Bool SAL_CALL MediaTypeDetectionHelper::mapStrings(uno::Sequence< OUString >
 }
 
 }   // namespace framework
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_MediaTypeDetectionHelper_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::MediaTypeDetectionHelper());
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

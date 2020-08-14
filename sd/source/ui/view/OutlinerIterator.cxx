@@ -17,22 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "OutlinerIterator.hxx"
-#include "OutlinerIteratorImpl.hxx"
+#include <OutlinerIterator.hxx>
+#include <OutlinerIteratorImpl.hxx>
 #include <svx/svditer.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/viewfrm.hxx>
-#include "Outliner.hxx"
+#include <tools/debug.hxx>
+#include <Outliner.hxx>
 
-#include "drawdoc.hxx"
-#include "DrawViewShell.hxx"
-#include "drawview.hxx"
-#include "sdpage.hxx"
-#include "FrameView.hxx"
-#include "DrawDocShell.hxx"
-#include "Window.hxx"
+#include <drawdoc.hxx>
+#include <DrawViewShell.hxx>
+#include <sdpage.hxx>
 
-namespace sd { namespace outliner {
+namespace sd::outliner {
 
 //===== IteratorPosition ======================================================
 
@@ -41,15 +36,6 @@ IteratorPosition::IteratorPosition()
 , mnPageIndex(-1)
 , mePageKind(PageKind::Standard)
 , meEditMode(EditMode::Page)
-{
-}
-
-IteratorPosition::IteratorPosition (const IteratorPosition& aPosition)
-: mxObject(aPosition.mxObject)
-, mnText(aPosition.mnText)
-, mnPageIndex(aPosition.mnPageIndex)
-, mePageKind(aPosition.mePageKind)
-, meEditMode(aPosition.meEditMode)
 {
 }
 
@@ -73,13 +59,13 @@ Iterator::Iterator (const Iterator& rIterator)
 {
 }
 
-Iterator::Iterator (Iterator&& rIterator)
+Iterator::Iterator(Iterator&& rIterator) noexcept
     : mxIterator(std::move(rIterator.mxIterator))
 {
 }
 
-Iterator::Iterator (IteratorImplBase* pObject)
-    : mxIterator(pObject)
+Iterator::Iterator (std::unique_ptr<IteratorImplBase> pObject)
+    : mxIterator(std::move(pObject))
 {
 }
 
@@ -99,7 +85,7 @@ Iterator& Iterator::operator= (const Iterator& rIterator)
     return *this;
 }
 
-Iterator& Iterator::operator= (Iterator&& rIterator)
+Iterator& Iterator::operator=(Iterator&& rIterator) noexcept
 {
     mxIterator = std::move(rIterator.mxIterator);
     return *this;
@@ -118,7 +104,7 @@ Iterator& Iterator::operator++ ()
     return *this;
 }
 
-bool Iterator::operator== (const Iterator& rIterator)
+bool Iterator::operator== (const Iterator& rIterator) const
 {
     if (!mxIterator || !rIterator.mxIterator)
         return mxIterator.get() == rIterator.mxIterator.get();
@@ -126,7 +112,7 @@ bool Iterator::operator== (const Iterator& rIterator)
         return *mxIterator == *rIterator.mxIterator;
 }
 
-bool Iterator::operator!= (const Iterator& rIterator)
+bool Iterator::operator!= (const Iterator& rIterator) const
 {
     return ! operator==(rIterator);
 }
@@ -181,13 +167,13 @@ Iterator OutlinerContainer::CreateIterator (IteratorLocation aLocation)
 }
 
 Iterator OutlinerContainer::CreateSelectionIterator (
-    const ::std::vector<SdrObjectWeakRef>& rObjectList,
+    const ::std::vector<::tools::WeakReference<SdrObject>>& rObjectList,
     SdDrawDocument* pDocument,
     const std::shared_ptr<ViewShell>& rpViewShell,
     bool bDirectionIsForward,
     IteratorLocation aLocation)
 {
-    OSL_ASSERT(rpViewShell.get());
+    OSL_ASSERT(rpViewShell);
 
     sal_Int32 nObjectIndex;
 
@@ -216,7 +202,7 @@ Iterator OutlinerContainer::CreateSelectionIterator (
                 break;
         }
 
-    return Iterator (new SelectionIteratorImpl (
+    return Iterator (std::make_unique<SelectionIteratorImpl> (
         rObjectList, nObjectIndex, pDocument, rpViewShell, bDirectionIsForward));
 }
 
@@ -226,7 +212,7 @@ Iterator OutlinerContainer::CreateDocumentIterator (
     bool bDirectionIsForward,
     IteratorLocation aLocation)
 {
-    OSL_ASSERT(rpViewShell.get());
+    OSL_ASSERT(rpViewShell);
 
     PageKind ePageKind;
     EditMode eEditMode;
@@ -263,7 +249,7 @@ Iterator OutlinerContainer::CreateDocumentIterator (
         case CURRENT:
             const std::shared_ptr<DrawViewShell> pDrawViewShell(
                 std::dynamic_pointer_cast<DrawViewShell>(rpViewShell));
-            if (pDrawViewShell.get())
+            if (pDrawViewShell)
             {
                 ePageKind = pDrawViewShell->GetPageKind();
                 eEditMode = pDrawViewShell->GetEditMode();
@@ -280,12 +266,12 @@ Iterator OutlinerContainer::CreateDocumentIterator (
         ePageKind, eEditMode, bDirectionIsForward, aLocation);
 
     return Iterator (
-        new DocumentIteratorImpl (nPageIndex, ePageKind, eEditMode,
+        std::make_unique<DocumentIteratorImpl> (nPageIndex, ePageKind, eEditMode,
             pDocument, rpViewShell, bDirectionIsForward));
 }
 
 sal_Int32 OutlinerContainer::GetPageIndex (
-    SdDrawDocument* pDocument,
+    SdDrawDocument const * pDocument,
     const std::shared_ptr<ViewShell>& rpViewShell,
     PageKind ePageKind,
     EditMode eEditMode,
@@ -315,7 +301,7 @@ sal_Int32 OutlinerContainer::GetPageIndex (
     switch (aLocation)
     {
         case CURRENT:
-            if (pDrawViewShell.get())
+            if (pDrawViewShell)
                 nPageIndex = pDrawViewShell->GetCurPagePos();
             else
             {
@@ -360,7 +346,7 @@ IteratorImplBase::IteratorImplBase(SdDrawDocument* pDocument,
     if ( ! mpViewShellWeak.expired())
         pDrawViewShell = std::dynamic_pointer_cast<DrawViewShell>(rpViewShellWeak.lock());
 
-    if (pDrawViewShell.get())
+    if (pDrawViewShell)
     {
         maPosition.mePageKind = pDrawViewShell->GetPageKind();
         maPosition.meEditMode = pDrawViewShell->GetEditMode();
@@ -425,7 +411,7 @@ void IteratorImplBase::Reverse()
 //===== SelectionIteratorImpl ===========================================
 
 SelectionIteratorImpl::SelectionIteratorImpl (
-    const ::std::vector<SdrObjectWeakRef>& rObjectList,
+    const ::std::vector<::tools::WeakReference<SdrObject>>& rObjectList,
     sal_Int32 nObjectIndex,
     SdDrawDocument* pDocument,
     const std::weak_ptr<ViewShell>& rpViewShellWeak,
@@ -525,8 +511,7 @@ ViewIteratorImpl::ViewIteratorImpl (
     bool bDirectionIsForward)
     : IteratorImplBase (pDocument, rpViewShellWeak, bDirectionIsForward),
       mbPageChangeOccurred(false),
-      mpPage(nullptr),
-      mpObjectIterator(nullptr)
+      mpPage(nullptr)
 {
     SetPage (nPageIndex);
 }
@@ -540,8 +525,7 @@ ViewIteratorImpl::ViewIteratorImpl (
     EditMode eEditMode)
     : IteratorImplBase (pDocument, rpViewShellWeak, bDirectionIsForward, ePageKind, eEditMode),
       mbPageChangeOccurred(false),
-      mpPage(nullptr),
-      mpObjectIterator(nullptr)
+      mpPage(nullptr)
 {
     SetPage (nPageIndex);
 }
@@ -562,7 +546,7 @@ IteratorImplBase* ViewIteratorImpl::Clone (IteratorImplBase* pObject) const
 
     if (mpObjectIterator != nullptr)
     {
-        pIterator->mpObjectIterator = new SdrObjListIter(*mpPage, SdrIterMode::DeepNoGroups, !mbDirectionIsForward);
+        pIterator->mpObjectIterator.reset( new SdrObjListIter(mpPage, SdrIterMode::DeepNoGroups, !mbDirectionIsForward) );
 
         // No direct way to set the object iterator to the current object.
         pIterator->maPosition.mxObject.reset(nullptr);
@@ -570,7 +554,7 @@ IteratorImplBase* ViewIteratorImpl::Clone (IteratorImplBase* pObject) const
             pIterator->maPosition.mxObject.reset(pIterator->mpObjectIterator->Next());
     }
     else
-        pIterator->mpObjectIterator = nullptr;
+        pIterator->mpObjectIterator.reset();
 
     return pIterator;
 }
@@ -607,7 +591,7 @@ void ViewIteratorImpl::GotoNextText()
             SetPage (maPosition.mnPageIndex-1);
 
         if (mpPage != nullptr)
-            mpObjectIterator = new SdrObjListIter(*mpPage, SdrIterMode::DeepNoGroups, !mbDirectionIsForward);
+            mpObjectIterator.reset( new SdrObjListIter(mpPage, SdrIterMode::DeepNoGroups, !mbDirectionIsForward) );
         if (mpObjectIterator!=nullptr && mpObjectIterator->IsMore())
             maPosition.mxObject.reset(mpObjectIterator->Next());
         else
@@ -646,11 +630,11 @@ void ViewIteratorImpl::SetPage (sal_Int32 nPageIndex)
         {
             if (maPosition.meEditMode == EditMode::Page)
                 mpPage = mpDocument->GetSdPage (
-                    (sal_uInt16)nPageIndex,
+                    static_cast<sal_uInt16>(nPageIndex),
                     maPosition.mePageKind);
             else
                 mpPage = mpDocument->GetMasterSdPage (
-                    (sal_uInt16)nPageIndex,
+                    static_cast<sal_uInt16>(nPageIndex),
                     maPosition.mePageKind);
         }
         else
@@ -659,15 +643,15 @@ void ViewIteratorImpl::SetPage (sal_Int32 nPageIndex)
 
     // Set up object list iterator.
     if (mpPage != nullptr)
-        mpObjectIterator = new SdrObjListIter(*mpPage, SdrIterMode::DeepNoGroups, ! mbDirectionIsForward);
+        mpObjectIterator.reset( new SdrObjListIter(mpPage, SdrIterMode::DeepNoGroups, ! mbDirectionIsForward) );
     else
-        mpObjectIterator = nullptr;
+        mpObjectIterator.reset();
 
     // Get object pointer.
     if (mpObjectIterator!=nullptr && mpObjectIterator->IsMore())
         maPosition.mxObject.reset( mpObjectIterator->Next() );
     else
-        maPosition.mxObject.reset( nullptr );
+        maPosition.mxObject.reset(nullptr);
 
     maPosition.mnText = 0;
     if( !mbDirectionIsForward && maPosition.mxObject.is() )
@@ -684,15 +668,13 @@ void ViewIteratorImpl::Reverse()
     IteratorImplBase::Reverse ();
 
     // Create reversed object list iterator.
-    delete mpObjectIterator;
     if (mpPage != nullptr)
-        mpObjectIterator = new SdrObjListIter(*mpPage, SdrIterMode::DeepNoGroups, ! mbDirectionIsForward);
+        mpObjectIterator.reset( new SdrObjListIter(mpPage, SdrIterMode::DeepNoGroups, ! mbDirectionIsForward) );
     else
-        mpObjectIterator = nullptr;
+        mpObjectIterator.reset();
 
     // Move iterator to the current object.
-    SdrObjectWeakRef xObject = maPosition.mxObject;
-    maPosition.mxObject.reset(nullptr);
+    ::tools::WeakReference<SdrObject> xObject = std::move(maPosition.mxObject);
 
     if (!mpObjectIterator)
         return;
@@ -797,21 +779,21 @@ void DocumentIteratorImpl::GotoNextText()
             bViewChanged = true;
         }
 
-    if (bViewChanged)
-    {
-        // Get new page count;
-        sal_Int32 nPageCount;
-        if (maPosition.meEditMode == EditMode::Page)
-            nPageCount = mpDocument->GetSdPageCount (maPosition.mePageKind);
-        else
-            nPageCount = mpDocument->GetMasterSdPageCount(maPosition.mePageKind);
+    if (!bViewChanged)
+        return;
 
-        // Now that we know the number of pages we can set the current page index.
-        if (bSetToOnePastLastPage)
-            SetPage (nPageCount);
-    }
+    // Get new page count;
+    sal_Int32 nPageCount;
+    if (maPosition.meEditMode == EditMode::Page)
+        nPageCount = mpDocument->GetSdPageCount (maPosition.mePageKind);
+    else
+        nPageCount = mpDocument->GetMasterSdPageCount(maPosition.mePageKind);
+
+    // Now that we know the number of pages we can set the current page index.
+    if (bSetToOnePastLastPage)
+        SetPage (nPageCount);
 }
 
-} } // end of namespace ::sd::outliner
+} // end of namespace ::sd::outliner
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

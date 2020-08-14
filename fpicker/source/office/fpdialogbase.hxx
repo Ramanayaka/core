@@ -19,16 +19,11 @@
 #ifndef INCLUDED_FPICKER_SOURCE_OFFICE_FPDIALOGBASE_HXX
 #define INCLUDED_FPICKER_SOURCE_OFFICE_FPDIALOGBASE_HXX
 
-#include <vcl/dialog.hxx>
+#include <vcl/weld.hxx>
 #include <com/sun/star/beans/StringPair.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include "svl/inettype.hxx"
-#include "asyncfilepicker.hxx"
-#include "OfficeControlAccess.hxx"
-#include "fpsmartcontent.hxx"
-
-#include <set>
+#include "pickercallbacks.hxx"
 
 class SvTabListBox;
 class SvtFileView;
@@ -52,28 +47,31 @@ enum class PickerFlags {
     Password          = 0x001000,
     ReadOnly          = 0x002000,
     MultiSelection    = 0x004000,
+    ImageAnchor       = 0x008000,
 };
 namespace o3tl {
-    template<> struct typed_flags<PickerFlags> : is_typed_flags<PickerFlags, 0x007fff> {};
+    template<> struct typed_flags<PickerFlags> : is_typed_flags<PickerFlags, 0x00ffff> {};
 }
 
 #define FILEDIALOG_FILTER_ALL   "*.*"
 
 // SvtFileDialog_Base
 
-class SvtFileDialog_Base : public ModalDialog, public ::svt::IFilePickerController
+class SvtFileDialog_Base : public weld::GenericDialogController, public ::svt::IFilePickerController
 {
 public:
-    SvtFileDialog_Base( vcl::Window* pParent, const OUString& rID, const OUString& rUIXMLDescription )
-    : ModalDialog( pParent, rID, rUIXMLDescription )
+    SvtFileDialog_Base(weld::Window* pParent, const OUString& rUIXMLDescription, const OString& rID)
+        : weld::GenericDialogController(pParent, rUIXMLDescription, rID)
     {
     }
+
+    virtual bool PrepareExecute() { return true ; }
 
     virtual SvtFileView* GetView() = 0;
 
     virtual void SetHasFilename( bool bHasFilename ) = 0;
-    virtual void SetBlackList( const css::uno::Sequence< OUString >& rBlackList ) = 0;
-    virtual const css::uno::Sequence< OUString >& GetBlackList() const = 0;
+    virtual void SetDenyList( const css::uno::Sequence< OUString >& rDenyList ) = 0;
+    virtual const css::uno::Sequence< OUString >& GetDenyList() const = 0;
     virtual void SetStandardDir( const OUString& rStdDir ) = 0;
     virtual const OUString& GetStandardDir() const = 0;
     virtual void SetPath( const OUString& rNewURL ) = 0;
@@ -98,11 +96,10 @@ public:
 
     virtual void EnableAutocompletion( bool _bEnable = true ) = 0;
 
-    virtual sal_Int32 getTargetColorDepth() = 0;
     virtual sal_Int32 getAvailableWidth() = 0;
     virtual sal_Int32 getAvailableHeight() = 0;
 
-    virtual void setImage( sal_Int16 aImageFormat, const css::uno::Any& rImage ) = 0;
+    virtual void setImage( const css::uno::Any& rImage ) = 0;
 
     virtual bool getShowState() = 0;
 };

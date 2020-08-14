@@ -18,25 +18,22 @@
  */
 
 #include <unotools/datetime.hxx>
+#include <unotools/localedatawrapper.hxx>
+#include <unotools/syslocale.hxx>
 #include <tools/date.hxx>
 #include <tools/time.hxx>
 #include <tools/datetime.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/math.hxx>
 #include <osl/diagnose.h>
+#include <comphelper/string.hxx>
+#include <sstream>
 
 namespace
 {
-    /** convert string to number with optional min and max values */
-    template <typename T>
-    bool convertNumber( T& rValue,
-                        const OUString& rString,
-                        T /*nMin*/ = -1, T /*nMax*/ = -1)
+    bool checkAllNumber(const OUString& rString)
     {
-        bool bNeg = false;
-        rValue = 0;
-
-        sal_Int32 nPos = 0L;
+        sal_Int32 nPos = 0;
         sal_Int32 nLen = rString.getLength();
 
         // skip white space
@@ -44,26 +41,46 @@ namespace
             nPos++;
 
         if( nPos < nLen && '-' == rString[nPos] )
-        {
-            bNeg = true;
             nPos++;
-        }
 
         // get number
         while( nPos < nLen &&
                '0' <= rString[nPos] &&
                '9' >= rString[nPos] )
         {
-            // TODO: check overflow!
-            rValue *= 10;
-            rValue += (rString[nPos] - u'0');
             nPos++;
         }
 
-        if( bNeg )
-            rValue *= -1;
-
         return nPos == nLen;
+    }
+
+    /** convert string to number with optional min and max values */
+    bool convertNumber32(sal_Int32& rValue,
+                         const OUString& rString,
+                         sal_Int32 /*nMin*/ = -1, sal_Int32 /*nMax*/ = -1)
+    {
+        if (!checkAllNumber(rString))
+        {
+            rValue = 0;
+            return false;
+        }
+
+        rValue = rString.toInt32();
+        return true;
+    }
+
+    bool convertNumber64(sal_Int64& rValue,
+                         const OUString& rString,
+                         sal_Int64 /*nMin*/ = -1, sal_Int64 /*nMax*/ = -1)
+    {
+        if (!checkAllNumber(rString))
+        {
+            rValue = 0;
+            return false;
+        }
+
+        rValue = rString.toInt64();
+        return true;
     }
 
     // although the standard calls for fixed-length (zero-padded) tokens
@@ -97,7 +114,7 @@ namespace
                 return true;
             if (c < c0 || c > c9)
                 return false;
-            resInt += OUStringLiteral1(c);
+            resInt += OUStringChar(c);
         }
         if (nPos == i_str.getLength() || i_str[nPos] == sep)
             return true;
@@ -118,7 +135,7 @@ namespace
                     return false;
                 if (c < c0 || c > c9)
                     return false;
-                resFrac += OUStringLiteral1(c);
+                resFrac += OUStringChar(c);
             }
             OSL_ENSURE(nPos == i_str.getLength(), "impl_getISO8601TimeToken internal error; expected to be at end of string");
             return true;
@@ -131,7 +148,7 @@ namespace
         else
             return false;
     }
-    inline bool getISO8601TimeToken(const OUString &i_str, sal_Int32 &io_index, OUString &o_strInt, bool &o_bFraction, OUString &o_strFrac)
+    bool getISO8601TimeToken(const OUString &i_str, sal_Int32 &io_index, OUString &o_strInt, bool &o_bFraction, OUString &o_strFrac)
     {
         OUString resInt;
         OUString resFrac;
@@ -148,7 +165,7 @@ namespace
             return true;
         }
     }
-    inline bool getISO8601TimeZoneToken(const OUString &i_str, sal_Int32 &io_index, OUString &o_strInt)
+    bool getISO8601TimeZoneToken(const OUString &i_str, sal_Int32 &io_index, OUString &o_strInt)
     {
         const sal_Unicode c0 = '0';
         const sal_Unicode c9 = '9';
@@ -168,7 +185,7 @@ namespace
                 const sal_Unicode c = i_str[io_index];
                 if ((c < c0 || c > c9) && c != sep)
                     return false;
-                o_strInt += OUStringLiteral1(c);
+                o_strInt += OUStringChar(c);
             }
             return true;
         }
@@ -179,6 +196,36 @@ namespace
 
 namespace utl
 {
+const LocaleDataWrapper& GetLocaleData()
+{
+    static SvtSysLocale ourSysLocale;
+    return ourSysLocale.GetLocaleData();
+}
+
+DateTime GetDateTime(const css::util::DateTime& _rDT) { return DateTime(_rDT); }
+
+OUString GetDateTimeString(const css::util::DateTime& _rDT)
+{
+    // String with date and time information (#i20172#)
+    DateTime aDT(GetDateTime(_rDT));
+    const LocaleDataWrapper& rLoDa = GetLocaleData();
+
+    return rLoDa.getDate(aDT) + " " + rLoDa.getTime(aDT);
+}
+
+OUString GetDateTimeString(sal_Int32 _nDate, sal_Int32 _nTime)
+{
+    const LocaleDataWrapper& rLoDa = GetLocaleData();
+
+    Date aDate(_nDate);
+    tools::Time aTime(_nTime * tools::Time::nanoPerCenti);
+    return rLoDa.getDate(aDate) + ", " + rLoDa.getTime(aTime);
+}
+
+OUString GetDateString(const css::util::DateTime& _rDT)
+{
+    return GetLocaleData().getDate(GetDateTime(_rDT));
+}
 
 void typeConvert(const Date& _rDate, css::util::Date& _rOut)
 {
@@ -210,25 +257,18 @@ void typeConvert(const css::util::DateTime& _rDateTime, DateTime& _rOut)
     _rOut = DateTime(aDate, aTime);
 }
 
-void extractDate(const css::util::DateTime& _rDateTime, css::util::Date& _rOut)
-{
-    _rOut.Day = _rDateTime.Day;
-    _rOut.Month = _rDateTime.Month;
-    _rOut.Year = _rDateTime.Year;
-}
-
 OUString toISO8601(const css::util::DateTime& rDateTime)
 {
-    OUStringBuffer rBuffer;
-    rBuffer.append((sal_Int32) rDateTime.Year);
+    OUStringBuffer rBuffer(32);
+    rBuffer.append(static_cast<sal_Int32>(rDateTime.Year));
     rBuffer.append('-');
     if( rDateTime.Month < 10 )
         rBuffer.append('0');
-    rBuffer.append((sal_Int32) rDateTime.Month);
+    rBuffer.append(static_cast<sal_Int32>(rDateTime.Month));
     rBuffer.append('-');
     if( rDateTime.Day < 10 )
         rBuffer.append('0');
-    rBuffer.append((sal_Int32) rDateTime.Day);
+    rBuffer.append(static_cast<sal_Int32>(rDateTime.Day));
 
     if( rDateTime.NanoSeconds != 0 ||
         rDateTime.Seconds     != 0 ||
@@ -238,15 +278,15 @@ OUString toISO8601(const css::util::DateTime& rDateTime)
         rBuffer.append('T');
         if( rDateTime.Hours < 10 )
             rBuffer.append('0');
-        rBuffer.append((sal_Int32) rDateTime.Hours);
+        rBuffer.append(static_cast<sal_Int32>(rDateTime.Hours));
         rBuffer.append(':');
         if( rDateTime.Minutes < 10 )
             rBuffer.append('0');
-        rBuffer.append((sal_Int32) rDateTime.Minutes);
+        rBuffer.append(static_cast<sal_Int32>(rDateTime.Minutes));
         rBuffer.append(':');
         if( rDateTime.Seconds < 10 )
             rBuffer.append('0');
-        rBuffer.append((sal_Int32) rDateTime.Seconds);
+        rBuffer.append(static_cast<sal_Int32>(rDateTime.Seconds));
         if ( rDateTime.NanoSeconds > 0)
         {
             OSL_ENSURE(rDateTime.NanoSeconds < 1000000000,"NanoSeconds cannot be more than 999 999 999");
@@ -266,7 +306,7 @@ bool ISO8601parseDateTime(const OUString &rString, css::util::DateTime& rDateTim
 {
     bool bSuccess = true;
 
-    rtl::OUString aDateStr, aTimeStr;
+    OUString aDateStr, aTimeStr;
     css::util::Date aDate;
     css::util::Time aTime;
     sal_Int32 nPos = rString.indexOf( 'T' );
@@ -300,43 +340,30 @@ bool ISO8601parseDateTime(const OUString &rString, css::util::DateTime& rDateTim
 //          year, week date, ordinal date
 bool ISO8601parseDate(const OUString &aDateStr, css::util::Date& rDate)
 {
-    bool bSuccess = true;
+    const sal_Int32 nDateTokens {comphelper::string::getTokenCount(aDateStr, '-')};
+
+    if (nDateTokens<1 || nDateTokens>3)
+        return false;
 
     sal_Int32 nYear    = 1899;
     sal_Int32 nMonth   = 12;
     sal_Int32 nDay     = 30;
 
-    const sal_Unicode* pStr = aDateStr.getStr();
-    sal_Int32 nDateTokens = 1;
-    while ( *pStr )
-    {
-        if ( *pStr == '-' )
-            nDateTokens++;
-        pStr++;
-    }
-    if ( nDateTokens > 3 || aDateStr.isEmpty() )
-        bSuccess = false;
-    else
-    {
-        sal_Int32 n = 0;
-        if ( !convertNumber<sal_Int32>( nYear, aDateStr.getToken( 0, '-', n ), 0, 9999 ) )
-            bSuccess = false;
-        if ( nDateTokens >= 2 )
-            if ( !convertNumber<sal_Int32>( nMonth, aDateStr.getToken( 0, '-', n ), 0, 12 ) )
-                bSuccess = false;
-        if ( nDateTokens >= 3 )
-            if ( !convertNumber<sal_Int32>( nDay, aDateStr.getToken( 0, '-', n ), 0, 31 ) )
-                bSuccess = false;
-    }
+    sal_Int32 nIdx {0};
+    if ( !convertNumber32( nYear, aDateStr.getToken( 0, '-', nIdx ), 0, 9999 ) )
+        return false;
+    if ( nDateTokens >= 2 )
+        if ( !convertNumber32( nMonth, aDateStr.getToken( 0, '-', nIdx ), 0, 12 ) )
+            return false;
+    if ( nDateTokens >= 3 )
+        if ( !convertNumber32( nDay, aDateStr.getToken( 0, '-', nIdx ), 0, 31 ) )
+            return false;
 
-    if (bSuccess)
-    {
-        rDate.Year = (sal_uInt16)nYear;
-        rDate.Month = (sal_uInt16)nMonth;
-        rDate.Day = (sal_uInt16)nDay;
-    }
+    rDate.Year = static_cast<sal_uInt16>(nYear);
+    rDate.Month = static_cast<sal_uInt16>(nMonth);
+    rDate.Day = static_cast<sal_uInt16>(nDay);
 
-    return bSuccess;
+    return true;
 }
 
 /** convert ISO8601 Time String to util::Time */
@@ -354,94 +381,111 @@ bool ISO8601parseTime(const OUString &aTimeStr, css::util::Time& rTime)
     bool bFrac = false;
     // hours
     bool bSuccess = getISO8601TimeToken(aTimeStr, n, tokInt, bFrac, tokFrac);
-    if (bSuccess)
+    if (!bSuccess)
+        return false;
+
+    if ( bFrac && n < aTimeStr.getLength())
     {
-        if ( bFrac && n < aTimeStr.getLength())
-            // is it junk or the timezone?
-            bSuccess = getISO8601TimeZoneToken(aTimeStr, n, tokTz);
-        if (bSuccess && (bSuccess = convertNumber<sal_Int32>( nHour, tokInt, 0, 23 )) )
-        {
-            if (bFrac)
-            {
-                sal_Int64 fracNumerator;
-                if ( (bSuccess = convertNumber(fracNumerator, tokFrac)) )
-                {
-                    double frac = static_cast<double>(fracNumerator) / pow(static_cast<double>(10), static_cast<double>(tokFrac.getLength()));
-                    // minutes
-                    OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac hours (of hours) not between 0 and 1");
-                    frac *= 60;
-                    nMin = floor(frac);
-                    frac -=  nMin;
-                    // seconds
-                    OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac minutes (of hours) not between 0 and 1");
-                    frac *= 60;
-                    nSec = floor(frac);
-                    frac -=  nSec;
-                    // nanoseconds
-                    OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac seconds (of hours) not between 0 and 1");
-                    frac *= 1000000000;
-                    nNanoSec = ::rtl::math::round(frac);
-                }
-                goto end;
-            }
-            if(n >= aTimeStr.getLength())
-                goto end;
-        }
+        // is it junk or the timezone?
+        bSuccess = getISO8601TimeZoneToken(aTimeStr, n, tokTz);
+        if (!bSuccess)
+            return false;
     }
+    bSuccess = convertNumber32( nHour, tokInt, 0, 23 );
+    if (!bSuccess)
+        return false;
+
+    if (bFrac)
+    {
+        sal_Int64 fracNumerator;
+        bSuccess = convertNumber64(fracNumerator, tokFrac);
+        if ( bSuccess )
+        {
+            double frac = static_cast<double>(fracNumerator) / pow(static_cast<double>(10), static_cast<double>(tokFrac.getLength()));
+             // minutes
+            OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac hours (of hours) not between 0 and 1");
+            frac *= 60;
+            nMin = floor(frac);
+            frac -=  nMin;
+            // seconds
+            OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac minutes (of hours) not between 0 and 1");
+            frac *= 60;
+            nSec = floor(frac);
+            frac -=  nSec;
+            // nanoseconds
+            OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac seconds (of hours) not between 0 and 1");
+            frac *= 1000000000;
+            nNanoSec = ::rtl::math::round(frac);
+        }
+        goto end;
+    }
+    if(n >= aTimeStr.getLength())
+        goto end;
 
     // minutes
-    if (bSuccess && (bSuccess = getISO8601TimeToken(aTimeStr, n, tokInt, bFrac, tokFrac)))
+    bSuccess = getISO8601TimeToken(aTimeStr, n, tokInt, bFrac, tokFrac);
+    if (!bSuccess)
+        return false;
+    if ( bFrac && n < aTimeStr.getLength())
     {
-        if ( bFrac && n < aTimeStr.getLength())
-            // is it junk or the timezone?
-            bSuccess = getISO8601TimeZoneToken(aTimeStr, n, tokTz);
-        if (bSuccess && (bSuccess = convertNumber<sal_Int32>( nMin, tokInt, 0, 59 )) )
-        {
-            if (bFrac)
-            {
-                sal_Int64 fracNumerator;
-                if ( (bSuccess = convertNumber(fracNumerator, tokFrac)) )
-                {
-                    double frac = static_cast<double>(fracNumerator) / pow(static_cast<double>(10), static_cast<double>(tokFrac.getLength()));
-                    // seconds
-                    OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac minutes (of minutes) not between 0 and 1");
-                    frac *= 60;
-                    nSec = floor(frac);
-                    frac -=  nSec;
-                    // nanoseconds
-                    OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac seconds (of minutes) not between 0 and 1");
-                    frac *= 1000000000;
-                    nNanoSec = ::rtl::math::round(frac);
-                }
-                goto end;
-            }
-            if(n >= aTimeStr.getLength())
-                goto end;
-        }
+        // is it junk or the timezone?
+        bSuccess = getISO8601TimeZoneToken(aTimeStr, n, tokTz);
+        if (!bSuccess)
+            return false;
     }
-    // seconds
-    if (bSuccess && (bSuccess = getISO8601TimeToken(aTimeStr, n, tokInt, bFrac, tokFrac)))
+    bSuccess = convertNumber32( nMin, tokInt, 0, 59 );
+    if (!bSuccess)
+        return false;
+    if (bFrac)
     {
-        if (n < aTimeStr.getLength())
-            // is it junk or the timezone?
-            bSuccess = getISO8601TimeZoneToken(aTimeStr, n, tokTz);
-        // max 60 for leap seconds
-        if (bSuccess && (bSuccess = convertNumber<sal_Int32>( nSec, tokInt, 0, 60 )) )
+        sal_Int64 fracNumerator;
+        bSuccess = convertNumber64(fracNumerator, tokFrac);
+        if ( bSuccess )
         {
-            if (bFrac)
-            {
-                sal_Int64 fracNumerator;
-                if ( (bSuccess = convertNumber(fracNumerator, tokFrac)) )
-                {
-                    double frac = static_cast<double>(fracNumerator) / pow(static_cast<double>(10), static_cast<double>(tokFrac.getLength()));
-                    // nanoseconds
-                    OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac seconds (of seconds) not between 0 and 1");
-                    frac *= 1000000000;
-                    nNanoSec = ::rtl::math::round(frac);
-                }
-                goto end;
-            }
+            double frac = static_cast<double>(fracNumerator) / pow(static_cast<double>(10), static_cast<double>(tokFrac.getLength()));
+            // seconds
+            OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac minutes (of minutes) not between 0 and 1");
+            frac *= 60;
+            nSec = floor(frac);
+            frac -=  nSec;
+            // nanoseconds
+            OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac seconds (of minutes) not between 0 and 1");
+            frac *= 1000000000;
+            nNanoSec = ::rtl::math::round(frac);
         }
+        goto end;
+    }
+    if(n >= aTimeStr.getLength())
+        goto end;
+
+    // seconds
+    bSuccess = getISO8601TimeToken(aTimeStr, n, tokInt, bFrac, tokFrac);
+    if (!bSuccess)
+        return false;
+    if (n < aTimeStr.getLength())
+    {
+        // is it junk or the timezone?
+        bSuccess = getISO8601TimeZoneToken(aTimeStr, n, tokTz);
+        if (!bSuccess)
+            return false;
+    }
+    // max 60 for leap seconds
+    bSuccess = convertNumber32( nSec, tokInt, 0, 60 );
+    if (!bSuccess)
+        return false;
+    if (bFrac)
+    {
+        sal_Int64 fracNumerator;
+        bSuccess = convertNumber64(fracNumerator, tokFrac);
+        if ( bSuccess )
+        {
+            double frac = static_cast<double>(fracNumerator) / pow(static_cast<double>(10), static_cast<double>(tokFrac.getLength()));
+            // nanoseconds
+            OSL_ENSURE(frac < 1 && frac >= 0, "ISO8601parse internal error frac seconds (of seconds) not between 0 and 1");
+            frac *= 1000000000;
+            nNanoSec = ::rtl::math::round(frac);
+        }
+        goto end;
     }
 
     end:
@@ -467,9 +511,9 @@ bool ISO8601parseTime(const OUString &aTimeStr, css::util::Time& rTime)
         if(!tokTz.isEmpty())
             rTime.IsUTC = (tokTz == "Z");
 
-        rTime.Hours = (sal_uInt16)nHour;
-        rTime.Minutes = (sal_uInt16)nMin;
-        rTime.Seconds = (sal_uInt16)nSec;
+        rTime.Hours = static_cast<sal_uInt16>(nHour);
+        rTime.Minutes = static_cast<sal_uInt16>(nMin);
+        rTime.Seconds = static_cast<sal_uInt16>(nSec);
         rTime.NanoSeconds = nNanoSec;
     }
 

@@ -21,9 +21,11 @@
 #include <vcl/keycod.hxx>
 #include <vcl/mnemonic.hxx>
 #include <comphelper/string.hxx>
+#include <comphelper/sequence.hxx>
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/weakref.hxx>
 
+#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
 #include <com/sun/star/frame/theUICommandDescription.hpp>
 #include <com/sun/star/ui/GlobalAcceleratorConfiguration.hpp>
@@ -36,9 +38,9 @@
 using namespace css;
 using namespace css::uno;
 
-namespace vcl { namespace CommandInfoProvider {
+namespace vcl::CommandInfoProvider {
 
-Reference<container::XNameAccess> const GetCommandDescription()
+static Reference<container::XNameAccess> GetCommandDescription()
 {
     static WeakReference<container::XNameAccess> xWeakRef;
     css::uno::Reference<container::XNameAccess> xRef(xWeakRef);
@@ -52,7 +54,7 @@ Reference<container::XNameAccess> const GetCommandDescription()
     return xRef;
 }
 
-Reference<ui::XModuleUIConfigurationManagerSupplier> const GetModuleConfigurationSupplier()
+static Reference<ui::XModuleUIConfigurationManagerSupplier> GetModuleConfigurationSupplier()
 {
     static WeakReference<ui::XModuleUIConfigurationManagerSupplier> xWeakRef;
     css::uno::Reference<ui::XModuleUIConfigurationManagerSupplier> xRef(xWeakRef);
@@ -66,7 +68,7 @@ Reference<ui::XModuleUIConfigurationManagerSupplier> const GetModuleConfiguratio
     return xRef;
 }
 
-Reference<ui::XAcceleratorConfiguration> const GetGlobalAcceleratorConfiguration()
+static Reference<ui::XAcceleratorConfiguration> GetGlobalAcceleratorConfiguration()
 {
     static WeakReference<ui::XAcceleratorConfiguration> xWeakRef;
     css::uno::Reference<ui::XAcceleratorConfiguration> xRef(xWeakRef);
@@ -80,7 +82,7 @@ Reference<ui::XAcceleratorConfiguration> const GetGlobalAcceleratorConfiguration
     return xRef;
 }
 
-Reference<ui::XAcceleratorConfiguration> const GetDocumentAcceleratorConfiguration(const Reference<frame::XFrame>& rxFrame)
+static Reference<ui::XAcceleratorConfiguration> GetDocumentAcceleratorConfiguration(const Reference<frame::XFrame>& rxFrame)
 {
     Reference<frame::XController> xController = rxFrame->getController();
     if (xController.is())
@@ -99,7 +101,7 @@ Reference<ui::XAcceleratorConfiguration> const GetDocumentAcceleratorConfigurati
     return nullptr;
 }
 
-Reference<ui::XAcceleratorConfiguration> const GetModuleAcceleratorConfiguration(const Reference<frame::XFrame>& rxFrame)
+static Reference<ui::XAcceleratorConfiguration> GetModuleAcceleratorConfiguration(const Reference<frame::XFrame>& rxFrame)
 {
     css::uno::Reference<css::ui::XAcceleratorConfiguration> curModuleAcceleratorConfiguration;
     try
@@ -118,18 +120,18 @@ Reference<ui::XAcceleratorConfiguration> const GetModuleAcceleratorConfiguration
     return curModuleAcceleratorConfiguration;
 }
 
-vcl::KeyCode AWTKey2VCLKey(const awt::KeyEvent& aAWTKey)
+static vcl::KeyCode AWTKey2VCLKey(const awt::KeyEvent& aAWTKey)
 {
     bool bShift = ((aAWTKey.Modifiers & awt::KeyModifier::SHIFT) == awt::KeyModifier::SHIFT );
     bool bMod1  = ((aAWTKey.Modifiers & awt::KeyModifier::MOD1 ) == awt::KeyModifier::MOD1  );
     bool bMod2  = ((aAWTKey.Modifiers & awt::KeyModifier::MOD2 ) == awt::KeyModifier::MOD2  );
     bool bMod3  = ((aAWTKey.Modifiers & awt::KeyModifier::MOD3 ) == awt::KeyModifier::MOD3  );
-    sal_uInt16   nKey   = (sal_uInt16)aAWTKey.KeyCode;
+    sal_uInt16   nKey   = static_cast<sal_uInt16>(aAWTKey.KeyCode);
 
     return vcl::KeyCode(nKey, bShift, bMod1, bMod2, bMod3);
 }
 
-OUString RetrieveShortcutsFromConfiguration(
+static OUString RetrieveShortcutsFromConfiguration(
     const Reference<ui::XAcceleratorConfiguration>& rxConfiguration,
     const OUString& rsCommandName)
 {
@@ -156,7 +158,34 @@ OUString RetrieveShortcutsFromConfiguration(
     return OUString();
 }
 
-bool ResourceHasKey(const OUString& rsResourceName, const OUString& rsCommandName, const OUString& rsModuleName)
+static vcl::KeyCode RetrieveKeyCodeShortcutsFromConfiguration(
+    const Reference<ui::XAcceleratorConfiguration>& rxConfiguration,
+    const OUString& rsCommandName)
+{
+    if (rxConfiguration.is())
+    {
+        try
+        {
+            Sequence<OUString> aCommands { rsCommandName };
+
+            Sequence<Any> aKeyCodes (rxConfiguration->getPreferredKeyEventsForCommandList(aCommands));
+            if (aCommands.getLength() == 1)
+            {
+                awt::KeyEvent aKeyEvent;
+                if (aKeyCodes[0] >>= aKeyEvent)
+                {
+                    return AWTKey2VCLKey(aKeyEvent);
+                }
+            }
+        }
+        catch (css::lang::IllegalArgumentException&)
+        {
+        }
+    }
+    return vcl::KeyCode();
+}
+
+static bool ResourceHasKey(const OUString& rsResourceName, const OUString& rsCommandName, const OUString& rsModuleName)
 {
     Sequence< OUString > aSequence;
     try
@@ -168,11 +197,8 @@ bool ResourceHasKey(const OUString& rsResourceName, const OUString& rsCommandNam
             if (xNameAccess->getByName(rsModuleName) >>= xUICommandLabels)
             {
                 xUICommandLabels->getByName(rsResourceName) >>= aSequence;
-                for ( sal_Int32 i = 0; i < aSequence.getLength(); i++ )
-                {
-                    if (aSequence[i] == rsCommandName)
-                        return true;
-                }
+                if (comphelper::findValue(aSequence, rsCommandName) != -1)
+                    return true;
             }
         }
     }
@@ -192,7 +218,7 @@ Sequence<beans::PropertyValue> GetCommandProperties(const OUString& rsCommandNam
         {
             Reference<container::XNameAccess> xNameAccess(GetCommandDescription());
             Reference<container::XNameAccess> xUICommandLabels;
-            if (xNameAccess->getByName(rsModuleName) >>= xUICommandLabels)
+            if ((xNameAccess->getByName(rsModuleName) >>= xUICommandLabels) && xUICommandLabels->hasByName(rsCommandName))
                 xUICommandLabels->getByName(rsCommandName) >>= aProperties;
         }
     }
@@ -203,55 +229,55 @@ Sequence<beans::PropertyValue> GetCommandProperties(const OUString& rsCommandNam
     return aProperties;
 }
 
-OUString GetCommandProperty(const OUString& rsProperty, const OUString& rsCommandName, const OUString& rsModuleName)
+static OUString GetCommandProperty(const OUString& rsProperty, const Sequence<beans::PropertyValue> &rProperties)
 {
-    const Sequence<beans::PropertyValue> aProperties (GetCommandProperties(rsCommandName, rsModuleName));
-    for (sal_Int32 nIndex=0; nIndex<aProperties.getLength(); ++nIndex)
+    auto pProp = std::find_if(rProperties.begin(), rProperties.end(),
+        [&rsProperty](const beans::PropertyValue& rProp) { return rProp.Name == rsProperty; });
+    if (pProp != rProperties.end())
     {
-        if (aProperties[nIndex].Name == rsProperty)
-        {
-            OUString sLabel;
-            aProperties[nIndex].Value >>= sLabel;
-            return sLabel;
-        }
+        OUString sLabel;
+        pProp->Value >>= sLabel;
+        return sLabel;
     }
     return OUString();
 }
 
-OUString GetLabelForCommand (
-    const OUString& rsCommandName,
-    const OUString& rsModuleName)
+OUString GetLabelForCommand(const css::uno::Sequence<css::beans::PropertyValue>& rProperties)
 {
-    return GetCommandProperty("Name", rsCommandName, rsModuleName);
+    return GetCommandProperty("Name", rProperties);
 }
 
-OUString GetMenuLabelForCommand (
-    const OUString& rsCommandName,
-    const OUString& rsModuleName)
+OUString GetMenuLabelForCommand(const css::uno::Sequence<css::beans::PropertyValue>& rProperties)
 {
     // Here we want to use "Label", not "Name". "Name" is a stripped-down version of "Label" without accelerators
     // and ellipsis. In the menu, we want to have those accelerators and ellipsis.
-    return GetCommandProperty("Label", rsCommandName, rsModuleName);
+    return GetCommandProperty("Label", rProperties);
 }
 
-OUString GetPopupLabelForCommand (
-    const OUString& rsCommandName,
-    const OUString& rsModuleName)
+OUString GetPopupLabelForCommand(const css::uno::Sequence<css::beans::PropertyValue>& rProperties)
 {
-    OUString sPopupLabel(GetCommandProperty("PopupLabel", rsCommandName, rsModuleName));
+    OUString sPopupLabel(GetCommandProperty("PopupLabel", rProperties));
     if (!sPopupLabel.isEmpty())
         return sPopupLabel;
-    return GetCommandProperty("Label", rsCommandName, rsModuleName);
+    return GetCommandProperty("Label", rProperties);
 }
 
-OUString GetTooltipForCommand (
+OUString GetTooltipLabelForCommand(const css::uno::Sequence<css::beans::PropertyValue>& rProperties)
+{
+    OUString sLabel(GetCommandProperty("TooltipLabel", rProperties));
+    if (!sLabel.isEmpty())
+        return sLabel;
+    return GetCommandProperty("Label", rProperties);
+}
+
+OUString GetTooltipForCommand(
     const OUString& rsCommandName,
+    const css::uno::Sequence<css::beans::PropertyValue>& rProperties,
     const Reference<frame::XFrame>& rxFrame)
 {
-    OUString sModuleName(GetModuleIdentifier(rxFrame));
-    OUString sLabel (GetCommandProperty("TooltipLabel", rsCommandName, sModuleName));
+    OUString sLabel(GetCommandProperty("TooltipLabel", rProperties));
     if (sLabel.isEmpty()) {
-        sLabel = GetPopupLabelForCommand(rsCommandName, sModuleName);
+        sLabel = GetPopupLabelForCommand(rProperties);
         // Remove '...' at the end and mnemonics (we don't want those in tooltips)
         sLabel = comphelper::string::stripEnd(sLabel, '.');
         sLabel = MnemonicGenerator::EraseAllMnemonicChars(sLabel);
@@ -259,7 +285,7 @@ OUString GetTooltipForCommand (
 
     // Command can be just an alias to another command,
     // so need to get the shortcut of the "real" command.
-    const OUString sRealCommand(GetRealCommandForCommand(rsCommandName, sModuleName));
+    const OUString sRealCommand(GetRealCommandForCommand(rProperties));
     const OUString sShortCut(GetCommandShortcut(!sRealCommand.isEmpty() ? sRealCommand : rsCommandName, rxFrame));
     if (!sShortCut.isEmpty())
         return sLabel + " (" + sShortCut + ")";
@@ -287,19 +313,36 @@ OUString GetCommandShortcut (const OUString& rsCommandName,
     return OUString();
 }
 
-OUString GetRealCommandForCommand(const OUString& rCommandName,
-                                  const OUString& rsModuleName)
+vcl::KeyCode GetCommandKeyCodeShortcut (const OUString& rsCommandName, const Reference<frame::XFrame>& rxFrame)
 {
-    return GetCommandProperty("TargetURL", rCommandName, rsModuleName);
+    vcl::KeyCode aKeyCodeShortcut;
+
+    aKeyCodeShortcut = RetrieveKeyCodeShortcutsFromConfiguration(GetDocumentAcceleratorConfiguration(rxFrame), rsCommandName);
+    if (aKeyCodeShortcut.GetCode())
+        return aKeyCodeShortcut;
+
+    aKeyCodeShortcut = RetrieveKeyCodeShortcutsFromConfiguration(GetModuleAcceleratorConfiguration(rxFrame), rsCommandName);
+    if (aKeyCodeShortcut.GetCode())
+        return aKeyCodeShortcut;
+
+    aKeyCodeShortcut = RetrieveKeyCodeShortcutsFromConfiguration(GetGlobalAcceleratorConfiguration(), rsCommandName);
+    if (aKeyCodeShortcut.GetCode())
+        return aKeyCodeShortcut;
+
+    return vcl::KeyCode();
 }
 
-BitmapEx GetBitmapForCommand(const OUString& rsCommandName,
-                             const Reference<frame::XFrame>& rxFrame,
-                             vcl::ImageType eImageType)
+OUString GetRealCommandForCommand(const css::uno::Sequence<css::beans::PropertyValue>& rProperties)
 {
+    return GetCommandProperty("TargetURL", rProperties);
+}
 
+Reference<graphic::XGraphic> GetXGraphicForCommand(const OUString& rsCommandName,
+                                                   const Reference<frame::XFrame>& rxFrame,
+                                                   vcl::ImageType eImageType)
+{
     if (rsCommandName.isEmpty())
-        return BitmapEx();
+        return nullptr;
 
     sal_Int16 nImageType(ui::ImageType::COLOR_NORMAL | ui::ImageType::SIZE_DEFAULT);
 
@@ -322,11 +365,8 @@ BitmapEx GetBitmapForCommand(const OUString& rsCommandName,
 
             aGraphicSeq = xDocImgMgr->getImages( nImageType, aImageCmdSeq );
             Reference<graphic::XGraphic> xGraphic = aGraphicSeq[0];
-            const Graphic aGraphic(xGraphic);
-            BitmapEx aBitmap(aGraphic.GetBitmapEx());
-
-            if (!!aBitmap)
-                return aBitmap;
+            if (xGraphic.is())
+                return xGraphic;
         }
     }
     catch (Exception&)
@@ -346,39 +386,34 @@ BitmapEx GetBitmapForCommand(const OUString& rsCommandName,
 
         Reference<graphic::XGraphic> xGraphic(aGraphicSeq[0]);
 
-        const Graphic aGraphic(xGraphic);
-
-        return aGraphic.GetBitmapEx();
+        return xGraphic;
     }
     catch (Exception&)
     {
     }
 
-    return BitmapEx();
+    return nullptr;
 }
 
 Image GetImageForCommand(const OUString& rsCommandName,
                          const Reference<frame::XFrame>& rxFrame,
                          vcl::ImageType eImageType)
 {
-    return Image(GetBitmapForCommand(rsCommandName, rxFrame, eImageType));
+    return Image(GetXGraphicForCommand(rsCommandName, rxFrame, eImageType));
 }
 
 sal_Int32 GetPropertiesForCommand (
     const OUString& rsCommandName,
     const OUString& rsModuleName)
 {
-
     sal_Int32 nValue = 0;
     const Sequence<beans::PropertyValue> aProperties (GetCommandProperties(rsCommandName, rsModuleName));
-    for (sal_Int32 nIndex=0; nIndex<aProperties.getLength(); ++nIndex)
-    {
-        if (aProperties[nIndex].Name == "Properties")
-        {
-            aProperties[nIndex].Value >>= nValue;
-            break;
-        }
-    }
+
+    auto pProp = std::find_if(aProperties.begin(), aProperties.end(),
+        [](const beans::PropertyValue& rProp) { return rProp.Name == "Properties"; });
+    if (pProp != aProperties.end())
+        pProp->Value >>= nValue;
+
     return nValue;
 }
 
@@ -404,13 +439,12 @@ bool IsExperimental(const OUString& rsCommandName, const OUString& rModuleName)
             if (xNameAccess->getByName( rModuleName ) >>= xUICommandLabels )
                 xUICommandLabels->getByName(rsCommandName) >>= aProperties;
 
-            for (sal_Int32 nIndex=0; nIndex<aProperties.getLength(); ++nIndex)
+            auto pProp = std::find_if(aProperties.begin(), aProperties.end(),
+                [](const beans::PropertyValue& rProp) { return rProp.Name == "IsExperimental"; });
+            if (pProp != aProperties.end())
             {
-                if (aProperties[nIndex].Name == "IsExperimental")
-                {
-                    bool bValue;
-                    return (aProperties[nIndex].Value >>= bValue) && bValue;
-                }
+                bool bValue;
+                return (pProp->Value >>= bValue) && bValue;
             }
         }
     }
@@ -420,7 +454,7 @@ bool IsExperimental(const OUString& rsCommandName, const OUString& rModuleName)
     return false;
 }
 
-OUString const GetModuleIdentifier(const Reference<frame::XFrame>& rxFrame)
+OUString GetModuleIdentifier(const Reference<frame::XFrame>& rxFrame)
 {
     static WeakReference<frame::XModuleManager2> xWeakRef;
     css::uno::Reference<frame::XModuleManager2> xRef(xWeakRef);
@@ -441,6 +475,6 @@ OUString const GetModuleIdentifier(const Reference<frame::XFrame>& rxFrame)
     return OUString();
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

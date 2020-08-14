@@ -19,17 +19,13 @@
 #ifndef INCLUDED_SW_INC_NDINDEX_HXX
 #define INCLUDED_SW_INC_NDINDEX_HXX
 
-#include <limits.h>
 #include <iostream>
 
 #include <tools/solar.h>
 
-#include <node.hxx>
-#include <ring.hxx>
-#include <ndarr.hxx>
-
-class SwNode;
-class SwNodes;
+#include "node.hxx"
+#include "ring.hxx"
+#include "ndarr.hxx"
 
 /// Marks a node in the document model.
 class SW_DLLPUBLIC SwNodeIndex final : public sw::Ring<SwNodeIndex>
@@ -112,13 +108,14 @@ public:
     inline sal_uLong GetIndex() const;
 
     // Enables assignments without creation of a temporary object.
-    inline SwNodeIndex& Assign( SwNodes& rNds, sal_uLong );
+    inline SwNodeIndex& Assign( SwNodes const & rNds, sal_uLong );
     inline SwNodeIndex& Assign( const SwNode& rNd, long nOffset = 0 );
 
     // Gets pointer on NodesArray.
     inline const SwNodes& GetNodes() const;
     inline       SwNodes& GetNodes();
 
+    SwNodeIndex* GetNext() { return GetNextInRing(); }
     SwNode& GetNode() const { return *m_pNode; }
 };
 
@@ -272,7 +269,7 @@ SwNodeIndex& SwNodeIndex::operator=( const SwNode& rNd )
     return *this;
 }
 
-SwNodeIndex& SwNodeIndex::Assign( SwNodes& rNds, sal_uLong nIdx )
+SwNodeIndex& SwNodeIndex::Assign( SwNodes const & rNds, sal_uLong nIdx )
 {
     *this = *rNds[ nIdx ];
     return *this;

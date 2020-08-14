@@ -26,23 +26,21 @@
 
 // predefines
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpMaterialAttribute3D;
-}}
+}
 
 namespace basegfx {
     class BColor;
 }
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC MaterialAttribute3D
         {
         public:
-            typedef o3tl::cow_wrapper< ImpMaterialAttribute3D > ImplType;
+            typedef o3tl::cow_wrapper<ImpMaterialAttribute3D, o3tl::ThreadSafeRefCountingPolicy> ImplType;
 
         private:
             ImplType mpMaterialAttribute3D;
@@ -56,11 +54,11 @@ namespace drawinglayer
                 sal_uInt16 nSpecularIntensity);
             MaterialAttribute3D(const basegfx::BColor& rColor);
             MaterialAttribute3D();
-            MaterialAttribute3D(const MaterialAttribute3D& rCandidate);
+            MaterialAttribute3D(const MaterialAttribute3D&);
             ~MaterialAttribute3D();
 
             // assignment operator
-            MaterialAttribute3D& operator=(const MaterialAttribute3D& rCandidate);
+            MaterialAttribute3D& operator=(const MaterialAttribute3D&);
 
             // compare operator
             bool operator==(const MaterialAttribute3D& rCandidate) const;
@@ -71,8 +69,8 @@ namespace drawinglayer
             const basegfx::BColor& getEmission() const;
             sal_uInt16 getSpecularIntensity() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_MATERIALATTRIBUTE3D_HXX

@@ -19,16 +19,12 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_WRAPCOLUMN_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_WRAPCOLUMN_HXX
 
-#include "ado/Aolewrap.hxx"
+#include <ado/Aolewrap.hxx>
 
-#include "ado_pre_sys_include.h"
 #include <adoint.h>
-#include "ado_post_sys_include.h"
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class WpADOColumn : public WpOLEBase<_ADOColumn>
         {
         public:
@@ -58,7 +54,6 @@ namespace connectivity
             WpADOProperties get_Properties() const;
             void put_ParentCatalog(/* [in] */ _ADOCatalog __RPC_FAR *ppvObject);
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_WRAPCOLUMN_HXX

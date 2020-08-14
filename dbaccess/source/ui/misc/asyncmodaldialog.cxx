@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "asyncmodaldialog.hxx"
+#include <asyncmodaldialog.hxx>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
@@ -31,6 +31,8 @@ namespace dbaui
     using ::com::sun::star::ui::dialogs::XExecutableDialog;
     using ::com::sun::star::lang::IllegalArgumentException;
     using ::com::sun::star::uno::Exception;
+
+    namespace {
 
     // AsyncDialogExecutor
     class DialogExecutor_Impl
@@ -57,6 +59,8 @@ namespace dbaui
         DECL_LINK( onExecute, void*, void );
     };
 
+    }
+
     IMPL_LINK_NOARG( DialogExecutor_Impl, onExecute, void*, void )
     {
         try
@@ -65,7 +69,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
 
         delete this;

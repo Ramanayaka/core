@@ -23,27 +23,18 @@
 #include <editeng/editengdllapi.h>
 
 // class SvxNoHyphenItem -------------------------------------------------
-class EDITENG_DLLPUBLIC SvxNoHyphenItem : public SfxBoolItem
+class EDITENG_DLLPUBLIC SvxNoHyphenItem final : public SfxBoolItem
 {
 public:
-    SvxNoHyphenItem( const bool bHyphen /*= true*/,
-                     const sal_uInt16 nId  );
+    SvxNoHyphenItem( const sal_uInt16 nId  );
 
     // "pure virtual Methods" from SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
+    virtual SvxNoHyphenItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
-
-    SvxNoHyphenItem& operator=(const SvxNoHyphenItem& rNHH)
-        {
-            SetValue( rNHH.GetValue() );
-            return *this;
-        }
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

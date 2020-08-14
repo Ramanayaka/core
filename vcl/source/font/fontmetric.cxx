@@ -18,17 +18,19 @@
  */
 
 #include <i18nlangtag/mslangid.hxx>
-#include <vcl/fontcharmap.hxx>
+#include <officecfg/Office/Common.hxx>
+#include <unotools/configmgr.hxx>
 #include <vcl/metric.hxx>
+#include <vcl/outdev.hxx>
+#include <sal/log.hxx>
 
-#include "impfontmetric.hxx"
-#include "impfontmetricdata.hxx"
-#include "PhysicalFontFace.hxx"
-#include "sft.hxx"
+#include <fontinstance.hxx>
+#include <fontselect.hxx>
+#include <impfontmetricdata.hxx>
+#include <sft.hxx>
 
-#include <vector>
-#include <set>
-#include <cstdio>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <comphelper/sequence.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -36,126 +38,6 @@ using namespace ::rtl;
 using namespace ::utl;
 
 FontMetric::FontMetric()
-:   mxImplMetric( new ImplFontMetric() )
-{}
-
-FontMetric::FontMetric( const FontMetric& rFontMetric )
-    : Font( rFontMetric )
-    , mxImplMetric( rFontMetric.mxImplMetric )
-{}
-
-FontMetric::~FontMetric()
-{
-    mxImplMetric = nullptr;
-}
-
-FontMetric& FontMetric::operator=(const FontMetric& rFontMetric)
-{
-    Font::operator=(rFontMetric);
-    mxImplMetric = rFontMetric.mxImplMetric;
-    return *this;
-}
-
-FontMetric& FontMetric::operator=(FontMetric&& rFontMetric)
-{
-    Font::operator=(std::move(rFontMetric));
-    mxImplMetric = std::move(rFontMetric.mxImplMetric);
-    return *this;
-}
-
-bool FontMetric::operator==( const FontMetric& rFontMetric ) const
-{
-    if( !Font::operator==( rFontMetric ) )
-        return false;
-    if( mxImplMetric == rFontMetric.mxImplMetric )
-        return true;
-    if( *mxImplMetric == *rFontMetric.mxImplMetric  )
-        return true;
-    return false;
-}
-
-long FontMetric::GetAscent() const
-{
-    return mxImplMetric->GetAscent();
-}
-
-void FontMetric::SetAscent( long nAscent )
-{
-    mxImplMetric->SetAscent( nAscent );
-}
-
-long FontMetric::GetDescent() const
-{
-    return mxImplMetric->GetDescent();
-}
-
-void FontMetric::SetDescent( long nDescent )
-{
-    mxImplMetric->SetDescent( nDescent );
-}
-
-long FontMetric::GetInternalLeading() const
-{
-    return mxImplMetric->GetInternalLeading();
-}
-
-void FontMetric::SetInternalLeading( long nLeading )
-{
-    mxImplMetric->SetInternalLeading( nLeading );
-}
-
-long FontMetric::GetExternalLeading() const
-{
-    return mxImplMetric->GetExternalLeading();
-}
-
-void FontMetric::SetExternalLeading( long nLeading )
-{
-    mxImplMetric->SetExternalLeading( nLeading );
-}
-
-long FontMetric::GetLineHeight() const
-{
-    return mxImplMetric->GetLineHeight();
-}
-
-void FontMetric::SetLineHeight( long nHeight )
-{
-    mxImplMetric->SetLineHeight( nHeight );
-}
-
-long FontMetric::GetSlant() const
-{
-    return mxImplMetric->GetSlant();
-}
-
-void FontMetric::SetSlant( long nSlant )
-{
-    mxImplMetric->SetSlant( nSlant );
-}
-
-long FontMetric::GetBulletOffset() const
-{
-    return mxImplMetric->GetBulletOffset();
-}
-
-void FontMetric::SetBulletOffset( long nOffset )
-{
-    mxImplMetric->SetBulletOffset( nOffset );
-}
-
-bool FontMetric::IsFullstopCentered() const
-{
-    return mxImplMetric->IsFullstopCentered();
-}
-
-void FontMetric::SetFullstopCenteredFlag(bool bScalable)
-{
-    mxImplMetric->SetFullstopCenteredFlag( bScalable );
-}
-
-
-ImplFontMetric::ImplFontMetric()
 :   mnAscent( 0 ),
     mnDescent( 0 ),
     mnIntLeading( 0 ),
@@ -166,8 +48,20 @@ ImplFontMetric::ImplFontMetric()
     mbFullstopCentered( false )
 {}
 
-bool ImplFontMetric::operator==( const ImplFontMetric& r ) const
+FontMetric::FontMetric( const FontMetric& rFontMetric ) = default;
+
+FontMetric::~FontMetric()
 {
+}
+
+FontMetric& FontMetric::operator=(const FontMetric& rFontMetric) = default;
+
+FontMetric& FontMetric::operator=(FontMetric&& rFontMetric) = default;
+
+bool FontMetric::operator==( const FontMetric& r ) const
+{
+    if( Font::operator!=(r) )
+        return false;
     if (mbFullstopCentered != r.mbFullstopCentered)
         return false;
     if( mnAscent     != r.mnAscent )
@@ -188,7 +82,7 @@ ImplFontMetricData::ImplFontMetricData( const FontSelectPattern& rFontSelData )
     : FontAttributes( rFontSelData )
     , mnHeight ( rFontSelData.mnHeight )
     , mnWidth ( rFontSelData.mnWidth )
-    , mnOrientation( (short)(rFontSelData.mnOrientation) )
+    , mnOrientation( static_cast<short>(rFontSelData.mnOrientation) )
     , mnAscent( 0 )
     , mnDescent( 0 )
     , mnIntLeading( 0 )
@@ -224,19 +118,10 @@ ImplFontMetricData::ImplFontMetricData( const FontSelectPattern& rFontSelData )
     , mnDStrikeoutOffset2( 0 )
 {
     // initialize the used font name
-    if( rFontSelData.mpFontData )
-    {
-        SetFamilyName( rFontSelData.mpFontData->GetFamilyName() );
-        SetStyleName( rFontSelData.mpFontData->GetStyleName() );
-    }
-    else
-    {
-        sal_Int32 nTokenPos = 0;
-        SetFamilyName( GetNextFontToken( rFontSelData.GetFamilyName(), nTokenPos ) );
-        SetStyleName( rFontSelData.GetStyleName() );
-    }
+    sal_Int32 nTokenPos = 0;
+    SetFamilyName( GetNextFontToken( rFontSelData.GetFamilyName(), nTokenPos ) );
+    SetStyleName( rFontSelData.GetStyleName() );
 }
-
 
 void ImplFontMetricData::ImplInitTextLineSize( const OutputDevice* pDev )
 {
@@ -282,7 +167,9 @@ void ImplFontMetricData::ImplInitTextLineSize( const OutputDevice* pDev )
     if ( !n2LineDY2 )
         n2LineDY2 = 1;
 
-    long nUnderlineOffset = mnDescent/2 + 1;
+    const vcl::Font& rFont ( pDev->GetFont() );
+    bool bCJKVertical = MsLangId::isCJK(rFont.GetLanguage()) && rFont.IsVertical();
+    long nUnderlineOffset = bCJKVertical ? mnDescent : (mnDescent/2 + 1);
     long nStrikeoutOffset = -((mnAscent - mnIntLeading) / 3);
 
     mnUnderlineSize        = nLineHeight;
@@ -306,6 +193,7 @@ void ImplFontMetricData::ImplInitTextLineSize( const OutputDevice* pDev )
     else
         mnWUnderlineSize = ((nWCalcSize*50)+50) / 100;
 
+
     // Don't assume that wavelines are never placed below the descent, because for most fonts the waveline
     // is drawn into the text
     mnWUnderlineOffset     = nUnderlineOffset;
@@ -319,21 +207,6 @@ void ImplFontMetricData::ImplInitTextLineSize( const OutputDevice* pDev )
     mnDStrikeoutSize       = n2LineHeight;
     mnDStrikeoutOffset1    = nStrikeoutOffset - n2LineDY2 - n2LineHeight;
     mnDStrikeoutOffset2    = mnDStrikeoutOffset1 + n2LineDY + n2LineHeight;
-
-    const vcl::Font& rFont ( pDev->GetFont() );
-    bool bCentered = true;
-    if (MsLangId::isCJK(rFont.GetLanguage()))
-    {
-        const OUString sFullstop( u'\x3001' ); // Fullwidth fullstop
-        tools::Rectangle aRect;
-        pDev->GetTextBoundRect( aRect, sFullstop );
-        const sal_uInt16 nH = rFont.GetFontSize().Height();
-        const sal_uInt16 nB = aRect.Left();
-        // Use 18.75% as a threshold to define a centered fullwidth fullstop.
-        // In general, nB/nH < 5% for most Japanese fonts.
-        bCentered = nB > (((nH >> 1)+nH)>>3);
-    }
-    SetFullstopCenteredFlag( bCentered );
 
     mnBulletOffset = ( pDev->GetTextWidth( OUString( u' ' ) ) - pDev->GetTextWidth( OUString( u'\x00b7' ) ) ) >> 1 ;
 
@@ -390,6 +263,44 @@ void ImplFontMetricData::ImplInitAboveTextLineSize()
     mnAboveWUnderlineOffset = nCeiling + (nIntLeading + 1) / 2;
 }
 
+void ImplFontMetricData::ImplInitFlags( const OutputDevice* pDev )
+{
+    const vcl::Font& rFont ( pDev->GetFont() );
+    bool bCentered = true;
+    if (MsLangId::isCJK(rFont.GetLanguage()))
+    {
+        tools::Rectangle aRect;
+        pDev->GetTextBoundRect( aRect, u"\x3001" ); // Fullwidth fullstop
+        const auto nH = rFont.GetFontSize().Height();
+        const auto nB = aRect.Left();
+        // Use 18.75% as a threshold to define a centered fullwidth fullstop.
+        // In general, nB/nH < 5% for most Japanese fonts.
+        bCentered = nB > (((nH >> 1)+nH)>>3);
+    }
+    SetFullstopCenteredFlag( bCentered );
+}
+
+bool ImplFontMetricData::ShouldUseWinMetrics(const vcl::TTGlobalFontInfo& rInfo)
+{
+    if (utl::ConfigManager::IsFuzzing())
+        return false;
+
+    OUString aFontIdentifier(
+        GetFamilyName() + ","
+        + OUString::number(rInfo.ascender) + "," + OUString::number(rInfo.descender) + ","
+        + OUString::number(rInfo.typoAscender) + "," + OUString::number(rInfo.typoDescender) + ","
+        + OUString::number(rInfo.winAscent) + "," + OUString::number(rInfo.winDescent));
+
+    css::uno::Sequence<OUString> rWinMetricFontList(
+        officecfg::Office::Common::Misc::FontsUseWinMetrics::get());
+    if (comphelper::findValue(rWinMetricFontList, aFontIdentifier) != -1)
+    {
+        SAL_INFO("vcl.gdi.fontmetric", "Using win metrics for: " << aFontIdentifier);
+        return true;
+    }
+    return false;
+}
+
 /*
  * Calculate line spacing:
  *
@@ -406,49 +317,68 @@ void ImplFontMetricData::ImplInitAboveTextLineSize()
  *   - Use Win metrics if available.
  *   - Unless USE_TYPO_METRICS flag is set, in which case use Typo metrics.
 */
-void ImplFontMetricData::ImplCalcLineSpacing(const std::vector<uint8_t>& rHheaData,
-        const std::vector<uint8_t>& rOS2Data, int nUPEM)
+void ImplFontMetricData::ImplCalcLineSpacing(LogicalFontInstance *pFontInstance)
 {
     mnAscent = mnDescent = mnExtLeading = mnIntLeading = 0;
 
-    double fScale = static_cast<double>(mnHeight) / nUPEM;
+    hb_font_t* pHbFont = pFontInstance->GetHbFont();
+    hb_face_t* pHbFace = hb_font_get_face(pHbFont);
 
-    vcl::TTGlobalFontInfo rInfo;
-    memset(&rInfo, 0, sizeof(vcl::TTGlobalFontInfo));
-    GetTTFontMterics(rHheaData, rOS2Data, &rInfo);
+    hb_blob_t* pHhea = hb_face_reference_table(pHbFace, HB_TAG('h', 'h', 'e', 'a'));
+    hb_blob_t* pOS2 = hb_face_reference_table(pHbFace, HB_TAG('O', 'S', '/', '2'));
+
+    vcl::TTGlobalFontInfo rInfo = {};
+    GetTTFontMetrics(reinterpret_cast<const uint8_t*>(hb_blob_get_data(pHhea, nullptr)), hb_blob_get_length(pHhea),
+                     reinterpret_cast<const uint8_t*>(hb_blob_get_data(pOS2, nullptr)), hb_blob_get_length(pOS2),
+                     &rInfo);
+
+    hb_blob_destroy(pHhea);
+    hb_blob_destroy(pOS2);
+
+    double nUPEM = hb_face_get_upem(pHbFace);
+    double fScale = mnHeight / nUPEM;
+    double fAscent = 0, fDescent = 0, fExtLeading = 0;
 
     // Try hhea table first.
-    if (rInfo.ascender || rInfo.descender)
+    // tdf#107605: Some fonts have weird values here, so check that ascender is
+    // +ve and descender is -ve as they normally should.
+    if (rInfo.ascender >= 0 && rInfo.descender <= 0)
     {
-        mnAscent     =  rInfo.ascender  * fScale;
-        mnDescent    = -rInfo.descender * fScale;
-        mnExtLeading =  rInfo.linegap   * fScale;
+        fAscent     =  rInfo.ascender  * fScale;
+        fDescent    = -rInfo.descender * fScale;
+        fExtLeading =  rInfo.linegap   * fScale;
     }
 
     // But if OS/2 is present, prefer it.
-    if (rInfo.winAscent || rInfo.winDescent || rInfo.typoAscender || rInfo.typoDescender)
+    if (rInfo.winAscent || rInfo.winDescent ||
+        rInfo.typoAscender || rInfo.typoDescender)
     {
-        if (mnAscent == 0 && mnDescent == 0)
+        if (ShouldUseWinMetrics(rInfo) || (fAscent == 0.0 && fDescent == 0.0))
         {
-            mnAscent     = rInfo.winAscent  * fScale;
-            mnDescent    = rInfo.winDescent * fScale;
-            mnExtLeading = 0;
+            fAscent     = rInfo.winAscent  * fScale;
+            fDescent    = rInfo.winDescent * fScale;
+            fExtLeading = 0;
         }
 
         const uint16_t kUseTypoMetricsMask = 1 << 7;
-        if (rInfo.fsSelection & kUseTypoMetricsMask)
+        if (rInfo.fsSelection & kUseTypoMetricsMask &&
+            rInfo.typoAscender >= 0 && rInfo.typoDescender <= 0)
         {
-            mnAscent     =  rInfo.typoAscender  * fScale;
-            mnDescent    = -rInfo.typoDescender * fScale;
-            mnExtLeading =  rInfo.typoLineGap   * fScale;
+            fAscent     =  rInfo.typoAscender  * fScale;
+            fDescent    = -rInfo.typoDescender * fScale;
+            fExtLeading =  rInfo.typoLineGap   * fScale;
         }
     }
+
+    mnAscent = round(fAscent);
+    mnDescent = round(fDescent);
+    mnExtLeading = round(fExtLeading);
 
     if (mnAscent || mnDescent)
         mnIntLeading = mnAscent + mnDescent - mnHeight;
 
-    SAL_INFO("vcl.gdi.fontmetric",
-                  "fsSelection: "   << rInfo.fsSelection
+    SAL_INFO("vcl.gdi.fontmetric", GetFamilyName()
+             << ": fsSelection: "   << rInfo.fsSelection
              << ", typoAscender: "  << rInfo.typoAscender
              << ", typoDescender: " << rInfo.typoDescender
              << ", typoLineGap: "   << rInfo.typoLineGap

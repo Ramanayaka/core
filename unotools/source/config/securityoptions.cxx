@@ -284,12 +284,11 @@ void SvtSecurityOptions_Impl::SetProperty( sal_Int32 nProperty, const Any& rValu
         {
             m_seqSecureURLs.realloc( 0 );
             rValue >>= m_seqSecureURLs;
-            if (!utl::ConfigManager::IsAvoidConfig())
+            if (!utl::ConfigManager::IsFuzzing())
             {
                 SvtPathOptions  aOpt;
-                sal_uInt32      nCount = m_seqSecureURLs.getLength();
-                for( sal_uInt32 nItem = 0; nItem < nCount; ++nItem )
-                    m_seqSecureURLs[ nItem ] = aOpt.SubstituteVariable( m_seqSecureURLs[ nItem ] );
+                std::transform(m_seqSecureURLs.begin(), m_seqSecureURLs.end(), m_seqSecureURLs.begin(),
+                    [&aOpt](const OUString& rUrl) -> OUString { return aOpt.SubstituteVariable( rUrl ); });
             }
             m_bROSecureURLs = bRO;
         }
@@ -377,7 +376,7 @@ void SvtSecurityOptions_Impl::SetProperty( sal_Int32 nProperty, const Any& rValu
         {
             sal_Int32 nMode = 0;
             rValue >>= nMode;
-            m_eBasicMode = (EBasicSecurityMode)nMode;
+            m_eBasicMode = static_cast<EBasicSecurityMode>(nMode);
             m_bROBasicMode = bRO;
         }
         break;
@@ -403,7 +402,7 @@ void SvtSecurityOptions_Impl::SetProperty( sal_Int32 nProperty, const Any& rValu
 
 #if OSL_DEBUG_LEVEL > 0
         default:
-            assert(false && "SvtSecurityOptions_Impl::SetProperty()\nUnknown property!\n");
+            assert(false && "Unknown property!");
 #endif
         }
 }
@@ -411,51 +410,51 @@ void SvtSecurityOptions_Impl::SetProperty( sal_Int32 nProperty, const Any& rValu
 void SvtSecurityOptions_Impl::LoadAuthors()
 {
     m_seqTrustedAuthors.realloc( 0 );       // first clear
-    Sequence< OUString >    lAuthors = GetNodeNames( PROPERTYNAME_MACRO_TRUSTEDAUTHORS );
+    const Sequence< OUString > lAuthors = GetNodeNames( PROPERTYNAME_MACRO_TRUSTEDAUTHORS );
     sal_Int32               c1 = lAuthors.getLength();
-    if( c1 )
+    if( !c1 )
+        return;
+
+    sal_Int32               c2 = c1 * 3;                // 3 Properties inside Struct TrustedAuthor
+    Sequence< OUString >    lAllAuthors( c2 );
+
+    sal_Int32               i2 = 0;
+    OUString                aSep( "/" );
+    for( const auto& rAuthor : lAuthors )
     {
-        sal_Int32               c2 = c1 * 3;                // 3 Properties inside Struct TrustedAuthor
-        Sequence< OUString >    lAllAuthors( c2 );
+        lAllAuthors[ i2 ] = PROPERTYNAME_MACRO_TRUSTEDAUTHORS + aSep + rAuthor + aSep + PROPERTYNAME_TRUSTEDAUTHOR_SUBJECTNAME;
+        ++i2;
+        lAllAuthors[ i2 ] = PROPERTYNAME_MACRO_TRUSTEDAUTHORS + aSep + rAuthor + aSep + PROPERTYNAME_TRUSTEDAUTHOR_SERIALNUMBER;
+        ++i2;
+        lAllAuthors[ i2 ] = PROPERTYNAME_MACRO_TRUSTEDAUTHORS + aSep + rAuthor + aSep + PROPERTYNAME_TRUSTEDAUTHOR_RAWDATA;
+        ++i2;
+    }
 
-        sal_Int32               i1;
-        sal_Int32               i2;
-        OUString                aSep( "/" );
-        for( i1 = 0, i2 = 0; i1 < c1; ++i1 )
-        {
-            lAllAuthors[ i2 ] = PROPERTYNAME_MACRO_TRUSTEDAUTHORS + aSep + lAuthors[ i1 ] + aSep + PROPERTYNAME_TRUSTEDAUTHOR_SUBJECTNAME;
-            ++i2;
-            lAllAuthors[ i2 ] = PROPERTYNAME_MACRO_TRUSTEDAUTHORS + aSep + lAuthors[ i1 ] + aSep + PROPERTYNAME_TRUSTEDAUTHOR_SERIALNUMBER;
-            ++i2;
-            lAllAuthors[ i2 ] = PROPERTYNAME_MACRO_TRUSTEDAUTHORS + aSep + lAuthors[ i1 ] + aSep + PROPERTYNAME_TRUSTEDAUTHOR_RAWDATA;
-            ++i2;
-        }
+    Sequence< Any >         lValues = GetProperties( lAllAuthors );
+    if( lValues.getLength() != c2 )
+        return;
 
-        Sequence< Any >         lValues = GetProperties( lAllAuthors );
-        if( lValues.getLength() == c2 )
+    std::vector< SvtSecurityOptions::Certificate > v;
+    SvtSecurityOptions::Certificate aCert( 3 );
+    i2 = 0;
+    for( sal_Int32 i1 = 0; i1 < c1; ++i1 )
+    {
+        lValues[ i2 ] >>= aCert[ 0 ];
+        ++i2;
+        lValues[ i2 ] >>= aCert[ 1 ];
+        ++i2;
+        lValues[ i2 ] >>= aCert[ 2 ];
+        ++i2;
+        // Filter out TrustedAuthor entries with empty RawData, which
+        // would cause an unexpected std::bad_alloc in
+        // SecurityEnvironment_NssImpl::createCertificateFromAscii and
+        // have been observed in the wild (fdo#55019):
+        if( !aCert[ 2 ].isEmpty() )
         {
-            std::vector< SvtSecurityOptions::Certificate > v;
-            SvtSecurityOptions::Certificate aCert( 3 );
-            for( i1 = 0, i2 = 0; i1 < c1; ++i1 )
-            {
-                lValues[ i2 ] >>= aCert[ 0 ];
-                ++i2;
-                lValues[ i2 ] >>= aCert[ 1 ];
-                ++i2;
-                lValues[ i2 ] >>= aCert[ 2 ];
-                ++i2;
-                // Filter out TrustedAuthor entries with empty RawData, which
-                // would cause an unexpected std::bad_alloc in
-                // SecurityEnvironment_NssImpl::createCertificateFromAscii and
-                // have been observed in the wild (fdo#55019):
-                if( !aCert[ 2 ].isEmpty() )
-                {
-                    v.push_back( aCert );
-                }
-            }
-            m_seqTrustedAuthors = comphelper::containerToSequence(v);
+            v.push_back( aCert );
         }
     }
+    m_seqTrustedAuthors = comphelper::containerToSequence(v);
 }
 
 sal_Int32 SvtSecurityOptions_Impl::GetHandle( const OUString& rName )
@@ -590,9 +589,8 @@ void SvtSecurityOptions_Impl::ImplCommit()
                 {
                     Sequence< OUString >    lURLs( m_seqSecureURLs );
                     SvtPathOptions          aOpt;
-                    sal_Int32               nURLsCnt = lURLs.getLength();
-                    for( sal_Int32 nItem = 0; nItem < nURLsCnt; ++nItem )
-                        lURLs[ nItem ] = aOpt.UseVariable( lURLs[ nItem ] );
+                    std::transform(lURLs.begin(), lURLs.end(), lURLs.begin(),
+                        [&aOpt](const OUString& rUrl) -> OUString { return aOpt.UseVariable( rUrl ); });
                     lValues[ nRealCount ] <<= lURLs;
                 }
             }
@@ -715,7 +713,7 @@ void SvtSecurityOptions_Impl::ImplCommit()
             {
                 bDone = !m_bROBasicMode;
                 if( bDone )
-                    lValues[ nRealCount ] <<= (sal_Int32)m_eBasicMode;
+                    lValues[ nRealCount ] <<= static_cast<sal_Int32>(m_eBasicMode);
             }
             break;
             case PROPERTYHANDLE_EXECUTEPLUGINS:
@@ -871,7 +869,7 @@ bool SvtSecurityOptions_Impl::IsOptionSet( SvtSecurityOptions::EOption eOption )
     bool*   pRO;
     bool    bRet = false;
 
-    if( ( const_cast< SvtSecurityOptions_Impl* >( this ) )->GetOption( eOption, pValue, pRO ) )
+    if( const_cast< SvtSecurityOptions_Impl* >( this )->GetOption( eOption, pValue, pRO ) )
         bRet = *pValue;
 
     return bRet;
@@ -895,7 +893,7 @@ bool SvtSecurityOptions_Impl::IsOptionEnabled( SvtSecurityOptions::EOption eOpti
     bool*   pRO;
     bool    bRet = false;
 
-    if( ( const_cast< SvtSecurityOptions_Impl* >( this ) )->GetOption( eOption, pValue, pRO ) )
+    if( const_cast< SvtSecurityOptions_Impl* >( this )->GetOption( eOption, pValue, pRO ) )
         bRet = !*pRO;
 
     return bRet;
@@ -981,7 +979,7 @@ bool SvtSecurityOptions::isSecureMacroUri(
             // is considered safe:
             return true;
         }
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case INetProtocol::Slot:
         return referer.equalsIgnoreAsciiCase("private:user")
             || isTrustedLocationUri(referer);
@@ -999,11 +997,9 @@ bool SvtSecurityOptions::isUntrustedReferer(OUString const & referer) const {
 
 bool SvtSecurityOptions::isTrustedLocationUri(OUString const & uri) const {
     MutexGuard g(GetInitMutex());
-    for (sal_Int32 i = 0; i != m_pImpl->m_seqSecureURLs.getLength();
-         ++i)
+    for (const auto & url : std::as_const(m_pImpl->m_seqSecureURLs))
     {
-        if (UCBContentHelper::IsSubPath(
-                m_pImpl->m_seqSecureURLs[i], uri))
+        if (UCBContentHelper::IsSubPath(url, uri))
         {
             return true;
         }

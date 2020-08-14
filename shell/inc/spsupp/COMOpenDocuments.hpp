@@ -14,15 +14,15 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnon-virtual-dtor"
 #endif
-#include "spsupp_h.h"
+#include <spsupp_h.h>
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
 #include "COMRefCounted.hpp"
-#include "Objsafe.h"
-#include "assert.h"
+#include <Objsafe.h>
+#include <assert.h>
 
-class COMOpenDocuments : public COMRefCounted<IOWSNewDocument3>
+class COMOpenDocuments : public COMRefCounted<IOWSNewDocument3, IObjectSafety>
 {
 public:
 
@@ -158,62 +158,27 @@ public:
         BSTR bstrBlogUrl,
         BSTR bstrBlogName) override;
 
+    // IObjectSafety methods
+
+    HRESULT STDMETHODCALLTYPE GetInterfaceSafetyOptions(
+        REFIID riid,
+        DWORD *pdwSupportedOptions,
+        DWORD *pdwEnabledOptions) override;
+
+    HRESULT STDMETHODCALLTYPE SetInterfaceSafetyOptions(
+        REFIID riid,
+        DWORD dwOptionSetMask,
+        DWORD dwEnabledOptions) override;
+
     // Non-COM methods
 
     static long GetObjectCount();
 
 private:
-    //Aggregated object
-    class COMObjectSafety : public IObjectSafety
-    {
-    public:
-        COMObjectSafety(IUnknown* pOwner) : m_pOwner(pOwner) { assert(m_pOwner); }
-        virtual ~COMObjectSafety() {}
-
-        // IUnknown members delegate to the outer unknown
-        // IUnknown members do not control lifetime of object
-
-        HRESULT STDMETHODCALLTYPE QueryInterface(
-            REFIID riid,
-            void **ppvObject) override
-        {
-            return m_pOwner->QueryInterface(riid, ppvObject);
-        }
-
-        ULONG STDMETHODCALLTYPE AddRef() override { return m_pOwner->AddRef(); }
-
-        ULONG STDMETHODCALLTYPE Release() override { return m_pOwner->Release(); }
-
-        // IObjectSafety methods
-
-        HRESULT STDMETHODCALLTYPE GetInterfaceSafetyOptions(
-            REFIID riid,
-            DWORD *pdwSupportedOptions,
-            DWORD *pdwEnabledOptions) override;
-
-        HRESULT STDMETHODCALLTYPE SetInterfaceSafetyOptions(
-            REFIID riid,
-            DWORD dwOptionSetMask,
-            DWORD dwEnabledOptions) override;
-
-        // Non-COM methods
-
-        bool GetSafe_forUntrustedCaller() { return (m_iEnabledOptions & INTERFACESAFE_FOR_UNTRUSTED_CALLER) != 0; }
-        bool GetSafe_forUntrustedData() { return (m_iEnabledOptions & INTERFACESAFE_FOR_UNTRUSTED_DATA) != 0; }
-
-    private:
-        IUnknown* m_pOwner;
-        DWORD m_iEnabledOptions = 0;
-        enum : DWORD { iSupportedOptionsMask = INTERFACESAFE_FOR_UNTRUSTED_CALLER | INTERFACESAFE_FOR_UNTRUSTED_DATA };
-
-        void SetMaskedOptions(DWORD iMask, DWORD iOptions);
-        void SetSafe_forUntrustedCaller(bool bSafe);
-        void SetSafe_forUntrustedData(bool bSafe);
-    };
-
     static long m_nObjCount;
     static ITypeInfo* m_pTypeInfo;
-    COMObjectSafety m_aObjectSafety;
+    static constexpr DWORD iSupportedOptionsMask = INTERFACESAFE_FOR_UNTRUSTED_CALLER | INTERFACESAFE_FOR_UNTRUSTED_DATA;
+    DWORD m_iEnabledOptions = 0;
 };
 
 #endif

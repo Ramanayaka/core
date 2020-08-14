@@ -22,11 +22,9 @@
 
 #include <oox/core/fragmenthandler2.hxx>
 
-namespace oox { namespace drawingml { class Shape; } }
+namespace oox::drawingml { class Shape; }
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 template< typename ModelType >
 class ContextBase : public ::oox::core::ContextHandler2
@@ -52,7 +50,7 @@ protected:
 
 /** Help class for all contexts that have only the c:spPr child element.
  */
-class ShapePrWrapperContext : public ContextBase< Shape >
+class ShapePrWrapperContext final : public ContextBase< Shape >
 {
 public:
     explicit            ShapePrWrapperContext( ::oox::core::ContextHandler2Helper& rParent, Shape& rModel );
@@ -65,7 +63,7 @@ struct LayoutModel;
 
 /** Handler for a chart layout context (c:layout element).
  */
-class LayoutContext : public ContextBase< LayoutModel >
+class LayoutContext final : public ContextBase< LayoutModel >
 {
 public:
     explicit            LayoutContext( ::oox::core::ContextHandler2Helper& rParent, LayoutModel& rModel );
@@ -74,9 +72,7 @@ public:
     virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
 };
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

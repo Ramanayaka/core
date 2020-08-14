@@ -20,6 +20,9 @@
 #include "base.hxx"
 
 #include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/typeprovider.hxx>
+
+#include <com/sun/star/reflection/XIdlField2.hpp>
 
 using namespace css::lang;
 using namespace css::reflection;
@@ -28,6 +31,7 @@ using namespace css::uno;
 namespace stoc_corefl
 {
 
+namespace {
 
 class IdlEnumFieldImpl
     : public IdlMemberImpl
@@ -64,6 +68,8 @@ public:
     virtual void SAL_CALL set( Any & rObj, const Any & rValue ) override;
 };
 
+}
+
 // XInterface
 
 Any IdlEnumFieldImpl::queryInterface( const Type & rType )
@@ -88,20 +94,12 @@ void IdlEnumFieldImpl::release() throw()
 
 Sequence< Type > IdlEnumFieldImpl::getTypes()
 {
-    static ::cppu::OTypeCollection * s_pTypes = nullptr;
-    if (! s_pTypes)
-    {
-        ::osl::MutexGuard aGuard( getMutexAccess() );
-        if (! s_pTypes)
-        {
-            static ::cppu::OTypeCollection s_aTypes(
-                cppu::UnoType<XIdlField2>::get(),
-                cppu::UnoType<XIdlField>::get(),
-                IdlMemberImpl::getTypes() );
-            s_pTypes = &s_aTypes;
-        }
-    }
-    return s_pTypes->getTypes();
+    static cppu::OTypeCollection s_aTypes(
+        cppu::UnoType<XIdlField2>::get(),
+        cppu::UnoType<XIdlField>::get(),
+        IdlMemberImpl::getTypes() );
+
+    return s_aTypes.getTypes();
 }
 
 Sequence< sal_Int8 > IdlEnumFieldImpl::getImplementationId()

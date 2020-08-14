@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.18.3 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
+<!-- Generated with glade 3.36.0 -->
+<interface domain="cui">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkAdjustment" id="adjustment1">
     <property name="lower">2</property>
     <property name="upper">9</property>
@@ -12,8 +12,11 @@
   <object class="GtkDialog" id="BreakNumberOption">
     <property name="can_focus">False</property>
     <property name="border_width">6</property>
-    <property name="title" translatable="yes">Hyphenation</property>
+    <property name="title" translatable="yes" context="breaknumberoption|BreakNumberOption">Hyphenation</property>
     <property name="resizable">False</property>
+    <property name="modal">True</property>
+    <property name="default_width">0</property>
+    <property name="default_height">0</property>
     <property name="type_hint">dialog</property>
     <child internal-child="vbox">
       <object class="GtkBox" id="dialog-vbox1">
@@ -84,8 +87,13 @@
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="halign">start</property>
-                        <property name="invisible_char">•</property>
+                        <property name="activates_default">True</property>
                         <property name="adjustment">adjustment1</property>
+                        <child internal-child="accessible">
+                          <object class="AtkObject" id="beforebreak-atkobject">
+                            <property name="AtkObject::accessible-description" translatable="yes" context="beforebreak">Sets the minimum number of characters of the word to be hyphenated that must remain at the end of the line.</property>
+                          </object>
+                        </child>
                       </object>
                     </child>
                   </object>
@@ -94,7 +102,7 @@
                   <object class="GtkLabel" id="beforelabel">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Characters Before Break</property>
+                    <property name="label" translatable="yes" context="breaknumberoption|beforelabel">Characters Before Break</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -123,8 +131,13 @@
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="halign">start</property>
-                        <property name="invisible_char">•</property>
+                        <property name="activates_default">True</property>
                         <property name="adjustment">adjustment1</property>
+                        <child internal-child="accessible">
+                          <object class="AtkObject" id="afterbreak-atkobject">
+                            <property name="AtkObject::accessible-description" translatable="yes" context="afterbreak">Specifies the minimum number of characters of a hyphenated word required at the next line.</property>
+                          </object>
+                        </child>
                       </object>
                     </child>
                   </object>
@@ -133,7 +146,7 @@
                   <object class="GtkLabel" id="afterlabel">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Characters After Break</property>
+                    <property name="label" translatable="yes" context="breaknumberoption|afterlabel">Characters After Break</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -162,8 +175,13 @@
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="halign">start</property>
-                        <property name="invisible_char">•</property>
+                        <property name="activates_default">True</property>
                         <property name="adjustment">adjustment1</property>
+                        <child internal-child="accessible">
+                          <object class="AtkObject" id="wordlength-atkobject">
+                            <property name="AtkObject::accessible-description" translatable="yes" context="wordlength">Specifies the minimum number of characters required for automatic hyphenation to be applied.</property>
+                          </object>
+                        </child>
                       </object>
                     </child>
                   </object>
@@ -172,7 +190,7 @@
                   <object class="GtkLabel" id="minimallabel">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Minimal Word Length</property>
+                    <property name="label" translatable="yes" context="breaknumberoption|minimallabel">Minimal Word Length</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -194,8 +212,11 @@
       </object>
     </child>
     <action-widgets>
-      <action-widget response="0">ok</action-widget>
-      <action-widget response="0">cancel</action-widget>
+      <action-widget response="-5">ok</action-widget>
+      <action-widget response="-6">cancel</action-widget>
     </action-widgets>
+    <child type="titlebar">
+      <placeholder/>
+    </child>
   </object>
 </interface>

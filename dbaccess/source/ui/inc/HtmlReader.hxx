@@ -29,20 +29,19 @@ class SvStream;
 
 namespace dbaui
 {
-    class OHTMLReader : public HTMLParser, public ODatabaseExport
+    class OHTMLReader final : public HTMLParser, public ODatabaseExport
     {
         OUString            m_sCurrent;
         sal_Int32           m_nTableCount;
         sal_Int16           m_nColumnWidth; ///< maximum column width
 
-    protected:
         virtual void        NextToken( HtmlTokenId nToken ) override; // base class
         bool                CreateTable( HtmlTokenId nToken );
         virtual TypeSelectionPageFactory
                             getTypeSelectionPageFactory() override;
 
         void                TableDataOn(SvxCellHorJustify& eVal);
-        void                TableFontOn(css::awt::FontDescriptor& _rFont,sal_Int32 &_rTextColor);
+        void                TableFontOn(css::awt::FontDescriptor& _rFont, Color &_rTextColor);
         sal_Int16           GetWidthPixel( const HTMLOption& rOption );
         void                setTextEncoding();
         void                fetchOptions();
@@ -64,11 +63,7 @@ namespace dbaui
                     bool _bAutoIncrementEnabled);
 
         virtual SvParserState CallParser() override;// base class
-        virtual void release() override;
-        ///< @attention recovers only valid data if 1. CTOR has been used
     };
-
-    typedef tools::SvRef<OHTMLReader> OHTMLReaderRef;
 }
 #endif
 

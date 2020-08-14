@@ -40,7 +40,6 @@ namespace logging
     using ::com::sun::star::lang::XServiceInfo;
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::XComponentContext;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::logging::XLogFormatter;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::logging::LogRecord;
@@ -51,6 +50,9 @@ namespace logging
     typedef ::cppu::WeakComponentImplHelper    <   XConsoleHandler
                                                 ,   XServiceInfo
                                                 >   ConsoleHandler_Base;
+
+    namespace {
+
     class ConsoleHandler    :public ::cppu::BaseMutex
                             ,public ConsoleHandler_Base
     {
@@ -92,6 +94,8 @@ namespace logging
         void    leaveMethod( MethodGuard::Access );
     };
 
+    }
+
     ConsoleHandler::ConsoleHandler(const Reference<XComponentContext> &context,
             const css::uno::Sequence<css::uno::Any> &arguments)
         :ConsoleHandler_Base( m_aMutex )
@@ -100,7 +104,7 @@ namespace logging
     {
         ::osl::MutexGuard aGuard( m_aMutex );
 
-        if ( arguments.getLength() == 0 )
+        if ( !arguments.hasElements() )
         {   // create() - nothing to init
             m_aHandlerHelper.setIsInitialized();
             return;
@@ -234,7 +238,7 @@ namespace logging
 
     OUString SAL_CALL ConsoleHandler::getImplementationName()
     {
-        return OUString("com.sun.star.comp.extensions.ConsoleHandler");
+        return "com.sun.star.comp.extensions.ConsoleHandler";
     }
 
     sal_Bool SAL_CALL ConsoleHandler::supportsService( const OUString& _rServiceName )
@@ -249,7 +253,7 @@ namespace logging
 
 } // namespace logging
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_extensions_ConsoleHandler(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &arguments)

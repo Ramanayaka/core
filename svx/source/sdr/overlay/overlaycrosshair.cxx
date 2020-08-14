@@ -18,15 +18,12 @@
  */
 
 #include <sdr/overlay/overlaycrosshair.hxx>
-#include <vcl/outdev.hxx>
 #include <sdr/overlay/overlaytools.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
 
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         drawinglayer::primitive2d::Primitive2DContainer OverlayCrosshairStriped::createOverlayObjectPrimitive2DSequence()
         {
             drawinglayer::primitive2d::Primitive2DContainer aRetval;
@@ -57,14 +54,14 @@ namespace sdr
         }
 
         OverlayCrosshairStriped::OverlayCrosshairStriped(const basegfx::B2DPoint& rBasePos)
-        :   OverlayObjectWithBasePosition(rBasePos, Color(COL_BLACK))
+        :   OverlayObjectWithBasePosition(rBasePos, COL_BLACK)
         {
         }
 
         OverlayCrosshairStriped::~OverlayCrosshairStriped()
         {
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

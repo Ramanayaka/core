@@ -20,17 +20,16 @@
 #include "QTableConnectionData.hxx"
 #include "QTableWindow.hxx"
 
+#include <osl/diagnose.h>
+
 using namespace dbaui;
 
-// class OQueryTableConnectionData
 OQueryTableConnectionData::OQueryTableConnectionData()
     : OTableConnectionData()
     , m_nFromEntryIndex(0)
     , m_nDestEntryIndex(0)
     , m_eJoinType (INNER_JOIN)
     , m_bNatural(false)
-    , m_eFromType(TAB_NORMAL_FIELD)
-    , m_eDestType(TAB_NORMAL_FIELD)
 {
 }
 
@@ -40,10 +39,7 @@ OQueryTableConnectionData::OQueryTableConnectionData( const OQueryTableConnectio
     , m_nDestEntryIndex(rConnData.m_nDestEntryIndex)
     , m_eJoinType(rConnData.m_eJoinType)
     , m_bNatural(rConnData.m_bNatural)
-    , m_eFromType(rConnData.m_eFromType)
-    , m_eDestType(rConnData.m_eDestType)
 {
-
 }
 
 OQueryTableConnectionData::OQueryTableConnectionData(const TTableWindowData::value_type& _pReferencingTable,
@@ -53,19 +49,11 @@ OQueryTableConnectionData::OQueryTableConnectionData(const TTableWindowData::val
     , m_nDestEntryIndex(0)
     , m_eJoinType (INNER_JOIN)
     , m_bNatural(false)
-    , m_eFromType(TAB_NORMAL_FIELD)
-    , m_eDestType(TAB_NORMAL_FIELD)
 {
 }
 
 OQueryTableConnectionData::~OQueryTableConnectionData()
 {
-}
-
-OConnectionLineDataRef OQueryTableConnectionData::CreateLineDataObj()
-{
-    // no specializing of LineDatas, so it is an instance of standard class
-    return new OConnectionLineData();
 }
 
 void OQueryTableConnectionData::CopyFrom(const OTableConnectionData& rSource)
@@ -84,15 +72,13 @@ OQueryTableConnectionData& OQueryTableConnectionData::operator=(const OQueryTabl
     m_nFromEntryIndex = rConnData.m_nFromEntryIndex;
     m_nDestEntryIndex = rConnData.m_nDestEntryIndex;
 
-    m_eFromType = rConnData.m_eFromType;
-    m_eDestType = rConnData.m_eDestType;
     m_eJoinType = rConnData.m_eJoinType;
     m_bNatural  = rConnData.m_bNatural;
 
     return *this;
 }
 
-OUString OQueryTableConnectionData::GetAliasName(EConnectionSide nWhich) const
+OUString const & OQueryTableConnectionData::GetAliasName(EConnectionSide nWhich) const
 {
     return nWhich == JTCS_FROM ? m_pReferencingTable->GetWinName() : m_pReferencedTable->GetWinName();
 }
@@ -111,15 +97,12 @@ void OQueryTableConnectionData::InitFromDrag(const OTableFieldDescRef& rDragLeft
     SetFieldIndex(JTCS_FROM, rDragLeft->GetFieldIndex());
     SetFieldIndex(JTCS_TO, rDragRight->GetFieldIndex());
 
-    SetFieldType(JTCS_FROM, rDragLeft->GetFieldType());
-    SetFieldType(JTCS_TO, rDragRight->GetFieldType());
-
     AppendConnLine(rDragLeft->GetField(), rDragRight->GetField());
 }
 
-OTableConnectionData* OQueryTableConnectionData::NewInstance() const
+std::shared_ptr<OTableConnectionData> OQueryTableConnectionData::NewInstance() const
 {
-    return new OQueryTableConnectionData();
+    return std::make_shared<OQueryTableConnectionData>();
 }
 
 bool OQueryTableConnectionData::Update()

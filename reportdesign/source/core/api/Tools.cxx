@@ -16,9 +16,9 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "Tools.hxx"
-#include "core_resource.hrc"
-#include "core_resource.hxx"
+#include <Tools.hxx>
+#include <strings.hrc>
+#include <core_resource.hxx>
 #include <comphelper/property.hxx>
 
 
@@ -45,7 +45,7 @@ void throwIllegallArgumentException( const OUString& _sTypeName
                                     ,sal_Int16 ArgumentPosition_
                                     )
 {
-    OUString sErrorMessage(RPT_RESSTRING(RID_STR_ERROR_WRONG_ARGUMENT));
+    OUString sErrorMessage(RptResId(RID_STR_ERROR_WRONG_ARGUMENT));
     sErrorMessage = sErrorMessage.replaceAt(sErrorMessage.indexOf('#'),2,_sTypeName);
     throw lang::IllegalArgumentException(sErrorMessage,ExceptionContext_,ArgumentPosition_);
 }

@@ -25,7 +25,6 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <rtl/ref.hxx>
 #include <svx/xtable.hxx>
-#include <o3tl/make_unique.hxx>
 
 using namespace ::com::sun::star;
 
@@ -64,10 +63,10 @@ public:
 };
 
 SvxUnoColorTable::SvxUnoColorTable()
+  : pList(XPropertyList::AsColorList(
+            XPropertyList::CreatePropertyList(
+              XPropertyListType::Color, SvtPathOptions().GetPalettePath(), "")))
 {
-    pList = XPropertyList::AsColorList(
-        XPropertyList::CreatePropertyList(
-            XPropertyListType::Color, SvtPathOptions().GetPalettePath(), ""));
 }
 
 sal_Bool SAL_CALL SvxUnoColorTable::supportsService( const  OUString& ServiceName )
@@ -77,7 +76,7 @@ sal_Bool SAL_CALL SvxUnoColorTable::supportsService( const  OUString& ServiceNam
 
 OUString SAL_CALL SvxUnoColorTable::getImplementationName()
 {
-    return OUString("com.sun.star.drawing.SvxUnoColorTable");
+    return "com.sun.star.drawing.SvxUnoColorTable";
 }
 
 uno::Sequence< OUString > SAL_CALL SvxUnoColorTable::getSupportedServiceNames()
@@ -92,13 +91,13 @@ void SAL_CALL SvxUnoColorTable::insertByName( const OUString& aName, const uno::
     if( hasByName( aName ) )
         throw container::ElementExistException();
 
-    sal_Int32 nColor = 0;
-    if( !(aElement >>= nColor) )
+    Color aColor;
+    if( !(aElement >>= aColor) )
         throw lang::IllegalArgumentException();
 
     if( pList.is() )
     {
-        pList->Insert(o3tl::make_unique<XColorEntry>(Color((ColorData)nColor), aName));
+        pList->Insert(std::make_unique<XColorEntry>(aColor, aName));
     }
 }
 
@@ -114,7 +113,7 @@ void SAL_CALL SvxUnoColorTable::removeByName( const OUString& Name )
 // XNameReplace
 void SAL_CALL SvxUnoColorTable::replaceByName( const OUString& aName, const uno::Any& aElement )
 {
-    sal_Int32 nColor = 0;
+    Color nColor;
     if( !(aElement >>= nColor) )
         throw lang::IllegalArgumentException();
 
@@ -122,7 +121,7 @@ void SAL_CALL SvxUnoColorTable::replaceByName( const OUString& aName, const uno:
     if( nIndex == -1  )
         throw container::NoSuchElementException();
 
-    pList->Replace(nIndex, o3tl::make_unique<XColorEntry>(Color((ColorData)nColor), aName ));
+    pList->Replace(nIndex, std::make_unique<XColorEntry>(nColor, aName ));
 }
 
 // XNameAccess
@@ -133,7 +132,7 @@ uno::Any SAL_CALL SvxUnoColorTable::getByName( const OUString& aName )
         throw container::NoSuchElementException();
 
     const XColorEntry* pEntry = pList->GetColor(nIndex);
-    return uno::Any( (sal_Int32) pEntry->GetColor().GetRGBColor() );
+    return uno::Any( static_cast<sal_Int32>(pEntry->GetColor().GetRGBColor()) );
 }
 
 uno::Sequence< OUString > SAL_CALL SvxUnoColorTable::getElementNames()
@@ -171,7 +170,7 @@ sal_Bool SAL_CALL SvxUnoColorTable::hasElements()
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_drawing_SvxUnoColorTable_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

@@ -25,20 +25,20 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <rtl/ustring.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace deployment { class XPackageRegistry; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
-namespace dp_registry { namespace backend { namespace bundle {
+namespace dp_registry::backend::bundle {
 
 css::uno::Reference<css::deployment::XPackageRegistry> create(
     css::uno::Reference<css::deployment::XPackageRegistry> const &
         xRootRegistry,
-    OUString const & context, OUString const & cachePath, bool readOnly,
+    OUString const & context, OUString const & cachePath,
     css::uno::Reference<css::uno::XComponentContext> const & xComponentContext);
 
-} } }
+}
 
 #endif
 

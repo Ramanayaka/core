@@ -40,27 +40,24 @@
 #include <rtl/ustrbuf.hxx>
 #include <sal/types.h>
 
-#define OOX_INCLUDE_DUMPER (OSL_DEBUG_LEVEL > 0)
+#ifdef DBG_UTIL
 
-#if OOX_INCLUDE_DUMPER
-
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XInputStream; }
     namespace io { class XOutputStream; }
     namespace io { class XTextOutputStream2; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 namespace oox {
     class TextInputStream;
 }
 
-namespace oox { namespace core {
+namespace oox::core {
     class FilterBase;
-} }
+}
 
-namespace oox {
-namespace dump {
+namespace oox::dump {
 
 
 #define OOX_DUMP_UNUSED                     "unused"
@@ -140,11 +137,11 @@ class BinaryInputStreamRef : public ::oox::BinaryInputStreamRef
 public:
     BinaryInputStreamRef() {}
 
-    /*implicit*/ BinaryInputStreamRef( BinaryInputStream* pInStrm ) :
+    /*implicit*/ BinaryInputStreamRef( std::shared_ptr<BinaryInputStream> const & pInStrm ) :
                             ::oox::BinaryInputStreamRef( pInStrm ) {}
 
     /*implicit*/ BinaryInputStreamRef( const css::uno::Reference< css::io::XInputStream >& rxInStrm ) :
-                            ::oox::BinaryInputStreamRef( new BinaryXInputStream( rxInStrm, true ) ) {}
+                            ::oox::BinaryInputStreamRef( std::make_shared<BinaryXInputStream>( rxInStrm, true ) ) {}
 
     template< typename StreamType >
     /*implicit*/ BinaryInputStreamRef( const std::shared_ptr< StreamType >& rxInStrm ) :
@@ -248,8 +245,8 @@ class StringHelper
 public:
     // append string to string ------------------------------------------------
 
-    static void         appendChar( OUStringBuffer& rStr, sal_Unicode cChar, sal_Int32 nCount = 1 );
-    static void         appendString( OUStringBuffer& rStr, const OUString& rData, sal_Int32 nWidth = 0, sal_Unicode cFill = ' ' );
+    static void         appendChar( OUStringBuffer& rStr, sal_Unicode cChar, sal_Int32 nCount );
+    static void         appendString( OUStringBuffer& rStr, const OUString& rData, sal_Int32 nWidth, sal_Unicode cFill = ' ' );
 
     // append decimal ---------------------------------------------------------
 
@@ -313,7 +310,7 @@ public:
     // encoded text output ----------------------------------------------------
 
     static void         appendCChar( OUStringBuffer& rStr, sal_Unicode cChar, bool bPrefix = true );
-    static void         appendEncChar( OUStringBuffer& rStr, sal_Unicode cChar, sal_Int32 nCount = 1, bool bPrefix = true );
+    static void         appendEncChar( OUStringBuffer& rStr, sal_Unicode cChar, sal_Int32 nCount, bool bPrefix = true );
     static void         appendEncString( OUStringBuffer& rStr, const OUString& rData, bool bPrefix = true );
 
     // token list -------------------------------------------------------------
@@ -379,14 +376,14 @@ class String : public OUString
 public:
                  String() {}
     /*implicit*/ String( const OUString& rStr ) : OUString( rStr ) {}
-    /*implicit*/ String( const sal_Char* pcStr ) : OUString( OUString::createFromAscii( pcStr ? pcStr : "" ) ) {}
+    /*implicit*/ String( const char* pcStr ) : OUString( OUString::createFromAscii( pcStr ? pcStr : "" ) ) {}
     /*implicit*/ String( sal_Unicode cChar ) : OUString( cChar ) {}
 
     bool         has() const { return getLength() > 0; }
-    OUString operator()( const sal_Char* pcDefault ) const { if( has() ) return *this; return String( pcDefault ); }
+    OUString operator()( const char* pcDefault ) const { if( has() ) return *this; return String( pcDefault ); }
 };
 
-static const String EMPTY_STRING;
+const String EMPTY_STRING;
 
 
 /** Base class for all dumper classes.
@@ -443,8 +440,13 @@ class Base
 public:
     virtual             ~Base();
 
+    Base(Base const &) = default;
+    Base(Base &&) = default;
+    Base & operator =(Base const &) = default;
+    Base & operator =(Base &&) = default;
+
     bool         isValid() const { return implIsValid(); }
-    static bool  isValid( const std::shared_ptr< Base >& rxBase ) { return rxBase.get() && rxBase->isValid(); }
+    static bool  isValid( const std::shared_ptr< Base >& rxBase ) { return rxBase && rxBase->isValid(); }
 
 protected:
                         Base() {}
@@ -719,7 +721,7 @@ class NameListWrapper
 public:
                  NameListWrapper() {}
     /*implicit*/ NameListWrapper( const OUString& rListName ) : maName( rListName ) {}
-    /*implicit*/ NameListWrapper( const sal_Char* pcListName ) : maName( pcListName ) {}
+    /*implicit*/ NameListWrapper( const char* pcListName ) : maName( pcListName ) {}
     /*implicit*/ NameListWrapper( const NameListRef& rxList ) : mxList( rxList ) {}
 
     bool         isEmpty() const { return !mxList && !maName.has(); }
@@ -730,7 +732,7 @@ private:
     mutable NameListRef mxList;
 };
 
-static const NameListWrapper NO_LIST;
+const NameListWrapper NO_LIST;
 
 
 class ItemFormatMap
@@ -811,7 +813,7 @@ std::shared_ptr< ListType > SharedConfigData::createNameList( const OUString& rL
     std::shared_ptr< ListType > xList;
     if( !rListName.isEmpty() )
     {
-        xList.reset( new ListType( *this ) );
+        xList = std::make_shared<ListType>( *this );
         setNameList( rListName, xList );
     }
     return xList;
@@ -821,7 +823,7 @@ template< typename ListType >
 void SharedConfigData::readNameList( TextInputStream& rStrm, const OUString& rListName )
 {
     NameListRef xList = createNameList< ListType >( rListName );
-    if( xList.get() )
+    if( xList )
         xList->readConfigBlock( rStrm );
 }
 
@@ -829,17 +831,21 @@ void SharedConfigData::readNameList( TextInputStream& rStrm, const OUString& rLi
 class Config : public Base
 {
 public:
-    explicit            Config( const Config& rParent );
     explicit            Config(
-                            const sal_Char* pcEnvVar,
+                            const char* pcEnvVar,
                             const ::oox::core::FilterBase& rFilter );
     explicit            Config(
-                            const sal_Char* pcEnvVar,
+                            const char* pcEnvVar,
                             const css::uno::Reference< css::uno::XComponentContext >& rxContext,
                             const StorageRef& rxRootStrg,
                             const OUString& rSysFileName );
 
     virtual             ~Config() override;
+
+    Config(Config const &) = default;
+    Config(Config &&) = default;
+    Config & operator =(Config const &) = default;
+    Config & operator =(Config &&) = default;
 
     const css::uno::Reference< css::uno::XComponentContext >& getContext() const { return mxCfgData->getContext(); }
     const StorageRef& getRootStorage() const { return mxCfgData->getRootStorage(); }
@@ -868,10 +874,10 @@ public:
 protected:
                         Config() {}
     void                construct(
-                            const sal_Char* pcEnvVar,
+                            const char* pcEnvVar,
                             const ::oox::core::FilterBase& rFilter );
     void                construct(
-                            const sal_Char* pcEnvVar,
+                            const char* pcEnvVar,
                             const css::uno::Reference< css::uno::XComponentContext >& rxContext,
                             const StorageRef& rxRootStrg,
                             const OUString& rSysFileName );
@@ -880,8 +886,7 @@ protected:
     const OUString*     implGetOption( const OUString& rKey ) const;
 
 private:
-    typedef std::shared_ptr< SharedConfigData > SharedConfigDataRef;
-    SharedConfigDataRef mxCfgData;
+    std::shared_ptr< SharedConfigData > mxCfgData;
 };
 
 typedef std::shared_ptr< Config > ConfigRef;
@@ -906,7 +911,7 @@ template< typename Type >
 OUString Config::getName( const NameListWrapper& rListWrp, Type nKey ) const
 {
     NameListRef xList = rListWrp.getNameList( *this );
-    return xList.get() ? xList->getName( *this, nKey ) : OOX_DUMP_ERR_NOMAP;
+    return xList ? xList->getName( *this, nKey ) : OOX_DUMP_ERR_NOMAP;
 }
 
 template< typename Type >
@@ -948,7 +953,7 @@ public:
     void                endMultiItems();
 
     void                writeChar( sal_Unicode cChar, sal_Int32 nCount = 1 );
-    void                writeAscii( const sal_Char* pcStr );
+    void                writeAscii( const char* pcStr );
     void                writeString( const OUString& rStr );
     void                writeArray( const sal_uInt8* pnData, std::size_t nSize, sal_Unicode cSep = OOX_DUMP_LISTSEP );
     void                writeBool( bool bData );
@@ -967,7 +972,7 @@ public:
     void                writeBin( Type nData, bool bDots = true )
                             { StringHelper::appendBin( maLine, nData, bDots ); }
     template< typename Type >
-    void                writeFix( Type nData, sal_Int32 nWidth = 0 )
+    void                writeFix( Type nData, sal_Int32 nWidth )
                             { StringHelper::appendFix( maLine, nData, nWidth ); }
     template< typename Type >
     void                writeValue( Type nData, FormatType eFmtType )
@@ -984,13 +989,12 @@ private:
     void                writeItemName( const String& rItemName );
 
 private:
-    typedef ::std::vector< sal_Int32 > StringLenVec;
-
     css::uno::Reference< css::io::XTextOutputStream2 > mxStrm;
     OUString            maIndent;
     OUStringBuffer      maLine;
     OUString            maLastItem;
-    StringLenVec        maColPos;
+    ::std::vector< sal_Int32 >
+                        maColPos;
     size_t              mnCol;
     size_t              mnItemLevel;
     size_t              mnMultiLevel;
@@ -1090,6 +1094,11 @@ class ObjectBase : public Base
 {
 public:
     virtual             ~ObjectBase() override;
+
+    ObjectBase(ObjectBase const &) = default;
+    ObjectBase(ObjectBase &&) = default;
+    ObjectBase & operator =(ObjectBase const &) = default;
+    ObjectBase & operator =(ObjectBase &&) = default;
 
     const css::uno::Reference< css::uno::XComponentContext >&
                         getContext() const { return mxConfig->getContext(); }
@@ -1191,6 +1200,10 @@ class OutputObjectBase : public ObjectBase
 public:
     virtual             ~OutputObjectBase() override;
 
+    OutputObjectBase(OutputObjectBase const &) = default;
+    OutputObjectBase(OutputObjectBase &&) = default;
+    OutputObjectBase & operator =(OutputObjectBase const &) = default;
+    OutputObjectBase & operator =(OutputObjectBase &&) = default;
 
 protected:
                         OutputObjectBase() {}
@@ -1355,6 +1368,10 @@ class InputObjectBase : public OutputObjectBase
 public:
     virtual             ~InputObjectBase() override;
 
+    InputObjectBase(InputObjectBase const &) = default;
+    InputObjectBase(InputObjectBase &&) = default;
+    InputObjectBase & operator =(InputObjectBase const &) = default;
+    InputObjectBase & operator =(InputObjectBase &&) = default;
 
 protected:
                         InputObjectBase() {}
@@ -1367,7 +1384,7 @@ protected:
     virtual bool        implIsValid() const override;
 
     void                skipBlock( sal_Int64 nBytes, bool bShowSize = true );
-    void                dumpRawBinary( sal_Int64 nBytes, bool bShowOffset = true, bool bStream = false );
+    void                dumpRawBinary( sal_Int64 nBytes, bool bShowOffset, bool bStream = false );
 
     void                dumpBinary( const String& rName, sal_Int64 nBytes, bool bShowOffset = true );
     void                dumpRemaining( sal_Int64 nBytes );
@@ -1543,7 +1560,7 @@ void InputObjectBase::dumpHexPair( const String& rName, sal_Unicode cSep )
 }
 
 
-class BinaryStreamObject : public InputObjectBase
+class BinaryStreamObject final : public InputObjectBase
 {
 public:
     explicit            BinaryStreamObject(
@@ -1551,7 +1568,7 @@ public:
                             const BinaryInputStreamRef& rxStrm,
                             const OUString& rSysFileName );
 
-protected:
+private:
     void                dumpBinaryStream( bool bShowOffset = true );
 
     virtual void        implDump() override;
@@ -1582,12 +1599,11 @@ protected:
 private:
     void                constructTextStrmObj( rtl_TextEncoding eTextEnc );
 
-protected:
     std::shared_ptr< TextInputStream > mxTextStrm;
 };
 
 
-class TextLineStreamObject : public TextStreamObjectBase
+class TextLineStreamObject final : public TextStreamObjectBase
 {
 public:
     explicit            TextLineStreamObject(
@@ -1601,7 +1617,7 @@ public:
                             const BinaryInputStreamRef& rxStrm,
                             rtl_TextEncoding eTextEnc );
 
-protected:
+private:
     virtual void        implDumpText( TextInputStream& rTextStrm ) override;
     void        implDumpLine( const OUString& rLine, sal_uInt32 nLine );
 };
@@ -1667,7 +1683,7 @@ private:
 class SequenceRecordObjectBase : public RecordObjectBase
 {
 protected:
-                        SequenceRecordObjectBase() : mxRecData( new StreamDataSequence ) {}
+                        SequenceRecordObjectBase() : mxRecData( std::make_shared<StreamDataSequence>() ) {}
 
     using               RecordObjectBase::construct;
     void                construct(
@@ -1681,8 +1697,7 @@ protected:
     virtual bool        implReadRecordHeader( BinaryInputStream& rBaseStrm, sal_Int64& ornRecId, sal_Int64& ornRecSize ) = 0;
 
 private:
-    typedef std::shared_ptr< StreamDataSequence > StreamDataSeqRef;
-    StreamDataSeqRef    mxRecData;
+    std::shared_ptr< StreamDataSequence > mxRecData;
 };
 
 
@@ -1704,8 +1719,7 @@ protected:
 };
 
 
-} // namespace dump
-} // namespace oox
+} // namespace oox::dump
 
 #define OOX_DUMP_FILE( DumperClassName )            \
 do {                                                \
@@ -1715,11 +1729,11 @@ do {                                                \
         return aDumper.isValid();                   \
 } while( false )
 
-#else   // OOX_INCLUDE_DUMPER
+#else   // DBG_UTIL
 
 #define OOX_DUMP_FILE( DumperClassName ) (void)0
 
-#endif  // OOX_INCLUDE_DUMPER
+#endif  // DBG_UTIL
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

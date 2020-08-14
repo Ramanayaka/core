@@ -17,44 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "linkeddocuments.hxx"
+#include <core_resource.hxx>
+#include <linkeddocuments.hxx>
 #include <osl/diagnose.h>
 #include <tools/diagnose_ex.h>
 #include <unotools/confignode.hxx>
-#include "dbustrings.hrc"
 #include <comphelper/classids.hxx>
 #include <comphelper/namedvaluecollection.hxx>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/XComponentLoader.hpp>
-#include <com/sun/star/util/URL.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/ucb/XCommandProcessor.hpp>
 #include <com/sun/star/ucb/OpenCommandArgument.hpp>
 #include <com/sun/star/ucb/OpenMode.hpp>
 #include <com/sun/star/task/XJobExecutor.hpp>
-#include <comphelper/extract.hxx>
 #include <comphelper/types.hxx>
-#include <vcl/msgbox.hxx>
-#include <ucbhelper/content.hxx>
-#include "dbu_misc.hrc"
+#include <strings.hrc>
+#include <strings.hxx>
 #include <svl/filenotation.hxx>
-#include "browserids.hxx"
-#include <sfx2/new.hxx>
-#include "moduledbu.hxx"
-#include <sfx2/app.hxx>
-#include <basic/sbx.hxx>
-#include <basic/sbuno.hxx>
-#include <svtools/ehdl.hxx>
-#include <svx/dataaccessdescriptor.hxx>
+#include <browserids.hxx>
 #include <com/sun/star/container/XHierarchicalNameContainer.hpp>
-#include <vcl/waitobj.hxx>
 #include <comphelper/mimeconfighelper.hxx>
+#include <vcl/weld.hxx>
 
 #include <cppuhelper/exc_hlp.hxx>
 #include <connectivity/dbtools.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <com/sun/star/io/WrongFormatException.hpp>
-#include "com/sun/star/sdb/RowSetVetoException.hpp"
 
 namespace dbaui
 {
@@ -100,18 +88,18 @@ namespace dbaui
     }
 
     // OLinkedDocumentsAccess
-    OLinkedDocumentsAccess::OLinkedDocumentsAccess( vcl::Window* _pDialogParent, const Reference< XDatabaseDocumentUI >& i_rDocumentUI,
+    OLinkedDocumentsAccess::OLinkedDocumentsAccess( weld::Window* pDialogParent, const Reference< XDatabaseDocumentUI >& i_rDocumentUI,
         const Reference< XComponentContext >& _rxContext, const Reference< XNameAccess >& _rxContainer,
         const Reference< XConnection>& _xConnection, const OUString& _sDataSourceName )
         :m_xContext(_rxContext)
         ,m_xDocumentContainer(_rxContainer)
         ,m_xConnection(_xConnection)
         ,m_xDocumentUI( i_rDocumentUI )
-        ,m_pDialogParent(_pDialogParent)
+        ,m_pDialogParent(pDialogParent)
         ,m_sDataSourceName(_sDataSourceName)
     {
         OSL_ENSURE(m_xContext.is(), "OLinkedDocumentsAccess::OLinkedDocumentsAccess: invalid service factory!");
-        OSL_ENSURE(m_pDialogParent, "OLinkedDocumentsAccess::OLinkedDocumentsAccess: really need a dialog parent!");
+        assert(m_pDialogParent && "OLinkedDocumentsAccess::OLinkedDocumentsAccess: really need a dialog parent!");
     }
     OLinkedDocumentsAccess::~OLinkedDocumentsAccess()
     {
@@ -125,7 +113,7 @@ namespace dbaui
         if ( !xComponentLoader.is() )
             return xRet;
 
-        WaitObject aWaitCursor( m_pDialogParent );
+        weld::WaitObject aWaitCursor(m_pDialogParent);
 
         ::comphelper::NamedValueCollection aArguments;
         OUString sOpenMode;
@@ -137,7 +125,7 @@ namespace dbaui
 
             case E_OPEN_FOR_MAIL:
                 aArguments.put( "Hidden", true );
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
 
             case E_OPEN_DESIGN:
                 sOpenMode = "openDesign";
@@ -150,22 +138,16 @@ namespace dbaui
         aArguments.put( "OpenMode", sOpenMode );
 
         aArguments.put( OUString(PROPERTY_ACTIVE_CONNECTION), m_xConnection );
-        try
-        {
-            Reference<XHierarchicalNameContainer> xHier(m_xDocumentContainer,UNO_QUERY);
-            if ( xHier.is() && xHier->hasByHierarchicalName(_rLinkName) )
-            {
-                _xDefinition.set(xHier->getByHierarchicalName(_rLinkName),UNO_QUERY);
-            }
 
-            aArguments.merge( _rAdditionalArgs, true );
-
-            xRet = xComponentLoader->loadComponentFromURL( _rLinkName, OUString(), 0, aArguments.getPropertyValues() );
-        }
-        catch(const Exception&)
+        Reference<XHierarchicalNameContainer> xHier(m_xDocumentContainer,UNO_QUERY);
+        if ( xHier.is() && xHier->hasByHierarchicalName(_rLinkName) )
         {
-            throw;
+            _xDefinition.set(xHier->getByHierarchicalName(_rLinkName),UNO_QUERY);
         }
+
+        aArguments.merge( _rAdditionalArgs, true );
+
+        xRet = xComponentLoader->loadComponentFromURL( _rLinkName, OUString(), 0, aArguments.getPropertyValues() );
 
         return xRet;
     }
@@ -190,7 +172,7 @@ namespace dbaui
 
             Reference< XJobExecutor > xWizard;
             {
-                WaitObject aWaitCursor( m_pDialogParent );
+                weld::WaitObject aWaitCursor(m_pDialogParent);
                 xWizard.set( m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
                     OUString::createFromAscii( _pWizardService ),
                     aArgs.getWrappedPropertyValues(),
@@ -203,7 +185,7 @@ namespace dbaui
         }
         catch(const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
     void OLinkedDocumentsAccess::newFormWithPilot( const sal_Int32 _nCommandType,const OUString& _rObjectName )
@@ -269,7 +251,7 @@ namespace dbaui
             if ( xORB.is() )
             {
                 ::comphelper::NamedValueCollection aCreationArgs( i_rCreationArgs );
-                if ( aClassId.getLength() )
+                if ( aClassId.hasElements() )
                     aCreationArgs.put( "ClassID", aClassId );
                 aCreationArgs.put( OUString(PROPERTY_ACTIVE_CONNECTION), m_xConnection );
 
@@ -297,13 +279,13 @@ namespace dbaui
                 Command aCommand;
                 aCommand.Name = "openDesign";
                 aCommand.Argument <<= aCommandArgs.getPropertyValues();
-                WaitObject aWaitCursor( m_pDialogParent );
+                weld::WaitObject aWaitCursor(m_pDialogParent);
                 xNewDocument.set( xContent->execute( aCommand, xContent->createCommandIdentifier(), nullptr ), UNO_QUERY );
             }
         }
         catch(const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
 
         return xNewDocument;
@@ -319,14 +301,13 @@ namespace dbaui
             xRet = impl_open( _rLinkName, _xDefinition, _eOpenMode, _rAdditionalArgs );
             if ( !xRet.is() )
             {
-                OUString sMessage = ModuleRes(STR_COULDNOTOPEN_LINKEDDOC);
+                OUString sMessage = DBA_RES(STR_COULDNOTOPEN_LINKEDDOC);
                 sMessage = sMessage.replaceFirst("$file$",_rLinkName);
 
                 css::sdbc::SQLException aSQLException;
                 aSQLException.Message = sMessage;
                 aInfo = dbtools::SQLExceptionInfo(aSQLException);
             }
-            return xRet;
         }
         catch(const css::io::WrongFormatException &e)
         {
@@ -336,11 +317,11 @@ namespace dbaui
             aInfo = dbtools::SQLExceptionInfo(aSQLException);
 
             // more like a hack, insert an empty message
-            OUString sText( ModuleRes( RID_STR_EXTENSION_NOT_PRESENT ) );
+            OUString sText( DBA_RES( RID_STR_EXTENSION_NOT_PRESENT ) );
             sText = sText.replaceFirst("$file$",_rLinkName);
             aInfo.prepend(sText);
 
-            OUString sMessage = ModuleRes(STR_COULDNOTOPEN_LINKEDDOC);
+            OUString sMessage = DBA_RES(STR_COULDNOTOPEN_LINKEDDOC);
             sMessage = sMessage.replaceFirst("$file$",_rLinkName);
             aInfo.prepend(sMessage);
         }
@@ -358,14 +339,14 @@ namespace dbaui
                 // more like a hack, insert an empty message
                 aInfo.prepend(" \n");
 
-                OUString sMessage = ModuleRes(STR_COULDNOTOPEN_LINKEDDOC);
+                OUString sMessage = DBA_RES(STR_COULDNOTOPEN_LINKEDDOC);
                 sMessage = sMessage.replaceFirst("$file$",_rLinkName);
                 aInfo.prepend(sMessage);
             }
         }
         if (aInfo.isValid())
         {
-            showError(aInfo, VCLUnoHelper::GetInterface(m_pDialogParent), m_xContext );
+            showError(aInfo, m_pDialogParent->GetXWindow(), m_xContext);
         }
         return xRet;
     }

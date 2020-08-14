@@ -27,13 +27,13 @@
 #include "abptypes.hxx"
 
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans {
         class XPropertySet;
     }
-} } }
+}
 
-namespace vcl { class Window; }
+namespace weld { class Window; }
 
 
 namespace abp
@@ -77,11 +77,11 @@ namespace abp
         /// creates a new KDE address book data source
         ODataSource createNewKab( const OUString& _rName );
 
-        /// creates a new Mac OS X address book data source
+        /// creates a new macOS address book data source
         ODataSource createNewMacab( const OUString& _rName );
 
-        /// creates a new dBase data source
-        ODataSource createNewDBase( const OUString& _rName );
+        /// creates a new Other data source; tdf117101: Spreadsheet by default
+        ODataSource createNewOther( const OUString& _rName );
     };
 
     struct ODataSourceImpl;
@@ -90,7 +90,7 @@ namespace abp
     /** a non-UNO wrapper for a data source
         <p>This class allows to access data sources without the need to compile the respective file with
         exception handling enabled (hopefully :).</p>
-        <p>In addition to wrapping an UNO data source, an instance of this class can handle at most
+        <p>In addition to wrapping a UNO data source, an instance of this class can handle at most
         one valid connection, as obtained from the data source.</p>
     */
     class ODataSource
@@ -117,7 +117,7 @@ namespace abp
         ODataSource& operator=( const ODataSource& _rSource );
 
         /// move assignment
-        ODataSource& operator=( ODataSource&& _rSource );
+        ODataSource& operator=(ODataSource&& _rSource) noexcept;
 
         /// checks whether or not the object represents a valid data source
         bool    isValid() const;
@@ -144,7 +144,7 @@ namespace abp
                 at all.
             @see isConnected
         */
-        bool    connect( vcl::Window* _pMessageParent );
+        bool    connect(weld::Window* _pMessageParent);
 
         /// returns <TRUE/> if the object has a valid connection, obtained from its data source
         bool    isConnected( ) const;

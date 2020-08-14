@@ -17,85 +17,60 @@
  */
 
 #include <svtools/editbrowsebox.hxx>
-#include <vcl/decoview.hxx>
-#include <svtools/fmtfield.hxx>
-#include <vcl/xtextedt.hxx>
-
-#include <algorithm>
-
+#include <vcl/svapp.hxx>
+#include <vcl/virdev.hxx>
 
 namespace svt
 {
-
-
     //= ComboBoxControl
-
-    ComboBoxControl::ComboBoxControl(vcl::Window* pParent)
-                   :ComboBox(pParent, WB_DROPDOWN|WB_NOBORDER)
+    ComboBoxControl::ComboBoxControl(BrowserDataWin* pParent)
+        : ControlBase(pParent, "svt/ui/combocontrol.ui", "ComboControl")
+        , m_xWidget(m_xBuilder->weld_combo_box("combobox"))
     {
-        EnableAutoSize(false);
-        EnableAutocomplete(true);
-        SetDropDownLineCount(5);
+        InitControlBase(m_xWidget.get());
+        m_xWidget->set_entry_width_chars(1); // so a smaller than default width can be used
     }
 
-
-    bool ComboBoxControl::PreNotify( NotifyEvent& rNEvt )
+    void ComboBoxControl::dispose()
     {
-        if (rNEvt.GetType() == MouseNotifyEvent::KEYINPUT && !IsInDropDown())
-        {
-            const KeyEvent *pEvt = rNEvt.GetKeyEvent();
-            const vcl::KeyCode rKey = pEvt->GetKeyCode();
-
-            if ((rKey.GetCode() == KEY_UP || rKey.GetCode() == KEY_DOWN) &&
-                (!pEvt->GetKeyCode().IsShift() && pEvt->GetKeyCode().IsMod1()))
-            {
-                // select next resp. previous entry
-                sal_Int32 nPos = GetEntryPos(GetText());
-                int nDir = (rKey.GetCode() == KEY_DOWN ? 1 : -1);
-                if (!((nPos == 0 && nDir == -1) || (nPos >= GetEntryCount() && nDir == 1)))
-                {
-                    nPos += nDir;
-                    SetText(GetEntry(nPos));
-                }
-                return true;
-            }
-        }
-        return ComboBox::PreNotify(rNEvt);
+        m_xWidget.reset();
+        ControlBase::dispose();
     }
 
     //= ComboBoxCellController
     ComboBoxCellController::ComboBoxCellController(ComboBoxControl* pWin)
                              :CellController(pWin)
     {
-        GetComboBox().SetModifyHdl( LINK(this, ComboBoxCellController, ModifyHdl) );
+        GetComboBox().connect_changed(LINK(this, ComboBoxCellController, ModifyHdl));
     }
 
-    IMPL_LINK_NOARG(ComboBoxCellController, ModifyHdl, Edit&, void)
+    IMPL_LINK_NOARG(ComboBoxCellController, ModifyHdl, weld::ComboBox&, void)
     {
         callModifyHdl();
     }
 
-
     bool ComboBoxCellController::MoveAllowed(const KeyEvent& rEvt) const
     {
-        ComboBoxControl& rBox = GetComboBox();
+        weld::ComboBox& rBox = GetComboBox();
         switch (rEvt.GetKeyCode().GetCode())
         {
             case KEY_END:
             case KEY_RIGHT:
             {
-                Selection aSel = rBox.GetSelection();
-                return !aSel && aSel.Max() == rBox.GetText().getLength();
+                int nStartPos, nEndPos;
+                bool bNoSelection = rBox.get_entry_selection_bounds(nStartPos, nEndPos);
+                return bNoSelection && nEndPos == rBox.get_active_text().getLength();
             }
             case KEY_HOME:
             case KEY_LEFT:
             {
-                Selection aSel = rBox.GetSelection();
-                return !aSel && aSel.Min() == 0;
+                int nStartPos, nEndPos;
+                bool bNoSelection = rBox.get_entry_selection_bounds(nStartPos, nEndPos);
+                return bNoSelection && nStartPos == 0;
             }
             case KEY_UP:
             case KEY_DOWN:
-                if (rBox.IsInDropDown())
+                if (rBox.get_popup_shown())
                     return false;
                 if (!rEvt.GetKeyCode().IsShift() &&
                      rEvt.GetKeyCode().IsMod1())
@@ -103,76 +78,53 @@ namespace svt
                 // drop down the list box
                 else if (rEvt.GetKeyCode().IsMod2() && rEvt.GetKeyCode().GetCode() == KEY_DOWN)
                     return false;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case KEY_PAGEUP:
             case KEY_PAGEDOWN:
             case KEY_RETURN:
-                if (rBox.IsInDropDown())
+                if (rBox.get_popup_shown())
                     return false;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             default:
                 return true;
         }
     }
 
-
-    bool ComboBoxCellController::IsModified() const
+    bool ComboBoxCellController::IsValueChangedFromSaved() const
     {
-        return GetComboBox().IsValueChangedFromSaved();
+        return GetComboBox().get_value_changed_from_saved();
     }
 
-    void ComboBoxCellController::ClearModified()
+    void ComboBoxCellController::SaveValue()
     {
-        GetComboBox().SaveValue();
+        GetComboBox().save_value();
     }
 
     //= ListBoxControl
-    ListBoxControl::ListBoxControl(vcl::Window* pParent)
-                  :ListBox(pParent, WB_DROPDOWN|WB_NOBORDER)
+    ListBoxControl::ListBoxControl(BrowserDataWin* pParent)
+        : ControlBase(pParent, "svt/ui/listcontrol.ui", "ListControl")
+        , m_xWidget(m_xBuilder->weld_combo_box("listbox"))
     {
-        EnableAutoSize(false);
-        EnableMultiSelection(false);
-        SetDropDownLineCount(20);
+        InitControlBase(m_xWidget.get());
+        m_xWidget->set_size_request(42, -1); // so a later narrow size request can stick
     }
 
-    bool ListBoxControl::PreNotify( NotifyEvent& rNEvt )
+    void ListBoxControl::dispose()
     {
-        if (rNEvt.GetType() == MouseNotifyEvent::KEYINPUT && !IsInDropDown())
-        {
-            const KeyEvent *pEvt = rNEvt.GetKeyEvent();
-            const vcl::KeyCode rKey = pEvt->GetKeyCode();
-
-            if ((rKey.GetCode() == KEY_UP || rKey.GetCode() == KEY_DOWN) &&
-                (!pEvt->GetKeyCode().IsShift() && pEvt->GetKeyCode().IsMod1()))
-            {
-                // select next resp. previous entry
-                sal_Int32 nPos = GetSelectEntryPos();
-                int nDir = (rKey.GetCode() == KEY_DOWN ? 1 : -1);
-                if (!((nPos == 0 && nDir == -1) || (nPos >= GetEntryCount() && nDir == 1)))
-                {
-                    nPos += nDir;
-                    SelectEntryPos(nPos);
-                }
-                Select();   // for calling Modify
-                return true;
-            }
-            else if (GetParent()->PreNotify(rNEvt))
-                return true;
-        }
-        return ListBox::PreNotify(rNEvt);
+        m_xWidget.reset();
+        ControlBase::dispose();
     }
 
     //= ListBoxCellController
     ListBoxCellController::ListBoxCellController(ListBoxControl* pWin)
                              :CellController(pWin)
     {
-        GetListBox().SetSelectHdl(LINK(this, ListBoxCellController, ListBoxSelectHdl));
+        GetListBox().connect_changed(LINK(this, ListBoxCellController, ListBoxSelectHdl));
     }
-
 
     bool ListBoxCellController::MoveAllowed(const KeyEvent& rEvt) const
     {
-        const ListBoxControl& rBox = GetListBox();
+        const weld::ComboBox& rBox = GetListBox();
         switch (rEvt.GetKeyCode().GetCode())
         {
             case KEY_UP:
@@ -184,61 +136,61 @@ namespace svt
                 else
                     if (rEvt.GetKeyCode().IsMod2() && rEvt.GetKeyCode().GetCode() == KEY_DOWN)
                         return false;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case KEY_PAGEUP:
             case KEY_PAGEDOWN:
-                if (rBox.IsTravelSelect())
+                if (rBox.get_popup_shown())
                     return false;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             default:
                 return true;
         }
     }
 
-
-    bool ListBoxCellController::IsModified() const
+    bool ListBoxCellController::IsValueChangedFromSaved() const
     {
-        return GetListBox().IsValueChangedFromSaved();
+        return GetListBox().get_value_changed_from_saved();
     }
 
-
-    void ListBoxCellController::ClearModified()
+    void ListBoxCellController::SaveValue()
     {
-        GetListBox().SaveValue();
+        GetListBox().save_value();
     }
 
-
-    IMPL_LINK_NOARG(ListBoxCellController, ListBoxSelectHdl, ListBox&, void)
+    IMPL_LINK_NOARG(ListBoxCellController, ListBoxSelectHdl, weld::ComboBox&, void)
     {
         callModifyHdl();
     }
 
-
     //= CheckBoxControl
-
-
-    CheckBoxControl::CheckBoxControl(vcl::Window* pParent)
-                   :Control(pParent, 0)
+    CheckBoxControl::CheckBoxControl(BrowserDataWin* pParent)
+        : ControlBase(pParent, "svt/ui/checkboxcontrol.ui", "CheckBoxControl")
+        , m_xBox(m_xBuilder->weld_check_button("checkbox"))
     {
-        const Wallpaper& rParentBackground = pParent->GetBackground();
-        if ( (pParent->GetStyle() & WB_CLIPCHILDREN) || rParentBackground.IsFixed() )
-            SetBackground( rParentBackground );
-        else
-        {
-            SetPaintTransparent( true );
-            SetBackground();
-        }
-
-        EnableChildTransparentMode();
-
-        pBox = VclPtr<TriStateBox>::Create(this,WB_CENTER|WB_VCENTER);
-        pBox->SetLegacyNoTextAlign( true );
-        pBox->EnableChildTransparentMode();
-        pBox->SetPaintTransparent( true );
-        pBox->SetClickHdl( LINK( this, CheckBoxControl, OnClick ) );
-        pBox->Show();
+        m_aModeState.bTriStateEnabled = true;
+        InitControlBase(m_xBox.get());
+        m_xBox->connect_key_press(LINK(this, ControlBase, KeyInputHdl));
+        m_xBox->connect_toggled(LINK(this, CheckBoxControl, OnToggle));
     }
 
+    void CheckBoxControl::EnableTriState( bool bTriState )
+    {
+        if (m_aModeState.bTriStateEnabled != bTriState)
+        {
+            m_aModeState.bTriStateEnabled = bTriState;
+
+            if (!m_aModeState.bTriStateEnabled && GetState() == TRISTATE_INDET)
+                SetState(TRISTATE_FALSE);
+        }
+    }
+
+    void CheckBoxControl::SetState(TriState eState)
+    {
+        if (!m_aModeState.bTriStateEnabled && (eState == TRISTATE_INDET))
+            eState = TRISTATE_FALSE;
+        m_aModeState.eState = eState;
+        m_xBox->set_state(eState);
+    }
 
     CheckBoxControl::~CheckBoxControl()
     {
@@ -247,110 +199,66 @@ namespace svt
 
     void CheckBoxControl::dispose()
     {
-        pBox.disposeAndClear();
-        Control::dispose();
+        m_xBox.reset();
+        ControlBase::dispose();
     }
 
-
-    IMPL_LINK_NOARG(CheckBoxControl, OnClick, Button*, void)
+    void CheckBoxControl::Clicked()
     {
-        m_aClickLink.Call(pBox);
-        m_aModifyLink.Call(nullptr);
+        // if tristate is enabled, m_aModeState will take care of setting the
+        // next state in the sequence via TriStateEnabled::ButtonToggled
+        if (!m_aModeState.bTriStateEnabled)
+            m_xBox->set_active(!m_xBox->get_active());
+        OnToggle(*m_xBox);
     }
 
-
-    void CheckBoxControl::Resize()
+    IMPL_LINK_NOARG(CheckBoxControl, OnToggle, weld::ToggleButton&, void)
     {
-        Control::Resize();
-        pBox->SetPosSizePixel(Point(0,0),GetSizePixel());
+        m_aModeState.ButtonToggled(*m_xBox);
+        m_aClickLink.Call(*m_xBox);
+        CallModifyHdls();
     }
-
-
-    void CheckBoxControl::DataChanged( const DataChangedEvent& _rEvent )
-    {
-        if ( _rEvent.GetType() == DataChangedEventType::SETTINGS )
-            pBox->SetSettings( GetSettings() );
-    }
-
-
-    void CheckBoxControl::StateChanged( StateChangedType nStateChange )
-    {
-        Control::StateChanged(nStateChange);
-        if ( nStateChange == StateChangedType::Zoom )
-            pBox->SetZoom(GetZoom());
-    }
-
-
-    void CheckBoxControl::Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags nFlags )
-    {
-        pBox->Draw(pDev,rPos,rSize,nFlags);
-    }
-
-
-    void CheckBoxControl::GetFocus()
-    {
-        if (pBox)
-            pBox->GrabFocus();
-    }
-
-
-    void CheckBoxControl::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rClientRect)
-    {
-        Control::Paint(rRenderContext, rClientRect);
-        if (HasFocus())
-            ShowFocus(aFocusRect);
-    }
-
-
-    bool CheckBoxControl::PreNotify(NotifyEvent& rEvt)
-    {
-        switch (rEvt.GetType())
-        {
-            case MouseNotifyEvent::GETFOCUS:
-                ShowFocus(aFocusRect);
-                break;
-            case MouseNotifyEvent::LOSEFOCUS:
-                HideFocus();
-                break;
-            default:
-                break;
-        }
-        return Control::PreNotify(rEvt);
-    }
-
 
     //= CheckBoxCellController
-
-
     CheckBoxCellController::CheckBoxCellController(CheckBoxControl* pWin)
         : CellController(pWin)
     {
         static_cast<CheckBoxControl &>(GetWindow()).SetModifyHdl( LINK(this, CheckBoxCellController, ModifyHdl) );
     }
 
-    bool CheckBoxCellController::WantMouseEvent() const
+    void CheckBoxCellController::ActivatingMouseEvent(const BrowserMouseEvent& rEvt, bool /*bUp*/)
     {
-        return true;
+        CheckBoxControl& rControl = static_cast<CheckBoxControl&>(GetWindow());
+        rControl.GrabFocus();
+
+        // we have to adjust the position of the event relative to the controller's window
+        Point aPos = rEvt.GetPosPixel() - rEvt.GetRect().TopLeft();
+
+        Size aControlSize = rControl.GetSizePixel();
+        Size aBoxSize = rControl.GetBox().get_preferred_size();
+        tools::Rectangle aHotRect(Point((aControlSize.Width() - aBoxSize.Width()) / 2,
+                                        (aControlSize.Height() - aBoxSize.Height()) / 2),
+                                  aBoxSize);
+
+        // we want the initial mouse event to act as if it was performed on the checkbox
+        if (aHotRect.IsInside(aPos))
+            rControl.Clicked();
     }
 
-
-    CheckBox& CheckBoxCellController::GetCheckBox() const
+    weld::CheckButton& CheckBoxCellController::GetCheckBox() const
     {
         return static_cast<CheckBoxControl &>(GetWindow()).GetBox();
     }
 
-
-    bool CheckBoxCellController::IsModified() const
+    bool CheckBoxCellController::IsValueChangedFromSaved() const
     {
-        return GetCheckBox().IsValueChangedFromSaved();
+        return GetCheckBox().get_state_changed_from_saved();
     }
 
-
-    void CheckBoxCellController::ClearModified()
+    void CheckBoxCellController::SaveValue()
     {
-        GetCheckBox().SaveValue();
+        GetCheckBox().save_state();
     }
-
 
     IMPL_LINK_NOARG(CheckBoxCellController, ModifyHdl, LinkParamNone*, void)
     {
@@ -358,31 +266,24 @@ namespace svt
     }
 
     //= MultiLineEditImplementation
-
-
-    OUString MultiLineEditImplementation::GetText( LineEnd aSeparator ) const
+    OUString MultiLineEditImplementation::GetText(LineEnd eSeparator) const
     {
-        return const_cast< MultiLineEditImplementation* >( this )->GetEditWindow().GetText( aSeparator );
+        weld::TextView& rEntry = m_rEdit.get_widget();
+        return convertLineEnd(rEntry.get_text(), eSeparator);
     }
 
-
-    OUString MultiLineEditImplementation::GetSelected( LineEnd aSeparator ) const
+    OUString MultiLineEditImplementation::GetSelected(LineEnd eSeparator) const
     {
-        return const_cast< MultiLineEditImplementation* >( this )->GetEditWindow().GetSelected( aSeparator );
+        int nStartPos, nEndPos;
+        weld::TextView& rEntry = m_rEdit.get_widget();
+        rEntry.get_selection_bounds(nStartPos, nEndPos);
+        return convertLineEnd(rEntry.get_text().copy(nStartPos, nEndPos - nStartPos), eSeparator);
     }
 
-
-    //= EditCellController
-
-
-    EditCellController::EditCellController( Edit* _pEdit )
-        :CellController( _pEdit )
-        ,m_pEditImplementation( new EditImplementation( *_pEdit ) )
-        ,m_bOwnImplementation( true )
+    IMPL_LINK_NOARG(MultiLineEditImplementation, ModifyHdl, weld::TextView&, void)
     {
-        m_pEditImplementation->SetModifyHdl( LINK(this, EditCellController, ModifyHdl) );
+        CallModifyHdls();
     }
-
 
     EditCellController::EditCellController( IEditImplementation* _pImplementation )
         :CellController( &_pImplementation->GetControl() )
@@ -392,25 +293,245 @@ namespace svt
         m_pEditImplementation->SetModifyHdl( LINK(this, EditCellController, ModifyHdl) );
     }
 
+    IMPL_LINK_NOARG(EntryImplementation, ModifyHdl, weld::Entry&, void)
+    {
+        CallModifyHdls();
+    }
+
+    ControlBase::ControlBase(BrowserDataWin* pParent, const OUString& rUIXMLDescription, const OString& rID)
+        : InterimItemWindow(pParent, rUIXMLDescription, rID)
+    {
+    }
+
+    void ControlBase::SetEditableReadOnly(bool /*bReadOnly*/)
+    {
+        // expected to be overridden for Entry, TextView or the editable entry part of a ComboBox
+    }
+
+    EditControlBase::EditControlBase(BrowserDataWin* pParent)
+        : ControlBase(pParent, "svt/ui/thineditcontrol.ui", "EditControl") // *thin*editcontrol has no frame/border
+        , m_pEntry(nullptr) // inheritors are expected to call InitEditControlBase
+    {
+    }
+
+    void EditControlBase::InitEditControlBase(weld::Entry* pEntry)
+    {
+        InitControlBase(pEntry);
+        m_pEntry = pEntry;
+        m_pEntry->show();
+        m_pEntry->set_width_chars(1); // so a smaller than default width can be used
+        m_pEntry->connect_key_press(LINK(this, ControlBase, KeyInputHdl));
+    }
+
+    bool ControlBase::ProcessKey(const KeyEvent& rKEvt)
+    {
+        return static_cast<BrowserDataWin*>(GetParent())->GetParent()->ProcessKey(rKEvt);
+    }
+
+    IMPL_LINK(ControlBase, KeyInputHdl, const KeyEvent&, rKEvt, bool)
+    {
+        return ProcessKey(rKEvt);
+    }
+
+    void EditControlBase::dispose()
+    {
+        m_pEntry = nullptr;
+        ControlBase::dispose();
+    }
+
+    EditControl::EditControl(BrowserDataWin* pParent)
+        : EditControlBase(pParent)
+        , m_xWidget(m_xBuilder->weld_entry("entry"))
+    {
+        InitEditControlBase(m_xWidget.get());
+    }
+
+    void EditControl::dispose()
+    {
+        m_xWidget.reset();
+        EditControlBase::dispose();
+    }
+
+    FormattedControlBase::FormattedControlBase(BrowserDataWin* pParent, bool bSpinVariant)
+        : EditControlBase(pParent)
+        , m_bSpinVariant(bSpinVariant)
+        , m_xEntry(m_xBuilder->weld_entry("entry"))
+        , m_xSpinButton(m_xBuilder->weld_formatted_spin_button("spinbutton"))
+    {
+    }
+
+    void FormattedControlBase::InitFormattedControlBase()
+    {
+        InitEditControlBase(m_bSpinVariant ? m_xSpinButton.get() : m_xEntry.get());
+    }
+
+    void FormattedControlBase::connect_changed(const Link<weld::Entry&, void>& rLink)
+    {
+        get_formatter().connect_changed(rLink);
+    }
+
+    weld::EntryFormatter& FormattedControlBase::get_formatter()
+    {
+        return *m_xEntryFormatter;
+    }
+
+    void FormattedControlBase::dispose()
+    {
+        m_xEntryFormatter.reset();
+        m_xSpinButton.reset();
+        m_xEntry.reset();
+        EditControlBase::dispose();
+    }
+
+    FormattedControl::FormattedControl(BrowserDataWin* pParent, bool bSpinVariant)
+        : FormattedControlBase(pParent, bSpinVariant)
+    {
+        if (bSpinVariant)
+            m_xEntryFormatter.reset(new weld::EntryFormatter(*m_xSpinButton));
+        else
+            m_xEntryFormatter.reset(new weld::EntryFormatter(*m_xEntry));
+        InitFormattedControlBase();
+    }
+
+    DoubleNumericControl::DoubleNumericControl(BrowserDataWin* pParent, bool bSpinVariant)
+        : FormattedControlBase(pParent, bSpinVariant)
+    {
+        if (bSpinVariant)
+            m_xEntryFormatter.reset(new weld::DoubleNumericFormatter(*m_xSpinButton));
+        else
+            m_xEntryFormatter.reset(new weld::DoubleNumericFormatter(*m_xEntry));
+        InitFormattedControlBase();
+    }
+
+    LongCurrencyControl::LongCurrencyControl(BrowserDataWin* pParent, bool bSpinVariant)
+        : FormattedControlBase(pParent, bSpinVariant)
+    {
+        if (bSpinVariant)
+            m_xEntryFormatter.reset(new weld::LongCurrencyFormatter(*m_xSpinButton));
+        else
+            m_xEntryFormatter.reset(new weld::LongCurrencyFormatter(*m_xEntry));
+        InitFormattedControlBase();
+    }
+
+    TimeControl::TimeControl(BrowserDataWin* pParent, bool bSpinVariant)
+        : FormattedControlBase(pParent, bSpinVariant)
+    {
+        if (bSpinVariant)
+            m_xEntryFormatter.reset(new weld::TimeFormatter(*m_xSpinButton));
+        else
+            m_xEntryFormatter.reset(new weld::TimeFormatter(*m_xEntry));
+        InitFormattedControlBase();
+    }
+
+    DateControl::DateControl(BrowserDataWin* pParent, bool bDropDown)
+        : FormattedControlBase(pParent, false)
+        , m_xMenuButton(m_xBuilder->weld_menu_button("button"))
+        , m_xCalendarBuilder(Application::CreateBuilder(m_xMenuButton.get(), "svt/ui/datewindow.ui"))
+        , m_xTopLevel(m_xCalendarBuilder->weld_widget("date_popup_window"))
+        , m_xCalendar(m_xCalendarBuilder->weld_calendar("date"))
+        , m_xExtras(m_xCalendarBuilder->weld_widget("extras"))
+        , m_xTodayBtn(m_xCalendarBuilder->weld_button("today"))
+        , m_xNoneBtn(m_xCalendarBuilder->weld_button("none"))
+    {
+        m_xEntryFormatter.reset(new weld::DateFormatter(*m_xEntry));
+        InitFormattedControlBase();
+
+        m_xMenuButton->set_popover(m_xTopLevel.get());
+        m_xMenuButton->set_visible(bDropDown);
+        m_xMenuButton->connect_toggled(LINK(this, DateControl, ToggleHdl));
+
+        m_xExtras->show();
+
+        m_xTodayBtn->connect_clicked(LINK(this, DateControl, ImplClickHdl));
+        m_xNoneBtn->connect_clicked(LINK(this, DateControl, ImplClickHdl));
+
+        m_xCalendar->connect_activated(LINK(this, DateControl, ActivateHdl));
+    }
+
+    IMPL_LINK(DateControl, ImplClickHdl, weld::Button&, rBtn, void)
+    {
+        m_xMenuButton->set_active(false);
+        get_widget().grab_focus();
+
+        if (&rBtn == m_xTodayBtn.get())
+        {
+            Date aToday(Date::SYSTEM);
+            SetDate(aToday);
+        }
+        else if (&rBtn == m_xNoneBtn.get())
+        {
+            get_widget().set_text(OUString());
+        }
+    }
+
+    IMPL_LINK(DateControl, ToggleHdl, weld::ToggleButton&, rButton, void)
+    {
+        if (rButton.get_active())
+            m_xCalendar->set_date(static_cast<weld::DateFormatter&>(get_formatter()).GetDate());
+    }
+
+    IMPL_LINK_NOARG(DateControl, ActivateHdl, weld::Calendar&, void)
+    {
+        if (m_xMenuButton->get_active())
+            m_xMenuButton->set_active(false);
+        static_cast<weld::DateFormatter&>(get_formatter()).SetDate(m_xCalendar->get_date());
+    }
+
+    void DateControl::SetDate(const Date& rDate)
+    {
+        static_cast<weld::DateFormatter&>(get_formatter()).SetDate(rDate);
+        m_xCalendar->set_date(rDate);
+    }
+
+    void DateControl::dispose()
+    {
+        m_xTodayBtn.reset();
+        m_xNoneBtn.reset();
+        m_xExtras.reset();
+        m_xCalendar.reset();
+        m_xTopLevel.reset();
+        m_xCalendarBuilder.reset();
+        m_xMenuButton.reset();
+        FormattedControlBase::dispose();
+    }
+
+    PatternControl::PatternControl(BrowserDataWin* pParent)
+        : EditControl(pParent)
+    {
+        m_xWidget->connect_key_press(Link<const KeyEvent&, bool>()); // 1) acknowledge we first remove the old one
+        m_xEntryFormatter.reset(new weld::PatternFormatter(*m_xWidget));
+        m_xEntryFormatter->connect_key_press(LINK(this, ControlBase, KeyInputHdl)); // 2) and here we reattach via the formatter
+    }
+
+    void PatternControl::connect_changed(const Link<weld::Entry&, void>& rLink)
+    {
+        m_xEntryFormatter->connect_changed(rLink);
+    }
+
+    void PatternControl::dispose()
+    {
+        m_xEntryFormatter.reset();
+        EditControl::dispose();
+    }
+
+    EditCellController::EditCellController(EditControlBase* pEdit)
+        : CellController(pEdit)
+        , m_pEditImplementation(new EntryImplementation(*pEdit))
+        , m_bOwnImplementation(true)
+    {
+        m_pEditImplementation->SetModifyHdl( LINK(this, EditCellController, ModifyHdl) );
+    }
 
     EditCellController::~EditCellController( )
     {
         if ( m_bOwnImplementation )
-            DELETEZ( m_pEditImplementation );
+            delete m_pEditImplementation;
     }
 
-
-    void EditCellController::SetModified()
+    void EditCellController::SaveValue()
     {
-        m_pEditImplementation->SetModified();
+        m_pEditImplementation->SaveValue();
     }
-
-
-    void EditCellController::ClearModified()
-    {
-        m_pEditImplementation->ClearModified();
-    }
-
 
     bool EditCellController::MoveAllowed(const KeyEvent& rEvt) const
     {
@@ -422,178 +543,101 @@ namespace svt
             {
                 Selection aSel = m_pEditImplementation->GetSelection();
                 bResult = !aSel && aSel.Max() == m_pEditImplementation->GetText( LINEEND_LF ).getLength();
-            }   break;
+                break;
+            }
             case KEY_HOME:
             case KEY_LEFT:
             {
                 Selection aSel = m_pEditImplementation->GetSelection();
                 bResult = !aSel && aSel.Min() == 0;
-            }   break;
+                break;
+            }
+            case KEY_DOWN:
+            {
+                bResult = !m_pEditImplementation->CanDown();
+                break;
+            }
+            case KEY_UP:
+            {
+                bResult = !m_pEditImplementation->CanUp();
+                break;
+            }
             default:
                 bResult = true;
         }
         return bResult;
     }
 
-
-    bool EditCellController::IsModified() const
+    bool EditCellController::IsValueChangedFromSaved() const
     {
-        return m_pEditImplementation->IsModified();
+        return m_pEditImplementation->IsValueChangedFromSaved();
     }
 
-
-    IMPL_LINK_NOARG(EditCellController, ModifyHdl, Edit&, void)
-    {
-        callModifyHdl();
-    }
-
-    //= SpinCellController
-
-
-    SpinCellController::SpinCellController(SpinField* pWin)
-                         :CellController(pWin)
-    {
-        GetSpinWindow().SetModifyHdl( LINK(this, SpinCellController, ModifyHdl) );
-    }
-
-
-    void SpinCellController::SetModified()
-    {
-        GetSpinWindow().SetModifyFlag();
-    }
-
-
-    void SpinCellController::ClearModified()
-    {
-        GetSpinWindow().ClearModifyFlag();
-    }
-
-
-    bool SpinCellController::MoveAllowed(const KeyEvent& rEvt) const
-    {
-        bool bResult;
-        switch (rEvt.GetKeyCode().GetCode())
-        {
-            case KEY_END:
-            case KEY_RIGHT:
-            {
-                Selection aSel = GetSpinWindow().GetSelection();
-                bResult = !aSel && aSel.Max() == GetSpinWindow().GetText().getLength();
-            }   break;
-            case KEY_HOME:
-            case KEY_LEFT:
-            {
-                Selection aSel = GetSpinWindow().GetSelection();
-                bResult = !aSel && aSel.Min() == 0;
-            }   break;
-            default:
-                bResult = true;
-        }
-        return bResult;
-    }
-
-
-    bool SpinCellController::IsModified() const
-    {
-        return GetSpinWindow().IsModified();
-    }
-
-    IMPL_LINK_NOARG(SpinCellController, ModifyHdl, Edit&, void)
+    IMPL_LINK_NOARG(EditCellController, ModifyHdl, LinkParamNone*, void)
     {
         callModifyHdl();
     }
 
     //= FormattedFieldCellController
-
-
-    FormattedFieldCellController::FormattedFieldCellController( FormattedField* _pFormatted )
-        :EditCellController( _pFormatted )
+    FormattedFieldCellController::FormattedFieldCellController( FormattedControlBase* _pFormatted )
+        : EditCellController(_pFormatted)
     {
     }
-
 
     void FormattedFieldCellController::CommitModifications()
     {
-        static_cast< FormattedField& >( GetWindow() ).Commit();
+        static_cast<FormattedControl&>(GetWindow()).get_formatter().Commit();
     }
 
-
-    //= MultiLineTextCell
-
-
-    void MultiLineTextCell::Modify()
+    MultiLineTextCell::MultiLineTextCell(BrowserDataWin* pParent)
+        : ControlBase(pParent, "svt/ui/textviewcontrol.ui", "TextViewControl")
+        , m_xWidget(m_xBuilder->weld_text_view("textview"))
     {
-        GetTextEngine()->SetModified( true );
-        MultiLineEdit::Modify();
+        InitControlBase(m_xWidget.get());
+        m_xWidget->connect_key_press(LINK(this, ControlBase, KeyInputHdl));
+        // so any the natural size doesn't have an effect
+        m_xWidget->set_size_request(1, 1);
     }
 
-
-    bool MultiLineTextCell::dispatchKeyEvent( const KeyEvent& _rEvent )
+    void MultiLineTextCell::GetFocus()
     {
-        Selection aOldSelection( GetSelection() );
+        if (m_xWidget)
+            m_xWidget->select_region(-1, 0);
+        ControlBase::GetFocus();
+    }
 
-        bool bWasModified = IsModified();
-        ClearModifyFlag( );
+    void MultiLineTextCell::dispose()
+    {
+        m_xWidget.reset();
+        ControlBase::dispose();
+    }
 
-        bool bHandled = GetTextView()->KeyInput( _rEvent );
+    bool MultiLineTextCell::ProcessKey(const KeyEvent& rKEvt)
+    {
+        bool bSendToDataWindow = true;
 
-        bool bIsModified = IsModified();
-        if ( bWasModified && !bIsModified )
-            // not sure whether this can really happen
-            SetModifyFlag();
+        sal_uInt16 nCode  = rKEvt.GetKeyCode().GetCode();
+        bool bShift = rKEvt.GetKeyCode().IsShift();
+        bool bCtrl = rKEvt.GetKeyCode().IsMod1();
+        bool bAlt =  rKEvt.GetKeyCode().IsMod2();
 
-        if ( bHandled ) // the view claimed it handled the key input
+        if (!bAlt && !bCtrl && !bShift)
         {
-            // unfortunately, KeyInput also returns <TRUE/> (means "I handled this key input")
-            // when nothing really changed. Let's care for this.
-            Selection aNewSelection( GetSelection() );
-            if  (  aNewSelection != aOldSelection   // selection changed
-                || bIsModified                      // or some other modification
-                )
-                return true;
-        }
-        return false;
-    }
-
-
-    bool MultiLineTextCell::PreNotify( NotifyEvent& rNEvt )
-    {
-        if ( rNEvt.GetType() == MouseNotifyEvent::KEYINPUT )
-        {
-            if ( IsWindowOrChild( rNEvt.GetWindow() ) )
+            switch (nCode)
             {
-                // give the text view a chance to handle the keys
-                // this is necessary since a lot of keys which are normally handled
-                // by this view (in KeyInput) are intercepted by the EditBrowseBox,
-                // which uses them for other reasons. An example is the KeyUp key,
-                // which is used by both the text view and the edit browse box
-
-                const KeyEvent* pKeyEvent = rNEvt.GetKeyEvent();
-                const vcl::KeyCode& rKeyCode = pKeyEvent->GetKeyCode();
-                sal_uInt16 nCode = rKeyCode.GetCode();
-
-                if ( ( nCode == KEY_RETURN ) && ( rKeyCode.GetModifier() == KEY_MOD1 ) )
-                {
-                    KeyEvent aEvent( pKeyEvent->GetCharCode(),
-                        vcl::KeyCode( KEY_RETURN ),
-                        pKeyEvent->GetRepeat()
-                    );
-                    if ( dispatchKeyEvent( aEvent ) )
-                        return true;
-                }
-
-                if ( ( nCode != KEY_TAB ) && ( nCode != KEY_RETURN ) )   // everything but tab and enter
-                {
-                    if ( dispatchKeyEvent( *pKeyEvent ) )
-                        return true;
-                }
+                case KEY_DOWN:
+                    bSendToDataWindow = !m_xWidget->can_move_cursor_with_down();
+                    break;
+                case KEY_UP:
+                    bSendToDataWindow = !m_xWidget->can_move_cursor_with_up();
+                    break;
             }
         }
-        return MultiLineEdit::PreNotify( rNEvt );
+
+        if (bSendToDataWindow)
+            return ControlBase::ProcessKey(rKEvt);
+        return false;
     }
-
-
 }   // namespace svt
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

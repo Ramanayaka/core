@@ -24,22 +24,24 @@
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleText.hpp>
 
+#include <o3tl/char16_t2wchar_t.hxx>
+#include <o3tl/safeint.hxx>
+
 #include <stdlib.h>
 #include <memory.h>
 #include <stdio.h>
 #include <algorithm>
 #include <assert.h>
 
-#include "AccObject.hxx"
-#include "AccEventListener.hxx"
-#include "AccResource.hxx"
+#include <AccObject.hxx>
+#include <AccEventListener.hxx>
 
 #if defined __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wextra-tokens"
     // "#endif !_MIDL_USE_GUIDDEF_" in midl-generated code
 #endif
-#include "UAccCOM_i.c"
+#include <UAccCOM_i.c>
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
@@ -143,7 +145,8 @@ const short ROLE_TABLE[][2] =
         {COMMENT_END,               IA2_ROLE_TEXT_FRAME },
         {DOCUMENT_PRESENTATION,     ROLE_SYSTEM_DOCUMENT },
         {DOCUMENT_SPREADSHEET,      ROLE_SYSTEM_DOCUMENT },
-        {DOCUMENT_TEXT,             ROLE_SYSTEM_DOCUMENT }
+        {DOCUMENT_TEXT,             ROLE_SYSTEM_DOCUMENT },
+        {STATIC,                    IA2_ROLE_TEXT_FRAME }
     };
 
 
@@ -236,7 +239,7 @@ void AccObject::DeleteChild( AccObject* pChild )
 }
 
 /**
-   * In order to windows API WindowFromAccessibleObject,we sometimes to set a pure
+   * In order to windows API WindowFromAccessibleObject, we sometimes to set a pure
    * top window accessible object created by windows system as top ancestor.
    * @param.
    * @return
@@ -272,7 +275,7 @@ void  AccObject::UpdateName( )
     }
 
     if( ( TEXT_FRAME == m_accRole   ) && ( m_pParentObj !=nullptr )&& ( SCROLL_PANE == m_pParentObj -> m_accRole ) )
-        m_pIMAcc->Put_XAccName( reinterpret_cast<wchar_t const *>(m_pParentObj->m_xAccContextRef->getAccessibleName().getStr()) );
+        m_pIMAcc->Put_XAccName( o3tl::toW(m_pParentObj->m_xAccContextRef->getAccessibleName().getStr()) );
     //IAccessibility2 Implementation 2009-----
     if ( PARAGRAPH == m_accRole)
     {
@@ -280,7 +283,7 @@ void  AccObject::UpdateName( )
     }
     //-----IAccessibility2 Implementation 2009
     else
-        m_pIMAcc->Put_XAccName(reinterpret_cast<wchar_t const *>(m_xAccContextRef->getAccessibleName().getStr()));
+        m_pIMAcc->Put_XAccName(o3tl::toW(m_xAccContextRef->getAccessibleName().getStr()));
 
     return ;
 }
@@ -297,7 +300,7 @@ void AccObject::UpdateDescription()
         return;
     }
 
-    m_pIMAcc->Put_XAccDescription(reinterpret_cast<wchar_t const *>(m_xAccContextRef->getAccessibleDescription().getStr()));
+    m_pIMAcc->Put_XAccDescription(o3tl::toW(m_xAccContextRef->getAccessibleDescription().getStr()));
     return ;
 }
 
@@ -334,7 +337,7 @@ void AccObject::UpdateValue()
         return ;
     }
 
-    Reference< XAccessibleValue > pRValue(m_xAccContextRef.get(),UNO_QUERY);
+    Reference< XAccessibleValue > pRValue(m_xAccContextRef,UNO_QUERY);
     Any pAny;
     if( pRValue.is() )
     {
@@ -366,7 +369,7 @@ void AccObject::UpdateDefaultAction( )
     case CHECK_BOX:
     case TREE_ITEM:
     case BUTTON_DROPDOWN:
-        m_pIMAcc->Put_ActionDescription( reinterpret_cast<wchar_t const *>(m_xAccActionRef->getAccessibleActionDescription((sal_Int32)0).getStr()) );
+        m_pIMAcc->Put_ActionDescription( o3tl::toW(m_xAccActionRef->getAccessibleActionDescription(sal_Int32(0)).getStr()) );
         return;
     }
 }
@@ -378,16 +381,13 @@ void AccObject::UpdateDefaultAction( )
    */
 void  AccObject::SetValue( Any pAny )
 {
-    unsigned short pUNumberString[100];
-    memset( pUNumberString, 0 , sizeof( pUNumberString) );
-
     if( nullptr == m_pIMAcc || !m_xAccContextRef.is() )
     {
         assert(false);
         return ;
     }
     Reference< XAccessibleText > pRText(m_xAccContextRef,UNO_QUERY);
-    ::rtl::OUString val;
+    OUString val;
     switch(m_accRole)
     {
     case SPIN_BOX:
@@ -398,35 +398,34 @@ void  AccObject::SetValue( Any pAny )
     case HEADING:
     case TABLE_CELL:
 
-        if(pRText.get())
+        if(pRText)
         {
             val = pRText->getText();
         }
-        m_pIMAcc->Put_XAccValue( reinterpret_cast<wchar_t const *>(val.getStr()) );
+        m_pIMAcc->Put_XAccValue( o3tl::toW(val.getStr()) );
         break;
     case TREE_ITEM:
     //case CHECK_BOX:   //Commented by Li Xing to disable the value for general checkbox
     case COMBO_BOX:
     case NOTE:
     case SCROLL_BAR:
-        m_pIMAcc->Put_XAccValue( reinterpret_cast<wchar_t const *>(GetMAccessibleValueFromAny(pAny).getStr()) );
+        m_pIMAcc->Put_XAccValue( o3tl::toW(GetMAccessibleValueFromAny(pAny).getStr()) );
         break ;
     // Added by Li Xing, only the checkbox in tree should have the value.
     case CHECK_BOX:
         if( ( m_pParentObj !=nullptr ) && (TREE == m_pParentObj->m_accRole || TREE_ITEM == m_pParentObj->m_accRole ))
-            m_pIMAcc->Put_XAccValue( reinterpret_cast<wchar_t const *>(GetMAccessibleValueFromAny(pAny).getStr()) );
+            m_pIMAcc->Put_XAccValue( o3tl::toW(GetMAccessibleValueFromAny(pAny).getStr()) );
         break;
     default:
         break;
     }
 
     return;
-
-
 }
-::rtl::OUString AccObject::GetMAccessibleValueFromAny(Any pAny)
+
+OUString AccObject::GetMAccessibleValueFromAny(Any pAny)
 {
-    ::rtl::OUString strValue;
+    OUString strValue;
 
     if(nullptr == m_pIMAcc)
         return strValue;
@@ -436,19 +435,19 @@ void  AccObject::SetValue( Any pAny )
         sal_uInt16 val;
         if (pAny >>= val)
         {
-            strValue=::rtl::OUString::number(val);
+            strValue=OUString::number(val);
 
         }
     }
-    else if(pAny.getValueType() == cppu::UnoType<rtl::OUString>::get())
+    else if(pAny.getValueType() == cppu::UnoType<OUString>::get())
     {
 
         pAny >>= strValue ;
 
     }
-    else if(pAny.getValueType() == cppu::UnoType<Sequence< ::rtl::OUString >>::get())
+    else if(pAny.getValueType() == cppu::UnoType<Sequence< OUString >>::get())
     {
-        Sequence< ::rtl::OUString > val;
+        Sequence< OUString > val;
         if (pAny >>= val)
         {
 
@@ -466,7 +465,7 @@ void  AccObject::SetValue( Any pAny )
         double val;
         if (pAny >>= val)
         {
-            strValue=::rtl::OUString::number(val);
+            strValue=OUString::number(val);
         }
     }
     else if(pAny.getValueType() == cppu::UnoType<sal_Int32>::get())
@@ -474,7 +473,7 @@ void  AccObject::SetValue( Any pAny )
         sal_Int32 val;
         if (pAny >>= val)
         {
-            strValue=::rtl::OUString::number(val);
+            strValue=OUString::number(val);
         }
     }
     else if (pAny.getValueType() == cppu::UnoType<css::accessibility::TextSegment>::get())
@@ -482,7 +481,7 @@ void  AccObject::SetValue( Any pAny )
         css::accessibility::TextSegment val;
         if (pAny >>= val)
         {
-            ::rtl::OUString realVal(val.SegmentText);
+            OUString realVal(val.SegmentText);
             strValue = realVal;
 
         }
@@ -500,7 +499,7 @@ void  AccObject::SetName( Any pAny)
     if( nullptr == m_pIMAcc )
         return ;
 
-    m_pIMAcc->Put_XAccName( reinterpret_cast<wchar_t const *>(GetMAccessibleValueFromAny(pAny).getStr()) );
+    m_pIMAcc->Put_XAccName( o3tl::toW(GetMAccessibleValueFromAny(pAny).getStr()) );
 
 }
 
@@ -513,7 +512,7 @@ void  AccObject::SetDescription( Any pAny )
 {
     if( nullptr == m_pIMAcc )
         return ;
-    m_pIMAcc->Put_XAccDescription( reinterpret_cast<wchar_t const *>(GetMAccessibleValueFromAny(pAny).getStr()) );
+    m_pIMAcc->Put_XAccDescription( o3tl::toW(GetMAccessibleValueFromAny(pAny).getStr()) );
 }
 
 /**
@@ -754,8 +753,8 @@ void AccObject::UpdateActionDesc()
         return;
     }
 
-    ::rtl::OUString pXString = m_xAccContextRef->getAccessibleDescription();
-    m_pIMAcc->Put_XAccDescription(reinterpret_cast<wchar_t const *>(pXString.getStr()));
+    OUString pXString = m_xAccContextRef->getAccessibleDescription();
+    m_pIMAcc->Put_XAccDescription(o3tl::toW(pXString.getStr()));
     long Role = m_accRole;
 
     if(  Role == PUSH_BUTTON || Role == RADIO_BUTTON || Role == MENU_ITEM ||
@@ -777,7 +776,7 @@ void AccObject::UpdateActionDesc()
                     pXString = m_xAccActionRef->getAccessibleActionDescription( 0 );
                     //Solution: if string length is more than zero, action is set.
                     if( pXString.getLength() > 0)
-                        m_pIMAcc->Put_ActionDescription( reinterpret_cast<wchar_t const *>(pXString.getStr()) );
+                        m_pIMAcc->Put_ActionDescription( o3tl::toW(pXString.getStr()) );
                 }
             }
         }
@@ -799,7 +798,7 @@ void AccObject::UpdateRole()
     XAccessibleContext* pContext  = m_xAccContextRef.get();
     m_pIMAcc->Put_XAccRole( ROLE_SYSTEM_WINDOW  );
     sal_Int16 iRoleIndex = pContext->getAccessibleRole();
-    if ((0 <= iRoleIndex) && (sal_uInt16(iRoleIndex) < SAL_N_ELEMENTS(ROLE_TABLE)))
+    if ((0 <= iRoleIndex) && (o3tl::make_unsigned(iRoleIndex) < SAL_N_ELEMENTS(ROLE_TABLE)))
     {
         short iIA2Role = ROLE_TABLE[iRoleIndex][1] ;
         m_pIMAcc->Put_XAccRole( iIA2Role  );
@@ -826,7 +825,7 @@ void AccObject::UpdateState()
         return ;
     }
 
-    m_pIMAcc->SetState(0L);
+    m_pIMAcc->SetState(0);
 
     if ( m_accRole == POPUP_MENU )
     {
@@ -874,42 +873,40 @@ void AccObject::UpdateState()
 
     short Role = m_accRole;
 
-    if( m_pIMAcc )
+    switch(m_accRole)
     {
-        switch(m_accRole)
-        {
-        case LABEL:
-            m_pIMAcc->IncreaseState( STATE_SYSTEM_READONLY );
-            break;
-        case TEXT:
-            // 2. editable combobox -> readonly ------ bridge
-        case EMBEDDED_OBJECT:
-        case END_NOTE:
-        case FOOTER:
-        case FOOTNOTE:
-        case GRAPHIC:
-        case HEADER:
-        case HEADING:
+    case LABEL:
+    case STATIC:
+        m_pIMAcc->IncreaseState( STATE_SYSTEM_READONLY );
+        break;
+    case TEXT:
+        // 2. editable combobox -> readonly ------ bridge
+    case EMBEDDED_OBJECT:
+    case END_NOTE:
+    case FOOTER:
+    case FOOTNOTE:
+    case GRAPHIC:
+    case HEADER:
+    case HEADING:
 
-            //Image Map
-        case PARAGRAPH:
-        case PASSWORD_TEXT:
-        case SHAPE:
-        case SPIN_BOX:
-        case TABLE:
-        case TABLE_CELL:
-        case TEXT_FRAME:
-        case DATE_EDITOR:
-        case DOCUMENT:
-        case COLUMN_HEADER:
-            {
-                if(!isEditable)
-                    m_pIMAcc->IncreaseState( STATE_SYSTEM_READONLY );
-            }
-            break;
-        default:
-            break;
+        //Image Map
+    case PARAGRAPH:
+    case PASSWORD_TEXT:
+    case SHAPE:
+    case SPIN_BOX:
+    case TABLE:
+    case TABLE_CELL:
+    case TEXT_FRAME:
+    case DATE_EDITOR:
+    case DOCUMENT:
+    case COLUMN_HEADER:
+        {
+            if(!isEditable)
+                m_pIMAcc->IncreaseState( STATE_SYSTEM_READONLY );
         }
+        break;
+    default:
+        break;
     }
 
     if( isEnable )
@@ -917,7 +914,8 @@ void AccObject::UpdateState()
 
         if(!(Role == FILLER || Role == END_NOTE || Role == FOOTER || Role == FOOTNOTE || Role == GROUP_BOX || Role == RULER
                 || Role == HEADER || Role == ICON || Role == INTERNAL_FRAME || Role == LABEL || Role == LAYERED_PANE
-                || Role == SCROLL_BAR || Role == SCROLL_PANE || Role == SPLIT_PANE || Role == STATUS_BAR || Role == TOOL_TIP))
+                || Role == SCROLL_BAR || Role == SCROLL_PANE || Role == SPLIT_PANE || Role == STATIC || Role == STATUS_BAR
+                || Role == TOOL_TIP))
         {
             if( SEPARATOR == Role  )
             {
@@ -970,24 +968,21 @@ void AccObject::UpdateState()
         }
     }
 
-    if( m_pIMAcc )
+    switch(m_accRole)
     {
-        switch(m_accRole)
-        {
-        case POPUP_MENU:
-        case MENU:
-            if( pContext->getAccessibleChildCount() > 0 )
-                m_pIMAcc->IncreaseState( STATE_SYSTEM_HASPOPUP );
-            break;
-        case PASSWORD_TEXT:
-            m_pIMAcc->IncreaseState( STATE_SYSTEM_PROTECTED );
-            break;
-        default:
-            break;
-        }
+    case POPUP_MENU:
+    case MENU:
+        if( pContext->getAccessibleChildCount() > 0 )
+            m_pIMAcc->IncreaseState( STATE_SYSTEM_HASPOPUP );
+        break;
+    case PASSWORD_TEXT:
+        m_pIMAcc->IncreaseState( STATE_SYSTEM_PROTECTED );
+        break;
+    default:
+        break;
     }
-
 }
+
 /**
    * update location information from uno to com
    * @param
@@ -1052,7 +1047,7 @@ bool AccObject:: UpdateAccessibleInfoFromUnoToMSAA ( )
    */
 void AccObject::AddSelect( long index, AccObject* accObj)
 {
-    m_selectionList.insert(IAccSelectionList::value_type(index,accObj));
+    m_selectionList.emplace(index,accObj);
 }
 
 IAccSelectionList& AccObject::GetSelection()
@@ -1062,7 +1057,7 @@ IAccSelectionList& AccObject::GetSelection()
 
 
 /**
-   * Set self to focus object in parant child list
+   * Set self to focus object in parent child list
    * @param
    * @return
    */
@@ -1078,7 +1073,7 @@ void AccObject::setFocus()
 }
 
 /**
-   * Unset self from focus object in parant child list.
+   * Unset self from focus object in parent child list.
    * @param
    * @return
    */

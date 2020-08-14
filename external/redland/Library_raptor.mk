@@ -9,6 +9,11 @@
 
 $(eval $(call gb_Library_Library,raptor2))
 
+$(eval $(call gb_Library_set_include,raptor2, \
+    -I$(call gb_UnpackedTarball_get_dir,raptor)/src \
+    $$(INCLUDE) \
+))
+
 $(eval $(call gb_Library_use_unpacked,raptor2,raptor))
 
 $(eval $(call gb_Library_use_externals,raptor2,\
@@ -16,7 +21,7 @@ $(eval $(call gb_Library_use_externals,raptor2,\
 	libxslt \
 ))
 
-$(eval $(call gb_Library_set_warnings_not_errors,raptor2))
+$(eval $(call gb_Library_set_warnings_disabled,raptor2))
 
 $(eval $(call gb_Library_add_defs,raptor2,\
 	-DHAVE_CONFIG_H \
@@ -27,6 +32,8 @@ $(eval $(call gb_Library_add_defs,raptor2,\
 	-D_USRDLL \
 	-DWIN32_EXPORTS \
 	-DYY_NO_UNISTD_H \
+	-DHAVE__ACCESS \
+	-UHAVE_ACCESS \
 ))
 
 $(eval $(call gb_Library_add_generated_cobjects,raptor2,\

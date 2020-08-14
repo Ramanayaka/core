@@ -27,7 +27,7 @@
 
 #include <com/sun/star/uno/Reference.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
 
 namespace awt { class XWindow; }
 
@@ -37,13 +37,13 @@ namespace embed { class XEmbeddedObject; }
 
 namespace frame { class XModel; }
 
-}}}
+}
 
 namespace svt { class EmbeddedObjectRef; }
 
 class SdrOle2ObjImpl;
 
-class SVX_DLLPUBLIC SdrOle2Obj : public SdrRectObj
+class SVXCORE_DLLPUBLIC SdrOle2Obj : public SdrRectObj
 {
 private:
     std::unique_ptr<SdrOle2ObjImpl> mpImpl;
@@ -51,25 +51,34 @@ private:
 private:
     SVX_DLLPRIVATE void Connect_Impl();
     SVX_DLLPRIVATE void Disconnect_Impl();
-    SVX_DLLPRIVATE void Reconnect_Impl();
     SVX_DLLPRIVATE void AddListeners_Impl();
     SVX_DLLPRIVATE void RemoveListeners_Impl();
     SVX_DLLPRIVATE void GetObjRef_Impl();
 
     // #i118485# helper added
-    SVX_DLLPRIVATE SdrObject* createSdrGrafObjReplacement(bool bAddText) const;
+    SVX_DLLPRIVATE SdrObjectUniquePtr createSdrGrafObjReplacement(bool bAddText) const;
     SVX_DLLPRIVATE void ImpSetVisAreaSize();
 
+    SVX_DLLPRIVATE void Init();
+
 protected:
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
+
+    // protected destructor
+    virtual ~SdrOle2Obj() override;
 
 public:
     OUString GetStyleString();
 
-    SdrOle2Obj( bool bFrame_ = false );
-    SdrOle2Obj( const svt::EmbeddedObjectRef& rNewObjRef, const OUString& rNewObjName, const tools::Rectangle& rNewRect );
-    virtual ~SdrOle2Obj() override;
+    SdrOle2Obj(
+        SdrModel& rSdrModel,
+        bool bFrame_ = false);
+    SdrOle2Obj(
+        SdrModel& rSdrModel,
+        const svt::EmbeddedObjectRef& rNewObjRef,
+        const OUString& rNewObjName,
+        const tools::Rectangle& rNewRect);
 
     const svt::EmbeddedObjectRef& getEmbeddedObjectRef() const;
 
@@ -87,7 +96,7 @@ public:
 
     // The original size of the object (size of the icon for iconified object)
     // no conversion is done if no target mode is provided
-    Size        GetOrigObjSize( MapMode* pTargetMapMode = nullptr ) const;
+    Size        GetOrigObjSize( MapMode const * pTargetMapMode = nullptr ) const;
 
     // #i118524# Allow suppress SetVisAreaSize in changing methods when call
     // comes from OLE client
@@ -105,14 +114,14 @@ public:
     bool IsEmpty() const;
 
     void SetObjRef(const css::uno::Reference < css::embed::XEmbeddedObject >& rNewObjRef);
-    css::uno::Reference < css::embed::XEmbeddedObject > GetObjRef() const;
+    css::uno::Reference < css::embed::XEmbeddedObject > const & GetObjRef() const;
 
-    SVX_DLLPRIVATE css::uno::Reference < css::embed::XEmbeddedObject > GetObjRef_NoInit() const;
+    SVX_DLLPRIVATE css::uno::Reference < css::embed::XEmbeddedObject > const & GetObjRef_NoInit() const;
 
     void AbandonObject();
 
-    virtual void SetPage(SdrPage* pNewPage) override;
-    virtual void SetModel(SdrModel* pModel) override;
+    // react on model/page change
+    virtual void handlePageChange(SdrPage* pOldPage, SdrPage* pNewPage) override;
 
     /** Change the IsClosedObj attribute
 
@@ -122,14 +131,14 @@ public:
     void SetClosedObj( bool bIsClosed );
 
     // FullDrag support
-    virtual SdrObject* getFullDragClone() const override;
+    virtual SdrObjectUniquePtr getFullDragClone() const override;
 
     virtual void TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
     virtual sal_uInt16 GetObjIdentifier() const override;
     virtual OUString TakeObjNameSingul() const override;
     virtual OUString TakeObjNamePlural() const override;
 
-    virtual SdrOle2Obj* Clone() const override;
+    virtual SdrOle2Obj* CloneSdrObject(SdrModel& rTargetModel) const override;
 
     SdrOle2Obj& assignFrom(const SdrOle2Obj& rObj);
     SdrOle2Obj& operator=(const SdrOle2Obj& rObj);
@@ -151,7 +160,6 @@ public:
     css::uno::Reference< css::frame::XModel > getXModel() const;
 
     bool IsChart() const;
-    bool IsReal3DChart() const;
     bool IsCalc() const;
 
     bool UpdateLinkURL_Impl();
@@ -160,7 +168,7 @@ public:
     void CheckFileLink_Impl();
 
     // allows to transfer the graphics to the object helper
-    void SetGraphicToObj( const Graphic& aGraphic, const OUString& aMediaType );
+    void SetGraphicToObj( const Graphic& aGraphic );
     void SetGraphicToObj( const css::uno::Reference< css::io::XInputStream >& xGrStream,
                           const OUString& aMediaType );
 
@@ -174,10 +182,10 @@ public:
     void SetWindow(const css::uno::Reference < css::awt::XWindow >& _xWindow);
 
     // #i118485# missing converter added
-    virtual SdrObject* DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
+    virtual SdrObjectUniquePtr DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
 };
 
-class SVX_DLLPUBLIC SdrEmbedObjectLink : public sfx2::SvBaseLink
+class SVXCORE_DLLPUBLIC SdrEmbedObjectLink final : public sfx2::SvBaseLink
 {
     SdrOle2Obj*         pObj;
 
@@ -189,7 +197,7 @@ public:
     virtual ::sfx2::SvBaseLink::UpdateResult DataChanged(
         const OUString& rMimeType, const css::uno::Any & rValue ) override;
 
-    bool                Connect() { return GetRealObject() != nullptr; }
+    void                Connect() { GetRealObject(); }
 };
 
 #endif // INCLUDED_SVX_SVDOOLE2_HXX

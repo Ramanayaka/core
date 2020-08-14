@@ -20,18 +20,16 @@
 #ifndef INCLUDED_SVGIO_INC_SVGMARKERNODE_HXX
 #define INCLUDED_SVGIO_INC_SVGMARKERNODE_HXX
 
-#include <svgnode.hxx>
-#include <svgstyleattributes.hxx>
+#include "svgnode.hxx"
+#include "svgstyleattributes.hxx"
 #include <memory>
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
         class SvgMarkerNode : public SvgNode
         {
         public:
-            enum MarkerUnits
+            enum class MarkerUnits
             {
                 strokeWidth,
                 userSpaceOnUse
@@ -70,7 +68,7 @@ namespace svgio
             const drawinglayer::primitive2d::Primitive2DContainer& getMarkerPrimitives() const;
 
             /// InfoProvider support for % values
-            virtual const basegfx::B2DRange getCurrentViewPort() const override;
+            virtual basegfx::B2DRange getCurrentViewPort() const override;
 
             /// viewBox content
             const basegfx::B2DRange* getViewBox() const { return mpViewBox.get(); }
@@ -103,8 +101,8 @@ namespace svgio
             bool getOrientAuto() const { return mbOrientAuto; }
 
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGMARKERNODE_HXX
 

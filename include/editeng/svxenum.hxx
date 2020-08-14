@@ -112,21 +112,21 @@ enum class SvxCellJustifyMethod
     Distribute
 };
 
-enum SvxCellVerJustify
+enum class SvxCellVerJustify
 {
-    SVX_VER_JUSTIFY_STANDARD,
-    SVX_VER_JUSTIFY_TOP,
-    SVX_VER_JUSTIFY_CENTER,
-    SVX_VER_JUSTIFY_BOTTOM,
-    SVX_VER_JUSTIFY_BLOCK
+    Standard,
+    Top,
+    Center,
+    Bottom,
+    Block
 };
 
-enum SvxCellOrientation
+enum class SvxCellOrientation
 {
-    SVX_ORIENTATION_STANDARD,
-    SVX_ORIENTATION_TOPBOTTOM,
-    SVX_ORIENTATION_BOTTOMTOP,
-    SVX_ORIENTATION_STACKED
+    Standard,
+    TopBottom,
+    BottomUp,
+    Stacked
 };
 
 enum class SvxSpellArea
@@ -198,7 +198,19 @@ enum SvxNumType : sal_Int16
     SVX_NUM_CHARS_GREEK_LOWER_LETTER = css::style::NumberingType::CHARS_GREEK_LOWER_LETTER,
     SVX_NUM_CHARS_ARABIC_ABJAD    = css::style::NumberingType::CHARS_ARABIC_ABJAD,
     SVX_NUM_CHARS_PERSIAN_WORD    = css::style::NumberingType::CHARS_PERSIAN_WORD,
-    SVX_NUM_NUMBER_HEBREW         = css::style::NumberingType::NUMBER_HEBREW
+    SVX_NUM_NUMBER_HEBREW         = css::style::NumberingType::NUMBER_HEBREW,
+    SVX_NUM_NUMBER_ARABIC_INDIC   = css::style::NumberingType::NUMBER_ARABIC_INDIC,
+    SVX_NUM_NUMBER_EAST_ARABIC_INDIC  = css::style::NumberingType::NUMBER_EAST_ARABIC_INDIC,
+    SVX_NUM_NUMBER_INDIC_DEVANAGARI  = css::style::NumberingType::NUMBER_INDIC_DEVANAGARI,
+    SVX_NUM_TEXT_NUMBER           = css::style::NumberingType::TEXT_NUMBER,
+    SVX_NUM_TEXT_CARDINAL         = css::style::NumberingType::TEXT_CARDINAL,
+    SVX_NUM_TEXT_ORDINAL          = css::style::NumberingType::TEXT_ORDINAL,
+    SVX_NUM_SYMBOL_CHICAGO        = css::style::NumberingType::SYMBOL_CHICAGO,
+    SVX_NUM_ARABIC_ZERO           = css::style::NumberingType::ARABIC_ZERO,
+    SVX_NUM_ARABIC_ZERO3          = css::style::NumberingType::ARABIC_ZERO3,
+    SVX_NUM_ARABIC_ZERO4          = css::style::NumberingType::ARABIC_ZERO4,
+    SVX_NUM_ARABIC_ZERO5          = css::style::NumberingType::ARABIC_ZERO5,
+    SVX_NUM_SZEKELY_ROVAS         = css::style::NumberingType::SZEKELY_ROVAS
 };
 
 #endif

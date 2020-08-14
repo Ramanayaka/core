@@ -46,7 +46,6 @@ static Sequence< sal_Int8 > const & impl_getStaticIdentifier()
 RootActionTriggerContainer::RootActionTriggerContainer( const Menu* pMenu, const OUString* pMenuIdentifier ) :
     PropertySetContainer()
     ,   m_bContainerCreated( false )
-    ,   m_bInContainerCreation( false )
     ,   m_pMenu( pMenu )
     ,   m_pMenuIdentifier( pMenuIdentifier )
 {
@@ -61,11 +60,11 @@ Any SAL_CALL RootActionTriggerContainer::queryInterface( const Type& aType )
 {
     Any a = ::cppu::queryInterface(
                 aType ,
-                (static_cast< XMultiServiceFactory*   >(this)),
-                (static_cast< XServiceInfo*           >(this)),
-                (static_cast< XUnoTunnel*             >(this)),
-                (static_cast< XTypeProvider*          >(this)),
-                (static_cast< XNamed*                 >(this)));
+                static_cast< XMultiServiceFactory*   >(this),
+                static_cast< XServiceInfo*           >(this),
+                static_cast< XUnoTunnel*             >(this),
+                static_cast< XTypeProvider*          >(this),
+                static_cast< XNamed*                 >(this));
 
     if( a.hasValue() )
     {
@@ -197,7 +196,7 @@ sal_Bool SAL_CALL RootActionTriggerContainer::hasElements()
 // XServiceInfo
 OUString SAL_CALL RootActionTriggerContainer::getImplementationName()
 {
-    return OUString( IMPLEMENTATIONNAME_ROOTACTIONTRIGGERCONTAINER );
+    return IMPLEMENTATIONNAME_ROOTACTIONTRIGGERCONTAINER;
 }
 
 sal_Bool SAL_CALL RootActionTriggerContainer::supportsService( const OUString& ServiceName )
@@ -244,12 +243,9 @@ Sequence< sal_Int8 > SAL_CALL RootActionTriggerContainer::getImplementationId()
 void RootActionTriggerContainer::FillContainer()
 {
     m_bContainerCreated = true;
-    m_bInContainerCreation = true;
-    Reference<XIndexContainer> xXIndexContainer( static_cast<OWeakObject *>(this), UNO_QUERY );
     ActionTriggerHelper::FillActionTriggerContainerFromMenu(
-        xXIndexContainer,
+        this,
         m_pMenu );
-    m_bInContainerCreation = false;
 }
 OUString RootActionTriggerContainer::getName()
 {

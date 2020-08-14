@@ -18,24 +18,27 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
+#include <o3tl/safeint.hxx>
 #include <unotools/transliterationwrapper.hxx>
+#include <unotools/charclass.hxx>
 
-#include "dbdata.hxx"
-#include "globalnames.hxx"
-#include "refupdat.hxx"
-#include "rechead.hxx"
-#include "document.hxx"
-#include "queryparam.hxx"
-#include "queryentry.hxx"
-#include "globstr.hrc"
-#include "subtotalparam.hxx"
-#include "sortparam.hxx"
-#include "dociter.hxx"
-#include "brdcst.hxx"
+#include <dbdata.hxx>
+#include <globalnames.hxx>
+#include <refupdat.hxx>
+#include <rechead.hxx>
+#include <document.hxx>
+#include <queryparam.hxx>
+#include <queryentry.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <subtotalparam.hxx>
+#include <sortparam.hxx>
+#include <dociter.hxx>
+#include <brdcst.hxx>
 
 #include <comphelper/stl_types.hxx>
-#include <o3tl/make_unique.hxx>
 
 #include <memory>
 #include <utility>
@@ -82,7 +85,7 @@ ScDBData::ScDBData( const OUString& rName,
     mbTableColumnNamesDirty(true),
     nFilteredRowCount(0)
 {
-    aUpper = ScGlobal::pCharClass->uppercase(aUpper);
+    aUpper = ScGlobal::getCharClassPtr()->uppercase(aUpper);
 }
 
 ScDBData::ScDBData( const ScDBData& rData ) :
@@ -151,56 +154,58 @@ ScDBData::ScDBData( const OUString& rName, const ScDBData& rData ) :
     mbTableColumnNamesDirty (rData.mbTableColumnNamesDirty),
     nFilteredRowCount   (rData.nFilteredRowCount)
 {
-    aUpper = ScGlobal::pCharClass->uppercase(aUpper);
+    aUpper = ScGlobal::getCharClassPtr()->uppercase(aUpper);
 }
 
 ScDBData& ScDBData::operator= (const ScDBData& rData)
 {
-    // Don't modify the name.  The name is not mutable as it is used as a key
-    // in the container to keep the db ranges sorted by the name.
-
-    bool bHeaderRangeDiffers = (nTable != rData.nTable || nStartCol != rData.nStartCol ||
-            nEndCol != rData.nEndCol || nStartRow != rData.nStartRow);
-    bool bNeedsListening = ((bHasHeader && bHeaderRangeDiffers) || (!bHasHeader && rData.bHasHeader));
-    if (bHasHeader && (!rData.bHasHeader || bHeaderRangeDiffers))
+    if (this != &rData)
     {
-        EndTableColumnNamesListener();
+        // Don't modify the name.  The name is not mutable as it is used as a key
+        // in the container to keep the db ranges sorted by the name.
+
+        bool bHeaderRangeDiffers = (nTable != rData.nTable || nStartCol != rData.nStartCol ||
+                nEndCol != rData.nEndCol || nStartRow != rData.nStartRow);
+        bool bNeedsListening = ((bHasHeader && bHeaderRangeDiffers) || (!bHasHeader && rData.bHasHeader));
+        if (bHasHeader && (!rData.bHasHeader || bHeaderRangeDiffers))
+        {
+            EndTableColumnNamesListener();
+        }
+        ScRefreshTimer::operator=( rData );
+        mpSortParam.reset(new ScSortParam(*rData.mpSortParam));
+        mpQueryParam.reset(new ScQueryParam(*rData.mpQueryParam));
+        mpSubTotal.reset(new ScSubTotalParam(*rData.mpSubTotal));
+        mpImportParam.reset(new ScImportParam(*rData.mpImportParam));
+        // Keep mpContainer.
+        nTable              = rData.nTable;
+        nStartCol           = rData.nStartCol;
+        nStartRow           = rData.nStartRow;
+        nEndCol             = rData.nEndCol;
+        nEndRow             = rData.nEndRow;
+        bByRow              = rData.bByRow;
+        bHasHeader          = rData.bHasHeader;
+        bHasTotals          = rData.bHasTotals;
+        bDoSize             = rData.bDoSize;
+        bKeepFmt            = rData.bKeepFmt;
+        bStripData          = rData.bStripData;
+        bIsAdvanced         = rData.bIsAdvanced;
+        aAdvSource          = rData.aAdvSource;
+        bDBSelection        = rData.bDBSelection;
+        nIndex              = rData.nIndex;
+        bAutoFilter         = rData.bAutoFilter;
+        nFilteredRowCount   = rData.nFilteredRowCount;
+
+        if (bHeaderRangeDiffers)
+            InvalidateTableColumnNames( true);
+        else
+        {
+            maTableColumnNames  = rData.maTableColumnNames;
+            mbTableColumnNamesDirty = rData.mbTableColumnNamesDirty;
+        }
+
+        if (bNeedsListening)
+            StartTableColumnNamesListener();
     }
-    ScRefreshTimer::operator=( rData );
-    mpSortParam.reset(new ScSortParam(*rData.mpSortParam));
-    mpQueryParam.reset(new ScQueryParam(*rData.mpQueryParam));
-    mpSubTotal.reset(new ScSubTotalParam(*rData.mpSubTotal));
-    mpImportParam.reset(new ScImportParam(*rData.mpImportParam));
-    // Keep mpContainer.
-    nTable              = rData.nTable;
-    nStartCol           = rData.nStartCol;
-    nStartRow           = rData.nStartRow;
-    nEndCol             = rData.nEndCol;
-    nEndRow             = rData.nEndRow;
-    bByRow              = rData.bByRow;
-    bHasHeader          = rData.bHasHeader;
-    bHasTotals          = rData.bHasTotals;
-    bDoSize             = rData.bDoSize;
-    bKeepFmt            = rData.bKeepFmt;
-    bStripData          = rData.bStripData;
-    bIsAdvanced         = rData.bIsAdvanced;
-    aAdvSource          = rData.aAdvSource;
-    bDBSelection        = rData.bDBSelection;
-    nIndex              = rData.nIndex;
-    bAutoFilter         = rData.bAutoFilter;
-    nFilteredRowCount   = rData.nFilteredRowCount;
-
-    if (bHeaderRangeDiffers)
-        InvalidateTableColumnNames( true);
-    else
-    {
-        maTableColumnNames  = rData.maTableColumnNames;
-        mbTableColumnNamesDirty = rData.mbTableColumnNamesDirty;
-    }
-
-    if (bNeedsListening)
-        StartTableColumnNamesListener();
-
     return *this;
 }
 
@@ -270,25 +275,25 @@ OUString ScDBData::GetOperations() const
     {
         const ScQueryEntry& rEntry = mpQueryParam->GetEntry(0);
         if (rEntry.bDoQuery)
-            aBuf.append(ScGlobal::GetRscString(STR_OPERATION_FILTER));
+            aBuf.append(ScResId(STR_OPERATION_FILTER));
     }
 
     if (mpSortParam->maKeyState[0].bDoSort)
     {
         if (!aBuf.isEmpty())
             aBuf.append(", ");
-        aBuf.append(ScGlobal::GetRscString(STR_OPERATION_SORT));
+        aBuf.append(ScResId(STR_OPERATION_SORT));
     }
 
     if (mpSubTotal->bGroupActive[0] && !mpSubTotal->bRemoveOnly)
     {
         if (!aBuf.isEmpty())
             aBuf.append(", ");
-        aBuf.append(ScGlobal::GetRscString(STR_OPERATION_SUBTOTAL));
+        aBuf.append(ScResId(STR_OPERATION_SUBTOTAL));
     }
 
     if (aBuf.isEmpty())
-        aBuf.append(ScGlobal::GetRscString(STR_OPERATION_NONE));
+        aBuf.append(ScResId(STR_OPERATION_NONE));
 
     return aBuf.makeStringAndClear();
 }
@@ -339,8 +344,8 @@ void ScDBData::SetArea(SCTAB nTab, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW 
 
 void ScDBData::MoveTo(SCTAB nTab, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2)
 {
-    long nDifX = ((long) nCol1) - ((long) nStartCol);
-    long nDifY = ((long) nRow1) - ((long) nStartRow);
+    long nDifX = static_cast<long>(nCol1) - static_cast<long>(nStartCol);
+    long nDifY = static_cast<long>(nRow1) - static_cast<long>(nStartRow);
 
     long nSortDif = bByRow ? nDifX : nDifY;
     long nSortEnd = bByRow ? static_cast<long>(nCol2) : static_cast<long>(nRow2);
@@ -567,7 +572,7 @@ void ScDBData::UpdateMoveTab(SCTAB nOldPos, SCTAB nNewPos)
 
 }
 
-void ScDBData::UpdateReference(ScDocument* pDoc, UpdateRefMode eUpdateRefMode,
+void ScDBData::UpdateReference(const ScDocument* pDoc, UpdateRefMode eUpdateRefMode,
                                 SCCOL nCol1, SCROW nRow1, SCTAB nTab1,
                                 SCCOL nCol2, SCROW nRow2, SCTAB nTab2,
                                 SCCOL nDx, SCROW nDy, SCTAB nDz)
@@ -618,13 +623,18 @@ void ScDBData::UpdateReference(ScDocument* pDoc, UpdateRefMode eUpdateRefMode,
     //TODO: check if something was deleted/inserted with-in the range !!!
 }
 
-void ScDBData::ExtendDataArea(ScDocument* pDoc)
+void ScDBData::ExtendDataArea(const ScDocument* pDoc)
 {
     // Extend the DB area to include data rows immediately below.
     SCCOL nOldCol1 = nStartCol, nOldCol2 = nEndCol;
     SCROW nOldEndRow = nEndRow;
     pDoc->GetDataArea(nTable, nStartCol, nStartRow, nEndCol, nEndRow, false, true);
-    nEndRow = std::max(nEndRow, nOldEndRow);
+    // nOldEndRow==rDoc.MaxRow() may easily happen when selecting whole columns and
+    // setting an AutoFilter (i.e. creating an anonymous database-range). We
+    // certainly don't want to iterate over nearly a million empty cells, but
+    // keep only an intentionally user selected range.
+    if (nOldEndRow < pDoc->MaxRow() && nEndRow < nOldEndRow)
+        nEndRow = nOldEndRow;
     if (nStartCol != nOldCol1 || nEndCol != nOldCol2)
     {
         SAL_WARN_IF( !maTableColumnNames.empty(), "sc.core", "ScDBData::ExtendDataArea - invalidating column names/offsets");
@@ -673,7 +683,7 @@ void ScDBData::AdjustTableColumnNames( UpdateRefMode eUpdateRefMode, SCCOL nDx, 
         // nCol1 is the first column of the block that gets shifted, determine
         // the head and tail elements that are to be copied for deletion or
         // insertion.
-        size_t nHead = static_cast<size_t>(::std::max( nCol1 + (nDx < 0 ? nDx : 0) - nOldCol1, 0));
+        size_t nHead = static_cast<size_t>(::std::max( nCol1 + std::min<SCCOL>(nDx, 0) - nOldCol1, 0));
         size_t nTail = static_cast<size_t>(::std::max( nOldCol2 - nCol1 + 1, 0));
         size_t n = nHead + nTail;
         if (0 < n && n <= maTableColumnNames.size())
@@ -756,8 +766,8 @@ void SetTableColumnName( ::std::vector<OUString>& rVec, size_t nIndex, const OUS
             aStr = rName;
             ++nCount;
         }
-        auto it( ::std::find_if( rVec.begin(), rVec.end(), TableColumnNameSearch( aStr)));
-        if (it == rVec.end())
+
+        if (std::none_of( rVec.begin(), rVec.end(), TableColumnNameSearch( aStr)))
         {
             rVec[nIndex] = aStr;
             break;  // do while
@@ -823,7 +833,7 @@ void ScDBData::RefreshTableColumnNames( ScDocument* pDoc )
     // starting at the column offset number. Still no duplicates of course.
     if (bHaveEmpty)
     {
-        OUString aColumn( ScGlobal::GetRscString(STR_COLUMN));
+        OUString aColumn( ScResId(STR_COLUMN));
         for (size_t i=0, n=aNewNames.size(); i < n; ++i)
         {
             if (aNewNames[i].isEmpty())
@@ -875,7 +885,7 @@ const OUString& ScDBData::GetTableColumnName( SCCOL nCol ) const
         return EMPTY_OUSTRING;
 
     SCCOL nOffset = nCol - nStartCol;
-    if (nOffset <  0 || maTableColumnNames.size() <= static_cast<size_t>(nOffset))
+    if (nOffset <  0 || maTableColumnNames.size() <= o3tl::make_unsigned(nOffset))
         return EMPTY_OUSTRING;
 
     return maTableColumnNames[nOffset];
@@ -887,27 +897,27 @@ void ScDBData::Notify( const SfxHint& rHint )
     if (!pScHint)
         return;
 
-    if (pScHint->GetId() == SfxHintId::ScDataChanged)
+    if (pScHint->GetId() != SfxHintId::ScDataChanged)
+        return;
+
+    mbTableColumnNamesDirty = true;
+    if (!mpContainer)
+        assert(!"ScDBData::Notify - how did we end up here without container?");
+    else
     {
-        mbTableColumnNamesDirty = true;
-        if (!mpContainer)
-            assert(!"ScDBData::Notify - how did we end up here without container?");
-        else
+        // Only one cell of a range is broadcasted per area listener if
+        // multiple cells are affected. Expand the range to what this is
+        // listening to. Broadcasted address outside should not happen,
+        // but... let it trigger a refresh if.
+        ScRange aHeaderRange( GetHeaderArea());
+        if (aHeaderRange.IsValid())
         {
-            // Only one cell of a range is broadcasted per area listener if
-            // multiple cells are affected. Expand the range to what this is
-            // listening to. Broadcasted address outside should not happen,
-            // but.. let it trigger a refresh if.
-            ScRange aHeaderRange( GetHeaderArea());
-            if (aHeaderRange.IsValid())
-            {
-                mpContainer->GetDirtyTableColumnNames().Join( aHeaderRange);
-                if (!aHeaderRange.In( pScHint->GetAddress()))
-                    mpContainer->GetDirtyTableColumnNames().Join( pScHint->GetAddress());
-            }
-            else
+            mpContainer->GetDirtyTableColumnNames().Join( aHeaderRange);
+            if (!aHeaderRange.In( pScHint->GetAddress()))
                 mpContainer->GetDirtyTableColumnNames().Join( pScHint->GetAddress());
         }
+        else
+            mpContainer->GetDirtyTableColumnNames().Join( pScHint->GetAddress());
     }
 
     // Do not refresh column names here, which might trigger unwanted
@@ -1065,9 +1075,9 @@ ScRangeList& ScDBDataContainerBase::GetDirtyTableColumnNames()
 ScDBCollection::NamedDBs::NamedDBs(ScDBCollection& rParent, ScDocument& rDoc) :
     ScDBDataContainerBase(rDoc), mrParent(rParent) {}
 
-ScDBCollection::NamedDBs::NamedDBs(const NamedDBs& r)
+ScDBCollection::NamedDBs::NamedDBs(const NamedDBs& r, ScDBCollection& rParent)
     : ScDBDataContainerBase(r.mrDoc)
-    , mrParent(r.mrParent)
+    , mrParent(rParent)
 {
     for (auto const& it : r.m_DBs)
     {
@@ -1085,23 +1095,23 @@ ScDBCollection::NamedDBs::~NamedDBs()
 void ScDBCollection::NamedDBs::initInserted( ScDBData* p )
 {
     p->SetContainer( this);
-    if (!mrDoc.IsClipOrUndo())
+    if (mrDoc.IsClipOrUndo())
+        return;
+
+    p->StartTableColumnNamesListener(); // needs the container be set already
+    if (!p->AreTableColumnNamesDirty())
+        return;
+
+    if (p->HasHeader())
     {
-        p->StartTableColumnNamesListener(); // needs the container be set already
-        if (p->AreTableColumnNamesDirty())
-        {
-            if (p->HasHeader())
-            {
-                // Refresh table column names in next round.
-                maDirtyTableColumnNames.Join( p->GetHeaderArea());
-            }
-            else
-            {
-                // Header-less table can generate its column names
-                // already without accessing the document.
-                p->RefreshTableColumnNames( nullptr);
-            }
-        }
+        // Refresh table column names in next round.
+        maDirtyTableColumnNames.Join( p->GetHeaderArea());
+    }
+    else
+    {
+        // Header-less table can generate its column names
+        // already without accessing the document.
+        p->RefreshTableColumnNames( nullptr);
     }
 }
 
@@ -1145,9 +1155,9 @@ auto ScDBCollection::NamedDBs::findByUpperName2(const OUString& rName) -> iterat
         m_DBs.begin(), m_DBs.end(), FindByUpperName(rName));
 }
 
-bool ScDBCollection::NamedDBs::insert(ScDBData* p)
+bool ScDBCollection::NamedDBs::insert(std::unique_ptr<ScDBData> pData)
 {
-    unique_ptr<ScDBData> pData(p);
+    auto p = pData.get();
     if (!pData->GetIndex())
         pData->SetIndex(mrParent.nEntryIndex++);
 
@@ -1158,7 +1168,7 @@ bool ScDBCollection::NamedDBs::insert(ScDBData* p)
         initInserted(p);
 
         /* TODO: shouldn't the import refresh not be setup for
-         * clipboard/undo documents? It was already like this before.. */
+         * clipboard/undo documents? It was already like this before... */
         if (p->HasImportParam() && !p->HasImportSelection())
         {
             p->SetRefreshHandler(mrParent.GetRefreshHandler());
@@ -1256,7 +1266,7 @@ bool ScDBCollection::AnonDBs::empty() const
 
 bool ScDBCollection::AnonDBs::has( const ScDBData* p ) const
 {
-    return find_if(m_DBs.begin(), m_DBs.end(), FindByPointer(p)) != m_DBs.end();
+    return any_of(m_DBs.begin(), m_DBs.end(), FindByPointer(p));
 }
 
 bool ScDBCollection::AnonDBs::operator== (const AnonDBs& r) const
@@ -1273,7 +1283,7 @@ ScDBCollection::AnonDBs::AnonDBs(AnonDBs const& r)
     m_DBs.reserve(r.m_DBs.size());
     for (auto const& it : r.m_DBs)
     {
-        m_DBs.push_back(o3tl::make_unique<ScDBData>(*it));
+        m_DBs.push_back(std::make_unique<ScDBData>(*it));
     }
 }
 
@@ -1281,7 +1291,7 @@ ScDBCollection::ScDBCollection(ScDocument* pDocument) :
     pDoc(pDocument), nEntryIndex(1), maNamedDBs(*this, *pDocument) {}
 
 ScDBCollection::ScDBCollection(const ScDBCollection& r) :
-    pDoc(r.pDoc), nEntryIndex(r.nEntryIndex), maNamedDBs(r.maNamedDBs), maAnonDBs(r.maAnonDBs) {}
+    pDoc(r.pDoc), nEntryIndex(r.nEntryIndex), maNamedDBs(r.maNamedDBs, *this), maAnonDBs(r.maAnonDBs) {}
 
 const ScDBData* ScDBCollection::GetDBAtCursor(SCCOL nCol, SCROW nRow, SCTAB nTab, ScDBDataPortion ePortion) const
 {
@@ -1393,11 +1403,11 @@ void ScDBCollection::RefreshDirtyTableColumnNames()
 {
     for (size_t i=0; i < maNamedDBs.maDirtyTableColumnNames.size(); ++i)
     {
-        const ScRange* pRange = maNamedDBs.maDirtyTableColumnNames[i];
+        const ScRange & rRange = maNamedDBs.maDirtyTableColumnNames[i];
         for (auto const& it : maNamedDBs)
         {
             if (it->AreTableColumnNamesDirty())
-                it->RefreshTableColumnNames( &maNamedDBs.mrDoc, *pRange);
+                it->RefreshTableColumnNames( &maNamedDBs.mrDoc, rRange);
         }
     }
     maNamedDBs.maDirtyTableColumnNames.RemoveAll();
@@ -1418,9 +1428,8 @@ void ScDBCollection::DeleteOnTab( SCTAB nTab )
     }
 
     // Delete them all.
-    ::std::vector<NamedDBs::DBsType::iterator>::iterator itr = v.begin(), itrEnd = v.end();
-    for (; itr != itrEnd; ++itr)
-        maNamedDBs.erase(*itr);
+    for (const auto& rIter : v)
+        maNamedDBs.erase(rIter);
 
     maAnonDBs.deleteOnTab(nTab);
 }
@@ -1460,23 +1469,22 @@ void ScDBCollection::UpdateMoveTab( SCTAB nOldPos, SCTAB nNewPos )
 ScDBData* ScDBCollection::GetDBNearCursor(SCCOL nCol, SCROW nRow, SCTAB nTab )
 {
     ScDBData* pNearData = nullptr;
-    NamedDBs::DBsType::iterator itr = maNamedDBs.begin(), itrEnd = maNamedDBs.end();
-    for (; itr != itrEnd; ++itr)
+    for (const auto& rxNamedDB : maNamedDBs)
     {
         SCTAB nAreaTab;
         SCCOL nStartCol, nEndCol;
         SCROW nStartRow, nEndRow;
-        (*itr)->GetArea( nAreaTab, nStartCol, nStartRow, nEndCol, nEndRow );
+        rxNamedDB->GetArea( nAreaTab, nStartCol, nStartRow, nEndCol, nEndRow );
         if ( nTab == nAreaTab && nCol+1 >= nStartCol && nCol <= nEndCol+1 &&
                                  nRow+1 >= nStartRow && nRow <= nEndRow+1 )
         {
             if ( nCol < nStartCol || nCol > nEndCol || nRow < nStartRow || nRow > nEndRow )
             {
                 if (!pNearData)
-                    pNearData = itr->get(); // remember first adjacent area
+                    pNearData = rxNamedDB.get(); // remember first adjacent area
             }
             else
-                return itr->get();          // not "unbenannt"/"unnamed" and cursor within
+                return rxNamedDB.get();          // not "unbenannt"/"unnamed" and cursor within
         }
     }
     if (pNearData)

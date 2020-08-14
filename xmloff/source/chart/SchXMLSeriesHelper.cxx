@@ -25,9 +25,8 @@
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
-#include <rtl/ustring.h>
-
-#include <typeinfo>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 
@@ -44,24 +43,23 @@ using ::com::sun::star::uno::Sequence;
     {
         Reference< chart2::XCoordinateSystemContainer > xCooSysCnt(
             xDiagram, uno::UNO_QUERY_THROW );
-        Sequence< Reference< chart2::XCoordinateSystem > > aCooSysSeq(
+        const Sequence< Reference< chart2::XCoordinateSystem > > aCooSysSeq(
             xCooSysCnt->getCoordinateSystems());
-        for( sal_Int32 i=0; i<aCooSysSeq.getLength(); ++i )
+        for( const auto& rCooSys : aCooSysSeq )
         {
-            Reference< chart2::XChartTypeContainer > xCTCnt( aCooSysSeq[i], uno::UNO_QUERY_THROW );
-            Sequence< Reference< chart2::XChartType > > aChartTypeSeq( xCTCnt->getChartTypes());
-            for( sal_Int32 j=0; j<aChartTypeSeq.getLength(); ++j )
+            Reference< chart2::XChartTypeContainer > xCTCnt( rCooSys, uno::UNO_QUERY_THROW );
+            const Sequence< Reference< chart2::XChartType > > aChartTypeSeq( xCTCnt->getChartTypes());
+            for( const auto& rChartType : aChartTypeSeq )
             {
-                Reference< chart2::XDataSeriesContainer > xDSCnt( aChartTypeSeq[j], uno::UNO_QUERY_THROW );
+                Reference< chart2::XDataSeriesContainer > xDSCnt( rChartType, uno::UNO_QUERY_THROW );
                 Sequence< Reference< chart2::XDataSeries > > aSeriesSeq( xDSCnt->getDataSeries() );
-                ::std::copy( aSeriesSeq.begin(), aSeriesSeq.end(),
-                             ::std::back_inserter( aResult ));
+                aResult.insert( aResult.end(), aSeriesSeq.begin(), aSeriesSeq.end() );
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        SAL_WARN("xmloff.chart", "Exception caught. Type: " << OUString::createFromAscii( typeid( ex ).name() ) << ", Message: " << ex.Message );
+        DBG_UNHANDLED_EXCEPTION("xmloff.chart");
     }
 
     return aResult;
@@ -75,17 +73,14 @@ using ::com::sun::star::uno::Sequence;
     sal_Int32 nIndex=0;
 
     ::std::vector< Reference< chart2::XDataSeries > > aSeriesVector( SchXMLSeriesHelper::getDataSeriesFromDiagram( xDiagram ));
-    const ::std::vector< Reference< chart2::XDataSeries > >::const_iterator aSeriesEnd( aSeriesVector.end() );
-    for( ::std::vector< Reference< chart2::XDataSeries > >::const_iterator aSeriesIt( aSeriesVector.begin() )
-        ; aSeriesIt != aSeriesEnd
-        ; ++aSeriesIt, nIndex++ )
+    for( const Reference< chart2::XDataSeries >& xSeries : aSeriesVector )
     {
-        Reference< chart2::XDataSeries > xSeries( *aSeriesIt );
         if( xSeries.is() )
         {
             if( aRet.end() == aRet.find(xSeries) )
                 aRet[xSeries]=nIndex;
         }
+        nIndex++;
     }
     return aRet;
 }
@@ -106,21 +101,17 @@ uno::Reference< chart2::XChartType > lcl_getChartTypeOfSeries(
     if( !xCooSysContainer.is())
         return nullptr;
 
-    uno::Sequence< uno::Reference< chart2::XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
-    for( sal_Int32 nCS = 0; nCS < aCooSysList.getLength(); ++nCS )
+    const uno::Sequence< uno::Reference< chart2::XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
+    for( const auto& xCooSys : aCooSysList )
     {
-        uno::Reference< chart2::XCoordinateSystem > xCooSys( aCooSysList[nCS] );
-
         //iterate through all chart types in the current coordinate system
         uno::Reference< chart2::XChartTypeContainer > xChartTypeContainer( xCooSys, uno::UNO_QUERY );
         SAL_WARN_IF( !xChartTypeContainer.is(), "xmloff.chart", "xChartTypeContainer is NULL");
         if( !xChartTypeContainer.is() )
             continue;
-        uno::Sequence< uno::Reference< chart2::XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
-        for( sal_Int32 nT = 0; nT < aChartTypeList.getLength(); ++nT )
+        const uno::Sequence< uno::Reference< chart2::XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
+        for( const auto& xChartType : aChartTypeList )
         {
-            uno::Reference< chart2::XChartType > xChartType( aChartTypeList[nT] );
-
             //iterate through all series in this chart type
             uno::Reference< chart2::XDataSeriesContainer > xDataSeriesContainer( xChartType, uno::UNO_QUERY );
             SAL_WARN_IF( !xDataSeriesContainer.is(), "xmloff.chart", "xDataSeriesContainer is NULL");
@@ -128,13 +119,8 @@ uno::Reference< chart2::XChartType > lcl_getChartTypeOfSeries(
                 continue;
 
             uno::Sequence< uno::Reference< chart2::XDataSeries > > aSeriesList( xDataSeriesContainer->getDataSeries() );
-            for( sal_Int32 nS = 0; nS < aSeriesList.getLength(); ++nS )
-            {
-                Reference< chart2::XDataSeries > xCurrentSeries( aSeriesList[nS] );
-
-                if( xSeries == xCurrentSeries )
-                    return xChartType;
-            }
+            if (std::find(aSeriesList.begin(), aSeriesList.end(), xSeries) != aSeriesList.end())
+                return xChartType;
         }
     }
     return nullptr;
@@ -190,9 +176,9 @@ uno::Reference< beans::XPropertySet > SchXMLSeriesHelper::createOldAPISeriesProp
                 }
             }
         }
-        catch( const uno::Exception & rEx )
+        catch( const uno::Exception & )
         {
-            SAL_INFO("xmloff.chart", "Exception caught SchXMLSeriesHelper::createOldAPISeriesPropertySet: " << rEx.Message );
+            TOOLS_INFO_EXCEPTION("xmloff.chart", "Exception caught SchXMLSeriesHelper::createOldAPISeriesPropertySet" );
         }
     }
 
@@ -225,9 +211,9 @@ uno::Reference< beans::XPropertySet > SchXMLSeriesHelper::createOldAPIDataPointP
                 }
             }
         }
-        catch( const uno::Exception & rEx )
+        catch( const uno::Exception & )
         {
-            SAL_INFO("xmloff.chart", "Exception caught SchXMLSeriesHelper::createOldAPIDataPointPropertySet: " << rEx.Message );
+            TOOLS_INFO_EXCEPTION("xmloff.chart", "Exception caught SchXMLSeriesHelper::createOldAPIDataPointPropertySet" );
         }
     }
 

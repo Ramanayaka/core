@@ -20,16 +20,14 @@
 #ifndef INCLUDED_XMLSECURITY_SOURCE_XMLSEC_MSCRYPT_SECURITYENVIRONMENT_MSCRYPTIMPL_HXX
 #define INCLUDED_XMLSECURITY_SOURCE_XMLSEC_MSCRYPT_SECURITYENVIRONMENT_MSCRYPTIMPL_HXX
 
-#ifdef _MSC_VER
-#pragma warning(push,1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
 #include <wincrypt.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 #include <sal/config.h>
 #include <rtl/ustring.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/uno/Exception.hpp>
@@ -44,8 +42,8 @@
 #include <com/sun/star/security/CertificateValidity.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 
-#include <list>
-#include "xmlsec-wrapper.h"
+#include <vector>
+#include <xmlsec-wrapper.h>
 
 #include <sal/types.h>
 
@@ -79,11 +77,13 @@ class SecurityEnvironment_MSCryptImpl : public ::cppu::WeakImplHelper<
         css::uno::Reference< css::lang::XMultiServiceFactory > m_xServiceManager ;
 
     public:
-        explicit SecurityEnvironment_MSCryptImpl( const css::uno::Reference< css::lang::XMultiServiceFactory >& aFactory ) ;
+        explicit SecurityEnvironment_MSCryptImpl( const css::uno::Reference< css::uno::XComponentContext >& xContext ) ;
         virtual ~SecurityEnvironment_MSCryptImpl() override;
 
         //Methods from XSecurityEnvironment
         virtual css::uno::Sequence< css::uno::Reference< css::security::XCertificate > > SAL_CALL getPersonalCertificates() override;
+        virtual css::uno::Sequence< css::uno::Reference< css::security::XCertificate > > SAL_CALL getAllCertificates() override
+        { return css::uno::Sequence< css::uno::Reference< css::security::XCertificate > >(); }
 
         virtual css::uno::Reference< css::security::XCertificate > SAL_CALL getCertificate(
             const OUString& issuerName,
@@ -91,7 +91,7 @@ class SecurityEnvironment_MSCryptImpl : public ::cppu::WeakImplHelper<
 
         /// @throws css::uno::SecurityException
         /// @throws css::uno::RuntimeException
-        virtual css::uno::Reference< css::security::XCertificate > SAL_CALL getCertificate(
+        virtual css::uno::Reference< css::security::XCertificate > getCertificate(
             const OUString& issuerName,
             const OUString& serialNumber ) ;
 
@@ -124,25 +124,8 @@ class SecurityEnvironment_MSCryptImpl : public ::cppu::WeakImplHelper<
 
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-        //Helper for XServiceInfo
-        static css::uno::Sequence< OUString > impl_getSupportedServiceNames() ;
-
-        /// @throws css::uno::RuntimeException
-        static OUString impl_getImplementationName() ;
-
-        //Helper for registry
-        /// @throws css::uno::RuntimeException
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL impl_createInstance(
-            const css::uno::Reference< css::lang::XMultiServiceFactory >& aServiceManager ) ;
-
-        static css::uno::Reference< css::lang::XSingleServiceFactory > impl_createFactory(
-            const css::uno::Reference< css::lang::XMultiServiceFactory >& aServiceManager ) ;
-
         //Methods from XUnoTunnel
-        virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-
-        static const css::uno::Sequence< sal_Int8 >& getUnoTunnelId() ;
-        static SecurityEnvironment_MSCryptImpl* getImplementation( const css::uno::Reference< css::uno::XInterface >& rObj ) ;
+        UNO3_GETIMPLEMENTATION_DECL(SecurityEnvironment_MSCryptImpl)
 
         /// @throws css::uno::Exception
         /// @throws css::uno::RuntimeException

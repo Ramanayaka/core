@@ -19,50 +19,28 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_INSPECTORHELPWINDOW_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_INSPECTORHELPWINDOW_HXX
 
-#include <vcl/fixed.hxx>
-#include <svtools/svmedit.hxx>
-
+#include <vcl/weld.hxx>
 
 namespace pcr
 {
-
-
     //= InspectorHelpWindow
-
-    class InspectorHelpWindow : public vcl::Window
+    class InspectorHelpWindow
     {
     private:
-        VclPtr<FixedLine>       m_aSeparator;
-        VclPtr<MultiLineEdit>   m_aHelpText;
-
-        sal_Int32       m_nMinLines;
-        sal_Int32       m_nMaxLines;
+        std::unique_ptr<weld::Widget> m_xHelpFrame;
+        std::unique_ptr<weld::TextView> m_xHelpText;
 
     public:
-        explicit InspectorHelpWindow( vcl::Window* _pParent );
-        virtual ~InspectorHelpWindow() override;
-        virtual void dispose() override;
+        explicit InspectorHelpWindow(weld::Builder& rBuilder);
+        ~InspectorHelpWindow();
 
-        virtual void    SetText( const OUString& rStr ) override;
+        void            SetText(const OUString& rStr);
 
-        void            SetLimits( sal_Int32 _nMinLines, sal_Int32 _nMaxLines );
-        long            GetMinimalHeightPixel();
-        long            GetOptimalHeightPixel();
-
-    protected:
-        // Window overridables
-        virtual void    Resize() override;
-
-    private:
-        long            impl_getMinimalTextWindowHeight();
-        long            impl_getMaximalTextWindowHeight();
-        long            impl_getHelpTextBorderHeight();
-        long            impl_getSpaceAboveTextWindow();
+        void            Show(bool bShow) { m_xHelpFrame->set_visible(bShow); }
+        bool            IsVisible() const { return m_xHelpFrame->get_visible(); }
     };
 
-
 } // namespace pcr
-
 
 #endif // HELPWINDOW_HXX
 

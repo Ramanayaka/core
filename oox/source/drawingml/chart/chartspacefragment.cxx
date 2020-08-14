@@ -17,20 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/chartspacefragment.hxx"
+#include <drawingml/chart/chartspacefragment.hxx>
 
-#include "drawingml/shapepropertiescontext.hxx"
-#include "drawingml/textbodycontext.hxx"
-#include "drawingml/chart/chartspacemodel.hxx"
-#include "drawingml/chart/plotareacontext.hxx"
-#include "drawingml/chart/titlecontext.hxx"
+#include <drawingml/shapepropertiescontext.hxx>
+#include <drawingml/textbodycontext.hxx>
+#include <drawingml/chart/chartspacemodel.hxx>
+#include <drawingml/chart/plotareacontext.hxx>
+#include <drawingml/chart/titlecontext.hxx>
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 using namespace ::oox::core;
 
@@ -100,7 +98,7 @@ ContextHandlerRef ChartSpaceFragment::onCreateContext( sal_Int32 nElement, const
                 case C_TOKEN( floor ):
                     return new WallFloorContext( *this, mrModel.mxFloor.create() );
                 case C_TOKEN( legend ):
-                    return new LegendContext( *this, mrModel.mxLegend.create(bMSO2007Document) );
+                    return new LegendContext( *this, mrModel.mxLegend.create() );
                 case C_TOKEN( plotArea ):
                     return new PlotAreaContext( *this, mrModel.mxPlotArea.create() );
                 case C_TOKEN( plotVisOnly ):
@@ -121,8 +119,6 @@ ContextHandlerRef ChartSpaceFragment::onCreateContext( sal_Int32 nElement, const
     return nullptr;
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,17 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "breakit.hxx"
-#include "swtypes.hxx"
+#include <breakit.hxx>
+#include <swtypes.hxx>
 
 #include <com/sun/star/i18n/ScriptType.hpp>
 #include <com/sun/star/i18n/CharacterIteratorMode.hpp>
 #include <com/sun/star/i18n/BreakIterator.hpp>
-#include <editeng/unolingu.hxx>
-#include <editeng/scripttypeitem.hxx>
+#include <svl/languageoptions.hxx>
 #include <unicode/uchar.h>
 #include <unotools/localedatawrapper.hxx>
-#include <comphelper/processfactory.hxx>
 #include <algorithm>
 
 using namespace com::sun::star;
@@ -54,7 +52,7 @@ SwBreakIt * SwBreakIt::Get()
 SwBreakIt::SwBreakIt( const uno::Reference<uno::XComponentContext> & rxContext )
     : m_xContext(rxContext)
     , m_xBreak(i18n::BreakIterator::create(m_xContext))
-    , aForbiddenLang(LANGUAGE_DONTKNOW)
+    , m_aForbiddenLang(LANGUAGE_DONTKNOW)
 {
 }
 
@@ -78,7 +76,7 @@ void SwBreakIt::GetForbidden_( const LanguageType aLang )
 {
     LocaleDataWrapper aWrap(m_xContext, GetLanguageTag(aLang));
 
-    aForbiddenLang = aLang;
+    m_aForbiddenLang = aLang;
     m_xForbidden.reset(new i18n::ForbiddenCharacters(aWrap.getForbiddenCharacters()));
 }
 
@@ -107,18 +105,18 @@ sal_uInt16 SwBreakIt::GetRealScriptOfText( const OUString& rText, sal_Int32 nPos
                     break;
             }
         }
-        if( i18n::ScriptType::WEAK == nScript &&
-            nPos &&
-            0 < ( nChgPos = m_xBreak->beginOfScript(rText, nPos, nScript) ) )
+        if( i18n::ScriptType::WEAK == nScript && nPos )
         {
-            nScript = m_xBreak->getScriptType(rText, nChgPos-1);
+            nChgPos = m_xBreak->beginOfScript(rText, nPos, nScript);
+            if( 0 < nChgPos )
+                nScript = m_xBreak->getScriptType(rText, nChgPos-1);
         }
 
-        if( i18n::ScriptType::WEAK == nScript &&
-            rText.getLength() > ( nChgPos = m_xBreak->endOfScript(rText, nPos, nScript) ) &&
-            0 <= nChgPos )
+        if( i18n::ScriptType::WEAK == nScript )
         {
-            nScript = m_xBreak->getScriptType(rText, nChgPos);
+            nChgPos = m_xBreak->endOfScript(rText, nPos, nScript);
+            if( rText.getLength() > nChgPos && 0 <= nChgPos )
+                nScript = m_xBreak->getScriptType(rText, nChgPos);
         }
     }
     if( i18n::ScriptType::WEAK == nScript )
@@ -128,9 +126,9 @@ sal_uInt16 SwBreakIt::GetRealScriptOfText( const OUString& rText, sal_Int32 nPos
 
 SvtScriptType SwBreakIt::GetAllScriptsOfText( const OUString& rText ) const
 {
-    const SvtScriptType coAllScripts = ( SvtScriptType::LATIN |
-                                      SvtScriptType::ASIAN |
-                                      SvtScriptType::COMPLEX );
+    const SvtScriptType coAllScripts = SvtScriptType::LATIN |
+                                       SvtScriptType::ASIAN |
+                                       SvtScriptType::COMPLEX;
     SvtScriptType nRet = SvtScriptType::NONE;
     sal_uInt16 nScript = 0;
     if (!rText.isEmpty())
@@ -138,7 +136,8 @@ SvtScriptType SwBreakIt::GetAllScriptsOfText( const OUString& rText ) const
         for( sal_Int32 n = 0, nEnd = rText.getLength(); n < nEnd;
                 n = m_xBreak->endOfScript(rText, n, nScript) )
         {
-            switch( nScript = m_xBreak->getScriptType(rText, n) )
+            nScript = m_xBreak->getScriptType(rText, n);
+            switch( nScript )
             {
             case i18n::ScriptType::LATIN:   nRet |= SvtScriptType::LATIN;   break;
             case i18n::ScriptType::ASIAN:   nRet |= SvtScriptType::ASIAN;   break;

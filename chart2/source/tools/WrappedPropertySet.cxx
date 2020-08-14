@@ -17,10 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "WrappedPropertySet.hxx"
-#include "macros.hxx"
+#include <WrappedPropertySet.hxx>
+#include <cppuhelper/propshlp.hxx>
 
-#include <tools/solar.h>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 namespace chart
 {
@@ -31,10 +32,6 @@ using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Any;
 
 WrappedPropertySet::WrappedPropertySet()
-                    : MutexContainer()
-                    , m_xInfo(nullptr)
-                    , m_pPropertyArrayHelper(nullptr)
-                    , m_pWrappedPropertyMap(nullptr)
 {
 }
 WrappedPropertySet::~WrappedPropertySet()
@@ -51,19 +48,8 @@ void WrappedPropertySet::clearWrappedPropertySet()
 {
     ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );//do not use different mutex than is already used for static property sequence
 
-    //delete all wrapped properties
-    if(m_pWrappedPropertyMap)
-    {
-        for( tWrappedPropertyMap::iterator aIt = m_pWrappedPropertyMap->begin()
-            ; aIt!= m_pWrappedPropertyMap->end(); ++aIt )
-        {
-            const WrappedProperty* pWrappedProperty = (*aIt).second;
-            DELETEZ(pWrappedProperty);
-        }
-    }
-
-    DELETEZ(m_pPropertyArrayHelper);
-    DELETEZ(m_pWrappedPropertyMap);
+    m_pPropertyArrayHelper.reset();
+    m_pWrappedPropertyMap.reset();
 
     m_xInfo = nullptr;
 }
@@ -96,7 +82,7 @@ void SAL_CALL WrappedPropertySet::setPropertyValue( const OUString& rPropertyNam
     {
         sal_Int32 nHandle = getInfoHelper().getHandleByName( rPropertyName );
         const WrappedProperty* pWrappedProperty = getWrappedProperty( nHandle );
-        Reference< beans::XPropertySet > xInnerPropertySet( this->getInnerPropertySet() );
+        Reference< beans::XPropertySet > xInnerPropertySet( getInnerPropertySet() );
         if( pWrappedProperty )
             pWrappedProperty->setPropertyValue( rValue, xInnerPropertySet );
         else if( xInnerPropertySet.is() )
@@ -128,10 +114,9 @@ void SAL_CALL WrappedPropertySet::setPropertyValue( const OUString& rPropertyNam
     }
     catch( const uno::Exception& ex )
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         OSL_FAIL("invalid exception caught in WrappedPropertySet::setPropertyValue");
-        lang::WrappedTargetException aWrappedException;
-        aWrappedException.TargetException <<= ex;
-        throw aWrappedException;
+        throw lang::WrappedTargetException( ex.Message, nullptr, anyEx );
     }
 }
 Any SAL_CALL WrappedPropertySet::getPropertyValue( const OUString& rPropertyName )
@@ -142,7 +127,7 @@ Any SAL_CALL WrappedPropertySet::getPropertyValue( const OUString& rPropertyName
     {
         sal_Int32 nHandle = getInfoHelper().getHandleByName( rPropertyName );
         const WrappedProperty* pWrappedProperty = getWrappedProperty( nHandle );
-        Reference< beans::XPropertySet > xInnerPropertySet( this->getInnerPropertySet() );
+        Reference< beans::XPropertySet > xInnerPropertySet( getInnerPropertySet() );
         if( pWrappedProperty )
             aRet = pWrappedProperty->getPropertyValue( xInnerPropertySet );
         else if( xInnerPropertySet.is() )
@@ -166,10 +151,9 @@ Any SAL_CALL WrappedPropertySet::getPropertyValue( const OUString& rPropertyName
     }
     catch( const uno::Exception& ex )
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         OSL_FAIL("invalid exception caught in WrappedPropertySet::setPropertyValue");
-        lang::WrappedTargetException aWrappedException;
-        aWrappedException.TargetException <<= ex;
-        throw aWrappedException;
+        throw lang::WrappedTargetException( ex.Message, nullptr, anyEx );
     }
 
     return aRet;
@@ -177,7 +161,7 @@ Any SAL_CALL WrappedPropertySet::getPropertyValue( const OUString& rPropertyName
 
 void SAL_CALL WrappedPropertySet::addPropertyChangeListener( const OUString& rPropertyName, const Reference< beans::XPropertyChangeListener >& xListener )
 {
-    Reference< beans::XPropertySet > xInnerPropertySet( this->getInnerPropertySet() );
+    Reference< beans::XPropertySet > xInnerPropertySet( getInnerPropertySet() );
     if( xInnerPropertySet.is() )
     {
         const WrappedProperty* pWrappedProperty = getWrappedProperty( rPropertyName );
@@ -189,7 +173,7 @@ void SAL_CALL WrappedPropertySet::addPropertyChangeListener( const OUString& rPr
 }
 void SAL_CALL WrappedPropertySet::removePropertyChangeListener( const OUString& rPropertyName, const Reference< beans::XPropertyChangeListener >& aListener )
 {
-    Reference< beans::XPropertySet > xInnerPropertySet( this->getInnerPropertySet() );
+    Reference< beans::XPropertySet > xInnerPropertySet( getInnerPropertySet() );
     if( xInnerPropertySet.is() )
     {
         const WrappedProperty* pWrappedProperty = getWrappedProperty( rPropertyName );
@@ -201,7 +185,7 @@ void SAL_CALL WrappedPropertySet::removePropertyChangeListener( const OUString& 
 }
 void SAL_CALL WrappedPropertySet::addVetoableChangeListener( const OUString& rPropertyName, const Reference< beans::XVetoableChangeListener >& aListener )
 {
-    Reference< beans::XPropertySet > xInnerPropertySet( this->getInnerPropertySet() );
+    Reference< beans::XPropertySet > xInnerPropertySet( getInnerPropertySet() );
     if( xInnerPropertySet.is() )
     {
         const WrappedProperty* pWrappedProperty = getWrappedProperty( rPropertyName );
@@ -213,7 +197,7 @@ void SAL_CALL WrappedPropertySet::addVetoableChangeListener( const OUString& rPr
 }
 void SAL_CALL WrappedPropertySet::removeVetoableChangeListener( const OUString& rPropertyName, const Reference< beans::XVetoableChangeListener >& aListener )
 {
-    Reference< beans::XPropertySet > xInnerPropertySet( this->getInnerPropertySet() );
+    Reference< beans::XPropertySet > xInnerPropertySet( getInnerPropertySet() );
     if( xInnerPropertySet.is() )
     {
         const WrappedProperty* pWrappedProperty = getWrappedProperty( rPropertyName );
@@ -234,11 +218,11 @@ void SAL_CALL WrappedPropertySet::setPropertyValues( const Sequence< OUString >&
         OUString aPropertyName( rNameSeq[nN] );
         try
         {
-            this->setPropertyValue( aPropertyName, rValueSeq[nN] );
+            setPropertyValue( aPropertyName, rValueSeq[nN] );
         }
-        catch( const beans::UnknownPropertyException& ex )
+        catch( const beans::UnknownPropertyException& )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
             bUnknownProperty = true;
         }
     }
@@ -250,7 +234,7 @@ void SAL_CALL WrappedPropertySet::setPropertyValues( const Sequence< OUString >&
 Sequence< Any > SAL_CALL WrappedPropertySet::getPropertyValues( const Sequence< OUString >& rNameSeq )
 {
     Sequence< Any > aRetSeq;
-    if( rNameSeq.getLength() )
+    if( rNameSeq.hasElements() )
     {
         aRetSeq.realloc( rNameSeq.getLength() );
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
@@ -258,15 +242,15 @@ Sequence< Any > SAL_CALL WrappedPropertySet::getPropertyValues( const Sequence< 
             try
             {
                 OUString aPropertyName( rNameSeq[nN] );
-                aRetSeq[nN] = this->getPropertyValue( aPropertyName );
+                aRetSeq[nN] = getPropertyValue( aPropertyName );
             }
-            catch( const beans::UnknownPropertyException& ex )
+            catch( const beans::UnknownPropertyException& )
             {
-                ASSERT_EXCEPTION( ex );
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
-            catch( const lang::WrappedTargetException& ex )
+            catch( const lang::WrappedTargetException& )
             {
-                ASSERT_EXCEPTION( ex );
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
         }
     }
@@ -293,7 +277,7 @@ beans::PropertyState SAL_CALL WrappedPropertySet::getPropertyState( const OUStri
 {
     beans::PropertyState aState( beans::PropertyState_DIRECT_VALUE );
 
-    Reference< beans::XPropertyState > xInnerPropertyState( this->getInnerPropertyState() );
+    Reference< beans::XPropertyState > xInnerPropertyState( getInnerPropertyState() );
     if( xInnerPropertyState.is() )
     {
         const WrappedProperty* pWrappedProperty = getWrappedProperty( rPropertyName );
@@ -315,20 +299,20 @@ const WrappedProperty* WrappedPropertySet::getWrappedProperty( sal_Int32 nHandle
 {
     tWrappedPropertyMap::const_iterator aFound( getWrappedPropertyMap().find( nHandle ) );
     if( aFound != getWrappedPropertyMap().end() )
-        return (*aFound).second;
+        return (*aFound).second.get();
     return nullptr;
 }
 
 Sequence< beans::PropertyState > SAL_CALL WrappedPropertySet::getPropertyStates( const Sequence< OUString >& rNameSeq )
 {
     Sequence< beans::PropertyState > aRetSeq;
-    if( rNameSeq.getLength() )
+    if( rNameSeq.hasElements() )
     {
         aRetSeq.realloc( rNameSeq.getLength() );
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
             OUString aPropertyName( rNameSeq[nN] );
-            aRetSeq[nN] = this->getPropertyState( aPropertyName );
+            aRetSeq[nN] = getPropertyState( aPropertyName );
         }
     }
     return aRetSeq;
@@ -336,7 +320,7 @@ Sequence< beans::PropertyState > SAL_CALL WrappedPropertySet::getPropertyStates(
 
 void SAL_CALL WrappedPropertySet::setPropertyToDefault( const OUString& rPropertyName )
 {
-    Reference< beans::XPropertyState > xInnerPropertyState( this->getInnerPropertyState() );
+    Reference< beans::XPropertyState > xInnerPropertyState( getInnerPropertyState() );
     if( xInnerPropertyState.is() )
     {
         const WrappedProperty* pWrappedProperty = getWrappedProperty( rPropertyName );
@@ -349,7 +333,7 @@ void SAL_CALL WrappedPropertySet::setPropertyToDefault( const OUString& rPropert
 Any SAL_CALL WrappedPropertySet::getPropertyDefault( const OUString& rPropertyName )
 {
     Any aRet;
-    Reference< beans::XPropertyState > xInnerPropertyState( this->getInnerPropertyState() );
+    Reference< beans::XPropertyState > xInnerPropertyState( getInnerPropertyState() );
     if( xInnerPropertyState.is() )
     {
         const WrappedProperty* pWrappedProperty = getWrappedProperty( rPropertyName );
@@ -365,30 +349,28 @@ Any SAL_CALL WrappedPropertySet::getPropertyDefault( const OUString& rPropertyNa
 void SAL_CALL WrappedPropertySet::setAllPropertiesToDefault(  )
 {
     const Sequence< beans::Property >&  rPropSeq = getPropertySequence();
-    for(sal_Int32 nN=0; nN<rPropSeq.getLength(); nN++)
+    for(beans::Property const & prop : rPropSeq)
     {
-        OUString aPropertyName( rPropSeq[nN].Name );
-        this->setPropertyToDefault( aPropertyName );
+        setPropertyToDefault( prop.Name );
     }
 }
 void SAL_CALL WrappedPropertySet::setPropertiesToDefault( const Sequence< OUString >& rNameSeq )
 {
-    for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
+    for(OUString const & s : rNameSeq)
     {
-        OUString aPropertyName( rNameSeq[nN] );
-        this->setPropertyToDefault( aPropertyName );
+        setPropertyToDefault( s );
     }
 }
 Sequence< Any > SAL_CALL WrappedPropertySet::getPropertyDefaults( const Sequence< OUString >& rNameSeq )
 {
     Sequence< Any > aRetSeq;
-    if( rNameSeq.getLength() )
+    if( rNameSeq.hasElements() )
     {
         aRetSeq.realloc( rNameSeq.getLength() );
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
             OUString aPropertyName( rNameSeq[nN] );
-            aRetSeq[nN] = this->getPropertyDefault( aPropertyName );
+            aRetSeq[nN] = getPropertyDefault( aPropertyName );
         }
     }
     return aRetSeq;
@@ -396,16 +378,16 @@ Sequence< Any > SAL_CALL WrappedPropertySet::getPropertyDefaults( const Sequence
 
 ::cppu::IPropertyArrayHelper& WrappedPropertySet::getInfoHelper()
 {
-    ::cppu::OPropertyArrayHelper* p = m_pPropertyArrayHelper;
+    ::cppu::OPropertyArrayHelper* p = m_pPropertyArrayHelper.get();
     if(!p)
     {
         ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );//do not use different mutex than is already used for static property sequence
-        p = m_pPropertyArrayHelper;
+        p = m_pPropertyArrayHelper.get();
         if(!p)
         {
             p = new ::cppu::OPropertyArrayHelper( getPropertySequence(), true );
             OSL_DOUBLE_CHECKED_LOCKING_MEMORY_BARRIER();
-            m_pPropertyArrayHelper = p;
+            m_pPropertyArrayHelper.reset(p);
         }
     }
     else
@@ -417,41 +399,35 @@ Sequence< Any > SAL_CALL WrappedPropertySet::getPropertyDefaults( const Sequence
 
 tWrappedPropertyMap& WrappedPropertySet::getWrappedPropertyMap()
 {
-    tWrappedPropertyMap* p = m_pWrappedPropertyMap;
+    tWrappedPropertyMap* p = m_pWrappedPropertyMap.get();
     if(!p)
     {
         ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );//do not use different mutex than is already used for static property sequence
-        p = m_pWrappedPropertyMap;
+        p = m_pWrappedPropertyMap.get();
         if(!p)
         {
-            std::vector< WrappedProperty* > aPropList( createWrappedProperties() );
+            std::vector< std::unique_ptr<WrappedProperty> > aPropList( createWrappedProperties() );
             p = new tWrappedPropertyMap;
 
-            for( std::vector< WrappedProperty* >::const_iterator aIt = aPropList.begin(); aIt!=aPropList.end(); ++aIt )
+            for (auto & elem : aPropList)
             {
-                WrappedProperty* pProperty = *aIt;
-                if(pProperty)
-                {
-                    sal_Int32 nHandle = getInfoHelper().getHandleByName( pProperty->getOuterName() );
+                sal_Int32 nHandle = getInfoHelper().getHandleByName( elem->getOuterName() );
 
-                    if( nHandle == -1 )
-                    {
-                        OSL_FAIL( "missing property in property list" );
-                        delete pProperty;//we are owner or the created WrappedProperties
-                    }
-                    else if( p->find( nHandle ) != p->end() )
-                    {
-                        //duplicate Wrapped property
-                        OSL_FAIL( "duplicate Wrapped property" );
-                        delete pProperty;//we are owner or the created WrappedProperties
-                    }
-                    else
-                        (*p)[ nHandle ] = pProperty;
+                if( nHandle == -1 )
+                {
+                    OSL_FAIL( "missing property in property list" );
                 }
+                else if( p->find( nHandle ) != p->end() )
+                {
+                    //duplicate Wrapped property
+                    OSL_FAIL( "duplicate Wrapped property" );
+                }
+                else
+                    (*p)[ nHandle ] = std::move(elem);
             }
 
             OSL_DOUBLE_CHECKED_LOCKING_MEMORY_BARRIER();
-            m_pWrappedPropertyMap = p;
+            m_pWrappedPropertyMap.reset(p);
         }
     }
     else

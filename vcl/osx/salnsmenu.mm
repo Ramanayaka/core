@@ -18,14 +18,15 @@
  */
 
 #include <sal/config.h>
+#include <osl/diagnose.h>
 
 #include <vcl/window.hxx>
 
-#include "osx/salinst.h"
-#include "osx/saldata.hxx"
-#include "osx/salframe.h"
-#include "osx/salmenu.h"
-#include "osx/salnsmenu.h"
+#include <osx/salinst.h>
+#include <osx/saldata.hxx>
+#include <osx/salframe.h>
+#include <osx/salmenu.h>
+#include <osx/salnsmenu.h>
 
 @implementation SalNSMenu
 -(id)initWithMenu: (AquaSalMenu*)pMenu
@@ -36,7 +37,6 @@
 
 -(void)menuNeedsUpdate: (NSMenu*)pMenu
 {
-    (void)pMenu;
     SolarMutexGuard aGuard;
 
     if( mpMenu )
@@ -167,7 +167,12 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
 {
     NSGraphicsContext* pContext = [NSGraphicsContext currentContext];
     [pContext saveGraphicsState];
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
+        // "'drawStatusBarBackgroundInRect:withHighlight:' is deprecated: first deprecated in macOS
+        // 10.14 - Use the standard button instead which handles highlight drawing, making this
+        // method obsolete"
     [SalData::getStatusItem() drawStatusBarBackgroundInRect: aRect withHighlight: NO];
+SAL_WNODEPRECATED_DECLARATIONS_POP
     if( AquaSalMenu::pCurrentMenuBar )
     {
         const std::vector< AquaSalMenu::MenuBarButtonEntry >& rButtons( AquaSalMenu::pCurrentMenuBar->getButtons() );

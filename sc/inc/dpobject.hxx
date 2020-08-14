@@ -23,22 +23,23 @@
 #include "scdllapi.h"
 #include "global.hxx"
 #include "address.hxx"
-#include "dpoutput.hxx"
+#include "dpcache.hxx"
 #include "dptypes.hxx"
 #include "pivot.hxx"
 #include "calcmacros.hxx"
 
-#include <com/sun/star/sheet/XDimensionsSupplier.hpp>
+#include <com/sun/star/sheet/DataPilotFieldOrientation.hpp>
 
 #include <memory>
 #include <set>
 #include <vector>
 #include <map>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
 
     namespace container {
         class XIndexAccess;
+        class XNameAccess;
     }
 
     namespace sdbc {
@@ -47,22 +48,23 @@ namespace com { namespace sun { namespace star {
 
     namespace sheet {
         class XMembersAccess;
+        class XDimensionsSupplier;
         struct DataPilotTablePositionData;
         struct DataPilotTableHeaderData;
         struct DataPilotFieldFilter;
     }
-}}}
+}
 
 namespace tools { class Rectangle; }
 class ScDPSaveData;
 class ScDPOutput;
-struct ScPivotParam;
 struct ScImportSourceDesc;
 class ScSheetSourceDesc;
-struct ScPivotField;
 class ScDPTableData;
 class ScDPDimensionSaveData;
 class ScRangeList;
+class ScDPCache;
+class ScDocument;
 
 struct ScDPServiceDesc
 {
@@ -83,17 +85,22 @@ class SC_DLLPUBLIC ScDPObject
 private:
     ScDocument*             pDoc;
                                             // settings
-    ScDPSaveData*           pSaveData;
+    std::unique_ptr<ScDPSaveData> pSaveData;
     OUString aTableName;
     OUString aTableTag;
     ScRange                 aOutRange;
-    ScSheetSourceDesc*      pSheetDesc;     //  for sheet data
-    ScImportSourceDesc*     pImpDesc;       //  for database data
-    ScDPServiceDesc*        pServDesc;      //  for external service
+    std::unique_ptr<ScSheetSourceDesc>  pSheetDesc;     //  for sheet data
+    std::unique_ptr<ScImportSourceDesc> pImpDesc;       //  for database data
+    std::unique_ptr<ScDPServiceDesc> pServDesc;      //  for external service
     std::shared_ptr<ScDPTableData>  mpTableData;
                                             // cached data
     css::uno::Reference<css::sheet::XDimensionsSupplier> xSource;
-    ScDPOutput*             pOutput;
+    std::unique_ptr<ScDPOutput> pOutput;
+
+    // name -> sequence of sequences of css::xml::FastAttribute or css::xml::Attribute
+    // see PivotTable::putToInteropGrabBag in sc/source/filter/oox/pivottablebuffer.cxx for details
+    std::map<OUString, css::uno::Any> maInteropGrabBag;
+
     long                    nHeaderRows;    // page fields plus filter button
     bool                    mbHeaderLayout:1;  // true : grid, false : standard
     bool                    bAllowMove:1;
@@ -104,7 +111,7 @@ private:
     SAL_DLLPRIVATE void              CreateObjects();
     SAL_DLLPRIVATE void              CreateOutput();
     SAL_DLLPRIVATE void ClearSource();
-    SAL_DLLPRIVATE bool FillLabelDataForDimension(
+    SAL_DLLPRIVATE void FillLabelDataForDimension(
         const css::uno::Reference< css::container::XIndexAccess>& xDims,
         sal_Int32 nDim, ScDPLabelData& rLabelData);
 
@@ -131,7 +138,7 @@ public:
     ScRange GetOutputRangeByType( sal_Int32 nType ) const;
 
     void                SetSaveData(const ScDPSaveData& rData);
-    ScDPSaveData*       GetSaveData() const     { return pSaveData; }
+    ScDPSaveData*       GetSaveData() const     { return pSaveData.get(); }
 
     void                SetOutRange(const ScRange& rRange);
     const ScRange&      GetOutRange() const;
@@ -146,9 +153,9 @@ public:
     void                WriteSourceDataTo( ScDPObject& rDest ) const;
     void                WriteTempDataTo( ScDPObject& rDest ) const;
 
-    const ScSheetSourceDesc* GetSheetDesc() const   { return pSheetDesc; }
-    const ScImportSourceDesc* GetImportSourceDesc() const   { return pImpDesc; }
-    const ScDPServiceDesc* GetDPServiceDesc() const { return pServDesc; }
+    const ScSheetSourceDesc* GetSheetDesc() const   { return pSheetDesc.get(); }
+    const ScImportSourceDesc* GetImportSourceDesc() const   { return pImpDesc.get(); }
+    const ScDPServiceDesc* GetDPServiceDesc() const { return pServDesc.get(); }
 
     css::uno::Reference<css::sheet::XDimensionsSupplier> const & GetSource();
 
@@ -178,6 +185,8 @@ public:
                                        long nDragDim,
                                        tools::Rectangle& rPosRect, css::sheet::DataPilotFieldOrientation& rOrient, long& rDimPos );
     bool                IsFilterButton( const ScAddress& rPos );
+
+    OUString            GetFormattedString( const OUString& rDimName, const double fValue );
 
     double GetPivotData(
         const OUString& rDataFieldName,
@@ -249,6 +258,18 @@ public:
         const ScPivotFieldVector* pRefPageFields = nullptr );
 
     static bool         IsOrientationAllowed( css::sheet::DataPilotFieldOrientation nOrient, sal_Int32 nDimFlags );
+
+    void PutInteropGrabBag(std::map<OUString, css::uno::Any>&& val)
+    {
+        maInteropGrabBag = std::move(val);
+    }
+    std::pair<bool, css::uno::Any> GetInteropGrabBagValue(const OUString& sName) const
+    {
+        if (const auto it = maInteropGrabBag.find(sName); it != maInteropGrabBag.end())
+            return { true, it->second };
+
+        return { false, css::uno::Any() };
+    }
 
 #if DUMP_PIVOT_TABLE
     void Dump() const;
@@ -324,7 +345,7 @@ public:
         OUString maCommand;
         DBType(sal_Int32 nSdbType, const OUString& rDBName, const OUString& rCommand);
 
-        struct less : public ::std::binary_function<DBType, DBType, bool>
+        struct less
         {
             bool operator() (const DBType& left, const DBType& right) const;
         };
@@ -363,8 +384,8 @@ public:
     ScDPCollection(const ScDPCollection& r);
     ~ScDPCollection();
 
-    sal_uLong ReloadCache(ScDPObject* pDPObj, std::set<ScDPObject*>& rRefs);
-    bool ReloadGroupsInCache(ScDPObject* pDPObj, std::set<ScDPObject*>& rRefs);
+    const char* ReloadCache(const ScDPObject* pDPObj, std::set<ScDPObject*>& rRefs);
+    bool ReloadGroupsInCache(const ScDPObject* pDPObj, std::set<ScDPObject*>& rRefs);
     SC_DLLPUBLIC bool GetReferenceGroups(const ScDPObject& rDPObj, const ScDPDimensionSaveData** pGroups) const;
 
     SC_DLLPUBLIC size_t GetCount() const;
@@ -388,8 +409,8 @@ public:
      */
     OUString CreateNewName() const;
 
-    void FreeTable(ScDPObject* pDPObj);
-    SC_DLLPUBLIC bool InsertNewTable(ScDPObject* pDPObj);
+    void FreeTable(const ScDPObject* pDPObj);
+    SC_DLLPUBLIC ScDPObject* InsertNewTable(std::unique_ptr<ScDPObject> pDPObj);
     SC_DLLPUBLIC bool HasTable(const ScDPObject* pDPObj) const;
 
     SC_DLLPUBLIC SheetCaches& GetSheetCaches();

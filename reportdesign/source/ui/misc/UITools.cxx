@@ -21,18 +21,19 @@
 #include <memory>
 #include <toolkit/helper/convert.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include "SectionView.hxx"
-#include "UITools.hxx"
-#include "Formula.hxx"
-#include "FunctionHelper.hxx"
-#include "reportformula.hxx"
+#include <SectionView.hxx>
+#include <UITools.hxx>
+#include <Formula.hxx>
+#include <FunctionHelper.hxx>
+#include <reportformula.hxx>
 
 #include <tools/diagnose_ex.h>
 
+#include <vcl/settings.hxx>
+#include <vcl/syswin.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/unohelp.hxx>
 #include <vcl/window.hxx>
-#include <vcl/settings.hxx>
 
 #include <com/sun/star/lang/NullPointerException.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
@@ -40,8 +41,6 @@
 #include <svx/svdpool.hxx>
 
 #include <editeng/charscaleitem.hxx>
-#include <svx/algitem.hxx>
-#include <svx/svdpagv.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/fontitem.hxx>
 #include <editeng/emphasismarkitem.hxx>
@@ -54,7 +53,6 @@
 #include <editeng/fhgtitem.hxx>
 #include <editeng/shdditem.hxx>
 #include <editeng/escapementitem.hxx>
-#include <editeng/prszitem.hxx>
 #include <editeng/wrlmitem.hxx>
 #include <editeng/cmapitem.hxx>
 #include <editeng/kernitem.hxx>
@@ -68,16 +66,16 @@
 #include <editeng/charreliefitem.hxx>
 #include <editeng/charrotateitem.hxx>
 #include <editeng/charhiddenitem.hxx>
+#include <editeng/memberids.h>
 #include <svx/xgrscit.hxx>
 #include <svx/svditer.hxx>
 #include <svx/xtable.hxx>
-#include <svx/dialogs.hrc>
 #include <svx/svdview.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/svxdlg.hxx>
 #include <svx/unoprov.hxx>
+#include <svx/svxids.hrc>
 
-#include <unotools/pathoptions.hxx>
 #include <unotools/charclass.hxx>
 #include <svtools/ctrltool.hxx>
 #include <svl/itempool.hxx>
@@ -88,66 +86,80 @@
 #include <comphelper/namedvaluecollection.hxx>
 
 #include <connectivity/dbexception.hxx>
-#include <connectivity/dbconversion.hxx>
 #include <connectivity/dbtools.hxx>
 
-#include <com/sun/star/awt/TextAlign.hpp>
 #include <com/sun/star/style/VerticalAlignment.hpp>
 #include <com/sun/star/report/XShape.hpp>
 #include <com/sun/star/sdb/XParametersSupplier.hpp>
 #include <com/sun/star/sdb/SQLContext.hpp>
 #include <i18nlangtag/languagetag.hxx>
-#include "dlgpage.hxx"
-#include <vcl/msgbox.hxx>
-#include "rptui_slotid.hrc"
-#include "uistrings.hrc"
-#include "RptObject.hxx"
-#include "ModuleHelper.hxx"
-#include "RptDef.hxx"
-#include "RptResId.hrc"
-#include "ReportDefinition.hxx"
-#include "RptModel.hxx"
+#include <dlgpage.hxx>
+#include <strings.hxx>
+#include <core_resource.hxx>
+#include <RptObject.hxx>
+#include <RptDef.hxx>
+#include <strings.hrc>
+#include <ReportDefinition.hxx>
+#include <RptModel.hxx>
 
-#define ITEMID_FONT                     10
-#define ITEMID_FONTHEIGHT               11
-#define ITEMID_LANGUAGE                 12
+#include <svx/xflbckit.hxx>
+#include <svx/xflbmpit.hxx>
+#include <svx/xflbmsli.hxx>
+#include <svx/xflbmsxy.hxx>
+#include <svx/xflbmtit.hxx>
+#include <svx/xflboxy.hxx>
+#include <svx/xflbstit.hxx>
+#include <svx/xflbtoxy.hxx>
 
-#define ITEMID_POSTURE                  13
-#define ITEMID_WEIGHT                   14
-#define ITEMID_SHADOWED                 15
-#define ITEMID_WORDLINEMODE             16
-#define ITEMID_CONTOUR                  17
-#define ITEMID_CROSSEDOUT               18
-#define ITEMID_UNDERLINE                19
+#include <svx/xbtmpit.hxx>
+#include <svx/xfillit0.hxx>
+#include <svx/xfltrit.hxx>
+#include <svx/xflclit.hxx>
+#include <svx/xflgrit.hxx>
+#include <svx/xflhtit.hxx>
+#include <svx/xflftrit.hxx>
+#include <svx/xsflclit.hxx>
 
-#define ITEMID_COLOR                    20
-#define ITEMID_KERNING                  21
-#define ITEMID_CASEMAP                  22
+#define ITEMID_FONT                     XATTR_FILL_LAST + 1
+#define ITEMID_FONTHEIGHT               XATTR_FILL_LAST + 2
+#define ITEMID_LANGUAGE                 XATTR_FILL_LAST + 3
 
-#define ITEMID_ESCAPEMENT               23
-#define ITEMID_FONTLIST                 24
-#define ITEMID_AUTOKERN                 25
-#define ITEMID_COLOR_TABLE              26
-#define ITEMID_BLINK                    27
-#define ITEMID_EMPHASISMARK             28
-#define ITEMID_TWOLINES                 29
-#define ITEMID_CHARROTATE               30
-#define ITEMID_CHARSCALE_W              31
-#define ITEMID_CHARRELIEF               32
-#define ITEMID_CHARHIDDEN               33
-#define ITEMID_BRUSH                    34
-#define ITEMID_HORJUSTIFY               35
-#define ITEMID_VERJUSTIFY               36
-#define ITEMID_FONT_ASIAN               37
-#define ITEMID_FONTHEIGHT_ASIAN         38
-#define ITEMID_LANGUAGE_ASIAN           39
-#define ITEMID_POSTURE_ASIAN            40
-#define ITEMID_WEIGHT_ASIAN             41
-#define ITEMID_FONT_COMPLEX             42
-#define ITEMID_FONTHEIGHT_COMPLEX       43
-#define ITEMID_LANGUAGE_COMPLEX         44
-#define ITEMID_POSTURE_COMPLEX          45
-#define ITEMID_WEIGHT_COMPLEX           46
+#define ITEMID_POSTURE                  XATTR_FILL_LAST + 4
+#define ITEMID_WEIGHT                   XATTR_FILL_LAST + 5
+#define ITEMID_SHADOWED                 XATTR_FILL_LAST + 6
+#define ITEMID_WORDLINEMODE             XATTR_FILL_LAST + 7
+#define ITEMID_CONTOUR                  XATTR_FILL_LAST + 8
+#define ITEMID_CROSSEDOUT               XATTR_FILL_LAST + 9
+#define ITEMID_UNDERLINE                XATTR_FILL_LAST + 10
+
+#define ITEMID_COLOR                    XATTR_FILL_LAST + 11
+#define ITEMID_KERNING                  XATTR_FILL_LAST + 12
+#define ITEMID_CASEMAP                  XATTR_FILL_LAST + 13
+
+#define ITEMID_ESCAPEMENT               XATTR_FILL_LAST + 14
+#define ITEMID_FONTLIST                 XATTR_FILL_LAST + 15
+#define ITEMID_AUTOKERN                 XATTR_FILL_LAST + 16
+#define ITEMID_COLOR_TABLE              XATTR_FILL_LAST + 17
+#define ITEMID_BLINK                    XATTR_FILL_LAST + 18
+#define ITEMID_EMPHASISMARK             XATTR_FILL_LAST + 19
+#define ITEMID_TWOLINES                 XATTR_FILL_LAST + 20
+#define ITEMID_CHARROTATE               XATTR_FILL_LAST + 21
+#define ITEMID_CHARSCALE_W              XATTR_FILL_LAST + 22
+#define ITEMID_CHARRELIEF               XATTR_FILL_LAST + 23
+#define ITEMID_CHARHIDDEN               XATTR_FILL_LAST + 24
+#define ITEMID_BRUSH                    XATTR_FILL_LAST + 25
+#define ITEMID_HORJUSTIFY               XATTR_FILL_LAST + 26
+#define ITEMID_VERJUSTIFY               XATTR_FILL_LAST + 27
+#define ITEMID_FONT_ASIAN               XATTR_FILL_LAST + 28
+#define ITEMID_FONTHEIGHT_ASIAN         XATTR_FILL_LAST + 29
+#define ITEMID_LANGUAGE_ASIAN           XATTR_FILL_LAST + 30
+#define ITEMID_POSTURE_ASIAN            XATTR_FILL_LAST + 31
+#define ITEMID_WEIGHT_ASIAN             XATTR_FILL_LAST + 32
+#define ITEMID_FONT_COMPLEX             XATTR_FILL_LAST + 33
+#define ITEMID_FONTHEIGHT_COMPLEX       XATTR_FILL_LAST + 34
+#define ITEMID_LANGUAGE_COMPLEX         XATTR_FILL_LAST + 35
+#define ITEMID_POSTURE_COMPLEX          XATTR_FILL_LAST + 36
+#define ITEMID_WEIGHT_COMPLEX           XATTR_FILL_LAST + 37
 
 #define WESTERN 0
 #define ASIAN   1
@@ -163,22 +175,20 @@ void adjustSectionName(const uno::Reference< report::XGroup >& _xGroup,sal_Int32
     OSL_ENSURE(_xGroup.is(),"Group is NULL -> GPF");
     if ( _xGroup->getHeaderOn() && _xGroup->getHeader()->getName().isEmpty() )
     {
-        OUString sName = ModuleRes(RID_STR_GROUPHEADER);
-        sName += OUString::number(_nPos);
+        OUString sName = RptResId(RID_STR_GROUPHEADER) + OUString::number(_nPos);
         _xGroup->getHeader()->setName(sName);
     }
 
     if ( _xGroup->getFooterOn() && _xGroup->getFooter()->getName().isEmpty() )
     {
-        OUString sName = ModuleRes(RID_STR_GROUPFOOTER);
-        sName += OUString::number(_nPos);
+        OUString sName = RptResId(RID_STR_GROUPFOOTER) + OUString::number(_nPos);
         _xGroup->getFooter()->setName(sName);
     }
 }
 
 ::rtl::Reference< comphelper::OPropertyChangeMultiplexer> addStyleListener(const uno::Reference< report::XReportDefinition >& _xReportDefinition,::comphelper::OPropertyChangeListener* _pListener)
 {
-    ::rtl::Reference< comphelper::OPropertyChangeMultiplexer> pRet = nullptr;
+    ::rtl::Reference< comphelper::OPropertyChangeMultiplexer> pRet;
     if ( _xReportDefinition.is() )
     {
         uno::Reference<beans::XPropertySet> xPageStyle(getUsedStyle(_xReportDefinition),uno::UNO_QUERY);
@@ -228,7 +238,7 @@ namespace
         return lcl_getReportControlFont( _rxReportControlFormat, aAwtFont, _nWhich );
     }
 
-    const vcl::Font lcl_setFont(const uno::Reference<report::XReportControlFormat >& _rxReportControlFormat,
+    vcl::Font lcl_setFont(const uno::Reference<report::XReportControlFormat >& _rxReportControlFormat,
         SfxItemSet& _rItemSet,sal_uInt16 _nWhich,sal_uInt16 _nFont, sal_uInt16 _nFontHeight,sal_uInt16 _nLanguage,sal_uInt16 _nPosture, sal_uInt16 _nWeight)
     {
         // fill it
@@ -239,7 +249,7 @@ namespace
         aFontItem.PutValue( uno::makeAny( aControlFont ), 0 );
         _rItemSet.Put(aFontItem);
 
-        _rItemSet.Put(SvxFontHeightItem(OutputDevice::LogicToLogic(Size(0, (sal_Int32)aFont.GetFontHeight()), MapUnit::MapPoint, MapUnit::MapTwip).Height(),100,_nFontHeight));
+        _rItemSet.Put(SvxFontHeightItem(OutputDevice::LogicToLogic(Size(0, aFont.GetFontHeight()), MapMode(MapUnit::MapPoint), MapMode(MapUnit::MapTwip)).Height(), 100, _nFontHeight));
         lang::Locale aLocale;
         switch(_nWhich)
         {
@@ -267,21 +277,18 @@ namespace
         SvxUnoPropertyMapProvider aMap;
         const SfxItemPropertyMap& rPropertyMap = aMap.GetPropertySet(SVXMAP_CUSTOMSHAPE, SdrObject::GetGlobalDrawObjectItemPool())->getPropertyMap();
         PropertyEntryVector_t aPropVector = rPropertyMap.getPropertyEntries();
-        PropertyEntryVector_t::const_iterator aIt = aPropVector.begin();
-        while( aIt != aPropVector.end() )
+        for (const auto& rProp : aPropVector)
         {
-            if ( xInfo->hasPropertyByName(aIt->sName) )
+            if ( xInfo->hasPropertyByName(rProp.sName) )
             {
-                const SfxPoolItem* pItem = _rItemSet.GetItem(aIt->nWID);
+                const SfxPoolItem* pItem = _rItemSet.GetItem(rProp.nWID);
                 if ( pItem )
                 {
-                    ::std::unique_ptr<SfxPoolItem> pClone(pItem->Clone());
-                    pClone->PutValue(_xShape->getPropertyValue(aIt->sName), aIt->nMemberId);
-                    pClone->SetWhich(aIt->nWID);
-                    _rItemSet.Put(*pClone);
+                    ::std::unique_ptr<SfxPoolItem> pClone(pItem->CloneSetWhich(rProp.nWID));
+                    pClone->PutValue(_xShape->getPropertyValue(rProp.sName), rProp.nMemberId);
+                    _rItemSet.Put(std::move(pClone));
                 }
             }
-            ++aIt;
         }
     }
 
@@ -291,21 +298,20 @@ namespace
         SvxUnoPropertyMapProvider aMap;
         const SfxItemPropertyMap& rPropertyMap = aMap.GetPropertySet(SVXMAP_CUSTOMSHAPE, SdrObject::GetGlobalDrawObjectItemPool())->getPropertyMap();
         PropertyEntryVector_t aPropVector = rPropertyMap.getPropertyEntries();
-        PropertyEntryVector_t::const_iterator aIt = aPropVector.begin();
-        while( aIt != aPropVector.end() )
+        for (const auto& rProp : aPropVector)
         {
-            if ( SfxItemState::SET == _rItemSet.GetItemState(aIt->nWID) && xInfo->hasPropertyByName(aIt->sName) )
+            if ( SfxItemState::SET == _rItemSet.GetItemState(rProp.nWID) && xInfo->hasPropertyByName(rProp.sName) )
             {
-                if ( ( aIt->nFlags & beans::PropertyAttribute::READONLY ) != beans::PropertyAttribute::READONLY )
+                if ( ( rProp.nFlags & beans::PropertyAttribute::READONLY ) != beans::PropertyAttribute::READONLY )
                 {
-                    const SfxPoolItem* pItem = _rItemSet.GetItem(aIt->nWID);
+                    const SfxPoolItem* pItem = _rItemSet.GetItem(rProp.nWID);
                     if ( pItem )
                     {
                         uno::Any aValue;
-                        pItem->QueryValue(aValue,aIt->nMemberId);
+                        pItem->QueryValue(aValue,rProp.nMemberId);
                         try
                         {
-                            _xShape->setPropertyValue(aIt->sName, aValue);
+                            _xShape->setPropertyValue(rProp.sName, aValue);
                         }
                         catch(uno::Exception&)
                         { // shapes have a bug so we ignore this one.
@@ -313,7 +319,6 @@ namespace
                     }
                 }
             }
-            ++aIt;
         }
     }
 
@@ -340,7 +345,7 @@ namespace
         _rItemSet.Put(SvxCharHiddenItem(_rxReportControlFormat->getCharHidden(),ITEMID_CHARHIDDEN));
         _rItemSet.Put(SvxTwoLinesItem(_rxReportControlFormat->getCharCombineIsOn(),_rxReportControlFormat->getCharCombinePrefix().toChar(),_rxReportControlFormat->getCharCombineSuffix().toChar(),ITEMID_TWOLINES));
         SvxUnderlineItem aUnderLineItem(aFont.GetUnderline(),ITEMID_UNDERLINE);
-        aUnderLineItem.SetColor(_rxReportControlFormat->getCharUnderlineColor());
+        aUnderLineItem.SetColor(Color(_rxReportControlFormat->getCharUnderlineColor()));
         _rItemSet.Put(aUnderLineItem);
         _rItemSet.Put(SvxKerningItem(_rxReportControlFormat->getCharKerning(),ITEMID_KERNING));
         _rItemSet.Put(SvxEmphasisMarkItem(static_cast<FontEmphasisMark>(_rxReportControlFormat->getCharEmphasis()),ITEMID_EMPHASISMARK));
@@ -390,7 +395,7 @@ namespace
         if ( SfxItemState::SET == _rItemSet.GetItemState( _nFontHeight,true,&pItem) && dynamic_cast< const SvxFontHeightItem *>( pItem ) !=  nullptr)
         {
             const SvxFontHeightItem* pFontItem = static_cast<const SvxFontHeightItem*>(pItem);
-            aNewFont.SetFontHeight(OutputDevice::LogicToLogic(Size(0, pFontItem->GetHeight()), MapUnit::MapTwip, MapUnit::MapPoint).Height());
+            aNewFont.SetFontHeight(OutputDevice::LogicToLogic(Size(0, pFontItem->GetHeight()), MapMode(MapUnit::MapTwip), MapMode(MapUnit::MapPoint)).Height());
         }
         if ( SfxItemState::SET == _rItemSet.GetItemState( _nPosture,true,&pItem) && dynamic_cast< const SvxPostureItem *>( pItem ) !=  nullptr)
         {
@@ -431,7 +436,7 @@ namespace
         if ( SfxItemState::SET == _rItemSet.GetItemState( ITEMID_COLOR,true,&pItem) && dynamic_cast< const SvxColorItem *>( pItem ) !=  nullptr)
         {
             const SvxColorItem* pFontItem = static_cast<const SvxColorItem*>(pItem);
-            aNewFont.SetColor(pFontItem->GetValue().GetColor());
+            aNewFont.SetColor(pFontItem->GetValue());
         }
 
         _out_rAwtFont = VCLUnoHelper::CreateFontDescriptor( aNewFont );
@@ -465,7 +470,7 @@ namespace
         if ( SfxItemState::SET == _rItemSet.GetItemState( ITEMID_UNDERLINE,true,&pItem) && dynamic_cast< const SvxUnderlineItem *>( pItem ) !=  nullptr)
         {
             const SvxUnderlineItem* pFontItem = static_cast<const SvxUnderlineItem*>(pItem);
-            lcl_pushBack( _out_rProperties, PROPERTY_CHARUNDERLINECOLOR, uno::makeAny( pFontItem->GetColor().GetColor() ) );
+            lcl_pushBack( _out_rProperties, PROPERTY_CHARUNDERLINECOLOR, uno::makeAny( pFontItem->GetColor() ) );
         }
         if ( SfxItemState::SET == _rItemSet.GetItemState( ITEMID_HORJUSTIFY,true,&pItem) && dynamic_cast< const SvxHorJustifyItem *>( pItem ) !=  nullptr)
         {
@@ -499,7 +504,7 @@ namespace
         if ( SfxItemState::SET == _rItemSet.GetItemState( ITEMID_BRUSH,true,&pItem) && dynamic_cast< const SvxBrushItem *>( pItem ) !=  nullptr)
         {
             const SvxBrushItem* pFontItem = static_cast<const SvxBrushItem*>(pItem);
-            lcl_pushBack( _out_rProperties, PROPERTY_CONTROLBACKGROUND, uno::makeAny( pFontItem->GetColor().GetColor() ) );
+            lcl_pushBack( _out_rProperties, PROPERTY_CONTROLBACKGROUND, uno::makeAny( pFontItem->GetColor() ) );
         }
         if ( SfxItemState::SET == _rItemSet.GetItemState( ITEMID_BLINK,true,&pItem) && dynamic_cast< const SvxBlinkItem *>( pItem ) !=  nullptr)
         {
@@ -521,7 +526,7 @@ namespace
         if ( SfxItemState::SET == _rItemSet.GetItemState( ITEMID_COLOR,true,&pItem) && dynamic_cast< const SvxColorItem *>( pItem ) !=  nullptr)
         {
             const SvxColorItem* pFontItem = static_cast<const SvxColorItem*>(pItem);
-            lcl_pushBack( _out_rProperties, PROPERTY_CHARCOLOR, uno::makeAny( pFontItem->GetValue().GetColor() ) );
+            lcl_pushBack( _out_rProperties, PROPERTY_CHARCOLOR, uno::makeAny( pFontItem->GetValue() ) );
         }
         if ( SfxItemState::SET == _rItemSet.GetItemState( ITEMID_KERNING,true,&pItem) && dynamic_cast< const SvxKerningItem *>( pItem ) !=  nullptr)
         {
@@ -560,7 +565,7 @@ namespace
 
 
     template< class ATTRIBUTE_TYPE >
-    void lcl_applyFontAttribute( const ::comphelper::NamedValueCollection& _rAttrValues, const sal_Char* _pAttributeName,
+    void lcl_applyFontAttribute( const ::comphelper::NamedValueCollection& _rAttrValues, const char* _pAttributeName,
         const uno::Reference<report::XReportControlFormat >& _rxReportControlFormat,
         void (SAL_CALL report::XReportControlFormat::*pSetter)( ATTRIBUTE_TYPE ) )
     {
@@ -570,7 +575,7 @@ namespace
     }
 
 
-    void lcl_applyFontAttribute( const ::comphelper::NamedValueCollection& _rAttrValues, const sal_Char* _pAttributeName,
+    void lcl_applyFontAttribute( const ::comphelper::NamedValueCollection& _rAttrValues, const char* _pAttributeName,
         const uno::Reference<report::XReportControlFormat >& _rxReportControlFormat,
         void (SAL_CALL report::XReportControlFormat::*pSetter)( const OUString& ) )
     {
@@ -580,7 +585,7 @@ namespace
     }
 
 
-    void lcl_applyFontAttribute( const ::comphelper::NamedValueCollection& _rAttrValues, const sal_Char* _pAttributeName,
+    void lcl_applyFontAttribute( const ::comphelper::NamedValueCollection& _rAttrValues, const char* _pAttributeName,
         const uno::Reference<report::XReportControlFormat >& _rxReportControlFormat,
         void (SAL_CALL report::XReportControlFormat::*pSetter)( const lang::Locale& ) )
     {
@@ -604,6 +609,27 @@ bool openCharDialog( const uno::Reference<report::XReportControlFormat >& _rxRep
     // UNO->ItemSet
     static SfxItemInfo aItemInfos[] =
     {
+        { XATTR_FILLSTYLE,      true },
+        { XATTR_FILLCOLOR,      true },
+        { XATTR_FILLGRADIENT,       true },
+        { XATTR_FILLHATCH,      true },
+        { XATTR_FILLBITMAP,     true },
+        { XATTR_FILLTRANSPARENCE,       true },
+        { XATTR_GRADIENTSTEPCOUNT,      true },
+        { XATTR_FILLBMP_TILE,       true },
+        { XATTR_FILLBMP_POS,        true },
+        { XATTR_FILLBMP_SIZEX,      true },
+        { XATTR_FILLBMP_SIZEY,      true },
+        { XATTR_FILLFLOATTRANSPARENCE,  true },
+        { XATTR_SECONDARYFILLCOLOR,     true },
+        { XATTR_FILLBMP_SIZELOG,        true },
+        { XATTR_FILLBMP_TILEOFFSETX,    true },
+        { XATTR_FILLBMP_TILEOFFSETY,    true },
+        { XATTR_FILLBMP_STRETCH,        true },
+        { XATTR_FILLBMP_POSOFFSETX,     true },
+        { XATTR_FILLBMP_POSOFFSETY,     true },
+        { XATTR_FILLBACKGROUND,     true },
+
         { SID_ATTR_CHAR_FONT, true },
         { SID_ATTR_CHAR_FONTHEIGHT, true },
         { SID_ATTR_CHAR_LANGUAGE, true },
@@ -645,11 +671,36 @@ bool openCharDialog( const uno::Reference<report::XReportControlFormat >& _rxRep
         { SID_ATTR_CHAR_CTL_POSTURE, true },
         { SID_ATTR_CHAR_CTL_WEIGHT, true }
     };
-    VclPtr<vcl::Window> pParent = VCLUnoHelper::GetWindow( _rxParentWindow );
-    ::std::unique_ptr<FontList> pFontList(new FontList( pParent ));
+    ::std::unique_ptr<FontList> pFontList(new FontList(Application::GetDefaultDevice()));
     XColorListRef pColorList( XColorList::CreateStdColorList() );
+    const Graphic aNullGraphic;
+    const ::Color aNullLineCol(COL_DEFAULT_SHAPE_STROKE); // #i121448# Use defined default color
+    const ::Color aNullFillCol(COL_DEFAULT_SHAPE_FILLING); // #i121448# Use defined default color
+    const XGradient aNullGrad(COL_BLACK, COL_WHITE);
+    const XHatch aNullHatch(aNullLineCol);
     std::vector<SfxPoolItem*> pDefaults
     {
+        new XFillStyleItem,
+        new XFillColorItem("", aNullFillCol),
+        new XFillGradientItem(aNullGrad),
+        new XFillHatchItem(aNullHatch),
+        new XFillBitmapItem(aNullGraphic),
+        new XFillTransparenceItem,
+        new XGradientStepCountItem,
+        new XFillBmpTileItem,
+        new XFillBmpPosItem,
+        new XFillBmpSizeXItem,
+        new XFillBmpSizeYItem,
+        new XFillFloatTransparenceItem(aNullGrad, false),
+        new XSecondaryFillColorItem("", aNullFillCol),
+        new XFillBmpSizeLogItem,
+        new XFillBmpTileOffsetXItem,
+        new XFillBmpTileOffsetYItem,
+        new XFillBmpStretchItem,
+        new XFillBmpPosOffsetXItem,
+        new XFillBmpPosOffsetYItem,
+        new XFillBackgroundItem,
+
         new SvxFontItem(ITEMID_FONT),
         new SvxFontHeightItem(240,100,ITEMID_FONTHEIGHT),
         new SvxLanguageItem(LANGUAGE_GERMAN,ITEMID_LANGUAGE),
@@ -698,11 +749,11 @@ bool openCharDialog( const uno::Reference<report::XReportControlFormat >& _rxRep
 
     static const sal_uInt16 pRanges[] =
     {
-        ITEMID_FONT,ITEMID_WEIGHT_COMPLEX,
+        XATTR_FILL_FIRST, ITEMID_WEIGHT_COMPLEX,
         0
     };
 
-    SfxItemPool* pPool( new SfxItemPool("ReportCharProperties", ITEMID_FONT,ITEMID_WEIGHT_COMPLEX, aItemInfos, &pDefaults) );
+    SfxItemPool* pPool( new SfxItemPool("ReportCharProperties", XATTR_FILL_FIRST,ITEMID_WEIGHT_COMPLEX, aItemInfos, &pDefaults) );
     // not needed for font height pPool->SetDefaultMetric( MapUnit::Map100thMM );  // ripped, don't understand why
     pPool->FreezeIdRanges();                        // the same
     bool bSuccess = false;
@@ -712,22 +763,22 @@ bool openCharDialog( const uno::Reference<report::XReportControlFormat >& _rxRep
         lcl_CharPropertiesToItems( _rxReportControlFormat, *pDescriptor );
 
         {   // want the dialog to be destroyed before our set
-            ScopedVclPtrInstance< ORptPageDialog > aDlg(pParent, pDescriptor.get(), "CharDialog");
+            ORptPageDialog aDlg(Application::GetFrameWeld(_rxParentWindow), pDescriptor.get(), "CharDialog");
             uno::Reference< report::XShape > xShape( _rxReportControlFormat, uno::UNO_QUERY );
             if ( xShape.is() )
-                aDlg->RemoveTabPage("background");
-            bSuccess = ( RET_OK == aDlg->Execute() );
+                aDlg.RemoveTabPage("background");
+            bSuccess = aDlg.run() == RET_OK;
             if ( bSuccess )
             {
                 lcl_itemsToCharProperties( lcl_getReportControlFont( _rxReportControlFormat,WESTERN ),
                     lcl_getReportControlFont( _rxReportControlFormat,ASIAN ),
-                    lcl_getReportControlFont( _rxReportControlFormat,COMPLEX ), *aDlg->GetOutputItemSet(), _out_rNewValues );
+                    lcl_getReportControlFont( _rxReportControlFormat,COMPLEX ), *aDlg.GetOutputItemSet(), _out_rNewValues );
             }
         }
     }
     catch(uno::Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 
     SfxItemPool::Free(pPool);
@@ -745,7 +796,7 @@ bool openAreaDialog( const uno::Reference<report::XShape >& _xShape,const uno::R
 
     std::shared_ptr<rptui::OReportModel> pModel  = ::reportdesign::OReportDefinition::getSdrModel(_xShape->getSection()->getReportDefinition());
 
-    VclPtr<vcl::Window> pParent = VCLUnoHelper::GetWindow( _rxParentWindow );
+    weld::Window* pParent = Application::GetFrameWeld(_rxParentWindow);
 
     bool bSuccess = false;
     try
@@ -756,7 +807,7 @@ bool openAreaDialog( const uno::Reference<report::XShape >& _xShape,const uno::R
 
         {   // want the dialog to be destroyed before our set
             SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-            ScopedVclPtr<AbstractSvxAreaTabDialog> pDialog(pFact->CreateSvxAreaTabDialog( pParent,pDescriptor.get(),pModel.get(), true ));
+            ScopedVclPtr<AbstractSvxAreaTabDialog> pDialog(pFact->CreateSvxAreaTabDialog(pParent, pDescriptor.get(), pModel.get(), true));
             if ( RET_OK == pDialog->Execute() )
             {
                 bSuccess = true;
@@ -766,7 +817,7 @@ bool openAreaDialog( const uno::Reference<report::XShape >& _xShape,const uno::R
     }
     catch(uno::Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 
     return bSuccess;
@@ -827,11 +878,11 @@ void applyCharacterSettings( const uno::Reference< report::XReportControlFormat 
     }
     catch( const uno::Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 }
 
-void notifySystemWindow(vcl::Window* _pWindow, vcl::Window* _pToRegister, const ::comphelper::mem_fun1_t<TaskPaneList,vcl::Window*>& rMemFunc)
+void notifySystemWindow(vcl::Window const * _pWindow, vcl::Window* _pToRegister, const ::comphelper::mem_fun1_t<TaskPaneList,vcl::Window*>& rMemFunc)
 {
     OSL_ENSURE(_pWindow,"Window can not be null!");
     SystemWindow* pSystemWindow = _pWindow ? _pWindow->GetSystemWindow() : nullptr;
@@ -841,14 +892,16 @@ void notifySystemWindow(vcl::Window* _pWindow, vcl::Window* _pToRegister, const 
     }
 }
 
-SdrObject* isOver(const tools::Rectangle& _rRect, SdrPage& _rPage, SdrView& _rView, bool _bAllObjects, SdrObject* _pIgnore, sal_Int16 _nIgnoreType)
+SdrObject* isOver(const tools::Rectangle& _rRect, SdrPage const & _rPage, SdrView const & _rView, bool _bAllObjects, SdrObject const * _pIgnore, sal_Int16 _nIgnoreType)
 {
     SdrObject* pOverlappedObj = nullptr;
-    SdrObjListIter aIter(_rPage,SdrIterMode::DeepNoGroups);
-    SdrObject* pObjIter = nullptr;
+    SdrObjListIter aIter(&_rPage,SdrIterMode::DeepNoGroups);
 
-    while( !pOverlappedObj && (pObjIter = aIter.Next()) != nullptr )
+    while( !pOverlappedObj )
     {
+        SdrObject* pObjIter = aIter.Next();
+        if( !pObjIter )
+            break;
         if ( _pIgnore != pObjIter
             && (_bAllObjects || !_rView.IsObjMarked(pObjIter))
             && (dynamic_cast<OUnoObject*>(pObjIter) != nullptr || dynamic_cast<OOle2Obj*>(pObjIter) != nullptr))
@@ -869,11 +922,11 @@ SdrObject* isOver(const tools::Rectangle& _rRect, SdrPage& _rPage, SdrView& _rVi
     return pOverlappedObj;
 }
 
-bool checkArrayForOccurrence(SdrObject* _pObjToCheck, SdrUnoObj* _pIgnore[], int _nListLength)
+static bool checkArrayForOccurrence(SdrObject const * _pObjToCheck, std::unique_ptr<SdrUnoObj, SdrObjectFreeOp> _pIgnore[], int _nListLength)
 {
     for(int i=0;i<_nListLength;i++)
     {
-        SdrObject *pIgnore = _pIgnore[i];
+        SdrObject *pIgnore = _pIgnore[i].get();
         if (pIgnore == _pObjToCheck)
         {
             return true;
@@ -882,14 +935,16 @@ bool checkArrayForOccurrence(SdrObject* _pObjToCheck, SdrUnoObj* _pIgnore[], int
     return false;
 }
 
-SdrObject* isOver(const tools::Rectangle& _rRect,SdrPage& _rPage,SdrView& _rView,bool _bAllObjects, SdrUnoObj * _pIgnoreList[], int _nIgnoreListLength)
+SdrObject* isOver(const tools::Rectangle& _rRect,SdrPage const & _rPage,SdrView const & _rView,bool _bAllObjects, std::unique_ptr<SdrUnoObj, SdrObjectFreeOp> _pIgnoreList[], int _nIgnoreListLength)
 {
     SdrObject* pOverlappedObj = nullptr;
-    SdrObjListIter aIter(_rPage,SdrIterMode::DeepNoGroups);
-    SdrObject* pObjIter = nullptr;
+    SdrObjListIter aIter(&_rPage,SdrIterMode::DeepNoGroups);
 
-    while( !pOverlappedObj && (pObjIter = aIter.Next()) != nullptr )
+    while( !pOverlappedObj )
     {
+        SdrObject* pObjIter = aIter.Next();
+        if( !pObjIter )
+            break;
         if (checkArrayForOccurrence(pObjIter, _pIgnoreList, _nIgnoreListLength))
         {
             continue;
@@ -907,10 +962,10 @@ SdrObject* isOver(const tools::Rectangle& _rRect,SdrPage& _rPage,SdrView& _rView
 }
 
 
-SdrObject* isOver(SdrObject* _pObj,SdrPage& _rPage,SdrView& _rView)
+SdrObject* isOver(SdrObject const * _pObj,SdrPage const & _rPage,SdrView const & _rView)
 {
     SdrObject* pOverlappedObj = nullptr;
-    if (dynamic_cast<OUnoObject*>(_pObj) != nullptr || dynamic_cast<OOle2Obj*>(_pObj) != nullptr) // this doesn't need to be done for shapes
+    if (dynamic_cast<OUnoObject const *>(_pObj) != nullptr || dynamic_cast<OOle2Obj const *>(_pObj) != nullptr) // this doesn't need to be done for shapes
     {
         tools::Rectangle aRect = _pObj->GetCurrentBoundRect();
         pOverlappedObj = isOver(aRect,_rPage,_rView,false/*_bUnMarkedObjects*/,_pObj);
@@ -944,7 +999,7 @@ uno::Sequence< OUString > getParameterNames( const uno::Reference< sdbc::XRowSet
     }
     catch( const uno::Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 
     return aNames;
@@ -967,7 +1022,7 @@ tools::Rectangle getRectangleFromControl(SdrObject* _pControl)
 }
 
 // check overlapping
-void correctOverlapping(SdrObject* _pControl,OReportSection& _aReportSection,bool _bInsert)
+void correctOverlapping(SdrObject* _pControl,OReportSection const & _aReportSection,bool _bInsert)
 {
     OSectionView& rSectionView = _aReportSection.getSectionView();
     uno::Reference< report::XReportComponent> xComponent(_pControl->getUnoShape(),uno::UNO_QUERY);
@@ -985,7 +1040,7 @@ void correctOverlapping(SdrObject* _pControl,OReportSection& _aReportSection,boo
             xComponent->setPositionY(aRect.Top());
         }
     }
-    if ( !bOverlapping && _bInsert ) // now insert objects
+    if (_bInsert) // now insert objects
         rSectionView.InsertObjectAtView(_pControl,*rSectionView.GetSdrPageView(), SdrInsertFlags::ADDMARK);
 }
 
@@ -1015,29 +1070,28 @@ bool openDialogFormula_nothrow( OUString& _in_out_rFormula
     {
         xFactory = _xContext->getServiceManager();
         xServiceFactory.set(xFactory,uno::UNO_QUERY);
-        VclPtr<vcl::Window> pParent = VCLUnoHelper::GetWindow( _xInspectorWindow );
 
         uno::Reference< report::meta::XFunctionManager> xMgr(xFactory->createInstanceWithContext("org.libreoffice.report.pentaho.SOFunctionManager",_xContext),uno::UNO_QUERY);
         if ( xMgr.is() )
         {
-            std::shared_ptr< formula::IFunctionManager > pFormulaManager(new FunctionManager(xMgr) );
+            auto pFormulaManager = std::make_shared<FunctionManager>(xMgr);
             ReportFormula aFormula( _in_out_rFormula );
 
             LanguageTag aLangTag(LANGUAGE_SYSTEM);
             CharClass aCC(_xContext, aLangTag);
-            svl::SharedStringPool aStringPool(&aCC);
+            svl::SharedStringPool aStringPool(aCC);
 
-            ScopedVclPtrInstance<FormulaDialog> aDlg(
-                pParent, xServiceFactory, pFormulaManager,
+            FormulaDialog aDlg(
+                Application::GetFrameWeld(_xInspectorWindow), xServiceFactory, pFormulaManager,
                 aFormula.getUndecoratedContent(), _xRowSet, aStringPool);
 
-            bSuccess = aDlg->Execute() == RET_OK;
+            bSuccess = aDlg.run() == RET_OK;
             if ( bSuccess )
             {
-                OUString sFormula = aDlg->getCurrentFormula();
+                OUString sFormula = aDlg.getCurrentFormula();
                 if ( sFormula[0] == '=' )
                     _in_out_rFormula = "rpt:" + sFormula.copy(1);
-                 else
+                else
                     _in_out_rFormula = "rpt:" + sFormula;
             }
         }
@@ -1047,7 +1101,7 @@ bool openDialogFormula_nothrow( OUString& _in_out_rFormula
     catch (const sdbc::SQLException& e) { aErrorInfo = e; }
     catch( const uno::Exception& )
     {
-        OSL_FAIL( "GeometryHandler::impl_dialogFilter_nothrow: caught an exception!" );
+        TOOLS_WARN_EXCEPTION( "reportdesign", "GeometryHandler::impl_dialogFilter_nothrow" );
     }
 
     if ( aErrorInfo.isValid() )

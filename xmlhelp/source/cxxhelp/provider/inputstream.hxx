@@ -23,10 +23,8 @@
 #include <rtl/ustring.hxx>
 #include <osl/file.hxx>
 #include <cppuhelper/weak.hxx>
-#include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/ucb/XContentProvider.hpp>
 
 
 namespace chelp {
@@ -46,7 +44,7 @@ namespace chelp {
          *  Returns an error code as given by filerror.hxx
          */
 
-        bool SAL_CALL CtorSuccess() { return m_bIsOpen;}
+        bool CtorSuccess() { return m_bIsOpen;}
 
         virtual css::uno::Any SAL_CALL
         queryInterface(

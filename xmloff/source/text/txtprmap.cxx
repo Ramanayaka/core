@@ -18,25 +18,27 @@
  */
 
 #include <xmloff/txtprmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/maptype.hxx>
 #include <xmloff/xmltypes.hxx>
 #include "txtprhdl.hxx"
 #include <xmlsdtypes.hxx>
+#include <sal/log.hxx>
+#include <rtl/ref.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::xmloff::token;
 
 #define M_E_( a, p, l, t, c ) \
-    { a, sizeof(a)-1, XML_NAMESPACE_##p, XML_##l, t, c, SvtSaveOptions::ODFVER_010, false }
+    { a, sizeof(a)-1, XML_NAMESPACE_##p, XML_##l, t, c, SvtSaveOptions::ODFSVER_010, false }
 
 #define M_EV_( a, p, l, t, c, v ) \
     { a, sizeof(a)-1, XML_NAMESPACE_##p, XML_##l, t, c, v, false }
 
 #define M_ED_( a, p, l, t, c ) \
-    { a, sizeof(a)-1, XML_NAMESPACE_##p, XML_##l, (t) | MID_FLAG_DEFAULT_ITEM_EXPORT, c, SvtSaveOptions::ODFVER_010, false }
+    { a, sizeof(a)-1, XML_NAMESPACE_##p, XML_##l, (t) | MID_FLAG_DEFAULT_ITEM_EXPORT, c, SvtSaveOptions::ODFSVER_010, false }
 
 // text properties
 #define MT_E( a, p, l, t, c ) \
@@ -65,20 +67,24 @@ using namespace ::xmloff::token;
 // ruby properties
 #define MR_E( a, p, l, t, c ) \
     M_E_( a, p, l, (t|XML_TYPE_PROP_RUBY), c )
+#define MR_EV( a, p, l, t, c, v ) \
+    M_EV_( a, p, l, (t|XML_TYPE_PROP_RUBY), c, v )
 
 // cell properties
 #define MC_E( a, p, l, t, c ) \
     M_E_( a, p, l, (t|XML_TYPE_PROP_TABLE_CELL), c )
 
+#define MAP_ODF13(name,prefix,token,type,context)  { name, sizeof(name)-1, prefix, token, type, context, SvtSaveOptions::ODFSVER_013, false }
+
 // extensions import/export
-#define MAP_EXT(name,prefix,token,type,context)  { name, sizeof(name)-1, prefix, token, type, context, SvtSaveOptions::ODFVER_012_EXT_COMPAT, false }
+#define MAP_EXT(name,prefix,token,type,context)  { name, sizeof(name)-1, prefix, token, type, context, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED, false }
 // extensions import only
-#define MAP_EXT_I(name,prefix,token,type,context)  { name, sizeof(name)-1, prefix, token, type, context, SvtSaveOptions::ODFVER_012_EXT_COMPAT, true }
+#define MAP_EXT_I(name,prefix,token,type,context)  { name, sizeof(name)-1, prefix, token, type, context, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED, true }
 
 #define M_END() \
-    { nullptr, 0, 0, XML_TOKEN_INVALID, 0, 0, SvtSaveOptions::ODFVER_010, false }
+    { nullptr, 0, 0, XML_TOKEN_INVALID, 0, 0, SvtSaveOptions::ODFSVER_010, false }
 
-#define MAP_(name,prefix,token,type,context)  { name, sizeof(name)-1, prefix, token, type, context, SvtSaveOptions::ODFVER_010, false }
+#define MAP_(name,prefix,token,type,context)  { name, sizeof(name)-1, prefix, token, type, context, SvtSaveOptions::ODFSVER_010, false }
 #define GMAP(name,prefix,token,type,context) MAP_(name,prefix,token,static_cast<sal_Int32>(type|XML_TYPE_PROP_GRAPHIC),context)
 
 XMLPropertyMapEntry const aXMLParaPropMap[] =
@@ -123,14 +129,16 @@ XMLPropertyMapEntry const aXMLParaPropMap[] =
     MP_E( "ParaTopMarginRelative",  FO, MARGIN_TOP,         XML_TYPE_PERCENT16, CTF_PARATOPMARGIN_REL ),
     MP_E( "ParaBottomMargin",       FO, MARGIN_BOTTOM,      XML_TYPE_MEASURE|MID_FLAG_MULTI_PROPERTY, CTF_PARABOTTOMMARGIN ),
     MP_E( "ParaBottomMarginRelative",FO,    MARGIN_BOTTOM,      XML_TYPE_PERCENT16, CTF_PARABOTTOMMARGIN_REL ),
-    MAP_EXT_I( "ParaContextMargin", XML_NAMESPACE_STYLE, XML_CONTEXTUAL_SPACING, XML_TYPE_BOOL|XML_TYPE_PROP_PARAGRAPH, 0 ),    // proposed ODF 1.2+ and was written by LO<=4.2
-    MAP_EXT( "ParaContextMargin", XML_NAMESPACE_LO_EXT, XML_CONTEXTUAL_SPACING, XML_TYPE_BOOL|XML_TYPE_PROP_PARAGRAPH, 0 ),     // extension namespace
+    MAP_ODF13( "ParaContextMargin", XML_NAMESPACE_STYLE, XML_CONTEXTUAL_SPACING, XML_TYPE_BOOL|XML_TYPE_PROP_PARAGRAPH, 0 ),    // ODF 1.3 OFFICE-3767 and was written by LO<=4.2
+    MAP_ODF13( "ParaContextMargin", XML_NAMESPACE_LO_EXT, XML_CONTEXTUAL_SPACING, XML_TYPE_BOOL|XML_TYPE_PROP_PARAGRAPH, 0 ),     // extension namespace
     // RES_CHRATR_CASEMAP
     MT_E( "CharCaseMap",        FO,     FONT_VARIANT,       XML_TYPE_TEXT_CASEMAP_VAR,  0 ),
     MT_E( "CharCaseMap",        FO,     TEXT_TRANSFORM,     XML_TYPE_TEXT_CASEMAP,  0 ),
     // RES_CHRATR_COLOR
     MT_ED( "CharColor",     FO,     COLOR,              XML_TYPE_COLORAUTO|MID_FLAG_MERGE_PROPERTY, 0 ),
     MT_ED( "CharColor",     STYLE,  USE_WINDOW_FONT_COLOR,  XML_TYPE_ISAUTOCOLOR|MID_FLAG_MERGE_PROPERTY,   0 ),
+    MAP_EXT_I("CharTransparence", XML_NAMESPACE_DRAW, XML_OPACITY, XML_TYPE_NEG_PERCENT16 | XML_TYPE_PROP_TEXT, 0),
+    MAP_EXT("CharTransparence", XML_NAMESPACE_LO_EXT, XML_OPACITY, XML_TYPE_NEG_PERCENT16 | XML_TYPE_PROP_TEXT, 0),
     // RES_CHRATR_CONTOUR
     MT_E( "CharContoured",  STYLE,  TEXT_OUTLINE,       XML_TYPE_BOOL,  0 ),
     // RES_CHRATR_CROSSEDOUT
@@ -161,8 +169,7 @@ XMLPropertyMapEntry const aXMLParaPropMap[] =
     MT_ED( "CharLocale",        FO,     COUNTRY,            XML_TYPE_CHAR_COUNTRY|MID_FLAG_MERGE_PROPERTY, 0 ),
     // RES_CHRATR_POSTURE
     MT_E( "CharPosture",        FO,     FONT_STYLE,         XML_TYPE_TEXT_POSTURE, 0 ),
-    // RES_CHRATR_PROPORTIONALFONTSIZE
-    // TODO: not used?
+    // RES_CHRATR_UNUSED1
     // RES_CHRATR_SHADOWED
     MT_E( "CharShadowed",   FO,     TEXT_SHADOW,        XML_TYPE_TEXT_SHADOWED, 0 ),
     // RES_CHRATR_UNDERLINE
@@ -174,9 +181,9 @@ XMLPropertyMapEntry const aXMLParaPropMap[] =
     // RES_CHRATR_WEIGHT
     MT_E( "CharWeight",     FO,     FONT_WEIGHT,        XML_TYPE_TEXT_WEIGHT, 0 ),
     // RES_CHRATR_RSID
-    { "Rsid", sizeof("Rsid")-1, XML_NAMESPACE_OFFICE_EXT, XML_RSID, XML_TYPE_HEX|XML_TYPE_PROP_TEXT, 0, SvtSaveOptions::ODFVER_012_EXT_COMPAT, false },
+    { "Rsid", sizeof("Rsid")-1, XML_NAMESPACE_OFFICE_EXT, XML_RSID, XML_TYPE_HEX|XML_TYPE_PROP_TEXT, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED, false },
     // RES_PARATR_RSID
-    { "ParRsid", sizeof("ParRsid")-1, XML_NAMESPACE_OFFICE_EXT, XML_PARRSID, XML_TYPE_HEX|XML_TYPE_PROP_TEXT, 0, SvtSaveOptions::ODFVER_012_EXT_COMPAT, false },
+    { "ParRsid", sizeof("ParRsid")-1, XML_NAMESPACE_OFFICE_EXT, XML_PARRSID, XML_TYPE_HEX|XML_TYPE_PROP_TEXT, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED, false },
     // RES_CHRATR_WORDLINEMODE
     MT_E( "CharWordMode",   STYLE,  TEXT_UNDERLINE_MODE,        XML_TYPE_TEXT_LINE_MODE|MID_FLAG_MERGE_PROPERTY, 0 ),
     MT_E( "CharWordMode",   STYLE,  TEXT_OVERLINE_MODE,     XML_TYPE_TEXT_LINE_MODE|MID_FLAG_MERGE_PROPERTY, 0 ),
@@ -187,8 +194,7 @@ XMLPropertyMapEntry const aXMLParaPropMap[] =
     MT_E( "CharFlash",      STYLE,  TEXT_BLINKING,      XML_TYPE_BOOL, 0 ),
     // RES_CHRATR_NOHYPHEN
     // TODO: not used?
-    // RES_CHRATR_NOLINEBREAK
-    // TODO: not used?
+    // RES_CHRATR_UNUSED2
     // RES_CHRATR_BACKGROUND
     MT_E( "CharBackColor",  FO, BACKGROUND_COLOR, XML_TYPE_COLORTRANSPARENT|MID_FLAG_MULTI_PROPERTY, CTF_CHAR_BACKGROUND ),
     MT_E( "CharBackTransparent",    FO, BACKGROUND_COLOR, XML_TYPE_ISTRANSPARENT|MID_FLAG_MERGE_ATTRIBUTE, CTF_CHAR_BACKGROUND_TRANSPARENCY),
@@ -334,6 +340,7 @@ XMLPropertyMapEntry const aXMLParaPropMap[] =
     MT_E( "ParaHyphenationMaxLeadingChars", FO, HYPHENATION_REMAIN_CHAR_COUNT, XML_TYPE_NUMBER16_NO_ZERO, 0 ),
     MT_E( "ParaHyphenationMaxTrailingChars",FO, HYPHENATION_PUSH_CHAR_COUNT, XML_TYPE_NUMBER16_NO_ZERO, 0 ),
     MP_E( "ParaHyphenationMaxHyphens",  FO, HYPHENATION_LADDER_COUNT, XML_TYPE_NUMBER16_NONE, 0 ),
+    MAP_EXT( "ParaHyphenationNoCaps",  XML_NAMESPACE_LO_EXT, XML_HYPHENATION_NO_CAPS, XML_TYPE_BOOL|XML_TYPE_PROP_TEXT, 0 ),
     // RES_PARATR_DROP
     MP_E( "DropCapWholeWord",   STYLE,  LENGTH,     MID_FLAG_SPECIAL_ITEM|XML_TYPE_BOOL, CTF_DROPCAPWHOLEWORD ),
     MP_E( "DropCapCharStyleName",   STYLE,  STYLE_NAME, MID_FLAG_SPECIAL_ITEM|XML_TYPE_STRING, CTF_DROPCAPCHARSTYLE ),
@@ -356,7 +363,7 @@ XMLPropertyMapEntry const aXMLParaPropMap[] =
     MP_E( "ParaIsAutoFirstLineIndent",  STYLE, AUTO_TEXT_INDENT,    XML_TYPE_BOOL, 0 ),
     // RES_PAGEDESC
     MP_E( "PageDescName",           STYLE,  MASTER_PAGE_NAME,           MID_FLAG_SPECIAL_ITEM|XML_TYPE_STYLENAME, CTF_PAGEDESCNAME ),
-    MP_E( "PageNumberOffset",       STYLE,  PAGE_NUMBER,            XML_TYPE_NUMBER16_AUTO, 0 ),
+    MP_E( "PageNumberOffset",       STYLE,  PAGE_NUMBER,            XML_TYPE_NUMBER16_AUTO|MID_FLAG_SPECIAL_ITEM_EXPORT, CTF_PAGENUMBEROFFSET ),
     // RES_BREAK : TODO: does this work?
     MP_E( "BreakType",      FO, BREAK_BEFORE,       XML_TYPE_TEXT_BREAKBEFORE|MID_FLAG_MULTI_PROPERTY, 0 ),
     MP_E( "BreakType",      FO, BREAK_AFTER,        XML_TYPE_TEXT_BREAKAFTER, 0 ),
@@ -386,7 +393,7 @@ XMLPropertyMapEntry const aXMLParaPropMap[] =
     MP_E( "ParaBackTransparent",    FO, BACKGROUND_COLOR,       XML_TYPE_ISTRANSPARENT|MID_FLAG_MERGE_ATTRIBUTE, 0 ),
     MP_E( "ParaBackGraphicLocation",    STYLE,  POSITION,   MID_FLAG_SPECIAL_ITEM|XML_TYPE_BUILDIN_CMP_ONLY, CTF_BACKGROUND_POS  ),
     MP_E( "ParaBackGraphicFilter",STYLE,    FILTER_NAME,    MID_FLAG_SPECIAL_ITEM|XML_TYPE_STRING, CTF_BACKGROUND_FILTER ),
-    MP_E( "ParaBackGraphicURL", STYLE,  BACKGROUND_IMAGE,   MID_FLAG_ELEMENT_ITEM|XML_TYPE_STRING, CTF_BACKGROUND_URL ),
+    MP_E( "ParaBackGraphic", STYLE,  BACKGROUND_IMAGE,   MID_FLAG_ELEMENT_ITEM|XML_TYPE_GRAPHIC, CTF_BACKGROUND_URL ),
 
     // RES_BOX
     MP_E( "LeftBorder",         STYLE,  BORDER_LINE_WIDTH,        XML_TYPE_BORDER_WIDTH, CTF_ALLBORDERWIDTH ),
@@ -473,6 +480,8 @@ XMLPropertyMapEntry const aXMLTextPropMap[] =
     // RES_CHRATR_COLOR
     MT_ED( "CharColor",     FO,     COLOR,              XML_TYPE_COLORAUTO|MID_FLAG_MERGE_PROPERTY, 0 ),
     MT_ED( "CharColor",     STYLE,  USE_WINDOW_FONT_COLOR,  XML_TYPE_ISAUTOCOLOR|MID_FLAG_MERGE_PROPERTY,   0 ),
+    MAP_EXT_I("CharTransparence", XML_NAMESPACE_DRAW, XML_OPACITY, XML_TYPE_NEG_PERCENT16 | XML_TYPE_PROP_TEXT, 0),
+    MAP_EXT("CharTransparence", XML_NAMESPACE_LO_EXT, XML_OPACITY, XML_TYPE_NEG_PERCENT16 | XML_TYPE_PROP_TEXT, 0),
     // RES_CHRATR_CONTOUR
     MT_E( "CharContoured",  STYLE,  TEXT_OUTLINE,       XML_TYPE_BOOL,  0 ),
     // RES_CHRATR_CROSSEDOUT
@@ -503,8 +512,7 @@ XMLPropertyMapEntry const aXMLTextPropMap[] =
     MT_ED( "CharLocale",        FO,     COUNTRY,            XML_TYPE_CHAR_COUNTRY|MID_FLAG_MERGE_PROPERTY, 0 ),
     // RES_CHRATR_POSTURE
     MT_E( "CharPosture",        FO,     FONT_STYLE,         XML_TYPE_TEXT_POSTURE, 0 ),
-    // RES_CHRATR_PROPORTIONALFONTSIZE
-    // TODO: not used?
+    // RES_CHRATR_UNUSED1
     // RES_CHRATR_SHADOWED
     MT_E( "CharShadowed",   FO,     TEXT_SHADOW,        XML_TYPE_TEXT_SHADOWED, 0 ),
     // VALIDATED UP TO THIS LINE
@@ -517,9 +525,9 @@ XMLPropertyMapEntry const aXMLTextPropMap[] =
     // RES_CHRATR_WEIGHT
     MT_E( "CharWeight",     FO,     FONT_WEIGHT,        XML_TYPE_TEXT_WEIGHT, 0 ),
     // RES_CHRATR_RSID
-    { "Rsid", sizeof("Rsid")-1, XML_NAMESPACE_OFFICE_EXT, XML_RSID, XML_TYPE_HEX|XML_TYPE_PROP_TEXT, 0, SvtSaveOptions::ODFVER_012_EXT_COMPAT, false },
+    { "Rsid", sizeof("Rsid")-1, XML_NAMESPACE_OFFICE_EXT, XML_RSID, XML_TYPE_HEX|XML_TYPE_PROP_TEXT, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED, false },
     // RES_PARATR_RSID
-    { "ParRsid", sizeof("ParRsid")-1, XML_NAMESPACE_OFFICE_EXT, XML_PARRSID, XML_TYPE_HEX|XML_TYPE_PROP_TEXT, 0, SvtSaveOptions::ODFVER_012_EXT_COMPAT, false },
+    { "ParRsid", sizeof("ParRsid")-1, XML_NAMESPACE_OFFICE_EXT, XML_PARRSID, XML_TYPE_HEX|XML_TYPE_PROP_TEXT, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED, false },
     // RES_CHRATR_WORDLINEMODE
     MT_E( "CharWordMode",   STYLE,  TEXT_UNDERLINE_MODE,        XML_TYPE_TEXT_LINE_MODE|MID_FLAG_MERGE_PROPERTY, 0 ),
     MT_E( "CharWordMode",   STYLE,  TEXT_OVERLINE_MODE,     XML_TYPE_TEXT_LINE_MODE|MID_FLAG_MERGE_PROPERTY, 0 ),
@@ -530,12 +538,11 @@ XMLPropertyMapEntry const aXMLTextPropMap[] =
     MT_E( "CharFlash",      STYLE,  TEXT_BLINKING,      XML_TYPE_BOOL, 0 ),
     // RES_CHRATR_NOHYPHEN
     // TODO: not used?
-    // RES_CHRATR_NOLINEBREAK
-    // TODO: not used?
+    // RES_CHRATR_UNUSED2
     // RES_CHRATR_BACKGROUND
     MT_E( "CharBackColor",  FO, BACKGROUND_COLOR, XML_TYPE_COLORTRANSPARENT|MID_FLAG_MULTI_PROPERTY, CTF_CHAR_BACKGROUND ),
     MT_E( "CharBackTransparent",    FO, BACKGROUND_COLOR, XML_TYPE_ISTRANSPARENT|MID_FLAG_MERGE_ATTRIBUTE, CTF_CHAR_BACKGROUND_TRANSPARENCY),
-    { "CharShadingValue", sizeof("CharShadingValue")-1, XML_NAMESPACE_LO_EXT, XML_CHAR_SHADING_VALUE, XML_TYPE_NUMBER|XML_TYPE_PROP_TEXT, 0, SvtSaveOptions::ODFVER_012_EXT_COMPAT, false },
+    { "CharShadingValue", sizeof("CharShadingValue")-1, XML_NAMESPACE_LO_EXT, XML_CHAR_SHADING_VALUE, XML_TYPE_NUMBER|XML_TYPE_PROP_TEXT, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED, false },
     MT_E( "CharBackColor",  FO, TEXT_BACKGROUND_COLOR, XML_TYPE_COLOR|MID_FLAG_SPECIAL_ITEM_EXPORT, CTF_OLDTEXTBACKGROUND ),
     // RES_CHRATR_CJK_FONT
     MT_ED( "CharFontNameAsian", STYLE,  FONT_NAME_ASIAN,            XML_TYPE_STRING|MID_FLAG_SPECIAL_ITEM_IMPORT, CTF_FONTNAME_CJK ),
@@ -735,6 +742,9 @@ XMLPropertyMapEntry const aXMLFramePropMap[] =
     MG_ED( "VertOrientRelation",        STYLE,  VERTICAL_REL,         XML_TYPE_TEXT_VERTICAL_REL, CTF_VERTICALREL ),
     MG_ED( "VertOrientRelation",        STYLE,  VERTICAL_REL,         XML_TYPE_TEXT_VERTICAL_REL_PAGE|MID_FLAG_SPECIAL_ITEM_IMPORT, CTF_VERTICALREL_PAGE ),
     MG_ED( "VertOrientRelation",        STYLE,  VERTICAL_REL,         XML_TYPE_TEXT_VERTICAL_REL_FRAME|MID_FLAG_SPECIAL_ITEM_IMPORT, CTF_VERTICALREL_FRAME ),
+    MAP_EXT_I( "VertOrientRelation",    XML_NAMESPACE_LO_EXT, XML_VERTICAL_REL, XML_TYPE_TEXT_VERTICAL_REL|XML_TYPE_PROP_GRAPHIC|MID_FLAG_DEFAULT_ITEM_EXPORT, CTF_VERTICALREL ),
+    MAP_EXT_I( "VertOrientRelation",    XML_NAMESPACE_LO_EXT, XML_VERTICAL_REL, XML_TYPE_TEXT_VERTICAL_REL_PAGE|MID_FLAG_SPECIAL_ITEM_IMPORT|XML_TYPE_PROP_GRAPHIC|MID_FLAG_DEFAULT_ITEM_EXPORT, CTF_VERTICALREL_PAGE ),
+    MAP_EXT_I( "VertOrientRelation",    XML_NAMESPACE_LO_EXT, XML_VERTICAL_REL, XML_TYPE_TEXT_VERTICAL_REL_FRAME|MID_FLAG_SPECIAL_ITEM_IMPORT|XML_TYPE_PROP_GRAPHIC|MID_FLAG_DEFAULT_ITEM_EXPORT, CTF_VERTICALREL_FRAME ),
     // RES_HORI_ORIENT
     MG_ED( "HoriOrient",                STYLE,  HORIZONTAL_POS,       XML_TYPE_TEXT_HORIZONTAL_POS|MID_FLAG_MULTI_PROPERTY, CTF_HORIZONTALPOS ),
     MG_ED( "PageToggle",        STYLE,  HORIZONTAL_POS,       XML_TYPE_TEXT_HORIZONTAL_MIRROR, CTF_HORIZONTALMIRROR ),
@@ -752,7 +762,7 @@ XMLPropertyMapEntry const aXMLFramePropMap[] =
     MG_E( "BackGraphicTransparency", STYLE, BACKGROUND_IMAGE_TRANSPARENCY, MID_FLAG_SPECIAL_ITEM|XML_TYPE_PERCENT8, CTF_BACKGROUND_TRANSPARENCY ),
     MG_E( "BackGraphicLocation",    STYLE,  POSITION,   MID_FLAG_SPECIAL_ITEM|XML_TYPE_BUILDIN_CMP_ONLY, CTF_BACKGROUND_POS  ),
     MG_E( "BackGraphicFilter",STYLE,    FILTER_NAME,    MID_FLAG_SPECIAL_ITEM|XML_TYPE_STRING, CTF_BACKGROUND_FILTER ),
-    MG_E( "BackGraphicURL", STYLE,  BACKGROUND_IMAGE,   MID_FLAG_ELEMENT_ITEM|XML_TYPE_STRING, CTF_BACKGROUND_URL ),
+    MG_E( "BackGraphic", STYLE,  BACKGROUND_IMAGE,   MID_FLAG_ELEMENT_ITEM|XML_TYPE_GRAPHIC, CTF_BACKGROUND_URL ),
 
     // fill attributes
     GMAP( "FillStyle",                      XML_NAMESPACE_DRAW, XML_FILL,                   XML_SW_TYPE_FILLSTYLE, 0 ),
@@ -827,7 +837,7 @@ XMLPropertyMapEntry const aXMLFramePropMap[] =
     MG_E( "HoriMirroredOnOddPages",     STYLE,  MIRROR,     XML_TYPE_TEXT_MIRROR_HORIZONTAL_RIGHT|MID_FLAG_MERGE_ATTRIBUTE|MID_FLAG_MULTI_PROPERTY, 0 ),
     MG_E( "VertMirrored",       STYLE,  MIRROR,     XML_TYPE_TEXT_MIRROR_VERTICAL|MID_FLAG_MERGE_ATTRIBUTE|MID_FLAG_MULTI_PROPERTY, 0 ),
     // RES_GRFATR_CROPGRF
-    MG_EV( "GraphicCrop",           FO,     CLIP,       XML_TYPE_TEXT_CLIP, CTF_TEXT_CLIP, SvtSaveOptions::ODFVER_012 ),
+    MG_EV( "GraphicCrop",           FO,     CLIP,       XML_TYPE_TEXT_CLIP, CTF_TEXT_CLIP, SvtSaveOptions::ODFSVER_012 ),
     MG_E( "GraphicCrop",            FO,     CLIP,       XML_TYPE_TEXT_CLIP11, CTF_TEXT_CLIP11 ),
     // RES_GRFATR_ROTATION
     // not required (exported as svg:transform attribute)
@@ -850,11 +860,13 @@ XMLPropertyMapEntry const aXMLFramePropMap[] =
     // RES_GRFATR_DRAWMODE
     MG_E( "GraphicColorMode", DRAW, COLOR_MODE,         XML_TYPE_COLOR_MODE, 0 ),
     MG_E( "WritingMode",      STYLE, WRITING_MODE,       XML_TYPE_TEXT_WRITING_MODE_WITH_DEFAULT, 0 ),
+    MAP_EXT_I("WritingMode", XML_NAMESPACE_LO_EXT, XML_WRITING_MODE, XML_TYPE_TEXT_WRITING_MODE_WITH_DEFAULT|XML_TYPE_PROP_GRAPHIC, 0),
     // RES_FOLLOW_TEXT_FLOW - DVO #i18732#
     MG_E( "IsFollowingTextFlow", DRAW, FLOW_WITH_TEXT,      XML_TYPE_BOOL|MID_FLAG_SPECIAL_ITEM_EXPORT, CTF_OLD_FLOW_WITH_TEXT ),
     MG_E( "IsFollowingTextFlow", STYLE, FLOW_WITH_TEXT,     XML_TYPE_BOOL, 0 ),
     // #i28701# - RES_WRAP_INFLUENCE_ON_OBJPOS
     MG_E( "WrapInfluenceOnPosition", DRAW, WRAP_INFLUENCE_ON_POSITION, XML_TYPE_WRAP_INFLUENCE_ON_POSITION, 0 ),
+    MAP_EXT("AllowOverlap", XML_NAMESPACE_LO_EXT, XML_ALLOW_OVERLAP, XML_TYPE_BOOL|XML_TYPE_PROP_GRAPHIC, 0),
 
     // special entries for floating frames
     MG_E( "",           DRAW,   FRAME_DISPLAY_SCROLLBAR,    XML_TYPE_BOOL|MID_FLAG_NO_PROPERTY|MID_FLAG_MULTI_PROPERTY, CTF_FRAME_DISPLAY_SCROLLBAR ),
@@ -898,6 +910,9 @@ XMLPropertyMapEntry const aXMLShapePropMap[] =
     MG_E( "VertOrientRelation", STYLE,  VERTICAL_REL,   XML_TYPE_TEXT_VERTICAL_REL, CTF_SHAPE_VERTICALREL ),
     MG_E( "VertOrientRelation", STYLE,  VERTICAL_REL,   XML_TYPE_TEXT_VERTICAL_REL_PAGE|MID_FLAG_SPECIAL_ITEM_IMPORT, CTF_SHAPE_VERTICALREL_PAGE ),
     MG_E( "VertOrientRelation", STYLE,  VERTICAL_REL,   XML_TYPE_TEXT_VERTICAL_REL_FRAME|MID_FLAG_SPECIAL_ITEM_IMPORT, CTF_SHAPE_VERTICALREL_FRAME ),
+    MAP_EXT_I( "VertOrientRelation",    XML_NAMESPACE_LO_EXT, XML_VERTICAL_REL, XML_TYPE_TEXT_VERTICAL_REL|XML_TYPE_PROP_GRAPHIC, CTF_VERTICALREL ),
+    MAP_EXT_I( "VertOrientRelation",    XML_NAMESPACE_LO_EXT, XML_VERTICAL_REL, XML_TYPE_TEXT_VERTICAL_REL_PAGE|MID_FLAG_SPECIAL_ITEM_IMPORT|XML_TYPE_PROP_GRAPHIC, CTF_VERTICALREL_PAGE ),
+    MAP_EXT_I( "VertOrientRelation",    XML_NAMESPACE_LO_EXT, XML_VERTICAL_REL, XML_TYPE_TEXT_VERTICAL_REL_FRAME|MID_FLAG_SPECIAL_ITEM_IMPORT|XML_TYPE_PROP_GRAPHIC, CTF_VERTICALREL_FRAME ),
     // RES_HORI_ORIENT
     MG_E( "HoriOrient",         STYLE,  HORIZONTAL_POS, XML_TYPE_TEXT_HORIZONTAL_POS|MID_FLAG_MULTI_PROPERTY, CTF_SHAPE_HORIZONTALPOS ),
     MG_E( "PageToggle",         STYLE,  HORIZONTAL_POS, XML_TYPE_TEXT_HORIZONTAL_MIRROR, CTF_SHAPE_HORIZONTALMIRROR ),
@@ -906,6 +921,7 @@ XMLPropertyMapEntry const aXMLShapePropMap[] =
     MG_E( "HoriOrientRelation", STYLE,  HORIZONTAL_REL, XML_TYPE_TEXT_HORIZONTAL_REL_FRAME|MID_FLAG_SPECIAL_ITEM_IMPORT, CTF_SHAPE_HORIZONTALREL_FRAME ),
     // RES_WRAP_INFLUENCE_ON_OBJPOS (#i28701#)
     MG_ED( "WrapInfluenceOnPosition", DRAW, WRAP_INFLUENCE_ON_POSITION, XML_TYPE_WRAP_INFLUENCE_ON_POSITION, 0 ),
+    MAP_EXT("AllowOverlap", XML_NAMESPACE_LO_EXT, XML_ALLOW_OVERLAP, XML_TYPE_BOOL|XML_TYPE_PROP_GRAPHIC, 0),
     // UserDefinedAttributes is already contained in the map this one is
     // chained to.
 
@@ -930,7 +946,7 @@ XMLPropertyMapEntry const aXMLSectionPropMap[] =
     MS_E( "BackTransparent",    FO, BACKGROUND_COLOR,       XML_TYPE_ISTRANSPARENT|MID_FLAG_MERGE_ATTRIBUTE, 0 ),
     MS_E( "BackGraphicLocation",    STYLE,  POSITION,   MID_FLAG_SPECIAL_ITEM|XML_TYPE_BUILDIN_CMP_ONLY, CTF_BACKGROUND_POS  ),
     MS_E( "BackGraphicFilter",STYLE,    FILTER_NAME,    MID_FLAG_SPECIAL_ITEM|XML_TYPE_STRING, CTF_BACKGROUND_FILTER ),
-    MS_E( "BackGraphicURL", STYLE,  BACKGROUND_IMAGE,   MID_FLAG_ELEMENT_ITEM|XML_TYPE_STRING, CTF_BACKGROUND_URL ),
+    MS_E( "BackGraphic", STYLE,  BACKGROUND_IMAGE,   MID_FLAG_ELEMENT_ITEM|XML_TYPE_GRAPHIC, CTF_BACKGROUND_URL ),
 
     // move protect-flag into section element
 //  M_E( "IsProtected",         STYLE,  PROTECT,    XML_TYPE_BOOL, 0 ),
@@ -968,7 +984,8 @@ XMLPropertyMapEntry const aXMLSectionPropMap[] =
 XMLPropertyMapEntry const aXMLRubyPropMap[] =
 {
     MR_E( "RubyAdjust", STYLE, RUBY_ALIGN, XML_TYPE_TEXT_RUBY_ADJUST, 0 ),
-    MR_E( "RubyIsAbove",    STYLE, RUBY_POSITION, XML_TYPE_TEXT_RUBY_POSITION, 0 ),
+    MR_E( "RubyIsAbove",    STYLE, RUBY_POSITION, XML_TYPE_TEXT_RUBY_IS_ABOVE, 0 ),
+    MR_EV( "RubyPosition",   LO_EXT, RUBY_POSITION, XML_TYPE_TEXT_RUBY_POSITION, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
     M_END()
 };
 
@@ -1005,7 +1022,7 @@ XMLPropertyMapEntry const aXMLCellPropMap[] =
     MC_E( "BottomBorderDistance", FO,    PADDING_BOTTOM,   XML_TYPE_MEASURE|MID_FLAG_MULTI_PROPERTY,          0 ),
     MC_E( "VertOrient",           STYLE, VERTICAL_ALIGN,   XML_TYPE_TEXT_VERTICAL_POS,                        0 ),
     MC_E( "WritingMode",          STYLE, WRITING_MODE,     XML_TYPE_TEXT_WRITING_MODE_WITH_DEFAULT,           0 ),
-    MC_E( "NumberFormat",         STYLE, DATA_STYLE_NAME,  XML_TYPE_NUMBER,                                   0 ),
+    MC_E( "NumberFormat",         STYLE, DATA_STYLE_NAME,  XML_TYPE_NUMBER|MID_FLAG_SPECIAL_ITEM_EXPORT,      0 ),
     // paragraph properties
     MP_E( "ParaAdjust",           FO,    TEXT_ALIGN,       XML_TYPE_TEXT_ADJUST,                              0 ),
     // text properties

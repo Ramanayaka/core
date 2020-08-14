@@ -17,14 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/ADatabaseMetaData.hxx"
-#include "ado/ADatabaseMetaDataResultSetMetaData.hxx"
-#include "ado/Awrapado.hxx"
-#include "ado/AGroup.hxx"
-#include "ado/adoimp.hxx"
-#include "ado/AIndex.hxx"
-#include "ado/AKey.hxx"
-#include "ado/ATable.hxx"
+#include <ado/ADatabaseMetaData.hxx>
+#include <ado/ADatabaseMetaDataResultSetMetaData.hxx>
+#include <ado/Awrapado.hxx>
+#include <ado/AGroup.hxx>
+#include <ado/adoimp.hxx>
+#include <ado/AIndex.hxx>
+#include <ado/AKey.hxx>
+#include <ado/ATable.hxx>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/ProcedureResult.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
@@ -87,7 +87,7 @@ sal_Int32 ODatabaseMetaData::getMaxSize(sal_uInt32 _nId)
     sal_Int32 nSize = 0;
     std::map<sal_uInt32,LiteralInfo>::const_iterator aIter = m_aLiteralInfo.find(_nId);
     if(aIter != m_aLiteralInfo.end() && (*aIter).second.fSupported)
-        nSize = (static_cast<sal_Int32>((*aIter).second.cchMaxLen) == (-1)) ? 0 : (*aIter).second.cchMaxLen;
+        nSize = (static_cast<sal_Int32>((*aIter).second.cchMaxLen) == -1) ? 0 : (*aIter).second.cchMaxLen;
     return nSize;
 }
 
@@ -269,10 +269,8 @@ sal_Bool SAL_CALL ODatabaseMetaDataResultSetMetaData::isAutoIncrement( sal_Int32
     return false;
 }
 
-OUString SAL_CALL ODatabaseMetaDataResultSetMetaData::getColumnServiceName( sal_Int32 column )
+OUString SAL_CALL ODatabaseMetaDataResultSetMetaData::getColumnServiceName( sal_Int32 /*column*/ )
 {
-    if(!m_mColumns.empty() && (m_mColumnsIter = m_mColumns.find(column)) != m_mColumns.end())
-        return (*m_mColumnsIter).second.getColumnServiceName();
     return OUString();
 }
 
@@ -283,17 +281,13 @@ OUString SAL_CALL ODatabaseMetaDataResultSetMetaData::getTableName( sal_Int32 co
     return OUString();
 }
 
-OUString SAL_CALL ODatabaseMetaDataResultSetMetaData::getCatalogName( sal_Int32 column )
+OUString SAL_CALL ODatabaseMetaDataResultSetMetaData::getCatalogName( sal_Int32 /*column*/ )
 {
-    if(!m_mColumns.empty() && (m_mColumnsIter = m_mColumns.find(column)) != m_mColumns.end())
-        return (*m_mColumnsIter).second.getCatalogName();
     return OUString();
 }
 
-OUString SAL_CALL ODatabaseMetaDataResultSetMetaData::getColumnTypeName( sal_Int32 column )
+OUString SAL_CALL ODatabaseMetaDataResultSetMetaData::getColumnTypeName( sal_Int32 /*column*/ )
 {
-    if(!m_mColumns.empty() && (m_mColumnsIter = m_mColumns.find(column)) != m_mColumns.end())
-        return (*m_mColumnsIter).second.getColumnTypeName();
     return OUString();
 }
 
@@ -306,10 +300,8 @@ sal_Bool SAL_CALL ODatabaseMetaDataResultSetMetaData::isCaseSensitive( sal_Int32
 }
 
 
-OUString SAL_CALL ODatabaseMetaDataResultSetMetaData::getSchemaName( sal_Int32 column )
+OUString SAL_CALL ODatabaseMetaDataResultSetMetaData::getSchemaName( sal_Int32 /*column*/ )
 {
-    if(!m_mColumns.empty() && (m_mColumnsIter = m_mColumns.find(column)) != m_mColumns.end())
-        return (*m_mColumnsIter).second.getSchemaName();
     return OUString();
 }
 
@@ -359,34 +351,34 @@ sal_Int32 OAdoGroup::MapRight(RightsEnum _eNum)
 RightsEnum OAdoGroup::Map2Right(sal_Int32 _eNum)
 {
     sal_Int32 nRight = adRightNone;
-        if(_eNum & Privilege::SELECT)
-            nRight |= adRightRead;
+    if(_eNum & Privilege::SELECT)
+        nRight |= adRightRead;
 
-        if(_eNum & Privilege::INSERT)
-            nRight |= adRightInsert;
+    if(_eNum & Privilege::INSERT)
+        nRight |= adRightInsert;
 
-        if(_eNum & Privilege::UPDATE)
-            nRight |= adRightUpdate;
+    if(_eNum & Privilege::UPDATE)
+        nRight |= adRightUpdate;
 
-        if(_eNum & Privilege::DELETE)
-            nRight |= adRightDelete;
+    if(_eNum & Privilege::DELETE)
+        nRight |= adRightDelete;
 
-        if(_eNum & Privilege::READ)
-            nRight |= adRightReadDesign;
+    if(_eNum & Privilege::READ)
+        nRight |= adRightReadDesign;
 
-        if(_eNum & Privilege::CREATE)
-            nRight |= adRightCreate;
+    if(_eNum & Privilege::CREATE)
+        nRight |= adRightCreate;
 
-        if(_eNum & Privilege::ALTER)
-            nRight |= adRightWriteDesign;
+    if(_eNum & Privilege::ALTER)
+        nRight |= adRightWriteDesign;
 
-        if(_eNum & Privilege::REFERENCE)
-            nRight |= adRightReference;
+    if(_eNum & Privilege::REFERENCE)
+        nRight |= adRightReference;
 
-        if(_eNum & Privilege::DROP)
-            nRight |= adRightDrop;
+    if(_eNum & Privilege::DROP)
+        nRight |= adRightDrop;
 
-    return (RightsEnum)nRight;
+    return static_cast<RightsEnum>(nRight);
 }
 
 void WpADOIndex::Create()
@@ -448,7 +440,7 @@ void OAdoKey::fillPropertyValues()
 
 sal_Int32 OAdoKey::MapRule(const RuleEnum& _eNum)
 {
-        sal_Int32 eNum = KeyRule::NO_ACTION;
+    sal_Int32 eNum = KeyRule::NO_ACTION;
     switch(_eNum)
     {
         case adRICascade:

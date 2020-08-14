@@ -18,8 +18,9 @@
  */
 
 
-#include <main.hxx>
-#include <outact.hxx>
+#include "cgm.hxx"
+#include "elements.hxx"
+#include "outact.hxx"
 
 
 void CGM::ImplDoClass3()
@@ -41,7 +42,7 @@ void CGM::ImplDoClass3()
         {
             nUInteger = ImplGetUI16();
             const long nI0 = ImplGetI( pElement->nIntegerPrecision );  // exponent
-            const long nI1 = ImplGetI( pElement->nIntegerPrecision );  // mantisse
+            const long nI1 = ImplGetI( pElement->nIntegerPrecision );  // mantissa
             switch( nUInteger )
             {
                 case 0 :

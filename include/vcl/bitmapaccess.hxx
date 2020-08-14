@@ -20,22 +20,22 @@
 #ifndef INCLUDED_VCL_BMPACC_HXX
 #define INCLUDED_VCL_BMPACC_HXX
 
-#include <memory>
-#include <tools/solar.h>
 #include <vcl/dllapi.h>
-#include <vcl/salbtype.hxx>
 #include <vcl/bitmap.hxx>
+#include <vcl/Scanline.hxx>
+#include <vcl/BitmapBuffer.hxx>
+#include <vcl/BitmapColor.hxx>
+#include <vcl/BitmapAccessMode.hxx>
 
 typedef BitmapColor (*FncGetPixel)(ConstScanline pScanline, long nX, const ColorMask& rMask);
 typedef void (*FncSetPixel)(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
-
 
 class VCL_DLLPUBLIC BitmapInfoAccess
 {
     friend class BitmapReadAccess;
 
 public:
-    BitmapInfoAccess(Bitmap& rBitmap);
+    BitmapInfoAccess(Bitmap& rBitmap, BitmapAccessMode nMode = BitmapAccessMode::Info);
     virtual ~BitmapInfoAccess();
 
     bool operator!() const
@@ -72,11 +72,11 @@ public:
         return mpBuffer ? RemoveScanline(mpBuffer->mnFormat) : ScanlineFormat::NONE;
     }
 
-    sal_uLong GetScanlineSize() const
+    sal_uInt32 GetScanlineSize() const
     {
         assert(mpBuffer && "Access is not valid!");
 
-        return mpBuffer ? mpBuffer->mnScanlineSize : 0UL;
+        return mpBuffer ? mpBuffer->mnScanlineSize : 0;
     }
 
     sal_uInt16 GetBitCount() const
@@ -89,7 +89,7 @@ public:
     BitmapColor GetBestMatchingColor(const BitmapColor& rBitmapColor)
     {
         if (HasPalette())
-            return BitmapColor((sal_uInt8) GetBestPaletteIndex(rBitmapColor));
+            return BitmapColor(static_cast<sal_uInt8>(GetBestPaletteIndex(rBitmapColor)));
         else
             return rBitmapColor;
     }
@@ -146,12 +146,6 @@ protected:
     BitmapBuffer* mpBuffer;
     ColorMask maColorMask;
     BitmapAccessMode mnAccessMode;
-
-    SAL_DLLPRIVATE void ImplCreate(Bitmap& rBitmap);
-    SAL_DLLPRIVATE void ImplDestroy();
-
-protected:
-    BitmapInfoAccess(Bitmap& rBitmap, BitmapAccessMode nMode);
 };
 
 
@@ -160,7 +154,7 @@ class VCL_DLLPUBLIC BitmapReadAccess : public BitmapInfoAccess
     friend class BitmapWriteAccess;
 
 public:
-    BitmapReadAccess(Bitmap& rBitmap);
+    BitmapReadAccess(Bitmap& rBitmap, BitmapAccessMode nMode = BitmapAccessMode::Read);
     virtual ~BitmapReadAccess() override;
 
     Scanline GetBuffer() const
@@ -189,6 +183,11 @@ public:
         return mFncGetPixel( pData, nX, maColorMask );
     }
 
+    sal_uInt8 GetIndexFromData(const sal_uInt8* pData, long nX) const
+    {
+        return GetPixelFromData( pData, nX ).GetIndex();
+    }
+
     void SetPixelOnData(sal_uInt8* pData, long nX, const BitmapColor& rBitmapColor)
     {
         assert(pData && "Access is not valid!");
@@ -215,12 +214,7 @@ public:
 
     sal_uInt8 GetPixelIndex(long nY, long nX) const
     {
-        return GetPixel(nY, nX).GetBlueOrIndex();
-    }
-
-    sal_uInt8 GetLuminance(long nY, long nX) const
-    {
-        return GetColor(nY, nX).GetLuminance();
+        return GetPixel(nY, nX).GetIndex();
     }
 
     /** Get the interpolated color at coordinates fY, fX; if outside, return rFallback */
@@ -238,9 +232,6 @@ protected:
     FncGetPixel mFncGetPixel;
     FncSetPixel mFncSetPixel;
 
-    SAL_DLLPRIVATE void ImplInitScanBuffer( Bitmap& rBitmap );
-    SAL_DLLPRIVATE bool ImplSetAccessPointers( ScanlineFormat nFormat );
-
 public:
 
     SAL_DLLPRIVATE BitmapBuffer* ImplGetBitmapBuffer() const
@@ -254,14 +245,16 @@ public:
     static BitmapColor GetPixelForN4BitLsnPal(ConstScanline pScanline, long nX, const ColorMask& rMask);
     static BitmapColor GetPixelForN8BitPal(ConstScanline pScanline, long nX, const ColorMask& rMask);
     static BitmapColor GetPixelForN8BitTcMask(ConstScanline pScanline, long nX, const ColorMask& rMask);
-    static BitmapColor GetPixelForN16BitTcMsbMask(ConstScanline pScanline, long nX, const ColorMask& rMask);
-    static BitmapColor GetPixelForN16BitTcLsbMask(ConstScanline pScanline, long nX, const ColorMask& rMask);
     static BitmapColor GetPixelForN24BitTcBgr(ConstScanline pScanline, long nX, const ColorMask& rMask);
     static BitmapColor GetPixelForN24BitTcRgb(ConstScanline pScanline, long nX, const ColorMask& rMask);
     static BitmapColor GetPixelForN32BitTcAbgr(ConstScanline pScanline, long nX, const ColorMask& rMask);
+    static BitmapColor GetPixelForN32BitTcXbgr(ConstScanline pScanline, long nX, const ColorMask& rMask);
     static BitmapColor GetPixelForN32BitTcArgb(ConstScanline pScanline, long nX, const ColorMask& rMask);
+    static BitmapColor GetPixelForN32BitTcXrgb(ConstScanline pScanline, long nX, const ColorMask& rMask);
     static BitmapColor GetPixelForN32BitTcBgra(ConstScanline pScanline, long nX, const ColorMask& rMask);
+    static BitmapColor GetPixelForN32BitTcBgrx(ConstScanline pScanline, long nX, const ColorMask& rMask);
     static BitmapColor GetPixelForN32BitTcRgba(ConstScanline pScanline, long nX, const ColorMask& rMask);
+    static BitmapColor GetPixelForN32BitTcRgbx(ConstScanline pScanline, long nX, const ColorMask& rMask);
     static BitmapColor GetPixelForN32BitTcMask(ConstScanline pScanline, long nX, const ColorMask& rMask);
 
     static void SetPixelForN1BitMsbPal(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
@@ -270,92 +263,22 @@ public:
     static void SetPixelForN4BitLsnPal(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
     static void SetPixelForN8BitPal(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
     static void SetPixelForN8BitTcMask(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
-    static void SetPixelForN16BitTcMsbMask(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
-    static void SetPixelForN16BitTcLsbMask(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
     static void SetPixelForN24BitTcBgr(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
     static void SetPixelForN24BitTcRgb(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
     static void SetPixelForN32BitTcAbgr(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
+    static void SetPixelForN32BitTcXbgr(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
     static void SetPixelForN32BitTcArgb(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
+    static void SetPixelForN32BitTcXrgb(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
     static void SetPixelForN32BitTcBgra(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
+    static void SetPixelForN32BitTcBgrx(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
     static void SetPixelForN32BitTcRgba(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
+    static void SetPixelForN32BitTcRgbx(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
     static void SetPixelForN32BitTcMask(Scanline pScanline, long nX, const BitmapColor& rBitmapColor, const ColorMask& rMask);
 
-protected:
-    BitmapReadAccess(Bitmap& rBitmap, BitmapAccessMode nMode);
+    static FncGetPixel GetPixelFunction( ScanlineFormat nFormat );
+    static FncSetPixel SetPixelFunction( ScanlineFormat nFormat );
 };
 
-
-class VCL_DLLPUBLIC BitmapWriteAccess : public BitmapReadAccess
-{
-public:
-    BitmapWriteAccess(Bitmap& rBitmap);
-    virtual ~BitmapWriteAccess() override;
-
-    void CopyScanline(long nY, const BitmapReadAccess& rReadAcc);
-    void CopyScanline(long nY,
-                      ConstScanline aSrcScanline,
-                      ScanlineFormat nSrcScanlineFormat,
-                      sal_uLong nSrcScanlineSize);
-
-    void CopyBuffer( const BitmapReadAccess& rReadAcc );
-
-    void SetPalette(const BitmapPalette& rPalette)
-    {
-        assert(mpBuffer && "Access is not valid!");
-
-        mpBuffer->maPalette = rPalette;
-    }
-
-    void SetPaletteEntryCount(sal_uInt16 nCount)
-    {
-        assert(mpBuffer && "Access is not valid!");
-
-        mpBuffer->maPalette.SetEntryCount(nCount);
-    }
-
-    void SetPaletteColor(sal_uInt16 nColor, const BitmapColor& rBitmapColor)
-    {
-        assert(mpBuffer && "Access is not valid!");
-        assert(HasPalette() && "Bitmap has no palette!");
-
-        mpBuffer->maPalette[nColor] = rBitmapColor;
-    }
-
-    void SetPixel(long nY, long nX, const BitmapColor& rBitmapColor)
-    {
-        assert(mpBuffer && "Access is not valid!");
-        assert(nX < mpBuffer->mnWidth && "x-coordinate out of range!");
-        assert(nY < mpBuffer->mnHeight && "y-coordinate out of range!");
-
-        mFncSetPixel(GetScanline(nY), nX, rBitmapColor, maColorMask);
-    }
-
-    void SetPixelIndex(long nY, long nX, sal_uInt8 cIndex)
-    {
-        SetPixel(nY, nX, BitmapColor(cIndex));
-    }
-
-    void SetLineColor(const Color& rColor);
-
-    void SetFillColor();
-    void SetFillColor(const Color& rColor);
-
-    void Erase(const Color& rColor);
-
-    void DrawLine(const Point& rStart, const Point& rEnd);
-
-    void FillRect(const tools::Rectangle& rRect);
-    void DrawRect(const tools::Rectangle& rRect);
-
-private:
-
-    std::unique_ptr<BitmapColor> mpLineColor;
-    std::unique_ptr<BitmapColor> mpFillColor;
-
-    BitmapWriteAccess() = delete;
-    BitmapWriteAccess(const BitmapWriteAccess&) = delete;
-    BitmapWriteAccess& operator=(const BitmapWriteAccess&) = delete;
-};
 
 #endif // INCLUDED_VCL_BMPACC_HXX
 

@@ -20,6 +20,7 @@
 #include <accelerators/keymapping.hxx>
 
 #include <com/sun/star/awt/Key.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <rtl/instance.hxx>
 
 namespace framework
@@ -27,7 +28,7 @@ namespace framework
 
 // helper
 
-KeyMapping::KeyIdentifierInfo KeyMapping::KeyIdentifierMap[] =
+KeyMapping::KeyIdentifierInfo const KeyMapping::KeyIdentifierMap[] =
 {
     {css::awt::Key::NUM0          , "KEY_0"          },
     {css::awt::Key::NUM1          , "KEY_1"          },
@@ -197,7 +198,7 @@ bool KeyMapping::impl_st_interpretIdentifierAsPureKeyCode(const OUString& sIdent
     sal_Int32 nCode = sIdentifier.toInt32();
     if (nCode > 0)
     {
-        rCode = (sal_uInt16)nCode;
+        rCode = static_cast<sal_uInt16>(nCode);
         return true;
     }
 

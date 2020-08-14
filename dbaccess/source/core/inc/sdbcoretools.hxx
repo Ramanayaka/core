@@ -20,18 +20,13 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_INC_SDBCORETOOLS_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_INC_SDBCORETOOLS_HXX
 
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/io/IOException.hpp>
-#include <com/sun/star/lang/WrappedTargetException.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
 namespace dbaccess
 {
 
-    void notifyDataSourceModified(const css::uno::Reference< css::uno::XInterface >& _rxObject,bool _bModified);
+    void notifyDataSourceModified(const css::uno::Reference< css::uno::XInterface >& _rxObject);
 
     css::uno::Reference< css::uno::XInterface >
         getDataSource( const css::uno::Reference< css::uno::XInterface >& _rxDependentObject );

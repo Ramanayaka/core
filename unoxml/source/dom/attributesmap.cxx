@@ -17,12 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <attributesmap.hxx>
+#include "attributesmap.hxx"
 
 #include <string.h>
 
-#include <element.hxx>
-#include <document.hxx>
+#include <com/sun/star/xml/dom/DOMException.hpp>
+
+#include "element.hxx"
+#include "document.hxx"
 
 using namespace css::uno;
 using namespace css::xml::dom;
@@ -164,9 +166,7 @@ namespace DOM
                 static_cast<OWeakObject*>(this),
                 DOMExceptionType_NOT_FOUND_ERR);
         }
-        Reference< XNode > const xRet(
-            m_pElement->removeAttributeNode(xAttr), UNO_QUERY);
-        return xRet;
+        return m_pElement->removeAttributeNode(xAttr);
     }
 
     /**
@@ -185,9 +185,7 @@ namespace DOM
                 static_cast<OWeakObject*>(this),
                 DOMExceptionType_NOT_FOUND_ERR);
         }
-        Reference< XNode > const xRet(
-            m_pElement->removeAttributeNode(xAttr), UNO_QUERY);
-        return xRet;
+        return m_pElement->removeAttributeNode(xAttr);
     }
 
     /**
@@ -204,9 +202,7 @@ namespace DOM
                 DOMExceptionType_HIERARCHY_REQUEST_ERR);
         }
         // no MutexGuard needed: m_pElement is const
-        Reference< XNode > const xRet(
-            m_pElement->setAttributeNode(xAttr), UNO_QUERY);
-        return xRet;
+        return m_pElement->setAttributeNode(xAttr);
     }
 
     /**
@@ -223,9 +219,7 @@ namespace DOM
                 DOMExceptionType_HIERARCHY_REQUEST_ERR);
         }
         // no MutexGuard needed: m_pElement is const
-        Reference< XNode > const xRet(
-            m_pElement->setAttributeNodeNS(xAttr), UNO_QUERY);
-        return xRet;
+        return m_pElement->setAttributeNodeNS(xAttr);
     }
 }
 

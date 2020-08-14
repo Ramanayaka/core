@@ -14,7 +14,6 @@
 #include <cstring>
 #include <forward_list>
 #include <limits>
-#include <type_traits>
 #include <vector>
 
 extern "C" {
@@ -24,16 +23,18 @@ extern "C" {
 }
 
 #include <com/sun/star/uno/Sequence.hxx>
+#include <o3tl/safeint.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
-#include <data.hxx>
-#include <dconf.hxx>
-#include <groupnode.hxx>
-#include <localizedpropertynode.hxx>
-#include <localizedvaluenode.hxx>
-#include <nodemap.hxx>
-#include <propertynode.hxx>
-#include <setnode.hxx>
+#include "data.hxx"
+#include "dconf.hxx"
+#include "groupnode.hxx"
+#include "localizedpropertynode.hxx"
+#include "localizedvaluenode.hxx"
+#include "nodemap.hxx"
+#include "propertynode.hxx"
+#include "setnode.hxx"
 
 // component-data is encoded in dconf as follows:
 //
@@ -110,7 +111,7 @@ extern "C" {
 //
 // TODO: support "mandatory" and "external"?
 
-namespace configmgr { namespace dconf {
+namespace configmgr::dconf {
 
 namespace {
 
@@ -127,8 +128,8 @@ public:
     T * get() const { return object_; }
 
 private:
-    GObjectHolder(GObjectHolder &) = delete;
-    void operator =(GObjectHolder) = delete;
+    GObjectHolder(GObjectHolder const &) = delete;
+    GObjectHolder& operator =(GObjectHolder const &) = delete;
 
     T * object_;
 };
@@ -149,8 +150,8 @@ public:
     GVariant * get() const { return variant_; }
 
 private:
-    GVariantHolder(GVariantHolder &) = delete;
-    void operator =(GVariantHolder) = delete;
+    GVariantHolder(GVariantHolder const &) = delete;
+    GVariantHolder& operator =(GVariantHolder const &) = delete;
 
     void unref() {
         if (variant_ != nullptr) {
@@ -174,8 +175,8 @@ public:
     GVariantType * get() const { return type_; }
 
 private:
-    GVariantTypeHolder(GVariantTypeHolder &) = delete;
-    void operator =(GVariantTypeHolder) = delete;
+    GVariantTypeHolder(GVariantTypeHolder const &) = delete;
+    GVariantTypeHolder& operator =(GVariantTypeHolder const &) = delete;
 
     GVariantType * type_;
 };
@@ -189,8 +190,8 @@ public:
     gchar ** get() const { return array_; }
 
 private:
-    StringArrayHolder(StringArrayHolder &) = delete;
-    void operator =(StringArrayHolder) = delete;
+    StringArrayHolder(StringArrayHolder const &) = delete;
+    StringArrayHolder& operator =(StringArrayHolder const &) = delete;
 
     gchar ** array_;
 };
@@ -210,8 +211,8 @@ public:
     DConfChangeset * get() const { return changeset_; }
 
 private:
-    ChangesetHolder(ChangesetHolder &) = delete;
-    void operator =(ChangesetHolder) = delete;
+    ChangesetHolder(ChangesetHolder const &) = delete;
+    ChangesetHolder& operator =(ChangesetHolder const &) = delete;
 
     DConfChangeset * changeset_;
 };
@@ -321,7 +322,7 @@ bool getStringValue(
     }
     gsize n;
     char const * p = g_variant_get_string(variant.get(), &n);
-    if (n > static_cast<typename std::make_unsigned<sal_Int32>::type>(
+    if (n > o3tl::make_unsigned(
             std::numeric_limits<sal_Int32>::max()))
     {
         SAL_WARN("configmgr.dconf", "too long string value for key " << key);
@@ -365,7 +366,7 @@ bool getHexbinaryValue(
     gsize n;
     gconstpointer p = g_variant_get_fixed_array(
         variant.get(), &n, sizeof (guchar));
-    if (n > static_cast<typename std::make_unsigned<sal_Int32>::type>(
+    if (n > o3tl::make_unsigned(
             std::numeric_limits<sal_Int32>::max()))
     {
         SAL_WARN("configmgr.dconf", "too long hexbinary value for key " << key);
@@ -403,7 +404,7 @@ bool getBooleanList(
     gsize n;
     gconstpointer p = g_variant_get_fixed_array(
         variant.get(), &n, sizeof (guchar));
-    if (n > static_cast<typename std::make_unsigned<sal_Int32>::type>(
+    if (n > o3tl::make_unsigned(
             std::numeric_limits<sal_Int32>::max()))
     {
         SAL_WARN("configmgr.dconf", "too long boolean list for key " << key);
@@ -430,7 +431,7 @@ bool getShortList(
     gsize n;
     gconstpointer p = g_variant_get_fixed_array(
         variant.get(), &n, sizeof (gint16));
-    if (n > static_cast<typename std::make_unsigned<sal_Int32>::type>(
+    if (n > o3tl::make_unsigned(
             std::numeric_limits<sal_Int32>::max()))
     {
         SAL_WARN("configmgr.dconf", "too long short list for key " << key);
@@ -457,7 +458,7 @@ bool getIntList(
     gsize n;
     gconstpointer p = g_variant_get_fixed_array(
         variant.get(), &n, sizeof (gint32));
-    if (n > static_cast<typename std::make_unsigned<sal_Int32>::type>(
+    if (n > o3tl::make_unsigned(
             std::numeric_limits<sal_Int32>::max()))
     {
         SAL_WARN("configmgr.dconf", "too long int list for key " << key);
@@ -484,7 +485,7 @@ bool getLongList(
     gsize n;
     gconstpointer p = g_variant_get_fixed_array(
         variant.get(), &n, sizeof (gint64));
-    if (n > static_cast<typename std::make_unsigned<sal_Int32>::type>(
+    if (n > o3tl::make_unsigned(
             std::numeric_limits<sal_Int32>::max()))
     {
         SAL_WARN("configmgr.dconf", "too long long list for key " << key);
@@ -511,7 +512,7 @@ bool getDoubleList(
     gsize n;
     gconstpointer p = g_variant_get_fixed_array(
         variant.get(), &n, sizeof (gdouble));
-    if (n > static_cast<typename std::make_unsigned<sal_Int32>::type>(
+    if (n > o3tl::make_unsigned(
             std::numeric_limits<sal_Int32>::max()))
     {
         SAL_WARN("configmgr.dconf", "too long double list for key " << key);
@@ -536,7 +537,7 @@ bool getStringList(
         return false;
     }
     gsize n = g_variant_n_children(variant.get());
-    if (n > static_cast<typename std::make_unsigned<sal_Int32>::type>(
+    if (n > o3tl::make_unsigned(
             std::numeric_limits<sal_Int32>::max()))
     {
         SAL_WARN("configmgr.dconf", "too long string list for key " << key);
@@ -564,7 +565,7 @@ bool getHexbinaryList(
         return false;
     }
     gsize n = g_variant_n_children(variant.get());
-    if (n > static_cast<typename std::make_unsigned<sal_Int32>::type>(
+    if (n > o3tl::make_unsigned(
             std::numeric_limits<sal_Int32>::max()))
     {
         SAL_WARN("configmgr.dconf", "too long hexbinary list for key " << key);
@@ -749,7 +750,7 @@ ReadValue readValue(
 
 void finalize(
     GObjectHolder<DConfClient> const & client, OString const & path,
-    rtl::Reference<Node> & node, int layer)
+    rtl::Reference<Node> const & node, int layer)
 {
     if (!dconf_client_is_writable(client.get(), path.getStr())) {
         node->setFinalized(layer);
@@ -764,7 +765,7 @@ void readDir(
     StringArrayHolder a(dconf_client_list(client.get(), dir.getStr(), nullptr));
     for (char const * const * p = a.get(); *p != nullptr; ++p) {
         std::size_t n = std::strlen(*p);
-        if (n > static_cast<typename std::make_unsigned<sal_Int32>::type>(
+        if (n > o3tl::make_unsigned(
                 std::numeric_limits<sal_Int32>::max()))
         {
             SAL_WARN("configmgr.dconf", "too long dir/key in dir " << dir);
@@ -938,6 +939,7 @@ void readDir(
                                 << templ);
                         continue;
                     }
+                    member = member->clone(true);
                     break;
                 default:
                     assert(false); // cannot happen
@@ -1172,7 +1174,7 @@ bool addProperty(
                 css::uno::Sequence<sal_Int8> seq(
                     value.get<css::uno::Sequence<sal_Int8>>());
                 static_assert(
-                    std::numeric_limits<sal_Int32>::max() <= G_MAXSIZE,
+                    sizeof(sal_Int32) <= sizeof(gsize),
                     "G_MAXSIZE too small");
                 static_assert(
                     sizeof (sal_Int8) == sizeof (guchar), "size mismatch");
@@ -1187,7 +1189,7 @@ bool addProperty(
                 css::uno::Sequence<sal_Bool> seq(
                     value.get<css::uno::Sequence<sal_Bool>>());
                 static_assert(
-                    std::numeric_limits<sal_Int32>::max() <= G_MAXSIZE,
+                    sizeof(sal_Int32) <= sizeof(gsize),
                     "G_MAXSIZE too small");
                 static_assert(sizeof (sal_Bool) == 1, "size mismatch");
                 v.reset(
@@ -1201,7 +1203,7 @@ bool addProperty(
                 css::uno::Sequence<sal_Int16> seq(
                     value.get<css::uno::Sequence<sal_Int16>>());
                 static_assert(
-                    std::numeric_limits<sal_Int32>::max() <= G_MAXSIZE,
+                    sizeof(sal_Int32) <= sizeof(gsize),
                     "G_MAXSIZE too small");
                 static_assert(
                     sizeof (sal_Int16) == sizeof (gint16), "size mismatch");
@@ -1217,7 +1219,7 @@ bool addProperty(
                 css::uno::Sequence<sal_Int32> seq(
                     value.get<css::uno::Sequence<sal_Int32>>());
                 static_assert(
-                    std::numeric_limits<sal_Int32>::max() <= G_MAXSIZE,
+                    sizeof(sal_Int32) <= sizeof(gsize),
                     "G_MAXSIZE too small");
                 static_assert(
                     sizeof (sal_Int32) == sizeof (gint32), "size mismatch");
@@ -1233,7 +1235,7 @@ bool addProperty(
                 css::uno::Sequence<sal_Int64> seq(
                     value.get<css::uno::Sequence<sal_Int64>>());
                 static_assert(
-                    std::numeric_limits<sal_Int32>::max() <= G_MAXSIZE,
+                    sizeof(sal_Int32) <= sizeof(gsize),
                     "G_MAXSIZE too small");
                 static_assert(
                     sizeof (sal_Int64) == sizeof (gint64), "size mismatch");
@@ -1249,7 +1251,7 @@ bool addProperty(
                 css::uno::Sequence<double> seq(
                     value.get<css::uno::Sequence<double>>());
                 static_assert(
-                    std::numeric_limits<sal_Int32>::max() <= G_MAXSIZE,
+                    sizeof(sal_Int32) <= sizeof(gsize),
                     "G_MAXSIZE too small");
                 static_assert(
                     sizeof (double) == sizeof (gdouble), "size mismatch");
@@ -1262,12 +1264,12 @@ bool addProperty(
             }
         case TYPE_STRING_LIST:
             {
-                css::uno::Sequence<OUString> seq(
+                const css::uno::Sequence<OUString> seq(
                     value.get<css::uno::Sequence<OUString>>());
                 std::vector<GVariant *> vs;
-                for (sal_Int32 i = 0; i != seq.getLength(); ++i) {
+                for (OUString const & s : seq) {
                     children.emplace_front(
-                        g_variant_new_string(encodeString(seq[i]).getStr()));
+                        g_variant_new_string(encodeString(s).getStr()));
                     if (children.front().get() == nullptr) {
                         SAL_WARN(
                             "configmgr.dconf", "g_variant_new_string failed");
@@ -1276,7 +1278,7 @@ bool addProperty(
                     vs.push_back(children.front().get());
                 }
                 static_assert(
-                    std::numeric_limits<sal_Int32>::max() <= G_MAXSIZE,
+                    sizeof(sal_Int32) <= sizeof(gsize),
                     "G_MAXSIZE too small");
                 v.reset(
                     g_variant_new_array(
@@ -1285,20 +1287,20 @@ bool addProperty(
             }
         case TYPE_HEXBINARY_LIST:
             {
-                css::uno::Sequence<css::uno::Sequence<sal_Int8>> seq(
+                const css::uno::Sequence<css::uno::Sequence<sal_Int8>> seqSeq(
                     value.get<
                         css::uno::Sequence<css::uno::Sequence<sal_Int8>>>());
                 std::vector<GVariant *> vs;
-                for (sal_Int32 i = 0; i != seq.getLength(); ++i) {
+                for (css::uno::Sequence<sal_Int8> const & seq : seqSeq) {
                     static_assert(
-                        std::numeric_limits<sal_Int32>::max() <= G_MAXSIZE,
+                        sizeof(sal_Int32) <= sizeof(gsize),
                         "G_MAXSIZE too small");
                     static_assert(
                         sizeof (sal_Int8) == sizeof (guchar), "size mismatch");
                     children.emplace_front(
                         g_variant_new_fixed_array(
-                            G_VARIANT_TYPE_BYTE, seq[i].getConstArray(),
-                            seq[i].getLength(), sizeof (sal_Int8)));
+                            G_VARIANT_TYPE_BYTE, seq.getConstArray(),
+                            seq.getLength(), sizeof (sal_Int8)));
                     if (children.front().get() == nullptr) {
                         SAL_WARN(
                             "configmgr.dconf",
@@ -1313,10 +1315,10 @@ bool addProperty(
                     return false;
                 }
                 static_assert(
-                    std::numeric_limits<sal_Int32>::max() <= G_MAXSIZE,
+                    sizeof(sal_Int32) <= sizeof(gsize),
                     "G_MAXSIZE too small");
                 v.reset(
-                    g_variant_new_array(ty.get(), vs.data(), seq.getLength()));
+                    g_variant_new_array(ty.get(), vs.data(), seqSeq.getLength()));
                 break;
             }
         default:
@@ -1588,6 +1590,6 @@ void writeModifications(Components & components, Data & data) {
     data.modifications.clear();
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

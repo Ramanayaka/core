@@ -22,14 +22,14 @@
 
 #include <oox/core/contexthandler2.hxx>
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
 class TableRow;
 
-class TableRowContext : public ::oox::core::ContextHandler2
+class TableRowContext final : public ::oox::core::ContextHandler2
 {
 public:
-    TableRowContext( ::oox::core::ContextHandler2Helper& rParent,
+    TableRowContext( ::oox::core::ContextHandler2Helper const & rParent,
                      const ::oox::AttributeList& rAttribs, TableRow& rTableRow );
     virtual ~TableRowContext() override;
 
@@ -40,7 +40,7 @@ private:
     TableRow& mrTableRow;
 };
 
-} } }
+}
 
 #endif
 

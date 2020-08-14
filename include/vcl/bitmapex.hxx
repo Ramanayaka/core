@@ -21,17 +21,17 @@
 #define INCLUDED_VCL_BITMAPEX_HXX
 
 #include <vcl/dllapi.h>
-#include <vcl/bitmap.hxx>
 #include <vcl/alpha.hxx>
+#include <vcl/Scanline.hxx>
 #include <tools/color.hxx>
-#include <basegfx/color/bcolormodifier.hxx>
 
-#include <com/sun/star/uno/Reference.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star { namespace rendering {
+namespace com::sun::star::rendering {
     class XBitmapCanvas;
-} } } }
+}
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
+namespace basegfx { class BColorModifierStack; }
 
 enum class TransparentType
 {
@@ -40,23 +40,25 @@ enum class TransparentType
     Bitmap
 };
 
-class VCL_DLLPUBLIC BitmapEx
+class SAL_WARN_UNUSED VCL_DLLPUBLIC BitmapEx
 {
 public:
 
                         BitmapEx();
-                        BitmapEx( const OUString& rIconName );
+    explicit            BitmapEx( const OUString& rIconName );
                         BitmapEx( const BitmapEx& rBitmapEx );
                         BitmapEx( const BitmapEx& rBitmapEx, Point aSrc, Size aSize );
-                        BitmapEx( const Bitmap& rBmp );
+                        BitmapEx( Size aSize, sal_uInt16 nBitCount );
+    explicit            BitmapEx( const Bitmap& rBmp );
                         BitmapEx( const Bitmap& rBmp, const Bitmap& rMask );
                         BitmapEx( const Bitmap& rBmp, const AlphaMask& rAlphaMask );
                         BitmapEx( const Bitmap& rBmp, const Color& rTransparentColor );
 
     BitmapEx&           operator=( const BitmapEx& rBitmapEx );
+    BitmapEx&           operator=( const Bitmap& rBitmap ) { return operator=(BitmapEx(rBitmap)); }
     bool                operator==( const BitmapEx& rBitmapEx ) const;
     bool                operator!=( const BitmapEx& rBitmapEx ) const { return !(*this==rBitmapEx); }
-    bool                operator!() const { return !aBitmap; }
+    bool                operator!() const { return !maBitmap; }
 
     bool                IsEmpty() const;
     void                SetEmpty();
@@ -68,32 +70,30 @@ public:
                               const Point& rDestPt, const Size& rDestSize ) const;
 
     bool                IsTransparent() const;
-    TransparentType     GetTransparentType() const { return eTransparent; }
+    TransparentType     GetTransparentType() const { return meTransparent; }
 
-    Bitmap              GetBitmap( const Color* pTransReplaceColor = nullptr ) const;
+    Bitmap              GetBitmap( Color aTransparentReplaceColor ) const;
     /// Gives direct access to the contained bitmap.
-    const Bitmap&       GetBitmapRef() const;
+    const Bitmap&       GetBitmap() const;
     Bitmap              GetMask() const;
 
     bool                IsAlpha() const;
     AlphaMask           GetAlpha() const;
 
-    const Size&         GetSizePixel() const { return aBitmapSize; }
-    void                SetSizePixel( const Size& rNewSize, BmpScaleFlag nScaleFlag = BmpScaleFlag::Default );
+    const Size&         GetSizePixel() const { return maBitmapSize; }
+    void                SetSizePixel(const Size& rNewSize);
 
-    const Size&         GetPrefSize() const { return aBitmap.GetPrefSize(); }
-    void                SetPrefSize( const Size& rPrefSize ) { aBitmap.SetPrefSize( rPrefSize ); }
+    const Size&         GetPrefSize() const { return maBitmap.GetPrefSize(); }
+    void                SetPrefSize( const Size& rPrefSize ) { maBitmap.SetPrefSize( rPrefSize ); }
 
-    const MapMode&      GetPrefMapMode() const { return aBitmap.GetPrefMapMode(); }
-    void                SetPrefMapMode( const MapMode& rPrefMapMode ) { aBitmap.SetPrefMapMode( rPrefMapMode ); }
+    const MapMode&      GetPrefMapMode() const { return maBitmap.GetPrefMapMode(); }
+    void                SetPrefMapMode( const MapMode& rPrefMapMode ) { maBitmap.SetPrefMapMode( rPrefMapMode ); }
 
-    const Color&        GetTransparentColor() const { return aTransparentColor; }
+    const Color&        GetTransparentColor() const { return maTransparentColor; }
 
-    sal_uInt16          GetBitCount() const { return aBitmap.GetBitCount(); }
+    sal_uInt16          GetBitCount() const { return maBitmap.GetBitCount(); }
     sal_uLong           GetSizeBytes() const;
     BitmapChecksum      GetChecksum() const;
-
-public:
 
     /** Convert bitmap format
 
@@ -103,23 +103,6 @@ public:
         @return true, if the conversion was completed successfully.
      */
     bool                Convert( BmpConversion eConversion );
-
-    /** Reduce number of colors for the bitmap using the POPULAR algorithm
-
-        @param nNewColorCount
-        Maximal number of bitmap colors after the reduce operation
-
-        @return true, if the color reduction operation was completed successfully.
-     */
-    bool                ReduceColors( sal_uInt16 nNewColorCount );
-
-    /** Apply a dither algorithm to the bitmap
-
-        This method dithers the bitmap inplace, i.e. a true color
-        bitmap is converted to a paletted bitmap, reducing the color
-        deviation by error diffusion.
-     */
-    bool                Dither();
 
     /** Crop the bitmap
 
@@ -147,12 +130,8 @@ public:
 
         @param bExpandTransparent
         Whether to expand the transparency color or not.
-
-        @return true, if padding was performed successfully. false is
-        not only returned when the operation failed, but also if
-        nothing had to be done, e.g. because nDX and nDY were zero.
      */
-    bool                Expand(
+    void                Expand(
                             sal_uLong nDX, sal_uLong nDY,
                             bool bExpandTransparent = false );
 
@@ -264,12 +243,28 @@ public:
 
         @param rReplaceColor
         Color to be placed in all changed pixel
-
-        @return true, if the operation was completed successfully.
      */
-    bool                Replace(
+    void                Replace(
                             const Color& rSearchColor,
                             const Color& rReplaceColor );
+
+    /** Replace all pixel having the search color with the specified color
+
+        @param rSearchColor
+        Color specifying which pixel should be replaced
+
+        @param rReplaceColor
+        Color to be placed in all changed pixel
+
+        @param nTolerance
+        Tolerance value. Specifies the maximal difference between
+        rSearchColor and the individual pixel values, such that the
+        corresponding pixel is still regarded a match.
+     */
+    void                Replace(
+                            const Color& rSearchColor,
+                            const Color& rReplaceColor,
+                            sal_uInt8 nTolerance );
 
     /** Replace all pixel having one the search colors with the corresponding replace color
 
@@ -286,14 +281,42 @@ public:
         Tolerance value. Specifies the maximal difference between
         pSearchColor colors and the individual pixel values, such that
         the corresponding pixel is still regarded a match.
+     */
+    void                Replace(
+                            const Color* pSearchColors,
+                            const Color* pReplaceColors,
+                            sal_uLong nColorCount );
+
+    /** Replace all pixel having one the search colors with the corresponding replace color
+
+        @param pSearchColors
+        Array of colors specifying which pixel should be replaced
+
+        @param rReplaceColors
+        Array of colors to be placed in all changed pixel
+
+        @param nColorCount
+        Size of the aforementioned color arrays
+
+        @param pTols
+        Tolerance value. Specifies the maximal difference between
+        pSearchColor colors and the individual pixel values, such that
+        the corresponding pixel is still regarded a match.
 
         @return true, if the operation was completed successfully.
      */
-    bool                Replace(
+    void                Replace(
                             const Color* pSearchColors,
                             const Color* pReplaceColors,
                             sal_uLong nColorCount,
-                            const sal_uLong* pTols = nullptr );
+                            sal_uInt8 const * pTols );
+
+    /** Replace transparency with given color.
+     */
+    void                ReplaceTransparency( const Color& rColor );
+
+    /** Get contours in image */
+    tools::Polygon      GetContour( bool bContourEdgeDetect, const tools::Rectangle* pWorkRect );
 
     /** Change various global color characteristics
 
@@ -335,20 +358,6 @@ public:
                             bool bInvert = false,
                             bool msoBrightness = false );
 
-    /** Apply specified filter to the bitmap
-
-        @param eFilter
-        The filter algorithm to apply
-
-        @param pFilterParam
-        Various parameter for the different bitmap filter algorithms
-
-        @return true, if the operation was completed successfully.
-     */
-    bool                Filter(
-                            BmpFilter eFilter,
-                            const BmpFilterParam* pFilterParam = nullptr );
-
     /** Get transparency at given position
 
         @param nX
@@ -364,6 +373,18 @@ public:
                             sal_Int32 nX,
                             sal_Int32 nY) const;
 
+    /** Get pixel color (including alpha) at given position
+
+        @param nX
+        integer X-Position in Bitmap
+
+        @param nY
+        integer Y-Position in Bitmap
+     */
+    ::Color             GetPixelColor(
+                            sal_Int32 nX,
+                            sal_Int32 nY) const;
+
     /** Create transformed Bitmap
 
         @param fWidth
@@ -375,15 +396,12 @@ public:
         @param rTransformation
         The back transformation for each pixel in (0 .. fWidth),(0 .. fHeight) to
         local pixel coordinates
-
-        @param bSmooth
-        Defines if pixel interpolation is to be used to create the result
     */
+    [[nodiscard]]
     BitmapEx            TransformBitmapEx(
                             double fWidth,
                             double fHeight,
-                            const basegfx::B2DHomMatrix& rTransformation,
-                            bool bSmooth) const;
+                            const basegfx::B2DHomMatrix& rTransformation) const;
 
     /** Create transformed Bitmap
 
@@ -397,51 +415,68 @@ public:
         @param fMaximumArea
         A limitation for the maximum size of pixels to use for the result
 
-        @param bSmooth
-        Defines if pixel interpolation is to be used to create the result
-
-        The traget size of the result bitmap is defined by transforming the given
+        The target size of the result bitmap is defined by transforming the given
         rTargetRange with the given rTransformation; the area of the result is
         linearly scaled to not exceed the given fMaximumArea
 
         @return The transformed bitmap
     */
+    [[nodiscard]]
     BitmapEx            getTransformed(
                             const basegfx::B2DHomMatrix& rTransformation,
                             const basegfx::B2DRange& rVisibleRange,
-                            double fMaximumArea,
-                            bool bSmooth) const;
+                            double fMaximumArea) const;
 
     /** Create ColorStack-modified version of this BitmapEx
 
         @param rBColorModifierStack
         A ColrModifierStack which defines how each pixel has to be modified
     */
+    [[nodiscard]]
     BitmapEx            ModifyBitmapEx( const basegfx::BColorModifierStack& rBColorModifierStack) const;
 
-    static BitmapEx     AutoScaleBitmap( BitmapEx & aBitmap, const long aStandardSize );
+    [[nodiscard]]
+    static BitmapEx     AutoScaleBitmap( BitmapEx const & aBitmap, const long aStandardSize );
 
     /// populate from a canvas implementation
     bool                Create(
                             const css::uno::Reference< css::rendering::XBitmapCanvas > &xBitmapCanvas,
                             const Size &rSize );
-public:
 
-    SAL_DLLPRIVATE  std::shared_ptr<ImpBitmap>  ImplGetBitmapImpBitmap() const { return aBitmap.ImplGetImpBitmap(); }
-    SAL_DLLPRIVATE  std::shared_ptr<ImpBitmap>  ImplGetMaskImpBitmap() const { return aMask.ImplGetImpBitmap(); }
+    void                setAlphaFrom( sal_uInt8 cIndexFrom, sal_Int8 nAlphaTo );
+
+    void                AdjustTransparency( sal_uInt8 cTrans );
+
+    void                CombineMaskOr(Color maskColor, sal_uInt8 nTol);
+
+    /**
+     * Retrieves the color model data we need for the XImageConsumer stuff.
+     */
+    void                GetColorModel(css::uno::Sequence< sal_Int32 >& rRGBPalette,
+                            sal_uInt32& rnRedMask, sal_uInt32& rnGreenMask, sal_uInt32& rnBlueMask, sal_uInt32& rnAlphaMask, sal_uInt32& rnTransparencyIndex,
+                            sal_uInt32& rnWidth, sal_uInt32& rnHeight, sal_uInt8& rnBitCount);
+
+    SAL_DLLPRIVATE std::shared_ptr<SalBitmap> const & ImplGetBitmapSalBitmap() const { return maBitmap.ImplGetSalBitmap(); }
+    SAL_DLLPRIVATE std::shared_ptr<SalBitmap> const & ImplGetMaskSalBitmap() const { return maMask.ImplGetSalBitmap(); }
 
 
 private:
     friend class ImpGraphic;
+    friend class OutputDevice;
     friend bool VCL_DLLPUBLIC WriteDIBBitmapEx(const BitmapEx& rSource, SvStream& rOStm);
+    friend bool VCL_DLLPUBLIC ReadRawDIB(BitmapEx& rTarget, const unsigned char* pBuf,
+                                    const ScanlineFormat nFormat,
+                                    const int nHeight,
+                                    const int nStride);
+
     void  loadFromIconTheme( const OUString& rIconName );
 
-    Bitmap              aBitmap;
-    Bitmap              aMask;
-    Size                aBitmapSize;
-    Color               aTransparentColor;
-    TransparentType     eTransparent;
-    bool                bAlpha;
+    Bitmap              maBitmap;
+    Bitmap              maMask;
+    Size                maBitmapSize;
+    Color               maTransparentColor;
+    TransparentType     meTransparent;
+    bool                mbAlpha;
 
 };
 
@@ -478,7 +513,7 @@ BitmapEx VCL_DLLPUBLIC createBlendFrame(
     @param rSize
     The size of the frame in pixels
     */
-BitmapEx VCL_DLLPUBLIC createBlendFrame(
+BitmapEx createBlendFrame(
     const Size& rSize,
     sal_uInt8 nAlpha,
     Color aColorTopLeft,

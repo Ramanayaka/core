@@ -20,16 +20,19 @@
 #define INCLUDED_CHART2_SOURCE_INC_REFERENCESIZEPROVIDER_HXX
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include "charttoolsdllapi.hxx"
 
-namespace com { namespace sun { namespace star {
-namespace chart2 {
-    class XTitle;
-    class XTitled;
+namespace com::sun::star {
+    namespace chart2 {
+        class XTitle;
+        class XTitled;
+        class XChartDocument;
+    }
+    namespace beans {
+        class XPropertySet;
+    }
 }
-}}}
 
 namespace chart
 {

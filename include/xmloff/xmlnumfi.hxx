@@ -23,14 +23,15 @@
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <xmloff/xmlstyle.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <i18nlangtag/lang.h>
 #include <memory>
 #include <vector>
-#include <unotools/localedatawrapper.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::util { class XNumberFormatsSupplier; }
+namespace com::sun::star::xml::sax { class XAttributeList; }
 
 #define XML_NUMBERSTYLES "NumberStyles"
 
@@ -58,14 +59,9 @@ enum SvXMLDateElementAttributes
 class Color;
 class SvXMLNumImpData;
 class SvXMLImport;
-class SvXMLStyleContext;
-class SvXMLStylesContext;
 struct SvXMLNumberInfo;
 class SvNumberFormatter;
-class SvtSysLocale;
-namespace com { namespace sun { namespace star { namespace lang {
-    class XMultiServiceFactory;
-}}}}
+class LocaleDataWrapper;
 
 
 //  use SvXMLNumFmtHelper in the context for <office:styles> to create
@@ -95,6 +91,7 @@ public:
     SvXMLNumImpData* getData() { return pData.get(); }
 
     const SvXMLTokenMap&    GetStylesElemTokenMap();
+    LanguageType            GetLanguageForKey(sal_Int32 nKey);
 
 //  sal_uInt32  GetKeyForName( const OUString& rName );
 };
@@ -136,8 +133,8 @@ class XMLOFF_DLLPUBLIC SvXMLNumFormatContext : public SvXMLStyleContext
     bool            bAutoDec;       // set in AddNumber
     bool            bAutoInt;       // set in AddNumber
     bool            bHasExtraText;
-    OUStringBuffer aFormatCode;
-    OUStringBuffer aConditions;
+    OUStringBuffer aFormatCode{64};
+    OUStringBuffer aConditions{32};
     bool            bHasLongDoW;
     bool            bHasEra;
     bool            bHasDateTime;
@@ -168,10 +165,11 @@ public:
                                     const OUString& rLName,
                                     const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
                                     const sal_Int32 nKey,
+                                    LanguageType nLang,
                                     SvXMLStylesContext& rStyles );
     virtual     ~SvXMLNumFormatContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                     const OUString& rLocalName,
                                     const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
     virtual void CreateAndInsert(bool bOverwrite) override;
@@ -179,7 +177,7 @@ public:
     SvXMLNumImpData* GetData() const                { return pData; }
     sal_Int32 GetKey();
     sal_Int32 CreateAndInsert( SvNumberFormatter* pFormatter );
-    sal_Int32 CreateAndInsert( css::uno::Reference< css::util::XNumberFormatsSupplier >& xFormatsSupplier );
+    sal_Int32 CreateAndInsert( css::uno::Reference< css::util::XNumberFormatsSupplier > const & xFormatsSupplier );
     sal_uInt16 GetType() const                      { return nType; }   // SvXMLStylesTokens
 
     bool HasLongDoW() const                     { return bHasLongDoW; }
@@ -199,10 +197,10 @@ public:
     bool ReplaceNfKeyword( sal_uInt16 nOld, sal_uInt16 nNew );
     void AddCondition( const sal_Int32 nIndex );
     void AddCondition( const OUString& rCondition, const OUString& rApplyName );
-    void AddColor( sal_uInt32 const nColor );
+    void AddColor( Color nColor );
 
     /// determine whether number format uses the system language
-    bool IsSystemLanguage();
+    bool IsSystemLanguage() const;
 };
 
 #endif

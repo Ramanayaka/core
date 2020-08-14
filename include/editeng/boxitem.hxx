@@ -21,11 +21,13 @@
 #define INCLUDED_EDITENG_BOXITEM_HXX
 
 #include <svl/poolitem.hxx>
-#include <editeng/borderline.hxx>
 #include <editeng/editengdllapi.h>
 #include <com/sun/star/table/BorderLine2.hpp>
 #include <o3tl/typed_flags_set.hxx>
+#include <memory>
 
+
+namespace editeng { class SvxBorderLine; }
 
 // class SvxBoxItem ------------------------------------------------------
 
@@ -43,19 +45,20 @@ enum class SvxBoxItemLine
 This version causes SvxBoxItem to store the 4 cell spacing distances separately
 when serializing to stream.
 */
-#define BOX_4DISTS_VERSION ((sal_uInt16)1)
+constexpr sal_uInt16 BOX_4DISTS_VERSION = 1;
 /**
 This version causes SvxBoxItem to store the styles for its border lines when
 serializing to stream.
 */
-#define BOX_BORDER_STYLE_VERSION ((sal_uInt16)2)
+constexpr sal_uInt16 BOX_BORDER_STYLE_VERSION = 2;
 
-class EDITENG_DLLPUBLIC SvxBoxItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxBoxItem final : public SfxPoolItem
 {
-    editeng::SvxBorderLine  *pTop,
-                            *pBottom,
-                            *pLeft,
-                            *pRight;
+    std::unique_ptr<editeng::SvxBorderLine>
+                    pTop,
+                    pBottom,
+                    pLeft,
+                    pRight;
     sal_uInt16      nTopDist,
                     nBottomDist,
                     nLeftDist,
@@ -68,7 +71,6 @@ public:
     explicit SvxBoxItem( const sal_uInt16 nId );
     SvxBoxItem( const SvxBoxItem &rCpy );
     virtual ~SvxBoxItem() override;
-    SvxBoxItem &operator=( const SvxBoxItem& rBox );
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
@@ -78,20 +80,17 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                     MapUnit eCoreMetric,
                                     MapUnit ePresMetric,
-                                    OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                    OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion ) const override;
-    virtual sal_uInt16           GetVersion( sal_uInt16 nFileVersion ) const override;
+    virtual SvxBoxItem*      Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual void             ScaleMetrics( long nMult, long nDiv ) override;
     virtual bool             HasMetrics() const override;
 
-    const   editeng::SvxBorderLine* GetTop()    const { return pTop; }
-    const   editeng::SvxBorderLine* GetBottom() const { return pBottom; }
-    const   editeng::SvxBorderLine* GetLeft()   const { return pLeft; }
-    const   editeng::SvxBorderLine* GetRight()  const { return pRight; }
+    const   editeng::SvxBorderLine* GetTop()    const { return pTop.get(); }
+    const   editeng::SvxBorderLine* GetBottom() const { return pBottom.get(); }
+    const   editeng::SvxBorderLine* GetLeft()   const { return pLeft.get(); }
+    const   editeng::SvxBorderLine* GetRight()  const { return pRight.get(); }
 
     const   editeng::SvxBorderLine* GetLine( SvxBoxItemLine nLine ) const;
 
@@ -112,7 +111,7 @@ public:
     // bEvenIfNoLine = TRUE -> Also return distance, when no Line is set
     sal_uInt16  CalcLineWidth( SvxBoxItemLine nLine ) const;
     sal_uInt16  CalcLineSpace( SvxBoxItemLine nLine, bool bEvenIfNoLine = false ) const;
-    bool HasBorder( bool bTreatPaddingAsBorder = false ) const;
+    bool HasBorder( bool bTreatPaddingAsBorder ) const;
     static css::table::BorderLine2 SvxLineToLine( const editeng::SvxBorderLine* pLine, bool bConvert );
     static bool LineToSvxLine(const css::table::BorderLine& rLine, editeng::SvxBorderLine& rSvxLine, bool bConvert);
     static bool LineToSvxLine(const css::table::BorderLine2& rLine, editeng::SvxBorderLine& rSvxLine, bool bConvert);
@@ -156,10 +155,10 @@ namespace o3tl
     template<> struct typed_flags<SvxBoxInfoItemValidFlags> : is_typed_flags<SvxBoxInfoItemValidFlags, 0xff> {};
 }
 
-class EDITENG_DLLPUBLIC SvxBoxInfoItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxBoxInfoItem final : public SfxPoolItem
 {
-    editeng::SvxBorderLine* pHori;   //inner horizontal Line
-    editeng::SvxBorderLine* pVert;   //inner vertical Line
+    std::unique_ptr<editeng::SvxBorderLine> pHori;   //inner horizontal Line
+    std::unique_ptr<editeng::SvxBorderLine> pVert;   //inner vertical Line
 
     bool                mbEnableHor;   /// true = Enable inner horizontal line.
     bool                mbEnableVer;   /// true = Enable inner vertical line.
@@ -186,25 +185,22 @@ public:
     explicit SvxBoxInfoItem( const sal_uInt16 nId );
     SvxBoxInfoItem( const SvxBoxInfoItem &rCpy );
     virtual ~SvxBoxInfoItem() override;
-    SvxBoxInfoItem &operator=( const SvxBoxInfoItem &rCpy );
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual bool            GetPresentation( SfxItemPresentation ePres,
                                     MapUnit eCoreMetric,
                                     MapUnit ePresMetric,
-                                    OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                    OUString &rText, const IntlWrapper& ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion ) const override;
+    virtual SvxBoxInfoItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual void            ScaleMetrics( long nMult, long nDiv ) override;
     virtual bool            HasMetrics() const override;
 
-    const editeng::SvxBorderLine*   GetHori() const { return pHori; }
-    const editeng::SvxBorderLine*   GetVert() const { return pVert; }
+    const editeng::SvxBorderLine*   GetHori() const { return pHori.get(); }
+    const editeng::SvxBorderLine*   GetVert() const { return pVert.get(); }
 
     //The Pointers are being copied!
     void                    SetLine( const editeng::SvxBorderLine* pNew, SvxBoxInfoItemLine nLine );
@@ -227,10 +223,44 @@ public:
     bool                    IsValid( SvxBoxInfoItemValidFlags nValid ) const
                                 { return bool( nValidFlags & nValid ); }
     void                    SetValid( SvxBoxInfoItemValidFlags nValid, bool bValid = true )
-                                { bValid ? ( nValidFlags |= nValid )
-                                         : ( nValidFlags &= ~nValid ); }
+    {
+        if (bValid)
+            nValidFlags |= nValid;
+        else
+            nValidFlags &= ~nValid;
+    }
     void                    ResetFlags();
 };
+
+namespace editeng
+{
+
+void EDITENG_DLLPUBLIC BorderDistanceFromWord(bool bFromEdge, sal_Int32& nMargin,
+    sal_Int32& nBorderDistance, sal_Int32 nBorderWidth);
+
+struct EDITENG_DLLPUBLIC WordPageMargins final
+{
+    sal_uInt16 nLeft = 0;
+    sal_uInt16 nRight = 0;
+    sal_uInt16 nTop = 0;
+    sal_uInt16 nBottom = 0;
+};
+
+struct EDITENG_DLLPUBLIC WordBorderDistances final
+{
+    bool bFromEdge = false;
+    sal_uInt16 nLeft = 0;
+    sal_uInt16 nRight = 0;
+    sal_uInt16 nTop = 0;
+    sal_uInt16 nBottom = 0;
+};
+
+// Heuristics to decide if we need to use "from edge" offset of borders. All sizes in twips
+void EDITENG_DLLPUBLIC BorderDistancesToWord(const SvxBoxItem& rBox, const WordPageMargins& rMargins,
+    WordBorderDistances& rDistances);
+
+}
+
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

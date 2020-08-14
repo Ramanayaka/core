@@ -25,11 +25,11 @@
 #include <cppuhelper/implbase.hxx>
 #include <svl/lstner.hxx>
 
-#include "global.hxx"
+#include "types.hxx"
 
 class ScDocShell;
 
-class ScSheetEventsObj : public cppu::WeakImplHelper<
+class ScSheetEventsObj final : public cppu::WeakImplHelper<
                                         css::container::XNameReplace,
                                         css::lang::XServiceInfo>,
                                     public SfxListener

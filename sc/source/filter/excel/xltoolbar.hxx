@@ -9,12 +9,13 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_EXCEL_XLTOOLBAR_HXX
 #define INCLUDED_SC_SOURCE_FILTER_EXCEL_XLTOOLBAR_HXX
 
-#include <com/sun/star/container/XIndexContainer.hpp>
 #include <filter/msfilter/mstoolbar.hxx>
+
+namespace com::sun::star::container { class XIndexContainer; }
 
 class ScCTBWrapper;
 // hmm I don't normally use these packed structures
-// but.. hey always good to do something different
+// but... hey always good to do something different
 class TBCCmd : public TBBase
 {
 public:
@@ -59,10 +60,10 @@ public:
     virtual void Print( FILE* ) override;
 #endif
     bool Read(SvStream &rS) override;
-    bool IsMenuToolbar();
+    bool IsMenuToolbar() const;
     bool ImportCustomToolBar( ScCTBWrapper&, CustomToolBarImportHelper& );
     bool ImportMenuTB( ScCTBWrapper&, const css::uno::Reference< css::container::XIndexContainer >&, CustomToolBarImportHelper& );
-    OUString GetName() { return tb.getName().getString(); }
+    const OUString& GetName() { return tb.getName().getString(); }
 
 };
 

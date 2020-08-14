@@ -24,19 +24,22 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/XTransactedObject.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/document/XStorageBasedDocument.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <com/sun/star/uri/XUriReference.hpp>
 #include <com/sun/star/uri/XUriReferenceFactory.hpp>
 
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 #include <ucbhelper/content.hxx>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/storagehelper.hxx>
-#include "mediamisc.hxx"
+#include <mediamisc.hxx>
+#include <osl/file.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 
@@ -69,21 +72,6 @@ struct MediaItem::Impl
         , m_bLoop( false )
         , m_bMute( false )
         , m_eZoom( css::media::ZoomLevel_NOT_AVAILABLE )
-    {
-    }
-    Impl(Impl const& rOther)
-        : m_URL( rOther.m_URL )
-        , m_TempFileURL( rOther.m_TempFileURL )
-        , m_Referer( rOther.m_Referer )
-        , m_sMimeType( rOther.m_sMimeType )
-        , m_nMaskSet( rOther.m_nMaskSet )
-        , m_eState( rOther.m_eState )
-        , m_fTime( rOther.m_fTime )
-        , m_fDuration( rOther.m_fDuration )
-        , m_nVolumeDB( rOther.m_nVolumeDB )
-        , m_bLoop( rOther.m_bLoop )
-        , m_bMute( rOther.m_bMute )
-        , m_eZoom( rOther.m_eZoom )
     {
     }
 };
@@ -125,7 +113,7 @@ bool MediaItem::operator==( const SfxPoolItem& rItem ) const
         && m_pImpl->m_eZoom == rOther.m_pImpl->m_eZoom;
 }
 
-SfxPoolItem* MediaItem::Clone( SfxItemPool* ) const
+MediaItem* MediaItem::Clone( SfxItemPool* ) const
 {
     return new MediaItem( *this );
 }
@@ -134,7 +122,7 @@ bool MediaItem::GetPresentation( SfxItemPresentation,
                                  MapUnit,
                                  MapUnit,
                                  OUString& rText,
-                                 const IntlWrapper * ) const
+                                 const IntlWrapper& ) const
 {
     rText.clear();
     return false;
@@ -429,18 +417,14 @@ CreateStream(uno::Reference<embed::XStorage> const& xStorage,
 
 
 bool EmbedMedia(uno::Reference<frame::XModel> const& xModel,
-        OUString const& rSourceURL, OUString & o_rEmbeddedURL)
+        OUString const& rSourceURL, OUString & o_rEmbeddedURL, uno::Reference<io::XInputStream> const& xInputStream)
 {
     try
     {
-        ::ucbhelper::Content sourceContent(rSourceURL,
-                uno::Reference<ucb::XCommandEnvironment>(),
-                comphelper::getProcessComponentContext());
-
         uno::Reference<document::XStorageBasedDocument> const xSBD(xModel,
                 uno::UNO_QUERY_THROW);
         uno::Reference<embed::XStorage> const xStorage(
-                xSBD->getDocumentStorage(), uno::UNO_QUERY_THROW);
+                xSBD->getDocumentStorage(), uno::UNO_SET_THROW);
 
         OUString const media("Media");
         uno::Reference<embed::XStorage> const xSubStorage(
@@ -453,10 +437,22 @@ bool EmbedMedia(uno::Reference<frame::XModel> const& xModel,
         uno::Reference<io::XOutputStream> const xOutStream(
             xStream->getOutputStream(), uno::UNO_SET_THROW);
 
-        if (!sourceContent.openStream(xOutStream)) // copy file to storage
+        if (xInputStream.is())
         {
-            SAL_INFO("avmedia", "openStream to storage failed");
-            return false;
+            // Throw Exception if failed.
+            ::comphelper::OStorageHelper::CopyInputToOutput(xInputStream, xOutStream);
+        }
+        else
+        {
+            ::ucbhelper::Content sourceContent(rSourceURL,
+                uno::Reference<ucb::XCommandEnvironment>(),
+                comphelper::getProcessComponentContext());
+
+            if (!sourceContent.openStream(xOutStream)) // copy file to storage
+            {
+                SAL_INFO("avmedia", "openStream to storage failed");
+                return false;
+            }
         }
 
         uno::Reference<embed::XTransactedObject> const xSubTransaction(
@@ -481,6 +477,49 @@ bool EmbedMedia(uno::Reference<frame::XModel> const& xModel,
     return false;
 }
 
+bool CreateMediaTempFile(uno::Reference<io::XInputStream> const& xInStream,
+        OUString& o_rTempFileURL, const OUString& rDesiredExtension)
+{
+    OUString tempFileURL;
+    ::osl::FileBase::RC const err =
+        ::osl::FileBase::createTempFile(nullptr, nullptr, & tempFileURL);
+    if (::osl::FileBase::E_None != err)
+    {
+        SAL_WARN("avmedia", "cannot create temp file");
+        return false;
+    }
+
+    if (!rDesiredExtension.isEmpty())
+    {
+        OUString newTempFileURL = tempFileURL + rDesiredExtension;
+        if (osl::File::move(tempFileURL, newTempFileURL) != osl::FileBase::E_None)
+        {
+            SAL_WARN("avmedia", "Could not rename file '" << tempFileURL << "' to '" << newTempFileURL << "'");
+            return false;
+        }
+        tempFileURL = newTempFileURL;
+    }
+
+    try
+    {
+        ::ucbhelper::Content tempContent(tempFileURL,
+                uno::Reference<ucb::XCommandEnvironment>(),
+                comphelper::getProcessComponentContext());
+        tempContent.writeStream(xInStream, true); // copy stream to file
+    }
+    catch (uno::Exception const&)
+    {
+        TOOLS_WARN_EXCEPTION("avmedia", "");
+        return false;
+    }
+    o_rTempFileURL = tempFileURL;
+    return true;
+}
+
+MediaTempFile::~MediaTempFile()
+{
+    ::osl::File::remove(m_TempFileURL);
+}
 
 } // namespace avmedia
 

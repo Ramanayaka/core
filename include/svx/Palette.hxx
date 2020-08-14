@@ -19,21 +19,21 @@
 #ifndef INCLUDED_SVX_PALETTE_HXX
 #define INCLUDED_SVX_PALETTE_HXX
 
-#include <svx/SvxColorValueSet.hxx>
-#include <svx/xtable.hxx>
 #include <rtl/ustring.hxx>
-#include <tools/color.hxx>
+
+class Color;
+class SvxColorValueSet;
 
 typedef std::pair<Color, OUString> NamedColor;
 
-class SVX_DLLPUBLIC Palette
+class Palette
 {
 public:
     virtual ~Palette();
 
     virtual const OUString&     GetName() = 0;
     virtual const OUString&     GetPath() = 0;
-    virtual void                LoadColorSet( SvxColorValueSet& rColorSet ) = 0;
+    virtual void                LoadColorSet(SvxColorValueSet& rColorSet) = 0;
 
     virtual bool                IsValid() = 0;
 };

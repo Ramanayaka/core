@@ -22,7 +22,7 @@
 #include <vcl/toolbox.hxx>
 #include <vcl/menu.hxx>
 
-#include "osx/a11yfocustracker.hxx"
+#include <osx/a11yfocustracker.hxx>
 
 #include "documentfocuslistener.hxx"
 
@@ -35,7 +35,7 @@
 using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::uno;
 
-static inline vcl::Window *
+static vcl::Window *
 getWindow(const ::VclSimpleEvent *pEvent)
 {
     return static_cast< const ::VclWindowEvent *> (pEvent)->GetWindow();
@@ -57,7 +57,7 @@ void AquaA11yFocusTracker::WindowEventHandler(void * pThis, VclSimpleEvent& rEve
         break;
     case VclEventId::ObjectDying:
         pFocusTracker->m_aDocumentWindowList.erase( getWindow(&rEvent) );
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case VclEventId::ToolboxHighlightOff:
         pFocusTracker->toolbox_highlight_off( getWindow(&rEvent) );
         break;
@@ -76,16 +76,10 @@ void AquaA11yFocusTracker::WindowEventHandler(void * pThis, VclSimpleEvent& rEve
         {
             pFocusTracker->menu_highlighted( pMenuEvent );
         }
-        else if( const VclAccessibleEvent* pAccEvent = dynamic_cast < const VclAccessibleEvent* > (&rEvent) )
-        {
-            Reference< XAccessible > xAccessible = pAccEvent->GetAccessible();
-            if( xAccessible.is() )
-                pFocusTracker->setFocusedObject( xAccessible );
-        }
         break;
     default:
         break;
-    };
+    }
 }
 
 AquaA11yFocusTracker::AquaA11yFocusTracker() :
@@ -173,7 +167,7 @@ void AquaA11yFocusTracker::toolbox_highlight_on(vcl::Window *pWindow)
     notify_toolbox_item_focus(static_cast <ToolBox *> (pWindow));
 }
 
-void AquaA11yFocusTracker::toolbox_highlight_off(vcl::Window *pWindow)
+void AquaA11yFocusTracker::toolbox_highlight_off(vcl::Window const *pWindow)
 {
     ToolBox* pToolBoxParent = dynamic_cast< ToolBox * >( pWindow->GetParent() );
 
@@ -248,11 +242,8 @@ void AquaA11yFocusTracker::window_got_focus(vcl::Window *pWindow)
     }
     else
     {
-        if( m_aDocumentWindowList.find(pWindow) == m_aDocumentWindowList.end() )
-        {
-            m_aDocumentWindowList.insert(pWindow);
+        if( m_aDocumentWindowList.insert(pWindow).second )
             m_xDocumentFocusListener->attachRecursive(xAccessible, xContext, xStateSet);
-        }
     }
 }
 

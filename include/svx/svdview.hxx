@@ -23,13 +23,13 @@
 // HACK to avoid too deep includes and to have some
 // levels free in svdmark itself (MS compiler include depth limit)
 #include <svx/svdhdl.hxx>
-#include <tools/weakbase.hxx>
+#include <tools/weakbase.h>
 #include <svtools/accessibilityoptions.hxx>
 #include <svx/svxdllapi.h>
 #include <svx/svdcrtv.hxx>
+#include <vcl/event.hxx>
 #include <unotools/options.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
 
 //  class hierarchy of View:
 //         SfxListener
@@ -50,6 +50,7 @@
 //         SdrView         View
 
 class SvxURLField;
+namespace sdr::contact { class ObjectContact; }
 
 enum class SdrViewContext {
     Standard,
@@ -94,7 +95,7 @@ enum class SdrMouseEventKind
 };
 
 // helper class SdrViewEvent
-struct SVX_DLLPUBLIC SdrViewEvent
+struct SVXCORE_DLLPUBLIC SdrViewEvent
 {
     SdrHdl*                     pHdl;
     SdrObject*                  pObj;
@@ -127,7 +128,7 @@ public:
 };
 
 // helper class for all D&D overlays
-class SVX_DLLPUBLIC SdrDropMarkerOverlay
+class SVXCORE_DLLPUBLIC SdrDropMarkerOverlay
 {
     // The OverlayObjects
     sdr::overlay::OverlayObjectList               maObjects;
@@ -144,7 +145,7 @@ public:
 };
 
 
-class SVX_DLLPUBLIC SdrView: public SdrCreateView, public tools::WeakBase< SdrView >
+class SVXCORE_DLLPUBLIC SdrView : public SdrCreateView, public tools::WeakBase
 {
     friend class                SdrPageView;
 
@@ -152,11 +153,13 @@ class SVX_DLLPUBLIC SdrView: public SdrCreateView, public tools::WeakBase< SdrVi
     bool                        bNoExtendedKeyDispatcher : 1;
     bool                        mbMasterPagePaintCaching : 1;
 
-protected:
     SvtAccessibilityOptions maAccessibilityOptions;
 
 public:
-    explicit SdrView(SdrModel* pModel1, OutputDevice* pOut = nullptr);
+    explicit SdrView(
+        SdrModel& rSdrModel,
+        OutputDevice* pOut = nullptr);
+
     virtual ~SdrView() override;
 
     // The default value for all dispatchers is activated. If the app for example
@@ -179,25 +182,23 @@ public:
     bool IsMasterPagePaintCaching() const { return mbMasterPagePaintCaching; }
 
     bool KeyInput(const KeyEvent& rKEvt, vcl::Window* pWin) override;
-    virtual bool MouseButtonDown(const MouseEvent& rMEvt, vcl::Window* pWin) override;
-    virtual bool MouseButtonUp(const MouseEvent& rMEvt, vcl::Window* pWin) override;
-    virtual bool MouseMove(const MouseEvent& rMEvt, vcl::Window* pWin) override;
+    virtual bool MouseButtonDown(const MouseEvent& rMEvt, OutputDevice* pWin) override;
+    virtual bool MouseButtonUp(const MouseEvent& rMEvt, OutputDevice* pWin) override;
+    virtual bool MouseMove(const MouseEvent& rMEvt, OutputDevice* pWin) override;
+    using SdrCreateView::RequestHelp;
     virtual bool Command(const CommandEvent& rCEvt, vcl::Window* pWin) override;
 
     virtual void ConfigurationChanged( utl::ConfigurationBroadcaster*, ConfigurationHints ) override;
 
     bool SetAttributes(const SfxItemSet& rSet, bool bReplaceAll=false) { return SdrCreateView::SetAttributes(rSet,bReplaceAll); }
-    bool SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr) { return SdrCreateView::SetStyleSheet(pStyleSheet,bDontRemoveHardAttr); }
 
     /* new interface src537 */
-    bool GetAttributes(SfxItemSet& rTargetSet, bool bOnlyHardAttr=false) const;
-
-    SfxStyleSheet* GetStyleSheet() const;
+    void GetAttributes(SfxItemSet& rTargetSet, bool bOnlyHardAttr=false) const;
 
     // incomplete implementation:
     // OutputDevice is necessary to determine HandleSize.
     // If NULL the first signed on Win is used.
-    Pointer GetPreferredPointer(const Point& rMousePos, const OutputDevice* pOut, sal_uInt16 nModifier=0, bool bLeftDown=false) const;
+    PointerStyle GetPreferredPointer(const Point& rMousePos, const OutputDevice* pOut, sal_uInt16 nModifier=0, bool bLeftDown=false) const;
     SdrHitKind PickAnything(const MouseEvent& rMEvt, SdrMouseEventKind nMouseDownOrMoveOrUp, SdrViewEvent& rVEvt) const;
     SdrHitKind PickAnything(const Point& rLogicPos, SdrViewEvent& rVEvt) const;
     bool DoMouseEvent(const SdrViewEvent& rVEvt);
@@ -234,9 +235,13 @@ public:
     SvtAccessibilityOptions& getAccessibilityOptions() { return maAccessibilityOptions;}
 
     virtual void onAccessibilityOptionsChanged();
-};
 
-#endif // INCLUDED_SVX_SVDVIEW_HXX
+    // Do not create ObjectContact locally, but offer a call to allow override
+    // and to create own derivations of ObjectContact
+    virtual sdr::contact::ObjectContact* createViewSpecificObjectContact(
+        SdrPageWindow& rPageWindow,
+        const char* pDebugName) const;
+};
 
 // First of all the app creates a SdrModel.
 // Then it opens a Win and creates a SdrView.
@@ -259,12 +264,6 @@ public:
 //     bool MouseMove(const MouseEvent& rMEvt, vcl::Window* pWin);
 //     bool Command(const CommandEvent& rCEvt, vcl::Window* pWin);
 //
-//   Exchange (Clipboard currently without SdrPrivateData):
-//   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//     sal_Bool Cut(sal_uIntPtr nFormat=SDR_ANYFORMAT);
-//     sal_Bool Yank(sal_uIntPtr nFormat=SDR_ANYFORMAT);
-//     sal_Bool Paste(vcl::Window* pWin=NULL, sal_uIntPtr nFormat=SDR_ANYFORMAT);
-//
 //   SfxItems:
 //   ~~~~~~~~~
 //     sal_Bool GetAttributes(SfxItemSet& rTargetSet, sal_Bool bOnlyHardAttr=sal_False) const;
@@ -276,5 +275,7 @@ public:
 //   ~~~~~~~~~~
 //     Pointer GetPreferredPointer(const Point& rMousePos, const OutputDevice* pOut, sal_uInt16 nTol=0) const;
 //     OUString GetStatusText();
+
+#endif // INCLUDED_SVX_SVDVIEW_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

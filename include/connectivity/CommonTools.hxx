@@ -20,30 +20,22 @@
 #define INCLUDED_CONNECTIVITY_COMMONTOOLS_HXX
 
 #include <sal/config.h>
-#include <config_features.h>
+#include <config_java.h>
 
 #include <map>
 
 #include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <vector>
 #include <cppuhelper/weakref.hxx>
 #include <comphelper/stl_types.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <osl/interlck.h>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <connectivity/dbtoolsdllapi.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 
-namespace com { namespace sun { namespace star { namespace util {
-    struct Date;
-    struct DateTime;
-    struct Time;
-}
-}}}
+namespace com::sun::star::uno { class XComponentContext; }
 
 #if HAVE_FEATURE_JAVA
 namespace jvmaccess { class VirtualMachine; }
@@ -63,34 +55,29 @@ namespace connectivity
     typedef std::map<OUString,OSQLTable,comphelper::UStringMixLess> OSQLTables;
 
     // class ORefVector allows reference counting on a std::vector
-    template< class VectorVal > class ORefVector : public salhelper::SimpleReferenceObject
+    template< class VectorVal > class ORefVector : public salhelper::SimpleReferenceObject,
+        public std::vector< VectorVal >
     {
-        std::vector< VectorVal > m_vector;
-
     protected:
         virtual ~ORefVector() override {}
     public:
         typedef std::vector< VectorVal > Vector;
 
         ORefVector() {}
-        ORefVector(size_t _st) : m_vector(_st) {}
+        ORefVector(size_t _st) : std::vector< VectorVal >(_st) {}
         ORefVector(const ORefVector& rOther)
             : salhelper::SimpleReferenceObject()
-            , m_vector(rOther.m_vector)
+            , std::vector< VectorVal >(rOther)
         {}
 
         ORefVector& operator=(const ORefVector& _rRH)
         {
             if ( &_rRH != this )
             {
-                m_vector = _rRH.m_vector;
+                std::vector< VectorVal >::operator=(_rRH);
             }
             return *this;
         }
-
-        std::vector< VectorVal > & get() { return m_vector; }
-        std::vector< VectorVal > const & get() const { return m_vector; }
-
     };
 
     // class ORowVector includes refcounting and initialize himself
@@ -109,16 +96,16 @@ namespace connectivity
     // search from first to last the column with the name _rVal
     // when no such column exist last is returned
     OOO_DLLPUBLIC_DBTOOLS
-    OSQLColumns::Vector::const_iterator find(   const OSQLColumns::Vector::const_iterator& first,
-                                        const OSQLColumns::Vector::const_iterator& last,
+    OSQLColumns::const_iterator find(   const OSQLColumns::const_iterator& first,
+                                        const OSQLColumns::const_iterator& last,
                                         const OUString& _rVal,
                                         const ::comphelper::UStringMixEqual& _rCase);
 
     // search from first to last the column with the realname _rVal
     // when no such column exist last is returned
     OOO_DLLPUBLIC_DBTOOLS
-    OSQLColumns::Vector::const_iterator findRealName(   const OSQLColumns::Vector::const_iterator& first,
-                                                const OSQLColumns::Vector::const_iterator& last,
+    OSQLColumns::const_iterator findRealName(   const OSQLColumns::const_iterator& first,
+                                                const OSQLColumns::const_iterator& last,
                                                 const OUString& _rVal,
                                                 const ::comphelper::UStringMixEqual& _rCase);
 
@@ -126,8 +113,8 @@ namespace connectivity
     // search from first to last the column with the property _rProp equals the value _rVal
     // when no such column exist last is returned
     OOO_DLLPUBLIC_DBTOOLS
-    OSQLColumns::Vector::const_iterator find(   OSQLColumns::Vector::const_iterator first,
-                                        const OSQLColumns::Vector::const_iterator& last,
+    OSQLColumns::const_iterator find(   OSQLColumns::const_iterator first,
+                                        const OSQLColumns::const_iterator& last,
                                         const OUString& _rProp,
                                         const OUString& _rVal,
                                         const ::comphelper::UStringMixEqual& _rCase);
@@ -156,22 +143,22 @@ namespace connectivity
 
 #define DECLARE_SERVICE_INFO()  \
     virtual OUString SAL_CALL getImplementationName(  ) override; \
-    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override; \
+    virtual sal_Bool SAL_CALL supportsService( const OUString& rServiceName ) override; \
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override \
 
 #define IMPLEMENT_SERVICE_INFO(classname, implasciiname, serviceasciiname)  \
     OUString SAL_CALL classname::getImplementationName(  )   \
     {   \
-        return OUString(implasciiname); \
+        return implasciiname; \
     }   \
     css::uno::Sequence< OUString > SAL_CALL classname::getSupportedServiceNames(  )  \
     {   \
         css::uno::Sequence< OUString > aSupported { serviceasciiname }; \
         return aSupported;  \
     }   \
-    sal_Bool SAL_CALL classname::supportsService( const OUString& _rServiceName ) \
+    sal_Bool SAL_CALL classname::supportsService( const OUString& rServiceName ) \
     {   \
-        return cppu::supportsService(this, _rServiceName); \
+        return cppu::supportsService(this, rServiceName); \
     }   \
 
 #endif // INCLUDED_CONNECTIVITY_COMMONTOOLS_HXX

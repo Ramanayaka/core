@@ -20,24 +20,23 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_IO_READER_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_IO_READER_HXX
 
-#include "java/lang/Object.hxx"
+#include <java/lang/Object.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/io/XInputStream.hpp>
-#include <boost/optional.hpp>
+#include <optional>
 
 namespace connectivity
 {
 
     //************ Class: java.io.InputStream
 
-    class java_io_Reader : public java_lang_Object,
+    class java_io_Reader final : public java_lang_Object,
                            public ::cppu::WeakImplHelper< css::io::XInputStream>
     {
-    protected:
     // static Data for the Class
         static jclass theClass;
         virtual ~java_io_Reader() override;
-        boost::optional<char> m_buf;
+        std::optional<char> m_buf;
     public:
         virtual jclass getMyClass() const override;
         // a Constructor, that is needed for when Returning the Object is needed:

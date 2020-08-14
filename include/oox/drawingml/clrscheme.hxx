@@ -28,8 +28,42 @@
 
 #include <oox/dllapi.h>
 #include <sal/types.h>
+#include <rtl/ustring.hxx>
+#include <tools/color.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
+
+enum PredefinedClrSchemeId {
+    //dk1,
+    //lt1,
+    dk2 = 0,
+    lt2,
+    accent1,
+    accent2,
+    accent3,
+    accent4,
+    accent5,
+    accent6,
+    hlink,
+    folHlink,
+    Count
+};
+
+static std::map<PredefinedClrSchemeId, OUString> PredefinedClrNames =
+{
+    //{ dk1,  "dk1" },
+    //{ lt1, "lt1" },
+    { dk2, "dk2" },
+    { lt2, "lt2" },
+    { accent1, "accent1" },
+    { accent2, "accent2" },
+    { accent3, "accent3" },
+    { accent4, "accent4" },
+    { accent5, "accent5" },
+    { accent6, "accent6" },
+    { hlink, "hlink" },
+    { folHlink, "folHlink" }
+};
 
 class ClrMap
 {
@@ -45,20 +79,18 @@ typedef std::shared_ptr< ClrMap > ClrMapPtr;
 
 class OOX_DLLPUBLIC ClrScheme
 {
-    std::vector< std::pair<sal_Int32, sal_Int32> > maClrScheme;
+    std::vector< std::pair<sal_Int32, ::Color> > maClrScheme;
 
 public:
 
-    bool     getColor( sal_Int32 nSchemeClrToken, sal_Int32& rColor ) const;
-    void     setColor( sal_Int32 nSchemeClrToken, sal_Int32 nColor );
+    bool     getColor( sal_Int32 nSchemeClrToken, ::Color& rColor ) const;
+    void     setColor( sal_Int32 nSchemeClrToken, ::Color nColor );
 
     bool     getColorByIndex(size_t nIndex,
-            sal_Int32& rColor) const;
+            ::Color& rColor) const;
 };
 
-typedef std::shared_ptr< ClrScheme > ClrSchemePtr;
-
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_CLRSCHEME_HXX
 

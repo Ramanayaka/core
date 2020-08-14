@@ -21,7 +21,6 @@
 #include <DocumentStatisticsManager.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <DocumentLayoutManager.hxx>
-#include <docstat.hxx>
 #include <acorrect.hxx>
 
 namespace sw
@@ -111,10 +110,6 @@ void DocumentStateManager::SetNewDoc(bool b)
 void DocumentStateManager::SetUpdateExpFieldStat(bool b)
 {
     mbUpdateExpField = b;
-}
-
-void DocumentStateManager::SetLoaded()
-{
 }
 
 }

@@ -12,10 +12,8 @@
 #define INCLUDED_VCL_OUTDEVTESTS_HXX
 
 #include <vcl/virdev.hxx>
-#include <vcl/bitmapaccess.hxx>
 
-namespace vcl {
-namespace test {
+namespace vcl::test {
 
 /** Rendering test result.
  *
@@ -45,15 +43,27 @@ protected:
 public:
     OutputDeviceTestCommon();
 
-    void initialSetup(long nWidth, long nHeight, Color aColor);
+    OUString getRenderBackendName() const;
+
+    void initialSetup(long nWidth, long nHeight, Color aColor, bool bEnableAA = false, bool bAlphaVirtualDevice = false);
 
     static TestResult checkRectangle(Bitmap& rBitmap);
-    static TestResult checkFilledRectangle(Bitmap& rBitmap);
+    static TestResult checkRectangleAA(Bitmap& rBitmap);
+    static TestResult checkFilledRectangle(Bitmap& rBitmap, bool useLineColor);
     static TestResult checkLines(Bitmap& rBitmap);
     static TestResult checkAALines(Bitmap& rBitmap);
     static TestResult checkDiamond(Bitmap& rBitmap);
 
+    static TestResult checkInvertRectangle(Bitmap& rBitmap);
+    static TestResult checkInvertN50Rectangle(Bitmap& aBitmap);
+    static TestResult checkInvertTrackFrameRectangle(Bitmap& aBitmap);
+
     static TestResult checkRectangles(Bitmap& rBitmap, std::vector<Color>& aExpectedColors);
+    static TestResult checkRectangle(Bitmap& rBitmap, int aLayerNumber, Color aExpectedColor);
+
+    static TestResult checkFilled(Bitmap& rBitmap, tools::Rectangle aRectangle, Color aExpectedColor);
+    static TestResult checkChecker(Bitmap& rBitmap, sal_Int32 nStartX, sal_Int32 nEndX,
+                                   sal_Int32 nStartY, sal_Int32 nEndY, std::vector<Color> const & rExpected);
 
     static void createDiamondPoints(tools::Rectangle rRect, int nOffset,
                                     Point& rPoint1, Point& rPoint2,
@@ -66,6 +76,7 @@ public:
     // tools
     static tools::Rectangle alignToCenter(tools::Rectangle aRect1, tools::Rectangle aRect2);
 
+    static TestResult checkBezier(Bitmap& rBitmap);
 };
 
 class VCL_DLLPUBLIC OutputDeviceTestBitmap : public OutputDeviceTestCommon
@@ -77,10 +88,12 @@ public:
     Bitmap setupDrawBitmap();
     Bitmap setupDrawBitmapExWithAlpha();
     Bitmap setupDrawMask();
+    BitmapEx setupDrawBlend();
 
     static TestResult checkTransformedBitmap(Bitmap& rBitmap);
     static TestResult checkBitmapExWithAlpha(Bitmap& rBitmap);
     static TestResult checkMask(Bitmap& rBitmap);
+    static TestResult checkBlend(BitmapEx& rBitmap);
 };
 
 class VCL_DLLPUBLIC OutputDeviceTestAnotherOutDev : public OutputDeviceTestCommon
@@ -100,7 +113,7 @@ class VCL_DLLPUBLIC OutputDeviceTestPixel : public OutputDeviceTestCommon
 public:
     OutputDeviceTestPixel() = default;
 
-    Bitmap setupRectangle();
+    Bitmap setupRectangle(bool bEnableAA);
 };
 
 class VCL_DLLPUBLIC OutputDeviceTestLine : public OutputDeviceTestCommon
@@ -108,10 +121,13 @@ class VCL_DLLPUBLIC OutputDeviceTestLine : public OutputDeviceTestCommon
 public:
     OutputDeviceTestLine() = default;
 
-    Bitmap setupRectangle();
+    Bitmap setupRectangle(bool bEnableAA);
     Bitmap setupDiamond();
     Bitmap setupLines();
     Bitmap setupAALines();
+
+    Bitmap setupDashedLine();
+    static TestResult checkDashedLine(Bitmap& rBitmap);
 };
 
 class VCL_DLLPUBLIC OutputDeviceTestPolyLine : public OutputDeviceTestCommon
@@ -119,10 +135,21 @@ class VCL_DLLPUBLIC OutputDeviceTestPolyLine : public OutputDeviceTestCommon
 public:
     OutputDeviceTestPolyLine() = default;
 
-    Bitmap setupRectangle();
+    Bitmap setupRectangle(bool bEnableAA);
     Bitmap setupDiamond();
     Bitmap setupLines();
     Bitmap setupAALines();
+};
+
+class VCL_DLLPUBLIC OutputDeviceTestPolyLineB2D : public OutputDeviceTestCommon
+{
+public:
+    OutputDeviceTestPolyLineB2D() = default;
+
+    Bitmap setupRectangle(bool bEnableAA);
+    Bitmap setupDiamond();
+    Bitmap setupBezier();
+    Bitmap setupAABezier();
 };
 
 class VCL_DLLPUBLIC OutputDeviceTestRect : public OutputDeviceTestCommon
@@ -130,8 +157,11 @@ class VCL_DLLPUBLIC OutputDeviceTestRect : public OutputDeviceTestCommon
 public:
     OutputDeviceTestRect() = default;
 
-    Bitmap setupFilledRectangle();
-    Bitmap setupRectangle();
+    Bitmap setupRectangle(bool bEnableAA);
+    Bitmap setupFilledRectangle(bool useLineColor);
+    Bitmap setupInvert_NONE();
+    Bitmap setupInvert_N50();
+    Bitmap setupInvert_TrackFrame();
 };
 
 class VCL_DLLPUBLIC OutputDeviceTestPolygon : public OutputDeviceTestCommon
@@ -139,8 +169,8 @@ class VCL_DLLPUBLIC OutputDeviceTestPolygon : public OutputDeviceTestCommon
 public:
     OutputDeviceTestPolygon() = default;
 
-    Bitmap setupFilledRectangle();
-    Bitmap setupRectangle();
+    Bitmap setupRectangle(bool bEnableAA);
+    Bitmap setupFilledRectangle(bool useLineColor);
     Bitmap setupDiamond();
     Bitmap setupLines();
     Bitmap setupAALines();
@@ -151,8 +181,17 @@ class VCL_DLLPUBLIC OutputDeviceTestPolyPolygon : public OutputDeviceTestCommon
 public:
     OutputDeviceTestPolyPolygon() = default;
 
-    Bitmap setupFilledRectangle();
-    Bitmap setupRectangle();
+    Bitmap setupRectangle(bool bEnableAA);
+    Bitmap setupFilledRectangle(bool useLineColor);
+};
+
+class VCL_DLLPUBLIC OutputDeviceTestPolyPolygonB2D : public OutputDeviceTestCommon
+{
+public:
+    OutputDeviceTestPolyPolygonB2D() = default;
+
+    Bitmap setupRectangle(bool bEnableAA);
+    Bitmap setupFilledRectangle(bool useLineColor);
 };
 
 class VCL_DLLPUBLIC OutputDeviceTestGradient : public OutputDeviceTestCommon
@@ -164,7 +203,19 @@ public:
     Bitmap setupRadialGradient();
 };
 
-}} // end namespace vcl::test
+class VCL_DLLPUBLIC OutputDeviceTestClip : public OutputDeviceTestCommon
+{
+public:
+    Bitmap setupClipRectangle();
+    Bitmap setupClipPolygon();
+    Bitmap setupClipPolyPolygon();
+    Bitmap setupClipB2DPolyPolygon();
+
+    static TestResult checkClip(Bitmap& rBitmap);
+};
+
+
+} // end namespace vcl::test
 
 #endif
 

@@ -25,11 +25,6 @@
 #include "PresenterViewFactory.hxx"
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <com/sun/star/awt/ActionEvent.hpp>
-#include <com/sun/star/awt/XActionListener.hpp>
-#include <com/sun/star/awt/XButton.hpp>
-#include <com/sun/star/awt/XControl.hpp>
-#include <com/sun/star/awt/XTextComponent.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
@@ -39,7 +34,7 @@
 #include <rtl/ref.hxx>
 #include <memory>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 class PresenterButton;
 class PresenterScrollBar;
@@ -154,7 +149,7 @@ private:
     void UpdateScrollBar();
 };
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 #endif
 

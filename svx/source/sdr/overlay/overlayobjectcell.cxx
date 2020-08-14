@@ -19,21 +19,16 @@
 
 
 #include <basegfx/numeric/ftools.hxx>
-#include <vcl/outdev.hxx>
-#include <vcl/hatch.hxx>
-#include <svx/sdr/overlay/overlayobjectcell.hxx>
+#include <sdr/overlay/overlayobjectcell.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
-#include <drawinglayer/primitive2d/invertprimitive2d.hxx>
 
 using namespace ::basegfx;
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         OverlayObjectCell::OverlayObjectCell( const Color& rColor, const RangeVector& rRects )
         :   OverlayObject( rColor ),
             maRectangles( rRects )
@@ -60,7 +55,7 @@ namespace sdr
                 for(sal_uInt32 a(0); a < nCount; a++)
                 {
                     const basegfx::B2DRange& rRange(maRectangles[a]);
-                    const basegfx::B2DPolygon aPolygon(basegfx::tools::createPolygonFromRect(rRange));
+                    const basegfx::B2DPolygon aPolygon(basegfx::utils::createPolygonFromRect(rRange));
 
                     aRetval[a] = drawinglayer::primitive2d::Primitive2DReference(
                         new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
@@ -80,7 +75,7 @@ namespace sdr
 
             return aRetval;
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

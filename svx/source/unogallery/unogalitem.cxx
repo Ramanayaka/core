@@ -20,18 +20,17 @@
 
 #include "unogalitem.hxx"
 #include "unogaltheme.hxx"
-#include "svx/galtheme.hxx"
-#include "svx/galmisc.hxx"
+#include <svx/galtheme.hxx>
+#include <svx/galmisc.hxx>
+#include <svx/gallery1.hxx>
 #include <svx/fmmodel.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/graph.hxx>
-#include <svl/itemprop.hxx>
 #include <svl/itempool.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "galobj.hxx"
+#include <galobj.hxx>
 
-#include <com/sun/star/beans/PropertyState.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/gallery/GalleryItemType.hpp>
 #include <memory>
@@ -116,7 +115,7 @@ void SAL_CALL GalleryItem::release()
 
 OUString SAL_CALL GalleryItem::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.gallery.GalleryItem" );
+    return "com.sun.star.comp.gallery.GalleryItem";
 }
 
 sal_Bool SAL_CALL GalleryItem::supportsService( const OUString& ServiceName )
@@ -131,16 +130,13 @@ uno::Sequence< OUString > SAL_CALL GalleryItem::getSupportedServiceNames()
 
 uno::Sequence< uno::Type > SAL_CALL GalleryItem::getTypes()
 {
-    uno::Sequence< uno::Type >  aTypes( 6 );
-    uno::Type*                  pTypes = aTypes.getArray();
-
-    *pTypes++ = cppu::UnoType<lang::XServiceInfo>::get();
-    *pTypes++ = cppu::UnoType<lang::XTypeProvider>::get();
-    *pTypes++ = cppu::UnoType<gallery::XGalleryItem>::get();
-    *pTypes++ = cppu::UnoType<beans::XPropertySet>::get();
-    *pTypes++ = cppu::UnoType<beans::XPropertyState>::get();
-    *pTypes++ = cppu::UnoType<beans::XMultiPropertySet>::get();
-
+    static const uno::Sequence aTypes {
+        cppu::UnoType<lang::XServiceInfo>::get(),
+        cppu::UnoType<lang::XTypeProvider>::get(),
+        cppu::UnoType<gallery::XGalleryItem>::get(),
+        cppu::UnoType<beans::XPropertySet>::get(),
+        cppu::UnoType<beans::XPropertyState>::get(),
+        cppu::UnoType<beans::XMultiPropertySet>::get() };
     return aTypes;
 }
 
@@ -215,28 +211,27 @@ void GalleryItem::_setPropertyValues( const comphelper::PropertyMapEntry** ppEnt
         {
             OUString aNewTitle;
 
-            if( *pValues >>= aNewTitle )
-            {
-                ::GalleryTheme* pGalTheme = ( isValid() ? mpTheme->implGetTheme() : nullptr );
-
-                if( pGalTheme )
-                {
-                    std::unique_ptr<SgaObject> pObj(pGalTheme->ImplReadSgaObject( const_cast< GalleryObject* >( implGetObject() ) ));
-
-                    if( pObj )
-                    {
-                        if( pObj->GetTitle() != aNewTitle )
-                        {
-                            pObj->SetTitle( aNewTitle );
-                            pGalTheme->InsertObject( *pObj );
-                        }
-                    }
-                }
-            }
-            else
+            if( !(*pValues >>= aNewTitle) )
             {
                 throw lang::IllegalArgumentException();
             }
+
+            ::GalleryTheme* pGalTheme = ( isValid() ? mpTheme->implGetTheme() : nullptr );
+
+            if( pGalTheme )
+            {
+                std::unique_ptr<SgaObject> pObj(pGalTheme->getGalleryBinaryEngine()->implReadSgaObject( implGetObject() ));
+
+                if( pObj )
+                {
+                    if( pObj->GetTitle() != aNewTitle )
+                    {
+                        pObj->SetTitle( aNewTitle );
+                        pGalTheme->InsertObject( *pObj );
+                    }
+                }
+            }
+
         }
 
         ++ppEntries;
@@ -273,12 +268,11 @@ void GalleryItem::_getPropertyValues( const comphelper::PropertyMapEntry** ppEnt
 
                 if( pGalTheme )
                 {
-                    SgaObject* pObj = pGalTheme->AcquireObject( pGalTheme->ImplGetGalleryObjectPos( implGetObject() ) );
+                    std::unique_ptr<SgaObject> pObj = pGalTheme->AcquireObject( pGalTheme->maGalleryObjectCollection.searchPosWithObject( implGetObject() ) );
 
                     if( pObj )
                     {
                         *pValue <<= pObj->GetTitle();
-                        ::GalleryTheme::ReleaseObject( pObj );
                     }
                 }
             }
@@ -290,7 +284,7 @@ void GalleryItem::_getPropertyValues( const comphelper::PropertyMapEntry** ppEnt
 
                 if( pGalTheme )
                 {
-                    SgaObject* pObj = pGalTheme->AcquireObject( pGalTheme->ImplGetGalleryObjectPos( implGetObject() ) );
+                    std::unique_ptr<SgaObject> pObj = pGalTheme->AcquireObject( pGalTheme->maGalleryObjectCollection.searchPosWithObject( implGetObject() ) );
 
                     if( pObj )
                     {
@@ -302,7 +296,6 @@ void GalleryItem::_getPropertyValues( const comphelper::PropertyMapEntry** ppEnt
                             aThumbnail = pObj->GetThumbMtf();
 
                         *pValue <<= aThumbnail.GetXGraphic();
-                        ::GalleryTheme::ReleaseObject( pObj );
                     }
                 }
             }
@@ -313,7 +306,7 @@ void GalleryItem::_getPropertyValues( const comphelper::PropertyMapEntry** ppEnt
                 ::GalleryTheme* pGalTheme = ( isValid() ? mpTheme->implGetTheme() : nullptr );
                 Graphic         aGraphic;
 
-                if( pGalTheme && pGalTheme->GetGraphic( pGalTheme->ImplGetGalleryObjectPos( implGetObject() ), aGraphic ) )
+                if( pGalTheme && pGalTheme->GetGraphic( pGalTheme->maGalleryObjectCollection.searchPosWithObject( implGetObject() ), aGraphic ) )
                     *pValue <<= aGraphic.GetXGraphic();
             }
             break;
@@ -323,11 +316,11 @@ void GalleryItem::_getPropertyValues( const comphelper::PropertyMapEntry** ppEnt
                 if( gallery::GalleryItemType::DRAWING == getType() )
                 {
                     ::GalleryTheme* pGalTheme = ( isValid() ? mpTheme->implGetTheme() : nullptr );
-                    FmFormModel*    pModel = new FmFormModel;
+                    FmFormModel*    pModel = new FmFormModel();
 
                     pModel->GetItemPool().FreezeIdRanges();
 
-                    if( pGalTheme && pGalTheme->GetModel( pGalTheme->ImplGetGalleryObjectPos( implGetObject() ), *pModel ) )
+                    if( pGalTheme && pGalTheme->GetModel( pGalTheme->maGalleryObjectCollection.searchPosWithObject( implGetObject() ), *pModel ) )
                     {
                         uno::Reference< lang::XComponent > xDrawing( new GalleryDrawingModel( pModel ) );
 

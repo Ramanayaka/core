@@ -22,10 +22,9 @@
 #include <com/sun/star/report/XGroup.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/broadcasthelper.hxx>
-#include <comphelper/sequence.hxx>
 #include <cppuhelper/propertysetmixin.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include "GroupProperties.hxx"
+#include <GroupProperties.hxx>
 #include <comphelper/uno3.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
@@ -160,8 +159,6 @@ namespace reportdesign
         {
             cppu::WeakComponentImplHelperBase::removeEventListener(aListener);
         }
-
-        const css::uno::Reference< css::uno::XComponentContext >& getContext(){ return m_xContext; }
     };
 
 } // namespace reportdesign

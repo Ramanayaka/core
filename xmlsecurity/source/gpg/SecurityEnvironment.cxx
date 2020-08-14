@@ -10,13 +10,33 @@
 #include "SecurityEnvironment.hxx"
 #include "CertificateImpl.hxx"
 
-#include <cppuhelper/supportsservice.hxx>
+#include <com/sun/star/security/CertificateCharacters.hpp>
+#include <com/sun/star/security/CertificateValidity.hpp>
+
 #include <comphelper/servicehelper.hxx>
-#include <list>
+#include <vector>
+
+#ifdef _WIN32
+#include <config_folders.h>
+#include <osl/file.hxx>
+#include <osl/process.h>
+#include <rtl/bootstrap.hxx>
+#include <tools/urlobj.hxx>
+#endif
 
 #include <key.h>
 #include <keylistresult.h>
-#include "xmlsec-wrapper.h"
+#include <xmlsec-wrapper.h>
+
+#if defined _MSC_VER && defined __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundef"
+#endif
+#include <gpgme.h>
+#if defined _MSC_VER && defined __clang__
+#pragma clang diagnostic pop
+#endif
+#include <context.h>
 
 using namespace css;
 using namespace css::security;
@@ -25,6 +45,36 @@ using namespace css::lang;
 
 SecurityEnvironmentGpg::SecurityEnvironmentGpg()
 {
+#ifdef _WIN32
+    // On Windows, gpgme expects gpgme-w32spawn.exe to be in the same directory as the current
+    // process executable. This assumption might be wrong, e.g., for bundled python, which is
+    // in instdir/program/python-core-x.y.z/bin, while gpgme-w32spawn.exe is in instdir/program.
+    // If we can't find gpgme-w32spawn.exe in the current executable location, then try to find
+    // the spawn executable, and inform gpgme about actual location using gpgme_set_global_flag.
+    [[maybe_unused]] static bool bSpawnPathInitialized = [] {
+        auto accessUrl = [](const INetURLObject& url) {
+            osl::File file(url.GetMainURL(INetURLObject::DecodeMechanism::NONE));
+            return file.open(osl_File_OpenFlag_Read) == osl::FileBase::E_None;
+        };
+        OUString sPath;
+        osl_getExecutableFile(&sPath.pData);
+        INetURLObject aPathUrl(sPath);
+        aPathUrl.setName("gpgme-w32spawn.exe");
+        if (!accessUrl(aPathUrl))
+        {
+            sPath = "$BRAND_BASE_DIR/" LIBO_LIBEXEC_FOLDER "/gpgme-w32spawn.exe";
+            rtl::Bootstrap::expandMacros(sPath);
+            aPathUrl.SetURL(sPath);
+            if (accessUrl(aPathUrl))
+            {
+                aPathUrl.removeSegment();
+                GpgME::setGlobalFlag("w32-inst-dir",
+                                     aPathUrl.getFSysPath(FSysStyle::Dos).toUtf8().getStr());
+            }
+        }
+        return true;
+    }();
+#endif
     GpgME::Error err = GpgME::checkEngine(GpgME::OpenPGP);
     if (err)
         throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
@@ -32,6 +82,7 @@ SecurityEnvironmentGpg::SecurityEnvironmentGpg()
     m_ctx.reset( GpgME::Context::createForProtocol(GpgME::OpenPGP) );
     if (m_ctx == nullptr)
         throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+    m_ctx->setArmor(false);
 }
 
 SecurityEnvironmentGpg::~SecurityEnvironmentGpg()
@@ -41,7 +92,7 @@ SecurityEnvironmentGpg::~SecurityEnvironmentGpg()
 /* XUnoTunnel */
 sal_Int64 SAL_CALL SecurityEnvironmentGpg::getSomething( const Sequence< sal_Int8 >& aIdentifier )
 {
-    if( aIdentifier.getLength() == 16 && 0 == memcmp( getUnoTunnelId().getConstArray(), aIdentifier.getConstArray(), 16 ) ) {
+    if( isUnoTunnelId<SecurityEnvironmentGpg>(aIdentifier) ) {
         return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_uIntPtr>(this));
     }
     return 0 ;
@@ -63,19 +114,19 @@ OUString SecurityEnvironmentGpg::getSecurityEnvironmentInformation()
     return OUString();
 }
 
-Sequence< Reference < XCertificate > > SecurityEnvironmentGpg::getPersonalCertificates()
+Sequence< Reference < XCertificate > > SecurityEnvironmentGpg::getCertificatesImpl( bool bPrivateOnly )
 {
     CertificateImpl* xCert;
-    std::list< GpgME::Key > keyList;
-    std::list< CertificateImpl* > certsList;
+    std::vector< GpgME::Key > keyList;
+    std::vector< CertificateImpl* > certsList;
 
     m_ctx->setKeyListMode(GPGME_KEYLIST_MODE_LOCAL);
-    GpgME::Error err = m_ctx->startKeyListing("", true);
+    GpgME::Error err = m_ctx->startKeyListing("", bPrivateOnly );
     while (!err) {
         GpgME::Key k = m_ctx->nextKey(err);
         if (err)
             break;
-        if (!k.isInvalid()) {
+        if (!k.isRevoked() && !k.isExpired() && !k.isDisabled() && !k.isInvalid()) {
             // We can't create CertificateImpl here as CertificateImpl::setCertificate uses GpgME API
             // which interrupts our key listing here. So first get the keys from GpgME, then create the CertificateImpls
             keyList.push_back(k);
@@ -98,6 +149,16 @@ Sequence< Reference < XCertificate > > SecurityEnvironmentGpg::getPersonalCertif
     return xCertificateSequence;
 }
 
+Sequence< Reference < XCertificate > > SecurityEnvironmentGpg::getPersonalCertificates()
+{
+    return getCertificatesImpl( true );
+}
+
+Sequence< Reference < XCertificate > > SecurityEnvironmentGpg::getAllCertificates()
+{
+    return getCertificatesImpl( false );
+}
+
 Reference< XCertificate > SecurityEnvironmentGpg::getCertificate( const OUString& keyId, const Sequence< sal_Int8 >& /*serialNumber*/ )
 {
     CertificateImpl* xCert=nullptr;
@@ -109,12 +170,12 @@ Reference< XCertificate > SecurityEnvironmentGpg::getCertificate( const OUString
         throw RuntimeException("Base64 decode failed");
 
     m_ctx->setKeyListMode(GPGME_KEYLIST_MODE_LOCAL);
-    GpgME::Error err = m_ctx->startKeyListing("", true);
+    GpgME::Error err = m_ctx->startKeyListing("", false);
     while (!err) {
         GpgME::Key k = m_ctx->nextKey(err);
         if (err)
             break;
-        if (!k.isInvalid() && strcmp(k.keyID(), reinterpret_cast<const char*>(strKeyId)) == 0) {
+        if (!k.isInvalid() && strcmp(k.primaryFingerprint(), reinterpret_cast<const char*>(strKeyId)) == 0) {
             xCert = new CertificateImpl();
             xCert->setCertificate(m_ctx.get(), k);
             m_ctx->endKeyListing();
@@ -141,10 +202,24 @@ Reference< XCertificate > SecurityEnvironmentGpg::createCertificateFromAscii( co
     return nullptr;
 }
 
-sal_Int32 SecurityEnvironmentGpg::verifyCertificate( const Reference< XCertificate >& /*aCert*/,
+sal_Int32 SecurityEnvironmentGpg::verifyCertificate( const Reference< XCertificate >& aCert,
                                                   const Sequence< Reference< XCertificate > >&  /*intermediateCerts*/ )
 {
-    return 0;
+    const CertificateImpl* xCert = dynamic_cast<CertificateImpl*>(aCert.get());
+    if (xCert == nullptr) {
+         // Can't find the key locally -> unknown owner
+        return security::CertificateValidity::ISSUER_UNKNOWN;
+    }
+
+    const GpgME::Key* key = xCert->getCertificate();
+    if (key->ownerTrust() == GpgME::Key::OwnerTrust::Marginal ||
+        key->ownerTrust() == GpgME::Key::OwnerTrust::Full ||
+        key->ownerTrust() == GpgME::Key::OwnerTrust::Ultimate)
+    {
+        return security::CertificateValidity::VALID;
+    }
+
+    return security::CertificateValidity::ISSUER_UNTRUSTED;
 }
 
 sal_Int32 SecurityEnvironmentGpg::getCertificateCharacters(

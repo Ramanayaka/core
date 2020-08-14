@@ -33,7 +33,6 @@ namespace framework
     using ::com::sun::star::uno::UNO_QUERY;
     using ::com::sun::star::uno::UNO_QUERY_THROW;
     using ::com::sun::star::uno::Exception;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::document::XUndoManagerSupplier;
     using ::com::sun::star::document::XUndoManager;
     using ::com::sun::star::document::XUndoManagerListener;
@@ -44,6 +43,9 @@ namespace framework
 
     typedef ::cppu::WeakImplHelper <   XUndoManagerListener
                                     >   UndoManagerContextListener_Base;
+
+    namespace {
+
     class UndoManagerContextListener : public UndoManagerContextListener_Base
     {
     public:
@@ -97,6 +99,8 @@ namespace framework
         oslInterlockedCount             m_nRelativeContextDepth;
         bool                            m_documentDisposed;
     };
+
+    }
 
     void SAL_CALL UndoManagerContextListener::undoActionAdded( const UndoManagerEvent& )
     {
@@ -175,14 +179,14 @@ namespace framework
             {
                 Reference< XUndoManagerSupplier > xUndoSupplier( i_undoSupplierComponent, UNO_QUERY );
                 if ( xUndoSupplier.is() )
-                    i_data.xUndoManager.set( xUndoSupplier->getUndoManager(), UNO_QUERY_THROW );
+                    i_data.xUndoManager.set( xUndoSupplier->getUndoManager(), css::uno::UNO_SET_THROW );
 
                 if ( i_data.xUndoManager.is() )
                     i_data.pContextListener.set( new UndoManagerContextListener( i_data.xUndoManager ) );
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("fwk");
             }
         }
 
@@ -196,7 +200,7 @@ namespace framework
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("fwk");
             }
         }
     }

@@ -31,9 +31,9 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XOutputStream; }
-} } }
+}
 
 namespace oox {
 
@@ -90,14 +90,7 @@ public:
 protected:
     /** This dummy default c'tor will never call the c'tor of the virtual base
         class BinaryStreamBase as this class cannot be instantiated directly. */
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning( disable : 4702)
-#endif
     BinaryOutputStream() : BinaryStreamBase( false ) {}
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
 private:
     BinaryOutputStream( BinaryOutputStream const& ) = delete;
@@ -132,7 +125,7 @@ void BinaryOutputStream::writeValue( Type nValue )
 
     The binary data in the stream is written in little-endian format.
  */
-class BinaryXOutputStream : public BinaryXSeekableStream, public BinaryOutputStream
+class OOX_DLLPUBLIC BinaryXOutputStream final : public BinaryXSeekableStream, public BinaryOutputStream
 {
 public:
     /** Constructs the wrapper object for the passed output stream.
@@ -175,7 +168,7 @@ private:
     construction, the stream points to the beginning of the passed data
     sequence. The data sequence is expanded automatically while writing to it.
  */
-class OOX_DLLPUBLIC SequenceOutputStream : public SequenceSeekableStream, public BinaryOutputStream
+class SequenceOutputStream final : public BinaryOutputStream
 {
 public:
     /** Constructs the wrapper object for the passed data sequence.
@@ -185,13 +178,26 @@ public:
             wrapper. The data sequence MUST NOT be changed from outside as long
             as this stream wrapper is used to write to it.
      */
-    explicit            SequenceOutputStream( StreamDataSequence& rData );
+    explicit            SequenceOutputStream( StreamDataSequence & rData );
 
     /** Writes the passed data sequence. */
     virtual void        writeData( const StreamDataSequence& rData, size_t nAtomSize = 1 ) override;
 
     /** Write nBytes bytes from the (preallocated!) buffer pMem. */
     virtual void        writeMemory( const void* pMem, sal_Int32 nBytes, size_t nAtomSize = 1 ) override;
+
+    /** Returns the size of the wrapped data sequence. */
+    virtual sal_Int64   size() const override;
+    /** Returns the current stream position. */
+    virtual sal_Int64   tell() const override;
+    /** Seeks the stream to the passed position. */
+    virtual void        seek( sal_Int64 nPos ) override;
+    /** Releases the reference to the data sequence. */
+    virtual void        close() override;
+
+private:
+    StreamDataSequence* mpData;   ///< Wrapped data sequence.
+    sal_Int32           mnPos;          ///< Current position in the sequence.
 };
 
 

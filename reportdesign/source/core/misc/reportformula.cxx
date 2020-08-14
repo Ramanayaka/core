@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "reportformula.hxx"
+#include <reportformula.hxx>
 
 #include <rtl/ustrbuf.hxx>
 
@@ -27,8 +27,8 @@ namespace rptui
     namespace
     {
 
-        static const char sExpressionPrefix[] = "rpt:";
-        static const char sFieldPrefix[] =  "field:";
+        const char sExpressionPrefix[] = "rpt:";
+        const char sFieldPrefix[] =  "field:";
     }
 
 
@@ -37,48 +37,6 @@ namespace rptui
 
     ReportFormula::ReportFormula( const OUString& _rFormula )
         :m_eType( Invalid )
-    {
-        impl_construct( _rFormula );
-    }
-
-
-    ReportFormula::ReportFormula( const BindType _eType, const OUString& _rFieldOrExpression )
-        :m_eType( _eType )
-    {
-        switch ( m_eType )
-        {
-        case Expression:
-        {
-            if ( _rFieldOrExpression.startsWith( sExpressionPrefix ) )
-                m_sCompleteFormula = _rFieldOrExpression;
-            else
-                m_sCompleteFormula = sExpressionPrefix + _rFieldOrExpression;
-        }
-        break;
-
-        case Field:
-        {
-            OUStringBuffer aBuffer;
-            aBuffer.append( sFieldPrefix );
-            aBuffer.append( "[" );
-            aBuffer.append( _rFieldOrExpression );
-            aBuffer.append( "]" );
-            m_sCompleteFormula = aBuffer.makeStringAndClear();
-        }
-        break;
-        default:
-            OSL_FAIL( "ReportFormula::ReportFormula: illegal bind type!" );
-            return;
-        }
-
-        m_sUndecoratedContent = _rFieldOrExpression;
-    }
-
-    ReportFormula::~ReportFormula()
-    {
-    }
-
-    void ReportFormula::impl_construct( const OUString& _rFormula )
     {
         m_sCompleteFormula = _rFormula;
 
@@ -107,6 +65,37 @@ namespace rptui
         m_eType = Invalid;
     }
 
+
+    ReportFormula::ReportFormula( const BindType _eType, const OUString& _rFieldOrExpression )
+        :m_eType( _eType )
+    {
+        switch ( m_eType )
+        {
+        case Expression:
+        {
+            if ( _rFieldOrExpression.startsWith( sExpressionPrefix ) )
+                m_sCompleteFormula = _rFieldOrExpression;
+            else
+                m_sCompleteFormula = sExpressionPrefix + _rFieldOrExpression;
+        }
+        break;
+
+        case Field:
+        {
+            m_sCompleteFormula = sFieldPrefix + OUStringLiteral("[") + _rFieldOrExpression + "]";
+        }
+        break;
+        default:
+            OSL_FAIL( "ReportFormula::ReportFormula: illegal bind type!" );
+            return;
+        }
+
+        m_sUndecoratedContent = _rFieldOrExpression;
+    }
+
+    ReportFormula::~ReportFormula()
+    {
+    }
 
     OUString ReportFormula::getBracketedFieldOrExpression() const
     {

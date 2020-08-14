@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SVX_IACCESSIBLEVIEWFORWARDER_HXX
 #define INCLUDED_SVX_IACCESSIBLEVIEWFORWARDER_HXX
 
-#include <sal/types.h>
 #include <tools/gen.hxx>
 
 
@@ -51,6 +50,12 @@ namespace accessibility {
 class IAccessibleViewForwarder
 {
 public:
+    IAccessibleViewForwarder() = default;
+    IAccessibleViewForwarder(IAccessibleViewForwarder const &) = default;
+    IAccessibleViewForwarder(IAccessibleViewForwarder &&) = default;
+    IAccessibleViewForwarder & operator =(IAccessibleViewForwarder const &) = default;
+    IAccessibleViewForwarder & operator =(IAccessibleViewForwarder &&) = default;
+
     virtual ~IAccessibleViewForwarder(){};
 
     /** Returns the area of the underlying document that is visible in the

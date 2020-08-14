@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLELISTITEM_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLELISTITEM_HXX
+#pragma once
 
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
@@ -34,12 +34,12 @@
 
 // forward ---------------------------------------------------------------
 
-namespace com { namespace sun { namespace star { namespace awt {
+namespace com::sun::star::awt {
     struct Point;
     struct Rectangle;
     struct Size;
     class XFocusListener;
-} } } }
+}
 
 // class VCLXAccessibleListItem ------------------------------------------
 
@@ -52,9 +52,9 @@ typedef ::cppu::WeakAggComponentImplHelper6< css::accessibility::XAccessible
 
 /** the class OAccessibleListBoxEntry represents the base class for an accessible object of a listbox entry
 */
-class VCLXAccessibleListItem : public ::cppu::BaseMutex,
-                               public ::comphelper::OCommonAccessibleText,
-                               public VCLXAccessibleListItem_BASE
+class VCLXAccessibleListItem final : public ::cppu::BaseMutex,
+                                     public ::comphelper::OCommonAccessibleText,
+                                     public VCLXAccessibleListItem_BASE
 {
 private:
     OUString                            m_sEntryText;
@@ -62,15 +62,12 @@ private:
     bool                            m_bSelected;
     bool                            m_bVisible;
 
-protected:
     /// client id in the AccessibleEventNotifier queue
     sal_uInt32                          m_nClientId;
 
     rtl::Reference< VCLXAccessibleList >                     m_xParent;
-    css::uno::Reference< css::accessibility::XAccessibleContext > m_xParentContext;
 
-protected:
-    virtual ~VCLXAccessibleListItem() override;
+    virtual ~VCLXAccessibleListItem() override = default;
     /** this function is called upon disposing the component
     */
     virtual void SAL_CALL   disposing() override;
@@ -148,12 +145,12 @@ public:
     virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+    virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
     // XAccessibleEventBroadcaster
     virtual void SAL_CALL addAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
     virtual void SAL_CALL removeAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
 };
 
-#endif // ACCESSIBILITY_STANDARD_ACCESSIBLELISTBOXENTRY_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

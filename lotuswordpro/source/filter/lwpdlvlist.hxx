@@ -61,8 +61,8 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPDLVLIST_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPDLVLIST_HXX
 
-#include "lwpatomholder.hxx"
-#include "lwpobj.hxx"
+#include <lwpatomholder.hxx>
+#include <lwpobj.hxx>
 #include <memory>
 
 /**
@@ -71,17 +71,15 @@
 class LwpDLVList : public LwpObject
 {
 public:
-    LwpDLVList(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
-protected:
-    virtual ~LwpDLVList() override {}
-
-    LwpObjectID m_ListPrevious;
-    LwpObjectID m_ListNext;
-protected:
-    void Read() override;
-public:
+    LwpDLVList(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     LwpObjectID& GetNext() { return m_ListNext; }
     LwpObjectID& GetPrevious() { return m_ListPrevious; }
+protected:
+    virtual ~LwpDLVList() override {}
+    void Read() override;
+private:
+    LwpObjectID m_ListPrevious;
+    LwpObjectID m_ListNext;
 };
 
 /**
@@ -90,7 +88,7 @@ public:
 class LwpDLNFVList : public LwpDLVList
 {
 public:
-    LwpDLNFVList(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpDLNFVList(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
 protected:
     virtual ~LwpDLNFVList() override {}
 
@@ -116,16 +114,15 @@ class LwpPropList;
 class LwpDLNFPVList : public LwpDLNFVList
 {
 public:
-    LwpDLNFPVList(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpDLNFPVList(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpDLNFPVList() override;
-protected:
-    bool m_bHasProperties;
-    std::unique_ptr<LwpPropList> m_pPropList;
+    LwpPropList* GetPropList() { return m_pPropList.get(); }
 protected:
     void Read() override;
     void ReadPropertyList(LwpObjectStream* pObjStrm);
-public:
-    LwpPropList* GetPropList() { return m_pPropList.get(); }
+private:
+    bool m_bHasProperties;
+    std::unique_ptr<LwpPropList> m_pPropList;
 };
 
 /**
@@ -153,7 +150,7 @@ public:
     LwpDLVListHead(){}
     void Read(LwpObjectStream* pObjStrm);
     LwpObjectID& GetFirst() { return m_objHead; }
-protected:
+private:
     LwpObjectID m_objHead;//LwpDLVList
 };
 

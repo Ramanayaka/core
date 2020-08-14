@@ -7,8 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "opengl/program.hxx"
-#include "opengl/RenderState.hxx"
+#include <opengl/program.hxx>
+#include <opengl/RenderState.hxx>
 
 #include <vcl/opengl/OpenGLHelper.hxx>
 #include <vcl/opengl/OpenGLContext.hxx>
@@ -45,8 +45,8 @@ OpenGLProgram::~OpenGLProgram()
 
 bool OpenGLProgram::Load( const OUString& rVertexShader,
                           const OUString& rFragmentShader,
-                          const rtl::OString& preamble,
-                          const rtl::OString& rDigest )
+                          const OString& preamble,
+                          const OString& rDigest )
 {
     mnId = OpenGLHelper::LoadShaders( rVertexShader, rFragmentShader, preamble, rDigest );
     return ( mnId != 0 );
@@ -57,18 +57,17 @@ void OpenGLProgram::Reuse()
     mbBlending = false;
 }
 
-bool OpenGLProgram::Use()
+void OpenGLProgram::Use()
 {
     if (!mnId)
-        return false;
+        return;
 
     glUseProgram(mnId);
     CHECK_GL_ERROR();
     Reuse();
-    return true;
 }
 
-bool OpenGLProgram::Clean()
+void OpenGLProgram::Clean()
 {
     // unbind all textures
     for (OpenGLTexture& rTexture : maTextures)
@@ -90,8 +89,6 @@ bool OpenGLProgram::Clean()
         }
         mnEnabledAttribs = 0;
     }
-
-    return true;
 }
 
 bool OpenGLProgram::EnableVertexAttrib(GLuint& rAttrib, const OString& rName)
@@ -213,14 +210,14 @@ void OpenGLProgram::SetUniform2f( const OString& rName, GLfloat v1, GLfloat v2 )
     CHECK_GL_ERROR();
 }
 
-void OpenGLProgram::SetUniform1fv( const OString& rName, GLsizei nCount, GLfloat* aValues )
+void OpenGLProgram::SetUniform1fv( const OString& rName, GLsizei nCount, GLfloat const * aValues )
 {
     GLuint nUniform = GetUniformLocation( rName );
     glUniform1fv( nUniform, nCount, aValues );
     CHECK_GL_ERROR();
 }
 
-void OpenGLProgram::SetUniform2fv( const OString& rName, GLsizei nCount, GLfloat* aValues )
+void OpenGLProgram::SetUniform2fv( const OString& rName, GLsizei nCount, GLfloat const * aValues )
 {
     GLuint nUniform = GetUniformLocation( rName );
     glUniform2fv( nUniform, nCount, aValues );
@@ -234,13 +231,13 @@ void OpenGLProgram::SetUniform1i( const OString& rName, GLint v1 )
     CHECK_GL_ERROR();
 }
 
-void OpenGLProgram::SetColor( const OString& rName, SalColor nColor, sal_uInt8 nTransparency )
+void OpenGLProgram::SetColor( const OString& rName, Color nColor, sal_uInt8 nTransparency )
 {
     GLuint nUniform = GetUniformLocation( rName );
     glUniform4f( nUniform,
-                 ((float) SALCOLOR_RED( nColor )) / 255,
-                 ((float) SALCOLOR_GREEN( nColor )) / 255,
-                 ((float) SALCOLOR_BLUE( nColor )) / 255,
+                 nColor.GetRed() / 255.0f,
+                 nColor.GetGreen() / 255.0f,
+                 nColor.GetBlue() / 255.0f,
                  (100 - nTransparency) * (1.0 / 100) );
     CHECK_GL_ERROR();
 
@@ -248,13 +245,13 @@ void OpenGLProgram::SetColor( const OString& rName, SalColor nColor, sal_uInt8 n
         SetBlendMode( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
 }
 
-void OpenGLProgram::SetColorf( const OString& rName, SalColor nColor, double fTransparency )
+void OpenGLProgram::SetColorf( const OString& rName, Color nColor, double fTransparency )
 {
     GLuint nUniform = GetUniformLocation( rName );
     glUniform4f( nUniform,
-                 ((float) SALCOLOR_RED( nColor )) / 255,
-                 ((float) SALCOLOR_GREEN( nColor )) / 255,
-                 ((float) SALCOLOR_BLUE( nColor )) / 255,
+                 nColor.GetRed() / 255.0f,
+                 nColor.GetGreen() / 255.0f,
+                 nColor.GetBlue() / 255.0f,
                  (1.0f - fTransparency) );
     CHECK_GL_ERROR();
 
@@ -266,10 +263,10 @@ void OpenGLProgram::SetColor( const OString& rName, const Color& rColor )
 {
     GLuint nUniform = GetUniformLocation( rName );
     glUniform4f( nUniform,
-                 ((float) rColor.GetRed()) / 255,
-                 ((float) rColor.GetGreen()) / 255,
-                 ((float) rColor.GetBlue()) / 255,
-                 1.0f - ((float) rColor.GetTransparency()) / 255 );
+                 static_cast<float>(rColor.GetRed()) / 255,
+                 static_cast<float>(rColor.GetGreen()) / 255,
+                 static_cast<float>(rColor.GetBlue()) / 255,
+                 1.0f - static_cast<float>(rColor.GetTransparency()) / 255 );
     CHECK_GL_ERROR();
 
     if( rColor.GetTransparency() > 0 )
@@ -280,9 +277,9 @@ void OpenGLProgram::SetColorWithIntensity( const OString& rName, const Color& rC
 {
     GLuint nUniform = GetUniformLocation( rName );
     glUniform4f( nUniform,
-                 ((float) rColor.GetRed()) * nFactor / 25500.0,
-                 ((float) rColor.GetGreen()) * nFactor / 25500.0,
-                 ((float) rColor.GetBlue()) * nFactor / 25500.0,
+                 static_cast<float>(rColor.GetRed()) * nFactor / 25500.0,
+                 static_cast<float>(rColor.GetGreen()) * nFactor / 25500.0,
+                 static_cast<float>(rColor.GetBlue()) * nFactor / 25500.0,
                  1.0f );
     CHECK_GL_ERROR();
 }
@@ -317,10 +314,10 @@ void OpenGLProgram::SetTransform(
     const basegfx::B2DVector aXRel = rX - rNull;
     const basegfx::B2DVector aYRel = rY - rNull;
     const float aValues[] = {
-        (float) aXRel.getX()/nTexWidth,  (float) aXRel.getY()/nTexWidth,  0, 0,
-        (float) aYRel.getX()/nTexHeight, (float) aYRel.getY()/nTexHeight, 0, 0,
+        static_cast<float>(aXRel.getX())/nTexWidth,  static_cast<float>(aXRel.getY())/nTexWidth,  0, 0,
+        static_cast<float>(aYRel.getX())/nTexHeight, static_cast<float>(aYRel.getY())/nTexHeight, 0, 0,
         0,                               0,                               1, 0,
-        (float) rNull.getX(),            (float) rNull.getY(),            0, 1 };
+        static_cast<float>(rNull.getX()),            static_cast<float>(rNull.getY()),            0, 1 };
     glm::mat4 aMatrix = glm::make_mat4( aValues );
     glUniformMatrix4fv( nUniform, 1, GL_FALSE, glm::value_ptr( aMatrix ) );
     CHECK_GL_ERROR();
@@ -329,7 +326,7 @@ void OpenGLProgram::SetTransform(
 void OpenGLProgram::SetIdentityTransform(const OString& rName)
 {
     GLuint nUniform = GetUniformLocation(rName);
-    glm::mat4 aMatrix = glm::mat4();
+    glm::mat4 aMatrix {};
     glUniformMatrix4fv(nUniform, 1, GL_FALSE, glm::value_ptr( aMatrix ) );
     CHECK_GL_ERROR();
 }
@@ -362,10 +359,10 @@ void OpenGLProgram::SetBlendMode(GLenum nSFactor, GLenum nDFactor)
     mbBlending = true;
 }
 
-bool OpenGLProgram::DrawTexture( const OpenGLTexture& rTexture )
+void OpenGLProgram::DrawTexture( const OpenGLTexture& rTexture )
 {
     if (!rTexture)
-        return false;
+        return;
 
     float fWidth = rTexture.GetWidth();
     float fHeight = rTexture.GetHeight();
@@ -388,8 +385,6 @@ bool OpenGLProgram::DrawTexture( const OpenGLTexture& rTexture )
     ApplyMatrix(fWidth, fHeight);
     DrawArrays(GL_TRIANGLE_FAN, aPosition);
     CHECK_GL_ERROR();
-
-    return true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

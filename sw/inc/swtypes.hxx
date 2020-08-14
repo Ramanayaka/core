@@ -19,42 +19,34 @@
 #ifndef INCLUDED_SW_INC_SWTYPES_HXX
 #define INCLUDED_SW_INC_SWTYPES_HXX
 #include <rtl/ustring.hxx>
-#include <tools/resid.hxx>
-#include <tools/solar.h>
-#include <tools/mapunit.hxx>
-#include <SwGetPoolIdFromName.hxx>
 
 #include <limits.h>
 #include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/i18n/CollatorOptions.hpp>
 #include "swdllapi.h"
-#include <i18nlangtag/languagetag.hxx>
 #include <o3tl/typed_flags_set.hxx>
-#include <svx/swframetypes.hxx>
+#include <i18nlangtag/lang.h>
+#include <vcl/outdev.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace linguistic2{
-        class XDictionaryList;
         class XLinguProperties;
         class XSpellChecker1;
         class XHyphenator;
         class XThesaurus;
     }
-    namespace beans{
-        class XPropertySet;
-    }
-}}}
+}
 namespace utl{
     class TransliterationWrapper;
 }
 
 class Size;
-class ResMgr;
 class SwPathFinder;
 class Graphic;
 class OutputDevice;
 class CharClass;
-class LocaleDataWrapper;
 class CollatorWrapper;
+class LanguageTag;
 
 typedef long SwTwips;
 #define INVALID_TWIPS   LONG_MAX
@@ -87,29 +79,22 @@ const SwTwips lMinBorder = 1134;
 // Margin left and above document.
 // Half of it is gap between the pages.
 //TODO: Replace with SwViewOption::defDocumentBorder
-#define DOCUMENTBORDER  284L
-
-// Constant strings.
-SW_DLLPUBLIC extern OUString aEmptyOUStr;  // remove once aEmptyOUStr can be changed to OUString
+#define DOCUMENTBORDER  284
 
 // For inserting of captions (what and where to insert).
 // It's here because it is not big enough to justify its own hxx
 // and does not seem to fit somewhere else.
-enum SwLabelType
+enum class SwLabelType
 {
-    LTYPE_TABLE,    // Caption for a table.
-    LTYPE_OBJECT,   // Caption for a graphic or OLE.
-    LTYPE_FLY,      // Caption for a text frame.
-    LTYPE_DRAW      // Caption for a draw object.
+    Table,    // Caption for a table.
+    Object,   // Caption for a graphic or OLE.
+    Fly,      // Caption for a text frame.
+    Draw      // Caption for a draw object.
 };
 
 const sal_uInt8 MAXLEVEL = 10;
 
 const sal_uInt8 NO_NUMLEVEL  = 0x20;    // "or" with the levels.
-
-// Some helper functions as macros or inlines.
-
-#define SET_CURR_SHELL( shell ) CurrShell aCurr( shell )
 
 // pPathFinder is initialized by the UI.
 // The class delivers all paths needed.
@@ -119,26 +104,22 @@ extern SwPathFinder *pPathFinder;
 //  (For more levels the values have to be multiplied with the levels+1;
 //  levels 0 ..4!)
 
-const sal_uInt16 lBullIndent = 1440/4;
-const short lBullFirstLineOffset = -lBullIndent;
-const sal_uInt16 lNumIndent = 1440/4;
-const short lNumFirstLineOffset = -lNumIndent;
+const short lBulletIndent = 1440/4;
+const short lBulletFirstLineOffset = -lBulletIndent;
+const sal_uInt16 lNumberIndent = 1440/4;
+const short lNumberFirstLineOffset = -lNumberIndent;
 const short lOutlineMinTextDistance = 216; // 0.15 inch = 0.38 cm
 
 // Count of SystemField-types of SwDoc.
-#define INIT_FLDTYPES   32
+#define INIT_FLDTYPES   33
 
 // Count of predefined Seq-field types. It is always the last
 // fields before INIT_FLDTYPES.
-#define INIT_SEQ_FLDTYPES   4
+#define INIT_SEQ_FLDTYPES   5
 
-extern ResMgr* pSwResMgr;
-// defined in sw/source/uibase/app/swmodule.cxx for the sw library and in
-// sw/source/ui/dialog/swdialmgr.cxx for the swui library
-inline OUString SwResId(sal_uInt16 nId)
-{
-    return ResId(nId, *pSwResMgr);
-}
+// defined in sw/source/uibase/app/swmodule.cxx
+SW_DLLPUBLIC OUString SwResId(const char* pId);
+OUString SwResId(const char* pId, int nCardinality);
 
 css::uno::Reference< css::linguistic2::XSpellChecker1 > GetSpellChecker();
 css::uno::Reference< css::linguistic2::XHyphenator >    GetHyphenator();
@@ -146,7 +127,7 @@ css::uno::Reference< css::linguistic2::XThesaurus >     GetThesaurus();
 css::uno::Reference< css::linguistic2::XLinguProperties > GetLinguPropertySet();
 
 // Returns the twip size of this graphic.
-SW_DLLPUBLIC Size GetGraphicSizeTwip( const Graphic&, OutputDevice* pOutDev );
+SW_DLLPUBLIC Size GetGraphicSizeTwip( const Graphic&, vcl::RenderContext* pOutDev );
 
 // Separator for jumps to different content types in document.
 const sal_Unicode cMarkSeparator = '|';
@@ -191,6 +172,7 @@ constexpr bool SW_ISPRINTABLE(sal_Unicode c) { return c >= ' ' && 127 != c; }
 #define CHAR_LRM            u'\x200E'
 #define CHAR_ZWSP           u'\x200B'
 #define CHAR_ZWNBSP         u'\x2060'
+#define CHAR_NNBSP          u'\x202F' //NARROW NO-BREAK SPACE
 
 // Returns the APP - CharClass instance - used for all ToUpper/ToLower/...
 SW_DLLPUBLIC CharClass& GetAppCharClass();
@@ -209,59 +191,59 @@ SW_DLLPUBLIC const LanguageTag& GetAppLanguageTag();
 #endif
 
 SW_DLLPUBLIC CollatorWrapper& GetAppCollator();
-SW_DLLPUBLIC CollatorWrapper& GetAppCaseCollator();
+CollatorWrapper& GetAppCaseCollator();
 
 SW_DLLPUBLIC const ::utl::TransliterationWrapper& GetAppCmpStrIgnore();
 
 // Official shortcut for Prepare() regarding notification of Content by the Layout.
 // Content provides for calculation of minimal requirements at the next call of ::Format().
-enum PrepareHint
+enum class PrepareHint
 {
-    PREP_BEGIN,             // BEGIN.
-    PREP_CLEAR = PREP_BEGIN,// Reformat completely.
-    PREP_WIDOWS_ORPHANS,    // Only check for widows and orphans and split in case of need.
-    PREP_FIXSIZE_CHG,       // FixSize has changed.
-    PREP_FOLLOW_FOLLOWS,    // Follow is now possibly adjacent.
-    PREP_ADJUST_FRM,        // Adjust size via grow/shrink without formatting.
-    PREP_FLY_CHGD,          // A FlyFrame has changed its size.
-    PREP_FLY_ATTR_CHG,      // A FlyFrame hat has changed its attributes
-                            // (e. g. wrap).
-    PREP_FLY_ARRIVE,        // A FlyFrame now overlaps range.
-    PREP_FLY_LEAVE,         // A FlyFrame has left range.
-    PREP_FTN,               // Invalidation of footnotes.
-    PREP_POS_CHGD,          // Position of Frame has changed.
-                            // (Check for Fly-break). In void* of Prepare()
-                            // a sal_Bool& is passed. If this is sal_True,
-                            // it indicates that a format has been executed.
-    PREP_UL_SPACE,          // UL-Space has changed, TextFrames have to
-                            // re-calculate line space.
-    PREP_MUST_FIT,          // Make frm fit (split) even if the attributes do
-                            // not allow that (e.g. "keep together").
-    PREP_WIDOWS,            // A follow realizes that the orphan rule will be applied
-                            // for it and sends a PREP_WIDOWS to its predecessor
-                            // (Master/Follow).
-    PREP_QUOVADIS,          // If a footnote has to be split between two paragraphs
-                            // the last on the page has to receive a QUOVADIS in
-                            // order to format the text into it.
-    PREP_BOSS_CHGD,         // If a Frame changes its column/page this additional
-                            // Prepare is sended to POS_CHGD in MoveFwd/Bwd
-                            // (join Footnote-numbers etc.)
-                            // Direction is communicated via pVoid:
-                            //     MoveFwd: pVoid == 0
-                            //     MoveBwd: pVoid == pOldPage
-    PREP_REGISTER,          // Invalidate frames with registers.
-    PREP_FTN_GONE,          // A Follow loses its footnote, possibly its first line can move up.
-    PREP_MOVEFTN,           // A footnote changes its page. Its contents receives at first a
-                            // height of zero in order to avoid too much noise. At formatting
-                            // it checks whether it fits and if necessary changes its page again.
-    PREP_ERGOSUM,           // Needed because of movement in FootnoteFrames. Check QuoVadis/ErgoSum.
+    Clear,                     // Reformat completely.
+    WidowsOrphans,             // Only check for widows and orphans and split in case of need.
+    FixSizeChanged,            // FixSize has changed.
+    FollowFollows,             // Follow is now possibly adjacent.
+    AdjustSizeWithoutFormatting,  // Adjust size via grow/shrink without formatting.
+    FlyFrameSizeChanged,       // A FlyFrame has changed its size.
+    FlyFrameAttributesChanged, // A FlyFrame has changed its attributes (e. g. wrap).
+    FlyFrameArrive,            // A FlyFrame now overlaps range.
+    FlyFrameLeave,             // A FlyFrame has left range.
+    FootnoteInvalidation,      // Invalidation of footnotes.
+    FramePositionChanged,      // Position of Frame has changed.
+                               // (Check for Fly-break). In void* of Prepare()
+                               // a sal_Bool& is passed. If this is sal_True,
+                               // it indicates that a format has been executed.
+    ULSpaceChanged,            // UL-Space has changed, TextFrames have to
+                               // re-calculate line space.
+    MustFit,                   // Make frm fit (split) even if the attributes do
+                               // not allow that (e.g. "keep together").
+    Widows,                    // A follow realizes that the orphan rule will be applied
+                               // for it and sends a Widows to its predecessor
+                               // (Master/Follow).
+    QuoVadis,                  // If a footnote has to be split between two paragraphs
+                               // the last on the page has to receive a QUOVADIS in
+                               // order to format the text into it.
+    BossChanged,               // If a Frame changes its column/page this additional
+                               // Prepare is sent to POS_CHGD in MoveFwd/Bwd
+                               // (join Footnote-numbers etc.)
+                               // Direction is communicated via pVoid:
+                               //     MoveFwd: pVoid == 0
+                               //     MoveBwd: pVoid == pOldPage
+    Register,                  // Invalidate frames with registers.
+    FootnoteInvalidationGone,  // A Follow loses its footnote, possibly its first line can move up.
+    FootnoteMove,              // A footnote changes its page. Its contents receives at first a
+                               // height of zero in order to avoid too much noise. At formatting
+                               // it checks whether it fits and if necessary changes its page again.
+    ErgoSum,                   // Needed because of movement in FootnoteFrames. Check QuoVadis/ErgoSum.
 };
 
-enum FrameControlType
+enum class FrameControlType
 {
     PageBreak,
     Header,
-    Footer
+    Footer,
+    FloatingTable,
+    Outline
 };
 
 #endif

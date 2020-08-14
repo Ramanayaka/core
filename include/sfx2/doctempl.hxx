@@ -27,8 +27,6 @@
 
 // CLASS -----------------------------------------------------------------
 
-class SfxObjectShell;
-
 class SfxDocTemplate_Impl;
 
 // class SfxDocumentTemplates --------------------------------------------
@@ -62,7 +60,7 @@ public:
                                                          const OUString& aTitle );
 
     // Convert a resource string - a template name - to its localised pair
-    // if it exists in templatelocnames.src
+    // if it exists in sfx2/inc/strings.hxx
     static OUString ConvertResourceString(const OUString& rString);
 
     bool            Copy(sal_uInt16 nTargetRegion,

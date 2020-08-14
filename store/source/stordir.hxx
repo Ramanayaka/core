@@ -28,11 +28,11 @@
 
 #include "object.hxx"
 #include "storbase.hxx"
-#include "storpage.hxx"
 
 namespace store
 {
 
+class OStorePageManager;
 struct OStoreDirectoryPageData;
 
 class OStoreDirectory_Impl : public store::OStoreObject
@@ -51,8 +51,8 @@ public:
      */
     storeError create (
         OStorePageManager *pManager,
-        rtl_String        *pPath,
-        rtl_String        *pName,
+        rtl_String const  *pPath,
+        rtl_String const  *pName,
         storeAccessMode    eAccessMode);
 
     /** iterate.

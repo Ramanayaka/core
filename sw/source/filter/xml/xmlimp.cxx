@@ -18,6 +18,7 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <cassert>
 
@@ -28,11 +29,10 @@
 #include <com/sun/star/text/XTextRange.hpp>
 
 #include <o3tl/any.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/nmspmap.hxx>
 #include <xmloff/XMLTextShapeImportHelper.hxx>
 #include <xmloff/XMLFontStylesContext.hxx>
 #include <xmloff/ProgressBarHelper.hxx>
@@ -40,37 +40,41 @@
 #include <drawdoc.hxx>
 #include <IDocumentSettingAccess.hxx>
 #include <IDocumentDeviceAccess.hxx>
+#include <IDocumentListsAccess.hxx>
 #include <IDocumentStylePoolAccess.hxx>
 #include <IDocumentDrawModelAccess.hxx>
-#include <unofreg.hxx>
 #include <TextCursorHelper.hxx>
 #include <unotext.hxx>
 #include <unotextrange.hxx>
-#include "unocrsr.hxx"
 #include <poolfmt.hxx>
 #include <ndtxt.hxx>
 #include <editsh.hxx>
-#include <poolfmt.hrc>
+#include <strings.hrc>
+#include <svl/stritem.hxx>
 #include "xmlimp.hxx"
+#include "xmlimpit.hxx"
 #include "xmltexti.hxx"
+#include <list.hxx>
+#include <swdll.hxx>
 #include <xmloff/DocumentSettingsContext.hxx>
 #include <docsh.hxx>
-#include <editeng/unolingu.hxx>
-#include <svx/svdmodel.hxx>
 #include <svx/xmlgrhlp.hxx>
 #include <svx/xmleohlp.hxx>
 #include <sfx2/printer.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <unotools/saveopt.hxx>
-#include <tools/diagnose_ex.h>
+#include <unotools/streamwrap.hxx>
+#include <tools/helpers.hxx>
 
 #include <vcl/svapp.hxx>
 #include <unotxdoc.hxx>
+#include <numrule.hxx>
 
 #include <xmloff/xmlmetai.hxx>
 #include <xmloff/xformsimport.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
 
 #include <unordered_set>
 
@@ -86,6 +90,8 @@ using namespace ::com::sun::star::xforms;
 using namespace ::xmloff::token;
 using namespace ::std;
 
+namespace {
+
 enum SwXMLDocTokens
 {
     XML_TOK_DOC_FONTDECLS,
@@ -99,7 +105,9 @@ enum SwXMLDocTokens
     XML_TOK_DOC_XFORMS,
 };
 
-static SvXMLTokenMapEntry aDocTokenMap[] =
+}
+
+const SvXMLTokenMapEntry aDocTokenMap[] =
 {
     { XML_NAMESPACE_OFFICE, XML_FONT_FACE_DECLS,     XML_TOK_DOC_FONTDECLS  },
     { XML_NAMESPACE_OFFICE, XML_STYLES,         XML_TOK_DOC_STYLES      },
@@ -113,41 +121,44 @@ static SvXMLTokenMapEntry aDocTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
+namespace {
+
 class SwXMLBodyContext_Impl : public SvXMLImportContext
 {
     SwXMLImport& GetSwImport() { return static_cast<SwXMLImport&>(GetImport()); }
 
 public:
 
-    SwXMLBodyContext_Impl( SwXMLImport& rImport, sal_uInt16 nPrfx,
-                const OUString& rLName,
-                const Reference< xml::sax::XAttributeList > & xAttrList );
+    SwXMLBodyContext_Impl( SwXMLImport& rImport );
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                const OUString& rLocalName,
-                const Reference< xml::sax::XAttributeList > & xAttrList ) override;
+    virtual void SAL_CALL startFastElement(
+            sal_Int32 /*nElement*/,
+            const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ ) override {}
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
 };
 
-SwXMLBodyContext_Impl::SwXMLBodyContext_Impl( SwXMLImport& rImport,
-                sal_uInt16 nPrfx, const OUString& rLName,
-                const Reference< xml::sax::XAttributeList > & /*xAttrList*/ ) :
-    SvXMLImportContext( rImport, nPrfx, rLName )
+}
+
+SwXMLBodyContext_Impl::SwXMLBodyContext_Impl( SwXMLImport& rImport ) :
+    SvXMLImportContext( rImport )
 {
     // tdf#107211: if at this point we don't have a defined char style "Default"
     // or "Default Style", add a mapping for it as it is not written
     // into the file since it's not really a style but "no style"
     // (hence referencing it actually makes no sense except for hyperlinks
     // which default to something other than "Default")
-    OUString const sDefault(SwResId(STR_POOLCOLL_STANDARD));
+    OUString const sDefault(SwResId(STR_POOLCHR_STANDARD));
     uno::Reference<container::XNameContainer> const& xStyles(
             rImport.GetTextImport()->GetTextStyles());
     if (!xStyles->hasByName("Default"))
     {   // this old name was used before LO 4.0
-        rImport.AddStyleDisplayName(XML_STYLE_FAMILY_TEXT_TEXT, "Default", sDefault);
+        rImport.AddStyleDisplayName(XmlStyleFamily::TEXT_TEXT, "Default", sDefault);
     }
     if (!xStyles->hasByName("Default_20_Style"))
     {   // this new name contains a space which is converted to _20_ on export
-        rImport.AddStyleDisplayName(XML_STYLE_FAMILY_TEXT_TEXT, "Default_20_Style", sDefault);
+        rImport.AddStyleDisplayName(XmlStyleFamily::TEXT_TEXT, "Default_20_Style", sDefault);
     }
     bool isEncoded(false);
     OUString const defaultEncoded(
@@ -155,17 +166,18 @@ SwXMLBodyContext_Impl::SwXMLBodyContext_Impl( SwXMLImport& rImport,
     if (isEncoded && defaultEncoded != "Default_20_Style"
         && !xStyles->hasByName(defaultEncoded))
     {   // new name may contain a space which is converted to _20_ on export
-        rImport.AddStyleDisplayName(XML_STYLE_FAMILY_TEXT_TEXT, defaultEncoded, sDefault);
+        rImport.AddStyleDisplayName(XmlStyleFamily::TEXT_TEXT, defaultEncoded, sDefault);
     }
 }
 
-SvXMLImportContext *SwXMLBodyContext_Impl::CreateChildContext(
-        sal_uInt16 /*nPrefix*/,
-        const OUString& rLocalName,
-        const Reference< xml::sax::XAttributeList > & /*xAttrList*/ )
+css::uno::Reference< css::xml::sax::XFastContextHandler > SwXMLBodyContext_Impl::createFastChildContext(
+    sal_Int32 /*nElement*/,
+    const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ )
 {
-    return GetSwImport().CreateBodyContentContext( rLocalName );
+    return GetSwImport().CreateBodyContentContext();
 }
+
+namespace {
 
 // #i69629#
 // enhance class <SwXMLDocContext_Impl> in order to be able to create subclasses
@@ -178,79 +190,84 @@ protected: // #i69629#
     SwXMLImport& GetSwImport() { return static_cast<SwXMLImport&>(GetImport()); }
 
 public:
+    SwXMLDocContext_Impl( SwXMLImport& rImport );
 
-    SwXMLDocContext_Impl( SwXMLImport& rImport, sal_uInt16 nPrfx,
-                const OUString& rLName,
-                const Reference< xml::sax::XAttributeList > & xAttrList );
-
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                 const OUString& rLocalName,
                 const Reference< xml::sax::XAttributeList > & xAttrList ) override;
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
+
+    virtual void SAL_CALL startFastElement( sal_Int32 /*nElement*/,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override {}
 };
 
-SwXMLDocContext_Impl::SwXMLDocContext_Impl( SwXMLImport& rImport,
-                sal_uInt16 nPrfx, const OUString& rLName,
-                const Reference< xml::sax::XAttributeList > & /*xAttrList*/ ) :
-    SvXMLImportContext( rImport, nPrfx, rLName )
+}
+
+SwXMLDocContext_Impl::SwXMLDocContext_Impl( SwXMLImport& rImport ) :
+    SvXMLImportContext( rImport )
 {
 }
 
-SvXMLImportContext *SwXMLDocContext_Impl::CreateChildContext(
+uno::Reference< xml::sax::XFastContextHandler > SAL_CALL SwXMLDocContext_Impl::createFastChildContext(
+    sal_Int32 nElement, const uno::Reference< xml::sax::XFastAttributeList >& /*xAttrList*/ )
+{
+    switch (nElement)
+    {
+        case XML_ELEMENT(OFFICE, XML_SCRIPTS):
+            return GetSwImport().CreateScriptContext();
+            break;
+        case XML_ELEMENT(OFFICE, XML_SETTINGS):
+            return new XMLDocumentSettingsContext( GetImport() );
+            break;
+        case XML_ELEMENT(OFFICE, XML_STYLES):
+            GetSwImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
+            return GetSwImport().CreateStylesContext( false );
+            break;
+        case XML_ELEMENT(OFFICE, XML_AUTOMATIC_STYLES):
+            // don't use the autostyles from the styles-document for the progress
+            if ( !IsPrefixFilledIn() || ! IsXMLToken( GetLocalName(), XML_DOCUMENT_STYLES ) )
+                GetSwImport().GetProgressBarHelper()->Increment
+                    ( PROGRESS_BAR_STEP );
+            return GetSwImport().CreateStylesContext( true );
+            break;
+        case XML_ELEMENT(OFFICE, XML_MASTER_STYLES):
+            return GetSwImport().CreateMasterStylesContext();
+            break;
+        case XML_ELEMENT(OFFICE, XML_FONT_FACE_DECLS):
+            return GetSwImport().CreateFontDeclsContext();
+            break;
+        case XML_ELEMENT(OFFICE, XML_META):
+            OSL_FAIL(" XML_ELEMENT(OFFICE, XML_META): should not have come here, maybe document is invalid?");
+            break;
+        case XML_ELEMENT(OFFICE, XML_BODY):
+            GetSwImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
+            return new SwXMLBodyContext_Impl( GetSwImport() );
+            break;
+    }
+    return nullptr;
+}
+
+SvXMLImportContextRef SwXMLDocContext_Impl::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
-        const Reference< xml::sax::XAttributeList > & xAttrList )
+        const Reference< xml::sax::XAttributeList > & /*xAttrList*/ )
 {
     SvXMLImportContext *pContext = nullptr;
 
     const SvXMLTokenMap& rTokenMap = GetSwImport().GetDocElemTokenMap();
     switch( rTokenMap.Get( nPrefix, rLocalName ) )
     {
-    case XML_TOK_DOC_FONTDECLS:
-        pContext = GetSwImport().CreateFontDeclsContext( rLocalName,
-                                                             xAttrList );
-        break;
-    case XML_TOK_DOC_STYLES:
-        GetSwImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-        pContext = GetSwImport().CreateStylesContext( rLocalName, xAttrList,
-                                                      false );
-        break;
-    case XML_TOK_DOC_AUTOSTYLES:
-        // don't use the autostyles from the styles-document for the progress
-        if ( ! IsXMLToken( GetLocalName(), XML_DOCUMENT_STYLES ) )
-            GetSwImport().GetProgressBarHelper()->Increment
-                ( PROGRESS_BAR_STEP );
-        pContext = GetSwImport().CreateStylesContext( rLocalName, xAttrList,
-                                                      true );
-        break;
-
-    case XML_TOK_DOC_MASTERSTYLES:
-        pContext = GetSwImport().CreateMasterStylesContext( rLocalName,
-                                                            xAttrList );
-        break;
-    case XML_TOK_DOC_META:
-        OSL_FAIL("XML_TOK_DOC_META: should not have come here, maybe document is invalid?");
-        break;
-    case XML_TOK_DOC_SCRIPT:
-        pContext = GetSwImport().CreateScriptContext( rLocalName );
-        break;
-    case XML_TOK_DOC_BODY:
-        GetSwImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-        pContext = new SwXMLBodyContext_Impl( GetSwImport(), nPrefix,
-                                              rLocalName, xAttrList );
-        break;
-    case XML_TOK_DOC_SETTINGS:
-        pContext = new XMLDocumentSettingsContext( GetImport(), nPrefix, rLocalName, xAttrList );
-        break;
     case XML_TOK_DOC_XFORMS:
         pContext = createXFormsModelContext(GetImport(), nPrefix, rLocalName);
         break;
     }
 
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-
     return pContext;
 }
+
+namespace {
 
 // #i69629# - new subclass <SwXMLOfficeDocContext_Impl> of class <SwXMLDocContext_Impl>
 class SwXMLOfficeDocContext_Impl :
@@ -259,80 +276,71 @@ class SwXMLOfficeDocContext_Impl :
 public:
 
     SwXMLOfficeDocContext_Impl( SwXMLImport& rImport,
-                sal_uInt16 nPrfx,
-                const OUString& rLName,
-                const Reference< xml::sax::XAttributeList > & xAttrList,
                 const Reference< document::XDocumentProperties >& xDocProps);
 
-    virtual SvXMLImportContext *CreateChildContext(
-                sal_uInt16 nPrefix,
-                const OUString& rLocalName,
-                const Reference< xml::sax::XAttributeList > & xAttrList ) override;
+    virtual void SAL_CALL startFastElement( sal_Int32 nElement,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override
+    { SvXMLMetaDocumentContext::startFastElement(nElement, xAttrList); }
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& Attribs ) override;
 };
+
+}
 
 SwXMLOfficeDocContext_Impl::SwXMLOfficeDocContext_Impl(
                 SwXMLImport& rImport,
-                sal_uInt16 nPrfx,
-                const OUString& rLName,
-                const Reference< xml::sax::XAttributeList > & xAttrList,
                 const Reference< document::XDocumentProperties >& xDocProps) :
-    SvXMLImportContext( rImport, nPrfx, rLName ),
-    SwXMLDocContext_Impl( rImport, nPrfx, rLName, xAttrList ),
-    SvXMLMetaDocumentContext( rImport, nPrfx, rLName, xDocProps)
+    SvXMLImportContext( rImport ),
+    SwXMLDocContext_Impl( rImport ),
+    SvXMLMetaDocumentContext( rImport, xDocProps )
 {
 }
 
-SvXMLImportContext* SwXMLOfficeDocContext_Impl::CreateChildContext(
-                sal_uInt16 nPrefix,
-                const OUString& rLocalName,
-                const Reference< xml::sax::XAttributeList > & xAttrList )
+uno::Reference< xml::sax::XFastContextHandler > SAL_CALL SwXMLOfficeDocContext_Impl::createFastChildContext(
+    sal_Int32 nElement, const uno::Reference< xml::sax::XFastAttributeList >& xAttrList )
 {
-    const SvXMLTokenMap& rTokenMap = GetSwImport().GetDocElemTokenMap();
-
     // assign paragraph styles to list levels of outline style after all styles
     // are imported and finished. This is the case, when <office:body> starts
     // in flat OpenDocument file format.
     {
-        if ( rTokenMap.Get( nPrefix, rLocalName ) == XML_TOK_DOC_BODY )
+        if( nElement == XML_ELEMENT( OFFICE, XML_BODY ) )
         {
             GetImport().GetTextImport()->SetOutlineStyles( true );
         }
     }
 
     // behave like meta base class iff we encounter office:meta
-    if ( XML_TOK_DOC_META == rTokenMap.Get( nPrefix, rLocalName ) ) {
-        return SvXMLMetaDocumentContext::CreateChildContext(
-                    nPrefix, rLocalName, xAttrList );
+    if ( nElement == XML_ELEMENT( OFFICE, XML_META ) ) {
+        return SvXMLMetaDocumentContext::createFastChildContext(
+                    nElement, xAttrList );
     } else {
-        return SwXMLDocContext_Impl::CreateChildContext(
-                    nPrefix, rLocalName, xAttrList );
+        return SwXMLDocContext_Impl::createFastChildContext(
+                    nElement, xAttrList );
     }
 }
+
+namespace {
 
 // #i69629# - new subclass <SwXMLDocStylesContext_Impl> of class <SwXMLDocContext_Impl>
 class SwXMLDocStylesContext_Impl : public SwXMLDocContext_Impl
 {
 public:
 
-    SwXMLDocStylesContext_Impl( SwXMLImport& rImport,
-                                sal_uInt16 nPrfx,
-                                const OUString& rLName,
-                                const Reference< xml::sax::XAttributeList > & xAttrList );
+    SwXMLDocStylesContext_Impl( SwXMLImport& rImport );
 
-    virtual void EndElement() override;
+    virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
 };
 
-SwXMLDocStylesContext_Impl::SwXMLDocStylesContext_Impl(
-                    SwXMLImport& rImport,
-                    sal_uInt16 nPrfx,
-                    const OUString& rLName,
-                    const Reference< xml::sax::XAttributeList > & xAttrList ) :
-    SvXMLImportContext( rImport, nPrfx, rLName ),
-    SwXMLDocContext_Impl( rImport, nPrfx, rLName, xAttrList )
+}
+
+SwXMLDocStylesContext_Impl::SwXMLDocStylesContext_Impl( SwXMLImport& rImport ) :
+    SvXMLImportContext( rImport ),
+    SwXMLDocContext_Impl( rImport )
 {
 }
 
-void SwXMLDocStylesContext_Impl::EndElement()
+void SwXMLDocStylesContext_Impl::endFastElement(sal_Int32 )
 {
     // assign paragraph styles to list levels of outline style after all styles
     // are imported and finished.
@@ -344,47 +352,38 @@ void SwXMLDocStylesContext_Impl::EndElement()
 const SvXMLTokenMap& SwXMLImport::GetDocElemTokenMap()
 {
     if( !m_pDocElemTokenMap )
-        m_pDocElemTokenMap = new SvXMLTokenMap( aDocTokenMap );
+        m_pDocElemTokenMap.reset( new SvXMLTokenMap( aDocTokenMap ) );
 
     return *m_pDocElemTokenMap;
 }
 
-SvXMLImportContext *SwXMLImport::CreateContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const Reference< xml::sax::XAttributeList > & xAttrList )
+SvXMLImportContext *SwXMLImport::CreateFastContext( sal_Int32 nElement,
+        const uno::Reference< xml::sax::XFastAttributeList >& /*xAttrList*/ )
 {
     SvXMLImportContext *pContext = nullptr;
 
-    // #i69629# - own subclasses for <office:document> and <office:document-styles>
-    if( XML_NAMESPACE_OFFICE==nPrefix &&
-        ( IsXMLToken( rLocalName, XML_DOCUMENT_SETTINGS ) ||
-          IsXMLToken( rLocalName, XML_DOCUMENT_CONTENT ) ))
-        pContext = new SwXMLDocContext_Impl( *this, nPrefix, rLocalName,
-                                             xAttrList );
-    else if ( XML_NAMESPACE_OFFICE==nPrefix &&
-              IsXMLToken( rLocalName, XML_DOCUMENT_META ) )
+    switch (nElement)
     {
-        pContext = CreateMetaContext(rLocalName);
+        case XML_ELEMENT( OFFICE, XML_DOCUMENT_META ):
+            pContext = CreateMetaContext(nElement);
+        break;
+        case XML_ELEMENT( OFFICE, XML_DOCUMENT ):
+        {
+            uno::Reference<document::XDocumentProperties> const xDocProps(
+                GetDocumentProperties());
+            // flat OpenDocument file format
+            pContext = new SwXMLOfficeDocContext_Impl( *this, xDocProps );
+        }
+        break;
+        // #i69629# - own subclasses for <office:document> and <office:document-styles>
+        case XML_ELEMENT(OFFICE, XML_DOCUMENT_SETTINGS):
+        case XML_ELEMENT(OFFICE, XML_DOCUMENT_CONTENT):
+            pContext = new SwXMLDocContext_Impl( *this );
+            break;
+        case XML_ELEMENT(OFFICE, XML_DOCUMENT_STYLES):
+            pContext = new SwXMLDocStylesContext_Impl( *this );
+            break;
     }
-    else if ( XML_NAMESPACE_OFFICE==nPrefix &&
-              IsXMLToken( rLocalName, XML_DOCUMENT_STYLES ) )
-    {
-        pContext = new SwXMLDocStylesContext_Impl( *this, nPrefix, rLocalName,
-                                                   xAttrList );
-    }
-    else if ( XML_NAMESPACE_OFFICE==nPrefix &&
-              IsXMLToken( rLocalName, XML_DOCUMENT ) )
-    {
-        uno::Reference<document::XDocumentProperties> const xDocProps(
-            GetDocumentProperties());
-        // flat OpenDocument file format
-        pContext = new SwXMLOfficeDocContext_Impl( *this, nPrefix, rLocalName,
-                        xAttrList, xDocProps);
-    }
-    else
-        pContext = SvXMLImport::CreateContext( nPrefix, rLocalName, xAttrList );
-
     return pContext;
 }
 
@@ -392,12 +391,6 @@ SwXMLImport::SwXMLImport(
     const uno::Reference< uno::XComponentContext >& rContext,
     OUString const & implementationName, SvXMLImportFlags nImportFlags)
 :   SvXMLImport( rContext, implementationName, nImportFlags ),
-    m_pTableItemMapper( nullptr ),
-    m_pDocElemTokenMap( nullptr ),
-    m_pTableElemTokenMap( nullptr ),
-    m_pTableCellAttrTokenMap( nullptr ),
-    m_pGraphicResolver( nullptr ),
-    m_pEmbeddedResolver( nullptr ),
     m_nStyleFamilyMask( SfxStyleFamily::All ),
     m_bLoadDoc( true ),
     m_bInsert( false ),
@@ -407,14 +400,18 @@ SwXMLImport::SwXMLImport(
     m_pDoc( nullptr )
 {
     InitItemImport();
-
 }
 
 SwXMLImport::~SwXMLImport() throw ()
 {
-    delete m_pDocElemTokenMap;
-    delete m_pTableElemTokenMap;
-    delete m_pTableCellAttrTokenMap;
+    if (HasShapeImport())
+    {
+        SAL_WARN("sw", "endDocument skipped, dropping shapes now to avoid dangling SvTextShapeImportHelper pointing to this");
+        ClearShapeImport();
+    }
+    m_pDocElemTokenMap.reset();
+    m_pTableElemTokenMap.reset();
+    m_pTableCellAttrTokenMap.reset();
     FinitItemImport();
 }
 
@@ -449,9 +446,7 @@ const Sequence< sal_Int8 > & SwXMLImport::getUnoTunnelId() throw()
 
 sal_Int64 SAL_CALL SwXMLImport::getSomething( const Sequence< sal_Int8 >& rId )
 {
-    if( rId.getLength() == 16
-        && 0 == memcmp( getUnoTunnelId().getConstArray(),
-                                        rId.getConstArray(), 16 ) )
+    if( isUnoTunnelId<SwXMLImport>(rId) )
     {
         return sal::static_int_cast< sal_Int64 >( reinterpret_cast< sal_IntPtr >(this) );
     }
@@ -484,7 +479,7 @@ void SwXMLImport::startDocument()
 
     Reference< XPropertySet > xImportInfo( getImportInfo() );
     Reference< XPropertySetInfo > xPropertySetInfo;
-       if( xImportInfo.is() )
+    if( xImportInfo.is() )
         xPropertySetInfo = xImportInfo->getPropertySetInfo();
     if( xPropertySetInfo.is() )
     {
@@ -498,11 +493,8 @@ void SwXMLImport::startDocument()
             if( aAny >>= aFamiliesSeq )
             {
                 SfxStyleFamily nFamilyMask = SfxStyleFamily::None;
-                sal_Int32 nCount = aFamiliesSeq.getLength();
-                const OUString *pSeq = aFamiliesSeq.getConstArray();
-                for( sal_Int32 i=0; i < nCount; i++ )
+                for( const OUString& rFamily : std::as_const(aFamiliesSeq) )
                 {
-                    const OUString& rFamily = pSeq[i];
                     if( rFamily=="FrameStyles" )
                         nFamilyMask |= SfxStyleFamily::Frame;
                     else if( rFamily=="PageStyles" )
@@ -564,6 +556,32 @@ void SwXMLImport::startDocument()
                     m_bOrganizerMode = true;
             }
         }
+
+        // default document properties
+        const OUString sDefSettings("DefaultDocumentSettings");
+        if (xPropertySetInfo->hasPropertyByName(sDefSettings))
+        {
+            aAny = xImportInfo->getPropertyValue(sDefSettings);
+            Sequence<PropertyValue> aProps;
+            if (aAny >>= aProps)
+            {
+                Reference<lang::XMultiServiceFactory> xFac(GetModel(), UNO_QUERY);
+                Reference<XPropertySet> xProps(
+                    xFac->createInstance("com.sun.star.document.Settings"), UNO_QUERY);
+                Reference<XPropertySetInfo> xInfo(xProps->getPropertySetInfo());
+
+                if (xProps.is() && xInfo.is())
+                {
+                    for (const auto& rProp : std::as_const(aProps))
+                    {
+                        if (xInfo->hasPropertyByName(rProp.Name))
+                        {
+                            xProps->setPropertyValue(rProp.Name, rProp.Value);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // There only is a text cursor by now if we are in insert mode. In any
@@ -594,7 +612,7 @@ void SwXMLImport::startDocument()
             if( !pDoc )
                 return;
 
-            // Is there a edit shell. If yes, then we are currently inserting
+            // Is there an edit shell. If yes, then we are currently inserting
             // a document. We then have to insert at the current edit shell's
             // cursor position. That not quite clean code, but there is no other
             // way currently.
@@ -613,7 +631,7 @@ void SwXMLImport::startDocument()
             GetTextImport()->SetCursor( xTextCursor );
     }
 
-    if( (!(getImportFlags() & (SvXMLImportFlags::CONTENT|SvXMLImportFlags::MASTERSTYLES))))
+    if( !(getImportFlags() & (SvXMLImportFlags::CONTENT|SvXMLImportFlags::MASTERSTYLES)) )
         return;
 
     if( !pTextCursor  )
@@ -642,7 +660,7 @@ void SwXMLImport::startDocument()
             SwPaM *pPaM = pTextCursor->GetPaM();
             const SwPosition* pPos = pPaM->GetPoint();
 
-            // Split once and remember the node that has been splitted.
+            // Split once and remember the node that has been split.
             pDoc->getIDocumentContentOperations().SplitNode( *pPos, false );
             *m_pSttNdIdx = pPos->nNode.GetIndex()-1;
 
@@ -659,16 +677,15 @@ void SwXMLImport::startDocument()
     // We need a draw model to be able to set the z order
     pDoc->getIDocumentDrawModelAccess().GetOrCreateDrawModel(); // #i52858# - method name changed
 
-    // SJ: #i49801# locking the modell to disable repaints
+    // SJ: #i49801# locking the model to disable repaints
     SwDrawModel* pDrawModel = pDoc->getIDocumentDrawModelAccess().GetDrawModel();
     if ( pDrawModel )
         pDrawModel->setLock(true);
 
-    if( !GetGraphicResolver().is() )
+    if (!GetGraphicStorageHandler().is())
     {
-        m_pGraphicResolver = SvXMLGraphicHelper::Create( SvXMLGraphicHelperMode::Read );
-        Reference< document::XGraphicObjectResolver > xGraphicResolver( m_pGraphicResolver );
-        SetGraphicResolver( xGraphicResolver );
+        m_xGraphicStorageHandler = SvXMLGraphicHelper::Create(SvXMLGraphicHelperMode::Read);
+        SetGraphicStorageHandler(m_xGraphicStorageHandler.get());
     }
 
     if( !GetEmbeddedResolver().is() )
@@ -676,10 +693,10 @@ void SwXMLImport::startDocument()
         SfxObjectShell *pPersist = pDoc->GetPersist();
         if( pPersist )
         {
-            m_pEmbeddedResolver = SvXMLEmbeddedObjectHelper::Create(
+            m_xEmbeddedResolver = SvXMLEmbeddedObjectHelper::Create(
                                             *pPersist,
                                             SvXMLEmbeddedObjectHelperMode::Read );
-            Reference< document::XEmbeddedObjectResolver > xEmbeddedResolver( m_pEmbeddedResolver );
+            Reference< document::XEmbeddedObjectResolver > xEmbeddedResolver( m_xEmbeddedResolver.get() );
             SetEmbeddedResolver( xEmbeddedResolver );
         }
     }
@@ -694,10 +711,13 @@ void SwXMLImport::endDocument()
     // this method will modify the document directly -> lock SolarMutex
     SolarMutexGuard aGuard;
 
-    if( m_pGraphicResolver )
-        SvXMLGraphicHelper::Destroy( m_pGraphicResolver );
-    if( m_pEmbeddedResolver )
-        SvXMLEmbeddedObjectHelper::Destroy( m_pEmbeddedResolver );
+    if (m_xGraphicStorageHandler)
+        m_xGraphicStorageHandler->dispose();
+    m_xGraphicStorageHandler.clear();
+
+    if( m_xEmbeddedResolver )
+        m_xEmbeddedResolver->dispose();
+    m_xEmbeddedResolver.clear();
     // Clear the shape import to sort the shapes  (and not in the
     // destructor that might be called after the import has finished
     // for Java filters.
@@ -716,7 +736,7 @@ void SwXMLImport::endDocument()
         SwPaM *pPaM = pTextCursor->GetPaM();
         if( IsInsertMode() && m_pSttNdIdx->GetIndex() )
         {
-            // If we are in insert mode, join the splitted node that is in front
+            // If we are in insert mode, join the split node that is in front
             // of the new content with the first new node. Or in other words:
             // Revert the first split node.
             SwTextNode* pTextNode = m_pSttNdIdx->GetNode().GetTextNode();
@@ -826,12 +846,39 @@ void SwXMLImport::endDocument()
                     pPaM->Move( fnMoveBackward );
                 }
             }
+
+            // tdf#113877
+            // when we insert one document with list inside into another one with list at the insert position,
+            // the resulting numbering in these lists is not consequent.
+            //
+            // Main document:
+            //  1. One
+            //  2. Two
+            //  3. Three
+            //  4.                      <-- insert position
+            //
+            // Inserted document:
+            //  1. One
+            //  2. Two
+            //  3. Three
+            //  4.
+            //
+            // Expected result
+            //  1. One
+            //  2. Two
+            //  3. Three
+            //  4. One
+            //  5. Two
+            //  6. Three
+            //  7.
+            //
+            MergeListsAtDocumentInsertPosition(pDoc);
         }
     }
 
     /* Was called too early. Moved from SwXMLBodyContext_Impl::EndElement */
 
-    GetTextImport()->RedlineAdjustStartNodeCursor( false );
+    GetTextImport()->RedlineAdjustStartNodeCursor();
 
     if( (getImportFlags() & SvXMLImportFlags::CONTENT) ||
         ((getImportFlags() & SvXMLImportFlags::MASTERSTYLES) && IsStylesOnlyMode()) )
@@ -848,7 +895,7 @@ void SwXMLImport::endDocument()
     // SJ: #i49801# -> now permitting repaints
     if ( pDoc )
     {
-        if( (getImportFlags() == SvXMLImportFlags::ALL ) )
+        if( getImportFlags() == SvXMLImportFlags::ALL )
         {
             // Notify math objects. If we are in the package filter this will
             // be done by the filter object itself
@@ -900,6 +947,186 @@ void SwXMLImport::endDocument()
     ClearTextImport();
 }
 
+// tdf#113877
+// when we insert one document with list inside into another one with list at the insert position,
+// the resulting numbering in these lists is not consequent.
+//
+// CASE-1: Main document:
+//  1. One
+//  2. Two
+//  3. Three
+//  4.                      <-- insert position
+//
+// Inserted document:
+//  1. One
+//  2. Two
+//  3. Three
+//  4.
+//
+// Expected result
+//  1. One
+//  2. Two
+//  3. Three
+//  4. One
+//  5. Two
+//  6. Three
+//  7.
+//
+// CASE-2: Main document:
+//  1. One
+//  2. Two
+//  3. Three
+//  4.                      <-- insert position
+//
+// Inserted document:
+//  A) One
+//  B) Two
+//  C) Three
+//  D)
+//
+// Expected result
+//  1. One
+//  2. Two
+//  3. Three
+//  4. One
+//  A) Two
+//  B) Three
+//  5.
+//
+void SwXMLImport::MergeListsAtDocumentInsertPosition(SwDoc *pDoc)
+{
+    // 1. check environment
+    if (! pDoc)
+        return;
+
+    if (! IsInsertMode() || ! m_pSttNdIdx->GetIndex())
+        return;
+
+    sal_uLong index = 1;
+
+    // the last node of the main document where we have inserted a document
+    const SwNodePtr node1 = pDoc->GetNodes()[m_pSttNdIdx->GetIndex() + 0];
+
+    // the first node of the inserted document
+    SwNodePtr node2 = pDoc->GetNodes()[m_pSttNdIdx->GetIndex() + index];
+
+    if (! (node1 && node2
+        && (node1->GetNodeType() == node2->GetNodeType())
+        && (node1->IsTextNode() == node2->IsTextNode())
+        ))
+    {
+        // not a text node at insert position
+        return;
+    }
+
+    // 2. get the first node of the inserted document,
+    // which will be used to detect if inside inserted document a new list was started after the first list
+    const SfxPoolItem* pListId2Initial = nullptr;
+    {
+        SwContentNode* contentNode1 = static_cast<SwContentNode *>(node1);
+        SwContentNode* contentNode2 = static_cast<SwContentNode *>(node2);
+
+        // check if both lists have the same list properties
+        const SfxPoolItem* pListId1 = contentNode1->GetNoCondAttr( RES_PARATR_LIST_ID, false );
+        const SfxPoolItem* pListId2 = contentNode2->GetNoCondAttr( RES_PARATR_LIST_ID, false );
+
+        if (! pListId1)
+            return;
+        if (! pListId2)
+            return;
+
+        auto pStringListId1 = dynamic_cast<const SfxStringItem*>(pListId1);
+        assert(pStringListId1);
+        const OUString& sListId1 = pStringListId1->GetValue();
+        auto pStringListId2 = dynamic_cast<const SfxStringItem*>(pListId2);
+        assert(pStringListId2);
+        const OUString& sListId2 = pStringListId2->GetValue();
+
+        const SwList* pList1 = pDoc->getIDocumentListsAccess().getListByName( sListId1 );
+        const SwList* pList2 = pDoc->getIDocumentListsAccess().getListByName( sListId2 );
+
+        if (! pList1)
+            return;
+        if (! pList2)
+            return;
+
+        const OUString& sDefaultListStyleName1 = pList1->GetDefaultListStyleName();
+        const OUString& sDefaultListStyleName2 = pList2->GetDefaultListStyleName();
+
+        if (sDefaultListStyleName1 != sDefaultListStyleName2)
+        {
+            const SwNumRule* pNumRule1 = pDoc->FindNumRulePtr( sDefaultListStyleName1 );
+            const SwNumRule* pNumRule2 = pDoc->FindNumRulePtr( sDefaultListStyleName2 );
+
+            if (pNumRule1 && pNumRule2)
+            {
+                // check style of the each list level
+                for( sal_uInt8 n = 0; n < MAXLEVEL; ++n )
+                {
+                    if( pNumRule1->Get( n ) != pNumRule2->Get( n ) )
+                    {
+                        return;
+                    }
+                }
+
+                // our list should be merged
+                pListId2Initial = pListId2;
+            }
+        }
+        else
+        {
+            // our list should be merged
+            pListId2Initial = pListId2;
+        }
+    }
+
+    if (! pListId2Initial)
+    {
+        // two lists have different styles => they should not be merged
+        return;
+    }
+
+    // 3. merge two lists
+    while (
+        node1 && node2
+        && (node1->GetNodeType() == node2->GetNodeType())
+        && (node1->IsTextNode() == node2->IsTextNode())
+        )
+    {
+        SwContentNode* contentNode1 = static_cast<SwContentNode *>( node1 );
+        SwContentNode* contentNode2 = static_cast<SwContentNode *>( node2 );
+
+        const SfxPoolItem* pListId1 = contentNode1->GetNoCondAttr( RES_PARATR_LIST_ID, false );
+        const SfxPoolItem* pListId2 = contentNode2->GetNoCondAttr( RES_PARATR_LIST_ID, false );
+
+        if (! pListId1)
+            return;
+        if (! pListId2)
+            return;
+
+        if (*pListId2Initial != *pListId2)
+        {
+            // no more list items of the first list inside inserted document
+            return;
+        }
+
+        // set list style to this list element
+        contentNode2->SetAttr(*pListId1);
+
+        // get next item
+        index++;
+        if (index >= pDoc->GetNodes().Count())
+        {
+            // no more items
+            return;
+        }
+
+        node2 = pDoc->GetNodes()[m_pSttNdIdx->GetIndex() + index];
+    }
+}
+
+namespace {
+
 // Locally derive XMLTextShapeImportHelper, so we can take care of the
 // form import This is Writer, but not text specific, so it should go
 // here!
@@ -921,6 +1148,8 @@ public:
     virtual ~SvTextShapeImportHelper() override;
 };
 
+}
+
 SvTextShapeImportHelper::SvTextShapeImportHelper(SvXMLImport& rImp) :
     XMLTextShapeImportHelper(rImp)
 {
@@ -934,8 +1163,7 @@ SvTextShapeImportHelper::SvTextShapeImportHelper(SvXMLImport& rImp) :
         }
 
         xPage  = xSupplier->getDrawPage();
-        Reference<XShapes> xShapes( xPage, UNO_QUERY );
-        XMLShapeImportHelper::startPage( xShapes );
+        XMLShapeImportHelper::startPage( xPage );
     }
 }
 
@@ -945,8 +1173,7 @@ SvTextShapeImportHelper::~SvTextShapeImportHelper()
 
     if (xPage.is())
     {
-        Reference<XShapes> xShapes( xPage, UNO_QUERY );
-        XMLShapeImportHelper::endPage(xShapes);
+        XMLShapeImportHelper::endPage(xPage);
     }
 }
 
@@ -963,17 +1190,14 @@ XMLShapeImportHelper* SwXMLImport::CreateShapeImport()
     return new SvTextShapeImportHelper( *this );
 }
 
-SvXMLImportContext *SwXMLImport::CreateFontDeclsContext(
-        const OUString& rLocalName,
-        const Reference< xml::sax::XAttributeList > & xAttrList )
+SvXMLImportContext *SwXMLImport::CreateFontDeclsContext()
 {
     XMLFontStylesContext *pFSContext =
-            new XMLFontStylesContext( *this, XML_NAMESPACE_OFFICE,
-                                      rLocalName, xAttrList,
-                                      osl_getThreadTextEncoding() );
+            new XMLFontStylesContext( *this, osl_getThreadTextEncoding() );
     SetFontDecls( pFSContext );
     return pFSContext;
 }
+
 void SwXMLImport::SetViewSettings(const Sequence < PropertyValue > & aViewProps)
 {
     if (IsInsertMode() || IsStylesOnlyMode() || IsBlockMode() || m_bOrganizerMode || !GetModel().is() )
@@ -989,9 +1213,6 @@ void SwXMLImport::SetViewSettings(const Sequence < PropertyValue > & aViewProps)
         //TODO/LATER: why that cast?!
         //aRect = ((SfxInPlaceObject *)pDoc->GetDocShell())->GetVisArea();
 
-    sal_Int32 nCount = aViewProps.getLength();
-    const PropertyValue *pValue = aViewProps.getConstArray();
-
     sal_Int64 nTmp = 0;
     bool bShowRedlineChanges = false, bBrowseMode = false;
     bool bChangeShowRedline = false, bChangeBrowseMode = false;
@@ -1000,44 +1221,43 @@ void SwXMLImport::SetViewSettings(const Sequence < PropertyValue > & aViewProps)
     bool bTwip = pDoc->GetDocShell()->GetMapUnit ( ) == MapUnit::MapTwip;
     //sal_Bool bTwip = pDoc->GetDocShell()->SfxInPlaceObject::GetMapUnit ( ) == MapUnit::MapTwip;
 
-    for (sal_Int32 i = 0; i < nCount ; i++)
+    for (const PropertyValue& rValue : aViewProps)
     {
-        if ( pValue->Name == "ViewAreaTop" )
+        if ( rValue.Name == "ViewAreaTop" )
         {
-            pValue->Value >>= nTmp;
-            aRect.setY( static_cast< long >(bTwip ? convertMm100ToTwip ( nTmp ) : nTmp) );
+            rValue.Value >>= nTmp;
+            aRect.setY( static_cast< long >(bTwip ? sanitiseMm100ToTwip(nTmp) : nTmp) );
         }
-        else if ( pValue->Name == "ViewAreaLeft" )
+        else if ( rValue.Name == "ViewAreaLeft" )
         {
-            pValue->Value >>= nTmp;
-            aRect.setX( static_cast< long >(bTwip ? convertMm100ToTwip ( nTmp ) : nTmp) );
+            rValue.Value >>= nTmp;
+            aRect.setX( static_cast< long >(bTwip ? sanitiseMm100ToTwip(nTmp) : nTmp) );
         }
-        else if ( pValue->Name == "ViewAreaWidth" )
+        else if ( rValue.Name == "ViewAreaWidth" )
         {
-            pValue->Value >>= nTmp;
+            rValue.Value >>= nTmp;
             Size aSize( aRect.GetSize() );
-            aSize.Width() = static_cast< long >(bTwip ? convertMm100ToTwip ( nTmp ) : nTmp);
+            aSize.setWidth( static_cast< long >(bTwip ? sanitiseMm100ToTwip(nTmp) : nTmp) );
             aRect.SetSize( aSize );
         }
-        else if ( pValue->Name == "ViewAreaHeight" )
+        else if ( rValue.Name == "ViewAreaHeight" )
         {
-            pValue->Value >>= nTmp;
+            rValue.Value >>= nTmp;
             Size aSize( aRect.GetSize() );
-            aSize.Height() = static_cast< long >(bTwip ? convertMm100ToTwip ( nTmp ) : nTmp);
+            aSize.setHeight( static_cast< long >(bTwip ? sanitiseMm100ToTwip(nTmp) : nTmp) );
             aRect.SetSize( aSize );
         }
-        else if ( pValue->Name == "ShowRedlineChanges" )
+        else if ( rValue.Name == "ShowRedlineChanges" )
         {
-            bShowRedlineChanges = *o3tl::doAccess<bool>(pValue->Value);
+            bShowRedlineChanges = *o3tl::doAccess<bool>(rValue.Value);
             bChangeShowRedline = true;
         }
 // Headers and footers are not displayed in BrowseView anymore
-        else if ( pValue->Name == "InBrowseMode" )
+        else if ( rValue.Name == "InBrowseMode" )
         {
-            bBrowseMode = *o3tl::doAccess<bool>(pValue->Value);
+            bBrowseMode = *o3tl::doAccess<bool>(rValue.Value);
             bChangeBrowseMode = true;
         }
-        pValue++;
     }
     if( pDoc->GetDocShell() )
         pDoc->GetDocShell()->SetVisArea ( aRect );
@@ -1069,44 +1289,43 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
     if( !xInfo.is() )
         return;
 
-    std::unordered_set< OUString, OUStringHash > aExcludeAlways;
+    std::unordered_set< OUString > aExcludeAlways;
     aExcludeAlways.insert("LinkUpdateMode");
-    std::unordered_set< OUString, OUStringHash > aExcludeWhenNotLoadingUserSettings;
-    aExcludeWhenNotLoadingUserSettings.insert("ForbiddenCharacters");
-    aExcludeWhenNotLoadingUserSettings.insert("IsKernAsianPunctuation");
-    aExcludeWhenNotLoadingUserSettings.insert("CharacterCompressionType");
-    aExcludeWhenNotLoadingUserSettings.insert("FieldAutoUpdate");
-    aExcludeWhenNotLoadingUserSettings.insert("ChartAutoUpdate");
-    aExcludeWhenNotLoadingUserSettings.insert("AddParaTableSpacing");
-    aExcludeWhenNotLoadingUserSettings.insert("AddParaTableSpacingAtStart");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintAnnotationMode");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintBlackFonts");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintControls");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintDrawings");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintGraphics");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintLeftPages");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintPageBackground");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintProspect");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintReversed");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintRightPages");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintFaxName");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintPaperFromSetup");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintTables");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintSingleJobs");
-    aExcludeWhenNotLoadingUserSettings.insert("UpdateFromTemplate");
-    aExcludeWhenNotLoadingUserSettings.insert("PrinterIndependentLayout");
-    aExcludeWhenNotLoadingUserSettings.insert("PrintEmptyPages");
-    aExcludeWhenNotLoadingUserSettings.insert("SmallCapsPercentage66");
-    aExcludeWhenNotLoadingUserSettings.insert("TabOverflow");
-    aExcludeWhenNotLoadingUserSettings.insert("UnbreakableNumberings");
-    aExcludeWhenNotLoadingUserSettings.insert("ClippedPictures");
-    aExcludeWhenNotLoadingUserSettings.insert("BackgroundParaOverDrawings");
-    aExcludeWhenNotLoadingUserSettings.insert("TabOverMargin");
-    aExcludeWhenNotLoadingUserSettings.insert("PropLineSpacingShrinksFirstLine");
-    aExcludeWhenNotLoadingUserSettings.insert("SubtractFlysAnchoredAtFlys");
-
-    sal_Int32 nCount = aConfigProps.getLength();
-    const PropertyValue* pValues = aConfigProps.getConstArray();
+    // this should contain things that are actually user-settable, via Tools->Options
+    std::unordered_set< OUString > aExcludeWhenNotLoadingUserSettings {
+        "ForbiddenCharacters",
+        "IsKernAsianPunctuation",
+        "CharacterCompressionType",
+        "FieldAutoUpdate",
+        "ChartAutoUpdate",
+        "AddParaTableSpacing",
+        "AddParaTableSpacingAtStart",
+        "PrintAnnotationMode",
+        "PrintBlackFonts",
+        "PrintControls",
+        "PrintDrawings",
+        "PrintGraphics",
+        "PrintHiddenText",
+        "PrintLeftPages",
+        "PrintPageBackground",
+        "PrintProspect",
+        "PrintReversed",
+        "PrintRightPages",
+        "PrintFaxName",
+        "PrintPaperFromSetup",
+        "PrintTables",
+        "PrintTextPlaceholder",
+        "PrintSingleJobs",
+        "UpdateFromTemplate",
+        "PrinterIndependentLayout",
+        "PrintEmptyPages",
+        "ConsiderTextWrapOnObjPos",
+        "DoNotJustifyLinesWithManualBreak",
+        "ProtectForm",
+        "MsWordCompTrailingBlanks",
+        "SubtractFlysAnchoredAtFlys",
+        "EmptyDbFieldHidesPara"
+    };
 
     SvtSaveOptions aSaveOpt;
     bool bIsUserSetting = aSaveOpt.IsLoadUserSettings();
@@ -1135,19 +1354,22 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
     bool bClippedPictures = false;
     bool bBackgroundParaOverDrawings = false;
     bool bTabOverMargin = false;
+    bool bTabOverMarginValue = false;
     bool bPropLineSpacingShrinksFirstLine = false;
     bool bSubtractFlysAnchoredAtFlys = false;
+    bool bCollapseEmptyCellPara = false;
+    bool bIsSetAllowWrapWhenAnchoredInTable = false;
 
     const PropertyValue* currentDatabaseDataSource = nullptr;
     const PropertyValue* currentDatabaseCommand = nullptr;
     const PropertyValue* currentDatabaseCommandType = nullptr;
     const PropertyValue* embeddedDatabaseName = nullptr;
 
-    while( nCount-- )
+    for( const PropertyValue& rValue : aConfigProps )
     {
-        bool bSet = aExcludeAlways.find(pValues->Name) == aExcludeAlways.end();
+        bool bSet = aExcludeAlways.find(rValue.Name) == aExcludeAlways.end();
         if( bSet && !bIsUserSetting
-            && (aExcludeWhenNotLoadingUserSettings.find(pValues->Name)
+            && (aExcludeWhenNotLoadingUserSettings.find(rValue.Name)
                 != aExcludeWhenNotLoadingUserSettings.end()) )
         {
             bSet = false;
@@ -1157,85 +1379,90 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
         {
             try
             {
-                if( xInfo->hasPropertyByName( pValues->Name ) )
+                if( xInfo->hasPropertyByName( rValue.Name ) )
                 {
-                    if( pValues->Name == "RedlineProtectionKey" )
+                    if( rValue.Name == "RedlineProtectionKey" )
                     {
                         Sequence<sal_Int8> aKey;
-                        pValues->Value >>= aKey;
+                        rValue.Value >>= aKey;
                         GetTextImport()->SetChangesProtectionKey( aKey );
                     }
                     else
                     {
                         // HACK: Setting these out of order does not work.
-                        if( pValues->Name == "CurrentDatabaseDataSource" )
-                            currentDatabaseDataSource = pValues;
-                        else if( pValues->Name == "CurrentDatabaseCommand" )
-                            currentDatabaseCommand = pValues;
-                        else if( pValues->Name == "CurrentDatabaseCommandType" )
-                            currentDatabaseCommandType = pValues;
-                        else if (pValues->Name == "EmbeddedDatabaseName")
-                            embeddedDatabaseName = pValues;
+                        if( rValue.Name == "CurrentDatabaseDataSource" )
+                            currentDatabaseDataSource = &rValue;
+                        else if( rValue.Name == "CurrentDatabaseCommand" )
+                            currentDatabaseCommand = &rValue;
+                        else if( rValue.Name == "CurrentDatabaseCommandType" )
+                            currentDatabaseCommandType = &rValue;
+                        else if (rValue.Name == "EmbeddedDatabaseName")
+                            embeddedDatabaseName = &rValue;
                         else
-                            xProps->setPropertyValue( pValues->Name,
-                                                  pValues->Value );
+                            xProps->setPropertyValue( rValue.Name, rValue.Value );
                     }
                 }
 
                 // did we find any of the non-default cases?
-                if ( pValues->Name == "PrinterIndependentLayout" )
+                if ( rValue.Name == "PrinterIndependentLayout" )
                     bPrinterIndependentLayout = true;
-                else if ( pValues->Name == "AddExternalLeading" )
+                else if ( rValue.Name == "AddExternalLeading" )
                     bAddExternalLeading = true;
-                else if ( pValues->Name == "AddParaSpacingToTableCells" )
+                else if ( rValue.Name == "AddParaSpacingToTableCells" )
                     bAddParaSpacingToTableCells = true;
-                else if ( pValues->Name == "UseFormerLineSpacing" )
+                else if ( rValue.Name == "UseFormerLineSpacing" )
                     bUseFormerLineSpacing = true;
-                else if ( pValues->Name == "UseFormerObjectPositioning" )
+                else if ( rValue.Name == "UseFormerObjectPositioning" )
                     bUseFormerObjectPositioning = true;
-                else if ( pValues->Name == "UseFormerTextWrapping" )
+                else if ( rValue.Name == "UseFormerTextWrapping" )
                     bUseFormerTextWrapping = true;
-                else if ( pValues->Name == "UseOldNumbering" )
+                else if ( rValue.Name == "UseOldNumbering" )
                     bUseOldNumbering = true;
-                else if ( pValues->Name == "ConsiderTextWrapOnObjPos" )
+                else if ( rValue.Name == "ConsiderTextWrapOnObjPos" )
                     bConsiderWrapOnObjPos = true;
-                else if ( pValues->Name == "IgnoreFirstLineIndentInNumbering" )
+                else if ( rValue.Name == "IgnoreFirstLineIndentInNumbering" )
                     bIgnoreFirstLineIndentInNumbering = true;
-                else if ( pValues->Name == "DoNotJustifyLinesWithManualBreak" )
+                else if ( rValue.Name == "DoNotJustifyLinesWithManualBreak" )
                     bDoNotJustifyLinesWithManualBreak = true;
-                else if ( pValues->Name == "DoNotResetParaAttrsForNumFont" )
+                else if ( rValue.Name == "DoNotResetParaAttrsForNumFont" )
                     bDoNotResetParaAttrsForNumFont = true;
-                else if ( pValues->Name == "LoadReadonly" )
+                else if ( rValue.Name == "LoadReadonly" )
                     bLoadReadonly = true;
-                else if ( pValues->Name == "DoNotCaptureDrawObjsOnPage" )
+                else if ( rValue.Name == "DoNotCaptureDrawObjsOnPage" )
                     bDoNotCaptureDrawObjsOnPage = true;
-                else if ( pValues->Name == "ClipAsCharacterAnchoredWriterFlyFrames" )
+                else if ( rValue.Name == "ClipAsCharacterAnchoredWriterFlyFrames" )
                     bClipAsCharacterAnchoredWriterFlyFrames = true;
-                else if ( pValues->Name == "UnxForceZeroExtLeading" )
+                else if ( rValue.Name == "UnxForceZeroExtLeading" )
                     bUnixForceZeroExtLeading = true;
-                else if ( pValues->Name == "SmallCapsPercentage66" )
+                else if ( rValue.Name == "SmallCapsPercentage66" )
                     bSmallCapsPercentage66 = true;
-                else if ( pValues->Name == "TabOverflow" )
+                else if ( rValue.Name == "TabOverflow" )
                     bTabOverflow = true;
-                else if ( pValues->Name == "UnbreakableNumberings" )
+                else if ( rValue.Name == "UnbreakableNumberings" )
                     bUnbreakableNumberings = true;
-                else if ( pValues->Name == "ClippedPictures" )
+                else if ( rValue.Name == "ClippedPictures" )
                     bClippedPictures = true;
-                else if ( pValues->Name == "BackgroundParaOverDrawings" )
+                else if ( rValue.Name == "BackgroundParaOverDrawings" )
                     bBackgroundParaOverDrawings = true;
-                else if ( pValues->Name == "TabOverMargin" )
+                else if ( rValue.Name == "TabOverMargin" )
+                {
                     bTabOverMargin = true;
-                else if ( pValues->Name == "PropLineSpacingShrinksFirstLine" )
+                    rValue.Value >>= bTabOverMarginValue;
+                }
+                else if ( rValue.Name == "PropLineSpacingShrinksFirstLine" )
                     bPropLineSpacingShrinksFirstLine = true;
-                else if (pValues->Name == "SubtractFlysAnchoredAtFlys")
+                else if (rValue.Name == "SubtractFlysAnchoredAtFlys")
                     bSubtractFlysAnchoredAtFlys = true;
+                else if (rValue.Name == "CollapseEmptyCellPara")
+                    bCollapseEmptyCellPara = true;
+                else if ( rValue.Name == "AllowWrapWhenAnchoredInTable" )
+                    bIsSetAllowWrapWhenAnchoredInTable = true;
             }
             catch( Exception& )
             {
                 OSL_FAIL( "SwXMLImport::SetConfigurationSettings: Exception!" );
             }
         }
-        pValues++;
     }
 
     try
@@ -1383,11 +1610,25 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
     if ( !bTabOverMargin )
         xProps->setPropertyValue("TabOverMargin", makeAny( false ) );
 
+    if (bTabOverMarginValue)
+        // Let TabOverMargin imply the new default for
+        // PrinterIndependentLayout, knowing the first is set by Word import
+        // filters and Word defaults to our new default as well.
+        xProps->setPropertyValue(
+            "PrinterIndependentLayout",
+            uno::Any(document::PrinterIndependentLayout::HIGH_RESOLUTION));
+
     if (!bPropLineSpacingShrinksFirstLine)
         xProps->setPropertyValue("PropLineSpacingShrinksFirstLine", makeAny(false));
 
     if (!bSubtractFlysAnchoredAtFlys)
         xProps->setPropertyValue("SubtractFlysAnchoredAtFlys", makeAny(true));
+
+    if (!bCollapseEmptyCellPara)
+        xProps->setPropertyValue("CollapseEmptyCellPara", makeAny(false));
+
+    if (!bIsSetAllowWrapWhenAnchoredInTable)
+        xProps->setPropertyValue("AllowWrapWhenAnchoredInTable", makeAny(false));
 
     SwDoc *pDoc = getDoc();
     SfxPrinter *pPrinter = pDoc->getIDocumentDeviceAccess().getPrinter( false );
@@ -1438,11 +1679,10 @@ void SwXMLImport::initialize(
     SvXMLImport::initialize(aArguments);
 
     // we are only looking for a NamedValue "LateInitSettings"
-    sal_Int32 nLength = aArguments.getLength();
-    for(sal_Int32 i = 0; i < nLength; i++)
+    for(const auto& rArgument : aArguments)
     {
         beans::NamedValue aNamedValue;
-        if ( aArguments[i] >>= aNamedValue )
+        if ( rArgument >>= aNamedValue )
         {
             if (aNamedValue.Name == "LateInitSettings")
             {
@@ -1452,11 +1692,9 @@ void SwXMLImport::initialize(
     }
 }
 
-SwDoc* SwImport::GetDocFromXMLImport( SvXMLImport& rImport )
+SwDoc* SwImport::GetDocFromXMLImport( SvXMLImport const & rImport )
 {
-    uno::Reference<lang::XUnoTunnel> xModelTunnel( rImport.GetModel(), uno::UNO_QUERY );
-    SwXTextDocument *pTextDoc = reinterpret_cast< SwXTextDocument *>(
-            sal::static_int_cast< sal_IntPtr >(  xModelTunnel->getSomething(SwXTextDocument::getUnoTunnelId() )));
+    auto pTextDoc = comphelper::getUnoTunnelImplementation<SwXTextDocument>(rImport.GetModel());
     assert( pTextDoc );
     assert( pTextDoc->GetDocShell() );
     SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
@@ -1467,11 +1705,7 @@ SwDoc* SwImport::GetDocFromXMLImport( SvXMLImport& rImport )
 void SwXMLImport::initXForms()
 {
     // obtain SwDoc
-    Reference<XUnoTunnel> xDocTunnel( GetModel(), UNO_QUERY );
-    if( ! xDocTunnel.is() )
-        return;
-    SwXTextDocument* pXTextDocument = reinterpret_cast<SwXTextDocument*>(
-        xDocTunnel->getSomething( SwXTextDocument::getUnoTunnelId() ) );
+    auto pXTextDocument = comphelper::getUnoTunnelImplementation<SwXTextDocument>(GetModel());
     if( pXTextDocument == nullptr )
         return;
 
@@ -1506,7 +1740,7 @@ const SwDoc* SwXMLImport::getDoc() const
     return const_cast< SwXMLImport* >( this )->getDoc();
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisImporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -1515,7 +1749,7 @@ com_sun_star_comp_Writer_XMLOasisImporter_get_implementation(css::uno::XComponen
 }
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisStylesImporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -1525,7 +1759,7 @@ com_sun_star_comp_Writer_XMLOasisStylesImporter_get_implementation(css::uno::XCo
 }
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisContentImporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -1534,7 +1768,7 @@ com_sun_star_comp_Writer_XMLOasisContentImporter_get_implementation(css::uno::XC
                 SvXMLImportFlags::FONTDECLS));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisMetaImporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -1543,11 +1777,102 @@ com_sun_star_comp_Writer_XMLOasisMetaImporter_get_implementation(css::uno::XComp
 }
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisSettingsImporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new SwXMLImport(context, "com.sun.star.comp.Writer.XMLOasisSettingsImporter",
                 SvXMLImportFlags::SETTINGS));
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportFODT(SvStream &rStream)
+{
+    SwGlobals::ensure();
+
+    SfxObjectShellLock xDocSh(new SwDocShell(SfxObjectCreateMode::INTERNAL));
+    xDocSh->DoInitNew();
+    uno::Reference<frame::XModel> xModel(xDocSh->GetModel());
+
+    uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
+    uno::Reference<io::XInputStream> xStream(new utl::OSeekableInputStreamWrapper(rStream));
+    uno::Reference<uno::XInterface> xInterface(xMultiServiceFactory->createInstance("com.sun.star.comp.Writer.XmlFilterAdaptor"), uno::UNO_SET_THROW);
+
+    css::uno::Sequence<OUString> aUserData(7);
+    aUserData[0] = "com.sun.star.comp.filter.OdfFlatXml";
+    aUserData[2] = "com.sun.star.comp.Writer.XMLOasisImporter";
+    aUserData[3] = "com.sun.star.comp.Writer.XMLOasisExporter";
+    aUserData[6] = "true";
+    uno::Sequence<beans::PropertyValue> aAdaptorArgs(comphelper::InitPropertySequence(
+    {
+        { "UserData", uno::Any(aUserData) },
+    }));
+    css::uno::Sequence<uno::Any> aOuterArgs(1);
+    aOuterArgs[0] <<= aAdaptorArgs;
+
+    uno::Reference<lang::XInitialization> xInit(xInterface, uno::UNO_QUERY_THROW);
+    xInit->initialize(aOuterArgs);
+
+    uno::Reference<document::XImporter> xImporter(xInterface, uno::UNO_QUERY_THROW);
+    uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
+    {
+        { "InputStream", uno::Any(xStream) },
+        { "URL", uno::Any(OUString("private:stream")) },
+    }));
+    xImporter->setTargetDocument(xModel);
+
+    uno::Reference<document::XFilter> xFilter(xInterface, uno::UNO_QUERY_THROW);
+    //SetLoading hack because the document properties will be re-initted
+    //by the xml filter and during the init, while it's considered uninitialized,
+    //setting a property will inform the document it's modified, which attempts
+    //to update the properties, which throws cause the properties are uninitialized
+    xDocSh->SetLoading(SfxLoadedFlags::NONE);
+    bool ret = xFilter->filter(aArgs);
+    xDocSh->SetLoading(SfxLoadedFlags::ALL);
+
+    xDocSh->DoClose();
+
+    return ret;
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportDOCX(SvStream &rStream)
+{
+    SwGlobals::ensure();
+
+    SfxObjectShellLock xDocSh(new SwDocShell(SfxObjectCreateMode::INTERNAL));
+    xDocSh->DoInitNew();
+    uno::Reference<frame::XModel> xModel(xDocSh->GetModel());
+
+    uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
+    uno::Reference<io::XInputStream> xStream(new utl::OSeekableInputStreamWrapper(rStream));
+
+    uno::Reference<document::XFilter> xFilter(xMultiServiceFactory->createInstance("com.sun.star.comp.Writer.WriterFilter"), uno::UNO_QUERY_THROW);
+
+    uno::Reference<document::XImporter> xImporter(xFilter, uno::UNO_QUERY_THROW);
+    uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
+    {
+        { "InputStream", uno::makeAny(xStream) },
+        { "InputMode", uno::makeAny(true) },
+    }));
+    xImporter->setTargetDocument(xModel);
+
+    //SetLoading hack because the document properties will be re-initted
+    //by the xml filter and during the init, while it's considered uninitialized,
+    //setting a property will inform the document it's modified, which attempts
+    //to update the properties, which throws cause the properties are uninitialized
+    xDocSh->SetLoading(SfxLoadedFlags::NONE);
+    bool ret = false;
+    try
+    {
+        ret = xFilter->filter(aArgs);
+    }
+    catch (...)
+    {
+    }
+    xDocSh->SetLoading(SfxLoadedFlags::ALL);
+
+    xDocSh->DoClose();
+
+    return ret;
+}
+
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

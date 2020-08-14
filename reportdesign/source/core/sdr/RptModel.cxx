@@ -17,26 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RptModel.hxx"
-#include "RptPage.hxx"
+#include <RptModel.hxx>
+#include <RptPage.hxx>
 #include <dbaccess/dbsubcomponentcontroller.hxx>
-#include <unotools/pathoptions.hxx>
 #include <vcl/svapp.hxx>
 
-#include "UndoActions.hxx"
-#include "UndoEnv.hxx"
-#include "ReportUndoFactory.hxx"
-#include "ReportDefinition.hxx"
+#include <UndoEnv.hxx>
+#include <ReportUndoFactory.hxx>
+#include <ReportDefinition.hxx>
 
-#include <svx/tbcontrl.hxx>
-#include "rptui_slotid.hrc"
-#include "RptDef.hxx"
-#include "corestrings.hrc"
-#include "FixedLine.hxx"
-#include "FormattedField.hxx"
-#include "FixedText.hxx"
-#include "ImageControl.hxx"
-#include "Shape.hxx"
+#include <RptDef.hxx>
+#include <strings.hxx>
+#include <FixedLine.hxx>
+#include <FormattedField.hxx>
+#include <FixedText.hxx>
+#include <ImageControl.hxx>
+#include <Shape.hxx>
 
 namespace rptui
 {
@@ -44,8 +40,10 @@ using namespace reportdesign;
 using namespace com::sun::star;
 
 
-OReportModel::OReportModel(::reportdesign::OReportDefinition* _pReportDefinition) :
-    SdrModel(SvtPathOptions().GetPalettePath(),nullptr,_pReportDefinition, false)
+OReportModel::OReportModel(::reportdesign::OReportDefinition* _pReportDefinition)
+:   SdrModel(
+        nullptr,
+        _pReportDefinition)
     ,m_pController(nullptr)
     ,m_pReportDefinition(_pReportDefinition)
 {
@@ -120,7 +118,7 @@ SvxNumType OReportModel::GetPageNumType() const
 {
     uno::Reference< report::XReportDefinition > xReportDefinition( getReportDefinition() );
     if ( xReportDefinition.is() )
-        return (SvxNumType) getStyleProperty<sal_Int16>(xReportDefinition,PROPERTY_NUMBERINGTYPE);
+        return static_cast<SvxNumType>(getStyleProperty<sal_Int16>(xReportDefinition,PROPERTY_NUMBERINGTYPE));
     return SVX_NUM_ARABIC;
 }
 
@@ -147,44 +145,43 @@ uno::Reference< uno::XInterface > OReportModel::createShape(const OUString& aSer
             uno::Reference<report::XFormattedField> xProp = new OFormattedField(m_pReportDefinition->getContext(),m_pReportDefinition,_rShape);
             xRet = xProp;
             if ( _rShape.is() )
-                throw uno::Exception();
+                throw uno::Exception("no shape", nullptr);
             xProp->setPropertyValue( PROPERTY_FORMATSSUPPLIER, uno::makeAny(uno::Reference< util::XNumberFormatsSupplier >(*m_pReportDefinition,uno::UNO_QUERY)) );
         }
         else if ( aServiceSpecifier == SERVICE_FIXEDTEXT)
         {
             xRet = static_cast<cppu::OWeakObject*>(new OFixedText(m_pReportDefinition->getContext(),m_pReportDefinition,_rShape));
             if ( _rShape.is() )
-                throw uno::Exception();
+                throw uno::Exception("no shape", nullptr);
         }
         else if ( aServiceSpecifier == SERVICE_FIXEDLINE)
         {
             xRet = static_cast<cppu::OWeakObject*>(new OFixedLine(m_pReportDefinition->getContext(),m_pReportDefinition,_rShape,nOrientation));
             if ( _rShape.is() )
-                throw uno::Exception();
+                throw uno::Exception("no shape", nullptr);
         }
         else if ( aServiceSpecifier == SERVICE_IMAGECONTROL )
         {
             xRet = static_cast<cppu::OWeakObject*>(new OImageControl(m_pReportDefinition->getContext(),m_pReportDefinition,_rShape));
             if ( _rShape.is() )
-                throw uno::Exception();
+                throw uno::Exception("no shape", nullptr);
         }
         else if ( aServiceSpecifier == SERVICE_REPORTDEFINITION )
         {
             xRet = static_cast<cppu::OWeakObject*>(new OReportDefinition(m_pReportDefinition->getContext(),m_pReportDefinition,_rShape));
             if ( _rShape.is() )
-                throw uno::Exception();
+                throw uno::Exception("no shape", nullptr);
         }
         else if ( _rShape.is() )
         {
             xRet = static_cast<cppu::OWeakObject*>(new OShape(m_pReportDefinition->getContext(),m_pReportDefinition,_rShape,aServiceSpecifier));
             if ( _rShape.is() )
-                throw uno::Exception();
+                throw uno::Exception("no shape", nullptr);
         }
     }
     return xRet;
 }
 
 }   //rptui
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

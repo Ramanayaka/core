@@ -20,19 +20,18 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_DATASOURCEHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_DATASOURCEHELPER_HXX
 
-#include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/chart2/XDiagram.hpp>
-#include <com/sun/star/chart2/data/XDataSource.hpp>
-#include <com/sun/star/chart2/data/XLabeledDataSequence.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-
-#include "ChartModel.hxx"
-
 #include "charttoolsdllapi.hxx"
+#include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/uno/Sequence.h>
 
-#include <vector>
+namespace chart { class ChartModel; }
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::chart2 { class XChartDocument; }
+namespace com::sun::star::chart2 { class XDiagram; }
+namespace com::sun::star::chart2::data { class XDataSequence; }
+namespace com::sun::star::chart2::data { class XDataSource; }
+namespace com::sun::star::chart2::data { class XLabeledDataSequence; }
+namespace com::sun::star::frame { class XModel; }
 
 namespace chart
 {

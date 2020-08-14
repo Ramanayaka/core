@@ -20,26 +20,23 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_DATASOURCECONNECTOR_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_DATASOURCECONNECTOR_HXX
 
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XDataSource.hpp>
-#include <vcl/vclptr.hxx>
 
 namespace dbtools
 {
     class SQLExceptionInfo;
 }
 
-namespace vcl { class Window; }
+namespace weld { class Window; }
 namespace dbaui
 {
 
     // ODatasourceConnector
-    class ODatasourceConnector
+    class ODatasourceConnector final
     {
-    protected:
-        VclPtr<vcl::Window>  m_pErrorMessageParent;
+        weld::Window*  m_pErrorMessageParent;
         css::uno::Reference< css::uno::XComponentContext >
                              m_xContext;
         OUString             m_sContextInformation;
@@ -47,11 +44,11 @@ namespace dbaui
     public:
         ODatasourceConnector(
             const css::uno::Reference< css::uno::XComponentContext >& _rxContext,
-            vcl::Window* _pMessageParent
+            weld::Window* _pMessageParent
         );
         ODatasourceConnector(
             const css::uno::Reference< css::uno::XComponentContext >& _rxContext,
-            vcl::Window* _pMessageParent,
+            weld::Window* _pMessageParent,
             const OUString& _rContextInformation
         );
 

@@ -18,16 +18,15 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
+#include <anchoredobject.hxx>
 #include <bodyfrm.hxx>
 #include <hintids.hxx>
 #include <editeng/keepitem.hxx>
 #include <editeng/hyphenzoneitem.hxx>
 #include <pagefrm.hxx>
 #include <ndtxt.hxx>
-#include <dcontact.hxx>
-#include <dflyobj.hxx>
-#include <flyfrm.hxx>
 #include <ftnfrm.hxx>
 #include <txtftn.hxx>
 #include <fmtftn.hxx>
@@ -36,25 +35,22 @@
 #include <viewsh.hxx>
 #include <frmatr.hxx>
 #include <pam.hxx>
-#include <flyfrms.hxx>
 #include <fmtanchr.hxx>
-#include <itrform2.hxx>
-#include <widorp.hxx>
-#include <txtcache.hxx>
-#include <porrst.hxx>
-#include <blink.hxx>
-#include <porfld.hxx>
+#include "itrform2.hxx"
+#include "widorp.hxx"
+#include "txtcache.hxx"
 #include <sectfrm.hxx>
-#include <pormulti.hxx>
 #include <rootfrm.hxx>
 #include <frmfmt.hxx>
 #include <sortedobjs.hxx>
-#include <portab.hxx>
-#include <editeng/lrspitem.hxx>
 #include <editeng/tstpitem.hxx>
+#include <redline.hxx>
+#include <comphelper/lok.hxx>
 
 // Tolerance in formatting and text output
 #define SLOPPY_TWIPS    5
+
+namespace {
 
 class FormatLevel
 {
@@ -65,15 +61,20 @@ public:
     static sal_uInt16 GetLevel() { return nLevel; }
     static bool LastLevel() { return 10 < nLevel; }
 };
+
+}
+
 sal_uInt16 FormatLevel::nLevel = 0;
 
 void ValidateText( SwFrame *pFrame )     // Friend of frame
 {
     if ( ( ! pFrame->IsVertical() &&
-             pFrame->Frame().Width() == pFrame->GetUpper()->Prt().Width() ) ||
+             pFrame->getFrameArea().Width() == pFrame->GetUpper()->getFramePrintArea().Width() ) ||
          (   pFrame->IsVertical() &&
-             pFrame->Frame().Height() == pFrame->GetUpper()->Prt().Height() ) )
-        pFrame->mbValidSize = true;
+             pFrame->getFrameArea().Height() == pFrame->GetUpper()->getFramePrintArea().Height() ) )
+    {
+        pFrame->setFrameAreaSizeValid(true);
+    }
 }
 
 void SwTextFrame::ValidateFrame()
@@ -102,7 +103,7 @@ void SwTextFrame::ValidateFrame()
     ValidateText( this );
 
     // We at least have to save the MustFit flag!
-    OSL_ENSURE( HasPara(), "ResetPreps(), missing ParaPortion." );
+    assert(HasPara() && "ResetPreps(), missing ParaPortion, SwCache bug?");
     SwParaPortion *pPara = GetPara();
     const bool bMustFit = pPara->IsPrepMustFit();
     ResetPreps();
@@ -112,23 +113,23 @@ void SwTextFrame::ValidateFrame()
 // After a RemoveFootnote the BodyFrame and all Frames contained within it, need to be
 // recalculated, so that the DeadLine is right.
 // First we search outwards, on the way back we calculate everything.
-void ValidateBodyFrame_( SwFrame *pFrame )
+static void ValidateBodyFrame_( SwFrame *pFrame )
 {
     vcl::RenderContext* pRenderContext = pFrame ? pFrame->getRootFrame()->GetCurrShell()->GetOut() : nullptr;
-    if( pFrame && !pFrame->IsCellFrame() )
+    if( !(pFrame && !pFrame->IsCellFrame()) )
+        return;
+
+    if( !pFrame->IsBodyFrame() && pFrame->GetUpper() )
+        ValidateBodyFrame_( pFrame->GetUpper() );
+    if( !pFrame->IsSctFrame() )
+        pFrame->Calc(pRenderContext);
+    else
     {
-        if( !pFrame->IsBodyFrame() && pFrame->GetUpper() )
-            ValidateBodyFrame_( pFrame->GetUpper() );
-        if( !pFrame->IsSctFrame() )
-            pFrame->Calc(pRenderContext);
-        else
-        {
-            const bool bOld = static_cast<SwSectionFrame*>(pFrame)->IsContentLocked();
-            static_cast<SwSectionFrame*>(pFrame)->SetContentLock( true );
-            pFrame->Calc(pRenderContext);
-            if( !bOld )
-                static_cast<SwSectionFrame*>(pFrame)->SetContentLock( false );
-        }
+        const bool bOld = static_cast<SwSectionFrame*>(pFrame)->IsContentLocked();
+        static_cast<SwSectionFrame*>(pFrame)->SetContentLock( true );
+        pFrame->Calc(pRenderContext);
+        if( !bOld )
+            static_cast<SwSectionFrame*>(pFrame)->SetContentLock( false );
     }
 }
 
@@ -167,19 +168,7 @@ bool SwTextFrame::GetDropRect_( SwRect &rRect ) const
     return false;
 }
 
-const SwBodyFrame *SwTextFrame::FindBodyFrame() const
-{
-    if ( IsInDocBody() )
-    {
-        const SwFrame *pFrame = GetUpper();
-        while( pFrame && !pFrame->IsBodyFrame() )
-            pFrame = pFrame->GetUpper();
-        return static_cast<const SwBodyFrame*>(pFrame);
-    }
-    return nullptr;
-}
-
-bool SwTextFrame::CalcFollow( const sal_Int32 nTextOfst )
+bool SwTextFrame::CalcFollow(TextFrameIndex const nTextOfst)
 {
     vcl::RenderContext* pRenderContext = getRootFrame()->GetCurrShell()->GetOut();
     SwSwapIfSwapped swap( this );
@@ -191,29 +180,29 @@ bool SwTextFrame::CalcFollow( const sal_Int32 nTextOfst )
     SwParaPortion *pPara = GetPara();
     const bool bFollowField = pPara && pPara->IsFollowField();
 
-    if( !pMyFollow->GetOfst() || pMyFollow->GetOfst() != nTextOfst ||
+    if( !pMyFollow->GetOffset() || pMyFollow->GetOffset() != nTextOfst ||
         bFollowField || pMyFollow->IsFieldFollow() ||
-        ( pMyFollow->IsVertical() && !pMyFollow->Prt().Width() ) ||
-        ( ! pMyFollow->IsVertical() && !pMyFollow->Prt().Height() ) )
+        ( pMyFollow->IsVertical() && !pMyFollow->getFramePrintArea().Width() ) ||
+        ( ! pMyFollow->IsVertical() && !pMyFollow->getFramePrintArea().Height() ) )
     {
 #if OSL_DEBUG_LEVEL > 0
         const SwFrame *pOldUp = GetUpper();
 #endif
 
         SwRectFnSet aRectFnSet(this);
-        SwTwips nOldBottom = aRectFnSet.GetBottom(GetUpper()->Frame());
-        SwTwips nMyPos = aRectFnSet.GetTop(Frame());
+        SwTwips nOldBottom = aRectFnSet.GetBottom(GetUpper()->getFrameArea());
+        SwTwips nMyPos = aRectFnSet.GetTop(getFrameArea());
 
         const SwPageFrame *pPage = nullptr;
         bool bOldInvaContent = true;
         if ( !IsInFly() && GetNext() )
         {
             pPage = FindPageFrame();
-            // Minimize = that is set back if needed - for invalidation see below
+            // Minimize (reset if possible) invalidations: see below
             bOldInvaContent  = pPage->IsInvalidContent();
         }
 
-        pMyFollow->SetOfst_( nTextOfst );
+        pMyFollow->SetOffset_( nTextOfst );
         pMyFollow->SetFieldFollow( bFollowField );
         if( HasFootnote() || pMyFollow->HasFootnote() )
         {
@@ -233,7 +222,14 @@ bool SwTextFrame::CalcFollow( const sal_Int32 nTextOfst )
         if ( !pMyFollow->GetNext() && !pMyFollow->HasFootnote() )
             nOldBottom =  aRectFnSet.IsVert() ? 0 : LONG_MAX;
 
-        while( true )
+        // tdf#122892 check flag:
+        // 1. WidowsAndOrphans::FindWidows() determines follow is a widow
+        // 2. SwTextFrame::PrepWidows() calls SetPrepWidows() on master;
+        //    if it can spare lines, master truncates one line
+        // 3. SwTextFrame::CalcPreps() on master (below);
+        //    unless IsPrepMustFit(), if master hasn't shrunk via 2., it will SetWidow()
+        // 4. loop must exit then, because the follow didn't grow so nothing will ever change
+        while (!IsWidow())
         {
             if( !FormatLevel::LastLevel() )
             {
@@ -246,8 +242,8 @@ bool SwTextFrame::CalcFollow( const sal_Int32 nTextOfst )
                 {
                     if( pSct->GetFollow() )
                         pSct->SimpleFormat();
-                    else if( ( pSct->IsVertical() && !pSct->Frame().Width() ) ||
-                             ( ! pSct->IsVertical() && !pSct->Frame().Height() ) )
+                    else if( ( pSct->IsVertical() && !pSct->getFrameArea().Width() ) ||
+                             ( ! pSct->IsVertical() && !pSct->getFrameArea().Height() ) )
                         break;
                 }
                 // i#11760 - Intrinsic format of follow is controlled.
@@ -280,7 +276,7 @@ bool SwTextFrame::CalcFollow( const sal_Int32 nTextOfst )
                     }
 
                     pMyFollow->Calc(pRenderContext);
-                    // The Follow can tell from its Frame().Height() that something went wrong
+                    // The Follow can tell from its getFrameArea().Height() that something went wrong
                     OSL_ENSURE( !pMyFollow->GetPrev(), "SwTextFrame::CalcFollow: cheesy follow" );
                     if( pMyFollow->GetPrev() )
                     {
@@ -298,8 +294,8 @@ bool SwTextFrame::CalcFollow( const sal_Int32 nTextOfst )
             }
 
             pPara = GetPara();
-            // As long as the Follow is requested due to orphan lines, it is passed these
-            // and is reformatted if possible
+            // As long as the Follow requests lines due to Orphans, it is
+            // passed these and is formatted again if possible
             if( pPara && pPara->IsPrepWidows() )
                 CalcPreps();
             else
@@ -317,22 +313,19 @@ bool SwTextFrame::CalcFollow( const sal_Int32 nTextOfst )
             }
         }
 
-        if ( pPage )
-        {
-            if ( !bOldInvaContent )
-                pPage->ValidateContent();
-        }
+        if ( pPage  && !bOldInvaContent )
+            pPage->ValidateContent();
 
 #if OSL_DEBUG_LEVEL > 0
         OSL_ENSURE( pOldUp == GetUpper(), "SwTextFrame::CalcFollow: heavy follow" );
 #endif
 
         const long nRemaining =
-                 - aRectFnSet.BottomDist( GetUpper()->Frame(), nOldBottom );
+                 - aRectFnSet.BottomDist( GetUpper()->getFrameArea(), nOldBottom );
         if (  nRemaining > 0 && !GetUpper()->IsSctFrame() &&
               nRemaining != ( aRectFnSet.IsVert() ?
-                              nMyPos - Frame().Right() :
-                              Frame().Top() - nMyPos ) )
+                              nMyPos - getFrameArea().Right() :
+                              getFrameArea().Top() - nMyPos ) )
         {
             return true;
         }
@@ -341,12 +334,37 @@ bool SwTextFrame::CalcFollow( const sal_Int32 nTextOfst )
     return false;
 }
 
+void SwTextFrame::MakePos()
+{
+    SwFrame::MakePos();
+    // Inform LOK clients about change in position of redlines (if any)
+    if(!comphelper::LibreOfficeKit::isActive())
+        return;
+
+    SwTextNode const* pTextNode = GetTextNodeFirst();
+    const SwRedlineTable& rTable = pTextNode->getIDocumentRedlineAccess().GetRedlineTable();
+    for (SwRedlineTable::size_type nRedlnPos = 0; nRedlnPos < rTable.size(); ++nRedlnPos)
+    {
+        SwRangeRedline* pRedln = rTable[nRedlnPos];
+        if (pTextNode->GetIndex() == pRedln->GetPoint()->nNode.GetNode().GetIndex())
+        {
+            pRedln->MaybeNotifyRedlinePositionModification(getFrameArea().Top());
+            if (GetMergedPara()
+                && pRedln->GetType() == RedlineType::Delete
+                && pRedln->GetPoint()->nNode != pRedln->GetMark()->nNode)
+            {
+                pTextNode = pRedln->End()->nNode.GetNode().GetTextNode();
+            }
+        }
+    }
+}
+
 void SwTextFrame::AdjustFrame( const SwTwips nChgHght, bool bHasToFit )
 {
     vcl::RenderContext* pRenderContext = getRootFrame()->GetCurrShell()->GetOut();
     if( IsUndersized() )
     {
-        if( GetOfst() && !IsFollow() ) // A scrolled paragraph (undersized)
+        if( GetOffset() && !IsFollow() ) // A scrolled paragraph (undersized)
             return;
         SetUndersized( nChgHght == 0 || bHasToFit );
     }
@@ -368,17 +386,26 @@ void SwTextFrame::AdjustFrame( const SwTwips nChgHght, bool bHasToFit )
                 SwTwips nReal = Grow( nChgHght, true );
                 if( nReal < nChgHght )
                 {
-                    SwTwips nBot = aRectFnSet.YInc( aRectFnSet.GetBottom(Frame()),
+                    SwTwips nBot = aRectFnSet.YInc( aRectFnSet.GetBottom(getFrameArea()),
                                                       nChgHght - nReal );
                     SwFrame* pCont = FindFootnoteFrame()->GetUpper();
 
-                    if( aRectFnSet.BottomDist( pCont->Frame(), nBot ) > 0 )
+                    if( aRectFnSet.BottomDist( pCont->getFrameArea(), nBot ) > 0 )
                     {
-                        aRectFnSet.AddBottom( Frame(), nChgHght );
+                        SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
+                        aRectFnSet.AddBottom( aFrm, nChgHght );
+
+                        SwFrameAreaDefinition::FramePrintAreaWriteAccess aPrt(*this);
+
                         if( aRectFnSet.IsVert() )
-                            Prt().SSize().Width() += nChgHght;
+                        {
+                            aPrt.AddWidth(nChgHght );
+                        }
                         else
-                            Prt().SSize().Height() += nChgHght;
+                        {
+                            aPrt.AddHeight(nChgHght );
+                        }
+
                         return;
                     }
                 }
@@ -401,12 +428,11 @@ void SwTextFrame::AdjustFrame( const SwTwips nChgHght, bool bHasToFit )
                         pPre = pPre->GetNext();
                     } while ( pPre && pPre != this );
                 }
-                const Point aOldPos( Frame().Pos() );
+                const Point aOldPos( getFrameArea().Pos() );
                 MakePos();
-                if ( aOldPos != Frame().Pos() )
+                if ( aOldPos != getFrameArea().Pos() )
                 {
-                    // i#28701 - No format is performed for the floating screen objects.
-                    InvalidateObjs();
+                    InvalidateObjs(false);
                 }
             }
             nChgHeight = 0;
@@ -422,28 +448,28 @@ void SwTextFrame::AdjustFrame( const SwTwips nChgHght, bool bHasToFit )
             OSL_ENSURE( ! IsSwapped(),"Swapped frame while calculating nRstHeight" );
 
             if ( IsVertLR() )
-                    nRstHeight = GetUpper()->Frame().Left()
-                               + GetUpper()->Prt().Left()
-                               + GetUpper()->Prt().Width()
-                               - Frame().Left();
+                    nRstHeight = GetUpper()->getFrameArea().Left()
+                               + GetUpper()->getFramePrintArea().Left()
+                               + GetUpper()->getFramePrintArea().Width()
+                               - getFrameArea().Left();
             else
-                nRstHeight = Frame().Left() + Frame().Width() -
-                            ( GetUpper()->Frame().Left() + GetUpper()->Prt().Left() );
+                nRstHeight = getFrameArea().Left() + getFrameArea().Width() -
+                            ( GetUpper()->getFrameArea().Left() + GetUpper()->getFramePrintArea().Left() );
          }
         else
-            nRstHeight = GetUpper()->Frame().Top()
-                       + GetUpper()->Prt().Top()
-                       + GetUpper()->Prt().Height()
-                       - Frame().Top();
+            nRstHeight = GetUpper()->getFrameArea().Top()
+                       + GetUpper()->getFramePrintArea().Top()
+                       + GetUpper()->getFramePrintArea().Height()
+                       - getFrameArea().Top();
 
         // We can get a bit of space in table cells, because there could be some
         // left through a vertical alignment to the top.
         // Assure that first lower in upper is the current one or is valid.
         if ( IsInTab() &&
              ( GetUpper()->Lower() == this ||
-               GetUpper()->Lower()->IsValid() ) )
+               GetUpper()->Lower()->isFrameAreaDefinitionValid() ) )
         {
-            long nAdd = aRectFnSet.YDiff( aRectFnSet.GetTop(GetUpper()->Lower()->Frame()),
+            long nAdd = aRectFnSet.YDiff( aRectFnSet.GetTop(GetUpper()->Lower()->getFrameArea()),
                                             aRectFnSet.GetPrtTop(*GetUpper()) );
             OSL_ENSURE( nAdd >= 0, "Ey" );
             nRstHeight += nAdd;
@@ -453,8 +479,8 @@ void SwTextFrame::AdjustFrame( const SwTwips nChgHght, bool bHasToFit )
         // This can happen, if it's located within a FlyAtContentFrame, which changed sides by a
         // Grow(). In such a case, it's wrong to execute the following Grow().
         // In the case of a bug, we end up with an infinite loop.
-        SwTwips nFrameHeight = aRectFnSet.GetHeight(Frame());
-        SwTwips nPrtHeight = aRectFnSet.GetHeight(Prt());
+        SwTwips nFrameHeight = aRectFnSet.GetHeight(getFrameArea());
+        SwTwips nPrtHeight = aRectFnSet.GetHeight(getFramePrintArea());
 
         if( nRstHeight < nFrameHeight )
         {
@@ -533,7 +559,7 @@ css::uno::Sequence< css::style::TabStop > SwTextFrame::GetTabStopInfo( SwTwips C
 // and the Follow starts.
 // If it's 0, the FollowFrame is deleted.
 void SwTextFrame::AdjustFollow_( SwTextFormatter &rLine,
-                             const sal_Int32 nOffset, const sal_Int32 nEnd,
+                 const TextFrameIndex nOffset, const TextFrameIndex nEnd,
                              const sal_uInt8 nMode )
 {
     SwFrameSwapper aSwapper( this, false );
@@ -561,15 +587,15 @@ void SwTextFrame::AdjustFollow_( SwTextFormatter &rLine,
     // Dancing on the volcano: We'll just format the last line quickly
     // for the QuoVadis stuff.
     // The Offset can move of course:
-    const sal_Int32 nNewOfst = ( IsInFootnote() && ( !GetIndNext() || HasFollow() ) ) ?
-                            rLine.FormatQuoVadis(nOffset) : nOffset;
+    const TextFrameIndex nNewOfst = (IsInFootnote() && (!GetIndNext() || HasFollow()))
+        ? rLine.FormatQuoVadis(nOffset) : nOffset;
 
     if( !(nMode & 1) )
     {
         // We steal text mass from our Follows
         // It can happen that we have to join some of them
         while( GetFollow() && GetFollow()->GetFollow() &&
-               nNewOfst >= GetFollow()->GetFollow()->GetOfst() )
+               nNewOfst >= GetFollow()->GetFollow()->GetOffset() )
         {
             JoinFrame();
         }
@@ -579,9 +605,9 @@ void SwTextFrame::AdjustFollow_( SwTextFormatter &rLine,
     if( GetFollow() )
     {
         if ( nMode )
-            GetFollow()->ManipOfst( 0 );
+            GetFollow()->ManipOfst(TextFrameIndex(0));
 
-        if ( CalcFollow( nNewOfst ) )   // CalcFollow only at the end, we do a SetOfst there
+        if ( CalcFollow( nNewOfst ) )   // CalcFollow only at the end, we do a SetOffset there
             rLine.SetOnceMore( true );
     }
 }
@@ -594,47 +620,45 @@ SwContentFrame *SwTextFrame::JoinFrame()
     SwTextFrame *pNxt = pFoll->GetFollow();
 
     // All footnotes of the to-be-destroyed Follow are relocated to us
-    sal_Int32 nStart = pFoll->GetOfst();
+    TextFrameIndex nStart = pFoll->GetOffset();
     if ( pFoll->HasFootnote() )
     {
-        const SwpHints *pHints = pFoll->GetTextNode()->GetpSwpHints();
-        if( pHints )
+        SwFootnoteBossFrame *pFootnoteBoss = nullptr;
+        SwFootnoteBossFrame *pEndBoss = nullptr;
+        SwTextNode const* pNode(nullptr);
+        sw::MergedAttrIter iter(*pFoll);
+        for (SwTextAttr const* pHt = iter.NextAttr(&pNode); pHt; pHt = iter.NextAttr(&pNode))
         {
-            SwFootnoteBossFrame *pFootnoteBoss = nullptr;
-            SwFootnoteBossFrame *pEndBoss = nullptr;
-            for ( size_t i = 0; i < pHints->Count(); ++i )
+            if (RES_TXTATR_FTN == pHt->Which()
+                && nStart <= pFoll->MapModelToView(pNode, pHt->GetStart()))
             {
-                const SwTextAttr *pHt = pHints->Get(i);
-                if( RES_TXTATR_FTN==pHt->Which() && pHt->GetStart()>=nStart )
+                if (pHt->GetFootnote().IsEndNote())
                 {
-                    if( pHt->GetFootnote().IsEndNote() )
-                    {
-                        if( !pEndBoss )
-                            pEndBoss = pFoll->FindFootnoteBossFrame();
-                        SwFootnoteBossFrame::ChangeFootnoteRef( pFoll, static_cast<const SwTextFootnote*>(pHt), this );
-                    }
-                    else
-                    {
-                        if( !pFootnoteBoss )
-                            pFootnoteBoss = pFoll->FindFootnoteBossFrame( true );
-                        SwFootnoteBossFrame::ChangeFootnoteRef( pFoll, static_cast<const SwTextFootnote*>(pHt), this );
-                    }
-                    SetFootnote( true );
+                    if (!pEndBoss)
+                        pEndBoss = pFoll->FindFootnoteBossFrame();
+                    SwFootnoteBossFrame::ChangeFootnoteRef( pFoll, static_cast<const SwTextFootnote*>(pHt), this );
                 }
+                else
+                {
+                    if (!pFootnoteBoss)
+                        pFootnoteBoss = pFoll->FindFootnoteBossFrame( true );
+                    SwFootnoteBossFrame::ChangeFootnoteRef( pFoll, static_cast<const SwTextFootnote*>(pHt), this );
+                }
+                SetFootnote( true );
             }
         }
     }
 
 #ifdef DBG_UTIL
-    else if ( pFoll->GetValidPrtAreaFlag() ||
-              pFoll->GetValidSizeFlag() )
+    else if ( pFoll->isFramePrintAreaValid() ||
+              pFoll->isFrameAreaSizeValid() )
     {
         pFoll->CalcFootnoteFlag();
         OSL_ENSURE( !pFoll->HasFootnote(), "Missing FootnoteFlag." );
     }
 #endif
 
-    pFoll->MoveFlyInCnt( this, nStart, COMPLETE_STRING );
+    pFoll->MoveFlyInCnt( this, nStart, TextFrameIndex(COMPLETE_STRING) );
     pFoll->SetFootnote( false );
     // i#27138
     // Notify accessibility paragraphs objects about changed CONTENT_FLOWS_FROM/_TO relation.
@@ -657,14 +681,14 @@ SwContentFrame *SwTextFrame::JoinFrame()
     return pNxt;
 }
 
-void SwTextFrame::SplitFrame( const sal_Int32 nTextPos )
+void SwTextFrame::SplitFrame(TextFrameIndex const nTextPos)
 {
     SwSwapIfSwapped swap( this );
 
     // The Paste sends a Modify() to me
     // I lock myself, so that my data does not disappear
     TextFrameLockGuard aLock( this );
-    SwTextFrame *pNew = static_cast<SwTextFrame *>(GetTextNode()->MakeFrame( this ));
+    SwTextFrame *const pNew = static_cast<SwTextFrame *>(GetTextNodeFirst()->MakeFrame(this));
 
     pNew->SetFollow( GetFollow() );
     SetFollow( pNew );
@@ -690,30 +714,28 @@ void SwTextFrame::SplitFrame( const sal_Int32 nTextPos )
     // to re-register them
     if ( HasFootnote() )
     {
-        const SwpHints *pHints = GetTextNode()->GetpSwpHints();
-        if( pHints )
+        SwFootnoteBossFrame *pFootnoteBoss = nullptr;
+        SwFootnoteBossFrame *pEndBoss = nullptr;
+        SwTextNode const* pNode(nullptr);
+        sw::MergedAttrIter iter(*this);
+        for (SwTextAttr const* pHt = iter.NextAttr(&pNode); pHt; pHt = iter.NextAttr(&pNode))
         {
-            SwFootnoteBossFrame *pFootnoteBoss = nullptr;
-            SwFootnoteBossFrame *pEndBoss = nullptr;
-            for ( size_t i = 0; i < pHints->Count(); ++i )
+            if (RES_TXTATR_FTN == pHt->Which()
+                && nTextPos <= MapModelToView(pNode, pHt->GetStart()))
             {
-                const SwTextAttr *pHt = pHints->Get(i);
-                if( RES_TXTATR_FTN==pHt->Which() && pHt->GetStart()>=nTextPos )
+                if (pHt->GetFootnote().IsEndNote())
                 {
-                    if( pHt->GetFootnote().IsEndNote() )
-                    {
-                        if( !pEndBoss )
-                            pEndBoss = FindFootnoteBossFrame();
-                        SwFootnoteBossFrame::ChangeFootnoteRef( this, static_cast<const SwTextFootnote*>(pHt), pNew );
-                    }
-                    else
-                    {
-                        if( !pFootnoteBoss )
-                            pFootnoteBoss = FindFootnoteBossFrame( true );
-                        SwFootnoteBossFrame::ChangeFootnoteRef( this, static_cast<const SwTextFootnote*>(pHt), pNew );
-                    }
-                    pNew->SetFootnote( true );
+                    if (!pEndBoss)
+                        pEndBoss = FindFootnoteBossFrame();
+                    SwFootnoteBossFrame::ChangeFootnoteRef( this, static_cast<const SwTextFootnote*>(pHt), pNew );
                 }
+                else
+                {
+                    if (!pFootnoteBoss)
+                        pFootnoteBoss = FindFootnoteBossFrame( true );
+                    SwFootnoteBossFrame::ChangeFootnoteRef( this, static_cast<const SwTextFootnote*>(pHt), pNew );
+                }
+                pNew->SetFootnote( true );
             }
         }
     }
@@ -721,31 +743,31 @@ void SwTextFrame::SplitFrame( const sal_Int32 nTextPos )
 #ifdef DBG_UTIL
     else
     {
-        CalcFootnoteFlag( nTextPos-1 );
+        CalcFootnoteFlag( nTextPos - TextFrameIndex(1) );
         OSL_ENSURE( !HasFootnote(), "Missing FootnoteFlag." );
     }
 #endif
 
-    MoveFlyInCnt( pNew, nTextPos, COMPLETE_STRING );
+    MoveFlyInCnt( pNew, nTextPos, TextFrameIndex(COMPLETE_STRING) );
 
-    // No SetOfst or CalcFollow, because an AdjustFollow follows immediately anyways
+    // No SetOffset or CalcFollow, because an AdjustFollow follows immediately anyways
 
     pNew->ManipOfst( nTextPos );
 }
 
-void SwTextFrame::SetOfst_( const sal_Int32 nNewOfst )
+void SwTextFrame::SetOffset_(TextFrameIndex const nNewOfst)
 {
     // We do not need to invalidate out Follow.
     // We are a Follow, get formatted right away and call
-    // SetOfst() from there
+    // SetOffset() from there
     mnOffset = nNewOfst;
     SwParaPortion *pPara = GetPara();
     if( pPara )
     {
         SwCharRange &rReformat = pPara->GetReformat();
-        rReformat.Start() = 0;
-        rReformat.Len() = GetText().getLength();
-        pPara->GetDelta() = rReformat.Len();
+        rReformat.Start() = TextFrameIndex(0);
+        rReformat.Len() = TextFrameIndex(GetText().getLength());
+        pPara->GetDelta() = sal_Int32(rReformat.Len());
     }
     InvalidateSize();
 }
@@ -767,7 +789,7 @@ bool SwTextFrame::CalcPreps()
     bool bRet = false;
     if( bPrep && !pPara->GetReformat().Len() )
     {
-        // PREP_WIDOWS means that the orphans rule got activated in the Follow.
+        // PrepareHint::Widows means that the orphans rule got activated in the Follow.
         // In unfortunate cases we could also have a PrepAdjust!
         if( bPrepWidows )
         {
@@ -784,7 +806,7 @@ bool SwTextFrame::CalcPreps()
             // -> we let our Frame become too big
 
             SwTwips nChgHeight = GetParHeight();
-            if( nChgHeight >= aRectFnSet.GetHeight(Prt()) )
+            if( nChgHeight >= aRectFnSet.GetHeight(getFramePrintArea()) )
             {
                 if( bPrepMustFit )
                 {
@@ -793,26 +815,50 @@ bool SwTextFrame::CalcPreps()
                 }
                 else if ( aRectFnSet.IsVert() )
                 {
-                    Frame().Width( Frame().Width() + Frame().Left() );
-                    Prt().Width( Prt().Width() + Frame().Left() );
-                    Frame().Left( 0 );
+                    {
+                        SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
+                        aFrm.Width( aFrm.Width() + aFrm.Left() );
+                        aFrm.Left( 0 );
+                    }
+
+                    {
+                        SwFrameAreaDefinition::FramePrintAreaWriteAccess aPrt(*this);
+                        aPrt.Width( aPrt.Width() + getFrameArea().Left() );
+                    }
+
                     SetWidow( true );
                 }
                 else
                 {
-                    SwTwips nTmp  = TWIPS_MAX/2 - (Frame().Top()+10000);
-                    SwTwips nDiff = nTmp - Frame().Height();
-                    Frame().Height( nTmp );
-                    Prt().Height( Prt().Height() + nDiff );
+                    // nTmp should be very large, but not so large as to cause overflow later (e.g.,
+                    // GetFrameOfModify in sw/source/core/layout/frmtool.cxx calculates nCurrentDist
+                    // from, among others, the square of aDiff.getY(), which can be close to nTmp);
+                    // the previously used value TWIPS_MAX/2 (i.e., (LONG_MAX - 1)/2) depended on
+                    // the range of 'long', while the value (SAL_MAX_INT32 - 1)/2 (which matches the
+                    // old value on platforms where 'long' is 'sal_Int32') is empirically shown to
+                    // be large enough in practice even on platforms where 'long' is 'sal_Int64':
+                    SwTwips const nTmp = sw::WIDOW_MAGIC - (getFrameArea().Top()+10000);
+                    SwTwips nDiff = nTmp - getFrameArea().Height();
+
+                    {
+                        SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
+                        aFrm.Height( nTmp );
+                    }
+
+                    {
+                        SwFrameAreaDefinition::FramePrintAreaWriteAccess aPrt(*this);
+                        aPrt.Height( aPrt.Height() + nDiff );
+                    }
+
                     SetWidow( true );
                 }
             }
             else
             {
-                OSL_ENSURE( nChgHeight < aRectFnSet.GetHeight(Prt()),
+                OSL_ENSURE( nChgHeight < aRectFnSet.GetHeight(getFramePrintArea()),
                         "+SwTextFrame::CalcPrep: want to shrink" );
 
-                nChgHeight = aRectFnSet.GetHeight(Prt()) - nChgHeight;
+                nChgHeight = aRectFnSet.GetHeight(getFramePrintArea()) - nChgHeight;
 
                 GetFollow()->SetJustWidow( true );
                 GetFollow()->Prepare();
@@ -821,12 +867,12 @@ bool SwTextFrame::CalcPreps()
 
                 if ( aRectFnSet.IsVert() )
                 {
-                    SwRect aRepaint( Frame().Pos() + Prt().Pos(), Prt().SSize() );
+                    SwRect aRepaint( getFrameArea().Pos() + getFramePrintArea().Pos(), getFramePrintArea().SSize() );
                     SwitchVerticalToHorizontal( aRepaint );
                     rRepaint.Chg( aRepaint.Pos(), aRepaint.SSize() );
                 }
                 else
-                    rRepaint.Chg( Frame().Pos() + Prt().Pos(), Prt().SSize() );
+                    rRepaint.Chg( getFrameArea().Pos() + getFramePrintArea().Pos(), getFramePrintArea().SSize() );
 
                 if( 0 >= rRepaint.Width() )
                     rRepaint.Width(1);
@@ -856,7 +902,7 @@ bool SwTextFrame::CalcPreps()
 
                 WidowsAndOrphans aFrameBreak( this );
                 // Whatever the attributes say: we split the paragraph in
-                // MustFit in any case
+                // MustFit case if necessary
                 if( bPrepMustFit )
                 {
                     aFrameBreak.SetKeep( false );
@@ -873,31 +919,31 @@ bool SwTextFrame::CalcPreps()
                 }
                 if( bBreak )
                 {
-                    // We run into troubles: when TruncLines get called, the
+                    // We run into troubles: when TruncLines is called, the
                     // conditions in IsInside change immediately such that
                     // IsBreakNow can return different results.
-                    // For this reason, we make it clear to rFrameBreak, that the
+                    // For this reason, we tell rFrameBreak that the
                     // end is reached at the location of rLine.
                     // Let's see if it works ...
                     aLine.TruncLines();
                     aFrameBreak.SetRstHeight( aLine );
-                    FormatAdjust( aLine, aFrameBreak, aInf.GetText().getLength(), aInf.IsStop() );
+                    FormatAdjust( aLine, aFrameBreak, TextFrameIndex(aInf.GetText().getLength()), aInf.IsStop() );
                 }
                 else
                 {
                     if( !GetFollow() )
                     {
                         FormatAdjust( aLine, aFrameBreak,
-                                      aInf.GetText().getLength(), aInf.IsStop() );
+                            TextFrameIndex(aInf.GetText().getLength()), aInf.IsStop() );
                     }
                     else if ( !aFrameBreak.IsKeepAlways() )
                     {
                         // We delete a line before the Master, because the Follow
                         // could hand over a line
-                        const SwCharRange aFollowRg( GetFollow()->GetOfst(), 1 );
+                        const SwCharRange aFollowRg(GetFollow()->GetOffset(), TextFrameIndex(1));
                         pPara->GetReformat() += aFollowRg;
                         // We should continue!
-                    bRet = false;
+                        bRet = false;
                     }
                 }
             }
@@ -907,20 +953,30 @@ bool SwTextFrame::CalcPreps()
             if( bPrepMustFit )
             {
                 const SwTwips nMust = aRectFnSet.GetPrtBottom(*GetUpper());
-                const SwTwips nIs   = aRectFnSet.GetBottom(Frame());
+                const SwTwips nIs   = aRectFnSet.GetBottom(getFrameArea());
 
                 if( aRectFnSet.IsVert() && nIs < nMust )
                 {
                     Shrink( nMust - nIs );
-                    if( Prt().Width() < 0 )
-                        Prt().Width( 0 );
+
+                    if( getFramePrintArea().Width() < 0 )
+                    {
+                        SwFrameAreaDefinition::FramePrintAreaWriteAccess aPrt(*this);
+                        aPrt.Width( 0 );
+                    }
+
                     SetUndersized( true );
                 }
                 else if ( ! aRectFnSet.IsVert() && nIs > nMust )
                 {
                     Shrink( nIs - nMust );
-                    if( Prt().Height() < 0 )
-                        Prt().Height( 0 );
+
+                    if( getFramePrintArea().Height() < 0 )
+                    {
+                        SwFrameAreaDefinition::FramePrintAreaWriteAccess aPrt(*this);
+                        aPrt.Height( 0 );
+                    }
+
                     SetUndersized( true );
                 }
             }
@@ -931,24 +987,24 @@ bool SwTextFrame::CalcPreps()
 }
 
 // We rewire the footnotes and the character bound objects
-#define CHG_OFFSET( pFrame, nNew )\
-    {\
-        if( pFrame->GetOfst() < nNew )\
-            pFrame->MoveFlyInCnt( this, 0, nNew );\
-        else if( pFrame->GetOfst() > nNew )\
-            MoveFlyInCnt( pFrame, nNew, COMPLETE_STRING );\
-    }
+void SwTextFrame::ChangeOffset( SwTextFrame* pFrame, TextFrameIndex nNew )
+{
+    if( pFrame->GetOffset() < nNew )
+        pFrame->MoveFlyInCnt( this, TextFrameIndex(0), nNew );
+    else if( pFrame->GetOffset() > nNew )
+        MoveFlyInCnt( pFrame, nNew, TextFrameIndex(COMPLETE_STRING) );
+}
 
 void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
                              WidowsAndOrphans &rFrameBreak,
-                             const sal_Int32 nStrLen,
+                             TextFrameIndex const nStrLen,
                              const bool bDummy )
 {
     SwSwapIfNotSwapped swap( this );
 
     SwParaPortion *pPara = rLine.GetInfo().GetParaPortion();
 
-    sal_Int32 nEnd = rLine.GetStart();
+    TextFrameIndex nEnd = rLine.GetStart();
 
     const bool bHasToFit = pPara->IsPrepMustFit();
 
@@ -965,9 +1021,9 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
                            : rFrameBreak.IsBreakNow( rLine ) ) ) )
                      ? 1 : 0;
     // i#84870
-    // no split of text frame, which only contains a as-character anchored object
+    // no split of text frame, which only contains an as-character anchored object
     bool bOnlyContainsAsCharAnchoredObj =
-            !IsFollow() && nStrLen == 1 &&
+            !IsFollow() && nStrLen == TextFrameIndex(1) &&
             GetDrawObjs() && GetDrawObjs()->size() == 1 &&
             (*GetDrawObjs())[0]->GetFrameFormat().GetAnchor().GetAnchorId() == RndStdIds::FLY_AS_CHAR;
 
@@ -988,8 +1044,8 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
     const SwFrame *pBodyFrame = FindBodyFrame();
 
     const long nBodyHeight = pBodyFrame ? ( IsVertical() ?
-                                          pBodyFrame->Frame().Width() :
-                                          pBodyFrame->Frame().Height() ) : 0;
+                                          pBodyFrame->getFrameArea().Width() :
+                                          pBodyFrame->getFrameArea().Height() ) : 0;
 
     // If the current values have been calculated, show that they
     // are valid now
@@ -1009,13 +1065,13 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
         // If we're done formatting, we set nEnd to the end.
         // AdjustFollow might execute JoinFrame() because of this.
         // Else, nEnd is the end of the last line in the Master.
-        sal_Int32 nOld = nEnd;
+        TextFrameIndex nOld = nEnd;
         nEnd = rLine.GetEnd();
         if( GetFollow() )
         {
             if( nNew && nOld < nEnd )
                 RemoveFootnote( nOld, nEnd - nOld );
-            CHG_OFFSET( GetFollow(), nEnd )
+            ChangeOffset( GetFollow(), nEnd );
             if( !bDelta )
                 GetFollow()->ManipOfst( nEnd );
         }
@@ -1035,13 +1091,14 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
             // Thus, the text frame introduced a follow by a
             // <SwTextFrame::SplitFrame(..)> - see below. The follow then shows
             // the numbering and must stay.
-            if ( GetFollow()->GetOfst() != nEnd ||
+            if ( GetFollow()->GetOffset() != nEnd ||
                  GetFollow()->IsFieldFollow() ||
-                 ( nStrLen == 0 && GetTextNode()->GetNumRule() ) )
+                 (nStrLen == TextFrameIndex(0) && GetTextNodeForParaProps()->GetNumRule()))
             {
                 nNew |= 3;
             }
-            else if (FindTabFrame() && nEnd > 0 && rLine.GetInfo().GetChar(nEnd - 1) == CH_BREAK)
+            else if (FindTabFrame() && nEnd > TextFrameIndex(0) &&
+                rLine.GetInfo().GetChar(nEnd - TextFrameIndex(1)) == CH_BREAK)
             {
                 // We are in a table, the paragraph has a follow and the text
                 // ends with a hard line break. Don't join the follow just
@@ -1049,7 +1106,7 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
                 // for the paragraph mark.
                 nNew |= 1;
             }
-            CHG_OFFSET( GetFollow(), nEnd )
+            ChangeOffset( GetFollow(), nEnd );
             GetFollow()->ManipOfst( nEnd );
         }
         else
@@ -1059,8 +1116,8 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
             // i#84870 - No split, if text frame only contains one
             // as-character anchored object.
             if ( !bOnlyContainsAsCharAnchoredObj &&
-                 ( nStrLen > 0 ||
-                   ( nStrLen == 0 && GetTextNode()->GetNumRule() ) )
+                 (nStrLen > TextFrameIndex(0) ||
+                   (nStrLen == TextFrameIndex(0) && GetTextNodeForParaProps()->GetNumRule()))
                )
             {
                 SplitFrame( nEnd );
@@ -1071,16 +1128,16 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
         // fill up in order to avoid oscillation.
         if( bDummy && pBodyFrame &&
            nBodyHeight < ( IsVertical() ?
-                           pBodyFrame->Frame().Width() :
-                           pBodyFrame->Frame().Height() ) )
+                           pBodyFrame->getFrameArea().Width() :
+                           pBodyFrame->getFrameArea().Height() ) )
             rLine.MakeDummyLine();
     }
 
     // In AdjustFrame() we set ourselves via Grow/Shrink
     // In AdjustFollow() we set our FollowFrame
 
-    const SwTwips nDocPrtTop = Frame().Top() + Prt().Top();
-    const SwTwips nOldHeight = Prt().SSize().Height();
+    const SwTwips nDocPrtTop = getFrameArea().Top() + getFramePrintArea().Top();
+    const SwTwips nOldHeight = getFramePrintArea().SSize().Height();
     SwTwips nChg = rLine.CalcBottomLine() - nDocPrtTop - nOldHeight;
 
     //#i84870# - no shrink of text frame, if it only contains one as-character anchored object.
@@ -1090,7 +1147,7 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
     }
 
     // Vertical Formatting:
-    // The (rotated) repaint rectangle's x coordinate referes to the frame.
+    // The (rotated) repaint rectangle's x coordinate refers to the frame.
     // If the frame grows (or shirks) the repaint rectangle cannot simply
     // be rotated back after formatting, because we use the upper left point
     // of the frame for rotation. This point changes when growing/shrinking.
@@ -1118,7 +1175,7 @@ bool SwTextFrame::FormatLine( SwTextFormatter &rLine, const bool bPrev )
             "SwTextFrame::FormatLine( rLine, bPrev) with unswapped frame" );
     SwParaPortion *pPara = rLine.GetInfo().GetParaPortion();
     const SwLineLayout *pOldCur = rLine.GetCurr();
-    const sal_Int32 nOldLen    = pOldCur->GetLen();
+    const TextFrameIndex nOldLen = pOldCur->GetLen();
     const sal_uInt16 nOldAscent = pOldCur->GetAscent();
     const sal_uInt16 nOldHeight = pOldCur->Height();
     const SwTwips nOldWidth = pOldCur->Width() + pOldCur->GetHangingMargin();
@@ -1128,9 +1185,9 @@ bool SwTextFrame::FormatLine( SwTextFormatter &rLine, const bool bPrev )
     if( rLine.GetCurr()->IsClipping() )
         rLine.CalcUnclipped( nOldTop, nOldBottom );
 
-    const sal_Int32 nNewStart = rLine.FormatLine( rLine.GetStart() );
+    TextFrameIndex const nNewStart = rLine.FormatLine( rLine.GetStart() );
 
-    OSL_ENSURE( Frame().Pos().Y() + Prt().Pos().Y() == rLine.GetFirstPos(),
+    OSL_ENSURE( getFrameArea().Pos().Y() + getFramePrintArea().Pos().Y() == rLine.GetFirstPos(),
             "SwTextFrame::FormatLine: frame leaves orbit." );
     OSL_ENSURE( rLine.GetCurr()->Height(),
             "SwTextFrame::FormatLine: line height is zero" );
@@ -1159,7 +1216,7 @@ bool SwTextFrame::FormatLine( SwTextFormatter &rLine, const bool bPrev )
     SwRepaint &rRepaint = pPara->GetRepaint();
     if( bUnChg && rRepaint.Top() == rLine.Y()
                && (bPrev || nNewStart <= pPara->GetReformat().Start())
-               && (nNewStart < GetTextNode()->GetText().getLength()))
+               && (nNewStart < TextFrameIndex(GetText().getLength())))
     {
         rRepaint.Top( nBottom );
         rRepaint.Height( 0 );
@@ -1205,7 +1262,7 @@ bool SwTextFrame::FormatLine( SwTextFormatter &rLine, const bool bPrev )
         else
             nRght += ( std::max( nOldAscent, pNew->GetAscent() ) / 4);
         nRght += rLine.GetLeftMargin();
-        if( rRepaint.GetOfst() || rRepaint.GetRightOfst() < nRght )
+        if( rRepaint.GetOffset() || rRepaint.GetRightOfst() < nRght )
             rRepaint.SetRightOfst( nRght );
 
         // Finally we enlarge the repaint rectangle if we found an underscore
@@ -1219,7 +1276,7 @@ bool SwTextFrame::FormatLine( SwTextFormatter &rLine, const bool bPrev )
     }
 
     // Calculating the good ol' nDelta
-    pPara->GetDelta() -= long(pNew->GetLen()) - long(nOldLen);
+    pPara->GetDelta() -= sal_Int32(pNew->GetLen()) - sal_Int32(nOldLen);
 
     // Stop!
     if( rLine.IsStop() )
@@ -1230,14 +1287,14 @@ bool SwTextFrame::FormatLine( SwTextFormatter &rLine, const bool bPrev )
         return true;
 
     // Until the String's end?
-    if (nNewStart >= GetTextNode()->GetText().getLength())
+    if (nNewStart >= TextFrameIndex(GetText().getLength()))
         return false;
 
     if( rLine.GetInfo().IsShift() )
         return true;
 
     // Reached the Reformat's end?
-    const sal_Int32 nEnd = pPara->GetReformat().Start() +
+    const TextFrameIndex nEnd = pPara->GetReformat().Start() +
                         pPara->GetReformat().Len();
 
     if( nNewStart <= nEnd )
@@ -1254,12 +1311,12 @@ void SwTextFrame::Format_( SwTextFormatter &rLine, SwTextFormatInfo &rInf,
     SwParaPortion *pPara = rLine.GetInfo().GetParaPortion();
     rLine.SetUnclipped( false );
 
-    const OUString &rString = GetTextNode()->GetText();
-    const sal_Int32 nStrLen = rString.getLength();
+    const OUString & rString = GetText();
+    const TextFrameIndex nStrLen(rString.getLength());
 
     SwCharRange &rReformat = pPara->GetReformat();
     SwRepaint   &rRepaint = pPara->GetRepaint();
-    SwRepaint *pFreeze = nullptr;
+    std::unique_ptr<SwRepaint> pFreeze;
 
     // Due to performance reasons we set rReformat to COMPLETE_STRING in Init()
     // In this case we adjust rReformat
@@ -1270,7 +1327,7 @@ void SwTextFrame::Format_( SwTextFormatter &rLine, SwTextFormatInfo &rInf,
         rReformat.Len() = nStrLen - rReformat.Start();
 
     SwTwips nOldBottom;
-    if( GetOfst() && !IsFollow() )
+    if( GetOffset() && !IsFollow() )
     {
         rLine.Bottom();
         nOldBottom = rLine.Y();
@@ -1280,25 +1337,25 @@ void SwTextFrame::Format_( SwTextFormatter &rLine, SwTextFormatInfo &rInf,
         nOldBottom = 0;
     rLine.CharToLine( rReformat.Start() );
 
-    // Words can be swapped-out when inserting a space into the
-    // line that comes before the edited one. That's why we also
-    // need to format that.
-    // Optimization: If rReformat starts after the first word of the line
+    // When inserting or removing a Space, words can be moved out of the edited
+    // line and into the preceding line, hence the preceding line must be
+    // formatted as well.
+    // Optimization: If rReformat starts after the first word of the line,
     // this line cannot possibly influence the previous one.
-    // Unfortunately it can: Text size changes + FlyFrames.
-    // The backlash can affect multiple lines (Frame!)!
+    // ...Turns out that unfortunately it can: Text size changes + FlyFrames;
+    // the feedback can affect multiple lines (Frames!)!
 
     // i#46560
-    // FME: Yes, consider this case: (word) has to go to the next line
-    // because) is a forbidden character at the beginning of a line although
-    // (word would still fit on the previous line. Adding text right in front
-    // of) would not trigger a reformatting of the previous line. Adding 1
+    // FME: Yes, consider this case: "(word )" has to go to the next line
+    // because ")" is a forbidden character at the beginning of a line although
+    // "(word" would still fit on the previous line. Adding text right in front
+    // of ")" would not trigger a reformatting of the previous line. Adding 1
     // to the result of FindBrk() does not solve the problem in all cases,
     // nevertheless it should be sufficient.
     bool bPrev = rLine.GetPrev() &&
-                     ( FindBrk( rString, rLine.GetStart(), rReformat.Start() + 1 )
+                     (FindBrk(rString, rLine.GetStart(), rReformat.Start() + TextFrameIndex(1))
                        // i#46560
-                       + 1
+                       + TextFrameIndex(1)
                        >= rReformat.Start() ||
                        rLine.GetCurr()->IsRest() );
     if( bPrev )
@@ -1310,11 +1367,11 @@ void SwTextFrame::Format_( SwTextFormatter &rLine, SwTextFormatInfo &rInf,
                     rLine.Top(); // So that NumDone doesn't get confused
                 break;
             }
-        sal_Int32 nNew = rLine.GetStart() + rLine.GetLength();
+        TextFrameIndex nNew = rLine.GetStart() + rLine.GetLength();
         if( nNew )
         {
             --nNew;
-            if( CH_BREAK == rString[nNew] )
+            if (CH_BREAK == rString[sal_Int32(nNew)])
             {
                 ++nNew;
                 rLine.Next();
@@ -1325,9 +1382,9 @@ void SwTextFrame::Format_( SwTextFormatter &rLine, SwTextFormatInfo &rInf,
         rReformat.Start() = nNew;
     }
 
-    rRepaint.SetOfst( 0 );
+    rRepaint.SetOffset( 0 );
     rRepaint.SetRightOfst( 0 );
-    rRepaint.Chg( Frame().Pos() + Prt().Pos(), Prt().SSize() );
+    rRepaint.Chg( getFrameArea().Pos() + getFramePrintArea().Pos(), getFramePrintArea().SSize() );
     if( pPara->IsMargin() )
         rRepaint.Width( rRepaint.Width() + pPara->GetHangingMargin() );
     rRepaint.Top( rLine.Y() );
@@ -1384,28 +1441,34 @@ void SwTextFrame::Format_( SwTextFormatter &rLine, SwTextFormatInfo &rInf,
     bool bJumpMidHyph  = false;
     bool bWatchMidHyph = false;
 
-    const SwAttrSet& rAttrSet = GetTextNode()->GetSwAttrSet();
-    bool bMaxHyph = ( 0 !=
-        ( rInf.MaxHyph() = rAttrSet.GetHyphenZone().GetMaxHyphens() ) );
+    const SwAttrSet& rAttrSet = GetTextNodeForParaProps()->GetSwAttrSet();
+    rInf.MaxHyph() = rAttrSet.GetHyphenZone().GetMaxHyphens();
+    bool bMaxHyph = 0 != rInf.MaxHyph();
     if ( bMaxHyph )
         rLine.InitCntHyph();
 
-    if( IsFollow() && IsFieldFollow() && rLine.GetStart() == GetOfst() )
+    if( IsFollow() && IsFieldFollow() && rLine.GetStart() == GetOffset() )
     {
         SwTextFrame *pMaster = FindMaster();
         OSL_ENSURE( pMaster, "SwTextFrame::Format: homeless follow" );
         const SwLineLayout* pLine=nullptr;
         if (pMaster)
         {
-            if( !pMaster->HasPara() )
-                pMaster->GetFormatted();
-            SwTextSizeInfo aInf( pMaster );
-            SwTextIter aMasterLine( pMaster, &aInf );
-            aMasterLine.Bottom();
-            pLine = aMasterLine.GetCurr();
+            if (!pMaster->HasPara())
+            {   // master could be locked because it's being formatted upstack
+                SAL_WARN("sw", "SwTextFrame::Format_: master not formatted!");
+            }
+            else
+            {
+                SwTextSizeInfo aInf( pMaster );
+                SwTextIter aMasterLine( pMaster, &aInf );
+                aMasterLine.Bottom();
+                pLine = aMasterLine.GetCurr();
+                assert(aMasterLine.GetEnd() == GetOffset());
+            }
         }
         SwLinePortion* pRest = pLine ?
-            rLine.MakeRestPortion(pLine, GetOfst()) : nullptr;
+            rLine.MakeRestPortion(pLine, GetOffset()) : nullptr;
         if( pRest )
             rInf.SetRest( pRest );
         else
@@ -1512,7 +1575,7 @@ void SwTextFrame::Format_( SwTextFormatter &rLine, SwTextFormatInfo &rInf,
                 {
                     while( rLine.Next() )
                         ; //Nothing
-                    pFreeze = new SwRepaint( rRepaint ); // to minimize painting
+                    pFreeze.reset(new SwRepaint( rRepaint )); // to minimize painting
                 }
                 else
                     break;
@@ -1524,7 +1587,7 @@ void SwTextFrame::Format_( SwTextFormatter &rLine, SwTextFormatInfo &rInf,
     if( pFreeze )
     {
         rRepaint = *pFreeze;
-        delete pFreeze;
+        pFreeze.reset();
     }
 
     if( !rLine.IsStop() )
@@ -1540,24 +1603,24 @@ void SwTextFrame::Format_( SwTextFormatter &rLine, SwTextFormatInfo &rInf,
         }
     }
 
-    if( !rInf.IsTest() )
+    if( rInf.IsTest() )
+        return;
+
+    // FormatAdjust does not pay off at OnceMore
+    if( bAdjust || !rLine.GetDropFormat() || !rLine.CalcOnceMore() )
     {
-        // FormatAdjust does not pay off at OnceMore
-        if( bAdjust || !rLine.GetDropFormat() || !rLine.CalcOnceMore() )
-        {
-            FormatAdjust( rLine, aFrameBreak, nStrLen, rInf.IsStop() );
-        }
-        if( rRepaint.HasArea() )
-            SetRepaint();
-        rLine.SetTruncLines( false );
-        if( nOldBottom ) // We check whether paragraphs that need scrolling can
-                         // be shrunk, so that they don't need scrolling anymore
-        {
-            rLine.Bottom();
-            SwTwips nNewBottom = rLine.Y();
-            if( nNewBottom < nOldBottom )
-                SetOfst_( 0 );
-        }
+        FormatAdjust( rLine, aFrameBreak, nStrLen, rInf.IsStop() );
+    }
+    if( rRepaint.HasArea() )
+        SetRepaint();
+    rLine.SetTruncLines( false );
+    if( nOldBottom ) // We check whether paragraphs that need scrolling can
+                     // be shrunk, so that they don't need scrolling anymore
+    {
+        rLine.Bottom();
+        SwTwips nNewBottom = rLine.Y();
+        if( nNewBottom < nOldBottom )
+            SetOffset_(TextFrameIndex(0));
     }
 }
 
@@ -1583,7 +1646,7 @@ void SwTextFrame::FormatOnceMore( SwTextFormatter &rLine, SwTextFormatInfo &rInf
         rLine.Top();
         if( !rLine.GetDropFormat() )
             rLine.SetOnceMore( false );
-        SwCharRange aRange( 0, rInf.GetText().getLength() );
+        SwCharRange aRange(TextFrameIndex(0), TextFrameIndex(rInf.GetText().getLength()));
         pPara->GetReformat() = aRange;
         Format_( rLine, rInf );
 
@@ -1613,7 +1676,7 @@ void SwTextFrame::FormatOnceMore( SwTextFormatter &rLine, SwTextFormatInfo &rInf
                 rLine.CtorInitTextFormatter( this, &rInf );
                 rLine.SetDropLines( 1 );
                 rLine.CalcDropHeight( 1 );
-                SwCharRange aTmpRange( 0, rInf.GetText().getLength() );
+                SwCharRange aTmpRange(TextFrameIndex(0), TextFrameIndex(rInf.GetText().getLength()));
                 pPara->GetReformat() = aTmpRange;
                 Format_( rLine, rInf, true );
                 // We paint everything ...
@@ -1635,8 +1698,6 @@ void SwTextFrame::Format_( vcl::RenderContext* pRenderContext, SwParaPortion *pP
         const bool bMustFit = pPara->IsPrepMustFit();
         pPara->Truncate();
         pPara->FormatReset();
-        if( pBlink && pPara->IsBlinking() )
-            pBlink->Delete( pPara );
 
         // delete pSpaceAdd and pKanaComp
         pPara->FinishSpaceAdd();
@@ -1665,20 +1726,20 @@ void SwTextFrame::Format_( vcl::RenderContext* pRenderContext, SwParaPortion *pP
 
     OSL_ENSURE( ! IsSwapped(), "A frame is swapped after Format_" );
 
-    if( 1 < aLine.GetDropLines() )
-    {
-        if( SvxAdjust::Left != aLine.GetAdjust() &&
-            SvxAdjust::Block != aLine.GetAdjust() )
-        {
-            aLine.CalcDropAdjust();
-            aLine.SetPaintDrop( true );
-        }
+    if( 1 >= aLine.GetDropLines() )
+        return;
 
-        if( aLine.IsPaintDrop() )
-        {
-            aLine.CalcDropRepaint();
-            aLine.SetPaintDrop( false );
-        }
+    if( SvxAdjust::Left != aLine.GetAdjust() &&
+        SvxAdjust::Block != aLine.GetAdjust() )
+    {
+        aLine.CalcDropAdjust();
+        aLine.SetPaintDrop( true );
+    }
+
+    if( aLine.IsPaintDrop() )
+    {
+        aLine.CalcDropRepaint();
+        aLine.SetPaintDrop( false );
     }
 }
 
@@ -1692,34 +1753,46 @@ void SwTextFrame::Format( vcl::RenderContext* pRenderContext, const SwBorderAttr
 
     // The range autopilot or the BASIC interface pass us TextFrames with
     // a width <= 0 from time to time
-    if( aRectFnSet.GetWidth(Prt()) <= 0 )
+    if( aRectFnSet.GetWidth(getFramePrintArea()) <= 0 )
     {
         // If MustFit is set, we shrink to the Upper's bottom edge if needed.
         // Else we just take a standard size of 12 Pt. (240 twip).
         SwTextLineAccess aAccess( this );
-        long nFrameHeight = aRectFnSet.GetHeight(Frame());
+        long nFrameHeight = aRectFnSet.GetHeight(getFrameArea());
+
         if( aAccess.GetPara()->IsPrepMustFit() )
         {
             const SwTwips nLimit = aRectFnSet.GetPrtBottom(*GetUpper());
-            const SwTwips nDiff = - aRectFnSet.BottomDist( Frame(), nLimit );
+            const SwTwips nDiff = - aRectFnSet.BottomDist( getFrameArea(), nLimit );
             if( nDiff > 0 )
                 Shrink( nDiff );
         }
         else if( 240 < nFrameHeight )
+        {
             Shrink( nFrameHeight - 240 );
+        }
         else if( 240 > nFrameHeight )
+        {
             Grow( 240 - nFrameHeight );
-        nFrameHeight = aRectFnSet.GetHeight(Frame());
+        }
 
-        long nTop = aRectFnSet.GetTopMargin(*this);
+        nFrameHeight = aRectFnSet.GetHeight(getFrameArea());
+        const long nTop = aRectFnSet.GetTopMargin(*this);
+
         if( nTop > nFrameHeight )
+        {
             aRectFnSet.SetYMargins( *this, nFrameHeight, 0 );
-        else if( aRectFnSet.GetHeight(Prt()) < 0 )
-            aRectFnSet.SetHeight( Prt(), 0 );
+        }
+        else if( aRectFnSet.GetHeight(getFramePrintArea()) < 0 )
+        {
+            SwFrameAreaDefinition::FramePrintAreaWriteAccess aPrt(*this);
+            aRectFnSet.SetHeight( aPrt, 0 );
+        }
+
         return;
     }
 
-    const sal_Int32 nStrLen = GetTextNode()->GetText().getLength();
+    const TextFrameIndex nStrLen(GetText().getLength());
     if ( nStrLen || !FormatEmpty() )
     {
 
@@ -1736,7 +1809,7 @@ void SwTextFrame::Format( vcl::RenderContext* pRenderContext, const SwBorderAttr
         // Attention: Format() could be triggered by GetFormatted()
         if( IsHiddenNow() )
         {
-            long nPrtHeight = aRectFnSet.GetHeight(Prt());
+            long nPrtHeight = aRectFnSet.GetHeight(getFramePrintArea());
             if( nPrtHeight )
             {
                 HideHidden();
@@ -1755,10 +1828,34 @@ void SwTextFrame::Format( vcl::RenderContext* pRenderContext, const SwBorderAttr
 
         // We do not want to be interrupted during formatting
         TextFrameLockGuard aLock(this);
+
+        // this is to ensure that the similar code in SwTextFrame::Format_
+        // finds the master formatted in case it's needed
+        if (IsFollow() && IsFieldFollow())
+        {
+            SwTextFrame *pMaster = FindMaster();
+            assert(pMaster);
+            if (!pMaster->HasPara())
+            {
+                pMaster->GetFormatted();
+            }
+            if (!pMaster->HasPara())
+            {   // master could be locked because it's being formatted upstack
+                SAL_WARN("sw", "SwTextFrame::Format: failed to format master!");
+            }
+            else
+            {
+                SwTextSizeInfo aInf( pMaster );
+                SwTextIter aMasterLine( pMaster, &aInf );
+                aMasterLine.Bottom();
+                SetOffset(aMasterLine.GetEnd());
+            }
+        }
+
         SwTextLineAccess aAccess( this );
-        const bool bNew = !aAccess.SwTextLineAccess::IsAvailable();
-        const bool bSetOfst =
-            (GetOfst() && GetOfst() > GetTextNode()->GetText().getLength());
+        const bool bNew = !aAccess.IsAvailable();
+        const bool bSetOffset =
+            (GetOffset() && GetOffset() > TextFrameIndex(GetText().getLength()));
 
         if( CalcPreps() )
             ; // nothing
@@ -1766,7 +1863,7 @@ void SwTextFrame::Format( vcl::RenderContext* pRenderContext, const SwBorderAttr
         // and does not have any format information
         else if( !bNew && !aAccess.GetPara()->GetReformat().Len() )
         {
-            if( GetTextNode()->GetSwAttrSet().GetRegister().GetValue() )
+            if (GetTextNodeForParaProps()->GetSwAttrSet().GetRegister().GetValue())
             {
                 aAccess.GetPara()->SetPrepAdjust();
                 aAccess.GetPara()->SetPrep();
@@ -1774,23 +1871,29 @@ void SwTextFrame::Format( vcl::RenderContext* pRenderContext, const SwBorderAttr
             }
             SetWidow( false );
         }
-        else if( bSetOfst && IsFollow() )
+        else if( bSetOffset && IsFollow() )
         {
             SwTextFrame *pMaster = FindMaster();
             OSL_ENSURE( pMaster, "SwTextFrame::Format: homeless follow" );
             if( pMaster )
-                pMaster->Prepare( PREP_FOLLOW_FOLLOWS );
+                pMaster->Prepare( PrepareHint::FollowFollows );
             SwTwips nMaxY = aRectFnSet.GetPrtBottom(*GetUpper());
-            if( aRectFnSet.OverStep( Frame(), nMaxY  ) )
+
+            if( aRectFnSet.OverStep( getFrameArea(), nMaxY  ) )
+            {
                 aRectFnSet.SetLimit( *this, nMaxY );
-            else if( aRectFnSet.BottomDist( Frame(), nMaxY  ) < 0 )
-                aRectFnSet.AddBottom( Frame(), -aRectFnSet.GetHeight(Frame()) );
+            }
+            else if( aRectFnSet.BottomDist( getFrameArea(), nMaxY  ) < 0 )
+            {
+                SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
+                aRectFnSet.AddBottom( aFrm, -aRectFnSet.GetHeight(aFrm) );
+            }
         }
         else
         {
-            // bSetOfst here means that we have the "red arrow situation"
-            if ( bSetOfst )
-                SetOfst_( 0 );
+            // bSetOffset here means that we have the "red arrow situation"
+            if ( bSetOffset )
+                SetOffset_(TextFrameIndex(0));
 
             const bool bOrphan = IsWidow();
             const SwFootnoteBossFrame* pFootnoteBoss = HasFootnote() ? FindFootnoteBossFrame() : nullptr;
@@ -1798,7 +1901,7 @@ void SwTextFrame::Format( vcl::RenderContext* pRenderContext, const SwBorderAttr
             if( pFootnoteBoss )
             {
                 const SwFootnoteContFrame* pCont = pFootnoteBoss->FindFootnoteCont();
-                nFootnoteHeight = pCont ? aRectFnSet.GetHeight(pCont->Frame()) : 0;
+                nFootnoteHeight = pCont ? aRectFnSet.GetHeight(pCont->getFrameArea()) : 0;
             }
             do
             {
@@ -1806,7 +1909,7 @@ void SwTextFrame::Format( vcl::RenderContext* pRenderContext, const SwBorderAttr
                 if( pFootnoteBoss && nFootnoteHeight )
                 {
                     const SwFootnoteContFrame* pCont = pFootnoteBoss->FindFootnoteCont();
-                    SwTwips nNewHeight = pCont ? aRectFnSet.GetHeight(pCont->Frame()) : 0;
+                    SwTwips nNewHeight = pCont ? aRectFnSet.GetHeight(pCont->getFrameArea()) : 0;
                     // If we lost some footnotes, we may have more space
                     // for our main text, so we have to format again ...
                     if( nNewHeight < nFootnoteHeight )
@@ -1846,6 +1949,21 @@ void SwTextFrame::Format( vcl::RenderContext* pRenderContext, const SwBorderAttr
     CalcBaseOfstForFly();
     CalcHeightOfLastLine(); // i#11860 - Adjust spacing implementation for
                              // object positioning - Compatibility to MS Word
+    // tdf#117982 -- Fix cell spacing hides content
+    // Check if the cell's content has greater size than the row height
+    if (IsInTab() && GetUpper() && ((GetUpper()->getFramePrintArea().Height() < getFramePrintArea().Height())
+            || (getFramePrintArea().Height() <= 0)))
+    {
+           SAL_INFO("sw.core", "Warn: Cell content has greater size than cell height!");
+           //get font size...
+           SwTwips aTmpHeight = getFrameArea().Height();
+           //...and push it into the text frame
+           SwFrameAreaDefinition::FramePrintAreaWriteAccess aPrt(*this);
+           //if only bottom margin what we have:
+           if (GetTopMargin() == 0)
+               //set the frame to its original location
+               aPrt.SetTopAndHeight(0, aTmpHeight);
+    }
 }
 
 // bForceQuickFormat is set if GetFormatted() has been called during the
@@ -1866,8 +1984,8 @@ bool SwTextFrame::FormatQuick( bool bForceQuickFormat )
 
     // We're very picky:
     if( HasPara() || IsWidow() || IsLocked()
-        || !GetValidSizeFlag() ||
-        ( ( IsVertical() ? Prt().Width() : Prt().Height() ) && IsHiddenNow() ) )
+        || !isFrameAreaSizeValid() ||
+        ( ( IsVertical() ? getFramePrintArea().Width() : getFramePrintArea().Height() ) && IsHiddenNow() ) )
         return false;
 
     SwTextLineAccess aAccess( this );
@@ -1888,14 +2006,15 @@ bool SwTextFrame::FormatQuick( bool bForceQuickFormat )
     if( aLine.GetDropFormat() )
         return false;
 
-    sal_Int32 nStart = GetOfst();
-    const sal_Int32 nEnd = GetFollow()
-                      ? GetFollow()->GetOfst() : aInf.GetText().getLength();
+    TextFrameIndex nStart = GetOffset();
+    const TextFrameIndex nEnd = GetFollow()
+                  ? GetFollow()->GetOffset()
+                  : TextFrameIndex(aInf.GetText().getLength());
 
     int nLoopProtection = 0;
     do
     {
-        sal_Int32 nNewStart = aLine.FormatLine(nStart);
+        TextFrameIndex nNewStart = aLine.FormatLine(nStart);
         if (nNewStart == nStart)
             ++nLoopProtection;
         else
@@ -1910,27 +2029,27 @@ bool SwTextFrame::FormatQuick( bool bForceQuickFormat )
     } while( aLine.Next() );
 
     // Last exit: the heights need to match
-    Point aTopLeft( Frame().Pos() );
-    aTopLeft += Prt().Pos();
+    Point aTopLeft( getFrameArea().Pos() );
+    aTopLeft += getFramePrintArea().Pos();
     const SwTwips nNewHeight = aLine.Y() + aLine.GetLineHeight();
-    const SwTwips nOldHeight = aTopLeft.Y() + Prt().Height();
+    const SwTwips nOldHeight = aTopLeft.Y() + getFramePrintArea().Height();
 
     if( !bForceQuickFormat && nNewHeight != nOldHeight && !IsUndersized() )
     {
         // Attention: This situation can occur due to FormatLevel==12. Don't panic!
-        const sal_Int32 nStrt = GetOfst();
+        TextFrameIndex const nStrt = GetOffset();
         InvalidateRange_( SwCharRange( nStrt, nEnd - nStrt) );
         return false;
     }
 
-    if (m_pFollow && nStart != (static_cast<SwTextFrame*>(m_pFollow))->GetOfst())
+    if (m_pFollow && nStart != static_cast<SwTextFrame*>(m_pFollow)->GetOffset())
         return false; // can be caused by e.g. Orphans
 
     // We made it!
 
     // Set repaint
     pPara->GetRepaint().Pos( aTopLeft );
-    pPara->GetRepaint().SSize( Prt().SSize() );
+    pPara->GetRepaint().SSize( getFramePrintArea().SSize() );
 
     // Delete reformat
     pPara->GetReformat() = SwCharRange();

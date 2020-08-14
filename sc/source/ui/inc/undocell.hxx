@@ -21,26 +21,18 @@
 #define INCLUDED_SC_SOURCE_UI_INC_UNDOCELL_HXX
 
 #include "undobase.hxx"
-#include "postit.hxx"
-#include "cellvalue.hxx"
+#include <detdata.hxx>
+#include <postit.hxx>
+#include <cellvalue.hxx>
 #include <cellvalues.hxx>
+#include <editeng/editobj.hxx>
 
 #include <memory>
 
 class ScDocShell;
 class ScPatternAttr;
-class EditTextObject;
-class SdrUndoAction;
-class ScDetOpList;
-class ScDetOpData;
 class ScRangeName;
-class ScDocument;
-
-namespace sc {
-
-class CellValues;
-
-}
+class ScFormulaCell;
 
 class ScUndoCursorAttr: public ScSimpleUndo
 {
@@ -61,7 +53,7 @@ public:
     /** once the objects are passed to this class, their life-cycle is
         managed by this class; the calling function must pass new'ed
         objects to this method. */
-    void            SetEditData( EditTextObject* pOld, EditTextObject* pNew );
+    void            SetEditData( std::unique_ptr<EditTextObject> pOld, std::unique_ptr<EditTextObject> pNew );
 
 private:
     SCCOL           nCol;
@@ -70,10 +62,10 @@ private:
     ScPatternAttr*  pOldPattern;
     ScPatternAttr*  pNewPattern;
     ScPatternAttr*  pApplyPattern;
-    std::shared_ptr<EditTextObject> pOldEditData;
-    std::shared_ptr<EditTextObject> pNewEditData;
+    std::unique_ptr<EditTextObject> pOldEditData;
+    std::unique_ptr<EditTextObject> pNewEditData;
 
-    void            DoChange( const ScPatternAttr* pWhichPattern, const std::shared_ptr<EditTextObject>& pEditData ) const;
+    void            DoChange( const ScPatternAttr* pWhichPattern, const std::unique_ptr<EditTextObject>& pEditData ) const;
 };
 
 class ScUndoEnterData: public ScSimpleUndo
@@ -94,9 +86,7 @@ public:
 
     ScUndoEnterData(
         ScDocShell* pNewDocShell, const ScAddress& rPos,
-        ValuesType& rOldValues, const OUString& rNewStr, EditTextObject* pObj );
-
-    virtual ~ScUndoEnterData() override;
+        ValuesType& rOldValues, const OUString& rNewStr, std::unique_ptr<EditTextObject> pObj );
 
     virtual void    Undo() override;
     virtual void    Redo() override;
@@ -135,7 +125,7 @@ public:
 
 private:
     ScAddress       aPos;
-    ScCellValue maOldCell;
+    ScCellValue     maOldCell;
     double          nValue;
     sal_uLong       nEndChangeAction;
 
@@ -158,12 +148,13 @@ public:
 private:
     void SetChangeTrack();
     void SetValue( const ScCellValue& rVal );
+    void MoveCursorToCell();
 
 private:
-    ScAddress maPos;
+    ScAddress   maPos;
     ScCellValue maOldValue;
     ScCellValue maNewValue;
-    sal_uLong mnEndChangeAction;
+    sal_uLong   mnEndChangeAction;
 };
 
 class ScUndoPageBreak: public ScSimpleUndo
@@ -254,7 +245,7 @@ public:
                         const ScAddress& rPos,
                         const ScNoteData& rNoteData,
                         bool bInsert,
-                        SdrUndoAction* pDrawUndo );
+                        std::unique_ptr<SdrUndoAction> pDrawUndo );
 
     /** Constructs an undo action for replacing a cell note with another. */
                     ScUndoReplaceNote(
@@ -262,7 +253,7 @@ public:
                         const ScAddress& rPos,
                         const ScNoteData& rOldData,
                         const ScNoteData& rNewData,
-                        SdrUndoAction* pDrawUndo );
+                        std::unique_ptr<SdrUndoAction> pDrawUndo );
 
     virtual         ~ScUndoReplaceNote() override;
 
@@ -281,7 +272,7 @@ private:
     ScAddress       maPos;
     ScNoteData      maOldData;
     ScNoteData      maNewData;
-    SdrUndoAction*  mpDrawUndo;
+    std::unique_ptr<SdrUndoAction> mpDrawUndo;
 };
 
 /** Undo action for showing or hiding a cell note caption. */
@@ -307,8 +298,8 @@ class ScUndoDetective: public ScSimpleUndo
 {
 public:
                     ScUndoDetective( ScDocShell* pNewDocShell,
-                                    SdrUndoAction* pDraw, const ScDetOpData* pOperation,
-                                    ScDetOpList* pUndoList = nullptr );
+                                    std::unique_ptr<SdrUndoAction> pDraw, const ScDetOpData* pOperation,
+                                    std::unique_ptr<ScDetOpList> pUndoList = nullptr );
     virtual         ~ScUndoDetective() override;
 
     virtual void    Undo() override;
@@ -320,10 +311,10 @@ public:
 
 private:
     bool            bIsDelete;
-    ScDetOpList*    pOldList;
+    std::unique_ptr<ScDetOpList> pOldList;
     sal_uInt16      nAction;
     ScAddress       aPos;
-    SdrUndoAction*  pDrawUndo;
+    std::unique_ptr<SdrUndoAction> pDrawUndo;
 };
 
 class ScUndoRangeNames: public ScSimpleUndo
@@ -331,7 +322,7 @@ class ScUndoRangeNames: public ScSimpleUndo
 public:
                     //use nTab = -1 for global range names
                     ScUndoRangeNames( ScDocShell* pNewDocShell,
-                                      ScRangeName* pOld, ScRangeName* pNew , SCTAB nTab);
+                                      std::unique_ptr<ScRangeName> pOld, std::unique_ptr<ScRangeName> pNew , SCTAB nTab);
     virtual         ~ScUndoRangeNames() override;
 
     virtual void    Undo() override;
@@ -342,8 +333,8 @@ public:
     virtual OUString GetComment() const override;
 
 private:
-    ScRangeName*    pOldRanges;
-    ScRangeName*    pNewRanges;
+    std::unique_ptr<ScRangeName> pOldRanges;
+    std::unique_ptr<ScRangeName> pNewRanges;
     SCTAB           mnTab;
 
     void            DoChange( bool bUndo );
@@ -371,6 +362,7 @@ public:
 
     CellValues& GetOldValues() { return maOldValues;}
     void SetNewValues( const std::vector<double>& rVals );
+    void SetNewValues( const std::vector<ScFormulaCell*>& rVals );
 };
 
 } // namespace sc

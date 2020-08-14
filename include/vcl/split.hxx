@@ -21,6 +21,7 @@
 #define INCLUDED_VCL_SPLIT_HXX
 
 #include <vcl/dllapi.h>
+#include <vcl/keycod.hxx>
 #include <vcl/window.hxx>
 
 #define SPLITTER_DEFAULTSTEPSIZE 0xFFFF
@@ -37,7 +38,7 @@ private:
     bool                mbHorzSplit;
     bool                mbDragFull;
     bool                mbKbdSplitting;
-    long                mbInKeyEvent;
+    bool                mbInKeyEvent;
     long                mnKeyboardStepSize;
     Link<Splitter*,void>   maStartSplitHdl;
     Link<Splitter*,void>   maSplitHdl;

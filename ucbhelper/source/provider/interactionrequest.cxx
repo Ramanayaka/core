@@ -25,6 +25,7 @@
  *************************************************************************/
 #include <ucbhelper/interactionrequest.hxx>
 
+#include <rtl/ref.hxx>
 #include <osl/diagnose.h>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
@@ -104,55 +105,6 @@ void InteractionRequest::setSelection(
 // XInterface methods.
 
 
-// virtual
-void SAL_CALL InteractionRequest::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-
-// virtual
-void SAL_CALL InteractionRequest::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-
-// virtual
-uno::Any SAL_CALL
-InteractionRequest::queryInterface( const uno::Type & rType )
-{
-    uno::Any aRet = cppu::queryInterface( rType,
-                static_cast< lang::XTypeProvider * >( this ),
-                static_cast< task::XInteractionRequest * >( this ) );
-
-    return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
-}
-
-
-// XTypeProvider methods.
-
-
-// virtual
-uno::Sequence< sal_Int8 > SAL_CALL InteractionRequest::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
-}
-
-
-// virtual
-uno::Sequence< uno::Type > SAL_CALL InteractionRequest::getTypes()
-{
-    static cppu::OTypeCollection s_aCollection(
-                cppu::UnoType<lang::XTypeProvider>::get(),
-                cppu::UnoType<task::XInteractionRequest>::get() );
-
-    return s_aCollection.getTypes();
-}
-
-
 // XInteractionRequest methods.
 
 
@@ -197,22 +149,6 @@ void InteractionContinuation::recordSelection()
 
 
 // XInterface methods.
-
-
-// virtual
-void SAL_CALL InteractionAbort::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-
-// virtual
-void SAL_CALL InteractionAbort::release()
-    throw()
-{
-    OWeakObject::release();
-}
 
 
 // virtual
@@ -267,22 +203,6 @@ void SAL_CALL InteractionAbort::select()
 
 
 // virtual
-void SAL_CALL InteractionRetry::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-
-// virtual
-void SAL_CALL InteractionRetry::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-
-// virtual
 uno::Any SAL_CALL
 InteractionRetry::queryInterface( const uno::Type & rType )
 {
@@ -331,22 +251,6 @@ void SAL_CALL InteractionRetry::select()
 
 
 // XInterface methods.
-
-
-// virtual
-void SAL_CALL InteractionApprove::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-
-// virtual
-void SAL_CALL InteractionApprove::release()
-    throw()
-{
-    OWeakObject::release();
-}
 
 
 // virtual
@@ -401,22 +305,6 @@ void SAL_CALL InteractionApprove::select()
 
 
 // virtual
-void SAL_CALL InteractionDisapprove::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-
-// virtual
-void SAL_CALL InteractionDisapprove::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-
-// virtual
 uno::Any SAL_CALL
 InteractionDisapprove::queryInterface( const uno::Type & rType )
 {
@@ -465,22 +353,6 @@ void SAL_CALL InteractionDisapprove::select()
 
 
 // XInterface methods.
-
-
-// virtual
-void SAL_CALL InteractionSupplyAuthentication::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-
-// virtual
-void SAL_CALL InteractionSupplyAuthentication::release()
-    throw()
-{
-    OWeakObject::release();
-}
 
 
 // virtual
@@ -622,13 +494,10 @@ InteractionSupplyAuthentication::canSetAccount()
 
 // virtual
 void SAL_CALL
-InteractionSupplyAuthentication::setAccount( const OUString& Account )
+InteractionSupplyAuthentication::setAccount( const OUString& /*Account*/ )
 {
     OSL_ENSURE( m_bCanSetAccount,
         "InteractionSupplyAuthentication::setAccount - Not supported!" );
-
-    if ( m_bCanSetAccount )
-        m_aAccount = Account;
 }
 
 
@@ -675,22 +544,6 @@ void SAL_CALL InteractionSupplyAuthentication::setUseSystemCredentials(
 
 
 // XInterface methods.
-
-
-// virtual
-void SAL_CALL InteractionReplaceExistingData::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-
-// virtual
-void SAL_CALL InteractionReplaceExistingData::release()
-    throw()
-{
-    OWeakObject::release();
-}
 
 
 // virtual
@@ -743,20 +596,6 @@ void SAL_CALL InteractionReplaceExistingData::select()
 // XInterface methods.
 
 // virtual
-void SAL_CALL InteractionAuthFallback::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-// virtual
-void SAL_CALL InteractionAuthFallback::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-// virtual
 uno::Any SAL_CALL
 InteractionAuthFallback::queryInterface( const uno::Type & rType )
 {
@@ -784,7 +623,7 @@ void SAL_CALL InteractionAuthFallback::setCode( const OUString& code )
     m_aCode = code;
 }
 
-const OUString& SAL_CALL InteractionAuthFallback::getCode( )
+const OUString& InteractionAuthFallback::getCode() const
 {
     return m_aCode;
 }

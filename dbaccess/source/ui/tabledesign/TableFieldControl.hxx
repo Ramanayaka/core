@@ -19,16 +19,23 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_TABLEDESIGN_TABLEFIELDCONTROL_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_TABLEDESIGN_TABLEFIELDCONTROL_HXX
 
-#include "FieldDescControl.hxx"
+#include <FieldDescControl.hxx>
 
 namespace dbaui
 {
     class OTableEditorCtrl;
     class OTableDesignHelpBar;
+    class OTableDesignView;
+
     // OTableFieldControl
     class OTableFieldControl : public OFieldDescControl
     {
+        VclPtr<OTableDesignView> m_xView;
+
         OTableEditorCtrl*   GetCtrl() const;
+
+        void dispose();
+
     protected:
         virtual void        ActivateAggregate( EControlType eType ) override;
         virtual void        DeactivateAggregate( EControlType eType ) override;
@@ -46,7 +53,8 @@ namespace dbaui
         virtual OUString                        getAutoIncrementValue() const override;
 
     public:
-        OTableFieldControl( vcl::Window* pParent, OTableDesignHelpBar* pHelpBar);
+        OTableFieldControl(weld::Container* pParent, OTableDesignHelpBar* pHelpBar, OTableDesignView* pView);
+        virtual ~OTableFieldControl() override;
 
         using OFieldDescControl::BoolStringPersistent;
         using OFieldDescControl::BoolStringUI;

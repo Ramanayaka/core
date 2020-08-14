@@ -29,18 +29,18 @@
 #include <com/sun/star/style/ParagraphAdjust.hpp>
 #include <com/sun/star/style/TabAlign.hpp>
 #include <com/sun/star/uno/Reference.hxx>
+#include <o3tl/safeint.hxx>
 #include <oox/dllapi.h>
 #include <oox/helper/helper.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace drawing { struct Hatch; }
-    namespace xml { namespace sax { class XFastAttributeList; } }
-} } }
+    namespace xml::sax { class XFastAttributeList; }
+}
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 
 const sal_Int32 PER_PERCENT     = 1000;
@@ -89,11 +89,11 @@ typedef std::shared_ptr< TableProperties > TablePropertiesPtr;
 } // namespace table
 
 
-/** converts the attributes from an CT_TLPoint into an awt Point with 1/1000% */
+/** converts the attributes from a CT_TLPoint into an awt Point with 1/1000% */
 css::awt::Point GetPointPercent( const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttribs );
 
 
-/** converts the attributes from an CT_Size2D into an awt Size with 1/100th mm */
+/** converts the attributes from a CT_Size2D into an awt Size with 1/100th mm */
 css::awt::Size GetSize2D( const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttributes );
 
 /** converts the attributes from a CT_RelativeRect to an IntegerRectangle2D */
@@ -104,6 +104,9 @@ sal_Int32 GetCoordinate( sal_Int32 nValue );
 
 /** converts an emu string into 1/100th mmm */
 sal_Int32 GetCoordinate( const OUString& sValue );
+
+/** converts 1/100mm to EMU */
+sal_Int32 GetPointFromCoordinate( sal_Int32 nValue );
 
 /** converts a ST_Percentage % string into 1/1000th of % */
 sal_Int32 GetPercent( const OUString& sValue );
@@ -151,6 +154,21 @@ struct IndexRange {
 /** retrieve the content of CT_IndexRange */
 IndexRange GetIndexRange( const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttributes );
 
+/**
+* nRotation is a 100th of a degree and the return value is
+* in a 60,000th of a degree
+*
+* Also rotation is in opposite directions so multiply with -1
+*/
+inline OString calcRotationValue(sal_Int32 nRotation)
+{
+    if (nRotation > 18000) // 180 degree
+    {
+        nRotation -= 36000;
+    }
+    nRotation *= -600;
+    return OString::number(nRotation);
+}
 
 const sal_Int32 EMU_PER_HMM = 360;      /// 360 EMUs per 1/100 mm.
 const sal_Int32 EMU_PER_PT = 12700;
@@ -165,13 +183,20 @@ inline sal_Int64 convertHmmToEmu( sal_Int32 nValue )
 inline sal_Int32 convertEmuToHmm( sal_Int64 nValue )
 {
     sal_Int32 nCorrection = (nValue > 0 ? 1 : -1) * EMU_PER_HMM / 2; // So that the implicit floor will round.
-    return getLimitedValue< sal_Int32, sal_Int64 >( (nValue + nCorrection) / EMU_PER_HMM, SAL_MIN_INT32, SAL_MAX_INT32 );
+    return getLimitedValue<sal_Int32, sal_Int64>(o3tl::saturating_add<sal_Int64>(nValue, nCorrection) / EMU_PER_HMM, SAL_MIN_INT32, SAL_MAX_INT32);
 }
 
 /** Converts the passed 64-bit integer value from EMUs to Points. */
 inline float convertEmuToPoints( sal_Int64 nValue )
 {
-    return (float) nValue / EMU_PER_PT;
+    return static_cast<float>(nValue) / EMU_PER_PT;
+}
+
+/** Converts the passed double value from points to mm. */
+inline double convertPointToMms(double fValue)
+{
+    constexpr double fFactor = static_cast<double>(EMU_PER_PT) / (EMU_PER_HMM * 100);
+    return fValue * fFactor;
 }
 
 /** A structure for a point with 64-bit integer components. */
@@ -207,8 +232,7 @@ struct EmuRectangle : public EmuPoint, public EmuSize
 };
 
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 #endif
 

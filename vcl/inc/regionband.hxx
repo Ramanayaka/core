@@ -36,6 +36,7 @@ private:
     ImplRegionBand*             mpLastCheckedBand;
 
     void implReset();
+    [[nodiscard]] bool CheckConsistency() const;
 
 public:
     RegionBand();
@@ -46,7 +47,7 @@ public:
 
     bool operator==( const RegionBand& rRegionBand ) const;
 
-    void load(SvStream& rIStrm);
+    [[nodiscard]] bool load(SvStream& rIStrm);
     void save(SvStream& rIStrm) const;
 
     bool isSingleRectangle() const;

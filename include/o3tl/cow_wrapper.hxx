@@ -194,6 +194,12 @@ int cow_wrapper_client::queryUnmodified() const
             {
             }
 
+            explicit impl_t( T&& v ) :
+                m_value(std::move(v)),
+                m_ref_count(1)
+            {
+            }
+
             T                              m_value;
             typename MTPolicy::ref_count_t m_ref_count;
         };
@@ -227,6 +233,13 @@ int cow_wrapper_client::queryUnmodified() const
         {
         }
 
+        /** Move-construct wrapped type instance from given object
+         */
+        explicit cow_wrapper( value_type&& r ) :
+            m_pimpl( new impl_t(std::move(r)) )
+        {
+        }
+
         /** Shallow-copy given cow_wrapper
          */
         explicit cow_wrapper( const cow_wrapper& rSrc ) : // nothrow
@@ -237,7 +250,7 @@ int cow_wrapper_client::queryUnmodified() const
 
         /** Move-construct and steal rSrc shared resource
          */
-        explicit cow_wrapper( cow_wrapper&& rSrc ) :
+        explicit cow_wrapper( cow_wrapper&& rSrc ) noexcept :
             m_pimpl( rSrc.m_pimpl )
         {
             rSrc.m_pimpl = nullptr;
@@ -261,7 +274,7 @@ int cow_wrapper_client::queryUnmodified() const
         }
 
         /// stealing rSrc's resource
-        cow_wrapper& operator=( cow_wrapper&& rSrc )
+        cow_wrapper& operator=(cow_wrapper&& rSrc) noexcept
         {
             // self-movement guts ourself, see also 17.6.4.9
             release();

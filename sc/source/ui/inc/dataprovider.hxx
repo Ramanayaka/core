@@ -12,155 +12,139 @@
 
 #include <memory>
 #include <salhelper/thread.hxx>
-#include <tools/stream.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ref.hxx>
-#include <address.hxx>
 #include <osl/mutex.hxx>
-#include <osl/conditn.hxx>
-#include <dbdata.hxx>
 #include <document.hxx>
 
-#include "docsh.hxx"
-#include "scdllapi.h"
+#include <rtl/strbuf.hxx>
 
-#include <queue>
+#include <vector>
+#include <map>
 
-#include "officecfg/Office/Calc.hxx"
-
-#if defined(_WIN32)
-#define __ORCUS_STATIC_LIB
-#endif
 #include <orcus/csv_parser.hpp>
+
+class SvStream;
+class ScDBData;
 
 namespace sc {
 
-class DataProvider;
-class CSVDataProvider;
-
-class SC_DLLPUBLIC ExternalDataMapper
-{
-    ScRange maRange;
-    ScDocShell* mpDocShell;
-    std::unique_ptr<DataProvider> mpDataProvider;
-    ScDocument maDocument;
-    ScDBCollection* mpDBCollection;
-
-public:
-    ExternalDataMapper(ScDocShell* pDocShell, const OUString& rUrl, const OUString& rName,
-        SCTAB nTab, SCCOL nCol1,SCROW nRow1, SCCOL nCOL2, SCROW nRow2, bool& bSuccess);
-
-    ~ExternalDataMapper();
-
-    void StartImport();
-};
-
-struct Cell
-{
-    struct Str
-    {
-        size_t Pos;
-        size_t Size;
-    };
-
-    union
-    {
-        Str maStr;
-        double mfValue;
-    };
-
-    bool mbValue;
-
-    Cell();
-    Cell( const Cell& r );
-};
-
-struct Line
-{
-    OString maLine;
-    std::vector<Cell> maCells;
-};
-
-typedef std::vector<Line> LinesType;
+class DataTransformation;
+class ExternalDataSource;
 
 class CSVFetchThread : public salhelper::Thread
 {
-    std::unique_ptr<SvStream> mpStream;
     ScDocument& mrDocument;
     OUString maURL;
-    size_t mnColCount;
 
     bool mbTerminate;
     osl::Mutex maMtxTerminate;
 
-    std::queue<LinesType*> maPendingLines;
-    osl::Mutex maMtxLines;
-
-    osl::Condition maCondReadStream;
-    osl::Condition maCondConsume;
-
     orcus::csv::parser_config maConfig;
 
-    virtual void execute() override;
+    std::vector<std::shared_ptr<sc::DataTransformation>> maDataTransformations;
+
+    std::function<void()> maImportFinishedHdl;
+
 
 public:
-    CSVFetchThread(ScDocument& rDoc, const OUString&, size_t);
+    CSVFetchThread(ScDocument& rDoc, const OUString&, std::function<void()> aImportFinishedHdl,
+            const std::vector<std::shared_ptr<sc::DataTransformation>>& mrDataTransformations);
     virtual ~CSVFetchThread() override;
 
     void RequestTerminate();
     bool IsRequestedTerminate();
     void Terminate();
     void EndThread();
-    void EmptyLineQueue(std::queue<LinesType*>& );
-    osl::Mutex& GetLinesMutex();
-    bool HasNewLines();
-    void WaitForNewLines();
-    LinesType* GetNewLines();
-    void ResumeFetchStream();
+
+    virtual void execute() override;
 };
 
+/**
+ * Abstract class for all data provider.
+ *
+ */
 class DataProvider
 {
+protected:
+    /**
+     * If true make the threaded import deterministic for the tests.
+     */
+    bool mbDeterministic;
+    sc::ExternalDataSource& mrDataSource;
+
 public:
-    virtual ~DataProvider() = 0;
+    DataProvider(sc::ExternalDataSource& rDataSource);
 
-    virtual void StartImport() = 0;
-    virtual void Refresh() = 0;
-    virtual void WriteToDoc(ScDocument&) = 0;
+    virtual ~DataProvider();
 
-    virtual ScRange GetRange() const = 0;
+    virtual void Import() = 0;
+
     virtual const OUString& GetURL() const = 0;
+
+    static std::unique_ptr<SvStream> FetchStreamFromURL(const OUString&, OStringBuffer& rBuffer);
+
+    void setDeterministic();
 };
 
 class CSVDataProvider : public DataProvider
 {
-    OUString maURL;
-    ScRange mrRange;
     rtl::Reference<CSVFetchThread> mxCSVFetchThread;
-    ScDocShell* mpDocShell;
     ScDocument* mpDocument;
-    LinesType* mpLines;
-    size_t mnLineCount;
+    ScDocumentUniquePtr mpDoc;
 
-    bool mbImportUnderway;
-
+    void Refresh();
 
 public:
-    CSVDataProvider (ScDocShell* pDocShell, const OUString& rUrl, const ScRange& rRange);
+    CSVDataProvider (ScDocument* pDoc, sc::ExternalDataSource& rDataSource);
     virtual ~CSVDataProvider() override;
 
-    virtual void StartImport() override;
-    virtual void Refresh() override;
-    virtual void WriteToDoc(ScDocument&) override;
-    Line GetLine();
+    virtual void Import() override;
 
-    ScRange GetRange() const override
-    {
-        return mrRange;
-    }
-    const OUString& GetURL() const override { return maURL; }
+    const OUString& GetURL() const override;
+    void ImportFinished();
+};
+
+/**
+ * This class handles the copying of the data from the imported
+ * temporary document to the actual document. Additionally, in the future
+ * we may decide to store data transformations in this class.
+ *
+ * In addition this class also handles how to deal with excess data by for example extending the ScDBData or by only showing the first or last entries.
+ *
+ * TODO: move the DataProvider::WriteToDoc here
+ *
+ */
+class ScDBDataManager
+{
+    OUString maDBName;
+    ScDocument* mpDoc;
+
+public:
+    ScDBDataManager(const OUString& rDBName, ScDocument* pDoc);
+    ~ScDBDataManager();
+
+    void SetDatabase(const OUString& rDBName);
+
+    ScDBData* getDBData();
+
+    void WriteToDoc(ScDocument& rDoc);
+};
+
+class DataProviderFactory
+{
+private:
+
+    static bool isInternalDataProvider(const OUString& rProvider);
+
+public:
+
+    static std::shared_ptr<DataProvider> getDataProvider(ScDocument* pDoc, sc::ExternalDataSource& rDataSource);
+
+    static std::vector<OUString> getDataProviders();
 };
 
 }
+
 #endif
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

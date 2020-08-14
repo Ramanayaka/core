@@ -28,12 +28,11 @@
 
 class SwUndoInsNum : public SwUndo, private SwUndRng
 {
-    SwNumRule aNumRule;
-    SwHistory* pHistory;
-    sal_uLong nSttSet;
-    SwNumRule* pOldNumRule;
-    OUString sReplaceRule;
-    sal_uInt16 nLRSavePos;
+    SwNumRule m_aNumRule;
+    std::unique_ptr<SwHistory> m_pHistory;
+    std::unique_ptr<SwNumRule> m_pOldNumRule;
+    OUString m_sReplaceRule;
+    sal_uInt16 m_nLRSavePos;
 
 public:
     SwUndoInsNum( const SwPaM& rPam, const SwNumRule& rRule );
@@ -65,8 +64,8 @@ class SwUndoDelNum : public SwUndo, private SwUndRng
         int level;
         NodeLevel(sal_uLong idx, int lvl) : index(idx), level(lvl) {};
     };
-    std::vector<NodeLevel>     aNodes;
-    std::unique_ptr<SwHistory> pHistory;
+    std::vector<NodeLevel>     m_aNodes;
+    std::unique_ptr<SwHistory> m_pHistory;
 
 public:
     SwUndoDelNum( const SwPaM& rPam );
@@ -78,13 +77,13 @@ public:
     virtual void RepeatImpl( ::sw::RepeatContext & ) override;
 
     void AddNode( const SwTextNode& rNd );
-    SwHistory* GetHistory() { return pHistory.get(); }
+    SwHistory* GetHistory() { return m_pHistory.get(); }
 };
 
 class SwUndoMoveNum : public SwUndo, private SwUndRng
 {
-    sal_uLong nNewStt;
-    long nOffset;
+    sal_uLong m_nNewStart;
+    long m_nOffset;
 
 public:
     SwUndoMoveNum( const SwPaM& rPam, long nOffset, bool bIsOutlMv );
@@ -93,12 +92,12 @@ public:
     virtual void RedoImpl( ::sw::UndoRedoContext & ) override;
     virtual void RepeatImpl( ::sw::RepeatContext & ) override;
 
-    void SetStartNode( sal_uLong nValue ) { nNewStt = nValue; }
+    void SetStartNode( sal_uLong nValue ) { m_nNewStart = nValue; }
 };
 
 class SwUndoNumUpDown : public SwUndo, private SwUndRng
 {
-    short nOffset;
+    short m_nOffset;
 
 public:
     SwUndoNumUpDown( const SwPaM& rPam, short nOffset );
@@ -110,7 +109,7 @@ public:
 
 class SwUndoNumOrNoNum : public SwUndo
 {
-    sal_uLong nIdx;
+    sal_uLong m_nIndex;
     bool mbNewNum, mbOldNum;
 
 public:
@@ -124,10 +123,10 @@ public:
 
 class SwUndoNumRuleStart : public SwUndo
 {
-    sal_uLong nIdx;
-    sal_uInt16 nOldStt, nNewStt;
-    bool bSetSttValue : 1;
-    bool bFlag : 1;
+    sal_uLong m_nIndex;
+    sal_uInt16 m_nOldStart, m_nNewStart;
+    bool m_bSetStartValue : 1;
+    bool m_bFlag : 1;
 
 public:
     SwUndoNumRuleStart( const SwPosition& rPos, bool bDelete );

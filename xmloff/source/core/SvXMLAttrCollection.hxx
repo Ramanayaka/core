@@ -12,7 +12,7 @@
 
 #include "SvXMLAttr.hxx"
 
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <vector>
@@ -52,8 +52,8 @@ public:
     size_t GetAttrCount() const;
     const OUString& GetAttrLName(size_t i) const;
     const OUString& GetAttrValue(size_t i) const;
-    const OUString GetAttrNamespace( size_t i ) const;
-    const OUString GetAttrPrefix( size_t i ) const;
+    OUString GetAttrNamespace( size_t i ) const;
+    OUString GetAttrPrefix( size_t i ) const;
     const OUString& GetNamespace( sal_uInt16 i ) const;
     const OUString& GetPrefix( sal_uInt16 i ) const;
     sal_uInt16 GetFirstNamespaceIndex() const;

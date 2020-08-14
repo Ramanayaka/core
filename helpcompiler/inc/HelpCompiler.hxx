@@ -22,28 +22,21 @@
 
 #include <sal/config.h>
 
+#include <deque>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <list>
-#include <fstream>
-#include <sstream>
-#include <algorithm>
 
-#include <libxml/xmlmemory.h>
-#include <libxml/debugXML.h>
-#include <libxml/HTMLtree.h>
-#include <libxml/xmlIO.h>
-#include <libxml/xinclude.h>
-#include <libxml/catalog.h>
+#include <libxml/parser.h>
 
 #include <rtl/ustring.hxx>
 #include <rtl/character.hxx>
-#include <osl/thread.h>
 #include <osl/process.h>
 #include <osl/file.hxx>
+#include <osl/thread.h>
+#include <o3tl/char16_t2wchar_t.hxx>
 
-#include <BasCodeTagger.hxx>
 #include <helpcompiler/compilehelp.hxx>
 
 #if OSL_DEBUG_LEVEL > 2
@@ -55,8 +48,6 @@
 
 namespace fs
 {
-    rtl_TextEncoding getThreadTextEncoding();
-
     enum convert { native };
     class path
     {
@@ -64,35 +55,34 @@ namespace fs
         OUString data;
     public:
         path() {}
-        path(const path &rOther) : data(rOther.data) {}
         path(const std::string &in, convert)
         {
             OUString sWorkingDir;
             osl_getProcessWorkingDir(&sWorkingDir.pData);
             OString tmp(in.c_str());
-            OUString ustrSystemPath(OStringToOUString(tmp, getThreadTextEncoding()));
+            OUString ustrSystemPath(OStringToOUString(tmp, osl_getThreadTextEncoding()));
             osl::File::getFileURLFromSystemPath(ustrSystemPath, data);
-            osl::File::getAbsoluteFileURL(sWorkingDir, data, data);
+            (void)osl::File::getAbsoluteFileURL(sWorkingDir, data, data);
         }
         path(const std::string &FileURL)
         {
             OString tmp(FileURL.c_str());
-            data = OStringToOUString(tmp, getThreadTextEncoding());
+            data = OStringToOUString(tmp, osl_getThreadTextEncoding());
         }
         std::string native_file_string() const
         {
             OUString ustrSystemPath;
             osl::File::getSystemPathFromFileURL(data, ustrSystemPath);
-            OString tmp(OUStringToOString(ustrSystemPath, getThreadTextEncoding()));
+            OString tmp(OUStringToOString(ustrSystemPath, osl_getThreadTextEncoding()));
             HCDBG(std::cerr << "native_file_string is " << tmp.getStr() << std::endl);
             return std::string(tmp.getStr());
         }
 #ifdef _WIN32
-        wchar_t const * native_file_string_w() const
+        std::wstring native_file_string_w() const
         {
             OUString ustrSystemPath;
             osl::File::getSystemPathFromFileURL(data, ustrSystemPath);
-            return reinterpret_cast<wchar_t const *>(ustrSystemPath.getStr());
+            return std::wstring(o3tl::toW(ustrSystemPath.getStr()));
         }
 #endif
         std::string toUTF8() const
@@ -107,7 +97,7 @@ namespace fs
             HCDBG(std::cerr << "orig was " <<
                 OUStringToOString(ret.data, RTL_TEXTENCODING_UTF8).getStr() << std::endl);
             OString tmp(in.c_str());
-            OUString ustrSystemPath(OStringToOUString(tmp, getThreadTextEncoding()));
+            OUString ustrSystemPath(OStringToOUString(tmp, osl_getThreadTextEncoding()));
             ret.data += "/" + ustrSystemPath;
             HCDBG(std::cerr << "final is " <<
                 OUStringToOString(ret.data, RTL_TEXTENCODING_UTF8).getStr() << std::endl);
@@ -116,8 +106,8 @@ namespace fs
         void append(const char *in)
         {
             OString tmp(in);
-            OUString ustrSystemPath(OStringToOUString(tmp, getThreadTextEncoding()));
-            data = data + ustrSystemPath;
+            OUString ustrSystemPath(OStringToOUString(tmp, osl_getThreadTextEncoding()));
+            data += ustrSystemPath;
         }
         void append(const std::string &in) { append(in.c_str()); }
     };
@@ -126,57 +116,32 @@ namespace fs
     void copy(const fs::path &src, const fs::path &dest);
 }
 
-struct joaat_hash
-{
-    size_t operator()(const std::string &str) const
-    {
-        size_t hash = 0;
-        const char *key = str.data();
-        for (size_t i = 0; i < str.size(); i++)
-        {
-            hash += key[i];
-            hash += (hash << 10);
-            hash ^= (hash >> 6);
-        }
-        hash += (hash << 3);
-        hash ^= (hash >> 11);
-        hash += (hash << 15);
-        return hash;
-    }
-};
 
-#define get16bits(d) ((((sal_uInt32)(((const sal_uInt8 *)(d))[1])) << 8)\
-                       +(sal_uInt32)(((const sal_uInt8 *)(d))[0]) )
+typedef std::unordered_map<std::string, std::string> Stringtable;
+typedef std::deque<std::string> LinkedList;
 
-#define pref_hash joaat_hash
-
-typedef std::unordered_map<std::string, std::string, pref_hash> Stringtable;
-typedef std::list<std::string> LinkedList;
-typedef std::vector<std::string> HashSet;
-
-typedef std::unordered_map<std::string, LinkedList, pref_hash> Hashtable;
+typedef std::unordered_map<std::string, LinkedList> Hashtable;
 
 class StreamTable
 {
 public:
-    std::string document_id;
     std::string document_path;
     std::string document_module;
     std::string document_title;
 
-    HashSet *appl_hidlist;
-    Hashtable *appl_keywords;
-    Stringtable *appl_helptexts;
+    std::unique_ptr< std::vector<std::string> > appl_hidlist;
+    std::unique_ptr<Hashtable> appl_keywords;
+    std::unique_ptr<Stringtable> appl_helptexts;
     xmlDocPtr appl_doc;
 
     StreamTable() :
-        appl_hidlist(nullptr), appl_keywords(nullptr), appl_helptexts(nullptr), appl_doc(nullptr)
+        appl_doc(nullptr)
     {}
     void dropappl()
     {
-        delete appl_hidlist;
-        delete appl_keywords;
-        delete appl_helptexts;
+        appl_hidlist.reset();
+        appl_keywords.reset();
+        appl_helptexts.reset();
         if (appl_doc) xmlFreeDoc(appl_doc);
     }
     ~StreamTable()
@@ -219,7 +184,7 @@ public:
                 bool in_bExtensionMode);
     /// @throws HelpProcessingException
     /// @throws BasicCodeTagger::TaggerException
-    bool compile();
+    void compile();
 private:
     xmlDocPtr getSourceDocument(const fs::path &filePath);
     static void tagBasicCodeExamples(xmlDocPtr doc);

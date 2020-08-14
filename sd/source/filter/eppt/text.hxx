@@ -21,21 +21,19 @@
 #define INCLUDED_SD_SOURCE_FILTER_EPPT_TEXT_HXX
 
 #include "epptbase.hxx"
-#include "epptdef.hxx"
 
-#include <rtl/textenc.h>
 #include <com/sun/star/awt/FontDescriptor.hpp>
 #include <com/sun/star/lang/Locale.hpp>
 #include <editeng/svxenum.hxx>
 #include <vector>
 #include <memory>
 
-namespace com { namespace sun { namespace star {
-namespace awt { struct FontDescriptor; }
-namespace beans { class XPropertyState; }
-namespace text { class XTextRange; class XTextContent; class XSimpleText; }
-namespace style { struct TabStop; }
-}}}
+namespace com::sun::star {
+    namespace awt { struct FontDescriptor; }
+    namespace beans { class XPropertyState; }
+    namespace text { class XTextRange; class XTextContent; class XSimpleText; }
+    namespace style { struct TabStop; }
+}
 
 struct SOParagraph
 {
@@ -107,19 +105,17 @@ struct FieldEntry
     OUString    aFieldUrl;
 
     FieldEntry( sal_uInt32 nType, sal_uInt32 nStart, sal_uInt32 nEnd )
+      : nFieldType(nType),
+        nFieldStartPos(nStart),
+        nFieldEndPos(nEnd)
     {
-        nFieldType = nType;
-        nFieldStartPos = nStart;
-        nFieldEndPos = nEnd;
     }
 };
 
-class PortionObj : public PropStateValue
+class PortionObj final : public PropStateValue
 {
 
     friend class ParagraphObj;
-
-    protected:
 
         void            ImplClear();
         void            ImplConstruct( const PortionObj& rPortionObj );
@@ -148,8 +144,8 @@ class PortionObj : public PropStateValue
         sal_uInt32      mnTextSize;
         bool        mbLastPortion;
 
-        sal_uInt16*     mpText;
-        FieldEntry*     mpFieldEntry;
+        std::unique_ptr<sal_uInt16[]> mpText;
+        std::unique_ptr<FieldEntry> mpFieldEntry;
 
                         PortionObj( css::uno::Reference< css::text::XTextRange > & rXTextRangeRef,
                                         bool bLast, FontCollection& rFontCollection );
@@ -215,16 +211,16 @@ class ParagraphObj : public PropStateValue, public SOParagraph
         bool                                mbParagraphPunctation;
         sal_uInt16                              mnBiDi;
 
-                        ParagraphObj( css::uno::Reference< css::text::XTextContent > & rXTextContentRef,
+                        ParagraphObj( css::uno::Reference< css::text::XTextContent > const & rXTextContentRef,
                             ParaFlags, FontCollection& rFontCollection,
                                 PPTExBulletProvider& rBuProv );
-                        ParagraphObj( const ParagraphObj& rParargraphObj );
+                        ParagraphObj( const ParagraphObj& rParargraphObj ) = delete;
                         ParagraphObj( const css::uno::Reference< css::beans::XPropertySet > & rXPropSetRef,
                                       PPTExBulletProvider* pBuProv );
 
     bool empty() const { return mvPortions.empty(); }
 
-    const PortionObj& front() const { return *mvPortions.front().get(); }
+    const PortionObj& front() const { return *mvPortions.front(); }
 
     std::vector<std::unique_ptr<PortionObj> >::const_iterator begin() const { return mvPortions.begin(); }
     std::vector<std::unique_ptr<PortionObj> >::const_iterator end() const { return mvPortions.end(); }
@@ -246,14 +242,14 @@ class TextObj
     void            ImplCalculateTextPositions();
 
 public:
-    TextObj( css::uno::Reference< css::text::XSimpleText > &
+    TextObj( css::uno::Reference< css::text::XSimpleText > const &
             rXText, int nInstance, FontCollection& rFontCollection, PPTExBulletProvider& rBuProv );
 
     ParagraphObj*   GetParagraph(int idx);
     sal_uInt32      ParagraphCount() const;
     sal_uInt32      Count() const;
     int             GetInstance() const;
-    bool            HasExtendedBullets();
+    bool            HasExtendedBullets() const;
 };
 
 #endif

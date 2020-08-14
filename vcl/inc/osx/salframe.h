@@ -26,11 +26,12 @@
 
 #include <vcl/sysdata.hxx>
 
-#include "osx/salmenu.h"
-#include "osx/saldata.hxx"
-#include "osx/osxvcltypes.h"
+#include <osx/salinst.h>
+#include <osx/salmenu.h>
+#include <osx/saldata.hxx>
+#include <osx/osxvcltypes.h>
 
-#include "salframe.hxx"
+#include <salframe.hxx>
 
 #include <vector>
 #include <utility>
@@ -41,10 +42,6 @@ class AquaSalFrame;
 class AquaSalTimer;
 class AquaSalInstance;
 class AquaSalMenu;
-class AquaBlinker;
-
-typedef struct SalFrame::SalPointerState SalPointerState;
-
 
 class AquaSalFrame : public SalFrame
 {
@@ -81,11 +78,10 @@ public:
     PointerStyle                    mePointerStyle;         // currently active pointer style
 
     NSTrackingRectTag               mnTrackingRectTag;      // used to get enter/leave messages
+    NSRect                          maTrackingRect;
 
     CGMutablePathRef                mrClippingPath;         // used for "shaping"
     std::vector< CGRect >           maClippingRects;
-
-    std::list<AquaBlinker*>         maBlinkers;
 
     tools::Rectangle                       maInvalidRect;
 
@@ -93,6 +89,13 @@ public:
 
     // To prevent display sleep during presentation
     IOPMAssertionID                 mnAssertionID;
+
+    NSRect                          maFrameRect;
+    NSRect                          maContentRect;
+
+    bool                            mbGeometryDidChange;
+
+    int                             mnBlinkCursorDelay;
 
 public:
     /** Constructor
@@ -107,7 +110,7 @@ public:
 
     virtual SalGraphics*        AcquireGraphics() override;
     virtual void                ReleaseGraphics( SalGraphics* pGraphics ) override;
-    virtual bool                PostEvent(ImplSVEvent* pData) override;
+    virtual bool                PostEvent(std::unique_ptr<ImplSVEvent> pData) override;
     virtual void                SetTitle( const OUString& rTitle ) override;
     virtual void                SetIcon( sal_uInt16 nIcon ) override;
     virtual void                SetRepresentedURL( const OUString& ) override;
@@ -152,7 +155,7 @@ public:
     // set clip region to none (-> rectangular windows, normal state)
     virtual void ResetClipRegion() override;
     // start setting the clipregion consisting of nRects rectangles
-    virtual void BeginSetClipRegion( sal_uLong nRects ) override;
+    virtual void BeginSetClipRegion( sal_uInt32 nRects ) override;
     // add a rectangle to the clip region
     virtual void UnionClipRegion( long nX, long nY, long nWidth, long nHeight ) override;
     // done setting up the clipregion
@@ -163,8 +166,7 @@ public:
     // trigger painting of the window
     void SendPaintEvent( const tools::Rectangle* pRect = nullptr );
 
-    static bool isAlive( const AquaSalFrame* pFrame )
-    { return GetSalData()->maFrameCheck.find( pFrame ) != GetSalData()->maFrameCheck.end(); }
+    static inline bool isAlive( const AquaSalFrame* pFrame );
 
     static AquaSalFrame* GetCaptureFrame() { return s_pCaptureFrame; }
 
@@ -183,26 +185,39 @@ public:
     void VCLToCocoa( NSPoint& io_rPoint, bool bRelativeToScreen = true );
     void CocoaToVCL( NSPoint& io_Point, bool bRelativeToScreen = true );
 
-    NSCursor* getCurrentCursor() const;
+    NSCursor* getCurrentCursor();
 
     CGMutablePathRef getClipPath() const { return mrClippingPath; }
 
     // called by VCL_NSApplication to indicate screen settings have changed
     void screenParametersChanged();
 
- private: // methods
+protected:
+    SalEvent PreparePosSize(long nX, long nY, long nWidth, long nHeight, sal_uInt16 nFlags);
+
+private: // methods
     /** do things on initial show (like centering on parent or on screen)
     */
     void initShow();
 
     void initWindowAndView();
 
- private: // data
-    static AquaSalFrame*                   s_pCaptureFrame;
+    void doShowFullScreen( bool bFullScreen, sal_Int32 nDisplay );
+
+    void doResetClipRegion();
+
+private: // data
+    static AquaSalFrame*       s_pCaptureFrame;
 
     AquaSalFrame( const AquaSalFrame& ) = delete;
     AquaSalFrame& operator=(const AquaSalFrame&) = delete;
 };
+
+inline bool AquaSalFrame::isAlive( const AquaSalFrame* pFrame )
+{
+    AquaSalInstance *pInst = GetSalData()->mpInstance;
+    return pInst && pInst->isFrameAlive( pFrame );
+}
 
 #endif // INCLUDED_VCL_INC_OSX_SALFRAME_H
 

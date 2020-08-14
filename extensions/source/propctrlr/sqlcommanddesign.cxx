@@ -19,7 +19,7 @@
 
 #include "sqlcommanddesign.hxx"
 #include "formstrings.hxx"
-#include "formresid.hrc"
+#include <command.hrc>
 #include "modulepcr.hxx"
 #include "unourl.hxx"
 
@@ -37,7 +37,6 @@
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 
-#include <tools/resary.hxx>
 #include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
 
@@ -114,29 +113,29 @@ namespace pcr
     {
         OSL_ENSURE( m_xDesigner.is() && ( Event.Source == m_xDesigner ), "SQLCommandDesigner::propertyChange: where did this come from?" );
 
-        if ( m_xDesigner.is() && ( Event.Source == m_xDesigner ) )
+        if ( !(m_xDesigner.is() && ( Event.Source == m_xDesigner )) )
+            return;
+
+        try
         {
-            try
+            if ( PROPERTY_ACTIVECOMMAND == Event.PropertyName )
             {
-                if ( PROPERTY_ACTIVECOMMAND == Event.PropertyName )
-                {
-                    OUString sCommand;
-                    OSL_VERIFY( Event.NewValue >>= sCommand );
-                    m_xObjectAdapter->setSQLCommand( sCommand );
-                }
-                else if ( PROPERTY_ESCAPE_PROCESSING == Event.PropertyName )
-                {
-                    bool bEscapeProcessing( false );
-                    OSL_VERIFY( Event.NewValue >>= bEscapeProcessing );
-                    m_xObjectAdapter->setEscapeProcessing( bEscapeProcessing );
-                }
+                OUString sCommand;
+                OSL_VERIFY( Event.NewValue >>= sCommand );
+                m_xObjectAdapter->setSQLCommand( sCommand );
             }
-            catch( const RuntimeException& ) { throw; }
-            catch( const Exception& )
+            else if ( PROPERTY_ESCAPE_PROCESSING == Event.PropertyName )
             {
-                // not allowed to leave, so silence it
-                DBG_UNHANDLED_EXCEPTION();
+                bool bEscapeProcessing( false );
+                OSL_VERIFY( Event.NewValue >>= bEscapeProcessing );
+                m_xObjectAdapter->setEscapeProcessing( bEscapeProcessing );
             }
+        }
+        catch( const RuntimeException& ) { throw; }
+        catch( const Exception& )
+        {
+            // not allowed to leave, so silence it
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
     }
 
@@ -195,8 +194,8 @@ namespace pcr
         try
         {
             // activate the frame for this component
-            Reference< XFrame >     xFrame( m_xDesigner->getFrame(), UNO_QUERY_THROW );
-            Reference< XWindow >    xWindow( xFrame->getContainerWindow(), UNO_QUERY_THROW );
+            Reference< XFrame >     xFrame( m_xDesigner->getFrame(), css::uno::UNO_SET_THROW );
+            Reference< XWindow >    xWindow( xFrame->getContainerWindow(), css::uno::UNO_SET_THROW );
             Reference< XTopWindow > xTopWindow( xWindow, UNO_QUERY_THROW );
 
             xTopWindow->toFront();
@@ -204,7 +203,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
     }
 
@@ -229,7 +228,7 @@ namespace pcr
             aArgs[1].Name  = PROPERTY_COMMAND;
             aArgs[1].Value <<= m_xObjectAdapter->getSQLCommand();
             aArgs[2].Name  = PROPERTY_COMMANDTYPE;
-            aArgs[2].Value <<= (sal_Int32)CommandType::COMMAND;
+            aArgs[2].Value <<= sal_Int32(CommandType::COMMAND);
             aArgs[3].Name  = PROPERTY_ESCAPE_PROCESSING;
             aArgs[3].Value <<= m_xObjectAdapter->getEscapeProcessing();
 
@@ -261,15 +260,13 @@ namespace pcr
             Reference< XTitle> xTitle(xQueryDesign,UNO_QUERY);
             if ( xTitle.is() )
             {
-                PcrRes aResId(RID_RSC_ENUM_COMMAND_TYPE);
-                ResStringArray aResList(aResId);
-                OUString sDisplayName = aResList.GetString(CommandType::COMMAND);
-                xTitle->setTitle( sDisplayName );
+                OUString sDisplayName = PcrRes(RID_RSC_ENUM_COMMAND_TYPE[CommandType::COMMAND]);
+                xTitle->setTitle(sDisplayName);
             }
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
             m_xDesigner.clear();
         }
         osl_atomic_decrement(&m_refCount);
@@ -285,14 +282,14 @@ namespace pcr
         {
             Reference< XDesktop2 > xDesktop = Desktop::create(m_xContext);
 
-            Reference< XFrames > xDesktopFramesCollection( xDesktop->getFrames(), UNO_QUERY_THROW );
+            Reference< XFrames > xDesktopFramesCollection( xDesktop->getFrames(), css::uno::UNO_SET_THROW );
             xFrame = xDesktop->findFrame( "_blank", FrameSearchFlag::CREATE );
             OSL_ENSURE( xFrame.is(), "SQLCommandDesigner::impl_createEmptyParentlessTask_nothrow: could not create an empty frame!" );
             xDesktopFramesCollection->remove( xFrame );
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
         return xFrame;
     }
@@ -333,7 +330,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
 
         m_xDesigner.clear();
@@ -350,7 +347,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
         return bAllow;
     }

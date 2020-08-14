@@ -21,7 +21,6 @@
 #define INCLUDED_FORMS_SOURCE_INC_URLTRANSFORMER_HXX
 
 #include <com/sun/star/util/XURLTransformer.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/URL.hpp>
 
@@ -41,23 +40,23 @@ namespace frm
     public:
         UrlTransformer( const css::uno::Reference< css::uno::XComponentContext >& _rxORB );
 
-        /** returns an URL object for the given URL string
+        /** returns a URL object for the given URL string
         */
         css::util::URL
             getStrictURL( const OUString& _rURL ) const;
 
-        /** returns an URL object for the given URL ASCII string
+        /** returns a URL object for the given URL ASCII string
         */
         css::util::URL
-            getStrictURLFromAscii( const sal_Char* _pAsciiURL ) const;
+            getStrictURLFromAscii( const char* _pAsciiURL ) const;
 
         /** parses a given URL smartly, with a protocol given by ASCII string
         */
         void
-            parseSmartWithAsciiProtocol( css::util::URL& _rURL, const sal_Char* _pAsciiURL ) const;
+            parseSmartWithAsciiProtocol( css::util::URL& _rURL, const char* _pAsciiURL ) const;
 
     private:
-        /** ensures that we have an URLTransformer instance in <member>m_xTransformer</member>
+        /** ensures that we have a URLTransformer instance in <member>m_xTransformer</member>
 
             @return
                 <TRUE/> if and only if m_xTransformer is not <NULL/>

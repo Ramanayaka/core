@@ -20,14 +20,12 @@
 #ifndef INCLUDED_SW_INC_SWAPPLETIMPL_HXX
 #define INCLUDED_SW_INC_SWAPPLETIMPL_HXX
 
-#include <config_features.h>
+#include <config_java.h>
 
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
-#include <sfx2/frmhtmlw.hxx>
-#include <vcl/wrkwin.hxx>
-#include <sot/storage.hxx>
 #include <svl/itemset.hxx>
 #include <svl/ownlist.hxx>
+
+namespace com::sun::star::embed { class XEmbeddedObject; }
 
 enum class SwHtmlOptType {
     IGNORE = 0,
@@ -48,7 +46,7 @@ class SwApplet_Impl
 public:
     static SwHtmlOptType GetOptionType( const OUString& rName, bool bApplet );
     SwApplet_Impl( SfxItemPool& rPool );
-    SwApplet_Impl( SfxItemSet& rSet ): aItemSet ( rSet) {}
+    SwApplet_Impl( SfxItemSet const & rSet ): aItemSet ( rSet) {}
     ~SwApplet_Impl();
     void CreateApplet( const OUString& rCode, const OUString& rName,
                        bool bMayScript, const OUString& rCodeBase,
@@ -58,7 +56,7 @@ public:
     void AppendParam( const OUString& rName, const OUString& rValue );
 #endif
     void FinishApplet();
-    const css::uno::Reference < css::embed::XEmbeddedObject >& GetApplet() { return xApplet; }
+    const css::uno::Reference < css::embed::XEmbeddedObject >& GetApplet() const { return xApplet; }
     SfxItemSet& GetItemSet() { return aItemSet; }
     const OUString& GetAltText() const { return sAlt; }
     void SetAltText( const OUString& rAlt ) {sAlt = rAlt;}

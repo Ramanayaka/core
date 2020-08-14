@@ -22,18 +22,15 @@
 
 #include <tools/gen.hxx>
 #include <tools/mapunit.hxx>
-#include "fapihelper.hxx"
 #include "xladdress.hxx"
 #include "xlstyle.hxx"
 #include "xistream.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace drawing { class XShape; }
     namespace awt { class XControlModel; }
     namespace script { struct ScriptEventDescriptor; }
-} } }
-
-namespace tools { class Rectangle; }
+}
 
 // Constants and Enumerations =================================================
 
@@ -432,7 +429,7 @@ public:
     /** Tries to extract an Excel macro name from the passed macro descriptor. */
     static OUString     ExtractFromMacroDescriptor(
                             const css::script::ScriptEventDescriptor& rDescriptor,
-                            XclTbxEventType eEventType, SfxObjectShell* pShell );
+                            XclTbxEventType eEventType );
 };
 
 #endif

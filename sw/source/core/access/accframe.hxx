@@ -26,14 +26,11 @@
 #include <rtl/ustring.hxx>
 
 #include <list>
-#include <accfrmobj.hxx>
+#include "accfrmobj.hxx"
 
 class SwAccessibleMap;
 class SwFrame;
 class SwViewShell;
-namespace sw { namespace access {
-    class SwAccessibleChild;
-}}
 
 // Any method of this class must be called with an acquired solar mutex!
 
@@ -76,9 +73,9 @@ protected:
                              std::list< sw::access::SwAccessibleChild >& rChildren,
                              bool bInPagePreview );
 
-    bool IsEditable( SwViewShell *pVSh ) const;
+    bool IsEditable( SwViewShell const *pVSh ) const;
 
-    bool IsOpaque( SwViewShell *pVSh ) const;
+    bool IsOpaque( SwViewShell const *pVSh ) const;
 
 public:
     bool IsShowing( const SwAccessibleMap& rAccMap,

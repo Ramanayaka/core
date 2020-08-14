@@ -20,23 +20,23 @@
 
 #include <new>
 #include <memory>
+#include <algorithm>
 #include <sal/types.h>
-#include <sal/macros.h>
 #include <osl/endian.h>
-#include <rtl/alloc.h>
-#include "rtl/string.hxx"
-#include "rtl/ustring.hxx"
+#include <rtl/string.hxx>
+#include <rtl/ustring.hxx>
 
 #include "reflwrit.hxx"
-#include "registry/version.h"
-#include "registry/writer.h"
+#include <registry/refltype.hxx>
+#include <registry/version.h>
+#include <registry/writer.h>
 
 #include "reflcnst.hxx"
 
 
 namespace {
 
-inline OString toByteString(rtl_uString const * str) {
+OString toByteString(rtl_uString const * str) {
     return OString(
         str->buffer, str->length, RTL_TEXTENCODING_UTF8,
         OUSTRING_TO_OSTRING_CVTFLAGS);
@@ -44,7 +44,7 @@ inline OString toByteString(rtl_uString const * str) {
 
 }
 
-static sal_Unicode NULL_WSTRING[1] = { 0 };
+const sal_Unicode NULL_WSTRING[1] = { 0 };
 
 #define BLOP_OFFSET_MAGIC       0
 #define BLOP_OFFSET_SIZE        (BLOP_OFFSET_MAGIC + sizeof(sal_uInt32))
@@ -80,7 +80,7 @@ sal_uInt32 writeString(sal_uInt8* buffer, const sal_Unicode* v)
 
     for (i = 0; i < len; i++)
     {
-        buff += writeUINT16(buff, (sal_uInt16) v[i]);
+        buff += writeUINT16(buff, static_cast<sal_uInt16>(v[i]));
     }
 
     return (buff - buffer);
@@ -103,7 +103,7 @@ sal_uInt32 readString(const sal_uInt8* buffer, sal_Unicode* v, sal_uInt32 maxSiz
 
         buff += readUINT16(buff, aChar);
 
-        v[i] = (sal_Unicode) aChar;
+        v[i] = static_cast<sal_Unicode>(aChar);
     }
 
     v[len - 1] = L'\0';
@@ -165,6 +165,7 @@ sal_uInt32 writeDouble(sal_uInt8* buffer, double v)
 
 **************************************************************************/
 
+namespace {
 
 /**************************************************************************
 
@@ -174,28 +175,27 @@ sal_uInt32 writeDouble(sal_uInt8* buffer, double v)
 
 struct CPInfo
 {
-    CPInfoTag   m_tag;
     union
     {
-        const sal_Char*     aUtf8;
+        const char*         aUtf8;
         RTUik*              aUik;
         RTConstValueUnion   aConst;
     } m_value;
-
-    sal_uInt16      m_index;
     struct CPInfo*  m_next;
+    CPInfoTag       m_tag;
+    sal_uInt16      m_index;
 
     CPInfo(CPInfoTag tag, struct CPInfo* prev);
 
-    sal_uInt32 getBlopSize();
+    sal_uInt32 getBlopSize() const;
 
     sal_uInt32 toBlop(sal_uInt8* buffer);
 };
 
 CPInfo::CPInfo(CPInfoTag tag, struct CPInfo* prev)
-    : m_tag(tag)
+    : m_next(nullptr)
+    , m_tag(tag)
     , m_index(0)
-    , m_next(nullptr)
 {
     if (prev)
     {
@@ -204,7 +204,7 @@ CPInfo::CPInfo(CPInfoTag tag, struct CPInfo* prev)
     }
 }
 
-sal_uInt32 CPInfo::getBlopSize()
+sal_uInt32 CPInfo::getBlopSize() const
 {
     sal_uInt32 size = sizeof(sal_uInt32) /* size */ + sizeof(sal_uInt16) /* tag */;
 
@@ -262,12 +262,12 @@ sal_uInt32 CPInfo::toBlop(sal_uInt8* buffer)
     sal_uInt8* buff = buffer;
 
     buff += writeUINT32(buff, getBlopSize());
-    buff += writeUINT16(buff, (sal_uInt16) m_tag);
+    buff += writeUINT16(buff, static_cast<sal_uInt16>(m_tag));
 
     switch (m_tag)
     {
         case CP_TAG_CONST_BOOL:
-            buff += writeBYTE(buff, (sal_uInt8) m_value.aConst.aBool);
+            buff += writeBYTE(buff, static_cast<sal_uInt8>(m_value.aConst.aBool));
             break;
         case CP_TAG_CONST_BYTE:
             buff += writeBYTE(
@@ -376,11 +376,11 @@ void FieldEntry::setData(const OString&    name,
                          RTValueType        constValueType,
                          RTConstValueUnion  constValue)
 {
-    sal_Unicode * newValue = nullptr;
+    std::unique_ptr<sal_Unicode[]> newValue;
     if (constValueType == RT_TYPE_STRING && constValue.aString != nullptr) {
         sal_Int32 n = rtl_ustr_getLength(constValue.aString) + 1;
-        newValue = new sal_Unicode[n];
-        memcpy(newValue, constValue.aString, n * sizeof (sal_Unicode));
+        newValue.reset(new sal_Unicode[n]);
+        memcpy(newValue.get(), constValue.aString, n * sizeof (sal_Unicode));
     }
 
     m_name = name;
@@ -406,7 +406,7 @@ void FieldEntry::setData(const OString&    name,
             m_constValue.aString = NULL_WSTRING;
         else
         {
-            m_constValue.aString = newValue;
+            m_constValue.aString = newValue.release();
         }
     }
     else
@@ -518,7 +518,7 @@ public:
                  sal_uInt16        excCount,
                  const OString&    doku);
 
-    void setExcName(sal_uInt16 excIndex, const OString& name);
+    void setExcName(sal_uInt16 excIndex, const OString& name) const;
 
 protected:
 
@@ -550,7 +550,7 @@ void MethodEntry::setData(const OString&    name,
     reallocExcs(excCount);
 }
 
-void MethodEntry::setExcName(sal_uInt16 excIndex, const OString& name)
+void MethodEntry::setExcName(sal_uInt16 excIndex, const OString& name) const
 {
     if (excIndex < m_excCount)
     {
@@ -570,7 +570,7 @@ void MethodEntry::reallocParams(sal_uInt16 size)
     if (m_paramCount)
     {
         sal_uInt16 i;
-        sal_uInt16 mn = size < m_paramCount ? size : m_paramCount;
+        sal_uInt16 mn = std::min(size, m_paramCount);
 
         for (i = 0; i < mn; i++)
         {
@@ -594,7 +594,7 @@ void MethodEntry::reallocExcs(sal_uInt16 size)
         newExcNames = nullptr;
 
     sal_uInt16 i;
-    sal_uInt16 mn = size < m_excCount ? size : m_excCount;
+    sal_uInt16 mn = std::min(size, m_excCount);
 
     for (i = 0; i < mn; i++)
     {
@@ -622,8 +622,8 @@ public:
     RTTypeClass         m_typeClass;
     OString             m_typeName;
     sal_uInt16          m_nSuperTypes;
-    OString*            m_superTypeNames;
-    RTUik*              m_pUik;
+    std::unique_ptr<OString[]>
+                        m_superTypeNames;
     OString             m_doku;
     OString             m_fileName;
     sal_uInt16          m_fieldCount;
@@ -649,7 +649,7 @@ public:
 
     ~TypeWriter();
 
-    void setSuperType(sal_uInt16 index, OString const & name);
+    void setSuperType(sal_uInt16 index, OString const & name) const;
 
     void createBlop(); // throws std::bad_alloc
 };
@@ -671,7 +671,6 @@ TypeWriter::TypeWriter(typereg_Version version,
             RTTypeClass | (published ? RT_TYPE_PUBLISHED : 0)))
      , m_typeName(typeName)
     , m_nSuperTypes(superTypeCount)
-    , m_pUik(nullptr)
     , m_doku(documentation)
     , m_fileName(fileName)
     , m_fieldCount(fieldCount)
@@ -684,10 +683,7 @@ TypeWriter::TypeWriter(typereg_Version version,
 {
     if (m_nSuperTypes > 0)
     {
-        m_superTypeNames = new OString[m_nSuperTypes];
-    } else
-    {
-        m_superTypeNames = nullptr;
+        m_superTypeNames.reset( new OString[m_nSuperTypes] );
     }
 
     if (m_fieldCount)
@@ -702,8 +698,6 @@ TypeWriter::TypeWriter(typereg_Version version,
 
 TypeWriter::~TypeWriter()
 {
-    delete[] m_superTypeNames;
-
     if (m_fieldCount)
         delete[] m_fields;
 
@@ -712,11 +706,9 @@ TypeWriter::~TypeWriter()
 
     if (m_referenceCount)
         delete[] m_references;
-
-    delete m_pUik;
 }
 
-void TypeWriter::setSuperType(sal_uInt16 index, OString const & name)
+void TypeWriter::setSuperType(sal_uInt16 index, OString const & name) const
 {
     m_superTypeNames[index] = name;
 }
@@ -725,9 +717,9 @@ void TypeWriter::createBlop()
 {
     //TODO: Fix memory leaks that occur when std::bad_alloc is thrown
 
-    sal_uInt8*  pBlopFields         = nullptr;
-    sal_uInt8*  pBlopMethods        = nullptr;
-    sal_uInt8*  pBlopReferences     = nullptr;
+    std::unique_ptr<sal_uInt8[]>  pBlopFields;
+    std::unique_ptr<sal_uInt8[]>  pBlopMethods;
+    std::unique_ptr<sal_uInt8[]>  pBlopReferences;
     sal_uInt8*  pBuffer             = nullptr;
     sal_uInt32  blopFieldsSize      = 0;
     sal_uInt32  blopMethodsSize     = 0;
@@ -735,8 +727,7 @@ void TypeWriter::createBlop()
 
     CPInfo  root(CP_TAG_INVALID, nullptr);
     sal_uInt16  cpIndexThisName = 0;
-    sal_uInt16* cpIndexSuperNames = nullptr;
-    sal_uInt16  cpIndexUik = 0;
+    std::unique_ptr<sal_uInt16[]> cpIndexSuperNames;
     sal_uInt16  cpIndexDoku = 0;
     sal_uInt16  cpIndexFileName = 0;
     CPInfo* pInfo = nullptr;
@@ -763,7 +754,7 @@ void TypeWriter::createBlop()
     {
         blopSize += m_nSuperTypes * entrySize;
 
-        cpIndexSuperNames = new sal_uInt16[m_nSuperTypes];
+        cpIndexSuperNames.reset(new sal_uInt16[m_nSuperTypes]);
 
         for (sal_uInt32 i=0; i < m_nSuperTypes; i++)
         {
@@ -771,14 +762,6 @@ void TypeWriter::createBlop()
             pInfo->m_value.aUtf8 = m_superTypeNames[i].getStr();
             cpIndexSuperNames[i] = pInfo->m_index;
         }
-    }
-
-    // create CP entry for uik
-    if (m_pUik != nullptr)
-    {
-        pInfo = new CPInfo(CP_TAG_UIK, pInfo);
-        pInfo->m_value.aUik = m_pUik;
-        cpIndexUik = pInfo->m_index;
     }
 
     // create CP entry for doku
@@ -813,8 +796,8 @@ void TypeWriter::createBlop()
 
         blopSize += blopFieldsSize;
 
-        pBlopFields = new sal_uInt8[blopFieldsSize];
-        pBuffer = pBlopFields;
+        pBlopFields.reset(new sal_uInt8[blopFieldsSize]);
+        pBuffer = pBlopFields.get();
 
         pBuffer += writeUINT16(pBuffer, BLOP_FIELD_N_ENTRIES);
 
@@ -846,7 +829,7 @@ void TypeWriter::createBlop()
 
             if (m_fields[i].m_constValueType != RT_TYPE_NONE)
             {
-                pInfo = new CPInfo((CPInfoTag)m_fields[i].m_constValueType, pInfo);
+                pInfo = new CPInfo(static_cast<CPInfoTag>(m_fields[i].m_constValueType), pInfo);
                 pInfo->m_value.aConst = m_fields[i].m_constValue;
                 cpIndexValue = pInfo->m_index;
             }
@@ -885,8 +868,7 @@ void TypeWriter::createBlop()
 
         for (sal_uInt16 i = 0; i < m_methodCount; i++)
         {
-            pMethodEntrySize[i] = (sal_uInt16)
-                ( blopMethodEntrySize +                                 // header
+            pMethodEntrySize[i] = static_cast<sal_uInt16>( blopMethodEntrySize +                                 // header
                   sizeof(sal_uInt16) +                                  // parameterCount
                   (m_methods[i].m_paramCount * blopParamEntrySize) +    // exceptions
                   sizeof(sal_uInt16) +                                  // exceptionCount
@@ -895,11 +877,11 @@ void TypeWriter::createBlop()
             blopMethodsSize += pMethodEntrySize[i];
         }
 
-        pBlopMethods = new sal_uInt8[blopMethodsSize];
+        pBlopMethods.reset(new sal_uInt8[blopMethodsSize]);
 
         blopSize += blopMethodsSize;
 
-        pBuffer = pBlopMethods;
+        pBuffer = pBlopMethods.get();
 
         pBuffer += writeUINT16(pBuffer, BLOP_METHOD_N_ENTRIES);
         pBuffer += writeUINT16(pBuffer, BLOP_PARAM_N_ENTRIES );
@@ -998,8 +980,8 @@ void TypeWriter::createBlop()
 
         blopSize += blopReferenceSize;
 
-        pBlopReferences = new sal_uInt8[blopReferenceSize];
-        pBuffer = pBlopReferences;
+        pBlopReferences.reset(new sal_uInt8[blopReferenceSize]);
+        pBuffer = pBlopReferences.get();
 
         pBuffer += writeUINT16(pBuffer, BLOP_REFERENCE_N_ENTRIES);
 
@@ -1061,10 +1043,10 @@ void TypeWriter::createBlop()
     pBuffer += writeUINT16(pBuffer, majorVersion);
     pBuffer += writeUINT16(pBuffer, BLOP_HEADER_N_ENTRIES);
 
-    pBuffer += writeUINT16(pBuffer, (sal_uInt16)RT_UNO_IDL);
-    pBuffer += writeUINT16(pBuffer, (sal_uInt16)m_typeClass);
+    pBuffer += writeUINT16(pBuffer, sal_uInt16(RT_UNO_IDL));
+    pBuffer += writeUINT16(pBuffer, static_cast<sal_uInt16>(m_typeClass));
     pBuffer += writeUINT16(pBuffer, cpIndexThisName);
-    pBuffer += writeUINT16(pBuffer, cpIndexUik);
+    pBuffer += writeUINT16(pBuffer, 0); // cpIndexUik
     pBuffer += writeUINT16(pBuffer, cpIndexDoku);
     pBuffer += writeUINT16(pBuffer, cpIndexFileName);
 
@@ -1076,7 +1058,7 @@ void TypeWriter::createBlop()
         {
             pBuffer += writeUINT16(pBuffer, cpIndexSuperNames[i]);
         }
-        delete[] cpIndexSuperNames;
+        cpIndexSuperNames.reset();
     }
 
     pBuffer += writeUINT16(pBuffer, cpCount);
@@ -1105,22 +1087,19 @@ void TypeWriter::createBlop()
     };
 
     // write fields
-    writeList(m_fieldCount, pBlopFields, blopFieldsSize);
+    writeList(m_fieldCount, pBlopFields.get(), blopFieldsSize);
 
     // write methods
-    writeList(m_methodCount, pBlopMethods, blopMethodsSize);
+    writeList(m_methodCount, pBlopMethods.get(), blopMethodsSize);
 
     // write references
-    writeList(m_referenceCount, pBlopReferences, blopReferenceSize);
-
-    delete[] pBlopFields;
-    delete[] pBlopMethods;
-    delete[] pBlopReferences;
+    writeList(m_referenceCount, pBlopReferences.get(), blopReferenceSize);
 
     m_blop.reset( blop );
     m_blopSize = blopSize;
 }
 
+} // unnamed namespace
 
 /**************************************************************************
 
@@ -1161,10 +1140,10 @@ sal_Bool TYPEREG_CALLTYPE typereg_writer_setFieldData(
 
 static void TYPEREG_CALLTYPE setFieldData(TypeWriterImpl    hEntry,
                                           sal_uInt16        index,
-                                          rtl_uString*      name,
-                                          rtl_uString*      typeName,
-                                          rtl_uString*      doku,
-                                          rtl_uString*      fileName,
+                                          rtl_uString const * name,
+                                          rtl_uString const * typeName,
+                                          rtl_uString const * doku,
+                                          rtl_uString const * fileName,
                                           RTFieldAccess     access,
                                           RTValueType       valueType,
                                           RTConstValueUnion constValue)
@@ -1192,12 +1171,12 @@ sal_Bool TYPEREG_CALLTYPE typereg_writer_setMethodData(
 }
 
 sal_Bool TYPEREG_CALLTYPE typereg_writer_setMethodParameterData(
-    void * handle, sal_uInt16 methodIndex, sal_uInt16 parameterIndex,
+    void const * handle, sal_uInt16 methodIndex, sal_uInt16 parameterIndex,
     RTParamMode flags, rtl_uString const * name, rtl_uString const * typeName)
     SAL_THROW_EXTERN_C()
 {
     try {
-        static_cast< TypeWriter * >(handle)->
+        static_cast< TypeWriter const * >(handle)->
             m_methods[methodIndex].m_params[parameterIndex].setData(
                 toByteString(typeName), toByteString(name), flags);
     } catch (std::bad_alloc &) {
@@ -1207,12 +1186,12 @@ sal_Bool TYPEREG_CALLTYPE typereg_writer_setMethodParameterData(
 }
 
 sal_Bool TYPEREG_CALLTYPE typereg_writer_setMethodExceptionTypeName(
-    void * handle, sal_uInt16 methodIndex, sal_uInt16 exceptionIndex,
+    void const * handle, sal_uInt16 methodIndex, sal_uInt16 exceptionIndex,
     rtl_uString const * typeName)
     SAL_THROW_EXTERN_C()
 {
     try {
-        static_cast< TypeWriter * >(handle)->m_methods[methodIndex].setExcName(
+        static_cast< TypeWriter const * >(handle)->m_methods[methodIndex].setExcName(
             exceptionIndex, toByteString(typeName));
     } catch (std::bad_alloc &) {
         return false;
@@ -1285,11 +1264,11 @@ void TYPEREG_CALLTYPE typereg_writer_destroy(void * handle) SAL_THROW_EXTERN_C()
 }
 
 sal_Bool TYPEREG_CALLTYPE typereg_writer_setSuperTypeName(
-    void * handle, sal_uInt16 index, rtl_uString const * typeName)
+    void const * handle, sal_uInt16 index, rtl_uString const * typeName)
     SAL_THROW_EXTERN_C()
 {
     try {
-        static_cast< TypeWriter * >(handle)->setSuperType(
+        static_cast< TypeWriter const * >(handle)->setSuperType(
             index, toByteString(typeName));
     } catch (std::bad_alloc &) {
         return false;
@@ -1298,15 +1277,15 @@ sal_Bool TYPEREG_CALLTYPE typereg_writer_setSuperTypeName(
 }
 
 static TypeWriterImpl TYPEREG_CALLTYPE createEntry(
-    RTTypeClass typeClass, rtl_uString * typeName, rtl_uString * superTypeName,
-    sal_uInt16 fieldCount, sal_uInt16 methodCount, sal_uInt16 referenceCount)
+    RTTypeClass typeClass, rtl_uString const * typeName, rtl_uString const * superTypeName,
+    sal_uInt16 fieldCount)
 {
     OUString empty;
     sal_uInt16 superTypeCount = rtl_uString_getLength(superTypeName) == 0
         ? 0 : 1;
     TypeWriterImpl t = typereg_writer_create(
         TYPEREG_VERSION_0, empty.pData, empty.pData, typeClass, false, typeName,
-        superTypeCount, fieldCount, methodCount, referenceCount);
+        superTypeCount, fieldCount, 0/*methodCount*/, 0/*referenceCount*/);
     if (superTypeCount > 0) {
         typereg_writer_setSuperTypeName(t, 0, superTypeName);
     }
@@ -1316,17 +1295,15 @@ static TypeWriterImpl TYPEREG_CALLTYPE createEntry(
 }
 
 RegistryTypeWriter::RegistryTypeWriter(RTTypeClass               RTTypeClass,
-                                              const rtl::OUString&    typeName,
-                                              const rtl::OUString&    superTypeName,
+                                              const OUString&    typeName,
+                                              const OUString&    superTypeName,
                                               sal_uInt16                fieldCount)
     : m_hImpl(nullptr)
 {
     m_hImpl = createEntry(RTTypeClass,
                                   typeName.pData,
                                   superTypeName.pData,
-                                  fieldCount,
-                                  0,
-                                  0);
+                                  fieldCount);
 }
 
 RegistryTypeWriter::~RegistryTypeWriter()
@@ -1335,10 +1312,10 @@ RegistryTypeWriter::~RegistryTypeWriter()
 }
 
 void RegistryTypeWriter::setFieldData( sal_uInt16              index,
-                                              const rtl::OUString&    name,
-                                              const rtl::OUString&    typeName,
-                                              const rtl::OUString&    doku,
-                                              const rtl::OUString&    fileName,
+                                              const OUString&    name,
+                                              const OUString&    typeName,
+                                              const OUString&    doku,
+                                              const OUString&    fileName,
                                               RTFieldAccess           access,
                                               const RTConstValue&     constValue)
 {

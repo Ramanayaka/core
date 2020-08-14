@@ -7,32 +7,35 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "test/bootstrapfixture.hxx"
+#include <config_features.h>
 
-#include <cppunit/TestFixture.h>
+#include <test/bootstrapfixture.hxx>
+
 #include <cppunit/extensions/HelperMacros.h>
 
-#include "sfx2/app.hxx"
-#include "svl/itempool.hxx"
-#include "editeng/eerdll.hxx"
-#include "editeng/eerdll2.hxx"
-#include "editeng/editeng.hxx"
-#include "editeng/eeitem.hxx"
-#include "editeng/editids.hrc"
-#include "editeng/editdoc.hxx"
-#include "editeng/svxacorr.hxx"
-#include "editeng/unofield.hxx"
-#include "editeng/wghtitem.hxx"
-#include "editeng/postitem.hxx"
-#include "editeng/section.hxx"
-#include "editeng/editobj.hxx"
-#include "editeng/flditem.hxx"
-#include "editeng/udlnitem.hxx"
-#include "svl/srchitem.hxx"
+#include <editdoc.hxx>
+
+#include <sfx2/app.hxx>
+#include <svl/itempool.hxx>
+#include <editeng/editeng.hxx>
+#include <editeng/eeitem.hxx>
+#include <editeng/lspcitem.hxx>
+#include <editeng/svxacorr.hxx>
+#include <editeng/unofield.hxx>
+#include <editeng/wghtitem.hxx>
+#include <editeng/postitem.hxx>
+#include <editeng/section.hxx>
+#include <editeng/editobj.hxx>
+#include <editeng/flditem.hxx>
+#include <editeng/udlnitem.hxx>
+#include <svl/srchitem.hxx>
+#include <editeng/fontitem.hxx>
+#include <editeng/fhgtitem.hxx>
 
 #include <com/sun/star/text/textfield/Type.hpp>
 
 #include <memory>
+#include <editeng/outliner.hxx>
 
 using namespace com::sun::star;
 
@@ -45,6 +48,11 @@ public:
 
     virtual void setUp() override;
     virtual void tearDown() override;
+
+#if HAVE_MORE_FONTS
+    /// Test text portions position when percentage line spacing is set
+    void testLineSpacing();
+#endif
 
     void testConstruction();
 
@@ -85,7 +93,16 @@ public:
 
     void testSectionAttributes();
 
+    void testLargeParaCopyPaste();
+
+    void testTransliterate();
+
+    DECL_STATIC_LINK( Test, CalcFieldValueHdl, EditFieldInfo*, void );
+
     CPPUNIT_TEST_SUITE(Test);
+#if HAVE_MORE_FONTS
+    CPPUNIT_TEST(testLineSpacing);
+#endif
     CPPUNIT_TEST(testConstruction);
     CPPUNIT_TEST(testUnoTextFields);
     CPPUNIT_TEST(testAutocorrect);
@@ -100,6 +117,8 @@ public:
     CPPUNIT_TEST(testParaBoldItalicCopyPaste);
     CPPUNIT_TEST(testParaStartCopyPaste);
     CPPUNIT_TEST(testSectionAttributes);
+    CPPUNIT_TEST(testLargeParaCopyPaste);
+    CPPUNIT_TEST(testTransliterate);
     CPPUNIT_TEST_SUITE_END();
 
 private:
@@ -112,7 +131,7 @@ void Test::setUp()
 {
     test::BootstrapFixture::setUp();
 
-    mpItemPool = new EditEngineItemPool(true);
+    mpItemPool = new EditEngineItemPool();
 
     SfxApplication::GetOrCreate();
 }
@@ -123,25 +142,99 @@ void Test::tearDown()
     test::BootstrapFixture::tearDown();
 }
 
+#if HAVE_MORE_FONTS
+void Test::testLineSpacing()
+{
+    // Create EditEngine's instance
+    EditEngine aEditEngine(mpItemPool);
+
+    if(aEditEngine.GetRefDevice()->GetDPIY() != 96
+        || aEditEngine.GetRefDevice()->GetDPIScaleFactor() != 1.0)
+        return;
+
+    // Get EditDoc for current EditEngine's instance
+    EditDoc &rDoc = aEditEngine.GetEditDoc();
+
+    // Initially no text should be there
+    CPPUNIT_ASSERT_EQUAL(sal_uLong(0), rDoc.GetTextLen());
+    CPPUNIT_ASSERT_EQUAL(OUString(), rDoc.GetParaAsString(sal_Int32(0)));
+
+    // Set initial text
+    OUString aText = "This is multi-line paragraph";
+
+    sal_Int32 aTextLen = aText.getLength();
+    aEditEngine.SetText(aText);
+
+    // Assert changes - text insertion
+    CPPUNIT_ASSERT_EQUAL(sal_uLong(aTextLen), rDoc.GetTextLen());
+    CPPUNIT_ASSERT_EQUAL(aText, rDoc.GetParaAsString(sal_Int32(0)));
+
+    // Select all paragraphs
+    ESelection aSelection(0, 0, 0, aTextLen);
+
+    auto doTest = [&](sal_uInt16 nSpace, sal_uInt16 nExpMaxAscent, sal_uInt32 nExpLineHeight)
+    {
+        std::unique_ptr<SfxItemSet> pSet(new SfxItemSet(aEditEngine.GetEmptyItemSet()));
+        SvxLineSpacingItem aLineSpacing(LINE_SPACE_DEFAULT_HEIGHT, EE_PARA_SBL);
+        aLineSpacing.SetPropLineSpace(nSpace);
+        pSet->Put(aLineSpacing);
+
+        // Set font
+        SvxFontItem aFont(EE_CHAR_FONTINFO);
+        aFont.SetFamilyName("Liberation Sans");
+        pSet->Put(aFont);
+        SvxFontHeightItem aFontSize(240, 100, EE_CHAR_FONTHEIGHT);
+        pSet->Put(aFontSize);
+
+        CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt16>(3), pSet->Count());
+
+        aEditEngine.QuickSetAttribs(*pSet, aSelection);
+
+        // Assert changes
+        ParaPortion* pParaPortion = aEditEngine.GetParaPortions()[0];
+        ContentNode* const pNode = pParaPortion->GetNode();
+        const SvxLineSpacingItem& rLSItem = pNode->GetContentAttribs().GetItem(EE_PARA_SBL);
+        CPPUNIT_ASSERT_EQUAL(SvxInterLineSpaceRule::Prop, rLSItem.GetInterLineSpaceRule());
+        CPPUNIT_ASSERT_EQUAL(nSpace, rLSItem.GetPropLineSpace());
+
+        // Check the first line
+        ParagraphInfos aInfo = aEditEngine.GetParagraphInfos(0);
+        CPPUNIT_ASSERT_EQUAL(nExpMaxAscent, aInfo.nFirstLineMaxAscent);
+        CPPUNIT_ASSERT_EQUAL(nExpLineHeight, aEditEngine.GetLineHeight(0));
+    };
+
+    // Test first case - 60%
+    doTest(60, 122, 153);
+
+    // Force multiple lines
+    aEditEngine.SetPaperSize(Size(1000, 6000));
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4), aEditEngine.GetLineCount(0));
+
+    // Test second case - 150%
+    doTest(150, 337, 382);
+
+    // Test lower Word limit - 6% (factor 0.06)
+    doTest(6, 12, 15);
+
+    // Test upper Word limit - 13200% (factor 132)
+    doTest(13200, 33615, 33660);
+}
+#endif
+
 void Test::testConstruction()
 {
     EditEngine aEngine(mpItemPool);
 
-    OUString aParaText = "I am Edit Engine.";
-    aEngine.SetText(aParaText);
+    aEngine.SetText("I am Edit Engine.");
 }
-
-namespace {
 
 bool includes(const uno::Sequence<OUString>& rSeq, const OUString& rVal)
 {
-    for (sal_Int32 i = 0, n = rSeq.getLength(); i < n; ++i)
-        if (rSeq[i] == rVal)
+    for (OUString const & s : rSeq)
+        if (s == rVal)
             return true;
 
     return false;
-}
-
 }
 
 void Test::testUnoTextFields()
@@ -334,6 +427,10 @@ private:
 
         return false;
     }
+    virtual bool TransliterateRTLWord( sal_Int32& /*rSttPos*/, sal_Int32 /*nEndPos*/ ) override
+    {
+        return false;
+    }
 };
 
 //https://bugs.libreoffice.org/show_bug.cgi?id=55693
@@ -341,65 +438,63 @@ private:
 //before the two letters
 void Test::testAutocorrect()
 {
-    OUString sShareAutocorrFile;
-    OUString sUserAutocorrFile;
-    SvxAutoCorrect aAutoCorrect(sShareAutocorrFile, sUserAutocorrFile);
+    SvxAutoCorrect aAutoCorrect((OUString()), (OUString()));
 
     {
         OUString sInput("TEst-TEst");
         sal_Unicode const cNextChar(' ');
-        OUString const sExpected("Test-Test ");
+        bool bNbspRunNext = false;
 
         TestAutoCorrDoc aFoo(sInput, LANGUAGE_ENGLISH_US);
-        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true);
+        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true, bNbspRunNext);
 
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("autocorrect", sExpected, aFoo.getResult());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("autocorrect", OUString("Test-Test "), aFoo.getResult());
     }
 
     {
         OUString sInput("TEst/TEst");
         sal_Unicode const cNextChar(' ');
-        OUString const sExpected("Test/Test ");
+        bool bNbspRunNext = false;
 
         TestAutoCorrDoc aFoo(sInput, LANGUAGE_ENGLISH_US);
-        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true);
+        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true, bNbspRunNext);
 
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("autocorrect", sExpected, aFoo.getResult());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("autocorrect", OUString("Test/Test "), aFoo.getResult());
     }
 
     {
         // test auto-bolding with '*'
         OUString sInput("*foo");
         sal_Unicode const cNextChar('*');
-        OUString const sExpected("foo");
+        bool bNbspRunNext = false;
 
         TestAutoCorrDoc aFoo(sInput, LANGUAGE_ENGLISH_US);
-        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true);
+        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true, bNbspRunNext);
 
-        CPPUNIT_ASSERT_EQUAL(sExpected, aFoo.getResult());
+        CPPUNIT_ASSERT_EQUAL(OUString("foo"), aFoo.getResult());
     }
 
     {
         OUString sInput("Test. test");
         sal_Unicode const cNextChar(' ');
-        OUString const sExpected("Test. Test ");
+        bool bNbspRunNext = false;
 
         TestAutoCorrDoc aFoo(sInput, LANGUAGE_ENGLISH_US);
-        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true);
+        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true, bNbspRunNext);
 
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("autocorrect", sExpected, aFoo.getResult());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("autocorrect", OUString("Test. Test "), aFoo.getResult());
     }
 
     // don't autocapitalize after a field mark
     {
         OUString sInput("Test. \x01 test");
         sal_Unicode const cNextChar(' ');
-        OUString const sExpected("Test. \x01 test ");
+        bool bNbspRunNext = false;
 
         TestAutoCorrDoc aFoo(sInput, LANGUAGE_ENGLISH_US);
-        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true);
+        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true, bNbspRunNext);
 
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("autocorrect", sExpected, aFoo.getResult());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("autocorrect", OUString("Test. \x01 test "), aFoo.getResult());
     }
 
     // consider field contents as text for auto quotes
@@ -408,10 +503,11 @@ void Test::testAutocorrect()
         sal_Unicode const cNextChar('"');
         const sal_Unicode EXPECTED[] = { 'T', 0x01, 0x0201d };
         OUString sExpected(EXPECTED, SAL_N_ELEMENTS(EXPECTED));
+        bool bNbspRunNext = false;
 
         TestAutoCorrDoc aFoo(sInput, LANGUAGE_ENGLISH_US);
-        aAutoCorrect.SetAutoCorrFlag(ChgQuotes, true);
-        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true);
+        aAutoCorrect.SetAutoCorrFlag(ACFlags::ChgQuotes, true);
+        aAutoCorrect.DoAutoCorrect(aFoo, sInput, sInput.getLength(), cNextChar, true, bNbspRunNext);
         fprintf(stderr, "text is %x\n", aFoo.getResult()[aFoo.getResult().getLength() - 1]);
 
         CPPUNIT_ASSERT_EQUAL_MESSAGE("autocorrect", sExpected, aFoo.getResult());
@@ -419,10 +515,49 @@ void Test::testAutocorrect()
 
 }
 
+IMPL_STATIC_LINK( Test, CalcFieldValueHdl, EditFieldInfo*, pInfo, void )
+{
+    if (!pInfo)
+        return;
+
+    const SvxFieldItem& rField = pInfo->GetField();
+    const SvxFieldData* pField = rField.GetField();
+    if (const SvxURLField* pURLField = dynamic_cast<const SvxURLField*>(pField))
+    {
+        // URLField
+        OUString aURL = pURLField->GetURL();
+        switch ( pURLField->GetFormat() )
+        {
+            case SvxURLFormat::AppDefault:
+            case SvxURLFormat::Repr:
+            {
+                pInfo->SetRepresentation( pURLField->GetRepresentation() );
+            }
+            break;
+
+            case SvxURLFormat::Url:
+            {
+                pInfo->SetRepresentation( aURL );
+            }
+            break;
+        }
+    }
+    else
+    {
+        OSL_FAIL("Unknown Field");
+        pInfo->SetRepresentation(OUString('?'));
+    }
+}
+
 void Test::testHyperlinkCopyPaste()
 {
+    // Create Outliner instance
+    Outliner aOutliner(mpItemPool, OutlinerMode
+::TextObject);
+    aOutliner.SetCalcFieldValueHdl( LINK( nullptr, Test, CalcFieldValueHdl ) );
+
     // Create EditEngine's instance
-    EditEngine aEditEngine( mpItemPool );
+    EditEngine& aEditEngine = const_cast<EditEngine&> (aOutliner.GetEditEngine());
 
     // Get EditDoc for current EditEngine's instance
     EditDoc &rDoc = aEditEngine.GetEditDoc();
@@ -435,12 +570,12 @@ void Test::testHyperlinkCopyPaste()
     // URL 1
     OUString aURL1 = "mailto:///user@example.com";
     OUString aRepres1 = "user@example.com";
-    SvxURLField aURLField1( aURL1, aRepres1, SVXURLFORMAT_REPR );
+    SvxURLField aURLField1( aURL1, aRepres1, SvxURLFormat::Repr );
     SvxFieldItem aField1( aURLField1, EE_FEATURE_FIELD );
     // URL 2
     OUString aURL2 = "mailto:///example@domain.com";
     OUString aRepres2 = "example@domain.com";
-    SvxURLField aURLField2( aURL2, aRepres2, SVXURLFORMAT_REPR );
+    SvxURLField aURLField2( aURL2, aRepres2, SvxURLFormat::Repr );
     SvxFieldItem aField2( aURLField2, EE_FEATURE_FIELD );
 
     // Insert initial text
@@ -468,19 +603,17 @@ void Test::testHyperlinkCopyPaste()
     // Assert Field Count
     CPPUNIT_ASSERT_EQUAL( sal_uInt16(2), aEditEngine.GetFieldCount(0) );
 
-    // Update Fields
-    aEditEngine.UpdateFields();
-
     // Assert URL Fields and text before copy
     // Check text
-    CPPUNIT_ASSERT_EQUAL( sal_uLong(aTextLen + 2), rDoc.GetTextLen() );
-    CPPUNIT_ASSERT_EQUAL( OUString("sampletextfor testing featurefields"), rDoc.GetParaAsString(sal_Int32(0)) );
+    CPPUNIT_ASSERT_EQUAL( sal_uLong(aTextLen + aRepres1.getLength() + aRepres2.getLength()), rDoc.GetTextLen() );
+    CPPUNIT_ASSERT_EQUAL( OUString("sampletextforuser@example.comtestingexample@domain.comfeaturefields"), rDoc.GetParaAsString(sal_Int32(0)) );
 
     // Check Field 1
     EFieldInfo aURLFieldInfo1 = aEditEngine.GetFieldInfo( sal_Int32(0), sal_uInt16(0) );
     CPPUNIT_ASSERT_EQUAL( sal_Int32(13), aURLFieldInfo1.aPosition.nIndex );
     CPPUNIT_ASSERT_EQUAL( sal_uInt16(EE_FEATURE_FIELD), aURLFieldInfo1.pFieldItem->Which() );
     SvxURLField* pURLField1 = dynamic_cast<SvxURLField*> ( const_cast<SvxFieldData*> (aURLFieldInfo1.pFieldItem->GetField()) );
+    CPPUNIT_ASSERT(pURLField1);
     CPPUNIT_ASSERT_EQUAL( aURL1, pURLField1->GetURL() );
     CPPUNIT_ASSERT_EQUAL( aRepres1, pURLField1->GetRepresentation() );
 
@@ -489,6 +622,7 @@ void Test::testHyperlinkCopyPaste()
     CPPUNIT_ASSERT_EQUAL( sal_Int32(21), aURLFieldInfo2.aPosition.nIndex );
     CPPUNIT_ASSERT_EQUAL( sal_uInt16(EE_FEATURE_FIELD), aURLFieldInfo2.pFieldItem->Which() );
     SvxURLField* pURLField2 = dynamic_cast<SvxURLField*> ( const_cast<SvxFieldData*> (aURLFieldInfo2.pFieldItem->GetField()) );
+    CPPUNIT_ASSERT(pURLField2);
     CPPUNIT_ASSERT_EQUAL( aURL2, pURLField2->GetURL() );
     CPPUNIT_ASSERT_EQUAL( aRepres2, pURLField2->GetRepresentation() );
 
@@ -501,21 +635,13 @@ void Test::testHyperlinkCopyPaste()
     // Assert Changes ACP, ACP: after Copy/Paste
 
     // Check the fields count
-    // TODO: Fix copy/paste of hyperlinks: currently hyperlinks are not copied properly, there is some bug
-    // For now we expect the following
-    CPPUNIT_ASSERT_EQUAL( sal_uInt16(2), aEditEngine.GetFieldCount(0) );
-    // After having a fix - we expect the following as a replacement of above
-    // CPPUNIT_ASSERT_EQUAL( sal_uInt16(3), aEditEngine.GetFieldCount(0) );
+    CPPUNIT_ASSERT_EQUAL( sal_uInt16(3), aEditEngine.GetFieldCount(0) );
 
     // Check the updated text length
-    CPPUNIT_ASSERT_EQUAL( sal_uLong(aTextLen + 10 + 2 + 1), rDoc.GetTextLen() );
+    CPPUNIT_ASSERT_EQUAL( sal_uLong(aTextLen + 10 + aRepres1.getLength()*2 + aRepres2.getLength()), rDoc.GetTextLen() );
 
     // Check the updated text contents
-    // TODO: Fix copy/paste of hyperlinks: currently hyperlinks are not copied properly, there is some bug
-    // For now we expect the following
-    CPPUNIT_ASSERT_EQUAL( OUString("sampletextfor testing featurefieldsfor\001testing"), rDoc.GetParaAsString(sal_Int32(0)) );
-    // After having a fix - we expect the following as a replacement of above
-    // CPPUNIT_ASSERT_EQUAL( OUString("sampletextfor testing featurefieldsfor testing"), rDoc.GetParaAsString(sal_Int32(0)) );
+    CPPUNIT_ASSERT_EQUAL( OUString("sampletextforuser@example.comtestingexample@domain.comfeaturefieldsforuser@example.comtesting"), rDoc.GetParaAsString(sal_Int32(0)) );
 
     // Check the Fields and their values
 
@@ -524,6 +650,7 @@ void Test::testHyperlinkCopyPaste()
     CPPUNIT_ASSERT_EQUAL( sal_Int32(13), aACPURLFieldInfo1.aPosition.nIndex );
     CPPUNIT_ASSERT_EQUAL( sal_uInt16(EE_FEATURE_FIELD), aACPURLFieldInfo1.pFieldItem->Which() );
     SvxURLField* pACPURLField1 = dynamic_cast<SvxURLField*> ( const_cast<SvxFieldData*> (aACPURLFieldInfo1.pFieldItem->GetField()) );
+    CPPUNIT_ASSERT(pACPURLField1);
     CPPUNIT_ASSERT_EQUAL( aURL1, pACPURLField1->GetURL() );
     CPPUNIT_ASSERT_EQUAL( aRepres1, pACPURLField1->GetRepresentation() );
 
@@ -532,18 +659,18 @@ void Test::testHyperlinkCopyPaste()
     CPPUNIT_ASSERT_EQUAL( sal_Int32(21), aACPURLFieldInfo2.aPosition.nIndex );
     CPPUNIT_ASSERT_EQUAL( sal_uInt16(EE_FEATURE_FIELD), aACPURLFieldInfo2.pFieldItem->Which() );
     SvxURLField* pACPURLField2 = dynamic_cast<SvxURLField*> ( const_cast<SvxFieldData*> (aACPURLFieldInfo2.pFieldItem->GetField()) );
+    CPPUNIT_ASSERT(pACPURLField2);
     CPPUNIT_ASSERT_EQUAL( aURL2, pACPURLField2->GetURL() );
     CPPUNIT_ASSERT_EQUAL( aRepres2, pACPURLField2->GetRepresentation() )    ;
 
     // Field 3
-    // TODO: Fix copy/paste of hyperlinks: currently hyperlinks are not copied properly, there is some bug
-    // After having a fix we expect the following
-    //EFieldInfo aACPURLFieldInfo3 = aEditEngine.GetFieldInfo( sal_Int32(0), sal_uInt16(2) );
-    //CPPUNIT_ASSERT_EQUAL( sal_Int32(38), aACPURLFieldInfo3.aPosition.nIndex );
-    //CPPUNIT_ASSERT_EQUAL( sal_uInt16(EE_FEATURE_FIELD), aACPURLFieldInfo3.pFieldItem->Which() );
-    //SvxURLField* pACPURLField3 = dynamic_cast<SvxURLField*> ( const_cast<SvxFieldData*> (aACPURLFieldInfo3.pFieldItem->GetField()) );
-    //CPPUNIT_ASSERT_EQUAL( aURL1, pACPURLField3->GetURL() );
-    //CPPUNIT_ASSERT_EQUAL( aRepres1, pACPURLField3->GetRepresentation() );
+    EFieldInfo aACPURLFieldInfo3 = aEditEngine.GetFieldInfo( sal_Int32(0), sal_uInt16(2) );
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(38), aACPURLFieldInfo3.aPosition.nIndex );
+    CPPUNIT_ASSERT_EQUAL( sal_uInt16(EE_FEATURE_FIELD), aACPURLFieldInfo3.pFieldItem->Which() );
+    SvxURLField* pACPURLField3 = dynamic_cast<SvxURLField*> ( const_cast<SvxFieldData*> (aACPURLFieldInfo3.pFieldItem->GetField()) );
+    CPPUNIT_ASSERT(pACPURLField3);
+    CPPUNIT_ASSERT_EQUAL( aURL1, pACPURLField3->GetURL() );
+    CPPUNIT_ASSERT_EQUAL( aRepres1, pACPURLField3->GetRepresentation() );
 }
 
 void Test::testCopyPaste()
@@ -616,12 +743,11 @@ void Test::testMultiParaSelCopyPaste()
 
     // Assert changes
     OUString aThirdParaAfterCopyPaste = aThirdPara + "first paragraph";
-    OUString aFourthPara = "This is second";
     CPPUNIT_ASSERT_EQUAL( sal_uLong(aTextLen + aCopyTextLen), rDoc.GetTextLen() );
     CPPUNIT_ASSERT_EQUAL( aFirstPara, rDoc.GetParaAsString(sal_Int32(0)) );
     CPPUNIT_ASSERT_EQUAL( aSecondPara, rDoc.GetParaAsString(sal_Int32(1)) );
     CPPUNIT_ASSERT_EQUAL( aThirdParaAfterCopyPaste, rDoc.GetParaAsString(sal_Int32(2)) );
-    CPPUNIT_ASSERT_EQUAL( aFourthPara, rDoc.GetParaAsString(sal_Int32(3)) );
+    CPPUNIT_ASSERT_EQUAL( OUString("This is second"), rDoc.GetParaAsString(sal_Int32(3)) );
 }
 
 void Test::testTabsCopyPaste()
@@ -677,18 +803,16 @@ void Test::testTabsCopyPaste()
     CPPUNIT_ASSERT_EQUAL( OUString("sample\ttextfortestingtab\t\ttextfortestingtab\t"), rDoc.GetParaAsString(sal_Int32(0)) );
 }
 
-namespace {
-    class UrlEditEngine : public EditEngine
-    {
-    public:
-        explicit UrlEditEngine(SfxItemPool *pPool) : EditEngine(pPool) {}
+class UrlEditEngine : public EditEngine
+{
+public:
+    explicit UrlEditEngine(SfxItemPool *pPool) : EditEngine(pPool) {}
 
-        virtual OUString CalcFieldValue( const SvxFieldItem&, sal_Int32, sal_Int32, Color*&, Color*& ) override
-        {
-            return OUString("jim@bob.com"); // a sophisticated view of value:
-        }
-    };
-}
+    virtual OUString CalcFieldValue( const SvxFieldItem&, sal_Int32, sal_Int32, std::optional<Color>&, std::optional<Color>& ) override
+    {
+        return "jim@bob.com"; // a sophisticated view of value:
+    }
+};
 
 // Odd accounting for hyperlink position & size etc.
 // https://bugzilla.novell.com/show_bug.cgi?id=467459
@@ -705,19 +829,18 @@ void Test::testHyperlinkSearch()
     ContentNode *pNode = rDoc.GetObject(0);
     EditSelection aSel(EditPaM(pNode, 22), EditPaM(pNode, 22));
     SvxURLField aURLField("mailto:///jim@bob.com", "jim@bob.com",
-                          SVXURLFORMAT_REPR);
+                          SvxURLFormat::Repr);
     SvxFieldItem aField(aURLField, EE_FEATURE_FIELD);
 
     aEngine.InsertField(aSel, aField);
-    aEngine.UpdateFields();
 
     OUString aContent = pNode->GetExpandedText();
     CPPUNIT_ASSERT_EQUAL_MESSAGE("get text", OUString("Please write email to jim@bob.com. if you find a fish(not a dog)."),
                            aContent);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("wrong length", (sal_uLong)aContent.getLength(), rDoc.GetTextLen());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("wrong length", static_cast<sal_uLong>(aContent.getLength()), rDoc.GetTextLen());
 
     // Check expansion and positioning re-work
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("wrong length", (sal_uLong)aContent.getLength(),
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("wrong length", static_cast<sal_uLong>(aContent.getLength()),
                            pNode->GetExpandedLen());
     for (sal_Int32 n = 0; n < aContent.getLength(); n++)
     {
@@ -761,36 +884,20 @@ void Test::testHyperlinkSearch()
 
 bool hasBold(const editeng::Section& rSecAttr)
 {
-    std::vector<const SfxPoolItem*>::const_iterator it = rSecAttr.maAttributes.begin(), itEnd = rSecAttr.maAttributes.end();
-    for (; it != itEnd; ++it)
-    {
-        const SfxPoolItem* p = *it;
-        if (p->Which() != EE_CHAR_WEIGHT)
-            continue;
-
-        if (static_cast<const SvxWeightItem*>(p)->GetWeight() != WEIGHT_BOLD)
-            continue;
-
-        return true;
-    }
-    return false;
+    return std::any_of(rSecAttr.maAttributes.begin(), rSecAttr.maAttributes.end(),
+        [](const SfxPoolItem* p) {
+            return p->Which() == EE_CHAR_WEIGHT
+                && static_cast<const SvxWeightItem*>(p)->GetWeight() == WEIGHT_BOLD;
+        });
 }
 
 bool hasItalic(const editeng::Section& rSecAttr)
 {
-    std::vector<const SfxPoolItem*>::const_iterator it = rSecAttr.maAttributes.begin(), itEnd = rSecAttr.maAttributes.end();
-    for (; it != itEnd; ++it)
-    {
-        const SfxPoolItem* p = *it;
-        if (p->Which() != EE_CHAR_ITALIC)
-            continue;
-
-        if (static_cast<const SvxPostureItem*>(p)->GetPosture() != ITALIC_NORMAL)
-            continue;
-
-        return true;
-    }
-    return false;
+    return std::any_of(rSecAttr.maAttributes.begin(), rSecAttr.maAttributes.end(),
+        [](const SfxPoolItem* p) {
+            return p->Which() == EE_CHAR_ITALIC
+                && static_cast<const SvxPostureItem*>(p)->GetPosture() == ITALIC_NORMAL;
+        });
 }
 
 void Test::testBoldItalicCopyPaste()
@@ -834,24 +941,21 @@ void Test::testBoldItalicCopyPaste()
     // There should be 3 sections - woBold - wBold - woBold (w - with, wo - without)
     CPPUNIT_ASSERT_EQUAL( size_t(3), aAttrs1.size() );
 
-    const editeng::Section* pSecAttr = &aAttrs1[0];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[0].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[0].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs1[0].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[0].maAttributes.size()) );
 
-    pSecAttr = &aAttrs1[1];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 14, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[1].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs1[1].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 14, static_cast<int>(aAttrs1[1].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs1[1].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs1[1]) );
 
-    pSecAttr = &aAttrs1[2];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 14, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 20, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[2].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 14, static_cast<int>(aAttrs1[2].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 20, static_cast<int>(aAttrs1[2].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[2].maAttributes.size()) );
 
     // Apply Italic to appropriate selection
     pSet.reset( new SfxItemSet(aEditEngine.GetEmptyItemSet()) );
@@ -866,38 +970,33 @@ void Test::testBoldItalicCopyPaste()
     // There should be 5 sections - woBold&woItalic - wBold&woItalic - wBold&wItalic - woBold&wItalic - woBold&woItalic (w - with, wo - without)
     CPPUNIT_ASSERT_EQUAL( size_t(5), aAttrs2.size() );
 
-    pSecAttr = &aAttrs2[0];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[0].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[0].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs2[0].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[0].maAttributes.size()) );
 
-    pSecAttr = &aAttrs2[1];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 8, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[1].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs2[1].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 8, static_cast<int>(aAttrs2[1].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[1].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs2[1]) );
 
-    pSecAttr = &aAttrs2[2];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 8, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 14, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(*pSecAttr) && hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[2].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 8, static_cast<int>(aAttrs2[2].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 14, static_cast<int>(aAttrs2[2].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs2[2].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(aAttrs2[2]) && hasItalic(aAttrs2[2]) );
 
-    pSecAttr = &aAttrs2[3];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 14, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[3].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 14, static_cast<int>(aAttrs2[3].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs2[3].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[3].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(aAttrs2[3]) );
 
-    pSecAttr = &aAttrs2[4];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 20, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[4].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs2[4].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 20, static_cast<int>(aAttrs2[4].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[4].maAttributes.size()) );
 
     // Copy text using legacy format
     uno::Reference< datatransfer::XTransferable > xData = aEditEngine.CreateTransferable( ESelection(0,1,0,aTextLen-1) );
@@ -917,83 +1016,66 @@ void Test::testBoldItalicCopyPaste()
     // - wBold&wItalic - woBold&wItalic - woBold&woItalic(w - with, wo - without)
     CPPUNIT_ASSERT_EQUAL( size_t(9), aAttrs3.size() );
 
-    pSecAttr = &aAttrs3[0];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[0].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[0].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[0].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[0].maAttributes.size()) );
 
-    pSecAttr = &aAttrs3[1];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 8, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[1].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[1].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 8, static_cast<int>(aAttrs3[1].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[1].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs3[1]) );
 
-    pSecAttr = &aAttrs3[2];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 8, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 14, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(*pSecAttr) && hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[2].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 8, static_cast<int>(aAttrs3[2].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 14, static_cast<int>(aAttrs3[2].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[2].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(aAttrs3[2]) && hasItalic(aAttrs3[2]) );
 
-    pSecAttr = &aAttrs3[3];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 14, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[3].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 14, static_cast<int>(aAttrs3[3].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs3[3].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[3].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(aAttrs3[3]) );
 
-    pSecAttr = &aAttrs3[4];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 21, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[4].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs3[4].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 21, static_cast<int>(aAttrs3[4].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[4].maAttributes.size()) );
 
-    pSecAttr = &aAttrs3[5];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 21, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 27, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[5].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 21, static_cast<int>(aAttrs3[5].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 27, static_cast<int>(aAttrs3[5].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[5].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs3[5]) );
 
-    pSecAttr = &aAttrs3[6];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 27, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 33, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(*pSecAttr) && hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[6].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 27, static_cast<int>(aAttrs3[6].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 33, static_cast<int>(aAttrs3[6].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[6].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(aAttrs3[6]) && hasItalic(aAttrs3[6]) );
 
-    pSecAttr = &aAttrs3[7];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 33, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 37, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[7].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 33, static_cast<int>(aAttrs3[7].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 37, static_cast<int>(aAttrs3[7].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[7].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(aAttrs3[7]) );
 
-    pSecAttr = &aAttrs3[8];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 37, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 38, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[8].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 37, static_cast<int>(aAttrs3[8].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 38, static_cast<int>(aAttrs3[8].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[8].maAttributes.size()) );
 }
 
 // Auxiliary function to test Underline text Copy/Paste using Legacy Format
 bool hasUnderline(const editeng::Section& rSecAttr)
 {
-    std::vector<const SfxPoolItem*>::const_iterator it = rSecAttr.maAttributes.begin(), itEnd = rSecAttr.maAttributes.end();
-    for (; it != itEnd; ++it)
-    {
-        const SfxPoolItem* p = *it;
-        if (p->Which() != EE_CHAR_UNDERLINE)
-            continue;
-
-        if (static_cast<const SvxUnderlineItem*>(p)->GetLineStyle() != LINESTYLE_SINGLE)
-            continue;
-
-        return true;
-    }
-    return false;
+    return std::any_of(rSecAttr.maAttributes.begin(), rSecAttr.maAttributes.end(),
+        [](const SfxPoolItem* p) {
+            return p->Which() == EE_CHAR_UNDERLINE
+                && static_cast<const SvxUnderlineItem*>(p)->GetLineStyle() == LINESTYLE_SINGLE;
+        });
 }
 
 void Test::testUnderlineCopyPaste()
@@ -1032,24 +1114,21 @@ void Test::testUnderlineCopyPaste()
     // There should be 3 sections - woUnderline - wUnderline - woUnderline (w - with, wo - without)
     CPPUNIT_ASSERT_EQUAL( size_t(3), aAttrs1.size() );
 
-    const editeng::Section* pSecAttr = &aAttrs1[0];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 6, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[0].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[0].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 6, static_cast<int>(aAttrs1[0].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[0].maAttributes.size()) );
 
-    pSecAttr = &aAttrs1[1];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 6, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be underlined.", hasUnderline(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[1].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 6, static_cast<int>(aAttrs1[1].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs1[1].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs1[1].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be underlined.", hasUnderline(aAttrs1[1]) );
 
-    pSecAttr = &aAttrs1[2];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 22, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[2].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs1[2].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 22, static_cast<int>(aAttrs1[2].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[2].maAttributes.size()) );
 
     // Copy text using legacy format
     uno::Reference< datatransfer::XTransferable > xData = aEditEngine.CreateTransferable( ESelection(0,6,0,aTextLen-4) );
@@ -1069,31 +1148,27 @@ void Test::testUnderlineCopyPaste()
     // There should be 4 sections - woUnderline - wUnderline - woUnderline - wUnderline (w - with, wo - without)
     CPPUNIT_ASSERT_EQUAL( size_t(4), aAttrs2.size() );
 
-    pSecAttr = &aAttrs2[0];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 6, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[0].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[0].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 6, static_cast<int>(aAttrs2[0].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[0].maAttributes.size()) );
 
-    pSecAttr = &aAttrs2[1];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 6, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be underlined.", hasUnderline(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[1].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 6, static_cast<int>(aAttrs2[1].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs2[1].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[1].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be underlined.", hasUnderline(aAttrs2[1]) );
 
-    pSecAttr = &aAttrs2[2];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 22, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[2].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs2[2].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 22, static_cast<int>(aAttrs2[2].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[2].maAttributes.size()) );
 
-    pSecAttr = &aAttrs2[3];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 22, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 34, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be underlined.", hasUnderline(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[3].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 22, static_cast<int>(aAttrs2[3].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 34, static_cast<int>(aAttrs2[3].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[3].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be underlined.", hasUnderline(aAttrs2[3]) );
 }
 
 void Test::testMultiParaCopyPaste()
@@ -1192,49 +1267,42 @@ void Test::testParaBoldItalicCopyPaste()
     // There should be 7 sections - woB - wB - woB -woB -wB -woB -woB (w - with, wo - without, B - Bold, I - Italic)
     CPPUNIT_ASSERT_EQUAL( size_t(7), aAttrs1.size() );
 
-    const editeng::Section* pSecAttr = &aAttrs1[0];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[0].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[0].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs1[0].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[0].maAttributes.size()) );
 
-    pSecAttr = &aAttrs1[1];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[1].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs1[1].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs1[1].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs1[1].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs1[1]) );
 
-    pSecAttr = &aAttrs1[2];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 23, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[2].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs1[2].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 23, static_cast<int>(aAttrs1[2].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[2].maAttributes.size()) );
 
-    pSecAttr = &aAttrs1[3];
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs1[3].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[3].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs1[3].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[3].maAttributes.size()) );
 
-    pSecAttr = &aAttrs1[4];
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 19, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs1[4].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs1[4].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 19, static_cast<int>(aAttrs1[4].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs1[4].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs1[4]) );
 
-    pSecAttr = &aAttrs1[5];
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 19, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 24, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs1[5].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 19, static_cast<int>(aAttrs1[5].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 24, static_cast<int>(aAttrs1[5].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[5].maAttributes.size()) );
 
-    pSecAttr = &aAttrs1[6];
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 23, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs1[6].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[6].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 23, static_cast<int>(aAttrs1[6].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs1[6].maAttributes.size()) );
 
     // Apply Italic to appropriate selection
     pSet.reset( new SfxItemSet(aEditEngine.GetEmptyItemSet()) );
@@ -1249,65 +1317,56 @@ void Test::testParaBoldItalicCopyPaste()
     // There should be 9 sections - woB&woI - wB&woI - wB&wI -woB&wI - woB&wI - wB&wI - wB&woI - woB&woI - woB&woI (w - with, wo - without, B - Bold, I - Italic)
     CPPUNIT_ASSERT_EQUAL( size_t(9), aAttrs2.size() );
 
-    pSecAttr = &aAttrs2[0];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[0].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[0].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs2[0].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[0].maAttributes.size()) );
 
-    pSecAttr = &aAttrs2[1];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 14, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[1].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs2[1].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 14, static_cast<int>(aAttrs2[1].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[1].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs2[1]) );
 
-    pSecAttr = &aAttrs2[2];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 14, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(*pSecAttr) && hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[2].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 14, static_cast<int>(aAttrs2[2].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs2[2].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs2[2].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(aAttrs2[2]) && hasItalic(aAttrs2[2]) );
 
-    pSecAttr = &aAttrs2[3];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 23, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[3].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs2[3].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 23, static_cast<int>(aAttrs2[3].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[3].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(aAttrs2[3]) );
 
-    pSecAttr = &aAttrs2[4];
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[4].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[4].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs2[4].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[4].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(aAttrs2[4]) );
 
-    pSecAttr = &aAttrs2[5];
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 9, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(*pSecAttr) && hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[5].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs2[5].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 9, static_cast<int>(aAttrs2[5].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs2[5].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(aAttrs2[5]) && hasItalic(aAttrs2[5]) );
 
-    pSecAttr = &aAttrs2[6];
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 9, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 19, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[6].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 9, static_cast<int>(aAttrs2[6].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 19, static_cast<int>(aAttrs2[6].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[6].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs2[6]) );
 
-    pSecAttr = &aAttrs2[7];
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 19, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 24, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs2[7].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 19, static_cast<int>(aAttrs2[7].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 24, static_cast<int>(aAttrs2[7].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[7].maAttributes.size()) );
 
-    pSecAttr = &aAttrs2[8];
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 23, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs2[8].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[8].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 23, static_cast<int>(aAttrs2[8].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs2[8].maAttributes.size()) );
 
     // Copy text using legacy format
     uno::Reference< datatransfer::XTransferable > xData = aEditEngine.CreateTransferable( ESelection(0,8,1,14) );
@@ -1317,12 +1376,11 @@ void Test::testParaBoldItalicCopyPaste()
 
     // Assert changes
     OUString aThirdParaAfterCopyPaste = aThirdPara + "first paragraph";
-    OUString aFourthParaAfterCopyPaste = "This is second";
     CPPUNIT_ASSERT_EQUAL( sal_uLong(aTextLen + aCopyTextLen), rDoc.GetTextLen() );
     CPPUNIT_ASSERT_EQUAL( aFirstPara, rDoc.GetParaAsString(sal_Int32(0)) );
     CPPUNIT_ASSERT_EQUAL( aSecondPara, rDoc.GetParaAsString(sal_Int32(1)) );
     CPPUNIT_ASSERT_EQUAL( aThirdParaAfterCopyPaste, rDoc.GetParaAsString(sal_Int32(2)) );
-    CPPUNIT_ASSERT_EQUAL( aFourthParaAfterCopyPaste, rDoc.GetParaAsString(sal_Int32(3)) );
+    CPPUNIT_ASSERT_EQUAL( OUString("This is second"), rDoc.GetParaAsString(sal_Int32(3)) );
 
     // Check updated text for appropriate Bold/Italics
     std::unique_ptr<EditTextObject> pEditText3( aEditEngine.CreateTextObject() );
@@ -1332,107 +1390,92 @@ void Test::testParaBoldItalicCopyPaste()
     // - wB&woI - wB&wI - woB&wI - -woB&wI - wB&wI - wB&woI (w - with, wo - without, B - Bold, I - Italic)
     CPPUNIT_ASSERT_EQUAL( size_t(15), aAttrs3.size() );
 
-    pSecAttr = &aAttrs3[0];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[0].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[0].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs3[0].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[0].maAttributes.size()) );
 
-    pSecAttr = &aAttrs3[1];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 14, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[1].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs3[1].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 14, static_cast<int>(aAttrs3[1].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[1].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs3[1]) );
 
-    pSecAttr = &aAttrs3[2];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 14, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(*pSecAttr) && hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[2].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 14, static_cast<int>(aAttrs3[2].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs3[2].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[2].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(aAttrs3[2]) && hasItalic(aAttrs3[2]) );
 
-    pSecAttr = &aAttrs3[3];
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 18, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 23, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[3].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 18, static_cast<int>(aAttrs3[3].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 23, static_cast<int>(aAttrs3[3].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[3].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(aAttrs3[3]) );
 
-    pSecAttr = &aAttrs3[4];
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[4].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[4].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs3[4].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[4].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(aAttrs3[4]) );
 
-    pSecAttr = &aAttrs3[5];
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 9, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(*pSecAttr) && hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[5].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs3[5].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 9, static_cast<int>(aAttrs3[5].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[5].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(aAttrs3[5]) && hasItalic(aAttrs3[5]) );
 
-    pSecAttr = &aAttrs3[6];
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 9, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 19, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[6].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 9, static_cast<int>(aAttrs3[6].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 19, static_cast<int>(aAttrs3[6].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[6].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs3[6]) );
 
-    pSecAttr = &aAttrs3[7];
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 19, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 24, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[7].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 19, static_cast<int>(aAttrs3[7].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 24, static_cast<int>(aAttrs3[7].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[7].maAttributes.size()) );
 
-    pSecAttr = &aAttrs3[8];
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 23, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->maAttributes.size() );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[8].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[8].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 23, static_cast<int>(aAttrs3[8].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[8].maAttributes.size()) );
 
-    pSecAttr = &aAttrs3[9];
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 23, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 29, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[9].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 23, static_cast<int>(aAttrs3[9].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 29, static_cast<int>(aAttrs3[9].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[9].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs3[9]) );
 
-    pSecAttr = &aAttrs3[10];
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 29, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 33, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(*pSecAttr) && hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[10].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 29, static_cast<int>(aAttrs3[10].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 33, static_cast<int>(aAttrs3[10].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[10].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(aAttrs3[10]) && hasItalic(aAttrs3[10]) );
 
-    pSecAttr = &aAttrs3[11];
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 33, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 38, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[11].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 33, static_cast<int>(aAttrs3[11].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 38, static_cast<int>(aAttrs3[11].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[11].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(aAttrs3[11]) );
 
-    pSecAttr = &aAttrs3[12];
-    CPPUNIT_ASSERT_EQUAL( 3, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 0, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 3, static_cast<int>(aAttrs3[12].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 0, static_cast<int>(aAttrs3[12].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs3[12].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[12].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be italic.", hasItalic(aAttrs3[12]) );
 
-    pSecAttr = &aAttrs3[13];
-    CPPUNIT_ASSERT_EQUAL( 3, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 5, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 9, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 2, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(*pSecAttr) && hasItalic(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 3, static_cast<int>(aAttrs3[13].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 5, static_cast<int>(aAttrs3[13].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 9, static_cast<int>(aAttrs3[13].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 2, static_cast<int>(aAttrs3[13].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold and italic.", hasBold(aAttrs3[13]) && hasItalic(aAttrs3[13]) );
 
-    pSecAttr = &aAttrs3[14];
-    CPPUNIT_ASSERT_EQUAL( 3, (int)pSecAttr->mnParagraph );
-    CPPUNIT_ASSERT_EQUAL( 9, (int)pSecAttr->mnStart );
-    CPPUNIT_ASSERT_EQUAL( 14, (int)pSecAttr->mnEnd );
-    CPPUNIT_ASSERT_EQUAL( 1, (int)pSecAttr->maAttributes.size() );
-    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(*pSecAttr) );
+    CPPUNIT_ASSERT_EQUAL( 3, static_cast<int>(aAttrs3[14].mnParagraph) );
+    CPPUNIT_ASSERT_EQUAL( 9, static_cast<int>(aAttrs3[14].mnStart) );
+    CPPUNIT_ASSERT_EQUAL( 14, static_cast<int>(aAttrs3[14].mnEnd) );
+    CPPUNIT_ASSERT_EQUAL( 1, static_cast<int>(aAttrs3[14].maAttributes.size()) );
+    CPPUNIT_ASSERT_MESSAGE( "This section must be bold.", hasBold(aAttrs3[14]) );
 }
 
 void Test::testParaStartCopyPaste()
@@ -1472,10 +1515,9 @@ void Test::testParaStartCopyPaste()
     aEditEngine.InsertText( xData, OUString(), rDoc.GetStartPaM(), true );
 
     // Assert changes
-    OUString aFirstParaAfterCopyPaste = "first paragraph";
     OUString aSecondParaAfterCopyPaste = "This is second" + aFirstPara;
     CPPUNIT_ASSERT_EQUAL( sal_uLong(aTextLen + aCopyTextLen), rDoc.GetTextLen() );
-    CPPUNIT_ASSERT_EQUAL( aFirstParaAfterCopyPaste, rDoc.GetParaAsString(sal_Int32(0)) );
+    CPPUNIT_ASSERT_EQUAL( OUString("first paragraph"), rDoc.GetParaAsString(sal_Int32(0)) );
     CPPUNIT_ASSERT_EQUAL( aSecondParaAfterCopyPaste, rDoc.GetParaAsString(sal_Int32(1)) );
     CPPUNIT_ASSERT_EQUAL( aSecondPara, rDoc.GetParaAsString(sal_Int32(2)) );
     CPPUNIT_ASSERT_EQUAL( aThirdPara, rDoc.GetParaAsString(sal_Int32(3)) );
@@ -1490,8 +1532,7 @@ void Test::testSectionAttributes()
     SvxPostureItem aItalic(ITALIC_NORMAL, EE_CHAR_ITALIC);
 
     {
-        OUString aParaText = "aaabbbccc";
-        aEngine.SetText(aParaText);
+        aEngine.SetText("aaabbbccc");
         pSet->Put(aBold);
         CPPUNIT_ASSERT_EQUAL_MESSAGE("There should be exactly one item.", static_cast<sal_uInt16>(1), pSet->Count());
         aEngine.QuickSetAttribs(*pSet, ESelection(0,0,0,6)); // 'aaabbb' - end point is not inclusive.
@@ -1501,7 +1542,7 @@ void Test::testSectionAttributes()
 
         aEngine.QuickSetAttribs(*pSet, ESelection(0,3,0,9)); // 'bbbccc'
         std::unique_ptr<EditTextObject> pEditText(aEngine.CreateTextObject());
-        CPPUNIT_ASSERT_MESSAGE("Failed to create text object.", pEditText.get());
+        CPPUNIT_ASSERT_MESSAGE("Failed to create text object.", pEditText);
         std::vector<editeng::Section> aAttrs;
         pEditText->GetAllSections(aAttrs);
 
@@ -1509,28 +1550,25 @@ void Test::testSectionAttributes()
         CPPUNIT_ASSERT_EQUAL_MESSAGE("There should be 3 sections.", static_cast<size_t>(3), aAttrs.size());
 
         // First section should be 0-3 of paragraph 0, and it should only have boldness applied.
-        const editeng::Section* pSecAttr = &aAttrs[0];
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnParagraph);
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnStart);
-        CPPUNIT_ASSERT_EQUAL(3, (int)pSecAttr->mnEnd);
-        CPPUNIT_ASSERT_EQUAL(1, (int)pSecAttr->maAttributes.size());
-        CPPUNIT_ASSERT_MESSAGE("This section must be bold.", hasBold(*pSecAttr));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[0].mnParagraph));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[0].mnStart));
+        CPPUNIT_ASSERT_EQUAL(3, static_cast<int>(aAttrs[0].mnEnd));
+        CPPUNIT_ASSERT_EQUAL(1, static_cast<int>(aAttrs[0].maAttributes.size()));
+        CPPUNIT_ASSERT_MESSAGE("This section must be bold.", hasBold(aAttrs[0]));
 
         // Second section should be 3-6, and it should be both bold and italic.
-        pSecAttr = &aAttrs[1];
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnParagraph);
-        CPPUNIT_ASSERT_EQUAL(3, (int)pSecAttr->mnStart);
-        CPPUNIT_ASSERT_EQUAL(6, (int)pSecAttr->mnEnd);
-        CPPUNIT_ASSERT_EQUAL(2, (int)pSecAttr->maAttributes.size());
-        CPPUNIT_ASSERT_MESSAGE("This section must be bold and italic.", hasBold(*pSecAttr) && hasItalic(*pSecAttr));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[1].mnParagraph));
+        CPPUNIT_ASSERT_EQUAL(3, static_cast<int>(aAttrs[1].mnStart));
+        CPPUNIT_ASSERT_EQUAL(6, static_cast<int>(aAttrs[1].mnEnd));
+        CPPUNIT_ASSERT_EQUAL(2, static_cast<int>(aAttrs[1].maAttributes.size()));
+        CPPUNIT_ASSERT_MESSAGE("This section must be bold and italic.", hasBold(aAttrs[1]) && hasItalic(aAttrs[1]));
 
         // Third section should be 6-9, and it should be only italic.
-        pSecAttr = &aAttrs[2];
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnParagraph);
-        CPPUNIT_ASSERT_EQUAL(6, (int)pSecAttr->mnStart);
-        CPPUNIT_ASSERT_EQUAL(9, (int)pSecAttr->mnEnd);
-        CPPUNIT_ASSERT_EQUAL(1, (int)pSecAttr->maAttributes.size());
-        CPPUNIT_ASSERT_MESSAGE("This section must be italic.", hasItalic(*pSecAttr));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[2].mnParagraph));
+        CPPUNIT_ASSERT_EQUAL(6, static_cast<int>(aAttrs[2].mnStart));
+        CPPUNIT_ASSERT_EQUAL(9, static_cast<int>(aAttrs[2].mnEnd));
+        CPPUNIT_ASSERT_EQUAL(1, static_cast<int>(aAttrs[2].maAttributes.size()));
+        CPPUNIT_ASSERT_MESSAGE("This section must be italic.", hasItalic(aAttrs[2]));
     }
 
     {
@@ -1550,45 +1588,40 @@ void Test::testSectionAttributes()
         aEngine.QuickSetAttribs(*pSet, ESelection(4,0,4,5));
 
         std::unique_ptr<EditTextObject> pEditText(aEngine.CreateTextObject());
-        CPPUNIT_ASSERT_MESSAGE("Failed to create text object.", pEditText.get());
+        CPPUNIT_ASSERT_MESSAGE("Failed to create text object.", pEditText);
         std::vector<editeng::Section> aAttrs;
         pEditText->GetAllSections(aAttrs);
         CPPUNIT_ASSERT_EQUAL(size_t(5), aAttrs.size());
 
         // 1st, 3rd and 5th sections should correspond with 1st, 3rd and 5th paragraphs.
-        const editeng::Section* pSecAttr = &aAttrs[0];
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnParagraph);
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnStart);
-        CPPUNIT_ASSERT_EQUAL(3, (int)pSecAttr->mnEnd);
-        CPPUNIT_ASSERT_EQUAL(1, (int)pSecAttr->maAttributes.size());
-        CPPUNIT_ASSERT_MESSAGE("This section must be bold.", hasBold(*pSecAttr));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[0].mnParagraph));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[0].mnStart));
+        CPPUNIT_ASSERT_EQUAL(3, static_cast<int>(aAttrs[0].mnEnd));
+        CPPUNIT_ASSERT_EQUAL(1, static_cast<int>(aAttrs[0].maAttributes.size()));
+        CPPUNIT_ASSERT_MESSAGE("This section must be bold.", hasBold(aAttrs[0]));
 
-        pSecAttr = &aAttrs[2];
-        CPPUNIT_ASSERT_EQUAL(2, (int)pSecAttr->mnParagraph);
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnStart);
-        CPPUNIT_ASSERT_EQUAL(3, (int)pSecAttr->mnEnd);
-        CPPUNIT_ASSERT_EQUAL(1, (int)pSecAttr->maAttributes.size());
-        CPPUNIT_ASSERT_MESSAGE("This section must be bold.", hasBold(*pSecAttr));
+        CPPUNIT_ASSERT_EQUAL(2, static_cast<int>(aAttrs[2].mnParagraph));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[2].mnStart));
+        CPPUNIT_ASSERT_EQUAL(3, static_cast<int>(aAttrs[2].mnEnd));
+        CPPUNIT_ASSERT_EQUAL(1, static_cast<int>(aAttrs[2].maAttributes.size()));
+        CPPUNIT_ASSERT_MESSAGE("This section must be bold.", hasBold(aAttrs[2]));
 
-        pSecAttr = &aAttrs[4];
-        CPPUNIT_ASSERT_EQUAL(4, (int)pSecAttr->mnParagraph);
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnStart);
-        CPPUNIT_ASSERT_EQUAL(5, (int)pSecAttr->mnEnd);
-        CPPUNIT_ASSERT_EQUAL(1, (int)pSecAttr->maAttributes.size());
-        CPPUNIT_ASSERT_MESSAGE("This section must be bold.", hasBold(*pSecAttr));
+        CPPUNIT_ASSERT_EQUAL(4, static_cast<int>(aAttrs[4].mnParagraph));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[4].mnStart));
+        CPPUNIT_ASSERT_EQUAL(5, static_cast<int>(aAttrs[4].mnEnd));
+        CPPUNIT_ASSERT_EQUAL(1, static_cast<int>(aAttrs[4].maAttributes.size()));
+        CPPUNIT_ASSERT_MESSAGE("This section must be bold.", hasBold(aAttrs[4]));
 
         // The 2nd and 4th paragraphs should be empty.
-        pSecAttr = &aAttrs[1];
-        CPPUNIT_ASSERT_EQUAL(1, (int)pSecAttr->mnParagraph);
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnStart);
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnEnd);
-        CPPUNIT_ASSERT_MESSAGE("Attribute array should be empty.", pSecAttr->maAttributes.empty());
+        CPPUNIT_ASSERT_EQUAL(1, static_cast<int>(aAttrs[1].mnParagraph));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[1].mnStart));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[1].mnEnd));
+        CPPUNIT_ASSERT_MESSAGE("Attribute array should be empty.", aAttrs[1].maAttributes.empty());
 
-        pSecAttr = &aAttrs[3];
-        CPPUNIT_ASSERT_EQUAL(3, (int)pSecAttr->mnParagraph);
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnStart);
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnEnd);
-        CPPUNIT_ASSERT_MESSAGE("Attribute array should be empty.", pSecAttr->maAttributes.empty());
+        CPPUNIT_ASSERT_EQUAL(3, static_cast<int>(aAttrs[3].mnParagraph));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[3].mnStart));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[3].mnEnd));
+        CPPUNIT_ASSERT_MESSAGE("Attribute array should be empty.", aAttrs[3].maAttributes.empty());
     }
 
 
@@ -1611,24 +1644,106 @@ void Test::testSectionAttributes()
         CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(1), aEngine.GetParagraphCount());
 
         std::unique_ptr<EditTextObject> pEditText(aEngine.CreateTextObject());
-        CPPUNIT_ASSERT_MESSAGE("Failed to create text object.", pEditText.get());
+        CPPUNIT_ASSERT_MESSAGE("Failed to create text object.", pEditText);
         std::vector<editeng::Section> aAttrs;
         pEditText->GetAllSections(aAttrs);
 
         CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aAttrs.size());
 
-        const editeng::Section* pSecAttr = &aAttrs[0];
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnParagraph);
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnStart);
-        CPPUNIT_ASSERT_EQUAL(0, (int)pSecAttr->mnEnd);
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[0].mnParagraph));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[0].mnStart));
+        CPPUNIT_ASSERT_EQUAL(0, static_cast<int>(aAttrs[0].mnEnd));
         std::set<sal_uInt16> whiches;
-        for (size_t i = 0; i < pSecAttr->maAttributes.size(); ++i)
+        for (size_t i = 0; i < aAttrs[0].maAttributes.size(); ++i)
         {
-            sal_uInt16 const nWhich(pSecAttr->maAttributes[i]->Which());
+            sal_uInt16 const nWhich(aAttrs[0].maAttributes[i]->Which());
             CPPUNIT_ASSERT_MESSAGE("duplicate item in text portion attributes",
                 whiches.insert(nWhich).second);
         }
     }
+}
+
+void Test::testLargeParaCopyPaste()
+{
+    // Create EditEngine's instance
+    EditEngine aEditEngine( mpItemPool );
+
+    // Get EditDoc for current EditEngine's instance
+    EditDoc &rDoc = aEditEngine.GetEditDoc();
+
+    // Initially no text should be there
+    CPPUNIT_ASSERT_EQUAL( sal_uLong(0), rDoc.GetTextLen() );
+    CPPUNIT_ASSERT_EQUAL( OUString(), rDoc.GetParaAsString(sal_Int32(0)) );
+
+    // Insert initial text
+    OUString aFirstPara = "This is first paragraph";
+    OUString aSecondPara = "This is second paragraph";
+    OUString aThirdPara = "This is third paragraph";
+    OUString aFourthPara = "This is fourth paragraph";
+    OUString aFifthPara = "This is fifth paragraph";
+    OUString aSixthPara = "This is sixth paragraph";
+    //Positions Ref:       ........*8.............
+    OUString aSeventhPara = "This is seventh paragraph";
+    OUString aEighthPara = "This is eighth paragraph";
+    //Positions Ref:        .............*13
+    OUString aNinthPara = "This is ninth paragraph";
+    OUString aTenthPara = "This is tenth paragraph";
+    OUString aText = aFirstPara + "\n" + aSecondPara + "\n" + aThirdPara + "\n" +
+        aFourthPara + "\n" + aFifthPara + "\n" + aSixthPara + "\n" + aSeventhPara + "\n" +
+        aEighthPara + "\n" + aNinthPara + "\n" + aTenthPara;
+    sal_Int32 aTextLen = aFirstPara.getLength() + aSecondPara.getLength() + aThirdPara.getLength() +
+        aFourthPara.getLength() + aFifthPara.getLength() + aSixthPara.getLength() +
+        aSeventhPara.getLength() + aEighthPara.getLength() + aNinthPara.getLength() + aTenthPara.getLength();
+    aEditEngine.SetText( aText );
+    OUString aCopyText = "sixth paragraphThis is seventh paragraphThis is eighth";
+    sal_Int32 aCopyTextLen = aCopyText.getLength();
+
+    // Assert changes
+    CPPUNIT_ASSERT_EQUAL( sal_uLong(aTextLen), rDoc.GetTextLen() );
+    CPPUNIT_ASSERT_EQUAL( aFirstPara, rDoc.GetParaAsString(sal_Int32(0)) );
+    CPPUNIT_ASSERT_EQUAL( aSecondPara, rDoc.GetParaAsString(sal_Int32(1)) );
+    CPPUNIT_ASSERT_EQUAL( aThirdPara, rDoc.GetParaAsString(sal_Int32(2)) );
+    CPPUNIT_ASSERT_EQUAL( aFourthPara, rDoc.GetParaAsString(sal_Int32(3)) );
+    CPPUNIT_ASSERT_EQUAL( aFifthPara, rDoc.GetParaAsString(sal_Int32(4)) );
+    CPPUNIT_ASSERT_EQUAL( aSixthPara, rDoc.GetParaAsString(sal_Int32(5)) );
+    CPPUNIT_ASSERT_EQUAL( aSeventhPara, rDoc.GetParaAsString(sal_Int32(6)) );
+    CPPUNIT_ASSERT_EQUAL( aEighthPara, rDoc.GetParaAsString(sal_Int32(7)) );
+    CPPUNIT_ASSERT_EQUAL( aNinthPara, rDoc.GetParaAsString(sal_Int32(8)) );
+    CPPUNIT_ASSERT_EQUAL( aTenthPara, rDoc.GetParaAsString(sal_Int32(9)) );
+
+    // Copy initial text using legacy format
+    uno::Reference< datatransfer::XTransferable > xData = aEditEngine.CreateTransferable( ESelection(5,8,7,14) );
+
+    // Paste text at the end of 4th Para
+    ContentNode* pLastNode = rDoc.GetObject(3);
+    aEditEngine.InsertText( xData, OUString(), EditPaM( pLastNode, pLastNode->Len() ), true );
+
+    // Assert changes
+    OUString aFourthParaAfterCopyPaste = aFourthPara + "sixth paragraph";
+    CPPUNIT_ASSERT_EQUAL( sal_uLong(aTextLen + aCopyTextLen), rDoc.GetTextLen() );
+    CPPUNIT_ASSERT_EQUAL( aFirstPara, rDoc.GetParaAsString(sal_Int32(0)) );
+    CPPUNIT_ASSERT_EQUAL( aSecondPara, rDoc.GetParaAsString(sal_Int32(1)) );
+    CPPUNIT_ASSERT_EQUAL( aThirdPara, rDoc.GetParaAsString(sal_Int32(2)) );
+    CPPUNIT_ASSERT_EQUAL( aFourthParaAfterCopyPaste, rDoc.GetParaAsString(sal_Int32(3)) );
+    CPPUNIT_ASSERT_EQUAL( aSeventhPara, rDoc.GetParaAsString(sal_Int32(4)) );
+    CPPUNIT_ASSERT_EQUAL( OUString("This is eighth"), rDoc.GetParaAsString(sal_Int32(5)) );
+    CPPUNIT_ASSERT_EQUAL( aFifthPara, rDoc.GetParaAsString(sal_Int32(6)) );
+    CPPUNIT_ASSERT_EQUAL( aSixthPara, rDoc.GetParaAsString(sal_Int32(7)) );
+    CPPUNIT_ASSERT_EQUAL( aSeventhPara, rDoc.GetParaAsString(sal_Int32(8)) );
+    CPPUNIT_ASSERT_EQUAL( aEighthPara, rDoc.GetParaAsString(sal_Int32(9)) );
+    CPPUNIT_ASSERT_EQUAL( aNinthPara, rDoc.GetParaAsString(sal_Int32(10)) );
+    CPPUNIT_ASSERT_EQUAL( aTenthPara, rDoc.GetParaAsString(sal_Int32(11)) );
+}
+
+void Test::testTransliterate()
+{
+    // Create EditEngine's instance
+    EditEngine aEditEngine( mpItemPool );
+
+    OUString sText("one (two) three");
+    aEditEngine.SetText(sText);
+    aEditEngine.TransliterateText(ESelection(0, 0, 0, sText.getLength()), TransliterationFlags::TITLE_CASE);
+    CPPUNIT_ASSERT_EQUAL(OUString("One (Two) Three"), aEditEngine.GetText());
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(Test);

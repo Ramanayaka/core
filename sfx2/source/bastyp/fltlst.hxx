@@ -20,14 +20,10 @@
 #ifndef INCLUDED_SFX2_SOURCE_BASTYP_FLTLST_HXX
 #define INCLUDED_SFX2_SOURCE_BASTYP_FLTLST_HXX
 
-#include <sfx2/fcontnr.hxx>
-#include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/util/XRefreshable.hpp>
 #include <com/sun/star/util/XRefreshListener.hpp>
-#include <com/sun/star/document/XEventListener.hpp>
 #include <com/sun/star/lang/EventObject.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
 
 class SfxFilterListener final
 {
@@ -42,10 +38,10 @@ class SfxFilterListener final
     public:
         // XRefreshListener
         /// @throws css::uno::RuntimeException
-        void SAL_CALL refreshed( const css::lang::EventObject& aSource );
+        void refreshed( const css::lang::EventObject& aSource );
         // XEventListener
         /// @throws css::uno::RuntimeException
-        void SAL_CALL disposing( const css::lang::EventObject& aSource );
+        void disposing( const css::lang::EventObject& aSource );
 
 };
 

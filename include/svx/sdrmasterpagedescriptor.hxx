@@ -22,22 +22,15 @@
 
 #include <svx/sdrpageuser.hxx>
 #include <svx/svdsob.hxx>
+#include <memory>
 
-class SdrObject;
-class SfxItemSet;
 class SdrPageProperties;
+namespace sdr::contact { class ViewContact; }
+
 
 namespace sdr
 {
-    namespace contact
-    {
-        class ViewContact;
-    } // end of namespace contact
-}
-
-namespace sdr
-{
-    class MasterPageDescriptor : public sdr::PageUser
+    class MasterPageDescriptor final : public sdr::PageUser
     {
     private:
         SdrPage&                                        maOwnerPage;
@@ -45,7 +38,7 @@ namespace sdr
         SdrLayerIDSet                                       maVisibleLayers;
 
         // ViewContact part
-        sdr::contact::ViewContact*                      mpViewContact;
+        mutable std::unique_ptr<sdr::contact::ViewContact>      mpViewContact;
 
         void operator=(const MasterPageDescriptor& rCandidate) = delete;
 
@@ -56,9 +49,9 @@ namespace sdr
         // ViewContact part
         sdr::contact::ViewContact& GetViewContact() const;
 
-        // this method is called form the destructor of the referenced page.
+        // this method is called from the destructor of the referenced page.
         // do all necessary action to forget the page. It is not necessary to call
-        // RemovePageUser(), that is done form the destructor.
+        // RemovePageUser(), that is done from the destructor.
         virtual void PageInDestruction(const SdrPage& rPage) override;
 
         // member access to UsedPage

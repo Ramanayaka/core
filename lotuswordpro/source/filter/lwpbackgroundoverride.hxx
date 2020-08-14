@@ -56,20 +56,19 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPBACKGROUNDOVERRIDE_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPBACKGROUNDOVERRIDE_HXX
 
-#include "lwpoverride.hxx"
+#include <lwpoverride.hxx>
 #include "lwpbackgroundstuff.hxx"
 
 class LwpObjectStream;
 class LwpBackgroundOverride : public LwpOverride
 {
-
 public:
-    LwpBackgroundOverride(){}
+    LwpBackgroundOverride() {}
 
     virtual LwpBackgroundOverride* clone() const override;
 
 public:
-    virtual void Read(LwpObjectStream *pStrm) override
+    virtual void Read(LwpObjectStream* pStrm) override
     {
         if (pStrm->QuickReadBool())
         {
@@ -81,7 +80,7 @@ public:
         pStrm->SkipExtra();
     }
 
-    const LwpColor& GetBackColor(){ return m_aStuff.m_aFillColor; }
+    const LwpColor& GetBackColor() const { return m_aStuff.m_aFillColor; }
     LwpBackgroundStuff& GetBGStuff() { return m_aStuff; }
 
 protected:
@@ -91,7 +90,7 @@ private:
     LwpBackgroundOverride& operator=(LwpBackgroundOverride const& rOther) = delete;
 
 private:
-    LwpBackgroundStuff  m_aStuff;
+    LwpBackgroundStuff m_aStuff;
 };
 
 #endif

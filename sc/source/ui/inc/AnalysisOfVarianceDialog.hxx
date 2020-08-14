@@ -11,13 +11,8 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_ANALYSISOFVARIANCEDIALOG_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_ANALYSISOFVARIANCEDIALOG_HXX
 
-#include "global.hxx"
-#include "address.hxx"
-#include "anyrefdg.hxx"
-
-#include <vcl/fixed.hxx>
-#include <vcl/group.hxx>
-#include <vcl/lstbox.hxx>
+#include <address.hxx>
+#include "viewdata.hxx"
 
 #include "StatisticsInputOutputDialog.hxx"
 
@@ -33,18 +28,18 @@ private:
         TWO_FACTOR
     };
 
-    VclPtr<NumericField> mpAlphaField;
-    VclPtr<RadioButton>  mpSingleFactorRadio;
-    VclPtr<RadioButton>  mpTwoFactorRadio;
-    VclPtr<NumericField> mpRowsPerSampleField;
-
-    DECL_LINK(FactorChanged, RadioButton&, void);
+    DECL_LINK(FactorChanged, weld::ToggleButton&, void);
     void FactorChanged();
 
     AnovaFactor meFactor;
 
+    std::unique_ptr<weld::SpinButton> mxAlphaField;
+    std::unique_ptr<weld::RadioButton> mxSingleFactorRadio;
+    std::unique_ptr<weld::RadioButton> mxTwoFactorRadio;
+    std::unique_ptr<weld::SpinButton> mxRowsPerSampleField;
+
     static void RowColumn(ScRangeList& rRangeList, AddressWalkerWriter& aOutput,
-                   FormulaTemplate& aTemplate, OUString& sFormula,
+                   FormulaTemplate& aTemplate, const OUString& sFormula,
                    GroupedBy aGroupedBy, ScRange* pResultRange);
 
     void AnovaSingleFactor(AddressWalkerWriter& output, FormulaTemplate& aTemplate);
@@ -53,15 +48,14 @@ private:
 public:
     ScAnalysisOfVarianceDialog(
         SfxBindings* pB, SfxChildWindow* pCW,
-        vcl::Window* pParent, ScViewData* pViewData );
+        weld::Window* pParent, ScViewData* pViewData );
 
     virtual ~ScAnalysisOfVarianceDialog() override;
-    virtual void dispose() override;
 
-    virtual bool Close() override;
+    virtual void Close() override;
 
 protected:
-    virtual sal_Int16 GetUndoNameId() override;
+    virtual const char* GetUndoNameId() override;
     virtual ScRange ApplyOutput(ScDocShell* pDocShell) override;
 };
 

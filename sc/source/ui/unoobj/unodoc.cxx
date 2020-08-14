@@ -18,36 +18,31 @@
  */
 
 #include <rtl/ustring.hxx>
-#include <sfx2/docfac.hxx>
 #include <sfx2/sfxmodelfactory.hxx>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
-#include "appluno.hxx"
-#include "scmod.hxx"
+#include <appluno.hxx>
+#include <scdll.hxx>
 #include <vcl/svapp.hxx>
 
-#include "docsh.hxx"
+#include <docsh.hxx>
 
 using namespace ::com::sun::star;
 
-OUString SAL_CALL ScDocument_getImplementationName() throw()
-{
-    return OUString( "com.sun.star.comp.Calc.SpreadsheetDocument" );
-}
-
-uno::Sequence< OUString > SAL_CALL ScDocument_getSupportedServiceNames() throw()
-{
-    uno::Sequence<OUString> aSeq { "com.sun.star.sheet.SpreadsheetDocument" };
-    return aSeq;
-}
-
-uno::Reference< uno::XInterface > SAL_CALL ScDocument_createInstance(
-                const uno::Reference< lang::XMultiServiceFactory > & /* rSMgr */, SfxModelFlags _nCreationFlags )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Calc_SpreadsheetDocument_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const& args)
 {
     SolarMutexGuard aGuard;
     ScDLL::Init();
-    SfxObjectShell* pShell = new ScDocShell( _nCreationFlags );
-    return uno::Reference< uno::XInterface >( pShell->GetModel() );
+    css::uno::Reference<css::uno::XInterface> xInterface = sfx2::createSfxModelInstance(args,
+        [&](SfxModelFlags _nCreationFlags)
+        {
+            SfxObjectShell* pShell = new ScDocShell( _nCreationFlags );
+            return uno::Reference< uno::XInterface >( pShell->GetModel() );
+        });
+    xInterface->acquire();
+    return xInterface.get();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

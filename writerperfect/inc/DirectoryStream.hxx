@@ -12,48 +12,38 @@
 
 #include <librevenge-stream/librevenge-stream.h>
 #include <com/sun/star/uno/Reference.h>
-#include <writerperfectdllapi.h>
+#include "writerperfectdllapi.h"
 #include <memory>
-#include <climits>
 
-namespace com
-{
-namespace sun
-{
-namespace star
-{
-namespace ucb
+namespace com::sun::star::ucb
 {
 class XContent;
-}
-}
-}
 }
 
 namespace writerperfect
 {
-
-class WRITERPERFECT_DLLPUBLIC DirectoryStream : public librevenge::RVNGInputStream
+class WRITERPERFECT_DLLPUBLIC DirectoryStream final : public librevenge::RVNGInputStream
 {
     struct Impl;
 
 public:
-    explicit DirectoryStream(const css::uno::Reference<css::ucb::XContent> &xContent);
+    explicit DirectoryStream(const css::uno::Reference<css::ucb::XContent>& xContent);
     virtual ~DirectoryStream() override;
 
-    static bool isDirectory(const css::uno::Reference<css::ucb::XContent> &xContent);
-    static std::unique_ptr<DirectoryStream> createForParent(const css::uno::Reference<css::ucb::XContent> &xContent);
+    static bool isDirectory(const css::uno::Reference<css::ucb::XContent>& xContent);
+    static std::unique_ptr<DirectoryStream>
+    createForParent(const css::uno::Reference<css::ucb::XContent>& xContent);
 
-    const css::uno::Reference<css::ucb::XContent> getContent() const;
+    css::uno::Reference<css::ucb::XContent> getContent() const;
 
     virtual bool isStructured() override;
     virtual unsigned subStreamCount() override;
-    virtual const char *subStreamName(unsigned id) override;
-    virtual bool existsSubStream(const char *name) override;
-    virtual librevenge::RVNGInputStream *getSubStreamByName(const char *name) override;
-    virtual librevenge::RVNGInputStream *getSubStreamById(unsigned id) override;
+    virtual const char* subStreamName(unsigned id) override;
+    virtual bool existsSubStream(const char* name) override;
+    virtual librevenge::RVNGInputStream* getSubStreamByName(const char* name) override;
+    virtual librevenge::RVNGInputStream* getSubStreamById(unsigned id) override;
 
-    virtual const unsigned char *read(unsigned long numBytes, unsigned long &numBytesRead) override;
+    virtual const unsigned char* read(unsigned long numBytes, unsigned long& numBytesRead) override;
     virtual int seek(long offset, librevenge::RVNG_SEEK_TYPE seekType) override;
     virtual long tell() override;
     virtual bool isEnd() override;
@@ -61,7 +51,6 @@ public:
 private:
     std::unique_ptr<Impl> m_pImpl;
 };
-
 }
 
 #endif //  INCLUDED_WRITERPERFECT_DIRECTORYSTREAM_HXX

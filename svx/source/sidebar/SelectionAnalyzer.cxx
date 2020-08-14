@@ -17,18 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/sidebar/SelectionAnalyzer.hxx"
-#include "svx/svdmrkv.hxx"
-#include "svx/svdobj.hxx"
-#include "svx/svdotext.hxx"
-#include "svx/svdpage.hxx"
-#include "svx/fmglob.hxx"
-#include "svx/globl3d.hxx"
+#include <svx/sidebar/SelectionAnalyzer.hxx>
+#include <svx/svdmark.hxx>
+#include <svx/svdobj.hxx>
+#include <svx/svdotext.hxx>
+#include <svx/svdpage.hxx>
 
 using vcl::EnumContext;
 
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 EnumContext::Context SelectionAnalyzer::GetContextForSelection_SC (const SdrMarkList& rMarkList)
 {
@@ -205,7 +203,6 @@ EnumContext::Context SelectionAnalyzer::GetContextForObjectId_SC (const sal_uInt
         case OBJ_TITLETEXT:
         case OBJ_OUTLINETEXT:
         case OBJ_TEXT:
-        case OBJ_TEXTEXT:
         case OBJ_MEASURE:
         case OBJ_RECT:
         case OBJ_CIRC:
@@ -272,7 +269,6 @@ EnumContext::Context SelectionAnalyzer::GetContextForObjectId_SD (
         case OBJ_TITLETEXT:
         case OBJ_OUTLINETEXT:
         case OBJ_TEXT:
-        case OBJ_TEXTEXT:
             return EnumContext::Context::TextObject;
 
         case OBJ_GRAF:
@@ -468,7 +464,6 @@ bool SelectionAnalyzer::IsTextObjType (const sal_uInt16 nType)
     switch(nType)
     {
         case OBJ_TEXT:
-        case OBJ_TEXTEXT:
         case OBJ_TITLETEXT:
         case OBJ_OUTLINETEXT:
             return true;
@@ -479,6 +474,6 @@ bool SelectionAnalyzer::IsTextObjType (const sal_uInt16 nType)
 }
 
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

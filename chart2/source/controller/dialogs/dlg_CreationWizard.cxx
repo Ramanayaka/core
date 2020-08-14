@@ -17,23 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dlg_CreationWizard.hxx"
-#include "ResId.hxx"
-#include "macros.hxx"
-#include "Strings.hrc"
-#include "HelpIds.hrc"
+#include <dlg_CreationWizard.hxx>
+#include <ResId.hxx>
+#include <strings.hrc>
+#include <helpids.h>
+#include <ChartModel.hxx>
 
 #include "tp_ChartType.hxx"
 #include "tp_RangeChooser.hxx"
 #include "tp_Wizard_TitlesAndObjects.hxx"
 #include "tp_DataSource.hxx"
-#include "ChartTypeTemplateProvider.hxx"
+#include <ChartTypeTemplateProvider.hxx>
 #include "DialogModel.hxx"
 
-#define CHART_WIZARD_PAGEWIDTH  250
-#define CHART_WIZARD_PAGEHEIGHT 170
-
 using namespace css;
+
+using vcl::RoadmapWizardTypes::WizardPath;
 
 namespace chart
 {
@@ -45,20 +44,24 @@ namespace chart
 #define STATE_OBJECTS      3
 #define STATE_LAST         STATE_OBJECTS
 
-CreationWizard::CreationWizard(vcl::Window* pParent, const uno::Reference<frame::XModel>& xChartModel,
+CreationWizard::CreationWizard(weld::Window* pParent, const uno::Reference<frame::XModel>& xChartModel,
                                const uno::Reference<uno::XComponentContext>& xContext)
-                : svt::RoadmapWizard(pParent)
-                , m_xChartModel(xChartModel,uno::UNO_QUERY)
-                , m_xComponentContext(xContext)
-                , m_pTemplateProvider(nullptr)
-                , m_nLastState(STATE_LAST)
-                , m_aTimerTriggeredControllerLock(xChartModel)
-                , m_bCanTravel(true)
+    : vcl::RoadmapWizardMachine(pParent)
+    , m_xChartModel(xChartModel,uno::UNO_QUERY)
+    , m_xComponentContext(xContext)
+    , m_pTemplateProvider(nullptr)
+    , m_aTimerTriggeredControllerLock(xChartModel)
+    , m_bCanTravel(true)
 {
     m_pDialogModel.reset(new DialogModel(m_xChartModel, m_xComponentContext));
     defaultButton(WizardButtonFlags::FINISH);
 
-    this->setTitleBase(SchResId(STR_DLG_CHART_WIZARD));
+    setTitleBase(SchResId(STR_DLG_CHART_WIZARD));
+
+    // tdf#134386 set m_pTemplateProvider before creating any other pages
+    m_pTemplateProvider = static_cast<ChartTypeTabPage*>(GetOrCreatePage(STATE_CHARTTYPE));
+    assert(m_pTemplateProvider && "must exist");
+    m_pDialogModel->setTemplate(m_pTemplateProvider->getCurrentTemplate());
 
     WizardPath aPath = {
         STATE_CHARTTYPE,
@@ -69,13 +72,7 @@ CreationWizard::CreationWizard(vcl::Window* pParent, const uno::Reference<frame:
 
     declarePath(PATH_FULL, aPath);
 
-    this->SetRoadmapHelpId(HID_SCH_WIZARD_ROADMAP);
-    this->SetRoadmapInteractive(true);
-
-    Size aAdditionalRoadmapSize(LogicToPixel(Size(85, 0), MapUnit::MapAppFont));
-    Size aSize(LogicToPixel(Size(CHART_WIZARD_PAGEWIDTH, CHART_WIZARD_PAGEHEIGHT), MapUnit::MapAppFont));
-    aSize.Width() += aAdditionalRoadmapSize.Width();
-    this->SetSizePixel(aSize);
+    SetRoadmapHelpId(HID_SCH_WIZARD_ROADMAP);
 
     if (!m_pDialogModel->getModel().isDataFromSpreadsheet())
     {
@@ -85,51 +82,53 @@ CreationWizard::CreationWizard(vcl::Window* pParent, const uno::Reference<frame:
 
     // Call ActivatePage, to create and activate the first page
     ActivatePage();
+
+    m_xAssistant->set_current_page(0);
 }
 
 CreationWizard::~CreationWizard() = default;
 
-VclPtr<TabPage> CreationWizard::createPage(WizardState nState)
+std::unique_ptr<BuilderPage> CreationWizard::createPage(WizardState nState)
 {
-    VclPtr<svt::OWizardPage> pRet;
+    std::unique_ptr<vcl::OWizardPage> xRet;
+
+    OString sIdent(OString::number(nState));
+    weld::Container* pPageContainer = m_xAssistant->append_page(sIdent);
+
     switch( nState )
     {
-    case STATE_CHARTTYPE:
+        case STATE_CHARTTYPE:
         {
-        m_aTimerTriggeredControllerLock.startTimer();
-        VclPtrInstance<ChartTypeTabPage> pChartTypeTabPage(this,m_xChartModel);
-        pRet  = pChartTypeTabPage;
-        m_pTemplateProvider = pChartTypeTabPage;
-        if (m_pDialogModel)
-            m_pDialogModel->setTemplate( m_pTemplateProvider->getCurrentTemplate());
+            m_aTimerTriggeredControllerLock.startTimer();
+            xRet = std::make_unique<ChartTypeTabPage>(pPageContainer, this, m_xChartModel);
+            break;
         }
-        break;
-    case STATE_SIMPLE_RANGE:
+        case STATE_SIMPLE_RANGE:
         {
-        m_aTimerTriggeredControllerLock.startTimer();
-        pRet = VclPtr<RangeChooserTabPage>::Create(this, *m_pDialogModel, m_pTemplateProvider, this);
+            m_aTimerTriggeredControllerLock.startTimer();
+            xRet = std::make_unique<RangeChooserTabPage>(pPageContainer, this, *m_pDialogModel, m_pTemplateProvider);
+            break;
         }
-        break;
-    case STATE_DATA_SERIES:
+        case STATE_DATA_SERIES:
         {
-        m_aTimerTriggeredControllerLock.startTimer();
-        pRet = VclPtr<DataSourceTabPage>::Create(this, *m_pDialogModel, m_pTemplateProvider, this);
+            m_aTimerTriggeredControllerLock.startTimer();
+            xRet = std::make_unique<DataSourceTabPage>(pPageContainer, this, *m_pDialogModel, m_pTemplateProvider);
+            break;
         }
-        break;
-    case STATE_OBJECTS:
+        case STATE_OBJECTS:
         {
-        pRet  = VclPtr<TitlesAndObjectsTabPage>::Create(this,m_xChartModel, m_xComponentContext);
-        m_aTimerTriggeredControllerLock.startTimer();
+            xRet = std::make_unique<TitlesAndObjectsTabPage>(pPageContainer, this, m_xChartModel, m_xComponentContext);
+            m_aTimerTriggeredControllerLock.startTimer();
+            break;
         }
-        break;
-    default:
-        break;
+        default:
+            break;
     }
 
-    if (pRet)
-        pRet->SetText(OUString()); //remove title of pages to not get them in the wizard title
+    if (xRet)
+        xRet->SetPageTitle(OUString()); //remove title of pages to not get them in the wizard title
 
-    return pRet;
+    return xRet;
 }
 
 bool CreationWizard::leaveState( WizardState /*_nState*/ )
@@ -137,57 +136,62 @@ bool CreationWizard::leaveState( WizardState /*_nState*/ )
     return m_bCanTravel;
 }
 
-svt::WizardTypes::WizardState CreationWizard::determineNextState( WizardState nCurrentState ) const
+vcl::WizardTypes::WizardState CreationWizard::determineNextState( WizardState nCurrentState ) const
 {
     if( !m_bCanTravel )
         return WZS_INVALID_STATE;
-    if( nCurrentState == m_nLastState )
+    if( nCurrentState == STATE_LAST )
         return WZS_INVALID_STATE;
-    svt::WizardTypes::WizardState nNextState = nCurrentState + 1;
-    while( !isStateEnabled( nNextState ) && nNextState <= m_nLastState )
+    vcl::WizardTypes::WizardState nNextState = nCurrentState + 1;
+    while( !isStateEnabled( nNextState ) && nNextState <= STATE_LAST )
         ++nNextState;
-    return (nNextState==m_nLastState+1) ? WZS_INVALID_STATE : nNextState;
+    return (nNextState==STATE_LAST+1) ? WZS_INVALID_STATE : nNextState;
 }
+
 void CreationWizard::enterState(WizardState nState)
 {
     m_aTimerTriggeredControllerLock.startTimer();
     enableButtons( WizardButtonFlags::PREVIOUS, nState > STATE_FIRST );
-    enableButtons( WizardButtonFlags::NEXT, nState < m_nLastState );
+    enableButtons( WizardButtonFlags::NEXT, nState < STATE_LAST );
     if( isStateEnabled( nState ))
-        svt::RoadmapWizard::enterState(nState);
+        vcl::RoadmapWizardMachine::enterState(nState);
 }
 
-void CreationWizard::setInvalidPage( TabPage * /* pTabPage */ )
+void CreationWizard::setInvalidPage(BuilderPage* pTabPage)
 {
-    m_bCanTravel = false;
+    if (pTabPage == m_pCurTabPage)
+        m_bCanTravel = false;
 }
 
-void CreationWizard::setValidPage( TabPage * /* pTabPage */ )
+void CreationWizard::setValidPage(BuilderPage* pTabPage)
 {
-    m_bCanTravel = true;
+    if (pTabPage == m_pCurTabPage)
+        m_bCanTravel = true;
 }
 
 OUString CreationWizard::getStateDisplayName( WizardState nState ) const
 {
-    sal_uInt16 nResId = 0;
+    const char* pResId = nullptr;
     switch( nState )
     {
     case STATE_CHARTTYPE:
-        nResId = STR_PAGE_CHARTTYPE;
+        pResId = STR_PAGE_CHARTTYPE;
         break;
     case STATE_SIMPLE_RANGE:
-        nResId = STR_PAGE_DATA_RANGE;
+        pResId = STR_PAGE_DATA_RANGE;
         break;
     case STATE_DATA_SERIES:
-        nResId = STR_OBJECT_DATASERIES_PLURAL;
+        pResId = STR_OBJECT_DATASERIES_PLURAL;
         break;
     case STATE_OBJECTS:
-        nResId = STR_PAGE_CHART_ELEMENTS;
+        pResId = STR_PAGE_CHART_ELEMENTS;
         break;
     default:
         break;
     }
-    return SchResId(nResId);
+    if (!pResId)
+        return OUString();
+    return SchResId(pResId);
 }
 
 } //namespace chart

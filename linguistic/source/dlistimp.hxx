@@ -25,12 +25,11 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/interfacecontainer.h>
 #include <rtl/ref.hxx>
 
 #include <vector>
 
-#include "linguistic/misc.hxx"
+#include <linguistic/misc.hxx>
 #include "lngopt.hxx"
 
 class DicEvtListenerHelper;
@@ -112,19 +111,9 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-
-    static inline OUString getImplementationName_Static() throw();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static() throw();
-
     // non UNO-specific
     void    SaveDics();
 };
-
-inline OUString DicList::getImplementationName_Static() throw()
-{
-    return OUString( "com.sun.star.lingu2.DicList" );
-}
-
 
 #endif
 

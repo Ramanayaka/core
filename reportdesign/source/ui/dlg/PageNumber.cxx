@@ -16,21 +16,13 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "PageNumber.hxx"
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include "RptResId.hrc"
-#include "rptui_slotid.hrc"
-#include "ModuleHelper.hxx"
-#include "RptDef.hxx"
-#include "helpids.hrc"
-#include <vcl/msgbox.hxx>
-#include <vcl/settings.hxx>
+#include <PageNumber.hxx>
+#include <rptui_slotid.hrc>
+#include <RptDef.hxx>
 
-#include "UITools.hxx"
-#include "uistrings.hrc"
-#include "ReportController.hxx"
+#include <strings.hxx>
+#include <ReportController.hxx>
 #include <comphelper/propertysequence.hxx>
-#include <algorithm>
 
 namespace rptui
 {
@@ -38,48 +30,31 @@ using namespace ::com::sun::star;
 using namespace ::comphelper;
 
 
-// class OPageNumberDialog
 
-OPageNumberDialog::OPageNumberDialog( vcl::Window* _pParent
-                                           ,const uno::Reference< report::XReportDefinition >& _xHoldAlive
-                                           ,OReportController* _pController)
-    : ModalDialog( _pParent, "PageNumberDialog" , "modules/dbreport/ui/pagenumberdialog.ui" )
-    ,m_pController(_pController)
-    ,m_xHoldAlive(_xHoldAlive)
+OPageNumberDialog::OPageNumberDialog(weld::Window* pParent,
+                                     const uno::Reference< report::XReportDefinition >& _xHoldAlive,
+                                     OReportController* _pController)
+    : GenericDialogController(pParent, "modules/dbreport/ui/pagenumberdialog.ui", "PageNumberDialog")
+    , m_pController(_pController)
+    , m_xHoldAlive(_xHoldAlive)
+    , m_xPageN(m_xBuilder->weld_radio_button("pagen"))
+    , m_xPageNofM(m_xBuilder->weld_radio_button("pagenofm"))
+    , m_xTopPage(m_xBuilder->weld_radio_button("toppage"))
+    , m_xBottomPage(m_xBuilder->weld_radio_button("bottompage"))
+    , m_xAlignmentLst(m_xBuilder->weld_combo_box("alignment"))
+    , m_xShowNumberOnFirstPage(m_xBuilder->weld_check_button("shownumberonfirstpage"))
 {
-    get(m_pPageN,"pagen");
-    get(m_pPageNofM,"pagenofm");
-    get(m_pTopPage,"toppage");
-    get(m_pBottomPage,"bottompage");
-    get(m_pAlignmentLst,"alignment");
-    get(m_pShowNumberOnFirstPage,"shownumberonfirstpage");
-
-
-    m_pShowNumberOnFirstPage->Hide();
-
+    m_xShowNumberOnFirstPage->hide();
 }
-
 
 OPageNumberDialog::~OPageNumberDialog()
 {
-    disposeOnce();
 }
 
-void OPageNumberDialog::dispose()
+short OPageNumberDialog::run()
 {
-    m_pPageN.clear();
-    m_pPageNofM.clear();
-    m_pTopPage.clear();
-    m_pBottomPage.clear();
-    m_pAlignmentLst.clear();
-    m_pShowNumberOnFirstPage.clear();
-    ModalDialog::dispose();
-}
-
-short OPageNumberDialog::Execute()
-{
-    short nRet = ModalDialog::Execute();
-    if ( nRet == RET_OK )
+    short nRet = GenericDialogController::run();
+    if (nRet == RET_OK)
     {
         try
         {
@@ -87,7 +62,7 @@ short OPageNumberDialog::Execute()
             sal_Int32 nPosX = 0;
             sal_Int32 nPos2X = 0;
             awt::Size aRptSize = getStyleProperty<awt::Size>(m_xHoldAlive,PROPERTY_PAPERSIZE);
-            switch ( m_pAlignmentLst->GetSelectEntryPos() )
+            switch (m_xAlignmentLst->get_active())
             {
                 case 0: // left
                     nPosX = getStyleProperty<sal_Int32>(m_xHoldAlive,PROPERTY_LEFTMARGIN);
@@ -106,20 +81,19 @@ short OPageNumberDialog::Execute()
                 default:
                     break;
             }
-            if ( m_pAlignmentLst->GetSelectEntryPos() > 2 )
+            if (m_xAlignmentLst->get_active() > 2)
                 nPosX = nPos2X;
 
             uno::Sequence<beans::PropertyValue> aValues( comphelper::InitPropertySequence({
                     { PROPERTY_POSITION, uno::Any(awt::Point(nPosX,0)) },
-                    { PROPERTY_PAGEHEADERON, uno::Any(m_pTopPage->IsChecked()) },
-                    { PROPERTY_STATE, uno::Any(m_pPageNofM->IsChecked()) }
+                    { PROPERTY_PAGEHEADERON, uno::Any(m_xTopPage->get_active()) },
+                    { PROPERTY_STATE, uno::Any(m_xPageNofM->get_active()) }
                 }));
 
             m_pController->executeChecked(SID_INSERT_FLD_PGNUMBER,aValues);
         }
         catch(uno::Exception&)
         {
-            nRet = RET_NO;
         }
     }
     return nRet;

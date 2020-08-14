@@ -19,10 +19,8 @@
 
 #include "elementexport.hxx"
 
-#include <o3tl/make_unique.hxx>
-
 #include "strings.hxx"
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include "eventexport.hxx"
 #include "formenums.hxx"
 #include "formcellbinding.hxx"
@@ -34,7 +32,6 @@
 #include <com/sun/star/io/XPersistObject.hpp>
 #include <com/sun/star/util/Duration.hpp>
 #include <com/sun/star/form/FormComponentType.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/form/FormSubmitEncoding.hpp>
 #include <com/sun/star/form/FormSubmitMethod.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
@@ -53,7 +50,7 @@
 #include <com/sun/star/form/binding/XListEntrySink.hpp>
 #include <tools/urlobj.hxx>
 #include <xmloff/xmlexp.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/XMLEventExport.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmltoken.hxx>
@@ -62,6 +59,7 @@
 #include <tools/diagnose_ex.h>
 #include <comphelper/extract.hxx>
 #include <sal/macros.h>
+#include <sal/log.hxx>
 
 #include <algorithm>
 
@@ -141,9 +139,9 @@ namespace xmloff
         exportEvents();
     }
 
-    void OElementExport::implStartElement(const sal_Char* _pName)
+    void OElementExport::implStartElement(const char* _pName)
     {
-        m_pXMLElement = o3tl::make_unique<SvXMLElementExport>(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, _pName, true, true);
+        m_pXMLElement = std::make_unique<SvXMLElementExport>(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, _pName, true, true);
     }
 
     void OElementExport::implEndElement()
@@ -217,7 +215,7 @@ namespace xmloff
 
     void OElementExport::exportEvents()
     {
-        if (!m_aEvents.getLength())
+        if (!m_aEvents.hasElements())
             // nothing to do
             return;
 
@@ -401,14 +399,13 @@ namespace xmloff
                     Sequence< OUString > aListItems;
                     m_xProps->getPropertyValue(PROPERTY_STRING_ITEM_LIST) >>= aListItems;
                     // loop through it and write the sub elements
-                    const OUString* pListItems = aListItems.getConstArray();
-                    for (sal_Int32 i=0; i<aListItems.getLength(); ++i, ++pListItems)
+                    for (const auto& rListItem : std::as_const(aListItems))
                     {
                         m_rContext.getGlobalContext().ClearAttrList();
                         AddAttribute(
                             OAttributeMetaData::getCommonControlAttributeNamespace(CCAFlags::Label),
                             OAttributeMetaData::getCommonControlAttributeName(CCAFlags::Label),
-                            *pListItems);
+                            rListItem);
                         SvXMLElementExport aFormElement(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, "item", true, true);
                     }
                 }
@@ -440,67 +437,36 @@ namespace xmloff
     void OControlExport::exportGenericHandlerAttributes()
     {
         const Sequence< Property > aProperties = m_xPropertyInfo->getProperties();
-        for (   const Property* prop = aProperties.getConstArray();
-                prop != aProperties.getConstArray() + aProperties.getLength();
-                ++prop
-            )
+        for ( auto const & prop : aProperties )
         {
             try
             {
                 // see if this property can already be handled with an IPropertyHandler (which, on the long
                 // term, should be the case for most, if not all, properties)
-                const PropertyDescription* propDescription = metadata::getPropertyDescription( prop->Name );
+                const PropertyDescription* propDescription = metadata::getPropertyDescription( prop.Name );
                 if ( propDescription == nullptr )
                     continue;
 
                 // let the factory provide the concrete handler. Note that caching, if desired, is the task
                 // of the factory
                 PPropertyHandler handler = (*propDescription->factory)( propDescription->propertyId );
-                if ( !handler.get() )
+                if ( !handler )
                 {
                     SAL_WARN( "xmloff.forms", "OControlExport::exportGenericHandlerAttributes: invalid property handler provided by the factory!" );
                     continue;
                 }
 
-                OUString attributeValue;
-                if ( propDescription->propertyGroup == NO_GROUP )
+                // that's a property which has a direct mapping to an attribute
+                if ( !shouldExportProperty( prop.Name ) )
+                    // TODO: in the future, we surely need a more sophisticated approach to this, involving the property
+                    // handler, or the property description
                 {
-                    // that's a property which has a direct mapping to an attribute
-                    if ( !shouldExportProperty( prop->Name ) )
-                        // TODO: in the future, we surely need a more sophisticated approach to this, involving the property
-                        // handler, or the property description
-                    {
-                        exportedProperty( prop->Name );
-                        continue;
-                    }
-
-                    const Any propValue = m_xProps->getPropertyValue( prop->Name );
-                    attributeValue = handler->getAttributeValue( propValue );
+                    exportedProperty( prop.Name );
+                    continue;
                 }
-                else
-                {
-                    // that's a property which is part of a group of properties, whose values, in their entity, comprise
-                    // a single attribute value
 
-                    // retrieve the descriptions of all other properties which add to the attribute value
-                    PropertyDescriptionList descriptions;
-                    metadata::getPropertyGroup( propDescription->propertyGroup, descriptions );
-
-                    // retrieve the values for all those properties
-                    PropertyValues aValues;
-                    for (   PropertyDescriptionList::iterator desc = descriptions.begin();
-                            desc != descriptions.end();
-                            ++desc
-                        )
-                    {
-                        // TODO: XMultiPropertySet?
-                        const Any propValue = m_xProps->getPropertyValue( (*desc)->propertyName );
-                        aValues[ (*desc)->propertyId ] = propValue;
-                    }
-
-                    // let the handler translate into an XML attribute value
-                    attributeValue = handler->getAttributeValue( aValues );
-                }
+                const Any propValue = m_xProps->getPropertyValue( prop.Name );
+                OUString attributeValue = handler->getAttributeValue( propValue );
 
                 AddAttribute(
                     propDescription->attribute.namespacePrefix,
@@ -508,11 +474,11 @@ namespace xmloff
                     attributeValue
                 );
 
-                exportedProperty( prop->Name );
+                exportedProperty( prop.Name );
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("xmloff.forms");
             }
         }
     }
@@ -602,7 +568,7 @@ namespace xmloff
         // some integer properties
         {
             // now the common handling
-            static CCAFlags nIntegerPropertyAttributeIds[] =
+            static const CCAFlags nIntegerPropertyAttributeIds[] =
             {   // attribute flags
                 CCAFlags::Size, CCAFlags::TabIndex
             };
@@ -766,8 +732,8 @@ namespace xmloff
 
         if ((CCAFlags::CurrentValue | CCAFlags::Value) & m_nIncludeCommon)
         {
-            const sal_Char* pCurrentValuePropertyName = nullptr;
-            const sal_Char* pValuePropertyName = nullptr;
+            const char* pCurrentValuePropertyName = nullptr;
+            const char* pValuePropertyName = nullptr;
 
             // get the property names
             getValuePropertyNames(m_eType, m_nClassId, pCurrentValuePropertyName, pValuePropertyName);
@@ -775,7 +741,7 @@ namespace xmloff
             // add the attributes if necessary and possible
             if (pCurrentValuePropertyName && (CCAFlags::CurrentValue & m_nIncludeCommon))
             {
-                static const sal_Char* pCurrentValueAttributeName = OAttributeMetaData::getCommonControlAttributeName(CCAFlags::CurrentValue);
+                static const char* pCurrentValueAttributeName = OAttributeMetaData::getCommonControlAttributeName(CCAFlags::CurrentValue);
                 // don't export the current-value if this value originates from a data binding
                 // #i26944#
                 if ( controlHasActiveDataBinding() )
@@ -793,7 +759,7 @@ namespace xmloff
 
             if (pValuePropertyName && (CCAFlags::Value & m_nIncludeCommon))
             {
-                static const sal_Char* pValueAttributeName = OAttributeMetaData::getCommonControlAttributeName(CCAFlags::Value);
+                static const char* pValueAttributeName = OAttributeMetaData::getCommonControlAttributeName(CCAFlags::Value);
                 static const sal_uInt16 nValueAttributeNamespaceKey = OAttributeMetaData::getCommonControlAttributeNamespace(CCAFlags::Value);
                 exportGenericPropertyAttribute(
                     nValueAttributeNamespaceKey,
@@ -840,7 +806,7 @@ namespace xmloff
                 OAttributeMetaData::getDatabaseAttributeNamespace(),
                 OAttributeMetaData::getDatabaseAttributeName( DAFlags::InputRequired ),
                 PROPERTY_INPUT_REQUIRED,
-                BoolAttrFlags::DefaultTrue
+                BoolAttrFlags::DefaultFalse | BoolAttrFlags::DefaultVoid
             );
             RESET_BIT( nIncludeDatabase, DAFlags::InputRequired );
         }
@@ -992,8 +958,8 @@ namespace xmloff
                         ( *pAttributeId == SCAFlags::FocusOnClick ) ? BoolAttrFlags::DefaultTrue : BoolAttrFlags::DefaultFalse
                     );
             #if OSL_DEBUG_LEVEL > 0
-                //  reset the bit for later checking
-                m_nIncludeSpecial = m_nIncludeSpecial & ~*pAttributeId;
+                    //  reset the bit for later checking
+                    m_nIncludeSpecial = m_nIncludeSpecial & ~*pAttributeId;
             #endif
                 }
             }
@@ -1001,7 +967,7 @@ namespace xmloff
 
         // the integer properties
         {
-            static SCAFlags nIntegerPropertyAttributeIds[] =
+            static const SCAFlags nIntegerPropertyAttributeIds[] =
             {   // attribute flags
                 SCAFlags::PageStepSize
             };
@@ -1033,8 +999,8 @@ namespace xmloff
                         nIntegerPropertyAttrDefaults[i]
                     );
             #if OSL_DEBUG_LEVEL > 0
-                //  reset the bit for later checking
-                m_nIncludeSpecial = m_nIncludeSpecial & ~nIntegerPropertyAttributeIds[i];
+                    //  reset the bit for later checking
+                    m_nIncludeSpecial = m_nIncludeSpecial & ~nIntegerPropertyAttributeIds[i];
             #endif
                 }
 
@@ -1176,8 +1142,8 @@ namespace xmloff
                         pStringPropertyNames[i]
                     );
             #if OSL_DEBUG_LEVEL > 0
-                //  reset the bit for later checking
-                m_nIncludeSpecial = m_nIncludeSpecial & ~nStringPropertyAttributeIds[i];
+                    //  reset the bit for later checking
+                    m_nIncludeSpecial = m_nIncludeSpecial & ~nStringPropertyAttributeIds[i];
             #endif
                 }
         }
@@ -1187,8 +1153,8 @@ namespace xmloff
             // need to export the min value and the max value as attributes
             // It depends on the real type (FormComponentType) of the control, which properties hold these
             // values
-            const sal_Char* pMinValuePropertyName = nullptr;
-            const sal_Char* pMaxValuePropertyName = nullptr;
+            const char* pMinValuePropertyName = nullptr;
+            const char* pMaxValuePropertyName = nullptr;
             getValueLimitPropertyNames(m_nClassId, pMinValuePropertyName, pMaxValuePropertyName);
 
             OSL_ENSURE((nullptr == pMinValuePropertyName) == (SCAFlags::NONE == (SCAFlags::MinValue & m_nIncludeSpecial)),
@@ -1197,8 +1163,8 @@ namespace xmloff
                 "OControlExport::exportCommonControlAttributes: no property found for the max value attribute!");
 
             // add the two attributes
-            static const sal_Char* pMinValueAttributeName = OAttributeMetaData::getSpecialAttributeName(SCAFlags::MinValue);
-            static const sal_Char* pMaxValueAttributeName = OAttributeMetaData::getSpecialAttributeName(SCAFlags::MaxValue);
+            static const char* pMinValueAttributeName = OAttributeMetaData::getSpecialAttributeName(SCAFlags::MinValue);
+            static const char* pMaxValueAttributeName = OAttributeMetaData::getSpecialAttributeName(SCAFlags::MaxValue);
             static const sal_uInt16 nMinValueNamespaceKey = OAttributeMetaData::getSpecialAttributeNamespace(SCAFlags::MinValue);
             static const sal_uInt16 nMaxValueNamespaceKey = OAttributeMetaData::getSpecialAttributeNamespace(SCAFlags::MaxValue);
 
@@ -1239,7 +1205,7 @@ namespace xmloff
         {
             Sequence< OUString > aListSourceSequence;
             aListSource >>= aListSourceSequence;
-            if ( aListSourceSequence.getLength() )
+            if ( aListSourceSequence.hasElements() )
                 sListSource = aListSourceSequence[ 0 ];
         }
         return sListSource;
@@ -1268,9 +1234,8 @@ namespace xmloff
         DBG_CHECK_PROPERTY(_rPropertyName, Sequence< sal_Int16 >);
         m_xProps->getPropertyValue(_rPropertyName) >>= aValueSequence;
 
-        const sal_Int16* pValues = aValueSequence.getConstArray();
-        for (sal_Int32 i=0; i<aValueSequence.getLength(); ++i, ++pValues)
-            _rOut.insert(*pValues);
+        for (const auto& rValue : std::as_const(aValueSequence))
+            _rOut.insert(rValue);
     }
 
     void OControlExport::exportListSourceAsElements()
@@ -1303,7 +1268,7 @@ namespace xmloff
         sal_Int32 nItems = aItems.getLength();
         sal_Int32 nValues = aValues.getLength();
 
-        sal_Int16 nMaxLen = (sal_Int16)std::max(nItems, nValues);
+        sal_Int16 nMaxLen = static_cast<sal_Int16>(std::max(nItems, nValues));
 
         for (sal_Int16 i=0; i<nMaxLen; ++i )
         {
@@ -1319,7 +1284,7 @@ namespace xmloff
             }
             if (i < nValues)
             {
-                // there is an value at this position
+                // there is a value at this position
                 AddAttribute(
                     OAttributeMetaData::getCommonControlAttributeNamespace(CCAFlags::Value),
                     OAttributeMetaData::getCommonControlAttributeName(CCAFlags::Value),
@@ -1356,52 +1321,52 @@ namespace xmloff
         // one or both of the selected flags.
         // 21.05.2001 - 85388 - frank.schoenheit@germany.sun.com
 
-        if ( !aSelection.empty() || !aDefaultSelection.empty() )
+        if (aSelection.empty() && aDefaultSelection.empty())
+            return;
+
+        sal_Int16 nLastSelected = -1;
+        if ( !aSelection.empty() )
+            nLastSelected = *(--aSelection.end());
+
+        sal_Int16 nLastDefaultSelected = -1;
+        if ( !aDefaultSelection.empty() )
+            nLastDefaultSelected = *(--aDefaultSelection.end());
+
+        // the maximum element in both sets
+        sal_Int16 nLastReferredEntry = std::max(nLastSelected, nLastDefaultSelected);
+        OSL_ENSURE(nLastReferredEntry >= nMaxLen, "OControlExport::exportListSourceAsElements: inconsistence!");
+            // if the maximum (selected or default selected) entry number is less than the maximum item count
+            // in both lists, the entry number should have been removed from the set
+
+        for (sal_Int16 i=nMaxLen; i<=nLastReferredEntry; ++i)
         {
-            sal_Int16 nLastSelected = -1;
-            if ( !aSelection.empty() )
-                nLastSelected = *(--aSelection.end());
-
-            sal_Int16 nLastDefaultSelected = -1;
-            if ( !aDefaultSelection.empty() )
-                nLastDefaultSelected = *(--aDefaultSelection.end());
-
-            // the maximum element in both sets
-            sal_Int16 nLastReferredEntry = std::max(nLastSelected, nLastDefaultSelected);
-            OSL_ENSURE(nLastReferredEntry >= nMaxLen, "OControlExport::exportListSourceAsElements: inconsistence!");
-                // if the maximum (selected or default selected) entry number is less than the maximum item count
-                // in both lists, the entry number should have been removed from the set
-
-            for (sal_Int16 i=nMaxLen; i<=nLastReferredEntry; ++i)
-            {
-                if (aSelection.end() != aSelection.find(i))
-                {   // the (not existent) item at this position is selected
-                    AddAttribute(
-                        OAttributeMetaData::getCommonControlAttributeNamespace(CCAFlags::CurrentSelected),
-                        OAttributeMetaData::getCommonControlAttributeName(CCAFlags::CurrentSelected),
-                        sTrue
-                        );
-                }
-
-                if (aDefaultSelection.end() != aDefaultSelection.find(i))
-                {   // the (not existent) item at this position is selected as default
-                    AddAttribute(
-                        OAttributeMetaData::getCommonControlAttributeNamespace(CCAFlags::Selected),
-                        OAttributeMetaData::getCommonControlAttributeName(CCAFlags::Selected),
-                        sTrue
-                        );
-                }
-                SvXMLElementExport aFormElement(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, "option", true, true);
+            if (aSelection.end() != aSelection.find(i))
+            {   // the (not existent) item at this position is selected
+                AddAttribute(
+                    OAttributeMetaData::getCommonControlAttributeNamespace(CCAFlags::CurrentSelected),
+                    OAttributeMetaData::getCommonControlAttributeName(CCAFlags::CurrentSelected),
+                    sTrue
+                    );
             }
+
+            if (aDefaultSelection.end() != aDefaultSelection.find(i))
+            {   // the (not existent) item at this position is selected as default
+                AddAttribute(
+                    OAttributeMetaData::getCommonControlAttributeNamespace(CCAFlags::Selected),
+                    OAttributeMetaData::getCommonControlAttributeName(CCAFlags::Selected),
+                    sTrue
+                    );
+            }
+            SvXMLElementExport aFormElement(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, "option", true, true);
         }
     }
 
-    void OControlExport::implStartElement(const sal_Char* _pName)
+    void OControlExport::implStartElement(const char* _pName)
     {
         // before we let the base class start it's outer element, we add a wrapper element
-        const sal_Char *pOuterElementName = getOuterXMLElementName();
+        const char *pOuterElementName = getOuterXMLElementName();
         if (pOuterElementName)
-            m_pOuterElement = o3tl::make_unique<SvXMLElementExport>(
+            m_pOuterElement = std::make_unique<SvXMLElementExport>(
                                         m_rContext.getGlobalContext(),
                                         XML_NAMESPACE_FORM,
                                         pOuterElementName, true,
@@ -1423,12 +1388,12 @@ namespace xmloff
         m_pOuterElement.reset();
     }
 
-    const sal_Char* OControlExport::getOuterXMLElementName() const
+    const char* OControlExport::getOuterXMLElementName() const
     {
         return nullptr;
     }
 
-    const sal_Char* OControlExport::getXMLElementName() const
+    const char* OControlExport::getXMLElementName() const
     {
         return getElementName(m_eType);
     }
@@ -1449,7 +1414,7 @@ namespace xmloff
             case FormComponentType::DATEFIELD:
                 m_eType = DATE;
                 knownType = true;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case FormComponentType::TIMEFIELD:
                 if ( !knownType )
                 {
@@ -1457,7 +1422,7 @@ namespace xmloff
                     knownType = true;
                 }
                 m_nIncludeSpecial |= SCAFlags::Validation;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case FormComponentType::NUMERICFIELD:
             case FormComponentType::CURRENCYFIELD:
             case FormComponentType::PATTERNFIELD:
@@ -1466,7 +1431,7 @@ namespace xmloff
                     m_eType = FORMATTED_TEXT;
                     knownType = true;
                 }
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case FormComponentType::TEXTFIELD:
             {   // it's some kind of edit. To know which type we need further investigation
 
@@ -1485,7 +1450,7 @@ namespace xmloff
                         // if the EchoChar string is not empty, it is a password field
                         sal_Int16 nEchoChar = 0;
                         if (m_xPropertyInfo->hasPropertyByName(PROPERTY_ECHOCHAR))
-                            // grid columns do not have this property ....
+                            // grid columns do not have this property...
                             m_xProps->getPropertyValue(PROPERTY_ECHOCHAR) >>= nEchoChar;
                         if (nEchoChar)
                         {
@@ -1497,7 +1462,7 @@ namespace xmloff
                             // if the MultiLine property is sal_True, it is a TextArea
                             bool bMultiLine = false;
                             if (m_xPropertyInfo->hasPropertyByName(PROPERTY_MULTILINE))
-                                // grid columns do not have this property ....
+                                // grid columns do not have this property...
                                 bMultiLine = ::cppu::any2bool(m_xProps->getPropertyValue(PROPERTY_MULTILINE));
 
                             if ( bMultiLine )
@@ -1620,7 +1585,7 @@ namespace xmloff
                 m_eType = BUTTON;
                 m_nIncludeCommon |= CCAFlags::TabStop | CCAFlags::Label;
                 m_nIncludeSpecial = SCAFlags::DefaultButton | SCAFlags::Toggle | SCAFlags::FocusOnClick | SCAFlags::ImagePosition | SCAFlags::RepeatDelay;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case FormComponentType::IMAGEBUTTON:
                 if (BUTTON != m_eType)
                 {
@@ -1637,7 +1602,7 @@ namespace xmloff
             case FormComponentType::CHECKBOX:
                 m_eType = CHECKBOX;
                 m_nIncludeSpecial = SCAFlags::CurrentState | SCAFlags::IsTristate | SCAFlags::State;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case FormComponentType::RADIOBUTTON:
                 m_nIncludeCommon =
                     CCAFlags::Name | CCAFlags::ServiceName | CCAFlags::Disabled | CCAFlags::Label | CCAFlags::Printable |
@@ -1702,7 +1667,7 @@ namespace xmloff
 
             default:
                 OSL_FAIL("OControlExport::examineControl: unknown control type (class id)!");
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
 
             case FormComponentType::NAVIGATIONBAR:
                 // TODO: should we have an own file format for this?
@@ -1799,8 +1764,7 @@ namespace xmloff
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OControlExport::exportCellBindingAttributes: caught an exception!" );
-            DBG_UNHANDLED_EXCEPTION();
+            TOOLS_WARN_EXCEPTION( "xmloff.forms", "OControlExport::exportCellBindingAttributes" );
         }
     }
 
@@ -1826,7 +1790,7 @@ namespace xmloff
             Reference< XListEntrySink > xSink( m_xProps, UNO_QUERY );
             Reference< XListEntrySource > xSource;
             if ( xSink.is() )
-                xSource.set(xSink->getListEntrySource(), css::uno::UNO_QUERY);
+                xSource = xSink->getListEntrySource();
             OSL_ENSURE( xSource.is(), "OControlExport::exportCellListSourceRange: list source or sink!" );
             if ( xSource.is() )
             {
@@ -1841,8 +1805,7 @@ namespace xmloff
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OControlExport::exportCellListSourceRange: caught an exception!" );
-            DBG_UNHANDLED_EXCEPTION();
+            TOOLS_WARN_EXCEPTION( "xmloff.forms", "OControlExport::exportCellListSourceRange" );
         }
     }
 
@@ -1865,11 +1828,11 @@ namespace xmloff
             }
             else
             {
-                XMLTokenEnum eXmlImagePositions[] =
+                const XMLTokenEnum eXmlImagePositions[] =
                 {
                     XML_START, XML_END, XML_TOP, XML_BOTTOM
                 };
-                XMLTokenEnum eXmlImageAligns[] =
+                const XMLTokenEnum eXmlImageAligns[] =
                 {
                     XML_START, XML_CENTER, XML_END
                 };
@@ -1889,7 +1852,7 @@ namespace xmloff
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("xmloff.forms");
         }
     }
 
@@ -1914,8 +1877,7 @@ namespace xmloff
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OColumnExport::controlHasActiveDataBinding: caught an exception!" );
-            DBG_UNHANDLED_EXCEPTION();
+            TOOLS_WARN_EXCEPTION( "xmloff.forms", "OColumnExport::controlHasActiveDataBinding" );
         }
 
         return false;
@@ -1945,8 +1907,7 @@ namespace xmloff
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OControlExport::controlHasUserSuppliedListEntries: caught an exception!" );
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("xmloff.forms");
         }
 
         OSL_FAIL( "OControlExport::controlHasUserSuppliedListEntries: unreachable code!" );
@@ -1989,7 +1950,7 @@ namespace xmloff
 
     }
 
-    const sal_Char* OColumnExport::getOuterXMLElementName() const
+    const char* OColumnExport::getOuterXMLElementName() const
     {
         return "column";
     }
@@ -2038,7 +1999,7 @@ namespace xmloff
         OSL_ENSURE(m_xProps.is(), "OFormExport::OFormExport: invalid arguments!");
     }
 
-    const sal_Char* OFormExport::getXMLElementName() const
+    const char* OFormExport::getXMLElementName() const
     {
         return "form";
     }

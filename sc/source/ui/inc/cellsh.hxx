@@ -21,16 +21,15 @@
 #define INCLUDED_SC_SOURCE_UI_INC_CELLSH_HXX
 
 #include <sfx2/shell.hxx>
-#include "shellids.hxx"
-#include <sfx2/module.hxx>
-#include <svx/svdmark.hxx>
+#include <shellids.hxx>
 #include <unotools/caserotate.hxx>
 #include <tools/link.hxx>
 #include <memory>
 #include "formatsh.hxx"
-#include "address.hxx"
-#include <vcl/window.hxx>
 #include <rtl/ref.hxx>
+#include <sot/formats.hxx>
+#include <vcl/vclptr.hxx>
+#include <tools/solar.h>
 
 class SvxClipboardFormatItem;
 class TransferableDataHelper;
@@ -55,6 +54,7 @@ private:
     bool            bPastePossible;
 
     void        GetPossibleClipboardFormats( SvxClipboardFormatItem& rFormats );
+    bool        HasClipboardFormat( SotClipboardFormatId nFormatId );
     void        ExecuteExternalSource(
                     const OUString& _rFile, const OUString& _rFilter, const OUString& _rOptions,
                     const OUString& _rSource, sal_uLong _nRefresh, SfxRequest& _rRequest );
@@ -66,7 +66,6 @@ private:
     void ExecuteFillSingleEdit();
 
     DECL_LINK( ClipboardChanged, TransferableDataHelper*, void );
-    DECL_LINK( DialogClosed, Dialog&, void );
 
     RotateTransliteration m_aRotateCase;
 
@@ -88,7 +87,7 @@ public:
 
     void        ExecuteEdit( SfxRequest& rReq );
     void        ExecuteTrans( SfxRequest& rReq );
-    void                ExecuteRotateTrans( SfxRequest& rReq );
+    void        ExecuteRotateTrans( const SfxRequest& rReq );
 
     void        GetBlockState( SfxItemSet& rSet );
     void        GetCellState( SfxItemSet& rSet );
@@ -105,7 +104,7 @@ public:
     void        ExecutePageSel( SfxRequest& rReq );
     void        ExecuteMove( SfxRequest& rReq );
 
-    VclPtr<vcl::Window> GetFrameWin();
+    const VclPtr<vcl::Window>& GetFrameWin() const;
 
     static void GetStateCursor( SfxItemSet& rSet );
 };

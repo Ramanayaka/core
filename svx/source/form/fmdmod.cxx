@@ -19,11 +19,12 @@
 
 #include <sal/macros.h>
 #include <svx/fmdmod.hxx>
-#include "fmservs.hxx"
+#include <fmservs.hxx>
 #include <fmobj.hxx>
 #include <svx/unoshape.hxx>
 #include <comphelper/processfactory.hxx>
-#include <svx/fmglob.hxx>
+#include <comphelper/sequence.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 using namespace ::svxform;
 
@@ -31,6 +32,7 @@ using namespace ::svxform;
 ::com::sun::star::uno::Reference< ::com::sun::star::uno::XInterface >  SAL_CALL SvxFmMSFactory::createInstance(const OUString& rServiceSpecifier)
 {
     ::com::sun::star::uno::Reference< ::com::sun::star::uno::XInterface >  xRet;
+
     if ( rServiceSpecifier.startsWith( "com.sun.star.form.component." ) )
     {
         css::uno::Reference<css::uno::XComponentContext> xContext = comphelper::getProcessComponentContext();
@@ -38,11 +40,16 @@ using namespace ::svxform;
     }
     else if ( rServiceSpecifier == "com.sun.star.drawing.ControlShape" )
     {
-        SdrObject* pObj = new FmFormObj();
+        SdrModel& rTargetModel(getSdrModelFromUnoModel());
+        SdrObject* pObj = new FmFormObj(rTargetModel);
         xRet = static_cast<cppu::OWeakObject*>(static_cast<SvxShape_UnoImplHelper*>(new SvxShapeControl(pObj)));
     }
+
     if (!xRet.is())
+    {
         xRet = SvxUnoDrawMSFactory::createInstance(rServiceSpecifier);
+    }
+
     return xRet;
 }
 
@@ -74,13 +81,10 @@ using namespace ::svxform;
 
     static const sal_uInt16 nSvxComponentServiceNameListCount = SAL_N_ELEMENTS(aSvxComponentServiceNameList);
 
-    ::com::sun::star::uno::Sequence< OUString > aSeq( nSvxComponentServiceNameListCount );
-    OUString* pStrings = aSeq.getArray();
-    for( sal_uInt16 nIdx = 0; nIdx < nSvxComponentServiceNameListCount; nIdx++ )
-        pStrings[nIdx] = aSvxComponentServiceNameList[nIdx];
+    auto aSeq( comphelper::arrayToSequence< OUString >(aSvxComponentServiceNameList, nSvxComponentServiceNameListCount) );
 
     ::com::sun::star::uno::Sequence< OUString > aParentSeq( SvxUnoDrawMSFactory::getAvailableServiceNames() );
-    return concatServiceNames( aParentSeq, aSeq );
+    return comphelper::concatSequences( aParentSeq, aSeq );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

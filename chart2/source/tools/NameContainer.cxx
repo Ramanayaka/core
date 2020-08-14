@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "NameContainer.hxx"
+#include <NameContainer.hxx>
 
 #include <com/sun/star/uno/Any.hxx>
  #include <cppuhelper/supportsservice.hxx>
@@ -45,7 +45,7 @@ NameContainer::NameContainer( const css::uno::Type& rType, const OUString& rServ
 
 NameContainer::NameContainer(
     const NameContainer & rOther )
-    : impl::NameContainer_Base()
+    : impl::NameContainer_Base(rOther)
     , m_aType( rOther.m_aType )
     , m_aServicename( rOther.m_aServicename )
     , m_aImplementationName( rOther.m_aImplementationName )
@@ -78,7 +78,7 @@ void SAL_CALL NameContainer::insertByName( const OUString& rName, const Any& rEl
 {
     if( m_aMap.find( rName ) != m_aMap.end() )
         throw container::ElementExistException();
-    m_aMap.insert( tContentMap::value_type( rName, rElement ));
+    m_aMap.emplace( rName, rElement );
 }
 
 void SAL_CALL NameContainer::removeByName( const OUString& Name )
@@ -112,8 +112,10 @@ Sequence< OUString > SAL_CALL NameContainer::getElementNames()
     sal_Int32 nCount = m_aMap.size();
     Sequence< OUString > aSeq(nCount);
     sal_Int32 nN = 0;
-    for( tContentMap::iterator aIter = m_aMap.begin(); aIter != m_aMap.end() && nN < nCount; ++aIter, ++nN )
-        aSeq[nN]=aIter->first;
+    for (auto const& elem : m_aMap)
+    {
+        aSeq[nN++]=elem.first;
+    }
     return aSeq;
 }
 

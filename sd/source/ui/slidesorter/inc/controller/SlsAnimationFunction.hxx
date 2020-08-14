@@ -20,17 +20,13 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSANIMATIONFUNCTION_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSANIMATIONFUNCTION_HXX
 
-#include "model/SlsSharedPageDescriptor.hxx"
 #include <basegfx/point/b2dpoint.hxx>
 
 #include <functional>
 #include <vector>
 
-namespace sd { namespace slidesorter { namespace view {
-class SlideSorterView;
-} } }
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 class AnimationBezierFunction
 {
@@ -77,7 +73,7 @@ private:
     ::std::vector<double> maY;
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

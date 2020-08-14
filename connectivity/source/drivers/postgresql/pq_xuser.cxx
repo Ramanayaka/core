@@ -34,26 +34,22 @@
  *
  ************************************************************************/
 
+#include <sal/log.hxx>
 #include <rtl/ustrbuf.hxx>
 
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
 
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 
 #include "pq_xuser.hxx"
 #include "pq_tools.hxx"
 #include "pq_statics.hxx"
 
-using osl::MutexGuard;
-using osl::Mutex;
-
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Any;
 using com::sun::star::uno::Type;
-using com::sun::star::uno::RuntimeException;
 
 using com::sun::star::beans::XPropertySet;
 
@@ -86,19 +82,11 @@ Reference< XPropertySet > User::createDataDescriptor(  )
 
 Sequence<Type > User::getTypes()
 {
-    static cppu::OTypeCollection *pCollection;
-    if( ! pCollection )
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( !pCollection )
-        {
-            static cppu::OTypeCollection collection(
-                cppu::UnoType<css::sdbcx::XUser>::get(),
-                ReflectionBase::getTypes());
-            pCollection = &collection;
-        }
-    }
-    return pCollection->getTypes();
+    static cppu::OTypeCollection collection(
+        cppu::UnoType<css::sdbcx::XUser>::get(),
+        ReflectionBase::getTypes());
+
+    return collection.getTypes();
 }
 
 Sequence< sal_Int8> User::getImplementationId()
@@ -108,9 +96,7 @@ Sequence< sal_Int8> User::getImplementationId()
 
 Any User::queryInterface( const Type & reqType )
 {
-    Any ret;
-
-    ret = ReflectionBase::queryInterface( reqType );
+    Any ret = ReflectionBase::queryInterface( reqType );
     if( ! ret.hasValue() )
         ret = ::cppu::queryInterface(
             reqType,
@@ -134,16 +120,7 @@ void User::changePassword(
 
 sal_Int32 User::getPrivileges( const OUString& objName, sal_Int32 objType )
 {
-    if (isLog(m_pSettings, LogLevel::Info))
-    {
-        Statics & st = getStatics();
-
-        OUStringBuffer buf( 128 );
-        buf.append( "User::getPrivileges[" + extractStringProperty( this, st.NAME ) +
-                    "] got called for " + objName + "(type=" +
-                    OUString::number(objType) + ")");
-        log(m_pSettings, LogLevel::Info, buf.makeStringAndClear());
-    }
+    SAL_INFO("connectivity.postgresql", "User::getPrivileges[\"Name\"] got called for " << objName << "(type=" << objType << ")");
     // all privileges
     return 0xffffffff;
 }

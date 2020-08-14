@@ -19,21 +19,20 @@
 #ifndef INCLUDED_SW_INC_FMTHDFT_HXX
 #define INCLUDED_SW_INC_FMTHDFT_HXX
 
-#include <hintids.hxx>
-#include <format.hxx>
+#include "hintids.hxx"
+#include "format.hxx"
 #include <svl/poolitem.hxx>
-#include <calbck.hxx>
-#include <frmfmt.hxx>
+#include "calbck.hxx"
+#include "frmfmt.hxx"
 
 class IntlWrapper;
-class SwFormat;
 
  /** Header, for PageFormats
  Client of FrameFormat describing the header. */
 
 class SW_DLLPUBLIC SwFormatHeader: public SfxPoolItem, public SwClient
 {
-    bool bActive;       ///< Only for controlling (creation of content).
+    bool m_bActive;       ///< Only for controlling (creation of content).
 
 public:
     SwFormatHeader( bool bOn = false );
@@ -45,18 +44,18 @@ public:
 
     /// "pure virtual methods" of SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatHeader* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     const SwFrameFormat *GetHeaderFormat() const { return static_cast<const SwFrameFormat*>(GetRegisteredIn()); }
           SwFrameFormat *GetHeaderFormat()       { return static_cast<SwFrameFormat*>(GetRegisteredIn()); }
 
     void RegisterToFormat( SwFormat& rFormat );
-    bool IsActive() const { return bActive; }
+    bool IsActive() const { return m_bActive; }
 };
 
  /**Footer, for pageformats
@@ -64,7 +63,7 @@ public:
 
 class SW_DLLPUBLIC SwFormatFooter: public SfxPoolItem, public SwClient
 {
-    bool bActive;       // Only for controlling (creation of content).
+    bool m_bActive;       // Only for controlling (creation of content).
 
 public:
     SwFormatFooter( bool bOn = false );
@@ -76,24 +75,24 @@ public:
 
     /// "pure virtual methods" of SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatFooter* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     const SwFrameFormat *GetFooterFormat() const { return static_cast<const SwFrameFormat*>(GetRegisteredIn()); }
           SwFrameFormat *GetFooterFormat()       { return static_cast<SwFrameFormat*>(GetRegisteredIn()); }
 
     void RegisterToFormat( SwFormat& rFormat );
-    bool IsActive() const { return bActive; }
+    bool IsActive() const { return m_bActive; }
 };
 
 inline const SwFormatHeader &SwAttrSet::GetHeader(bool bInP) const
-    { return static_cast<const SwFormatHeader&>(Get( RES_HEADER,bInP)); }
+    { return Get( RES_HEADER,bInP); }
 inline const SwFormatFooter &SwAttrSet::GetFooter(bool bInP) const
-    { return static_cast<const SwFormatFooter&>(Get( RES_FOOTER,bInP)); }
+    { return Get( RES_FOOTER,bInP); }
 
 inline const SwFormatHeader &SwFormat::GetHeader(bool bInP) const
     { return m_aSet.GetHeader(bInP); }

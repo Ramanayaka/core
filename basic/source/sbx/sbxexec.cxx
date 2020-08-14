@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/errcode.hxx>
-#include <vcl/svapp.hxx>
 #include <basic/sbx.hxx>
+#include <basic/sberrors.hxx>
 #include <rtl/character.hxx>
+#include <rtl/ustrbuf.hxx>
 
 
 static SbxVariableRef Element
@@ -53,10 +53,10 @@ static const sal_Unicode* Symbol( const sal_Unicode* p, OUString& rSym )
     }
     else
     {
-        // A symbol had to begin with a alphabetic character or an underline
+        // A symbol had to begin with an alphabetic character or an underline
         if( !rtl::isAsciiAlpha( *p ) && *p != '_' )
         {
-            SbxBase::SetError( ERRCODE_SBX_SYNTAX );
+            SbxBase::SetError( ERRCODE_BASIC_SYNTAX );
         }
         else
         {
@@ -78,7 +78,7 @@ static const sal_Unicode* Symbol( const sal_Unicode* p, OUString& rSym )
     return p;
 }
 
-// Qualified name. Element.Element....
+// Qualified name. Element.Element...
 
 static SbxVariableRef QualifiedName
     ( SbxObject* pObj, SbxObject* pGbl, const sal_Unicode** ppBuf, SbxClassType t )
@@ -107,7 +107,7 @@ static SbxVariableRef QualifiedName
         }
     }
     else
-        SbxBase::SetError( ERRCODE_SBX_SYNTAX );
+        SbxBase::SetError( ERRCODE_BASIC_SYNTAX );
     *ppBuf = p;
     return refVar;
 }
@@ -139,7 +139,7 @@ static SbxVariableRef Operand
     else if( !bVar && *p == '"' )
     {
         // A string
-        OUString aString;
+        OUStringBuffer aString;
         p++;
         for( ;; )
         {
@@ -149,16 +149,13 @@ static SbxVariableRef Operand
                 return nullptr;
             }
             // Double quotes are OK
-            if( *p == '"' )
+            if( *p == '"' && (*++p) != '"' )
             {
-                if( *++p != '"' )
-                {
-                    break;
-                }
+                break;
             }
-            aString += OUStringLiteral1(*p++);
+            aString.append(*p++);
         }
-        refVar->PutString( aString );
+        refVar->PutString( aString.makeStringAndClear() );
     }
     else
     {
@@ -243,7 +240,7 @@ static SbxVariableRef Assign( SbxObject* pObj, SbxObject* pGbl, const sal_Unicod
             // Assign only onto properties!
             if( refVar->GetClass() != SbxClassType::Property )
             {
-                SbxBase::SetError( ERRCODE_SBX_BAD_ACTION );
+                SbxBase::SetError( ERRCODE_BASIC_BAD_ACTION );
                 refVar.clear();
             }
             else
@@ -296,7 +293,7 @@ static SbxVariableRef Element
             {
                 p++;
                 auto refPar = tools::make_ref<SbxArray>();
-                sal_uInt16 nArg = 0;
+                sal_uInt32 nArg = 0;
                 // We are once relaxed and accept as well
                 // the line- or command end as delimiter
                 // Search parameter always global!
@@ -313,7 +310,7 @@ static SbxVariableRef Element
                         // One copies the parameter, so that
                         // one have the current status (triggers also
                         // the call per access)
-                        refPar->Put( new SbxVariable( *(refArg.get()) ), ++nArg );
+                        refPar->Put32( new SbxVariable( *refArg ), ++nArg );
                     }
                     p = SkipWhitespace( p );
                     if( *p == ',' )
@@ -326,7 +323,7 @@ static SbxVariableRef Element
             }
         }
         else
-            SbxBase::SetError( ERRCODE_SBX_NO_METHOD );
+            SbxBase::SetError( ERRCODE_BASIC_NO_METHOD );
     }
     *ppBuf = p;
     return refVar;
@@ -336,7 +333,7 @@ static SbxVariableRef Element
 
 SbxVariable* SbxObject::Execute( const OUString& rTxt )
 {
-    SbxVariableRef pVar = nullptr;
+    SbxVariableRef pVar;
     const sal_Unicode* p = rTxt.getStr();
     for( ;; )
     {
@@ -347,7 +344,7 @@ SbxVariable* SbxObject::Execute( const OUString& rTxt )
         }
         if( *p++ != '[' )
         {
-            SetError( ERRCODE_SBX_SYNTAX ); break;
+            SetError( ERRCODE_BASIC_SYNTAX ); break;
         }
         pVar = Assign( this, this, &p );
         if( !pVar.is() )
@@ -357,7 +354,7 @@ SbxVariable* SbxObject::Execute( const OUString& rTxt )
         p = SkipWhitespace( p );
         if( *p++ != ']' )
         {
-            SetError( ERRCODE_SBX_SYNTAX ); break;
+            SetError( ERRCODE_BASIC_SYNTAX ); break;
         }
     }
     return pVar.get();
@@ -365,7 +362,7 @@ SbxVariable* SbxObject::Execute( const OUString& rTxt )
 
 SbxVariable* SbxObject::FindQualified( const OUString& rName, SbxClassType t )
 {
-    SbxVariableRef pVar = nullptr;
+    SbxVariableRef pVar;
     const sal_Unicode* p = rName.getStr();
     p = SkipWhitespace( p );
     if( !*p )
@@ -376,7 +373,7 @@ SbxVariable* SbxObject::FindQualified( const OUString& rName, SbxClassType t )
     p = SkipWhitespace( p );
     if( *p )
     {
-        SetError( ERRCODE_SBX_SYNTAX );
+        SetError( ERRCODE_BASIC_SYNTAX );
     }
     return pVar.get();
 }

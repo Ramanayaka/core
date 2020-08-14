@@ -22,13 +22,9 @@
 
 #include <sal/config.h>
 
-#include <memory>
 #include <set>
 #include <vector>
 
-#include <com/sun/star/lang/WrappedTargetException.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/util/ChangesSet.hpp>
 #include <com/sun/star/util/XChangesBatch.hpp>
 #include <com/sun/star/util/XChangesNotifier.hpp>
 #include <rtl/ref.hxx>
@@ -38,13 +34,13 @@
 #include "access.hxx"
 #include "modifications.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno {
         class Any;
         class Type;
     }
     namespace util { class XChangesListener; }
-} } }
+}
 
 namespace configmgr {
 
@@ -90,7 +86,7 @@ public:
 
     virtual sal_Bool SAL_CALL hasPendingChanges() override;
 
-    virtual css::util::ChangesSet SAL_CALL getPendingChanges() override;
+    virtual css::uno::Sequence< ::css::util::ElementChange > SAL_CALL getPendingChanges() override;
 
 private:
     virtual ~RootAccess() override;

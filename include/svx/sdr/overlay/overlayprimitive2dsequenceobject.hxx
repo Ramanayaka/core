@@ -21,17 +21,13 @@
 #define INCLUDED_SVX_SDR_OVERLAY_OVERLAYPRIMITIVE2DSEQUENCEOBJECT_HXX
 
 #include <svx/sdr/overlay/overlayobject.hxx>
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 
 
-namespace sdr
-{
-    namespace overlay
+namespace sdr::overlay
     {
-        class SVX_DLLPUBLIC OverlayPrimitive2DSequenceObject : public OverlayObjectWithBasePosition
+        class SVXCORE_DLLPUBLIC OverlayPrimitive2DSequenceObject final : public OverlayObjectWithBasePosition
         {
-        protected:
             // the sequence of primitives to show
             const drawinglayer::primitive2d::Primitive2DContainer    maSequence;
 
@@ -43,8 +39,8 @@ namespace sdr
 
             virtual ~OverlayPrimitive2DSequenceObject() override;
         };
-    } // end of namespace overlay
-} // end of namespace sdr
+
+} // end of namespace sdr::overlay
 
 
 #endif // INCLUDED_SVX_SDR_OVERLAY_OVERLAYPRIMITIVE2DSEQUENCEOBJECT_HXX

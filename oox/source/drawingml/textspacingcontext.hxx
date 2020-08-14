@@ -20,16 +20,16 @@
 #ifndef INCLUDED_OOX_SOURCE_DRAWINGML_TEXTSPACINGCONTEXT_HXX
 #define INCLUDED_OOX_SOURCE_DRAWINGML_TEXTSPACINGCONTEXT_HXX
 
-#include "oox/core/contexthandler2.hxx"
+#include <oox/core/contexthandler2.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 class TextSpacing;
 
 class TextSpacingContext : public ::oox::core::ContextHandler2
 {
 public:
-    TextSpacingContext( ::oox::core::ContextHandler2Helper& rParent, TextSpacing & aSpacing );
+    TextSpacingContext( ::oox::core::ContextHandler2Helper const & rParent, TextSpacing & aSpacing );
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
@@ -37,7 +37,7 @@ private:
     TextSpacing&        maSpacing;
 };
 
-} }
+}
 
 #endif
 

@@ -19,18 +19,20 @@
 
 
 #include "outputwrap.hxx"
-#include "contentsink.hxx"
-#include "pdfihelper.hxx"
-#include "wrapper.hxx"
-#include "pdfparse.hxx"
+#include <contentsink.hxx>
+#include <pdfihelper.hxx>
+#include <wrapper.hxx>
+#include <pdfparse.hxx>
 #include "../pdfiadaptor.hxx"
 
 #include <sal/main.h>
 #include <osl/process.h>
 #include <rtl/ref.hxx>
+#include <sal/log.hxx>
 #include <unotest/bootstrapfixturebase.hxx>
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/bootstrap.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::pdfi;
 using namespace ::com::sun::star;
@@ -79,14 +81,14 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         xAdaptor->setTreeVisitorFactory(pTreeFactory);
         nRet = xAdaptor->odfConvert(aSrcURL, new OutputWrap(aDstURL), nullptr) ? 0 : 1;
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN("vcl.app", "Fatal exception: " << e.Message);
+        TOOLS_WARN_EXCEPTION("vcl.app", "Fatal");
         return 1;
     }
     catch (const std::exception& e)
     {
-        SAL_WARN("vcl.app", "Fatal exception: " << e.what());
+        SAL_WARN("vcl.app", "Fatal: " << e.what());
         return 1;
     }
 

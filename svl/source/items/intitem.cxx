@@ -22,12 +22,11 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <osl/diagnose.h>
 #include <tools/bigint.hxx>
-#include <tools/stream.hxx>
 #include <svl/metitem.hxx>
 #include <libxml/xmlwriter.h>
+#include <boost/property_tree/json_parser.hpp>
 
 
-//  class SfxByteItem
 
 
 SfxPoolItem* SfxByteItem::CreateDefault()
@@ -35,32 +34,16 @@ SfxPoolItem* SfxByteItem::CreateDefault()
     return new SfxByteItem();
 };
 
-// virtual
-SfxPoolItem * SfxByteItem::Create(SvStream & rStream, sal_uInt16) const
-{
-    short nValue = 0;
-    rStream.ReadInt16( nValue );
-    return new SfxByteItem(Which(), sal_uInt8(nValue));
-}
-
 SfxPoolItem* SfxInt16Item::CreateDefault()
 {
     return new SfxInt16Item();
 };
 
-SfxInt16Item::SfxInt16Item(sal_uInt16 which, SvStream & rStream):
-    SfxPoolItem(which)
-{
-    short nTheValue = 0;
-    rStream.ReadInt16( nTheValue );
-    m_nValue = nTheValue;
-}
-
 // virtual
 bool SfxInt16Item::operator ==(const SfxPoolItem & rItem) const
 {
     assert(SfxPoolItem::operator==(rItem));
-    return m_nValue == (static_cast< const SfxInt16Item * >(&rItem))->
+    return m_nValue == static_cast< const SfxInt16Item * >(&rItem)->
                         m_nValue;
 }
 
@@ -68,10 +51,18 @@ bool SfxInt16Item::operator ==(const SfxPoolItem & rItem) const
 bool SfxInt16Item::GetPresentation(SfxItemPresentation,
                                                   MapUnit, MapUnit,
                                                   OUString & rText,
-                                                  const IntlWrapper *) const
+                                                  const IntlWrapper&) const
 {
     rText = OUString::number(m_nValue);
     return true;
+}
+
+
+boost::property_tree::ptree SfxInt16Item::dumpAsJSON() const
+{
+    boost::property_tree::ptree aTree = SfxPoolItem::dumpAsJSON();
+    aTree.put("state", GetValue());
+    return aTree;
 }
 
 
@@ -97,25 +88,11 @@ bool SfxInt16Item::PutValue(const css::uno::Any& rVal, sal_uInt8 )
     return false;
 }
 
-// virtual
-SfxPoolItem * SfxInt16Item::Create(SvStream & rStream, sal_uInt16) const
-{
-    return new SfxInt16Item(Which(), rStream);
-}
-
-// virtual
-SvStream & SfxInt16Item::Store(SvStream & rStream, sal_uInt16) const
-{
-    rStream.WriteInt16( short(m_nValue) );
-    return rStream;
-}
-
-SfxPoolItem * SfxInt16Item::Clone(SfxItemPool *) const
+SfxInt16Item* SfxInt16Item::Clone(SfxItemPool *) const
 {
     return new SfxInt16Item(*this);
 }
 
-//  class SfxUInt16Item
 SfxPoolItem* SfxUInt16Item::CreateDefault()
 {
     return new SfxUInt16Item();
@@ -129,8 +106,14 @@ void SfxUInt16Item::dumpAsXml(xmlTextWriterPtr pWriter) const
     xmlTextWriterEndElement(pWriter);
 }
 
+boost::property_tree::ptree SfxUInt16Item::dumpAsJSON() const
+{
+    boost::property_tree::ptree aTree = SfxPoolItem::dumpAsJSON();
+    aTree.put("state", GetValue());
+    return aTree;
+}
 
-//  class SfxInt32Item
+
 
 
 SfxPoolItem* SfxInt32Item::CreateDefault()
@@ -138,8 +121,22 @@ SfxPoolItem* SfxInt32Item::CreateDefault()
     return new SfxInt32Item();
 };
 
+void SfxInt32Item::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    xmlTextWriterStartElement(pWriter, BAD_CAST("SfxInt32Item"));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"), BAD_CAST(OString::number(GetValue()).getStr()));
+    xmlTextWriterEndElement(pWriter);
+}
 
-//  class SfxUInt32Item
+boost::property_tree::ptree SfxInt32Item::dumpAsJSON() const
+{
+    boost::property_tree::ptree aTree = SfxPoolItem::dumpAsJSON();
+    aTree.put("state", GetValue());
+    return aTree;
+}
+
+
 
 
 SfxPoolItem* SfxUInt32Item::CreateDefault()
@@ -147,19 +144,23 @@ SfxPoolItem* SfxUInt32Item::CreateDefault()
     return new SfxUInt32Item();
 };
 
+void SfxUInt32Item::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    xmlTextWriterStartElement(pWriter, BAD_CAST("SfxUInt32Item"));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"), BAD_CAST(OString::number(GetValue()).getStr()));
+    xmlTextWriterEndElement(pWriter);
+}
+
+boost::property_tree::ptree SfxUInt32Item::dumpAsJSON() const
+{
+    boost::property_tree::ptree aTree = SfxPoolItem::dumpAsJSON();
+    aTree.put("state", GetValue());
+    return aTree;
+}
 
 SfxMetricItem::SfxMetricItem(sal_uInt16 which, sal_uInt32 nValue):
     SfxInt32Item(which, nValue)
-{
-}
-
-SfxMetricItem::SfxMetricItem(sal_uInt16 which, SvStream & rStream):
-    SfxInt32Item(which, rStream)
-{
-}
-
-SfxMetricItem::SfxMetricItem(const SfxMetricItem & rItem):
-    SfxInt32Item(rItem)
 {
 }
 

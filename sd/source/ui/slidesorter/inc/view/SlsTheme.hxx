@@ -20,20 +20,16 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSTHEME_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSTHEME_HXX
 
-#include "model/SlsVisualState.hxx"
-
 #include <vcl/bitmapex.hxx>
-#include <vcl/font.hxx>
-#include <vcl/gradient.hxx>
 #include <tools/color.hxx>
 
 #include <memory>
 
-namespace sd { namespace slidesorter { namespace controller {
-class Properties;
-} } }
+namespace vcl { class Font; }
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::controller { class Properties; }
+
+namespace sd::slidesorter::view {
 
 const int Theme_FocusIndicatorWidth = 3;
 
@@ -73,7 +69,7 @@ public:
         Color_PageCountFontColor,
         ColorType_Size_
     };
-    ColorData GetColor (const ColorType eType);
+    Color GetColor (const ColorType eType);
 
     enum GradientColorType {
         Gradient_NormalPage,
@@ -91,12 +87,12 @@ public:
         Fill1,
         Fill2
     };
-    ColorData GetGradientColor (
+    Color GetGradientColor (
         const GradientColorType eType,
         const GradientColorClass eClass);
     void SetGradient (
         const GradientColorType eType,
-        const ColorData aBaseColor,
+        const Color aBaseColor,
         const sal_Int32 nSaturationOverride,
         const sal_Int32 nBrightnessOverride,
         const sal_Int32 nFillStartOffset,
@@ -118,25 +114,15 @@ private:
     class GradientDescriptor
     {
     public:
-        ColorData maBaseColor;
-
-        sal_Int32 mnSaturationOverride;
-        sal_Int32 mnBrightnessOverride;
-
-        ColorData maFillColor1;
-        ColorData maFillColor2;
-        ColorData maBorderColor1;
-        ColorData maBorderColor2;
-
-        sal_Int32 mnFillOffset1;
-        sal_Int32 mnFillOffset2;
-        sal_Int32 mnBorderOffset1;
-        sal_Int32 mnBorderOffset2;
+        Color maFillColor1;
+        Color maFillColor2;
+        Color maBorderColor1;
+        Color maBorderColor2;
     };
-    ColorData maBackgroundColor;
+    Color maBackgroundColor;
     ::std::vector<GradientDescriptor> maGradients;
     ::std::vector<BitmapEx> maIcons;
-    ::std::vector<ColorData> maColor;
+    ::std::vector<Color> maColor;
 
     GradientDescriptor& GetGradient (const GradientColorType eType);
     /** Guarded initialization of the specified icon in the maIcons
@@ -145,7 +131,7 @@ private:
     void InitializeIcon(const IconType eType, const OUString& rResourceId);
 };
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 #endif
 

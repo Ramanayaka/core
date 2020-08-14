@@ -18,7 +18,7 @@
  */
 
 #include <swtypes.hxx>
-#include <mmlayoutpage.hxx>
+#include "mmlayoutpage.hxx"
 #include <mailmergewizard.hxx>
 #include <mmconfigitem.hxx>
 #include <mailmergehelper.hxx>
@@ -27,18 +27,15 @@
 #include <i18nutil/unicode.hxx>
 #include <unotools/tempfile.hxx>
 #include <uitool.hxx>
-#include <svx/dlgutil.hxx>
 #include <view.hxx>
 #include <swundo.hxx>
-#include <sfx2/dispatch.hxx>
-#include <svl/stritem.hxx>
 #include <sfx2/docfilt.hxx>
-#include <com/sun/star/text/XParagraphCursor.hpp>
+#include <sfx2/fcontnr.hxx>
+#include <svtools/unitconv.hxx>
 #include <com/sun/star/view/XViewSettingsSupplier.hpp>
 #include <com/sun/star/view/DocumentZoomType.hpp>
 #include <fldmgr.hxx>
 #include <fldbas.hxx>
-#include <poolfmt.hxx>
 #include <unotxdoc.hxx>
 #include <docsh.hxx>
 #include <doc.hxx>
@@ -49,14 +46,12 @@
 #include <fmtornt.hxx>
 #include <fmtfsize.hxx>
 #include <editeng/boxitem.hxx>
-#include <svl/urihelper.hxx>
-#include <shellio.hxx>
 #include <osl/file.hxx>
 #include <vcl/settings.hxx>
 #include <unoprnms.hxx>
+#include <iodetect.hxx>
 
 #include <dbui.hrc>
-#include <unomid.h>
 
 using namespace osl;
 using namespace svt;
@@ -73,35 +68,29 @@ using namespace ::com::sun::star::view;
 #define DEFAULT_ADDRESS_WIDTH  (MM50*15)// 7,5 cm
 #define DEFAULT_ADDRESS_HEIGHT (MM50*7) // 3,5cm
 
-SwMailMergeLayoutPage::SwMailMergeLayoutPage( SwMailMergeWizard* _pParent) :
-    svt::OWizardPage(_pParent, "MMLayoutPage",
-        "modules/swriter/ui/mmlayoutpage.ui")
-    , m_pExampleFrame(nullptr)
+SwMailMergeLayoutPage::SwMailMergeLayoutPage(weld::Container* pPage, SwMailMergeWizard* pWizard)
+    : vcl::OWizardPage(pPage, pWizard, "modules/swriter/ui/mmlayoutpage.ui", "MMLayoutPage")
     , m_pExampleWrtShell(nullptr)
     , m_pAddressBlockFormat(nullptr)
     , m_bIsGreetingInserted(false)
-    , m_pWizard(_pParent)
+    , m_pWizard(pWizard)
+    , m_xPosition(m_xBuilder->weld_container("addresspos"))
+    , m_xAlignToBodyCB(m_xBuilder->weld_check_button("align"))
+    , m_xLeftFT(m_xBuilder->weld_label("leftft"))
+    , m_xLeftMF(m_xBuilder->weld_metric_spin_button("left", FieldUnit::CM))
+    , m_xTopMF(m_xBuilder->weld_metric_spin_button("top", FieldUnit::CM))
+    , m_xGreetingLine(m_xBuilder->weld_container("greetingspos"))
+    , m_xUpPB(m_xBuilder->weld_button("up"))
+    , m_xDownPB(m_xBuilder->weld_button("down"))
+    , m_xZoomLB(m_xBuilder->weld_combo_box("zoom"))
 {
-    get(m_pPosition, "addresspos");
-    get(m_pGreetingLine, "greetingspos");
-    get(m_pAlignToBodyCB, "align");
-    get(m_pLeftFT, "leftft");
-    get(m_pLeftMF, "left");
-    get(m_pTopMF, "top");
-    get(m_pUpPB, "up");
-    get(m_pDownPB, "down");
-    get(m_pExampleContainerWIN, "example");
-    Size aSize(LogicToPixel(Size(124, 159), MapUnit::MapAppFont));
-    m_pExampleContainerWIN->set_width_request(aSize.Width());
-    m_pExampleContainerWIN->set_height_request(aSize.Height());
-    get(m_pZoomLB, "zoom");
+    std::shared_ptr<const SfxFilter> pSfxFlt =
+            SwDocShell::Factory().GetFilterContainer()->
+            GetFilter4FilterName("writer8", SfxFilterFlags::EXPORT);
 
-    std::shared_ptr<const SfxFilter> pSfxFlt = SwIoSystem::GetFilterOfFormat(
-            FILTER_XML,
-            SwDocShell::Factory().GetFilterContainer() );
     //save the current document into a temporary file
     {
-        //temp file needs it's own block
+        //temp file needs its own block
         //creating with extension is not supported by a static method :-(
         OUString const sExt(
             comphelper::string::stripStart(pSfxFlt->GetDefaultExtension(),'*'));
@@ -110,144 +99,128 @@ SwMailMergeLayoutPage::SwMailMergeLayoutPage( SwMailMergeWizard* _pParent) :
         aTempFile.EnableKillingFile();
     }
     SwView* pView = m_pWizard->GetSwView();
-    uno::Sequence< beans::PropertyValue > aValues(1);
+    uno::Sequence< beans::PropertyValue > aValues(2);
     beans::PropertyValue* pValues = aValues.getArray();
     pValues[0].Name = "FilterName";
     pValues[0].Value <<= pSfxFlt->GetFilterName();
+    // Don't save embedded data set! It would steal it from current document.
+    pValues[1].Name = "NoEmbDataSet";
+    pValues[1].Value <<= true;
 
     uno::Reference< frame::XStorable > xStore( pView->GetDocShell()->GetModel(), uno::UNO_QUERY);
     xStore->storeToURL( m_sExampleURL, aValues   );
 
     Link<SwOneExampleFrame&,void> aLink(LINK(this, SwMailMergeLayoutPage, PreviewLoadedHdl_Impl));
-    m_pExampleFrame = new SwOneExampleFrame( *m_pExampleContainerWIN,
-                                    EX_SHOW_DEFAULT_PAGE, &aLink, &m_sExampleURL );
+    m_xExampleFrame.reset(new SwOneExampleFrame(EX_SHOW_DEFAULT_PAGE, &aLink, &m_sExampleURL));
+    m_xExampleContainerWIN.reset(new weld::CustomWeld(*m_xBuilder, "example", *m_xExampleFrame));
 
-    m_pExampleContainerWIN->Show(false);
+    Size aSize = m_xExampleFrame->GetDrawingArea()->get_ref_device().LogicToPixel(
+            Size(124, 159), MapMode(MapUnit::MapAppFont));
+    m_xExampleFrame->set_size_request(aSize.Width(), aSize.Height());
 
-    m_pLeftMF->SetValue(m_pLeftMF->Normalize(DEFAULT_LEFT_DISTANCE), FUNIT_TWIP);
-    m_pTopMF->SetValue(m_pTopMF->Normalize(DEFAULT_TOP_DISTANCE), FUNIT_TWIP);
+    m_xExampleContainerWIN->hide();
+
+    m_xLeftMF->set_value(m_xLeftMF->normalize(DEFAULT_LEFT_DISTANCE), FieldUnit::TWIP);
+    m_xTopMF->set_value(m_xTopMF->normalize(DEFAULT_TOP_DISTANCE), FieldUnit::TWIP);
 
     const LanguageTag& rLang = Application::GetSettings().GetUILanguageTag();
-    m_pZoomLB->InsertEntry(unicode::formatPercent(50, rLang), 1);
-    m_pZoomLB->InsertEntry(unicode::formatPercent(75, rLang), 2);
-    m_pZoomLB->InsertEntry(unicode::formatPercent(100, rLang), 3);
-    m_pZoomLB->SelectEntryPos(0); //page size
-    m_pZoomLB->SetSelectHdl(LINK(this, SwMailMergeLayoutPage, ZoomHdl_Impl));
+    m_xZoomLB->append_text(unicode::formatPercent(50, rLang));
+    m_xZoomLB->append_text(unicode::formatPercent(75, rLang));
+    m_xZoomLB->append_text(unicode::formatPercent(100, rLang));
+    m_xZoomLB->set_active(0); //page size
+    m_xZoomLB->connect_changed(LINK(this, SwMailMergeLayoutPage, ZoomHdl_Impl));
 
-    Link<SpinField&,void> aFrameHdl = LINK(this, SwMailMergeLayoutPage, ChangeAddressHdl_Impl);
-    Link<Control&,void> aFocusHdl = LINK(this, SwMailMergeLayoutPage, ChangeAddressLoseFocusHdl_Impl);
-    m_pLeftMF->SetUpHdl(aFrameHdl);
-    m_pLeftMF->SetDownHdl(aFrameHdl);
-    m_pLeftMF->SetLoseFocusHdl(aFocusHdl);
-    m_pTopMF->SetUpHdl(aFrameHdl);
-    m_pTopMF->SetDownHdl(aFrameHdl);
-    m_pTopMF->SetLoseFocusHdl(aFocusHdl);
+    Link<weld::MetricSpinButton&,void> aFrameHdl = LINK(this, SwMailMergeLayoutPage, ChangeAddressHdl_Impl);
+    m_xLeftMF->connect_value_changed(aFrameHdl);
+    m_xTopMF->connect_value_changed(aFrameHdl);
 
     FieldUnit eFieldUnit = ::GetDfltMetric(false);
-    ::SetFieldUnit( *m_pLeftMF, eFieldUnit );
-    ::SetFieldUnit( *m_pTopMF, eFieldUnit );
+    ::SetFieldUnit( *m_xLeftMF, eFieldUnit );
+    ::SetFieldUnit( *m_xTopMF, eFieldUnit );
 
-    Link<Button*,void> aUpDownHdl = LINK(this, SwMailMergeLayoutPage, GreetingsHdl_Impl );
-    m_pUpPB->SetClickHdl(aUpDownHdl);
-    m_pDownPB->SetClickHdl(aUpDownHdl);
-    m_pAlignToBodyCB->SetClickHdl(LINK(this, SwMailMergeLayoutPage, AlignToTextHdl_Impl));
-    m_pAlignToBodyCB->Check();
+    Link<weld::Button&,void> aUpDownHdl = LINK(this, SwMailMergeLayoutPage, GreetingsHdl_Impl );
+    m_xUpPB->connect_clicked(aUpDownHdl);
+    m_xDownPB->connect_clicked(aUpDownHdl);
+    m_xAlignToBodyCB->connect_toggled(LINK(this, SwMailMergeLayoutPage, AlignToTextHdl_Impl));
+    m_xAlignToBodyCB->set_active(true);
 }
 
 SwMailMergeLayoutPage::~SwMailMergeLayoutPage()
 {
-    disposeOnce();
-}
-
-void SwMailMergeLayoutPage::dispose()
-{
-    delete m_pExampleFrame;
     File::remove( m_sExampleURL );
-    m_pPosition.clear();
-    m_pAlignToBodyCB.clear();
-    m_pLeftFT.clear();
-    m_pLeftMF.clear();
-    m_pTopMF.clear();
-    m_pGreetingLine.clear();
-    m_pUpPB.clear();
-    m_pDownPB.clear();
-    m_pExampleContainerWIN.clear();
-    m_pZoomLB.clear();
-    m_pWizard.clear();
-    svt::OWizardPage::dispose();
 }
 
-void SwMailMergeLayoutPage::ActivatePage()
+void SwMailMergeLayoutPage::Activate()
 {
     SwMailMergeConfigItem& rConfigItem = m_pWizard->GetConfigItem();
     bool bGreetingLine = rConfigItem.IsGreetingLine(false) && !rConfigItem.IsGreetingInserted();
     bool bAddressBlock = rConfigItem.IsAddressBlock() && !rConfigItem.IsAddressInserted();
 
-    m_pPosition->Enable(bAddressBlock);
-    AlignToTextHdl_Impl(m_pAlignToBodyCB);
+    m_xPosition->set_sensitive(bAddressBlock);
+    AlignToTextHdl_Impl(*m_xAlignToBodyCB);
 
-    m_pGreetingLine->Enable(bGreetingLine);
+    m_xGreetingLine->set_sensitive(bGreetingLine);
 
     //check if greeting and/or address frame have to be inserted/removed
-    if(m_pExampleWrtShell) // initially there's nothing to check
-    {
-        if(!rConfigItem.IsGreetingInserted() &&
-                m_bIsGreetingInserted != bGreetingLine )
-        {
-            if( m_bIsGreetingInserted )
-            {
-                m_pExampleWrtShell->DelFullPara();
-                m_bIsGreetingInserted = false;
-            }
-            else
-            {
-                InsertGreeting(*m_pExampleWrtShell, m_pWizard->GetConfigItem(), true);
-                m_bIsGreetingInserted = true;
-            }
-        }
-        if(!rConfigItem.IsAddressInserted() &&
-                rConfigItem.IsAddressBlock() != ( nullptr != m_pAddressBlockFormat ))
-        {
-            if( m_pAddressBlockFormat )
-            {
-                m_pExampleWrtShell->Push();
-                m_pExampleWrtShell->GotoFly( m_pAddressBlockFormat->GetName() );
-                m_pExampleWrtShell->DelRight();
-                m_pAddressBlockFormat = nullptr;
-                m_pExampleWrtShell->Pop(SwCursorShell::PopMode::DeleteCurrent);
-            }
-            else
-            {
-                long nLeft = static_cast< long >(m_pLeftMF->Denormalize(m_pLeftMF->GetValue(FUNIT_TWIP)));
-                long nTop  = static_cast< long >(m_pTopMF->Denormalize(m_pTopMF->GetValue(FUNIT_TWIP)));
-                m_pAddressBlockFormat = InsertAddressFrame(
-                        *m_pExampleWrtShell, m_pWizard->GetConfigItem(),
-                        Point(nLeft, nTop),
-                        m_pAlignToBodyCB->IsChecked(), true);
-            }
-        }
+    if(!m_pExampleWrtShell) // initially there's nothing to check
+        return;
 
+    if(!rConfigItem.IsGreetingInserted() &&
+            m_bIsGreetingInserted != bGreetingLine )
+    {
+        if( m_bIsGreetingInserted )
+        {
+            m_pExampleWrtShell->DelFullPara();
+            m_bIsGreetingInserted = false;
+        }
+        else
+        {
+            InsertGreeting(*m_pExampleWrtShell, m_pWizard->GetConfigItem(), true);
+            m_bIsGreetingInserted = true;
+        }
     }
+    if(!rConfigItem.IsAddressInserted() &&
+            rConfigItem.IsAddressBlock() != ( nullptr != m_pAddressBlockFormat ))
+    {
+        if( m_pAddressBlockFormat )
+        {
+            m_pExampleWrtShell->Push();
+            m_pExampleWrtShell->GotoFly( m_pAddressBlockFormat->GetName() );
+            m_pExampleWrtShell->DelRight();
+            m_pAddressBlockFormat = nullptr;
+            m_pExampleWrtShell->Pop(SwCursorShell::PopMode::DeleteCurrent);
+        }
+        else
+        {
+            long nLeft = static_cast< long >(m_xLeftMF->denormalize(m_xLeftMF->get_value(FieldUnit::TWIP)));
+            long nTop  = static_cast< long >(m_xTopMF->denormalize(m_xTopMF->get_value(FieldUnit::TWIP)));
+            m_pAddressBlockFormat = InsertAddressFrame(
+                    *m_pExampleWrtShell, m_pWizard->GetConfigItem(),
+                    Point(nLeft, nTop),
+                    m_xAlignToBodyCB->get_active(), true);
+        }
+    }
+    m_xExampleFrame->Invalidate();
 }
 
-bool SwMailMergeLayoutPage::commitPage(::svt::WizardTypes::CommitPageReason eReason)
+bool SwMailMergeLayoutPage::commitPage(::vcl::WizardTypes::CommitPageReason eReason)
 {
     //now insert the frame and the greeting
     SwMailMergeConfigItem& rConfigItem = m_pWizard->GetConfigItem();
-    if (eReason == ::svt::WizardTypes::eTravelForward || eReason == ::svt::WizardTypes::eFinish)
+    if (eReason == ::vcl::WizardTypes::eTravelForward || eReason == ::vcl::WizardTypes::eFinish)
     {
-        long nLeft = static_cast< long >(m_pLeftMF->Denormalize(m_pLeftMF->GetValue(FUNIT_TWIP)));
-        long nTop  = static_cast< long >(m_pTopMF->Denormalize(m_pTopMF->GetValue(FUNIT_TWIP)));
+        long nLeft = static_cast< long >(m_xLeftMF->denormalize(m_xLeftMF->get_value(FieldUnit::TWIP)));
+        long nTop  = static_cast< long >(m_xTopMF->denormalize(m_xTopMF->get_value(FieldUnit::TWIP)));
         InsertAddressAndGreeting(
                     m_pWizard->GetSwView(),
                     rConfigItem,
                     Point(nLeft, nTop),
-                    m_pAlignToBodyCB->IsChecked());
+                    m_xAlignToBodyCB->get_active());
     }
     return true;
 }
 
-SwFrameFormat*  SwMailMergeLayoutPage::InsertAddressAndGreeting(SwView* pView,
+SwFrameFormat*  SwMailMergeLayoutPage::InsertAddressAndGreeting(SwView const * pView,
         SwMailMergeConfigItem& rConfigItem,
         const Point& rAddressPosition,
         bool bAlignToBody)
@@ -263,7 +236,7 @@ SwFrameFormat*  SwMailMergeLayoutPage::InsertAddressAndGreeting(SwView* pView,
         pAddressBlockFormat = InsertAddressFrame( pView->GetWrtShell(),
                                         rConfigItem,
                                         aAddressPosition, bAlignToBody, false);
-        rConfigItem.SetAddressInserted(pAddressBlockFormat->GetName());
+        rConfigItem.SetAddressInserted();
     }
     //now the greeting
     if(rConfigItem.IsGreetingLine(false) && !rConfigItem.IsGreetingInserted())
@@ -277,7 +250,7 @@ SwFrameFormat*  SwMailMergeLayoutPage::InsertAddressAndGreeting(SwView* pView,
 
 SwFrameFormat* SwMailMergeLayoutPage::InsertAddressFrame(
         SwWrtShell& rShell,
-        SwMailMergeConfigItem& rConfigItem,
+        SwMailMergeConfigItem const & rConfigItem,
         const Point& rDestination,
         bool bAlignLeft,
         bool bExample)
@@ -295,7 +268,7 @@ SwFrameFormat* SwMailMergeLayoutPage::InsertAddressFrame(
     else
         aSet.Put(SwFormatHoriOrient( rDestination.X(), text::HoriOrientation::NONE, text::RelOrientation::PAGE_FRAME ));
     aSet.Put(SwFormatVertOrient( rDestination.Y(), text::VertOrientation::NONE, text::RelOrientation::PAGE_FRAME ));
-    aSet.Put(SwFormatFrameSize( ATT_MIN_SIZE, DEFAULT_ADDRESS_WIDTH, DEFAULT_ADDRESS_HEIGHT ));
+    aSet.Put(SwFormatFrameSize( SwFrameSize::Minimum, DEFAULT_ADDRESS_WIDTH, DEFAULT_ADDRESS_HEIGHT ));
     // the example gets a border around the frame, the real document doesn't get one
     if(!bExample)
         aSet.Put(SvxBoxItem( RES_BOX ));
@@ -317,10 +290,10 @@ SwFrameFormat* SwMailMergeLayoutPage::InsertAddressFrame(
         SwFieldMgr aFieldMgr(&rShell);
         //create a database string source.command.commandtype.column
         const SwDBData& rData = rConfigItem.GetCurrentDBData();
-        OUString sDBName(rData.sDataSource + OUStringLiteral1(DB_DELIM)
-            + rData.sCommand + OUStringLiteral1(DB_DELIM));
+        OUString sDBName(rData.sDataSource + OUStringChar(DB_DELIM)
+            + rData.sCommand + OUStringChar(DB_DELIM));
         const OUString sDatabaseConditionPrefix(sDBName.replace(DB_DELIM, '.'));
-        sDBName += OUString::number(rData.nCommandType) + OUStringLiteral1(DB_DELIM);
+        sDBName += OUString::number(rData.nCommandType) + OUStringChar(DB_DELIM);
 
         // if only the country is in an address line the
         // paragraph has to be hidden depending on the
@@ -331,14 +304,14 @@ SwFrameFormat* SwMailMergeLayoutPage::InsertAddressFrame(
         const OUString rExcludeCountry = rConfigItem.GetExcludeCountry();
         bool bSpecialReplacementForCountry = (!bIncludeCountry || !rExcludeCountry.isEmpty());
 
-        const ResStringArray& rHeaders = rConfigItem.GetDefaultAddressHeaders();
+        const std::vector<std::pair<OUString, int>>& rHeaders = rConfigItem.GetDefaultAddressHeaders();
         Sequence< OUString> aAssignment =
                         rConfigItem.GetColumnAssignment( rConfigItem.GetCurrentDBData() );
         const OUString* pAssignment = aAssignment.getConstArray();
         const OUString sCountryColumn(
             (aAssignment.getLength() > MM_PART_COUNTRY && !aAssignment[MM_PART_COUNTRY].isEmpty())
             ? aAssignment[MM_PART_COUNTRY]
-            : rHeaders.GetString(MM_PART_COUNTRY));
+            : rHeaders[MM_PART_COUNTRY].first);
 
         OUString sHideParagraphsExpression;
         SwAddressIterator aIter(aBlocks[0]);
@@ -348,12 +321,11 @@ SwFrameFormat* SwMailMergeLayoutPage::InsertAddressFrame(
             if(aItem.bIsColumn)
             {
                 OUString sConvertedColumn = aItem.sText;
-                for(sal_uInt32 nColumn = 0;
-                        nColumn < rHeaders.Count() &&
-                        nColumn < static_cast<sal_uInt32>(aAssignment.getLength());
-                                                                                    ++nColumn)
+                auto nSize = std::min(static_cast<sal_uInt32>(rHeaders.size()),
+                                      static_cast<sal_uInt32>(aAssignment.getLength()));
+                for(sal_uInt32 nColumn = 0; nColumn < nSize; ++nColumn)
                 {
-                    if (rHeaders.GetString(nColumn).equals(aItem.sText) &&
+                    if (rHeaders[nColumn].first == aItem.sText &&
                         !pAssignment[nColumn].isEmpty())
                     {
                         sConvertedColumn = pAssignment[nColumn];
@@ -372,7 +344,7 @@ SwFrameFormat* SwMailMergeLayoutPage::InsertAddressFrame(
                     if( !rExcludeCountry.isEmpty() )
                     {
                         const OUString sExpression("[" + sDatabaseConditionPrefix + sCountryColumn + "]");
-                        SwInsertField_Data aData(TYP_CONDTXTFLD, 0,
+                        SwInsertField_Data aData(SwFieldTypesEnum::ConditionalText, 0,
                                                sExpression + " != \"" + rExcludeCountry + "\"",
                                                sExpression,
                                                0, &rShell );
@@ -380,13 +352,13 @@ SwFrameFormat* SwMailMergeLayoutPage::InsertAddressFrame(
                     }
                     else
                     {
-                        SwInsertField_Data aData(TYP_HIDDENPARAFLD, 0, "", "", 0, &rShell );
+                        SwInsertField_Data aData(SwFieldTypesEnum::HiddenParagraph, 0, "", "", 0, &rShell );
                         aFieldMgr.InsertField( aData );
                     }
                 }
                 else
                 {
-                    SwInsertField_Data aData(TYP_DBFLD, 0, sDB, aEmptyOUStr, 0, &rShell );
+                    SwInsertField_Data aData(SwFieldTypesEnum::Database, 0, sDB, OUString(), 0, &rShell);
                     aFieldMgr.InsertField( aData );
                 }
             }
@@ -398,7 +370,7 @@ SwFrameFormat* SwMailMergeLayoutPage::InsertAddressFrame(
             {
                 if(bHideEmptyParagraphs)
                 {
-                    SwInsertField_Data aData(TYP_HIDDENPARAFLD, 0, sHideParagraphsExpression, aEmptyOUStr, 0, &rShell );
+                    SwInsertField_Data aData(SwFieldTypesEnum::HiddenParagraph, 0, sHideParagraphsExpression, OUString(), 0, &rShell);
                     aFieldMgr.InsertField( aData );
                 }
                 sHideParagraphsExpression.clear();
@@ -408,21 +380,21 @@ SwFrameFormat* SwMailMergeLayoutPage::InsertAddressFrame(
         }
         if(bHideEmptyParagraphs && !sHideParagraphsExpression.isEmpty())
         {
-            SwInsertField_Data aData(TYP_HIDDENPARAFLD, 0, sHideParagraphsExpression, aEmptyOUStr, 0, &rShell );
+            SwInsertField_Data aData(SwFieldTypesEnum::HiddenParagraph, 0, sHideParagraphsExpression, OUString(), 0, &rShell);
             aFieldMgr.InsertField( aData );
         }
     }
     return pRet;
 }
 
-void SwMailMergeLayoutPage::InsertGreeting(SwWrtShell& rShell, SwMailMergeConfigItem& rConfigItem, bool bExample)
+void SwMailMergeLayoutPage::InsertGreeting(SwWrtShell& rShell, SwMailMergeConfigItem const & rConfigItem, bool bExample)
 {
     //set the cursor to the desired position - if no text content is here then
     //new paragraphs are inserted
     const SwRect& rPageRect = rShell.GetAnyCurRect(CurRectType::Page);
     const Point aGreetingPos( DEFAULT_LEFT_DISTANCE + rPageRect.Left(), GREETING_TOP_DISTANCE );
 
-    const bool bRet = rShell.SetShadowCursorPos( aGreetingPos, FILL_TAB_SPACE );
+    const bool bRet = rShell.SetShadowCursorPos( aGreetingPos, SwFillMode::TabSpace );
 
     if(!bRet)
     {
@@ -450,7 +422,7 @@ void SwMailMergeLayoutPage::InsertGreeting(SwWrtShell& rShell, SwMailMergeConfig
         //we may end up inside of a paragraph if the left margin is not at DEFAULT_LEFT_DISTANCE
         rShell.MovePara(GoCurrPara, fnParaStart);
     }
-    bool bSplitNode = !rShell.GetText().isEmpty();
+    bool bSplitNode = !rShell.IsEndPara();
     sal_Int32 nMoves = rConfigItem.GetGreetingMoves();
     if( !bExample && 0 != nMoves )
     {
@@ -482,8 +454,8 @@ void SwMailMergeLayoutPage::InsertGreeting(SwWrtShell& rShell, SwMailMergeConfig
                 eGender <= SwMailMergeConfigItem::NEUTRAL; ++eGender)
             {
                 Sequence< OUString > aEntries =
-                            rConfigItem.GetGreetings((SwMailMergeConfigItem::Gender)eGender);
-                sal_Int32 nCurrent = rConfigItem.GetCurrentGreeting((SwMailMergeConfigItem::Gender)eGender);
+                            rConfigItem.GetGreetings(static_cast<SwMailMergeConfigItem::Gender>(eGender));
+                sal_Int32 nCurrent = rConfigItem.GetCurrentGreeting(static_cast<SwMailMergeConfigItem::Gender>(eGender));
                 if( nCurrent >= 0 && nCurrent < aEntries.getLength())
                 {
                     // Greeting
@@ -509,9 +481,9 @@ void SwMailMergeLayoutPage::InsertGreeting(SwWrtShell& rShell, SwMailMergeConfig
             const OUString sConditionBase("[" + sCommonBase + sGenderColumn + "]");
             const OUString sNameColumnBase("[" + sCommonBase + sNameColumn + "]");
 
-            const OUString sDBName(rData.sDataSource + OUStringLiteral1(DB_DELIM)
-                + rData.sCommand + OUStringLiteral1(DB_DELIM)
-                + OUString::number(rData.nCommandType) + OUStringLiteral1(DB_DELIM));
+            const OUString sDBName(rData.sDataSource + OUStringChar(DB_DELIM)
+                + rData.sCommand + OUStringChar(DB_DELIM)
+                + OUString::number(rData.nCommandType) + OUStringChar(DB_DELIM));
 
 //          Female:  [database.sGenderColumn] != "rFemaleGenderValue" && [database.NameColumn]
 //          Male:    [database.sGenderColumn] == "rFemaleGenderValue" && [database.rGenderColumn]
@@ -522,8 +494,8 @@ void SwMailMergeLayoutPage::InsertGreeting(SwWrtShell& rShell, SwMailMergeConfig
             for(sal_Int8 eGender = SwMailMergeConfigItem::FEMALE;
                 eGender <= SwMailMergeConfigItem::NEUTRAL; ++eGender)
             {
-                Sequence< OUString> aEntries = rConfigItem.GetGreetings((SwMailMergeConfigItem::Gender)eGender);
-                sal_Int32 nCurrent = rConfigItem.GetCurrentGreeting((SwMailMergeConfigItem::Gender)eGender);
+                Sequence< OUString> aEntries = rConfigItem.GetGreetings(static_cast<SwMailMergeConfigItem::Gender>(eGender));
+                sal_Int32 nCurrent = rConfigItem.GetCurrentGreeting(static_cast<SwMailMergeConfigItem::Gender>(eGender));
                 if( nCurrent >= 0 && nCurrent < aEntries.getLength())
                 {
                     const OUString sGreeting = aEntries[nCurrent];
@@ -548,16 +520,16 @@ void SwMailMergeLayoutPage::InsertGreeting(SwWrtShell& rShell, SwMailMergeConfig
                     if(bHideEmptyParagraphs && !sHideParagraphsExpression.isEmpty())
                     {
                         OUString sComplete = "(" + sCondition + ") OR (" + sHideParagraphsExpression + ")";
-                        SwInsertField_Data aData(TYP_HIDDENPARAFLD, 0, sComplete, aEmptyOUStr, 0, &rShell );
+                        SwInsertField_Data aData(SwFieldTypesEnum::HiddenParagraph, 0, sComplete, OUString(), 0, &rShell);
                         aFieldMgr.InsertField( aData );
                     }
                     else
                     {
-                        SwInsertField_Data aData(TYP_HIDDENPARAFLD, 0, sCondition, aEmptyOUStr, 0, &rShell );
+                        SwInsertField_Data aData(SwFieldTypesEnum::HiddenParagraph, 0, sCondition, OUString(), 0, &rShell);
                         aFieldMgr.InsertField( aData );
                     }
                     //now the text has to be inserted
-                    const ResStringArray& rHeaders = rConfigItem.GetDefaultAddressHeaders();
+                    const std::vector<std::pair<OUString, int>>& rHeaders = rConfigItem.GetDefaultAddressHeaders();
                     Sequence< OUString> aAssignment =
                                     rConfigItem.GetColumnAssignment( rConfigItem.GetCurrentDBData() );
                     const OUString* pAssignment = aAssignment.getConstArray();
@@ -568,21 +540,20 @@ void SwMailMergeLayoutPage::InsertGreeting(SwWrtShell& rShell, SwMailMergeConfig
                         if(aItem.bIsColumn)
                         {
                             OUString sConvertedColumn = aItem.sText;
-                            for(sal_uInt32 nColumn = 0;
-                                    nColumn < rHeaders.Count() &&
-                                    nColumn < static_cast<sal_uInt32>(aAssignment.getLength());
-                                                                                                ++nColumn)
+                            auto nSize = std::min(static_cast<sal_uInt32>(rHeaders.size()),
+                                                  static_cast<sal_uInt32>(aAssignment.getLength()));
+                            for(sal_uInt32 nColumn = 0; nColumn < nSize; ++nColumn)
                             {
-                                if (rHeaders.GetString(nColumn).equals(aItem.sText) &&
+                                if (rHeaders[nColumn].first == aItem.sText &&
                                     !pAssignment[nColumn].isEmpty())
                                 {
                                     sConvertedColumn = pAssignment[nColumn];
                                     break;
                                 }
                             }
-                            SwInsertField_Data aData(TYP_DBFLD, 0,
+                            SwInsertField_Data aData(SwFieldTypesEnum::Database, 0,
                                 sDBName + sConvertedColumn,
-                                aEmptyOUStr, 0, &rShell );
+                                OUString(), 0, &rShell);
                             aFieldMgr.InsertField( aData );
                         }
                         else
@@ -621,14 +592,13 @@ void SwMailMergeLayoutPage::InsertGreeting(SwWrtShell& rShell, SwMailMergeConfig
 
 IMPL_LINK_NOARG(SwMailMergeLayoutPage, PreviewLoadedHdl_Impl, SwOneExampleFrame&, void)
 {
-    m_pExampleContainerWIN->Show();
+    m_xExampleContainerWIN->show();
 
-    Reference< XModel > & xModel = m_pExampleFrame->GetModel();
+    Reference< XModel > & xModel = m_xExampleFrame->GetModel();
     //now the ViewOptions should be set properly
     Reference< XViewSettingsSupplier >  xSettings(xModel->getCurrentController(), UNO_QUERY);
     m_xViewProperties = xSettings->getViewSettings();
-    Reference< XUnoTunnel > xDocTunnel(xModel, UNO_QUERY);
-    SwXTextDocument* pXDoc = reinterpret_cast<SwXTextDocument*>(xDocTunnel->getSomething(SwXTextDocument::getUnoTunnelId()));
+    auto pXDoc = comphelper::getUnoTunnelImplementation<SwXTextDocument>(xModel);
     SwDocShell* pDocShell = pXDoc->GetDocShell();
     m_pExampleWrtShell = pDocShell->GetWrtShell();
     OSL_ENSURE(m_pExampleWrtShell, "No SwWrtShell found!");
@@ -641,7 +611,7 @@ IMPL_LINK_NOARG(SwMailMergeLayoutPage, PreviewLoadedHdl_Impl, SwOneExampleFrame&
         m_pAddressBlockFormat = InsertAddressFrame(
                 *m_pExampleWrtShell, rConfigItem,
                 Point(DEFAULT_LEFT_DISTANCE, DEFAULT_TOP_DISTANCE),
-                m_pAlignToBodyCB->IsChecked(), true);
+                m_xAlignToBodyCB->get_active(), true);
     }
     if(rConfigItem.IsGreetingLine(false))
     {
@@ -649,64 +619,60 @@ IMPL_LINK_NOARG(SwMailMergeLayoutPage, PreviewLoadedHdl_Impl, SwOneExampleFrame&
         m_bIsGreetingInserted = true;
     }
 
-    Any aZoom;
-    aZoom <<= (sal_Int16)DocumentZoomType::ENTIRE_PAGE;
-    m_xViewProperties->setPropertyValue(UNO_NAME_ZOOM_TYPE, aZoom);
+    ZoomHdl_Impl(*m_xZoomLB);
 
     const SwFormatFrameSize& rPageSize = m_pExampleWrtShell->GetPageDesc(
                                      m_pExampleWrtShell->GetCurPageDesc()).GetMaster().GetFrameSize();
-    m_pLeftMF->SetMax(rPageSize.GetWidth() - DEFAULT_LEFT_DISTANCE);
-    m_pTopMF->SetMax(rPageSize.GetHeight() - DEFAULT_TOP_DISTANCE);
+    m_xLeftMF->set_max(rPageSize.GetWidth() - DEFAULT_LEFT_DISTANCE, FieldUnit::NONE);
+    m_xTopMF->set_max(rPageSize.GetHeight() - DEFAULT_TOP_DISTANCE, FieldUnit::NONE);
 }
 
-IMPL_LINK(SwMailMergeLayoutPage, ZoomHdl_Impl, ListBox&, rBox, void)
+IMPL_LINK(SwMailMergeLayoutPage, ZoomHdl_Impl, weld::ComboBox&, rBox, void)
 {
-    if(m_pExampleWrtShell)
+    if (!m_pExampleWrtShell)
+        return;
+
+    sal_Int16 eType = DocumentZoomType::BY_VALUE;
+    short nZoom = 50;
+    switch (rBox.get_active())
     {
-        sal_Int16 eType = DocumentZoomType::BY_VALUE;
-        short nZoom = 50;
-        switch(rBox.GetSelectEntryPos())
-        {
-            case 0 : eType = DocumentZoomType::ENTIRE_PAGE; break;
-            case 1 : nZoom = 50; break;
-            case 2 : nZoom = 75; break;
-            case 3 : nZoom = 100; break;
-        }
-        Any aZoom;
-        aZoom <<= eType;
-        m_xViewProperties->setPropertyValue(UNO_NAME_ZOOM_TYPE, aZoom);
-        aZoom <<= nZoom;
-        m_xViewProperties->setPropertyValue(UNO_NAME_ZOOM_VALUE, aZoom);
-
+        case 0 : eType = DocumentZoomType::ENTIRE_PAGE; break;
+        case 1 : nZoom = 50; break;
+        case 2 : nZoom = 75; break;
+        case 3 : nZoom = 100; break;
     }
+    Any aZoom;
+    aZoom <<= eType;
+    m_xViewProperties->setPropertyValue(UNO_NAME_ZOOM_TYPE, aZoom);
+    aZoom <<= nZoom;
+    m_xViewProperties->setPropertyValue(UNO_NAME_ZOOM_VALUE, aZoom);
+
+    m_xExampleFrame->Invalidate();
 }
 
-IMPL_LINK_NOARG(SwMailMergeLayoutPage, ChangeAddressLoseFocusHdl_Impl, Control&, void)
+IMPL_LINK_NOARG(SwMailMergeLayoutPage, ChangeAddressHdl_Impl, weld::MetricSpinButton&, void)
 {
-    ChangeAddressHdl_Impl(*m_pLeftMF);
-}
-IMPL_LINK_NOARG(SwMailMergeLayoutPage, ChangeAddressHdl_Impl, SpinField&, void)
-{
-    if(m_pExampleWrtShell && m_pAddressBlockFormat)
-    {
-        long nLeft = static_cast< long >(m_pLeftMF->Denormalize(m_pLeftMF->GetValue(FUNIT_TWIP)));
-        long nTop  = static_cast< long >(m_pTopMF->Denormalize(m_pTopMF->GetValue(FUNIT_TWIP)));
+    if(!(m_pExampleWrtShell && m_pAddressBlockFormat))
+        return;
 
-        SfxItemSet aSet(
-            m_pExampleWrtShell->GetAttrPool(),
-            svl::Items<RES_VERT_ORIENT, RES_ANCHOR>{});
-        if(m_pAlignToBodyCB->IsChecked())
-            aSet.Put(SwFormatHoriOrient( 0, text::HoriOrientation::NONE, text::RelOrientation::PAGE_PRINT_AREA ));
-        else
-            aSet.Put(SwFormatHoriOrient( nLeft, text::HoriOrientation::NONE, text::RelOrientation::PAGE_FRAME ));
-        aSet.Put(SwFormatVertOrient( nTop, text::VertOrientation::NONE, text::RelOrientation::PAGE_FRAME ));
-        m_pExampleWrtShell->GetDoc()->SetFlyFrameAttr( *m_pAddressBlockFormat, aSet );
-    }
+    long nLeft = static_cast< long >(m_xLeftMF->denormalize(m_xLeftMF->get_value(FieldUnit::TWIP)));
+    long nTop  = static_cast< long >(m_xTopMF->denormalize(m_xTopMF->get_value(FieldUnit::TWIP)));
+
+    SfxItemSet aSet(
+        m_pExampleWrtShell->GetAttrPool(),
+        svl::Items<RES_VERT_ORIENT, RES_ANCHOR>{});
+    if (m_xAlignToBodyCB->get_active())
+        aSet.Put(SwFormatHoriOrient( 0, text::HoriOrientation::NONE, text::RelOrientation::PAGE_PRINT_AREA ));
+    else
+        aSet.Put(SwFormatHoriOrient( nLeft, text::HoriOrientation::NONE, text::RelOrientation::PAGE_FRAME ));
+    aSet.Put(SwFormatVertOrient( nTop, text::VertOrientation::NONE, text::RelOrientation::PAGE_FRAME ));
+    m_pExampleWrtShell->GetDoc()->SetFlyFrameAttr( *m_pAddressBlockFormat, aSet );
+    m_xExampleFrame->Invalidate();
 }
 
-IMPL_LINK(SwMailMergeLayoutPage, GreetingsHdl_Impl, Button*, pButton, void)
+IMPL_LINK(SwMailMergeLayoutPage, GreetingsHdl_Impl, weld::Button&, rButton, void)
 {
-    bool bDown = pButton == m_pDownPB;
+    bool bDown = &rButton == m_xDownPB.get();
     bool bMoved = m_pExampleWrtShell->MoveParagraph( bDown ? 1 : -1 );
     if (bMoved || bDown)
         m_pWizard->GetConfigItem().MoveGreeting(bDown ? 1 : -1 );
@@ -715,14 +681,15 @@ IMPL_LINK(SwMailMergeLayoutPage, GreetingsHdl_Impl, Button*, pButton, void)
         //insert a new paragraph before the greeting line
         m_pExampleWrtShell->SplitNode();
     }
+    m_xExampleFrame->Invalidate();
 }
 
-IMPL_LINK(SwMailMergeLayoutPage, AlignToTextHdl_Impl, Button*, pBox, void)
+IMPL_LINK(SwMailMergeLayoutPage, AlignToTextHdl_Impl, weld::ToggleButton&, rBox, void)
 {
-    bool bCheck = static_cast<CheckBox*>(pBox)->IsChecked() && pBox->IsEnabled();
-    m_pLeftFT->Enable(!bCheck);
-    m_pLeftMF->Enable(!bCheck);
-    ChangeAddressHdl_Impl( *m_pLeftMF );
+    bool bCheck = rBox.get_active() && rBox.get_sensitive();
+    m_xLeftFT->set_sensitive(!bCheck);
+    m_xLeftMF->set_sensitive(!bCheck);
+    ChangeAddressHdl_Impl( *m_xLeftMF );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

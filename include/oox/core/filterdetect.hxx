@@ -20,37 +20,39 @@
 #ifndef INCLUDED_OOX_CORE_FILTERDETECT_HXX
 #define INCLUDED_OOX_CORE_FILTERDETECT_HXX
 
-#include <exception>
 #include <vector>
 
 #include <com/sun/star/document/XExtendedFilterDetection.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/XFastDocumentHandler.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <oox/dllapi.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { struct PropertyValue; }
     namespace io { class XInputStream; }
     namespace uno { class XComponentContext; }
-    namespace xml { namespace sax { class XFastAttributeList; } }
-    namespace xml { namespace sax { class XFastContextHandler; } }
-    namespace xml { namespace sax { class XLocator; } }
-} } }
+    namespace xml::sax { class XFastAttributeList; }
+    namespace xml::sax { class XFastContextHandler; }
+    namespace xml::sax { class XLocator; }
+}
 
 namespace utl { class MediaDescriptor; }
 
 namespace oox { class AttributeList; }
 
-namespace oox {
-namespace core {
+namespace oox::core {
+
+enum class OOXMLVariant {
+    ECMA_Transitional,
+    ISO_Transitional,
+    ISO_Strict
+};
 
 
 /** Document handler specifically designed for detecting OOXML file formats.
@@ -58,7 +60,7 @@ namespace core {
     It takes a reference to the filter string object via its constructor, and
     puts the name of the detected filter to it, if it successfully finds one.
  */
-class FilterDetectDocHandler : public ::cppu::WeakImplHelper< css::xml::sax::XFastDocumentHandler >
+class FilterDetectDocHandler final : public ::cppu::WeakImplHelper< css::xml::sax::XFastDocumentHandler >
 {
 public:
     explicit            FilterDetectDocHandler( const css::uno::Reference< css::uno::XComponentContext >& rxContext, OUString& rFilter, const OUString& rFileName );
@@ -82,7 +84,7 @@ public:
 private:
     void                parseRelationship( const AttributeList& rAttribs );
 
-    static OUString     getFilterNameFromContentType( const OUString& rContentType, const OUString& rFileName );
+    OUString            getFilterNameFromContentType( const OUString& rContentType, const OUString& rFileName );
     void                parseContentTypesDefault( const AttributeList& rAttribs );
     void                parseContentTypesOverride( const AttributeList& rAttribs );
 
@@ -93,11 +95,12 @@ private:
     OUString            maFileName;
     ContextVector       maContextStack;
     OUString            maTargetPath;
+    OOXMLVariant        maOOXMLVariant;
     css::uno::Reference< css::uno::XComponentContext > mxContext;
 };
 
 
-class OOX_DLLPUBLIC FilterDetect : public ::cppu::WeakImplHelper<css::document::XExtendedFilterDetection, css::lang::XServiceInfo>
+class OOX_DLLPUBLIC FilterDetect final : public ::cppu::WeakImplHelper<css::document::XExtendedFilterDetection, css::lang::XServiceInfo>
 {
 public:
     /// @throws css::uno::RuntimeException
@@ -162,8 +165,7 @@ private:
 };
 
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 #endif
 

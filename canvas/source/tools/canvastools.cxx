@@ -28,13 +28,13 @@
 #include <basegfx/point/b2ipoint.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/range/b2drectangle.hxx>
 #include <basegfx/range/b2irange.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <basegfx/vector/b2ivector.hxx>
 #include <com/sun/star/awt/Rectangle.hpp>
+#include <com/sun/star/awt/XWindow2.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/geometry/AffineMatrix2D.hpp>
 #include <com/sun/star/geometry/Matrix2D.hpp>
@@ -52,6 +52,7 @@
 #include <com/sun/star/util/Endianness.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/instance.hxx>
+#include <sal/log.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
 #include <vcl/canvastools.hxx>
@@ -62,10 +63,8 @@
 
 using namespace ::com::sun::star;
 
-namespace canvas
+namespace canvas::tools
 {
-    namespace tools
-    {
         geometry::RealSize2D createInfiniteSize2D()
         {
             return geometry::RealSize2D(
@@ -228,7 +227,7 @@ namespace canvas
                 }
                 virtual uno::Sequence< rendering::ARGBColor > SAL_CALL convertToARGB( const uno::Sequence< double >& deviceColor ) override
                 {
-                    SAL_WARN_IF(deviceColor.getLength() == 0, "canvas", "empty deviceColor argument");
+                    SAL_WARN_IF(!deviceColor.hasElements(), "canvas", "empty deviceColor argument");
                     const double*  pIn( deviceColor.getConstArray() );
                     const std::size_t nLen( deviceColor.getLength() );
                     ENSURE_ARG_OR_THROW2(nLen%4==0,
@@ -678,7 +677,7 @@ namespace canvas
                             *pOut++ = vcl::unotools::toDoubleColor(*pIn++);
                             *pOut++ = vcl::unotools::toDoubleColor(*pIn++);
                             *pOut++ = vcl::unotools::toDoubleColor(*pIn++);
-                            *pOut++ = 1.0;
+                            *pOut++ = 1.0; pIn++;
                         }
                         return aRes;
                     }
@@ -863,12 +862,12 @@ namespace canvas
             };
         }
 
-        uno::Reference<rendering::XIntegerBitmapColorSpace> getStdColorSpace()
+        uno::Reference<rendering::XIntegerBitmapColorSpace> const & getStdColorSpace()
         {
             return StandardColorSpaceHolder::get();
         }
 
-        uno::Reference<rendering::XIntegerBitmapColorSpace> getStdColorSpaceWithoutAlpha()
+        uno::Reference<rendering::XIntegerBitmapColorSpace> const & getStdColorSpaceWithoutAlpha()
         {
             return StandardNoAlphaColorSpaceHolder::get();
         }
@@ -888,16 +887,6 @@ namespace canvas
             return aLayout;
         }
 
-        ::Color stdIntSequenceToColor( const uno::Sequence<sal_Int8>& rColor )
-        {
-#ifdef OSL_BIGENDIAN
-            const sal_Int8* pCols( rColor.getConstArray() );
-            return ::Color( pCols[3], pCols[0], pCols[1], pCols[2] );
-#else
-            return ::Color( *reinterpret_cast< const ::ColorData* >(rColor.getConstArray()) );
-#endif
-        }
-
         uno::Sequence<sal_Int8> colorToStdIntSequence( const ::Color& rColor )
         {
             uno::Sequence<sal_Int8> aRet(4);
@@ -908,7 +897,7 @@ namespace canvas
             pCols[2] = rColor.GetBlue();
             pCols[3] = 255-rColor.GetTransparency();
 #else
-            *reinterpret_cast<sal_Int32*>(pCols) = rColor.GetColor();
+            *reinterpret_cast<sal_Int32*>(pCols) = sal_Int32(rColor);
 #endif
             return aRet;
         }
@@ -923,7 +912,10 @@ namespace canvas
                                                             const ::basegfx::B2DHomMatrix&      i_transformation )
         {
             if( i_srcRect.isEmpty() )
-                return o_transform=i_transformation;
+            {
+                o_transform = i_transformation;
+                return o_transform;
+            }
 
             // transform by given transformation
             ::basegfx::B2DRectangle aTransformedRect;
@@ -933,7 +925,7 @@ namespace canvas
                                        i_transformation );
 
             // now move resulting left,top point of bounds to (0,0)
-            const basegfx::B2DHomMatrix aCorrectedTransform(basegfx::tools::createTranslateB2DHomMatrix(
+            const basegfx::B2DHomMatrix aCorrectedTransform(basegfx::utils::createTranslateB2DHomMatrix(
                 -aTransformedRect.getMinX(), -aTransformedRect.getMinY()));
 
             // prepend to original transformation
@@ -988,11 +980,11 @@ namespace canvas
                 return false;
 
             ::basegfx::B2DPolygon aPoly(
-                ::basegfx::tools::createPolygonFromRect( rTransformRect ) );
+                ::basegfx::utils::createPolygonFromRect( rTransformRect ) );
             aPoly.transform( rTransformation );
 
-            return ::basegfx::tools::isInside( aPoly,
-                                               ::basegfx::tools::createPolygonFromRect(
+            return ::basegfx::utils::isInside( aPoly,
+                                               ::basegfx::utils::createPolygonFromRect(
                                                    rContainedRect ),
                                                true );
         }
@@ -1109,7 +1101,7 @@ namespace canvas
                 try
                 {
                     uno::Reference< rendering::XGraphicDevice > xDevice( i_rxCanvas->getDevice(),
-                                                                         uno::UNO_QUERY_THROW );
+                                                                         uno::UNO_SET_THROW );
 
                     uno::Reference< lang::XServiceInfo >  xServiceInfo( xDevice,
                                                                         uno::UNO_QUERY_THROW );
@@ -1318,8 +1310,17 @@ namespace canvas
                     p2ndOutDev->SetClipRegion( aClipRegion );
             }
         }
-    } // namespace tools
 
-} // namespace canvas
+        void extractExtraFontProperties(const uno::Sequence<beans::PropertyValue>& rExtraFontProperties,
+                        sal_uInt32 &rEmphasisMark)
+        {
+            for(const beans::PropertyValue& rPropVal : rExtraFontProperties)
+            {
+                if (rPropVal.Name == "EmphasisMark")
+                    rPropVal.Value >>= rEmphasisMark;
+            }
+        }
+
+} // namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

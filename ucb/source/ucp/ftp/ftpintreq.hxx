@@ -20,11 +20,6 @@
 #ifndef INCLUDED_UCB_SOURCE_UCP_FTP_FTPINTREQ_HXX
 #define INCLUDED_UCB_SOURCE_UCP_FTP_FTPINTREQ_HXX
 
-#include <cppuhelper/weak.hxx>
-#include <ucbhelper/macros.hxx>
-#include <rtl/ustring.hxx>
-#include <com/sun/star/uno/XInterface.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/task/XInteractionDisapprove.hpp>
 #include <com/sun/star/task/XInteractionApprove.hpp>
 #include <com/sun/star/task/XInteractionRequest.hpp>
@@ -77,7 +72,6 @@ namespace ftp {
     private:
 
         XInteractionApproveImpl* p1;
-        XInteractionDisapproveImpl* p2;
 
         css::uno::Reference<css::task::XInteractionRequest> m_xRequest;
 

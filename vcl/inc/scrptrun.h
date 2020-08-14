@@ -39,10 +39,8 @@
 
 #include <sal/config.h>
 
-#include <sal/types.h>
-#include "unicode/utypes.h"
-#include "unicode/uobject.h"
-#include "unicode/uscript.h"
+#include <unicode/uobject.h>
+#include <unicode/uscript.h>
 #include <vector>
 
 namespace vcl {
@@ -58,7 +56,7 @@ struct ParenStackEntry
     }
 };
 
-class ScriptRun : public UObject {
+class ScriptRun final : public icu::UObject {
 public:
 
     ScriptRun(const UChar chars[], int32_t length);
@@ -69,11 +67,11 @@ public:
 
     void reset(const UChar chars[], int32_t start, int32_t length);
 
-    int32_t getScriptStart();
+    int32_t getScriptStart() const;
 
-    int32_t getScriptEnd();
+    int32_t getScriptEnd() const;
 
-    UScriptCode getScriptCode();
+    UScriptCode getScriptCode() const;
 
     UBool next();
 
@@ -116,17 +114,17 @@ inline ScriptRun::ScriptRun(const UChar chars[], int32_t length)
     reset(chars, 0, length);
 }
 
-inline int32_t ScriptRun::getScriptStart()
+inline int32_t ScriptRun::getScriptStart() const
 {
     return scriptStart;
 }
 
-inline int32_t ScriptRun::getScriptEnd()
+inline int32_t ScriptRun::getScriptEnd() const
 {
     return scriptEnd;
 }
 
-inline UScriptCode ScriptRun::getScriptCode()
+inline UScriptCode ScriptRun::getScriptCode() const
 {
     return scriptCode;
 }

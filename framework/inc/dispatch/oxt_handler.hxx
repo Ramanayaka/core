@@ -20,17 +20,14 @@
 #ifndef INCLUDED_FRAMEWORK_INC_DISPATCH_OXT_HANDLER_HXX
 #define INCLUDED_FRAMEWORK_INC_DISPATCH_OXT_HANDLER_HXX
 
-#include <macros/xserviceinfo.hxx>
-#include <general.h>
-#include <stdtypes.h>
-
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/XNotifyingDispatch.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
 #include <com/sun/star/document/XExtendedFilterDetection.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/util/URL.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <cppuhelper/implbase.hxx>
 
@@ -47,7 +44,7 @@ namespace framework{
     @devstatus      ready
     @threadsafe     yes
 *//*-*************************************************************************************************************/
-class Oxt_Handler  :    public  ::cppu::WeakImplHelper<
+class Oxt_Handler final  :  public  ::cppu::WeakImplHelper<
                                     css::lang::XServiceInfo,
                                     css::frame::XNotifyingDispatch, // => XDispatch
                                     css::document::XExtendedFilterDetection >
@@ -55,16 +52,13 @@ class Oxt_Handler  :    public  ::cppu::WeakImplHelper<
 
     public:
 
-                 Oxt_Handler( const css::uno::Reference< css::lang::XMultiServiceFactory >& xFactory );
+                 Oxt_Handler( const css::uno::Reference< css::uno::XComponentContext >&  );
         virtual ~Oxt_Handler(                                                                        ) override;
 
-        //  XInterface, XTypeProvider, XServiceInfo
-
-        DECLARE_XSERVICEINFO_NOFACTORY
-        /* Helper for registry */
-        /// @throws css::uno::Exception
-        static css::uno::Reference< css::uno::XInterface >             SAL_CALL impl_createInstance                ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
-        static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL impl_createFactory                 ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
+        /* interface XServiceInfo */
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
         //  XNotifyingDispatch
 
@@ -88,9 +82,7 @@ class Oxt_Handler  :    public  ::cppu::WeakImplHelper<
     private:
         osl::Mutex m_mutex;
 
-        css::uno::Reference< css::lang::XMultiServiceFactory >     m_xFactory;   /// global uno service factory to create new services
-        css::uno::Reference< css::uno::XInterface >                m_xSelfHold;   /// we must protect us against dying during async(!) dispatch() call!
-        css::uno::Reference< css::frame::XDispatchResultListener > m_xListener;
+        css::uno::Reference< css::uno::XComponentContext >     m_xContext;   /// global uno service factory to create new services
 
 };
 

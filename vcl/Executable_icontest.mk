@@ -13,11 +13,21 @@ $(eval $(call gb_Executable_use_externals,icontest,\
     boost_headers \
 	glm_headers \
 ))
-ifeq ($(ENABLE_HEADLESS),)
+ifeq ($(DISABLE_GUI),)
 $(eval $(call gb_Executable_use_externals,icontest,\
     epoxy \
 ))
 endif
+
+ifeq ($(SYSTEM_GLM),TRUE)
+$(eval $(call gb_Executable_add_defs,icontest,\
+    -DGLM_ENABLE_EXPERIMENTAL \
+))
+endif
+
+$(eval $(call gb_Executable_add_defs,icontest,\
+    -DVCL_INTERNALS \
+))
 
 $(eval $(call gb_Executable_use_api,icontest,\
     offapi \
@@ -31,7 +41,6 @@ $(eval $(call gb_Executable_use_static_libraries,icontest,\
 ifeq ($(OS), $(filter LINUX %BSD SOLARIS, $(OS)))
 $(eval $(call gb_Executable_add_libs,icontest,\
 	-lm $(DLOPEN_LIBS) \
-	-lpthread \
     -lX11 \
 ))
 

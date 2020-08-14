@@ -17,9 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "FunctionHelper.hxx"
+#include <FunctionHelper.hxx>
 
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
+#include <formula/funcvarargs.h>
 
 
 namespace rptui
@@ -62,8 +64,8 @@ const formula::IFunctionCategory* FunctionManager::getCategory(sal_uInt32 _nPos)
     if ( _nPos >= m_aCategoryIndex.size() )
     {
         uno::Reference< report::meta::XFunctionCategory> xCategory = m_xMgr->getCategory(_nPos);
-        std::shared_ptr< FunctionCategory > pCategory(new FunctionCategory(this,_nPos + 1,xCategory));
-        m_aCategoryIndex.push_back( m_aCategories.insert(TCategoriesMap::value_type(xCategory->getName(),pCategory)).first );
+        auto pCategory = std::make_shared<FunctionCategory>(this,_nPos + 1,xCategory);
+        m_aCategoryIndex.push_back( m_aCategories.emplace(xCategory->getName(),pCategory).first );
     }
     return m_aCategoryIndex[_nPos]->second.get();
 }
@@ -86,10 +88,10 @@ std::shared_ptr< FunctionDescription > FunctionManager::get(const uno::Reference
             TCategoriesMap::iterator aCategoryFind = m_aCategories.find(sCategoryName);
             if ( aCategoryFind == m_aCategories.end() )
             {
-                aCategoryFind = m_aCategories.insert(TCategoriesMap::value_type(sCategoryName,std::make_shared< FunctionCategory > (this,xCategory->getNumber() + 1,xCategory))).first;
+                aCategoryFind = m_aCategories.emplace(sCategoryName,std::make_shared< FunctionCategory > (this,xCategory->getNumber() + 1,xCategory)).first;
                 m_aCategoryIndex.push_back( aCategoryFind );
             }
-            aFunctionFind = m_aFunctions.insert(TFunctionsMap::value_type(sFunctionName,std::make_shared<FunctionDescription>(aCategoryFind->second.get(),_xFunctionDescription))).first;
+            aFunctionFind = m_aFunctions.emplace(sFunctionName,std::make_shared<FunctionDescription>(aCategoryFind->second.get(),_xFunctionDescription)).first;
         }
         pDesc = aFunctionFind->second;
     }
@@ -211,33 +213,50 @@ sal_uInt32 FunctionDescription::getVarArgsStart() const
     // Don't use defines/constants that could change in future, parameter count
     // could be part of an implicit stable API.
     // offapi/com/sun/star/report/meta/XFunctionDescription.idl doesn't tell.
-    const sal_uInt32 nVarArgs = 30;         // ugly hard coded VAR_ARGS of formula::ParaWin
-    const sal_uInt32 nPairedVarArgs = 60;   // ugly hard coded PAIRED_VAR_ARGS of formula::ParaWin
+    const sal_uInt32 nVarArgs30 = 30;           // ugly hard coded old VAR_ARGS of formula::ParaWin
+    const sal_uInt32 nPairedVarArgs60 = 60;     // ugly hard coded old PAIRED_VAR_ARGS of formula::ParaWin
+    const sal_uInt32 nVarArgs255 = 255;         // ugly hard coded new VAR_ARGS of formula::ParaWin
+    const sal_uInt32 nPairedVarArgs510 = 510;   // ugly hard coded new PAIRED_VAR_ARGS of formula::ParaWin
     sal_uInt32 nLen = m_aParameter.getLength();
-    if (nLen >= nPairedVarArgs)
-        nLen -= nPairedVarArgs;
-    else if (nLen >= nVarArgs)
-        nLen -= nVarArgs;
+    // If the value of VAR_ARGS changes then adapt *and* maintain implicit API
+    // stability, ie. old code using the old VAR_ARGS and PAIRED_VAR_ARGS
+    // values must still be handled. It is *not* sufficient to simply change
+    // the values here.
+    static_assert(nVarArgs255 == VAR_ARGS && nPairedVarArgs510 == PAIRED_VAR_ARGS,
+            "VAR_ARGS or PAIRED_VAR_ARGS has unexpected value");
+    if (nLen >= nPairedVarArgs510)
+        nLen -= nPairedVarArgs510;
+    else if (nLen >= nVarArgs255)
+        nLen -= nVarArgs255;
+    else if (nLen >= nPairedVarArgs60)
+        nLen -= nPairedVarArgs60;
+    else if (nLen >= nVarArgs30)
+        nLen -= nVarArgs30;
     return nLen ? nLen - 1 : 0;
+}
+
+sal_uInt32 FunctionDescription::getVarArgsLimit() const
+{
+    return 0;
 }
 
 OUString FunctionDescription::getParameterName(sal_uInt32 _nPos) const
 {
-    if ( _nPos < static_cast<sal_uInt32>(m_aParameter.getLength()) )
+    if ( _nPos < o3tl::make_unsigned(m_aParameter.getLength()) )
         return m_aParameter[_nPos].Name;
     return OUString();
 }
 
 OUString FunctionDescription::getParameterDescription(sal_uInt32 _nPos) const
 {
-    if ( _nPos < static_cast<sal_uInt32>(m_aParameter.getLength()) )
+    if ( _nPos < o3tl::make_unsigned(m_aParameter.getLength()) )
         return m_aParameter[_nPos].Description;
     return OUString();
 }
 
 bool FunctionDescription::isParameterOptional(sal_uInt32 _nPos) const
 {
-    if ( _nPos < static_cast<sal_uInt32>(m_aParameter.getLength()) )
+    if ( _nPos < o3tl::make_unsigned(m_aParameter.getLength()) )
         return m_aParameter[_nPos].IsOptional;
     return false;
 }

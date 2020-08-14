@@ -21,14 +21,15 @@
 
 #include <sal/macros.h>
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <unotools/mediadescriptor.hxx>
 #include <sfx2/docfile.hxx>
+#include <sfx2/docfilt.hxx>
 #include <sfx2/fcontnr.hxx>
+#include <tools/solar.h>
 
 using namespace ::com::sun::star;
 using utl::MediaDescriptor;
@@ -43,33 +44,33 @@ namespace {
 // 0x8000: recognition finished
 
 #define M_DC        0x0100
-#define M_ALT(ANZ)  (0x0200+(ANZ))
-#define M_ENDE      0x8000
+#define M_ALT(CNT)  (0x0200+(CNT))
+#define M_END       0x8000
 
 const sal_uInt16 pLotus[] =      // Lotus 1/1A/2
     { 0x0000, 0x0000, 0x0002, 0x0000,
     M_ALT(2), 0x0004, 0x0006,
-    0x0004, M_ENDE };
+    0x0004, M_END };
 
 const sal_uInt16 pLotusNew[] =   // Lotus >= 9.7
     { 0x0000, 0x0000, M_DC, 0x0000,     // Rec# + Len (0x1a)
       M_ALT(3), 0x0003, 0x0004, 0x0005, // File Revision Code 97->ME
       0x0010, 0x0004, 0x0000, 0x0000,
-      M_ENDE };
+      M_END };
 
 const sal_uInt16 pLotus2[] =     // Lotus >3
     { 0x0000, 0x0000, 0x001A, 0x0000,   // Rec# + Len (26)
     M_ALT(2), 0x0000, 0x0002,         // File Revision Code
     0x0010,
     0x0004, 0x0000,                   // File Revision Subcode
-    M_ENDE };
+    M_END };
 
 const sal_uInt16 pQPro[] =
        { 0x0000, 0x0000, 0x0002, 0x0000,
          M_ALT(4), 0x0001, 0x0002, // WB1, WB2
          0x0006, 0x0007,           // QPro 6/7 (?)
          0x0010,
-         M_ENDE };
+         M_END };
 
 const sal_uInt16 pDIF1[] =       // DIF with CR-LF
     {
@@ -78,7 +79,7 @@ const sal_uInt16 pDIF1[] =       // DIF with CR-LF
     '0', ',', '1',
     M_DC, M_DC,
     '\"',
-    M_ENDE };
+    M_END };
 
 const sal_uInt16 pDIF2[] =       // DIF with CR or LF
     {
@@ -87,13 +88,13 @@ const sal_uInt16 pDIF2[] =       // DIF with CR or LF
     '0', ',', '1',
     M_DC,
     '\"',
-    M_ENDE };
+    M_END };
 
 const sal_uInt16 pSylk[] =       // Sylk
     {
     'I', 'D', ';',
     M_ALT(3), 'P', 'N', 'E',        // 'P' plus undocumented Excel extensions 'N' and 'E'
-    M_ENDE };
+    M_END };
 
 bool detectThisFormat(SvStream& rStr, const sal_uInt16* pSearch)
 {
@@ -101,13 +102,13 @@ bool detectThisFormat(SvStream& rStr, const sal_uInt16* pSearch)
     rStr.Seek( 0 ); // in the beginning everything was bad...
     rStr.ReadUChar( nByte );
     bool bSync = true;
-    while( !rStr.IsEof() && bSync )
+    while( !rStr.eof() && bSync )
     {
         sal_uInt16 nMuster = *pSearch;
 
         if( nMuster < 0x0100 )
         { // compare bytes
-            if( ( sal_uInt8 ) nMuster != nByte )
+            if( static_cast<sal_uInt8>(nMuster) != nByte )
                 bSync = false;
         }
         else if( nMuster & M_DC )
@@ -115,17 +116,17 @@ bool detectThisFormat(SvStream& rStr, const sal_uInt16* pSearch)
         }
         else if( nMuster & M_ALT(0) )
         { // alternative Bytes
-            sal_uInt8 nAnzAlt = ( sal_uInt8 ) nMuster;
+            sal_uInt8 nCntAlt = static_cast<sal_uInt8>(nMuster);
             bSync = false;          // first unsynchron
-            while( nAnzAlt > 0 )
+            while( nCntAlt > 0 )
             {
                 pSearch++;
-                if( ( sal_uInt8 ) *pSearch == nByte )
+                if( static_cast<sal_uInt8>(*pSearch) == nByte )
                     bSync = true;   // only now synchronization
-                nAnzAlt--;
+                nCntAlt--;
             }
         }
-        else if( nMuster & M_ENDE )
+        else if( nMuster & M_END )
         { // Format detected
             return true;
         }
@@ -139,7 +140,7 @@ bool detectThisFormat(SvStream& rStr, const sal_uInt16* pSearch)
 
 }
 
-ScFilterDetect::ScFilterDetect( const uno::Reference<uno::XComponentContext>& /*xContext*/ )
+ScFilterDetect::ScFilterDetect()
 {
 }
 
@@ -191,7 +192,7 @@ static bool lcl_MayBeDBase( SvStream& rStream )
     // Look for dbf marker, see connectivity/source/inc/dbase/DTable.hxx
     // DBFType for values.
     const sal_uInt8 nValidMarks[] = {
-        0x03, 0x04, 0x05, 0x30, 0x43, 0xB3, 0x83, 0x8b, 0x8e, 0xf5 };
+        0x03, 0x04, 0x05, 0x30, 0x31, 0x43, 0xB3, 0x83, 0x8b, 0x8e, 0xf5 };
     sal_uInt8 nMark;
     rStream.Seek(STREAM_SEEK_TO_BEGIN);
     rStream.ReadUChar( nMark );
@@ -208,8 +209,7 @@ static bool lcl_MayBeDBase( SvStream& rStream )
     // Empty dbf is >= 32*2+1 bytes in size.
     const size_t nEmptyDbf = nHeaderBlockSize * 2 + 1;
 
-    rStream.Seek(STREAM_SEEK_TO_END);
-    sal_uLong nSize = rStream.Tell();
+    sal_uLong nSize = rStream.TellEnd();
     if ( nSize < nEmptyDbf )
         return false;
 
@@ -330,7 +330,7 @@ OUString SAL_CALL ScFilterDetect::detect( uno::Sequence<beans::PropertyValue>& l
 
 OUString SAL_CALL ScFilterDetect::getImplementationName()
 {
-    return OUString("com.sun.star.comp.calc.FormatDetector");
+    return "com.sun.star.comp.calc.FormatDetector";
 }
 
 sal_Bool ScFilterDetect::supportsService( const OUString& sServiceName )
@@ -340,15 +340,14 @@ sal_Bool ScFilterDetect::supportsService( const OUString& sServiceName )
 
 css::uno::Sequence<OUString> ScFilterDetect::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> seqServiceNames { "com.sun.star.frame.ExtendedTypeDetection" };
-    return seqServiceNames;
+    return { "com.sun.star.frame.ExtendedTypeDetection" };
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
-com_sun_star_comp_calc_FormatDetector_get_implementation(css::uno::XComponentContext* context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_calc_FormatDetector_get_implementation(css::uno::XComponentContext* /*context*/,
                                                          css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ScFilterDetect(context));
+    return cppu::acquire(new ScFilterDetect);
 }
 
 

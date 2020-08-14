@@ -34,20 +34,17 @@
 #include <connectivity/sqliterator.hxx>
 #include <connectivity/sqlparse.hxx>
 #include <connectivity/FValue.hxx>
-#include <connectivity/OSubComponent.hxx>
 #include <com/sun/star/util/XCancellable.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/propertycontainer.hxx>
 
 #include "EApi.h"
-#include <NConnection.hxx>
+#include "NConnection.hxx"
 
 #include <list>
 
-namespace connectivity
+namespace connectivity::evoab
 {
-    namespace evoab
-    {
         typedef ::cppu::WeakComponentImplHelper<   css::sdbc::XWarningsSupplier
                                                ,   css::sdbc::XCloseable
                                                >   OCommonStatement_IBase;
@@ -57,7 +54,6 @@ namespace connectivity
             sal_Int32       nField;
             bool            bAscending;
 
-            FieldSort() : nField(0), bAscending( true ) { }
             FieldSort( const sal_Int32 _nField, const bool _bAscending ) : nField( _nField ), bAscending( _bAscending ) { }
         };
         typedef std::vector< FieldSort >  SortDescriptor;
@@ -84,7 +80,7 @@ namespace connectivity
                 if (mpQuery)
                     e_book_query_ref(mpQuery);
             }
-            EBookQueryWrapper(EBookQueryWrapper&& rhs)
+            EBookQueryWrapper(EBookQueryWrapper&& rhs) noexcept
                 : mpQuery(rhs.mpQuery)
             {
                 rhs.mpQuery = nullptr;
@@ -148,20 +144,14 @@ namespace connectivity
         //************ Class: OCommonStatement
         // is a base class for the normal statement and for the prepared statement
 
-        class OCommonStatement;
-        typedef OSubComponent< OCommonStatement, OCommonStatement_IBase >   OStatement_CBase;
-
         class OCommonStatement  :public cppu::BaseMutex
                                 ,public OCommonStatement_IBase
                                 ,public ::comphelper::OPropertyContainer
                                 ,public ::comphelper::OPropertyArrayUsageHelper< OCommonStatement >
-                                ,public OStatement_CBase
         {
-            friend class OSubComponent< OCommonStatement, OCommonStatement_IBase >;
-
         private:
             css::uno::WeakReference< css::sdbc::XResultSet>    m_xResultSet;   // The last ResultSet created
-            OEvoabConnection                     *m_pConnection;
+            rtl::Reference<OEvoabConnection>      m_xConnection;
             connectivity::OSQLParser              m_aParser;
             connectivity::OSQLParseTreeIterator   m_aSQLIterator;
             connectivity::OSQLParseNode          *m_pParseTree;
@@ -193,12 +183,12 @@ namespace connectivity
             void         parseSql( const OUString& sql, QueryData& _out_rQueryData );
             EBookQuery  *whereAnalysis( const OSQLParseNode*  parseTree );
             void         orderByAnalysis( const OSQLParseNode* _pOrderByClause, SortDescriptor& _out_rSort );
-            OUString getTableName();
+            OUString getTableName() const;
 
         public:
 
             // other methods
-            OEvoabConnection* getOwnConnection() const { return m_pConnection;}
+            OEvoabConnection* getOwnConnection() const { return m_xConnection.get(); }
 
             using OCommonStatement_IBase::operator css::uno::Reference< css::uno::XInterface >;
 
@@ -240,7 +230,7 @@ namespace connectivity
                 impl_executeQuery_throw( const QueryData& _rData );
 
             css::uno::Reference< css::sdbc::XConnection >
-                impl_getConnection() { return css::uno::Reference< css::sdbc::XConnection >( m_pConnection ); }
+                impl_getConnection() { return css::uno::Reference< css::sdbc::XConnection >( m_xConnection.get() ); }
 
             OUString
                 impl_getColumnRefColumnName_throw( const ::connectivity::OSQLParseNode& _rColumnRef );
@@ -278,8 +268,8 @@ namespace connectivity
             virtual sal_Bool SAL_CALL execute( const OUString& sql ) override ;
             virtual css::uno::Reference< css::sdbc::XConnection > SAL_CALL getConnection(  ) override ;
         };
-    }
 }
+
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_EVOAB2_NSTATEMENT_HXX
 

@@ -95,6 +95,8 @@ public class LocalOfficeWindow
     {
          // Create a UNO toolkit.
          XComponentContext xContext = mConnection.getComponentContext();
+         if (xContext == null)
+             throw new RuntimeException("no context");
          XMultiComponentFactory compfactory = xContext.getServiceManager();
          XMultiServiceFactory factory = UnoRuntime.queryInterface(
                  XMultiServiceFactory.class, compfactory);
@@ -152,7 +154,7 @@ public class LocalOfficeWindow
     }
 
     /**
-     * Retrieves an UNO XWindowPeer object associated with the OfficeWindow.
+     * Retrieves a UNO XWindowPeer object associated with the OfficeWindow.
      *
      * @return The UNO XWindowPeer object associated with the OfficeWindow.
      */
@@ -237,7 +239,7 @@ public class LocalOfficeWindow
      * Returns an Any containing a sequences of com.sun.star.beans.NamedValue. One NamedValue
      * contains the name "WINDOW" and the value is a Long representing the window handle.
      * The second NamedValue  has the name "XEMBED" and the value is true, when the XEmbed
-     * protocol shall be used fore embedding the native Window.
+     * protocol shall be used for embedding the native Window.
     */
     protected Any getWrappedWindowHandle()
     {

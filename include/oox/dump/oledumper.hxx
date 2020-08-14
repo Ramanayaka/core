@@ -32,14 +32,13 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-#if OOX_INCLUDE_DUMPER
+#ifdef DBG_UTIL
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XInputStream; }
-} } }
+}
 
-namespace oox {
-namespace dump {
+namespace oox::dump {
 
 
 class OleInputObjectBase : public InputObjectBase
@@ -322,7 +321,7 @@ protected:
     sal_uInt8    dumpImageSizeModeProperty() { return dumpDecProperty< sal_uInt8 >( 0, "AX-IMAGESIZEMODE" ); }
     sal_uInt8    dumpImageAlignProperty() { return dumpDecProperty< sal_uInt8 >( 2, "AX-IMAGEALIGN" ); }
 
-    sal_uInt32          dumpFlagsProperty( sal_uInt32 nDefault, const sal_Char* pcNameList = "AX-FLAGS" );
+    sal_uInt32          dumpFlagsProperty( sal_uInt32 nDefault, const char* pcNameList = "AX-FLAGS" );
     sal_uInt32          dumpColorProperty( sal_uInt32 nDefault );
     sal_Unicode         dumpUnicodeProperty();
     void                dumpUnknownProperty();
@@ -366,10 +365,10 @@ private:
         explicit     StreamProperty( const String& rItemName, sal_uInt16 nData ) :
                                 maItemName( rItemName ), mnData( nData ) {}
     };
-    typedef ::std::vector< StreamProperty > StreamPropertyVector;
 
     LargePropertyVector maLargeProps;
-    StreamPropertyVector maStreamProps;
+    std::vector< StreamProperty >
+                        maStreamProps;
     NameListRef         mxPropNames;
     sal_Int64           mnPropertiesStart;
     sal_Int64           mnPropertiesEnd;
@@ -548,13 +547,11 @@ struct VbaFormSiteInfo
     VbaFormSiteInfo() : mnId( 0 ), mnLength( 0 ), mbInStream( false ) {}
 };
 
-typedef ::std::vector< VbaFormSiteInfo > VbaFormSiteInfoVector;
-
 
 struct VbaFormSharedData
 {
-    OUStringVector      maClassInfoProgIds;
-    VbaFormSiteInfoVector maSiteInfos;
+    OUStringVector                 maClassInfoProgIds;
+    std::vector< VbaFormSiteInfo > maSiteInfos;
 };
 
 
@@ -844,8 +841,7 @@ protected:
 };
 
 
-} // namespace dump
-} // namespace oox
+} // namespace oox::dump
 
 #endif
 #endif

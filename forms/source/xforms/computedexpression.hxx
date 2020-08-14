@@ -24,7 +24,7 @@
 #include <com/sun/star/uno/Reference.hxx>
 
 // forward declaractions
-namespace com { namespace sun { namespace star
+namespace com::sun::star
 {
     namespace xml
     {
@@ -34,7 +34,7 @@ namespace com { namespace sun { namespace star
         namespace xpath { class XXPathObject; }
     }
     namespace container { class XNameContainer; }
-} } }
+}
 namespace xforms { class EvaluationContext; }
 
 
@@ -62,7 +62,7 @@ protected:
 
 
     /// implementation of isSimpleExpression
-    bool _checkExpression( const sal_Char* pExpression ) const;
+    bool _checkExpression( const char* pExpression ) const;
 
     /// allow manipulation of the expression before it is evaluated
     // the default implementation is to do nothing...

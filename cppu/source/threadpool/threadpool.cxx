@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cassert>
 #include <chrono>
@@ -26,7 +26,6 @@
 
 #include <osl/diagnose.h>
 #include <osl/mutex.hxx>
-#include <osl/thread.h>
 #include <rtl/instance.hxx>
 #include <sal/log.hxx>
 
@@ -45,6 +44,8 @@ namespace cppu_threadpool
         rtl::Reference<ORequestThread> const & theThread): thread(theThread)
     {}
 
+    namespace {
+
     struct theDisposedCallerAdmin :
         public rtl::StaticWithInit< DisposedCallerAdminHolder, theDisposedCallerAdmin >
     {
@@ -53,50 +54,34 @@ namespace cppu_threadpool
         }
     };
 
-    DisposedCallerAdminHolder DisposedCallerAdmin::getInstance()
+    }
+
+    DisposedCallerAdminHolder const & DisposedCallerAdmin::getInstance()
     {
         return theDisposedCallerAdmin::get();
     }
 
     DisposedCallerAdmin::~DisposedCallerAdmin()
     {
-        SAL_WARN_IF( !m_lst.empty(), "cppu.threadpool", "DisposedCallerList :  " << m_lst.size() << " left");
+        SAL_WARN_IF( !m_vector.empty(), "cppu.threadpool", "DisposedCallerList :  " << m_vector.size() << " left");
     }
 
-    void DisposedCallerAdmin::dispose( sal_Int64 nDisposeId )
+    void DisposedCallerAdmin::dispose( void const * nDisposeId )
     {
         MutexGuard guard( m_mutex );
-        m_lst.push_back( nDisposeId );
+        m_vector.push_back( nDisposeId );
     }
 
-    void DisposedCallerAdmin::destroy( sal_Int64 nDisposeId )
+    void DisposedCallerAdmin::destroy( void const * nDisposeId )
     {
         MutexGuard guard( m_mutex );
-        for( auto it = m_lst.begin() ;
-             it != m_lst.end() ;
-             ++ it )
-        {
-            if( (*it) == nDisposeId )
-            {
-                m_lst.erase( it );
-                break;
-            }
-        }
+        m_vector.erase(std::remove(m_vector.begin(), m_vector.end(), nDisposeId), m_vector.end());
     }
 
-    bool DisposedCallerAdmin::isDisposed( sal_Int64 nDisposeId )
+    bool DisposedCallerAdmin::isDisposed( void const * nDisposeId )
     {
         MutexGuard guard( m_mutex );
-        for( auto it = m_lst.begin() ;
-             it != m_lst.end() ;
-             ++ it )
-        {
-            if( (*it) == nDisposeId )
-            {
-                return true;
-            }
-        }
-        return false;
+        return (std::find(m_vector.begin(), m_vector.end(), nDisposeId) != m_vector.end());
     }
 
 
@@ -110,27 +95,25 @@ namespace cppu_threadpool
         SAL_WARN_IF( m_mapQueue.size(), "cppu.threadpool", "ThreadIdHashMap:  " << m_mapQueue.size() << " left");
     }
 
-    void ThreadPool::dispose( sal_Int64 nDisposeId )
+    void ThreadPool::dispose( void const * nDisposeId )
     {
         m_DisposedCallerAdmin->dispose( nDisposeId );
 
         MutexGuard guard( m_mutex );
-        for( ThreadIdHashMap::iterator ii = m_mapQueue.begin() ;
-             ii != m_mapQueue.end();
-             ++ii)
+        for (auto const& item :  m_mapQueue)
         {
-            if( (*ii).second.first )
+            if( item.second.first )
             {
-                (*ii).second.first->dispose( nDisposeId );
+                item.second.first->dispose( nDisposeId );
             }
-            if( (*ii).second.second )
+            if( item.second.second )
             {
-                (*ii).second.second->dispose( nDisposeId );
+                item.second.second->dispose( nDisposeId );
             }
         }
     }
 
-    void ThreadPool::destroy( sal_Int64 nDisposeId )
+    void ThreadPool::destroy( void const * nDisposeId )
     {
         m_DisposedCallerAdmin->destroy( nDisposeId );
     }
@@ -145,7 +128,7 @@ namespace cppu_threadpool
         WaitingThread waitingThread(pThread);
         {
             MutexGuard guard( m_mutexWaitingThreadList );
-            m_lstThreads.push_front( &waitingThread );
+            m_dequeThreads.push_front( &waitingThread );
         }
 
         // let the thread wait 2 seconds
@@ -156,10 +139,10 @@ namespace cppu_threadpool
             if( waitingThread.thread.is() )
             {
                 // thread wasn't reused, remove it from the list
-                WaitingThreadList::iterator ii = find(
-                    m_lstThreads.begin(), m_lstThreads.end(), &waitingThread );
-                OSL_ASSERT( ii != m_lstThreads.end() );
-                m_lstThreads.erase( ii );
+                WaitingThreadDeque::iterator ii = find(
+                    m_dequeThreads.begin(), m_dequeThreads.end(), &waitingThread );
+                OSL_ASSERT( ii != m_dequeThreads.end() );
+                m_dequeThreads.erase( ii );
             }
         }
     }
@@ -168,12 +151,10 @@ namespace cppu_threadpool
     {
         {
             MutexGuard guard( m_mutexWaitingThreadList );
-            for( WaitingThreadList::iterator ii = m_lstThreads.begin() ;
-                 ii != m_lstThreads.end() ;
-                 ++ ii )
+            for (auto const& thread : m_dequeThreads)
             {
                 // wake the threads up
-                (*ii)->condition.set();
+                thread->condition.set();
             }
         }
         m_aThreadAdmin.join();
@@ -186,15 +167,15 @@ namespace cppu_threadpool
         {
             // Can a thread be reused ?
             MutexGuard guard( m_mutexWaitingThreadList );
-            if( ! m_lstThreads.empty() )
+            if( ! m_dequeThreads.empty() )
             {
                 // inform the thread and let it go
-                struct WaitingThread *pWaitingThread = m_lstThreads.back();
+                struct WaitingThread *pWaitingThread = m_dequeThreads.back();
                 pWaitingThread->thread->setTask( pQueue , aThreadId , bAsynchron );
                 pWaitingThread->thread = nullptr;
 
                 // remove from list
-                m_lstThreads.pop_back();
+                m_dequeThreads.pop_back();
 
                 // let the thread go
                 pWaitingThread->condition.set();
@@ -202,7 +183,7 @@ namespace cppu_threadpool
             }
         }
 
-        rtl::Reference< ORequestThread > pThread(
+        rtl::Reference pThread(
             new ORequestThread( this, pQueue , aThreadId, bAsynchron) );
         return pThread->launch();
     }
@@ -253,12 +234,16 @@ namespace cppu_threadpool
         const ByteSequence &aThreadId ,
         bool bAsynchron,
         void *pThreadSpecificData,
-        RequestFun * doRequest )
+        RequestFun * doRequest,
+        void const * disposeId )
     {
         bool bCreateThread = false;
         JobQueue *pQueue = nullptr;
         {
             MutexGuard guard( m_mutex );
+            if (m_DisposedCallerAdmin->isDisposed(disposeId)) {
+                return true;
+            }
 
             ThreadIdHashMap::iterator ii = m_mapQueue.find( aThreadId );
 
@@ -315,7 +300,7 @@ namespace cppu_threadpool
         }
     }
 
-    void * ThreadPool::enter( const ByteSequence & aThreadId , sal_Int64 nDisposeId )
+    void * ThreadPool::enter( const ByteSequence & aThreadId , void const * nDisposeId )
     {
         JobQueue *pQueue = nullptr;
         {
@@ -351,6 +336,8 @@ namespace cppu_threadpool
 
 using namespace cppu_threadpool;
 
+namespace {
+
 struct uno_ThreadPool_Equal
 {
     bool operator () ( const uno_ThreadPool &a , const uno_ThreadPool &b ) const
@@ -367,6 +354,7 @@ struct uno_ThreadPool_Hash
         }
 };
 
+}
 
 typedef std::unordered_map< uno_ThreadPool, ThreadPoolHolder, uno_ThreadPool_Hash, uno_ThreadPool_Equal > ThreadpoolHashSet;
 
@@ -408,7 +396,7 @@ uno_threadpool_create() SAL_THROW_EXTERN_C()
 
     // Just ensure that the handle is unique in the process (via heap)
     uno_ThreadPool h = new struct _uno_ThreadPool;
-    g_pThreadpoolHashSet->insert( ThreadpoolHashSet::value_type(h, p) );
+    g_pThreadpoolHashSet->emplace( h, p );
     return h;
 }
 
@@ -431,8 +419,7 @@ uno_threadpool_enter( uno_ThreadPool hPool , void **ppJob )
     *ppJob =
         getThreadPool( hPool )->enter(
             pThreadId,
-            sal::static_int_cast< sal_Int64 >(
-                reinterpret_cast< sal_IntPtr >(hPool)) );
+            hPool );
     rtl_byte_sequence_release( pThreadId );
     uno_releaseIdFromCurrentThread();
 }
@@ -440,7 +427,7 @@ uno_threadpool_enter( uno_ThreadPool hPool , void **ppJob )
 extern "C" void SAL_CALL
 uno_threadpool_detach(SAL_UNUSED_PARAMETER uno_ThreadPool) SAL_THROW_EXTERN_C()
 {
-    // we might do here some tiding up in case a thread called attach but never detach
+    // we might do here some tidying up in case a thread called attach but never detach
 }
 
 extern "C" void SAL_CALL
@@ -451,7 +438,7 @@ uno_threadpool_putJob(
     void ( SAL_CALL * doRequest ) ( void *pThreadSpecificData ),
     sal_Bool bIsOneway ) SAL_THROW_EXTERN_C()
 {
-    if (!getThreadPool(hPool)->addJob( pThreadId, bIsOneway, pJob ,doRequest ))
+    if (!getThreadPool(hPool)->addJob( pThreadId, bIsOneway, pJob ,doRequest, hPool ))
     {
         SAL_WARN(
             "cppu.threadpool",
@@ -463,8 +450,7 @@ extern "C" void SAL_CALL
 uno_threadpool_dispose( uno_ThreadPool hPool ) SAL_THROW_EXTERN_C()
 {
     getThreadPool(hPool)->dispose(
-        sal::static_int_cast< sal_Int64 >(
-            reinterpret_cast< sal_IntPtr >(hPool)) );
+        hPool );
 }
 
 extern "C" void SAL_CALL
@@ -472,8 +458,7 @@ uno_threadpool_destroy( uno_ThreadPool hPool ) SAL_THROW_EXTERN_C()
 {
     ThreadPoolHolder p( getThreadPool(hPool) );
     p->destroy(
-        sal::static_int_cast< sal_Int64 >(
-            reinterpret_cast< sal_IntPtr >(hPool)) );
+        hPool );
 
     bool empty;
     {

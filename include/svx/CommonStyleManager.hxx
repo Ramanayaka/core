@@ -11,8 +11,9 @@
 #define INCLUDED_SVX_COMMONSTYLEMANAGER_HXX
 
 #include <sfx2/StyleManager.hxx>
-#include <sfx2/StylePreviewRenderer.hxx>
 #include <svx/svxdllapi.h>
+
+namespace sfx2 { class StylePreviewRenderer; }
 
 class OutputDevice;
 class SfxObjectShell;
@@ -21,14 +22,14 @@ class SfxStyleSheetBase;
 namespace svx
 {
 
-class SVX_DLLPUBLIC CommonStyleManager : public sfx2::StyleManager
+class SVXCORE_DLLPUBLIC CommonStyleManager final : public sfx2::StyleManager
 {
 public:
     CommonStyleManager(SfxObjectShell& rShell)
         : StyleManager(rShell)
     {}
 
-    virtual sfx2::StylePreviewRenderer* CreateStylePreviewRenderer(
+    virtual std::unique_ptr<sfx2::StylePreviewRenderer> CreateStylePreviewRenderer(
                                             OutputDevice& rOutputDev, SfxStyleSheetBase* pStyle,
                                             long nMaxHeight) override;
 };

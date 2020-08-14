@@ -14,28 +14,34 @@
 #include <iterator>
 
 #include <com/sun/star/beans/XPropertyContainer.hpp>
+#include <com/sun/star/beans/Property.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/xml/sax/SAXParseException.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
+#include <sal/log.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <sfx2/infobar.hxx>
-#include <sfx2/objsh.hxx>
-#include <o3tl/make_unique.hxx>
 #include <comphelper/processfactory.hxx>
 #include <unotools/pathoptions.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <unotools/streamwrap.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <sfx2/sfx.hrc>
+#include <sfx2/strings.hrc>
 #include <sfx2/sfxresid.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <tools/datetime.hxx>
+#include <tools/diagnose_ex.h>
 #include <unotools/datetime.hxx>
-#include <vcl/layout.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/settings.hxx>
+#include <vcl/weld.hxx>
 #include <svl/fstathelper.hxx>
-#include <config_folders.h>
+
+#include <officecfg/Office/Common.hxx>
 
 using namespace com::sun::star;
 
@@ -44,43 +50,43 @@ namespace
 
 const OUString& PROP_BACNAME()
 {
-    static OUString sProp("BusinessAuthorizationCategory:Name");
+    static const OUString sProp("BusinessAuthorizationCategory:Name");
     return sProp;
 }
 
 const OUString& PROP_STARTVALIDITY()
 {
-    static OUString sProp("Authorization:StartValidity");
+    static const OUString sProp("Authorization:StartValidity");
     return sProp;
 }
 
 const OUString& PROP_NONE()
 {
-    static OUString sProp("None");
+    static const OUString sProp("None");
     return sProp;
 }
 
 const OUString& PROP_IMPACTSCALE()
 {
-    static OUString sProp("Impact:Scale");
+    static const OUString sProp("Impact:Scale");
     return sProp;
 }
 
 const OUString& PROP_IMPACTLEVEL()
 {
-    static OUString sProp("Impact:Level:Confidentiality");
+    static const OUString sProp("Impact:Level:Confidentiality");
     return sProp;
 }
 
 const OUString& PROP_PREFIX_EXPORTCONTROL()
 {
-    static OUString sProp("urn:bails:ExportControl:");
+    static const OUString sProp("urn:bails:ExportControl:");
     return sProp;
 }
 
 const OUString& PROP_PREFIX_NATIONALSECURITY()
 {
-    static OUString sProp("urn:bails:NationalSecurity:");
+    static const OUString sProp("urn:bails:NationalSecurity:");
     return sProp;
 }
 
@@ -90,6 +96,9 @@ class SfxClassificationCategory
 public:
     /// PROP_BACNAME() is stored separately for easier lookup.
     OUString m_aName;
+    OUString m_aAbbreviatedName; //< An abbreviation to display instead of m_aName.
+    OUString m_aIdentifier; //< The Identifier of this entry.
+    size_t m_nConfidentiality; //< 0 is the lowest (least-sensitive).
     std::map<OUString, OUString> m_aLabels;
 };
 
@@ -98,6 +107,9 @@ class SfxClassificationParser : public cppu::WeakImplHelper<xml::sax::XDocumentH
 {
 public:
     std::vector<SfxClassificationCategory> m_aCategories;
+    std::vector<OUString> m_aMarkings;
+    std::vector<OUString> m_aIPParts;
+    std::vector<OUString> m_aIPPartNumbers;
 
     OUString m_aPolicyAuthorityName;
     bool m_bInPolicyAuthorityName = false;
@@ -123,15 +135,15 @@ public:
 
     void SAL_CALL endDocument() override;
 
-    void SAL_CALL startElement(const OUString& aName, const uno::Reference<xml::sax::XAttributeList>& xAttribs) override;
+    void SAL_CALL startElement(const OUString& rName, const uno::Reference<xml::sax::XAttributeList>& xAttribs) override;
 
-    void SAL_CALL endElement(const OUString& aName) override;
+    void SAL_CALL endElement(const OUString& rName) override;
 
-    void SAL_CALL characters(const OUString& aChars) override;
+    void SAL_CALL characters(const OUString& rChars) override;
 
-    void SAL_CALL ignorableWhitespace(const OUString& aWhitespaces) override;
+    void SAL_CALL ignorableWhitespace(const OUString& rWhitespaces) override;
 
-    void SAL_CALL processingInstruction(const OUString& aTarget, const OUString& aData) override;
+    void SAL_CALL processingInstruction(const OUString& rTarget, const OUString& rData) override;
 
     void SAL_CALL setDocumentLocator(const uno::Reference<xml::sax::XLocator>& xLocator) override;
 };
@@ -165,7 +177,7 @@ void SAL_CALL SfxClassificationParser::startElement(const OUString& rName, const
     }
     else if (rName == "baf:BusinessAuthorizationCategory")
     {
-        OUString aName = xAttribs->getValueByName("Name");
+        const OUString aName = xAttribs->getValueByName("Name");
         if (!m_pCategory && !aName.isEmpty())
         {
             OUString aIdentifier = xAttribs->getValueByName("Identifier");
@@ -173,7 +185,13 @@ void SAL_CALL SfxClassificationParser::startElement(const OUString& rName, const
             // Create a new category and initialize it with the data that's true for all categories.
             m_aCategories.emplace_back(SfxClassificationCategory());
             SfxClassificationCategory& rCategory = m_aCategories.back();
+
             rCategory.m_aName = aName;
+            // Set the abbreviated name, if any, otherwise fallback on the full name.
+            const OUString aAbbreviatedName = xAttribs->getValueByName("loextAbbreviatedName");
+            rCategory.m_aAbbreviatedName = !aAbbreviatedName.isEmpty() ? aAbbreviatedName : aName;
+            rCategory.m_aIdentifier = aIdentifier;
+
             rCategory.m_aLabels["PolicyAuthority:Name"] = m_aPolicyAuthorityName;
             rCategory.m_aLabels["Policy:Name"] = m_aPolicyName;
             rCategory.m_aLabels["BusinessAuthorization:Identifier"] = m_aProgramID;
@@ -209,6 +227,21 @@ void SAL_CALL SfxClassificationParser::startElement(const OUString& rName, const
             rCategory.m_aLabels["Authorization:StopValidity"] = PROP_NONE();
             m_pCategory = &rCategory;
         }
+    }
+    else if (rName == "loext:Marking")
+    {
+        OUString aName = xAttribs->getValueByName("Name");
+        m_aMarkings.push_back(aName);
+    }
+    else if (rName == "loext:IntellectualPropertyPart")
+    {
+        OUString aName = xAttribs->getValueByName("Name");
+        m_aIPParts.push_back(aName);
+    }
+    else if (rName == "loext:IntellectualPropertyPartNumber")
+    {
+        OUString aName = xAttribs->getValueByName("Name");
+        m_aIPPartNumbers.push_back(aName);
     }
     else if (rName == "baf:Scale")
     {
@@ -255,12 +288,11 @@ void SAL_CALL SfxClassificationParser::endElement(const OUString& rName)
         {
             std::map<OUString, OUString>& rLabels = m_pCategory->m_aLabels;
             rLabels[PROP_IMPACTLEVEL()] = m_aConfidentalityValue;
+            m_pCategory->m_nConfidentiality = m_aConfidentalityValue.toInt32(); // 0-based class sensitivity; 0 is lowest.
             // Set the two other type of levels as well, if they're not set
             // yet: they're optional in BAF, but not in BAILS.
-            if (rLabels.find("Impact:Level:Integrity") == rLabels.end())
-                rLabels["Impact:Level:Integrity"] = m_aConfidentalityValue;
-            if (rLabels.find("Impact:Level:Availability") == rLabels.end())
-                rLabels["Impact:Level:Availability"] = m_aConfidentalityValue;
+            rLabels.try_emplace("Impact:Level:Integrity", m_aConfidentalityValue);
+            rLabels.try_emplace("Impact:Level:Availability", m_aConfidentalityValue);
         }
     }
     else if (rName == "baf:Identifier")
@@ -319,9 +351,15 @@ public:
     std::map<SfxClassificationPolicyType, SfxClassificationCategory> m_aCategory;
     /// Possible categories of a policy to choose from.
     std::vector<SfxClassificationCategory> m_aCategories;
+    std::vector<OUString> m_aMarkings;
+    std::vector<OUString> m_aIPParts;
+    std::vector<OUString> m_aIPPartNumbers;
+
     uno::Reference<document::XDocumentProperties> m_xDocumentProperties;
 
-    explicit Impl(uno::Reference<document::XDocumentProperties> xDocumentProperties);
+    bool m_bUseLocalized;
+
+    explicit Impl(uno::Reference<document::XDocumentProperties> xDocumentProperties, bool bUseLocalized);
     void parsePolicy();
     /// Synchronize m_aLabels back to the document properties.
     void pushToDocumentProperties();
@@ -329,9 +367,11 @@ public:
     void setStartValidity(SfxClassificationPolicyType eType);
 };
 
-SfxClassificationHelper::Impl::Impl(uno::Reference<document::XDocumentProperties> xDocumentProperties)
+SfxClassificationHelper::Impl::Impl(uno::Reference<document::XDocumentProperties> xDocumentProperties, bool bUseLocalized)
     : m_xDocumentProperties(std::move(xDocumentProperties))
+    , m_bUseLocalized(bUseLocalized)
 {
+    parsePolicy();
 }
 
 void SfxClassificationHelper::Impl::parsePolicy()
@@ -342,7 +382,7 @@ void SfxClassificationHelper::Impl::parsePolicy()
 
     // See if there is a localized variant next to the configured XML.
     OUString aExtension(".xml");
-    if (aPath.endsWith(aExtension))
+    if (aPath.endsWith(aExtension) && m_bUseLocalized)
     {
         OUString aBase = aPath.copy(0, aPath.getLength() - aExtension.getLength());
         const LanguageTag& rLanguageTag = Application::GetSettings().GetLanguageTag();
@@ -352,8 +392,8 @@ void SfxClassificationHelper::Impl::parsePolicy()
             aPath = aLocalized;
     }
 
-    SvStream* pStream = utl::UcbStreamHelper::CreateStream(aPath, StreamMode::READ);
-    uno::Reference<io::XInputStream> xInputStream(new utl::OStreamWrapper(*pStream));
+    std::unique_ptr<SvStream> pStream = utl::UcbStreamHelper::CreateStream(aPath, StreamMode::READ);
+    uno::Reference<io::XInputStream> xInputStream(new utl::OStreamWrapper(std::move(pStream)));
     xml::sax::InputSource aParserInput;
     aParserInput.aInputStream = xInputStream;
 
@@ -365,19 +405,22 @@ void SfxClassificationHelper::Impl::parsePolicy()
     {
         xParser->parseStream(aParserInput);
     }
-    catch (const xml::sax::SAXParseException& rException)
+    catch (const xml::sax::SAXParseException&)
     {
-        SAL_WARN("sfx.view", "parsePolicy() failed: " << rException.Message);
+        TOOLS_WARN_EXCEPTION("sfx.view", "parsePolicy() failed");
     }
     m_aCategories = xClassificationParser->m_aCategories;
+    m_aMarkings = xClassificationParser->m_aMarkings;
+    m_aIPParts = xClassificationParser->m_aIPParts;
+    m_aIPPartNumbers = xClassificationParser->m_aIPPartNumbers;
 }
 
-bool lcl_containsProperty(const uno::Sequence<beans::Property>& rProperties, const OUString& rName)
+static bool lcl_containsProperty(const uno::Sequence<beans::Property>& rProperties, const OUString& rName)
 {
-    return std::find_if(rProperties.begin(), rProperties.end(), [&](const beans::Property& rProperty)
+    return std::any_of(rProperties.begin(), rProperties.end(), [&](const beans::Property& rProperty)
     {
         return rProperty.Name == rName;
-    }) != rProperties.end();
+    });
 }
 
 void SfxClassificationHelper::Impl::setStartValidity(SfxClassificationPolicyType eType)
@@ -394,8 +437,7 @@ void SfxClassificationHelper::Impl::setStartValidity(SfxClassificationPolicyType
         {
             // The policy left the start date unchanged, replace it with the system time.
             util::DateTime aDateTime = DateTime(DateTime::SYSTEM).GetUNODateTime();
-            OUStringBuffer aBuffer = utl::toISO8601(aDateTime);
-            it->second = aBuffer.toString();
+            it->second = utl::toISO8601(aDateTime);
         }
     }
 }
@@ -420,9 +462,9 @@ void SfxClassificationHelper::Impl::pushToDocumentProperties()
                 else
                     xPropertyContainer->addProperty(rLabel.first, beans::PropertyAttribute::REMOVABLE, uno::makeAny(rLabel.second));
             }
-            catch (const uno::Exception& rException)
+            catch (const uno::Exception&)
             {
-                SAL_WARN("sfx.view", "pushDocumentProperties() failed for property " << rLabel.first << ": " << rException.Message);
+                TOOLS_WARN_EXCEPTION("sfx.view", "pushDocumentProperties() failed for property " << rLabel.first);
             }
         }
     }
@@ -435,7 +477,7 @@ bool SfxClassificationHelper::IsClassified(const uno::Reference<document::XDocum
         return false;
 
     uno::Reference<beans::XPropertySet> xPropertySet(xPropertyContainer, uno::UNO_QUERY);
-    uno::Sequence<beans::Property> aProperties = xPropertySet->getPropertySetInfo()->getProperties();
+    const uno::Sequence<beans::Property> aProperties = xPropertySet->getPropertySetInfo()->getProperties();
     for (const beans::Property& rProperty : aProperties)
     {
         if (rProperty.Name.startsWith("urn:bails:"))
@@ -448,14 +490,12 @@ bool SfxClassificationHelper::IsClassified(const uno::Reference<document::XDocum
 SfxClassificationCheckPasteResult SfxClassificationHelper::CheckPaste(const uno::Reference<document::XDocumentProperties>& xSource,
         const uno::Reference<document::XDocumentProperties>& xDestination)
 {
-    bool bSourceClassified = SfxClassificationHelper::IsClassified(xSource);
-    if (!bSourceClassified)
+    if (!SfxClassificationHelper::IsClassified(xSource))
         // No classification on the source side. Return early, regardless the
         // state of the destination side.
         return SfxClassificationCheckPasteResult::None;
 
-    bool bDestinationClassified = SfxClassificationHelper::IsClassified(xDestination);
-    if (bSourceClassified && !bDestinationClassified)
+    if (!SfxClassificationHelper::IsClassified(xDestination))
     {
         // Paste from a classified document to a non-classified one -> deny.
         return SfxClassificationCheckPasteResult::TargetDocNotClassified;
@@ -487,14 +527,24 @@ bool SfxClassificationHelper::ShowPasteInfo(SfxClassificationCheckPasteResult eR
     case SfxClassificationCheckPasteResult::TargetDocNotClassified:
     {
         if (!Application::IsHeadlessModeEnabled())
-            ScopedVclPtrInstance<MessageDialog>(nullptr, SfxResId(STR_TARGET_DOC_NOT_CLASSIFIED), VclMessageType::Info)->Execute();
+        {
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(nullptr,
+                                                                     VclMessageType::Info, VclButtonsType::Ok,
+                                                                     SfxResId(STR_TARGET_DOC_NOT_CLASSIFIED)));
+            xBox->run();
+        }
         return false;
     }
     break;
     case SfxClassificationCheckPasteResult::DocClassificationTooLow:
     {
         if (!Application::IsHeadlessModeEnabled())
-            ScopedVclPtrInstance<MessageDialog>(nullptr, SfxResId(STR_DOC_CLASSIFICATION_TOO_LOW), VclMessageType::Info)->Execute();
+        {
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(nullptr,
+                                                                     VclMessageType::Info, VclButtonsType::Ok,
+                                                                     SfxResId(STR_DOC_CLASSIFICATION_TOO_LOW)));
+            xBox->run();
+        }
         return false;
     }
     break;
@@ -503,15 +553,18 @@ bool SfxClassificationHelper::ShowPasteInfo(SfxClassificationCheckPasteResult eR
     return true;
 }
 
-SfxClassificationHelper::SfxClassificationHelper(const uno::Reference<document::XDocumentProperties>& xDocumentProperties)
-    : m_pImpl(o3tl::make_unique<Impl>(xDocumentProperties))
+SfxClassificationHelper::SfxClassificationHelper(const uno::Reference<document::XDocumentProperties>& xDocumentProperties, bool bUseLocalizedPolicy)
+    : m_pImpl(std::make_unique<Impl>(xDocumentProperties, bUseLocalizedPolicy))
 {
+    if (!xDocumentProperties.is())
+        return;
+
     uno::Reference<beans::XPropertyContainer> xPropertyContainer = xDocumentProperties->getUserDefinedProperties();
     if (!xPropertyContainer.is())
         return;
 
     uno::Reference<beans::XPropertySet> xPropertySet(xPropertyContainer, uno::UNO_QUERY);
-    uno::Sequence<beans::Property> aProperties = xPropertySet->getPropertySetInfo()->getProperties();
+    const uno::Sequence<beans::Property> aProperties = xPropertySet->getPropertySetInfo()->getProperties();
     for (const beans::Property& rProperty : aProperties)
     {
         if (!rProperty.Name.startsWith("urn:bails:"))
@@ -527,6 +580,7 @@ SfxClassificationHelper::SfxClassificationHelper(const uno::Reference<document::
                 // It's a prefix we did not recognize, ignore.
                 continue;
 
+            //TODO: Support abbreviated names(?)
             if (rProperty.Name == (aPrefix + PROP_BACNAME()))
                 m_pImpl->m_aCategory[eType].m_aName = aValue;
             else
@@ -537,9 +591,65 @@ SfxClassificationHelper::SfxClassificationHelper(const uno::Reference<document::
 
 SfxClassificationHelper::~SfxClassificationHelper() = default;
 
-const OUString& SfxClassificationHelper::GetBACName(SfxClassificationPolicyType eType)
+std::vector<OUString> const & SfxClassificationHelper::GetMarkings() const
+{
+    return m_pImpl->m_aMarkings;
+}
+
+std::vector<OUString> const & SfxClassificationHelper::GetIntellectualPropertyParts() const
+{
+    return m_pImpl->m_aIPParts;
+}
+
+std::vector<OUString> const & SfxClassificationHelper::GetIntellectualPropertyPartNumbers() const
+{
+    return m_pImpl->m_aIPPartNumbers;
+}
+
+const OUString& SfxClassificationHelper::GetBACName(SfxClassificationPolicyType eType) const
 {
     return m_pImpl->m_aCategory[eType].m_aName;
+}
+
+const OUString& SfxClassificationHelper::GetAbbreviatedBACName(const OUString& sFullName)
+{
+    for (const auto& category : m_pImpl->m_aCategories)
+    {
+        if (category.m_aName == sFullName)
+            return category.m_aAbbreviatedName;
+    }
+
+    return sFullName;
+}
+
+OUString SfxClassificationHelper::GetBACNameForIdentifier(const OUString& sIdentifier)
+{
+    OUString aRet;
+    if (sIdentifier.isEmpty())
+        return aRet;
+
+    for (const auto& category : m_pImpl->m_aCategories)
+    {
+        if (category.m_aIdentifier == sIdentifier)
+            return category.m_aName;
+    }
+
+    return aRet;
+}
+
+OUString SfxClassificationHelper::GetHigherClass(const OUString& first, const OUString& second)
+{
+    size_t nFirstConfidentiality = 0;
+    size_t nSecondConfidentiality = 0;
+    for (const auto& category : m_pImpl->m_aCategories)
+    {
+        if (category.m_aName == first)
+            nFirstConfidentiality = category.m_nConfidentiality;
+        if (category.m_aName == second)
+            nSecondConfidentiality = category.m_nConfidentiality;
+    }
+
+    return nFirstConfidentiality >= nSecondConfidentiality ? first : second;
 }
 
 bool SfxClassificationHelper::HasImpactLevel()
@@ -579,11 +689,11 @@ bool SfxClassificationHelper::HasDocumentFooter()
     return it != rCategory.m_aLabels.end() && !it->second.isEmpty();
 }
 
-InfoBarType SfxClassificationHelper::GetImpactLevelType()
+InfobarType SfxClassificationHelper::GetImpactLevelType()
 {
-    InfoBarType aRet;
+    InfobarType aRet;
 
-    aRet = InfoBarType::Warning;
+    aRet = InfobarType::WARNING;
 
     auto itCategory = m_pImpl->m_aCategory.find(SfxClassificationPolicyType::IntellectualProperty);
     if (itCategory == m_pImpl->m_aCategory.end())
@@ -604,22 +714,22 @@ InfoBarType SfxClassificationHelper::GetImpactLevelType()
     if (aScale == "UK-Cabinet")
     {
         if (aLevel == "0")
-            aRet = InfoBarType::Success;
+            aRet = InfobarType::SUCCESS;
         else if (aLevel == "1")
-            aRet = InfoBarType::Warning;
+            aRet = InfobarType::WARNING;
         else if (aLevel == "2")
-            aRet = InfoBarType::Warning;
+            aRet = InfobarType::WARNING;
         else if (aLevel == "3")
-            aRet = InfoBarType::Danger;
+            aRet = InfobarType::DANGER;
     }
     else if (aScale == "FIPS-199")
     {
         if (aLevel == "Low")
-            aRet = InfoBarType::Success;
+            aRet = InfobarType::SUCCESS;
         else if (aLevel == "Moderate")
-            aRet = InfoBarType::Warning;
+            aRet = InfobarType::WARNING;
         else if (aLevel == "High")
-            aRet = InfoBarType::Danger;
+            aRet = InfobarType::DANGER;
     }
     return aRet;
 }
@@ -652,13 +762,12 @@ sal_Int32 SfxClassificationHelper::GetImpactLevel()
     }
     else if (aScale == "FIPS-199")
     {
-        static std::map<OUString, sal_Int32> aValues;
-        if (aValues.empty())
+        static std::map<OUString, sal_Int32> const aValues
         {
-            aValues["Low"] = 0;
-            aValues["Moderate"] = 1;
-            aValues["High"] = 2;
-        }
+            { "Low", 0 },
+            { "Moderate", 1 },
+            { "High", 2 }
+        };
         auto itValues = aValues.find(aLevel);
         if (itValues == aValues.end())
             return nRet;
@@ -709,6 +818,32 @@ std::vector<OUString> SfxClassificationHelper::GetBACNames()
     return aRet;
 }
 
+std::vector<OUString> SfxClassificationHelper::GetBACIdentifiers()
+{
+    if (m_pImpl->m_aCategories.empty())
+        m_pImpl->parsePolicy();
+
+    std::vector<OUString> aRet;
+    std::transform(m_pImpl->m_aCategories.begin(), m_pImpl->m_aCategories.end(), std::back_inserter(aRet), [](const SfxClassificationCategory& rCategory)
+    {
+        return rCategory.m_aIdentifier;
+    });
+    return aRet;
+}
+
+std::vector<OUString> SfxClassificationHelper::GetAbbreviatedBACNames()
+{
+    if (m_pImpl->m_aCategories.empty())
+        m_pImpl->parsePolicy();
+
+    std::vector<OUString> aRet;
+    std::transform(m_pImpl->m_aCategories.begin(), m_pImpl->m_aCategories.end(), std::back_inserter(aRet), [](const SfxClassificationCategory& rCategory)
+    {
+        return rCategory.m_aAbbreviatedName;
+    });
+    return aRet;
+}
+
 void SfxClassificationHelper::SetBACName(const OUString& rName, SfxClassificationPolicyType eType)
 {
     if (m_pImpl->m_aCategories.empty())
@@ -725,6 +860,8 @@ void SfxClassificationHelper::SetBACName(const OUString& rName, SfxClassificatio
     }
 
     m_pImpl->m_aCategory[eType].m_aName = it->m_aName;
+    m_pImpl->m_aCategory[eType].m_aAbbreviatedName = it->m_aAbbreviatedName;
+    m_pImpl->m_aCategory[eType].m_nConfidentiality = it->m_nConfidentiality;
     m_pImpl->m_aCategory[eType].m_aLabels.clear();
     const OUString& rPrefix = policyTypeToString(eType);
     for (const auto& rLabel : it->m_aLabels)
@@ -749,7 +886,7 @@ void SfxClassificationHelper::UpdateInfobar(SfxViewFrame& rViewFrame)
         aMessage = aMessage.replaceFirst("%1", aBACName);
 
         rViewFrame.RemoveInfoBar("classification");
-        rViewFrame.AppendInfoBar("classification", aMessage, GetImpactLevelType());
+        rViewFrame.AppendInfoBar("classification", "", aMessage, GetImpactLevelType());
     }
 }
 
@@ -782,26 +919,70 @@ const OUString& SfxClassificationHelper::policyTypeToString(SfxClassificationPol
 
 const OUString& SfxClassificationHelper::PROP_DOCHEADER()
 {
-    static OUString sProp("Marking:document-header");
+    static const OUString sProp("Marking:document-header");
     return sProp;
 }
 
 const OUString& SfxClassificationHelper::PROP_DOCFOOTER()
 {
-    static OUString sProp("Marking:document-footer");
+    static const OUString sProp("Marking:document-footer");
     return sProp;
 }
 
 const OUString& SfxClassificationHelper::PROP_DOCWATERMARK()
 {
-    static OUString sProp("Marking:document-watermark");
+    static const OUString sProp("Marking:document-watermark");
     return sProp;
 }
 
 const OUString& SfxClassificationHelper::PROP_PREFIX_INTELLECTUALPROPERTY()
 {
-    static OUString sProp("urn:bails:IntellectualProperty:");
+    static const OUString sProp("urn:bails:IntellectualProperty:");
     return sProp;
+}
+
+SfxClassificationPolicyType SfxClassificationHelper::getPolicyType()
+{
+    sal_Int32 nPolicyTypeNumber = officecfg::Office::Common::Classification::Policy::get();
+    auto eType = static_cast<SfxClassificationPolicyType>(nPolicyTypeNumber);
+    return eType;
+}
+
+namespace sfx
+{
+
+namespace
+{
+
+OUString getProperty(uno::Reference<beans::XPropertyContainer> const& rxPropertyContainer,
+                     OUString const& rName)
+{
+    try
+    {
+        uno::Reference<beans::XPropertySet> xPropertySet(rxPropertyContainer, uno::UNO_QUERY);
+        return xPropertySet->getPropertyValue(rName).get<OUString>();
+    }
+    catch (const css::uno::Exception&)
+    {
+    }
+
+    return OUString();
+}
+
+} // end anonymous namespace
+
+sfx::ClassificationCreationOrigin getCreationOriginProperty(uno::Reference<beans::XPropertyContainer> const & rxPropertyContainer,
+                                                            sfx::ClassificationKeyCreator const & rKeyCreator)
+{
+    OUString sValue = getProperty(rxPropertyContainer, rKeyCreator.makeCreationOriginKey());
+    if (sValue.isEmpty())
+        return sfx::ClassificationCreationOrigin::NONE;
+
+    return (sValue == "BAF_POLICY")
+                ? sfx::ClassificationCreationOrigin::BAF_POLICY
+                : sfx::ClassificationCreationOrigin::MANUAL;
+}
+
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

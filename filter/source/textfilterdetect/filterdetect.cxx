@@ -17,7 +17,6 @@
 #include <unotools/streamwrap.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <memory>
@@ -58,6 +57,13 @@ bool IsHTMLStream( const uno::Reference<io::XInputStream>& xInStream )
     // Now check whether the stream begins with a known HTML tag.
     enum DetectPhase { BeforeTag, TagOpened, InTagName };
     DetectPhase dp = BeforeTag;
+    /// BeforeDeclaration -> ? -> DeclarationOpened -> > -> BeforeDeclaration.
+    enum DeclarationPhase
+    {
+        BeforeDeclaration,
+        DeclarationOpened
+    };
+    DeclarationPhase eDeclaration = BeforeDeclaration;
 
     const char* pHeader = sHeader.getStr();
     const int   nLength = sHeader.getLength();
@@ -66,7 +72,8 @@ bool IsHTMLStream( const uno::Reference<io::XInputStream>& xInStream )
     for ( i = 0; i < nLength; ++i, ++pHeader )
     {
         char c = *pHeader;
-        if ( c == ' ' || c == '\n' || c == '\t' || c == '\r' || c == '\f' )
+        if ((c == ' ' || c == '\n' || c == '\t' || c == '\r' || c == '\f')
+            && eDeclaration == BeforeDeclaration)
         {
             if ( dp == TagOpened )
                 return false; // Invalid: Should start with a tag name
@@ -84,6 +91,11 @@ bool IsHTMLStream( const uno::Reference<io::XInputStream>& xInStream )
         {
             if ( dp == InTagName )
                 break; // End of tag name reached
+            else if (eDeclaration == DeclarationOpened)
+            {
+                dp = BeforeTag;
+                eDeclaration = BeforeDeclaration;
+            }
             else
                 return false; // Invalid: Empty tag or before '<'
         }
@@ -100,8 +112,13 @@ bool IsHTMLStream( const uno::Reference<io::XInputStream>& xInStream )
                 return false; // Invalid: Should start with a tag
             else if ( dp == TagOpened )
             {
-                nStartOfTagIndex = i;
-                dp = InTagName;
+                if (c == '?' && eDeclaration == BeforeDeclaration)
+                    eDeclaration = DeclarationOpened;
+                else if (eDeclaration == BeforeDeclaration)
+                {
+                    nStartOfTagIndex = i;
+                    dp = InTagName;
+                }
             }
         }
     }
@@ -147,14 +164,13 @@ OUString SAL_CALL PlainTextFilterDetect::detect(uno::Sequence<beans::PropertyVal
             ZCodec aCodecGZ;
             std::unique_ptr<SvStream> pInStream;
             if (xStream.is())
-                pInStream.reset(utl::UcbStreamHelper::CreateStream(xStream));
+                pInStream = utl::UcbStreamHelper::CreateStream(xStream);
             else
-                pInStream.reset(utl::UcbStreamHelper::CreateStream(xInStream));
+                pInStream = utl::UcbStreamHelper::CreateStream(xInStream);
             std::unique_ptr<SvMemoryStream> pDecompressedStream(new SvMemoryStream());
             if (aCodecGZ.AttemptDecompression(*pInStream, *pDecompressedStream))
             {
-                uno::Reference<io::XStream> xStreamDecompressed(new utl::OStreamWrapper(*pDecompressedStream));
-                pDecompressedStream.release();
+                uno::Reference<io::XStream> xStreamDecompressed(new utl::OStreamWrapper(std::move(pDecompressedStream)));
                 aMediaDesc[MediaDescriptor::PROP_STREAM()] <<= xStreamDecompressed;
                 aMediaDesc[MediaDescriptor::PROP_INPUTSTREAM()] <<= xStreamDecompressed->getInputStream();
                 OUString aURL = aMediaDesc.getUnpackedValueOrDefault(MediaDescriptor::PROP_URL(), OUString() );
@@ -197,16 +213,12 @@ void SAL_CALL PlainTextFilterDetect::initialize(const uno::Sequence<uno::Any>& /
 
 OUString PlainTextFilterDetect_getImplementationName()
 {
-    return OUString("com.sun.star.comp.filters.PlainTextFilterDetect");
+    return "com.sun.star.comp.filters.PlainTextFilterDetect";
 }
 
 uno::Sequence<OUString> PlainTextFilterDetect_getSupportedServiceNames()
 {
-    uno::Sequence<OUString> aRet(2);
-    OUString* pArray = aRet.getArray();
-    pArray[0] = "com.sun.star.document.ExtendedTypeDetection";
-    pArray[1] = "com.sun.star.comp.filters.PlainTextFilterDetect";
-    return aRet;
+    return { "com.sun.star.document.ExtendedTypeDetection", "com.sun.star.comp.filters.PlainTextFilterDetect" };
 }
 
 // XServiceInfo
@@ -225,7 +237,7 @@ uno::Sequence<OUString> SAL_CALL PlainTextFilterDetect::getSupportedServiceNames
     return PlainTextFilterDetect_getSupportedServiceNames();
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_filters_PlainTextFilterDetect_get_implementation(css::uno::XComponentContext* ,
                                                                    css::uno::Sequence<css::uno::Any> const &)
 {

@@ -20,11 +20,8 @@
 #ifndef INCLUDED_FRAMEWORK_INC_HELPER_OCOMPONENTACCESS_HXX
 #define INCLUDED_FRAMEWORK_INC_HELPER_OCOMPONENTACCESS_HXX
 
-#include <general.h>
-
 #include <com/sun/star/frame/XFramesSupplier.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/container/XElementAccess.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/frame/XDesktop.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
@@ -37,7 +34,7 @@ namespace framework{
 
 /*-************************************************************************************************************
     @short          implement XEnumerationAccess interface as helper to create many oneway enumeration of components
-    @descr          We share mutex and framecontainer with our owner and have full access to his child tasks.
+    @descr          We share mutex and framecontainer with our owner and have full access to its child tasks.
                     (Our owner can be the Desktop only!) We create oneway enumerations on demand. These "lists"
                     can be used for one time only. Step during the list from first to last element.
                     (The type of created enumerations is OComponentEnumeration.)
@@ -52,7 +49,7 @@ namespace framework{
     @devstatus      ready to use
 *//*-*************************************************************************************************************/
 
-class OComponentAccess  :   public ::cppu::WeakImplHelper< css::container::XEnumerationAccess >
+class OComponentAccess final : public ::cppu::WeakImplHelper< css::container::XEnumerationAccess >
 {
 
     //  public methods
@@ -65,7 +62,7 @@ class OComponentAccess  :   public ::cppu::WeakImplHelper< css::container::XEnum
             @short      constructor to initialize this instance
             @descr      A desktop will create an enumeration-access-object. An enumeration is a oneway-list and a
                         snapshot of the components of current tasks under the desktop.
-                        But we need a instance to create more than one enumerations at different times!
+                        But we need an instance to create more than one enumerations at different times!
 
             @seealso    class Desktop
             @seealso    class OComponentEnumeration
@@ -113,22 +110,20 @@ class OComponentAccess  :   public ::cppu::WeakImplHelper< css::container::XEnum
 
     //  protected methods
 
-    protected:
+    private:
 
         /*-****************************************************************************************************
             @short      standard destructor
             @descr      This method destruct an instance of this class and clear some member.
-                        Don't use an instance of this class as normal member. Use it dynamicly with a pointer.
+                        Don't use an instance of this class as normal member. Use it dynamically with a pointer.
                         We hold a weakreference to our owner and not to our superclass!
-                        Thats the reason for a protected dtor.
+                        That's the reason for a protected dtor.
 
             @seealso    class Desktop
         *//*-*****************************************************************************************************/
 
         virtual ~OComponentAccess() override;
 
-
-    private:
 
         /*-****************************************************************************************************
             @short      recursive method (!) to collect all components of all frames from the subtree of given node

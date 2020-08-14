@@ -20,7 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_IMAGEBUTTONTOOLBARCONTROLLER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_IMAGEBUTTONTOOLBARCONTROLLER_HXX
 
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/frame/ControlCommand.hpp>
 
 #include <uielement/complextoolbarcontroller.hxx>
@@ -31,7 +30,7 @@ class ToolBox;
 namespace framework
 {
 
-class ImageButtonToolbarController : public ComplexToolbarController
+class ImageButtonToolbarController final : public ComplexToolbarController
 
 {
     public:
@@ -45,10 +44,9 @@ class ImageButtonToolbarController : public ComplexToolbarController
         // XComponent
         virtual void SAL_CALL dispose() override;
 
-    protected:
+    private:
         virtual void executeControlCommand( const css::frame::ControlCommand& rControlCommand ) override;
 
-    private:
         bool ReadImageFromURL( bool bBigImage, const OUString& aImageURL, Image& aImage );
 };
 

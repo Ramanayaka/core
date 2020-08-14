@@ -24,27 +24,21 @@
 
 #include <com/sun/star/container/XNameReplace.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <svl/macitem.hxx>
-#include <vcl/lstbox.hxx>
 #include <rtl/ustring.hxx>
 
 #include <unordered_map>
 #include <vector>
 
-class SvTreeListBox;
-
-typedef std::unordered_map< OUString, std::pair< OUString, OUString >,
-                            OUStringHash > EventsHash;
+typedef std::unordered_map< OUString, std::pair< OUString, OUString > > EventsHash;
 
 struct EventDisplayName
 {
-    const sal_Char* pAsciiEventName;
-    sal_uInt16          nEventResourceID;
-    EventDisplayName( const sal_Char* _pAsciiName, const sal_uInt16 _nResId )
-        : pAsciiEventName( _pAsciiName )
-        , nEventResourceID( _nResId )
+    const char* pAsciiEventName;
+    const char*     pEventResourceID;
+    EventDisplayName(const char* pAsciiName, const char* pResId)
+        : pAsciiEventName(pAsciiName)
+        , pEventResourceID(pResId)
     {
     }
 };
@@ -58,15 +52,15 @@ class SvxMacroTabPage_Impl;
 
 class SvxMacroTabPage_ : public SfxTabPage
 {
-    DECL_LINK( SelectEvent_Impl, SvTreeListBox*, void );
-    DECL_LINK( AssignDeleteHdl_Impl, Button *, void );
-    DECL_LINK( DoubleClickHdl_Impl, SvTreeListBox*, bool );
+    DECL_LINK( SelectEvent_Impl, weld::TreeView&, void );
+    DECL_LINK( AssignDeleteHdl_Impl, weld::Button&, void );
+    DECL_LINK( DoubleClickHdl_Impl, weld::TreeView&, bool );
 
-    static long GenericHandler_Impl( SvxMacroTabPage_* pThis, PushButton* pBtn );
+    static void GenericHandler_Impl( SvxMacroTabPage_* pThis, const weld::Button* pBtn );
 
-protected:
-    SvxMacroTabPage_Impl*      mpImpl;
     css::uno::Reference< css::container::XNameReplace > m_xAppEvents;
+protected:
+    std::unique_ptr<SvxMacroTabPage_Impl> mpImpl;
     css::uno::Reference< css::container::XNameReplace > m_xDocEvents;
     css::uno::Reference< css::util::XModifiable > m_xModifiable;
     EventsHash m_appEventsHash;
@@ -74,7 +68,7 @@ protected:
     bool bDocModified, bAppEvents, bInitialized;
     EventDisplayNames aDisplayNames;
 
-    SvxMacroTabPage_( vcl::Window* pParent, const OString& rID, const OUString& rUIXMLDescription, const SfxItemSet& rItemSet );
+    SvxMacroTabPage_(weld::Container* pPage, weld::DialogController* pController, const OUString& rUIXMLDescription, const OString& rID, const SfxItemSet& rItemSet);
 
     void                        EnableButtons();
     static css::uno::Any  GetPropsByName( const OUString& eventName, EventsHash& eventsHash );
@@ -83,7 +77,6 @@ protected:
 public:
 
     virtual                     ~SvxMacroTabPage_() override;
-    virtual void                dispose() override;
     void                        InitResources();
 
     void                        InitAndSetHandler( const css::uno::Reference< css::container::XNameReplace >& xAppEvents, const css::uno::Reference< css::container::XNameReplace >& xDocEvents, const css::uno::Reference< css::util::XModifiable >& xModifiable );
@@ -100,7 +93,7 @@ class SvxMacroTabPage : public SvxMacroTabPage_
 {
 public:
     SvxMacroTabPage(
-        vcl::Window* pParent,
+        weld::Container* pPage, weld::DialogController* pController,
         const css::uno::Reference< css::frame::XFrame >& _rxDocumentFrame,
         const SfxItemSet& rSet,
         css::uno::Reference< css::container::XNameReplace > const & xNameReplace,
@@ -112,21 +105,20 @@ public:
 
 typedef const sal_uInt16* (*GetTabPageRanges)(); // gives international Which-values
 
-class SvxMacroAssignSingleTabDialog : public SfxSingleTabDialog
+class SvxMacroAssignSingleTabDialog : public SfxSingleTabDialogController
 {
 public:
-    SvxMacroAssignSingleTabDialog(vcl::Window* pParent, const SfxItemSet& rOptionsSet);
+    SvxMacroAssignSingleTabDialog(weld::Window* pParent, const SfxItemSet& rOptionsSet);
 
 private:
-    DECL_LINK( OKHdl_Impl, Button *, void );
+    DECL_LINK(OKHdl_Impl, weld::Button&, void);
 };
-
 
 class SvxMacroAssignDlg : public SvxMacroAssignSingleTabDialog
 {
 public:
     SvxMacroAssignDlg(
-        vcl::Window* pParent,
+        weld::Window* pParent,
         const css::uno::Reference< css::frame::XFrame >& _rxDocumentFrame,
         const SfxItemSet& rSet,
         const css::uno::Reference< css::container::XNameReplace >& xNameReplace,

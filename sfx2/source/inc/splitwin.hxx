@@ -21,6 +21,7 @@
 
 #include <vcl/splitwin.hxx>
 #include <sfx2/childwin.hxx>
+#include <sfx2/dockwin.hxx>
 
 #include <vector>
 #include <memory>
@@ -50,7 +51,7 @@ private:
     VclPtr<SfxEmptySplitWin_Impl>  pEmptyWin;
     VclPtr<SfxDockingWindow>       pActive;
 
-    void                InsertWindow_Impl( SfxDock_Impl* pDockWin,
+    void                InsertWindow_Impl( SfxDock_Impl const * pDockWin,
                             const Size& rSize,
                             sal_uInt16 nLine,
                             sal_uInt16 nPos,
@@ -77,7 +78,7 @@ public:
                         virtual ~SfxSplitWindow() override;
     virtual void        dispose() override;
 
-    void                ReleaseWindow_Impl(SfxDockingWindow *pWin, bool bSaveConfig=true);
+    void                ReleaseWindow_Impl(SfxDockingWindow const *pWin, bool bSaveConfig=true);
 
     void                InsertWindow( SfxDockingWindow* pDockWin,
                             const Size& rSize);
@@ -94,13 +95,12 @@ public:
                             sal_uInt16 nPos,
                             bool bNewLine );
 
-    void                RemoveWindow( SfxDockingWindow* pDockWin, bool bHide=true);
+    void                RemoveWindow( SfxDockingWindow const * pDockWin, bool bHide=true);
 
     void                Lock( bool bLock=true )
                         {
                             SetUpdateMode( !bLock );
                         }
-    using Window::IsLocked;
 
     bool                GetWindowPos( const SfxDockingWindow* pWindow,
                                       sal_uInt16& rLine, sal_uInt16& rPos ) const;

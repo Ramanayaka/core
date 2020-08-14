@@ -16,14 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <SectionColumnHandler.hxx>
-#include <PropertyMap.hxx>
-#include <ConversionHelper.hxx>
+#include "SectionColumnHandler.hxx"
+#include "ConversionHelper.hxx"
 #include <ooxml/resourceids.hxx>
 #include <osl/diagnose.h>
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 using namespace ::com::sun::star;
 
@@ -79,7 +77,7 @@ void SectionColumnHandler::lcl_sprm(Sprm & rSprm)
         {
             m_aTempColumn.nWidth = m_aTempColumn.nSpace = 0;
             writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
-            if( pProperties.get())
+            if( pProperties )
             {
                 pProperties->resolve(*this);
                 m_aCols.push_back(m_aTempColumn);
@@ -90,7 +88,6 @@ void SectionColumnHandler::lcl_sprm(Sprm & rSprm)
             OSL_FAIL( "SectionColumnHandler: unknown sprm");
     }
 }
-} //namespace dmapper
-} //namespace writerfilter
+} //namespace writerfilter::dmapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

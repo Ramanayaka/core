@@ -17,12 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PlotterBase.hxx"
-#include "PlottingPositionHelper.hxx"
-#include "AbstractShapeFactory.hxx"
+#include <PlotterBase.hxx>
+#include <PlottingPositionHelper.hxx>
+#include <ShapeFactory.hxx>
 #include <rtl/math.hxx>
 #include <osl/diagnose.h>
-#include <com/sun/star/chart2/DataPointLabel.hpp>
 
 namespace chart
 {
@@ -30,10 +29,7 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 
 PlotterBase::PlotterBase( sal_Int32 nDimensionCount )
-        : m_xLogicTarget(nullptr)
-        , m_xFinalTarget(nullptr)
-        , m_xShapeFactory(nullptr)
-        , m_pShapeFactory(nullptr)
+        : m_pShapeFactory(nullptr)
         , m_aCID()
         , m_nDimension(nDimensionCount)
         , m_pPosHelper(nullptr)
@@ -50,7 +46,7 @@ void PlotterBase::initPlotter(  const uno::Reference< drawing::XShapes >& xLogic
     m_xLogicTarget  = xLogicTarget;
     m_xFinalTarget  = xFinalTarget;
     m_xShapeFactory = xShapeFactory;
-    m_pShapeFactory = AbstractShapeFactory::getOrCreateShapeFactory(xShapeFactory);
+    m_pShapeFactory = ShapeFactory::getOrCreateShapeFactory(xShapeFactory);
     m_aCID = rCID;
 }
 
@@ -99,17 +95,17 @@ uno::Reference< drawing::XShapes > PlotterBase::createGroupShape(
 
 bool PlotterBase::isValidPosition( const drawing::Position3D& rPos )
 {
-    if( ::rtl::math::isNan(rPos.PositionX) )
+    if( std::isnan(rPos.PositionX) )
         return false;
-    if( ::rtl::math::isNan(rPos.PositionY) )
+    if( std::isnan(rPos.PositionY) )
         return false;
-    if( ::rtl::math::isNan(rPos.PositionZ) )
+    if( std::isnan(rPos.PositionZ) )
         return false;
-    if( ::rtl::math::isInf(rPos.PositionX) )
+    if( std::isinf(rPos.PositionX) )
         return false;
-    if( ::rtl::math::isInf(rPos.PositionY) )
+    if( std::isinf(rPos.PositionY) )
         return false;
-    if( ::rtl::math::isInf(rPos.PositionZ) )
+    if( std::isinf(rPos.PositionZ) )
         return false;
     return true;
 }

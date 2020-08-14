@@ -19,20 +19,20 @@
 
 #include <xmloff/ImageStyle.hxx>
 #include <com/sun/star/awt/XBitmap.hpp>
-#include <xmloff/attrlist.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmluconv.hxx>
-#include"xmloff/xmlnmspe.hxx"
+#include <com/sun/star/graphic/XGraphic.hpp>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 #include <xmloff/xmltkmap.hxx>
 
-using namespace ::com::sun::star;
+using namespace css;
+using namespace xmloff::token;
 
-using namespace ::xmloff::token;
+namespace {
 
 enum SvXMLTokenMapAttrs
 {
@@ -41,71 +41,55 @@ enum SvXMLTokenMapAttrs
     XML_TOK_IMAGE_URL,
     XML_TOK_IMAGE_TYPE,
     XML_TOK_IMAGE_SHOW,
-    XML_TOK_IMAGE_ACTUATE,
-    XML_TOK_TABSTOP_END=XML_TOK_UNKNOWN
+    XML_TOK_IMAGE_ACTUATE
 };
 
-
-XMLImageStyle::XMLImageStyle()
-{
 }
 
-XMLImageStyle::~XMLImageStyle()
+void XMLImageStyle::exportXML(OUString const & rStrName, uno::Any const & rValue, SvXMLExport& rExport)
 {
-}
+    if (rStrName.isEmpty())
+        return;
 
-void XMLImageStyle::exportXML( const OUString& rStrName, const css::uno::Any& rValue, SvXMLExport& rExport )
-{
-    ImpExportXML( rStrName, rValue, rExport );
-}
+    if (!rValue.has<uno::Reference<awt::XBitmap>>())
+        return;
 
-void XMLImageStyle::ImpExportXML( const OUString& rStrName, const uno::Any& rValue, SvXMLExport& rExport )
-{
-    OUString sImageURL;
-
-    if( !rStrName.isEmpty() )
+    // Name
+    bool bEncoded = false;
+    rExport.AddAttribute(XML_NAMESPACE_DRAW, XML_NAME,
+                         rExport.EncodeStyleName(rStrName, &bEncoded));
+    if (bEncoded)
     {
-        if( rValue >>= sImageURL )
-        {
-            // Name
-            bool bEncoded = false;
-            rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_NAME,
-                                  rExport.EncodeStyleName( rStrName,
-                                                           &bEncoded ) );
-            if( bEncoded )
-                rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DISPLAY_NAME,
-                                      rStrName );
+        rExport.AddAttribute(XML_NAMESPACE_DRAW, XML_DISPLAY_NAME, rStrName);
+    }
 
-            // uri
-            const OUString aStr( rExport.AddEmbeddedGraphicObject( sImageURL ) );
-            if( !aStr.isEmpty() )
-            {
-                rExport.AddAttribute( XML_NAMESPACE_XLINK, XML_HREF, aStr );
-                rExport.AddAttribute( XML_NAMESPACE_XLINK, XML_TYPE, XML_SIMPLE );
-                rExport.AddAttribute( XML_NAMESPACE_XLINK, XML_SHOW, XML_EMBED );
-                rExport.AddAttribute( XML_NAMESPACE_XLINK, XML_ACTUATE, XML_ONLOAD );
-            }
+    auto xBitmap = rValue.get<uno::Reference<awt::XBitmap>>();
+    uno::Reference<graphic::XGraphic> xGraphic(xBitmap, uno::UNO_QUERY);
 
-            // Do Write
-            SvXMLElementExport aElem( rExport, XML_NAMESPACE_DRAW, XML_FILL_IMAGE, true, true );
+    OUString aMimeType;
+    const OUString aStr = rExport.AddEmbeddedXGraphic(xGraphic, aMimeType);
 
-            if( !sImageURL.isEmpty() )
-            {
-                // optional office:binary-data
-                rExport.AddEmbeddedGraphicObjectAsBase64( sImageURL );
-            }
-        }
+    // uri
+    if (!aStr.isEmpty())
+    {
+        rExport.AddAttribute( XML_NAMESPACE_XLINK, XML_HREF, aStr );
+        rExport.AddAttribute( XML_NAMESPACE_XLINK, XML_TYPE, XML_SIMPLE );
+        rExport.AddAttribute( XML_NAMESPACE_XLINK, XML_SHOW, XML_EMBED );
+        rExport.AddAttribute( XML_NAMESPACE_XLINK, XML_ACTUATE, XML_ONLOAD );
+    }
+
+    // Do Write
+    SvXMLElementExport aElem(rExport, XML_NAMESPACE_DRAW, XML_FILL_IMAGE, true, true);
+
+    if (xBitmap.is() && xGraphic.is())
+    {
+        // optional office:binary-data
+        rExport.AddEmbeddedXGraphicAsBase64(xGraphic);
     }
 }
 
-void XMLImageStyle::importXML( const uno::Reference< xml::sax::XAttributeList >& xAttrList, uno::Any& rValue, OUString& rStrName, SvXMLImport& rImport )
-{
-    ImpImportXML( xAttrList, rValue, rStrName, rImport );
-}
-
-bool XMLImageStyle::ImpImportXML( const uno::Reference< xml::sax::XAttributeList >& xAttrList,
-                                      uno::Any& rValue, OUString& rStrName,
-                                      SvXMLImport& rImport )
+bool XMLImageStyle::importXML(uno::Reference<xml::sax::XAttributeList> const & xAttrList,
+                              uno::Any& rValue, OUString& rStrName, SvXMLImport& rImport)
 {
     static const SvXMLTokenMapEntry aHatchAttrTokenMap[] =
     {
@@ -120,10 +104,10 @@ bool XMLImageStyle::ImpImportXML( const uno::Reference< xml::sax::XAttributeList
 
     bool bHasHRef = false;
     bool bHasName = false;
-    OUString aStrURL;
     OUString aDisplayName;
+    uno::Reference<graphic::XGraphic> xGraphic;
 
-    SvXMLTokenMap aTokenMap( aHatchAttrTokenMap );
+    static const SvXMLTokenMap aTokenMap( aHatchAttrTokenMap );
 
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
     for( sal_Int16 i=0; i < nAttrCount; i++ )
@@ -148,7 +132,7 @@ bool XMLImageStyle::ImpImportXML( const uno::Reference< xml::sax::XAttributeList
                 break;
             case XML_TOK_IMAGE_URL:
                 {
-                    aStrURL = rImport.ResolveGraphicObjectURL( rStrValue, false );
+                    xGraphic = rImport.loadGraphicByURL(rStrValue);
                     bHasHRef = true;
                 }
                 break;
@@ -162,22 +146,21 @@ bool XMLImageStyle::ImpImportXML( const uno::Reference< xml::sax::XAttributeList
                 // ignore
                 break;
             default:
-                SAL_INFO("xmloff.style", "Unknown token at import fill bitmap style");
+                SAL_WARN("xmloff.style", "Unknown token at import fill bitmap style");
         }
     }
 
-    rValue <<= aStrURL;
+    if (xGraphic.is())
+        rValue <<= xGraphic;
 
     if( !aDisplayName.isEmpty() )
     {
-        rImport.AddStyleDisplayName( XML_STYLE_FAMILY_SD_FILL_IMAGE_ID,
+        rImport.AddStyleDisplayName( XmlStyleFamily::SD_FILL_IMAGE_ID,
                                      rStrName, aDisplayName );
         rStrName = aDisplayName;
     }
 
-    bool bRet = bHasName && bHasHRef;
-
-    return bRet;
+    return bHasName && bHasHRef;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

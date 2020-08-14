@@ -22,19 +22,21 @@
 #include <vector>
 #include "attributes.hxx"
 
+namespace {
+
 struct TagAttribute
 {
     TagAttribute( const OUString &rName, const OUString &rType , const OUString &rValue )
+       : sName(rName), sType(rType), sValue(rValue)
     {
-        sName     = rName;
-        sType     = rType;
-        sValue    = rValue;
     }
 
     OUString sName;
     OUString sType;
     OUString sValue;
 };
+
+}
 
 struct AttributeListImpl_impl
 {
@@ -48,7 +50,7 @@ struct AttributeListImpl_impl
 
 sal_Int16 SAL_CALL AttributeListImpl::getLength()
 {
-    return (sal_Int16)m_pImpl->vecAttribute.size();
+    return static_cast<sal_Int16>(m_pImpl->vecAttribute.size());
 }
 
 
@@ -96,13 +98,11 @@ OUString AttributeListImpl::getValueByIndex(sal_Int16 i)
 
 OUString AttributeListImpl::getTypeByName( const OUString& sName )
 {
-    std::vector<struct TagAttribute>::iterator ii = m_pImpl->vecAttribute.begin();
-
-    for (; ii != m_pImpl->vecAttribute.end(); ++ii)
+    for (auto const& elem : m_pImpl->vecAttribute)
     {
-        if( (*ii).sName == sName )
+        if( elem.sName == sName )
         {
-            return (*ii).sType;
+            return elem.sType;
         }
     }
     return OUString();
@@ -111,13 +111,11 @@ OUString AttributeListImpl::getTypeByName( const OUString& sName )
 
 OUString AttributeListImpl::getValueByName(const OUString& sName)
 {
-    std::vector<struct TagAttribute>::iterator ii = m_pImpl->vecAttribute.begin();
-
-    for (; ii != m_pImpl->vecAttribute.end(); ++ii)
+    for (auto const& elem : m_pImpl->vecAttribute)
     {
-        if( (*ii).sName == sName )
+        if( elem.sName == sName )
         {
-            return (*ii).sValue;
+            return elem.sValue;
         }
     }
     return OUString();
@@ -139,7 +137,7 @@ void AttributeListImpl::addAttribute(   const OUString &sName ,
 const OUString &sType ,
 const OUString &sValue )
 {
-    m_pImpl->vecAttribute.push_back( TagAttribute( sName , sType , sValue ) );
+    m_pImpl->vecAttribute.emplace_back( sName , sType , sValue );
 }
 
 

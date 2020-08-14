@@ -18,23 +18,22 @@
  */
 
 #include <oox/helper/attributelist.hxx>
-#include "oox/vml/vmlformatting.hxx"
-#include "oox/vml/vmltextboxcontext.hxx"
-#include "oox/vml/vmlshape.hxx"
+#include <oox/vml/vmlformatting.hxx>
+#include <oox/vml/vmltextboxcontext.hxx>
+#include <oox/vml/vmlshape.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
-#include <com/sun/star/drawing/XShape.hpp>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
-namespace oox {
-namespace vml {
+namespace oox::vml {
 
 using ::oox::core::ContextHandler2;
 using ::oox::core::ContextHandler2Helper;
 using ::oox::core::ContextHandlerRef;
 
-TextPortionContext::TextPortionContext( ContextHandler2Helper& rParent,
-        TextBox& rTextBox, TextParagraphModel& rParagraph, const TextFontModel& rParentFont,
+TextPortionContext::TextPortionContext( ContextHandler2Helper const & rParent,
+        TextBox& rTextBox, TextParagraphModel const & rParagraph, const TextFontModel& rParentFont,
         sal_Int32 nElement, const AttributeList& rAttribs ) :
     ContextHandler2( rParent ),
     mrTextBox( rTextBox ),
@@ -139,6 +138,12 @@ void TextPortionContext::onStartElement(const AttributeList& rAttribs)
         case W_TOKEN(rPr):
         case W_TOKEN(t):
         break;
+        case W_TOKEN(rFonts):
+            // See https://msdn.microsoft.com/en-us/library/documentformat.openxml.wordprocessing.runfonts(v=office.14).aspx
+            maFont.moName = rAttribs.getString(W_TOKEN(ascii));
+            maFont.moNameAsian = rAttribs.getString(W_TOKEN(eastAsia));
+            maFont.moNameComplex = rAttribs.getString(W_TOKEN(cs));
+        break;
         default:
             SAL_INFO("oox", "unhandled: 0x" << std::hex<< getCurrentElement());
         break;
@@ -170,7 +175,7 @@ void TextPortionContext::onEndElement()
         mrTextBox.appendPortion( maParagraph, maFont, OUString( ' ' ) );
 }
 
-TextBoxContext::TextBoxContext( ContextHandler2Helper& rParent, TextBox& rTextBox, const AttributeList& rAttribs,
+TextBoxContext::TextBoxContext( ContextHandler2Helper const & rParent, TextBox& rTextBox, const AttributeList& rAttribs,
     const GraphicHelper& graphicHelper ) :
     ContextHandler2( rParent ),
     mrTextBox( rTextBox )
@@ -263,6 +268,9 @@ void TextBoxContext::onStartElement(const AttributeList& rAttribs)
         case W_TOKEN(jc):
             maParagraph.moParaAdjust = rAttribs.getString( W_TOKEN(val) );
         break;
+        case W_TOKEN(pStyle):
+            maParagraph.moParaStyleName = rAttribs.getString( W_TOKEN(val) );
+        break;
     }
 }
 
@@ -275,7 +283,6 @@ void TextBoxContext::onEndElement()
     }
 }
 
-} // namespace vml
-} // namespace oox
+} // namespace oox::vml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

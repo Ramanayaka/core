@@ -20,17 +20,14 @@
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/xml/AttributeData.hpp>
 #include <com/sun/star/uno/Any.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <com/sun/star/text/GraphicCrop.hpp>
 
-#include "AttributeContainerHandler.hxx"
+#include <AttributeContainerHandler.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::container;
 
 
-// class XMLAttributeContainerHandler
 
 
 XMLAttributeContainerHandler::~XMLAttributeContainerHandler()
@@ -47,24 +44,21 @@ bool XMLAttributeContainerHandler::equals(
 
     if( ( r1 >>= xContainer1 ) && ( r2 >>= xContainer2 ) )
     {
-        uno::Sequence< OUString > aAttribNames1( xContainer1->getElementNames() );
+        const uno::Sequence< OUString > aAttribNames1( xContainer1->getElementNames() );
         uno::Sequence< OUString > aAttribNames2( xContainer2->getElementNames() );
-        const sal_Int32 nCount = aAttribNames1.getLength();
 
-        if( aAttribNames2.getLength() == nCount )
+        if( aAttribNames1.getLength() == aAttribNames2.getLength() )
         {
-            const OUString* pAttribName = aAttribNames1.getConstArray();
-
             xml::AttributeData aData1;
             xml::AttributeData aData2;
 
-            for( sal_Int32 i=0; i < nCount; i++, pAttribName++ )
+            for( const OUString& rAttribName : aAttribNames1 )
             {
-                if( !xContainer2->hasByName( *pAttribName ) )
+                if( !xContainer2->hasByName( rAttribName ) )
                     return false;
 
-                xContainer1->getByName( *pAttribName ) >>= aData1;
-                xContainer2->getByName( *pAttribName ) >>= aData2;
+                xContainer1->getByName( rAttribName ) >>= aData1;
+                xContainer2->getByName( rAttribName ) >>= aData2;
 
                 if( ( aData1.Namespace != aData2.Namespace ) ||
                     ( aData1.Type      != aData2.Type      ) ||

@@ -18,65 +18,48 @@
  */
 
 #include <memory>
-#include <com/sun/star/util/XURLTransformer.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/util/XFlushable.hpp>
+#include <comphelper/sequence.hxx>
 #include <osl/file.hxx>
 
-#include <stdlib.h>
-#include <vcl/msgbox.hxx>
 #include <rtl/ustring.hxx>
 #include <svl/itempool.hxx>
+#include <svl/itemset.hxx>
 #include <svl/aeitem.hxx>
 #include <svl/slstitm.hxx>
 #include <svl/stritem.hxx>
 #include <svl/intitem.hxx>
 #include <svl/eitem.hxx>
-#include <svl/szitem.hxx>
 #include <svl/undo.hxx>
 
 #include <sfx2/sfxsids.hrc>
-#include <sot/exchange.hxx>
 
 #include <svl/isethint.hxx>
 
 #include <officecfg/Inet.hxx>
 #include <officecfg/Office/Common.hxx>
-#include <unotools/configmgr.hxx>
-#include <tools/urlobj.hxx>
 #include <unotools/saveopt.hxx>
 #include <svtools/helpopt.hxx>
 #include <unotools/securityoptions.hxx>
 #include <unotools/pathoptions.hxx>
 #include <svtools/miscopt.hxx>
+#include <svtools/imgdef.hxx>
 #include <vcl/toolbox.hxx>
-#include <rtl/strbuf.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <vcl/idle.hxx>
 
 #include <sfx2/app.hxx>
-#include <sfx2/docfile.hxx>
+#include <sfx2/event.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <sfx2/sfxhelp.hxx>
-#include "sfxtypes.hxx"
 #include <sfx2/dispatch.hxx>
 #include <sfx2/objsh.hxx>
-#include "objshimp.hxx"
-#include <sfx2/viewsh.hxx>
-#include <sfx2/request.hxx>
-#include <sfx2/evntconf.hxx>
-#include "appdata.hxx"
-#include "workwin.hxx"
-#include "helper.hxx"
-#include "app.hrc"
-#include <sfx2/sfxresid.hxx>
+#include <objshimp.hxx>
 #include "shutdownicon.hxx"
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::beans;
 
+namespace {
 
 class SfxEventAsyncer_Impl : public SfxListener
 {
@@ -90,6 +73,7 @@ public:
     DECL_LINK( IdleHdl, Timer*, void );
 };
 
+}
 
 void SfxEventAsyncer_Impl::Notify( SfxBroadcaster&, const SfxHint& rHint )
 {
@@ -108,7 +92,7 @@ SfxEventAsyncer_Impl::SfxEventAsyncer_Impl( const SfxEventHint& rHint )
         StartListening( *rHint.GetObjShell() );
     pIdle.reset( new Idle("SfxEventASyncer") );
     pIdle->SetInvokeHandler( LINK(this, SfxEventAsyncer_Impl, IdleHdl) );
-    pIdle->SetPriority( TaskPriority::HIGHEST );
+    pIdle->SetPriority( TaskPriority::HIGH_IDLE );
     pIdle->SetDebugName( "sfx::SfxEventAsyncer_Impl pIdle" );
     pIdle->Start();
 }
@@ -198,7 +182,7 @@ void SfxApplication::GetOptions( SfxItemSet& rSet )
                     {
                         bRet = true;
                         if (!aSaveOptions.IsReadOnly(SvtSaveOptions::EOption::AutoSaveTime))
-                            if (!rSet.Put( SfxUInt16Item( rPool.GetWhich( SID_ATTR_AUTOSAVEMINUTE ), (sal_uInt16)aSaveOptions.GetAutoSaveTime())))
+                            if (!rSet.Put( SfxUInt16Item( rPool.GetWhich( SID_ATTR_AUTOSAVEMINUTE ), static_cast<sal_uInt16>(aSaveOptions.GetAutoSaveTime()))))
                                 bRet = false;
                     }
                     break;
@@ -337,10 +321,7 @@ void SfxApplication::GetOptions( SfxItemSet& rSet )
                         if (!aSecurityOptions.IsReadOnly(SvtSecurityOptions::EOption::SecureUrls))
                         {
                             css::uno::Sequence< OUString > seqURLs = aSecurityOptions.GetSecureURLs();
-                            std::vector<OUString> aList;
-                            sal_uInt32 nCount = seqURLs.getLength();
-                            for( sal_uInt32 nURL=0; nURL<nCount; ++nURL )
-                                aList.push_back(seqURLs[nURL]);
+                            auto aList = comphelper::sequenceToContainer<std::vector<OUString>>(seqURLs);
 
                             if( !rSet.Put( SfxStringListItem( rPool.GetWhich(SID_SECURE_URL), &aList ) ) )
                                 bRet = false;
@@ -352,7 +333,7 @@ void SfxApplication::GetOptions( SfxItemSet& rSet )
                             SfxUInt16Item(
                                 rPool.GetWhich(SID_INET_PROXY_TYPE),
                                 (officecfg::Inet::Settings::ooInetProxyType::
-                                 get().get_value_or(0)))))
+                                 get().value_or(0)))))
                     {
                         bRet = true;
                     }
@@ -372,7 +353,7 @@ void SfxApplication::GetOptions( SfxItemSet& rSet )
                             SfxInt32Item(
                                 rPool.GetWhich(SID_INET_HTTP_PROXY_PORT),
                                 (officecfg::Inet::Settings::
-                                 ooInetHTTPProxyPort::get().get_value_or(0)))))
+                                 ooInetHTTPProxyPort::get().value_or(0)))))
                     {
                         bRet = true;
                     }
@@ -392,7 +373,7 @@ void SfxApplication::GetOptions( SfxItemSet& rSet )
                             SfxInt32Item(
                                 rPool.GetWhich(SID_INET_FTP_PROXY_PORT),
                                 (officecfg::Inet::Settings::ooInetFTPProxyPort::
-                                 get().get_value_or(0)))))
+                                 get().value_or(0)))))
                     {
                         bRet = true;
                     }
@@ -440,7 +421,7 @@ void SfxApplication::GetOptions( SfxItemSet& rSet )
                             case SvtPathOptions::PATH_USERCONFIG:   aValue = aPathCfg.GetUserConfigPath(); break;
                             case SvtPathOptions::PATH_WORK:         aValue = aPathCfg.GetWorkPath(); break;
                         }
-                        aValues.InsertValue( nProp, aValue );
+                        aValues.SetTextByPos( nProp, aValue );
                     }
 
                     if (rSet.Put(aValues))
@@ -626,7 +607,7 @@ void SfxApplication::SetOptions_Impl( const SfxItemSet& rSet )
                   pSh;
                   ++nIdx, pSh = pDispat->GetShell(nIdx) )
             {
-                ::svl::IUndoManager *pShUndoMgr = pSh->GetUndoManager();
+                SfxUndoManager *pShUndoMgr = pSh->GetUndoManager();
                 if ( pShUndoMgr )
                     pShUndoMgr->SetMaxUndoActionCount( nUndoCount );
             }
@@ -644,7 +625,7 @@ void SfxApplication::SetOptions_Impl( const SfxItemSet& rSet )
     if ( SfxItemState::SET == rSet.GetItemState(SID_BASIC_ENABLED, true, &pItem))
     {
         DBG_ASSERT(dynamic_cast< const SfxUInt16Item *>( pItem ) !=  nullptr, "SfxInt16Item expected");
-        aSecurityOptions.SetBasicMode( (EBasicSecurityMode)static_cast<const SfxUInt16Item*>( pItem )->GetValue() );
+        aSecurityOptions.SetBasicMode( static_cast<EBasicSecurityMode>(static_cast<const SfxUInt16Item*>( pItem )->GetValue()) );
     }
 
     // Execute PlugIns
@@ -732,11 +713,11 @@ void SfxApplication::SetOptions(const SfxItemSet &rSet)
     {
         DBG_ASSERT(dynamic_cast< const SfxAllEnumItem *>( pItem ) !=  nullptr, "AllEnumItem expected");
         const SfxAllEnumItem* pEnumItem = static_cast<const SfxAllEnumItem *>(pItem);
-        sal_uInt32 nCount = pEnumItem->GetValueCount();
+        sal_uInt32 nCount = pEnumItem->GetTextCount();
         OUString aNoChangeStr( ' ' );
         for( sal_uInt32 nPath=0; nPath<nCount; ++nPath )
         {
-            OUString sValue = pEnumItem->GetValueTextByPos((sal_uInt16)nPath);
+            const OUString& sValue = pEnumItem->GetTextByPos(static_cast<sal_uInt16>(nPath));
             if ( sValue != aNoChangeStr )
             {
                 switch( nPath )

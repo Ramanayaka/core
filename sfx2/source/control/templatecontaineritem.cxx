@@ -7,8 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <sfx2/templatecontaineritem.hxx>
-#include <sfx2/templateviewitem.hxx>
+#include <templatecontaineritem.hxx>
 
 TemplateContainerItem::TemplateContainerItem (sal_uInt16 nId)
     : mnId(nId)

@@ -34,8 +34,10 @@
 #include <com/sun/star/ucb/SynchronizePolicy.hpp>
 #include <com/sun/star/ucb/VerificationMode.hpp>
 #include <com/sun/star/ucb/XDataContainer.hpp>
+#include <ucbhelper/macros.hxx>
+#include <rtl/ref.hxx>
 
-#include <ucbprops.hxx>
+#include "ucbprops.hxx"
 
 using namespace com::sun::star::beans;
 using namespace com::sun::star::lang;
@@ -43,8 +45,7 @@ using namespace com::sun::star::uno;
 
 #define ATTR_DEFAULT ( PropertyAttribute::BOUND | PropertyAttribute::MAYBEVOID | PropertyAttribute::MAYBEDEFAULT )
 
-UcbPropertiesManager::UcbPropertiesManager(
-                        const Reference< XMultiServiceFactory >& )
+UcbPropertiesManager::UcbPropertiesManager()
 : m_pProps({
     { "Account", -1, cppu::UnoType<OUString>::get(), ATTR_DEFAULT },
     { "AutoUpdateInterval", -1, cppu::UnoType<sal_Int32>::get(), ATTR_DEFAULT },
@@ -192,30 +193,33 @@ UcbPropertiesManager::~UcbPropertiesManager()
 {
 }
 
-
 // XServiceInfo methods.
 
-XSERVICEINFO_COMMOM_IMPL( UcbPropertiesManager,
-                          OUString( "com.sun.star.comp.ucb.UcbPropertiesManager" ) )
-/// @throws css::uno::Exception
-static css::uno::Reference< css::uno::XInterface > SAL_CALL
-UcbPropertiesManager_CreateInstance( const css::uno::Reference< css::lang::XMultiServiceFactory> & rSMgr )
+OUString SAL_CALL UcbPropertiesManager::getImplementationName()
 {
-    css::lang::XServiceInfo* pX =
-        static_cast<css::lang::XServiceInfo*>(new UcbPropertiesManager( rSMgr ));
-    return css::uno::Reference< css::uno::XInterface >::query( pX );
+    return "com.sun.star.comp.ucb.UcbPropertiesManager";
 }
-css::uno::Sequence< OUString >
-UcbPropertiesManager::getSupportedServiceNames_Static()
+sal_Bool SAL_CALL UcbPropertiesManager::supportsService( const OUString& ServiceName )
 {
-    return { PROPERTIES_MANAGER_SERVICE_NAME };
+    return cppu::supportsService( this, ServiceName );
 }
+css::uno::Sequence< OUString > SAL_CALL UcbPropertiesManager::getSupportedServiceNames()
+{
+    return { "com.sun.star.ucb.PropertiesManager" };
+}
+
+
 
 // Service factory implementation.
 
-
-ONE_INSTANCE_SERVICE_FACTORY_IMPL( UcbPropertiesManager );
-
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_UcbPropertiesManager_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    static rtl::Reference<UcbPropertiesManager> g_Instance(new UcbPropertiesManager());
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
+}
 
 // XPropertySetInfo methods.
 
@@ -234,7 +238,7 @@ Property SAL_CALL UcbPropertiesManager::getPropertyByName( const OUString& aName
     if ( queryProperty( aName, aProp ) )
         return aProp;
 
-    throw UnknownPropertyException();
+    throw UnknownPropertyException(aName);
 }
 
 
@@ -252,16 +256,12 @@ sal_Bool SAL_CALL UcbPropertiesManager::hasPropertyByName( const OUString& Name 
 bool UcbPropertiesManager::queryProperty(
                                 const OUString& rName, Property& rProp )
 {
-    const Property* pProps = m_pProps.getConstArray();
-    sal_Int32 nCount = m_pProps.getLength();
-    for ( sal_Int32 n = 0; n < nCount; ++n )
+    auto pProp = std::find_if(m_pProps.begin(), m_pProps.end(),
+        [&rName](const Property& rCurrProp) { return rCurrProp.Name == rName; });
+    if (pProp != m_pProps.end())
     {
-        const Property& rCurrProp = pProps[ n ];
-        if ( rCurrProp.Name == rName )
-        {
-            rProp = rCurrProp;
-            return true;
-        }
+        rProp = *pProp;
+        return true;
     }
 
     return false;

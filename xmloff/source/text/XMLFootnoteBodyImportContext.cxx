@@ -22,8 +22,6 @@
 #include <rtl/ustring.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
 
 using ::com::sun::star::uno::Reference;
@@ -38,7 +36,7 @@ XMLFootnoteBodyImportContext::XMLFootnoteBodyImportContext(
 {
 }
 
-SvXMLImportContext* XMLFootnoteBodyImportContext::CreateChildContext(
+SvXMLImportContextRef XMLFootnoteBodyImportContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList> & xAttrList )
@@ -50,8 +48,6 @@ SvXMLImportContext* XMLFootnoteBodyImportContext::CreateChildContext(
                                                        rLocalName,
                                                        xAttrList,
                                                        XMLTextType::Footnote);
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }

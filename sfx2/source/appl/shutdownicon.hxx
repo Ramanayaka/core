@@ -22,17 +22,15 @@
 
 #include <com/sun/star/frame/XTerminateListener.hpp>
 #include <com/sun/star/frame/XDesktop2.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/beans/XFastPropertySet.hpp>
-#include <rtl/string.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <rtl/ustring.hxx>
 #include <osl/mutex.hxx>
-#include <sfx2/sfxuno.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <sfx2/dllapi.h>
 #include <tools/link.hxx>
+#include <memory>
 
 extern "C" {
 
@@ -41,7 +39,6 @@ void SAL_DLLPUBLIC_EXPORT plugin_shutdown_sys_tray();
 
 }
 
-class ResMgr;
 namespace sfx2
 {
     class FileDialogHelper;
@@ -62,14 +59,13 @@ typedef ::cppu::WeakComponentImplHelper<
 #define BASE_URL            "private:factory/sdatabase?Interactive"
 #define STARTMODULE_URL     ".uno:ShowStartModule"
 
-class SFX2_DLLPUBLIC ShutdownIcon : public ShutdownIconServiceBase
+class ShutdownIcon : public ShutdownIconServiceBase
 {
         ::osl::Mutex            m_aMutex;
         bool                    m_bVeto;
         bool                    m_bListenForTermination;
         bool                    m_bSystemDialogs;
-        ResMgr*                 m_pResMgr;
-        sfx2::FileDialogHelper* m_pFileDlg;
+        std::unique_ptr<sfx2::FileDialogHelper> m_pFileDlg;
         css::uno::Reference< css::uno::XComponentContext > m_xContext;
 
         static ShutdownIcon *pShutdownIcon; // one instance
@@ -113,7 +109,6 @@ class SFX2_DLLPUBLIC ShutdownIcon : public ShutdownIconServiceBase
         /// @throws css::uno::Exception
         void init();
 
-        OUString GetResString( int id );
         static OUString GetUrlDescription( const OUString& aUrl );
 
         void SetVeto( bool bVeto )  { m_bVeto = bVeto;}
@@ -150,7 +145,7 @@ class SFX2_DLLPUBLIC ShutdownIcon : public ShutdownIconServiceBase
 };
 
 extern "C" {
-#  ifdef WNT
+#  ifdef _WIN32
     // builtin win32 systray
     void win32_init_sys_tray();
     void win32_shutdown_sys_tray();

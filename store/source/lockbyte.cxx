@@ -19,13 +19,12 @@
 
 #include "lockbyte.hxx"
 
-#include "sal/types.h"
-#include "osl/diagnose.h"
-#include "osl/file.h"
-#include "osl/process.h"
-#include "rtl/alloc.h"
-#include "rtl/ustring.hxx"
-#include "sal/log.hxx"
+#include <sal/types.h>
+#include <osl/diagnose.h>
+#include <osl/file.h>
+#include <osl/process.h>
+#include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 #include "object.hxx"
 #include "storbase.hxx"
@@ -80,11 +79,11 @@ storeError ILockBytes::readAt (sal_uInt32 nOffset, void * pBuffer, sal_uInt32 nB
 {
     // [SECURITY:ValInput]
     sal_uInt8 * dst_lo = static_cast<sal_uInt8*>(pBuffer);
-    if (!(dst_lo != nullptr))
+    if (dst_lo == nullptr)
         return store_E_InvalidParameter;
 
     sal_uInt8 * dst_hi = dst_lo + nBytes;
-    if (!(dst_lo < dst_hi))
+    if (dst_lo >= dst_hi)
         return (dst_lo > dst_hi) ? store_E_InvalidParameter : store_E_None;
 
     OSL_PRECOND(!(nOffset == STORE_PAGE_NULL), "store::ILockBytes::readAt(): invalid Offset");
@@ -102,11 +101,11 @@ storeError ILockBytes::writeAt (sal_uInt32 nOffset, void const * pBuffer, sal_uI
 {
     // [SECURITY:ValInput]
     sal_uInt8 const * src_lo = static_cast<sal_uInt8 const*>(pBuffer);
-    if (!(src_lo != nullptr))
+    if (src_lo == nullptr)
         return store_E_InvalidParameter;
 
     sal_uInt8 const * src_hi = src_lo + nBytes;
-    if (!(src_lo < src_hi))
+    if (src_lo >= src_hi)
         return (src_lo > src_hi) ? store_E_InvalidParameter : store_E_None;
 
     OSL_PRECOND(!(nOffset == STORE_PAGE_NULL), "store::ILockBytes::writeAt(): invalid Offset");
@@ -143,6 +142,8 @@ storeError ILockBytes::flush()
  *======================================================================*/
 namespace store
 {
+
+namespace {
 
 struct FileHandle
 {
@@ -199,12 +200,11 @@ struct FileHandle
         switch (eAccessMode)
         {
         case storeAccessMode::Create:
-        case storeAccessMode::ReadCreate:
             nFlags |= osl_File_OpenFlag_Create;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case storeAccessMode::ReadWrite:
             nFlags |= osl_File_OpenFlag_Write;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case storeAccessMode::ReadOnly:
             nFlags |= osl_File_OpenFlag_Read;
             break;
@@ -306,7 +306,7 @@ class FileLockBytes :
 public:
     /** Construction.
      */
-    explicit FileLockBytes (FileHandle & rFile);
+    explicit FileLockBytes (FileHandle const & rFile);
 
     FileLockBytes(const FileLockBytes&) = delete;
     FileLockBytes& operator=(const FileLockBytes&) = delete;
@@ -317,9 +317,11 @@ protected:
     virtual ~FileLockBytes() override;
 };
 
+}
+
 } // namespace store
 
-FileLockBytes::FileLockBytes (FileHandle & rFile)
+FileLockBytes::FileLockBytes (FileHandle const & rFile)
     : m_hFile (rFile.m_handle), m_nSize (SAL_MAX_UINT32), m_xAllocator()
 {
 }
@@ -371,7 +373,7 @@ storeError FileLockBytes::readPageAt_Impl (std::shared_ptr<PageData> & rPage, sa
 
     if (!m_xAllocator.is())
         return store_E_InvalidAccess;
-    if (!rPage.get())
+    if (!rPage)
         return store_E_OutOfMemory;
 
     PageData * pagedata = rPage.get();
@@ -443,6 +445,8 @@ storeError FileLockBytes::flush_Impl()
  *======================================================================*/
 namespace store
 {
+
+namespace {
 
 struct FileMapping
 {
@@ -534,7 +538,7 @@ class MappedLockBytes :
 public:
     /** Construction.
      */
-    explicit MappedLockBytes (FileMapping & rMapping);
+    explicit MappedLockBytes (FileMapping const & rMapping);
 
     MappedLockBytes(const MappedLockBytes&) = delete;
     MappedLockBytes& operator=(const MappedLockBytes&) = delete;
@@ -545,9 +549,11 @@ protected:
     virtual ~MappedLockBytes() override;
 };
 
+}
+
 } // namespace store
 
-MappedLockBytes::MappedLockBytes (FileMapping & rMapping)
+MappedLockBytes::MappedLockBytes (FileMapping const & rMapping)
     : m_pData (rMapping.m_pAddr), m_nSize (rMapping.m_nSize), m_nPageSize(0), m_hFile (rMapping.m_hFile)
 {
 }
@@ -643,6 +649,8 @@ storeError MappedLockBytes::flush_Impl()
 namespace store
 {
 
+namespace {
+
 class MemoryLockBytes :
     public store::OStoreObject,
     public store::ILockBytes
@@ -682,6 +690,8 @@ protected:
     virtual ~MemoryLockBytes() override;
 };
 
+}
+
 } // namespace store
 
 MemoryLockBytes::MemoryLockBytes()
@@ -690,7 +700,7 @@ MemoryLockBytes::MemoryLockBytes()
 
 MemoryLockBytes::~MemoryLockBytes()
 {
-    rtl_freeMemory (m_pData);
+    std::free (m_pData);
 }
 
 storeError MemoryLockBytes::initialize_Impl (rtl::Reference< PageData::Allocator > & rxAllocator, sal_uInt16 nPageSize)
@@ -714,7 +724,7 @@ storeError MemoryLockBytes::readPageAt_Impl (std::shared_ptr<PageData> & rPage, 
 
     if (!m_xAllocator.is())
         return store_E_InvalidAccess;
-    if (!rPage.get())
+    if (!rPage)
         return store_E_OutOfMemory;
 
     PageData * pagedata = rPage.get();
@@ -776,7 +786,7 @@ storeError MemoryLockBytes::setSize_Impl (sal_uInt32 nSize)
 {
     if (nSize != m_nSize)
     {
-        sal_uInt8 * pData = static_cast<sal_uInt8*>(rtl_reallocateMemory (m_pData, nSize));
+        sal_uInt8 * pData = static_cast<sal_uInt8*>(std::realloc (m_pData, nSize));
         if (pData != nullptr)
         {
             if (nSize > m_nSize)
@@ -805,6 +815,8 @@ storeError MemoryLockBytes::flush_Impl()
  *======================================================================*/
 namespace store
 {
+
+namespace {
 
 template< class T > struct ResourceHolder
 {
@@ -839,6 +851,8 @@ template< class T > struct ResourceHolder
         return *this;
     }
 };
+
+}
 
 storeError
 FileLockBytes_createInstance (

@@ -19,18 +19,12 @@
 
 #include <connectivity/TColumnsHelper.hxx>
 #include <connectivity/sdbcx/VColumn.hxx>
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
-#include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <com/sun/star/sdbcx/XKeysSupplier.hpp>
 #include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 #include <connectivity/TTableHelper.hxx>
-#include <comphelper/property.hxx>
 
 using namespace ::comphelper;
 
@@ -61,7 +55,7 @@ namespace connectivity
 OColumnsHelper::OColumnsHelper( ::cppu::OWeakObject& _rParent
                                 ,bool _bCase
                                 ,::osl::Mutex& _rMutex
-                                ,const TStringVector &_rVector
+                                ,const ::std::vector< OUString> &_rVector
                                 ,bool _bUseHardRef
             ) : OCollection(_rParent,_bCase,_rMutex,_rVector,false,_bUseHardRef)
     ,m_pTable(nullptr)
@@ -138,14 +132,14 @@ sdbcx::ObjectType OColumnsHelper::createObject(const OUString& _rName)
     else
     {
 
-        xRet.set(::dbtools::createSDBCXColumn(  m_pTable,
+        xRet = ::dbtools::createSDBCXColumn(  m_pTable,
                                                 xConnection,
                                                 _rName,
                                                 isCaseSensitive(),
                                                 bQueryInfo,
                                                 bAutoIncrement,
                                                 bIsCurrency,
-                                                nDataType),UNO_QUERY);
+                                                nDataType);
     }
     return xRet;
 }
@@ -175,7 +169,7 @@ sdbcx::ObjectType OColumnsHelper::appendObject( const OUString& _rForName, const
 
     Reference<XDatabaseMetaData> xMetaData = m_pTable->getConnection()->getMetaData();
     OUString aSql = "ALTER TABLE " +
-        ::dbtools::composeTableName( xMetaData, m_pTable, ::dbtools::EComposeRule::InTableDefinitions, false, false, true ) +
+        ::dbtools::composeTableName( xMetaData, m_pTable, ::dbtools::EComposeRule::InTableDefinitions, true ) +
         " ADD " +
         ::dbtools::createStandardColumnPart(descriptor,m_pTable->getConnection(),nullptr,m_pTable->getTypeCreatePattern());
 
@@ -192,21 +186,21 @@ sdbcx::ObjectType OColumnsHelper::appendObject( const OUString& _rForName, const
 void OColumnsHelper::dropObject(sal_Int32 /*_nPos*/, const OUString& _sElementName)
 {
     OSL_ENSURE(m_pTable,"OColumnsHelper::dropByName: Table is null!");
-    if ( m_pTable && !m_pTable->isNew() )
-    {
-        Reference<XDatabaseMetaData> xMetaData = m_pTable->getConnection()->getMetaData();
-        OUString aQuote  = xMetaData->getIdentifierQuoteString(  );
-        OUString aSql = "ALTER TABLE " +
-            ::dbtools::composeTableName( xMetaData, m_pTable, ::dbtools::EComposeRule::InTableDefinitions, false, false, true ) +
-            " DROP " +
-            ::dbtools::quoteName( aQuote,_sElementName);
+    if ( !(m_pTable && !m_pTable->isNew()) )
+        return;
 
-        Reference< XStatement > xStmt = m_pTable->getConnection()->createStatement(  );
-        if ( xStmt.is() )
-        {
-            xStmt->execute(aSql);
-            ::comphelper::disposeComponent(xStmt);
-        }
+    Reference<XDatabaseMetaData> xMetaData = m_pTable->getConnection()->getMetaData();
+    OUString aQuote  = xMetaData->getIdentifierQuoteString(  );
+    OUString aSql = "ALTER TABLE " +
+        ::dbtools::composeTableName( xMetaData, m_pTable, ::dbtools::EComposeRule::InTableDefinitions, true ) +
+        " DROP " +
+        ::dbtools::quoteName( aQuote,_sElementName);
+
+    Reference< XStatement > xStmt = m_pTable->getConnection()->createStatement(  );
+    if ( xStmt.is() )
+    {
+        xStmt->execute(aSql);
+        ::comphelper::disposeComponent(xStmt);
     }
 }
 

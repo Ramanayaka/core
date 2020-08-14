@@ -20,25 +20,25 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_FRAMEWORKHELPER_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_FRAMEWORKHELPER_HXX
 
-#include "ViewShell.hxx"
+#include <ViewShell.hxx>
 
-#include "tools/SdGlobalResourceContainer.hxx"
-
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
+#include <tools/SdGlobalResourceContainer.hxx>
 
 #include <functional>
 #include <map>
 #include <memory>
 
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
+namespace com::sun::star::drawing::framework { class XResourceId; }
+namespace com::sun::star::drawing::framework { class XView; }
+namespace com::sun::star::drawing::framework { struct ConfigurationChangeEvent; }
+
 namespace sd {
-class ViewShell;
 class ViewShellBase;
 }
 
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 /** The FrameworkHelper is a convenience class that simplifies the
     access to the drawing framework.
@@ -56,7 +56,7 @@ class FrameworkHelper
 {
 public:
     // URLs of frequently used panes.
-    static const OUString msPaneURLPrefix;
+    static const OUStringLiteral msPaneURLPrefix;
     static const OUString msCenterPaneURL;
     static const OUString msFullScreenPaneURL;
     static const OUString msLeftImpressPaneURL;
@@ -64,7 +64,7 @@ public:
     static const OUString msSidebarPaneURL;
 
     // URLs of frequently used views.
-    static const OUString msViewURLPrefix;
+    static const OUStringLiteral msViewURLPrefix;
     static const OUString msImpressViewURL;
     static const OUString msDrawViewURL;
     static const OUString msOutlineViewURL;
@@ -75,11 +75,11 @@ public:
     static const OUString msSidebarViewURL;
 
     // URLs of frequently used tool bars.
-    static const OUString msToolBarURLPrefix;
+    static const OUStringLiteral msToolBarURLPrefix;
     static const OUString msViewTabBarURL;
 
     // URLs of task panels.
-    static const OUString msTaskPanelURLPrefix;
+    static const OUStringLiteral msTaskPanelURLPrefix;
     static const OUString msAllMasterPagesTaskPanelURL;
     static const OUString msRecentMasterPagesTaskPanelURL;
     static const OUString msUsedMasterPagesTaskPanelURL;
@@ -89,17 +89,17 @@ public:
     static const OUString msSlideTransitionTaskPanelURL;
 
     // Names of frequently used events.
-    static const OUString msResourceActivationRequestEvent;
-    static const OUString msResourceDeactivationRequestEvent;
-    static const OUString msResourceActivationEvent;
-    static const OUString msResourceDeactivationEvent;
-    static const OUString msResourceDeactivationEndEvent;
-    static const OUString msConfigurationUpdateStartEvent;
-    static const OUString msConfigurationUpdateEndEvent;
+    static const OUStringLiteral msResourceActivationRequestEvent;
+    static const OUStringLiteral msResourceDeactivationRequestEvent;
+    static const OUStringLiteral msResourceActivationEvent;
+    static const OUStringLiteral msResourceDeactivationEvent;
+    static const OUStringLiteral msResourceDeactivationEndEvent;
+    static const OUStringLiteral msConfigurationUpdateStartEvent;
+    static const OUStringLiteral msConfigurationUpdateEndEvent;
 
     // Service names of the common controllers.
-    static const OUString msModuleControllerService;
-    static const OUString msConfigurationControllerService;
+    static const OUStringLiteral msModuleControllerService;
+    static const OUStringLiteral msConfigurationControllerService;
 
     /** Return the FrameworkHelper object that is associated with the given
         ViewShellBase.  If such an object does not yet exist, a new one is
@@ -114,14 +114,14 @@ public:
         Do not call this method.  It is an internally used method that can
         not be made private.
     */
-    static void DisposeInstance (ViewShellBase& rBase);
+    static void DisposeInstance (const ViewShellBase& rBase);
 
     /** Destroy the FrameworkHelper object for the given ViewShellBase.
 
         Do not call this method.  It is an internally used method that can
         not be made private.
     */
-    static void ReleaseInstance (ViewShellBase& rBase);
+    static void ReleaseInstance (const ViewShellBase& rBase);
 
     /** Return an identifier for the given view URL.  This identifier can be
         used in a switch statement.  See GetViewURL() for a mapping in the
@@ -157,7 +157,7 @@ public:
         @return
             When the object has already been disposed then <FALSE/> is returned.
     */
-    bool IsValid();
+    bool IsValid() const;
 
     /** Return a pointer to the view shell that is displayed in the
         specified pane.  See GetView() for a variant that returns a
@@ -206,7 +206,7 @@ public:
     */
     void HandleModeChangeSlot (
         sal_uLong nSlotId,
-        SfxRequest& rRequest);
+        SfxRequest const & rRequest);
 
     /** Run the given callback when the specified event is notified by the
         ConfigurationManager.  When there are no pending requests and
@@ -299,7 +299,7 @@ public:
 
 private:
     typedef ::std::map<
-        ViewShellBase*,
+        const ViewShellBase*,
         ::std::shared_ptr<FrameworkHelper> > InstanceMap;
     /** The instance map holds (at least) one FrameworkHelper instance for
         every ViewShellBase object.
@@ -348,7 +348,7 @@ private:
     void disposing (const css::lang::EventObject& rEventObject);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

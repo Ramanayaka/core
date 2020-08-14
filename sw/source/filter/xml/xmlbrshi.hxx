@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <com/sun/star/io/XOutputStream.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 
 #include <xmloff/xmlictxt.hxx>
 
@@ -29,15 +30,17 @@ class SvXMLImport;
 class SvXMLUnitConverter;
 class SvxBrushItem;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XOutputStream; }
-} } }
+}
 
 class SwXMLBrushItemImportContext : public SvXMLImportContext
 {
 private:
-    css::uno::Reference < css::io::XOutputStream > xBase64Stream;
-    std::unique_ptr<SvxBrushItem>                  pItem;
+    css::uno::Reference<css::io::XOutputStream> m_xBase64Stream;
+    css::uno::Reference<css::graphic::XGraphic> m_xGraphic;
+
+    std::unique_ptr<SvxBrushItem> pItem;
 
     void ProcessAttrs(
                const css::uno::Reference<css::xml::sax::XAttributeList > & xAttrList,
@@ -63,7 +66,7 @@ public:
 
     virtual ~SwXMLBrushItemImportContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                 const OUString& rLocalName,
                  const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 

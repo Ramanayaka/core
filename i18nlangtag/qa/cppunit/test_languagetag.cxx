@@ -18,8 +18,6 @@
 #include <i18nlangtag/languagetag.hxx>
 
 #include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <osl/file.hxx>
 
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
@@ -45,8 +43,7 @@ public:
 void TestLanguageTag::testAllTags()
 {
     {
-        OUString const s_de_Latn_DE( "de-Latn-DE" );
-        LanguageTag de_DE( s_de_Latn_DE, true );
+        LanguageTag de_DE( "de-Latn-DE", true );
         OUString aBcp47 = de_DE.getBcp47();
         lang::Locale aLocale = de_DE.getLocale();
         LanguageType nLanguageType = de_DE.getLanguageType();
@@ -63,8 +60,7 @@ void TestLanguageTag::testAllTags()
     }
 
     {
-        OUString const s_klingon( "i-klingon" );
-        LanguageTag klingon( s_klingon, true );
+        LanguageTag klingon( "i-klingon", true );
         lang::Locale aLocale = klingon.getLocale();
         CPPUNIT_ASSERT_EQUAL( OUString("tlh"), klingon.getBcp47() );
         CPPUNIT_ASSERT_EQUAL( OUString("tlh"), aLocale.Language );
@@ -143,8 +139,7 @@ void TestLanguageTag::testAllTags()
 
     // 'sh-RS' has an internal override to 'sr-Latn-RS'
     {
-        OUString const s_sh_RS( "sh-RS" );
-        LanguageTag sh_RS( s_sh_RS, true );
+        LanguageTag sh_RS( "sh-RS", true );
         lang::Locale aLocale = sh_RS.getLocale();
         CPPUNIT_ASSERT_EQUAL( OUString("sr-Latn-RS"), sh_RS.getBcp47() );
         CPPUNIT_ASSERT_EQUAL( OUString(I18NLANGTAG_QLT) , aLocale.Language);
@@ -175,8 +170,7 @@ void TestLanguageTag::testAllTags()
     // known LangID with an override and canonicalization should work the same
     // without liblangtag.
     {
-        OUString const s_bs_Latn_BA( "bs-Latn-BA" );
-        LanguageTag bs_Latn_BA( s_bs_Latn_BA, true );
+        LanguageTag bs_Latn_BA( "bs-Latn-BA", true );
         lang::Locale aLocale = bs_Latn_BA.getLocale();
         CPPUNIT_ASSERT_EQUAL( OUString("bs-BA"), bs_Latn_BA.getBcp47() );
         CPPUNIT_ASSERT_EQUAL( OUString("bs"), aLocale.Language );
@@ -250,9 +244,8 @@ void TestLanguageTag::testAllTags()
 
     // 'ca-XV' has an internal override to 'ca-ES-valencia'
     {
-        OUString const s_ca_XV( "ca-XV" );
         OUString s_ca_ES_valencia( "ca-ES-valencia" );
-        LanguageTag ca_XV( s_ca_XV, true );
+        LanguageTag ca_XV( "ca-XV", true );
         lang::Locale aLocale = ca_XV.getLocale();
         CPPUNIT_ASSERT_EQUAL( s_ca_ES_valencia, ca_XV.getBcp47() );
         CPPUNIT_ASSERT_EQUAL( OUString(I18NLANGTAG_QLT) , aLocale.Language);
@@ -300,10 +293,9 @@ void TestLanguageTag::testAllTags()
     }
 
     {
-        OUString const s_de_DE( "de-DE" );
         LanguageTag de_DE( lang::Locale( "de", "DE", "" ) );
         lang::Locale aLocale = de_DE.getLocale();
-        CPPUNIT_ASSERT_EQUAL( s_de_DE, de_DE.getBcp47() );
+        CPPUNIT_ASSERT_EQUAL( OUString("de-DE"), de_DE.getBcp47() );
         CPPUNIT_ASSERT_EQUAL( OUString("de"), aLocale.Language );
         CPPUNIT_ASSERT_EQUAL( OUString("DE"), aLocale.Country );
         CPPUNIT_ASSERT( aLocale.Variant.isEmpty() );
@@ -311,10 +303,9 @@ void TestLanguageTag::testAllTags()
     }
 
     {
-        OUString const s_de_DE( "de-DE" );
         LanguageTag de_DE( LANGUAGE_GERMAN );
         lang::Locale aLocale = de_DE.getLocale();
-        CPPUNIT_ASSERT_EQUAL( s_de_DE, de_DE.getBcp47() );
+        CPPUNIT_ASSERT_EQUAL( OUString("de-DE"), de_DE.getBcp47() );
         CPPUNIT_ASSERT_EQUAL( OUString("de"), aLocale.Language );
         CPPUNIT_ASSERT_EQUAL( OUString("DE"), aLocale.Country );
         CPPUNIT_ASSERT( aLocale.Variant.isEmpty() );
@@ -436,6 +427,57 @@ void TestLanguageTag::testAllTags()
         CPPUNIT_ASSERT_EQUAL( OUString("en"), en_GB_oxendict_Fallbacks[4]);
     }
 
+    // 'es-ES-u-co-trad' is a valid (and known) Extension U tag
+    {
+        OUString s_es_ES_u_co_trad( "es-ES-u-co-trad" );
+        LanguageTag es_ES_u_co_trad( s_es_ES_u_co_trad );
+        lang::Locale aLocale = es_ES_u_co_trad.getLocale();
+        CPPUNIT_ASSERT_EQUAL( s_es_ES_u_co_trad, es_ES_u_co_trad.getBcp47() );
+        CPPUNIT_ASSERT_EQUAL( OUString("qlt"), aLocale.Language );
+        CPPUNIT_ASSERT_EQUAL( OUString("ES"), aLocale.Country );
+        CPPUNIT_ASSERT_EQUAL( s_es_ES_u_co_trad, aLocale.Variant );
+        CPPUNIT_ASSERT_EQUAL( LANGUAGE_SPANISH_DATED, es_ES_u_co_trad.getLanguageType() );
+        CPPUNIT_ASSERT( es_ES_u_co_trad.isValidBcp47() );
+        CPPUNIT_ASSERT( !es_ES_u_co_trad.isIsoLocale() );
+        CPPUNIT_ASSERT( !es_ES_u_co_trad.isIsoODF() );
+        CPPUNIT_ASSERT_EQUAL( OUString("es"), es_ES_u_co_trad.getLanguageAndScript() );
+        CPPUNIT_ASSERT_EQUAL( OUString("u-co-trad"), es_ES_u_co_trad.getVariants() );
+        ::std::vector< OUString > es_ES_u_co_trad_Fallbacks( es_ES_u_co_trad.getFallbackStrings( true));
+        CPPUNIT_ASSERT_EQUAL( static_cast<size_t>(4), es_ES_u_co_trad_Fallbacks.size() );
+        CPPUNIT_ASSERT_EQUAL( OUString("es-ES-u-co-trad"), es_ES_u_co_trad_Fallbacks[0]);
+        CPPUNIT_ASSERT_EQUAL( OUString("es-u-co-trad"), es_ES_u_co_trad_Fallbacks[1]);
+        CPPUNIT_ASSERT_EQUAL( OUString("es-ES"), es_ES_u_co_trad_Fallbacks[2]);
+        CPPUNIT_ASSERT_EQUAL( OUString("es"), es_ES_u_co_trad_Fallbacks[3]);
+        // Map to broken MS.
+        CPPUNIT_ASSERT_EQUAL( OUString("es-ES_tradnl"), es_ES_u_co_trad.getBcp47MS() );
+    }
+
+    // 'es-ES_tradnl' (broken MS) maps to 'es-ES-u-co-trad'
+    {
+        OUString s_es_ES_u_co_trad( "es-ES-u-co-trad" );
+        OUString s_es_ES_tradnl( "es-ES_tradnl" );
+        LanguageTag es_ES_tradnl( s_es_ES_tradnl );
+        lang::Locale aLocale = es_ES_tradnl.getLocale();
+        CPPUNIT_ASSERT_EQUAL( s_es_ES_u_co_trad, es_ES_tradnl.getBcp47() );
+        CPPUNIT_ASSERT_EQUAL( OUString("qlt"), aLocale.Language );
+        CPPUNIT_ASSERT_EQUAL( OUString("ES"), aLocale.Country );
+        CPPUNIT_ASSERT_EQUAL( s_es_ES_u_co_trad, aLocale.Variant );
+        CPPUNIT_ASSERT_EQUAL( LANGUAGE_SPANISH_DATED, es_ES_tradnl.getLanguageType() );
+        CPPUNIT_ASSERT( es_ES_tradnl.isValidBcp47() );
+        CPPUNIT_ASSERT( !es_ES_tradnl.isIsoLocale() );
+        CPPUNIT_ASSERT( !es_ES_tradnl.isIsoODF() );
+        CPPUNIT_ASSERT_EQUAL( OUString("es"), es_ES_tradnl.getLanguageAndScript() );
+        CPPUNIT_ASSERT_EQUAL( OUString("u-co-trad"), es_ES_tradnl.getVariants() );
+        ::std::vector< OUString > es_ES_tradnl_Fallbacks( es_ES_tradnl.getFallbackStrings( true));
+        CPPUNIT_ASSERT_EQUAL( static_cast<size_t>(4), es_ES_tradnl_Fallbacks.size() );
+        CPPUNIT_ASSERT_EQUAL( OUString("es-ES-u-co-trad"), es_ES_tradnl_Fallbacks[0]);
+        CPPUNIT_ASSERT_EQUAL( OUString("es-u-co-trad"), es_ES_tradnl_Fallbacks[1]);
+        CPPUNIT_ASSERT_EQUAL( OUString("es-ES"), es_ES_tradnl_Fallbacks[2]);
+        CPPUNIT_ASSERT_EQUAL( OUString("es"), es_ES_tradnl_Fallbacks[3]);
+        // Map back to broken MS.
+        CPPUNIT_ASSERT_EQUAL( s_es_ES_tradnl, es_ES_tradnl.getBcp47MS() );
+    }
+
     // 'zh-yue-HK' uses redundant 'zh-yue' and should be preferred 'yue-HK'
 #if 0
     /* XXX Disabled because liblangtag in lt_tag_canonicalize() after replacing
@@ -492,11 +534,10 @@ void TestLanguageTag::testAllTags()
 
     // 'qtx' is an unknown new mslangid
     {
-        OUString const s_qtx( "qtx" );
-        LanguageTag qtx( s_qtx );
+        LanguageTag qtx( "qtx" );
         qtx.setScriptType( LanguageTag::ScriptType::RTL );
         LanguageType n_qtx = qtx.getLanguageType();
-        CPPUNIT_ASSERT_EQUAL( MsLangId::getScriptType(n_qtx), css::i18n::ScriptType::COMPLEX );
+        CPPUNIT_ASSERT_EQUAL( css::i18n::ScriptType::COMPLEX, MsLangId::getScriptType(n_qtx) );
         CPPUNIT_ASSERT( MsLangId::isRightToLeft(n_qtx) );
         CPPUNIT_ASSERT( !MsLangId::isCJK(n_qtx) );
     }
@@ -691,39 +732,43 @@ bool checkMapping( const OUString& rStr1, const OUString& rStr2 )
     if (rStr1 == "crk-Latn-CN" ) return rStr2 == "crk-Latn-CA";
     if (rStr1 == "crk-Cans-CN" ) return rStr2 == "crk-Cans-CA";
     if (rStr1 == "en-GB-oed"   ) return rStr2 == "en-GB-oxendict";
+    if (rStr1 == "es-ES_tradnl") return rStr2 == "es-ES-u-co-trad";
+    if (rStr1 == "sd-IN"       ) return rStr2 == "sd-Deva-IN";
+    if (rStr1 == "cmn-CN"      ) return rStr2 == "zh-CN";
+    if (rStr1 == "cmn-TW"      ) return rStr2 == "zh-TW";
     return rStr1 == rStr2;
 }
 
 void TestLanguageTag::testAllIsoLangEntries()
 {
     const ::std::vector< MsLangId::LanguagetagMapping > aList( MsLangId::getDefinedLanguagetags());
-    for (::std::vector< MsLangId::LanguagetagMapping >::const_iterator it( aList.begin()); it != aList.end(); ++it)
+    for (auto const& elem : aList)
     {
         bool b=false;
-        if ((*it).maBcp47 == "la-VA")
+        if (elem.maBcp47 == "la-VA")
             b=true;
         (void)b;
 
-        LanguageTag aTagString( (*it).maBcp47, true);
-        LanguageTag aTagID( (*it).mnLang);
-        if (!checkMapping( (*it).maBcp47, aTagString.getBcp47()))
+        LanguageTag aTagString( elem.maBcp47, true);
+        LanguageTag aTagID( elem.mnLang);
+        if (!checkMapping( elem.maBcp47, aTagString.getBcp47()))
         {
-            OString aMessage( OUStringToOString( (*it).maBcp47, RTL_TEXTENCODING_ASCII_US));
+            OString aMessage( OUStringToOString( elem.maBcp47, RTL_TEXTENCODING_ASCII_US));
             aMessage += " -> " + OUStringToOString( aTagString.getBcp47(), RTL_TEXTENCODING_ASCII_US);
-            CPPUNIT_ASSERT_EQUAL_MESSAGE( aMessage.getStr(), aTagString.getBcp47(), (*it).maBcp47 );
+            CPPUNIT_ASSERT_EQUAL_MESSAGE( aMessage.getStr(), aTagString.getBcp47(), elem.maBcp47 );
         }
-        if ((*it).maBcp47 != aTagID.getBcp47())
+        if (elem.maBcp47 != aTagID.getBcp47())
         {
             // There are multiple mappings, ID must be equal after conversions.
             LanguageTag aTagBack( aTagID.getBcp47(), true);
             if (aTagString.getLanguageType() != aTagBack.getLanguageType())
             {
-                OString aMessage( OUStringToOString( (*it).maBcp47, RTL_TEXTENCODING_ASCII_US));
+                OString aMessage( OUStringToOString( elem.maBcp47, RTL_TEXTENCODING_ASCII_US));
                 aMessage += " " + OUStringToOString( aTagString.getBcp47(), RTL_TEXTENCODING_ASCII_US) + ": " +
                     OUStringToOString( aTagString.getBcp47(), RTL_TEXTENCODING_ASCII_US) + " " +
-                    OString::number( (sal_uInt16)aTagString.getLanguageType(), 16) +
+                    OString::number( static_cast<sal_uInt16>(aTagString.getLanguageType()), 16) +
                     " -> " + OUStringToOString( aTagBack.getBcp47(), RTL_TEXTENCODING_ASCII_US) + " " +
-                    OString::number( (sal_uInt16)aTagBack.getLanguageType(), 16);
+                    OString::number( static_cast<sal_uInt16>(aTagBack.getLanguageType()), 16);
                 CPPUNIT_ASSERT_EQUAL_MESSAGE( aMessage.getStr(), aTagBack.getLanguageType(), aTagString.getLanguageType());
             }
         }
@@ -731,13 +776,13 @@ void TestLanguageTag::testAllIsoLangEntries()
         // This does not hold, there are cases like 'ar'
         // LANGUAGE_ARABIC_PRIMARY_ONLY that when mapped back results in
         // 'ar-SA' as default locale.
-        if ((*it).mnLang != aTagString.getLanguageType())
+        if (elem.mnLang != aTagString.getLanguageType())
         {
             // There are multiple mappings, string must be equal after conversions.
             LanguageTag aTagBack( aTagString.getLanguageType());
             if (aTagID.getBcp47() != aTagBack.getBcp47())
             {
-                OString aMessage( OUStringToOString( (*it).maBcp47, RTL_TEXTENCODING_ASCII_US));
+                OString aMessage( OUStringToOString( elem.maBcp47, RTL_TEXTENCODING_ASCII_US));
                 aMessage += " " + OUStringToOString( aTagID.getBcp47(), RTL_TEXTENCODING_ASCII_US) +
                     " -> " + OUStringToOString( aTagBack.getBcp47(), RTL_TEXTENCODING_ASCII_US);
                 CPPUNIT_ASSERT_MESSAGE( aMessage.getStr(), aTagID.getBcp47() == aTagBack.getBcp47());

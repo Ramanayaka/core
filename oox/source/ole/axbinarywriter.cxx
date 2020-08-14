@@ -6,12 +6,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-#include "oox/ole/axbinarywriter.hxx"
+#include <oox/ole/axbinarywriter.hxx>
 
-#include "oox/ole/olehelper.hxx"
-
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 namespace {
 
@@ -73,7 +70,7 @@ void AxAlignedOutputStream::pad( sal_Int32 nBytes )
    css::uno::Sequence< sal_Int8 > aData( nBytes );
    // ok we could be padding with rubbish here, but really that shouldn't matter
    // set to 0(s), easier to not get fooled by 0's when looking at
-   // binary content......
+   // binary content...
    memset( static_cast<void*>( aData.getArray() ), 0, nBytes );
    mpOutStrm->writeData( aData );
    mnStrmPos = mpOutStrm->tell() - mnWrappedBeginPos;
@@ -86,10 +83,10 @@ void AxAlignedOutputStream::align( size_t nSize )
 
 namespace {
 
-void lclWriteString( AxAlignedOutputStream& rOutStrm, OUString& rValue, sal_uInt32 nSize, bool bArrayString )
+void lclWriteString( AxAlignedOutputStream& rOutStrm, OUString const & rValue, sal_uInt32 nSize )
 {
     bool bCompressed = getFlag( nSize, AX_STRING_COMPRESSED );
-    rOutStrm.writeCompressedUnicodeArray( rValue, bCompressed || bArrayString );
+    rOutStrm.writeCompressedUnicodeArray( rValue, bCompressed );
 }
 
 } // namespace
@@ -106,7 +103,7 @@ bool AxBinaryPropertyWriter::PairProperty::writeProperty( AxAlignedOutputStream&
 
 bool AxBinaryPropertyWriter::StringProperty::writeProperty( AxAlignedOutputStream& rOutStrm )
 {
-    lclWriteString( rOutStrm, mrValue, mnSize, false );
+    lclWriteString( rOutStrm, mrValue, mnSize );
     return true;
 }
 
@@ -138,16 +135,16 @@ void AxBinaryPropertyWriter::writeBoolProperty( bool orbValue )
 
 void AxBinaryPropertyWriter::writePairProperty( AxPairData& orPairData )
 {
-    if( startNextProperty() )
-        maLargeProps.push_back( ComplexPropVector::value_type( new PairProperty( orPairData ) ) );
+    startNextProperty();
+    maLargeProps.push_back( ComplexPropVector::value_type( std::make_shared<PairProperty>( orPairData ) ) );
 }
 
 void AxBinaryPropertyWriter::writeStringProperty( OUString& orValue )
 {
-    sal_uInt32 nSize = orValue.getLength();
-    setFlag(  nSize, AX_STRING_COMPRESSED );
+    sal_uInt32 nSize = orValue.getLength() * 2;
+    setFlag(  nSize, AX_STRING_COMPRESSED, false );
     maOutStrm.writeAligned< sal_uInt32 >( nSize );
-    maLargeProps.push_back( ComplexPropVector::value_type( new StringProperty( orValue, nSize ) ) );
+    maLargeProps.push_back( ComplexPropVector::value_type( std::make_shared<StringProperty>( orValue, nSize ) ) );
     startNextProperty();
 }
 
@@ -155,21 +152,23 @@ void AxBinaryPropertyWriter::finalizeExport()
 {
     // write large properties
     maOutStrm.align( 4 );
-    if( !maLargeProps.empty() )
+    for (auto const& largeProp : maLargeProps)
     {
-        for( ComplexPropVector::iterator aIt = maLargeProps.begin(), aEnd = maLargeProps.end(); ensureValid() && (aIt != aEnd); ++aIt )
-        {
-            (*aIt)->writeProperty( maOutStrm );
-            maOutStrm.align( 4 );
-        }
+        if (!ensureValid())
+            break;
+        largeProp->writeProperty( maOutStrm );
+        maOutStrm.align( 4 );
     }
 
     mnBlockSize = maOutStrm.tell() - mnPropFlagsStart;
 
     // write stream properties (no stream alignment between properties!)
-    if( !maStreamProps.empty() )
-        for( ComplexPropVector::iterator aIt = maStreamProps.begin(), aEnd = maStreamProps.end(); ensureValid() && (aIt != aEnd); ++aIt )
-           (*aIt)->writeProperty( maOutStrm );
+    for (auto const& streamProp : maStreamProps)
+    {
+        if (!ensureValid())
+            break;
+        streamProp->writeProperty( maOutStrm );
+    }
 
     sal_Int64 nPos = maOutStrm.tell();
     maOutStrm.seek( mnPropFlagsStart - sizeof( mnBlockSize ) );
@@ -190,15 +189,13 @@ bool AxBinaryPropertyWriter::ensureValid()
     return mbValid;
 }
 
-bool AxBinaryPropertyWriter::startNextProperty( bool bSkip )
+void AxBinaryPropertyWriter::startNextProperty( bool bSkip )
 {
     // if we are skipping then we clear the flag
     setFlag( mnPropFlags, mnNextProp, !bSkip );
     mnNextProp <<= 1;
-    return true;
 }
 
-} // namespace exp
-} // namespace ole
+} // namespace oox::ole
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,32 +21,19 @@
 
 #include <sfx2/tabdlg.hxx>
 
-#include <vcl/group.hxx>
-
-#include <vcl/button.hxx>
-
-#include <vcl/lstbox.hxx>
-
-#include <vcl/field.hxx>
-
-#include <vcl/fixed.hxx>
-#include <svtools/ctrlbox.hxx>
-#include <svx/fntctrl.hxx>
-#include <svx/strarray.hxx>
+class ColorListBox;
 
 class ScRedlineOptionsTabPage : public SfxTabPage
 {
-    VclPtr<SvxColorListBox>    m_pContentColorLB;
-    VclPtr<SvxColorListBox>    m_pRemoveColorLB;
-    VclPtr<SvxColorListBox>    m_pInsertColorLB;
-    VclPtr<SvxColorListBox>    m_pMoveColorLB;
+    std::unique_ptr<ColorListBox> m_xContentColorLB;
+    std::unique_ptr<ColorListBox> m_xRemoveColorLB;
+    std::unique_ptr<ColorListBox> m_xInsertColorLB;
+    std::unique_ptr<ColorListBox> m_xMoveColorLB;
 
 public:
-
-    ScRedlineOptionsTabPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    ScRedlineOptionsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet );
+    static std::unique_ptr<SfxTabPage>  Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
     virtual ~ScRedlineOptionsTabPage() override;
-    virtual void dispose() override;
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rAttrSet );
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;

@@ -17,12 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <scanner.hxx>
-#include <sanedlg.hxx>
+#include "scanner.hxx"
+#include "sanedlg.hxx"
+#include <o3tl/safeint.hxx>
 #include <osl/thread.hxx>
-#include <cppuhelper/queryinterface.hxx>
+#include <sal/log.hxx>
+#include <vcl/svapp.hxx>
 #include <memory>
 
+#include <com/sun/star/scanner/ScannerException.hpp>
 
 BitmapTransporter::BitmapTransporter()
 {
@@ -39,21 +42,20 @@ BitmapTransporter::~BitmapTransporter()
 css::awt::Size BitmapTransporter::getSize()
 {
     osl::MutexGuard aGuard( m_aProtector );
-    int         nPreviousPos = m_aStream.Tell();
     css::awt::Size   aRet;
 
     // ensure that there is at least a header
-    m_aStream.Seek( STREAM_SEEK_TO_END );
-    int nLen = m_aStream.Tell();
+    int nLen = m_aStream.TellEnd();
     if( nLen > 15 )
     {
+        int nPreviousPos = m_aStream.Tell();
         m_aStream.Seek( 4 );
         m_aStream.ReadInt32( aRet.Width ).ReadInt32( aRet.Height );
+        m_aStream.Seek( nPreviousPos );
     }
     else
         aRet.Width = aRet.Height = 0;
 
-    m_aStream.Seek( nPreviousPos );
 
     return aRet;
 }
@@ -65,8 +67,7 @@ Sequence< sal_Int8 > BitmapTransporter::getDIB()
     int         nPreviousPos = m_aStream.Tell();
 
     // create return value
-    m_aStream.Seek( STREAM_SEEK_TO_END );
-    int nBytes = m_aStream.Tell();
+    int nBytes = m_aStream.TellEnd();
     m_aStream.Seek( 0 );
 
     Sequence< sal_Int8 > aValue( nBytes );
@@ -76,6 +77,7 @@ Sequence< sal_Int8 > BitmapTransporter::getDIB()
     return aValue;
 }
 
+namespace {
 
 struct SaneHolder
 {
@@ -88,9 +90,6 @@ struct SaneHolder
     SaneHolder() : m_nError(ScanError_ScanErrorNone), m_bBusy(false) {}
 };
 
-
-namespace
-{
     typedef std::vector< std::shared_ptr<SaneHolder> > sanevec;
     class allSanes
     {
@@ -119,8 +118,6 @@ namespace
 
     struct theSaneProtector : public rtl::Static<osl::Mutex, theSaneProtector> {};
     struct theSanes : public rtl::Static<allSanes, theSanes> {};
-}
-
 
 class ScannerThread : public osl::Thread
 {
@@ -129,8 +126,8 @@ class ScannerThread : public osl::Thread
     ScannerManager*                           m_pManager; // just for the disposing call
 
 public:
-    virtual void run() override;
-    virtual void onTerminated() override { delete this; }
+    virtual void SAL_CALL run() override;
+    virtual void SAL_CALL onTerminated() override { delete this; }
 public:
     ScannerThread( const std::shared_ptr<SaneHolder>& pHolder,
                    const Reference< css::lang::XEventListener >& listener,
@@ -138,6 +135,7 @@ public:
     virtual ~ScannerThread() override;
 };
 
+}
 
 ScannerThread::ScannerThread(const std::shared_ptr<SaneHolder>& pHolder,
                              const Reference< css::lang::XEventListener >& listener,
@@ -220,7 +218,7 @@ Sequence< ScannerContext > ScannerManager::getAvailableScanners()
 
     if( rSanes.empty() )
     {
-        std::shared_ptr<SaneHolder> pSaneHolder(new SaneHolder);
+        auto pSaneHolder = std::make_shared<SaneHolder>();
         if( Sane::IsSane() )
             rSanes.push_back( pSaneHolder );
     }
@@ -248,7 +246,7 @@ sal_Bool ScannerManager::configureScannerAndScan( ScannerContext& scanner_contex
 
         SAL_INFO("extensions.scanner", "ScannerManager::configureScanner");
 
-        if( scanner_context.InternalData < 0 || (sal_uLong)scanner_context.InternalData >= rSanes.size() )
+        if( scanner_context.InternalData < 0 || o3tl::make_unsigned(scanner_context.InternalData) >= rSanes.size() )
             throw ScannerException(
                 "Scanner does not exist",
                 Reference< XScannerManager >( this ),
@@ -264,9 +262,9 @@ sal_Bool ScannerManager::configureScannerAndScan( ScannerContext& scanner_contex
             );
 
         pHolder->m_bBusy = true;
-        ScopedVclPtrInstance< SaneDlg > aDlg(nullptr, pHolder->m_aSane, listener.is());
-        bRet = aDlg->Execute();
-        bScan = aDlg->getDoScan();
+        SaneDlg aDlg(Application::GetFrameWeld(mxDialogParent), pHolder->m_aSane, listener.is());
+        bRet = aDlg.run();
+        bScan = aDlg.getDoScan();
         pHolder->m_bBusy = false;
     }
     if ( bScan )
@@ -284,7 +282,7 @@ void ScannerManager::startScan( const ScannerContext& scanner_context,
 
     SAL_INFO("extensions.scanner", "ScannerManager::startScan");
 
-    if( scanner_context.InternalData < 0 || (sal_uLong)scanner_context.InternalData >= rSanes.size() )
+    if( scanner_context.InternalData < 0 || o3tl::make_unsigned(scanner_context.InternalData) >= rSanes.size() )
         throw ScannerException(
             "Scanner does not exist",
             Reference< XScannerManager >( this ),
@@ -309,7 +307,7 @@ ScanError ScannerManager::getError( const ScannerContext& scanner_context )
     osl::MutexGuard aGuard( theSaneProtector::get() );
     sanevec &rSanes = theSanes::get().m_aSanes;
 
-    if( scanner_context.InternalData < 0 || (sal_uLong)scanner_context.InternalData >= rSanes.size() )
+    if( scanner_context.InternalData < 0 || o3tl::make_unsigned(scanner_context.InternalData) >= rSanes.size() )
         throw ScannerException(
             "Scanner does not exist",
             Reference< XScannerManager >( this ),
@@ -327,7 +325,7 @@ Reference< css::awt::XBitmap > ScannerManager::getBitmap( const ScannerContext& 
     osl::MutexGuard aGuard( theSaneProtector::get() );
     sanevec &rSanes = theSanes::get().m_aSanes;
 
-    if( scanner_context.InternalData < 0 || (sal_uLong)scanner_context.InternalData >= rSanes.size() )
+    if( scanner_context.InternalData < 0 || o3tl::make_unsigned(scanner_context.InternalData) >= rSanes.size() )
         throw ScannerException(
             "Scanner does not exist",
             Reference< XScannerManager >( this ),

@@ -23,12 +23,14 @@
 #include <sfx2/dllapi.h>
 #include <sfx2/signaturestate.hxx>
 
-#include <com/sun/star/task/XInteractionHandler.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/script/XLibraryContainer.hpp>
-#include <com/sun/star/document/XEmbeddedScripts.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <memory>
+
+namespace com::sun::star::document { class XEmbeddedScripts; }
+namespace com::sun::star::embed { class XStorage; }
+namespace com::sun::star::script { class XLibraryContainer; }
+namespace com::sun::star::task { class XInteractionHandler; }
 
 
 namespace sfx2
@@ -93,7 +95,7 @@ namespace sfx2
 
             @todo
                 This probably can also be obtained from the XModel, by calling getURL
-                or getLocation. If both are empty, then we need an UNO way to obtain
+                or getLocation. If both are empty, then we need a UNO way to obtain
                 the URL of the underlying template document - if any. If we have this,
                 we could replace this method with a newly introduced method
                 getDocumentModel and some internal code.
@@ -103,13 +105,19 @@ namespace sfx2
 
         /** checks whether the document's storage contains sub storages with macros or scripts
 
-            A default implementation of this method will simply cann DocumentMacroMode::storageHasMacros
+            A default implementation of this method will simply call DocumentMacroMode::storageHasMacros
             with the document's root storage. However, there might be document types where this
             isn't sufficient (e.g. database documents which contain sub documents which can also
             contain macro/script storages).
         */
         virtual bool
                     documentStorageHasMacros() const = 0;
+
+        /** checks whether the document's contained calls to macros or scripts after loading
+
+        */
+        virtual bool
+                    macroCallsSeenWhileLoading() const = 0;
 
         /** provides access to the XEmbeddedScripts interface of the document
 
@@ -272,6 +280,7 @@ namespace sfx2
 
             @see isMacroExecutionDisallowed
             @see IMacroDocumentAccess::documentStorageHasMacros
+            @see IMacroDocumentAccess::macroCallsSeenWhileLoading
             @see hasMacroLibrary
             @see IMacroDocumentAccess::checkForBrokenScriptingSignatures
         */

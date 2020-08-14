@@ -17,34 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <stdlib.h>
-
-#include <tools/urlobj.hxx>
-#include <sfx2/app.hxx>
-#include <sfx2/module.hxx>
-#include <svx/dialogs.hrc>
-
-#include "svx/xattr.hxx"
-#include <svx/xpool.hxx>
-#include <cuires.hrc>
+#include <svx/svxids.hrc>
+#include <svx/xfillit0.hxx>
 #include <svx/xflbckit.hxx>
-#include <svx/svdattr.hxx>
-#include <svx/xtable.hxx>
-#include <svx/xlineit0.hxx>
-#include "svx/drawitem.hxx"
-#include "cuitabarea.hxx"
-#include "dlgname.hxx"
-#include <dialmgr.hxx>
-#include "svx/dlgutil.hxx"
-#include <svl/intitem.hxx>
-#include <sfx2/request.hxx>
+#include <svx/drawitem.hxx>
+#include <svx/xflclit.hxx>
+#include <svx/xflgrit.hxx>
+#include <svx/xflhtit.hxx>
+#include <svx/xbtmpit.hxx>
+#include <cuitabarea.hxx>
 #include <sfx2/tabdlg.hxx>
-#include "sfx2/opengrf.hxx"
-#include <vcl/layout.hxx>
 
 using namespace com::sun::star;
 
 // static ----------------------------------------------------------------
+
+namespace {
 
 enum FillType
 {
@@ -55,6 +43,8 @@ enum FillType
     BITMAP,
     PATTERN
 };
+
+}
 
 const sal_uInt16 SvxAreaTabPage::pAreaRanges[] =
 {
@@ -71,9 +61,9 @@ namespace
 void lclExtendSize(Size& rSize, const Size& rInputSize)
 {
     if (rSize.Width() < rInputSize.Width())
-        rSize.Width() = rInputSize.Width();
+        rSize.setWidth( rInputSize.Width() );
     if (rSize.Height() < rInputSize.Height())
-        rSize.Height() = rInputSize.Height();
+        rSize.setHeight( rInputSize.Height() );
 }
 
 } // end anonymous namespace
@@ -84,88 +74,85 @@ void lclExtendSize(Size& rSize, const Size& rInputSize)
 |*
 \************************************************************************/
 
-SvxAreaTabPage::SvxAreaTabPage( vcl::Window* pParent, const SfxItemSet& rInAttrs ) :
-
-    SvxTabPage( pParent,
-                "AreaTabPage",
-                "cui/ui/areatabpage.ui",
-               rInAttrs ),
-    m_pFillTabPage( nullptr ),
-    m_pColorList( nullptr ),
-    m_pGradientList( nullptr ),
-    m_pHatchingList( nullptr ),
-    m_pBitmapList( nullptr ),
-    m_pPatternList( nullptr ),
-
+SvxAreaTabPage::SvxAreaTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
+    : SfxTabPage(pPage, pController, "cui/ui/areatabpage.ui", "AreaTabPage", &rInAttrs)
     // local fixed not o be changed values for local pointers
-    maFixed_ChangeType(ChangeType::NONE),
-
+    , maFixed_ChangeType(ChangeType::NONE)
     // init with pointers to fixed ChangeType
-    m_pnColorListState(&maFixed_ChangeType),
-    m_pnBitmapListState(&maFixed_ChangeType),
-    m_pnPatternListState(&maFixed_ChangeType),
-    m_pnGradientListState(&maFixed_ChangeType),
-    m_pnHatchingListState(&maFixed_ChangeType),
-    m_aXFillAttr          ( rInAttrs.GetPool() ),
-    m_rXFSet              ( m_aXFillAttr.GetItemSet() )
+    , m_pnColorListState(&maFixed_ChangeType)
+    , m_pnBitmapListState(&maFixed_ChangeType)
+    , m_pnPatternListState(&maFixed_ChangeType)
+    , m_pnGradientListState(&maFixed_ChangeType)
+    , m_pnHatchingListState(&maFixed_ChangeType)
+    , m_aXFillAttr(rInAttrs.GetPool())
+    , m_rXFSet(m_aXFillAttr.GetItemSet())
+    , m_xFillTab(m_xBuilder->weld_container("fillstylebox"))
+    , m_xBtnNone(m_xBuilder->weld_toggle_button("btnnone"))
+    , m_xBtnColor(m_xBuilder->weld_toggle_button("btncolor"))
+    , m_xBtnGradient(m_xBuilder->weld_toggle_button("btngradient"))
+    , m_xBtnHatch(m_xBuilder->weld_toggle_button("btnhatch"))
+    , m_xBtnBitmap(m_xBuilder->weld_toggle_button("btnbitmap"))
+    , m_xBtnPattern(m_xBuilder->weld_toggle_button("btnpattern"))
 {
-
-    get(m_pBtnNone, "btnnone");
-    get(m_pBtnColor, "btncolor");
-    get(m_pBtnGradient, "btngradient");
-    get(m_pBtnHatch, "btnhatch");
-    get(m_pBtnBitmap, "btnbitmap");
-    get(m_pBtnPattern, "btnpattern");
-    get(m_pFillTab, "fillstylebox");
-    maBox.AddButton( m_pBtnNone );
-    maBox.AddButton( m_pBtnColor );
-    maBox.AddButton( m_pBtnGradient );
-    maBox.AddButton( m_pBtnHatch );
-    maBox.AddButton( m_pBtnBitmap );
-    maBox.AddButton( m_pBtnPattern );
-    Link< Button*, void > aLink = LINK(this, SvxAreaTabPage, SelectFillTypeHdl_Impl);
-    m_pBtnNone->SetClickHdl(aLink);
-    m_pBtnColor->SetClickHdl(aLink);
-    m_pBtnGradient->SetClickHdl(aLink);
-    m_pBtnHatch->SetClickHdl(aLink);
-    m_pBtnBitmap->SetClickHdl(aLink);
-    m_pBtnPattern->SetClickHdl(aLink);
+    maBox.AddButton(m_xBtnNone.get());
+    maBox.AddButton(m_xBtnColor.get());
+    maBox.AddButton(m_xBtnGradient.get());
+    maBox.AddButton(m_xBtnHatch.get());
+    maBox.AddButton(m_xBtnBitmap.get());
+    maBox.AddButton(m_xBtnPattern.get());
+    Link<weld::ToggleButton&, void> aLink = LINK(this, SvxAreaTabPage, SelectFillTypeHdl_Impl);
+    m_xBtnNone->connect_toggled(aLink);
+    m_xBtnColor->connect_toggled(aLink);
+    m_xBtnGradient->connect_toggled(aLink);
+    m_xBtnHatch->connect_toggled(aLink);
+    m_xBtnBitmap->connect_toggled(aLink);
+    m_xBtnPattern->connect_toggled(aLink);
 
     SetExchangeSupport();
+}
 
-    // Calculate optimal size of all pages..
-    m_pFillTabPage.disposeAndReset(SvxColorTabPage::Create(m_pFillTab, &m_rXFSet));
-    Size aSize = m_pFillTabPage->GetOptimalSize();
-    m_pFillTabPage.disposeAndReset(SvxGradientTabPage::Create(m_pFillTab, &m_rXFSet));
-    lclExtendSize(aSize, m_pFillTabPage->GetOptimalSize());
-    m_pFillTabPage.disposeAndReset(SvxBitmapTabPage::Create(m_pFillTab, &m_rXFSet));
-    lclExtendSize(aSize, m_pFillTabPage->GetOptimalSize());
-    m_pFillTabPage.disposeAndReset(SvxHatchTabPage::Create(m_pFillTab, &m_rXFSet));
-    lclExtendSize(aSize, m_pFillTabPage->GetOptimalSize());
-    m_pFillTabPage.disposeAndReset(SvxPatternTabPage::Create(m_pFillTab, &m_rXFSet));
-    lclExtendSize(aSize, m_pFillTabPage->GetOptimalSize());
-    m_pFillTabPage.disposeAndClear();
+void SvxAreaTabPage::SetOptimalSize(weld::DialogController* pController)
+{
+    m_xFillTab->set_size_request(-1, -1);
 
-    m_pFillTab->set_width_request(aSize.Width());
-    m_pFillTab->set_height_request(aSize.Height());
+    // Calculate optimal size of all pages...
+    m_xFillTabPage = SvxColorTabPage::Create(m_xFillTab.get(), pController, &m_rXFSet);
+    Size aSize(m_xFillTab->get_preferred_size());
+
+    if (m_xBtnGradient->get_visible())
+    {
+        m_xFillTabPage = SvxGradientTabPage::Create(m_xFillTab.get(), pController, &m_rXFSet);
+        Size aGradientSize = m_xFillTab->get_preferred_size();
+        lclExtendSize(aSize, aGradientSize);
+    }
+    if (m_xBtnBitmap->get_visible())
+    {
+        m_xFillTabPage = SvxBitmapTabPage::Create(m_xFillTab.get(), pController, &m_rXFSet);
+        Size aBitmapSize = m_xFillTab->get_preferred_size();
+        lclExtendSize(aSize, aBitmapSize);
+    }
+    if (m_xBtnHatch->get_visible())
+    {
+        m_xFillTabPage = SvxHatchTabPage::Create(m_xFillTab.get(), pController, &m_rXFSet);
+        Size aHatchSize = m_xFillTab->get_preferred_size();
+        lclExtendSize(aSize, aHatchSize);
+    }
+    if (m_xBtnPattern->get_visible())
+    {
+        m_xFillTabPage = SvxPatternTabPage::Create(m_xFillTab.get(), pController, &m_rXFSet);
+        Size aPatternSize = m_xFillTab->get_preferred_size();
+        lclExtendSize(aSize, aPatternSize);
+    }
+    m_xFillTabPage.reset();
+
+    aSize.extendBy(10, 10); // apply a bit of margin
+
+    m_xFillTab->set_size_request(aSize.Width(), aSize.Height());
 }
 
 SvxAreaTabPage::~SvxAreaTabPage()
 {
-    disposeOnce();
-}
-
-void SvxAreaTabPage::dispose()
-{
-    m_pBtnNone.clear();
-    m_pBtnColor.clear();
-    m_pBtnGradient.clear();
-    m_pBtnHatch.clear();
-    m_pBtnBitmap.clear();
-    m_pBtnPattern.clear();
-    m_pFillTab.clear();
-    m_pFillTabPage.disposeAndClear();
-    SvxTabPage::dispose();
+    m_xFillTabPage.reset();
 }
 
 void SvxAreaTabPage::ActivatePage( const SfxItemSet& rSet )
@@ -183,35 +170,39 @@ void SvxAreaTabPage::ActivatePage( const SfxItemSet& rSet )
         default:
         case drawing::FillStyle_NONE:
         {
-            SelectFillTypeHdl_Impl( m_pBtnNone );
+            SelectFillType(*m_xBtnNone);
             break;
         }
         case drawing::FillStyle_SOLID:
         {
             m_rXFSet.Put( static_cast<const XFillColorItem&>( rSet.Get( GetWhich( XATTR_FILLCOLOR ) ) ) );
-            SelectFillTypeHdl_Impl( m_pBtnColor );
+            SelectFillType(*m_xBtnColor);
             break;
         }
         case drawing::FillStyle_GRADIENT:
         {
             m_rXFSet.Put( static_cast<const XFillGradientItem&>( rSet.Get( GetWhich( XATTR_FILLGRADIENT ) ) ) );
-            SelectFillTypeHdl_Impl( m_pBtnGradient );
+            SelectFillType(*m_xBtnGradient);
             break;
         }
         case drawing::FillStyle_HATCH:
         {
-            m_rXFSet.Put( static_cast<const XFillHatchItem&>( rSet.Get(XATTR_FILLHATCH) ) );
-            SelectFillTypeHdl_Impl( m_pBtnHatch );
+            m_rXFSet.Put( rSet.Get(XATTR_FILLHATCH) );
+            m_rXFSet.Put( rSet.Get(XATTR_FILLBACKGROUND) );
+            m_rXFSet.Put( rSet.Get(XATTR_FILLCOLOR) );
+            SelectFillType(*m_xBtnHatch);
             break;
         }
         case drawing::FillStyle_BITMAP:
         {
-            XFillBitmapItem aItem(static_cast<const XFillBitmapItem&>( rSet.Get( GetWhich( XATTR_FILLBITMAP ) ) ));
-            m_rXFSet.Put( aItem );
-            if(!aItem.isPattern())
-                SelectFillTypeHdl_Impl( m_pBtnBitmap );
+            const bool bPattern
+                = rSet.Get(TypedWhichId<XFillBitmapItem>(GetWhich(XATTR_FILLBITMAP))).isPattern();
+            // pass full item set here, bitmap fill has many attributes (tiling, size, offset etc.)
+            m_rXFSet.Put( rSet );
+            if (!bPattern)
+                SelectFillType(*m_xBtnBitmap);
             else
-                SelectFillTypeHdl_Impl( m_pBtnPattern );
+                SelectFillType(*m_xBtnPattern);
             break;
         }
     }
@@ -220,7 +211,7 @@ void SvxAreaTabPage::ActivatePage( const SfxItemSet& rSet )
 template< typename TTabPage >
 DeactivateRC SvxAreaTabPage::DeactivatePage_Impl( SfxItemSet* _pSet )
 {
-    return static_cast<TTabPage&>(*m_pFillTabPage).DeactivatePage(_pSet);
+    return static_cast<TTabPage&>(*m_xFillTabPage).DeactivatePage(_pSet);
 }
 
 DeactivateRC SvxAreaTabPage::DeactivatePage( SfxItemSet* _pSet )
@@ -232,8 +223,11 @@ DeactivateRC SvxAreaTabPage::DeactivatePage( SfxItemSet* _pSet )
         {
             // Fill: None doesn't have its own tabpage and thus
             // implementation of FillItemSet, so we supply it here
-            XFillStyleItem aStyleItem( drawing::FillStyle_NONE );
-            _pSet->Put( aStyleItem );
+            if ( m_bBtnClicked )
+            {
+                XFillStyleItem aStyleItem( drawing::FillStyle_NONE );
+                _pSet->Put( aStyleItem );
+            }
             break;
         }
         case SOLID:
@@ -255,7 +249,7 @@ DeactivateRC SvxAreaTabPage::DeactivatePage( SfxItemSet* _pSet )
 template< typename TTabPage >
 bool SvxAreaTabPage::FillItemSet_Impl( SfxItemSet* rAttrs)
 {
-    return static_cast<TTabPage&>( *m_pFillTabPage ).FillItemSet( rAttrs );
+    return static_cast<TTabPage&>( *m_xFillTabPage ).FillItemSet( rAttrs );
 }
 
 bool SvxAreaTabPage::FillItemSet( SfxItemSet* rAttrs )
@@ -296,11 +290,12 @@ bool SvxAreaTabPage::FillItemSet( SfxItemSet* rAttrs )
 template< typename TTabPage >
 void SvxAreaTabPage::Reset_Impl( const SfxItemSet* rAttrs )
 {
-    static_cast<TTabPage&>( *m_pFillTabPage ).Reset( rAttrs );
+    static_cast<TTabPage&>( *m_xFillTabPage ).Reset( rAttrs );
 }
 
 void SvxAreaTabPage::Reset( const SfxItemSet* rAttrs )
 {
+    m_bBtnClicked = false;
     auto eFillType = maBox.GetCurrentButtonPos();
     switch(eFillType)
     {
@@ -334,15 +329,16 @@ void SvxAreaTabPage::Reset( const SfxItemSet* rAttrs )
     }
 }
 
-VclPtr<SfxTabPage> SvxAreaTabPage::Create( vcl::Window* pWindow,
-                                           const SfxItemSet* rAttrs )
+std::unique_ptr<SfxTabPage> SvxAreaTabPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrs)
 {
-    return VclPtr<SvxAreaTabPage>::Create( pWindow, *rAttrs );
+    auto xRet = std::make_unique<SvxAreaTabPage>(pPage, pController, *rAttrs);
+    xRet->SetOptimalSize(pController);
+    return xRet;
 }
 
 namespace {
 
-VclPtr<SfxTabPage> lcl_CreateFillStyleTabPage( sal_uInt16 nId, vcl::Window* pParent, const SfxItemSet& rSet )
+std::unique_ptr<SfxTabPage> lcl_CreateFillStyleTabPage(sal_uInt16 nId, weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
 {
     CreateTabPage fnCreate = nullptr;
     switch(nId)
@@ -354,21 +350,35 @@ VclPtr<SfxTabPage> lcl_CreateFillStyleTabPage( sal_uInt16 nId, vcl::Window* pPar
         case BITMAP: fnCreate = &SvxBitmapTabPage::Create; break;
         case PATTERN: fnCreate = &SvxPatternTabPage::Create; break;
     }
-    VclPtr<SfxTabPage> pRet = fnCreate ? (*fnCreate)( pParent, &rSet ) : nullptr;
-    return pRet;
+    return fnCreate ? (*fnCreate)( pPage, pController, &rSet ) : nullptr;
 }
 
 }
 
-IMPL_LINK(SvxAreaTabPage, SelectFillTypeHdl_Impl, Button*, pButton, void)
+IMPL_LINK(SvxAreaTabPage, SelectFillTypeHdl_Impl, weld::ToggleButton&, rButton, void)
 {
-    sal_Int32 nPos = maBox.GetButtonPos( static_cast<PushButton*>(pButton) );
-    if(nPos != -1 && nPos != maBox.GetCurrentButtonPos())
+    //tdf#124549 - If the button is already active do not toggle it back.
+    if(!rButton.get_active())
+        rButton.set_active(true);
+
+    SelectFillType(rButton);
+    m_bBtnClicked = true;
+}
+
+void SvxAreaTabPage::SelectFillType(weld::ToggleButton& rButton, const SfxItemSet* _pSet)
+{
+    if (_pSet)
+        m_rXFSet.Set(*_pSet);
+
+    sal_Int32 nPos = maBox.GetButtonPos(&rButton);
+    if (nPos != -1 && (_pSet || nPos != maBox.GetCurrentButtonPos()))
     {
-        maBox.SelectButton(static_cast<PushButton*>(pButton));
+        maBox.SelectButton(&rButton);
         FillType eFillType = static_cast<FillType>(maBox.GetCurrentButtonPos());
-        m_pFillTabPage.disposeAndReset( lcl_CreateFillStyleTabPage(eFillType, m_pFillTab, m_rXFSet) );
-        CreatePage( eFillType , m_pFillTabPage);
+        m_xFillTabPage = lcl_CreateFillStyleTabPage(eFillType, m_xFillTab.get(), GetDialogController(), m_rXFSet);
+        if (m_xFillTabPage)
+            m_xFillTabPage->SetDialogController(GetDialogController());
+        CreatePage(eFillType, m_xFillTabPage.get());
     }
 }
 
@@ -392,62 +402,63 @@ void SvxAreaTabPage::PageCreated(const SfxAllItemSet& aSet)
         SetPatternList(pPatternListItem->GetPatternList());
 }
 
-void SvxAreaTabPage::PointChanged( vcl::Window* , RectPoint )
-{
-}
-
 void SvxAreaTabPage::CreatePage( sal_Int32 nId, SfxTabPage* pTab )
 {
     if(nId == SOLID )
     {
-        static_cast<SvxColorTabPage*>(pTab)->SetColorList( m_pColorList );
-        static_cast<SvxColorTabPage*>(pTab)->SetColorChgd( m_pnColorListState );
-        static_cast<SvxColorTabPage*>(pTab)->Construct();
-        static_cast<SvxColorTabPage*>(pTab)->ActivatePage( m_rXFSet );
-        static_cast<SvxColorTabPage*>(pTab)->Reset(&m_rXFSet);
-        static_cast<SvxColorTabPage*>(pTab)->Show();
+        auto* pColorTab = static_cast<SvxColorTabPage*>(pTab);
+        pColorTab->SetColorList(m_pColorList);
+        pColorTab->SetColorChgd(m_pnColorListState);
+        pColorTab->Construct();
+        pColorTab->ActivatePage(m_rXFSet);
+        pColorTab->Reset(&m_rXFSet);
+        pColorTab->set_visible(true);
     }
     else if(nId == GRADIENT)
     {
-        static_cast<SvxGradientTabPage*>(pTab)->SetColorList( m_pColorList );
-        static_cast<SvxGradientTabPage*>(pTab)->SetGradientList( m_pGradientList );
-        static_cast<SvxGradientTabPage*>(pTab)->SetGrdChgd( m_pnGradientListState );
-        static_cast<SvxGradientTabPage*>(pTab)->SetColorChgd( m_pnColorListState );
-        static_cast<SvxGradientTabPage*>(pTab)->Construct();
-        static_cast<SvxGradientTabPage*>(pTab)->ActivatePage( m_rXFSet );
-        static_cast<SvxGradientTabPage*>(pTab)->Reset(&m_rXFSet);
-        static_cast<SvxGradientTabPage*>(pTab)->Show();
+        auto* pGradientTab = static_cast<SvxGradientTabPage*>(pTab);
+        pGradientTab->SetColorList(m_pColorList);
+        pGradientTab->SetGradientList(m_pGradientList);
+        pGradientTab->SetGrdChgd(m_pnGradientListState);
+        pGradientTab->SetColorChgd(m_pnColorListState);
+        pGradientTab->Construct();
+        pGradientTab->ActivatePage(m_rXFSet);
+        pGradientTab->Reset(&m_rXFSet);
+        pGradientTab->set_visible(true);
     }
     else if(nId == HATCH)
     {
-        static_cast<SvxHatchTabPage*>(pTab)->SetColorList( m_pColorList );
-        static_cast<SvxHatchTabPage*>(pTab)->SetHatchingList( m_pHatchingList );
-        static_cast<SvxHatchTabPage*>(pTab)->SetHtchChgd( m_pnHatchingListState );
-        static_cast<SvxHatchTabPage*>(pTab)->SetColorChgd( m_pnColorListState );
-        static_cast<SvxHatchTabPage*>(pTab)->Construct();
-        static_cast<SvxHatchTabPage*>(pTab)->ActivatePage( m_rXFSet );
-        static_cast<SvxHatchTabPage*>(pTab)->Reset(&m_rXFSet);
-        static_cast<SvxHatchTabPage*>(pTab)->Show();
+        auto* pHatchTab = static_cast<SvxHatchTabPage*>(pTab);
+        pHatchTab->SetColorList(m_pColorList);
+        pHatchTab->SetHatchingList(m_pHatchingList);
+        pHatchTab->SetHtchChgd(m_pnHatchingListState);
+        pHatchTab->SetColorChgd(m_pnColorListState);
+        pHatchTab->Construct();
+        pHatchTab->ActivatePage(m_rXFSet);
+        pHatchTab->Reset(&m_rXFSet);
+        pHatchTab->set_visible(true);
     }
     else if(nId == BITMAP)
     {
-        static_cast<SvxBitmapTabPage*>(pTab)->SetBitmapList( m_pBitmapList );
-        static_cast<SvxBitmapTabPage*>(pTab)->SetBmpChgd( m_pnBitmapListState );
-        static_cast<SvxBitmapTabPage*>(pTab)->Construct();
-        static_cast<SvxBitmapTabPage*>(pTab)->ActivatePage( m_rXFSet );
-        static_cast<SvxBitmapTabPage*>(pTab)->Reset(&m_rXFSet);
-        static_cast<SvxBitmapTabPage*>(pTab)->Show();
+        auto* pBitmapTab = static_cast<SvxBitmapTabPage*>(pTab);
+        pBitmapTab->SetBitmapList(m_pBitmapList);
+        pBitmapTab->SetBmpChgd(m_pnBitmapListState);
+        pBitmapTab->Construct();
+        pBitmapTab->ActivatePage(m_rXFSet);
+        pBitmapTab->Reset(&m_rXFSet);
+        pBitmapTab->set_visible(true);
     }
     else if(nId == PATTERN)
     {
-        static_cast<SvxPatternTabPage*>(pTab)->SetColorList( m_pColorList );
-        static_cast<SvxPatternTabPage*>(pTab)->SetPatternList( m_pPatternList );
-        static_cast<SvxPatternTabPage*>(pTab)->SetPtrnChgd( m_pnPatternListState );
-        static_cast<SvxPatternTabPage*>(pTab)->SetColorChgd( m_pnColorListState );
-        static_cast<SvxPatternTabPage*>(pTab)->Construct();
-        static_cast<SvxPatternTabPage*>(pTab)->ActivatePage( m_rXFSet );
-        static_cast<SvxPatternTabPage*>(pTab)->Reset( &m_rXFSet );
-        static_cast<SvxPatternTabPage*>(pTab)->Show();
+        auto* pPatternTab = static_cast<SvxPatternTabPage*>(pTab);
+        pPatternTab->SetColorList(m_pColorList);
+        pPatternTab->SetPatternList(m_pPatternList);
+        pPatternTab->SetPtrnChgd(m_pnPatternListState);
+        pPatternTab->SetColorChgd(m_pnColorListState);
+        pPatternTab->Construct();
+        pPatternTab->ActivatePage(m_rXFSet);
+        pPatternTab->Reset(&m_rXFSet);
+        pPatternTab->set_visible(true);
     }
 }
 

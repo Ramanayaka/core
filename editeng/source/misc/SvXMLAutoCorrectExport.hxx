@@ -19,10 +19,7 @@
 #ifndef INCLUDED_EDITENG_SOURCE_MISC_SVXMLAUTOCORRECTEXPORT_HXX
 #define INCLUDED_EDITENG_SOURCE_MISC_SVXMLAUTOCORRECTEXPORT_HXX
 
-#include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlexp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
 #include <editeng/svxacorr.hxx>
 
 class SvXMLAutoCorrectExport : public SvXMLExport
@@ -34,7 +31,7 @@ public:
         const css::uno::Reference< css::uno::XComponentContext > & xContext,
         const SvxAutocorrWordList * pNewAutocorr_List,
         const OUString &rFileName,
-        css::uno::Reference< css::xml::sax::XDocumentHandler> &rHandler);
+        css::uno::Reference< css::xml::sax::XDocumentHandler> const &rHandler);
 
     ErrCode exportDoc(enum ::xmloff::token::XMLTokenEnum eClass = ::xmloff::token::XML_TOKEN_INVALID) override;
     void ExportAutoStyles_() override {}
@@ -53,7 +50,7 @@ public:
         const css::uno::Reference< css::uno::XComponentContext > & xContext,
         const SvStringsISortDtor &rNewList,
         const OUString &rFileName,
-        css::uno::Reference< css::xml::sax::XDocumentHandler> &rHandler);
+        css::uno::Reference< css::xml::sax::XDocumentHandler> const &rHandler);
 
     ErrCode exportDoc(enum ::xmloff::token::XMLTokenEnum eClass = ::xmloff::token::XML_TOKEN_INVALID) override;
     void ExportAutoStyles_() override {}

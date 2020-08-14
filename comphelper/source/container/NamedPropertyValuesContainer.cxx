@@ -19,7 +19,6 @@
 
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/uno/Sequence.h>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -28,9 +27,12 @@
 #include <map>
 
 
+namespace com::sun::star::uno { class XComponentContext; }
 using namespace com::sun::star;
 
 typedef std::map< OUString, uno::Sequence<beans::PropertyValue> > NamedPropertyValues;
+
+namespace {
 
 class NamedPropertyValuesContainer : public cppu::WeakImplHelper< container::XNameContainer, lang::XServiceInfo >
 {
@@ -62,6 +64,8 @@ private:
     NamedPropertyValues maProperties;
 };
 
+}
+
 NamedPropertyValuesContainer::NamedPropertyValuesContainer() throw()
 {
 }
@@ -76,7 +80,7 @@ void SAL_CALL NamedPropertyValuesContainer::insertByName( const OUString& aName,
     if( !(aElement >>= aProps ) )
         throw lang::IllegalArgumentException();
 
-    maProperties.insert(  NamedPropertyValues::value_type(aName ,aProps) );
+    maProperties.emplace( aName, aProps );
 }
 
 void SAL_CALL NamedPropertyValuesContainer::removeByName( const OUString& Name )
@@ -141,7 +145,7 @@ sal_Bool SAL_CALL NamedPropertyValuesContainer::hasElements(  )
 //XServiceInfo
 OUString SAL_CALL NamedPropertyValuesContainer::getImplementationName(  )
 {
-    return OUString( "NamedPropertyValuesContainer" );
+    return "NamedPropertyValuesContainer";
 }
 
 sal_Bool SAL_CALL NamedPropertyValuesContainer::supportsService( const OUString& ServiceName )
@@ -151,12 +155,10 @@ sal_Bool SAL_CALL NamedPropertyValuesContainer::supportsService( const OUString&
 
 css::uno::Sequence< OUString > SAL_CALL NamedPropertyValuesContainer::getSupportedServiceNames(  )
 {
-    const OUString aServiceName( "com.sun.star.document.NamedPropertyValues" );
-    const uno::Sequence< OUString > aSeq( &aServiceName, 1 );
-    return aSeq;
+    return { "com.sun.star.document.NamedPropertyValues" };
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 NamedPropertyValuesContainer_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

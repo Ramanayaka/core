@@ -18,21 +18,16 @@
  */
 
 #include <helper/tagwindowasmodified.hxx>
-#include <pattern/window.hxx>
-#include <services.h>
 
 #include <com/sun/star/awt/XWindow.hpp>
 
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/frame/FrameAction.hpp>
 
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/window.hxx>
-#include <vcl/syswin.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
 #include <tools/wintypes.hxx>
 
 namespace framework{
@@ -49,7 +44,7 @@ void SAL_CALL TagWindowAsModified::initialize(const css::uno::Sequence< css::uno
 {
     css::uno::Reference< css::frame::XFrame > xFrame;
 
-    if (lArguments.getLength() > 0)
+    if (lArguments.hasElements())
         lArguments[0] >>= xFrame;
 
     if ( ! xFrame.is ())
@@ -95,9 +90,9 @@ void SAL_CALL TagWindowAsModified::modified(const css::lang::EventObject& aEvent
         return;
 
     if (bModified)
-        pWindow->SetExtendedStyle(WB_EXT_DOCMODIFIED);
+        pWindow->SetExtendedStyle(WindowExtendedStyle::DocModified);
     else
-        pWindow->SetExtendedStyle(0);
+        pWindow->SetExtendedStyle(WindowExtendedStyle::NONE);
     // <- SYNCHRONIZED
 }
 

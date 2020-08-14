@@ -19,10 +19,9 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_SEQUENTIALTIMECONTAINER_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_SEQUENTIALTIMECONTAINER_HXX
 
-#include "basecontainernode.hxx"
+#include <basecontainernode.hxx>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /** This class implements sequential node containers
 
@@ -55,11 +54,9 @@ private:
     bool resolveChild( AnimationNodeSharedPtr const& pChildNode );
 
     EventSharedPtr mpCurrentSkipEvent;
-    EventSharedPtr mpCurrentRewindEvent;
 };
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_SEQUENTIALTIMECONTAINER_HXX
 

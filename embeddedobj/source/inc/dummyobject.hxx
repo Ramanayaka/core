@@ -31,7 +31,7 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/interfacecontainer.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace embed {
         class XStorage;
     }
@@ -42,12 +42,16 @@ namespace com { namespace sun { namespace star {
         struct PropertyValue;
         struct NamedValue;
     }
-}}}
+}
 
 namespace cppu {
     class OMultiTypeInterfaceContainerHelper;
 }
 
+/**
+ * Represents an OLE object that has native data (next to the replacement
+ * image), but we don't understand that data.
+ */
 class ODummyEmbeddedObject : public ::cppu::WeakImplHelper
                         < css::embed::XEmbeddedObject
                         , css::embed::XEmbedPersist >

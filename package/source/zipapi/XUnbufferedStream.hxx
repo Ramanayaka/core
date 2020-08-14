@@ -32,21 +32,20 @@
 #include <ZipEntry.hxx>
 #include <CRC32.hxx>
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-} } } }
+}
 
 #define UNBUFF_STREAM_DATA          0
 #define UNBUFF_STREAM_RAW           1
 #define UNBUFF_STREAM_WRAPPEDRAW    2
 
 class EncryptionData;
-class XUnbufferedStream : public cppu::WeakImplHelper
+class XUnbufferedStream final : public cppu::WeakImplHelper
 <
     css::io::XInputStream
 >
 {
-protected:
     rtl::Reference<comphelper::RefCountedMutex> maMutexHolder;
 
     css::uno::Reference < css::io::XInputStream > mxZipStream;
@@ -66,7 +65,7 @@ public:
     XUnbufferedStream(
                  const css::uno::Reference< css::uno::XComponentContext >& xContext,
                  const rtl::Reference<comphelper::RefCountedMutex>& aMutexHolder,
-                 ZipEntry & rEntry,
+                 ZipEntry const & rEntry,
                  css::uno::Reference < css::io::XInputStream > const & xNewZipStream,
                  const ::rtl::Reference< EncryptionData >& rData,
                  sal_Int8 nStreamMode,
@@ -76,10 +75,11 @@ public:
 
     // allows to read package raw stream
     XUnbufferedStream(
-                 const css::uno::Reference< css::uno::XComponentContext >& xContext,
                  const rtl::Reference<comphelper::RefCountedMutex>& aMutexHolder,
                  const css::uno::Reference < css::io::XInputStream >& xRawStream,
                  const ::rtl::Reference< EncryptionData >& rData );
+
+    sal_Int64 getSize() const { return mnZipSize; }
 
     virtual ~XUnbufferedStream() override;
 

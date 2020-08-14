@@ -24,19 +24,18 @@
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
 #include <sal/types.h>
-#include <rsc/rscsfx.hxx>
-#include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmlictxt.hxx>
+#include <xmloff/families.hxx>
 #include <memory>
 
 class SvXMLStylesContext_Impl;
-class SvXMLUnitConverter;
 class SvXMLImportPropertyMapper;
+class SvXMLTokenMap;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
 namespace container { class XNameContainer; }
 namespace style { class XAutoStyleFamily; }
-} } }
+}
 
 enum XMLStyleStylesElemTokens
 {
@@ -66,7 +65,7 @@ class XMLOFF_DLLPUBLIC SvXMLStyleContext : public SvXMLImportContext
     OUString     maFollow;    // Will be moved to XMLPropStyle soon!!!!
     bool         mbHidden;
 
-    sal_uInt16   mnFamily;
+    XmlStyleFamily mnFamily;
 
     bool         mbValid : 1; // Set this to false in CreateAndInsert
                               // if the style shouldn't be processed
@@ -81,7 +80,7 @@ protected:
                                const OUString& rLocalName,
                                const OUString& rValue );
 
-    void SetFamily( sal_uInt16 nSet ) { mnFamily = nSet; }
+    void SetFamily( XmlStyleFamily nSet ) { mnFamily = nSet; }
     void SetAutoName( const OUString& rName ) { maAutoName = rName; }
 
 public:
@@ -90,17 +89,19 @@ public:
     SvXMLStyleContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
         const OUString& rLName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList,
-              sal_uInt16 nFamily=0,
+              XmlStyleFamily nFamily=XmlStyleFamily::DATA_STYLE,
               bool bDefaultStyle = false );
+
+    SvXMLStyleContext( SvXMLImport& rImport,
+            sal_Int32 nElement,
+            const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList,
+            XmlStyleFamily nFamily=XmlStyleFamily::DATA_STYLE,
+            bool bDefaultStyle = false );
 
     virtual ~SvXMLStyleContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
-
     virtual void StartElement(
-        const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
+        const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) final override;
 
     const OUString&  GetName() const { return maName; }
     const OUString&  GetDisplayName() const { return maDisplayName.getLength() ? maDisplayName : maName; }
@@ -108,7 +109,7 @@ public:
     const OUString&  GetParentName() const { return maParentName; }
     const OUString&  GetFollow() const { return maFollow; }
 
-    sal_uInt16 GetFamily() const { return mnFamily; }
+    XmlStyleFamily GetFamily() const { return mnFamily; }
 
     bool IsValid() const { return mbValid; }
     void SetValid( bool b ) { mbValid = b; }
@@ -129,7 +130,7 @@ public:
     // it into the document if this hasn't happened already in CreateAndInsert().
     virtual void CreateAndInsertLate( bool bOverwrite );
 
-    // This method is called fpr every style after all styles have been
+    // This method is called for every style after all styles have been
     // inserted into the document.
     virtual void Finish( bool bOverwrite );
 
@@ -148,9 +149,6 @@ public:
 
 class XMLOFF_DLLPUBLIC SvXMLStylesContext : public SvXMLImportContext
 {
-    const OUString msParaStyleServiceName;
-    const OUString msTextStyleServiceName;
-
     std::unique_ptr<SvXMLStylesContext_Impl> mpImpl;
     std::unique_ptr<SvXMLTokenMap>           mpStyleStylesElemTokenMap;
 
@@ -171,8 +169,8 @@ class XMLOFF_DLLPUBLIC SvXMLStylesContext : public SvXMLImportContext
 
     SAL_DLLPRIVATE const SvXMLTokenMap& GetStyleStylesElemTokenMap();
 
-    SvXMLStylesContext(SvXMLStylesContext &) = delete;
-    void operator =(SvXMLStylesContext &) = delete;
+    SvXMLStylesContext(SvXMLStylesContext const &) = delete;
+    SvXMLStylesContext& operator =(SvXMLStylesContext const &) = delete;
 
 protected:
 
@@ -184,28 +182,33 @@ protected:
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList );
 
-    virtual SvXMLStyleContext *CreateStyleStyleChildContext( sal_uInt16 nFamily,
+    virtual SvXMLStyleContext *CreateStyleStyleChildContext( XmlStyleFamily nFamily,
         sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList );
 
     virtual SvXMLStyleContext *CreateDefaultStyleStyleChildContext(
-        sal_uInt16 nFamily, sal_uInt16 nPrefix,
+        XmlStyleFamily nFamily, sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList );
 
-    virtual bool InsertStyleFamily( sal_uInt16 nFamily ) const;
+    virtual bool InsertStyleFamily( XmlStyleFamily nFamily ) const;
 
 public:
 
-    SvXMLStylesContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
-        const OUString& rLName,
-        const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
+    SvXMLStylesContext( SvXMLImport& rImport,
         bool bAutomatic = false );
 
     virtual ~SvXMLStylesContext() override;
 
+    virtual void SAL_CALL startFastElement( sal_Int32 /*nElement*/,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override {}
+
     // Create child element.
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
+
+    // Create child element.
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 
@@ -216,26 +219,26 @@ public:
     void AddStyle(SvXMLStyleContext& rNew);
 
     const SvXMLStyleContext *FindStyleChildContext(
-                                      sal_uInt16 nFamily,
+                                      XmlStyleFamily nFamily,
                                       const OUString& rName,
                                       bool bCreateIndex = false ) const;
-    virtual sal_uInt16 GetFamily( const OUString& rFamily ) const;
+    static XmlStyleFamily GetFamily( const OUString& rFamily );
     virtual rtl::Reference < SvXMLImportPropertyMapper > GetImportPropertyMapper(
-                        sal_uInt16 nFamily ) const;
+                        XmlStyleFamily nFamily ) const;
 
     virtual css::uno::Reference< css::container::XNameContainer >
-        GetStylesContainer( sal_uInt16 nFamily ) const;
-    virtual OUString GetServiceName( sal_uInt16 nFamily ) const;
+        GetStylesContainer( XmlStyleFamily nFamily ) const;
+    virtual OUString GetServiceName( XmlStyleFamily nFamily ) const;
 
     css::uno::Reference< css::style::XAutoStyleFamily >
-        GetAutoStyles( sal_uInt16 nFamily ) const;
+        GetAutoStyles( XmlStyleFamily nFamily ) const;
     void CopyAutoStylesToDoc();
     void CopyStylesToDoc( bool bOverwrite, bool bFinish = true );
     void FinishStyles( bool bOverwrite );
 
     // This method must be called to release the references to all styles
     // that are stored in the context.
-    void Clear();
+    void dispose();
     bool IsAutomaticStyle() const;
 };
 

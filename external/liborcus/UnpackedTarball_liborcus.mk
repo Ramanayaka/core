@@ -13,12 +13,13 @@ $(eval $(call gb_UnpackedTarball_set_tarball,liborcus,$(ORCUS_TARBALL)))
 
 $(eval $(call gb_UnpackedTarball_set_patchlevel,liborcus,1))
 
+$(eval $(call gb_UnpackedTarball_update_autoconf_configs,liborcus))
+
 $(eval $(call gb_UnpackedTarball_add_patches,liborcus,\
-	external/liborcus/0001-workaround-a-linking-problem-on-windows.patch \
 	external/liborcus/rpath.patch.0 \
-	external/liborcus/visibility.patch.0 \
-	external/liborcus/iOS.patch \
-	external/liborcus/nullptr-in-ostringstream.patch.1 \
+	external/liborcus/gcc9.patch.0 \
+	external/liborcus/libtool.patch.0 \
+	external/liborcus/fix-pch.patch.0 \
 ))
 
 ifeq ($(OS),WNT)
@@ -26,11 +27,5 @@ $(eval $(call gb_UnpackedTarball_add_patches,liborcus,\
 	external/liborcus/windows-constants-hack.patch \
 ))
 endif
-ifeq ($(OS),ANDROID)
-$(eval $(call gb_UnpackedTarball_add_patches,liborcus,\
-	external/liborcus/android-workaround.patch \
-))
-endif
-
 
 # vim: set noet sw=4 ts=4:

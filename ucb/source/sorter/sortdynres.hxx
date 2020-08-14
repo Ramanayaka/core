@@ -24,10 +24,10 @@
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/ucb/XDynamicResultSet.hpp>
 #include <com/sun/star/ucb/XDynamicResultSetListener.hpp>
-#include <com/sun/star/ucb/ListenerAlreadySetException.hpp>
 #include <com/sun/star/ucb/XSortedDynamicResultSetFactory.hpp>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <memory>
 #include "sortresult.hxx"
 
 
@@ -35,8 +35,6 @@ namespace comphelper {
     class OInterfaceContainerHelper2;
 }
 
-#define DYNAMIC_RESULTSET_SERVICE_NAME  "com.sun.star.ucb.SortedDynamicResultSet"
-#define DYNAMIC_RESULTSET_FACTORY_NAME  "com.sun.star.ucb.SortedDynamicResultSetFactory"
 
 class SortedDynamicResultSetListener;
 
@@ -44,7 +42,7 @@ class SortedDynamicResultSet: public cppu::WeakImplHelper <
     css::lang::XServiceInfo,
     css::ucb::XDynamicResultSet >
 {
-    comphelper::OInterfaceContainerHelper2 *mpDisposeEventListeners;
+    std::unique_ptr<comphelper::OInterfaceContainerHelper2>  mpDisposeEventListeners;
 
     css::uno::Reference < css::ucb::XDynamicResultSetListener > mxListener;
 
@@ -136,7 +134,7 @@ public:
 
     // own methods:
 
-    void SAL_CALL impl_OwnerDies();
+    void impl_OwnerDies();
 };
 
 
@@ -155,18 +153,11 @@ public:
 
 
     // XServiceInfo
-
-    static css::uno::Reference< css::lang::XSingleServiceFactory > createServiceFactory(
-            const css::uno::Reference< css::lang::XMultiServiceFactory >& rxServiceMgr );
-
-    // XSortedDynamicResultSetFactory
-
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-    static OUString getImplementationName_Static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
 
+    // XSortedDynamicResultSetFactory
     virtual css::uno::Reference< css::ucb::XDynamicResultSet > SAL_CALL
     createSortedDynamicResultSet(
                 const css::uno::Reference< css::ucb::XDynamicResultSet > & Source,

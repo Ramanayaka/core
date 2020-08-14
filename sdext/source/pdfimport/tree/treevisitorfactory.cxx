@@ -18,31 +18,33 @@
  */
 
 
-#include "treevisitorfactory.hxx"
+#include <treevisitorfactory.hxx>
 #include "writertreevisiting.hxx"
 #include "drawtreevisiting.hxx"
 
 namespace pdfi
 {
+    namespace {
+
     struct WriterTreeVisitorFactory : public TreeVisitorFactory
     {
         WriterTreeVisitorFactory() {}
 
         virtual std::shared_ptr<ElementTreeVisitor> createOptimizingVisitor(PDFIProcessor& rProc) const override
         {
-            return std::shared_ptr<ElementTreeVisitor>(new WriterXmlOptimizer(rProc));
+            return std::make_shared<WriterXmlOptimizer>(rProc);
         }
 
         virtual std::shared_ptr<ElementTreeVisitor> createStyleCollectingVisitor(
             StyleContainer& rStyles,
             PDFIProcessor&  rProc ) const override
         {
-            return std::shared_ptr<ElementTreeVisitor>(new WriterXmlFinalizer(rStyles,rProc));
+            return std::make_shared<WriterXmlFinalizer>(rStyles,rProc);
         }
 
         virtual std::shared_ptr<ElementTreeVisitor> createEmittingVisitor(EmitContext& rEmitContext) const override
         {
-            return std::shared_ptr<ElementTreeVisitor>(new WriterXmlEmitter(rEmitContext));
+            return std::make_shared<WriterXmlEmitter>(rEmitContext);
         }
     };
 
@@ -52,21 +54,19 @@ namespace pdfi
 
         virtual std::shared_ptr<ElementTreeVisitor> createOptimizingVisitor(PDFIProcessor& rProc) const override
         {
-            return std::shared_ptr<ElementTreeVisitor>(new DrawXmlOptimizer(rProc));
+            return std::make_shared<DrawXmlOptimizer>(rProc);
         }
 
         virtual std::shared_ptr<ElementTreeVisitor> createStyleCollectingVisitor(
             StyleContainer& rStyles,
             PDFIProcessor&  rProc ) const override
         {
-            return std::shared_ptr<ElementTreeVisitor>(new DrawXmlFinalizer(rStyles,rProc));
+            return std::make_shared<DrawXmlFinalizer>(rStyles,rProc);
         }
 
         virtual std::shared_ptr<ElementTreeVisitor> createEmittingVisitor(EmitContext& rEmitContext) const override
         {
-            return std::shared_ptr<ElementTreeVisitor>(new DrawXmlEmitter(rEmitContext,
-                                                                            DrawXmlEmitter::IMPRESS_DOC
-                                                                            ));
+            return std::make_shared<DrawXmlEmitter>(rEmitContext, DrawXmlEmitter::IMPRESS_DOC);
         }
     };
 
@@ -76,35 +76,35 @@ namespace pdfi
 
         virtual std::shared_ptr<ElementTreeVisitor> createOptimizingVisitor(PDFIProcessor& rProc) const override
         {
-            return std::shared_ptr<ElementTreeVisitor>(new DrawXmlOptimizer(rProc));
+            return std::make_shared<DrawXmlOptimizer>(rProc);
         }
 
         virtual std::shared_ptr<ElementTreeVisitor> createStyleCollectingVisitor(
             StyleContainer& rStyles,
             PDFIProcessor&  rProc ) const override
         {
-            return std::shared_ptr<ElementTreeVisitor>(new DrawXmlFinalizer(rStyles,rProc));
+            return std::make_shared<DrawXmlFinalizer>(rStyles,rProc);
         }
 
         virtual std::shared_ptr<ElementTreeVisitor> createEmittingVisitor(EmitContext& rEmitContext) const override
         {
-            return std::shared_ptr<ElementTreeVisitor>(new DrawXmlEmitter(rEmitContext,
-                                                                            DrawXmlEmitter::DRAW_DOC
-                                                                            ));
+            return std::make_shared<DrawXmlEmitter>(rEmitContext, DrawXmlEmitter::DRAW_DOC);
         }
     };
 
+    }
+
     TreeVisitorFactorySharedPtr createWriterTreeVisitorFactory()
     {
-        return TreeVisitorFactorySharedPtr(new WriterTreeVisitorFactory());
+        return std::make_shared<WriterTreeVisitorFactory>();
     }
     TreeVisitorFactorySharedPtr createImpressTreeVisitorFactory()
     {
-        return TreeVisitorFactorySharedPtr(new ImpressTreeVisitorFactory());
+        return std::make_shared<ImpressTreeVisitorFactory>();
     }
     TreeVisitorFactorySharedPtr createDrawTreeVisitorFactory()
     {
-        return TreeVisitorFactorySharedPtr(new DrawTreeVisitorFactory());
+        return std::make_shared<DrawTreeVisitorFactory>();
     }
 }
 

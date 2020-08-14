@@ -17,22 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PageMasterImportContext.hxx"
-#include <xmloff/xmlnmspe.hxx>
+#include <PageMasterImportContext.hxx>
+#include <xmloff/xmlimppr.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/xmlprmap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include "PageMasterPropHdl.hxx"
 #include "PagePropertySetContext.hxx"
 #include "PageHeaderFooterContext.hxx"
-#include "PageMasterPropMapper.hxx"
-#include "PageMasterImportPropMapper.hxx"
-#include <xmloff/PageMasterStyleMap.hxx>
+#include <PageMasterStyleMap.hxx>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <osl/diagnose.h>
 
 //
-#include <xmlsdtypes.hxx>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <xmloff/xmlerror.hxx>
+#include <xmloff/XMLTextMasterPageContext.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::xmloff::token;
@@ -63,7 +65,7 @@ PageStyleContext::PageStyleContext( SvXMLImport& rImport,
         const uno::Reference< xml::sax::XAttributeList > & xAttrList,
         SvXMLStylesContext& rStyles,
         bool bDefaultStyle) :
-    XMLPropStyleContext( rImport, nPrfx, rLName, xAttrList, rStyles, XML_STYLE_FAMILY_PAGE_MASTER, bDefaultStyle),
+    XMLPropStyleContext( rImport, nPrfx, rLName, xAttrList, rStyles, XmlStyleFamily::PAGE_MASTER, bDefaultStyle),
     sPageUsage(),
     m_bIsFillStyleAlreadyConverted(false) //
 {
@@ -73,7 +75,7 @@ PageStyleContext::~PageStyleContext()
 {
 }
 
-SvXMLImportContext *PageStyleContext::CreateChildContext(
+SvXMLImportContextRef PageStyleContext::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const uno::Reference< xml::sax::XAttributeList > & xAttrList )
@@ -157,17 +159,26 @@ SvXMLImportContext *PageStyleContext::CreateChildContext(
     return XMLPropStyleContext::CreateChildContext(nPrefix, rLocalName, xAttrList);
 }
 
-void PageStyleContext::FillPropertySet(const uno::Reference<beans::XPropertySet > & rPropSet)
+void PageStyleContext::FillPropertySet(const uno::Reference<beans::XPropertySet > &)
+{
+    assert(false); // don't call this virtual, call function below
+}
+
+void PageStyleContext::FillPropertySet_PageStyle(
+        const uno::Reference<beans::XPropertySet> & rPropSet,
+        XMLPropStyleContext *const pDrawingPageStyle)
 {
     // need to filter out old fill definitions when the new ones are used. The new
     // ones are used when a FillStyle is defined
-    if(!m_bIsFillStyleAlreadyConverted && GetProperties().size())
+    if(!m_bIsFillStyleAlreadyConverted && !GetProperties().empty())
     {
-        static ::rtl::OUString s_FillStyle("FillStyle");
-        static ::rtl::OUString s_HeaderFillStyle("HeaderFillStyle");
-        static ::rtl::OUString s_FooterFillStyle("FooterFillStyle");
+        static OUString s_FillStyle("FillStyle");
+        static OUString s_HeaderFillStyle("HeaderFillStyle");
+        static OUString s_FooterFillStyle("FooterFillStyle");
 
-        if(doNewDrawingLayerFillStyleDefinitionsExist(s_FillStyle))
+        // note: the function must only check by property name, not any id/flag!
+        if (doNewDrawingLayerFillStyleDefinitionsExist(s_FillStyle)
+            || (pDrawingPageStyle && pDrawingPageStyle->doNewDrawingLayerFillStyleDefinitionsExist(s_FillStyle)))
         {
             deactivateOldFillStyleDefinitions(getStandardSet());
         }
@@ -216,12 +227,12 @@ void PageStyleContext::FillPropertySet(const uno::Reference<beans::XPropertySet 
         };
 
         // the style families associated with the same index modulo 4
-        static sal_uInt16 aFamilies[] =
+        static const XmlStyleFamily aFamilies[] =
         {
-            XML_STYLE_FAMILY_SD_GRADIENT_ID,
-            XML_STYLE_FAMILY_SD_GRADIENT_ID,
-            XML_STYLE_FAMILY_SD_HATCH_ID,
-            XML_STYLE_FAMILY_SD_FILL_IMAGE_ID
+            XmlStyleFamily::SD_GRADIENT_ID,
+            XmlStyleFamily::SD_GRADIENT_ID,
+            XmlStyleFamily::SD_HATCH_ID,
+            XmlStyleFamily::SD_FILL_IMAGE_ID
         };
 
         // Fill PropertySet, but let it handle special properties not itself
@@ -256,7 +267,7 @@ void PageStyleContext::FillPropertySet(const uno::Reference<beans::XPropertySet 
                     case CTF_PM_FOOTERFILLBITMAPNAME:
                     {
                         struct XMLPropertyState& rState = GetProperties()[nIndex];
-                        rtl::OUString sStyleName;
+                        OUString sStyleName;
                         rState.maValue >>= sStyleName;
 
                         // translate the used name from ODF intern to the name used in the Model
@@ -265,7 +276,7 @@ void PageStyleContext::FillPropertySet(const uno::Reference<beans::XPropertySet 
                         try
                         {
                             // set property
-                            const rtl::OUString& rPropertyName = rMapper->GetEntryAPIName(rState.mnIndex);
+                            const OUString& rPropertyName = rMapper->GetEntryAPIName(rState.mnIndex);
 
                             if(!xInfo.is())
                             {
@@ -295,6 +306,12 @@ void PageStyleContext::FillPropertySet(const uno::Reference<beans::XPropertySet 
         OSL_ENSURE(xImpPrMap.is(), "Got no SvXMLImportPropertyMapper (!)");
     }
 
+    // pDrawingPageStyle overrides this
+    if (pDrawingPageStyle)
+    {
+        pDrawingPageStyle->FillPropertySet(rPropSet);
+    }
+
     // old code, replaced by above stuff
     // XMLPropStyleContext::FillPropertySet(rPropSet);
 
@@ -307,6 +324,24 @@ void PageStyleContext::FillPropertySet(const uno::Reference<beans::XPropertySet 
     }
 }
 
+extern ContextID_Index_Pair const g_MasterPageContextIDs[] =
+{
+    { CTF_PM_FILLGRADIENTNAME, -1 },
+    { CTF_PM_FILLTRANSNAME, -1 },
+    { CTF_PM_FILLHATCHNAME, -1 },
+    { CTF_PM_FILLBITMAPNAME, -1 },
+
+    {-1, -1}
+};
+
+extern XmlStyleFamily const g_MasterPageFamilies[] =
+{
+    XmlStyleFamily::SD_GRADIENT_ID,
+    XmlStyleFamily::SD_GRADIENT_ID,
+    XmlStyleFamily::SD_HATCH_ID,
+    XmlStyleFamily::SD_FILL_IMAGE_ID
+};
+
 // text grid enhancement for better CJK support
 //set default page layout style
 void PageStyleContext::SetDefaults( )
@@ -317,7 +352,7 @@ void PageStyleContext::SetDefaults( )
         Reference < XInterface > xInt = xFactory->createInstance( "com.sun.star.text.Defaults" );
         Reference < beans::XPropertySet > xProperties ( xInt, UNO_QUERY );
         if ( xProperties.is() )
-            FillPropertySet ( xProperties );
+            FillPropertySet_PageStyle(xProperties, nullptr);
     }
 }
 

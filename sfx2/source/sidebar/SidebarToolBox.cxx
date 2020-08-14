@@ -18,16 +18,19 @@
  */
 
 #include <sfx2/sidebar/SidebarToolBox.hxx>
-#include <sfx2/sidebar/ControllerFactory.hxx>
+#include <sidebar/ControllerFactory.hxx>
 #include <sfx2/viewfrm.hxx>
 
-#include <vcl/builderfactory.hxx>
 #include <vcl/commandinfoprovider.hxx>
+#include <vcl/event.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <svtools/miscopt.hxx>
 #include <com/sun/star/frame/XSubToolbarController.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
+#include <com/sun/star/frame/XToolbarController.hpp>
 
 using namespace css;
 using namespace css::uno;
@@ -50,12 +53,13 @@ namespace {
     }
 }
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 SidebarToolBox::SidebarToolBox (vcl::Window* pParentWindow)
     : ToolBox(pParentWindow, 0),
       mbAreHandlersRegistered(false),
-      mbUseDefaultButtonSize(true)
+      mbUseDefaultButtonSize(true),
+      mbSideBar(true)
 {
     SetBackground(Wallpaper());
     SetPaintTransparent(true);
@@ -79,11 +83,9 @@ void SidebarToolBox::dispose()
 
     ControllerContainer aControllers;
     aControllers.swap(maControllers);
-    for (ControllerContainer::iterator iController(aControllers.begin()), iEnd(aControllers.end());
-         iController!=iEnd;
-         ++iController)
+    for (auto const& controller : aControllers)
     {
-        Reference<lang::XComponent> xComponent(iController->second, UNO_QUERY);
+        Reference<lang::XComponent> xComponent(controller.second, UNO_QUERY);
         if (xComponent.is())
             xComponent->dispose();
     }
@@ -120,7 +122,7 @@ void SidebarToolBox::InsertItem(const OUString& rCommand,
 
     ToolBox::InsertItem(aCommand, rFrame, nBits, rRequestedSize, nPos);
 
-    CreateController(GetItemId(aCommand), rFrame, std::max(rRequestedSize.Width(), 0L));
+    CreateController(GetItemId(aCommand), rFrame, std::max(rRequestedSize.Width(), 0L), mbSideBar);
     RegisterHandlers();
 }
 
@@ -139,16 +141,22 @@ bool SidebarToolBox::EventNotify (NotifyEvent& rEvent)
     return ToolBox::EventNotify(rEvent);
 }
 
+void SidebarToolBox::KeyInput(const KeyEvent& rKEvt)
+{
+    if (KEY_ESCAPE != rKEvt.GetKeyCode().GetCode())
+        ToolBox::KeyInput(rKEvt);
+}
+
 void SidebarToolBox::CreateController (
     const sal_uInt16 nItemId,
     const css::uno::Reference<css::frame::XFrame>& rxFrame,
-    const sal_Int32 nItemWidth)
+    const sal_Int32 nItemWidth, bool bSideBar)
 {
     const OUString sCommandName (GetItemCommand(nItemId));
 
     uno::Reference<frame::XToolbarController> xController(sfx2::sidebar::ControllerFactory::CreateToolBoxController(
             this, nItemId, sCommandName, rxFrame, rxFrame->getController(),
-            VCLUnoHelper::GetInterface(this), nItemWidth));
+            VCLUnoHelper::GetInterface(this), nItemWidth, bSideBar));
 
     if (xController.is())
         maControllers.insert(std::make_pair(nItemId, xController));
@@ -182,14 +190,6 @@ void SidebarToolBox::SetController(const sal_uInt16 nItemId,
 
     if (rxController.is())
         RegisterHandlers();
-}
-
-css::uno::Reference<css::frame::XToolbarController> SidebarToolBox::GetFirstController()
-{
-    if (maControllers.empty())
-        return css::uno::Reference<css::frame::XToolbarController>();
-
-    return maControllers.begin()->second;
 }
 
 void SidebarToolBox::RegisterHandlers()
@@ -245,7 +245,7 @@ IMPL_LINK(SidebarToolBox, SelectHandler, ToolBox*, pToolBox, void)
 
     Reference<frame::XToolbarController> xController (GetControllerForItemId(pToolBox->GetCurItemId()));
     if (xController.is())
-        xController->execute((sal_Int16)pToolBox->GetModifier());
+        xController->execute(static_cast<sal_Int16>(pToolBox->GetModifier()));
 }
 
 IMPL_LINK_NOARG(SidebarToolBox, ChangedIconSizeHandler, LinkParamNone*, void)
@@ -308,12 +308,15 @@ void SidebarToolBox::InitToolBox(VclBuilder::stringmap& rMap)
     }
 }
 
+namespace {
+
 class NotebookbarToolBox : public SidebarToolBox
 {
 public:
     explicit NotebookbarToolBox(vcl::Window* pParentWindow)
     : SidebarToolBox(pParentWindow)
     {
+        mbSideBar = false;
         SetToolboxButtonSize(GetDefaultButtonSize());
     }
 
@@ -323,20 +326,26 @@ public:
     }
 };
 
-VCL_BUILDER_DECL_FACTORY(SidebarToolBox)
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT void makeSidebarToolBox(VclPtr<vcl::Window> & rRet, const VclPtr<vcl::Window> & pParent, VclBuilder::stringmap & rMap)
 {
+    static_assert(std::is_same_v<std::remove_pointer_t<VclBuilder::customMakeWidget>,
+                                 decltype(makeSidebarToolBox)>);
     VclPtrInstance<SidebarToolBox> pBox(pParent);
     pBox->InitToolBox(rMap);
     rRet = pBox;
 }
 
-VCL_BUILDER_DECL_FACTORY(NotebookbarToolBox)
+extern "C" SAL_DLLPUBLIC_EXPORT void makeNotebookbarToolBox(VclPtr<vcl::Window> & rRet, const VclPtr<vcl::Window> & pParent, VclBuilder::stringmap & rMap)
 {
+    static_assert(std::is_same_v<std::remove_pointer_t<VclBuilder::customMakeWidget>,
+                                 decltype(makeNotebookbarToolBox)>);
     VclPtrInstance<NotebookbarToolBox> pBox(pParent);
     pBox->InitToolBox(rMap);
     rRet = pBox;
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

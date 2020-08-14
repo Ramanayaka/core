@@ -13,24 +13,69 @@
 #include <ibase.h>
 
 #include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
 
-#include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/sdbc/SQLException.hpp>
+#include <com/sun/star/uno/XInterface.hpp>
 
-#include <vector>
-
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
-        typedef std::vector< OString > OStringVector;
         // Type Blob has 2 subtypes values
         // 0 for BLOB, 1 for CLOB
         // see http://www.firebirdfaq.org/faq48/
+        // User-defined subtypes are negative.
+        // Use a number for image which is very unlikely to be defined by a
+        // user.
         enum class BlobSubtype {
             Blob = 0,
-            Clob = 1
+            Clob = 1,
+            Image = -9546
+        };
+
+        /**
+         * Numeric and decimal types can be identified by their subtype in
+         * Firebird API. 1 for NUMERIC, 2 for DECIMAL.
+         */
+        enum class NumberSubType {
+            Other = 0,
+            Numeric = 1,
+            Decimal = 2
+        };
+
+        class ColumnTypeInfo {
+private:
+            short m_aType;
+            short m_aSubType;
+            short m_nScale;
+            OUString m_sCharsetName;
+public:
+            /**
+             * @param tType SQL type of column defined by Firebird (e.g.
+             * SQL_DOUBLE)
+             * @param aSubType SQL sub type as in firebird API. See
+             * NumberSubType.
+             * @param scale: Scale of the number. It is ignored in case it's not
+             * a number. Scale obtained from the Firebird API is negative, so
+             * that should be negated before passing to this constructor.
+             *
+             */
+            explicit ColumnTypeInfo( short aType, short aSubType = 0,
+                    short nScale = 0, const OUString& sCharset = OUString() )
+                : m_aType(aType)
+                , m_aSubType(aSubType)
+                , m_nScale(nScale)
+                , m_sCharsetName(sCharset) {}
+            explicit ColumnTypeInfo( short aType, const OUString& sCharset )
+                : m_aType(aType)
+                , m_aSubType(0)
+                , m_nScale(0)
+                , m_sCharsetName(sCharset) {}
+            short getType() const { return m_aType; }
+            short getSubType() const { return m_aSubType; }
+            short getScale() const { return m_nScale; }
+            OUString const & getCharacterSet() const { return m_sCharsetName; }
+
+            sal_Int32 getSdbcType() const;
+            OUString getColumnTypeName() const;
+
         };
 
         /**
@@ -59,11 +104,8 @@ namespace connectivity
          * @throws css::sdbc::SQLException
          */
         void evaluateStatusVector(const ISC_STATUS_ARRAY& rStatusVector,
-                                  const ::rtl::OUString& aCause,
+                                  const OUString& aCause,
                                   const css::uno::Reference< css::uno::XInterface >& _rxContext);
-
-        sal_Int32 getColumnTypeFromFBType(short aType, short aSubType, short aScale);
-        ::rtl::OUString getColumnTypeNameFromFBType(short aType, short aSubType, short aScale);
 
         /**
          * Internally (i.e. in RDB$FIELD_TYPE) firebird stores the data type
@@ -79,7 +121,7 @@ namespace connectivity
 
         OUString escapeWith( const OUString& sText, const char aKey, const char aEscapeChar);
         sal_Int64 pow10Integer( int nDecimalCount );
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_UTIL_HXX
 

@@ -22,18 +22,13 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <cppcanvas/canvasgraphic.hxx>
+#include <cppcanvas/color.hxx>
 #include <memory>
 
-namespace basegfx
-{
-    class B2DPolygon;
-    class B2DPolyPolygon;
-}
-
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
     class  XPolyPolygon2D;
-} } } }
+}
 
 
 /* Definition of tools::PolyPolygon interface */
@@ -58,13 +53,13 @@ namespace cppcanvas
 
         /** Set polygon fill color
          */
-        virtual void                        setRGBAFillColor( Color::IntSRGBA ) = 0;
+        virtual void                        setRGBAFillColor( IntSRGBA ) = 0;
         /** Set polygon line color
          */
-        virtual void                        setRGBALineColor( Color::IntSRGBA ) = 0;
+        virtual void                        setRGBALineColor( IntSRGBA ) = 0;
         /** Get polygon line color
          */
-        virtual Color::IntSRGBA             getRGBALineColor() const = 0;
+        virtual IntSRGBA                    getRGBALineColor() const = 0;
 
         virtual void                        setStrokeWidth( const double& rStrokeWidth ) = 0;
         virtual double                      getStrokeWidth() const = 0;

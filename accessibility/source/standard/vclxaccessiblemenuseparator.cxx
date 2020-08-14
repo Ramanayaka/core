@@ -28,16 +28,10 @@ using namespace ::com::sun::star;
 using namespace ::comphelper;
 
 
-// class VCLXAccessibleMenuSeparator
 
 
 VCLXAccessibleMenuSeparator::VCLXAccessibleMenuSeparator( Menu* pParent, sal_uInt16 nItemPos )
     :OAccessibleMenuItemComponent( pParent, nItemPos, nullptr )
-{
-}
-
-
-VCLXAccessibleMenuSeparator::~VCLXAccessibleMenuSeparator()
 {
 }
 
@@ -47,7 +41,7 @@ VCLXAccessibleMenuSeparator::~VCLXAccessibleMenuSeparator()
 
 OUString VCLXAccessibleMenuSeparator::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleMenuSeparator" );
+    return "com.sun.star.comp.toolkit.AccessibleMenuSeparator";
 }
 
 

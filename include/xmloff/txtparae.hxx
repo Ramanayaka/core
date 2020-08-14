@@ -21,11 +21,10 @@
 #define INCLUDED_XMLOFF_TXTPARAE_HXX
 
 #include <sal/config.h>
+#include <rtl/ref.hxx>
 #include <xmloff/dllapi.h>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <xmloff/xmlexppr.hxx>
 #include <xmloff/styleexp.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/SinglePropertySetInfoCache.hxx>
@@ -38,30 +37,34 @@ class SvXMLExport;
 class SvXMLAutoStylePoolP;
 class XMLTextFieldExport;
 class XMLTextNumRuleInfo;
-class XMLTextListAutoStylePool;
 class XMLSectionExport;
 class XMLIndexMarkExport;
 class XMLRedlineExport;
 struct XMLPropertyState;
 class MultiPropertySetHelper;
 enum class XMLShapeExportFlags;
+class SvXMLExportPropertyMapper;
 
-namespace com { namespace sun { namespace star
+namespace com::sun::star
 {
     namespace beans { class XPropertySet; class XPropertyState;
                       class XPropertySetInfo; }
-    namespace container { class XEnumerationAccess; class XEnumeration; class XIndexAccess; }
+    namespace container { class XEnumeration; class XIndexAccess; }
     namespace text { class XTextContent; class XTextRange; class XText;
                      class XFootnote; class XTextFrame; class XTextSection;
-                     class XTextField;
-                     class XDocumentIndex; class XTextShapesSupplier; }
-} } }
+                     class XTextField; }
+}
 
 namespace xmloff
 {
     class OFormLayerXMLExport;
     class BoundFrameSets;
 
+}
+
+namespace basegfx
+{
+    class B2DPoint;
 }
 
 enum class TextPNS
@@ -85,14 +88,14 @@ class XMLOFF_DLLPUBLIC XMLTextParagraphExport : public XMLStyleExport
     rtl::Reference < SvXMLExportPropertyMapper > xRubyPropMapper;
 
     const ::std::unique_ptr< ::xmloff::BoundFrameSets > pBoundFrameSets;
-    XMLTextFieldExport          *pFieldExport;
-    std::vector<OUString>  *pListElements;
-    XMLTextListAutoStylePool    maListAutoPool;
-    XMLSectionExport            *pSectionExport;
-    XMLIndexMarkExport          *pIndexMarkExport;
+    std::unique_ptr<XMLTextFieldExport>          pFieldExport;
+    std::unique_ptr<std::vector<OUString>>       pListElements;
+    XMLTextListAutoStylePool                     maListAutoPool;
+    std::unique_ptr<XMLSectionExport>            pSectionExport;
+    std::unique_ptr<XMLIndexMarkExport>          pIndexMarkExport;
 
     /// may be NULL (if no redlines should be exported; e.g. in block mode)
-    XMLRedlineExport            *pRedlineExport;
+    std::unique_ptr<XMLRedlineExport> pRedlineExport;
 
     bool                        bProgress;
 
@@ -104,7 +107,9 @@ class XMLOFF_DLLPUBLIC XMLTextParagraphExport : public XMLStyleExport
     bool                        bOpenRuby;
 
     XMLTextListsHelper* mpTextListsHelper;
-    ::std::vector< XMLTextListsHelper* > maTextListsHelperStack;
+    ::std::vector< std::unique_ptr<XMLTextListsHelper> > maTextListsHelperStack;
+
+    bool mbCollected;
 
     enum class FrameType { Text, Graphic, Embedded, Shape };
 public:
@@ -114,7 +119,7 @@ public:
 
     void exportTextRangeSpan(
             const css::uno::Reference< css::text::XTextRange > & rTextRange,
-            css::uno::Reference< css::beans::XPropertySet > & xPropSet,
+            css::uno::Reference< css::beans::XPropertySet > const & xPropSet,
             css::uno::Reference < css::beans::XPropertySetInfo > & xPropSetInfo,
             const bool bIsUICharStyle,
             const bool bHasAutoStyle,
@@ -125,85 +130,28 @@ public:
 private:
 
     // Implement Title/Description Elements UI (#i73249#)
-    const OUString sTitle;
-    const OUString sDescription;
-    const OUString sAnchorCharStyleName;
-    const OUString sAnchorPageNo;
-    const OUString sAnchorType;
-    const OUString sBeginNotice;
-    const OUString sBookmark;
-    const OUString sCategory;
-    const OUString sChainNextName;
-    const OUString sCharStyleName;
-    const OUString sCharStyleNames;
-    const OUString sContourPolyPolygon;
-    const OUString sDocumentIndexMark;
-    const OUString sEndNotice;
-    const OUString sFootnote;
-    const OUString sFootnoteCounting;
-    const OUString sFrame;
-    const OUString sGraphicFilter;
-    const OUString sGraphicRotation;
-    const OUString sGraphicURL;
-    const OUString sReplacementGraphicURL;
-    const OUString sHeight;
-    const OUString sHoriOrient;
-    const OUString sHoriOrientPosition;
-    const OUString sHyperLinkName;
-    const OUString sHyperLinkTarget;
-    const OUString sHyperLinkURL;
-    const OUString sIsAutomaticContour;
-    const OUString sIsCollapsed;
-    const OUString sIsPixelContour;
-    const OUString sIsStart;
-    const OUString sIsSyncHeightToWidth;
-    const OUString sIsSyncWidthToHeight;
-    const OUString sNumberingRules;
-    const OUString sNumberingType;
-    const OUString sPageDescName;
-    const OUString sPageStyleName;
-    const OUString sParaConditionalStyleName;
-    const OUString sParagraphService;
-    const OUString sParaStyleName;
-    const OUString sPositionEndOfDoc;
-    const OUString sPrefix;
-    const OUString sRedline;
-    const OUString sReferenceId;
-    const OUString sReferenceMark;
-    const OUString sRelativeHeight;
-    const OUString sRelativeWidth;
-    const OUString sRuby;
-    const OUString sRubyCharStyleName;
-    const OUString sRubyText;
-    const OUString sServerMap;
-    const OUString sShapeService;
-    const OUString sSizeType;
-    const OUString sSoftPageBreak;
-    const OUString sStartAt;
-    const OUString sSuffix;
-    const OUString sTableService;
-    const OUString sText;
-    const OUString sTextContentService;
-    const OUString sTextEmbeddedService;
-    const OUString sTextEndnoteService;
-    const OUString sTextField;
-    const OUString sTextFieldService;
-    const OUString sTextFrameService;
-    const OUString sTextGraphicService;
-    const OUString sTextPortionType;
-    const OUString sTextSection;
-    const OUString sUnvisitedCharStyleName;
-    const OUString sVertOrient;
-    const OUString sVertOrientPosition;
-    const OUString sVisitedCharStyleName;
-    const OUString sWidth;
-    const OUString sWidthType;
-    const OUString sTextFieldStart;
-    const OUString sTextFieldEnd;
-    const OUString sTextFieldStartEnd;
+    static const OUStringLiteral gsAnchorCharStyleName;
+    static const OUStringLiteral gsBeginNotice;
+    static const OUStringLiteral gsCategory;
+    static const OUStringLiteral gsCharStyleName;
+    static const OUStringLiteral gsCharStyleNames;
+    static const OUStringLiteral gsEndNotice;
+    static const OUStringLiteral gsFootnote;
+    static const OUStringLiteral gsFootnoteCounting;
+    static const OUStringLiteral gsNumberingType;
+    static const OUStringLiteral gsPageDescName;
+    static const OUStringLiteral gsPageStyleName;
+    static const OUStringLiteral gsParaStyleName;
+    static const OUStringLiteral gsPositionEndOfDoc;
+    static const OUStringLiteral gsPrefix;
+    static const OUStringLiteral gsReferenceId;
+    static const OUStringLiteral gsStartAt;
+    static const OUStringLiteral gsSuffix;
+    static const OUStringLiteral gsTextEndnoteService;
+    static const OUStringLiteral gsTextSection;
 
 protected:
-    const OUString sFrameStyleName;
+    static const OUStringLiteral gsFrameStyleName;
     SinglePropertySetInfoCache aCharStyleNamesPropInfoCache;
 
     SvXMLAutoStylePoolP& GetAutoStylePool() { return rAutoStylePool; }
@@ -253,6 +201,7 @@ protected:
     XMLShapeExportFlags addTextFrameAttributes(
         const css::uno::Reference< css::beans::XPropertySet >& rPropSet,
         bool bShape,
+        basegfx::B2DPoint* pCenter = nullptr,
         OUString *pMinHeightValue = nullptr,
         OUString *pMinWidthValue = nullptr );
 
@@ -282,7 +231,6 @@ protected:
         bool bProgress,
         bool bExportParagraph = true,
         const css::uno::Reference< css::beans::XPropertySet > *pRangePropSet = nullptr,
-        bool bExportLevels = true,
         TextPNS eExtensionNS = TextPNS::ODF);
     void exportParagraph(
         const css::uno::Reference< css::text::XTextContent > & rTextContent,
@@ -417,6 +365,8 @@ protected:
         const css::uno::Reference< css::beans::XPropertySet> & i_xPortion,
         bool i_bAutoStyles, bool i_isProgress, bool & rPrevCharIsSpace);
 
+    virtual void exportTableAutoStyles();
+
 public:
 
     XMLTextParagraphExport(
@@ -427,17 +377,17 @@ public:
 
     /// add autostyle for specified family
     void Add(
-        sal_uInt16 nFamily,
+        XmlStyleFamily nFamily,
         MultiPropertySetHelper& rPropSetHelper,
         const css::uno::Reference< css::beans::XPropertySet > & rPropSet );
     void Add(
-        sal_uInt16 nFamily,
+        XmlStyleFamily nFamily,
         const css::uno::Reference< css::beans::XPropertySet > & rPropSet,
         const XMLPropertyState** pAddState = nullptr, bool bDontSeek = false );
 
     /// find style name for specified family and parent
     OUString Find(
-        sal_uInt16 nFamily,
+        XmlStyleFamily nFamily,
         const css::uno::Reference< css::beans::XPropertySet > & rPropSet,
         const OUString& rParent,
         const XMLPropertyState** pAddState = nullptr ) const;
@@ -512,7 +462,7 @@ public:
 
     // It the model implements the xAutoStylesSupplier interface, the automatic
     // styles can exported without iterating over the text portions
-    bool collectTextAutoStylesOptimized( bool bIsProgress );
+    void collectTextAutoStylesOptimized( bool bIsProgress );
 
     // This method exports all automatic styles that have been collected.
     void exportTextAutoStyles();
@@ -564,7 +514,7 @@ public:
      * they are control shapes, and if so, whether they should be exported or
      * not. If not, the form layer export will be notified accordingly.
      *
-     * The reason this method is located here is tha it needs to access the
+     * The reason this method is located here is that it needs to access the
      * XMLSectionExport, which is only available here.
      */
     void PreventExportOfControlsInMuteSections(
@@ -578,7 +528,7 @@ public:
     void PopTextListsHelper();
 
 private:
-        XMLTextParagraphExport(XMLTextParagraphExport &) = delete;
+        XMLTextParagraphExport(XMLTextParagraphExport const &) = delete;
 };
 
 inline const XMLTextListAutoStylePool&

@@ -60,10 +60,9 @@
 
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPCELLLAYOUT_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPCELLLAYOUT_HXX
-#include <vector>
-#include <map>
+
 #include "lwplayout.hxx"
-#include "lwptablelayout.hxx"
+#include <xfilter/xfcell.hxx>
 
 typedef enum
 {
@@ -86,12 +85,20 @@ class LwpTableLayout;
 class LwpCellLayout : public LwpMiddleLayout
 {
 public:
-    LwpCellLayout(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpCellLayout(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpCellLayout() override;
     virtual LWP_LAYOUT_TYPE GetLayoutType () override { return LWP_CELL_LAYOUT;}
-    virtual rtl::Reference<XFCell> ConvertCell(LwpObjectID aTableID, sal_uInt16 nRow, sal_uInt16 nCol);
-    sal_uInt16 GetRowID(){return crowid;}
-    sal_uInt8 GetColID(){return ccolid;}
+    rtl::Reference<XFCell> DoConvertCell(LwpObjectID aTableID, sal_uInt16 nRow, sal_uInt16 nCol)
+    {
+        if (m_bConvertCell)
+            throw std::runtime_error("recursion in page divisions");
+        m_bConvertCell = true;
+        rtl::Reference<XFCell> aRet = ConvertCell(aTableID, nRow, nCol);
+        m_bConvertCell = false;
+        return aRet;
+    }
+    sal_uInt16 GetRowID() const {return crowid;}
+    sal_uInt8 GetColID() const {return ccolid;}
     void RegisterStyle() override;
     LwpObjectID& GetNumericsObject() {return cLayNumerics;}
     LwpObjectID * GetPreviousCellStory();
@@ -99,7 +106,7 @@ public:
     LwpTableLayout * GetTableLayout();
     virtual void SetCellMap();
     double GetActualWidth();
-    const OUString& GetNumfmtName(){return m_NumfmtName;}
+    const OUString& GetNumfmtName() const {return m_NumfmtName;}
 protected:
     void Read() override;
     LwpTable * GetTable();
@@ -114,10 +121,12 @@ protected:
     OUString const & GetCellStyleName(sal_uInt16 nRow, sal_uInt16 nCol, LwpTableLayout * pTableLayout);
     void RegisterDefaultCell();
     virtual LwpCellBorderType GetCellBorderType(sal_uInt16 nRow, sal_uInt16 nCol, LwpTableLayout * pTableLayout);
+    virtual rtl::Reference<XFCell> ConvertCell(LwpObjectID aTableID, sal_uInt16 nRow, sal_uInt16 nCol);
     static LwpCellLayout * GetCellByRowCol(sal_uInt16 nRow, sal_uInt16 nCol, LwpTableLayout * pTableLayout);
     static sal_uInt16 GetLeftColID(sal_uInt16 nCol){return nCol - 1; };
     virtual sal_uInt16 GetBelowRowID(sal_uInt16 nRow){return nRow + 1; };
 
+    bool m_bConvertCell;
     sal_uInt16 crowid;
     sal_uInt8   ccolid;
     LwpObjectID cLayNumerics;
@@ -140,18 +149,18 @@ protected:
  * @brief
  * VO_HIDDENCELLLAYOUT object
  */
-class LwpHiddenCellLayout : public LwpCellLayout
+class LwpHiddenCellLayout final : public LwpCellLayout
 {
 public:
-    LwpHiddenCellLayout(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpHiddenCellLayout(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpHiddenCellLayout() override;
     virtual LWP_LAYOUT_TYPE GetLayoutType () override { return LWP_HIDDEN_CELL_LAYOUT;}
     virtual void Parse(IXFStream* pOutputStream) override;
-    virtual rtl::Reference<XFCell> ConvertCell(LwpObjectID aTableID, sal_uInt16 nRow, sal_uInt16 nCol) override;
     void RegisterStyle() override {}
     virtual void SetCellMap() override;
-protected:
+private:
     void Read() override;
+    virtual rtl::Reference<XFCell> ConvertCell(LwpObjectID aTableID, sal_uInt16 nRow, sal_uInt16 nCol) override;
     LwpObjectID cconnectedlayout;
 };
 
@@ -162,19 +171,19 @@ protected:
 class LwpConnectedCellLayout : public LwpCellLayout
 {
 public:
-    LwpConnectedCellLayout(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpConnectedCellLayout(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpConnectedCellLayout() override;
     virtual LWP_LAYOUT_TYPE GetLayoutType () override { return LWP_CONNECTED_CELL_LAYOUT;}
     virtual void Parse(IXFStream* pOutputStream) override;
-    virtual rtl::Reference<XFCell> ConvertCell(LwpObjectID aTableID, sal_uInt16 nRow, sal_uInt16 nCol) override;
-    sal_uInt16 GetNumrows(){return m_nRealrowspan;}
-    sal_uInt8 GetNumcols(){return m_nRealcolspan;}
+    sal_uInt16 GetNumrows() const {return m_nRealrowspan;}
+    sal_uInt8 GetNumcols() const {return m_nRealcolspan;}
     virtual void SetCellMap() override;
     void SetNumrows(sal_uInt16 nVal){m_nRealrowspan = nVal;}
 protected:
     void Read() override;
     virtual sal_uInt16 GetBelowRowID(sal_uInt16 nRow) override {return nRow + m_nRealrowspan; };
     virtual LwpCellBorderType GetCellBorderType(sal_uInt16 nRow, sal_uInt16 nCol, LwpTableLayout * pTableLayout) override;
+    virtual rtl::Reference<XFCell> ConvertCell(LwpObjectID aTableID, sal_uInt16 nRow, sal_uInt16 nCol) override;
     sal_uInt16  cnumrows;
     sal_uInt8   cnumcols;
     sal_uInt16  m_nRealrowspan;
@@ -188,7 +197,7 @@ protected:
 class LwpParallelColumnsBlock : public LwpCellLayout
 {
 public:
-    LwpParallelColumnsBlock(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpParallelColumnsBlock(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpParallelColumnsBlock() override;
 protected:
     void Read() override;

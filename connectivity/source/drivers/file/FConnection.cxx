@@ -20,27 +20,26 @@
 #include <sal/config.h>
 
 #include <comphelper/processfactory.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include "file/FConnection.hxx"
-#include "file/FDatabaseMetaData.hxx"
-#include "file/FDriver.hxx"
-#include "file/FStatement.hxx"
-#include "file/FPreparedStatement.hxx"
-#include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <file/FConnection.hxx>
+#include <file/FDatabaseMetaData.hxx>
+#include <file/FDriver.hxx>
+#include <file/FStatement.hxx>
+#include <file/FPreparedStatement.hxx>
 #include <com/sun/star/container/XChild.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/ucb/XContent.hpp>
 #include <com/sun/star/ucb/XContentIdentifier.hpp>
 #include <tools/urlobj.hxx>
-#include "file/FCatalog.hxx"
+#include <file/FCatalog.hxx>
 #include <unotools/pathoptions.hxx>
 #include <ucbhelper/content.hxx>
 #include <connectivity/dbcharset.hxx>
 #include <connectivity/dbexception.hxx>
+#include <o3tl/any.hxx>
 #include <osl/thread.h>
-#include <osl/nlsupport.h>
-#include "resource/file_res.hrc"
+#include <strings.hrc>
 
 using namespace connectivity::file;
 using namespace dbtools;
@@ -56,9 +55,7 @@ using namespace ::ucbhelper;
 typedef connectivity::OMetaConnection OConnection_BASE;
 
 OConnection::OConnection(OFileDriver*   _pDriver)
-    : OSubComponent<OConnection, OConnection_BASE>(static_cast<cppu::OWeakObject*>(_pDriver), this)
-    , m_pDriver(_pDriver)
-    , m_bClosed(false)
+    : m_pDriver(_pDriver)
     , m_bAutoCommit(false)
     , m_bReadOnly(false)
     , m_bShowDeleted(false)
@@ -74,12 +71,6 @@ OConnection::~OConnection()
     if(!isClosed(  ))
         close();
 }
-
-void SAL_CALL OConnection::release() throw()
-{
-    release_ChildImpl();
-}
-
 
 bool OConnection::matchesExtension( const OUString& _rExt ) const
 {
@@ -106,15 +97,22 @@ void OConnection::construct(const OUString& url,const Sequence< PropertyValue >&
             OSL_VERIFY( pIter->Value >>= aExt );
         else if( pIter->Name == "CharSet" )
         {
-            OUString sIanaName;
-            OSL_VERIFY( pIter->Value >>= sIanaName );
-
-            ::dbtools::OCharsetMap aLookupIanaName;
-            ::dbtools::OCharsetMap::const_iterator aLookup = aLookupIanaName.find(sIanaName, ::dbtools::OCharsetMap::IANA());
-            if (aLookup != aLookupIanaName.end())
-                m_nTextEncoding = (*aLookup).getEncoding();
+            if (auto const numeric = o3tl::tryAccess<sal_uInt16>(pIter->Value))
+            {
+                m_nTextEncoding = *numeric;
+            }
             else
-                m_nTextEncoding = RTL_TEXTENCODING_DONTKNOW;
+            {
+                OUString sIanaName;
+                OSL_VERIFY( pIter->Value >>= sIanaName );
+
+                ::dbtools::OCharsetMap aLookupIanaName;
+                ::dbtools::OCharsetMap::const_iterator aLookup = aLookupIanaName.findIanaName(sIanaName);
+                if (aLookup != aLookupIanaName.end())
+                    m_nTextEncoding = (*aLookup).getEncoding();
+                else
+                    m_nTextEncoding = RTL_TEXTENCODING_DONTKNOW;
+            }
         }
         else if( pIter->Name == "ShowDeleted" )
         {
@@ -178,7 +176,7 @@ void OConnection::construct(const OUString& url,const Sequence< PropertyValue >&
             }
             else if (aFile.isDocument())
             {
-                Reference<XContent> xParent(Reference<XChild>(aFile.get(),UNO_QUERY)->getParent(),UNO_QUERY);
+                Reference<XContent> xParent(Reference<XChild>(aFile.get(),UNO_QUERY_THROW)->getParent(),UNO_QUERY_THROW);
                 Reference<XContentIdentifier> xIdent = xParent->getIdentifier();
                 m_xContent = xParent;
 
@@ -369,12 +367,9 @@ void OConnection::disposing()
     ::osl::MutexGuard aGuard(m_aMutex);
     OConnection_BASE::disposing();
 
-    m_bClosed   = true;
-m_xDir.clear();
-m_xContent.clear();
+    m_xDir.clear();
+    m_xContent.clear();
     m_xCatalog  = WeakReference< XTablesSupplier>();
-
-    dispose_ChildImpl();
 }
 
 Reference< XTablesSupplier > OConnection::createCatalog()
@@ -407,12 +402,12 @@ Reference< XDynamicResultSet > OConnection::getDir() const
 
 sal_Int64 SAL_CALL OConnection::getSomething( const Sequence< sal_Int8 >& rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return (isUnoTunnelId<OConnection>(rId))
         ? reinterpret_cast< sal_Int64 >( this )
-        : (sal_Int64)0;
+        : sal_Int64(0);
 }
 
-Sequence< sal_Int8 > OConnection::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OConnection::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 

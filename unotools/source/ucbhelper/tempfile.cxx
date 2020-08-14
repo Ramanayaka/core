@@ -20,25 +20,20 @@
 #include <sal/config.h>
 
 #include <cassert>
+#include <utility>
 
-#include <com/sun/star/ucb/UniversalContentBroker.hpp>
-#include <comphelper/processfactory.hxx>
 #include <unotools/tempfile.hxx>
-#include <unotools/localfilehelper.hxx>
-#include <unotools/ucbstreamhelper.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/instance.hxx>
 #include <osl/detail/file.h>
 #include <osl/file.hxx>
 #include <tools/time.hxx>
 #include <tools/debug.hxx>
-#include <stdio.h>
+#include <comphelper/DirectoryHelper.hxx>
 
 #ifdef UNX
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
-#elif defined( WNT )
+#elif defined( _WIN32 )
 #include <process.h>
 #endif
 
@@ -53,21 +48,26 @@ namespace
 namespace utl
 {
 
-OUString getParentName( const OUString& aFileName )
+static OUString getParentName( const OUString& aFileName )
 {
     sal_Int32 lastIndex = aFileName.lastIndexOf( '/' );
-    OUString aParent = aFileName.copy( 0, lastIndex );
+    OUString aParent;
 
-    if( aParent.endsWith(":") && aParent.getLength() == 6 )
-        aParent += "/";
+    if (lastIndex > -1)
+    {
+        aParent = aFileName.copy(0, lastIndex);
 
-    if( aParent.equalsIgnoreAsciiCase( "file://" ) )
-        aParent = "file:///";
+        if (aParent.endsWith(":") && aParent.getLength() == 6)
+            aParent += "/";
+
+        if (aParent.equalsIgnoreAsciiCase("file://"))
+            aParent = "file:///";
+    }
 
     return aParent;
 }
 
-bool ensuredir( const OUString& rUnqPath )
+static bool ensuredir( const OUString& rUnqPath )
 {
     OUString aPath;
     if ( rUnqPath.isEmpty() )
@@ -111,9 +111,13 @@ bool ensuredir( const OUString& rUnqPath )
     return bSuccess;
 }
 
-OUString ConstructTempDir_Impl( const OUString* pParent )
+static OUString ConstructTempDir_Impl( const OUString* pParent, bool bCreateParentDirs )
 {
     OUString aName;
+
+    // Ignore pParent on iOS. We don't want to create any temp files
+    // in the same directory where the document being edited is.
+#ifndef IOS
     if ( pParent && !pParent->isEmpty() )
     {
         // test for valid filename
@@ -128,10 +132,14 @@ OUString ConstructTempDir_Impl( const OUString* pParent )
             if ( aRet[i-1] == '/' )
                 i--;
 
-            if ( DirectoryItem::get( aRet.copy(0, i), aItem ) == FileBase::E_None )
+            if ( DirectoryItem::get( aRet.copy(0, i), aItem ) == FileBase::E_None || bCreateParentDirs )
                 aName = aRet;
         }
     }
+#else
+    (void) pParent;
+    (void) bCreateParentDirs;
+#endif
 
     if ( aName.isEmpty() )
     {
@@ -156,6 +164,8 @@ OUString ConstructTempDir_Impl( const OUString* pParent )
 
     return aName;
 }
+
+namespace {
 
 class Tokens {
 public:
@@ -220,6 +230,8 @@ private:
     sal_uInt32 m_count;
 };
 
+}
+
 sal_uInt32 UniqueTokens::globalValue = SAL_MAX_UINT32;
 
 namespace
@@ -227,7 +239,7 @@ namespace
     class TempDirCreatedObserver : public DirectoryCreationObserver
     {
     public:
-        virtual void DirectoryCreated(const rtl::OUString& aDirectoryUrl) override
+        virtual void DirectoryCreated(const OUString& aDirectoryUrl) override
         {
             File::setAttributes( aDirectoryUrl, osl_File_Attribute_OwnRead |
                 osl_File_Attribute_OwnWrite | osl_File_Attribute_OwnExe );
@@ -235,23 +247,24 @@ namespace
     };
 };
 
-OUString lcl_createName(
+static OUString lcl_createName(
     const OUString& rLeadingChars, Tokens & tokens, const OUString* pExtension,
     const OUString* pParent, bool bDirectory, bool bKeep, bool bLock,
     bool bCreateParentDirs )
 {
-    OUString aName = ConstructTempDir_Impl( pParent );
+    OUString aName = ConstructTempDir_Impl( pParent, bCreateParentDirs );
     if ( bCreateParentDirs )
     {
         sal_Int32 nOffset = rLeadingChars.lastIndexOf("/");
+        OUString aDirName;
         if (-1 != nOffset)
-        {
-            OUString aDirName = aName + OUString( rLeadingChars.getStr(), nOffset );
-            TempDirCreatedObserver observer;
-            FileBase::RC err = Directory::createPath( aDirName, &observer );
-            if ( err != FileBase::E_None && err != FileBase::E_EXIST )
-                return OUString();
-        }
+            aDirName = aName + rLeadingChars.copy( 0, nOffset );
+        else
+            aDirName = aName;
+        TempDirCreatedObserver observer;
+        FileBase::RC err = Directory::createPath( aDirName, &observer );
+        if ( err != FileBase::E_None && err != FileBase::E_EXIST )
+            return OUString();
     }
     aName += rLeadingChars;
 
@@ -310,7 +323,7 @@ OUString lcl_createName(
     return OUString();
 }
 
-OUString CreateTempName_Impl( const OUString* pParent, bool bKeep, bool bDir = true )
+static OUString CreateTempName_Impl( const OUString* pParent, bool bKeep, bool bDir = true )
 {
     OUString aEyeCatcher = "lu";
 #ifdef UNX
@@ -325,7 +338,7 @@ OUString CreateTempName_Impl( const OUString* pParent, bool bKeep, bool bDir = t
     static const OUString aPidString = OUString::number(pid);
     aEyeCatcher += aPidString;
 #endif
-#elif defined(WNT)
+#elif defined(_WIN32)
     static const int pid = _getpid();
     static const OUString aPidString = OUString::number(pid);
     aEyeCatcher += aPidString;
@@ -347,8 +360,7 @@ OUString TempFile::CreateTempName()
 }
 
 TempFile::TempFile( const OUString* pParent, bool bDirectory )
-    : pStream( nullptr )
-    , bIsDirectory( bDirectory )
+    : bIsDirectory( bDirectory )
     , bKillingFileEnabled( false )
 {
     aName = CreateTempName_Impl( pParent, true, bDirectory );
@@ -357,8 +369,7 @@ TempFile::TempFile( const OUString* pParent, bool bDirectory )
 TempFile::TempFile( const OUString& rLeadingChars, bool _bStartWithZero,
                     const OUString* pExtension, const OUString* pParent,
                     bool bCreateParentDirs )
-    : pStream( nullptr )
-    , bIsDirectory( false )
+    : bIsDirectory( false )
     , bKillingFileEnabled( false )
 {
     SequentialTokens t(_bStartWithZero);
@@ -366,15 +377,21 @@ TempFile::TempFile( const OUString& rLeadingChars, bool _bStartWithZero,
                             true, true, bCreateParentDirs );
 }
 
+TempFile::TempFile(TempFile && other) noexcept :
+    aName(std::move(other.aName)), pStream(std::move(other.pStream)), bIsDirectory(other.bIsDirectory),
+    bKillingFileEnabled(other.bKillingFileEnabled)
+{
+    other.bKillingFileEnabled = false;
+}
+
 TempFile::~TempFile()
 {
-    delete pStream;
+    pStream.reset();
     if ( bKillingFileEnabled )
     {
         if ( bIsDirectory )
         {
-            // at the moment no recursiv algorithm present
-            Directory::remove( aName );
+            comphelper::DirectoryHelper::deleteDirRecursively(aName);
         }
         else
         {
@@ -395,9 +412,8 @@ OUString TempFile::GetFileName() const
     return aTmp;
 }
 
-OUString const & TempFile::GetURL()
+OUString const & TempFile::GetURL() const
 {
-    assert(!aName.isEmpty() && "TempFile::GetURL failed: unit test is leaking temp files, add the ucpfile1 component!");
     return aName;
 }
 
@@ -406,21 +422,17 @@ SvStream* TempFile::GetStream( StreamMode eMode )
     if (!pStream)
     {
         if (!aName.isEmpty())
-            pStream = new SvFileStream(aName, eMode);
+            pStream.reset(new SvFileStream(aName, eMode | StreamMode::TEMPORARY));
         else
-            pStream = new SvMemoryStream(nullptr, 0, eMode);
+            pStream.reset(new SvMemoryStream(nullptr, 0, eMode));
     }
 
-    return pStream;
+    return pStream.get();
 }
 
 void TempFile::CloseStream()
 {
-    if ( pStream )
-    {
-        delete pStream;
-        pStream = nullptr;
-    }
+    pStream.reset();
 }
 
 OUString TempFile::SetTempNameBaseDirectory( const OUString &rBaseName )
@@ -462,6 +474,12 @@ OUString TempFile::SetTempNameBaseDirectory( const OUString &rBaseName )
 
     return aTmp;
 }
+
+OUString TempFile::GetTempNameBaseDirectory()
+{
+    return ConstructTempDir_Impl(nullptr, false);
+}
+
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

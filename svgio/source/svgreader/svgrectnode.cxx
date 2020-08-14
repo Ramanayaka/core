@@ -20,11 +20,10 @@
 #include <svgrectnode.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgRectNode::SvgRectNode(
             SvgDocument& rDocument,
             SvgNode* pParent)
@@ -35,8 +34,7 @@ namespace svgio
             maWidth(0),
             maHeight(0),
             maRx(0),
-            maRy(0),
-            mpaTransform(nullptr)
+            maRy(0)
         {
         }
 
@@ -159,60 +157,59 @@ namespace svgio
             // get size range and create path
             const SvgStyleAttributes* pStyle = getSvgStyleAttributes();
 
-            if(pStyle && getWidth().isSet() && getHeight().isSet())
+            if(!(pStyle && getWidth().isSet() && getHeight().isSet()))
+                return;
+
+            const double fWidth(getWidth().solve(*this, xcoordinate));
+            const double fHeight(getHeight().solve(*this, ycoordinate));
+
+            if(fWidth <= 0.0 || fHeight <= 0.0)
+                return;
+
+            const double fX(getX().isSet() ? getX().solve(*this, xcoordinate) : 0.0);
+            const double fY(getY().isSet() ? getY().solve(*this, ycoordinate) : 0.0);
+            const basegfx::B2DRange aRange(fX, fY, fX + fWidth, fY + fHeight);
+            basegfx::B2DPolygon aPath;
+
+            if(getRx().isSet() || getRy().isSet())
             {
-                const double fWidth(getWidth().solve(*this, xcoordinate));
-                const double fHeight(getHeight().solve(*this, ycoordinate));
+                double frX(getRx().isSet() ? getRx().solve(*this, xcoordinate) : 0.0);
+                double frY(getRy().isSet() ? getRy().solve(*this, ycoordinate) : 0.0);
 
-                if(fWidth > 0.0 && fHeight > 0.0)
+                frX = std::max(0.0, frX);
+                frY = std::max(0.0, frY);
+
+                if(0.0 == frY && frX > 0.0)
                 {
-                    const double fX(getX().isSet() ? getX().solve(*this, xcoordinate) : 0.0);
-                    const double fY(getY().isSet() ? getY().solve(*this, ycoordinate) : 0.0);
-                    const basegfx::B2DRange aRange(fX, fY, fX + fWidth, fY + fHeight);
-                    basegfx::B2DPolygon aPath;
-
-                    if(getRx().isSet() || getRy().isSet())
-                    {
-                        double frX(getRx().isSet() ? getRx().solve(*this, xcoordinate) : 0.0);
-                        double frY(getRy().isSet() ? getRy().solve(*this, ycoordinate) : 0.0);
-
-                        frX = std::max(0.0, frX);
-                        frY = std::max(0.0, frY);
-
-                        if(0.0 == frY && frX > 0.0)
-                        {
-                            frY = frX;
-                        }
-                        else if(0.0 == frX && frY > 0.0)
-                        {
-                            frX = frY;
-                        }
-
-                        frX /= fWidth;
-                        frY /= fHeight;
-
-                        frX = std::min(0.5, frX);
-                        frY = std::min(0.5, frY);
-
-                        aPath = basegfx::tools::createPolygonFromRect(aRange, frX * 2.0, frY * 2.0);
-                    }
-                    else
-                    {
-                        aPath = basegfx::tools::createPolygonFromRect(aRange);
-                    }
-
-                    drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
-
-                    pStyle->add_path(basegfx::B2DPolyPolygon(aPath), aNewTarget, nullptr);
-
-                    if(!aNewTarget.empty())
-                    {
-                        pStyle->add_postProcess(rTarget, aNewTarget, getTransform());
-                    }
+                    frY = frX;
                 }
+                else if(0.0 == frX && frY > 0.0)
+                {
+                    frX = frY;
+                }
+
+                frX /= fWidth;
+                frY /= fHeight;
+
+                frX = std::min(0.5, frX);
+                frY = std::min(0.5, frY);
+
+                aPath = basegfx::utils::createPolygonFromRect(aRange, frX * 2.0, frY * 2.0);
+            }
+            else
+            {
+                aPath = basegfx::utils::createPolygonFromRect(aRange);
+            }
+
+            drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
+
+            pStyle->add_path(basegfx::B2DPolyPolygon(aPath), aNewTarget, nullptr);
+
+            if(!aNewTarget.empty())
+            {
+                pStyle->add_postProcess(rTarget, aNewTarget, getTransform());
             }
         }
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

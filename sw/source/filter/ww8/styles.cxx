@@ -19,16 +19,13 @@
 
 #include <wwstyles.hxx>
 
-#include <functional>
-#include <algorithm>
-#include <rtl/ustring.hxx>
 #include <osl/diagnose.h>
 
 namespace
 {
-    const sal_Char **GetStiNames() throw()
+    const char **GetStiNames() throw()
     {
-        static const sal_Char *stiName[] =
+        static const char *stiName[] =
         {
             "Normal",
             "Heading 1",
@@ -131,7 +128,7 @@ namespace
 
 namespace ww
 {
-    const sal_Char* GetEnglishNameFromSti(sti eSti) throw()
+    const char* GetEnglishNameFromSti(sti eSti) throw()
     {
         if (eSti >= stiMax)
             return nullptr;

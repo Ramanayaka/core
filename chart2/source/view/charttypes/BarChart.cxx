@@ -18,20 +18,27 @@
  */
 
 #include "BarChart.hxx"
-#include "ShapeFactory.hxx"
-#include "CommonConverters.hxx"
-#include "ObjectIdentifier.hxx"
-#include "LabelPositionHelper.hxx"
 #include "BarPositionHelper.hxx"
-#include "macros.hxx"
-#include "AxisIndexDefines.hxx"
-#include "Clipping.hxx"
-#include "DateHelper.hxx"
+
+#include <ShapeFactory.hxx>
+#include <CommonConverters.hxx>
+#include <ObjectIdentifier.hxx>
+#include <LabelPositionHelper.hxx>
+#include <AxisIndexDefines.hxx>
+#include <Clipping.hxx>
+#include <DateHelper.hxx>
+#include <svx/scene3d.hxx>
+#include <svx/unoshape.hxx>
+#include <comphelper/scopeguard.hxx>
 
 #include <com/sun/star/chart/DataLabelPlacement.hpp>
 
+#include <com/sun/star/chart2/XTransformation.hpp>
 #include <com/sun/star/chart2/DataPointGeometry3D.hpp>
 #include <rtl/math.hxx>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
+#include <unordered_set>
 
 namespace chart
 {
@@ -55,9 +62,9 @@ BarChart::BarChart( const uno::Reference<XChartType>& xChartTypeModel
             m_xChartTypeModelProps->getPropertyValue( "GapwidthSequence" ) >>= m_aGapwidthSequence;
         }
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 }
 
@@ -85,7 +92,7 @@ drawing::Direction3D BarChart::getPreferredDiagramAspectRatio() const
     if( m_nDimension == 3 )
     {
         aRet = drawing::Direction3D(1.0,-1.0,1.0);
-        BarPositionHelper* pPosHelper = dynamic_cast<BarPositionHelper*>(&( this->getPlottingPositionHelper( MAIN_AXIS_INDEX) ) );
+        BarPositionHelper* pPosHelper = dynamic_cast<BarPositionHelper*>(&( getPlottingPositionHelper( MAIN_AXIS_INDEX) ) );
         if (pPosHelper)
         {
             drawing::Direction3D aScale( pPosHelper->getScaledLogicWidth() );
@@ -133,14 +140,14 @@ awt::Point BarChart::getLabelScreenPositionAndAlignment(
                      LabelAlignment& rAlignment, sal_Int32 nLabelPlacement
                      , double fScaledX, double fScaledLowerYValue, double fScaledUpperYValue, double fScaledZ
                      , double fScaledLowerBarDepth, double fScaledUpperBarDepth, double fBaseValue
-                     , BarPositionHelper* pPosHelper
+                     , BarPositionHelper const * pPosHelper
                      ) const
 {
     double fX = fScaledX;
     double fY = fScaledUpperYValue;
     double fZ = fScaledZ;
     bool bReverse = !pPosHelper->isMathematicalOrientationY();
-    bool bNormalOutside = (!bReverse == !!(fBaseValue < fScaledUpperYValue));
+    bool bNormalOutside = (!bReverse == (fBaseValue < fScaledUpperYValue));
     double fDepth = fScaledUpperBarDepth;
 
     switch(nLabelPlacement)
@@ -217,9 +224,17 @@ awt::Point BarChart::getLabelScreenPositionAndAlignment(
         {
         fY = (fBaseValue < fScaledUpperYValue) ? fScaledUpperYValue : fScaledLowerYValue;
         if( pPosHelper->isSwapXAndY() )
-            rAlignment = bNormalOutside ? LABEL_ALIGN_RIGHT : LABEL_ALIGN_LEFT;
+            // if datapoint value is 0 the label will appear RIGHT in case of Bar Chart
+            if( fBaseValue == fScaledUpperYValue && fBaseValue == fScaledLowerYValue )
+                rAlignment = LABEL_ALIGN_RIGHT;
+            else
+                rAlignment = bNormalOutside ? LABEL_ALIGN_RIGHT : LABEL_ALIGN_LEFT;
         else
-            rAlignment = bNormalOutside ? LABEL_ALIGN_TOP : LABEL_ALIGN_BOTTOM;
+            // if datapoint value is 0 the label will appear TOP in case of Column Chart
+            if( fBaseValue == fScaledUpperYValue && fBaseValue == fScaledLowerYValue )
+                rAlignment = LABEL_ALIGN_TOP;
+            else
+                rAlignment = bNormalOutside ? LABEL_ALIGN_TOP : LABEL_ALIGN_BOTTOM;
         if(m_nDimension==3)
             fDepth = (fBaseValue < fScaledUpperYValue) ? fabs(fScaledUpperBarDepth) : fabs(fScaledLowerBarDepth);
         }
@@ -239,16 +254,31 @@ awt::Point BarChart::getLabelScreenPositionAndAlignment(
         {
         fY = (fBaseValue < fScaledUpperYValue) ? fScaledLowerYValue : fScaledUpperYValue;
         if( pPosHelper->isSwapXAndY() )
-            rAlignment = bNormalOutside ? LABEL_ALIGN_RIGHT : LABEL_ALIGN_LEFT;
+            // if datapoint value is 0 the label will appear RIGHT in case of Bar Chart
+            if( fBaseValue == fScaledUpperYValue && fBaseValue == fScaledLowerYValue )
+                rAlignment = LABEL_ALIGN_RIGHT;
+            else
+                rAlignment = bNormalOutside ? LABEL_ALIGN_RIGHT : LABEL_ALIGN_LEFT;
         else
-            rAlignment = bNormalOutside ? LABEL_ALIGN_TOP : LABEL_ALIGN_BOTTOM;
+            // if datapoint value is 0 the label will appear TOP in case of Column Chart
+            if( fBaseValue == fScaledUpperYValue && fBaseValue == fScaledLowerYValue )
+                rAlignment = LABEL_ALIGN_TOP;
+            else
+                rAlignment = bNormalOutside ? LABEL_ALIGN_TOP : LABEL_ALIGN_BOTTOM;
         if(m_nDimension==3)
             fDepth = (fBaseValue < fScaledUpperYValue) ? fabs(fScaledLowerBarDepth) : fabs(fScaledUpperBarDepth);
         }
         break;
     case css::chart::DataLabelPlacement::CENTER:
         fY -= (fScaledUpperYValue-fScaledLowerYValue)/2.0;
-        rAlignment = LABEL_ALIGN_CENTER;
+        // if datapoint value is 0 the label will appear TOP/RIGHT in case of Column/Bar Charts
+        if( fBaseValue == fScaledUpperYValue && fBaseValue == fScaledLowerYValue )
+            if( pPosHelper->isSwapXAndY() )
+                rAlignment = LABEL_ALIGN_RIGHT;
+            else
+                rAlignment = LABEL_ALIGN_TOP;
+        else
+            rAlignment = LABEL_ALIGN_CENTER;
         if(m_nDimension==3)
             fDepth = fabs(fScaledUpperBarDepth-fScaledLowerBarDepth)/2.0;
         break;
@@ -284,12 +314,12 @@ uno::Reference< drawing::XShape > BarChart::createDataPoint3D_Bar(
                 bRoundedEdges = false;
         }
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 
-    uno::Reference< drawing::XShape > xShape(nullptr);
+    uno::Reference< drawing::XShape > xShape;
     switch( nGeometry3D )
     {
         case DataPointGeometry3D::CYLINDER:
@@ -335,7 +365,7 @@ bool lcl_hasGeometry3DVariableWidth( sal_Int32 nGeometry3D )
 }
 }// end anonymous namespace
 
-void BarChart::addSeries( VDataSeries* pSeries, sal_Int32 zSlot, sal_Int32 xSlot, sal_Int32 ySlot )
+void BarChart::addSeries( std::unique_ptr<VDataSeries> pSeries, sal_Int32 zSlot, sal_Int32 xSlot, sal_Int32 ySlot )
 {
     if( !pSeries )
         return;
@@ -352,8 +382,10 @@ void BarChart::addSeries( VDataSeries* pSeries, sal_Int32 zSlot, sal_Int32 xSlot
         if(zSlot>=static_cast<sal_Int32>(m_aZSlots.size()))
             m_aZSlots.resize(zSlot+1);
     }
-    VSeriesPlotter::addSeries( pSeries, zSlot, xSlot, ySlot );
+    VSeriesPlotter::addSeries( std::move(pSeries), zSlot, xSlot, ySlot );
 }
+
+namespace {
 
 //better performance for big data
 struct FormerBarPoint
@@ -375,34 +407,49 @@ struct FormerBarPoint
     double m_fZ;
 };
 
+}
+
 void BarChart::adaptOverlapAndGapwidthForGroupBarsPerAxis()
 {
     //adapt m_aOverlapSequence and m_aGapwidthSequence for the groupBarsPerAxis feature
     //thus the different series use the same settings
 
     VDataSeries* pFirstSeries = getFirstSeries();
-    if(pFirstSeries && !pFirstSeries->getGroupBarsPerAxis() )
-    {
-        sal_Int32 nAxisIndex = pFirstSeries->getAttachedAxisIndex();
-        sal_Int32 nN = 0;
-        sal_Int32 nUseThisIndex = nAxisIndex;
-        if( nUseThisIndex < 0 || nUseThisIndex >= m_aOverlapSequence.getLength() )
-            nUseThisIndex = 0;
-        for( nN = 0; nN < m_aOverlapSequence.getLength(); nN++ )
-        {
-            if(nN!=nUseThisIndex)
-                m_aOverlapSequence[nN] = m_aOverlapSequence[nUseThisIndex];
-        }
+    if(!(pFirstSeries && !pFirstSeries->getGroupBarsPerAxis()) )
+        return;
 
-        nUseThisIndex = nAxisIndex;
-        if( nUseThisIndex < 0 || nUseThisIndex >= m_aGapwidthSequence.getLength() )
-            nUseThisIndex = 0;
-        for( nN = 0; nN < m_aGapwidthSequence.getLength(); nN++ )
-        {
-            if(nN!=nUseThisIndex)
-                m_aGapwidthSequence[nN] = m_aGapwidthSequence[nUseThisIndex];
-        }
+    sal_Int32 nAxisIndex = pFirstSeries->getAttachedAxisIndex();
+    sal_Int32 nN = 0;
+    sal_Int32 nUseThisIndex = nAxisIndex;
+    if( nUseThisIndex < 0 || nUseThisIndex >= m_aOverlapSequence.getLength() )
+        nUseThisIndex = 0;
+    for( nN = 0; nN < m_aOverlapSequence.getLength(); nN++ )
+    {
+        if(nN!=nUseThisIndex)
+            m_aOverlapSequence[nN] = m_aOverlapSequence[nUseThisIndex];
     }
+
+    nUseThisIndex = nAxisIndex;
+    if( nUseThisIndex < 0 || nUseThisIndex >= m_aGapwidthSequence.getLength() )
+        nUseThisIndex = 0;
+    for( nN = 0; nN < m_aGapwidthSequence.getLength(); nN++ )
+    {
+        if(nN!=nUseThisIndex)
+            m_aGapwidthSequence[nN] = m_aGapwidthSequence[nUseThisIndex];
+    }
+}
+
+static E3dScene* lcl_getE3dScene(uno::Reference<uno::XInterface> const & xInterface)
+{
+    E3dScene* pScene = nullptr;
+
+    SvxShape* pSvxShape = comphelper::getUnoTunnelImplementation<SvxShape>(xInterface);
+    if (pSvxShape)
+    {
+        SdrObject* pObject = pSvxShape->GetSdrObject();
+        pScene = dynamic_cast<E3dScene*>(pObject);
+    }
+    return pScene;
 }
 
 void BarChart::createShapes()
@@ -438,6 +485,27 @@ void BarChart::createShapes()
     bool bDrawConnectionLinesInited = false;
     bool bOnlyConnectionLinesForThisPoint = false;
 
+    std::unordered_set<uno::Reference<drawing::XShape>> aShapeSet;
+
+    const comphelper::ScopeGuard aGuard([aShapeSet]() {
+
+        std::unordered_set<E3dScene*> aSceneSet;
+
+        for (uno::Reference<drawing::XShape> const & rShape : aShapeSet)
+        {
+            E3dScene* pScene = lcl_getE3dScene(rShape);
+            if(nullptr != pScene)
+            {
+                aSceneSet.insert(pScene->getRootE3dSceneFromE3dObject());
+            }
+        }
+        for (E3dScene* pScene : aSceneSet)
+        {
+            pScene->ResumeReportingDirtyRects();
+            pScene->SetAllSceneRectsDirty();
+        }
+    });
+
     adaptOverlapAndGapwidthForGroupBarsPerAxis();
 
     //better performance for big data
@@ -451,78 +519,63 @@ void BarChart::createShapes()
     //iterate through all x values per indices
     for( sal_Int32 nPointIndex = nStartIndex; nPointIndex < nEndIndex; nPointIndex++ )
     {
-        std::vector< std::vector< VDataSeriesGroup > >::iterator             aZSlotIter = m_aZSlots.begin();
-        const std::vector< std::vector< VDataSeriesGroup > >::const_iterator  aZSlotEnd = m_aZSlots.end();
-
         //sum up the values for all series in a complete z slot per attached axis
         std::map< sal_Int32,  double > aLogicYSumMap;
-        for( ; aZSlotIter != aZSlotEnd; ++aZSlotIter )
+        for( auto& rZSlot : m_aZSlots )
         {
-            std::vector< VDataSeriesGroup >::iterator             aXSlotIter = aZSlotIter->begin();
-            const std::vector< VDataSeriesGroup >::const_iterator aXSlotEnd = aZSlotIter->end();
-
-            for( aXSlotIter = aZSlotIter->begin(); aXSlotIter != aXSlotEnd; ++aXSlotIter )
+            for( auto& rXSlot : rZSlot )
             {
-                sal_Int32 nAttachedAxisIndex = aXSlotIter->getAttachedAxisIndexForFirstSeries();
+                sal_Int32 nAttachedAxisIndex = rXSlot.getAttachedAxisIndexForFirstSeries();
                 if( aLogicYSumMap.find(nAttachedAxisIndex)==aLogicYSumMap.end() )
                     aLogicYSumMap[nAttachedAxisIndex]=0.0;
 
-                const sal_Int32 nSlotPoints = aXSlotIter->getPointCount();
+                const sal_Int32 nSlotPoints = rXSlot.getPointCount();
                 if( nPointIndex >= nSlotPoints )
                     continue;
 
                 double fMinimumY = 0.0, fMaximumY = 0.0;
-                aXSlotIter->calculateYMinAndMaxForCategory( nPointIndex
+                rXSlot.calculateYMinAndMaxForCategory( nPointIndex
                     , isSeparateStackingForDifferentSigns( 1 ), fMinimumY, fMaximumY, nAttachedAxisIndex );
 
-                if( !::rtl::math::isNan( fMaximumY ) && fMaximumY > 0)
+                if( !std::isnan( fMaximumY ) && fMaximumY > 0)
                     aLogicYSumMap[nAttachedAxisIndex] += fMaximumY;
-                if( !::rtl::math::isNan( fMinimumY ) && fMinimumY < 0)
+                if( !std::isnan( fMinimumY ) && fMinimumY < 0)
                     aLogicYSumMap[nAttachedAxisIndex] += fabs(fMinimumY);
             }
         }
 
-        aZSlotIter = m_aZSlots.begin();
-        for( sal_Int32 nZ=1; aZSlotIter != aZSlotEnd; ++aZSlotIter, nZ++ )
+        sal_Int32 nZ=1;
+        for( auto& rZSlot : m_aZSlots )
         {
-            std::vector< VDataSeriesGroup >::iterator             aXSlotIter = aZSlotIter->begin();
-            const std::vector< VDataSeriesGroup >::const_iterator aXSlotEnd = aZSlotIter->end();
-
             //iterate through all x slots in this category
             double fSlotX=0;
-            for( aXSlotIter = aZSlotIter->begin(); aXSlotIter != aXSlotEnd; ++aXSlotIter, fSlotX+=1.0 )
+            for( auto& rXSlot : rZSlot )
             {
-                sal_Int32 nAttachedAxisIndex = 0;
-                BarPositionHelper* pPosHelper = m_pMainPosHelper.get();
-                if( aXSlotIter != aXSlotEnd )
-                {
-                    nAttachedAxisIndex = aXSlotIter->getAttachedAxisIndexForFirstSeries();
-                    //2ND_AXIS_IN_BARS so far one can assume to have the same plotter for each z slot
-                    pPosHelper = dynamic_cast<BarPositionHelper*>(&( this->getPlottingPositionHelper( nAttachedAxisIndex ) ) );
-                    if(!pPosHelper)
-                        pPosHelper = m_pMainPosHelper.get();
-                }
+                sal_Int32 nAttachedAxisIndex = rXSlot.getAttachedAxisIndexForFirstSeries();
+                //2ND_AXIS_IN_BARS so far one can assume to have the same plotter for each z slot
+                BarPositionHelper* pPosHelper = dynamic_cast<BarPositionHelper*>(&( getPlottingPositionHelper( nAttachedAxisIndex ) ) );
+                if(!pPosHelper)
+                    pPosHelper = m_pMainPosHelper.get();
+
                 PlotterBase::m_pPosHelper = pPosHelper;
 
                 //update/create information for current group
-                pPosHelper->updateSeriesCount( aZSlotIter->size() );
+                pPosHelper->updateSeriesCount( rZSlot.size() );
                 double fLogicBaseWidth = pPosHelper->getScaledSlotWidth();
-
-                std::vector< VDataSeries* >* pSeriesList = &(aXSlotIter->m_aSeriesVector);
 
                 // get distance from base value to maximum and minimum
 
                 double fMinimumY = 0.0, fMaximumY = 0.0;
-                if( nPointIndex < aXSlotIter->getPointCount())
-                    aXSlotIter->calculateYMinAndMaxForCategory( nPointIndex
+                if( nPointIndex < rXSlot.getPointCount())
+                    rXSlot.calculateYMinAndMaxForCategory( nPointIndex
                         , isSeparateStackingForDifferentSigns( 1 ), fMinimumY, fMaximumY, nAttachedAxisIndex );
 
                 double fLogicPositiveYSum = 0.0;
-                if( !::rtl::math::isNan( fMaximumY ) )
+                if( !std::isnan( fMaximumY ) )
                     fLogicPositiveYSum = fMaximumY;
 
                 double fLogicNegativeYSum = 0.0;
-                if( !::rtl::math::isNan( fMinimumY ) )
+                if( !std::isnan( fMinimumY ) )
                     fLogicNegativeYSum = fMinimumY;
 
                 if( pPosHelper->isPercentY() )
@@ -548,17 +601,14 @@ void BarChart::createShapes()
                 }
 
                 double fBaseValue = 0.0;
-                if( !pPosHelper->isPercentY() && pSeriesList->size()<=1 )
+                if( !pPosHelper->isPercentY() && rXSlot.m_aSeriesVector.size()<=1 )
                     fBaseValue = pPosHelper->getBaseValueY();
                 double fPositiveLogicYForNextSeries = fBaseValue;
                 double fNegativeLogicYForNextSeries = fBaseValue;
 
-                std::vector< VDataSeries* >::const_iterator       aSeriesIter = pSeriesList->begin();
-                const std::vector< VDataSeries* >::const_iterator aSeriesEnd  = pSeriesList->end();
                 //iterate through all series in this x slot
-                for( ; aSeriesIter != aSeriesEnd; ++aSeriesIter )
+                for( std::unique_ptr<VDataSeries> const & pSeries : rXSlot.m_aSeriesVector )
                 {
-                    VDataSeries* pSeries( *aSeriesIter );
                     if(!pSeries)
                         continue;
 
@@ -567,7 +617,7 @@ void BarChart::createShapes()
                     bOnlyConnectionLinesForThisPoint = false;
 
                     if(nPointIndex==nStartIndex)//do not create a regression line for each point
-                        createRegressionCurvesShapes( **aSeriesIter, xRegressionCurveTarget, xRegressionCurveEquationTarget,
+                        createRegressionCurvesShapes( *pSeries, xRegressionCurveTarget, xRegressionCurveEquationTarget,
                                                       m_pPosHelper->maySkipPointsInRegressionCalculation());
 
                     if( !bDrawConnectionLinesInited )
@@ -575,7 +625,7 @@ void BarChart::createShapes()
                         bDrawConnectionLines = pSeries->getConnectBars();
                         if( m_nDimension==3 )
                             bDrawConnectionLines = false;
-                        if( bDrawConnectionLines && pSeriesList->size()==1 )
+                        if( bDrawConnectionLines && rXSlot.m_aSeriesVector.size()==1 )
                         {
                             //detect whether we have a stacked chart or not:
                             StackingDirection eDirection = pSeries->getStackingDirection();
@@ -585,12 +635,19 @@ void BarChart::createShapes()
                         bDrawConnectionLinesInited = true;
                     }
 
-                    uno::Reference< drawing::XShapes > xSeriesGroupShape_Shapes(
-                        getSeriesGroupShape(*aSeriesIter, xSeriesTarget) );
+                    uno::Reference<drawing::XShapes> xSeriesGroupShape_Shapes(getSeriesGroupShape(pSeries.get(), xSeriesTarget));
+                    uno::Reference<drawing::XShape>  xSeriesGroupShape(xSeriesGroupShape_Shapes, uno::UNO_QUERY);
+                    // Suspend setting rects dirty for the duration of this call
+                    aShapeSet.insert(xSeriesGroupShape);
+                    E3dScene* pScene = lcl_getE3dScene(xSeriesGroupShape);
+                    if (pScene)
+                        pScene->SuspendReportingDirtyRects();
 
                     //collect data point information (logic coordinates, style ):
-                    double fUnscaledLogicX = (*aSeriesIter)->getXValue( nPointIndex );
+                    double fUnscaledLogicX = pSeries->getXValue( nPointIndex );
                     fUnscaledLogicX = DateHelper::RasterizeDateValue( fUnscaledLogicX, m_aNullDate, m_nTimeResolution );
+                    if(std::isnan(fUnscaledLogicX))
+                        continue;//point not visible
                     if(fUnscaledLogicX<pPosHelper->getLogicMinX())
                         continue;//point not visible
                     if(fUnscaledLogicX>pPosHelper->getLogicMaxX())
@@ -599,8 +656,8 @@ void BarChart::createShapes()
                         continue;//point not visible
                     double fLogicX = pPosHelper->getScaledSlotPos( fUnscaledLogicX, fSlotX );
 
-                    double fLogicBarHeight = (*aSeriesIter)->getYValue( nPointIndex );
-                    if( ::rtl::math::isNan( fLogicBarHeight )) //no value at this category
+                    double fLogicBarHeight = pSeries->getYValue( nPointIndex );
+                    if( std::isnan( fLogicBarHeight )) //no value at this category
                         continue;
 
                     double fLogicValueForLabeDisplay = fLogicBarHeight;
@@ -613,6 +670,11 @@ void BarChart::createShapes()
                         else
                             fLogicBarHeight = 0.0;
                     }
+
+                    // tdf#114141 to draw the top of the zero height 3D bar
+                    // we set a small positive value, here the smallest one for the type double (DBL_MIN)
+                    if( fLogicBarHeight == 0.0 )
+                        fLogicBarHeight = DBL_MIN;
 
                     //sort negative and positive values, to display them on different sides of the x axis
                     bool bPositive = fLogicBarHeight >= 0.0;
@@ -635,15 +697,15 @@ void BarChart::createShapes()
     //              uno::Reference<drawing::XShape> xPointGroupShape_Shape =
     //                      uno::Reference<drawing::XShape>( xPointGroupShape_Shapes, uno::UNO_QUERY );
                     //as long as we do not iterate we do not need to create an additional group for each point
-                    uno::Reference< beans::XPropertySet > xDataPointProperties( (*aSeriesIter)->getPropertiesOfPoint( nPointIndex ) );
+                    uno::Reference< beans::XPropertySet > xDataPointProperties( pSeries->getPropertiesOfPoint( nPointIndex ) );
                     sal_Int32 nGeometry3D = DataPointGeometry3D::CUBOID;
                     if(m_nDimension==3) try
                     {
                         xDataPointProperties->getPropertyValue( "Geometry3D") >>= nGeometry3D;
                     }
-                    catch( const uno::Exception& e )
+                    catch( const uno::Exception& )
                     {
-                        ASSERT_EXCEPTION( e );
+                        TOOLS_WARN_EXCEPTION("chart2", "" );
                     }
 
                     //@todo iterate through all subsystems to create partial points
@@ -690,17 +752,17 @@ void BarChart::createShapes()
                                 double fHeight = fCompleteHeight-fLowerYValue;
                                 if(!bPositive)
                                     fHeight = fCompleteHeight-fUpperYValue;
-                                fLogicBarWidth = fLogicBaseWidth*fHeight/(fCompleteHeight);
+                                fLogicBarWidth = fLogicBaseWidth*fHeight/fCompleteHeight;
                                 if(fLogicBarWidth<=0.0)
                                     fLogicBarWidth=fLogicBaseWidth;
-                                fLogicBarDepth = fLogicBarDepth*fHeight/(fCompleteHeight);
+                                fLogicBarDepth = fLogicBarDepth*fHeight/fCompleteHeight;
                                 if(fLogicBarDepth<=0.0)
                                     fLogicBarDepth*=-1.0;
                             }
                         }
 
                         //better performance for big data
-                        FormerBarPoint aFormerPoint( aSeriesFormerPointMap[pSeries] );
+                        FormerBarPoint aFormerPoint( aSeriesFormerPointMap[pSeries.get()] );
                         pPosHelper->setCoordinateSystemResolution( m_aCoordinateSystemResolution );
                         if( !pSeries->isAttributedDataPoint(nPointIndex)
                             &&
@@ -715,7 +777,7 @@ void BarChart::createShapes()
                             m_bPointsWereSkipped = true;
                             continue;
                         }
-                        aSeriesFormerPointMap[pSeries] = FormerBarPoint(fLogicX,fUpperYValue,fLowerYValue,fLogicZ);
+                        aSeriesFormerPointMap[pSeries.get()] = FormerBarPoint(fLogicX,fUpperYValue,fLowerYValue,fLogicZ);
 
                         if( bDrawConnectionLines )
                         {
@@ -725,9 +787,9 @@ void BarChart::createShapes()
                             drawing::Position3D aRightUpperPoint( fLogicX+fLogicBarWidth/2.0,fUnclippedUpperYValue,fLogicZ );
 
                             if( isValidPosition(aLeftUpperPoint) )
-                                AddPointToPoly( (*aSeriesIter)->m_aPolyPolygonShape3D, aLeftUpperPoint );
+                                AddPointToPoly( pSeries->m_aPolyPolygonShape3D, aLeftUpperPoint );
                             if( isValidPosition(aRightUpperPoint) )
-                                AddPointToPoly( (*aSeriesIter)->m_aPolyPolygonShape3D, aRightUpperPoint );
+                                AddPointToPoly( pSeries->m_aPolyPolygonShape3D, aRightUpperPoint );
                         }
 
                         if( bOnlyConnectionLinesForThisPoint )
@@ -805,7 +867,7 @@ void BarChart::createShapes()
                             if(bHasFillColorMapping)
                             {
                                 double nPropVal = pSeries->getValueByProperty(nPointIndex, "FillColor");
-                                if(!rtl::math::isNan(nPropVal))
+                                if(!std::isnan(nPropVal))
                                 {
                                     uno::Reference< beans::XPropertySet > xProps( xShape, uno::UNO_QUERY_THROW );
                                     xProps->setPropertyValue("FillColor", uno::Any(static_cast<sal_Int32>(nPropVal)));
@@ -814,14 +876,14 @@ void BarChart::createShapes()
                             //set name/classified ObjectID (CID)
                             ShapeFactory::setShapeName(xShape
                                 , ObjectIdentifier::createPointCID(
-                                    (*aSeriesIter)->getPointCID_Stub(),nPointIndex) );
+                                    pSeries->getPointCID_Stub(),nPointIndex) );
                         }
 
                         //create error bar
-                        createErrorBar_Y( aUnscaledLogicPosition, **aSeriesIter, nPointIndex, m_xLogicTarget, &fLogicX );
+                        createErrorBar_Y( aUnscaledLogicPosition, *pSeries, nPointIndex, m_xLogicTarget, &fLogicX );
 
                         //create data point label
-                        if( (**aSeriesIter).getDataPointLabelIfLabel(nPointIndex) )
+                        if( pSeries->getDataPointLabelIfLabel(nPointIndex) )
                         {
                             double fLogicSum = aLogicYSumMap[nAttachedAxisIndex];
 
@@ -833,7 +895,7 @@ void BarChart::createShapes()
                             {
                                 if( lcl_hasGeometry3DVariableWidth(nGeometry3D) && fCompleteHeight!=0.0 )
                                 {
-                                    double fOuterBarDepth = fLogicBarDepth * (fTopHeight)/(fabs(fCompleteHeight));
+                                    double fOuterBarDepth = fLogicBarDepth * fTopHeight/(fabs(fCompleteHeight));
                                     fLowerBarDepth = (fBaseValue < fUpperYValue) ? fabs(fLogicBarDepth) : fabs(fOuterBarDepth);
                                     fUpperBarDepth = (fBaseValue < fUpperYValue) ? fabs(fOuterBarDepth) : fabs(fLogicBarDepth);
                                 }
@@ -850,47 +912,39 @@ void BarChart::createShapes()
                                     nOffset = 260;
                             }
                             createDataLabel(
-                                xTextTarget, **aSeriesIter, nPointIndex,
+                                xTextTarget, *pSeries, nPointIndex,
                                 fLogicValueForLabeDisplay, fLogicSum, aScreenPosition2D, eAlignment, nOffset);
                         }
 
                     }//end iteration through partial points
 
                 }//next series in x slot (next y slot)
+                fSlotX+=1.0;
             }//next x slot
+            ++nZ;
         }//next z slot
     }//next category
     if( bDrawConnectionLines )
     {
-        std::vector< std::vector< VDataSeriesGroup > >::iterator             aZSlotIter = m_aZSlots.begin();
-        const std::vector< std::vector< VDataSeriesGroup > >::const_iterator  aZSlotEnd = m_aZSlots.end();
-        for( sal_Int32 nZ=1; aZSlotIter != aZSlotEnd; ++aZSlotIter, nZ++ )
+        for( auto const& rZSlot : m_aZSlots )
         {
-            std::vector< VDataSeriesGroup >::iterator             aXSlotIter = aZSlotIter->begin();
-            const std::vector< VDataSeriesGroup >::const_iterator aXSlotEnd = aZSlotIter->end();
-
             BarPositionHelper* pPosHelper = m_pMainPosHelper.get();
-            if( aXSlotIter != aXSlotEnd )
+            if( !rZSlot.empty() )
             {
-                sal_Int32 nAttachedAxisIndex = aXSlotIter->getAttachedAxisIndexForFirstSeries();
+                sal_Int32 nAttachedAxisIndex = rZSlot.front().getAttachedAxisIndexForFirstSeries();
                 //2ND_AXIS_IN_BARS so far one can assume to have the same plotter for each z slot
-                pPosHelper = dynamic_cast<BarPositionHelper*>(&( this->getPlottingPositionHelper( nAttachedAxisIndex ) ) );
+                pPosHelper = dynamic_cast<BarPositionHelper*>(&( getPlottingPositionHelper( nAttachedAxisIndex ) ) );
                 if(!pPosHelper)
                     pPosHelper = m_pMainPosHelper.get();
             }
             PlotterBase::m_pPosHelper = pPosHelper;
 
             //iterate through all x slots in this category
-            for( double fSlotX=0; aXSlotIter != aXSlotEnd; ++aXSlotIter, fSlotX+=1.0 )
+            for( auto const& rXSlot : rZSlot )
             {
-                std::vector< VDataSeries* >* pSeriesList = &(aXSlotIter->m_aSeriesVector);
-
-                std::vector< VDataSeries* >::const_iterator       aSeriesIter = pSeriesList->begin();
-                const std::vector< VDataSeries* >::const_iterator aSeriesEnd  = pSeriesList->end();
                 //iterate through all series in this x slot
-                for( ; aSeriesIter != aSeriesEnd; ++aSeriesIter )
+                for( std::unique_ptr<VDataSeries> const & pSeries : rXSlot.m_aSeriesVector )
                 {
-                    VDataSeries* pSeries( *aSeriesIter );
                     if(!pSeries)
                         continue;
                     drawing::PolyPolygonShape3D* pSeriesPoly = &pSeries->m_aPolyPolygonShape3D;
@@ -907,7 +961,7 @@ void BarChart::createShapes()
                     pPosHelper->transformScaledLogicToScene( aPoly );
 
                     uno::Reference< drawing::XShapes > xSeriesGroupShape_Shapes(
-                        getSeriesGroupShape(*aSeriesIter, xSeriesTarget) );
+                        getSeriesGroupShape(pSeries.get(), xSeriesTarget) );
                     uno::Reference< drawing::XShape > xShape( m_pShapeFactory->createLine2D(
                         xSeriesGroupShape_Shapes, PolyToPointSequence( aPoly ) ) );
                     setMappedProperties( xShape, pSeries->getPropertiesOfSeries()

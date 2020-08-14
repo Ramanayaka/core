@@ -21,17 +21,14 @@
 #ifndef INCLUDED_OSL_PROCESS_H
 #define INCLUDED_OSL_PROCESS_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
-#include <osl/file.h>
-#include <osl/pipe.h>
-#include <osl/security.h>
-#include <osl/socket.h>
-#include <osl/time.h>
-#include <rtl/locale.h>
-#include <rtl/textenc.h>
-#include <rtl/ustring.h>
-#include <sal/saldllapi.h>
+#include "osl/file.h"
+#include "osl/security.h"
+#include "osl/time.h"
+#include "rtl/locale.h"
+#include "rtl/ustring.h"
+#include "sal/saldllapi.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -62,14 +59,14 @@ typedef sal_uInt32 oslProcessExitCode;
 typedef enum {
     osl_Process_E_None,                 /* no error */
     osl_Process_E_NotFound,             /* image not found */
-    osl_Process_E_TimedOut,             /* timout occurred */
+    osl_Process_E_TimedOut,             /* timeout occurred */
     osl_Process_E_NoPermission,         /* permission denied */
     osl_Process_E_Unknown,              /* unknown error */
     osl_Process_E_InvalidError,         /* unmapped error */
     osl_Process_E_FORCE_EQUAL_SIZE = SAL_MAX_ENUM
 } oslProcessError;
 
-#ifdef SAL_W32
+#ifdef _WIN32
 #   pragma pack(push, 8)
 #endif
 
@@ -83,7 +80,7 @@ typedef struct {
     sal_uInt32              HeapUsage;
 } oslProcessInfo;
 
-#if defined( SAL_W32)
+#if defined( _WIN32)
 #   pragma pack(pop)
 #endif
 
@@ -203,17 +200,17 @@ SAL_DLLPUBLIC oslProcessError SAL_CALL osl_executeProcess(
     Pointer to a oslProcess variable, which receives the handle of the newly created process.
     This parameter must not be NULL.
 
-    @param[in] pChildInputWrite
+    @param[out] pChildInputWrite
     Pointer to a oslFileHandle variable that receives the handle which can be used to write
     to the child process standard input device. The returned handle is not random accessible.
     The handle has to be closed with osl_closeFile if no longer used. This parameter can be NULL.
 
-    @param[in] pChildOutputRead
+    @param[out] pChildOutputRead
     Pointer to a oslFileHandle variable that receives the handle which can be used to read from
     the child process standard output device. The returned handle is not random accessible.
     The Handle has to be closed with osl_closeFile if no longer used. This parameter can be NULL.
 
-    @param[in] pChildErrorRead
+    @param[out] pChildErrorRead
     Pointer to a oslFileHandle variable that receives the handle which can be used to read from
     the child process standard error device. The returned handle is not random accessible.
     The Handle has to be closed with osl_closeFile if no longer used. This parameter can be NULL.

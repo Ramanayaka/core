@@ -20,20 +20,19 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSINSERTIONINDICATORHANDLER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSINSERTIONINDICATORHANDLER_HXX
 
-#include "view/SlsInsertAnimator.hxx"
+#include <controller/SlsAnimator.hxx>
 
-#include "view/SlsLayouter.hxx"
-#include "sdxfer.hxx"
+#include <view/SlsLayouter.hxx>
 
-namespace sd { namespace slidesorter { class SlideSorter; } }
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter { class SlideSorter; }
+namespace sd::slidesorter::view {
 class InsertAnimator;
 class InsertionIndicatorOverlay;
-} } }
+}
 
-namespace sd { namespace slidesorter { namespace controller {
+class SdTransferable;
 
-class Transferable;
+namespace sd::slidesorter::controller {
 
 /** Manage the visibility and location of the insertion indicator.  Its
     actual display is controlled by the InsertionIndicatorOverlay.
@@ -42,7 +41,7 @@ class InsertionIndicatorHandler
 {
 public:
     InsertionIndicatorHandler (SlideSorter& rSlideSorter);
-    ~InsertionIndicatorHandler();
+    ~InsertionIndicatorHandler() COVERITY_NOEXCEPT_FALSE;
 
     enum Mode { CopyMode, MoveMode, UnknownMode };
     static Mode GetModeFromDndAction (const sal_Int8 nDndAction);
@@ -63,7 +62,7 @@ public:
     {
     public:
         ForceShowContext (const std::shared_ptr<InsertionIndicatorHandler>& rpHandler);
-        ~ForceShowContext();
+        ~ForceShowContext() COVERITY_NOEXCEPT_FALSE;
     private:
         const std::shared_ptr<InsertionIndicatorHandler> mpHandler;
     };
@@ -135,7 +134,7 @@ private:
     void ForceEnd();
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

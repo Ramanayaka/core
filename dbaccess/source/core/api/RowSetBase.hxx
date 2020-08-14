@@ -39,16 +39,14 @@
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include "RowSetRow.hxx"
-#include <comphelper/broadcasthelper.hxx>
 #include "RowSetCacheIterator.hxx"
-#include "core_resource.hxx"
 
 #include <functional>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sdb { struct RowChangeEvent; }
     namespace lang { struct Locale; }
-} } }
+}
 
 namespace dbaccess
 {
@@ -73,11 +71,10 @@ namespace dbaccess
                         public ::comphelper::OPropertyStateContainer,
                         public ::comphelper::OPropertyArrayUsageHelper<ORowSetBase> // this class hold the static property info
     {
-        OModuleClient                           m_aModuleClient;
     protected:
         typedef std::vector<ORowSetDataColumn*>   TDataColumns;
-        ::osl::Mutex*                           m_pMutex;           // this the mutex form the rowset itself
-        ::osl::Mutex                            // we need a extra mutex for columns to prevend deadlock when setting new values
+        ::osl::Mutex*                           m_pMutex;           // this is the mutex from the rowset itself
+        ::osl::Mutex                            // we need an extra mutex for columns to prevent deadlock when setting new values
                                                 // for a row
                                                 m_aColumnsMutex;
 
@@ -88,12 +85,12 @@ namespace dbaccess
         connectivity::ORowSetValue              m_aEmptyValue;      // only for error case
 
         ::cppu::OWeakObject*                    m_pMySelf;          // set by derived classes
-        ORowSetCache*                           m_pCache;           // the cache is used by the rowset and his clone (shared)
-        ORowSetDataColumns*                     m_pColumns;         // represent the select columns
+        std::shared_ptr<ORowSetCache>           m_pCache;           // the cache is used by the rowset and his clone (shared)
+        std::unique_ptr<ORowSetDataColumns>     m_pColumns;         // represent the select columns
         ::cppu::OBroadcastHelper&               m_rBHelper;         // must be set from the derived classes
         // is used when the formatkey for database types is set
         css::uno::Reference< css::util::XNumberFormatTypes>   m_xNumberFormatTypes;
-        OEmptyCollection*                                                               m_pEmptyCollection;
+        std::unique_ptr<OEmptyCollection>       m_pEmptyCollection;
 
         css::uno::Reference< css::uno::XComponentContext>   m_aContext;
         ::connectivity::SQLError                m_aErrors;
@@ -127,8 +124,6 @@ namespace dbaccess
         virtual bool notifyAllListenersCursorBeforeMove(::osl::ResettableMutexGuard& _rGuard);
         // notify cursor moved
         virtual void notifyAllListenersCursorMoved(::osl::ResettableMutexGuard& _rGuard);
-        // notify all that rowset changed
-        virtual void notifyAllListeners(::osl::ResettableMutexGuard& _rGuard);
 
         // cancel the insertion, if necessary (means if we're on the insert row)
         virtual void        doCancelModification( ) = 0;
@@ -203,8 +198,8 @@ namespace dbaccess
             @return
                 <TRUE/> if movement was successful.
         */
-        bool SAL_CALL move( std::mem_fun_t<bool,ORowSetBase>& _aCheckFunctor,
-                            std::mem_fun_t<bool,ORowSetCache>& _aMovementFunctor);
+        bool SAL_CALL move( std::function<bool(ORowSetBase *)> const & _aCheckFunctor,
+                            std::function<bool(ORowSetCache *)> const & _aMovementFunctor);
 
         /** same meaning as isFirst. Only need by mem_fun
             @return
@@ -337,7 +332,7 @@ namespace dbaccess
         bool    isModification( const GrantNotifierAccess& ) { return isModification(); }
         bool    isModified( const GrantNotifierAccess& ) { return isModified(); }
         bool    isNew( const GrantNotifierAccess& ) { return isNew(); }
-        bool    isInsertRow() { return m_bIsInsertRow; } // isNew() || isModified(); }
+        bool    isInsertRow() const { return m_bIsInsertRow; } // isNew() || isModified(); }
         void        fireProperty( sal_Int32 _nProperty, bool _bNew, bool _bOld, const GrantNotifierAccess& )
         {
             fireProperty( _nProperty, _bNew, _bOld );
@@ -371,7 +366,7 @@ namespace dbaccess
         */
         explicit ORowSetNotifier( ORowSetBase* m_pRowSet );
 
-        /** use this one to construct an vector for change value notification
+        /** use this one to construct a vector for change value notification
         */
         ORowSetNotifier( ORowSetBase* m_pRowSet,const ORowSetValueVector::Vector& i_aRow );
 

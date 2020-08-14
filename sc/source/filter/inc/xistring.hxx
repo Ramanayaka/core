@@ -20,6 +20,7 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_XISTRING_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_XISTRING_HXX
 
+#include <rtl/ustring.hxx>
 #include "xlstring.hxx"
 
 // Byte/Unicode strings =======================================================
@@ -35,10 +36,8 @@ public:
     /** Constructs an unformatted string. */
     explicit            XclImpString( const OUString& rString );
 
-                        ~XclImpString();
-
     /** Reads a complete string from the passed stream. */
-    void                Read( XclImpStream& rStrm, XclStrFlags nFlags = EXC_STR_DEFAULT );
+    void                Read( XclImpStream& rStrm, XclStrFlags nFlags = XclStrFlags::NONE );
 
     /** Sets the passed string data. */
     void         SetText( const OUString& rText ) { maString = rText; }

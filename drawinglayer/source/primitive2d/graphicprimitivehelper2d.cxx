@@ -17,7 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <drawinglayer/primitive2d/graphicprimitivehelper2d.hxx>
+#include <sal/config.h>
+
+#include <algorithm>
+
+#include <primitive2d/graphicprimitivehelper2d.hxx>
 #include <drawinglayer/animation/animationtiming.hxx>
 #include <drawinglayer/primitive2d/bitmapprimitive2d.hxx>
 #include <drawinglayer/primitive2d/animatedprimitive2d.hxx>
@@ -32,16 +36,17 @@
 
 // helper class for animated graphics
 
-#include <vcl/animate.hxx>
+#include <vcl/animate/Animation.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/metaact.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
+#include <vcl/skia/SkiaHelper.hxx>
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
+        namespace {
+
         class AnimatedGraphicPrimitive2D : public AnimatedSwitchPrimitive2D
         {
         private:
@@ -86,33 +91,37 @@ namespace drawinglayer
 
             void ensureVirtualDeviceSizeAndState()
             {
-                if (isValidData())
+                if (!isValidData())
+                    return;
+
+                const Size aCurrent(maVirtualDevice->GetOutputSizePixel());
+                const Size aTarget(maAnimation.GetDisplaySizePixel());
+
+                if (aCurrent != aTarget)
                 {
-                    const Size aCurrent(maVirtualDevice->GetOutputSizePixel());
-                    const Size aTarget(maAnimation.GetDisplaySizePixel());
-
-                    if (aCurrent != aTarget)
-                    {
-                        maVirtualDevice->EnableMapMode(false);
-                        maVirtualDeviceMask->EnableMapMode(false);
-                        maVirtualDevice->SetOutputSizePixel(aTarget);
-                        maVirtualDeviceMask->SetOutputSizePixel(aTarget);
-                    }
-
-                    maVirtualDevice->Erase();
-                    maVirtualDeviceMask->Erase();
+                    maVirtualDevice->EnableMapMode(false);
+                    maVirtualDeviceMask->EnableMapMode(false);
+                    maVirtualDevice->SetOutputSizePixel(aTarget);
+                    maVirtualDeviceMask->SetOutputSizePixel(aTarget);
                 }
+
+                maVirtualDevice->Erase();
+                maVirtualDeviceMask->Erase();
+                const ::tools::Rectangle aRect(Point(0, 0), aTarget);
+                maVirtualDeviceMask->SetFillColor(COL_BLACK);
+                maVirtualDeviceMask->SetLineColor();
+                maVirtualDeviceMask->DrawRect(aRect);
             }
 
             sal_uInt32 generateStepTime(sal_uInt32 nIndex) const
             {
-                const AnimationBitmap& rAnimBitmap = maAnimation.Get(sal_uInt16(nIndex));
-                sal_uInt32 nWaitTime(rAnimBitmap.nWait * 10);
+                const AnimationBitmap& rAnimationBitmap = maAnimation.Get(sal_uInt16(nIndex));
+                sal_uInt32 nWaitTime(rAnimationBitmap.mnWait * 10);
 
                 // Take care of special value for MultiPage TIFFs. ATM these shall just
                 // show their first page. Later we will offer some switching when object
                 // is selected.
-                if (ANIMATION_TIMEOUT_ON_CLICK == rAnimBitmap.nWait)
+                if (ANIMATION_TIMEOUT_ON_CLICK == rAnimationBitmap.mnWait)
                 {
                     // ATM the huge value would block the timer, so
                     // use a long time to show first page (whole day)
@@ -121,9 +130,9 @@ namespace drawinglayer
 
                 // Bad trap: There are animated gifs with no set WaitTime (!).
                 // In that case use a default value.
-                if (0L == nWaitTime)
+                if (0 == nWaitTime)
                 {
-                    nWaitTime = 100L;
+                    nWaitTime = 100;
                 }
 
                 return nWaitTime;
@@ -131,39 +140,53 @@ namespace drawinglayer
 
             void createAndSetAnimationTiming()
             {
-                if (isValidData())
+                if (!isValidData())
+                    return;
+
+                animation::AnimationEntryLoop aAnimationLoop(maAnimation.GetLoopCount() ? maAnimation.GetLoopCount() : 0xffff);
+                const sal_uInt32 nCount(maAnimation.Count());
+
+                for (sal_uInt32 a(0); a < nCount; a++)
                 {
-                    animation::AnimationEntryLoop aAnimationLoop(maAnimation.GetLoopCount() ? maAnimation.GetLoopCount() : 0xffff);
-                    const sal_uInt32 nCount(maAnimation.Count());
+                    const sal_uInt32 aStepTime(generateStepTime(a));
+                    const animation::AnimationEntryFixed aTime(static_cast<double>(aStepTime), static_cast<double>(a) / static_cast<double>(nCount));
 
-                    for (sal_uInt32 a(0); a < nCount; a++)
-                    {
-                        const sal_uInt32 aStepTime(generateStepTime(a));
-                        const animation::AnimationEntryFixed aTime((double)aStepTime, (double)a / (double)nCount);
-
-                        aAnimationLoop.append(aTime);
-                    }
-
-                    animation::AnimationEntryList aAnimationEntryList;
-                    aAnimationEntryList.append(aAnimationLoop);
-
-                    setAnimationEntry(aAnimationEntryList);
+                    aAnimationLoop.append(aTime);
                 }
+
+                animation::AnimationEntryList aAnimationEntryList;
+                aAnimationEntryList.append(aAnimationLoop);
+
+                setAnimationEntry(aAnimationEntryList);
             }
 
             Primitive2DReference createFromBuffer() const
             {
                 // create BitmapEx by extracting from VirtualDevices
                 const Bitmap aMainBitmap(maVirtualDevice->GetBitmap(Point(), maVirtualDevice->GetOutputSizePixel()));
+                bool useAlphaMask = false;
 #if defined(MACOSX) || defined(IOS)
-                const AlphaMask aMaskBitmap(maVirtualDeviceMask->GetBitmap(Point(), maVirtualDeviceMask->GetOutputSizePixel()));
+                useAlphaMask = true;
 #else
-                const Bitmap aMaskBitmap(maVirtualDeviceMask->GetBitmap(Point(), maVirtualDeviceMask->GetOutputSizePixel()));
+                // GetBitmap()-> AlphaMask is optimized with SkiaSalBitmap::InterpretAs8Bit(), 1bpp mask is not.
+                if( SkiaHelper::isVCLSkiaEnabled())
+                    useAlphaMask = true;
 #endif
+                BitmapEx bitmap;
+                if( useAlphaMask )
+                {
+                    const AlphaMask aMaskBitmap(maVirtualDeviceMask->GetBitmap(Point(), maVirtualDeviceMask->GetOutputSizePixel()));
+                    bitmap = BitmapEx(aMainBitmap, aMaskBitmap);
+                }
+                else
+                {
+                    const Bitmap aMaskBitmap(maVirtualDeviceMask->GetBitmap(Point(), maVirtualDeviceMask->GetOutputSizePixel()));
+                    bitmap = BitmapEx(aMainBitmap, aMaskBitmap);
+                }
 
                 return Primitive2DReference(
                     new BitmapPrimitive2D(
-                        BitmapEx(aMainBitmap, aMaskBitmap),
+                        VCLUnoHelper::CreateVCLXBitmap(bitmap),
                         getTransform()));
             }
 
@@ -172,7 +195,7 @@ namespace drawinglayer
                 if (mbBufferingAllowed)
                 {
                     // all frames buffered
-                    if (mbBufferingAllowed && maBufferedPrimitives.size() && nIndex < maBufferedPrimitives.size())
+                    if (!maBufferedPrimitives.empty() && nIndex < maBufferedPrimitives.size())
                     {
                         if (!maBufferedPrimitives[nIndex].is())
                         {
@@ -212,79 +235,81 @@ namespace drawinglayer
             {
                 // mnNextFrameToPrepare is the target frame to create next (which implies that
                 // mnNextFrameToPrepare-1 *is* currently in the VirtualDevice when
-                // 0 != mnNextFrameToPrepare. nTarget is the traget frame.
-                if (isValidData())
+                // 0 != mnNextFrameToPrepare. nTarget is the target frame.
+                if (!isValidData())
+                    return;
+
+                if (mnNextFrameToPrepare > nTarget)
                 {
-                    if (mnNextFrameToPrepare > nTarget)
-                    {
-                        // we are ahead request, reset mechanism to start at frame zero
-                        ensureVirtualDeviceSizeAndState();
-                        mnNextFrameToPrepare = 0;
-                    }
+                    // we are ahead request, reset mechanism to start at frame zero
+                    ensureVirtualDeviceSizeAndState();
+                    mnNextFrameToPrepare = 0;
+                }
 
-                    while (mnNextFrameToPrepare <= nTarget)
-                    {
-                        // prepare step
-                        const AnimationBitmap& rAnimBitmap = maAnimation.Get(sal_uInt16(mnNextFrameToPrepare));
+                while (mnNextFrameToPrepare <= nTarget)
+                {
+                    // prepare step
+                    const AnimationBitmap& rAnimationBitmap = maAnimation.Get(sal_uInt16(mnNextFrameToPrepare));
 
-                        switch (rAnimBitmap.eDisposal)
+                    switch (rAnimationBitmap.meDisposal)
+                    {
+                        case Disposal::Not:
                         {
-                            case Disposal::Not:
+                            maVirtualDevice->DrawBitmapEx(rAnimationBitmap.maPositionPixel, rAnimationBitmap.maBitmapEx);
+                            Bitmap aMask = rAnimationBitmap.maBitmapEx.GetMask();
+
+                            if (aMask.IsEmpty())
                             {
-                                maVirtualDevice->DrawBitmapEx(rAnimBitmap.aPosPix, rAnimBitmap.aBmpEx);
-                                Bitmap aMask = rAnimBitmap.aBmpEx.GetMask();
-
-                                if (aMask.IsEmpty())
-                                {
-                                    const Point aEmpty;
-                                    const tools::Rectangle aRect(aEmpty, maVirtualDeviceMask->GetOutputSizePixel());
-                                    const Wallpaper aWallpaper(COL_BLACK);
-                                    maVirtualDeviceMask->DrawWallpaper(aRect, aWallpaper);
-                                }
-                                else
-                                {
-                                    BitmapEx aExpandVisibilityMask = BitmapEx(aMask, aMask);
-                                    maVirtualDeviceMask->DrawBitmapEx(rAnimBitmap.aPosPix, aExpandVisibilityMask);
-                                }
-
-                                break;
+                                const Point aEmpty;
+                                const ::tools::Rectangle aRect(aEmpty, maVirtualDeviceMask->GetOutputSizePixel());
+                                const Wallpaper aWallpaper(COL_BLACK);
+                                maVirtualDeviceMask->DrawWallpaper(aRect, aWallpaper);
                             }
-                            case Disposal::Back:
+                            else
                             {
-                                // #i70772# react on no mask, for primitives, too.
-                                const Bitmap aMask(rAnimBitmap.aBmpEx.GetMask());
-                                const Bitmap aContent(rAnimBitmap.aBmpEx.GetBitmap());
-
-                                maVirtualDeviceMask->Erase();
-                                maVirtualDevice->DrawBitmap(rAnimBitmap.aPosPix, aContent);
-
-                                if (aMask.IsEmpty())
-                                {
-                                    const tools::Rectangle aRect(rAnimBitmap.aPosPix, aContent.GetSizePixel());
-                                    maVirtualDeviceMask->SetFillColor(COL_BLACK);
-                                    maVirtualDeviceMask->SetLineColor();
-                                    maVirtualDeviceMask->DrawRect(aRect);
-                                }
-                                else
-                                {
-                                    maVirtualDeviceMask->DrawBitmap(rAnimBitmap.aPosPix, aMask);
-                                }
-
-                                break;
+                                BitmapEx aExpandVisibilityMask(aMask, aMask);
+                                maVirtualDeviceMask->DrawBitmapEx(rAnimationBitmap.maPositionPixel, aExpandVisibilityMask);
                             }
-                            case Disposal::Previous:
-                            {
-                                maVirtualDevice->DrawBitmapEx(rAnimBitmap.aPosPix, rAnimBitmap.aBmpEx);
-                                maVirtualDeviceMask->DrawBitmap(rAnimBitmap.aPosPix, rAnimBitmap.aBmpEx.GetMask());
-                                break;
-                            }
+
+                            break;
                         }
+                        case Disposal::Back:
+                        {
+                            // #i70772# react on no mask, for primitives, too.
+                            const Bitmap & rMask(rAnimationBitmap.maBitmapEx.GetMask());
+                            const Bitmap & rContent(rAnimationBitmap.maBitmapEx.GetBitmap());
 
-                        // to not waste created data, check adding to buffers
-                        checkSafeToBuffer(mnNextFrameToPrepare);
+                            maVirtualDeviceMask->Erase();
+                            maVirtualDevice->DrawBitmap(rAnimationBitmap.maPositionPixel, rContent);
 
-                        mnNextFrameToPrepare++;
+                            if (rMask.IsEmpty())
+                            {
+                                const ::tools::Rectangle aRect(rAnimationBitmap.maPositionPixel, rContent.GetSizePixel());
+                                maVirtualDeviceMask->SetFillColor(COL_BLACK);
+                                maVirtualDeviceMask->SetLineColor();
+                                maVirtualDeviceMask->DrawRect(aRect);
+                            }
+                            else
+                            {
+                                BitmapEx aExpandVisibilityMask(rMask, rMask);
+                                maVirtualDeviceMask->DrawBitmapEx(rAnimationBitmap.maPositionPixel, aExpandVisibilityMask);
+                            }
+
+                            break;
+                        }
+                        case Disposal::Previous:
+                        {
+                            maVirtualDevice->DrawBitmapEx(rAnimationBitmap.maPositionPixel, rAnimationBitmap.maBitmapEx);
+                            BitmapEx aExpandVisibilityMask(rAnimationBitmap.maBitmapEx.GetMask(), rAnimationBitmap.maBitmapEx.GetMask());
+                            maVirtualDeviceMask->DrawBitmapEx(rAnimationBitmap.maPositionPixel, aExpandVisibilityMask);
+                            break;
+                        }
                     }
+
+                    // to not waste created data, check adding to buffers
+                    checkSafeToBuffer(mnNextFrameToPrepare);
+
+                    mnNextFrameToPrepare++;
                 }
             }
 
@@ -293,7 +318,7 @@ namespace drawinglayer
                 if (mbBufferingAllowed)
                 {
                     // all frames buffered, check if available
-                    if (maBufferedPrimitives.size() && nIndex < maBufferedPrimitives.size())
+                    if (!maBufferedPrimitives.empty() && nIndex < maBufferedPrimitives.size())
                     {
                         if (maBufferedPrimitives[nIndex].is())
                         {
@@ -320,7 +345,6 @@ namespace drawinglayer
                 const basegfx::B2DHomMatrix& rTransform);
 
             /// data read access
-            const Graphic& getGraphic() const { return maGraphic; }
             const basegfx::B2DHomMatrix& getTransform() const { return maTransform; }
 
             /// compare operator
@@ -329,6 +353,8 @@ namespace drawinglayer
             /// override to deliver the correct expected frame dependent of timing
             virtual void get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const override;
         };
+
+        }
 
         AnimatedGraphicPrimitive2D::AnimatedGraphicPrimitive2D(
             const Graphic& rGraphic,
@@ -362,7 +388,7 @@ namespace drawinglayer
                 static const sal_uInt64 nAllowedSize(64 * 256 * 256);
                 static const sal_uInt64 nHugeSize(10000000);
                 const Size aTarget(maAnimation.GetDisplaySizePixel());
-                const sal_uInt64 nUsedSize((sal_uInt64)maAnimation.Count() * aTarget.Width() * aTarget.Height());
+                const sal_uInt64 nUsedSize(static_cast<sal_uInt64>(maAnimation.Count()) * aTarget.Width() * aTarget.Height());
 
                 if (nUsedSize < nAllowedSize)
                 {
@@ -393,67 +419,64 @@ namespace drawinglayer
             // use operator== of Graphic - if that is equal, the basic definition is equal
             return (nullptr != pCompare
                 && getTransform() == pCompare->getTransform()
-                && getGraphic() == pCompare->getGraphic());
+                && maGraphic == pCompare->maGraphic);
         }
 
         void AnimatedGraphicPrimitive2D::get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const
         {
-            if (isValidData())
+            if (!isValidData())
+                return;
+
+            Primitive2DReference aRetval;
+            const double fState(getAnimationEntry().getStateAtTime(rViewInformation.getViewTime()));
+            const sal_uInt32 nLen(maAnimation.Count());
+            sal_uInt32 nIndex(basegfx::fround(fState * static_cast<double>(nLen)));
+
+            // nIndex is the requested frame - it is in range [0..nLen[
+            // create frame representation in VirtualDevices
+            if (nIndex >= nLen)
             {
-                Primitive2DReference aRetval;
-                const double fState(getAnimationEntry().getStateAtTime(rViewInformation.getViewTime()));
-                const sal_uInt32 nLen(maAnimation.Count());
-                sal_uInt32 nIndex(basegfx::fround(fState * (double)nLen));
-
-                // nIndex is the requested frame - it is in range [0..nLen[
-                // create frame representation in VirtualDevices
-                if (nIndex >= nLen)
-                {
-                    nIndex = nLen - 1L;
-                }
-
-                // check buffering shortcuts, may already be created
-                aRetval = tryTogetFromBuffer(nIndex);
-
-                if (aRetval.is())
-                {
-                    rVisitor.append(aRetval);
-                    return;
-                }
-
-                // if huge size (and not the buffered 1st frame) simply
-                // create next frame
-                if (mbHugeSize && 0 != nIndex && mnNextFrameToPrepare <= nIndex)
-                {
-                    nIndex = mnNextFrameToPrepare % nLen;
-                }
-
-                // frame not (yet) buffered or no buffering allowed, create it
-                const_cast<AnimatedGraphicPrimitive2D*>(this)->createFrame(nIndex);
-
-                // try to get from buffer again, may have been added from createFrame
-                aRetval = tryTogetFromBuffer(nIndex);
-
-                if (aRetval.is())
-                {
-                    rVisitor.append(aRetval);
-                    return;
-                }
-
-                // did not work (not buffered and not 1st frame), create from buffer
-                aRetval = createFromBuffer();
-
-                rVisitor.append(aRetval);
+                nIndex = nLen - 1;
             }
+
+            // check buffering shortcuts, may already be created
+            aRetval = tryTogetFromBuffer(nIndex);
+
+            if (aRetval.is())
+            {
+                rVisitor.append(aRetval);
+                return;
+            }
+
+            // if huge size (and not the buffered 1st frame) simply
+            // create next frame
+            if (mbHugeSize && 0 != nIndex && mnNextFrameToPrepare <= nIndex)
+            {
+                nIndex = mnNextFrameToPrepare % nLen;
+            }
+
+            // frame not (yet) buffered or no buffering allowed, create it
+            const_cast<AnimatedGraphicPrimitive2D*>(this)->createFrame(nIndex);
+
+            // try to get from buffer again, may have been added from createFrame
+            aRetval = tryTogetFromBuffer(nIndex);
+
+            if (aRetval.is())
+            {
+                rVisitor.append(aRetval);
+                return;
+            }
+
+            // did not work (not buffered and not 1st frame), create from buffer
+            aRetval = createFromBuffer();
+
+            rVisitor.append(aRetval);
         }
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void create2DDecompositionOfGraphic(
             Primitive2DContainer& rContainer,
             const Graphic& rGraphic,
@@ -473,38 +496,38 @@ namespace drawinglayer
                             rGraphic,
                             rTransform);
                     }
-                    else if(rGraphic.getSvgData().get())
+                    else if(rGraphic.getVectorGraphicData())
                     {
-                        // embedded Svg fill, create embed transform
-                        const basegfx::B2DRange& rSvgRange(rGraphic.getSvgData()->getRange());
+                        // embedded Vector Graphic Data fill, create embed transform
+                        const basegfx::B2DRange& rSvgRange(rGraphic.getVectorGraphicData()->getRange());
 
                         if(basegfx::fTools::more(rSvgRange.getWidth(), 0.0) && basegfx::fTools::more(rSvgRange.getHeight(), 0.0))
                         {
                             // translate back to origin, scale to unit coordinates
-                            basegfx::B2DHomMatrix aEmbedSvg(
-                                basegfx::tools::createTranslateB2DHomMatrix(
+                            basegfx::B2DHomMatrix aEmbedVectorGraphic(
+                                basegfx::utils::createTranslateB2DHomMatrix(
                                     -rSvgRange.getMinX(),
                                     -rSvgRange.getMinY()));
 
-                            aEmbedSvg.scale(
+                            aEmbedVectorGraphic.scale(
                                 1.0 / rSvgRange.getWidth(),
                                 1.0 / rSvgRange.getHeight());
 
                             // apply created object transformation
-                            aEmbedSvg = rTransform * aEmbedSvg;
+                            aEmbedVectorGraphic = rTransform * aEmbedVectorGraphic;
 
-                            // add Svg primitives embedded
+                            // add Vector Graphic Data primitives embedded
                             aRetval.resize(1);
                             aRetval[0] = new TransformPrimitive2D(
-                                aEmbedSvg,
-                                rGraphic.getSvgData()->getPrimitive2DSequence());
+                                aEmbedVectorGraphic,
+                                rGraphic.getVectorGraphicData()->getPrimitive2DSequence());
                         }
                     }
                     else
                     {
                         aRetval.resize(1);
                         aRetval[0] = new BitmapPrimitive2D(
-                            rGraphic.GetBitmapEx(),
+                            VCLUnoHelper::CreateVCLXBitmap(rGraphic.GetBitmapEx()),
                             rTransform);
                     }
 
@@ -533,7 +556,7 @@ namespace drawinglayer
                         || aMetaFileRealSize.getHeight() > aMetaFilePrefSize.getHeight())
                     {
                         // clipping needed. Embed to MaskPrimitive2D. Create children and mask polygon
-                        basegfx::B2DPolygon aMaskPolygon(basegfx::tools::createUnitPolygon());
+                        basegfx::B2DPolygon aMaskPolygon(basegfx::utils::createUnitPolygon());
                         aMaskPolygon.transform(rTransform);
 
                         Primitive2DReference mask = new MaskPrimitive2D(
@@ -567,7 +590,7 @@ namespace drawinglayer
         {
             Primitive2DContainer aRetval;
 
-            if(!rChildren.size())
+            if(rChildren.empty())
             {
                 // no child content, done
                 return aRetval;
@@ -584,8 +607,8 @@ namespace drawinglayer
                 // original in svtools uses:
                 // #define WATERMARK_LUM_OFFSET        50
                 // #define WATERMARK_CON_OFFSET        -70
-                fLuminance = basegfx::clamp(fLuminance + 0.5, -1.0, 1.0);
-                fContrast = basegfx::clamp(fContrast - 0.7, -1.0, 1.0);
+                fLuminance = std::clamp(fLuminance + 0.5, -1.0, 1.0);
+                fContrast = std::clamp(fContrast - 0.7, -1.0, 1.0);
                 aGraphicDrawMode = GraphicDrawMode::Standard;
             }
 
@@ -598,8 +621,7 @@ namespace drawinglayer
                     const Primitive2DReference aPrimitiveGrey(
                         new ModifiedColorPrimitive2D(
                             aRetval,
-                            basegfx::BColorModifierSharedPtr(
-                                new basegfx::BColorModifier_gray())));
+                            std::make_shared<basegfx::BColorModifier_gray>()));
 
                     aRetval = Primitive2DContainer { aPrimitiveGrey };
                     break;
@@ -610,8 +632,7 @@ namespace drawinglayer
                     const Primitive2DReference aPrimitiveBlackAndWhite(
                         new ModifiedColorPrimitive2D(
                             aRetval,
-                            basegfx::BColorModifierSharedPtr(
-                                new basegfx::BColorModifier_black_and_white(0.5))));
+                            std::make_shared<basegfx::BColorModifier_black_and_white>(0.5)));
 
                     aRetval = Primitive2DContainer { aPrimitiveBlackAndWhite };
                     break;
@@ -637,13 +658,12 @@ namespace drawinglayer
                 const Primitive2DReference aPrimitiveRGBLuminannceContrast(
                     new ModifiedColorPrimitive2D(
                         aRetval,
-                        basegfx::BColorModifierSharedPtr(
-                            new basegfx::BColorModifier_RGBLuminanceContrast(
+                        std::make_shared<basegfx::BColorModifier_RGBLuminanceContrast>(
                                 fRed,
                                 fGreen,
                                 fBlue,
                                 fLuminance,
-                                fContrast))));
+                                fContrast)));
 
                 aRetval = Primitive2DContainer { aPrimitiveRGBLuminannceContrast };
             }
@@ -654,9 +674,8 @@ namespace drawinglayer
                 const Primitive2DReference aPrimitiveGamma(
                     new ModifiedColorPrimitive2D(
                         aRetval,
-                        basegfx::BColorModifierSharedPtr(
-                            new basegfx::BColorModifier_gamma(
-                                fGamma))));
+                        std::make_shared<basegfx::BColorModifier_gamma>(
+                                fGamma)));
 
                 aRetval = Primitive2DContainer { aPrimitiveGamma };
             }
@@ -667,8 +686,7 @@ namespace drawinglayer
                 const Primitive2DReference aPrimitiveInvert(
                     new ModifiedColorPrimitive2D(
                         aRetval,
-                        basegfx::BColorModifierSharedPtr(
-                            new basegfx::BColorModifier_invert())));
+                        std::make_shared<basegfx::BColorModifier_invert>()));
 
                 aRetval = Primitive2DContainer { aPrimitiveInvert };
             }
@@ -676,7 +694,6 @@ namespace drawinglayer
             return aRetval;
         }
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

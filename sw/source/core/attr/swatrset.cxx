@@ -21,25 +21,20 @@
 
 #include <cellatr.hxx>
 #include <charfmt.hxx>
-#include <cmdid.h>
 #include <doc.hxx>
 #include <IDocumentListsAccess.hxx>
-#include <editeng/colritem.hxx>
-#include <editeng/brushitem.hxx>
-#include <editeng/lineitem.hxx>
-#include <editeng/boxitem.hxx>
 #include <editeng/editeng.hxx>
 #include <fmtanchr.hxx>
 #include <fmtpdsc.hxx>
+#include <fmtautofmt.hxx>
 #include <hintids.hxx>
-#include <istyleaccess.hxx>
 #include <list.hxx>
 #include <node.hxx>
 #include <numrule.hxx>
 #include <pagedesc.hxx>
 #include <paratr.hxx>
+#include <osl/diagnose.h>
 #include <svl/whiter.hxx>
-#include <svx/xtable.hxx>
 
 #include <svx/svdpool.hxx>
 #include <svx/sxenditm.hxx>
@@ -51,15 +46,6 @@ SwAttrPool::SwAttrPool( SwDoc* pD )
                     aSlotTab, &aAttrTab ),
     m_pDoc( pD )
 {
-    SetVersionMap( 1, 1, 60, pVersionMap1 );
-    SetVersionMap( 2, 1, 75, pVersionMap2 );
-    SetVersionMap( 3, 1, 86, pVersionMap3 );
-    SetVersionMap( 4, 1,121, pVersionMap4 );
-    // #i18732# - apply new version map
-    SetVersionMap( 5, 1,130, pVersionMap5 );
-    SetVersionMap( 6, 1,136, pVersionMap6 );
-    SetVersionMap( 7, 1,144, pVersionMap7 );
-
     // create secondary pools immediately
     createAndAddSecondaryPools();
 }
@@ -88,7 +74,7 @@ void SwAttrPool::createAndAddSecondaryPools()
     // #75371# change DefaultItems for the SdrEdgeObj distance items
     // to TWIPS.
     // 1/100th mm in twips
-    const long nDefEdgeDist = ((500 * 72) / 127);
+    const long nDefEdgeDist = (500 * 72) / 127;
 
     pSdrPool->SetPoolDefaultItem(SdrEdgeNode1HorzDistItem(nDefEdgeDist));
     pSdrPool->SetPoolDefaultItem(SdrEdgeNode1VertDistItem(nDefEdgeDist));
@@ -99,7 +85,7 @@ void SwAttrPool::createAndAddSecondaryPools()
     pSdrPool->SetPoolDefaultItem(makeSdrShadowXDistItem((300 * 72) / 127));
     pSdrPool->SetPoolDefaultItem(makeSdrShadowYDistItem((300 * 72) / 127));
 
-    SfxItemPool *pEEgPool = EditEngine::CreatePool(false);
+    SfxItemPool *pEEgPool = EditEngine::CreatePool();
 
     pSdrPool->SetSecondaryPool(pEEgPool);
 
@@ -157,17 +143,17 @@ SwAttrSet::SwAttrSet( const SwAttrSet& rSet )
 {
 }
 
-SfxItemSet* SwAttrSet::Clone( bool bItems, SfxItemPool *pToPool ) const
+std::unique_ptr<SfxItemSet> SwAttrSet::Clone( bool bItems, SfxItemPool *pToPool ) const
 {
     if ( pToPool && pToPool != GetPool() )
     {
         SwAttrPool* pAttrPool = dynamic_cast< SwAttrPool* >(pToPool);
-        SfxItemSet* pTmpSet = nullptr;
+        std::unique_ptr<SfxItemSet> pTmpSet;
         if ( !pAttrPool )
             pTmpSet = SfxItemSet::Clone( bItems, pToPool );
         else
         {
-            pTmpSet = new SwAttrSet( *pAttrPool, GetRanges() );
+            pTmpSet.reset(new SwAttrSet( *pAttrPool, GetRanges() ));
             if ( bItems )
             {
                 SfxWhichIter aIter(*pTmpSet);
@@ -184,9 +170,10 @@ SfxItemSet* SwAttrSet::Clone( bool bItems, SfxItemPool *pToPool ) const
         return pTmpSet;
     }
     else
-        return bItems
+        return std::unique_ptr<SfxItemSet>(
+                bItems
                 ? new SwAttrSet( *this )
-                : new SwAttrSet( *GetPool(), GetRanges() );
+                : new SwAttrSet( *GetPool(), GetRanges() ));
 }
 
 bool SwAttrSet::Put_BC( const SfxPoolItem& rAttr,
@@ -276,9 +263,8 @@ bool SwAttrSet::SetModifyAtAttr( const SwModify* pModify )
     {
         // If CharFormat is set and it is set in different attribute pools then
         // the CharFormat has to be copied.
-        SwCharFormat* pCharFormat;
-        if( nullptr != ( pCharFormat = const_cast<SwFormatDrop*>(static_cast<const SwFormatDrop*>(pItem))->GetCharFormat() )
-            && GetPool() != pCharFormat->GetAttrSet().GetPool() )
+        SwCharFormat* pCharFormat = const_cast<SwFormatDrop*>(static_cast<const SwFormatDrop*>(pItem))->GetCharFormat();
+        if( pCharFormat && GetPool() != pCharFormat->GetAttrSet().GetPool() )
         {
            pCharFormat = GetDoc()->CopyCharFormat( *pCharFormat );
            const_cast<SwFormatDrop*>(static_cast<const SwFormatDrop*>(pItem))->SetCharFormat( pCharFormat );
@@ -308,7 +294,7 @@ void SwAttrSet::CopyToModify( SwModify& rMod ) const
         if( Count() )
         {
             // #i92811#
-            SfxStringItem* pNewListIdItem( nullptr );
+            std::unique_ptr<SfxStringItem> pNewListIdItem;
 
             const SfxPoolItem* pItem;
             const SwDoc *pSrcDoc = GetDoc();
@@ -335,14 +321,15 @@ void SwAttrSet::CopyToModify( SwModify& rMod ) const
                  pCNd && pCNd->IsTextNode() &&
                  GetItemState( RES_PARATR_LIST_ID, false, &pItem ) == SfxItemState::SET )
             {
-                const OUString& sListId =
-                        dynamic_cast<const SfxStringItem*>(pItem)->GetValue();
+                auto pStrItem = dynamic_cast<const SfxStringItem*>(pItem);
+                assert(pStrItem);
+                const OUString& sListId = pStrItem->GetValue();
                 if ( !sListId.isEmpty() &&
                      !pDstDoc->getIDocumentListsAccess().getListByName( sListId ) )
                 {
                     const SwList* pList = pSrcDoc->getIDocumentListsAccess().getListByName( sListId );
                     // copy list style, if needed
-                    const OUString sDefaultListStyleName =
+                    const OUString& sDefaultListStyleName =
                                             pList->GetDefaultListStyleName();
                     // #i92811#
                     const SwNumRule* pDstDocNumRule =
@@ -362,9 +349,9 @@ void SwAttrSet::CopyToModify( SwModify& rMod ) const
                         // Thus, create new list id item.
                         if (pSrcDocNumRule && sListId == pSrcDocNumRule->GetDefaultListId())
                         {
-                            pNewListIdItem = new SfxStringItem (
+                            pNewListIdItem.reset(new SfxStringItem (
                                             RES_PARATR_LIST_ID,
-                                            pDstDocNumRule->GetDefaultListId() );
+                                            pDstDocNumRule->GetDefaultListId() ));
                         }
                     }
                     // check again, if list exist, because <SwDoc::MakeNumRule(..)>
@@ -382,21 +369,23 @@ void SwAttrSet::CopyToModify( SwModify& rMod ) const
 
             const SwPageDesc* pPgDesc;
             if( pSrcDoc != pDstDoc && SfxItemState::SET == GetItemState(
-                                            RES_PAGEDESC, false, &pItem ) &&
-                nullptr != ( pPgDesc = static_cast<const SwFormatPageDesc*>(pItem)->GetPageDesc()) )
+                                            RES_PAGEDESC, false, &pItem ))
             {
-                if( !tmpSet )
-                    tmpSet.reset( new SfxItemSet( *this ));
-
-                SwPageDesc* pDstPgDesc = pDstDoc->FindPageDesc(pPgDesc->GetName());
-                if( !pDstPgDesc )
+                pPgDesc = static_cast<const SwFormatPageDesc*>(pItem)->GetPageDesc();
+                if( pPgDesc )
                 {
-                    pDstPgDesc = pDstDoc->MakePageDesc(pPgDesc->GetName());
-                    pDstDoc->CopyPageDesc( *pPgDesc, *pDstPgDesc );
+                    tmpSet.reset(new SfxItemSet(*this));
+
+                    SwPageDesc* pDstPgDesc = pDstDoc->FindPageDesc(pPgDesc->GetName());
+                    if( !pDstPgDesc )
+                    {
+                        pDstPgDesc = pDstDoc->MakePageDesc(pPgDesc->GetName());
+                        pDstDoc->CopyPageDesc( *pPgDesc, *pDstPgDesc );
+                    }
+                    SwFormatPageDesc aDesc( pDstPgDesc );
+                    aDesc.SetNumOffset( static_cast<const SwFormatPageDesc*>(pItem)->GetNumOffset() );
+                    tmpSet->Put( aDesc );
                 }
-                SwFormatPageDesc aDesc( pDstPgDesc );
-                aDesc.SetNumOffset( static_cast<const SwFormatPageDesc*>(pItem)->GetNumOffset() );
-                tmpSet->Put( aDesc );
             }
 
             if( pSrcDoc != pDstDoc && SfxItemState::SET == GetItemState( RES_ANCHOR, false, &pItem )
@@ -407,6 +396,22 @@ void SwAttrSet::CopyToModify( SwModify& rMod ) const
                 // Anchors at any node position cannot be copied to another document, because the SwPosition
                 // would still point to the old document. It needs to be fixed up explicitly.
                 tmpSet->ClearItem( RES_ANCHOR );
+            }
+
+            if (pSrcDoc != pDstDoc &&
+                SfxItemState::SET == GetItemState(RES_PARATR_LIST_AUTOFMT, false, &pItem))
+            {
+                SfxItemSet const& rAutoStyle(*static_cast<SwFormatAutoFormat const&>(*pItem).GetStyleHandle());
+                std::shared_ptr<SfxItemSet> const pNewSet(
+                    rAutoStyle.SfxItemSet::Clone(true, &pDstDoc->GetAttrPool()));
+                SwFormatAutoFormat item(RES_PARATR_LIST_AUTOFMT);
+                // TODO: for ODF export we'd need to add it to the autostyle pool
+                item.SetStyleHandle(pNewSet);
+                if (!tmpSet)
+                {
+                    tmpSet.reset(new SfxItemSet(*this));
+                }
+                tmpSet->Put(item);
             }
 
             if( tmpSet )
@@ -443,10 +448,6 @@ void SwAttrSet::CopyToModify( SwModify& rMod ) const
             {
                 pFormat->SetFormatAttr( *this );
             }
-
-            // #i92811#
-            delete pNewListIdItem;
-            pNewListIdItem = nullptr;
         }
     }
 #if OSL_DEBUG_LEVEL > 0

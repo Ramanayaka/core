@@ -18,14 +18,13 @@
  */
 #include "vbaframes.hxx"
 #include "vbaframe.hxx"
-#include <com/sun/star/text/XTextDocument.hpp>
-#include <com/sun/star/text/XTextViewCursor.hpp>
-#include <com/sun/star/text/XTextViewCursorSupplier.hpp>
-#include "wordvbahelper.hxx"
+#include <com/sun/star/frame/XModel.hpp>
 #include <cppuhelper/implbase.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
+
+namespace {
 
 class FramesEnumeration : public ::cppu::WeakImplHelper< container::XEnumeration >
 {
@@ -55,6 +54,8 @@ public:
 
 };
 
+}
+
 SwVbaFrames::SwVbaFrames( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< container::XIndexAccess >& xFrames, const uno::Reference< frame::XModel >& xModel ): SwVbaFrames_BASE( xParent, xContext, xFrames ), mxModel( xModel )
 {
     mxFramesSupplier.set( mxModel, uno::UNO_QUERY_THROW );
@@ -82,18 +83,16 @@ SwVbaFrames::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaFrames::getServiceImplName()
 {
-    return OUString("SwVbaFrames");
+    return "SwVbaFrames";
 }
 
 css::uno::Sequence<OUString>
 SwVbaFrames::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Frames";
-    }
+        "ooo.vba.word.Frames"
+    };
     return sNames;
 }
 

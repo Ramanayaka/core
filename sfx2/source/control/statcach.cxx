@@ -22,26 +22,23 @@
 #include <ctime>
 #endif
 
-#include <string>
-#include <com/sun/star/util/XURLTransformer.hpp>
 #include <framework/dispatchhelper.hxx>
 #include <com/sun/star/frame/DispatchResultState.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <cppuhelper/weak.hxx>
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
 #include <svl/stritem.hxx>
 #include <svl/visitem.hxx>
-#include <comphelper/processfactory.hxx>
 
 #include <sfx2/app.hxx>
-#include "statcach.hxx"
+#include <statcach.hxx>
 #include <sfx2/msg.hxx>
 #include <sfx2/ctrlitem.hxx>
 #include <sfx2/dispatch.hxx>
-#include "sfxtypes.hxx"
 #include <sfx2/sfxuno.hxx>
-#include <sfx2/unoctitm.hxx>
+#include <unoctitm.hxx>
 #include <sfx2/msgpool.hxx>
 #include <sfx2/viewfrm.hxx>
 
@@ -74,12 +71,12 @@ void SAL_CALL  BindDispatch_Impl::statusChanged( const css::frame::FeatureStateE
     if ( !pCache )
         return;
 
-    css::uno::Reference< css::frame::XStatusListener >  xRef( static_cast<cppu::OWeakObject*>(this), css::uno::UNO_QUERY );
+    css::uno::Reference< css::frame::XStatusListener >  xKeepAlive( static_cast<cppu::OWeakObject*>(this), css::uno::UNO_QUERY );
     if ( aStatus.Requery )
         pCache->Invalidate( true );
     else
     {
-        SfxPoolItem *pItem=nullptr;
+        std::unique_ptr<SfxPoolItem> pItem;
         sal_uInt16 nId = pCache->GetId();
         SfxItemState eState = SfxItemState::DISABLED;
         if ( !aStatus.IsEnabled )
@@ -91,30 +88,30 @@ void SAL_CALL  BindDispatch_Impl::statusChanged( const css::frame::FeatureStateE
             eState = SfxItemState::DEFAULT;
             css::uno::Any aAny = aStatus.State;
 
-            css::uno::Type aType = aAny.getValueType();
+            const css::uno::Type& aType = aAny.getValueType();
             if ( aType == cppu::UnoType< bool >::get() )
             {
                 bool bTemp = false;
                 aAny >>= bTemp ;
-                pItem = new SfxBoolItem( nId, bTemp );
+                pItem.reset( new SfxBoolItem( nId, bTemp ) );
             }
             else if ( aType == ::cppu::UnoType< ::cppu::UnoUnsignedShortType >::get() )
             {
                 sal_uInt16 nTemp = 0;
                 aAny >>= nTemp ;
-                pItem = new SfxUInt16Item( nId, nTemp );
+                pItem.reset( new SfxUInt16Item( nId, nTemp ) );
             }
             else if ( aType == cppu::UnoType<sal_uInt32>::get() )
             {
                 sal_uInt32 nTemp = 0;
                 aAny >>= nTemp ;
-                pItem = new SfxUInt32Item( nId, nTemp );
+                pItem.reset( new SfxUInt32Item( nId, nTemp ) );
             }
             else if ( aType == cppu::UnoType<OUString>::get() )
             {
                 OUString sTemp ;
                 aAny >>= sTemp ;
-                pItem = new SfxStringItem( nId, sTemp );
+                pItem.reset( new SfxStringItem( nId, sTemp ) );
             }
             else
             {
@@ -126,22 +123,20 @@ void SAL_CALL  BindDispatch_Impl::statusChanged( const css::frame::FeatureStateE
                     pItem->PutValue( aAny, 0 );
                 }
                 else
-                    pItem = new SfxVoidItem( nId );
+                    pItem.reset( new SfxVoidItem( nId ) );
             }
         }
         else
         {
             // DONTCARE status
-            pItem = new SfxVoidItem(0);
+            pItem.reset( new SfxVoidItem(0) );
             eState = SfxItemState::UNKNOWN;
         }
 
         for ( SfxControllerItem *pCtrl = pCache->GetItemLink();
             pCtrl;
             pCtrl = pCtrl->GetItemLink() )
-            pCtrl->StateChanged( nId, eState, pItem );
-
-       delete pItem;
+            pCtrl->StateChanged( nId, eState, pItem.get() );
     }
 }
 
@@ -152,9 +147,7 @@ void BindDispatch_Impl::Release()
         xDisp->removeStatusListener( static_cast<css::frame::XStatusListener*>(this), aURL );
         xDisp.clear();
     }
-
     pCache = nullptr;
-    release();
 }
 
 
@@ -180,7 +173,6 @@ sal_Int16 BindDispatch_Impl::Dispatch( const css::uno::Sequence < css::beans::Pr
 // This constructor for an invalid cache that is updated in the first request.
 
 SfxStateCache::SfxStateCache( sal_uInt16 nFuncId ):
-    pDispatch( nullptr ),
     nId(nFuncId),
     pInternalController(nullptr),
     pController(nullptr),
@@ -201,11 +193,8 @@ SfxStateCache::~SfxStateCache()
     DBG_ASSERT( pController == nullptr && pInternalController == nullptr, "there are still Controllers registered" );
     if ( !IsInvalidItem(pLastItem) )
         delete pLastItem;
-    if ( pDispatch )
-    {
-        pDispatch->Release();
-        pDispatch = nullptr;
-    }
+    if ( mxDispatch.is() )
+        mxDispatch->Release();
 }
 
 
@@ -217,11 +206,9 @@ void SfxStateCache::Invalidate( bool bWithMsg )
     {
         bSlotDirty = true;
         aSlotServ.SetSlot( nullptr );
-        if ( pDispatch )
-        {
-            pDispatch->Release();
-            pDispatch = nullptr;
-        }
+        if ( mxDispatch.is() )
+            mxDispatch->Release();
+        mxDispatch.clear();
     }
 }
 
@@ -234,9 +221,9 @@ const SfxSlotServer* SfxStateCache::GetSlotServer( SfxDispatcher &rDispat , cons
     if ( bSlotDirty )
     {
         // get the SlotServer; we need it for internal controllers anyway, but also in most cases
-        rDispat.FindServer_( nId, aSlotServ, false );
+        rDispat.FindServer_( nId, aSlotServ );
 
-        DBG_ASSERT( !pDispatch, "Old Dispatch not removed!" );
+        DBG_ASSERT( !mxDispatch.is(), "Old Dispatch not removed!" );
 
         // we don't need to check the dispatch provider if we only have an internal controller
         if ( xProv.is() )
@@ -291,13 +278,12 @@ const SfxSlotServer* SfxStateCache::GetSlotServer( SfxDispatcher &rDispat , cons
                 }
 
                 // so the dispatch object isn't a SfxDispatcher wrapper or it is one, but it uses another dispatcher, but not rDispat
-                pDispatch = new BindDispatch_Impl( xDisp, aURL, this, pSlot );
-                pDispatch->acquire();
+                mxDispatch = new BindDispatch_Impl( xDisp, aURL, this, pSlot );
 
                 // flags must be set before adding StatusListener because the dispatch object will set the state
                 bSlotDirty = false;
                 bCtrlDirty = true;
-                xDisp->addStatusListener( pDispatch, aURL );
+                xDisp->addStatusListener( mxDispatch.get(), aURL );
             }
             else if ( rDispat.GetFrame() )
             {
@@ -338,49 +324,62 @@ void SfxStateCache::SetState
     SetState_Impl( eState, pState, bMaybeDirty );
 }
 
+void SfxStateCache::GetState
+(
+    boost::property_tree::ptree& rState
+)
+{
+    if ( !mxDispatch.is() && pController )
+    {
+        for ( SfxControllerItem *pCtrl = pController;
+              pCtrl;
+              pCtrl = pCtrl->GetItemLink() )
+        pCtrl->GetControlState( nId, rState );
+    }
+}
 
 void SfxStateCache::SetVisibleState( bool bShow )
 {
-    if ( bShow != bItemVisible )
+    if ( bShow == bItemVisible )
+        return;
+
+    SfxItemState eState( SfxItemState::DEFAULT );
+    const SfxPoolItem*  pState( nullptr );
+    bool bDeleteItem( false );
+
+    bItemVisible = bShow;
+    if ( bShow )
     {
-        SfxItemState eState( SfxItemState::DEFAULT );
-        const SfxPoolItem*  pState( nullptr );
-        bool bDeleteItem( false );
-
-        bItemVisible = bShow;
-        if ( bShow )
+        if ( IsInvalidItem(pLastItem) || ( pLastItem == nullptr ))
         {
-            if ( IsInvalidItem(pLastItem) || ( pLastItem == nullptr ))
-            {
-                pState = new SfxVoidItem( nId );
-                bDeleteItem = true;
-            }
-            else
-                pState = pLastItem;
-
-            eState = eLastState;
-        }
-        else
-        {
-            pState = new SfxVisibilityItem( nId, false );
+            pState = new SfxVoidItem( nId );
             bDeleteItem = true;
         }
+        else
+            pState = pLastItem;
 
-        // Update Controller
-        if ( !pDispatch && pController )
-        {
-            for ( SfxControllerItem *pCtrl = pController;
-                    pCtrl;
-                    pCtrl = pCtrl->GetItemLink() )
-                pCtrl->StateChanged( nId, eState, pState );
-        }
-
-        if ( pInternalController )
-            pInternalController->StateChanged( nId, eState, pState );
-
-        if ( bDeleteItem )
-            delete pState;
+        eState = eLastState;
     }
+    else
+    {
+        pState = new SfxVisibilityItem( nId, false );
+        bDeleteItem = true;
+    }
+
+    // Update Controller
+    if ( !mxDispatch.is() && pController )
+    {
+        for ( SfxControllerItem *pCtrl = pController;
+                pCtrl;
+                pCtrl = pCtrl->GetItemLink() )
+            pCtrl->StateChanged( nId, eState, pState );
+    }
+
+    if ( pInternalController )
+        pInternalController->StateChanged( nId, eState, pState );
+
+    if ( bDeleteItem )
+        delete pState;
 }
 
 
@@ -416,7 +415,7 @@ void SfxStateCache::SetState_Impl
     if ( bNotify )
     {
         // Update Controller
-        if ( !pDispatch && pController )
+        if ( !mxDispatch.is() && pController )
         {
             for ( SfxControllerItem *pCtrl = pController;
                 pCtrl;
@@ -429,7 +428,10 @@ void SfxStateCache::SetState_Impl
 
         // Remember new value
         if ( !IsInvalidItem(pLastItem) )
-            DELETEZ(pLastItem);
+        {
+            delete pLastItem;
+            pLastItem = nullptr;
+        }
         if ( pState && !IsInvalidItem(pState) )
             pLastItem = pState->Clone();
         else
@@ -451,46 +453,46 @@ void SfxStateCache::SetCachedState( bool bAlways )
     // Only update if cached item exists and also able to process.
     // (If the State is sent, it must be ensured that a SlotServer is present,
     // see SfxControllerItem:: GetCoreMetric())
-    if ( bAlways || ( !bItemDirty && !bSlotDirty ) )
+    if ( !(bAlways || ( !bItemDirty && !bSlotDirty )) )
+        return;
+
+    // Update Controller
+    if ( !mxDispatch.is() && pController )
     {
-        // Update Controller
-        if ( !pDispatch && pController )
-        {
-            for ( SfxControllerItem *pCtrl = pController;
-                pCtrl;
-                pCtrl = pCtrl->GetItemLink() )
-                pCtrl->StateChanged( nId, eLastState, pLastItem );
-        }
-
-        if ( pInternalController )
-            static_cast<SfxDispatchController_Impl *>(pInternalController)->StateChanged( nId, eLastState, pLastItem, &aSlotServ );
-
-        // Controller is now ok
-        bCtrlDirty = true;
+        for ( SfxControllerItem *pCtrl = pController;
+            pCtrl;
+            pCtrl = pCtrl->GetItemLink() )
+            pCtrl->StateChanged( nId, eLastState, pLastItem );
     }
+
+    if ( pInternalController )
+        static_cast<SfxDispatchController_Impl *>(pInternalController)->StateChanged( nId, eLastState, pLastItem, &aSlotServ );
+
+    // Controller is now ok
+    bCtrlDirty = true;
 }
 
 
 css::uno::Reference< css::frame::XDispatch >  SfxStateCache::GetDispatch() const
 {
-    if ( pDispatch )
-        return pDispatch->xDisp;
+    if ( mxDispatch.is() )
+        return mxDispatch->xDisp;
     return css::uno::Reference< css::frame::XDispatch > ();
 }
 
 sal_Int16 SfxStateCache::Dispatch( const SfxItemSet* pSet, bool bForceSynchron )
 {
     // protect pDispatch against destruction in the call
-    css::uno::Reference < css::frame::XStatusListener > xKeepAlive( pDispatch );
+    rtl::Reference<BindDispatch_Impl> xKeepAlive( mxDispatch );
     sal_Int16 eRet = css::frame::DispatchResultState::DONTKNOW;
 
-    if ( pDispatch )
+    if ( mxDispatch.is() )
     {
         uno::Sequence < beans::PropertyValue > aArgs;
         if (pSet)
             TransformItems( nId, *pSet, aArgs );
 
-        eRet = pDispatch->Dispatch( aArgs, bForceSynchron );
+        eRet = mxDispatch->Dispatch( aArgs, bForceSynchron );
     }
 
     return eRet;

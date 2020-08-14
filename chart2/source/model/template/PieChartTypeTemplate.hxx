@@ -19,8 +19,8 @@
 #ifndef INCLUDED_CHART2_SOURCE_MODEL_TEMPLATE_PIECHARTTYPETEMPLATE_HXX
 #define INCLUDED_CHART2_SOURCE_MODEL_TEMPLATE_PIECHARTTYPETEMPLATE_HXX
 
-#include "OPropertySet.hxx"
-#include "MutexContainer.hxx"
+#include <OPropertySet.hxx>
+#include <MutexContainer.hxx>
 #include <comphelper/uno3.hxx>
 
 #include "ChartTypeTemplate.hxx"
@@ -39,7 +39,7 @@ public:
         css::uno::Reference< css::uno::XComponentContext > const & xContext,
         const OUString & rServiceName,
         css::chart2::PieChartOffsetMode eMode,
-        bool bRings = false,
+        bool bRings,
         sal_Int32 nDim = 2 );
     virtual ~PieChartTypeTemplate() override;
 

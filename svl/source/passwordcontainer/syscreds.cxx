@@ -18,15 +18,15 @@
  */
 
 #include "syscreds.hxx"
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <osl/diagnose.h>
 #include <comphelper/sequence.hxx>
+#include <iterator>
 
 using namespace com::sun::star;
 
 SysCredentialsConfigItem::SysCredentialsConfigItem(
     SysCredentialsConfig * pOwner )
-: utl::ConfigItem( "Office.Common/Passwords", ConfigItemMode::ImmediateUpdate ),
+: utl::ConfigItem( "Office.Common/Passwords", ConfigItemMode::NONE ),
   m_bInited( false ),
   m_pOwner( pOwner )
 {
@@ -172,9 +172,7 @@ void SysCredentialsConfig::initCfg()
     {
         uno::Sequence< OUString > aURLs(
             m_aConfigItem.getSystemCredentialsURLs() );
-        for ( sal_Int32 n = 0; n < aURLs.getLength(); ++n )
-            m_aCfgContainer.insert( aURLs[ n ] );
-
+        m_aCfgContainer.insert( aURLs.begin(), aURLs.end() );
         m_bCfgInited = true;
     }
 }
@@ -240,26 +238,19 @@ uno::Sequence< OUString > SysCredentialsConfig::list( bool bOnlyPersistent )
                      + ( bOnlyPersistent ? 0 : m_aMemContainer.size() );
     uno::Sequence< OUString > aResult( nCount );
 
-    StringSet::const_iterator it = m_aCfgContainer.begin();
-    StringSet::const_iterator end = m_aCfgContainer.end();
     sal_Int32 n = 0;
 
-    while ( it != end )
+    for ( const auto& rItem : m_aCfgContainer )
     {
-        aResult[ n ] = *it;
-        ++it;
+        aResult[ n ] = rItem;
         ++n;
     }
 
     if ( !bOnlyPersistent )
     {
-        it = m_aMemContainer.begin();
-        end = m_aMemContainer.end();
-
-        while ( it != end )
+        for ( const auto& rItem : m_aMemContainer )
         {
-            aResult[ n ] = *it;
-            ++it;
+            aResult[ n ] = rItem;
             ++n;
         }
     }

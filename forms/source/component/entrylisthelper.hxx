@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FORMS_SOURCE_COMPONENT_ENTRYLISTHELPER_HXX
-#define INCLUDED_FORMS_SOURCE_COMPONENT_ENTRYLISTHELPER_HXX
+#pragma once
 
 #include <com/sun/star/form/binding/XListEntrySink.hpp>
 #include <com/sun/star/util/XRefreshable.hpp>
 #include <com/sun/star/form/binding/XListEntryListener.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 
 #include <cppuhelper/implbase3.hxx>
 #include <comphelper/interfacecontainer2.hxx>
@@ -133,14 +131,6 @@ namespace frm
         */
         virtual void    stringItemListChanged( ControlModelLock& _rInstanceLock ) = 0;
 
-        /** called whenever a connection to a new external list source has been established
-        */
-        virtual void    connectedExternalListSource( );
-
-        /** called whenever a connection to a new external list source has been revoked
-        */
-        virtual void    disconnectedExternalListSource( );
-
         /** called when XRefreshable::refresh has been called, and we do *not* have an external
             list source
         */
@@ -187,7 +177,7 @@ namespace frm
 
         /** refreshes our list entries
 
-            In case we have an external list source, its used to obtain the new entries, and then
+            In case we have an external list source, it's used to obtain the new entries, and then
             stringItemListChanged is called to give the derived class the possibility to
             react on this.
 
@@ -202,8 +192,5 @@ namespace frm
 
 
 }   // namespace frm
-
-
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_ENTRYLISTHELPER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

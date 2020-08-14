@@ -22,16 +22,14 @@
 
 #include <com/sun/star/awt/XBitmap.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <vcl/image.hxx>
-#include <framework/fwedllapi.h>
+#include <framework/fwkdllapi.h>
 
 namespace framework
 {
 
-class FWE_DLLPUBLIC ImageWrapper :
-                     public ::cppu::WeakImplHelper< css::awt::XBitmap,
+class ImageWrapper final : public ::cppu::WeakImplHelper< css::awt::XBitmap,
                                                     css::lang::XUnoTunnel >
 {
     public:
@@ -43,7 +41,7 @@ class FWE_DLLPUBLIC ImageWrapper :
             return m_aImage;
         }
 
-        static css::uno::Sequence< sal_Int8 > GetUnoTunnelId();
+        static css::uno::Sequence< sal_Int8 > const & GetUnoTunnelId();
 
         // XBitmap
         virtual css::awt::Size SAL_CALL getSize() override;

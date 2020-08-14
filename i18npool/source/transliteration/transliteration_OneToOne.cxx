@@ -17,11 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <transliteration_OneToOne.hxx>
+#include <com/sun/star/i18n/TransliterationType.hpp>
 
+#include <transliteration_OneToOne.hxx>
+#include <i18nutil/oneToOneMapping.hxx>
+
+#include <numeric>
+
+using namespace com::sun::star::i18n;
 using namespace com::sun::star::uno;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 sal_Int16 SAL_CALL transliteration_OneToOne::getType()
 {
@@ -29,9 +35,9 @@ sal_Int16 SAL_CALL transliteration_OneToOne::getType()
         return TransliterationType::ONE_TO_ONE;
 }
 
-OUString SAL_CALL
-transliteration_OneToOne::folding( const OUString& /*inStr*/, sal_Int32 /*startPos*/,
-        sal_Int32 /*nCount*/, Sequence< sal_Int32 >& /*offset*/)
+OUString
+transliteration_OneToOne::foldingImpl( const OUString& /*inStr*/, sal_Int32 /*startPos*/,
+        sal_Int32 /*nCount*/, Sequence< sal_Int32 >& /*offset*/, bool)
 {
         throw RuntimeException();
 }
@@ -49,9 +55,9 @@ transliteration_OneToOne::transliterateRange( const OUString& /*str1*/, const OU
     throw RuntimeException();
 }
 
-OUString SAL_CALL
-transliteration_OneToOne::transliterate( const OUString& inStr, sal_Int32 startPos,
-    sal_Int32 nCount, Sequence< sal_Int32 >& offset)
+OUString
+transliteration_OneToOne::transliterateImpl( const OUString& inStr, sal_Int32 startPos,
+    sal_Int32 nCount, Sequence< sal_Int32 >& offset, bool useOffset)
 {
     // Create a string buffer which can hold nCount + 1 characters.
     // The reference count is 1 now.
@@ -60,20 +66,15 @@ transliteration_OneToOne::transliterate( const OUString& inStr, sal_Int32 startP
     const sal_Unicode * src = inStr.getStr() + startPos;
 
     // Allocate nCount length to offset argument.
-    sal_Int32 *p = nullptr;
-    sal_Int32 position = 0;
     if (useOffset) {
         offset.realloc( nCount );
-        p = offset.getArray();
-        position = startPos;
+        std::iota(offset.begin(), offset.end(), startPos);
     }
 
     // Translation
     while (nCount -- > 0) {
     sal_Unicode c = *src++;
     *dst ++ = func ? func( c) : (*table)[ c ];
-    if (useOffset)
-        *p ++ = position ++;
     }
     *dst = u'\0';
 
@@ -86,6 +87,6 @@ transliteration_OneToOne::transliterateChar2Char( sal_Unicode inChar)
     return func ? func( inChar) : (*table)[ inChar ];
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

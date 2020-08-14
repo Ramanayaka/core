@@ -18,18 +18,17 @@
  */
 
 #include <memory>
-#include "undoback.hxx"
+#include <undoback.hxx>
 
-#include "sdpage.hxx"
-#include "sdresid.hxx"
-#include "strings.hrc"
+#include <sdpage.hxx>
+#include <sdresid.hxx>
+#include <strings.hrc>
 
 #include <com/sun/star/drawing/FillStyle.hpp>
 
-#include <o3tl/make_unique.hxx>
-
 #include <svl/itemset.hxx>
 
+#include <svx/xdef.hxx>
 #include <svx/xfillit0.hxx>
 
 SdBackgroundObjUndoAction::SdBackgroundObjUndoAction(
@@ -38,7 +37,7 @@ SdBackgroundObjUndoAction::SdBackgroundObjUndoAction(
     const SfxItemSet& rItemSet)
 :   SdUndoAction(&rDoc),
     mrPage(rPage),
-    mpItemSet(o3tl::make_unique<SfxItemSet>(rItemSet)),
+    mpItemSet(std::make_unique<SfxItemSet>(rItemSet)),
     mbHasFillBitmap(false)
 {
     OUString aString( SdResId( STR_UNDO_CHANGE_PAGEFORMAT ) );
@@ -48,7 +47,7 @@ SdBackgroundObjUndoAction::SdBackgroundObjUndoAction(
 
 void SdBackgroundObjUndoAction::ImplRestoreBackgroundObj()
 {
-    std::unique_ptr<SfxItemSet> pNew = o3tl::make_unique<SfxItemSet>(mrPage.getSdrPageProperties().GetItemSet());
+    std::unique_ptr<SfxItemSet> pNew = std::make_unique<SfxItemSet>(mrPage.getSdrPageProperties().GetItemSet());
     mrPage.getSdrPageProperties().ClearItem();
     if (bool(mpFillBitmapItem))
         restoreFillBitmap(*mpItemSet);
@@ -74,7 +73,7 @@ void SdBackgroundObjUndoAction::Redo()
 
 SdUndoAction* SdBackgroundObjUndoAction::Clone() const
 {
-    std::unique_ptr<SdBackgroundObjUndoAction> pCopy = o3tl::make_unique<SdBackgroundObjUndoAction>(*mpDoc, mrPage, *mpItemSet);
+    std::unique_ptr<SdBackgroundObjUndoAction> pCopy = std::make_unique<SdBackgroundObjUndoAction>(*mpDoc, mrPage, *mpItemSet);
     if (mpFillBitmapItem)
         pCopy->mpFillBitmapItem.reset(mpFillBitmapItem->Clone());
     pCopy->mbHasFillBitmap = mbHasFillBitmap;

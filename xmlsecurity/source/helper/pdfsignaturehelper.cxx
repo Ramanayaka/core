@@ -12,21 +12,112 @@
 #include <memory>
 
 #include <com/sun/star/io/XTruncate.hpp>
+#include <com/sun/star/io/XStream.hpp>
 #include <com/sun/star/security/CertificateValidity.hpp>
 #include <com/sun/star/uno/SecurityException.hpp>
-#include <com/sun/star/xml/crypto/SEInitializer.hpp>
+#include <com/sun/star/security/DocumentSignatureInformation.hpp>
+#include <com/sun/star/xml/crypto/XSecurityEnvironment.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/frame/XStorable.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/drawing/XDrawView.hpp>
 
-#include <comphelper/sequence.hxx>
-#include <tools/stream.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
+#include <unotools/mediadescriptor.hxx>
+#include <unotools/streamwrap.hxx>
 #include <unotools/ucbstreamhelper.hxx>
+#include <vcl/filter/pdfdocument.hxx>
 
-#include <xmlsecurity/pdfio/pdfdocument.hxx>
+#include <pdfio/pdfdocument.hxx>
 
 using namespace ::com::sun::star;
 
+namespace
+{
+/// Gets the current page of the current view from xModel and puts it to the 1-based rPage.
+bool GetSignatureLinePage(const uno::Reference<frame::XModel>& xModel, sal_Int32& rPage)
+{
+    uno::Reference<drawing::XDrawView> xController(xModel->getCurrentController(), uno::UNO_QUERY);
+    if (!xController.is())
+    {
+        return false;
+    }
+
+    uno::Reference<beans::XPropertySet> xPage(xController->getCurrentPage(), uno::UNO_QUERY);
+    if (!xPage.is())
+    {
+        return false;
+    }
+
+    return xPage->getPropertyValue("Number") >>= rPage;
+}
+
+/// If the currently selected shape is a Draw signature line, export that to PDF.
+void GetSignatureLineShape(const uno::Reference<frame::XModel>& xModel, sal_Int32& rPage,
+                           std::vector<sal_Int8>& rSignatureLineShape)
+{
+    if (!xModel.is())
+    {
+        return;
+    }
+
+    if (!GetSignatureLinePage(xModel, rPage))
+    {
+        return;
+    }
+
+    uno::Reference<drawing::XShapes> xShapes(xModel->getCurrentSelection(), uno::UNO_QUERY);
+    if (!xShapes.is() || xShapes->getCount() < 1)
+    {
+        return;
+    }
+
+    uno::Reference<beans::XPropertySet> xShapeProps(xShapes->getByIndex(0), uno::UNO_QUERY);
+    if (!xShapeProps.is())
+    {
+        return;
+    }
+
+    comphelper::SequenceAsHashMap aMap(xShapeProps->getPropertyValue("InteropGrabBag"));
+    auto it = aMap.find("SignatureCertificate");
+    if (it == aMap.end())
+    {
+        return;
+    }
+
+    // We know that we add a signature line shape to an existing PDF at this point.
+
+    uno::Reference<frame::XStorable> xStorable(xModel, uno::UNO_QUERY);
+    if (!xStorable.is())
+    {
+        return;
+    }
+
+    // Export just the signature line.
+    utl::MediaDescriptor aMediaDescriptor;
+    aMediaDescriptor["FilterName"] <<= OUString("draw_pdf_Export");
+    SvMemoryStream aStream;
+    uno::Reference<io::XOutputStream> xStream(new utl::OStreamWrapper(aStream));
+    aMediaDescriptor["OutputStream"] <<= xStream;
+    uno::Sequence<beans::PropertyValue> aFilterData(
+        comphelper::InitPropertySequence({ { "Selection", uno::Any(xShapes) } }));
+    aMediaDescriptor["FilterData"] <<= aFilterData;
+    xStorable->storeToURL("private:stream", aMediaDescriptor.getAsConstPropertyValueList());
+    xStream->flush();
+
+    aStream.Seek(0);
+    rSignatureLineShape = std::vector<sal_Int8>(aStream.GetSize());
+    aStream.ReadBytes(rSignatureLineShape.data(), rSignatureLineShape.size());
+}
+}
+
 PDFSignatureHelper::PDFSignatureHelper() = default;
 
-bool PDFSignatureHelper::ReadAndVerifySignature(const uno::Reference<io::XInputStream>& xInputStream)
+bool PDFSignatureHelper::ReadAndVerifySignature(
+    const uno::Reference<io::XInputStream>& xInputStream)
 {
     if (!xInputStream.is())
     {
@@ -52,8 +143,7 @@ bool PDFSignatureHelper::ReadAndVerifySignature(const uno::Reference<io::XInputS
     {
         SignatureInformation aInfo(i);
 
-        bool bLast = i == aSignatures.size() - 1;
-        if (!xmlsecurity::pdfio::ValidateSignature(*pStream, aSignatures[i], aInfo, bLast))
+        if (!xmlsecurity::pdfio::ValidateSignature(*pStream, aSignatures[i], aInfo, aDocument))
             SAL_WARN("xmlsecurity.helper", "failed to determine digest match");
 
         m_aSignatureInfos.push_back(aInfo);
@@ -62,12 +152,14 @@ bool PDFSignatureHelper::ReadAndVerifySignature(const uno::Reference<io::XInputS
     return true;
 }
 
-SignatureInformations PDFSignatureHelper::GetSignatureInformations() const
+SignatureInformations const& PDFSignatureHelper::GetSignatureInformations() const
 {
     return m_aSignatureInfos;
 }
 
-uno::Sequence<security::DocumentSignatureInformation> PDFSignatureHelper::GetDocumentSignatureInformations(const uno::Reference<xml::crypto::XSecurityEnvironment>& xSecEnv) const
+uno::Sequence<security::DocumentSignatureInformation>
+PDFSignatureHelper::GetDocumentSignatureInformations(
+    const uno::Reference<xml::crypto::XSecurityEnvironment>& xSecEnv) const
 {
     uno::Sequence<security::DocumentSignatureInformation> aRet(m_aSignatureInfos.size());
 
@@ -75,7 +167,8 @@ uno::Sequence<security::DocumentSignatureInformation> PDFSignatureHelper::GetDoc
     {
         const SignatureInformation& rInternal = m_aSignatureInfos[i];
         security::DocumentSignatureInformation& rExternal = aRet[i];
-        rExternal.SignatureIsValid = rInternal.nStatus == xml::crypto::SecurityOperationStatus_OPERATION_SUCCEEDED;
+        rExternal.SignatureIsValid
+            = rInternal.nStatus == xml::crypto::SecurityOperationStatus_OPERATION_SUCCEEDED;
         if (!rInternal.ouX509Certificate.isEmpty())
             rExternal.Signer = xSecEnv->createCertificateFromAscii(rInternal.ouX509Certificate);
         rExternal.PartialDocumentSignature = rInternal.bPartialDocumentSignature;
@@ -87,9 +180,9 @@ uno::Sequence<security::DocumentSignatureInformation> PDFSignatureHelper::GetDoc
             {
                 rExternal.CertificateStatus = xSecEnv->verifyCertificate(rExternal.Signer, {});
             }
-            catch (const uno::SecurityException& rException)
+            catch (const uno::SecurityException&)
             {
-                SAL_WARN("xmlsecurity.helper", "failed to verify certificate: " << rException.Message);
+                DBG_UNHANDLED_EXCEPTION("xmlsecurity.helper", "failed to verify certificate");
                 rExternal.CertificateStatus = security::CertificateValidity::INVALID;
             }
         }
@@ -100,12 +193,10 @@ uno::Sequence<security::DocumentSignatureInformation> PDFSignatureHelper::GetDoc
     return aRet;
 }
 
-sal_Int32 PDFSignatureHelper::GetNewSecurityId() const
-{
-    return m_aSignatureInfos.size();
-}
+sal_Int32 PDFSignatureHelper::GetNewSecurityId() const { return m_aSignatureInfos.size(); }
 
-void PDFSignatureHelper::SetX509Certificate(const uno::Reference<security::XCertificate>& xCertificate)
+void PDFSignatureHelper::SetX509Certificate(
+    const uno::Reference<security::XCertificate>& xCertificate)
 {
     m_xCertificate = xCertificate;
 }
@@ -115,7 +206,8 @@ void PDFSignatureHelper::SetDescription(const OUString& rDescription)
     m_aDescription = rDescription;
 }
 
-bool PDFSignatureHelper::Sign(const uno::Reference<io::XInputStream>& xInputStream, bool bAdES)
+bool PDFSignatureHelper::Sign(const uno::Reference<frame::XModel>& xModel,
+                              const uno::Reference<io::XInputStream>& xInputStream, bool bAdES)
 {
     std::unique_ptr<SvStream> pStream(utl::UcbStreamHelper::CreateStream(xInputStream, true));
     vcl::filter::PDFDocument aDocument;
@@ -123,6 +215,19 @@ bool PDFSignatureHelper::Sign(const uno::Reference<io::XInputStream>& xInputStre
     {
         SAL_WARN("xmlsecurity.helper", "failed to read the document");
         return false;
+    }
+
+    sal_Int32 nPage = 0;
+    std::vector<sal_Int8> aSignatureLineShape;
+    GetSignatureLineShape(xModel, nPage, aSignatureLineShape);
+    if (nPage > 0)
+    {
+        // UNO page number is 1-based.
+        aDocument.SetSignaturePage(nPage - 1);
+    }
+    if (!aSignatureLineShape.empty())
+    {
+        aDocument.SetSignatureLine(aSignatureLineShape);
     }
 
     if (!aDocument.Sign(m_xCertificate, m_aDescription, bAdES))
@@ -142,7 +247,8 @@ bool PDFSignatureHelper::Sign(const uno::Reference<io::XInputStream>& xInputStre
     return true;
 }
 
-bool PDFSignatureHelper::RemoveSignature(const uno::Reference<io::XInputStream>& xInputStream, sal_uInt16 nPosition)
+bool PDFSignatureHelper::RemoveSignature(const uno::Reference<io::XInputStream>& xInputStream,
+                                         sal_uInt16 nPosition)
 {
     std::unique_ptr<SvStream> pStream(utl::UcbStreamHelper::CreateStream(xInputStream, true));
     vcl::filter::PDFDocument aDocument;

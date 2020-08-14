@@ -65,6 +65,7 @@
  ************************************************************************/
 
 #include <algorithm>
+#include <sal/log.hxx>
 #include "pq_databasemetadata.hxx"
 #include "pq_driver.hxx"
 #include "pq_sequenceresultset.hxx"
@@ -72,40 +73,32 @@
 #include "pq_tools.hxx"
 
 #include <rtl/ustrbuf.hxx>
-
+#include <sal/macros.h>
 #include <com/sun/star/sdbc/TransactionIsolation.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
-#include <com/sun/star/sdbc/XPreparedStatement.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/IndexType.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbc/ColumnSearch.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
-#include <com/sun/star/sdbc/Deferrability.hpp>
 
 using ::osl::MutexGuard;
 
 
 using namespace com::sun::star::sdbc;
 
-using com::sun::star::uno::RuntimeException;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Any;
-using com::sun::star::uno::makeAny;
 using com::sun::star::uno::UNO_QUERY;
 using com::sun::star::uno::UNO_QUERY_THROW;
 
 namespace pq_sdbc_driver
 {
-#define QUOTEME(X)  #X
-#define STRINGIFY(X) QUOTEME(X)
-
 // These are pre-processor versions of KeyRule.idl declarations
 // These are inherited from JDBC, and thus won't change anytime soon.
 // Having them as pre-processor definitions allows to include them
-// into compile-time strings (through STRINGIFY), which can be passed to ASCII_STR.
+// into compile-time strings (through SAL_STRINGIFY), which can be passed to ASCII_STR.
 // That is without resorting to horrendous hacks in template meta-programming.
 #define KEYRULE_CASCADE      0
 #define KEYRULE_RESTRICT     1
@@ -184,7 +177,7 @@ sal_Bool DatabaseMetaData::nullsAreSortedAtEnd(  )
 
 OUString DatabaseMetaData::getDatabaseProductName(  )
 {
-    return OUString("PostgreSQL");
+    return "PostgreSQL";
 }
 
 OUString DatabaseMetaData::getDatabaseProductVersion(  )
@@ -193,12 +186,12 @@ OUString DatabaseMetaData::getDatabaseProductVersion(  )
 }
 OUString DatabaseMetaData::getDriverName(  )
 {
-    return OUString("postgresql-sdbc");
+    return "postgresql-sdbc";
 }
 
 OUString DatabaseMetaData::getDriverVersion(  )
 {
-    return OUString(PQ_SDBC_DRIVER_VERSION);
+    return PQ_SDBC_DRIVER_VERSION;
 }
 
 sal_Int32 DatabaseMetaData::getDriverMajorVersion(  )
@@ -274,7 +267,7 @@ sal_Bool DatabaseMetaData::storesMixedCaseQuotedIdentifiers(  )
 
 OUString DatabaseMetaData::getIdentifierQuoteString(  )
 {
-    return OUString("\"");
+    return "\"";
 }
 
 OUString DatabaseMetaData::getSQLKeywords(  )
@@ -284,7 +277,7 @@ OUString DatabaseMetaData::getSQLKeywords(  )
     // I understand this to mean "reserved keywords" only.
     // See http://www.postgresql.org/docs/current/static/sql-keywords-appendix.html
     // LEM TODO: consider using pg_get_keywords(), filter on catcode
-    return OUString(
+    return
         "ANALYSE,"
         "ANALYZE,"
         "ARRAY," //SQL:1999
@@ -310,7 +303,7 @@ OUString DatabaseMetaData::getSQLKeywords(  )
         "VARIADIC,"
         "VERBOSE,"
         "WINDOW" //SQL:2003
- );
+ ;
 }
 OUString DatabaseMetaData::getNumericFunctions(  )
 {
@@ -320,7 +313,7 @@ OUString DatabaseMetaData::getNumericFunctions(  )
     //           Currently this is just a list of supported functions in PostgreSQL, with PostgreSQL names.
     //           And it is my job to map from Open Group CLI names/syntax to PostgreSQL names/syntax. Where? By parsing the SQL???
     //           Should look at what the JDBC driver is doing.
-    return OUString(
+    return
         "abs,"
         "cbrt,"
         "ceil,"
@@ -350,13 +343,13 @@ OUString DatabaseMetaData::getNumericFunctions(  )
         "cot,"
         "sin,"
         "tan"
- );
+ ;
 }
 
 OUString DatabaseMetaData::getStringFunctions(  )
 {
     // See http://www.postgresql.org/docs/9.1/static/functions-string.html
-    return OUString(
+    return
         "bit_length,"
         "char_length,"
         "character_length,"
@@ -404,14 +397,14 @@ OUString DatabaseMetaData::getStringFunctions(  )
         "to_ascii,"
         "to_hex,"
         "translate"
- );
+ ;
 }
 
 OUString DatabaseMetaData::getSystemFunctions(  )
 {
     // See http://www.postgresql.org/docs/9.1/static/functions-info.html
     // and http://www.postgresql.org/docs/9.1/static/functions-admin.html
-    return OUString(
+    return
         "current_catalog,"
         "current_database,"
         "current_query,"
@@ -534,12 +527,12 @@ OUString DatabaseMetaData::getSystemFunctions(  )
         "pg_try_advisory_xact_lock,"
         "pg_try_advisory_xact_lock_shared,"
         "pg_sleep"
- );
+ ;
 }
 OUString DatabaseMetaData::getTimeDateFunctions(  )
 {
     // TODO
-    return OUString(
+    return
         "age,"
         "age,"
         "clock_timestamp,"
@@ -563,15 +556,15 @@ OUString DatabaseMetaData::getTimeDateFunctions(  )
         "statement_timestamp,"
         "timeofday,"
         "transaction_timestamp,"
- );
+ ;
 }
 OUString DatabaseMetaData::getSearchStringEscape(  )
 {
-    return OUString("\\");
+    return "\\";
 }
 OUString DatabaseMetaData::getExtraNameCharacters(  )
 {
-    return OUString("$");
+    return "$";
 }
 
 sal_Bool DatabaseMetaData::supportsAlterTableWithAddColumn(  )
@@ -726,17 +719,17 @@ sal_Bool DatabaseMetaData::supportsLimitedOuterJoins(  )
 
 OUString DatabaseMetaData::getSchemaTerm(  )
 {
-    return OUString("SCHEMA");
+    return "SCHEMA";
 }
 
 OUString DatabaseMetaData::getProcedureTerm(  )
 {
-    return OUString("function");
+    return "function";
 }
 
 OUString DatabaseMetaData::getCatalogTerm(  )
 {
-    return OUString("DATABASE");
+    return "DATABASE";
 }
 
 sal_Bool DatabaseMetaData::isCatalogAtStart(  )
@@ -746,7 +739,7 @@ sal_Bool DatabaseMetaData::isCatalogAtStart(  )
 
 OUString DatabaseMetaData::getCatalogSeparator(  )
 {
-    return OUString(".");
+    return ".";
 }
 
 sal_Bool DatabaseMetaData::supportsSchemasInDataManipulation(  )
@@ -1119,15 +1112,8 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getTables(
 
     MutexGuard guard( m_xMutex->GetMutex() );
 
-    if (isLog(m_pSettings, LogLevel::Info))
-    {
-        OUStringBuffer buf( 128 );
-        buf.append( "DatabaseMetaData::getTables got called with " );
-        buf.append( schemaPattern );
-        buf.append( "." );
-        buf.append( tableNamePattern );
-        log(m_pSettings, LogLevel::Info, buf.makeStringAndClear());
-    }
+    SAL_INFO("connectivity.postgresql", "DatabaseMetaData::getTables() got called with " << schemaPattern << "." << tableNamePattern);
+
     // ignore catalog, as a single pq connection does not support multiple catalogs
 
     // LEM TODO: this does not give the right column names, not the right number of columns, etc.
@@ -1250,10 +1236,8 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getSchemas(  )
 {
     MutexGuard guard( m_xMutex->GetMutex() );
 
-    if (isLog(m_pSettings, LogLevel::Info))
-    {
-        log(m_pSettings, LogLevel::Info, "DatabaseMetaData::getSchemas() got called");
-    }
+    SAL_INFO("connectivity.postgresql", "DatabaseMetaData::getSchemas() got called");
+
     // <b>TABLE_SCHEM</b> string =&amp;gt; schema name
     Reference< XStatement > statement = m_origin->createStatement();
     Reference< XResultSet > rs = statement->executeQuery(
@@ -1314,7 +1298,7 @@ sal_Int32 typeNameToDataType( const OUString &typeName, const OUString &typtype 
         // the user is better of with interpreting arrays as strings !
 //         if( typeName.getLength() && '_' == typeName[0] )
 //         {
-//             its just a naming convention, but as long as we don't have anything better,
+//             it's just a naming convention, but as long as we don't have anything better,
 //             we take it as granted
 //             ret = css::sdbc::DataType::ARRAY;
 //         }
@@ -1338,7 +1322,7 @@ sal_Int32 typeNameToDataType( const OUString &typeName, const OUString &typtype 
 }
 
 namespace {
-    inline bool isSystemColumn( sal_Int16 attnum )
+    bool isSystemColumn( sal_Int16 attnum )
     {
         return attnum <= 0;
     }
@@ -1453,17 +1437,8 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getColumns(
     // continue !
     MutexGuard guard( m_xMutex->GetMutex() );
 
-    if (isLog(m_pSettings, LogLevel::Info))
-    {
-        OUStringBuffer buf( 128 );
-        buf.append( "DatabaseMetaData::getColumns got called with " );
-        buf.append( schemaPattern );
-        buf.append( "." );
-        buf.append( tableNamePattern );
-        buf.append( "." );
-        buf.append( columnNamePattern );
-        log(m_pSettings, LogLevel::Info, buf.makeStringAndClear());
-    }
+    SAL_INFO("connectivity.postgresql", "DatabaseMetaData::getColumns() got called with "
+        << schemaPattern << "." << tableNamePattern << "." << columnNamePattern);
 
     // ignore catalog, as a single pq connection
     // does not support multiple catalogs anyway
@@ -1477,7 +1452,7 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getColumns(
     //  3. TABLE_NAME string => table name
     //               => pg_class.relname
     //  4. COLUMN_NAME string => column name
-    //               => pg_attribure.attname
+    //               => pg_attribute.attname
     //  5. DATA_TYPE short => SQL type from java.sql.Types
     //               => pg_type.typname => sdbc.DataType
     //  6. TYPE_NAME string => Data source dependent type name, for a UDT the
@@ -1516,7 +1491,7 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getColumns(
     //                            allow NULL values. An empty string means
     //                            nobody knows.
     //               => pg_attribute.attnotnull
-
+    OUString strDefaultValue = getColExprForDefaultSettingVal(m_pSettings);
     Reference< XPreparedStatement > statement = m_origin->prepareStatement(
             "SELECT pg_namespace.nspname, "  // 1
             "pg_class.relname, "             // 2
@@ -1526,8 +1501,8 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getColumns(
             "pg_attribute.attnotnull, "      // 6
             "pg_type.typdefault, "           // 7
             "pg_type.typtype, "              // 8
-            "pg_attrdef.adsrc, "             // 9
-            "pg_description.description, "   // 10
+            + strDefaultValue +              // 9
+            ",pg_description.description, "   // 10
             "pg_type.typbasetype, "          // 11
             "pg_attribute.attnum "           // 12
             "FROM pg_class, "
@@ -1563,7 +1538,7 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getColumns(
 
     while( rs->next() )
     {
-        if( m_pSettings->showSystemColumns || ! isSystemColumn( xRow->getShort( 12 ) ) )
+        if( ! isSystemColumn( xRow->getShort( 12 ) ) )
         {
             OUString sNewSchema( xRow->getString(1) );
             OUString sNewTable(  xRow->getString(2) );
@@ -1634,17 +1609,8 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getColumnPrivileges(
 {
     MutexGuard guard( m_xMutex->GetMutex() );
 
-    if (isLog(m_pSettings, LogLevel::Info))
-    {
-        OUStringBuffer buf( 128 );
-        buf.append( "DatabaseMetaData::getColumnPrivileges got called with " );
-        buf.append( schema );
-        buf.append( "." );
-        buf.append( table );
-        buf.append( "." );
-        buf.append( columnNamePattern );
-        log(m_pSettings, LogLevel::Info, buf.makeStringAndClear());
-    }
+    SAL_INFO("connectivity.postgresql", "DatabaseMetaData::getColumnPrivileges() got called with "
+        << schema << "." << table << "." << columnNamePattern);
 
     Reference< XParameters > parameters( m_getColumnPrivs_stmt, UNO_QUERY_THROW );
     parameters->setString( 1 , schema );
@@ -1663,15 +1629,8 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getTablePrivileges(
 {
     MutexGuard guard( m_xMutex->GetMutex() );
 
-    if (isLog(m_pSettings, LogLevel::Info))
-    {
-        OUStringBuffer buf( 128 );
-        buf.append( "DatabaseMetaData::getTablePrivileges got called with " );
-        buf.append( schemaPattern );
-        buf.append( "." );
-        buf.append( tableNamePattern );
-        log(m_pSettings, LogLevel::Info, buf.makeStringAndClear());
-    }
+    SAL_INFO("connectivity.postgresql", "DatabaseMetaData::getTablePrivileges() got called with "
+        << schemaPattern << "." << tableNamePattern);
 
     Reference< XParameters > parameters( m_getTablePrivs_stmt, UNO_QUERY_THROW );
     parameters->setString( 1 , schemaPattern );
@@ -1721,15 +1680,8 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getPrimaryKeys(
 //        5. KEY_SEQ short =&gt; sequence number within primary key
 //        6. PK_NAME string =&gt; primary key name (may be NULL )
 
-    if (isLog(m_pSettings, LogLevel::Info))
-    {
-        OUStringBuffer buf( 128 );
-        buf.append( "DatabaseMetaData::getPrimaryKeys got called with " );
-        buf.append( schema );
-        buf.append( "." );
-        buf.append( table );
-        log(m_pSettings, LogLevel::Info, buf.makeStringAndClear());
-    }
+    SAL_INFO("connectivity.postgresql", "DatabaseMetaData::getPrimaryKeys() got called with "
+        << schema << "." << table);
 
     Reference< XPreparedStatement > statement = m_origin->prepareStatement(
             "SELECT nmsp.nspname, "
@@ -1786,15 +1738,14 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getPrimaryKeys(
     }
 
 
-    std::vector< std::vector<Any> >::const_iterator ii = vec.begin();
     OUString lastTableOid;
     sal_Int32 index = 0;
     std::vector< std::vector< Any > > ret( vec.size() );
     int elements = 0;
-    for( ; ii != vec.end() ; ++ ii )
+    for (auto const& elem : vec)
     {
 
-        std::vector< Any > row = *ii;
+        std::vector< Any > row = elem;
         OUString tableOid;
         OUString attnum;
 
@@ -1834,11 +1785,11 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getPrimaryKeys(
 }
 
 // Copied / adapted / simplified from JDBC driver
-#define SQL_CASE_KEYRULE "  WHEN 'c' THEN " STRINGIFY(KEYRULE_CASCADE) \
-                         "  WHEN 'n' THEN " STRINGIFY(KEYRULE_SET_NULL) \
-                         "  WHEN 'd' THEN " STRINGIFY(KEYRULE_SET_DEFAULT) \
-                         "  WHEN 'r' THEN " STRINGIFY(KEYRULE_RESTRICT) \
-                         "  WHEN 'a' THEN " STRINGIFY(KEYRULE_NO_ACTION) \
+#define SQL_CASE_KEYRULE "  WHEN 'c' THEN " SAL_STRINGIFY(KEYRULE_CASCADE) \
+                         "  WHEN 'n' THEN " SAL_STRINGIFY(KEYRULE_SET_NULL) \
+                         "  WHEN 'd' THEN " SAL_STRINGIFY(KEYRULE_SET_DEFAULT) \
+                         "  WHEN 'r' THEN " SAL_STRINGIFY(KEYRULE_RESTRICT) \
+                         "  WHEN 'a' THEN " SAL_STRINGIFY(KEYRULE_NO_ACTION) \
                          "  ELSE NULL "
 
 #define SQL_GET_REFERENCES \
@@ -1854,9 +1805,9 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getPrimaryKeys(
     " END AS DELETE_RULE, " \
     " con.conname AS FK_NAME, pkic.relname AS PK_NAME, " \
     " CASE " \
-    "  WHEN con.condeferrable AND con.condeferred THEN " STRINGIFY(DEFERRABILITY_INITIALLY_DEFERRED) \
-    "  WHEN con.condeferrable THEN " STRINGIFY(DEFERRABILITY_INITIALLY_IMMEDIATE) \
-    "  ELSE " STRINGIFY(DEFERRABILITY_NONE) \
+    "  WHEN con.condeferrable AND con.condeferred THEN " SAL_STRINGIFY(DEFERRABILITY_INITIALLY_DEFERRED) \
+    "  WHEN con.condeferrable THEN " SAL_STRINGIFY(DEFERRABILITY_INITIALLY_IMMEDIATE) \
+    "  ELSE " SAL_STRINGIFY(DEFERRABILITY_NONE) \
     " END AS DEFERRABILITY " \
     "FROM " \
     " pg_catalog.pg_namespace pkn, pg_catalog.pg_class pkc, pg_catalog.pg_attribute pka, " \
@@ -2252,7 +2203,7 @@ namespace
                                          (may be <NULL/>)
             4. LITERAL_SUFFIX string ==> suffix used to quote a literal
                                          (may be <NULL/>)
-            5. CREATE_PARAMS string ==> parameters used in creating thw type (may be <NULL/>)
+            5. CREATE_PARAMS string ==> parameters used in creating the type (may be <NULL/>)
             12. LOCAL_TYPE_NAME  string ==> localized version of type name (may be <NULL/>)
             15, SQL_DATA_TYPE long ==> unused
             16. SQL_DATETIME_SUB long ==> unused
@@ -2311,10 +2262,7 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getTypeInfo(  )
     // Note: Indexes start at 0 (in the API doc, they start at 1)
     MutexGuard guard( m_xMutex->GetMutex() );
 
-    if (isLog(m_pSettings, LogLevel::Info))
-    {
-        log(m_pSettings, LogLevel::Info, "DatabaseMetaData::getTypeInfo() got called");
-    }
+    SAL_INFO("connectivity.postgresql", "DatabaseMetaData::getTypeInfo() got called");
 
     Reference< XStatement > statement = m_origin->createStatement();
     Reference< XResultSet > rs = statement->executeQuery(
@@ -2467,7 +2415,7 @@ css::uno::Reference< XResultSet > DatabaseMetaData::getIndexInfo(
                 result[R_NON_UNIQUE] <<= isNonUnique;
                 result[R_TYPE] <<= indexType;
                 result[R_COLUMN_NAME] <<= rowColumn->getString(2);
-                sal_Int32 nPos = (sal_Int32)(findIt - columns.begin() +1); // MSVC++ nonsense
+                sal_Int32 nPos = static_cast<sal_Int32>(findIt - columns.begin() +1); // MSVC++ nonsense
                 result[R_ORDINAL_POSITION] <<= nPos;
                 vec.push_back( result );
             }

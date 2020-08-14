@@ -21,17 +21,13 @@
 #include "pathexpression.hxx"
 #include "unohelper.hxx"
 #include "evaluationcontext.hxx"
-#include "NameContainer.hxx"
 
 #include <com/sun/star/xml/dom/XNode.hpp>
 #include <com/sun/star/xml/dom/XNodeList.hpp>
 #include <com/sun/star/xml/xpath/XXPathObject.hpp>
-#include <rtl/ustrbuf.hxx>
-
-#include <unotools/textsearch.hxx>
+#include <osl/diagnose.h>
 
 #include <algorithm>
-#include <functional>
 
 
 using com::sun::star::uno::Reference;
@@ -69,7 +65,7 @@ void PathExpression::setExpression( const OUString& rExpression )
     maNodes.clear();
 }
 
-const OUString PathExpression::_getExpressionForEvaluation() const
+OUString PathExpression::_getExpressionForEvaluation() const
 {
     OUString sExpr = ComputedExpression::_getExpressionForEvaluation();
     if( sExpr.isEmpty())

@@ -19,25 +19,18 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_QUERYDESIGN_QTABLECONNECTIONDATA_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_QUERYDESIGN_QTABLECONNECTIONDATA_HXX
 
-#include "TableConnectionData.hxx"
-#include "TableFieldDescription.hxx"
-#include "QEnumTypes.hxx"
+#include <TableConnectionData.hxx>
+#include <TableFieldDescription.hxx>
+#include <QEnumTypes.hxx>
 
 namespace dbaui
 {
-    class OQueryTableConnectionData : public OTableConnectionData
+    class OQueryTableConnectionData final : public OTableConnectionData
     {
         sal_Int32       m_nFromEntryIndex;
         sal_Int32       m_nDestEntryIndex;
         EJoinType       m_eJoinType;
         bool            m_bNatural;
-
-        ETableFieldType m_eFromType;
-        ETableFieldType m_eDestType;
-
-    protected:
-        // for creation and duplication of lines of own type
-        virtual OConnectionLineDataRef CreateLineDataObj() override;
 
         OQueryTableConnectionData& operator=( const OQueryTableConnectionData& rConnData );
     public:
@@ -47,7 +40,7 @@ namespace dbaui
         virtual ~OQueryTableConnectionData() override;
 
         virtual void CopyFrom(const OTableConnectionData& rSource) override;
-        virtual OTableConnectionData* NewInstance() const override;
+        virtual std::shared_ptr<OTableConnectionData> NewInstance() const override;
 
 
         /** Update create a new connection
@@ -56,12 +49,10 @@ namespace dbaui
         */
         virtual bool Update() override;
 
-        OUString GetAliasName(EConnectionSide nWhich) const;
+        OUString const & GetAliasName(EConnectionSide nWhich) const;
 
         sal_Int32       GetFieldIndex(EConnectionSide nWhich) const { return nWhich==JTCS_TO ? m_nDestEntryIndex : m_nFromEntryIndex; }
         void            SetFieldIndex(EConnectionSide nWhich, sal_Int32 nVal) { if (nWhich==JTCS_TO) m_nDestEntryIndex=nVal; else m_nFromEntryIndex=nVal; }
-
-        void            SetFieldType(EConnectionSide nWhich, ETableFieldType eType) { if (nWhich==JTCS_TO) m_eDestType=eType; else m_eFromType=eType; }
 
         void            InitFromDrag(const OTableFieldDescRef& rDragLeft, const OTableFieldDescRef& rDragRight);
 

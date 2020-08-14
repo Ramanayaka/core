@@ -10,14 +10,12 @@
 #ifndef SC_LISTENERQUERY_HXX
 #define SC_LISTENERQUERY_HXX
 
-#include <address.hxx>
+#include "address.hxx"
+#include "rangelst.hxx"
 #include <svl/listener.hxx>
 
 #include <unordered_map>
 #include <vector>
-#include <memory>
-
-class ScRangeList;
 
 namespace sc {
 
@@ -25,7 +23,7 @@ namespace sc {
  * Used to collect positions of formula cells that belong to a formula
  * group.
  */
-class RefQueryFormulaGroup : public SvtListener::QueryBase
+class RefQueryFormulaGroup final : public SvtListener::QueryBase
 {
 public:
     typedef std::vector<SCROW> ColType;
@@ -49,10 +47,9 @@ private:
     TabsType maTabs;
 };
 
-class QueryRange : public SvtListener::QueryBase
+class QueryRange final : public SvtListener::QueryBase
 {
-    struct Impl;
-    std::unique_ptr<Impl> mpImpl;
+    ScRangeList maRanges;
 
     QueryRange( const QueryRange& ) = delete;
     QueryRange& operator= ( const QueryRange& ) = delete;

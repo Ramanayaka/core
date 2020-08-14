@@ -28,23 +28,24 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/io/TempFile.hpp>
 #include <com/sun/star/io/XTruncate.hpp>
+#include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/awt/XRequestCallback.hpp>
 
-#include <platform.h>
+#include "platform.h"
 #include <cppuhelper/interfacecontainer.h>
 #include <comphelper/mimeconfighelper.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/storagehelper.hxx>
 #include <osl/file.hxx>
 #include <rtl/ref.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
-#include <graphconvert.hxx>
-#include <olecomponent.hxx>
-#include <olepersist.hxx>
-#include <olewrapclient.hxx>
-#include <advisesink.hxx>
+#include "graphconvert.hxx"
+#include "olecomponent.hxx"
+#include "olepersist.hxx"
+#include "olewrapclient.hxx"
+#include "advisesink.hxx"
 #include <oleembobj.hxx>
-#include <mtnotification.hxx>
+#include "mtnotification.hxx"
 #include <memory>
 #include <string>
 
@@ -96,6 +97,9 @@ public:
 
     ComSmart& operator=( const ComSmart<T>& rObj )
     {
+        if(this == &rObj)
+            return *this;
+
         OwnRelease();
 
         m_pInterface = rObj.m_pInterface;
@@ -142,22 +146,22 @@ public:
         return m_pInterface;
     }
 
-    BOOL operator==( const ComSmart<T>& rObj ) const
+    bool operator==( const ComSmart<T>& rObj ) const
     {
         return ( m_pInterface == rObj.m_pInterface );
     }
 
-    BOOL operator!=( const ComSmart<T>& rObj ) const
+    bool operator!=( const ComSmart<T>& rObj ) const
     {
         return ( m_pInterface != rObj.m_pInterface );
     }
 
-    BOOL operator==( const T* pInterface ) const
+    bool operator==( const T* pInterface ) const
     {
         return ( m_pInterface == pInterface );
     }
 
-    BOOL operator!=( const T* pInterface ) const
+    bool operator!=( const T* pInterface ) const
     {
         return ( m_pInterface != pInterface );
     }
@@ -224,7 +228,7 @@ struct OleComponentNative_Impl {
 };
 
 
-DWORD GetAspectFromFlavor( const datatransfer::DataFlavor& aFlavor )
+static DWORD GetAspectFromFlavor( const datatransfer::DataFlavor& aFlavor )
 {
     if ( aFlavor.MimeType.indexOf( ";Aspect=THUMBNAIL" ) != -1 )
         return DVASPECT_THUMBNAIL;
@@ -237,7 +241,7 @@ DWORD GetAspectFromFlavor( const datatransfer::DataFlavor& aFlavor )
 }
 
 
-OUString GetFlavorSuffixFromAspect( DWORD nAsp )
+static OUString GetFlavorSuffixFromAspect( DWORD nAsp )
 {
     OUString aResult;
 
@@ -254,7 +258,7 @@ OUString GetFlavorSuffixFromAspect( DWORD nAsp )
 }
 
 
-HRESULT OpenIStorageFromURL_Impl( const OUString& aURL, IStorage** ppIStorage )
+static HRESULT OpenIStorageFromURL_Impl( const OUString& aURL, IStorage** ppIStorage )
 {
     OSL_ENSURE( ppIStorage, "The pointer must not be empty!" );
 
@@ -262,7 +266,7 @@ HRESULT OpenIStorageFromURL_Impl( const OUString& aURL, IStorage** ppIStorage )
     if ( !ppIStorage || ::osl::FileBase::getSystemPathFromFileURL( aURL, aFilePath ) != ::osl::FileBase::E_None )
         throw uno::RuntimeException(); // TODO: something dangerous happened
 
-    return StgOpenStorage( reinterpret_cast<LPCWSTR>(aFilePath.getStr()),
+    return StgOpenStorage( o3tl::toW(aFilePath.getStr()),
                              nullptr,
                              STGM_READWRITE | STGM_TRANSACTED, // | STGM_DELETEONRELEASE,
                              nullptr,
@@ -298,11 +302,11 @@ bool OleComponentNative_Impl::ConvertDataForFlavor( const STGMEDIUM& aMedium,
 
                 // TODO/LATER: the unit size must be calculated correctly
                 *reinterpret_cast<long*>( pBuf.get() ) = 0x9ac6cdd7L;
-                *reinterpret_cast<short*>( pBuf.get()+6 ) = ( SHORT ) 0;
-                *reinterpret_cast<short*>( pBuf.get()+8 ) = ( SHORT ) 0;
-                *reinterpret_cast<short*>( pBuf.get()+10 ) = ( SHORT ) pMF->xExt;
-                *reinterpret_cast<short*>( pBuf.get()+12 ) = ( SHORT ) pMF->yExt;
-                *reinterpret_cast<short*>( pBuf.get()+14 ) = ( USHORT ) 2540;
+                *reinterpret_cast<short*>( pBuf.get()+6 ) = SHORT(0);
+                *reinterpret_cast<short*>( pBuf.get()+8 ) = SHORT(0);
+                *reinterpret_cast<short*>( pBuf.get()+10 ) = static_cast<SHORT>(pMF->xExt);
+                *reinterpret_cast<short*>( pBuf.get()+12 ) = static_cast<SHORT>(pMF->yExt);
+                *reinterpret_cast<short*>( pBuf.get()+14 ) = USHORT(2540);
 
 
                 if ( nBufSize && nBufSize == GetMetaFileBitsEx( pMF->hMF, nBufSize - 22, pBuf.get() + 22 ) )
@@ -334,7 +338,13 @@ bool OleComponentNative_Impl::ConvertDataForFlavor( const STGMEDIUM& aMedium,
         else if ( aMedium.tymed == TYMED_GDI ) // Bitmap
         {
             aFormat = "image/x-MS-bmp";
-            nBufSize = GetBitmapBits( aMedium.hBitmap, 0, nullptr );
+
+            // Find out size of buffer: deprecated GetBitmapBits does not have a mode to return
+            // required buffer size
+            BITMAP aBmp;
+            GetObjectW(aMedium.hBitmap, sizeof(aBmp), &aBmp);
+            nBufSize = aBmp.bmWidthBytes * aBmp.bmHeight;
+
             pBuf.reset(new sal_Int8[nBufSize]);
             if ( nBufSize && nBufSize == sal::static_int_cast< ULONG >( GetBitmapBits( aMedium.hBitmap, nBufSize, pBuf.get() ) ) )
             {
@@ -348,9 +358,9 @@ bool OleComponentNative_Impl::ConvertDataForFlavor( const STGMEDIUM& aMedium,
 
         if ( pBuf && !bAnyIsReady )
         {
-            for ( sal_Int32 nInd = 0; nInd < m_aSupportedGraphFormats.getLength(); nInd++ )
-                 if ( aFlavor.MimeType.match( m_aSupportedGraphFormats[nInd].MimeType )
-                  && aFlavor.DataType == m_aSupportedGraphFormats[nInd].DataType
+            for ( auto const & supportedFormat : std::as_const(m_aSupportedGraphFormats) )
+                 if ( aFlavor.MimeType.match( supportedFormat.MimeType )
+                  && aFlavor.DataType == supportedFormat.DataType
                   && aFlavor.DataType == cppu::UnoType<uno::Sequence< sal_Int8 >>::get() )
             {
                 bAnyIsReady = ConvertBufferToFormat( pBuf.get(), nBufSize, aFormat, aResult );
@@ -366,24 +376,24 @@ bool OleComponentNative_Impl::ConvertDataForFlavor( const STGMEDIUM& aMedium,
 bool OleComponentNative_Impl::GraphicalFlavor( const datatransfer::DataFlavor& aFlavor )
 {
     // Actually all the required graphical formats must be supported
-    for ( sal_Int32 nInd = 0; nInd < m_aSupportedGraphFormats.getLength(); nInd++ )
-         if ( aFlavor.MimeType.match( m_aSupportedGraphFormats[nInd].MimeType )
-          && aFlavor.DataType == m_aSupportedGraphFormats[nInd].DataType )
+    for ( auto const & supportedFormat : std::as_const(m_aSupportedGraphFormats) )
+         if ( aFlavor.MimeType.match( supportedFormat.MimeType )
+          && aFlavor.DataType == supportedFormat.DataType )
             return true;
 
     return false;
 }
 
 
-bool GetClassIDFromSequence_Impl( uno::Sequence< sal_Int8 > const & aSeq, CLSID& aResult )
+static bool GetClassIDFromSequence_Impl( uno::Sequence< sal_Int8 > const & aSeq, CLSID& aResult )
 {
     if ( aSeq.getLength() == 16 )
     {
-        aResult.Data1 = ( ( ( ( ( ( sal_uInt8 )aSeq[0] << 8 ) + ( sal_uInt8 )aSeq[1] ) << 8 ) + ( sal_uInt8 )aSeq[2] ) << 8 ) + ( sal_uInt8 )aSeq[3];
-        aResult.Data2 = ( ( sal_uInt8 )aSeq[4] << 8 ) + ( sal_uInt8 )aSeq[5];
-        aResult.Data3 = ( ( sal_uInt8 )aSeq[6] << 8 ) + ( sal_uInt8 )aSeq[7];
+        aResult.Data1 = ( ( ( ( ( static_cast<sal_uInt8>(aSeq[0]) << 8 ) + static_cast<sal_uInt8>(aSeq[1]) ) << 8 ) + static_cast<sal_uInt8>(aSeq[2]) ) << 8 ) + static_cast<sal_uInt8>(aSeq[3]);
+        aResult.Data2 = ( static_cast<sal_uInt8>(aSeq[4]) << 8 ) + static_cast<sal_uInt8>(aSeq[5]);
+        aResult.Data3 = ( static_cast<sal_uInt8>(aSeq[6]) << 8 ) + static_cast<sal_uInt8>(aSeq[7]);
         for( int nInd = 0; nInd < 8; nInd++ )
-            aResult.Data4[nInd] = ( sal_uInt8 )aSeq[nInd+8];
+            aResult.Data4[nInd] = static_cast<sal_uInt8>(aSeq[nInd+8]);
 
         return true;
     }
@@ -392,7 +402,7 @@ bool GetClassIDFromSequence_Impl( uno::Sequence< sal_Int8 > const & aSeq, CLSID&
 }
 
 
-OUString WinAccToVcl_Impl( const sal_Unicode* pStr )
+static OUString WinAccToVcl_Impl( const sal_Unicode* pStr )
 {
     OUString aResult;
 
@@ -417,7 +427,7 @@ OUString WinAccToVcl_Impl( const sal_Unicode* pStr )
 }
 
 
-OleComponent::OleComponent( const uno::Reference< lang::XMultiServiceFactory >& xFactory, OleEmbeddedObject* pUnoOleObject )
+OleComponent::OleComponent( const uno::Reference< uno::XComponentContext >& xContext, OleEmbeddedObject* pUnoOleObject )
 : m_pInterfaceContainer( nullptr )
 , m_bDisposed( false )
 , m_bModified( false )
@@ -427,7 +437,7 @@ OleComponent::OleComponent( const uno::Reference< lang::XMultiServiceFactory >& 
 , m_pImplAdviseSink( nullptr )
 , m_nOLEMiscFlags( 0 )
 , m_nAdvConn( 0 )
-, m_xFactory( xFactory )
+, m_xContext( xContext )
 , m_bOleInitialized( false )
 , m_bWorkaroundActive( false )
 {
@@ -454,19 +464,15 @@ OleComponent::~OleComponent()
 
     if ( m_pOleWrapClientSite || m_pImplAdviseSink || m_pInterfaceContainer || m_bOleInitialized )
     {
-        ::osl::MutexGuard aGuard( m_aMutex );
-        m_refCount++;
+        osl_atomic_increment(&m_refCount);
         try {
             Dispose();
         } catch( const uno::Exception& ) {}
     }
 
-    for ( FormatEtcList::iterator aIter = m_pNativeImpl->m_aFormatsList.begin();
-          aIter != m_pNativeImpl->m_aFormatsList.end();
-          ++aIter )
+    for (auto const& format : m_pNativeImpl->m_aFormatsList)
     {
-        delete (*aIter);
-        (*aIter) = nullptr;
+        delete format;
     }
     m_pNativeImpl->m_aFormatsList.clear();
 
@@ -475,12 +481,15 @@ OleComponent::~OleComponent()
 
 void OleComponent::Dispose()
 {
-    // the mutex must be locked before this method is called
     if ( m_bDisposed )
         return;
 
+    // Call CloseObject() without m_aMutex locked, since it will call
+    // IOleObject::Close(), which can call event listeners, which can run on a
+    // different thread.
     CloseObject();
 
+    osl::MutexGuard aGuard(m_aMutex);
     if ( m_pOleWrapClientSite )
     {
         m_pOleWrapClientSite->disconnectOleComponent();
@@ -536,7 +545,7 @@ void OleComponent::CreateNewIStorage_Impl()
     if ( m_pUnoOleObject )
         aTempURL = m_pUnoOleObject->CreateTempURLEmpty_Impl();
     else
-        aTempURL = GetNewTempFileURL_Impl( m_xFactory );
+        aTempURL = GetNewTempFileURL_Impl( m_xContext );
 
     if ( !aTempURL.getLength() )
         throw uno::RuntimeException(); // TODO
@@ -546,7 +555,7 @@ void OleComponent::CreateNewIStorage_Impl()
     if ( ::osl::FileBase::getSystemPathFromFileURL( aTempURL, aTempFilePath ) != ::osl::FileBase::E_None )
         throw uno::RuntimeException(); // TODO: something dangerous happened
 
-    HRESULT hr = StgCreateDocfile( reinterpret_cast<LPCWSTR>(aTempFilePath.getStr()), STGM_CREATE | STGM_READWRITE | STGM_TRANSACTED | STGM_DELETEONRELEASE, 0, &m_pNativeImpl->m_pIStorage );
+    HRESULT hr = StgCreateDocfile( o3tl::toW(aTempFilePath.getStr()), STGM_CREATE | STGM_READWRITE | STGM_TRANSACTED | STGM_DELETEONRELEASE, 0, &m_pNativeImpl->m_pIStorage );
     if ( FAILED( hr ) || !m_pNativeImpl->m_pIStorage )
         throw io::IOException(); // TODO: transport error code?
 }
@@ -638,7 +647,7 @@ bool OleComponent::InitializeObject_Impl()
     HRESULT hr = m_pNativeImpl->m_pObj->QueryInterface( IID_IOleLink, reinterpret_cast<void**>(&pOleLink) );
     OSL_ENSURE( m_pUnoOleObject, "Unexpected object absence!" );
     if ( m_pUnoOleObject )
-        m_pUnoOleObject->SetObjectIsLink_Impl( bool( pOleLink != nullptr ) );
+        m_pUnoOleObject->SetObjectIsLink_Impl( pOleLink != nullptr );
 
 
     hr = m_pNativeImpl->m_pObj->QueryInterface( IID_IViewObject2, reinterpret_cast<void**>(&m_pNativeImpl->m_pViewObject2) );
@@ -827,7 +836,7 @@ void OleComponent::CreateObjectFromFile( const OUString& aFileURL )
         throw uno::RuntimeException(); // TODO: something dangerous happened
 
     HRESULT hr = OleCreateFromFile( CLSID_NULL,
-                                    reinterpret_cast<LPCWSTR>(aFilePath.getStr()),
+                                    o3tl::toW(aFilePath.getStr()),
                                     IID_IUnknown,
                                     OLERENDER_DRAW, // OLERENDER_FORMAT
                                     nullptr,
@@ -856,7 +865,7 @@ void OleComponent::CreateLinkFromFile( const OUString& aFileURL )
     if ( ::osl::FileBase::getSystemPathFromFileURL( aFileURL, aFilePath ) != ::osl::FileBase::E_None )
         throw uno::RuntimeException(); // TODO: something dangerous happened
 
-    HRESULT hr = OleCreateLinkToFile( reinterpret_cast<LPCWSTR>(aFilePath.getStr()),
+    HRESULT hr = OleCreateLinkToFile( o3tl::toW(aFilePath.getStr()),
                                         IID_IUnknown,
                                         OLERENDER_DRAW, // OLERENDER_FORMAT
                                         nullptr,
@@ -872,7 +881,7 @@ void OleComponent::CreateLinkFromFile( const OUString& aFileURL )
 }
 
 
-void OleComponent::InitEmbeddedCopyOfLink( OleComponent* pOleLinkComponent )
+void OleComponent::InitEmbeddedCopyOfLink( OleComponent const * pOleLinkComponent )
 {
     if ( !pOleLinkComponent || !pOleLinkComponent->m_pNativeImpl->m_pObj )
         throw lang::IllegalArgumentException(); // TODO
@@ -916,8 +925,8 @@ void OleComponent::InitEmbeddedCopyOfLink( OleComponent* pOleLinkComponent )
         if ( SUCCEEDED( hr ) && aMonType == MKSYS_FILEMONIKER )
         {
             ComSmart< IMalloc > pMalloc;
-            CoGetMalloc( 1, &pMalloc ); // if fails there will be a memory leak
-            OSL_ENSURE( pMalloc, "CoGetMalloc() failed!" );
+            hr = CoGetMalloc( 1, &pMalloc ); // if fails there will be a memory leak
+            OSL_ENSURE(SUCCEEDED(hr) && pMalloc, "CoGetMalloc() failed!");
 
             LPOLESTR pOleStr = nullptr;
             hr = pOleLink->GetSourceDisplayName( &pOleStr );
@@ -993,14 +1002,14 @@ awt::Size OleComponent::CalculateWithFactor( const awt::Size& aSize,
 {
     awt::Size aResult;
 
-    sal_Int64 nWidth = (sal_Int64)aSize.Width * (sal_Int64)aMultiplier.Width / (sal_Int64)aDivisor.Width;
-    sal_Int64 nHeight = (sal_Int64)aSize.Height * (sal_Int64)aMultiplier.Height / (sal_Int64)aDivisor.Height;
+    sal_Int64 nWidth = static_cast<sal_Int64>(aSize.Width) * static_cast<sal_Int64>(aMultiplier.Width) / static_cast<sal_Int64>(aDivisor.Width);
+    sal_Int64 nHeight = static_cast<sal_Int64>(aSize.Height) * static_cast<sal_Int64>(aMultiplier.Height) / static_cast<sal_Int64>(aDivisor.Height);
     OSL_ENSURE( nWidth < SAL_MAX_INT32 && nWidth > SAL_MIN_INT32
              && nHeight < SAL_MAX_INT32 && nHeight > SAL_MIN_INT32,
              "Unacceptable result size!" );
 
-    aResult.Width = (sal_Int32)nWidth;
-    aResult.Height = (sal_Int32)nHeight;
+    aResult.Width = static_cast<sal_Int32>(nWidth);
+    aResult.Height = static_cast<sal_Int32>(nHeight);
 
     return aResult;
 }
@@ -1036,7 +1045,7 @@ uno::Sequence< embed::VerbDescriptor > OleComponent::GetVerbList()
                     for( sal_uInt32 nInd = 0; nInd < nNum; nInd++ )
                     {
                         m_aVerbList[nSeqSize-nNum+nInd].VerbID = szEle[ nInd ].lVerb;
-                        m_aVerbList[nSeqSize-nNum+nInd].VerbName = WinAccToVcl_Impl( reinterpret_cast<const sal_Unicode*>(szEle[ nInd ].lpszVerbName) );
+                        m_aVerbList[nSeqSize-nNum+nInd].VerbName = WinAccToVcl_Impl( o3tl::toU(szEle[ nInd ].lpszVerbName) );
                         m_aVerbList[nSeqSize-nNum+nInd].VerbFlags = szEle[ nInd ].fuFlags;
                         m_aVerbList[nSeqSize-nNum+nInd].VerbAttributes = szEle[ nInd ].grfAttribs;
                     }
@@ -1067,19 +1076,16 @@ void OleComponent::ExecuteVerb( sal_Int32 nVerbID )
 
     if ( FAILED( hr ) )
         throw io::IOException(); // TODO
-
-    // TODO/LATER: the real names should be used here
-    m_pNativeImpl->m_pOleObject->SetHostNames( L"app name", L"untitled" );
 }
 
 
 void OleComponent::SetHostName( const OUString&,
-                                const OUString& )
+                                const OUString& aEmbDocName )
 {
     if ( !m_pNativeImpl->m_pOleObject )
         throw embed::WrongStateException(); // TODO: the object is in wrong state
 
-    // TODO: use aContName and aEmbDocName in m_pNativeImpl->m_pOleObject->SetHostNames()
+    m_pNativeImpl->m_pOleObject->SetHostNames( L"app name", o3tl::toW( aEmbDocName.getStr() ) );
 }
 
 
@@ -1088,7 +1094,7 @@ void OleComponent::SetExtent( const awt::Size& aVisAreaSize, sal_Int64 nAspect )
     if ( !m_pNativeImpl->m_pOleObject )
         throw embed::WrongStateException(); // TODO: the object is in wrong state
 
-    DWORD nMSAspect = ( DWORD )nAspect; // first 32 bits are for MS aspects
+    DWORD nMSAspect = static_cast<DWORD>(nAspect); // first 32 bits are for MS aspects
 
     SIZEL aSize = { aVisAreaSize.Width, aVisAreaSize.Height };
     HRESULT hr = m_pNativeImpl->m_pOleObject->SetExtent( nMSAspect, &aSize );
@@ -1110,7 +1116,7 @@ awt::Size OleComponent::GetExtent( sal_Int64 nAspect )
     if ( !m_pNativeImpl->m_pOleObject )
         throw embed::WrongStateException(); // TODO: the object is in wrong state
 
-    DWORD nMSAspect = ( DWORD )nAspect; // first 32 bits are for MS aspects
+    DWORD nMSAspect = static_cast<DWORD>(nAspect); // first 32 bits are for MS aspects
     awt::Size aSize;
     bool bGotSize = false;
 
@@ -1162,12 +1168,12 @@ awt::Size OleComponent::GetExtent( sal_Int64 nAspect )
                             break;
                     }
 
-                    sal_Int64 nX = ( (sal_Int64)abs( pMF->xExt ) ) * nMult / nDiv;
-                    sal_Int64 nY = ( (sal_Int64)abs( pMF->yExt ) ) * nMult / nDiv;
+                    sal_Int64 nX = static_cast<sal_Int64>(abs( pMF->xExt )) * nMult / nDiv;
+                    sal_Int64 nY = static_cast<sal_Int64>(abs( pMF->yExt )) * nMult / nDiv;
                     if (  nX < SAL_MAX_INT32 && nY < SAL_MAX_INT32 )
                     {
-                        aSize.Width = ( sal_Int32 )nX;
-                        aSize.Height = ( sal_Int32 )nY;
+                        aSize.Width = static_cast<sal_Int32>(nX);
+                        aSize.Height = static_cast<sal_Int32>(nY);
                         bGotSize = true;
                     }
                     else
@@ -1192,7 +1198,7 @@ awt::Size OleComponent::GetCachedExtent( sal_Int64 nAspect )
     if ( !m_pNativeImpl->m_pOleObject )
         throw embed::WrongStateException(); // TODO: the object is in wrong state
 
-    DWORD nMSAspect = ( DWORD )nAspect; // first 32 bits are for MS aspects
+    DWORD nMSAspect = static_cast<DWORD>(nAspect); // first 32 bits are for MS aspects
     SIZEL aSize;
 
     HRESULT hr = m_pNativeImpl->m_pViewObject2->GetExtent( nMSAspect, -1, nullptr, &aSize );
@@ -1218,7 +1224,7 @@ awt::Size OleComponent::GetRecommendedExtent( sal_Int64 nAspect )
     if ( !m_pNativeImpl->m_pOleObject )
         throw embed::WrongStateException(); // TODO: the object is in wrong state
 
-    DWORD nMSAspect = ( DWORD )nAspect; // first 32 bits are for MS aspects
+    DWORD nMSAspect = static_cast<DWORD>(nAspect); // first 32 bits are for MS aspects
     SIZEL aSize;
     HRESULT hr = m_pNativeImpl->m_pOleObject->GetExtent( nMSAspect, &aSize );
     if ( FAILED( hr ) )
@@ -1234,8 +1240,8 @@ sal_Int64 OleComponent::GetMiscStatus( sal_Int64 nAspect )
         throw embed::WrongStateException(); // TODO: the object is in wrong state
 
     DWORD nResult;
-    m_pNativeImpl->m_pOleObject->GetMiscStatus( ( DWORD )nAspect, &nResult );
-    return ( sal_Int64 )nResult; // first 32 bits are for MS flags
+    m_pNativeImpl->m_pOleObject->GetMiscStatus( static_cast<DWORD>(nAspect), &nResult );
+    return static_cast<sal_Int64>(nResult); // first 32 bits are for MS flags
 }
 
 
@@ -1384,7 +1390,7 @@ void OleComponent::OnViewChange_Impl( sal_uInt32 dwAspect )
     if ( xLockObject.is() )
     {
         uno::Reference < awt::XRequestCallback > xRequestCallback(
-            m_xFactory->createInstance("com.sun.star.awt.AsyncCallback"),
+            m_xContext->getServiceManager()->createInstanceWithContext("com.sun.star.awt.AsyncCallback", m_xContext),
              uno::UNO_QUERY );
         xRequestCallback->addCallback( new MainThreadNotificationRequest( xLockObject, OLECOMP_ONVIEWCHANGE, dwAspect ), uno::Any() );
     }
@@ -1404,7 +1410,7 @@ void OleComponent::OnClose_Impl()
     if ( xLockObject.is() )
     {
         uno::Reference < awt::XRequestCallback > xRequestCallback(
-            m_xFactory->createInstance("com.sun.star.awt.AsyncCallback"),
+            m_xContext->getServiceManager()->createInstanceWithContext("com.sun.star.awt.AsyncCallback", m_xContext),
              uno::UNO_QUERY );
         xRequestCallback->addCallback( new MainThreadNotificationRequest( xLockObject, OLECOMP_ONCLOSE ), uno::Any() );
     }
@@ -1414,47 +1420,52 @@ void OleComponent::OnClose_Impl()
 
 void SAL_CALL OleComponent::close( sal_Bool bDeliverOwnership )
 {
-    ::osl::MutexGuard aGuard( m_aMutex );
-    if ( m_bDisposed )
-        throw lang::DisposedException(); // TODO
-
-    uno::Reference< uno::XInterface > xSelfHold( static_cast< ::cppu::OWeakObject* >( this ) );
-    lang::EventObject aSource( static_cast< ::cppu::OWeakObject* >( this ) );
-
-    if ( m_pInterfaceContainer )
+    uno::Reference< uno::XInterface > xSelfHold;
     {
-        ::cppu::OInterfaceContainerHelper* pContainer =
-            m_pInterfaceContainer->getContainer( cppu::UnoType<util::XCloseListener>::get());
-        if ( pContainer != nullptr )
+        osl::MutexGuard aGuard(m_aMutex);
+        if (m_bDisposed)
+            throw lang::DisposedException(); // TODO
+
+        xSelfHold.set(static_cast<::cppu::OWeakObject*>(this));
+        lang::EventObject aSource(static_cast<::cppu::OWeakObject*>(this));
+
+        if (m_pInterfaceContainer)
         {
-            ::cppu::OInterfaceIteratorHelper pIterator( *pContainer );
-            while ( pIterator.hasMoreElements() )
+            ::cppu::OInterfaceContainerHelper* pContainer
+                = m_pInterfaceContainer->getContainer(cppu::UnoType<util::XCloseListener>::get());
+            if (pContainer != nullptr)
             {
-                try
+                ::cppu::OInterfaceIteratorHelper pIterator(*pContainer);
+                while (pIterator.hasMoreElements())
                 {
-                    static_cast<util::XCloseListener*>( pIterator.next() )->queryClosing( aSource, bDeliverOwnership );
-                }
-                catch( const uno::RuntimeException& )
-                {
-                    pIterator.remove();
+                    try
+                    {
+                        static_cast<util::XCloseListener*>(pIterator.next())
+                            ->queryClosing(aSource, bDeliverOwnership);
+                    }
+                    catch (const uno::RuntimeException&)
+                    {
+                        pIterator.remove();
+                    }
                 }
             }
-        }
 
-        pContainer = m_pInterfaceContainer->getContainer(
-                                    cppu::UnoType<util::XCloseListener>::get());
-        if ( pContainer != nullptr )
-        {
-            ::cppu::OInterfaceIteratorHelper pCloseIterator( *pContainer );
-            while ( pCloseIterator.hasMoreElements() )
+            pContainer
+                = m_pInterfaceContainer->getContainer(cppu::UnoType<util::XCloseListener>::get());
+            if (pContainer != nullptr)
             {
-                try
+                ::cppu::OInterfaceIteratorHelper pCloseIterator(*pContainer);
+                while (pCloseIterator.hasMoreElements())
                 {
-                    static_cast<util::XCloseListener*>( pCloseIterator.next() )->notifyClosing( aSource );
-                }
-                catch( const uno::RuntimeException& )
-                {
-                    pCloseIterator.remove();
+                    try
+                    {
+                        static_cast<util::XCloseListener*>(pCloseIterator.next())
+                            ->notifyClosing(aSource);
+                    }
+                    catch (const uno::RuntimeException&)
+                    {
+                        pCloseIterator.remove();
+                    }
                 }
             }
         }
@@ -1514,7 +1525,7 @@ uno::Any SAL_CALL OleComponent::getTransferData( const datatransfer::DataFlavor&
 
         // The following optimization does not make much sense currently just because
         // only one aspect is supported, and only three formats for the aspect are supported
-        // and moreover it is not guarantied that the once returned format will be supported further
+        // and moreover it is not guaranteed that the once returned format will be supported further
         // example - i52106
         // TODO/LATER: bring the optimization back when other aspects are supported
 
@@ -1561,24 +1572,22 @@ uno::Any SAL_CALL OleComponent::getTransferData( const datatransfer::DataFlavor&
         // allow to retrieve stream-representation of the object persistence
         bSupportedFlavor = true;
         uno::Reference < io::XStream > xTempFileStream(
-            io::TempFile::create(comphelper::getComponentContext(m_xFactory)),
+            io::TempFile::create(m_xContext),
             uno::UNO_QUERY_THROW );
 
         uno::Reference< io::XOutputStream > xTempOutStream = xTempFileStream->getOutputStream();
         uno::Reference< io::XInputStream > xTempInStream = xTempFileStream->getInputStream();
-        if ( xTempOutStream.is() && xTempInStream.is() )
-        {
-            OSL_ENSURE( m_pUnoOleObject, "Unexpected object absence!" );
-            if ( !m_pUnoOleObject )
-                throw uno::RuntimeException();
-
-            m_pUnoOleObject->StoreObjectToStream( xTempOutStream );
-
-            xTempOutStream->closeOutput();
-            xTempOutStream.clear();
-        }
-        else
+        if ( !(xTempOutStream.is() && xTempInStream.is()) )
             throw io::IOException(); // TODO:
+
+        OSL_ENSURE( m_pUnoOleObject, "Unexpected object absence!" );
+        if ( !m_pUnoOleObject )
+            throw uno::RuntimeException();
+
+        m_pUnoOleObject->StoreObjectToStream( xTempOutStream );
+
+        xTempOutStream->closeOutput();
+        xTempOutStream.clear();
 
         aResult <<= xTempInStream;
     }
@@ -1619,8 +1628,8 @@ sal_Bool SAL_CALL OleComponent::isDataFlavorSupported( const datatransfer::DataF
         RetrieveObjectDataFlavors_Impl();
     }
 
-    for ( sal_Int32 nInd = 0; nInd < m_aDataFlavors.getLength(); nInd++ )
-        if ( m_aDataFlavors[nInd].MimeType.equals( aFlavor.MimeType ) && m_aDataFlavors[nInd].DataType == aFlavor.DataType )
+    for ( auto const & supportedFormat : std::as_const(m_aDataFlavors) )
+        if ( supportedFormat.MimeType.equals( aFlavor.MimeType ) && supportedFormat.DataType == aFlavor.DataType )
             return true;
 
     return false;

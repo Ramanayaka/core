@@ -21,13 +21,12 @@
 #define INCLUDED_DBACCESS_ICONTROLLER_HXX
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <dbaccess/dbaccessdllapi.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans {
         struct PropertyValue;
     }
@@ -37,7 +36,7 @@ namespace com { namespace sun { namespace star {
     namespace frame {
         class XController;
     }
-} } }
+}
 
 class NotifyEvent;
 
@@ -88,12 +87,6 @@ namespace dbaui
                 <TRUE/> if the command is allowed, otherwise <FALSE/>.
         */
         virtual bool isCommandEnabled( const OUString& _rCompleteCommandURL ) const = 0;
-
-        /** notifyHiContrastChanged will be called when the hicontrast mode changed.
-            @param  _bHiContrast
-                <TRUE/> when in hicontrast mode.
-        */
-        virtual void notifyHiContrastChanged() = 0;
 
         /** checks if the selected data source is read only
             @return

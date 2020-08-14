@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABLISTBOX_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABLISTBOX_HXX
+#pragma once
 
-#include "AccessibleBrowseBox.hxx"
+#include <extended/AccessibleBrowseBox.hxx>
 #include <cppuhelper/implbase1.hxx>
-#include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-#include <svtools/accessibletableprovider.hxx>
+#include <vcl/accessibletableprovider.hxx>
 
 class SvHeaderTabListBox;
 
@@ -36,10 +34,10 @@ typedef ::cppu::ImplHelper1  <   css::accessibility::XAccessible
                             >   AccessibleTabListBox_Base;
 
 /** !!! */
-class AccessibleTabListBox
+class AccessibleTabListBox final
                 :public AccessibleBrowseBox
                 ,public AccessibleTabListBox_Base
-                ,public ::svt::IAccessibleTabListBox
+                ,public ::vcl::IAccessibleTabListBox
 {
 private:
     VclPtr<SvHeaderTabListBox>        m_pTabListBox;
@@ -52,7 +50,6 @@ public:
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
         SvHeaderTabListBox& rBox );
 
-public:
     // XInterface
     DECLARE_XINTERFACE( )
     // XTypeProvider
@@ -80,10 +77,10 @@ public:
     css::uno::Reference< css::accessibility::XAccessible >
         getHeaderBar() override
     {
-        return AccessibleBrowseBox::getHeaderBar( svt::BBTYPE_COLUMNHEADERBAR );
+        return AccessibleBrowseBox::getHeaderBar( vcl::BBTYPE_COLUMNHEADERBAR );
     }
 
-protected:
+private:
     /** dtor() */
     virtual ~AccessibleTabListBox() override;
 
@@ -96,6 +93,5 @@ protected:
 } // namespace accessibility
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABLISTBOX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

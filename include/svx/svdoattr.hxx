@@ -20,35 +20,24 @@
 #ifndef INCLUDED_SVX_SVDOATTR_HXX
 #define INCLUDED_SVX_SVDOATTR_HXX
 
-#include <svx/xfillit0.hxx>
-#include <svx/xflasit.hxx>
-#include <svx/xlineit0.hxx>
-#include <svx/xlnasit.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/svdattr.hxx>
 #include <svx/svxdllapi.h>
 
-
 //   Initial Declarations
-
-
 class SfxPoolItem;
 class SfxSetItem;
 class SdrOutliner;
 class SfxItemSet;
 class SfxItemPool;
 
-
 //   SdrAttrObj
-
-
-class SVX_DLLPUBLIC SdrAttrObj : public SdrObject
+class SVXCORE_DLLPUBLIC SdrAttrObj : public SdrObject
 {
 private:
     friend class                SdrOutliner;
 
 protected:
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
 
     tools::Rectangle                   maSnapRect;
 
@@ -59,10 +48,14 @@ protected:
     /// Detects when a stylesheet is changed
     virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
 
-    SdrAttrObj();
+    SdrAttrObj(SdrModel& rSdrModel);
     virtual ~SdrAttrObj() override;
 
 public:
+    SdrAttrObj(SdrAttrObj const &) = delete; // due to SdrObject
+    SdrAttrObj(SdrAttrObj &&) = delete; // due to SdrObject
+    SdrAttrObj & operator =(SdrAttrObj const &) = default;
+    SdrAttrObj & operator =(SdrAttrObj &&) = default;
 
     // Detects if bFilledObj && Fill != FillNone
     bool HasFill() const;
@@ -71,8 +64,6 @@ public:
     bool HasLine() const;
 
     virtual const tools::Rectangle& GetSnapRect() const override;
-
-    virtual void SetModel(SdrModel* pNewModel) override;
 };
 
 

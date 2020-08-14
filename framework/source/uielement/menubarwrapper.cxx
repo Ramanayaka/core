@@ -18,21 +18,17 @@
  */
 
 #include <uielement/menubarwrapper.hxx>
-#include <framework/actiontriggerhelper.hxx>
-#include <services.h>
 
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/awt/XSystemDependentMenuPeer.hpp>
-#include <com/sun/star/awt/XMenuBar.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/ui/UIElementType.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
+#include <cppuhelper/typeprovider.hxx>
+#include <cppuhelper/queryinterface.hxx>
+#include <toolkit/awt/vclxmenu.hxx>
 #include <vcl/svapp.hxx>
 
 using namespace com::sun::star;
@@ -48,35 +44,67 @@ using namespace ::com::sun::star::ui;
 namespace framework
 {
 
-//  XInterface, XTypeProvider
-DEFINE_XINTERFACE_11    (   MenuBarWrapper                                                    ,
-                            UIConfigElementWrapperBase                                        ,
-                            DIRECT_INTERFACE( css::lang::XTypeProvider          ),
-                            DIRECT_INTERFACE( css::ui::XUIElement               ),
-                            DIRECT_INTERFACE( css::ui::XUIElementSettings       ),
-                            DIRECT_INTERFACE( css::beans::XMultiPropertySet     ),
-                            DIRECT_INTERFACE( css::beans::XFastPropertySet      ),
-                            DIRECT_INTERFACE( css::beans::XPropertySet          ),
-                            DIRECT_INTERFACE( css::lang::XInitialization        ),
-                            DIRECT_INTERFACE( css::lang::XComponent             ),
-                            DIRECT_INTERFACE( css::util::XUpdatable             ),
-                            DIRECT_INTERFACE( css::ui::XUIConfigurationListener ),
-                            DERIVED_INTERFACE( css::container::XNameAccess, css::container::XElementAccess )
-                        )
+void SAL_CALL MenuBarWrapper::acquire() throw()                                                                          \
+{                                                                                                                                                       \
+    /* Don't use mutex in methods of XInterface! */                                                                                                     \
+    UIConfigElementWrapperBase::acquire();                                                                                                                               \
+}                                                                                                                                                       \
+                                                                                                                                                        \
+void SAL_CALL MenuBarWrapper::release() throw()                                                                          \
+{                                                                                                                                                       \
+    /* Don't use mutex in methods of XInterface! */                                                                                                     \
+    UIConfigElementWrapperBase::release();                                                                                                                               \
+}
 
-DEFINE_XTYPEPROVIDER_11 (   MenuBarWrapper                                  ,
-                            css::lang::XTypeProvider           ,
-                            css::ui::XUIElement                ,
-                            css::ui::XUIElementSettings        ,
-                            css::beans::XMultiPropertySet      ,
-                            css::beans::XFastPropertySet       ,
-                            css::beans::XPropertySet           ,
-                            css::lang::XInitialization         ,
-                            css::lang::XComponent              ,
-                            css::util::XUpdatable              ,
-                            css::ui::XUIConfigurationListener  ,
-                            css::container::XNameAccess
-                        )
+css::uno::Any SAL_CALL MenuBarWrapper::queryInterface( const css::uno::Type& aType )
+{
+    /* Attention: Don't use mutex or guard in this method!!! Is a method of XInterface. */
+    /* Ask for my own supported interfaces ...                                          */
+    css::uno::Any aReturn  = ::cppu::queryInterface( aType,
+                        static_cast< css::lang::XTypeProvider* >( this ),
+                        static_cast< css::ui::XUIElement* >( this ),
+                        static_cast< css::ui::XUIElementSettings* >( this ),
+                        static_cast< css::beans::XMultiPropertySet* >( this ),
+                        static_cast< css::beans::XFastPropertySet* >( this ),
+                        static_cast< css::beans::XPropertySet* >( this ),
+                        static_cast< css::lang::XInitialization* >( this ),
+                        static_cast< css::lang::XComponent* >( this ),
+                        static_cast< css::util::XUpdatable* >( this ),
+                        static_cast< css::ui::XUIConfigurationListener* >( this ),
+                        static_cast< css::container::XNameAccess* >( static_cast< css::container::XElementAccess* >( this ) )
+                                        );
+    /* If searched interface not supported by this class ... */
+    if ( !aReturn.hasValue() )
+    {
+        /* ... ask baseclass for interfaces! */
+        aReturn = UIConfigElementWrapperBase::queryInterface( aType );
+    }
+    /* Return result of this search. */
+    return aReturn;
+}
+
+css::uno::Sequence< sal_Int8 > SAL_CALL MenuBarWrapper::getImplementationId()
+{
+    return css::uno::Sequence<sal_Int8>();
+}
+
+css::uno::Sequence< css::uno::Type > SAL_CALL MenuBarWrapper::getTypes()
+{
+    /* Attention: "TYPES" will expand to "(...)"!   */
+    static cppu::OTypeCollection ourTypeCollection {
+                        cppu::UnoType<css::lang::XTypeProvider>::get()           ,
+                        cppu::UnoType<css::ui::XUIElement>::get()                ,
+                        cppu::UnoType<css::ui::XUIElementSettings>::get()        ,
+                        cppu::UnoType<css::beans::XMultiPropertySet>::get()      ,
+                        cppu::UnoType<css::beans::XFastPropertySet>::get()       ,
+                        cppu::UnoType<css::beans::XPropertySet>::get()           ,
+                        cppu::UnoType<css::lang::XInitialization>::get()         ,
+                        cppu::UnoType<css::lang::XComponent>::get()              ,
+                        cppu::UnoType<css::util::XUpdatable>::get()              ,
+                        cppu::UnoType<css::ui::XUIConfigurationListener>::get()  ,
+                    cppu::UnoType<css::container::XNameAccess>::get() };
+    return ourTypeCollection.getTypes();
+}
 
 MenuBarWrapper::MenuBarWrapper(
     const css::uno::Reference< css::uno::XComponentContext >& rxContext
@@ -117,84 +145,84 @@ void SAL_CALL MenuBarWrapper::initialize( const Sequence< Any >& aArguments )
     if ( m_bDisposed )
         throw DisposedException();
 
-    if ( !m_bInitialized )
+    if ( m_bInitialized )
+        return;
+
+    OUString aModuleIdentifier;
+    UIConfigElementWrapperBase::initialize( aArguments );
+
+    Reference< XFrame > xFrame( m_xWeakFrame );
+    if ( !(xFrame.is() && m_xConfigSource.is()) )
+        return;
+
+    // Create VCL menubar which will be filled with settings data
+    VclPtr<MenuBar> pVCLMenuBar;
+    VCLXMenuBar*    pAwtMenuBar = nullptr;
     {
-        OUString aModuleIdentifier;
-        UIConfigElementWrapperBase::initialize( aArguments );
+        SolarMutexGuard aSolarMutexGuard;
+        pVCLMenuBar = VclPtr<MenuBar>::Create();
+    }
 
-        Reference< XFrame > xFrame( m_xWeakFrame );
-        if ( xFrame.is() && m_xConfigSource.is() )
+    Reference< XModuleManager2 > xModuleManager = ModuleManager::create( m_xContext );
+
+    try
+    {
+        aModuleIdentifier = xModuleManager->identify( xFrame );
+    }
+    catch( const Exception& )
+    {
+    }
+
+    Reference< XURLTransformer > xTrans;
+    try
+    {
+        xTrans.set( URLTransformer::create(m_xContext) );
+        m_xConfigData = m_xConfigSource->getSettings( m_aResourceURL, false );
+        if ( m_xConfigData.is() )
         {
-            // Create VCL menubar which will be filled with settings data
-            VclPtr<MenuBar> pVCLMenuBar;
-            VCLXMenuBar*    pAwtMenuBar = nullptr;
-            {
-                SolarMutexGuard aSolarMutexGuard;
-                pVCLMenuBar = VclPtr<MenuBar>::Create();
-            }
-
-            Reference< XModuleManager2 > xModuleManager = ModuleManager::create( m_xContext );
-
-            try
-            {
-                aModuleIdentifier = xModuleManager->identify( xFrame );
-            }
-            catch( const Exception& )
-            {
-            }
-
-            Reference< XURLTransformer > xTrans;
-            try
-            {
-                xTrans.set( URLTransformer::create(m_xContext) );
-                m_xConfigData = m_xConfigSource->getSettings( m_aResourceURL, false );
-                if ( m_xConfigData.is() )
-                {
-                    // Fill menubar with container contents
-                    sal_uInt16 nId = 1;
-                    MenuBarManager::FillMenuWithConfiguration( nId, pVCLMenuBar, aModuleIdentifier, m_xConfigData, xTrans );
-                }
-            }
-            catch ( const NoSuchElementException& )
-            {
-            }
-
-            bool bMenuOnly( false );
-            for ( sal_Int32 n = 0; n < aArguments.getLength(); n++ )
-            {
-                PropertyValue aPropValue;
-                if ( aArguments[n] >>= aPropValue )
-                {
-                    if ( aPropValue.Name == "MenuOnly" )
-                        aPropValue.Value >>= bMenuOnly;
-                }
-            }
-
-            if ( !bMenuOnly )
-            {
-                // Initialize menubar manager with our vcl menu bar. There are some situations where we only want to get the menu without any
-                // interaction which is done by the menu bar manager. This must be requested by a special property called "MenuOnly". Be careful
-                // a menu bar created with this property is not fully supported. It must be attached to a real menu bar manager to have full
-                // support. This feature is currently used for "Inplace editing"!
-                Reference< XDispatchProvider > xDispatchProvider;
-
-                MenuBarManager* pMenuBarManager = new MenuBarManager( m_xContext,
-                                                                      xFrame,
-                                                                      xTrans,
-                                                                      xDispatchProvider,
-                                                                      aModuleIdentifier,
-                                                                      pVCLMenuBar,
-                                                                      false );
-
-                m_xMenuBarManager.set( static_cast< OWeakObject *>( pMenuBarManager ), UNO_QUERY );
-            }
-
-            // Initialize toolkit menu bar implementation to have awt::XMenuBar for data exchange.
-            // Don't use this toolkit menu bar or one of its functions. It is only used as a data container!
-            pAwtMenuBar = new VCLXMenuBar( pVCLMenuBar );
-            m_xMenuBar.set( static_cast< OWeakObject *>( pAwtMenuBar ), UNO_QUERY );
+            // Fill menubar with container contents
+            sal_uInt16 nId = 1;
+            MenuBarManager::FillMenuWithConfiguration( nId, pVCLMenuBar, aModuleIdentifier, m_xConfigData, xTrans );
         }
     }
+    catch ( const NoSuchElementException& )
+    {
+    }
+
+    bool bMenuOnly( false );
+    for ( const Any& rArg : aArguments )
+    {
+        PropertyValue aPropValue;
+        if ( rArg >>= aPropValue )
+        {
+            if ( aPropValue.Name == "MenuOnly" )
+                aPropValue.Value >>= bMenuOnly;
+        }
+    }
+
+    if ( !bMenuOnly )
+    {
+        // Initialize menubar manager with our vcl menu bar. There are some situations where we only want to get the menu without any
+        // interaction which is done by the menu bar manager. This must be requested by a special property called "MenuOnly". Be careful
+        // a menu bar created with this property is not fully supported. It must be attached to a real menu bar manager to have full
+        // support. This feature is currently used for "Inplace editing"!
+        Reference< XDispatchProvider > xDispatchProvider;
+
+        MenuBarManager* pMenuBarManager = new MenuBarManager( m_xContext,
+                                                              xFrame,
+                                                              xTrans,
+                                                              xDispatchProvider,
+                                                              aModuleIdentifier,
+                                                              pVCLMenuBar,
+                                                              false );
+
+        m_xMenuBarManager.set( static_cast< OWeakObject *>( pMenuBarManager ), UNO_QUERY );
+    }
+
+    // Initialize toolkit menu bar implementation to have awt::XMenuBar for data exchange.
+    // Don't use this toolkit menu bar or one of its functions. It is only used as a data container!
+    pAwtMenuBar = new VCLXMenuBar( pVCLMenuBar );
+    m_xMenuBar = pAwtMenuBar;
 }
 
 // XUIElementSettings
@@ -205,26 +233,26 @@ void SAL_CALL MenuBarWrapper::updateSettings()
     if ( m_bDisposed )
         throw DisposedException();
 
-    if ( m_xMenuBarManager.is() )
-    {
-        if ( m_xConfigSource.is() && m_bPersistent )
-        {
-            try
-            {
-                MenuBarManager* pMenuBarManager = static_cast< MenuBarManager *>( m_xMenuBarManager.get() );
+    if ( !m_xMenuBarManager.is() )
+        return;
 
-                m_xConfigData = m_xConfigSource->getSettings( m_aResourceURL, false );
-                if ( m_xConfigData.is() )
-                    pMenuBarManager->SetItemContainer( m_xConfigData );
-            }
-            catch ( const NoSuchElementException& )
-            {
-            }
-        }
-        else if ( !m_bPersistent )
+    if ( m_xConfigSource.is() && m_bPersistent )
+    {
+        try
         {
-            // Transient menubar: do nothing
+            MenuBarManager* pMenuBarManager = static_cast< MenuBarManager *>( m_xMenuBarManager.get() );
+
+            m_xConfigData = m_xConfigSource->getSettings( m_aResourceURL, false );
+            if ( m_xConfigData.is() )
+                pMenuBarManager->SetItemContainer( m_xConfigData );
         }
+        catch ( const NoSuchElementException& )
+        {
+        }
+    }
+    else if ( !m_bPersistent )
+    {
+        // Transient menubar: do nothing
     }
 }
 void MenuBarWrapper::impl_fillNewData()
@@ -277,14 +305,11 @@ Any SAL_CALL MenuBarWrapper::getByName(
     fillPopupControllerCache();
 
     PopupControllerCache::const_iterator pIter = m_aPopupControllerCache.find( aName );
-    if ( pIter != m_aPopupControllerCache.end() )
-    {
-        uno::Reference< frame::XDispatchProvider > xDispatchProvider;
-        xDispatchProvider = pIter->second.m_xDispatchProvider;
-        return uno::makeAny( xDispatchProvider );
-    }
-    else
+    if ( pIter == m_aPopupControllerCache.end() )
         throw container::NoSuchElementException();
+
+    uno::Reference< frame::XDispatchProvider > xDispatchProvider = pIter->second.m_xDispatchProvider;
+    return uno::makeAny( xDispatchProvider );
 }
 
 Sequence< OUString > SAL_CALL MenuBarWrapper::getElementNames()

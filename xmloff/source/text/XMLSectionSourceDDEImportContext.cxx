@@ -19,12 +19,10 @@
 
 #include "XMLSectionSourceDDEImportContext.hxx"
 #include "XMLSectionImportContext.hxx"
-#include <com/sun/star/text/SectionFileLink.hpp>
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/txtimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <sax/tools/converter.hxx>
 #include <com/sun/star/uno/Reference.h>
@@ -35,7 +33,7 @@
 using ::com::sun::star::beans::XPropertySet;
 using ::com::sun::star::beans::XMultiPropertySet;
 using ::com::sun::star::uno::Reference;
-using ::com::sun::star::xml::sax::XAttributeList;
+using ::com::sun::star::xml::sax::XFastAttributeList;
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::text;
@@ -55,59 +53,31 @@ XMLSectionSourceDDEImportContext::~XMLSectionSourceDDEImportContext()
 {
 }
 
-enum XMLSectionSourceDDEToken
+void XMLSectionSourceDDEImportContext::startFastElement(sal_Int32 /*nElement*/,
+    const Reference<XFastAttributeList> & xAttrList)
 {
-    XML_TOK_SECTION_DDE_APPLICATION,
-    XML_TOK_SECTION_DDE_TOPIC,
-    XML_TOK_SECTION_DDE_ITEM,
-    XML_TOK_SECTION_IS_AUTOMATIC_UPDATE
-};
-
-static const SvXMLTokenMapEntry aSectionSourceDDETokenMap[] =
-{
-    { XML_NAMESPACE_OFFICE, XML_DDE_APPLICATION,
-          XML_TOK_SECTION_DDE_APPLICATION },
-    { XML_NAMESPACE_OFFICE, XML_DDE_TOPIC, XML_TOK_SECTION_DDE_TOPIC },
-    { XML_NAMESPACE_OFFICE, XML_DDE_ITEM, XML_TOK_SECTION_DDE_ITEM },
-    { XML_NAMESPACE_OFFICE, XML_AUTOMATIC_UPDATE,
-          XML_TOK_SECTION_IS_AUTOMATIC_UPDATE },
-    XML_TOKEN_MAP_END
-};
-
-
-void XMLSectionSourceDDEImportContext::StartElement(
-    const Reference<XAttributeList> & xAttrList)
-{
-    SvXMLTokenMap aTokenMap(aSectionSourceDDETokenMap);
     OUString sApplication;
     OUString sTopic;
     OUString sItem;
     bool bAutomaticUpdate = false;
 
-    sal_Int16 nLength = xAttrList->getLength();
-    for(sal_Int16 nAttr = 0; nAttr < nLength; nAttr++)
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( xAttrList ))
     {
-        OUString sLocalName;
-        sal_uInt16 nPrefix = GetImport().GetNamespaceMap().
-            GetKeyByAttrName( xAttrList->getNameByIndex(nAttr),
-                              &sLocalName );
-
-        switch (aTokenMap.Get(nPrefix, sLocalName))
+        switch (aIter.getToken())
         {
-            case XML_TOK_SECTION_DDE_APPLICATION:
-                sApplication = xAttrList->getValueByIndex(nAttr);
+            case XML_ELEMENT(OFFICE, XML_DDE_APPLICATION):
+                sApplication = aIter.toString();
                 break;
-            case XML_TOK_SECTION_DDE_TOPIC:
-                sTopic = xAttrList->getValueByIndex(nAttr);
+            case XML_ELEMENT(OFFICE, XML_DDE_TOPIC):
+                sTopic = aIter.toString();
                 break;
-            case XML_TOK_SECTION_DDE_ITEM:
-                sItem = xAttrList->getValueByIndex(nAttr);
+            case XML_ELEMENT(OFFICE, XML_DDE_ITEM):
+                sItem = aIter.toString();
                 break;
-            case XML_TOK_SECTION_IS_AUTOMATIC_UPDATE:
+            case XML_ELEMENT(OFFICE, XML_AUTOMATIC_UPDATE):
             {
                 bool bTmp(false);
-                if (::sax::Converter::convertBool(
-                    bTmp, xAttrList->getValueByIndex(nAttr)))
+                if (::sax::Converter::convertBool(bTmp, aIter.toString()))
                 {
                     bAutomaticUpdate = bTmp;
                 }
@@ -120,46 +90,38 @@ void XMLSectionSourceDDEImportContext::StartElement(
     }
 
     // DDE not supported on all platforms; query property first
-    if (rSectionPropertySet->getPropertySetInfo()->
+    if (!rSectionPropertySet->getPropertySetInfo()->
         hasPropertyByName("DDECommandFile"))
-    {
-        // use multi property set to force single update of connection #83654#
-        Sequence<OUString> aNames(4);
-        Sequence<Any> aValues(4);
+        return;
 
-        aValues[0] <<= sApplication;
-        aNames[0] = "DDECommandFile";
+    // use multi property set to force single update of connection #83654#
+    Sequence<OUString> aNames(4);
+    Sequence<Any> aValues(4);
 
-        aValues[1] <<= sTopic;
-        aNames[1] = "DDECommandType";
+    aValues[0] <<= sApplication;
+    aNames[0] = "DDECommandFile";
 
-        aValues[2] <<= sItem;
-        aNames[2] = "DDECommandElement";
+    aValues[1] <<= sTopic;
+    aNames[1] = "DDECommandType";
 
-        aValues[3] <<= bAutomaticUpdate;
-        aNames[3] = "IsAutomaticUpdate";
+    aValues[2] <<= sItem;
+    aNames[2] = "DDECommandElement";
 
-        Reference<XMultiPropertySet> rMultiPropSet(rSectionPropertySet,
-                                                   UNO_QUERY);
-        DBG_ASSERT(rMultiPropSet.is(), "we'd really like a XMultiPropertySet");
-        if (rMultiPropSet.is())
-            rMultiPropSet->setPropertyValues(aNames, aValues);
-        // else: ignore
-    }
+    aValues[3] <<= bAutomaticUpdate;
+    aNames[3] = "IsAutomaticUpdate";
+
+    Reference<XMultiPropertySet> rMultiPropSet(rSectionPropertySet,
+                                               UNO_QUERY);
+    DBG_ASSERT(rMultiPropSet.is(), "we'd really like a XMultiPropertySet");
+    if (rMultiPropSet.is())
+        rMultiPropSet->setPropertyValues(aNames, aValues);
+    // else: ignore
+
 }
 
-void XMLSectionSourceDDEImportContext::EndElement()
+void XMLSectionSourceDDEImportContext::endFastElement(sal_Int32 /*nElement*/)
 {
     // nothing to be done!
-}
-
-SvXMLImportContext* XMLSectionSourceDDEImportContext::CreateChildContext(
-    sal_uInt16 nPrefix,
-    const OUString& rLocalName,
-    const Reference<XAttributeList> & )
-{
-    // ignore -> default context
-    return new SvXMLImportContext(GetImport(), nPrefix, rLocalName);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

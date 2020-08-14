@@ -23,16 +23,15 @@
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <vcl/svapp.hxx>
 #include <svx/svdpage.hxx>
-#include <comphelper/extract.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
-#include "createunocustomshow.hxx"
-#include "unomodel.hxx"
-#include "drawdoc.hxx"
+#include <createunocustomshow.hxx>
+#include <unomodel.hxx>
+#include <drawdoc.hxx>
 #include "unocpres.hxx"
-#include "cusshow.hxx"
-#include "unopage.hxx"
-#include "customshowlist.hxx"
+#include <cusshow.hxx>
+#include <unopage.hxx>
+#include <customshowlist.hxx>
 
 using namespace ::com::sun::star;
 
@@ -64,7 +63,7 @@ UNO3_GETIMPLEMENTATION_IMPL( SdXCustomPresentation );
 // XServiceInfo
 OUString SAL_CALL SdXCustomPresentation::getImplementationName()
 {
-    return OUString( "SdXCustomPresentation" ) ;
+    return "SdXCustomPresentation" ;
 }
 
 sal_Bool SAL_CALL SdXCustomPresentation::supportsService( const OUString& ServiceName )
@@ -74,9 +73,7 @@ sal_Bool SAL_CALL SdXCustomPresentation::supportsService( const OUString& Servic
 
 uno::Sequence< OUString > SAL_CALL SdXCustomPresentation::getSupportedServiceNames()
 {
-    OUString aSN( "com.sun.star.presentation.CustomPresentation" );
-    uno::Sequence< OUString > aSeq( &aSN, 1 );
-    return aSeq;
+    return { "com.sun.star.presentation.CustomPresentation" };
 }
 
 // XIndexContainer
@@ -87,7 +84,7 @@ void SAL_CALL SdXCustomPresentation::insertByIndex( sal_Int32 Index, const uno::
     if( bDisposing )
         throw lang::DisposedException();
 
-    if( Index < 0 || Index > (sal_Int32)( mpSdCustomShow ? mpSdCustomShow->PagesVector().size() : 0 ) )
+    if( Index < 0 || Index > static_cast<sal_Int32>( mpSdCustomShow ? mpSdCustomShow->PagesVector().size() : 0 ) )
         throw lang::IndexOutOfBoundsException();
 
     uno::Reference< drawing::XDrawPage > xPage;
@@ -96,7 +93,7 @@ void SAL_CALL SdXCustomPresentation::insertByIndex( sal_Int32 Index, const uno::
     if(!xPage.is())
         throw lang::IllegalArgumentException();
 
-    SdDrawPage* pPage = SdDrawPage::getImplementation( xPage );
+    SdDrawPage* pPage = comphelper::getUnoTunnelImplementation<SdDrawPage>( xPage );
 
     if(pPage)
     {
@@ -128,7 +125,7 @@ void SAL_CALL SdXCustomPresentation::removeByIndex( sal_Int32 Index )
 
         if( xPage.is() )
         {
-            SvxDrawPage* pPage = SvxDrawPage::getImplementation( xPage );
+            SvxDrawPage* pPage = comphelper::getUnoTunnelImplementation<SvxDrawPage>( xPage );
             if(pPage)
             {
                 SdCustomShow::PageVec::iterator it = std::find(
@@ -185,11 +182,11 @@ uno::Any SAL_CALL SdXCustomPresentation::getByIndex( sal_Int32 Index )
     if( bDisposing )
         throw lang::DisposedException();
 
-    if (Index < 0 || !mpSdCustomShow || Index >= (sal_Int32)mpSdCustomShow->PagesVector().size())
+    if (Index < 0 || !mpSdCustomShow || Index >= static_cast<sal_Int32>(mpSdCustomShow->PagesVector().size()))
         throw lang::IndexOutOfBoundsException();
 
     uno::Any aAny;
-    SdrPage * pPage = static_cast<SdrPage*>(const_cast<SdPage *>(mpSdCustomShow->PagesVector()[Index]));
+    SdrPage * pPage = const_cast<SdPage *>(mpSdCustomShow->PagesVector()[Index]);
 
     if( pPage )
     {
@@ -275,7 +272,7 @@ SdXCustomPresentationAccess::~SdXCustomPresentationAccess() throw()
 // XServiceInfo
 OUString SAL_CALL SdXCustomPresentationAccess::getImplementationName()
 {
-    return OUString( "SdXCustomPresentationAccess" );
+    return "SdXCustomPresentationAccess";
 }
 
 sal_Bool SAL_CALL SdXCustomPresentationAccess::supportsService( const OUString& ServiceName )
@@ -285,9 +282,7 @@ sal_Bool SAL_CALL SdXCustomPresentationAccess::supportsService( const OUString& 
 
 uno::Sequence< OUString > SAL_CALL SdXCustomPresentationAccess::getSupportedServiceNames()
 {
-    const OUString aNS( "com.sun.star.presentation.CustomPresentationAccess" );
-    uno::Sequence< OUString > aSeq( &aNS, 1 );
-    return aSeq;
+    return { "com.sun.star.presentation.CustomPresentationAccess" };
 }
 
 // XSingleServiceFactory
@@ -316,12 +311,12 @@ void SAL_CALL SdXCustomPresentationAccess::insertByName( const OUString& aName, 
     if( nullptr == pList)
         throw uno::RuntimeException();
 
-    // do we have an container::XIndexContainer?
+    // do we have a container::XIndexContainer?
     SdXCustomPresentation* pXShow = nullptr;
 
     uno::Reference< container::XIndexContainer > xContainer;
     if( (aElement >>= xContainer) && xContainer.is() )
-        pXShow = SdXCustomPresentation::getImplementation(xContainer);
+        pXShow = comphelper::getUnoTunnelImplementation<SdXCustomPresentation>(xContainer);
 
     if( nullptr == pXShow )
         throw lang::IllegalArgumentException();
@@ -351,7 +346,7 @@ void SAL_CALL SdXCustomPresentationAccess::insertByName( const OUString& aName, 
             throw container::ElementExistException();
     }
 
-    pList->push_back(pShow);
+    pList->push_back(std::unique_ptr<SdCustomShow>(pShow));
 
     mrModel.SetModified();
 }
@@ -363,10 +358,10 @@ void SAL_CALL SdXCustomPresentationAccess::removeByName( const OUString& Name )
     SdCustomShow* pShow = getSdCustomShow(Name);
 
     SdCustomShowList* pList = GetCustomShowList();
-    if(pList && pShow)
-        delete pList->Remove( pShow );
-    else
+    if(!pList || !pShow)
         throw container::NoSuchElementException();
+
+    pList->erase( pShow );
 
     mrModel.SetModified();
 }
@@ -383,20 +378,14 @@ uno::Any SAL_CALL SdXCustomPresentationAccess::getByName( const OUString& aName 
 {
     SolarMutexGuard aGuard;
 
-    uno::Any aAny;
-
     SdCustomShow* pShow = getSdCustomShow(aName);
-    if(pShow)
-    {
-        uno::Reference< container::XIndexContainer >  xRef( pShow->getUnoCustomShow(), uno::UNO_QUERY );
-        aAny <<= xRef;
-    }
-    else
+    if(!pShow)
     {
         throw container::NoSuchElementException();
     }
 
-    return aAny;
+    uno::Reference< container::XIndexContainer >  xRef( pShow->getUnoCustomShow(), uno::UNO_QUERY );
+    return uno::Any(xRef);
 }
 
 uno::Sequence< OUString > SAL_CALL SdXCustomPresentationAccess::getElementNames()
@@ -412,7 +401,7 @@ uno::Sequence< OUString > SAL_CALL SdXCustomPresentationAccess::getElementNames(
     sal_uInt32 nIdx = 0;
     while( nIdx < nCount )
     {
-        const SdCustomShow* pShow = (*pList)[nIdx];
+        const SdCustomShow* pShow = (*pList)[nIdx].get();
         pStringList[nIdx] = pShow->GetName();
         nIdx++;
     }
@@ -449,7 +438,7 @@ SdCustomShow * SdXCustomPresentationAccess::getSdCustomShow( const OUString& rNa
 
     while( nIdx < nCount )
     {
-        SdCustomShow* pShow = (*pList)[nIdx];
+        SdCustomShow* pShow = (*pList)[nIdx].get();
         if( pShow->GetName() == rName )
             return pShow;
         nIdx++;

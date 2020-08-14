@@ -18,13 +18,14 @@
  */
 
 
-#include <toolkit/controls/roadmapcontrol.hxx>
+#include <controls/roadmapcontrol.hxx>
+#include <controls/roadmapentry.hxx>
 #include <toolkit/helper/property.hxx>
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
+#include <helper/servicenames.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
-#include "helper/unopropertyarrayhelper.hxx"
+#include <helper/unopropertyarrayhelper.hxx>
 
 namespace toolkit
 {
@@ -41,12 +42,12 @@ namespace toolkit
 
 
 static void lcl_throwIllegalArgumentException( )
-{   // throwing is expensive (in terms of code size), thus we hope the compiler does not inline this ....
+{   // throwing is expensive (in terms of code size), thus we hope the compiler does not inline this...
     throw IllegalArgumentException();
 }
 
 static void lcl_throwIndexOutOfBoundsException( )
-{   // throwing is expensive (in terms of code size), thus we hope the compiler does not inline this ....
+{   // throwing is expensive (in terms of code size), thus we hope the compiler does not inline this...
     throw IndexOutOfBoundsException();
 }
 
@@ -78,12 +79,12 @@ static void lcl_throwIndexOutOfBoundsException( )
 
     OUString UnoControlRoadmapModel::getServiceName()
     {
-        return OUString::createFromAscii( szServiceName_UnoControlRoadmapModel );
+        return "stardiv.vcl.controlmodel.Roadmap";
     }
 
     OUString UnoControlRoadmapModel::getImplementationName()
     {
-        return OUString("stardiv.Toolkit.UnoControlRoadmapModel");
+        return "stardiv.Toolkit.UnoControlRoadmapModel";
     }
 
     css::uno::Sequence<OUString>
@@ -108,15 +109,15 @@ static void lcl_throwIndexOutOfBoundsException( )
                     aReturn <<= true;
                     break;
                 case BASEPROPERTY_CURRENTITEMID:
-                    aReturn <<= (sal_Int16) -1;
+                    aReturn <<= sal_Int16(-1);
                     break;
                 case BASEPROPERTY_TEXT:
                    break;
                 case BASEPROPERTY_BORDER:
-                    aReturn <<= (sal_Int16) 2;              // No Border
+                    aReturn <<= sal_Int16(2);              // No Border
                     break;
                 case BASEPROPERTY_DEFAULTCONTROL:
-                    aReturn <<= OUString::createFromAscii( szServiceName_UnoControlRoadmap );
+                    aReturn <<= OUString( "stardiv.vcl.control.Roadmap" );
                     break;
             default : aReturn = UnoControlRoadmapModel_Base::ImplGetDefaultValue( nPropId ); break;
         }
@@ -150,19 +151,14 @@ static void lcl_throwIndexOutOfBoundsException( )
         Any aRet = UnoControlRoadmapModel_Base::queryAggregation( rType );
         if ( !aRet.hasValue() )
             aRet = UnoControlRoadmapModel_IBase::queryInterface( rType );
-         return aRet;
+        return aRet;
     }
 
 
     ::cppu::IPropertyArrayHelper& UnoControlRoadmapModel::getInfoHelper()
     {
-        static UnoPropertyArrayHelper* pHelper = nullptr;
-        if ( !pHelper )
-        {
-            Sequence<sal_Int32> aIDs = ImplGetPropertyIds();
-            pHelper = new UnoPropertyArrayHelper( aIDs );
-        }
-        return *pHelper;
+        static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+        return aHelper;
     }
 
 
@@ -182,7 +178,7 @@ static void lcl_throwIndexOutOfBoundsException( )
 
     Any SAL_CALL UnoControlRoadmapModel::getByIndex( sal_Int32 Index )
     {
-        if (( Index >= (sal_Int32)maRoadmapItems.size()) || (Index < 0))
+        if (( Index >= static_cast<sal_Int32>(maRoadmapItems.size())) || (Index < 0))
             lcl_throwIndexOutOfBoundsException( );
         Any aAny( maRoadmapItems.at( Index ) );
         return aAny;
@@ -191,7 +187,7 @@ static void lcl_throwIndexOutOfBoundsException( )
 
     void UnoControlRoadmapModel::MakeRMItemValidation( sal_Int32 Index, const Reference< XInterface >& xRoadmapItem )
     {
-        if ((Index > (sal_Int32)maRoadmapItems.size()) || ( Index < 0 ) )
+        if ((Index > static_cast<sal_Int32>(maRoadmapItems.size())) || ( Index < 0 ) )
             lcl_throwIndexOutOfBoundsException( );
         if ( !xRoadmapItem.is() )
             lcl_throwIllegalArgumentException();
@@ -223,7 +219,7 @@ static void lcl_throwIndexOutOfBoundsException( )
 // As long as only vectors with up to 10 elements are
 // involved it should be sufficient
        sal_Int32 UnoControlRoadmapModel::GetUniqueID()
-      {
+       {
           Any aAny;
           bool bIncrement = true;
           sal_Int32 CurID = 0;
@@ -232,9 +228,9 @@ static void lcl_throwIndexOutOfBoundsException( )
           while ( bIncrement )
           {
               bIncrement = false;
-              for ( RoadmapItemHolderList::iterator i = maRoadmapItems.begin(); i < maRoadmapItems.end(); ++i )
+              for ( const auto& rRoadmapItem : maRoadmapItems )
               {
-                CurRoadmapItem = *i;
+                CurRoadmapItem = rRoadmapItem;
                 Reference< XPropertySet > xPropertySet( CurRoadmapItem, UNO_QUERY );
                 aAny = xPropertySet->getPropertyValue("ID");
                 aAny >>= n_CurItemID;
@@ -244,10 +240,10 @@ static void lcl_throwIndexOutOfBoundsException( )
                     CurID++;
                     break;
                 }
-            }
-        }
-        return CurID;
-    }
+              }
+          }
+          return CurID;
+       }
 
 
     ContainerEvent UnoControlRoadmapModel::GetContainerEvent(sal_Int32 Index, const Reference< XInterface >& xRoadmapItem)
@@ -271,7 +267,7 @@ static void lcl_throwIndexOutOfBoundsException( )
 
     void SAL_CALL UnoControlRoadmapModel::insertByIndex( const sal_Int32 Index, const Any& Element)
     {
-        if ( ( Index >= ( (sal_Int32)maRoadmapItems.size() + 1 ) ) || (Index < 0))
+        if ( ( Index >= ( static_cast<sal_Int32>(maRoadmapItems.size()) + 1 ) ) || (Index < 0))
             lcl_throwIndexOutOfBoundsException( );
         Reference< XInterface > xRoadmapItem;
         Element >>= xRoadmapItem;
@@ -284,7 +280,7 @@ static void lcl_throwIndexOutOfBoundsException( )
         sal_Int16 n_CurrentItemID = GetCurrentItemID( xPropertySet );
         if ( Index <= n_CurrentItemID )
         {
-            Any aAny(( sal_Int16 ) ( n_CurrentItemID + 1 ) );
+            Any aAny(static_cast<sal_Int16>( n_CurrentItemID + 1 ) );
             xPropertySet->setPropertyValue( GetPropertyName( BASEPROPERTY_CURRENTITEMID ), aAny );
         }
     }
@@ -292,7 +288,7 @@ static void lcl_throwIndexOutOfBoundsException( )
 
     void SAL_CALL UnoControlRoadmapModel::removeByIndex( sal_Int32 Index)
     {
-        if (( Index > (sal_Int32)maRoadmapItems.size()) || (Index < 0))
+        if (( Index > static_cast<sal_Int32>(maRoadmapItems.size())) || (Index < 0))
             lcl_throwIndexOutOfBoundsException( );
         Reference< XInterface > xRoadmapItem;
         maRoadmapItems.erase( maRoadmapItems.begin() + Index );
@@ -301,22 +297,22 @@ static void lcl_throwIndexOutOfBoundsException( )
         Reference< XPropertySet > xPropertySet( static_cast<XAggregation*>(static_cast<cppu::OWeakAggObject*>(this)), UNO_QUERY );
         sal_Int16 n_CurrentItemID = GetCurrentItemID( xPropertySet );
         Any aAny;
-        if ( Index <= n_CurrentItemID )
+        if ( Index > n_CurrentItemID )
+            return;
+
+        if ( n_CurrentItemID >= static_cast<sal_Int32>(maRoadmapItems.size()) )
         {
-            if ( n_CurrentItemID >= (sal_Int32)maRoadmapItems.size() )
-            {
-                n_CurrentItemID = sal::static_int_cast< sal_Int16 >(
-                    maRoadmapItems.size()-1);
-                if ( n_CurrentItemID < 0 )
-                    return;
-                aAny <<= n_CurrentItemID;
-            }
-            else if (Index == n_CurrentItemID)
-                aAny <<= ( sal_Int16 ) -1;
-            else if( Index < n_CurrentItemID)
-                aAny <<= ( sal_Int16 ) ( n_CurrentItemID - 1 );
-            xPropertySet->setPropertyValue( GetPropertyName( BASEPROPERTY_CURRENTITEMID ), aAny );
+            n_CurrentItemID = sal::static_int_cast< sal_Int16 >(
+                maRoadmapItems.size()-1);
+            if ( n_CurrentItemID < 0 )
+                return;
+            aAny <<= n_CurrentItemID;
         }
+        else if (Index == n_CurrentItemID)
+            aAny <<= sal_Int16(-1);
+        else if( Index < n_CurrentItemID)
+            aAny <<= static_cast<sal_Int16>( n_CurrentItemID - 1 );
+        xPropertySet->setPropertyValue( GetPropertyName( BASEPROPERTY_CURRENTITEMID ), aAny );
     }
 
 
@@ -372,9 +368,7 @@ IMPLEMENT_FORWARD_XINTERFACE2( UnoRoadmapControl, UnoControlRoadmap_Base, UnoCon
 
 sal_Bool SAL_CALL UnoRoadmapControl::setModel(const Reference< XControlModel >& _rModel)
     {
-
-
-           Reference< XContainer > xC( getModel(), UNO_QUERY );
+        Reference< XContainer > xC( getModel(), UNO_QUERY );
         if ( xC.is() )
             xC->removeContainerListener( this );
 
@@ -390,7 +384,7 @@ sal_Bool SAL_CALL UnoRoadmapControl::setModel(const Reference< XControlModel >& 
 
     OUString UnoRoadmapControl::GetComponentServiceName()
     {
-        return OUString("Roadmap");
+        return "Roadmap";
     }
 
 
@@ -446,7 +440,7 @@ void UnoRoadmapControl::elementReplaced( const ContainerEvent& rEvent )
 void SAL_CALL UnoRoadmapControl::itemStateChanged( const ItemEvent& rEvent )
 {
     sal_Int16 CurItemIndex = sal::static_int_cast< sal_Int16 >(rEvent.ItemId);
-    Reference< XControlModel > xModel( getModel( ), UNO_QUERY );
+    Reference< XControlModel > xModel = getModel( );
     Reference< XPropertySet > xPropertySet( xModel, UNO_QUERY );
     xPropertySet->setPropertyValue( GetPropertyName( BASEPROPERTY_CURRENTITEMID ), Any(CurItemIndex) );
     if ( maItemListeners.getLength() )
@@ -486,7 +480,7 @@ void SAL_CALL UnoRoadmapControl::propertyChange( const PropertyChangeEvent& evt 
 
 OUString UnoRoadmapControl::getImplementationName()
 {
-    return OUString("stardiv.Toolkit.UnoRoadmapControl");
+    return "stardiv.Toolkit.UnoRoadmapControl";
 }
 
 css::uno::Sequence<OUString> UnoRoadmapControl::getSupportedServiceNames()
@@ -500,7 +494,7 @@ css::uno::Sequence<OUString> UnoRoadmapControl::getSupportedServiceNames()
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoControlRoadmapModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -508,7 +502,7 @@ stardiv_Toolkit_UnoControlRoadmapModel_get_implementation(
     return cppu::acquire(new toolkit::UnoControlRoadmapModel(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoRoadmapControl_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

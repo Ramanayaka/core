@@ -22,7 +22,6 @@
 #include <svx/svxdllapi.h>
 #include <vcl/EnumContext.hxx>
 #include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/view/XSelectionChangeListener.hpp>
 
 #include <cppuhelper/compbase.hxx>
@@ -33,19 +32,19 @@
 class SdrMarkView;
 
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 typedef cppu::WeakComponentImplHelper<
     css::view::XSelectionChangeListener
     > SelectionChangeHandlerInterfaceBase;
 
-class SVX_DLLPUBLIC SelectionChangeHandler
+class SVX_DLLPUBLIC SelectionChangeHandler final
     : private ::cppu::BaseMutex,
       public SelectionChangeHandlerInterfaceBase
 {
 public:
     SelectionChangeHandler (
-        const std::function<rtl::OUString ()>& rSelectionChangeCallback,
+        const std::function<OUString ()>& rSelectionChangeCallback,
         const css::uno::Reference<css::frame::XController>& rxController,
         const vcl::EnumContext::Context eDefaultContext);
     virtual ~SelectionChangeHandler() override;
@@ -63,14 +62,14 @@ private:
     SelectionChangeHandler(const SelectionChangeHandler&) = delete;
     SelectionChangeHandler& operator=(const SelectionChangeHandler&) = delete;
 
-    const std::function<rtl::OUString ()> maSelectionChangeCallback;
+    const std::function<OUString ()> maSelectionChangeCallback;
     css::uno::Reference<css::frame::XController> mxController;
     const vcl::EnumContext::Context meDefaultContext;
     bool mbIsConnected;
 };
 
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 
 #endif

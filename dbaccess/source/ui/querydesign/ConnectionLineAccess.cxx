@@ -17,17 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ConnectionLineAccess.hxx"
-#include "JoinTableView.hxx"
+#include <ConnectionLineAccess.hxx>
+#include <ConnectionLine.hxx>
+#include <JoinTableView.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <toolkit/awt/vclxwindow.hxx>
-#include "TableConnection.hxx"
-#include "TableWindow.hxx"
-#include <comphelper/uno3.hxx>
-#include "JoinDesignView.hxx"
-#include "JoinController.hxx"
+#include <TableConnection.hxx>
+#include <TableWindow.hxx>
 #include <comphelper/sequence.hxx>
 
 namespace dbaui
@@ -59,7 +56,7 @@ namespace dbaui
     }
     OUString SAL_CALL OConnectionLineAccess::getImplementationName()
     {
-        return OUString("org.openoffice.comp.dbu.ConnectionLineAccessibility");
+        return "org.openoffice.comp.dbu.ConnectionLineAccessibility";
     }
     // XAccessibleContext
     sal_Int32 SAL_CALL OConnectionLineAccess::getAccessibleChildCount(  )
@@ -77,13 +74,20 @@ namespace dbaui
         if( m_pLine )
         {
             // search the position of our table window in the table window map
+            // TODO JNA Shouldn't nIndex begin at 0?
             nIndex = m_pLine->GetParent()->GetTabWinMap().size();
             const auto& rVec = m_pLine->GetParent()->getTableConnections();
-            auto aIter = rVec.begin();
-            auto aEnd = rVec.end();
-            for (; aIter != aEnd && (*aIter).get() != m_pLine; ++nIndex,++aIter)
-                ;
-            nIndex = ( aIter != aEnd ) ? nIndex : -1;
+            bool bFound = false;
+            for (auto const& elem : rVec)
+            {
+                if (elem.get() == m_pLine)
+                {
+                    bFound = true;
+                    break;
+                }
+                ++nIndex;
+            }
+            nIndex = bFound ? nIndex : -1;
         }
         return nIndex;
     }
@@ -93,7 +97,7 @@ namespace dbaui
     }
     OUString SAL_CALL OConnectionLineAccess::getAccessibleDescription(  )
     {
-        return OUString("Relation");
+        return "Relation";
     }
     Reference< XAccessibleRelationSet > SAL_CALL OConnectionLineAccess::getAccessibleRelationSet(  )
     {

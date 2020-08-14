@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <toolkit/awt/scrollabledialog.hxx>
-#include <vcl/group.hxx>
+#include <helper/scrollabledialog.hxx>
 #include <vcl/settings.hxx>
 
 namespace toolkit
@@ -74,7 +73,7 @@ void ScrollableDialog::setScrollVisibility( ScrollBarVisibility rVisState )
         maVScrollBar->Show();
     }
     if ( mbHasHoriBar || mbHasVertBar )
-        this->SetStyle( Dialog::GetStyle() | WB_CLIPCHILDREN | WB_AUTOSIZE );
+        SetStyle( Dialog::GetStyle() | WB_CLIPCHILDREN );
 }
 
 ScrollableDialog::~ScrollableDialog()
@@ -112,7 +111,7 @@ void ScrollableDialog::lcl_Scroll( long nX, long nY )
 
 IMPL_LINK( ScrollableDialog, ScrollBarHdl, ScrollBar*, pSB, void )
 {
-    sal_uInt16 nPos = (sal_uInt16) pSB->GetThumbPos();
+    sal_uInt16 nPos = static_cast<sal_uInt16>(pSB->GetThumbPos());
     if( pSB == maVScrollBar.get() )
         lcl_Scroll(mnScrollPos.X(), nPos );
     else if( pSB == maHScrollBar.get() )
@@ -138,13 +137,13 @@ void ScrollableDialog::SetScrollLeft( long nLeft )
 
 void ScrollableDialog::SetScrollWidth( long nWidth )
 {
-    maScrollArea.Width() = nWidth;
+    maScrollArea.setWidth( nWidth );
     ResetScrollBars();
 }
 
 void ScrollableDialog::SetScrollHeight( long nHeight )
 {
-    maScrollArea.Height() = nHeight;
+    maScrollArea.setHeight( nHeight );
     ResetScrollBars();
 }
 

@@ -18,10 +18,7 @@
  */
 
 
-#include <connectivity/sdbcx/VGroup.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/sdbcx/Privilege.hpp>
-#include <com/sun/star/sdbcx/PrivilegeObject.hpp>
+#include <sdbcx/VGroup.hxx>
 #include <comphelper/sequence.hxx>
 #include <connectivity/dbexception.hxx>
 
@@ -39,13 +36,11 @@ IMPLEMENT_SERVICE_INFO(OGroup,"com.sun.star.sdbcx.VGroup","com.sun.star.sdbcx.Gr
 
 OGroup::OGroup(bool _bCase) :   OGroup_BASE(m_aMutex)
                 ,   ODescriptor(OGroup_BASE::rBHelper,_bCase)
-                ,   m_pUsers(nullptr)
 {
 }
 
 OGroup::OGroup(const OUString& Name, bool _bCase) :  OGroup_BASE(m_aMutex)
                         ,ODescriptor(OGroup_BASE::rBHelper,_bCase)
-                        ,m_pUsers(nullptr)
 {
     m_Name = Name;
 }

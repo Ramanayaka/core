@@ -20,8 +20,10 @@
 #ifndef INCLUDED_VCL_INC_WIN_SALDATA_HXX
 #define INCLUDED_VCL_INC_WIN_SALDATA_HXX
 
+#include <config_features.h>
+
 #include <memory>
-#include "osl/module.h"
+#include <osl/module.h>
 
 #include <svdata.hxx>
 #include <salwtype.hxx>
@@ -38,11 +40,14 @@ class WinSalFrame;
 class WinSalVirtualDevice;
 class WinSalPrinter;
 namespace vcl { class Font; }
-struct GlobalGlyphCache;
+struct GlobalWinGlyphCache;
 struct HDCCache;
 struct TempFontItem;
 class TextOutRenderer;
-class TheTextureCache;
+class OpenGLControlsCache;
+#if HAVE_FEATURE_SKIA
+class SkiaControlsCache;
+#endif
 
 #define MAX_STOCKPEN            4
 #define MAX_STOCKBRUSH          4
@@ -84,15 +89,10 @@ public:
     long*                   mpDitherDiff;           // Dither mapping table
     BYTE*                   mpDitherLow;            // Dither mapping table
     BYTE*                   mpDitherHigh;           // Dither mapping table
-    sal_uLong               mnTimerMS;              // Current Time (in MS) of the Timer
-    sal_uLong               mnTimerOrgMS;           // Current Original Time (in MS)
-    DWORD                   mnNextTimerTime;
-    DWORD                   mnLastEventTime;
-    HANDLE                  mnTimerId;              ///< Windows timer id
     HHOOK                   mhSalObjMsgHook;        // hook to get interesting msg for SalObject
     HWND                    mhWantLeaveMsg;         // window handle, that want a MOUSELEAVE message
     AutoTimer*              mpMouseLeaveTimer;      // Timer for MouseLeave Test
-    WinSalInstance*         mpFirstInstance;        // pointer of first instance
+    WinSalInstance*         mpInstance;
     WinSalFrame*            mpFirstFrame;           // pointer of first frame
     WinSalObject*           mpFirstObject;          // pointer of first object window
     WinSalVirtualDevice*    mpFirstVD;              // first VirDev
@@ -113,7 +113,8 @@ public:
     DWORD                   mnAppThreadId;          // Id from Application-Thread
     BOOL                    mbScrSvrEnabled;        // ScreenSaver enabled
     SalIcon*                mpFirstIcon;            // icon cache, points to first icon, NULL if none
-    TempFontItem*           mpTempFontItem;
+    TempFontItem*           mpSharedTempFontItem;   // LibreOffice shared fonts
+    TempFontItem*           mpOtherTempFontItem;    // other temporary fonts (embedded?)
     bool                    mbThemeChanged;         // true if visual theme was changed: throw away theme handles
     bool                    mbThemeMenuSupport;
 
@@ -123,12 +124,14 @@ public:
     std::set< HMENU >       mhMenuSet;              // keeps track of menu handles created by VCL, used by IsKnownMenuHandle()
     std::map< UINT,sal_uInt16 > maVKMap;      // map some dynamic VK_* entries
 
-    // must be deleted before exit(), so delete it in DeInitSalData()
     std::unique_ptr<TextOutRenderer> m_pD2DWriteTextOutRenderer;
     // tdf#107205 need 2 instances because D2DWrite can't rotate text
     std::unique_ptr<TextOutRenderer> m_pExTextOutRenderer;
-    std::unique_ptr<GlobalGlyphCache> m_pGlobalGlyphCache;
-    std::unique_ptr<TheTextureCache> m_pTextureCache;
+    std::unique_ptr<GlobalWinGlyphCache> m_pGlobalWinGlyphCache;
+    std::unique_ptr<OpenGLControlsCache> m_pOpenGLControlsCache;
+#if HAVE_FEATURE_SKIA
+    std::unique_ptr<SkiaControlsCache> m_pSkiaControlsCache;
+#endif
 };
 
 inline void SetSalData( SalData* pData ) { ImplGetSVData()->mpSalData = pData; }
@@ -139,9 +142,6 @@ struct SalShlData
     HINSTANCE               mhInst;                 // Instance of SAL-DLL
     UINT                    mnWheelScrollLines;     // WheelScrollLines
     UINT                    mnWheelScrollChars;     // WheelScrollChars
-    BOOL                    mbWXP;                  // Windows XP
-    BOOL                    mbWVista;               // Windows Vista
-    BOOL                    mbW7;                   // Windows 7
 };
 
 extern SalShlData aSalShlData;
@@ -165,8 +165,7 @@ void ImplClearHDCCache( SalData* pData );
 HDC ImplGetCachedDC( sal_uLong nID, HBITMAP hBmp = nullptr );
 void ImplReleaseCachedDC( sal_uLong nID );
 
-bool ImplAddTempFont( SalData&, const OUString& rFontFileURL );
-void ImplReleaseTempFonts( SalData& );
+void ImplReleaseTempFonts(SalData&, bool bAll);
 
 HCURSOR ImplLoadSalCursor( int nId );
 HBITMAP ImplLoadSalBitmap( int nId );
@@ -175,30 +174,26 @@ bool ImplLoadSalIcon( int nId, HICON& rIcon, HICON& rSmallIcon );
 void ImplInitSalGDI();
 void ImplFreeSalGDI();
 
-void ImplSalYieldMutexAcquireWithWait();
+void ImplSalYieldMutexAcquireWithWait( sal_uInt32 nCount = 1 );
 bool ImplSalYieldMutexTryToAcquire();
 void ImplSalYieldMutexRelease();
-sal_uLong ImplSalReleaseYieldMutex();
-void ImplSalAcquireYieldMutex( sal_uLong nCount );
 
 LRESULT CALLBACK SalFrameWndProcW( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam );
 
-void EmitTimerCallback();
-
 void SalTestMouseLeave();
 
-long ImplHandleSalObjKeyMsg( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam );
-long ImplHandleSalObjSysCharMsg( HWND hWnd, WPARAM wParam, LPARAM lParam );
+bool ImplHandleSalObjKeyMsg( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam );
+bool ImplHandleSalObjSysCharMsg( HWND hWnd, WPARAM wParam, LPARAM lParam );
 bool ImplHandleGlobalMsg( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam, LRESULT& rlResult );
 
 WinSalObject* ImplFindSalObject( HWND hWndChild );
-bool ImplSalPreDispatchMsg( MSG* pMsg );
-void ImplSalPostDispatchMsg( MSG* pMsg, LRESULT nDispatchResult );
+bool ImplSalPreDispatchMsg( const MSG* pMsg );
+void ImplSalPostDispatchMsg( const MSG* pMsg );
 
 void ImplSalLogFontToFontW( HDC hDC, const LOGFONTW& rLogFont, vcl::Font& rFont );
 
 rtl_TextEncoding ImplSalGetSystemEncoding();
-OUString ImplSalGetUniString(const sal_Char* pStr, sal_Int32 nLen = -1);
+OUString ImplSalGetUniString(const char* pStr, sal_Int32 nLen = -1);
 int ImplSalWICompareAscii( const wchar_t* pStr1, const char* pStr2 );
 
 #define SAL_FRAME_WNDEXTRA          sizeof( DWORD )
@@ -208,8 +203,8 @@ int ImplSalWICompareAscii( const wchar_t* pStr1, const char* pStr2 );
 #define SAL_TMPSUBFRAME_CLASSNAMEW  L"SALTMPSUBFRAME"
 #define SAL_OBJECT_WNDEXTRA         sizeof( DWORD )
 #define SAL_OBJECT_THIS             GWLP_USERDATA
-#define SAL_OBJECT_CLASSNAMEA       "SALOBJECT"
-#define SAL_OBJECT_CHILDCLASSNAMEA  "SALOBJECTCHILD"
+#define SAL_OBJECT_CLASSNAMEW       L"SALOBJECT"
+#define SAL_OBJECT_CHILDCLASSNAMEW  L"SALOBJECTCHILD"
 #define SAL_COM_CLASSNAMEW          L"SALCOMWND"
 
 #define SAL_MOUSELEAVE_TIMEOUT      300
@@ -227,13 +222,13 @@ int ImplSalWICompareAscii( const wchar_t* pStr1, const char* pStr2 );
 // wParam == 0; lParam == pObject;
 #define SAL_MSG_DESTROYOBJECT       (WM_USER+117)
 // wParam == hWnd; lParam == 0; lResult == hDC
-#define SAL_MSG_GETDC               (WM_USER+120)
+#define SAL_MSG_GETCACHEDDC         (WM_USER+120)
 // wParam == hWnd; lParam == 0
 #define SAL_MSG_RELEASEDC           (WM_USER+121)
 // wParam == newParentHwnd; lParam == oldHwnd; lResult == newhWnd
-#define SAL_MSG_RECREATEHWND         (WM_USER+122)
+#define SAL_MSG_RECREATEHWND        (WM_USER+122)
 // wParam == newParentHwnd; lParam == oldHwnd; lResult == newhWnd
-#define SAL_MSG_RECREATECHILDHWND    (WM_USER+123)
+#define SAL_MSG_RECREATECHILDHWND   (WM_USER+123)
 // wParam == 0; lParam == HWND;
 #define SAL_MSG_DESTROYHWND         (WM_USER+124)
 
@@ -243,6 +238,7 @@ int ImplSalWICompareAscii( const wchar_t* pStr1, const char* pStr2 );
 #define SAL_MSG_MOUSELEAVE          (WM_USER+131)
 // NULL-Message, should not be processed
 #define SAL_MSG_DUMMY               (WM_USER+132)
+// Used for SETFOCUS and KILLFOCUS
 // wParam == 0; lParam == 0
 #define SAL_MSG_POSTFOCUS           (WM_USER+133)
 // wParam == wParam; lParam == lParam
@@ -269,22 +265,24 @@ int ImplSalWICompareAscii( const wchar_t* pStr1, const char* pStr2 );
 #define SAL_MSG_SETINPUTCONTEXT     (WM_USER+144)
 // wParam == nFlags; lParam == 0
 #define SAL_MSG_ENDEXTTEXTINPUT     (WM_USER+145)
-// POSTTIMER-Message; wparam = 0, lParam == time
-#define SAL_MSG_POSTTIMER        (WM_USER+161)
 
 // SysChild-ToTop; wParam = 0; lParam = 0
 #define SALOBJ_MSG_TOTOP            (WM_USER+160)
+// Used for SETFOCUS and KILLFOCUS
 // POSTFOCUS-Message; wParam == bFocus; lParam == 0
 #define SALOBJ_MSG_POSTFOCUS        (WM_USER+161)
 
 // Call the Timer's callback from the main thread
+// wParam = 1 == run when yield is idle instead of direct
 #define SAL_MSG_TIMER_CALLBACK      (WM_USER+162)
 // Stop the timer from the main thread; wParam = 0, lParam = 0
 #define SAL_MSG_STOPTIMER           (WM_USER+163)
+// Start a real timer while GUI is blocked by native dialog
+#define SAL_MSG_FORCE_REAL_TIMER    (WM_USER+164)
 
 inline void SetWindowPtr( HWND hWnd, WinSalFrame* pThis )
 {
-    SetWindowLongPtr( hWnd, SAL_FRAME_THIS, reinterpret_cast<LONG_PTR>(pThis) );
+    SetWindowLongPtrW( hWnd, SAL_FRAME_THIS, reinterpret_cast<LONG_PTR>(pThis) );
 }
 
 inline WinSalFrame* GetWindowPtr( HWND hWnd )
@@ -294,12 +292,12 @@ inline WinSalFrame* GetWindowPtr( HWND hWnd )
 
 inline void SetSalObjWindowPtr( HWND hWnd, WinSalObject* pThis )
 {
-    SetWindowLongPtr( hWnd, SAL_OBJECT_THIS, reinterpret_cast<LONG_PTR>(pThis) );
+    SetWindowLongPtrW( hWnd, SAL_OBJECT_THIS, reinterpret_cast<LONG_PTR>(pThis) );
 }
 
 inline WinSalObject* GetSalObjWindowPtr( HWND hWnd )
 {
-    return reinterpret_cast<WinSalObject*>(GetWindowLongPtr( hWnd, SAL_OBJECT_THIS ));
+    return reinterpret_cast<WinSalObject*>(GetWindowLongPtrW( hWnd, SAL_OBJECT_THIS ));
 }
 
 #endif // INCLUDED_VCL_INC_WIN_SALDATA_HXX

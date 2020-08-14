@@ -21,7 +21,7 @@ $(eval $(call gb_Library_Library,unoxml))
 
 $(eval $(call gb_Library_set_componentfile,unoxml,unoxml/source/service/unoxml))
 
-$(eval $(call gb_Library_set_precompiled_header,unoxml,$(SRCDIR)/unoxml/inc/pch/precompiled_unoxml))
+$(eval $(call gb_Library_set_precompiled_header,unoxml,unoxml/inc/pch/precompiled_unoxml))
 
 $(eval $(call gb_Library_use_sdk_api,unoxml))
 
@@ -32,6 +32,8 @@ $(eval $(call gb_Library_use_libraries,unoxml,\
     cppuhelper \
     cppu \
     sal \
+    tl \
+    xo \
 ))
 
 $(eval $(call gb_Library_use_externals,unoxml,\
@@ -70,7 +72,6 @@ $(eval $(call gb_Library_add_exception_objects,unoxml,\
     unoxml/source/events/mutationevent \
     unoxml/source/events/uievent \
     unoxml/source/events/mouseevent \
-    unoxml/source/service/services \
 ))
 
 $(eval $(call gb_Library_set_include,unoxml,\

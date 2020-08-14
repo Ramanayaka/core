@@ -19,10 +19,8 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_FIELDDESCRIPTIONS_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_FIELDDESCRIPTIONS_HXX
 
-#include "QEnumTypes.hxx"
 #include <editeng/svxenum.hxx>
 #include "TypeInfo.hxx"
-#include <osl/diagnose.h>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 
@@ -31,7 +29,6 @@ namespace dbaui
     class OFieldDescription
     {
     private:
-        css::uno::Any      m_aDefaultValue;    // the default value from the database
         css::uno::Any      m_aControlDefault;  // the value which the control inserts as default
         css::uno::Any      m_aWidth;               // sal_Int32 or void
         css::uno::Any      m_aRelativePosition;    // sal_Int32 or void

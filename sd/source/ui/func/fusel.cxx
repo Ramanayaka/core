@@ -17,57 +17,42 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fusel.hxx"
-#include <basic/sbstar.hxx>
+#include <fusel.hxx>
 #include <svx/svddrgmt.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdogrp.hxx>
 #include <svx/scene3d.hxx>
-#include "drawview.hxx"
-#include <svtools/imapobj.hxx>
-#include <svl/urihelper.hxx>
-#include <unotools/localfilehelper.hxx>
+#include <vcl/imapobj.hxx>
+#include <unotools/securityoptions.hxx>
 #include <svx/svxids.hrc>
 #include <svx/xfillit0.hxx>
-#include <sfx2/app.hxx>
+#include <svx/ImageMapInfo.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <svl/aeitem.hxx>
 #include <svl/stritem.hxx>
 #include <svl/intitem.hxx>
 #include <sfx2/dispatch.hxx>
-#include <tools/urlobj.hxx>
 #include <sfx2/docfile.hxx>
-#include <editeng/eeitem.hxx>
 #include <editeng/flditem.hxx>
 
 #include <svx/svdotable.hxx>
 
-#include "app.hrc"
-#include "strings.hrc"
-#include "res_bmp.hrc"
-#include "GraphicDocShell.hxx"
-#include "sdmod.hxx"
-#include "DrawDocShell.hxx"
-#include "stlpool.hxx"
-#include "anminfo.hxx"
-#include "fudraw.hxx"
-#include "ViewShell.hxx"
-#include "ViewShellBase.hxx"
-#include "FrameView.hxx"
-#include "View.hxx"
-#include "Window.hxx"
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
-#include "DrawViewShell.hxx"
-#include "ToolBarManager.hxx"
-#include "pgjump.hxx"
-#include <svx/globl3d.hxx>
-#include "Client.hxx"
+#include <app.hrc>
 
-#include "slideshow.hxx"
+#include <sdmod.hxx>
+#include <DrawDocShell.hxx>
+#include <stlpool.hxx>
+#include <fudraw.hxx>
+#include <ViewShell.hxx>
+#include <ViewShellBase.hxx>
+#include <FrameView.hxx>
+#include <View.hxx>
+#include <Window.hxx>
+#include <drawdoc.hxx>
+#include <DrawViewShell.hxx>
+#include <ToolBarManager.hxx>
+#include <Client.hxx>
 
 #include <svx/svdundo.hxx>
-#include <avmedia/mediawindow.hxx>
 
 #include <svx/sdrhittesthelper.hxx>
 
@@ -126,6 +111,17 @@ FuSelection::~FuSelection()
     }
 }
 
+namespace {
+    bool lcl_followHyperlinkAllowed(const MouseEvent& rMEvt) {
+        SvtSecurityOptions aSecOpt;
+        if (!rMEvt.IsMod1() && aSecOpt.IsOptionSet(SvtSecurityOptions::EOption::CtrlClickHyperlink))
+            return false;
+        if (rMEvt.IsMod1() && !aSecOpt.IsOptionSet(SvtSecurityOptions::EOption::CtrlClickHyperlink))
+            return false;
+        return true;
+    }
+}
+
 bool FuSelection::MouseButtonDown(const MouseEvent& rMEvt)
 {
     pHdl = nullptr;
@@ -175,8 +171,8 @@ bool FuSelection::MouseButtonDown(const MouseEvent& rMEvt)
 
         long nAngle0  = GetAngle(aMDPos - mpView->GetRef1());
         nAngle0 -= 27000;
-        nAngle0 = NormAngle360(nAngle0);
-        bMirrorSide0 = nAngle0 < 18000L;
+        nAngle0 = NormAngle36000(nAngle0);
+        bMirrorSide0 = nAngle0 < 18000;
 
         if (!pHdl && mpView->Is3DRotationCreationActive())
         {
@@ -201,8 +197,19 @@ bool FuSelection::MouseButtonDown(const MouseEvent& rMEvt)
             bTextEdit = true;
         }
 
+        // When clicking into a URl field, also go to text edit mode (when not following the link)
+        if (!bTextEdit && eHit == SdrHitKind::UrlField && !rMEvt.IsMod2() && !lcl_followHyperlinkAllowed(rMEvt))
+            bTextEdit = true;
+
+        bool bPreventModify = mpDocSh->IsReadOnly();
+        if (bPreventModify && mpDocSh->GetSignPDFCertificate().is())
+        {
+            // If the just added signature line shape is selected, allow moving / resizing it.
+            bPreventModify = false;
+        }
+
         if(!bTextEdit
-            && !mpDocSh->IsReadOnly()
+            && !bPreventModify
             && ((mpView->IsMarkedHit(aMDPos, nHitLog) && !rMEvt.IsShift() && !rMEvt.IsMod2()) || pHdl != nullptr)
             && (rMEvt.GetClicks() != 2)
             )
@@ -265,11 +272,6 @@ bool FuSelection::MouseButtonDown(const MouseEvent& rMEvt)
                       aVEvt.eEvent == SdrEventKind::ExecuteUrl )
              {
                 mpWindow->ReleaseMouse();
-                SfxStringItem aStrItem(SID_FILE_NAME, aVEvt.pURLField->GetURL());
-                SfxStringItem aReferer(SID_REFERER, mpDocSh->GetMedium()->GetName());
-                SfxBoolItem aBrowseItem( SID_BROWSE, true );
-                SfxViewFrame* pFrame = mpViewShell->GetViewFrame();
-                mpWindow->ReleaseMouse();
 
                 // If tiled rendering, let client handles URL execution and early returns.
                 if (comphelper::LibreOfficeKit::isActive())
@@ -278,6 +280,15 @@ bool FuSelection::MouseButtonDown(const MouseEvent& rMEvt)
                     rSfxViewShell.libreOfficeKitViewCallback(LOK_CALLBACK_HYPERLINK_CLICKED, aVEvt.pURLField->GetURL().toUtf8().getStr());
                     return true;
                 }
+
+                if (!lcl_followHyperlinkAllowed(rMEvt))
+                    return true;
+
+                SfxStringItem aStrItem(SID_FILE_NAME, aVEvt.pURLField->GetURL());
+                SfxStringItem aReferer(SID_REFERER, mpDocSh->GetMedium()->GetName());
+                SfxBoolItem aBrowseItem( SID_BROWSE, true );
+                SfxViewFrame* pFrame = mpViewShell->GetViewFrame();
+                mpWindow->ReleaseMouse();
 
                 if (rMEvt.IsMod1())
                 {
@@ -304,25 +315,32 @@ bool FuSelection::MouseButtonDown(const MouseEvent& rMEvt)
                 pObj = mpView->PickObj(aMDPos, mpView->getHitTolLog(), pPV, SdrSearchOptions::ALSOONMASTER);
                 if (pObj)
                 {
-                    // Animate object when not just selecting.
-                    if ( ! bSelectionOnly)
-                        bReturn = AnimateObj(pObj, aMDPos);
-
-                    if( !bReturn && (dynamic_cast< const SdrObjGroup *>( pObj ) != nullptr || dynamic_cast< const E3dScene* >(pObj) != nullptr))
+                    // Handle ImageMap click when not just selecting
+                    if (!bSelectionOnly)
                     {
-                        if(rMEvt.GetClicks() == 1)
+                        if (lcl_followHyperlinkAllowed(rMEvt))
+                            bReturn = HandleImageMapClick(pObj, aMDPos);
+                    }
+
+                    if (!bReturn
+                        && (dynamic_cast<const SdrObjGroup*>(pObj) != nullptr
+                            || dynamic_cast<const E3dScene*>(pObj) != nullptr))
+                    {
+                        if (rMEvt.GetClicks() == 1)
                         {
                             // Look into the group
-                            pObj = mpView->PickObj(aMDPos, mpView->getHitTolLog(), pPV, SdrSearchOptions::ALSOONMASTER | SdrSearchOptions::DEEP);
-                            if (pObj)
-                                bReturn = AnimateObj(pObj, aMDPos);
+                            pObj = mpView->PickObj(aMDPos, mpView->getHitTolLog(), pPV,
+                                                   SdrSearchOptions::ALSOONMASTER
+                                                       | SdrSearchOptions::DEEP);
+                            if (pObj && lcl_followHyperlinkAllowed(rMEvt))
+                                bReturn = HandleImageMapClick(pObj, aMDPos);
                         }
-                        else if( !bReadOnly && rMEvt.GetClicks() == 2)
+                        else if (!bReadOnly && rMEvt.GetClicks() == 2)
                         {
                             // New: double click on selected Group object
                             // enter group
-                            if ( ! bSelectionOnly
-                                && pObj->GetPage() == pPV->GetPage())
+                            if (!bSelectionOnly
+                                && pObj->getSdrPageFromSdrObject() == pPV->GetPage())
                                 bReturn = pPV->EnterGroup(pObj);
                         }
                     }
@@ -330,7 +348,7 @@ bool FuSelection::MouseButtonDown(const MouseEvent& rMEvt)
 
                 // #i71727# replaced else here with two possibilities, once the original else (!pObj)
                 // and also ignoring the found object when it's on a masterpage
-                if(!pObj || (pObj->GetPage() && pObj->GetPage()->IsMasterPage()))
+                if(!pObj || (pObj->getSdrPageFromSdrObject() && pObj->getSdrPageFromSdrObject()->IsMasterPage()))
                 {
                     if(mpView->IsGroupEntered() && 2 == rMEvt.GetClicks())
                     {
@@ -512,9 +530,8 @@ bool FuSelection::MouseButtonDown(const MouseEvent& rMEvt)
                 // Point IS marked and NO shift is pressed. Start
                 // dragging of selected point(s)
                 pHdl = mpView->PickHandle(aMDPos);
-                if(pHdl)
-                    if ( ! rMEvt.IsRight())
-                        mpView->BegDragObj(aMDPos, nullptr, pHdl, nDrgLog);
+                if(pHdl && ! rMEvt.IsRight())
+                    mpView->BegDragObj(aMDPos, nullptr, pHdl, nDrgLog);
             }
         }
         else
@@ -673,14 +690,11 @@ bool FuSelection::MouseButtonUp(const MouseEvent& rMEvt)
                 **************************************************************/
                 SdrPageView* pPV;
                 SdrObject* pObj = mpView->PickObj(aMDPos, mpView->getHitTolLog(), pPV, SdrSearchOptions::ALSOONMASTER | SdrSearchOptions::BEFOREMARK);
-                if (pObj)
+                if (pObj && pPV->IsObjMarkable(pObj))
                 {
-                    if (pPV->IsObjMarkable(pObj))
-                    {
-                        mpView->UnmarkAllObj();
-                        mpView->MarkObj(pObj,pPV);
-                        return true;
-                    }
+                    mpView->UnmarkAllObj();
+                    mpView->MarkObj(pObj,pPV);
+                    return true;
                 }
                 /**************************************************************
                 * Toggle between selection and rotation
@@ -730,8 +744,8 @@ bool FuSelection::MouseButtonUp(const MouseEvent& rMEvt)
                     **********************************************************/
                      long nAngle1  = GetAngle(aPnt - mpView->GetRef1());
                      nAngle1 -= 27000;
-                     nAngle1 = NormAngle360(nAngle1);
-                     bool bMirrorSide1 = nAngle1 < 18000L;
+                     nAngle1 = NormAngle36000(nAngle1);
+                     bool bMirrorSide1 = nAngle1 < 18000;
 
                      if (bMirrorSide0 != bMirrorSide1)
                      {
@@ -764,7 +778,7 @@ bool FuSelection::MouseButtonUp(const MouseEvent& rMEvt)
         {
             if( rMEvt.IsRight() )
             {
-                // In watering-can mode, on press onto right mouse button, a undo is executed
+                // In watering-can mode, on press onto right mouse button, an undo is executed
                 mpViewShell->GetViewFrame()->GetDispatcher()->Execute( SID_UNDO, SfxCallMode::ASYNCHRON );
             }
             else if (pWaterCanCandidate != nullptr)
@@ -782,10 +796,10 @@ bool FuSelection::MouseButtonUp(const MouseEvent& rMEvt)
                         {
                             // Added UNDOs for the WaterCan mode. This was never done in
                             // the past, thus it was missing all the time.
-                            SdrUndoAction* pUndoAttr = mpDoc->GetSdrUndoFactory().CreateUndoAttrObject(*pWaterCanCandidate, true, true);
+                            std::unique_ptr<SdrUndoAction> pUndoAttr = mpDoc->GetSdrUndoFactory().CreateUndoAttrObject(*pWaterCanCandidate, true, true);
                             mpView->BegUndo(pUndoAttr->GetComment());
                             mpView->AddUndo(mpDoc->GetSdrUndoFactory().CreateUndoGeoObject(*pWaterCanCandidate));
-                            mpView->AddUndo(pUndoAttr);
+                            mpView->AddUndo(std::move(pUndoAttr));
 
                             pWaterCanCandidate->SetStyleSheet (pStyleSheet, false);
 
@@ -1148,7 +1162,7 @@ void FuSelection::SelectionHasChanged()
 
     FuDraw::SelectionHasChanged();
 
-    if ((mpView->Is3DRotationCreationActive() && !bSuppressChangesOfSelection))
+    if (mpView->Is3DRotationCreationActive() && !bSuppressChangesOfSelection)
     {
         // Switch rotation body -> selection
         mpView->ResetCreationActive();
@@ -1184,11 +1198,10 @@ void FuSelection::SetEditMode(sal_uInt16 nMode)
 }
 
 /**
- * Execute animation or interaction
+ * Execute ImageMap interaction
  */
-bool FuSelection::AnimateObj(SdrObject* pObj, const Point& rPos)
+bool FuSelection::HandleImageMapClick(const SdrObject* pObj, const Point& rPos)
 {
-    bool bAnimated = false;
     bool bClosed = pObj->IsClosedObj();
     bool bFilled = false;
 
@@ -1198,35 +1211,38 @@ bool FuSelection::AnimateObj(SdrObject* pObj, const Point& rPos)
 
         aSet.Put(pObj->GetMergedItemSet());
 
-        const XFillStyleItem& rFillStyle = static_cast<const XFillStyleItem&>( aSet.Get(XATTR_FILLSTYLE) );
+        const XFillStyleItem& rFillStyle = aSet.Get(XATTR_FILLSTYLE);
         bFilled = rFillStyle.GetValue() != drawing::FillStyle_NONE;
     }
 
     const SdrLayerIDSet* pVisiLayer = &mpView->GetSdrPageView()->GetVisibleLayers();
-    sal_uInt16 nHitLog = sal_uInt16 ( mpWindow->PixelToLogic(Size(HITPIX,0)).Width() );
-    const long  n2HitLog = nHitLog * 2;
+    sal_uInt16 nHitLog = sal_uInt16(mpWindow->PixelToLogic(Size(HITPIX, 0)).Width());
+    const long n2HitLog = nHitLog * 2;
     Point aHitPosR(rPos);
     Point aHitPosL(rPos);
     Point aHitPosT(rPos);
     Point aHitPosB(rPos);
 
-    aHitPosR.X() += n2HitLog;
-    aHitPosL.X() -= n2HitLog;
-    aHitPosT.Y() += n2HitLog;
-    aHitPosB.Y() -= n2HitLog;
+    aHitPosR.AdjustX(n2HitLog);
+    aHitPosL.AdjustX(-n2HitLog);
+    aHitPosT.AdjustY(n2HitLog);
+    aHitPosB.AdjustY(-n2HitLog);
 
-    if ( !bClosed                                      ||
-         !bFilled                                      ||
-         (SdrObjectPrimitiveHit(*pObj, aHitPosR, nHitLog, *mpView->GetSdrPageView(), pVisiLayer, false) &&
-          SdrObjectPrimitiveHit(*pObj, aHitPosL, nHitLog, *mpView->GetSdrPageView(), pVisiLayer, false) &&
-          SdrObjectPrimitiveHit(*pObj, aHitPosT, nHitLog, *mpView->GetSdrPageView(), pVisiLayer, false) &&
-          SdrObjectPrimitiveHit(*pObj, aHitPosB, nHitLog, *mpView->GetSdrPageView(), pVisiLayer, false) ) )
+    if (!bClosed || !bFilled
+        || (SdrObjectPrimitiveHit(*pObj, aHitPosR, nHitLog, *mpView->GetSdrPageView(), pVisiLayer,
+                                  false)
+            && SdrObjectPrimitiveHit(*pObj, aHitPosL, nHitLog, *mpView->GetSdrPageView(),
+                                     pVisiLayer, false)
+            && SdrObjectPrimitiveHit(*pObj, aHitPosT, nHitLog, *mpView->GetSdrPageView(),
+                                     pVisiLayer, false)
+            && SdrObjectPrimitiveHit(*pObj, aHitPosB, nHitLog, *mpView->GetSdrPageView(),
+                                     pVisiLayer, false)))
     {
-        if ( SdDrawDocument::GetIMapInfo( pObj ) )
+        if (SvxIMapInfo::GetIMapInfo(pObj))
         {
-            const IMapObject* pIMapObj = SdDrawDocument::GetHitIMapObject( pObj, rPos );
+            const IMapObject* pIMapObj = SvxIMapInfo::GetHitIMapObject(pObj, rPos);
 
-            if ( pIMapObj && !pIMapObj->GetURL().isEmpty() )
+            if (pIMapObj && !pIMapObj->GetURL().isEmpty())
             {
                 // Jump to Document
                 mpWindow->ReleaseMouse();
@@ -1234,233 +1250,25 @@ bool FuSelection::AnimateObj(SdrObject* pObj, const Point& rPos)
                 SfxStringItem aReferer(SID_REFERER, mpDocSh->GetMedium()->GetName());
                 SfxViewFrame* pFrame = mpViewShell->GetViewFrame();
                 SfxFrameItem aFrameItem(SID_DOCFRAME, pFrame);
-                SfxBoolItem aBrowseItem( SID_BROWSE, true );
+                SfxBoolItem aBrowseItem(SID_BROWSE, true);
                 mpWindow->ReleaseMouse();
-                pFrame->GetDispatcher()->ExecuteList(SID_OPENDOC,
-                        SfxCallMode::ASYNCHRON | SfxCallMode::RECORD,
-                        { &aStrItem, &aFrameItem, &aBrowseItem, &aReferer });
+                pFrame->GetDispatcher()->ExecuteList(
+                    SID_OPENDOC, SfxCallMode::ASYNCHRON | SfxCallMode::RECORD,
+                    { &aStrItem, &aFrameItem, &aBrowseItem, &aReferer });
 
-                bAnimated = true;
-            }
-        }
-        else if( dynamic_cast< const GraphicDocShell *>( mpDocSh ) ==  nullptr        &&
-                 dynamic_cast< const DrawView *>( mpView ) !=  nullptr                 &&
-                 SdDrawDocument::GetAnimationInfo(pObj))
-        {
-            /**********************************************************
-            * Animation-object hit in the middle -> interaction
-            **********************************************************/
-            SdAnimationInfo* pInfo = SdDrawDocument::GetAnimationInfo(pObj);
-            DrawViewShell* pDrViewSh = static_cast<DrawViewShell*>(mpViewShell);
-            mpWindow->ReleaseMouse();
-
-            switch (pInfo->meClickAction)
-            {
-                case presentation::ClickAction_BOOKMARK:
-                {
-                     // Jump to Bookmark (Page or Object)
-                    SfxStringItem aItem(SID_NAVIGATOR_OBJECT, pInfo->GetBookmark());
-                    mpViewShell->GetViewFrame()->GetDispatcher()->ExecuteList(
-                        SID_NAVIGATOR_OBJECT,
-                        SfxCallMode::SLOT | SfxCallMode::RECORD, { &aItem });
-                    bAnimated = true;
-                }
-                break;
-
-                case presentation::ClickAction_DOCUMENT:
-                {
-                    OUString sBookmark( pInfo->GetBookmark() );
-                    // Jump to document
-                    if (!sBookmark.isEmpty())
-                    {
-                        SfxStringItem aReferer(SID_REFERER, mpDocSh->GetMedium()->GetName());
-                        SfxStringItem aStrItem(SID_FILE_NAME, sBookmark);
-                        SfxViewFrame* pFrame = mpViewShell->GetViewFrame();
-                        SfxFrameItem aFrameItem(SID_DOCFRAME, pFrame);
-                        SfxBoolItem aBrowseItem( SID_BROWSE, true );
-                        pFrame->GetDispatcher()->
-                        ExecuteList(SID_OPENDOC,
-                            SfxCallMode::ASYNCHRON | SfxCallMode::RECORD,
-                            { &aStrItem, &aFrameItem, &aBrowseItem, &aReferer });
-                    }
-
-                    bAnimated = true;
-                }
-                break;
-
-                case presentation::ClickAction_PREVPAGE:
-                {
-                    // Jump to the previous page
-                    SfxUInt16Item aItem(SID_NAVIGATOR_PAGE, PAGE_PREVIOUS);
-                    mpViewShell->GetViewFrame()->GetDispatcher()->
-                    ExecuteList(SID_NAVIGATOR_PAGE,
-                            SfxCallMode::SLOT | SfxCallMode::RECORD,
-                            { &aItem });
-                    bAnimated = true;
-                }
-                break;
-
-                case presentation::ClickAction_NEXTPAGE:
-                {
-                    // Jump to the next page
-                    SfxUInt16Item aItem(SID_NAVIGATOR_PAGE, PAGE_NEXT);
-                    mpViewShell->GetViewFrame()->GetDispatcher()->
-                    ExecuteList(SID_NAVIGATOR_PAGE,
-                            SfxCallMode::SLOT | SfxCallMode::RECORD,
-                            { &aItem });
-                    bAnimated = true;
-                }
-                break;
-
-                case presentation::ClickAction_FIRSTPAGE:
-                {
-                    // Jump to the first page
-                    SfxUInt16Item aItem(SID_NAVIGATOR_PAGE, PAGE_FIRST);
-                    mpViewShell->GetViewFrame()->GetDispatcher()->
-                    ExecuteList(SID_NAVIGATOR_PAGE,
-                            SfxCallMode::SLOT | SfxCallMode::RECORD,
-                            { &aItem });
-                    bAnimated = true;
-                }
-                break;
-
-                case presentation::ClickAction_LASTPAGE:
-                {
-                    // Jump to the last page
-                    SfxUInt16Item aItem(SID_NAVIGATOR_PAGE, PAGE_LAST);
-                    mpViewShell->GetViewFrame()->GetDispatcher()->
-                    ExecuteList(SID_NAVIGATOR_PAGE,
-                            SfxCallMode::SLOT | SfxCallMode::RECORD,
-                            { &aItem });
-                    bAnimated = true;
-                }
-                break;
-
-                case presentation::ClickAction_SOUND:
-                {
-                        try
-                        {
-                            mxPlayer.set( avmedia::MediaWindow::createPlayer( pInfo->GetBookmark(), ""/*TODO?*/), uno::UNO_QUERY_THROW );
-                            mxPlayer->start();
-                        }
-                        catch( uno::Exception& )
-                        {
-                        }
-                    bAnimated = true;
-                }
-                break;
-
-                case presentation::ClickAction_VERB:
-                {
-                    // Assign verb
-                    mpView->UnmarkAll();
-                    mpView->MarkObj(pObj, mpView->GetSdrPageView());
-                    pDrViewSh->DoVerb((sal_Int16)pInfo->mnVerb);
-                    bAnimated = true;
-                }
-                break;
-
-                case presentation::ClickAction_PROGRAM:
-                {
-                   OUString aBaseURL = GetDocSh()->GetMedium()->GetBaseURL();
-                   INetURLObject aURL( ::URIHelper::SmartRel2Abs( INetURLObject(aBaseURL), pInfo->GetBookmark(),
-                                                URIHelper::GetMaybeFileHdl(), true, false,
-                                                INetURLObject::EncodeMechanism::WasEncoded, INetURLObject::DecodeMechanism::Unambiguous ) );
-
-                   if( INetProtocol::File == aURL.GetProtocol() )
-                   {
-                        SfxStringItem aUrl( SID_FILE_NAME, aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
-                        SfxBoolItem aBrowsing( SID_BROWSE, true );
-
-                        SfxViewFrame* pViewFrm = SfxViewFrame::Current();
-                        if (pViewFrm)
-                            pViewFrm->GetDispatcher()->ExecuteList(SID_OPENDOC,
-                                  SfxCallMode::ASYNCHRON | SfxCallMode::RECORD,
-                                  { &aUrl, &aBrowsing });
-                   }
-
-                    bAnimated = true;
-                }
-                break;
-
-                case presentation::ClickAction_MACRO:
-                {
-                    // Execute macro
-                    OUString aMacro = pInfo->GetBookmark();
-
-                    if ( SfxApplication::IsXScriptURL( aMacro ) )
-                    {
-                        uno::Any aRet;
-                        uno::Sequence< sal_Int16 > aOutArgsIndex;
-                        uno::Sequence<uno::Any> aParams;
-                        uno::Sequence< uno::Any > aOutArgs;
-
-                        ErrCode eErr = mpDocSh->CallXScript( aMacro,
-                            aParams, aRet, aOutArgsIndex, aOutArgs);
-
-                        // Check the return value from the script
-                        bool bTmp = false;
-                        bAnimated = eErr == ERRCODE_NONE &&
-                             aRet.getValueType() == cppu::UnoType<bool>::get() &&
-                             ( aRet >>= bTmp ) &&
-                             bTmp;
-                    }
-                    else
-                    {
-                        // aMacro has got following format:
-                        // "Macroname.Modulname.Libname.Documentname" or
-                        // "Macroname.Modulname.Libname.Applicationname"
-                        OUString aMacroName = aMacro.getToken(0, '.');
-                        OUString aModulName = aMacro.getToken(1, '.');
-
-                        // In this moment the Call-method only
-                        // resolves modulename+macroname
-                        OUString aExecMacro(aModulName + "." + aMacroName);
-                        bAnimated = mpDocSh->GetBasic()->Call(aExecMacro);
-                    }
-                }
-                break;
-
-                default:
-                {
-                    bAnimated = false;
-                }
-                break;
-            }
-        }
-
-        if (!bAnimated                               &&
-            dynamic_cast< const DrawView *>( mpView ) !=  nullptr                 &&
-            dynamic_cast< const GraphicDocShell *>( mpDocSh ) ==  nullptr        &&
-            SlideShow::IsRunning( mpViewShell->GetViewShellBase() ) &&
-            SdDrawDocument::GetAnimationInfo(pObj))
-        {
-            /**********************************************************
-            * Effect-Object hit in the middle -> Play effect
-            **********************************************************/
-            SdAnimationInfo* pInfo = SdDrawDocument::GetAnimationInfo(pObj);
-
-            switch (pInfo->meClickAction)
-            {
-                case presentation::ClickAction_VANISH:
-                case presentation::ClickAction_INVISIBLE:
-                    break;
-
-                default:
-                    bAnimated = false;
-                break;
+                return true;
             }
         }
     }
 
-    return bAnimated;
+    return false;
 }
 
 /** is called when the current function should be aborted. <p>
     This is used when a function gets a KEY_ESCAPE but can also
     be called directly.
 
-    @returns true if a active function was aborted
+    @returns true if an active function was aborted
 */
 bool FuSelection::cancel()
 {

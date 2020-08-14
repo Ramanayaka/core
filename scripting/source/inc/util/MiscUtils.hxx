@@ -22,19 +22,14 @@
 
 #include <rtl/ustring.hxx>
 #include <osl/diagnose.h>
-#include <tools/urlobj.hxx>
 
 #include <ucbhelper/content.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/frame/XTransientDocumentsDocumentContentFactory.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XContentEnumerationAccess.hpp>
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/ucb/SimpleFileAccess.hpp>
-#include <com/sun/star/ucb/XContentAccess.hpp>
-#include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <comphelper/processfactory.hxx>
 
@@ -107,8 +102,7 @@ static css::uno::Reference< css::frame::XModel > tDocUrlToModel( const OUString&
     try
     {
         ::ucbhelper::Content root( url, nullptr, comphelper::getProcessComponentContext() );
-        OUString propName =  "DocumentModel";
-        result = getUCBProperty( root, propName );
+        result = getUCBProperty( root, "DocumentModel" );
     }
     catch ( css::ucb::ContentCreationException& )
     {
@@ -126,7 +120,7 @@ static css::uno::Reference< css::frame::XModel > tDocUrlToModel( const OUString&
 }
 
 
-static css::uno::Any getUCBProperty( ::ucbhelper::Content& content, OUString& prop )
+static css::uno::Any getUCBProperty( ::ucbhelper::Content& content, OUString const & prop )
 {
     css::uno::Any result;
     try

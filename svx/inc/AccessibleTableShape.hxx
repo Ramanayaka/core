@@ -20,10 +20,7 @@
 #ifndef INCLUDED_SVX_INC_ACCESSIBLETABLESHAPE_HXX
 #define INCLUDED_SVX_INC_ACCESSIBLETABLESHAPE_HXX
 
-#include <com/sun/star/table/XTable.hpp>
 #include <com/sun/star/accessibility/XAccessibleTable.hpp>
-#include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-#include <com/sun/star/util/XModifyListener.hpp>
 
 #include <rtl/ref.hxx>
 
@@ -32,11 +29,8 @@
 #include <svx/AccessibleShape.hxx>
 #include <com/sun/star/view/XSelectionChangeListener.hpp>
 #include <com/sun/star/accessibility/XAccessibleTableSelection.hpp>
-#include <cppuhelper/compbase.hxx>
 
-namespace sdr { namespace table {
-    class SvxTableController;
-} }
+namespace sdr::table { class SvxTableController; }
 
 namespace accessibility
 {
@@ -47,10 +41,9 @@ namespace accessibility
                                             css::accessibility::XAccessibleTable,
                                             css::view::XSelectionChangeListener
                                           > AccessibleTableShape_Base;
-/** @descr
-*/
-class AccessibleTableShape : public AccessibleTableShape_Base, public css::accessibility::XAccessibleTableSelection
+class AccessibleTableShape final : public AccessibleTableShape_Base, public css::accessibility::XAccessibleTableSelection
 {
+    sal_Int32 mnPreviousSelectionCount;
 public:
     AccessibleTableShape( const AccessibleShapeInfo& rShapeInfo, const AccessibleShapeTreeInfo& rShapeTreeInfo );
     virtual ~AccessibleTableShape( ) override;
@@ -115,7 +108,6 @@ public:
         disposing (const css::lang::EventObject& Source) override;
     virtual void  SAL_CALL
         selectionChanged (const css::lang::EventObject& rEvent) override;
-    sal_Int32 mnPreviousSelectionCount;
     using AccessibleShape::disposing;
     friend class AccessibleTableHeaderShape;
 
@@ -130,7 +122,7 @@ public:
     // Get the currently active cell which is text editing
     AccessibleCell* GetActiveAccessibleCell();
 
-protected:
+private:
     virtual OUString CreateAccessibleBaseName() override;
 
     sdr::table::SvxTableController* getTableController();
@@ -138,7 +130,6 @@ protected:
     /// @throws css::lang::IndexOutOfBoundsException
     void checkCellPosition( sal_Int32 nCol, sal_Int32 nRow );
 
-private:
     rtl::Reference< AccessibleTableShapeImpl > mxImpl;
     sal_Int32 GetIndexOfSelectedChild( sal_Int32 nSelectedChildIndex ) const;
 };

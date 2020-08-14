@@ -29,11 +29,6 @@ if [ "${KDEMAINDIR}" ]; then
   done
   unset targetdir destfile
 
-  mkdir -p "${DESTDIR}/${KDEMAINDIR}/share/mimelnk/application"
-  for i in `cat mimelnklist`; do
-    cp "${i}" "${DESTDIR}/${KDEMAINDIR}/share/mimelnk/application/${PREFIX}-`basename ${i}`"
-  done
-  chmod 0644 "${DESTDIR}/${KDEMAINDIR}/share/mimelnk/application/"*
 fi
 
 if [ "${GNOMEDIR}" ]; then
@@ -57,19 +52,19 @@ if [ "${GNOMEDIR}" ]; then
   chmod 0644 "${DESTDIR}/${GNOMEDIR}/share/application-registry/${PREFIX}".*
 fi
 
-mkdir -p "${DESTDIR}/${PREFIXDIR}/bin"
+mkdir -p "${DESTDIR}/${BINDIR}"
 
 test -n "${OFFICE_PREFIX}" && office_prefix="${OFFICE_PREFIX}" || office_prefix=/opt
 office_root=${office_prefix}/${PREFIX}
 
-#this symlink is needed to have the API boostrap functions running right
-ln -sf "${office_root}/program/soffice" "${DESTDIR}/${PREFIXDIR}/bin/${PREFIX}"
+#this symlink is needed to have the API bootstrap functions running right
+ln -sf "${office_root}/program/soffice" "${DESTDIR}/${BINDIR}/${PREFIX}"
 
 if test "${PREFIX}" != libreoffice${PRODUCTVERSION} -a "${PREFIX}" != libreofficedev${PRODUCTVERSION}  ; then
     # compat symlinks
     mkdir -p "${DESTDIR}${office_prefix}"
     ln -sf libreoffice${PRODUCTVERSION} "${DESTDIR}${office_root}"
-    ln -sf /${PREFIXDIR}/bin/${PREFIX} "${DESTDIR}/${PREFIXDIR}/bin/libreoffice${PRODUCTVERSION}"
+    ln -sf /${BINDIR}/${PREFIX} "${DESTDIR}/${BINDIR}/libreoffice${PRODUCTVERSION}"
 fi
 
 test "${PREFIX}" = libreofficedev${PRODUCTVERSION} && mime_def_file="libreofficedev${PRODUCTVERSION}.xml" || mime_def_file="libreoffice${PRODUCTVERSION}.xml"
@@ -88,18 +83,3 @@ for i in base calc draw impress writer; do
 done
 cp "${APPDATA_SOURCE_DIR}/org.libreoffice.kde.metainfo.xml" "${DESTDIR}/${PREFIXDIR}/share/appdata/org.${PREFIX}.kde.metainfo.xml"
 
-# Generate gobject-introspection files
-if [ -n "$INTROSPECTION_SCANNER" ]; then
-    mkdir -p "${DESTDIR}/${PREFIXDIR}/share/gir-1.0"
-    g-ir-scanner "${SRCDIR}/include/LibreOfficeKit/LibreOfficeKitGtk.h" "${SRCDIR}/libreofficekit/source/gtk/lokdocview.cxx" \
-                 `${PKG_CONFIG} --cflags gobject-introspection-1.0 gtk+-3.0` -I"${SRCDIR}/include/" \
-                 --include=GLib-2.0 --include=GObject-2.0 --include=Gio-2.0 \
-                 --library=libreofficekitgtk --library-path="${INSTDIR}/program" \
-                 --include=Gdk-3.0 --include=GdkPixbuf-2.0 --include=Gtk-3.0 \
-                 --namespace=LOKDocView --nsversion=0.1 --identifier-prefix=LOKDoc --symbol-prefix=lok_doc \
-                 --output="${DESTDIR}/${PREFIXDIR}/share/gir-1.0/LOKDocView-0.1.gir" --warn-all --no-libtool
-
-    mkdir -p "${DESTDIR}/${LIBDIR}/girepository-1.0"
-    g-ir-compiler "${DESTDIR}/${PREFIXDIR}/share/gir-1.0/LOKDocView-0.1.gir" \
-                  --output="${DESTDIR}/${LIBDIR}/girepository-1.0/LOKDocView-0.1.typelib"
-fi

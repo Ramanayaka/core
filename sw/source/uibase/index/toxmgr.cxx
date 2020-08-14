@@ -18,14 +18,12 @@
  */
 
 #include <wrtsh.hxx>
-#include <shellres.hxx>
 #include <swwait.hxx>
 #include <view.hxx>
 #include <toxmgr.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <swundo.hxx>
-#include <globals.hrc>
 
 // handle indexes with TOXMgr
 SwTOXMgr::SwTOXMgr(SwWrtShell* pShell):
@@ -159,7 +157,7 @@ void SwTOXMgr::UpdateTOXMark(const SwTOXMarkDescription& rDesc)
             if(rDesc.GetPhoneticReadingOfPrimKey())
                 pCurTOXMark->SetPrimaryKeyReading( *rDesc.GetPhoneticReadingOfPrimKey() );
             else
-                pCurTOXMark->SetPrimaryKeyReading( aEmptyOUStr );
+                pCurTOXMark->SetPrimaryKeyReading(OUString());
 
             if( rDesc.GetSecKey() && !rDesc.GetSecKey()->isEmpty() )
             {
@@ -167,25 +165,25 @@ void SwTOXMgr::UpdateTOXMark(const SwTOXMarkDescription& rDesc)
                 if(rDesc.GetPhoneticReadingOfSecKey())
                     pCurTOXMark->SetSecondaryKeyReading( *rDesc.GetPhoneticReadingOfSecKey() );
                 else
-                    pCurTOXMark->SetSecondaryKeyReading( aEmptyOUStr );
+                    pCurTOXMark->SetSecondaryKeyReading(OUString());
             }
             else
             {
-                pCurTOXMark->SetSecondaryKey( aEmptyOUStr );
-                pCurTOXMark->SetSecondaryKeyReading( aEmptyOUStr );
+                pCurTOXMark->SetSecondaryKey(OUString());
+                pCurTOXMark->SetSecondaryKeyReading(OUString());
             }
         }
         else
         {
-            pCurTOXMark->SetPrimaryKey( aEmptyOUStr );
-            pCurTOXMark->SetPrimaryKeyReading( aEmptyOUStr );
-            pCurTOXMark->SetSecondaryKey( aEmptyOUStr );
-            pCurTOXMark->SetSecondaryKeyReading( aEmptyOUStr );
+            pCurTOXMark->SetPrimaryKey(OUString());
+            pCurTOXMark->SetPrimaryKeyReading(OUString());
+            pCurTOXMark->SetSecondaryKey(OUString());
+            pCurTOXMark->SetSecondaryKeyReading(OUString());
         }
         if(rDesc.GetPhoneticReadingOfAltStr())
             pCurTOXMark->SetTextReading( *rDesc.GetPhoneticReadingOfAltStr() );
         else
-            pCurTOXMark->SetTextReading( aEmptyOUStr );
+            pCurTOXMark->SetTextReading(OUString());
         pCurTOXMark->SetMainEntry(rDesc.IsMainEntry());
     }
     else
@@ -348,15 +346,23 @@ bool SwTOXMgr::UpdateOrInsertTOX(const SwTOXDescription& rDesc,
             if(TOX_AUTHORITIES == eCurTOXType)
             {
                 SwAuthorityFieldType* pFType = static_cast<SwAuthorityFieldType*>(
-                                                pSh->GetFieldType(SwFieldIds::TableOfAuthorities, aEmptyOUStr));
+                                                pSh->GetFieldType(SwFieldIds::TableOfAuthorities, OUString()));
                 if (!pFType)
                 {
                     SwAuthorityFieldType const type(pSh->GetDoc());
                     pFType = static_cast<SwAuthorityFieldType*>(
                                 pSh->InsertFieldType(type));
                 }
-                pFType->SetPreSuffix(rDesc.GetAuthBrackets()[0],
-                    rDesc.GetAuthBrackets()[1]);
+                OUString const& rBrackets(rDesc.GetAuthBrackets());
+                if (rBrackets.isEmpty())
+                {
+                    pFType->SetPreSuffix('\0', '\0');
+                }
+                else
+                {
+                    assert(rBrackets.getLength() == 2);
+                    pFType->SetPreSuffix(rBrackets[0], rBrackets[1]);
+                }
                 pFType->SetSequence(rDesc.IsAuthSequence());
                 SwTOXSortKey rArr[3];
                 rArr[0] = rDesc.GetSortKey1();
@@ -428,14 +434,14 @@ bool SwTOXMgr::UpdateOrInsertTOX(const SwTOXDescription& rDesc,
 
         if (pDoc->GetIDocumentUndoRedo().DoesUndo())
         {
-            pDoc->GetIDocumentUndoRedo().DelAllUndoObj();
             pDoc->GetIDocumentUndoRedo().StartUndo(SwUndoId::TOXCHANGE, nullptr);
         }
 
-        pDoc->ChgTOX(*pTOX, *pNewTOX);
+        pDoc->ChangeTOX(*pTOX, *pNewTOX);
 
         pTOX->DisableKeepExpression();
-        bRet = pSh->UpdateTableOf(*pTOX, pSet);
+        pSh->UpdateTableOf(*pTOX, pSet);
+        bRet = false;
         pTOX->EnableKeepExpression();
 
         if (pDoc->GetIDocumentUndoRedo().DoesUndo())

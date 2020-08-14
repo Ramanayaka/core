@@ -32,20 +32,17 @@
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include "file/FStatement.hxx"
+#include <file/FStatement.hxx>
 #include <connectivity/CommonTools.hxx>
 #include <comphelper/propertycontainer.hxx>
-#include "file/fanalyzer.hxx"
-#include "file/FTable.hxx"
-#include "file/filedllapi.hxx"
-#include <connectivity/StdTypeDefs.hxx>
-#include "TSortIndex.hxx"
-#include "TSkipDeletedSet.hxx"
+#include <file/fanalyzer.hxx>
+#include <file/FTable.hxx>
+#include <file/filedllapi.hxx>
+#include <TSortIndex.hxx>
+#include <TSkipDeletedSet.hxx>
 #include <com/sun/star/lang/XEventListener.hpp>
 
-namespace connectivity
-{
-    namespace file
+namespace connectivity::file
     {
         typedef ::cppu::WeakComponentImplHelper<  css::sdbc::XResultSet,
                                                   css::sdbc::XRow,
@@ -77,19 +74,17 @@ namespace connectivity
             OValueRefRow                            m_aSelectRow;
             OValueRefRow                            m_aRow;
             OValueRefRow                            m_aEvaluateRow; // contains all values of a row
-            OValueRefRow                            m_aParameterRow;
             OValueRefRow                            m_aInsertRow;   // needed for insert by cursor
             ORefAssignValues                        m_aAssignValues; // needed for insert,update and parameters
                                                                     // to compare with the restrictions
             OSkipDeletedSet                         m_aSkipDeletedSet;
 
-            ::rtl::Reference<OKeySet>                   m_pFileSet;
-            OKeySet::Vector::iterator               m_aFileSetIter;
+            ::rtl::Reference<OKeySet>               m_pFileSet;
+            OKeySet::iterator                       m_aFileSetIter;
 
 
-            OSortIndex*                             m_pSortIndex;
+            std::unique_ptr<OSortIndex>             m_pSortIndex;
             ::rtl::Reference<connectivity::OSQLColumns> m_xColumns; // this are the select columns
-            ::rtl::Reference<connectivity::OSQLColumns> m_xParamColumns;
             rtl::Reference<OFileTable>              m_pTable;
             connectivity::OSQLParseNode*            m_pParseTree;
 
@@ -113,7 +108,6 @@ namespace connectivity
             sal_Int32                               m_nRowCountResult;
             sal_Int32                               m_nColumnCount;
             bool                                m_bWasNull;
-            bool                                m_bEOF;                 // after last record
             bool                                m_bInserted;            // true when moveToInsertRow was called
                                                                             // set to false when cursor moved or cancel
             bool                                m_bRowUpdated;
@@ -131,7 +125,7 @@ namespace connectivity
                                 bool bEvaluate = true,
                                 bool bRetrieveData = true);
 
-            OKeyValue* GetOrderbyKeyValue(OValueRefRow& _rRow);
+            std::unique_ptr<OKeyValue> GetOrderbyKeyValue(OValueRefRow const & _rRow);
             bool IsSorted() const { return !m_aOrderbyColumnNumber.empty() && m_aOrderbyColumnNumber[0] >= 0;}
 
             // return true when the select statement is "select count(*) from table"
@@ -167,7 +161,7 @@ namespace connectivity
             OResultSet( OStatement_Base* pStmt,connectivity::OSQLParseTreeIterator& _aSQLIterator);
 
             // ::cppu::OComponentHelper
-            virtual void SAL_CALL disposing() override;
+            virtual void SAL_CALL disposing() override final;
             // XInterface
             virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
             virtual void SAL_CALL acquire() throw() override;
@@ -254,25 +248,23 @@ namespace connectivity
             virtual sal_Int32 SAL_CALL findColumn( const OUString& columnName ) override;
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
             //XEventlistener
             virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
             // special methods
             inline sal_Int32 mapColumn(sal_Int32    column);
-            bool OpenImpl();
+            void OpenImpl();
             void doTableSpecials(const OSQLTable& _xTable);
 
             sal_Int32 getRowCountResult() const { return m_nRowCountResult; }
-            void setParameterRow(const OValueRefRow& _rParaRow)                  { m_aParameterRow = _rParaRow; }
             void setEvaluationRow(const OValueRefRow& _aRow)                     { m_aEvaluateRow = _aRow; }
-            void setParameterColumns(const ::rtl::Reference<connectivity::OSQLColumns>&  _xParamColumns) { m_xParamColumns = _xParamColumns; }
             void setAssignValues(const ORefAssignValues& _aAssignValues)         { m_aAssignValues = _aAssignValues; }
             void setBindingRow(const OValueRefRow& _aRow)                        { m_aRow = _aRow; }
             void setSelectRow(const OValueRefRow& _rRow)
             {
                 m_aSelectRow = _rRow;
-                m_nColumnCount = m_aSelectRow->get().size();
+                m_nColumnCount = m_aSelectRow->size();
             }
             void setColumnMapping(const std::vector<sal_Int32>& _aColumnMapping)   { m_aColMapping = _aColumnMapping; }
             void setSqlAnalyzer(OSQLAnalyzer* _pSQLAnalyzer)                     { m_pSQLAnalyzer = _pSQLAnalyzer; }
@@ -301,12 +293,12 @@ namespace connectivity
 
             OSL_ENSURE(column > 0, "file::OResultSet::mapColumn: invalid column index!");
             // the first column (index 0) is for convenience only. The first real select column is number 1.
-            if ((column > 0) && (column < (sal_Int32)m_aColMapping.size()))
+            if ((column > 0) && (column < static_cast<sal_Int32>(m_aColMapping.size())))
                 map = m_aColMapping[column];
 
             return map;
         }
-    }
+
 }
 #endif // _CONNECTIVITY_FILE_ORESULTSET_HXX_
 

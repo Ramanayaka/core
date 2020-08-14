@@ -19,8 +19,6 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_ROWFRM_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_ROWFRM_HXX
 
-#include <tools/mempool.hxx>
-
 #include "layfrm.hxx"
 
 class SwTableLine;
@@ -35,16 +33,17 @@ class SwRowFrame: public SwLayoutFrame
     virtual SwTwips GrowFrame  ( SwTwips, bool bTst = false, bool bInfo = false ) override;
 
     const SwTableLine * m_pTabLine;
-    SwRowFrame * m_pFollowRow;
+    SwRowFrame * m_pFollowRow; ///< note: this is *only* set on old-style tables!
     // #i29550#
     sal_uInt16 mnTopMarginForLowers;
     sal_uInt16 mnBottomMarginForLowers;
     sal_uInt16 mnBottomLineSize;
     // <-- collapsing
-    bool m_bIsFollowFlowRow;
+    bool m_bIsFollowFlowRow; ///< note: this is *only* set on old-style tables!
     bool m_bIsRepeatedHeadline;
     bool m_bIsRowSpanLine;
 
+    bool m_bForceRowSplitAllowed;
     bool m_bIsInSplit;
 
     virtual void DestroyImpl() override;
@@ -92,12 +91,14 @@ public:
 
     // --> split table rows
     bool IsRowSplitAllowed() const;
+    bool IsForceRowSplitAllowed() const { return m_bForceRowSplitAllowed; }
+    void SetForceRowSplitAllowed( bool bNew) { m_bForceRowSplitAllowed = bNew; };
     bool IsFollowFlowRow() const { return m_bIsFollowFlowRow; }
     void SetFollowFlowRow( bool bNew ) { m_bIsFollowFlowRow = bNew; }
     // <-- split table rows
 
     // #131283# Table row keep feature
-    bool ShouldRowKeepWithNext() const;
+    bool ShouldRowKeepWithNext( const bool bCheckParents = true ) const;
 
     // #i4032# NEW TABLES
     bool IsRowSpanLine() const { return m_bIsRowSpanLine; }
@@ -113,14 +114,12 @@ public:
     // should not consider the setting when the split is performed
     // (we should be able to keep on first page as little as required).
     // When IsInSplit is true, lcl_CalcMinRowHeight will ignore the
-    // mininum height setting. It is set in lcl_RecalcSplitLine around
+    // minimum height setting. It is set in lcl_RecalcSplitLine around
     // lcl_RecalcRow and SwRowFrame::Calc that decide if it's possible
     // to keep part of row's content on first page, and update table's
     // height to fit the rest of space.
     bool IsInSplit() const { return m_bIsInSplit; }
     void SetInSplit(bool bNew = true) { m_bIsInSplit = bNew; }
-
-    DECL_FIXEDMEMPOOL_NEWDEL(SwRowFrame)
 };
 
 #endif

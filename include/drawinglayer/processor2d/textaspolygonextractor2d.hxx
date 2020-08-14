@@ -29,9 +29,7 @@
 #include <vector>
 
 
-namespace drawinglayer
-{
-    namespace processor2d
+namespace drawinglayer::processor2d
     {
         /// helper data structure for returning the result
         struct DRAWINGLAYER_DLLPUBLIC TextAsPolygonDataNode
@@ -63,9 +61,9 @@ namespace drawinglayer
 
         /** TextAsPolygonExtractor2D class
 
-            This processor extracts text in the feeded primitives to filled polygons
+            This processor extracts text in the fed primitives to filled polygons
          */
-        class DRAWINGLAYER_DLLPUBLIC TextAsPolygonExtractor2D : public BaseProcessor2D
+        class DRAWINGLAYER_DLLPUBLIC TextAsPolygonExtractor2D final : public BaseProcessor2D
         {
         private:
             // extraction target
@@ -87,8 +85,8 @@ namespace drawinglayer
             // data read access
             const TextAsPolygonDataNodeVector& getTarget() const { return maTarget; }
         };
-    } // end of namespace processor2d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::processor2d
 
 
 #endif // INCLUDED_DRAWINGLAYER_PROCESSOR2D_TEXTASPOLYGONEXTRACTOR2D_HXX

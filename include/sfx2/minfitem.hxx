@@ -26,7 +26,7 @@
 
 class BasicManager;
 
-class SFX2_DLLPUBLIC SfxMacroInfoItem: public SfxPoolItem
+class SFX2_DLLPUBLIC SfxMacroInfoItem final : public SfxPoolItem
 {
     const BasicManager*     pBasicManager;
     OUString                aLibName;
@@ -43,9 +43,7 @@ public:
                     const OUString &rMethodName,
                     const OUString &rComment);
 
-    SfxMacroInfoItem( const SfxMacroInfoItem& );
-
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SfxMacroInfoItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
     const OUString&         GetMethod() const
                                 { return aMethodName; }

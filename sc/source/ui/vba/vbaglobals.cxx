@@ -18,18 +18,13 @@
  */
 #include "vbaglobals.hxx"
 
-#include <sal/macros.h>
-
-#include <comphelper/unwrapargs.hxx>
-
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <cppuhelper/component_context.hxx>
+#include <comphelper/sequence.hxx>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 
 #include "vbaapplication.hxx"
-#include "vbaworksheet.hxx"
-#include "vbarange.hxx"
-#include <cppuhelper/bootstrap.hxx>
+
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::ooo::vba;
@@ -40,12 +35,14 @@ using namespace ::ooo::vba;
 
 ScVbaGlobals::ScVbaGlobals( uno::Sequence< uno::Any > const& aArgs, uno::Reference< uno::XComponentContext >const& rxContext ) : ScVbaGlobals_BASE( uno::Reference< XHelperInterface >(), rxContext, "ExcelDocumentContext" )
 {
-    uno::Sequence< beans::PropertyValue > aInitArgs( 2 );
+    uno::Sequence< beans::PropertyValue > aInitArgs( aArgs.getLength() + 1 );
     aInitArgs[ 0 ].Name = "Application";
     aInitArgs[ 0 ].Value <<= getApplication();
-    aInitArgs[ 1 ].Name = "ExcelDocumentContext";
-    aInitArgs[ 1 ].Value <<= getXSomethingFromArgs< frame::XModel >( aArgs, 0 );
-
+    if ( aArgs.hasElements() )
+    {
+        aInitArgs[ 1 ].Name = "ExcelDocumentContext";
+        aInitArgs[ 1 ].Value <<= getXSomethingFromArgs< frame::XModel >( aArgs, 0 );
+    }
     init( aInitArgs );
 }
 
@@ -72,7 +69,7 @@ ScVbaGlobals::getExcel()
 uno::Reference< excel::XWorkbook > SAL_CALL
 ScVbaGlobals::getActiveWorkbook()
 {
-    uno::Reference< excel::XWorkbook > xWorkbook( getApplication()->getActiveWorkbook(), uno::UNO_QUERY_THROW);
+    uno::Reference< excel::XWorkbook > xWorkbook( getApplication()->getActiveWorkbook(), uno::UNO_SET_THROW);
     return xWorkbook;
 }
 
@@ -91,7 +88,7 @@ ScVbaGlobals::getActiveSheet()
 uno::Any SAL_CALL
 ScVbaGlobals::WorkBooks( const uno::Any& aIndex )
 {
-    return uno::Any( getApplication()->Workbooks(aIndex) );
+    return getApplication()->Workbooks(aIndex);
 }
 
 uno::Any SAL_CALL
@@ -219,54 +216,44 @@ ScVbaGlobals::getDebug()
 uno::Any SAL_CALL
 ScVbaGlobals::MenuBars( const uno::Any& aIndex )
 {
-    return uno::Any( getApplication()->MenuBars(aIndex) );
+    return getApplication()->MenuBars(aIndex);
 }
 
 uno::Sequence< OUString > SAL_CALL
 ScVbaGlobals::getAvailableServiceNames(  )
 {
-    static bool bInit = false;
-    static uno::Sequence< OUString > serviceNames( ScVbaGlobals_BASE::getAvailableServiceNames() );
-    if ( !bInit )
-    {
-         const OUString names[] = {
-            OUString(  "ooo.vba.excel.Range"  ),
-            OUString(  "ooo.vba.excel.Workbook"  ),
-            OUString(  "ooo.vba.excel.Window"  ),
-            OUString(  "ooo.vba.excel.Worksheet"  ),
-            OUString(  "ooo.vba.excel.Application"  ),
-            OUString(  "ooo.vba.excel.Hyperlink"  ),
-            OUString(  "com.sun.star.script.vba.VBASpreadsheetEventProcessor"  )
-          };
-        sal_Int32 nExcelServices = SAL_N_ELEMENTS( names );
-        sal_Int32 startIndex = serviceNames.getLength();
-        serviceNames.realloc( serviceNames.getLength() + nExcelServices );
-        for ( sal_Int32 index = 0; index < nExcelServices; ++index )
-             serviceNames[ startIndex + index ] = names[ index ];
-        bInit = true;
-    }
+    static const uno::Sequence< OUString > serviceNames = comphelper::concatSequences(
+        ScVbaGlobals_BASE::getAvailableServiceNames(),
+        uno::Sequence< OUString >
+        {
+            "ooo.vba.excel.Range",
+            "ooo.vba.excel.Workbook",
+            "ooo.vba.excel.Window",
+            "ooo.vba.excel.Worksheet",
+            "ooo.vba.excel.Application",
+            "ooo.vba.excel.Hyperlink",
+            "com.sun.star.script.vba.VBASpreadsheetEventProcessor"
+        } );
     return serviceNames;
 }
 
 OUString
 ScVbaGlobals::getServiceImplName()
 {
-    return OUString("ScVbaGlobals");
+    return "ScVbaGlobals";
 }
 
 uno::Sequence< OUString >
 ScVbaGlobals::getServiceNames()
 {
-        static uno::Sequence< OUString > aServiceNames;
-        if ( aServiceNames.getLength() == 0 )
+        static uno::Sequence< OUString > aServiceNames
         {
-                aServiceNames.realloc( 1 );
-                aServiceNames[ 0 ] = "ooo.vba.excel.Globals" ;
-        }
+            "ooo.vba.excel.Globals"
+        };
         return aServiceNames;
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 ScVbaGlobals_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &arguments)

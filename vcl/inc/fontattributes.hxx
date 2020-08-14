@@ -20,17 +20,18 @@
 #ifndef INCLUDED_VCL_INC_FONTATTRIBUTES_HXX
 #define INCLUDED_VCL_INC_FONTATTRIBUTES_HXX
 
+#include <vcl/dllapi.h>
 #include <rtl/ustring.hxx>
-#include <vcl/vclenum.hxx>
+#include <sal/log.hxx>
+#include <tools/fontenum.hxx>
 
 
 /* The following class is extraordinarily similar to ImplFont. */
 
-class FontAttributes
+class VCL_DLLPUBLIC FontAttributes
 {
 public:
     explicit            FontAttributes();
-                        FontAttributes( const FontAttributes& );
 
     // device independent font functions
     const OUString&     GetFamilyName() const                       { return maFamilyName; }

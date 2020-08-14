@@ -21,25 +21,23 @@
 #define INCLUDED_VCL_CTRL_HXX
 
 #include <tools/link.hxx>
-#include <tools/solar.h>
 #include <vcl/dllapi.h>
 #include <vcl/window.hxx>
-#include <vcl/salnativewidgets.hxx>
+#include <memory>
 
 // forward
-namespace vcl { struct ImplControlData; struct ControlLayoutData; }
+namespace vcl { struct ImplControlData; }
 class StyleSettings;
 
 
 class VCL_DLLPUBLIC Control : public vcl::Window
 {
 protected:
-    vcl::ImplControlData* mpControlData;
+    std::unique_ptr<vcl::ImplControlData> mpControlData;
 
 private:
     bool                    mbHasControlFocus;
     bool                    mbShowAccelerator;
-    Link<Control&,void>     maGetFocusHdl;
     Link<Control&,void>     maLoseFocusHdl;
 
     SAL_DLLPRIVATE void     ImplInitControlData();
@@ -74,6 +72,8 @@ protected:
     bool        ImplCallEventListenersAndHandler(
                     VclEventId nEvent, std::function<void()> const & callHandler
                 );
+
+    void        CallEventListeners( VclEventId nEvent, void* pData = nullptr );
 
     /** draws the given text onto the given device
 
@@ -161,9 +161,7 @@ public:
     */
     long ToRelativeLineIndex( long nIndex ) const;
 
-    void            SetGetFocusHdl( const Link<Control&,void>& rLink ) { maGetFocusHdl = rLink; }
     void            SetLoseFocusHdl( const Link<Control&,void>& rLink ) { maLoseFocusHdl = rLink; }
-    const Link<Control&,void>& GetLoseFocusHdl() const { return maLoseFocusHdl; }
 
     /** determines whether the control currently has the focus
     */

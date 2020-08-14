@@ -1,19 +1,53 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.18.3 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
-  <requires lib="LibreOffice" version="1.0"/>
-  <object class="GtkAdjustment" id="adjustment1">
+<!-- Generated with glade 3.36.0 -->
+<interface domain="cui">
+  <requires lib="gtk+" version="3.18"/>
+  <object class="GtkAdjustment" id="adjustmentblue">
     <property name="upper">255</property>
     <property name="step_increment">1</property>
     <property name="page_increment">10</property>
   </object>
-  <object class="GtkAdjustment" id="adjustment2">
+  <object class="GtkAdjustment" id="adjustmentbright">
+    <property name="upper">100</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustmentcyan">
+    <property name="upper">100</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustmentgreen">
+    <property name="upper">255</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustmenthue">
     <property name="upper">360</property>
     <property name="step_increment">1</property>
     <property name="page_increment">10</property>
   </object>
-  <object class="GtkAdjustment" id="adjustment3">
+  <object class="GtkAdjustment" id="adjustmentkey">
+    <property name="upper">100</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustmentmag">
+    <property name="upper">100</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustmentred">
+    <property name="upper">255</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustmentsat">
+    <property name="upper">100</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustmentyellow">
     <property name="upper">100</property>
     <property name="step_increment">1</property>
     <property name="page_increment">10</property>
@@ -23,9 +57,11 @@
     <property name="hexpand">True</property>
     <property name="vexpand">True</property>
     <property name="border_width">6</property>
-    <property name="title" translatable="yes">Pick a Color</property>
+    <property name="title" translatable="yes" context="colorpickerdialog|ColorPicker">Pick a Color</property>
     <property name="resizable">False</property>
     <property name="modal">True</property>
+    <property name="default_width">0</property>
+    <property name="default_height">0</property>
     <property name="type_hint">dialog</property>
     <child internal-child="vbox">
       <object class="GtkBox" id="dialog-vbox1">
@@ -41,7 +77,6 @@
             <child>
               <object class="GtkButton" id="ok">
                 <property name="label">gtk-ok</property>
-                <property name="use_action_appearance">False</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="can_default">True</property>
@@ -58,7 +93,6 @@
             <child>
               <object class="GtkButton" id="cancel">
                 <property name="label">gtk-cancel</property>
-                <property name="use_action_appearance">False</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
@@ -73,7 +107,6 @@
             <child>
               <object class="GtkButton" id="help">
                 <property name="label">gtk-help</property>
-                <property name="use_action_appearance">False</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
@@ -115,10 +148,15 @@
                     <property name="can_focus">False</property>
                     <property name="hexpand">True</property>
                     <child>
-                      <object class="cuilo-ColorPreviewControl" id="preview">
+                      <object class="GtkDrawingArea" id="preview">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
                         <property name="hexpand">True</property>
+                        <child internal-child="accessible">
+                          <object class="AtkObject" id="preview-atkobject">
+                            <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | preview">In the left part of the bottom bar, the current result of your work in this dialog is visible.</property>
+                          </object>
+                        </child>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -127,10 +165,14 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="cuilo-ColorPreviewControl" id="previous">
-                        <property name="visible">True</property>
+                      <object class="GtkDrawingArea" id="previous">
                         <property name="can_focus">False</property>
                         <property name="hexpand">True</property>
+                        <child internal-child="accessible">
+                          <object class="AtkObject" id="previous-atkobject">
+                            <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | previous">In the right part of the bottom bar, you will see the original color from the parent tab, Colors.</property>
+                          </object>
+                        </child>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -145,11 +187,17 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="cuilo-ColorFieldControl" id="colorField:border">
+                  <object class="GtkDrawingArea" id="colorField">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
+                    <property name="events">GDK_BUTTON_MOTION_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_STRUCTURE_MASK</property>
                     <property name="hexpand">True</property>
                     <property name="vexpand">True</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="colorField-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | colorField">Click in the big color area on the left to select a new color. Using this selector area you can modify two components of the color as represented in the RGB or HSB color models. Note that these are the two components not selected with the radio buttons on the right side of the dialog.</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -157,10 +205,16 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="cuilo-ColorSliderControl" id="colorSlider:border">
+                  <object class="GtkDrawingArea" id="colorSlider">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
+                    <property name="events">GDK_BUTTON_MOTION_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_STRUCTURE_MASK</property>
                     <property name="vexpand">True</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="colorSlider-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | colorSlider">With the vertical color component slider you can modify the value of each component of the color.</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left_attach">2</property>
@@ -172,7 +226,7 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="valign">start</property>
-                    <property name="stock">gtk-missing-image</property>
+                    <property name="icon_name">res/colorsliderright.png</property>
                   </object>
                   <packing>
                     <property name="left_attach">3</property>
@@ -184,7 +238,7 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="valign">start</property>
-                    <property name="stock">gtk-missing-image</property>
+                    <property name="icon_name">res/colorsliderleft.png</property>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
@@ -241,16 +295,19 @@
                             <property name="column_spacing">12</property>
                             <child>
                               <object class="GtkRadioButton" id="redRadiobutton">
-                                <property name="label" translatable="yes">_Red:</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="colorpickerdialog|redRadiobutton">_Red:</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
                                 <property name="use_underline">True</property>
                                 <property name="xalign">0</property>
-                                <property name="active">True</property>
                                 <property name="draw_indicator">True</property>
-                                <property name="group">greenRadiobutton</property>
+                                <property name="group">hueRadiobutton</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="redRadiobutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | redRadiobutton">Sets the Red component modifiable on the vertical color slider, and the Green and Blue components in the two-dimensional color picker field. Allowed values are 0 to 255.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">0</property>
@@ -259,15 +316,19 @@
                             </child>
                             <child>
                               <object class="GtkRadioButton" id="greenRadiobutton">
-                                <property name="label" translatable="yes">_Green:</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="colorpickerdialog|greenRadiobutton">_Green:</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
                                 <property name="use_underline">True</property>
                                 <property name="xalign">0</property>
                                 <property name="draw_indicator">True</property>
-                                <property name="group">redRadiobutton</property>
+                                <property name="group">hueRadiobutton</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="greenRadiobutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | greenRadiobutton">Sets the Green component modifiable on the vertical color slider, and the Red and Blue components in the two-dimensional color picker field. Allowed values are 0 to 255.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">0</property>
@@ -276,15 +337,19 @@
                             </child>
                             <child>
                               <object class="GtkRadioButton" id="blueRadiobutton">
-                                <property name="label" translatable="yes">_Blue:</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="colorpickerdialog|blueRadiobutton">_Blue:</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
                                 <property name="use_underline">True</property>
                                 <property name="xalign">0</property>
                                 <property name="draw_indicator">True</property>
-                                <property name="group">redRadiobutton</property>
+                                <property name="group">hueRadiobutton</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="blueRadiobutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | blueRadiobutton">Sets the Blue component modifiable on the vertical color slider, and the Green and Red components in the two-dimensional color picker field. Allowed values are 0 to 255.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">0</property>
@@ -292,11 +357,17 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkSpinButton" id="redSpinbutton:0">
+                              <object class="GtkSpinButton" id="redSpinbutton">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
-                                <property name="adjustment">adjustment1</property>
+                                <property name="activates_default">True</property>
+                                <property name="adjustment">adjustmentred</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="redSpinbutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | redSpinbutton">Set the Red color value directly. Allowed values are 0 to 255.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">1</property>
@@ -304,11 +375,17 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkSpinButton" id="greenSpinbutton:0">
+                              <object class="GtkSpinButton" id="greenSpinbutton">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
-                                <property name="adjustment">adjustment1</property>
+                                <property name="activates_default">True</property>
+                                <property name="adjustment">adjustmentgreen</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="greenSpinbutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | greenSpinbutton">Set the Green color value directly. Allowed values are 0 to 255.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">1</property>
@@ -316,11 +393,17 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkSpinButton" id="blueSpinbutton:0">
+                              <object class="GtkSpinButton" id="blueSpinbutton">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
-                                <property name="adjustment">adjustment1</property>
+                                <property name="activates_default">True</property>
+                                <property name="adjustment">adjustmentblue</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="blueSpinbutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | blueSpinbutton">Set the Blue color value directly. Allowed values are 0 to 255.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">1</property>
@@ -331,10 +414,10 @@
                               <object class="GtkLabel" id="label2">
                                 <property name="visible">True</property>
                                 <property name="can_focus">False</property>
-                                <property name="xalign">0</property>
-                                <property name="label" translatable="yes">Hex _#:</property>
+                                <property name="label" translatable="yes" context="colorpickerdialog|label2">Hex _#:</property>
                                 <property name="use_underline">True</property>
                                 <property name="mnemonic_widget">hexEntry</property>
+                                <property name="xalign">0</property>
                               </object>
                               <packing>
                                 <property name="left_attach">0</property>
@@ -342,10 +425,16 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="svxcorelo-HexColorControl" id="hexEntry">
+                              <object class="GtkEntry" id="hexEntry">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
+                                <property name="activates_default">True</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="hexEntry-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | hexEntry">Displays and sets the color value in the RGB color model expressed as a hexadecimal number.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">1</property>
@@ -360,7 +449,7 @@
                       <object class="GtkLabel" id="label1">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">RGB</property>
+                        <property name="label" translatable="yes" context="colorpickerdialog|label1">RGB</property>
                         <attributes>
                           <attribute name="weight" value="bold"/>
                         </attributes>
@@ -399,8 +488,7 @@
                             <property name="column_spacing">12</property>
                             <child>
                               <object class="GtkRadioButton" id="hueRadiobutton">
-                                <property name="label" translatable="yes">H_ue:</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="colorpickerdialog|hueRadiobutton">H_ue:</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
@@ -408,7 +496,11 @@
                                 <property name="xalign">0</property>
                                 <property name="active">True</property>
                                 <property name="draw_indicator">True</property>
-                                <property name="group">redRadiobutton</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="hueRadiobutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | hueRadiobutton">Sets the Hue component modifiable on the vertical color slider, and the Saturation and Brightness components in the two-dimensional color picker field. Values are expressed in degrees from 0 to 359.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">0</property>
@@ -417,15 +509,19 @@
                             </child>
                             <child>
                               <object class="GtkRadioButton" id="satRadiobutton">
-                                <property name="label" translatable="yes">_Saturation:</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="colorpickerdialog|satRadiobutton">_Saturation:</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
                                 <property name="use_underline">True</property>
                                 <property name="xalign">0</property>
                                 <property name="draw_indicator">True</property>
-                                <property name="group">redRadiobutton</property>
+                                <property name="group">hueRadiobutton</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="satRadiobutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | satRadiobutton">Sets the Saturation component modifiable on the vertical color slider, and the Hue and Brightness components in the two-dimensional color picker field. Values are expressed in percent (0 to 100).</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">0</property>
@@ -434,15 +530,19 @@
                             </child>
                             <child>
                               <object class="GtkRadioButton" id="brightRadiobutton">
-                                <property name="label" translatable="yes">Bright_ness:</property>
-                                <property name="use_action_appearance">False</property>
+                                <property name="label" translatable="yes" context="colorpickerdialog|brightRadiobutton">Bright_ness:</property>
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="receives_default">False</property>
                                 <property name="use_underline">True</property>
                                 <property name="xalign">0</property>
                                 <property name="draw_indicator">True</property>
-                                <property name="group">redRadiobutton</property>
+                                <property name="group">hueRadiobutton</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="brightRadiobutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | brightRadiobutton">Sets the Brightness component modifiable on the vertical color slider, and the Hue and Saturation components in the two-dimensional color picker field. Values are expressed in percent (0 to 100).</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">0</property>
@@ -450,11 +550,17 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkSpinButton" id="hueSpinbutton:°">
+                              <object class="GtkSpinButton" id="hueSpinbutton">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
-                                <property name="adjustment">adjustment2</property>
+                                <property name="activates_default">True</property>
+                                <property name="adjustment">adjustmenthue</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="hueSpinbutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | hueSpinbutton">Set the Hue directly in the HSB color model. Values are expressed in degrees from 0 to 359.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">1</property>
@@ -462,11 +568,17 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkSpinButton" id="satSpinbutton:%">
+                              <object class="GtkSpinButton" id="satSpinbutton">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
-                                <property name="adjustment">adjustment3</property>
+                                <property name="activates_default">True</property>
+                                <property name="adjustment">adjustmentsat</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="satSpinbutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | satSpinbutton">Set the Saturation directly in the HSB color model. Values are expressed in percent (0 to 100).</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">1</property>
@@ -474,11 +586,17 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkSpinButton" id="brightSpinbutton:%">
+                              <object class="GtkSpinButton" id="brightSpinbutton">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
-                                <property name="adjustment">adjustment3</property>
+                                <property name="activates_default">True</property>
+                                <property name="adjustment">adjustmentbright</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="brightSpinbutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | brightSpinbutton">Set the Brightness directly in the HSB color model. Values are expressed in percent (0 to 100).</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">1</property>
@@ -493,7 +611,7 @@
                       <object class="GtkLabel" id="label3">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">HSB</property>
+                        <property name="label" translatable="yes" context="colorpickerdialog|label3">HSB</property>
                         <attributes>
                           <attribute name="weight" value="bold"/>
                         </attributes>
@@ -533,10 +651,10 @@
                                 <property name="visible">True</property>
                                 <property name="can_focus">False</property>
                                 <property name="halign">start</property>
-                                <property name="xalign">0</property>
-                                <property name="label" translatable="yes">_Cyan:</property>
+                                <property name="label" translatable="yes" context="colorpickerdialog|label5">_Cyan:</property>
                                 <property name="use_underline">True</property>
-                                <property name="mnemonic_widget">cyanSpinbutton:%</property>
+                                <property name="mnemonic_widget">cyanSpinbutton</property>
+                                <property name="xalign">0</property>
                               </object>
                               <packing>
                                 <property name="left_attach">0</property>
@@ -548,10 +666,10 @@
                                 <property name="visible">True</property>
                                 <property name="can_focus">False</property>
                                 <property name="halign">start</property>
-                                <property name="xalign">0</property>
-                                <property name="label" translatable="yes">_Magenta:</property>
+                                <property name="label" translatable="yes" context="colorpickerdialog|label6">_Magenta:</property>
                                 <property name="use_underline">True</property>
-                                <property name="mnemonic_widget">magSpinbutton:%</property>
+                                <property name="mnemonic_widget">magSpinbutton</property>
+                                <property name="xalign">0</property>
                               </object>
                               <packing>
                                 <property name="left_attach">0</property>
@@ -563,10 +681,10 @@
                                 <property name="visible">True</property>
                                 <property name="can_focus">False</property>
                                 <property name="halign">start</property>
-                                <property name="xalign">0</property>
-                                <property name="label" translatable="yes">_Yellow:</property>
+                                <property name="label" translatable="yes" context="colorpickerdialog|label7">_Yellow:</property>
                                 <property name="use_underline">True</property>
-                                <property name="mnemonic_widget">yellowSpinbutton:%</property>
+                                <property name="mnemonic_widget">yellowSpinbutton</property>
+                                <property name="xalign">0</property>
                               </object>
                               <packing>
                                 <property name="left_attach">0</property>
@@ -578,10 +696,10 @@
                                 <property name="visible">True</property>
                                 <property name="can_focus">False</property>
                                 <property name="halign">start</property>
-                                <property name="xalign">0</property>
-                                <property name="label" translatable="yes">_Key:</property>
+                                <property name="label" translatable="yes" context="colorpickerdialog|label8">_Key:</property>
                                 <property name="use_underline">True</property>
-                                <property name="mnemonic_widget">keySpinbutton:%</property>
+                                <property name="mnemonic_widget">keySpinbutton</property>
+                                <property name="xalign">0</property>
                               </object>
                               <packing>
                                 <property name="left_attach">0</property>
@@ -589,11 +707,17 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkSpinButton" id="cyanSpinbutton:%">
+                              <object class="GtkSpinButton" id="cyanSpinbutton">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
-                                <property name="adjustment">adjustment3</property>
+                                <property name="activates_default">True</property>
+                                <property name="adjustment">adjustmentcyan</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="cyanSpinbutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | cyanSpinbutton">Set the Cyan color value as expressed in the CMYK color model.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">1</property>
@@ -601,11 +725,17 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkSpinButton" id="magSpinbutton:%">
+                              <object class="GtkSpinButton" id="magSpinbutton">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
-                                <property name="adjustment">adjustment3</property>
+                                <property name="activates_default">True</property>
+                                <property name="adjustment">adjustmentmag</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="magSpinbutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | magSpinbutton">Set the Magenta color value as expressed in the CMYK color model.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">1</property>
@@ -613,11 +743,17 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkSpinButton" id="yellowSpinbutton:%">
+                              <object class="GtkSpinButton" id="yellowSpinbutton">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
-                                <property name="adjustment">adjustment3</property>
+                                <property name="activates_default">True</property>
+                                <property name="adjustment">adjustmentyellow</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="yellowSpinbutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | yellowSpinbutton">Set the Yellow color value as expressed in the CMYK color model.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">1</property>
@@ -625,11 +761,17 @@
                               </packing>
                             </child>
                             <child>
-                              <object class="GtkSpinButton" id="keySpinbutton:%">
+                              <object class="GtkSpinButton" id="keySpinbutton">
                                 <property name="visible">True</property>
                                 <property name="can_focus">True</property>
                                 <property name="hexpand">True</property>
-                                <property name="adjustment">adjustment3</property>
+                                <property name="activates_default">True</property>
+                                <property name="adjustment">adjustmentkey</property>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="keySpinbutton-atkobject">
+                                    <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | keySpinbutton">Set the Black color value or key (black) as expressed in the CMYK color model.</property>
+                                  </object>
+                                </child>
                               </object>
                               <packing>
                                 <property name="left_attach">1</property>
@@ -644,7 +786,7 @@
                       <object class="GtkLabel" id="label4">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">CMYK</property>
+                        <property name="label" translatable="yes" context="colorpickerdialog|label4">CMYK</property>
                         <attributes>
                           <attribute name="weight" value="bold"/>
                         </attributes>
@@ -674,10 +816,18 @@
       </object>
     </child>
     <action-widgets>
-      <action-widget response="0">ok</action-widget>
-      <action-widget response="0">cancel</action-widget>
-      <action-widget response="0">help</action-widget>
+      <action-widget response="-5">ok</action-widget>
+      <action-widget response="-6">cancel</action-widget>
+      <action-widget response="-11">help</action-widget>
     </action-widgets>
+    <child type="titlebar">
+      <placeholder/>
+    </child>
+    <child internal-child="accessible">
+      <object class="AtkObject" id="ColorPicker-atkobject">
+        <property name="AtkObject::accessible-description" translatable="yes" context="extended tip | ColorPicker">%PRODUCTNAME lets you define custom colors using a two-dimensional graphic and numerical gradient chart of the Pick a Color dialog.</property>
+      </object>
+    </child>
   </object>
   <object class="GtkSizeGroup" id="sizegroup1">
     <widgets>

@@ -25,10 +25,10 @@
 #include <cppuhelper/implbase.hxx>
 
 #include "propertyset.hxx"
-#include "tablemodel.hxx"
+#include <celltypes.hxx>
 
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 typedef ::cppu::ImplInheritanceHelper< FastPropertySet, css::table::XCellRange, css::container::XNamed > TableRowBase;
 
@@ -46,7 +46,7 @@ public:
 
     TableRow& operator=( const TableRow& );
 
-    void insertColumns( sal_Int32 nIndex, sal_Int32 nCount, CellVector::iterator* pIter );
+    void insertColumns( sal_Int32 nIndex, sal_Int32 nCount, CellVector::iterator const * pIter );
     void removeColumns( sal_Int32 nIndex, sal_Int32 nCount );
     /// Reference to the table model containing this row.
     const TableModelRef& getModel() const;
@@ -77,7 +77,7 @@ private:
     OUString maName;
 };
 
-} }
+}
 
 #endif
 

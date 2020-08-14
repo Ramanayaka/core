@@ -25,16 +25,20 @@
  *************************************************************************/
 #include <memory>
 #include <cppuhelper/interfacecontainer.hxx>
+#include <cppuhelper/queryinterface.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <ucbhelper/getcomponentcontext.hxx>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <ucbhelper/resultset.hxx>
 #include <ucbhelper/resultsetmetadata.hxx>
+#include <ucbhelper/macros.hxx>
 
 using namespace com::sun::star;
 
 
 namespace ucbhelper_impl
 {
+
+namespace {
 
 struct PropertyInfo
 {
@@ -43,6 +47,8 @@ struct PropertyInfo
     sal_Int16   nAttributes;
     const uno::Type& (*pGetCppuType)();
 };
+
+}
 
 static const uno::Type& sal_Int32_getCppuType()
 {
@@ -54,7 +60,7 @@ static const uno::Type& sal_Bool_getCppuType()
     return cppu::UnoType<bool>::get();
 }
 
-static const PropertyInfo aPropertyTable[] =
+const PropertyInfo aPropertyTable[] =
 {
     { "IsRowCountFinal",
       1000,
@@ -76,8 +82,8 @@ static const PropertyInfo aPropertyTable[] =
 #define RESULTSET_PROPERTY_COUNT 2
 
 
-// class PropertySetInfo
 
+namespace {
 
 class PropertySetInfo :
         public cppu::OWeakObject,
@@ -88,7 +94,7 @@ class PropertySetInfo :
 
 private:
     bool queryProperty(
-        const OUString& aName, beans::Property& rProp );
+        const OUString& aName, beans::Property& rProp ) const;
 
 public:
     PropertySetInfo(
@@ -113,8 +119,12 @@ public:
     virtual sal_Bool SAL_CALL hasPropertyByName( const OUString& Name ) override;
 };
 
+}
+
 typedef cppu::OMultiTypeInterfaceContainerHelperVar<OUString>
     PropertyChangeListenerContainer;
+
+namespace {
 
 class PropertyChangeListeners : public PropertyChangeListenerContainer
 {
@@ -122,6 +132,8 @@ public:
     explicit PropertyChangeListeners( osl::Mutex& rMtx )
         : PropertyChangeListenerContainer( rMtx ) {}
 };
+
+}
 
 } // namespace ucbhelper_impl
 
@@ -143,8 +155,8 @@ struct ResultSet_Impl
     uno::Sequence< beans::Property >                m_aProperties;
     rtl::Reference< ResultSetDataSupplier >         m_xDataSupplier;
     osl::Mutex                          m_aMutex;
-    cppu::OInterfaceContainerHelper*    m_pDisposeEventListeners;
-    PropertyChangeListeners*            m_pPropertyChangeListeners;
+    std::unique_ptr<cppu::OInterfaceContainerHelper> m_pDisposeEventListeners;
+    std::unique_ptr<PropertyChangeListeners>        m_pPropertyChangeListeners;
     sal_Int32                           m_nPos;
     bool                            m_bWasNull;
     bool                            m_bAfterLast;
@@ -154,7 +166,6 @@ struct ResultSet_Impl
         const uno::Sequence< beans::Property >& rProperties,
         const rtl::Reference< ResultSetDataSupplier >& rDataSupplier,
         const uno::Reference< css::ucb::XCommandEnvironment >& rxEnv );
-    inline ~ResultSet_Impl();
 };
 
 inline ResultSet_Impl::ResultSet_Impl(
@@ -166,19 +177,10 @@ inline ResultSet_Impl::ResultSet_Impl(
   m_xEnv( rxEnv ),
   m_aProperties( rProperties ),
   m_xDataSupplier( rDataSupplier ),
-  m_pDisposeEventListeners( nullptr ),
-  m_pPropertyChangeListeners( nullptr ),
   m_nPos( 0 ), // Position is one-based. Zero means: before first element.
   m_bWasNull( false ),
   m_bAfterLast( false )
 {
-}
-
-
-inline ResultSet_Impl::~ResultSet_Impl()
-{
-    delete m_pDisposeEventListeners;
-    delete m_pPropertyChangeListeners;
 }
 
 
@@ -216,56 +218,11 @@ ResultSet::~ResultSet()
 }
 
 
-// XInterface methods.
-
-void SAL_CALL ResultSet::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-void SAL_CALL ResultSet::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-css::uno::Any SAL_CALL ResultSet::queryInterface( const css::uno::Type & rType )
-{
-    css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< lang::XTypeProvider* >(this)),
-                                               (static_cast< lang::XServiceInfo* >(this)),
-                                               (static_cast< lang::XComponent* >(this)),
-                                               (static_cast< css::ucb::XContentAccess* >(this)),
-                                               (static_cast< sdbc::XResultSet* >(this)),
-                                               (static_cast< sdbc::XResultSetMetaDataSupplier* >(this)),
-                                               (static_cast< sdbc::XRow* >(this)),
-                                               (static_cast< sdbc::XCloseable* >(this)),
-                                               (static_cast< beans::XPropertySet* >(this))
-                                               );
-    return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
-}
-
-// XTypeProvider methods.
-
-
-XTYPEPROVIDER_IMPL_9( ResultSet,
-                      lang::XTypeProvider,
-                      lang::XServiceInfo,
-                      lang::XComponent,
-                      css::ucb::XContentAccess,
-                      sdbc::XResultSet,
-                      sdbc::XResultSetMetaDataSupplier,
-                      sdbc::XRow,
-                      sdbc::XCloseable,
-                      beans::XPropertySet );
-
-
 // XServiceInfo methods.
 
 OUString SAL_CALL ResultSet::getImplementationName()
 {
-    return OUString( "ResultSet" );
+    return "ResultSet";
 }
 
 sal_Bool SAL_CALL ResultSet::supportsService( const OUString& ServiceName )
@@ -313,8 +270,8 @@ void SAL_CALL ResultSet::addEventListener(
     osl::MutexGuard aGuard( m_pImpl->m_aMutex );
 
     if ( !m_pImpl->m_pDisposeEventListeners )
-        m_pImpl->m_pDisposeEventListeners =
-            new cppu::OInterfaceContainerHelper( m_pImpl->m_aMutex );
+        m_pImpl->m_pDisposeEventListeners.reset(
+            new cppu::OInterfaceContainerHelper( m_pImpl->m_aMutex ));
 
     m_pImpl->m_pDisposeEventListeners->addInterface( Listener );
 }
@@ -521,7 +478,7 @@ sal_Bool SAL_CALL ResultSet::absolute( sal_Int32 row )
 
     If the given row number is negative, the cursor moves to an absolute row
     position with respect to the end of the result set. For example, calling
-    absolaute( -1 ) positions the cursor on the last row, absolaute( -2 )
+    absolute( -1 ) positions the cursor on the last row, absolute( -2 )
     indicates the next-to-last row, and so on.
 
     An attempt to position the cursor beyond the first/last row in the result
@@ -1253,9 +1210,6 @@ ResultSet::getPropertySetInfo()
 void SAL_CALL ResultSet::setPropertyValue( const OUString& aPropertyName,
                                            const uno::Any& )
 {
-    if ( aPropertyName.isEmpty() )
-        throw beans::UnknownPropertyException();
-
     if ( aPropertyName == "RowCount" )
     {
         // property is read-only.
@@ -1268,7 +1222,7 @@ void SAL_CALL ResultSet::setPropertyValue( const OUString& aPropertyName,
     }
     else
     {
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
     }
 }
 
@@ -1277,9 +1231,6 @@ void SAL_CALL ResultSet::setPropertyValue( const OUString& aPropertyName,
 uno::Any SAL_CALL ResultSet::getPropertyValue(
         const OUString& PropertyName )
 {
-    if ( PropertyName.isEmpty() )
-        throw beans::UnknownPropertyException();
-
     uno::Any aValue;
 
     if ( PropertyName == "RowCount" )
@@ -1292,7 +1243,7 @@ uno::Any SAL_CALL ResultSet::getPropertyValue(
     }
     else
     {
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(PropertyName);
     }
 
     return aValue;
@@ -1311,11 +1262,11 @@ void SAL_CALL ResultSet::addPropertyChangeListener(
     if ( !aPropertyName.isEmpty() &&
          aPropertyName != "RowCount" &&
          aPropertyName != "IsRowCountFinal" )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     if ( !m_pImpl->m_pPropertyChangeListeners )
-        m_pImpl->m_pPropertyChangeListeners
-            = new PropertyChangeListeners( m_pImpl->m_aMutex );
+        m_pImpl->m_pPropertyChangeListeners.reset(
+             new PropertyChangeListeners( m_pImpl->m_aMutex ));
 
     m_pImpl->m_pPropertyChangeListeners->addInterface(
                                                 aPropertyName, xListener );
@@ -1332,7 +1283,7 @@ void SAL_CALL ResultSet::removePropertyChangeListener(
     if ( !aPropertyName.isEmpty() &&
          aPropertyName != "RowCount" &&
          aPropertyName != "IsRowCountFinal" )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     if ( m_pImpl->m_pPropertyChangeListeners )
         m_pImpl->m_pPropertyChangeListeners->removeInterface(
@@ -1362,7 +1313,7 @@ void SAL_CALL ResultSet::removeVetoableChangeListener(
 // Non-interface methods.
 
 
-void ResultSet::propertyChanged( const beans::PropertyChangeEvent& rEvt )
+void ResultSet::propertyChanged( const beans::PropertyChangeEvent& rEvt ) const
 {
     if ( !m_pImpl->m_pPropertyChangeListeners )
         return;
@@ -1427,14 +1378,14 @@ void ResultSet::rowCountFinal()
 }
 
 
-const uno::Sequence< beans::Property >& ResultSet::getProperties()
+const uno::Sequence< beans::Property >& ResultSet::getProperties() const
 {
     return m_pImpl->m_aProperties;
 }
 
 
 const uno::Reference< css::ucb::XCommandEnvironment >&
-ResultSet::getEnvironment()
+ResultSet::getEnvironment() const
 {
     return m_pImpl->m_xEnv;
 }
@@ -1453,22 +1404,22 @@ PropertySetInfo::PropertySetInfo(
     : m_pProps( new uno::Sequence< beans::Property >( nProps ) )
 {
 
-    if ( nProps )
+    if ( !nProps )
+        return;
+
+    const PropertyInfo* pEntry = pProps;
+    beans::Property* pProperties = m_pProps->getArray();
+
+    for ( sal_Int32 n = 0; n < nProps; ++n )
     {
-        const PropertyInfo* pEntry = pProps;
-        beans::Property* pProperties = m_pProps->getArray();
+        beans::Property& rProp = pProperties[ n ];
 
-        for ( sal_Int32 n = 0; n < nProps; ++n )
-        {
-            beans::Property& rProp = pProperties[ n ];
+        rProp.Name       = OUString::createFromAscii( pEntry->pName );
+        rProp.Handle     = pEntry->nHandle;
+        rProp.Type       = pEntry->pGetCppuType();
+        rProp.Attributes = pEntry->nAttributes;
 
-            rProp.Name       = OUString::createFromAscii( pEntry->pName );
-            rProp.Handle     = pEntry->nHandle;
-            rProp.Type       = pEntry->pGetCppuType();
-            rProp.Attributes = pEntry->nAttributes;
-
-            pEntry++;
-        }
+        pEntry++;
     }
 }
 
@@ -1491,8 +1442,8 @@ css::uno::Any SAL_CALL PropertySetInfo::queryInterface(
                                 const css::uno::Type & rType )
 {
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< lang::XTypeProvider* >(this)),
-                                               (static_cast< beans::XPropertySetInfo* >(this))
+                                               static_cast< lang::XTypeProvider* >(this),
+                                               static_cast< beans::XPropertySetInfo* >(this)
                                                );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -1523,7 +1474,7 @@ beans::Property SAL_CALL PropertySetInfo::getPropertyByName(
     if ( queryProperty( aName, aProp ) )
         return aProp;
 
-    throw beans::UnknownPropertyException();
+    throw beans::UnknownPropertyException(aName);
 }
 
 
@@ -1537,7 +1488,7 @@ sal_Bool SAL_CALL PropertySetInfo::hasPropertyByName(
 
 
 bool PropertySetInfo::queryProperty(
-    const OUString& aName, beans::Property& rProp )
+    const OUString& aName, beans::Property& rProp ) const
 {
     sal_Int32 nCount = m_pProps->getLength();
     const beans::Property* pProps = m_pProps->getConstArray();

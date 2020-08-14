@@ -28,20 +28,20 @@
 #include <rtl/ustrbuf.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 
-#include <com/sun/star/drawing/XShape.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/awt/Point.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-
 #include <map>
-#include <xmloff/xmlprmap.hxx>
-#include <xmloff/xmlexppr.hxx>
 #include <xmloff/animexp.hxx>
 #include <xmloff/families.hxx>
 #include <xmloff/txtparae.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
-#include <xmloff/table/XMLTableExport.hxx>
+namespace com::sun::star::awt { struct Point; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::drawing { class XShapes; }
+
+class XMLTableExport;
+class SvXMLAttributeList;
+class XMLPropertyHandlerFactory;
 
 // shape export features are bits used for the nFeature
 // parameter of XMLShapeExport::exportShape
@@ -52,9 +52,7 @@ enum class XMLShapeExportFlags {
      POSITION = 0x0003,
      WIDTH    = 0x0004,
      HEIGHT   = 0x0008,
-     SIZE     = 0x000c,
-// when you set this flag a chart does NOT export its own data as table element
-     NO_CHART_DATA = 0x0010,
+     SIZE     = WIDTH | HEIGHT,
 // When setting the flag below no ignorableWhiteSpace will be called around
 // the drawing object elements
      NO_WS    = 0x0020,
@@ -63,7 +61,7 @@ enum class XMLShapeExportFlags {
 };
 namespace o3tl
 {
-    template<> struct typed_flags<XMLShapeExportFlags> : is_typed_flags<XMLShapeExportFlags, 0x7f> {};
+    template<> struct typed_flags<XMLShapeExportFlags> : is_typed_flags<XMLShapeExportFlags, 0x6f> {};
 }
 
 #define SEF_DEFAULT         XMLShapeExportFlags::POSITION|XMLShapeExportFlags::SIZE
@@ -132,12 +130,12 @@ struct ImplXMLShapeExportInfo
 {
     OUString   msStyleName;
     OUString   msTextStyleName;
-    sal_Int32       mnFamily;
+    XmlStyleFamily  mnFamily;
     XmlShapeType    meShapeType;
 
     css::uno::Reference< css::drawing::XShape > xCustomShapeReplacement;
 
-    ImplXMLShapeExportInfo() : mnFamily( XML_STYLE_FAMILY_SD_GRAPHICS_ID ), meShapeType( XmlShapeTypeNotYetSet ) {}
+    ImplXMLShapeExportInfo() : mnFamily( XmlStyleFamily::SD_GRAPHICS_ID ), meShapeType( XmlShapeTypeNotYetSet ) {}
 };
 
 /** a vector for shape style and type cache information */
@@ -160,14 +158,11 @@ class XMLOFF_DLLPUBLIC XMLShapeExport : public salhelper::SimpleReferenceObject
 private:
 
     SvXMLExport&                                mrExport;
-    rtl::Reference< XMLPropertyHandlerFactory >   mxSdPropHdlFactory;
     rtl::Reference< SvXMLExportPropertyMapper >   mxPropertySetMapper;
     rtl::Reference< XMLAnimationsExporter >       mxAnimationsExporter;
     ShapesInfos                                 maShapesInfos;
     ShapesInfos::iterator                       maCurrentShapesIter;
     bool                                        mbExportLayer;
-    ImplXMLShapeExportInfoVector                maShapeInfos;
-    ImplXMLShapeExportInfoVector::iterator      maCurrentInfo;
     OUString                                    msPresentationStylePrefix;
 
     // #88546# possibility to switch progress bar handling on/off
@@ -182,28 +177,6 @@ private:
 
     SAL_DLLPRIVATE const rtl::Reference< SvXMLExportPropertyMapper >& GetPropertySetMapper() const { return mxPropertySetMapper; }
 
-    const OUString                         msZIndex;
-    const OUString                         msPrintable;
-    const OUString                         msVisible;
-
-    const OUString                         msModel;
-    const OUString                         msStartShape;
-    const OUString                         msEndShape;
-    const OUString                         msOnClick;
-    const OUString                         msEventType;
-    const OUString                         msPresentation;
-    const OUString                         msMacroName;
-    const OUString                         msScript;
-    const OUString                         msLibrary;
-    const OUString                         msClickAction;
-    const OUString                         msBookmark;
-    const OUString                         msEffect;
-    const OUString                         msPlayFull;
-    const OUString                         msVerb;
-    const OUString                         msSoundURL;
-    const OUString                         msSpeed;
-    const OUString                         msStarBasic;
-
     OUStringBuffer msBuffer;
 
     SAL_DLLPRIVATE void ImpCalcShapeType(const css::uno::Reference< css::drawing::XShape >& xShape, XmlShapeType& eShapeType);
@@ -211,12 +184,14 @@ private:
     SAL_DLLPRIVATE void ImpExportNewTrans(const css::uno::Reference< css::beans::XPropertySet >& xPropSet, XMLShapeExportFlags nFeatures, css::awt::Point* pRefPoint);
     SAL_DLLPRIVATE void ImpExportNewTrans_GetB2DHomMatrix(::basegfx::B2DHomMatrix& rMatrix, const css::uno::Reference< css::beans::XPropertySet >& xPropSet);
     SAL_DLLPRIVATE static void ImpExportNewTrans_DecomposeAndRefPoint(const ::basegfx::B2DHomMatrix& rMat, ::basegfx::B2DTuple& rTRScale, double& fTRShear, double& fTRRotate, ::basegfx::B2DTuple& rTRTranslate, css::awt::Point* pRefPoint);
-    SAL_DLLPRIVATE void ImpExportNewTrans_FeaturesAndWrite(::basegfx::B2DTuple& rTRScale, double fTRShear, double fTRRotate, ::basegfx::B2DTuple& rTRTranslate, const XMLShapeExportFlags nFeatures);
+    SAL_DLLPRIVATE void ImpExportNewTrans_FeaturesAndWrite(::basegfx::B2DTuple const & rTRScale, double fTRShear, double fTRRotate, ::basegfx::B2DTuple const & rTRTranslate, const XMLShapeExportFlags nFeatures);
     SAL_DLLPRIVATE bool ImpExportPresentationAttributes( const css::uno::Reference< css::beans::XPropertySet >& xPropSet, const OUString& rClass );
     SAL_DLLPRIVATE void ImpExportText( const css::uno::Reference< css::drawing::XShape >& xShape, TextPNS eExtensionNS = TextPNS::ODF );
     SAL_DLLPRIVATE void ImpExportEvents( const css::uno::Reference< css::drawing::XShape >& xShape );
     SAL_DLLPRIVATE void ImpExportDescription( const css::uno::Reference< css::drawing::XShape >& xShape ); // #i68101#
     SAL_DLLPRIVATE void ImpExportGluePoints( const css::uno::Reference< css::drawing::XShape >& xShape );
+    SAL_DLLPRIVATE void ImpExportSignatureLine(const css::uno::Reference<css::drawing::XShape>& xShape);
+    SAL_DLLPRIVATE void ImpExportQRCode(const css::uno::Reference<css::drawing::XShape>& xShape);
 
     // single shape exporters
     SAL_DLLPRIVATE void ImpExportGroupShape( const css::uno::Reference< css::drawing::XShape >& xShape, XMLShapeExportFlags nFeatures = SEF_DEFAULT, css::awt::Point* pRefPoint = nullptr );
@@ -230,7 +205,7 @@ private:
     SAL_DLLPRIVATE void ImpExportChartShape(const css::uno::Reference< css::drawing::XShape >& xShape, XmlShapeType eShapeType, XMLShapeExportFlags nFeatures = SEF_DEFAULT, css::awt::Point* pRefPoint = nullptr, SvXMLAttributeList* pAttrList = nullptr );
     SAL_DLLPRIVATE void ImpExportControlShape(const css::uno::Reference< css::drawing::XShape >& xShape, XMLShapeExportFlags nFeatures = SEF_DEFAULT,  css::awt::Point* pRefPoint = nullptr );
     SAL_DLLPRIVATE void ImpExportConnectorShape(const css::uno::Reference< css::drawing::XShape >& xShape, XMLShapeExportFlags nFeatures = SEF_DEFAULT, css::awt::Point* pRefPoint = nullptr );
-    SAL_DLLPRIVATE void ImpExportMeasureShape(const css::uno::Reference< css::drawing::XShape >& xShape, XMLShapeExportFlags nFeatures = SEF_DEFAULT,  css::awt::Point* pRefPoint = nullptr );
+    SAL_DLLPRIVATE void ImpExportMeasureShape(const css::uno::Reference< css::drawing::XShape >& xShape, XMLShapeExportFlags nFeatures = SEF_DEFAULT,  css::awt::Point const * pRefPoint = nullptr );
     SAL_DLLPRIVATE void ImpExportOLE2Shape(const css::uno::Reference< css::drawing::XShape >& xShape, XmlShapeType eShapeType, XMLShapeExportFlags nFeatures = SEF_DEFAULT, css::awt::Point* pRefPoint = nullptr, SvXMLAttributeList* pAttrList = nullptr );
     SAL_DLLPRIVATE void ImpExportPageShape(const css::uno::Reference< css::drawing::XShape >& xShape, XmlShapeType eShapeType, XMLShapeExportFlags nFeatures = SEF_DEFAULT, css::awt::Point* pRefPoint = nullptr );
     SAL_DLLPRIVATE void ImpExportCaptionShape(const css::uno::Reference< css::drawing::XShape >& xShape, XMLShapeExportFlags nFeatures = SEF_DEFAULT, css::awt::Point* pRefPoint = nullptr );

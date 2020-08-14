@@ -19,14 +19,12 @@
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
-#include <uno/lbnames.h>
 #include "webdavprovider.hxx"
 
 using namespace com::sun::star;
 
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL ucpdav1_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * /*pRegistryKey*/ )
+extern "C" SAL_DLLPUBLIC_EXPORT void * ucpdav1_component_getFactory(
+    const char * pImplName, void * pServiceManager, void * /*pRegistryKey*/ )
 {
     void * pRet = nullptr;
 

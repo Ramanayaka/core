@@ -20,32 +20,79 @@
 #include "ParaLineSpacingControl.hxx"
 
 #include <svx/ParaLineSpacingPopup.hxx>
-#include <unotools/viewoptions.hxx>
 #include <vcl/toolbox.hxx>
 
 using namespace svx;
 
-SFX_IMPL_TOOLBOX_CONTROL(ParaLineSpacingPopup, SvxLineSpacingItem);
-
-ParaLineSpacingPopup::ParaLineSpacingPopup(sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx)
-    : SfxToolBoxControl(nSlotId, nId, rTbx)
-{
-    rTbx.SetItemBits(nId, ToolBoxItemBits::DROPDOWNONLY | rTbx.GetItemBits(nId));
-}
-
-ParaLineSpacingPopup::~ParaLineSpacingPopup()
+SvxLineSpacingToolBoxControl::SvxLineSpacingToolBoxControl(const css::uno::Reference<css::uno::XComponentContext>& rContext)
+    : PopupWindowController(rContext, nullptr, OUString())
 {
 }
 
-VclPtr<SfxPopupWindow> ParaLineSpacingPopup::CreatePopupWindow()
+SvxLineSpacingToolBoxControl::~SvxLineSpacingToolBoxControl() {}
+
+void SvxLineSpacingToolBoxControl::initialize( const css::uno::Sequence< css::uno::Any >& rArguments )
 {
-    VclPtr<ParaLineSpacingControl> pControl = VclPtr<ParaLineSpacingControl>::Create(GetSlotId());
+    PopupWindowController::initialize(rArguments);
 
-    pControl->StartPopupMode(&GetToolBox(), FloatWinPopupFlags::GrabFocus);
+    if (m_pToolbar)
+    {
+        mxPopoverContainer.reset(new ToolbarPopupContainer(m_pToolbar));
+        m_pToolbar->set_item_popover(m_aCommandURL.toUtf8(), mxPopoverContainer->getTopLevel());
+    }
 
-    SetPopupWindow(pControl);
+    ToolBox* pToolBox = nullptr;
+    sal_uInt16 nId = 0;
+    if (getToolboxId(nId, &pToolBox))
+        pToolBox->SetItemBits(nId, ToolBoxItemBits::DROPDOWNONLY | pToolBox->GetItemBits(nId));
+}
 
-    return pControl;
+void SAL_CALL SvxLineSpacingToolBoxControl::execute(sal_Int16 /*KeyModifier*/)
+{
+    if (m_pToolbar)
+    {
+        // Toggle the popup also when toolbutton is activated
+        const OString aId(m_aCommandURL.toUtf8());
+        m_pToolbar->set_menu_item_active(aId, !m_pToolbar->get_menu_item_active(aId));
+    }
+    else
+    {
+        // Open the popup also when Enter key is pressed.
+        createPopupWindow();
+    }
+}
+
+std::unique_ptr<WeldToolbarPopup> SvxLineSpacingToolBoxControl::weldPopupWindow()
+{
+    return std::make_unique<ParaLineSpacingControl>(this, m_pToolbar);
+}
+
+VclPtr<vcl::Window> SvxLineSpacingToolBoxControl::createVclPopupWindow( vcl::Window* pParent )
+{
+    mxInterimPopover = VclPtr<InterimToolbarPopup>::Create(getFrameInterface(), pParent,
+        std::make_unique<ParaLineSpacingControl>(this, pParent->GetFrameWeld()));
+
+    mxInterimPopover->Show();
+
+    return mxInterimPopover;
+}
+
+OUString SvxLineSpacingToolBoxControl::getImplementationName()
+{
+    return "com.sun.star.comp.svx.LineSpacingToolBoxControl";
+}
+
+css::uno::Sequence<OUString> SvxLineSpacingToolBoxControl::getSupportedServiceNames()
+{
+    return { "com.sun.star.frame.ToolbarController" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_svx_LineSpacingToolBoxControl_get_implementation(
+    css::uno::XComponentContext* rContext,
+    css::uno::Sequence<css::uno::Any> const & )
+{
+    return cppu::acquire( new SvxLineSpacingToolBoxControl( rContext ) );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

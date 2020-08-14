@@ -22,16 +22,15 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <svx/svxdllapi.h>
-#include <vcl/vclptr.hxx>
+#include <vcl/window.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace accessibility { class XAccessibleComponent; }
-    namespace document { class XEventBroadcaster; }
+    namespace document { class XShapeEventBroadcaster; }
     namespace frame { class XController; }
-} } }
+}
 
 class SdrView;
-namespace vcl { class Window; }
 
 namespace accessibility {
 
@@ -56,7 +55,7 @@ class SVX_DLLPUBLIC AccessibleShapeTreeInfo
 {
 public:
     /** Use this constructor to create an empty object that is filled later
-        with more meaningfull data.
+        with more meaningful data.
     */
     AccessibleShapeTreeInfo();
 
@@ -90,7 +89,7 @@ public:
             reference may be passed to unset the broadcaster
     */
     void SetModelBroadcaster (const css::uno::Reference<
-        css::document::XEventBroadcaster>& rxModelBroadcaster);
+        css::document::XShapeEventBroadcaster>& rxModelBroadcaster);
 
     /** Return the current model broadcaster.
         @return
@@ -98,7 +97,7 @@ public:
             been set or has been set to an empty reference.
     */
     const css::uno::Reference<
-        css::document::XEventBroadcaster>&
+        css::document::XShapeEventBroadcaster>&
         GetModelBroadcaster() const { return mxModelBroadcaster;}
 
     /** Set the view that will be used to construct SvxTextEditSources which
@@ -135,13 +134,19 @@ public:
     /** Set the window that is used to construct SvxTextEditSources which in
         turn is used to create accessible edit engines.
     */
-    void SetWindow (vcl::Window* pWindow);
+    void SetDevice(OutputDevice* pWindow);
 
     /** Return the current Window.
         @return
             The returned value may be NULL.
     */
-    vcl::Window* GetWindow() const { return mpWindow;}
+    vcl::Window* GetWindow() const
+    {
+        if (mpWindow && mpWindow->GetOutDevType() == OUTDEV_WINDOW)
+            return static_cast<vcl::Window*>(mpWindow.get());
+        return nullptr;
+    }
+    OutputDevice* GetDevice() const { return mpWindow;}
 
     /** The view forwarder allows the transformation between internal
         and pixel coordinates and can be asked for the visible area.
@@ -168,7 +173,7 @@ private:
         This once was named mxControllerBroadcaster.
     */
     css::uno::Reference<
-        css::document::XEventBroadcaster> mxModelBroadcaster;
+        css::document::XShapeEventBroadcaster> mxModelBroadcaster;
 
     /** This view is necessary to construct an SvxTextEditSource which in
         turn is used to create an accessible edit engine.
@@ -183,7 +188,7 @@ private:
     /** This window is necessary to construct an SvxTextEditSource which in
         turn is used to create an accessible edit engine.
     */
-    VclPtr<vcl::Window> mpWindow;
+    VclPtr<OutputDevice> mpWindow;
 
     /** The view forwarder allows the transformation between internal
         and pixel coordinates and can be asked for the visible area.

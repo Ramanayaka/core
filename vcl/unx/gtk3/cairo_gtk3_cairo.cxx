@@ -7,17 +7,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <utility>
-
 #include "cairo_gtk3_cairo.hxx"
 
 #include <vcl/sysdata.hxx>
-#include <vcl/bitmap.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/window.hxx>
-#include <basegfx/vector/b2isize.hxx>
 
-#include "unx/gtk/gtkgdi.hxx"
+#include <unx/gtk/gtkgdi.hxx>
+
+namespace
+{
+    Size get_surface_size(cairo_surface_t *surface)
+    {
+        cairo_t *cr = cairo_create(surface);
+        double x1, x2, y1, y2;
+        cairo_clip_extents(cr, &x1, &y1, &x2, &y2);
+        cairo_destroy(cr);
+        return Size(x2 - x1, y2 - y1);
+    }
+}
 
 namespace cairo
 {
@@ -88,12 +95,11 @@ namespace cairo
      **/
     SurfaceSharedPtr Gtk3Surface::getSimilar(int cairo_content_type, int width, int height ) const
     {
-        return SurfaceSharedPtr(
-            new Gtk3Surface(
+        return std::make_shared<Gtk3Surface>(
                             CairoSurfaceSharedPtr(
                                 cairo_surface_create_similar( mpSurface.get(),
                                     static_cast<cairo_content_t>(cairo_content_type), width, height ),
-                                &cairo_surface_destroy )));
+                                &cairo_surface_destroy ));
     }
 
     void Gtk3Surface::flush() const
@@ -108,9 +114,15 @@ namespace cairo
 
     VclPtr<VirtualDevice> Gtk3Surface::createVirtualDevice() const
     {
-        return VclPtrInstance<VirtualDevice>(nullptr, Size(1, 1), DeviceFormat::DEFAULT);
-    }
+        SystemGraphicsData aSystemGraphicsData;
 
+        aSystemGraphicsData.nSize = sizeof(SystemGraphicsData);
+        aSystemGraphicsData.pSurface = mpSurface.get();
+
+        return VclPtr<VirtualDevice>::Create(aSystemGraphicsData,
+                              get_surface_size(mpSurface.get()),
+                              DeviceFormat::DEFAULT);
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

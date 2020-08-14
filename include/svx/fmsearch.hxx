@@ -20,26 +20,18 @@
 #ifndef INCLUDED_SVX_FMSEARCH_HXX
 #define INCLUDED_SVX_FMSEARCH_HXX
 
-#include <com/sun/star/sdbc/XResultSet.hpp>
-#include <comphelper/uno3.hxx>
 #include <rtl/ustring.hxx>
 #include <svx/svxdllapi.h>
-#include <vcl/button.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace util {
-        class XNumberFormatsSupplier;
-    }
-}}}
+#include <com/sun/star/uno/Reference.hxx>
+
+#include <vector>
+
+namespace com::sun::star::sdbc { class XResultSet; }
 
 // Helper methods
 
-SVX_DLLPUBLIC bool IsSearchableControl( const css::uno::Reference< css::uno::XInterface>& _xControl,
+SVXCORE_DLLPUBLIC bool IsSearchableControl( const css::uno::Reference< css::uno::XInterface>& _xControl,
                                             OUString* pCurrentText = nullptr);
     // check if the control has one of the interfaces we can use for searching
     // *pCurrentText will be filled with the current text of the control (as used when searching this control)

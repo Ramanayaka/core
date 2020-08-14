@@ -40,7 +40,7 @@ public:
     };
 
                     explicit DateTime( DateTimeInitEmpty ) : Date( Date::EMPTY ), Time( Time::EMPTY ) {}
-                    explicit DateTime( DateTimeInitSystem ) : Date( Date::SYSTEM ), Time( Time::SYSTEM ) {}
+                    explicit DateTime( DateTimeInitSystem );
                     DateTime( const DateTime& rDateTime ) :
                         Date( rDateTime ), Time( rDateTime ) {}
                     DateTime( const Date& rDate ) : Date( rDate ), Time(0) {}
@@ -80,13 +80,7 @@ public:
     void            ConvertToUTC()       { *this -= Time::GetUTCOffset(); }
     void            ConvertToLocalTime() { *this += Time::GetUTCOffset(); }
 
-    DateTime&       operator +=( sal_Int32 nDays )
-                        { Date::operator+=( nDays ); return *this; }
-    DateTime&       operator -=( sal_Int32 nDays )
-                        { Date::operator-=( nDays ); return *this; }
-    DateTime&       operator +=( double fTimeInDays );
-    DateTime&       operator -=( double fTimeInDays )
-                        { return operator+=( -fTimeInDays ); }
+    void            AddTime( double fTimeInDays );
     DateTime&       operator +=( const tools::Time& rTime );
     DateTime&       operator -=( const tools::Time& rTime );
 
@@ -104,8 +98,12 @@ public:
     DateTime&       operator =( const DateTime& rDateTime );
     DateTime&       operator =( const css::util::DateTime& rUDateTime );
 
-    void            GetWin32FileDateTime( sal_uInt32 & rLower, sal_uInt32 & rUpper );
+    void            GetWin32FileDateTime( sal_uInt32 & rLower, sal_uInt32 & rUpper ) const;
     static DateTime CreateFromWin32FileDateTime( sal_uInt32 rLower, sal_uInt32 rUpper );
+
+    /// Creates DateTime given a unix time, which is the number of seconds
+    /// elapsed since Jan 1st, 1970.
+    static DateTime CreateFromUnixTime( const double fSecondsSinceEpoch );
 };
 
 inline DateTime& DateTime::operator =( const DateTime& rDateTime )

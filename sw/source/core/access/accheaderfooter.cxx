@@ -18,21 +18,19 @@
  */
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <unotools/accessiblestatesethelper.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <vcl/svapp.hxx>
 #include <hffrm.hxx>
 #include "accheaderfooter.hxx"
-#include "access.hrc"
+#include <strings.hrc>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::accessibility;
 
-const sal_Char sImplementationNameHeader[] = "com.sun.star.comp.Writer.SwAccessibleHeaderView";
-const sal_Char sImplementationNameFooter[] = "com.sun.star.comp.Writer.SwAccessibleFooterView";
+const char sImplementationNameHeader[] = "com.sun.star.comp.Writer.SwAccessibleHeaderView";
+const char sImplementationNameFooter[] = "com.sun.star.comp.Writer.SwAccessibleFooterView";
 
 SwAccessibleHeaderFooter::SwAccessibleHeaderFooter(
         std::shared_ptr<SwAccessibleMap> const& pInitMap,
@@ -62,21 +60,21 @@ OUString SAL_CALL SwAccessibleHeaderFooter::getAccessibleDescription()
 
     ThrowIfDisposed();
 
-    sal_uInt16 nResId = AccessibleRole::HEADER == GetRole()
+    const char* pResId = AccessibleRole::HEADER == GetRole()
         ? STR_ACCESS_HEADER_DESC
         : STR_ACCESS_FOOTER_DESC ;
 
     OUString sArg( GetFormattedPageNumber() );
 
-    return GetResource( nResId, &sArg );
+    return GetResource(pResId, &sArg);
 }
 
 OUString SAL_CALL SwAccessibleHeaderFooter::getImplementationName()
 {
     if( AccessibleRole::HEADER == GetRole() )
-        return OUString(sImplementationNameHeader);
+        return sImplementationNameHeader;
     else
-        return OUString(sImplementationNameFooter);
+        return sImplementationNameFooter;
 }
 
 sal_Bool SAL_CALL SwAccessibleHeaderFooter::supportsService(const OUString& sTestServiceName)
@@ -86,14 +84,8 @@ sal_Bool SAL_CALL SwAccessibleHeaderFooter::supportsService(const OUString& sTes
 
 Sequence< OUString > SAL_CALL SwAccessibleHeaderFooter::getSupportedServiceNames()
 {
-    Sequence< OUString > aRet(2);
-    OUString* pArray = aRet.getArray();
-    if( AccessibleRole::HEADER == GetRole() )
-        pArray[0] = "com.sun.star.text.AccessibleHeaderView";
-    else
-        pArray[0] = "com.sun.star.text.AccessibleFooterView";
-    pArray[1] = sAccessibleServiceName;
-    return aRet;
+    return { (AccessibleRole::HEADER == GetRole())?OUString("com.sun.star.text.AccessibleHeaderView"):OUString("com.sun.star.text.AccessibleFooterView"),
+             sAccessibleServiceName };
 }
 
 Sequence< sal_Int8 > SAL_CALL SwAccessibleHeaderFooter::getImplementationId()

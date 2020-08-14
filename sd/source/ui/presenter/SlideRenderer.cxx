@@ -18,10 +18,8 @@
  */
 
 #include "SlideRenderer.hxx"
-#include "facreg.hxx"
-#include "sdpage.hxx"
+#include <sdpage.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <com/sun/star/rendering/XBitmapCanvas.hpp>
 #include <vcl/svapp.hxx>
 #include <cppcanvas/vclfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -29,7 +27,7 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace presenter {
+namespace sd::presenter {
 
 //===== SlideRenderer ==========================================================
 
@@ -53,7 +51,7 @@ void SAL_CALL SlideRenderer::initialize (const Sequence<Any>& rArguments)
 {
     ThrowIfDisposed();
 
-    if (rArguments.getLength() != 0)
+    if (rArguments.hasElements())
     {
         throw RuntimeException("SlideRenderer: invalid number of arguments",
                 static_cast<XWeak*>(this));
@@ -62,7 +60,7 @@ void SAL_CALL SlideRenderer::initialize (const Sequence<Any>& rArguments)
 
 OUString SlideRenderer::getImplementationName()
 {
-    return OUString("com.sun.star.comp.Draw.SlideRenderer");
+    return "com.sun.star.comp.Draw.SlideRenderer";
 }
 
 sal_Bool SlideRenderer::supportsService(OUString const & ServiceName)
@@ -100,7 +98,7 @@ Reference<rendering::XBitmap> SlideRenderer::createPreviewForCanvas (
 
     cppcanvas::CanvasSharedPtr pCanvas (
         cppcanvas::VCLFactory::createCanvas(rxCanvas));
-    if (pCanvas.get() != nullptr)
+    if (pCanvas)
         return cppcanvas::VCLFactory::createBitmap(
             pCanvas,
             CreatePreview(rxSlide, rMaximalSize, nSuperSampleFactor))->getUNOBitmap();
@@ -195,10 +193,10 @@ void SlideRenderer::ThrowIfDisposed()
     }
 }
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_SlideRenderer_get_implementation(css::uno::XComponentContext*,
                                                         css::uno::Sequence<css::uno::Any> const &)
 {

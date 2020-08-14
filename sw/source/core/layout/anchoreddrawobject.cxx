@@ -32,8 +32,13 @@
 #include <IDocumentState.hxx>
 #include <txtfly.hxx>
 #include <viewimp.hxx>
+#include <textboxhelper.hxx>
+#include <unomid.h>
+#include <svx/svdoashp.hxx>
 
 using namespace ::com::sun::star;
+
+namespace {
 
 /// helper class for correct notification due to the positioning of
 /// the anchored drawing object
@@ -46,10 +51,12 @@ class SwPosNotify
 
     public:
         explicit SwPosNotify( SwAnchoredDrawObject* _pAnchoredDrawObj );
-        ~SwPosNotify();
+        ~SwPosNotify() COVERITY_NOEXCEPT_FALSE;
         // #i32795#
-        Point LastObjPos() const;
+        Point const & LastObjPos() const;
 };
+
+}
 
 SwPosNotify::SwPosNotify( SwAnchoredDrawObject* _pAnchoredDrawObj ) :
     mpAnchoredDrawObj( _pAnchoredDrawObj )
@@ -59,14 +66,14 @@ SwPosNotify::SwPosNotify( SwAnchoredDrawObject* _pAnchoredDrawObj ) :
     mpOldPageFrame = mpAnchoredDrawObj->GetPageFrame();
 }
 
-SwPosNotify::~SwPosNotify()
+SwPosNotify::~SwPosNotify() COVERITY_NOEXCEPT_FALSE
 {
     if ( maOldObjRect != mpAnchoredDrawObj->GetObjRect() )
     {
         if( maOldObjRect.HasArea() && mpOldPageFrame )
         {
             mpAnchoredDrawObj->NotifyBackground( mpOldPageFrame, maOldObjRect,
-                                                 PREP_FLY_LEAVE );
+                                                 PrepareHint::FlyFrameLeave );
         }
         SwRect aNewObjRect( mpAnchoredDrawObj->GetObjRect() );
         if( aNewObjRect.HasArea() )
@@ -75,7 +82,7 @@ SwPosNotify::~SwPosNotify()
             SwPageFrame* pNewPageFrame = mpAnchoredDrawObj->GetPageFrame();
             if( pNewPageFrame )
                 mpAnchoredDrawObj->NotifyBackground( pNewPageFrame, aNewObjRect,
-                                                     PREP_FLY_ARRIVE );
+                                                     PrepareHint::FlyFrameArrive );
         }
 
         ::ClrContourCache( mpAnchoredDrawObj->GetDrawObj() );
@@ -88,7 +95,7 @@ SwPosNotify::~SwPosNotify()
         if ( mpAnchoredDrawObj->GetAnchorFrame()->IsTextFrame() &&
              mpOldPageFrame == mpAnchoredDrawObj->GetAnchorFrame()->FindPageFrame() )
         {
-            mpAnchoredDrawObj->AnchorFrame()->Prepare( PREP_FLY_LEAVE );
+            mpAnchoredDrawObj->AnchorFrame()->Prepare( PrepareHint::FlyFrameLeave );
         }
 
         // indicate a restart of the layout process
@@ -107,7 +114,7 @@ SwPosNotify::~SwPosNotify()
             // to wrap around it.
             mpAnchoredDrawObj->NotifyBackground( mpAnchoredDrawObj->GetPageFrame(),
                                     mpAnchoredDrawObj->GetObjRectWithSpaces(),
-                                    PREP_FLY_ARRIVE );
+                                    PrepareHint::FlyFrameArrive );
             // invalidate position of anchor frame in order to force
             // a re-format of the anchor frame, which also causes a
             // re-format of the invalid previous frames of the anchor frame.
@@ -123,10 +130,12 @@ SwPosNotify::~SwPosNotify()
 }
 
 // --> #i32795#
-Point SwPosNotify::LastObjPos() const
+Point const & SwPosNotify::LastObjPos() const
 {
     return maOldObjRect.Pos();
 }
+
+namespace {
 
 // #i32795#
 /// helper class for oscillation control on object positioning
@@ -135,30 +144,20 @@ class SwObjPosOscillationControl
     private:
         const SwAnchoredDrawObject* mpAnchoredDrawObj;
 
-        std::vector<Point*> maObjPositions;
+        std::vector<Point> maObjPositions;
 
     public:
         explicit SwObjPosOscillationControl( const SwAnchoredDrawObject& _rAnchoredDrawObj );
-        ~SwObjPosOscillationControl();
 
         bool OscillationDetected();
 };
+
+}
 
 SwObjPosOscillationControl::SwObjPosOscillationControl(
                                 const SwAnchoredDrawObject& _rAnchoredDrawObj )
     : mpAnchoredDrawObj( &_rAnchoredDrawObj )
 {
-}
-
-SwObjPosOscillationControl::~SwObjPosOscillationControl()
-{
-    while ( !maObjPositions.empty() )
-    {
-        Point* pPos = maObjPositions.back();
-        delete pPos;
-
-        maObjPositions.pop_back();
-    }
 }
 
 bool SwObjPosOscillationControl::OscillationDetected()
@@ -172,22 +171,19 @@ bool SwObjPosOscillationControl::OscillationDetected()
     }
     else
     {
-        Point* pNewObjPos = new Point( mpAnchoredDrawObj->GetObjRect().Pos() );
-        for ( std::vector<Point*>::iterator aObjPosIter = maObjPositions.begin();
-              aObjPosIter != maObjPositions.end();
-              ++aObjPosIter )
+        Point aNewObjPos = mpAnchoredDrawObj->GetObjRect().Pos();
+        for ( auto const & pt : maObjPositions )
         {
-            if ( *(pNewObjPos) == *(*aObjPosIter) )
+            if ( aNewObjPos == pt )
             {
                 // position already occurred -> oscillation
                 bOscillationDetected = true;
-                delete pNewObjPos;
                 break;
             }
         }
         if ( !bOscillationDetected )
         {
-            maObjPositions.push_back( pNewObjPos );
+            maObjPositions.push_back( aNewObjPos );
         }
     }
 
@@ -198,8 +194,6 @@ bool SwObjPosOscillationControl::OscillationDetected()
 SwAnchoredDrawObject::SwAnchoredDrawObject() :
     SwAnchoredObject(),
     mbValidPos( false ),
-    // --> #i34748#
-    mpLastObjRect( nullptr ),
     mbNotYetAttachedToAnchorFrame( true ),
     // --> #i28749#
     mbNotYetPositioned( true ),
@@ -237,7 +231,7 @@ bool SwAnchoredDrawObject::IsOutsidePage() const
     {
         SwRect aTmpRect( GetObjRect() );
         bOutsidePage =
-            ( aTmpRect.Intersection( GetPageFrame()->Frame() ) != GetObjRect() );
+            ( aTmpRect.Intersection( GetPageFrame()->getFrameArea() ) != GetObjRect() );
     }
 
     return bOutsidePage;
@@ -341,36 +335,36 @@ void SwAnchoredDrawObject::MakeObjPos()
         // the anchor frame is valid.
         if ( dynamic_cast< const SwDrawVirtObj* >(GetDrawObj()) ==  nullptr &&
              !pDrawContact->ObjAnchoredAsChar() &&
-             GetAnchorFrame()->IsValid() )
+             GetAnchorFrame()->isFrameAreaDefinitionValid() )
         {
             pDrawContact->ChkPage();
         }
     }
 
     // --> #i62875#
-    if ( mbCaptureAfterLayoutDirChange &&
-         GetPageFrame() )
+    if ( !(mbCaptureAfterLayoutDirChange &&
+         GetPageFrame()) )
+        return;
+
+    SwRect aPageRect( GetPageFrame()->getFrameArea() );
+    SwRect aObjRect( GetObjRect() );
+    if ( aObjRect.Right() >= aPageRect.Right() + 10 )
     {
-        SwRect aPageRect( GetPageFrame()->Frame() );
-        SwRect aObjRect( GetObjRect() );
-        if ( aObjRect.Right() >= aPageRect.Right() + 10 )
-        {
-            Size aSize( aPageRect.Right() - aObjRect.Right(), 0 );
-            DrawObj()->Move( aSize );
-            aObjRect = GetObjRect();
-        }
-
-        if ( aObjRect.Left() + 10 <= aPageRect.Left() )
-        {
-            Size aSize( aPageRect.Left() - aObjRect.Left(), 0 );
-            DrawObj()->Move( aSize );
-        }
-
-        mbCaptureAfterLayoutDirChange = false;
+        Size aSize( aPageRect.Right() - aObjRect.Right(), 0 );
+        DrawObj()->Move( aSize );
+        aObjRect = GetObjRect();
     }
+
+    if ( aObjRect.Left() + 10 <= aPageRect.Left() )
+    {
+        Size aSize( aPageRect.Left() - aObjRect.Left(), 0 );
+        DrawObj()->Move( aSize );
+    }
+
+    mbCaptureAfterLayoutDirChange = false;
 }
 
-/** method for the intrinsic positioning of a at-paragraph|at-character
+/** method for the intrinsic positioning of an at-paragraph|at-character
     anchored drawing object
 
     #i32795# - helper method for method <MakeObjPos>
@@ -389,12 +383,18 @@ void SwAnchoredDrawObject::MakeObjPosAnchoredAtPara()
     // --> #i50356# - format anchor frame containing the anchor
     // position. E.g., for at-character anchored object this can be the follow
     // frame of the anchor frame, which contains the anchor character.
-    const bool bFormatAnchor =
-            !static_cast<const SwTextFrame*>( GetAnchorFrameContainingAnchPos() )->IsAnyJoinLocked() &&
-            !ConsiderObjWrapInfluenceOnObjPos() &&
-            !ConsiderObjWrapInfluenceOfOtherObjs();
+    bool bJoinLocked
+        = static_cast<const SwTextFrame*>(GetAnchorFrameContainingAnchPos())->IsAnyJoinLocked();
+    const bool bFormatAnchor = !bJoinLocked && !ConsiderObjWrapInfluenceOnObjPos()
+                               && !ConsiderObjWrapInfluenceOfOtherObjs();
 
-    if ( bFormatAnchor )
+    // Format of anchor is needed for (vertical) fly offsets, otherwise the
+    // lack of fly portions will result in an incorrect 0 offset.
+    bool bAddVerticalFlyOffsets = GetFrameFormat().getIDocumentSettingAccess().get(
+        DocumentSettingId::ADD_VERTICAL_FLY_OFFSETS);
+    bool bFormatAnchorOnce = !bJoinLocked && bAddVerticalFlyOffsets;
+
+    if (bFormatAnchor || bFormatAnchorOnce)
     {
         // --> #i50356#
         GetAnchorFrameContainingAnchPos()->Calc(GetAnchorFrameContainingAnchPos()->getRootFrame()->GetCurrShell()->GetOut());
@@ -458,7 +458,7 @@ void SwAnchoredDrawObject::MakeObjPosAnchoredAtPara()
     }
 }
 
-/** method for the intrinsic positioning of a at-page|at-frame anchored
+/** method for the intrinsic positioning of an at-page|at-frame anchored
     drawing object
 
     #i32795# - helper method for method <MakeObjPos>
@@ -491,7 +491,7 @@ void SwAnchoredDrawObject::MakeObjPosAnchoredAtLayout()
     SetCurrRelPos( aObjPositioning.GetRelPos() );
     const SwFrame* pAnchorFrame = GetAnchorFrame();
     SwRectFnSet aRectFnSet(pAnchorFrame);
-    const Point aAnchPos( aRectFnSet.GetPos(pAnchorFrame->Frame()) );
+    const Point aAnchPos( aRectFnSet.GetPos(pAnchorFrame->getFrameArea()) );
     SetObjLeft( aAnchPos.X() + GetCurrRelPos().X() );
     SetObjTop( aAnchPos.Y() + GetCurrRelPos().Y() );
 }
@@ -523,84 +523,83 @@ void SwAnchoredDrawObject::SetDrawObjAnchor()
 */
 void SwAnchoredDrawObject::InvalidatePage_( SwPageFrame* _pPageFrame )
 {
-    if ( _pPageFrame && !_pPageFrame->GetFormat()->GetDoc()->IsInDtor() )
-    {
-        if ( _pPageFrame->GetUpper() )
-        {
-            // --> #i35007# - correct invalidation for as-character
-            // anchored objects.
-            if ( GetFrameFormat().GetAnchor().GetAnchorId() == RndStdIds::FLY_AS_CHAR )
-            {
-                _pPageFrame->InvalidateFlyInCnt();
-            }
-            else
-            {
-                _pPageFrame->InvalidateFlyLayout();
-            }
+    if ( !(_pPageFrame && !_pPageFrame->GetFormat()->GetDoc()->IsInDtor()) )
+        return;
 
-            SwRootFrame* pRootFrame = static_cast<SwRootFrame*>(_pPageFrame->GetUpper());
-            pRootFrame->DisallowTurbo();
-            if ( pRootFrame->GetTurbo() )
-            {
-                const SwContentFrame* pTmpFrame = pRootFrame->GetTurbo();
-                pRootFrame->ResetTurbo();
-                pTmpFrame->InvalidatePage();
-            }
-            pRootFrame->SetIdleFlags();
-        }
+    if ( !_pPageFrame->GetUpper() )
+        return;
+
+    // --> #i35007# - correct invalidation for as-character
+    // anchored objects.
+    if ( GetFrameFormat().GetAnchor().GetAnchorId() == RndStdIds::FLY_AS_CHAR )
+    {
+        _pPageFrame->InvalidateFlyInCnt();
     }
+    else
+    {
+        _pPageFrame->InvalidateFlyLayout();
+    }
+
+    SwRootFrame* pRootFrame = static_cast<SwRootFrame*>(_pPageFrame->GetUpper());
+    pRootFrame->DisallowTurbo();
+    if ( pRootFrame->GetTurbo() )
+    {
+        const SwContentFrame* pTmpFrame = pRootFrame->GetTurbo();
+        pRootFrame->ResetTurbo();
+        pTmpFrame->InvalidatePage();
+    }
+    pRootFrame->SetIdleFlags();
 }
 
 void SwAnchoredDrawObject::InvalidateObjPos()
 {
     // --> #i28701# - check, if invalidation is allowed
-    if ( mbValidPos &&
-         InvalidationOfPosAllowed() )
+    if ( !(mbValidPos &&
+         InvalidationOfPosAllowed()) )
+        return;
+
+    mbValidPos = false;
+    // --> #i68520#
+    InvalidateObjRectWithSpaces();
+
+    // --> #i44339# - check, if anchor frame exists.
+    if ( !GetAnchorFrame() )
+        return;
+
+    // --> #118547# - notify anchor frame of as-character
+    // anchored object, because its positioned by the format of its anchor frame.
+    // --> #i44559# - assure, that text hint is already
+    // existing in the text frame
+    if ( dynamic_cast< const SwTextFrame* >(GetAnchorFrame()) !=  nullptr &&
+         (GetFrameFormat().GetAnchor().GetAnchorId() == RndStdIds::FLY_AS_CHAR) )
     {
-        mbValidPos = false;
-        // --> #i68520#
-        InvalidateObjRectWithSpaces();
-
-        // --> #i44339# - check, if anchor frame exists.
-        if ( GetAnchorFrame() )
+        SwTextFrame* pAnchorTextFrame( static_cast<SwTextFrame*>(AnchorFrame()) );
+        if (pAnchorTextFrame->CalcFlyPos(&GetFrameFormat()) != TextFrameIndex(COMPLETE_STRING))
         {
-            // --> #118547# - notify anchor frame of as-character
-            // anchored object, because its positioned by the format of its anchor frame.
-            // --> #i44559# - assure, that text hint is already
-            // existing in the text frame
-            if ( dynamic_cast< const SwTextFrame* >(GetAnchorFrame()) !=  nullptr &&
-                 (GetFrameFormat().GetAnchor().GetAnchorId() == RndStdIds::FLY_AS_CHAR) )
-            {
-                SwTextFrame* pAnchorTextFrame( static_cast<SwTextFrame*>(AnchorFrame()) );
-                if ( pAnchorTextFrame->GetTextNode()->GetpSwpHints() &&
-                     pAnchorTextFrame->CalcFlyPos( &GetFrameFormat() ) != COMPLETE_STRING )
-                {
-                    AnchorFrame()->Prepare( PREP_FLY_ATTR_CHG, &GetFrameFormat() );
-                }
-            }
-
-            SwPageFrame* pPageFrame = AnchorFrame()->FindPageFrame();
-            InvalidatePage_( pPageFrame );
-
-            // --> #i32270# - also invalidate page frame, at which the
-            // drawing object is registered at.
-            SwPageFrame* pPageFrameRegisteredAt = GetPageFrame();
-            if ( pPageFrameRegisteredAt &&
-                 pPageFrameRegisteredAt != pPageFrame )
-            {
-                InvalidatePage_( pPageFrameRegisteredAt );
-            }
-            // #i33751#, #i34060# - method <GetPageFrameOfAnchor()>
-            // is replaced by method <FindPageFrameOfAnchor()>. It's return value
-            // have to be checked.
-            SwPageFrame* pPageFrameOfAnchor = FindPageFrameOfAnchor();
-            if ( pPageFrameOfAnchor &&
-                 pPageFrameOfAnchor != pPageFrame &&
-                 pPageFrameOfAnchor != pPageFrameRegisteredAt )
-            {
-                InvalidatePage_( pPageFrameOfAnchor );
-            }
+            AnchorFrame()->Prepare( PrepareHint::FlyFrameAttributesChanged, &GetFrameFormat() );
         }
+    }
+
+    SwPageFrame* pPageFrame = AnchorFrame()->FindPageFrame();
+    InvalidatePage_( pPageFrame );
+
+    // --> #i32270# - also invalidate page frame, at which the
+    // drawing object is registered at.
+    SwPageFrame* pPageFrameRegisteredAt = GetPageFrame();
+    if ( pPageFrameRegisteredAt &&
+         pPageFrameRegisteredAt != pPageFrame )
+    {
+        InvalidatePage_( pPageFrameRegisteredAt );
+    }
+    // #i33751#, #i34060# - method <GetPageFrameOfAnchor()>
+    // is replaced by method <FindPageFrameOfAnchor()>. It's return value
+    // have to be checked.
+    SwPageFrame* pPageFrameOfAnchor = FindPageFrameOfAnchor();
+    if ( pPageFrameOfAnchor &&
+         pPageFrameOfAnchor != pPageFrame &&
+         pPageFrameOfAnchor != pPageFrameRegisteredAt )
+    {
+        InvalidatePage_( pPageFrameOfAnchor );
     }
 }
 
@@ -615,15 +614,35 @@ const SwFrameFormat& SwAnchoredDrawObject::GetFrameFormat() const
     return *(static_cast<SwDrawContact*>(GetUserCall(GetDrawObj()))->GetFormat());
 }
 
-const SwRect SwAnchoredDrawObject::GetObjRect() const
+SwRect SwAnchoredDrawObject::GetObjRect() const
 {
     // use geometry of drawing object
     //return GetDrawObj()->GetCurrentBoundRect();
     return GetDrawObj()->GetSnapRect();
 }
 
+namespace
+{
+    // Imagine an open book, inside margin is the one that is at the inner side of the pages, at the center of the book,
+    // outside margin is at the two opposite edges of the book.
+    // outside --text-- inside | inside --text-- outside
+    // With mirrored margins, when relating the size of an object from the inside margin for example, on the
+    // first page we calculate the new size of the object using the size of the right margin,
+    // on second page the left margin, third page right margin, etc.
+    long getInsideOutsideRelativeWidth(bool isOutside, const SwPageFrame* const pPageFrame)
+    {
+        // Alternating between the only two possible cases: inside and outside.
+        // Inside = false, Outside = true.
+        auto nPageNum = pPageFrame->GetPhyPageNum();
+        if (nPageNum % 2 == (isOutside ? 0 : 1))
+            return pPageFrame->GetRightMargin();
+        else
+            return pPageFrame->GetLeftMargin();
+    }
+}
+
 // --> #i70122#
-const SwRect SwAnchoredDrawObject::GetObjBoundRect() const
+SwRect SwAnchoredDrawObject::GetObjBoundRect() const
 {
     bool bGroupShape = dynamic_cast<const SdrObjGroup*>( GetDrawObj() );
     // Resize objects with relative width or height
@@ -634,25 +653,64 @@ const SwRect SwAnchoredDrawObject::GetObjBoundRect() const
         long nTargetWidth = aCurrObjRect.GetWidth( );
         if ( GetDrawObj( )->GetRelativeWidth( ) )
         {
-            tools::Rectangle aPageRect;
+            long nWidth = 0;
             if (GetDrawObj()->GetRelativeWidthRelation() == text::RelOrientation::FRAME)
                 // Exclude margins.
-                aPageRect = GetPageFrame()->Prt().SVRect();
+                nWidth = GetPageFrame()->getFramePrintArea().SVRect().GetWidth();
+            // Here we handle the relative size of the width of some shape.
+            // The size of the shape's width is going to be relative to the size of the left margin.
+            // E.g.: (left margin = 8 && relative size = 150%) -> width of some shape = 12.
+            else if (GetDrawObj()->GetRelativeWidthRelation() == text::RelOrientation::PAGE_LEFT)
+            {
+                if (GetPageFrame()->GetPageDesc()->GetUseOn() == UseOnPage::Mirror)
+                    // We want to get the width of whatever is going through here using the size of the
+                    // outside margin.
+                    nWidth = getInsideOutsideRelativeWidth(true, GetPageFrame());
+                else
+                    nWidth = GetPageFrame()->GetLeftMargin();
+            }
+            // Same as the left margin above.
+            else if (GetDrawObj()->GetRelativeWidthRelation() == text::RelOrientation::PAGE_RIGHT)
+                if (GetPageFrame()->GetPageDesc()->GetUseOn() == UseOnPage::Mirror)
+                    // We want to get the width of whatever is going through here using the size of the
+                    // inside margin.
+                    nWidth = getInsideOutsideRelativeWidth(false, GetPageFrame());
+                else
+                    nWidth = GetPageFrame()->GetRightMargin();
             else
-                aPageRect = GetPageFrame( )->GetBoundRect( GetPageFrame()->getRootFrame()->GetCurrShell()->GetOut() ).SVRect();
-            nTargetWidth = aPageRect.GetWidth( ) * (*GetDrawObj( )->GetRelativeWidth());
+                nWidth = GetPageFrame( )->GetBoundRect( GetPageFrame()->getRootFrame()->GetCurrShell()->GetOut() ).SVRect().GetWidth();
+            nTargetWidth = nWidth * (*GetDrawObj( )->GetRelativeWidth());
         }
 
+        auto pObjCustomShape = dynamic_cast<const SdrObjCustomShape*>(GetDrawObj());
         long nTargetHeight = aCurrObjRect.GetHeight( );
-        if ( GetDrawObj( )->GetRelativeHeight( ) )
+        if ( GetDrawObj( )->GetRelativeHeight( ) && (!pObjCustomShape || !pObjCustomShape->IsAutoGrowHeight()) )
         {
-            tools::Rectangle aPageRect;
+            long nHeight = 0;
             if (GetDrawObj()->GetRelativeHeightRelation() == text::RelOrientation::FRAME)
                 // Exclude margins.
-                aPageRect = GetPageFrame()->Prt().SVRect();
+                nHeight = GetPageFrame()->getFramePrintArea().SVRect().GetHeight();
+            else if (GetDrawObj()->GetRelativeHeightRelation() == text::RelOrientation::PAGE_PRINT_AREA)
+            {
+                // count required height: print area top = top margin + header
+                SwRect aHeaderRect;
+                const SwHeaderFrame* pHeaderFrame = GetPageFrame()->GetHeaderFrame();
+                if (pHeaderFrame)
+                    aHeaderRect = pHeaderFrame->GetPaintArea();
+                nHeight = GetPageFrame()->GetTopMargin() + aHeaderRect.Height();
+            }
+            else if (GetDrawObj()->GetRelativeHeightRelation() == text::RelOrientation::PAGE_PRINT_AREA_BOTTOM)
+            {
+                // count required height: print area bottom = bottom margin + footer
+                SwRect aFooterRect;
+                auto pFooterFrame = GetPageFrame()->GetFooterFrame();
+                if (pFooterFrame)
+                    aFooterRect = pFooterFrame->GetPaintArea();
+                nHeight = GetPageFrame()->GetBottomMargin() + aFooterRect.Height();
+            }
             else
-                aPageRect = GetPageFrame( )->GetBoundRect( GetPageFrame()->getRootFrame()->GetCurrShell()->GetOut() ).SVRect();
-            nTargetHeight = aPageRect.GetHeight( ) * (*GetDrawObj( )->GetRelativeHeight());
+                nHeight = GetPageFrame( )->GetBoundRect( GetPageFrame()->getRootFrame()->GetCurrShell()->GetOut() ).SVRect().GetHeight();
+            nTargetHeight = nHeight * (*GetDrawObj()->GetRelativeHeight());
         }
 
         if ( nTargetWidth != aCurrObjRect.GetWidth( ) || nTargetHeight != aCurrObjRect.GetHeight( ) )
@@ -661,9 +719,22 @@ const SwRect SwAnchoredDrawObject::GetObjBoundRect() const
 
             bool bEnableSetModified = pDoc->getIDocumentState().IsEnableSetModified();
             pDoc->getIDocumentState().SetEnableSetModified(false);
-            const_cast< SdrObject* >( GetDrawObj() )->Resize( aCurrObjRect.TopLeft(),
+            auto pObject = const_cast<SdrObject*>(GetDrawObj());
+            pObject->Resize( aCurrObjRect.TopLeft(),
                     Fraction( nTargetWidth, aCurrObjRect.GetWidth() ),
                     Fraction( nTargetHeight, aCurrObjRect.GetHeight() ), false );
+
+            if (SwFrameFormat* pFrameFormat = FindFrameFormat(pObject))
+            {
+                if (SwTextBoxHelper::isTextBox(pFrameFormat, RES_DRAWFRMFMT))
+                {
+                    // Shape has relative size and also a textbox, update its text area as well.
+                    uno::Reference<drawing::XShape> xShape(pObject->getUnoShape(), uno::UNO_QUERY);
+                    SwTextBoxHelper::syncProperty(pFrameFormat, RES_FRM_SIZE, MID_FRMSIZE_SIZE,
+                                                  uno::makeAny(xShape->getSize()));
+                }
+            }
+
             pDoc->getIDocumentState().SetEnableSetModified(bEnableSetModified);
         }
     }
@@ -716,7 +787,10 @@ void SwAnchoredDrawObject::AdjustPositioningAttr( const SwFrame* _pNewAnchorFram
         nVertRelPos = aObjRect.Top() - aAnchorPos.Y();
     }
 
-    GetFrameFormat().SetFormatAttr( SwFormatHoriOrient( nHoriRelPos, text::HoriOrientation::NONE, text::RelOrientation::FRAME ) );
+    GetFrameFormat().SetFormatAttr( SwFormatHoriOrient( nHoriRelPos, text::HoriOrientation::NONE,
+        GetFrameFormat().GetAnchor().GetAnchorId() == RndStdIds::FLY_AT_PAGE
+            ? text::RelOrientation::PAGE_FRAME
+            : text::RelOrientation::FRAME ) );
     GetFrameFormat().SetFormatAttr( SwFormatVertOrient( nVertRelPos, text::VertOrientation::NONE, text::RelOrientation::FRAME ) );
 }
 
@@ -724,11 +798,7 @@ void SwAnchoredDrawObject::AdjustPositioningAttr( const SwFrame* _pNewAnchorFram
 // If member <mpLastObjRect> is NULL, create one.
 void SwAnchoredDrawObject::SetLastObjRect( const tools::Rectangle& _rNewLastRect )
 {
-    if ( !mpLastObjRect )
-    {
-        mpLastObjRect.reset( new tools::Rectangle );
-    }
-    *(mpLastObjRect) = _rNewLastRect;
+    maLastObjRect = _rNewLastRect;
 }
 
 void SwAnchoredDrawObject::ObjectAttachedToAnchorFrame()

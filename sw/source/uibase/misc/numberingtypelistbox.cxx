@@ -18,19 +18,14 @@
  */
 
 #include <numberingtypelistbox.hxx>
-#include <misc.hrc>
-#include <cnttab.hxx>
 #include <com/sun/star/style/NumberingType.hpp>
 #include <com/sun/star/text/DefaultNumberingProvider.hpp>
 #include <com/sun/star/text/XDefaultNumberingProvider.hpp>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/text/XNumberingTypeInfo.hpp>
-#include <vcl/builderfactory.hxx>
 #include <editeng/numitem.hxx>
-#include <svx/dialmgr.hxx>
-#include <svx/dialogs.hrc>
-
-#include <unomid.h>
+#include <svx/strarray.hxx>
+#include <osl/diagnose.h>
 
 using namespace com::sun::star;
 
@@ -39,63 +34,34 @@ struct SwNumberingTypeListBox_Impl
     uno::Reference<text::XNumberingTypeInfo> xInfo;
 };
 
-SwNumberingTypeListBox::SwNumberingTypeListBox( vcl::Window* pWin, WinBits nStyle ) :
-    ListBox(pWin, nStyle),
-    pImpl(new SwNumberingTypeListBox_Impl)
+SwNumberingTypeListBox::SwNumberingTypeListBox(std::unique_ptr<weld::ComboBox> pWidget)
+    : m_xWidget(std::move(pWidget))
+    , m_xImpl(new SwNumberingTypeListBox_Impl)
 {
     uno::Reference<uno::XComponentContext>          xContext( ::comphelper::getProcessComponentContext() );
     uno::Reference<text::XDefaultNumberingProvider> xDefNum = text::DefaultNumberingProvider::create(xContext);
-
-    pImpl->xInfo.set(xDefNum, uno::UNO_QUERY);
-}
-
-bool SwNumberingTypeListBox::set_property(const OString &rKey, const OUString &rValue)
-{
-    if (rKey == "type")
-        Reload(static_cast<SwInsertNumTypes>(rValue.toInt32()));
-    else
-        return ListBox::set_property(rKey, rValue);
-    return true;
-}
-
-VCL_BUILDER_DECL_FACTORY(SwNumberingTypeListBox)
-{
-    (void)rMap;
-    VclPtrInstance<SwNumberingTypeListBox> pListBox(pParent, WB_LEFT|WB_DROPDOWN|WB_VCENTER|WB_3DLOOK|WB_TABSTOP);
-    pListBox->EnableAutoSize(true);
-    rRet = pListBox;
+    m_xImpl->xInfo.set(xDefNum, uno::UNO_QUERY);
 }
 
 SwNumberingTypeListBox::~SwNumberingTypeListBox()
 {
-    disposeOnce();
-}
-
-void SwNumberingTypeListBox::dispose()
-{
-    pImpl.reset();
-    ListBox::dispose();
 }
 
 void SwNumberingTypeListBox::Reload(SwInsertNumTypes nTypeFlags)
 {
-    Clear();
+    m_xWidget->clear();
     uno::Sequence<sal_Int16> aTypes;
-    const sal_Int16* pTypes = nullptr;
-    if(nTypeFlags & SwInsertNumTypes::Extended)
+    if (nTypeFlags & SwInsertNumTypes::Extended)
     {
-        if(pImpl->xInfo.is())
-        {
-            aTypes = pImpl->xInfo->getSupportedNumberingTypes();
-            pTypes = aTypes.getConstArray();
-        }
+        if (m_xImpl->xInfo.is())
+            aTypes = m_xImpl->xInfo->getSupportedNumberingTypes();
     }
-    ResStringArray aNames(ResId(RID_SVXSTRARY_NUMBERINGTYPE, DIALOG_MGR()));
-    for(size_t i = 0; i < aNames.Count(); i++)
+
+    for(size_t i = 0; i < SvxNumberingTypeTable::Count(); i++)
     {
-        sal_IntPtr nValue = aNames.GetValue(i);
+        sal_IntPtr nValue = SvxNumberingTypeTable::GetValue(i);
         bool bInsert = true;
-        sal_Int32 nPos = LISTBOX_APPEND;
+        int nPos = -1;
         switch(nValue)
         {
             case  style::NumberingType::NUMBER_NONE:
@@ -104,15 +70,15 @@ void SwNumberingTypeListBox::Reload(SwInsertNumTypes nTypeFlags)
 
                 break;
             case  style::NumberingType::CHAR_SPECIAL:
-                bInsert = bool(nTypeFlags & SwInsertNumTypes::Bullet);
+                bInsert = false;
 
                 break;
             case  style::NumberingType::PAGE_DESCRIPTOR:
-                bInsert = bool(nTypeFlags & SwInsertNumTypes::PageStyleNumbering);
+                bInsert = false;
 
                 break;
             case  style::NumberingType::BITMAP:
-                bInsert = bool(nTypeFlags & SwInsertNumTypes::Bitmap );
+                bInsert = false;
 
                 break;
             case  style::NumberingType::BITMAP | LINK_TOKEN:
@@ -123,66 +89,49 @@ void SwNumberingTypeListBox::Reload(SwInsertNumTypes nTypeFlags)
                 if (nValue >  style::NumberingType::CHARS_LOWER_LETTER_N)
                 {
                     // Insert only if offered by i18n framework per configuration.
-                    bInsert = false;
-                    if (pTypes)
-                    {
-                        for(sal_Int32 nType = 0; nType < aTypes.getLength(); nType++)
-                        {
-                            if (pTypes[nType] == nValue)
-                            {
-                                bInsert = true;
-                                break;  // for
-                            }
-                        }
-                    }
+                    bInsert = std::find(aTypes.begin(), aTypes.end(), nValue) != aTypes.end();
                 }
         }
-        if(bInsert)
+        if (bInsert)
         {
-            sal_Int32 nEntry = InsertEntry(aNames.GetString(i), nPos);
-            SetEntryData( nEntry, reinterpret_cast<void*>(nValue) );
+            OUString sId(OUString::number(nValue));
+            m_xWidget->insert(nPos, SvxNumberingTypeTable::GetString(i), &sId, nullptr, nullptr);
         }
     }
-    if(nTypeFlags & SwInsertNumTypes::Extended)
+    if (!(nTypeFlags & SwInsertNumTypes::Extended))
+        return;
+
+    for (sal_Int16 nCurrent : aTypes)
     {
-        if(pTypes)
+        if (nCurrent > style::NumberingType::CHARS_LOWER_LETTER_N)
         {
-            for(sal_Int32 nType = 0; nType < aTypes.getLength(); nType++)
+            if (m_xWidget->find_id(OUString::number(nCurrent)) == -1)
             {
-                sal_Int16 nCurrent = pTypes[nType];
-                if(nCurrent > style::NumberingType::CHARS_LOWER_LETTER_N)
-                {
-                    if(LISTBOX_ENTRY_NOTFOUND == GetEntryPos(reinterpret_cast<void*>((sal_uLong)nCurrent)))
-                    {
-                        OUString aIdent = pImpl->xInfo->getNumberingIdentifier( nCurrent );
-                        sal_Int32 nPos = InsertEntry(aIdent);
-                        SetEntryData(nPos, reinterpret_cast<void*>((sal_uLong)nCurrent));
-                    }
-                }
+                m_xWidget->append(OUString::number(nCurrent), m_xImpl->xInfo->getNumberingIdentifier(nCurrent));
             }
         }
-        SelectEntryPos(0);
     }
+    m_xWidget->set_active(0);
 }
 
-SvxNumType   SwNumberingTypeListBox::GetSelectedNumberingType()
+SvxNumType SwNumberingTypeListBox::GetSelectedNumberingType() const
 {
     SvxNumType nRet = SVX_NUM_CHARS_UPPER_LETTER;
-    sal_Int32 nSelPos = GetSelectEntryPos();
-    if(LISTBOX_ENTRY_NOTFOUND != nSelPos)
-        nRet = (SvxNumType)reinterpret_cast<sal_uLong>(GetEntryData(nSelPos));
+    int nSelPos = m_xWidget->get_active();
+    if (nSelPos != -1)
+        nRet = static_cast<SvxNumType>(m_xWidget->get_id(nSelPos).toInt32());
 #if OSL_DEBUG_LEVEL > 0
     else
-        OSL_FAIL("SwNumberingTypeListBox not selected");
+        OSL_FAIL("NumberingTypeListBox not selected");
 #endif
     return nRet;
 }
 
-bool    SwNumberingTypeListBox::SelectNumberingType(SvxNumType nType)
+bool SwNumberingTypeListBox::SelectNumberingType(SvxNumType nType)
 {
-    sal_Int32 nPos = GetEntryPos(reinterpret_cast<void*>((sal_uLong)nType));
-    SelectEntryPos( nPos );
-    return LISTBOX_ENTRY_NOTFOUND != nPos;
+    int nPos = m_xWidget->find_id(OUString::number(nType));
+    m_xWidget->set_active(nPos);
+    return nPos != -1;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,20 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_SOURCE_UNO_UNOGRIDCOLUMNFACADE_HXX
-#define INCLUDED_SVTOOLS_SOURCE_UNO_UNOGRIDCOLUMNFACADE_HXX
+#pragma once
 
-#include <svtools/table/tablemodel.hxx>
-#include "table/tablecontrol.hxx"
+#include <table/tablemodel.hxx>
 
 #include <com/sun/star/awt/grid/XGridColumn.hpp>
-#include <com/sun/star/style/VerticalAlignment.hpp>
 #include <com/sun/star/style/HorizontalAlignment.hpp>
 
 #include <rtl/ref.hxx>
 
 
-namespace svt { namespace table
+namespace svt::table
 {
 
 
@@ -85,9 +82,8 @@ namespace svt { namespace table
     };
 
 
-} } // svt::table
+} // svt::table
 
 
-#endif // INCLUDED_SVTOOLS_SOURCE_UNO_UNOGRIDCOLUMNFACADE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

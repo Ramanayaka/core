@@ -11,13 +11,8 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_MATRIXCOMPARISONGENERATOR_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_MATRIXCOMPARISONGENERATOR_HXX
 
-#include "global.hxx"
-#include "address.hxx"
-#include "anyrefdg.hxx"
-
-#include <vcl/fixed.hxx>
-#include <vcl/group.hxx>
-#include <vcl/lstbox.hxx>
+#include <address.hxx>
+#include "viewdata.hxx"
 
 #include "StatisticsInputOutputDialog.hxx"
 
@@ -26,17 +21,17 @@ class ScMatrixComparisonGenerator : public ScStatisticsInputOutputDialog
 public:
     ScMatrixComparisonGenerator(
         SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
-        vcl::Window* pParent, ScViewData* pViewData,
-        const OUString& rID, const OUString& rUiXmlDescription );
+        weld::Window* pParent, ScViewData* pViewData,
+        const OUString& rUiXmlDescription, const OString& rID);
 
     virtual ~ScMatrixComparisonGenerator() override;
 
 protected:
-    virtual sal_Int16 GetUndoNameId() override;
+    virtual const char* GetUndoNameId() override;
     virtual ScRange ApplyOutput(ScDocShell* pDocShell) override;
 
-    virtual const OUString getLabel() = 0;
-    virtual const OUString getTemplate() = 0;
+    virtual OUString getLabel() = 0;
+    virtual OUString getTemplate() = 0;
 };
 
 #endif

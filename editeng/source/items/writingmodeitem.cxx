@@ -18,15 +18,15 @@
  */
 
 #include <editeng/writingmodeitem.hxx>
+#include <editeng/frmdir.hxx>
 #include <editeng/eerdll.hxx>
-#include <editeng/editrids.hrc>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::text;
 
 
 SvxWritingModeItem::SvxWritingModeItem( WritingMode eValue, sal_uInt16 _nWhich )
-    : SfxUInt16Item( _nWhich, (sal_uInt16)eValue )
+    : SfxUInt16Item( _nWhich, static_cast<sal_uInt16>(eValue) )
 {
 }
 
@@ -34,42 +34,18 @@ SvxWritingModeItem::~SvxWritingModeItem()
 {
 }
 
-bool SvxWritingModeItem::operator==( const SfxPoolItem& rCmp ) const
-{
-    assert(SfxPoolItem::operator==(rCmp));
-
-    return GetValue() == static_cast<const SvxWritingModeItem&>(rCmp).GetValue();
-}
-
-SfxPoolItem* SvxWritingModeItem::Clone( SfxItemPool * ) const
+SvxWritingModeItem* SvxWritingModeItem::Clone( SfxItemPool * ) const
 {
     return new SvxWritingModeItem( *this );
-}
-
-SfxPoolItem* SvxWritingModeItem::Create( SvStream & , sal_uInt16  ) const
-{
-    OSL_FAIL("SvxWritingModeItem should not be streamed!");
-    return nullptr;
-}
-
-SvStream& SvxWritingModeItem::Store( SvStream & rStrm, sal_uInt16  ) const
-{
-    OSL_FAIL("SvxWritingModeItem should not be streamed!");
-    return rStrm;
-}
-
-sal_uInt16 SvxWritingModeItem::GetVersion( sal_uInt16 /*nFVer*/ ) const
-{
-    return USHRT_MAX;
 }
 
 bool SvxWritingModeItem::GetPresentation( SfxItemPresentation /*ePres*/,
         MapUnit /*eCoreMetric*/,
         MapUnit /*ePresMetric*/,
         OUString &rText,
-        const IntlWrapper *  ) const
+        const IntlWrapper& ) const
 {
-    rText = EditResId::GetString(RID_SVXITEMS_FRMDIR_BEGIN + (int)GetValue());
+    rText = EditResId(getFrmDirResId(static_cast<int>(GetValue())));
     return true;
 }
 
@@ -85,18 +61,18 @@ bool SvxWritingModeItem::PutValue( const css::uno::Any& rVal, sal_uInt8 )
 
         if( bRet )
         {
-            nVal = (sal_Int32)eMode;
+            nVal = static_cast<sal_Int32>(eMode);
         }
     }
 
     if( bRet )
     {
-        switch( (WritingMode)nVal )
+        switch( static_cast<WritingMode>(nVal) )
         {
             case WritingMode_LR_TB:
             case WritingMode_RL_TB:
             case WritingMode_TB_RL:
-                SetValue( (sal_uInt16)nVal );
+                SetValue( static_cast<sal_uInt16>(nVal) );
                 bRet = true;
                 break;
             default:
@@ -111,14 +87,8 @@ bool SvxWritingModeItem::PutValue( const css::uno::Any& rVal, sal_uInt8 )
 bool SvxWritingModeItem::QueryValue( css::uno::Any& rVal,
                                             sal_uInt8 ) const
 {
-    rVal <<= (WritingMode)GetValue();
+    rVal <<= GetValue();
     return true;
-}
-
-SvxWritingModeItem& SvxWritingModeItem::operator=( const SvxWritingModeItem& rItem )
-{
-    SetValue( (sal_uInt16)rItem.GetValue() );
-    return *this;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

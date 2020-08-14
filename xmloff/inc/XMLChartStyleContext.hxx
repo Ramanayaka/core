@@ -21,14 +21,13 @@
 
 #include <xmloff/XMLShapeStyleContext.hxx>
 
-class XMLChartStyleContext : public XMLShapeStyleContext
+class XMLChartStyleContext final : public XMLShapeStyleContext
 {
 private:
     OUString msDataStyleName;
     OUString msPercentageDataStyleName;
     SvXMLStylesContext& mrStyles;
 
-protected:
     /// is called when an attribute at the (auto)style element is found
     virtual void SetAttribute( sal_uInt16 nPrefixKey,
                                const OUString& rLocalName,
@@ -40,7 +39,7 @@ public:
         SvXMLImport& rImport, sal_uInt16 nPrfx,
         const OUString& rLName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-        SvXMLStylesContext& rStyles, sal_uInt16 nFamily );
+        SvXMLStylesContext& rStyles, XmlStyleFamily nFamily );
     virtual ~XMLChartStyleContext() override;
 
     /// is called after all styles have been read to apply styles
@@ -48,10 +47,12 @@ public:
         const css::uno::Reference<css::beans::XPropertySet > & rPropSet ) override;
 
     /// necessary for property context (element-property symbol-image)
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
+
+    bool isEmptyDataStyleName() override { return msDataStyleName.isEmpty(); }
 };
 
 #endif // INCLUDED_XMLOFF_INC_XMLCHARTSTYLECONTEXT_HXX

@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <string_view>
 
 #include <xmloff/xmluconv.hxx>
 
@@ -24,6 +27,7 @@
 #include <com/sun/star/util/Date.hpp>
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <xmloff/xmlement.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <rtl/math.hxx>
@@ -32,6 +36,8 @@
 #include <tools/time.hxx>
 #include <tools/fldunit.hxx>
 
+#include <com/sun/star/drawing/Position3D.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <com/sun/star/style/NumberingType.hpp>
 #include <com/sun/star/text/DefaultNumberingProvider.hpp>
@@ -40,7 +46,6 @@
 #include <com/sun/star/i18n/CharacterClassification.hpp>
 #include <com/sun/star/i18n/UnicodeType.hpp>
 #include <basegfx/vector/b3dvector.hxx>
-#include <comphelper/processfactory.hxx>
 
 #include <sax/tools/converter.hxx>
 
@@ -134,25 +139,25 @@ sal_Int16 SvXMLUnitConverter::GetMeasureUnit(FieldUnit const nFieldUnit)
     sal_Int16 eUnit = util::MeasureUnit::INCH;
     switch( nFieldUnit )
     {
-    case FUNIT_MM:
+    case FieldUnit::MM:
         eUnit = util::MeasureUnit::MM;
         break;
-    case FUNIT_CM:
-    case FUNIT_M:
-    case FUNIT_KM:
+    case FieldUnit::CM:
+    case FieldUnit::M:
+    case FieldUnit::KM:
         eUnit = util::MeasureUnit::CM;
         break;
-    case FUNIT_TWIP:
+    case FieldUnit::TWIP:
         eUnit = util::MeasureUnit::TWIP;
         break;
-    case FUNIT_POINT:
-    case FUNIT_PICA:
+    case FieldUnit::POINT:
+    case FieldUnit::PICA:
         eUnit = util::MeasureUnit::POINT;
         break;
-    case FUNIT_100TH_MM:
+    case FieldUnit::MM_100TH:
         eUnit = util::MeasureUnit::MM_100TH;
         break;
-    case FUNIT_INCH:
+    case FieldUnit::INCH:
         eUnit = util::MeasureUnit::INCH;
         break;
     default:
@@ -179,6 +184,16 @@ void SvXMLUnitConverter::convertMeasureToXML( OUStringBuffer& rString,
     ::sax::Converter::convertMeasure( rString, nMeasure,
                                         m_pImpl->m_eCoreMeasureUnit,
                                         m_pImpl->m_eXMLMeasureUnit );
+}
+
+/** convert measure to string */
+OUString SvXMLUnitConverter::convertMeasureToXML( sal_Int32 nMeasure ) const
+{
+    OUStringBuffer s;
+    ::sax::Converter::convertMeasure( s, nMeasure,
+                                        m_pImpl->m_eCoreMeasureUnit,
+                                        m_pImpl->m_eXMLMeasureUnit );
+    return s.makeStringAndClear();
 }
 
 /** convert string to enum using given enum map, if the enum is
@@ -264,7 +279,7 @@ static int lcl_gethex( int nChar )
         return 0;
 }
 
-static sal_Char aHexTab[] = "0123456789abcdef";
+const char aHexTab[] = "0123456789abcdef";
 
 
 /** convert double number to string (using ::rtl::math) */
@@ -319,61 +334,12 @@ void SvXMLUnitConverter::convertDateTime( OUStringBuffer& rBuffer,
         bool bAddTimeIf0AM )
 {
     double fValue = fDateTime;
-    sal_Int32 nValue = static_cast <sal_Int32> (::rtl::math::approxFloor (fValue));
+    const sal_Int32 nDays = static_cast <sal_Int32> (::rtl::math::approxFloor (fValue));
     Date aDate (aTempNullDate.Day, aTempNullDate.Month, aTempNullDate.Year);
-    aDate += nValue;
-    fValue -= nValue;
-    double fCount;
-    if (nValue > 0)
-         fCount = ::rtl::math::approxFloor (log10((double)nValue)) + 1;
-    else if (nValue < 0)
-         fCount = ::rtl::math::approxFloor (log10((double)(nValue * -1))) + 1;
-    else
-        fCount = 0.0;
-    sal_Int16 nCount = sal_Int16(fCount);
-    bool bHasTime(false);
-    double fHoursValue = 0;
-    double fMinsValue = 0;
-    double fSecsValue = 0;
-    double f100SecsValue = 0;
-    if (fValue > 0.0)
-    {
-        bHasTime = true;
-        fValue *= 24;
-        fHoursValue = ::rtl::math::approxFloor (fValue);
-        fValue -= fHoursValue;
-        fValue *= 60;
-        fMinsValue = ::rtl::math::approxFloor (fValue);
-        fValue -= fMinsValue;
-        fValue *= 60;
-        fSecsValue = ::rtl::math::approxFloor (fValue);
-        fValue -= fSecsValue;
-        if (fValue > 0.0)
-            f100SecsValue = ::rtl::math::round( fValue, XML_MAXDIGITSCOUNT_TIME - nCount);
-        else
-            f100SecsValue = 0.0;
+    aDate.AddDays( nDays);
+    fValue -= nDays;
+    const bool bHasTime = (fValue > 0.0);
 
-        if (f100SecsValue == 1.0)
-        {
-            f100SecsValue = 0.0;
-            fSecsValue += 1.0;
-        }
-        if (fSecsValue >= 60.0)
-        {
-            fSecsValue -= 60.0;
-            fMinsValue += 1.0;
-        }
-        if (fMinsValue >= 60.0)
-        {
-            fMinsValue -= 60.0;
-            fHoursValue += 1.0;
-        }
-        if (fHoursValue >= 24.0)
-        {
-            fHoursValue -= 24.0;
-            aDate += 1;
-        }
-    }
     sal_Int16 nTempYear = aDate.GetYear();
     assert(nTempYear != 0);
     if (nTempYear < 0)
@@ -400,31 +366,51 @@ void SvXMLUnitConverter::convertDateTime( OUStringBuffer& rBuffer,
     if (nTemp < 10)
         rBuffer.append( '0');
     rBuffer.append( sal_Int32( nTemp));
-    if(bHasTime || bAddTimeIf0AM)
+    if (!(bHasTime || bAddTimeIf0AM))
+        return;
+
+    double fCount;
+    if (nDays > 0)
+        fCount = ::rtl::math::approxFloor (log10(static_cast<double>(nDays))) + 1;
+    else if (nDays < 0)
+        fCount = ::rtl::math::approxFloor (log10(static_cast<double>(nDays * -1))) + 1;
+    else
+        fCount = 0.0;
+    const int nDigits = sal_Int16(fCount) + 4;  // +4 for *86400 in seconds
+    const int nFractionDecimals = std::max( XML_MAXDIGITSCOUNT_TIME - nDigits, 0);
+
+    sal_uInt16 nHour, nMinute, nSecond;
+    double fFractionOfSecond;
+    // Pass the original date+time value for proper scaling and rounding.
+    tools::Time::GetClock( fDateTime, nHour, nMinute, nSecond, fFractionOfSecond, nFractionDecimals);
+
+    rBuffer.append( 'T');
+    if (nHour < 10)
+        rBuffer.append( '0');
+    rBuffer.append( sal_Int32( nHour));
+    rBuffer.append( ':');
+    if (nMinute < 10)
+        rBuffer.append( '0');
+    rBuffer.append( sal_Int32( nMinute));
+    rBuffer.append( ':');
+    if (nSecond < 10)
+        rBuffer.append( '0');
+    rBuffer.append( sal_Int32( nSecond));
+    if (!nFractionDecimals)
+        return;
+
+    // nFractionDecimals+1 to not round up what GetClock() carefully
+    // truncated.
+    OUString aFraction( ::rtl::math::doubleToUString( fFractionOfSecond,
+                rtl_math_StringFormat_F,
+                nFractionDecimals + 1, '.', true));
+    const sal_Int32 nLen = aFraction.getLength();
+    if ( nLen > 2 )
     {
-        rBuffer.append( 'T');
-        if (fHoursValue < 10)
-            rBuffer.append( '0');
-        rBuffer.append( sal_Int32( fHoursValue));
-        rBuffer.append( ':');
-        if (fMinsValue < 10)
-            rBuffer.append( '0');
-        rBuffer.append( sal_Int32( fMinsValue));
-        rBuffer.append( ':');
-        if (fSecsValue < 10)
-            rBuffer.append( '0');
-        rBuffer.append( sal_Int32( fSecsValue));
-        if (f100SecsValue > 0.0)
-        {
-            OUString a100th( ::rtl::math::doubleToUString( fValue,
-                        rtl_math_StringFormat_F,
-                        XML_MAXDIGITSCOUNT_TIME - nCount, '.', true));
-            if ( a100th.getLength() > 2 )
-            {
-                rBuffer.append( '.');
-                rBuffer.append( a100th.copy( 2 ) );     // strip 0.
-            }
-        }
+        // Truncate nFractionDecimals+1 digit if it was not rounded to zero.
+        const sal_Int32 nCount = nLen - 2 - static_cast<int>(nLen > nFractionDecimals + 2);
+        rBuffer.append( '.');
+        rBuffer.append( std::u16string_view(aFraction).substr(2, nCount));     // strip 0.
     }
 }
 
@@ -433,12 +419,12 @@ bool SvXMLUnitConverter::convertDateTime( double& fDateTime,
                             const OUString& rString, const css::util::Date& aTempNullDate)
 {
     css::util::DateTime aDateTime;
-    bool bSuccess = ::sax::Converter::parseDateTime(aDateTime, nullptr, rString);
+    bool bSuccess = ::sax::Converter::parseDateTime(aDateTime, rString);
 
     if (bSuccess)
     {
         const Date aTmpNullDate(aTempNullDate.Day, aTempNullDate.Month, aTempNullDate.Year);
-        const Date aTempDate((sal_uInt16)aDateTime.Day, (sal_uInt16)aDateTime.Month, (sal_uInt16)aDateTime.Year);
+        const Date aTempDate(aDateTime.Day, aDateTime.Month, aDateTime.Year);
         const sal_Int32 nTage = aTempDate - aTmpNullDate;
         double fTempDateTime = nTage;
         double Hour = aDateTime.Hours;
@@ -491,7 +477,7 @@ static bool lcl_getPositions(const OUString& _sValue,OUString& _rContentX,OUStri
     if(_sValue.isEmpty() || _sValue[0] != '(')
         return false;
 
-    sal_Int32 nPos(1L);
+    sal_Int32 nPos(1);
     sal_Int32 nFound = _sValue.indexOf(' ', nPos);
 
     if(nFound == -1 || nFound <= nPos)
@@ -715,36 +701,35 @@ void SvXMLUnitConverter::convertPropertySet(uno::Sequence<beans::PropertyValue>&
                     const uno::Reference<beans::XPropertySet>& aProperties)
 {
     uno::Reference< beans::XPropertySetInfo > xPropertySetInfo = aProperties->getPropertySetInfo();
-    if (xPropertySetInfo.is())
+    if (!xPropertySetInfo.is())
+        return;
+
+    const uno::Sequence< beans::Property > aProps = xPropertySetInfo->getProperties();
+    if (aProps.hasElements())
     {
-        uno::Sequence< beans::Property > aProps = xPropertySetInfo->getProperties();
-        const sal_Int32 nCount(aProps.getLength());
-        if (nCount)
+        rProps.realloc(aProps.getLength());
+        beans::PropertyValue* pProps = rProps.getArray();
+        for (const auto& rProp : aProps)
         {
-            rProps.realloc(nCount);
-            beans::PropertyValue* pProps = rProps.getArray();
-            for (sal_Int32 i = 0; i < nCount; i++, ++pProps)
-            {
-                pProps->Name = aProps[i].Name;
-                pProps->Value = aProperties->getPropertyValue(aProps[i].Name);
-            }
+            pProps->Name = rProp.Name;
+            pProps->Value = aProperties->getPropertyValue(rProp.Name);
+            ++pProps;
         }
     }
 }
 
-void SvXMLUnitConverter::convertPropertySet(uno::Reference<beans::XPropertySet>& rProperties,
+void SvXMLUnitConverter::convertPropertySet(uno::Reference<beans::XPropertySet> const & rProperties,
                     const uno::Sequence<beans::PropertyValue>& aProps)
 {
-    sal_Int32 nCount(aProps.getLength());
-    if (nCount)
+    if (aProps.hasElements())
     {
         uno::Reference< beans::XPropertySetInfo > xPropertySetInfo = rProperties->getPropertySetInfo();
         if (xPropertySetInfo.is())
         {
-            for (sal_Int32 i = 0; i < nCount; i++)
+            for (const auto& rProp : aProps)
             {
-                if (xPropertySetInfo->hasPropertyByName(aProps[i].Name))
-                    rProperties->setPropertyValue(aProps[i].Name, aProps[i].Value);
+                if (xPropertySetInfo->hasPropertyByName(rProp.Name))
+                    rProperties->setPropertyValue(rProp.Name, rProp.Value);
             }
         }
     }
@@ -759,7 +744,7 @@ OUString SvXMLUnitConverter::encodeStyleName(
         *pEncoded = false;
 
     sal_Int32 nLen = rName.getLength();
-    OUStringBuffer aBuffer( nLen );
+    OUStringBuffer aBuffer( nLen*2 );
 
     for( sal_Int32 i = 0; i < nLen; i++ )
     {
@@ -796,7 +781,7 @@ OUString SvXMLUnitConverter::encodeStyleName(
             {
                 if (!m_pImpl->m_xCharClass.is())
                 {
-                    this->m_pImpl->m_xCharClass = CharacterClassification::create( m_pImpl->m_xContext );
+                    m_pImpl->m_xCharClass = CharacterClassification::create( m_pImpl->m_xContext );
                 }
                 sal_Int16 nType = m_pImpl->m_xCharClass->getType(rName, i);
 

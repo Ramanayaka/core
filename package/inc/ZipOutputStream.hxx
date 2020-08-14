@@ -22,13 +22,14 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/io/XOutputStream.hpp>
 
-#include <ByteChucker.hxx>
+#include "ByteChucker.hxx"
 #include <comphelper/threadpool.hxx>
 
 #include <vector>
 
 struct ZipEntry;
 class ZipOutputEntry;
+class ZipOutputEntryInThread;
 class ZipPackageStream;
 
 class ZipOutputStream
@@ -39,15 +40,15 @@ class ZipOutputStream
 
     ByteChucker         m_aChucker;
     ZipEntry            *m_pCurrentEntry;
-    std::vector< ZipOutputEntry* > m_aEntries;
-    ::css::uno::Any m_aDeflateException;
+    std::vector< ZipOutputEntryInThread* > m_aEntries;
+    std::exception_ptr m_aDeflateException;
 
 public:
     ZipOutputStream(
         const css::uno::Reference< css::io::XOutputStream > &xOStream );
     ~ZipOutputStream();
 
-    void addDeflatingThread( ZipOutputEntry *pEntry, comphelper::ThreadTask *pThreadTask );
+    void addDeflatingThreadTask( ZipOutputEntryInThread *pEntry, std::unique_ptr<comphelper::ThreadTask> pThreadTask );
 
     /// @throws css::io::IOException
     /// @throws css::uno::RuntimeException
@@ -62,7 +63,7 @@ public:
     /// @throws css::io::IOException
     /// @throws css::uno::RuntimeException
     void finish();
-    const css::uno::Reference< css::io::XOutputStream >& getStream();
+    const css::uno::Reference< css::io::XOutputStream >& getStream() const;
 
     static sal_uInt32 getCurrentDosTime();
     static void setEntry( ZipEntry *pEntry );
@@ -79,14 +80,14 @@ private:
     void writeEXT( const ZipEntry &rEntry );
 
     // ScheduledThread handling helpers
-    void consumeScheduledThreadEntry(ZipOutputEntry* pCandidate);
-    void consumeFinishedScheduledThreadEntries();
+    void consumeScheduledThreadTaskEntry(std::unique_ptr<ZipOutputEntryInThread> pCandidate);
+    void consumeFinishedScheduledThreadTaskEntries();
 
 public:
-    void reduceScheduledThreadsToGivenNumberOrLess(
-        sal_Int32 nThreads);
+    void reduceScheduledThreadTasksToGivenNumberOrLess(
+        sal_Int32 nThreadTasks);
 
-    const std::shared_ptr<comphelper::ThreadTaskTag>& getThreadTaskTag() { return mpThreadTaskTag; }
+    const std::shared_ptr<comphelper::ThreadTaskTag>& getThreadTaskTag() const { return mpThreadTaskTag; }
 };
 
 #endif

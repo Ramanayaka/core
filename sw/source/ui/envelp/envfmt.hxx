@@ -19,49 +19,47 @@
 #ifndef INCLUDED_SW_SOURCE_UI_ENVELP_ENVFMT_HXX
 #define INCLUDED_SW_SOURCE_UI_ENVELP_ENVFMT_HXX
 
-#include <vcl/field.hxx>
-#include <vcl/menubtn.hxx>
-#include <vcl/group.hxx>
-
-#include "envlop.hxx"
+#include <vcl/weld.hxx>
+#include <envlop.hxx>
 
 class SwTextFormatColl;
 
 class SwEnvFormatPage : public SfxTabPage
 {
-    VclPtr<MetricField>  m_pAddrLeftField;
-    VclPtr<MetricField>  m_pAddrTopField;
-    VclPtr<MenuButton>   m_pAddrEditButton;
-    VclPtr<MetricField>  m_pSendLeftField;
-    VclPtr<MetricField>  m_pSendTopField;
-    VclPtr<MenuButton>   m_pSendEditButton;
-    VclPtr<ListBox>      m_pSizeFormatBox;
-    VclPtr<MetricField>  m_pSizeWidthField;
-    VclPtr<MetricField>  m_pSizeHeightField;
-    VclPtr<SwEnvPreview> m_pPreview;
+    SwEnvDlg* m_pDialog;
+    std::vector<sal_uInt16>  m_aIDs;
 
-    std::vector<sal_uInt16>  aIDs;
+    SwEnvPreview m_aPreview;
+    std::unique_ptr<weld::MetricSpinButton>  m_xAddrLeftField;
+    std::unique_ptr<weld::MetricSpinButton>  m_xAddrTopField;
+    std::unique_ptr<weld::MenuButton> m_xAddrEditButton;
+    std::unique_ptr<weld::MetricSpinButton>  m_xSendLeftField;
+    std::unique_ptr<weld::MetricSpinButton>  m_xSendTopField;
+    std::unique_ptr<weld::MenuButton> m_xSendEditButton;
+    std::unique_ptr<weld::ComboBox> m_xSizeFormatBox;
+    std::unique_ptr<weld::MetricSpinButton>  m_xSizeWidthField;
+    std::unique_ptr<weld::MetricSpinButton>  m_xSizeHeightField;
+    std::unique_ptr<weld::CustomWeld> m_xPreview;
 
-    DECL_LINK( ModifyHdl, SpinField&, void );
-    DECL_LINK( LoseFocusHdl, Control&, void );
-    DECL_LINK( EditHdl, MenuButton *, void );
-    DECL_LINK(FormatHdl, ListBox&, void);
+    DECL_LINK(ModifyHdl, weld::MetricSpinButton&, void);
+    DECL_LINK(AddrEditHdl, const OString&, void);
+    DECL_LINK(SendEditHdl, const OString&, void);
+    DECL_LINK(FormatHdl, weld::ComboBox&, void);
 
     void SetMinMax();
 
-    SfxItemSet  *GetCollItemSet(SwTextFormatColl* pColl, bool bSender);
+    SfxItemSet  *GetCollItemSet(SwTextFormatColl const * pColl, bool bSender);
 
-    SwEnvDlg    *GetParentSwEnvDlg() {return static_cast<SwEnvDlg*>(GetParentDialog());}
+    void Edit(const OString& rIdent, bool bSender);
 
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
+    SwEnvDlg    *GetParentSwEnvDlg() { return m_pDialog; }
 
 public:
-    SwEnvFormatPage(vcl::Window* pParent, const SfxItemSet& rSet);
+    SwEnvFormatPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
+    void Init(SwEnvDlg* pDialog);
     virtual ~SwEnvFormatPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage> Create(vcl::Window* pParent, const SfxItemSet* rSet);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet);
 
     virtual void ActivatePage(const SfxItemSet& rSet) override;
     virtual DeactivateRC DeactivatePage(SfxItemSet* pSet) override;

@@ -25,7 +25,7 @@ class TemplateConsts:
     '''
     section name <b>prefix</b> for sections that contain items.
     this is also used as table name prefix, since each items section
-    must contain a table whos name is identical name to the section's name.
+    must contain a table whose name is identical name to the section's name.
     '''
     SECTION_ITEMS = "AGENDA_ITEMS"
     '''
@@ -42,7 +42,7 @@ class TemplateConsts:
     '''
     SECTION_MINUTES = "MINUTES"
     '''
-    taged headings and names.
+    tagged headings and names.
     These will be searched in item tables (in the template) and will be
     replaced with resource strings.
 

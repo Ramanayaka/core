@@ -20,9 +20,11 @@
 #ifndef INCLUDED_FORMS_SOURCE_XFORMS_NAMEDCOLLECTION_HXX
 #define INCLUDED_FORMS_SOURCE_XFORMS_NAMEDCOLLECTION_HXX
 
-#include <collection.hxx>
+#include "collection.hxx"
 #include <cppuhelper/implbase.hxx>
+#include <comphelper/sequence.hxx>
 #include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/container/XNamed.hpp>
 
 #include <algorithm>
 
@@ -53,12 +55,10 @@ public:
     {
         // iterate over members, and collect all those that have names
         std::vector<OUString> aNames;
-        for( typename std::vector<T>::const_iterator aIter = maItems.begin();
-             aIter != maItems.end();
-             ++aIter )
+        for( const T& rItem : maItems )
         {
             css::uno::Reference<css::container::XNamed>
-                xNamed( *aIter, css::uno::UNO_QUERY );
+                xNamed( rItem, css::uno::UNO_QUERY );
             if( xNamed.is() )
                 aNames.push_back( xNamed->getName() );
         }
@@ -69,16 +69,11 @@ public:
 protected:
     typename std::vector<T>::const_iterator findItem( const OUString& rName ) const
     {
-        for( typename std::vector<T>::const_iterator aIter = maItems.begin();
-             aIter != maItems.end();
-             ++aIter )
-        {
+        return std::find_if(maItems.begin(), maItems.end(), [&rName](const T& rItem) {
             css::uno::Reference<css::container::XNamed>
-                xNamed( *aIter, css::uno::UNO_QUERY );
-            if( xNamed.is()  &&  xNamed->getName() == rName )
-                return aIter;
-        }
-        return maItems.end();
+                xNamed( rItem, css::uno::UNO_QUERY );
+            return xNamed.is() && xNamed->getName() == rName;
+        });
     }
 
 public:
@@ -98,11 +93,9 @@ public:
     virtual css::uno::Any SAL_CALL getByName(
         const OUString& aName ) override
     {
-        if( hasItem( aName ) )
-            return css::uno::makeAny( getItem( aName ) );
-        else
+        if( !hasItem( aName ) )
             throw css::container::NoSuchElementException();
-
+        return css::uno::makeAny( getItem( aName ) );
     }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getElementNames() override

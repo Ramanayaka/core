@@ -20,85 +20,118 @@
 #ifndef INCLUDED_SVX_SOURCE_TBXCTRLS_COLORWINDOW_HXX
 #define INCLUDED_SVX_SOURCE_TBXCTRLS_COLORWINDOW_HXX
 
-#include <sfx2/tbxctrl.hxx>
-#include <svtools/valueset.hxx>
-#include <svl/lstner.hxx>
+#include <svtools/toolbarmenu.hxx>
 #include <rtl/ustring.hxx>
-#include <com/sun/star/frame/XFrame.hpp>
 #include <svx/SvxColorValueSet.hxx>
-#include <svx/PaletteManager.hxx>
-#include <vcl/lstbox.hxx>
+#include <svx/Palette.hxx>
+#include <vcl/toolbox.hxx>
 
 #include <functional>
 
-class SVX_DLLPUBLIC BorderColorStatus
+namespace com::sun::star::frame { class XFrame; }
+
+class PaletteManager;
+
+class SVXCORE_DLLPUBLIC ColorStatus
 {
     Color maColor;
     Color maTLBRColor;
     Color maBLTRColor;
 public:
-    BorderColorStatus();
-    ~BorderColorStatus();
-    bool statusChanged( const css::frame::FeatureStateEvent& rEvent );
+    ColorStatus();
+    ~ColorStatus();
+    void statusChanged( const css::frame::FeatureStateEvent& rEvent );
     Color GetColor();
 };
 
 class Button;
 typedef std::function<void(const OUString&, const NamedColor&)> ColorSelectFunction;
 
-#define COL_NONE_COLOR    TRGB_COLORDATA(0x80, 0xFF, 0xFF, 0xFF)
+#define COL_NONE_COLOR    ::Color(0x80, 0xFF, 0xFF, 0xFF)
 
-class SVX_DLLPUBLIC SvxColorWindow : public SfxPopupWindow
+class SvxColorToolBoxControl;
+
+class SVXCORE_DLLPUBLIC MenuOrToolMenuButton
+{
+private:
+    // either
+    weld::MenuButton* m_pMenuButton;
+    // or
+    weld::Toolbar* m_pToolbar;
+    OString m_aIdent;
+    // or
+    SvxColorToolBoxControl* m_pControl;
+    VclPtr<ToolBox> m_xToolBox;
+    sal_uInt16 m_nId;
+public:
+    MenuOrToolMenuButton(weld::MenuButton* pMenuButton);
+    MenuOrToolMenuButton(weld::Toolbar* pToolbar, const OString& rIdent);
+    MenuOrToolMenuButton(SvxColorToolBoxControl* pControl, ToolBox* pToolbar, sal_uInt16 nId);
+    ~MenuOrToolMenuButton();
+
+    MenuOrToolMenuButton(MenuOrToolMenuButton const &) = default;
+    MenuOrToolMenuButton(MenuOrToolMenuButton &&) = default;
+    MenuOrToolMenuButton & operator =(MenuOrToolMenuButton const &) = default;
+    MenuOrToolMenuButton & operator =(MenuOrToolMenuButton &&) = default;
+
+    bool get_active() const;
+    void set_inactive() const;
+    weld::Widget* get_widget() const;
+};
+
+class SVXCORE_DLLPUBLIC ColorWindow final : public WeldToolbarPopup
 {
 private:
     const sal_uInt16    theSlotId;
-    VclPtr<SvxColorValueSet>   mpColorSet;
-    VclPtr<SvxColorValueSet>   mpRecentColorSet;
-
-    VclPtr<ListBox>     mpPaletteListBox;
-    VclPtr<PushButton>  mpButtonAutoColor;
-    VclPtr<PushButton>  mpButtonNoneColor;
-    VclPtr<PushButton>  mpButtonPicker;
-    VclPtr<FixedLine>   mpAutomaticSeparator;
     OUString            maCommand;
+    weld::Window*       mpParentWindow;
+    MenuOrToolMenuButton maMenuButton;
+    std::shared_ptr<PaletteManager> mxPaletteManager;
+    ColorStatus&  mrColorStatus;
+    ColorSelectFunction  maColorSelectFunction;
+
+    std::unique_ptr<SvxColorValueSet> mxColorSet;
+    std::unique_ptr<SvxColorValueSet> mxRecentColorSet;
+    std::unique_ptr<weld::ComboBox> mxPaletteListBox;
+    std::unique_ptr<weld::Button> mxButtonAutoColor;
+    std::unique_ptr<weld::Button> mxButtonNoneColor;
+    std::unique_ptr<weld::Button> mxButtonPicker;
+    std::unique_ptr<weld::Widget> mxAutomaticSeparator;
+    std::unique_ptr<weld::CustomWeld> mxColorSetWin;
+    std::unique_ptr<weld::CustomWeld> mxRecentColorSetWin;
+    weld::Button* mpDefaultButton;
+
     Link<const NamedColor&, void> maSelectedLink;
-
-    PaletteManager&     mrPaletteManager;
-    BorderColorStatus&  mrBorderColorStatus;
-
-    ColorSelectFunction maColorSelectFunction;
-
-    DECL_LINK( SelectHdl, ValueSet*, void );
-    DECL_LINK( SelectPaletteHdl, ListBox&, void);
-    DECL_LINK( AutoColorClickHdl, Button*, void );
-    DECL_LINK( OpenPickerClickHdl, Button*, void );
+    DECL_LINK(SelectHdl, ValueSet*, void);
+    DECL_LINK(SelectPaletteHdl, weld::ComboBox&, void);
+    DECL_LINK(AutoColorClickHdl, weld::Button&, void);
+    DECL_LINK(OpenPickerClickHdl, weld::Button&, void);
 
     static bool SelectValueSetEntry(SvxColorValueSet* pColorSet, const Color& rColor);
-    static NamedColor GetSelectEntryColor(ValueSet* pColorSet);
+    static NamedColor GetSelectEntryColor(ValueSet const * pColorSet);
     NamedColor GetAutoColor() const;
 
 public:
-    SvxColorWindow(const OUString& rCommand,
-                   PaletteManager& rPaletteManager,
-                   BorderColorStatus& rBorderColorStatus,
-                   sal_uInt16 nSlotId,
-                   const css::uno::Reference< css::frame::XFrame >& rFrame,
-                   vcl::Window* pParentWindow,
-                   ColorSelectFunction const& rColorSelectFunction);
-    virtual ~SvxColorWindow() override;
-    virtual void        dispose() override;
+    ColorWindow(const OUString& rCommand,
+                std::shared_ptr<PaletteManager> const & rPaletteManager,
+                ColorStatus& rColorStatus,
+                sal_uInt16 nSlotId,
+                const css::uno::Reference< css::frame::XFrame >& rFrame,
+                weld::Window* pParentWindow, const MenuOrToolMenuButton &rMenuButton,
+                ColorSelectFunction const& rColorSelectFunction);
+    virtual ~ColorWindow() override;
     void                ShowNoneButton();
-    void                StartSelection();
     void                SetNoSelection();
     bool                IsNoSelection() const;
     void                SelectEntry(const NamedColor& rColor);
     void                SelectEntry(const Color& rColor);
     NamedColor          GetSelectEntryColor() const;
 
-    virtual void        KeyInput( const KeyEvent& rKEvt ) override;
     virtual void        statusChanged( const css::frame::FeatureStateEvent& rEvent ) override;
 
     void SetSelectedHdl( const Link<const NamedColor&, void>& rLink ) { maSelectedLink = rLink; }
+
+    virtual void GrabFocus() override;
 };
 
 #endif

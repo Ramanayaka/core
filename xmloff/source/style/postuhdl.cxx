@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <postuhdl.hxx>
+#include "postuhdl.hxx"
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
+#include <xmloff/xmlement.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/awt/FontSlant.hpp>
@@ -31,14 +32,13 @@ using namespace ::xmloff::token;
 
 SvXMLEnumMapEntry<FontItalic> const aPostureGenericMapping[] =
 {
-    { XML_POSTURE_NORMAL,       ITALIC_NONE     },
-    { XML_POSTURE_ITALIC,       ITALIC_NORMAL   },
+    { XML_NORMAL,               ITALIC_NONE     },
+    { XML_ITALIC,               ITALIC_NORMAL   },
     { XML_POSTURE_OBLIQUE,      ITALIC_OBLIQUE  },
-    { XML_TOKEN_INVALID,        (FontItalic)0   }
+    { XML_TOKEN_INVALID,        FontItalic(0)   }
 };
 
 
-// class XMLPosturePropHdl
 
 
 XMLPosturePropHdl::~XMLPosturePropHdl()
@@ -67,7 +67,7 @@ bool XMLPosturePropHdl::exportXML( OUString& rStrExpValue, const uno::Any& rValu
         if( !( rValue >>= nValue ) )
             return false;
 
-        eSlant = (awt::FontSlant)nValue;
+        eSlant = static_cast<awt::FontSlant>(nValue);
     }
 
     OUStringBuffer aOut;

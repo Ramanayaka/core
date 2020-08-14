@@ -19,41 +19,33 @@
 
 #include <config_features.h>
 
-#include <tools/config.hxx>
-#include <svl/stritem.hxx>
-
-#include <vcl/menu.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/wrkwin.hxx>
-#include <comphelper/processfactory.hxx>
-
-#include <sfx2/viewfrm.hxx>
-#include "appdata.hxx"
+#include <appdata.hxx>
+#include <sfxpicklist.hxx>
 #include <sfx2/dispatch.hxx>
-#include <sfx2/event.hxx>
-#include "sfxtypes.hxx"
 #include <sfx2/doctempl.hxx>
-#include "arrdecl.hxx"
-#include <sfx2/docfac.hxx>
-#include <sfx2/docfile.hxx>
-#include <sfx2/request.hxx>
+#include <sfx2/fcontnr.hxx>
+#include <sfx2/module.hxx>
+#include <sfx2/msgpool.hxx>
 #include <sfx2/sidebar/Theme.hxx>
-#include <sfx2/unoctitm.hxx>
-#include "app.hrc"
-#include <sfx2/sfxresid.hxx>
-#include "objshimp.hxx"
-#include "imestatuswindow.hxx"
-#include "appbaslib.hxx"
+#include <sfx2/objsh.hxx>
+#include <appbaslib.hxx>
 #include <childwinimpl.hxx>
+#include <ctrlfactoryimpl.hxx>
+#include <shellimpl.hxx>
+#include <unoctitm.hxx>
+#include <svl/svdde.hxx>
 
 #include <basic/basicmanagerrepository.hxx>
 #include <basic/basmgr.hxx>
+#include <basic/basrdll.hxx>
 
 using ::basic::BasicManagerRepository;
 using ::basic::BasicManagerCreationListener;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::frame::XModel;
 using ::com::sun::star::uno::XInterface;
+
+static BasicDLL* pBasic = nullptr;
 
 class SfxBasicManagerCreationListener : public ::basic::BasicManagerCreationListener
 {
@@ -82,43 +74,19 @@ void SfxBasicManagerCreationListener::onBasicManagerCreated( const Reference< XM
 }
 
 SfxAppData_Impl::SfxAppData_Impl()
-    : pDdeService( nullptr )
-    , pDocTopics( nullptr )
-    , pTriggerTopic(nullptr)
-    , pDdeService2(nullptr)
-    , pFactArr(nullptr)
-    , pTopFrames( new SfxFrameArr_Impl )
-    , pMatcher( nullptr )
-#if HAVE_FEATURE_SCRIPTING
-    , pBasicResMgr( nullptr )
-#endif
-    , pSvtResMgr( nullptr )
-    , m_pToolsErrorHdl(nullptr)
-    , m_pSoErrorHdl(nullptr)
-#if HAVE_FEATURE_SCRIPTING
-    , m_pSbxErrorHdl(nullptr)
-#endif
-    , pTemplates( nullptr )
-    , pPool(nullptr)
+    : pPool(nullptr)
     , pProgress(nullptr)
     , nDocModalMode(0)
     , nRescheduleLocks(0)
-    , nInReschedule(0)
-    , m_xImeStatusWindow(new sfx2::appl::ImeStatusWindow(comphelper::getProcessComponentContext()))
-    , pTbxCtrlFac(nullptr)
-    , pStbCtrlFac(nullptr)
-    , pViewFrames(nullptr)
-    , pViewShells(nullptr)
-    , pObjShells(nullptr)
     , pBasicManager( new SfxBasicManagerHolder )
     , pBasMgrListener( new SfxBasicManagerCreationListener( *this ) )
     , pViewFrame( nullptr )
-    , pSlotPool( nullptr )
-    , pAppDispat( nullptr )
     , bDowning( true )
     , bInQuit( false )
 
 {
+    pBasic = new BasicDLL;
+
 #if HAVE_FEATURE_SCRIPTING
     BasicManagerRepository::registerCreationListener( *pBasMgrListener );
 #endif
@@ -127,22 +95,23 @@ SfxAppData_Impl::SfxAppData_Impl()
 SfxAppData_Impl::~SfxAppData_Impl()
 {
     DeInitDDE();
-    delete pTopFrames;
-    delete pBasicManager;
+    pBasicManager.reset();
 
 #if HAVE_FEATURE_SCRIPTING
     BasicManagerRepository::revokeCreationListener( *pBasMgrListener );
-    delete pBasMgrListener;
+    pBasMgrListener.reset();
 #endif
+
+    delete pBasic;
 }
 
 SfxDocumentTemplates* SfxAppData_Impl::GetDocumentTemplates()
 {
     if ( !pTemplates )
-        pTemplates = new SfxDocumentTemplates;
+        pTemplates.reset(new SfxDocumentTemplates);
     else
         pTemplates->ReInitFromComponent();
-    return pTemplates;
+    return pTemplates.get();
 }
 
 void SfxAppData_Impl::OnApplicationBasicManagerCreated( BasicManager& _rBasicManager )

@@ -28,10 +28,10 @@
 #include <com/sun/star/beans/PropertyValues.hpp>
 
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
     namespace beans { class XPropertySet; }
-} } }
+}
 template<typename EnumT> struct SvXMLEnumMapEntry;
 
 
@@ -39,23 +39,23 @@ template<typename EnumT> struct SvXMLEnumMapEntry;
 
 // TOC and user defined index:
 extern const SvXMLEnumMapEntry<sal_uInt16> aSvLevelNameTOCMap[];
-extern const sal_Char* aLevelStylePropNameTOCMap[];
+extern const char* aLevelStylePropNameTOCMap[];
 extern const bool aAllowedTokenTypesTOC[];
 extern const bool aAllowedTokenTypesUser[];
 
 // alphabetical index:
 extern const SvXMLEnumMapEntry<sal_uInt16> aLevelNameAlphaMap[];
-extern const sal_Char* aLevelStylePropNameAlphaMap[];
+extern const char* aLevelStylePropNameAlphaMap[];
 extern const bool aAllowedTokenTypesAlpha[];
 
 // bibliography:
 extern const SvXMLEnumMapEntry<sal_uInt16> aLevelNameBibliographyMap[];
-extern const sal_Char* aLevelStylePropNameBibliographyMap[];
+extern const char* aLevelStylePropNameBibliographyMap[];
 extern const bool aAllowedTokenTypesBibliography[];
 
 // table, illustration and object tables:
 extern const SvXMLEnumMapEntry<sal_uInt16>* aLevelNameTableMap; // NULL: no outline-level
-extern const sal_Char* aLevelStylePropNameTableMap[];
+extern const char* aLevelStylePropNameTableMap[];
 extern const bool aAllowedTokenTypesTable[];
 
 
@@ -71,7 +71,7 @@ class XMLIndexTemplateContext : public SvXMLImportContext
 
     const SvXMLEnumMapEntry<sal_uInt16>* pOutlineLevelNameMap;
     enum ::xmloff::token::XMLTokenEnum eOutlineLevelAttrName;
-    const sal_Char** pOutlineLevelStylePropMap;
+    const char** pOutlineLevelStylePropMap;
     const bool* pAllowedTokenTypesMap;
 
     sal_Int32 nOutlineLevel;
@@ -91,7 +91,7 @@ public:
         const OUString& rLocalName,
         const SvXMLEnumMapEntry<EnumT>* aLevelNameMap,
         enum ::xmloff::token::XMLTokenEnum eLevelAttrName,
-        const sal_Char** aLevelStylePropNameMap,
+        const char** aLevelStylePropNameMap,
         const bool* aAllowedTokenTypes,
         bool bTOC_=false)
         : XMLIndexTemplateContext(rImport,rPropSet,nPrfx,rLocalName,
@@ -104,7 +104,7 @@ public:
         const OUString& rLocalName,
         const SvXMLEnumMapEntry<sal_uInt16>* aLevelNameMap,
         enum ::xmloff::token::XMLTokenEnum eLevelAttrName,
-        const sal_Char** aLevelStylePropNameMap,
+        const char** aLevelStylePropNameMap,
         const bool* aAllowedTokenTypes,
         bool bTOC);
 
@@ -121,7 +121,7 @@ protected:
 
     virtual void EndElement() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList ) override;

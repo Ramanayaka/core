@@ -20,22 +20,20 @@
 #include "VPolarAxis.hxx"
 #include "VPolarAngleAxis.hxx"
 #include "VPolarRadiusAxis.hxx"
-#include "macros.hxx"
-#include "Tickmarks.hxx"
-#include "ShapeFactory.hxx"
+#include <PlottingPositionHelper.hxx>
 
 namespace chart
 {
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 
-VPolarAxis* VPolarAxis::createAxis( const AxisProperties& rAxisProperties
+std::shared_ptr<VPolarAxis> VPolarAxis::createAxis( const AxisProperties& rAxisProperties
            , const uno::Reference< util::XNumberFormatsSupplier >& xNumberFormatsSupplier
            , sal_Int32 nDimensionIndex, sal_Int32 nDimensionCount )
 {
     if( nDimensionIndex==0 )
-        return new VPolarAngleAxis( rAxisProperties, xNumberFormatsSupplier, nDimensionCount );
-    return new VPolarRadiusAxis( rAxisProperties, xNumberFormatsSupplier, nDimensionCount );
+        return std::make_shared<VPolarAngleAxis>( rAxisProperties, xNumberFormatsSupplier, nDimensionCount );
+    return std::make_shared<VPolarRadiusAxis>( rAxisProperties, xNumberFormatsSupplier, nDimensionCount );
 }
 
 VPolarAxis::VPolarAxis( const AxisProperties& rAxisProperties

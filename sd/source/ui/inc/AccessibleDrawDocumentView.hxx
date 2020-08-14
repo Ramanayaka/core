@@ -24,6 +24,9 @@
 
 #include <com/sun/star/accessibility/XAccessibleGroupPosition.hpp>
 
+namespace accessibility { class AccessiblePageShape; }
+namespace accessibility { class ChildrenManager; }
+
 namespace accessibility {
 
 /** This class makes draw documents in the general view modes
@@ -34,7 +37,7 @@ namespace accessibility {
     Please see the documentation of the base class for further
     explanations of the individual methods.
 */
-class AccessibleDrawDocumentView :
+class AccessibleDrawDocumentView final :
     public AccessibleDocumentViewBase
     ,public css::accessibility::XAccessibleGroupPosition
 {
@@ -94,7 +97,7 @@ public:
         getGroupPosition( const css::uno::Any& rAny ) override;
     virtual OUString SAL_CALL getObjectLink( const css::uno::Any& accoject ) override;
 
-protected:
+private:
 
     //=====  XServiceInfo  ====================================================
 
@@ -122,15 +125,14 @@ protected:
     */
     virtual void
         implSelect( sal_Int32 nAccessibleChildIndex, bool bSelect ) override;
-private:
+
     ::sd::ViewShell* mpSdViewSh;
 
-protected:
     /** This object manages the shapes of the represented draw page.  It is
         responsible to determine the visible shapes and create on demand the
         accessible objects representing them.
     */
-    ChildrenManager* mpChildrenManager;
+    std::unique_ptr<ChildrenManager> mpChildrenManager;
 
     // This method is called from the component helper base class while
     // disposing.
@@ -144,12 +146,6 @@ protected:
     virtual OUString
         CreateAccessibleName () override;
 
-    /** Create an accessible description that contains the current
-        view mode.
-    */
-    virtual OUString
-        CreateAccessibleDescription () override;
-
     /** Make sure that the currently focused shape sends a FOCUSED state
         change event indicating that it has (regained) the focus.
     */
@@ -162,13 +158,6 @@ protected:
 
     virtual void impl_dispose() override;
 
-    //=====  XAccessibleGetAccFromXShape  ============================================
-    css::uno::Sequence< css::uno::Any >
-        SAL_CALL getAccFlowTo(const css::uno::Any& rAny, sal_Int32 nType) override;
-    css::uno::Reference< css::accessibility::XAccessible >
-        GetSelAccContextInTable();
-
-private:
     void UpdateAccessibleName();
 };
 

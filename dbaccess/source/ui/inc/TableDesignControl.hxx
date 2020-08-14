@@ -19,7 +19,6 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_TABLEDESIGNCONTROL_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_TABLEDESIGNCONTROL_HXX
 
-#include <svtools/tabbar.hxx>
 #include <svtools/editbrowsebox.hxx>
 
 #include "IClipBoardTest.hxx"
@@ -50,7 +49,7 @@ namespace dbaui
 
         virtual OTableDesignView* GetView() const = 0;
 
-        sal_uInt16 GetCurUndoActId(){ return m_nCurUndoActId; }
+        sal_uInt16 GetCurUndoActId() const { return m_nCurUndoActId; }
 
         // IClipboardTest
         virtual void cut() override;
@@ -65,9 +64,9 @@ namespace dbaui
         virtual void InsertRows( long nRow )                = 0;
         virtual void InsertNewRows( long nRow )             = 0;
 
-        virtual bool IsPrimaryKeyAllowed( long nRow )   = 0;
+        virtual bool IsPrimaryKeyAllowed()              = 0;
         virtual bool IsInsertNewAllowed( long nRow )    = 0;
-        virtual bool IsDeleteAllowed( long nRow )       = 0;
+        virtual bool IsDeleteAllowed()                  = 0;
 
         virtual RowStatus GetRowStatus(long nRow) const override;
         virtual void KeyInput(const KeyEvent& rEvt) override;

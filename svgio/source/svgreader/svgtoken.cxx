@@ -20,299 +20,294 @@
 #include <svgtoken.hxx>
 #include <unordered_map>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
-        static const char aSVGStrWidth[] = "width";
-        static const char aSVGStrHeight[] = "height";
-        static const char aSVGStrViewBox[] = "viewBox";
-        static const char aSVGStrTransform[] = "transform";
-        static const char aSVGStrStyle[] = "style";
-        static const char aSVGStrDisplay[] = "display"; // #i121656#
-        static const char aSVGStrD[] = "d";
-        static const char aSVGStrX[] = "x";
-        static const char aSVGStrY[] = "y";
-        static const char aSVGStrXmlns[] = "xmlns";
-        static const char aSVGStrVersion[] = "version";
-        static const char aSVGStrId[] = "id";
-        static const char aSVGStrRx[] = "rx";
-        static const char aSVGStrRy[] = "ry";
-        static const char aSVGStrPoints[] = "points";
-        static const char aSVGStrDx[] = "dx";
-        static const char aSVGStrDy[] = "dy";
-        static const char aSVGStrRotate[] = "rotate";
-        static const char aSVGStrTextLength[] = "textLength";
-        static const char aSVGStrLengthAdjust[] = "lengthAdjust";
-        static const char aSVGStrFont[] = "font";
-        static const char aSVGStrFontFamily[] = "font-family";
-        static const char aSVGStrFontSize[] = "font-size";
-        static const char aSVGStrFontSizeAdjust[] = "font-size-adjust";
-        static const char aSVGStrFontStretch[] = "font-stretch";
-        static const char aSVGStrFontStyle[] = "font-style";
-        static const char aSVGStrFontVariant[] = "font-variant";
-        static const char aSVGStrFontWeight[] = "font-weight";
-        static const char aSVGStrDirection[] = "direction";
-        static const char aSVGStrLetterSpacing[] = "letter-spacing";
-        static const char aSVGStrTextDecoration[] = "text-decoration";
-        static const char aSVGStrUnicodeBidi[] = "unicode-bidi";
-        static const char aSVGStrWordSpacing[] = "word-spacing";
-        static const char aSVGStrTspan[] = "tspan";
-        static const char aSVGStrTref[] = "tref";
-        static const char aSVGStrTextPath[] = "textPath";
-        static const char aSVGStrStartOffset[] = "startOffset";
-        static const char aSVGStrMethod[] = "method";
-        static const char aSVGStrSpacing[] = "spacing";
-        static const char aSVGStrTextAlign[] = "text-align";
-        static const char aSVGStrPathLength[] = "pathLength";
-        static const char aSVGStrType[] = "type";
-        static const char aSVGStrClass[] = "class";
-        static const char aSVGStrTextAnchor[] = "text-anchor";
-        static const char aSVGStrXmlSpace[] = "xml:space";
-        static const char aSVGStrColor[] = "color";
-        static const char aSVGStrClipPathNode[] = "clipPath";
-        static const char aSVGStrClipPathProperty[] = "clip-path";
-        static const char aSVGStrMask[] = "mask";
-        static const char aSVGStrClipPathUnits[] = "clipPathUnits";
-        static const char aSVGStrMaskUnits[] = "maskUnits";
-        static const char aSVGStrMaskContentUnits[] = "maskContentUnits";
-        static const char aSVGStrClipRule[] = "clip-rule";
-        static const char aSVGStrMarker[] = "marker";
-        static const char aSVGStrMarkerStart[] = "marker-start";
-        static const char aSVGStrMarkerMid[] = "marker-mid";
-        static const char aSVGStrMarkerEnd[] = "marker-end";
-        static const char aSVGStrRefX[] = "refX";
-        static const char aSVGStrRefY[] = "refY";
-        static const char aSVGStrMarkerUnits[] = "markerUnits";
-        static const char aSVGStrMarkerWidth[] = "markerWidth";
-        static const char aSVGStrMarkerHeight[] = "markerHeight";
-        static const char aSVGStrOrient[] = "orient";
-        static const char aSVGStrPattern[] = "pattern";
-        static const char aSVGStrPatternUnits[] = "patternUnits";
-        static const char aSVGStrPatternContentUnits[] = "patternContentUnits";
-        static const char aSVGStrPatternTransform[] = "patternTransform";
-        static const char aSVGStrOpacity[] = "opacity";
-        static const char aSVGStrVisibility[] = "visibility";
-        static const char aSVGStrTitle[] = "title";
-        static const char aSVGStrDesc[] = "desc";
+        const char aSVGStrWidth[] = "width";
+        const char aSVGStrHeight[] = "height";
+        const char aSVGStrViewBox[] = "viewBox";
+        const char aSVGStrTransform[] = "transform";
+        const char aSVGStrStyle[] = "style";
+        const char aSVGStrDisplay[] = "display"; // #i121656#
+        const char aSVGStrD[] = "d";
+        const char aSVGStrX[] = "x";
+        const char aSVGStrY[] = "y";
+        const char aSVGStrXmlns[] = "xmlns";
+        const char aSVGStrVersion[] = "version";
+        const char aSVGStrId[] = "id";
+        const char aSVGStrRx[] = "rx";
+        const char aSVGStrRy[] = "ry";
+        const char aSVGStrPoints[] = "points";
+        const char aSVGStrDx[] = "dx";
+        const char aSVGStrDy[] = "dy";
+        const char aSVGStrRotate[] = "rotate";
+        const char aSVGStrTextLength[] = "textLength";
+        const char aSVGStrLengthAdjust[] = "lengthAdjust";
+        const char aSVGStrFont[] = "font";
+        const char aSVGStrFontFamily[] = "font-family";
+        const char aSVGStrFontSize[] = "font-size";
+        const char aSVGStrFontSizeAdjust[] = "font-size-adjust";
+        const char aSVGStrFontStretch[] = "font-stretch";
+        const char aSVGStrFontStyle[] = "font-style";
+        const char aSVGStrFontVariant[] = "font-variant";
+        const char aSVGStrFontWeight[] = "font-weight";
+        const char aSVGStrDirection[] = "direction";
+        const char aSVGStrLetterSpacing[] = "letter-spacing";
+        const char aSVGStrTextDecoration[] = "text-decoration";
+        const char aSVGStrUnicodeBidi[] = "unicode-bidi";
+        const char aSVGStrWordSpacing[] = "word-spacing";
+        const char aSVGStrTspan[] = "tspan";
+        const char aSVGStrTref[] = "tref";
+        const char aSVGStrTextPath[] = "textPath";
+        const char aSVGStrStartOffset[] = "startOffset";
+        const char aSVGStrMethod[] = "method";
+        const char aSVGStrSpacing[] = "spacing";
+        const char aSVGStrTextAlign[] = "text-align";
+        const char aSVGStrPathLength[] = "pathLength";
+        const char aSVGStrType[] = "type";
+        const char aSVGStrClass[] = "class";
+        const char aSVGStrTextAnchor[] = "text-anchor";
+        const char aSVGStrXmlSpace[] = "xml:space";
+        const char aSVGStrColor[] = "color";
+        const char aSVGStrClipPathNode[] = "clipPath";
+        const char aSVGStrClipPathProperty[] = "clip-path";
+        const char aSVGStrMask[] = "mask";
+        const char aSVGStrClipPathUnits[] = "clipPathUnits";
+        const char aSVGStrMaskUnits[] = "maskUnits";
+        const char aSVGStrMaskContentUnits[] = "maskContentUnits";
+        const char aSVGStrClipRule[] = "clip-rule";
+        const char aSVGStrMarker[] = "marker";
+        const char aSVGStrMarkerStart[] = "marker-start";
+        const char aSVGStrMarkerMid[] = "marker-mid";
+        const char aSVGStrMarkerEnd[] = "marker-end";
+        const char aSVGStrRefX[] = "refX";
+        const char aSVGStrRefY[] = "refY";
+        const char aSVGStrMarkerUnits[] = "markerUnits";
+        const char aSVGStrMarkerWidth[] = "markerWidth";
+        const char aSVGStrMarkerHeight[] = "markerHeight";
+        const char aSVGStrOrient[] = "orient";
+        const char aSVGStrPattern[] = "pattern";
+        const char aSVGStrPatternUnits[] = "patternUnits";
+        const char aSVGStrPatternContentUnits[] = "patternContentUnits";
+        const char aSVGStrPatternTransform[] = "patternTransform";
+        const char aSVGStrOpacity[] = "opacity";
+        const char aSVGStrVisibility[] = "visibility";
+        const char aSVGStrTitle[] = "title";
+        const char aSVGStrDesc[] = "desc";
 
-        static const char aSVGStrPreserveAspectRatio[] = "preserveAspectRatio";
-        static const char aSVGStrDefer[] = "defer";
-        static const char aSVGStrNone[] = "none";
-        static const char aSVGStrXMinYMin[] = "xMinYMin";
-        static const char aSVGStrXMidYMin[] = "xMidYMin";
-        static const char aSVGStrXMaxYMin[] = "xMaxYMin";
-        static const char aSVGStrXMinYMid[] = "xMinYMid";
-        static const char aSVGStrXMidYMid[] = "xMidYMid";
-        static const char aSVGStrXMaxYMid[] = "xMaxYMid";
-        static const char aSVGStrXMinYMax[] = "xMinYMax";
-        static const char aSVGStrXMidYMax[] = "xMidYMax";
-        static const char aSVGStrXMaxYMax[] = "xMaxYMax";
-        static const char aSVGStrMeet[] = "meet";
-        static const char aSVGStrSlice[] = "slice";
+        const char aSVGStrPreserveAspectRatio[] = "preserveAspectRatio";
+        const char aSVGStrDefer[] = "defer";
+        const char aSVGStrNone[] = "none";
+        const char aSVGStrXMinYMin[] = "xMinYMin";
+        const char aSVGStrXMidYMin[] = "xMidYMin";
+        const char aSVGStrXMaxYMin[] = "xMaxYMin";
+        const char aSVGStrXMinYMid[] = "xMinYMid";
+        const char aSVGStrXMidYMid[] = "xMidYMid";
+        const char aSVGStrXMaxYMid[] = "xMaxYMid";
+        const char aSVGStrXMinYMax[] = "xMinYMax";
+        const char aSVGStrXMidYMax[] = "xMidYMax";
+        const char aSVGStrXMaxYMax[] = "xMaxYMax";
+        const char aSVGStrMeet[] = "meet";
+        const char aSVGStrSlice[] = "slice";
 
-        static const char aSVGStrDefs[] = "defs";
-        static const char aSVGStrG[] = "g";
-        static const char aSVGStrSvg[] = "svg";
-        static const char aSVGStrSymbol[] = "symbol";
-        static const char aSVGStrUse[] = "use";
-        static const char aSVGStrA[] = "a";
+        const char aSVGStrDefs[] = "defs";
+        const char aSVGStrG[] = "g";
+        const char aSVGStrSvg[] = "svg";
+        const char aSVGStrSymbol[] = "symbol";
+        const char aSVGStrUse[] = "use";
+        const char aSVGStrA[] = "a";
 
-        static const char aSVGStrCircle[] = "circle";
-        static const char aSVGStrEllipse[] = "ellipse";
-        static const char aSVGStrLine[] = "line";
-        static const char aSVGStrPath[] = "path";
-        static const char aSVGStrPolygon[] = "polygon";
-        static const char aSVGStrPolyline[] = "polyline";
-        static const char aSVGStrRect[] = "rect";
-        static const char aSVGStrImage[] = "image";
+        const char aSVGStrCircle[] = "circle";
+        const char aSVGStrEllipse[] = "ellipse";
+        const char aSVGStrLine[] = "line";
+        const char aSVGStrPath[] = "path";
+        const char aSVGStrPolygon[] = "polygon";
+        const char aSVGStrPolyline[] = "polyline";
+        const char aSVGStrRect[] = "rect";
+        const char aSVGStrImage[] = "image";
 
-        static const char aSVGStrLinearGradient[] = "linearGradient";
-        static const char aSVGStrRadialGradient[] = "radialGradient";
-        static const char aSVGStrStop[] = "stop";
-        static const char aSVGStrOffset[] = "offset";
-        static const char aSVGStrX1[] = "x1";
-        static const char aSVGStrY1[] = "y1";
-        static const char aSVGStrX2[] = "x2";
-        static const char aSVGStrY2[] = "y2";
-        static const char aSVGStrCx[] = "cx";
-        static const char aSVGStrCy[] = "cy";
-        static const char aSVGStrFx[] = "fx";
-        static const char aSVGStrFy[] = "fy";
-        static const char aSVGStrR[] = "r";
-        static const char aSVGStrGradientUnits[] = "gradientUnits";
-        static const char aSVGStrGradientTransform[] = "gradientTransform";
-        static const char aSVGStrSpreadMethod[] = "spreadMethod";
-        static const char aSVGStrXlinkHref[] = "xlink:href";
-        static const char aSVGStrStopColor[] = "stop-color";
-        static const char aSVGStrStopOpacity[] = "stop-opacity";
+        const char aSVGStrLinearGradient[] = "linearGradient";
+        const char aSVGStrRadialGradient[] = "radialGradient";
+        const char aSVGStrStop[] = "stop";
+        const char aSVGStrOffset[] = "offset";
+        const char aSVGStrX1[] = "x1";
+        const char aSVGStrY1[] = "y1";
+        const char aSVGStrX2[] = "x2";
+        const char aSVGStrY2[] = "y2";
+        const char aSVGStrCx[] = "cx";
+        const char aSVGStrCy[] = "cy";
+        const char aSVGStrFx[] = "fx";
+        const char aSVGStrFy[] = "fy";
+        const char aSVGStrR[] = "r";
+        const char aSVGStrGradientUnits[] = "gradientUnits";
+        const char aSVGStrGradientTransform[] = "gradientTransform";
+        const char aSVGStrSpreadMethod[] = "spreadMethod";
+        const char aSVGStrXlinkHref[] = "xlink:href";
+        const char aSVGStrStopColor[] = "stop-color";
+        const char aSVGStrStopOpacity[] = "stop-opacity";
 
-        static const char aSVGStrFill[] = "fill";
-        static const char aSVGStrFillOpacity[] = "fill-opacity";
-        static const char aSVGStrFillRule[] = "fill-rule";
+        const char aSVGStrFill[] = "fill";
+        const char aSVGStrFillOpacity[] = "fill-opacity";
+        const char aSVGStrFillRule[] = "fill-rule";
 
-        static const char aSVGStrStroke[] = "stroke";
-        static const char aSVGStrStrokeDasharray[] = "stroke-dasharray";
-        static const char aSVGStrStrokeDashoffset[] = "stroke-dashoffset";
-        static const char aSVGStrStrokeLinecap[] = "stroke-linecap";
-        static const char aSVGStrStrokeLinejoin[] = "stroke-linejoin";
-        static const char aSVGStrStrokeMiterlimit[] = "stroke-miterlimit";
-        static const char aSVGStrStrokeOpacity[] = "stroke-opacity";
-        static const char aSVGStrStrokeWidth[] = "stroke-width";
+        const char aSVGStrStroke[] = "stroke";
+        const char aSVGStrStrokeDasharray[] = "stroke-dasharray";
+        const char aSVGStrStrokeDashoffset[] = "stroke-dashoffset";
+        const char aSVGStrStrokeLinecap[] = "stroke-linecap";
+        const char aSVGStrStrokeLinejoin[] = "stroke-linejoin";
+        const char aSVGStrStrokeMiterlimit[] = "stroke-miterlimit";
+        const char aSVGStrStrokeOpacity[] = "stroke-opacity";
+        const char aSVGStrStrokeWidth[] = "stroke-width";
 
-        static const char aSVGStrText[] = "text";
-        static const char aSVGStrBaselineShift[] = "baseline-shift";
+        const char aSVGStrText[] = "text";
+        const char aSVGStrBaselineShift[] = "baseline-shift";
 
-        static const char aSVGStrFlowRoot[] = "flowRoot";
+        const char aSVGStrFlowRoot[] = "flowRoot";
 
         SVGToken StrToSVGToken(const OUString& rStr, bool bCaseIndependent)
         {
-            typedef std::unordered_map< OUString, SVGToken, OUStringHash > SVGTokenMapper;
+            typedef std::unordered_map< OUString, SVGToken > SVGTokenMapper;
             typedef std::pair< OUString, SVGToken > SVGTokenValueType;
-            static SVGTokenMapper aSVGTokenMapperList;
+            static SVGTokenMapper aSVGTokenMapperList {
+                { aSVGStrWidth, SVGTokenWidth },
+                { aSVGStrHeight, SVGTokenHeight },
+                { aSVGStrViewBox, SVGTokenViewBox },
+                { aSVGStrTransform, SVGTokenTransform },
+                { aSVGStrStyle, SVGTokenStyle },
+                { aSVGStrDisplay, SVGTokenDisplay }, // #i121656#
+                { aSVGStrD, SVGTokenD },
+                { aSVGStrX, SVGTokenX },
+                { aSVGStrY, SVGTokenY },
+                { aSVGStrXmlns, SVGTokenXmlns },
+                { aSVGStrVersion, SVGTokenVersion },
+                { aSVGStrId, SVGTokenId },
+                { aSVGStrRx, SVGTokenRx },
+                { aSVGStrRy, SVGTokenRy },
+                { aSVGStrPoints, SVGTokenPoints },
+                { aSVGStrDx, SVGTokenDx },
+                { aSVGStrDy, SVGTokenDy },
+                { aSVGStrRotate, SVGTokenRotate },
+                { aSVGStrTextLength, SVGTokenTextLength },
+                { aSVGStrLengthAdjust, SVGTokenLengthAdjust },
+                { aSVGStrFont, SVGTokenFont },
+                { aSVGStrFontFamily, SVGTokenFontFamily },
+                { aSVGStrFontSize, SVGTokenFontSize },
+                { aSVGStrFontSizeAdjust, SVGTokenFontSizeAdjust },
+                { aSVGStrFontStretch, SVGTokenFontStretch },
+                { aSVGStrFontStyle, SVGTokenFontStyle },
+                { aSVGStrFontVariant, SVGTokenFontVariant },
+                { aSVGStrFontWeight, SVGTokenFontWeight },
+                { aSVGStrDirection, SVGTokenDirection },
+                { aSVGStrLetterSpacing, SVGTokenLetterSpacing },
+                { aSVGStrTextDecoration, SVGTokenTextDecoration },
+                { aSVGStrUnicodeBidi, SVGTokenUnicodeBidi },
+                { aSVGStrWordSpacing, SVGTokenWordSpacing },
+                { aSVGStrTspan, SVGTokenTspan },
+                { aSVGStrTref, SVGTokenTref },
+                { aSVGStrTextPath, SVGTokenTextPath },
+                { aSVGStrStartOffset, SVGTokenStartOffset },
+                { aSVGStrMethod, SVGTokenMethod },
+                { aSVGStrSpacing, SVGTokenSpacing },
+                { aSVGStrTextAlign, SVGTokenTextAlign },
+                { aSVGStrPathLength, SVGTokenPathLength },
+                { aSVGStrType, SVGTokenType },
+                { aSVGStrClass, SVGTokenClass },
+                { aSVGStrTextAnchor, SVGTokenTextAnchor },
+                { aSVGStrXmlSpace, SVGTokenXmlSpace },
+                { aSVGStrColor, SVGTokenColor },
+                { aSVGStrClipPathNode, SVGTokenClipPathNode },
+                { aSVGStrClipPathProperty, SVGTokenClipPathProperty },
+                { aSVGStrMask, SVGTokenMask },
+                { aSVGStrClipPathUnits, SVGTokenClipPathUnits },
+                { aSVGStrMaskUnits, SVGTokenMaskUnits },
+                { aSVGStrMaskContentUnits, SVGTokenMaskContentUnits },
+                { aSVGStrClipRule, SVGTokenClipRule },
+                { aSVGStrMarker, SVGTokenMarker },
+                { aSVGStrMarkerStart, SVGTokenMarkerStart },
+                { aSVGStrMarkerMid, SVGTokenMarkerMid },
+                { aSVGStrMarkerEnd, SVGTokenMarkerEnd },
+                { aSVGStrRefX, SVGTokenRefX },
+                { aSVGStrRefY, SVGTokenRefY },
+                { aSVGStrMarkerUnits, SVGTokenMarkerUnits },
+                { aSVGStrMarkerWidth, SVGTokenMarkerWidth },
+                { aSVGStrMarkerHeight, SVGTokenMarkerHeight },
+                { aSVGStrOrient, SVGTokenOrient },
+                { aSVGStrPattern, SVGTokenPattern },
+                { aSVGStrPatternUnits, SVGTokenPatternUnits },
+                { aSVGStrPatternContentUnits, SVGTokenPatternContentUnits },
+                { aSVGStrPatternTransform, SVGTokenPatternTransform },
+                { aSVGStrOpacity, SVGTokenOpacity },
+                { aSVGStrVisibility, SVGTokenVisibility },
+                { aSVGStrTitle, SVGTokenTitle },
+                { aSVGStrDesc, SVGTokenDesc },
 
-            if(aSVGTokenMapperList.empty())
-            {
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrWidth, SVGTokenWidth));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrHeight, SVGTokenHeight));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrViewBox, SVGTokenViewBox));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrTransform, SVGTokenTransform));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStyle, SVGTokenStyle));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrDisplay, SVGTokenDisplay)); // #i121656#
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrD, SVGTokenD));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrX, SVGTokenX));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrY, SVGTokenY));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXmlns, SVGTokenXmlns));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrVersion, SVGTokenVersion));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrId, SVGTokenId));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrRx, SVGTokenRx));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrRy, SVGTokenRy));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrPoints, SVGTokenPoints));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrDx, SVGTokenDx));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrDy, SVGTokenDy));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrRotate, SVGTokenRotate));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrTextLength, SVGTokenTextLength));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrLengthAdjust, SVGTokenLengthAdjust));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFont, SVGTokenFont));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFontFamily, SVGTokenFontFamily));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFontSize, SVGTokenFontSize));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFontSizeAdjust, SVGTokenFontSizeAdjust));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFontStretch, SVGTokenFontStretch));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFontStyle, SVGTokenFontStyle));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFontVariant, SVGTokenFontVariant));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFontWeight, SVGTokenFontWeight));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrDirection, SVGTokenDirection));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrLetterSpacing, SVGTokenLetterSpacing));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrTextDecoration, SVGTokenTextDecoration));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrUnicodeBidi, SVGTokenUnicodeBidi));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrWordSpacing, SVGTokenWordSpacing));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrTspan, SVGTokenTspan));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrTref, SVGTokenTref));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrTextPath, SVGTokenTextPath));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStartOffset, SVGTokenStartOffset));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMethod, SVGTokenMethod));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrSpacing, SVGTokenSpacing));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrTextAlign, SVGTokenTextAlign));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrPathLength, SVGTokenPathLength));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrType, SVGTokenType));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrClass, SVGTokenClass));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrTextAnchor, SVGTokenTextAnchor));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXmlSpace, SVGTokenXmlSpace));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrColor, SVGTokenColor));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrClipPathNode, SVGTokenClipPathNode));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrClipPathProperty, SVGTokenClipPathProperty));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMask, SVGTokenMask));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrClipPathUnits, SVGTokenClipPathUnits));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMaskUnits, SVGTokenMaskUnits));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMaskContentUnits, SVGTokenMaskContentUnits));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrClipRule, SVGTokenClipRule));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMarker, SVGTokenMarker));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMarkerStart, SVGTokenMarkerStart));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMarkerMid, SVGTokenMarkerMid));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMarkerEnd, SVGTokenMarkerEnd));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrRefX, SVGTokenRefX));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrRefY, SVGTokenRefY));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMarkerUnits, SVGTokenMarkerUnits));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMarkerWidth, SVGTokenMarkerWidth));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMarkerHeight, SVGTokenMarkerHeight));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrOrient, SVGTokenOrient));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrPattern, SVGTokenPattern));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrPatternUnits, SVGTokenPatternUnits));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrPatternContentUnits, SVGTokenPatternContentUnits));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrPatternTransform, SVGTokenPatternTransform));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrOpacity, SVGTokenOpacity));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrVisibility, SVGTokenVisibility));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrTitle, SVGTokenTitle));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrDesc, SVGTokenDesc));
+                { aSVGStrPreserveAspectRatio, SVGTokenPreserveAspectRatio },
+                { aSVGStrDefer, SVGTokenDefer },
+                { aSVGStrNone, SVGTokenNone },
+                { aSVGStrXMinYMin, SVGTokenXMinYMin },
+                { aSVGStrXMidYMin, SVGTokenXMidYMin },
+                { aSVGStrXMaxYMin, SVGTokenXMaxYMin },
+                { aSVGStrXMinYMid, SVGTokenXMinYMid },
+                { aSVGStrXMidYMid, SVGTokenXMidYMid },
+                { aSVGStrXMaxYMid, SVGTokenXMaxYMid },
+                { aSVGStrXMinYMax, SVGTokenXMinYMax },
+                { aSVGStrXMidYMax, SVGTokenXMidYMax },
+                { aSVGStrXMaxYMax, SVGTokenXMaxYMax },
+                { aSVGStrMeet, SVGTokenMeet },
+                { aSVGStrSlice, SVGTokenSlice },
 
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrPreserveAspectRatio, SVGTokenPreserveAspectRatio));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrDefer, SVGTokenDefer));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrNone, SVGTokenNone));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXMinYMin, SVGTokenXMinYMin));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXMidYMin, SVGTokenXMidYMin));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXMaxYMin, SVGTokenXMaxYMin));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXMinYMid, SVGTokenXMinYMid));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXMidYMid, SVGTokenXMidYMid));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXMaxYMid, SVGTokenXMaxYMid));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXMinYMax, SVGTokenXMinYMax));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXMidYMax, SVGTokenXMidYMax));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXMaxYMax, SVGTokenXMaxYMax));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrMeet, SVGTokenMeet));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrSlice, SVGTokenSlice));
+                { aSVGStrDefs, SVGTokenDefs },
+                { aSVGStrG, SVGTokenG },
+                { aSVGStrSvg, SVGTokenSvg },
+                { aSVGStrSymbol, SVGTokenSymbol },
+                { aSVGStrUse, SVGTokenUse },
+                { aSVGStrA, SVGTokenA },
 
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrDefs, SVGTokenDefs));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrG, SVGTokenG));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrSvg, SVGTokenSvg));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrSymbol, SVGTokenSymbol));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrUse, SVGTokenUse));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrA, SVGTokenA));
+                { aSVGStrCircle, SVGTokenCircle },
+                { aSVGStrEllipse, SVGTokenEllipse },
+                { aSVGStrLine, SVGTokenLine },
+                { aSVGStrPath, SVGTokenPath },
+                { aSVGStrPolygon, SVGTokenPolygon },
+                { aSVGStrPolyline, SVGTokenPolyline },
+                { aSVGStrRect, SVGTokenRect },
+                { aSVGStrImage, SVGTokenImage },
 
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrCircle, SVGTokenCircle));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrEllipse, SVGTokenEllipse));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrLine, SVGTokenLine));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrPath, SVGTokenPath));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrPolygon, SVGTokenPolygon));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrPolyline, SVGTokenPolyline));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrRect, SVGTokenRect));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrImage, SVGTokenImage));
+                { aSVGStrLinearGradient, SVGTokenLinearGradient },
+                { aSVGStrRadialGradient, SVGTokenRadialGradient },
+                { aSVGStrStop, SVGTokenStop },
+                { aSVGStrOffset, SVGTokenOffset },
+                { aSVGStrX1, SVGTokenX1 },
+                { aSVGStrY1, SVGTokenY1 },
+                { aSVGStrX2, SVGTokenX2 },
+                { aSVGStrY2, SVGTokenY2 },
+                { aSVGStrCx, SVGTokenCx },
+                { aSVGStrCy, SVGTokenCy },
+                { aSVGStrFx, SVGTokenFx },
+                { aSVGStrFy, SVGTokenFy },
+                { aSVGStrR, SVGTokenR },
+                { aSVGStrGradientUnits, SVGTokenGradientUnits },
+                { aSVGStrGradientTransform, SVGTokenGradientTransform },
+                { aSVGStrSpreadMethod, SVGTokenSpreadMethod },
+                { aSVGStrXlinkHref, SVGTokenXlinkHref },
+                { aSVGStrStopColor, SVGTokenStopColor },
+                { aSVGStrStopOpacity, SVGTokenStopOpacity },
 
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrLinearGradient, SVGTokenLinearGradient));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrRadialGradient, SVGTokenRadialGradient));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStop, SVGTokenStop));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrOffset, SVGTokenOffset));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrX1, SVGTokenX1));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrY1, SVGTokenY1));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrX2, SVGTokenX2));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrY2, SVGTokenY2));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrCx, SVGTokenCx));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrCy, SVGTokenCy));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFx, SVGTokenFx));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFy, SVGTokenFy));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrR, SVGTokenR));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrGradientUnits, SVGTokenGradientUnits));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrGradientTransform, SVGTokenGradientTransform));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrSpreadMethod, SVGTokenSpreadMethod));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrXlinkHref, SVGTokenXlinkHref));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStopColor, SVGTokenStopColor));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStopOpacity, SVGTokenStopOpacity));
+                { aSVGStrFill, SVGTokenFill },
+                { aSVGStrFillOpacity, SVGTokenFillOpacity },
+                { aSVGStrFillRule, SVGTokenFillRule },
 
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFill, SVGTokenFill));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFillOpacity, SVGTokenFillOpacity));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFillRule, SVGTokenFillRule));
+                { aSVGStrStroke, SVGTokenStroke },
+                { aSVGStrStrokeDasharray, SVGTokenStrokeDasharray },
+                { aSVGStrStrokeDashoffset, SVGTokenStrokeDashoffset },
+                { aSVGStrStrokeLinecap, SVGTokenStrokeLinecap },
+                { aSVGStrStrokeLinejoin, SVGTokenStrokeLinejoin },
+                { aSVGStrStrokeMiterlimit, SVGTokenStrokeMiterlimit },
+                { aSVGStrStrokeOpacity, SVGTokenStrokeOpacity },
+                { aSVGStrStrokeWidth, SVGTokenStrokeWidth },
 
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStroke, SVGTokenStroke));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStrokeDasharray, SVGTokenStrokeDasharray));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStrokeDashoffset, SVGTokenStrokeDashoffset));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStrokeLinecap, SVGTokenStrokeLinecap));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStrokeLinejoin, SVGTokenStrokeLinejoin));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStrokeMiterlimit, SVGTokenStrokeMiterlimit));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStrokeOpacity, SVGTokenStrokeOpacity));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrStrokeWidth, SVGTokenStrokeWidth));
-
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrText, SVGTokenText));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrBaselineShift, SVGTokenBaselineShift));
-                aSVGTokenMapperList.insert(SVGTokenValueType(aSVGStrFlowRoot, SVGTokenFlowRoot));
-            }
+                { aSVGStrText, SVGTokenText },
+                { aSVGStrBaselineShift, SVGTokenBaselineShift },
+                { aSVGStrFlowRoot, SVGTokenFlowRoot }
+            };
 
             const SVGTokenMapper::const_iterator aResult(aSVGTokenMapperList.find(rStr.startsWith("svg:") ? rStr.copy(4) : rStr));
 
@@ -324,12 +319,12 @@ namespace svgio
 
                     if(aCaseLindependentSVGTokenMapperList.empty())
                     {
-                        for(SVGTokenMapper::const_iterator aCurrent(aSVGTokenMapperList.begin()); aCurrent != aSVGTokenMapperList.end(); ++aCurrent)
+                        for(const auto& rCurrent : aSVGTokenMapperList)
                         {
                             aCaseLindependentSVGTokenMapperList.insert(
                                 SVGTokenValueType(
-                                    aCurrent->first.toAsciiLowerCase(),
-                                    aCurrent->second));
+                                    rCurrent.first.toAsciiLowerCase(),
+                                    rCurrent.second));
                         }
                     }
 
@@ -353,16 +348,15 @@ namespace svgio
             }
         }
 
-        const OUString getStrTitle()
+        OUString getStrTitle()
         {
-            return OUString(aSVGStrTitle);
+            return aSVGStrTitle;
         }
 
-        const OUString getStrDesc()
+        OUString getStrDesc()
         {
-            return OUString(aSVGStrDesc);
+            return aSVGStrDesc;
         }
-    } // end of namespace svgreader
 } // end of namespace svgio
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

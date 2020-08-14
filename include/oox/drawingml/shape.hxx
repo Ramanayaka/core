@@ -39,22 +39,22 @@
 
 namespace basegfx { class B2DHomMatrix; }
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { struct Rectangle; }
     namespace drawing { class XShape; }
     namespace drawing { class XShapes; }
     namespace uno { class Any; }
-} } }
+}
 
-namespace oox { namespace core {
+namespace oox::core {
     class XmlFilterBase;
-} }
+}
 
-namespace oox { namespace vml {
+namespace oox::vml {
     struct OleObjectInfo;
-} }
+}
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 class Theme;
 struct EffectProperties;
@@ -76,6 +76,9 @@ struct ShapeStyleRef
 };
 
 typedef ::std::map< sal_Int32, ShapeStyleRef > ShapeStyleRefMap;
+
+class DiagramData;
+typedef std::shared_ptr<DiagramData> DiagramDataPtr;
 
 /** Additional information for a chart embedded in a drawing shape. */
 struct ChartShapeInfo
@@ -99,12 +102,12 @@ class OOX_DLLPUBLIC Shape
 {
 public:
 
-    explicit Shape( const sal_Char* pServiceType = nullptr, bool bDefaultHeight = true );
+    explicit Shape( const char* pServiceType = nullptr, bool bDefaultHeight = true );
     explicit Shape( const ShapePtr& pSourceShape );
     virtual ~Shape();
 
     OUString&                  getServiceName(){ return msServiceName; }
-    void                            setServiceName( const sal_Char* pServiceName );
+    void                            setServiceName( const char* pServiceName );
 
     PropertyMap&                    getShapeProperties(){ return maShapeProperties; }
 
@@ -136,16 +139,22 @@ public:
     const css::awt::Size&           getSize() const { return maSize; }
 
     void                            setRotation( sal_Int32 nRotation ) { mnRotation = nRotation; }
+    sal_Int32                       getRotation() const { return mnRotation; }
+    void                            setDiagramRotation( sal_Int32 nRotation ) { mnDiagramRotation = nRotation; }
     void                            setFlip( bool bFlipH, bool bFlipV ) { mbFlipH = bFlipH; mbFlipV = bFlipV; }
     void                            addChild( const ShapePtr& rChildPtr ) { maChildren.push_back( rChildPtr ); }
     std::vector< ShapePtr >&        getChildren() { return maChildren; }
 
     void                            setName( const OUString& rName ) { msName = rName; }
-    const OUString&                 getName( ) { return msName; }
+    const OUString&                 getName( ) const { return msName; }
+    void                            setInternalName( const OUString& rInternalName ) { msInternalName = rInternalName; }
+    const OUString&                 getInternalName() const { return msInternalName; }
     void                            setId( const OUString& rId ) { msId = rId; }
-    const OUString&                 getId() { return msId; }
+    const OUString&                 getId() const { return msId; }
+    void                            setDescription( const OUString& rDescr ) { msDescription = rDescr; }
     void                            setHidden( bool bHidden ) { mbHidden = bHidden; }
     void                            setHiddenMasterShape( bool bHiddenMasterShape ) { mbHiddenMasterShape = bHiddenMasterShape; }
+    void                            setLocked( bool bLocked ) { mbLocked = bLocked; }
     void                            setSubType( sal_Int32 nSubType ) { mnSubType = nSubType; }
     sal_Int32                       getSubType() const { return mnSubType; }
     void                            setSubTypeIndex( sal_Int32 nSubTypeIndex ) { moSubTypeIndex = nSubTypeIndex; }
@@ -160,7 +169,7 @@ public:
     void                            setTableType();
 
     void                setTextBody(const TextBodyPtr & pTextBody);
-    const TextBodyPtr&   getTextBody() { return mpTextBody;}
+    const TextBodyPtr&  getTextBody() const { return mpTextBody;}
     void                setMasterTextListStyle( const TextListStylePtr& pMasterTextListStyle );
     const TextListStylePtr&  getMasterTextListStyle() const { return mpMasterTextListStyle; }
 
@@ -175,42 +184,71 @@ public:
                             const css::uno::Reference< css::drawing::XShapes >& rxShapes,
                             const basegfx::B2DHomMatrix& aTransformation,
                             FillProperties& rShapeOrParentShapeFillProps,
-                            ShapeIdMap* pShapeMap = nullptr );
+                            ShapeIdMap* pShapeMap = nullptr,
+                            bool bInGroup = false);
 
-    void                addChildren(
-                            ::oox::core::XmlFilterBase& rFilterBase,
-                            const Theme* pTheme,
-                            const css::uno::Reference< css::drawing::XShapes >& rxShapes,
-                            basegfx::B2DHomMatrix& aTransformation );
-
-    void                setXShape( const css::uno::Reference< css::drawing::XShape >& rXShape )
-                            { mxShape = rXShape; };
     const css::uno::Reference< css::drawing::XShape > &
                         getXShape() const { return mxShape; }
 
     void                applyShapeReference( const Shape& rReferencedShape, bool bUseText = true );
     const ::std::vector<OUString>&
-                        getExtDrawings() { return maExtDrawings; }
+                        getExtDrawings() const { return maExtDrawings; }
     void                addExtDrawingRelId( const OUString &rRelId ) { maExtDrawings.push_back( rRelId ); }
     // Set font color only for extdrawings.
     void                setFontRefColorForNodes(const Color& rColor) { maFontRefColorForNodes = rColor; }
     const Color&        getFontRefColorForNodes() const { return maFontRefColorForNodes; }
     void                setLockedCanvas(bool bLockedCanvas);
-    bool                getLockedCanvas() { return mbLockedCanvas;}
+    bool                getLockedCanvas() const { return mbLockedCanvas;}
     void                setWps(bool bWps);
-    bool                getWps() { return mbWps;}
+    bool                getWps() const { return mbWps;}
     void                setTextBox(bool bTextBox);
     const css::uno::Sequence<css::beans::PropertyValue> &
-                        getDiagramDoms() { return maDiagramDoms; }
+                        getDiagramDoms() const { return maDiagramDoms; }
     void                setDiagramDoms(const css::uno::Sequence<css::beans::PropertyValue>& rDiagramDoms) { maDiagramDoms = rDiagramDoms; }
+    void                setDiagramData(const DiagramDataPtr& pDiagramData) { mpDiagramData = pDiagramData; }
     css::uno::Sequence< css::uno::Sequence< css::uno::Any > >resolveRelationshipsOfTypeFromOfficeDoc(
                                                                           core::XmlFilterBase& rFilter, const OUString& sFragment, const OUString& sType );
     void                setLinkedTxbxAttributes(const LinkedTxbxAttr& rhs){ maLinkedTxbxAttr = rhs; };
     void                setTxbxHasLinkedTxtBox( const bool rhs){ mbHasLinkedTxbx = rhs; };
-    const LinkedTxbxAttr&     getLinkedTxbxAttributes() { return maLinkedTxbxAttr; };
-    bool                isLinkedTxbx() { return mbHasLinkedTxbx; };
+    const LinkedTxbxAttr&     getLinkedTxbxAttributes() const { return maLinkedTxbxAttr; };
+    bool                isLinkedTxbx() const { return mbHasLinkedTxbx; };
+
+    void setZOrder(sal_Int32 nZOrder) { mnZOrder = nZOrder; }
+
+    sal_Int32 getZOrder() const { return mnZOrder; }
+
+    void setZOrderOff(sal_Int32 nZOrderOff) { mnZOrderOff = nZOrderOff; }
+
+    sal_Int32 getZOrderOff() const { return mnZOrderOff; }
+
+    void setDataNodeType(sal_Int32 nDataNodeType) { mnDataNodeType = nDataNodeType; }
+
+    sal_Int32 getDataNodeType() const { return mnDataNodeType; }
+
+    void setAspectRatio(double fAspectRatio) { mfAspectRatio = fAspectRatio; }
+
+    double getAspectRatio() const { return mfAspectRatio; }
+
+    void setVerticalShapesCount(sal_Int32 nVerticalShapesCount) { mnVerticalShapesCount = nVerticalShapesCount; }
+    sal_Int32 getVerticalShapesCount() const { return mnVerticalShapesCount; }
+
+    void setUseBgFill(bool bUseBgFill) { mbUseBgFill = bUseBgFill; }
+
+    /// Changes reference semantics to value semantics for fill properties.
+    void cloneFillProperties();
+
+    void keepDiagramDrawing(::oox::core::XmlFilterBase& rFilterBase, const OUString& rFragmentPath);
 
 protected:
+
+    enum FrameType
+    {
+        FRAMETYPE_GENERIC, ///< Generic shape, no special type.
+        FRAMETYPE_OLEOBJECT, ///< OLE object embedded in a shape.
+        FRAMETYPE_CHART, ///< Chart embedded in a shape.
+        FRAMETYPE_DIAGRAM, ///< Complex diagram drawing shape.
+        FRAMETYPE_TABLE ///< A table embedded in a shape.
+    };
 
     css::uno::Reference< css::drawing::XShape > const &
                         createAndInsert(
@@ -221,7 +259,8 @@ protected:
                             bool bClearText,
                             bool bDoNotInsertEmptyTextBody,
                             basegfx::B2DHomMatrix& aTransformation,
-                            FillProperties& rShapeOrParentShapeFillProps
+                            FillProperties& rShapeOrParentShapeFillProps,
+                            bool bInGroup = false
                              );
 
     void                addChildren(
@@ -232,10 +271,11 @@ protected:
                             ShapeIdMap* pShapeMap,
                             const basegfx::B2DHomMatrix& aTransformation );
 
-    void                keepDiagramCompatibilityInfo( ::oox::core::XmlFilterBase& rFilterBase );
+    void                keepDiagramCompatibilityInfo();
+    void                convertSmartArtToMetafile( ::oox::core::XmlFilterBase const& rFilterBase );
 
     css::uno::Reference< css::drawing::XShape >
-                        renderDiagramToGraphic( ::oox::core::XmlFilterBase& rFilterBase );
+                        renderDiagramToGraphic( ::oox::core::XmlFilterBase const & rFilterBase );
 
     OUString finalizeServiceName(
                             ::oox::core::XmlFilterBase& rFilter,
@@ -279,7 +319,9 @@ protected:
 
     OUString                    msServiceName;
     OUString                    msName;
+    OUString                    msInternalName; // used by diagram; not displayed in UI
     OUString                    msId;
+    OUString                    msDescription;
     sal_Int32                   mnSubType;      // if this type is not zero, then the shape is a placeholder
     OptValue< sal_Int32 >       moSubTypeIndex;
 
@@ -290,30 +332,25 @@ protected:
     ::std::vector<OUString>     maExtDrawings;
     Color                       maFontRefColorForNodes;
 
+    FrameType                   meFrameType; ///< Type for graphic frame shapes.
+
 private:
-    enum FrameType
-    {
-        FRAMETYPE_GENERIC,          ///< Generic shape, no special type.
-        FRAMETYPE_OLEOBJECT,        ///< OLE object embedded in a shape.
-        FRAMETYPE_CHART,            ///< Chart embedded in a shape.
-        FRAMETYPE_DIAGRAM,          ///< Complex diagram drawing shape.
-        FRAMETYPE_TABLE             ///< A table embedded in a shape.
-    };
 
     typedef std::shared_ptr< ::oox::vml::OleObjectInfo >    OleObjectInfoRef;
     typedef std::shared_ptr< ChartShapeInfo >               ChartShapeInfoRef;
 
-    FrameType           meFrameType;        ///< Type for graphic frame shapes.
     OleObjectInfoRef    mxOleObjectInfo;    ///< Additional data for OLE objects.
     ChartShapeInfoRef   mxChartShapeInfo;   ///< Additional data for chart shapes.
 
     sal_Int32                       mnRotation;
+    sal_Int32                       mnDiagramRotation; // rotates shape prior to sizing, does not affect text rotation
     bool                            mbFlipH;
     bool                            mbFlipV;
     bool                            mbHidden;
     bool                            mbHiddenMasterShape; // master shapes can be hidden in layout slides
                                                          // we need separate flag because we don't want
                                                          // to propagate it when applying reference shape
+    bool                            mbLocked;
     bool mbLockedCanvas; ///< Is this shape part of a locked canvas?
     bool mbWps; ///< Is this a wps shape?
     bool mbTextBox; ///< This shape has a textbox.
@@ -321,9 +358,28 @@ private:
     bool                            mbHasLinkedTxbx; // this text box has linked text box ?
 
     css::uno::Sequence<css::beans::PropertyValue> maDiagramDoms;
+    DiagramDataPtr mpDiagramData;
+
+    /// Z-Order.
+    sal_Int32 mnZOrder = 0;
+
+    /// Z-Order offset.
+    sal_Int32 mnZOrderOff = 0;
+
+    /// Type of data node for an in-diagram shape.
+    sal_Int32 mnDataNodeType = 0;
+
+    /// Aspect ratio for an in-diagram shape.
+    double mfAspectRatio = 0;
+
+    /// Number of child shapes to be layouted vertically inside org chart in-diagram shape.
+    sal_Int32 mnVerticalShapesCount = 0;
+
+    /// The shape fill should be set to that of the slide background surface.
+    bool mbUseBgFill = false;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_SHAPE_HXX
 

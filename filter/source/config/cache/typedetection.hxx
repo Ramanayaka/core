@@ -21,14 +21,15 @@
 
 #include "basecontainer.hxx"
 #include <com/sun/star/document/XTypeDetection.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/frame/XTerminateListener.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <unotools/mediadescriptor.hxx>
+#include <cppuhelper/compbase.hxx>
 #include <cppuhelper/implbase.hxx>
 
+namespace filter::config {
 
-namespace filter{ namespace config {
-
+class TerminateDetection;
 
 /** @short      implements the service <type scope="com.sun.star.document">TypeDetection</type>.
  */
@@ -39,6 +40,8 @@ class TypeDetection : public ::cppu::ImplInheritanceHelper< BaseContainer       
 // native interface
 
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
+    rtl::Reference<TerminateDetection> m_xTerminateListener;
+    bool m_bCancel;
 
 public:
 
@@ -53,6 +56,11 @@ public:
      */
     explicit TypeDetection(const css::uno::Reference< css::uno::XComponentContext >& rxContext);
 
+    void cancel()
+    {
+        m_bCancel = true;
+    }
+
 
     /** @short  standard dtor.
      */
@@ -66,7 +74,7 @@ private:
     bool impl_getPreselectionForType(
         const OUString& sPreSelType, const css::util::URL& aParsedURL, FlatDetection& rFlatTypes, bool bDocService);
 
-    bool impl_getPreselectionForDocumentService(
+    void impl_getPreselectionForDocumentService(
         const OUString& sPreSelDocumentService, const css::util::URL& aParsedURL, FlatDetection& rFlatTypes);
 
     OUString impl_getTypeFromFilter(const OUString& rFilterName);
@@ -75,7 +83,7 @@ private:
      * Get all format types that we handle.
      */
     void impl_getAllFormatTypes(
-        const css::util::URL& aParsedURL, utl::MediaDescriptor& rDescriptor,
+        const css::util::URL& aParsedURL, utl::MediaDescriptor const & rDescriptor,
         FlatDetection& rFlatTypes);
 
 
@@ -107,7 +115,7 @@ private:
 
         @param      rLastChance
                     the internal name of a "suggested type" ... (see before)
-                    Note: it will be reseted to an empty string every time. So
+                    Note: it will be reset to an empty string every time. So
                     a set value of "rLastChance" can be detected outside very easy.
 
         @param      rUsedDetectors
@@ -120,27 +128,27 @@ private:
                     enable/disable using of a might existing deep detection service.
 
         @return     The internal name of a detected type.
-                    An empty value if detection failed. .... but see rLastChance
+                    An empty value if detection failed. ... but see rLastChance
                     for additional returns!
      */
     OUString impl_detectTypeFlatAndDeep(      utl::MediaDescriptor& rDescriptor   ,
                                                const FlatDetection&                 lFlatTypes    ,
                                                      bool                       bAllowDeep    ,
-                                                     OUStringList&                  rUsedDetectors,
+                                                     std::vector<OUString>&         rUsedDetectors,
                                                      OUString&               rLastChance   );
 
 
     /** @short      seek a might existing stream to position 0.
 
-        @descr      This is an optinal action to be more robust
-                    in case any detect service doesn't make this seek ...
-                    Normally it's part of any called detect service or filter ...
+        @descr      This is an optional action to be more robust
+                    in case any detect service doesn't make this seek...
+                    Normally it's part of any called detect service or filter...
                     but sometimes it's not done there.
 
         @param      rDescriptor
                     a stl representation of the MediaDescriptor as in/out parameter.
      */
-    static void impl_seekStreamToZero(utl::MediaDescriptor& rDescriptor);
+    static void impl_seekStreamToZero(utl::MediaDescriptor const & rDescriptor);
 
 
     /** @short      make deep type detection for a specified
@@ -152,7 +160,7 @@ private:
 
         @attention  The results (means type and corresponding filter)
                     are already part of the in/out parameter pDescriptor.
-                    (in case they was valid).
+                    (in case they were valid).
 
         @param      sDetectService
                     uno service name of the detect service.
@@ -319,50 +327,39 @@ public:
     virtual OUString SAL_CALL queryTypeByDescriptor(css::uno::Sequence< css::beans::PropertyValue >& lDescriptor,
                                                            sal_Bool                                         bAllowDeep ) override;
 
+};
 
-// static uno helper!
+class TerminateDetection : public cppu::WeakComponentImplHelper<css::frame::XTerminateListener>
+{
+private:
+    osl::Mutex m_aLock;
+    TypeDetection* m_pTypeDetection;
 
 public:
 
+    using cppu::WeakComponentImplHelperBase::disposing;
+    virtual void SAL_CALL disposing(const css::lang::EventObject&) override
+    {
+    }
 
-    /** @short  return the uno implementation name of this class.
+    // XTerminateListener
+    virtual void SAL_CALL queryTermination(const css::lang::EventObject&) override
+    {
+        m_pTypeDetection->cancel();
+    }
 
-        @descr  Because this information is used at several places
-                (and mostly an object instance of this class is not possible)
-                its implemented as a static function!
+    virtual void SAL_CALL notifyTermination(const css::lang::EventObject&) override
+    {
+    }
 
-        @return The fix uno implementation name of this class.
-     */
-    static OUString impl_getImplementationName();
-
-
-    /** @short  return the list of supported uno services of this class.
-
-        @descr  Because this information is used at several places
-                (and mostly an object instance of this class is not possible)
-                its implemented as a static function!
-
-        @return The fix list of uno services supported by this class.
-     */
-    static css::uno::Sequence< OUString > impl_getSupportedServiceNames();
-
-
-    /** @short  return a new intsnace of this class.
-
-        @descr  This method is used by the uno service manager, to create
-                a new instance of this service if needed.
-
-        @param  xSMGR
-                reference to the uno service manager, which require
-                this new instance. It should be passed to the new object
-                so it can be used internally to create own needed uno resources.
-
-        @return The new instance of this service as an uno reference.
-     */
-    static css::uno::Reference< css::uno::XInterface > impl_createInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& xSMGR);
+    TerminateDetection(TypeDetection* pTypeDetection)
+        : cppu::WeakComponentImplHelper<css::frame::XTerminateListener>(m_aLock)
+        , m_pTypeDetection(pTypeDetection)
+    {
+    }
 };
 
-}}
+}
 
 #endif // INCLUDED_FILTER_SOURCE_CONFIG_CACHE_TYPEDETECTION_HXX
 

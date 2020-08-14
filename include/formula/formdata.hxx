@@ -24,11 +24,11 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <tools/gen.hxx>
-#include <vcl/vclptr.hxx>
-#include <vcl/window.hxx>
 
 namespace formula
 {
+enum class FormulaDlgMode;
+
 class FORMULA_DLLPUBLIC FormEditData
 {
 public:
@@ -37,37 +37,30 @@ public:
 
     virtual void            SaveValues();
 
-    sal_uInt16       GetMode() const     { return nMode; }
+    FormulaDlgMode   GetMode() const     { return nMode; }
     sal_Int32        GetFStart() const   { return nFStart; }
     sal_uInt16       GetOffset() const   { return nOffset; }
-    sal_uInt16       GetEdFocus() const  { return nEdFocus; }
     const OUString&  GetUndoStr() const  { return aUndoStr; }
     bool             GetMatrixFlag()const{ return bMatrix;}
-    const VclPtr<vcl::Window>& GetFocusWindow()const  { return xFocusWin; }
     const Selection& GetSelection()const { return aSelection;}
 
-    void             SetMode( sal_uInt16 nNew )                  { nMode = nNew; }
+    void             SetMode( FormulaDlgMode nNew )              { nMode = nNew; }
     void             SetFStart( sal_Int32 nNew )                 { nFStart = nNew; }
     void             SetOffset( sal_uInt16 nNew )                { nOffset = nNew; }
-    void             SetEdFocus( sal_uInt16 nNew )               { nEdFocus = nNew; }
     void             SetUndoStr( const OUString& rNew )          { aUndoStr = rNew; }
     void             SetMatrixFlag(bool bNew)                    { bMatrix=bNew;}
-    void             SetFocusWindow(const VclPtr<vcl::Window>& rWin) { xFocusWin=rWin;}
     void             SetSelection(const Selection& aSel)         { aSelection=aSel;}
 protected:
     void                Reset();
     FormEditData( const FormEditData& );
     FormEditData& operator=( const FormEditData& r );
 
-    FormEditData*   pParent;            // for nesting
 private:
-    sal_uInt16          nMode;              // enum ScFormulaDlgMode
+    FormulaDlgMode      nMode;
     sal_Int32           nFStart;
     sal_uInt16          nOffset;
-    sal_uInt16          nEdFocus;
     OUString            aUndoStr;
     bool                bMatrix;
-    VclPtr<vcl::Window> xFocusWin;
     Selection           aSelection;
 };
 

@@ -37,7 +37,6 @@
 # subsequentcheck (global)    run system tests             top-level Module/subsequentcheck
 # perfcheck (global)          run performance unit tests   top-level Module/perfcheck
 # uicheck (global) 	      run the uitests 		   run all uitests
-# all (global)                default goal                 build unitcheck
 
 
 # Module class
@@ -65,6 +64,7 @@ gb_Module_CURRENTMAKEFILE :=
 
 $(call gb_Module_get_nonl10n_target,%) :
 	$(call gb_Output_announce,$*,$(true),BIN,5)
+	$(call gb_Trace_MakeMark,$*,BIN)
 	-$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
 		touch $@)
@@ -78,6 +78,7 @@ $(call gb_Module_get_clean_target,%) :
 
 $(call gb_Module_get_l10n_target,%) :
 	$(call gb_Output_announce,$*,$(true),LOC,5)
+	$(call gb_Trace_MakeMark,$*,LOC)
 	$(call gb_Output_announce_title,module $* done.)
 	-$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
@@ -85,6 +86,7 @@ $(call gb_Module_get_l10n_target,%) :
 
 $(call gb_Module_get_check_target,%) :
 	$(call gb_Output_announce,$*,$(true),CHK,5)
+	$(call gb_Trace_MakeMark,$*,CHK)
 	$(call gb_Output_announce_title,module $* checks done.)
 	-$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
@@ -92,6 +94,7 @@ $(call gb_Module_get_check_target,%) :
 
 $(call gb_Module_get_slowcheck_target,%) :
 	$(call gb_Output_announce,$*,$(true),SLC,5)
+	$(call gb_Trace_MakeMark,$*,SLC)
 	$(call gb_Output_announce_title,module $* slowchecks done.)
 	-$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
@@ -99,6 +102,7 @@ $(call gb_Module_get_slowcheck_target,%) :
 
 $(call gb_Module_get_screenshot_target,%) :
 	$(call gb_Output_announce,$*,$(true),SCR,5)
+	$(call gb_Trace_MakeMark,$*,SCR)
 	$(call gb_Output_announce_title,module $* screenshots done.)
 	-$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
@@ -106,6 +110,7 @@ $(call gb_Module_get_screenshot_target,%) :
 
 $(call gb_Module_get_subsequentcheck_target,%) :
 	$(call gb_Output_announce,$*,$(true),SCK,5)
+	$(call gb_Trace_MakeMark,$*,SCK)
 	$(call gb_Output_announce_title,module $* subsequentchecks done.)
 	-$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
@@ -113,6 +118,7 @@ $(call gb_Module_get_subsequentcheck_target,%) :
 
 $(call gb_Module_get_stagingcheck_target,%) :
 	$(call gb_Output_announce,$*,$(true),STC,5)
+	$(call gb_Trace_MakeMark,$*,STC)
 	$(call gb_Output_announce_title,module $* stagingchecks done.)
 	-$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
@@ -120,6 +126,7 @@ $(call gb_Module_get_stagingcheck_target,%) :
 
 $(call gb_Module_get_perfcheck_target,%) :
 	$(call gb_Output_announce,$*,$(true),PFC,5)
+	$(call gb_Trace_MakeMark,$*,PFC)
 	$(call gb_Output_announce_title,module $* perfchecks done.)
 	-$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
@@ -127,6 +134,7 @@ $(call gb_Module_get_perfcheck_target,%) :
 
 $(call gb_Module_get_uicheck_target,%) :
 	$(call gb_Output_announce,$*,$(true),UIT,5)
+	$(call gb_Trace_MakeMark,$*,UIT)
 	$(call gb_Output_announce_title,module $* uicheck done.)
 	-$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
@@ -134,37 +142,40 @@ $(call gb_Module_get_uicheck_target,%) :
 
 $(call gb_Module_get_target,%) :
 	$(call gb_Output_announce,$*,$(true),MOD,5)
+	$(call gb_Trace_MakeMark,$*,MOD)
 	$(call gb_Output_announce_title,module $* done.)
 	-$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
 		touch $@)
 
-.PHONY : all build build-l10n-only build-non-l10n-only unitcheck slowcheck screenshot subsequentcheck stagingcheck perfcheck uicheck clean check debugrun help showmodules translations
-.DEFAULT_GOAL := all
-
-all : build $(if $(CROSS_COMPILING),,unitcheck $(if $(gb_PARTIAL_BUILD),,slowcheck))
+.PHONY : build build-l10n-only build-non-l10n-only unitcheck slowcheck screenshot subsequentcheck stagingcheck perfcheck uicheck clean check debugrun help showmodules translations
+.DEFAULT_GOAL := build
 
 ifeq ($(gb_Side),build)
 build-tools : $(gb_BUILD_TOOLS)
 	$(call gb_Output_announce,loaded tools: $(gb_BUILD_TOOLS),$(true),ALL,6)
+	$(call gb_Trace_MakeMark,$(gb_BUILD_TOOLS),ALL)
 	$(call gb_Output_announce_title,build-tools done.)
 	$(call gb_Output_announce_bell)
 endif
 
 build :
 	$(call gb_Output_announce,top level modules: $(foreach module,$(filter-out deliverlog $(WORKDIR)/bootstrap,$^),$(notdir $(module))),$(true),ALL,6)
+	$(call gb_Trace_MakeMark,top level modules: $(foreach module,$(filter-out deliverlog $(WORKDIR)/bootstrap,$^),$(notdir $(module))),ALL)
 	$(if $(gb_VERBOSE),$(call gb_Output_announce,loaded modules: $(sort $(gb_Module_ALLMODULES)),$(true),ALL,6))
 	$(call gb_Output_announce_title,build done.)
 	$(call gb_Output_announce_bell)
 
 build-l10n-only :
 	$(call gb_Output_announce,top level modules: $(foreach module,$(filter-out deliverlog $(WORKDIR)/bootstrap,$^),$(notdir $(module))),$(true),LOC,6)
+	$(call gb_Trace_MakeMark,top level modules: $(foreach module,$(filter-out deliverlog $(WORKDIR)/bootstrap,$^),$(notdir $(module))),LOC)
 	$(if $(gb_VERBOSE),$(call gb_Output_announce,loaded modules: $(sort $(gb_Module_ALLMODULES)),$(true),LOC,6))
 	$(call gb_Output_announce_title,l10n done.)
 	$(call gb_Output_announce_bell)
 
 build-non-l10n-only :
 	$(call gb_Output_announce,top level modules: $(foreach module,$(filter-out deliverlog $(WORKDIR)/bootstrap,$^),$(notdir $(module))),$(true),BIN,6)
+	$(call gb_Trace_MakeMark,top level modules: $(foreach module,$(filter-out deliverlog $(WORKDIR)/bootstrap,$^),$(notdir $(module))),BIN)
 	$(if $(gb_VERBOSE),$(call gb_Output_announce,loaded modules: $(sort $(gb_Module_ALLMODULES)),$(true),BIN,6))
 	$(call gb_Output_announce_title,non-l10n done.)
 	$(call gb_Output_announce_bell)
@@ -185,7 +196,7 @@ screenshot :
 	$(call gb_Output_announce_bell)
 
 # removing the dependency on build for now until we can make a full build with gbuild
-#subsequentcheck : all
+#subsequentcheck : build
 subsequentcheck :
 	$(if $(gb_VERBOSE),$(call gb_Output_announce,loaded modules: $(sort $(gb_Module_ALLMODULES)),$(true),SCK,6))
 	$(call gb_Output_announce_title,all subsequent tests checked.)
@@ -217,6 +228,8 @@ check : unitcheck slowcheck
 	$(call gb_Output_announce_bell)
 
 debugrun :
+	export HEADLESS= && \
+	$(if $(filter svp,$(SAL_USE_VCLPLUGIN)),unset SAL_USE_VCLPLUGIN &&) \
 	$(call gb_Module_DEBUGRUNCOMMAND)
 
 help :
@@ -228,19 +241,19 @@ showmodules :
 
 translations : $(WORKDIR)/pot.done
 
-$(WORKDIR)/pot.done : $(foreach exec,cfgex helpex localize transex3 \
-									propex uiex ulfex xrmex treex, \
+$(WORKDIR)/pot.done : $(foreach exec,cfgex helpex localize propex ulfex xrmex treex, \
 							$(call gb_Executable_get_target_for_build,$(exec)))
 	$(call gb_Output_announce,$(subst .pot,,$(subst $(WORKDIR)/,,$@)),$(true),POT,1)
+	$(call gb_Trace_MakeMark,$(subst .pot,,$(subst $(WORKDIR)/,,$@)),POT)
 	$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && $(call gb_Helper_execute,localize) $(SRCDIR) $(dir $@)/pot \
-		&& $(FIND) $(dir $@)/pot -type f -printf "%P\n" | sed -e "s/\.pot/.po/" > $(dir $@)/LIST \
+		&& $(FIND) $(dir $@)/pot -type f -printf "%P\n" | sed -e "s/\.pot/.po/" | LC_ALL=C $(SORT) > $(dir $@)/LIST \
 		&& touch $@)
 
 # enable if: no "-MODULE/" defined AND ["all" defined OR "MODULE/" defined]
-gb_Module__debug_enabled = \
- $(and $(if $(filter -$(1)/,$(ENABLE_DEBUGINFO_FOR)),,$(true)),\
-       $(filter all $(1)/,$(ENABLE_DEBUGINFO_FOR)))
+gb_Module__symbols_enabled = \
+ $(and $(if $(filter -$(1)/,$(gb_ENABLE_SYMBOLS_FOR)),,$(true)),\
+       $(filter all $(1)/,$(gb_ENABLE_SYMBOLS_FOR)))
 
 define gb_Module_Module
 gb_Module_ALLMODULES += $(1)
@@ -255,7 +268,7 @@ gb_Module_SUBSEQUENTCHECKTARGETSTACK := $(call gb_Module_get_subsequentcheck_tar
 gb_Module_STAGINGCHECKTARGETSTACK := $(call gb_Module_get_stagingcheck_target,$(1)) $(gb_Module_STAGINGCHECKTARGETSTACK)
 gb_Module_PERFCHECKTARGETSTACK := $(call gb_Module_get_perfcheck_target,$(1)) $(gb_Module_PERFCHECKTARGETSTACK)
 gb_Module_CLEANTARGETSTACK := $(call gb_Module_get_clean_target,$(1)) $(gb_Module_CLEANTARGETSTACK)
-gb_Module_CURRENTMODULE_DEBUG_ENABLED := $(call gb_Module__debug_enabled,$(1))
+gb_Module_CURRENTMODULE_SYMBOLS_ENABLED := $(call gb_Module__symbols_enabled,$(1))
 gb_Module_CURRENTMODULE_NAME := $(1)
 $(call gb_Helper_make_userfriendly_targets,$(1),Module)
 $(if $(filter-out libreoffice instsetoo_native android ios,$(1)),\
@@ -292,7 +305,7 @@ endif
 endef
 
 define gb_Module_add_target
-$(if $(filter AllLang% Dictionary% UIConfig% Package_registry,$(2)),$(warning target $(2) should be a l10n target))
+$(if $(filter AllLang% Dictionary% Package_registry,$(2)),$(warning target $(2) should be a l10n target))
 $(call gb_Module__read_targetfile,$(1),$(2),target)
 
 $(call gb_Module_get_nonl10n_target,$(1)) : $$(gb_Module_CURRENTTARGET)
@@ -301,7 +314,7 @@ $(call gb_Module_get_clean_target,$(1)) : $$(gb_Module_CURRENTCLEANTARGET)
 endef
 
 define gb_Module_add_l10n_target
-$(if $(filter AllLang% CustomTarget_autotextshare Dictionary% UIConfig% Package_registry,$(2)),,$(warning target $(2) should not be a l10n target))
+$(if $(filter AllLang% CustomTarget_autotextshare Dictionary% Package_registry,$(2)),,$(warning target $(2) should not be a l10n target))
 $(call gb_Module__read_targetfile,$(1),$(2),target)
 
 $(call gb_Module_get_l10n_target,$(1)) : $$(gb_Module_CURRENTTARGET)
@@ -381,8 +394,13 @@ $(call gb_Module_get_clean_target,$(1)) : $$(gb_Module_CURRENTCLEANTARGET)
 
 endef
 
+define gb_Module__modulefile
+$(patsubst $(1):%,%,$(filter $(1):%,$(gb_Module_MODULELOCATIONS)))/$(2)/Module_$(2).mk
+endef
+
 define gb_Module_add_moduledir
-include $(patsubst $(1):%,%,$(filter $(1):%,$(gb_Module_MODULELOCATIONS)))/$(2)/Module_$(2).mk
+$(if $(wildcard $(call gb_Module__modulefile,$(1),$(2))),,$(call gb_Output_error,Module does not exist: $(call gb_Module__modulefile,$(1),$(2))))
+include $(call gb_Module__modulefile,$(1),$(2))
 $(call gb_Module_get_target,$(1)) : $$(firstword $$(gb_Module_TARGETSTACK))
 $(call gb_Module_get_l10n_target,$(1)) : $$(firstword $$(gb_Module_L10NTARGETSTACK))
 $(call gb_Module_get_check_target,$(1)) : $$(firstword $$(gb_Module_CHECKTARGETSTACK))

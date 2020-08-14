@@ -17,31 +17,34 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "services/uriabbreviation.hxx"
-#include "services.h"
+#include <services/uriabbreviation.hxx>
+#include <services.h>
 
 #include <sal/config.h>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
 
 #include <tools/urlobj.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 // framework namespace
 namespace framework
 {
 
-//  XInterface, XTypeProvider, XServiceInfo
+// XInterface, XTypeProvider, XServiceInfo
 
-DEFINE_XSERVICEINFO_MULTISERVICE_2 (    UriAbbreviation                                                         ,
-                                        ::cppu::OWeakObject                                                     ,
-                                        SERVICENAME_STRINGABBREVIATION                                          ,
-                                        IMPLEMENTATIONNAME_URIABBREVIATION
-                                    )
+OUString SAL_CALL UriAbbreviation::getImplementationName()
+{
+    return "com.sun.star.comp.framework.UriAbbreviation";
+}
 
-DEFINE_INIT_SERVICE                 (   UriAbbreviation,
-                                        {
-                                        }
-                                    )
+sal_Bool SAL_CALL UriAbbreviation::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL UriAbbreviation::getSupportedServiceNames()
+{
+    return { "com.sun.star.util.UriAbbreviation" };
+}
 
 UriAbbreviation::UriAbbreviation(css::uno::Reference< css::uno::XComponentContext > const & )
 {
@@ -62,5 +65,12 @@ OUString SAL_CALL UriAbbreviation::abbreviateString(const css::uno::Reference< c
 }
 
 } // namespace framework
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_UriAbbreviation_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::UriAbbreviation(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

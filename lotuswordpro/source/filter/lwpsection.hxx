@@ -70,11 +70,11 @@ class LwpDLNFVList;
 class LwpOrderedObject : public LwpDLNFVList
 {
 public:
-    LwpOrderedObject(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpOrderedObject(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     void Read() override;
     LwpObjectID& GetPosition(){ return m_Para;}
     LwpObjectID& GetListList(){ return m_ListList;}
-protected:
+private:
     LwpObjectID m_ListList;//lwplistlist object,
     LwpObjectID m_Para;
 };
@@ -88,11 +88,11 @@ class LwpAtomHolder;
 class LwpSection : public LwpOrderedObject
 {
 public:
-    LwpSection(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpSection(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpSection() override;
     inline LwpPageLayout* GetPageLayout();
     void Parse(IXFStream* pOutputStream) override;
-    OUString GetSectionName(){return m_AtomHolder.str();}
+    OUString const & GetSectionName() const {return m_AtomHolder.str();}
 
 protected:
     void Read() override;
@@ -116,10 +116,10 @@ inline LwpPageLayout* LwpSection::GetPageLayout()
 class LwpIndexSection : public LwpSection
 {
 public:
-    LwpIndexSection(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpIndexSection(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpIndexSection() override;
-    bool IsFormatRunin();
-    bool IsFormatSeparator();
+    bool IsFormatRunin() const;
+    bool IsFormatSeparator() const;
 protected:
     void Read() override;
 private:

@@ -18,17 +18,17 @@
  */
 
 
-#include "fmundo.hxx"
-#include "fmdocumentclassification.hxx"
-#include "fmcontrollayout.hxx"
+#include <fmundo.hxx>
+#include <fmdocumentclassification.hxx>
+#include <fmcontrollayout.hxx>
 
+#include <com/sun/star/form/XForms.hpp>
 #include <svx/fmmodel.hxx>
 #include <svx/fmpage.hxx>
-#include <svx/svdobj.hxx>
 
 #include <sfx2/objsh.hxx>
 
-#include <boost/optional.hpp>
+#include <optional>
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::container::XNameContainer;
@@ -39,42 +39,20 @@ struct FmFormModelImplData
 {
     rtl::Reference<FmXUndoEnvironment>  mxUndoEnv;
     bool                bOpenInDesignIsDefaulted;
-    ::boost::optional< sal_Bool >
-                            aControlsUseRefDevice;
+    std::optional<bool> aControlsUseRefDevice;
 
     FmFormModelImplData()
         :bOpenInDesignIsDefaulted( true )
-        ,aControlsUseRefDevice()
     {
     }
 };
 
-FmFormModel::FmFormModel(SfxItemPool* pPool, SfxObjectShell* pPers)
-    : SdrModel(pPool, pPers)
-    , m_pImpl(nullptr)
-    , m_pObjShell(nullptr)
-    , m_bOpenInDesignMode(false)
-    , m_bAutoControlFocus(false)
-{
-    m_pImpl.reset( new FmFormModelImplData );
-    m_pImpl->mxUndoEnv = new FmXUndoEnvironment(*this);
-}
-
-FmFormModel::FmFormModel(const OUString& rPath, SfxItemPool* pPool, SfxObjectShell* pPers)
-    : SdrModel(rPath, pPool, pPers, false)
-    , m_pImpl(nullptr)
-    , m_pObjShell(nullptr)
-    , m_bOpenInDesignMode(false)
-    , m_bAutoControlFocus(false)
-{
-    m_pImpl.reset( new FmFormModelImplData );
-    m_pImpl->mxUndoEnv = new FmXUndoEnvironment(*this);
-}
-
-FmFormModel::FmFormModel(const OUString& rPath, SfxItemPool* pPool, SfxObjectShell* pPers,
-                         bool bUseExtColorTable)
-    : SdrModel(rPath, pPool, pPers, bUseExtColorTable)
-    , m_pImpl(nullptr)
+FmFormModel::FmFormModel(
+    SfxItemPool* pPool,
+    SfxObjectShell* pPers)
+:   SdrModel(
+        pPool,
+        pPers)
     , m_pObjShell(nullptr)
     , m_bOpenInDesignMode(false)
     , m_bAutoControlFocus(false)
@@ -100,7 +78,7 @@ SdrPage* FmFormModel::AllocPage(bool bMasterPage)
 
 void FmFormModel::InsertPage(SdrPage* pPage, sal_uInt16 nPos)
 {
-    // hack solange method intern
+    // hack for as long as the method is internal
     if (m_pObjShell && !m_pImpl->mxUndoEnv->IsListening( *m_pObjShell ))
         SetObjectShell(m_pObjShell);
 
@@ -114,7 +92,7 @@ SdrPage* FmFormModel::RemovePage(sal_uInt16 nPgNum)
 
     if ( pToBeRemovedPage )
     {
-        Reference< XNameContainer > xForms( pToBeRemovedPage->GetForms( false ), css::uno::UNO_QUERY );
+        Reference< XNameContainer > xForms( pToBeRemovedPage->GetForms( false ) );
         if ( xForms.is() )
             m_pImpl->mxUndoEnv->RemoveForms( xForms );
     }
@@ -126,7 +104,7 @@ SdrPage* FmFormModel::RemovePage(sal_uInt16 nPgNum)
 
 void FmFormModel::InsertMasterPage(SdrPage* pPage, sal_uInt16 nPos)
 {
-    // hack solange method intern
+    // hack for as long as the method is internal
     if (m_pObjShell && !m_pImpl->mxUndoEnv->IsListening( *m_pObjShell ))
         SetObjectShell(m_pObjShell);
 
@@ -139,7 +117,7 @@ SdrPage* FmFormModel::RemoveMasterPage(sal_uInt16 nPgNum)
 
     if ( pPage )
     {
-        Reference< XNameContainer > xForms( pPage->GetForms( false ), css::uno::UNO_QUERY );
+        Reference< XNameContainer > xForms( pPage->GetForms( false ) );
         if ( xForms.is() )
             m_pImpl->mxUndoEnv->RemoveForms( xForms );
     }
@@ -181,7 +159,7 @@ bool FmFormModel::ControlsUseRefDevice() const
         DocumentType eDocType = eUnknownDocumentType;
         if ( m_pObjShell )
             eDocType = DocumentClassification::classifyHostDocument( m_pObjShell->GetModel() );
-        m_pImpl->aControlsUseRefDevice.reset( ControlLayouter::useDocumentReferenceDevice( eDocType ) );
+        m_pImpl->aControlsUseRefDevice = ControlLayouter::useDocumentReferenceDevice(eDocType);
     }
     return *m_pImpl->aControlsUseRefDevice;
 }

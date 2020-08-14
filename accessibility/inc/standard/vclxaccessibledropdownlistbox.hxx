@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEDROPDOWNLISTBOX_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEDROPDOWNLISTBOX_HXX
+#pragma once
 
 #include <standard/vclxaccessiblebox.hxx>
-#include <com/sun/star/accessibility/XAccessibleAction.hpp>
 
 /** The accessible drop down combobox has two children.  The first is the
     text field represented by an object of the
@@ -30,7 +28,7 @@
     of the VCLXAccessibleListBoxList class which does support
     selection.
 */
-class VCLXAccessibleDropDownListBox : public VCLXAccessibleBox
+class VCLXAccessibleDropDownListBox final : public VCLXAccessibleBox
 {
 public:
     VCLXAccessibleDropDownListBox (VCLXWindow* pVCLXindow);
@@ -41,13 +39,12 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL
         getSupportedServiceNames() override;
 
-protected:
-    virtual ~VCLXAccessibleDropDownListBox() override;
+private:
+    virtual ~VCLXAccessibleDropDownListBox() override = default;
 
     virtual bool IsValid() const override;
 
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEDROPDOWNLISTBOX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

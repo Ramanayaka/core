@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "XMLStarBasicContextFactory.hxx"
+#include <XMLStarBasicContextFactory.hxx>
 #include <xmloff/XMLEventsImportContext.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 
 
@@ -33,11 +33,12 @@ using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
 
 
-XMLStarBasicContextFactory::XMLStarBasicContextFactory() :
-    sEventType("EventType"),
-    sLibrary("Library"),
-    sMacroName("MacroName"),
-    sStarBasic("StarBasic")
+const OUStringLiteral gsEventType("EventType");
+const OUStringLiteral gsLibrary("Library");
+const OUStringLiteral gsMacroName("MacroName");
+const OUStringLiteral gsStarBasic("StarBasic");
+
+XMLStarBasicContextFactory::XMLStarBasicContextFactory()
 {
 }
 
@@ -47,12 +48,9 @@ XMLStarBasicContextFactory::~XMLStarBasicContextFactory()
 
 SvXMLImportContext* XMLStarBasicContextFactory::CreateContext(
     SvXMLImport& rImport,
-    sal_uInt16 p_nPrefix,
-    const OUString& rLocalName,
     const Reference<XAttributeList> & xAttrList,
     XMLEventsImportContext* rEvents,
-    const OUString& rApiEventName,
-    const OUString& /*rApiLanguage*/)
+    const OUString& rApiEventName)
 {
     OUString sLibraryVal;
     OUString sMacroNameVal;
@@ -95,22 +93,22 @@ SvXMLImportContext* XMLStarBasicContextFactory::CreateContext(
     Sequence<PropertyValue> aValues(3);
 
     // EventType
-    aValues[0].Name = sEventType;
-    aValues[0].Value <<= sStarBasic;
+    aValues[0].Name = gsEventType;
+    aValues[0].Value <<= OUString(gsStarBasic);
 
     // library name
-    aValues[1].Name = sLibrary;
+    aValues[1].Name = gsLibrary;
     aValues[1].Value <<= sLibraryVal;
 
     // macro name
-    aValues[2].Name = sMacroName;
+    aValues[2].Name = gsMacroName;
     aValues[2].Value <<= sMacroNameVal;
 
     // add values for event now
     rEvents->AddEventValues(rApiEventName, aValues);
 
     // return dummy context
-    return new SvXMLImportContext(rImport, p_nPrefix, rLocalName);
+    return new SvXMLImportContext(rImport);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,19 +20,24 @@
 #ifndef INCLUDED_SC_INC_FORMULARESULT_HXX
 #define INCLUDED_SC_INC_FORMULARESULT_HXX
 
-#include "token.hxx"
 #include "scdllapi.h"
+#include "global.hxx"
+#include "calcmacros.hxx"
+#include <svl/sharedstring.hxx>
+#include <formula/token.hxx>
+#include <formula/types.hxx>
+
+class ScMatrixFormulaCellToken;
 
 namespace sc {
 
 struct FormulaResultValue
 {
-    enum Type { Invalid, Value, String, Error };
-
-    Type meType;
+    enum Type : sal_uInt8 { Invalid, Value, String, Error };
 
     double mfValue;
     svl::SharedString maString;
+    Type meType;
     FormulaError mnError;
 
     FormulaResultValue();
@@ -71,11 +76,13 @@ class ScFormulaResult
         double          mfValue;    // double result direct for performance and memory consumption
         const formula::FormulaToken*  mpToken;    // if not, result token obtained from interpreter
     };
-    FormulaError        mnError;    // error code
     bool                mbToken :1; // whether content of union is a token
     bool                mbEmpty :1; // empty cell result
     bool                mbEmptyDisplayedAsString :1;    // only if mbEmpty
+    // If set it implies that the result is a simple double (in mfValue) and no error
+    bool                mbValueCached :1;
     Multiline           meMultiline :2; // result is multiline
+    FormulaError        mnError;    // error code
 
     /** Reset mnError, mbEmpty and mbEmptyDisplayedAsString to their defaults
         prior to assigning other types */
@@ -171,7 +178,7 @@ public:
         left result is modified instead, but only if it was of type
         formula::svDouble before or not set at all.
      */
-    SC_DLLPUBLIC void SetDouble( double f );
+    void SetDouble( double f );
 
     /** Return value if type formula::svDouble or formula::svHybridCell or formula::svMatrixCell and upper
         left formula::svDouble, else 0.0 */
@@ -190,24 +197,24 @@ public:
     /** Should only be used by import filters, best in the order
         SetHybridDouble(), SetHybridString(), or only SetHybridFormula() for
         formula string to be compiled later. */
-    SC_DLLPUBLIC void SetHybridDouble( double f );
+    void SetHybridDouble( double f );
 
     /** Should only be used by import filters, best in the order
         SetHybridDouble(), SetHybridString()/SetHybridFormula(), or only
         SetHybridFormula() for formula string to be compiled later. */
-    SC_DLLPUBLIC void SetHybridString( const svl::SharedString & rStr );
+    void SetHybridString( const svl::SharedString & rStr );
 
     /** Should only be used by import filters, best in the order
         SetHybridDouble(), SetHybridFormula(),
         SetHybridEmptyDisplayedAsString() must be last. */
-    SC_DLLPUBLIC void SetHybridEmptyDisplayedAsString();
+    void SetHybridEmptyDisplayedAsString();
 
     /** Should only be used by import filters, best in the order
         SetHybridDouble(), SetHybridString()/SetHybridFormula(), or only
         SetHybridFormula() for formula string to be compiled later. */
-    SC_DLLPUBLIC void SetHybridFormula( const OUString & rFormula );
+    void SetHybridFormula( const OUString & rFormula );
 
-    SC_DLLPUBLIC void SetMatrix( SCCOL nCols, SCROW nRows, const ScConstMatrixRef& pMat, formula::FormulaToken* pUL );
+    void SetMatrix( SCCOL nCols, SCROW nRows, const ScConstMatrixRef& pMat, const formula::FormulaToken* pUL );
 
     /** Get the const ScMatrixFormulaCellToken* if token is of that type, else
         NULL. */

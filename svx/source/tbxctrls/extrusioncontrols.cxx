@@ -18,31 +18,18 @@
  */
 
 
-#include <string>
-
 #include <svtools/toolbarmenu.hxx>
-#include <svx/colorwindow.hxx>
 #include <vcl/toolbox.hxx>
-#include <sfx2/app.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/objsh.hxx>
-#include <svl/eitem.hxx>
-#include <vcl/settings.hxx>
-#include <svl/intitem.hxx>
-#include <editeng/colritem.hxx>
 
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 #include <svx/svdtrans.hxx>
-#include <svx/sdasitm.hxx>
 #include <svx/dialmgr.hxx>
 
-#include "coreservices.hxx"
-#include "helpid.hrc"
+#include <helpids.h>
 #include "extrusioncontrols.hxx"
-#include "extrusioncontrols.hrc"
-#include "extrusiondepthdialog.hxx"
+#include <extrusiondepthdialog.hxx>
 
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
@@ -53,11 +40,11 @@ using namespace ::com::sun::star::graphic;
 namespace svx
 {
 
-static const sal_Int32 gSkewList[] = { 135, 90, 45, 180, 0, -360, -135, -90, -45 };
-static const char g_sExtrusionDirection[] = ".uno:ExtrusionDirection";
-static const char g_sExtrusionProjection[] = ".uno:ExtrusionProjection";
+const sal_Int32 gSkewList[] = { 135, 90, 45, 180, 0, -360, -135, -90, -45 };
+const char g_sExtrusionDirection[] = ".uno:ExtrusionDirection";
+const char g_sExtrusionProjection[] = ".uno:ExtrusionProjection";
 
-static const OUStringLiteral aLightOffBmps[] =
+const OUStringLiteral aLightOffBmps[] =
 {
     RID_SVXBMP_LIGHT_OFF_FROM_TOP_LEFT,
     RID_SVXBMP_LIGHT_OFF_FROM_TOP,
@@ -70,7 +57,7 @@ static const OUStringLiteral aLightOffBmps[] =
     RID_SVXBMP_LIGHT_OFF_FROM_BOTTOM_RIGHT
 };
 
-static const OUStringLiteral aLightOnBmps[] =
+const OUStringLiteral aLightOnBmps[] =
 {
     RID_SVXBMP_LIGHT_ON_FROM_TOP_LEFT,
     RID_SVXBMP_LIGHT_ON_FROM_TOP,
@@ -83,7 +70,7 @@ static const OUStringLiteral aLightOnBmps[] =
     RID_SVXBMP_LIGHT_ON_FROM_BOTTOM_RIGHT
 };
 
-static const OUStringLiteral aLightPreviewBmps[] =
+const OUStringLiteral aLightPreviewBmps[] =
 {
     RID_SVXBMP_LIGHT_PREVIEW_FROM_TOP_LEFT,
     RID_SVXBMP_LIGHT_PREVIEW_FROM_TOP,
@@ -96,7 +83,7 @@ static const OUStringLiteral aLightPreviewBmps[] =
     RID_SVXBMP_LIGHT_PREVIEW_FROM_BOTTOM_RIGHT
 };
 
-static const OUStringLiteral aDirectionBmps[] =
+const OUStringLiteral aDirectionBmps[] =
 {
     RID_SVXBMP_DIRECTION_DIRECTION_NW,
     RID_SVXBMP_DIRECTION_DIRECTION_N,
@@ -109,106 +96,96 @@ static const OUStringLiteral aDirectionBmps[] =
     RID_SVXBMP_DIRECTION_DIRECTION_SE
 };
 
-ExtrusionDirectionWindow::ExtrusionDirectionWindow(
-    svt::ToolboxController& rController,
-    vcl::Window* pParentWindow
-)
-    : ToolbarMenu(rController.getFrameInterface(), pParentWindow, WB_STDPOPUP)
-    , mrController(rController)
-    , maImgPerspective(BitmapEx(RID_SVXBMP_PERSPECTIVE))
-    , maImgParallel(BitmapEx(RID_SVXBMP_PARALLEL))
+static const char* aDirectionStrs[] =
 {
+    RID_SVXSTR_DIRECTION_NW,
+    RID_SVXSTR_DIRECTION_N,
+    RID_SVXSTR_DIRECTION_NE,
+    RID_SVXSTR_DIRECTION_W,
+    RID_SVXSTR_DIRECTION_NONE,
+    RID_SVXSTR_DIRECTION_E,
+    RID_SVXSTR_DIRECTION_SW,
+    RID_SVXSTR_DIRECTION_S,
+    RID_SVXSTR_DIRECTION_SE
+};
+
+ExtrusionDirectionWindow::ExtrusionDirectionWindow(
+    svt::PopupWindowController* pControl,
+    weld::Widget* pParent)
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "svx/ui/directionwindow.ui", "DirectionWindow")
+    , mxControl(pControl)
+    , mxDirectionSet(new ValueSet(nullptr))
+    , mxDirectionSetWin(new weld::CustomWeld(*m_xBuilder, "valueset", *mxDirectionSet))
+    , mxPerspective(m_xBuilder->weld_radio_button("perspective"))
+    , mxParallel(m_xBuilder->weld_radio_button("parallel"))
+{
+    mxDirectionSet->SetStyle(WB_TABSTOP | WB_MENUSTYLEVALUESET | WB_FLATVALUESET | WB_NOBORDER | WB_NO_DIRECTSELECT);
+
     for (sal_uInt16 i = DIRECTION_NW; i <= DIRECTION_SE; ++i)
     {
-        maImgDirection[i] = Image(BitmapEx(aDirectionBmps[i]));
+        maImgDirection[i] = Image(StockImage::Yes, aDirectionBmps[i]);
     }
 
-    SetSelectHdl( LINK( this, ExtrusionDirectionWindow, SelectToolbarMenuHdl ) );
-    mpDirectionSet = createEmptyValueSetControl();
-
-    mpDirectionSet->SetSelectHdl( LINK( this, ExtrusionDirectionWindow, SelectValueSetHdl ) );
-    mpDirectionSet->SetColCount( 3 );
-    mpDirectionSet->EnableFullItemMode( false );
+    mxDirectionSet->SetSelectHdl( LINK( this, ExtrusionDirectionWindow, SelectValueSetHdl ) );
+    mxDirectionSet->SetColCount( 3 );
+    mxDirectionSet->EnableFullItemMode( false );
 
     for (sal_uInt16 i = DIRECTION_NW; i <= DIRECTION_SE; ++i)
     {
-        OUString aText(SvxResId(RID_SVXSTR_DIRECTION + i));
-        mpDirectionSet->InsertItem(i + 1, maImgDirection[i], aText);
+        mxDirectionSet->InsertItem(i + 1, maImgDirection[i], SvxResId(aDirectionStrs[i]));
     }
 
-    mpDirectionSet->SetOutputSizePixel(Size(72, 72));
+    Size aSize(72, 72);
+    mxDirectionSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
+    mxDirectionSet->SetOutputSizePixel(aSize);
 
-    appendEntry(2, mpDirectionSet );
-    appendSeparator();
-    appendEntry(0, SvxResId(RID_SVXSTR_PERSPECTIVE), maImgPerspective);
-    appendEntry(1, SvxResId(RID_SVXSTR_PARALLEL), maImgParallel);
-
-    SetOutputSizePixel( getMenuSize() );
+    mxPerspective->connect_clicked(LINK(this, ExtrusionDirectionWindow, SelectToolbarMenuHdl));
+    mxParallel->connect_clicked(LINK(this, ExtrusionDirectionWindow, SelectToolbarMenuHdl));
 
     AddStatusListener( g_sExtrusionDirection );
     AddStatusListener( g_sExtrusionProjection );
 }
 
+void ExtrusionDirectionWindow::GrabFocus()
+{
+    mxDirectionSet->GrabFocus();
+}
+
 ExtrusionDirectionWindow::~ExtrusionDirectionWindow()
 {
-    disposeOnce();
 }
-
-void ExtrusionDirectionWindow::dispose()
-{
-    mpDirectionSet.clear();
-    ToolbarMenu::dispose();
-}
-
-void ExtrusionDirectionWindow::DataChanged( const DataChangedEvent& rDCEvt )
-{
-    ToolbarMenu::DataChanged( rDCEvt );
-
-    if( ( rDCEvt.GetType() == DataChangedEventType::SETTINGS ) && ( rDCEvt.GetFlags() & AllSettingsFlags::STYLE ) )
-    {
-        for( sal_uInt16 i = DIRECTION_NW; i <= DIRECTION_SE; i++ )
-        {
-            mpDirectionSet->SetItemImage( i+1, maImgDirection[ i ] );
-        }
-
-        setEntryImage( 0, maImgPerspective );
-        setEntryImage( 1, maImgParallel );
-    }
-}
-
 
 void ExtrusionDirectionWindow::implSetDirection( sal_Int32 nSkew, bool bEnabled )
 {
-    if( mpDirectionSet )
+    sal_uInt16 nItemId;
+    for( nItemId = DIRECTION_NW; nItemId <= DIRECTION_SE; nItemId++ )
     {
-        sal_uInt16 nItemId;
-        for( nItemId = DIRECTION_NW; nItemId <= DIRECTION_SE; nItemId++ )
-        {
-            if( gSkewList[nItemId] == nSkew )
-                break;
-        }
-
-        if( nItemId <= DIRECTION_SE )
-        {
-            mpDirectionSet->SelectItem( nItemId+1 );
-        }
-        else
-        {
-            mpDirectionSet->SetNoSelection();
-        }
+        if( gSkewList[nItemId] == nSkew )
+            break;
     }
-    enableEntry( 2, bEnabled );
-}
 
+    if( nItemId <= DIRECTION_SE )
+    {
+        mxDirectionSet->SelectItem( nItemId+1 );
+    }
+    else
+    {
+        mxDirectionSet->SetNoSelection();
+    }
+
+    if (bEnabled)
+        mxDirectionSet->Enable();
+    else
+        mxDirectionSet->Disable();
+}
 
 void ExtrusionDirectionWindow::implSetProjection( sal_Int32 nProjection, bool bEnabled )
 {
-    checkEntry( 0, (nProjection == 0) && bEnabled );
-    checkEntry( 1, (nProjection == 1 ) && bEnabled );
-    enableEntry( 0, bEnabled );
-    enableEntry( 1, bEnabled );
+    mxPerspective->set_active(nProjection == 0 && bEnabled);
+    mxParallel->set_active(nProjection == 1 && bEnabled);
+    mxPerspective->set_sensitive(bEnabled);
+    mxParallel->set_sensitive(bEnabled);
 }
-
 
 void ExtrusionDirectionWindow::statusChanged(
     const css::frame::FeatureStateEvent& Event
@@ -242,41 +219,29 @@ void ExtrusionDirectionWindow::statusChanged(
     }
 }
 
-
-IMPL_LINK( ExtrusionDirectionWindow, SelectValueSetHdl, ValueSet*, pControl, void )
+IMPL_LINK_NOARG(ExtrusionDirectionWindow, SelectValueSetHdl, ValueSet*, void)
 {
-    SelectHdl(pControl);
+    Sequence< PropertyValue > aArgs( 1 );
+    aArgs[0].Name = OUString(g_sExtrusionDirection).copy(5);
+    aArgs[0].Value <<= gSkewList[mxDirectionSet->GetSelectedItemId()-1];
+
+    mxControl->dispatchCommand( g_sExtrusionDirection, aArgs );
+
+    mxControl->EndPopupMode();
 }
-IMPL_LINK( ExtrusionDirectionWindow, SelectToolbarMenuHdl, ToolbarMenu*, pControl, void )
+
+IMPL_LINK_NOARG(ExtrusionDirectionWindow, SelectToolbarMenuHdl, weld::Button&, void)
 {
-    SelectHdl(pControl);
-}
-void ExtrusionDirectionWindow::SelectHdl(void* pControl)
-{
-    if ( IsInPopupMode() )
-        EndPopupMode();
+    int nProjection = mxPerspective->get_active() ? 0 : 1;
 
-    if( pControl == mpDirectionSet )
-    {
-        Sequence< PropertyValue > aArgs( 1 );
-        aArgs[0].Name = OUString(g_sExtrusionDirection).copy(5);
-        aArgs[0].Value <<= (sal_Int32)gSkewList[mpDirectionSet->GetSelectItemId()-1];
+    Sequence< PropertyValue > aArgs( 1 );
+    aArgs[0].Name = OUString(g_sExtrusionProjection).copy(5);
+    aArgs[0].Value <<= static_cast<sal_Int32>(nProjection);
 
-        mrController.dispatchCommand( g_sExtrusionDirection, aArgs );
-    }
-    else
-    {
-        int nProjection = getSelectedEntryId();
-        if( (nProjection >= 0) && (nProjection < 2 ) )
-        {
-            Sequence< PropertyValue > aArgs( 1 );
-            aArgs[0].Name = OUString(g_sExtrusionProjection).copy(5);
-            aArgs[0].Value <<= (sal_Int32)nProjection;
+    mxControl->dispatchCommand( g_sExtrusionProjection, aArgs );
+    implSetProjection( nProjection, true );
 
-            mrController.dispatchCommand( g_sExtrusionProjection, aArgs );
-            implSetProjection( nProjection, true );
-        }
-    }
+    mxControl->EndPopupMode();
 }
 
 ExtrusionDirectionControl::ExtrusionDirectionControl(
@@ -289,10 +254,19 @@ ExtrusionDirectionControl::ExtrusionDirectionControl(
 {
 }
 
-
-VclPtr<vcl::Window> ExtrusionDirectionControl::createPopupWindow( vcl::Window* pParent )
+std::unique_ptr<WeldToolbarPopup> ExtrusionDirectionControl::weldPopupWindow()
 {
-    return VclPtr<ExtrusionDirectionWindow>::Create( *this, pParent );
+    return std::make_unique<ExtrusionDirectionWindow>(this, m_pToolbar);
+}
+
+VclPtr<vcl::Window> ExtrusionDirectionControl::createVclPopupWindow( vcl::Window* pParent )
+{
+    mxInterimPopover = VclPtr<InterimToolbarPopup>::Create(getFrameInterface(), pParent,
+        std::make_unique<ExtrusionDirectionWindow>(this, pParent->GetFrameWeld()));
+
+    mxInterimPopover->Show();
+
+    return mxInterimPopover;
 }
 
 // XInitialization
@@ -309,133 +283,137 @@ void SAL_CALL ExtrusionDirectionControl::initialize( const css::uno::Sequence< c
 // XServiceInfo
 
 
-OUString SAL_CALL ExtrusionDirectionControl_getImplementationName()
+OUString ExtrusionDirectionControl::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.svx.ExtrusionDirectionController" );
+    return "com.sun.star.comp.svx.ExtrusionDirectionController";
 }
 
 
-Sequence< OUString > SAL_CALL ExtrusionDirectionControl_getSupportedServiceNames()
+Sequence< OUString > ExtrusionDirectionControl::getSupportedServiceNames()
 {
-    Sequence<OUString> aSNS { "com.sun.star.frame.ToolbarController" };
-    return aSNS;
+    return { "com.sun.star.frame.ToolbarController" };
 }
 
 
-Reference< XInterface > SAL_CALL SAL_CALL ExtrusionDirectionControl_createInstance(
-    const Reference< XMultiServiceFactory >& rSMgr
-)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_svx_ExtrusionDirectionControl_get_implementation(
+    css::uno::XComponentContext* xContext,
+    css::uno::Sequence<css::uno::Any> const &)
 {
-    return *new ExtrusionDirectionControl( comphelper::getComponentContext(rSMgr) );
+    return cppu::acquire(new ExtrusionDirectionControl(xContext));
 }
 
 
-OUString SAL_CALL ExtrusionDirectionControl::getImplementationName(  )
+ExtrusionDepthDialog::ExtrusionDepthDialog(weld::Window* pParent, double fDepth, FieldUnit eDefaultUnit)
+    : GenericDialogController(pParent, "svx/ui/extrustiondepthdialog.ui", "ExtrustionDepthDialog")
+    , m_xMtrDepth(m_xBuilder->weld_metric_spin_button("depth", eDefaultUnit))
 {
-    return ExtrusionDirectionControl_getImplementationName();
-}
-
-
-Sequence< OUString > SAL_CALL ExtrusionDirectionControl::getSupportedServiceNames(  )
-{
-    return ExtrusionDirectionControl_getSupportedServiceNames();
-}
-
-ExtrusionDepthDialog::ExtrusionDepthDialog( vcl::Window* pParent, double fDepth, FieldUnit eDefaultUnit )
-    : ModalDialog( pParent, "ExtrustionDepthDialog", "svx/ui/extrustiondepthdialog.ui" )
-{
-    get(m_pMtrDepth, "depth");
-    m_pMtrDepth->SetUnit( eDefaultUnit );
-    m_pMtrDepth->SetValue( (int) fDepth * 100, FUNIT_100TH_MM );
+    m_xMtrDepth->set_value(static_cast<int>(fDepth) * 100, FieldUnit::MM_100TH);
 }
 
 ExtrusionDepthDialog::~ExtrusionDepthDialog()
 {
-    disposeOnce();
-}
-
-void ExtrusionDepthDialog::dispose()
-{
-    m_pMtrDepth.clear();
-    ModalDialog::dispose();
 }
 
 double ExtrusionDepthDialog::getDepth() const
 {
-    return (double)( m_pMtrDepth->GetValue( FUNIT_100TH_MM ) ) / 100.0;
+    return static_cast<double>(m_xMtrDepth->get_value(FieldUnit::MM_100TH)) / 100.0;
 }
 
 double const aDepthListInch[] = { 0, 1270,2540,5080,10160 };
 double const aDepthListMM[] = { 0, 1000, 2500, 5000, 10000 };
 
-ExtrusionDepthWindow::ExtrusionDepthWindow(
-    svt::ToolboxController& rController,
-    vcl::Window* pParentWindow
-)   : ToolbarMenu( rController.getFrameInterface(), pParentWindow, WB_STDPOPUP )
-    , mrController( rController )
-    , maImgDepth0(BitmapEx(RID_SVXBMP_DEPTH_0))
-    , maImgDepth1(BitmapEx(RID_SVXBMP_DEPTH_1))
-    , maImgDepth2(BitmapEx(RID_SVXBMP_DEPTH_2))
-    , maImgDepth3(BitmapEx(RID_SVXBMP_DEPTH_3))
-    , maImgDepth4(BitmapEx(RID_SVXBMP_DEPTH_4))
-    , maImgDepthInfinity(BitmapEx(RID_SVXBMP_DEPTH_INFINITY))
-    , meUnit(FUNIT_NONE)
+const OUStringLiteral gsExtrusionDepth( ".uno:ExtrusionDepth" );
+const OUStringLiteral gsMetricUnit(     ".uno:MetricUnit"     );
+
+ExtrusionDepthWindow::ExtrusionDepthWindow(svt::PopupWindowController* pControl, weld::Widget* pParent)
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "svx/ui/depthwindow.ui", "DepthWindow")
+    , mxControl(pControl)
+    , mxDepth0(m_xBuilder->weld_radio_button("depth0"))
+    , mxDepth1(m_xBuilder->weld_radio_button("depth1"))
+    , mxDepth2(m_xBuilder->weld_radio_button("depth2"))
+    , mxDepth3(m_xBuilder->weld_radio_button("depth3"))
+    , mxDepth4(m_xBuilder->weld_radio_button("depth4"))
+    , mxInfinity(m_xBuilder->weld_radio_button("infinity"))
+    , mxCustom(m_xBuilder->weld_radio_button("custom"))
+    , meUnit(FieldUnit::NONE)
     , mfDepth( -1.0 )
-    , msExtrusionDepth( ".uno:ExtrusionDepth" )
-    , msMetricUnit(     ".uno:MetricUnit"     )
+    , mbSettingValue(false)
 {
-    SetSelectHdl( LINK( this, ExtrusionDepthWindow, SelectHdl ) );
+    mxDepth0->connect_toggled(LINK(this, ExtrusionDepthWindow, SelectHdl));
+    mxDepth1->connect_toggled(LINK(this, ExtrusionDepthWindow, SelectHdl));
+    mxDepth2->connect_toggled(LINK(this, ExtrusionDepthWindow, SelectHdl));
+    mxDepth3->connect_toggled(LINK(this, ExtrusionDepthWindow, SelectHdl));
+    mxDepth4->connect_toggled(LINK(this, ExtrusionDepthWindow, SelectHdl));
+    mxInfinity->connect_toggled(LINK(this, ExtrusionDepthWindow, SelectHdl));
+    mxCustom->connect_clicked(LINK(this, ExtrusionDepthWindow, ClickHdl));
 
-    appendEntry(0, "", maImgDepth0);
-    appendEntry(1, "", maImgDepth1);
-    appendEntry(2, "", maImgDepth2);
-    appendEntry(3, "", maImgDepth3);
-    appendEntry(4, "", maImgDepth4);
-    appendEntry(5, SvxResId(RID_SVXSTR_INFINITY), maImgDepthInfinity);
-    appendEntry(6, SvxResId(RID_SVXSTR_CUSTOM));
+    AddStatusListener( gsExtrusionDepth );
+    AddStatusListener( gsMetricUnit );
+}
 
-    SetOutputSizePixel( getMenuSize() );
-
-    AddStatusListener( msExtrusionDepth );
-    AddStatusListener( msMetricUnit );
+void ExtrusionDepthWindow::GrabFocus()
+{
+    mxDepth0->grab_focus();
 }
 
 void ExtrusionDepthWindow::implSetDepth( double fDepth )
 {
     mfDepth = fDepth;
-    int i;
-    for( i = 0; i < 7; i++ )
-    {
-        if( i == 5 )
-        {
-            checkEntry( i, fDepth >= 338666 );
-        }
-        else if( i != 6 )
-        {
-            checkEntry( i, (fDepth == (IsMetric( meUnit ) ? aDepthListMM[i] : aDepthListInch[i]) ) );
-        }
-    }
-}
 
+    bool bSettingValue = mbSettingValue;
+    mbSettingValue = true;
+
+    mxCustom->set_active(true);
+    bool bIsMetric = IsMetric(meUnit);
+    mxDepth0->set_active(fDepth == (bIsMetric ? aDepthListMM[0] : aDepthListInch[0]));
+    mxDepth1->set_active(fDepth == (bIsMetric ? aDepthListMM[1] : aDepthListInch[1]));
+    mxDepth2->set_active(fDepth == (bIsMetric ? aDepthListMM[2] : aDepthListInch[2]));
+    mxDepth3->set_active(fDepth == (bIsMetric ? aDepthListMM[3] : aDepthListInch[3]));
+    mxDepth4->set_active(fDepth == (bIsMetric ? aDepthListMM[4] : aDepthListInch[4]));
+    mxInfinity->set_active(fDepth >= 338666);
+
+    mbSettingValue = bSettingValue;
+}
 
 void ExtrusionDepthWindow::implFillStrings( FieldUnit eUnit )
 {
     meUnit = eUnit;
-    sal_uInt16 nResource = IsMetric( eUnit ) ? RID_SVXSTR_DEPTH_0 : RID_SVXSTR_DEPTH_0_INCH;
 
-    for( int i = 0; i < 5; i++ )
+    const char* aDepths[] =
     {
-        OUString aStr( SvxResId( nResource + i ) );
-        setEntryText( i, aStr );
-    }
-}
+        RID_SVXSTR_DEPTH_0,
+        RID_SVXSTR_DEPTH_1,
+        RID_SVXSTR_DEPTH_2,
+        RID_SVXSTR_DEPTH_3,
+        RID_SVXSTR_DEPTH_4
+    };
 
+    const char* aDepthsInch[] =
+    {
+        RID_SVXSTR_DEPTH_0_INCH,
+        RID_SVXSTR_DEPTH_1_INCH,
+        RID_SVXSTR_DEPTH_2_INCH,
+        RID_SVXSTR_DEPTH_3_INCH,
+        RID_SVXSTR_DEPTH_4_INCH
+    };
+
+    assert(SAL_N_ELEMENTS(aDepths) == SAL_N_ELEMENTS(aDepthsInch));
+
+    const char** pResource = IsMetric(eUnit) ? aDepths : aDepthsInch;
+
+    mxDepth0->set_label(SvxResId(pResource[0]));
+    mxDepth1->set_label(SvxResId(pResource[1]));
+    mxDepth2->set_label(SvxResId(pResource[2]));
+    mxDepth3->set_label(SvxResId(pResource[3]));
+    mxDepth4->set_label(SvxResId(pResource[4]));
+}
 
 void ExtrusionDepthWindow::statusChanged(
     const css::frame::FeatureStateEvent& Event
 )
 {
-    if( Event.FeatureURL.Main.equals( msExtrusionDepth ) )
+    if( Event.FeatureURL.Main == gsExtrusionDepth )
     {
         if( !Event.IsEnabled )
         {
@@ -448,7 +426,7 @@ void ExtrusionDepthWindow::statusChanged(
                 implSetDepth( fValue );
         }
     }
-    else if( Event.FeatureURL.Main.equals( msMetricUnit ) )
+    else if( Event.FeatureURL.Main == gsMetricUnit )
     {
         if( Event.IsEnabled )
         {
@@ -463,56 +441,65 @@ void ExtrusionDepthWindow::statusChanged(
     }
 }
 
-IMPL_LINK_NOARG(ExtrusionDepthWindow, SelectHdl, ToolbarMenu*, void)
+IMPL_LINK_NOARG(ExtrusionDepthWindow, ClickHdl, weld::Button&, void)
 {
-    int nSelected = getSelectedEntryId();
-    if( nSelected != -1 )
+    SelectHdl(*mxCustom);
+}
+
+IMPL_LINK(ExtrusionDepthWindow, SelectHdl, weld::ToggleButton&, rButton, void)
+{
+    if (mbSettingValue || !rButton.get_active())
+        return;
+
+    if (mxCustom->get_active())
     {
-        if( nSelected == 6 )
+        Sequence< PropertyValue > aArgs( 2 );
+        aArgs[0].Name = "Depth";
+        aArgs[0].Value <<= mfDepth;
+        aArgs[1].Name = "Metric";
+        aArgs[1].Value <<= static_cast<sal_Int32>( meUnit );
+
+        rtl::Reference<svt::PopupWindowController> xControl(mxControl);
+        xControl->EndPopupMode();
+        xControl->dispatchCommand(".uno:ExtrusionDepthDialog", aArgs);
+    }
+    else
+    {
+        double fDepth;
+
+        if (mxInfinity->get_active())
         {
-            if ( IsInPopupMode() )
-                EndPopupMode();
-
-            const OUString aCommand( ".uno:ExtrusionDepthDialog" );
-
-            Sequence< PropertyValue > aArgs( 2 );
-            aArgs[0].Name = "Depth";
-            aArgs[0].Value <<= mfDepth;
-            aArgs[1].Name = "Metric";
-            aArgs[1].Value <<= static_cast<sal_Int32>( meUnit );
-
-            mrController.dispatchCommand( aCommand, aArgs );
+            fDepth = 338666.6;
         }
         else
         {
-            double fDepth;
-
-            if( nSelected == 5 )
-            {
-                fDepth = 338666.6;
-            }
+            int nSelected;
+            if (mxDepth0->get_active())
+                nSelected = 0;
+            else if (mxDepth1->get_active())
+                nSelected = 1;
+            else if (mxDepth2->get_active())
+                nSelected = 2;
+            else if (mxDepth3->get_active())
+                nSelected = 3;
             else
-            {
-                fDepth = IsMetric( meUnit ) ? aDepthListMM[nSelected] : aDepthListInch[nSelected];
-            }
+                nSelected = 4;
 
-            Sequence< PropertyValue > aArgs( 1 );
-            aArgs[0].Name = msExtrusionDepth.copy(5);
-            aArgs[0].Value <<= fDepth;
-
-            mrController.dispatchCommand( msExtrusionDepth,  aArgs );
-            implSetDepth( fDepth );
-
-            if ( IsInPopupMode() )
-                EndPopupMode();
+            fDepth = IsMetric( meUnit ) ? aDepthListMM[nSelected] : aDepthListInch[nSelected];
         }
+
+        Sequence< PropertyValue > aArgs( 1 );
+        aArgs[0].Name = OUString(gsExtrusionDepth).copy(5);
+        aArgs[0].Value <<= fDepth;
+
+        mxControl->dispatchCommand( gsExtrusionDepth,  aArgs );
+        implSetDepth( fDepth );
+
+        mxControl->EndPopupMode();
     }
 }
 
-
 // ExtrusionDirectionControl
-
-
 ExtrusionDepthController::ExtrusionDepthController(
     const Reference< XComponentContext >& rxContext
 )   : svt::PopupWindowController(
@@ -523,10 +510,19 @@ ExtrusionDepthController::ExtrusionDepthController(
 {
 }
 
-
-VclPtr<vcl::Window> ExtrusionDepthController::createPopupWindow( vcl::Window* pParent )
+std::unique_ptr<WeldToolbarPopup> ExtrusionDepthController::weldPopupWindow()
 {
-    return VclPtr<ExtrusionDepthWindow>::Create( *this, pParent );
+    return std::make_unique<ExtrusionDepthWindow>(this, m_pToolbar);
+}
+
+VclPtr<vcl::Window> ExtrusionDepthController::createVclPopupWindow( vcl::Window* pParent )
+{
+    mxInterimPopover = VclPtr<InterimToolbarPopup>::Create(getFrameInterface(), pParent,
+        std::make_unique<ExtrusionDepthWindow>(this, pParent->GetFrameWeld()));
+
+    mxInterimPopover->Show();
+
+    return mxInterimPopover;
 }
 
 // XInitialization
@@ -543,116 +539,102 @@ void SAL_CALL ExtrusionDepthController::initialize( const css::uno::Sequence< cs
 // XServiceInfo
 
 
-OUString SAL_CALL ExtrusionDepthController_getImplementationName()
+OUString ExtrusionDepthController::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.svx.ExtrusionDepthController" );
+    return "com.sun.star.comp.svx.ExtrusionDepthController";
 }
 
 
-Sequence< OUString > SAL_CALL ExtrusionDepthController_getSupportedServiceNames()
+Sequence< OUString > ExtrusionDepthController::getSupportedServiceNames()
 {
-    Sequence<OUString> aSNS { "com.sun.star.frame.ToolbarController" };
-    return aSNS;
+    return { "com.sun.star.frame.ToolbarController" };
 }
 
 
-Reference< XInterface > SAL_CALL SAL_CALL ExtrusionDepthController_createInstance( const Reference< XMultiServiceFactory >& rSMgr )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_svx_ExtrusionDepthController_get_implementation(
+    css::uno::XComponentContext* xContext,
+    css::uno::Sequence<css::uno::Any> const &)
 {
-    return *new ExtrusionDepthController( comphelper::getComponentContext(rSMgr) );
+    return cppu::acquire(new ExtrusionDepthController(xContext));
 }
 
-OUString SAL_CALL ExtrusionDepthController::getImplementationName(  )
-{
-    return ExtrusionDepthController_getImplementationName();
-}
 
-Sequence< OUString > SAL_CALL ExtrusionDepthController::getSupportedServiceNames(  )
-{
-    return ExtrusionDepthController_getSupportedServiceNames();
-}
+const char g_sExtrusionLightingDirection[] = ".uno:ExtrusionLightingDirection";
+const char g_sExtrusionLightingIntensity[] = ".uno:ExtrusionLightingIntensity";
 
-static const char g_sExtrusionLightingDirection[] = ".uno:ExtrusionLightingDirection";
-static const char g_sExtrusionLightingIntensity[] = ".uno:ExtrusionLightingIntensity";
-
-ExtrusionLightingWindow::ExtrusionLightingWindow(svt::ToolboxController& rController,
-                                                 vcl::Window* pParentWindow)
-    : ToolbarMenu(rController.getFrameInterface(), pParentWindow, WB_STDPOPUP)
-    , mrController(rController)
-    , maImgBright(BitmapEx(RID_SVXBMP_LIGHTING_BRIGHT))
-    , maImgNormal(BitmapEx(RID_SVXBMP_LIGHTING_NORMAL))
-    , maImgDim(BitmapEx(RID_SVXBMP_LIGHTING_DIM))
-    , mnDirection(FROM_FRONT)
-    , mbDirectionEnabled(false)
+ExtrusionLightingWindow::ExtrusionLightingWindow(svt::PopupWindowController* pControl,
+                                                 weld::Widget* pParent)
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "svx/ui/lightingwindow.ui", "LightingWindow")
+    , mxControl(pControl)
+    , mxLightingSet(new ValueSet(nullptr))
+    , mxLightingSetWin(new weld::CustomWeld(*m_xBuilder, "valueset", *mxLightingSet))
+    , mxBright(m_xBuilder->weld_radio_button("bright"))
+    , mxNormal(m_xBuilder->weld_radio_button("normal"))
+    , mxDim(m_xBuilder->weld_radio_button("dim"))
 {
+    mxLightingSet->SetStyle(WB_TABSTOP | WB_MENUSTYLEVALUESET | WB_FLATVALUESET | WB_NOBORDER | WB_NO_DIRECTSELECT);
+
     for (sal_uInt16 i = FROM_TOP_LEFT; i <= FROM_BOTTOM_RIGHT; ++i)
     {
         if( i != FROM_FRONT )
         {
-            maImgLightingOff[i] = Image(BitmapEx(aLightOffBmps[i]));
-            maImgLightingOn[i] = Image(BitmapEx(aLightOnBmps[i]));
+            maImgLightingOff[i] = Image(StockImage::Yes, aLightOffBmps[i]);
+            maImgLightingOn[i] = Image(StockImage::Yes, aLightOnBmps[i]);
         }
-        maImgLightingPreview[i] = Image(BitmapEx(aLightPreviewBmps[i]));
+        maImgLightingPreview[i] = Image(StockImage::Yes, aLightPreviewBmps[i]);
     }
 
-    SetSelectHdl( LINK( this, ExtrusionLightingWindow, SelectToolbarMenuHdl ) );
+    mxLightingSet->SetHelpId( HID_VALUESET_EXTRUSION_LIGHTING );
 
-    mpLightingSet = createEmptyValueSetControl();
-    mpLightingSet->SetHelpId( HID_VALUESET_EXTRUSION_LIGHTING );
-
-    mpLightingSet->SetSelectHdl( LINK( this, ExtrusionLightingWindow, SelectValueSetHdl ) );
-    mpLightingSet->SetColCount( 3 );
-    mpLightingSet->EnableFullItemMode( false );
+    mxLightingSet->SetSelectHdl( LINK( this, ExtrusionLightingWindow, SelectValueSetHdl ) );
+    mxLightingSet->SetColCount( 3 );
+    mxLightingSet->EnableFullItemMode( false );
 
     for (sal_uInt16 i = FROM_TOP_LEFT; i <= FROM_BOTTOM_RIGHT; ++i)
     {
         if( i != FROM_FRONT )
         {
-            mpLightingSet->InsertItem( i+1, maImgLightingOff[i] );
+            mxLightingSet->InsertItem( i+1, maImgLightingOff[i] );
         }
         else
         {
-            mpLightingSet->InsertItem( 5, maImgLightingPreview[FROM_FRONT] );
+            mxLightingSet->InsertItem( 5, maImgLightingPreview[FROM_FRONT] );
         }
     }
-    mpLightingSet->SetOutputSizePixel( Size( 72, 72 ) );
+    Size aSize(72, 72);
+    mxLightingSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
+    mxLightingSet->SetOutputSizePixel(aSize);
 
-    appendEntry(3, mpLightingSet);
-    appendSeparator();
-    appendEntry(0, SvxResId(RID_SVXSTR_BRIGHT), maImgBright);
-    appendEntry(1, SvxResId(RID_SVXSTR_NORMAL), maImgNormal);
-    appendEntry(2, SvxResId(RID_SVXSTR_DIM), maImgDim);
-
-    SetOutputSizePixel( getMenuSize() );
+    mxBright->connect_clicked(LINK(this, ExtrusionLightingWindow, SelectToolbarMenuHdl));
+    mxNormal->connect_clicked(LINK(this, ExtrusionLightingWindow, SelectToolbarMenuHdl));
+    mxDim->connect_clicked(LINK(this, ExtrusionLightingWindow, SelectToolbarMenuHdl));
 
     AddStatusListener( g_sExtrusionLightingDirection );
     AddStatusListener( g_sExtrusionLightingIntensity );
 }
 
-ExtrusionLightingWindow::~ExtrusionLightingWindow()
+void ExtrusionLightingWindow::GrabFocus()
 {
-    disposeOnce();
+    mxLightingSet->GrabFocus();
 }
 
-void ExtrusionLightingWindow::dispose()
+ExtrusionLightingWindow::~ExtrusionLightingWindow()
 {
-    mpLightingSet.clear();
-    ToolbarMenu::dispose();
 }
 
 void ExtrusionLightingWindow::implSetIntensity( int nLevel, bool bEnabled )
 {
-    for (int i = 0; i < 3; ++i)
-    {
-        checkEntry( i, (i == nLevel) && bEnabled );
-        enableEntry( i, bEnabled );
-    }
+    mxBright->set_sensitive(bEnabled);
+    mxBright->set_active(nLevel == 0 && bEnabled);
+    mxNormal->set_sensitive(bEnabled);
+    mxNormal->set_active(nLevel == 1 && bEnabled);
+    mxDim->set_sensitive(bEnabled);
+    mxDim->set_active(nLevel == 2 && bEnabled);
 }
 
 void ExtrusionLightingWindow::implSetDirection( int nDirection, bool bEnabled )
 {
-    mnDirection = nDirection;
-    mbDirectionEnabled = bEnabled;
-
     if( !bEnabled )
         nDirection = FROM_FRONT;
 
@@ -661,20 +643,22 @@ void ExtrusionLightingWindow::implSetDirection( int nDirection, bool bEnabled )
     {
         if( nItemId == FROM_FRONT )
         {
-            mpLightingSet->SetItemImage( nItemId + 1, maImgLightingPreview[ nDirection ] );
+            mxLightingSet->SetItemImage( nItemId + 1, maImgLightingPreview[ nDirection ] );
         }
         else
         {
-            mpLightingSet->SetItemImage(
+            mxLightingSet->SetItemImage(
                 nItemId + 1,
-                (sal_uInt16)nDirection == nItemId ? maImgLightingOn[nItemId] : maImgLightingOff[nItemId]
+                static_cast<sal_uInt16>(nDirection) == nItemId ? maImgLightingOn[nItemId] : maImgLightingOff[nItemId]
             );
         }
     }
 
-    enableEntry( 3, bEnabled );
+    if (bEnabled)
+        mxLightingSet->Enable();
+    else
+        mxLightingSet->Disable();
 }
-
 
 void ExtrusionLightingWindow::statusChanged(
     const css::frame::FeatureStateEvent& Event
@@ -708,71 +692,46 @@ void ExtrusionLightingWindow::statusChanged(
     }
 }
 
-
-void ExtrusionLightingWindow::DataChanged( const DataChangedEvent& rDCEvt )
+IMPL_LINK_NOARG(ExtrusionLightingWindow, SelectValueSetHdl, ValueSet*, void)
 {
-    ToolbarMenu::DataChanged( rDCEvt );
+    sal_Int32 nDirection = mxLightingSet->GetSelectedItemId();
 
-    if( ( rDCEvt.GetType() == DataChangedEventType::SETTINGS ) && ( rDCEvt.GetFlags() & AllSettingsFlags::STYLE ) )
+    if( (nDirection > 0) && (nDirection < 10) )
     {
-        implSetDirection( mnDirection, mbDirectionEnabled );
-        setEntryImage( 0, maImgBright );
-        setEntryImage( 1, maImgNormal );
-        setEntryImage( 2, maImgDim    );
+        nDirection--;
+
+        Sequence< PropertyValue > aArgs( 1 );
+        aArgs[0].Name = OUString(g_sExtrusionLightingDirection).copy(5);
+        aArgs[0].Value <<= nDirection;
+
+        mxControl->dispatchCommand( g_sExtrusionLightingDirection, aArgs );
+
+        implSetDirection( nDirection, true );
     }
+
+    mxControl->EndPopupMode();
 }
 
-
-IMPL_LINK( ExtrusionLightingWindow, SelectValueSetHdl, ValueSet*, pControl, void )
+IMPL_LINK_NOARG(ExtrusionLightingWindow, SelectToolbarMenuHdl, weld::Button&, void)
 {
-    SelectHdl(pControl);
-}
-IMPL_LINK( ExtrusionLightingWindow, SelectToolbarMenuHdl, ToolbarMenu*, pControl, void )
-{
-    SelectHdl(pControl);
-}
-void ExtrusionLightingWindow::SelectHdl(void* pControl)
-{
-    if ( IsInPopupMode() )
-        EndPopupMode();
-
-    if( pControl == this )
-    {
-        int nLevel = getSelectedEntryId();
-        if( nLevel >= 0 )
-        {
-            if( nLevel != 3 )
-            {
-                Sequence< PropertyValue > aArgs( 1 );
-                aArgs[0].Name = OUString(g_sExtrusionLightingIntensity).copy(5);
-                aArgs[0].Value <<= (sal_Int32)nLevel;
-
-                mrController.dispatchCommand( g_sExtrusionLightingIntensity, aArgs );
-
-                implSetIntensity( nLevel, true );
-            }
-        }
-    }
+    int nLevel;
+    if (mxBright->get_active())
+        nLevel = 0;
+    else if (mxNormal->get_active())
+        nLevel = 1;
     else
-    {
-        sal_Int32 nDirection = mpLightingSet->GetSelectItemId();
+        nLevel = 2;
 
-        if( (nDirection > 0) && (nDirection < 10) )
-        {
-            nDirection--;
+    Sequence< PropertyValue > aArgs( 1 );
+    aArgs[0].Name = OUString(g_sExtrusionLightingIntensity).copy(5);
+    aArgs[0].Value <<= static_cast<sal_Int32>(nLevel);
 
-            Sequence< PropertyValue > aArgs( 1 );
-            aArgs[0].Name = OUString(g_sExtrusionLightingDirection).copy(5);
-            aArgs[0].Value <<= nDirection;
+    mxControl->dispatchCommand( g_sExtrusionLightingIntensity, aArgs );
 
-            mrController.dispatchCommand( g_sExtrusionLightingDirection, aArgs );
+    implSetIntensity( nLevel, true );
 
-            implSetDirection( nDirection, true );
-        }
-
-    }
+    mxControl->EndPopupMode();
 }
-
 
 ExtrusionLightingControl::ExtrusionLightingControl(
     const Reference< XComponentContext >& rxContext
@@ -783,10 +742,19 @@ ExtrusionLightingControl::ExtrusionLightingControl(
 {
 }
 
-
-VclPtr<vcl::Window> ExtrusionLightingControl::createPopupWindow( vcl::Window* pParent )
+std::unique_ptr<WeldToolbarPopup> ExtrusionLightingControl::weldPopupWindow()
 {
-    return VclPtr<ExtrusionLightingWindow>::Create( *this, pParent );
+    return std::make_unique<ExtrusionLightingWindow>(this, m_pToolbar);
+}
+
+VclPtr<vcl::Window> ExtrusionLightingControl::createVclPopupWindow( vcl::Window* pParent )
+{
+    mxInterimPopover = VclPtr<InterimToolbarPopup>::Create(getFrameInterface(), pParent,
+        std::make_unique<ExtrusionLightingWindow>(this, pParent->GetFrameWeld()));
+
+    mxInterimPopover->Show();
+
+    return mxInterimPopover;
 }
 
 // XInitialization
@@ -803,109 +771,103 @@ void SAL_CALL ExtrusionLightingControl::initialize( const css::uno::Sequence< cs
 // XServiceInfo
 
 
-OUString SAL_CALL ExtrusionLightingControl_getImplementationName()
+OUString ExtrusionLightingControl::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.svx.ExtrusionLightingController" );
+    return "com.sun.star.comp.svx.ExtrusionLightingController";
 }
 
 
-Sequence< OUString > SAL_CALL ExtrusionLightingControl_getSupportedServiceNames()
+Sequence< OUString > ExtrusionLightingControl::getSupportedServiceNames()
 {
-    Sequence<OUString> aSNS { "com.sun.star.frame.ToolbarController" };
-    return aSNS;
+    return { "com.sun.star.frame.ToolbarController" };
 }
 
 
-Reference< XInterface > SAL_CALL SAL_CALL ExtrusionLightingControl_createInstance(
-    const Reference< XMultiServiceFactory >& rSMgr
-)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_svx_ExtrusionLightingControl_get_implementation(
+    css::uno::XComponentContext* xContext,
+    css::uno::Sequence<css::uno::Any> const &)
 {
-    return *new ExtrusionLightingControl( comphelper::getComponentContext(rSMgr) );
+    return cppu::acquire(new ExtrusionLightingControl(xContext));
 }
 
 
-OUString SAL_CALL ExtrusionLightingControl::getImplementationName(  )
+const char g_sExtrusionSurface[] = ".uno:ExtrusionSurface";
+
+ExtrusionSurfaceWindow::ExtrusionSurfaceWindow(svt::PopupWindowController* pControl, weld::Widget* pParent)
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "svx/ui/surfacewindow.ui", "SurfaceWindow")
+    , mxControl(pControl)
+    , mxWireFrame(m_xBuilder->weld_radio_button("wireframe"))
+    , mxMatt(m_xBuilder->weld_radio_button("matt"))
+    , mxPlastic(m_xBuilder->weld_radio_button("plastic"))
+    , mxMetal(m_xBuilder->weld_radio_button("metal"))
 {
-    return ExtrusionLightingControl_getImplementationName();
-}
-
-
-Sequence< OUString > SAL_CALL ExtrusionLightingControl::getSupportedServiceNames(  )
-{
-    return ExtrusionLightingControl_getSupportedServiceNames();
-}
-
-static const char g_sExtrusionSurface[] = ".uno:ExtrusionSurface";
-
-ExtrusionSurfaceWindow::ExtrusionSurfaceWindow(
-    svt::ToolboxController& rController,
-    vcl::Window* pParentWindow)
-    : ToolbarMenu(rController.getFrameInterface(), pParentWindow, WB_STDPOPUP)
-    , mrController(rController)
-    , maImgSurface1(BitmapEx(RID_SVXBMP_WIRE_FRAME))
-    , maImgSurface2(BitmapEx(RID_SVXBMP_MATTE))
-    , maImgSurface3(BitmapEx(RID_SVXBMP_PLASTIC))
-    , maImgSurface4(BitmapEx(RID_SVXBMP_METAL))
-{
-    SetSelectHdl( LINK( this, ExtrusionSurfaceWindow, SelectHdl ) );
-
-    appendEntry(0, SvxResId(RID_SVXSTR_WIREFRAME), maImgSurface1);
-    appendEntry(1, SvxResId(RID_SVXSTR_MATTE), maImgSurface2);
-    appendEntry(2, SvxResId(RID_SVXSTR_PLASTIC), maImgSurface3);
-    appendEntry(3, SvxResId(RID_SVXSTR_METAL), maImgSurface4);
-
-    SetOutputSizePixel( getMenuSize() );
+    mxWireFrame->connect_clicked(LINK(this, ExtrusionSurfaceWindow, SelectHdl));
+    mxMatt->connect_clicked(LINK(this, ExtrusionSurfaceWindow, SelectHdl));
+    mxPlastic->connect_clicked(LINK(this, ExtrusionSurfaceWindow, SelectHdl));
+    mxMetal->connect_clicked(LINK(this, ExtrusionSurfaceWindow, SelectHdl));
 
     AddStatusListener( g_sExtrusionSurface );
 }
 
+void ExtrusionSurfaceWindow::GrabFocus()
+{
+    mxWireFrame->grab_focus();
+}
+
 void ExtrusionSurfaceWindow::implSetSurface( int nSurface, bool bEnabled )
 {
-    for(int i = 0; i < 4; ++i)
-    {
-        checkEntry( i, (i == nSurface) && bEnabled );
-        enableEntry( i, bEnabled );
-    }
+    mxWireFrame->set_active(nSurface == 0 && bEnabled);
+    mxWireFrame->set_sensitive(bEnabled);
+    mxMatt->set_active(nSurface == 1 && bEnabled);
+    mxMatt->set_sensitive(bEnabled);
+    mxPlastic->set_active(nSurface == 2 && bEnabled);
+    mxPlastic->set_sensitive(bEnabled);
+    mxMetal->set_active(nSurface == 3 && bEnabled);
+    mxMetal->set_sensitive(bEnabled);
 }
 
 void ExtrusionSurfaceWindow::statusChanged(
     const css::frame::FeatureStateEvent& Event
 )
 {
-    if( Event.FeatureURL.Main == g_sExtrusionSurface )
+    if( Event.FeatureURL.Main != g_sExtrusionSurface )
+        return;
+
+    if( !Event.IsEnabled )
     {
-        if( !Event.IsEnabled )
-        {
-            implSetSurface( 0, false );
-        }
-        else
-        {
-            sal_Int32 nValue = 0;
-            if( Event.State >>= nValue )
-                implSetSurface( nValue, true );
-        }
+        implSetSurface( 0, false );
+    }
+    else
+    {
+        sal_Int32 nValue = 0;
+        if( Event.State >>= nValue )
+            implSetSurface( nValue, true );
     }
 }
 
-
-IMPL_LINK_NOARG(ExtrusionSurfaceWindow, SelectHdl, ToolbarMenu*, void)
+IMPL_LINK_NOARG(ExtrusionSurfaceWindow, SelectHdl, weld::Button&, void)
 {
-    if ( IsInPopupMode() )
-        EndPopupMode();
+    sal_Int32 nSurface;
+    if (mxWireFrame->get_active())
+        nSurface = 0;
+    else if (mxMatt->get_active())
+        nSurface = 1;
+    else if (mxPlastic->get_active())
+        nSurface = 2;
+    else
+        nSurface = 3;
 
-    sal_Int32 nSurface = getSelectedEntryId();
-    if( nSurface >= 0 )
-    {
-        Sequence< PropertyValue > aArgs( 1 );
-        aArgs[0].Name = OUString(g_sExtrusionSurface).copy(5);
-        aArgs[0].Value <<= nSurface;
+    Sequence< PropertyValue > aArgs( 1 );
+    aArgs[0].Name = OUString(g_sExtrusionSurface).copy(5);
+    aArgs[0].Value <<= nSurface;
 
-        mrController.dispatchCommand( g_sExtrusionSurface, aArgs );
+    mxControl->dispatchCommand( g_sExtrusionSurface, aArgs );
 
-        implSetSurface( nSurface, true );
-    }
+    implSetSurface( nSurface, true );
+
+    mxControl->EndPopupMode();
 }
-
 
 ExtrusionSurfaceControl::ExtrusionSurfaceControl(
     const Reference< XComponentContext >& rxContext
@@ -918,10 +880,19 @@ ExtrusionSurfaceControl::ExtrusionSurfaceControl(
 {
 }
 
-
-VclPtr<vcl::Window> ExtrusionSurfaceControl::createPopupWindow( vcl::Window* pParent )
+std::unique_ptr<WeldToolbarPopup> ExtrusionSurfaceControl::weldPopupWindow()
 {
-    return VclPtr<ExtrusionSurfaceWindow>::Create( *this, pParent );
+    return std::make_unique<ExtrusionSurfaceWindow>(this, m_pToolbar);
+}
+
+VclPtr<vcl::Window> ExtrusionSurfaceControl::createVclPopupWindow( vcl::Window* pParent )
+{
+    mxInterimPopover = VclPtr<InterimToolbarPopup>::Create(getFrameInterface(), pParent,
+        std::make_unique<ExtrusionSurfaceWindow>(this, pParent->GetFrameWeld()));
+
+    mxInterimPopover->Show();
+
+    return mxInterimPopover;
 }
 
 // XInitialization
@@ -938,36 +909,24 @@ void SAL_CALL ExtrusionSurfaceControl::initialize( const css::uno::Sequence< css
 // XServiceInfo
 
 
-OUString SAL_CALL ExtrusionSurfaceControl_getImplementationName()
+OUString ExtrusionSurfaceControl::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.svx.ExtrusionSurfaceController" );
+    return "com.sun.star.comp.svx.ExtrusionSurfaceController";
 }
 
 
-Sequence< OUString > SAL_CALL ExtrusionSurfaceControl_getSupportedServiceNames()
+Sequence< OUString > ExtrusionSurfaceControl::getSupportedServiceNames()
 {
-    Sequence<OUString> aSNS { "com.sun.star.frame.ToolbarController" };
-    return aSNS;
+    return { "com.sun.star.frame.ToolbarController" };
 }
 
 
-Reference< XInterface > SAL_CALL SAL_CALL ExtrusionSurfaceControl_createInstance(
-    const Reference< XMultiServiceFactory >& rSMgr
-)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_svx_ExtrusionSurfaceControl_get_implementation(
+    css::uno::XComponentContext* xContext,
+    css::uno::Sequence<css::uno::Any> const &)
 {
-    return *new ExtrusionSurfaceControl( comphelper::getComponentContext(rSMgr) );
-}
-
-
-OUString SAL_CALL ExtrusionSurfaceControl::getImplementationName(  )
-{
-    return ExtrusionSurfaceControl_getImplementationName();
-}
-
-
-Sequence< OUString > SAL_CALL ExtrusionSurfaceControl::getSupportedServiceNames(  )
-{
-    return ExtrusionSurfaceControl_getSupportedServiceNames();
+    return cppu::acquire(new ExtrusionSurfaceControl(xContext));
 }
 
 }

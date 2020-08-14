@@ -19,9 +19,10 @@
 
 #include <stdio.h>
 #include <sal/macros.h>
+#include <rtl/ref.hxx>
+#include <rtl/ustrbuf.hxx>
 
 #include <xml/menudocumenthandler.hxx>
-#include <framework/menuconfiguration.hxx>
 
 #include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
@@ -72,12 +73,12 @@
 #define ATTRIBUTE_ITEMSTYLE_RADIO    "radio"
 
 // Property names of a menu/menu item ItemDescriptor
-static const char ITEM_DESCRIPTOR_COMMANDURL[]  = "CommandURL";
-static const char ITEM_DESCRIPTOR_HELPURL[]     = "HelpURL";
-static const char ITEM_DESCRIPTOR_CONTAINER[]   = "ItemDescriptorContainer";
-static const char ITEM_DESCRIPTOR_LABEL[]       = "Label";
-static const char ITEM_DESCRIPTOR_TYPE[]        = "Type";
-static const char ITEM_DESCRIPTOR_STYLE[]       = "Style";
+const char ITEM_DESCRIPTOR_COMMANDURL[]  = "CommandURL";
+const char ITEM_DESCRIPTOR_HELPURL[]     = "HelpURL";
+const char ITEM_DESCRIPTOR_CONTAINER[]   = "ItemDescriptorContainer";
+const char ITEM_DESCRIPTOR_LABEL[]       = "Label";
+const char ITEM_DESCRIPTOR_TYPE[]        = "Type";
+const char ITEM_DESCRIPTOR_STYLE[]       = "Style";
 
 //  using namespaces
 
@@ -91,11 +92,15 @@ using namespace ::com::sun::star::ui;
 namespace framework
 {
 
+namespace {
+
 struct MenuStyleItem
 {
     sal_Int16 nBit;
     const char* attrName;
 };
+
+}
 
 const MenuStyleItem MenuItemStyles[ ] = {
     { css::ui::ItemStyle::ICON, ATTRIBUTE_ITEMSTYLE_IMAGE },
@@ -113,32 +118,32 @@ static void ExtractMenuParameters( const Sequence< PropertyValue >& rProp,
                                    sal_Int16&                      rType,
                                    sal_Int16&                      rStyle )
 {
-    for ( sal_Int32 i = 0; i < rProp.getLength(); i++ )
+    for ( const PropertyValue& p : rProp )
     {
-        if ( rProp[i].Name == ITEM_DESCRIPTOR_COMMANDURL )
+        if ( p.Name == ITEM_DESCRIPTOR_COMMANDURL )
         {
-            rProp[i].Value >>= rCommandURL;
+            p.Value >>= rCommandURL;
             rCommandURL = rCommandURL.intern();
         }
-        else if ( rProp[i].Name == ITEM_DESCRIPTOR_HELPURL )
+        else if ( p.Name == ITEM_DESCRIPTOR_HELPURL )
         {
-            rProp[i].Value >>= rHelpURL;
+            p.Value >>= rHelpURL;
         }
-        else if ( rProp[i].Name == ITEM_DESCRIPTOR_CONTAINER )
+        else if ( p.Name == ITEM_DESCRIPTOR_CONTAINER )
         {
-            rProp[i].Value >>= rSubMenu;
+            p.Value >>= rSubMenu;
         }
-        else if ( rProp[i].Name == ITEM_DESCRIPTOR_LABEL )
+        else if ( p.Name == ITEM_DESCRIPTOR_LABEL )
         {
-            rProp[i].Value >>= rLabel;
+            p.Value >>= rLabel;
         }
-        else if ( rProp[i].Name == ITEM_DESCRIPTOR_TYPE )
+        else if ( p.Name == ITEM_DESCRIPTOR_TYPE )
         {
-            rProp[i].Value >>= rType;
+            p.Value >>= rType;
         }
-        else if ( rProp[i].Name == ITEM_DESCRIPTOR_STYLE )
+        else if ( p.Name == ITEM_DESCRIPTOR_STYLE )
         {
-            rProp[i].Value >>= rStyle;
+            p.Value >>= rStyle;
         }
     }
 }
@@ -146,8 +151,6 @@ static void ExtractMenuParameters( const Sequence< PropertyValue >& rProp,
 // Base class implementation
 
 ReadMenuDocumentHandlerBase::ReadMenuDocumentHandlerBase() :
-    m_xLocator( nullptr ),
-    m_xReader( nullptr ),
     m_aType( ITEM_DESCRIPTOR_TYPE ),
     m_aLabel( ITEM_DESCRIPTOR_LABEL ),
     m_aContainer( ITEM_DESCRIPTOR_CONTAINER ),
@@ -230,8 +233,8 @@ void SAL_CALL OReadMenuDocumentHandler::endDocument()
 {
     if ( m_nElementDepth > 0 )
     {
-        OUString aErrorMessage = getErrorLineString();
-        aErrorMessage += "A closing element is missing!";
+        OUString aErrorMessage = getErrorLineString() +
+            "A closing element is missing!";
         throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
     }
 }
@@ -267,29 +270,29 @@ void SAL_CALL OReadMenuDocumentHandler::characters(const OUString&)
 
 void SAL_CALL OReadMenuDocumentHandler::endElement( const OUString& aName )
 {
-    if ( m_eReaderMode != ReaderMode::None )
+    if ( m_eReaderMode == ReaderMode::None )
+        return;
+
+    --m_nElementDepth;
+    m_xReader->endElement( aName );
+    if ( 0 != m_nElementDepth )
+        return;
+
+    m_xReader->endDocument();
+    m_xReader.clear();
+    if ( m_eReaderMode == ReaderMode::MenuBar && aName != ELEMENT_MENUBAR )
     {
-        --m_nElementDepth;
-        m_xReader->endElement( aName );
-        if ( 0 == m_nElementDepth )
-        {
-            m_xReader->endDocument();
-            m_xReader.clear();
-            if ( m_eReaderMode == ReaderMode::MenuBar && aName != ELEMENT_MENUBAR )
-            {
-                OUString aErrorMessage = getErrorLineString();
-                aErrorMessage += "closing element menubar expected!";
-                throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
-            }
-            else if ( m_eReaderMode == ReaderMode::MenuPopup && aName != ELEMENT_MENUPOPUP )
-            {
-                OUString aErrorMessage = getErrorLineString();
-                aErrorMessage += "closing element menupopup expected!";
-                throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
-            }
-            m_eReaderMode = ReaderMode::None;
-        }
+        OUString aErrorMessage = getErrorLineString() +
+            "closing element menubar expected!";
+        throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
     }
+    else if ( m_eReaderMode == ReaderMode::MenuPopup && aName != ELEMENT_MENUPOPUP )
+    {
+        OUString aErrorMessage = getErrorLineString() +
+            "closing element menupopup expected!";
+        throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
+    }
+    m_eReaderMode = ReaderMode::None;
 }
 
 OReadMenuBarHandler::OReadMenuBarHandler(
@@ -384,8 +387,8 @@ void SAL_CALL OReadMenuBarHandler::startElement(
             }
             else
             {
-                OUString aErrorMessage = getErrorLineString();
-                aErrorMessage += "attribute id for element menu required!";
+                OUString aErrorMessage = getErrorLineString() +
+                    "attribute id for element menu required!";
                 throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
             }
 
@@ -395,8 +398,8 @@ void SAL_CALL OReadMenuBarHandler::startElement(
     }
     else
     {
-        OUString aErrorMessage = getErrorLineString();
-        aErrorMessage += "element menu expected!";
+        OUString aErrorMessage = getErrorLineString() +
+            "element menu expected!";
         throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
     }
 }
@@ -407,24 +410,24 @@ void SAL_CALL OReadMenuBarHandler::characters(const OUString&)
 
 void OReadMenuBarHandler::endElement( const OUString& aName )
 {
-    if ( m_bMenuMode )
+    if ( !m_bMenuMode )
+        return;
+
+    --m_nElementDepth;
+    if ( 0 == m_nElementDepth )
     {
-        --m_nElementDepth;
-        if ( 0 == m_nElementDepth )
+        m_xReader->endDocument();
+        m_xReader.clear();
+        m_bMenuMode = false;
+        if ( aName != ELEMENT_MENU )
         {
-            m_xReader->endDocument();
-            m_xReader.clear();
-            m_bMenuMode = false;
-            if ( aName != ELEMENT_MENU )
-            {
-                OUString aErrorMessage = getErrorLineString();
-                aErrorMessage += "closing element menu expected!";
-                throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
-            }
+            OUString aErrorMessage = getErrorLineString() +
+                "closing element menu expected!";
+            throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
         }
-        else
-            m_xReader->endElement( aName );
     }
+    else
+        m_xReader->endElement( aName );
 }
 
 OReadMenuHandler::OReadMenuHandler(
@@ -466,8 +469,8 @@ void SAL_CALL OReadMenuHandler::startElement(
     }
     else
     {
-        OUString aErrorMessage = getErrorLineString();
-        aErrorMessage += "unknown element found!";
+        OUString aErrorMessage = getErrorLineString() +
+            "unknown element found!";
         throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
     }
 }
@@ -478,24 +481,24 @@ void SAL_CALL OReadMenuHandler::characters(const OUString&)
 
 void SAL_CALL OReadMenuHandler::endElement( const OUString& aName )
 {
-    if ( m_bMenuPopupMode )
+    if ( !m_bMenuPopupMode )
+        return;
+
+    --m_nElementDepth;
+    if ( 0 == m_nElementDepth )
     {
-        --m_nElementDepth;
-        if ( 0 == m_nElementDepth )
+        m_xReader->endDocument();
+        m_xReader.clear();
+        m_bMenuPopupMode = false;
+        if ( aName != ELEMENT_MENUPOPUP )
         {
-            m_xReader->endDocument();
-            m_xReader.clear();
-            m_bMenuPopupMode = false;
-            if ( aName != ELEMENT_MENUPOPUP )
-            {
-                OUString aErrorMessage = getErrorLineString();
-                aErrorMessage += "closing element menupopup expected!";
-                throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
-            }
+            OUString aErrorMessage = getErrorLineString() +
+                "closing element menupopup expected!";
+            throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
         }
-        else
-            m_xReader->endElement( aName );
     }
+    else
+        m_xReader->endElement( aName );
 }
 
 OReadMenuPopupHandler::OReadMenuPopupHandler(
@@ -585,8 +588,8 @@ void SAL_CALL OReadMenuPopupHandler::startElement(
         }
         else
         {
-            OUString aErrorMessage = getErrorLineString();
-            aErrorMessage += "attribute id for element menu required!";
+            OUString aErrorMessage = getErrorLineString() +
+                "attribute id for element menu required!";
             throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
         }
 
@@ -654,8 +657,8 @@ void SAL_CALL OReadMenuPopupHandler::startElement(
     }
     else
     {
-        OUString aErrorMessage = getErrorLineString();
-        aErrorMessage += "unknown element found!";
+        OUString aErrorMessage = getErrorLineString() +
+            "unknown element found!";
         throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
     }
 }
@@ -676,8 +679,8 @@ void SAL_CALL OReadMenuPopupHandler::endElement( const OUString& aName )
             m_bMenuMode = false;
             if ( aName != ELEMENT_MENU )
             {
-                OUString aErrorMessage = getErrorLineString();
-                aErrorMessage += "closing element menu expected!";
+                OUString aErrorMessage = getErrorLineString() +
+                    "closing element menu expected!";
                 throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
             }
         }
@@ -690,8 +693,8 @@ void SAL_CALL OReadMenuPopupHandler::endElement( const OUString& aName )
         {
             if ( aName != ELEMENT_MENUITEM )
             {
-                OUString aErrorMessage = getErrorLineString();
-                aErrorMessage += "closing element menuitem expected!";
+                OUString aErrorMessage = getErrorLineString() +
+                    "closing element menuitem expected!";
                 throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
             }
         }
@@ -699,8 +702,8 @@ void SAL_CALL OReadMenuPopupHandler::endElement( const OUString& aName )
         {
             if ( aName != ELEMENT_MENUSEPARATOR )
             {
-                OUString aErrorMessage = getErrorLineString();
-                aErrorMessage += "closing element menuseparator expected!";
+                OUString aErrorMessage = getErrorLineString() +
+                    "closing element menuseparator expected!";
                 throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
             }
         }
@@ -864,7 +867,7 @@ void OWriteMenuDocumentHandler::WriteMenuItem( const OUString& aCommandURL, cons
     }
     if ( nStyle > 0 )
     {
-        OUString aValue;
+        OUStringBuffer aValue;
         const MenuStyleItem* pStyle = MenuItemStyles;
 
         for ( sal_Int32 nIndex = 0; nIndex < nMenuStyleItemEntries; ++nIndex, ++pStyle )
@@ -872,13 +875,13 @@ void OWriteMenuDocumentHandler::WriteMenuItem( const OUString& aCommandURL, cons
             if ( nStyle & pStyle->nBit )
             {
                 if ( !aValue.isEmpty() )
-                    aValue = aValue.concat( "+" );
-                aValue += OUString::createFromAscii( pStyle->attrName );
+                    aValue.append("+");
+                aValue.appendAscii( pStyle->attrName );
             }
         }
         pList->AddAttribute( ATTRIBUTE_NS_STYLE,
                                 m_aAttributeType,
-                                aValue );
+                                aValue.makeStringAndClear() );
     }
 
     m_xWriteDocumentHandler->ignorableWhitespace( OUString() );

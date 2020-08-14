@@ -18,15 +18,19 @@
  */
 
 #include <limits.h>
+
+#include <o3tl/float_int_conversion.hxx>
 #include <tools/time.hxx>
 
-#include <svids.hrc>
 #include <bitmaps.hlst>
 #include <svdata.hxx>
 #include <scrwnd.hxx>
 
 #include <vcl/timer.hxx>
+#include <vcl/commandevent.hxx>
 #include <vcl/event.hxx>
+#include <vcl/ptrstyle.hxx>
+#include <sal/log.hxx>
 
 #include <math.h>
 
@@ -38,23 +42,23 @@
 
 ImplWheelWindow::ImplWheelWindow( vcl::Window* pParent ) :
             FloatingWindow  ( pParent, 0 ),
-            mnRepaintTime   ( 1UL ),
+            mnRepaintTime   ( 1 ),
             mnTimeout       ( DEF_TIMEOUT ),
             mnWheelMode     ( WheelMode::NONE ),
-            mnActDist       ( 0UL ),
-            mnActDeltaX     ( 0L ),
-            mnActDeltaY     ( 0L )
+            mnActDist       ( 0 ),
+            mnActDeltaX     ( 0 ),
+            mnActDeltaY     ( 0 )
 {
     // we need a parent
     SAL_WARN_IF( !pParent, "vcl", "ImplWheelWindow::ImplWheelWindow(): Parent not set!" );
 
     const Size      aSize( pParent->GetOutputSizePixel() );
-    const StartAutoScrollFlags nFlags = ImplGetSVData()->maWinData.mnAutoScrollFlags;
+    const StartAutoScrollFlags nFlags = ImplGetSVData()->mpWinData->mnAutoScrollFlags;
     const bool      bHorz( nFlags & StartAutoScrollFlags::Horz );
     const bool      bVert( nFlags & StartAutoScrollFlags::Vert );
 
     // calculate maximum speed distance
-    mnMaxWidth = (sal_uLong) ( 0.4 * hypot( (double) aSize.Width(), aSize.Height() ) );
+    mnMaxWidth = static_cast<sal_uLong>( 0.4 * hypot( static_cast<double>(aSize.Width()), aSize.Height() ) );
 
     // create wheel window
     SetTitleType( FloatWinTitleType::NONE );
@@ -71,10 +75,9 @@ ImplWheelWindow::ImplWheelWindow( vcl::Window* pParent ) :
         ImplSetWheelMode( WheelMode::V );
 
     // init timer
-    mpTimer = new Timer("WheelWindowTimer");
+    mpTimer.reset(new Timer("WheelWindowTimer"));
     mpTimer->SetInvokeHandler( LINK( this, ImplWheelWindow, ImplScrollHdl ) );
     mpTimer->SetTimeout( mnTimeout );
-    mpTimer->SetDebugName( "vcl::ImplWheelWindow mpTimer" );
     mpTimer->Start();
 
     CaptureMouse();
@@ -88,9 +91,7 @@ ImplWheelWindow::~ImplWheelWindow()
 void ImplWheelWindow::dispose()
 {
     ImplStop();
-    delete mpTimer;
-    mpTimer = nullptr;
-
+    mpTimer.reset();
     FloatingWindow::dispose();
 }
 
@@ -105,12 +106,11 @@ void ImplWheelWindow::ImplSetRegion( const Bitmap& rRegionBmp )
 {
     Point           aPos( GetPointerPosPixel() );
     const Size      aSize( rRegionBmp.GetSizePixel() );
-    Point           aPoint;
-    const tools::Rectangle aRect( aPoint, aSize );
+    const tools::Rectangle aRect( Point(), aSize );
 
     maCenter = maLastMousePos = aPos;
-    aPos.X() -= aSize.Width() >> 1;
-    aPos.Y() -= aSize.Height() >> 1;
+    aPos.AdjustX( -(aSize.Width() >> 1) );
+    aPos.AdjustY( -(aSize.Height() >> 1) );
 
     SetPosSizePixel( aPos, aSize );
     SetWindowRegionPixel( rRegionBmp.CreateRegion( COL_BLACK, aRect ) );
@@ -118,32 +118,32 @@ void ImplWheelWindow::ImplSetRegion( const Bitmap& rRegionBmp )
 
 void ImplWheelWindow::ImplCreateImageList()
 {
-    maImgList.push_back(Image(BitmapEx(SV_RESID_BITMAP_SCROLLVH)));
-    maImgList.push_back(Image(BitmapEx(SV_RESID_BITMAP_SCROLLV)));
-    maImgList.push_back(Image(BitmapEx(SV_RESID_BITMAP_SCROLLH)));
-    maImgList.push_back(Image(BitmapEx(SV_RESID_BITMAP_WHEELVH)));
-    maImgList.push_back(Image(BitmapEx(SV_RESID_BITMAP_WHEELV)));
-    maImgList.push_back(Image(BitmapEx(SV_RESID_BITMAP_WHEELH)));
+    maImgList.emplace_back(Image(StockImage::Yes, SV_RESID_BITMAP_SCROLLVH));
+    maImgList.emplace_back(Image(StockImage::Yes, SV_RESID_BITMAP_SCROLLV));
+    maImgList.emplace_back(Image(StockImage::Yes, SV_RESID_BITMAP_SCROLLH));
+    maImgList.emplace_back(Image(StockImage::Yes, SV_RESID_BITMAP_WHEELVH));
+    maImgList.emplace_back(Image(StockImage::Yes, SV_RESID_BITMAP_WHEELV));
+    maImgList.emplace_back(Image(StockImage::Yes, SV_RESID_BITMAP_WHEELH));
 }
 
 void ImplWheelWindow::ImplSetWheelMode( WheelMode nWheelMode )
 {
-    if( nWheelMode != mnWheelMode )
+    if( nWheelMode == mnWheelMode )
+        return;
+
+    mnWheelMode = nWheelMode;
+
+    if( WheelMode::NONE == mnWheelMode )
     {
-        mnWheelMode = nWheelMode;
+        if( IsVisible() )
+            Hide();
+    }
+    else
+    {
+        if( !IsVisible() )
+            Show();
 
-        if( WheelMode::NONE == mnWheelMode )
-        {
-            if( IsVisible() )
-                Hide();
-        }
-        else
-        {
-            if( !IsVisible() )
-                Show();
-
-            Invalidate();
-        }
+        Invalidate();
     }
 }
 
@@ -184,7 +184,7 @@ void ImplWheelWindow::ImplRecalcScrollValues()
 {
     if( mnActDist < WHEEL_RADIUS )
     {
-        mnActDeltaX = mnActDeltaY = 0L;
+        mnActDeltaX = mnActDeltaY = 0;
         mnTimeout = DEF_TIMEOUT;
     }
     else
@@ -194,14 +194,14 @@ void ImplWheelWindow::ImplRecalcScrollValues()
         // calc current time
         if( mnMaxWidth )
         {
-            const double fExp = ( (double) mnActDist / mnMaxWidth ) * log10( (double) MAX_TIME / MIN_TIME );
-            nCurTime = (sal_uInt64) ( MAX_TIME / pow( 10., fExp ) );
+            const double fExp = ( static_cast<double>(mnActDist) / mnMaxWidth ) * log10( double(MAX_TIME) / MIN_TIME );
+            nCurTime = static_cast<sal_uInt64>( MAX_TIME / pow( 10., fExp ) );
         }
         else
             nCurTime = MAX_TIME;
 
         if( !nCurTime )
-            nCurTime = 1UL;
+            nCurTime = 1;
 
         if( mnRepaintTime <= nCurTime )
             mnTimeout = nCurTime - mnRepaintTime;
@@ -210,26 +210,26 @@ void ImplWheelWindow::ImplRecalcScrollValues()
             sal_uInt64 nMult = mnRepaintTime / nCurTime;
 
             if( !( mnRepaintTime % nCurTime ) )
-                mnTimeout = 0UL;
+                mnTimeout = 0;
             else
                 mnTimeout = ++nMult * nCurTime - mnRepaintTime;
 
-            double fValX = (double) mnActDeltaX * nMult;
-            double fValY = (double) mnActDeltaY * nMult;
+            double fValX = static_cast<double>(mnActDeltaX) * nMult;
+            double fValY = static_cast<double>(mnActDeltaY) * nMult;
 
-            if( fValX > LONG_MAX )
+            if( !o3tl::convertsToAtMost(fValX, LONG_MAX) )
                 mnActDeltaX = LONG_MAX;
-            else if( fValX < LONG_MIN )
+            else if( !o3tl::convertsToAtLeast(fValX, LONG_MIN) )
                 mnActDeltaX = LONG_MIN;
             else
-                mnActDeltaX = (long) fValX;
+                mnActDeltaX = static_cast<long>(fValX);
 
-            if( fValY > LONG_MAX )
+            if( !o3tl::convertsToAtMost(fValY, LONG_MAX) )
                 mnActDeltaY = LONG_MAX;
-            else if( fValY < LONG_MIN )
+            else if( !o3tl::convertsToAtLeast(fValY, LONG_MIN) )
                 mnActDeltaY = LONG_MIN;
             else
-                mnActDeltaY = (long) fValY;
+                mnActDeltaY = static_cast<long>(fValY);
         }
     }
 }
@@ -237,7 +237,7 @@ void ImplWheelWindow::ImplRecalcScrollValues()
 PointerStyle ImplWheelWindow::ImplGetMousePointer( long nDistX, long nDistY )
 {
     PointerStyle    eStyle;
-    const StartAutoScrollFlags nFlags = ImplGetSVData()->maWinData.mnAutoScrollFlags;
+    const StartAutoScrollFlags nFlags = ImplGetSVData()->mpWinData->mnAutoScrollFlags;
     const bool      bHorz( nFlags & StartAutoScrollFlags::Horz );
     const bool      bVert( nFlags & StartAutoScrollFlags::Vert );
 
@@ -254,7 +254,7 @@ PointerStyle ImplWheelWindow::ImplGetMousePointer( long nDistX, long nDistY )
         }
         else
         {
-            double fAngle = atan2( (double) -nDistY, nDistX ) / F_PI180;
+            double fAngle = basegfx::rad2deg(atan2(static_cast<double>(-nDistY), nDistX));
 
             if( fAngle < 0.0 )
                 fAngle += 360.;
@@ -313,10 +313,10 @@ void ImplWheelWindow::MouseMove( const MouseEvent& rMEvt )
     const long  nDistX = aMousePos.X() - maCenter.X();
     const long  nDistY = aMousePos.Y() - maCenter.Y();
 
-    mnActDist = (sal_uLong) hypot( (double) nDistX, nDistY );
+    mnActDist = static_cast<sal_uLong>(hypot( static_cast<double>(nDistX), nDistY ));
 
     const PointerStyle  eActStyle = ImplGetMousePointer( nDistX, nDistY );
-    const StartAutoScrollFlags nFlags = ImplGetSVData()->maWinData.mnAutoScrollFlags;
+    const StartAutoScrollFlags nFlags = ImplGetSVData()->mpWinData->mnAutoScrollFlags;
     const bool          bHorz( nFlags & StartAutoScrollFlags::Horz );
     const bool          bVert( nFlags & StartAutoScrollFlags::Vert );
     const bool          bOuter = mnActDist > WHEEL_RADIUS;
@@ -325,14 +325,14 @@ void ImplWheelWindow::MouseMove( const MouseEvent& rMEvt )
     {
         switch( eActStyle )
         {
-            case( PointerStyle::AutoScrollN ):   mnActDeltaX = +0L; mnActDeltaY = +1L; break;
-            case( PointerStyle::AutoScrollS ):   mnActDeltaX = +0L; mnActDeltaY = -1L; break;
-            case( PointerStyle::AutoScrollW ):   mnActDeltaX = +1L; mnActDeltaY = +0L; break;
-            case( PointerStyle::AutoScrollE ):   mnActDeltaX = -1L; mnActDeltaY = +0L; break;
-            case( PointerStyle::AutoScrollNW ):  mnActDeltaX = +1L; mnActDeltaY = +1L; break;
-            case( PointerStyle::AutoScrollNE ):  mnActDeltaX = -1L; mnActDeltaY = +1L; break;
-            case( PointerStyle::AutoScrollSW ):  mnActDeltaX = +1L; mnActDeltaY = -1L; break;
-            case( PointerStyle::AutoScrollSE ):  mnActDeltaX = -1L; mnActDeltaY = -1L; break;
+            case PointerStyle::AutoScrollN:   mnActDeltaX = +0; mnActDeltaY = +1; break;
+            case PointerStyle::AutoScrollS:   mnActDeltaX = +0; mnActDeltaY = -1; break;
+            case PointerStyle::AutoScrollW:   mnActDeltaX = +1; mnActDeltaY = +0; break;
+            case PointerStyle::AutoScrollE:   mnActDeltaX = -1; mnActDeltaY = +0; break;
+            case PointerStyle::AutoScrollNW:  mnActDeltaX = +1; mnActDeltaY = +1; break;
+            case PointerStyle::AutoScrollNE:  mnActDeltaX = -1; mnActDeltaY = +1; break;
+            case PointerStyle::AutoScrollSW:  mnActDeltaX = +1; mnActDeltaY = -1; break;
+            case PointerStyle::AutoScrollSE:  mnActDeltaX = -1; mnActDeltaY = -1; break;
 
             default:
             break;
@@ -377,7 +377,7 @@ IMPL_LINK_NOARG(ImplWheelWindow, ImplScrollHdl, Timer *, void)
             pWindow->Command( aCEvt );
             if( xWin->IsDisposed() )
                 return;
-            mnRepaintTime = std::max( tools::Time::GetSystemTicks() - nTime, (sal_uInt64)1 );
+            mnRepaintTime = std::max( tools::Time::GetSystemTicks() - nTime, sal_uInt64(1) );
             ImplRecalcScrollValues();
         }
     }

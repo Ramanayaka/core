@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "vbahelper/vbadocumentsbase.hxx"
+#include <vbahelper/vbadocumentsbase.hxx>
 
 #include <unotools/mediadescriptor.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
@@ -29,33 +28,29 @@
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
-#include <com/sun/star/util/XModifiable.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/beans/PropertyVetoException.hpp>
-#include <com/sun/star/util/XCloseable.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/document/XTypeDetection.hpp>
 #include <com/sun/star/document/MacroExecMode.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <sfx2/objsh.hxx>
 #include <tools/urlobj.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/file.hxx>
 #include <unordered_map>
 
-#include "vbahelper/vbahelper.hxx"
-#include "vbahelper/vbaapplicationbase.hxx"
-#include "vbahelper/vbadocumentbase.hxx"
+#include <vbahelper/vbadocumentbase.hxx>
+#include <ooo/vba/XApplicationBase.hpp>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
 typedef  std::unordered_map< OUString,
-                             sal_Int32, OUStringHash > NameIndexHash;
+                             sal_Int32 > NameIndexHash;
 
 typedef std::vector < uno::Reference< frame::XModel > > Documents;
 
 // #FIXME clearly this is a candidate for some sort of helper base class as
 // this is a copy of SelectedSheetsEnum ( vbawindow.cxx )
+
+namespace {
 
 class DocumentsEnumImpl : public ::cppu::WeakImplHelper< container::XEnumeration >
 {
@@ -98,6 +93,8 @@ public:
     }
 };
 
+}
+
 // #FIXME clearly this is also a candidate for some sort of helper base class as
 // a very similar one is used in vbawindow ( SelectedSheetsEnumAccess )
 // Maybe a template base class that does all of the operations on the hashmap
@@ -109,15 +106,16 @@ typedef ::cppu::WeakImplHelper< container::XEnumerationAccess
     , css::container::XNameAccess
     > DocumentsAccessImpl_BASE;
 
+namespace {
+
 class DocumentsAccessImpl : public DocumentsAccessImpl_BASE
 {
     uno::Reference< uno::XComponentContext > m_xContext;
     Documents m_documents;
     NameIndexHash namesToIndices;
-    VbaDocumentsBase::DOCUMENT_TYPE meDocType;
 public:
     /// @throws uno::RuntimeException
-    DocumentsAccessImpl( const uno::Reference< uno::XComponentContext >& xContext, VbaDocumentsBase::DOCUMENT_TYPE eDocType ) :m_xContext( xContext ), meDocType( eDocType )
+    DocumentsAccessImpl( const uno::Reference< uno::XComponentContext >& xContext, VbaDocumentsBase::DOCUMENT_TYPE eDocType ) :m_xContext( xContext )
     {
         uno::Reference< container::XEnumeration > xEnum = new DocumentsEnumImpl( m_xContext );
         sal_Int32 nIndex=0;
@@ -125,8 +123,8 @@ public:
         {
             uno::Reference< lang::XServiceInfo > xServiceInfo( xEnum->nextElement(), uno::UNO_QUERY );
             if ( xServiceInfo.is()
-                && (  ( xServiceInfo->supportsService( "com.sun.star.sheet.SpreadsheetDocument" ) && meDocType == VbaDocumentsBase::EXCEL_DOCUMENT )
-                || ( xServiceInfo->supportsService( "com.sun.star.text.TextDocument" ) && meDocType == VbaDocumentsBase::WORD_DOCUMENT ) ) )
+                && (  ( xServiceInfo->supportsService( "com.sun.star.sheet.SpreadsheetDocument" ) && eDocType == VbaDocumentsBase::EXCEL_DOCUMENT )
+                || ( xServiceInfo->supportsService( "com.sun.star.text.TextDocument" ) && eDocType == VbaDocumentsBase::WORD_DOCUMENT ) ) )
             {
                 uno::Reference< frame::XModel > xModel( xServiceInfo, uno::UNO_QUERY_THROW ); // that the spreadsheetdocument is a xmodel is a given
                 m_documents.push_back( xModel );
@@ -150,7 +148,7 @@ public:
     virtual uno::Any SAL_CALL getByIndex( ::sal_Int32 Index ) override
     {
         if ( Index < 0
-            || static_cast< Documents::size_type >(Index) >= m_documents.size() )
+            || o3tl::make_unsigned(Index) >= m_documents.size() )
             throw lang::IndexOutOfBoundsException();
         return makeAny( m_documents[ Index ] ); // returns xspreadsheetdoc
     }
@@ -189,6 +187,8 @@ public:
 
 };
 
+}
+
 VbaDocumentsBase::VbaDocumentsBase( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< css::uno::XComponentContext >& xContext, DOCUMENT_TYPE eDocType ) : VbaDocumentsBase_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >( new DocumentsAccessImpl( xContext, eDocType ) ) ), meDocType( eDocType )
 {
 }
@@ -224,7 +224,15 @@ uno::Any VbaDocumentsBase::createDocument()
     // #163808# determine state of Application.ScreenUpdating and Application.Interactive symbols (before new document is opened)
     uno::Reference< XApplicationBase > xApplication( Application(), uno::UNO_QUERY );
     bool bScreenUpdating = !xApplication.is() || xApplication->getScreenUpdating();
-    bool bInteractive = !xApplication.is() || xApplication->getInteractive();
+    bool bInteractive = true;
+
+    try
+    {
+        bInteractive = !xApplication.is() || xApplication->getInteractive();
+    }
+    catch( const uno::Exception& )
+    {
+    }
 
     uno::Reference< frame::XDesktop2 > xLoader = frame::Desktop::create(mxContext);
     OUString sURL;
@@ -257,11 +265,19 @@ uno::Any VbaDocumentsBase::openDocument( const OUString& rFileName, const uno::A
     // #163808# determine state of Application.ScreenUpdating and Application.Interactive symbols (before new document is opened)
     uno::Reference< XApplicationBase > xApplication( Application(), uno::UNO_QUERY );
     bool bScreenUpdating = !xApplication.is() || xApplication->getScreenUpdating();
-    bool bInteractive = !xApplication.is() || xApplication->getInteractive();
+    bool bInteractive = true;
+
+    try
+    {
+        bInteractive = !xApplication.is() || xApplication->getInteractive();
+    }
+    catch( const uno::Exception& )
+    {
+    }
 
     // we need to detect if this is a URL, if not then assume it's a file path
-        OUString aURL;
-        INetURLObject aObj;
+    OUString aURL;
+    INetURLObject aObj;
     aObj.SetURL( rFileName );
     bool bIsURL = aObj.GetProtocol() != INetProtocol::NotValid;
     if ( bIsURL )

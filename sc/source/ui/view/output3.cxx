@@ -17,21 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <editeng/eeitem.hxx>
-#include <svx/svdograf.hxx>
-#include <svx/svdoole2.hxx>
 #include <svx/svdoutl.hxx>
-#include <svx/svdpage.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdview.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
-#include "output.hxx"
-#include "drwlayer.hxx"
-#include "document.hxx"
-#include "tabvwsh.hxx"
-#include "fillinfo.hxx"
+#include <output.hxx>
+#include <drwlayer.hxx>
+#include <document.hxx>
+#include <tabvwsh.hxx>
 
 #include <svx/fmview.hxx>
 
@@ -44,38 +39,40 @@ Point ScOutputData::PrePrintDrawingLayer(long nLogStX, long nLogStY )
     long nLayoutSign(bLayoutRTL ? -1 : 1);
 
     for (nCol=0; nCol<nX1; nCol++)
-        aOffset.X() -= mpDoc->GetColWidth( nCol, nTab ) * nLayoutSign;
-    aOffset.Y() -= mpDoc->GetRowHeight( 0, nY1-1, nTab );
+        aOffset.AdjustX( -(mpDoc->GetColWidth( nCol, nTab ) * nLayoutSign) );
+    aOffset.AdjustY( -sal_Int32(mpDoc->GetRowHeight( 0, nY1-1, nTab )) );
 
     long nDataWidth = 0;
     for (nCol=nX1; nCol<=nX2; nCol++)
         nDataWidth += mpDoc->GetColWidth( nCol, nTab );
 
     if ( bLayoutRTL )
-        aOffset.X() += nDataWidth;
+        aOffset.AdjustX(nDataWidth );
 
-    aRect.Left() = aRect.Right()  = -aOffset.X();
-    aRect.Top()  = aRect.Bottom() = -aOffset.Y();
+    aRect.SetLeft( -aOffset.X() );
+    aRect.SetRight( -aOffset.X() );
+    aRect.SetTop( -aOffset.Y() );
+    aRect.SetBottom( -aOffset.Y() );
 
     Point aMMOffset( aOffset );
-    aMMOffset.X() = (long)(aMMOffset.X() * HMM_PER_TWIPS);
-    aMMOffset.Y() = (long)(aMMOffset.Y() * HMM_PER_TWIPS);
+    aMMOffset.setX( static_cast<long>(aMMOffset.X() * HMM_PER_TWIPS) );
+    aMMOffset.setY( static_cast<long>(aMMOffset.Y() * HMM_PER_TWIPS) );
 
     if (!bMetaFile)
         aMMOffset += Point( nLogStX, nLogStY );
 
     for (nCol=nX1; nCol<=nX2; nCol++)
-        aRect.Right() += mpDoc->GetColWidth( nCol, nTab );
-    aRect.Bottom() += mpDoc->GetRowHeight( nY1, nY2, nTab );
+        aRect.AdjustRight(mpDoc->GetColWidth( nCol, nTab ) );
+    aRect.AdjustBottom(mpDoc->GetRowHeight( nY1, nY2, nTab ) );
 
-    aRect.Left()   = (long) (aRect.Left()   * HMM_PER_TWIPS);
-    aRect.Top()    = (long) (aRect.Top()    * HMM_PER_TWIPS);
-    aRect.Right()  = (long) (aRect.Right()  * HMM_PER_TWIPS);
-    aRect.Bottom() = (long) (aRect.Bottom() * HMM_PER_TWIPS);
+    aRect.SetLeft( static_cast<long>(aRect.Left()   * HMM_PER_TWIPS) );
+    aRect.SetTop( static_cast<long>(aRect.Top()    * HMM_PER_TWIPS) );
+    aRect.SetRight( static_cast<long>(aRect.Right()  * HMM_PER_TWIPS) );
+    aRect.SetBottom( static_cast<long>(aRect.Bottom() * HMM_PER_TWIPS) );
 
     if(pViewShell || pDrawView)
     {
-        SdrView* pLocalDrawView = (pDrawView) ? pDrawView : pViewShell->GetSdrView();
+        SdrView* pLocalDrawView = pDrawView ? pDrawView : pViewShell->GetScDrawView();
 
         if(pLocalDrawView)
         {
@@ -113,7 +110,7 @@ void ScOutputData::PostPrintDrawingLayer(const Point& rMMOffset) // #i74768#
 
     if(pViewShell || pDrawView)
     {
-        SdrView* pLocalDrawView = (pDrawView) ? pDrawView : pViewShell->GetSdrView();
+        SdrView* pLocalDrawView = pDrawView ? pDrawView : pViewShell->GetScDrawView();
 
         if(pLocalDrawView)
         {
@@ -137,7 +134,7 @@ void ScOutputData::PrintDrawingLayer(SdrLayerID nLayer, const Point& rMMOffset)
 
     if(pViewShell || pDrawView)
     {
-        SdrView* pLocalDrawView = (pDrawView) ? pDrawView : pViewShell->GetSdrView();
+        SdrView* pLocalDrawView = pDrawView ? pDrawView : pViewShell->GetScDrawView();
 
         if(pLocalDrawView)
         {
@@ -178,7 +175,7 @@ void ScOutputData::DrawSelectiveObjects(SdrLayerID nLayer)
     SdrOutliner& rOutl = pModel->GetDrawOutliner();
     rOutl.EnableAutoColor( mbUseStyleColor );
     rOutl.SetDefaultHorizontalTextDirection(
-                (EEHorizontalTextDirection)mpDoc->GetEditTextDirection( nTab ) );
+                mpDoc->GetEditTextDirection( nTab ) );
 
     //  #i69767# The hyphenator must be set (used to be before drawing a text shape with hyphenation).
     //  LinguMgr::GetHyphenator (EditEngine) uses a wrapper now that creates the real hyphenator on demand,
@@ -195,7 +192,7 @@ void ScOutputData::DrawSelectiveObjects(SdrLayerID nLayer)
 
     if(pViewShell || pDrawView)
     {
-        SdrView* pLocalDrawView = (pDrawView) ? pDrawView : pViewShell->GetSdrView();
+        SdrView* pLocalDrawView = pDrawView ? pDrawView : pViewShell->GetScDrawView();
 
         if(pLocalDrawView)
         {

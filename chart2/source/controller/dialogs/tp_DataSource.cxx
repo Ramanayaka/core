@@ -18,29 +18,24 @@
  */
 
 #include "tp_DataSource.hxx"
-#include "Strings.hrc"
-#include "ResId.hxx"
-#include "chartview/ChartSfxItemIds.hxx"
-#include "macros.hxx"
-#include "ChartTypeTemplateProvider.hxx"
-#include "RangeSelectionHelper.hxx"
-#include "DataSeriesHelper.hxx"
-#include "tp_DataSourceControls.hxx"
-#include "ControllerLockGuard.hxx"
-#include "DataSourceHelper.hxx"
-#include <com/sun/star/sheet/XRangeSelection.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
+#include <strings.hrc>
+#include <ResId.hxx>
+#include <ChartTypeTemplateProvider.hxx>
+#include <RangeSelectionHelper.hxx>
+#include <DataSeriesHelper.hxx>
+#include <ControllerLockGuard.hxx>
+#include <DataSourceHelper.hxx>
+#include "DialogModel.hxx"
+#include <TabPageNotifiable.hxx>
 #include <com/sun/star/chart2/XChartType.hpp>
-#include <com/sun/star/chart2/XChartTypeTemplate.hpp>
+#include <com/sun/star/chart2/XDataSeries.hpp>
+#include <com/sun/star/chart2/XDataSeriesContainer.hpp>
+#include <com/sun/star/chart2/data/XDataProvider.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/chart2/data/XDataSink.hpp>
 
-#include <vcl/msgbox.hxx>
-#include <rtl/ustrbuf.hxx>
-
-#include <functional>
-#include <algorithm>
-#include <map>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -51,93 +46,80 @@ using ::com::sun::star::uno::Sequence;
 namespace
 {
 
-const OUString lcl_aLabelRole( "label" );
+const OUStringLiteral lcl_aLabelRole( "label" );
 
-OUString lcl_GetRoleLBEntry(
-    const OUString & rRole, const OUString & rRange )
+void lcl_UpdateCurrentRange(weld::TreeView& rOutListBox, const OUString & rRole,
+                            const OUString& rRange)
 {
-    OUStringBuffer aEntry( rRole );
-    aEntry.append( "\t" );
-    aEntry.append(
-        ::chart::DialogModel::ConvertRoleFromInternalToUI( rRole ) );
-    aEntry.append( "\t" );
-    aEntry.append( rRange );
-
-    OUString sFoo = aEntry.makeStringAndClear();
-    return sFoo;
-}
-
-void lcl_UpdateCurrentRange(
-    SvTabListBox & rOutListBox,
-    const OUString & rRole, const OUString & rRange )
-{
-    SvTreeListEntry * pEntry = rOutListBox.FirstSelected();
-    if( pEntry )
-        rOutListBox.SetEntryText( lcl_GetRoleLBEntry( rRole, rRange ), pEntry );
-}
-
-bool lcl_UpdateCurrentSeriesName(
-    SvTreeListBox & rOutListBox )
-{
-    bool bResult = false;
-    ::chart::SeriesEntry * pEntry = dynamic_cast< ::chart::SeriesEntry * >( rOutListBox.FirstSelected());
-    if( pEntry &&
-        pEntry->m_xDataSeries.is() &&
-        pEntry->m_xChartType.is())
+    int nEntry = rOutListBox.get_selected_index();
+    if (nEntry != -1)
     {
-        OUString aLabel( ::chart::DataSeriesHelper::getDataSeriesLabel(
-                           pEntry->m_xDataSeries,
-                           pEntry->m_xChartType->getRoleOfSequenceForSeriesLabel()));
-        if( !aLabel.isEmpty())
+        rOutListBox.set_text(nEntry, ::chart::DialogModel::ConvertRoleFromInternalToUI(rRole), 0);
+        rOutListBox.set_text(nEntry, rRange, 1);
+        ::chart::SeriesEntry* pEntry = reinterpret_cast<::chart::SeriesEntry*>(rOutListBox.get_id(nEntry).toInt64());
+        pEntry->m_sRole = rRole;
+    }
+}
+
+bool lcl_UpdateCurrentSeriesName(weld::TreeView& rOutListBox)
+{
+    int nEntry = rOutListBox.get_selected_index();
+    if (nEntry == -1)
+        return false;
+
+    bool bResult = false;
+    ::chart::SeriesEntry * pEntry = reinterpret_cast<::chart::SeriesEntry*>(rOutListBox.get_id(nEntry).toInt64());
+    if (pEntry->m_xDataSeries.is() && pEntry->m_xChartType.is())
+    {
+        OUString aLabel(::chart::DataSeriesHelper::getDataSeriesLabel(
+                        pEntry->m_xDataSeries,
+                        pEntry->m_xChartType->getRoleOfSequenceForSeriesLabel()));
+        if (!aLabel.isEmpty())
         {
-            rOutListBox.SetEntryText( pEntry, aLabel );
+            rOutListBox.set_text(nEntry, aLabel);
             bResult = true;
         }
     }
     return bResult;
 }
 
-OUString lcl_GetSelectedRole( const SvTabListBox & rRoleListBox, bool bUITranslated = false )
+OUString lcl_GetSelectedRole(const weld::TreeView& rRoleListBox, bool bUITranslated = false)
 {
-    OUString aResult;
-    SvTreeListEntry * pEntry = rRoleListBox.FirstSelected();
-    if( pEntry )
-        aResult = SvTabListBox::GetEntryText( pEntry, bUITranslated ? 1 : 0 );
-    return aResult;
-}
-
-OUString lcl_GetSelectedRolesRange( const SvTabListBox & rRoleListBox )
-{
-    OUString aResult;
-    SvTreeListEntry * pEntry = rRoleListBox.FirstSelected();
-    if( pEntry )
-        aResult = SvTabListBox::GetEntryText( pEntry, 2 );
-    return aResult;
-}
-
-OUString lcl_GetSequenceNameForLabel( ::chart::SeriesEntry * pEntry )
-{
-    OUString aResult( "values-y" );
-    if( pEntry &&
-        pEntry->m_xChartType.is())
+    int nEntry = rRoleListBox.get_selected_index();
+    if (nEntry != -1)
     {
+        if (bUITranslated)
+            return rRoleListBox.get_text(nEntry);
+        ::chart::SeriesEntry* pEntry = reinterpret_cast<::chart::SeriesEntry*>(rRoleListBox.get_id(nEntry).toInt64());
+        return pEntry->m_sRole;
+    }
+    return OUString();
+}
+
+OUString lcl_GetSelectedRolesRange( const weld::TreeView& rRoleListBox )
+{
+    OUString aResult;
+    int nEntry = rRoleListBox.get_selected_index();
+    if (nEntry != -1)
+        aResult = rRoleListBox.get_text(nEntry, 1);
+    return aResult;
+}
+
+OUString lcl_GetSequenceNameForLabel(const ::chart::SeriesEntry* pEntry)
+{
+    OUString aResult("values-y");
+    if (pEntry && pEntry->m_xChartType.is())
         aResult = pEntry->m_xChartType->getRoleOfSequenceForSeriesLabel();
-    }
     return aResult;
 }
 
-static long lcl_pRoleListBoxTabs[] =
-    {   3,        // Number of Tabs
-        0, 0, 75
-    };
-
-void lcl_enableRangeChoosing( bool bEnable, Dialog * pDialog )
+void lcl_enableRangeChoosing(bool bEnable, weld::DialogController* pDialog)
 {
-    if( pDialog )
-    {
-        pDialog->Show( !bEnable );
-        pDialog->SetModalInputMode( !bEnable );
-    }
+    if (!pDialog)
+        return;
+    weld::Dialog* pDlg = pDialog->getDialog();
+    pDlg->set_modal(!bEnable);
+    pDlg->set_visible(!bEnable);
 }
 
 void lcl_addLSequenceToDataSource(
@@ -158,15 +140,15 @@ Reference< chart2::data::XLabeledDataSequence > lcl_findLSequenceWithOnlyLabel(
     const Reference< chart2::data::XDataSource > & xDataSource )
 {
     Reference< chart2::data::XLabeledDataSequence > xResult;
-    Sequence< Reference< chart2::data::XLabeledDataSequence > > aSequences( xDataSource->getDataSequences());
+    const Sequence< Reference< chart2::data::XLabeledDataSequence > > aSequences( xDataSource->getDataSequences());
 
-    for( sal_Int32 i=0; i<aSequences.getLength(); ++i )
+    for( Reference< chart2::data::XLabeledDataSequence > const & labeledDataSeq : aSequences )
     {
         // no values are set but a label exists
-        if( ! aSequences[i]->getValues().is() &&
-            aSequences[i]->getLabel().is())
+        if( ! labeledDataSeq->getValues().is() &&
+            labeledDataSeq->getLabel().is())
         {
-            xResult.set( aSequences[i] );
+            xResult.set( labeledDataSeq );
             break;
         }
     }
@@ -179,146 +161,108 @@ Reference< chart2::data::XLabeledDataSequence > lcl_findLSequenceWithOnlyLabel(
 namespace chart
 {
 
-DataSourceTabPage::DataSourceTabPage(
-    vcl::Window * pParent,
-    DialogModel & rDialogModel,
-    ChartTypeTemplateProvider* pTemplateProvider,
-    Dialog * pParentDialog,
-    bool bHideDescription /* = false */ ) :
-        ::svt::OWizardPage( pParent
-                           ,"tp_DataSource"
-                           ,"modules/schart/ui/tp_DataSource.ui"),
-    m_pTemplateProvider( pTemplateProvider ),
-    m_rDialogModel( rDialogModel ),
-
-    m_pCurrentRangeChoosingField( nullptr ),
-    m_bIsDirty( false ),
-    m_pParentDialog( pParentDialog ),
-    m_pTabPageNotifiable( dynamic_cast< TabPageNotifiable * >( pParentDialog ))
+DataSourceTabPage::DataSourceTabPage(weld::Container* pPage, weld::DialogController* pController,
+                                     DialogModel & rDialogModel,
+                                     ChartTypeTemplateProvider* pTemplateProvider,
+                                     bool bHideDescription /* = false */)
+    : ::vcl::OWizardPage(pPage, pController, "modules/schart/ui/tp_DataSource.ui", "tp_DataSource")
+    , m_pTemplateProvider(pTemplateProvider)
+    , m_rDialogModel(rDialogModel)
+    , m_pCurrentRangeChoosingField( nullptr )
+    , m_bIsDirty( false )
+    , m_pTabPageNotifiable(dynamic_cast<TabPageNotifiable*>(pController))
+    , m_xFT_CAPTION(m_xBuilder->weld_label("FT_CAPTION_FOR_WIZARD"))
+    , m_xFT_SERIES(m_xBuilder->weld_label("FT_SERIES"))
+    , m_xLB_SERIES(m_xBuilder->weld_tree_view("LB_SERIES"))
+    , m_xBTN_ADD(m_xBuilder->weld_button("BTN_ADD"))
+    , m_xBTN_REMOVE(m_xBuilder->weld_button("BTN_REMOVE"))
+    , m_xBTN_UP(m_xBuilder->weld_button("BTN_UP"))
+    , m_xBTN_DOWN(m_xBuilder->weld_button("BTN_DOWN"))
+    , m_xFT_ROLE(m_xBuilder->weld_label("FT_ROLE"))
+    , m_xLB_ROLE(m_xBuilder->weld_tree_view("LB_ROLE"))
+    , m_xFT_RANGE(m_xBuilder->weld_label("FT_RANGE"))
+    , m_xEDT_RANGE(m_xBuilder->weld_entry("EDT_RANGE"))
+    , m_xIMB_RANGE_MAIN(m_xBuilder->weld_button("IMB_RANGE_MAIN"))
+    , m_xFT_CATEGORIES(m_xBuilder->weld_label("FT_CATEGORIES"))
+    , m_xFT_DATALABELS(m_xBuilder->weld_label("FT_DATALABELS"))
+    , m_xEDT_CATEGORIES(m_xBuilder->weld_entry("EDT_CATEGORIES"))
+    , m_xIMB_RANGE_CAT(m_xBuilder->weld_button("IMB_RANGE_CAT"))
 {
+    m_xLB_SERIES->set_size_request(m_xLB_SERIES->get_approximate_digit_width() * 25,
+                                   m_xLB_SERIES->get_height_rows(10));
+    m_xLB_ROLE->set_size_request(m_xLB_ROLE->get_approximate_digit_width() * 60,
+                                 m_xLB_ROLE->get_height_rows(5));
+    m_xFT_CAPTION->set_visible(!bHideDescription);
 
-    get(m_pFT_CAPTION     ,"FT_CAPTION_FOR_WIZARD");
-    get(m_pFT_SERIES      ,"FT_SERIES");
-
-    get(m_pLB_SERIES     ,"LB_SERIES");
-
-    get(m_pBTN_ADD        ,"BTN_ADD");
-    get(m_pBTN_REMOVE     ,"BTN_REMOVE");
-    get(m_pBTN_UP         ,"BTN_UP");
-    get(m_pBTN_DOWN       ,"BTN_DOWN");
-    get(m_pFT_ROLE        ,"FT_ROLE");
-    get(m_pLB_ROLE        ,"LB_ROLE");
-    get(m_pFT_RANGE       ,"FT_RANGE");
-    get(m_pEDT_RANGE      ,"EDT_RANGE");
-    get(m_pIMB_RANGE_MAIN ,"IMB_RANGE_MAIN");
-    get(m_pFT_CATEGORIES  ,"FT_CATEGORIES");
-    get(m_pFT_DATALABELS  ,"FT_DATALABELS");
-    get(m_pEDT_CATEGORIES ,"EDT_CATEGORIES");
-    get(m_pIMB_RANGE_CAT  ,"IMB_RANGE_CAT");
-
-    m_pFT_CAPTION->Show(!bHideDescription);
-
-    m_aFixedTextRange = m_pFT_RANGE->GetText();
-    this->SetText( SchResId( STR_OBJECT_DATASERIES_PLURAL ) );
+    m_aFixedTextRange = m_xFT_RANGE->get_label();
+    SetPageTitle(SchResId(STR_OBJECT_DATASERIES_PLURAL));
 
     // set handlers
-    m_pLB_SERIES->SetSelectHdl( LINK( this, DataSourceTabPage, SeriesSelectionChangedHdl ));
+    m_xLB_SERIES->connect_changed(LINK(this, DataSourceTabPage, SeriesSelectionChangedHdl));
+    m_xLB_ROLE->connect_changed(LINK(this, DataSourceTabPage, RoleSelectionChangedHdl));
 
-    m_pLB_ROLE->SetSelectHdl( LINK( this, DataSourceTabPage, RoleSelectionChangedHdl ));
+    m_xIMB_RANGE_MAIN->connect_clicked(LINK(this, DataSourceTabPage, MainRangeButtonClickedHdl));
+    m_xIMB_RANGE_CAT->connect_clicked(LINK(this, DataSourceTabPage, CategoriesRangeButtonClickedHdl));
 
-    m_pIMB_RANGE_MAIN->SetClickHdl( LINK( this, DataSourceTabPage, MainRangeButtonClickedHdl ));
-    m_pIMB_RANGE_CAT->SetClickHdl( LINK( this, DataSourceTabPage, CategoriesRangeButtonClickedHdl ));
+    m_xBTN_ADD->connect_clicked(LINK(this, DataSourceTabPage, AddButtonClickedHdl));
+    m_xBTN_REMOVE->connect_clicked(LINK(this, DataSourceTabPage, RemoveButtonClickedHdl));
 
-    m_pBTN_ADD->SetClickHdl( LINK( this, DataSourceTabPage, AddButtonClickedHdl ));
-    m_pBTN_REMOVE->SetClickHdl( LINK( this, DataSourceTabPage, RemoveButtonClickedHdl ));
+    m_xBTN_UP->connect_clicked(LINK(this, DataSourceTabPage, UpButtonClickedHdl));
+    m_xBTN_DOWN->connect_clicked(LINK(this, DataSourceTabPage, DownButtonClickedHdl));
 
-    m_pBTN_UP->SetClickHdl( LINK( this, DataSourceTabPage, UpButtonClickedHdl ));
-    m_pBTN_DOWN->SetClickHdl( LINK( this, DataSourceTabPage, DownButtonClickedHdl ));
-
-    m_pEDT_RANGE->SetModifyHdl( LINK( this, DataSourceTabPage, RangeModifiedHdl ));
-    m_pEDT_CATEGORIES->SetModifyHdl( LINK( this, DataSourceTabPage, RangeModifiedHdl ));
-    m_pEDT_RANGE->SetUpdateDataHdl( LINK( this, DataSourceTabPage, RangeUpdateDataHdl ));
-    m_pEDT_CATEGORIES->SetUpdateDataHdl( LINK( this, DataSourceTabPage, RangeUpdateDataHdl ));
-
-    // #i75179# enable setting the background to a different color
-    m_pEDT_RANGE->SetStyle( m_pEDT_RANGE->GetStyle() | WB_FORCECTRLBACKGROUND );
-    m_pEDT_CATEGORIES->SetStyle( m_pEDT_CATEGORIES->GetStyle() | WB_FORCECTRLBACKGROUND );
-
-    // set symbol font for arrows
-    // note: StarSymbol is substituted to OpenSymbol for OOo
-    vcl::Font aSymbolFont( m_pBTN_UP->GetFont());
-    aSymbolFont.SetFamilyName( "StarSymbol" );
-    m_pBTN_UP->SetControlFont( aSymbolFont );
-    m_pBTN_DOWN->SetControlFont( aSymbolFont );
-
-    // set button text
-    sal_Unicode const cBlackUpPointingTriangle( 0x25b2 );
-    sal_Unicode const cBlackDownPointingTriangle( 0x25bc );
-    m_pBTN_UP->SetText( OUString( cBlackUpPointingTriangle ));
-    m_pBTN_DOWN->SetText( OUString( cBlackDownPointingTriangle ));
+    m_xEDT_RANGE->connect_changed(LINK(this, DataSourceTabPage, RangeModifiedHdl));
+    m_xEDT_CATEGORIES->connect_changed(LINK( this, DataSourceTabPage, RangeModifiedHdl));
 
     // init controls
-    m_pLB_ROLE->SetTabs( lcl_pRoleListBoxTabs );
-    m_pLB_ROLE->Show();
+    std::vector<int> aWidths;
+    aWidths.push_back(m_xLB_ROLE->get_approximate_digit_width() * 20);
+    m_xLB_ROLE->set_column_fixed_widths(aWidths);
+    m_xLB_ROLE->show();
 
     updateControlsFromDialogModel();
 
     // select first series
-    if( m_pLB_SERIES->First())
-        m_pLB_SERIES->Select( m_pLB_SERIES->First());
-    m_pLB_SERIES->GrabFocus();
+    if (m_xLB_SERIES->n_children())
+        m_xLB_SERIES->select(0);
+}
+
+void DataSourceTabPage::InsertRoleLBEntry(const OUString& rRole, const OUString& rRange)
+{
+    m_aEntries.emplace_back(new SeriesEntry);
+    SeriesEntry* pEntry = m_aEntries.back().get();
+    pEntry->m_sRole = rRole;
+    m_xLB_ROLE->append(OUString::number(reinterpret_cast<sal_Int64>(pEntry)),
+                       ::chart::DialogModel::ConvertRoleFromInternalToUI(rRole));
+    m_xLB_ROLE->set_text(m_xLB_ROLE->n_children() - 1, rRange, 1);
 }
 
 DataSourceTabPage::~DataSourceTabPage()
 {
-    disposeOnce();
 }
 
-void DataSourceTabPage::dispose()
+void DataSourceTabPage::Activate()
 {
-    m_pFT_CAPTION.clear();
-    m_pFT_SERIES.clear();
-    m_pLB_SERIES.clear();
-    m_pBTN_ADD.clear();
-    m_pBTN_REMOVE.clear();
-    m_pBTN_UP.clear();
-    m_pBTN_DOWN.clear();
-    m_pFT_ROLE.clear();
-    m_pLB_ROLE.clear();
-    m_pFT_RANGE.clear();
-    m_pEDT_RANGE.clear();
-    m_pIMB_RANGE_MAIN.clear();
-    m_pFT_CATEGORIES.clear();
-    m_pFT_DATALABELS.clear();
-    m_pEDT_CATEGORIES.clear();
-    m_pIMB_RANGE_CAT.clear();
-    m_pCurrentRangeChoosingField.clear();
-    m_pParentDialog.clear();
-    ::svt::OWizardPage::dispose();
-}
-
-void DataSourceTabPage::ActivatePage()
-{
-    OWizardPage::ActivatePage();
+    OWizardPage::Activate();
     updateControlsFromDialogModel();
+    m_xLB_SERIES->grab_focus();
 }
 
 void DataSourceTabPage::initializePage()
 {
 }
 
-void DataSourceTabPage::DeactivatePage()
+void DataSourceTabPage::Deactivate()
 {
     commitPage();
-    svt::OWizardPage::DeactivatePage();
+    vcl::OWizardPage::Deactivate();
 }
 
 void DataSourceTabPage::commitPage()
 {
-    commitPage(::svt::WizardTypes::eFinish);
+    commitPage(::vcl::WizardTypes::eFinish);
 }
 
-bool DataSourceTabPage::commitPage( ::svt::WizardTypes::CommitPageReason /*eReason*/ )
+bool DataSourceTabPage::commitPage( ::vcl::WizardTypes::CommitPageReason /*eReason*/ )
 {
     //ranges may have been edited in the meanwhile (dirty is true in that case here)
     if( isValid() )
@@ -330,23 +274,12 @@ bool DataSourceTabPage::commitPage( ::svt::WizardTypes::CommitPageReason /*eReas
         return false;
 }
 
-bool DataSourceTabPage::isRangeFieldContentValid( Edit & rEdit )
+bool DataSourceTabPage::isRangeFieldContentValid(weld::Entry& rEdit )
 {
-    OUString aRange( rEdit.GetText());
-    bool bIsValid = ( aRange.isEmpty() ) ||
-        m_rDialogModel.getRangeSelectionHelper()->verifyCellRange( aRange );
-
-    if( bIsValid )
-    {
-        rEdit.SetControlForeground();
-        rEdit.SetControlBackground();
-    }
-    else
-    {
-        rEdit.SetControlBackground( RANGE_SELECTION_INVALID_RANGE_BACKGROUND_COLOR );
-        rEdit.SetControlForeground( RANGE_SELECTION_INVALID_RANGE_FOREGROUND_COLOR );
-    }
-
+    OUString aRange(rEdit.get_text());
+    bool bIsValid = aRange.isEmpty() ||
+        m_rDialogModel.getRangeSelectionHelper()->verifyCellRange(aRange);
+    rEdit.set_message_type(bIsValid ? weld::EntryMessageType::Normal : weld::EntryMessageType::Error);
     return bIsValid;
 }
 
@@ -354,12 +287,12 @@ bool DataSourceTabPage::isValid()
 {
     bool bRoleRangeValid = true;
     bool bCategoriesRangeValid = true;
-    bool bHasSelectedEntry = (m_pLB_SERIES->FirstSelected() != nullptr);
+    bool bHasSelectedEntry = (m_xLB_SERIES->get_selected_index() != -1);
 
-    if( bHasSelectedEntry )
-        bRoleRangeValid = isRangeFieldContentValid( *m_pEDT_RANGE );
-    if( m_pEDT_CATEGORIES->IsEnabled() )
-        bCategoriesRangeValid = isRangeFieldContentValid( *m_pEDT_CATEGORIES );
+    if (bHasSelectedEntry)
+        bRoleRangeValid = isRangeFieldContentValid(*m_xEDT_RANGE);
+    if (m_xEDT_CATEGORIES->get_sensitive())
+        bCategoriesRangeValid = isRangeFieldContentValid( *m_xEDT_CATEGORIES );
     bool bValid = ( bRoleRangeValid && bCategoriesRangeValid );
 
     if( m_pTabPageNotifiable )
@@ -382,36 +315,40 @@ void DataSourceTabPage::updateControlsFromDialogModel()
 {
     // series
     fillSeriesListBox();
-    SeriesSelectionChangedHdl( nullptr );
+    SeriesSelectionChangedHdl(*m_xLB_SERIES);
 
     // categories
-    m_pEDT_CATEGORIES->SetText( m_rDialogModel.getCategoriesRange() );
+    m_xEDT_CATEGORIES->set_text(m_rDialogModel.getCategoriesRange());
 
     updateControlState();
 }
 
 void DataSourceTabPage::fillSeriesListBox()
 {
-    m_pLB_SERIES->SetUpdateMode( false );
-
     Reference< XDataSeries > xSelected;
-    SeriesEntry * pEntry = dynamic_cast< SeriesEntry * >( m_pLB_SERIES->FirstSelected());
-    if( pEntry )
-        xSelected.set( pEntry->m_xDataSeries );
+    SeriesEntry* pEntry = nullptr;
+    int nEntry = m_xLB_SERIES->get_selected_index();
+    if (nEntry != -1)
+    {
+        pEntry = reinterpret_cast<SeriesEntry*>(m_xLB_SERIES->get_id(nEntry).toInt64());
+        xSelected.set(pEntry->m_xDataSeries);
+    }
 
     bool bHasSelectedEntry = (pEntry != nullptr);
-    SvTreeListEntry * pSelectedEntry = nullptr;
-    m_pLB_SERIES->Clear();
+    int nSelectedEntry = -1;
+
+    m_xLB_SERIES->freeze();
+    m_xLB_SERIES->clear();
 
     std::vector< DialogModel::tSeriesWithChartTypeByName > aSeries(
         m_rDialogModel.getAllDataSeriesWithLabel() );
 
     sal_Int32 nUnnamedSeriesIndex = 1;
-    for( std::vector< DialogModel::tSeriesWithChartTypeByName >::const_iterator aIt = aSeries.begin();
-         aIt != aSeries.end(); ++aIt )
+    nEntry = 0;
+    for (auto const& series : aSeries)
     {
-        OUString aLabel( (*aIt).first );
-        if( aLabel.isEmpty())
+        OUString aLabel(series.first);
+        if (aLabel.isEmpty())
         {
             if( nUnnamedSeriesIndex > 1 )
             {
@@ -430,154 +367,151 @@ void DataSourceTabPage::fillSeriesListBox()
 
             ++nUnnamedSeriesIndex;
         }
-        pEntry = dynamic_cast< SeriesEntry * >(
-            m_pLB_SERIES->InsertEntry( aLabel ));
-        if( pEntry )
-        {
-            pEntry->m_xDataSeries.set( (*aIt).second.first );
-            pEntry->m_xChartType.set(  (*aIt).second.second );
-            if( bHasSelectedEntry && ((*aIt).second.first == xSelected))
-                pSelectedEntry = pEntry;
-        }
+
+        m_aEntries.emplace_back(new SeriesEntry);
+        pEntry = m_aEntries.back().get();
+        pEntry->m_xDataSeries.set(series.second.first);
+        pEntry->m_xChartType.set(series.second.second);
+        m_xLB_SERIES->append(OUString::number(reinterpret_cast<sal_Int64>(pEntry)), aLabel);
+        if (bHasSelectedEntry && series.second.first == xSelected)
+            nSelectedEntry = nEntry;
+        ++nEntry;
     }
 
-    if( bHasSelectedEntry && pSelectedEntry )
-        m_pLB_SERIES->Select( pSelectedEntry );
+    m_xLB_SERIES->thaw();
 
-    m_pLB_SERIES->SetUpdateMode( true );
+    if (bHasSelectedEntry && nSelectedEntry != -1)
+        m_xLB_SERIES->select(nSelectedEntry);
 }
 
 void DataSourceTabPage::fillRoleListBox()
 {
-    SeriesEntry * pSeriesEntry = dynamic_cast< SeriesEntry * >( m_pLB_SERIES->FirstSelected());
+    int nSeriesEntry = m_xLB_SERIES->get_selected_index();
+    SeriesEntry* pSeriesEntry = nullptr;
+    if (nSeriesEntry != -1)
+        pSeriesEntry = reinterpret_cast<SeriesEntry*>(m_xLB_SERIES->get_id(nSeriesEntry).toInt64());
     bool bHasSelectedEntry = (pSeriesEntry != nullptr);
 
-    SvTreeListEntry * pRoleEntry =  m_pLB_ROLE->FirstSelected();
-    sal_uLong nRoleIndex = SAL_MAX_UINT32;
-    if( pRoleEntry )
-        nRoleIndex = m_pLB_ROLE->GetModel()->GetAbsPos( pRoleEntry );
+    int nRoleIndex = m_xLB_ROLE->get_selected_index();
+    if (!bHasSelectedEntry)
+        return;
 
-    if( bHasSelectedEntry )
+    DialogModel::tRolesWithRanges aRoles(
+        DialogModel::getRolesWithRanges(
+            pSeriesEntry->m_xDataSeries,
+            lcl_GetSequenceNameForLabel( pSeriesEntry ),
+            pSeriesEntry->m_xChartType ));
+
+    // fill role list
+    m_xLB_ROLE->freeze();
+    m_xLB_ROLE->clear();
+
+    for (auto const& elemRole : aRoles)
     {
-        DialogModel::tRolesWithRanges aRoles(
-            DialogModel::getRolesWithRanges(
-                pSeriesEntry->m_xDataSeries,
-                lcl_GetSequenceNameForLabel( pSeriesEntry ),
-                pSeriesEntry->m_xChartType ));
+        InsertRoleLBEntry(elemRole.first, elemRole.second);
+    }
 
-        // fill role list
-        m_pLB_ROLE->SetUpdateMode( false );
-        m_pLB_ROLE->Clear();
-        m_pLB_ROLE->RemoveSelection();
+    m_xLB_ROLE->thaw();
 
-        for( DialogModel::tRolesWithRanges::const_iterator aIt( aRoles.begin());
-             aIt != aRoles.end(); ++ aIt )
-        {
-            m_pLB_ROLE->InsertEntry( lcl_GetRoleLBEntry( aIt->first, aIt->second ));
-        }
-
-        // series may contain no roles, check listbox size before selecting entries
-        if( m_pLB_ROLE->GetEntryCount() > 0 )
-        {
-            if( nRoleIndex >= m_pLB_ROLE->GetEntryCount())
-                nRoleIndex = 0;
-            m_pLB_ROLE->Select( m_pLB_ROLE->GetEntry( nRoleIndex ));
-        }
-
-        m_pLB_ROLE->SetUpdateMode( true );
+    // series may contain no roles, check listbox size before selecting entries
+    if (m_xLB_ROLE->n_children() > 0)
+    {
+        if (nRoleIndex == -1 || nRoleIndex >= m_xLB_ROLE->n_children())
+            nRoleIndex = 0;
+        m_xLB_ROLE->select(nRoleIndex);
     }
 }
 
 void DataSourceTabPage::updateControlState()
 {
-    SvTreeListEntry * pSeriesEntry = m_pLB_SERIES->FirstSelected();
-    bool bHasSelectedSeries = (pSeriesEntry != nullptr);
+    int nSeriesEntry = m_xLB_SERIES->get_selected_index();
+    bool bHasSelectedSeries = nSeriesEntry != -1;
     bool bHasValidRole = false;
     bool bHasRangeChooser = m_rDialogModel.getRangeSelectionHelper()->hasRangeSelection();
 
     if( bHasSelectedSeries )
     {
-        SvTreeListEntry * pRoleEntry =  m_pLB_ROLE->FirstSelected();
-        bHasValidRole = (pRoleEntry != nullptr);
+        int nRoleEntry = m_xLB_ROLE->get_selected_index();
+        bHasValidRole = nRoleEntry != -1;
     }
 
-    m_pBTN_ADD->Enable();
-    m_pBTN_REMOVE->Enable( bHasSelectedSeries );
+    m_xBTN_ADD->set_sensitive(true);
+    m_xBTN_REMOVE->set_sensitive(bHasSelectedSeries);
 
-    m_pBTN_UP->Enable( bHasSelectedSeries && (pSeriesEntry != m_pLB_SERIES->First()));
-    m_pBTN_DOWN->Enable( bHasSelectedSeries && (pSeriesEntry != m_pLB_SERIES->Last()));
+    m_xBTN_UP->set_sensitive(bHasSelectedSeries && (nSeriesEntry != 0));
+    m_xBTN_DOWN->set_sensitive(bHasSelectedSeries && (nSeriesEntry != m_xLB_SERIES->n_children() - 1));
 
     bool bHasCategories = m_rDialogModel.isCategoryDiagram();
 
-    m_pFT_DATALABELS->Show(!bHasCategories);
-    m_pFT_CATEGORIES->Show( bHasCategories);
+    m_xFT_DATALABELS->set_visible(!bHasCategories);
+    m_xFT_CATEGORIES->set_visible( bHasCategories);
     bool bShowIB = bHasRangeChooser;
 
-    m_pIMB_RANGE_CAT->Show(bShowIB);
+    m_xIMB_RANGE_CAT->set_visible(bShowIB);
 
-    m_pFT_SERIES->Enable();
-    m_pLB_SERIES->Enable();
+    m_xFT_ROLE->set_sensitive(bHasSelectedSeries);
+    m_xLB_ROLE->set_sensitive(bHasSelectedSeries);
 
-    m_pFT_ROLE->Enable( bHasSelectedSeries );
-    m_pLB_ROLE->Enable( bHasSelectedSeries );
+    m_xFT_RANGE->set_sensitive(bHasValidRole);
+    m_xEDT_RANGE->set_sensitive(bHasValidRole);
 
-    m_pFT_RANGE->Enable( bHasValidRole );
-    m_pEDT_RANGE->Enable( bHasValidRole );
+    m_xFT_SERIES->set_sensitive(true);
+    m_xLB_SERIES->set_sensitive(true);
 
-    m_pIMB_RANGE_MAIN->Show(bShowIB);
+    m_xIMB_RANGE_MAIN->set_visible(bShowIB);
 
     isValid();
 }
 
-IMPL_LINK_NOARG(DataSourceTabPage, SeriesSelectionChangedHdl, SvTreeListBox*, void)
+IMPL_LINK_NOARG(DataSourceTabPage, SeriesSelectionChangedHdl, weld::TreeView&, void)
 {
     m_rDialogModel.startControllerLockTimer();
-    if( m_pLB_SERIES->FirstSelected())
+    if (m_xLB_SERIES->get_selected_index() != -1)
     {
         fillRoleListBox();
-        RoleSelectionChangedHdl( nullptr );
+        RoleSelectionChangedHdl(*m_xLB_ROLE);
     }
     updateControlState();
 }
 
-IMPL_LINK_NOARG(DataSourceTabPage, RoleSelectionChangedHdl, SvTreeListBox*, void)
+IMPL_LINK_NOARG(DataSourceTabPage, RoleSelectionChangedHdl, weld::TreeView&, void)
 {
     m_rDialogModel.startControllerLockTimer();
-    SvTreeListEntry * pEntry = m_pLB_ROLE->FirstSelected();
-    if( pEntry )
-    {
-        OUString aSelectedRoleUI = lcl_GetSelectedRole( *m_pLB_ROLE, true );
-        OUString aSelectedRange = lcl_GetSelectedRolesRange( *m_pLB_ROLE );
-
-        // replace role in fixed text label
-        const OUString aReplacementStr( "%VALUETYPE" );
-        sal_Int32 nIndex = m_aFixedTextRange.indexOf( aReplacementStr );
-        if( nIndex != -1 )
-        {
-            m_pFT_RANGE->SetText(
-                m_aFixedTextRange.replaceAt(
-                            nIndex, aReplacementStr.getLength(), aSelectedRoleUI ));
-        }
-
-        m_pEDT_RANGE->SetText( aSelectedRange );
-        isValid();
-    }
-}
-
-IMPL_LINK_NOARG(DataSourceTabPage, MainRangeButtonClickedHdl, Button*, void)
-{
-    OSL_ASSERT( m_pCurrentRangeChoosingField == nullptr );
-    m_pCurrentRangeChoosingField = m_pEDT_RANGE;
-    if( !m_pEDT_RANGE->GetText().isEmpty() &&
-        ! updateModelFromControl( m_pCurrentRangeChoosingField ))
+    int nEntry = m_xLB_ROLE->get_selected_index();
+    if (nEntry == -1)
         return;
 
-    SeriesEntry * pEntry = dynamic_cast< SeriesEntry * >( m_pLB_SERIES->FirstSelected());
-    bool bHasSelectedEntry = (pEntry != nullptr);
+    OUString aSelectedRoleUI = lcl_GetSelectedRole( *m_xLB_ROLE, true );
+    OUString aSelectedRange = lcl_GetSelectedRolesRange( *m_xLB_ROLE );
 
-    OUString aSelectedRolesRange = lcl_GetSelectedRolesRange( *m_pLB_ROLE );
+    // replace role in fixed text label
+    const OUString aReplacementStr( "%VALUETYPE" );
+    sal_Int32 nIndex = m_aFixedTextRange.indexOf( aReplacementStr );
+    if( nIndex != -1 )
+    {
+        m_xFT_RANGE->set_label(
+            m_aFixedTextRange.replaceAt(
+                        nIndex, aReplacementStr.getLength(), aSelectedRoleUI ));
+    }
 
-    if( bHasSelectedEntry && (m_pLB_ROLE->FirstSelected() != nullptr))
+    m_xEDT_RANGE->set_text(aSelectedRange);
+    isValid();
+}
+
+IMPL_LINK_NOARG(DataSourceTabPage, MainRangeButtonClickedHdl, weld::Button&, void)
+{
+    OSL_ASSERT( m_pCurrentRangeChoosingField == nullptr );
+    m_pCurrentRangeChoosingField = m_xEDT_RANGE.get();
+    if (!m_xEDT_RANGE->get_text().isEmpty() &&
+        !updateModelFromControl( m_pCurrentRangeChoosingField))
+        return;
+
+    int nEntry = m_xLB_SERIES->get_selected_index();
+    bool bHasSelectedEntry = (nEntry != -1);
+
+    OUString aSelectedRolesRange = lcl_GetSelectedRolesRange(*m_xLB_ROLE);
+
+    if (bHasSelectedEntry && (m_xLB_ROLE->get_selected_index() != -1))
     {
         OUString aUIStr(SchResId(STR_DATA_SELECT_RANGE_FOR_SERIES));
 
@@ -587,51 +521,52 @@ IMPL_LINK_NOARG(DataSourceTabPage, MainRangeButtonClickedHdl, Button*, void)
         if( nIndex != -1 )
         {
             aUIStr = aUIStr.replaceAt( nIndex, aReplacement.getLength(),
-                                       lcl_GetSelectedRole( *m_pLB_ROLE, true ));
+                                       lcl_GetSelectedRole( *m_xLB_ROLE, true ));
         }
         // replace series name
         aReplacement = "%SERIESNAME";
         nIndex = aUIStr.indexOf( aReplacement );
         if( nIndex != -1 )
         {
-            aUIStr = aUIStr.replaceAt( nIndex, aReplacement.getLength(),
-                                       m_pLB_SERIES->GetEntryText( pEntry ));
+            aUIStr = aUIStr.replaceAt(nIndex, aReplacement.getLength(),
+                                      m_xLB_SERIES->get_text(nEntry));
         }
 
-        lcl_enableRangeChoosing( true, m_pParentDialog );
+        lcl_enableRangeChoosing(true, m_pDialogController);
         m_rDialogModel.getRangeSelectionHelper()->chooseRange( aSelectedRolesRange, aUIStr, *this );
     }
     else
         m_pCurrentRangeChoosingField = nullptr;
 }
 
-IMPL_LINK_NOARG(DataSourceTabPage, CategoriesRangeButtonClickedHdl, Button*, void)
+IMPL_LINK_NOARG(DataSourceTabPage, CategoriesRangeButtonClickedHdl, weld::Button&, void)
 {
     OSL_ASSERT( m_pCurrentRangeChoosingField == nullptr );
-    m_pCurrentRangeChoosingField = m_pEDT_CATEGORIES;
-    if( !m_pEDT_CATEGORIES->GetText().isEmpty() &&
+    m_pCurrentRangeChoosingField = m_xEDT_CATEGORIES.get();
+    if( !m_xEDT_CATEGORIES->get_text().isEmpty() &&
         ! updateModelFromControl( m_pCurrentRangeChoosingField ))
         return;
 
-    OUString aStr( SchResId( m_pFT_CATEGORIES->IsVisible() ? STR_DATA_SELECT_RANGE_FOR_CATEGORIES : STR_DATA_SELECT_RANGE_FOR_DATALABELS ));
-    lcl_enableRangeChoosing( true, m_pParentDialog );
+    OUString aStr(SchResId(m_xFT_CATEGORIES->get_visible() ? STR_DATA_SELECT_RANGE_FOR_CATEGORIES : STR_DATA_SELECT_RANGE_FOR_DATALABELS));
+    lcl_enableRangeChoosing(true, m_pDialogController);
     m_rDialogModel.getRangeSelectionHelper()->chooseRange(
         m_rDialogModel.getCategoriesRange(), aStr, *this );
 }
 
-IMPL_LINK_NOARG(DataSourceTabPage, AddButtonClickedHdl, Button*, void)
+IMPL_LINK_NOARG(DataSourceTabPage, AddButtonClickedHdl, weld::Button&, void)
 {
     m_rDialogModel.startControllerLockTimer();
-    SeriesEntry * pEntry = dynamic_cast< SeriesEntry * >( m_pLB_SERIES->FirstSelected());
+    int nEntry = m_xLB_SERIES->get_selected_index();
     Reference< XDataSeries > xSeriesToInsertAfter;
     Reference< XChartType > xChartTypeForNewSeries;
     if( m_pTemplateProvider )
             m_rDialogModel.setTemplate( m_pTemplateProvider->getCurrentTemplate());
 
-    if( pEntry )
+    if (nEntry != -1)
     {
-        xSeriesToInsertAfter.set( pEntry->m_xDataSeries );
-        xChartTypeForNewSeries.set( pEntry->m_xChartType );
+        ::chart::SeriesEntry* pEntry = reinterpret_cast<::chart::SeriesEntry*>(m_xLB_SERIES->get_id(nEntry).toInt64());
+        xSeriesToInsertAfter.set(pEntry->m_xDataSeries);
+        xChartTypeForNewSeries.set(pEntry->m_xChartType);
     }
     else
     {
@@ -646,120 +581,111 @@ IMPL_LINK_NOARG(DataSourceTabPage, AddButtonClickedHdl, Button*, void)
     setDirty();
 
     fillSeriesListBox();
-    // note the box was cleared and refilled, so pEntry is invalid now
-    SvTreeListEntry * pSelEntry = m_pLB_SERIES->FirstSelected();
-    if( pSelEntry )
+    // note the box was cleared and refilled, so nEntry is invalid now
+
+    int nSelEntry = m_xLB_SERIES->get_selected_index();
+    if (nSelEntry != -1)
     {
-        SvTreeListEntry * pNextEntry = m_pLB_SERIES->Next( pSelEntry );
-        if( pNextEntry )
-            m_pLB_SERIES->Select( pNextEntry );
+        ++nSelEntry;
+        if (nSelEntry < m_xLB_SERIES->n_children())
+            m_xLB_SERIES->select(nSelEntry);
     }
-    SeriesSelectionChangedHdl( nullptr );
+    SeriesSelectionChangedHdl(*m_xLB_SERIES);
 }
 
-IMPL_LINK_NOARG(DataSourceTabPage, RemoveButtonClickedHdl, Button*, void)
+IMPL_LINK_NOARG(DataSourceTabPage, RemoveButtonClickedHdl, weld::Button&, void)
 {
     m_rDialogModel.startControllerLockTimer();
-    SeriesEntry * pEntry = dynamic_cast< SeriesEntry * >( m_pLB_SERIES->FirstSelected());
-    if( pEntry )
+    int nEntry = m_xLB_SERIES->get_selected_index();
+    if (nEntry == -1)
+        return;
+
+    SeriesEntry* pEntry = reinterpret_cast<::chart::SeriesEntry*>(m_xLB_SERIES->get_id(nEntry).toInt64());
+    Reference< XDataSeries > xNewSelSeries;
+    SeriesEntry * pNewSelEntry = nullptr;
+    if (nEntry + 1 < m_xLB_SERIES->n_children())
+        pNewSelEntry = reinterpret_cast<::chart::SeriesEntry*>(m_xLB_SERIES->get_id(nEntry + 1).toInt64());
+    else if (nEntry > 0)
+        pNewSelEntry = reinterpret_cast<::chart::SeriesEntry*>(m_xLB_SERIES->get_id(nEntry - 1).toInt64());
+    if (pNewSelEntry)
+        xNewSelSeries.set(pNewSelEntry->m_xDataSeries);
+
+    m_rDialogModel.deleteSeries( pEntry->m_xDataSeries, pEntry->m_xChartType );
+    setDirty();
+
+    m_xLB_SERIES->remove(nEntry);
+    fillSeriesListBox();
+
+    // select previous or next series
+    if (xNewSelSeries.is())
     {
-        Reference< XDataSeries > xNewSelSeries;
-        SeriesEntry * pNewSelEntry = dynamic_cast< SeriesEntry * >(m_pLB_SERIES->Next( pEntry ));
-        if( pNewSelEntry )
-            xNewSelSeries.set( pNewSelEntry->m_xDataSeries );
-        else
+        for (int i = 0; i < m_xLB_SERIES->n_children(); ++i)
         {
-            pNewSelEntry = dynamic_cast< SeriesEntry * >( m_pLB_SERIES->Prev( pEntry ));
-            if( pNewSelEntry )
-                xNewSelSeries.set( pNewSelEntry->m_xDataSeries );
-        }
-
-        m_rDialogModel.deleteSeries( pEntry->m_xDataSeries, pEntry->m_xChartType );
-        setDirty();
-
-        m_pLB_SERIES->RemoveSelection();
-        fillSeriesListBox();
-
-        // select previous or next series
-        //@improve: see methods GetModel()->GetAbsPos()/GetEntry() for absolute list positions
-        if( xNewSelSeries.is())
-        {
-            pEntry = dynamic_cast< SeriesEntry * >( m_pLB_SERIES->First());
-            while( pEntry )
+            pEntry = reinterpret_cast<::chart::SeriesEntry*>(m_xLB_SERIES->get_id(i).toInt64());
+            if (pEntry->m_xDataSeries == xNewSelSeries)
             {
-                if( pEntry->m_xDataSeries == xNewSelSeries )
-                {
-                    m_pLB_SERIES->Select( pEntry );
-                    break;
-                }
-                pEntry = dynamic_cast< SeriesEntry * >( m_pLB_SERIES->Next( pEntry ));
+                m_xLB_SERIES->select(i);
+                break;
             }
         }
-        SeriesSelectionChangedHdl( nullptr );
     }
+    SeriesSelectionChangedHdl(*m_xLB_SERIES);
 }
 
-IMPL_LINK_NOARG(DataSourceTabPage, UpButtonClickedHdl, Button*, void)
+IMPL_LINK_NOARG(DataSourceTabPage, UpButtonClickedHdl, weld::Button&, void)
 {
     m_rDialogModel.startControllerLockTimer();
-    SeriesEntry * pEntry = dynamic_cast< SeriesEntry * >( m_pLB_SERIES->FirstSelected());
+
+    int nEntry = m_xLB_SERIES->get_selected_index();
+    SeriesEntry* pEntry = nullptr;
+    if (nEntry != -1)
+        pEntry = reinterpret_cast<SeriesEntry*>(m_xLB_SERIES->get_id(nEntry).toInt64());
+
     bool bHasSelectedEntry = (pEntry != nullptr);
 
-    if( bHasSelectedEntry )
+    if (bHasSelectedEntry)
     {
-        m_rDialogModel.moveSeries( pEntry->m_xDataSeries, DialogModel::MOVE_UP );
+        m_rDialogModel.moveSeries( pEntry->m_xDataSeries, DialogModel::MoveDirection::Up );
         setDirty();
         fillSeriesListBox();
-        SeriesSelectionChangedHdl(nullptr);
+        SeriesSelectionChangedHdl(*m_xLB_SERIES);
     }
 }
 
-IMPL_LINK_NOARG(DataSourceTabPage, DownButtonClickedHdl, Button*, void)
+IMPL_LINK_NOARG(DataSourceTabPage, DownButtonClickedHdl, weld::Button&, void)
 {
     m_rDialogModel.startControllerLockTimer();
-    SeriesEntry * pEntry = dynamic_cast< SeriesEntry * >( m_pLB_SERIES->FirstSelected());
+
+    int nEntry = m_xLB_SERIES->get_selected_index();
+    SeriesEntry* pEntry = nullptr;
+    if (nEntry != -1)
+        pEntry = reinterpret_cast<SeriesEntry*>(m_xLB_SERIES->get_id(nEntry).toInt64());
+
     bool bHasSelectedEntry = (pEntry != nullptr);
 
-    if( bHasSelectedEntry )
+    if (bHasSelectedEntry)
     {
-        m_rDialogModel.moveSeries( pEntry->m_xDataSeries, DialogModel::MOVE_DOWN );
+        m_rDialogModel.moveSeries( pEntry->m_xDataSeries, DialogModel::MoveDirection::Down );
         setDirty();
         fillSeriesListBox();
-        SeriesSelectionChangedHdl(nullptr);
+        SeriesSelectionChangedHdl(*m_xLB_SERIES);
     }
 }
 
-IMPL_LINK( DataSourceTabPage, RangeModifiedHdl, Edit&, rEdit, void )
+IMPL_LINK(DataSourceTabPage, RangeModifiedHdl, weld::Entry&, rEdit, void)
 {
     // note: isValid sets the color of the edit field
     if( isRangeFieldContentValid( rEdit ))
     {
         setDirty();
         updateModelFromControl( &rEdit );
-        if( &rEdit == m_pEDT_RANGE )
+        if (&rEdit == m_xEDT_RANGE.get())
         {
-            if( ! lcl_UpdateCurrentSeriesName( *m_pLB_SERIES ))
+            if( ! lcl_UpdateCurrentSeriesName( *m_xLB_SERIES ))
                 fillSeriesListBox();
         }
     }
 
-    // enable/disable OK button
-    isValid();
-}
-
-IMPL_LINK( DataSourceTabPage, RangeUpdateDataHdl, Edit&, rEdit, void )
-{
-    // note: isValid sets the color of the edit field
-    if( isRangeFieldContentValid( rEdit ))
-    {
-        setDirty();
-        updateModelFromControl( &rEdit );
-        if( &rEdit == m_pEDT_RANGE )
-        {
-            if( ! lcl_UpdateCurrentSeriesName( *m_pLB_SERIES ))
-                fillSeriesListBox();
-        }
-    }
     // enable/disable OK button
     isValid();
 }
@@ -776,33 +702,31 @@ void DataSourceTabPage::listeningFinished(
     m_rDialogModel.getRangeSelectionHelper()->stopRangeListening();
 
     // change edit field
-    ToTop();
-    GrabFocus();
     if( m_pCurrentRangeChoosingField )
     {
-        m_pCurrentRangeChoosingField->SetText( aRange );
-        m_pCurrentRangeChoosingField->GrabFocus();
+        m_pCurrentRangeChoosingField->set_text(aRange);
+        m_pCurrentRangeChoosingField->grab_focus();
     }
 
-    if( m_pCurrentRangeChoosingField == m_pEDT_RANGE )
+    if (m_pCurrentRangeChoosingField == m_xEDT_RANGE.get())
     {
-        m_pEDT_RANGE->SetText( aRange );
+        m_xEDT_RANGE->set_text(aRange);
         setDirty();
     }
-    else if( m_pCurrentRangeChoosingField == m_pEDT_CATEGORIES )
+    else if (m_pCurrentRangeChoosingField == m_xEDT_CATEGORIES.get())
     {
-        m_pEDT_CATEGORIES->SetText( aRange );
+        m_xEDT_CATEGORIES->set_text(aRange);
         setDirty();
     }
 
-    updateModelFromControl( m_pCurrentRangeChoosingField );
-    if( ! lcl_UpdateCurrentSeriesName( *m_pLB_SERIES ))
+    updateModelFromControl(m_pCurrentRangeChoosingField);
+    if (!lcl_UpdateCurrentSeriesName(*m_xLB_SERIES))
         fillSeriesListBox();
 
     m_pCurrentRangeChoosingField = nullptr;
 
     updateControlState();
-    lcl_enableRangeChoosing( false, m_pParentDialog );
+    lcl_enableRangeChoosing(false, m_pDialogController);
 }
 
 void DataSourceTabPage::disposingRangeSelection()
@@ -810,9 +734,9 @@ void DataSourceTabPage::disposingRangeSelection()
     m_rDialogModel.getRangeSelectionHelper()->stopRangeListening( false );
 }
 
-bool DataSourceTabPage::updateModelFromControl( Edit * pField )
+bool DataSourceTabPage::updateModelFromControl(const weld::Entry* pField)
 {
-    if( !m_bIsDirty )
+    if (!m_bIsDirty)
         return true;
 
     ControllerLockGuardUNO aLockedControllers( m_rDialogModel.getChartModel() );
@@ -822,13 +746,13 @@ bool DataSourceTabPage::updateModelFromControl( Edit * pField )
     bool bAll = (pField == nullptr);
     Reference< data::XDataProvider > xDataProvider( m_rDialogModel.getDataProvider());
 
-    if( bAll || (pField == m_pEDT_CATEGORIES) )
+    if (bAll || (pField == m_xEDT_CATEGORIES.get()))
     {
         Reference< data::XLabeledDataSequence > xLabeledSeq( m_rDialogModel.getCategories() );
         if( xDataProvider.is())
         {
-            OUString aRange( m_pEDT_CATEGORIES->GetText());
-            if( !aRange.isEmpty())
+            OUString aRange(m_xEDT_CATEGORIES->get_text());
+            if (!aRange.isEmpty())
             {
                 // create or change categories
                 if( !xLabeledSeq.is())
@@ -840,10 +764,10 @@ bool DataSourceTabPage::updateModelFromControl( Edit * pField )
                 {
                     xLabeledSeq->setValues( xDataProvider->createDataSequenceByRangeRepresentation( aRange ));
                 }
-                catch( const uno::Exception & ex )
+                catch( const uno::Exception & )
                 {
                     // should work as validation should have happened before
-                    ASSERT_EXCEPTION( ex );
+                    DBG_UNHANDLED_EXCEPTION("chart2");
                 }
             }
             else if( xLabeledSeq.is())
@@ -855,17 +779,20 @@ bool DataSourceTabPage::updateModelFromControl( Edit * pField )
         }
     }
 
-    SeriesEntry * pSeriesEntry = dynamic_cast< SeriesEntry * >( m_pLB_SERIES->FirstSelected());
+    int nSeriesEntry = m_xLB_SERIES->get_selected_index();
+    SeriesEntry* pSeriesEntry = nullptr;
+    if (nSeriesEntry != -1)
+        pSeriesEntry = reinterpret_cast<SeriesEntry*>(m_xLB_SERIES->get_id(nSeriesEntry).toInt64());
     bool bHasSelectedEntry = (pSeriesEntry != nullptr);
 
     if( bHasSelectedEntry )
     {
-        if( bAll || (pField == m_pEDT_RANGE) )
+        if( bAll || (pField == m_xEDT_RANGE.get()) )
         {
             try
             {
-                OUString aSelectedRole = lcl_GetSelectedRole( *m_pLB_ROLE );
-                OUString aRange( m_pEDT_RANGE->GetText());
+                OUString aSelectedRole = lcl_GetSelectedRole( *m_xLB_ROLE );
+                OUString aRange(m_xEDT_RANGE->get_text());
                 OUString aSequenceRole( aSelectedRole );
                 bool bIsLabel = (aSequenceRole == lcl_aLabelRole );
                 OUString aSequenceNameForLabel( lcl_GetSequenceNameForLabel( pSeriesEntry ));
@@ -901,10 +828,10 @@ bool DataSourceTabPage::updateModelFromControl( Edit * pField )
                                 {
                                     xNewSeq.set( xDataProvider->createDataSequenceByRangeRepresentation( aRange ));
                                 }
-                                catch( const uno::Exception & ex )
+                                catch( const uno::Exception & )
                                 {
                                     // should work as validation should have happened before
-                                    ASSERT_EXCEPTION( ex );
+                                    DBG_UNHANDLED_EXCEPTION("chart2");
                                 }
                                 if( xNewSeq.is())
                                 {
@@ -913,7 +840,7 @@ bool DataSourceTabPage::updateModelFromControl( Edit * pField )
                                     // "$Sheet1.$A$1"
                                     aRange = xNewSeq->getSourceRangeRepresentation();
                                     Reference< beans::XPropertySet > xProp( xNewSeq, uno::UNO_QUERY_THROW );
-                                    xProp->setPropertyValue( "Role" , uno::Any( lcl_aLabelRole ));
+                                    xProp->setPropertyValue( "Role" , uno::Any( OUString(lcl_aLabelRole) ));
                                     xLabeledSeq->setLabel( xNewSeq );
                                 }
                             }
@@ -932,10 +859,10 @@ bool DataSourceTabPage::updateModelFromControl( Edit * pField )
                             {
                                 xNewSeq.set( xDataProvider->createDataSequenceByRangeRepresentation( aRange ));
                             }
-                            catch( const uno::Exception & ex )
+                            catch( const uno::Exception & )
                             {
                                 // should work as validation should have happened before
-                                ASSERT_EXCEPTION( ex );
+                                DBG_UNHANDLED_EXCEPTION("chart2");
                             }
                             if( xNewSeq.is())
                             {
@@ -962,12 +889,12 @@ bool DataSourceTabPage::updateModelFromControl( Edit * pField )
                     }
                 }
 
-                lcl_UpdateCurrentRange( *m_pLB_ROLE, aSelectedRole, aRange );
+                lcl_UpdateCurrentRange( *m_xLB_ROLE, aSelectedRole, aRange );
             }
-            catch( const uno::Exception & ex )
+            catch( const uno::Exception & )
             {
+                DBG_UNHANDLED_EXCEPTION("chart2");
                 bResult = false;
-                ASSERT_EXCEPTION( ex );
             }
         }
     }
@@ -987,9 +914,9 @@ bool DataSourceTabPage::updateModelFromControl( Edit * pField )
                 m_rDialogModel.setTimeBasedRange(rInfo.bTimeBased, rInfo.nStart, rInfo.nEnd);
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 

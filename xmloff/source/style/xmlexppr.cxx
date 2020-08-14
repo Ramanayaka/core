@@ -18,21 +18,26 @@
  */
 
 #include <memory>
+#include <string_view>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/xml/AttributeData.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/beans/XTolerantMultiPropertySet.hpp>
 #include <com/sun/star/beans/TolerantPropertySetResultType.hpp>
 #include <rtl/ustrbuf.hxx>
+#include <comphelper/anycompare.hxx>
+#include <cppuhelper/weakref.hxx>
+#include <osl/diagnose.h>
 #include <list>
 #include <map>
 
 #include <xmloff/xmlexppr.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/attrlist.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmlprmap.hxx>
 #include <xmloff/maptype.hxx>
@@ -61,7 +66,7 @@ const sal_uInt16 MAX_PROP_TYPES =
     (XML_TYPE_PROP_END >> XML_TYPE_PROP_SHIFT) -
     (XML_TYPE_PROP_START >> XML_TYPE_PROP_SHIFT);
 
-XMLPropTokens_Impl aPropTokens[MAX_PROP_TYPES] =
+XMLPropTokens_Impl const aPropTokens[MAX_PROP_TYPES] =
 {
     ENTRY(CHART),
     ENTRY(GRAPHIC),
@@ -140,8 +145,7 @@ void XMLPropertyStates_Impl::FillPropertyStateVector(
 {
     if (nCount)
     {
-        rVector.resize(nCount, XMLPropertyState(-1));
-        ::std::copy( aPropStates.begin(), aPropStates.end(), rVector.begin() );
+        rVector.insert( rVector.begin(), aPropStates.begin(), aPropStates.end() );
     }
 }
 
@@ -179,7 +183,6 @@ class FilterPropertiesInfo_Impl
 {
     sal_uInt32                              nCount;
     FilterPropertyInfoList_Impl             aPropInfos;
-    FilterPropertyInfoList_Impl::iterator   aLastItr;
 
     std::unique_ptr<Sequence<OUString>>     pApiNames;
 
@@ -198,16 +201,14 @@ public:
 
 FilterPropertiesInfo_Impl::FilterPropertiesInfo_Impl() :
     nCount(0),
-    aPropInfos(),
-    pApiNames( nullptr )
+    aPropInfos()
 {
-    aLastItr = aPropInfos.begin();
 }
 
 void FilterPropertiesInfo_Impl::AddProperty(
         const OUString& rApiName, const sal_uInt32 nIndex)
 {
-    aPropInfos.push_back(FilterPropertyInfo_Impl(rApiName, nIndex));
+    aPropInfos.emplace_back(rApiName, nIndex);
     nCount++;
 
     OSL_ENSURE( !pApiNames, "performance warning: API names already retrieved" );
@@ -238,7 +239,7 @@ const uno::Sequence<OUString>& FilterPropertiesInfo_Impl::GetApiNames()
             while ( aCurrent != aEnd )
             {
                 // equal to next element?
-                if ( aOld->GetApiName().equals( aCurrent->GetApiName() ) )
+                if ( aOld->GetApiName() == aCurrent->GetApiName() )
                 {
                     // if equal: merge index lists
                     aOld->GetIndexes().merge( aCurrent->GetIndexes() );
@@ -258,10 +259,12 @@ const uno::Sequence<OUString>& FilterPropertiesInfo_Impl::GetApiNames()
         // construct sequence
         pApiNames.reset( new Sequence < OUString >( nCount ) );
         OUString *pNames = pApiNames->getArray();
-        FilterPropertyInfoList_Impl::iterator aItr = aPropInfos.begin();
-        FilterPropertyInfoList_Impl::iterator aEnd = aPropInfos.end();
-        for ( ; aItr != aEnd; ++aItr, ++pNames)
-            *pNames = aItr->GetApiName();
+
+        for (auto const& propInfo : aPropInfos)
+        {
+            *pNames = propInfo.GetApiName();
+            ++pNames;
+        }
     }
 
     return *pApiNames;
@@ -297,11 +300,9 @@ void FilterPropertiesInfo_Impl::FillPropertyStateArray(
                         aNewProperty.mnIndex = -1;
                         aNewProperty.maValue = pResults->Value;
 
-                        for( std::list<sal_uInt32>::iterator aIndexItr(aPropIter->GetIndexes().begin());
-                            aIndexItr != aPropIter->GetIndexes().end();
-                            ++aIndexItr )
+                        for (auto const& index : aPropIter->GetIndexes())
                         {
-                            aNewProperty.mnIndex = *aIndexItr;
+                            aNewProperty.mnIndex = index;
                             aPropStates.AddPropertyState( aNewProperty );
                         }
                         ++pResults;
@@ -314,30 +315,25 @@ void FilterPropertiesInfo_Impl::FillPropertyStateArray(
         }
         else
         {
-            Sequence < beans::GetPropertyTolerantResult > aResults(xTolPropSet->getPropertyValuesTolerant(rApiNames));
+            const Sequence < beans::GetPropertyTolerantResult > aResults(xTolPropSet->getPropertyValuesTolerant(rApiNames));
             OSL_ENSURE( rApiNames.getLength() == aResults.getLength(), "wrong implemented XTolerantMultiPropertySet" );
-            const beans::GetPropertyTolerantResult *pResults = aResults.getConstArray();
             FilterPropertyInfoList_Impl::iterator aPropIter(aPropInfos.begin());
             XMLPropertyState aNewProperty( -1 );
-            sal_uInt32 nResultCount(aResults.getLength());
-            OSL_ENSURE( nCount == nResultCount, "wrong implemented XTolerantMultiPropertySet??" );
-            for( sal_uInt32 i = 0; i < nResultCount; ++i )
+            OSL_ENSURE( nCount == static_cast<sal_uInt32>(aResults.getLength()), "wrong implemented XTolerantMultiPropertySet??" );
+            for( const auto& rResult : aResults )
             {
-                if ((pResults->Result == beans::TolerantPropertySetResultType::SUCCESS) &&
-                    ((pResults->State == PropertyState_DIRECT_VALUE) || (pResults->State == PropertyState_DEFAULT_VALUE)))
+                if ((rResult.Result == beans::TolerantPropertySetResultType::SUCCESS) &&
+                    ((rResult.State == PropertyState_DIRECT_VALUE) || (rResult.State == PropertyState_DEFAULT_VALUE)))
                 {
                     aNewProperty.mnIndex = -1;
-                    aNewProperty.maValue = pResults->Value;
+                    aNewProperty.maValue = rResult.Value;
 
-                    for( std::list<sal_uInt32>::iterator aIndexItr(aPropIter->GetIndexes().begin());
-                        aIndexItr != aPropIter->GetIndexes().end();
-                        ++aIndexItr )
+                    for (auto const& index : aPropIter->GetIndexes())
                     {
-                        aNewProperty.mnIndex = *aIndexItr;
+                        aNewProperty.mnIndex = index;
                         aPropStates.AddPropertyState( aNewProperty );
                     }
                 }
-                ++pResults;
                 ++aPropIter;
             }
         }
@@ -365,7 +361,7 @@ void FilterPropertiesInfo_Impl::FillPropertyStateArray(
 
                 for( i = 0; i < nCount; ++i, ++pStates )
                 {
-                    if( (*pStates == PropertyState_DIRECT_VALUE)/* || (bDefault && (*pStates == PropertyState_DEFAULT_VALUE))*/ )
+                    if( *pStates == PropertyState_DIRECT_VALUE )
                         nValueCount++;
                 }
 
@@ -385,7 +381,7 @@ void FilterPropertiesInfo_Impl::FillPropertyStateArray(
                     i = 0;
                     while( i < nValueCount )
                     {
-                        if( (*pStates == PropertyState_DIRECT_VALUE)/* || (bDefault && (*pStates == PropertyState_DEFAULT_VALUE))*/ )
+                        if( *pStates == PropertyState_DIRECT_VALUE )
                         {
                             *pAPINames++ = aItr->GetApiName();
                             aPropIters.push_back( aItr );
@@ -407,13 +403,9 @@ void FilterPropertiesInfo_Impl::FillPropertyStateArray(
                         aNewProperty.mnIndex = -1;
                         aNewProperty.maValue = *pValues;
 
-                        const ::std::list< sal_uInt32 >& rIndexes( (*pPropIter)->GetIndexes() );
-                        for (   std::list<sal_uInt32>::const_iterator aIndexItr = rIndexes.begin();
-                                aIndexItr != rIndexes.end();
-                                ++aIndexItr
-                            )
+                        for (auto const& index : (*pPropIter)->GetIndexes())
                         {
-                            aNewProperty.mnIndex = *aIndexItr;
+                            aNewProperty.mnIndex = index;
                             aPropStates.AddPropertyState( aNewProperty );
                         }
 
@@ -434,12 +426,9 @@ void FilterPropertiesInfo_Impl::FillPropertyStateArray(
                     XMLPropertyState aNewProperty( -1 );
                     aNewProperty.maValue = *pValues;
                     ++pValues;
-                    for( std::list<sal_uInt32>::iterator aIndexItr =
-                            aItr->GetIndexes().begin();
-                        aIndexItr != aItr->GetIndexes().end();
-                        ++aIndexItr )
+                    for (auto const& index : aItr->GetIndexes())
                     {
-                        aNewProperty.mnIndex = *aIndexItr;
+                        aNewProperty.mnIndex = index;
                         aPropStates.AddPropertyState( aNewProperty );
                     }
                     ++aItr;
@@ -458,13 +447,10 @@ void FilterPropertiesInfo_Impl::FillPropertyStateArray(
                     // The value is stored in the PropertySet itself, add to list.
                     bool bGotValue = false;
                     XMLPropertyState aNewProperty( -1 );
-                    for( std::list<sal_uInt32>::const_iterator aIndexItr =
-                            aItr->GetIndexes().begin();
-                        aIndexItr != aItr->GetIndexes().end();
-                        ++aIndexItr )
+                    for (auto const& index : aItr->GetIndexes())
                     {
                         if( bDirectValue ||
-                            (rPropMapper->GetEntryFlags( *aIndexItr ) &
+                            (rPropMapper->GetEntryFlags(index) &
                                             MID_FLAG_DEFAULT_ITEM_EXPORT) != 0 )
                         {
                             try
@@ -475,7 +461,7 @@ void FilterPropertiesInfo_Impl::FillPropertyStateArray(
                                         rPropSet->getPropertyValue( aItr->GetApiName() );
                                     bGotValue = true;
                                 }
-                                aNewProperty.mnIndex = *aIndexItr;
+                                aNewProperty.mnIndex = index;
                                 aPropStates.AddPropertyState( aNewProperty );
                             }
                             catch( UnknownPropertyException& )
@@ -501,20 +487,13 @@ void FilterPropertiesInfo_Impl::FillPropertyStateArray(
 
 struct SvXMLExportPropertyMapper::Impl
 {
-    typedef std::map<css::uno::Reference<css::beans::XPropertySetInfo>, FilterPropertiesInfo_Impl*> CacheType;
+    typedef std::map<css::uno::Reference<css::beans::XPropertySetInfo>, std::unique_ptr<FilterPropertiesInfo_Impl>> CacheType;
     CacheType maCache;
 
     rtl::Reference<SvXMLExportPropertyMapper> mxNextMapper;
     rtl::Reference<XMLPropertySetMapper> mxPropMapper;
 
     OUString maStyleName;
-
-    ~Impl()
-    {
-        CacheType::iterator it = maCache.begin(), itEnd = maCache.end();
-        for (; it != itEnd; ++it)
-            delete it->second;
-    }
 };
 
 // ctor/dtor , class SvXMLExportPropertyMapper
@@ -588,12 +567,13 @@ vector<XMLPropertyState> SvXMLExportPropertyMapper::Filter_(
 
     Impl::CacheType::iterator aIter = mpImpl->maCache.find(xInfo);
     if (aIter != mpImpl->maCache.end())
-        pFilterInfo = (*aIter).second;
+        pFilterInfo = (*aIter).second.get();
 
     bool bDelInfo = false;
     if( !pFilterInfo )
     {
-        const SvtSaveOptions::ODFDefaultVersion nCurrentVersion( SvtSaveOptions().GetODFDefaultVersion() );
+        assert(SvtSaveOptions().GetODFDefaultVersion() != SvtSaveOptions::ODFVER_UNKNOWN);
+        const SvtSaveOptions::ODFSaneDefaultVersion nCurrentVersion(SvtSaveOptions().GetODFSaneDefaultVersion());
         pFilterInfo = new FilterPropertiesInfo_Impl;
         for( sal_Int32 i=0; i < nProps; i++ )
         {
@@ -605,12 +585,63 @@ vector<XMLPropertyState> SvXMLExportPropertyMapper::Filter_(
                 ( (0 != (nFlags & MID_FLAG_MUST_EXIST)) ||
                   xInfo->hasPropertyByName( rAPIName ) ) )
             {
-                const SvtSaveOptions::ODFDefaultVersion nEarliestODFVersionForExport(
+                const SvtSaveOptions::ODFSaneDefaultVersion nEarliestODFVersionForExport(
                         mpImpl->mxPropMapper->GetEarliestODFVersionForExport(i));
-                if( nCurrentVersion >= nEarliestODFVersionForExport
-                        || nCurrentVersion == SvtSaveOptions::ODFVER_UNKNOWN
-                        || nEarliestODFVersionForExport == SvtSaveOptions::ODFVER_UNKNOWN )
+                // note: only standard ODF versions are allowed here,
+                // only exception is the unknown future
+                assert((nEarliestODFVersionForExport & SvtSaveOptions::ODFSVER_EXTENDED) == 0
+                    || nEarliestODFVersionForExport == SvtSaveOptions::ODFSVER_FUTURE_EXTENDED);
+                static_assert(SvtSaveOptions::ODFSVER_LATEST_EXTENDED < SvtSaveOptions::ODFSVER_FUTURE_EXTENDED);
+                /// standard ODF namespaces for elements and attributes
+                static sal_uInt16 s_OdfNs[] = {
+                    XML_NAMESPACE_OFFICE,
+                    XML_NAMESPACE_STYLE,
+                    XML_NAMESPACE_TEXT,
+                    XML_NAMESPACE_TABLE,
+                    XML_NAMESPACE_DRAW,
+                    XML_NAMESPACE_FO,
+                    XML_NAMESPACE_XLINK,
+                    XML_NAMESPACE_DC,
+                    XML_NAMESPACE_META,
+                    XML_NAMESPACE_NUMBER,
+                    XML_NAMESPACE_PRESENTATION,
+                    XML_NAMESPACE_SVG,
+                    XML_NAMESPACE_CHART,
+                    XML_NAMESPACE_DR3D,
+                    XML_NAMESPACE_MATH,
+                    XML_NAMESPACE_FORM,
+                    XML_NAMESPACE_SCRIPT,
+                    XML_NAMESPACE_CONFIG,
+                    XML_NAMESPACE_DB,
+                    XML_NAMESPACE_XFORMS,
+                    XML_NAMESPACE_SMIL,
+                    XML_NAMESPACE_ANIMATION,
+                    XML_NAMESPACE_XML,
+                    XML_NAMESPACE_XHTML,
+                    XML_NAMESPACE_GRDDL,
+                };
+                static bool s_Assert(false);
+                if (!s_Assert)
+                {
+                    assert(std::is_sorted(std::begin(s_OdfNs), std::end(s_OdfNs)));
+                    s_Assert = true;
+                }
+                //static_assert(std::is_sorted(std::begin(s_OdfNs), std::end(s_OdfNs)));
+                auto const ns(mpImpl->mxPropMapper->GetEntryNameSpace(i));
+                auto const iter(std::lower_bound(std::begin(s_OdfNs), std::end(s_OdfNs),
+                            ns));
+                bool const isExtension(iter == std::end(s_OdfNs) || *iter != ns
+                        // FIXME: very special hack to suppress style:hyperlink
+                        || (ns == XML_NAMESPACE_STYLE
+                            && mpImpl->mxPropMapper->GetEntryXMLName(i) == GetXMLToken(XML_HYPERLINK)));
+                if (isExtension
+                    ? ((nCurrentVersion & SvtSaveOptions::ODFSVER_EXTENDED)
+                        // if it's in standard ODF, don't export extension
+                        && (nCurrentVersion < nEarliestODFVersionForExport))
+                    : (nEarliestODFVersionForExport <= nCurrentVersion))
+                {
                     pFilterInfo->AddProperty(rAPIName, i);
+                }
             }
         }
 
@@ -623,7 +654,7 @@ vector<XMLPropertyState> SvXMLExportPropertyMapper::Filter_(
         xInfo = xWeakInfo;
         if( xInfo.is() )
         {
-            mpImpl->maCache.insert(Impl::CacheType::value_type(xInfo, pFilterInfo));
+            mpImpl->maCache.emplace(xInfo, std::unique_ptr<FilterPropertiesInfo_Impl>(pFilterInfo));
         }
         else
             bDelInfo = true;
@@ -673,44 +704,90 @@ bool SvXMLExportPropertyMapper::Equals(
         const vector< XMLPropertyState >& aProperties1,
         const vector< XMLPropertyState >& aProperties2 ) const
 {
-    bool bRet = true;
+    if (aProperties1.size() < aProperties2.size())
+        return true;
+    if (aProperties1.size() > aProperties2.size())
+        return false;
+
     sal_uInt32 nCount = aProperties1.size();
 
-    if( nCount == aProperties2.size() )
+    for (sal_uInt32 nIndex = 0; nIndex < nCount; ++nIndex)
     {
-        sal_uInt32 nIndex = 0;
-        while( bRet && nIndex < nCount )
-        {
-            const XMLPropertyState& rProp1 = aProperties1[ nIndex ];
-            const XMLPropertyState& rProp2 = aProperties2[ nIndex ];
+        const XMLPropertyState& rProp1 = aProperties1[ nIndex ];
+        const XMLPropertyState& rProp2 = aProperties2[ nIndex ];
 
-            // Compare index. If equal, compare value
-            if( rProp1.mnIndex == rProp2.mnIndex )
+        // Compare index. If equal, compare value
+        if( rProp1.mnIndex < rProp2.mnIndex )
+            return true;
+        if( rProp1.mnIndex > rProp2.mnIndex )
+            return false;
+
+        if( rProp1.mnIndex != -1 )
+        {
+            // Now compare values
+            if ( (mpImpl->mxPropMapper->GetEntryType( rProp1.mnIndex ) &
+                  XML_TYPE_BUILDIN_CMP ) != 0 )
             {
-                if( rProp1.mnIndex != -1 )
-                {
-                    // Now compare values
-                    if ( (mpImpl->mxPropMapper->GetEntryType( rProp1.mnIndex ) &
-                          XML_TYPE_BUILDIN_CMP ) != 0 )
-                        // simple type ( binary compare )
-                        bRet = ( rProp1.maValue == rProp2.maValue );
-                    else
-                        // complex type ( ask for compare-function )
-                        bRet = mpImpl->mxPropMapper->GetPropertyHandler(
-                                    rProp1.mnIndex )->equals( rProp1.maValue,
-                                                              rProp2.maValue );
-                }
+                // simple type ( binary compare )
+                if ( rProp1.maValue != rProp2.maValue)
+                    return false;
             }
             else
-                bRet = false;
-
-            nIndex++;
+            {
+                // complex type ( ask for compare-function )
+                if (!mpImpl->mxPropMapper->GetPropertyHandler(
+                            rProp1.mnIndex )->equals( rProp1.maValue,
+                                                      rProp2.maValue ))
+                    return false;
+            }
         }
     }
-    else
-        bRet = false;
 
-    return bRet;
+    return true;
+}
+
+// Compares two Sequences of XMLPropertyState:
+//  1.Number of elements equal ?
+//  2.Index of each element equal ? (So I know whether the propertynames are the same)
+//  3.Value of each element equal ?
+bool SvXMLExportPropertyMapper::LessPartial(
+        const vector< XMLPropertyState >& aProperties1,
+        const vector< XMLPropertyState >& aProperties2 ) const
+{
+    if (aProperties1.size() < aProperties2.size())
+        return true;
+    if (aProperties1.size() > aProperties2.size())
+        return false;
+
+    sal_uInt32 nCount = aProperties1.size();
+
+    for (sal_uInt32 nIndex = 0; nIndex < nCount; ++nIndex)
+    {
+        const XMLPropertyState& rProp1 = aProperties1[ nIndex ];
+        const XMLPropertyState& rProp2 = aProperties2[ nIndex ];
+
+        // Compare index. If equal, compare value
+        if( rProp1.mnIndex < rProp2.mnIndex )
+            return true;
+        if( rProp1.mnIndex > rProp2.mnIndex )
+            return false;
+
+        if( rProp1.mnIndex != -1 )
+        {
+            // Now compare values
+            if ( (mpImpl->mxPropMapper->GetEntryType( rProp1.mnIndex ) &
+                  XML_TYPE_BUILDIN_CMP ) != 0 )
+            {
+                // simple type ( binary compare )
+                if ( comphelper::anyLess(rProp1.maValue, rProp2.maValue) )
+                    return true;
+                if ( comphelper::anyLess(rProp2.maValue, rProp1.maValue ) )
+                    return false;
+            }
+        }
+    }
+
+    return false;
 }
 
 /** fills the given attribute list with the items in the given set
@@ -763,7 +840,7 @@ void SvXMLExportPropertyMapper::exportXML(
                 aPropTokens[i].eToken == xmloff::token::XML_GRAPHIC_PROPERTIES)
             {
                 nNamespace = XML_NAMESPACE_LO_EXT;
-                if (rExport.getDefaultVersion() <= SvtSaveOptions::ODFVER_012)
+                if ((rExport.getSaneDefaultVersion() & SvtSaveOptions::ODFSVER_EXTENDED) == 0)
                 {
                     continue; // don't write for ODF <= 1.2
                 }
@@ -779,7 +856,6 @@ void SvXMLExportPropertyMapper::exportXML(
                         nPropMapStartIdx, nPropMapEndIdx );
 
             if( rExport.GetAttrList().getLength() > 0 ||
-                (nFlags & SvXmlExportFlags::EMPTY) ||
                 !aIndexArray.empty() )
             {
                 SvXMLElementExport aElem( rExport, nNamespace,
@@ -863,7 +939,7 @@ void SvXMLExportPropertyMapper::_exportXML(
                     // we export it later
                     if( pIndexArray )
                     {
-                        pIndexArray->push_back( (sal_uInt16)nIndex );
+                        pIndexArray->push_back( static_cast<sal_uInt16>(nIndex) );
                     }
                 }
                 else
@@ -891,27 +967,24 @@ void SvXMLExportPropertyMapper::_exportXML(
         uno::Reference< container::XNameContainer > xAttrContainer;
         if( (rProperty.maValue >>= xAttrContainer) && xAttrContainer.is() )
         {
-            SvXMLNamespaceMap *pNewNamespaceMap = nullptr;
+            std::unique_ptr<SvXMLNamespaceMap> pNewNamespaceMap;
             const SvXMLNamespaceMap *pNamespaceMap = &rNamespaceMap;
 
-            uno::Sequence< OUString > aAttribNames( xAttrContainer->getElementNames() );
-            const OUString* pAttribName = aAttribNames.getConstArray();
-
-            const sal_Int32 nCount = aAttribNames.getLength();
+            const uno::Sequence< OUString > aAttribNames( xAttrContainer->getElementNames() );
 
             OUStringBuffer sNameBuffer;
             xml::AttributeData aData;
-            for( sal_Int32 i=0; i < nCount; i++, pAttribName++ )
+            for( const auto& rAttribName : aAttribNames )
             {
-                xAttrContainer->getByName( *pAttribName ) >>= aData;
-                OUString sAttribName( *pAttribName );
+                xAttrContainer->getByName( rAttribName ) >>= aData;
+                OUString sAttribName( rAttribName );
 
                 // extract namespace prefix from attribute name if it exists
                 OUString sPrefix;
                 const sal_Int32 nColonPos =
-                    pAttribName->indexOf( ':' );
+                    rAttribName.indexOf( ':' );
                 if( nColonPos != -1 )
-                    sPrefix = pAttribName->copy( 0, nColonPos );
+                    sPrefix = rAttribName.copy( 0, nColonPos );
 
                 if( !sPrefix.isEmpty() )
                 {
@@ -932,7 +1005,7 @@ void SvXMLExportPropertyMapper::_exportXML(
                         else
                         {
                             // check if there is a prefix registered for the
-                            // namepsace URI
+                            // namespace URI
                             nKey = pNamespaceMap->GetKeyByName( sNamespace );
                             if( XML_NAMESPACE_UNKNOWN == nKey )
                             {
@@ -958,7 +1031,7 @@ void SvXMLExportPropertyMapper::_exportXML(
                                 sPrefix = pNamespaceMap->GetPrefixByKey( nKey );
                             }
                             // In any case, the attribute name has to be adapted.
-                            sNameBuffer.append( sPrefix + ":" + pAttribName->copy( nColonPos+1 ) );
+                            sNameBuffer.append(sPrefix).append(":").append(std::u16string_view(rAttribName).substr(nColonPos+1) );
                             sAttribName = sNameBuffer.makeStringAndClear();
                         }
 
@@ -966,11 +1039,11 @@ void SvXMLExportPropertyMapper::_exportXML(
                         {
                             if( !pNewNamespaceMap )
                             {
-                                pNewNamespaceMap = new SvXMLNamespaceMap( rNamespaceMap );
-                                pNamespaceMap = pNewNamespaceMap;
+                                pNewNamespaceMap.reset(new SvXMLNamespaceMap( rNamespaceMap ));
+                                pNamespaceMap = pNewNamespaceMap.get();
                             }
                             pNewNamespaceMap->Add( sPrefix, sNamespace );
-                            sNameBuffer.append( GetXMLToken(XML_XMLNS) + ":" + sPrefix );
+                            sNameBuffer.append( GetXMLToken(XML_XMLNS) ).append( ":" ).append( sPrefix );
                             rAttrList.AddAttribute( sNameBuffer.makeStringAndClear(),
                                                     sNamespace );
                         }
@@ -982,8 +1055,6 @@ void SvXMLExportPropertyMapper::_exportXML(
                 if( sOldValue.isEmpty() )
                     rAttrList.AddAttribute( sAttribName, aData.Value );
             }
-
-            delete pNewNamespaceMap;
         }
         else
         {
@@ -994,7 +1065,7 @@ void SvXMLExportPropertyMapper::_exportXML(
     else if ((mpImpl->mxPropMapper->GetEntryFlags(rProperty.mnIndex) & MID_FLAG_ELEMENT_ITEM_EXPORT ) == 0)
     {
         OUString aValue;
-        const OUString sName = rNamespaceMap.GetQNameByKey(
+        OUString sName = rNamespaceMap.GetQNameByKey(
             mpImpl->mxPropMapper->GetEntryNameSpace(rProperty.mnIndex),
             mpImpl->mxPropMapper->GetEntryXMLName(rProperty.mnIndex));
 
@@ -1009,6 +1080,28 @@ void SvXMLExportPropertyMapper::_exportXML(
         {
             if( bRemove )
                 rAttrList.RemoveAttribute( sName );
+
+            // We don't seem to have a generic mechanism to write an attribute in the extension
+            // namespace in case of certain attribute values only, so do this manually.
+            if (IsXMLToken(mpImpl->mxPropMapper->GetEntryXMLName(rProperty.mnIndex), XML_WRITING_MODE))
+            {
+                if (IsXMLToken(aValue, XML_BT_LR))
+                {
+                    sName = rNamespaceMap.GetQNameByKey(
+                            XML_NAMESPACE_LO_EXT,
+                            mpImpl->mxPropMapper->GetEntryXMLName(rProperty.mnIndex));
+                }
+            }
+            else if (IsXMLToken(mpImpl->mxPropMapper->GetEntryXMLName(rProperty.mnIndex), XML_VERTICAL_REL))
+            {
+                if (IsXMLToken(aValue, XML_PAGE_CONTENT_BOTTOM))
+                {
+                    sName = rNamespaceMap.GetQNameByKey(
+                            XML_NAMESPACE_LO_EXT,
+                            mpImpl->mxPropMapper->GetEntryXMLName(rProperty.mnIndex));
+                }
+            }
+
             rAttrList.AddAttribute( sName, aValue );
         }
     }
@@ -1020,13 +1113,9 @@ void SvXMLExportPropertyMapper::exportElementItems(
         SvXmlExportFlags nFlags,
         const std::vector<sal_uInt16>& rIndexArray ) const
 {
-    const sal_uInt16 nCount = rIndexArray.size();
-
     bool bItemsExported = false;
-    for( sal_uInt16 nIndex = 0; nIndex < nCount; nIndex++ )
+    for (const sal_uInt16 nElement : rIndexArray)
     {
-        const sal_uInt16 nElement = rIndexArray[nIndex];
-
         OSL_ENSURE( 0 != (mpImpl->mxPropMapper->GetEntryFlags(
                 rProperties[nElement].mnIndex ) & MID_FLAG_ELEMENT_ITEM_EXPORT),
                 "wrong mid flag!" );

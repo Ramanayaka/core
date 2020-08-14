@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "XMLClipPropertyHandler.hxx"
+#include <XMLClipPropertyHandler.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/text/GraphicCrop.hpp>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmltoken.hxx>
@@ -30,7 +31,6 @@ using namespace ::com::sun::star::text;
 using namespace ::xmloff::token;
 
 
-// class XMLMeasurePropHdl
 
 
 XMLClipPropertyHandler::XMLClipPropertyHandler( bool bODF11 ) :
@@ -109,7 +109,7 @@ bool XMLClipPropertyHandler::importXML( const OUString& rStrImpValue, uno::Any& 
 bool XMLClipPropertyHandler::exportXML( OUString& rStrExpValue, const uno::Any& rValue, const SvXMLUnitConverter& rUnitConverter ) const
 {
     bool bRet = false;
-      OUStringBuffer aOut(30);
+    OUStringBuffer aOut(30);
     GraphicCrop aCrop;
 
     if( rValue >>= aCrop )

@@ -16,14 +16,11 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <stdlib.h>
-#include <fstream>
-#include <string>
-#include <util.hxx>
 
-namespace writerfilter
-{
-namespace dmapper
+#include <string>
+#include "util.hxx"
+
+namespace writerfilter::dmapper
 {
 using namespace com::sun::star;
 
@@ -31,10 +28,22 @@ std::string XTextRangeToString(uno::Reference< text::XTextRange > const & textRa
 {
     std::string result;
 
-#ifdef DEBUG_WRITERFILTER
-    if (textRange.get())
+#ifdef DBG_UTIL
+    if (textRange)
     {
-        OUString aOUStr = textRange->getString();
+        OUString aOUStr;
+
+        try
+        {
+            aOUStr = textRange->getString();
+        }
+        catch (const uno::Exception& rException)
+        {
+            result += "(exception: ";
+            result += rException.Message.toUtf8().getStr();
+            result += ")";
+        }
+
         OString aOStr(aOUStr.getStr(), aOUStr.getLength(),  RTL_TEXTENCODING_ASCII_US );
 
         result = aOStr.getStr();
@@ -53,10 +62,8 @@ std::string XTextRangeToString(uno::Reference< text::XTextRange > const & textRa
 void resolveSprmProps(Properties & rHandler, Sprm & rSprm)
 {
     writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
-    if( pProperties.get())
+    if( pProperties)
         pProperties->resolve(rHandler);
-}
-
 }
 
 }

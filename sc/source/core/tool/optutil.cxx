@@ -18,20 +18,20 @@
  */
 
 #include <vcl/svapp.hxx>
-
-#include "optutil.hxx"
-#include "global.hxx"
+#include <optutil.hxx>
+#include <global.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/syslocale.hxx>
+#include <unotools/localedatawrapper.hxx>
 
 bool ScOptionsUtil::IsMetricSystem()
 {
-    if (utl::ConfigManager::IsAvoidConfig())
+    if (utl::ConfigManager::IsFuzzing())
         return true;
 
     //TODO: which language should be used here - system language or installed office language?
 
-    MeasurementSystem eSys = ScGlobal::pLocaleData->getMeasurementSystemEnum();
+    MeasurementSystem eSys = ScGlobal::getLocaleDataPtr()->getMeasurementSystemEnum();
 
     return ( eSys == MeasurementSystem::Metric );
 }

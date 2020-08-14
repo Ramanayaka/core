@@ -19,32 +19,20 @@
 
 #include <sal/config.h>
 
-#ifdef DBG_UTIL
-
-#include <limits.h>
+#ifndef NDEBUG
 
 #include <tools/debug.hxx>
-#include <tools/lineend.hxx>
-#include "sal/log.hxx"
 
-#include <vcl/svapp.hxx>
-#include <vcl/event.hxx>
-#include <vcl/threadex.hxx>
+#include <svdata.hxx>
+#include <dbggui.hxx>
 
-#include "svdata.hxx"
-#include "dbggui.hxx"
-
-#include "salinst.hxx"
-#include "svsys.h"
-
-#include <algorithm>
-#include <memory>
+#include <salinst.hxx>
 
 using namespace ::com::sun::star;
 
-void ImplDbgTestSolarMutex()
+static void ImplDbgTestSolarMutex()
 {
-    assert(ImplGetSVData()->mpDefInst->CheckYieldMutex() && "SolarMutex not locked");
+    assert(ImplGetSVData()->mpDefInst->GetYieldMutex()->IsCurrentThread() && "SolarMutex not owned!");
 }
 
 void DbgGUIInitSolarMutexCheck()
@@ -57,6 +45,6 @@ void DbgGUIDeInitSolarMutexCheck()
     DbgSetTestSolarMutex( nullptr );
 }
 
-#endif // DBG_UTIL
+#endif // NDEBUG
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

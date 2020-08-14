@@ -21,18 +21,16 @@
 #define INCLUDED_UCB_SOURCE_UCP_TDOC_TDOC_CONTENT_HXX
 
 #include <ucbhelper/contenthelper.hxx>
-#include <com/sun/star/task/DocumentPasswordRequest.hpp>
 #include <com/sun/star/ucb/XContentCreator.hpp>
-#include <com/sun/star/ucb/CommandFailedException.hpp>
 #include "tdoc_provider.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sdbc  { class XRow; }
     namespace io    { class XInputStream; class XOutputStream; }
     namespace beans { struct PropertyValue; }
     namespace ucb   { struct OpenCommandArgument2; struct TransferInfo;
                       struct ContentInfo; }
-} } }
+}
 
 namespace tdoc_ucp
 {
@@ -112,10 +110,10 @@ private:
     getCommands( const css::uno::Reference< css::ucb::XCommandEnvironment > & xEnv ) override;
     virtual OUString getParentURL() override;
 
-    static bool hasData( ContentProvider* pProvider, const Uri & rUri );
+    static bool hasData( ContentProvider const * pProvider, const Uri & rUri );
     bool hasData( const Uri & rUri ) { return hasData( m_pProvider, rUri ); }
 
-    static bool loadData( ContentProvider* pProvider,
+    static bool loadData( ContentProvider const * pProvider,
                           const Uri & rUri,
                           ContentProperties& rProps );
     /// @throws css::ucb::CommandFailedException
@@ -133,7 +131,7 @@ private:
     makeNewIdentifier( const OUString& rTitle );
 
     typedef rtl::Reference< Content > ContentRef;
-    typedef std::list< ContentRef > ContentRefList;
+    typedef std::vector< ContentRef > ContentRefList;
     void queryChildren( ContentRefList& rChildren );
 
     bool exchangeIdentity(

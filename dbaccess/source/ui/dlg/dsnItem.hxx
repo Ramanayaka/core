@@ -36,11 +36,11 @@ namespace dbaui
         ::dbaccess::ODsnTypeCollection* m_pCollection;
 
     public:
-        DbuTypeCollectionItem(sal_Int16 nWhich = 0, ::dbaccess::ODsnTypeCollection* _pCollection = nullptr);
+        DbuTypeCollectionItem(sal_Int16 nWhich, ::dbaccess::ODsnTypeCollection* _pCollection);
         DbuTypeCollectionItem(const DbuTypeCollectionItem& _rSource);
 
         virtual bool             operator==(const SfxPoolItem& _rItem) const override;
-        virtual SfxPoolItem*     Clone(SfxItemPool* _pPool = nullptr) const override;
+        virtual DbuTypeCollectionItem* Clone(SfxItemPool* _pPool = nullptr) const override;
 
         ::dbaccess::ODsnTypeCollection* getCollection() const { return m_pCollection; }
     };

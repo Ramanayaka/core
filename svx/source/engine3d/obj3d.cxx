@@ -19,165 +19,37 @@
 
 #include <o3tl/numeric.hxx>
 
-#include "svx/svdstr.hrc"
-#include "svdglob.hxx"
-#include <svx/svdview.hxx>
-#include <svx/svdattr.hxx>
-#include <svx/svdpage.hxx>
+#include <svx/strings.hrc>
+#include <svx/dialmgr.hxx>
+#include <svx/svdhdl.hxx>
 #include <svx/svdmodel.hxx>
-#include "svx/svditer.hxx"
-#include "svx/globl3d.hxx"
-#include <svx/camera3d.hxx>
+#include <svx/globl3d.hxx>
 #include <svx/scene3d.hxx>
-#include <svx/cube3d.hxx>
-#include <svx/lathe3d.hxx>
-#include <svx/sphere3d.hxx>
-#include <svx/extrud3d.hxx>
 #include <svx/obj3d.hxx>
-#include <svx/xtable.hxx>
-#include <svx/xflclit.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
-#include <svx/xlnclit.hxx>
-#include <svl/metitem.hxx>
-#include <svx/xfillit.hxx>
-#include <svx/xlnwtit.hxx>
-#include <vcl/virdev.hxx>
-#include <tools/poly.hxx>
-#include <tools/b3dtrans.hxx>
-#include <svx/svxids.hrc>
-#include <editeng/colritem.hxx>
-#include <svx/e3ditem.hxx>
-#include <svx/xlntrit.hxx>
-#include <svx/xfltrit.hxx>
-#include <svx/svdpagv.hxx>
-#include <vcl/gradient.hxx>
-#include <vcl/metaact.hxx>
-#include <svx/svx3ditems.hxx>
-#include <svl/whiter.hxx>
-#include <svtools/colorcfg.hxx>
-#include <editeng/eeitem.hxx>
-#include <svx/xgrscit.hxx>
 #include <sdr/properties/e3dproperties.hxx>
 #include <sdr/properties/e3dcompoundproperties.hxx>
 #include <basegfx/polygon/b3dpolypolygontools.hxx>
 #include <basegfx/point/b3dpoint.hxx>
-#include <basegfx/vector/b3dvector.hxx>
-#include <svx/xlndsit.hxx>
 #include <basegfx/matrix/b3dhommatrix.hxx>
-#include <basegfx/polygon/b3dpolygon.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <basegfx/polygon/b3dpolygontools.hxx>
 #include <svx/helperhittest3d.hxx>
-#include <svx/sdr/contact/viewcontactofe3d.hxx>
+#include <sdr/contact/viewcontactofe3d.hxx>
 #include <drawinglayer/geometry/viewinformation3d.hxx>
 #include <com/sun/star/uno/Sequence.h>
 #include <svx/sdr/contact/viewcontactofe3dscene.hxx>
 #include <svx/e3dsceneupdater.hxx>
-
+#include <rtl/ustrbuf.hxx>
 
 using namespace com::sun::star;
 
-
-// List for 3D-Objects
-
-
-E3dObjList::E3dObjList()
-:   SdrObjList(nullptr, nullptr)
+std::unique_ptr<sdr::properties::BaseProperties> E3dObject::CreateObjectSpecificProperties()
 {
+    return std::make_unique<sdr::properties::E3dProperties>(*this);
 }
 
-E3dObjList::E3dObjList(const E3dObjList&)
-:   SdrObjList()
-{
-}
-
-E3dObjList* E3dObjList::Clone() const
-{
-    E3dObjList* const pObjList = new E3dObjList(*this);
-    pObjList->lateInit(*this);
-    return pObjList;
-}
-
-E3dObjList::~E3dObjList()
-{
-}
-
-void E3dObjList::NbcInsertObject(SdrObject* pObj, size_t nPos)
-{
-    // Get owner
-    DBG_ASSERT(dynamic_cast<const E3dObject*>(GetOwnerObj()), "Insert 3D object in parent != 3DObject");
-
-    // Is it even a 3D object?
-    if(pObj && dynamic_cast<const E3dObject*>(pObj))
-    {
-        // Normal 3D object, insert means
-        // call parent
-        SdrObjList::NbcInsertObject(pObj, nPos);
-    }
-    else
-    {
-        // No 3D object, inserted a page in place in a scene ...
-        GetOwnerObj()->GetPage()->InsertObject(pObj, nPos);
-    }
-}
-
-void E3dObjList::InsertObject(SdrObject* pObj, size_t nPos)
-{
-    OSL_ENSURE(dynamic_cast<const E3dObject*>(GetOwnerObj()), "Insert 3D object in non-3D Parent");
-
-    // call parent
-    SdrObjList::InsertObject(pObj, nPos);
-
-    E3dScene* pScene = static_cast<E3dObject*>(GetOwnerObj())->GetScene();
-    if(pScene)
-    {
-        pScene->Cleanup3DDepthMapper();
-    }
-}
-
-SdrObject* E3dObjList::NbcRemoveObject(size_t nObjNum)
-{
-    DBG_ASSERT(dynamic_cast<const E3dObject*>(GetOwnerObj()), "Remove 3D object from Parent != 3DObject");
-
-    // call parent
-    SdrObject* pRetval = SdrObjList::NbcRemoveObject(nObjNum);
-
-    E3dScene* pScene = static_cast<E3dObject*>(GetOwnerObj())->GetScene();
-    if(pScene)
-    {
-        pScene->Cleanup3DDepthMapper();
-    }
-
-    return pRetval;
-}
-
-SdrObject* E3dObjList::RemoveObject(size_t nObjNum)
-{
-    OSL_ENSURE(dynamic_cast<const E3dObject*>(GetOwnerObj()), "3D object is removed from non-3D Parent");
-
-    // call parent
-    SdrObject* pRetval = SdrObjList::RemoveObject(nObjNum);
-
-    E3dScene* pScene = static_cast<E3dObject*>(GetOwnerObj())->GetScene();
-    if(pScene)
-    {
-        pScene->Cleanup3DDepthMapper();
-    }
-
-    return pRetval;
-}
-
-
-sdr::properties::BaseProperties* E3dObject::CreateObjectSpecificProperties()
-{
-    return new sdr::properties::E3dProperties(*this);
-}
-
-
-E3dObject::E3dObject()
-:   maSubList(),
+E3dObject::E3dObject(SdrModel& rSdrModel)
+:   SdrAttrObj(rSdrModel),
     maLocalBoundVol(),
     maTransformation(),
     maFullTransform(),
@@ -185,8 +57,6 @@ E3dObject::E3dObject()
     mbIsSelected(false)
 {
     bIs3DObj = true;
-    maSubList.SetOwnerObj(this);
-    maSubList.SetListKind(SdrObjListKind::GroupObj);
     bClosedObj = true;
 }
 
@@ -200,46 +70,17 @@ void E3dObject::SetSelected(bool bNew)
     {
         mbIsSelected = bNew;
     }
-
-    for(size_t a = 0; a < maSubList.GetObjCount(); ++a)
-    {
-        E3dObject* pCandidate = dynamic_cast< E3dObject* >(maSubList.GetObj(a));
-
-        if(pCandidate)
-        {
-            pCandidate->SetSelected(bNew);
-        }
-    }
 }
 
 // Break, default implementations
-
 bool E3dObject::IsBreakObjPossible()
 {
     return false;
 }
 
-SdrAttrObj* E3dObject::GetBreakObj()
+std::unique_ptr<SdrAttrObj,SdrObjectFreeOp> E3dObject::GetBreakObj()
 {
     return nullptr;
-}
-
-// SetRectsDirty must be done through the local SdrSubList
-
-void E3dObject::SetRectsDirty(bool bNotMyself)
-{
-    // call parent
-    SdrAttrObj::SetRectsDirty(bNotMyself);
-
-    for(size_t a = 0; a < maSubList.GetObjCount(); ++a)
-    {
-        E3dObject* pCandidate = dynamic_cast< E3dObject* >(maSubList.GetObj(a));
-
-        if(pCandidate)
-        {
-            pCandidate->SetRectsDirty(bNotMyself);
-        }
-    }
 }
 
 SdrInventor E3dObject::GetObjInventor() const
@@ -253,7 +94,6 @@ sal_uInt16 E3dObject::GetObjIdentifier() const
 }
 
 // Determine the capabilities of the object
-
 void E3dObject::TakeObjInfo(SdrObjTransformInfoRec& rInfo) const
 {
     rInfo.bResizeFreeAllowed    = true;
@@ -281,272 +121,165 @@ void E3dObject::TakeObjInfo(SdrObjTransformInfoRec& rInfo) const
     rInfo.bCanConvToPolyLineToArea = false;
 }
 
-void E3dObject::NbcSetLayer(SdrLayerID nLayer)
-{
-    SdrAttrObj::NbcSetLayer(nLayer);
-
-    for(size_t a = 0; a < maSubList.GetObjCount(); ++a)
-    {
-        E3dObject* pCandidate = dynamic_cast< E3dObject* >(maSubList.GetObj(a));
-
-        if(pCandidate)
-        {
-            pCandidate->NbcSetLayer(nLayer);
-        }
-    }
-}
-
-// Set ObjList also on SubList
-
-void E3dObject::SetObjList(SdrObjList* pNewObjList)
-{
-    SdrObject::SetObjList(pNewObjList);
-    maSubList.SetUpList(pNewObjList);
-}
-
-void E3dObject::SetPage(SdrPage* pNewPage)
-{
-    SdrAttrObj::SetPage(pNewPage);
-    maSubList.SetPage(pNewPage);
-}
-
-void E3dObject::SetModel(SdrModel* pNewModel)
-{
-    SdrAttrObj::SetModel(pNewModel);
-    maSubList.SetModel(pNewModel);
-}
-
 // resize object, used from old 2d interfaces, e.g. in Move/Scale dialog (F4)
-
 void E3dObject::NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact)
 {
     // Movement in X, Y in the eye coordinate system
-    E3dScene* pScene = GetScene();
+    E3dScene* pScene(getRootE3dSceneFromE3dObject());
 
-    if(pScene)
+    if(nullptr == pScene)
     {
-        // transform pos from 2D world to 3D eye
-        const sdr::contact::ViewContactOfE3dScene& rVCScene = static_cast< sdr::contact::ViewContactOfE3dScene& >(pScene->GetViewContact());
-        const drawinglayer::geometry::ViewInformation3D& aViewInfo3D(rVCScene.getViewInformation3D());
-        basegfx::B2DPoint aScaleCenter2D((double)rRef.X(), (double)rRef.Y());
-        basegfx::B2DHomMatrix aInverseSceneTransform(rVCScene.getObjectTransformation());
-
-        aInverseSceneTransform.invert();
-        aScaleCenter2D = aInverseSceneTransform * aScaleCenter2D;
-
-        basegfx::B3DPoint aScaleCenter3D(aScaleCenter2D.getX(), aScaleCenter2D.getY(), 0.5);
-        basegfx::B3DHomMatrix aInverseViewToEye(aViewInfo3D.getDeviceToView() * aViewInfo3D.getProjection());
-
-        aInverseViewToEye.invert();
-        aScaleCenter3D = aInverseViewToEye * aScaleCenter3D;
-
-        // Get scale factors
-        double fScaleX(xFact);
-        double fScaleY(yFact);
-
-        // build transform
-        basegfx::B3DHomMatrix aInverseOrientation(aViewInfo3D.getOrientation());
-        aInverseOrientation.invert();
-        basegfx::B3DHomMatrix aFullTransform(GetFullTransform());
-        basegfx::B3DHomMatrix aTrans(aFullTransform);
-
-        aTrans *= aViewInfo3D.getOrientation();
-        aTrans.translate(-aScaleCenter3D.getX(), -aScaleCenter3D.getY(), -aScaleCenter3D.getZ());
-        aTrans.scale(fScaleX, fScaleY, 1.0);
-        aTrans.translate(aScaleCenter3D.getX(), aScaleCenter3D.getY(), aScaleCenter3D.getZ());
-        aTrans *= aInverseOrientation;
-        aFullTransform.invert();
-        aTrans *= aFullTransform;
-
-        // Apply
-        basegfx::B3DHomMatrix aObjTrans(GetTransform());
-        aObjTrans *= aTrans;
-
-        E3DModifySceneSnapRectUpdater aUpdater(this);
-        SetTransform(aObjTrans);
+        return;
     }
+
+    // transform pos from 2D world to 3D eye
+    const sdr::contact::ViewContactOfE3dScene& rVCScene = static_cast< sdr::contact::ViewContactOfE3dScene& >(pScene->GetViewContact());
+    const drawinglayer::geometry::ViewInformation3D& aViewInfo3D(rVCScene.getViewInformation3D());
+    basegfx::B2DPoint aScaleCenter2D(static_cast<double>(rRef.X()), static_cast<double>(rRef.Y()));
+    basegfx::B2DHomMatrix aInverseSceneTransform(rVCScene.getObjectTransformation());
+
+    aInverseSceneTransform.invert();
+    aScaleCenter2D = aInverseSceneTransform * aScaleCenter2D;
+
+    basegfx::B3DPoint aScaleCenter3D(aScaleCenter2D.getX(), aScaleCenter2D.getY(), 0.5);
+    basegfx::B3DHomMatrix aInverseViewToEye(aViewInfo3D.getDeviceToView() * aViewInfo3D.getProjection());
+
+    aInverseViewToEye.invert();
+    aScaleCenter3D = aInverseViewToEye * aScaleCenter3D;
+
+    // Get scale factors
+    double fScaleX(xFact);
+    double fScaleY(yFact);
+
+    // build transform
+    basegfx::B3DHomMatrix aInverseOrientation(aViewInfo3D.getOrientation());
+    aInverseOrientation.invert();
+    basegfx::B3DHomMatrix aFullTransform(GetFullTransform());
+    basegfx::B3DHomMatrix aTrans(aFullTransform);
+
+    aTrans *= aViewInfo3D.getOrientation();
+    aTrans.translate(-aScaleCenter3D.getX(), -aScaleCenter3D.getY(), -aScaleCenter3D.getZ());
+    aTrans.scale(fScaleX, fScaleY, 1.0);
+    aTrans.translate(aScaleCenter3D.getX(), aScaleCenter3D.getY(), aScaleCenter3D.getZ());
+    aTrans *= aInverseOrientation;
+    aFullTransform.invert();
+    aTrans *= aFullTransform;
+
+    // Apply
+    basegfx::B3DHomMatrix aObjTrans(GetTransform());
+    aObjTrans *= aTrans;
+
+    E3DModifySceneSnapRectUpdater aUpdater(this);
+    SetTransform(aObjTrans);
 }
 
-
 // Move object in 2D is needed when using cursor keys
-
 void E3dObject::NbcMove(const Size& rSize)
 {
     // Movement in X, Y in the eye coordinate system
-    E3dScene* pScene = GetScene();
+    E3dScene* pScene(getRootE3dSceneFromE3dObject());
 
-    if(pScene)
+    if(nullptr == pScene)
     {
-        //Dimensions of the scene in 3D and 2D for comparison
-        tools::Rectangle aRect = pScene->GetSnapRect();
-
-        basegfx::B3DHomMatrix aInvDispTransform;
-        if(GetParentObj())
-        {
-            aInvDispTransform = GetParentObj()->GetFullTransform();
-            aInvDispTransform.invert();
-        }
-
-        // BoundVolume from 3d world to 3d eye
-        const sdr::contact::ViewContactOfE3dScene& rVCScene = static_cast< sdr::contact::ViewContactOfE3dScene& >(pScene->GetViewContact());
-        const drawinglayer::geometry::ViewInformation3D& aViewInfo3D(rVCScene.getViewInformation3D());
-        basegfx::B3DRange aEyeVol(pScene->GetBoundVolume());
-        aEyeVol.transform(aViewInfo3D.getOrientation());
-
-        if ((aRect.GetWidth() == 0) || (aRect.GetHeight() == 0))
-            throw o3tl::divide_by_zero();
-
-        // build relative movement vector in eye coordinates
-        basegfx::B3DPoint aMove(
-            (double)rSize.Width() * aEyeVol.getWidth() / (double)aRect.GetWidth(),
-            (double)-rSize.Height() * aEyeVol.getHeight() / (double)aRect.GetHeight(),
-            0.0);
-        basegfx::B3DPoint aPos(0.0, 0.0, 0.0);
-
-        // movement vector to local coordinates of objects' parent
-        basegfx::B3DHomMatrix aInverseOrientation(aViewInfo3D.getOrientation());
-        aInverseOrientation.invert();
-        basegfx::B3DHomMatrix aCompleteTrans(aInvDispTransform * aInverseOrientation);
-
-        aMove = aCompleteTrans * aMove;
-        aPos = aCompleteTrans * aPos;
-
-        // build transformation and apply
-        basegfx::B3DHomMatrix aTranslate;
-        aTranslate.translate(aMove.getX() - aPos.getX(), aMove.getY() - aPos.getY(), aMove.getZ() - aPos.getZ());
-
-        E3DModifySceneSnapRectUpdater aUpdater(pScene);
-        SetTransform(aTranslate * GetTransform());
+        return;
     }
-}
 
-// Return the sublist, but only if it contains objects!
+    //Dimensions of the scene in 3D and 2D for comparison
+    tools::Rectangle aRect = pScene->GetSnapRect();
+    basegfx::B3DHomMatrix aInvDispTransform;
+    E3dScene* pParent(getParentE3dSceneFromE3dObject());
 
-SdrObjList* E3dObject::GetSubList() const
-{
-    return &(const_cast< E3dObjList& >(maSubList));
+    if(nullptr != pParent)
+    {
+        aInvDispTransform = pParent->GetFullTransform();
+        aInvDispTransform.invert();
+    }
+
+    // BoundVolume from 3d world to 3d eye
+    const sdr::contact::ViewContactOfE3dScene& rVCScene = static_cast< sdr::contact::ViewContactOfE3dScene& >(pScene->GetViewContact());
+    const drawinglayer::geometry::ViewInformation3D& aViewInfo3D(rVCScene.getViewInformation3D());
+    basegfx::B3DRange aEyeVol(pScene->GetBoundVolume());
+    aEyeVol.transform(aViewInfo3D.getOrientation());
+
+    if ((aRect.GetWidth() == 0) || (aRect.GetHeight() == 0))
+        throw o3tl::divide_by_zero();
+
+    // build relative movement vector in eye coordinates
+    basegfx::B3DPoint aMove(
+        static_cast<double>(rSize.Width()) * aEyeVol.getWidth() / static_cast<double>(aRect.GetWidth()),
+        static_cast<double>(-rSize.Height()) * aEyeVol.getHeight() / static_cast<double>(aRect.GetHeight()),
+        0.0);
+    basegfx::B3DPoint aPos(0.0, 0.0, 0.0);
+
+    // movement vector to local coordinates of objects' parent
+    basegfx::B3DHomMatrix aInverseOrientation(aViewInfo3D.getOrientation());
+    aInverseOrientation.invert();
+    basegfx::B3DHomMatrix aCompleteTrans(aInvDispTransform * aInverseOrientation);
+
+    aMove = aCompleteTrans * aMove;
+    aPos = aCompleteTrans * aPos;
+
+    // build transformation and apply
+    basegfx::B3DHomMatrix aTranslate;
+    aTranslate.translate(aMove.getX() - aPos.getX(), aMove.getY() - aPos.getY(), aMove.getZ() - aPos.getZ());
+
+    E3DModifySceneSnapRectUpdater aUpdater(pScene);
+    SetTransform(aTranslate * GetTransform());
 }
 
 void E3dObject::RecalcSnapRect()
 {
     maSnapRect = tools::Rectangle();
-
-    for(size_t a = 0; a < maSubList.GetObjCount(); ++a)
-    {
-        E3dObject* pCandidate = dynamic_cast< E3dObject* >(maSubList.GetObj(a));
-
-        if(pCandidate)
-        {
-            maSnapRect.Union(pCandidate->GetSnapRect());
-        }
-    }
-}
-
-// Inform the parent about insertion of a 3D object, so that the parent is able
-// treat the particular objects in a special way (eg Light / Label in E3dScene)
-
-void E3dObject::NewObjectInserted(const E3dObject* p3DObj)
-{
-    if(GetParentObj())
-        GetParentObj()->NewObjectInserted(p3DObj);
 }
 
 // Inform parent of changes in the structure (eg by transformation), in this
 // process the object in which the change has occurred is returned.
-
 void E3dObject::StructureChanged()
 {
-    if ( GetParentObj() )
+    E3dScene* pParent(getParentE3dSceneFromE3dObject());
+
+    if(nullptr != pParent)
     {
-        GetParentObj()->InvalidateBoundVolume();
-        GetParentObj()->StructureChanged();
+        pParent->InvalidateBoundVolume();
+        pParent->StructureChanged();
     }
 }
 
-void E3dObject::Insert3DObj(E3dObject* p3DObj)
+E3dScene* E3dObject::getParentE3dSceneFromE3dObject() const
 {
-    DBG_ASSERT(p3DObj, "Insert3DObj with NULL-pointer!");
-    SdrPage* pPg = pPage;
-    maSubList.InsertObject(p3DObj);
-    pPage = pPg;
-    InvalidateBoundVolume();
-    NewObjectInserted(p3DObj);
-    StructureChanged();
-}
-
-void E3dObject::Remove3DObj(E3dObject* p3DObj)
-{
-    DBG_ASSERT(p3DObj, "Remove3DObj with NULL-pointer!");
-
-    if(p3DObj->GetParentObj() == this)
-    {
-        SdrPage* pPg = pPage;
-        maSubList.RemoveObject(p3DObj->GetOrdNum());
-        pPage = pPg;
-
-        InvalidateBoundVolume();
-        StructureChanged();
-    }
-}
-
-E3dObject* E3dObject::GetParentObj() const
-{
-    E3dObject* pRetval = nullptr;
-
-    if(GetObjList()
-        && GetObjList()->GetOwnerObj()
-        && dynamic_cast<const E3dObject*>(GetObjList()->GetOwnerObj()))
-        pRetval = static_cast<E3dObject*>(GetObjList()->GetOwnerObj());
-    return pRetval;
+    return dynamic_cast< E3dScene* >(getParentSdrObjectFromSdrObject());
 }
 
 // Determine the top-level scene object
-
-E3dScene* E3dObject::GetScene() const
+E3dScene* E3dObject::getRootE3dSceneFromE3dObject() const
 {
-    if(GetParentObj())
-        return GetParentObj()->GetScene();
+    E3dScene* pParent(getParentE3dSceneFromE3dObject());
+
+    if(nullptr != pParent)
+    {
+        return pParent->getRootE3dSceneFromE3dObject();
+    }
+
     return nullptr;
 }
 
 // Calculate enclosed volume, including all child objects
-
 basegfx::B3DRange E3dObject::RecalcBoundVolume() const
 {
     basegfx::B3DRange aRetval;
-    const size_t nObjCnt(maSubList.GetObjCount());
+    const sdr::contact::ViewContactOfE3d* pVCOfE3D = dynamic_cast< const sdr::contact::ViewContactOfE3d* >(&GetViewContact());
 
-    if(nObjCnt)
+    if(pVCOfE3D)
     {
-        for(size_t a = 0; a < nObjCnt; ++a)
+        // BoundVolume is without 3D object transformation, use correct sequence
+        const drawinglayer::primitive3d::Primitive3DContainer& xLocalSequence(pVCOfE3D->getVIP3DSWithoutObjectTransform());
+
+        if(!xLocalSequence.empty())
         {
-            const E3dObject* p3DObject = dynamic_cast< const E3dObject* >(maSubList.GetObj(a));
+            const uno::Sequence< beans::PropertyValue > aEmptyParameters;
+            const drawinglayer::geometry::ViewInformation3D aLocalViewInformation3D(aEmptyParameters);
 
-            if(p3DObject)
-            {
-                basegfx::B3DRange aLocalRange(p3DObject->GetBoundVolume());
-                aLocalRange.transform(p3DObject->GetTransform());
-                aRetval.expand(aLocalRange);
-            }
-        }
-    }
-    else
-    {
-        // single 3D object
-        const sdr::contact::ViewContactOfE3d* pVCOfE3D = dynamic_cast< const sdr::contact::ViewContactOfE3d* >(&GetViewContact());
-
-        if(pVCOfE3D)
-        {
-            // BoundVolume is without 3D object transformation, use correct sequence
-            const drawinglayer::primitive3d::Primitive3DContainer xLocalSequence(pVCOfE3D->getVIP3DSWithoutObjectTransform());
-
-            if(!xLocalSequence.empty())
-            {
-                const uno::Sequence< beans::PropertyValue > aEmptyParameters;
-                const drawinglayer::geometry::ViewInformation3D aLocalViewInformation3D(aEmptyParameters);
-
-                aRetval = xLocalSequence.getB3DRange(aLocalViewInformation3D);
-            }
+            aRetval = xLocalSequence.getB3DRange(aLocalViewInformation3D);
         }
     }
 
@@ -554,7 +287,6 @@ basegfx::B3DRange E3dObject::RecalcBoundVolume() const
 }
 
 // Get enclosed volume and possibly recalculate it
-
 const basegfx::B3DRange& E3dObject::GetBoundVolume() const
 {
     if(maLocalBoundVol.isEmpty())
@@ -570,53 +302,25 @@ void E3dObject::InvalidateBoundVolume()
     maLocalBoundVol.reset();
 }
 
-// Pass on the changes of the BoundVolumes to all child objects
-
-void E3dObject::SetBoundVolInvalid()
-{
-    InvalidateBoundVolume();
-
-    for(size_t a = 0; a < maSubList.GetObjCount(); ++a)
-    {
-        E3dObject* pCandidate = dynamic_cast< E3dObject* >(maSubList.GetObj(a));
-
-        if(pCandidate)
-        {
-            pCandidate->SetBoundVolInvalid();
-        }
-    }
-}
-
 // Pass on the changes in transformation to all child objects
-
 void E3dObject::SetTransformChanged()
 {
     InvalidateBoundVolume();
     mbTfHasChanged = true;
-
-    for(size_t a = 0; a < maSubList.GetObjCount(); ++a)
-    {
-        E3dObject* pCandidate = dynamic_cast< E3dObject* >(maSubList.GetObj(a));
-
-        if(pCandidate)
-        {
-            pCandidate->SetTransformChanged();
-        }
-    }
 }
 
 // Define the hierarchical transformation over all Parents, store in
 // maFullTransform and return them
-
 const basegfx::B3DHomMatrix& E3dObject::GetFullTransform() const
 {
     if(mbTfHasChanged)
     {
         basegfx::B3DHomMatrix aNewFullTransformation(maTransformation);
+        E3dScene* pParent(getParentE3dSceneFromE3dObject());
 
-        if ( GetParentObj() )
+        if(nullptr != pParent)
         {
-            aNewFullTransformation = GetParentObj()->GetFullTransform() * aNewFullTransformation;
+            aNewFullTransformation = pParent->GetFullTransform() * aNewFullTransformation;
         }
 
         const_cast< E3dObject* >(this)->maFullTransform = aNewFullTransformation;
@@ -625,7 +329,6 @@ const basegfx::B3DHomMatrix& E3dObject::GetFullTransform() const
 
     return maFullTransform;
 }
-
 
 void E3dObject::NbcSetTransform(const basegfx::B3DHomMatrix& rMatrix)
 {
@@ -638,7 +341,6 @@ void E3dObject::NbcSetTransform(const basegfx::B3DHomMatrix& rMatrix)
 }
 
 // Set transformation matrix with repaint broadcast
-
 void E3dObject::SetTransform(const basegfx::B3DHomMatrix& rMatrix)
 {
     if(rMatrix != maTransformation)
@@ -653,14 +355,13 @@ void E3dObject::SetTransform(const basegfx::B3DHomMatrix& rMatrix)
 basegfx::B3DPolyPolygon E3dObject::CreateWireframe() const
 {
     const basegfx::B3DRange aBoundVolume(GetBoundVolume());
-    return basegfx::tools::createCubePolyPolygonFromB3DRange(aBoundVolume);
+    return basegfx::utils::createCubePolyPolygonFromB3DRange(aBoundVolume);
 }
 
 // Get the name of the object (singular)
-
 OUString E3dObject::TakeObjNameSingul() const
 {
-    OUStringBuffer sName(ImpGetResStr(STR_ObjNameSingulObj3d));
+    OUStringBuffer sName(SvxResId(STR_ObjNameSingulObj3d));
 
     OUString aName(GetName());
     if (!aName.isEmpty())
@@ -674,38 +375,35 @@ OUString E3dObject::TakeObjNameSingul() const
 }
 
 // Get the name of the object (plural)
-
 OUString E3dObject::TakeObjNamePlural() const
 {
-    return ImpGetResStr(STR_ObjNamePluralObj3d);
+    return SvxResId(STR_ObjNamePluralObj3d);
 }
 
-E3dObject* E3dObject::Clone() const
+E3dObject* E3dObject::CloneSdrObject(SdrModel& rTargetModel) const
 {
-    return CloneHelper< E3dObject >();
+    return CloneHelper< E3dObject >(rTargetModel);
 }
 
-E3dObject& E3dObject::operator=(const E3dObject& rObj)
+E3dObject& E3dObject::operator=(const E3dObject& rSource)
 {
-    if( this == &rObj )
-        return *this;
-    SdrObject::operator=(rObj);
-
-    if (rObj.GetSubList())
+    if(this != &rSource)
     {
-        maSubList.CopyObjects(*rObj.GetSubList());
+        // call parent
+        SdrAttrObj::operator=(rSource);
+
+        // BoundVol can be copied since also the children are copied
+        maLocalBoundVol  = rSource.maLocalBoundVol;
+        maTransformation = rSource.maTransformation;
+
+        // Because the parent may have changed, definitely redefine the total
+        // transformation next time
+        SetTransformChanged();
+
+        // Copy selection status
+        mbIsSelected = rSource.mbIsSelected;
     }
 
-    // BoundVol can be copied since also the children are copied
-    maLocalBoundVol  = rObj.maLocalBoundVol;
-    maTransformation = rObj.maTransformation;
-
-    // Because the parent may have changed, definitely redefine the total
-    // transformation next time
-    SetTransformChanged();
-
-    // Copy selection status
-    mbIsSelected = rObj.mbIsSelected;
     return *this;
 }
 
@@ -734,15 +432,13 @@ void E3dObject::RestGeoData(const SdrObjGeoData& rGeo)
 // This is however a correct implementation, because everything that has
 // happened is a rotation around the axis perpendicular to the screen and that
 // is regardless of how the scene has been rotated up until now.
-
 void E3dObject::NbcRotate(const Point& rRef, long nAngle, double sn, double cs)
 {
     // So currently the glue points are defined relative to the scene aOutRect.
     // Before turning the glue points are defined relative to the page. They
     // take no part in the rotation of the scene. To ensure this, there is the
     // SetGlueReallyAbsolute(sal_True);
-
-    double fAngleInRad = nAngle/100.0 * F_PI180;
+    double fAngleInRad = basegfx::deg2rad(nAngle/100.0);
 
     basegfx::B3DHomMatrix aRotateZ;
     aRotateZ.rotate(0.0, 0.0, fAngleInRad);
@@ -755,33 +451,14 @@ void E3dObject::NbcRotate(const Point& rRef, long nAngle, double sn, double cs)
     SetGlueReallyAbsolute(false);       // from now they are again relative to BoundRect (that is defined as aOutRect)
 }
 
-sdr::properties::BaseProperties* E3dCompoundObject::CreateObjectSpecificProperties()
+std::unique_ptr<sdr::properties::BaseProperties> E3dCompoundObject::CreateObjectSpecificProperties()
 {
-    return new sdr::properties::E3dCompoundProperties(*this);
+    return std::make_unique<sdr::properties::E3dCompoundProperties>(*this);
 }
 
-
-E3dCompoundObject::E3dCompoundObject()
-:   E3dObject(),
-    aMaterialAmbientColor()
+E3dCompoundObject::E3dCompoundObject(SdrModel& rSdrModel)
+:   E3dObject(rSdrModel)
 {
-    // Set defaults
-    E3dDefaultAttributes aDefault;
-    SetDefaultAttributes(aDefault);
-}
-
-E3dCompoundObject::E3dCompoundObject(E3dDefaultAttributes& rDefault)
-:   E3dObject(),
-    aMaterialAmbientColor()
-{
-    // Set defaults
-    SetDefaultAttributes(rDefault);
-}
-
-void E3dCompoundObject::SetDefaultAttributes(E3dDefaultAttributes& rDefault)
-{
-    // Set defaults
-    aMaterialAmbientColor = rDefault.GetDefaultAmbientColor();
 }
 
 E3dCompoundObject::~E3dCompoundObject ()
@@ -799,7 +476,7 @@ basegfx::B2DPolyPolygon E3dCompoundObject::TakeXorPoly() const
     {
         const sdr::contact::ViewContactOfE3dScene& rVCScene = static_cast< sdr::contact::ViewContactOfE3dScene& >(pRootScene->GetViewContact());
         const basegfx::B3DPolyPolygon aCubePolyPolygon(CreateWireframe());
-        aRetval = basegfx::tools::createB2DPolyPolygonFromB3DPolyPolygon(aCubePolyPolygon,
+        aRetval = basegfx::utils::createB2DPolyPolygonFromB3DPolyPolygon(aCubePolyPolygon,
             aViewInfo3D.getObjectToView() * GetTransform());
         aRetval.transform(rVCScene.getObjectTransformation());
     }
@@ -810,7 +487,7 @@ basegfx::B2DPolyPolygon E3dCompoundObject::TakeXorPoly() const
 sal_uInt32 E3dCompoundObject::GetHdlCount() const
 {
     // 8 corners + 1 E3dVolumeMarker (= Wireframe representation)
-    return 9L;
+    return 9;
 }
 
 void E3dCompoundObject::AddToHdlList(SdrHdlList& rHdlList) const
@@ -852,7 +529,7 @@ void E3dCompoundObject::AddToHdlList(SdrHdlList& rHdlList) const
                 // to 2d world coor
                 aPos2D *= rVCScene.getObjectTransformation();
 
-                rHdlList.AddHdl(new SdrHdl(Point(basegfx::fround(aPos2D.getX()), basegfx::fround(aPos2D.getY())), SdrHdlKind::BezierWeight));
+                rHdlList.AddHdl(std::make_unique<SdrHdl>(Point(basegfx::fround(aPos2D.getX()), basegfx::fround(aPos2D.getY())), SdrHdlKind::BezierWeight));
             }
         }
     }
@@ -861,8 +538,7 @@ void E3dCompoundObject::AddToHdlList(SdrHdlList& rHdlList) const
 
     if(aPolyPolygon.count())
     {
-        E3dVolumeMarker* pVolMarker = new E3dVolumeMarker(aPolyPolygon);
-        rHdlList.AddHdl(pVolMarker);
+        rHdlList.AddHdl(std::make_unique<E3dVolumeMarker>(aPolyPolygon));
     }
 }
 
@@ -878,49 +554,56 @@ void E3dCompoundObject::RecalcSnapRect()
     E3dScene* pRootScene = fillViewInformation3DForCompoundObject(aViewInfo3D, *this);
     maSnapRect = tools::Rectangle();
 
-    if(pRootScene)
-    {
-        // get VC of 3D candidate
-        const sdr::contact::ViewContactOfE3d* pVCOfE3D = dynamic_cast< const sdr::contact::ViewContactOfE3d* >(&GetViewContact());
+    if(!pRootScene)
+        return;
 
-        if(pVCOfE3D)
-        {
-            // get 3D primitive sequence
-            const drawinglayer::primitive3d::Primitive3DContainer xLocalSequence(pVCOfE3D->getViewIndependentPrimitive3DContainer());
+    // get VC of 3D candidate
+    const sdr::contact::ViewContactOfE3d* pVCOfE3D = dynamic_cast< const sdr::contact::ViewContactOfE3d* >(&GetViewContact());
 
-            if(!xLocalSequence.empty())
-            {
-                // get BoundVolume
-                basegfx::B3DRange aBoundVolume(xLocalSequence.getB3DRange(aViewInfo3D));
+    if(!pVCOfE3D)
+        return;
 
-                // transform bound volume to relative scene coordinates
-                aBoundVolume.transform(aViewInfo3D.getObjectToView());
+    // get 3D primitive sequence
+    const drawinglayer::primitive3d::Primitive3DContainer xLocalSequence(pVCOfE3D->getViewIndependentPrimitive3DContainer());
 
-                // build 2d relative scene range
-                basegfx::B2DRange aSnapRange(
-                    aBoundVolume.getMinX(), aBoundVolume.getMinY(),
-                    aBoundVolume.getMaxX(), aBoundVolume.getMaxY());
+    if(xLocalSequence.empty())
+        return;
 
-                // transform to 2D world coordinates
-                const sdr::contact::ViewContactOfE3dScene& rVCScene = static_cast< sdr::contact::ViewContactOfE3dScene& >(pRootScene->GetViewContact());
-                aSnapRange.transform(rVCScene.getObjectTransformation());
+    // get BoundVolume
+    basegfx::B3DRange aBoundVolume(xLocalSequence.getB3DRange(aViewInfo3D));
 
-                // snap to integer
-                maSnapRect = tools::Rectangle(
-                    sal_Int32(floor(aSnapRange.getMinX())), sal_Int32(floor(aSnapRange.getMinY())),
-                    sal_Int32(ceil(aSnapRange.getMaxX())), sal_Int32(ceil(aSnapRange.getMaxY())));
-            }
-        }
-    }
+    // transform bound volume to relative scene coordinates
+    aBoundVolume.transform(aViewInfo3D.getObjectToView());
+
+    // build 2d relative scene range
+    basegfx::B2DRange aSnapRange(
+        aBoundVolume.getMinX(), aBoundVolume.getMinY(),
+        aBoundVolume.getMaxX(), aBoundVolume.getMaxY());
+
+    // transform to 2D world coordinates
+    const sdr::contact::ViewContactOfE3dScene& rVCScene = static_cast< sdr::contact::ViewContactOfE3dScene& >(pRootScene->GetViewContact());
+    aSnapRange.transform(rVCScene.getObjectTransformation());
+
+    // snap to integer
+    maSnapRect = tools::Rectangle(
+        sal_Int32(floor(aSnapRange.getMinX())), sal_Int32(floor(aSnapRange.getMinY())),
+        sal_Int32(ceil(aSnapRange.getMaxX())), sal_Int32(ceil(aSnapRange.getMaxY())));
 }
 
-E3dCompoundObject* E3dCompoundObject::Clone() const
+E3dCompoundObject* E3dCompoundObject::CloneSdrObject(SdrModel& rTargetModel) const
 {
-    return CloneHelper< E3dCompoundObject >();
+    return CloneHelper< E3dCompoundObject >(rTargetModel);
+}
+
+E3dCompoundObject& E3dCompoundObject::operator=(const E3dCompoundObject& rObj)
+{
+    if( this == &rObj )
+        return *this;
+    E3dObject::operator=(rObj);
+    return *this;
 }
 
 // convert given basegfx::B3DPolyPolygon to screen coor
-
 basegfx::B2DPolyPolygon E3dCompoundObject::TransformToScreenCoor(const basegfx::B3DPolyPolygon& rCandidate)
 {
     const uno::Sequence< beans::PropertyValue > aEmptyParameters;
@@ -930,26 +613,13 @@ basegfx::B2DPolyPolygon E3dCompoundObject::TransformToScreenCoor(const basegfx::
 
     if(pRootScene)
     {
-        aRetval = basegfx::tools::createB2DPolyPolygonFromB3DPolyPolygon(rCandidate,
+        aRetval = basegfx::utils::createB2DPolyPolygonFromB3DPolyPolygon(rCandidate,
             aViewInfo3D.getObjectToView() * GetTransform());
         const sdr::contact::ViewContactOfE3dScene& rVCScene = static_cast< sdr::contact::ViewContactOfE3dScene& >(pRootScene->GetViewContact());
         aRetval.transform(rVCScene.getObjectTransformation());
     }
 
     return aRetval;
-}
-
-bool E3dCompoundObject::IsAOrdNumRemapCandidate(E3dScene*& prScene) const
-{
-    if(GetObjList()
-        && GetObjList()->GetOwnerObj()
-        && dynamic_cast<const E3dObject*>(GetObjList()->GetOwnerObj()))
-    {
-        prScene = static_cast<E3dScene*>(GetObjList()->GetOwnerObj());
-        return true;
-    }
-
-    return false;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

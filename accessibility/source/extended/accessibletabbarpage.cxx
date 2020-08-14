@@ -29,6 +29,7 @@
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <toolkit/helper/convert.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 
 namespace accessibility
@@ -42,7 +43,6 @@ namespace accessibility
     using namespace ::comphelper;
 
 
-    // class AccessibleTabBarPage
 
 
     AccessibleTabBarPage::AccessibleTabBarPage( TabBar* pTabBar, sal_uInt16 nPageId, const Reference< XAccessible >& rxParent )
@@ -58,11 +58,6 @@ namespace accessibility
     }
 
 
-    AccessibleTabBarPage::~AccessibleTabBarPage()
-    {
-    }
-
-
     bool AccessibleTabBarPage::IsEnabled()
     {
         OExternalLockGuard aGuard( this );
@@ -75,7 +70,7 @@ namespace accessibility
     }
 
 
-    bool AccessibleTabBarPage::IsShowing()
+    bool AccessibleTabBarPage::IsShowing() const
     {
         bool bShowing = false;
 
@@ -86,7 +81,7 @@ namespace accessibility
     }
 
 
-    bool AccessibleTabBarPage::IsSelected()
+    bool AccessibleTabBarPage::IsSelected() const
     {
         bool bSelected = false;
 
@@ -129,7 +124,7 @@ namespace accessibility
 
     void AccessibleTabBarPage::SetPageText( const OUString& sPageText )
     {
-        if ( !m_sPageText.equals( sPageText ) )
+        if ( m_sPageText != sPageText )
         {
             Any aOldValue, aNewValue;
             aOldValue <<= m_sPageText;
@@ -218,7 +213,7 @@ namespace accessibility
 
     OUString AccessibleTabBarPage::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.svtools.AccessibleTabBarPage" );
+        return "com.sun.star.comp.svtools.AccessibleTabBarPage";
     }
 
 
@@ -254,14 +249,11 @@ namespace accessibility
     }
 
 
-    Reference< XAccessible > AccessibleTabBarPage::getAccessibleChild( sal_Int32 i )
+    Reference< XAccessible > AccessibleTabBarPage::getAccessibleChild( sal_Int32 )
     {
         OExternalLockGuard aGuard( this );
 
-        if ( i < 0 || i >= getAccessibleChildCount() )
-            throw IndexOutOfBoundsException();
-
-        return Reference< XAccessible >();
+        throw IndexOutOfBoundsException();
     }
 
 

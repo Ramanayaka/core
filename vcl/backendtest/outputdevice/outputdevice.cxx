@@ -8,10 +8,9 @@
  *
  */
 
-#include "test/outputdevice.hxx"
+#include <test/outputdevice.hxx>
 
-namespace vcl {
-namespace test {
+namespace vcl::test {
 
 Bitmap OutputDeviceTestAnotherOutDev::setupDrawOutDev()
 {
@@ -23,7 +22,7 @@ Bitmap OutputDeviceTestAnotherOutDev::setupDrawOutDev()
 
     initialSetup(13, 13, constBackgroundColor);
 
-    mpVirtualDevice->DrawOutDev(Point(2, 2), aSourceSize, Point(), aSourceSize, *pSourceDev.get());
+    mpVirtualDevice->DrawOutDev(Point(2, 2), aSourceSize, Point(), aSourceSize, *pSourceDev);
 
     return mpVirtualDevice->GetBitmap(maVDRectangle.TopLeft(), maVDRectangle.GetSize());
 }
@@ -55,7 +54,12 @@ Bitmap OutputDeviceTestAnotherOutDev::setupXOR()
 
 TestResult OutputDeviceTestAnotherOutDev::checkDrawOutDev(Bitmap& rBitmap)
 {
-    return checkFilledRectangle(rBitmap);
+    std::vector<Color> aExpected
+    {
+        constBackgroundColor, constBackgroundColor,
+        constFillColor, constFillColor, constFillColor, constFillColor, constFillColor
+    };
+    return checkRectangles(rBitmap, aExpected);
 }
 
 TestResult OutputDeviceTestAnotherOutDev::checkXOR(Bitmap& rBitmap)
@@ -70,6 +74,6 @@ TestResult OutputDeviceTestAnotherOutDev::checkXOR(Bitmap& rBitmap)
     return checkRectangles(rBitmap, aExpected);
 }
 
-}} // end namespace vcl::test
+} // end namespace vcl::test
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

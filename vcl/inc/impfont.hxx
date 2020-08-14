@@ -21,10 +21,13 @@
 #define INCLUDED_VCL_INC_IMPFONT_HXX
 
 #include <rtl/ustring.hxx>
+#include <tools/color.hxx>
+#include <tools/fontenum.hxx>
+#include <tools/gen.hxx>
 #include <i18nlangtag/languagetag.hxx>
-#include <vcl/vclenum.hxx>
+#include <vcl/fntstyle.hxx>
 
-#include "fontinstance.hxx"
+#include "fontselect.hxx"
 
 /* The following class is extraordinarily similar to FontAttributes. */
 
@@ -76,7 +79,6 @@ public:
     void                SetQuality( int nQuality )                      { mnQuality = nQuality; }
     void                IncreaseQualityBy( int nQualityAmount )         { mnQuality += nQualityAmount; }
     void                DecreaseQualityBy( int nQualityAmount )         { mnQuality -= nQualityAmount; }
-    void                SetMapNames( OUString const & aMapNames )       { maMapNames = aMapNames; }
 
     bool                operator==( const ImplFont& ) const;
 
@@ -121,7 +123,6 @@ private:
     Color               maFillColor;        // compatibility, now on output device
 
     // Device dependent variables
-    OUString            maMapNames;
     bool                mbWordLine:1;
 
     // TODO: metric data, should be migrated to ImplFontMetric

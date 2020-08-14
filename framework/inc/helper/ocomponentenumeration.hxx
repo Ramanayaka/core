@@ -20,8 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_HELPER_OCOMPONENTENUMERATION_HXX
 #define INCLUDED_FRAMEWORK_INC_HELPER_OCOMPONENTENUMERATION_HXX
 
-#include <general.h>
-
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
@@ -48,7 +46,7 @@ namespace framework{
     @threadsafe     yes
 *//*-*************************************************************************************************************/
 
-class OComponentEnumeration :   public ::cppu::WeakImplHelper< css::container::XEnumeration,css::lang::XEventListener >
+class OComponentEnumeration final : public ::cppu::WeakImplHelper< css::container::XEnumeration,css::lang::XEventListener >
 {
 
     //  public methods
@@ -112,7 +110,7 @@ class OComponentEnumeration :   public ::cppu::WeakImplHelper< css::container::X
 
     //  protected methods
 
-    protected:
+    private:
 
         /*-****************************************************************************************************
             @short      standard destructor
@@ -138,8 +136,6 @@ class OComponentEnumeration :   public ::cppu::WeakImplHelper< css::container::X
         void impl_resetObject();
 
 
-    private:
-
     //  debug methods
     //  (should be private everyway!)
 
@@ -154,8 +150,6 @@ class OComponentEnumeration :   public ::cppu::WeakImplHelper< css::container::X
             @return     sal_False on invalid parameter<BR>
                         sal_True  otherway
         *//*-*****************************************************************************************************/
-
-    private:
 
         sal_uInt32                                                       m_nPosition;   /// current position in enumeration
         std::vector< css::uno::Reference< css::lang::XComponent > >      m_seqComponents;   /// list of current components

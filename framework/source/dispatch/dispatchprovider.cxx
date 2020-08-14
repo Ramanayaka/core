@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <stdio.h>
 #include <dispatch/dispatchprovider.hxx>
 #include <loadenv/loadenv.hxx>
 #include <dispatch/loaddispatcher.hxx>
@@ -25,24 +24,18 @@
 #include <dispatch/startmoduledispatcher.hxx>
 
 #include <pattern/window.hxx>
-#include <threadhelp/transactionguard.hxx>
-#include <protocols.h>
-#include <services.h>
 #include <targets.h>
-#include <general.h>
-#include <isstartmoduledispatch.hxx>
+#include "isstartmoduledispatch.hxx"
 
 #include <com/sun/star/frame/XDesktop.hpp>
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
 #include <com/sun/star/uno/Exception.hpp>
-#include <com/sun/star/ucb/XContentProviderManager.hpp>
-#include <com/sun/star/document/XTypeDetection.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 
-#include <rtl/string.h>
 #include <rtl/ustring.hxx>
 #include <vcl/svapp.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 namespace framework{
 
@@ -148,7 +141,7 @@ css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL Disp
 /**
     @short      helper for queryDispatch()
     @descr      Every member of the frame tree (frame, desktop) must handle such request
-                in another way. So we implement different specialized methods for every one.
+                in another way. So we implement different specialized methods for everyone.
 
     @threadsafe yes
  */
@@ -175,7 +168,7 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_queryDeskt
     //  It's not the right place to create a new task here - because we are queried for a dispatch object
     //  only, which can handle such request. Such dispatcher should create the required task on demand.
     //  Normally the functionality for "_blank" is provided by findFrame() - but that would create it directly
-    //  here. Thats why we must "intercept" here.
+    //  here. that's why we must "intercept" here.
 
     if (sTargetFrameName==SPECIALTARGET_BLANK)
     {
@@ -216,8 +209,7 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_queryDeskt
 
     else
     {
-        sal_Int32 nRightFlags  = nSearchFlags;
-                  nRightFlags &= ~css::frame::FrameSearchFlag::CREATE;
+        sal_Int32 nRightFlags  = nSearchFlags & ~css::frame::FrameSearchFlag::CREATE;
 
         // try to find any existing target and ask him for his dispatcher
         css::uno::Reference< css::frame::XFrame > xFoundFrame = xDesktop->findFrame(sTargetFrameName, nRightFlags);
@@ -250,7 +242,7 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_queryFrame
     // I.I) "_blank", "_default"
     //  It's not the right place to create a new task here. Only the desktop can do that.
     //  Normally the functionality for "_blank" is provided by findFrame() - but that would create it directly
-    //  here. Thats why we must "intercept" here.
+    //  here. that's why we must "intercept" here.
 
     if (
         (sTargetFrameName==SPECIALTARGET_BLANK  ) ||
@@ -305,7 +297,7 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_queryFrame
             // If we are this top frame itself (means our owner frame)
             // we should call ourself recursiv with a better target "_self".
             // So we can share the same code! (see reaction for "_self" inside this method too.)
-            xDispatcher = this->queryDispatch(aURL,SPECIALTARGET_SELF,0);
+            xDispatcher = queryDispatch(aURL,SPECIALTARGET_SELF,0);
         }
         else
         {
@@ -321,7 +313,7 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_queryFrame
     //  Our owner frame should handle this URL. But we can't do it for all of them.
     //  So we ask the internal set controller first. If he disagree we try to find a registered
     //  protocol handler. If this failed too - we check for a loadable content and in case of true
-    //  we load it into the frame by returning specilized dispatch object.
+    //  we load it into the frame by returning specialized dispatch object.
 
     else if (
              (sTargetFrameName==SPECIALTARGET_SELF)  ||
@@ -333,7 +325,7 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_queryFrame
         {
             css::uno::Reference< css::frame::XDispatchProvider > xParent( xFrame->getCreator(), css::uno::UNO_QUERY );
             // In case the frame is not a top one, is not based on system window and has a parent,
-            // the parent frame should to be queried for the correct dispatcher.
+            // the parent frame should be queried for the correct dispatcher.
             // See i93473
             if (
                 !WindowHelper::isTopWindow(xFrame->getContainerWindow()) &&
@@ -384,8 +376,7 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_queryFrame
 
     else
     {
-        sal_Int32 nRightFlags  = nSearchFlags;
-                  nRightFlags &= ~css::frame::FrameSearchFlag::CREATE;
+        sal_Int32 nRightFlags  = nSearchFlags & ~css::frame::FrameSearchFlag::CREATE;
 
         // try to find any existing target and ask him for his dispatcher
         css::uno::Reference< css::frame::XFrame > xFoundFrame = xFrame->findFrame(sTargetFrameName, nRightFlags);
@@ -393,8 +384,8 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_queryFrame
         {
             // Attention: Found target is our own owner frame!
             // Don't ask him for his dispatcher. We know it already - it's our self dispatch helper.
-            // Otherwhise we can start a never ending recursiv call. Why?
-            // Somewere called our owner frame - he called some interceptor objects - and may by this dispatch provider
+            // Otherwise we can start a never ending recursiv call. Why?
+            // Somewhere called our owner frame - he called some interceptor objects - and may by this dispatch provider
             // is called. If wa use queryDispatch() on our owner frame again - we start this call stack again ... and again.
             if (xFoundFrame==xFrame)
                 xDispatcher = implts_getOrCreateDispatchHelper( E_SELFDISPATCHER, xFrame );
@@ -468,7 +459,7 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_searchProt
                 {
                     try
                     {
-                        // but do it only, if all context information are OK
+                        // but do it only, if all context information is OK
                         css::uno::Sequence< css::uno::Any > lContext(1);
                         lContext[0] <<= xOwner;
                         xInit->initialize(lContext);
@@ -490,11 +481,10 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_searchProt
     @short      get or create new dispatch helper
     @descr      Sometimes we need some helper implementations to support dispatching of special URLs or commands.
                 But it's not a good idea to hold these services for the whole life time of this provider instance.
-                We should create it on demand ...
-                Thats why we implement this method. It return an already existing helper or create a new one otherwise.
+                We should create it on demand...
+                That's why we implement this method. It return an already existing helper or create a new one otherwise.
 
     @attention  The parameter sTarget and nSearchFlags are defaulted to "" and 0!
-                Please use it only, if you can be sure, that the really given by the outside calli!
                 Mostly it depends from the parameter eHelper is they are required or not.
 
     @param      eHelper
@@ -527,8 +517,7 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_getOrCreat
 
         case E_BLANKDISPATCHER :
                 {
-                    css::uno::Reference< css::frame::XFrame > xDesktop( xOwner, css::uno::UNO_QUERY );
-                    if (xDesktop.is())
+                    if (xOwner.is())
                     {
                         LoadDispatcher* pDispatcher = new LoadDispatcher(m_xContext, xOwner, SPECIALTARGET_BLANK, 0);
                         xDispatchHelper.set( static_cast< ::cppu::OWeakObject* >(pDispatcher), css::uno::UNO_QUERY );
@@ -538,8 +527,7 @@ css::uno::Reference< css::frame::XDispatch > DispatchProvider::implts_getOrCreat
 
         case E_DEFAULTDISPATCHER :
                 {
-                    css::uno::Reference< css::frame::XFrame > xDesktop( xOwner, css::uno::UNO_QUERY );
-                    if (xDesktop.is())
+                    if (xOwner.is())
                     {
                         LoadDispatcher* pDispatcher = new LoadDispatcher(m_xContext, xOwner, SPECIALTARGET_DEFAULT, 0);
                         xDispatchHelper.set( static_cast< ::cppu::OWeakObject* >(pDispatcher), css::uno::UNO_QUERY );

@@ -19,19 +19,16 @@
 
 #include <sal/config.h>
 
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/tools/unopolypolygon.hxx>
+#include <basegfx/utils/canvastools.hxx>
+#include <basegfx/utils/unopolypolygon.hxx>
 #include <canvas/canvastools.hxx>
 #include <rtl/instance.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <tools/diagnose_ex.h>
+#include <tools/stream.hxx>
 #include <vcl/canvastools.hxx>
 #include <vcl/dibtools.hxx>
 
 #include "canvasbitmap.hxx"
 #include "devicehelper.hxx"
-#include "spritecanvas.hxx"
-#include "spritecanvashelper.hxx"
 
 using namespace ::com::sun::star;
 
@@ -118,7 +115,7 @@ namespace vclcanvas
         return uno::Reference< rendering::XBitmap >(
             new CanvasBitmap( vcl::unotools::sizeFromIntegerSize2D(size),
                               false,
-                              *rDevice.get(),
+                              *rDevice,
                               mpOutDev ) );
     }
 
@@ -139,7 +136,7 @@ namespace vclcanvas
         return uno::Reference< rendering::XBitmap >(
             new CanvasBitmap( vcl::unotools::sizeFromIntegerSize2D(size),
                               true,
-                              *rDevice.get(),
+                              *rDevice,
                               mpOutDev ) );
     }
 
@@ -182,14 +179,14 @@ namespace vclcanvas
         {
             uno::Reference<rendering::XColorSpace> operator()()
             {
-                uno::Reference< rendering::XColorSpace > xColorSpace( canvas::tools::getStdColorSpace(), uno::UNO_QUERY );
+                uno::Reference< rendering::XColorSpace > xColorSpace = canvas::tools::getStdColorSpace();
                 assert( xColorSpace.is() );
                 return xColorSpace;
             }
         };
     }
 
-    uno::Reference<rendering::XColorSpace> DeviceHelper::getColorSpace() const
+    uno::Reference<rendering::XColorSpace> const & DeviceHelper::getColorSpace() const
     {
         // always the same
         return DeviceColorSpace::get();
@@ -199,21 +196,21 @@ namespace vclcanvas
     {
         static sal_Int32 nFilePostfixCount(0);
 
-        if( mpOutDev )
-        {
-            OUString aFilename = "dbg_frontbuffer" + OUString::number(nFilePostfixCount) + ".bmp";
+        if( !mpOutDev )
+            return;
 
-            SvFileStream aStream( aFilename, StreamMode::STD_READWRITE );
+        OUString aFilename = "dbg_frontbuffer" + OUString::number(nFilePostfixCount) + ".bmp";
 
-            const ::Point aEmptyPoint;
-            OutputDevice& rOutDev = mpOutDev->getOutDev();
-            bool bOldMap( rOutDev.IsMapModeEnabled() );
-            rOutDev.EnableMapMode( false );
-            WriteDIB(rOutDev.GetBitmap(aEmptyPoint, rOutDev.GetOutputSizePixel()), aStream, false, true);
-            rOutDev.EnableMapMode( bOldMap );
+        SvFileStream aStream( aFilename, StreamMode::STD_READWRITE );
 
-            ++nFilePostfixCount;
-        }
+        const ::Point aEmptyPoint;
+        OutputDevice& rOutDev = mpOutDev->getOutDev();
+        bool bOldMap( rOutDev.IsMapModeEnabled() );
+        rOutDev.EnableMapMode( false );
+        WriteDIB(rOutDev.GetBitmapEx(aEmptyPoint, rOutDev.GetOutputSizePixel()), aStream, false);
+        rOutDev.EnableMapMode( bOldMap );
+
+        ++nFilePostfixCount;
     }
 
 }

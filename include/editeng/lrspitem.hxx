@@ -43,19 +43,17 @@
     700       -500       200       700         -500
 */
 
-#define LRSPACE_16_VERSION      ((sal_uInt16)0x0001)
-#define LRSPACE_TXTLEFT_VERSION ((sal_uInt16)0x0002)
-#define LRSPACE_AUTOFIRST_VERSION ((sal_uInt16)0x0003)
-#define LRSPACE_NEGATIVE_VERSION ((sal_uInt16)0x0004)
+#define LRSPACE_TXTLEFT_VERSION (sal_uInt16(0x0002))
+#define LRSPACE_NEGATIVE_VERSION (sal_uInt16(0x0004))
 
-class EDITENG_DLLPUBLIC SvxLRSpaceItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxLRSpaceItem final : public SfxPoolItem
 {
     long    nTxtLeft;           // We spend a sal_uInt16
     long    nLeftMargin;        // nLeft or the negative first-line indent
     long    nRightMargin;       // The unproblematic right edge
 
-    sal_uInt16  nPropFirstLineOfst, nPropLeftMargin, nPropRightMargin;
-    short   nFirstLineOfst;     // First-line indent _always_ relative to nTxtLeft
+    sal_uInt16  nPropFirstLineOffset, nPropLeftMargin, nPropRightMargin;
+    short   nFirstLineOffset;     // First-line indent _always_ relative to nTxtLeft
     bool        bAutoFirst;    // Automatic calculation of the first line indent
     bool        bExplicitZeroMarginValRight;
     bool        bExplicitZeroMarginValLeft;
@@ -70,7 +68,7 @@ public:
     SvxLRSpaceItem( const long nLeft, const long nRight,
                     const long nTLeft /*= 0*/, const short nOfset /*= 0*/,
                     const sal_uInt16 nId  );
-    inline SvxLRSpaceItem& operator=( const SvxLRSpaceItem &rCpy );
+    SvxLRSpaceItem(SvxLRSpaceItem const &) = default; // SfxPoolItem copy function dichotomy
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
@@ -81,12 +79,9 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion ) const override;
-    virtual sal_uInt16           GetVersion( sal_uInt16 nFileVersion ) const override;
+    virtual SvxLRSpaceItem*      Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual void                 ScaleMetrics( long nMult, long nDiv ) override;
     virtual bool                 HasMetrics() const override;
 
@@ -113,31 +108,18 @@ public:
     inline void SetTextLeft( const long nL, const sal_uInt16 nProp = 100 );
     long GetTextLeft() const { return nTxtLeft; }
 
-    inline void   SetTextFirstLineOfst( const short nF, const sal_uInt16 nProp = 100 );
-    short  GetTextFirstLineOfst() const { return nFirstLineOfst; }
-    void SetPropTextFirstLineOfst( const sal_uInt16 nProp )
-                    { nPropFirstLineOfst = nProp; }
-    sal_uInt16 GetPropTextFirstLineOfst() const
-                    { return nPropFirstLineOfst; }
-    void SetTextFirstLineOfstValue( const short nValue )
-                    { nFirstLineOfst = nValue; }
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
-};
+    inline void   SetTextFirstLineOffset( const short nF, const sal_uInt16 nProp = 100 );
+    short  GetTextFirstLineOffset() const { return nFirstLineOffset; }
+    void SetPropTextFirstLineOffset( const sal_uInt16 nProp )
+                    { nPropFirstLineOffset = nProp; }
+    sal_uInt16 GetPropTextFirstLineOffset() const
+                    { return nPropFirstLineOffset; }
+    void SetTextFirstLineOffsetValue( const short nValue )
+                    { nFirstLineOffset = nValue; }
 
-inline SvxLRSpaceItem &SvxLRSpaceItem::operator=( const SvxLRSpaceItem &rCpy )
-{
-    nFirstLineOfst = rCpy.nFirstLineOfst;
-    nTxtLeft = rCpy.nTxtLeft;
-    nLeftMargin = rCpy.nLeftMargin;
-    nRightMargin = rCpy.nRightMargin;
-    nPropFirstLineOfst = rCpy.nPropFirstLineOfst;
-    nPropLeftMargin = rCpy.nPropLeftMargin;
-    nPropRightMargin = rCpy.nPropRightMargin;
-    bAutoFirst = rCpy.bAutoFirst;
-    bExplicitZeroMarginValRight = rCpy.bExplicitZeroMarginValRight;
-    bExplicitZeroMarginValLeft = rCpy.bExplicitZeroMarginValLeft;
-    return *this;
-}
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+    virtual boost::property_tree::ptree dumpAsJSON() const override;
+};
 
 inline void SvxLRSpaceItem::SetLeft( const long nL, const sal_uInt16 nProp )
 {
@@ -154,11 +136,11 @@ inline void SvxLRSpaceItem::SetRight( const long nR, const sal_uInt16 nProp )
     nRightMargin = (nR * nProp) / 100;
     nPropRightMargin = nProp;
 }
-inline void SvxLRSpaceItem::SetTextFirstLineOfst( const short nF,
+inline void SvxLRSpaceItem::SetTextFirstLineOffset( const short nF,
                                                  const sal_uInt16 nProp )
 {
-    nFirstLineOfst = short((long(nF) * nProp ) / 100);
-    nPropFirstLineOfst = nProp;
+    nFirstLineOffset = short((long(nF) * nProp ) / 100);
+    nPropFirstLineOffset = nProp;
     AdjustLeft();
 }
 

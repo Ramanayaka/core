@@ -17,13 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <stdio.h>
-#include <iostream>
 #include "OOXMLParserState.hxx"
 #include "Handler.hxx"
 
-namespace writerfilter {
-namespace ooxml
+#include <sal/log.hxx>
+
+namespace writerfilter::ooxml
 {
 /*
   class OOXMLParserState
@@ -78,13 +77,9 @@ void OOXMLParserState::setForwardEvents(bool bForwardEvents)
 }
 
 
-const std::string OOXMLParserState::getHandle() const
+std::string OOXMLParserState::getHandle() const
 {
-    char sBuffer[256];
-
-    snprintf(sBuffer, sizeof(sBuffer), "%u", mnHandle);
-
-    return sBuffer;
+    return std::to_string(mnHandle);
 }
 
 void OOXMLParserState::setHandle()
@@ -115,16 +110,16 @@ const OUString & OOXMLParserState::getTarget() const
 
 void OOXMLParserState::resolveCharacterProperties(Stream & rStream)
 {
-    if (mpCharacterProps.get() != nullptr)
+    if (mpCharacterProps)
     {
-        rStream.props(mpCharacterProps);
-        mpCharacterProps.reset(new OOXMLPropertySet);
+        rStream.props(mpCharacterProps.get());
+        mpCharacterProps = new OOXMLPropertySet;
     }
 }
 
 void OOXMLParserState::setCharacterProperties(const OOXMLPropertySet::Pointer_t& pProps)
 {
-    if (mpCharacterProps.get() == nullptr)
+    if (!mpCharacterProps)
         mpCharacterProps = pProps;
     else
         mpCharacterProps->add(pProps);
@@ -136,7 +131,7 @@ void OOXMLParserState::setCellProperties(const OOXMLPropertySet::Pointer_t& pPro
     {
         OOXMLPropertySet::Pointer_t & rCellProps = mCellProps.top();
 
-        if (rCellProps.get() == nullptr)
+        if (!rCellProps)
             rCellProps = pProps;
         else
             rCellProps->add(pProps);
@@ -149,7 +144,7 @@ void OOXMLParserState::setRowProperties(const OOXMLPropertySet::Pointer_t& pProp
     {
         OOXMLPropertySet::Pointer_t & rRowProps = mRowProps.top();
 
-        if (rRowProps.get() == nullptr)
+        if (!rRowProps)
             rRowProps = pProps;
         else
             rRowProps->add(pProps);
@@ -162,10 +157,10 @@ void OOXMLParserState::resolveCellProperties(Stream & rStream)
     {
         OOXMLPropertySet::Pointer_t & rCellProps = mCellProps.top();
 
-        if (rCellProps.get() != nullptr)
+        if (rCellProps)
         {
-            rStream.props(rCellProps);
-            rCellProps.reset(new OOXMLPropertySet);
+            rStream.props(rCellProps.get());
+            rCellProps = new OOXMLPropertySet;
         }
     }
 }
@@ -176,10 +171,10 @@ void OOXMLParserState::resolveRowProperties(Stream & rStream)
     {
         OOXMLPropertySet::Pointer_t & rRowProps = mRowProps.top();
 
-        if (rRowProps.get() != nullptr)
+        if (rRowProps)
         {
-            rStream.props(rRowProps);
-            rRowProps.reset(new OOXMLPropertySet);
+            rStream.props(rRowProps.get());
+            rRowProps = new OOXMLPropertySet;
         }
     }
 }
@@ -190,9 +185,9 @@ void OOXMLParserState::resolveTableProperties(Stream & rStream)
     {
         OOXMLPropertySet::Pointer_t & rTableProps = mTableProps.top();
 
-        if (rTableProps.get() != nullptr)
+        if (rTableProps)
         {
-            rStream.props(rTableProps);
+            rStream.props(rTableProps.get());
             // Don't clean the table props to send them again for each row
             // This mimics the behaviour from RTF tokenizer.
         }
@@ -204,7 +199,7 @@ void OOXMLParserState::setTableProperties(const OOXMLPropertySet::Pointer_t& pPr
     if (!mTableProps.empty())
     {
         OOXMLPropertySet::Pointer_t & rTableProps = mTableProps.top();
-        if (rTableProps.get() == nullptr)
+        if (!rTableProps)
             rTableProps = pProps;
         else
             rTableProps->add(pProps);
@@ -214,17 +209,17 @@ void OOXMLParserState::setTableProperties(const OOXMLPropertySet::Pointer_t& pPr
 // tdf#108714
 void OOXMLParserState::resolvePostponedBreak(Stream & rStream)
 {
-    if (mpPostponedBreak)
+    for (const auto & rBreak: mvPostponedBreaks)
     {
         OOXMLBreakHandler aBreakHandler(rStream);
-        mpPostponedBreak->resolve(aBreakHandler);
-        mpPostponedBreak.reset();
+        rBreak->resolve(aBreakHandler);
     }
+    mvPostponedBreaks.clear();
 }
 
 void OOXMLParserState::setPostponedBreak(const OOXMLPropertySet::Pointer_t & pProps)
 {
-    mpPostponedBreak = pProps;
+    mvPostponedBreaks.push_back(pProps);
 }
 
 void OOXMLParserState::startTable()
@@ -280,6 +275,6 @@ void OOXMLParserState::endTxbxContent()
     inTxbxContent = false;
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,17 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/svapp.hxx>
 #include <vcl/taskpanelist.hxx>
 #include <vcl/settings.hxx>
 
-#include "olinewin.hxx"
-#include "olinetab.hxx"
-#include "document.hxx"
-#include "dbfunc.hxx"
-#include "scres.hrc"
-#include "scresid.hxx"
-#include "bitmaps.hlst"
+#include <olinewin.hxx>
+#include <olinetab.hxx>
+#include <document.hxx>
+#include <dbfunc.hxx>
+#include <bitmaps.hlst>
 
 const long SC_OL_BITMAPSIZE                 = 12;
 const long SC_OL_POSOFFSET                  = 2;
@@ -126,7 +123,6 @@ void ScOutlineWindow::ScrollPixel( long nDiff )
 
     ScrollRel( nDiff, nStart, nEnd );
     Invalidate( GetRectangle( 0, nInvStart, GetOutputSizeLevel() - 1, nInvEnd ) );
-    Update();
 
     // if focus becomes invisible, move it to next visible button
     ImplMoveFocusToVisible( nDiff < 0 );
@@ -532,7 +528,7 @@ namespace
 {
     Image GetImage(const OUString& rId)
     {
-        return Image(BitmapEx(rId));
+        return Image(StockImage::Yes, rId);
     }
 }
 
@@ -564,26 +560,26 @@ void ScOutlineWindow::DrawBorderRel( size_t nLevel, size_t nEntry, bool bPressed
 
 void ScOutlineWindow::ShowFocus()
 {
-    if ( HasFocus() )
-    {
-        // first move to a visible position
-        ImplMoveFocusToVisible( true );
+    if ( !HasFocus() )
+        return;
 
-        if ( IsFocusButtonVisible() )
-        {
-            Point aPos;
-            if ( GetImagePos( mnFocusLevel, mnFocusEntry, aPos ) )
-            {
-                aPos += Point( 1, 1 );
-                maFocusRect = tools::Rectangle( aPos, Size( SC_OL_BITMAPSIZE - 2, SC_OL_BITMAPSIZE - 2 ) );
-                bool bClip = (mnFocusEntry != SC_OL_HEADERENTRY);
-                if ( bClip )
-                    SetEntryAreaClipRegion();
-                InvertTracking( maFocusRect, ShowTrackFlags::Small | ShowTrackFlags::TrackWindow );
-                if ( bClip )
-                    SetClipRegion();
-            }
-        }
+    // first move to a visible position
+    ImplMoveFocusToVisible( true );
+
+    if ( !IsFocusButtonVisible() )
+        return;
+
+    Point aPos;
+    if ( GetImagePos( mnFocusLevel, mnFocusEntry, aPos ) )
+    {
+        aPos += Point( 1, 1 );
+        maFocusRect = tools::Rectangle( aPos, Size( SC_OL_BITMAPSIZE - 2, SC_OL_BITMAPSIZE - 2 ) );
+        bool bClip = (mnFocusEntry != SC_OL_HEADERENTRY);
+        if ( bClip )
+            SetEntryAreaClipRegion();
+        InvertTracking( maFocusRect, ShowTrackFlags::Small | ShowTrackFlags::TrackWindow );
+        if ( bClip )
+            SetClipRegion();
     }
 }
 
@@ -601,7 +597,7 @@ void ScOutlineWindow::HideFocus()
     }
 }
 
-static const OUStringLiteral aLevelBmps[]=
+const OUStringLiteral aLevelBmps[]=
 {
     RID_BMP_LEVEL1,
     RID_BMP_LEVEL2,

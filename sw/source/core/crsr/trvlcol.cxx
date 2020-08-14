@@ -18,12 +18,11 @@
  */
 
 #include <crsrsh.hxx>
-#include <doc.hxx>
 #include <layfrm.hxx>
 #include <cntfrm.hxx>
 #include <swcrsr.hxx>
 #include <viscrs.hxx>
-#include <callnk.hxx>
+#include "callnk.hxx"
 
 SwLayoutFrame* GetCurrColumn( const SwLayoutFrame* pLayFrame )
 {
@@ -64,42 +63,41 @@ SwContentFrame* GetColumnEnd( const SwLayoutFrame* pColFrame )
     return pRet;
 }
 
-bool SwCursorShell::MoveColumn( SwWhichColumn fnWhichCol, SwPosColumn fnPosCol )
+void SwCursorShell::MoveColumn( SwWhichColumn fnWhichCol, SwPosColumn fnPosCol )
 {
-    bool bRet = false;
-    if( !m_pTableCursor )
+    if( m_pTableCursor )
+        return;
+    SwLayoutFrame* pLayFrame = GetCurrFrame()->GetUpper();
+    if( !pLayFrame )
+        return;
+    pLayFrame = (*fnWhichCol)( pLayFrame );
+    if(  !pLayFrame )
+        return;
+
+    SwContentFrame* pCnt = (*fnPosCol)( pLayFrame );
+    if( !pCnt )
+        return;
+
+    CurrShell aCurr( this );
+    SwCallLink aLk( *this ); // watch Cursor-Moves; call Link if needed
+    SwCursorSaveState aSaveState( *m_pCurrentCursor );
+
+    pCnt->Calc(GetOut());
+
+    Point aPt( pCnt->getFrameArea().Pos() + pCnt->getFramePrintArea().Pos() );
+    if( fnPosCol == GetColumnEnd )
     {
-        SwLayoutFrame* pLayFrame = GetCurrFrame()->GetUpper();
-        if( pLayFrame && nullptr != ( pLayFrame = (*fnWhichCol)( pLayFrame )) )
-        {
-            SwContentFrame* pCnt = (*fnPosCol)( pLayFrame );
-            if( pCnt )
-            {
-                SET_CURR_SHELL( this );
-                SwCallLink aLk( *this ); // watch Cursor-Moves; call Link if needed
-                SwCursorSaveState aSaveState( *m_pCurrentCursor );
-
-                pCnt->Calc(GetOut());
-
-                Point aPt( pCnt->Frame().Pos() + pCnt->Prt().Pos() );
-                if( fnPosCol == GetColumnEnd )
-                {
-                    aPt.setX(aPt.getX() + pCnt->Prt().Width());
-                    aPt.setY(aPt.getY() + pCnt->Prt().Height());
-                }
-
-                pCnt->GetCursorOfst( m_pCurrentCursor->GetPoint(), aPt );
-
-                if( !m_pCurrentCursor->IsInProtectTable( true ) &&
-                    !m_pCurrentCursor->IsSelOvr() )
-                {
-                    UpdateCursor();
-                    bRet = true;
-                }
-            }
-        }
+        aPt.setX(aPt.getX() + pCnt->getFramePrintArea().Width());
+        aPt.setY(aPt.getY() + pCnt->getFramePrintArea().Height());
     }
-    return bRet;
+
+    pCnt->GetModelPositionForViewPoint( m_pCurrentCursor->GetPoint(), aPt );
+
+    if( !m_pCurrentCursor->IsInProtectTable( true ) &&
+        !m_pCurrentCursor->IsSelOvr() )
+    {
+        UpdateCursor();
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

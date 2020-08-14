@@ -17,29 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svl/srchitem.hxx>
-#include <sfx2/app.hxx>
 #include <svx/svxids.hrc>
 
+#include <comphelper/fileformat.h>
 #include <comphelper/classids.hxx>
 #include <sfx2/objface.hxx>
+#include <tools/globname.hxx>
+#include <osl/diagnose.h>
 
 #include <sfx2/msg.hxx>
-#include "cfgid.h"
-#include "cmdid.h"
-#include "swtypes.hxx"
+#include <swtypes.hxx>
 
-#include "shellio.hxx"
-#include "wdocsh.hxx"
-#include "web.hrc"
+#include <wdocsh.hxx>
+#include <strings.hrc>
 
-#include <sfx2/request.hxx>
     // needed for -fsanitize=function visibility of typeinfo for functions of
     // type void(SfxShell*,SfxRequest&) defined in swslots.hxx
-#define SwWebDocShell
-#include "swslots.hxx"
-
-#include <unomid.h>
+#define ShellClass_SwWebDocShell
+#include <swslots.hxx>
 
 SFX_IMPL_SUPERCLASS_INTERFACE(SwWebDocShell, SfxObjectShell)
 
@@ -48,7 +43,7 @@ void SwWebDocShell::InitInterface_Impl()
 }
 
 
-SFX_IMPL_OBJECTFACTORY(SwWebDocShell, SvGlobalName(SO3_SWWEB_CLASSID), SfxObjectShellFlags::STD_NORMAL|SfxObjectShellFlags::HASMENU, "swriter/web" )
+SFX_IMPL_OBJECTFACTORY(SwWebDocShell, SvGlobalName(SO3_SWWEB_CLASSID), "swriter/web" )
 
 SwWebDocShell::SwWebDocShell()
     : SwDocShell(SfxObjectCreateMode::STANDARD)
@@ -62,9 +57,7 @@ SwWebDocShell::~SwWebDocShell()
 
 void SwWebDocShell::FillClass( SvGlobalName * pClassName,
                                    SotClipboardFormatId * pClipFormat,
-                                   OUString * /*pAppName*/,
                                    OUString * pLongUserName,
-                                   OUString * pUserName,
                                    sal_Int32 nVersion,
                                    bool bTemplate /* = false */) const
 {
@@ -82,7 +75,6 @@ void SwWebDocShell::FillClass( SvGlobalName * pClassName,
         *pClipFormat    = SotClipboardFormatId::STARWRITERWEB_8;
         *pLongUserName = SwResId(STR_WRITER_WEBDOC_FULLTYPE);
     }
-    *pUserName = SwResId(STR_HUMAN_SWWEBDOC_NAME);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

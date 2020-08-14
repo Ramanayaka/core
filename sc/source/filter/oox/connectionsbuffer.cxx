@@ -17,7 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "connectionsbuffer.hxx"
+#include <connectionsbuffer.hxx>
+#include <biffhelper.hxx>
 
 #include <osl/diagnose.h>
 #include <oox/helper/attributelist.hxx>
@@ -25,8 +26,7 @@
 #include <oox/token/tokens.hxx>
 #include <oox/helper/binaryinputstream.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::uno;
 
@@ -99,7 +99,7 @@ ConnectionModel::ConnectionModel() :
 
 WebPrModel& ConnectionModel::createWebPr()
 {
-    OSL_ENSURE( !mxWebPr.get(), "ConnectionModel::createWebPr - multiple call" );
+    OSL_ENSURE( !mxWebPr, "ConnectionModel::createWebPr - multiple call" );
     mxWebPr.reset( new WebPrModel );
     return *mxWebPr;
 }
@@ -152,9 +152,9 @@ void Connection::importWebPr( const AttributeList& rAttribs )
     rWebPr.mbHtmlTables      = rAttribs.getBool( XML_htmlTables, false );
 }
 
-void Connection::importTables( const AttributeList& /*rAttribs*/ )
+void Connection::importTables()
 {
-    if( maModel.mxWebPr.get() )
+    if( maModel.mxWebPr )
     {
         OSL_ENSURE( maModel.mxWebPr->maTables.empty(), "Connection::importTables - multiple calls" );
         maModel.mxWebPr->maTables.clear();
@@ -163,20 +163,20 @@ void Connection::importTables( const AttributeList& /*rAttribs*/ )
 
 void Connection::importTable( const AttributeList& rAttribs, sal_Int32 nElement )
 {
-    if( maModel.mxWebPr.get() )
+    if( !maModel.mxWebPr )
+        return;
+
+    Any aTableAny;
+    switch( nElement )
     {
-        Any aTableAny;
-        switch( nElement )
-        {
-            case XLS_TOKEN( m ):                                                            break;
-            case XLS_TOKEN( s ):    aTableAny <<= rAttribs.getXString( XML_v, OUString() ); break;
-            case XLS_TOKEN( x ):    aTableAny <<= rAttribs.getInteger( XML_v, -1 );         break;
-            default:
-                OSL_ENSURE( false, "Connection::importTable - unexpected element" );
-                return;
-        }
-        maModel.mxWebPr->maTables.push_back( aTableAny );
+        case XLS_TOKEN( m ):                                                            break;
+        case XLS_TOKEN( s ):    aTableAny <<= rAttribs.getXString( XML_v, OUString() ); break;
+        case XLS_TOKEN( x ):    aTableAny <<= rAttribs.getInteger( XML_v, -1 );         break;
+        default:
+            OSL_ENSURE( false, "Connection::importTable - unexpected element" );
+            return;
     }
+    maModel.mxWebPr->maTables.push_back( aTableAny );
 }
 
 void Connection::importConnection( SequenceInputStream& rStrm )
@@ -250,7 +250,7 @@ void Connection::importWebPr( SequenceInputStream& rStrm )
 
 void Connection::importWebPrTables( SequenceInputStream& /*rStrm*/ )
 {
-    if( maModel.mxWebPr.get() )
+    if( maModel.mxWebPr )
     {
         OSL_ENSURE( maModel.mxWebPr->maTables.empty(), "Connection::importWebPrTables - multiple calls" );
         maModel.mxWebPr->maTables.clear();
@@ -259,20 +259,20 @@ void Connection::importWebPrTables( SequenceInputStream& /*rStrm*/ )
 
 void Connection::importWebPrTable( SequenceInputStream& rStrm, sal_Int32 nRecId )
 {
-    if( maModel.mxWebPr.get() )
+    if( !maModel.mxWebPr )
+        return;
+
+    Any aTableAny;
+    switch( nRecId )
     {
-        Any aTableAny;
-        switch( nRecId )
-        {
-            case BIFF12_ID_PCITEM_MISSING:                                                  break;
-            case BIFF12_ID_PCITEM_STRING:   aTableAny <<= BiffHelper::readString( rStrm );  break;
-            case BIFF12_ID_PCITEM_INDEX:    aTableAny <<= rStrm.readInt32();                break;
-            default:
-                OSL_ENSURE( false, "Connection::importWebPrTable - unexpected record" );
-                return;
-        }
-        maModel.mxWebPr->maTables.push_back( aTableAny );
+        case BIFF12_ID_PCITEM_MISSING:                                                  break;
+        case BIFF12_ID_PCITEM_STRING:   aTableAny <<= BiffHelper::readString( rStrm );  break;
+        case BIFF12_ID_PCITEM_INDEX:    aTableAny <<= rStrm.readInt32();                break;
+        default:
+            OSL_ENSURE( false, "Connection::importWebPrTable - unexpected record" );
+            return;
     }
+    maModel.mxWebPr->maTables.push_back( aTableAny );
 }
 
 ConnectionsBuffer::ConnectionsBuffer( const WorkbookHelper& rHelper ) :
@@ -283,15 +283,15 @@ ConnectionsBuffer::ConnectionsBuffer( const WorkbookHelper& rHelper ) :
 
 Connection& ConnectionsBuffer::createConnection()
 {
-    ConnectionRef xConnection( new Connection( *this ) );
+    ConnectionRef xConnection = std::make_shared<Connection>( *this );
     maConnections.push_back( xConnection );
     return *xConnection;
 }
 
 void ConnectionsBuffer::finalizeImport()
 {
-    for( ConnectionVector::iterator aIt = maConnections.begin(), aEnd = maConnections.end(); aIt != aEnd; ++aIt )
-        insertConnectionToMap( *aIt );
+    for( const auto& rxConnection : maConnections )
+        insertConnectionToMap( rxConnection );
 }
 
 ConnectionRef ConnectionsBuffer::getConnection( sal_Int32 nConnId ) const
@@ -310,7 +310,6 @@ void ConnectionsBuffer::insertConnectionToMap( const ConnectionRef& rxConnection
     }
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

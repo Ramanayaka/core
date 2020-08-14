@@ -34,10 +34,9 @@
 #include <com/sun/star/util/Date.hpp>
 #include <com/sun/star/util/Time.hpp>
 #include <com/sun/star/util/DateTime.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/inspection/XPropertyHandler.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <osl/interlck.h>
+#include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include <comphelper/uno3.hxx>
@@ -45,14 +44,15 @@
 #include <memory>
 #include <vector>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace inspection {
         struct LineDescriptor;
         class XPropertyControlFactory;
     }
-} } }
+}
 
 namespace vcl { class Window; }
+namespace weld { class Window; }
 
 namespace pcr
 {
@@ -68,7 +68,8 @@ namespace pcr
                                                 >   PropertyHandler_Base;
     /** the base class for property handlers
     */
-    class PropertyHandler : public PropertyHandler_Base
+    class PropertyHandler : public ::cppu::BaseMutex
+                          , public PropertyHandler_Base
     {
     private:
         /// cache for getSupportedProperties
@@ -76,15 +77,11 @@ namespace pcr
                                     m_aSupportedProperties;
         mutable bool                m_bSupportedPropertiesAreKnown;
 
-        /// helper which ensures that we can access resources as long as the instance lives
-        PcrClient       m_aEnsureResAccess;
-
     private:
         /// the property listener which has been registered
         PropertyChangeListeners                               m_aPropertyListeners;
 
     protected:
-        mutable ::osl::Mutex                                  m_aMutex;
         /// the context in which the instance was created
         css::uno::Reference< css::uno::XComponentContext >    m_xContext;
         /// the component we're inspecting
@@ -124,7 +121,7 @@ namespace pcr
 
         // own overridables
         virtual css::uno::Sequence< css::beans::Property >
-                    SAL_CALL doDescribeSupportedProperties() const = 0;
+                    doDescribeSupportedProperties() const = 0;
 
         /// called when XPropertyHandler::inspect has been called, and we thus have a new component to inspect
         virtual void onNewComponent();
@@ -138,7 +135,7 @@ namespace pcr
 
         /** retrieves a window which can be used as parent for dialogs
         */
-        vcl::Window* impl_getDefaultDialogParent_nothrow() const;
+        weld::Window* impl_getDefaultDialogFrame_nothrow() const;
 
         /** retrieves the property id for a given property name
             @throw css::beans::UnknownPropertyException
@@ -364,87 +361,9 @@ namespace pcr
 
         // XServiceInfo
         virtual OUString SAL_CALL getImplementationName(  ) override = 0;
-        virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+        virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) final override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override = 0;
     };
-
-
-    //= HandlerComponentBase
-
-    /** a PropertyHandlerComponent implementation which routes XServiceInfo::getImplementationName and
-        XServiceInfo::getSupportedServiceNames to static versions of those methods, which are part of
-        the derived class.
-
-        Additionally, a method <member>Create</member> is provided which takes a component context, and returns a new
-        instance of the derived class. This <member>Create</member> is used to register the implementation
-        of the derived class at the <type>PcrModule</type>.
-
-        Well, every time we're talking about derived class, we in fact mean the template argument of
-        <type>HandlerComponentBase</type>. But usually this equals your derived class:
-        <pre>
-        class MyHandler;
-        typedef HandlerComponentBase< MyHandler > MyHandler_Base;
-        class MyHandler : MyHandler_Base
-        {
-            ...
-        public:
-            static OUString SAL_CALL getImplementationName_static(  ) throw (css::uno::RuntimeException);
-            static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_static(  ) throw (css::uno::RuntimeException);
-        };
-        </pre>
-    */
-    template < class HANDLER >
-    class HandlerComponentBase : public PropertyHandlerComponent
-    {
-    protected:
-        explicit HandlerComponentBase( const css::uno::Reference< css::uno::XComponentContext >& _rxContext )
-            :PropertyHandlerComponent( _rxContext )
-        {
-        }
-
-    protected:
-        // XServiceInfo
-        virtual OUString SAL_CALL getImplementationName(  ) override;
-        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL Create( const css::uno::Reference< css::uno::XComponentContext >& _rxContext );
-
-    public:
-        /** registers the implementation of HANDLER at the <type>PcrModule</type>
-        */
-        static void registerImplementation();
-    };
-
-
-    template < class HANDLER >
-    OUString SAL_CALL HandlerComponentBase< HANDLER >::getImplementationName(  )
-    {
-        return HANDLER::getImplementationName_static();
-    }
-
-
-    template < class HANDLER >
-    css::uno::Sequence< OUString > SAL_CALL HandlerComponentBase< HANDLER >::getSupportedServiceNames(  )
-    {
-        return HANDLER::getSupportedServiceNames_static();
-    }
-
-
-    template < class HANDLER >
-    void HandlerComponentBase< HANDLER >::registerImplementation()
-    {
-        PcrModule::getInstance().registerImplementation(
-            HANDLER::getImplementationName_static(),
-            HANDLER::getSupportedServiceNames_static(),
-            HANDLER::Create
-        );
-    }
-
-
-    template < class HANDLER >
-    css::uno::Reference< css::uno::XInterface > SAL_CALL HandlerComponentBase< HANDLER >::Create( const css::uno::Reference< css::uno::XComponentContext >& _rxContext )
-    {
-        return *( new HANDLER( _rxContext ) );
-    }
 
 
 } // namespace pcr

@@ -22,14 +22,14 @@
 #include <memory>
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include "sal/main.h"
-#include "sal/types.h"
-#include "osl/thread.h"
-#include "rtl/ustring.hxx"
-#include "rtl/byteseq.hxx"
-#include "jvmfwk/framework.hxx"
+#include <iostream>
+#include <sal/main.h>
+#include <sal/types.h>
+#include <osl/thread.h>
+#include <rtl/ustring.hxx>
+#include <rtl/byteseq.hxx>
+#include <jvmfwk/framework.hxx>
 
 
 static bool hasOption(char const * szOption, int argc, char** argv);
@@ -59,6 +59,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         if (errcode == JFW_E_NONE && !bEnabled)
         {
                 //Do not do any preparation because that may only slow startup time.
+            fprintf(stdout, "\n");
             return 0;
         }
         else if (errcode != JFW_E_NONE && errcode != JFW_E_DIRECT_MODE)
@@ -101,9 +102,9 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         OString sPaths = getLD_LIBRARY_PATH(aInfo->arVendorData);
         fprintf(stdout, "%s\n", sPaths.getStr());
     }
-    catch (const std::exception&)
+    catch (const std::exception& e)
     {
-        fprintf(stderr,"javaldx failed!\n");
+        std::cerr << "javaldx failed! " << e.what() << std::endl;
         return -1;
     }
 

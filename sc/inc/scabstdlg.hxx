@@ -21,18 +21,15 @@
 #define INCLUDED_SC_INC_SCABSTDLG_HXX
 
 #include <tools/solar.h>
-#include <sfx2/sfxdlg.hxx>
-#include <vcl/syswin.hxx>
-#include <vcl/field.hxx>
-#include "scres.hrc"
+#include <com/sun/star/sheet/DataPilotFieldOrientation.hpp>
+#include <sfx2/tabdlg.hxx>
+#include <tools/fldunit.hxx>
+#include <vcl/abstdlg.hxx>
 #include "global.hxx"
 #include "pivot.hxx"
 #include <i18nlangtag/lang.h>
-#include "asciiopt.hxx"
+#include <asciiopt.hxx>
 
-#include <tabvwsh.hxx>
-
-class ScAsciiOptions;
 class ScAutoFormat;
 class ScAutoFormatData;
 class ScDocument;
@@ -41,19 +38,26 @@ class ScViewData;
 class ScQueryItem;
 class ScImportOptions;
 class SfxStyleSheetBase;
+class SfxAbstractTabDialog;
 class ScDPObject;
-struct ScPivotFuncData;
 struct ScDPNumGroupInfo;
-class ScSortWarningDlg;
 class ScTabViewShell;
 class ScConditionalFormat;
 class ScConditionalFormatList;
+class Date;
 enum class CreateNameFlags;
 enum class CellShiftDisabledFlags;
 
-namespace com { namespace sun { namespace star { namespace sheet {
-    struct DataPilotFieldReference;
-} } } }
+namespace com::sun::star::sheet { struct DataPilotFieldReference; }
+
+class ScAsyncTabController
+{
+public:
+    virtual ~ScAsyncTabController() = default;
+    virtual bool  StartExecuteAsync(VclAbstractDialog::AsyncContext &rCtx) = 0;
+    virtual const SfxItemSet*   GetOutputItemSet() const = 0;
+    virtual void                SetCurPageId( const OString &rName ) = 0;
+};
 
 class AbstractScImportAsciiDlg : public VclAbstractDialog
 {
@@ -87,7 +91,7 @@ class AbstractScCondFormatManagerDlg : public VclAbstractDialog
 protected:
     virtual             ~AbstractScCondFormatManagerDlg() override = default;
 public:
-    virtual ScConditionalFormatList* GetConditionalFormatList() = 0;
+    virtual std::unique_ptr<ScConditionalFormatList> GetConditionalFormatList() = 0;
 
     virtual bool CondFormatsChanged() const = 0;
 
@@ -220,7 +224,7 @@ class AbstractScSelEntryDlg : public VclAbstractDialog
 protected:
     virtual             ~AbstractScSelEntryDlg() override = default;
 public:
-    virtual OUString GetSelectEntry() const = 0;
+    virtual OUString GetSelectedEntry() const = 0;
 };
 
 class AbstractScLinkedAreaDlg : public VclAbstractDialog
@@ -241,9 +245,9 @@ public:
 class AbstractScMetricInputDlg : public VclAbstractDialog
 {
 protected:
-    virtual             ~AbstractScMetricInputDlg() override = default;
+    virtual ~AbstractScMetricInputDlg() override = default;
 public:
-    virtual long GetInputValue() const = 0;
+    virtual int GetInputValue() const = 0;
 };
 
 class AbstractScMoveTableDlg : public VclAbstractDialog
@@ -345,11 +349,10 @@ class AbstractScShowTabDlg : public VclAbstractDialog
 protected:
     virtual             ~AbstractScShowTabDlg() override = default;
 public:
-    virtual void    Insert( const OUString& rString, bool bSelected ) = 0;
-    virtual sal_Int32 GetSelectEntryCount() const = 0;
+    virtual void Insert( const OUString& rString, bool bSelected ) = 0;
     virtual void SetDescription(const OUString& rTitle, const OUString& rFixedText, const OString& nDlgHelpId, const OString& nLbHelpId ) = 0;
-    virtual OUString  GetSelectEntry(sal_Int32 nPos) const = 0;
-    virtual sal_Int32 GetSelectEntryPos(sal_Int32 nPos) const = 0;
+    virtual std::vector<sal_Int32> GetSelectedRows() const = 0;
+    virtual OUString GetEntry(sal_Int32 nPos) const = 0;
 };
 
 class AbstractScSortWarningDlg : public VclAbstractDialog
@@ -397,40 +400,40 @@ class ScAbstractDialogFactory
 public:
     SC_DLLPUBLIC static ScAbstractDialogFactory*    Create();
 
-    virtual     VclPtr<AbstractScImportAsciiDlg> CreateScImportAsciiDlg( const OUString& aDatName,
+    virtual     VclPtr<AbstractScImportAsciiDlg> CreateScImportAsciiDlg(weld::Window* pParent,
+                                                                    const OUString& aDatName,
                                                                     SvStream* pInStream,
                                                                     ScImportAsciiCall eCall) = 0;
 
-    virtual     VclPtr<AbstractScTextImportOptionsDlg> CreateScTextImportOptionsDlg() = 0;
+    virtual     VclPtr<AbstractScTextImportOptionsDlg> CreateScTextImportOptionsDlg(weld::Window* pParent) = 0;
 
-    virtual     VclPtr<AbstractScAutoFormatDlg> CreateScAutoFormatDlg(vcl::Window* pParent,
+    virtual     VclPtr<AbstractScAutoFormatDlg> CreateScAutoFormatDlg(weld::Window* pParent,
                                                                 ScAutoFormat* pAutoFormat,
                                                                 const ScAutoFormatData* pSelFormatData,
                                                                 ScViewData *pViewData) = 0;
-    virtual VclPtr<AbstractScColRowLabelDlg> CreateScColRowLabelDlg (vcl::Window* pParent,
+    virtual VclPtr<AbstractScColRowLabelDlg> CreateScColRowLabelDlg (weld::Window* pParent,
                                                                 bool bCol,
                                                                 bool bRow) = 0;
 
-    virtual VclPtr<AbstractScSortWarningDlg> CreateScSortWarningDlg(vcl::Window* pParent, const OUString& rExtendText, const OUString& rCurrentText ) = 0;
+    virtual VclPtr<AbstractScSortWarningDlg> CreateScSortWarningDlg(weld::Window* pParent, const OUString& rExtendText, const OUString& rCurrentText ) = 0;
 
-    virtual VclPtr<AbstractScCondFormatManagerDlg> CreateScCondFormatMgrDlg(vcl::Window* pParent, ScDocument* pDoc, const ScConditionalFormatList* pFormatList ) = 0;
+    virtual VclPtr<AbstractScCondFormatManagerDlg> CreateScCondFormatMgrDlg(weld::Window* pParent, ScDocument* pDoc, const ScConditionalFormatList* pFormatList ) = 0;
 
-    virtual VclPtr<AbstractScDataPilotDatabaseDlg> CreateScDataPilotDatabaseDlg(vcl::Window* pParent) = 0;
+    virtual VclPtr<AbstractScDataPilotDatabaseDlg> CreateScDataPilotDatabaseDlg(weld::Window* pParent) = 0;
 
-    virtual VclPtr<AbstractScDataPilotSourceTypeDlg> CreateScDataPilotSourceTypeDlg(vcl::Window* pParent,
+    virtual VclPtr<AbstractScDataPilotSourceTypeDlg> CreateScDataPilotSourceTypeDlg(weld::Window* pParent,
         bool bEnableExternal) = 0;
 
-    virtual VclPtr<AbstractScDataPilotServiceDlg> CreateScDataPilotServiceDlg( vcl::Window* pParent,
-                                                                        const std::vector<OUString>& rServices ) = 0;
+    virtual VclPtr<AbstractScDataPilotServiceDlg> CreateScDataPilotServiceDlg(weld::Window* pParent,
+                                                                              const std::vector<OUString>& rServices) = 0;
 
-    virtual VclPtr<AbstractScDeleteCellDlg> CreateScDeleteCellDlg(vcl::Window* pParent, bool bDisallowCellMove) = 0 ;
+    virtual VclPtr<AbstractScDeleteCellDlg> CreateScDeleteCellDlg(weld::Window* pParent, bool bDisallowCellMove) = 0 ;
 
     //for dataform
-    virtual VclPtr<AbstractScDataFormDlg> CreateScDataFormDlg(vcl::Window* pParent,
-        ScTabViewShell* pTabViewShell) = 0;
+    virtual VclPtr<AbstractScDataFormDlg> CreateScDataFormDlg(weld::Window* pParent, ScTabViewShell* pTabViewShell) = 0;
 
-    virtual VclPtr<AbstractScDeleteContentsDlg> CreateScDeleteContentsDlg(vcl::Window* pParent) = 0;
-    virtual VclPtr<AbstractScFillSeriesDlg> CreateScFillSeriesDlg( vcl::Window*        pParent,
+    virtual VclPtr<AbstractScDeleteContentsDlg> CreateScDeleteContentsDlg(weld::Window* pParent) = 0;
+    virtual VclPtr<AbstractScFillSeriesDlg> CreateScFillSeriesDlg(weld::Window*        pParent,
                                                             ScDocument& rDocument,
                                                             FillDir     eFillDir,
                                                             FillCmd     eFillCmd,
@@ -438,112 +441,112 @@ public:
                                                             const OUString& aStartStr,
                                                             double          fStep,
                                                             double          fMax,
+                                                            SCSIZE          nSelectHeight,
+                                                            SCSIZE          nSelectWidth,
                                                             sal_uInt16          nPossDir) = 0;
 
-    virtual VclPtr<AbstractScGroupDlg> CreateAbstractScGroupDlg( vcl::Window* pParent,
-                                                            bool bUnGroup = false ) = 0;
+    virtual VclPtr<AbstractScGroupDlg> CreateAbstractScGroupDlg(weld::Window* pParent, bool bUnGroup = false) = 0;
 
-    virtual VclPtr<AbstractScInsertCellDlg> CreateScInsertCellDlg( vcl::Window* pParent,
-                                                             bool bDisallowCellMove ) = 0;
+    virtual VclPtr<AbstractScInsertCellDlg> CreateScInsertCellDlg(weld::Window* pParent,
+                                                             bool bDisallowCellMove) = 0;
 
-    virtual VclPtr<AbstractScInsertContentsDlg> CreateScInsertContentsDlg( vcl::Window*        pParent,
-                                                                    const OUString* pStrTitle = nullptr ) = 0;
+    virtual VclPtr<AbstractScInsertContentsDlg> CreateScInsertContentsDlg(weld::Window* pParent,
+                                                                          const OUString* pStrTitle = nullptr) = 0;
 
-    virtual VclPtr<AbstractScInsertTableDlg> CreateScInsertTableDlg(vcl::Window* pParent, ScViewData& rViewData,
+    virtual VclPtr<AbstractScInsertTableDlg> CreateScInsertTableDlg(weld::Window* pParent, ScViewData& rViewData,
         SCTAB nTabCount, bool bFromFile) = 0;
 
-    virtual VclPtr<AbstractScSelEntryDlg > CreateScSelEntryDlg ( vcl::Window* pParent,
-                                                          const std::vector<OUString> &rEntryList ) = 0;
-    virtual VclPtr<AbstractScLinkedAreaDlg> CreateScLinkedAreaDlg(vcl::Window* pParent) = 0;
+    virtual VclPtr<AbstractScSelEntryDlg > CreateScSelEntryDlg(weld::Window* pParent, const std::vector<OUString> &rEntryList) = 0;
+    virtual VclPtr<AbstractScLinkedAreaDlg> CreateScLinkedAreaDlg(weld::Window* pParent) = 0;
 
-    virtual VclPtr<AbstractScMetricInputDlg> CreateScMetricInputDlg ( vcl::Window*        pParent,
+    virtual VclPtr<AbstractScMetricInputDlg> CreateScMetricInputDlg(weld::Window* pParent,
                                                                 const OString&  sDialogName,
                                                                 long            nCurrent,
                                                                 long            nDefault,
                                                                 FieldUnit       eFUnit,
                                                                 sal_uInt16      nDecimals,
-                                                                long            nMaximum  = 1000,
+                                                                long            nMaximum,
                                                                 long            nMinimum  = 0 ) = 0;
 
-    virtual VclPtr<AbstractScMoveTableDlg> CreateScMoveTableDlg(vcl::Window * pParent,
+    virtual VclPtr<AbstractScMoveTableDlg> CreateScMoveTableDlg(weld::Window * pParent,
         const OUString& rDefault) = 0;
 
-    virtual VclPtr<AbstractScNameCreateDlg> CreateScNameCreateDlg(vcl::Window * pParent,
+    virtual VclPtr<AbstractScNameCreateDlg> CreateScNameCreateDlg(weld::Window * pParent,
         CreateNameFlags nFlags) = 0;
 
-    virtual VclPtr<AbstractScNamePasteDlg> CreateScNamePasteDlg ( vcl::Window * pParent, ScDocShell* pShell, bool bInsList=true ) = 0;
+    virtual VclPtr<AbstractScNamePasteDlg> CreateScNamePasteDlg(weld::Window * pParent, ScDocShell* pShell) = 0;
 
-    virtual VclPtr<AbstractScPivotFilterDlg> CreateScPivotFilterDlg(vcl::Window* pParent,
-        const SfxItemSet& rArgSet, sal_uInt16 nSourceTab) = 0;
+    virtual VclPtr<AbstractScPivotFilterDlg> CreateScPivotFilterDlg(weld::Window* pParent,
+                                                                    const SfxItemSet& rArgSet,
+                                                                    sal_uInt16 nSourceTab) = 0;
 
-    virtual VclPtr<AbstractScDPFunctionDlg> CreateScDPFunctionDlg( vcl::Window* pParent,
-                                                                const ScDPLabelDataVector& rLabelVec,
-                                                                const ScDPLabelData& rLabelData,
-                                                                const ScPivotFuncData& rFuncData ) = 0;
+    virtual VclPtr<AbstractScDPFunctionDlg> CreateScDPFunctionDlg(weld::Widget* pParent,
+                                                                  const ScDPLabelDataVector& rLabelVec,
+                                                                  const ScDPLabelData& rLabelData,
+                                                                  const ScPivotFuncData& rFuncData ) = 0;
 
-    virtual VclPtr<AbstractScDPSubtotalDlg> CreateScDPSubtotalDlg( vcl::Window* pParent,
-                                                                ScDPObject& rDPObj,
-                                                                const ScDPLabelData& rLabelData,
-                                                                const ScPivotFuncData& rFuncData,
-                                                                const ScDPNameVec& rDataFields ) = 0;
+    virtual VclPtr<AbstractScDPSubtotalDlg> CreateScDPSubtotalDlg(weld::Widget* pParent,
+                                                                  ScDPObject& rDPObj,
+                                                                  const ScDPLabelData& rLabelData,
+                                                                  const ScPivotFuncData& rFuncData,
+                                                                  const ScDPNameVec& rDataFields) = 0;
 
-    virtual VclPtr<AbstractScDPNumGroupDlg> CreateScDPNumGroupDlg( vcl::Window* pParent,
-                                                                const ScDPNumGroupInfo& rInfo ) = 0;
+    virtual VclPtr<AbstractScDPNumGroupDlg> CreateScDPNumGroupDlg(weld::Window* pParent,
+                                                                  const ScDPNumGroupInfo& rInfo) = 0;
 
-    virtual VclPtr<AbstractScDPDateGroupDlg> CreateScDPDateGroupDlg( vcl::Window* pParent,
-                                                                const ScDPNumGroupInfo& rInfo,
-                                                                sal_Int32 nDatePart,
-                                                                const Date& rNullDate ) = 0;
+    virtual VclPtr<AbstractScDPDateGroupDlg> CreateScDPDateGroupDlg(weld::Window* pParent,
+                                                                    const ScDPNumGroupInfo& rInfo,
+                                                                    sal_Int32 nDatePart,
+                                                                    const Date& rNullDate ) = 0;
 
-    virtual VclPtr<AbstractScDPShowDetailDlg> CreateScDPShowDetailDlg( vcl::Window* pParent,
+    virtual VclPtr<AbstractScDPShowDetailDlg> CreateScDPShowDetailDlg(weld::Window* pParent,
                                                                 ScDPObject& rDPObj,
                                                                 css::sheet::DataPilotFieldOrientation nOrient ) = 0;
 
-    virtual VclPtr<AbstractScNewScenarioDlg> CreateScNewScenarioDlg ( vcl::Window* pParent, const OUString& rName,
-                                                                bool bEdit, bool bSheetProtected ) = 0;
-    virtual VclPtr<AbstractScShowTabDlg> CreateScShowTabDlg(vcl::Window* pParent) = 0;
+    virtual VclPtr<AbstractScNewScenarioDlg> CreateScNewScenarioDlg(weld::Window* pParent, const OUString& rName,
+                                                                    bool bEdit, bool bSheetProtected) = 0;
+    virtual VclPtr<AbstractScShowTabDlg> CreateScShowTabDlg(weld::Window* pParent) = 0;
 
-    virtual VclPtr<AbstractScStringInputDlg> CreateScStringInputDlg (  vcl::Window* pParent,
-                                                                const OUString& rTitle,
-                                                                const OUString& rEditTitle,
-                                                                const OUString& rDefault,
-                                                                const OString& sHelpId, const OString& sEditHelpId ) = 0;
+    virtual VclPtr<AbstractScStringInputDlg> CreateScStringInputDlg(weld::Window* pParent,
+                                                                    const OUString& rTitle,
+                                                                    const OUString& rEditTitle,
+                                                                    const OUString& rDefault,
+                                                                    const OString& rHelpId,
+                                                                    const OString& rEditHelpId) = 0;
 
-    virtual VclPtr<AbstractScTabBgColorDlg> CreateScTabBgColorDlg (  vcl::Window* pParent,
-                                                                const OUString& rTitle, //Dialog Title
-                                                                const OUString& rTabBgColorNoColorText, //Label for no tab color
-                                                                const Color& rDefaultColor ) = 0; //Currently selected Color
+    virtual VclPtr<AbstractScTabBgColorDlg> CreateScTabBgColorDlg(weld::Window* pParent,
+                                                                  const OUString& rTitle, //Dialog Title
+                                                                  const OUString& rTabBgColorNoColorText, //Label for no tab color
+                                                                  const Color& rDefaultColor) = 0; //Currently selected Color
 
-    virtual VclPtr<AbstractScImportOptionsDlg> CreateScImportOptionsDlg ( bool                    bAscii,
-                                                                    const ScImportOptions*  pOptions,
-                                                                    const OUString*         pStrTitle = nullptr,
-                                                                    bool                    bMultiByte = false,
-                                                                    bool                    bOnlyDbtoolsEncodings = false,
-                                                                    bool                    bImport = true ) = 0;
+    virtual VclPtr<AbstractScImportOptionsDlg> CreateScImportOptionsDlg(weld::Window* pParent, bool bAscii,
+                                                                        const ScImportOptions*  pOptions,
+                                                                        const OUString*         pStrTitle,
+                                                                        bool                    bOnlyDbtoolsEncodings,
+                                                                        bool                    bImport = true ) = 0;
 
-    virtual VclPtr<SfxAbstractTabDialog> CreateScAttrDlg( vcl::Window*          pParent,
-                                                    const SfxItemSet* pCellAttrs ) = 0;
+    virtual VclPtr<SfxAbstractTabDialog> CreateScAttrDlg(weld::Window* pParent,
+                                                    const SfxItemSet* pCellAttrs) = 0;
 
-    virtual VclPtr<SfxAbstractTabDialog> CreateScHFEditDlg(vcl::Window*       pParent,
+    virtual VclPtr<SfxAbstractTabDialog> CreateScHFEditDlg(weld::Window*       pParent,
                                                     const SfxItemSet&   rCoreSet,
                                                     const OUString&     rPageStyle,
                                                     sal_uInt16          nResId ) = 0;
 
-    virtual VclPtr<SfxAbstractTabDialog> CreateScStyleDlg( vcl::Window*                pParent,
-                                                    SfxStyleSheetBase&  rStyleBase,
-                                                    sal_uInt16              nRscId,
-                                                    int nId) = 0;
+    virtual VclPtr<SfxAbstractTabDialog> CreateScStyleDlg(weld::Window* pParent,
+                                                          SfxStyleSheetBase&  rStyleBase,
+                                                          bool bPage /*true : page, false: para*/) = 0;
 
-    virtual VclPtr<SfxAbstractTabDialog> CreateScSubTotalDlg( vcl::Window*             pParent,
-                                                        const SfxItemSet*   pArgSet ) = 0;
+    virtual VclPtr<SfxAbstractTabDialog> CreateScSubTotalDlg(weld::Window* pParent,
+                                                             const SfxItemSet* pArgSet) = 0;
 
-    virtual VclPtr<SfxAbstractTabDialog> CreateScCharDlg(vcl::Window* pParent,
-        const SfxItemSet* pAttr, const SfxObjectShell* pDocShell) = 0;
+    virtual VclPtr<SfxAbstractTabDialog> CreateScCharDlg(weld::Window* pParent,
+        const SfxItemSet* pAttr, const SfxObjectShell* pDocShell, bool bDrawText) = 0;
 
-    virtual VclPtr<SfxAbstractTabDialog> CreateScParagraphDlg(vcl::Window* pParent,
+    virtual VclPtr<SfxAbstractTabDialog> CreateScParagraphDlg(weld::Window* pParent,
         const SfxItemSet* pAttr) = 0;
 
-    virtual VclPtr<SfxAbstractTabDialog> CreateScSortDlg(vcl::Window* pParent, const SfxItemSet* pArgSet) = 0;
+    virtual std::shared_ptr<ScAsyncTabController> CreateScSortDlg(weld::Window* pParent, const SfxItemSet* pArgSet) = 0;
 
     // for tabpage
     virtual CreateTabPage                GetTabPageCreatorFunc( sal_uInt16 nId ) = 0;

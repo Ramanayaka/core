@@ -7,7 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "dumpfilter.hxx"
+#include <dumpfilter.hxx>
 
 #include <wrtsh.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -87,8 +87,7 @@ namespace sw
                 uno::Reference< io::XOutputStream >() );
 
         // Actually get the SwRootFrame to call dumpAsXml
-        uno::Reference< lang::XUnoTunnel > xDocTunnel( m_xSrcDoc, uno::UNO_QUERY );
-        SwXTextDocument* pXDoc = UnoTunnelGetImplementation< SwXTextDocument >( xDocTunnel );
+        auto pXDoc = comphelper::getUnoTunnelImplementation<SwXTextDocument>(m_xSrcDoc);
         if ( pXDoc )
         {
             SwRootFrame* pLayout = pXDoc->GetDocShell()->GetWrtShell()->GetLayout();
@@ -139,7 +138,7 @@ namespace sw
     // XServiceInfo
     OUString LayoutDumpFilter::getImplementationName(  )
     {
-        return OUString( "com.sun.star.comp.Writer.LayoutDump" );
+        return "com.sun.star.comp.Writer.LayoutDump";
     }
 
     sal_Bool LayoutDumpFilter::supportsService( const OUString& rServiceName )
@@ -149,14 +148,13 @@ namespace sw
 
     uno::Sequence< OUString > LayoutDumpFilter::getSupportedServiceNames()
     {
-        uno::Sequence<OUString> aSeq { "com.sun.star.document.ExportFilter" };
-        return aSeq;
+        return { "com.sun.star.document.ExportFilter" };
     }
 
 } // Namespace sw
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_LayoutDump_get_implementation(css::uno::XComponentContext*,
                                 css::uno::Sequence<css::uno::Any> const &)
 {

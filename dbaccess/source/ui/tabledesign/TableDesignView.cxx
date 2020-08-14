@@ -17,19 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableDesignView.hxx"
-#include "TableController.hxx"
-#include "dbaccess_helpid.hrc"
-#include "FieldDescriptions.hxx"
+#include <TableDesignView.hxx>
+#include <TableController.hxx>
+#include <helpids.h>
+#include <FieldDescriptions.hxx>
 #include "TEditControl.hxx"
 #include "TableFieldDescWin.hxx"
-#include "TableRow.hxx"
-#include <unotools/configmgr.hxx>
-#include <comphelper/types.hxx>
-#include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
+#include <TableRow.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <unotools/syslocale.hxx>
 #include <vcl/settings.hxx>
-#include "UITools.hxx"
 #include <memory>
 
 using namespace ::dbaui;
@@ -39,15 +36,14 @@ using namespace ::com::sun::star::datatransfer::clipboard;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 
-// class OTableBorderWindow
-OTableBorderWindow::OTableBorderWindow(vcl::Window* pParent) : Window(pParent,WB_BORDER)
+OTableBorderWindow::OTableBorderWindow(OTableDesignView* pParent) : Window(pParent,WB_BORDER)
     ,m_aHorzSplitter( VclPtr<Splitter>::Create(this) )
 {
 
     ImplInitSettings();
     // create children
     m_pEditorCtrl   = VclPtr<OTableEditorCtrl>::Create( this);
-    m_pFieldDescWin = VclPtr<OTableFieldDescWin>::Create( this );
+    m_pFieldDescWin = VclPtr<OTableFieldDescWin>::Create(this, pParent);
 
     m_pFieldDescWin->SetHelpId(HID_TAB_DESIGN_DESCWIN);
 
@@ -156,7 +152,6 @@ void OTableBorderWindow::GetFocus()
         m_pEditorCtrl->GrabFocus();
 }
 
-// class OTableDesignView
 OTableDesignView::OTableDesignView( vcl::Window* pParent,
                                     const Reference< XComponentContext >& _rxOrb,
                                     OTableController& _rController
@@ -175,6 +170,9 @@ OTableDesignView::OTableDesignView( vcl::Window* pParent,
     }
 
     m_pWin = VclPtr<OTableBorderWindow>::Create(this);
+
+    m_pWin->GetDescWin()->connect_focus_in(LINK(this, OTableDesignView, FieldDescFocusIn));
+
     m_pWin->Show();
 }
 
@@ -209,6 +207,11 @@ void OTableDesignView::resizeDocumentView(tools::Rectangle& _rPlayground)
     // just for completeness: there is no space left, we occupied it all ...
     _rPlayground.SetPos( _rPlayground.BottomRight() );
     _rPlayground.SetSize( Size( 0, 0 ) );
+}
+
+IMPL_LINK_NOARG(OTableDesignView, FieldDescFocusIn, weld::Widget&, void)
+{
+    m_eChildFocus = DESCRIPTION;
 }
 
 bool OTableDesignView::PreNotify( NotifyEvent& rNEvt )
@@ -292,7 +295,7 @@ void OTableDesignView::setReadOnly(bool _bReadOnly)
 void OTableDesignView::reSync()
 {
     GetEditorCtrl()->DeactivateCell();
-     std::shared_ptr<OTableRow>  pRow = (*GetEditorCtrl()->GetRowList())[GetEditorCtrl()->GetCurRow()];
+    std::shared_ptr<OTableRow>  pRow = (*GetEditorCtrl()->GetRowList())[GetEditorCtrl()->GetCurRow()];
     OFieldDescription* pFieldDescr = pRow ? pRow->GetActFieldDescr() : nullptr;
     if ( pFieldDescr )
         GetDescWin()->DisplayData(pFieldDescr);

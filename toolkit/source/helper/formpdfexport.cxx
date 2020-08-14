@@ -20,16 +20,19 @@
 
 #include <memory>
 #include <toolkit/helper/formpdfexport.hxx>
+#include <tools/diagnose_ex.h>
+#include <tools/lineend.hxx>
+#include <unordered_map>
+#include <sal/log.hxx>
 
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/awt/TextAlign.hpp>
+#include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/style/VerticalAlignment.hpp>
 #include <com/sun/star/form/FormButtonType.hpp>
 #include <com/sun/star/form/FormSubmitMethod.hpp>
@@ -38,7 +41,6 @@
 #include <vcl/pdfextoutdevdata.hxx>
 #include <vcl/outdev.hxx>
 
-#include <functional>
 #include <algorithm>
 #include <iterator>
 
@@ -56,7 +58,7 @@ namespace toolkitform
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::container;
 
-    static const char FM_PROP_NAME[] = "Name";
+    const char FM_PROP_NAME[] = "Name";
 
     namespace
     {
@@ -73,7 +75,9 @@ namespace toolkitform
                 xPSI = _rxModel->getPropertySetInfo();
             if ( xPSI.is() && xPSI->hasPropertyByName( FM_PROP_CLASSID ) )
             {
-                OSL_VERIFY( _rxModel->getPropertyValue( FM_PROP_CLASSID ) >>= nControlType );
+                if( ! (_rxModel->getPropertyValue( FM_PROP_CLASSID ) >>= nControlType) ) {
+                    SAL_WARN("toolkit.helper", "classifyFormControl: unable to get property " << FM_PROP_CLASSID);
+                }
             }
 
             return nControlType;
@@ -82,20 +86,20 @@ namespace toolkitform
 
         /** (default-)creates a PDF widget according to a given FormComponentType
         */
-        vcl::PDFWriter::AnyWidget* createDefaultWidget( sal_Int16 _nFormComponentType )
+        std::unique_ptr<vcl::PDFWriter::AnyWidget> createDefaultWidget( sal_Int16 _nFormComponentType )
         {
             switch ( _nFormComponentType )
             {
             case FormComponentType::COMMANDBUTTON:
-                return new vcl::PDFWriter::PushButtonWidget;
+                return std::make_unique<vcl::PDFWriter::PushButtonWidget>();
             case FormComponentType::CHECKBOX:
-                return new vcl::PDFWriter::CheckBoxWidget;
+                return std::make_unique<vcl::PDFWriter::CheckBoxWidget>();
             case FormComponentType::RADIOBUTTON:
-                return new vcl::PDFWriter::RadioButtonWidget;
+                return std::make_unique<vcl::PDFWriter::RadioButtonWidget>();
             case FormComponentType::LISTBOX:
-                return new vcl::PDFWriter::ListBoxWidget;
+                return std::make_unique<vcl::PDFWriter::ListBoxWidget>();
             case FormComponentType::COMBOBOX:
-                return new vcl::PDFWriter::ComboBoxWidget;
+                return std::make_unique<vcl::PDFWriter::ComboBoxWidget>();
 
             case FormComponentType::TEXTFIELD:
             case FormComponentType::FILECONTROL:
@@ -104,7 +108,7 @@ namespace toolkitform
             case FormComponentType::NUMERICFIELD:
             case FormComponentType::CURRENCYFIELD:
             case FormComponentType::PATTERNFIELD:
-                return new vcl::PDFWriter::EditWidget;
+                return std::make_unique<vcl::PDFWriter::EditWidget>();
             }
             return nullptr;
         }
@@ -130,7 +134,7 @@ namespace toolkitform
             // host document makes it somewhat difficult ...
             // Problem is that two form radio buttons belong to the same group if
             // - they have the same parent
-            // - AND they have the same name
+            // - AND they have the same name or group name
             // This implies that we need some knowledge about (potentially) *all* radio button
             // groups in the document.
 
@@ -156,29 +160,13 @@ namespace toolkitform
             ::std::vector< sal_Int32 >                 aPath;
 
             Reference< XInterface > xNormalizedLookup( _rxRadioModel, UNO_QUERY );
-            OUString sRadioGroupName;
-            OSL_VERIFY( _rxRadioModel->getPropertyValue( FM_PROP_NAME ) >>= sRadioGroupName );
-
             Reference< XIndexAccess > xCurrentContainer( xRoot );
             sal_Int32 nStartWithChild = 0;
             sal_Int32 nGroupsEncountered = 0;
             do
             {
-                Reference< XNameAccess > xElementNameAccess( xCurrentContainer, UNO_QUERY );
-                OSL_ENSURE( xElementNameAccess.is(), "determineRadioGroupId: no name container?" );
-                if ( !xElementNameAccess.is() )
-                    return -1;
-
-                if ( nStartWithChild == 0 )
-                {   // we encounter this container the first time. In particular, we did not
-                    // just step up
-                    nGroupsEncountered += xElementNameAccess->getElementNames().getLength();
-                        // this is way too much: Not all of the elements in the current container
-                        // may form groups, especially if they're forms. But anyway, this number is
-                        // sufficient for our purpose. Finally, the container contains *at most*
-                        // that much groups
-                }
-
+                std::unordered_map<OUString,sal_Int32> GroupNameMap;
+                std::unordered_map<OUString,sal_Int32> SharedNameMap;
                 sal_Int32 nCount = xCurrentContainer->getCount();
                 sal_Int32 i;
                 for ( i = nStartWithChild; i < nCount; ++i )
@@ -204,28 +192,61 @@ namespace toolkitform
 
                     if ( xElement.get() == xNormalizedLookup.get() )
                     {
-                        // look up the name of the radio group in the list of all element names
-                        Sequence< OUString > aElementNames( xElementNameAccess->getElementNames() );
-                        const OUString* pElementNames = aElementNames.getConstArray();
-                        const OUString* pElementNamesEnd = pElementNames + aElementNames.getLength();
-                        while ( pElementNames != pElementNamesEnd )
+                        // Our radio button is in this container.
+                        // Now take the time to ID this container's groups and return the button's groupId
+                        for ( i = 0; i < nCount; ++i )
                         {
-                            if ( *pElementNames == sRadioGroupName )
+                            try
                             {
-                                sal_Int32 nLocalGroupIndex = pElementNames - aElementNames.getConstArray();
-                                OSL_ENSURE( nLocalGroupIndex < xElementNameAccess->getElementNames().getLength(),
-                                    "determineRadioGroupId: inconsistency!" );
+                                xElement.set( xCurrentContainer->getByIndex( i ), UNO_QUERY_THROW );
+                                Reference< XServiceInfo > xModelSI( xElement, UNO_QUERY_THROW );
+                                if ( xModelSI->supportsService("com.sun.star.awt.UnoControlRadioButtonModel") )
+                                {
+                                    Reference< XPropertySet >  aProps( xElement, UNO_QUERY_THROW );
 
-                                sal_Int32 nGlobalGroupId = nGroupsEncountered - xElementNameAccess->getElementNames().getLength() + nLocalGroupIndex;
-                                return nGlobalGroupId;
+                                    OUString sGroupName;
+                                    aProps->getPropertyValue("GroupName") >>= sGroupName;
+                                    if ( !sGroupName.isEmpty() )
+                                    {
+                                        // map: unique key is the group name, so attempts to add a different ID value
+                                        // for an existing group are ignored - keeping the first ID - perfect for this scenario.
+                                        GroupNameMap.emplace( sGroupName, nGroupsEncountered + i );
+
+                                        if ( xElement.get() == xNormalizedLookup.get() )
+                                            return GroupNameMap[sGroupName];
+                                    }
+                                    else
+                                    {
+                                        // Old implementation didn't have a GroupName, just identical Control names.
+                                        aProps->getPropertyValue( FM_PROP_NAME ) >>= sGroupName;
+                                        SharedNameMap.emplace( sGroupName, nGroupsEncountered + i );
+
+                                        if ( xElement.get() == xNormalizedLookup.get() )
+                                            return SharedNameMap[sGroupName];
+                                    }
+
+                                }
                             }
-                            ++pElementNames;
+                            catch( uno::Exception& )
+                            {
+                                DBG_UNHANDLED_EXCEPTION("toolkit");
+                            }
                         }
-                        OSL_FAIL( "determineRadioGroupId: did not find the radios element name!" );
+                        SAL_WARN("toolkit.helper","determineRadioGroupId: did not find the radios element's group!" );
                     }
                 }
 
-                if ( !( i < nCount ) )
+                // we encounter this container the first time. In particular, we did not just step up
+                if ( nStartWithChild == 0 )
+                {
+                    // Our control wasn't in this container, so consider every item to be a possible unique group.
+                    // This is way too much: Not all of the elements in the current container will form groups.
+                    // But anyway, this number is sufficient for our purpose, since sequential group ids are not required.
+                    // Ultimately, the container contains *at most* this many groups.
+                    nGroupsEncountered += nCount;
+                }
+
+                if (  i >= nCount )
                 {
                     // the loop terminated because there were no more elements
                     // -> step up, if possible
@@ -246,9 +267,10 @@ namespace toolkitform
         void getStringItemVector( const Reference< XPropertySet >& _rxModel, ::std::vector< OUString >& _rVector )
         {
             Sequence< OUString > aListEntries;
-            OSL_VERIFY( _rxModel->getPropertyValue( "StringItemList" ) >>= aListEntries );
-            ::std::copy( aListEntries.begin(), aListEntries.end(),
-                         ::std::back_insert_iterator< ::std::vector< OUString > >( _rVector ) );
+            if( ! (_rxModel->getPropertyValue( "StringItemList" ) >>= aListEntries) ) {
+                SAL_WARN("toolkit.helper", "getStringItemVector: unable to get property StringItemList");
+            }
+            _rVector.insert( _rVector.end(), aListEntries.begin(), aListEntries.end() );
         }
     }
 
@@ -267,8 +289,8 @@ namespace toolkitform
         {
             Reference< XPropertySet > xModelProps( _rxControl->getModel(), UNO_QUERY );
             sal_Int16 nControlType = classifyFormControl( xModelProps );
-            Descriptor.reset( createDefaultWidget( nControlType ) );
-            if ( !Descriptor.get() )
+            Descriptor = createDefaultWidget( nControlType );
+            if (!Descriptor)
                 // no PDF widget available for this
                 return Descriptor;
 
@@ -283,8 +305,12 @@ namespace toolkitform
 
 
             // Name, Description, Text
-            OSL_VERIFY( xModelProps->getPropertyValue( FM_PROP_NAME ) >>= Descriptor->Name );
-            OSL_VERIFY( xModelProps->getPropertyValue( "HelpText" ) >>= Descriptor->Description );
+            if( ! (xModelProps->getPropertyValue( FM_PROP_NAME ) >>= Descriptor->Name) ) {
+                SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << FM_PROP_NAME);
+            }
+            if( ! (xModelProps->getPropertyValue( "HelpText" ) >>= Descriptor->Description) ) {
+                SAL_INFO("toolkit.helper", "describePDFControl: unable to get property HelpText");
+            }
             Any aText;
             static const char FM_PROP_TEXT[] = "Text";
             static const char FM_PROP_LABEL[] = "Label";
@@ -292,14 +318,18 @@ namespace toolkitform
                 aText = xModelProps->getPropertyValue( FM_PROP_TEXT );
             else if ( xPSI->hasPropertyByName( FM_PROP_LABEL ) )
                 aText = xModelProps->getPropertyValue( FM_PROP_LABEL );
-            if ( aText.hasValue() )
-                OSL_VERIFY( aText >>= Descriptor->Text );
+            if ( aText.hasValue() ) {
+                if( ! (aText >>= Descriptor->Text) ) {
+                    SAL_WARN("toolkit.helper", "describePDFControl: unable to assign aText to Descriptor->Text");
+                }
+            }
 
 
             // readonly
             static const char FM_PROP_READONLY[] = "ReadOnly";
             if ( xPSI->hasPropertyByName( FM_PROP_READONLY ) )
-                OSL_VERIFY( xModelProps->getPropertyValue( FM_PROP_READONLY ) >>= Descriptor->ReadOnly );
+                if( ! (xModelProps->getPropertyValue( FM_PROP_READONLY ) >>= Descriptor->ReadOnly) )
+                    SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << FM_PROP_READONLY);
 
 
             // border
@@ -308,17 +338,18 @@ namespace toolkitform
                 if ( xPSI->hasPropertyByName( FM_PROP_BORDER ) )
                 {
                     sal_Int16 nBorderType = 0;
-                    OSL_VERIFY( xModelProps->getPropertyValue( FM_PROP_BORDER ) >>= nBorderType );
+                    if( ! (xModelProps->getPropertyValue( FM_PROP_BORDER ) >>= nBorderType) )
+                        SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << FM_PROP_BORDER);
                     Descriptor->Border = ( nBorderType != 0 );
 
                     OUString sBorderColorPropertyName( "BorderColor" );
                     if ( xPSI->hasPropertyByName( sBorderColorPropertyName ) )
                     {
-                        sal_Int32 nBorderColor = COL_TRANSPARENT;
+                        Color nBorderColor = COL_TRANSPARENT;
                         if ( xModelProps->getPropertyValue( sBorderColorPropertyName ) >>= nBorderColor )
-                            Descriptor->BorderColor = Color( nBorderColor );
+                            Descriptor->BorderColor = nBorderColor;
                         else
-                            Descriptor->BorderColor = Color( COL_BLACK );
+                            Descriptor->BorderColor = COL_BLACK;
                     }
                 }
             }
@@ -328,10 +359,10 @@ namespace toolkitform
             static const char FM_PROP_BACKGROUNDCOLOR[] = "BackgroundColor";
             if ( xPSI->hasPropertyByName( FM_PROP_BACKGROUNDCOLOR ) )
             {
-                sal_Int32 nBackColor = COL_TRANSPARENT;
+                Color nBackColor = COL_TRANSPARENT;
                 xModelProps->getPropertyValue( FM_PROP_BACKGROUNDCOLOR ) >>= nBackColor;
                 Descriptor->Background = true;
-                Descriptor->BackgroundColor = Color( nBackColor );
+                Descriptor->BackgroundColor = nBackColor;
             }
 
 
@@ -339,9 +370,9 @@ namespace toolkitform
             static const char FM_PROP_TEXTCOLOR[] = "TextColor";
             if ( xPSI->hasPropertyByName( FM_PROP_TEXTCOLOR ) )
             {
-                sal_Int32 nTextColor = COL_TRANSPARENT;
+                Color nTextColor = COL_TRANSPARENT;
                 xModelProps->getPropertyValue( FM_PROP_TEXTCOLOR ) >>= nTextColor;
-                Descriptor->TextColor = Color( nTextColor );
+                Descriptor->TextColor = nTextColor;
             }
 
 
@@ -355,7 +386,8 @@ namespace toolkitform
             if ( xPSI->hasPropertyByName( FM_PROP_MULTILINE ) )
             {
                 bool bMultiLine = false;
-                OSL_VERIFY( xModelProps->getPropertyValue( FM_PROP_MULTILINE ) >>= bMultiLine );
+                if( ! (xModelProps->getPropertyValue( FM_PROP_MULTILINE ) >>= bMultiLine) )
+                    SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << FM_PROP_MULTILINE);
                 if ( bMultiLine )
                     Descriptor->TextStyle |= DrawTextFlags::MultiLine | DrawTextFlags::WordBreak;
             }
@@ -401,7 +433,8 @@ namespace toolkitform
             if ( xPSI->hasPropertyByName( FM_PROP_FONT ) )
             {
                 FontDescriptor aUNOFont;
-                OSL_VERIFY( xModelProps->getPropertyValue( FM_PROP_FONT ) >>= aUNOFont );
+                if( ! (xModelProps->getPropertyValue( FM_PROP_FONT ) >>= aUNOFont) )
+                    SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << FM_PROP_FONT);
                 Descriptor->TextFont = VCLUnoHelper::CreateFont( aUNOFont, vcl::Font() );
             }
 
@@ -410,7 +443,8 @@ namespace toolkitform
             if ( xPSI->hasPropertyByName( aTabIndexString ) )
             {
                 sal_Int16 nIndex = -1;
-                OSL_VERIFY( xModelProps->getPropertyValue( aTabIndexString ) >>= nIndex );
+                if( ! (xModelProps->getPropertyValue( aTabIndexString ) >>= nIndex) )
+                    SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << aTabIndexString);
                 Descriptor->TabOrder = nIndex;
             }
 
@@ -443,7 +477,8 @@ namespace toolkitform
                 if ( xPSI->hasPropertyByName( FM_PROP_MAXTEXTLEN ) )
                 {
                     sal_Int16 nMaxTextLength = 0;
-                    OSL_VERIFY( xModelProps->getPropertyValue( FM_PROP_MAXTEXTLEN ) >>= nMaxTextLength );
+                    if( ! (xModelProps->getPropertyValue( FM_PROP_MAXTEXTLEN ) >>= nMaxTextLength) )
+                        SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << FM_PROP_MAXTEXTLEN);
                     if ( nMaxTextLength <= 0 )
                         // "-1" has a special meaning for database-bound controls
                         nMaxTextLength = 0;
@@ -457,7 +492,8 @@ namespace toolkitform
             {
                 vcl::PDFWriter::PushButtonWidget* pButtonWidget = static_cast< vcl::PDFWriter::PushButtonWidget* >( Descriptor.get() );
                 FormButtonType eButtonType = FormButtonType_PUSH;
-                OSL_VERIFY( xModelProps->getPropertyValue("ButtonType") >>= eButtonType );
+                if( ! (xModelProps->getPropertyValue("ButtonType") >>= eButtonType) )
+                    SAL_WARN("toolkit.helper", "describePDFControl: unable to get property ButtonType");
                 static const char FM_PROP_TARGET_URL[] = "TargetURL";
                 if ( eButtonType == FormButtonType_SUBMIT )
                 {
@@ -471,10 +507,12 @@ namespace toolkitform
                         Reference< XServiceInfo > xParentSI( xParentProps, UNO_QUERY );
                         if ( xParentSI.is() && xParentSI->supportsService("com.sun.star.form.component.HTMLForm") )
                         {
-                            OSL_VERIFY( xParentProps->getPropertyValue( FM_PROP_TARGET_URL ) >>= pButtonWidget->URL );
+                            if( ! (xParentProps->getPropertyValue( FM_PROP_TARGET_URL ) >>= pButtonWidget->URL) )
+                                SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << FM_PROP_TARGET_URL);
                             pButtonWidget->Submit = true;
                             FormSubmitMethod eMethod = FormSubmitMethod_POST;
-                            OSL_VERIFY( xParentProps->getPropertyValue("SubmitMethod") >>= eMethod );
+                            if( ! (xParentProps->getPropertyValue("SubmitMethod") >>= eMethod) )
+                                SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << FM_PROP_TARGET_URL);
                             pButtonWidget->SubmitGet = (eMethod == FormSubmitMethod_GET);
                         }
                     }
@@ -482,7 +520,8 @@ namespace toolkitform
                 else if ( eButtonType == FormButtonType_URL )
                 {
                     OUString sURL;
-                    OSL_VERIFY( xModelProps->getPropertyValue( FM_PROP_TARGET_URL ) >>= sURL );
+                    if( ! (xModelProps->getPropertyValue( FM_PROP_TARGET_URL ) >>= sURL) )
+                        SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << FM_PROP_TARGET_URL);
                     const bool bDocumentLocalTarget = sURL.startsWith("#");
                     if ( bDocumentLocalTarget )
                     {
@@ -522,7 +561,8 @@ namespace toolkitform
             {
                 vcl::PDFWriter::CheckBoxWidget* pCheckBoxWidget = static_cast< vcl::PDFWriter::CheckBoxWidget* >( Descriptor.get() );
                 sal_Int16 nState = 0;
-                OSL_VERIFY( xModelProps->getPropertyValue( FM_PROP_STATE ) >>= nState );
+                if( ! (xModelProps->getPropertyValue( FM_PROP_STATE ) >>= nState) )
+                    SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << FM_PROP_STATE);
                 pCheckBoxWidget->Checked = ( nState != 0 );
             }
 
@@ -532,7 +572,8 @@ namespace toolkitform
             {
                 vcl::PDFWriter::RadioButtonWidget* pRadioWidget = static_cast< vcl::PDFWriter::RadioButtonWidget* >( Descriptor.get() );
                 sal_Int16 nState = 0;
-                OSL_VERIFY( xModelProps->getPropertyValue( FM_PROP_STATE ) >>= nState );
+                if( ! (xModelProps->getPropertyValue( FM_PROP_STATE ) >>= nState) )
+                    SAL_WARN("toolkit.helper", "describePDFControl: unable to get property " << FM_PROP_STATE);
                 pRadioWidget->Selected = ( nState != 0 );
                 pRadioWidget->RadioGroup = determineRadioGroupId( xModelProps );
                 try
@@ -552,26 +593,26 @@ namespace toolkitform
                 vcl::PDFWriter::ListBoxWidget* pListWidget = static_cast< vcl::PDFWriter::ListBoxWidget* >( Descriptor.get() );
 
                 // drop down
-                OSL_VERIFY( xModelProps->getPropertyValue( "Dropdown" ) >>= pListWidget->DropDown );
+                if( ! (xModelProps->getPropertyValue( "Dropdown" ) >>= pListWidget->DropDown) )
+                    SAL_WARN("toolkit.helper", "describePDFControl: unable to get property Dropdown");
 
                 // multi selection
-                OSL_VERIFY( xModelProps->getPropertyValue("MultiSelection") >>= pListWidget->MultiSelect );
+                if( ! (xModelProps->getPropertyValue("MultiSelection") >>= pListWidget->MultiSelect) )
+                    SAL_WARN("toolkit.helper", "describePDFControl: unable to get property MultiSelection");
 
                 // entries
                 getStringItemVector( xModelProps, pListWidget->Entries );
 
                 // get selected items
                 Sequence< sal_Int16 > aSelectIndices;
-                OSL_VERIFY( xModelProps->getPropertyValue("SelectedItems") >>= aSelectIndices );
-                if( aSelectIndices.getLength() > 0 )
+                if( ! (xModelProps->getPropertyValue("SelectedItems") >>= aSelectIndices) )
+                    SAL_WARN("toolkit.helper", "describePDFControl: unable to get property SelectedItems");
+                if( aSelectIndices.hasElements() )
                 {
                     pListWidget->SelectedEntries.resize( 0 );
-                    for( sal_Int32 i = 0; i < aSelectIndices.getLength(); i++ )
-                    {
-                        sal_Int16 nIndex = aSelectIndices.getConstArray()[i];
-                        if( nIndex >= 0 && nIndex < (sal_Int16)pListWidget->Entries.size() )
-                            pListWidget->SelectedEntries.push_back( nIndex );
-                    }
+                    auto nEntriesSize = static_cast<sal_Int16>(pListWidget->Entries.size());
+                    std::copy_if(aSelectIndices.begin(), aSelectIndices.end(), std::back_inserter(pListWidget->SelectedEntries),
+                        [&nEntriesSize](const sal_Int16 nIndex) { return nIndex >= 0 && nIndex < nEntriesSize; });
                 }
             }
 
@@ -594,7 +635,7 @@ namespace toolkitform
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "describePDFControl: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "toolkit", "describePDFControl" );
         }
         return Descriptor;
     }

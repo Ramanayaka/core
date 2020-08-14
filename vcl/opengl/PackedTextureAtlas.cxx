@@ -13,10 +13,12 @@
 #include <vcl/opengl/OpenGLContext.hxx>
 #include <vcl/opengl/OpenGLHelper.hxx>
 
-#include "opengl/framebuffer.hxx"
-#include "opengl/texture.hxx"
+#include <opengl/framebuffer.hxx>
+#include <opengl/texture.hxx>
 
-#include "opengl/PackedTextureAtlas.hxx"
+#include <opengl/PackedTextureAtlas.hxx>
+
+namespace {
 
 struct Node
 {
@@ -26,11 +28,13 @@ struct Node
     bool mOccupied;
 
     explicit Node(int nWidth, int nHeight);
-    explicit Node(tools::Rectangle& aRectangle);
+    explicit Node(tools::Rectangle const & aRectangle);
 
-    bool isLeaf();
+    bool isLeaf() const;
     Node* insert(int nWidth, int nHeight, int nPadding);
 };
+
+}
 
 Node::Node(int nWidth, int nHeight)
     : mRectangle(tools::Rectangle(Point(), Size(nWidth, nHeight)))
@@ -39,18 +43,14 @@ Node::Node(int nWidth, int nHeight)
     , mOccupied(false)
 {}
 
-Node::Node(tools::Rectangle& aRectangle)
+Node::Node(tools::Rectangle const & aRectangle)
     : mRectangle(aRectangle)
     , mLeftNode()
     , mRightNode()
     , mOccupied(false)
 {}
 
-bool Node::isLeaf()
-{
-    return mLeftNode.get()  == nullptr &&
-           mRightNode.get() == nullptr;
-}
+bool Node::isLeaf() const { return mLeftNode == nullptr && mRightNode == nullptr; }
 
 Node* Node::insert(int nWidth, int nHeight, int nPadding)
 {
@@ -114,7 +114,7 @@ struct PackedTexture
     std::unique_ptr<Node> mpRootNode;
 
     PackedTexture(int nWidth, int nHeight)
-        : mpTexture(new ImplOpenGLTexture(nWidth, nHeight, true))
+        : mpTexture(std::make_shared<ImplOpenGLTexture>(nWidth, nHeight, true))
         , mpRootNode(new Node(nWidth, nHeight))
     {}
 };
@@ -163,7 +163,7 @@ OpenGLTexture PackedTextureAtlasManager::Reserve(int nWidth, int nHeight)
     return OpenGLTexture();
 }
 
-OpenGLTexture PackedTextureAtlasManager::InsertBuffer(int nWidth, int nHeight, int nFormat, int nType, sal_uInt8* pData)
+OpenGLTexture PackedTextureAtlasManager::InsertBuffer(int nWidth, int nHeight, int nFormat, int nType, sal_uInt8 const * pData)
 {
     OpenGLTexture aTexture = Reserve(nWidth, nHeight);
     if (aTexture && pData == nullptr)

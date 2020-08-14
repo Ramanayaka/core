@@ -20,23 +20,21 @@
 #define INCLUDED_SW_SOURCE_CORE_ACCESS_TEXTMARKUPHELPER_HXX
 
 #include <sal/types.h>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.h>
 
-namespace com { namespace sun { namespace star { namespace accessibility {
-struct TextSegment;
-} } } }
+namespace com::sun::star::accessibility {
+    struct TextSegment;
+}
 
 class SwAccessiblePortionData;
-class SwTextNode;
+class SwTextFrame;
 class SwWrongList; // #i108125#
+
 class SwTextMarkupHelper
 {
     public:
         SwTextMarkupHelper( const SwAccessiblePortionData& rPortionData,
-                            const SwTextNode& rTextNode );
+                            const SwTextFrame& rTextFrame);
         SwTextMarkupHelper( const SwAccessiblePortionData& rPortionData,
                             const SwWrongList& rTextMarkupList ); // #i108125#
 
@@ -64,8 +62,7 @@ class SwTextMarkupHelper
 
         const SwAccessiblePortionData& mrPortionData;
 
-        // #i108125#
-        const SwTextNode* mpTextNode;
+        SwTextFrame const* m_pTextFrame;
         const SwWrongList* mpTextMarkupList;
 };
 #endif

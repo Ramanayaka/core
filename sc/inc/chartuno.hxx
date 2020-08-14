@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SC_INC_CHARTUNO_HXX
 #define INCLUDED_SC_INC_CHARTUNO_HXX
 
-#include "address.hxx"
 #include "rangelst.hxx"
 #include <svl/lstner.hxx>
 #include <comphelper/proparrhlp.hxx>
@@ -33,13 +32,14 @@
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XNamed.hpp>
+#include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/implbase.hxx>
 
 class ScDocShell;
 class ScChartObj;
 
-class ScChartsObj : public cppu::WeakImplHelper<
+class ScChartsObj final : public cppu::WeakImplHelper<
                             css::table::XTableCharts,
                             css::container::XEnumerationAccess,
                             css::container::XIndexAccess,

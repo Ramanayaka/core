@@ -22,76 +22,91 @@
 
 #include <sal/config.h>
 
+#include <comphelper/syntaxhighlight.hxx>
 #include <sal/log.hxx>
-#include <vcl/dialog.hxx>
-#include <svtools/editsyntaxhighlighter.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
+#include <svtools/colorcfg.hxx>
+#include <vcl/timer.hxx>
+#include <vcl/weld.hxx>
 #include <deque>
 
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <unotools/eventlisteneradapter.hxx>
-#include "moduledbu.hxx"
 #include <osl/mutex.hxx>
 
-#include <svtools/editbrowsebox.hxx>
+#include <svx/weldeditview.hxx>
+
+struct ImplSVEvent;
 
 namespace dbaui
 {
+    class SQLEditView : public WeldEditView
+    {
+    private:
+        void DoBracketHilight(sal_uInt16 nKey);
+    public:
+        SQLEditView();
+        virtual bool KeyInput(const KeyEvent& rKEvt) override;
+    };
 
     // DirectSQLDialog
-    class DirectSQLDialog
-            :public ModalDialog
-            ,public ::utl::OEventListenerAdapter
+    class DirectSQLDialog final
+            : public weld::GenericDialogController
+            , public ::utl::OEventListenerAdapter
     {
-    protected:
-        OModuleClient m_aModuleClient;
         ::osl::Mutex    m_aMutex;
 
-        VclPtr<MultiLineEditSyntaxHighlight>    m_pSQL;
-        VclPtr<PushButton>       m_pExecute;
-        VclPtr<ListBox>          m_pSQLHistory;
-        VclPtr<VclMultiLineEdit> m_pStatus;
-        VclPtr<CheckBox>         m_pShowOutput;
-        VclPtr<VclMultiLineEdit> m_pOutput;
-        VclPtr<PushButton>       m_pClose;
+        std::unique_ptr<weld::Button> m_xExecute;
+        std::unique_ptr<weld::ComboBox> m_xSQLHistory;
+        std::unique_ptr<weld::TextView> m_xStatus;
+        std::unique_ptr<weld::CheckButton> m_xShowOutput;
+        std::unique_ptr<weld::TextView> m_xOutput;
+        std::unique_ptr<weld::Button> m_xClose;
+        std::unique_ptr<SQLEditView> m_xSQL;
+        std::unique_ptr<weld::CustomWeld> m_xSQLEd;
+
+        Timer m_aUpdateDataTimer;
+        const SyntaxHighlighter m_aHighlighter;
+        const svtools::ColorConfig m_aColorConfig;
 
         typedef std::deque< OUString >  StringQueue;
         StringQueue     m_aStatementHistory;    // previous statements
         StringQueue     m_aNormalizedHistory;   // previous statements, normalized to be used in the list box
 
-        sal_Int32       m_nHistoryLimit;
         sal_Int32       m_nStatusCount;
+        bool            m_bInUpdate;
 
         css::uno::Reference< css::sdbc::XConnection >
                         m_xConnection;
 
+        ImplSVEvent* m_pClosingEvent;
+
     public:
         DirectSQLDialog(
-            vcl::Window* _pParent,
+            weld::Window* _pParent,
             const css::uno::Reference< css::sdbc::XConnection >& _rxConn);
         virtual ~DirectSQLDialog() override;
-        virtual void dispose() override;
 
         /// number of history entries
         sal_Int32 getHistorySize() const;
 
-    protected:
+    private:
         void executeCurrent();
         void switchToHistory(sal_Int32 _nHistoryPos);
+
+        Color GetColorValue(TokenType aToken);
+
+        void UpdateData();
 
         // OEventListenerAdapter
         virtual void _disposing( const css::lang::EventObject& _rSource ) override;
 
-    protected:
-        DECL_LINK( OnExecute, Button*, void );
+        DECL_LINK( OnExecute, weld::Button&, void );
         DECL_LINK( OnClose, void*, void );
-        DECL_LINK( OnCloseClick, Button*, void );
-        DECL_LINK( OnListEntrySelected, ListBox&, void );
-        DECL_LINK( OnStatementModified, Edit&, void );
+        DECL_LINK( OnCloseClick, weld::Button&, void );
+        DECL_LINK( OnListEntrySelected, weld::ComboBox&, void );
+        DECL_LINK( OnStatementModified, LinkParamNone*, void );
+        DECL_LINK( ImplUpdateDataHdl, Timer*, void );
 
-    private:
         /// adds a statement to the statement history
         void implAddToStatementHistory(const OUString& _rStatement);
 
@@ -107,15 +122,18 @@ namespace dbaui
         /// adds a status text to the output list
         void addOutputText(const OUString& _rMessage);
 
+        /// displays resultset
+        void display(const css::uno::Reference< css::sdbc::XResultSet >& xRS);
+
 #ifdef DBG_UTIL
-        const sal_Char* impl_CheckInvariants() const;
+        const char* impl_CheckInvariants() const;
 #endif
     };
 
 #ifdef DBG_UTIL
 #define CHECK_INVARIANTS(methodname)    \
     {   \
-        const sal_Char* pError = impl_CheckInvariants();    \
+        const char* pError = impl_CheckInvariants();    \
         if (pError) \
             SAL_WARN("dbaccess.ui", methodname ": " << pError);   \
     }

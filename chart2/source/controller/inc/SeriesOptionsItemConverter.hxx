@@ -20,14 +20,13 @@
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_SERIESOPTIONSITEMCONVERTER_HXX
 
 #include "ItemConverter.hxx"
+#include <com/sun/star/uno/Sequence.h>
 
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/chart2/XCoordinateSystem.hpp>
+namespace com::sun::star::chart2 { class XCoordinateSystem; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::uno { class XComponentContext; }
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 class SeriesOptionsItemConverter : public ItemConverter
@@ -61,7 +60,6 @@ private:
 
     bool m_bSupportingAxisSideBySide;
     bool m_bGroupBarsPerAxis;
-    sal_Int32 m_nAllSeriesAxisIndex;
 
     bool m_bSupportingStartingAngle;
     sal_Int32 m_nStartingAngle;
@@ -74,10 +72,11 @@ private:
 
     bool m_bSupportingPlottingOfHiddenCells;
     bool m_bIncludeHiddenCells;
+
+    bool m_bHideLegendEntry;
 };
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_INC_SERIESOPTIONSITEMCONVERTER_HXX
 #endif

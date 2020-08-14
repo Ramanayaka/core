@@ -32,11 +32,10 @@ class X11OpenGLSalVirtualDevice : public SalVirtualDevice
     int               mnHeight;
 
 public:
-    X11OpenGLSalVirtualDevice( SalGraphics *pGraphics,
-                               long &nDX, long &nDY,
-                               DeviceFormat eFormat,
+    X11OpenGLSalVirtualDevice( SalGraphics const *pGraphics,
+                               long nDX, long nDY,
                                const SystemGraphicsData *pData,
-                               X11SalGraphics* pNewGraphics);
+                               std::unique_ptr<X11SalGraphics> pNewGraphics);
     virtual ~X11OpenGLSalVirtualDevice() override;
 
     // SalGeometryProvider

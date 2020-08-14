@@ -23,10 +23,9 @@
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <xmloff/xmlictxt.hxx>
 
-namespace com { namespace sun { namespace star { namespace lang {
-    class XComponent; } } } }
+namespace com::sun::star::lang { class XComponent; }
 
-class XMLEmbeddedObjectImportContext : public SvXMLImportContext
+class XMLEmbeddedObjectImportContext final : public SvXMLImportContext
 {
     css::uno::Reference<css::xml::sax::XDocumentHandler > xHandler;
     css::uno::Reference<css::lang::XComponent > xComp;
@@ -45,7 +44,7 @@ public:
 
     virtual ~XMLEmbeddedObjectImportContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                    const OUString& rLocalName,
                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
 
@@ -55,8 +54,7 @@ public:
 
     virtual void Characters( const OUString& rChars ) override;
 
-    void SetComponent(
-        css::uno::Reference< css::lang::XComponent >& rComp );
+    void SetComponent( css::uno::Reference< css::lang::XComponent > const & rComp );
 
 };
 

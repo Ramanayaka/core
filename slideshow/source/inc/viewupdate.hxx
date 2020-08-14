@@ -21,14 +21,11 @@
 #define INCLUDED_SLIDESHOW_SOURCE_INC_VIEWUPDATE_HXX
 
 #include "disposable.hxx"
-#include "view.hxx"
 #include <memory>
 
 /* Definition of ViewUpdate interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** Interface for something that can perform view updates.
 
@@ -55,7 +52,7 @@ namespace slideshow
         };
 
         typedef ::std::shared_ptr< ViewUpdate > ViewUpdateSharedPtr;
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_VIEWUPDATE_HXX

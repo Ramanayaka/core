@@ -20,7 +20,7 @@
 #ifndef INCLUDED_BASIC_SBMOD_HXX
 #define INCLUDED_BASIC_SBMOD_HXX
 
-#include <com/sun/star/script/XInvocation.hpp>
+#include <config_options.h>
 #include <basic/sbdef.hxx>
 #include <basic/sbxobj.hxx>
 #include <basic/sbxdef.hxx>
@@ -29,15 +29,16 @@
 #include <vector>
 #include <deque>
 #include <basic/basicdllapi.h>
-#include <basic/codecompletecache.hxx>
+#include <com/sun/star/uno/Reference.hxx>
+
+namespace com::sun::star::script { class XInvocation; }
 
 class SbMethod;
 class SbProperty;
-class SbiRuntime;
 typedef std::deque< sal_uInt16 > SbiBreakpoints;
 class SbiImage;
-class SbIfaceMapperMethod;
 class SbClassModuleObject;
+class CodeCompleteDataCache;
 
 
 class ModuleInitDependencyMap;
@@ -64,7 +65,7 @@ protected:
     OUString            aComment;
     SbiImage*           pImage;        // the Image
     SbiBreakpoints*     pBreaks;       // Breakpoints
-    SbClassData*        pClassData;
+    std::unique_ptr<SbClassData> pClassData;
     bool mbVBACompat;
     sal_Int32 mnType;
     SbxObjectRef pDocObject; // an impl object ( used by Document Modules )
@@ -100,7 +101,6 @@ public:
 
     virtual SbxVariable* Find( const OUString&, SbxClassType ) override;
 
-    const OUString&  GetSource() const;
     const OUString&  GetSource32() const { return aOUSource;}
     void             SetSource32( const OUString& r );
 
@@ -122,15 +122,15 @@ public:
     bool     HasExeCode();
     bool     IsVBACompat() const { return mbVBACompat;}
     void     SetVBACompat( bool bCompat );
-    sal_Int32 GetModuleType() { return mnType; }
+    sal_Int32 GetModuleType() const { return mnType; }
     void     SetModuleType( sal_Int32 nType ) { mnType = nType; }
-    bool     isProxyModule() { return bIsProxyModule; }
+    bool     isProxyModule() const { return bIsProxyModule; }
     void     AddVarName( const OUString& aName );
     void     RemoveVars();
     css::uno::Reference< css::script::XInvocation > const & GetUnoModule();
     bool     createCOMWrapperForIface( css::uno::Any& o_rRetAny, SbClassModuleObject* pProxyClassModuleObject );
     void     GetCodeCompleteDataFromParse(CodeCompleteDataCache& aCache);
-    const SbxArrayRef& GetMethods() { return pMethods;}
+    const SbxArrayRef& GetMethods() const { return pMethods;}
     SbMethod*       FindMethod( const OUString&, SbxClassType );
     static OUString GetKeywordCase( const OUString& sKeyword );
 };
@@ -139,7 +139,7 @@ typedef tools::SvRef<SbModule> SbModuleRef;
 typedef std::vector<SbModuleRef> SbModules;
 
 // Object class for instances of class modules
-class BASIC_DLLPUBLIC SbClassModuleObject : public SbModule
+class UNLESS_MERGELIBS(BASIC_DLLPUBLIC) SbClassModuleObject : public SbModule
 {
     SbModule*   mpClassModule;
     bool        mbInitializeEventDone;

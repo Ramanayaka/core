@@ -21,10 +21,10 @@
 
 #include <sfx2/ctrlitem.hxx>
 
-#include <com/sun/star/lang/XComponent.hpp>
+namespace com::sun::star::lang { class XComponent; }
 
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 /** The sfx2::sidebar::ControllerItem is a wrapper around the
     SfxControllerItem that becomes necessary to allow objects (think
@@ -34,7 +34,7 @@ namespace sfx2 { namespace sidebar {
 
     It also gives access to the label and icon of a slot/command.
 */
-class SFX2_DLLPUBLIC ControllerItem
+class SFX2_DLLPUBLIC ControllerItem final
     : public SfxControllerItem
 {
 public:
@@ -44,13 +44,15 @@ public:
         virtual void NotifyItemUpdate(
             const sal_uInt16 nSId,
             const SfxItemState eState,
-            const SfxPoolItem* pState,
-            const bool bIsEnabled) = 0;
+            const SfxPoolItem* pState) = 0;
+        virtual void GetControlState(
+            const sal_uInt16 nSId,
+            boost::property_tree::ptree& rState) = 0;
         virtual ~ItemUpdateReceiverInterface();
     };
 
     /** This is the simpler constructor variant that still exists for
-        compatibility resons.  Note that GetLabel() and GetIcon() will
+        compatibility reasons. Note that GetLabel() and GetIcon() will
         return empty strings/images.
     */
     ControllerItem (
@@ -58,33 +60,22 @@ public:
         SfxBindings &rBindings,
         ItemUpdateReceiverInterface& rItemUpdateReceiver);
 
-    /// releases our action listener
-    virtual void dispose() override;
-
     virtual ~ControllerItem() override;
-
-    /** Returns </TRUE> when the slot/command has not been disabled.
-        Changes of this state are notified via the
-        ItemUpdateReceiverInterface::NotifyContextChang() method.
-    */
-    bool IsEnabled (const SfxItemState eState) const;
 
     /** Force the controller item to call its NotifyItemUpdate
         callback with up-to-date data.
     */
     void RequestUpdate();
 
-protected:
+private:
 
     virtual void StateChanged (sal_uInt16 nSId, SfxItemState eState, const SfxPoolItem* pState) override;
+    virtual void GetControlState (sal_uInt16 nSId, boost::property_tree::ptree& rState) override;
 
-private:
     ItemUpdateReceiverInterface& mrItemUpdateReceiver;
-    css::uno::Reference<css::lang::XComponent> mxFrameActionListener;
-    const ::rtl::OUString msCommandName;
 };
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

@@ -21,7 +21,9 @@
 #include <osl/diagnose.h>
 #include <osl/interlck.h>
 #include <osl/mutex.hxx>
+#include <o3tl/sorted_vector.hxx>
 #include <sal/log.hxx>
+#include <rtl/ref.hxx>
 
 #include <uno/dispatcher.h>
 #include <uno/data.h>
@@ -29,28 +31,21 @@
 #include <uno/lbnames.h>
 #include <uno/mapping.hxx>
 
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
-#include <com/sun/star/uno/XAggregation.hpp>
 #include <com/sun/star/script/XTypeConverter.hpp>
 #include <com/sun/star/script/XInvocationAdapterFactory.hpp>
 #include <com/sun/star/script/XInvocationAdapterFactory2.hpp>
 #include <com/sun/star/script/XInvocation.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/registry/XSimpleRegistry.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/reflection/InvocationTargetException.hpp>
 #include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#define IMPLNAME    "com.sun.star.comp.stoc.InvocationAdapterFactory"
 
 using namespace ::std;
 using namespace ::osl;
@@ -60,25 +55,21 @@ using namespace css::uno;
 namespace stoc_invadp
 {
 
-static Sequence< OUString > invadp_getSupportedServiceNames()
-{
-    Sequence< OUString > seqNames { "com.sun.star.script.InvocationAdapterFactory" };
-    return seqNames;
-}
 
-static OUString invadp_getImplementationName()
-{
-    return OUString(IMPLNAME);
-}
+namespace {
 
 struct hash_ptr
 {
     size_t operator() ( void * p ) const
         { return reinterpret_cast<size_t>(p); }
 };
-typedef std::unordered_set< void *, hash_ptr > t_ptr_set;
+
+}
+
+typedef o3tl::sorted_vector< void * > t_ptr_set;
 typedef std::unordered_map< void *, t_ptr_set, hash_ptr > t_ptr_map;
 
+namespace {
 
 class FactoryImpl
     : public ::cppu::WeakImplHelper< lang::XServiceInfo,
@@ -164,6 +155,8 @@ struct AdapterImpl
     AdapterImpl & operator= (const AdapterImpl &) = delete;
 };
 
+}
+
 inline AdapterImpl::~AdapterImpl()
 {
     for ( size_t nPos = m_vInterfaces.size(); nPos--; )
@@ -207,7 +200,7 @@ inline void AdapterImpl::release()
 }
 
 
-static inline void constructRuntimeException(
+static void constructRuntimeException(
     uno_Any * pExc, const OUString & rMsg )
 {
     RuntimeException exc( rMsg );
@@ -217,7 +210,7 @@ static inline void constructRuntimeException(
 }
 
 
-static inline bool type_equals(
+static bool type_equals(
     typelib_TypeDescriptionReference * pType1,
     typelib_TypeDescriptionReference * pType2 )
 {
@@ -551,17 +544,17 @@ void AdapterImpl::invoke(
 extern "C"
 {
 
-static void SAL_CALL adapter_acquire( uno_Interface * pUnoI )
+static void adapter_acquire( uno_Interface * pUnoI )
 {
     static_cast< InterfaceAdapterImpl * >( pUnoI )->m_pAdapter->acquire();
 }
 
-static void SAL_CALL adapter_release( uno_Interface * pUnoI )
+static void adapter_release( uno_Interface * pUnoI )
 {
     static_cast< InterfaceAdapterImpl * >( pUnoI )->m_pAdapter->release();
 }
 
-static void SAL_CALL adapter_dispatch(
+static void adapter_dispatch(
     uno_Interface * pUnoI, const typelib_TypeDescription * pMemberType,
     void * pReturn, void * pArgs[], uno_Any ** ppException )
 {
@@ -673,7 +666,9 @@ AdapterImpl::AdapterImpl(
 
 
 FactoryImpl::FactoryImpl( Reference< XComponentContext > const & xContext )
-    : m_pInvokMethodTD( nullptr ),
+    : m_aUno2Cpp(Mapping( UNO_LB_UNO, CPPU_CURRENT_LANGUAGE_BINDING_NAME )),
+      m_aCpp2Uno(Mapping( CPPU_CURRENT_LANGUAGE_BINDING_NAME, UNO_LB_UNO)),
+      m_pInvokMethodTD( nullptr ),
       m_pSetValueTD( nullptr ),
       m_pGetValueTD( nullptr ),
       m_pAnySeqTD( nullptr ),
@@ -681,10 +676,6 @@ FactoryImpl::FactoryImpl( Reference< XComponentContext > const & xContext )
       m_pConvertToTD( nullptr )
 {
     // C++/UNO bridge
-    OUString aCppEnvTypeName = CPPU_CURRENT_LANGUAGE_BINDING_NAME;
-    OUString aUnoEnvTypeName = UNO_LB_UNO;
-    m_aUno2Cpp = Mapping( aUnoEnvTypeName, aCppEnvTypeName );
-    m_aCpp2Uno = Mapping( aCppEnvTypeName, aUnoEnvTypeName );
     OSL_ENSURE(
         m_aUno2Cpp.is() && m_aCpp2Uno.is(), "### no uno / C++ mappings!" );
 
@@ -754,7 +745,7 @@ FactoryImpl::~FactoryImpl()
 }
 
 
-static inline AdapterImpl * lookup_adapter(
+static AdapterImpl * lookup_adapter(
     t_ptr_set ** pp_adapter_set,
     t_ptr_map & map, void * key, Sequence< Type > const & rTypes )
 {
@@ -765,11 +756,9 @@ static inline AdapterImpl * lookup_adapter(
     // find matching adapter
     Type const * pTypes = rTypes.getConstArray();
     sal_Int32 nTypes = rTypes.getLength();
-    t_ptr_set::const_iterator iPos( adapters_set.begin() );
-    t_ptr_set::const_iterator const iEnd( adapters_set.end() );
-    while (iEnd != iPos)
+    for (const auto& rpAdapter : adapters_set)
     {
-        AdapterImpl * that = static_cast< AdapterImpl * >( *iPos );
+        AdapterImpl * that = static_cast< AdapterImpl * >( rpAdapter );
         // iterate through all types if that is a matching adapter
         sal_Int32 nPosTypes;
         for ( nPosTypes = nTypes; nPosTypes--; )
@@ -792,7 +781,6 @@ static inline AdapterImpl * lookup_adapter(
         }
         if (nPosTypes < 0) // all types found
             return that;
-        ++iPos;
     }
     return nullptr;
 }
@@ -804,7 +792,7 @@ Reference< XInterface > FactoryImpl::createAdapter(
     const Sequence< Type > & rTypes )
 {
     Reference< XInterface > xRet;
-    if (xReceiver.is() && rTypes.getLength())
+    if (xReceiver.is() && rTypes.hasElements())
     {
         t_ptr_set * adapter_set;
         AdapterImpl * that;
@@ -825,7 +813,7 @@ Reference< XInterface > FactoryImpl::createAdapter(
                 &adapter_set, m_receiver2adapters, xKey.get(), rTypes );
             if (nullptr == that) // again no entry
             {
-                pair< t_ptr_set::iterator, bool > i(adapter_set->insert(pNew));
+                pair< t_ptr_set::const_iterator, bool > i(adapter_set->insert(pNew));
                 SAL_WARN_IF(
                     !i.second, "stoc",
                     "set already contains " << *(i.first) << " != " << pNew);
@@ -844,7 +832,7 @@ Reference< XInterface > FactoryImpl::createAdapter(
         }
         }
         // map one interface to C++
-        uno_Interface * pUnoI = &that->m_vInterfaces[ 0 ];
+        uno_Interface * pUnoI = that->m_vInterfaces.data();
         m_aUno2Cpp.mapInterface(
             reinterpret_cast<void **>(&xRet), pUnoI, cppu::UnoType<decltype(xRet)>::get() );
         that->release();
@@ -868,7 +856,7 @@ Reference< XInterface > FactoryImpl::createAdapter(
 
 OUString FactoryImpl::getImplementationName()
 {
-    return invadp_getImplementationName();
+    return "com.sun.star.comp.stoc.InvocationAdapterFactory";
 }
 
 sal_Bool FactoryImpl::supportsService( const OUString & rServiceName )
@@ -878,36 +866,22 @@ sal_Bool FactoryImpl::supportsService( const OUString & rServiceName )
 
 Sequence< OUString > FactoryImpl::getSupportedServiceNames()
 {
-    return invadp_getSupportedServiceNames();
+    return { "com.sun.star.script.InvocationAdapterFactory" };
 }
 
-/// @throws Exception
-static Reference< XInterface > SAL_CALL FactoryImpl_create(
-    const Reference< XComponentContext > & xContext )
+}
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+stoc_invocation_adapter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return static_cast<cppu::OWeakObject *>(new FactoryImpl( xContext ));
+    static rtl::Reference<stoc_invadp::FactoryImpl> g_Instance(new stoc_invadp::FactoryImpl(context));
+
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
-}
 
-
-static const struct ::cppu::ImplementationEntry g_entries[] =
-{
-    {
-        ::stoc_invadp::FactoryImpl_create,
-        ::stoc_invadp::invadp_getImplementationName,
-        ::stoc_invadp::invadp_getSupportedServiceNames,
-        ::cppu::createOneInstanceComponentFactory,
-        nullptr, 0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-};
-
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL invocadapt_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
-{
-    return ::cppu::component_getFactoryHelper(
-        pImplName, pServiceManager, pRegistryKey , g_entries );
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

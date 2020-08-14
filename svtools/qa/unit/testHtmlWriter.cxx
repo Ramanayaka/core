@@ -8,12 +8,10 @@
  *
  */
 
-#include "cppunit/TestCase.h"
-#include "cppunit/TestFixture.h"
-#include "cppunit/TestSuite.h"
-#include "cppunit/extensions/HelperMacros.h"
-#include "cppunit/plugin/TestPlugIn.h"
+#include <cppunit/TestFixture.h>
+#include <cppunit/plugin/TestPlugIn.h>
 
+#include <unotest/bootstrapfixturebase.hxx>
 #include <tools/stream.hxx>
 #include <svtools/HtmlWriter.hxx>
 
@@ -25,34 +23,16 @@ OString extractFromStream(SvMemoryStream& rStream)
     rStream.WriteChar('\0');
     rStream.Flush();
     rStream.Seek(STREAM_SEEK_TO_BEGIN);
-    return OString(static_cast<const sal_Char*>(rStream.GetBuffer()));
+    return static_cast<const char*>(rStream.GetData());
 }
 
 }
 
 class Test: public CppUnit::TestFixture
 {
-
-public:
-    void testSingleElement();
-    void testSingleElementWithAttributes();
-    void testSingleElementWithContent();
-    void testSingleElementWithContentAndAttributes();
-    void testNested();
-    void testAttributeValues();
-
-    CPPUNIT_TEST_SUITE(Test);
-    CPPUNIT_TEST(testSingleElement);
-    CPPUNIT_TEST(testSingleElementWithAttributes);
-    CPPUNIT_TEST(testSingleElementWithContent);
-    CPPUNIT_TEST(testSingleElementWithContentAndAttributes);
-    CPPUNIT_TEST(testNested);
-    CPPUNIT_TEST(testAttributeValues);
-
-    CPPUNIT_TEST_SUITE_END();
 };
 
-void Test::testSingleElement()
+CPPUNIT_TEST_FIXTURE(Test, testSingleElement)
 {
     {
         SvMemoryStream aStream;
@@ -63,7 +43,7 @@ void Test::testSingleElement()
         aHtml.end();
 
         OString aString = extractFromStream(aStream);
-        CPPUNIT_ASSERT_EQUAL(aString, OString("<abc/>"));
+        CPPUNIT_ASSERT_EQUAL(OString("<abc/>"), aString);
     }
 
     {
@@ -75,11 +55,11 @@ void Test::testSingleElement()
 
         OString aString = extractFromStream(aStream);
 
-        CPPUNIT_ASSERT_EQUAL(aString, OString("<abc/>"));
+        CPPUNIT_ASSERT_EQUAL(OString("<abc/>"), aString);
     }
 }
 
-void Test::testSingleElementWithAttributes()
+CPPUNIT_TEST_FIXTURE(Test, testSingleElementWithAttributes)
 {
     {
         SvMemoryStream aStream;
@@ -92,7 +72,7 @@ void Test::testSingleElementWithAttributes()
 
         OString aString = extractFromStream(aStream);
 
-        CPPUNIT_ASSERT_EQUAL(aString, OString("<abc x=\"y\"/>"));
+        CPPUNIT_ASSERT_EQUAL(OString("<abc x=\"y\"/>"), aString);
     }
 
     {
@@ -107,11 +87,11 @@ void Test::testSingleElementWithAttributes()
 
         OString aString = extractFromStream(aStream);
 
-        CPPUNIT_ASSERT_EQUAL(aString, OString("<abc x=\"y\" q=\"w\"/>"));
+        CPPUNIT_ASSERT_EQUAL(OString("<abc x=\"y\" q=\"w\"/>"), aString);
     }
 }
 
-void Test::testSingleElementWithContent()
+CPPUNIT_TEST_FIXTURE(Test, testSingleElementWithContent)
 {
     SvMemoryStream aStream;
 
@@ -122,10 +102,10 @@ void Test::testSingleElementWithContent()
 
     OString aString = extractFromStream(aStream);
 
-    CPPUNIT_ASSERT_EQUAL(aString, OString("<abc/>"));
+    CPPUNIT_ASSERT_EQUAL(OString("<abc/>"), aString);
 }
 
-void Test::testSingleElementWithContentAndAttributes()
+CPPUNIT_TEST_FIXTURE(Test, testSingleElementWithContentAndAttributes)
 {
     SvMemoryStream aStream;
 
@@ -138,18 +118,18 @@ void Test::testSingleElementWithContentAndAttributes()
 
     OString aString = extractFromStream(aStream);
 
-    CPPUNIT_ASSERT_EQUAL(aString, OString("<abc x=\"y\" q=\"w\"/>"));
+    CPPUNIT_ASSERT_EQUAL(OString("<abc x=\"y\" q=\"w\"/>"), aString);
 }
 
-void Test::testNested()
+CPPUNIT_TEST_FIXTURE(Test, testNested)
 {
     SvMemoryStream aStream;
 
     HtmlWriter aHtml(aStream);
     aHtml.prettyPrint(false);
     aHtml.start("abc");
-        aHtml.start("xyz");
-        aHtml.end();
+    aHtml.start("xyz");
+    aHtml.end();
     aHtml.end();
 
     OString aString = extractFromStream(aStream);
@@ -157,7 +137,21 @@ void Test::testNested()
     CPPUNIT_ASSERT_EQUAL(OString("<abc><xyz/></abc>"), aString);
 }
 
-void Test::testAttributeValues()
+CPPUNIT_TEST_FIXTURE(Test, testNamespace)
+{
+    SvMemoryStream aStream;
+
+    HtmlWriter aHtml(aStream, "reqif-xhtml");
+    aHtml.prettyPrint(false);
+    aHtml.single("br");
+
+    OString aString = extractFromStream(aStream);
+
+    // This was <br/>, namespace request was ignored.
+    CPPUNIT_ASSERT_EQUAL(OString("<reqif-xhtml:br/>"), aString);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testAttributeValues)
 {
     SvMemoryStream aStream;
 
@@ -174,7 +168,21 @@ void Test::testAttributeValues()
     CPPUNIT_ASSERT_EQUAL(OString("<abc one=\"one\" two=\"two\" three=\"12\"/>"), aString);
 }
 
-CPPUNIT_TEST_SUITE_REGISTRATION(Test);
+CPPUNIT_TEST_FIXTURE(Test, testCharacters)
+{
+    SvMemoryStream aStream;
+
+    HtmlWriter aHtml(aStream);
+    aHtml.prettyPrint(false);
+    aHtml.start("abc");
+    aHtml.characters("hello");
+    aHtml.end();
+
+    OString aString = extractFromStream(aStream);
+
+    CPPUNIT_ASSERT_EQUAL(OString("<abc>hello</abc>"), aString);
+}
+
 CPPUNIT_PLUGIN_IMPLEMENT();
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,35 +21,35 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <osl/mutex.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 
 #include "configurationprovider.hxx"
 #include "defaultprovider.hxx"
 #include "lock.hxx"
 
-namespace configmgr { namespace default_provider {
-
-css::uno::Reference< css::uno::XInterface > create(
-    css::uno::Reference< css::uno::XComponentContext > const & context)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_configuration_DefaultProvider_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    osl::MutexGuard guard(*lock());
+    osl::MutexGuard guard(*configmgr::lock());
     static css::uno::Reference< css::uno::XInterface > singleton(
-        configuration_provider::createDefault(context));
-    return singleton;
+        configmgr::configuration_provider::createDefault(context));
+    singleton->acquire();
+    return singleton.get();
 }
 
+namespace configmgr::default_provider {
+
 OUString getImplementationName() {
-    return OUString("com.sun.star.comp.configuration.DefaultProvider");
+    return "com.sun.star.comp.configuration.DefaultProvider";
 }
 
 css::uno::Sequence< OUString > getSupportedServiceNames() {
     return css::uno::Sequence< OUString > { "com.sun.star.configuration.DefaultProvider" };
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

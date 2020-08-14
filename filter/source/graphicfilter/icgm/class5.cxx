@@ -19,9 +19,10 @@
 
 //#define VCL_NEED_BASETSD
 
-#include <main.hxx>
-#include <outact.hxx>
-
+#include <sal/log.hxx>
+#include "cgm.hxx"
+#include "elements.hxx"
+#include "outact.hxx"
 
 void CGM::ImplDoClass5()
 {
@@ -33,9 +34,9 @@ void CGM::ImplDoClass5()
         case 0x02 : /*Line Type*/
         {
             if ( pElement->nAspectSourceFlags & ASF_LINETYPE )
-                pElement->pLineBundle->eLineType = (LineType)ImplGetI( pElement->nIndexPrecision );
+                pElement->pLineBundle->eLineType = static_cast<LineType>(ImplGetI( pElement->nIndexPrecision ));
             else
-                pElement->aLineBundle.eLineType = (LineType)ImplGetI( pElement->nIndexPrecision );
+                pElement->aLineBundle.eLineType = static_cast<LineType>(ImplGetI( pElement->nIndexPrecision ));
         }
         break;
         case 0x03 : /*Line Width*/
@@ -46,16 +47,17 @@ void CGM::ImplDoClass5()
                 if ( pElement->eVDCType == VDC_REAL )
                     nWidth = ImplGetFloat( pElement->eVDCRealPrecision, pElement->nVDCRealSize );
                 else
-                    nWidth = (double)ImplGetI( pElement->nVDCIntegerPrecision );
+                    nWidth = static_cast<double>(ImplGetI( pElement->nVDCIntegerPrecision ));
 
                 ImplMapDouble( nWidth );
             }
             else
-                nWidth = (sal_uInt32)ImplGetFloat( pElement->eRealPrecision, pElement->nRealSize ) * 25; // scaling in 1/4 mm
+                nWidth = static_cast<sal_uInt32>(ImplGetFloat( pElement->eRealPrecision, pElement->nRealSize )) * 25; // scaling in 1/4 mm
 
-            ( pElement->nAspectSourceFlags & ASF_LINEWIDTH )
-                ? pElement->pLineBundle->nLineWidth = nWidth
-                    : pElement->aLineBundle.nLineWidth = nWidth;
+            if ( pElement->nAspectSourceFlags & ASF_LINEWIDTH )
+                pElement->pLineBundle->nLineWidth = nWidth;
+            else
+                pElement->aLineBundle.nLineWidth = nWidth;
         }
         break;
         case 0x04 : /*Line Color*/
@@ -72,9 +74,9 @@ void CGM::ImplDoClass5()
         case 0x06 : /*Marker Type*/
         {
             if ( pElement->nAspectSourceFlags & ASF_MARKERTYPE )
-                pElement->pMarkerBundle->eMarkerType = (MarkerType)ImplGetI( pElement->nIndexPrecision );
+                pElement->pMarkerBundle->eMarkerType = static_cast<MarkerType>(ImplGetI( pElement->nIndexPrecision ));
             else
-                pElement->aMarkerBundle.eMarkerType = (MarkerType)ImplGetI( pElement->nIndexPrecision );
+                pElement->aMarkerBundle.eMarkerType = static_cast<MarkerType>(ImplGetI( pElement->nIndexPrecision ));
         }
         break;
         case 0x07 : /*Marker Size*/
@@ -85,14 +87,15 @@ void CGM::ImplDoClass5()
                 if ( pElement->eVDCType == VDC_REAL )
                     nWidth = ImplGetFloat( pElement->eVDCRealPrecision, pElement->nVDCRealSize );
                 else
-                    nWidth = (double)ImplGetI( pElement->nVDCIntegerPrecision );
+                    nWidth = static_cast<double>(ImplGetI( pElement->nVDCIntegerPrecision ));
                 ImplMapDouble( nWidth );
             }
             else
-                nWidth = (sal_uInt32)ImplGetFloat( pElement->eRealPrecision, pElement->nRealSize ) * 25;
-            ( pElement->nAspectSourceFlags & ASF_MARKERSIZE )
-                ? pElement->pMarkerBundle->nMarkerSize = nWidth
-                    : pElement->aMarkerBundle.nMarkerSize = nWidth;
+                nWidth = static_cast<sal_uInt32>(ImplGetFloat( pElement->eRealPrecision, pElement->nRealSize )) * 25;
+            if ( pElement->nAspectSourceFlags & ASF_MARKERSIZE )
+                pElement->pMarkerBundle->nMarkerSize = nWidth;
+            else
+                pElement->aMarkerBundle.nMarkerSize = nWidth;
         }
         break;
         case 0x08 : /*Marker Color*/
@@ -196,8 +199,16 @@ void CGM::ImplDoClass5()
         break;
         case 0x12 : /*Text Alignment*/
         {
-            pElement->eTextAlignmentH = (TextAlignmentH)ImplGetUI16();
-            pElement->eTextAlignmentV = (TextAlignmentV)ImplGetUI16();
+            auto nTextAlign = ImplGetUI16();
+            if (nTextAlign > TextAlignmentH::TAH_CONT)
+                SAL_WARN("filter.icgm", "TextAlign out of range");
+            else
+                pElement->eTextAlignmentH = static_cast<TextAlignmentH>(nTextAlign);
+            nTextAlign = ImplGetUI16();
+            if (nTextAlign > TextAlignmentV::TAV_CONT)
+                SAL_WARN("filter.icgm", "TextAlign out of range");
+            else
+                pElement->eTextAlignmentV = static_cast<TextAlignmentV>(nTextAlign);
             pElement->nTextAlignmentHCont = ImplGetFloat( pElement->eRealPrecision, pElement->nRealSize );
             pElement->nTextAlignmentVCont = ImplGetFloat( pElement->eRealPrecision, pElement->nRealSize );
         }
@@ -214,9 +225,9 @@ void CGM::ImplDoClass5()
         case 0x16 : /*Fill Interior Style*/
         {
             if ( pElement->nAspectSourceFlags & ASF_FILLINTERIORSTYLE )
-                pElement->pFillBundle->eFillInteriorStyle = (FillInteriorStyle)ImplGetUI16();
+                pElement->pFillBundle->eFillInteriorStyle = static_cast<FillInteriorStyle>(ImplGetUI16());
             else
-                pElement->aFillBundle.eFillInteriorStyle = (FillInteriorStyle)ImplGetUI16();
+                pElement->aFillBundle.eFillInteriorStyle = static_cast<FillInteriorStyle>(ImplGetUI16());
         }
         break;
         case 0x17 : /*Fill Color*/
@@ -249,9 +260,9 @@ void CGM::ImplDoClass5()
         case 0x1b : /*Edge Type*/
         {
             if ( pElement->nAspectSourceFlags & ASF_EDGETYPE )
-                pElement->pEdgeBundle->eEdgeType = (EdgeType)ImplGetI( pElement->nIndexPrecision );
+                pElement->pEdgeBundle->eEdgeType = static_cast<EdgeType>(ImplGetI( pElement->nIndexPrecision ));
             else
-                pElement->aEdgeBundle.eEdgeType = (EdgeType)ImplGetI( pElement->nIndexPrecision );
+                pElement->aEdgeBundle.eEdgeType = static_cast<EdgeType>(ImplGetI( pElement->nIndexPrecision ));
         }
         break;
         case 0x1c : /*Edge Width*/
@@ -262,15 +273,16 @@ void CGM::ImplDoClass5()
                 if ( pElement->eVDCType == VDC_REAL )
                     nWidth = ImplGetFloat( pElement->eVDCRealPrecision, pElement->nVDCRealSize );
                 else
-                    nWidth = (double)ImplGetI( pElement->nVDCIntegerPrecision );
+                    nWidth = static_cast<double>(ImplGetI( pElement->nVDCIntegerPrecision ));
 
                 ImplMapDouble( nWidth );
             }
             else
-                nWidth = (sal_uInt32)ImplGetFloat( pElement->eRealPrecision, pElement->nRealSize ) * 25;
-            ( pElement->nAspectSourceFlags & ASF_EDGEWIDTH )
-                ? pElement->pEdgeBundle->nEdgeWidth = nWidth
-                    : pElement->aEdgeBundle.nEdgeWidth = nWidth;
+                nWidth = static_cast<sal_uInt32>(ImplGetFloat( pElement->eRealPrecision, pElement->nRealSize )) * 25;
+            if ( pElement->nAspectSourceFlags & ASF_EDGEWIDTH )
+                pElement->pEdgeBundle->nEdgeWidth = nWidth;
+            else
+                pElement->aEdgeBundle.nEdgeWidth = nWidth;
         }
         break;
         case 0x1d : /*Edge Color*/
@@ -376,7 +388,7 @@ void CGM::ImplDoClass5()
             }
         }
         break;
-        case 0x24 : /*Pick Identifier" ) bre*/
+        case 0x24 : /*Pick Identifier*/ break;
         case 0x25 : /*Line Cap*/
         {
             switch( ImplGetUI16() )

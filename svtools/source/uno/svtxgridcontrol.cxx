@@ -19,28 +19,23 @@
 
 #include "svtxgridcontrol.hxx"
 #include <com/sun/star/view/SelectionType.hpp>
-#include "table/tablecontrolinterface.hxx"
-#include "table/gridtablerenderer.hxx"
-#include "table/tablecontrol.hxx"
+#include <table/tablecontrolinterface.hxx>
+#include <table/gridtablerenderer.hxx>
+#include <table/tablecontrol.hxx>
 #include "unocontroltablemodel.hxx"
-#include <comphelper/sequence.hxx>
-#include <rtl/ref.hxx>
+#include <sal/log.hxx>
 #include <tools/diagnose_ex.h>
 #include <toolkit/helper/property.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <comphelper/processfactory.hxx>
 #include <com/sun/star/awt/grid/XGridColumn.hpp>
-#include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/awt/grid/GridInvalidDataException.hpp>
 #include <com/sun/star/awt/grid/GridInvalidModelException.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/util/Color.hpp>
-#include <com/sun/star/awt/FontDescriptor.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
 #include <vcl/svapp.hxx>
 
-using css::uno::RuntimeException;
 using css::uno::Reference;
 using css::uno::Exception;
 using css::uno::UNO_QUERY;
@@ -66,7 +61,6 @@ using css::awt::grid::XGridColumn;
 using css::container::ContainerEvent;
 using css::awt::grid::GridDataEvent;
 using css::awt::grid::GridInvalidModelException;
-using css::util::VetoException;
 
 namespace AccessibleEventId = css::accessibility::AccessibleEventId;
 namespace AccessibleStateType = css::accessibility::AccessibleStateType;
@@ -75,7 +69,7 @@ using namespace ::svt::table;
 
 
 SVTXGridControl::SVTXGridControl()
-    :m_xTableModel( new UnoControlTableModel() )
+    :m_xTableModel( std::make_shared<UnoControlTableModel>() )
     ,m_bTableModelInitCompleted( false )
     ,m_aSelectionListeners( *this )
 {
@@ -212,7 +206,7 @@ void SVTXGridControl::setProperty( const OUString& PropertyName, const Any& aVal
             sal_Int32 columnHeaderHeight = 0;
             if ( !aValue.hasValue() )
             {
-                columnHeaderHeight = pTable->PixelToLogic( Size( 0, pTable->GetTextHeight() + 3 ), MapUnit::MapAppFont ).Height();
+                columnHeaderHeight = pTable->PixelToLogic(Size(0, pTable->GetTextHeight() + 3), MapMode(MapUnit::MapAppFont)).Height();
             }
             else
             {
@@ -252,7 +246,7 @@ void SVTXGridControl::setProperty( const OUString& PropertyName, const Any& aVal
             sal_Int32 rowHeight = 0;
             if ( !aValue.hasValue() )
             {
-                rowHeight = pTable->PixelToLogic( Size( 0, pTable->GetTextHeight() + 3 ), MapUnit::MapAppFont ).Height();
+                rowHeight = pTable->PixelToLogic(Size(0, pTable->GetTextHeight() + 3), MapMode(MapUnit::MapAppFont)).Height();
             }
             else
             {
@@ -434,35 +428,35 @@ void SVTXGridControl::setProperty( const OUString& PropertyName, const Any& aVal
 
 void SVTXGridControl::impl_checkTableModelInit()
 {
-    if ( !m_bTableModelInitCompleted && m_xTableModel->hasColumnModel() && m_xTableModel->hasDataModel() )
-    {
-        VclPtr< TableControl > pTable = GetAsDynamic< TableControl >();
-        if ( pTable )
-        {
-            pTable->SetModel( PTableModel( m_xTableModel ) );
+    if ( !(!m_bTableModelInitCompleted && m_xTableModel->hasColumnModel() && m_xTableModel->hasDataModel()) )
+        return;
 
-            m_bTableModelInitCompleted = true;
+    VclPtr< TableControl > pTable = GetAsDynamic< TableControl >();
+    if ( !pTable )
+        return;
 
-            // ensure default columns exist, if they have not previously been added
-            Reference< XGridDataModel > const xDataModel( m_xTableModel->getDataModel(), UNO_QUERY_THROW );
-            Reference< XGridColumnModel > const xColumnModel( m_xTableModel->getColumnModel(), UNO_QUERY_THROW );
+    pTable->SetModel( PTableModel( m_xTableModel ) );
 
-            sal_Int32 const nDataColumnCount = xDataModel->getColumnCount();
-            if ( ( nDataColumnCount > 0 ) && ( xColumnModel->getColumnCount() == 0 ) )
-                xColumnModel->setDefaultColumns( nDataColumnCount );
-                // this will trigger notifications, which in turn will let us update our m_xTableModel
-        }
-    }
+    m_bTableModelInitCompleted = true;
+
+    // ensure default columns exist, if they have not previously been added
+    Reference< XGridDataModel > const xDataModel( m_xTableModel->getDataModel(), css::uno::UNO_SET_THROW );
+    Reference< XGridColumnModel > const xColumnModel( m_xTableModel->getColumnModel(), css::uno::UNO_SET_THROW );
+
+    sal_Int32 const nDataColumnCount = xDataModel->getColumnCount();
+    if ( ( nDataColumnCount > 0 ) && ( xColumnModel->getColumnCount() == 0 ) )
+        xColumnModel->setDefaultColumns( nDataColumnCount );
+        // this will trigger notifications, which in turn will let us update our m_xTableModel
 }
 
 namespace
 {
-    void lcl_convertColor( ::boost::optional< ::Color > const & i_color, Any & o_colorValue )
+    void lcl_convertColor( ::std::optional< ::Color > const & i_color, Any & o_colorValue )
     {
         if ( !i_color )
             o_colorValue.clear();
         else
-            o_colorValue <<= i_color->GetColor();
+            o_colorValue <<= sal_Int32(*i_color);
     }
 }
 
@@ -540,7 +534,7 @@ Any SVTXGridControl::getProperty( const OUString& PropertyName )
 
     case BASEPROPERTY_GRID_ROW_BACKGROUND_COLORS:
     {
-        ::boost::optional< ::std::vector< ::Color > > aColors( m_xTableModel->getRowBackgroundColors() );
+        ::std::optional< ::std::vector< ::Color > > aColors( m_xTableModel->getRowBackgroundColors() );
         if ( !aColors )
             aPropertyValue.clear();
         else
@@ -548,7 +542,7 @@ Any SVTXGridControl::getProperty( const OUString& PropertyName )
             Sequence< css::util::Color > aAPIColors( aColors->size() );
             for ( size_t i=0; i<aColors->size(); ++i )
             {
-                aAPIColors[i] = aColors->at(i).GetColor();
+                aAPIColors[i] = sal_Int32(aColors->at(i));
             }
             aPropertyValue <<= aAPIColors;
         }
@@ -795,8 +789,8 @@ void SVTXGridControl::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent 
         {
             // TODO: this doesn't belong here. It belongs into the TableControl/_Impl, so A11Y also
             // works when the control is used outside the UNO context
-             if ( pTable->GetRowCount()>0 )
-             {
+            if ( pTable->GetRowCount()>0 )
+            {
                 pTable->commitCellEventIfAccessibleAlive(
                     AccessibleEventId::STATE_CHANGED,
                     makeAny( AccessibleStateType::FOCUSED ),
@@ -815,7 +809,7 @@ void SVTXGridControl::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent 
                     makeAny( AccessibleStateType::FOCUSED ),
                     Any()
                 );
-             }
+            }
         }
         break;
 
@@ -894,23 +888,20 @@ void SVTXGridControl::impl_updateColumnsFromModel_nothrow()
     try
     {
         const Sequence< Reference< XGridColumn > > columns = xColumnModel->getColumns();
-        for (   const Reference< XGridColumn >* colRef = columns.getConstArray();
-                colRef != columns.getConstArray() + columns.getLength();
-                ++colRef
-            )
+        for ( auto const & colRef : columns )
         {
-            if ( !colRef->is() )
+            if ( !colRef.is() )
             {
                 SAL_WARN( "svtools.uno", "illegal column!" );
                 continue;
             }
 
-            m_xTableModel->appendColumn( *colRef );
+            m_xTableModel->appendColumn( colRef );
         }
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svtools.uno");
     }
 }
 

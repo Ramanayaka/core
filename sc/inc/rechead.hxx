@@ -20,7 +20,9 @@
 #ifndef INCLUDED_SC_INC_RECHEAD_HXX
 #define INCLUDED_SC_INC_RECHEAD_HXX
 
+#include <tools/solar.h>
 #include <tools/stream.hxx>
+#include <memory>
 
 //      ID's for files:
 
@@ -42,19 +44,19 @@
 // btw: 10 following 09 is not a counting error but an intentional gap,
 // because it was not clear, how long the RelRefs development would take. :)
 
-class SvStream;
-
         //  Header with size specification for multiple objects
 
 class ScMultipleReadHeader
 {
 private:
-    SvStream&       rStream;
-    sal_uInt8*          pBuf;
-    SvMemoryStream* pMemStream;
-    sal_uLong           nEndPos;
-    sal_uLong           nEntryEnd;
-    sal_uLong           nTotalEnd;
+    SvStream&           rStream;
+    std::unique_ptr<sal_uInt8[]>
+                        pBuf;
+    std::unique_ptr<SvMemoryStream>
+                        pMemStream;
+    sal_uInt64          nEndPos;
+    sal_uInt64          nEntryEnd;
+    sal_uInt64          nTotalEnd;
 
 public:
     ScMultipleReadHeader(SvStream& rNewStream);
@@ -62,7 +64,7 @@ public:
 
     void    StartEntry();
     void    EndEntry();
-    sal_uLong   BytesLeft() const;
+    sal_uInt64  BytesLeft() const;
 };
 
 class ScMultipleWriteHeader
@@ -70,9 +72,9 @@ class ScMultipleWriteHeader
 private:
     SvStream&       rStream;
     SvMemoryStream  aMemStream;
-    sal_uLong       nDataPos;
+    sal_uInt64      nDataPos;
     sal_uInt32      nDataSize;
-    sal_uLong       nEntryStart;
+    sal_uInt64      nEntryStart;
 
 public:
     ScMultipleWriteHeader(SvStream& rNewStream);

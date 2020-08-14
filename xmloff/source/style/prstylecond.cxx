@@ -18,17 +18,25 @@
  */
 
 #include <rtl/ustring.hxx>
-#include "prstylecond.hxx"
+#include <prstylecond.hxx>
 #include <xmloff/xmltoken.hxx>
 
 using namespace ::xmloff::token;
 
-static struct ConditionMap
+// note: keep this in sync with the list of conditions in sw/source/uibase/chrdlg/ccoll.cxx
+
+namespace {
+
+struct ConditionMap
 {
         char const* aInternal;
         XMLTokenEnum nExternal;
-        int         aValue;
-} aConditionMap[] =
+        int          aValue;
+};
+
+}
+
+const ConditionMap g_ConditionMap[] =
 {
     { "TableHeader",            XML_TABLE_HEADER,   -1 },
     { "Table",                  XML_TABLE,          -1 },
@@ -60,66 +68,24 @@ static struct ConditionMap
     { "NumberingLevel10",       XML_LIST_LEVEL,     10 }
 };
 
-#define CONDITION_COUNT (sizeof(aConditionMap) / sizeof(aConditionMap[0]))
-
 OUString GetParaStyleCondExternal( OUString const &internal)
 {
-    unsigned i;
-
-    for(i = 0; i < CONDITION_COUNT; ++i)
+    for (size_t i = 0; i < SAL_N_ELEMENTS(g_ConditionMap); ++i)
     {
-        if(internal.compareToAscii( aConditionMap[i].aInternal ) == 0)
+        if (internal.compareToAscii( g_ConditionMap[i].aInternal ) == 0)
         {
-            OUString aResult( GetXMLToken( aConditionMap[i].nExternal ) );
-
-            aResult += "()";
-            if( aConditionMap[i].aValue != -1 )
+            OUString aResult = GetXMLToken( g_ConditionMap[i].nExternal ) +
+                    "()";
+            if (g_ConditionMap[i].aValue != -1)
             {
-                aResult += "=";
-                aResult += OUString::number( aConditionMap[i].aValue );
+                aResult += "=" +
+                    OUString::number( g_ConditionMap[i].aValue );
             }
             return aResult;
         }
     }
+    assert(!"GetParaStyleCondExternal: model has unknown style condition");
     return OUString();
-}
-
-OUString GetParaStyleCondInternal( OUString const &external)
-{
-        sal_Int32 paren = external.indexOf('(');
-
-        if( paren > 0 && external[paren + 1] == ')' )
-        {
-            OUString stub( external.getStr(), paren );
-            int numval = -1;
-            unsigned i;
-
-            if(external.getLength() > paren + 2)
-            {
-                if(external[paren + 2] == '=')
-                {
-                    OUString num( external.getStr() + 3 );
-
-                    numval = num.toInt32();
-                }
-                else
-                {
-                    return OUString();
-                }
-            }
-
-            for(i = 0; i < CONDITION_COUNT; ++i)
-            {
-                if( aConditionMap[i].aValue == numval &&
-                    stub == GetXMLToken( aConditionMap[i].nExternal ) )
-                {
-                    return OUString( aConditionMap[i].aInternal,
-                                     strlen( aConditionMap[i].aInternal ),
-                                     RTL_TEXTENCODING_ASCII_US );
-                }
-            }
-        }
-        return OUString();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

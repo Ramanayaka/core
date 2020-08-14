@@ -18,30 +18,23 @@
  */
 
 #include <hintids.hxx>
-#include <vcl/msgbox.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <svl/stritem.hxx>
 #include <svl/eitem.hxx>
 #include <editeng/sizeitem.hxx>
 #include <fmtfsize.hxx>
 #include <fldbas.hxx>
 #include <uiitems.hxx>
-#include "viewopt.hxx"
-#include "cmdid.h"
-#include "view.hxx"
-#include "wrtsh.hxx"
-#include "swundo.hxx"
-#include "textsh.hxx"
-#include "idxmrk.hxx"
-#include "cnttab.hxx"
-#include "toxmgr.hxx"
-#include "swabstdlg.hxx"
-#include <index.hrc>
-#include <globals.hrc>
-#include <memory>
+#include <viewopt.hxx>
+#include <cmdid.h>
+#include <view.hxx>
+#include <wrtsh.hxx>
+#include <textsh.hxx>
+#include <idxmrk.hxx>
+#include <toxmgr.hxx>
+#include <swabstdlg.hxx>
 
-void SwTextShell::ExecIdx(SfxRequest &rReq)
+void SwTextShell::ExecIdx(SfxRequest const &rReq)
 {
     const SfxItemSet *pArgs = rReq.GetArgs();
     const SfxPoolItem* pItem = nullptr;
@@ -50,16 +43,13 @@ void SwTextShell::ExecIdx(SfxRequest &rReq)
        pArgs->GetItemState(nSlot, false, &pItem );
 
     SfxViewFrame* pVFrame = GetView().GetViewFrame();
-    vcl::Window *pMDI = &pVFrame->GetWindow();
 
     switch( nSlot )
     {
         case FN_EDIT_AUTH_ENTRY_DLG :
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            OSL_ENSURE(pFact, "Dialog creation failed!");
-            ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateVclAbstractDialog( pMDI, GetShell(), DLG_EDIT_AUTHMARK));
-            OSL_ENSURE(pDlg, "Dialog creation failed!");
+            ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSwAutoMarkDialog(GetView().GetFrameWeld(), GetShell()));
             pDlg->Execute();
         }
         break;
@@ -83,17 +73,13 @@ void SwTextShell::ExecIdx(SfxRequest &rReq)
             if(aMgr.GetTOXMarkCount() > 1)
             {   // Several marks, which should it be?
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                OSL_ENSURE(pFact, "Dialog creation failed!");
-                ScopedVclPtr<VclAbstractDialog> pMultDlg(pFact->CreateMultiTOXMarkDlg(pMDI, aMgr));
-                OSL_ENSURE(pMultDlg, "Dialog creation failed!");
+                ScopedVclPtr<VclAbstractDialog> pMultDlg(pFact->CreateMultiTOXMarkDlg(GetView().GetFrameWeld(), aMgr));
                 nRet = pMultDlg->Execute();
             }
             if( nRet == RET_OK)
             {
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                OSL_ENSURE(pFact, "Dialog creation failed!");
-                ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateIndexMarkModalDlg(pMDI, GetShell(), aMgr.GetCurTOXMark()));
-                OSL_ENSURE(pDlg, "Dialog creation failed!");
+                ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateIndexMarkModalDlg(GetView().GetFrameWeld(), GetShell(), aMgr.GetCurTOXMark()));
                 pDlg->Execute();
             }
             break;
@@ -112,6 +98,7 @@ void SwTextShell::ExecIdx(SfxRequest &rReq)
                     RES_LR_SPACE, RES_LR_SPACE,
                     RES_BACKGROUND, RES_BACKGROUND,
                     RES_COL, RES_COL,
+                    XATTR_FILL_FIRST, XATTR_FILL_LAST,
                     SID_ATTR_PAGE_SIZE, SID_ATTR_PAGE_SIZE,
                     FN_PARAM_TOX_TYPE, FN_PARAM_TOX_TYPE>{});
             SwWrtShell& rSh = GetShell();
@@ -119,7 +106,7 @@ void SwTextShell::ExecIdx(SfxRequest &rReq)
             rSh.CalcBoundRect(aRect, RndStdIds::FLY_AS_CHAR);
 
             long nWidth = aRect.Width();
-            aSet.Put(SwFormatFrameSize(ATT_VAR_SIZE, nWidth));
+            aSet.Put(SwFormatFrameSize(SwFrameSize::Variable, nWidth));
             // Height = width for a more consistent preview (analogous to edit range)
             aSet.Put(SvxSizeItem(SID_ATTR_PAGE_SIZE, Size(nWidth, nWidth)));
             const SwTOXBase* pCurTOX = nullptr;
@@ -138,12 +125,12 @@ void SwTextShell::ExecIdx(SfxRequest &rReq)
                     aSet.Put(*pSet);
             }
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            OSL_ENSURE(pFact, "Dialog creation failed!");
-            ScopedVclPtr<AbstractMultiTOXTabDialog> pDlg(pFact->CreateMultiTOXTabDialog(
-                                                        pMDI, aSet, rSh, const_cast<SwTOXBase*>(pCurTOX),
+            VclPtr<AbstractMultiTOXTabDialog> pDlg(pFact->CreateMultiTOXTabDialog(
+                                                        GetView().GetFrameWeld(), aSet, rSh, const_cast<SwTOXBase*>(pCurTOX),
                                                         bGlobal));
-            OSL_ENSURE(pDlg, "Dialog creation failed!");
-            pDlg->Execute();
+            pDlg->StartExecuteAsync([pDlg](sal_Int32 /*nResult*/){
+                pDlg->disposeOnce();
+            });
         }
         break;
         case FN_REMOVE_CUR_TOX:

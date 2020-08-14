@@ -33,8 +33,6 @@ private:
 
 public:
                 ScPrintOptions();
-                ScPrintOptions( const ScPrintOptions& rCpy );
-                ~ScPrintOptions();
 
     bool    GetSkipEmpty() const            { return bSkipEmpty; }
     void    SetSkipEmpty( bool bVal )       { bSkipEmpty = bVal; }
@@ -45,21 +43,24 @@ public:
 
     void    SetDefaults();
 
-    ScPrintOptions&         operator=  ( const ScPrintOptions& rCpy );
     bool                    operator== ( const ScPrintOptions& rOpt ) const;
 };
 
 // item for the dialog / options page
 
-class SC_DLLPUBLIC ScTpPrintItem : public SfxPoolItem
+class SC_DLLPUBLIC ScTpPrintItem final : public SfxPoolItem
 {
 public:
                 ScTpPrintItem( const ScPrintOptions& rOpt );
-                ScTpPrintItem( const ScTpPrintItem& rItem );
                 virtual ~ScTpPrintItem() override;
 
+    ScTpPrintItem(ScTpPrintItem const &) = default;
+    ScTpPrintItem(ScTpPrintItem &&) = default;
+    ScTpPrintItem & operator =(ScTpPrintItem const &) = delete; // due to SfxPoolItem
+    ScTpPrintItem & operator =(ScTpPrintItem &&) = delete; // due to SfxPoolItem
+
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScTpPrintItem*  Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const ScPrintOptions&   GetPrintOptions() const { return theOptions; }
 
@@ -69,7 +70,7 @@ private:
 
 // config item
 
-class ScPrintCfg : public ScPrintOptions, public utl::ConfigItem
+class ScPrintCfg final : public ScPrintOptions, public utl::ConfigItem
 {
 private:
     static css::uno::Sequence<OUString> GetPropertyNames();

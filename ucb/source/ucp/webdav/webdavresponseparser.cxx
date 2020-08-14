@@ -23,13 +23,13 @@
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/InputSource.hpp>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/seqstream.hxx>
 #include <com/sun/star/ucb/LockEntry.hpp>
 #include <com/sun/star/ucb/LockScope.hpp>
 #include <com/sun/star/ucb/LockType.hpp>
 #include <com/sun/star/ucb/Lock.hpp>
 #include <map>
 #include <unordered_map>
+#include <sal/log.hxx>
 
 using namespace com::sun::star;
 
@@ -96,7 +96,7 @@ namespace
 
     WebDAVName StrToWebDAVName(const OUString& rStr)
     {
-        typedef std::unordered_map< OUString, WebDAVName, OUStringHash > WebDAVNameMapper;
+        typedef std::unordered_map< OUString, WebDAVName > WebDAVNameMapper;
         typedef std::pair< OUString, WebDAVName > WebDAVNameValueType;
         static WebDAVNameMapper aWebDAVNameMapperList;
 
@@ -146,7 +146,6 @@ namespace
 namespace
 {
     typedef std::map< OUString, OUString > NamespaceMap;
-    typedef std::pair< const OUString, OUString > NamespaceValueType;
 
     class WebDAVContext
     {
@@ -168,7 +167,6 @@ namespace
 
     public:
         WebDAVContext(WebDAVContext* pParent, const OUString& aName, const uno::Reference< xml::sax::XAttributeList >& xAttribs);
-        ~WebDAVContext();
 
         WebDAVContext* getParent() const { return mpParent; }
         OUString& getWhiteSpace() { return maWhiteSpace; }
@@ -199,7 +197,7 @@ namespace
                     {
                         const OUString aToken(aName.copy(nIndex + 1));
 
-                        maNamespaceMap.insert(NamespaceValueType(aToken, xAttribs->getValueByIndex(a)));
+                        maNamespaceMap.emplace(aToken, xAttribs->getValueByIndex(a));
                     }
                 }
             }
@@ -268,10 +266,6 @@ namespace
         // evaluate enums for namespace and name
         maWebDAVNamespace = StrToWebDAVNamespace(maNamespace);
         maWebDAVName = StrToWebDAVName(maName);
-    }
-
-    WebDAVContext::~WebDAVContext()
-    {
     }
 } // end of anonymous namespace
 
@@ -716,7 +710,7 @@ namespace
                                 maLock.Scope = maLockScope;
                                 maResult_Lock.push_back(maLock);
                             }
-                            SAL_FALLTHROUGH; // I hope intentional?
+                            [[fallthrough]]; // I hope intentional?
                             case WebDAVName_propstat:
                             {
                                 // propstat end, check status

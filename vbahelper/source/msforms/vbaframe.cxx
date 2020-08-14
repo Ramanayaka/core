@@ -31,9 +31,9 @@ ScVbaFrame::ScVbaFrame(
         const uno::Reference< uno::XComponentContext >& xContext,
         const uno::Reference< uno::XInterface >& xControl,
         const uno::Reference< frame::XModel >& xModel,
-        ov::AbstractGeometryAttributes* pGeomHelper,
+        std::unique_ptr<ov::AbstractGeometryAttributes> pGeomHelper,
         const css::uno::Reference< css::awt::XControl >& xDialog ) :
-    FrameImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper ),
+    FrameImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) ),
     mxDialog( xDialog )
 {
 }
@@ -89,7 +89,7 @@ uno::Any SAL_CALL ScVbaFrame::Controls( const uno::Any& rIndex )
 
     uno::Reference< XCollection > xControls( new ScVbaControls( this, mxContext, mxDialog, m_xModel, fOffsetX, fOffsetY ) );
     if( rIndex.hasValue() )
-        return uno::Any( xControls->Item( rIndex, uno::Any() ) );
+        return xControls->Item( rIndex, uno::Any() );
     return uno::Any( xControls );
 }
 

@@ -23,15 +23,13 @@
 #include <vector>
 #include <memory>
 
-#include "address.hxx"
-#include "scitems.hxx"
+#include <address.hxx>
 
 class ScDocumentPool;
 class ScPatternAttr;
 class SvxColorItem;
 class Color;
-class LotAttrTable;
-struct LOTUS_ROOT;
+struct LotusContext;
 
 namespace editeng { class SvxBorderLine; }
 
@@ -58,7 +56,7 @@ class LotAttrCache
 {
 public:
 
-    LotAttrCache(LOTUS_ROOT* pLotRoot);
+    LotAttrCache(LotusContext& rContext);
 
     ~LotAttrCache();
 
@@ -73,7 +71,7 @@ private:
         std::unique_ptr<ScPatternAttr>  pPattAttr;
         sal_uInt32                      nHash0;
 
-        ENTRY(ScPatternAttr* p);
+        ENTRY(std::unique_ptr<ScPatternAttr> p);
 
         ~ENTRY();
     };
@@ -93,21 +91,20 @@ private:
     const Color& GetColor( const sal_uInt8 nLotIndex ) const;
 
     ScDocumentPool*     pDocPool;
-    SvxColorItem*       ppColorItems[6];        // 0 and 7 are missing!
-    SvxColorItem*       pBlack;
-    SvxColorItem*       pWhite;
-    Color*              pColTab;
+    std::unique_ptr<SvxColorItem> ppColorItems[6];        // 0 and 7 are missing!
+    std::unique_ptr<SvxColorItem> pWhite;
+    std::unique_ptr<Color[]>      pColTab;
     std::vector< std::unique_ptr<ENTRY> > aEntries;
 
-    LOTUS_ROOT* mpLotusRoot;
+    LotusContext& mrContext;
 };
 
 class LotAttrCol
 {
 public:
-    void SetAttr (const SCROW nRow, const ScPatternAttr&);
+    void SetAttr (const ScDocument* pDoc, const SCROW nRow, const ScPatternAttr&);
 
-    void Apply(LOTUS_ROOT* pLotRoot, const SCCOL nCol, const SCTAB nTab);
+    void Apply(LotusContext& rContext, const SCCOL nCol, const SCTAB nTab);
 private:
 
     struct ENTRY
@@ -123,11 +120,11 @@ private:
 class LotAttrTable
 {
 public:
-    LotAttrTable(LOTUS_ROOT* pLotRoot);
+    LotAttrTable(LotusContext& rContext);
 
-    void SetAttr( const SCCOL nColFirst, const SCCOL nColLast, const SCROW nRow, const LotAttrWK3& );
+    void SetAttr(LotusContext& rContext, const SCCOL nColFirst, const SCCOL nColLast, const SCROW nRow, const LotAttrWK3& );
 
-    void Apply(LOTUS_ROOT* pLotRoot, const SCTAB nTabNum);
+    void Apply(LotusContext& rContext, const SCTAB nTabNum);
 
 private:
 

@@ -11,10 +11,10 @@
 #include <com/sun/star/frame/XSynchronousDispatch.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <vcl/svapp.hxx>
+#include <vcl/window.hxx>
 
 #include "SafeModeDialog.hxx"
 
@@ -44,7 +44,7 @@ SafeModeUI::SafeModeUI()
 
 OUString SAL_CALL SafeModeUI::getImplementationName()
 {
-    return OUString("com.sun.star.comp.svx.SafeModeUI");
+    return "com.sun.star.comp.svx.SafeModeUI";
 }
 
 sal_Bool SAL_CALL SafeModeUI::supportsService(const OUString& sServiceName)
@@ -62,14 +62,15 @@ css::uno::Any SAL_CALL SafeModeUI::dispatchWithReturnValue(const css::util::URL&
 {
     SolarMutexGuard aGuard;
     css::uno::Any aRet;
-    ScopedVclPtrInstance<SafeModeDialog> xDialog(nullptr);
-    xDialog->Execute();
+    vcl::Window* pParentWindow = Application::GetDefDialogParent();
+    SafeModeDialog aDialog(pParentWindow ? pParentWindow->GetFrameWeld() : nullptr);
+    aDialog.run();
     return aRet;
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_svx_SafeModeUI_get_implementation(
     css::uno::XComponentContext * /*context*/,
     css::uno::Sequence<css::uno::Any> const &)

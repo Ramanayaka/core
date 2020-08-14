@@ -21,17 +21,21 @@
 #define INCLUDED_SW_INC_SWCALWRP_HXX
 
 #include <i18nlangtag/lang.h>
-#include <rtl/ustring.hxx>
 #include <unotools/calendarwrapper.hxx>
-#include <salhelper/singletonref.hxx>
+#include <comphelper/processfactory.hxx>
+
+namespace salhelper
+{
+template <typename> class SingletonRef;
+}
 
 class SwCalendarWrapper : public CalendarWrapper
 {
-    LanguageType nLang;
+    LanguageType m_nLang;
 
 public:
     SwCalendarWrapper( const css::uno::Reference< css::uno::XComponentContext > & rxContext = ::comphelper::getProcessComponentContext() )
-        : CalendarWrapper( rxContext ), nLang( LANGUAGE_SYSTEM )
+        : CalendarWrapper( rxContext ), m_nLang( LANGUAGE_SYSTEM )
     {}
 
     void LoadDefaultCalendar( LanguageType nLang );

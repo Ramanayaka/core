@@ -20,29 +20,29 @@
 #ifndef INCLUDED_SAX_TOOLS_CONVERTER_HXX
 #define INCLUDED_SAX_TOOLS_CONVERTER_HXX
 
-#include <sax/saxdllapi.h>
+#include <sal/config.h>
 
-#include <boost/optional/optional.hpp>
+#include <optional>
+
+#include <sax/saxdllapi.h>
 
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/util/MeasureUnit.hpp>
+#include <tools/color.hxx>
+#include <unotools/saveopt.hxx>
 
-
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno {
         class Any;
     }
     namespace util {
         struct Date;
         struct DateTime;
-        struct DateWithTimezone;
-        struct DateTimeWithTimezone;
         struct Duration;
     }
-} } }
+}
 
 namespace sax {
 
@@ -97,20 +97,31 @@ public:
     /** convert string to rgb color */
     static bool convertColor( sal_Int32& rColor,
                               const OUString&rValue );
+    static bool convertColor( ::Color& rColor,
+                              const OUString&rValue )
+    {
+        sal_Int32 n(rColor);
+        bool b = convertColor( n, rValue );
+        if (b) rColor = n;
+        return b;
+    }
 
     /** convert color to string */
     static void convertColor( OUStringBuffer &rBuffer,
                               sal_Int32 nColor );
+    static void convertColor( OUStringBuffer &rBuffer,
+                              ::Color nColor )
+    { convertColor( rBuffer, sal_Int32(nColor) ); }
 
     /** convert string to number with optional min and max values */
     static bool convertNumber( sal_Int32& rValue,
-                               const OUString& rString,
+                               std::u16string_view aString,
                                sal_Int32 nMin = SAL_MIN_INT32,
                                sal_Int32 nMax = SAL_MAX_INT32 );
 
     /** convert string to number with optional min and max values */
     static bool convertNumber64(sal_Int64& rValue,
-                                const OUString& rString,
+                                std::u16string_view aString,
                                 sal_Int64 nMin = SAL_MIN_INT64,
                                 sal_Int64 nMax = SAL_MAX_INT64);
 
@@ -136,10 +147,12 @@ public:
     static bool convertDouble(double& rValue, const OUString& rString);
 
     /** convert number, 10th of degrees with range [0..3600] to SVG angle */
-    static void convertAngle(OUStringBuffer& rBuffer, sal_Int16 nAngle);
+    static void convertAngle(OUStringBuffer& rBuffer, sal_Int16 nAngle,
+            SvtSaveOptions::ODFSaneDefaultVersion nVersion);
 
     /** convert SVG angle to number, 10th of degrees with range [0..3600] */
-    static bool convertAngle(sal_Int16& rAngle, OUString const& rString);
+    static bool convertAngle(sal_Int16& rAngle, OUString const& rString,
+            bool isWrongOOo10thDegAngle);
 
     /** convert double to XMLSchema-2 "duration" string; negative durations allowed */
     static void convertDuration(OUStringBuffer& rBuffer,
@@ -170,17 +183,14 @@ public:
 
     /** convert util::DateTime to XMLSchema-2 "time" or "dateTime" string */
     static void convertTimeOrDateTime(OUStringBuffer& rBuffer,
-                            const css::util::DateTime& rDateTime,
-                            sal_Int16 const* pTimeZoneOffset);
+                            const css::util::DateTime& rDateTime);
 
     /** convert XMLSchema-2 "date" or "dateTime" string to util::DateTime */
     static bool parseDateTime( css::util::DateTime& rDateTime,
-                                 boost::optional<sal_Int16> * pTimeZoneOffset,
                                  const OUString& rString );
 
     /** convert XMLSchema-2 "time" or "dateTime" string to util::DateTime */
     static bool parseTimeOrDateTime(css::util::DateTime& rDateTime,
-                                 boost::optional<sal_Int16> * pTimeZoneOffset,
                                  const OUString& rString);
 
     /** convert XMLSchema-2 "date" or "dateTime" string to util::DateTime or
@@ -189,25 +199,13 @@ public:
                     css::util::Date * pDate,
                     css::util::DateTime & rDateTime,
                     bool & rbDateTime,
-                    boost::optional<sal_Int16> * pTimeZoneOffset,
+                    std::optional<sal_Int16> * pTimeZoneOffset,
                     const OUString & rString );
 
     /** gets the position of the first comma after npos in the string
         rStr. Commas inside '"' pairs are not matched */
     static sal_Int32 indexOfComma( const OUString& rStr,
                                    sal_Int32 nPos );
-
-    /** encodes the given byte sequence into Base64 */
-    static void encodeBase64(OUStringBuffer& aStrBuffer, const css::uno::Sequence<sal_Int8>& aPass);
-
-    // Decode a base 64 encoded string into a sequence of bytes. The first
-    // version can be used for attribute values only, because it does not
-    // return any chars left from conversion.
-    // For text submitted throgh the SAX characters call, the later method
-    // must be used!
-    static void decodeBase64(css::uno::Sequence<sal_Int8>& aPass, const OUString& sBuffer);
-
-    static sal_Int32 decodeBase64SomeChars(css::uno::Sequence<sal_Int8>& aPass, const OUString& sBuffer);
 
     static double GetConversionFactor(OUStringBuffer& rUnit, sal_Int16 nSourceUnit, sal_Int16 nTargetUnit);
     static sal_Int16 GetUnitFromString(const OUString& rString, sal_Int16 nDefaultUnit);

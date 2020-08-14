@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_SCENEPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_SCENEPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
@@ -29,13 +28,9 @@
 #include <vcl/bitmapex.hxx>
 #include <drawinglayer/attribute/sdrsceneattribute3d.hxx>
 #include <drawinglayer/attribute/sdrlightingattribute3d.hxx>
-#include <drawinglayer/attribute/sdrlightattribute3d.hxx>
 
-
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** ScenePrimitive2D class
 
             This primitive defines a 3D scene as a 2D primitive and is the anchor point
@@ -52,7 +47,7 @@ namespace drawinglayer
             This is the class a renderer may process directly when he wants to implement
             an own (e.g. system-specific) 3D renderer.
          */
-        class DRAWINGLAYER_DLLPUBLIC ScenePrimitive2D : public BufferedDecompositionPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC ScenePrimitive2D final : public BufferedDecompositionPrimitive2D
         {
         private:
             /// the 3D geometry definition
@@ -73,7 +68,7 @@ namespace drawinglayer
             /// the primitiveSequence for on-demand created shadow primitives (see mbShadow3DChecked)
             Primitive2DContainer                                   maShadowPrimitives;
 
-            /** flag if given 3D geometry is already cheched for shadow definitions and 2d shadows
+            /** flag if given 3D geometry is already checked for shadow definitions and 2d shadows
                 are created in maShadowPrimitives
              */
             bool                                                mbShadow3DChecked : 1;
@@ -96,7 +91,6 @@ namespace drawinglayer
                 basegfx::B2DRange& rVisibleDiscreteRange,
                 basegfx::B2DRange& rUnitVisibleRange) const;
 
-        protected:
             /// local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
@@ -142,15 +136,12 @@ namespace drawinglayer
             virtual basegfx::B2DRange getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
 
             /// get local decomposition. Override since this decomposition is view-dependent
             virtual void get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_SCENEPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

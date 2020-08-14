@@ -16,11 +16,16 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <threadmanager.hxx>
+
+#include "cancellablejob.hxx"
+#include "threadmanager.hxx"
+#include <threadlistener.hxx>
 
 #include <osl/diagnose.h>
 
 #include <algorithm>
+
+#include <com/sun/star/util/XJobManager.hpp>
 
 using namespace ::com::sun::star;
 
@@ -30,7 +35,7 @@ using namespace ::com::sun::star;
 */
 const std::deque< ThreadManager::tThreadData >::size_type ThreadManager::mnStartedSize = 10;
 
-ThreadManager::ThreadManager( uno::Reference< util::XJobManager >& rThreadJoiner )
+ThreadManager::ThreadManager( uno::Reference< util::XJobManager > const & rThreadJoiner )
     : maMutex(),
       mrThreadJoiner( rThreadJoiner ),
       mpThreadListener(),
@@ -44,7 +49,7 @@ ThreadManager::ThreadManager( uno::Reference< util::XJobManager >& rThreadJoiner
 
 void ThreadManager::Init()
 {
-    mpThreadListener.reset( new ThreadListener( *this ) );
+    mpThreadListener = std::make_shared<ThreadListener>( *this );
 
     maStartNewThreadIdle.SetPriority( TaskPriority::LOWEST );
     maStartNewThreadIdle.SetInvokeHandler( LINK( this, ThreadManager, TryToStartNewThread ) );
@@ -56,7 +61,7 @@ ThreadManager::~ThreadManager()
     maStartedThreads.clear();
 }
 
-std::weak_ptr< IFinishedThreadListener > ThreadManager::GetThreadListenerWeakRef()
+std::weak_ptr< IFinishedThreadListener > ThreadManager::GetThreadListenerWeakRef() const
 {
     return mpThreadListener;
 }
@@ -123,7 +128,7 @@ void ThreadManager::RemoveThread( const oslInterlockedCount nThreadID,
 
     if ( aIter != maStartedThreads.end() )
     {
-        tThreadData aTmpThreadData( (*aIter) );
+        tThreadData aTmpThreadData( *aIter );
 
         maStartedThreads.erase( aIter );
 
@@ -206,18 +211,18 @@ IMPL_LINK_NOARG(ThreadManager, TryToStartNewThread, Timer *, void)
 {
     osl::MutexGuard aGuard(maMutex);
 
-    if ( !StartingOfThreadsSuspended() )
+    if ( StartingOfThreadsSuspended() )
+        return;
+
+    // Try to start thread from waiting ones
+    if ( !StartWaitingThread() )
     {
-        // Try to start thread from waiting ones
-        if ( !StartWaitingThread() )
+        // No success on starting thread
+        // If no more started threads exist, but still threads are waiting,
+        // setup Timer to start thread from waiting ones
+        if ( maStartedThreads.empty() && !maWaitingForStartThreads.empty() )
         {
-            // No success on starting thread
-            // If no more started threads exist, but still threads are waiting,
-            // setup Timer to start thread from waiting ones
-            if ( maStartedThreads.empty() && !maWaitingForStartThreads.empty() )
-            {
-                maStartNewThreadIdle.Start();
-            }
+            maStartNewThreadIdle.Start();
         }
     }
 }

@@ -17,26 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_POLYGON_B2DPOLYGON_HXX
-#define INCLUDED_BASEGFX_POLYGON_B2DPOLYGON_HXX
+#pragma once
 
 #include <ostream>
+#include <vector>
 
 #include <sal/types.h>
 #include <o3tl/cow_wrapper.hxx>
 #include <basegfx/vector/b2enums.hxx>
-#include <basegfx/range/b2drange.hxx>
 #include <basegfx/basegfxdllapi.h>
 
 class ImplB2DPolygon;
 
 namespace basegfx
 {
-    class B2DPolygon;
     class B2DPoint;
-    class B2DVector;
+    class B2DRange;
     class B2DHomMatrix;
     class B2DCubicBezier;
+    class SystemDependentData;
+    class SystemDependentDataManager;
+    typedef std::shared_ptr<SystemDependentData> SystemDependentData_SharedPtr;
 }
 
 namespace basegfx
@@ -75,7 +76,7 @@ namespace basegfx
         sal_uInt32 count() const;
 
         /// Coordinate interface
-        basegfx::B2DPoint getB2DPoint(sal_uInt32 nIndex) const;
+        basegfx::B2DPoint const & getB2DPoint(sal_uInt32 nIndex) const;
         void setB2DPoint(sal_uInt32 nIndex, const basegfx::B2DPoint& rValue);
 
         /// Coordinate insert/append
@@ -97,7 +98,14 @@ namespace basegfx
         void resetControlPoints();
 
         /// Bezier segment append with control points. The current last polygon point is implicitly taken as start point.
-        void appendBezierSegment(const basegfx::B2DPoint& rNextControlPoint, const basegfx::B2DPoint& rPrevControlPoint, const basegfx::B2DPoint& rPoint);
+        void appendBezierSegment(const basegfx::B2DPoint& rNextControlPoint,
+                                 const basegfx::B2DPoint& rPrevControlPoint,
+                                 const basegfx::B2DPoint& rPoint);
+
+        /// This is a shortcut to append a quadratic bezier segment. The current last polygon point is implicitly taken as start point.
+        /// Note that the quadratic bezier control points will be converted to cubic bezier with 2 control points.
+        void appendQuadraticBezierSegment(const basegfx::B2DPoint& rQuadControlPoint,
+                                          const basegfx::B2DPoint& rPoint);
 
         /// ControlPoint checks
         bool areControlPointsUsed() const;
@@ -149,7 +157,7 @@ namespace basegfx
             be this polygon itself when it has no bezier segments. It is guaranteed
             to have no more bezier segments
         */
-        B2DPolygon getDefaultAdaptiveSubdivision() const;
+        B2DPolygon const & getDefaultAdaptiveSubdivision() const;
 
         /** Get the B2DRange (Rectangle dimensions) of this B2DPolygon
 
@@ -178,7 +186,7 @@ namespace basegfx
             @return
             The outer range of the bezier curve/polygon
         */
-        B2DRange getB2DRange() const;
+        B2DRange const & getB2DRange() const;
 
         /** append other 2D polygons
 
@@ -218,6 +226,32 @@ namespace basegfx
 
         /// apply transformation given in matrix form
         void transform(const basegfx::B2DHomMatrix& rMatrix);
+
+        // exclusive management op's for SystemDependentData at B2DPolygon
+        template<class T>
+        std::shared_ptr<T> getSystemDependentData() const
+        {
+            return std::static_pointer_cast<T>(getSystemDependantDataInternal(typeid(T).hash_code()));
+        }
+
+        template<class T, class... Args>
+        std::shared_ptr<T> addOrReplaceSystemDependentData(SystemDependentDataManager& manager, Args&&... args) const
+        {
+            std::shared_ptr<T> r = std::make_shared<T>(manager, std::forward<Args>(args)...);
+
+            // tdf#129845 only add to buffer if a relevant buffer time is estimated
+            if(r->calculateCombinedHoldCyclesInSeconds() > 0)
+            {
+                basegfx::SystemDependentData_SharedPtr r2(r);
+                addOrReplaceSystemDependentDataInternal(r2);
+            }
+
+            return r;
+        }
+
+    private:
+        void addOrReplaceSystemDependentDataInternal(SystemDependentData_SharedPtr& rData) const;
+        SystemDependentData_SharedPtr getSystemDependantDataInternal(size_t hash_code) const;
     };
 
     // typedef for a vector of B2DPolygons
@@ -240,7 +274,5 @@ namespace basegfx
     }
 
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_POLYGON_B2DPOLYGON_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

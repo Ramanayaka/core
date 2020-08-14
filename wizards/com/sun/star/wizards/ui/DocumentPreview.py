@@ -25,7 +25,6 @@ from com.sun.star.awt.VclWindowPeerAttribute import CLIPCHILDREN
 from com.sun.star.awt.WindowAttribute import SHOW
 
 '''
-@author rpiterman
 To change the template for this generated type comment go to
 Window>Preferences>Java>Code Generation>Code and Comments
 '''
@@ -57,11 +56,6 @@ class DocumentPreview(object):
             for index,item in enumerate(propNames):
                 ps[item] = propValues[index]
             return self.setDocument(self.url, ps.getProperties1())
-
-    def reload(self, xmsf):
-        self.closeFrame()
-        self.createPreviewFrame(xmsf, self.xControl)
-        self.setDocument(self.url, self.loadArgs)
 
     def closeFrame(self):
         if self.xFrame is not None:

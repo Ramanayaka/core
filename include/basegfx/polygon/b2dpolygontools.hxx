@@ -17,20 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_POLYGON_B2DPOLYGONTOOLS_HXX
-#define INCLUDED_BASEGFX_POLYGON_B2DPOLYGONTOOLS_HXX
+#pragma once
+
+#include <vector>
+#include <functional>
 
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/vector/b2dvector.hxx>
 #include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/polygon/b3dpolygon.hxx>
+#include <basegfx/polygon/b2dpolygontriangulator.hxx>
 #include <com/sun/star/drawing/PointSequence.hpp>
 #include <com/sun/star/drawing/FlagSequence.hpp>
-#include <vector>
 #include <basegfx/basegfxdllapi.h>
 #include <o3tl/typed_flags_set.hxx>
 
+
+namespace basegfx { class B2DPolyPolygon; }
 
 // Definitions for the cut flags used from the findCut methods
 enum class CutFlagValue
@@ -51,12 +54,12 @@ namespace o3tl
 
 namespace basegfx
 {
-    // predefinitions
     class B2DPolygon;
     class B2DRange;
+}
 
-    namespace tools
-    {
+namespace basegfx::utils
+{
         // B2DPolygon tools
 
         // open/close with point add/remove and control point corrections
@@ -186,13 +189,33 @@ namespace basegfx
             @param fFullDashDotLen
             The summed-up length of the rDotDashArray. If zero, it will
             be calculated internally.
+
+            There is now a 2nd version that allows to provide callback
+            functions that get called when a snippet of a line/gap is
+            produced and needs to be added. This allows to use it like
+            a 'pipeline'. When using this (e.g. the 1st version uses
+            this internally to guarantee the same algorithm is used)
+            it is not needed to accumulate a potentially huge number
+            of polygons in the result-polyPolygons, but e.g. consume
+            them directly in the caller. Example is rendering a
+            dashed line but without creating the potentially huge amount
+            of polygons.
+            The 2nd version will also merge first/last line/gap snippets
+            if the input polygon is closed and the start/end-points match
+            accordingly - at the cost that this will be delivered last.
         */
+        BASEGFX_DLLPUBLIC void applyLineDashing(
+            const B2DPolygon& rCandidate,
+            const std::vector<double>& rDotDashArray,
+            std::function<void(const basegfx::B2DPolygon& rSnippet)> aLineTargetCallback,
+            std::function<void(const basegfx::B2DPolygon& rSnippet)> aGapTargetCallback = std::function<void(const basegfx::B2DPolygon&)>(),
+            double fDotDashLength = 0.0);
         BASEGFX_DLLPUBLIC void applyLineDashing(
             const B2DPolygon& rCandidate,
             const ::std::vector<double>& rDotDashArray,
             B2DPolyPolygon* pLineTarget,
             B2DPolyPolygon* pGapTarget = nullptr,
-            double fFullDashDotLen = 0.0);
+            double fDotDashLength = 0.0);
 
         // test if point is inside epsilon-range around an edge defined
         // by the two given points. Can be used for HitTesting. The epsilon-range
@@ -224,12 +247,12 @@ namespace basegfx
 
         /** Create the unit polygon
          */
-        BASEGFX_DLLPUBLIC B2DPolygon createUnitPolygon();
+        BASEGFX_DLLPUBLIC B2DPolygon const & createUnitPolygon();
 
         /** Create a circle polygon with given radius.
 
             This method creates a circle approximation consisting of
-            four cubic bezier segments, which approximate the given
+            12 cubic bezier segments, which approximate the given
             circle with an error of less than 0.5 percent.
 
             @param rCenter
@@ -241,7 +264,7 @@ namespace basegfx
         BASEGFX_DLLPUBLIC B2DPolygon createPolygonFromCircle( const B2DPoint& rCenter, double fRadius );
 
         /// create half circle centered on (0,0) from [0 .. F_PI]
-        B2DPolygon createHalfUnitCircle();
+        B2DPolygon const & createHalfUnitCircle();
 
         /** create a polygon which describes the unit circle and close it
 
@@ -253,12 +276,12 @@ namespace basegfx
             this is the lowest one). This is needed since when lines are dashed, toe old
             geometry started at bottom point, else it would look different.
          */
-        BASEGFX_DLLPUBLIC B2DPolygon createPolygonFromUnitCircle(sal_uInt32 nStartQuadrant = 0);
+        BASEGFX_DLLPUBLIC B2DPolygon const & createPolygonFromUnitCircle(sal_uInt32 nStartQuadrant = 0);
 
         /** Create an ellipse polygon with given radii.
 
             This method creates an ellipse approximation consisting of
-            four cubic bezier segments, which approximate the given
+            12 cubic bezier segments, which approximate the given
             ellipse with an error of less than 0.5 percent.
 
             @param rCenter
@@ -269,10 +292,13 @@ namespace basegfx
 
             @param fRadiusY
             Radius of the ellipse in Y direction
-         */
-        BASEGFX_DLLPUBLIC B2DPolygon createPolygonFromEllipse( const B2DPoint& rCenter, double fRadiusX, double fRadiusY );
 
-        /** Create an unit ellipse polygon with the given angles, from start to end
+            @param nStartQuadrant
+            With Y down on screens, 0 = 3 o'clock, 1 = 6 o'clock, 2 = 9 o'clock, 3 = 12 o'clock
+         */
+        BASEGFX_DLLPUBLIC B2DPolygon createPolygonFromEllipse( const B2DPoint& rCenter, double fRadiusX, double fRadiusY, sal_uInt32 nStartQuadrant = 0);
+
+        /** Create a unit ellipse polygon with the given angles, from start to end
          */
         BASEGFX_DLLPUBLIC B2DPolygon createPolygonFromEllipseSegment( const B2DPoint& rCenter, double fRadiusX, double fRadiusY, double fStart, double fEnd );
 
@@ -326,11 +352,11 @@ namespace basegfx
         // The return value describes if a change took place.
         BASEGFX_DLLPUBLIC bool setContinuityInPoint(B2DPolygon& rCandidate, sal_uInt32 nIndex, B2VectorContinuity eContinuity);
 
-        // test if polygon contains neutral points. A neutral point is one whos orientation is neutral
+        // test if polygon contains neutral points. A neutral point is one whose orientation is neutral
         // e.g. positioned on the edge of its predecessor and successor
         BASEGFX_DLLPUBLIC bool hasNeutralPoints(const B2DPolygon& rCandidate);
 
-        // remove neutral points. A neutral point is one whos orientation is neutral
+        // remove neutral points. A neutral point is one whose orientation is neutral
         // e.g. positioned on the edge of its predecessor and successor
         BASEGFX_DLLPUBLIC B2DPolygon removeNeutralPoints(const B2DPolygon& rCandidate);
 
@@ -356,7 +382,9 @@ namespace basegfx
         // add triangles for given rCandidate to rTarget. For each triangle, 3 points will be added to rCandidate.
         // All triangles will go from the start point of rCandidate to two consecutive points, building (rCandidate.count() - 2)
         // triangles.
-        BASEGFX_DLLPUBLIC void addTriangleFan(const B2DPolygon& rCandidate, B2DPolygon& rTarget);
+        BASEGFX_DLLPUBLIC void addTriangleFan(
+            const B2DPolygon& rCandidate,
+            triangulator::B2DTriangleVector& rTarget);
 
         // grow for polygon. Move all geometry in each point in the direction of the normal in that point
         // with the given amount. Value may be negative.
@@ -448,8 +476,7 @@ namespace basegfx
 
         /// converters for css::drawing::PointSequence
         BASEGFX_DLLPUBLIC B2DPolygon UnoPointSequenceToB2DPolygon(
-            const css::drawing::PointSequence& rPointSequenceSource,
-            bool bCheckClosed = true);
+            const css::drawing::PointSequence& rPointSequenceSource);
         BASEGFX_DLLPUBLIC void B2DPolygonToUnoPointSequence(
             const B2DPolygon& rPolygon,
             css::drawing::PointSequence& rPointSequenceRetval);
@@ -459,8 +486,7 @@ namespace basegfx
          */
         B2DPolygon UnoPolygonBezierCoordsToB2DPolygon(
             const css::drawing::PointSequence& rPointSequenceSource,
-            const css::drawing::FlagSequence& rFlagSequenceSource,
-            bool bCheckClosed);
+            const css::drawing::FlagSequence& rFlagSequenceSource);
         void B2DPolygonToUnoPolygonBezierCoords(
             const B2DPolygon& rPolyPolygon,
             css::drawing::PointSequence& rPointSequenceRetval,
@@ -498,9 +524,6 @@ namespace basegfx
          */
         BASEGFX_DLLPUBLIC OUString exportToSvgPoints( const B2DPolygon& rPoly );
 
-    } // end of namespace tools
-} // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_POLYGON_B2DPOLYGONTOOLS_HXX
+} // end of namespace basegfx::utils
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

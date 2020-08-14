@@ -17,10 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "frm_strings.hxx"
-#include "property.hxx"
-
-#include "property.hrc"
+#include <frm_strings.hxx>
+#include <property.hxx>
 
 namespace frm
 {

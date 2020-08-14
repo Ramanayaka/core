@@ -20,34 +20,21 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FCONNECTION_HXX
 
 #include <com/sun/star/ucb/XContent.hpp>
-#include <com/sun/star/sdbc/SQLWarning.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <connectivity/OSubComponent.hxx>
 #include <connectivity/CommonTools.hxx>
-#include "OTypeInfo.hxx"
 #include <rtl/ustring.hxx>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/ucb/XDynamicResultSet.hpp>
-#include <com/sun/star/uno/DeploymentException.hpp>
-#include <connectivity/sqlparse.hxx>
-#include <connectivity/sqliterator.hxx>
-#include "TConnection.hxx"
-#include "file/filedllapi.hxx"
-#include <map>
+#include <TConnection.hxx>
+#include <file/filedllapi.hxx>
 
-namespace connectivity
-{
-    namespace file
+namespace connectivity::file
     {
         class ODatabaseMetaData;
         class OFileDriver;
 
-        class OOO_DLLPUBLIC_FILE OConnection :
-                            public connectivity::OMetaConnection,
-                            public connectivity::OSubComponent<OConnection, connectivity::OMetaConnection>
+        class OOO_DLLPUBLIC_FILE OConnection : public connectivity::OMetaConnection
         {
-            friend class connectivity::OSubComponent<OConnection, connectivity::OMetaConnection>;
-
         protected:
 
             // Data attributes
@@ -60,13 +47,12 @@ namespace connectivity
             css::uno::Reference< css::ucb::XDynamicResultSet >    m_xDir; // directory
             css::uno::Reference< css::ucb::XContent>              m_xContent;
 
-            bool                    m_bClosed;
             bool                    m_bAutoCommit;
             bool                    m_bReadOnly;
             bool                    m_bShowDeleted;
             bool                    m_bCaseSensitiveExtension;
             bool                    m_bCheckSQL92;
-            bool                        m_bDefaultTextEncoding;
+            bool                    m_bDefaultTextEncoding;
 
 
             void throwUrlNotValid(const OUString & _rsUrl,const OUString & _rsMessage);
@@ -83,8 +69,6 @@ namespace connectivity
 
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
-            // XInterface
-            virtual void SAL_CALL release() throw() override;
 
             // XServiceInfo
             DECLARE_SERVICE_INFO();
@@ -98,7 +82,7 @@ namespace connectivity
             virtual sal_Bool SAL_CALL getAutoCommit(  ) override;
             virtual void SAL_CALL commit(  ) override;
             virtual void SAL_CALL rollback(  ) override;
-            virtual sal_Bool SAL_CALL isClosed(  ) override;
+            virtual sal_Bool SAL_CALL isClosed(  ) override final;
             virtual css::uno::Reference< css::sdbc::XDatabaseMetaData > SAL_CALL getMetaData(  ) override;
             virtual void SAL_CALL setReadOnly( sal_Bool readOnly ) override;
             virtual sal_Bool SAL_CALL isReadOnly(  ) override;
@@ -109,13 +93,13 @@ namespace connectivity
             virtual css::uno::Reference< css::container::XNameAccess > SAL_CALL getTypeMap(  ) override;
             virtual void SAL_CALL setTypeMap( const css::uno::Reference< css::container::XNameAccess >& typeMap ) override;
             // XCloseable
-            virtual void SAL_CALL close(  ) override;
+            virtual void SAL_CALL close(  ) override final;
             // XWarningsSupplier
             virtual css::uno::Any SAL_CALL getWarnings(  ) override;
             virtual void SAL_CALL clearWarnings(  ) override;
             //XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
             // no interface methods
             css::uno::Reference< css::ucb::XDynamicResultSet > getDir() const;
@@ -142,7 +126,7 @@ namespace connectivity
 
             void    setCaseSensitiveExtension( bool _bIsCS, GrantAccess ) { m_bCaseSensitiveExtension = _bIsCS; }
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FCONNECTION_HXX
 

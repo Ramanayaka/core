@@ -16,6 +16,8 @@ $(eval $(call gb_CppunitTest_use_externals,sd_misc_tests,\
 	libxml2 \
 ))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sd_misc_tests))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sd_misc_tests, \
     sd/qa/unit/misc-tests \
 ))
@@ -113,12 +115,17 @@ $(eval $(call gb_CppunitTest_use_components,sd_misc_tests,\
     unoxml/source/rdf/unordf \
     unoxml/source/service/unoxml \
     uui/util/uui \
+    vcl/vcl.common \
     xmloff/util/xo \
     xmlsecurity/util/xmlsecurity \
 ))
 
+$(eval $(call gb_CppunitTest_use_custom_headers,sd_misc_tests,\
+	officecfg/registry \
+))
+
 $(eval $(call gb_CppunitTest_use_configuration,sd_misc_tests))
 
-$(call gb_CppunitTest_get_target,sd_misc_tests) : $(call gb_AllLangResTarget_get_target,sd)
+$(call gb_CppunitTest_get_target,sd_misc_tests): $(call gb_Package_get_target,postprocess_images)
 
 # vim: set noet sw=4 ts=4:

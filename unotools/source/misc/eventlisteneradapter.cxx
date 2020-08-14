@@ -21,6 +21,7 @@
 
 #include <vector>
 
+#include <com/sun/star/lang/XComponent.hpp>
 #include <unotools/eventlisteneradapter.hxx>
 #include <osl/diagnose.h>
 #include <cppuhelper/implbase.hxx>
@@ -73,7 +74,8 @@ namespace utl
     {
         if (m_xComponent.is())
         {
-            m_xComponent->removeEventListener(m_xKeepMeAlive);
+            if (m_xKeepMeAlive.is())
+                m_xComponent->removeEventListener(m_xKeepMeAlive);
             m_xComponent.clear();
             m_xKeepMeAlive.clear();
         }
@@ -83,7 +85,6 @@ namespace utl
     {
         Reference< XEventListener > xDeleteUponLeaving = m_xKeepMeAlive;
         m_xKeepMeAlive.clear();
-        m_xComponent.clear();
 
         m_pAdapter->_disposing(_rSource);
     }
@@ -117,7 +118,7 @@ namespace utl
         do
         {
             rtl::Reference<OEventListenerImpl>& pListenerImpl = *it;
-            if ( pListenerImpl->getComponent().get() == _rxComp.get() )
+            if ((pListenerImpl->getComponent().get() == _rxComp.get()) || (pListenerImpl->getComponent() == _rxComp))
             {
                 pListenerImpl->dispose();
                 it = m_pImpl->aListeners.erase( it );
@@ -146,7 +147,7 @@ namespace utl
         }
 
         OEventListenerImpl* pListenerImpl = new OEventListenerImpl(this, _rxComp);
-        m_pImpl->aListeners.push_back(pListenerImpl);
+        m_pImpl->aListeners.emplace_back(pListenerImpl);
     }
 
 }   // namespace utl

@@ -18,6 +18,7 @@
  */
 
 #include <com/sun/star/awt/grid/XMutableGridDataModel.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -26,12 +27,9 @@
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <toolkit/helper/servicenames.hxx>
-#include <tools/diagnose_ex.h>
-#include <toolkit/helper/mutexandbroadcasthelper.hxx>
+#include <o3tl/safeint.hxx>
 
 #include <algorithm>
-#include <functional>
 #include <vector>
 
 using namespace ::com::sun::star;
@@ -41,8 +39,6 @@ using namespace ::com::sun::star::awt::grid;
 using namespace ::com::sun::star::lang;
 
 namespace {
-
-enum broadcast_type { row_added, row_removed, data_changed};
 
 typedef ::cppu::WeakComponentImplHelper    <   XMutableGridDataModel
                                             ,   XServiceInfo
@@ -158,13 +154,13 @@ private:
 
     DefaultGridDataModel::CellData const & DefaultGridDataModel::impl_getCellData_throw( sal_Int32 const i_column, sal_Int32 const i_row ) const
     {
-        if  (   ( i_row < 0 ) || ( size_t( i_row ) > m_aData.size() )
+        if  (   ( i_row < 0 ) || ( o3tl::make_unsigned( i_row ) > m_aData.size() )
             ||  ( i_column < 0 ) || ( i_column > m_nColumnCount )
             )
             throw IndexOutOfBoundsException( OUString(), *const_cast< DefaultGridDataModel* >( this ) );
 
         RowData const & rRow( m_aData[ i_row ] );
-        if ( size_t( i_column ) < rRow.size() )
+        if ( o3tl::make_unsigned( i_column ) < rRow.size() )
             return rRow[ i_column ];
 
         static CellData s_aEmpty;
@@ -174,8 +170,8 @@ private:
 
     DefaultGridDataModel::RowData& DefaultGridDataModel::impl_getRowDataAccess_throw( sal_Int32 const i_rowIndex, size_t const i_requiredColumnCount )
     {
-        OSL_ENSURE( i_requiredColumnCount <= size_t( m_nColumnCount ), "DefaultGridDataModel::impl_getRowDataAccess_throw: invalid column count!" );
-        if  ( ( i_rowIndex < 0 ) || ( size_t( i_rowIndex ) >= m_aData.size() ) )
+        OSL_ENSURE( i_requiredColumnCount <= o3tl::make_unsigned( m_nColumnCount ), "DefaultGridDataModel::impl_getRowDataAccess_throw: invalid column count!" );
+        if  ( ( i_rowIndex < 0 ) || ( o3tl::make_unsigned( i_rowIndex ) >= m_aData.size() ) )
             throw IndexOutOfBoundsException( OUString(), *this );
 
         RowData& rRowData( m_aData[ i_rowIndex ] );
@@ -213,7 +209,7 @@ private:
     {
         ::comphelper::ComponentGuard aGuard( *this, rBHelper );
 
-        if ( ( i_row < 0 ) || ( size_t( i_row ) >= m_aRowHeaders.size() ) )
+        if ( ( i_row < 0 ) || ( o3tl::make_unsigned( i_row ) >= m_aRowHeaders.size() ) )
             throw IndexOutOfBoundsException( OUString(), *this );
 
         return m_aRowHeaders[ i_row ];
@@ -245,8 +241,11 @@ private:
         // create new data row
         RowData newRow( i_assumedColCount > 0 ? i_assumedColCount : i_rowData.getLength() );
         RowData::iterator cellData = newRow.begin();
-        for ( const Any* pData = i_rowData.begin(); pData != i_rowData.end(); ++pData, ++cellData )
-            cellData->first = *pData;
+        for ( const Any& rData : i_rowData )
+        {
+            cellData->first = rData;
+            ++cellData;
+        }
 
         // insert data row
         m_aData.insert( m_aData.begin() + i_position, newRow );
@@ -303,10 +302,9 @@ private:
             return;
 
         // determine max col count in the new data
-        sal_Int32 maxColCount = 0;
-        for ( sal_Int32 row=0; row<rowCount; ++row )
-            if ( i_data[row].getLength() > maxColCount )
-                maxColCount = i_data[row].getLength();
+        auto pData = std::max_element(i_data.begin(), i_data.end(),
+            [](const Sequence< Any >& a, const Sequence< Any >& b) { return a.getLength() < b.getLength(); });
+        sal_Int32 maxColCount = pData->getLength();
 
         if ( maxColCount < m_nColumnCount )
             maxColCount = m_nColumnCount;
@@ -331,7 +329,7 @@ private:
     {
         ::comphelper::ComponentGuard aGuard( *this, rBHelper );
 
-        if ( ( i_rowIndex < 0 ) || ( size_t( i_rowIndex ) >= m_aData.size() ) )
+        if ( ( i_rowIndex < 0 ) || ( o3tl::make_unsigned( i_rowIndex ) >= m_aData.size() ) )
             throw IndexOutOfBoundsException( OUString(), *this );
 
         m_aRowHeaders.erase( m_aRowHeaders.begin() + i_rowIndex );
@@ -378,7 +376,7 @@ private:
     {
         ::comphelper::ComponentGuard aGuard( *this, rBHelper );
 
-        if  ( ( i_rowIndex < 0 ) || ( size_t( i_rowIndex ) >= m_aData.size() ) )
+        if  ( ( i_rowIndex < 0 ) || ( o3tl::make_unsigned( i_rowIndex ) >= m_aData.size() ) )
             throw IndexOutOfBoundsException( OUString(), *this );
 
         if ( i_columnIndexes.getLength() != i_values.getLength() )
@@ -388,9 +386,9 @@ private:
         if ( columnCount == 0 )
             return;
 
-        for ( sal_Int32 col = 0; col < columnCount; ++col )
+        for ( sal_Int32 const columnIndex : i_columnIndexes )
         {
-            if ( ( i_columnIndexes[col] < 0 ) || ( i_columnIndexes[col] > m_nColumnCount ) )
+            if ( ( columnIndex < 0 ) || ( columnIndex > m_nColumnCount ) )
                 throw IndexOutOfBoundsException( OUString(), *this );
         }
 
@@ -398,14 +396,15 @@ private:
         for ( sal_Int32 col = 0; col < columnCount; ++col )
         {
             sal_Int32 const columnIndex = i_columnIndexes[ col ];
-            if ( size_t( columnIndex ) >= rDataRow.size() )
+            if ( o3tl::make_unsigned( columnIndex ) >= rDataRow.size() )
                 rDataRow.resize( columnIndex + 1 );
 
             rDataRow[ columnIndex ].first = i_values[ col ];
         }
 
-        sal_Int32 const firstAffectedColumn = *::std::min_element( i_columnIndexes.begin(), i_columnIndexes.end() );
-        sal_Int32 const lastAffectedColumn = *::std::max_element( i_columnIndexes.begin(), i_columnIndexes.end() );
+        auto aPair = ::std::minmax_element( i_columnIndexes.begin(), i_columnIndexes.end() );
+        sal_Int32 const firstAffectedColumn = *aPair.first;
+        sal_Int32 const lastAffectedColumn = *aPair.second;
         broadcast(
             GridDataEvent( *this, firstAffectedColumn, lastAffectedColumn, i_rowIndex, i_rowIndex ),
             &XGridDataListener::dataChanged,
@@ -418,7 +417,7 @@ private:
     {
         ::comphelper::ComponentGuard aGuard( *this, rBHelper );
 
-        if  ( ( i_rowIndex < 0 ) || ( size_t( i_rowIndex ) >= m_aRowHeaders.size() ) )
+        if  ( ( i_rowIndex < 0 ) || ( o3tl::make_unsigned( i_rowIndex ) >= m_aRowHeaders.size() ) )
             throw IndexOutOfBoundsException( OUString(), *this );
 
         m_aRowHeaders[ i_rowIndex ] = i_heading;
@@ -443,8 +442,8 @@ private:
         ::comphelper::ComponentGuard aGuard( *this, rBHelper );
 
         RowData& rRowData = impl_getRowDataAccess_throw( i_rowIndex, m_nColumnCount );
-        for ( RowData::iterator cell = rRowData.begin(); cell != rRowData.end(); ++cell )
-            cell->second = i_value;
+        for ( auto& rCell : rRowData )
+            rCell.second = i_value;
     }
 
 
@@ -479,7 +478,7 @@ private:
 
     OUString SAL_CALL DefaultGridDataModel::getImplementationName(  )
     {
-        return OUString("stardiv.Toolkit.DefaultGridDataModel");
+        return "stardiv.Toolkit.DefaultGridDataModel";
     }
 
     sal_Bool SAL_CALL DefaultGridDataModel::supportsService( const OUString& ServiceName )
@@ -489,8 +488,7 @@ private:
 
     Sequence< OUString > SAL_CALL DefaultGridDataModel::getSupportedServiceNames(  )
     {
-        Sequence<OUString> aSeq { "com.sun.star.awt.grid.DefaultGridDataModel" };
-        return aSeq;
+        return { "com.sun.star.awt.grid.DefaultGridDataModel" };
     }
 
 
@@ -501,7 +499,7 @@ private:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_DefaultGridDataModel_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

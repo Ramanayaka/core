@@ -20,19 +20,19 @@
 #ifndef INCLUDED_UNODEVTOOLS_INC_OPTIONS_HXX
 #define INCLUDED_UNODEVTOOLS_INC_OPTIONS_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <rtl/ustrbuf.hxx>
 
 namespace unodevtools {
 
 
-bool readOption( OUString * pValue, const sal_Char * pOpt,
+bool readOption( OUString * pValue, const char * pOpt,
                      sal_uInt32 * pnIndex, const OUString & aArg);
     // throws CannotDumpException
 
 
-bool readOption( const sal_Char * pOpt,
+bool readOption( const char * pOpt,
                      sal_uInt32 * pnIndex, const OUString & aArg);
 
 } // end of namespace unodevtools

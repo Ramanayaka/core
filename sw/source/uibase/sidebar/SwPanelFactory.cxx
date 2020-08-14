@@ -19,21 +19,21 @@
 
 #include <com/sun/star/ui/XUIElementFactory.hpp>
 
-#include <ThemePanel.hxx>
-#include <StylePresetsPanel.hxx>
-#include <PageStylesPanel.hxx>
-#include <PageFormatPanel.hxx>
-#include <PageHeaderPanel.hxx>
-#include <PageFooterPanel.hxx>
-#include <WrapPropertyPanel.hxx>
+#include "ThemePanel.hxx"
+#include "StylePresetsPanel.hxx"
+#include "PageStylesPanel.hxx"
+#include "PageFormatPanel.hxx"
+#include "PageHeaderPanel.hxx"
+#include "PageFooterPanel.hxx"
+#include "WrapPropertyPanel.hxx"
+#include "WriterInspectorTextPanel.hxx"
+#include "TableEditPanel.hxx"
 #include <navipi.hxx>
 #include <redlndlg.hxx>
 
 #include <sfx2/sidebar/SidebarPanelBase.hxx>
-#include <sfx2/sfxbasecontroller.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/window.hxx>
-#include <rtl/ref.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <comphelper/namedvaluecollection.hxx>
 #include <cppuhelper/compbase.hxx>
@@ -67,7 +67,7 @@ public:
         const css::uno::Sequence<css::beans::PropertyValue>& rArguments) override;
 
     OUString SAL_CALL getImplementationName() override
-    { return OUString("org.apache.openoffice.comp.sw.sidebar.SwPanelFactory"); }
+    { return "org.apache.openoffice.comp.sw.sidebar.SwPanelFactory"; }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
@@ -154,7 +154,7 @@ Reference<ui::XUIElement> SAL_CALL SwPanelFactory::createUIElement (
     }
     else if (rsResourceURL.endsWith("/NavigatorPanel"))
     {
-        VclPtrInstance<SwNavigationPI> pPanel(pBindings, pParentWindow);
+        VclPtr<vcl::Window> pPanel = SwNavigationPI::Create( pParentWindow, xFrame, pBindings );
         xElement = sfx2::sidebar::SidebarPanelBase::Create(
             rsResourceURL,
             xFrame,
@@ -170,6 +170,15 @@ Reference<ui::XUIElement> SAL_CALL SwPanelFactory::createUIElement (
             pPanel,
             ui::LayoutSize(-1,-1,-1));
     }
+    else if (rsResourceURL.endsWith("/WriterInspectorTextPanel"))
+    {
+        VclPtr<vcl::Window> pPanel = sw::sidebar::WriterInspectorTextPanel::Create( pParentWindow, xFrame);
+        xElement = sfx2::sidebar::SidebarPanelBase::Create(
+            rsResourceURL,
+            xFrame,
+            pPanel,
+            ui::LayoutSize(0,-1,-1));
+    }
     else if (rsResourceURL.endsWith("/StylePresetsPanel"))
     {
         VclPtr<vcl::Window> pPanel = sw::sidebar::StylePresetsPanel::Create(pParentWindow, xFrame);
@@ -182,13 +191,19 @@ Reference<ui::XUIElement> SAL_CALL SwPanelFactory::createUIElement (
         xElement = sfx2::sidebar::SidebarPanelBase::Create(
                         rsResourceURL, xFrame, pPanel, ui::LayoutSize(-1,-1,-1));
     }
+    else if (rsResourceURL.endsWith("/TableEditPanel"))
+    {
+        VclPtr<vcl::Window> pPanel = sw::sidebar::TableEditPanel::Create(pParentWindow, xFrame, pBindings );
+        xElement = sfx2::sidebar::SidebarPanelBase::Create(
+                        rsResourceURL, xFrame, pPanel, ui::LayoutSize(-1,-1,-1));
+    }
 
     return xElement;
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 org_apache_openoffice_comp_sw_sidebar_SwPanelFactory_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

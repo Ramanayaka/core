@@ -18,20 +18,15 @@
  */
 
 #include <xml/imagesconfiguration.hxx>
-#include <services.h>
 
 #include <xml/imagesdocumenthandler.hxx>
 #include <xml/saxnamespacefilter.hxx>
 
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
+#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/io/IOException.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-
-#include <comphelper/processfactory.hxx>
-#include <unotools/streamwrap.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
@@ -44,7 +39,7 @@ namespace framework
 bool ImagesConfiguration::LoadImages(
     const css::uno::Reference< css::uno::XComponentContext >& rxContext,
     const css::uno::Reference< css::io::XInputStream >& rInputStream,
-    ImageListsDescriptor& rItems )
+    ImageItemDescriptorList& rItems )
 {
     Reference< XParser > xParser = Parser::create( rxContext );
 
@@ -82,7 +77,7 @@ bool ImagesConfiguration::LoadImages(
 bool ImagesConfiguration::StoreImages(
     const css::uno::Reference< css::uno::XComponentContext >& rxContext,
     const css::uno::Reference< css::io::XOutputStream >& rOutputStream,
-    const ImageListsDescriptor& rItems )
+    const ImageItemDescriptorList& rItems )
 {
     Reference< XWriter > xWriter = Writer::create(rxContext);
     xWriter->setOutputStream( rOutputStream );

@@ -24,10 +24,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         TextHierarchyLinePrimitive2D::TextHierarchyLinePrimitive2D(const Primitive2DContainer& rChildren)
         :   GroupPrimitive2D(rChildren)
         {
@@ -36,30 +34,32 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(TextHierarchyLinePrimitive2D, PRIMITIVE2D_ID_TEXTHIERARCHYLINEPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
-
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
-        TextHierarchyParagraphPrimitive2D::TextHierarchyParagraphPrimitive2D(const Primitive2DContainer& rChildren)
-        :   GroupPrimitive2D(rChildren)
+        TextHierarchyParagraphPrimitive2D::TextHierarchyParagraphPrimitive2D(
+            const Primitive2DContainer& rChildren,
+            sal_Int16 nOutlineLevel)
+        :   GroupPrimitive2D(rChildren),
+            mnOutlineLevel(nOutlineLevel)
         {
+        }
+
+        bool TextHierarchyParagraphPrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const
+        {
+            if(GroupPrimitive2D::operator==(rPrimitive))
+            {
+                const TextHierarchyParagraphPrimitive2D& rCompare = static_cast<const TextHierarchyParagraphPrimitive2D&>(rPrimitive);
+
+                return (getOutlineLevel() == rCompare.getOutlineLevel());
+            }
+
+            return false;
         }
 
         // provide unique ID
         ImplPrimitive2DIDBlock(TextHierarchyParagraphPrimitive2D, PRIMITIVE2D_ID_TEXTHIERARCHYPARAGRAPHPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         TextHierarchyBulletPrimitive2D::TextHierarchyBulletPrimitive2D(const Primitive2DContainer& rChildren)
         :   GroupPrimitive2D(rChildren)
         {
@@ -68,14 +68,7 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(TextHierarchyBulletPrimitive2D, PRIMITIVE2D_ID_TEXTHIERARCHYBULLETPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
-
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         TextHierarchyBlockPrimitive2D::TextHierarchyBlockPrimitive2D(const Primitive2DContainer& rChildren)
         :   GroupPrimitive2D(rChildren)
         {
@@ -84,22 +77,32 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(TextHierarchyBlockPrimitive2D, PRIMITIVE2D_ID_TEXTHIERARCHYBLOCKPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
-
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         TextHierarchyFieldPrimitive2D::TextHierarchyFieldPrimitive2D(
             const Primitive2DContainer& rChildren,
             const FieldType& rFieldType,
-            const OUString& rString)
+            const std::vector< std::pair< OUString, OUString>>* pNameValue)
         :   GroupPrimitive2D(rChildren),
             meType(rFieldType),
-            maString(rString)
+            meNameValue()
         {
+            if (nullptr != pNameValue)
+            {
+                meNameValue = *pNameValue;
+            }
+        }
+
+        OUString TextHierarchyFieldPrimitive2D::getValue(const OUString& rName) const
+        {
+            for (const std::pair< OUString, OUString >& candidate : meNameValue)
+            {
+                if (candidate.first.equals(rName))
+                {
+                    return candidate.second;
+                }
+            }
+
+            return OUString();
         }
 
         bool TextHierarchyFieldPrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const
@@ -109,7 +112,7 @@ namespace drawinglayer
                 const TextHierarchyFieldPrimitive2D& rCompare = static_cast<const TextHierarchyFieldPrimitive2D&>(rPrimitive);
 
                 return (getType() == rCompare.getType()
-                    &&  getString() == rCompare.getString());
+                    && meNameValue == rCompare.meNameValue);
             }
 
             return false;
@@ -117,14 +120,6 @@ namespace drawinglayer
 
         // provide unique ID
         ImplPrimitive2DIDBlock(TextHierarchyFieldPrimitive2D, PRIMITIVE2D_ID_TEXTHIERARCHYFIELDPRIMITIVE2D)
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
-
-
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         TextHierarchyEditPrimitive2D::TextHierarchyEditPrimitive2D(const Primitive2DContainer& rChildren)
         :   GroupPrimitive2D(rChildren)
         {
@@ -133,7 +128,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(TextHierarchyEditPrimitive2D, PRIMITIVE2D_ID_TEXTHIERARCHYEDITPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

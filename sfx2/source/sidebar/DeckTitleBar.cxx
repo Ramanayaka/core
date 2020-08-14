@@ -17,24 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/DeckTitleBar.hxx>
+#include <sidebar/DeckTitleBar.hxx>
 #include <sfx2/sidebar/Theme.hxx>
 #include <sfx2/sfxresid.hxx>
+#include <sfx2/strings.hrc>
 
-#include "Sidebar.hrc"
-
+#include <vcl/event.hxx>
 #include <vcl/image.hxx>
+#include <vcl/ptrstyle.hxx>
 
 #ifdef DEBUG
 #include <sfx2/sidebar/Tools.hxx>
 #endif
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 namespace
 {
-static const sal_Int32 gaLeftGripPadding (3);
-static const sal_Int32 gaRightGripPadding (3);
+const sal_Int32 gaLeftGripPadding (3);
+const sal_Int32 gaRightGripPadding (6);
 }
 
 DeckTitleBar::DeckTitleBar (const OUString& rsTitle,
@@ -56,20 +57,20 @@ DeckTitleBar::DeckTitleBar (const OUString& rsTitle,
 
 void DeckTitleBar::SetCloserVisible (const bool bIsCloserVisible)
 {
-    if (mbIsCloserVisible != bIsCloserVisible)
-    {
-        mbIsCloserVisible = bIsCloserVisible;
+    if (mbIsCloserVisible == bIsCloserVisible)
+        return;
 
-        if (mbIsCloserVisible)
-        {
-            maToolBox->InsertItem(mnCloserItemIndex,
-                                  Theme::GetImage(Theme::Image_Closer));
-            maToolBox->SetQuickHelpText(mnCloserItemIndex,
-                                        SfxResId(SFX_STR_SIDEBAR_CLOSE_DECK));
-        }
-        else
-            maToolBox->RemoveItem(maToolBox->GetItemPos(mnCloserItemIndex));
+    mbIsCloserVisible = bIsCloserVisible;
+
+    if (mbIsCloserVisible)
+    {
+        maToolBox->InsertItem(mnCloserItemIndex,
+                              Theme::GetImage(Theme::Image_Closer));
+        maToolBox->SetQuickHelpText(mnCloserItemIndex,
+                                    SfxResId(SFX_STR_SIDEBAR_CLOSE_DECK));
     }
+    else
+        maToolBox->RemoveItem(maToolBox->GetItemPos(mnCloserItemIndex));
 }
 
 tools::Rectangle DeckTitleBar::GetTitleArea (const tools::Rectangle& rTitleBarBox)
@@ -82,8 +83,21 @@ tools::Rectangle DeckTitleBar::GetTitleArea (const tools::Rectangle& rTitleBarBo
         rTitleBarBox.Bottom());
 }
 
-void DeckTitleBar::PaintDecoration(vcl::RenderContext& /*rRenderContext*/, const tools::Rectangle& /*rTitleBarBox*/)
+tools::Rectangle DeckTitleBar::GetDragArea()
 {
+    Image aGripImage (Theme::GetImage(Theme::Image_Grip));
+    return tools::Rectangle(0,0,
+               aGripImage.GetSizePixel().Width() + gaLeftGripPadding + gaRightGripPadding,
+               aGripImage.GetSizePixel().Height()
+    );
+}
+
+void DeckTitleBar::PaintDecoration(vcl::RenderContext& rRenderContext)
+{
+   Image aImage (Theme::GetImage(Theme::Image_Grip));
+   const Point aTopLeft(gaLeftGripPadding,
+                        (GetSizePixel().Height() - aImage.GetSizePixel().Height()) / 2);
+   rRenderContext.DrawImage(aTopLeft, aImage);
 }
 
 sidebar::Paint DeckTitleBar::GetBackgroundPaint()
@@ -112,6 +126,20 @@ void DeckTitleBar::DataChanged (const DataChangedEvent& rEvent)
     TitleBar::DataChanged(rEvent);
 }
 
-} } // end of namespace sfx2::sidebar
+
+void DeckTitleBar::MouseMove (const MouseEvent& rMouseEvent)
+{
+    tools::Rectangle aGrip = GetDragArea();
+    PointerStyle eStyle = PointerStyle::Arrow;
+
+    if ( aGrip.IsInside( rMouseEvent.GetPosPixel() ) )
+        eStyle = PointerStyle::Move;
+
+    SetPointer( eStyle );
+
+    Window::MouseMove( rMouseEvent );
+}
+
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

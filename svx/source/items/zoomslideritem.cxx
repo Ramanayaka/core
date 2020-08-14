@@ -17,8 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <tools/stream.hxx>
-
 #include <osl/diagnose.h>
 
 #include <svx/zoomslideritem.hxx>
@@ -39,38 +37,10 @@ SvxZoomSliderItem::SvxZoomSliderItem( sal_uInt16 nCurrentZoom, sal_uInt16 nMinZo
 {
 }
 
-
-SvxZoomSliderItem::SvxZoomSliderItem( const SvxZoomSliderItem& rOrig )
-: SfxUInt16Item( rOrig.Which(), rOrig.GetValue() )
-, maValues( rOrig.maValues )
-, mnMinZoom( rOrig.mnMinZoom )
-, mnMaxZoom( rOrig.mnMaxZoom )
-{
-}
-
-
-SvxZoomSliderItem::~SvxZoomSliderItem()
-{
-}
-
-
-SfxPoolItem* SvxZoomSliderItem::Clone( SfxItemPool * /*pPool*/ ) const
+SvxZoomSliderItem* SvxZoomSliderItem::Clone( SfxItemPool * /*pPool*/ ) const
 {
     return new SvxZoomSliderItem( *this );
 }
-
-
-SfxPoolItem* SvxZoomSliderItem::Create( SvStream& /*rStrm*/, sal_uInt16 /*nVersion*/ ) const
-{
-    return nullptr;
-}
-
-
-SvStream& SvxZoomSliderItem::Store( SvStream& rStrm, sal_uInt16 /*nItemVersion*/ ) const
-{
-    return rStrm;
-}
-
 
 bool SvxZoomSliderItem::operator==( const SfxPoolItem& rAttr ) const
 {
@@ -104,7 +74,7 @@ bool SvxZoomSliderItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) c
 
         case MID_ZOOMSLIDER_CURRENTZOOM :
             {
-                rVal <<= (sal_Int32) GetValue();
+                rVal <<= static_cast<sal_Int32>(GetValue());
             }
             break;
         case MID_ZOOMSLIDER_SNAPPINGPOINTS:
@@ -147,33 +117,33 @@ bool SvxZoomSliderItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId
                     sal_Int16 nConvertedCount( 0 );
                     sal_Int32 nMinZoom( 0 ), nMaxZoom( 0 );
 
-                    for ( sal_Int32 i = 0; i < aSeq.getLength(); i++ )
+                    for ( const auto& rProp : std::as_const(aSeq) )
                     {
-                        if ( aSeq[i].Name == ZOOMSLIDER_PARAM_CURRENTZOOM )
+                        if ( rProp.Name == ZOOMSLIDER_PARAM_CURRENTZOOM )
                         {
-                            bAllConverted &= ( aSeq[i].Value >>= nCurrentZoom );
+                            bAllConverted &= ( rProp.Value >>= nCurrentZoom );
                             ++nConvertedCount;
                         }
-                        else if ( aSeq[i].Name == ZOOMSLIDER_PARAM_SNAPPINGPOINTS )
+                        else if ( rProp.Name == ZOOMSLIDER_PARAM_SNAPPINGPOINTS )
                         {
-                            bAllConverted &= ( aSeq[i].Value >>= aValues );
+                            bAllConverted &= ( rProp.Value >>= aValues );
                             ++nConvertedCount;
                         }
-                        else if( aSeq[i].Name == ZOOMSLIDER_PARAM_MINZOOM )
+                        else if( rProp.Name == ZOOMSLIDER_PARAM_MINZOOM )
                         {
-                            bAllConverted &= ( aSeq[i].Value >>= nMinZoom );
+                            bAllConverted &= ( rProp.Value >>= nMinZoom );
                             ++nConvertedCount;
                         }
-                        else if( aSeq[i].Name == ZOOMSLIDER_PARAM_MAXZOOM )
+                        else if( rProp.Name == ZOOMSLIDER_PARAM_MAXZOOM )
                         {
-                            bAllConverted &= ( aSeq[i].Value >>= nMaxZoom );
+                            bAllConverted &= ( rProp.Value >>= nMaxZoom );
                             ++nConvertedCount;
                         }
                     }
 
                     if ( bAllConverted && nConvertedCount == ZOOMSLIDER_PARAMS )
                     {
-                        SetValue( (sal_uInt16)nCurrentZoom );
+                        SetValue( static_cast<sal_uInt16>(nCurrentZoom) );
                         maValues = aValues;
                         mnMinZoom = sal::static_int_cast< sal_uInt16 >( nMinZoom );
                         mnMaxZoom = sal::static_int_cast< sal_uInt16 >( nMaxZoom );
@@ -190,7 +160,7 @@ bool SvxZoomSliderItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId
                 sal_Int32 nVal = 0;
                 if ( rVal >>= nVal )
                 {
-                    SetValue( (sal_uInt16)nVal );
+                    SetValue( static_cast<sal_uInt16>(nVal) );
                     return true;
                 }
                 else
@@ -213,7 +183,7 @@ bool SvxZoomSliderItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId
                 sal_Int32 nVal = 0;
                 if( rVal >>= nVal )
                 {
-                    mnMinZoom = (sal_uInt16)nVal;
+                    mnMinZoom = static_cast<sal_uInt16>(nVal);
                     return true;
                 }
                 else
@@ -224,7 +194,7 @@ bool SvxZoomSliderItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId
                 sal_Int32 nVal = 0;
                 if( rVal >>= nVal )
                 {
-                    mnMaxZoom = (sal_uInt16)nVal;
+                    mnMaxZoom = static_cast<sal_uInt16>(nVal);
                     return true;
                 }
                 else

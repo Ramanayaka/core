@@ -12,11 +12,10 @@
 
 #include <com/sun/star/sdbc/TransactionIsolation.hpp>
 #include <com/sun/star/sdbc/ColumnSearch.hpp>
-#include "resource/common_res.hrc"
+#include <sal/log.hxx>
 #include <vector>
 
 #include "MDatabaseMetaDataHelper.hxx"
-#include <connectivity/dbtools.hxx>
 
 using namespace connectivity::mork;
 using namespace connectivity;
@@ -25,15 +24,12 @@ using namespace com::sun::star::uno;
 using namespace com::sun::star::sdbc;
 
 
-namespace connectivity
+namespace connectivity::mork
 {
-    namespace mork
-    {
-        static sal_Int32 const s_nCOLUMN_SIZE = 256;
-        static sal_Int32 const s_nDECIMAL_DIGITS = 0;
-        static sal_Int32 const s_nNULLABLE = 1;
-        static sal_Int32 const s_nCHAR_OCTET_LENGTH = 65535;
-    }
+        sal_Int32 const s_nCOLUMN_SIZE = 256;
+        sal_Int32 const s_nDECIMAL_DIGITS = 0;
+        sal_Int32 const s_nNULLABLE = 1;
+        sal_Int32 const s_nCHAR_OCTET_LENGTH = 65535;
 }
 
 ODatabaseMetaData::ODatabaseMetaData(OConnection* _pCon)
@@ -49,7 +45,7 @@ ODatabaseMetaData::~ODatabaseMetaData()
 }
 
 
-ODatabaseMetaDataResultSet::ORows& SAL_CALL ODatabaseMetaData::getColumnRows(
+ODatabaseMetaDataResultSet::ORows ODatabaseMetaData::getColumnRows(
         const OUString& tableNamePattern,
         const OUString& columnNamePattern )
 {
@@ -57,20 +53,12 @@ ODatabaseMetaDataResultSet::ORows& SAL_CALL ODatabaseMetaData::getColumnRows(
     SAL_INFO("connectivity.mork", "tableNamePattern: " << tableNamePattern);
     SAL_INFO("connectivity.mork", "columnNamePattern: " << columnNamePattern);
 
-    static ODatabaseMetaDataResultSet::ORows aRows;
+    ODatabaseMetaDataResultSet::ORows aRows;
     ODatabaseMetaDataResultSet::ORow aRow(19);
-    aRows.clear();
 
     ::osl::MutexGuard aGuard( m_aMutex );
     std::vector< OUString > tables;
-    if (!connectivity::mork::MDatabaseMetaDataHelper::getTableStrings(m_pConnection, tables))
-    {
-        ::connectivity::SharedResources aResources;
-        // TODO:
-        // get better message here?
-        const OUString sMessage = aResources.getResourceString(STR_UNKNOWN_COLUMN_TYPE);
-        ::dbtools::throwGenericSQLException(sMessage ,*this);
-    }
+    connectivity::mork::MDatabaseMetaDataHelper::getTableStrings(m_pConnection, tables);
 
     // ****************************************************
     // Some entries in a row never change, so set them now
@@ -91,7 +79,7 @@ ODatabaseMetaDataResultSet::ORows& SAL_CALL ODatabaseMetaData::getColumnRows(
     // DECIMAL_DIGITS.
     aRow[9] = new ORowSetValueDecorator(s_nDECIMAL_DIGITS);
     // NUM_PREC_RADIX
-    aRow[10] = new ORowSetValueDecorator((sal_Int32)10);
+    aRow[10] = new ORowSetValueDecorator(sal_Int32(10));
     // NULLABLE
     aRow[11] = new ORowSetValueDecorator(s_nNULLABLE);
     // REMARKS
@@ -108,7 +96,7 @@ ODatabaseMetaDataResultSet::ORows& SAL_CALL ODatabaseMetaData::getColumnRows(
     aRow[18] = new ORowSetValueDecorator(OUString("YES"));
 
     // Iterate over all tables
-    for(OUString & table : tables) {
+    for(const OUString & table : tables) {
         if(match(tableNamePattern, table,'\0')) {
             // TABLE_NAME
             aRow[3] = new ORowSetValueDecorator( table );
@@ -117,19 +105,16 @@ ODatabaseMetaDataResultSet::ORows& SAL_CALL ODatabaseMetaData::getColumnRows(
 
             SAL_INFO("connectivity.mork", "\tTableName = : " << table);
             // Iterate over all columns in the table.
-            for (   OColumnAlias::AliasMap::const_iterator compare = colNames.begin();
-                    compare != colNames.end();
-                    ++compare
-                )
+            for (const auto& [rName, rAlias] : colNames)
             {
-                if ( match( columnNamePattern, compare->first, '\0' ) )
+                if ( match( columnNamePattern, rName, '\0' ) )
                 {
-                    SAL_INFO("connectivity.mork", "\t\tColumnNam : " << compare->first);
+                    SAL_INFO("connectivity.mork", "\t\tColumnNam : " << rName);
 
                     // COLUMN_NAME
-                    aRow[4] = new ORowSetValueDecorator( compare->first );
+                    aRow[4] = new ORowSetValueDecorator( rName );
                     // ORDINAL_POSITION
-                    aRow[17] = new ORowSetValueDecorator( static_cast< sal_Int32 >( compare->second.columnPosition ) + 1 );
+                    aRow[17] = new ORowSetValueDecorator( static_cast< sal_Int32 >( rAlias.columnPosition ) + 1 );
                     aRows.push_back(aRow);
                 }
             }
@@ -262,20 +247,18 @@ sal_Bool SAL_CALL ODatabaseMetaData::supportsNonNullableColumns(  )
 
 OUString SAL_CALL ODatabaseMetaData::getCatalogTerm(  )
 {
-    OUString aVal;
-    return aVal;
+    return OUString();
 }
 
 OUString ODatabaseMetaData::impl_getIdentifierQuoteString_throw(  )
 {
     // normally this is "
-    return OUString( "\"");
+    return "\"";
 }
 
 OUString SAL_CALL ODatabaseMetaData::getExtraNameCharacters(  )
 {
-    OUString aVal;
-    return aVal;
+    return OUString();
 }
 
 sal_Bool SAL_CALL ODatabaseMetaData::supportsDifferentTableCorrelationNames(  )
@@ -619,14 +602,12 @@ OUString SAL_CALL ODatabaseMetaData::getURL(  )
 
 OUString SAL_CALL ODatabaseMetaData::getUserName(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL ODatabaseMetaData::getDriverName(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL ODatabaseMetaData::getDriverVersion()
@@ -643,20 +624,17 @@ OUString SAL_CALL ODatabaseMetaData::getDatabaseProductVersion(  )
 
 OUString SAL_CALL ODatabaseMetaData::getDatabaseProductName(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL ODatabaseMetaData::getProcedureTerm(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL ODatabaseMetaData::getSchemaTerm(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 sal_Int32 SAL_CALL ODatabaseMetaData::getDriverMajorVersion(  )
@@ -676,14 +654,12 @@ sal_Int32 SAL_CALL ODatabaseMetaData::getDriverMinorVersion(  )
 
 OUString SAL_CALL ODatabaseMetaData::getSQLKeywords(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL ODatabaseMetaData::getSearchStringEscape(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL ODatabaseMetaData::getStringFunctions(  )
@@ -855,23 +831,22 @@ Reference< XResultSet > ODatabaseMetaData::impl_getTypeInfo_throw(  )
     // in special the metadata of the resultset already returns the right columns
     ODatabaseMetaDataResultSet* pResultSet = new ODatabaseMetaDataResultSet(ODatabaseMetaDataResultSet::eTypeInfo);
     Reference< XResultSet > xResultSet = pResultSet;
-    static ODatabaseMetaDataResultSet::ORows aRows;
-
-    if(aRows.empty())
+    static ODatabaseMetaDataResultSet::ORows aRows = [&]()
     {
+        ODatabaseMetaDataResultSet::ORows tmp;
         ODatabaseMetaDataResultSet::ORow aRow;
         aRow.reserve(19);
         aRow.push_back(ODatabaseMetaDataResultSet::getEmptyValue());
         aRow.push_back(new ORowSetValueDecorator(OUString("VARCHAR")));
         aRow.push_back(new ORowSetValueDecorator(DataType::VARCHAR));
-        aRow.push_back(new ORowSetValueDecorator((sal_Int32)s_nCHAR_OCTET_LENGTH));
+        aRow.push_back(new ORowSetValueDecorator(sal_Int32(s_nCHAR_OCTET_LENGTH)));
         aRow.push_back(ODatabaseMetaDataResultSet::getQuoteValue());
         aRow.push_back(ODatabaseMetaDataResultSet::getQuoteValue());
         aRow.push_back(ODatabaseMetaDataResultSet::getEmptyValue());
         // aRow.push_back(new ORowSetValueDecorator((sal_Int32)ColumnValue::NULLABLE));
         aRow.push_back(ODatabaseMetaDataResultSet::get1Value());
         aRow.push_back(ODatabaseMetaDataResultSet::get1Value());
-        aRow.push_back(new ORowSetValueDecorator((sal_Int32)ColumnSearch::CHAR));
+        aRow.push_back(new ORowSetValueDecorator(sal_Int32(ColumnSearch::CHAR)));
         aRow.push_back(ODatabaseMetaDataResultSet::get1Value());
         aRow.push_back(ODatabaseMetaDataResultSet::get0Value());
         aRow.push_back(ODatabaseMetaDataResultSet::get0Value());
@@ -880,11 +855,11 @@ Reference< XResultSet > ODatabaseMetaData::impl_getTypeInfo_throw(  )
         aRow.push_back(ODatabaseMetaDataResultSet::get0Value());
         aRow.push_back(ODatabaseMetaDataResultSet::getEmptyValue());
         aRow.push_back(ODatabaseMetaDataResultSet::getEmptyValue());
-        aRow.push_back(new ORowSetValueDecorator((sal_Int32)10));
+        aRow.push_back(new ORowSetValueDecorator(sal_Int32(10)));
 
-        aRows.push_back(aRow);
-
-    }
+        tmp.push_back(aRow);
+        return tmp;
+    }();
     pResultSet->setRows(aRows);
     return xResultSet;
 }
@@ -915,13 +890,7 @@ Reference< XResultSet > SAL_CALL ODatabaseMetaData::getTables(
     // aRows = m_pDbMetaDataHelper->getTables( m_pConnection, tableNamePattern );
     // pResultSet->setRows( aRows );
     ODatabaseMetaDataResultSet::ORows _rRows;
-    if ( !connectivity::mork::MDatabaseMetaDataHelper::getTables( m_pConnection, tableNamePattern, _rRows ) ) {
-        ::connectivity::SharedResources aResources;
-        // TODO:
-        // get better message here?
-        const OUString sMessage = aResources.getResourceString(STR_UNKNOWN_COLUMN_TYPE);
-        ::dbtools::throwGenericSQLException(sMessage ,*this);
-    }
+    connectivity::mork::MDatabaseMetaDataHelper::getTables( m_pConnection, tableNamePattern, _rRows );
     pResultSet->setRows( _rRows );
 
     return xResultSet;
@@ -935,14 +904,7 @@ Reference< XResultSet > SAL_CALL ODatabaseMetaData::getTablePrivileges(
     Reference< XResultSet > xRef = pResult;
 
     std::vector< OUString > tables;
-    if ( !connectivity::mork::MDatabaseMetaDataHelper::getTableStrings( m_pConnection, tables) )
-    {
-        ::connectivity::SharedResources aResources;
-        // TODO:
-        // get better message here?
-        const OUString sMessage = aResources.getResourceString(STR_UNKNOWN_COLUMN_TYPE);
-        ::dbtools::throwGenericSQLException(sMessage ,*this);
-    }
+    connectivity::mork::MDatabaseMetaDataHelper::getTableStrings( m_pConnection, tables);
 
     ::connectivity::ODatabaseMetaDataResultSet::ORows aRows;
     ::connectivity::ODatabaseMetaDataResultSet::ORow aRow(8);
@@ -956,13 +918,13 @@ Reference< XResultSet > SAL_CALL ODatabaseMetaData::getTablePrivileges(
 
 
     // Iterate over all tables
-    for(OUString & table : tables) {
+    for(const OUString & table : tables) {
        if(match(tableNamePattern, table,'\0'))
            {
             // TABLE_NAME
-            aRow[2] = new ORowSetValueDecorator( table );
+                aRow[2] = new ORowSetValueDecorator( table );
 
-            SAL_INFO("connectivity.mork", "\tTableName = : " << table);
+                SAL_INFO("connectivity.mork", "\tTableName = : " << table);
 
                 aRow[6] = ::connectivity::ODatabaseMetaDataResultSet::getSelectValue();
                 aRows.push_back(aRow);

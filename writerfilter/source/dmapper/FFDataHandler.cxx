@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include "FFDataHandler.hxx"
+#include "TagLogger.hxx"
 
 #include <ooxml/resourceids.hxx>
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 /************************
  * class: FFDataHandler *
@@ -32,7 +32,8 @@ LoggedProperties("FFDataHandler"),
 m_nCheckboxHeight(0),
 m_bCheckboxAutoHeight(false),
 m_nCheckboxChecked(-1),
-m_nCheckboxDefault(-1)
+m_nCheckboxDefault(-1),
+m_nTextMaxLength(0)
 {
 }
 
@@ -70,6 +71,16 @@ void FFDataHandler::lcl_sprm(Sprm & r_Sprm)
     case NS_ooxml::LN_CT_FFData_statusText:
         {
             resolveSprm(r_Sprm);
+        }
+        break;
+    case NS_ooxml::LN_CT_FFData_entryMacro:
+        {
+            m_sEntryMacro = r_Sprm.getValue()->getString();
+        }
+        break;
+    case NS_ooxml::LN_CT_FFData_exitMacro:
+        {
+            m_sExitMacro = r_Sprm.getValue()->getString();
         }
         break;
     case NS_ooxml::LN_CT_FFCheckBox_size:
@@ -112,9 +123,24 @@ void FFDataHandler::lcl_sprm(Sprm & r_Sprm)
             resolveSprm(r_Sprm);
         }
         break;
+    case NS_ooxml::LN_CT_FFTextInput_type:
+        {
+            m_sTextType = r_Sprm.getValue()->getString();
+        }
+        break;
     case NS_ooxml::LN_CT_FFTextInput_default:
         {
             m_sTextDefault = r_Sprm.getValue()->getString();
+        }
+        break;
+    case NS_ooxml::LN_CT_FFTextInput_maxLength:
+        {
+            m_nTextMaxLength = r_Sprm.getValue()->getInt();
+        }
+        break;
+    case NS_ooxml::LN_CT_FFTextInput_format:
+        {
+            m_sTextFormat = r_Sprm.getValue()->getString();
         }
         break;
     case NS_ooxml::LN_CT_FFData_textInput:
@@ -123,7 +149,7 @@ void FFDataHandler::lcl_sprm(Sprm & r_Sprm)
         }
         break;
     default:
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
         TagLogger::getInstance().element("unhandled");
 #endif
         break;
@@ -133,7 +159,7 @@ void FFDataHandler::lcl_sprm(Sprm & r_Sprm)
 void FFDataHandler::resolveSprm(Sprm & r_Sprm)
 {
     writerfilter::Reference<Properties>::Pointer_t pProperties = r_Sprm.getProps();
-    if( pProperties.get())
+    if( pProperties)
         pProperties->resolve(*this);
 }
 
@@ -152,13 +178,13 @@ void FFDataHandler::lcl_attribute(Id name, Value & val)
         }
         break;
     default:
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
         TagLogger::getInstance().element("unhandled");
 #endif
         break;
     }
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

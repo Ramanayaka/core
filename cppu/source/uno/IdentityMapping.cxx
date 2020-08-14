@@ -19,14 +19,16 @@
 
 #include "IdentityMapping.hxx"
 
-#include "typelib/typedescription.h"
-#include "uno/mapping.h"
-#include "uno/environment.hxx"
+#include <typelib/typedescription.h>
+#include <uno/mapping.h>
+#include <uno/environment.hxx>
 
-#include "osl/interlck.h"
+#include <osl/interlck.h>
 
 
 using namespace ::com::sun::star;
+
+namespace {
 
 struct IdentityMapping : public uno_Mapping
 {
@@ -36,17 +38,19 @@ struct IdentityMapping : public uno_Mapping
     explicit IdentityMapping(uno::Environment const & rEnv);
 };
 
+}
+
 extern "C"
 {
 
-static void SAL_CALL s_free(uno_Mapping * pMapping)
+static void s_free(uno_Mapping * pMapping)
 {
     delete static_cast<IdentityMapping *>(pMapping);
 }
 
-static void SAL_CALL s_acquire(uno_Mapping * pMapping)
+static void s_acquire(uno_Mapping * pMapping)
 {
-    static rtl::OUString s_purpose;
+    static OUString s_purpose;
 
     if (1 == osl_atomic_increment(&static_cast<IdentityMapping *>(pMapping)->m_nRef))
     {
@@ -59,13 +63,13 @@ static void SAL_CALL s_acquire(uno_Mapping * pMapping)
     }
 }
 
-static void SAL_CALL s_release(uno_Mapping * pMapping)
+static void s_release(uno_Mapping * pMapping)
 {
     if (!osl_atomic_decrement(&static_cast<IdentityMapping *>(pMapping )->m_nRef))
         uno_revokeMapping(pMapping);
 }
 
-static void SAL_CALL s_mapInterface(uno_Mapping                       * pMapping,
+static void s_mapInterface(uno_Mapping                       * pMapping,
                                     void                             ** ppOut,
                                     void                              * pInterface,
                                     SAL_UNUSED_PARAMETER typelib_InterfaceTypeDescription * /*pInterfaceTypeDescr*/)

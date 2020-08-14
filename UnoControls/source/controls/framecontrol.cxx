@@ -17,15 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "framecontrol.hxx"
+#include <framecontrol.hxx>
+#include <OConnectionPointContainerHelper.hxx>
 
+#include <com/sun/star/awt/XControlContainer.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/frame/Frame.hpp>
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <osl/diagnose.h>
@@ -41,7 +42,9 @@ using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::util;
 
-namespace unocontrols{
+namespace unocontrols {
+
+namespace {
 
 enum PropertyHandle  // values represent index in PropertyArray
 {                   // for FrameControl
@@ -50,12 +53,14 @@ enum PropertyHandle  // values represent index in PropertyArray
     Loaderarguments = 2
 };
 
+}
+
 //  construct/destruct
 
 FrameControl::FrameControl( const Reference< XComponentContext >& rxContext)
     : BaseControl                   ( rxContext                                     )
     , OBroadcastHelper              ( m_aMutex                                      )
-    , OPropertySetHelper            ( *(static_cast< OBroadcastHelper * >(this))    )
+    , OPropertySetHelper            ( *static_cast< OBroadcastHelper * >(this)      )
     , m_aConnectionPointContainer   ( new OConnectionPointContainerHelper(m_aMutex) )
 {
 }
@@ -74,13 +79,13 @@ Any SAL_CALL FrameControl::queryInterface( const Type& rType )
     Reference< XInterface > xDel = BaseControl::impl_getDelegator();
     if ( xDel.is() )
     {
-        // If an delegator exist, forward question to his queryInterface.
-        // Delegator will ask his own queryAggregation!
+        // If a delegator exists, forward question to its queryInterface.
+        // Delegator will ask its own queryAggregation!
         aReturn = xDel->queryInterface( rType );
     }
     else
     {
-        // If an delegator unknown, forward question to own queryAggregation.
+        // If a delegator is unknown, forward question to own queryAggregation.
         aReturn = queryAggregation( rType );
     }
 
@@ -150,12 +155,12 @@ Any SAL_CALL FrameControl::queryAggregation( const Type& aType )
 
 OUString FrameControl::getImplementationName()
 {
-    return impl_getStaticImplementationName();
+    return "stardiv.UnoControls.FrameControl";
 }
 
 css::uno::Sequence<OUString> FrameControl::getSupportedServiceNames()
 {
-    return impl_getStaticSupportedServiceNames();
+    return { "com.sun.star.frame.FrameControl" };
 }
 
 //  XControl
@@ -247,21 +252,6 @@ void SAL_CALL FrameControl::unadvise(   const   Type&                       aTyp
     m_aConnectionPointContainer->unadvise( aType, xListener );
 }
 
-//  impl but public method to register service
-
-const Sequence< OUString > FrameControl::impl_getStaticSupportedServiceNames()
-{
-    Sequence<OUString> seqServiceNames { "com.sun.star.frame.FrameControl" };
-    return seqServiceNames;
-}
-
-//  impl but public method to register service
-
-const OUString FrameControl::impl_getStaticImplementationName()
-{
-    return OUString("stardiv.UnoControls.FrameControl");
-}
-
 //  OPropertySetHelper
 
 sal_Bool FrameControl::convertFastPropertyValue(        Any&        rConvertedValue ,
@@ -344,7 +334,7 @@ IPropertyArrayHelper& FrameControl::getInfoHelper()
     // attention: properties need to be sorted by name!
     static OPropertyArrayHelper ourPropertyInfo(
                 {
-                    Property( "ComponentURL", PropertyHandle::Componenturl, cppu::UnoType<OUString>::get(),
+                    Property( "ComponentUrl", PropertyHandle::Componenturl, cppu::UnoType<OUString>::get(),
                             PropertyAttribute::BOUND | PropertyAttribute::CONSTRAINED ),
                     Property( "Frame", PropertyHandle::Frame, cppu::UnoType<XFrame>::get(),
                             PropertyAttribute::BOUND | PropertyAttribute::TRANSIENT ),
@@ -369,17 +359,17 @@ Reference< XPropertySetInfo > SAL_CALL FrameControl::getPropertySetInfo()
 
 //  BaseControl
 
-WindowDescriptor* FrameControl::impl_getWindowDescriptor( const Reference< XWindowPeer >& xParentPeer )
+WindowDescriptor FrameControl::impl_getWindowDescriptor( const Reference< XWindowPeer >& xParentPeer )
 {
-    WindowDescriptor* pDescriptor   = new WindowDescriptor;
+    WindowDescriptor aDescriptor;
 
-    pDescriptor->Type               = WindowClass_CONTAINER;
-    pDescriptor->ParentIndex        = -1;
-    pDescriptor->Parent             = xParentPeer;
-    pDescriptor->Bounds             = getPosSize ();
-    pDescriptor->WindowAttributes   = 0;
+    aDescriptor.Type               = WindowClass_CONTAINER;
+    aDescriptor.ParentIndex        = -1;
+    aDescriptor.Parent             = xParentPeer;
+    aDescriptor.Bounds             = getPosSize ();
+    aDescriptor.WindowAttributes   = 0;
 
-    return pDescriptor;
+    return aDescriptor;
 }
 
 //  private method
@@ -463,4 +453,10 @@ void FrameControl::impl_deleteFrame()
 
 }   // namespace unocontrols
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+stardiv_UnoControls_FrameControl_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new unocontrols::FrameControl(context));
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

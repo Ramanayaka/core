@@ -22,52 +22,46 @@
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/document/XLinkTargetSupplier.hpp>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
-#include <com/sun/star/drawing/XDrawPageSummarizer.hpp>
 #include <com/sun/star/drawing/XDrawPageDuplicator.hpp>
 #include <com/sun/star/drawing/XLayerSupplier.hpp>
 #include <com/sun/star/drawing/XMasterPagesSupplier.hpp>
 #include <com/sun/star/presentation/XPresentationSupplier.hpp>
 #include <com/sun/star/presentation/XCustomPresentationSupplier.hpp>
-#include <com/sun/star/drawing/XLayerManager.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/presentation/XPresentation.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/drawing/XDrawPages.hpp>
 #include <com/sun/star/ucb/XAnyCompareFactory.hpp>
-#include <com/sun/star/i18n/XForbiddenCharacters.hpp>
 #include <com/sun/star/presentation/XHandoutMasterSupplier.hpp>
 #include <com/sun/star/view/XRenderable.hpp>
-#include <com/sun/star/util/MeasureUnit.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <rtl/ref.hxx>
 
-#include <svl/lstner.hxx>
 #include <sfx2/sfxbasemodel.hxx>
 #include <svx/fmdmod.hxx>
 
-#include <vcl/event.hxx>
 #include <vcl/ITiledRenderable.hxx>
-
-#include <editeng/unoipset.hxx>
 
 #include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <cppuhelper/weakref.hxx>
 #include <sddllapi.h>
+
+namespace com::sun::star::container { class XNameContainer; }
+namespace com::sun::star::i18n { class XForbiddenCharacters; }
+namespace com::sun::star::presentation { class XPresentation; }
 
 class SdDrawDocument;
 class SdPage;
+class SvxItemPropertySet;
 
 namespace sd {
 class DrawDocShell;
 class DrawViewShell;
 }
 
-extern OUString getPageApiName( SdPage* pPage );
+extern OUString getPageApiName( SdPage const * pPage );
 extern OUString getPageApiNameFromUiName( const OUString& rUIName );
 
-/***********************************************************************
-*                                                                      *
-***********************************************************************/
 class SD_DLLPUBLIC SdXImpressDocument : public SfxBaseModel, // implements SfxListener, OWEAKOBJECT & other
                            public SvxFmMSFactory,
                            public css::drawing::XDrawPageDuplicator,
@@ -107,8 +101,6 @@ private:
     css::uno::WeakReference< css::drawing::XDrawPages > mxMasterPagesAccess;
     css::uno::WeakReference< css::container::XNameAccess > mxLayerManager;
     css::uno::WeakReference< css::container::XNameContainer > mxCustomPresentationAccess;
-    css::uno::WeakReference< css::container::XNameAccess > mxStyleFamilies;
-    css::uno::WeakReference< css::presentation::XPresentation > mxPresentation;
     css::uno::WeakReference< css::i18n::XForbiddenCharacters > mxForbiddenCharacters;
     css::uno::Reference< css::container::XNameAccess > mxLinks;
 
@@ -130,12 +122,16 @@ private:
 
     sd::DrawViewShell* GetViewShell();
 
+protected:
+    /** abstract SdrModel provider */
+    virtual SdrModel& getSdrModelFromUnoModel() const override;
+
 public:
-    SdXImpressDocument( ::sd::DrawDocShell* pShell, bool bClipBoard ) throw();
-    SdXImpressDocument( SdDrawDocument* pDoc, bool bClipBoard ) throw();
+    SdXImpressDocument(::sd::DrawDocShell* pShell, bool bClipBoard);
+    SdXImpressDocument(SdDrawDocument* pDoc, bool bClipBoard);
     virtual ~SdXImpressDocument() throw() override;
 
-    static rtl::Reference< SdXImpressDocument > GetModel( SdDrawDocument* pDoc );
+    static rtl::Reference< SdXImpressDocument > GetModel( SdDrawDocument const & rDoc );
 
     // intern
     bool operator==( const SdXImpressDocument& rModel ) const { return mpDoc == rModel.mpDoc; }
@@ -241,6 +237,7 @@ public:
     virtual int  getParts() override;
     virtual OUString getPartName( int nPart ) override;
     virtual OUString getPartHash( int nPart ) override;
+    virtual VclPtr<vcl::Window> getDocWindow() override;
 
     virtual void setPartMode( int nPartMode ) override;
 
@@ -252,8 +249,8 @@ public:
     virtual void postMouseEvent(int nType, int nX, int nY, int nCount, int nButtons, int nModifier) override;
     /// @see vcl::ITiledRenderable::setTextSelection().
     virtual void setTextSelection(int nType, int nX, int nY) override;
-    /// @see vcl::ITiledRenderable::getTextSelection().
-    virtual OString getTextSelection(const char* pMimeType, OString& rUsedMimeType) override;
+    /// @see vcl::ITiledRenderable::getSelection().
+    virtual css::uno::Reference<css::datatransfer::XTransferable> getSelection() override;
     /// @see vcl::ITiledRenderable::setGraphicSelection().
     virtual void setGraphicSelection(int nType, int nX, int nY) override;
     /// @see lok::Document::resetSelection().
@@ -263,9 +260,20 @@ public:
     /// @see vcl::ITiledRenderable::isMimeTypeSupported().
     virtual bool isMimeTypeSupported() override;
     /// @see vcl::ITiledRenderable::getPointer().
-    virtual Pointer getPointer() override;
+    virtual PointerStyle getPointer() override;
     /// @see vcl::ITiledRenderable::getPostIts().
-    virtual OUString getPostIts() override;
+    virtual void getPostIts(tools::JsonWriter& /*rJsonWriter*/) override;
+    /// @see vcl::ITiledRenderable::selectPart().
+    virtual void selectPart(int nPart, int nSelect) override;
+    /// @see vcl::ITiledRenderable::moveSelectedParts().
+    virtual void moveSelectedParts(int nPosition, bool bDuplicate) override;
+    /// @see vcl::ITiledRenderable::getPartInfo().
+    virtual OUString getPartInfo(int nPart) override;
+    /// @see vcl::ITiledRenderable::isDisposed().
+    virtual bool isDisposed() const override
+    {
+        return mbDisposed;
+    }
 
     // XComponent
 

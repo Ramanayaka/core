@@ -21,23 +21,22 @@
 #define INCLUDED_SW_SOURCE_UIBASE_UNO_SWXDOCUMENTSETTINGS_HXX
 
 #include <comphelper/MasterPropertySet.hxx>
-#include <com/sun/star/text/XTextDocument.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
 #include <cppuhelper/weak.hxx>
+#include <vcl/vclptr.hxx>
 
 class SwXTextDocument;
 class SwDocShell;
 class SwDoc;
 class SfxPrinter;
 
-class SwXDocumentSettings :
+class SwXDocumentSettings final :
         public comphelper::MasterPropertySet,
         public css::lang::XServiceInfo,
         public css::lang::XTypeProvider,
         public cppu::OWeakObject
 {
-protected:
     SwXTextDocument*        mpModel;
     SwDocShell*             mpDocSh;
     SwDoc*                  mpDoc;
@@ -46,6 +45,7 @@ protected:
      * printer-related properties, remember the last printer and set it in
      * _postSetValues */
     VclPtr<SfxPrinter>      mpPrinter;
+    bool mbPreferPrinterPapersize;
 
     virtual void _preSetValues () override;
     virtual void _setSingleValue( const comphelper::PropertyInfo & rInfo, const css::uno::Any &rValue ) override;
@@ -54,7 +54,6 @@ protected:
     virtual void _preGetValues () override;
     virtual void _getSingleValue( const comphelper::PropertyInfo & rInfo, css::uno::Any & rValue ) override;
     virtual void _postGetValues () override;
-protected:
     virtual ~SwXDocumentSettings()
         throw() override;
 public:

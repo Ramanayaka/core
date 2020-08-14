@@ -20,11 +20,10 @@
 #include <svgcirclenode.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgCircleNode::SvgCircleNode(
             SvgDocument& rDocument,
             SvgNode* pParent)
@@ -32,8 +31,7 @@ namespace svgio
             maSvgStyleAttributes(*this),
             maCx(0),
             maCy(0),
-            maR(0),
-            mpaTransform(nullptr)
+            maR(0)
         {
         }
 
@@ -116,31 +114,30 @@ namespace svgio
         {
             const SvgStyleAttributes* pStyle = getSvgStyleAttributes();
 
-            if(pStyle && getR().isSet())
+            if(!(pStyle && getR().isSet()))
+                return;
+
+            const double fR(getR().solve(*this));
+
+            if(fR <= 0.0)
+                return;
+
+            const basegfx::B2DPolygon aPath(
+                basegfx::utils::createPolygonFromCircle(
+                    basegfx::B2DPoint(
+                        getCx().isSet() ? getCx().solve(*this, xcoordinate) : 0.0,
+                        getCy().isSet() ? getCy().solve(*this, ycoordinate) : 0.0),
+                    fR));
+
+            drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
+
+            pStyle->add_path(basegfx::B2DPolyPolygon(aPath), aNewTarget, nullptr);
+
+            if(!aNewTarget.empty())
             {
-                const double fR(getR().solve(*this));
-
-                if(fR > 0.0)
-                {
-                    const basegfx::B2DPolygon aPath(
-                        basegfx::tools::createPolygonFromCircle(
-                            basegfx::B2DPoint(
-                                getCx().isSet() ? getCx().solve(*this, xcoordinate) : 0.0,
-                                getCy().isSet() ? getCy().solve(*this, ycoordinate) : 0.0),
-                            fR));
-
-                    drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
-
-                    pStyle->add_path(basegfx::B2DPolyPolygon(aPath), aNewTarget, nullptr);
-
-                    if(!aNewTarget.empty())
-                    {
-                        pStyle->add_postProcess(rTarget, aNewTarget, getTransform());
-                    }
-                }
+                pStyle->add_postProcess(rTarget, aNewTarget, getTransform());
             }
         }
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

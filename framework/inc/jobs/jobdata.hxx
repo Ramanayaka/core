@@ -20,23 +20,19 @@
 #ifndef INCLUDED_FRAMEWORK_INC_JOBS_JOBDATA_HXX
 #define INCLUDED_FRAMEWORK_INC_JOBS_JOBDATA_HXX
 
-#include <jobs/configaccess.hxx>
-#include <jobs/jobresult.hxx>
-#include <stdtypes.h>
-#include <general.h>
-
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 
 #include <rtl/ustring.hxx>
+
+#include <vector>
 
 namespace framework{
 
 /**
     @short  holds all necessary information about a job and
             handle it's configuration (if any exist!)
-    @descr  It can be used rom different use cases as a container
+    @descr  It can be used from different use cases as a container
             (or proxy) for all config data of a registered job.
             But it doesn't implement any execute functionality!
  */
@@ -113,7 +109,7 @@ class JobData final
                 - as a configured job
                 - as a job without any configuration
             First mode is triggered by an alias, which points to the
-            configuration entries. Second mode is specified by an uno service
+            configuration entries. Second mode is specified by a uno service
             or implementation name. Then we do the same things (use the same interfaces)
             but don't handle any configuration data.
             The effect: This mode can be detected by this member.
@@ -131,19 +127,19 @@ class JobData final
         /**
             the alias name of this job.
             Is used as entry of configuration set for job registration, to find all
-            necessary properties of it..
+            necessary properties of it...
          */
         OUString m_sAlias;
 
         /**
             the uno implementation name of this job.
-            It's readed from the configuration. Don't set it from outside!
+            It's read from the configuration. Don't set it from outside!
          */
         OUString m_sService;
 
         /**
             the module context list of this job.
-            It's readed from the configuration. Don't set it from outside!
+            It's read from the configuration. Don't set it from outside!
          */
         OUString m_sContext;
 
@@ -151,27 +147,18 @@ class JobData final
             a job can be registered for an event.
             It can be an empty value! But it will be set from outside any times.
             Because it's not clear which job this instance should represent if an event
-            (instaed of an alias) comes in. Because there can be multiple registrations
+            (instead of an alias) comes in. Because there can be multiple registrations
             for this event. We use this information only, to merge it with the job specific
-            arguments. A job can be called so, with a) it's onw config data and b) some dynamic
+            arguments. A job can be called so, with a) its own config data and b) some dynamic
             environment data.
          */
         OUString m_sEvent;
 
         /**
-            job specific configuration items ... unknown for us!
-            It's readed from the configuration. Don't set it from outside!
+            job specific configuration items... unknown for us!
+            It's read from the configuration. Don't set it from outside!
          */
         std::vector< css::beans::NamedValue > m_lArguments;
-
-        /**
-            after a job was successfully executed (by any outside code using our
-            information) it can return a result. This member make it part of this
-            container too. So it can be used for further things.
-            We use it also to update our internal state and the configuration
-            of the job. But note: only the last result will be saved here!
-         */
-        JobResult m_aLastExecutionResult;
 
     // native interface
 
@@ -200,7 +187,6 @@ class JobData final
         void                                         setEvent       ( const OUString&                              sEvent       ,
                                                                       const OUString&                              sAlias       );
         void                                         setJobConfig   ( const std::vector< css::beans::NamedValue >& lArguments   );
-        void                                         setResult      ( const JobResult&                                    aResult      );
         void                                         disableJob     (                                                                  );
 
         static std::vector< OUString > getEnabledJobsForEvent( const css::uno::Reference< css::uno::XComponentContext >& rxContext,

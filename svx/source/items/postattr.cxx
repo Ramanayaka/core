@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/postattr.hxx"
-#include <editeng/itemtype.hxx>
-#include <svx/svxitems.hrc>
+#include <svx/postattr.hxx>
+#include <svx/strings.hrc>
 #include <svx/dialmgr.hxx>
-
 
 SfxPoolItem* SvxPostItAuthorItem::CreateDefault() { return new SvxPostItAuthorItem(0); }
 SfxPoolItem* SvxPostItDateItem::CreateDefault() { return new SvxPostItDateItem(0); }
@@ -46,7 +44,7 @@ bool SvxPostItAuthorItem::GetPresentation
     SfxItemPresentation ePres,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     switch ( ePres )
@@ -62,8 +60,7 @@ bool SvxPostItAuthorItem::GetPresentation
     return false;
 }
 
-
-SfxPoolItem* SvxPostItAuthorItem::Clone( SfxItemPool * ) const
+SvxPostItAuthorItem* SvxPostItAuthorItem::Clone( SfxItemPool * ) const
 {
     return new SvxPostItAuthorItem( *this );
 }
@@ -86,7 +83,7 @@ bool SvxPostItDateItem::GetPresentation
     SfxItemPresentation ePres,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     switch ( ePres )
@@ -103,7 +100,7 @@ bool SvxPostItDateItem::GetPresentation
 }
 
 
-SfxPoolItem* SvxPostItDateItem::Clone( SfxItemPool * ) const
+SvxPostItDateItem* SvxPostItDateItem::Clone( SfxItemPool * ) const
 {
     return new SvxPostItDateItem( *this );
 }
@@ -124,7 +121,7 @@ bool SvxPostItTextItem::GetPresentation
     SfxItemPresentation ePres,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     switch ( ePres )
@@ -140,18 +137,17 @@ bool SvxPostItTextItem::GetPresentation
     return false;
 }
 
-SfxPoolItem* SvxPostItTextItem::Clone( SfxItemPool * ) const
+SvxPostItTextItem* SvxPostItTextItem::Clone( SfxItemPool * ) const
 {
     return new SvxPostItTextItem( *this );
 }
-
 
 SvxPostItIdItem::SvxPostItIdItem( sal_uInt16 _nWhich )
 {
     SetWhich( _nWhich );
 }
 
-SfxPoolItem* SvxPostItIdItem::Clone( SfxItemPool * ) const
+SvxPostItIdItem* SvxPostItIdItem::Clone( SfxItemPool * ) const
 {
     return new SvxPostItIdItem( *this );
 }

@@ -20,7 +20,10 @@
 #ifndef INCLUDED_CHART2_SOURCE_VIEW_INC_VLINEPROPERTIES_HXX
 #define INCLUDED_CHART2_SOURCE_VIEW_INC_VLINEPROPERTIES_HXX
 
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/uno/Any.h>
+#include <com/sun/star/uno/Reference.h>
+
+namespace com::sun::star::beans { class XPropertySet; }
 
 namespace chart
 {
@@ -32,6 +35,7 @@ struct VLineProperties
     css::uno::Any Transparence;//type sal_Int16 for property UNO_NAME_LINETRANSPARENCE
     css::uno::Any Width;//type sal_Int32 for property UNO_NAME_LINEWIDTH
     css::uno::Any DashName;//type OUString for property "LineDashName"
+    css::uno::Any LineCap; //type drawing::LineCap for property UNO_NAME_LINECAP
 
     VLineProperties();
     void initFromPropertySet( const css::uno::Reference< css::beans::XPropertySet >& xProp );

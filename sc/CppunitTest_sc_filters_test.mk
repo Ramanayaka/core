@@ -9,6 +9,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sc_filters_test))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sc_filters_test))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sc_filters_test, \
     sc/qa/unit/filters-test \
 ))
@@ -40,6 +42,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sc_filters_test, \
     salhelper \
     sax \
     sc \
+    scfilt \
     scqahelper \
     sfx \
     sot \
@@ -63,7 +66,11 @@ $(eval $(call gb_CppunitTest_set_include,sc_filters_test,\
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sc_filters_test))
+$(eval $(call gb_CppunitTest_use_api,sc_filters_test,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sc_filters_test))
 $(eval $(call gb_CppunitTest_use_vcl,sc_filters_test))
@@ -77,6 +84,7 @@ $(eval $(call gb_CppunitTest_use_components,sc_filters_test,\
     connectivity/source/manager/sdbc2 \
     dbaccess/util/dba \
     embeddedobj/util/embobj \
+    emfio/emfio \
     eventattacher/source/evtatt \
     filter/source/config/cache/filterconfig1 \
     filter/source/xmlfilteradaptor/xmlfa \
@@ -107,13 +115,10 @@ $(eval $(call gb_CppunitTest_use_components,sc_filters_test,\
     unoxml/source/rdf/unordf \
     unoxml/source/service/unoxml \
     uui/util/uui \
+    vcl/vcl.common \
     xmloff/util/xo \
 ))
 
 $(eval $(call gb_CppunitTest_use_configuration,sc_filters_test))
-
-$(eval $(call gb_CppunitTest_use_packages,sc_filters_test,\
-	filter_xslt \
-))
 
 # vim: set noet sw=4 ts=4:

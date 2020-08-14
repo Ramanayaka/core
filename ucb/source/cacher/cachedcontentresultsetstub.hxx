@@ -20,16 +20,15 @@
 #ifndef INCLUDED_UCB_SOURCE_CACHER_CACHEDCONTENTRESULTSETSTUB_HXX
 #define INCLUDED_UCB_SOURCE_CACHER_CACHEDCONTENTRESULTSETSTUB_HXX
 
-#include <contentresultsetwrapper.hxx>
+#include "contentresultsetwrapper.hxx"
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/ucb/XFetchProvider.hpp>
 #include <com/sun/star/ucb/XFetchProviderForContentAccess.hpp>
 #include <com/sun/star/ucb/XCachedContentResultSetStubFactory.hpp>
-
-#define CACHED_CRS_STUB_SERVICE_NAME "com.sun.star.ucb.CachedContentResultSetStub"
-#define CACHED_CRS_STUB_FACTORY_NAME "com.sun.star.ucb.CachedContentResultSetStubFactory"
-
+#include <cppuhelper/implbase.hxx>
 
 class CachedContentResultSetStub
                 : public ContentResultSetWrapper
@@ -52,35 +51,38 @@ private:
 
     /// @throws css::sdbc::SQLException
     /// @throws css::uno::RuntimeException
-    void SAL_CALL
+    void
     impl_getCurrentRowContent(
         css::uno::Any& rRowContent,
         const css::uno::Reference< css::sdbc::XRow >& xRow );
 
-    sal_Int32 SAL_CALL
+    sal_Int32
     impl_getColumnCount();
 
     /// @throws css::uno::RuntimeException
-    static void SAL_CALL
+    static void
     impl_getCurrentContentIdentifierString(
             css::uno::Any& rAny
             , const css::uno::Reference< css::ucb::XContentAccess >& xContentAccess );
 
     /// @throws css::uno::RuntimeException
-    static void SAL_CALL
+    static void
     impl_getCurrentContentIdentifier(
             css::uno::Any& rAny
             , const css::uno::Reference< css::ucb::XContentAccess >& xContentAccess );
 
     /// @throws css::uno::RuntimeException
-    static void SAL_CALL
+    static void
     impl_getCurrentContent(
             css::uno::Any& rAny
             , const css::uno::Reference< css::ucb::XContentAccess >& xContentAccess );
 
     /// @throws css::uno::RuntimeException
-    void SAL_CALL
+    void
     impl_propagateFetchSizeAndDirection( sal_Int32 nFetchSize, bool bFetchDirection );
+
+    css::ucb::FetchResult impl_fetchHelper(sal_Int32 nRowStartPosition, sal_Int32 nRowCount, bool bDirection,
+        std::function<void(css::uno::Any& rRowContent)> impl_loadRow);
 
 public:
     CachedContentResultSetStub( css::uno::Reference< css::sdbc::XResultSet > const & xOrigin );
@@ -97,10 +99,10 @@ public:
 
     // own inherited
 
-    virtual void SAL_CALL
+    virtual void
     impl_propertyChange( const css::beans::PropertyChangeEvent& evt ) override;
 
-    virtual void SAL_CALL
+    virtual void
     impl_vetoableChange( const css::beans::PropertyChangeEvent& aEvent ) override;
 
     // XTypeProvider
@@ -137,46 +139,21 @@ public:
 };
 
 
-class CachedContentResultSetStubFactory
-                : public cppu::OWeakObject
-                , public css::lang::XTypeProvider
-                , public css::lang::XServiceInfo
-                , public css::ucb::XCachedContentResultSetStubFactory
+class CachedContentResultSetStubFactory final :
+                public cppu::WeakImplHelper<
+                    css::lang::XServiceInfo,
+                    css::ucb::XCachedContentResultSetStubFactory>
 {
-protected:
-    css::uno::Reference< css::lang::XMultiServiceFactory >    m_xSMgr;
-
 public:
 
-    CachedContentResultSetStubFactory(
-        const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr);
+    CachedContentResultSetStubFactory();
 
     virtual ~CachedContentResultSetStubFactory() override;
-
-
-    // XInterface
-    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
-
-    // XTypeProvider
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
-
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    static OUString getImplementationName_Static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-
-    static css::uno::Reference< css::lang::XSingleServiceFactory >
-    createServiceFactory( const css::uno::Reference<
-                          css::lang::XMultiServiceFactory >& rxServiceMgr );
 
     // XCachedContentResultSetStubFactory
 

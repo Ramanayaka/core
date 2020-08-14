@@ -18,21 +18,16 @@
  */
 
 #include <memory>
-#include <config_features.h>
 
 #include <svx/svdobj.hxx>
-
-#include "globdoc.hrc"
 
 #include <swdll.hxx>
 #include <wdocsh.hxx>
 #include <globdoc.hxx>
 #include <initui.hxx>
 #include <swmodule.hxx>
-#include <swtypes.hxx>
 #include <init.hxx>
 #include <dobjfac.hxx>
-#include <cfgid.h>
 
 #include <com/sun/star/frame/Desktop.hpp>
 #include <unotools/configmgr.hxx>
@@ -40,16 +35,16 @@
 #include <comphelper/unique_disposing_ptr.hxx>
 #include <comphelper/processfactory.hxx>
 
+#include <sal/log.hxx>
 #include <svx/fmobjfac.hxx>
-#include <svx/svdfield.hxx>
 #include <svx/objfac3d.hxx>
 #include <editeng/acorrcfg.hxx>
 
 #include <swacorr.hxx>
-#include <unomid.h>
+#include <swabstdlg.hxx>
 
 #include "swdllimpl.hxx"
-#include <o3tl/make_unique.hxx>
+
 using namespace com::sun::star;
 
 namespace
@@ -71,12 +66,13 @@ namespace SwGlobals
 {
     void ensure()
     {
+        // coverity[side_effect_free : FALSE] - not actually side-effect-free
         theSwDLLInstance::get();
     }
 
     sw::Filters & getFilters()
     {
-        return theSwDLLInstance::get().get()->getFilters();
+        return theSwDLLInstance::get()->getFilters();
     }
 }
 
@@ -87,11 +83,11 @@ SwDLL::SwDLL()
         return;
 
     std::unique_ptr<SvtModuleOptions> xOpt;
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
         xOpt.reset(new SvtModuleOptions);
     SfxObjectFactory* pDocFact = nullptr;
     SfxObjectFactory* pGlobDocFact = nullptr;
-    if (xOpt && xOpt->IsWriter())
+    if (!xOpt || xOpt->IsWriter())
     {
         pDocFact = &SwDocShell::Factory();
         pGlobDocFact = &SwGlobalDocShell::Factory();
@@ -99,20 +95,17 @@ SwDLL::SwDLL()
 
     SfxObjectFactory* pWDocFact = &SwWebDocShell::Factory();
 
-    auto pUniqueModule = o3tl::make_unique<SwModule>(pWDocFact, pDocFact, pGlobDocFact);
+    auto pUniqueModule = std::make_unique<SwModule>(pWDocFact, pDocFact, pGlobDocFact);
     SwModule* pModule = pUniqueModule.get();
     SfxApplication::SetModule(SfxToolsModule::Writer, std::move(pUniqueModule));
 
     pWDocFact->SetDocumentServiceName("com.sun.star.text.WebDocument");
 
-    if (xOpt && xOpt->IsWriter())
+    if (!xOpt || xOpt->IsWriter())
     {
         pGlobDocFact->SetDocumentServiceName("com.sun.star.text.GlobalDocument");
         pDocFact->SetDocumentServiceName("com.sun.star.text.TextDocument");
     }
-
-    // register SvDraw-Fields
-    SdrRegisterFieldClasses();
 
     // register 3D-object-Factory
     E3dObjFactory();
@@ -137,12 +130,10 @@ SwDLL::SwDLL()
     // register your shell-interfaces here
     RegisterInterfaces();
 
-#if HAVE_FEATURE_DESKTOP
     // register your controllers here
     RegisterControls();
-#endif
 
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
     {
         // replace SvxAutocorrect with SwAutocorrect
         SvxAutoCorrCfg& rACfg = SvxAutoCorrCfg::Get();
@@ -152,7 +143,7 @@ SwDLL::SwDLL()
     }
 }
 
-SwDLL::~SwDLL()
+SwDLL::~SwDLL() COVERITY_NOEXCEPT_FALSE
 {
     if (m_pAutoCorrCfg)
     {
@@ -173,7 +164,17 @@ SwDLL::~SwDLL()
 sw::Filters & SwDLL::getFilters()
 {
     assert(filters_);
-    return *filters_.get();
+    return *filters_;
 }
+
+#ifndef DISABLE_DYNLOADING
+
+extern "C" SAL_DLLPUBLIC_EXPORT
+void lok_preload_hook()
+{
+    SwAbstractDialogFactory::Create();
+}
+
+#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -18,15 +18,14 @@
  */
 
 
-#include "componenttools.hxx"
+#include <componenttools.hxx>
 #include "DatabaseForm.hxx"
 #include "EventThread.hxx"
-#include "frm_resource.hrc"
-#include "frm_resource.hxx"
+#include <strings.hrc>
+#include <frm_resource.hxx>
 #include "GroupManager.hxx"
-#include "property.hrc"
-#include "property.hxx"
-#include "services.hxx"
+#include <property.hxx>
+#include <services.hxx>
 
 #include <com/sun/star/awt/XControlContainer.hpp>
 #include <com/sun/star/awt/XTextComponent.hpp>
@@ -42,28 +41,24 @@
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdb/RowSetVetoException.hpp>
-#include <com/sun/star/sdb/SQLContext.hpp>
 #include <com/sun/star/sdb/XColumnUpdate.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/sdbcx/Privilege.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <com/sun/star/util/XCancellable.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/util/XModifiable2.hpp>
 
 #include <comphelper/basicio.hxx>
-#include <comphelper/container.hxx>
-#include <comphelper/enumhelper.hxx>
-#include <comphelper/processfactory.hxx>
+#include <comphelper/property.hxx>
 #include <comphelper/seqstream.hxx>
 #include <comphelper/sequence.hxx>
 #include <connectivity/dbtools.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <comphelper/types.hxx>
 #include <rtl/math.hxx>
 #include <rtl/tencinfo.h>
 #include <svl/inettype.hxx>
@@ -77,8 +72,6 @@
 #include <vcl/svapp.hxx>
 #include <vcl/timer.hxx>
 #include <osl/mutex.hxx>
-
-#include <unordered_map>
 
 using namespace ::dbtools;
 using namespace ::comphelper;
@@ -99,6 +92,8 @@ using namespace ::com::sun::star::util;
 
 namespace frm
 {
+
+namespace {
 
 class DocumentModifyGuard
 {
@@ -123,7 +118,7 @@ private:
         }
         catch(const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
     }
 
@@ -131,13 +126,12 @@ private:
     Reference< XModifiable2 >   m_xDocumentModify;
 };
 
+}
+
 // submitting and resetting html-forms asynchronously
 class OFormSubmitResetThread: public OComponentEventThread
 {
 protected:
-
-    // duplicate an event with respect to its type
-    virtual EventObject *cloneEvent( const EventObject *pEvt ) const override;
 
     // process an event. while processing the mutex isn't locked, and pCompImpl
     // is made sure to remain valid
@@ -150,13 +144,6 @@ public:
 
     explicit OFormSubmitResetThread(ODatabaseForm* pControl) : OComponentEventThread(pControl) { }
 };
-
-
-EventObject* OFormSubmitResetThread::cloneEvent(
-        const EventObject *pEvt ) const
-{
-    return new css::awt::MouseEvent( *static_cast<const css::awt::MouseEvent *>(pEvt) );
-}
 
 
 void OFormSubmitResetThread::processEvent(
@@ -243,7 +230,6 @@ ODatabaseForm::ODatabaseForm(const Reference<XComponentContext>& _rxContext)
     ,m_aPropertyBagHelper( *this )
     ,m_aParameterManager( m_aMutex, _rxContext )
     ,m_aFilterManager()
-    ,m_pLoadTimer(nullptr)
     ,m_nResetsPending(0)
     ,m_nPrivileges(0)
     ,m_bInsertOnly( false )
@@ -278,7 +264,6 @@ ODatabaseForm::ODatabaseForm( const ODatabaseForm& _cloneSource )
     ,m_aPropertyBagHelper( *this )
     ,m_aParameterManager( m_aMutex, _cloneSource.m_xContext )
     ,m_aFilterManager()
-    ,m_pLoadTimer( nullptr )
     ,m_nResetsPending( 0 )
     ,m_nPrivileges( 0 )
     ,m_bInsertOnly( _cloneSource.m_bInsertOnly )
@@ -317,15 +302,12 @@ ODatabaseForm::ODatabaseForm( const ODatabaseForm& _cloneSource )
             Reference< XPropertySetInfo > xSourcePSI( xSourceProps->getPropertySetInfo(), UNO_SET_THROW );
             Reference< XPropertyState > xSourcePropState( xSourceProps, UNO_QUERY );
 
-            Reference< XPropertySetInfo > xDestPSI( getPropertySetInfo(), UNO_QUERY_THROW );
+            Reference< XPropertySetInfo > xDestPSI( getPropertySetInfo(), UNO_SET_THROW );
 
-            Sequence< Property > aSourceProperties( xSourcePSI->getProperties() );
-            for (   const Property* pSourceProperty = aSourceProperties.getConstArray();
-                    pSourceProperty != aSourceProperties.getConstArray() + aSourceProperties.getLength();
-                    ++pSourceProperty
-                )
+            const Sequence< Property > aSourceProperties( xSourcePSI->getProperties() );
+            for ( auto const & sourceProperty : aSourceProperties )
             {
-                if ( xDestPSI->hasPropertyByName( pSourceProperty->Name ) )
+                if ( xDestPSI->hasPropertyByName( sourceProperty.Name ) )
                     continue;
 
                 // the initial value passed to XPropertyContainer is also used as default, usually. So, try
@@ -333,14 +315,14 @@ ODatabaseForm::ODatabaseForm( const ODatabaseForm& _cloneSource )
                 Any aInitialValue;
                 if ( xSourcePropState.is() )
                 {
-                    aInitialValue = xSourcePropState->getPropertyDefault( pSourceProperty->Name );
+                    aInitialValue = xSourcePropState->getPropertyDefault( sourceProperty.Name );
                 }
                 else
                 {
-                    aInitialValue = xSourceProps->getPropertyValue( pSourceProperty->Name );
+                    aInitialValue = xSourceProps->getPropertyValue( sourceProperty.Name );
                 }
-                addProperty( pSourceProperty->Name, pSourceProperty->Attributes, aInitialValue );
-                setPropertyValue( pSourceProperty->Name, xSourceProps->getPropertyValue( pSourceProperty->Name ) );
+                addProperty( sourceProperty.Name, sourceProperty.Attributes, aInitialValue );
+                setPropertyValue( sourceProperty.Name, xSourceProps->getPropertyValue( sourceProperty.Name ) );
             }
         }
         catch(const RuntimeException&)
@@ -485,16 +467,13 @@ Sequence<sal_Int8> ODatabaseForm::GetDataMultiPartEncoded(const Reference<XContr
     FillSuccessfulList( aSuccObjList, SubmitButton, MouseEvt );
 
 
-    // Aggregate Liste to OUString
-    for (   HtmlSuccessfulObjList::iterator pSuccObj = aSuccObjList.begin();
-            pSuccObj < aSuccObjList.end();
-            ++pSuccObj
-        )
+    // Aggregate List to OUString
+    for (auto const& succObj : aSuccObjList)
     {
-        if( pSuccObj->nRepresentation == SUCCESSFUL_REPRESENT_TEXT )
-            InsertTextPart( aParent, pSuccObj->aName, pSuccObj->aValue );
-        else if( pSuccObj->nRepresentation == SUCCESSFUL_REPRESENT_FILE )
-            InsertFilePart( aParent, pSuccObj->aName, pSuccObj->aValue );
+        if( succObj.nRepresentation == SUCCESSFUL_REPRESENT_TEXT )
+            InsertTextPart( aParent, succObj.aName, succObj.aValue );
+        else if( succObj.nRepresentation == SUCCESSFUL_REPRESENT_FILE )
+            InsertFilePart( aParent, succObj.aName, succObj.aValue );
     }
 
 
@@ -506,18 +485,18 @@ Sequence<sal_Int8> ODatabaseForm::GetDataMultiPartEncoded(const Reference<XContr
 
     // Copy MessageStream to SvStream
     SvMemoryStream aMemStream;
-    char* pBuf = new char[1025];
+    std::unique_ptr<char[]> pBuf(new char[1025]);
     int nRead;
-    while( (nRead = aMessStream.Read(pBuf, 1024)) > 0 )
+    while( (nRead = aMessStream.Read(pBuf.get(), 1024)) > 0 )
     {
-        aMemStream.WriteBytes(pBuf, nRead);
+        aMemStream.WriteBytes(pBuf.get(), nRead);
     }
-    delete[] pBuf;
+    pBuf.reset();
 
     aMemStream.Flush();
     aMemStream.Seek( 0 );
     void const * pData = aMemStream.GetData();
-    sal_Int32 nLen = aMemStream.Seek(STREAM_SEEK_TO_END);
+    sal_Int32 nLen = aMemStream.TellEnd();
 
     rContentType = aParent.GetContentType();
     return Sequence<sal_Int8>(static_cast<sal_Int8 const *>(pData), nLen);
@@ -574,7 +553,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
                     // <name>=<label>
                     OUString aLabel;
                     xComponentSet->getPropertyValue( PROPERTY_LABEL ) >>= aLabel;
-                    rList.push_back( HtmlSuccessfulObj(aName, aLabel) );
+                    rList.emplace_back(aName, aLabel );
                 }
             }
         } break;
@@ -598,7 +577,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
                         aLhs.append(".x");
                     else
                         aLhs.append("x");
-                    rList.push_back( HtmlSuccessfulObj(aLhs.makeStringAndClear(), aRhs) );
+                    rList.emplace_back(aLhs.makeStringAndClear(), aRhs );
 
                     aLhs.append(aName);
                     aRhs = OUString::number( MouseEvt.Y );
@@ -606,7 +585,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
                         aLhs.append(".y");
                     else
                         aLhs.append("y");
-                    rList.push_back( HtmlSuccessfulObj(aLhs.makeStringAndClear(), aRhs) );
+                    rList.emplace_back(aLhs.makeStringAndClear(), aRhs );
                 }
             }
         } break;
@@ -627,7 +606,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
             if( hasProperty(PROPERTY_REFVALUE, xComponentSet) )
                 xComponentSet->getPropertyValue( PROPERTY_REFVALUE ) >>= aStrValue;
 
-            rList.push_back( HtmlSuccessfulObj(aName, aStrValue) );
+            rList.emplace_back(aName, aStrValue );
         } break;
 
         // Edit
@@ -649,16 +628,13 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
                 Reference<XControlContainer>  xControlContainer(rxSubmitButton->getContext(), UNO_QUERY);
                 if( !xControlContainer.is() ) break;
 
-                Sequence<Reference<XControl> > aControlSeq = xControlContainer->getControls();
-                Reference<XControl>  xControl;
-
                 // Find the right control
-                sal_Int32 i;
-                for( i=0; i<aControlSeq.getLength(); i++ )
+                bool bFound = false;
+                const Sequence<Reference<XControl>> aControls = xControlContainer->getControls();
+                for( auto const& xControl : aControls )
                 {
-                    xControl = aControlSeq.getConstArray()[i];
                     Reference<XPropertySet>  xModel(xControl->getModel(), UNO_QUERY);
-                    if (xModel == xComponentSet)
+                    if ((bFound = xModel == xComponentSet))
                     {
                         Reference<XTextComponent>  xTextComponent(xControl, UNO_QUERY);
                         if( xTextComponent.is() )
@@ -667,13 +643,13 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
                     }
                 }
                 // Couldn't find control or it does not exist (edit in the grid)
-                if (i == aControlSeq.getLength())
+                if (!bFound)
                     xComponentSet->getPropertyValue( PROPERTY_TEXT ) >>= sText;
             }
             else
                 xComponentSet->getPropertyValue( PROPERTY_TEXT ) >>= sText;
 
-            rList.push_back( HtmlSuccessfulObj(aName, sText) );
+            rList.emplace_back(aName, sText );
         } break;
 
         // ComboBox, Patternfield
@@ -685,7 +661,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
             {
                 OUString aText;
                 xComponentSet->getPropertyValue( PROPERTY_TEXT ) >>= aText;
-                rList.push_back( HtmlSuccessfulObj(aName, aText) );
+                rList.emplace_back(aName, aText );
             }
         } break;
         case FormComponentType::CURRENCYFIELD:
@@ -705,7 +681,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
                     xComponentSet->getPropertyValue( PROPERTY_DECIMAL_ACCURACY ) >>= nScale;
                     aText = ::rtl::math::doubleToUString(aDoubleVal, rtl_math_StringFormat_F, nScale, '.', true);
                 }
-                rList.push_back( HtmlSuccessfulObj(aName, aText) );
+                rList.emplace_back(aName, aText );
             }
         }   break;
         case FormComponentType::DATEFIELD:
@@ -728,7 +704,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
                     appendDigits( aDate.GetYear(), 4, aBuffer );
                     aText = aBuffer.makeStringAndClear();
                 }
-                rList.push_back( HtmlSuccessfulObj(aName, aText) );
+                rList.emplace_back(aName, aText );
             }
         }   break;
         case FormComponentType::TIMEFIELD:
@@ -751,7 +727,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
                     appendDigits( aTime.GetSec(), 2, aBuffer );
                     aText = aBuffer.makeStringAndClear();
                 }
-                rList.push_back( HtmlSuccessfulObj(aName, aText) );
+                rList.emplace_back(aName, aText );
             }
         }   break;
 
@@ -764,7 +740,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
             {
                 OUString aText;
                 xComponentSet->getPropertyValue( PROPERTY_HIDDEN_VALUE ) >>= aText;
-                rList.push_back( HtmlSuccessfulObj(aName, aText) );
+                rList.emplace_back(aName, aText );
             }
         } break;
 
@@ -777,7 +753,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
 
                 OUString aText;
                 xComponentSet->getPropertyValue( PROPERTY_TEXT ) >>= aText;
-                rList.push_back( HtmlSuccessfulObj(aName, aText, SUCCESSFUL_REPRESENT_FILE) );
+                rList.emplace_back(aName, aText, SUCCESSFUL_REPRESENT_FILE );
             }
         } break;
 
@@ -835,7 +811,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
                 {
                     aSubValue = pStrings[nSelPos];
                 }
-                rList.push_back( HtmlSuccessfulObj(aName, aSubValue) );
+                rList.emplace_back(aName, aSubValue );
             }
         } break;
         case FormComponentType::GRIDCONTROL:
@@ -871,7 +847,6 @@ void ODatabaseForm::FillSuccessfulList( HtmlSuccessfulObjList& rList,
     rList.clear();
     // Iterate over Components
     Reference<XPropertySet> xComponentSet;
-    OUString aPrefix;
 
     // we know already how many objects should be appended,
     // so why not allocate the space for them
@@ -879,7 +854,7 @@ void ODatabaseForm::FillSuccessfulList( HtmlSuccessfulObjList& rList,
     for( sal_Int32 nIndex=0; nIndex < getCount(); nIndex++ )
     {
         getByIndex( nIndex ) >>= xComponentSet;
-        AppendComponent(rList, xComponentSet, aPrefix, rxSubmitButton, MouseEvt);
+        AppendComponent(rList, xComponentSet, OUString(), rxSubmitButton, MouseEvt);
     }
 }
 
@@ -921,13 +896,13 @@ void ODatabaseForm::Encode( OUString& rString )
                 default:
                 {
                     // Convert to hex
-                    short nHi = ((sal_Int16)nCharCode) / 16;
-                    short nLo = ((sal_Int16)nCharCode) - (nHi*16);
-                    if( nHi > 9 ) nHi += (int)'A'-10; else nHi += (int)'0';
-                    if( nLo > 9 ) nLo += (int)'A'-10; else nLo += (int)'0';
+                    short nHi = static_cast<sal_Int16>(nCharCode) / 16;
+                    short nLo = static_cast<sal_Int16>(nCharCode) - (nHi*16);
+                    if( nHi > 9 ) nHi += int('A')-10; else nHi += int('0');
+                    if( nLo > 9 ) nLo += int('A')-10; else nLo += int('0');
                     aResult.append('%');
-                    aResult.append((sal_Unicode)nHi);
-                    aResult.append((sal_Unicode)nLo);
+                    aResult.append(static_cast<sal_Unicode>(nHi));
+                    aResult.append(static_cast<sal_Unicode>(nLo));
                 }
             }
         }
@@ -943,22 +918,17 @@ void ODatabaseForm::Encode( OUString& rString )
 void ODatabaseForm::InsertTextPart( INetMIMEMessage& rParent, const OUString& rName,
     const OUString& rData )
 {
-
     // Create part as MessageChild
-    INetMIMEMessage* pChild = new INetMIMEMessage();
-
+    std::unique_ptr<INetMIMEMessage> pChild(new INetMIMEMessage);
 
     // Header
     //TODO: Encode rName into a properly formatted Content-Disposition header
     // field as per RFC 2231:
-    OUStringBuffer aContentDisp;
-    aContentDisp.append("form-data; name=\"");
-    aContentDisp.append(rName);
-    aContentDisp.append('\"');
-    pChild->SetContentDisposition(aContentDisp.makeStringAndClear());
+    OUString aContentDisp = "form-data; name=\"" + rName + "\"";
+    pChild->SetContentDisposition(aContentDisp);
 
     rtl_TextEncoding eSystemEncoding = osl_getThreadTextEncoding();
-    const sal_Char* pBestMatchingEncoding = rtl_getBestMimeCharsetFromTextEncoding( eSystemEncoding );
+    const char* pBestMatchingEncoding = rtl_getBestMimeCharsetFromTextEncoding( eSystemEncoding );
     OUString aBestMatchingEncoding = OUString::createFromAscii(pBestMatchingEncoding);
     pChild->SetContentType(
         "text/plain; charset=\"" + aBestMatchingEncoding + "\"");
@@ -970,16 +940,16 @@ void ODatabaseForm::InsertTextPart( INetMIMEMessage& rParent, const OUString& rN
     pStream->Flush();
     pStream->Seek( 0 );
     pChild->SetDocumentLB( new SvLockBytes(pStream, true) );
-    rParent.AttachChild( *pChild );
+    rParent.AttachChild( std::move(pChild) );
 }
 
 
-bool ODatabaseForm::InsertFilePart( INetMIMEMessage& rParent, const OUString& rName,
+void ODatabaseForm::InsertFilePart( INetMIMEMessage& rParent, const OUString& rName,
     const OUString& rFileName )
 {
     OUString aFileName(rFileName);
     OUString aContentType(CONTENT_TYPE_STR_TEXT_PLAIN);
-    SvStream *pStream = nullptr;
+    std::unique_ptr<SvStream> pStream;
 
     if (!aFileName.isEmpty())
     {
@@ -993,11 +963,10 @@ bool ODatabaseForm::InsertFilePart( INetMIMEMessage& rParent, const OUString& rN
             pStream = ::utl::UcbStreamHelper::CreateStream(aFileName, StreamMode::READ);
             if (!pStream || (pStream->GetError() != ERRCODE_NONE))
             {
-                delete pStream;
-                pStream = nullptr;
+                pStream.reset();
             }
             sal_Int32 nSepInd = aFileName.lastIndexOf('.');
-            OUString aExtension = aFileName.copy( nSepInd + 1, aFileName.getLength() - nSepInd - 1 );
+            OUString aExtension = aFileName.copy( nSepInd + 1 );
             INetContentType eContentType = INetContentTypes::GetContentType4Extension( aExtension );
             if (eContentType != CONTENT_TYPE_UNKNOWN)
                 aContentType = INetContentTypes::GetContentType(eContentType);
@@ -1006,33 +975,31 @@ bool ODatabaseForm::InsertFilePart( INetMIMEMessage& rParent, const OUString& rN
 
     // If something didn't work, we create an empty MemoryStream
     if( !pStream )
-        pStream = new SvMemoryStream;
+        pStream.reset( new SvMemoryStream );
 
 
     // Create part as MessageChild
-    INetMIMEMessage* pChild = new INetMIMEMessage;
+    std::unique_ptr<INetMIMEMessage> pChild(new INetMIMEMessage);
 
 
     // Header
     //TODO: Encode rName and aFileName into a properly formatted
     // Content-Disposition header field as per RFC 2231:
-    OUStringBuffer aContentDisp;
-    aContentDisp.append("form-data; name=\"");
-    aContentDisp.append(rName);
-    aContentDisp.append('\"');
-    aContentDisp.append("; filename=\"");
-    aContentDisp.append(aFileName);
-    aContentDisp.append('\"');
-    pChild->SetContentDisposition(aContentDisp.makeStringAndClear());
+    OUString aContentDisp =
+        "form-data; name=\"" +
+        rName +
+        "\""
+        "; filename=\"" +
+        aFileName +
+        "\"";
+    pChild->SetContentDisposition(aContentDisp);
     pChild->SetContentType( aContentType );
     pChild->SetContentTransferEncoding("8bit");
 
 
     // Body
-    pChild->SetDocumentLB( new SvLockBytes(pStream, true) );
-    rParent.AttachChild( *pChild );
-
-    return true;
+    pChild->SetDocumentLB( new SvLockBytes(pStream.release(), true) );
+    rParent.AttachChild( std::move(pChild) );
 }
 
 
@@ -1164,7 +1131,7 @@ bool ODatabaseForm::executeRowSet(::osl::ResettableMutexGuard& _rClearForNotifie
         nConcurrency = ResultSetConcurrency::READ_ONLY;
 
     m_xAggregateSet->setPropertyValue( PROPERTY_RESULTSET_CONCURRENCY, makeAny( nConcurrency ) );
-    m_xAggregateSet->setPropertyValue( PROPERTY_RESULTSET_TYPE, makeAny( (sal_Int32)ResultSetType::SCROLL_SENSITIVE ) );
+    m_xAggregateSet->setPropertyValue( PROPERTY_RESULTSET_TYPE, makeAny( sal_Int32(ResultSetType::SCROLL_SENSITIVE) ) );
 
     bool bSuccess = false;
     try
@@ -1255,7 +1222,7 @@ void ODatabaseForm::disposing()
     m_aErrorListeners.disposeAndClear(aEvt);
 
     m_aParameterManager.dispose();   // To free any references it may have to be me
-    m_aFilterManager.dispose();      // (dito)
+    m_aFilterManager.dispose();      // (ditto)
 
     OFormComponents::disposing();
     OPropertySetAggregationHelper::disposing();
@@ -1293,7 +1260,7 @@ void ODatabaseForm::describeFixedAndAggregateProperties(
         Sequence< Property >& _rProps,
         Sequence< Property >& _rAggregateProps ) const
 {
-    _rProps.realloc( 22 );
+    _rProps.realloc( 23 );
     css::beans::Property* pProperties = _rProps.getArray();
 
     if (m_xAggregateSet.is())
@@ -1317,6 +1284,7 @@ void ODatabaseForm::describeFixedAndAggregateProperties(
     // (e.g. the ones which result from linking master fields to detail fields
     // via column names instead of parameters)
     RemoveProperty( _rAggregateProps, PROPERTY_FILTER );
+    RemoveProperty( _rAggregateProps, PROPERTY_HAVINGCLAUSE );
     RemoveProperty( _rAggregateProps, PROPERTY_APPLYFILTER );
 
     DECL_IFACE_PROP4( ACTIVE_CONNECTION,XConnection,             BOUND, TRANSIENT, MAYBEVOID, CONSTRAINED);
@@ -1327,6 +1295,7 @@ void ODatabaseForm::describeFixedAndAggregateProperties(
     DECL_PROP2      ( DATASOURCE,       OUString,                BOUND, CONSTRAINED             );
     DECL_PROP3      ( CYCLE,            TabulatorCycle,          BOUND, MAYBEVOID, MAYBEDEFAULT );
     DECL_PROP2      ( FILTER,           OUString,                BOUND, MAYBEDEFAULT            );
+    DECL_PROP2      ( HAVINGCLAUSE,     OUString,                BOUND, MAYBEDEFAULT            );
     DECL_BOOL_PROP2 ( INSERTONLY,                                BOUND, MAYBEDEFAULT            );
     DECL_PROP1      ( NAVIGATION,       NavigationBarMode,       BOUND                          );
     DECL_BOOL_PROP1 ( ALLOWADDITIONS,                            BOUND                          );
@@ -1469,6 +1438,10 @@ void ODatabaseForm::getFastPropertyValue( Any& rValue, sal_Int32 nHandle ) const
             rValue <<= m_aFilterManager.getFilterComponent( FilterManager::FilterComponent::PublicFilter );
             break;
 
+        case PROPERTY_ID_HAVINGCLAUSE:
+            rValue <<= m_aFilterManager.getFilterComponent( FilterManager::FilterComponent::PublicHaving );
+            break;
+
         case PROPERTY_ID_APPLYFILTER:
             rValue <<= m_aFilterManager.isApplyPublicFilter();
             break;
@@ -1514,7 +1487,7 @@ void ODatabaseForm::getFastPropertyValue( Any& rValue, sal_Int32 nHandle ) const
             rValue <<= m_bAllowDelete;
             break;
         case PROPERTY_ID_PRIVILEGES:
-            rValue <<= (sal_Int32)m_nPrivileges;
+            rValue <<= m_nPrivileges;
             break;
         case PROPERTY_ID_DYNAMIC_CONTROL_BORDER:
             rValue = m_aDynamicControlBorder;
@@ -1549,6 +1522,10 @@ sal_Bool ODatabaseForm::convertFastPropertyValue( Any& rConvertedValue, Any& rOl
 
         case PROPERTY_ID_FILTER:
             bModified = tryPropertyValue( rConvertedValue, rOldValue, rValue, m_aFilterManager.getFilterComponent( FilterManager::FilterComponent::PublicFilter ) );
+            break;
+
+        case PROPERTY_ID_HAVINGCLAUSE:
+            bModified = tryPropertyValue( rConvertedValue, rOldValue, rValue, m_aFilterManager.getFilterComponent( FilterManager::FilterComponent::PublicHaving ) );
             break;
 
         case PROPERTY_ID_APPLYFILTER:
@@ -1640,6 +1617,14 @@ void ODatabaseForm::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const A
         }
         break;
 
+        case PROPERTY_ID_HAVINGCLAUSE:
+        {
+            OUString sNewFilter;
+            rValue >>= sNewFilter;
+            m_aFilterManager.setFilterComponent( FilterManager::FilterComponent::PublicHaving, sNewFilter );
+        }
+        break;
+
         case PROPERTY_ID_APPLYFILTER:
         {
             bool bApply = true;
@@ -1680,11 +1665,11 @@ void ODatabaseForm::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const A
             break;
         case PROPERTY_ID_MASTERFIELDS:
             rValue >>= m_aMasterFields;
-            invlidateParameters();
+            invalidateParameters();
             break;
         case PROPERTY_ID_DETAILFIELDS:
             rValue >>= m_aDetailFields;
-            invlidateParameters();
+            invalidateParameters();
             break;
         case PROPERTY_ID_CYCLE:
             m_aCycle = rValue;
@@ -1785,6 +1770,13 @@ PropertyState ODatabaseForm::getPropertyStateByHandle(sal_Int32 nHandle)
                 eState = PropertyState_DIRECT_VALUE;
             break;
 
+        case PROPERTY_ID_HAVINGCLAUSE:
+            if ( m_aFilterManager.getFilterComponent( FilterManager::FilterComponent::PublicHaving ).isEmpty() )
+                eState = PropertyState_DEFAULT_VALUE;
+            else
+                eState = PropertyState_DIRECT_VALUE;
+            break;
+
         case PROPERTY_ID_APPLYFILTER:
             eState = m_aFilterManager.isApplyPublicFilter() ? PropertyState_DEFAULT_VALUE : PropertyState_DIRECT_VALUE;
             break;
@@ -1818,6 +1810,7 @@ void ODatabaseForm::setPropertyToDefaultByHandle(sal_Int32 nHandle)
     {
         case PROPERTY_ID_INSERTONLY:
         case PROPERTY_ID_FILTER:
+        case PROPERTY_ID_HAVINGCLAUSE:
         case PROPERTY_ID_APPLYFILTER:
         case PROPERTY_ID_NAVIGATION:
         case PROPERTY_ID_CYCLE:
@@ -1845,6 +1838,10 @@ Any ODatabaseForm::getPropertyDefaultByHandle( sal_Int32 nHandle ) const
             break;
 
         case PROPERTY_ID_FILTER:
+            aReturn <<= OUString();
+            break;
+
+        case PROPERTY_ID_HAVINGCLAUSE:
             aReturn <<= OUString();
             break;
 
@@ -1877,7 +1874,7 @@ Any ODatabaseForm::getPropertyDefaultByHandle( sal_Int32 nHandle ) const
 
 void SAL_CALL ODatabaseForm::reset()
 {
-    ::osl::ResettableMutexGuard aGuard(m_aMutex);
+    osl::ClearableMutexGuard aGuard(m_aMutex);
 
     if (isLoaded())
     {
@@ -1898,8 +1895,7 @@ void SAL_CALL ODatabaseForm::reset()
             m_pThread = new OFormSubmitResetThread(this);
             m_pThread->create();
         }
-        EventObject aEvt;
-        m_pThread->addEvent(&aEvt);
+        m_pThread->addEvent(std::make_unique<EventObject>());
     }
     else
     {
@@ -1962,7 +1958,7 @@ void ODatabaseForm::reset_impl(bool _bAproveByListeners)
                         }
                         catch(const Exception&)
                         {
-                            DBG_UNHANDLED_EXCEPTION();
+                            DBG_UNHANDLED_EXCEPTION("forms.component");
                         }
                     }
                 }
@@ -1979,7 +1975,7 @@ void ODatabaseForm::reset_impl(bool _bAproveByListeners)
             if ( xParentColSupp.is() )
                 xParentCols = xParentColSupp->getColumns();
 
-            if ( xParentCols.is() && xParentCols->hasElements() && m_aMasterFields.getLength() )
+            if ( xParentCols.is() && xParentCols->hasElements() && m_aMasterFields.hasElements() )
             {
                 try
                 {
@@ -2026,7 +2022,7 @@ void ODatabaseForm::reset_impl(bool _bAproveByListeners)
 
     aResetGuard.reset();
     // and again : ensure the row isn't modified
-    // we already did this after we (and maybe our dependents) resetted the values, but the listeners may have changed the row, too
+    // we already did this after we (and maybe our dependents) reset the values, but the listeners may have changed the row, too
     if (bInsertRow)
         m_xAggregateSet->setPropertyValue(PROPERTY_ISMODIFIED, css::uno::Any(false));
 
@@ -2068,7 +2064,7 @@ void SAL_CALL ODatabaseForm::submit( const Reference<XControl>& Control,
             m_pThread = new OFormSubmitResetThread(this);
             m_pThread->create();
         }
-        m_pThread->addEvent(&MouseEvt, Control, true);
+        m_pThread->addEvent(std::make_unique<css::awt::MouseEvent>(MouseEvt), Control, true);
     }
     else
     {
@@ -2078,34 +2074,34 @@ void SAL_CALL ODatabaseForm::submit( const Reference<XControl>& Control,
     }
 }
 
-void lcl_dispatch(const Reference< XFrame >& xFrame,const Reference<XURLTransformer>& xTransformer,const OUString& aURLStr,const OUString& aReferer,const OUString& aTargetName
+static void lcl_dispatch(const Reference< XFrame >& xFrame,const Reference<XURLTransformer>& xTransformer,const OUString& aURLStr,const OUString& aReferer,const OUString& aTargetName
                   ,const OUString& aData,rtl_TextEncoding _eEncoding)
 {
     URL aURL;
     aURL.Complete = aURLStr;
     xTransformer->parseStrict(aURL);
 
-    Reference< XDispatch >  xDisp = Reference< XDispatchProvider > (xFrame,UNO_QUERY)->queryDispatch(aURL, aTargetName,
+    Reference< XDispatch >  xDisp = Reference< XDispatchProvider > (xFrame,UNO_QUERY_THROW)->queryDispatch(aURL, aTargetName,
         FrameSearchFlag::SELF | FrameSearchFlag::PARENT | FrameSearchFlag::CHILDREN |
         FrameSearchFlag::SIBLINGS | FrameSearchFlag::CREATE | FrameSearchFlag::TASKS);
 
-    if (xDisp.is())
-    {
-        Sequence<PropertyValue> aArgs(2);
-        aArgs.getArray()[0].Name = "Referer";
-        aArgs.getArray()[0].Value <<= aReferer;
+    if (!xDisp.is())
+        return;
 
-        // build a sequence from the to-be-submitted string
-        OString a8BitData(OUStringToOString(aData, _eEncoding));
-        // always ANSI #58641
-        Sequence< sal_Int8 > aPostData(reinterpret_cast<const sal_Int8*>(a8BitData.getStr()), a8BitData.getLength());
-        Reference< XInputStream > xPostData = new SequenceInputStream(aPostData);
+    Sequence<PropertyValue> aArgs(2);
+    aArgs.getArray()[0].Name = "Referer";
+    aArgs.getArray()[0].Value <<= aReferer;
 
-        aArgs.getArray()[1].Name = "PostData";
-        aArgs.getArray()[1].Value <<= xPostData;
+    // build a sequence from the to-be-submitted string
+    OString a8BitData(OUStringToOString(aData, _eEncoding));
+    // always ANSI #58641
+    Sequence< sal_Int8 > aPostData(reinterpret_cast<const sal_Int8*>(a8BitData.getStr()), a8BitData.getLength());
+    Reference< XInputStream > xPostData = new SequenceInputStream(aPostData);
 
-        xDisp->dispatch(aURL, aArgs);
-    } // if (xDisp.is())
+    aArgs.getArray()[1].Name = "PostData";
+    aArgs.getArray()[1].Value <<= xPostData;
+
+    xDisp->dispatch(aURL, aArgs);
 }
 
 void ODatabaseForm::submit_impl(const Reference<XControl>& Control, const css::awt::MouseEvent& MouseEvt)
@@ -2176,7 +2172,7 @@ void ODatabaseForm::submit_impl(const Reference<XControl>& Control, const css::a
             if (xTransformer.is())
                 xTransformer->parseStrict(aURL);
 
-            Reference< XDispatch >  xDisp = Reference< XDispatchProvider > (xFrame,UNO_QUERY)->queryDispatch(aURL, aTargetName,
+            Reference< XDispatch >  xDisp = Reference< XDispatchProvider > (xFrame,UNO_QUERY_THROW)->queryDispatch(aURL, aTargetName,
                     FrameSearchFlag::SELF | FrameSearchFlag::PARENT | FrameSearchFlag::CHILDREN |
                     FrameSearchFlag::SIBLINGS | FrameSearchFlag::CREATE | FrameSearchFlag::TASKS);
 
@@ -2200,7 +2196,7 @@ void ODatabaseForm::submit_impl(const Reference<XControl>& Control, const css::a
         aURL.Complete = aURLStr;
         xTransformer->parseStrict(aURL);
 
-        Reference< XDispatch >  xDisp = Reference< XDispatchProvider > (xFrame,UNO_QUERY)->queryDispatch(aURL, aTargetName,
+        Reference< XDispatch >  xDisp = Reference< XDispatchProvider > (xFrame,UNO_QUERY_THROW)->queryDispatch(aURL, aTargetName,
                 FrameSearchFlag::SELF | FrameSearchFlag::PARENT | FrameSearchFlag::CHILDREN |
                 FrameSearchFlag::SIBLINGS | FrameSearchFlag::CREATE | FrameSearchFlag::TASKS);
 
@@ -2212,7 +2208,7 @@ void ODatabaseForm::submit_impl(const Reference<XControl>& Control, const css::a
                 SolarMutexGuard aGuard;
                 aData = GetDataMultiPartEncoded(Control, MouseEvt, aContentType);
             }
-            if (!aData.getLength())
+            if (!aData.hasElements())
                 return;
 
             Sequence<PropertyValue> aArgs(3);
@@ -2274,7 +2270,7 @@ void SAL_CALL ODatabaseForm::removeSQLErrorListener(const Reference<XSQLErrorLis
 }
 
 
-void ODatabaseForm::invlidateParameters()
+void ODatabaseForm::invalidateParameters()
 {
     ::osl::MutexGuard aGuard(m_aMutex);
     m_aParameterManager.clearAllParameterInformation();
@@ -2295,7 +2291,7 @@ void ODatabaseForm::_propertyChanged(const PropertyChangeEvent& evt)
     else // it was one of the statement relevant props
     {
         // if the statement has changed we have to delete the parameter info
-        invlidateParameters();
+        invalidateParameters();
     }
 }
 
@@ -2305,7 +2301,7 @@ void ODatabaseForm::_propertyChanged(const PropertyChangeEvent& evt)
 void SAL_CALL ODatabaseForm::setParent(const css::uno::Reference<css::uno::XInterface>& Parent)
 {
     // SYNCHRONIZED ----->
-    ::osl::ResettableMutexGuard aGuard(m_aMutex);
+    osl::ClearableMutexGuard aGuard(m_aMutex);
 
     Reference<XForm>  xParentForm(getParent(), UNO_QUERY);
     if (xParentForm.is())
@@ -2323,7 +2319,7 @@ void SAL_CALL ODatabaseForm::setParent(const css::uno::Reference<css::uno::XInte
         }
         catch(const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
     }
 
@@ -2345,7 +2341,7 @@ void SAL_CALL ODatabaseForm::setParent(const css::uno::Reference<css::uno::XInte
         }
         catch(const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
     }
 
@@ -2365,14 +2361,14 @@ void SAL_CALL ODatabaseForm::setParent(const css::uno::Reference<css::uno::XInte
 
 sal_Bool SAL_CALL ODatabaseForm::getGroupControl()
 {
-    ::osl::ResettableMutexGuard aGuard(m_aMutex);
+    osl::MutexGuard aGuard(m_aMutex);
 
     // Should controls be combined into a TabOrder group?
     if (m_aCycle.hasValue())
     {
         sal_Int32 nCycle = 0;
         ::cppu::enum2int(nCycle, m_aCycle);
-        return (TabulatorCycle)nCycle != TabulatorCycle_PAGE;
+        return static_cast<TabulatorCycle>(nCycle) != TabulatorCycle_PAGE;
     }
 
     if (isLoaded() && getConnection().is())
@@ -2384,34 +2380,32 @@ sal_Bool SAL_CALL ODatabaseForm::getGroupControl()
 
 void SAL_CALL ODatabaseForm::setControlModels(const Sequence<Reference<XControlModel> >& rControls)
 {
-    ::osl::ResettableMutexGuard aGuard(m_aMutex);
+    osl::MutexGuard aGuard(m_aMutex);
 
     // Set TabIndex in the order of the sequence
-    const Reference<XControlModel>* pControls = rControls.getConstArray();
     sal_Int32 nCount = getCount();
-    sal_Int32 nNewCount = rControls.getLength();
 
     // HiddenControls and forms are not listed
-    if (nNewCount <= nCount)
+    if (rControls.getLength() > nCount)
+        return;
+
+    sal_Int16 nTabIndex = 1;
+    for (auto const& rControl : rControls)
     {
-        sal_Int16 nTabIndex = 1;
-        for (sal_Int32 i=0; i < nNewCount; ++i, ++pControls)
+        Reference<XFormComponent> xComp(rControl, UNO_QUERY);
+        if (xComp.is())
         {
-            Reference<XFormComponent>  xComp(*pControls, UNO_QUERY);
-            if (xComp.is())
+            // Find component in the list
+            for (sal_Int32 j = 0; j < nCount; ++j)
             {
-                // Find component in the list
-                for (sal_Int32 j = 0; j < nCount; ++j)
+                Reference<XFormComponent> xElement(
+                    getByIndex(j), css::uno::UNO_QUERY);
+                if (xComp == xElement)
                 {
-                    Reference<XFormComponent> xElement(
-                        getByIndex(j), css::uno::UNO_QUERY);
-                    if (xComp == xElement)
-                    {
-                        Reference<XPropertySet>  xSet(xComp, UNO_QUERY);
-                        if (xSet.is() && hasProperty(PROPERTY_TABINDEX, xSet))
-                            xSet->setPropertyValue( PROPERTY_TABINDEX, makeAny(nTabIndex++) );
-                        break;
-                    }
+                    Reference<XPropertySet>  xSet(xComp, UNO_QUERY);
+                    if (xSet.is() && hasProperty(PROPERTY_TABINDEX, xSet))
+                        xSet->setPropertyValue( PROPERTY_TABINDEX, makeAny(nTabIndex++) );
+                    break;
                 }
             }
         }
@@ -2432,13 +2426,12 @@ void SAL_CALL ODatabaseForm::setGroup( const Sequence<Reference<XControlModel> >
 
     // The controls are grouped by adjusting their names to the name of the
     // first control of the sequence
-    const Reference<XControlModel>* pControls = _rGroup.getConstArray();
     Reference< XPropertySet > xSet;
     OUString sGroupName( Name );
 
-    for( sal_Int32 i=0; i<_rGroup.getLength(); ++i, ++pControls )
+    for( auto const& rControl : _rGroup )
     {
-        xSet.set(*pControls, css::uno::UNO_QUERY);
+        xSet.set(rControl, css::uno::UNO_QUERY);
         if ( !xSet.is() )
         {
             // can't throw an exception other than a RuntimeException (which would not be appropriate),
@@ -2517,7 +2510,7 @@ void SAL_CALL ODatabaseForm::disposing(const EventObject& Source)
 void ODatabaseForm::impl_createLoadTimer()
 {
     OSL_PRECOND( m_pLoadTimer == nullptr, "ODatabaseForm::impl_createLoadTimer: timer already exists!" );
-    m_pLoadTimer = new Timer("DatabaseFormLoadTimer");
+    m_pLoadTimer.reset(new Timer("DatabaseFormLoadTimer"));
     m_pLoadTimer->SetTimeout(100);
     m_pLoadTimer->SetInvokeHandler(LINK(this,ODatabaseForm,OnTimeout));
 }
@@ -2547,7 +2540,7 @@ void SAL_CALL ODatabaseForm::unloading(const EventObject& /*aEvent*/)
 
         if ( m_pLoadTimer && m_pLoadTimer->IsActive() )
             m_pLoadTimer->Stop();
-        DELETEZ( m_pLoadTimer );
+        m_pLoadTimer.reset();
 
         Reference< XRowSet > xParentRowSet( m_xParent, UNO_QUERY_THROW );
         xParentRowSet->removeRowSetListener( this );
@@ -2696,32 +2689,47 @@ void ODatabaseForm::stopSharingConnection( )
 {
     OSL_ENSURE( m_bSharingConnection, "ODatabaseForm::stopSharingConnection: invalid call!" );
 
-    if ( m_bSharingConnection )
-    {
-        // get the connection
-        Reference< XConnection > xSharedConn;
-        m_xAggregateSet->getPropertyValue( PROPERTY_ACTIVE_CONNECTION ) >>= xSharedConn;
-        OSL_ENSURE( xSharedConn.is(), "ODatabaseForm::stopSharingConnection: there's no conn!" );
+    if ( !m_bSharingConnection )
+        return;
 
-        // remove ourself as event listener
-        Reference< XComponent > xSharedConnComp( xSharedConn, UNO_QUERY );
-        if ( xSharedConnComp.is() )
-            xSharedConnComp->removeEventListener( static_cast< XLoadListener* >( this ) );
+    // get the connection
+    Reference< XConnection > xSharedConn;
+    m_xAggregateSet->getPropertyValue( PROPERTY_ACTIVE_CONNECTION ) >>= xSharedConn;
+    OSL_ENSURE( xSharedConn.is(), "ODatabaseForm::stopSharingConnection: there's no conn!" );
 
-        // no need to dispose the conn: we're not the owner, this is our parent
-        // (in addition, this method may be called if the connection is being disposed while we use it)
+    // remove ourself as event listener
+    Reference< XComponent > xSharedConnComp( xSharedConn, UNO_QUERY );
+    if ( xSharedConnComp.is() )
+        xSharedConnComp->removeEventListener( static_cast< XLoadListener* >( this ) );
 
-        // reset the property
-        xSharedConn.clear();
-        m_bForwardingConnection = true;
-        m_xAggregateSet->setPropertyValue( PROPERTY_ACTIVE_CONNECTION, makeAny( xSharedConn ) );
-        m_bForwardingConnection = false;
+    // no need to dispose the conn: we're not the owner, this is our parent
+    // (in addition, this method may be called if the connection is being disposed while we use it)
 
-        // reset the flag
-        m_bSharingConnection = false;
-    }
+    // reset the property
+    xSharedConn.clear();
+    m_bForwardingConnection = true;
+    m_xAggregateSet->setPropertyValue( PROPERTY_ACTIVE_CONNECTION, makeAny( xSharedConn ) );
+    m_bForwardingConnection = false;
+
+    // reset the flag
+    m_bSharingConnection = false;
 }
 
+namespace
+{
+    Reference<css::awt::XWindow> GetDialogParentWindow(const Reference<XModel>& rModel)
+    {
+        if (!rModel.is())
+            return nullptr;
+        Reference<XController> xController(rModel->getCurrentController());
+        if (!xController.is())
+            return nullptr;
+        Reference<XFrame> xFrame(xController->getFrame());
+        if (!xFrame.is())
+            return nullptr;
+        return xFrame->getContainerWindow();
+    }
+}
 
 bool ODatabaseForm::implEnsureConnection()
 {
@@ -2763,10 +2771,15 @@ bool ODatabaseForm::implEnsureConnection()
 
         if (m_xAggregateSet.is())
         {
+            //Dig out a suitable parent for any warning dialogs
+            Reference<css::awt::XWindow> m_xDialogParent;
+            Reference<XChild> xParent(m_xParent, UNO_QUERY);
+            if (xParent.is())
+                m_xDialogParent = GetDialogParentWindow(getXModel(xParent->getParent()));
+
             Reference< XConnection >  xConnection = connectRowset(
                 Reference<XRowSet> (m_xAggregate, UNO_QUERY),
-                m_xContext,
-                true    // set a calculated connection as ActiveConnection
+                m_xContext, m_xDialogParent
             );
             return xConnection.is();
         }
@@ -2777,7 +2790,7 @@ bool ODatabaseForm::implEnsureConnection()
     }
     catch(const Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.component");
     }
 
     return false;
@@ -2804,7 +2817,7 @@ void ODatabaseForm::load_impl(bool bCausedByParentForm, bool bMoveToFirst, const
     // a database form always uses caching
     // we use starting fetchsize with at least 10 rows
     if (bConnected)
-        m_xAggregateSet->setPropertyValue(PROPERTY_FETCHSIZE, makeAny((sal_Int32)40));
+        m_xAggregateSet->setPropertyValue(PROPERTY_FETCHSIZE, makeAny(sal_Int32(40)));
 
     // if we're loaded as sub form we got a "rowSetChanged" from the parent rowset _before_ we got the "loaded"
     // so we don't need to execute the statement again, this was already done
@@ -2839,7 +2852,7 @@ void SAL_CALL ODatabaseForm::unload()
     if (!isLoaded())
         return;
 
-    DELETEZ(m_pLoadTimer);
+    m_pLoadTimer.reset();
 
     aGuard.clear();
     EventObject aEvt(static_cast<XWeak*>(this));
@@ -2851,23 +2864,22 @@ void SAL_CALL ODatabaseForm::unload()
         restoreInsertOnlyState( );
 
         // clear the parameters if there are any
-        invlidateParameters();
+        invalidateParameters();
 
         try
         {
             // close the aggregate
             Reference<XCloseable>  xCloseable;
             query_aggregation( m_xAggregate, xCloseable);
-            aGuard.clear();
             if (xCloseable.is())
                 xCloseable->close();
         }
         catch(const SQLException&)
         {
         }
-        aGuard.reset();
     }
 
+    aGuard.reset();
     m_bLoaded = false;
 
     // if the connection we used while we were loaded is only shared with our parent, we
@@ -2894,13 +2906,13 @@ void ODatabaseForm::reload_impl(bool bMoveToFirst, const Reference< XInteraction
 
     DocumentModifyGuard aModifyGuard( *this );
         // ensures the document is not marked as "modified" just because we change some control's content during
-        // reloading ...
+        // reloading...
 
     EventObject aEvent(static_cast<XWeak*>(this));
     {
         // only if there is no approve listener we can post the event at this time
         // otherwise see approveRowsetChange
-        // the approvement is done by the aggregate
+        // the approval is done by the aggregate
         if (!m_aRowSetApproveListeners.getLength())
         {
             ::comphelper::OInterfaceIteratorHelper2 aIter(m_aLoadListeners);
@@ -2973,7 +2985,7 @@ void SAL_CALL ODatabaseForm::cursorMoved(const EventObject& /*event*/)
 {
     // reload the subform with the new parameters of the parent
     // do this handling delayed to provide of execute too many SQL Statements
-    ::osl::ResettableMutexGuard aGuard(m_aMutex);
+    osl::MutexGuard aGuard(m_aMutex);
 
     DBG_ASSERT( m_pLoadTimer, "ODatabaseForm::cursorMoved: how can this happen?!" );
     if ( !m_pLoadTimer )
@@ -2999,7 +3011,7 @@ void SAL_CALL ODatabaseForm::rowSetChanged(const EventObject& /*event*/)
     // if our parent is an ODatabaseForm, too, then after this rowSetChanged we'll get a "reloaded"
     // or a "loaded" event.
     // If somebody gave us another parent which is an XRowSet but doesn't handle an execute as
-    // "load" respectively "reload" ... can't do anything ....
+    // "load" respectively "reload"... can't do anything...
 }
 
 
@@ -3030,13 +3042,13 @@ bool ODatabaseForm::impl_approveRowChange_throw( const EventObject& _rEvent, con
         }
         catch (const SQLException&)
         {
+            DBG_UNHANDLED_EXCEPTION("forms.component");
             if ( _bAllowSQLException )
                 throw;
-            DBG_UNHANDLED_EXCEPTION();
         }
         catch (const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
     }
     return true;
@@ -3074,7 +3086,7 @@ sal_Bool SAL_CALL ODatabaseForm::approveCursorMove(const EventObject& event)
             }
             catch (const Exception&)
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("forms.component");
             }
         }
         return true;
@@ -3123,7 +3135,7 @@ sal_Bool SAL_CALL ODatabaseForm::approveRowChange(const RowChangeEvent& event)
             }
             catch (const Exception&)
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("forms.component");
             }
         }
         return true;
@@ -3163,7 +3175,7 @@ sal_Bool SAL_CALL ODatabaseForm::approveRowSetChange(const EventObject& event)
 
 void SAL_CALL ODatabaseForm::addRowSetApproveListener(const Reference<XRowSetApproveListener>& _rListener)
 {
-    ::osl::ResettableMutexGuard aGuard(m_aMutex);
+    osl::MutexGuard aGuard(m_aMutex);
     m_aRowSetApproveListeners.addInterface(_rListener);
 
     // do we have to multiplex ?
@@ -3181,7 +3193,7 @@ void SAL_CALL ODatabaseForm::addRowSetApproveListener(const Reference<XRowSetApp
 
 void SAL_CALL ODatabaseForm::removeRowSetApproveListener(const Reference<XRowSetApproveListener>& _rListener)
 {
-    ::osl::ResettableMutexGuard aGuard(m_aMutex);
+    osl::MutexGuard aGuard(m_aMutex);
     // do we have to remove the multiplex ?
     m_aRowSetApproveListeners.removeInterface(_rListener);
     if ( m_aRowSetApproveListeners.getLength() == 0 )
@@ -3239,7 +3251,7 @@ void SAL_CALL ODatabaseForm::executeWithCompletion( const Reference< XInteractio
         if ( !impl_approveRowChange_throw( event, true, aGuard ) )
             return;
 
-        // we're loaded and somebody want's to execute ourself -> this means a reload
+        // we're loaded and somebody wants to execute ourself -> this means a reload
         reload_impl(false, _rxHandler);
     }
 }
@@ -3249,7 +3261,7 @@ void SAL_CALL ODatabaseForm::executeWithCompletion( const Reference< XInteractio
 
 void SAL_CALL ODatabaseForm::execute()
 {
-    ::osl::ResettableMutexGuard aGuard(m_aMutex);
+    osl::ClearableMutexGuard aGuard(m_aMutex);
     // if somebody calls an execute and we're not loaded we reroute this call to our load method.
 
     // the difference between execute and load is, that we position on the first row in case of load
@@ -3265,7 +3277,7 @@ void SAL_CALL ODatabaseForm::execute()
         if ( !impl_approveRowChange_throw( event, true, aGuard ) )
             return;
 
-        // we're loaded and somebody want's to execute ourself -> this means a reload
+        // we're loaded and somebody wants to execute ourself -> this means a reload
         reload_impl(false);
     }
 }
@@ -3480,35 +3492,35 @@ void SAL_CALL ODatabaseForm::cancelRowUpdates()
 void SAL_CALL ODatabaseForm::moveToInsertRow()
 {
     Reference<XResultSetUpdate>  xUpdate;
-    if (query_aggregation( m_xAggregate, xUpdate))
-    {
-        // _always_ move to the insert row
-        //
-        // Formerly, the following line was conditioned with a "not is new", means we did not move the aggregate
-        // to the insert row if it was already positioned there.
-        //
-        // This prevented the RowSet implementation from resetting its column values. We, ourself, formerly
-        // did this reset of columns in reset_impl, where we set every column to the ControlDefault, or, if this
-        // was not present, to NULL. However, the problem with setting to NULL was #88888#, the problem with
-        // _not_ setting to NULL (which was the original fix for #88888#) was #97955#.
-        //
-        // So now we
-        // * move our aggregate to the insert row
-        // * in reset_impl
-        //   - set the control defaults into the columns if not void
-        //   - do _not_ set the columns to NULL if no control default is set
-        //
-        // Still, there is #72756#. During fixing this bug, DG introduced not calling the aggregate here. So
-        // in theory, we re-introduced #72756#. But the bug described therein does not happen anymore, as the
-        // preliminaries for it changed (no display of guessed values for new records with autoinc fields)
-        //
-        // BTW: the public Issuezilla bug is #i2815#
-        //
-        xUpdate->moveToInsertRow();
+    if (!query_aggregation( m_xAggregate, xUpdate))
+        return;
 
-        // then set the default values and the parameters given from the parent
-        reset();
-    }
+    // _always_ move to the insert row
+    //
+    // Formerly, the following line was conditioned with a "not is new", means we did not move the aggregate
+    // to the insert row if it was already positioned there.
+    //
+    // This prevented the RowSet implementation from resetting its column values. We, ourself, formerly
+    // did this reset of columns in reset_impl, where we set every column to the ControlDefault, or, if this
+    // was not present, to NULL. However, the problem with setting to NULL was #88888#, the problem with
+    // _not_ setting to NULL (which was the original fix for #88888#) was #97955#.
+    //
+    // So now we
+    // * move our aggregate to the insert row
+    // * in reset_impl
+    //   - set the control defaults into the columns if not void
+    //   - do _not_ set the columns to NULL if no control default is set
+    //
+    // Still, there is #72756#. During fixing this bug, DG introduced not calling the aggregate here. So
+    // in theory, we re-introduced #72756#. But the bug described therein does not happen anymore, as the
+    // preliminaries for it changed (no display of guessed values for new records with autoinc fields)
+    //
+    // BTW: the public Issuezilla bug is #i2815#
+    //
+    xUpdate->moveToInsertRow();
+
+    // then set the default values and the parameters given from the parent
+    reset();
 }
 
 
@@ -3702,7 +3714,7 @@ void SAL_CALL ODatabaseForm::propertyChange( const PropertyChangeEvent& evt )
 
 OUString SAL_CALL ODatabaseForm::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.forms.ODatabaseForm" );
+    return "com.sun.star.comp.forms.ODatabaseForm";
 }
 
 
@@ -3714,7 +3726,7 @@ Sequence< OUString > SAL_CALL ODatabaseForm::getSupportedServiceNames()
     if (query_aggregation(m_xAggregate, xInfo))
         aServices = xInfo->getSupportedServiceNames();
 
-    // concat with out own services
+    // concat without own services
     return ::comphelper::concatSequences(
         css::uno::Sequence<OUString> {
             FRM_SUN_FORMCOMPONENT, "com.sun.star.form.FormComponents",
@@ -3735,7 +3747,7 @@ const sal_uInt16 DONTAPPLYFILTER    = 0x0002;
 
 OUString ODatabaseForm::getServiceName()
 {
-    return OUString(FRM_COMPONENT_FORM);  // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_FORM;  // old (non-sun) name for compatibility !
 }
 
 void SAL_CALL ODatabaseForm::write(const Reference<XObjectOutputStream>& _rxOutStream)
@@ -3746,7 +3758,7 @@ void SAL_CALL ODatabaseForm::write(const Reference<XObjectOutputStream>& _rxOutS
     OFormComponents::write(_rxOutStream);
 
     // version
-    _rxOutStream->writeShort(0x0003);
+    _rxOutStream->writeShort(0x0005);
 
     // Name
     _rxOutStream << m_sName;
@@ -3786,7 +3798,7 @@ void SAL_CALL ODatabaseForm::write(const Reference<XObjectOutputStream>& _rxOutS
             default : OSL_FAIL("ODatabaseForm::write : wrong CommandType !");
         }
     }
-    _rxOutStream->writeShort((sal_Int16)eTranslated); // former DataSelectionType
+    _rxOutStream->writeShort(static_cast<sal_Int16>(eTranslated)); // former DataSelectionType
 
     // very old versions expect a CursorType here
     _rxOutStream->writeShort(2); // DatabaseCursorType_KEYSET
@@ -3806,33 +3818,33 @@ void SAL_CALL ODatabaseForm::write(const Reference<XObjectOutputStream>& _rxOutS
     // html form stuff
     OUString sTmp = INetURLObject::decode( m_aTargetURL, INetURLObject::DecodeMechanism::Unambiguous);
     _rxOutStream << sTmp;
-    _rxOutStream->writeShort( (sal_Int16)m_eSubmitMethod );
-    _rxOutStream->writeShort( (sal_Int16)m_eSubmitEncoding );
+    _rxOutStream->writeShort( static_cast<sal_Int16>(m_eSubmitMethod) );
+    _rxOutStream->writeShort( static_cast<sal_Int16>(m_eSubmitEncoding) );
     _rxOutStream << m_aTargetFrame;
 
     // version 2 didn't know some options and the "default" state
-    sal_Int32 nCycle = (sal_Int32)TabulatorCycle_RECORDS;
+    sal_Int32 nCycle = sal_Int32(TabulatorCycle_RECORDS);
     if (m_aCycle.hasValue())
     {
         ::cppu::enum2int(nCycle, m_aCycle);
         if (m_aCycle == TabulatorCycle_PAGE)
                 // unknown in earlier versions
-            nCycle = (sal_Int32)TabulatorCycle_RECORDS;
+            nCycle = sal_Int32(TabulatorCycle_RECORDS);
     }
-    _rxOutStream->writeShort((sal_Int16) nCycle);
+    _rxOutStream->writeShort(static_cast<sal_Int16>(nCycle));
 
-    _rxOutStream->writeShort((sal_Int16)m_eNavigation);
+    _rxOutStream->writeShort(static_cast<sal_Int16>(m_eNavigation));
 
     OUString sFilter;
-    OUString sOrder;
+    OUString sSort;
     if (m_xAggregateSet.is())
     {
         m_xAggregateSet->getPropertyValue(PROPERTY_FILTER) >>= sFilter;
-        m_xAggregateSet->getPropertyValue(PROPERTY_SORT) >>= sOrder;
+        // version 4
+        m_xAggregateSet->getPropertyValue(PROPERTY_SORT) >>= sSort;
     }
     _rxOutStream << sFilter;
-    _rxOutStream << sOrder;
-
+    _rxOutStream << sSort;
 
     // version 3
     sal_uInt16 nAnyMask = 0;
@@ -3848,8 +3860,14 @@ void SAL_CALL ODatabaseForm::write(const Reference<XObjectOutputStream>& _rxOutS
     {
         sal_Int32 nRealCycle = 0;
         ::cppu::enum2int(nRealCycle, m_aCycle);
-        _rxOutStream->writeShort((sal_Int16)nRealCycle);
+        _rxOutStream->writeShort(static_cast<sal_Int16>(nRealCycle));
     }
+
+    // version 5
+    OUString sHaving;
+    if (m_xAggregateSet.is())
+        m_xAggregateSet->getPropertyValue(PROPERTY_HAVINGCLAUSE) >>= sHaving;
+    _rxOutStream << sHaving;
 }
 
 
@@ -3877,7 +3895,7 @@ void SAL_CALL ODatabaseForm::read(const Reference<XObjectInputStream>& _rxInStre
 
     sal_Int16 nCursorSourceType = _rxInStream->readShort();
     sal_Int32 nCommandType = 0;
-    switch ((DataSelectionType)nCursorSourceType)
+    switch (static_cast<DataSelectionType>(nCursorSourceType))
     {
         case DataSelectionType_TABLE : nCommandType = CommandType::TABLE; break;
         case DataSelectionType_QUERY : nCommandType = CommandType::QUERY; break;
@@ -3885,7 +3903,7 @@ void SAL_CALL ODatabaseForm::read(const Reference<XObjectInputStream>& _rxInStre
         case DataSelectionType_SQLPASSTHROUGH:
         {
             nCommandType = CommandType::COMMAND;
-            bool bEscapeProcessing = ((DataSelectionType)nCursorSourceType) != DataSelectionType_SQLPASSTHROUGH;
+            bool bEscapeProcessing = static_cast<DataSelectionType>(nCursorSourceType) != DataSelectionType_SQLPASSTHROUGH;
             m_xAggregateSet->setPropertyValue(PROPERTY_ESCAPE_PROCESSING, makeAny(bEscapeProcessing));
         }
         break;
@@ -3915,22 +3933,25 @@ void SAL_CALL ODatabaseForm::read(const Reference<XObjectInputStream>& _rxInStre
     OUString sTmp;
     _rxInStream >> sTmp;
     m_aTargetURL = INetURLObject::decode( sTmp, INetURLObject::DecodeMechanism::Unambiguous);
-    m_eSubmitMethod     = (FormSubmitMethod)_rxInStream->readShort();
-    m_eSubmitEncoding       = (FormSubmitEncoding)_rxInStream->readShort();
+    m_eSubmitMethod     = static_cast<FormSubmitMethod>(_rxInStream->readShort());
+    m_eSubmitEncoding       = static_cast<FormSubmitEncoding>(_rxInStream->readShort());
     _rxInStream >> m_aTargetFrame;
 
     if (nVersion > 1)
     {
         sal_Int32 nCycle = _rxInStream->readShort();
         m_aCycle <<= TabulatorCycle(nCycle);
-        m_eNavigation = (NavigationBarMode)_rxInStream->readShort();
-
-        _rxInStream >> sAggregateProp;
-        setPropertyValue(PROPERTY_FILTER, makeAny(sAggregateProp));
+        m_eNavigation = static_cast<NavigationBarMode>(_rxInStream->readShort());
 
         _rxInStream >> sAggregateProp;
         if (m_xAggregateSet.is())
-            m_xAggregateSet->setPropertyValue(PROPERTY_SORT, makeAny(sAggregateProp));
+            m_xAggregateSet->setPropertyValue(PROPERTY_FILTER, makeAny(sAggregateProp));
+        if(nVersion > 3)
+        {
+            _rxInStream >> sAggregateProp;
+            if (m_xAggregateSet.is())
+                m_xAggregateSet->setPropertyValue(PROPERTY_SORT, makeAny(sAggregateProp));
+        }
     }
 
     sal_uInt16 nAnyMask = 0;
@@ -3947,6 +3968,13 @@ void SAL_CALL ODatabaseForm::read(const Reference<XObjectInputStream>& _rxInStre
     }
     if (m_xAggregateSet.is())
         m_xAggregateSet->setPropertyValue(PROPERTY_APPLYFILTER, makeAny((nAnyMask & DONTAPPLYFILTER) == 0));
+
+    if(nVersion > 4)
+    {
+        _rxInStream >> sAggregateProp;
+        if (m_xAggregateSet.is())
+            m_xAggregateSet->setPropertyValue(PROPERTY_HAVINGCLAUSE, makeAny(sAggregateProp));
+    }
 }
 
 
@@ -4010,7 +4038,7 @@ void SAL_CALL ODatabaseForm::setName(const OUString& aName)
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_forms_ODatabaseForm_get_implementation(css::uno::XComponentContext* context,
                                                          css::uno::Sequence<css::uno::Any> const &)
 {

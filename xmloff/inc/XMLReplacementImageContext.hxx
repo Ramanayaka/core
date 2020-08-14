@@ -20,21 +20,20 @@
 #ifndef INCLUDED_XMLOFF_INC_XMLREPLACEMENTIMAGECONTEXT_HXX
 #define INCLUDED_XMLOFF_INC_XMLREPLACEMENTIMAGECONTEXT_HXX
 
-#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <xmloff/xmlictxt.hxx>
 
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { class XPropertySet; }
-    namespace io { class XOutputStream; } } } }
+    namespace io { class XOutputStream; }
+}
 
-class XMLReplacementImageContext : public SvXMLImportContext
+class XMLReplacementImageContext final : public SvXMLImportContext
 {
     css::uno::Reference < css::io::XOutputStream > m_xBase64Stream;
     css::uno::Reference < css::beans::XPropertySet > m_xPropSet;
 
     OUString m_sHRef;
-    const OUString m_sGraphicURL;
 
 public:
 
@@ -48,7 +47,7 @@ public:
 
     virtual void EndElement() override;
 
-    SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                 const OUString& rLocalName,
                 const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 

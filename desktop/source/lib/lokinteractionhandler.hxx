@@ -26,9 +26,8 @@
 
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/task/DocumentPasswordRequest2.hpp>
-#include <com/sun/star/task/InteractionHandler.hpp>
-#include <com/sun/star/ucb/InteractiveNetworkException.hpp>
+#include <com/sun/star/task/InteractionClassification.hpp>
+#include <com/sun/star/task/XInteractionHandler2.hpp>
 
 namespace desktop {
     struct LibLibreOffice_Impl;
@@ -81,7 +80,6 @@ public:
     void SetPassword(char const* pPassword);
 
     explicit LOKInteractionHandler(
-            com::sun::star::uno::Reference<com::sun::star::uno::XComponentContext> const & rxContext,
             const OString& rCommand,
             desktop::LibLibreOffice_Impl *,
             desktop::LibLODocument_Impl *pLOKDocumt = nullptr);

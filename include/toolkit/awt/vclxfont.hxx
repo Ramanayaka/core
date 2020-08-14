@@ -23,30 +23,30 @@
 #include <memory>
 #include <toolkit/dllapi.h>
 #include <com/sun/star/awt/XFont2.hpp>
-#include <com/sun/star/awt/XDevice.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <cppuhelper/weak.hxx>
+#include <comphelper/servicehelper.hxx>
+#include <cppuhelper/implbase.hxx>
 #include <osl/mutex.hxx>
-#include <vcl/metric.hxx>
+#include <vcl/font.hxx>
+
+namespace com::sun::star::awt { class XDevice; }
+
+class FontMetric;
 
 
-//  class VCLXFont
 
 
-class TOOLKIT_DLLPUBLIC VCLXFont :  public css::awt::XFont2,
-                    public css::lang::XTypeProvider,
-                    public css::lang::XUnoTunnel,
-                    public ::cppu::OWeakObject
+class TOOLKIT_DLLPUBLIC VCLXFont final :
+                        public cppu::WeakImplHelper<
+                            css::awt::XFont2,
+                            css::lang::XUnoTunnel>
 {
-private:
     ::osl::Mutex    maMutex;
     css::uno::Reference< css::awt::XDevice> mxDevice;
     vcl::Font       maFont;
     std::unique_ptr<FontMetric>
                     mpFontMetric;
 
-protected:
     bool            ImplAssertValidFontMetric();
     ::osl::Mutex&   GetMutex() { return maMutex; }
 
@@ -57,19 +57,8 @@ public:
     void            Init( css::awt::XDevice& rxDev, const vcl::Font& rFont );
     const vcl::Font&     GetFont() const { return maFont; }
 
-    // css::uno::XInterface
-    css::uno::Any                  SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    void                                        SAL_CALL acquire() throw() override  { OWeakObject::acquire(); }
-    void                                        SAL_CALL release() throw() override  { OWeakObject::release(); }
-
     // css::lang::XUnoTunnel
-    static const css::uno::Sequence< sal_Int8 >&   GetUnoTunnelId() throw();
-    static VCLXFont*                                            GetImplementation( const css::uno::Reference< css::uno::XInterface >& rxIFace );
-    sal_Int64                                                   SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& rIdentifier ) override;
-
-    // css::lang::XTypeProvider
-    css::uno::Sequence< css::uno::Type >  SAL_CALL getTypes() override;
-    css::uno::Sequence< sal_Int8 >                     SAL_CALL getImplementationId() override;
+    UNO3_GETIMPLEMENTATION_DECL(VCLXFont)
 
     // css::lang::XFont
     css::awt::FontDescriptor           SAL_CALL getFontDescriptor(  ) override;

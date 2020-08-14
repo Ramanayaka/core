@@ -19,15 +19,11 @@
 
 #include "fltdlg.hxx"
 
-#include "ids.hrc"
-
 #include <com/sun/star/util/XStringWidth.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <tools/urlobj.hxx>
 
-#include <vcl/button.hxx>
 #include <osl/file.hxx>
-#include <vcl/svapp.hxx>
 
 namespace uui
 {
@@ -44,40 +40,30 @@ namespace uui
     @param      "pParentWindow"  , parent window for dialog
     @threadsafe no
 *//*-*************************************************************************************************************/
-FilterDialog::FilterDialog( vcl::Window* pParentWindow )
-    :   ModalDialog  (pParentWindow, "FilterSelectDialog", "uui/ui/filterselect.ui" )
-    ,   m_pFilterNames(nullptr)
+FilterDialog::FilterDialog(weld::Window* pParentWindow)
+    : GenericDialogController(pParentWindow, "uui/ui/filterselect.ui", "FilterSelectDialog")
+    , m_pFilterNames(nullptr)
+    , m_xFtURL(m_xBuilder->weld_label("url"))
+    , m_xLbFilters(m_xBuilder->weld_tree_view("filters"))
 {
-    get(m_pFtURL, "url");
-    get(m_pLbFilters, "filters");
-    Size aSize(pParentWindow->LogicToPixel(Size(182, 175), MapUnit::MapAppFont));
-    m_pLbFilters->set_height_request(aSize.Height());
-    m_pLbFilters->set_width_request(aSize.Width());
-    m_pFtURL->SetSizePixel(Size(aSize.Width(), m_pFtURL->GetOptimalSize().Height()));
+    m_xLbFilters->set_size_request(m_xLbFilters->get_approximate_digit_width() * 42,
+                                   m_xLbFilters->get_height_rows(15));
 }
 
 FilterDialog::~FilterDialog()
 {
-    disposeOnce();
-}
-
-void FilterDialog::dispose()
-{
-    m_pFtURL.clear();
-    m_pLbFilters.clear();
-    ModalDialog::dispose();
 }
 
 /*-************************************************************************************************************
     @short      set file name on dialog control
-    @descr      We convert given URL (it must be an URL!) into valid file name and show it on our dialog.
+    @descr      We convert given URL (it must be a URL!) into valid file name and show it on our dialog.
     @param      "sURL", URL for showing
     @threadsafe no
 *//*-*************************************************************************************************************/
 void FilterDialog::SetURL( const OUString& sURL )
 {
     // convert it and use given pure string as fallback if conversion failed
-    m_pFtURL->SetText( impl_buildUIFileName(sURL) );
+    m_xFtURL->set_label(impl_buildUIFileName(sURL));
 }
 
 /*-************************************************************************************************************
@@ -100,14 +86,12 @@ void FilterDialog::SetURL( const OUString& sURL )
 void FilterDialog::ChangeFilters( const FilterNameList* pFilterNames )
 {
     m_pFilterNames = pFilterNames;
-    m_pLbFilters->Clear();
+    m_xLbFilters->clear();
     if( m_pFilterNames != nullptr )
     {
-        for( FilterNameListPtr pItem  = m_pFilterNames->begin();
-                               pItem != m_pFilterNames->end()  ;
-                               ++pItem                         )
+        for( const auto& rItem : *m_pFilterNames )
         {
-            m_pLbFilters->InsertEntry( pItem->sUI );
+            m_xLbFilters->append_text(rItem.sUI);
         }
     }
 }
@@ -136,13 +120,13 @@ bool FilterDialog::AskForFilter( FilterNameListPtr& pSelectedItem )
 
     if( m_pFilterNames != nullptr )
     {
-        if( ModalDialog::Execute() == RET_OK )
+        if (m_xDialog->run() == RET_OK)
         {
-            OUString sEntry = m_pLbFilters->GetSelectEntry();
+            OUString sEntry = m_xLbFilters->get_selected_text();
             if( !sEntry.isEmpty() )
             {
-                int nPos = m_pLbFilters->GetSelectEntryPos();
-                if( nPos < (int)(m_pFilterNames->size()) )
+                int nPos = m_xLbFilters->get_selected_index();
+                if( nPos < static_cast<int>(m_pFilterNames->size()) )
                 {
                     pSelectedItem  = m_pFilterNames->begin();
                     pSelectedItem += nPos;
@@ -154,6 +138,8 @@ bool FilterDialog::AskForFilter( FilterNameListPtr& pSelectedItem )
 
     return bSelected;
 }
+
+namespace {
 
 /*-************************************************************************************************************
     @short      helper class to calculate length of given string
@@ -167,24 +153,26 @@ bool FilterDialog::AskForFilter( FilterNameListPtr& pSelectedItem )
 class StringCalculator : public ::cppu::WeakImplHelper< css::util::XStringWidth >
 {
     public:
-        explicit StringCalculator( const OutputDevice* pDevice )
-            : m_pDevice( const_cast< OutputDevice * >( pDevice ) )
+        explicit StringCalculator(weld::Widget* pDevice)
+            : m_pDevice(pDevice)
         {
         }
 
         sal_Int32 SAL_CALL queryStringWidth( const OUString& sString ) override
         {
-            return (sal_Int32)(m_pDevice->GetTextWidth(sString));
+            return static_cast<sal_Int32>(m_pDevice->get_pixel_size(sString).Width());
         }
 
     private:
-        VclPtr<OutputDevice> m_pDevice;
+        weld::Widget* m_pDevice;
 };
+
+}
 
 /*-************************************************************************************************************
     @short      try to build short name of given URL to show it n GUI
     @descr      We detect type of given URL automatically and build this short name depend on this type ...
-                If we couldnt make it right we return full given string without any changes ...
+                If we couldn't make it right we return full given string without any changes ...
 
     @seealso    method InetURLObject::getAbbreviated()
 
@@ -201,17 +189,17 @@ OUString FilterDialog::impl_buildUIFileName( const OUString& sName )
     if (osl::FileBase::getSystemPathFromFileURL(sName, sShortName) == osl::FileBase::E_None)
 
     {
-        // it's a system file ... build short name by using osl functionality
+        // it's a system file... build short name by using osl functionality
     }
     else
     {
-        // otherwise its really a url ... build short name by using INetURLObject
-        css::uno::Reference< css::util::XStringWidth > xStringCalculator( new StringCalculator(m_pFtURL) );
+        // otherwise it's really a URL... build short name by using INetURLObject
+        css::uno::Reference< css::util::XStringWidth > xStringCalculator(new StringCalculator(m_xFtURL.get()));
         if( xStringCalculator.is() )
         {
             INetURLObject aBuilder   ( sName );
-            Size          aSize      = m_pFtURL->GetOutputSizePixel();
-                          sShortName = aBuilder.getAbbreviated( xStringCalculator, aSize.Width(), INetURLObject::DecodeMechanism::Unambiguous );
+            Size          aSize      = m_xLbFilters->get_preferred_size();
+            sShortName = aBuilder.getAbbreviated( xStringCalculator, aSize.Width(), INetURLObject::DecodeMechanism::Unambiguous );
         }
     }
 

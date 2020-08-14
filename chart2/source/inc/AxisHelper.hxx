@@ -20,17 +20,21 @@
 #define INCLUDED_CHART2_SOURCE_INC_AXISHELPER_HXX
 
 #include "charttoolsdllapi.hxx"
-#include "ReferenceSizeProvider.hxx"
-#include "ExplicitCategoriesProvider.hxx"
-#include <com/sun/star/chart2/XChartType.hpp>
-#include <com/sun/star/chart2/XCoordinateSystem.hpp>
-#include <com/sun/star/chart2/XDiagram.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
-
-#include "ChartModel.hxx"
+#include <com/sun/star/chart2/ScaleData.hpp>
 
 #include <vector>
+
+namespace chart { class ChartModel; }
+namespace chart { class ExplicitCategoriesProvider; }
+namespace chart { class ReferenceSizeProvider; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::chart2 { class XAxis; }
+namespace com::sun::star::chart2 { class XChartDocument; }
+namespace com::sun::star::chart2 { class XChartType; }
+namespace com::sun::star::chart2 { class XCoordinateSystem; }
+namespace com::sun::star::chart2 { class XDiagram; }
+namespace com::sun::star::chart2 { class XScaling; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace chart
 {
@@ -77,8 +81,7 @@ public:
                 , ReferenceSizeProvider * pRefSizeProvider = nullptr );
 
     static void showGrid( sal_Int32 nDimensionIndex, sal_Int32 nCooSysIndex, bool bMainGrid
-                , const css::uno::Reference< css::chart2::XDiagram >& xDiagram
-                , const css::uno::Reference< css::uno::XComponentContext >& xContext );
+                , const css::uno::Reference< css::chart2::XDiagram >& xDiagram );
 
     static void hideAxis( sal_Int32 nDimensionIndex, bool bMainAxis
                 , const css::uno::Reference< css::chart2::XDiagram >& xDiagram );
@@ -174,8 +177,7 @@ public:
 
     static bool changeVisibilityOfGrids( const css::uno::Reference< css::chart2::XDiagram>& xDiagram
                         , const css::uno::Sequence< sal_Bool >& rOldExistenceList
-                        , const css::uno::Sequence< sal_Bool >& rNewExistenceList
-                        , const css::uno::Reference< css::uno::XComponentContext >& xContext );
+                        , const css::uno::Sequence< sal_Bool >& rNewExistenceList );
 
     static bool changeVisibilityOfAxes( const css::uno::Reference< css::chart2::XDiagram>& xDiagram
                         , const css::uno::Sequence< sal_Bool >& rOldExistenceList

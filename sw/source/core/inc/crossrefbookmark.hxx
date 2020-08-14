@@ -20,13 +20,11 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_CROSSREFBOOKMARK_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_CROSSREFBOOKMARK_HXX
 
-#include <IMark.hxx>
-#include <bookmrk.hxx>
+#include "bookmrk.hxx"
 #include <rtl/ustring.hxx>
 #include <vcl/keycod.hxx>
 
-namespace sw {
-    namespace mark {
+namespace sw::mark {
         class CrossRefBookmark
             : public Bookmark
         {
@@ -79,7 +77,6 @@ namespace sw {
                 const OUString& rName);
             static bool IsLegalName(const OUString& rName);
         };
-    }
 }
 
 #endif

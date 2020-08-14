@@ -21,22 +21,19 @@
 #define INCLUDED_SD_SOURCE_UI_INC_SDUNODRAWVIEW_HXX
 
 #include "DrawSubController.hxx"
-#include "DrawViewShell.hxx"
 #include <cppuhelper/basemutex.hxx>
 
 class SdXImpressDocument;
-
-namespace com { namespace sun { namespace star { namespace drawing {
-class XLayer;
-} } } }
+namespace com::sun::star::drawing { class XLayer; }
 
 namespace sd {
 
 class DrawViewShell;
+class View;
 
 /** This class implements the DrawViewShell specific part of the controller.
 */
-class SdUnoDrawView
+class SdUnoDrawView final
     : private cppu::BaseMutex,
       public DrawSubControllerInterfaceBase
 {
@@ -80,19 +77,18 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
-protected:
-    bool getMasterPageMode() const throw();
-    void setMasterPageMode(bool MasterPageMode_) throw();
-    bool getLayerMode() const throw();
-    void setLayerMode(bool LayerMode_) throw();
-public:
     /** Return a reference to the active layer object.
         @return
             The returned value may be empty when the internal state of this
             view is not valid (like during destruction.)
     */
-    css::uno::Reference< css::drawing::XLayer> getActiveLayer() throw ();
-protected:
+    css::uno::Reference< css::drawing::XLayer> getActiveLayer() const;
+
+private:
+    bool getMasterPageMode() const throw();
+    void setMasterPageMode(bool MasterPageMode_) throw();
+    bool getLayerMode() const throw();
+    void setLayerMode(bool LayerMode_) throw();
     /** Make the specified object the active layer.
         @param rxLayer
             The new layer object.
@@ -110,11 +106,10 @@ protected:
 
     css::uno::Any getDrawViewMode() const;
 
-private:
+    SdXImpressDocument* GetModel() const throw();
+
     DrawViewShell& mrDrawViewShell;
     sd::View& mrView;
-
-    SdXImpressDocument* GetModel() const throw();
 };
 
 } // end of namespace sd

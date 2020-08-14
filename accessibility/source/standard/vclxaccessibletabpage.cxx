@@ -35,6 +35,7 @@
 #include <vcl/tabctrl.hxx>
 #include <vcl/tabpage.hxx>
 #include <vcl/settings.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::uno;
@@ -44,7 +45,6 @@ using namespace ::com::sun::star;
 using namespace ::comphelper;
 
 
-// class VCLXAccessibleTabPage
 
 
 VCLXAccessibleTabPage::VCLXAccessibleTabPage( TabControl* pTabControl, sal_uInt16 nPageId )
@@ -62,7 +62,7 @@ VCLXAccessibleTabPage::~VCLXAccessibleTabPage()
 }
 
 
-bool VCLXAccessibleTabPage::IsFocused()
+bool VCLXAccessibleTabPage::IsFocused() const
 {
     bool bFocused = false;
 
@@ -73,7 +73,7 @@ bool VCLXAccessibleTabPage::IsFocused()
 }
 
 
-bool VCLXAccessibleTabPage::IsSelected()
+bool VCLXAccessibleTabPage::IsSelected() const
 {
     bool bSelected = false;
 
@@ -141,22 +141,22 @@ OUString VCLXAccessibleTabPage::GetPageText()
 
 void VCLXAccessibleTabPage::Update( bool bNew )
 {
-    if ( m_pTabControl )
+    if ( !m_pTabControl )
+        return;
+
+    TabPage* pTabPage = m_pTabControl->GetTabPage( m_nPageId );
+    if ( !pTabPage )
+        return;
+
+    Reference< XAccessible > xChild( pTabPage->GetAccessible( bNew ) );
+    if ( xChild.is() )
     {
-        TabPage* pTabPage = m_pTabControl->GetTabPage( m_nPageId );
-        if ( pTabPage )
-        {
-            Reference< XAccessible > xChild( pTabPage->GetAccessible( bNew ) );
-            if ( xChild.is() )
-            {
-                Any aOldValue, aNewValue;
-                if ( bNew )
-                    aNewValue <<= xChild;
-                else
-                    aOldValue <<= xChild;
-                NotifyAccessibleEvent( AccessibleEventId::CHILD, aOldValue, aNewValue );
-            }
-        }
+        Any aOldValue, aNewValue;
+        if ( bNew )
+            aNewValue <<= xChild;
+        else
+            aOldValue <<= xChild;
+        NotifyAccessibleEvent( AccessibleEventId::CHILD, aOldValue, aNewValue );
     }
 }
 
@@ -247,7 +247,7 @@ void VCLXAccessibleTabPage::disposing()
 
 OUString VCLXAccessibleTabPage::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleTabPage" );
+    return "com.sun.star.comp.toolkit.AccessibleTabPage";
 }
 
 
@@ -280,7 +280,11 @@ Reference< XAccessibleContext > VCLXAccessibleTabPage::getAccessibleContext(  )
 sal_Int32 VCLXAccessibleTabPage::getAccessibleChildCount()
 {
     OExternalLockGuard aGuard( this );
+    return implGetAccessibleChildCount();
+}
 
+sal_Int32 VCLXAccessibleTabPage::implGetAccessibleChildCount()
+{
     sal_Int32 nCount = 0;
     if ( m_pTabControl )
     {
@@ -297,7 +301,7 @@ Reference< XAccessible > VCLXAccessibleTabPage::getAccessibleChild( sal_Int32 i 
 {
     OExternalLockGuard aGuard( this );
 
-    if ( i < 0 || i >= getAccessibleChildCount() )
+    if ( i < 0 || i >= implGetAccessibleChildCount() )
         throw IndexOutOfBoundsException();
 
     Reference< XAccessible > xChild;
@@ -517,6 +521,31 @@ OUString VCLXAccessibleTabPage::getToolTipText(  )
 
 // XAccessibleText
 
+OUString VCLXAccessibleTabPage::getText()
+{
+    OExternalLockGuard aGuard( this );
+
+    return GetPageText();
+}
+
+OUString VCLXAccessibleTabPage::getTextRange(sal_Int32 nStartIndex, sal_Int32 nEndIndex)
+{
+    OExternalLockGuard aGuard( this );
+
+    return OCommonAccessibleText::implGetTextRange(GetPageText(), nStartIndex, nEndIndex);
+}
+
+sal_Unicode VCLXAccessibleTabPage::getCharacter( sal_Int32 nIndex )
+{
+     OExternalLockGuard aGuard( this );
+
+     return OCommonAccessibleText::implGetCharacter( GetPageText(), nIndex );
+}
+
+sal_Int32 VCLXAccessibleTabPage::getCharacterCount()
+{
+    return GetPageText().getLength();
+}
 
 sal_Int32 VCLXAccessibleTabPage::getCaretPosition()
 {
@@ -530,7 +559,7 @@ sal_Bool VCLXAccessibleTabPage::setCaretPosition( sal_Int32 nIndex )
 {
     OExternalLockGuard aGuard( this );
 
-    if ( !implIsValidRange( nIndex, nIndex, implGetText().getLength() ) )
+    if ( !implIsValidRange( nIndex, nIndex, GetPageText().getLength() ) )
         throw IndexOutOfBoundsException();
 
     return false;
@@ -542,7 +571,7 @@ Sequence< PropertyValue > VCLXAccessibleTabPage::getCharacterAttributes( sal_Int
     OExternalLockGuard aGuard( this );
 
     Sequence< PropertyValue > aValues;
-    OUString sText( implGetText() );
+    OUString sText( GetPageText() );
 
     if ( !implIsValidIndex( nIndex, sText.getLength() ) )
         throw IndexOutOfBoundsException();
@@ -564,7 +593,7 @@ awt::Rectangle VCLXAccessibleTabPage::getCharacterBounds( sal_Int32 nIndex )
 {
     OExternalLockGuard aGuard( this );
 
-    if ( !implIsValidIndex( nIndex, implGetText().getLength() ) )
+    if ( !implIsValidIndex( nIndex, GetPageText().getLength() ) )
         throw IndexOutOfBoundsException();
 
     awt::Rectangle aBounds( 0, 0, 0, 0 );
@@ -604,7 +633,7 @@ sal_Bool VCLXAccessibleTabPage::setSelection( sal_Int32 nStartIndex, sal_Int32 n
 {
     OExternalLockGuard aGuard( this );
 
-    if ( !implIsValidRange( nStartIndex, nEndIndex, implGetText().getLength() ) )
+    if ( !implIsValidRange( nStartIndex, nEndIndex, GetPageText().getLength() ) )
         throw IndexOutOfBoundsException();
 
     return false;
@@ -622,7 +651,7 @@ sal_Bool VCLXAccessibleTabPage::copyText( sal_Int32 nStartIndex, sal_Int32 nEndI
         Reference< datatransfer::clipboard::XClipboard > xClipboard = m_pTabControl->GetClipboard();
         if ( xClipboard.is() )
         {
-            OUString sText( getTextRange( nStartIndex, nEndIndex ) );
+            OUString sText( implGetTextRange( GetPageText(), nStartIndex, nEndIndex ) );
 
             vcl::unohelper::TextDataObject* pDataObj = new vcl::unohelper::TextDataObject( sText );
 
@@ -638,6 +667,11 @@ sal_Bool VCLXAccessibleTabPage::copyText( sal_Int32 nStartIndex, sal_Int32 nEndI
     }
 
     return bReturn;
+}
+
+sal_Bool VCLXAccessibleTabPage::scrollSubstringTo( sal_Int32, sal_Int32, AccessibleScrollType )
+{
+    return false;
 }
 
 

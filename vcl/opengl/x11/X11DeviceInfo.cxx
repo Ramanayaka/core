@@ -7,12 +7,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "opengl/x11/X11DeviceInfo.hxx"
-#include "opengl/x11/glxtest.hxx"
+#include <opengl/x11/X11DeviceInfo.hxx>
+#include <opengl/x11/glxtest.hxx>
 
 #include <config_features.h>
 
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -117,10 +118,6 @@ X11OpenGLDeviceInfo::X11OpenGLDeviceInfo():
     GetData();
 }
 
-X11OpenGLDeviceInfo::~X11OpenGLDeviceInfo()
-{
-}
-
 void X11OpenGLDeviceInfo::GetData()
 {
     if (!glx::glxtest_pipe)
@@ -137,7 +134,7 @@ void X11OpenGLDeviceInfo::GetData()
     glx::glxtest_pipe = 0;
 
     // bytesread < 0 would mean that the above read() call failed.
-    // This should never happen. If it did, the outcome would be to blacklist anyway.
+    // This should never happen. If it did, the outcome would be to denylist anyway.
     if (bytesread < 0)
         bytesread = 0;
 
@@ -166,7 +163,7 @@ void X11OpenGLDeviceInfo::GetData()
                 // Bug moz#718629
                 // ECHILD happens when the glxtest process got reaped got reaped after a PR_CreateProcess
                 // as per bug moz#227246. This shouldn't matter, as we still seem to get the data
-                // from the pipe, and if we didn't, the outcome would be to blacklist anyway.
+                // from the pipe, and if we didn't, the outcome would be to denylist anyway.
                 waiting_for_glxtest_process_failed = (waitpid_errno != ECHILD);
             }
         }
@@ -249,33 +246,33 @@ void X11OpenGLDeviceInfo::GetData()
     else if (strstr(maVendor.getStr(), "ATI Technologies Inc"))
     {
         mbIsFGLRX = true;
-        // with the FGLRX driver, the version string only gives a OpenGL version :/ so let's return that.
+        // with the FGLRX driver, the version string only gives an OpenGL version: so let's return that.
         // that can at least give a rough idea of how old the driver is.
         whereToReadVersionNumbers = maVersion.getStr();
     }
 
     // read major.minor version numbers of the driver (not to be confused with the OpenGL version)
-    if (whereToReadVersionNumbers)
-    {
-        // copy into writable buffer, for tokenization
-        strncpy(buf, whereToReadVersionNumbers, buf_size-1);
-        buf[buf_size-1] = 0;
-        bufptr = buf;
+    if (!whereToReadVersionNumbers)
+        return;
 
-        // now try to read major.minor version numbers. In case of failure, gracefully exit: these numbers have
-        // been initialized as 0 anyways
-        char *token = strtok_wrapper(".", &bufptr);
+    // copy into writable buffer, for tokenization
+    strncpy(buf, whereToReadVersionNumbers, buf_size-1);
+    buf[buf_size-1] = 0;
+    bufptr = buf;
+
+    // now try to read major.minor version numbers. In case of failure, gracefully exit: these numbers have
+    // been initialized as 0 anyways
+    char *token = strtok_wrapper(".", &bufptr);
+    if (token)
+    {
+        mnMajorVersion = strtol(token, nullptr, 10);
+        token = strtok_wrapper(".", &bufptr);
         if (token)
         {
-            mnMajorVersion = strtol(token, nullptr, 10);
+            mnMinorVersion = strtol(token, nullptr, 10);
             token = strtok_wrapper(".", &bufptr);
             if (token)
-            {
-                mnMinorVersion = strtol(token, nullptr, 10);
-                token = strtok_wrapper(".", &bufptr);
-                if (token)
-                    mnRevisionVersion = strtol(token, nullptr, 10);
-            }
+                mnRevisionVersion = strtol(token, nullptr, 10);
         }
     }
 }
@@ -286,8 +283,8 @@ bool X11OpenGLDeviceInfo::isDeviceBlocked()
     if (mnGLMajorVersion == 1)
         return true;
 
-    CrashReporter::AddKeyValue("AdapterVendorId", rtl::OStringToOUString(maVendor, RTL_TEXTENCODING_UTF8));
-    CrashReporter::AddKeyValue("AdapterDeviceId", rtl::OStringToOUString(maRenderer, RTL_TEXTENCODING_UTF8));
+    CrashReporter::addKeyValue("AdapterVendorId", OStringToOUString(maVendor, RTL_TEXTENCODING_UTF8), CrashReporter::AddItem);
+    CrashReporter::addKeyValue("AdapterDeviceId", OStringToOUString(maRenderer, RTL_TEXTENCODING_UTF8), CrashReporter::Write);
 
     SAL_INFO("vcl.opengl", "Vendor: " << maVendor);
     SAL_INFO("vcl.opengl", "Renderer: " << maRenderer);

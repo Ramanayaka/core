@@ -21,6 +21,7 @@
 #define INCLUDED_OOX_HELPER_PROPERTYMAP_HXX
 
 #include <map>
+#include <utility>
 
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
@@ -29,17 +30,16 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star { namespace beans {
+namespace com::sun::star::beans {
     struct PropertyValue;
     class XPropertySet;
-} } } }
+}
 
 namespace oox {
 
 struct PropertyNameVector;
 
 
-typedef ::std::map< sal_Int32, css::uno::Any > PropertyMapType;
 typedef ::std::map< OUString, css::uno::Any > PropertyNameMap;
 
 /** A helper that maps property identifiers to property values.
@@ -67,12 +67,12 @@ public:
     /** Sets the specified property to the passed value. Does nothing, if the
         identifier is invalid. */
     template< typename Type >
-    bool                setProperty( sal_Int32 nPropId, const Type& rValue )
+    bool                setProperty( sal_Int32 nPropId, Type&& rValue )
     {
         if( nPropId < 0 )
             return false;
 
-        maProperties[ nPropId ] <<= rValue;
+        maProperties[ nPropId ] <<= std::forward<Type>(rValue);
         return true;
     }
 
@@ -117,7 +117,7 @@ private:
     const PropertyNameVector* mpPropNames;
 
 protected:
-    PropertyMapType maProperties;
+    std::map< sal_Int32, css::uno::Any > maProperties;
 };
 
 

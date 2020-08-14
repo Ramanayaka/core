@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <entityreference.hxx>
+#include "entityreference.hxx"
 
 #include <string.h>
 
@@ -53,7 +53,7 @@ namespace DOM
     {
         ::osl::MutexGuard const g(m_rMutex);
 
-       OUString aName;
+        OUString aName;
         if (m_aNodePtr != nullptr)
         {
             const xmlChar* pName = m_aNodePtr->name;

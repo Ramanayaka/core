@@ -19,12 +19,7 @@
 
 
 #include <svx/svdmrkv.hxx>
-#include <svx/svdetc.hxx>
-#include <svx/svdoedge.hxx>
-#include "svdglob.hxx"
 #include <svx/svdpagv.hxx>
-#include <svx/svdpage.hxx>
-#include "svddrgm1.hxx"
 
 
 // Point Selection
@@ -47,10 +42,10 @@ bool SdrMarkView::HasMarkablePoints() const
     return bRet;
 }
 
-sal_uIntPtr SdrMarkView::GetMarkablePointCount() const
+sal_Int32 SdrMarkView::GetMarkablePointCount() const
 {
     ForceUndirtyMrkPnt();
-    sal_uIntPtr nCount=0;
+    sal_Int32 nCount=0;
     if (!ImpIsFrameHandles()) {
         const size_t nMarkCount=GetMarkedObjectCount();
         if (nMarkCount<=static_cast<size_t>(mnFrameHandlesLimit)) {
@@ -81,23 +76,6 @@ bool SdrMarkView::HasMarkedPoints() const
         }
     }
     return bRet;
-}
-
-sal_uIntPtr SdrMarkView::GetMarkedPointCount() const
-{
-    ForceUndirtyMrkPnt();
-    sal_uIntPtr nCount=0;
-    if (!ImpIsFrameHandles()) {
-        size_t nMarkCount=GetMarkedObjectCount();
-        if (nMarkCount<=static_cast<size_t>(mnFrameHandlesLimit)) {
-            for (size_t nMarkNum=0; nMarkNum<nMarkCount; ++nMarkNum) {
-                const SdrMark* pM=GetSdrMarkByIndex(nMarkNum);
-                const SdrUShortCont& rPts = pM->GetMarkedPoints();
-                nCount += rPts.size();
-            }
-        }
-    }
-    return nCount;
 }
 
 bool SdrMarkView::IsPointMarkable(const SdrHdl& rHdl) const
@@ -133,11 +111,11 @@ bool SdrMarkView::ImpMarkPoint(SdrHdl* pHdl, SdrMark* pMark, bool bUnmark)
     SdrUShortCont& rPts=pMark->GetMarkedPoints();
     if (!bUnmark)
     {
-        rPts.insert((sal_uInt16)nHdlNum);
+        rPts.insert(static_cast<sal_uInt16>(nHdlNum));
     }
     else
     {
-        SdrUShortCont::const_iterator it = rPts.find( (sal_uInt16)nHdlNum );
+        SdrUShortCont::const_iterator it = rPts.find( static_cast<sal_uInt16>(nHdlNum) );
         if (it != rPts.end())
         {
             rPts.erase(it);
@@ -153,18 +131,17 @@ bool SdrMarkView::ImpMarkPoint(SdrHdl* pHdl, SdrMark* pMark, bool bUnmark)
     {
         if (!bUnmark)
         {
-            sal_uInt32 nCount(pObj->GetPlusHdlCount(*pHdl));
+            SdrHdlList plusList(nullptr);
+            pObj->AddToPlusHdlList(plusList, *pHdl);
+            sal_uInt32 nCount(plusList.GetHdlCount());
             for (sal_uInt32 i=0; i<nCount; i++)
             {
-                SdrHdl* pPlusHdl=pObj->GetPlusHdl(*pHdl,i);
-                if (pPlusHdl!=nullptr)
-                {
-                    pPlusHdl->SetObj(pObj);
-                    pPlusHdl->SetPageView(pMark->GetPageView());
-                    pPlusHdl->SetPlusHdl(true);
-                    maHdlList.AddHdl(pPlusHdl);
-                }
+                SdrHdl* pPlusHdl=plusList.GetHdl(i);
+                pPlusHdl->SetObj(pObj);
+                pPlusHdl->SetPageView(pMark->GetPageView());
+                pPlusHdl->SetPlusHdl(true);
             }
+            plusList.MoveTo(maHdlList);
         }
         else
         {
@@ -175,7 +152,6 @@ bool SdrMarkView::ImpMarkPoint(SdrHdl* pHdl, SdrMark* pMark, bool bUnmark)
                 if (pPlusHdl->IsPlusHdl() && pPlusHdl->GetSourceHdlNum()==nHdlNum)
                 {
                     maHdlList.RemoveHdl(i);
-                    delete pPlusHdl;
                 }
             }
         }
@@ -215,8 +191,8 @@ bool SdrMarkView::MarkPoints(const tools::Rectangle* pRect, bool bUnmark)
     const SdrPageView* pPV0=nullptr;
     SdrMark* pM=nullptr;
     maHdlList.Sort();
-    const size_t nHdlAnz=maHdlList.GetHdlCount();
-    for (size_t nHdlNum=nHdlAnz; nHdlNum>0;) {
+    const size_t nHdlCnt=maHdlList.GetHdlCount();
+    for (size_t nHdlNum=nHdlCnt; nHdlNum>0;) {
         --nHdlNum;
         SdrHdl* pHdl=maHdlList.GetHdl(nHdlNum);
         if (IsPointMarkable(*pHdl) && pHdl->IsSelected()==bUnmark) {
@@ -250,11 +226,10 @@ bool SdrMarkView::MarkPoints(const tools::Rectangle* pRect, bool bUnmark)
     return bChgd;
 }
 
-bool SdrMarkView::MarkNextPoint()
+void SdrMarkView::MarkNextPoint()
 {
     ForceUndirtyMrkPnt();
     SortMarkedObjects();
-    return false;
 }
 
 const tools::Rectangle& SdrMarkView::GetMarkedPointsRect() const
@@ -282,8 +257,8 @@ void SdrMarkView::ImpSetPointsRects() const
 {
     tools::Rectangle aPnts;
     tools::Rectangle aGlue;
-    const size_t nHdlAnz=maHdlList.GetHdlCount();
-    for (size_t nHdlNum=0; nHdlNum<nHdlAnz; ++nHdlNum) {
+    const size_t nHdlCnt=maHdlList.GetHdlCount();
+    for (size_t nHdlNum=0; nHdlNum<nHdlCnt; ++nHdlNum) {
         const SdrHdl* pHdl=maHdlList.GetHdl(nHdlNum);
         SdrHdlKind eKind=pHdl->GetKind();
         if ((eKind==SdrHdlKind::Poly && pHdl->IsSelected()) || eKind==SdrHdlKind::Glue) {
@@ -292,10 +267,10 @@ void SdrMarkView::ImpSetPointsRects() const
             if (rR.IsEmpty()) {
                 rR=tools::Rectangle(aPt,aPt);
             } else {
-                if (aPt.X()<rR.Left  ()) rR.Left  ()=aPt.X();
-                if (aPt.X()>rR.Right ()) rR.Right ()=aPt.X();
-                if (aPt.Y()<rR.Top   ()) rR.Top   ()=aPt.Y();
-                if (aPt.Y()>rR.Bottom()) rR.Bottom()=aPt.Y();
+                if (aPt.X()<rR.Left  ()) rR.SetLeft(aPt.X() );
+                if (aPt.X()>rR.Right ()) rR.SetRight(aPt.X() );
+                if (aPt.Y()<rR.Top   ()) rR.SetTop(aPt.Y() );
+                if (aPt.Y()>rR.Bottom()) rR.SetBottom(aPt.Y() );
             }
         }
     }
@@ -431,8 +406,8 @@ bool SdrMarkView::MarkGluePoints(const tools::Rectangle* pRect, bool bUnmark)
             }
         } else {
             if (pGPL!=nullptr) {
-                sal_uInt16 nGPAnz=pGPL->GetCount();
-                for (sal_uInt16 nGPNum=0; nGPNum<nGPAnz; nGPNum++) {
+                sal_uInt16 nGluePointCnt=pGPL->GetCount();
+                for (sal_uInt16 nGPNum=0; nGPNum<nGluePointCnt; nGPNum++) {
                     const SdrGluePoint& rGP=(*pGPL)[nGPNum];
 
                     // #i38892#
@@ -544,8 +519,8 @@ bool SdrMarkView::IsGluePointMarked(const SdrObject* pObj, sal_uInt16 nId) const
 SdrHdl* SdrMarkView::GetGluePointHdl(const SdrObject* pObj, sal_uInt16 nId) const
 {
     ForceUndirtyMrkPnt();
-    const size_t nHdlAnz=maHdlList.GetHdlCount();
-    for (size_t nHdlNum=0; nHdlNum<nHdlAnz; ++nHdlNum) {
+    const size_t nHdlCnt=maHdlList.GetHdlCount();
+    for (size_t nHdlNum=0; nHdlNum<nHdlCnt; ++nHdlNum) {
         SdrHdl* pHdl=maHdlList.GetHdl(nHdlNum);
         if (pHdl->GetObj()==pObj &&
             pHdl->GetKind()==SdrHdlKind::Glue &&
@@ -554,11 +529,10 @@ SdrHdl* SdrMarkView::GetGluePointHdl(const SdrObject* pObj, sal_uInt16 nId) cons
     return nullptr;
 }
 
-bool SdrMarkView::MarkNextGluePoint()
+void SdrMarkView::MarkNextGluePoint()
 {
     ForceUndirtyMrkPnt();
     SortMarkedObjects();
-    return false;
 }
 
 const tools::Rectangle& SdrMarkView::GetMarkedGluePointsRect() const

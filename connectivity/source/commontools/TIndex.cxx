@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <connectivity/TIndex.hxx>
-#include <connectivity/TIndexColumns.hxx>
+#include <TIndex.hxx>
+#include <TIndexColumns.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <connectivity/TTableHelper.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
 using namespace connectivity;
 using namespace connectivity::sdbcx;
@@ -37,7 +37,7 @@ OIndexHelper::OIndexHelper( OTableHelper* _pTable) : connectivity::sdbcx::OIndex
 {
     construct();
     std::vector< OUString> aVector;
-    m_pColumns = new OIndexColumns(this,m_aMutex,aVector);
+    m_pColumns.reset(new OIndexColumns(this,m_aMutex,aVector));
 }
 
 OIndexHelper::OIndexHelper( OTableHelper* _pTable,
@@ -93,7 +93,7 @@ void OIndexHelper::refreshColumns()
     if(m_pColumns)
         m_pColumns->reFill(aVector);
     else
-        m_pColumns = new OIndexColumns(this,m_aMutex,aVector);
+        m_pColumns.reset(new OIndexColumns(this,m_aMutex,aVector));
 }
 
 

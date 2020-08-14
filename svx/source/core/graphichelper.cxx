@@ -24,26 +24,30 @@
 #include <svx/xoutbmp.hxx>
 #include <svx/dialmgr.hxx>
 #include <svx/graphichelper.hxx>
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
+#include <tools/diagnose_ex.h>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 
-#include <cppuhelper/exc_hlp.hxx>
-#include <comphelper/anytostring.hxx>
 #include <comphelper/processfactory.hxx>
 
-#include <com/sun/star/beans/PropertyValues.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/document/XExporter.hpp>
-#include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/drawing/GraphicExportFilter.hpp>
-#include <com/sun/star/graphic/XGraphicProvider.hpp>
-#include <com/sun/star/graphic/GraphicType.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/ucb/SimpleFileAccess.hpp>
-#include <com/sun/star/ui/dialogs/XFilePicker2.hpp>
-#include <com/sun/star/ui/dialogs/XFilterManager.hpp>
+#include <com/sun/star/ui/dialogs/XFilePicker3.hpp>
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
+#include <com/sun/star/beans/XPropertyAccess.hpp>
+#include <com/sun/star/task/ErrorCodeIOException.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
+
+#include <map>
 
 using namespace css::uno;
 using namespace css::lang;
@@ -53,6 +57,8 @@ using namespace css::beans;
 using namespace css::io;
 using namespace css::document;
 using namespace css::ui::dialogs;
+using namespace css::container;
+using namespace com::sun::star::task;
 
 using namespace sfx2;
 
@@ -61,7 +67,28 @@ namespace drawing = com::sun::star::drawing;
 void GraphicHelper::GetPreferredExtension( OUString& rExtension, const Graphic& rGraphic )
 {
     OUString aExtension = "png";
-    switch( rGraphic.GetLink().GetType() )
+    auto const & rVectorGraphicDataPtr(rGraphic.getVectorGraphicData());
+
+    if (rVectorGraphicDataPtr && rVectorGraphicDataPtr->getVectorGraphicDataArrayLength())
+    {
+        switch (rVectorGraphicDataPtr->getVectorGraphicDataType())
+        {
+        case VectorGraphicDataType::Wmf:
+            aExtension = "wmf";
+            break;
+        case VectorGraphicDataType::Emf:
+            aExtension = "emf";
+            break;
+        default: // case VectorGraphicDataType::Svg:
+            aExtension = "svg";
+            break;
+        }
+
+        rExtension = aExtension;
+        return;
+    }
+
+    switch( rGraphic.GetGfxLink().GetType() )
     {
         case GfxLinkType::NativeGif:
             aExtension = "gif";
@@ -96,13 +123,64 @@ void GraphicHelper::GetPreferredExtension( OUString& rExtension, const Graphic& 
     rExtension = aExtension;
 }
 
-OUString GraphicHelper::ExportGraphic( const Graphic& rGraphic, const OUString& rGraphicName )
+namespace {
+
+
+bool lcl_ExecuteFilterDialog( const Sequence< PropertyValue >& rPropsForDialog,
+                              Sequence< PropertyValue >& rFilterData )
+{
+    bool bStatus = false;
+    try
+    {
+        Reference< XExecutableDialog > xFilterDialog(
+                comphelper::getProcessServiceFactory()->createInstance( "com.sun.star.svtools.SvFilterOptionsDialog" ), UNO_QUERY );
+        Reference< XPropertyAccess > xFilterProperties( xFilterDialog, UNO_QUERY );
+
+        if( xFilterDialog.is() && xFilterProperties.is() )
+        {
+            xFilterProperties->setPropertyValues( rPropsForDialog );
+            if( xFilterDialog->execute() )
+            {
+                bStatus = true;
+                const Sequence< PropertyValue > aPropsFromDialog = xFilterProperties->getPropertyValues();
+                for ( const auto& rProp : aPropsFromDialog )
+                {
+                    if (rProp.Name == "FilterData")
+                    {
+                        rProp.Value >>= rFilterData;
+                    }
+                }
+            }
+        }
+    }
+    catch( const NoSuchElementException& e )
+    {
+        // the filter name is unknown
+        throw ErrorCodeIOException(
+            ("lcl_ExecuteFilterDialog: NoSuchElementException"
+             " \"" + e.Message + "\": ERRCODE_IO_ABORT"),
+            Reference< XInterface >(), sal_uInt32(ERRCODE_IO_INVALIDPARAMETER));
+    }
+    catch( const ErrorCodeIOException& )
+    {
+        throw;
+    }
+    catch( const Exception& )
+    {
+        TOOLS_WARN_EXCEPTION("sfx.doc", "ignoring");
+    }
+
+    return bStatus;
+}
+} // anonymous ns
+
+OUString GraphicHelper::ExportGraphic(weld::Window* pParent, const Graphic& rGraphic, const OUString& rGraphicName)
 {
     SvtPathOptions aPathOpt;
     OUString sGraphicsPath( aPathOpt.GetGraphicPath() );
 
-    FileDialogHelper aDialogHelper( TemplateDescription::FILESAVE_AUTOEXTENSION );
-    Reference < XFilePicker2 > xFilePicker = aDialogHelper.GetFilePicker();
+    FileDialogHelper aDialogHelper(TemplateDescription::FILESAVE_AUTOEXTENSION, FileDialogFlags::NONE, pParent);
+    Reference < XFilePicker3 > xFilePicker = aDialogHelper.GetFilePicker();
 
     INetURLObject aPath;
     aPath.SetSmartURL( sGraphicsPath );
@@ -113,12 +191,12 @@ OUString GraphicHelper::ExportGraphic( const Graphic& rGraphic, const OUString& 
     aDialogHelper.SetDisplayDirectory( aPath.GetMainURL(INetURLObject::DecodeMechanism::ToIUri) );
     INetURLObject aURL;
     aURL.SetSmartURL( rGraphicName );
-    aDialogHelper.SetFileName( aURL.GetName() );
+    aDialogHelper.SetFileName(aURL.GetLastName());
 
     GraphicFilter& rGraphicFilter = GraphicFilter::GetGraphicFilter();
     const sal_uInt16 nCount = rGraphicFilter.GetExportFormatCount();
 
-    OUString aExtension( aURL.GetExtension() );
+    OUString aExtension(aURL.GetFileExtension());
     if( aExtension.isEmpty() )
     {
         GetPreferredExtension( aExtension, rGraphic );
@@ -127,11 +205,9 @@ OUString GraphicHelper::ExportGraphic( const Graphic& rGraphic, const OUString& 
     aExtension = aExtension.toAsciiLowerCase();
     sal_uInt16 nDefaultFilter = USHRT_MAX;
 
-    Reference<XFilterManager> xFilterManager(xFilePicker, UNO_QUERY);
-
     for ( sal_uInt16 i = 0; i < nCount; i++ )
     {
-        xFilterManager->appendFilter( rGraphicFilter.GetExportFormatName( i ), rGraphicFilter.GetExportWildcard( i ) );
+        xFilePicker->appendFilter( rGraphicFilter.GetExportFormatName( i ), rGraphicFilter.GetExportWildcard( i ) );
         OUString aFormatShortName = rGraphicFilter.GetExportFormatShortName( i );
         if ( aFormatShortName.equalsIgnoreAsciiCase( aExtension ) )
         {
@@ -152,7 +228,7 @@ OUString GraphicHelper::ExportGraphic( const Graphic& rGraphic, const OUString& 
 
     if( USHRT_MAX != nDefaultFilter )
     {
-        xFilterManager->setCurrentFilter( rGraphicFilter.GetExportFormatName( nDefaultFilter ) ) ;
+        xFilePicker->setCurrentFilter( rGraphicFilter.GetExportFormatName( nDefaultFilter ) ) ;
 
         if( aDialogHelper.Execute() == ERRCODE_NONE )
         {
@@ -162,7 +238,7 @@ OUString GraphicHelper::ExportGraphic( const Graphic& rGraphic, const OUString& 
             sGraphicsPath = aPath.GetPath();
 
             if( !rGraphicName.isEmpty() &&
-                nDefaultFilter == rGraphicFilter.GetExportFormatNumber( xFilterManager->getCurrentFilter()))
+                nDefaultFilter == rGraphicFilter.GetExportFormatNumber( xFilePicker->getCurrentFilter()))
             {
                 // try to save the original graphic
                 SfxMedium aIn( rGraphicName, StreamMode::READ | StreamMode::NOCREATE );
@@ -184,9 +260,9 @@ OUString GraphicHelper::ExportGraphic( const Graphic& rGraphic, const OUString& 
             }
 
             sal_uInt16 nFilter;
-            if ( !xFilterManager->getCurrentFilter().isEmpty() && rGraphicFilter.GetExportFormatCount() )
+            if ( !xFilePicker->getCurrentFilter().isEmpty() && rGraphicFilter.GetExportFormatCount() )
             {
-                nFilter = rGraphicFilter.GetExportFormatNumber( xFilterManager->getCurrentFilter() );
+                nFilter = rGraphicFilter.GetExportFormatNumber( xFilePicker->getCurrentFilter() );
             }
             else
             {
@@ -194,17 +270,72 @@ OUString GraphicHelper::ExportGraphic( const Graphic& rGraphic, const OUString& 
             }
             OUString aFilter( rGraphicFilter.GetExportFormatShortName( nFilter ) );
 
-            XOutBitmap::WriteGraphic( rGraphic, sPath, aFilter,
-                                        XOutFlags::DontExpandFilename |
-                                        XOutFlags::DontAddExtension |
-                                        XOutFlags::UseNativeIfPossible );
-            return sPath;
+            if ( rGraphic.GetType() == GraphicType::Bitmap )
+            {
+                Graphic aGraphic = rGraphic;
+                Reference<XGraphic> xGraphic = aGraphic.GetXGraphic();
+
+                OUString aExportFilter = rGraphicFilter.GetExportInternalFilterName(nFilter);
+
+                Sequence< PropertyValue > aPropsForDialog(2);
+                aPropsForDialog[0].Name = "Graphic";
+                aPropsForDialog[0].Value <<= xGraphic;
+                aPropsForDialog[1].Name = "FilterName";
+                aPropsForDialog[1].Value <<= aExportFilter;
+
+                Sequence< PropertyValue > aFilterData;
+                bool bStatus = lcl_ExecuteFilterDialog(aPropsForDialog, aFilterData);
+                if (bStatus)
+                {
+                    sal_Int32 nWidth = 0;
+                    sal_Int32 nHeight = 0;
+
+                    for (const auto& rProp : std::as_const(aFilterData))
+                    {
+                        if (rProp.Name == "PixelWidth")
+                        {
+                            rProp.Value >>= nWidth;
+                        }
+                        else if (rProp.Name == "PixelHeight")
+                        {
+                            rProp.Value >>= nHeight;
+                        }
+                    }
+
+                    // scaling must performed here because png/jpg writer s
+                    // do not take care of that.
+                    Size aSizePixel( aGraphic.GetSizePixel() );
+                    if( nWidth && nHeight &&
+                        ( ( nWidth != aSizePixel.Width() ) ||
+                          ( nHeight != aSizePixel.Height() ) ) )
+                    {
+                        BitmapEx aBmpEx( aGraphic.GetBitmapEx() );
+                        // export: use highest quality
+                        aBmpEx.Scale( Size( nWidth, nHeight ), BmpScaleFlag::Lanczos );
+                        aGraphic = aBmpEx;
+                    }
+
+                    XOutBitmap::WriteGraphic( aGraphic, sPath, aFilter,
+                                                XOutFlags::DontExpandFilename |
+                                                XOutFlags::DontAddExtension |
+                                                XOutFlags::UseNativeIfPossible,
+                                                nullptr, &aFilterData );
+                    return sPath;
+                }
+            }
+            else
+            {
+                XOutBitmap::WriteGraphic( rGraphic, sPath, aFilter,
+                                            XOutFlags::DontExpandFilename |
+                                            XOutFlags::DontAddExtension |
+                                            XOutFlags::UseNativeIfPossible );
+            }
         }
     }
     return OUString();
 }
 
-void GraphicHelper::SaveShapeAsGraphic( const Reference< drawing::XShape >& xShape )
+void GraphicHelper::SaveShapeAsGraphic(weld::Window* pParent,  const Reference< drawing::XShape >& xShape)
 {
     try
     {
@@ -212,10 +343,10 @@ void GraphicHelper::SaveShapeAsGraphic( const Reference< drawing::XShape >& xSha
         Reference< XPropertySet > xShapeSet( xShape, UNO_QUERY_THROW );
 
         SvtPathOptions aPathOpt;
-        OUString sGraphicPath( aPathOpt.GetGraphicPath() );
+        const OUString& sGraphicPath( aPathOpt.GetGraphicPath() );
 
-        FileDialogHelper aDialogHelper( TemplateDescription::FILESAVE_AUTOEXTENSION );
-        Reference < XFilePicker2 > xFilePicker = aDialogHelper.GetFilePicker();
+        FileDialogHelper aDialogHelper(TemplateDescription::FILESAVE_AUTOEXTENSION, FileDialogFlags::NONE, pParent);
+        Reference < XFilePicker3 > xFilePicker = aDialogHelper.GetFilePicker();
 
         aDialogHelper.SetTitle( SvxResId(RID_SVXSTR_SAVEAS_IMAGE) );
 
@@ -226,7 +357,6 @@ void GraphicHelper::SaveShapeAsGraphic( const Reference< drawing::XShape >& xSha
         // populate filter dialog filter list and select default filter to match graphic mime type
 
         GraphicFilter& rGraphicFilter = GraphicFilter::GetGraphicFilter();
-        Reference<XFilterManager> xFilterManager( xFilePicker, UNO_QUERY );
         const OUString aDefaultMimeType("image/png");
         OUString aDefaultFormatName;
         sal_uInt16 nCount = rGraphicFilter.GetExportFormatCount();
@@ -237,21 +367,21 @@ void GraphicHelper::SaveShapeAsGraphic( const Reference< drawing::XShape >& xSha
         {
             const OUString aExportFormatName( rGraphicFilter.GetExportFormatName( i ) );
             const OUString aFilterMimeType( rGraphicFilter.GetExportFormatMediaType( i ) );
-            xFilterManager->appendFilter( aExportFormatName, rGraphicFilter.GetExportWildcard( i ) );
+            xFilePicker->appendFilter( aExportFormatName, rGraphicFilter.GetExportWildcard( i ) );
             aMimeTypeMap[ aExportFormatName ] = aFilterMimeType;
             if( aDefaultMimeType == aFilterMimeType )
                 aDefaultFormatName = aExportFormatName;
         }
 
         if( !aDefaultFormatName.isEmpty() )
-            xFilterManager->setCurrentFilter( aDefaultFormatName );
+            xFilePicker->setCurrentFilter( aDefaultFormatName );
 
         // execute dialog
 
         if( aDialogHelper.Execute() == ERRCODE_NONE )
         {
             OUString sPath( xFilePicker->getFiles().getConstArray()[0] );
-            OUString aExportMimeType( aMimeTypeMap[xFilterManager->getCurrentFilter()] );
+            OUString aExportMimeType( aMimeTypeMap[xFilePicker->getCurrentFilter()] );
 
             Reference< XInputStream > xGraphStream;
 
@@ -271,17 +401,22 @@ void GraphicHelper::SaveShapeAsGraphic( const Reference< drawing::XShape >& xSha
                 aDescriptor[1].Value <<= sPath;
 
                 Reference< XComponent > xSourceDocument( xShape, UNO_QUERY_THROW );
-                if ( xSourceDocument.is() )
-                {
-                    xGraphicExporter->setSourceDocument( xSourceDocument );
-                    xGraphicExporter->filter( aDescriptor );
-                }
+                xGraphicExporter->setSourceDocument( xSourceDocument );
+                xGraphicExporter->filter( aDescriptor );
             }
         }
     }
     catch( Exception& )
     {
     }
+}
+
+short GraphicHelper::HasToSaveTransformedImage(weld::Widget* pWin)
+{
+    OUString aMsg(SvxResId(RID_SVXSTR_SAVE_MODIFIED_IMAGE));
+    std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pWin,
+                                              VclMessageType::Question, VclButtonsType::YesNo, aMsg));
+    return xBox->run();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,21 +20,28 @@
 #ifndef INCLUDED_UNOTOOLS_LOCALEDATAWRAPPER_HXX
 #define INCLUDED_UNOTOOLS_LOCALEDATAWRAPPER_HXX
 
-#include <com/sun/star/i18n/XLocaleData4.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/i18n/LocaleItem.hpp>
+#include <com/sun/star/i18n/LocaleDataItem2.hpp>
+#include <com/sun/star/i18n/LanguageCountryInfo.hpp>
+#include <com/sun/star/i18n/ForbiddenCharacters.hpp>
 #include <com/sun/star/i18n/reservedWords.hpp>
 #include <rtl/ustring.hxx>
+#include <rtl/math.h>
 #include <i18nlangtag/languagetag.hxx>
 #include <unotools/readwritemutexguard.hxx>
 #include <unotools/unotoolsdllapi.h>
 #include <memory>
 #include <map>
 
-namespace com { namespace sun { namespace star {
-    namespace uno {
-        class XComponentContext;
-    }
-}}}
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::i18n { class XLocaleData5; }
+namespace com::sun::star::i18n { struct Calendar2; }
+namespace com::sun::star::i18n { struct Currency2; }
+namespace com::sun::star::i18n { struct FormatElement; }
+namespace com::sun::star::i18n { struct CalendarItem2; }
+
 class Date;
 namespace tools { class Time; }
 class CalendarWrapper;
@@ -56,16 +63,16 @@ class UNOTOOLS_DLLPUBLIC LocaleDataWrapper
     static  sal_uInt8                nLocaleDataChecking;    // 0:=dontknow, 1:=yes, 2:=no
 
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
-    css::uno::Reference< css::i18n::XLocaleData4 >     xLD;
+    css::uno::Reference< css::i18n::XLocaleData5 >     xLD;
     LanguageTag                                        maLanguageTag;
     std::shared_ptr< css::i18n::Calendar2 >            xDefaultCalendar;
     std::shared_ptr< css::i18n::Calendar2 >            xSecondaryCalendar;
-    css::i18n::LocaleDataItem                          aLocaleDataItem;
+    css::i18n::LocaleDataItem2                         aLocaleDataItem;
     css::uno::Sequence< OUString >                     aReservedWordSeq;
     css::uno::Sequence< OUString >                     aDateAcceptancePatterns;
     css::uno::Sequence< sal_Int32 >                    aGrouping;
     // cached items
-    OUString                aLocaleItem[css::i18n::LocaleItem::COUNT];
+    OUString                aLocaleItem[css::i18n::LocaleItem::COUNT2];
     OUString                aReservedWord[css::i18n::reservedWords::COUNT];
     OUString                aCurrSymbol;
     OUString                aCurrBankSymbol;
@@ -78,11 +85,11 @@ class UNOTOOLS_DLLPUBLIC LocaleDataWrapper
     bool                    bReservedWordValid;
     bool                    bSecondaryCalendarValid;
     mutable ::utl::ReadWriteMutex   aMutex;
-    struct Locale_Compare
+    struct SAL_DLLPRIVATE Locale_Compare
     {
         bool operator()(const css::lang::Locale& rLocale1, const css::lang::Locale& rLocale2) const;
     };
-    mutable std::map<css::lang::Locale, css::i18n::LocaleDataItem, Locale_Compare> maDataItemCache;
+    mutable std::map<css::lang::Locale, css::i18n::LocaleDataItem2, Locale_Compare> maDataItemCache;
 
                                 // whenever Locale changes
     void                invalidateData();
@@ -99,15 +106,15 @@ class UNOTOOLS_DLLPUBLIC LocaleDataWrapper
     void                scanCurrFormatImpl( const OUString& rCode,
                             sal_Int32 nStart, sal_Int32& nSign,
                             sal_Int32& nPar, sal_Int32& nNum,
-                            sal_Int32& nBlank, sal_Int32& nSym );
+                            sal_Int32& nBlank, sal_Int32& nSym ) const;
 
     void                getDateOrdersImpl();
-    DateOrder           scanDateOrderImpl( const OUString& rCode );
+    DateOrder           scanDateOrderImpl( const OUString& rCode ) const;
 
     void                getDefaultCalendarImpl();
     void                getSecondaryCalendarImpl();
 
-    sal_Unicode*        ImplAddFormatNum( sal_Unicode* pBuf,
+    void                ImplAddFormatNum( rtl::OUStringBuffer& rBuf,
                             sal_Int64 nNumber, sal_uInt16 nDecimals,
                             bool bUseThousandSep, bool bTrailingZeros ) const;
 
@@ -144,7 +151,8 @@ public:
     // Wrapper implementations of service LocaleData
 
     css::i18n::LanguageCountryInfo getLanguageCountryInfo() const;
-    const css::i18n::LocaleDataItem& getLocaleItem() const;
+    /// NOTE: this wraps XLocaleData5::getLocaleItem2() in fact.
+    const css::i18n::LocaleDataItem2& getLocaleItem() const;
     /// NOTE: this wraps XLocaleData3::getAllCalendars2() in fact.
     css::uno::Sequence< css::i18n::Calendar2 > getAllCalendars() const;
     /// NOTE: this wraps XLocaleData2::getAllCurrencies2() in fact.
@@ -179,10 +187,10 @@ public:
     const std::shared_ptr< css::i18n::Calendar2 >& getDefaultCalendar() const;
 
     /// Convenience method to obtain the day names of the default calendar.
-    const css::uno::Sequence< css::i18n::CalendarItem2 > getDefaultCalendarDays() const;
+    css::uno::Sequence< css::i18n::CalendarItem2 > const & getDefaultCalendarDays() const;
 
     /// Convenience method to obtain the month names of the default calendar.
-    const css::uno::Sequence< css::i18n::CalendarItem2 > getDefaultCalendarMonths() const;
+    css::uno::Sequence< css::i18n::CalendarItem2 > const & getDefaultCalendarMonths() const;
 
     /** If the secondary calendar, if any, is of the name passed AND number
         formats using it usually use the E or EE keyword (EC|EEC). */
@@ -198,7 +206,7 @@ public:
         Indian grouping. The sal_Int32* getConstArray() can be passed directly
         to the ::rtl::math::doubleToString() methods as argument for the
         pGroups parameter. */
-    const css::uno::Sequence< sal_Int32 > getDigitGrouping() const;
+    css::uno::Sequence< sal_Int32 > getDigitGrouping() const;
 
     // Functionality of class International methods, LocaleItem
 
@@ -208,6 +216,8 @@ public:
                                     { return getOneLocaleItem( css::i18n::LocaleItem::THOUSAND_SEPARATOR ); }
     const OUString&       getNumDecimalSep() const
                                     { return getOneLocaleItem( css::i18n::LocaleItem::DECIMAL_SEPARATOR ); }
+    const OUString&       getNumDecimalSepAlt() const
+                                    { return getOneLocaleItem( css::i18n::LocaleItem::DECIMAL_SEPARATOR_ALTERNATIVE ); }
     const OUString&       getTimeSep() const
                                     { return getOneLocaleItem( css::i18n::LocaleItem::TIME_SEPARATOR ); }
     const OUString&       getTime100SecSep() const
@@ -236,6 +246,64 @@ public:
                             { return getOneLocaleItem( css::i18n::LocaleItem::LONG_DATE_MONTH_SEPARATOR ); }
     const OUString&       getLongDateYearSep() const
                             { return getOneLocaleItem( css::i18n::LocaleItem::LONG_DATE_YEAR_SEPARATOR ); }
+
+    /** A wrapper around rtl::math::stringToDouble() using the locale dependent
+        decimal separator, group separator, and if needed decimal separator
+        alternative.
+
+        The decimal separator is tried first, if the conversion does not match
+        the entire string then the decimal separator alternative is tried if it
+        occurs in the string and was the reason to stop.
+
+        Leading blanks are skipped, trailing blanks are not skipped. The number
+        is parsed up to the first non-floating point number character, same as
+        rtl::math::stringToDouble() does. The caller is responsible for proper
+        error checking and end comparison.
+
+        @param  rString
+                The string to parse as floating point number.
+        @param  bUseGroupSep
+                Whether group separator is used/accepted during parsing.
+        @param  pStatus
+                Pointer to receive the conversion status as in
+                rtl::math::stringToDouble().
+        @param  pParseEnd
+                Pointer to receive the parse end (exclusive) as in
+                rtl::math::stringToDouble().
+        @return The floating point number as parsed.
+     */
+    double              stringToDouble( const OUString& rString, bool bUseGroupSep,
+                                        rtl_math_ConversionStatus* pStatus, sal_Int32* pParseEnd ) const;
+
+    /** A wrapper around rtl_math_uStringToDouble() using the locale dependent
+        decimal separator, group separator, and if needed decimal separator
+        alternative.
+
+        The decimal separator is tried first, if the conversion does not match
+        the entire string then the decimal separator alternative is tried if it
+        occurs in the string and was the reason to stop.
+
+        Leading blanks are skipped, trailing blanks are not skipped. The number
+        is parsed up to the first non-floating point number character, same as
+        rtl_math_uStringToDouble() does. The caller is responsible for proper
+        error checking and end comparison.
+
+        @param  pBegin
+                The string position to start parsing a floating point number.
+        @param  pEnd
+                The string position to stop parsing, exclusive.
+        @param  bUseGroupSep
+                Whether group separator is used/accepted during parsing.
+        @param  pStatus
+                Pointer to receive the conversion status as in
+                rtl_math_uStringToDouble().
+        @param  pParseEnd
+                Pointer to receive the parse end (exclusive) as in
+                rtl_math_uStringToDouble().
+        @return The floating point number as parsed.
+     */
+    double              stringToDouble( const sal_Unicode* pBegin, const sal_Unicode* pEnd, bool bUseGroupSep,
+                                        rtl_math_ConversionStatus* pStatus, const sal_Unicode** ppParseEnd ) const;
 
     // currency
     const OUString&    getCurrSymbol() const;

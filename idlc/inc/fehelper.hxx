@@ -19,8 +19,8 @@
 #ifndef INCLUDED_IDLC_INC_FEHELPER_HXX
 #define INCLUDED_IDLC_INC_FEHELPER_HXX
 
-#include <asttype.hxx>
-#include <astinterface.hxx>
+#include "asttype.hxx"
+#include "astinterface.hxx"
 
 #include <vector>
 
@@ -29,9 +29,9 @@ class FeDeclarator final
 public:
     FeDeclarator(const OString& name);
     ~FeDeclarator();
-    const OString& getName()
+    const OString& getName() const
         { return m_name; }
-    bool checkType(AstDeclaration const * pType);
+    bool checkType(AstDeclaration const * pType) const;
     static AstType const * compose(AstDeclaration const * pDecl);
 private:
     OString  m_name;
@@ -43,19 +43,13 @@ class FeInheritanceHeader final
 {
 public:
     FeInheritanceHeader(
-        NodeType nodeType, OString* pName, OString* pInherits,
-        std::vector< OString > * typeParameters);
+        NodeType nodeType, OString* pName, OString const * pInherits,
+        std::vector< OString > const * typeParameters);
 
-    ~FeInheritanceHeader()
-    {
-        if ( m_pName )
-            delete m_pName;
-    }
-
-    NodeType getNodeType()
+    NodeType getNodeType() const
         { return m_nodeType; }
     OString* getName()
-        { return m_pName; }
+        { return m_pName.get(); }
     AstDeclaration* getInherits()
         { return m_pInherits; }
 
@@ -63,10 +57,10 @@ public:
     { return m_typeParameters; }
 
 private:
-    void initializeInherits(OString* pinherits);
+    void initializeInherits(OString const * pinherits);
 
     NodeType        m_nodeType;
-    OString* m_pName;
+    std::unique_ptr<OString> m_pName;
     AstDeclaration* m_pInherits;
     std::vector< OString > m_typeParameters;
 };

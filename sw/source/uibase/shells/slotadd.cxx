@@ -19,14 +19,13 @@
 
 #include <config_options.h>
 
-#include "hintids.hxx"
-#include "uiitems.hxx"
-#include "cmdid.h"
+#include <cmdid.h>
+#include <unomid.h>
+#include <svx/unomid.hxx>
 
 #include <svl/globalnameitem.hxx>
-#include <editeng/memberids.hrc>
+#include <editeng/memberids.h>
 #include <svl/imageitm.hxx>
-#include <svl/aeitem.hxx>
 #include <svl/rectitem.hxx>
 #include <sfx2/objitem.hxx>
 #include <sfx2/objsh.hxx>
@@ -77,7 +76,9 @@
 #include <editeng/boxitem.hxx>
 #include <editeng/sizeitem.hxx>
 #include <editeng/lrspitem.hxx>
-#include <svx/xgrad.hxx>
+#include <svx/sdmetitm.hxx>
+#include <svx/sdooitm.hxx>
+#include <svx/sdprcitm.hxx>
 #include <svx/xlnstit.hxx>
 #include <svx/xlnedit.hxx>
 #include <svx/xfillit0.hxx>
@@ -100,16 +101,11 @@
 #include <svx/xftshxy.hxx>
 #include <svx/grafctrl.hxx>
 
-#include <fmtornt.hxx>
 #include <paratr.hxx>
 #include <fmtinfmt.hxx>
-#include <fmtfsize.hxx>
 #include <fmtsrnd.hxx>
-#include "envimg.hxx"
-#include "frmatr.hxx"
-#include "cfgitems.hxx"
-#include "grfatr.hxx"
-#include "fmtline.hxx"
+#include <envimg.hxx>
+#include <fmtline.hxx>
 #include <svx/clipfmtitem.hxx>
 #include <editeng/blinkitem.hxx>
 #include <svl/slstitm.hxx>
@@ -128,11 +124,10 @@
 #include <svx/xflftrit.hxx>
 #include <svx/xlncapit.hxx>
 #include <svx/xlinjoit.hxx>
-#include <svx/AffineMatrixItem.hxx>
 #include <svx/galleryitem.hxx>
 
 #define SFX_TYPEMAP
 #include <sfx2/msg.hxx>
-#include "swslots.hxx"
+#include <swslots.hxx>
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

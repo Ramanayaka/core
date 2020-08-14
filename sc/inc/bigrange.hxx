@@ -23,8 +23,8 @@
 #include "address.hxx"
 #include <algorithm>
 
-static const sal_Int32 nInt32Min = 0x80000000;
-static const sal_Int32 nInt32Max = 0x7fffffff;
+const sal_Int32 nInt32Min = 0x80000000;
+const sal_Int32 nInt32Max = 0x7fffffff;
 
 class ScDocument;
 
@@ -40,6 +40,7 @@ public:
                 : nRow( nRowP ), nCol( nColP ), nTab( nTabP ) {}
             ScBigAddress( const ScBigAddress& r )
                 : nRow( r.nRow ), nCol( r.nCol ), nTab( r.nTab ) {}
+            ScBigAddress( ScBigAddress&& ) = default;
             ScBigAddress( const ScAddress& r )
                 : nRow( r.Row() ), nCol( r.Col() ), nTab( r.Tab() ) {}
 
@@ -64,6 +65,7 @@ public:
 
     ScBigAddress&   operator=( const ScBigAddress& r )
                     { nCol = r.nCol; nRow = r.nRow; nTab = r.nTab; return *this; }
+    ScBigAddress&   operator=( ScBigAddress&& ) = default;
     ScBigAddress&   operator=( const ScAddress& r )
                     { nCol = r.Col(); nRow = r.Row(); nTab = r.Tab(); return *this; }
     bool            operator==( const ScBigAddress& r ) const
@@ -83,21 +85,21 @@ inline ScAddress ScBigAddress::MakeAddress() const
     else if ( nCol > MAXCOL )
         nColA = MAXCOL;
     else
-        nColA = (SCCOL) nCol;
+        nColA = static_cast<SCCOL>(nCol);
 
     if ( nRow < 0 )
         nRowA = 0;
     else if ( nRow > MAXROW )
         nRowA = MAXROW;
     else
-        nRowA = (SCROW) nRow;
+        nRowA = static_cast<SCROW>(nRow);
 
     if ( nTab < 0 )
         nTabA = 0;
     else if ( nTab > MAXTAB )
         nTabA = MAXTAB;
     else
-        nTabA = (SCTAB) nTab;
+        nTabA = static_cast<SCTAB>(nTab);
 
     return ScAddress( nColA, nRowA, nTabA );
 }
@@ -112,6 +114,7 @@ public:
                     ScBigRange() : aStart(), aEnd() {}
                     ScBigRange( const ScBigRange& r )
                         : aStart( r.aStart ), aEnd( r.aEnd ) {}
+                    ScBigRange( ScBigRange&& ) = default;
                     ScBigRange( const ScRange& r )
                         : aStart( r.aStart ), aEnd( r.aEnd ) {}
                     ScBigRange( sal_Int32 nCol1, sal_Int32 nRow1, sal_Int32 nTab1,
@@ -122,12 +125,12 @@ public:
     void    Set( sal_Int32 nCol1, sal_Int32 nRow1, sal_Int32 nTab1,
                      sal_Int32 nCol2, sal_Int32 nRow2, sal_Int32 nTab2 )
                 { aStart.Set( nCol1, nRow1, nTab1 );
-                    aEnd.Set( nCol2, nRow2, nTab2 ); }
+                  aEnd.Set( nCol2, nRow2, nTab2 ); }
 
     void    GetVars( sal_Int32& nCol1, sal_Int32& nRow1, sal_Int32& nTab1,
                      sal_Int32& nCol2, sal_Int32& nRow2, sal_Int32& nTab2 ) const
                 { aStart.GetVars( nCol1, nRow1, nTab1 );
-                    aEnd.GetVars( nCol2, nRow2, nTab2 ); }
+                  aEnd.GetVars( nCol2, nRow2, nTab2 ); }
 
     bool    IsValid( const ScDocument* pDoc ) const
                 { return aStart.IsValid( pDoc ) && aEnd.IsValid( pDoc ); }
@@ -141,6 +144,7 @@ public:
 
     ScBigRange&     operator=( const ScBigRange& r )
                         { aStart = r.aStart; aEnd = r.aEnd; return *this; }
+    ScBigRange&     operator=( ScBigRange&& ) = default;
     bool            operator==( const ScBigRange& r ) const
                         { return (aStart == r.aStart) && (aEnd == r.aEnd); }
     bool            operator!=( const ScBigRange& r ) const

@@ -20,49 +20,78 @@
 #ifndef INCLUDED_VCL_INC_IMPGRAPH_HXX
 #define INCLUDED_VCL_INC_IMPGRAPH_HXX
 
+#include <vcl/dllapi.h>
+#include <vcl/GraphicExternalLink.hxx>
+#include <vcl/gdimtf.hxx>
+#include <vcl/graph.hxx>
+#include "graphic/Manager.hxx"
+#include "graphic/GraphicID.hxx"
+
 struct ImpSwapInfo
 {
     MapMode     maPrefMapMode;
     Size        maPrefSize;
+    Size        maSizePixel;
+
+    bool mbIsAnimated;
+    bool mbIsEPS;
+    bool mbIsTransparent;
+    bool mbIsAlpha;
+
+    sal_uInt32 mnAnimationLoopCount;
 };
 
 class OutputDevice;
 class GfxLink;
-struct ImpSwapFile;
+class ImpSwapFile;
 class GraphicConversionParameters;
+class ImpGraphic;
 
-class ImpGraphic final
+class VCL_DLLPUBLIC ImpGraphic final
 {
     friend class Graphic;
+    friend class GraphicID;
+    friend class vcl::graphic::Manager;
 
 private:
 
     GDIMetaFile                  maMetaFile;
-    BitmapEx                     maEx;
+    BitmapEx                     maBitmapEx;
+    /// If maBitmapEx is empty, this preferred size will be set on it when it gets initialized.
+    Size                         maExPrefSize;
     ImpSwapInfo                  maSwapInfo;
     std::unique_ptr<Animation>   mpAnimation;
     std::shared_ptr<GraphicReader> mpContext;
     std::shared_ptr<ImpSwapFile> mpSwapFile;
-    std::unique_ptr<GfxLink>     mpGfxLink;
+    std::shared_ptr<GfxLink>     mpGfxLink;
     GraphicType                  meType;
     mutable sal_uLong            mnSizeBytes;
     bool                         mbSwapOut;
     bool                         mbDummyContext;
-    SvgDataPtr                   maSvgData;
-    css::uno::Sequence<sal_Int8> maPdfData;
+    std::shared_ptr<VectorGraphicData> maVectorGraphicData;
+    // cache checksum computation
+    mutable BitmapChecksum       mnChecksum = 0;
 
-private:
+    std::unique_ptr<GraphicID>   mpGraphicID;
+    GraphicExternalLink          maGraphicExternalLink;
 
-                        ImpGraphic();
-                        ImpGraphic( const ImpGraphic& rImpGraphic );
-                        ImpGraphic( ImpGraphic&& rImpGraphic );
-                        ImpGraphic( const Bitmap& rBmp );
-                        ImpGraphic( const BitmapEx& rBmpEx );
-                        ImpGraphic(const SvgDataPtr& rSvgDataPtr);
-                        ImpGraphic( const Animation& rAnimation );
-                        ImpGraphic( const GDIMetaFile& rMtf );
+    std::chrono::high_resolution_clock::time_point maLastUsed;
+    bool mbPrepared;
+
 public:
-                        ~ImpGraphic();
+    ImpGraphic();
+    ImpGraphic( const ImpGraphic& rImpGraphic );
+    ImpGraphic( ImpGraphic&& rImpGraphic ) noexcept;
+    ImpGraphic( const GraphicExternalLink& rExternalLink);
+    ImpGraphic( const Bitmap& rBmp );
+    ImpGraphic( const BitmapEx& rBmpEx );
+    ImpGraphic(const std::shared_ptr<VectorGraphicData>& rVectorGraphicDataPtr);
+    ImpGraphic( const Animation& rAnimation );
+    ImpGraphic( const GDIMetaFile& rMtf );
+    ~ImpGraphic();
+
+    void ImplSetPrepared(bool bAnimated, const Size* pSizeHint);
+
 private:
 
     ImpGraphic&         operator=( const ImpGraphic& rImpGraphic );
@@ -70,7 +99,24 @@ private:
     bool                operator==( const ImpGraphic& rImpGraphic ) const;
     bool                operator!=( const ImpGraphic& rImpGraphic ) const { return !( *this == rImpGraphic ); }
 
-    void                ImplCreateSwapInfo();
+    OUString const & getOriginURL() const
+    {
+        return maGraphicExternalLink.msURL;
+    }
+
+    void setOriginURL(OUString const & rOriginURL)
+    {
+        maGraphicExternalLink.msURL = rOriginURL;
+    }
+
+    OString getUniqueID()
+    {
+        if (!mpGraphicID)
+            mpGraphicID.reset(new GraphicID(*this));
+        return mpGraphicID->getIDString();
+    }
+
+    void                createSwapInfo();
     void                ImplClearGraphics();
     void                ImplClear();
 
@@ -83,12 +129,17 @@ private:
     bool                ImplIsAnimated() const;
     bool                ImplIsEPS() const;
 
+    bool isAvailable() const;
+    bool makeAvailable();
+
     Bitmap              ImplGetBitmap(const GraphicConversionParameters& rParameters) const;
     BitmapEx            ImplGetBitmapEx(const GraphicConversionParameters& rParameters) const;
     /// Gives direct access to the contained BitmapEx.
     const BitmapEx&     ImplGetBitmapExRef() const;
     Animation           ImplGetAnimation() const;
     const GDIMetaFile&  ImplGetGDIMetaFile() const;
+
+    Size                ImplGetSizePixel() const;
 
     Size                ImplGetPrefSize() const;
     void                ImplSetPrefSize( const Size& rPrefSize );
@@ -115,7 +166,7 @@ private:
     void                ImplSetAnimationNotifyHdl( const Link<Animation*,void>& rLink );
     Link<Animation*,void> ImplGetAnimationNotifyHdl() const;
 
-    sal_uLong           ImplGetAnimationLoopCount() const;
+    sal_uInt32          ImplGetAnimationLoopCount() const;
 
 private:
 
@@ -125,16 +176,11 @@ private:
     bool                ImplReadEmbedded( SvStream& rIStream );
     bool                ImplWriteEmbedded( SvStream& rOStream );
 
-    bool                ImplSwapIn();
-    bool                ImplSwapIn( SvStream* pIStm );
+    bool                swapInFromStream(SvStream* pIStm);
 
-    bool                ImplSwapOut();
-    void                ImplSwapOutAsLink();
-    bool                ImplSwapOut( SvStream* pOStm );
-
-    bool                ImplIsSwapOut() const { return mbSwapOut;}
     bool                ImplIsDummyContext() const { return mbDummyContext; }
-    void                ImplSetLink( const GfxLink& );
+    void                ImplSetLink( const std::shared_ptr<GfxLink>& );
+    std::shared_ptr<GfxLink> ImplGetSharedGfxLink() const;
     GfxLink             ImplGetLink();
     bool                ImplIsLink() const;
 
@@ -145,7 +191,22 @@ private:
     friend void         WriteImpGraphic(SvStream& rOStm, const ImpGraphic& rImpGraphic);
     friend void         ReadImpGraphic(SvStream& rIStm, ImpGraphic& rImpGraphic);
 
-    const SvgDataPtr&   getSvgData() const { return maSvgData; }
+    const std::shared_ptr<VectorGraphicData>& getVectorGraphicData() const;
+
+    /// Gets the bitmap replacement for a vector graphic.
+    BitmapEx getVectorGraphicReplacement() const;
+
+    bool ensureAvailable () const;
+
+    bool loadPrepared();
+
+    sal_Int32 getPageNumber() const;
+
+public:
+    bool swapIn();
+    bool swapOut();
+    bool isSwappedOut() const { return mbSwapOut; }
+    OUString getSwapFileURL();
 };
 
 #endif // INCLUDED_VCL_INC_IMPGRAPH_HXX

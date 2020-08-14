@@ -22,7 +22,6 @@
 #include <rtl/ustring.hxx>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/ColumnSearch.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <map>
 #include <memory>
 
@@ -67,8 +66,6 @@ const sal_uInt16 TYPE_BIT       = 31;
     public:
         OUString aUIName;        // the name which is the user see (a combination of resource text and aTypeName)
         OUString aTypeName;      // name of type in database
-        OUString aLiteralPrefix; // prefix for quoting
-        OUString aLiteralSuffix; // suffix for quoting
         OUString aCreateParams;  // parameter for creation
         OUString aLocalTypeName;
 
@@ -81,11 +78,9 @@ const sal_uInt16 TYPE_BIT       = 31;
 
         sal_Int16       nSearchType;    // if it is possible to search for type
 
-        bool        bCurrency       : 1,    // currency
+        bool            bCurrency       : 1,    // currency
                         bAutoIncrement  : 1,    // if automatic incrementing field
-                        bNullable       : 1,    // if field can be NULL
-                        bCaseSensitive  : 1,    // if type is case sensitive
-                        bUnsigned       : 1;    // if type is unsigned
+                        bNullable       : 1;    // if field can be NULL
 
         OTypeInfo()
                 :nPrecision(0)
@@ -97,8 +92,6 @@ const sal_uInt16 TYPE_BIT       = 31;
                 ,bCurrency(false)
                 ,bAutoIncrement(false)
                 ,bNullable(true)
-                ,bCaseSensitive(false)
-                ,bUnsigned(false)
         {}
         const OUString& getDBName() const { return aTypeName; }
 
@@ -113,7 +106,7 @@ const sal_uInt16 TYPE_BIT       = 31;
         @param  _sCreateParams  the create params
         @param  _nPrecision     the precision
         @param  _nScale         the scale
-        @param  _bAutoIncrement if it is a auto increment
+        @param  _bAutoIncrement if it is an auto increment
         @param  _brForceToType  true when type was found which has some differences
     */
     TOTypeInfoSP getTypeInfoFromType(const OTypeInfoMap& _rTypeInfo,

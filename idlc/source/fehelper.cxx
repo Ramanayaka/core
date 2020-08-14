@@ -19,7 +19,7 @@
 
 #include <fehelper.hxx>
 #include <errorhandler.hxx>
-#include "idlc.hxx"
+#include <idlc.hxx>
 
 FeDeclarator::FeDeclarator(const OString& name)
     : m_name(name)
@@ -30,17 +30,14 @@ FeDeclarator::~FeDeclarator()
 {
 }
 
-bool FeDeclarator::checkType(AstDeclaration const * type)
+bool FeDeclarator::checkType(AstDeclaration const * type) const
 {
     OString tmp(m_name);
     sal_Int32 count = m_name.lastIndexOf( ':' );
     if( count != -1 )
         tmp = m_name.copy( count+1 );
 
-    if (tmp == type->getLocalName())
-        return false;
-    else
-        return true;
+    return tmp != type->getLocalName();
 }
 
 AstType const * FeDeclarator::compose(AstDeclaration const * pDecl)
@@ -58,8 +55,8 @@ AstType const * FeDeclarator::compose(AstDeclaration const * pDecl)
 }
 
 FeInheritanceHeader::FeInheritanceHeader(
-    NodeType nodeType, OString* pName, OString* pInherits,
-    std::vector< OString > * typeParameters)
+    NodeType nodeType, OString* pName, OString const * pInherits,
+    std::vector< OString > const * typeParameters)
     : m_nodeType(nodeType)
     , m_pName(pName)
     , m_pInherits(nullptr)
@@ -70,35 +67,35 @@ FeInheritanceHeader::FeInheritanceHeader(
     initializeInherits(pInherits);
 }
 
-void FeInheritanceHeader::initializeInherits(OString* pInherits)
+void FeInheritanceHeader::initializeInherits(OString const * pInherits)
 {
-    if ( pInherits )
+    if ( !pInherits )
+        return;
+
+    AstScope* pScope = idlc()->scopes()->topNonNull();
+    AstDeclaration* pDecl = pScope->lookupByName(*pInherits);
+    if ( pDecl )
     {
-        AstScope* pScope = idlc()->scopes()->topNonNull();
-        AstDeclaration* pDecl = pScope->lookupByName(*pInherits);
-        if ( pDecl )
+        AstDeclaration const * resolved = resolveTypedefs(pDecl);
+        if ( resolved->getNodeType() == getNodeType()
+             && (resolved->getNodeType() != NT_interface
+                 || static_cast< AstInterface const * >(
+                     resolved)->isDefined()) )
         {
-            AstDeclaration const * resolved = resolveTypedefs(pDecl);
-            if ( resolved->getNodeType() == getNodeType()
-                 && (resolved->getNodeType() != NT_interface
-                     || static_cast< AstInterface const * >(
-                         resolved)->isDefined()) )
+            if ( ErrorHandler::checkPublished( pDecl ) )
             {
-                if ( ErrorHandler::checkPublished( pDecl ) )
-                {
-                    m_pInherits = pDecl;
-                }
-            }
-            else
-            {
-                ErrorHandler::inheritanceError(
-                    getNodeType(), getName(), pDecl);
+                m_pInherits = pDecl;
             }
         }
         else
         {
-            ErrorHandler::lookupError(*pInherits);
+            ErrorHandler::inheritanceError(
+                getNodeType(), getName(), pDecl);
         }
+    }
+    else
+    {
+        ErrorHandler::lookupError(*pInherits);
     }
 }
 

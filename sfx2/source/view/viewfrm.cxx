@@ -17,11 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
+#include <config_feature_desktop.h>
 #include <osl/file.hxx>
+#include <sfx2/docfilt.hxx>
 #include <sfx2/infobar.hxx>
+#include <sfx2/sfxsids.hrc>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/classificationhelper.hxx>
+#include <sfx2/notebookbar/SfxNotebookBar.hxx>
 #include <com/sun/star/document/MacroExecMode.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/DispatchRecorder.hpp>
@@ -29,21 +32,22 @@
 #include <com/sun/star/frame/XLoadable.hpp>
 #include <com/sun/star/frame/XLayoutManager.hpp>
 #include <com/sun/star/frame/XComponentLoader.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
 #include <officecfg/Office/Common.hxx>
+#include <officecfg/Setup.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <vcl/splitwin.hxx>
+#include <vcl/button.hxx>
+#include <vcl/wrkwin.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <svl/intitem.hxx>
 #include <svl/visitem.hxx>
 #include <svl/stritem.hxx>
 #include <svl/eitem.hxx>
-#include <svl/slstitm.hxx>
 #include <svl/whiter.hxx>
 #include <svl/undo.hxx>
-#include <vcl/layout.hxx>
-#include <svtools/sfxecode.hxx>
+#include <vcl/stdtext.hxx>
+#include <vcl/weld.hxx>
 #include <svtools/miscopt.hxx>
-#include <svtools/ehdl.hxx>
 #include <tools/diagnose_ex.h>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/frame/XFramesSupplier.hpp>
@@ -59,35 +63,33 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <com/sun/star/uri/XVndSunStarScriptUrl.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/embed/EmbedStates.hpp>
 #include <com/sun/star/document/XViewDataSupplier.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/task/InteractionHandler.hpp>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 #include <unotools/ucbhelper.hxx>
+#include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/docpasswordrequest.hxx>
 #include <comphelper/docpasswordhelper.hxx>
 
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/ucb/XContent.hpp>
 
 #include <basic/basmgr.hxx>
 #include <basic/sbmod.hxx>
 #include <basic/sbmeth.hxx>
-#include <basic/sbx.hxx>
-#include <comphelper/storagehelper.hxx>
-#include <svtools/asynclink.hxx>
-#include <svl/sharecontrolfile.hxx>
-#include <svtools/svtools.hrc>
+#include <svtools/strings.hrc>
 #include <svtools/svtresid.hxx>
 #include <framework/framelistanalyzer.hxx>
 #include <shellimpl.hxx>
 
-#include <boost/optional.hpp>
+#include <optional>
+
+#include <unotools/configmgr.hxx>
+#include <comphelper/sequenceashashmap.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -100,45 +102,36 @@ using ::com::sun::star::document::XViewDataSupplier;
 using ::com::sun::star::container::XIndexContainer;
 
 // Due to ViewFrame::Current
-#include "appdata.hxx"
+#include <appdata.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/objface.hxx>
-#include "openflag.hxx"
-#include "objshimp.hxx"
+#include <openflag.hxx>
+#include <objshimp.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
-#include "arrdecl.hxx"
-#include "sfxtypes.hxx"
 #include <sfx2/request.hxx>
 #include <sfx2/docfac.hxx>
 #include <sfx2/ipclient.hxx>
 #include <sfx2/sfxresid.hxx>
-#include <sfx2/objitem.hxx>
 #include <sfx2/viewfac.hxx>
 #include <sfx2/event.hxx>
 #include <sfx2/fcontnr.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/module.hxx>
-#include <sfx2/msgpool.hxx>
-#include "viewimp.hxx"
-#include <sfx2/sfxbasecontroller.hxx>
-#include <sfx2/sfx.hrc>
-#include "view.hrc"
-#include <sfx2/frmdescr.hxx>
 #include <sfx2/sfxuno.hxx>
 #include <sfx2/progress.hxx>
 #include <sfx2/sidebar/Sidebar.hxx>
-#include "workwin.hxx"
-#include "helper.hxx"
+#include <workwin.hxx>
 #include <sfx2/minfitem.hxx>
-#include "app.hrc"
+#include <sfx2/strings.hrc>
 #include "impviewframe.hxx"
+#include <vcl/commandinfoprovider.hxx>
+#include <vcl/svapp.hxx>
 
-#define SfxViewFrame
-#include "sfxslots.hxx"
-#undef SfxViewFrame
+#define ShellClass_SfxViewFrame
+#include <sfxslots.hxx>
 
 SFX_IMPL_SUPERCLASS_INTERFACE(SfxViewFrame,SfxShell)
 
@@ -152,59 +145,77 @@ void SfxViewFrame::InitInterface_Impl()
 #endif
 }
 
+namespace {
 /// Asks the user if editing a read-only document is really wanted.
-class SfxEditDocumentDialog : public MessageDialog
+class SfxEditDocumentDialog : public weld::MessageDialogController
 {
 private:
-    VclPtr<PushButton> m_pEditDocument;
-    VclPtr<PushButton> m_pCancel;
+    std::unique_ptr<weld::Button> m_xEditDocument;
+    std::unique_ptr<weld::Button> m_xCancel;
 
 public:
-    SfxEditDocumentDialog(vcl::Window* pParent);
-    ~SfxEditDocumentDialog() override;
-    void dispose() override;
+    SfxEditDocumentDialog(weld::Widget* pParent);
 };
 
-SfxEditDocumentDialog::SfxEditDocumentDialog(vcl::Window* pParent)
-    : MessageDialog(pParent, "EditDocumentDialog", "sfx/ui/editdocumentdialog.ui")
+SfxEditDocumentDialog::SfxEditDocumentDialog(weld::Widget* pParent)
+    : MessageDialogController(pParent, "sfx/ui/editdocumentdialog.ui",
+            "EditDocumentDialog")
+    , m_xEditDocument(m_xBuilder->weld_button("edit"))
+    , m_xCancel(m_xBuilder->weld_button("cancel"))
 {
-    get(m_pEditDocument, "edit");
-    get(m_pCancel, "cancel");
 }
 
-SfxEditDocumentDialog::~SfxEditDocumentDialog()
+class SfxQueryOpenAsTemplate
 {
-    disposeOnce();
-}
-
-void SfxEditDocumentDialog::dispose()
-{
-    m_pEditDocument.clear();
-    m_pCancel.clear();
-    MessageDialog::dispose();
-}
-
-/// Is this read-only object shell opened via .uno:SignPDF?
-static bool IsSignPDF(const SfxObjectShellRef& xObjSh)
-{
-    if (!xObjSh.is())
-        return false;
-
-    SfxMedium* pMedium = xObjSh->GetMedium();
-    if (pMedium && !pMedium->IsOriginallyReadOnly())
+private:
+    std::unique_ptr<weld::MessageDialog> m_xQueryBox;
+public:
+    SfxQueryOpenAsTemplate(weld::Window* pParent, bool bAllowIgnoreLock, LockFileEntry& rLockData)
+        : m_xQueryBox(Application::CreateMessageDialog(pParent, VclMessageType::Question,
+                                                       VclButtonsType::NONE, ""))
     {
-        std::shared_ptr<const SfxFilter> pFilter = pMedium->GetFilter();
-        if (pFilter && pFilter->GetName() == "draw_pdf_import")
-            return true;
+        m_xQueryBox->add_button(SfxResId(STR_QUERY_OPENASTEMPLATE_OPENCOPY_BTN), RET_YES);
+        bAllowIgnoreLock
+            = bAllowIgnoreLock && officecfg::Office::Common::Misc::AllowOverrideLocking::get();
+        if (bAllowIgnoreLock)
+            m_xQueryBox->add_button(SfxResId(STR_QUERY_OPENASTEMPLATE_OPEN_BTN), RET_IGNORE);
+        m_xQueryBox->add_button(GetStandardText( StandardButtonType::Cancel ), RET_CANCEL);
+        m_xQueryBox->set_primary_text(QueryString(bAllowIgnoreLock, rLockData));
+        m_xQueryBox->set_default_response(RET_YES);
     }
+    short run() { return m_xQueryBox->run(); }
 
-    return false;
-}
+private:
+    static OUString QueryString(bool bAllowIgnoreLock, LockFileEntry& rLockData)
+    {
+        OUString sLockUserData;
+        if (!rLockData[LockFileComponent::OOOUSERNAME].isEmpty())
+            sLockUserData = rLockData[LockFileComponent::OOOUSERNAME];
+        else
+            sLockUserData = rLockData[LockFileComponent::SYSUSERNAME];
 
-static bool AskPasswordToModify_Impl( const uno::Reference< task::XInteractionHandler >& xHandler, const OUString& aPath, const std::shared_ptr<const SfxFilter>& pFilter, sal_uInt32 nPasswordHash, const uno::Sequence< beans::PropertyValue >& aInfo )
+        if (!sLockUserData.isEmpty() && !rLockData[LockFileComponent::EDITTIME].isEmpty())
+            sLockUserData += " ( " + rLockData[LockFileComponent::EDITTIME] + " )";
+
+        if (!sLockUserData.isEmpty())
+            sLockUserData = "\n\n" + sLockUserData + "\n";
+
+        const bool bUseLockStr = bAllowIgnoreLock || !sLockUserData.isEmpty();
+
+        OUString sMsg(
+            SfxResId(bUseLockStr ? STR_QUERY_OPENASTEMPLATE_LOCKED : STR_QUERY_OPENASTEMPLATE));
+
+        if (bAllowIgnoreLock)
+            sMsg += "\n\n" + SfxResId(STR_QUERY_OPENASTEMPLATE_ALLOW_IGNORE);
+
+        return sMsg.replaceFirst("%LOCKINFO", sLockUserData);
+    }
+};
+
+bool AskPasswordToModify_Impl( const uno::Reference< task::XInteractionHandler >& xHandler, const OUString& aPath, const std::shared_ptr<const SfxFilter>& pFilter, sal_uInt32 nPasswordHash, const uno::Sequence< beans::PropertyValue >& aInfo )
 {
     // TODO/LATER: In future the info should replace the direct hash completely
-    bool bResult = ( !nPasswordHash && !aInfo.getLength() );
+    bool bResult = ( !nPasswordHash && !aInfo.hasElements() );
 
     SAL_WARN_IF( !(pFilter && ( pFilter->GetFilterFlags() & SfxFilterFlags::PASSWORDTOMODIFY )), "sfx.view",
                        "PasswordToModify feature is active for a filter that does not support it!");
@@ -230,7 +241,7 @@ static bool AskPasswordToModify_Impl( const uno::Reference< task::XInteractionHa
 
             if ( pPasswordRequest->isPassword() )
             {
-                if ( aInfo.getLength() )
+                if ( aInfo.hasElements() )
                 {
                     bResult = ::comphelper::DocPasswordHelper::IsModifyPasswordCorrect( pPasswordRequest->getPasswordToModify(), aInfo );
                 }
@@ -249,6 +260,7 @@ static bool AskPasswordToModify_Impl( const uno::Reference< task::XInteractionHa
 
     return bResult;
 }
+}
 
 void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
 {
@@ -256,12 +268,43 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
     switch ( rReq.GetSlot() )
     {
         case SID_EDITDOC:
+        case SID_READONLYDOC:
         {
             // Due to Double occupancy in toolboxes (with or without Ctrl),
             // it is also possible that the slot is enabled, but Ctrl-click
             // despite this is not!
             if( !pSh || !pSh->HasName() || !(pSh->Get_Impl()->nLoadedFlags & SfxLoadedFlags::MAINDOCUMENT ))
                 break;
+
+            if (pSh->isEditDocLocked())
+                break;
+
+            // Only change read-only UI and remove info bar when we succeed
+            struct ReadOnlyUIGuard
+            {
+                SfxViewFrame* m_pFrame;
+                SfxObjectShell* m_pSh;
+                SfxMedium* m_pMed = nullptr;
+                bool m_bSetRO;
+                ReadOnlyUIGuard(SfxViewFrame* pFrame, SfxObjectShell* p_Sh)
+                    : m_pFrame(pFrame), m_pSh(p_Sh), m_bSetRO(p_Sh->IsReadOnlyUI())
+                {}
+                ~ReadOnlyUIGuard() COVERITY_NOEXCEPT_FALSE
+                {
+                    if (m_bSetRO != m_pSh->IsReadOnlyUI())
+                    {
+                        m_pSh->SetReadOnlyUI(m_bSetRO);
+                        if (!m_bSetRO)
+                            m_pFrame->RemoveInfoBar("readonly");
+                        if (m_pMed)
+                        {
+                            // tdf#116066: DoSaveCompleted should be called after SetReadOnlyUI
+                            m_pSh->DoSaveCompleted(m_pMed);
+                            m_pSh->Broadcast(SfxHint(SfxHintId::ModeChanged));
+                        }
+                    }
+                }
+            } aReadOnlyUIGuard(this, pSh);
 
             SfxMedium* pMed = pSh->GetMedium();
 
@@ -312,16 +355,16 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                     }
                 }
                 nOpenMode = SFX_STREAM_READONLY;
-                pSh->SetReadOnlyUI();
+                aReadOnlyUIGuard.m_bSetRO = true;
             }
             else
             {
                 if ( pSh->IsReadOnlyMedium()
-                  && ( pSh->GetModifyPasswordHash() || pSh->GetModifyPasswordInfo().getLength() )
+                  && ( pSh->GetModifyPasswordHash() || pSh->GetModifyPasswordInfo().hasElements() )
                   && !pSh->IsModifyPasswordEntered() )
                 {
                     const OUString aDocumentName = INetURLObject( pMed->GetOrigURL() ).GetMainURL( INetURLObject::DecodeMechanism::WithCharset );
-                    if( !AskPasswordToModify_Impl( pMed->GetInteractionHandler(), aDocumentName, pMed->GetOrigFilter(), pSh->GetModifyPasswordHash(), pSh->GetModifyPasswordInfo() ) )
+                    if( !AskPasswordToModify_Impl( pMed->GetInteractionHandler(), aDocumentName, pMed->GetFilter(), pSh->GetModifyPasswordHash(), pSh->GetModifyPasswordInfo() ) )
                     {
                         // this is a read-only document, if it has "Password to modify"
                         // the user should enter password before he can edit the document
@@ -332,10 +375,8 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                     pSh->SetModifyPasswordEntered();
                 }
 
-                // Remove infobar if document was read-only (after password check)
-                RemoveInfoBar("readonly");
-
                 nOpenMode = pSh->IsOriginallyReadOnlyMedium() ? SFX_STREAM_READONLY : SFX_STREAM_READWRITE;
+                aReadOnlyUIGuard.m_bSetRO = false;
 
                 // if only the view was in the readonly mode then there is no need to do the reload
                 if ( !pSh->IsReadOnlyMedium() )
@@ -344,12 +385,8 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                     // open mode among other things, so call SetOpenMode before
                     // SetReadOnlyUI:
                     pMed->SetOpenMode( nOpenMode );
-                    pSh->SetReadOnlyUI( false );
                     return;
                 }
-
-
-                pSh->SetReadOnlyUI( false );
             }
 
             if ( rReq.IsAPI() )
@@ -395,32 +432,83 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                  || pVersionItem )
             // <- tdf#82744
             {
+                bNeedsReload = true;
+
                 bool bOK = false;
-                if ( !pVersionItem )
+                bool bRetryIgnoringLock = false;
+                bool bOpenTemplate = false;
+                std::optional<bool> aOrigROVal;
+                if (!pVersionItem)
                 {
-                    bool bHasStorage = pMed->HasStorage_Impl();
-                    // switching edit mode could be possible without reload
-                    if ( bHasStorage && pMed->GetStorage() == pSh->GetStorage() )
+                    auto pRO = pMed->GetItemSet()->GetItem<SfxBoolItem>(SID_DOC_READONLY, false);
+                    if (pRO)
+                        aOrigROVal = pRO->GetValue();
+                }
+                do {
+                    LockFileEntry aLockData;
+                    if ( !pVersionItem )
                     {
-                        // TODO/LATER: faster creation of copy
-                        if ( !pSh->ConnectTmpStorage_Impl( pMed->GetStorage(), pMed ) )
-                            return;
+                        if (bRetryIgnoringLock)
+                            pMed->ResetError();
+
+                        bool bHasStorage = pMed->HasStorage_Impl();
+                        // switching edit mode could be possible without reload
+                        if ( bHasStorage && pMed->GetStorage() == pSh->GetStorage() )
+                        {
+                            // TODO/LATER: faster creation of copy
+                            if ( !pSh->ConnectTmpStorage_Impl( pMed->GetStorage(), pMed ) )
+                                return;
+                        }
+
+                        pMed->CloseAndRelease();
+                        pMed->SetOpenMode( nOpenMode );
+                        // We need to clear the SID_DOC_READONLY item from the set, to allow
+                        // MediaDescriptor::impl_openStreamWithURL (called indirectly by
+                        // SfxMedium::CompleteReOpen) to properly fill input stream of the
+                        // descriptor, even when the file can't be open in read-write mode.
+                        // Only then can following call to SfxMedium::LockOrigFileOnDemand
+                        // return proper information about who has locked the file, to show
+                        // in the SfxQueryOpenAsTemplate box below; otherwise it exits right
+                        // after call to SfxMedium::GetMedium_Impl. This mimics what happens
+                        // when the file is opened initially, when filter detection code also
+                        // calls MediaDescriptor::impl_openStreamWithURL without the item set.
+                        pMed->GetItemSet()->ClearItem(SID_DOC_READONLY);
+                        pMed->CompleteReOpen();
+                        pMed->GetItemSet()->Put(
+                            SfxBoolItem(SID_DOC_READONLY, !(nOpenMode & StreamMode::WRITE)));
+                        if ( nOpenMode & StreamMode::WRITE )
+                        {
+                            auto eResult = pMed->LockOrigFileOnDemand(
+                                true, true, bRetryIgnoringLock, &aLockData);
+                            bRetryIgnoringLock
+                                = eResult == SfxMedium::LockFileResult::FailedLockFile;
+                        }
+
+                        // LockOrigFileOnDemand might set the readonly flag itself, it should be set back
+                        pMed->GetItemSet()->Put( SfxBoolItem( SID_DOC_READONLY, !( nOpenMode & StreamMode::WRITE ) ) );
+
+                        if ( !pMed->GetErrorCode() )
+                            bOK = true;
                     }
 
-                    pMed->CloseAndRelease();
-                    pMed->GetItemSet()->Put( SfxBoolItem( SID_DOC_READONLY, !( nOpenMode & StreamMode::WRITE ) ) );
-                    pMed->SetOpenMode( nOpenMode );
+                    if( !bOK )
+                    {
+                        if (nOpenMode == SFX_STREAM_READWRITE && !rReq.IsAPI())
+                        {
+                            // css::sdbcx::User offering to open it as a template
+                            SfxQueryOpenAsTemplate aBox(GetWindow().GetFrameWeld(),
+                                                        bRetryIgnoringLock, aLockData);
 
-                    pMed->CompleteReOpen();
-                    if ( nOpenMode & StreamMode::WRITE )
-                        pMed->LockOrigFileOnDemand( false, true );
-
-                    // LockOrigFileOnDemand might set the readonly flag itself, it should be set back
-                    pMed->GetItemSet()->Put( SfxBoolItem( SID_DOC_READONLY, !( nOpenMode & StreamMode::WRITE ) ) );
-
-                    if ( !pMed->GetErrorCode() )
-                        bOK = true;
+                            short nUserAnswer = aBox.run();
+                            bOpenTemplate = RET_YES == nUserAnswer;
+                            // Always reset this here to avoid infinite loop
+                            bRetryIgnoringLock = RET_IGNORE == nUserAnswer;
+                        }
+                        else
+                            bRetryIgnoringLock = false;
+                    }
                 }
+                while ( !bOK && bRetryIgnoringLock );
 
                 if( !bOK )
                 {
@@ -431,6 +519,10 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                     {
                         pMed->ResetError();
                         pMed->SetOpenMode( SFX_STREAM_READONLY );
+                        if (aOrigROVal)
+                            pMed->GetItemSet()->Put(SfxBoolItem(SID_DOC_READONLY, *aOrigROVal));
+                        else
+                            pMed->GetItemSet()->ClearItem(SID_DOC_READONLY);
                         pMed->ReOpen();
                         pSh->DoSaveCompleted( pMed );
                     }
@@ -440,10 +532,7 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
 
                     if ( nOpenMode == SFX_STREAM_READWRITE && !rReq.IsAPI() )
                     {
-                        // css::sdbcx::User offering to open it as a template
-                        ScopedVclPtrInstance<MessageDialog> aBox(&GetWindow(), SfxResId(STR_QUERY_OPENASTEMPLATE),
-                                           VclMessageType::Question, VclButtonsType::YesNo);
-                        if ( RET_YES == aBox->Execute() )
+                        if ( bOpenTemplate )
                         {
                             SfxApplication* pApp = SfxGetpApp();
                             SfxAllItemSet aSet( pApp->GetPool() );
@@ -466,9 +555,12 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                             GetDispatcher()->Execute( SID_OPENDOC, SfxCallMode::ASYNCHRON, aSet );
                             return;
                         }
-                        else
-                            nErr = ERRCODE_NONE;
+
+                        nErr = ERRCODE_NONE;
                     }
+
+                    // Keep the read-only UI
+                    aReadOnlyUIGuard.m_bSetRO = true;
 
                     ErrorHandler::HandleError( nErr );
                     rReq.SetReturnValue(
@@ -477,18 +569,17 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                 }
                 else
                 {
-                    pSh->DoSaveCompleted( pMed );
-                    pSh->Broadcast( SfxHint(SfxHintId::ModeChanged) );
+                    aReadOnlyUIGuard.m_pMed = pMed;
                     rReq.SetReturnValue( SfxBoolItem( rReq.GetSlot(), true ) );
                     rReq.Done( true );
                     return;
                 }
             }
 
-            rReq.AppendItem( SfxBoolItem( SID_FORCERELOAD, true) );
+            rReq.AppendItem( SfxBoolItem( SID_FORCERELOAD, bNeedsReload) );
             rReq.AppendItem( SfxBoolItem( SID_SILENT, true ));
 
-            SAL_FALLTHROUGH; //TODO ???
+            [[fallthrough]]; //TODO ???
         }
 
         case SID_RELOAD:
@@ -524,9 +615,10 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
             if ( bDo && GetFrame().DocIsModified_Impl() &&
                  !rReq.IsAPI() && ( !pSilentItem || !pSilentItem->GetValue() ) )
             {
-                ScopedVclPtrInstance<MessageDialog> aBox(&GetWindow(), SfxResId(STR_QUERY_LASTVERSION),
-                                   VclMessageType::Question, VclButtonsType::YesNo);
-                bDo = ( RET_YES == aBox->Execute() );
+                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetWindow().GetFrameWeld(),
+                                                                         VclMessageType::Question, VclButtonsType::YesNo,
+                                                                         SfxResId(STR_QUERY_LASTVERSION)));
+                bDo = RET_YES == xBox->run();
             }
 
             if ( bDo )
@@ -544,24 +636,24 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                 // TODO: when UNO ViewFactories are available for SFX-based documents, the below code should
                 // be UNOized, too
                 typedef ::std::pair< Reference< XFrame >, SfxInterfaceId >  ViewDescriptor;
-                ::std::list< ViewDescriptor > aViewFrames;
+                ::std::vector< ViewDescriptor > aViewFrames;
                 SfxViewFrame *pView = GetFirst( xOldObj );
                 while ( pView )
                 {
                     Reference< XFrame > xFrame( pView->GetFrame().GetFrameInterface() );
                     SAL_WARN_IF( !xFrame.is(), "sfx.view", "SfxViewFrame::ExecReload_Impl: no XFrame?!");
-                    aViewFrames.push_back( ViewDescriptor( xFrame, pView->GetCurViewId() ) );
+                    aViewFrames.emplace_back( xFrame, pView->GetCurViewId() );
 
                     pView = GetNext( *pView, xOldObj );
                 }
 
-                DELETEZ( xOldObj->Get_Impl()->pReloadTimer );
+                xOldObj->Get_Impl()->pReloadTimer.reset();
 
-                SfxItemSet* pNewSet = nullptr;
+                std::unique_ptr<SfxItemSet> pNewSet;
                 std::shared_ptr<const SfxFilter> pFilter = pMedium->GetFilter();
                 if( pURLItem )
                 {
-                    pNewSet = new SfxAllItemSet( pApp->GetPool() );
+                    pNewSet.reset(new SfxAllItemSet( pApp->GetPool() ));
                     pNewSet->Put( *pURLItem );
 
                     // Filter Detection
@@ -578,7 +670,7 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                 }
                 else
                 {
-                    pNewSet = new SfxAllItemSet( *pMedium->GetItemSet() );
+                    pNewSet.reset(new SfxAllItemSet( *pMedium->GetItemSet() ));
                     pNewSet->ClearItem( SID_VIEW_ID );
                     pNewSet->ClearItem( SID_STREAM );
                     pNewSet->ClearItem( SID_INPUTSTREAM );
@@ -598,7 +690,7 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
 
                 // If a salvaged file is present, do not enclose the OrigURL
                 // again, since the Template is invalid after reload.
-                const SfxStringItem* pSalvageItem = SfxItemSet::GetItem<SfxStringItem>(pNewSet, SID_DOC_SALVAGE, false);
+                const SfxStringItem* pSalvageItem = SfxItemSet::GetItem<SfxStringItem>(pNewSet.get(), SID_DOC_SALVAGE, false);
                 if( pSalvageItem )
                 {
                     pNewSet->ClearItem( SID_DOC_SALVAGE );
@@ -621,9 +713,9 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                 if ( pSilentItem && pSilentItem->GetValue() )
                     pNewSet->Put( SfxBoolItem( SID_SILENT, true ) );
 
-                const SfxUnoAnyItem* pInteractionItem = SfxItemSet::GetItem<SfxUnoAnyItem>(pNewSet, SID_INTERACTIONHANDLER, false);
-                const SfxUInt16Item* pMacroExecItem = SfxItemSet::GetItem<SfxUInt16Item>(pNewSet, SID_MACROEXECMODE, false);
-                const SfxUInt16Item* pDocTemplateItem = SfxItemSet::GetItem<SfxUInt16Item>(pNewSet, SID_UPDATEDOCMODE, false);
+                const SfxUnoAnyItem* pInteractionItem = SfxItemSet::GetItem<SfxUnoAnyItem>(pNewSet.get(), SID_INTERACTIONHANDLER, false);
+                const SfxUInt16Item* pMacroExecItem = SfxItemSet::GetItem<SfxUInt16Item>(pNewSet.get(), SID_MACROEXECMODE, false);
+                const SfxUInt16Item* pDocTemplateItem = SfxItemSet::GetItem<SfxUInt16Item>(pNewSet.get(), SID_UPDATEDOCMODE, false);
 
                 if (!pInteractionItem)
                 {
@@ -638,7 +730,7 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                     pNewSet->Put( SfxUInt16Item(SID_UPDATEDOCMODE,css::document::UpdateDocMode::ACCORDING_TO_CONFIG) );
 
                 xOldObj->SetModified( false );
-                // Do not chache the old Document! Is invalid when loading
+                // Do not cache the old Document! Is invalid when loading
                 // another document.
 
                 const SfxStringItem* pSavedOptions = SfxItemSet::GetItem<SfxStringItem>(pMedium->GetItemSet(), SID_FILE_FILTEROPTIONS, false);
@@ -675,7 +767,7 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                     xNewObj = nullptr;
                 }
 
-                DELETEZ( pNewSet );
+                pNewSet.reset();
 
                 if( !xNewObj.Is() )
                 {
@@ -689,12 +781,13 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                     }
 
                     // r/o-Doc couldn't be switched to writing mode
-                    if ( bForEdit && SID_EDITDOC == rReq.GetSlot() )
+                    if ( bForEdit && ( SID_EDITDOC == rReq.GetSlot() || SID_READONLYDOC == rReq.GetSlot() ) )
                     {
                         // ask user for opening as template
-                        ScopedVclPtrInstance<MessageDialog> aBox(&GetWindow(), SfxResId(STR_QUERY_OPENASTEMPLATE),
-                                           VclMessageType::Question, VclButtonsType::YesNo);
-                        if ( RET_YES == aBox->Execute() )
+                        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetWindow().GetFrameWeld(),
+                                                                                 VclMessageType::Question, VclButtonsType::YesNo,
+                                                                                 SfxResId(STR_QUERY_OPENASTEMPLATE)));
+                        if (RET_YES == xBox->run())
                         {
                             SfxAllItemSet aSet( pApp->GetPool() );
                             aSet.Put( SfxStringItem( SID_FILE_NAME, pMedium->GetName() ) );
@@ -717,7 +810,7 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
                         xNewObj->SetModifyPasswordEntered( false );
                         xNewObj->SetReadOnly();
                     }
-                    else if ( rReq.GetSlot() == SID_EDITDOC )
+                    else if ( rReq.GetSlot() == SID_EDITDOC || rReq.GetSlot() == SID_READONLYDOC )
                     {
                         xNewObj->SetReadOnlyUI( !bForEdit );
                     }
@@ -736,25 +829,28 @@ void SfxViewFrame::ExecReload_Impl( SfxRequest& rReq )
 
                     UpdateDocument_Impl();
 
+                    if (vcl::CommandInfoProvider::GetModuleIdentifier(GetFrame().GetFrameInterface()) == "com.sun.star.text.TextDocument")
+                        sfx2::SfxNotebookBar::ReloadNotebookBar("modules/swriter/ui/");
+
                     try
                     {
-                        while ( !aViewFrames.empty() )
+                        for (auto const& viewFrame : aViewFrames)
                         {
-                            LoadViewIntoFrame_Impl( *xNewObj, aViewFrames.front().first, aLoadArgs, aViewFrames.front().second, false );
-                            aViewFrames.pop_front();
+                            LoadViewIntoFrame_Impl( *xNewObj, viewFrame.first, aLoadArgs, viewFrame.second, false );
                         }
+                        aViewFrames.clear();
                     }
                     catch( const Exception& )
                     {
                         // close the remaining frames
                         // Don't catch exceptions herein, if this fails, then we're left in an indetermined state, and
                         // crashing is better than trying to proceed
-                        while ( !aViewFrames.empty() )
+                        for (auto const& viewFrame : aViewFrames)
                         {
-                            Reference< util::XCloseable > xClose( aViewFrames.front().first, UNO_QUERY_THROW );
+                            Reference< util::XCloseable > xClose( viewFrame.first, UNO_QUERY_THROW );
                             xClose->close( true );
-                            aViewFrames.pop_front();
                         }
+                        aViewFrames.clear();
                     }
 
                     // Propagate document closure.
@@ -793,36 +889,42 @@ void SfxViewFrame::StateReload_Impl( SfxItemSet& rSet )
         switch ( nWhich )
         {
             case SID_EDITDOC:
+            case SID_READONLYDOC:
             {
                 const SfxViewShell *pVSh;
                 const SfxShell *pFSh;
-                if ( !pSh ||
-                     !pSh->HasName() ||
+                if ( !pSh->HasName() ||
                      !( pSh->Get_Impl()->nLoadedFlags &  SfxLoadedFlags::MAINDOCUMENT ) ||
+                     (pSh->isEditDocLocked()) ||
                      ( pSh->GetCreateMode() == SfxObjectCreateMode::EMBEDDED &&
                        ( !(pVSh = pSh->GetViewShell())  ||
                          !(pFSh = pVSh->GetFormShell()) ||
                          !pFSh->IsDesignMode())))
-                    rSet.DisableItem( SID_EDITDOC );
+                    rSet.DisableItem( nWhich );
                 else
                 {
                     const SfxBoolItem* pItem = SfxItemSet::GetItem<SfxBoolItem>(pSh->GetMedium()->GetItemSet(), SID_EDITDOC, false);
                     if ( pItem && !pItem->GetValue() )
-                        rSet.DisableItem( SID_EDITDOC );
+                        rSet.DisableItem( nWhich );
                     else
-                        rSet.Put( SfxBoolItem( nWhich, !pSh->IsReadOnly() ) );
+                    {
+                        if (nWhich==SID_EDITDOC)
+                            rSet.Put( SfxBoolItem( nWhich, !pSh->IsReadOnly() ) );
+                        else if (nWhich==SID_READONLYDOC)
+                            rSet.Put( SfxBoolItem( nWhich, pSh->IsReadOnly() ) );
+                    }
                 }
                 break;
             }
 
             case SID_RELOAD:
             {
-                if ( !pSh || !pSh->CanReload_Impl() || pSh->GetCreateMode() == SfxObjectCreateMode::EMBEDDED )
+                if ( !pSh->CanReload_Impl() || pSh->GetCreateMode() == SfxObjectCreateMode::EMBEDDED )
                     rSet.DisableItem(nWhich);
                 else
                 {
                     // If any ChildFrame is reloadable, the slot is enabled,
-                    // so you can perfom CTRL-Reload
+                    // so you can perform CTRL-Reload
                     rSet.Put( SfxBoolItem( nWhich, false));
                 }
 
@@ -836,7 +938,7 @@ void SfxViewFrame::ExecHistory_Impl( SfxRequest &rReq )
 {
     // Is there an Undo-Manager on the top Shell?
     SfxShell *pSh = GetDispatcher()->GetShell(0);
-    ::svl::IUndoManager* pShUndoMgr = pSh->GetUndoManager();
+    SfxUndoManager* pShUndoMgr = pSh->GetUndoManager();
     bool bOK = false;
     if ( pShUndoMgr )
     {
@@ -886,7 +988,7 @@ void SfxViewFrame::StateHistory_Impl( SfxItemSet &rSet )
         // I'm just on reload and am yielding myself ...
         return;
 
-    ::svl::IUndoManager *pShUndoMgr = pSh->GetUndoManager();
+    SfxUndoManager *pShUndoMgr = pSh->GetUndoManager();
     if ( !pShUndoMgr )
     {
         // The SW has its own undo in the View
@@ -903,7 +1005,7 @@ void SfxViewFrame::StateHistory_Impl( SfxItemSet &rSet )
          pShUndoMgr->GetRepeatActionCount() == 0 )
         rSet.DisableItem( SID_CLEARHISTORY );
 
-    if ( pShUndoMgr && pShUndoMgr->GetUndoActionCount() )
+    if (pShUndoMgr->GetUndoActionCount())
     {
         const SfxUndoAction* pAction = pShUndoMgr->GetUndoAction();
         SfxViewShell *pViewSh = GetViewShell();
@@ -919,7 +1021,7 @@ void SfxViewFrame::StateHistory_Impl( SfxItemSet &rSet )
     else
         rSet.DisableItem( SID_UNDO );
 
-    if ( pShUndoMgr && pShUndoMgr->GetRedoActionCount() )
+    if (pShUndoMgr->GetRedoActionCount())
     {
         const SfxUndoAction* pAction = pShUndoMgr->GetRedoAction();
         SfxViewShell *pViewSh = GetViewShell();
@@ -929,14 +1031,14 @@ void SfxViewFrame::StateHistory_Impl( SfxItemSet &rSet )
         }
         else
         {
-            rSet.Put( SfxStringItem( SID_REDO, SvtResId(STR_REDO)+pShUndoMgr->GetRedoActionComment() ) );
+            rSet.Put(SfxStringItem(SID_REDO, SvtResId(STR_REDO) + pShUndoMgr->GetRedoActionComment()));
         }
     }
     else
         rSet.DisableItem( SID_REDO );
 
     SfxRepeatTarget *pTarget = pSh->GetRepeatTarget();
-    if ( pShUndoMgr && pTarget && pShUndoMgr->GetRepeatActionCount() && pShUndoMgr->CanRepeat(*pTarget) )
+    if (pTarget && pShUndoMgr->GetRepeatActionCount() && pShUndoMgr->CanRepeat(*pTarget))
         rSet.Put( SfxStringItem( SID_REPEAT, SvtResId(STR_REPEAT)+pShUndoMgr->GetRepeatActionComment(*pTarget) ) );
     else
         rSet.DisableItem( SID_REPEAT );
@@ -952,11 +1054,7 @@ void SfxViewFrame::PopShellAndSubShells_Impl( SfxViewShell& i_rViewShell )
         {
             // more sub shells on the stack, which were not affected by PopSubShells_Impl
             SfxShell *pSubShell = m_pDispatcher->GetShell( nLevel-1 );
-            if ( pSubShell == i_rViewShell.GetSubShell() )
-                // "real" sub shells will be deleted elsewhere
-                m_pDispatcher->Pop( *pSubShell, SfxDispatcherPopFlags::POP_UNTIL );
-            else
-                m_pDispatcher->Pop( *pSubShell, SfxDispatcherPopFlags::POP_UNTIL | SfxDispatcherPopFlags::POP_DELETE );
+            m_pDispatcher->Pop( *pSubShell, SfxDispatcherPopFlags::POP_UNTIL | SfxDispatcherPopFlags::POP_DELETE );
         }
         m_pDispatcher->Pop( i_rViewShell );
         m_pDispatcher->Flush();
@@ -973,7 +1071,7 @@ void SfxViewFrame::PopShellAndSubShells_Impl( SfxViewShell& i_rViewShell )
     Thus, by invoking ReleaseObjectShell() and  SetObjectShell() the
     SfxObjectShell can be replaced.
 
-    Between RealeaseObjectShell() and SetObjectShell() can the control not
+    Between ReleaseObjectShell() and SetObjectShell() the control cannot
     be handed over to the system.
 
     [Cross-reference]
@@ -1019,7 +1117,7 @@ void SfxViewFrame::ReleaseObjectShell_Impl()
             m_xObjSh->DoClose();
         SfxObjectShellRef xDyingObjSh = m_xObjSh;
         m_xObjSh.clear();
-        if( ( GetFrameType() & SFXFRAME_HASTITLE ) && m_pImpl->nDocViewNo )
+        if( GetFrame().GetHasTitle() && m_pImpl->nDocViewNo )
             xDyingObjSh->GetNoSet_Impl().ReleaseIndex(m_pImpl->nDocViewNo-1);
         if ( m_pImpl->bObjLocked )
         {
@@ -1031,7 +1129,7 @@ void SfxViewFrame::ReleaseObjectShell_Impl()
     GetDispatcher()->SetDisableFlags( SfxDisableFlags::NONE );
 }
 
-bool SfxViewFrame::Close()
+void SfxViewFrame::Close()
 {
 
     DBG_ASSERT( GetFrame().IsClosing_Impl() || !GetFrame().GetFrameInterface().is(), "ViewFrame closed too early!" );
@@ -1039,7 +1137,7 @@ bool SfxViewFrame::Close()
     // If no saving have been made up until now, then embedded Objects should
     // not be saved automatically anymore.
     if ( GetViewShell() )
-        GetViewShell()->DiscardClients_Impl();
+        GetViewShell()->DisconnectAllClients();
     Broadcast( SfxHint( SfxHintId::Dying ) );
 
     if (SfxViewFrame::Current() == this)
@@ -1049,8 +1147,6 @@ bool SfxViewFrame::Close()
     // manner, thus it is better to let the dispatcher be.
     GetDispatcher()->Lock(true);
     delete this;
-
-    return true;
 }
 
 void SfxViewFrame::DoActivate( bool bUI )
@@ -1058,26 +1154,26 @@ void SfxViewFrame::DoActivate( bool bUI )
     m_pDispatcher->DoActivate_Impl( bUI );
 }
 
-void SfxViewFrame::DoDeactivate(bool bUI, SfxViewFrame* pNewFrame )
+void SfxViewFrame::DoDeactivate(bool bUI, SfxViewFrame const * pNewFrame )
 {
     m_pDispatcher->DoDeactivate_Impl( bUI, pNewFrame );
 }
 
 void SfxViewFrame::InvalidateBorderImpl( const SfxViewShell* pSh )
 {
-    if( pSh && !m_nAdjustPosPixelLock )
-    {
-        if ( GetViewShell() && GetWindow().IsVisible() )
-        {
-            if ( GetFrame().IsInPlace() )
-            {
-                return;
-            }
+    if( !pSh || m_nAdjustPosPixelLock )
+        return;
 
-            DoAdjustPosSizePixel( GetViewShell(), Point(),
-                                            GetWindow().GetOutputSizePixel(),
-                                            false );
+    if ( GetViewShell() && GetWindow().IsVisible() )
+    {
+        if ( GetFrame().IsInPlace() )
+        {
+            return;
         }
+
+        DoAdjustPosSizePixel( GetViewShell(), Point(),
+                                        GetWindow().GetOutputSizePixel(),
+                                        false );
     }
 }
 
@@ -1095,8 +1191,8 @@ void SfxViewFrame::SetBorderPixelImpl
         Size aSize = pVSh->GetWindow()->GetOutputSizePixel();
         if ( aSize.Width() && aSize.Height() )
         {
-            aSize.Width() += rBorder.Left() + rBorder.Right();
-            aSize.Height() += rBorder.Top() + rBorder.Bottom();
+            aSize.AdjustWidth(rBorder.Left() + rBorder.Right() );
+            aSize.AdjustHeight(rBorder.Top() + rBorder.Bottom() );
 
             Size aOldSize = GetWindow().GetOutputSizePixel();
             GetWindow().SetOutputSizePixel( aSize );
@@ -1104,19 +1200,18 @@ void SfxViewFrame::SetBorderPixelImpl
             while ( pParent->GetParent() )
                 pParent = pParent->GetParent();
             Size aOuterSize = pParent->GetOutputSizePixel();
-            aOuterSize.Width() += ( aSize.Width() - aOldSize.Width() );
-            aOuterSize.Height() += ( aSize.Height() - aOldSize.Height() );
+            aOuterSize.AdjustWidth( aSize.Width() - aOldSize.Width() );
+            aOuterSize.AdjustHeight( aSize.Height() - aOldSize.Height() );
             pParent->SetOutputSizePixel( aOuterSize );
         }
     }
     else
     {
-        Point aPoint;
-        tools::Rectangle aEditArea( aPoint, GetWindow().GetOutputSizePixel() );
-        aEditArea.Left() += rBorder.Left();
-        aEditArea.Right() -= rBorder.Right();
-        aEditArea.Top() += rBorder.Top();
-        aEditArea.Bottom() -= rBorder.Bottom();
+        tools::Rectangle aEditArea( Point(), GetWindow().GetOutputSizePixel() );
+        aEditArea.AdjustLeft(rBorder.Left() );
+        aEditArea.AdjustRight( -(rBorder.Right()) );
+        aEditArea.AdjustTop(rBorder.Top() );
+        aEditArea.AdjustBottom( -(rBorder.Bottom()) );
         pVSh->GetWindow()->SetPosSizePixel( aEditArea.TopLeft(), aEditArea.GetSize() );
     }
 }
@@ -1124,6 +1219,56 @@ void SfxViewFrame::SetBorderPixelImpl
 const SvBorder& SfxViewFrame::GetBorderPixelImpl() const
 {
     return m_pImpl->aBorder;
+}
+
+void SfxViewFrame::AppendReadOnlyInfobar()
+{
+    bool bSignPDF = m_xObjSh->IsSignPDF();
+    bool bSignWithCert = false;
+    if (bSignPDF)
+    {
+        SfxObjectShell* pObjectShell = GetObjectShell();
+        uno::Reference<security::XCertificate> xCertificate = pObjectShell->GetSignPDFCertificate();
+        bSignWithCert = xCertificate.is();
+    }
+
+    auto pInfoBar = AppendInfoBar("readonly", "",
+                                  SfxResId(bSignPDF ? STR_READONLY_PDF : STR_READONLY_DOCUMENT),
+                                  InfobarType::INFO);
+    if (!pInfoBar)
+        return;
+
+    if (bSignPDF)
+    {
+        // SID_SIGNPDF opened a read-write PDF
+        // read-only for signing purposes.
+        VclPtrInstance<PushButton> xSignButton(&GetWindow());
+        if (bSignWithCert)
+        {
+            xSignButton->SetText(SfxResId(STR_READONLY_FINISH_SIGN));
+        }
+        else
+        {
+            xSignButton->SetText(SfxResId(STR_READONLY_SIGN));
+        }
+
+        xSignButton->SetSizePixel(xSignButton->GetOptimalSize());
+        xSignButton->SetClickHdl(LINK(this, SfxViewFrame, SignDocumentHandler));
+        pInfoBar->addButton(xSignButton);
+    }
+
+    bool showEditDocumentButton = true;
+    if (m_xObjSh->isEditDocLocked())
+        showEditDocumentButton = false;
+
+    if (showEditDocumentButton)
+    {
+        VclPtrInstance<PushButton> xBtn(&GetWindow());
+        xBtn->SetText(SfxResId(STR_READONLY_EDIT));
+        xBtn->SetSizePixel(xBtn->GetOptimalSize());
+        xBtn->SetClickHdl(LINK(this, SfxViewFrame, SwitchReadOnlyHandler));
+        pInfoBar->addButton(xBtn);
+    }
 }
 
 void SfxViewFrame::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
@@ -1158,6 +1303,112 @@ void SfxViewFrame::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
                 rBind.Invalidate( SID_RELOAD );
                 rBind.Invalidate( SID_EDITDOC );
 
+                const auto t0 = std::chrono::system_clock::now().time_since_epoch();
+
+                bool bIsUITest = false; //uitest.uicheck fails when the dialog is open
+                for( sal_uInt16 i = 0; i < Application::GetCommandLineParamCount(); i++ )
+                {
+                    if( Application::GetCommandLineParam(i) == "--nologo" )
+                        bIsUITest = true;
+                }
+
+                //what's new infobar
+                if (!officecfg::Setup::Product::ooSetupLastVersion::isReadOnly()) //don't show/update when readonly
+                {
+                    OUString sSetupVersion = utl::ConfigManager::getProductVersion();
+                    sal_Int32 iCurrent = sSetupVersion.getToken(0,'.').toInt32() * 10 + sSetupVersion.getToken(1,'.').toInt32();
+                    OUString sLastVersion
+                        = officecfg::Setup::Product::ooSetupLastVersion::get().value_or("0.0");
+                    sal_Int32 iLast = sLastVersion.getToken(0,'.').toInt32() * 10 + sLastVersion.getToken(1,'.').toInt32();
+                    if ((iCurrent > iLast) && !Application::IsHeadlessModeEnabled() && !bIsUITest)
+                    {
+                        VclPtr<SfxInfoBarWindow> pInfoBar = AppendInfoBar("whatsnew", "", SfxResId(STR_WHATSNEW_TEXT), InfobarType::INFO);
+                        if (pInfoBar)
+                        {
+                            VclPtrInstance<PushButton> xWhatsNewButton(&GetWindow());
+                            xWhatsNewButton->SetText(SfxResId(STR_WHATSNEW_BUTTON));
+                            xWhatsNewButton->SetSizePixel(xWhatsNewButton->GetOptimalSize());
+                            xWhatsNewButton->SetClickHdl(LINK(this, SfxViewFrame, WhatsNewHandler));
+                            pInfoBar->addButton(xWhatsNewButton);
+
+                            //update lastversion
+                            std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
+                            officecfg::Setup::Product::ooSetupLastVersion::set(
+                                sSetupVersion, batch);
+                            batch->commit();
+                        }
+                    }
+                }
+
+                // show tip-of-the-day dialog
+                const bool bShowTipOfTheDay = officecfg::Office::Common::Misc::ShowTipOfTheDay::get();
+                if (bShowTipOfTheDay && !Application::IsHeadlessModeEnabled() && !bIsUITest) {
+                    const sal_Int32 nLastTipOfTheDay = officecfg::Office::Common::Misc::LastTipOfTheDayShown::get();
+                    const sal_Int32 nDay = std::chrono::duration_cast<std::chrono::hours>(t0).count()/24; // days since 1970-01-01
+                    if (nDay-nLastTipOfTheDay > 0) { //only once per day
+                        // tdf#127946 pass in argument for dialog parent
+                        SfxUnoFrameItem aDocFrame(SID_FILLFRAME, GetFrame().GetFrameInterface());
+                        GetDispatcher()->ExecuteList(SID_TIPOFTHEDAY, SfxCallMode::SLOT, {}, { &aDocFrame });
+                    }
+                } //bShowTipOfTheDay
+
+                // inform about the community involvement
+                const sal_Int64 nLastGetInvolvedShown = officecfg::Setup::Product::LastTimeGetInvolvedShown::get();
+                const sal_Int64 nNow = std::chrono::duration_cast<std::chrono::seconds>(t0).count();
+                const sal_Int64 nPeriodSec(60 * 60 * 24 * 180); // 180 days in seconds
+                bool bUpdateLastTimeGetInvolvedShown = false;
+
+                if (nLastGetInvolvedShown == 0)
+                    bUpdateLastTimeGetInvolvedShown = true;
+                else if (nPeriodSec < nNow && nLastGetInvolvedShown < (nNow + nPeriodSec/2) - nPeriodSec) // 90d alternating with donation
+                {
+                    bUpdateLastTimeGetInvolvedShown = true;
+
+                    VclPtr<SfxInfoBarWindow> pInfoBar = AppendInfoBar("getinvolved", "", SfxResId(STR_GET_INVOLVED_TEXT), InfobarType::INFO);
+
+                    VclPtrInstance<PushButton> xGetInvolvedButton(&GetWindow());
+                    xGetInvolvedButton->SetText(SfxResId(STR_GET_INVOLVED_BUTTON));
+                    xGetInvolvedButton->SetSizePixel(xGetInvolvedButton->GetOptimalSize());
+                    xGetInvolvedButton->SetClickHdl(LINK(this, SfxViewFrame, GetInvolvedHandler));
+                    pInfoBar->addButton(xGetInvolvedButton);
+                }
+
+                if (bUpdateLastTimeGetInvolvedShown
+                    && !officecfg::Setup::Product::LastTimeGetInvolvedShown::isReadOnly())
+                {
+                    std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
+                    officecfg::Setup::Product::LastTimeGetInvolvedShown::set(nNow, batch);
+                    batch->commit();
+                }
+
+                // inform about donations
+                const sal_Int64 nLastDonateShown = officecfg::Setup::Product::LastTimeDonateShown::get();
+                bool bUpdateLastTimeDonateShown = false;
+
+                if (nLastDonateShown == 0)
+                    bUpdateLastTimeDonateShown = true;
+                else if (nPeriodSec < nNow && nLastDonateShown < nNow - nPeriodSec) // 90d alternating with getinvolved
+                {
+                    bUpdateLastTimeDonateShown = true;
+
+                    VclPtr<SfxInfoBarWindow> pInfoBar = AppendInfoBar("donate", "", SfxResId(STR_DONATE_TEXT), InfobarType::INFO);
+
+                    VclPtrInstance<PushButton> xDonateButton(&GetWindow());
+                    xDonateButton->SetText(SfxResId(STR_DONATE_BUTTON));
+                    xDonateButton->SetSizePixel(xDonateButton->GetOptimalSize());
+                    xDonateButton->SetClickHdl(LINK(this, SfxViewFrame, DonationHandler));
+                    pInfoBar->addButton(xDonateButton);
+                }
+
+                if (bUpdateLastTimeDonateShown
+                    && !officecfg::Setup::Product::LastTimeDonateShown::isReadOnly())
+                {
+                    std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
+                    officecfg::Setup::Product::LastTimeDonateShown::set(nNow, batch);
+                    batch->commit();
+                }
+
+                // read-only infobar if necessary
                 const SfxViewShell *pVSh;
                 const SfxShell *pFSh;
                 if ( m_xObjSh->IsReadOnly() &&
@@ -1165,35 +1416,28 @@ void SfxViewFrame::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
                     ( m_xObjSh->GetCreateMode() != SfxObjectCreateMode::EMBEDDED ||
                         (( pVSh = m_xObjSh->GetViewShell()) && (pFSh = pVSh->GetFormShell()) && pFSh->IsDesignMode())))
                 {
-                    bool bSignPDF = IsSignPDF(m_xObjSh);
-
-                    auto pInfoBar = AppendInfoBar("readonly", SfxResId(bSignPDF ? STR_READONLY_PDF : STR_READONLY_DOCUMENT), InfoBarType::Info);
-                    if (pInfoBar)
-                    {
-                        if (bSignPDF)
-                        {
-                            // SID_SIGNPDF opened a read-write PDF
-                            // read-only for signing purposes.
-                            VclPtrInstance<PushButton> xSignButton(&GetWindow());
-                            xSignButton->SetText(SfxResId(STR_READONLY_SIGN));
-                            xSignButton->SetSizePixel(xSignButton->GetOptimalSize());
-                            xSignButton->SetClickHdl(LINK(this, SfxViewFrame, SignDocumentHandler));
-                            pInfoBar->addButton(xSignButton);
-                        }
-
-                        VclPtrInstance<PushButton> xBtn(&GetWindow());
-                        xBtn->SetText(SfxResId(STR_READONLY_EDIT));
-                        xBtn->SetSizePixel(xBtn->GetOptimalSize());
-                        xBtn->SetClickHdl(LINK(this, SfxViewFrame, SwitchReadOnlyHandler));
-                        pInfoBar->addButton(xBtn);
-                    }
+                    AppendReadOnlyInfobar();
                 }
+
+                if (vcl::CommandInfoProvider::GetModuleIdentifier(GetFrame().GetFrameInterface()) == "com.sun.star.text.TextDocument")
+                    sfx2::SfxNotebookBar::ReloadNotebookBar("modules/swriter/ui/");
 
                 if (SfxClassificationHelper::IsClassified(m_xObjSh->getDocProperties()))
                 {
                     // Document has BAILS properties, display an infobar accordingly.
                     SfxClassificationHelper aHelper(m_xObjSh->getDocProperties());
                     aHelper.UpdateInfobar(*this);
+                }
+
+                // Add pending infobars
+                std::vector<InfobarData>& aPendingInfobars = m_xObjSh->getPendingInfobars();
+                while (!aPendingInfobars.empty())
+                {
+                    InfobarData& aInfobarData = aPendingInfobars.back();
+                    AppendInfoBar(aInfobarData.msId, aInfobarData.msPrimaryMessage,
+                                  aInfobarData.msSecondaryMessage, aInfobarData.maInfobarType,
+                                  aInfobarData.mbShowCloseButton);
+                    aPendingInfobars.pop_back();
                 }
 
                 break;
@@ -1254,9 +1498,21 @@ void SfxViewFrame::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
                 break;
             }
 
+            case SfxHintId::DocumentRepair:
+            {
+                GetBindings().Invalidate( SID_DOC_REPAIR );
+                break;
+            }
+
             case SfxHintId::Deinitializing:
+            {
+                vcl::Window* pFrameWin = GetWindow().GetFrameWindow();
+                if (pFrameWin && pFrameWin->GetLOKNotifier())
+                    pFrameWin->ReleaseLOKNotifier();
+
                 GetFrame().DoClose();
                 break;
+            }
             case SfxHintId::Dying:
                 // when the Object is being deleted, destroy the view too
                 if ( m_xObjSh.is() )
@@ -1269,12 +1525,27 @@ void SfxViewFrame::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
     }
 }
 
-IMPL_LINK_NOARG(SfxViewFrame, SwitchReadOnlyHandler, Button*, void)
+IMPL_LINK_NOARG(SfxViewFrame, WhatsNewHandler, Button*, void)
 {
-    if (m_xObjSh.is() && IsSignPDF(m_xObjSh))
+    GetDispatcher()->Execute(SID_WHATSNEW);
+}
+
+IMPL_LINK_NOARG(SfxViewFrame, GetInvolvedHandler, Button*, void)
+{
+    GetDispatcher()->Execute(SID_GETINVOLVED);
+}
+
+IMPL_LINK_NOARG(SfxViewFrame, DonationHandler, Button*, void)
+{
+    GetDispatcher()->Execute(SID_DONATION);
+}
+
+IMPL_LINK(SfxViewFrame, SwitchReadOnlyHandler, Button*, pButton, void)
+{
+    if (m_xObjSh.is() && m_xObjSh->IsSignPDF())
     {
-        ScopedVclPtrInstance<SfxEditDocumentDialog> pDialog(nullptr);
-        if (pDialog->Execute() != RET_OK)
+        SfxEditDocumentDialog aDialog(pButton->GetFrameWeld());
+        if (aDialog.run() != RET_OK)
             return;
     }
     GetDispatcher()->Execute(SID_EDITDOC);
@@ -1289,7 +1560,6 @@ void SfxViewFrame::Construct_Impl( SfxObjectShell *pObjSh )
 {
     m_pImpl->bResizeInToOut = true;
     m_pImpl->bObjLocked = false;
-    m_pImpl->pFocusWin = nullptr;
     m_pImpl->nCurViewId = SFX_INTERFACE_NONE;
     m_pImpl->bReloading = false;
     m_pImpl->bIsDowning = false;
@@ -1300,9 +1570,9 @@ void SfxViewFrame::Construct_Impl( SfxObjectShell *pObjSh )
     m_pImpl->pWindow = nullptr;
 
     SetPool( &SfxGetpApp()->GetPool() );
-    m_pDispatcher = new SfxDispatcher(this);
+    m_pDispatcher.reset( new SfxDispatcher(this) );
     if ( !GetBindings().GetDispatcher() )
-        GetBindings().SetDispatcher( m_pDispatcher );
+        GetBindings().SetDispatcher( m_pDispatcher.get() );
 
     m_xObjSh = pObjSh;
     if ( m_xObjSh.is() && m_xObjSh->IsPreview() )
@@ -1345,13 +1615,14 @@ SfxViewFrame::SfxViewFrame
     SfxObjectShell*     pObjShell
 )
     : m_pImpl( new SfxViewFrame_Impl( rFrame ) )
-    , m_pDispatcher(nullptr)
     , m_pBindings( new SfxBindings )
+    , m_pHelpData(CreateSVHelpData())
+    , m_pWinData(CreateSVWinData())
     , m_nAdjustPosPixelLock( 0 )
 {
 
     rFrame.SetCurrentViewFrame_Impl( this );
-    rFrame.SetFrameType_Impl( GetFrameType() | SFXFRAME_HASTITLE );
+    rFrame.SetHasTitle( true );
     Construct_Impl( pObjShell );
 
     m_pImpl->pWindow = VclPtr<SfxFrameViewWindow_Impl>::Create( this, rFrame.GetWindow() );
@@ -1374,7 +1645,6 @@ SfxViewFrame::~SfxViewFrame()
         KillDispatcher_Impl();
 
     m_pImpl->pWindow.disposeAndClear();
-    m_pImpl->pFocusWin.clear();
 
     if ( GetFrame().GetCurrentViewFrame() == this )
         GetFrame().SetCurrentViewFrame_Impl( nullptr );
@@ -1390,6 +1660,12 @@ SfxViewFrame::~SfxViewFrame()
 
     // Delete Member
     KillDispatcher_Impl();
+
+    DestroySVHelpData(m_pHelpData);
+    m_pHelpData = nullptr;
+
+    DestroySVWinData(m_pWinData);
+    m_pWinData = nullptr;
 }
 
 // Remove and delete the Dispatcher.
@@ -1405,7 +1681,7 @@ void SfxViewFrame::KillDispatcher_Impl()
             m_pDispatcher->Pop( *pModule, SfxDispatcherPopFlags::POP_UNTIL );
         else
             m_pDispatcher->Pop( *this );
-        DELETEZ(m_pDispatcher);
+        m_pDispatcher.reset();
     }
 }
 
@@ -1501,12 +1777,13 @@ void SfxViewFrame::DoAdjustPosSizePixel //! divide on Inner.../Outer...
 
 bool SfxViewFrameItem::operator==( const SfxPoolItem &rItem ) const
 {
-    return dynamic_cast<const SfxViewFrameItem&>(rItem).pFrame == pFrame;
+    return SfxPoolItem::operator==(rItem) &&
+        static_cast<const SfxViewFrameItem&>(rItem).pFrame == pFrame;
 }
 
-SfxPoolItem* SfxViewFrameItem::Clone( SfxItemPool *) const
+SfxViewFrameItem* SfxViewFrameItem::Clone( SfxItemPool *) const
 {
-    return new SfxViewFrameItem( pFrame);
+    return new SfxViewFrameItem( *this );
 }
 
 void SfxViewFrame::SetViewShell_Impl( SfxViewShell *pVSh )
@@ -1537,30 +1814,30 @@ void SfxViewFrame::GetDocNumber_Impl()
 
 void SfxViewFrame::Enable( bool bEnable )
 {
-    if ( bEnable != m_pImpl->bEnabled )
+    if ( bEnable == m_pImpl->bEnabled )
+        return;
+
+    m_pImpl->bEnabled = bEnable;
+
+    vcl::Window *pWindow = &GetFrame().GetWindow();
+    if ( !bEnable )
+        m_pImpl->bWindowWasEnabled = pWindow->IsInputEnabled();
+    if ( !bEnable || m_pImpl->bWindowWasEnabled )
+        pWindow->EnableInput( bEnable );
+
+    // cursor and focus
+    SfxViewShell* pViewSh = GetViewShell();
+    if ( bEnable )
     {
-        m_pImpl->bEnabled = bEnable;
-
-        vcl::Window *pWindow = &GetFrame().GetWindow();
-        if ( !bEnable )
-            m_pImpl->bWindowWasEnabled = pWindow->IsInputEnabled();
-        if ( !bEnable || m_pImpl->bWindowWasEnabled )
-            pWindow->EnableInput( bEnable );
-
-        // cursor and focus
-        SfxViewShell* pViewSh = GetViewShell();
-        if ( bEnable )
-        {
-            // show cursor
-            if ( pViewSh )
-                pViewSh->ShowCursor();
-        }
-        else
-        {
-            // hide cursor
-            if ( pViewSh )
-                pViewSh->ShowCursor(false);
-        }
+        // show cursor
+        if ( pViewSh )
+            pViewSh->ShowCursor();
+    }
+    else
+    {
+        // hide cursor
+        if ( pViewSh )
+            pViewSh->ShowCursor(false);
     }
 }
 
@@ -1615,44 +1892,41 @@ void SfxViewFrame::LockObjectShell_Impl()
 
 void SfxViewFrame::MakeActive_Impl( bool bGrabFocus )
 {
-    if ( GetViewShell() && !GetFrame().IsClosing_Impl() )
+    if ( !GetViewShell() || GetFrame().IsClosing_Impl() )
+        return;
+
+    if ( !IsVisible() )
+        return;
+
+    bool bPreview = false;
+    if (GetObjectShell()->IsPreview())
     {
-        if ( IsVisible() )
+        bPreview = true;
+    }
+
+    css::uno::Reference<css::frame::XFrame> xFrame = GetFrame().GetFrameInterface();
+    if (!bPreview)
+    {
+        SetViewFrame(this);
+        GetBindings().SetActiveFrame(css::uno::Reference<css::frame::XFrame>());
+        uno::Reference<frame::XFramesSupplier> xSupp(xFrame, uno::UNO_QUERY);
+        if (xSupp.is())
+            xSupp->setActiveFrame(uno::Reference<frame::XFrame>());
+
+        css::uno::Reference< css::awt::XWindow > xContainerWindow = xFrame->getContainerWindow();
+        VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(xContainerWindow);
+        if (pWindow && pWindow->HasChildPathFocus() && bGrabFocus)
         {
-            if ( GetViewShell() )
-            {
-                bool bPreview = false;
-                if ( GetObjectShell()->IsPreview() )
-                {
-                    bPreview = true;
-                }
-
-                css::uno::Reference< css::frame::XFrame > xFrame = GetFrame().GetFrameInterface();
-                if ( !bPreview )
-                {
-                    SetViewFrame( this );
-                    GetBindings().SetActiveFrame( css::uno::Reference< css::frame::XFrame >() );
-                    uno::Reference< frame::XFramesSupplier > xSupp( xFrame, uno::UNO_QUERY );
-                    if ( xSupp.is() )
-                        xSupp->setActiveFrame( uno::Reference < frame::XFrame >() );
-
-                    css::uno::Reference< css::awt::XWindow > xContainerWindow = xFrame->getContainerWindow();
-                    VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(xContainerWindow);
-                    if (pWindow && pWindow->HasChildPathFocus() && bGrabFocus)
-                    {
-                        SfxInPlaceClient *pCli = GetViewShell()->GetUIActiveClient();
-                        if ( !pCli || !pCli->IsObjectUIActive() )
-                                GetFrame().GrabFocusOnComponent_Impl();
-                    }
-                }
-                else
-                {
-                    GetBindings().SetDispatcher( GetDispatcher() );
-                    GetBindings().SetActiveFrame( css::uno::Reference< css::frame::XFrame > () );
-                    GetDispatcher()->Update_Impl();
-                }
-            }
+            SfxInPlaceClient *pCli = GetViewShell()->GetUIActiveClient();
+            if (!pCli || !pCli->IsObjectUIActive())
+                GetFrame().GrabFocusOnComponent_Impl();
         }
+    }
+    else
+    {
+        GetBindings().SetDispatcher(GetDispatcher());
+        GetBindings().SetActiveFrame(css::uno::Reference<css::frame::XFrame>());
+        GetDispatcher()->Update_Impl();
     }
 }
 
@@ -1715,7 +1989,7 @@ SfxViewFrame* SfxViewFrame::LoadViewIntoFrame_Impl_NoThrow( const SfxObjectShell
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sfx.view");
     }
 
     if ( pSuccessView )
@@ -1729,7 +2003,7 @@ SfxViewFrame* SfxViewFrame::LoadViewIntoFrame_Impl_NoThrow( const SfxObjectShell
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("sfx.view");
         }
     }
 
@@ -1742,7 +2016,7 @@ SfxViewShell* SfxViewFrame::LoadViewIntoFrame_Impl( const SfxObjectShell& i_rDoc
 {
     Reference< XModel > xDocument( i_rDoc.GetModel(), UNO_SET_THROW );
 
-    ::comphelper::NamedValueCollection aTransformLoadArgs( i_rLoadArgs.getLength() ? i_rLoadArgs : xDocument->getArgs() );
+    ::comphelper::NamedValueCollection aTransformLoadArgs( i_rLoadArgs.hasElements() ? i_rLoadArgs : xDocument->getArgs() );
     aTransformLoadArgs.put( "Model", xDocument );
     if ( i_nViewId )
         aTransformLoadArgs.put( "ViewId", sal_uInt16( i_nViewId ) );
@@ -1761,27 +2035,27 @@ SfxViewShell* SfxViewFrame::LoadViewIntoFrame_Impl( const SfxObjectShell& i_rDoc
     return pViewShell;
 }
 
-SfxViewFrame* SfxViewFrame::LoadHiddenDocument( SfxObjectShell& i_rDoc, SfxInterfaceId i_nViewId )
+SfxViewFrame* SfxViewFrame::LoadHiddenDocument( SfxObjectShell const & i_rDoc, SfxInterfaceId i_nViewId )
 {
     return LoadViewIntoFrame_Impl_NoThrow( i_rDoc, Reference< XFrame >(), i_nViewId, true );
 }
 
-SfxViewFrame* SfxViewFrame::LoadDocument( SfxObjectShell& i_rDoc, SfxInterfaceId i_nViewId )
+SfxViewFrame* SfxViewFrame::LoadDocument( SfxObjectShell const & i_rDoc, SfxInterfaceId i_nViewId )
 {
     return LoadViewIntoFrame_Impl_NoThrow( i_rDoc, Reference< XFrame >(), i_nViewId, false );
 }
 
-SfxViewFrame* SfxViewFrame::LoadDocumentIntoFrame( SfxObjectShell& i_rDoc, const Reference< XFrame >& i_rTargetFrame )
+SfxViewFrame* SfxViewFrame::LoadDocumentIntoFrame( SfxObjectShell const & i_rDoc, const Reference< XFrame >& i_rTargetFrame )
 {
     return LoadViewIntoFrame_Impl_NoThrow( i_rDoc, i_rTargetFrame, SFX_INTERFACE_NONE, false );
 }
 
-SfxViewFrame* SfxViewFrame::LoadDocumentIntoFrame( SfxObjectShell& i_rDoc, const SfxFrameItem* i_pFrameItem, SfxInterfaceId i_nViewId )
+SfxViewFrame* SfxViewFrame::LoadDocumentIntoFrame( SfxObjectShell const & i_rDoc, const SfxFrameItem* i_pFrameItem, SfxInterfaceId i_nViewId )
 {
     return LoadViewIntoFrame_Impl_NoThrow( i_rDoc, i_pFrameItem && i_pFrameItem->GetFrame() ? i_pFrameItem->GetFrame()->GetFrameInterface() : nullptr, i_nViewId, false );
 }
 
-SfxViewFrame* SfxViewFrame::DisplayNewDocument( SfxObjectShell& i_rDoc, const SfxRequest& i_rCreateDocRequest )
+SfxViewFrame* SfxViewFrame::DisplayNewDocument( SfxObjectShell const & i_rDoc, const SfxRequest& i_rCreateDocRequest )
 {
     const SfxUnoFrameItem* pFrameItem = i_rCreateDocRequest.GetArg<SfxUnoFrameItem>(SID_FILLFRAME);
     const SfxBoolItem* pHiddenItem = i_rCreateDocRequest.GetArg<SfxBoolItem>(SID_HIDDEN);
@@ -1886,7 +2160,7 @@ void SfxViewFrame::SaveCurrentViewData_Impl( const SfxInterfaceId i_nNewViewId )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sfx.view");
     }
 }
 
@@ -1972,7 +2246,7 @@ bool SfxViewFrame::SwitchToViewShell_Impl
     {
         // the SfxCode is not able to cope with exceptions thrown while creating views
         // the code will crash in the stack unwinding procedure, so we shouldn't let exceptions go through here
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sfx.view");
         return false;
     }
 
@@ -2050,7 +2324,7 @@ void SfxViewFrame::ExecView_Impl
                 return;
             }
 
-            // Get ViewData of FrameSets recursivly.
+            // Get ViewData of FrameSets recursively.
             GetFrame().GetViewData_Impl();
             SfxMedium* pMed = GetObjectShell()->GetMedium();
 
@@ -2077,10 +2351,9 @@ void SfxViewFrame::ExecView_Impl
         {
             const SfxInt16Item* pItem = rReq.GetArg<SfxInt16Item>(SID_OBJECT);
 
-            SfxViewShell *pViewShell = GetViewShell();
-            if ( pViewShell && pItem )
+            if (pItem)
             {
-                pViewShell->DoVerb( pItem->GetValue() );
+                GetViewShell()->DoVerb( pItem->GetValue() );
                 rReq.Done();
                 break;
             }
@@ -2095,14 +2368,14 @@ void SfxViewFrame::ExecView_Impl
         TODO: export special helper "framework::FrameListAnalyzer" within the framework module
         and use it here.
 */
-bool impl_maxOpenDocCountReached()
+static bool impl_maxOpenDocCountReached()
 {
     css::uno::Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
-    boost::optional<sal_Int32> x(officecfg::Office::Common::Misc::MaxOpenDocuments::get(xContext));
+    std::optional<sal_Int32> x(officecfg::Office::Common::Misc::MaxOpenDocuments::get(xContext));
     // NIL means: count of allowed documents = infinite !
     if (!x)
         return false;
-    sal_Int32 nMaxDocs(x.get());
+    sal_Int32 nMaxDocs(*x);
     sal_Int32 nOpenDocs = 0;
 
     css::uno::Reference< css::frame::XDesktop2 >  xDesktop = css::frame::Desktop::create(xContext);
@@ -2128,7 +2401,7 @@ bool impl_maxOpenDocCountReached()
             ++nOpenDocs;
         }
         catch(const css::uno::Exception&)
-            // A IndexOutOfBoundException can happen in multithreaded
+            // An IndexOutOfBoundsException can happen in multithreaded
             // environments, where any other thread can change this
             // container !
             { continue; }
@@ -2165,7 +2438,9 @@ void SfxViewFrame::StateView_Impl
     assert(pRanges && "Set with no Range");
     while ( *pRanges )
     {
-        for ( sal_uInt16 nWhich = *pRanges++; nWhich <= *pRanges; ++nWhich )
+        sal_uInt16 nStartWhich = *pRanges++;
+        sal_uInt16 nEndWhich = *pRanges++;
+        for ( sal_uInt16 nWhich = nStartWhich; nWhich <= nEndWhich; ++nWhich )
         {
             switch(nWhich)
             {
@@ -2248,6 +2523,10 @@ OUString SfxViewFrame::GetActualPresentationURL_Impl() const
 
 void SfxViewFrame::SetModalMode( bool bModal )
 {
+    // no real modality for LOK
+    if (comphelper::LibreOfficeKit::isActive())
+        return;
+
     m_pImpl->bModal = bModal;
     if ( m_xObjSh.is() )
     {
@@ -2266,28 +2545,30 @@ bool SfxViewFrame::IsInModalMode() const
 void SfxViewFrame::Resize( bool bForce )
 {
     Size aSize = GetWindow().GetOutputSizePixel();
-    if ( bForce || aSize != m_pImpl->aSize )
+    if ( !bForce && aSize == m_pImpl->aSize )
+        return;
+
+    m_pImpl->aSize = aSize;
+    SfxViewShell *pShell = GetViewShell();
+    if ( pShell )
     {
-        m_pImpl->aSize = aSize;
-        SfxViewShell *pShell = GetViewShell();
-        if ( pShell )
+        if ( GetFrame().IsInPlace() )
         {
-            if ( GetFrame().IsInPlace() )
-            {
-                Point aPoint = GetWindow().GetPosPixel();
-                DoAdjustPosSizePixel( pShell, aPoint, aSize, true );
-            }
-            else
-            {
-                DoAdjustPosSizePixel( pShell, Point(), aSize, false );
-            }
+            Point aPoint = GetWindow().GetPosPixel();
+            DoAdjustPosSizePixel( pShell, aPoint, aSize, true );
+        }
+        else
+        {
+            DoAdjustPosSizePixel( pShell, Point(), aSize, false );
         }
     }
 }
 
+#if HAVE_FEATURE_SCRIPTING
+
 #define LINE_SEP 0x0A
 
-void CutLines( OUString& rStr, sal_Int32 nStartLine, sal_Int32 nLines, bool bEraseTrailingEmptyLines )
+static void CutLines( OUString& rStr, sal_Int32 nStartLine, sal_Int32 nLines )
 {
     sal_Int32 nStartPos = 0;
     sal_Int32 nLine = 0;
@@ -2315,7 +2596,8 @@ void CutLines( OUString& rStr, sal_Int32 nStartLine, sal_Int32 nLines, bool bEra
 
         rStr = rStr.copy( 0, nStartPos ) + rStr.copy( nEndPos );
     }
-    if ( bEraseTrailingEmptyLines && nStartPos != -1 )
+    // erase trailing lines
+    if ( nStartPos != -1 )
     {
         sal_Int32 n = nStartPos;
         sal_Int32 nLen = rStr.getLength();
@@ -2326,6 +2608,8 @@ void CutLines( OUString& rStr, sal_Int32 nStartLine, sal_Int32 nLines, bool bEra
             rStr = rStr.copy( 0, nStartPos ) + rStr.copy( n );
     }
 }
+
+#endif
 
 /*
     add new recorded dispatch macro script into the application global basic
@@ -2341,7 +2625,16 @@ void SfxViewFrame::AddDispatchMacroToBasic_Impl( const OUString& sMacro )
         return;
 
     SfxApplication* pSfxApp = SfxGetpApp();
-    SfxRequest aReq( SID_BASICCHOOSER, SfxCallMode::SYNCHRON, pSfxApp->GetPool() );
+    SfxItemPool& rPool = pSfxApp->GetPool();
+    SfxRequest aReq(SID_BASICCHOOSER, SfxCallMode::SYNCHRON, rPool);
+
+    //seen in tdf#122598, no parent for subsequent dialog
+    SfxAllItemSet aSet(rPool);
+    css::uno::Reference< css::frame::XFrame > xFrame =
+            GetFrame().GetFrameInterface();
+    aSet.Put(SfxUnoFrameItem(SID_FILLFRAME, xFrame));
+    aReq.SetInternalArgs_Impl(aSet);
+
     aReq.AppendItem( SfxBoolItem(SID_RECORDMACRO,true) );
     const SfxPoolItem* pRet = SfxGetpApp()->ExecuteSlot( aReq );
     OUString aScriptURL;
@@ -2375,12 +2668,12 @@ void SfxViewFrame::AddDispatchMacroToBasic_Impl( const OUString& sMacro )
         }
 
         BasicManager* pBasMgr = nullptr;
-        if ( aLocation.equalsIgnoreAsciiCase( "application" ) )
+        if ( aLocation == "application" )
         {
             // application basic
             pBasMgr = SfxApplication::GetBasicManager();
         }
-        else if ( aLocation.equalsIgnoreAsciiCase( "document" ) )
+        else if ( aLocation == "document" )
         {
             pBasMgr = GetObjectShell()->GetBasicManager();
         }
@@ -2398,20 +2691,20 @@ void SfxViewFrame::AddDispatchMacroToBasic_Impl( const OUString& sMacro )
                     aOUSource = pModule->GetSource32();
                     sal_uInt16 nStart, nEnd;
                     pMethod->GetLineRange( nStart, nEnd );
-                    sal_uIntPtr nlStart = nStart;
-                    sal_uIntPtr nlEnd = nEnd;
-                    CutLines( aOUSource, nlStart-1, nlEnd-nlStart+1, true );
+                    sal_uInt16 nlStart = nStart;
+                    sal_uInt16 nlEnd = nEnd;
+                    CutLines( aOUSource, nlStart-1, nlEnd-nlStart+1 );
                 }
             }
         }
 
         // open lib container and break operation if it couldn't be opened
         css::uno::Reference< css::script::XLibraryContainer > xLibCont;
-        if ( aLocation.equalsIgnoreAsciiCase( "application" ) )
+        if ( aLocation == "application" )
         {
             xLibCont = SfxGetpApp()->GetBasicContainer();
         }
-        else if ( aLocation.equalsIgnoreAsciiCase( "document" ) )
+        else if ( aLocation == "document" )
         {
             xLibCont = GetObjectShell()->GetBasicContainer();
         }
@@ -2424,21 +2717,18 @@ void SfxViewFrame::AddDispatchMacroToBasic_Impl( const OUString& sMacro )
 
         // get LibraryContainer
         css::uno::Any aTemp;
-        css::uno::Reference< css::container::XNameAccess > xRoot(
-                xLibCont,
-                css::uno::UNO_QUERY);
 
         css::uno::Reference< css::container::XNameAccess > xLib;
-        if(xRoot->hasByName(aLibName))
+        if(xLibCont->hasByName(aLibName))
         {
             // library must be loaded
-            aTemp = xRoot->getByName(aLibName);
+            aTemp = xLibCont->getByName(aLibName);
             xLibCont->loadLibrary(aLibName);
             aTemp >>= xLib;
         }
         else
         {
-            xLib.set( xLibCont->createLibrary(aLibName), css::uno::UNO_QUERY);
+            xLib = xLibCont->createLibrary(aLibName);
         }
 
         // pack the macro as direct usable "sub" routine
@@ -2519,9 +2809,8 @@ void SfxViewFrame::MiscExec_Impl( SfxRequest& rReq )
         {
             // try to find any active recorder on this frame
             const OUString sProperty("DispatchRecorderSupplier");
-            css::uno::Reference< css::frame::XFrame > xFrame(
-                    GetFrame().GetFrameInterface(),
-                    css::uno::UNO_QUERY);
+            css::uno::Reference< css::frame::XFrame > xFrame =
+                    GetFrame().GetFrameInterface();
 
             css::uno::Reference< css::beans::XPropertySet > xSet(xFrame,css::uno::UNO_QUERY);
             css::uno::Any aProp = xSet->getPropertyValue(sProperty);
@@ -2579,9 +2868,8 @@ void SfxViewFrame::MiscExec_Impl( SfxRequest& rReq )
 
         case SID_TOGGLESTATUSBAR:
         {
-            css::uno::Reference< css::frame::XFrame > xFrame(
-                    GetFrame().GetFrameInterface(),
-                    css::uno::UNO_QUERY);
+            css::uno::Reference< css::frame::XFrame > xFrame =
+                    GetFrame().GetFrameInterface();
 
             Reference< css::beans::XPropertySet > xPropSet( xFrame, UNO_QUERY );
             Reference< css::frame::XLayoutManager > xLayoutManager;
@@ -2633,9 +2921,8 @@ void SfxViewFrame::MiscExec_Impl( SfxRequest& rReq )
                 WorkWindow* pWork = static_cast<WorkWindow*>( pTop->GetFrame().GetTopWindow_Impl() );
                 if ( pWork )
                 {
-                    css::uno::Reference< css::frame::XFrame > xFrame(
-                            GetFrame().GetFrameInterface(),
-                            css::uno::UNO_QUERY);
+                    css::uno::Reference< css::frame::XFrame > xFrame =
+                            GetFrame().GetFrameInterface();
 
                     Reference< css::beans::XPropertySet > xPropSet( xFrame, UNO_QUERY );
                     Reference< css::frame::XLayoutManager > xLayoutManager;
@@ -2654,6 +2941,11 @@ void SfxViewFrame::MiscExec_Impl( SfxRequest& rReq )
                     bool bNewFullScreenMode = pItem ? pItem->GetValue() : !pWork->IsFullScreenMode();
                     if ( bNewFullScreenMode != pWork->IsFullScreenMode() )
                     {
+                        if ( bNewFullScreenMode )
+                            sfx2::SfxNotebookBar::LockNotebookBar();
+                        else
+                            sfx2::SfxNotebookBar::UnlockNotebookBar();
+
                         Reference< css::beans::XPropertySet > xLMPropSet( xLayoutManager, UNO_QUERY );
                         if ( xLMPropSet.is() )
                         {
@@ -2707,7 +2999,8 @@ void SfxViewFrame::MiscState_Impl(SfxItemSet &rSet)
                 {
                     SvtMiscOptions aMiscOptions;
                     const OUString& sName{GetObjectShell()->GetFactory().GetFactoryName()};
-                    if ( !aMiscOptions.IsMacroRecorderMode() ||
+                    bool bMacrosDisabled = officecfg::Office::Common::Security::Scripting::DisableMacrosExecution::get();
+                    if (bMacrosDisabled || !aMiscOptions.IsMacroRecorderMode() ||
                          ( sName!="swriter" && sName!="scalc" ) )
                     {
                         rSet.DisableItem( nWhich );
@@ -2858,8 +3151,8 @@ void SfxViewFrame::ChildWindowExecute( SfxRequest &rReq )
         // First make sure that the sidebar is visible
         ShowChildWindow(SID_SIDEBAR);
 
-        ::sfx2::sidebar::Sidebar::TogglePanel("StyleListPanel",
-                                              GetFrame().GetFrameInterface());
+        ::sfx2::sidebar::Sidebar::ShowPanel("StyleListPanel",
+                                            GetFrame().GetFrameInterface(), true);
         rReq.Done();
         return;
     }
@@ -3004,21 +3297,51 @@ void SfxViewFrame::UpdateDocument_Impl()
 
 void SfxViewFrame::SetViewFrame( SfxViewFrame* pFrame )
 {
+    if(pFrame)
+        SetSVHelpData(pFrame->m_pHelpData);
+
+    SetSVWinData(pFrame ? pFrame->m_pWinData : nullptr);
+
     SfxGetpApp()->SetViewFrame_Impl( pFrame );
 }
 
 VclPtr<SfxInfoBarWindow> SfxViewFrame::AppendInfoBar(const OUString& sId,
-                                               const OUString& sMessage,
-                                               InfoBarType aInfoBarType)
+                                               const OUString& sPrimaryMessage,
+                                               const OUString& sSecondaryMessage,
+                                               InfobarType aInfobarType, bool bShowCloseButton)
 {
     SfxChildWindow* pChild = GetChildWindow(SfxInfoBarContainerChild::GetChildWindowId());
     if (!pChild)
         return nullptr;
 
+    if (HasInfoBarWithID(sId))
+        return nullptr;
+
     SfxInfoBarContainerWindow* pInfoBarContainer = static_cast<SfxInfoBarContainerWindow*>(pChild->GetWindow());
-    auto pInfoBar = pInfoBarContainer->appendInfoBar(sId, sMessage, aInfoBarType, WB_LEFT | WB_VCENTER);
+    auto pInfoBar = pInfoBarContainer->appendInfoBar(sId, sPrimaryMessage, sSecondaryMessage,
+                                                     aInfobarType, WB_LEFT | WB_VCENTER, bShowCloseButton);
     ShowChildWindow(SfxInfoBarContainerChild::GetChildWindowId());
     return pInfoBar;
+}
+
+void SfxViewFrame::UpdateInfoBar(const OUString& sId, const OUString& sPrimaryMessage,
+                                 const OUString& sSecondaryMessage, InfobarType eType)
+{
+    const sal_uInt16 nId = SfxInfoBarContainerChild::GetChildWindowId();
+
+    // Make sure the InfoBar container is visible
+    if (!HasChildWindow(nId))
+        ToggleChildWindow(nId);
+
+    SfxChildWindow* pChild = GetChildWindow(nId);
+    if (pChild)
+    {
+        SfxInfoBarContainerWindow* pInfoBarContainer = static_cast<SfxInfoBarContainerWindow*>(pChild->GetWindow());
+        auto pInfoBar = pInfoBarContainer->getInfoBar(sId);
+
+        if (pInfoBar)
+             pInfoBar->Update(sPrimaryMessage, sSecondaryMessage, eType);
+    }
 }
 
 void SfxViewFrame::RemoveInfoBar( const OUString& sId )

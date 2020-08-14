@@ -19,13 +19,16 @@
 
 #include <SwAppletImpl.hxx>
 #include <svtools/htmlkywd.hxx>
-#include <svl/urihelper.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 
 #include <comphelper/embeddedobjectcontainer.hxx>
 #include <comphelper/classids.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <svtools/embedhlp.hxx>
+#include <tools/globname.hxx>
+#include <tools/urlobj.hxx>
 #include <hintids.hxx>
 
 using namespace com::sun::star;

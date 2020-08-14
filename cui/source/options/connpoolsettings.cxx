@@ -52,32 +52,27 @@ namespace offapp
 
     bool DriverPoolingSettingsItem::operator==( const SfxPoolItem& _rCompare ) const
     {
-        const DriverPoolingSettingsItem* pItem = dynamic_cast<const DriverPoolingSettingsItem*>( &_rCompare );
-        if (!pItem)
-            return false;
+        assert(SfxPoolItem::operator==(_rCompare));
+        const DriverPoolingSettingsItem* pItem = static_cast<const DriverPoolingSettingsItem*>( &_rCompare );
 
         if (m_aSettings.size() != pItem->m_aSettings.size())
             return false;
 
-        DriverPoolingSettings::const_iterator aOwn = m_aSettings.begin();
-        DriverPoolingSettings::const_iterator aOwnEnd = m_aSettings.end();
         DriverPoolingSettings::const_iterator aForeign = pItem->m_aSettings.begin();
-        while (aOwn < aOwnEnd)
+        for (auto const& ownSetting : m_aSettings)
         {
-            if (*aOwn != *aForeign)
+            if (ownSetting != *aForeign)
                 return false;
 
             ++aForeign;
-            ++aOwn;
         }
 
         return true;
     }
 
-
-    SfxPoolItem* DriverPoolingSettingsItem::Clone( SfxItemPool * ) const
+    DriverPoolingSettingsItem* DriverPoolingSettingsItem::Clone( SfxItemPool * ) const
     {
-        return new DriverPoolingSettingsItem(Which(), m_aSettings);
+        return new DriverPoolingSettingsItem(*this);
     }
 
 

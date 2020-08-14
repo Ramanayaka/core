@@ -22,40 +22,46 @@
 #include <string.h>
 #include <utility>
 
+#include <filter/msfilter/util.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/random.h>
 #include <sax/fshelper.hxx>
 #include <unotools/streamwrap.hxx>
+#include <sot/storage.hxx>
+#include <tools/urlobj.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/settings.hxx>
+#include <officecfg/Office/Calc.hxx>
 
-#include "docuno.hxx"
-#include "xestream.hxx"
-#include "xladdress.hxx"
-#include "xlstring.hxx"
-#include "xeroot.hxx"
-#include "xestyle.hxx"
-#include "xcl97rec.hxx"
-#include "rangelst.hxx"
-#include "compiler.hxx"
-#include "formulacell.hxx"
-#include "tokenarray.hxx"
-#include "tokenstringcontext.hxx"
-#include "refreshtimerprotector.hxx"
-#include "globstr.hrc"
+#include <docuno.hxx>
+#include <xestream.hxx>
+#include <xladdress.hxx>
+#include <xlstring.hxx>
+#include <xltools.hxx>
+#include <xeroot.hxx>
+#include <xcl97rec.hxx>
+#include <rangelst.hxx>
+#include <compiler.hxx>
+#include <formulacell.hxx>
+#include <tokenarray.hxx>
+#include <tokenstringcontext.hxx>
+#include <refreshtimerprotector.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <root.hxx>
+#include <sfx2/app.hxx>
 
-#include <../../ui/inc/docsh.hxx>
-#include <../../ui/inc/viewdata.hxx>
+#include <docsh.hxx>
+#include <viewdata.hxx>
 #include <excdoc.hxx>
 
 #include <oox/token/tokens.hxx>
+#include <oox/token/relationship.hxx>
+#include <oox/export/utils.hxx>
 #include <formula/grammar.hxx>
-#include <oox/export/drawingml.hxx>
 #include <oox/ole/vbaexport.hxx>
 #include <excelvbaproject.hxx>
-
-#include <sfx2/docfile.hxx>
-#include <sfx2/objsh.hxx>
-#include <sfx2/app.hxx>
 
 #include <com/sun/star/task/XStatusIndicator.hpp>
 #include <memory>
@@ -225,15 +231,15 @@ std::size_t XclExpStream::Write( const void* pData, std::size_t nBytes )
                 {
                     OSL_ENSURE(nWriteLen > 0, "XclExpStream::Write: write length is 0!");
                     vector<sal_uInt8> aBytes(nWriteLen);
-                    memcpy(&aBytes[0], pBuffer, nWriteLen);
+                    memcpy(aBytes.data(), pBuffer, nWriteLen);
                     mxEncrypter->EncryptBytes(mrStrm, aBytes);
                     // TODO: How do I check if all the bytes have been successfully written ?
                 }
                 else
                 {
                     nWriteRet = mrStrm.WriteBytes(pBuffer, nWriteLen);
-                bValid = (nWriteLen == nWriteRet);
-                OSL_ENSURE( bValid, "XclExpStream::Write - stream write error" );
+                    bValid = (nWriteLen == nWriteRet);
+                    OSL_ENSURE( bValid, "XclExpStream::Write - stream write error" );
                 }
                 pBuffer += nWriteRet;
                 nRet += nWriteRet;
@@ -278,21 +284,21 @@ void XclExpStream::CopyFromStream(SvStream& rInStrm, sal_uInt64 const nBytes)
 {
     sal_uInt64 const nRemaining(rInStrm.remainingSize());
     sal_uInt64 nBytesLeft = ::std::min(nBytes, nRemaining);
-    if( nBytesLeft > 0 )
-    {
-        const std::size_t nMaxBuffer = 4096;
-        std::unique_ptr<sal_uInt8[]> pBuffer(
-            new sal_uInt8[ ::std::min<std::size_t>(nBytesLeft, nMaxBuffer) ]);
-        bool bValid = true;
+    if( nBytesLeft <= 0 )
+        return;
 
-        while( bValid && (nBytesLeft > 0) )
-        {
-            std::size_t nWriteLen = ::std::min<std::size_t>(nBytesLeft, nMaxBuffer);
-            rInStrm.ReadBytes(pBuffer.get(), nWriteLen);
-            std::size_t nWriteRet = Write( pBuffer.get(), nWriteLen );
-            bValid = (nWriteLen == nWriteRet);
-            nBytesLeft -= nWriteRet;
-        }
+    const std::size_t nMaxBuffer = 4096;
+    std::unique_ptr<sal_uInt8[]> pBuffer(
+        new sal_uInt8[ ::std::min<std::size_t>(nBytesLeft, nMaxBuffer) ]);
+    bool bValid = true;
+
+    while( bValid && (nBytesLeft > 0) )
+    {
+        std::size_t nWriteLen = ::std::min<std::size_t>(nBytesLeft, nMaxBuffer);
+        rInStrm.ReadBytes(pBuffer.get(), nWriteLen);
+        std::size_t nWriteRet = Write( pBuffer.get(), nWriteLen );
+        bValid = (nWriteLen == nWriteRet);
+        nBytesLeft -= nWriteRet;
     }
 }
 
@@ -302,8 +308,7 @@ void XclExpStream::WriteUnicodeBuffer( const ScfUInt16Vec& rBuffer, sal_uInt8 nF
     nFlags &= EXC_STRF_16BIT;   // repeat only 16bit flag
     sal_uInt16 nCharLen = nFlags ? 2 : 1;
 
-    ScfUInt16Vec::const_iterator aEnd = rBuffer.end();
-    for( ScfUInt16Vec::const_iterator aIter = rBuffer.begin(); aIter != aEnd; ++aIter )
+    for( const auto& rItem : rBuffer )
     {
         if( mbInRec && (mnCurrSize + nCharLen > mnCurrMaxSize) )
         {
@@ -311,9 +316,9 @@ void XclExpStream::WriteUnicodeBuffer( const ScfUInt16Vec& rBuffer, sal_uInt8 nF
             operator<<( nFlags );
         }
         if( nCharLen == 2 )
-            operator<<( *aIter );
+            operator<<( rItem );
         else
-            operator<<( static_cast< sal_uInt8 >( *aIter ) );
+            operator<<( static_cast< sal_uInt8 >( rItem ) );
     }
 }
 
@@ -337,7 +342,7 @@ void XclExpStream::WriteByteString( const OString& rString )
 void XclExpStream::WriteCharBuffer( const ScfUInt8Vec& rBuffer )
 {
     SetSliceSize( 0 );
-    Write( &rBuffer[ 0 ], rBuffer.size() );
+    Write( rBuffer.data(), rBuffer.size() );
 }
 
 void XclExpStream::SetEncrypter( XclExpEncrypterRef const & xEncrypter )
@@ -456,7 +461,7 @@ XclExpBiff8Encrypter::XclExpBiff8Encrypter( const XclExpRoot& rRoot ) :
     Sequence< NamedValue > aEncryptionData = rRoot.GetEncryptionData();
     if( !aEncryptionData.hasElements() )
         // Empty password.  Get the default biff8 password.
-        aEncryptionData = rRoot.GenerateDefaultEncryptionData();
+        aEncryptionData = XclExpRoot::GenerateDefaultEncryptionData();
     Init( aEncryptionData );
 }
 
@@ -479,7 +484,7 @@ void XclExpBiff8Encrypter::GetSalt( sal_uInt8 pnSalt[16] ) const
 void XclExpBiff8Encrypter::GetDocId( sal_uInt8 pnDocId[16] ) const
 {
     if ( sizeof( mpnDocId ) == 16 )
-    memcpy( pnDocId, mpnDocId, 16 );
+        memcpy( pnDocId, mpnDocId, 16 );
 }
 
 void XclExpBiff8Encrypter::Encrypt( SvStream& rStrm, sal_uInt8 nData )
@@ -510,14 +515,14 @@ void XclExpBiff8Encrypter::Encrypt( SvStream& rStrm, sal_uInt32 nData )
 void XclExpBiff8Encrypter::Encrypt( SvStream& rStrm, float fValue )
 {
     ::std::vector<sal_uInt8> pnBytes(4);
-    memcpy(&pnBytes[0], &fValue, 4);
+    memcpy(pnBytes.data(), &fValue, 4);
     EncryptBytes(rStrm, pnBytes);
 }
 
 void XclExpBiff8Encrypter::Encrypt( SvStream& rStrm, double fValue )
 {
     ::std::vector<sal_uInt8> pnBytes(8);
-    memcpy(&pnBytes[0], &fValue, 8);
+    memcpy(pnBytes.data(), &fValue, 8);
     EncryptBytes(rStrm, pnBytes);
 }
 
@@ -540,28 +545,25 @@ void XclExpBiff8Encrypter::Init( const Sequence< NamedValue >& rEncryptionData )
 {
     mbValid = false;
 
-    if( maCodec.InitCodec( rEncryptionData ) )
-    {
-        maCodec.GetDocId( mpnDocId );
+    if( !maCodec.InitCodec( rEncryptionData ) )
+        return;
 
-        // generate the salt here
-        TimeValue aTime;
-        osl_getSystemTime( &aTime );
-        rtlRandomPool aRandomPool = rtl_random_createPool ();
-        rtl_random_addBytes( aRandomPool, &aTime, 8 );
-        rtl_random_getBytes( aRandomPool, mpnSalt, 16 );
-        rtl_random_destroyPool( aRandomPool );
+    maCodec.GetDocId( mpnDocId );
 
-        memset( mpnSaltDigest, 0, sizeof( mpnSaltDigest ) );
+    // generate the salt here
+    rtlRandomPool aRandomPool = rtl_random_createPool ();
+    rtl_random_getBytes( aRandomPool, mpnSalt, 16 );
+    rtl_random_destroyPool( aRandomPool );
 
-        // generate salt hash.
-        ::msfilter::MSCodec_Std97 aCodec;
-        aCodec.InitCodec( rEncryptionData );
-        aCodec.CreateSaltDigest( mpnSalt, mpnSaltDigest );
+    memset( mpnSaltDigest, 0, sizeof( mpnSaltDigest ) );
 
-        // verify to make sure it's in good shape.
-        mbValid = maCodec.VerifyKey( mpnSalt, mpnSaltDigest );
-    }
+    // generate salt hash.
+    ::msfilter::MSCodec_Std97 aCodec;
+    aCodec.InitCodec( rEncryptionData );
+    aCodec.CreateSaltDigest( mpnSalt, mpnSaltDigest );
+
+    // verify to make sure it's in good shape.
+    mbValid = maCodec.VerifyKey( mpnSalt, mpnSaltDigest );
 }
 
 sal_uInt32 XclExpBiff8Encrypter::GetBlockPos( std::size_t nStrmPos )
@@ -698,12 +700,7 @@ OString XclXmlUtils::ToOString( const Color& rColor )
     char buf[9];
     sprintf( buf, "%.2X%.2X%.2X%.2X", 0xFF-rColor.GetTransparency(), rColor.GetRed(), rColor.GetGreen(), rColor.GetBlue() );
     buf[8] = '\0';
-    return OString( buf );
-}
-
-OString XclXmlUtils::ToOString( const OUString& s )
-{
-    return OUStringToOString( s, RTL_TEXTENCODING_UTF8  );
+    return buf;
 }
 
 OStringBuffer& XclXmlUtils::ToOString( OStringBuffer& s, const ScAddress& rAddress )
@@ -717,25 +714,25 @@ OString XclXmlUtils::ToOString( const ScfUInt16Vec& rBuffer )
     if(rBuffer.empty())
         return OString();
 
-    const sal_uInt16* pBuffer = &rBuffer [0];
+    const sal_uInt16* pBuffer = rBuffer.data();
     return OString(
         reinterpret_cast<sal_Unicode const *>(pBuffer), rBuffer.size(),
         RTL_TEXTENCODING_UTF8);
 }
 
-OString XclXmlUtils::ToOString( const ScRange& rRange, bool bFullAddressNotation )
+OString XclXmlUtils::ToOString( const ScDocument& rDoc, const ScRange& rRange, bool bFullAddressNotation )
 {
-    OUString sRange(rRange.Format( ScRefFlags::VALID, nullptr,
+    OUString sRange(rRange.Format( rDoc, ScRefFlags::VALID,
                                    ScAddress::Details( FormulaGrammar::CONV_XL_A1 ),
                                    bFullAddressNotation ) );
-    return ToOString( sRange );
+    return sRange.toUtf8();
 }
 
-OString XclXmlUtils::ToOString( const ScRangeList& rRangeList )
+OString XclXmlUtils::ToOString( const ScDocument& rDoc, const ScRangeList& rRangeList )
 {
     OUString s;
-    rRangeList.Format(s, ScRefFlags::VALID, nullptr, FormulaGrammar::CONV_XL_OOX, ' ');
-    return ToOString( s );
+    rRangeList.Format(s, ScRefFlags::VALID, rDoc, FormulaGrammar::CONV_XL_OOX, ' ');
+    return s.toUtf8();
 }
 
 static ScAddress lcl_ToAddress( const XclAddress& rAddress )
@@ -773,25 +770,24 @@ static ScRange lcl_ToRange( const XclRange& rRange )
     return aRange;
 }
 
-OString XclXmlUtils::ToOString( const XclRangeList& rRanges )
+OString XclXmlUtils::ToOString( const ScDocument& rDoc, const XclRangeList& rRanges )
 {
     ScRangeList aRanges;
-    for( XclRangeVector::const_iterator i = rRanges.begin(), end = rRanges.end();
-            i != end; ++i )
+    for( const auto& rRange : rRanges )
     {
-        aRanges.Append( lcl_ToRange( *i ) );
+        aRanges.push_back( lcl_ToRange( rRange ) );
     }
-    return ToOString( aRanges );
+    return ToOString( rDoc, aRanges );
 }
 
 OUString XclXmlUtils::ToOUString( const char* s )
 {
-    return OUString( s, (sal_Int32) strlen( s ), RTL_TEXTENCODING_ASCII_US );
+    return OUString( s, static_cast<sal_Int32>(strlen( s )), RTL_TEXTENCODING_ASCII_US );
 }
 
 OUString XclXmlUtils::ToOUString( const ScfUInt16Vec& rBuf, sal_Int32 nStart, sal_Int32 nLength )
 {
-    if( nLength == -1 || ( nLength > ((sal_Int32)rBuf.size() - nStart) ) )
+    if( nLength == -1 || ( nLength > (static_cast<sal_Int32>(rBuf.size()) - nStart) ) )
         nLength = (rBuf.size() - nStart);
 
     return nLength > 0
@@ -801,15 +797,30 @@ OUString XclXmlUtils::ToOUString( const ScfUInt16Vec& rBuf, sal_Int32 nStart, sa
 }
 
 OUString XclXmlUtils::ToOUString(
-    sc::CompileFormulaContext& rCtx, const ScAddress& rAddress, const ScTokenArray* pTokenArray )
+    sc::CompileFormulaContext& rCtx, const ScAddress& rAddress, const ScTokenArray* pTokenArray,
+    FormulaError nErrCode )
 {
     ScCompiler aCompiler( rCtx, rAddress, const_cast<ScTokenArray&>(*pTokenArray));
 
     /* TODO: isn't this the same as passed in rCtx and thus superfluous? */
     aCompiler.SetGrammar(FormulaGrammar::GRAM_OOXML);
 
-    OUStringBuffer aBuffer( pTokenArray->GetLen() * 5 );
-    aCompiler.CreateStringFromTokenArray( aBuffer );
+    sal_Int32 nLen = pTokenArray->GetLen();
+    OUStringBuffer aBuffer( nLen ? (nLen * 5) : 8 );
+    if (nLen)
+        aCompiler.CreateStringFromTokenArray( aBuffer );
+    else
+    {
+        if (nErrCode != FormulaError::NONE)
+            aCompiler.AppendErrorConstant( aBuffer, nErrCode);
+        else
+        {
+            // No code SHOULD be an "error cell", assert caller thought of that
+            // and it really is.
+            assert(!"No code and no error.");
+        }
+    }
+
     return aBuffer.makeStringAndClear();
 }
 
@@ -819,52 +830,11 @@ OUString XclXmlUtils::ToOUString( const XclExpString& s )
     return ToOUString( s.GetUnicodeBuffer() );
 }
 
-const char* XclXmlUtils::ToPsz( bool b )
-{
-    return b ? "true" : "false";
-}
-
-const char* XclXmlUtils::ToPsz10( bool b )
-{
-    // xlsx seems to use "1" or "0" for boolean values.  I wonder it ever uses
-    // the "true" "false" variant.
-    return b ? "1" : "0";
-}
-
-sax_fastparser::FSHelperPtr XclXmlUtils::WriteElement( sax_fastparser::FSHelperPtr pStream, sal_Int32 nElement, sal_Int32 nValue )
-{
-    pStream->startElement( nElement, FSEND );
-    pStream->write( nValue );
-    pStream->endElement( nElement );
-
-    return pStream;
-}
-
-sax_fastparser::FSHelperPtr XclXmlUtils::WriteElement( sax_fastparser::FSHelperPtr pStream, sal_Int32 nElement, sal_Int64 nValue )
-{
-    pStream->startElement( nElement, FSEND );
-    pStream->write( nValue );
-    pStream->endElement( nElement );
-
-    return pStream;
-}
-
-sax_fastparser::FSHelperPtr XclXmlUtils::WriteElement( sax_fastparser::FSHelperPtr pStream, sal_Int32 nElement, const char* sValue )
-{
-    pStream->startElement( nElement, FSEND );
-    pStream->write( sValue );
-    pStream->endElement( nElement );
-
-    return pStream;
-}
-
-static void lcl_WriteValue( sax_fastparser::FSHelperPtr& rStream, sal_Int32 nElement, const char* pValue )
+static void lcl_WriteValue( const sax_fastparser::FSHelperPtr& rStream, sal_Int32 nElement, const char* pValue )
 {
     if( !pValue )
         return;
-    rStream->singleElement( nElement,
-            XML_val, pValue,
-            FSEND );
+    rStream->singleElement(nElement, XML_val, pValue);
 }
 
 static const char* lcl_GetUnderlineStyle( FontLineStyle eUnderline, bool& bHaveUnderline )
@@ -899,35 +869,36 @@ sax_fastparser::FSHelperPtr XclXmlUtils::WriteFontData( sax_fastparser::FSHelper
     const char* pUnderline = lcl_GetUnderlineStyle( rFontData.GetScUnderline(), bHaveUnderline );
     const char* pVertAlign = lcl_ToVerticalAlignmentRun( rFontData.GetScEscapement(), bHaveVertAlign );
 
-    lcl_WriteValue( pStream, XML_b,          rFontData.mnWeight > 400 ? XclXmlUtils::ToPsz( rFontData.mnWeight > 400 ) : nullptr );
-    lcl_WriteValue( pStream, XML_i,          rFontData.mbItalic ? XclXmlUtils::ToPsz( rFontData.mbItalic ) : nullptr );
-    lcl_WriteValue( pStream, XML_strike,     rFontData.mbStrikeout ? XclXmlUtils::ToPsz( rFontData.mbStrikeout ) : nullptr );
+    lcl_WriteValue( pStream, XML_b,          rFontData.mnWeight > 400 ? ToPsz( true ) : nullptr );
+    lcl_WriteValue( pStream, XML_i,          rFontData.mbItalic       ? ToPsz( true ) : nullptr );
+    lcl_WriteValue( pStream, XML_strike,     rFontData.mbStrikeout    ? ToPsz( true ) : nullptr );
     // OOXTODO: lcl_WriteValue( rStream, XML_condense, );    // mac compatibility setting
     // OOXTODO: lcl_WriteValue( rStream, XML_extend, );      // compatibility setting
-    lcl_WriteValue( pStream, XML_outline,    rFontData.mbOutline ? XclXmlUtils::ToPsz( rFontData.mbOutline ) : nullptr );
-    lcl_WriteValue( pStream, XML_shadow,     rFontData.mbShadow ? XclXmlUtils::ToPsz( rFontData.mbShadow ) : nullptr );
-    lcl_WriteValue( pStream, XML_u,          bHaveUnderline ? pUnderline : nullptr );
-    lcl_WriteValue( pStream, XML_vertAlign,  bHaveVertAlign ? pVertAlign : nullptr );
+    lcl_WriteValue( pStream, XML_outline,    rFontData.mbOutline      ? ToPsz( true ) : nullptr );
+    lcl_WriteValue( pStream, XML_shadow,     rFontData.mbShadow       ? ToPsz( true ) : nullptr );
+    lcl_WriteValue( pStream, XML_u,          bHaveUnderline           ? pUnderline    : nullptr );
+    lcl_WriteValue( pStream, XML_vertAlign,  bHaveVertAlign           ? pVertAlign    : nullptr );
     lcl_WriteValue( pStream, XML_sz,         OString::number( rFontData.mnHeight / 20.0 ).getStr() );  // Twips->Pt
     if( rFontData.maColor != Color( 0xFF, 0xFF, 0xFF, 0xFF ) )
         pStream->singleElement( XML_color,
                 // OOXTODO: XML_auto,       bool
                 // OOXTODO: XML_indexed,    uint
-                XML_rgb,    XclXmlUtils::ToOString( rFontData.maColor ).getStr(),
+                XML_rgb, XclXmlUtils::ToOString(rFontData.maColor)
                 // OOXTODO: XML_theme,      index into <clrScheme/>
                 // OOXTODO: XML_tint,       double
-                FSEND );
-    lcl_WriteValue( pStream, nFontId,        XclXmlUtils::ToOString( rFontData.maName ).getStr() );
+        );
+    lcl_WriteValue( pStream, nFontId,        rFontData.maName.toUtf8().getStr() );
     lcl_WriteValue( pStream, XML_family,     OString::number(  rFontData.mnFamily ).getStr() );
     lcl_WriteValue( pStream, XML_charset,    rFontData.mnCharSet != 0 ? OString::number(  rFontData.mnCharSet ).getStr() : nullptr );
 
     return pStream;
 }
 
-XclExpXmlStream::XclExpXmlStream( const uno::Reference< XComponentContext >& rCC, bool bExportVBA )
+XclExpXmlStream::XclExpXmlStream( const uno::Reference< XComponentContext >& rCC, bool bExportVBA, bool bExportTemplate )
     : XmlFilterBase( rCC ),
       mpRoot( nullptr ),
-      mbExportVBA(bExportVBA)
+      mbExportVBA(bExportVBA),
+      mbExportTemplate(bExportTemplate)
 {
 }
 
@@ -960,31 +931,11 @@ sax_fastparser::FSHelperPtr XclExpXmlStream::GetStreamForPath( const OUString& s
     return maOpenedStreamMap[ sPath ].second;
 }
 
-sax_fastparser::FSHelperPtr& XclExpXmlStream::WriteAttributesInternal( sal_Int32 nAttribute, ... )
+void XclExpXmlStream::WriteAttribute(sal_Int32 nAttr, const OUString& sVal)
 {
-    sax_fastparser::FSHelperPtr& rStream = GetCurrentStream();
-
-    va_list args;
-    va_start( args, nAttribute );
-    do {
-        const char* pValue = va_arg( args, const char* );
-        if( pValue )
-        {
-            rStream->write( " " )
-                ->writeId( nAttribute )
-                ->write( "=\"" )
-                ->writeEscaped( OUString(pValue, strlen(pValue), RTL_TEXTENCODING_UTF8) )
-                ->write( "\"" );
-        }
-
-        nAttribute = va_arg( args, sal_Int32 );
-        if( nAttribute == FSEND_internal )
-            break;
-    } while( true );
-    va_end( args );
-
-    return rStream;
+    GetCurrentStream()->write(" ")->writeId(nAttr)->write("=\"")->writeEscaped(sVal)->write("\"");
 }
+
 sax_fastparser::FSHelperPtr XclExpXmlStream::CreateOutputStream (
     const OUString& sFullStream,
     const OUString& sRelativeStream,
@@ -1024,7 +975,7 @@ const oox::drawingml::Theme* XclExpXmlStream::getCurrentTheme() const
     return nullptr;
 }
 
-const oox::drawingml::table::TableStyleListPtr XclExpXmlStream::getTableStyles()
+oox::drawingml::table::TableStyleListPtr XclExpXmlStream::getTableStyles()
 {
     return oox::drawingml::table::TableStyleListPtr();
 }
@@ -1053,10 +1004,17 @@ bool XclExpXmlStream::exportDocument()
     ScDocument& rDoc = pShell->GetDocument();
     ScRefreshTimerProtector aProt(rDoc.GetRefreshTimerControlAddress());
 
+    const bool bValidateTabNames = officecfg::Office::Calc::Filter::Export::MS_Excel::TruncateLongSheetNames::get();
+    std::vector<OUString> aOriginalTabNames;
+    if (bValidateTabNames)
+    {
+        validateTabNames(aOriginalTabNames);
+    }
+
     uno::Reference<task::XStatusIndicator> xStatusIndicator = getStatusIndicator();
 
     if (xStatusIndicator.is())
-        xStatusIndicator->start(ScGlobal::GetRscString(STR_SAVE_DOC), 100);
+        xStatusIndicator->start(ScResId(STR_SAVE_DOC), 100);
 
     // NOTE: Don't use SotStorage or SvStream any more, and never call
     // SfxMedium::GetOutStream() anywhere in the xlsx export filter code!
@@ -1064,13 +1022,20 @@ bool XclExpXmlStream::exportDocument()
     tools::SvRef<SotStorage> rStorage = static_cast<SotStorage*>(nullptr);
     XclExpObjList::ResetCounters();
 
-    XclExpRootData aData( EXC_BIFF8, *pShell->GetMedium (), rStorage, rDoc, RTL_TEXTENCODING_DONTKNOW );
+    XclExpRootData aData(
+        EXC_BIFF8, *pShell->GetMedium (), rStorage, rDoc,
+        msfilter::util::getBestTextEncodingFromLocale(
+            Application::GetSettings().GetLanguageTag().getLocale()));
     aData.meOutput = EXC_OUTPUT_XML_2007;
     aData.maXclMaxPos.Set( EXC_MAXCOL_XML_2007, EXC_MAXROW_XML_2007, EXC_MAXTAB_XML_2007 );
     aData.maMaxPos.SetCol( ::std::min( aData.maScMaxPos.Col(), aData.maXclMaxPos.Col() ) );
     aData.maMaxPos.SetRow( ::std::min( aData.maScMaxPos.Row(), aData.maXclMaxPos.Row() ) );
     aData.maMaxPos.SetTab( ::std::min( aData.maScMaxPos.Tab(), aData.maXclMaxPos.Tab() ) );
-    aData.mpCompileFormulaCxt.reset( new sc::CompileFormulaContext(&rDoc) );
+    aData.mpCompileFormulaCxt = std::make_shared<sc::CompileFormulaContext>(&rDoc);
+    // set target path to get correct relative links to target document, not source
+    INetURLObject aPath(getFileUrl());
+    aData.maBasePath = aPath.GetPath() + "\\";
+    aData.maBasePath = "file:///" + aData.maBasePath.replace('\\', '/');
 
     XclExpRoot aRoot( aData );
 
@@ -1082,16 +1047,34 @@ bool XclExpXmlStream::exportDocument()
         ScDocShell::GetViewData()->WriteExtOptions( mpRoot->GetExtDocOptions() );
 
     OUString const workbook = "xl/workbook.xml";
-    const char* pWorkbookContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
-
-
+    const char* pWorkbookContentType = nullptr;
     if (mbExportVBA)
-        pWorkbookContentType = "application/vnd.ms-excel.sheet.macroEnabled.main+xml";
+    {
+        if (mbExportTemplate)
+        {
+            pWorkbookContentType = "application/vnd.ms-excel.template.macroEnabled.main+xml";
+        }
+        else
+        {
+            pWorkbookContentType = "application/vnd.ms-excel.sheet.macroEnabled.main+xml";
+        }
+    }
+    else
+    {
+        if (mbExportTemplate)
+        {
+            pWorkbookContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml";
+        }
+        else
+        {
+            pWorkbookContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
+        }
+    }
 
     PushStream( CreateOutputStream( workbook, workbook,
                                     uno::Reference <XOutputStream>(),
                                     pWorkbookContentType,
-                                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" ) );
+                                    OUStringToOString(oox::getRelationship(Relationship::OFFICEDOCUMENT), RTL_TEXTENCODING_UTF8).getStr() ) );
 
     if (mbExportVBA)
     {
@@ -1108,7 +1091,7 @@ bool XclExpXmlStream::exportDocument()
                 openFragmentStream("xl/vbaProject.bin", "application/vnd.ms-office.vbaProject");
             comphelper::OStorageHelper::CopyInputToOutput(xVBAStream, xVBAOutput);
 
-            addRelation(GetCurrentStream()->getOutputStream(), "http://schemas.microsoft.com/office/2006/relationships/vbaProject", "vbaProject.bin");
+            addRelation(GetCurrentStream()->getOutputStream(), oox::getRelationship(Relationship::VBAPROJECT), "vbaProject.bin");
         }
     }
 
@@ -1129,6 +1112,11 @@ bool XclExpXmlStream::exportDocument()
 
     commitStorage();
 
+    if (bValidateTabNames)
+    {
+        restoreTabNames(aOriginalTabNames);
+    }
+
     if (xStatusIndicator.is())
         xStatusIndicator->end();
     mpRoot = nullptr;
@@ -1142,7 +1130,122 @@ bool XclExpXmlStream::exportDocument()
 
 OUString XclExpXmlStream::getImplementationName()
 {
-    return OUString( "TODO" );
+    return "TODO";
+}
+
+void XclExpXmlStream::validateTabNames(std::vector<OUString>& aOriginalTabNames)
+{
+    const int MAX_TAB_NAME_LENGTH = 31;
+
+    ScDocShell* pShell = getDocShell();
+    ScDocument& rDoc = pShell->GetDocument();
+
+    // get original names
+    aOriginalTabNames.resize(rDoc.GetTableCount());
+    for (SCTAB nTab=0; nTab < rDoc.GetTableCount(); nTab++)
+    {
+        rDoc.GetName(nTab, aOriginalTabNames[nTab]);
+    }
+
+    // new tab names
+    std::vector<OUString> aNewTabNames;
+    aNewTabNames.reserve(rDoc.GetTableCount());
+
+    // check and rename
+    for (SCTAB nTab=0; nTab < rDoc.GetTableCount(); nTab++)
+    {
+        const OUString& rOriginalName = aOriginalTabNames[nTab];
+        if (rOriginalName.getLength() > MAX_TAB_NAME_LENGTH)
+        {
+            OUString aNewName;
+
+            // let's try just truncate "<first 31 chars>"
+            if (aNewName.isEmpty())
+            {
+                aNewName = rOriginalName.copy(0, MAX_TAB_NAME_LENGTH);
+                if (aNewTabNames.end() != std::find(aNewTabNames.begin(), aNewTabNames.end(), aNewName) ||
+                    aOriginalTabNames.end() != std::find(aOriginalTabNames.begin(), aOriginalTabNames.end(), aNewName))
+                {
+                    // was found => let's use another tab name
+                    aNewName.clear();
+                }
+            }
+
+            // let's try "<first N chars>-XXX" template
+            for (int digits=1; digits<10 && aNewName.isEmpty(); digits++)
+            {
+                const int rangeStart = pow(10, digits - 1);
+                const int rangeEnd = pow(10, digits);
+
+                for (int i=rangeStart; i<rangeEnd && aNewName.isEmpty(); i++)
+                {
+                    aNewName = rOriginalName.copy(0, MAX_TAB_NAME_LENGTH - 1 - digits).concat("-").concat(OUString::number(i));
+                    if (aNewTabNames.end() != std::find(aNewTabNames.begin(), aNewTabNames.end(), aNewName) ||
+                        aOriginalTabNames.end() != std::find(aOriginalTabNames.begin(), aOriginalTabNames.end(), aNewName))
+                    {
+                        // was found => let's use another tab name
+                        aNewName.clear();
+                    }
+                }
+            }
+
+            if (!aNewName.isEmpty())
+            {
+                // new name was created => rename
+                renameTab(nTab, aNewName);
+                aNewTabNames.push_back(aNewName);
+            }
+            else
+            {
+                // default: do not rename
+                aNewTabNames.push_back(rOriginalName);
+            }
+        }
+        else
+        {
+            // default: do not rename
+            aNewTabNames.push_back(rOriginalName);
+        }
+    }
+}
+
+void XclExpXmlStream::restoreTabNames(const std::vector<OUString>& aOriginalTabNames)
+{
+    ScDocShell* pShell = getDocShell();
+    ScDocument& rDoc = pShell->GetDocument();
+
+    for (SCTAB nTab=0; nTab < rDoc.GetTableCount(); nTab++)
+    {
+        const OUString& rOriginalName = aOriginalTabNames[nTab];
+
+        OUString rModifiedName;
+        rDoc.GetName(nTab, rModifiedName);
+
+        if (rOriginalName != rModifiedName)
+        {
+            renameTab(nTab, rOriginalName);
+        }
+    }
+}
+
+void XclExpXmlStream::renameTab(SCTAB aTab, OUString aNewName)
+{
+    ScDocShell* pShell = getDocShell();
+    ScDocument& rDoc = pShell->GetDocument();
+
+    bool bAutoCalcShellDisabled = rDoc.IsAutoCalcShellDisabled();
+    bool bIdleEnabled = rDoc.IsIdleEnabled();
+
+    rDoc.SetAutoCalcShellDisabled( true );
+    rDoc.EnableIdle(false);
+
+    if (rDoc.RenameTab(aTab, aNewName))
+    {
+        SfxGetpApp()->Broadcast(SfxHint(SfxHintId::ScTablesChanged));
+    }
+
+    rDoc.SetAutoCalcShellDisabled( bAutoCalcShellDisabled );
+    rDoc.EnableIdle(bIdleEnabled);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

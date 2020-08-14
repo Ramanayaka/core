@@ -41,6 +41,8 @@ class SvStream;
 // Version 12: aoo#64377 increase code size that basic can handle
 //             tdf#75973 support user defined types B_USERTYPES in password protected macros
 // Version 13: tdf#94617 store methods nStart information greater than sal_Int16 limit
+//             tdf#57113 store UTF-16 strings after legacy 1-byte-encoded strings in pool (no
+//                       version number bump for backward compatibility; relies on magic number)
 //
 
 #define B_LEGACYVERSION 0x00000011
@@ -161,7 +163,7 @@ enum class FileOffset {
 
 // SBX-objects:
 // sal_uInt16 number of objects
-// ....   object data
+// ...   object data
 
 // user defined types B_USERTYPES :
 //  sal_uInt16  identifier UT

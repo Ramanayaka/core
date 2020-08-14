@@ -62,7 +62,7 @@ using namespace ::com::sun::star::uno;
     // TODO: Detect Type from NSNumber
     if ( [ value isKindOfClass: [ NSNumber class ] ] 
       && [ wrapper accessibleValue ] ) {
-        NSNumber * number = (NSNumber *) value;
+        NSNumber * number = static_cast<NSNumber *>(value);
         Any numberAny ( [ number longValue ] );
         [ wrapper accessibleValue ] -> setCurrentValue ( numberAny );
     }
@@ -73,11 +73,11 @@ using namespace ::com::sun::star::uno;
 }
 
 +(BOOL)isAttributeSettable:(NSString *)attribute forElement:(AquaA11yWrapper *)wrapper {
-    BOOL isSettable = NO;
+    bool isSettable = false;
     if ( [ wrapper accessibleValue ]
       && [ attribute isEqualToString: NSAccessibilityValueAttribute ] 
       && ! [ wrapper isKindOfClass: [ AquaA11yWrapperStaticText class ] ] ) {
-        isSettable = YES;
+        isSettable = true;
     }
     return isSettable;
 }

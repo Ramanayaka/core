@@ -20,17 +20,19 @@
 #ifndef INCLUDED_VCL_INC_WALL2_HXX
 #define INCLUDED_VCL_INC_WALL2_HXX
 
+#include <optional>
+
 class ImplWallpaper
 {
     friend class Wallpaper;
 
 private:
-    Color                       maColor;
+    std::optional<tools::Rectangle>  mpRect;
     std::unique_ptr<BitmapEx>   mpBitmap;
     std::unique_ptr<Gradient>   mpGradient;
-    std::unique_ptr<tools::Rectangle>  mpRect;
-    WallpaperStyle  meStyle;
     std::unique_ptr<BitmapEx>   mpCache;
+    Color                       maColor;
+    WallpaperStyle              meStyle;
 
 public:
     ImplWallpaper();

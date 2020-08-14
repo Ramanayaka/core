@@ -20,8 +20,7 @@
 #define INCLUDED_SW_INC_DOBJFAC_HXX
 
 #include <tools/link.hxx>
-
-class SdrObjFactory;
+#include <svx/svdobj.hxx>
 
 class SwObjectFactory
 {

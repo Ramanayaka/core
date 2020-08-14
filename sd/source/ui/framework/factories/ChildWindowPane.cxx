@@ -19,23 +19,23 @@
 
 #include <memory>
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <utility>
 
 #include "ChildWindowPane.hxx"
 
-#include "PaneDockingWindow.hxx"
-#include "ViewShellBase.hxx"
-#include "ViewShellManager.hxx"
-#include "framework/FrameworkHelper.hxx"
+#include <PaneDockingWindow.hxx>
+#include <ViewShellBase.hxx>
+#include <ViewShellManager.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <vcl/svapp.hxx>
+#include <sfx2/viewfrm.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 ChildWindowPane::ChildWindowPane (
     const Reference<XResourceId>& rxPaneId,
@@ -51,38 +51,38 @@ ChildWindowPane::ChildWindowPane (
     mrViewShellBase.GetViewShellManager()->ActivateShell(mpShell.get());
 
     SfxViewFrame* pViewFrame = mrViewShellBase.GetViewFrame();
-    if (pViewFrame != nullptr)
+    if (pViewFrame == nullptr)
+        return;
+
+    if (mrViewShellBase.IsActive())
     {
-        if (mrViewShellBase.IsActive())
+        if (pViewFrame->KnowsChildWindow(mnChildWindowId))
         {
-            if (pViewFrame->KnowsChildWindow(mnChildWindowId))
+            if (pViewFrame->HasChildWindow(mnChildWindowId))
             {
-                if (pViewFrame->HasChildWindow(mnChildWindowId))
-                {
-                    // The ViewShellBase has already been activated.  Make
-                    // the child window visible as soon as possible.
-                    pViewFrame->SetChildWindow(mnChildWindowId, true);
-                }
-                else
-                {
-                    // The window is created asynchronously.  Rely on the
-                    // ConfigurationUpdater to try another update, and with
-                    // that another request for this window, in a short
-                    // time.
-                }
+                // The ViewShellBase has already been activated.  Make
+                // the child window visible as soon as possible.
+                pViewFrame->SetChildWindow(mnChildWindowId, true);
             }
             else
             {
-                SAL_WARN("sd", "ChildWindowPane:not known");
+                // The window is created asynchronously.  Rely on the
+                // ConfigurationUpdater to try another update, and with
+                // that another request for this window, in a short
+                // time.
             }
         }
         else
         {
-            // The ViewShellBase has not yet been activated.  Hide the
-            // window and wait a little before it is made visible.  See
-            // comments in the GetWindow() method for an explanation.
-            pViewFrame->SetChildWindow(mnChildWindowId, false);
+            SAL_WARN("sd", "ChildWindowPane:not known");
         }
+    }
+    else
+    {
+        // The ViewShellBase has not yet been activated.  Hide the
+        // window and wait a little before it is made visible.  See
+        // comments in the GetWindow() method for an explanation.
+        pViewFrame->SetChildWindow(mnChildWindowId, false);
     }
 }
 
@@ -130,10 +130,10 @@ vcl::Window* ChildWindowPane::GetWindow()
         // shell has already been activated.  The activation is not
         // necessary for the code to work properly but is used to optimize
         // the layouting and displaying of the window.  When it is made
-        // visible to early then some layouting seems to be made twice or at
+        // visible too early then some layouting seems to be made twice or at
         // an inconvenient time and the overall process of initializing the
         // Impress takes longer.
-        if ( ! mbHasBeenActivated && mpShell.get()!=nullptr && ! mpShell->IsActive())
+        if (!mbHasBeenActivated && mpShell != nullptr && !mpShell->IsActive())
             break;
 
         mbHasBeenActivated = true;
@@ -214,6 +214,6 @@ void SAL_CALL ChildWindowPane::disposing (const lang::EventObject& rEvent)
     }
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

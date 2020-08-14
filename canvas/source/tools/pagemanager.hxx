@@ -21,8 +21,7 @@
 #define INCLUDED_CANVAS_SOURCE_TOOLS_PAGEMANAGER_HXX
 
 #include <basegfx/vector/b2isize.hxx>
-#include <canvas/rendering/irendermodule.hxx>
-#include <canvas/rendering/isurface.hxx>
+#include <rendering/irendermodule.hxx>
 
 #include "page.hxx"
 
@@ -57,13 +56,12 @@ namespace canvas
 
         // here we collect all fragments that will be created
         // since we need them for relocation purposes.
-        typedef std::list<FragmentSharedPtr> FragmentContainer_t;
+        typedef std::vector<FragmentSharedPtr> FragmentContainer_t;
         FragmentContainer_t maFragments;
 
         // this is the container holding all created pages,
         // behind the scenes these are real hardware surfaces.
-        typedef std::list<PageSharedPtr> PageContainer_t;
-        PageContainer_t maPages;
+        std::vector<PageSharedPtr> maPages;
 
         bool relocate( const FragmentSharedPtr& pFragment );
     };

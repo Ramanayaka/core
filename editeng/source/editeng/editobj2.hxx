@@ -17,16 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_EDITENG_SOURCE_EDITENG_EDITOBJ2_HXX
-#define INCLUDED_EDITENG_SOURCE_EDITENG_EDITOBJ2_HXX
+#pragma once
 
 #include <editeng/editobj.hxx>
 #include <editeng/fieldupdater.hxx>
 #include <editeng/outliner.hxx>
 #include <editdoc.hxx>
 
-#include <unotools/fontcvt.hxx>
-#include "svl/sharedstring.hxx"
+#include <svl/sharedstring.hxx>
 #include <svl/languageoptions.hxx>
 
 #include <memory>
@@ -69,7 +67,18 @@ public:
 
     bool IsFeature() const;
     void SetItem(const SfxPoolItem& rNew);
+
+    inline bool operator==( const XEditAttribute& rCompare ) const;
 };
+
+inline bool XEditAttribute::operator==( const XEditAttribute& rCompare ) const
+{
+    return  (nStart == rCompare.nStart) &&
+            (nEnd == rCompare.nEnd) &&
+            ((pItem == rCompare.pItem) ||
+             ((pItem->Which() == rCompare.pItem->Which()) &&
+              (*pItem == *rCompare.pItem)));
+}
 
 struct XParaPortion
 {
@@ -85,26 +94,23 @@ class XParaPortionList
     typedef std::vector<std::unique_ptr<XParaPortion> > ListType;
     ListType maList;
 
-    sal_uIntPtr nRefDevPtr;
-    OutDevType  eRefDevType;
-    MapMode     aRefMapMode;
+    VclPtr<OutputDevice> pRefDevPtr;
     sal_uInt16  nStretchX;
     sal_uInt16  nStretchY;
-    sal_uLong   nPaperWidth;
+    sal_uInt32  nPaperWidth;
 
 public:
-    XParaPortionList(OutputDevice* pRefDev, sal_uLong nPW, sal_uInt16 _nStretchX, sal_uInt16 _nStretchY);
+    XParaPortionList(OutputDevice* pRefDev, sal_uInt32 nPW, sal_uInt16 _nStretchX, sal_uInt16 _nStretchY);
 
     void push_back(XParaPortion* p);
     const XParaPortion& operator[](size_t i) const;
 
-    sal_uIntPtr         GetRefDevPtr() const        { return nRefDevPtr; }
-    sal_uLong           GetPaperWidth() const       { return nPaperWidth; }
-    OutDevType      GetRefDevType() const       { return eRefDevType; }
-    const MapMode&  GetRefMapMode() const       { return aRefMapMode; }
+    OutputDevice*       GetRefDevPtr() const        { return pRefDevPtr; }
+    sal_uInt32          GetPaperWidth() const       { return nPaperWidth; }
+    bool                RefDevIsVirtual() const {return pRefDevPtr->IsVirtual();}
+    const MapMode&  GetRefMapMode() const       { return pRefDevPtr->GetMapMode(); }
     sal_uInt16  GetStretchX() const         { return nStretchX; }
     sal_uInt16  GetStretchY() const         { return nStretchY; }
-
 };
 
 class ContentInfo
@@ -136,7 +142,7 @@ public:
     OUString GetText() const;
     void SetText( const OUString& rStr );
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
     const XEditAttributesType& GetCharAttribs() const { return maCharAttribs; }
     XEditAttributesType& GetCharAttribs() { return maCharAttribs; }
@@ -152,6 +158,7 @@ public:
 
     const WrongList* GetWrongList() const;
     void SetWrongList( WrongList* p );
+    bool Equals( const ContentInfo& rCompare, bool bComparePool ) const;
 
     // #i102062#
     bool isWrongListEqual(const ContentInfo& rCompare) const;
@@ -172,26 +179,20 @@ private:
 
     ContentInfosType        aContents;
     SfxItemPool*            pPool;
-    XParaPortionList*       pPortionInfo;
+    std::unique_ptr<XParaPortionList> pPortionInfo;
 
-    sal_uInt32              nObjSettings;
     sal_uInt16              nMetric;
-    sal_uInt16              nVersion;
     OutlinerMode            nUserType;
     SvtScriptType           nScriptType;
 
     bool                    bOwnerOfPool:1;
     bool                    bVertical:1;
-    bool                    bIsTopToBottomVert : 1;
-    bool                    bStoreUnicodeStrings:1;
+    TextRotation            mnRotation;
 
     bool ImpChangeStyleSheets( const OUString& rOldName, SfxStyleFamily eOldFamily,
                                const OUString& rNewName, SfxStyleFamily eNewFamily );
 
 public:
-    void StoreData( SvStream& rOStream ) const;
-    void CreateData( SvStream& rIStream );
-
     EditTextObjectImpl( EditTextObject* pFront, SfxItemPool* pPool );
     EditTextObjectImpl( EditTextObject* pFront, const EditTextObjectImpl& r );
     ~EditTextObjectImpl();
@@ -206,22 +207,25 @@ public:
     std::vector<svl::SharedString> GetSharedStrings() const;
 
     bool                    IsVertical() const;
+    bool                    GetDirectVertical() const;
     bool                    IsTopToBottom() const;
-    void                    SetVertical( bool bVert, bool bTopToBottom = true);
+    void                    SetVertical( bool bVert);
+    void                    SetRotation(TextRotation nRotation);
+    TextRotation            GetRotation() const;
 
     SvtScriptType           GetScriptType() const { return nScriptType;}
     void                    SetScriptType( SvtScriptType nType );
 
     ContentInfo*            CreateAndInsertContent();
-    XEditAttribute*         CreateAttrib( const SfxPoolItem& rItem, sal_Int32 nStart, sal_Int32 nEnd );
-    void                    DestroyAttrib( XEditAttribute* pAttr );
+    std::unique_ptr<XEditAttribute> CreateAttrib( const SfxPoolItem& rItem, sal_Int32 nStart, sal_Int32 nEnd );
+    void                    DestroyAttrib( std::unique_ptr<XEditAttribute> pAttr );
 
     ContentInfosType&       GetContents() { return aContents;}
     const ContentInfosType& GetContents() const { return aContents;}
     SfxItemPool*            GetPool() const         { return pPool; }
-    XParaPortionList*       GetPortionInfo() const  { return pPortionInfo; }
-    void                    SetPortionInfo( XParaPortionList* pP )
-                                { pPortionInfo = pP; }
+    XParaPortionList*       GetPortionInfo() const  { return pPortionInfo.get(); }
+    void                    SetPortionInfo( std::unique_ptr<XParaPortionList> pP )
+                                { pPortionInfo = std::move(pP); }
 
     sal_Int32 GetParagraphCount() const;
     OUString GetText(sal_Int32 nParagraph) const;
@@ -250,16 +254,16 @@ public:
         const OUString& rOldName, SfxStyleFamily eOldFamily, const OUString& rNewName, SfxStyleFamily eNewFamily);
     void ChangeStyleSheetName(SfxStyleFamily eFamily, const OUString& rOldName, const OUString& rNewName);
 
-    editeng::FieldUpdater GetFieldUpdater() { return editeng::FieldUpdater(*mpFront);}
+    editeng::FieldUpdater GetFieldUpdater() const { return editeng::FieldUpdater(*mpFront);}
 
     bool HasMetric() const { return nMetric != 0xFFFF; }
     sal_uInt16                  GetMetric() const           { return nMetric; }
     void                    SetMetric( sal_uInt16 n )       { nMetric = n; }
 
     bool                    IsOwnerOfPool() const       { return bOwnerOfPool; }
-    void StoreUnicodeStrings( bool b ) { bStoreUnicodeStrings = b; }
 
     bool operator==( const EditTextObjectImpl& rCompare ) const;
+    bool Equals( const EditTextObjectImpl& rCompare, bool bComparePool ) const;
 
     // #i102062#
     bool isWrongListEqual(const EditTextObjectImpl& rCompare) const;
@@ -271,7 +275,5 @@ public:
     void Dump() const;
 #endif
 };
-
-#endif // INCLUDED_EDITENG_SOURCE_EDITENG_EDITOBJ2_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

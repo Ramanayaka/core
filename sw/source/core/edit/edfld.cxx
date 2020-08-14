@@ -19,6 +19,7 @@
 
 #include <config_features.h>
 
+#include <osl/diagnose.h>
 #include <unotools/charclass.hxx>
 #include <editsh.hxx>
 #include <fldbas.hxx>
@@ -28,13 +29,10 @@
 #include <docary.hxx>
 #include <fmtfld.hxx>
 #include <txtfld.hxx>
-#include <edimp.hxx>
-#include <dbfld.hxx>
+#include <pamtyp.hxx>
 #include <expfld.hxx>
-#include <flddat.hxx>
 #include <swundo.hxx>
 #include <dbmgr.hxx>
-#include <swddetbl.hxx>
 #include <hints.hxx>
 #include <calbck.hxx>
 #include <fieldhint.hxx>
@@ -53,7 +51,7 @@ size_t SwEditShell::GetFieldTypeCount(SwFieldIds nResId ) const
 
     // all types with the same ResId
     size_t nIdx  = 0;
-    for(const auto pFieldType : *pFieldTypes)
+    for(const auto & pFieldType : *pFieldTypes)
     {
         // same ResId -> increment index
         if(pFieldType->Which() == nResId)
@@ -69,17 +67,17 @@ SwFieldType* SwEditShell::GetFieldType(size_t nField, SwFieldIds nResId ) const
 
     if(nResId == SwFieldIds::Unknown && nField < pFieldTypes->size())
     {
-        return (*pFieldTypes)[nField];
+        return (*pFieldTypes)[nField].get();
     }
 
     size_t nIdx = 0;
-    for(const auto pFieldType : *pFieldTypes)
+    for(const auto & pFieldType : *pFieldTypes)
     {
         // same ResId -> increment index
         if(pFieldType->Which() == nResId)
         {
             if(nIdx == nField)
-                return pFieldType;
+                return pFieldType.get();
             nIdx++;
         }
     }
@@ -110,7 +108,7 @@ void SwEditShell::RemoveFieldType(SwFieldIds nResId, const OUString& rStr)
     for(SwFieldTypes::size_type i = 0; i < nSize; ++i)
     {
         // same ResId -> increment index
-        SwFieldType* pFieldType = (*pFieldTypes)[i];
+        SwFieldType* pFieldType = (*pFieldTypes)[i].get();
         if( pFieldType->Which() == nResId )
         {
             if( aTmp == rCC.lowercase( pFieldType->GetName() ) )
@@ -122,18 +120,18 @@ void SwEditShell::RemoveFieldType(SwFieldIds nResId, const OUString& rStr)
     }
 }
 
-void SwEditShell::FieldToText( SwFieldType* pType )
+void SwEditShell::FieldToText( SwFieldType const * pType )
 {
     if( !pType->HasWriterListeners() )
         return;
 
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     StartAllAction();
     StartUndo( SwUndoId::DELETE );
     Push();
     SwPaM* pPaM = GetCursor();
     // TODO: this is really hackish
-    SwFieldHint aHint( pPaM );
+    SwFieldHint aHint(pPaM, GetLayout());
     SwIterator<SwClient,SwFieldType> aIter(*pType);
     for( SwClient* pClient = aIter.First(); pClient; pClient = aIter.Next() )
     {
@@ -147,17 +145,17 @@ void SwEditShell::FieldToText( SwFieldType* pType )
 }
 
 /// add a field at the cursor position
-void SwEditShell::Insert2(SwField& rField, const bool bForceExpandHints)
+void SwEditShell::Insert2(SwField const & rField, const bool bForceExpandHints)
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     StartAllAction();
     SwFormatField aField( rField );
 
-    const SetAttrMode nInsertFlags = (bForceExpandHints)
+    const SetAttrMode nInsertFlags = bForceExpandHints
         ? SetAttrMode::FORCEHINTEXPAND
         : SetAttrMode::DEFAULT;
 
-    for(SwPaM& rPaM : GetCursor()->GetRingContainer()) // for each PaM
+    for(const SwPaM& rPaM : GetCursor()->GetRingContainer()) // for each PaM
     {
         const bool bSuccess(GetDoc()->getIDocumentContentOperations().InsertPoolItem(rPaM, aField, nInsertFlags));
         OSL_ENSURE( bSuccess, "Doc->Insert(Field) failed");
@@ -171,17 +169,18 @@ static SwTextField* lcl_FindInputField( SwDoc* pDoc, SwField& rField )
 {
     // Search field via its address. For input fields this needs to be done in protected fields.
     SwTextField* pTField = nullptr;
-    if( SwFieldIds::Input == rField.Which() )
+    if (SwFieldIds::Input == rField.Which()
+        || (SwFieldIds::SetExp == rField.Which()
+            && static_cast<SwSetExpField&>(rField).GetInputFlag()
+            && (static_cast<SwSetExpFieldType*>(rField.GetTyp())->GetType()
+                & nsSwGetSetExpType::GSE_STRING)))
     {
-        const sal_uInt32 nMaxItems =
-            pDoc->GetAttrPool().GetItemCount2( RES_TXTATR_INPUTFIELD );
-        for( sal_uInt32 n = 0; n < nMaxItems; ++n )
+        for (const SfxPoolItem* pItem : pDoc->GetAttrPool().GetItemSurrogates(RES_TXTATR_INPUTFIELD))
         {
-            const SfxPoolItem* pItem = nullptr;
-            if( nullptr != (pItem = pDoc->GetAttrPool().GetItem2( RES_TXTATR_INPUTFIELD, n ) )
-                && static_cast<const SwFormatField*>(pItem)->GetField() == &rField )
+            auto pFormatField = dynamic_cast<const SwFormatField*>(pItem);
+            if( pFormatField && pFormatField->GetField() == &rField )
             {
-                pTField = const_cast<SwFormatField*>(static_cast<const SwFormatField*>(pItem))->GetTextField();
+                pTField = const_cast<SwFormatField*>(pFormatField)->GetTextField();
                 break;
             }
         }
@@ -189,15 +188,12 @@ static SwTextField* lcl_FindInputField( SwDoc* pDoc, SwField& rField )
     else if( SwFieldIds::SetExp == rField.Which()
         && static_cast<SwSetExpField&>(rField).GetInputFlag() )
     {
-        const sal_uInt32 nMaxItems =
-            pDoc->GetAttrPool().GetItemCount2( RES_TXTATR_FIELD );
-        for( sal_uInt32 n = 0; n < nMaxItems; ++n )
+        for (const SfxPoolItem* pItem : pDoc->GetAttrPool().GetItemSurrogates(RES_TXTATR_FIELD))
         {
-            const SfxPoolItem* pItem = nullptr;
-            if( nullptr != (pItem = pDoc->GetAttrPool().GetItem2( RES_TXTATR_FIELD, n ) )
-                && static_cast<const SwFormatField*>(pItem)->GetField() == &rField )
+            auto pFormatField = dynamic_cast<const SwFormatField*>(pItem);
+            if( pFormatField && pFormatField->GetField() == &rField )
             {
-                pTField = const_cast<SwFormatField*>(static_cast<const SwFormatField*>(pItem))->GetTextField();
+                pTField = const_cast<SwFormatField*>(pFormatField)->GetTextField();
                 break;
             }
         }
@@ -205,9 +201,9 @@ static SwTextField* lcl_FindInputField( SwDoc* pDoc, SwField& rField )
     return pTField;
 }
 
-void SwEditShell::UpdateFields( SwField &rField )
+void SwEditShell::UpdateOneField(SwField &rField)
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     StartAllAction();
     {
         // If there are no selections so take the value of the current cursor position.
@@ -260,15 +256,16 @@ void SwEditShell::UpdateFields( SwField &rField )
                 // Search for SwTextField ...
                 while(  bOkay
                      && pCurStt->nContent != pCurEnd->nContent
-                     && ( aPam.Find( aFieldHint, false, fnMoveForward, &aCurPam, true )
-                          || aPam.Find( aAnnotationFieldHint, false, fnMoveForward, &aCurPam )
-                          || aPam.Find( aInputFieldHint, false, fnMoveForward, &aCurPam ) ) )
+                     && (sw::FindAttrImpl(aPam, aFieldHint, fnMoveForward, aCurPam, true, GetLayout())
+                          || sw::FindAttrImpl(aPam, aAnnotationFieldHint, fnMoveForward, aCurPam, false, GetLayout())
+                          || sw::FindAttrImpl(aPam, aInputFieldHint, fnMoveForward, aCurPam, false, GetLayout())))
                 {
                     // if only one PaM has more than one field  ...
                     if( aPam.Start()->nContent != pCurStt->nContent )
                         bOkay = false;
 
-                    if( nullptr != (pTextField = GetTextFieldAtPos( pCurStt, true )) )
+                    pTextField = GetTextFieldAtPos( pCurStt, true );
+                    if( nullptr != pTextField )
                     {
                         pFormatField = const_cast<SwFormatField*>(&pTextField->GetFormatField());
                         SwField *pCurField = pFormatField->GetField();
@@ -295,7 +292,7 @@ void SwEditShell::UpdateFields( SwField &rField )
     EndAllAction();
 }
 
-SwDBData SwEditShell::GetDBData() const
+SwDBData const & SwEditShell::GetDBData() const
 {
     return GetDoc()->GetDBData();
 }
@@ -311,7 +308,7 @@ void SwEditShell::ChgDBData(const SwDBData& rNewData)
 }
 
 void SwEditShell::GetAllUsedDB( std::vector<OUString>& rDBNameList,
-                                std::vector<OUString>* pAllDBNames )
+                                std::vector<OUString> const * pAllDBNames )
 {
     GetDoc()->GetAllUsedDB( rDBNameList, pAllDBNames );
 }
@@ -325,7 +322,7 @@ void SwEditShell::ChangeDBFields( const std::vector<OUString>& rOldNames,
 /// Update all expression fields
 void SwEditShell::UpdateExpFields(bool bCloseDB)
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     StartAllAction();
     GetDoc()->getIDocumentFieldsAccess().UpdateExpFields(nullptr, true);
     if (bCloseDB)
@@ -395,7 +392,7 @@ void SwEditShell::ChangeAuthorityData(const SwAuthEntry* pNewData)
 bool SwEditShell::IsAnyDatabaseFieldInDoc()const
 {
     const SwFieldTypes * pFieldTypes = GetDoc()->getIDocumentFieldsAccess().GetFieldTypes();
-    for(const auto pFieldType : *pFieldTypes)
+    for(const auto & pFieldType : *pFieldTypes)
     {
         if(IsUsed(*pFieldType))
         {
@@ -406,14 +403,9 @@ bool SwEditShell::IsAnyDatabaseFieldInDoc()const
                 case SwFieldIds::DbNumSet:
                 case SwFieldIds::DbSetNumber:
                 {
-                    SwIterator<SwFormatField,SwFieldType> aIter( *pFieldType );
-                    SwFormatField* pField = aIter.First();
-                    while(pField)
-                    {
-                        if(pField->IsFieldInDoc())
-                            return true;
-                        pField = aIter.Next();
-                    }
+                    std::vector<SwFormatField*> vFields;
+                    pFieldType->GatherFields(vFields);
+                    return vFields.size();
                 }
                 break;
                 default: break;

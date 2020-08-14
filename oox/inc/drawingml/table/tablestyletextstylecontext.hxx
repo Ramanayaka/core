@@ -23,12 +23,12 @@
 #include <oox/core/contexthandler2.hxx>
 #include <drawingml/table/tablestylepart.hxx>
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
-class TableStyleTextStyleContext : public ::oox::core::ContextHandler2
+class TableStyleTextStyleContext final : public ::oox::core::ContextHandler2
 {
 public:
-    TableStyleTextStyleContext( ::oox::core::ContextHandler2Helper& rParent,
+    TableStyleTextStyleContext( ::oox::core::ContextHandler2Helper const & rParent,
             const ::oox::AttributeList& rAttribs,
             TableStylePart& rTableStylePart );
     virtual ~TableStyleTextStyleContext() override;
@@ -39,7 +39,7 @@ private:
     TableStylePart& mrTableStylePart;
 };
 
-} } }
+}
 
 #endif
 

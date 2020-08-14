@@ -965,7 +965,7 @@ public class TextDocuments {
                     ++nDepth;
                 }
                 while ( nDepth < 200 && aBlockNames.length == 0 );
-                // If we managed to find a group containg blocks...
+                // If we managed to find a group containing blocks...
                 if ( aBlockNames.length > 0 )
                 {
                     // Pick a random block in this group and get its
@@ -1180,7 +1180,7 @@ public class TextDocuments {
                 // Insert the text field
                 mxDocText.insertTextContent(mxDocText.getEnd(), xRefContent, false);
 
-                // And some text after the reference..
+                // And some text after the reference...
                 mxDocText.insertString(mxDocText.getEnd(),
                               " contains the sum of some random numbers.", false );
 
@@ -1591,7 +1591,7 @@ public class TextDocuments {
             // Insert a new paragraph
             mxDocText.insertControlCharacter (
                 mxDocCursor, ControlCharacter.PARAGRAPH_BREAK, false );
-            // And select the new pargraph
+            // And select the new paragraph
             xParaCursor.gotoPreviousParagraph ( true );
 
             // Create a new Text Section and access its XNamed interface

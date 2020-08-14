@@ -39,25 +39,25 @@
 #include "DAVResourceAccess.hxx"
 #include "PropertyMap.hxx"
 
-namespace com { namespace sun { namespace star { namespace beans {
+namespace com::sun::star::beans {
     struct Property;
     struct PropertyValue;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace io {
+namespace com::sun::star::io {
     class XInputStream;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace sdbc {
+namespace com::sun::star::sdbc {
     class XRow;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace ucb {
+namespace com::sun::star::ucb {
     struct OpenCommandArgument3;
     struct PostCommandArgument2;
     struct PropertyCommandArgument;
     struct TransferInfo;
-} } } }
+}
 
 namespace webdav_ucp
 {
@@ -136,13 +136,13 @@ private:
                        const css::uno::Reference< css::ucb::XCommandEnvironment >& xEnv );
 
     typedef rtl::Reference< Content > ContentRef;
-    typedef std::list< ContentRef > ContentRefList;
+    typedef std::vector< ContentRef > ContentRefList;
     void queryChildren( ContentRefList& rChildren);
 
     bool
     exchangeIdentity( const css::uno::Reference< css::ucb::XContentIdentifier >& xNewId );
 
-    const OUString
+    OUString
     getBaseURI( const std::unique_ptr< DAVResourceAccess > & rResAccess );
 
     /// @throws css::uno::Exception

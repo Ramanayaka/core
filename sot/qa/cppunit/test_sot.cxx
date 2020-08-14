@@ -10,15 +10,32 @@
 #include <unotest/filters-test.hxx>
 #include <unotest/bootstrapfixturebase.hxx>
 
-#include <osl/file.hxx>
-#include <osl/process.h>
 #include <sot/storage.hxx>
 #include <sot/storinfo.hxx>
+#include <sysformats.hxx>
 
 using namespace ::com::sun::star;
 
 namespace
 {
+    size_t FindFormatIndex(const SotAction_Impl* pFormats, SotClipboardFormatId eFormat)
+    {
+        size_t nRet = 0;
+        SotClipboardFormatId nId = pFormats->nFormatId;
+
+        while (nId != static_cast<SotClipboardFormatId>(0xffff))
+        {
+            if (nId == eFormat)
+                break;
+
+            ++pFormats;
+            ++nRet;
+            nId = pFormats->nFormatId;
+        }
+
+        return nRet;
+    }
+
     class SotTest
         : public test::FiltersTest
         , public test::BootstrapFixtureBase
@@ -37,10 +54,12 @@ namespace
 
         void test();
         void testSize();
+        void testClipboard();
 
         CPPUNIT_TEST_SUITE(SotTest);
         CPPUNIT_TEST(test);
         CPPUNIT_TEST(testSize);
+        CPPUNIT_TEST(testClipboard);
         CPPUNIT_TEST_SUITE_END();
     };
 
@@ -63,7 +82,6 @@ namespace
 
             // Read as much as we can, a corrupted FAT chain can cause real grief here
             nReadableSize = xStream->ReadBytes(static_cast<void *>(pData), nSize);
-//            fprintf(stderr, "readable size %d vs size %d remaining %d\n", nReadableSize, nSize, nReadableSize);
         }
         {   // Read the data backwards as well
             tools::SvRef<SotStorageStream> xStream( xObjStor->OpenSotStream( rStreamName ) );
@@ -87,16 +105,15 @@ namespace
         SvStorageInfoList aInfoList;
         xObjStor->FillInfoList( &aInfoList );
 
-        for( SvStorageInfoList::iterator aIt = aInfoList.begin();
-             aIt != aInfoList.end(); ++aIt )
+        for (auto& rInfo : aInfoList)
         {
-            if( aIt->IsStorage() )
+            if( rInfo.IsStorage() )
             {
-                tools::SvRef<SotStorage> xChild( xObjStor->OpenSotStorage( aIt->GetName() ) );
+                tools::SvRef<SotStorage> xChild( xObjStor->OpenSotStorage( rInfo.GetName() ) );
                 checkStorage( xChild );
             }
-            else if( aIt->IsStream() )
-                checkStream( xObjStor, aIt->GetName(), aIt->GetSize() );
+            else if( rInfo.IsStream() )
+                checkStream( xObjStor, rInfo.GetName(), rInfo.GetSize() );
         }
 
         return true;
@@ -143,6 +160,26 @@ namespace
 
         CPPUNIT_ASSERT_MESSAGE("error seeking to beginning", !xStream->GetError());
         CPPUNIT_ASSERT_EQUAL_MESSAGE("stream not at beginning", static_cast<sal_uInt64>(0), xStream->Tell());
+    }
+
+    void SotTest::testClipboard()
+    {
+        const SotAction_Impl* pFormats = sot::GetExchangeDestinationWriterFreeAreaCopy();
+        // tdf#52547 prefer BITMAP over HTML
+        CPPUNIT_ASSERT(FindFormatIndex(pFormats, SotClipboardFormatId::BITMAP) < FindFormatIndex(pFormats, SotClipboardFormatId::HTML));
+        // tdf#78801 prefer image over html over text
+        CPPUNIT_ASSERT(FindFormatIndex(pFormats, SotClipboardFormatId::BITMAP) < FindFormatIndex(pFormats, SotClipboardFormatId::HTML));
+        CPPUNIT_ASSERT(FindFormatIndex(pFormats, SotClipboardFormatId::HTML) < FindFormatIndex(pFormats, SotClipboardFormatId::STRING));
+        // tdf#81835 prefer RTF/HTML over GDI Metafile
+        CPPUNIT_ASSERT(FindFormatIndex(pFormats, SotClipboardFormatId::RTF) < FindFormatIndex(pFormats, SotClipboardFormatId::GDIMETAFILE));
+        CPPUNIT_ASSERT(FindFormatIndex(pFormats, SotClipboardFormatId::HTML) < FindFormatIndex(pFormats, SotClipboardFormatId::GDIMETAFILE));
+#ifndef MACOSX
+        // tdf#115574 prefer RTF over BITMAP (Excel provides a BITMAP we can't
+        // read, also Excel paste result used to be an editable table)
+        CPPUNIT_ASSERT(FindFormatIndex(pFormats, SotClipboardFormatId::RTF) < FindFormatIndex(pFormats, SotClipboardFormatId::BITMAP));
+#else
+        CPPUNIT_ASSERT(FindFormatIndex(pFormats, SotClipboardFormatId::BITMAP) < FindFormatIndex(pFormats, SotClipboardFormatId::RTF));
+#endif
     }
 
     CPPUNIT_TEST_SUITE_REGISTRATION(SotTest);

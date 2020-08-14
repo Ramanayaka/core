@@ -17,14 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <bordrhdl.hxx>
+#include "bordrhdl.hxx"
 #include <sax/tools/converter.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
+#include <xmloff/xmlement.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/table/BorderLine2.hpp>
 #include <com/sun/star/table/BorderLineStyle.hpp>
+
+#include <limits.h>
 
 using namespace ::com::sun::star;
 using namespace ::xmloff::token;
@@ -65,7 +68,7 @@ SvXMLEnumMapEntry<sal_uInt16> const pXML_NamedBorderWidths[] =
 };
 // mapping tables to map external xml input to internal box line widths
 
-static sal_uInt16 const aBorderWidths[] =
+sal_uInt16 const aBorderWidths[] =
 {
     DEF_LINE_WIDTH_0,
     DEF_LINE_WIDTH_1,
@@ -82,7 +85,6 @@ static void lcl_frmitems_setXMLBorderStyle( table::BorderLine2 & rBorderLine, sa
 }
 
 
-// class XMLEscapementPropHdl
 
 
 XMLBorderWidthHdl::~XMLBorderWidthHdl()
@@ -166,7 +168,6 @@ bool XMLBorderWidthHdl::exportXML( OUString& rStrExpValue, const uno::Any& rValu
 }
 
 
-// class XMLEscapementHeightPropHdl
 
 
 XMLBorderHdl::~XMLBorderHdl()
@@ -211,7 +212,7 @@ bool XMLBorderHdl::importXML( const OUString& rStrImpValue, uno::Any& rValue, co
                  rUnitConverter.convertMeasureToCore( nTemp, aToken, 0,
                                                  USHRT_MAX ) )
         {
-            nWidth = (sal_uInt16)nTemp;
+            nWidth = static_cast<sal_uInt16>(nTemp);
             bHasWidth = true;
         }
         else

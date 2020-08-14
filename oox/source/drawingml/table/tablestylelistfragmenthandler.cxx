@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/table/tablestylelistfragmenthandler.hxx"
-#include "drawingml/table/tablestylecontext.hxx"
+#include <drawingml/table/tablestylelistfragmenthandler.hxx>
+#include <drawingml/table/tablestylecontext.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
@@ -29,9 +29,7 @@ using namespace ::oox::drawingml;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox {
-namespace drawingml {
-namespace table {
+namespace oox::drawingml::table {
 
 TableStyleListFragmentHandler::TableStyleListFragmentHandler( XmlFilterBase& rFilter, const OUString& rFragmentPath, TableStyleList& rTableStyleList ):
 FragmentHandler2( rFilter, rFragmentPath ),
@@ -54,14 +52,12 @@ ContextHandlerRef TableStyleListFragmentHandler::onCreateContext(
             break;
         case A_TOKEN( tblStyle ):       // CT_TableStyle
             std::vector< TableStyle >& rTableStyles = mrTableStyleList.getTableStyles();
-            rTableStyles.resize( rTableStyles.size() + 1 );
+            rTableStyles.emplace_back();
             return new TableStyleContext( *this, rAttribs, rTableStyles.back() );
     }
     return this;
 }
 
-} // namespace table
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::table
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

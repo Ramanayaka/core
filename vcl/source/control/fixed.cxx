@@ -18,33 +18,30 @@
  */
 
 #include <vcl/decoview.hxx>
-#include <vcl/dialog.hxx>
 #include <vcl/event.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/ImageTree.hxx>
-#include <vcl/svapp.hxx>
+#include <vcl/toolkit/fixed.hxx>
 #include <vcl/settings.hxx>
 
 #include <comphelper/string.hxx>
-#include "controldata.hxx"
-#include "window.h"
+#include <sal/log.hxx>
+#include <controldata.hxx>
 
 #define FIXEDLINE_TEXT_BORDER    4
 
-#define FIXEDTEXT_VIEW_STYLE    (WB_3DLOOK |                        \
-                                 WB_LEFT | WB_CENTER | WB_RIGHT |   \
-                                 WB_TOP | WB_VCENTER | WB_BOTTOM |  \
-                                 WB_WORDBREAK | WB_NOLABEL |        \
-                                 WB_PATHELLIPSIS)
-#define FIXEDLINE_VIEW_STYLE    (WB_3DLOOK | WB_NOLABEL)
-#define FIXEDBITMAP_VIEW_STYLE  (WB_3DLOOK |                        \
-                                 WB_LEFT | WB_CENTER | WB_RIGHT |   \
-                                 WB_TOP | WB_VCENTER | WB_BOTTOM |  \
-                                 WB_SCALE)
-#define FIXEDIMAGE_VIEW_STYLE   (WB_3DLOOK |                        \
-                                 WB_LEFT | WB_CENTER | WB_RIGHT |   \
-                                 WB_TOP | WB_VCENTER | WB_BOTTOM |  \
-                                 WB_SCALE)
+constexpr auto FIXEDTEXT_VIEW_STYLE = WB_3DLOOK |
+                                 WB_LEFT | WB_CENTER | WB_RIGHT |
+                                 WB_TOP | WB_VCENTER | WB_BOTTOM |
+                                 WB_WORDBREAK | WB_NOLABEL |
+                                 WB_PATHELLIPSIS;
+constexpr auto FIXEDLINE_VIEW_STYLE = WB_3DLOOK | WB_NOLABEL;
+constexpr auto FIXEDBITMAP_VIEW_STYLE = WB_3DLOOK |
+                                 WB_LEFT | WB_CENTER | WB_RIGHT |
+                                 WB_TOP | WB_VCENTER | WB_BOTTOM |
+                                 WB_SCALE;
+constexpr auto FIXEDIMAGE_VIEW_STYLE = WB_3DLOOK |
+                                 WB_LEFT | WB_CENTER | WB_RIGHT |
+                                 WB_TOP | WB_VCENTER | WB_BOTTOM |
+                                 WB_SCALE;
 
 static Point ImplCalcPos( WinBits nStyle, const Point& rPos,
                           const Size& rObjSize, const Size& rWinSize )
@@ -65,14 +62,6 @@ static Point ImplCalcPos( WinBits nStyle, const Point& rPos,
         nY = rWinSize.Height()-rObjSize.Height();
     else
         nY = (rWinSize.Height()-rObjSize.Height())/2;
-
-    if ( nStyle & WB_TOPLEFTVISIBLE )
-    {
-        if ( nX < 0 )
-            nX = 0;
-        if ( nY < 0 )
-            nY = 0;
-    }
 
     Point aPos( nX+rPos.X(), nY+rPos.Y() );
     return aPos;
@@ -153,32 +142,21 @@ void FixedText::ImplDraw(OutputDevice* pDev, DrawFlags nDrawFlags,
     Point aPos = rPos;
 
     if ( nWinStyle & WB_EXTRAOFFSET )
-        aPos.X() += 2;
+        aPos.AdjustX(2 );
 
     if ( nWinStyle & WB_PATHELLIPSIS )
     {
         nTextStyle &= ~DrawTextFlags(DrawTextFlags::EndEllipsis | DrawTextFlags::MultiLine | DrawTextFlags::WordBreak);
         nTextStyle |= DrawTextFlags::PathEllipsis;
     }
-    if ( nDrawFlags & DrawFlags::NoMnemonic )
-    {
-        if ( nTextStyle & DrawTextFlags::Mnemonic )
-        {
-            aText = GetNonMnemonicString( aText );
-            nTextStyle &= ~DrawTextFlags::Mnemonic;
-        }
-    }
-    if ( !(nDrawFlags & DrawFlags::NoDisable) )
-    {
-        if ( !IsEnabled() )
-            nTextStyle |= DrawTextFlags::Disable;
-    }
+    if ( !IsEnabled() )
+        nTextStyle |= DrawTextFlags::Disable;
     if ( (nDrawFlags & DrawFlags::Mono) ||
          (rStyleSettings.GetOptions() & StyleSettingsOptions::Mono) )
         nTextStyle |= DrawTextFlags::Mono;
 
     if( bFillLayout )
-        (mpControlData->mpLayoutData->m_aDisplayText).clear();
+        mpControlData->mpLayoutData->m_aDisplayText.clear();
 
     const tools::Rectangle aRect(aPos, rSize);
     DrawControlText(*pDev, aRect, aText, nTextStyle,
@@ -191,14 +169,8 @@ void FixedText::ApplySettings(vcl::RenderContext& rRenderContext)
     Control::ApplySettings(rRenderContext);
 
     vcl::Window* pParent = GetParent();
-    if (pParent->IsChildTransparentModeEnabled() && !IsControlBackground())
-    {
-        EnableChildTransparentMode();
-        SetParentClipMode(ParentClipMode::NoClip);
-        SetPaintTransparent(true);
-        rRenderContext.SetBackground();
-    }
-    else
+    bool bEnableTransparent = true;
+    if (!pParent->IsChildTransparentModeEnabled() || IsControlBackground())
     {
         EnableChildTransparentMode(false);
         SetParentClipMode();
@@ -208,6 +180,17 @@ void FixedText::ApplySettings(vcl::RenderContext& rRenderContext)
             rRenderContext.SetBackground(GetControlBackground());
         else
             rRenderContext.SetBackground(pParent->GetBackground());
+
+        if (rRenderContext.IsBackground())
+            bEnableTransparent = false;
+    }
+
+    if (bEnableTransparent)
+    {
+        EnableChildTransparentMode();
+        SetParentClipMode(ParentClipMode::NoClip);
+        SetPaintTransparent(true);
+        rRenderContext.SetBackground();
     }
 }
 
@@ -216,26 +199,26 @@ void FixedText::Paint( vcl::RenderContext& rRenderContext, const tools::Rectangl
     ImplDraw(&rRenderContext, DrawFlags::NONE, Point(), GetOutputSizePixel());
 }
 
-void FixedText::Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize,
+void FixedText::Draw( OutputDevice* pDev, const Point& rPos,
                       DrawFlags nFlags )
 {
     ApplySettings(*pDev);
 
     Point       aPos  = pDev->LogicToPixel( rPos );
-    Size        aSize = pDev->LogicToPixel( rSize );
+    Size        aSize = GetSizePixel();
     vcl::Font   aFont = GetDrawPixelFont( pDev );
 
     pDev->Push();
     pDev->SetMapMode();
     pDev->SetFont( aFont );
     if ( nFlags & DrawFlags::Mono )
-        pDev->SetTextColor( Color( COL_BLACK ) );
+        pDev->SetTextColor( COL_BLACK );
     else
         pDev->SetTextColor( GetTextColor() );
     pDev->SetTextFillColor();
 
-    bool bBorder = !(nFlags & DrawFlags::NoBorder ) && (GetStyle() & WB_BORDER);
-    bool bBackground = !(nFlags & DrawFlags::NoBackground) && IsControlBackground();
+    bool bBorder = (GetStyle() & WB_BORDER);
+    bool bBackground = IsControlBackground();
     if ( bBorder || bBackground )
     {
         tools::Rectangle aRect( aPos, aSize );
@@ -328,13 +311,13 @@ Size FixedText::CalcMinimumTextSize( Control const *pControl, long nMaxWidth )
     Size aSize = getTextDimensions(pControl, pControl->GetText(), nMaxWidth);
 
     if ( pControl->GetStyle() & WB_EXTRAOFFSET )
-        aSize.Width() += 2;
+        aSize.AdjustWidth(2 );
 
     // GetTextRect cannot take an empty string
     if ( aSize.Width() < 0 )
-        aSize.Width() = 0;
+        aSize.setWidth( 0 );
     if ( aSize.Height() <= 0 )
-        aSize.Height() = pControl->GetTextHeight();
+        aSize.setHeight( pControl->GetTextHeight() );
 
     return aSize;
 }
@@ -347,11 +330,12 @@ Size FixedText::CalcMinimumSize( long nMaxWidth ) const
 Size FixedText::GetOptimalSize() const
 {
     sal_Int32 nMaxAvailWidth = 0x7fffffff;
-    const OUString &rTxt = GetText();
-    if (m_nMaxWidthChars != -1 && m_nMaxWidthChars < rTxt.getLength())
+    if (m_nMaxWidthChars != -1)
     {
+        OUStringBuffer aBuf;
+        comphelper::string::padToLength(aBuf, m_nMaxWidthChars, 'x');
         nMaxAvailWidth = getTextDimensions(this,
-            rTxt.copy(0, m_nMaxWidthChars), 0x7fffffff).Width();
+            aBuf.makeStringAndClear(), 0x7fffffff).Width();
     }
     Size aRet = CalcMinimumSize(nMaxAvailWidth);
     if (m_nMinWidthChars != -1)
@@ -360,8 +344,7 @@ Size FixedText::GetOptimalSize() const
         comphelper::string::padToLength(aBuf, m_nMinWidthChars, 'x');
         Size aMinAllowed = getTextDimensions(this,
             aBuf.makeStringAndClear(), 0x7fffffff);
-        if (aMinAllowed.Width() > aRet.Width())
-            aRet = aMinAllowed;
+        aRet.setWidth(std::max(aMinAllowed.Width(), aRet.Width()));
     }
     return aRet;
 }
@@ -400,7 +383,7 @@ bool FixedText::set_property(const OString &rKey, const OUString &rValue)
     else if (rKey == "ellipsize")
     {
         WinBits nBits = GetStyle();
-        nBits &= ~(WB_PATHELLIPSIS);
+        nBits &= ~WB_PATHELLIPSIS;
         if (rValue != "none")
         {
             SAL_WARN_IF(rValue != "end", "vcl.layout", "Only endellipsis support for now");
@@ -528,17 +511,17 @@ void FixedLine::ImplDraw(vcl::RenderContext& rRenderContext)
         SetFont(aFont);
         Point aStartPt(aOutSize.Width() / 2, aOutSize.Height() - 1);
         if (nWinStyle & WB_VCENTER)
-            aStartPt.Y() -= (aOutSize.Height() - nWidth) / 2;
+            aStartPt.AdjustY( -((aOutSize.Height() - nWidth) / 2) );
         Point aTextPt(aStartPt);
-        aTextPt.X() -= GetTextHeight() / 2;
+        aTextPt.AdjustX( -(GetTextHeight() / 2) );
         rRenderContext.DrawText(aTextPt, aText, 0, aText.getLength());
         rRenderContext.Pop();
         if (aOutSize.Height() - aStartPt.Y() > FIXEDLINE_TEXT_BORDER)
-            aDecoView.DrawSeparator(Point(aStartPt.X(), aOutSize.Height() - 1),
-                                    Point(aStartPt.X(), aStartPt.Y() + FIXEDLINE_TEXT_BORDER));
+            aDecoView.DrawSeparator(Point(aStartPt.X(), aStartPt.Y() + FIXEDLINE_TEXT_BORDER),
+                                    Point(aStartPt.X(), aOutSize.Height() - 1));
         if (aStartPt.Y() - nWidth - FIXEDLINE_TEXT_BORDER > 0)
-            aDecoView.DrawSeparator(Point(aStartPt.X(), aStartPt.Y() - nWidth - FIXEDLINE_TEXT_BORDER),
-                                    Point(aStartPt.X(), 0));
+            aDecoView.DrawSeparator(Point(aStartPt.X(), 0),
+                                    Point(aStartPt.X(), aStartPt.Y() - nWidth - FIXEDLINE_TEXT_BORDER));
     }
     else
     {
@@ -607,7 +590,7 @@ void FixedLine::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
     ImplDraw(rRenderContext);
 }
 
-void FixedLine::Draw( OutputDevice*, const Point&, const Size&, DrawFlags )
+void FixedLine::Draw( OutputDevice*, const Point&, DrawFlags )
 {
 }
 
@@ -695,17 +678,15 @@ FixedBitmap::FixedBitmap( vcl::Window* pParent, WinBits nStyle ) :
 
 void FixedBitmap::ImplDraw( OutputDevice* pDev, const Point& rPos, const Size& rSize )
 {
-    Bitmap* pBitmap = &maBitmap;
-
     // do we have a Bitmap?
-    if ( !(!(*pBitmap)) )
+    if ( !!maBitmap )
     {
         if ( GetStyle() & WB_SCALE )
-            pDev->DrawBitmap( rPos, rSize, *pBitmap );
+            pDev->DrawBitmapEx( rPos, rSize, maBitmap );
         else
         {
-            Point aPos = ImplCalcPos( GetStyle(), rPos, pBitmap->GetSizePixel(), rSize );
-            pDev->DrawBitmap( aPos, *pBitmap );
+            Point aPos = ImplCalcPos( GetStyle(), rPos, maBitmap.GetSizePixel(), rSize );
+            pDev->DrawBitmapEx( aPos, maBitmap );
         }
     }
 }
@@ -738,18 +719,18 @@ void FixedBitmap::Paint(vcl::RenderContext& rRenderContext, const tools::Rectang
     ImplDraw(&rRenderContext, Point(), GetOutputSizePixel());
 }
 
-void FixedBitmap::Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize,
-                        DrawFlags nFlags )
+void FixedBitmap::Draw( OutputDevice* pDev, const Point& rPos,
+                        DrawFlags )
 {
     Point       aPos  = pDev->LogicToPixel( rPos );
-    Size        aSize = pDev->LogicToPixel( rSize );
+    Size        aSize = GetSizePixel();
     tools::Rectangle   aRect( aPos, aSize );
 
     pDev->Push();
     pDev->SetMapMode();
 
     // Border
-    if ( !(nFlags & DrawFlags::NoBorder) && (GetStyle() & WB_BORDER) )
+    if ( GetStyle() & WB_BORDER )
     {
         DecorationView aDecoView( pDev );
         aRect = aDecoView.DrawFrame( aRect, DrawFrameStyle::DoubleIn );
@@ -802,7 +783,7 @@ void FixedBitmap::DataChanged( const DataChangedEvent& rDCEvt )
     }
 }
 
-void FixedBitmap::SetBitmap( const Bitmap& rBitmap )
+void FixedBitmap::SetBitmap( const BitmapEx& rBitmap )
 {
     maBitmap = rBitmap;
     CompatStateChanged( StateChangedType::Data );
@@ -829,15 +810,12 @@ FixedImage::FixedImage( vcl::Window* pParent, WinBits nStyle ) :
     ImplInit( pParent, nStyle );
 }
 
-void FixedImage::ImplDraw( OutputDevice* pDev, DrawFlags nDrawFlags,
+void FixedImage::ImplDraw( OutputDevice* pDev,
                            const Point& rPos, const Size& rSize )
 {
     DrawImageFlags nStyle = DrawImageFlags::NONE;
-    if ( !(nDrawFlags & DrawFlags::NoDisable) )
-    {
-        if ( !IsEnabled() )
-            nStyle |= DrawImageFlags::Disable;
-    }
+    if ( !IsEnabled() )
+        nStyle |= DrawImageFlags::Disable;
 
     Image *pImage = &maImage;
 
@@ -880,7 +858,7 @@ void FixedImage::ApplySettings(vcl::RenderContext& rRenderContext)
 
 void FixedImage::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&)
 {
-    ImplDraw(&rRenderContext, DrawFlags::NONE, Point(), GetOutputSizePixel());
+    ImplDraw(&rRenderContext, Point(), GetOutputSizePixel());
 }
 
 Size FixedImage::GetOptimalSize() const
@@ -888,23 +866,23 @@ Size FixedImage::GetOptimalSize() const
     return maImage.GetSizePixel();
 }
 
-void FixedImage::Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize,
-                       DrawFlags nFlags )
+void FixedImage::Draw( OutputDevice* pDev, const Point& rPos,
+                       DrawFlags )
 {
     Point       aPos  = pDev->LogicToPixel( rPos );
-    Size        aSize = pDev->LogicToPixel( rSize );
+    Size        aSize = GetSizePixel();
     tools::Rectangle   aRect( aPos, aSize );
 
     pDev->Push();
     pDev->SetMapMode();
 
     // Border
-    if ( !(nFlags & DrawFlags::NoBorder) && (GetStyle() & WB_BORDER) )
+    if ( GetStyle() & WB_BORDER )
     {
         ImplDrawFrame( pDev, aRect );
     }
     pDev->IntersectClipRegion( aRect );
-    ImplDraw( pDev, nFlags, aRect.TopLeft(), aRect.GetSize() );
+    ImplDraw( pDev, aRect.TopLeft(), aRect.GetSize() );
 
     pDev->Pop();
 }
@@ -962,23 +940,29 @@ void FixedImage::SetImage( const Image& rImage )
     }
 }
 
-bool FixedImage::SetModeImage( const Image& rImage )
+void FixedImage::SetModeImage( const Image& rImage )
 {
     SetImage( rImage );
-    return true;
 }
 
 Image FixedImage::loadThemeImage(const OUString &rFileName)
 {
-    BitmapEx aBitmap(rFileName);
-    return Image(aBitmap);
+    return Image(StockImage::Yes, rFileName);
 }
 
 bool FixedImage::set_property(const OString &rKey, const OUString &rValue)
 {
-    if (rKey == "pixbuf")
+    if (rKey == "pixbuf" || rKey == "icon-name")
     {
         SetImage(loadThemeImage(rValue));
+    }
+    else if (rKey == "icon-size")
+    {
+        WinBits nBits = GetStyle();
+        nBits &= ~WB_SMALLSTYLE;
+        if (rValue == "2")
+            nBits |= WB_SMALLSTYLE;
+        SetStyle(nBits);
     }
     else
         return Control::set_property(rKey, rValue);

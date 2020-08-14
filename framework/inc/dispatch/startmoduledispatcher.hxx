@@ -20,28 +20,21 @@
 #ifndef INCLUDED_FRAMEWORK_INC_DISPATCH_STARTMODULEDISPATCHER_HXX
 #define INCLUDED_FRAMEWORK_INC_DISPATCH_STARTMODULEDISPATCHER_HXX
 
-#include <stdtypes.h>
-#include <general.h>
-
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
 #include <com/sun/star/frame/XNotifyingDispatch.hpp>
 #include <com/sun/star/frame/XDispatchInformationProvider.hpp>
 #include <com/sun/star/util/URL.hpp>
 #include <com/sun/star/frame/XDispatchResultListener.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/frame/DispatchResultState.hpp>
 
 #include <cppuhelper/implbase.hxx>
-#include <vcl/evntpost.hxx>
 
 namespace framework{
 
 /**
     @short          helper to handle all URLs related to the StartModule
  */
-class StartModuleDispatcher : public  ::cppu::WeakImplHelper<
+class StartModuleDispatcher final : public  ::cppu::WeakImplHelper<
                                          css::frame::XNotifyingDispatch,             // => XDispatch
                                          css::frame::XDispatchInformationProvider >
 {
@@ -50,7 +43,7 @@ class StartModuleDispatcher : public  ::cppu::WeakImplHelper<
 
     private:
 
-        /** @short reference to an uno service manager,
+        /** @short reference to a uno service manager,
                    which can be used to create own needed
                    uno resources. */
         css::uno::Reference< css::uno::XComponentContext > m_xContext;
@@ -64,7 +57,7 @@ class StartModuleDispatcher : public  ::cppu::WeakImplHelper<
             @descr  Such "owner frame" is used as context for all related operations.
 
             @param  xContext
-                    an UNO service manager, which is needed to create UNO resource
+                    a UNO service manager, which is needed to create UNO resource
                     internally.
 
             @param  xFrame
@@ -105,11 +98,8 @@ class StartModuleDispatcher : public  ::cppu::WeakImplHelper<
         bool implts_isBackingModePossible();
 
         /** @short  open the special BackingComponent (now StartModule)
-
-            @return [bool]
-                    sal_True if operation was successfully.
          */
-        bool implts_establishBackingMode();
+        void implts_establishBackingMode();
 
         /** @short  notify a DispatchResultListener.
 

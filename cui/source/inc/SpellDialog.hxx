@@ -20,88 +20,84 @@
 #define INCLUDED_CUI_SOURCE_INC_SPELLDIALOG_HXX
 
 #include <sfx2/basedlgs.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
-#include <vcl/menubtn.hxx>
-#include <vcl/group.hxx>
-#include <vcl/decoview.hxx>
-#include <vcl/image.hxx>
-#include <vcl/toolbox.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 
 
 #include <svx/langbox.hxx>
 #include <memory>
-#include <svtools/svmedit.hxx>
-#include <svl/lstner.hxx>
-#include <vcl/fixedhyper.hxx>
-#include <vcl/xtextedt.hxx>
+#include <svl/undo.hxx>
+#include <vcl/customweld.hxx>
+#include <svx/weldeditview.hxx>
 #include <editeng/SpellPortions.hxx>
 
 #include <set>
 
 namespace svx{ class SpellUndoAction_Impl;}
+class UndoChangeGroupGuard;
 
 // forward ---------------------------------------------------------------
 
 struct SpellDialog_Impl;
+namespace com::sun::star::linguistic2 { class XSpellChecker1; }
 
-namespace com{namespace sun{namespace star{
-namespace linguistic2{
-    class XSpellChecker1;
-}}}}
 namespace svx{
 class SpellDialog;
 struct SpellErrorDescription;
 
-class SentenceEditWindow_Impl : public VclMultiLineEdit
+class SentenceEditWindow_Impl : public WeldEditView
 {
-    using VclMultiLineEdit::SetText;
-
 private:
-    std::set< sal_uInt16 >      m_aIgnoreErrorsAt;
-    VclPtr<ToolBox>     m_xToolbar;
-    sal_uInt16          m_nErrorStart;
-    sal_uInt16          m_nErrorEnd;
+    std::set<sal_Int32> m_aIgnoreErrorsAt;
+    SpellDialog*        m_pSpellDialog;
+    weld::Toolbar*      m_pToolbar;
+    sal_Int32           m_nErrorStart;
+    sal_Int32           m_nErrorEnd;
     bool                m_bIsUndoEditMode;
 
-    Link<Edit&,void>    m_aModifyLink;
+    Link<LinkParamNone*,void> m_aModifyLink;
 
-    void            CallModifyLink() {m_aModifyLink.Call(*this);}
+    void            CallModifyLink() {m_aModifyLink.Call(nullptr); }
 
-    inline SpellDialog* GetSpellDialog() const;
+    SpellDialog* GetSpellDialog() const { return m_pSpellDialog; }
 
-    DECL_LINK(ToolbarHdl, ToolBox*, void);
+    bool GetErrorDescription(SpellErrorDescription& rSpellErrorDescription, sal_Int32 nPosition);
+
+    DECL_LINK(ToolbarHdl, const OString&, void);
+
 protected:
-    virtual bool    PreNotify( NotifyEvent& rNEvt ) override;
+    virtual bool    KeyInput( const KeyEvent& rKEvt ) override;
 
 public:
-    SentenceEditWindow_Impl(vcl::Window* pParent, WinBits nBits);
+    SentenceEditWindow_Impl();
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
+    void SetSpellDialog(SpellDialog* pDialog) { m_pSpellDialog = pDialog; }
     virtual ~SentenceEditWindow_Impl() override;
 
-    void            Init(VclPtr<ToolBox> &rToolbar);
-    void            SetModifyHdl(const Link<Edit&,void>& rLink) override { m_aModifyLink = rLink;}
+    void            Init(weld::Toolbar* pToolbar);
+    void            SetModifyHdl(const Link<LinkParamNone*,void>& rLink)
+    {
+        m_aModifyLink = rLink;
+        m_xEditEngine->SetModifyHdl(m_aModifyLink);
+    }
 
-    void            SetAttrib( const TextAttrib& rAttr, sal_uLong nPara, sal_uInt16 nStart, sal_uInt16 nEnd );
-    void            SetText( const OUString& rStr ) override;
+    void            SetAttrib(const SfxPoolItem& rItem, sal_Int32 nStart, sal_Int32 nEnd);
+
+    void            SetText(const OUString& rStr);
 
     bool            MarkNextError( bool bIgnoreCurrentError, const css::uno::Reference<css::linguistic2::XSpellChecker1>& );
-    void            ChangeMarkedWord(const OUString& rNewWord, LanguageType eLanguage);
-    void            MoveErrorMarkTo(sal_uInt16 nErrorStart, sal_uInt16 nErrorEnd, bool bGrammar);
+    int             ChangeMarkedWord(const OUString& rNewWord, LanguageType eLanguage);
+    void            MoveErrorMarkTo(sal_Int32 nErrorStart, sal_Int32 nErrorEnd, bool bGrammar);
     OUString        GetErrorText() const;
     void            RestoreCurrentError();
 
     void            SetAlternatives(
                         const css::uno::Reference<css::linguistic2::XSpellAlternatives>& );
 
-    const SpellErrorDescription* GetAlternatives();
+    bool            GetAlternatives(SpellErrorDescription& rDesc);
 
-
-    void            ResetModified()   { GetTextEngine()->SetModified(false); m_bIsUndoEditMode = false;}
-    virtual bool    IsModified() const override { return GetTextEngine()->IsModified(); }
-    virtual void    dispose() override;
+    void            ClearModifyFlag() { m_xEditEngine->ClearModifyFlag(); }
+    void            ResetModified() { ClearModifyFlag(); m_bIsUndoEditMode = false;}
+    bool            IsModified() const { return m_xEditEngine->IsModified(); }
 
     bool            IsUndoEditMode() const { return m_bIsUndoEditMode;}
     void            SetUndoEditMode(bool bSet);
@@ -110,8 +106,8 @@ public:
 
     void            ResetUndo();
     void            Undo();
-    void            AddUndoAction( SfxUndoAction *pAction );
-    sal_uInt16      GetUndoActionCount();
+    void            AddUndoAction( std::unique_ptr<SfxUndoAction> pAction );
+    size_t          GetUndoActionCount() const;
     void            UndoActionStart( sal_uInt16 nId );
     void            UndoActionEnd();
 
@@ -123,42 +119,10 @@ public:
 // class SvxSpellDialog ---------------------------------------------
 class SpellDialogChildWindow;
 
-class SpellDialog : public SfxModelessDialog
+class SpellDialog : public SfxModelessDialogController
 {
-    using Window::Invalidate;
-
     friend class SentenceEditWindow_Impl;
 private:
-
-    VclPtr<FixedText>      m_pLanguageFT;
-    VclPtr<SvxLanguageBox> m_pLanguageLB;
-
-    VclPtr<FixedText>      m_pExplainFT;
-    VclPtr<FixedHyperlink> m_pExplainLink;
-
-    VclPtr<FixedText>      m_pNotInDictFT;
-    VclPtr<SentenceEditWindow_Impl> m_pSentenceED;
-
-    VclPtr<FixedText>      m_pSuggestionFT;
-    VclPtr<ListBox>        m_pSuggestionLB;
-
-    VclPtr<PushButton>     m_pIgnorePB;
-    VclPtr<PushButton>     m_pIgnoreAllPB;
-    VclPtr<PushButton>     m_pIgnoreRulePB;
-    VclPtr<PushButton>     m_pAddToDictPB;
-    VclPtr<MenuButton>     m_pAddToDictMB;
-
-    VclPtr<PushButton>     m_pChangePB;
-    VclPtr<PushButton>     m_pChangeAllPB;
-    VclPtr<PushButton>     m_pAutoCorrPB;
-
-    VclPtr<CheckBox>       m_pCheckGrammarCB;
-
-    VclPtr<PushButton>     m_pOptionsPB;
-    VclPtr<PushButton>     m_pUndoPB;
-    VclPtr<CloseButton>    m_pClosePB;
-    VclPtr<ToolBox>        m_pToolbar;
-
     OUString        m_sResumeST;
     OUString        m_sIgnoreOnceST;
     OUString        m_sNoSuggestionsST;
@@ -177,61 +141,88 @@ private:
     css::uno::Reference<
         css::linguistic2::XSpellChecker1 >     xSpell;
 
-    DECL_LINK(ChangeHdl, Button*, void);
-    DECL_LINK(DoubleClickChangeHdl, ListBox&, void);
-    DECL_LINK(ChangeAllHdl, Button*, void);
-    DECL_LINK( IgnoreAllHdl, Button*, void );
-    DECL_LINK(IgnoreHdl, Button*, void);
-    DECL_LINK( CheckGrammarHdl, Button*, void );
-    DECL_LINK( ExtClickHdl, Button*, void );
-    DECL_LINK(CancelHdl, Button*, void);
-    DECL_LINK( ModifyHdl, Edit&, void);
-    DECL_LINK(UndoHdl, Button*, void);
-    DECL_LINK( AddToDictSelectHdl, MenuButton*, void );
-    DECL_LINK( AddToDictClickHdl, Button*, void );
-    DECL_LINK( LanguageSelectHdl, ListBox&, void );
-    DECL_LINK( DialogUndoHdl, SpellUndoAction_Impl&, void );
+    std::unique_ptr<weld::Label> m_xAltTitle;
+    std::unique_ptr<weld::Label> m_xResumeFT;
+    std::unique_ptr<weld::Label> m_xNoSuggestionsFT;
+    std::unique_ptr<weld::Label> m_xIgnoreOnceFT;
+    std::unique_ptr<weld::Label> m_xLanguageFT;
+    std::unique_ptr<SvxLanguageBox> m_xLanguageLB;
+    std::unique_ptr<weld::Label> m_xExplainFT;
+    std::unique_ptr<weld::LinkButton> m_xExplainLink;
+    std::unique_ptr<weld::Label> m_xNotInDictFT;
+    std::unique_ptr<SentenceEditWindow_Impl> m_xSentenceED;
+    std::unique_ptr<weld::Label> m_xSuggestionFT;
+    std::unique_ptr<weld::TreeView> m_xSuggestionLB;
+    std::unique_ptr<weld::Button> m_xIgnorePB;
+    std::unique_ptr<weld::Button> m_xIgnoreAllPB;
+    std::unique_ptr<weld::Button> m_xIgnoreRulePB;
+    std::unique_ptr<weld::Button> m_xAddToDictPB;
+    std::unique_ptr<weld::MenuButton> m_xAddToDictMB;
+    std::unique_ptr<weld::Button> m_xChangePB;
+    std::unique_ptr<weld::Button> m_xChangeAllPB;
+    std::unique_ptr<weld::Button> m_xAutoCorrPB;
+    std::unique_ptr<weld::CheckButton> m_xCheckGrammarCB;
+    std::unique_ptr<weld::Button> m_xOptionsPB;
+    std::unique_ptr<weld::Button> m_xUndoPB;
+    std::unique_ptr<weld::Button> m_xClosePB;
+    std::unique_ptr<weld::Toolbar> m_xToolbar;
+    std::unique_ptr<weld::CustomWeld> m_xSentenceEDWeld;
 
-    DECL_LINK( InitHdl, void*, void );
+    DECL_LINK(ChangeHdl, weld::Button&, void);
+    DECL_LINK(DoubleClickChangeHdl, weld::TreeView&, bool);
+    DECL_LINK(ChangeAllHdl, weld::Button&, void);
+    DECL_LINK(IgnoreAllHdl, weld::Button&, void);
+    DECL_LINK(IgnoreHdl, weld::Button&, void);
+    DECL_LINK(CheckGrammarHdl, weld::Button&, void);
+    DECL_LINK(ExtClickHdl, weld::Button&, void);
+    DECL_LINK(CancelHdl, weld::Button&, void);
+    DECL_LINK(ModifyHdl, LinkParamNone*, void);
+    DECL_LINK(UndoHdl, weld::Button&, void);
+    DECL_LINK(AddToDictSelectHdl, const OString&, void);
+    DECL_LINK(AddToDictClickHdl, weld::Button&, void);
+    DECL_LINK(LanguageSelectHdl, weld::ComboBox&, void);
+    DECL_LINK(DialogUndoHdl, SpellUndoAction_Impl&, void);
 
-    void            AddToDictionaryExecute( sal_uInt16 ItemId, PopupMenu *pMenu );
+    DECL_LINK(InitHdl, void*, void);
+
+    void            AddToDictionaryExecute(const OString& rItemId);
     void            StartSpellOptDlg_Impl();
     int             InitUserDicts();
-    void            UpdateBoxes_Impl();
+    void            UpdateBoxes_Impl(bool bCallFromSelectHdl = false);
     void            Init_Impl();
-    void            SpellContinue_Impl(bool UseSavedSentence = false, bool bIgnoreCurrentError = false );
+    void            SpellContinue_Impl(std::unique_ptr<UndoChangeGroupGuard>* pGuard = nullptr, bool UseSavedSentence = false, bool bIgnoreCurrentError = false );
     void            LockFocusChanges( bool bLock ) {bFocusLocked = bLock;}
+    void            ToplevelFocusChanged();
     void            Impl_Restore(bool bUseSavedSentence);
 
     LanguageType    GetSelectedLang_Impl() const;
 
     /** Retrieves the next sentence.
      */
-    bool            GetNextSentence_Impl(bool bUseSavedSentence, bool bRechek /*for rechecking the current sentence*/);
+    bool            GetNextSentence_Impl(std::unique_ptr<UndoChangeGroupGuard>* pGuard, bool bUseSavedSentence, bool bRecheck /*for rechecking the current sentence*/);
     /** Corrects all errors that have been selected to be changed always
      */
     static bool     ApplyChangeAllList_Impl(SpellPortions& rSentence, bool& bHasReplaced);
     void            SetTitle_Impl(LanguageType nLang);
 
 protected:
-    virtual bool    EventNotify( NotifyEvent& rNEvt ) override;
 
     OUString getReplacementString() const;
 
 public:
     SpellDialog(
         svx::SpellDialogChildWindow* pChildWindow,
-        vcl::Window * pParent,
+        weld::Window * pParent,
         SfxBindings* pBindings);
     virtual ~SpellDialog() override;
-    virtual void dispose() override;
 
-    virtual bool    Close() override;
+    virtual void    Activate() override;
+    virtual void    Deactivate() override;
+
+    virtual void    Close() override;
 
     void            InvalidateDialog();
 };
-
-SpellDialog* SentenceEditWindow_Impl::GetSpellDialog() const {return static_cast<SpellDialog*>(GetParentDialog());}
 
 } //namespace svx
 

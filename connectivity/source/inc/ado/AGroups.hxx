@@ -21,13 +21,11 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AGROUPS_HXX
 
 #include <connectivity/sdbcx/VCollection.hxx>
-#include "ado/Awrapadox.hxx"
-#include "ado/ACatalog.hxx"
+#include <ado/Awrapadox.hxx>
+#include <ado/ACatalog.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class OGroups : public sdbcx::OCollection
         {
             WpADOGroups m_aCollection;
@@ -42,14 +40,13 @@ namespace connectivity
         public:
             OGroups(OCatalog* _pParent,
                      ::osl::Mutex& _rMutex,
-                     const TStringVector &_rVector,
+                     const ::std::vector< OUString> &_rVector,
                      const WpADOGroups& _rCollection,bool _bCase) : sdbcx::OCollection(*_pParent,_bCase,_rMutex,_rVector)
                     ,m_aCollection(_rCollection)
                     ,m_pCatalog(_pParent)
             {
             }
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AGROUPS_HXX

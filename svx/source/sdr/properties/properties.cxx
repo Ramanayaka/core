@@ -17,20 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <libxml/xmlwriter.h>
+
 #include <svx/sdr/properties/properties.hxx>
 #include <sdr/properties/itemsettools.hxx>
 #include <svl/itemset.hxx>
 #include <svx/svdogrp.hxx>
 #include <svx/svditer.hxx>
+#include <svx/xdef.hxx>
 #include <svx/xfillit0.hxx>
-#include <vcl/outdev.hxx>
+#include <svx/svdmodel.hxx>
 
 using namespace com::sun::star;
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         BaseProperties::BaseProperties(SdrObject& rObj)
         :   mrObject(rObj)
         {
@@ -38,6 +39,21 @@ namespace sdr
 
         BaseProperties::~BaseProperties()
         {
+        }
+
+        void BaseProperties::applyDefaultStyleSheetFromSdrModel()
+        {
+            SfxStyleSheet* pDefaultStyleSheet(GetSdrObject().getSdrModelFromSdrObject().GetDefaultStyleSheet());
+
+            // tdf#118139 Only do this when StyleSheet really differs. It may e.g.
+            // be the case that nullptr == pDefaultStyleSheet and there is none set yet,
+            // so indeed no need to set it (needed for some strange old MSWord2003
+            // documents with CustomShape-'Group' and added Text-Frames, see task description)
+            if(pDefaultStyleSheet != GetStyleSheet())
+            {
+                // do not delete hard attributes when setting dsefault Style
+                SetStyleSheet(pDefaultStyleSheet, true);
+            }
         }
 
         const SdrObject& BaseProperties::GetSdrObject() const
@@ -78,24 +94,6 @@ namespace sdr
         {
             // default implementation falls back to ClearObjectItem()
             ClearObjectItem(nWhich);
-        }
-
-        void BaseProperties::Scale(const Fraction& /*rScale*/)
-        {
-            // default implementation does nothing; override where
-            // an ItemSet is implemented.
-        }
-
-        void BaseProperties::MoveToItemPool(SfxItemPool* /*pSrcPool*/, SfxItemPool* /*pDestPool*/, SdrModel* /*pNewModel*/)
-        {
-            // Move properties to a new ItemPool. Default implementation does nothing.
-            // Override where an ItemSet is implemented.
-        }
-
-        void BaseProperties::SetModel(SdrModel* /*pOldModel*/, SdrModel* /*pNewModel*/)
-        {
-            // Set new model. Default implementation does nothing.
-            // Override where an ItemSet is implemented.
         }
 
         void BaseProperties::ForceStyleToHardAttributes()
@@ -144,7 +142,7 @@ namespace sdr
             }
 
             // also send the user calls
-            for(sal_uInt32 a(0L); a < nCount; a++)
+            for(sal_uInt32 a(0); a < nCount; a++)
             {
                 GetSdrObject().SendUserCall(SdrUserCallType::ChangeAttr, rChange.GetRectangle(a));
             }
@@ -155,35 +153,40 @@ namespace sdr
             return 0;
         }
 
+        void BaseProperties::dumpAsXml(xmlTextWriterPtr pWriter) const
+        {
+            xmlTextWriterStartElement(pWriter, BAD_CAST("BaseProperties"));
+            xmlTextWriterEndElement(pWriter);
+        }
+
         void CleanupFillProperties( SfxItemSet& rItemSet )
         {
             const bool bFillBitmap = rItemSet.GetItemState(XATTR_FILLBITMAP, false) == SfxItemState::SET;
             const bool bFillGradient = rItemSet.GetItemState(XATTR_FILLGRADIENT, false) == SfxItemState::SET;
             const bool bFillHatch = rItemSet.GetItemState(XATTR_FILLHATCH, false) == SfxItemState::SET;
-            if( bFillBitmap || bFillGradient || bFillHatch )
+            if( !(bFillBitmap || bFillGradient || bFillHatch) )
+                return;
+
+            const XFillStyleItem* pFillStyleItem = rItemSet.GetItem(XATTR_FILLSTYLE);
+            if( !pFillStyleItem )
+                return;
+
+            if( bFillBitmap && (pFillStyleItem->GetValue() != drawing::FillStyle_BITMAP) )
             {
-                const XFillStyleItem* pFillStyleItem = dynamic_cast< const XFillStyleItem* >( rItemSet.GetItem(XATTR_FILLSTYLE) );
-                if( pFillStyleItem )
-                {
-                    if( bFillBitmap && (pFillStyleItem->GetValue() != drawing::FillStyle_BITMAP) )
-                    {
-                        rItemSet.ClearItem( XATTR_FILLBITMAP );
-                    }
+                rItemSet.ClearItem( XATTR_FILLBITMAP );
+            }
 
-                    if( bFillGradient && (pFillStyleItem->GetValue() != drawing::FillStyle_GRADIENT) )
-                    {
-                        rItemSet.ClearItem( XATTR_FILLGRADIENT );
-                    }
+            if( bFillGradient && (pFillStyleItem->GetValue() != drawing::FillStyle_GRADIENT) )
+            {
+                rItemSet.ClearItem( XATTR_FILLGRADIENT );
+            }
 
-                    if( bFillHatch && (pFillStyleItem->GetValue() != drawing::FillStyle_HATCH) )
-                    {
-                        rItemSet.ClearItem( XATTR_FILLHATCH );
-                    }
-                }
+            if( bFillHatch && (pFillStyleItem->GetValue() != drawing::FillStyle_HATCH) )
+            {
+                rItemSet.ClearItem( XATTR_FILLHATCH );
             }
         }
 
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

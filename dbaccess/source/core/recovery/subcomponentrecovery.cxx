@@ -19,7 +19,7 @@
 
 #include "subcomponentrecovery.hxx"
 
-#include "sdbcoretools.hxx"
+#include <sdbcoretools.hxx>
 #include "storagexmlstream.hxx"
 #include "subcomponentloader.hxx"
 #include "settingsimport.hxx"
@@ -37,6 +37,7 @@
 #include <cppuhelper/implbase.hxx>
 #include <connectivity/dbtools.hxx>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 #include <xmloff/XMLSettingsExportContext.hxx>
 #include <xmloff/SettingsExportHelper.hxx>
 
@@ -70,7 +71,6 @@ namespace dbaccess
     using css::container::XHierarchicalNameAccess;
     using css::sdb::XFormDocumentsSupplier;
     using css::sdb::XReportDocumentsSupplier;
-    using css::xml::sax::SAXException;
     using css::xml::sax::XLocator;
     using css::xml::sax::XDocumentHandler;
     using css::xml::sax::XAttributeList;
@@ -86,13 +86,13 @@ namespace dbaccess
             switch ( i_eType )
             {
             case FORM:
-                return OUString("form");
+                return "form";
             case REPORT:
-                return OUString("report");
+                return "report";
             case TABLE:
-                return OUString("table");
+                return "table";
             case QUERY:
-                return OUString("query");
+                return "query";
             default:
                 break;
             }
@@ -155,14 +155,16 @@ namespace dbaccess
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
             return xCommandProcessor;
         }
 
-        static const char sSettingsStreamName[] = "settings.xml";
-        static const char sCurrentQueryDesignName[] = "ooo:current-query-design";
+        const char sSettingsStreamName[] = "settings.xml";
+        const char sCurrentQueryDesignName[] = "ooo:current-query-design";
     }
+
+    namespace {
 
     // SettingsExportContext
     class SettingsExportContext : public ::xmloff::XMLSettingsExportContext
@@ -201,6 +203,8 @@ namespace dbaccess
         const OUString m_aNamespace;
     };
 
+    }
+
     void SettingsExportContext::AddAttribute( enum ::xmloff::token::XMLTokenEnum i_eName, const OUString& i_rValue )
     {
         m_rDelegator.addAttribute( impl_prefix( i_eName ), i_rValue );
@@ -238,6 +242,9 @@ namespace dbaccess
     // SettingsDocumentHandler
     typedef ::cppu::WeakImplHelper<   XDocumentHandler
                                   >   SettingsDocumentHandler_Base;
+
+    namespace {
+
     class SettingsDocumentHandler : public SettingsDocumentHandler_Base
     {
     public:
@@ -267,6 +274,8 @@ namespace dbaccess
         std::stack< ::rtl::Reference< SettingsImport > >  m_aStates;
         ::comphelper::NamedValueCollection                  m_aSettings;
     };
+
+    }
 
     void SAL_CALL SettingsDocumentHandler::startDocument(  )
     {
@@ -337,20 +346,20 @@ namespace dbaccess
     void SAL_CALL SettingsDocumentHandler::setDocumentLocator( const Reference< XLocator >& ) {}
 
     // SubComponentRecovery
-    const OUString SubComponentRecovery::getComponentsStorageName( const SubComponentType i_eType )
+    OUString SubComponentRecovery::getComponentsStorageName( const SubComponentType i_eType )
     {
         switch ( i_eType )
         {
         case FORM:
-            return OUString("forms");
+            return "forms";
         case REPORT:
-            return OUString("reports");
+            return "reports";
         case TABLE:
-            return OUString("tables");
+            return "tables";
         case QUERY:
-            return OUString("queries");
+            return "queries";
         case RELATION_DESIGN:
-            return OUString("relations");
+            return "relations";
         default:
             break;
         }
@@ -369,13 +378,13 @@ namespace dbaccess
         // open the sub storage for the given kind of components
         const OUString& rStorageName( getComponentsStorageName( m_eType ) );
         const Reference< XStorage > xComponentsStorage( i_rRecoveryStorage->openStorageElement(
-            rStorageName, ElementModes::READWRITE ), UNO_QUERY_THROW );
+            rStorageName, ElementModes::READWRITE ), UNO_SET_THROW );
 
         // find a free sub storage name, and create Yet Another Sub Storage
         const OUString& rBaseName( lcl_getComponentStorageBaseName( m_eType ) );
         const OUString sStorName = ::dbtools::createUniqueName( xComponentsStorage.get(), rBaseName );
         const Reference< XStorage > xObjectStor( xComponentsStorage->openStorageElement(
-            sStorName, ElementModes::READWRITE ), UNO_QUERY_THROW );
+            sStorName, ElementModes::READWRITE ), UNO_SET_THROW );
 
         switch ( m_eType )
         {
@@ -433,7 +442,7 @@ namespace dbaccess
                 m_aCompDesc.bForEditing = true;
                 break;
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
 
         case FORM:
             m_aCompDesc.bForEditing = !lcl_determineReadOnly( m_xComponent );
@@ -536,7 +545,7 @@ namespace dbaccess
         if ( xDocDefinition.is() )
         {
             Reference< XController > xController( m_xDocumentUI, UNO_QUERY_THROW );
-            Reference< XInterface >( *new SubComponentLoader( xController, xDocDefinition ) );
+            rtl::Reference( new SubComponentLoader( xController, xDocDefinition ) );
         }
 
         return xSubComponent;
@@ -589,7 +598,7 @@ namespace dbaccess
         }
 
         Reference< XController > xController( m_xDocumentUI, UNO_QUERY_THROW );
-        Reference< XInterface >( *new SubComponentLoader( xController, xSubComponent ) );
+        rtl::Reference( new SubComponentLoader( xController, xSubComponent ) );
 
         return xSubComponent;
     }

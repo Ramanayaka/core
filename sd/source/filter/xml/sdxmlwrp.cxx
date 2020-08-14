@@ -18,43 +18,45 @@
  */
 
 #include <vcl/errinf.hxx>
-#include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/xml/sax/SAXParseException.hpp>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <editeng/outlobj.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/docfilt.hxx>
-#include "drawdoc.hxx"
-#include "Outliner.hxx"
+#include <sfx2/sfxsids.hrc>
+#include <sot/storage.hxx>
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
+#include <Outliner.hxx>
 #include <unotools/streamwrap.hxx>
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
 #include <svx/xmlgrhlp.hxx>
 
-#include "DrawDocShell.hxx"
+#include <DrawDocShell.hxx>
 
-#include "sdxmlwrp.hxx"
-#include "strmname.h"
+#include <sdxmlwrp.hxx>
 #include <svx/xmleohlp.hxx>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
+#include <com/sun/star/xml/sax/XFastParser.hpp>
 #include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/document/XImporter.hpp>
 #include <com/sun/star/document/XExporter.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/document/XGraphicObjectResolver.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/packages/WrongPasswordException.hpp>
 #include <com/sun/star/packages/zip/ZipIOException.hpp>
 
-#include <com/sun/star/xml/sax/XErrorHandler.hpp>
-#include <com/sun/star/xml/sax/XEntityResolver.hpp>
 #include <com/sun/star/xml/sax/InputSource.hpp>
-#include <com/sun/star/xml/sax/XDTDHandler.hpp>
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
-#include <com/sun/star/io/XActiveDataControl.hpp>
 #include <comphelper/genericpropertyset.hxx>
 #include <comphelper/propertysetinfo.hxx>
 #include <editeng/eeitem.hxx>
@@ -65,12 +67,15 @@
 #include <svl/stritem.hxx>
 #include <svtools/sfxecode.hxx>
 
-#include "sderror.hxx"
-#include "sdresid.hxx"
+#include <sddll.hxx>
+#include <sderror.hxx>
+#include <sdresid.hxx>
 #include "sdtransform.hxx"
-#include "glob.hrc"
+#include <strings.hrc>
 
 #include <sfx2/frame.hxx>
+#include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
@@ -101,16 +106,6 @@ char const sXML_import_draw_content_oasis_service[] = "com.sun.star.comp.Draw.XM
 char const sXML_import_draw_settings_oasis_service[] = "com.sun.star.comp.Draw.XMLOasisSettingsImporter";
 
 // OOo
-char const sXML_export_impress_meta_ooo_service[] = "com.sun.star.comp.Impress.XMLMetaExporter";
-char const sXML_export_impress_styles_ooo_service[] = "com.sun.star.comp.Impress.XMLStylesExporter";
-char const sXML_export_impress_content_ooo_service[] = "com.sun.star.comp.Impress.XMLContentExporter";
-char const sXML_export_impress_settings_ooo_service[] = "com.sun.star.comp.Impress.XMLSettingsExporter";
-
-char const sXML_export_draw_meta_ooo_service[] = "com.sun.star.comp.Draw.XMLMetaExporter";
-char const sXML_export_draw_styles_ooo_service[] = "com.sun.star.comp.Draw.XMLStylesExporter";
-char const sXML_export_draw_content_ooo_service[] = "com.sun.star.comp.Draw.XMLContentExporter";
-char const sXML_export_draw_settings_ooo_service[] = "com.sun.star.comp.Draw.XMLSettingsExporter";
-
 char const sXML_import_impress_meta_ooo_service[] = "com.sun.star.comp.Impress.XMLMetaImporter";
 char const sXML_import_impress_styles_ooo_service[] = "com.sun.star.comp.Impress.XMLStylesImporter";
 char const sXML_import_impress_content_ooo_service[] = "com.sun.star.comp.Impress.XMLContentImporter";
@@ -121,36 +116,41 @@ char const sXML_import_draw_styles_ooo_service[] = "com.sun.star.comp.Draw.XMLSt
 char const sXML_import_draw_content_ooo_service[] = "com.sun.star.comp.Draw.XMLContentImporter";
 char const sXML_import_draw_settings_ooo_service[] = "com.sun.star.comp.Draw.XMLSettingsImporter";
 
+namespace {
+
 struct XML_SERVICEMAP
 {
-    const sal_Char* mpService;
-    const sal_Char* mpStream;
+    const char* mpService;
+    const char* mpStream;
 };
 
 struct XML_SERVICES
 {
-    const sal_Char* mpMeta;
-    const sal_Char* mpStyles;
-    const sal_Char* mpContent;
-    const sal_Char* mpSettings;
+    const char* mpMeta;
+    const char* mpStyles;
+    const char* mpContent;
+    const char* mpSettings;
 };
 
-XML_SERVICES* getServices( bool bImport, bool bDraw, sal_uLong nStoreVer )
+}
+
+static XML_SERVICES const * getServices( bool bImport, bool bDraw, sal_uLong nStoreVer )
 {
-    static XML_SERVICES gServices[] =
+    // Expect that export always sets nStoreVer to SOFFICE_FILEFORMAT_8.
+    assert(bImport || nStoreVer != SOFFICE_FILEFORMAT_60);
+
+    static XML_SERVICES const gServices[] =
     {
-        { sXML_export_impress_meta_oasis_service, sXML_export_impress_styles_oasis_service, sXML_export_impress_content_oasis_service, sXML_export_impress_settings_oasis_service },
-        { sXML_export_draw_meta_oasis_service, sXML_export_draw_styles_oasis_service, sXML_export_draw_content_oasis_service, sXML_export_draw_settings_oasis_service },
         { sXML_import_impress_meta_oasis_service, sXML_import_impress_styles_oasis_service, sXML_import_impress_content_oasis_service, sXML_import_impress_settings_oasis_service },
         { sXML_import_draw_meta_oasis_service, sXML_import_draw_styles_oasis_service, sXML_import_draw_content_oasis_service, sXML_import_draw_settings_oasis_service },
+        { sXML_export_impress_meta_oasis_service, sXML_export_impress_styles_oasis_service, sXML_export_impress_content_oasis_service, sXML_export_impress_settings_oasis_service },
+        { sXML_export_draw_meta_oasis_service, sXML_export_draw_styles_oasis_service, sXML_export_draw_content_oasis_service, sXML_export_draw_settings_oasis_service },
 
-        { sXML_export_impress_meta_ooo_service, sXML_export_impress_styles_ooo_service, sXML_export_impress_content_ooo_service, sXML_export_impress_settings_ooo_service },
-        { sXML_export_draw_meta_ooo_service, sXML_export_draw_styles_ooo_service, sXML_export_draw_content_ooo_service, sXML_export_draw_settings_ooo_service },
         { sXML_import_impress_meta_ooo_service, sXML_import_impress_styles_ooo_service, sXML_import_impress_content_ooo_service, sXML_import_impress_settings_ooo_service },
         { sXML_import_draw_meta_ooo_service, sXML_import_draw_styles_ooo_service, sXML_import_draw_content_ooo_service, sXML_import_draw_settings_ooo_service },
     };
 
-    return &gServices[ (bImport ? 2 : 0) + ((nStoreVer == SOFFICE_FILEFORMAT_60) ? 4 : 0) + (bDraw ? 1 : 0 ) ];
+    return &gServices[ (bImport ? 0 : 2) + ((nStoreVer == SOFFICE_FILEFORMAT_60) ? 4 : 0) + (bDraw ? 1 : 0 ) ];
 }
 
 
@@ -170,8 +170,8 @@ ErrCode ReadThroughComponent(
     const Reference<io::XInputStream>& xInputStream,
     const Reference<XComponent>& xModelComponent,
     const OUString& rStreamName,
-    Reference<uno::XComponentContext> & rxContext,
-    const sal_Char* pFilterName,
+    Reference<uno::XComponentContext> const & rxContext,
+    const char* pFilterName,
     const Sequence<Any>& rFilterArguments,
     const OUString& rName,
     bool bMustBeSuccessfull,
@@ -209,14 +209,22 @@ ErrCode ReadThroughComponent(
     // connect model and filter
     Reference < XImporter > xImporter( xFilter, UNO_QUERY );
     xImporter->setTargetDocument( xModelComponent );
+
+    uno::Reference< xml::sax::XFastParser > xFastParser = dynamic_cast<
+                            xml::sax::XFastParser* >( xFilter.get() );
+
     // finally, parser the stream
     SAL_INFO( "sd.filter", "parsing stream" );
     try
     {
-        xParser->parseStream( aParserInput );
+        if( xFastParser.is() )
+            xFastParser->parseStream( aParserInput );
+        else
+            xParser->parseStream( aParserInput );
     }
     catch (const xml::sax::SAXParseException& r)
     {
+        css::uno::Any ex( cppu::getCaughtException() );
         // sax parser sends wrapped exceptions,
         // try to find the original one
         xml::sax::SAXException aSaxEx = *static_cast<xml::sax::SAXException const *>(&r);
@@ -238,11 +246,10 @@ ErrCode ReadThroughComponent(
         if( bEncrypted )
             return ERRCODE_SFX_WRONGPASSWORD;
 
-        SAL_WARN( "sd.filter", "SAX parse exception caught while importing:" << r.Message);
+        SAL_WARN( "sd.filter", "SAX parse exception caught while importing: " << exceptionToString(ex));
 
-        OUString sErr( OUString::number( r.LineNumber ));
-        sErr += ",";
-        sErr += OUString::number( r.ColumnNumber );
+        OUString sErr =  OUString::number( r.LineNumber ) +
+            "," + OUString::number( r.ColumnNumber );
 
         if (!rStreamName.isEmpty())
         {
@@ -261,6 +268,7 @@ ErrCode ReadThroughComponent(
     }
     catch (const xml::sax::SAXException& r)
     {
+        css::uno::Any ex( cppu::getCaughtException() );
         packages::zip::ZipIOException aBrokenPackage;
         if ( r.WrappedException >>= aBrokenPackage )
             return ERRCODE_IO_BROKENPACKAGE;
@@ -268,22 +276,22 @@ ErrCode ReadThroughComponent(
         if( bEncrypted )
             return ERRCODE_SFX_WRONGPASSWORD;
 
-        SAL_WARN( "sd.filter", "SAX exception caught while importing:" << r.Message);
+        SAL_WARN( "sd.filter", "SAX exception caught while importing: " << exceptionToString(ex));
         return SD_XML_READERROR;
     }
-    catch (const packages::zip::ZipIOException& r)
+    catch (const packages::zip::ZipIOException&)
     {
-        SAL_WARN( "sd.filter", "Zip exception caught while importing:" << r.Message);
+        TOOLS_WARN_EXCEPTION( "sd.filter", "Zip exception caught while importing");
         return ERRCODE_IO_BROKENPACKAGE;
     }
-    catch (const io::IOException& r)
+    catch (const io::IOException&)
     {
-        SAL_WARN( "sd.filter", "IO exception caught while importing:" << r.Message);
+        TOOLS_WARN_EXCEPTION( "sd.filter", "IO exception caught while importing");
         return SD_XML_READERROR;
     }
-    catch (const uno::Exception& r)
+    catch (const uno::Exception&)
     {
-        SAL_WARN( "sd.filter", "uno exception caught while importing:" << r.Message);
+        TOOLS_WARN_EXCEPTION( "sd.filter", "uno exception caught while importing");
         return SD_XML_READERROR;
     }
 
@@ -294,10 +302,9 @@ ErrCode ReadThroughComponent(
 ErrCode ReadThroughComponent(
     const uno::Reference < embed::XStorage >& xStorage,
     const Reference<XComponent>& xModelComponent,
-    const sal_Char* pStreamName,
-    const sal_Char* pCompatibilityStreamName,
-    Reference<uno::XComponentContext> & rxContext,
-    const sal_Char* pFilterName,
+    const char* pStreamName,
+    Reference<uno::XComponentContext> const & rxContext,
+    const char* pFilterName,
     const Sequence<Any>& rFilterArguments,
     const OUString& rName,
     bool bMustBeSuccessfull )
@@ -318,30 +325,13 @@ ErrCode ReadThroughComponent(
 
     if (!bContainsStream )
     {
-        // stream name not found! Then try the compatibility name.
-        // if no stream can be opened, return immediately with OK signal
-
-        // do we even have an alternative name?
-        if ( nullptr == pCompatibilityStreamName )
-            return ERRCODE_NONE;
-
-        // if so, does the stream exist?
-        sStreamName = OUString::createFromAscii(pCompatibilityStreamName);
-        try
-        {
-            bContainsStream = xStorage->isStreamElement(sStreamName);
-        }
-        catch (const container::NoSuchElementException&)
-        {
-        }
-
-        if (! bContainsStream )
-            return ERRCODE_NONE;
+        // stream name not found! return immediately with OK signal
+        return ERRCODE_NONE;
     }
 
     // set Base URL
     uno::Reference< beans::XPropertySet > xInfoSet;
-    if( rFilterArguments.getLength() > 0 )
+    if( rFilterArguments.hasElements() )
         rFilterArguments.getConstArray()[0] >>= xInfoSet;
     DBG_ASSERT( xInfoSet.is(), "missing property set" );
     if( xInfoSet.is() )
@@ -387,7 +377,7 @@ ErrCode ReadThroughComponent(
 
 }
 
-//PRESOBJ_OUTLINEs in master pages are the preview of the outline styles
+//PresObjKind::Outlines in master pages are the preview of the outline styles
 //numbering format. Since fdo#78151 toggling bullets on and off changes
 //the style they are a preview of, previously toggling bullets on and off
 //would only affect the preview paragraph itself without an effect on the
@@ -397,12 +387,12 @@ ErrCode ReadThroughComponent(
 //But there exist documents which were saved previous to that modification
 //so here we detect such cases and fix them up to ensure the previews
 //numbering level matches that of the outline level it previews
-void fixupOutlinePlaceholderNumberingDepths(SdDrawDocument* pDoc)
+static void fixupOutlinePlaceholderNumberingDepths(SdDrawDocument* pDoc)
 {
     for (sal_uInt16 i = 0; i < pDoc->GetMasterSdPageCount(PageKind::Standard); ++i)
     {
         SdPage *pMasterPage = pDoc->GetMasterSdPage(i, PageKind::Standard);
-        SdrObject* pMasterOutline = pMasterPage->GetPresObj(PRESOBJ_OUTLINE);
+        SdrObject* pMasterOutline = pMasterPage->GetPresObj(PresObjKind::Outline);
         if (!pMasterOutline)
             continue;
         OutlinerParaObject* pOutlParaObj = pMasterOutline->GetOutlinerParaObject();
@@ -455,7 +445,7 @@ bool SdXMLFilter::Import( ErrCode& nError )
     SdDrawDocument* pDoc = mrDocShell.GetDoc();
     bool const bWasUndo(pDoc->IsUndoEnabled());
     pDoc->EnableUndo(false);
-    pDoc->NewOrLoadCompleted( NEW_DOC );
+    pDoc->NewOrLoadCompleted( DocCreationMode::New );
     pDoc->CreateFirstPages();
     pDoc->StopWorkStartupDelay();
 
@@ -500,12 +490,12 @@ bool SdXMLFilter::Import( ErrCode& nError )
         }
     }
 
-    Reference< document::XGraphicObjectResolver > xGraphicResolver;
-    SvXMLGraphicHelper *pGraphicHelper = nullptr;
+    uno::Reference<document::XGraphicStorageHandler> xGraphicStorageHandler;
+    rtl::Reference<SvXMLGraphicHelper> xGraphicHelper;
     Reference< document::XEmbeddedObjectResolver > xObjectResolver;
-    SvXMLEmbeddedObjectHelper *pObjectHelper = nullptr;
+    rtl::Reference<SvXMLEmbeddedObjectHelper> xObjectHelper;
 
-    Reference< lang::XComponent > xModelComp( mxModel, uno::UNO_QUERY );
+    Reference< lang::XComponent > xModelComp = mxModel;
 
     // try to get an XStatusIndicator from the Medium
     {
@@ -523,7 +513,7 @@ bool SdXMLFilter::Import( ErrCode& nError )
         if(mxStatusIndicator.is())
         {
             sal_Int32 nProgressRange(1000000);
-            OUString aMsg(SdResId(STR_LOAD_DOC));
+            OUString aMsg(SvxResId(RID_SVXSTR_DOC_LOAD));
             mxStatusIndicator->start(aMsg, nProgressRange);
 
             // set ProgressRange
@@ -540,7 +530,6 @@ bool SdXMLFilter::Import( ErrCode& nError )
 
     // get the input stream (storage or stream)
 
-    tools::SvRef<SotStorageStream> xDocStream;
     uno::Reference < embed::XStorage > xStorage = mrMedium.GetStorage();
 
     xInfoSet->setPropertyValue( "SourceStorage", Any( xStorage ) );
@@ -550,14 +539,13 @@ bool SdXMLFilter::Import( ErrCode& nError )
 
     if( ERRCODE_NONE == nRet )
     {
-        pGraphicHelper = SvXMLGraphicHelper::Create( xStorage,
-                                                     SvXMLGraphicHelperMode::Read,
-                                                     false );
-        xGraphicResolver = pGraphicHelper;
-        pObjectHelper = SvXMLEmbeddedObjectHelper::Create(
+        xGraphicHelper = SvXMLGraphicHelper::Create( xStorage,
+                                                     SvXMLGraphicHelperMode::Read );
+        xGraphicStorageHandler = xGraphicHelper.get();
+        xObjectHelper = SvXMLEmbeddedObjectHelper::Create(
                                     xStorage, *pDoc->GetPersist(),
                                     SvXMLEmbeddedObjectHelperMode::Read );
-        xObjectResolver = pObjectHelper;
+        xObjectResolver = xObjectHelper.get();
     }
 
     // Set base URI
@@ -583,7 +571,7 @@ bool SdXMLFilter::Import( ErrCode& nError )
             xInfoSet->setPropertyValue( "StreamRelPath", Any( aName ) );
     }
 
-    if (SDXMLMODE_Organizer == meFilterMode)
+    if (SdXMLFilterMode::Organizer == meFilterMode)
         xInfoSet->setPropertyValue("OrganizerMode", uno::makeAny(true));
 
     if( ERRCODE_NONE == nRet )
@@ -593,7 +581,7 @@ bool SdXMLFilter::Import( ErrCode& nError )
         Sequence<Any> aFilterArgs( 4 );
         Any *pArgs = aFilterArgs.getArray();
         *pArgs++ <<= xInfoSet;
-        *pArgs++ <<= xGraphicResolver;
+        *pArgs++ <<= xGraphicStorageHandler;
         *pArgs++ <<= xObjectResolver;
         *pArgs++ <<= mxStatusIndicator;
 
@@ -604,33 +592,33 @@ bool SdXMLFilter::Import( ErrCode& nError )
 
         const OUString aName( mrMedium.GetName() );
 
-        XML_SERVICES* pServices = getServices( true, IsDraw(), mnStoreVer );
+        XML_SERVICES const * pServices = getServices( true, IsDraw(), mnStoreVer );
 
         ErrCode nWarn = ERRCODE_NONE;
         ErrCode nWarn2 = ERRCODE_NONE;
         // read storage streams
         // #i103539#: always read meta.xml for generator
         nWarn = ReadThroughComponent(
-            xStorage, xModelComp, "meta.xml", "Meta.xml", rxContext,
+            xStorage, xModelComp, "meta.xml", rxContext,
             pServices->mpMeta,
             aEmptyArgs, aName, false );
 
-        if( meFilterMode != SDXMLMODE_Organizer )
+        if( meFilterMode != SdXMLFilterMode::Organizer )
         {
             nWarn2 = ReadThroughComponent(
-                xStorage, xModelComp, "settings.xml", nullptr, rxContext,
+                xStorage, xModelComp, "settings.xml", rxContext,
                 pServices->mpSettings,
                 aFilterArgs, aName, false );
         }
 
         nRet = ReadThroughComponent(
-            xStorage, xModelComp, "styles.xml", nullptr, rxContext,
+            xStorage, xModelComp, "styles.xml", rxContext,
             pServices->mpStyles,
             aFilterArgs, aName, true );
 
-        if( !nRet && (meFilterMode != SDXMLMODE_Organizer) )
+        if( !nRet && (meFilterMode != SdXMLFilterMode::Organizer) )
             nRet = ReadThroughComponent(
-               xStorage, xModelComp, "content.xml", "Content.xml", rxContext,
+               xStorage, xModelComp, "content.xml", rxContext,
                pServices->mpContent,
                aFilterArgs, aName, true );
 
@@ -643,11 +631,13 @@ bool SdXMLFilter::Import( ErrCode& nError )
         }
     }
 
-    if( pGraphicHelper )
-        SvXMLGraphicHelper::Destroy( pGraphicHelper );
-    xGraphicResolver = nullptr;
-    if( pObjectHelper )
-        SvXMLEmbeddedObjectHelper::Destroy( pObjectHelper );
+    if( xGraphicHelper )
+        xGraphicHelper->dispose();
+    xGraphicHelper.clear();
+    xGraphicStorageHandler = nullptr;
+    if( xObjectHelper.is() )
+        xObjectHelper->dispose();
+    xObjectHelper.clear();
     xObjectResolver = nullptr;
 
     if( mxStatusIndicator.is() )
@@ -705,7 +695,7 @@ bool SdXMLFilter::Import( ErrCode& nError )
         }
         catch (const Exception&)
         {
-            SAL_WARN( "sd.filter","sd::SdXMLFilter::Import(), exception during clearing of unused named items");
+            TOOLS_WARN_EXCEPTION( "sd.filter","sd::SdXMLFilter::Import(), exception during clearing of unused named items");
         }
     }
 
@@ -777,8 +767,8 @@ bool SdXMLFilter::Import( ErrCode& nError )
 
 bool SdXMLFilter::Export()
 {
-    SvXMLEmbeddedObjectHelper*  pObjectHelper = nullptr;
-    SvXMLGraphicHelper*         pGraphicHelper = nullptr;
+    rtl::Reference<SvXMLEmbeddedObjectHelper> xObjectHelper;
+    rtl::Reference<SvXMLGraphicHelper> xGraphicHelper;
     bool                    bDocRet = false;
 
     if( !mxModel.is() )
@@ -863,16 +853,16 @@ bool SdXMLFilter::Export()
 
         {
             uno::Reference< document::XEmbeddedObjectResolver > xObjectResolver;
-            uno::Reference< document::XGraphicObjectResolver >  xGrfResolver;
+            uno::Reference<document::XGraphicStorageHandler> xGraphicStorageHandler;
 
             // create helper for graphic and ole export if we have a storage
             if( xStorage.is() )
             {
-                pObjectHelper = SvXMLEmbeddedObjectHelper::Create( xStorage, *mrDocShell.GetDoc()->GetPersist(), SvXMLEmbeddedObjectHelperMode::Write );
-                xObjectResolver = pObjectHelper;
+                xObjectHelper = SvXMLEmbeddedObjectHelper::Create( xStorage, *mrDocShell.GetDoc()->GetPersist(), SvXMLEmbeddedObjectHelperMode::Write );
+                xObjectResolver = xObjectHelper.get();
 
-                pGraphicHelper = SvXMLGraphicHelper::Create( xStorage, SvXMLGraphicHelperMode::Write, false );
-                xGrfResolver = pGraphicHelper;
+                xGraphicHelper = SvXMLGraphicHelper::Create( xStorage, SvXMLGraphicHelperMode::Write );
+                xGraphicStorageHandler = xGraphicHelper.get();
             }
 
             CreateStatusIndicator();
@@ -893,9 +883,7 @@ bool SdXMLFilter::Export()
                 xInfoSet->setPropertyValue( "ProgressCurrent" , aProgCurrent);
             }
 
-            uno::Reference< lang::XComponent > xComponent( mxModel, uno::UNO_QUERY );
-
-            XML_SERVICES* pServiceNames = getServices( false, IsDraw(), mnStoreVer );
+            XML_SERVICES const * pServiceNames = getServices( false, IsDraw(), mnStoreVer );
 
             XML_SERVICEMAP aServices[5]; sal_uInt16 i = 0;
             aServices[i  ].mpService = pServiceNames->mpStyles;
@@ -946,19 +934,20 @@ bool SdXMLFilter::Export()
                     xProps->setPropertyValue( "UseCommonStoragePasswordEncryption",
                                               uno::makeAny( true ) );
 
-                    const OUString sStreamName( "StreamName");
-                    xInfoSet->setPropertyValue( sStreamName, Any( sDocName ) );
+                    xInfoSet->setPropertyValue( "StreamName", Any( sDocName ) );
                 }
 
-                uno::Reference< io::XActiveDataSource > xDocSrc( xWriter, uno::UNO_QUERY );
-                xDocSrc->setOutputStream( xDocOut );
+                xWriter->setOutputStream( xDocOut );
 
-                uno::Sequence< uno::Any > aArgs( 2 + ( mxStatusIndicator.is() ? 1 : 0 ) + ( xGrfResolver.is() ? 1 : 0 ) + ( xObjectResolver.is() ? 1 : 0 ) );
+                uno::Sequence< uno::Any > aArgs( 2 + ( mxStatusIndicator.is() ? 1 : 0 ) + ( xGraphicStorageHandler.is() ? 1 : 0 ) + ( xObjectResolver.is() ? 1 : 0 ) );
                 uno::Any* pArgs = aArgs.getArray();
                 *pArgs++ <<= xInfoSet;
-                if( xGrfResolver.is() )         *pArgs++ <<= xGrfResolver;
-                if( xObjectResolver.is() )      *pArgs++ <<= xObjectResolver;
-                if( mxStatusIndicator.is() )    *pArgs++ <<= mxStatusIndicator;
+                if (xGraphicStorageHandler.is())
+                    *pArgs++ <<= xGraphicStorageHandler;
+                if (xObjectResolver.is())
+                    *pArgs++ <<= xObjectResolver;
+                if (mxStatusIndicator.is())
+                    *pArgs++ <<= mxStatusIndicator;
 
                 *pArgs   <<= xWriter;
 
@@ -968,7 +957,7 @@ bool SdXMLFilter::Export()
                     uno::Reference< document::XExporter > xExporter( xFilter, uno::UNO_QUERY );
                     if( xExporter.is() )
                     {
-                        xExporter->setSourceDocument( xComponent );
+                        xExporter->setSourceDocument( mxModel );
                         // outputstream will be closed by SAX parser
                         bDocRet = xFilter->filter( aDescriptor );
                     }
@@ -982,21 +971,114 @@ bool SdXMLFilter::Export()
                 mxStatusIndicator->end();
         }
     }
-    catch (const uno::Exception &e)
+    catch (const uno::Exception &)
     {
-        SAL_WARN( "sd.filter", "uno Exception caught while exporting:" << e.Message);
+        TOOLS_WARN_EXCEPTION( "sd.filter", "uno Exception caught while exporting");
         bDocRet = false;
     }
     if ( !bLocked )
         mxModel->unlockControllers();
 
-    if( pGraphicHelper )
-        SvXMLGraphicHelper::Destroy( pGraphicHelper );
+    if( xGraphicHelper )
+        xGraphicHelper->dispose();
+    xGraphicHelper.clear();
 
-    if( pObjectHelper )
-        SvXMLEmbeddedObjectHelper::Destroy( pObjectHelper );
+    if( xObjectHelper )
+        xObjectHelper->dispose();
+    xObjectHelper.clear();
 
     return bDocRet;
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportFODP(SvStream &rStream)
+{
+    SdDLL::Init();
+
+    sd::DrawDocShellRef xDocSh(new sd::DrawDocShell(SfxObjectCreateMode::EMBEDDED, false, DocumentType::Impress));
+    xDocSh->DoInitNew();
+    uno::Reference<frame::XModel> xModel(xDocSh->GetModel());
+
+    uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
+    uno::Reference<io::XInputStream> xStream(new ::utl::OSeekableInputStreamWrapper(rStream));
+    uno::Reference<uno::XInterface> xInterface(xMultiServiceFactory->createInstance("com.sun.star.comp.Writer.XmlFilterAdaptor"), uno::UNO_SET_THROW);
+
+    css::uno::Sequence<OUString> aUserData(7);
+    aUserData[0] = "com.sun.star.comp.filter.OdfFlatXml";
+    aUserData[2] = "com.sun.star.comp.Impress.XMLOasisImporter";
+    aUserData[3] = "com.sun.star.comp.Impress.XMLOasisExporter";
+    aUserData[6] = "true";
+    uno::Sequence<beans::PropertyValue> aAdaptorArgs(comphelper::InitPropertySequence(
+    {
+        { "UserData", uno::Any(aUserData) },
+    }));
+    css::uno::Sequence<uno::Any> aOuterArgs(1);
+    aOuterArgs[0] <<= aAdaptorArgs;
+
+    uno::Reference<lang::XInitialization> xInit(xInterface, uno::UNO_QUERY_THROW);
+    xInit->initialize(aOuterArgs);
+
+    uno::Reference<document::XImporter> xImporter(xInterface, uno::UNO_QUERY_THROW);
+    uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
+    {
+        { "InputStream", uno::Any(xStream) },
+        { "URL", uno::Any(OUString("private:stream")) },
+    }));
+    xImporter->setTargetDocument(xModel);
+
+    uno::Reference<document::XFilter> xFilter(xInterface, uno::UNO_QUERY_THROW);
+    //SetLoading hack because the document properties will be re-initted
+    //by the xml filter and during the init, while it's considered uninitialized,
+    //setting a property will inform the document it's modified, which attempts
+    //to update the properties, which throws cause the properties are uninitialized
+    xDocSh->SetLoading(SfxLoadedFlags::NONE);
+    bool ret = xFilter->filter(aArgs);
+    xDocSh->SetLoading(SfxLoadedFlags::ALL);
+
+    xDocSh->DoClose();
+
+    return ret;
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportPPTX(SvStream &rStream)
+{
+    SdDLL::Init();
+
+    sd::DrawDocShellRef xDocSh(new sd::DrawDocShell(SfxObjectCreateMode::EMBEDDED, false, DocumentType::Impress));
+    xDocSh->DoInitNew();
+    uno::Reference<frame::XModel> xModel(xDocSh->GetModel());
+
+    uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
+    uno::Reference<io::XInputStream> xStream(new utl::OSeekableInputStreamWrapper(rStream));
+
+    uno::Reference<document::XFilter> xFilter(xMultiServiceFactory->createInstance("com.sun.star.comp.oox.ppt.PowerPointImport"), uno::UNO_QUERY_THROW);
+
+    uno::Reference<document::XImporter> xImporter(xFilter, uno::UNO_QUERY_THROW);
+    uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
+    {
+        { "InputStream", uno::makeAny(xStream) },
+        { "InputMode", uno::makeAny(true) },
+    }));
+    xImporter->setTargetDocument(xModel);
+
+    //SetLoading hack because the document properties will be re-initted
+    //by the xml filter and during the init, while it's considered uninitialized,
+    //setting a property will inform the document it's modified, which attempts
+    //to update the properties, which throws cause the properties are uninitialized
+    xDocSh->SetLoading(SfxLoadedFlags::NONE);
+    bool ret = false;
+    try
+    {
+        ret = xFilter->filter(aArgs);
+    }
+    catch (...)
+    {
+    }
+    xDocSh->SetLoading(SfxLoadedFlags::ALL);
+
+    xDocSh->DoClose();
+
+    return ret;
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

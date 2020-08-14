@@ -19,28 +19,26 @@
 
 #include <UndoManager.hxx>
 
-#include <vcl/wrkwin.hxx>
-#include <svx/svdmodel.hxx>
-#include <swmodule.hxx>
+#include <libxml/xmlwriter.h>
+
 #include <doc.hxx>
 #include <docsh.hxx>
 #include <view.hxx>
 #include <drawdoc.hxx>
 #include <ndarr.hxx>
 #include <pam.hxx>
-#include <ndtxt.hxx>
 #include <swundo.hxx>
 #include <UndoCore.hxx>
-#include <rolbck.hxx>
-#include <undo.hrc>
 #include <editsh.hxx>
 #include <unobaseclass.hxx>
-#include <limits>
 #include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentRedlineAccess.hxx>
 #include <IDocumentState.hxx>
 #include <comphelper/lok.hxx>
 #include <assert.h>
+
+#include <sfx2/viewfrm.hxx>
+#include <sfx2/bindings.hxx>
 
 using namespace ::com::sun::star;
 
@@ -66,7 +64,7 @@ UndoManager::UndoManager(std::shared_ptr<SwNodes> const & xUndoNodes,
     ,   m_pDocShell(nullptr)
     ,   m_pView(nullptr)
 {
-    assert(m_xUndoNodes.get());
+    assert(bool(m_xUndoNodes));
     // writer expects it to be disabled initially
     // Undo is enabled by SwEditShell constructor
     SdrUndoManager::EnableUndo(false);
@@ -112,7 +110,7 @@ size_t UndoManager::GetUndoActionCount(const bool bCurrentLevel) const
 
     if (!m_bRepair)
     {
-        // If an other view created the last undo action, prevent undoing it from this view.
+        // If another view created the last undo action, prevent undoing it from this view.
         ViewShellId nViewShellId = m_pView->GetViewShellId();
         if (pAction->GetViewShellId() != nViewShellId)
             nRet = 0;
@@ -134,9 +132,9 @@ size_t UndoManager::GetRedoActionCount(const bool bCurrentLevel) const
     if (!pAction)
         return nRet;
 
-    if (m_pView && !m_bRepair)
+    if (!m_bRepair)
     {
-        // If an other view created the first redo action, prevent redoing it from this view.
+        // If another view created the first redo action, prevent redoing it from this view.
         ViewShellId nViewShellId = m_pView->GetViewShellId();
         if (pAction->GetViewShellId() != nViewShellId)
             nRet = 0;
@@ -243,9 +241,9 @@ SwUndo* UndoManager::GetLastUndo()
     return dynamic_cast<SwUndo*>(pAction);
 }
 
-void UndoManager::AppendUndo(SwUndo *const pUndo)
+void UndoManager::AppendUndo(std::unique_ptr<SwUndo> pUndo)
 {
-    AddUndoAction(pUndo);
+    AddUndoAction(std::move(pUndo));
 }
 
 void UndoManager::ClearRedo()
@@ -276,7 +274,7 @@ UndoManager::StartUndo(SwUndoId const i_eUndoId,
     assert(SwUndoId::END != eUndoId);
     OUString comment( (SwUndoId::START == eUndoId)
         ?   OUString("??")
-        :   SwResId(UNDO_BASE + (int)eUndoId) );
+        :   GetUndoComment(eUndoId) );
     if (pRewriter)
     {
         assert(SwUndoId::START != eUndoId);
@@ -289,7 +287,7 @@ UndoManager::StartUndo(SwUndoId const i_eUndoId,
         if (const SwView* pView = m_pDocShell->GetView())
             nViewShellId = pView->GetViewShellId();
     }
-    SdrUndoManager::EnterListAction(comment, comment, (sal_uInt16)eUndoId, nViewShellId);
+    SdrUndoManager::EnterListAction(comment, comment, static_cast<sal_uInt16>(eUndoId), nViewShellId);
 
     return eUndoId;
 }
@@ -321,17 +319,17 @@ UndoManager::EndUndo(SwUndoId eUndoId, SwRewriter const*const pRewriter)
         assert(pListAction);
         if (SwUndoId::END != eUndoId)
         {
-            OSL_ENSURE((SwUndoId)pListAction->GetId() == eUndoId,
+            OSL_ENSURE(static_cast<SwUndoId>(pListAction->GetId()) == eUndoId,
                     "EndUndo(): given ID different from StartUndo()");
             // comment set by caller of EndUndo
-            OUString comment = SwResId(UNDO_BASE + (int)eUndoId);
+            OUString comment = GetUndoComment(eUndoId);
             if (pRewriter)
             {
                 comment = pRewriter->Apply(comment);
             }
             pListAction->SetComment(comment);
         }
-        else if (SwUndoId::START != (SwUndoId)pListAction->GetId())
+        else if (SwUndoId::START != static_cast<SwUndoId>(pListAction->GetId()))
         {
             // comment set by caller of StartUndo: nothing to do here
         }
@@ -368,7 +366,7 @@ UndoManager::GetLastUndoInfo(
 
     if (comphelper::LibreOfficeKit::isActive() && !m_bRepair)
     {
-        // If an other view created the undo action, prevent undoing it from this view.
+        // If another view created the undo action, prevent undoing it from this view.
         ViewShellId nViewShellId = pView ? pView->GetViewShellId() : m_pDocShell->GetView()->GetViewShellId();
         if (pAction->GetViewShellId() != nViewShellId)
         {
@@ -387,7 +385,7 @@ UndoManager::GetLastUndoInfo(
     if (o_pId)
     {
         if (auto pListAction = dynamic_cast<const SfxListUndoAction*>(pAction))
-            *o_pId = (SwUndoId)pListAction->GetId();
+            *o_pId = static_cast<SwUndoId>(pListAction->GetId());
         else if (auto pSwAction = dynamic_cast<const SwUndo*>(pAction))
             *o_pId = pSwAction->GetId();
         else
@@ -431,7 +429,7 @@ bool UndoManager::GetFirstRedoInfo(OUString *const o_pStr,
 
     if (comphelper::LibreOfficeKit::isActive() && !m_bRepair)
     {
-        // If an other view created the undo action, prevent redoing it from this view.
+        // If another view created the undo action, prevent redoing it from this view.
         ViewShellId nViewShellId = pView ? pView->GetViewShellId() : m_pDocShell->GetView()->GetViewShellId();
         if (pAction->GetViewShellId() != nViewShellId)
         {
@@ -450,7 +448,7 @@ bool UndoManager::GetFirstRedoInfo(OUString *const o_pStr,
     if (o_pId)
     {
         if (auto pListAction = dynamic_cast<const SfxListUndoAction*>(pAction))
-            *o_pId = (SwUndoId)pListAction->GetId();
+            *o_pId = static_cast<SwUndoId>(pListAction->GetId());
         else if (auto pSwAction = dynamic_cast<const SwUndo*>(pAction))
             *o_pId = pSwAction->GetId();
         else
@@ -510,11 +508,11 @@ SwUndo * UndoManager::RemoveLastUndo()
     return dynamic_cast<SwUndo *>(pLastUndo);
 }
 
-// svl::IUndoManager
+// SfxUndoManager
 
-void UndoManager::AddUndoAction(SfxUndoAction *pAction, bool bTryMerge)
+void UndoManager::AddUndoAction(std::unique_ptr<SfxUndoAction> pAction, bool bTryMerge)
 {
-    SwUndo *const pUndo( dynamic_cast<SwUndo *>(pAction) );
+    SwUndo *const pUndo( dynamic_cast<SwUndo *>(pAction.get()) );
     if (pUndo)
     {
         if (RedlineFlags::NONE == pUndo->GetRedlineFlags())
@@ -526,13 +524,26 @@ void UndoManager::AddUndoAction(SfxUndoAction *pAction, bool bTryMerge)
             pUndo->IgnoreRepeat();
         }
     }
-    SdrUndoManager::AddUndoAction(pAction, bTryMerge);
+    SdrUndoManager::AddUndoAction(std::move(pAction), bTryMerge);
+    if (m_pDocShell)
+    {
+        SfxViewFrame* pViewFrame = SfxViewFrame::GetFirst( m_pDocShell );
+        while ( pViewFrame )
+        {
+            pViewFrame->GetBindings().Invalidate( SID_UNDO );
+            pViewFrame->GetBindings().Invalidate( SID_REDO );
+            pViewFrame = SfxViewFrame::GetNext( *pViewFrame, m_pDocShell );
+        }
+    }
+
     // if the undo nodes array is too large, delete some actions
     while (UNDO_ACTION_LIMIT < GetUndoNodes().Count())
     {
         RemoveOldestUndoAction();
     }
 }
+
+namespace {
 
 class CursorGuard
 {
@@ -557,6 +568,8 @@ private:
     SwEditShell & m_rShell;
     bool const m_bSaveCursor;
 };
+
+}
 
 bool UndoManager::impl_DoUndoRedo(UndoOrRedoType undoOrRedo)
 {
@@ -640,6 +653,26 @@ bool UndoManager::Redo()
     }
 }
 
+void UndoManager::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    xmlTextWriterStartElement(pWriter, BAD_CAST("swUndoManager"));
+    SdrUndoManager::dumpAsXml(pWriter);
+
+    xmlTextWriterStartElement(pWriter, BAD_CAST("m_xUndoNodes"));
+    m_xUndoNodes->dumpAsXml(pWriter);
+    xmlTextWriterEndElement(pWriter);
+
+    xmlTextWriterEndElement(pWriter);
+}
+
+void UndoManager::EmptyActionsChanged()
+{
+    if (m_pDocShell)
+    {
+        m_pDocShell->Broadcast(SfxHint(SfxHintId::DocumentRepair));
+    }
+}
+
 /** N.B.: this does _not_ call SdrUndoManager::Repeat because it is not
           possible to wrap a list action around it:
           calling EnterListAction here will cause SdrUndoManager::Repeat
@@ -666,15 +699,13 @@ bool UndoManager::Repeat(::sw::RepeatContext & rContext,
 
     OUString const comment(pRepeatAction->GetComment());
     OUString const rcomment(pRepeatAction->GetRepeatComment(rContext));
-    auto const*const pListAction(dynamic_cast<SfxListUndoAction *>(pRepeatAction));
-    auto const*const pSwAction(dynamic_cast<SwUndo *>(pRepeatAction));
-    if (!pListAction && !pSwAction)
-    {
+    SwUndoId nId;
+    if (auto const* const pSwAction = dynamic_cast<SwUndo*>(pRepeatAction))
+        nId = pSwAction->GetId();
+    else if (auto const* const pListAction = dynamic_cast<SfxListUndoAction*>(pRepeatAction))
+        nId = static_cast<SwUndoId>(pListAction->GetId());
+    else
         return false;
-    }
-    SwUndoId const nId((pSwAction)
-            ? pSwAction->GetId()
-            : static_cast<SwUndoId>(pListAction->GetId()));
     if (DoesUndo())
     {
         ViewShellId nViewShellId(-1);
@@ -683,7 +714,7 @@ bool UndoManager::Repeat(::sw::RepeatContext & rContext,
             if (const SwView* pView = m_pDocShell->GetView())
                 nViewShellId = pView->GetViewShellId();
         }
-        EnterListAction(comment, rcomment, (sal_uInt16)nId, nViewShellId);
+        EnterListAction(comment, rcomment, static_cast<sal_uInt16>(nId), nViewShellId);
     }
 
     SwPaM* pTmp = rContext.m_pCurrentPaM;

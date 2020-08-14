@@ -152,14 +152,12 @@ postprocess_FILES_main := \
 	$(postprocess_XCS)/Office/Linguistic.xcs \
 	$(postprocess_XCS)/Office/Logging.xcs \
 	$(postprocess_XCS)/Office/Math.xcs \
-	$(postprocess_XCS)/Office/OOoImprovement/Settings.xcs \
 	$(postprocess_XCS)/Office/OptionsDialog.xcs \
 	$(postprocess_XCS)/Office/Paths.xcs \
 	$(postprocess_XCS)/Office/ProtocolHandler.xcs \
 	$(postprocess_XCS)/Office/Recovery.xcs \
 	$(postprocess_XCS)/Office/Scripting.xcs \
 	$(postprocess_XCS)/Office/Security.xcs \
-	$(postprocess_XCS)/Office/TabBrowse.xcs \
 	$(postprocess_XCS)/Office/TableWizard.xcs \
 	$(postprocess_XCS)/Office/TypeDetection.xcs \
 	$(postprocess_XCS)/Office/UI/BaseWindowState.xcs \
@@ -183,7 +181,7 @@ postprocess_FILES_main := \
 	$(postprocess_XCS)/Office/UI/GenericCategories.xcs \
 	$(postprocess_XCS)/Office/UI/GenericCommands.xcs \
 	$(postprocess_XCS)/Office/UI/GlobalSettings.xcs \
-	$(postprocess_XCS)/Office/UI/Notebookbar.xcs \
+	$(postprocess_XCS)/Office/UI/Infobar.xcs \
 	$(postprocess_XCS)/Office/UI/Sidebar.xcs \
 	$(postprocess_XCS)/Office/UI/StartModuleCommands.xcs \
 	$(postprocess_XCS)/Office/UI/StartModuleWindowState.xcs \
@@ -248,9 +246,7 @@ postprocess_FILES_main := \
 	$(postprocess_XCU)/Office/UI/Factories.xcu \
 	$(postprocess_XCU)/Office/UI/GenericCategories.xcu \
 	$(postprocess_XCU)/Office/UI/GenericCommands.xcu \
-	$(postprocess_XCU)/Office/UI/Notebookbar.xcu \
 	$(postprocess_XCU)/Office/UI/Sidebar.xcu \
-	$(postprocess_XCU)/Office/UI/StartModuleCommands.xcu \
 	$(postprocess_XCU)/Office/UI/StartModuleWindowState.xcu \
 	$(postprocess_XCU)/Office/UI/ToolbarMode.xcu \
 	$(postprocess_XCU)/Office/UI.xcu \
@@ -281,11 +277,10 @@ ifeq (DBCONNECTIVITY,$(filter DBCONNECTIVITY,$(BUILD_TYPE)))
 postprocess_FILES_main += \
 	$(call gb_XcuModuleTarget_get_target,connectivity/registry/dbase)/org/openoffice/Office/DataAccess/Drivers-dbase.xcu \
 	$(call gb_XcuModuleTarget_get_target,connectivity/registry/flat)/org/openoffice/Office/DataAccess/Drivers-flat.xcu \
-	$(call gb_XcuModuleTarget_get_target,connectivity/registry/mysql)/org/openoffice/Office/DataAccess/Drivers-mysql.xcu \
-	$(call gb_XcuModuleTarget_get_target,connectivity/registry/odbc)/org/openoffice/Office/DataAccess/Drivers-odbc.xcu
-postprocess_DRIVERS += dbase flat mysql odbc
-ifeq (WNT,$(OS))
-else ifeq (DBCONNECTIVITY,$(filter DBCONNECTIVITY,$(BUILD_TYPE)))
+	$(call gb_XcuModuleTarget_get_target,connectivity/registry/odbc)/org/openoffice/Office/DataAccess/Drivers-odbc.xcu \
+	$(call gb_XcuModuleTarget_get_target,connectivity/registry/mysql_jdbc)/org/openoffice/Office/DataAccess/Drivers-mysql_jdbc.xcu
+postprocess_DRIVERS += dbase flat odbc mysql_jdbc
+ifeq (DBCONNECTIVITY,$(filter DBCONNECTIVITY,$(BUILD_TYPE)))
 ifneq (,$(filter DESKTOP,$(BUILD_TYPE)))
 postprocess_FILES_main += $(call gb_XcuModuleTarget_get_target,connectivity/registry/mork)/org/openoffice/Office/DataAccess/Drivers-mork.xcu
 postprocess_DRIVERS += mork
@@ -345,10 +340,27 @@ postprocess_FILES_main += \
 postprocess_DRIVERS += firebird_sdbc
 endif
 
+ifeq ($(ENABLE_MARIADBC),TRUE)
+postprocess_FILES_main += \
+	$(call gb_XcuModuleTarget_get_target,connectivity/registry/mysqlc)/org/openoffice/Office/DataAccess/Drivers-mysqlc.xcu
+postprocess_DRIVERS += mysqlc
+endif
+
 ifneq (,$(SYSTEM_LIBEXTTEXTCAT_DATA))
 postprocess_FILES_main += $(postprocess_MOD)/org/openoffice/Office/Paths-externallibexttextcatdata.xcu
 else
 postprocess_FILES_main += $(postprocess_MOD)/org/openoffice/Office/Paths-internallibexttextcatdata.xcu
+endif
+
+ifneq (,$(SYSTEM_LIBNUMBERTEXT_DATA))
+postprocess_FILES_main += $(postprocess_MOD)/org/openoffice/Office/Paths-externallibnumbertextdata.xcu
+else
+postprocess_FILES_main += $(postprocess_MOD)/org/openoffice/Office/Paths-internallibnumbertextdata.xcu
+endif
+
+ifneq ($(filter POWERPC INTEL ARM HPPA GODSON M68K SPARC S390,$(CPUNAME)),)
+postprocess_FILES_main += \
+	$(postprocess_MOD)/org/openoffice/Office/Common-32bit.xcu
 endif
 
 postprocess_DEPS_math := main
@@ -412,6 +424,13 @@ postprocess_FILES_writer := \
 	$(postprocess_MOD)/org/openoffice/Office/Common-writer.xcu \
 	$(postprocess_MOD)/org/openoffice/Office/Embedding-writer.xcu \
 	$(postprocess_MOD)/org/openoffice/Setup-writer.xcu
+
+ifeq (DBCONNECTIVITY,$(filter DBCONNECTIVITY,$(BUILD_TYPE)))
+postprocess_FILES_writer += \
+	$(call gb_XcuModuleTarget_get_target,connectivity/registry/writer)/org/openoffice/Office/DataAccess/Drivers-writer.xcu \
+	$(call gb_XcuModuleTarget_get_target,connectivity/registry/mysql_jdbc)/org/openoffice/Office/DataAccess/Drivers-mysql_jdbc.xcu
+postprocess_DRIVERS += writer mysql_jdbc
+endif
 
 postprocess_DEPS_xsltfilter := main
 postprocess_OPTDEPS_xsltfilter := calc writer
@@ -541,14 +560,15 @@ postprocess_main_SED := \
 	-e 's,$${PRODUCTEXTENSION},.$(LIBO_VERSION_MICRO).$(LIBO_VERSION_PATCH)$(LIBO_VERSION_SUFFIX),g' \
 	-e 's,$${STARTCENTER_ADDFEATURE_URL},http://extensions.libreoffice.org/,g' \
 	-e 's,$${STARTCENTER_INFO_URL},https://www.libreoffice.org/,g' \
-	-e 's,$${STARTCENTER_HIDE_EXTERNAL_LINKS},0,g' \
 	-e 's,$${STARTCENTER_TEMPLREP_URL},http://templates.libreoffice.org/,g' \
 	-e 's,$${SYSTEM_LIBEXTTEXTCAT_DATA},$(SYSTEM_LIBEXTTEXTCAT_DATA),g' \
+	-e 's,$${SYSTEM_LIBNUMBERTEXT_DATA},$(SYSTEM_LIBNUMBERTEXT_DATA),g' \
 
 $(call gb_XcdTarget_get_target,main.xcd) \
 		: $(BUILDDIR)/config_host.mk.stamp \
         | $(call gb_ExternalExecutable_get_dependencies,xsltproc)
 	$(call gb_Output_announce,main,$(true),XCD,3)
+	$(call gb_Trace_StartRange,main,XCD)
 	$(call gb_Helper_abbreviate_dirs, \
 		mkdir -p $(dir $@) && \
 		$(call gb_ExternalExecutable_get_command,xsltproc) --nonet \
@@ -556,35 +576,44 @@ $(call gb_XcdTarget_get_target,main.xcd) \
 			$(call gb_CustomTarget_get_workdir,postprocess/registry)/main.list \
 		|  sed $(postprocess_main_SED) > $@ \
 	)
+	$(call gb_Trace_EndRange,main,XCD)
 
 $(call gb_XcdTarget_get_target,%.xcd) : \
         | $(call gb_ExternalExecutable_get_dependencies,xsltproc)
 	$(call gb_Output_announce,$*,$(true),XCD,3)
+	$(call gb_Trace_StartRange,$*,XCD)
 	$(call gb_Helper_abbreviate_dirs, \
 		mkdir -p $(dir $@) && \
 		$(call gb_ExternalExecutable_get_command,xsltproc) --nonet \
 			-o $@ $(SRCDIR)/solenv/bin/packregistry.xslt $< \
 	)
+	$(call gb_Trace_EndRange,$*,XCD)
 
 $(call gb_CustomTarget_get_workdir,postprocess/registry)/Langpack-%.list :
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),ECH,2)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),ECH)
 	echo '<list><dependency file="main"/><filename>$(call gb_XcuLangpackTarget_get_target,Langpack-$*.xcu)</filename></list>' > $@
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),ECH)
 
 # It can happen that localized fcfg_langpack_*.zip contains
-# zero-sized org/openoffice/TypeDectection/Filter.xcu; filter them out in the
+# zero-sized org/openoffice/TypeDetection/Filter.xcu; filter them out in the
 # find shell command below (see issue 110041):
 $(call gb_CustomTarget_get_workdir,postprocess/registry)/fcfg_langpack_%.list :
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),AWK,2)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),AWK)
 	$(call gb_Helper_abbreviate_dirs,\
 	    $(FIND) $(call gb_XcuResTarget_get_target,fcfg_langpack/$*/) \
 	         -name *.xcu -size +0c \
+		| LC_ALL=C $(SORT) \
 	        | $(gb_AWK) 'BEGIN{print "<list>"} \
 	                    {print "<filename>"$$0"</filename>"} \
 	               END  {print "</list>"}' > $@ \
 	)
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),AWK)
 
 $(call gb_CustomTarget_get_workdir,postprocess/registry)/registry_%.list :
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),AWK,2)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),AWK)
 	$(call gb_Helper_abbreviate_dirs,\
 	    $(FIND) $(call gb_XcuResTarget_get_target,registry/$*/) \
 	         $(if $(filter DBCONNECTIVITY,$(BUILD_TYPE)),\
@@ -593,16 +622,20 @@ $(call gb_CustomTarget_get_workdir,postprocess/registry)/registry_%.list :
 	         $(if $(filter TRUE,$(ENABLE_ONLINE_UPDATE)),\
 	             $(call gb_XcuResTarget_get_target,updchk/$*/))\
 	         -name *.xcu \
+		| LC_ALL=C $(SORT) \
 	        | $(gb_AWK) 'BEGIN{print "<list>"} \
 	                    {print "<filename>"$$0"</filename>"} \
 	               END  {print "</list>"}' > $@ \
 	)
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),AWK)
 
 $(call gb_CustomTarget_get_workdir,postprocess/registry)/%.list :
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),ECH,2)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),ECH)
 	mv $(call var2file,$@.tmp,70,<list> $(foreach i,$(postprocess_DEPS_$*), <dependency file='$i'/>) \
 		   $(foreach i,$(postprocess_OPTDEPS_$*), <dependency file='$i' optional='true'/>) \
 		   $(foreach i,$(postprocess_FILES_$*), <filename>$(i)</filename>) </list>) \
 	   $@
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),ECH)
 
 # vim: set noet sw=4 ts=4:

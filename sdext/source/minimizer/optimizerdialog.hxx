@@ -19,25 +19,16 @@
 
 #ifndef INCLUDED_SDEXT_SOURCE_MINIMIZER_OPTIMIZERDIALOG_HXX
 #define INCLUDED_SDEXT_SOURCE_MINIMIZER_OPTIMIZERDIALOG_HXX
-#include "optimizerdialog.hrc"
 #include <vector>
 #include "unodialog.hxx"
 #include "optimizationstats.hxx"
 #include "configurationaccess.hxx"
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/awt/XItemListener.hpp>
-#include <com/sun/star/awt/XSpinField.hpp>
 #include <com/sun/star/awt/XSpinListener.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/awt/XTextListener.hpp>
 #include <com/sun/star/uno/Sequence.h>
-#include <com/sun/star/text/XTextRange.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/awt/XItemEventBroadcaster.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
-#include <com/sun/star/awt/PushButtonType.hpp>
 #include <cppuhelper/implbase.hxx>
 
 #define MAX_STEP        4
@@ -51,12 +42,17 @@
 #define PAGE_POS_Y      8
 #define PAGE_WIDTH      OD_DIALOG_WIDTH - PAGE_POS_X
 
+#define ITEM_ID_INTRODUCTION            0
+#define ITEM_ID_SLIDES                  1
+#define ITEM_ID_GRAPHIC_OPTIMIZATION    2
+#define ITEM_ID_OLE_OPTIMIZATION        3
+#define ITEM_ID_SUMMARY                 4
 
 class OptimizerDialog : public UnoDialog, public ConfigurationAccess
 {
 public:
 
-    OptimizerDialog( const css::uno::Reference< css::uno::XComponentContext >& rxContext, css::uno::Reference< css::frame::XFrame >& rxFrame,
+    OptimizerDialog( const css::uno::Reference< css::uno::XComponentContext >& rxContext, css::uno::Reference< css::frame::XFrame > const & rxFrame,
         css::uno::Reference< css::frame::XDispatch > const & rxStatusDispatcher );
     ~OptimizerDialog();
 
@@ -118,7 +114,7 @@ public:
     OUString GetSelectedString( OUString const & token );
     css::uno::Reference< css::frame::XDispatch >& GetStatusDispatcher() { return mxStatusDispatcher; };
     css::uno::Reference< css::frame::XFrame>& GetFrame() { return mxFrame; };
-    const css::uno::Reference< css::uno::XComponentContext >& GetComponentContext() { return UnoDialog::mxContext; };
+    const css::uno::Reference< css::uno::XComponentContext >& GetComponentContext() const { return UnoDialog::mxContext; };
 };
 
 

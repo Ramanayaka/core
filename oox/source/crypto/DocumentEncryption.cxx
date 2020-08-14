@@ -8,74 +8,96 @@
  *
  */
 
-#include "oox/crypto/DocumentEncryption.hxx"
+#include <oox/crypto/DocumentEncryption.hxx>
 
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/io/XStream.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
+#include <com/sun/star/packages/XPackageEncryption.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
-#include <oox/helper/binaryinputstream.hxx>
 #include <oox/helper/binaryoutputstream.hxx>
 #include <oox/ole/olestorage.hxx>
+#include <sal/log.hxx>
 
-namespace oox {
-namespace core {
+namespace oox::crypto {
 
 using namespace css::io;
 using namespace css::uno;
+using namespace css::beans;
 
-DocumentEncryption::DocumentEncryption(Reference<XStream> const & xDocumentStream,
+DocumentEncryption::DocumentEncryption(const Reference< XComponentContext >& rxContext,
+                                       Reference<XStream> const & xDocumentStream,
                                        oox::ole::OleStorage& rOleStorage,
-                                       const OUString& rPassword)
-    : mxDocumentStream(xDocumentStream)
+                                       const Sequence<NamedValue>& rMediaEncData)
+    : mxContext(rxContext)
+    , mxDocumentStream(xDocumentStream)
     , mrOleStorage(rOleStorage)
-    , maPassword(rPassword)
-{}
+    , mMediaEncData(rMediaEncData)
+{
+    // Select engine
+    for (int i = 0; i < rMediaEncData.getLength(); i++)
+    {
+        if (rMediaEncData[i].Name == "CryptoType")
+        {
+            OUString sCryptoType;
+            rMediaEncData[i].Value >>= sCryptoType;
+
+            if (sCryptoType == "Standard")
+                sCryptoType = "StrongEncryptionDataSpace";
+
+            Sequence<Any> aArguments;
+            mxPackageEncryption.set(
+                mxContext->getServiceManager()->createInstanceWithArgumentsAndContext(
+                    "com.sun.star.comp.oox.crypto." + sCryptoType, aArguments, mxContext), css::uno::UNO_QUERY);
+
+            if (!mxPackageEncryption.is())
+            {
+                SAL_WARN("oox", "Requested encryption method \"" << sCryptoType << "\" is not supported");
+            }
+
+            break;
+        }
+    }
+}
 
 bool DocumentEncryption::encrypt()
 {
+    if (!mxPackageEncryption.is())
+        return false;
+
     Reference<XInputStream> xInputStream (mxDocumentStream->getInputStream(), UNO_SET_THROW);
     Reference<XSeekable> xSeekable(xInputStream, UNO_QUERY);
 
     if (!xSeekable.is())
         return false;
 
-    sal_uInt32 aLength = xSeekable->getLength();
+    xSeekable->seek(0); // seek to begin of the document stream
 
     if (!mrOleStorage.isStorage())
         return false;
 
-    Reference<XOutputStream> xEncryptionInfo(mrOleStorage.openOutputStream("EncryptionInfo"), UNO_SET_THROW);
-    BinaryXOutputStream aEncryptionInfoBinaryOutputStream(xEncryptionInfo, false);
+    mxPackageEncryption->setupEncryption(mMediaEncData);
 
-    mEngine.writeEncryptionInfo(maPassword, aEncryptionInfoBinaryOutputStream);
+    Sequence<NamedValue> aStreams = mxPackageEncryption->encrypt(xInputStream);
 
-    aEncryptionInfoBinaryOutputStream.close();
-    xEncryptionInfo->flush();
-    xEncryptionInfo->closeOutput();
+    for (const NamedValue & aStream : std::as_const(aStreams))
+    {
+        Reference<XOutputStream> xOutputStream(mrOleStorage.openOutputStream(aStream.Name), UNO_SET_THROW);
+        BinaryXOutputStream aBinaryOutputStream(xOutputStream, true);
 
-    Reference<XOutputStream> xEncryptedPackage(mrOleStorage.openOutputStream("EncryptedPackage"), UNO_SET_THROW);
-    BinaryXOutputStream aEncryptedPackageStream(xEncryptedPackage, false);
+        css::uno::Sequence<sal_Int8> aStreamSequence;
+        aStream.Value >>= aStreamSequence;
 
-    BinaryXInputStream aDocumentInputStream(xInputStream, false);
-    aDocumentInputStream.seekToStart();
+        aBinaryOutputStream.writeData(aStreamSequence);
 
-    aEncryptedPackageStream.WriteUInt32(aLength); // size
-    aEncryptedPackageStream.WriteUInt32(0U);      // reserved
-
-    mEngine.encrypt(aDocumentInputStream, aEncryptedPackageStream);
-
-    aEncryptedPackageStream.close();
-    aDocumentInputStream.close();
-
-    xEncryptedPackage->flush();
-    xEncryptedPackage->closeOutput();
+        aBinaryOutputStream.close();
+    }
 
     return true;
 }
 
-} // namespace core
-} // namespace oox
+} // namespace oox::crypto
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

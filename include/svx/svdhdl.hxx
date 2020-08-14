@@ -21,15 +21,10 @@
 #define INCLUDED_SVX_SVDHDL_HXX
 
 #include <tools/gen.hxx>
+#include <vcl/graph.hxx>
 
-#include <vcl/pointr.hxx>
-
-#include <svl/solar.hrc>
-
-#include <svx/xpoly.hxx>
 #include <svx/svdoedge.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <svx/sdgcpitm.hxx>
 #include <svx/sdr/overlay/overlayobjectlist.hxx>
 #include <svx/svxdllapi.h>
 #include <deque>
@@ -40,6 +35,11 @@ class SdrMarkView;
 class SdrObject;
 class SdrPageView;
 class MouseEvent;
+class HelpEvent;
+
+namespace sdr::contact {
+    class ObjectContact;
+}
 
 // Every object must be able to create its handles. They will be fetched on
 // selection, registered at the View and made visible.
@@ -127,7 +127,7 @@ enum class BitmapMarkerKind
 };
 
 
-class SVX_DLLPUBLIC SdrHdl
+class SVXCORE_DLLPUBLIC SdrHdl
 {
     friend class                SdrMarkView; // for the access to nObjHdlNum
     friend class                SdrHdlList;
@@ -165,11 +165,23 @@ private:
     bool                        mbMouseOver;    // is true if the mouse is over this handle
 
 protected:
-    sdr::overlay::OverlayObject* CreateOverlayObject(
+    std::unique_ptr<sdr::overlay::OverlayObject> CreateOverlayObject(
         const basegfx::B2DPoint& rPos,
         BitmapColorIndex eColIndex, BitmapMarkerKind eKindOfMarker,
         Point aMoveOutsideOffset = Point());
     static BitmapMarkerKind GetNextBigger(BitmapMarkerKind eKnd);
+
+    // Helper to support inserting a new OverlayObject. It will do all
+    // necessary stuff involved with that:
+    // - add GridOffset for non-linear ViewToDevice transformation (calc)
+    // - add to OverlayManager
+    // - add to local OverlayObjectList - ownership change (!)
+    // It is centralized here (and protected) to avoid that new usages/
+    // implementations forget one of these needed steps.
+    void insertNewlyCreatedOverlayObjectForSdrHdl(
+        std::unique_ptr<sdr::overlay::OverlayObject> pOverlayObject,
+        const sdr::contact::ObjectContact& rObjectContact,
+        sdr::overlay::OverlayManager& rOverlayManager);
 
 public:
     SdrHdl();
@@ -215,7 +227,7 @@ public:
     void SetSourceHdlNum(sal_uInt32 nNum) { nSourceHdlNum=nNum; }
     sal_uInt32 GetSourceHdlNum() const { return nSourceHdlNum; }
 
-    virtual Pointer GetPointer() const;
+    virtual PointerStyle GetPointer() const;
     bool IsHdlHit(const Point& rPnt) const;
 
     virtual bool IsFocusHdl() const;
@@ -225,6 +237,9 @@ public:
     /** is called when the mouse enters the area of this handle. If the handle changes his
         visualisation during mouse over it must override this method and call Touch(). */
     virtual void onMouseEnter(const MouseEvent& rMEvt);
+
+    /** is called when help is requested for the area of this handle */
+    virtual void onHelpRequest();
 
     /** is called when the mouse leaves the area of this handle. If the handle changes his
         visualisation during mouse over it must override this method and call Touch(). */
@@ -237,7 +252,7 @@ public:
 #define SDR_HANDLE_COLOR_SIZE_NORMAL            Size(13, 13)
 #define SDR_HANDLE_COLOR_SIZE_SELECTED          Size(17, 17)
 
-class SVX_DLLPUBLIC SdrHdlColor : public SdrHdl
+class SVXCORE_DLLPUBLIC SdrHdlColor final : public SdrHdl
 {
     // size of colr markers
     Size                        aMarkerSize;
@@ -255,11 +270,11 @@ class SVX_DLLPUBLIC SdrHdlColor : public SdrHdl
     SVX_DLLPRIVATE virtual void CreateB2dIAObject() override;
 
     // help functions
-    SVX_DLLPRIVATE Bitmap CreateColorDropper(Color aCol);
+    SVX_DLLPRIVATE BitmapEx CreateColorDropper(Color aCol);
     SVX_DLLPRIVATE static Color GetLuminance(const Color& rCol);
 
 public:
-    explicit SdrHdlColor(const Point& rRef, Color aCol, const Size& rSize = Size(11, 11), bool bLum = false);
+    explicit SdrHdlColor(const Point& rRef, Color aCol, const Size& rSize, bool bLuminance);
     virtual ~SdrHdlColor() override;
 
     bool IsUseLuminance() const { return bUseLuminance; }
@@ -273,7 +288,7 @@ public:
 };
 
 
-class SdrHdlGradient : public SdrHdl
+class SdrHdlGradient final : public SdrHdl
 {
 private:
     // pointer to used color handles
@@ -322,12 +337,11 @@ public:
 
 
 // Spiegelachse
-class SdrHdlLine: public SdrHdl
+class SdrHdlLine final : public SdrHdl
 {
     // create marker for this kind
     virtual void CreateB2dIAObject() override;
 
-protected:
     SdrHdl*                     pHdl1;
     SdrHdl*                     pHdl2;
 
@@ -335,28 +349,28 @@ public:
     SdrHdlLine(SdrHdl& rHdl1, SdrHdl& rHdl2, SdrHdlKind eNewKind) { eKind=eNewKind; pHdl1=&rHdl1; pHdl2=&rHdl2; }
     virtual ~SdrHdlLine() override;
 
-    virtual Pointer GetPointer() const override;
+    virtual PointerStyle GetPointer() const override;
 };
 
 // a SdrHdlBezWgt knows about its "base handle". Its draw method
 // draws additionally a line from its position to the position
 // of the base handle
-class SdrHdlBezWgt: public SdrHdl
+class SdrHdlBezWgt final : public SdrHdl
 {
-    // create marker for this kind
-    virtual void CreateB2dIAObject() override;
-
-protected:
-    const SdrHdl* pHdl1;
-
 public:
     // this is not a Copy-Ctor!!!
     SdrHdlBezWgt(const SdrHdl* pRefHdl1, SdrHdlKind eNewKind=SdrHdlKind::BezierWeight) { eKind=eNewKind; pHdl1=pRefHdl1; }
     virtual ~SdrHdlBezWgt() override;
+
+private:
+    // create marker for this kind
+    virtual void CreateB2dIAObject() override;
+
+    const SdrHdl* pHdl1;
 };
 
 
-class E3dVolumeMarker : public SdrHdl
+class E3dVolumeMarker final : public SdrHdl
 {
     basegfx::B2DPolyPolygon             aWireframePoly;
 
@@ -382,11 +396,11 @@ public:
     void SetLineCode(SdrEdgeLineCode eCode);
     SdrEdgeLineCode GetLineCode() const     { return eLineCode; }
     bool IsHorzDrag() const;
-    virtual Pointer GetPointer() const override;
+    virtual PointerStyle GetPointer() const override;
 };
 
 
-class ImpMeasureHdl: public SdrHdl
+class ImpMeasureHdl final : public SdrHdl
 {
     // create marker for this kind
     virtual void CreateB2dIAObject() override;
@@ -395,11 +409,11 @@ public:
     ImpMeasureHdl(const Point& rPnt, SdrHdlKind eNewKind): SdrHdl(rPnt,eNewKind) {}
     virtual ~ImpMeasureHdl() override;
 
-    virtual Pointer GetPointer() const override;
+    virtual PointerStyle GetPointer() const override;
 };
 
 
-class ImpTextframeHdl: public SdrHdl
+class ImpTextframeHdl final : public SdrHdl
 {
     const tools::Rectangle maRect;
 
@@ -411,12 +425,12 @@ public:
 };
 
 
-class SVX_DLLPUBLIC SdrHdlList
+class SVXCORE_DLLPUBLIC SdrHdlList
 {
 protected:
     size_t                      mnFocusIndex;
     SdrMarkView*                pView;
-    std::deque<SdrHdl*>         aList;
+    std::deque<std::unique_ptr<SdrHdl>> maList;
     sal_uInt16                  nHdlSize;
 
     bool                        bRotateShear : 1;
@@ -444,8 +458,8 @@ public:
     //          2.Level PageView (Pointer)
     //          3.Level Position (x+y)
     void     Sort();
-    size_t   GetHdlCount() const { return aList.size(); }
-    SdrHdl*  GetHdl(size_t nNum) const { return nNum<aList.size() ? aList[nNum] : nullptr; }
+    size_t   GetHdlCount() const { return maList.size(); }
+    SdrHdl*  GetHdl(size_t nNum) const { return nNum < maList.size() ? maList[nNum].get() : nullptr; }
     size_t   GetHdlNum(const SdrHdl* pHdl) const;
     void     SetHdlSize(sal_uInt16 nSiz);
     sal_uInt16   GetHdlSize() const                        { return nHdlSize; }
@@ -458,9 +472,12 @@ public:
 
     // AddHdl takes ownership of the handle. It should be on the Heap
     // as Clear() deletes it.
-    void    AddHdl(SdrHdl* pHdl);
-    SdrHdl* RemoveHdl(size_t nNum);
+    void    AddHdl(std::unique_ptr<SdrHdl> pHdl);
+    std::unique_ptr<SdrHdl> RemoveHdl(size_t nNum);
     void RemoveAllByKind(SdrHdlKind eKind);
+
+    // move the ownership of all the SdrHdl to rOther
+    void MoveTo(SdrHdlList& rOther);
 
     // Last inserted handles are likely hit (if the handles are above each other)
     SdrHdl* IsHdlListHit(const Point& rPnt) const;
@@ -468,14 +485,8 @@ public:
 };
 
 
-class SVX_DLLPUBLIC SdrCropHdl : public SdrHdl
+class SVXCORE_DLLPUBLIC SdrCropHdl final : public SdrHdl
 {
-private:
-    // evtl. shear and rotation, equal to the object's one to allow adaption of
-    // the visualization handles
-    double          mfShearX;
-    double          mfRotation;
-
 public:
     SdrCropHdl(
         const Point& rPnt,
@@ -483,15 +494,20 @@ public:
         double fShearX,
         double fRotation);
 
-protected:
+private:
     // create marker for this kind
     virtual void CreateB2dIAObject() override;
 
     BitmapEx GetBitmapForHandle( const BitmapEx& rBitmap, int nSize );
+
+    // evtl. shear and rotation, equal to the object's one to allow adaptation of
+    // the visualization handles
+    double          mfShearX;
+    double          mfRotation;
 };
 
 
-class SVX_DLLPUBLIC SdrCropViewHdl : public SdrHdl
+class SdrCropViewHdl final : public SdrHdl
 {
 private:
     basegfx::B2DHomMatrix       maObjectTransform;
@@ -510,7 +526,7 @@ public:
         double fCropRight,
         double fCropBottom);
 
-protected:
+private:
     // create marker for this kind
     virtual void CreateB2dIAObject() override;
 };

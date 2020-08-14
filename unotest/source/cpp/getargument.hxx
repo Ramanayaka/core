@@ -20,7 +20,9 @@
 #ifndef INCLUDED_UNOTEST_SOURCE_CPP_GETARGUMENT_HXX
 #define INCLUDED_UNOTEST_SOURCE_CPP_GETARGUMENT_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
+
+#include <rtl/ustring.hxx>
 
 namespace test {
 

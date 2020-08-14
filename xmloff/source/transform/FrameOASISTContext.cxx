@@ -20,7 +20,7 @@
 #include "FrameOASISTContext.hxx"
 #include "IgnoreTContext.hxx"
 #include "MutableAttrList.hxx"
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include "ActionMapTypesOASIS.hxx"
 #include "ElemTransformerAction.hxx"
 #include "TransformerActions.hxx"
@@ -59,7 +59,7 @@ bool XMLFrameOASISTransformerContext::IsLinkedEmbeddedObject(
                 return false;
             }
             GetTransformer().ConvertURIToOOo( sHRef, true );
-            return !(!sHRef.isEmpty() && '#'==sHRef[0]);
+            return sHRef.isEmpty() || '#' != sHRef[0];
         }
     }
 
@@ -128,7 +128,7 @@ rtl::Reference<XMLTransformerContext> XMLFrameOASISTransformerContext::CreateChi
         XMLTransformerActions::key_type aKey( nPrefix, rLocalName );
         XMLTransformerActions::const_iterator aIter = pActions->find( aKey );
 
-        if( !(aIter == pActions->end()) )
+        if( aIter != pActions->end() )
         {
             switch( (*aIter).second.m_nActionType )
             {

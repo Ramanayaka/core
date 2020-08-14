@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column:100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -16,7 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <cppuhelper/bootstrap.hxx>
+
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
@@ -24,7 +24,9 @@
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/XModel2.hpp>
+#include <com/sun/star/script/BasicErrorException.hpp>
 #include <com/sun/star/script/XDefaultProperty.hpp>
+#include <com/sun/star/script/XInvocation.hpp>
 #include <com/sun/star/script/Converter.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
@@ -34,17 +36,19 @@
 #include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/awt/XDialog.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
+#include <com/sun/star/awt/XUnitConversion.hpp>
 #include <com/sun/star/drawing/XShape.hpp>
+#include <ooo/vba/XHelperInterface.hpp>
 
-#include <ooo/vba/msforms/XShape.hpp>
-
+#include <comphelper/automationinvokedzone.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/sequence.hxx>
 
 #include <sfx2/objsh.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/app.hxx>
+#include <sfx2/sfxsids.hrc>
 #include <svl/stritem.hxx>
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
@@ -52,18 +56,16 @@
 #include <sfx2/docfac.hxx>
 #include <sfx2/viewfac.hxx>
 
-#include <basic/sbx.hxx>
 #include <basic/sbstar.hxx>
 #include <basic/basmgr.hxx>
 #include <basic/sbmod.hxx>
-#include <basic/sbmeth.hxx>
 #include <basic/sbuno.hxx>
-#include <rtl/math.hxx>
+#include <basic/sberrors.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <sfx2/viewsh.hxx>
-#include <math.h>
-#include <osl/file.hxx>
-#include <toolkit/awt/vclxwindow.hxx>
+#include <sal/log.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
+#include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <vcl/syswin.hxx>
 #include <tools/diagnose_ex.h>
@@ -73,15 +75,13 @@ using namespace ::com::sun::star;
 using namespace ::ooo::vba;
 
 
-namespace ooo
-{
-namespace vba
+namespace ooo::vba
 {
 
 namespace { const double factor =  2540.0 / 72.0; }
 
 // helper method to determine if the view ( calc ) is in print-preview mode
-bool isInPrintPreview( SfxViewFrame* pView )
+static bool isInPrintPreview( SfxViewFrame* pView )
 {
     sal_uInt16 nViewNo = SID_VIEWSHELL1 - SID_VIEWSHELL0;
     if ( pView->GetObjectShell()->GetFactory().GetViewFactoryCount() >
@@ -98,12 +98,7 @@ nViewNo && !pView->GetObjectShell()->IsInPlaceActive() )
 uno::Reference< beans::XIntrospectionAccess >
 getIntrospectionAccess( const uno::Any& aObject )
 {
-    static uno::Reference< beans::XIntrospection > xIntrospection;
-    if( !xIntrospection.is() )
-    {
-        uno::Reference< uno::XComponentContext > xContext( comphelper::getProcessComponentContext() );
-        xIntrospection.set( beans::theIntrospection::get( xContext ) );
-    }
+    static uno::Reference< beans::XIntrospection > xIntrospection( beans::theIntrospection::get( comphelper::getProcessComponentContext() ) );
     return xIntrospection->inspect( aObject );
 }
 
@@ -116,11 +111,11 @@ getTypeConverter( const uno::Reference< uno::XComponentContext >& xContext )
 const uno::Any&
 aNULL()
 {
-     static  uno::Any aNULLL = uno::makeAny( uno::Reference< uno::XInterface >() );
+    static  uno::Any aNULLL = uno::makeAny( uno::Reference< uno::XInterface >() );
     return aNULLL;
 }
 
-void dispatchExecute(SfxViewShell* pViewShell, sal_uInt16 nSlot)
+void dispatchExecute(SfxViewShell const * pViewShell, sal_uInt16 nSlot)
 {
     SfxViewFrame* pViewFrame = nullptr;
     if ( pViewShell )
@@ -163,11 +158,7 @@ dispatchRequests (const uno::Reference< frame::XModel>& xModel, const OUString &
     if ( nProps )
     {
         dispatchProps.realloc( nProps + 1 );
-        // need to acquire pDest after realloc
-        beans::PropertyValue* pDest = dispatchProps.getArray();
-        const beans::PropertyValue* pSrc = sProps.getConstArray();
-        for ( sal_Int32 index=0; index<nProps; ++index, ++pSrc, ++pDest )
-            *pDest = *pSrc;
+        std::copy(sProps.begin(), sProps.end(), dispatchProps.begin());
     }
 
     if ( xDispatcher.is() )
@@ -219,10 +210,7 @@ getCurrentDoc( const OUString& sKey )
             throw uno::RuntimeException(
                 "Can't extract model from basic ( it's obviously not set yet  therefore don't know the current document context)" );
         }
-        else
-        {
-            SAL_INFO("vbahelper", "Have model points to url " << xModel->getURL());
-        }
+        SAL_INFO("vbahelper", "Have model points to url " << xModel->getURL());
     }
     else
     {
@@ -233,14 +221,14 @@ getCurrentDoc( const OUString& sKey )
 }
 
 /// @throws uno::RuntimeException
- uno::Reference< frame::XModel >
+static uno::Reference< frame::XModel >
 getCurrentDocCtx( const OUString& ctxName, const uno::Reference< uno::XComponentContext >& xContext )
 {
     uno::Reference< frame::XModel > xModel;
-     // try fallback to calling doc
-     css::uno::Reference< css::container::XNameAccess > xNameAccess( xContext, css::uno::UNO_QUERY_THROW );
-     xModel.set( xNameAccess->getByName( ctxName ), uno::UNO_QUERY_THROW );
-     return xModel;
+    // try fallback to calling doc
+    css::uno::Reference< css::container::XNameAccess > xNameAccess( xContext, css::uno::UNO_QUERY_THROW );
+    xModel.set( xNameAccess->getByName( ctxName ), uno::UNO_QUERY_THROW );
+    return xModel;
 }
 
 uno::Reference< frame::XModel >
@@ -265,7 +253,13 @@ getCurrentExcelDoc( const uno::Reference< uno::XComponentContext >& xContext )
     }
     catch (const uno::Exception&)
     {
-        xModel = getThisExcelDoc( xContext );
+        try
+        {
+            xModel = getThisExcelDoc( xContext );
+        }
+        catch (const uno::Exception&)
+        {
+        }
     }
     return xModel;
 }
@@ -280,7 +274,13 @@ getCurrentWordDoc( const uno::Reference< uno::XComponentContext >& xContext )
     }
     catch (const uno::Exception&)
     {
-        xModel = getThisWordDoc( xContext );
+        try
+        {
+            xModel = getThisWordDoc( xContext );
+        }
+        catch (const uno::Exception&)
+        {
+        }
     }
     return xModel;
 }
@@ -288,8 +288,8 @@ getCurrentWordDoc( const uno::Reference< uno::XComponentContext >& xContext )
 sal_Int32
 OORGBToXLRGB( sal_Int32 nCol )
 {
-        sal_Int32 nAutoBits = nCol;
-        nAutoBits &= 0xFF000000;
+    sal_Int32 nAutoBits = nCol;
+    nAutoBits &= 0xFF000000;
     sal_Int32 nRed = nCol;
     nRed &= 0x00FF0000;
     nRed >>= 16;
@@ -301,11 +301,12 @@ OORGBToXLRGB( sal_Int32 nCol )
     sal_Int32 nRGB =  ( nAutoBits | (nBlue << 16) | (nGreen << 8) | nRed );
     return nRGB;
 }
+
 sal_Int32
 XLRGBToOORGB( sal_Int32 nCol )
 {
-        sal_Int32 nAutoBits = nCol;
-        nAutoBits &= 0xFF000000;
+    sal_Int32 nAutoBits = nCol;
+    nAutoBits &= 0xFF000000;
 
     sal_Int32 nBlue = nCol;
     nBlue &= 0x00FF0000;
@@ -335,7 +336,7 @@ XLRGBToOORGB(  const uno::Any& aCol )
     return uno::makeAny( nCol );
 }
 
-void PrintOutHelper( SfxViewShell* pViewShell, const uno::Any& From, const uno::Any& To, const uno::Any& Copies, const uno::Any& Preview, const uno::Any& /*ActivePrinter*/, const uno::Any& /*PrintToFile*/, const uno::Any& Collate, const uno::Any& PrToFileName, bool bUseSelection  )
+void PrintOutHelper( SfxViewShell const * pViewShell, const uno::Any& From, const uno::Any& To, const uno::Any& Copies, const uno::Any& Preview, const uno::Any& /*ActivePrinter*/, const uno::Any& /*PrintToFile*/, const uno::Any& Collate, const uno::Any& PrToFileName, bool bUseSelection  )
 {
     sal_Int32 nTo = 0;
     sal_Int32 nFrom = 0;
@@ -353,10 +354,10 @@ void PrintOutHelper( SfxViewShell* pViewShell, const uno::Any& From, const uno::
     OUString sRange(   "-"  );
     OUString sFileName;
 
-    if (( nFrom || nTo ) )
+    if ( nFrom || nTo )
     {
         if ( nFrom )
-            sRange = ( OUString::number( nFrom ) + sRange );
+            sRange = OUString::number( nFrom ) + sRange;
         if ( nTo )
             sRange += OUString::number( nTo );
     }
@@ -365,48 +366,48 @@ void PrintOutHelper( SfxViewShell* pViewShell, const uno::Any& From, const uno::
     SfxViewFrame* pViewFrame = nullptr;
     if ( pViewShell )
         pViewFrame = pViewShell->GetViewFrame();
-    if ( pViewFrame )
+    if ( !pViewFrame )
+        return;
+
+    SfxAllItemSet aArgs( SfxGetpApp()->GetPool() );
+
+    SfxBoolItem sfxCollate( SID_PRINT_COLLATE, bCollate );
+    aArgs.Put( sfxCollate, sfxCollate.Which() );
+    SfxInt16Item sfxCopies( SID_PRINT_COPIES, nCopies );
+    aArgs.Put( sfxCopies, sfxCopies.Which() );
+    if ( !sFileName.isEmpty() )
     {
-        SfxAllItemSet aArgs( SfxGetpApp()->GetPool() );
-
-        SfxBoolItem sfxCollate( SID_PRINT_COLLATE, bCollate );
-        aArgs.Put( sfxCollate, sfxCollate.Which() );
-        SfxInt16Item sfxCopies( SID_PRINT_COPIES, nCopies );
-        aArgs.Put( sfxCopies, sfxCopies.Which() );
-        if ( !sFileName.isEmpty() )
-        {
-            SfxStringItem sfxFileName( SID_FILE_NAME, sFileName);
-            aArgs.Put( sfxFileName, sfxFileName.Which() );
-
-        }
-        if (  !sRange.isEmpty() )
-        {
-            SfxStringItem sfxRange( SID_PRINT_PAGES, sRange );
-            aArgs.Put( sfxRange, sfxRange.Which() );
-        }
-        SfxBoolItem sfxSelection( SID_SELECTION, bSelection );
-        aArgs.Put( sfxSelection, sfxSelection.Which() );
-        SfxBoolItem sfxAsync( SID_ASYNCHRON, false );
-        aArgs.Put( sfxAsync, sfxAsync.Which() );
-        SfxDispatcher* pDispatcher = pViewFrame->GetDispatcher();
-
-        if ( pDispatcher )
-        {
-            if ( bPreview )
-            {
-                if ( !pViewFrame->GetFrame().IsInPlace() )
-                {
-                    // #TODO is this necessary ( calc specific )
-//                  SC_MOD()->InputEnterHandler();
-                    pViewFrame->GetDispatcher()->Execute( SID_VIEWSHELL1, SfxCallMode::SYNCHRON );
-                    WaitUntilPreviewIsClosed( pViewFrame );
-                }
-            }
-            else
-                pDispatcher->Execute( (sal_uInt16)SID_PRINTDOC, SfxCallMode::SYNCHRON, aArgs );
-        }
+        SfxStringItem sfxFileName( SID_FILE_NAME, sFileName);
+        aArgs.Put( sfxFileName, sfxFileName.Which() );
 
     }
+    if (  !sRange.isEmpty() )
+    {
+        SfxStringItem sfxRange( SID_PRINT_PAGES, sRange );
+        aArgs.Put( sfxRange, sfxRange.Which() );
+    }
+    SfxBoolItem sfxSelection( SID_SELECTION, bSelection );
+    aArgs.Put( sfxSelection, sfxSelection.Which() );
+    SfxBoolItem sfxAsync( SID_ASYNCHRON, false );
+    aArgs.Put( sfxAsync, sfxAsync.Which() );
+    SfxDispatcher* pDispatcher = pViewFrame->GetDispatcher();
+
+    if ( !pDispatcher )
+        return;
+
+    if ( bPreview )
+    {
+        if ( !pViewFrame->GetFrame().IsInPlace() )
+        {
+            // #TODO is this necessary ( calc specific )
+//                  SC_MOD()->InputEnterHandler();
+            pViewFrame->GetDispatcher()->Execute( SID_VIEWSHELL1, SfxCallMode::SYNCHRON );
+            WaitUntilPreviewIsClosed( pViewFrame );
+        }
+    }
+    else
+        pDispatcher->Execute( sal_uInt16(SID_PRINTDOC), SfxCallMode::SYNCHRON, aArgs );
+
 
     // #FIXME #TODO
     // 1 ActivePrinter ( how/can we switch a printer via API? )
@@ -419,7 +420,7 @@ void PrintOutHelper( SfxViewShell* pViewShell, const uno::Any& From, const uno::
     //   of this method
 }
 
- void PrintPreviewHelper( const css::uno::Any& /*EnableChanges*/, SfxViewShell* pViewShell )
+void PrintPreviewHelper( const css::uno::Any& /*EnableChanges*/, SfxViewShell const * pViewShell )
 {
     SfxViewFrame* pViewFrame = nullptr;
     if ( pViewShell )
@@ -506,21 +507,17 @@ ContainerUtilities::getUniqueName( const uno::Sequence< OUString >&  _slist, con
 OUString
 ContainerUtilities::getUniqueName( const uno::Sequence< OUString >& _slist, const OUString& _sElementName, const OUString& _sSuffixSeparator, sal_Int32 _nStartSuffix)
 {
-    sal_Int32 a = _nStartSuffix;
-    OUString scompname = _sElementName;
-    sal_Int32 nLen = _slist.getLength();
-    if ( nLen == 0 )
+    if ( !_slist.hasElements() )
         return _sElementName;
+
+    OUString scompname = _sElementName;
+    sal_Int32 a = _nStartSuffix;
 
     for (;;)
     {
-        for (sal_Int32 i = 0; i < nLen; i++)
-        {
-            if (FieldInList(_slist, scompname) == -1)
-            {
-                return scompname;
-            }
-        }
+        if (FieldInList(_slist, scompname) == -1)
+            return scompname;
+
         scompname = _sElementName + _sSuffixSeparator + OUString::number( a++ );
     }
 }
@@ -528,24 +525,12 @@ ContainerUtilities::getUniqueName( const uno::Sequence< OUString >& _slist, cons
 sal_Int32
 ContainerUtilities::FieldInList( const uno::Sequence< OUString >& SearchList, const OUString& SearchString )
 {
-    sal_Int32 FieldLen = SearchList.getLength();
-    sal_Int32 retvalue = -1;
-    for (sal_Int32 i = 0; i < FieldLen; i++)
-    {
-        // I wonder why comparing lexicographically is done
-        // when it's a match is whats interesting?
-        //if (SearchList[i].compareTo(SearchString) == 0)
-        if ( SearchList[i].equals( SearchString ) )
-        {
-            retvalue = i;
-            break;
-        }
-    }
-    return retvalue;
-
+    // I wonder why comparing lexicographically is done
+    // when it's a match, is it interesting?
+    return comphelper::findValue(SearchList, SearchString);
 }
 
-bool NeedEsc(sal_Unicode cCode)
+static bool NeedEsc(sal_Unicode cCode)
 {
     return OUString(".^$+\\|{}()").indexOf(cCode) != -1;
 }
@@ -658,7 +643,7 @@ double HmmToPoints( sal_Int32 nHmm )
     return nHmm / factor;
 }
 
-ConcreteXShapeGeometryAttributes::ConcreteXShapeGeometryAttributes( const css::uno::Reference< css::uno::XComponentContext >& /*xContext*/, const css::uno::Reference< css::drawing::XShape >& xShape )
+ConcreteXShapeGeometryAttributes::ConcreteXShapeGeometryAttributes( const css::uno::Reference< css::drawing::XShape >& xShape )
 {
     m_pShapeHelper.reset( new ShapeHelper( xShape ) );
 }
@@ -678,11 +663,11 @@ PointerStyle getPointerStyle( const uno::Reference< frame::XModel >& xModel )
         // why the heck isn't there an XWindowPeer::getPointer, but a setPointer only?
         const vcl::Window* pWindow = VCLUnoHelper::GetWindow( xWindow );
         if ( pWindow )
-            nPointerStyle = pWindow->GetSystemWindow()->GetPointer().GetStyle();
+            nPointerStyle = pWindow->GetSystemWindow()->GetPointer();
     }
     catch (const uno::Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("vbahelper");
     }
     return nPointerStyle;
 }
@@ -690,7 +675,7 @@ PointerStyle getPointerStyle( const uno::Reference< frame::XModel >& xModel )
 // #FIXME this method looks wrong, shouldn't it just affect calc *or* writer
 // document/frame/window(s) but not both ( and depending on what api called
 // this )
-void setCursorHelper( const uno::Reference< frame::XModel >& xModel, const Pointer& rPointer, bool bOverWrite )
+void setCursorHelper( const uno::Reference< frame::XModel >& xModel, PointerStyle nPointer, bool bOverWrite )
 {
     ::std::vector< uno::Reference< frame::XController > > aControllers;
 
@@ -713,12 +698,9 @@ void setCursorHelper( const uno::Reference< frame::XModel >& xModel, const Point
         }
     }
 
-    for (   ::std::vector< uno::Reference< frame::XController > >::const_iterator controller = aControllers.begin();
-            controller != aControllers.end();
-            ++controller
-        )
+    for ( const auto& rController : aControllers )
     {
-        const uno::Reference< frame::XFrame >      xFrame     ( (*controller)->getFrame(),       uno::UNO_SET_THROW   );
+        const uno::Reference< frame::XFrame >      xFrame     ( rController->getFrame(),         uno::UNO_SET_THROW   );
         const uno::Reference< awt::XWindow >       xWindow    ( xFrame->getContainerWindow(),    uno::UNO_SET_THROW   );
 
         VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
@@ -726,7 +708,7 @@ void setCursorHelper( const uno::Reference< frame::XModel >& xModel, const Point
         if ( !pWindow )
             continue;
 
-        pWindow->GetSystemWindow()->SetPointer( rPointer );
+        pWindow->GetSystemWindow()->SetPointer( nPointer );
         pWindow->GetSystemWindow()->EnableChildPointerOverwrite( bOverWrite );
     }
 }
@@ -742,53 +724,48 @@ void setDefaultPropByIntrospection( const uno::Any& aObj, const uno::Any& aValue
     if ( xUnoAccess.is() )
         xPropSet.set( xUnoAccess->queryAdapter( cppu::UnoType<beans::XPropertySet>::get()), uno::UNO_QUERY);
 
-    if ( xPropSet.is() )
-        xPropSet->setPropertyValue( xDflt->getDefaultPropertyName(), aValue );
-    else
+    if ( !xPropSet.is() )
         throw uno::RuntimeException();
+
+    xPropSet->setPropertyValue( xDflt->getDefaultPropertyName(), aValue );
 }
 
 uno::Any getPropertyValue( const uno::Sequence< beans::PropertyValue >& aProp, const OUString& aName )
 {
-    for ( sal_Int32 i = 0; i < aProp.getLength(); i++ )
-    {
-        if ( aProp[i].Name.equals(aName) )
-        {
-            return aProp[i].Value;
-        }
-    }
+    auto pProp = std::find_if(aProp.begin(), aProp.end(),
+        [&aName](const beans::PropertyValue& rProp) { return rProp.Name == aName; });
+    if (pProp != aProp.end())
+        return pProp->Value;
     return uno::Any();
 }
 
 bool setPropertyValue( uno::Sequence< beans::PropertyValue >& aProp, const OUString& aName, const uno::Any& aValue )
 {
-    for ( sal_Int32 i = 0; i < aProp.getLength(); i++ )
+    auto pProp = std::find_if(aProp.begin(), aProp.end(),
+        [&aName](const beans::PropertyValue& rProp) { return rProp.Name == aName; });
+    if (pProp != aProp.end())
     {
-        if ( aProp[i].Name.equals(aName) )
-        {
-            aProp[i].Value = aValue;
-            return true;
-        }
+        pProp->Value = aValue;
+        return true;
     }
     return false;
 }
 
 void setOrAppendPropertyValue( uno::Sequence< beans::PropertyValue >& aProp, const OUString& aName, const uno::Any& aValue )
 {
-   if( setPropertyValue( aProp, aName, aValue ) )
-    return;
+    if( setPropertyValue( aProp, aName, aValue ) )
+        return;
 
-  // append the property
-  sal_Int32 nLength = aProp.getLength();
-  aProp.realloc( nLength + 1 );
-  aProp[ nLength ].Name = aName;
-  aProp[ nLength ].Value = aValue;
+    // append the property
+    sal_Int32 nLength = aProp.getLength();
+    aProp.realloc( nLength + 1 );
+    aProp[ nLength ].Name = aName;
+    aProp[ nLength ].Value = aValue;
 }
 
 // ====UserFormGeomentryHelper====
 
 UserFormGeometryHelper::UserFormGeometryHelper(
-        const uno::Reference< uno::XComponentContext >& /*xContext*/,
         const uno::Reference< awt::XControl >& xControl,
         double fOffsetX, double fOffsetY ) :
     mfOffsetX( fOffsetX ),
@@ -874,10 +851,10 @@ double UserFormGeometryHelper::getOffsetY() const
 }
 
 
-static const char saPosXName[] = "PositionX";
-static const char saPosYName[] = "PositionY";
-static const char saWidthName[] = "Width";
-static const char saHeightName[] = "Height";
+const char saPosXName[] = "PositionX";
+const char saPosYName[] = "PositionY";
+const char saWidthName[] = "Width";
+const char saHeightName[] = "Height";
 
 double UserFormGeometryHelper::implGetPos( bool bPosY ) const
 {
@@ -1075,7 +1052,7 @@ void Millimeter::setInPoints(double points)
     m_nMillimeter = points * factor / 100.0;
 }
 
-double Millimeter::getInHundredthsOfOneMillimeter()
+double Millimeter::getInHundredthsOfOneMillimeter() const
 {
     return m_nMillimeter * 100;
 }
@@ -1108,12 +1085,18 @@ uno::Reference< XHelperInterface > getVBADocument( const uno::Reference< frame::
     return xIf;
 }
 
-uno::Reference< XHelperInterface > getUnoDocModule( const OUString& aModName, SfxObjectShell* pShell )
+uno::Reference< XHelperInterface > getUnoDocModule( const OUString& aModName, SfxObjectShell const * pShell )
 {
     uno::Reference< XHelperInterface > xIf;
     if ( pShell )
     {
         OUString sProj( "Standard" );
+        // GetBasicManager() causes a SolarMutex assertion failure in some use cases from
+        // Automation, at least when opening a Calc Document through ooo::vba::excel::
+        // XWorkbooks::Open(). Let's see if this check is a good way around that. It does seem that
+        // callers are prepared for this to return null?
+        if (comphelper::Automation::AutomationInvokedZone::isActive())
+            return xIf;
         BasicManager* pBasMgr = pShell->GetBasicManager();
         if ( pBasMgr && !pBasMgr->GetName().isEmpty() )
             sProj = pBasMgr->GetName();
@@ -1137,7 +1120,6 @@ SfxObjectShell* getSfxObjShell( const uno::Reference< frame::XModel >& xModel )
     return pFoundShell;
 }
 
-} // openoffice
 } //org
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

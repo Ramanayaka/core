@@ -7,6 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#if !defined _WIN32 //TODO, #include <sys/mman.h>
+
 #include <cassert>
 #include <string>
 #include <iostream>
@@ -26,10 +28,10 @@
 namespace {
 
 class UnusedFieldsRemove:
-    public RecursiveASTVisitor<UnusedFieldsRemove>, public loplugin::RewritePlugin
+    public loplugin::FilteringRewritePlugin<UnusedFieldsRemove>
 {
 public:
-    explicit UnusedFieldsRemove(InstantiationData const & data);
+    explicit UnusedFieldsRemove(loplugin::InstantiationData const & data);
     ~UnusedFieldsRemove();
 
     virtual void run() override { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
@@ -50,7 +52,7 @@ size_t getFilesize(const char* filename)
     return st.st_size;
 }
 
-UnusedFieldsRemove::UnusedFieldsRemove(InstantiationData const & data): RewritePlugin(data)
+UnusedFieldsRemove::UnusedFieldsRemove(loplugin::InstantiationData const & data): FilteringRewritePlugin(data)
 {
     static const char sInputFile[] = SRCDIR "/result.txt";
     mmapFilesize = getFilesize(sInputFile);
@@ -67,6 +69,7 @@ UnusedFieldsRemove::~UnusedFieldsRemove()
     //Cleanup
     int rc = munmap(mmappedData, mmapFilesize);
     assert(rc == 0);
+    (void)rc;
     close(mmapFD);
 }
 
@@ -117,7 +120,7 @@ bool UnusedFieldsRemove::VisitFieldDecl( const FieldDecl* fieldDecl )
         report(
             DiagnosticsEngine::Warning,
             "Could not remove unused field (" + niceName(fieldDecl) + ")",
-            fieldDecl->getLocStart())
+            compat::getBeginLoc(fieldDecl))
           << fieldDecl->getSourceRange();
     }
     return true;
@@ -127,5 +130,7 @@ bool UnusedFieldsRemove::VisitFieldDecl( const FieldDecl* fieldDecl )
 loplugin::Plugin::Registration< UnusedFieldsRemove > X("unusedfieldsremove", false);
 
 }
+
+#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

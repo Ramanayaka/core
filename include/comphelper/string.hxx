@@ -22,21 +22,23 @@
 
 #include <sal/config.h>
 
-#include <cstddef>
 #include <vector>
 #include <comphelper/comphelperdllapi.h>
 #include <sal/types.h>
 #include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/Sequence.h>
+#include <com/sun/star/uno/Reference.hxx>
 
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/i18n/XCollator.hpp>
-#include <com/sun/star/i18n/XBreakIterator.hpp>
+#include <com/sun/star/lang/Locale.hpp>
+
+namespace com::sun::star::i18n { class XBreakIterator; }
+namespace com::sun::star::i18n { class XCollator; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 // OUString helper functions that are not widespread or mature enough to
 // go into the stable URE API:
-namespace comphelper { namespace string {
+namespace comphelper::string {
 
 /** Compare an OUString to a single char
 
@@ -79,7 +81,7 @@ inline OUStringBuffer& remove(OUStringBuffer &rIn,
     @return         The resulting OString
  */
 COMPHELPER_DLLPUBLIC OString stripStart(const OString &rIn,
-    sal_Char c);
+    char c);
 
 /** Strips occurrences of a character from the start of the source string
 
@@ -99,7 +101,7 @@ COMPHELPER_DLLPUBLIC OUString stripStart(const OUString &rIn,
     @return         The resulting OString
  */
 COMPHELPER_DLLPUBLIC OString stripEnd(const OString &rIn,
-    sal_Char c);
+    char c);
 
 /** Strips occurrences of a character from the end of the source string
 
@@ -119,7 +121,7 @@ COMPHELPER_DLLPUBLIC OUString stripEnd(const OUString &rIn,
     @return         The resulting OString
  */
 COMPHELPER_DLLPUBLIC OString strip(const OString &rIn,
-    sal_Char c);
+    char c);
 
 /** Strips occurrences of a character from the start and end of the source string
 
@@ -137,7 +139,7 @@ COMPHELPER_DLLPUBLIC OUString strip(const OUString &rIn,
   @param    cTok    the character which separate the tokens.
   @return   the number of tokens
 */
-COMPHELPER_DLLPUBLIC sal_Int32 getTokenCount(const OString &rIn, sal_Char cTok);
+COMPHELPER_DLLPUBLIC sal_Int32 getTokenCount(const OString &rIn, char cTok);
 
 /** Returns number of tokens in an OUString
 
@@ -221,7 +223,7 @@ namespace detail
  */
 inline OStringBuffer& padToLength(
     OStringBuffer& rBuffer, sal_Int32 nLength,
-    sal_Char cFill = '\0')
+    char cFill = '\0')
 {
     return detail::padToLength(rBuffer, nLength, cFill);
 }
@@ -339,7 +341,7 @@ COMPHELPER_DLLPUBLIC sal_Int32 compareNatural( const OUString &rLHS, const OUStr
 class COMPHELPER_DLLPUBLIC NaturalStringSorter
 {
 private:
-    css::lang::Locale                                m_aLocale;
+    css::lang::Locale const                          m_aLocale;
     css::uno::Reference< css::i18n::XCollator >      m_xCollator;
     css::uno::Reference< css::i18n::XBreakIterator > m_xBI;
 public:
@@ -373,7 +375,7 @@ COMPHELPER_DLLPUBLIC bool isdigitAsciiString(const OString &rString);
  */
 COMPHELPER_DLLPUBLIC bool isdigitAsciiString(const OUString &rString);
 
-} }
+}
 
 #endif
 

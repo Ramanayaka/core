@@ -18,14 +18,13 @@
  */
 
 #include "mediaevent_impl.hxx"
-#include "mediawindow_impl.hxx"
 #include <osl/mutex.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/event.hxx>
 
 using namespace ::com::sun::star;
 
-namespace avmedia { namespace priv {
+namespace avmedia::priv {
 
 MediaEventListenersImpl::MediaEventListenersImpl( vcl::Window& rEventWindow ) :
     mpNotifyWindow( &rEventWindow )
@@ -125,23 +124,11 @@ void SAL_CALL MediaEventListenersImpl::mouseReleased( const css::awt::MouseEvent
 
 void SAL_CALL MediaEventListenersImpl::mouseEntered( const css::awt::MouseEvent& )
 {
-    const ::osl::MutexGuard aGuard( maMutex );
-    const SolarMutexGuard aAppGuard;
-
-    if( mpNotifyWindow )
-    {
-    }
 }
 
 
 void SAL_CALL MediaEventListenersImpl::mouseExited( const css::awt::MouseEvent& )
 {
-    const ::osl::MutexGuard aGuard( maMutex );
-    const SolarMutexGuard aAppGuard;
-
-    if( mpNotifyWindow )
-    {
-    }
 }
 
 
@@ -181,7 +168,6 @@ void SAL_CALL MediaEventListenersImpl::focusLost( const css::awt::FocusEvent& )
 }
 
 
-} // namespace priv
-} // namespace avmedia
+} // namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

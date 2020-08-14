@@ -17,59 +17,75 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_RASTER_BZPIXELRASTER_HXX
-#define INCLUDED_BASEGFX_RASTER_BZPIXELRASTER_HXX
+#pragma once
 
+#include <basegfx/pixel/bpixel.hxx>
+#include <sal/types.h>
 #include <memory>
-#include <basegfx/raster/bpixelraster.hxx>
-#include <basegfx/basegfxdllapi.h>
-#include <osl/diagnose.h>
+#include <cassert>
+#include <string.h>
 
 namespace basegfx
 {
-    class BZPixelRaster : public BPixelRaster
+    class BZPixelRaster
     {
-    protected:
-        // additionally, host a ZBuffer
+    private:
+        BZPixelRaster(const BZPixelRaster&) = delete;
+        BZPixelRaster& operator=(const BZPixelRaster&) = delete;
+
+        sal_uInt32                  mnWidth;
+        sal_uInt32                  mnHeight;
+        sal_uInt32                  mnCount;
+        std::unique_ptr<BPixel[]>   mpContent;
         std::unique_ptr<sal_uInt16[]>  mpZBuffer;
 
     public:
         // constructor/destructor
         BZPixelRaster(sal_uInt32 nWidth, sal_uInt32 nHeight)
-        :   BPixelRaster(nWidth, nHeight),
+        :   mnWidth(nWidth),
+            mnHeight(nHeight),
+            mnCount(nWidth * nHeight),
+            mpContent(new BPixel[mnCount]),
             mpZBuffer(new sal_uInt16[mnCount])
         {
             memset(mpZBuffer.get(), 0, sizeof(sal_uInt16) * mnCount);
         }
 
+         // coordinate calcs between X/Y and span
+        sal_uInt32 getIndexFromXY(sal_uInt32 nX, sal_uInt32 nY) const { return (nX + (nY * mnWidth)); }
+
+        // data access read
+        sal_uInt32 getWidth() const { return mnWidth; }
+        sal_uInt32 getHeight() const { return mnHeight; }
+
+         // data access read only
+        const BPixel& getBPixel(sal_uInt32 nIndex) const
+        {
+            assert(nIndex < mnCount && "Access out of range");
+            return mpContent[nIndex];
+        }
+
+        // data access read/write
+        BPixel& getBPixel(sal_uInt32 nIndex)
+        {
+            assert(nIndex < mnCount && "Access out of range");
+            return mpContent[nIndex];
+        }
+
         // data access read only
         const sal_uInt16& getZ(sal_uInt32 nIndex) const
         {
-#ifdef DBG_UTIL
-            if(nIndex >= mnCount)
-            {
-                OSL_FAIL("getZ: Access out of range (!)");
-                return mpZBuffer[0L];
-            }
-#endif
+            assert(nIndex < mnCount && "Access out of range");
             return mpZBuffer[nIndex];
         }
 
         // data access read/write
         sal_uInt16& getZ(sal_uInt32 nIndex)
         {
-#ifdef DBG_UTIL
-            if(nIndex >= mnCount)
-            {
-                OSL_FAIL("getZ: Access out of range (!)");
-                return mpZBuffer[0L];
-            }
-#endif
+            assert(nIndex < mnCount && "Access out of range");
             return mpZBuffer[nIndex];
         }
     };
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_RASTER_BZPIXELRASTER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/drawing/XControlShape.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <ooo/vba/excel/XOLEObject.hpp>
@@ -43,7 +42,7 @@ public:
         sal_Int32 nLen = xIndexAccess->getCount();
         for ( sal_Int32 index = 0; index < nLen; ++index )
         {
-                uno::Reference< drawing::XControlShape > xControlShape( xIndexAccess->getByIndex( index), uno::UNO_QUERY);
+            uno::Reference< drawing::XControlShape > xControlShape( xIndexAccess->getByIndex( index), uno::UNO_QUERY);
             if ( xControlShape.is() )
                 vObjects.push_back( xControlShape );
         }
@@ -82,7 +81,10 @@ class EnumWrapper : public EnumerationHelper_BASE
         uno::Reference<container::XIndexAccess > m_xIndexAccess;
         sal_Int32 nIndex;
 public:
-        EnumWrapper(  const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, uno::Reference< container::XIndexAccess >& xIndexAccess ) :  m_xParent( xParent ), m_xContext( xContext), m_xIndexAccess( xIndexAccess ), nIndex( 0 ) {}
+        EnumWrapper( const uno::Reference< XHelperInterface >& xParent,
+                     const uno::Reference< uno::XComponentContext >& xContext,
+                     const uno::Reference< container::XIndexAccess >& xIndexAccess )
+            :  m_xParent( xParent ), m_xContext( xContext), m_xIndexAccess( xIndexAccess ), nIndex( 0 ) {}
 
         virtual sal_Bool SAL_CALL hasMoreElements(  ) override
         {
@@ -91,12 +93,12 @@ public:
 
         virtual uno::Any SAL_CALL nextElement(  ) override
         {
-                if ( nIndex < m_xIndexAccess->getCount() )
-        {
-            uno::Reference< drawing::XControlShape > xControlShape (  m_xIndexAccess->getByIndex( nIndex++ ), uno::UNO_QUERY_THROW );
+            if ( nIndex < m_xIndexAccess->getCount() )
+            {
+                uno::Reference< drawing::XControlShape > xControlShape (  m_xIndexAccess->getByIndex( nIndex++ ), uno::UNO_QUERY_THROW );
                 return uno::makeAny( uno::Reference< ov::excel::XOLEObject >( new ScVbaOLEObject( m_xParent, m_xContext, xControlShape ) ) );
-        }
-                throw container::NoSuchElementException();
+            }
+            throw container::NoSuchElementException();
         }
 };
 
@@ -139,7 +141,7 @@ ScVbaOLEObjects::getItemByStringIndex( const OUString& sIndex )
     }
     catch (const uno::RuntimeException&)
     {
-        uno::Reference< container::XIndexAccess > xIndexAccess( m_xIndexAccess, uno::UNO_QUERY_THROW );
+        uno::Reference< container::XIndexAccess > xIndexAccess( m_xIndexAccess, uno::UNO_SET_THROW );
         sal_Int32 nCount = xIndexAccess->getCount();
         for( int index = 0; index < nCount; index++ )
         {
@@ -147,7 +149,7 @@ ScVbaOLEObjects::getItemByStringIndex( const OUString& sIndex )
             uno::Reference< drawing::XControlShape > xControlShape( aUnoObj, uno::UNO_QUERY_THROW );
             uno::Reference< awt::XControlModel > xControlModel( xControlShape->getControl() );
             uno::Reference< container::XNamed > xNamed( xControlModel, uno::UNO_QUERY_THROW );
-            if( sIndex.equals( xNamed->getName() ))
+            if( sIndex == xNamed->getName() )
             {
                 return createCollectionObject( aUnoObj );
             }
@@ -166,18 +168,16 @@ ScVbaOLEObjects::getElementType()
 OUString
 ScVbaOLEObjects::getServiceImplName()
 {
-    return OUString("ScVbaOLEObjects");
+    return "ScVbaOLEObjects";
 }
 
 uno::Sequence< OUString >
 ScVbaOLEObjects::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.OLEObjects";
-    }
+        "ooo.vba.excel.OLEObjects"
+    };
     return aServiceNames;
 }
 

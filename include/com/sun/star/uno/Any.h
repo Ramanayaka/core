@@ -19,16 +19,16 @@
 #ifndef INCLUDED_COM_SUN_STAR_UNO_ANY_H
 #define INCLUDED_COM_SUN_STAR_UNO_ANY_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cstddef>
 
-#include <rtl/ustring.hxx>
-#include <uno/any2.h>
-#include <typelib/typedescription.h>
-#include <cppu/unotype.hxx>
-#include <com/sun/star/uno/TypeClass.hdl>
-#include <rtl/alloc.h>
+#include "rtl/ustring.hxx"
+#include "uno/any2.h"
+#include "typelib/typedescription.h"
+#include "cppu/unotype.hxx"
+#include "com/sun/star/uno/TypeClass.hdl"
+#include "rtl/alloc.h"
 
 namespace com
 {
@@ -79,7 +79,9 @@ public:
 
 #if defined LIBO_INTERNAL_ONLY
     template<typename T1, typename T2>
-    explicit inline Any(rtl::OUStringConcat<T1, T2> const & value);
+    explicit inline Any(rtl::OUStringConcat<T1, T2> && value);
+    template<typename T1, typename T2>
+    explicit Any(rtl::OUStringConcat<T1, T2> const &) = delete;
 #endif
 
     /** Copy constructor: Sets value of the given any.
@@ -136,8 +138,8 @@ public:
     inline Any & SAL_CALL operator = ( const Any & rAny );
 
 #if defined LIBO_INTERNAL_ONLY
-    inline Any(Any && other);
-    inline Any & operator =(Any && other);
+    inline Any(Any && other) noexcept;
+    inline Any & operator =(Any && other) noexcept;
 #endif
 
     /** Gets the type of the set value.
@@ -166,7 +168,7 @@ public:
         @return the type class of the set value
      */
     TypeClass SAL_CALL getValueTypeClass() const
-        { return (TypeClass)pType->eTypeClass; }
+        { return static_cast<TypeClass>(pType->eTypeClass); }
 
     /** Gets the type name of the set value.
 
@@ -270,7 +272,7 @@ public:
         @return true if both any contains equal values
     */
     inline bool SAL_CALL operator == ( const Any & rAny ) const;
-    /** Unequality operator: compares two anys.
+    /** Inequality operator: compares two anys.
         The values need not be of equal type, e.g. a short integer is compared to a long integer.
 
         @param rAny another any (right side)
@@ -390,7 +392,7 @@ inline bool SAL_CALL operator >>= ( const Any & rAny, C & value );
 */
 template< class C >
 inline bool SAL_CALL operator == ( const Any & rAny, const C & value );
-/** Template unequality operator: compares set value of left side any to right side value.
+/** Template inequality operator: compares set value of left side any to right side value.
     The values need not be of equal type, e.g. a short integer is compared to a long integer.
     This operator can be implemented as template member function, if all supported compilers
     can cope with template member functions.

@@ -20,9 +20,12 @@
 #ifndef INCLUDED_SVX_INC_GALOBJ_HXX
 #define INCLUDED_SVX_INC_GALOBJ_HXX
 
+#include <config_options.h>
 #include <tools/urlobj.hxx>
 #include <vcl/graph.hxx>
-#include "svx/galmisc.hxx"
+#include <vcl/gdimtf.hxx>
+#include <svx/galmisc.hxx>
+#include <svx/gallerybinaryengine.hxx>
 
 #define S_THUMB 80
 
@@ -39,9 +42,10 @@ enum GalSoundType
     SOUND_ANIMAL = 7
 };
 
-class SVX_DLLPUBLIC SgaObject
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SgaObject
 {
     friend class GalleryTheme;
+    friend class GalleryBinaryEngine;
 
 private:
 
@@ -63,6 +67,8 @@ protected:
 
 public:
                             SgaObject();
+    SgaObject(const SgaObject& aObject);
+
     virtual                 ~SgaObject() {};
 
     virtual SgaObjKind      GetObjKind() const = 0;
@@ -74,7 +80,7 @@ public:
     bool                IsValid() const { return bIsValid; }
     bool                IsThumbBitmap() const { return bIsThumbBmp; }
 
-    const OUString          GetTitle() const;
+    OUString const &        GetTitle() const;
     void                    SetTitle( const OUString& rTitle );
 
     friend SvStream&        WriteSgaObject( SvStream& rOut, const SgaObject& rObj );
@@ -83,7 +89,7 @@ public:
     BitmapEx createPreviewBitmapEx(const Size& rSizePixel) const;
 };
 
-class SgaObjectSound : public SgaObject
+class SgaObjectSound final : public SgaObject
 {
 private:
 
@@ -106,7 +112,7 @@ public:
 
 class FmFormModel;
 
-class SgaObjectSvDraw : public SgaObject
+class SgaObjectSvDraw final : public SgaObject
 {
     using SgaObject::CreateThumb;
 
@@ -158,7 +164,7 @@ public:
     virtual SgaObjKind  GetObjKind() const override { return SgaObjKind::Animation; }
 };
 
-class SgaObjectINet : public SgaObjectAnim
+class SgaObjectINet final : public SgaObjectAnim
 {
 public:
 

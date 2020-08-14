@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "interaction/quietinteraction.hxx"
+#include <interaction/quietinteraction.hxx>
 
 #include <com/sun/star/task/XInteractionAbort.hpp>
 #include <com/sun/star/task/XInteractionApprove.hpp>
@@ -28,9 +28,8 @@
 
 #include <com/sun/star/document/LockedDocumentRequest.hpp>
 
+#include <vcl/errcode.hxx>
 #include <vcl/svapp.hxx>
-
-#include <vcl/errinf.hxx>
 
 namespace framework{
 
@@ -83,7 +82,7 @@ void SAL_CALL QuietInteraction::handle( const css::uno::Reference< css::task::XI
     {
         // warnings can be ignored   => approve
         // errors must break loading => abort
-        bool bWarning = (aErrorCodeRequest.ErrCode & ERRCODE_WARNING_MASK) == ERRCODE_WARNING_MASK;
+        bool bWarning = ErrCode(aErrorCodeRequest.ErrCode).IsWarning();
         if (xApprove.is() && bWarning)
             xApprove->select();
         else

@@ -22,7 +22,6 @@
 #include <vcl/window.hxx>
 #include <svtools/colorcfg.hxx>
 #include <svtools/extcolorcfg.hxx>
-#include "ModuleHelper.hxx"
 #include <tools/link.hxx>
 
 namespace rptui
@@ -32,13 +31,12 @@ namespace rptui
         OColorListener(const OColorListener&) = delete;
         void operator =(const OColorListener&) = delete;
     protected:
-        OModuleClient                       m_aModuleClient;
         Link<OColorListener&,void>          m_aCollapsedLink;
         svtools::ColorConfig                m_aColorConfig;
         svtools::ExtendedColorConfig        m_aExtendedColorConfig;
         OUString                            m_sColorEntry;
-        sal_Int32                           m_nColor;
-        sal_Int32                           m_nTextBoundaries;
+        Color                               m_nColor;
+        Color                               m_nTextBoundaries;
         bool                            m_bCollapsed;
         bool                            m_bMarked;
 

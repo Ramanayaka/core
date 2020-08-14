@@ -21,16 +21,15 @@
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_FACTORIES_FULLSCREENPANE_HXX
 
 #include "FrameWindowPane.hxx"
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <vcl/vclevent.hxx>
-#include <vcl/window.hxx>
-#include <memory>
+#include <tools/link.hxx>
+#include <vcl/wrkwin.hxx>
 
-class WorkWindow;
+class VclWindowEvent;
 
-namespace sd { class ViewShellBase; }
+namespace vcl { class Window; }
+namespace com::sun::star::uno { class XComponentContext; }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 /** The full screen pane creates a pane that covers the complete application
     window, i.e. that hides menu bar, tool bars, status bars.
@@ -82,7 +81,7 @@ private:
         sal_Int32& rnScreenNumberReturnValue);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

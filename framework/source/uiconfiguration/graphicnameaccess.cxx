@@ -36,22 +36,21 @@ GraphicNameAccess::~GraphicNameAccess()
 
 void GraphicNameAccess::addElement( const OUString& rName, const uno::Reference< graphic::XGraphic >& rElement )
 {
-    m_aNameToElementMap.insert( NameGraphicHashMap::value_type( rName, rElement ));
+    m_aNameToElementMap.emplace( rName, rElement );
 }
 
 // XNameAccess
 uno::Any SAL_CALL GraphicNameAccess::getByName( const OUString& aName )
 {
     NameGraphicHashMap::const_iterator pIter = m_aNameToElementMap.find( aName );
-    if ( pIter != m_aNameToElementMap.end() )
-        return uno::makeAny( pIter->second );
-    else
+    if ( pIter == m_aNameToElementMap.end() )
         throw container::NoSuchElementException();
+    return uno::makeAny( pIter->second );
 }
 
 uno::Sequence< OUString > SAL_CALL GraphicNameAccess::getElementNames()
 {
-    if ( m_aSeq.getLength() == 0 )
+    if ( !m_aSeq.hasElements() )
     {
         m_aSeq = comphelper::mapKeysToSequence(m_aNameToElementMap);
     }

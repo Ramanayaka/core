@@ -17,15 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
-
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <comphelper/servicehelper.hxx>
 #include <comphelper/sequence.hxx>
 #include <uielement/rootitemcontainer.hxx>
 #include <uielement/itemcontainer.hxx>
 #include <uielement/constitemcontainer.hxx>
-#include <general.h>
 #include <properties.h>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
@@ -39,7 +36,6 @@ using namespace com::sun::star::container;
 const char WRONG_TYPE_EXCEPTION[] = "Type must be css::uno::Sequence< css::beans::PropertyValue >";
 
 const int PROPHANDLE_UINAME     = 1;
-const int PROPCOUNT             = 1;
 const char PROPNAME_UINAME[]    = "UIName";
 
 namespace framework
@@ -47,13 +43,13 @@ namespace framework
 
 RootItemContainer::RootItemContainer()
     :   ::cppu::OBroadcastHelperVar< ::cppu::OMultiTypeInterfaceContainerHelper, ::cppu::OMultiTypeInterfaceContainerHelper::keyType >( m_aMutex )
-    ,   ::cppu::OPropertySetHelper  ( *(static_cast< ::cppu::OBroadcastHelper* >(this)) )
+    ,   ::cppu::OPropertySetHelper  ( *static_cast< ::cppu::OBroadcastHelper* >(this) )
 {
 }
 
 RootItemContainer::RootItemContainer( const Reference< XIndexAccess >& rSourceContainer )
     :   ::cppu::OBroadcastHelperVar< ::cppu::OMultiTypeInterfaceContainerHelper, ::cppu::OMultiTypeInterfaceContainerHelper::keyType >( m_aMutex )
-    ,   ::cppu::OPropertySetHelper  ( *(static_cast< ::cppu::OBroadcastHelper* >(this)) )
+    ,   ::cppu::OPropertySetHelper  ( *static_cast< ::cppu::OBroadcastHelper* >(this) )
 {
     // We also have to copy the UIName property
     try
@@ -68,38 +64,38 @@ RootItemContainer::RootItemContainer( const Reference< XIndexAccess >& rSourceCo
     {
     }
 
-    if ( rSourceContainer.is() )
+    if ( !rSourceContainer.is() )
+        return;
+
+    sal_Int32 nCount = rSourceContainer->getCount();
+    try
     {
-        sal_Int32 nCount = rSourceContainer->getCount();
-        try
+        for ( sal_Int32 i = 0; i < nCount; i++ )
         {
-            for ( sal_Int32 i = 0; i < nCount; i++ )
+            Sequence< PropertyValue > aPropSeq;
+            if ( rSourceContainer->getByIndex( i ) >>= aPropSeq )
             {
-                Sequence< PropertyValue > aPropSeq;
-                if ( rSourceContainer->getByIndex( i ) >>= aPropSeq )
+                sal_Int32 nContainerIndex = -1;
+                Reference< XIndexAccess > xIndexAccess;
+                for ( sal_Int32 j = 0; j < aPropSeq.getLength(); j++ )
                 {
-                    sal_Int32 nContainerIndex = -1;
-                    Reference< XIndexAccess > xIndexAccess;
-                    for ( sal_Int32 j = 0; j < aPropSeq.getLength(); j++ )
+                    if ( aPropSeq[j].Name == "ItemDescriptorContainer" )
                     {
-                        if ( aPropSeq[j].Name == "ItemDescriptorContainer" )
-                        {
-                            aPropSeq[j].Value >>= xIndexAccess;
-                            nContainerIndex = j;
-                            break;
-                        }
+                        aPropSeq[j].Value >>= xIndexAccess;
+                        nContainerIndex = j;
+                        break;
                     }
-
-                    if ( xIndexAccess.is() && nContainerIndex >= 0 )
-                        aPropSeq[nContainerIndex].Value <<= deepCopyContainer( xIndexAccess );
-
-                    m_aItemVector.push_back( aPropSeq );
                 }
+
+                if ( xIndexAccess.is() && nContainerIndex >= 0 )
+                    aPropSeq[nContainerIndex].Value <<= deepCopyContainer( xIndexAccess );
+
+                m_aItemVector.push_back( aPropSeq );
             }
         }
-        catch ( const IndexOutOfBoundsException& )
-        {
-        }
+    }
+    catch ( const IndexOutOfBoundsException& )
+    {
     }
 }
 
@@ -128,7 +124,7 @@ Reference< XIndexAccess > RootItemContainer::deepCopyContainer( const Reference<
     Reference< XIndexAccess > xReturn;
     if ( rSubContainer.is() )
     {
-        ConstItemContainer* pSource = ConstItemContainer::GetImplementation( rSubContainer );
+        ConstItemContainer* pSource = comphelper::getUnoTunnelImplementation<ConstItemContainer>( rSubContainer );
         ItemContainer* pSubContainer( nullptr );
         if ( pSource )
             pSubContainer = new ItemContainer( *pSource, m_aShareMutex );
@@ -143,7 +139,7 @@ Reference< XIndexAccess > RootItemContainer::deepCopyContainer( const Reference<
 // XUnoTunnel
 sal_Int64 RootItemContainer::getSomething( const css::uno::Sequence< sal_Int8 >& rIdentifier )
 {
-    if( ( rIdentifier.getLength() == 16 ) && ( 0 == memcmp( RootItemContainer::GetUnoTunnelId().getConstArray(), rIdentifier.getConstArray(), 16 ) ) )
+    if( isUnoTunnelId<RootItemContainer>(rIdentifier) )
         return sal::static_int_cast< sal_Int64 >( reinterpret_cast< sal_IntPtr >( this ));
     return 0;
 }
@@ -153,16 +149,9 @@ namespace
     class theRootItemContainerUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theRootItemContainerUnoTunnelId > {};
 }
 
-const Sequence< sal_Int8 >& RootItemContainer::GetUnoTunnelId() throw()
+const Sequence< sal_Int8 >& RootItemContainer::getUnoTunnelId() throw()
 {
     return theRootItemContainerUnoTunnelId::get().getSeq();
-}
-
-RootItemContainer* RootItemContainer::GetImplementation( const css::uno::Reference< css::uno::XInterface >& rxIFace ) throw()
-{
-    css::uno::Reference< css::lang::XUnoTunnel > xUT( rxIFace, css::uno::UNO_QUERY );
-    return xUT.is() ? reinterpret_cast< RootItemContainer* >(sal::static_int_cast< sal_IntPtr >(
-                          xUT->getSomething( RootItemContainer::GetUnoTunnelId() ))) : nullptr;
 }
 
 // XElementAccess
@@ -182,58 +171,52 @@ sal_Int32 SAL_CALL RootItemContainer::getCount()
 Any SAL_CALL RootItemContainer::getByIndex( sal_Int32 Index )
 {
     ShareGuard aLock( m_aShareMutex );
-    if ( sal_Int32( m_aItemVector.size()) > Index )
-        return makeAny( m_aItemVector[Index] );
-    else
+    if ( sal_Int32( m_aItemVector.size()) <= Index )
         throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
+
+    return makeAny( m_aItemVector[Index] );
 }
 
 // XIndexContainer
 void SAL_CALL RootItemContainer::insertByIndex( sal_Int32 Index, const Any& aItem )
 {
     Sequence< PropertyValue > aSeq;
-    if ( aItem >>= aSeq )
-    {
-        ShareGuard aLock( m_aShareMutex );
-        if ( sal_Int32( m_aItemVector.size()) == Index )
-            m_aItemVector.push_back( aSeq );
-        else if ( sal_Int32( m_aItemVector.size()) >Index )
-        {
-            std::vector< Sequence< PropertyValue > >::iterator aIter = m_aItemVector.begin();
-            aIter += Index;
-            m_aItemVector.insert( aIter, aSeq );
-        }
-        else
-            throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
-    }
-    else
+    if ( !(aItem >>= aSeq) )
         throw IllegalArgumentException( WRONG_TYPE_EXCEPTION, static_cast<OWeakObject *>(this), 2 );
-}
 
-void SAL_CALL RootItemContainer::removeByIndex( sal_Int32 nIndex )
-{
     ShareGuard aLock( m_aShareMutex );
-    if ( (sal_Int32)m_aItemVector.size() > nIndex )
+    if ( sal_Int32( m_aItemVector.size()) == Index )
+        m_aItemVector.push_back( aSeq );
+    else if ( sal_Int32( m_aItemVector.size()) >Index )
     {
-        m_aItemVector.erase(m_aItemVector.begin() + nIndex);
+        std::vector< Sequence< PropertyValue > >::iterator aIter = m_aItemVector.begin();
+        aIter += Index;
+        m_aItemVector.insert( aIter, aSeq );
     }
     else
         throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
 }
 
+void SAL_CALL RootItemContainer::removeByIndex( sal_Int32 nIndex )
+{
+    ShareGuard aLock( m_aShareMutex );
+    if ( static_cast<sal_Int32>(m_aItemVector.size()) <= nIndex )
+        throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
+
+    m_aItemVector.erase(m_aItemVector.begin() + nIndex);
+}
+
 void SAL_CALL RootItemContainer::replaceByIndex( sal_Int32 Index, const Any& aItem )
 {
     Sequence< PropertyValue > aSeq;
-    if ( aItem >>= aSeq )
-    {
-        ShareGuard aLock( m_aShareMutex );
-        if ( sal_Int32( m_aItemVector.size()) > Index )
-            m_aItemVector[Index] = aSeq;
-        else
-            throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
-    }
-    else
+    if ( !(aItem >>= aSeq) )
         throw IllegalArgumentException( WRONG_TYPE_EXCEPTION, static_cast<OWeakObject *>(this), 2 );
+
+    ShareGuard aLock( m_aShareMutex );
+    if ( sal_Int32( m_aItemVector.size()) <= Index )
+        throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
+
+    m_aItemVector[Index] = aSeq;
 }
 
 Reference< XInterface > SAL_CALL RootItemContainer::createInstanceWithContext( const Reference< XComponentContext >& )
@@ -312,25 +295,21 @@ css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL RootItemContainer::
     return xInfo;
 }
 
-const css::uno::Sequence< css::beans::Property > RootItemContainer::impl_getStaticPropertyDescriptor()
+css::uno::Sequence< css::beans::Property > RootItemContainer::impl_getStaticPropertyDescriptor()
 {
     // Create a property array to initialize sequence!
-    // Table of all predefined properties of this class. Its used from OPropertySetHelper-class!
+    // Table of all predefined properties of this class. It's used from OPropertySetHelper-class!
     // Don't forget to change the defines (see begin of this file), if you add, change or delete a property in this list!!!
     // It's necessary for methods of OPropertySetHelper.
     // ATTENTION:
     //      YOU MUST SORT FOLLOW TABLE BY NAME ALPHABETICAL !!!
 
-    const css::beans::Property pProperties[] =
+    return
     {
         css::beans::Property( PROPNAME_UINAME, PROPHANDLE_UINAME ,
                               cppu::UnoType<OUString>::get(),
                               css::beans::PropertyAttribute::TRANSIENT )
     };
-    // Use it to initialize sequence!
-    const css::uno::Sequence< css::beans::Property > lPropertyDescriptor( pProperties, PROPCOUNT );
-    // Return "PropertyDescriptor"
-    return lPropertyDescriptor;
 }
 
 } // namespace framework

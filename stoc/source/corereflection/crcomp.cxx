@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/strbuf.hxx>
 #include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/typeprovider.hxx>
 
 #include <com/sun/star/reflection/XIdlField.hpp>
 #include <com/sun/star/reflection/XIdlField2.hpp>
@@ -33,6 +33,7 @@ using namespace css::uno;
 namespace stoc_corefl
 {
 
+namespace {
 
 class IdlCompFieldImpl
     : public IdlMemberImpl
@@ -70,6 +71,8 @@ public:
     virtual void SAL_CALL set( Any & rObj, const Any & rValue ) override;
 };
 
+}
+
 // XInterface
 
 Any IdlCompFieldImpl::queryInterface( const Type & rType )
@@ -94,20 +97,12 @@ void IdlCompFieldImpl::release() throw()
 
 Sequence< Type > IdlCompFieldImpl::getTypes()
 {
-    static ::cppu::OTypeCollection * s_pTypes = nullptr;
-    if (! s_pTypes)
-    {
-        ::osl::MutexGuard aGuard( getMutexAccess() );
-        if (! s_pTypes)
-        {
-            static ::cppu::OTypeCollection s_aTypes(
-                cppu::UnoType<XIdlField2>::get(),
-                cppu::UnoType<XIdlField>::get(),
-                IdlMemberImpl::getTypes() );
-            s_pTypes = &s_aTypes;
-        }
-    }
-    return s_pTypes->getTypes();
+    static cppu::OTypeCollection s_aTypes(
+        cppu::UnoType<XIdlField2>::get(),
+        cppu::UnoType<XIdlField>::get(),
+        IdlMemberImpl::getTypes() );
+
+    return s_aTypes.getTypes();
 }
 
 Sequence< sal_Int8 > IdlCompFieldImpl::getImplementationId()
@@ -210,16 +205,13 @@ void IdlCompFieldImpl::set( const Any & rObj, const Any & rValue )
         if (pTD)
         {
             TYPELIB_DANGER_RELEASE( pObjTD );
-            if (coerce_assign( const_cast<char *>(static_cast<char const *>(rObj.getValue()) + _nOffset), getTypeDescr(), rValue, getReflection() ))
-            {
-                return;
-            }
-            else
+            if (!coerce_assign( const_cast<char *>(static_cast<char const *>(rObj.getValue()) + _nOffset), getTypeDescr(), rValue, getReflection() ))
             {
                 throw IllegalArgumentException(
                     "cannot assign value to destination",
                     static_cast<XWeak *>(static_cast<OWeakObject *>(this)), 1 );
             }
+            return;
         }
         TYPELIB_DANGER_RELEASE( pObjTD );
     }
@@ -246,16 +238,13 @@ void IdlCompFieldImpl::set( Any & rObj, const Any & rValue )
         if (pTD)
         {
             TYPELIB_DANGER_RELEASE( pObjTD );
-            if (coerce_assign( const_cast<char *>(static_cast<char const *>(rObj.getValue()) + _nOffset), getTypeDescr(), rValue, getReflection() ))
-            {
-                return;
-            }
-            else
+            if (!coerce_assign( const_cast<char *>(static_cast<char const *>(rObj.getValue()) + _nOffset), getTypeDescr(), rValue, getReflection() ))
             {
                 throw IllegalArgumentException(
                     "cannot assign to destination",
                     static_cast<XWeak *>(static_cast<OWeakObject *>(this)), 1 );
             }
+            return;
         }
         TYPELIB_DANGER_RELEASE( pObjTD );
     }
@@ -282,7 +271,7 @@ sal_Bool CompoundIdlClassImpl::isAssignableFrom( const Reference< XIdlClass > & 
             else
             {
                 const Sequence< Reference< XIdlClass > > & rSeq = xType->getSuperclasses();
-                if (rSeq.getLength())
+                if (rSeq.hasElements())
                 {
                     OSL_ENSURE( rSeq.getLength() == 1, "### unexpected len of super classes!" );
                     return isAssignableFrom( rSeq[0] );

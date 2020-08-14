@@ -58,23 +58,17 @@
  *  For LWP filter architecture prototype - OLE object
  */
 
-#include <tools/stream.hxx>
-#include "lwpglobalmgr.hxx"
+#include <lwpfilehdr.hxx>
 #include "lwpoleobject.hxx"
-#include "lwpobjfactory.hxx"
-#include "lwpidxmgr.hxx"
-#include "lwp9reader.hxx"
-#include "xfilter/xfparagraph.hxx"
 #include "lwpframelayout.hxx"
-#include "xfilter/xfstylemanager.hxx"
-#include "bento.hxx"
+#include <o3tl/numeric.hxx>
 
 /**
  * @descr:   construction function
  * @param:  objHdr - object header, read before entering this function
  * @param: pStrm - file stream
  */
-LwpGraphicOleObject::LwpGraphicOleObject(LwpObjectHeader &objHdr, LwpSvStream* pStrm)
+LwpGraphicOleObject::LwpGraphicOleObject(LwpObjectHeader const &objHdr, LwpSvStream* pStrm)
     : LwpContent(objHdr, pStrm)
 {}
 /**
@@ -143,7 +137,7 @@ void LwpGraphicOleObject::GetGrafScaledSize(double & fWidth, double & fHeight)
             }
             else if (nScalemode & LwpLayoutScale::PERCENTAGE)
             {
-                double fScalePercentage = (double)pMyScale->GetScalePercentage() / 1000;
+                double fScalePercentage = static_cast<double>(pMyScale->GetScalePercentage()) / 1000;
                 fSclGrafWidth = fScalePercentage * fWidth;
                 fSclGrafHeight = fScalePercentage * fHeight;
             }
@@ -156,9 +150,13 @@ void LwpGraphicOleObject::GetGrafScaledSize(double & fWidth, double & fHeight)
                 }
                 else if (nScalemode & LwpLayoutScale::MAINTAIN_ASPECT_RATIO)
                 {
+                    if (fHeight == 0.0 || fDisFrameHeight == 0.0)
+                        throw o3tl::divide_by_zero();
                     if (fWidth/fHeight >= fDisFrameWidth/fDisFrameHeight)
                     {
                         fSclGrafWidth = fDisFrameWidth;
+                        if (fWidth == 0.0)
+                            throw o3tl::divide_by_zero();
                         fSclGrafHeight = (fDisFrameWidth/fWidth) * fHeight;
                     }
                     else
@@ -177,7 +175,6 @@ void LwpGraphicOleObject::GetGrafScaledSize(double & fWidth, double & fHeight)
     }
     fWidth = fSclGrafWidth ;
     fHeight =  fSclGrafHeight ;
-
 }
 
 /**
@@ -185,7 +182,7 @@ void LwpGraphicOleObject::GetGrafScaledSize(double & fWidth, double & fHeight)
  * @param:  objHdr - object header, read before entering this function
  * @param: pStrm - file stream
  */
-LwpOleObject::LwpOleObject(LwpObjectHeader &objHdr, LwpSvStream* pStrm)
+LwpOleObject::LwpOleObject(LwpObjectHeader const &objHdr, LwpSvStream* pStrm)
     : LwpGraphicOleObject(objHdr, pStrm)
     , cPersistentFlags(0)
     , m_SizeRect(0,0,5,5)
@@ -251,8 +248,8 @@ void LwpOleObject::XFConvert(XFContentContainer * /*pCont*/)
 
 void LwpOleObject::GetGrafOrgSize(double & rWidth, double & rHeight)
 {
-    rWidth = (double)m_SizeRect.GetWidth()/1000;//cm unit
-    rHeight = (double)m_SizeRect.GetHeight()/1000;//cm unit
+    rWidth = static_cast<double>(m_SizeRect.GetWidth())/1000;//cm unit
+    rHeight = static_cast<double>(m_SizeRect.GetHeight())/1000;//cm unit
 }
 
 void LwpOleObject::RegisterStyle()

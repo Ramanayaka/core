@@ -18,13 +18,11 @@
  */
 
 #include <sdr/primitive2d/sdrmeasureprimitive2d.hxx>
-#include <svx/sdr/primitive2d/sdrdecompositiontools.hxx>
+#include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <sdr/primitive2d/sdrtextprimitive2d.hxx>
-#include <svx/sdr/attribute/sdrtextattribute.hxx>
+#include <sdr/attribute/sdrtextattribute.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 #include <rtl/ref.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
@@ -34,10 +32,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         Primitive2DReference SdrMeasurePrimitive2D::impCreatePart(
             const attribute::SdrLineAttribute& rLineAttribute,
             const basegfx::B2DHomMatrix& rObjectMatrix,
@@ -93,9 +89,9 @@ namespace drawinglayer
             bool bAutoUpsideDown(false);
             const attribute::SdrTextAttribute rTextAttribute = getSdrLSTAttribute().getText();
             const basegfx::B2DHomMatrix aObjectMatrix(
-                basegfx::tools::createShearXRotateTranslateB2DHomMatrix(0.0, fAngle, getStart()));
+                basegfx::utils::createShearXRotateTranslateB2DHomMatrix(0.0, fAngle, getStart()));
 
-            // preapare text, but do not add yet; it needs to be aligned to
+            // prepare text, but do not add yet; it needs to be aligned to
             // the line geometry
             if(!rTextAttribute.isDefault())
             {
@@ -104,8 +100,8 @@ namespace drawinglayer
 
                 if(getTextRotation())
                 {
-                    aTextMatrix.rotate(-90.0 * F_PI180);
-                    fTestAngle -= (90.0 * F_PI180);
+                    aTextMatrix.rotate(-F_PI2);
+                    fTestAngle -= (F_PI2);
 
                     if(getTextAutoAngle() && fTestAngle < -F_PI)
                     {
@@ -131,7 +127,6 @@ namespace drawinglayer
                     rTextAttribute.isScroll(),
                     false,
                     false,
-                    false,
                     false);
 
                 aTextRange = xBlockText->getB2DRange(aViewInformation);
@@ -154,7 +149,7 @@ namespace drawinglayer
                 {
                     if(rLineStartEnd.isStartActive())
                     {
-                        const basegfx::B2DRange aArrowRange(basegfx::tools::getRange(rLineStartEnd.getStartPolyPolygon()));
+                        const basegfx::B2DRange aArrowRange(basegfx::utils::getRange(rLineStartEnd.getStartPolyPolygon()));
                         fStartArrowW = rLineStartEnd.getStartWidth();
                         fStartArrowH = aArrowRange.getHeight() * fStartArrowW / aArrowRange.getWidth();
 
@@ -166,7 +161,7 @@ namespace drawinglayer
 
                     if(rLineStartEnd.isEndActive())
                     {
-                        const basegfx::B2DRange aArrowRange(basegfx::tools::getRange(rLineStartEnd.getEndPolyPolygon()));
+                        const basegfx::B2DRange aArrowRange(basegfx::utils::getRange(rLineStartEnd.getEndPolyPolygon()));
                         fEndArrowW = rLineStartEnd.getEndWidth();
                         fEndArrowH = aArrowRange.getHeight() * fEndArrowW / aArrowRange.getWidth();
 
@@ -418,12 +413,12 @@ namespace drawinglayer
                 aChange *= aObjectMatrix;
 
                 // apply to existing text primitive
-                SdrTextPrimitive2D* pNewBlockText = xBlockText->createTransformedClone(aChange);
+                std::unique_ptr<SdrTextPrimitive2D> pNewBlockText = xBlockText->createTransformedClone(aChange);
                 OSL_ENSURE(pNewBlockText, "SdrMeasurePrimitive2D::create2DDecomposition: Could not create transformed clone of text primitive (!)");
                 xBlockText.clear();
 
                 // add to local primitives
-                aRetval.push_back(Primitive2DReference(pNewBlockText));
+                aRetval.push_back(Primitive2DReference(pNewBlockText.release()));
             }
 
             // add shadow
@@ -438,7 +433,7 @@ namespace drawinglayer
         }
 
         SdrMeasurePrimitive2D::SdrMeasurePrimitive2D(
-            const attribute::SdrLineShadowTextAttribute& rSdrLSTAttribute,
+            const attribute::SdrLineEffectsTextAttribute& rSdrLSTAttribute,
             const basegfx::B2DPoint& rStart,
             const basegfx::B2DPoint& rEnd,
             MeasureTextPosition eHorizontal,
@@ -495,7 +490,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(SdrMeasurePrimitive2D, PRIMITIVE2D_ID_SDRMEASUREPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

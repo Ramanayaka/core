@@ -17,13 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "basidectrlr.hxx"
-
-#include "basidesh.hxx"
-
+#include <basidectrlr.hxx>
+#include <basidesh.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-
-#include <vcl/syswin.hxx>
 
 namespace basctl
 {
@@ -36,7 +32,7 @@ namespace
 {
 
 int const nPropertyIconId = 1;
-OUString const sPropertyIconId("IconId");
+OUStringLiteral const sPropertyIconId("IconId");
 
 }
 

@@ -11,7 +11,7 @@ $(eval $(call gb_Library_Library,basegfx))
 
 $(eval $(call gb_Library_use_external,basegfx,boost_headers))
 
-$(eval $(call gb_Library_set_precompiled_header,basegfx,$(SRCDIR)/basegfx/inc/pch/precompiled_basegfx))
+$(eval $(call gb_Library_set_precompiled_header,basegfx,basegfx/inc/pch/precompiled_basegfx))
 
 $(eval $(call gb_Library_use_sdk_api,basegfx))
 
@@ -38,8 +38,8 @@ $(eval $(call gb_Library_add_exception_objects,basegfx,\
     basegfx/source/matrix/b2dhommatrix \
     basegfx/source/matrix/b2dhommatrixtools \
     basegfx/source/matrix/b3dhommatrix \
-	basegfx/source/numeric/ftools \
-    basegfx/source/pixel/bpixel \
+    basegfx/source/matrix/b3dhommatrixtools \
+    basegfx/source/numeric/ftools \
     basegfx/source/point/b2dpoint \
     basegfx/source/point/b2ipoint \
     basegfx/source/point/b3dpoint \
@@ -58,7 +58,7 @@ $(eval $(call gb_Library_add_exception_objects,basegfx,\
     basegfx/source/polygon/b3dpolygontools \
     basegfx/source/polygon/b3dpolypolygon \
     basegfx/source/polygon/b3dpolypolygontools \
-    basegfx/source/range/b1drange \
+    basegfx/source/polygon/WaveLine \
     basegfx/source/range/b2dpolyrange \
     basegfx/source/range/b2drange \
     basegfx/source/range/b2drangeclipper \
@@ -71,15 +71,12 @@ $(eval $(call gb_Library_add_exception_objects,basegfx,\
     basegfx/source/tools/keystoplerp \
     basegfx/source/tools/numbertools \
     basegfx/source/tools/stringconversiontools \
+    basegfx/source/tools/systemdependentdata \
     basegfx/source/tools/tools \
     basegfx/source/tools/unopolypolygon \
-    basegfx/source/tools/unotools \
     basegfx/source/tools/zoomtools \
     basegfx/source/tuple/b2dtuple \
-    basegfx/source/tuple/b2i64tuple \
-    basegfx/source/tuple/b2ituple \
     basegfx/source/tuple/b3dtuple \
-    basegfx/source/tuple/b3ituple \
     basegfx/source/vector/b2dvector \
     basegfx/source/vector/b2ivector \
     basegfx/source/vector/b3dvector \

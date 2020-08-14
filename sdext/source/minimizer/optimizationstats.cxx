@@ -22,7 +22,6 @@
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
-#include <com/sun/star/drawing/XMasterPagesSupplier.hpp>
 
 
 using namespace ::com::sun::star;
@@ -54,11 +53,10 @@ css::beans::PropertyValues OptimizationStats::GetStatusSequence()
 {
     int i = 0;
     uno::Sequence< PropertyValue > aStatsSequence( maStats.size() );
-    std::map< PPPOptimizerTokenEnum, uno::Any >::iterator aIter( maStats.begin() );
-    while( aIter != maStats.end() )
+    for( const auto& rEntry : maStats )
     {
-        aStatsSequence[ i ].Name = TKGet( (*aIter).first );
-        aStatsSequence[ i++ ].Value = (*aIter++).second;
+        aStatsSequence[ i ].Name = TKGet( rEntry.first );
+        aStatsSequence[ i++ ].Value = rEntry.second;
     }
     return aStatsSequence;
 }
@@ -66,8 +64,8 @@ css::beans::PropertyValues OptimizationStats::GetStatusSequence()
 
 void OptimizationStats::InitializeStatusValues( const uno::Sequence< PropertyValue >& rOptimizationStats )
 {
-    for( int i = 0; i < rOptimizationStats.getLength(); i++ )
-        maStats[ TKGet( rOptimizationStats[ i ].Name ) ] = rOptimizationStats[ i ].Value;
+    for( const auto& rStat : rOptimizationStats )
+        maStats[ TKGet( rStat.Name ) ] = rStat.Value;
 }
 
 
@@ -76,7 +74,7 @@ void OptimizationStats::InitializeStatusValuesFromDocument( const Reference< XMo
     try
     {
         Reference< XDrawPagesSupplier > xDrawPagesSupplier( rxModel, UNO_QUERY_THROW );
-        Reference< XDrawPages > xDrawPages( xDrawPagesSupplier->getDrawPages(), UNO_QUERY_THROW );
+        Reference< XDrawPages > xDrawPages( xDrawPagesSupplier->getDrawPages(), UNO_SET_THROW );
         SetStatusValue( TK_Pages, Any( awt::Size( 0, xDrawPages->getCount() ) ) );
     }
     catch ( Exception& )

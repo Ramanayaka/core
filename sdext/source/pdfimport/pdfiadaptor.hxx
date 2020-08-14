@@ -20,8 +20,8 @@
 #ifndef INCLUDED_SDEXT_SOURCE_PDFIMPORT_PDFIADAPTOR_HXX
 #define INCLUDED_SDEXT_SOURCE_PDFIMPORT_PDFIADAPTOR_HXX
 
-#include "xmlemitter.hxx"
-#include "treevisitorfactory.hxx"
+#include <xmlemitter.hxx>
+#include <treevisitorfactory.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/xml/XImportFilter.hpp>
@@ -89,7 +89,6 @@ namespace pdfi
         css::uno::Reference<
             css::frame::XModel >           m_xModel;
         TreeVisitorFactorySharedPtr                   m_pVisitorFactory;
-        bool                                          m_bEnableToplevelText;
 
         bool parse( const css::uno::Reference<css::io::XInputStream>&       xInput,
                     const css::uno::Reference<css::task::XInteractionHandler>& xIHdl,
@@ -110,9 +109,6 @@ namespace pdfi
             format (writer, draw, etc)
          */
         void setTreeVisitorFactory(const TreeVisitorFactorySharedPtr& rVisitorFactory);
-
-        /// TEMP - enable writer-like text:p on doc level
-        void enableToplevelText() { m_bEnableToplevelText=true; }
 
         /** Export pdf document to ODG
 

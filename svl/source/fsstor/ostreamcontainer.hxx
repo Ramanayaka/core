@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SVL_SOURCE_FSSTOR_OSTREAMCONTAINER_HXX
 #define INCLUDED_SVL_SOURCE_FSSTOR_OSTREAMCONTAINER_HXX
 
-#include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/embed/XExtendedStorageStream.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
@@ -30,9 +29,9 @@
 #include <com/sun/star/io/XStream.hpp>
 #include <com/sun/star/io/XAsyncOutputMonitor.hpp>
 #include <cppuhelper/weak.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 #include <osl/mutex.hxx>
+#include <memory>
 
 class OFSStreamContainer : public cppu::OWeakObject,
                      public css::lang::XTypeProvider,
@@ -56,8 +55,8 @@ class OFSStreamContainer : public cppu::OWeakObject,
     bool m_bInputClosed;
     bool m_bOutputClosed;
 
-    ::comphelper::OInterfaceContainerHelper2* m_pListenersContainer; // list of listeners
-    ::cppu::OTypeCollection* m_pTypeCollection;
+    std::unique_ptr<::comphelper::OInterfaceContainerHelper2> m_pListenersContainer; // list of listeners
+    css::uno::Sequence<css::uno::Type> m_aTypes;
 
 public:
     explicit OFSStreamContainer( const css::uno::Reference < css::io::XStream >& xStream );

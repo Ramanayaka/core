@@ -58,16 +58,15 @@
  *  For LWP filter architecture prototype
  ************************************************************************/
 
-#include "lwpfoundry.hxx"
-#include "lwpfilehdr.hxx"
+#include <lwpfilehdr.hxx>
 #include "lwpstory.hxx"
 #include "lwpmarker.hxx"
 #include "lwpproplist.hxx"
-#include "lwpglobalmgr.hxx"
-#include "xfilter/xfplaceholder.hxx"
-#include "xfilter/xfinputlist.hxx"
+#include <lwpglobalmgr.hxx>
+#include <xfilter/xfplaceholder.hxx>
+#include <xfilter/xfinputlist.hxx>
 
-LwpMarker::LwpMarker(LwpObjectHeader &objHdr, LwpSvStream *pStrm)
+LwpMarker::LwpMarker(LwpObjectHeader const &objHdr, LwpSvStream *pStrm)
     : LwpDLNFPVList(objHdr,pStrm)
     , m_nFlag(0)
     , m_nPageNumber(0)
@@ -97,7 +96,7 @@ OUString LwpMarker::GetNamedProperty(const OUString& name)
         return OUString();
 }
 
-LwpStoryMarker::LwpStoryMarker(LwpObjectHeader &objHdr, LwpSvStream *pStrm)
+LwpStoryMarker::LwpStoryMarker(LwpObjectHeader const &objHdr, LwpSvStream *pStrm)
     : LwpMarker(objHdr,pStrm)
     , m_nFlag(0)
 {
@@ -117,7 +116,7 @@ void LwpFribRange::Read(LwpObjectStream* pObjStrm)
     m_EndPara.ReadIndexed(pObjStrm);
 }
 
-LwpCHBlkMarker::LwpCHBlkMarker(LwpObjectHeader &objHdr, LwpSvStream *pStrm)
+LwpCHBlkMarker::LwpCHBlkMarker(LwpObjectHeader const &objHdr, LwpSvStream *pStrm)
     : LwpStoryMarker(objHdr, pStrm)
     , m_nTab(0)
     , m_nFlag(0)
@@ -140,7 +139,7 @@ void LwpCHBlkMarker::Read()
     }
 }
 
-OUString LwpCHBlkMarker::GetPromptText()
+OUString LwpCHBlkMarker::GetPromptText() const
 {
     LwpStory* pStory = nullptr;
     if (m_objPromptStory.obj().is())
@@ -261,9 +260,7 @@ void LwpCHBlkMarker::ProcessKeylist(XFContentContainer* pXFPara,sal_uInt8 nType)
             pList->SetLabels(m_Keylist);
             pXFPara->Add(pList);
         }
-        else if (nType == MARKER_END)//skip
-        {
-        }
+        // else skip MARKER_END
     }
     else
     {
@@ -288,12 +285,12 @@ void LwpCHBlkMarker::ProcessKeylist(XFContentContainer* pXFPara,sal_uInt8 nType)
     }
 }
 
-bool LwpCHBlkMarker::IsHasFilled()
+bool LwpCHBlkMarker::IsHasFilled() const
 {
     return (CHB_PROMPT & m_nFlag) == 0;
 }
 
-bool LwpCHBlkMarker::IsBubbleHelp()
+bool LwpCHBlkMarker::IsBubbleHelp() const
 {
     return (CHB_HELP & m_nFlag) != 0;
 }
@@ -317,7 +314,7 @@ void LwpCHBlkMarker::EnumAllKeywords()
     }
 }
 
-LwpBookMark::LwpBookMark(LwpObjectHeader &objHdr, LwpSvStream *pStrm)
+LwpBookMark::LwpBookMark(LwpObjectHeader const &objHdr, LwpSvStream *pStrm)
     : LwpDLNFVList(objHdr,pStrm)
     , m_nFlag(0)
 {
@@ -342,12 +339,12 @@ bool LwpBookMark::IsRightMarker(LwpObjectID objMarker)
     return objMarker == m_objMarker;
 }
 
-OUString LwpBookMark::GetName()
+OUString const & LwpBookMark::GetName()
 {
     return LwpDLNFVList::GetName().str();
 }
 
-LwpFieldMark::LwpFieldMark(LwpObjectHeader &objHdr, LwpSvStream *pStrm)
+LwpFieldMark::LwpFieldMark(LwpObjectHeader const &objHdr, LwpSvStream *pStrm)
     : LwpStoryMarker(objHdr,pStrm)
     , m_nFlag(0)
     , m_nFieldType(0)
@@ -413,7 +410,7 @@ void LwpFieldMark::ParseTOC(OUString& sLevel,OUString& sText)
         sText.clear();
 }
 
-bool LwpFieldMark::IsFormulaInsert()
+bool LwpFieldMark::IsFormulaInsert() const
 {
     return (m_nFlag & FF_FORMULAINSERTED) != 0;
 }
@@ -436,19 +433,19 @@ bool LwpFieldMark::IsDateTimeField(sal_uInt8& type,OUString& formula)
     if (tag == "Now()")
     {
         type = DATETIME_NOW;
-        formula = sFormula.copy(index+1,sFormula.getLength()-index-1);
+        formula = sFormula.copy(index+1);
         return true;
     }
     else if (tag == "CreateDate")
     {
         type = DATETIME_CREATE;
-        formula = sFormula.copy(index+1,sFormula.getLength()-index-1);
+        formula = sFormula.copy(index+1);
         return true;
     }
     else if (tag == "EditDate")
     {
         type = DATETIME_LASTEDIT;
-        formula = sFormula.copy(index+1,sFormula.getLength()-index-1);
+        formula = sFormula.copy(index+1);
         return true;
     }
     else if (tag == "YesterdaysDate" || tag == "TomorrowsDate"
@@ -482,13 +479,13 @@ bool LwpFieldMark::IsCrossRefField(sal_uInt8& nType, OUString& sMarkName)
     OUString tag = sFormula.copy(0,index);
     if (tag == "PageRef")
     {
-        sMarkName = sFormula.copy(index+1,sFormula.getLength()-index-1);
+        sMarkName = sFormula.copy(index+1);
         nType = CROSSREF_PAGE;
         return true;
     }
     else if (tag == "ParaRef")
     {
-        sMarkName = sFormula.copy(index+1,sFormula.getLength()-index-1);
+        sMarkName = sFormula.copy(index+1);
         nType = CROSSREF_PARANUMBER;
         return true;
     }
@@ -526,7 +523,7 @@ bool LwpFieldMark::IsDocPowerField(sal_uInt8& nType,OUString& sFormula)
     }
 }
 
-LwpRubyMarker::LwpRubyMarker(LwpObjectHeader &objHdr, LwpSvStream *pStrm):LwpStoryMarker(objHdr,pStrm)
+LwpRubyMarker::LwpRubyMarker(LwpObjectHeader const &objHdr, LwpSvStream *pStrm):LwpStoryMarker(objHdr,pStrm)
 {
 }
 

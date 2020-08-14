@@ -19,19 +19,18 @@
 
 #include <sal/config.h>
 #include <rtl/ustring.hxx>
-#include <rtl/uuid.h>
-#include "xmlsignaturetemplateimpl.hxx"
+#include <framework/xmlsignaturetemplateimpl.hxx>
+#include <comphelper/sequence.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 using namespace ::com::sun::star::uno ;
 using ::com::sun::star::lang::XMultiServiceFactory ;
-using ::com::sun::star::lang::XSingleServiceFactory ;
 
 using ::com::sun::star::xml::wrapper::XXMLElementWrapper ;
 using ::com::sun::star::xml::crypto::XXMLSignatureTemplate ;
 
 XMLSignatureTemplateImpl::XMLSignatureTemplateImpl()
-    :m_xTemplate( nullptr ),
-     m_nStatus ( css::xml::crypto::SecurityOperationStatus_UNKNOWN )
+    :m_nStatus ( css::xml::crypto::SecurityOperationStatus_UNKNOWN )
 {
 }
 
@@ -99,13 +98,7 @@ OUString SAL_CALL XMLSignatureTemplateImpl::getImplementationName() {
 
 /* XServiceInfo */
 sal_Bool SAL_CALL XMLSignatureTemplateImpl::supportsService( const OUString& serviceName) {
-    Sequence< OUString > seqServiceNames = getSupportedServiceNames() ;
-    const OUString* pArray = seqServiceNames.getConstArray() ;
-    for( sal_Int32 i = 0 ; i < seqServiceNames.getLength() ; i ++ ) {
-        if( *( pArray + i ) == serviceName )
-            return true ;
-    }
-    return false ;
+    return cppu::supportsService(this, serviceName);
 }
 
 /* XServiceInfo */
@@ -115,17 +108,16 @@ Sequence< OUString > SAL_CALL XMLSignatureTemplateImpl::getSupportedServiceNames
 
 //Helper for XServiceInfo
 Sequence< OUString > XMLSignatureTemplateImpl::impl_getSupportedServiceNames() {
-    ::osl::Guard< ::osl::Mutex > aGuard( ::osl::Mutex::getGlobalMutex() ) ;
     Sequence<OUString> seqServiceNames { "com.sun.star.xml.crypto.XMLSignatureTemplate" };
     return seqServiceNames ;
 }
 
 OUString XMLSignatureTemplateImpl::impl_getImplementationName() {
-    return OUString("com.sun.star.xml.security.framework.XMLSignatureTemplateImpl") ;
+    return "com.sun.star.xml.security.framework.XMLSignatureTemplateImpl" ;
 }
 
 //Helper for registry
-Reference< XInterface > SAL_CALL XMLSignatureTemplateImpl::impl_createInstance( const Reference< XMultiServiceFactory >&  ) {
+Reference< XInterface > XMLSignatureTemplateImpl::impl_createInstance( const Reference< XMultiServiceFactory >&  ) {
     return Reference< XInterface >( *new XMLSignatureTemplateImpl ) ;
 }
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -75,10 +75,10 @@ class LwpTableLayout;
 class LwpRowLayout : public LwpVirtualLayout
 {
 public:
-    LwpRowLayout(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpRowLayout(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpRowLayout() override;
     virtual LWP_LAYOUT_TYPE GetLayoutType () override { return LWP_ROW_LAYOUT;}
-    sal_uInt16 GetRowID() { return crowid;}
+    sal_uInt16 GetRowID() const { return crowid;}
     virtual void RegisterStyle() override;
     LwpTableLayout * GetParentTableLayout(){return dynamic_cast<LwpTableLayout *>(GetParent().obj().get());}
     void SetRowMap();
@@ -105,7 +105,7 @@ public:
     void ConvertCommonRow(rtl::Reference<XFTable> const & pXFTable, sal_uInt8 nStartCol, sal_uInt8 nEndCol);
     void CollectMergeInfo();
     void SetCellSplit(sal_uInt16 nEffectRows);
-    bool GetMergeCellFlag();
+    bool GetMergeCellFlag() const;
     sal_uInt16 GetCurMaxSpannedRows(sal_uInt8 nStartCol,sal_uInt8 nEndCol);
     void RegisterCurRowStyle(XFRow* pXFRow,sal_uInt16 nRowMark);
 };
@@ -117,11 +117,12 @@ public:
 class LwpRowHeadingLayout : public LwpRowLayout
 {
 public:
-    LwpRowHeadingLayout(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpRowHeadingLayout(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpRowHeadingLayout() override;
     virtual LWP_LAYOUT_TYPE GetLayoutType () override { return LWP_ROW_HEADING_LAYOUT;}
 protected:
     void Read() override;
+private:
     LwpObjectID cRowLayout;
 };
 

@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <comphelper/lok.hxx>
 #include <vcl/outdev.hxx>
-#include <vcl/window.hxx>
 #include <vcl/decoview.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
-#include "cbutton.hxx"
+#include <cbutton.hxx>
 
-//  class ScDDComboBoxButton
 
 ScDDComboBoxButton::ScDDComboBoxButton( OutputDevice* pOutputDevice )
     :   pOut( pOutputDevice )
@@ -43,14 +42,14 @@ void ScDDComboBoxButton::SetOutputDevice( OutputDevice* pOutputDevice )
 
 void ScDDComboBoxButton::SetOptSizePixel()
 {
-    aBtnSize = pOut->LogicToPixel(Size(8, 11), MapUnit::MapAppFont);
-    aBtnSize.Width() = std::max(aBtnSize.Width(), pOut->GetSettings().GetStyleSettings().GetScrollBarSize());
+    aBtnSize = pOut->LogicToPixel(Size(8, 11), MapMode(MapUnit::MapAppFont));
+    aBtnSize.setWidth( std::max(aBtnSize.Width(), pOut->GetSettings().GetStyleSettings().GetScrollBarSize()) );
 }
 
 void ScDDComboBoxButton::Draw( const Point& rAt,
                                const Size&  rSize )
 {
-    if ( rSize.Width() == 0 || rSize.Height() == 0 )
+    if ( rSize.IsEmpty() )
         return;
 
     // save old state
@@ -62,22 +61,23 @@ void ScDDComboBoxButton::Draw( const Point& rAt,
 
     tools::Rectangle   aBtnRect( rAt, rSize );
 
-    pOut->EnableMapMode( false );
+    if (!comphelper::LibreOfficeKit::isActive())
+        pOut->EnableMapMode(false);
 
     DecorationView aDecoView( pOut);
 
     tools::Rectangle aInnerRect=aDecoView.DrawButton( aBtnRect, DrawButtonFlags::Default );
 
-    aInnerRect.Left()   += 1;
-    aInnerRect.Top()    += 1;
-    aInnerRect.Right()  -= 1;
-    aInnerRect.Bottom() -= 1;
+    aInnerRect.AdjustLeft(1 );
+    aInnerRect.AdjustTop(1 );
+    aInnerRect.AdjustRight( -1 );
+    aInnerRect.AdjustBottom( -1 );
 
     Size  aInnerSize   = aInnerRect.GetSize();
     Point aInnerCenter = aInnerRect.Center();
 
-    aInnerRect.Top()   = aInnerCenter.Y() - (aInnerSize.Width()>>1);
-    aInnerRect.Bottom()= aInnerCenter.Y() + (aInnerSize.Width()>>1);
+    aInnerRect.SetTop( aInnerCenter.Y() - (aInnerSize.Width()>>1) );
+    aInnerRect.SetBottom( aInnerCenter.Y() + (aInnerSize.Width()>>1) );
 
     ImpDrawArrow( aInnerRect );
 
@@ -102,24 +102,24 @@ void ScDDComboBoxButton::ImpDrawArrow( const tools::Rectangle& rRect )
     Size        aSize    = aPixRect.GetSize();
 
     Size aSize3;
-    aSize3.Width() = aSize.Width() >> 1;
-    aSize3.Height() = aSize.Height() >> 1;
+    aSize3.setWidth( aSize.Width() >> 1 );
+    aSize3.setHeight( aSize.Height() >> 1 );
 
     Size aSize4;
-    aSize4.Width() = aSize.Width() >> 2;
-    aSize4.Height() = aSize.Height() >> 2;
+    aSize4.setWidth( aSize.Width() >> 2 );
+    aSize4.setHeight( aSize.Height() >> 2 );
 
     tools::Rectangle aTempRect = aPixRect;
 
     const StyleSettings& rSett = Application::GetSettings().GetStyleSettings();
-    Color aColor( rSett.GetButtonTextColor().GetColor() );
+    Color aColor( rSett.GetButtonTextColor() );
     pOut->SetFillColor( aColor );
     pOut->SetLineColor( aColor );
 
-    aTempRect.Left()   = aCenter.X() - aSize4.Width();
-    aTempRect.Right()  = aCenter.X() + aSize4.Width();
-    aTempRect.Top()    = aCenter.Y() - aSize3.Height();
-    aTempRect.Bottom() = aCenter.Y() - 1;
+    aTempRect.SetLeft( aCenter.X() - aSize4.Width() );
+    aTempRect.SetRight( aCenter.X() + aSize4.Width() );
+    aTempRect.SetTop( aCenter.Y() - aSize3.Height() );
+    aTempRect.SetBottom( aCenter.Y() - 1 );
 
     pOut->DrawRect( aTempRect );
 
@@ -128,8 +128,8 @@ void ScDDComboBoxButton::ImpDrawArrow( const tools::Rectangle& rRect )
     while( aPos1.X() <= aPos2.X() )
     {
         pOut->DrawLine( aPos1, aPos2 );
-        aPos1.X()++; aPos2.X()--;
-        aPos1.Y()++; aPos2.Y()++;
+        aPos1.AdjustX( 1 ); aPos2.AdjustX( -1 );
+        aPos1.AdjustY( 1 ); aPos2.AdjustY( 1 );
     }
 
     pOut->DrawLine( Point( aCenter.X() - aSize3.Width(), aPos1.Y()+1 ),

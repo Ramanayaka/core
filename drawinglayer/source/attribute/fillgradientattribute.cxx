@@ -22,10 +22,8 @@
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpFillGradientAttribute
         {
         public:
@@ -119,36 +117,20 @@ namespace drawinglayer
         {
         }
 
-        FillGradientAttribute::FillGradientAttribute(const FillGradientAttribute& rCandidate)
-        :   mpFillGradientAttribute(rCandidate.mpFillGradientAttribute)
-        {
-        }
+        FillGradientAttribute::FillGradientAttribute(const FillGradientAttribute&) = default;
 
-        FillGradientAttribute::FillGradientAttribute(FillGradientAttribute&& rCandidate)
-        :   mpFillGradientAttribute(std::move(rCandidate.mpFillGradientAttribute))
-        {
-        }
+        FillGradientAttribute::FillGradientAttribute(FillGradientAttribute&&) = default;
 
-        FillGradientAttribute::~FillGradientAttribute()
-        {
-        }
+        FillGradientAttribute::~FillGradientAttribute() = default;
 
         bool FillGradientAttribute::isDefault() const
         {
             return mpFillGradientAttribute.same_object(theGlobalDefault::get());
         }
 
-        FillGradientAttribute& FillGradientAttribute::operator=(const FillGradientAttribute& rCandidate)
-        {
-            mpFillGradientAttribute = rCandidate.mpFillGradientAttribute;
-            return *this;
-        }
+        FillGradientAttribute& FillGradientAttribute::operator=(const FillGradientAttribute&) = default;
 
-        FillGradientAttribute& FillGradientAttribute::operator=(FillGradientAttribute&& rCandidate)
-        {
-            mpFillGradientAttribute = std::move(rCandidate.mpFillGradientAttribute);
-            return *this;
-        }
+        FillGradientAttribute& FillGradientAttribute::operator=(FillGradientAttribute&&) = default;
 
         bool FillGradientAttribute::operator==(const FillGradientAttribute& rCandidate) const
         {
@@ -199,7 +181,6 @@ namespace drawinglayer
             return mpFillGradientAttribute->getSteps();
         }
 
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

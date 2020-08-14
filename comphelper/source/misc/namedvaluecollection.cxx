@@ -22,8 +22,8 @@
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/beans/PropertyState.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 
-#include <rtl/ustrbuf.hxx>
 #include <rtl/instance.hxx>
 #include <sal/log.hxx>
 
@@ -45,7 +45,7 @@ namespace comphelper
     using ::com::sun::star::lang::IllegalArgumentException;
     using ::com::sun::star::beans::PropertyState_DIRECT_VALUE;
 
-    typedef std::unordered_map< OUString, Any, OUStringHash >    NamedValueRepository;
+    typedef std::unordered_map< OUString, Any >    NamedValueRepository;
 
     struct NamedValueCollection_Impl
     {
@@ -64,7 +64,7 @@ namespace comphelper
         *this = _rCopySource;
     }
 
-    NamedValueCollection::NamedValueCollection( NamedValueCollection&& _rCopySource )
+    NamedValueCollection::NamedValueCollection(NamedValueCollection&& _rCopySource) noexcept
         :m_pImpl( std::move(_rCopySource.m_pImpl) )
     {
     }
@@ -75,7 +75,7 @@ namespace comphelper
         return *this;
     }
 
-    NamedValueCollection& NamedValueCollection::operator=( NamedValueCollection&& i_rCopySource )
+    NamedValueCollection& NamedValueCollection::operator=(NamedValueCollection&& i_rCopySource) noexcept
     {
         m_pImpl = std::move(i_rCopySource.m_pImpl);
         return *this;
@@ -126,13 +126,10 @@ namespace comphelper
 
     NamedValueCollection& NamedValueCollection::merge( const NamedValueCollection& _rAdditionalValues, bool _bOverwriteExisting )
     {
-        for (   NamedValueRepository::const_iterator namedValue = _rAdditionalValues.m_pImpl->aValues.begin();
-                namedValue != _rAdditionalValues.m_pImpl->aValues.end();
-                ++namedValue
-            )
+        for (auto const& value : _rAdditionalValues.m_pImpl->aValues)
         {
-            if ( _bOverwriteExisting || !impl_has( namedValue->first ) )
-                impl_put( namedValue->first, namedValue->second );
+            if ( _bOverwriteExisting || !impl_has( value.first ) )
+                impl_put( value.first, value.second );
         }
 
         return *this;
@@ -154,9 +151,9 @@ namespace comphelper
     std::vector< OUString > NamedValueCollection::getNames() const
     {
         std::vector< OUString > aNames;
-        for ( NamedValueRepository::const_iterator it = m_pImpl->aValues.begin(), end = m_pImpl->aValues.end(); it != end; ++it )
+        for (auto const& value : m_pImpl->aValues)
         {
-            aNames.push_back( it->first );
+            aNames.push_back( value.first );
         }
         return aNames;
     }
@@ -192,21 +189,19 @@ namespace comphelper
         PropertyValue aPropertyValue;
         NamedValue aNamedValue;
 
-        const Any* pArgument = _rArguments.getConstArray();
-        const Any* pArgumentEnd = _rArguments.getConstArray() + _rArguments.getLength();
-        for ( ; pArgument != pArgumentEnd; ++pArgument )
+        for ( auto const & argument : _rArguments )
         {
-            if ( *pArgument >>= aPropertyValue )
+            if ( argument >>= aPropertyValue )
                 m_pImpl->aValues[ aPropertyValue.Name ] = aPropertyValue.Value;
-            else if ( *pArgument >>= aNamedValue )
+            else if ( argument >>= aNamedValue )
                 m_pImpl->aValues[ aNamedValue.Name ] = aNamedValue.Value;
             else
             {
                 SAL_WARN_IF(
-                    pArgument->hasValue(), "comphelper",
+                    argument.hasValue(), "comphelper",
                     ("NamedValueCollection::impl_assign: encountered a value"
                      " type which I cannot handle: "
-                     + pArgument->getValueTypeName()));
+                     + argument.getValueTypeName()));
             }
         }
     }
@@ -219,10 +214,8 @@ namespace comphelper
             m_pImpl->aValues.swap( aEmpty );
         }
 
-        const PropertyValue* pArgument = _rArguments.getConstArray();
-        const PropertyValue* pArgumentEnd = _rArguments.getConstArray() + _rArguments.getLength();
-        for ( ; pArgument != pArgumentEnd; ++pArgument )
-            m_pImpl->aValues[ pArgument->Name ] = pArgument->Value;
+        for ( auto const & argument : _rArguments )
+            m_pImpl->aValues[ argument.Name ] = argument.Value;
     }
 
 
@@ -233,10 +226,8 @@ namespace comphelper
             m_pImpl->aValues.swap( aEmpty );
         }
 
-        const NamedValue* pArgument = _rArguments.getConstArray();
-        const NamedValue* pArgumentEnd = _rArguments.getConstArray() + _rArguments.getLength();
-        for ( ; pArgument != pArgumentEnd; ++pArgument )
-            m_pImpl->aValues[ pArgument->Name ] = pArgument->Value;
+        for ( auto const & argument : _rArguments )
+            m_pImpl->aValues[ argument.Name ] = argument.Value;
     }
 
 
@@ -308,31 +299,12 @@ namespace comphelper
     }
 
 
-    namespace
-    {
-        struct Value2PropertyValue
-        {
-            PropertyValue operator()( const NamedValueRepository::value_type& _rValue )
-            {
-                return PropertyValue(
-                    _rValue.first, 0, _rValue.second, PropertyState_DIRECT_VALUE );
-            }
-        };
-
-        struct Value2NamedValue
-        {
-            NamedValue operator()( const NamedValueRepository::value_type& _rValue )
-            {
-                return NamedValue( _rValue.first, _rValue.second );
-            }
-        };
-    }
-
-
     sal_Int32 NamedValueCollection::operator >>= ( Sequence< PropertyValue >& _out_rValues ) const
     {
         _out_rValues.realloc( m_pImpl->aValues.size() );
-        std::transform( m_pImpl->aValues.begin(), m_pImpl->aValues.end(), _out_rValues.getArray(), Value2PropertyValue() );
+        std::transform( m_pImpl->aValues.begin(), m_pImpl->aValues.end(), _out_rValues.getArray(),
+                [](const NamedValueRepository::value_type& _rValue)
+                    { return PropertyValue( _rValue.first, 0, _rValue.second, PropertyState_DIRECT_VALUE ); } );
         return _out_rValues.getLength();
     }
 
@@ -340,7 +312,9 @@ namespace comphelper
     sal_Int32 NamedValueCollection::operator >>= ( Sequence< NamedValue >& _out_rValues ) const
     {
         _out_rValues.realloc( m_pImpl->aValues.size() );
-        std::transform( m_pImpl->aValues.begin(), m_pImpl->aValues.end(), _out_rValues.getArray(), Value2NamedValue() );
+        std::transform( m_pImpl->aValues.begin(), m_pImpl->aValues.end(), _out_rValues.getArray(),
+                [](const NamedValueRepository::value_type& _rValue)
+                    { return NamedValue( _rValue.first, _rValue.second ); } );
         return _out_rValues.getLength();
     }
 

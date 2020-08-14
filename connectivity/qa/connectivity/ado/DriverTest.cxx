@@ -23,14 +23,14 @@
 #include <cppuhelper/typeprovider.hxx>
 #include <connectivity/dbexception.hxx>
 #include <osl/file.hxx>
-#include "resource/ado_res.hrc"
+#include "strings.hrc"
 
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::uno;
 
-namespace connectivity { namespace ado {
+namespace connectivity::ado {
 
 
 class AdoDriverTest: public test::BootstrapFixture
@@ -136,6 +136,6 @@ void AdoDriverTest::test_select_default_all()
 
 CPPUNIT_TEST_SUITE_REGISTRATION(AdoDriverTest);
 
-}}
+}
 
 CPPUNIT_PLUGIN_IMPLEMENT();

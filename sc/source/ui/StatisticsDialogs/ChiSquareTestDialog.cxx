@@ -8,50 +8,40 @@
  *
  */
 
-#include <sfx2/dispatch.hxx>
-#include <svl/zforlist.hxx>
-#include <svl/undo.hxx>
-
-#include "formulacell.hxx"
-#include "rangelst.hxx"
-#include "scitems.hxx"
-#include "docsh.hxx"
-#include "document.hxx"
-#include "uiitems.hxx"
-#include "reffact.hxx"
-#include "docfunc.hxx"
-#include "TableFillingAndNavigationTools.hxx"
-
-#include "ChiSquareTestDialog.hxx"
+#include <reffact.hxx>
+#include <TableFillingAndNavigationTools.hxx>
+#include <ChiSquareTestDialog.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
 
 ScChiSquareTestDialog::ScChiSquareTestDialog(
                     SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
-                    vcl::Window* pParent, ScViewData* pViewData ) :
+                    weld::Window* pParent, ScViewData* pViewData ) :
     ScStatisticsInputOutputDialog(
             pSfxBindings, pChildWindow, pParent, pViewData,
-            "ChiSquareTestDialog", "modules/scalc/ui/chisquaretestdialog.ui" )
+            "modules/scalc/ui/chisquaretestdialog.ui", "ChiSquareTestDialog")
 {
-    SetText(ScResId(STR_CHI_SQUARE_TEST));
+    m_xDialog->set_title(ScResId(STR_CHI_SQUARE_TEST));
 }
 
 ScChiSquareTestDialog::~ScChiSquareTestDialog()
 {}
 
-bool ScChiSquareTestDialog::Close()
+void ScChiSquareTestDialog::Close()
 {
-    return DoClose(ScChiSquareTestDialogWrapper::GetChildWindowId());
+    DoClose(ScChiSquareTestDialogWrapper::GetChildWindowId());
 }
 
-sal_Int16 ScChiSquareTestDialog::GetUndoNameId()
+const char* ScChiSquareTestDialog::GetUndoNameId()
 {
     return STR_CHI_SQUARE_TEST;
 }
 
 ScRange ScChiSquareTestDialog::ApplyOutput(ScDocShell* pDocShell)
 {
-    AddressWalkerWriter aOutput(mOutputAddress, pDocShell, mDocument,
+    AddressWalkerWriter aOutput(mOutputAddress, pDocShell, &mDocument,
             formula::FormulaGrammar::mergeToGrammar( formula::FormulaGrammar::GRAM_ENGLISH, mAddressDetails.eConv));
-    FormulaTemplate aTemplate(mDocument);
+    FormulaTemplate aTemplate(&mDocument);
 
     aTemplate.autoReplaceRange("%RANGE%", mInputRange);
 

@@ -24,7 +24,6 @@
 #include <com/sun/star/awt/XDialog.hpp>
 #include <com/sun/star/awt/XControlContainer.hpp>
 
-#include <vbahelper/vbahelperinterface.hxx>
 #include "vbacontrol.hxx"
 
 //typedef InheritedHelperInterfaceWeakImpl< ov::msforms::XUserForm > ScVbaUserForm_BASE;
@@ -42,7 +41,7 @@ public:
     /// @throws css::uno::RuntimeException
     ScVbaUserForm( css::uno::Sequence< css::uno::Any > const& aArgs, css::uno::Reference< css::uno::XComponentContext >const& xContext );
     virtual ~ScVbaUserForm() override;
-    static css::uno::Reference< css::awt::XControl > nestedSearch( const OUString& aPropertyName, css::uno::Reference< css::awt::XControlContainer >& xContainer );
+    static css::uno::Reference< css::awt::XControl > nestedSearch( const OUString& aPropertyName, css::uno::Reference< css::awt::XControlContainer > const & xContainer );
     // XUserForm
     virtual void SAL_CALL RePaint(  ) override;
     virtual void SAL_CALL Show(  ) override;

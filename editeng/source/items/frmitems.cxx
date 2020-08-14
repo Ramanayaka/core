@@ -21,47 +21,34 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/drawing/LineStyle.hpp>
 #include <com/sun/star/script/Converter.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/table/ShadowLocation.hpp>
-#include <com/sun/star/table/TableBorder.hpp>
 #include <com/sun/star/table/ShadowFormat.hpp>
-#include <com/sun/star/table/CellRangeAddress.hpp>
-#include <com/sun/star/table/CellContentType.hpp>
-#include <com/sun/star/table/TableOrientation.hpp>
-#include <com/sun/star/util/SortField.hpp>
-#include <com/sun/star/util/SortFieldType.hpp>
 #include <com/sun/star/table/BorderLine2.hpp>
 #include <com/sun/star/table/BorderLineStyle.hpp>
-#include <com/sun/star/table/CellOrientation.hpp>
-#include <com/sun/star/table/CellAddress.hpp>
-#include <com/sun/star/style/PageStyleLayout.hpp>
 #include <com/sun/star/style/BreakType.hpp>
 #include <com/sun/star/style/GraphicLocation.hpp>
-#include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/awt/Selection.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
 #include <com/sun/star/frame/status/UpperLowerMarginScale.hpp>
 #include <com/sun/star/frame/status/LeftRightMarginScale.hpp>
 #include <com/sun/star/drawing/ShadingPattern.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 
+#include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <i18nutil/unicode.hxx>
 #include <unotools/ucbstreamhelper.hxx>
-#include <limits.h>
 #include <comphelper/processfactory.hxx>
-#include <svtools/grfmgr.hxx>
+#include <vcl/GraphicObject.hxx>
 #include <tools/urlobj.hxx>
-#include <comphelper/types.hxx>
-#include <svl/memberid.hrc>
-#include <svl/cntwall.hxx>
-#include <svtools/borderhelper.hxx>
+#include <svl/memberid.h>
+#include <rtl/math.hxx>
 #include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <tools/mapunit.hxx>
+#include <tools/UnitConversion.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
-#include <editeng/editids.hrc>
 #include <editeng/editrids.hrc>
 #include <editeng/pbinitem.hxx>
 #include <editeng/sizeitem.hxx>
@@ -71,6 +58,7 @@
 #include <editeng/opaqitem.hxx>
 #include <editeng/protitem.hxx>
 #include <editeng/shaditem.hxx>
+#include <editeng/borderline.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/formatbreakitem.hxx>
 #include <editeng/keepitem.hxx>
@@ -79,68 +67,18 @@
 #include <editeng/frmdiritem.hxx>
 #include <editeng/itemtype.hxx>
 #include <editeng/eerdll.hxx>
-#include <editeng/unoprnms.hxx>
-#include <editeng/memberids.hrc>
-#include <editeng/editerr.hxx>
+#include <editeng/memberids.h>
 #include <libxml/xmlwriter.h>
 #include <o3tl/enumrange.hxx>
+#include <o3tl/safeint.hxx>
+#include <vcl/GraphicLoader.hxx>
+
+#include <boost/property_tree/ptree.hpp>
 
 using namespace ::editeng;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::table::BorderLineStyle;
-
-
-/*
-SvxBorderLine is not an SfxPoolItem, and has no Store/Create serialization/deserialization methods.
-Since border line information needs to be serialized by the table autoformat code, these file-local
-methods are defined to encapsulate the necessary serialization logic.
-*/
-namespace
-{
-    /// Item version for saved border lines. The old version saves the line without style information.
-    const int BORDER_LINE_OLD_VERSION = 0;
-    /// Item version for saved border lies. The new version includes line style.
-    const int BORDER_LINE_WITH_STYLE_VERSION = 1;
-
-    /// Store a border line to a stream.
-    SvStream& StoreBorderLine(SvStream &stream, const SvxBorderLine &l, sal_uInt16 version)
-    {
-        WriteColor( stream, l.GetColor() );
-        stream.WriteUInt16( l.GetOutWidth() )
-              .WriteUInt16( l.GetInWidth() )
-              .WriteUInt16( l.GetDistance() );
-
-        if (version >= BORDER_LINE_WITH_STYLE_VERSION)
-               stream.WriteUInt16( (sal_uInt16)l.GetBorderLineStyle() );
-
-        return stream;
-    }
-
-
-    /// Creates a border line from a stream.
-    SvxBorderLine CreateBorderLine(SvStream &stream, sal_uInt16 version)
-    {
-        sal_uInt16 nOutline, nInline, nDistance;
-        sal_uInt16 nStyle = css::table::BorderLineStyle::NONE;
-        Color aColor;
-        ReadColor( stream, aColor ).ReadUInt16( nOutline ).ReadUInt16( nInline ).ReadUInt16( nDistance );
-
-        if (version >= BORDER_LINE_WITH_STYLE_VERSION)
-            stream.ReadUInt16( nStyle );
-
-        SvxBorderLine border(&aColor);
-        border.GuessLinesWidths((SvxBorderLineStyle)nStyle, nOutline, nInline, nDistance);
-        return border;
-    }
-
-
-    /// Retrieves a BORDER_LINE_* version from a BOX_BORDER_* version.
-    sal_uInt16 BorderLineVersionFromBoxVersion(sal_uInt16 boxVersion)
-    {
-        return (boxVersion >= BOX_BORDER_STYLE_VERSION)? BORDER_LINE_WITH_STYLE_VERSION : BORDER_LINE_OLD_VERSION;
-    }
-}
 
 
 SfxPoolItem* SvxPaperBinItem::CreateDefault() { return new  SvxPaperBinItem(0);}
@@ -156,34 +94,17 @@ SfxPoolItem* SvxFormatBreakItem::CreateDefault() { return new  SvxFormatBreakIte
 SfxPoolItem* SvxFormatKeepItem::CreateDefault() { return new  SvxFormatKeepItem(false, 0);}
 SfxPoolItem* SvxLineItem::CreateDefault() { return new  SvxLineItem(0);}
 
-
-SfxPoolItem* SvxPaperBinItem::Clone( SfxItemPool* ) const
+SvxPaperBinItem* SvxPaperBinItem::Clone( SfxItemPool* ) const
 {
     return new SvxPaperBinItem( *this );
 }
-
-
-SvStream& SvxPaperBinItem::Store( SvStream& rStrm , sal_uInt16 /*nItemVersion*/ ) const
-{
-    rStrm.WriteUChar( GetValue() );
-    return rStrm;
-}
-
-
-SfxPoolItem* SvxPaperBinItem::Create( SvStream& rStrm, sal_uInt16 ) const
-{
-    sal_Int8 nBin;
-    rStrm.ReadSChar( nBin );
-    return new SvxPaperBinItem( Which(), nBin );
-}
-
 
 bool SvxPaperBinItem::GetPresentation
 (
     SfxItemPresentation ePres,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     switch ( ePres )
@@ -197,10 +118,10 @@ bool SvxPaperBinItem::GetPresentation
             sal_uInt8 nValue = GetValue();
 
             if ( PAPERBIN_PRINTER_SETTINGS == nValue )
-                rText = EditResId::GetString(RID_SVXSTR_PAPERBIN_SETTINGS);
+                rText = EditResId(RID_SVXSTR_PAPERBIN_SETTINGS);
             else
             {
-                rText = EditResId::GetString(RID_SVXSTR_PAPERBIN) + " " + OUString::number( nValue );
+                rText = EditResId(RID_SVXSTR_PAPERBIN) + " " + OUString::number( nValue );
             }
             return true;
         }
@@ -216,7 +137,7 @@ SvxSizeItem::SvxSizeItem( const sal_uInt16 nId, const Size& rSize ) :
 
     SfxPoolItem( nId ),
 
-    aSize( rSize )
+    m_aSize( rSize )
 {
 }
 
@@ -226,7 +147,7 @@ bool SvxSizeItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
     bool bConvert = 0!=(nMemberId&CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
 
-    awt::Size aTmp(aSize.Width(), aSize.Height());
+    awt::Size aTmp(m_aSize.Width(), m_aSize.Height());
     if( bConvert )
     {
         aTmp.Height = convertTwipToMm100(aTmp.Height);
@@ -262,7 +183,7 @@ bool SvxSizeItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
                     aTmp.Height = convertMm100ToTwip(aTmp.Height);
                     aTmp.Width = convertMm100ToTwip(aTmp.Width);
                 }
-                aSize = Size( aTmp.Width, aTmp.Height );
+                m_aSize = Size( aTmp.Width, aTmp.Height );
             }
             else
             {
@@ -276,7 +197,7 @@ bool SvxSizeItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             if(!(rVal >>= nVal ))
                 return false;
 
-            aSize.Width() = bConvert ? convertMm100ToTwip(nVal) : nVal;
+            m_aSize.setWidth( bConvert ? convertMm100ToTwip(nVal) : nVal );
         }
         break;
         case MID_SIZE_HEIGHT:
@@ -285,7 +206,7 @@ bool SvxSizeItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             if(!(rVal >>= nVal))
                 return true;
 
-            aSize.Height() = bConvert ? convertMm100ToTwip(nVal) : nVal;
+            m_aSize.setHeight( bConvert ? convertMm100ToTwip(nVal) : nVal );
         }
         break;
         default: OSL_FAIL("Wrong MemberId!");
@@ -306,41 +227,39 @@ bool SvxSizeItem::operator==( const SfxPoolItem& rAttr ) const
 {
     assert(SfxPoolItem::operator==(rAttr));
 
-    return ( aSize == static_cast<const SvxSizeItem&>( rAttr ).GetSize() );
+    return ( m_aSize == static_cast<const SvxSizeItem&>( rAttr ).GetSize() );
 }
 
-
-SfxPoolItem* SvxSizeItem::Clone( SfxItemPool* ) const
+SvxSizeItem* SvxSizeItem::Clone( SfxItemPool* ) const
 {
     return new SvxSizeItem( *this );
 }
-
 
 bool SvxSizeItem::GetPresentation
 (
     SfxItemPresentation ePres,
     MapUnit             eCoreUnit,
     MapUnit             ePresUnit,
-    OUString&           rText, const IntlWrapper *pIntl
+    OUString&           rText, const IntlWrapper& rIntl
 )   const
 {
     OUString cpDelimTmp(cpDelim);
     switch ( ePres )
     {
         case SfxItemPresentation::Nameless:
-            rText = GetMetricText( aSize.Width(), eCoreUnit, ePresUnit, pIntl ) +
+            rText = GetMetricText( m_aSize.Width(), eCoreUnit, ePresUnit, &rIntl ) +
                     cpDelimTmp +
-                    GetMetricText( aSize.Height(), eCoreUnit, ePresUnit, pIntl );
+                    GetMetricText( m_aSize.Height(), eCoreUnit, ePresUnit, &rIntl );
             return true;
 
         case SfxItemPresentation::Complete:
-            rText = EditResId::GetString(RID_SVXITEMS_SIZE_WIDTH) +
-                    GetMetricText( aSize.Width(), eCoreUnit, ePresUnit, pIntl ) +
-                    " " + EditResId::GetString(GetMetricId(ePresUnit)) +
+            rText = EditResId(RID_SVXITEMS_SIZE_WIDTH) +
+                    GetMetricText( m_aSize.Width(), eCoreUnit, ePresUnit, &rIntl ) +
+                    " " + EditResId(GetMetricId(ePresUnit)) +
                     cpDelimTmp +
-                    EditResId::GetString(RID_SVXITEMS_SIZE_HEIGHT) +
-                    GetMetricText( aSize.Height(), eCoreUnit, ePresUnit, pIntl ) +
-                    " " + EditResId::GetString(GetMetricId(ePresUnit));
+                    EditResId(RID_SVXITEMS_SIZE_HEIGHT) +
+                    GetMetricText( m_aSize.Height(), eCoreUnit, ePresUnit, &rIntl ) +
+                    " " + EditResId(GetMetricId(ePresUnit));
             return true;
         // no break necessary
         default: ; // prevent warning
@@ -350,36 +269,16 @@ bool SvxSizeItem::GetPresentation
 }
 
 
-SvStream& SvxSizeItem::Store( SvStream& rStrm , sal_uInt16 /*nItemVersion*/ ) const
-{
-    rStrm.WriteInt32( aSize.Width() );
-    rStrm.WriteInt32( aSize.Height() );
-    return rStrm;
-}
-
-
 void SvxSizeItem::ScaleMetrics( long nMult, long nDiv )
 {
-    aSize.Width() = Scale( aSize.Width(), nMult, nDiv );
-    aSize.Height() = Scale( aSize.Height(), nMult, nDiv );
+    m_aSize.setWidth( Scale( m_aSize.Width(), nMult, nDiv ) );
+    m_aSize.setHeight( Scale( m_aSize.Height(), nMult, nDiv ) );
 }
 
 
 bool SvxSizeItem::HasMetrics() const
 {
     return true;
-}
-
-
-SfxPoolItem* SvxSizeItem::Create( SvStream& rStrm, sal_uInt16 ) const
-{
-    sal_Int32 nWidth(0), nHeight(0);
-    rStrm.ReadInt32( nWidth ).ReadInt32( nHeight );
-
-    SvxSizeItem* pAttr = new SvxSizeItem( Which() );
-    pAttr->SetSize(Size(nWidth, nHeight));
-
-    return pAttr;
 }
 
 
@@ -390,10 +289,10 @@ SvxLRSpaceItem::SvxLRSpaceItem( const sal_uInt16 nId ) :
     nTxtLeft        ( 0 ),
     nLeftMargin     ( 0 ),
     nRightMargin    ( 0 ),
-    nPropFirstLineOfst( 100 ),
+    nPropFirstLineOffset( 100 ),
     nPropLeftMargin( 100 ),
     nPropRightMargin( 100 ),
-    nFirstLineOfst  ( 0 ),
+    nFirstLineOffset  ( 0 ),
     bAutoFirst      ( false ),
     bExplicitZeroMarginValRight(false),
     bExplicitZeroMarginValLeft(false)
@@ -409,10 +308,10 @@ SvxLRSpaceItem::SvxLRSpaceItem( const long nLeft, const long nRight,
     nTxtLeft        ( nTLeft ),
     nLeftMargin     ( nLeft ),
     nRightMargin    ( nRight ),
-    nPropFirstLineOfst( 100 ),
+    nPropFirstLineOffset( 100 ),
     nPropLeftMargin( 100 ),
     nPropRightMargin( 100 ),
-    nFirstLineOfst  ( nOfset ),
+    nFirstLineOffset  ( nOfset ),
     bAutoFirst      ( false ),
     bExplicitZeroMarginValRight(false),
     bExplicitZeroMarginValLeft(false)
@@ -431,40 +330,40 @@ bool SvxLRSpaceItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
         case 0:
         {
             css::frame::status::LeftRightMarginScale aLRSpace;
-            aLRSpace.Left = (sal_Int32)(bConvert ? convertTwipToMm100(nLeftMargin) : nLeftMargin);
-            aLRSpace.TextLeft = (sal_Int32)(bConvert ? convertTwipToMm100(nTxtLeft) : nTxtLeft);
-            aLRSpace.Right = (sal_Int32)(bConvert ? convertTwipToMm100(nRightMargin) : nRightMargin);
-            aLRSpace.ScaleLeft = (sal_Int16)nPropLeftMargin;
-            aLRSpace.ScaleRight = (sal_Int16)nPropRightMargin;
-            aLRSpace.FirstLine = (sal_Int32)(bConvert ? convertTwipToMm100(nFirstLineOfst) : nFirstLineOfst);
-            aLRSpace.ScaleFirstLine = (sal_Int16)(nPropFirstLineOfst);
+            aLRSpace.Left = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nLeftMargin) : nLeftMargin);
+            aLRSpace.TextLeft = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nTxtLeft) : nTxtLeft);
+            aLRSpace.Right = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nRightMargin) : nRightMargin);
+            aLRSpace.ScaleLeft = static_cast<sal_Int16>(nPropLeftMargin);
+            aLRSpace.ScaleRight = static_cast<sal_Int16>(nPropRightMargin);
+            aLRSpace.FirstLine = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nFirstLineOffset) : nFirstLineOffset);
+            aLRSpace.ScaleFirstLine = static_cast<sal_Int16>(nPropFirstLineOffset);
             aLRSpace.AutoFirstLine = IsAutoFirst();
             rVal <<= aLRSpace;
             break;
         }
         case MID_L_MARGIN:
-            rVal <<= (sal_Int32)(bConvert ? convertTwipToMm100(nLeftMargin) : nLeftMargin);
+            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nLeftMargin) : nLeftMargin);
             break;
 
         case MID_TXT_LMARGIN :
-            rVal <<= (sal_Int32)(bConvert ? convertTwipToMm100(nTxtLeft) : nTxtLeft);
+            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nTxtLeft) : nTxtLeft);
         break;
         case MID_R_MARGIN:
-            rVal <<= (sal_Int32)(bConvert ? convertTwipToMm100(nRightMargin) : nRightMargin);
+            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nRightMargin) : nRightMargin);
             break;
         case MID_L_REL_MARGIN:
-            rVal <<= (sal_Int16)nPropLeftMargin;
+            rVal <<= static_cast<sal_Int16>(nPropLeftMargin);
         break;
         case MID_R_REL_MARGIN:
-            rVal <<= (sal_Int16)nPropRightMargin;
+            rVal <<= static_cast<sal_Int16>(nPropRightMargin);
         break;
 
         case MID_FIRST_LINE_INDENT:
-            rVal <<= (sal_Int32)(bConvert ? convertTwipToMm100(nFirstLineOfst) : nFirstLineOfst);
+            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nFirstLineOffset) : nFirstLineOffset);
             break;
 
         case MID_FIRST_LINE_REL_INDENT:
-            rVal <<= (sal_Int16)(nPropFirstLineOfst);
+            rVal <<= static_cast<sal_Int16>(nPropFirstLineOffset);
             break;
 
         case MID_FIRST_AUTO:
@@ -503,8 +402,8 @@ bool SvxLRSpaceItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             SetRight(bConvert ? convertMm100ToTwip(aLRSpace.Right) : aLRSpace.Right);
             nPropLeftMargin = aLRSpace.ScaleLeft;
             nPropRightMargin = aLRSpace.ScaleRight;
-            SetTextFirstLineOfst((short)(bConvert ?  convertMm100ToTwip(aLRSpace.FirstLine) : aLRSpace.FirstLine));
-            SetPropTextFirstLineOfst ( (sal_uInt16)aLRSpace.ScaleFirstLine );
+            SetTextFirstLineOffset(static_cast<short>(bConvert ?  convertMm100ToTwip(aLRSpace.FirstLine) : aLRSpace.FirstLine));
+            SetPropTextFirstLineOffset ( static_cast<sal_uInt16>(aLRSpace.ScaleFirstLine) );
             SetAutoFirst( aLRSpace.AutoFirstLine );
             break;
         }
@@ -523,23 +422,23 @@ bool SvxLRSpaceItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
         case MID_R_REL_MARGIN:
         {
             sal_Int32 nRel = 0;
-            if((rVal >>= nRel) && nRel >= 0 && nRel < USHRT_MAX)
+            if((rVal >>= nRel) && nRel >= 0 && nRel < SAL_MAX_UINT16)
             {
                 if(MID_L_REL_MARGIN== nMemberId)
-                    nPropLeftMargin = (sal_uInt16)nRel;
+                    nPropLeftMargin = static_cast<sal_uInt16>(nRel);
                 else
-                    nPropRightMargin = (sal_uInt16)nRel;
+                    nPropRightMargin = static_cast<sal_uInt16>(nRel);
             }
             else
                 return false;
         }
         break;
         case MID_FIRST_LINE_INDENT     :
-            SetTextFirstLineOfst((short)(bConvert ?  convertMm100ToTwip(nVal) : nVal));
+            SetTextFirstLineOffset(static_cast<short>(bConvert ?  convertMm100ToTwip(nVal) : nVal));
             break;
 
         case MID_FIRST_LINE_REL_INDENT:
-            SetPropTextFirstLineOfst ( (sal_uInt16)nVal );
+            SetPropTextFirstLineOffset ( static_cast<sal_uInt16>(nVal) );
             break;
 
         case MID_FIRST_AUTO:
@@ -557,8 +456,8 @@ bool SvxLRSpaceItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 /// Adapt nLeftMargin and nTxtLeft.
 void SvxLRSpaceItem::AdjustLeft()
 {
-    if ( 0 > nFirstLineOfst )
-        nLeftMargin = nTxtLeft + nFirstLineOfst;
+    if ( 0 > nFirstLineOffset )
+        nLeftMargin = nTxtLeft + nFirstLineOffset;
     else
         nLeftMargin = nTxtLeft;
 }
@@ -571,11 +470,11 @@ bool SvxLRSpaceItem::operator==( const SfxPoolItem& rAttr ) const
     const SvxLRSpaceItem& rOther = static_cast<const SvxLRSpaceItem&>(rAttr);
 
     return (
-        nFirstLineOfst == rOther.GetTextFirstLineOfst() &&
+        nFirstLineOffset == rOther.GetTextFirstLineOffset() &&
         nTxtLeft == rOther.GetTextLeft() &&
         nLeftMargin == rOther.GetLeft()  &&
         nRightMargin == rOther.GetRight() &&
-        nPropFirstLineOfst == rOther.GetPropTextFirstLineOfst() &&
+        nPropFirstLineOffset == rOther.GetPropTextFirstLineOffset() &&
         nPropLeftMargin == rOther.GetPropLeft()  &&
         nPropRightMargin == rOther.GetPropRight() &&
         bAutoFirst == rOther.IsAutoFirst() &&
@@ -583,19 +482,17 @@ bool SvxLRSpaceItem::operator==( const SfxPoolItem& rAttr ) const
         bExplicitZeroMarginValLeft == rOther.IsExplicitZeroMarginValLeft() );
 }
 
-
-SfxPoolItem* SvxLRSpaceItem::Clone( SfxItemPool* ) const
+SvxLRSpaceItem* SvxLRSpaceItem::Clone( SfxItemPool* ) const
 {
     return new SvxLRSpaceItem( *this );
 }
-
 
 bool SvxLRSpaceItem::GetPresentation
 (
     SfxItemPresentation ePres,
     MapUnit             eCoreUnit,
     MapUnit             ePresUnit,
-    OUString&           rText, const IntlWrapper* pIntl
+    OUString&           rText, const IntlWrapper& rIntl
 )   const
 {
     switch ( ePres )
@@ -608,17 +505,17 @@ bool SvxLRSpaceItem::GetPresentation
                     Application::GetSettings().GetUILanguageTag());
             }
             else
-                rText = GetMetricText( (long)nLeftMargin,
-                                       eCoreUnit, ePresUnit, pIntl );
+                rText = GetMetricText( nLeftMargin,
+                                       eCoreUnit, ePresUnit, &rIntl );
             rText += OUString(cpDelim);
-            if ( 100 != nPropFirstLineOfst )
+            if ( 100 != nPropFirstLineOffset )
             {
-                rText += unicode::formatPercent(nPropFirstLineOfst,
+                rText += unicode::formatPercent(nPropFirstLineOffset,
                     Application::GetSettings().GetUILanguageTag());
             }
             else
-                rText += GetMetricText( (long)nFirstLineOfst,
-                                        eCoreUnit, ePresUnit, pIntl );
+                rText += GetMetricText( static_cast<long>(nFirstLineOffset),
+                                        eCoreUnit, ePresUnit, &rIntl );
             rText += OUString(cpDelim);
             if ( 100 != nRightMargin )
             {
@@ -626,48 +523,45 @@ bool SvxLRSpaceItem::GetPresentation
                     Application::GetSettings().GetUILanguageTag());
             }
             else
-                rText += GetMetricText( (long)nRightMargin,
-                                        eCoreUnit, ePresUnit, pIntl );
+                rText += GetMetricText( nRightMargin,
+                                        eCoreUnit, ePresUnit, &rIntl );
             return true;
         }
         case SfxItemPresentation::Complete:
         {
-            rText = EditResId::GetString(RID_SVXITEMS_LRSPACE_LEFT);
+            rText = EditResId(RID_SVXITEMS_LRSPACE_LEFT);
             if ( 100 != nPropLeftMargin )
                 rText += unicode::formatPercent(nPropLeftMargin,
                     Application::GetSettings().GetUILanguageTag());
             else
             {
-                rText = rText +
-                        GetMetricText( (long)nLeftMargin, eCoreUnit, ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit));
+                rText += GetMetricText( nLeftMargin, eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit));
             }
             rText += OUString(cpDelim);
-            if ( 100 != nPropFirstLineOfst || nFirstLineOfst )
+            if ( 100 != nPropFirstLineOffset || nFirstLineOffset )
             {
-                rText += EditResId::GetString(RID_SVXITEMS_LRSPACE_FLINE);
-                if ( 100 != nPropFirstLineOfst )
-                    rText = rText + unicode::formatPercent(nPropFirstLineOfst,
-                    Application::GetSettings().GetUILanguageTag());
+                rText += EditResId(RID_SVXITEMS_LRSPACE_FLINE);
+                if ( 100 != nPropFirstLineOffset )
+                    rText += unicode::formatPercent(nPropFirstLineOffset,
+                                Application::GetSettings().GetUILanguageTag());
                 else
                 {
-                    rText = rText +
-                            GetMetricText( (long)nFirstLineOfst,
-                                            eCoreUnit, ePresUnit, pIntl ) +
-                            " " + EditResId::GetString(GetMetricId(ePresUnit));
+                    rText += GetMetricText( static_cast<long>(nFirstLineOffset),
+                                            eCoreUnit, ePresUnit, &rIntl ) +
+                            " " + EditResId(GetMetricId(ePresUnit));
                 }
                 rText += OUString(cpDelim);
             }
-            rText += EditResId::GetString(RID_SVXITEMS_LRSPACE_RIGHT);
+            rText += EditResId(RID_SVXITEMS_LRSPACE_RIGHT);
             if ( 100 != nPropRightMargin )
-                rText = rText + unicode::formatPercent(nPropRightMargin,
+                rText += unicode::formatPercent(nPropRightMargin,
                     Application::GetSettings().GetUILanguageTag());
             else
             {
-                rText = rText +
-                        GetMetricText( (long)nRightMargin,
-                                       eCoreUnit, ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit));
+                rText += GetMetricText( nRightMargin,
+                                       eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit));
             }
             return true;
         }
@@ -677,135 +571,9 @@ bool SvxLRSpaceItem::GetPresentation
 }
 
 
-/** @attention BulletFI: Before v501 in the Outliner the bullet was not on the position of
-    the FI, so in older documents one must set FI to 0.
- */
-#define BULLETLR_MARKER 0x599401FE
-
-
-SvStream& SvxLRSpaceItem::Store( SvStream& rStrm , sal_uInt16 nItemVersion ) const
-{
-    short nSaveFI = nFirstLineOfst;
-    const_cast<SvxLRSpaceItem*>(this)->SetTextFirstLineOfst( 0 );  // nLeftMargin is manipulated together with this, see Create()
-
-    sal_uInt16 nMargin = 0;
-    if( nLeftMargin > 0 )
-        nMargin = sal_uInt16( nLeftMargin );
-    rStrm.WriteUInt16( nMargin );
-    rStrm.WriteUInt16( nPropLeftMargin );
-    if( nRightMargin > 0 )
-        nMargin = sal_uInt16( nRightMargin );
-    else
-        nMargin = 0;
-    rStrm.WriteUInt16( nMargin );
-    rStrm.WriteUInt16( nPropRightMargin );
-    rStrm.WriteInt16( nFirstLineOfst );
-    rStrm.WriteUInt16( nPropFirstLineOfst );
-    if( nTxtLeft > 0 )
-        nMargin = sal_uInt16( nTxtLeft );
-    else
-        nMargin = 0;
-    rStrm.WriteUInt16( nMargin );
-    if( nItemVersion >= LRSPACE_AUTOFIRST_VERSION )
-    {
-        sal_Int8 nAutoFirst = bAutoFirst ? 1 : 0;
-        if( nItemVersion >= LRSPACE_NEGATIVE_VERSION &&
-            ( nLeftMargin < 0 || nRightMargin < 0 || nTxtLeft < 0 ) )
-            nAutoFirst |= 0x80;
-        rStrm.WriteSChar( nAutoFirst );
-
-        // From 6.0 onwards, do not write Magic numbers...
-        DBG_ASSERT( rStrm.GetVersion() <= SOFFICE_FILEFORMAT_50, "Change File format SvxLRSpaceItem!" );
-        rStrm.WriteUInt32( BULLETLR_MARKER );
-        rStrm.WriteInt16( nSaveFI );
-
-        if( 0x80 & nAutoFirst )
-        {
-            rStrm.WriteInt32( nLeftMargin );
-            rStrm.WriteInt32( nRightMargin );
-        }
-    }
-
-    const_cast<SvxLRSpaceItem*>(this)->SetTextFirstLineOfst( nSaveFI );
-
-    return rStrm;
-}
-
-
-SfxPoolItem* SvxLRSpaceItem::Create( SvStream& rStrm, sal_uInt16 nVersion ) const
-{
-    sal_uInt16 left, prpleft, right, prpright, prpfirstline, txtleft;
-    short firstline;
-    sal_Int8 autofirst = 0;
-
-    if ( nVersion >= LRSPACE_AUTOFIRST_VERSION )
-    {
-        rStrm.ReadUInt16( left ).ReadUInt16( prpleft ).ReadUInt16( right ).ReadUInt16( prpright ).ReadInt16( firstline ).                 ReadUInt16( prpfirstline ).ReadUInt16( txtleft ).ReadSChar( autofirst );
-
-        sal_uInt64 const nPos = rStrm.Tell();
-        sal_uInt32 nMarker;
-        rStrm.ReadUInt32( nMarker );
-        if ( nMarker == BULLETLR_MARKER )
-        {
-            rStrm.ReadInt16( firstline );
-            if ( firstline < 0 )
-                left = left + static_cast<sal_uInt16>(firstline);   // see below: txtleft = ...
-        }
-        else
-            rStrm.Seek( nPos );
-    }
-    else if ( nVersion == LRSPACE_TXTLEFT_VERSION )
-    {
-        rStrm.ReadUInt16( left ).ReadUInt16( prpleft ).ReadUInt16( right ).ReadUInt16( prpright ).ReadInt16( firstline ).                 ReadUInt16( prpfirstline ).ReadUInt16( txtleft );
-    }
-    else if ( nVersion == LRSPACE_16_VERSION )
-    {
-        rStrm.ReadUInt16( left ).ReadUInt16( prpleft ).ReadUInt16( right ).ReadUInt16( prpright ).ReadInt16( firstline ).                 ReadUInt16( prpfirstline );
-    }
-    else
-    {
-        sal_Int8 nL, nR, nFL;
-        rStrm.ReadUInt16( left ).ReadSChar( nL ).ReadUInt16( right ).ReadSChar( nR ).ReadInt16( firstline ).ReadSChar( nFL );
-        prpleft = (sal_uInt16)nL;
-        prpright = (sal_uInt16)nR;
-        prpfirstline = (sal_uInt16)nFL;
-    }
-
-    txtleft = firstline >= 0 ? left : left - firstline;
-    SvxLRSpaceItem* pAttr = new SvxLRSpaceItem( Which() );
-
-    pAttr->nLeftMargin = left;
-    pAttr->nPropLeftMargin = prpleft;
-    pAttr->nRightMargin = right;
-    pAttr->nPropRightMargin = prpright;
-    pAttr->nFirstLineOfst = firstline;
-    pAttr->nPropFirstLineOfst = prpfirstline;
-    pAttr->nTxtLeft = txtleft;
-    pAttr->bAutoFirst = autofirst & 0x01;
-    if( nVersion >= LRSPACE_NEGATIVE_VERSION && ( autofirst & 0x80 ) )
-    {
-        sal_Int32 nMargin;
-        rStrm.ReadInt32( nMargin );
-        pAttr->nLeftMargin = nMargin;
-        pAttr->nTxtLeft = firstline >= 0 ? nMargin : nMargin - firstline;
-        rStrm.ReadInt32( nMargin );
-        pAttr->nRightMargin = nMargin;
-    }
-    return pAttr;
-}
-
-
-sal_uInt16 SvxLRSpaceItem::GetVersion( sal_uInt16 nFileVersion ) const
-{
-    return (nFileVersion == SOFFICE_FILEFORMAT_31)
-               ? LRSPACE_TXTLEFT_VERSION
-               : LRSPACE_NEGATIVE_VERSION;
-}
-
-
 void SvxLRSpaceItem::ScaleMetrics( long nMult, long nDiv )
 {
-    nFirstLineOfst = (short)Scale( nFirstLineOfst, nMult, nDiv );
+    nFirstLineOffset = static_cast<short>(Scale( nFirstLineOffset, nMult, nDiv ));
     nTxtLeft = Scale( nTxtLeft, nMult, nDiv );
     nLeftMargin = Scale( nLeftMargin, nMult, nDiv );
     nRightMargin = Scale( nRightMargin, nMult, nDiv );
@@ -822,17 +590,45 @@ void SvxLRSpaceItem::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     xmlTextWriterStartElement(pWriter, BAD_CAST("SvxLRSpaceItem"));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
-    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nFirstLineOfst"), BAD_CAST(OString::number(nFirstLineOfst).getStr()));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nFirstLineOffset"), BAD_CAST(OString::number(nFirstLineOffset).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nTxtLeft"), BAD_CAST(OString::number(nTxtLeft).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nLeftMargin"), BAD_CAST(OString::number(nLeftMargin).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nRightMargin"), BAD_CAST(OString::number(nRightMargin).getStr()));
-    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nPropFirstLineOfst"), BAD_CAST(OString::number(nPropFirstLineOfst).getStr()));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nPropFirstLineOffset"), BAD_CAST(OString::number(nPropFirstLineOffset).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nPropLeftMargin"), BAD_CAST(OString::number(nPropLeftMargin).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nPropRightMargin"), BAD_CAST(OString::number(nPropRightMargin).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("bAutoFirst"), BAD_CAST(OString::number(int(bAutoFirst)).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("bExplicitZeroMarginValRight"), BAD_CAST(OString::number(int(bExplicitZeroMarginValRight)).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("bExplicitZeroMarginValLeft"), BAD_CAST(OString::number(int(bExplicitZeroMarginValLeft)).getStr()));
     xmlTextWriterEndElement(pWriter);
+}
+
+
+boost::property_tree::ptree SvxLRSpaceItem::dumpAsJSON() const
+{
+    boost::property_tree::ptree aTree = SfxPoolItem::dumpAsJSON();
+
+    boost::property_tree::ptree aState;
+
+    MapUnit eTargetUnit = MapUnit::MapInch;
+
+    OUString sLeft = GetMetricText(GetLeft(),
+                        MapUnit::MapTwip, eTargetUnit, nullptr);
+
+    OUString sRight = GetMetricText(GetRight(),
+                        MapUnit::MapTwip, eTargetUnit, nullptr);
+
+    OUString sFirstline = GetMetricText(GetTextFirstLineOffset(),
+                        MapUnit::MapTwip, eTargetUnit, nullptr);
+
+    aState.put("left", sLeft);
+    aState.put("right", sRight);
+    aState.put("firstline", sFirstline);
+    aState.put("unit", "inch");
+
+    aTree.push_back(std::make_pair("state", aState));
+
+    return aTree;
 }
 
 
@@ -869,18 +665,18 @@ bool SvxULSpaceItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
         case 0:
         {
             css::frame::status::UpperLowerMarginScale aUpperLowerMarginScale;
-            aUpperLowerMarginScale.Upper = (sal_Int32)(bConvert ? convertTwipToMm100(nUpper) : nUpper);
-            aUpperLowerMarginScale.Lower = (sal_Int32)(bConvert ? convertTwipToMm100(nLower) : nPropUpper);
-            aUpperLowerMarginScale.ScaleUpper = (sal_Int16)nPropUpper;
-            aUpperLowerMarginScale.ScaleLower = (sal_Int16)nPropLower;
+            aUpperLowerMarginScale.Upper = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nUpper) : nUpper);
+            aUpperLowerMarginScale.Lower = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nLower) : nPropUpper);
+            aUpperLowerMarginScale.ScaleUpper = static_cast<sal_Int16>(nPropUpper);
+            aUpperLowerMarginScale.ScaleLower = static_cast<sal_Int16>(nPropLower);
             rVal <<= aUpperLowerMarginScale;
             break;
         }
-        case MID_UP_MARGIN: rVal <<= (sal_Int32)(bConvert ? convertTwipToMm100(nUpper) : nUpper); break;
-        case MID_LO_MARGIN: rVal <<= (sal_Int32)(bConvert ? convertTwipToMm100(nLower) : nLower); break;
+        case MID_UP_MARGIN: rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nUpper) : nUpper); break;
+        case MID_LO_MARGIN: rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nLower) : nLower); break;
         case MID_CTX_MARGIN: rVal <<= bContext; break;
-        case MID_UP_REL_MARGIN: rVal <<= (sal_Int16) nPropUpper; break;
-        case MID_LO_REL_MARGIN: rVal <<= (sal_Int16) nPropLower; break;
+        case MID_UP_REL_MARGIN: rVal <<= static_cast<sal_Int16>(nPropUpper); break;
+        case MID_LO_REL_MARGIN: rVal <<= static_cast<sal_Int16>(nPropLower); break;
     }
     return true;
 }
@@ -900,8 +696,8 @@ bool SvxULSpaceItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             if ( !(rVal >>= aUpperLowerMarginScale ))
                 return false;
             {
-                SetUpper((sal_uInt16)(bConvert ? convertMm100ToTwip( aUpperLowerMarginScale.Upper ) : aUpperLowerMarginScale.Upper));
-                SetLower((sal_uInt16)(bConvert ? convertMm100ToTwip( aUpperLowerMarginScale.Lower ) : aUpperLowerMarginScale.Lower));
+                SetUpper(static_cast<sal_uInt16>(bConvert ? convertMm100ToTwip( aUpperLowerMarginScale.Upper ) : aUpperLowerMarginScale.Upper));
+                SetLower(static_cast<sal_uInt16>(bConvert ? convertMm100ToTwip( aUpperLowerMarginScale.Lower ) : aUpperLowerMarginScale.Lower));
                 if( aUpperLowerMarginScale.ScaleUpper > 1 )
                     nPropUpper = aUpperLowerMarginScale.ScaleUpper;
                 if( aUpperLowerMarginScale.ScaleLower > 1 )
@@ -912,12 +708,12 @@ bool SvxULSpaceItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
         case MID_UP_MARGIN :
             if(!(rVal >>= nVal) || nVal < 0)
                 return false;
-            SetUpper((sal_uInt16)(bConvert ? convertMm100ToTwip(nVal) : nVal));
+            SetUpper(static_cast<sal_uInt16>(bConvert ? convertMm100ToTwip(nVal) : nVal));
             break;
         case MID_LO_MARGIN :
             if(!(rVal >>= nVal) || nVal < 0)
                 return false;
-            SetLower((sal_uInt16)(bConvert ? convertMm100ToTwip(nVal) : nVal));
+            SetLower(static_cast<sal_uInt16>(bConvert ? convertMm100ToTwip(nVal) : nVal));
             break;
         case MID_CTX_MARGIN :
             if (!(rVal >>= bVal))
@@ -931,9 +727,9 @@ bool SvxULSpaceItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             if((rVal >>= nRel) && nRel > 1 )
             {
                 if(MID_UP_REL_MARGIN == nMemberId)
-                    nPropUpper = (sal_uInt16)nRel;
+                    nPropUpper = static_cast<sal_uInt16>(nRel);
                 else
-                    nPropLower = (sal_uInt16)nRel;
+                    nPropLower = static_cast<sal_uInt16>(nRel);
             }
             else
                 return false;
@@ -960,12 +756,10 @@ bool SvxULSpaceItem::operator==( const SfxPoolItem& rAttr ) const
              nPropLower == rSpaceItem.nPropLower );
 }
 
-
-SfxPoolItem* SvxULSpaceItem::Clone( SfxItemPool* ) const
+SvxULSpaceItem* SvxULSpaceItem::Clone( SfxItemPool* ) const
 {
     return new SvxULSpaceItem( *this );
 }
-
 
 bool SvxULSpaceItem::GetPresentation
 (
@@ -973,7 +767,7 @@ bool SvxULSpaceItem::GetPresentation
     MapUnit             eCoreUnit,
     MapUnit             ePresUnit,
     OUString&           rText,
-    const IntlWrapper  *pIntl
+    const IntlWrapper&  rIntl
 )   const
 {
     switch ( ePres )
@@ -986,7 +780,7 @@ bool SvxULSpaceItem::GetPresentation
                     Application::GetSettings().GetUILanguageTag());
             }
             else
-                rText = GetMetricText( (long)nUpper, eCoreUnit, ePresUnit, pIntl );
+                rText = GetMetricText( static_cast<long>(nUpper), eCoreUnit, ePresUnit, &rIntl );
             rText += OUString(cpDelim);
             if ( 100 != nPropLower )
             {
@@ -994,12 +788,12 @@ bool SvxULSpaceItem::GetPresentation
                     Application::GetSettings().GetUILanguageTag());
             }
             else
-                rText += GetMetricText( (long)nLower, eCoreUnit, ePresUnit, pIntl );
+                rText += GetMetricText( static_cast<long>(nLower), eCoreUnit, ePresUnit, &rIntl );
             return true;
         }
         case SfxItemPresentation::Complete:
         {
-            rText = EditResId::GetString(RID_SVXITEMS_ULSPACE_UPPER);
+            rText = EditResId(RID_SVXITEMS_ULSPACE_UPPER);
             if ( 100 != nPropUpper )
             {
                 rText += unicode::formatPercent(nPropUpper,
@@ -1007,11 +801,10 @@ bool SvxULSpaceItem::GetPresentation
             }
             else
             {
-                rText = rText +
-                        GetMetricText( (long)nUpper, eCoreUnit, ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit));
+                rText += GetMetricText( static_cast<long>(nUpper), eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit));
             }
-            rText = rText + OUString(cpDelim) + EditResId::GetString(RID_SVXITEMS_ULSPACE_LOWER);
+            rText += cpDelim + EditResId(RID_SVXITEMS_ULSPACE_LOWER);
             if ( 100 != nPropLower )
             {
                 rText += unicode::formatPercent(nPropLower,
@@ -1019,9 +812,8 @@ bool SvxULSpaceItem::GetPresentation
             }
             else
             {
-                rText = rText +
-                        GetMetricText( (long)nLower, eCoreUnit, ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit));
+                rText += GetMetricText( static_cast<long>(nLower), eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit));
             }
             return true;
         }
@@ -1031,49 +823,10 @@ bool SvxULSpaceItem::GetPresentation
 }
 
 
-SvStream& SvxULSpaceItem::Store( SvStream& rStrm , sal_uInt16 /*nItemVersion*/ ) const
-{
-    rStrm.WriteUInt16( GetUpper() )
-         .WriteUInt16( GetPropUpper() )
-         .WriteUInt16( GetLower() )
-         .WriteUInt16( GetPropLower() );
-    return rStrm;
-}
-
-
-SfxPoolItem* SvxULSpaceItem::Create( SvStream& rStrm, sal_uInt16 nVersion ) const
-{
-    sal_uInt16 upper, lower, nPL = 0, nPU = 0;
-
-    if ( nVersion == ULSPACE_16_VERSION )
-        rStrm.ReadUInt16( upper ).ReadUInt16( nPU ).ReadUInt16( lower ).ReadUInt16( nPL );
-    else
-    {
-        sal_Int8 nU, nL;
-        rStrm.ReadUInt16( upper ).ReadSChar( nU ).ReadUInt16( lower ).ReadSChar( nL );
-        nPL = (sal_uInt16)nL;
-        nPU = (sal_uInt16)nU;
-    }
-
-    SvxULSpaceItem* pAttr = new SvxULSpaceItem( Which() );
-    pAttr->SetUpperValue( upper );
-    pAttr->SetLowerValue( lower );
-    pAttr->SetPropUpper( nPU );
-    pAttr->SetPropLower( nPL );
-    return pAttr;
-}
-
-
-sal_uInt16 SvxULSpaceItem::GetVersion( sal_uInt16 /*nFileVersion*/ ) const
-{
-    return ULSPACE_16_VERSION;
-}
-
-
 void SvxULSpaceItem::ScaleMetrics( long nMult, long nDiv )
 {
-    nUpper = (sal_uInt16)Scale( nUpper, nMult, nDiv );
-    nLower = (sal_uInt16)Scale( nLower, nMult, nDiv );
+    nUpper = static_cast<sal_uInt16>(Scale( nUpper, nMult, nDiv ));
+    nLower = static_cast<sal_uInt16>(Scale( nLower, nMult, nDiv ));
 }
 
 
@@ -1095,79 +848,68 @@ void SvxULSpaceItem::dumpAsXml(xmlTextWriterPtr pWriter) const
     xmlTextWriterEndElement(pWriter);
 }
 
+boost::property_tree::ptree SvxULSpaceItem::dumpAsJSON() const
+{
+    boost::property_tree::ptree aTree = SfxPoolItem::dumpAsJSON();
 
-SfxPoolItem* SvxPrintItem::Clone( SfxItemPool* ) const
+    boost::property_tree::ptree aState;
+
+    MapUnit eTargetUnit = MapUnit::MapInch;
+
+    OUString sUpper = GetMetricText(GetUpper(),
+                        MapUnit::MapTwip, eTargetUnit, nullptr);
+
+    OUString sLower = GetMetricText(GetLower(),
+                        MapUnit::MapTwip, eTargetUnit, nullptr);
+
+    aState.put("upper", sUpper);
+    aState.put("lower", sLower);
+    aState.put("unit", "inch");
+
+    aTree.push_back(std::make_pair("state", aState));
+
+    return aTree;
+}
+
+SvxPrintItem* SvxPrintItem::Clone( SfxItemPool* ) const
 {
     return new SvxPrintItem( *this );
 }
-
-
-SvStream& SvxPrintItem::Store( SvStream& rStrm , sal_uInt16 /*nItemVersion*/ ) const
-{
-    rStrm.WriteSChar( (sal_Int8)GetValue() );
-    return rStrm;
-}
-
-
-SfxPoolItem* SvxPrintItem::Create( SvStream& rStrm, sal_uInt16 ) const
-{
-    sal_Int8 bIsPrint;
-    rStrm.ReadSChar( bIsPrint );
-    return new SvxPrintItem( Which(), bIsPrint != 0 );
-}
-
 
 bool SvxPrintItem::GetPresentation
 (
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
-    sal_uInt16 nId = RID_SVXITEMS_PRINT_FALSE;
+    const char* pId = RID_SVXITEMS_PRINT_FALSE;
 
     if ( GetValue() )
-        nId = RID_SVXITEMS_PRINT_TRUE;
-    rText = EditResId::GetString(nId);
+        pId = RID_SVXITEMS_PRINT_TRUE;
+    rText = EditResId(pId);
     return true;
 }
 
-
-SfxPoolItem* SvxOpaqueItem::Clone( SfxItemPool* ) const
+SvxOpaqueItem* SvxOpaqueItem::Clone( SfxItemPool* ) const
 {
     return new SvxOpaqueItem( *this );
 }
-
-
-SvStream& SvxOpaqueItem::Store( SvStream& rStrm , sal_uInt16 /*nItemVersion*/ ) const
-{
-    rStrm.WriteSChar( (sal_Int8)GetValue() );
-    return rStrm;
-}
-
-
-SfxPoolItem* SvxOpaqueItem::Create( SvStream& rStrm, sal_uInt16 ) const
-{
-    sal_Int8 bIsOpaque;
-    rStrm.ReadSChar( bIsOpaque );
-    return new SvxOpaqueItem( Which(), bIsOpaque != 0 );
-}
-
 
 bool SvxOpaqueItem::GetPresentation
 (
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
-    sal_uInt16 nId = RID_SVXITEMS_OPAQUE_FALSE;
+    const char* pId = RID_SVXITEMS_OPAQUE_FALSE;
 
     if ( GetValue() )
-        nId = RID_SVXITEMS_OPAQUE_TRUE;
-    rText = EditResId::GetString(nId);
+        pId = RID_SVXITEMS_OPAQUE_TRUE;
+    rText = EditResId(pId);
     return true;
 }
 
@@ -1218,60 +960,35 @@ bool SvxProtectItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
     return true;
 }
 
-
-SfxPoolItem* SvxProtectItem::Clone( SfxItemPool* ) const
+SvxProtectItem* SvxProtectItem::Clone( SfxItemPool* ) const
 {
     return new SvxProtectItem( *this );
 }
-
 
 bool SvxProtectItem::GetPresentation
 (
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
-    sal_uInt16 nId = RID_SVXITEMS_PROT_CONTENT_FALSE;
+    const char* pId = RID_SVXITEMS_PROT_CONTENT_FALSE;
 
     if ( bCntnt )
-        nId = RID_SVXITEMS_PROT_CONTENT_TRUE;
-    rText = EditResId::GetString(nId) + OUString(cpDelim);
-    nId = RID_SVXITEMS_PROT_SIZE_FALSE;
+        pId = RID_SVXITEMS_PROT_CONTENT_TRUE;
+    rText = EditResId(pId) + cpDelim;
+    pId = RID_SVXITEMS_PROT_SIZE_FALSE;
 
     if ( bSize )
-        nId = RID_SVXITEMS_PROT_SIZE_TRUE;
-    rText = rText + EditResId::GetString(nId) + OUString(cpDelim);
-    nId = RID_SVXITEMS_PROT_POS_FALSE;
+        pId = RID_SVXITEMS_PROT_SIZE_TRUE;
+    rText += EditResId(pId) + cpDelim;
+    pId = RID_SVXITEMS_PROT_POS_FALSE;
 
     if ( bPos )
-        nId = RID_SVXITEMS_PROT_POS_TRUE;
-    rText += EditResId::GetString(nId);
+        pId = RID_SVXITEMS_PROT_POS_TRUE;
+    rText += EditResId(pId);
     return true;
-}
-
-
-SvStream& SvxProtectItem::Store( SvStream& rStrm , sal_uInt16 /*nItemVersion*/ ) const
-{
-    sal_Int8 cProt = 0;
-    if( IsPosProtected() )   cProt |= 0x01;
-    if( IsSizeProtected() )  cProt |= 0x02;
-    if( IsContentProtected() ) cProt |= 0x04;
-    rStrm.WriteSChar( cProt );
-    return rStrm;
-}
-
-
-SfxPoolItem* SvxProtectItem::Create( SvStream& rStrm, sal_uInt16 ) const
-{
-    sal_Int8 cFlags;
-    rStrm.ReadSChar( cFlags );
-    SvxProtectItem* pAttr = new SvxProtectItem( Which() );
-    pAttr->SetPosProtect( ( cFlags & 0x01 ) != 0 );
-    pAttr->SetSizeProtect( ( cFlags & 0x02 ) != 0 );
-    pAttr->SetContentProtect( ( cFlags & 0x04 ) != 0 );
-    return pAttr;
 }
 
 
@@ -1317,7 +1034,7 @@ bool SvxShadowItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
     aShadow.Location = eSet;
     aShadow.ShadowWidth =   bConvert ? convertTwipToMm100(nWidth) : nWidth;
     aShadow.IsTransparent = aShadowColor.GetTransparency() > 0;
-    aShadow.Color = aShadowColor.GetColor();
+    aShadow.Color = sal_Int32(aShadowColor);
 
     sal_Int8 nTransparence = rtl::math::round(float(aShadowColor.GetTransparency() * 100) / 255);
 
@@ -1352,7 +1069,7 @@ bool SvxShadowItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             {
                 sal_Int16 nVal = 0;
                 bRet = (rVal >>= nVal);
-                aShadow.Location = (table::ShadowLocation) nVal;
+                aShadow.Location = static_cast<table::ShadowLocation>(nVal);
             }
 
             break;
@@ -1365,11 +1082,11 @@ bool SvxShadowItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
         case MID_SHADOW_TRANSPARENCE:
         {
             sal_Int32 nTransparence = 0;
-            if (rVal >>= nTransparence)
+            if ((rVal >>= nTransparence) && !o3tl::checked_multiply<sal_Int32>(nTransparence, 255, nTransparence))
             {
                 Color aColor(aShadow.Color);
-                aColor.SetTransparency(rtl::math::round(float(nTransparence * 255) / 100));
-                aShadow.Color = aColor.GetColor();
+                aColor.SetTransparency(rtl::math::round(float(nTransparence) / 100));
+                aShadow.Color = sal_Int32(aColor);
             }
             break;
         }
@@ -1378,9 +1095,9 @@ bool SvxShadowItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 
     if ( bRet )
     {
-//      SvxShadowLocation eSet = SvxShadowLocation::NONE;
         switch( aShadow.Location )
         {
+            case table::ShadowLocation_NONE        : eLocation = SvxShadowLocation::NONE; break;
             case table::ShadowLocation_TOP_LEFT    : eLocation = SvxShadowLocation::TopLeft; break;
             case table::ShadowLocation_TOP_RIGHT   : eLocation = SvxShadowLocation::TopRight; break;
             case table::ShadowLocation_BOTTOM_LEFT : eLocation = SvxShadowLocation::BottomLeft ; break;
@@ -1407,12 +1124,10 @@ bool SvxShadowItem::operator==( const SfxPoolItem& rAttr ) const
              ( eLocation == rItem.GetLocation() ) );
 }
 
-
-SfxPoolItem* SvxShadowItem::Clone( SfxItemPool* ) const
+SvxShadowItem* SvxShadowItem::Clone( SfxItemPool* ) const
 {
     return new SvxShadowItem( *this );
 }
-
 
 sal_uInt16 SvxShadowItem::CalcShadowSpace( SvxShadowItemSide nShadow ) const
 {
@@ -1450,48 +1165,54 @@ sal_uInt16 SvxShadowItem::CalcShadowSpace( SvxShadowItemSide nShadow ) const
     return nSpace;
 }
 
+static const char* RID_SVXITEMS_SHADOW[] =
+{
+    RID_SVXITEMS_SHADOW_NONE,
+    RID_SVXITEMS_SHADOW_TOPLEFT,
+    RID_SVXITEMS_SHADOW_TOPRIGHT,
+    RID_SVXITEMS_SHADOW_BOTTOMLEFT,
+    RID_SVXITEMS_SHADOW_BOTTOMRIGHT
+};
 
 bool SvxShadowItem::GetPresentation
 (
     SfxItemPresentation ePres,
     MapUnit             eCoreUnit,
     MapUnit             ePresUnit,
-    OUString&           rText, const IntlWrapper *pIntl
+    OUString&           rText, const IntlWrapper& rIntl
 )   const
 {
     switch ( ePres )
     {
         case SfxItemPresentation::Nameless:
         {
-            rText = ::GetColorString( aShadowColor ) + OUString(cpDelim);
-            sal_uInt16 nId = RID_SVXITEMS_TRANSPARENT_FALSE;
+            rText = ::GetColorString( aShadowColor ) + cpDelim;
+            const char* pId = RID_SVXITEMS_TRANSPARENT_FALSE;
 
             if ( aShadowColor.GetTransparency() )
-                nId = RID_SVXITEMS_TRANSPARENT_TRUE;
-            rText = rText +
-                    EditResId::GetString(nId) +
-                    OUString(cpDelim) +
-                    GetMetricText( (long)nWidth, eCoreUnit, ePresUnit, pIntl ) +
-                    OUString(cpDelim) +
-                    EditResId::GetString(RID_SVXITEMS_SHADOW_BEGIN + (int)eLocation);
+                pId = RID_SVXITEMS_TRANSPARENT_TRUE;
+            rText += EditResId(pId) +
+                    cpDelim +
+                    GetMetricText( static_cast<long>(nWidth), eCoreUnit, ePresUnit, &rIntl ) +
+                    cpDelim +
+                    EditResId(RID_SVXITEMS_SHADOW[static_cast<int>(eLocation)]);
             return true;
         }
         case SfxItemPresentation::Complete:
         {
-            rText = EditResId::GetString(RID_SVXITEMS_SHADOW_COMPLETE) +
+            rText = EditResId(RID_SVXITEMS_SHADOW_COMPLETE) +
                     ::GetColorString( aShadowColor ) +
-                    OUString(cpDelim);
+                    cpDelim;
 
-            sal_uInt16 nId = RID_SVXITEMS_TRANSPARENT_FALSE;
+            const char* pId = RID_SVXITEMS_TRANSPARENT_FALSE;
             if ( aShadowColor.GetTransparency() )
-                nId = RID_SVXITEMS_TRANSPARENT_TRUE;
-            rText = rText +
-                    EditResId::GetString(nId) +
-                    OUString(cpDelim) +
-                    GetMetricText( (long)nWidth, eCoreUnit, ePresUnit, pIntl ) +
-                    " " + EditResId::GetString(GetMetricId(ePresUnit)) +
-                    OUString(cpDelim) +
-                    EditResId::GetString(RID_SVXITEMS_SHADOW_BEGIN + (int)eLocation);
+                pId = RID_SVXITEMS_TRANSPARENT_TRUE;
+            rText += EditResId(pId) +
+                    cpDelim +
+                    GetMetricText( static_cast<long>(nWidth), eCoreUnit, ePresUnit, &rIntl ) +
+                    " " + EditResId(GetMetricId(ePresUnit)) +
+                    cpDelim +
+                    EditResId(RID_SVXITEMS_SHADOW[static_cast<int>(eLocation)]);
             return true;
         }
         default: ; // prevent warning
@@ -1500,21 +1221,9 @@ bool SvxShadowItem::GetPresentation
 }
 
 
-SvStream& SvxShadowItem::Store( SvStream& rStrm , sal_uInt16 /*nItemVersion*/ ) const
-{
-    rStrm.WriteSChar( (sal_uInt8)GetLocation() )
-         .WriteUInt16( GetWidth() )
-         .WriteBool( aShadowColor.GetTransparency() > 0 );
-    WriteColor( rStrm, GetColor() );
-    WriteColor( rStrm, GetColor() );
-    rStrm.WriteSChar( aShadowColor.GetTransparency() > 0 ? 0 : 1 ); //BRUSH_NULL : BRUSH_SOLID
-    return rStrm;
-}
-
-
 void SvxShadowItem::ScaleMetrics( long nMult, long nDiv )
 {
-    nWidth = (sal_uInt16)Scale( nWidth, nMult, nDiv );
+    nWidth = static_cast<sal_uInt16>(Scale( nWidth, nMult, nDiv ));
 }
 
 
@@ -1524,45 +1233,20 @@ bool SvxShadowItem::HasMetrics() const
 }
 
 
-SfxPoolItem* SvxShadowItem::Create( SvStream& rStrm, sal_uInt16 ) const
-{
-    sal_Int8 cLoc;
-    sal_uInt16 _nWidth;
-    bool bTrans;
-    Color aColor;
-    Color aFillColor;
-    sal_Int8 nStyle;
-    rStrm.ReadSChar( cLoc ).ReadUInt16( _nWidth )
-         .ReadCharAsBool( bTrans );
-    ReadColor( rStrm, aColor );
-    ReadColor( rStrm, aFillColor ).ReadSChar( nStyle );
-    aColor.SetTransparency(bTrans ? 0xff : 0);
-    return new SvxShadowItem( Which(), &aColor, _nWidth, (SvxShadowLocation)cLoc );
-}
-
-
 sal_uInt16 SvxShadowItem::GetValueCount() const
 {
-    return (sal_uInt16)SvxShadowLocation::End;  // SvxShadowLocation::BottomRight + 1
+    return sal_uInt16(SvxShadowLocation::End);  // SvxShadowLocation::BottomRight + 1
 }
-
-
-OUString SvxShadowItem::GetValueTextByPos( sal_uInt16 nPos ) const
-{
-    DBG_ASSERT( nPos < (sal_uInt16)SvxShadowLocation::End, "enum overflow!" );
-    return EditResId::GetString(RID_SVXITEMS_SHADOW_BEGIN + nPos );
-}
-
 
 sal_uInt16 SvxShadowItem::GetEnumValue() const
 {
-    return (sal_uInt16)GetLocation();
+    return static_cast<sal_uInt16>(GetLocation());
 }
 
 
 void SvxShadowItem::SetEnumValue( sal_uInt16 nVal )
 {
-    SetLocation( (SvxShadowLocation)nVal );
+    SetLocation( static_cast<SvxShadowLocation>(nVal) );
 }
 
 void SvxShadowItem::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -1571,8 +1255,8 @@ void SvxShadowItem::dumpAsXml(xmlTextWriterPtr pWriter) const
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("aShadowColor"), BAD_CAST(aShadowColor.AsRGBHexString().toUtf8().getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nWidth"), BAD_CAST(OString::number(nWidth).getStr()));
-    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("eLocation"), BAD_CAST(OString::number((int)eLocation).getStr()));
-    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("presentation"), BAD_CAST(EditResId::GetString(RID_SVXITEMS_SHADOW_BEGIN + (int)eLocation).toUtf8().getStr()));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("eLocation"), BAD_CAST(OString::number(static_cast<int>(eLocation)).getStr()));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("presentation"), BAD_CAST(EditResId(RID_SVXITEMS_SHADOW[static_cast<int>(eLocation)]).toUtf8().getStr()));
     xmlTextWriterEndElement(pWriter);
 }
 
@@ -1581,27 +1265,21 @@ void SvxShadowItem::dumpAsXml(xmlTextWriterPtr pWriter) const
 SvxBoxItem::SvxBoxItem( const SvxBoxItem& rCpy ) :
 
     SfxPoolItem ( rCpy ),
+    pTop        ( rCpy.pTop     ? new SvxBorderLine( *rCpy.pTop )    : nullptr ),
+    pBottom     ( rCpy.pBottom  ? new SvxBorderLine( *rCpy.pBottom ) : nullptr ),
+    pLeft       ( rCpy.pLeft    ? new SvxBorderLine( *rCpy.pLeft )   : nullptr ),
+    pRight      ( rCpy.pRight   ? new SvxBorderLine( *rCpy.pRight )  : nullptr ),
     nTopDist    ( rCpy.nTopDist ),
     nBottomDist ( rCpy.nBottomDist ),
     nLeftDist   ( rCpy.nLeftDist ),
     nRightDist  ( rCpy.nRightDist ),
     bRemoveAdjCellBorder ( rCpy.bRemoveAdjCellBorder )
-
 {
-    pTop    = rCpy.GetTop()     ? new SvxBorderLine( *rCpy.GetTop() )    : nullptr;
-    pBottom = rCpy.GetBottom()  ? new SvxBorderLine( *rCpy.GetBottom() ) : nullptr;
-    pLeft   = rCpy.GetLeft()    ? new SvxBorderLine( *rCpy.GetLeft() )   : nullptr;
-    pRight  = rCpy.GetRight()   ? new SvxBorderLine( *rCpy.GetRight() )  : nullptr;
 }
 
 
 SvxBoxItem::SvxBoxItem( const sal_uInt16 nId ) :
     SfxPoolItem( nId ),
-
-    pTop        ( nullptr ),
-    pBottom     ( nullptr ),
-    pLeft       ( nullptr ),
-    pRight      ( nullptr ),
     nTopDist    ( 0 ),
     nBottomDist ( 0 ),
     nLeftDist   ( 0 ),
@@ -1613,31 +1291,12 @@ SvxBoxItem::SvxBoxItem( const sal_uInt16 nId ) :
 
 SvxBoxItem::~SvxBoxItem()
 {
-    delete pTop;
-    delete pBottom;
-    delete pLeft;
-    delete pRight;
 }
 
 
-SvxBoxItem& SvxBoxItem::operator=( const SvxBoxItem& rBox )
+static bool CmpBrdLn( const std::unique_ptr<SvxBorderLine> & pBrd1, const SvxBorderLine* pBrd2 )
 {
-    nTopDist = rBox.nTopDist;
-    nBottomDist = rBox.nBottomDist;
-    nLeftDist = rBox.nLeftDist;
-    nRightDist = rBox.nRightDist;
-    bRemoveAdjCellBorder = rBox.bRemoveAdjCellBorder;
-    SetLine( rBox.GetTop(), SvxBoxItemLine::TOP );
-    SetLine( rBox.GetBottom(), SvxBoxItemLine::BOTTOM );
-    SetLine( rBox.GetLeft(), SvxBoxItemLine::LEFT );
-    SetLine( rBox.GetRight(), SvxBoxItemLine::RIGHT );
-    return *this;
-}
-
-
-inline bool CmpBrdLn( const SvxBorderLine* pBrd1, const SvxBorderLine* pBrd2 )
-{
-    if( pBrd1 == pBrd2 )
+    if( pBrd1.get() == pBrd2 )
         return true;
     if( pBrd1 == nullptr || pBrd2 == nullptr)
         return false;
@@ -1668,7 +1327,7 @@ table::BorderLine2 SvxBoxItem::SvxLineToLine(const SvxBorderLine* pLine, bool bC
     table::BorderLine2 aLine;
     if(pLine)
     {
-        aLine.Color          = pLine->GetColor().GetColor() ;
+        aLine.Color          = sal_Int32(pLine->GetColor());
         aLine.InnerLineWidth = sal_uInt16( bConvert ? convertTwipToMm100(pLine->GetInWidth() ): pLine->GetInWidth() );
         aLine.OuterLineWidth = sal_uInt16( bConvert ? convertTwipToMm100(pLine->GetOutWidth()): pLine->GetOutWidth() );
         aLine.LineDistance   = sal_uInt16( bConvert ? convertTwipToMm100(pLine->GetDistance()): pLine->GetDistance() );
@@ -1697,11 +1356,11 @@ bool SvxBoxItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
             aSeq[1] <<= SvxBoxItem::SvxLineToLine(GetRight(), bConvert);
             aSeq[2] <<= SvxBoxItem::SvxLineToLine(GetBottom(), bConvert);
             aSeq[3] <<= SvxBoxItem::SvxLineToLine(GetTop(), bConvert);
-            aSeq[4] <<= (sal_Int32)(bConvert ? convertTwipToMm100( GetSmallestDistance()) : GetSmallestDistance());
-            aSeq[5] <<= (sal_Int32)(bConvert ? convertTwipToMm100( nTopDist ) : nTopDist );
-            aSeq[6] <<= (sal_Int32)(bConvert ? convertTwipToMm100( nBottomDist ) : nBottomDist );
-            aSeq[7] <<= (sal_Int32)(bConvert ? convertTwipToMm100( nLeftDist ) : nLeftDist );
-            aSeq[8] <<= (sal_Int32)(bConvert ? convertTwipToMm100( nRightDist ) : nRightDist );
+            aSeq[4] <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100( GetSmallestDistance()) : GetSmallestDistance());
+            aSeq[5] <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100( nTopDist ) : nTopDist );
+            aSeq[6] <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100( nBottomDist ) : nBottomDist );
+            aSeq[7] <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100( nLeftDist ) : nLeftDist );
+            aSeq[8] <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100( nRightDist ) : nRightDist );
             rVal <<= aSeq;
             return true;
         }
@@ -1750,7 +1409,7 @@ bool SvxBoxItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
     }
 
     if( bDistMember )
-        rVal <<= (sal_Int32)(bConvert ? convertTwipToMm100(nDist) : nDist);
+        rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nDist) : nDist);
     else
         rVal <<= aRetLine;
 
@@ -1790,7 +1449,7 @@ SvxBoxItem::LineToSvxLine(const css::table::BorderLine2& rLine, SvxBorderLine& r
     SvxBorderLineStyle const nStyle =
         (rLine.LineStyle < 0 || BORDER_LINE_STYLE_MAX < rLine.LineStyle)
         ? SvxBorderLineStyle::SOLID     // default
-        : (SvxBorderLineStyle)rLine.LineStyle;
+        : static_cast<SvxBorderLineStyle>(rLine.LineStyle);
 
     rSvxLine.SetBorderLineStyle( nStyle );
 
@@ -1800,7 +1459,7 @@ SvxBoxItem::LineToSvxLine(const css::table::BorderLine2& rLine, SvxBorderLine& r
         rSvxLine.SetWidth( bConvert? convertMm100ToTwip( rLine.LineWidth ) : rLine.LineWidth );
         // fdo#46112: double does not necessarily mean symmetric
         // for backwards compatibility
-        bGuessWidth = ((SvxBorderLineStyle::DOUBLE == nStyle || SvxBorderLineStyle::DOUBLE_THIN == nStyle)) &&
+        bGuessWidth = (SvxBorderLineStyle::DOUBLE == nStyle || SvxBorderLineStyle::DOUBLE_THIN == nStyle) &&
             (rLine.InnerLineWidth > 0) && (rLine.OuterLineWidth > 0);
     }
 
@@ -1871,7 +1530,7 @@ bool SvxBoxItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
                 }
 
                 // WTH are the borders and the distances saved in different order?
-                SvxBoxItemLine nLines[4] = { SvxBoxItemLine::TOP, SvxBoxItemLine::BOTTOM, SvxBoxItemLine::LEFT, SvxBoxItemLine::RIGHT };
+                SvxBoxItemLine const nLines[4] = { SvxBoxItemLine::TOP, SvxBoxItemLine::BOTTOM, SvxBoxItemLine::LEFT, SvxBoxItemLine::RIGHT };
                 for ( sal_Int32 n = 4; n < 9; n++ )
                 {
                     sal_Int32 nDist = 0;
@@ -1895,28 +1554,28 @@ bool SvxBoxItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
         }
         case LEFT_BORDER_DISTANCE:
             bDistMember = true;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case LEFT_BORDER:
         case MID_LEFT_BORDER:
             nLine = SvxBoxItemLine::LEFT;
             break;
         case RIGHT_BORDER_DISTANCE:
             bDistMember = true;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case RIGHT_BORDER:
         case MID_RIGHT_BORDER:
             nLine = SvxBoxItemLine::RIGHT;
             break;
         case BOTTOM_BORDER_DISTANCE:
             bDistMember = true;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case BOTTOM_BORDER:
         case MID_BOTTOM_BORDER:
             nLine = SvxBoxItemLine::BOTTOM;
             break;
         case TOP_BORDER_DISTANCE:
             bDistMember = true;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case TOP_BORDER:
         case MID_TOP_BORDER:
             nLine = SvxBoxItemLine::TOP;
@@ -2012,11 +1671,11 @@ bool SvxBoxItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
                 if ( aSeq[0] >>= nVal )
                     aBorderLine.Color = nVal;
                 if ( aSeq[1] >>= nVal )
-                    aBorderLine.InnerLineWidth = (sal_Int16) nVal;
+                    aBorderLine.InnerLineWidth = static_cast<sal_Int16>(nVal);
                 if ( aSeq[2] >>= nVal )
-                    aBorderLine.OuterLineWidth = (sal_Int16) nVal;
+                    aBorderLine.OuterLineWidth = static_cast<sal_Int16>(nVal);
                 if ( aSeq[3] >>= nVal )
-                    aBorderLine.LineDistance = (sal_Int16) nVal;
+                    aBorderLine.LineDistance = static_cast<sal_Int16>(nVal);
                 if (aSeq.getLength() >= 5) // fdo#40874 added fields
                 {
                     if (aSeq[4] >>= nVal)
@@ -2045,22 +1704,20 @@ bool SvxBoxItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
     return true;
 }
 
-
-SfxPoolItem* SvxBoxItem::Clone( SfxItemPool* ) const
+SvxBoxItem* SvxBoxItem::Clone( SfxItemPool* ) const
 {
     return new SvxBoxItem( *this );
 }
-
 
 bool SvxBoxItem::GetPresentation
 (
     SfxItemPresentation ePres,
     MapUnit             eCoreUnit,
     MapUnit             ePresUnit,
-    OUString&           rText, const IntlWrapper *pIntl
+    OUString&           rText, const IntlWrapper& rIntl
 )   const
 {
-    OUString cpDelimTmp = OUString(cpDelim);
+    OUString cpDelimTmp(cpDelim);
     switch ( ePres )
     {
         case SfxItemPresentation::Nameless:
@@ -2069,37 +1726,36 @@ bool SvxBoxItem::GetPresentation
 
             if ( pTop )
             {
-                rText = pTop->GetValueString( eCoreUnit, ePresUnit, pIntl ) + cpDelimTmp;
+                rText = pTop->GetValueString( eCoreUnit, ePresUnit, &rIntl ) + cpDelimTmp;
             }
             if( !(pTop && pBottom && pLeft && pRight &&
                   *pTop == *pBottom && *pTop == *pLeft && *pTop == *pRight) )
             {
                 if ( pBottom )
                 {
-                    rText = rText + pBottom->GetValueString( eCoreUnit, ePresUnit, pIntl ) + cpDelimTmp;
+                    rText += pBottom->GetValueString( eCoreUnit, ePresUnit, &rIntl ) + cpDelimTmp;
                 }
                 if ( pLeft )
                 {
-                    rText = rText + pLeft->GetValueString( eCoreUnit, ePresUnit, pIntl ) + cpDelimTmp;
+                    rText += pLeft->GetValueString( eCoreUnit, ePresUnit, &rIntl ) + cpDelimTmp;
                 }
                 if ( pRight )
                 {
-                    rText = rText + pRight->GetValueString( eCoreUnit, ePresUnit, pIntl ) + cpDelimTmp;
+                    rText += pRight->GetValueString( eCoreUnit, ePresUnit, &rIntl ) + cpDelimTmp;
                 }
             }
-            rText += GetMetricText( (long)nTopDist, eCoreUnit, ePresUnit, pIntl );
+            rText += GetMetricText( static_cast<long>(nTopDist), eCoreUnit, ePresUnit, &rIntl );
             if( nTopDist != nBottomDist || nTopDist != nLeftDist ||
                 nTopDist != nRightDist )
             {
-                rText = rText +
+                rText += cpDelimTmp +
+                        GetMetricText( static_cast<long>(nBottomDist), eCoreUnit,
+                                        ePresUnit, &rIntl ) +
                         cpDelimTmp +
-                        GetMetricText( (long)nBottomDist, eCoreUnit,
-                                        ePresUnit, pIntl ) +
+                        GetMetricText( static_cast<long>(nLeftDist), eCoreUnit, ePresUnit, &rIntl ) +
                         cpDelimTmp +
-                        GetMetricText( (long)nLeftDist, eCoreUnit, ePresUnit, pIntl ) +
-                        cpDelimTmp +
-                        GetMetricText( (long)nRightDist, eCoreUnit,
-                                        ePresUnit, pIntl );
+                        GetMetricText( static_cast<long>(nRightDist), eCoreUnit,
+                                        ePresUnit, &rIntl );
             }
             return true;
         }
@@ -2107,80 +1763,74 @@ bool SvxBoxItem::GetPresentation
         {
             if( !(pTop || pBottom || pLeft || pRight) )
             {
-                rText = EditResId::GetString(RID_SVXITEMS_BORDER_NONE) + cpDelimTmp;
+                rText = EditResId(RID_SVXITEMS_BORDER_NONE) + cpDelimTmp;
             }
             else
             {
-                rText = EditResId::GetString(RID_SVXITEMS_BORDER_COMPLETE);
+                rText = EditResId(RID_SVXITEMS_BORDER_COMPLETE);
                 if( pTop && pBottom && pLeft && pRight &&
                     *pTop == *pBottom && *pTop == *pLeft && *pTop == *pRight )
                 {
-                    rText += pTop->GetValueString( eCoreUnit, ePresUnit, pIntl, true ) + cpDelimTmp;
+                    rText += pTop->GetValueString( eCoreUnit, ePresUnit, &rIntl, true ) + cpDelimTmp;
                 }
                 else
                 {
                     if ( pTop )
                     {
-                        rText = rText +
-                                EditResId::GetString(RID_SVXITEMS_BORDER_TOP) +
-                                pTop->GetValueString( eCoreUnit, ePresUnit, pIntl, true ) +
+                        rText += EditResId(RID_SVXITEMS_BORDER_TOP) +
+                                pTop->GetValueString( eCoreUnit, ePresUnit, &rIntl, true ) +
                                 cpDelimTmp;
                     }
                     if ( pBottom )
                     {
-                        rText = rText +
-                                EditResId::GetString(RID_SVXITEMS_BORDER_BOTTOM) +
-                                pBottom->GetValueString( eCoreUnit, ePresUnit, pIntl, true ) +
+                        rText += EditResId(RID_SVXITEMS_BORDER_BOTTOM) +
+                                pBottom->GetValueString( eCoreUnit, ePresUnit, &rIntl, true ) +
                                 cpDelimTmp;
                     }
                     if ( pLeft )
                     {
-                        rText = rText +
-                                EditResId::GetString(RID_SVXITEMS_BORDER_LEFT) +
-                                pLeft->GetValueString( eCoreUnit, ePresUnit, pIntl, true ) +
+                        rText += EditResId(RID_SVXITEMS_BORDER_LEFT) +
+                                pLeft->GetValueString( eCoreUnit, ePresUnit, &rIntl, true ) +
                                 cpDelimTmp;
                     }
                     if ( pRight )
                     {
-                        rText = rText +
-                                EditResId::GetString(RID_SVXITEMS_BORDER_RIGHT) +
-                                pRight->GetValueString( eCoreUnit, ePresUnit, pIntl, true ) +
+                        rText += EditResId(RID_SVXITEMS_BORDER_RIGHT) +
+                                pRight->GetValueString( eCoreUnit, ePresUnit, &rIntl, true ) +
                                 cpDelimTmp;
                     }
                 }
             }
 
-            rText += EditResId::GetString(RID_SVXITEMS_BORDER_DISTANCE);
+            rText += EditResId(RID_SVXITEMS_BORDER_DISTANCE);
             if( nTopDist == nBottomDist && nTopDist == nLeftDist &&
                 nTopDist == nRightDist )
             {
-                rText = rText +
-                        GetMetricText( (long)nTopDist, eCoreUnit,
-                                            ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit));
+                rText += GetMetricText( static_cast<long>(nTopDist), eCoreUnit,
+                                            ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit));
             }
             else
             {
-                rText = rText +
-                        EditResId::GetString(RID_SVXITEMS_BORDER_TOP) +
-                        GetMetricText( (long)nTopDist, eCoreUnit,
-                                        ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit)) +
+                rText += EditResId(RID_SVXITEMS_BORDER_TOP) +
+                        GetMetricText( static_cast<long>(nTopDist), eCoreUnit,
+                                        ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit)) +
                         cpDelimTmp +
-                        EditResId::GetString(RID_SVXITEMS_BORDER_BOTTOM) +
-                        GetMetricText( (long)nBottomDist, eCoreUnit,
-                                        ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit)) +
+                        EditResId(RID_SVXITEMS_BORDER_BOTTOM) +
+                        GetMetricText( static_cast<long>(nBottomDist), eCoreUnit,
+                                        ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit)) +
                         cpDelimTmp +
-                        EditResId::GetString(RID_SVXITEMS_BORDER_LEFT) +
-                        GetMetricText( (long)nLeftDist, eCoreUnit,
-                                        ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit)) +
+                        EditResId(RID_SVXITEMS_BORDER_LEFT) +
+                        GetMetricText( static_cast<long>(nLeftDist), eCoreUnit,
+                                        ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit)) +
                         cpDelimTmp +
-                        EditResId::GetString(RID_SVXITEMS_BORDER_RIGHT) +
-                        GetMetricText( (long)nRightDist, eCoreUnit,
-                                        ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit));
+                        EditResId(RID_SVXITEMS_BORDER_RIGHT) +
+                        GetMetricText( static_cast<long>(nRightDist), eCoreUnit,
+                                        ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit));
             }
             return true;
         }
@@ -2190,113 +1840,22 @@ bool SvxBoxItem::GetPresentation
 }
 
 
-SvStream& SvxBoxItem::Store( SvStream& rStrm , sal_uInt16 nItemVersion ) const
-{
-    rStrm.WriteUInt16( GetSmallestDistance() );
-    const SvxBorderLine* pLine[ 4 ];    // top, left, right, bottom
-    pLine[ 0 ] = GetTop();
-    pLine[ 1 ] = GetLeft();
-    pLine[ 2 ] = GetRight();
-    pLine[ 3 ] = GetBottom();
-
-    for( int i = 0; i < 4; i++ )
-    {
-        const SvxBorderLine* l = pLine[ i ];
-        if( l )
-        {
-            rStrm.WriteSChar(i);
-            StoreBorderLine(rStrm, *l, BorderLineVersionFromBoxVersion(nItemVersion));
-        }
-    }
-    sal_Int8 cLine = 4;
-    if( nItemVersion >= BOX_4DISTS_VERSION &&
-        !(nTopDist == nLeftDist &&
-          nTopDist == nRightDist &&
-          nTopDist == nBottomDist) )
-    {
-        cLine |= 0x10;
-    }
-
-    rStrm.WriteSChar( cLine );
-
-    if( nItemVersion >= BOX_4DISTS_VERSION && (cLine & 0x10) != 0 )
-    {
-        rStrm.WriteUInt16( nTopDist )
-             .WriteUInt16( nLeftDist )
-             .WriteUInt16( nRightDist )
-             .WriteUInt16( nBottomDist );
-    }
-
-    return rStrm;
-}
-
-
-sal_uInt16 SvxBoxItem::GetVersion( sal_uInt16 nFFVer ) const
-{
-    DBG_ASSERT( SOFFICE_FILEFORMAT_31==nFFVer ||
-            SOFFICE_FILEFORMAT_40==nFFVer ||
-            SOFFICE_FILEFORMAT_50==nFFVer,
-            "SvxBoxItem: Is there a new file format?" );
-    return SOFFICE_FILEFORMAT_31==nFFVer ||
-           SOFFICE_FILEFORMAT_40==nFFVer ? 0 : BOX_BORDER_STYLE_VERSION;
-}
-
-
 void SvxBoxItem::ScaleMetrics( long nMult, long nDiv )
 {
     if ( pTop )     pTop->ScaleMetrics( nMult, nDiv );
     if ( pBottom )  pBottom->ScaleMetrics( nMult, nDiv );
     if ( pLeft )    pLeft->ScaleMetrics( nMult, nDiv );
     if ( pRight )   pRight->ScaleMetrics( nMult, nDiv );
-    nTopDist = (sal_uInt16)Scale( nTopDist, nMult, nDiv );
-    nBottomDist = (sal_uInt16)Scale( nBottomDist, nMult, nDiv );
-    nLeftDist = (sal_uInt16)Scale( nLeftDist, nMult, nDiv );
-    nRightDist = (sal_uInt16)Scale( nRightDist, nMult, nDiv );
+    nTopDist = static_cast<sal_uInt16>(Scale( nTopDist, nMult, nDiv ));
+    nBottomDist = static_cast<sal_uInt16>(Scale( nBottomDist, nMult, nDiv ));
+    nLeftDist = static_cast<sal_uInt16>(Scale( nLeftDist, nMult, nDiv ));
+    nRightDist = static_cast<sal_uInt16>(Scale( nRightDist, nMult, nDiv ));
 }
 
 
 bool SvxBoxItem::HasMetrics() const
 {
     return true;
-}
-
-
-SfxPoolItem* SvxBoxItem::Create( SvStream& rStrm, sal_uInt16 nIVersion ) const
-{
-    sal_uInt16 nDistance;
-    rStrm.ReadUInt16( nDistance );
-    SvxBoxItem* pAttr = new SvxBoxItem( Which() );
-
-    SvxBoxItemLine aLineMap[4] = { SvxBoxItemLine::TOP, SvxBoxItemLine::LEFT,
-                           SvxBoxItemLine::RIGHT, SvxBoxItemLine::BOTTOM };
-
-    sal_Int8 cLine;
-    while( true )
-    {
-        rStrm.ReadSChar( cLine );
-
-        if( cLine > 3 )
-            break;
-
-        SvxBorderLine aBorder = CreateBorderLine(rStrm, BorderLineVersionFromBoxVersion(nIVersion));
-        pAttr->SetLine( &aBorder, aLineMap[cLine] );
-    }
-
-    if( nIVersion >= BOX_4DISTS_VERSION && (cLine&0x10) != 0 )
-    {
-        for(SvxBoxItemLine & i : aLineMap)
-        {
-            sal_uInt16 nDist;
-            rStrm.ReadUInt16( nDist );
-            pAttr->SetDistance( nDist, i );
-        }
-    }
-    else
-    {
-        pAttr->SetAllDistances(nDistance);
-    }
-
-    return pAttr;
 }
 
 
@@ -2307,16 +1866,16 @@ const SvxBorderLine *SvxBoxItem::GetLine( SvxBoxItemLine nLine ) const
     switch ( nLine )
     {
         case SvxBoxItemLine::TOP:
-            pRet = pTop;
+            pRet = pTop.get();
             break;
         case SvxBoxItemLine::BOTTOM:
-            pRet = pBottom;
+            pRet = pBottom.get();
             break;
         case SvxBoxItemLine::LEFT:
-            pRet = pLeft;
+            pRet = pLeft.get();
             break;
         case SvxBoxItemLine::RIGHT:
-            pRet = pRight;
+            pRet = pRight.get();
             break;
         default:
             OSL_FAIL( "wrong line" );
@@ -2329,28 +1888,23 @@ const SvxBorderLine *SvxBoxItem::GetLine( SvxBoxItemLine nLine ) const
 
 void SvxBoxItem::SetLine( const SvxBorderLine* pNew, SvxBoxItemLine nLine )
 {
-    SvxBorderLine* pTmp = pNew ? new SvxBorderLine( *pNew ) : nullptr;
+    std::unique_ptr<SvxBorderLine> pTmp( pNew ? new SvxBorderLine( *pNew ) : nullptr );
 
     switch ( nLine )
     {
         case SvxBoxItemLine::TOP:
-            delete pTop;
-            pTop = pTmp;
+            pTop = std::move( pTmp );
             break;
         case SvxBoxItemLine::BOTTOM:
-            delete pBottom;
-            pBottom = pTmp;
+            pBottom = std::move( pTmp );
             break;
         case SvxBoxItemLine::LEFT:
-            delete pLeft;
-            pLeft = pTmp;
+            pLeft = std::move( pTmp );
             break;
         case SvxBoxItemLine::RIGHT:
-            delete pRight;
-            pRight = pTmp;
+            pRight = std::move( pTmp );
             break;
         default:
-            delete pTmp;
             OSL_FAIL( "wrong line" );
     }
 }
@@ -2424,16 +1978,16 @@ sal_uInt16 SvxBoxItem::CalcLineWidth( SvxBoxItemLine nLine ) const
     switch ( nLine )
     {
     case SvxBoxItemLine::TOP:
-        pTmp = pTop;
+        pTmp = pTop.get();
         break;
     case SvxBoxItemLine::BOTTOM:
-        pTmp = pBottom;
+        pTmp = pBottom.get();
         break;
     case SvxBoxItemLine::LEFT:
-        pTmp = pLeft;
+        pTmp = pLeft.get();
         break;
     case SvxBoxItemLine::RIGHT:
-        pTmp = pRight;
+        pTmp = pRight.get();
         break;
     default:
         OSL_FAIL( "wrong line" );
@@ -2452,19 +2006,19 @@ sal_uInt16 SvxBoxItem::CalcLineSpace( SvxBoxItemLine nLine, bool bEvenIfNoLine )
     switch ( nLine )
     {
     case SvxBoxItemLine::TOP:
-        pTmp = pTop;
+        pTmp = pTop.get();
         nDist = nTopDist;
         break;
     case SvxBoxItemLine::BOTTOM:
-        pTmp = pBottom;
+        pTmp = pBottom.get();
         nDist = nBottomDist;
         break;
     case SvxBoxItemLine::LEFT:
-        pTmp = pLeft;
+        pTmp = pLeft.get();
         nDist = nLeftDist;
         break;
     case SvxBoxItemLine::RIGHT:
-        pTmp = pRight;
+        pTmp = pRight.get();
         nDist = nRightDist;
         break;
     default:
@@ -2492,8 +2046,6 @@ bool SvxBoxItem::HasBorder( bool bTreatPaddingAsBorder ) const
 
 SvxBoxInfoItem::SvxBoxInfoItem( const sal_uInt16 nId ) :
     SfxPoolItem( nId ),
-    pHori   ( nullptr ),
-    pVert   ( nullptr ),
     mbEnableHor( false ),
     mbEnableVer( false ),
     nDefDist( 0 )
@@ -2505,40 +2057,20 @@ SvxBoxInfoItem::SvxBoxInfoItem( const sal_uInt16 nId ) :
 
 SvxBoxInfoItem::SvxBoxInfoItem( const SvxBoxInfoItem& rCpy ) :
     SfxPoolItem( rCpy ),
+    pHori( rCpy.pHori ? new SvxBorderLine( *rCpy.pHori ) : nullptr ),
+    pVert( rCpy.pVert ? new SvxBorderLine( *rCpy.pVert ) : nullptr ),
     mbEnableHor( rCpy.mbEnableHor ),
-    mbEnableVer( rCpy.mbEnableVer )
+    mbEnableVer( rCpy.mbEnableVer ),
+    bDist( rCpy.bDist ),
+    bMinDist ( rCpy.bMinDist ),
+    nValidFlags( rCpy.nValidFlags ),
+    nDefDist( rCpy.nDefDist )
 {
-    pHori       = rCpy.GetHori() ? new SvxBorderLine( *rCpy.GetHori() ) : nullptr;
-    pVert       = rCpy.GetVert() ? new SvxBorderLine( *rCpy.GetVert() ) : nullptr;
-    bDist       = rCpy.IsDist();
-    bMinDist    = rCpy.IsMinDist();
-    nValidFlags = rCpy.nValidFlags;
-    nDefDist    = rCpy.GetDefDist();
 }
-
 
 SvxBoxInfoItem::~SvxBoxInfoItem()
 {
-    delete pHori;
-    delete pVert;
 }
-
-
-SvxBoxInfoItem &SvxBoxInfoItem::operator=( const SvxBoxInfoItem& rCpy )
-{
-    delete pHori;
-    delete pVert;
-    pHori       = rCpy.GetHori() ? new SvxBorderLine( *rCpy.GetHori() ) : nullptr;
-    pVert       = rCpy.GetVert() ? new SvxBorderLine( *rCpy.GetVert() ) : nullptr;
-    mbEnableHor = rCpy.mbEnableHor;
-    mbEnableVer = rCpy.mbEnableVer;
-    bDist       = rCpy.IsDist();
-    bMinDist    = rCpy.IsMinDist();
-    nValidFlags = rCpy.nValidFlags;
-    nDefDist    = rCpy.GetDefDist();
-    return *this;
-}
-
 
 bool SvxBoxInfoItem::operator==( const SfxPoolItem& rAttr ) const
 {
@@ -2560,38 +2092,33 @@ bool SvxBoxInfoItem::operator==( const SfxPoolItem& rAttr ) const
 
 void SvxBoxInfoItem::SetLine( const SvxBorderLine* pNew, SvxBoxInfoItemLine nLine )
 {
-    SvxBorderLine* pTmp = pNew ? new SvxBorderLine( *pNew ) : nullptr;
+    std::unique_ptr<SvxBorderLine> pTmp( pNew ? new SvxBorderLine( *pNew ) : nullptr );
 
     if ( SvxBoxInfoItemLine::HORI == nLine )
     {
-        delete pHori;
-        pHori = pTmp;
+        pHori = std::move(pTmp);
     }
     else if ( SvxBoxInfoItemLine::VERT == nLine )
     {
-        delete pVert;
-        pVert = pTmp;
+        pVert = std::move(pTmp);
     }
     else
     {
-        delete pTmp;
         OSL_FAIL( "wrong line" );
     }
 }
 
-
-SfxPoolItem* SvxBoxInfoItem::Clone( SfxItemPool* ) const
+SvxBoxInfoItem* SvxBoxInfoItem::Clone( SfxItemPool* ) const
 {
     return new SvxBoxInfoItem( *this );
 }
-
 
 bool SvxBoxInfoItem::GetPresentation
 (
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     rText.clear();
@@ -2599,86 +2126,17 @@ bool SvxBoxInfoItem::GetPresentation
 }
 
 
-SvStream& SvxBoxInfoItem::Store( SvStream& rStrm , sal_uInt16 /*nItemVersion*/ ) const
-{
-    sal_Int8 cFlags = 0;
-
-    if ( IsTable() )
-        cFlags |= 0x01;
-    if ( IsDist() )
-        cFlags |= 0x02;
-    if ( IsMinDist() )
-        cFlags |= 0x04;
-    rStrm.WriteSChar( cFlags )
-         .WriteUInt16( GetDefDist() );
-    const SvxBorderLine* pLine[ 2 ];
-    pLine[ 0 ] = GetHori();
-    pLine[ 1 ] = GetVert();
-
-    for( int i = 0; i < 2; i++ )
-    {
-        const SvxBorderLine* l = pLine[ i ];
-        if( l )
-        {
-            rStrm.WriteChar( (char) i );
-            WriteColor( rStrm, l->GetColor() );
-            rStrm.WriteInt16( l->GetOutWidth() )
-                 .WriteInt16( l->GetInWidth() )
-                 .WriteInt16( l->GetDistance() );
-        }
-    }
-    rStrm.WriteChar( (char) 2 );
-    return rStrm;
-}
-
-
 void SvxBoxInfoItem::ScaleMetrics( long nMult, long nDiv )
 {
     if ( pHori ) pHori->ScaleMetrics( nMult, nDiv );
     if ( pVert ) pVert->ScaleMetrics( nMult, nDiv );
-    nDefDist = (sal_uInt16)Scale( nDefDist, nMult, nDiv );
+    nDefDist = static_cast<sal_uInt16>(Scale( nDefDist, nMult, nDiv ));
 }
 
 
 bool SvxBoxInfoItem::HasMetrics() const
 {
     return true;
-}
-
-
-SfxPoolItem* SvxBoxInfoItem::Create( SvStream& rStrm, sal_uInt16 ) const
-{
-    sal_Int8 cFlags;
-    sal_uInt16 _nDefDist;
-    rStrm.ReadSChar( cFlags ).ReadUInt16( _nDefDist );
-
-    SvxBoxInfoItem* pAttr = new SvxBoxInfoItem( Which() );
-
-    pAttr->SetTable  ( ( cFlags & 0x01 ) != 0 );
-    pAttr->SetDist   ( ( cFlags & 0x02 ) != 0 );
-    pAttr->SetMinDist( ( cFlags & 0x04 ) != 0 );
-    pAttr->SetDefDist( _nDefDist );
-
-    while( true )
-    {
-        sal_Int8 cLine;
-        rStrm.ReadSChar( cLine );
-
-        if( cLine > 1 )
-            break;
-        short nOutline, nInline, nDistance;
-        Color aColor;
-        ReadColor( rStrm, aColor ).ReadInt16( nOutline ).ReadInt16( nInline ).ReadInt16( nDistance );
-        SvxBorderLine aBorder( &aColor );
-        aBorder.GuessLinesWidths(SvxBorderLineStyle::NONE, nOutline, nInline, nDistance);
-
-        switch( cLine )
-        {
-            case 0: pAttr->SetLine( &aBorder, SvxBoxInfoItemLine::HORI ); break;
-            case 1: pAttr->SetLine( &aBorder, SvxBoxInfoItemLine::VERT ); break;
-        }
-    }
-    return pAttr;
 }
 
 
@@ -2700,8 +2158,8 @@ bool SvxBoxInfoItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
         {
             // 2 BorderLines, flags, valid flags and distance
             css::uno::Sequence< css::uno::Any > aSeq( 5 );
-            aSeq[0] <<= SvxBoxItem::SvxLineToLine( pHori, bConvert);
-            aSeq[1] <<= SvxBoxItem::SvxLineToLine( pVert, bConvert);
+            aSeq[0] <<= SvxBoxItem::SvxLineToLine( pHori.get(), bConvert);
+            aSeq[1] <<= SvxBoxItem::SvxLineToLine( pVert.get(), bConvert);
             if ( IsTable() )
                 nVal |= 0x01;
             if ( IsDist() )
@@ -2710,16 +2168,16 @@ bool SvxBoxInfoItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
                 nVal |= 0x04;
             aSeq[2] <<= nVal;
             aSeq[3] <<= static_cast<sal_Int16>(nValidFlags);
-            aSeq[4] <<= (sal_Int32)(bConvert ? convertTwipToMm100(GetDefDist()) : GetDefDist());
+            aSeq[4] <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(GetDefDist()) : GetDefDist());
             rVal <<= aSeq;
             return true;
         }
 
         case MID_HORIZONTAL:
-            aRetLine = SvxBoxItem::SvxLineToLine( pHori, bConvert);
+            aRetLine = SvxBoxItem::SvxLineToLine( pHori.get(), bConvert);
             break;
         case MID_VERTICAL:
-            aRetLine = SvxBoxItem::SvxLineToLine( pVert, bConvert);
+            aRetLine = SvxBoxItem::SvxLineToLine( pVert.get(), bConvert);
             break;
         case MID_FLAGS:
             bIntMember = true;
@@ -2737,7 +2195,7 @@ bool SvxBoxInfoItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
             break;
         case MID_DISTANCE:
             bIntMember = true;
-            rVal <<= (sal_Int32)(bConvert ? convertTwipToMm100(GetDefDist()) : GetDefDist());
+            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(GetDefDist()) : GetDefDist());
             break;
         default: OSL_FAIL("Wrong MemberId!"); return false;
     }
@@ -2785,7 +2243,7 @@ bool SvxBoxInfoItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
                 {
                     if( bConvert )
                         nVal = convertMm100ToTwip(nVal);
-                    SetDefDist( (sal_uInt16)nVal );
+                    SetDefDist( static_cast<sal_uInt16>(nVal) );
                 }
             }
             return true;
@@ -2818,11 +2276,11 @@ bool SvxBoxInfoItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
                     if ( aSeq[0] >>= nVal )
                         aBorderLine.Color = nVal;
                     if ( aSeq[1] >>= nVal )
-                        aBorderLine.InnerLineWidth = (sal_Int16) nVal;
+                        aBorderLine.InnerLineWidth = static_cast<sal_Int16>(nVal);
                     if ( aSeq[2] >>= nVal )
-                        aBorderLine.OuterLineWidth = (sal_Int16) nVal;
+                        aBorderLine.OuterLineWidth = static_cast<sal_Int16>(nVal);
                     if ( aSeq[3] >>= nVal )
-                        aBorderLine.LineDistance = (sal_Int16) nVal;
+                        aBorderLine.LineDistance = static_cast<sal_Int16>(nVal);
                     if (aSeq.getLength() >= 5) // fdo#40874 added fields
                     {
                         if (aSeq[4] >>= nVal)
@@ -2902,7 +2360,7 @@ bool SvxBoxInfoItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             {
                 if( bConvert )
                     nVal = convertMm100ToTwip(nVal);
-                SetDefDist( (sal_uInt16)nVal );
+                SetDefDist( static_cast<sal_uInt16>(nVal) );
             }
             break;
         }
@@ -2910,6 +2368,131 @@ bool SvxBoxInfoItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
     }
 
     return true;
+}
+
+
+namespace editeng
+{
+
+void BorderDistanceFromWord(bool bFromEdge, sal_Int32& nMargin, sal_Int32& nBorderDistance,
+    sal_Int32 nBorderWidth)
+{
+    // See https://wiki.openoffice.org/wiki/Writer/MSInteroperability/PageBorder
+
+    sal_Int32 nNewMargin = nMargin;
+    sal_Int32 nNewBorderDistance = nBorderDistance;
+
+    if (bFromEdge)
+    {
+        nNewMargin = nBorderDistance;
+        nNewBorderDistance = nMargin - nBorderDistance - nBorderWidth;
+    }
+    else
+    {
+        nNewMargin -= nBorderDistance + nBorderWidth;
+    }
+
+    // Ensure correct distance from page edge to text in cases not supported by us:
+    // when border is outside entire page area (!bFromEdge && BorderDistance > Margin),
+    // and when border is inside page body area (bFromEdge && BorderDistance > Margin)
+    if (nNewMargin < 0)
+    {
+        nNewMargin = 0;
+        nNewBorderDistance = std::max<sal_Int32>(nMargin - nBorderWidth, 0);
+    }
+    else if (nNewBorderDistance < 0)
+    {
+        nNewMargin = std::max<sal_Int32>(nMargin - nBorderWidth, 0);
+        nNewBorderDistance = 0;
+    }
+
+    nMargin = nNewMargin;
+    nBorderDistance = nNewBorderDistance;
+}
+
+// Heuristics to decide if we need to use "from edge" offset of borders
+//
+// There are two cases when we can safely use "from text" or "from edge" offset without distorting
+// border position (modulo rounding errors):
+// 1. When distance of all borders from text is no greater than 31 pt, we use "from text"
+// 2. Otherwise, if distance of all borders from edge is no greater than 31 pt, we use "from edge"
+// In all other cases, the position of borders would be distorted on export, because Word doesn't
+// support the offset of >31 pts (https://msdn.microsoft.com/en-us/library/ff533820), and we need
+// to decide which type of offset would provide less wrong result (i.e., the result would look
+// closer to original). Here, we just check sum of distances from text to borders, and if it is
+// less than sum of distances from borders to edges. The alternative would be to compare total areas
+// between text-and-borders and between borders-and-edges (taking into account different lengths of
+// borders, and visual impact of that).
+void BorderDistancesToWord(const SvxBoxItem& rBox, const WordPageMargins& rMargins,
+    WordBorderDistances& rDistances)
+{
+    // Use signed sal_Int32 that can hold sal_uInt16, to prevent overflow at subtraction below
+    const sal_Int32 nT = rBox.GetDistance(SvxBoxItemLine::TOP);
+    const sal_Int32 nL = rBox.GetDistance(SvxBoxItemLine::LEFT);
+    const sal_Int32 nB = rBox.GetDistance(SvxBoxItemLine::BOTTOM);
+    const sal_Int32 nR = rBox.GetDistance(SvxBoxItemLine::RIGHT);
+
+    // Only take into account existing borders
+    const SvxBorderLine* pLnT = rBox.GetLine(SvxBoxItemLine::TOP);
+    const SvxBorderLine* pLnL = rBox.GetLine(SvxBoxItemLine::LEFT);
+    const SvxBorderLine* pLnB = rBox.GetLine(SvxBoxItemLine::BOTTOM);
+    const SvxBorderLine* pLnR = rBox.GetLine(SvxBoxItemLine::RIGHT);
+
+    // We need to take border widths into account
+    const long nWidthT = pLnT ? pLnT->GetScaledWidth() : 0;
+    const long nWidthL = pLnL ? pLnL->GetScaledWidth() : 0;
+    const long nWidthB = pLnB ? pLnB->GetScaledWidth() : 0;
+    const long nWidthR = pLnR ? pLnR->GetScaledWidth() : 0;
+
+    // Resulting distances from text to borders
+    const sal_Int32 nT2BT = pLnT ? nT : 0;
+    const sal_Int32 nT2BL = pLnL ? nL : 0;
+    const sal_Int32 nT2BB = pLnB ? nB : 0;
+    const sal_Int32 nT2BR = pLnR ? nR : 0;
+
+    // Resulting distances from edge to borders
+    const sal_Int32 nE2BT = pLnT ? std::max<sal_Int32>(rMargins.nTop - nT - nWidthT, 0) : 0;
+    const sal_Int32 nE2BL = pLnL ? std::max<sal_Int32>(rMargins.nLeft - nL - nWidthL, 0) : 0;
+    const sal_Int32 nE2BB = pLnB ? std::max<sal_Int32>(rMargins.nBottom - nB - nWidthB, 0) : 0;
+    const sal_Int32 nE2BR = pLnR ? std::max<sal_Int32>(rMargins.nRight - nR - nWidthR, 0) : 0;
+
+    const sal_Int32 n32pt = 32 * 20;
+    // 1. If all borders are in range of 31 pts from text
+    if (nT2BT < n32pt && nT2BL < n32pt && nT2BB < n32pt && nT2BR < n32pt)
+    {
+        rDistances.bFromEdge = false;
+    }
+    else
+    {
+        // 2. If all borders are in range of 31 pts from edge
+        if (nE2BT < n32pt && nE2BL < n32pt && nE2BB < n32pt && nE2BR < n32pt)
+        {
+            rDistances.bFromEdge = true;
+        }
+        else
+        {
+            // Let's try to guess which would be the best approximation
+            rDistances.bFromEdge =
+                (nT2BT + nT2BL + nT2BB + nT2BR) > (nE2BT + nE2BL + nE2BB + nE2BR);
+        }
+    }
+
+    if (rDistances.bFromEdge)
+    {
+        rDistances.nTop = sal::static_int_cast<sal_uInt16>(nE2BT);
+        rDistances.nLeft = sal::static_int_cast<sal_uInt16>(nE2BL);
+        rDistances.nBottom = sal::static_int_cast<sal_uInt16>(nE2BB);
+        rDistances.nRight = sal::static_int_cast<sal_uInt16>(nE2BR);
+    }
+    else
+    {
+        rDistances.nTop = sal::static_int_cast<sal_uInt16>(nT2BT);
+        rDistances.nLeft = sal::static_int_cast<sal_uInt16>(nT2BL);
+        rDistances.nBottom = sal::static_int_cast<sal_uInt16>(nT2BB);
+        rDistances.nRight = sal::static_int_cast<sal_uInt16>(nT2BR);
+    }
+}
+
 }
 
 // class SvxFormatBreakItem -------------------------------------------------
@@ -2927,20 +2510,29 @@ bool SvxFormatBreakItem::GetPresentation
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     rText = GetValueTextByPos( GetEnumValue() );
     return true;
 }
 
-
-OUString SvxFormatBreakItem::GetValueTextByPos( sal_uInt16 nPos ) const
+OUString SvxFormatBreakItem::GetValueTextByPos( sal_uInt16 nPos )
 {
-    DBG_ASSERT( nPos < (sal_uInt16)SvxBreak::End, "enum overflow!" );
-    return EditResId::GetString(RID_SVXITEMS_BREAK_BEGIN + nPos);
+    static const char* RID_SVXITEMS_BREAK[] =
+    {
+        RID_SVXITEMS_BREAK_NONE,
+        RID_SVXITEMS_BREAK_COLUMN_BEFORE,
+        RID_SVXITEMS_BREAK_COLUMN_AFTER,
+        RID_SVXITEMS_BREAK_COLUMN_BOTH,
+        RID_SVXITEMS_BREAK_PAGE_BEFORE,
+        RID_SVXITEMS_BREAK_PAGE_AFTER,
+        RID_SVXITEMS_BREAK_PAGE_BOTH
+    };
+    static_assert(SAL_N_ELEMENTS(RID_SVXITEMS_BREAK) == size_t(SvxBreak::End), "unexpected size");
+    assert(nPos < sal_uInt16(SvxBreak::End) && "enum overflow!");
+    return EditResId(RID_SVXITEMS_BREAK[nPos]);
 }
-
 
 bool SvxFormatBreakItem::QueryValue( uno::Any& rVal, sal_uInt8 /*nMemberId*/ ) const
 {
@@ -2969,7 +2561,7 @@ bool SvxFormatBreakItem::PutValue( const uno::Any& rVal, sal_uInt8 /*nMemberId*/
         if(!(rVal >>= nValue))
             return false;
 
-        nBreak = (style::BreakType) nValue;
+        nBreak = static_cast<style::BreakType>(nValue);
     }
 
     SvxBreak eBreak = SvxBreak::NONE;
@@ -2988,101 +2580,48 @@ bool SvxFormatBreakItem::PutValue( const uno::Any& rVal, sal_uInt8 /*nMemberId*/
     return true;
 }
 
-
-SfxPoolItem* SvxFormatBreakItem::Clone( SfxItemPool* ) const
+SvxFormatBreakItem* SvxFormatBreakItem::Clone( SfxItemPool* ) const
 {
     return new SvxFormatBreakItem( *this );
 }
 
-
-SvStream& SvxFormatBreakItem::Store( SvStream& rStrm , sal_uInt16 nItemVersion ) const
-{
-    rStrm.WriteSChar( GetEnumValue() );
-    if( FMTBREAK_NOAUTO > nItemVersion )
-        rStrm.WriteSChar( 0x01 );
-    return rStrm;
-}
-
-
-sal_uInt16 SvxFormatBreakItem::GetVersion( sal_uInt16 nFFVer ) const
-{
-    DBG_ASSERT( SOFFICE_FILEFORMAT_31==nFFVer ||
-            SOFFICE_FILEFORMAT_40==nFFVer ||
-            SOFFICE_FILEFORMAT_50==nFFVer,
-            "SvxFormatBreakItem: Is there a new file format? ");
-    return SOFFICE_FILEFORMAT_31==nFFVer ||
-           SOFFICE_FILEFORMAT_40==nFFVer ? 0 : FMTBREAK_NOAUTO;
-}
-
-
-SfxPoolItem* SvxFormatBreakItem::Create( SvStream& rStrm, sal_uInt16 nVersion ) const
-{
-    sal_Int8 eBreak, bDummy;
-    rStrm.ReadSChar( eBreak );
-    if( FMTBREAK_NOAUTO > nVersion )
-        rStrm.ReadSChar( bDummy );
-    return new SvxFormatBreakItem( (SvxBreak)eBreak, Which() );
-}
-
-
 sal_uInt16 SvxFormatBreakItem::GetValueCount() const
 {
-    return (sal_uInt16)SvxBreak::End;   // SvxBreak::PageBoth + 1
+    return sal_uInt16(SvxBreak::End);   // SvxBreak::PageBoth + 1
 }
 
-
-SfxPoolItem* SvxFormatKeepItem::Clone( SfxItemPool* ) const
+SvxFormatKeepItem* SvxFormatKeepItem::Clone( SfxItemPool* ) const
 {
     return new SvxFormatKeepItem( *this );
 }
-
-
-SvStream& SvxFormatKeepItem::Store( SvStream& rStrm , sal_uInt16 /*nItemVersion*/ ) const
-{
-    rStrm.WriteSChar( (sal_Int8)GetValue() );
-    return rStrm;
-}
-
-
-SfxPoolItem* SvxFormatKeepItem::Create( SvStream& rStrm, sal_uInt16 ) const
-{
-    sal_Int8 bIsKeep;
-    rStrm.ReadSChar( bIsKeep );
-    return new SvxFormatKeepItem( bIsKeep != 0, Which() );
-}
-
 
 bool SvxFormatKeepItem::GetPresentation
 (
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
     ) const
 {
-    sal_uInt16 nId = RID_SVXITEMS_FMTKEEP_FALSE;
+    const char* pId = RID_SVXITEMS_FMTKEEP_FALSE;
 
     if ( GetValue() )
-        nId = RID_SVXITEMS_FMTKEEP_TRUE;
-    rText = EditResId::GetString(nId);
+        pId = RID_SVXITEMS_FMTKEEP_TRUE;
+    rText = EditResId(pId);
     return true;
 }
 
 
 SvxLineItem::SvxLineItem( const sal_uInt16 nId ) :
-
-    SfxPoolItem ( nId ),
-
-    pLine( nullptr )
+    SfxPoolItem ( nId )
 {
 }
 
 
 SvxLineItem::SvxLineItem( const SvxLineItem& rCpy ) :
-    SfxPoolItem ( rCpy )
+    SfxPoolItem ( rCpy ),
+    pLine(rCpy.pLine ? new SvxBorderLine( *rCpy.pLine ) : nullptr)
 {
-    if (rCpy.GetLine())
-        pLine.reset( new SvxBorderLine( *rCpy.GetLine() ) );
 }
 
 
@@ -3091,27 +2630,17 @@ SvxLineItem::~SvxLineItem()
 }
 
 
-SvxLineItem& SvxLineItem::operator=( const SvxLineItem& rLine )
-{
-    SetLine( rLine.GetLine() );
-
-    return *this;
-}
-
-
 bool SvxLineItem::operator==( const SfxPoolItem& rAttr ) const
 {
     assert(SfxPoolItem::operator==(rAttr));
 
-    return CmpBrdLn( pLine.get(), static_cast<const SvxLineItem&>(rAttr).GetLine() );
+    return CmpBrdLn( pLine, static_cast<const SvxLineItem&>(rAttr).GetLine() );
 }
 
-
-SfxPoolItem* SvxLineItem::Clone( SfxItemPool* ) const
+SvxLineItem* SvxLineItem::Clone( SfxItemPool* ) const
 {
     return new SvxLineItem( *this );
 }
-
 
 bool SvxLineItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemId ) const
 {
@@ -3126,7 +2655,7 @@ bool SvxLineItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemId ) const
     {
         switch ( nMemId )
         {
-            case MID_FG_COLOR:      rVal <<= sal_Int32(pLine->GetColor().GetColor()); break;
+            case MID_FG_COLOR:      rVal <<= pLine->GetColor(); break;
             case MID_OUTER_WIDTH:   rVal <<= sal_Int32(pLine->GetOutWidth());   break;
             case MID_INNER_WIDTH:   rVal <<= sal_Int32(pLine->GetInWidth( ));   break;
             case MID_DISTANCE:      rVal <<= sal_Int32(pLine->GetDistance());   break;
@@ -3186,33 +2715,15 @@ bool SvxLineItem::GetPresentation
     SfxItemPresentation ePres,
     MapUnit             eCoreUnit,
     MapUnit             ePresUnit,
-    OUString&           rText, const IntlWrapper *pIntl
+    OUString&           rText, const IntlWrapper& rIntl
 )   const
 {
     rText.clear();
 
     if ( pLine )
-        rText = pLine->GetValueString( eCoreUnit, ePresUnit, pIntl,
+        rText = pLine->GetValueString( eCoreUnit, ePresUnit, &rIntl,
             (SfxItemPresentation::Complete == ePres) );
     return true;
-}
-
-
-SvStream& SvxLineItem::Store( SvStream& rStrm , sal_uInt16 /*nItemVersion*/ ) const
-{
-    if( pLine )
-    {
-        WriteColor( rStrm, pLine->GetColor() );
-        rStrm.WriteInt16( pLine->GetOutWidth() )
-             .WriteInt16( pLine->GetInWidth() )
-             .WriteInt16( pLine->GetDistance() );
-    }
-    else
-    {
-        WriteColor( rStrm, Color() );
-        rStrm.WriteInt16( 0 ).WriteInt16( 0 ).WriteInt16( 0 );
-    }
-    return rStrm;
 }
 
 
@@ -3228,30 +2739,10 @@ bool SvxLineItem::HasMetrics() const
 }
 
 
-SfxPoolItem* SvxLineItem::Create( SvStream& rStrm, sal_uInt16 ) const
-{
-    SvxLineItem* _pLine = new SvxLineItem( Which() );
-    short        nOutline, nInline, nDistance;
-    Color        aColor;
-
-    ReadColor( rStrm, aColor ).ReadInt16( nOutline ).ReadInt16( nInline ).ReadInt16( nDistance );
-    if( nOutline )
-    {
-        SvxBorderLine aLine( &aColor );
-        aLine.GuessLinesWidths(SvxBorderLineStyle::NONE, nOutline, nInline, nDistance);
-        _pLine->SetLine( &aLine );
-    }
-    return _pLine;
-}
-
 void SvxLineItem::SetLine( const SvxBorderLine* pNew )
 {
     pLine.reset( pNew ? new SvxBorderLine( *pNew ) : nullptr );
 }
-
-#define LOAD_GRAPHIC    ((sal_uInt16)0x0001)
-#define LOAD_LINK       ((sal_uInt16)0x0002)
-#define LOAD_FILTER     ((sal_uInt16)0x0004)
 
 SvxBrushItem::SvxBrushItem(sal_uInt16 _nWhich)
     : SfxPoolItem(_nWhich)
@@ -3311,115 +2802,6 @@ SvxBrushItem::SvxBrushItem(const OUString& rLink, const OUString& rFilter,
     DBG_ASSERT( GPOS_NONE != ePos, "SvxBrushItem-Ctor with GPOS_NONE == ePos" );
 }
 
-SvxBrushItem::SvxBrushItem(SvStream& rStream, sal_uInt16 nVersion, sal_uInt16 _nWhich)
-    : SfxPoolItem(_nWhich)
-    , aColor(COL_TRANSPARENT)
-    , nShadingValue(ShadingPattern::CLEAR)
-    , nGraphicTransparency(0)
-    , eGraphicPos(GPOS_NONE)
-    , bLoadAgain(false)
-{
-    bool bTrans;
-    Color aTempColor;
-    Color aTempFillColor;
-    sal_Int8 nStyle;
-
-    rStream.ReadCharAsBool( bTrans );
-    ReadColor( rStream, aTempColor );
-    ReadColor( rStream, aTempFillColor );
-    rStream.ReadSChar( nStyle );
-
-    switch ( nStyle )
-    {
-        case 8: // BRUSH_25:
-        {
-            sal_uInt32  nRed    = aTempColor.GetRed();
-            sal_uInt32  nGreen  = aTempColor.GetGreen();
-            sal_uInt32  nBlue   = aTempColor.GetBlue();
-            nRed   += (sal_uInt32)(aTempFillColor.GetRed())*2;
-            nGreen += (sal_uInt32)(aTempFillColor.GetGreen())*2;
-            nBlue  += (sal_uInt32)(aTempFillColor.GetBlue())*2;
-            aColor = Color( (sal_Int8)(nRed/3), (sal_Int8)(nGreen/3), (sal_Int8)(nBlue/3) );
-        }
-        break;
-
-        case 9: // BRUSH_50:
-        {
-            sal_uInt32  nRed    = aTempColor.GetRed();
-            sal_uInt32  nGreen  = aTempColor.GetGreen();
-            sal_uInt32  nBlue   = aTempColor.GetBlue();
-            nRed   += (sal_uInt32)(aTempFillColor.GetRed());
-            nGreen += (sal_uInt32)(aTempFillColor.GetGreen());
-            nBlue  += (sal_uInt32)(aTempFillColor.GetBlue());
-            aColor = Color( (sal_Int8)(nRed/2), (sal_Int8)(nGreen/2), (sal_Int8)(nBlue/2) );
-        }
-        break;
-
-        case 10: // BRUSH_75:
-        {
-            sal_uInt32  nRed    = aTempColor.GetRed()*2;
-            sal_uInt32  nGreen  = aTempColor.GetGreen()*2;
-            sal_uInt32  nBlue   = aTempColor.GetBlue()*2;
-            nRed   += (sal_uInt32)(aTempFillColor.GetRed());
-            nGreen += (sal_uInt32)(aTempFillColor.GetGreen());
-            nBlue  += (sal_uInt32)(aTempFillColor.GetBlue());
-            aColor = Color( (sal_Int8)(nRed/3), (sal_Int8)(nGreen/3), (sal_Int8)(nBlue/3) );
-        }
-        break;
-
-        case 0: // BRUSH_NULL:
-            aColor = Color( COL_TRANSPARENT );
-        break;
-
-        default:
-            aColor = aTempColor;
-    }
-
-    if ( nVersion >= BRUSH_GRAPHIC_VERSION )
-    {
-        sal_uInt16 nDoLoad = 0;
-        sal_Int8 nPos;
-
-        rStream.ReadUInt16( nDoLoad );
-
-        if ( nDoLoad & LOAD_GRAPHIC )
-        {
-            Graphic aGraphic;
-
-            ReadGraphic( rStream, aGraphic );
-            xGraphicObject.reset(new GraphicObject(aGraphic));
-
-            if( SVSTREAM_FILEFORMAT_ERROR == rStream.GetError() )
-            {
-                rStream.ResetError();
-                rStream.SetError( ERRCODE_SVX_GRAPHIC_WRONG_FILEFORMAT.MakeWarning() );
-            }
-        }
-
-        if ( nDoLoad & LOAD_LINK )
-        {
-            // UNICODE: rStream >> aRel;
-            OUString aRel = rStream.ReadUniOrByteString(rStream.GetStreamCharSet());
-
-            // TODO/MBA: how can we get a BaseURL here?!
-            OSL_FAIL("No BaseURL!");
-            OUString aAbs = INetURLObject::GetAbsURL( "", aRel );
-            DBG_ASSERT( !aAbs.isEmpty(), "Invalid URL!" );
-            maStrLink = aAbs;
-        }
-
-        if ( nDoLoad & LOAD_FILTER )
-        {
-            // UNICODE: rStream >> maStrFilter;
-            maStrFilter = rStream.ReadUniOrByteString(rStream.GetStreamCharSet());
-        }
-
-        rStream.ReadSChar( nPos );
-
-        eGraphicPos = (SvxGraphicPosition)nPos;
-    }
-}
-
 SvxBrushItem::SvxBrushItem(const SvxBrushItem& rItem)
     : SfxPoolItem(rItem)
     , aColor(rItem.aColor)
@@ -3450,13 +2832,24 @@ SvxBrushItem::~SvxBrushItem()
 {
 }
 
-sal_uInt16 SvxBrushItem::GetVersion( sal_uInt16 /*nFileVersion*/ ) const
+bool SvxBrushItem::isUsed() const
 {
-    return BRUSH_GRAPHIC_VERSION;
+    if (GPOS_NONE != GetGraphicPos())
+    {
+        // graphic used
+        return true;
+    }
+    else if (0xff != GetColor().GetTransparency())
+    {
+        // color used
+        return true;
+    }
+
+    return false;
 }
 
 
-static inline sal_Int8 lcl_PercentToTransparency(long nPercent)
+static sal_Int8 lcl_PercentToTransparency(long nPercent)
 {
     // 0xff must not be returned!
     return sal_Int8(nPercent ? (50 + 0xfe * nPercent) / 100 : 0);
@@ -3465,7 +2858,7 @@ static inline sal_Int8 lcl_PercentToTransparency(long nPercent)
 
 sal_Int8 SvxBrushItem::TransparencyToPercent(sal_Int32 nTrans)
 {
-    return (sal_Int8)((nTrans * 100 + 127) / 254);
+    return static_cast<sal_Int8>((nTrans * 100 + 127) / 254);
 }
 
 
@@ -3475,20 +2868,16 @@ bool SvxBrushItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
     switch( nMemberId)
     {
         case MID_BACK_COLOR:
-            rVal <<= (sal_Int32)( aColor.GetColor() );
+            rVal <<= aColor;
         break;
         case MID_BACK_COLOR_R_G_B:
-            rVal <<= (sal_Int32)( aColor.GetRGBColor() );
+            rVal <<= aColor.GetRGBColor();
         break;
         case MID_BACK_COLOR_TRANSPARENCY:
             rVal <<= SvxBrushItem::TransparencyToPercent(aColor.GetTransparency());
         break;
         case MID_GRAPHIC_POSITION:
-            rVal <<= (style::GraphicLocation)(sal_Int16)eGraphicPos;
-        break;
-
-        case MID_GRAPHIC:
-            SAL_WARN( "editeng.items", "not implemented" );
+            rVal <<= static_cast<style::GraphicLocation>(static_cast<sal_Int16>(eGraphicPos));
         break;
 
         case MID_GRAPHIC_TRANSPARENT:
@@ -3496,18 +2885,19 @@ bool SvxBrushItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
         break;
 
         case MID_GRAPHIC_URL:
+        case MID_GRAPHIC:
         {
-            OUString sLink;
-            if ( !maStrLink.isEmpty() )
-                sLink = maStrLink;
+            uno::Reference<graphic::XGraphic> xGraphic;
+            if (!maStrLink.isEmpty())
+            {
+                Graphic aGraphic(vcl::graphic::loadFromURL(maStrLink));
+                xGraphic = aGraphic.GetXGraphic();
+            }
             else if (xGraphicObject)
             {
-                OUString sId(OStringToOUString(
-                    xGraphicObject->GetUniqueID(),
-                    RTL_TEXTENCODING_ASCII_US));
-                sLink = UNO_NAME_GRAPHOBJ_URLPREFIX + sId;
+                xGraphic = xGraphicObject->GetGraphic().GetXGraphic();
             }
-            rVal <<= sLink;
+            rVal <<= xGraphic;
         }
         break;
 
@@ -3540,15 +2930,14 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
         case MID_BACK_COLOR:
         case MID_BACK_COLOR_R_G_B:
         {
-            sal_Int32 nCol = 0;
-            if ( !( rVal >>= nCol ) )
+            Color aNewCol;
+            if ( !( rVal >>= aNewCol ) )
                 return false;
             if(MID_BACK_COLOR_R_G_B == nMemberId)
             {
-                nCol = COLORDATA_RGB( nCol );
-                nCol += aColor.GetColor() & 0xff000000;
+                aNewCol.SetTransparency(aColor.GetTransparency());
             }
-            aColor = Color( nCol );
+            aColor = aNewCol;
         }
         break;
         case MID_BACK_COLOR_TRANSPARENCY:
@@ -3568,14 +2957,10 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
                 sal_Int32 nValue = 0;
                 if ( !( rVal >>= nValue ) )
                     return false;
-                eLocation = (style::GraphicLocation)nValue;
+                eLocation = static_cast<style::GraphicLocation>(nValue);
             }
-            SetGraphicPos( (SvxGraphicPosition)(sal_uInt16)eLocation );
+            SetGraphicPos( static_cast<SvxGraphicPosition>(static_cast<sal_uInt16>(eLocation)) );
         }
-        break;
-
-        case MID_GRAPHIC:
-            SAL_WARN( "editeng.items", "not implemented" );
         break;
 
         case MID_GRAPHIC_TRANSPARENT:
@@ -3583,33 +2968,38 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
         break;
 
         case MID_GRAPHIC_URL:
+        case MID_GRAPHIC:
         {
-            if ( rVal.getValueType() == ::cppu::UnoType<OUString>::get() )
+            Graphic aGraphic;
+
+            if (rVal.getValueType() == ::cppu::UnoType<OUString>::get())
             {
-                OUString sLink;
-                rVal >>= sLink;
-                if( sLink.startsWith( UNO_NAME_GRAPHOBJ_URLPKGPREFIX ) )
+                OUString aURL = rVal.get<OUString>();
+                aGraphic = vcl::graphic::loadFromURL(aURL);
+            }
+            else if (rVal.getValueType() == cppu::UnoType<graphic::XGraphic>::get())
+            {
+                auto xGraphic = rVal.get<uno::Reference<graphic::XGraphic>>();
+                aGraphic = Graphic(xGraphic);
+            }
+
+            if (!aGraphic.IsNone())
+            {
+                maStrLink.clear();
+
+                std::unique_ptr<GraphicObject> xOldGrfObj(std::move(xGraphicObject));
+                xGraphicObject.reset(new GraphicObject(aGraphic));
+                ApplyGraphicTransparency_Impl();
+                xOldGrfObj.reset();
+
+                if (!aGraphic.IsNone() && eGraphicPos == GPOS_NONE)
                 {
-                    OSL_FAIL( "package urls aren't implemented" );
-                }
-                else if( sLink.startsWith( UNO_NAME_GRAPHOBJ_URLPREFIX ) )
-                {
-                    maStrLink.clear();
-                    OString sId(OUStringToOString(sLink.copy( sizeof(UNO_NAME_GRAPHOBJ_URLPREFIX)-1 ),
-                                                  RTL_TEXTENCODING_ASCII_US));
-                    std::unique_ptr<GraphicObject> xOldGrfObj(std::move(xGraphicObject));
-                    xGraphicObject.reset(new GraphicObject(sId));
-                    ApplyGraphicTransparency_Impl();
-                    xOldGrfObj.reset();
-                }
-                else
-                {
-                    SetGraphicLink(sLink);
-                }
-                if ( !sLink.isEmpty() && eGraphicPos == GPOS_NONE )
                     eGraphicPos = GPOS_MM;
-                else if( sLink.isEmpty() )
+                }
+                else if (aGraphic.IsNone())
+                {
                     eGraphicPos = GPOS_NONE;
+                }
             }
         }
         break;
@@ -3657,53 +3047,24 @@ bool SvxBrushItem::GetPresentation
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
     ) const
 {
     if ( GPOS_NONE  == eGraphicPos )
     {
-        rText = ::GetColorString( aColor ) + OUString(cpDelim);
-        sal_uInt16 nId = RID_SVXITEMS_TRANSPARENT_FALSE;
+        rText = ::GetColorString( aColor ) + cpDelim;
+        const char* pId = RID_SVXITEMS_TRANSPARENT_FALSE;
 
         if ( aColor.GetTransparency() )
-            nId = RID_SVXITEMS_TRANSPARENT_TRUE;
-        rText += EditResId::GetString(nId);
+            pId = RID_SVXITEMS_TRANSPARENT_TRUE;
+        rText += EditResId(pId);
     }
     else
     {
-        rText = EditResId::GetString(RID_SVXITEMS_GRAPHIC);
+        rText = EditResId(RID_SVXITEMS_GRAPHIC);
     }
 
     return true;
-}
-
-SvxBrushItem& SvxBrushItem::operator=(const SvxBrushItem& rItem)
-{
-    if (&rItem != this)
-    {
-        aColor = rItem.aColor;
-        nShadingValue = rItem.nShadingValue;
-        xGraphicObject.reset(rItem.xGraphicObject ? new GraphicObject(*rItem.xGraphicObject) : nullptr);
-        nGraphicTransparency = rItem.nGraphicTransparency;
-        maStrLink = rItem.maStrLink;
-        maStrFilter = rItem.maStrFilter;
-        eGraphicPos = rItem.eGraphicPos;
-        bLoadAgain = rItem.bLoadAgain;
-    }
-    return *this;
-}
-
-SvxBrushItem& SvxBrushItem::operator=(SvxBrushItem&& rItem)
-{
-    aColor = std::move(rItem.aColor);
-    nShadingValue = std::move(rItem.nShadingValue);
-    xGraphicObject = std::move(rItem.xGraphicObject);
-    nGraphicTransparency = std::move(rItem.nGraphicTransparency);
-    maStrLink = std::move(rItem.maStrLink);
-    maStrFilter = std::move(rItem.maStrFilter);
-    eGraphicPos = std::move(rItem.eGraphicPos);
-    bLoadAgain = std::move(rItem.bLoadAgain);
-    return *this;
 }
 
 bool SvxBrushItem::operator==( const SfxPoolItem& rAttr ) const
@@ -3744,53 +3105,9 @@ bool SvxBrushItem::operator==( const SfxPoolItem& rAttr ) const
     return bEqual;
 }
 
-
-SfxPoolItem* SvxBrushItem::Clone( SfxItemPool* ) const
+SvxBrushItem* SvxBrushItem::Clone( SfxItemPool* ) const
 {
     return new SvxBrushItem( *this );
-}
-
-
-SfxPoolItem* SvxBrushItem::Create( SvStream& rStream, sal_uInt16 nVersion ) const
-{
-    return new SvxBrushItem( rStream, nVersion, Which() );
-}
-
-
-SvStream& SvxBrushItem::Store( SvStream& rStream , sal_uInt16 /*nItemVersion*/ ) const
-{
-    rStream.WriteBool( false );
-    WriteColor( rStream, aColor );
-    WriteColor( rStream, aColor );
-    rStream.WriteSChar( aColor.GetTransparency() > 0 ? 0 : 1 ); //BRUSH_NULL : BRUSH_SOLID
-
-    sal_uInt16 nDoLoad = 0;
-
-    if (xGraphicObject && maStrLink.isEmpty())
-        nDoLoad |= LOAD_GRAPHIC;
-    if ( !maStrLink.isEmpty() )
-        nDoLoad |= LOAD_LINK;
-    if ( !maStrFilter.isEmpty() )
-        nDoLoad |= LOAD_FILTER;
-    rStream.WriteUInt16( nDoLoad );
-
-    if (xGraphicObject && maStrLink.isEmpty())
-        WriteGraphic(rStream, xGraphicObject->GetGraphic());
-    if ( !maStrLink.isEmpty() )
-    {
-        OSL_FAIL("No BaseURL!");
-        // TODO/MBA: how to get a BaseURL?!
-        OUString aRel = INetURLObject::GetRelURL( "", maStrLink );
-        // UNICODE: rStream << aRel;
-        rStream.WriteUniOrByteString(aRel, rStream.GetStreamCharSet());
-    }
-    if ( !maStrFilter.isEmpty() )
-    {
-        // UNICODE: rStream << maStrFilter;
-        rStream.WriteUniOrByteString(maStrFilter, rStream.GetStreamCharSet());
-    }
-    rStream.WriteSChar( eGraphicPos );
-    return rStream;
 }
 
 const GraphicObject* SvxBrushItem::GetGraphicObject(OUString const & referer) const
@@ -3947,70 +3264,6 @@ void SvxBrushItem::SetGraphicFilter( const OUString& rNew )
     maStrFilter = rNew;
 }
 
-SvxGraphicPosition SvxBrushItem::WallpaperStyle2GraphicPos( WallpaperStyle eStyle )
-{
-    SvxGraphicPosition eResult;
-    // This switch is not the fastest, but the safest
-    switch( eStyle )
-    {
-        case WallpaperStyle::NONE: eResult = GPOS_NONE; break;
-        case WallpaperStyle::Tile: eResult = GPOS_TILED; break;
-        case WallpaperStyle::Center: eResult = GPOS_MM; break;
-        case WallpaperStyle::Scale: eResult = GPOS_AREA; break;
-        case WallpaperStyle::TopLeft: eResult = GPOS_LT; break;
-        case WallpaperStyle::Top: eResult = GPOS_MT; break;
-        case WallpaperStyle::TopRight: eResult = GPOS_RT; break;
-        case WallpaperStyle::Left: eResult = GPOS_LM; break;
-        case WallpaperStyle::Right: eResult = GPOS_RM; break;
-        case WallpaperStyle::BottomLeft: eResult = GPOS_LB; break;
-        case WallpaperStyle::Bottom: eResult = GPOS_MB; break;
-        case WallpaperStyle::BottomRight: eResult = GPOS_RB; break;
-        default: eResult = GPOS_NONE;
-    }
-    return eResult;
-};
-
-WallpaperStyle SvxBrushItem::GraphicPos2WallpaperStyle( SvxGraphicPosition ePos )
-{
-    WallpaperStyle eResult;
-    switch( ePos )
-    {
-        case GPOS_NONE: eResult = WallpaperStyle::NONE; break;
-        case GPOS_TILED: eResult = WallpaperStyle::Tile; break;
-        case GPOS_MM: eResult = WallpaperStyle::Center; break;
-        case GPOS_AREA: eResult = WallpaperStyle::Scale; break;
-        case GPOS_LT: eResult = WallpaperStyle::TopLeft; break;
-        case GPOS_MT: eResult = WallpaperStyle::Top; break;
-        case GPOS_RT: eResult = WallpaperStyle::TopRight; break;
-        case GPOS_LM: eResult = WallpaperStyle::Left; break;
-        case GPOS_RM: eResult = WallpaperStyle::Right; break;
-        case GPOS_LB: eResult = WallpaperStyle::BottomLeft; break;
-        case GPOS_MB: eResult = WallpaperStyle::Bottom; break;
-        case GPOS_RB: eResult = WallpaperStyle::BottomRight; break;
-        default: eResult = WallpaperStyle::NONE;
-    }
-    return eResult;
-}
-
-SvxBrushItem::SvxBrushItem(const CntWallpaperItem& rItem, sal_uInt16 _nWhich)
-    : SfxPoolItem(_nWhich)
-    , nShadingValue(ShadingPattern::CLEAR)
-    , nGraphicTransparency(0)
-    , bLoadAgain(true)
-{
-    aColor = rItem.GetColor();
-
-    if (!rItem.GetBitmapURL().isEmpty())
-    {
-        maStrLink    = rItem.GetBitmapURL();
-        SetGraphicPos( WallpaperStyle2GraphicPos((WallpaperStyle)rItem.GetStyle() ) );
-    }
-    else
-    {
-        SetGraphicPos( GPOS_NONE );
-    }
-}
-
 void SvxBrushItem::ApplyGraphicTransparency_Impl()
 {
     DBG_ASSERT(xGraphicObject, "no GraphicObject available" );
@@ -4048,44 +3301,34 @@ SvxFrameDirectionItem::~SvxFrameDirectionItem()
 {
 }
 
-
-bool SvxFrameDirectionItem::operator==( const SfxPoolItem& rCmp ) const
-{
-    assert(SfxPoolItem::operator==(rCmp));
-
-    return GetValue() == static_cast<const SvxFrameDirectionItem&>(rCmp).GetValue();
-}
-
-
-SfxPoolItem* SvxFrameDirectionItem::Clone( SfxItemPool * ) const
+SvxFrameDirectionItem* SvxFrameDirectionItem::Clone( SfxItemPool * ) const
 {
     return new SvxFrameDirectionItem( *this );
 }
 
-
-SfxPoolItem* SvxFrameDirectionItem::Create( SvStream & rStrm, sal_uInt16 /*nVer*/ ) const
+const char* getFrmDirResId(size_t nIndex)
 {
-    sal_uInt16 nValue;
-    rStrm.ReadUInt16( nValue );
-    return new SvxFrameDirectionItem( static_cast<SvxFrameDirection>(nValue), Which() );
+    const char* const RID_SVXITEMS_FRMDIR[] =
+    {
+        RID_SVXITEMS_FRMDIR_HORI_LEFT_TOP,
+        RID_SVXITEMS_FRMDIR_HORI_RIGHT_TOP,
+        RID_SVXITEMS_FRMDIR_VERT_TOP_RIGHT,
+        RID_SVXITEMS_FRMDIR_VERT_TOP_LEFT,
+        RID_SVXITEMS_FRMDIR_ENVIRONMENT,
+        RID_SVXITEMS_FRMDIR_VERT_BOT_LEFT
+    };
+    return RID_SVXITEMS_FRMDIR[nIndex];
 }
-
-sal_uInt16 SvxFrameDirectionItem::GetVersion( sal_uInt16 nFVer ) const
-{
-    return SOFFICE_FILEFORMAT_50 > nFVer ? USHRT_MAX : 0;
-}
-
 
 bool SvxFrameDirectionItem::GetPresentation(
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *) const
+    OUString&           rText, const IntlWrapper&) const
 {
-    rText = EditResId::GetString( RID_SVXITEMS_FRMDIR_BEGIN + GetEnumValue() );
+    rText = EditResId(getFrmDirResId(GetEnumValue()));
     return true;
 }
-
 
 bool SvxFrameDirectionItem::PutValue( const css::uno::Any& rVal,
                                              sal_uInt8 )
@@ -4108,6 +3351,9 @@ bool SvxFrameDirectionItem::PutValue( const css::uno::Any& rVal,
                 break;
             case text::WritingMode2::TB_LR:
                 SetValue( SvxFrameDirection::Vertical_LR_TB );
+                break;
+            case text::WritingMode2::BT_LR:
+                SetValue( SvxFrameDirection::Vertical_LR_BT );
                 break;
             case text::WritingMode2::PAGE:
                 SetValue( SvxFrameDirection::Environment );
@@ -4142,6 +3388,9 @@ bool SvxFrameDirectionItem::QueryValue( css::uno::Any& rVal,
         case SvxFrameDirection::Vertical_LR_TB:
             nVal = text::WritingMode2::TB_LR;
             break;
+        case SvxFrameDirection::Vertical_LR_BT:
+            nVal = text::WritingMode2::BT_LR;
+            break;
         case SvxFrameDirection::Environment:
             nVal = text::WritingMode2::PAGE;
             break;
@@ -4157,6 +3406,17 @@ bool SvxFrameDirectionItem::QueryValue( css::uno::Any& rVal,
         rVal <<= nVal;
     }
     return bRet;
+}
+
+void SvxFrameDirectionItem::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    xmlTextWriterStartElement(pWriter, BAD_CAST("SvxFrameDirectionItem"));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nWhich"),
+                                BAD_CAST(OString::number(Which()).getStr()));
+    xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("m_nValue"),
+        BAD_CAST(OString::number(static_cast<sal_Int16>(GetValue())).getStr()));
+    xmlTextWriterEndElement(pWriter);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

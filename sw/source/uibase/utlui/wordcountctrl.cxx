@@ -8,9 +8,10 @@
  */
 
 #include <swtypes.hxx>
-#include <utlui.hrc>
-#include "wordcountctrl.hxx"
+#include <strings.hrc>
+#include <wordcountctrl.hxx>
 #include <svl/stritem.hxx>
+#include <vcl/status.hxx>
 
 SFX_IMPL_STATUSBAR_CONTROL(SwWordCountStatusBarControl, SfxStringItem);
 

@@ -29,27 +29,20 @@
 #include <svtools/scrwin.hxx>
 #include <sfx2/ctrlitem.hxx>
 #include <sfx2/shell.hxx>
-#include <sfx2/viewfac.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <vcl/timer.hxx>
-#include <svtools/colorcfg.hxx>
 #include "document.hxx"
 #include "edit.hxx"
-#include "node.hxx"
 
-class SmDocShell;
 class SmViewShell;
 class SmPrintUIOptions;
 class SmGraphicAccessible;
+class SmNode;
 
-class SmGraphicWindow : public ScrollableWindow
+namespace svtools { class ColorConfig; }
+
+class SmGraphicWindow final : public ScrollableWindow
 {
-    Point aFormulaDrawPos;
-    // old style editing pieces
-    tools::Rectangle aCursorRect;
-    bool bIsCursorVisible;
-    bool bIsLineVisible;
-    AutoTimer aCaretBlinkTimer;
 public:
     bool IsCursorVisible() const
     {
@@ -62,40 +55,13 @@ public:
     }
     void ShowLine(bool bShow);
     const SmNode * SetCursorPos(sal_uInt16 nRow, sal_uInt16 nCol);
-protected:
-    void SetIsCursorVisible(bool bVis)
-    {
-        bIsCursorVisible = bVis;
-    }
-    using Window::SetCursor;
-    void SetCursor(const SmNode *pNode);
-    void SetCursor(const tools::Rectangle &rRect);
-    bool IsInlineEditEnabled() const;
 
-private:
-    rtl::Reference<SmGraphicAccessible> mxAccessible;
-
-    SmViewShell* pViewShell;
-    sal_uInt16 nZoom;
-
-protected:
-    virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&) override;
-    virtual void KeyInput(const KeyEvent& rKEvt) override;
-    virtual void Command(const CommandEvent& rCEvt) override;
-    virtual void StateChanged( StateChangedType eChanged ) override;
-
-private:
-    void RepaintViewShellDoc();
-    DECL_LINK(CaretBlinkTimerHdl, Timer *, void);
-    void CaretBlinkInit();
-    void CaretBlinkStart();
-    void CaretBlinkStop();
-public:
     explicit SmGraphicWindow(SmViewShell* pShell);
     virtual ~SmGraphicWindow() override;
     virtual void dispose() override;
 
     // Window
+    virtual void ApplySettings(vcl::RenderContext&) override;
     virtual void MouseButtonDown(const MouseEvent &rMEvt) override;
     virtual void MouseMove(const MouseEvent &rMEvt) override;
     virtual void GetFocus() override;
@@ -123,8 +89,6 @@ public:
     using ScrollableWindow::SetTotalSize;
     void SetTotalSize();
 
-    void ApplyColorConfigValues(const svtools::ColorConfig &rColorCfg);
-
     // for Accessibility
     virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
 
@@ -133,11 +97,41 @@ public:
     {
         return mxAccessible.get();
     }
+
+private:
+    void SetIsCursorVisible(bool bVis)
+    {
+        bIsCursorVisible = bVis;
+    }
+    using Window::SetCursor;
+    void SetCursor(const SmNode *pNode);
+    void SetCursor(const tools::Rectangle &rRect);
+    bool IsInlineEditEnabled() const;
+
+    virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&) override;
+    virtual void KeyInput(const KeyEvent& rKEvt) override;
+    virtual void Command(const CommandEvent& rCEvt) override;
+    virtual void StateChanged( StateChangedType eChanged ) override;
+
+    void RepaintViewShellDoc();
+    DECL_LINK(CaretBlinkTimerHdl, Timer *, void);
+    void CaretBlinkInit();
+    void CaretBlinkStart();
+    void CaretBlinkStop();
+
+    Point aFormulaDrawPos;
+    // old style editing pieces
+    tools::Rectangle aCursorRect;
+    bool bIsCursorVisible;
+    bool bIsLineVisible;
+    AutoTimer aCaretBlinkTimer;
+    rtl::Reference<SmGraphicAccessible> mxAccessible;
+    SmViewShell* pViewShell;
+    sal_uInt16 nZoom;
 };
 
-class SmGraphicController: public SfxControllerItem
+class SmGraphicController final : public SfxControllerItem
 {
-protected:
     SmGraphicWindow &rGraphic;
 public:
     SmGraphicController(SmGraphicWindow &, sal_uInt16, SfxBindings & );
@@ -146,9 +140,8 @@ public:
                               const SfxPoolItem* pState) override;
 };
 
-class SmEditController: public SfxControllerItem
+class SmEditController final : public SfxControllerItem
 {
-protected:
     SmEditWindow &rEdit;
 
 public:
@@ -193,16 +186,15 @@ public:
 
     SmEditWindow& GetEditWindow()
     {
-        return *aEdit.get();
+        return *aEdit;
     }
     SmViewShell* GetView();
 };
 
-class SmCmdBoxWrapper : public SfxChildWindow
+class SmCmdBoxWrapper final : public SfxChildWindow
 {
     SFX_DECL_CHILDWINDOW_WITHID(SmCmdBoxWrapper);
 
-protected:
     SmCmdBoxWrapper(vcl::Window* pParentWindow, sal_uInt16 nId, SfxBindings* pBindings, SfxChildWinInfo* pInfo);
 
 public:
@@ -229,16 +221,16 @@ class SmViewShell: public SfxViewShell
     DECL_LINK( DialogClosedHdl, sfx2::FileDialogHelper*, void );
     virtual void            Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
-    /** Used to determine whether insertions using SID_INSERTSYMBOL and SID_INSERTCOMMANDTEXT
+    /** Used to determine whether insertions using SID_INSERTSPECIAL and SID_INSERTCOMMANDTEXT
      * should be inserted into SmEditWindow or directly into the SmDocShell as done if the
      * visual editor was last to have focus.
      */
     bool mbInsertIntoEditWindow;
 protected:
 
-    static Size GetTextLineSize(OutputDevice& rDevice,
+    static Size GetTextLineSize(OutputDevice const & rDevice,
                          const OUString& rLine);
-    static Size GetTextSize(OutputDevice& rDevice,
+    static Size GetTextSize(OutputDevice const & rDevice,
                      const OUString& rText,
                      long          MaxWidth);
     static void DrawTextLine(OutputDevice& rDevice,
@@ -257,11 +249,10 @@ protected:
     void InsertFrom(SfxMedium &rMedium);
 
     virtual bool HasPrintOptionsPage() const override;
-    virtual VclPtr<SfxTabPage> CreatePrintOptionsPage(vcl::Window    *pParent,
-                                                      const SfxItemSet &rOptions) override;
+    virtual std::unique_ptr<SfxTabPage> CreatePrintOptionsPage(weld::Container* pPage, weld::DialogController* pController,
+                                                               const SfxItemSet &rOptions) override;
     virtual void Deactivate(bool IsMDIActivate) override;
     virtual void Activate(bool IsMDIActivate) override;
-    virtual void AdjustPosSizePixel(const Point &rPos, const Size &rSize) override;
     virtual void InnerResizePixel(const Point &rOfs, const Size  &rSize, bool inplaceEditModeChange) override;
     virtual void OuterResizePixel(const Point &rOfs, const Size  &rSize) override;
     virtual void QueryObjAreaPixel( tools::Rectangle& rRect ) const override;
@@ -281,11 +272,11 @@ public:
 
     SmGraphicWindow& GetGraphicWindow()
     {
-        return *mpGraphic.get();
+        return *mpGraphic;
     }
     const SmGraphicWindow& GetGraphicWindow() const
     {
-        return *mpGraphic.get();
+        return *mpGraphic;
     }
 
     void        SetStatusText(const OUString& rText);

@@ -17,13 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "pivottablefragment.hxx"
-#include "pivottablebuffer.hxx"
+#include <pivottablefragment.hxx>
+#include <pivottablebuffer.hxx>
+#include <biffhelper.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::oox::core;
 
@@ -181,6 +180,9 @@ ContextHandlerRef PivotTableFragment::onCreateContext( sal_Int32 nElement, const
                 case XLS_TOKEN( pageFields ):   return this;
                 case XLS_TOKEN( dataFields ):   return this;
                 case XLS_TOKEN( filters ):      return this;
+                case XLS_TOKEN(pivotTableStyleInfo):
+                    mrPivotTable.putToInteropGrabBag("pivotTableStyleInfo", rAttribs);
+                    break;
             }
         break;
 
@@ -273,7 +275,6 @@ const RecordInfo* PivotTableFragment::getRecordInfos() const
     return spRecInfos;
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

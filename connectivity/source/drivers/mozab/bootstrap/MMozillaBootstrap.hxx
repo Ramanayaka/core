@@ -26,15 +26,10 @@
 #include <com/sun/star/mozilla/XMozillaBootstrap.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/compbase.hxx>
-#include <osl/module.h>
 
 
-#define MOZAB_MozillaBootstrap_IMPL_NAME "com.sun.star.comp.mozilla.MozillaBootstrap"
-
-namespace connectivity
+namespace connectivity::mozab
 {
-    namespace mozab
-    {
         typedef ::cppu::WeakComponentImplHelper<   css::mozilla::XMozillaBootstrap,
                                                    css::lang::XServiceInfo > OMozillaBootstrap_BASE;
         class ProfileAccess;
@@ -47,7 +42,6 @@ namespace connectivity
             std::unique_ptr<ProfileAccess> m_ProfileAccess;
         public:
 
-            void Init();
             MozillaBootstrap();
 
             // OComponentHelper
@@ -79,7 +73,6 @@ namespace connectivity
             // XProxyRunner
             virtual ::sal_Int32 SAL_CALL Run( const css::uno::Reference< css::mozilla::XCodeProxy >& aCode ) override;
         };
-    }
 
 }
 

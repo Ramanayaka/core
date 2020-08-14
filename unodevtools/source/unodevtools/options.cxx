@@ -19,15 +19,16 @@
 
 #include <stdio.h>
 
-#include "codemaker/global.hxx"
-#include "rtl/ustring.hxx"
-#include "rtl/process.h"
-#include "options.hxx"
+#include <codemaker/global.hxx>
+#include <rtl/ustring.hxx>
+#include <rtl/process.h>
+#include <sal/log.hxx>
+#include <options.hxx>
 
 namespace unodevtools {
 
 
-bool readOption( OUString * pValue, const sal_Char * pOpt,
+bool readOption( OUString * pValue, const char * pOpt,
                      sal_uInt32 * pnIndex, const OUString & aArg)
 {
     const OUString dash = "-";
@@ -45,15 +46,14 @@ bool readOption( OUString * pValue, const sal_Char * pOpt,
 
         rtl_getAppCommandArg(*pnIndex, &pValue->pData);
         if (*pnIndex >= rtl_getAppCommandArgCount() ||
-            pValue->copy(1).equals(dash))
+            pValue->copy(1) == dash)
         {
             throw CannotDumpException(
                 "incomplete option \"-" + aOpt + "\" given!");
-        } else {
-            SAL_INFO("unodevtools", "identified option -" << pOpt << " = " << *pValue);
-            ++(*pnIndex);
-            return true;
         }
+        SAL_INFO("unodevtools", "identified option -" << pOpt << " = " << *pValue);
+        ++(*pnIndex);
+        return true;
     } else if (aArg.indexOf(aOpt) == 1) {
         *pValue = aArg.copy(1 + aOpt.getLength());
         SAL_INFO("unodevtools", "identified option -" << pOpt << " = " << *pValue);
@@ -65,7 +65,7 @@ bool readOption( OUString * pValue, const sal_Char * pOpt,
 }
 
 
-bool readOption( const sal_Char * pOpt,
+bool readOption( const char * pOpt,
                      sal_uInt32 * pnIndex, const OUString & aArg)
 {
     OUString aOpt = OUString::createFromAscii(pOpt);

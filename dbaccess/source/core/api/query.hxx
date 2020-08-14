@@ -22,11 +22,12 @@
 
 #include "querydescriptor.hxx"
 #include <cppuhelper/implbase3.hxx>
+#include <rtl/ref.hxx>
 #include <com/sun/star/sdbcx/XDataDescriptorFactory.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbcx/XRename.hpp>
-#include "ContentHelper.hxx"
+#include <ContentHelper.hxx>
 
 #include <map>
 
@@ -55,11 +56,7 @@ class OQuery    :public OContentHelper
 {
     friend struct TRelease;
 
-public:
-    typedef std::map< OUString,OColumn*,::comphelper::UStringMixLess> TNameColumnMap;
-
 protected:
-//  TNameColumnMap      m_aColumnMap; // contains all columnnames to columns
     css::uno::Reference< css::beans::XPropertySet >           m_xCommandDefinition;
     css::uno::Reference< css::sdbc::XConnection >             m_xConnection;
     css::uno::Reference< css::beans::XPropertySetInfo >       m_xCommandPropInfo;
@@ -67,8 +64,8 @@ protected:
     ::dbtools::WarningsContainer*                             m_pWarnings;
 
     // possible actions on our "aggregate"
-    enum AGGREGATE_ACTION { NONE, SETTING_PROPERTIES, FLUSHING };
-    AGGREGATE_ACTION    m_eDoingCurrently;
+    enum class AggregateAction { NONE, SettingProperties };
+    AggregateAction    m_eDoingCurrently;
 
     /** a class which automatically resets m_eDoingCurrently in its destructor
     */
@@ -79,7 +76,7 @@ protected:
         OQuery&             m_rActor;
     public:
         explicit OAutoActionReset(OQuery& _rActor) : m_rActor(_rActor) { }
-        ~OAutoActionReset() { m_rActor.m_eDoingCurrently = NONE; }
+        ~OAutoActionReset() { m_rActor.m_eDoingCurrently = AggregateAction::NONE; }
     };
 
 protected:

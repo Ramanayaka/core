@@ -21,7 +21,7 @@
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <drawinglayer/primitive2d/transparenceprimitive2d.hxx>
@@ -33,11 +33,10 @@
 #include <drawinglayer/primitive2d/hiddengeometryprimitive2d.hxx>
 #include <drawinglayer/primitive2d/bitmapprimitive2d.hxx>
 #include <comphelper/lok.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 
-namespace drawinglayer
+namespace drawinglayer::processor2d
 {
-    namespace processor2d
-    {
         HitTestProcessor2D::HitTestProcessor2D(const geometry::ViewInformation2D& rViewInformation,
             const basegfx::B2DPoint& rLogicHitPosition,
             double fLogicHitTolerance,
@@ -45,6 +44,8 @@ namespace drawinglayer
         :   BaseProcessor2D(rViewInformation),
             maDiscreteHitPosition(),
             mfDiscreteHitTolerance(0.0),
+            maHitStack(),
+            mbCollectHitStack(false),
             mbHit(false),
             mbHitTextOnly(bHitTextOnly)
         {
@@ -73,7 +74,7 @@ namespace drawinglayer
 
         bool HitTestProcessor2D::checkHairlineHitWithTolerance(
             const basegfx::B2DPolygon& rPolygon,
-            double fDiscreteHitTolerance)
+            double fDiscreteHitTolerance) const
         {
             basegfx::B2DPolygon aLocalPolygon(rPolygon);
             aLocalPolygon.transform(getViewInformation2D().getObjectToViewTransformation());
@@ -90,7 +91,7 @@ namespace drawinglayer
             if(aPolygonRange.isInside(getDiscreteHitPosition()))
             {
                 // check if a polygon edge is hit
-                return basegfx::tools::isInEpsilonRange(
+                return basegfx::utils::isInEpsilonRange(
                     aLocalPolygon,
                     getDiscreteHitPosition(),
                     fDiscreteHitTolerance);
@@ -101,7 +102,7 @@ namespace drawinglayer
 
         bool HitTestProcessor2D::checkFillHitWithTolerance(
             const basegfx::B2DPolyPolygon& rPolyPolygon,
-            double fDiscreteHitTolerance)
+            double fDiscreteHitTolerance) const
         {
             bool bRetval(false);
             basegfx::B2DPolyPolygon aLocalPolyPolygon(rPolyPolygon);
@@ -121,7 +122,7 @@ namespace drawinglayer
             {
                 // if a HitTolerance is given, check for polygon edge hit in epsilon first
                 if(bDiscreteHitToleranceUsed &&
-                    basegfx::tools::isInEpsilonRange(
+                    basegfx::utils::isInEpsilonRange(
                         aLocalPolyPolygon,
                         getDiscreteHitPosition(),
                         fDiscreteHitTolerance))
@@ -130,7 +131,7 @@ namespace drawinglayer
                 }
 
                 // check for hit in filled polyPolygon
-                if(!bRetval && basegfx::tools::isInside(
+                if(!bRetval && basegfx::utils::isInside(
                     aLocalPolyPolygon,
                     getDiscreteHitPosition(),
                     true))
@@ -197,7 +198,7 @@ namespace drawinglayer
                                         true);
                                     aCutFindProcessor.process(rPrimitives);
 
-                                    mbHit = (0 != aCutFindProcessor.getCutPoints().size());
+                                    mbHit = (!aCutFindProcessor.getCutPoints().empty());
                                 }
                             }
                         }
@@ -207,7 +208,7 @@ namespace drawinglayer
                 if(!getHit())
                 {
                     // empty 3D scene; Check for border hit
-                    basegfx::B2DPolygon aOutline(basegfx::tools::createUnitPolygon());
+                    basegfx::B2DPolygon aOutline(basegfx::utils::createUnitPolygon());
                     aOutline.transform(rCandidate.getObjectTransformation());
 
                     mbHit = checkHairlineHitWithTolerance(aOutline, getDiscreteHitTolerance());
@@ -414,7 +415,7 @@ namespace drawinglayer
 
                     if(!aRange.isEmpty())
                     {
-                        const basegfx::B2DPolygon aOutline(basegfx::tools::createPolygonFromRect(aRange));
+                        const basegfx::B2DPolygon aOutline(basegfx::utils::createPolygonFromRect(aRange));
                         mbHit = checkFillHitWithTolerance(basegfx::B2DPolyPolygon(aOutline), getDiscreteHitTolerance());
                     }
 
@@ -432,8 +433,8 @@ namespace drawinglayer
                         if(!aRange.isEmpty())
                         {
                             const primitive2d::BitmapPrimitive2D& rBitmapCandidate(static_cast< const primitive2d::BitmapPrimitive2D& >(rCandidate));
-                            const BitmapEx& rBitmapEx = rBitmapCandidate.getBitmapEx();
-                            const Size& rSizePixel(rBitmapEx.GetSizePixel());
+                            const BitmapEx aBitmapEx(VCLUnoHelper::GetBitmap(rBitmapCandidate.getXBitmap()));
+                            const Size& rSizePixel(aBitmapEx.GetSizePixel());
 
                             // When tiled rendering, don't bother with the pixel size of the candidate.
                             if(rSizePixel.Width() && rSizePixel.Height() && !comphelper::LibreOfficeKit::isActive())
@@ -451,13 +452,13 @@ namespace drawinglayer
                                     const sal_Int32 nX(basegfx::fround(aRelativePoint.getX() * rSizePixel.Width()));
                                     const sal_Int32 nY(basegfx::fround(aRelativePoint.getY() * rSizePixel.Height()));
 
-                                    mbHit = (0xff != rBitmapEx.GetTransparency(nX, nY));
+                                    mbHit = (0xff != aBitmapEx.GetTransparency(nX, nY));
                                 }
                             }
                             else
                             {
                                 // fallback to standard HitTest
-                                const basegfx::B2DPolygon aOutline(basegfx::tools::createPolygonFromRect(aRange));
+                                const basegfx::B2DPolygon aOutline(basegfx::utils::createPolygonFromRect(aRange));
                                 mbHit = checkFillHitWithTolerance(basegfx::B2DPolyPolygon(aOutline), getDiscreteHitTolerance());
                             }
                         }
@@ -468,6 +469,7 @@ namespace drawinglayer
                 case PRIMITIVE2D_ID_METAFILEPRIMITIVE2D :
                 case PRIMITIVE2D_ID_CONTROLPRIMITIVE2D :
                 case PRIMITIVE2D_ID_FILLGRADIENTPRIMITIVE2D :
+                case PRIMITIVE2D_ID_FILLGRAPHICPRIMITIVE2D :
                 case PRIMITIVE2D_ID_FILLHATCHPRIMITIVE2D :
                 case PRIMITIVE2D_ID_PAGEPREVIEWPRIMITIVE2D :
                 case PRIMITIVE2D_ID_MEDIAPRIMITIVE2D:
@@ -484,7 +486,7 @@ namespace drawinglayer
 
                         if(!aRange.isEmpty())
                         {
-                            const basegfx::B2DPolygon aOutline(basegfx::tools::createPolygonFromRect(aRange));
+                            const basegfx::B2DPolygon aOutline(basegfx::utils::createPolygonFromRect(aRange));
                             mbHit = checkFillHitWithTolerance(basegfx::B2DPolyPolygon(aOutline), getDiscreteHitTolerance());
                         }
                     }
@@ -536,9 +538,15 @@ namespace drawinglayer
                     break;
                 }
             }
+
+            if (getHit() && getCollectHitStack())
+            {
+                /// push candidate to HitStack to create it. This only happens when a hit is found and
+                /// creating the HitStack was requested (see collectHitStack)
+                maHitStack.append(primitive2d::Primitive2DReference(const_cast< primitive2d::BasePrimitive2D* >(&rCandidate)));
+            }
         }
 
-    } // end of namespace processor2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

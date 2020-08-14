@@ -17,15 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "basecontrol.hxx"
+#include <basecontrol.hxx>
+#include <multiplexer.hxx>
 
 #include <com/sun/star/awt/XDevice.hpp>
-#include <com/sun/star/awt/XDisplayBitmap.hpp>
-#include <com/sun/star/awt/DeviceInfo.hpp>
 #include <com/sun/star/awt/WindowAttribute.hpp>
 #include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/awt/Toolkit.hpp>
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
@@ -38,7 +36,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::awt;
 
-namespace unocontrols{
+namespace unocontrols {
 
 #define DEFAULT_X                           0
 #define DEFAULT_Y                           0
@@ -75,13 +73,13 @@ Any SAL_CALL BaseControl::queryInterface( const Type& rType )
     Any aReturn;
     if ( m_xDelegator.is() )
     {
-        // If an delegator exist, forward question to his queryInterface.
-        // Delegator will ask his own queryAggregation!
+        // If a delegator exists, forward question to its queryInterface.
+        // Delegator will ask its own queryAggregation!
         aReturn = m_xDelegator->queryInterface( rType );
     }
     else
     {
-        // If an delegator unknown, forward question to own queryAggregation.
+        // If a delegator is unknown, forward question to own queryAggregation.
         aReturn = queryAggregation( rType );
     }
 
@@ -263,57 +261,54 @@ void SAL_CALL BaseControl::createPeer(  const   Reference< XToolkit >&      xToo
     // Ready for multithreading
     MutexGuard aGuard( m_aMutex );
 
-    if ( !m_xPeer.is() )
+    if ( m_xPeer.is() )
+        return;
+
+    // use method "BaseControl::getWindowDescriptor()" to change window attributes!
+    WindowDescriptor aDescriptor = impl_getWindowDescriptor( xParentPeer );
+
+    if ( m_bVisible )
     {
-        // use method "BaseControl::getWindowDescriptor()" fot change window attributes !!!
-        WindowDescriptor* pDescriptor = impl_getWindowDescriptor( xParentPeer );
-
-        if ( m_bVisible )
-        {
-            pDescriptor->WindowAttributes |= WindowAttribute::SHOW;
-        }
-
-        // very slow under remote conditions!
-        // create the window on the server
-        Reference< XToolkit > xLocalToolkit = xToolkit;
-        if ( !xLocalToolkit.is() )
-        {
-            // but first create well known toolkit, if it not exist
-            xLocalToolkit.set( Toolkit::create(m_xComponentContext), UNO_QUERY_THROW );
-        }
-        m_xPeer         = xLocalToolkit->createWindow( *pDescriptor );
-        m_xPeerWindow.set( m_xPeer, UNO_QUERY );
-
-        // don't forget to release the memory!
-        delete pDescriptor;
-
-        if ( m_xPeerWindow.is() )
-        {
-            if ( m_xMultiplexer.is() )
-            {
-                m_xMultiplexer->setPeer( m_xPeerWindow );
-            }
-
-            // create new referenz to xgraphics for painting on a peer
-            // and add a paint listener
-            Reference< XDevice > xDevice( m_xPeerWindow, UNO_QUERY );
-
-            if ( xDevice.is() )
-            {
-                m_xGraphicsPeer = xDevice->createGraphics();
-            }
-
-            if ( m_xGraphicsPeer.is() )
-            {
-                addPaintListener( this );
-                addWindowListener( this );
-            }
-
-            m_xPeerWindow->setPosSize(  m_nX, m_nY, m_nWidth, m_nHeight, PosSize::POSSIZE   );
-            m_xPeerWindow->setEnable(   m_bEnable                                           );
-            m_xPeerWindow->setVisible(  m_bVisible && !m_bInDesignMode                      );
-        }
+        aDescriptor.WindowAttributes |= WindowAttribute::SHOW;
     }
+
+    // very slow under remote conditions!
+    // create the window on the server
+    Reference< XToolkit > xLocalToolkit = xToolkit;
+    if ( !xLocalToolkit.is() )
+    {
+        // but first create well known toolkit, if it not exist
+        xLocalToolkit.set( Toolkit::create(m_xComponentContext), UNO_QUERY_THROW );
+    }
+    m_xPeer         = xLocalToolkit->createWindow( aDescriptor );
+    m_xPeerWindow.set( m_xPeer, UNO_QUERY );
+
+    if ( !m_xPeerWindow.is() )
+        return;
+
+    if ( m_xMultiplexer.is() )
+    {
+        m_xMultiplexer->setPeer( m_xPeerWindow );
+    }
+
+    // create new reference to xgraphics for painting on a peer
+    // and add a paint listener
+    Reference< XDevice > xDevice( m_xPeerWindow, UNO_QUERY );
+
+    if ( xDevice.is() )
+    {
+        m_xGraphicsPeer = xDevice->createGraphics();
+    }
+
+    if ( m_xGraphicsPeer.is() )
+    {
+        addPaintListener( this );
+        addWindowListener( this );
+    }
+
+    m_xPeerWindow->setPosSize(  m_nX, m_nY, m_nWidth, m_nHeight, PosSize::POSSIZE   );
+    m_xPeerWindow->setEnable(   m_bEnable                                           );
+    m_xPeerWindow->setVisible(  m_bVisible && !m_bInDesignMode                      );
 }
 
 //  XControl
@@ -358,7 +353,7 @@ Reference< XView > SAL_CALL BaseControl::getView()
 {
     // Ready for multithreading
     MutexGuard aGuard( m_aMutex );
-    return Reference< XView >( static_cast<OWeakObject*>(this), UNO_QUERY );
+    return this;
 }
 
 //  XControl
@@ -570,7 +565,7 @@ void SAL_CALL BaseControl::draw(    sal_Int32   nX  ,
     // Ready for multithreading
     MutexGuard aGuard( m_aMutex );
 
-    // - paint to an view
+    // - paint to a view
     // - use the method "paint()"
     // - see also "windowPaint()"
     impl_paint( nX, nY, m_xGraphicsView );
@@ -580,7 +575,7 @@ void SAL_CALL BaseControl::draw(    sal_Int32   nX  ,
 
 sal_Bool SAL_CALL BaseControl::setGraphics( const Reference< XGraphics >& xDevice )
 {
-    // - set the graphics for an view
+    // - set the graphics for a view
     // - in this class exist 2 graphics-member ... one for peer[_xGraphicsPeer] and one for view[_xGraphicsView]
     // - they are used by "windowPaint() and draw()", forwarded to "paint ()"
     bool bReturn = false;
@@ -701,22 +696,22 @@ void SAL_CALL BaseControl::windowHidden( const EventObject& /*aEvent*/ )
 
 //  protected method
 
-WindowDescriptor* BaseControl::impl_getWindowDescriptor( const Reference< XWindowPeer >& xParentPeer )
+WindowDescriptor BaseControl::impl_getWindowDescriptor( const Reference< XWindowPeer >& xParentPeer )
 {
-    // - used from "createPeer()" to set the values of an css::awt::WindowDescriptor !!!
-    // - if you will change the descriptor-values, you must override this virtuell function
+    // - used from "createPeer()" to set the values of a css::awt::WindowDescriptor !!!
+    // - if you will change the descriptor-values, you must override this virtual function
     // - the caller must release the memory for this dynamical descriptor !!!
 
-    WindowDescriptor* pDescriptor = new WindowDescriptor;
+    WindowDescriptor aDescriptor;
 
-    pDescriptor->Type               = WindowClass_SIMPLE;
-    pDescriptor->WindowServiceName  = "window";
-    pDescriptor->ParentIndex        = -1;
-    pDescriptor->Parent             = xParentPeer;
-    pDescriptor->Bounds             = getPosSize ();
-    pDescriptor->WindowAttributes   = 0;
+    aDescriptor.Type               = WindowClass_SIMPLE;
+    aDescriptor.WindowServiceName  = "window";
+    aDescriptor.ParentIndex        = -1;
+    aDescriptor.Parent             = xParentPeer;
+    aDescriptor.Bounds             = getPosSize ();
+    aDescriptor.WindowAttributes   = 0;
 
-    return pDescriptor;
+    return aDescriptor;
 }
 
 //  protected method

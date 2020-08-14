@@ -20,15 +20,13 @@
 #define INCLUDED_CHART2_SOURCE_TOOLS_REGRESSIONEQUATION_HXX
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
 #include <com/sun/star/chart2/XTitle.hpp>
 
-#include "MutexContainer.hxx"
-#include "OPropertySet.hxx"
-#include "ModifyListenerHelper.hxx"
+#include <MutexContainer.hxx>
+#include <OPropertySet.hxx>
 
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/uno3.hxx>
@@ -47,7 +45,7 @@ typedef ::cppu::WeakImplHelper<
     RegressionEquation_Base;
 }
 
-class RegressionEquation :
+class RegressionEquation final :
         public MutexContainer,
         public impl::RegressionEquation_Base,
         public ::property::OPropertySet
@@ -69,7 +67,7 @@ public:
     /// merge XInterface implementations
      DECLARE_XINTERFACE()
 
-protected:
+private:
     explicit RegressionEquation( const RegressionEquation & rOther );
 
     // ____ OPropertySet ____
@@ -112,7 +110,6 @@ protected:
 
     void fireModifyEvent();
 
-private:
     css::uno::Sequence< css::uno::Reference< css::chart2::XFormattedString > > m_aStrings;
 
     css::uno::Reference< css::util::XModifyListener > m_xModifyEventForwarder;

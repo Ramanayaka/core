@@ -17,18 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/outdev.hxx>
-#include <IDocumentSettingAccess.hxx>
+#include <sal/config.h>
 
-#include "frame.hxx"
-#include "paratr.hxx"
+#include <o3tl/safeint.hxx>
+
+#include <IDocumentSettingAccess.hxx>
+#include <doc.hxx>
+
 #include "itrtxt.hxx"
 #include "porglue.hxx"
 #include "porlay.hxx"
 #include "porfly.hxx"
-#include "pordrop.hxx"
 #include "pormulti.hxx"
-#include <portab.hxx>
+#include "portab.hxx"
 #include <memory>
 
 #define MIN_TAB_WIDTH 60
@@ -44,7 +45,7 @@ void SwTextAdjuster::FormatBlock( )
     const SwLinePortion *pFly = nullptr;
 
     bool bSkip = !IsLastBlock() &&
-        m_nStart + m_pCurr->GetLen() >= GetInfo().GetText().getLength();
+        m_nStart + m_pCurr->GetLen() >= TextFrameIndex(GetInfo().GetText().getLength());
 
     // Multi-line fields are tricky, because we need to check whether there are
     // any other text portions in the paragraph.
@@ -58,7 +59,7 @@ void SwTextAdjuster::FormatBlock( )
             {
                 if( pPor->InTextGrp() )
                     bSkip = false;
-                pPor = pPor->GetPortion();
+                pPor = pPor->GetNextPortion();
             }
             pLay = bSkip ? pLay->GetNext() : nullptr;
         }
@@ -89,7 +90,7 @@ void SwTextAdjuster::FormatBlock( )
                     pFly = pTmpFly; // A Fly with follow-up text!
                     pTmpFly = nullptr;
                 }
-                pPos = pPos->GetPortion();
+                pPos = pPos->GetNextPortion();
             }
             // End if we didn't find one
             if( !pFly )
@@ -102,19 +103,19 @@ void SwTextAdjuster::FormatBlock( )
         }
     }
 
-    const sal_Int32 nOldIdx = GetInfo().GetIdx();
+    const TextFrameIndex nOldIdx = GetInfo().GetIdx();
     GetInfo().SetIdx( m_nStart );
     CalcNewBlock( m_pCurr, pFly );
     GetInfo().SetIdx( nOldIdx );
-    GetInfo().GetParaPortion()->GetRepaint().SetOfst(0);
+    GetInfo().GetParaPortion()->GetRepaint().SetOffset(0);
 }
 
 static bool lcl_CheckKashidaPositions( SwScriptInfo& rSI, SwTextSizeInfo& rInf, SwTextIter& rItr,
-                                sal_Int32& rKashidas, sal_Int32& nGluePortion )
+            sal_Int32& rKashidas, TextFrameIndex& nGluePortion)
 {
     // i60594 validate Kashida justification
-    sal_Int32 nIdx = rItr.GetStart();
-    sal_Int32 nEnd = rItr.GetEnd();
+    TextFrameIndex nIdx = rItr.GetStart();
+    TextFrameIndex nEnd = rItr.GetEnd();
 
     // Note on calling KashidaJustify():
     // Kashida positions may be marked as invalid. Therefore KashidaJustify may return the clean
@@ -128,22 +129,23 @@ static bool lcl_CheckKashidaPositions( SwScriptInfo& rSI, SwTextSizeInfo& rInf, 
 
     // kashida positions found in SwScriptInfo are not necessarily valid in every font
     // if two characters are replaced by a ligature glyph, there will be no place for a kashida
-    std::unique_ptr<sal_Int32[]> pKashidaPos( new sal_Int32[ rKashidas ] );
-    std::unique_ptr<sal_Int32[]> pKashidaPosDropped( new sal_Int32[ rKashidas ] );
-    rSI.GetKashidaPositions ( nIdx, rItr.GetLength(), pKashidaPos.get() );
+    std::vector<TextFrameIndex> aKashidaPos;
+    rSI.GetKashidaPositions(nIdx, rItr.GetLength(), aKashidaPos);
+    assert(aKashidaPos.size() >= o3tl::make_unsigned(rKashidas));
+    std::vector<TextFrameIndex> aKashidaPosDropped(aKashidaPos.size());
     sal_Int32 nKashidaIdx = 0;
     while ( rKashidas && nIdx < nEnd )
     {
         rItr.SeekAndChgAttrIter( nIdx, rInf.GetOut() );
-        sal_Int32 nNext = rItr.GetNextAttr();
+        TextFrameIndex nNext = rItr.GetNextAttr();
 
         // is there also a script change before?
         // if there is, nNext should point to the script change
-        sal_Int32 nNextScript = rSI.NextScriptChg( nIdx );
+        TextFrameIndex const nNextScript = rSI.NextScriptChg( nIdx );
         if( nNextScript < nNext )
             nNext = nNextScript;
 
-        if ( nNext == COMPLETE_STRING || nNext > nEnd )
+        if (nNext == TextFrameIndex(COMPLETE_STRING) || nNext > nEnd)
             nNext = nEnd;
         sal_Int32 nKashidasInAttr = rSI.KashidaJustify ( nullptr, nullptr, nIdx, nNext - nIdx );
         if (nKashidasInAttr > 0)
@@ -164,15 +166,17 @@ static bool lcl_CheckKashidaPositions( SwScriptInfo& rSI, SwTextSizeInfo& rInf, 
             {
                 ComplexTextLayoutFlags nOldLayout = rInf.GetOut()->GetLayoutMode();
                 rInf.GetOut()->SetLayoutMode ( nOldLayout | ComplexTextLayoutFlags::BiDiRtl );
-                nKashidasDropped = rInf.GetOut()->ValidateKashidas ( rInf.GetText(), nIdx, nNext - nIdx,
-                                               nKashidasInAttr, pKashidaPos.get() + nKashidaIdx,
-                                               pKashidaPosDropped.get() );
+                nKashidasDropped = rInf.GetOut()->ValidateKashidas(
+                    rInf.GetText(), sal_Int32(nIdx), sal_Int32(nNext - nIdx),
+                    nKashidasInAttr,
+                    reinterpret_cast<sal_Int32*>(aKashidaPos.data() + nKashidaIdx),
+                    reinterpret_cast<sal_Int32*>(aKashidaPosDropped.data()));
                 rInf.GetOut()->SetLayoutMode ( nOldLayout );
                 if ( nKashidasDropped )
                 {
-                    rSI.MarkKashidasInvalid(nKashidasDropped, pKashidaPosDropped.get());
+                    rSI.MarkKashidasInvalid(nKashidasDropped, aKashidaPosDropped.data());
                     rKashidas -= nKashidasDropped;
-                    nGluePortion -= nKashidasDropped;
+                    nGluePortion -= TextFrameIndex(nKashidasDropped);
                 }
             }
             nKashidaIdx += nKashidasInAttr;
@@ -185,7 +189,7 @@ static bool lcl_CheckKashidaPositions( SwScriptInfo& rSI, SwTextSizeInfo& rInf, 
 }
 
 static bool lcl_CheckKashidaWidth ( SwScriptInfo& rSI, SwTextSizeInfo& rInf, SwTextIter& rItr, sal_Int32& rKashidas,
-                             sal_Int32& nGluePortion, const long nGluePortionWidth, long& nSpaceAdd )
+                             TextFrameIndex& nGluePortion, const long nGluePortionWidth, long& nSpaceAdd )
 {
     // check kashida width
     // if width is smaller than minimal kashida width allowed by fonts in the current line
@@ -193,20 +197,20 @@ static bool lcl_CheckKashidaWidth ( SwScriptInfo& rSI, SwTextSizeInfo& rInf, SwT
     while (rKashidas)
     {
         bool bAddSpaceChanged = false;
-        sal_Int32 nIdx = rItr.GetStart();
-        sal_Int32 nEnd = rItr.GetEnd();
+        TextFrameIndex nIdx = rItr.GetStart();
+        TextFrameIndex nEnd = rItr.GetEnd();
         while ( nIdx < nEnd )
         {
             rItr.SeekAndChgAttrIter( nIdx, rInf.GetOut() );
-            sal_Int32 nNext = rItr.GetNextAttr();
+            TextFrameIndex nNext = rItr.GetNextAttr();
 
             // is there also a script change before?
             // if there is, nNext should point to the script change
-            sal_Int32 nNextScript = rSI.NextScriptChg( nIdx );
+            TextFrameIndex const nNextScript = rSI.NextScriptChg( nIdx );
             if( nNextScript < nNext )
                nNext = nNextScript;
 
-            if ( nNext == COMPLETE_STRING || nNext > nEnd )
+            if (nNext == TextFrameIndex(COMPLETE_STRING) || nNext > nEnd)
                 nNext = nEnd;
             sal_Int32 nKashidasInAttr = rSI.KashidaJustify ( nullptr, nullptr, nIdx, nNext - nIdx );
 
@@ -224,10 +228,10 @@ static bool lcl_CheckKashidaWidth ( SwScriptInfo& rSI, SwTextSizeInfo& rInf, SwT
                     if( !rKashidas || !nGluePortion ) // nothing left, return false to
                         return false;                 // do regular blank justification
 
-                    nSpaceAdd = nGluePortionWidth / nGluePortion;
+                    nSpaceAdd = nGluePortionWidth / sal_Int32(nGluePortion);
                     bAddSpaceChanged = true;
-               }
-               if( nKashidasDropped )
+                }
+                if( nKashidasDropped )
                    rSI.MarkKashidasInvalid( nKashidasDropped, nIdx, nNext - nIdx );
             }
             if ( bAddSpaceChanged )
@@ -251,8 +255,8 @@ void SwTextAdjuster::CalcNewBlock( SwLineLayout *pCurrent,
     OSL_ENSURE( pCurrent->Height(), "SwTextAdjuster::CalcBlockAdjust: missing CalcLine()" );
 
     pCurrent->InitSpaceAdd();
-    sal_Int32 nGluePortion = 0;
-    sal_Int32 nCharCnt = 0;
+    TextFrameIndex nGluePortion(0);
+    TextFrameIndex nCharCnt(0);
     sal_uInt16 nSpaceIdx = 0;
 
     // i60591: hennerdrews
@@ -282,17 +286,32 @@ void SwTextAdjuster::CalcNewBlock( SwLineLayout *pCurrent,
 
     // #i49277#
     const bool bDoNotJustifyLinesWithManualBreak =
-                GetTextFrame()->GetNode()->getIDocumentSettingAccess()->get(DocumentSettingId::DO_NOT_JUSTIFY_LINES_WITH_MANUAL_BREAK);
+        GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(DocumentSettingId::DO_NOT_JUSTIFY_LINES_WITH_MANUAL_BREAK);
+    bool bDoNotJustifyTab = false;
 
-    SwLinePortion *pPos = pCurrent->GetPortion();
+    SwLinePortion *pPos = pCurrent->GetNextPortion();
 
     while( pPos )
     {
-        if ( bDoNotJustifyLinesWithManualBreak &&
+        if ( ( bDoNotJustifyLinesWithManualBreak || bDoNotJustifyTab ) &&
              pPos->IsBreakPortion() && !IsLastBlock() )
         {
            pCurrent->FinishSpaceAdd();
            break;
+        }
+
+        switch ( pPos->GetWhichPor() )
+        {
+            case PortionType::TabCenter :
+            case PortionType::TabRight :
+            case PortionType::TabDecimal :
+                bDoNotJustifyTab = true;
+                break;
+            case PortionType::TabLeft :
+            case PortionType::Break:
+                bDoNotJustifyTab = false;
+                break;
+            default: break;
         }
 
         if ( pPos->InTextGrp() )
@@ -310,8 +329,8 @@ void SwTextAdjuster::CalcNewBlock( SwLineLayout *pCurrent,
                     pCurrent->SetLLSpaceAdd( 0, nSpaceIdx );
 
                 nSpaceIdx++;
-                nGluePortion = 0;
-                nCharCnt = 0;
+                nGluePortion = TextFrameIndex(0);
+                nCharCnt = TextFrameIndex(0);
             }
             else if( pMulti->IsDouble() )
                 nGluePortion = nGluePortion + static_cast<SwDoubleLinePortion*>(pMulti)->GetSpaceCnt();
@@ -347,7 +366,7 @@ void SwTextAdjuster::CalcNewBlock( SwLineLayout *pCurrent,
 
                 if( nGluePortion )
                 {
-                    long nSpaceAdd = nGluePortionWidth / nGluePortion;
+                    long nSpaceAdd = nGluePortionWidth / sal_Int32(nGluePortion);
 
                     // i60594
                     if( rSI.CountKashida() && !bSkipKashida )
@@ -366,16 +385,16 @@ void SwTextAdjuster::CalcNewBlock( SwLineLayout *pCurrent,
                     pCurrent->SetLLSpaceAdd( nSpaceAdd , nSpaceIdx );
                     pPos->Width( static_cast<SwGluePortion*>(pPos)->GetFixWidth() );
                 }
-                else if ( IsOneBlock() && nCharCnt > 1 )
+                else if (IsOneBlock() && nCharCnt > TextFrameIndex(1))
                 {
-                    const long nSpaceAdd = - nGluePortionWidth / ( nCharCnt - 1 );
+                    const long nSpaceAdd = - nGluePortionWidth / (sal_Int32(nCharCnt) - 1);
                     pCurrent->SetLLSpaceAdd( nSpaceAdd, nSpaceIdx );
                     pPos->Width( static_cast<SwGluePortion*>(pPos)->GetFixWidth() );
                 }
 
                 nSpaceIdx++;
-                nGluePortion = 0;
-                nCharCnt = 0;
+                nGluePortion = TextFrameIndex(0);
+                nCharCnt = TextFrameIndex(0);
             }
             else
                 ++nGluePortion;
@@ -386,7 +405,7 @@ void SwTextAdjuster::CalcNewBlock( SwLineLayout *pCurrent,
             pCurrent->SetLLSpaceAdd( 0, nSpaceIdx );
             break;
         }
-        pPos = pPos->GetPortion();
+        pPos = pPos->GetNextPortion();
     }
 }
 
@@ -395,8 +414,7 @@ SwTwips SwTextAdjuster::CalcKanaAdj( SwLineLayout* pCurrent )
     OSL_ENSURE( pCurrent->Height(), "SwTextAdjuster::CalcBlockAdjust: missing CalcLine()" );
     OSL_ENSURE( !pCurrent->GetpKanaComp(), "pKanaComp already exists!!" );
 
-    std::deque<sal_uInt16> *pNewKana = new std::deque<sal_uInt16>;
-    pCurrent->SetKanaComp( pNewKana );
+    pCurrent->SetKanaComp( std::make_unique<std::deque<sal_uInt16>>() );
 
     const sal_uInt16 nNull = 0;
     size_t nKanaIdx = 0;
@@ -408,7 +426,7 @@ SwTwips SwTextAdjuster::CalcKanaAdj( SwLineLayout* pCurrent )
     // Do not forget: CalcRightMargin() sets pCurrent->Width() to the line width!
     CalcRightMargin( pCurrent );
 
-    SwLinePortion* pPos = pCurrent->GetPortion();
+    SwLinePortion* pPos = pCurrent->GetNextPortion();
 
     while( pPos )
     {
@@ -425,7 +443,7 @@ SwTwips SwTextAdjuster::CalcKanaAdj( SwLineLayout* pCurrent )
             // calculate difference between portion width and max. width
             nKanaDiffSum += nMaxWidthDiff;
 
-            // we store the beginning of the first compressable portion
+            // we store the beginning of the first compressible portion
             // for repaint
             if ( nMaxWidthDiff && !nRepaintOfst )
                 nRepaintOfst = nX + GetLeftMargin();
@@ -435,7 +453,7 @@ SwTwips SwTextAdjuster::CalcKanaAdj( SwLineLayout* pCurrent )
             if ( nKanaIdx == pCurrent->GetKanaComp().size() )
                 pCurrent->GetKanaComp().push_back( nNull );
 
-            sal_uInt16 nRest;
+            long nRest;
 
             if ( pPos->InTabGrp() )
             {
@@ -470,7 +488,7 @@ SwTwips SwTextAdjuster::CalcKanaAdj( SwLineLayout* pCurrent )
                 else
                     nCompress = 10000 - nCompress;
 
-                ( pCurrent->GetKanaComp() )[ nKanaIdx ] = (sal_uInt16)nCompress;
+                ( pCurrent->GetKanaComp() )[ nKanaIdx ] = static_cast<sal_uInt16>(nCompress);
                 nKanaDiffSum = 0;
             }
 
@@ -478,13 +496,13 @@ SwTwips SwTextAdjuster::CalcKanaAdj( SwLineLayout* pCurrent )
         }
 
         nX += pPos->Width();
-        pPos = pPos->GetPortion();
+        pPos = pPos->GetNextPortion();
     }
 
     // set portion width
     nKanaIdx = 0;
     sal_uInt16 nCompress = ( pCurrent->GetKanaComp() )[ nKanaIdx ];
-    pPos = pCurrent->GetPortion();
+    pPos = pCurrent->GetNextPortion();
     long nDecompress = 0;
 
     while( pPos )
@@ -517,7 +535,7 @@ SwTwips SwTextAdjuster::CalcKanaAdj( SwLineLayout* pCurrent )
 
             nDecompress = 0;
         }
-        pPos = pPos->GetPortion();
+        pPos = pPos->GetNextPortion();
     }
 
     return nRepaintOfst;
@@ -584,12 +602,12 @@ void SwTextAdjuster::CalcFlyAdjust( SwLineLayout *pCurrent )
     // CalcRightMargin also calculates a possible overlap with FlyFrames.
     CalcRightMargin( pCurrent );
 
-    SwLinePortion *pPos = pLeft->GetPortion();
-    sal_Int32 nLen = 0;
+    SwLinePortion *pPos = pLeft->GetNextPortion();
+    TextFrameIndex nLen(0);
 
     // If we only have one line, the text portion is consecutive and we center, then ...
-    bool bComplete = 0 == m_nStart;
-    const bool bTabCompat = GetTextFrame()->GetNode()->getIDocumentSettingAccess()->get(DocumentSettingId::TAB_COMPAT);
+    bool bComplete = TextFrameIndex(0) == m_nStart;
+    const bool bTabCompat = GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(DocumentSettingId::TAB_COMPAT);
     bool bMultiTab = false;
 
     while( pPos )
@@ -610,7 +628,7 @@ void SwTextAdjuster::CalcFlyAdjust( SwLineLayout *pCurrent )
                 // to left-aligned.
                 // The first text portion gets the whole Glue, but only if we have
                 // more than one line.
-                if( bComplete && GetInfo().GetText().getLength() == nLen )
+                if (bComplete && TextFrameIndex(GetInfo().GetText().getLength()) == nLen)
                     static_cast<SwGluePortion*>(pPos)->MoveHalfGlue( pGlue );
                 else
                 {
@@ -631,8 +649,8 @@ void SwTextAdjuster::CalcFlyAdjust( SwLineLayout *pCurrent )
                          if( !pPos->IsMarginPortion() )
                               static_cast<SwGluePortion*>(pPos)->MoveHalfGlue( pGlue );
                          }
-                     }
-                     else
+                    }
+                    else
                         static_cast<SwGluePortion*>(pPos)->MoveHalfGlue( pGlue );
                 }
             }
@@ -641,10 +659,10 @@ void SwTextAdjuster::CalcFlyAdjust( SwLineLayout *pCurrent )
             bComplete = false;
         }
         nLen = nLen + pPos->GetLen();
-        pPos = pPos->GetPortion();
-     }
+        pPos = pPos->GetNextPortion();
+    }
 
-     if( ! bTabCompat && ! bMultiTab && SvxAdjust::Right == GetAdjust() )
+    if( ! bTabCompat && ! bMultiTab && SvxAdjust::Right == GetAdjust() )
         // portions are moved to the right if possible
         pLeft->AdjustRight( pCurrent );
 }
@@ -663,7 +681,7 @@ void SwTextAdjuster::CalcAdjLine( SwLineLayout *pCurrent )
         case SvxAdjust::Center:
         {
             CalcFlyAdjust( pCurrent );
-            pPara->GetRepaint().SetOfst( 0 );
+            pPara->GetRepaint().SetOffset( 0 );
             break;
         }
         case SvxAdjust::Block:
@@ -743,25 +761,25 @@ void SwTextAdjuster::CalcDropAdjust()
 
         // 2) Make sure we include the ropPortion
         // 3) pLeft is the GluePor preceding the DropPor
-        if( pPor->InGlueGrp() && pPor->GetPortion()
-              && pPor->GetPortion()->IsDropPortion() )
+        if( pPor->InGlueGrp() && pPor->GetNextPortion()
+              && pPor->GetNextPortion()->IsDropPortion() )
         {
-            const SwLinePortion *pDropPor = static_cast<SwDropPortion*>( pPor->GetPortion() );
+            const SwLinePortion *pDropPor = pPor->GetNextPortion();
             SwGluePortion *pLeft = static_cast<SwGluePortion*>( pPor );
 
             // 4) pRight: Find the GluePor coming after the DropPor
-            pPor = pPor->GetPortion();
+            pPor = pPor->GetNextPortion();
             while( pPor && !pPor->InFixMargGrp() )
-                pPor = pPor->GetPortion();
+                pPor = pPor->GetNextPortion();
 
             SwGluePortion *pRight = ( pPor && pPor->InGlueGrp() ) ?
                                     static_cast<SwGluePortion*>(pPor) : nullptr;
             if( pRight && pRight != pLeft )
             {
                 // 5) Calculate nMinLeft. Who is the most to left?
-                const sal_uInt16 nDropLineStart =
-                    sal_uInt16(GetLineStart()) + pLeft->Width() + pDropPor->Width();
-                sal_uInt16 nMinLeft = nDropLineStart;
+                const auto nDropLineStart =
+                    GetLineStart() + pLeft->Width() + pDropPor->Width();
+                auto nMinLeft = nDropLineStart;
                 for( sal_uInt16 i = 1; i < GetDropLines(); ++i )
                 {
                     if( NextLine() )
@@ -776,8 +794,8 @@ void SwTextAdjuster::CalcDropAdjust()
                             nMinLeft = 0;
                         else
                         {
-                            const sal_uInt16 nLineStart =
-                                sal_uInt16(GetLineStart()) + pMar->Width();
+                            const auto nLineStart =
+                                GetLineStart() + pMar->Width();
                             if( nMinLeft > nLineStart )
                                 nMinLeft = nLineStart;
                         }
@@ -789,7 +807,7 @@ void SwTextAdjuster::CalcDropAdjust()
                 {
                     // The Glue is always passed from pLeft to pRight, so that
                     // the text moves to the left.
-                    const short nGlue = nDropLineStart - nMinLeft;
+                    const auto nGlue = nDropLineStart - nMinLeft;
                     if( !nMinLeft )
                         pLeft->MoveAllGlue( pRight );
                     else

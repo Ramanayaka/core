@@ -17,51 +17,38 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "cppuhelper/factory.hxx"
-#include "cppuhelper/implementationentry.hxx"
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "com/sun/star/lang/XServiceInfo.hpp"
-#include "com/sun/star/inspection/XStringRepresentation.hpp"
-#include "com/sun/star/lang/XInitialization.hpp"
-#include "com/sun/star/script/CannotConvertException.hpp"
-#include "com/sun/star/script/XTypeConverter.hpp"
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/inspection/XStringRepresentation.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
+#include <com/sun/star/script/CannotConvertException.hpp>
+#include <com/sun/star/script/XTypeConverter.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/reflection/XConstantsTypeDescription.hpp>
-#include <com/sun/star/beans/XIntrospection.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/Date.hpp>
 #include <com/sun/star/util/Time.hpp>
-#include <comphelper/sequence.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <connectivity/dbconversion.hxx>
-#include <tools/resary.hxx>
-#include "formresid.hrc"
-#include "pcrservices.hxx"
+#include <osl/diagnose.h>
+#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
+#include <yesno.hrc>
 #include <comphelper/types.hxx>
 #include "modulepcr.hxx"
 
-#include <functional>
 #include <algorithm>
-
-// component helper namespace
-namespace comp_StringRepresentation {
-
-using namespace ::com::sun::star;
-
-// component and service helper functions:
-OUString SAL_CALL _getImplementationName();
-uno::Sequence< OUString > SAL_CALL _getSupportedServiceNames();
-uno::Reference< uno::XInterface > SAL_CALL _create( uno::Reference< uno::XComponentContext > const & context );
-
-} // closing component helper namespace
-
 
 namespace pcr{
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
+
+namespace {
 
 class StringRepresentation:
     public ::cppu::WeakImplHelper<
@@ -138,6 +125,8 @@ private:
 
 };
 
+}
+
 StringRepresentation::StringRepresentation(uno::Reference< uno::XComponentContext > const & context) :
     m_xContext(context)
 {}
@@ -145,7 +134,7 @@ StringRepresentation::StringRepresentation(uno::Reference< uno::XComponentContex
 // com.sun.star.uno.XServiceInfo:
 OUString  SAL_CALL StringRepresentation::getImplementationName()
 {
-    return comp_StringRepresentation::_getImplementationName();
+    return "StringRepresentation";
 }
 
 sal_Bool SAL_CALL StringRepresentation::supportsService(OUString const & serviceName)
@@ -155,7 +144,7 @@ sal_Bool SAL_CALL StringRepresentation::supportsService(OUString const & service
 
 uno::Sequence< OUString >  SAL_CALL StringRepresentation::getSupportedServiceNames()
 {
-    return comp_StringRepresentation::_getSupportedServiceNames();
+    return { "com.sun.star.inspection.StringRepresentation" };
 }
 
 // inspection::XStringRepresentation:
@@ -243,31 +232,31 @@ struct CompareConstants {
 void SAL_CALL StringRepresentation::initialize(const uno::Sequence< uno::Any > & aArguments)
 {
     sal_Int32 nLength = aArguments.getLength();
-    if ( nLength )
-    {
-        const uno::Any* pIter = aArguments.getConstArray();
-        m_xTypeConverter.set(*pIter++,uno::UNO_QUERY);
-        if ( nLength == 3 )
-        {
-            OUString sConstantName;
-            *pIter++ >>= sConstantName;
-            *pIter >>= m_aValues;
+    if ( !nLength )
+        return;
 
-            if ( m_xContext.is() )
-            {
-                uno::Reference< container::XHierarchicalNameAccess > xTypeDescProv(
-                    m_xContext->getValueByName("/singletons/com.sun.star.reflection.theTypeDescriptionManager"),
-                    uno::UNO_QUERY_THROW );
+    const uno::Any* pIter = aArguments.getConstArray();
+    m_xTypeConverter.set(*pIter++,uno::UNO_QUERY);
+    if ( nLength != 3 )
+        return;
 
-                m_xTypeDescription.set( xTypeDescProv->getByHierarchicalName( sConstantName ), uno::UNO_QUERY_THROW );
-                uno::Sequence<
-                    uno::Reference< reflection::XConstantTypeDescription > >
-                    cs(m_xTypeDescription->getConstants());
-                std::sort(cs.begin(), cs.end(), CompareConstants());
-                m_aConstants = cs;
-            }
-        }
-    }
+    OUString sConstantName;
+    *pIter++ >>= sConstantName;
+    *pIter >>= m_aValues;
+
+    if ( !m_xContext.is() )
+        return;
+
+    uno::Reference< container::XHierarchicalNameAccess > xTypeDescProv(
+        m_xContext->getValueByName("/singletons/com.sun.star.reflection.theTypeDescriptionManager"),
+        uno::UNO_QUERY_THROW );
+
+    m_xTypeDescription.set( xTypeDescProv->getByHierarchicalName( sConstantName ), uno::UNO_QUERY_THROW );
+    uno::Sequence<
+        uno::Reference< reflection::XConstantTypeDescription > >
+        cs(m_xTypeDescription->getConstants());
+    std::sort(cs.begin(), cs.end(), CompareConstants());
+    m_aConstants = cs;
 }
 
 OUString StringRepresentation::convertSimpleToString( const uno::Any& _rValue )
@@ -277,7 +266,7 @@ OUString StringRepresentation::convertSimpleToString( const uno::Any& _rValue )
     {
         try
         {
-            if ( m_aConstants.getLength() )
+            if ( m_aConstants.hasElements() )
             {
                 sal_Int16 nConstantValue = 0;
                 if ( _rValue >>= nConstantValue )
@@ -331,20 +320,18 @@ namespace
     template < class ElementType, class Transformer >
     OUString composeSequenceElements( const Sequence< ElementType >& _rElements, const Transformer& _rTransformer )
     {
-        OUString sCompose;
+        OUStringBuffer sCompose;
 
         // loop through the elements and concatenate the string representations of the integers
         // (separated by a line break)
-        const ElementType* pElements = _rElements.getConstArray();
-        const ElementType* pElementsEnd = pElements + _rElements.getLength();
-        for ( ; pElements != pElementsEnd; ++pElements )
+        for (const auto& rElement : _rElements)
         {
-            sCompose += OUString( _rTransformer( *pElements ) );
-            if ( pElements != pElementsEnd )
-                sCompose += "\n";
+            sCompose.append(OUString(_rTransformer(rElement)));
+            sCompose.append("\n");
         }
+        sCompose.stripEnd('\n');
 
-        return sCompose;
+        return sCompose.makeStringAndClear();
     }
 
     template < class ElementType, class Transformer >
@@ -376,11 +363,10 @@ bool StringRepresentation::convertGenericValueToString( const uno::Any& _rValue,
 
     case uno::TypeClass_BOOLEAN:
     {
-        ResStringArray aListEntries(PcrRes(RID_RSC_ENUM_YESNO));
         bool bValue = false;
         _rValue >>= bValue;
-        _rStringRep = bValue ? aListEntries.GetString(1)
-                             : aListEntries.GetString(0);
+        _rStringRep = bValue ? PcrRes(RID_RSC_ENUM_YESNO[1])
+                             : PcrRes(RID_RSC_ENUM_YESNO[0]);
     }
     break;
 
@@ -479,7 +465,7 @@ uno::Any StringRepresentation::convertStringToSimple( const OUString& _rValue,co
     {
         try
         {
-            if ( m_aConstants.getLength() && m_aValues.getLength() )
+            if ( m_aConstants.hasElements() && m_aValues.hasElements() )
             {
                 const OUString* pIter = m_aValues.getConstArray();
                 const OUString* pEnd   = pIter + m_aValues.getLength();
@@ -515,8 +501,7 @@ bool StringRepresentation::convertStringToGenericValue( const OUString& _rString
 
     case uno::TypeClass_BOOLEAN:
     {
-        ResStringArray aListEntries(PcrRes(RID_RSC_ENUM_YESNO));
-        _rValue <<= aListEntries.GetString(0) != _rStringRep;
+        _rValue <<= PcrRes(RID_RSC_ENUM_YESNO[0]) != _rStringRep;
     }
     break;
 
@@ -610,36 +595,12 @@ bool StringRepresentation::convertStringToGenericValue( const OUString& _rString
 } // pcr
 
 
-// component helper namespace
-namespace comp_StringRepresentation {
-
-OUString SAL_CALL _getImplementationName() {
-    return OUString(
-        "StringRepresentation");
-}
-
-uno::Sequence< OUString > SAL_CALL _getSupportedServiceNames()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_StringRepresentation_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
 {
-    uno::Sequence< OUString > s { "com.sun.star.inspection.StringRepresentation" };
-    return s;
+    return cppu::acquire(new pcr::StringRepresentation(context));
 }
 
-uno::Reference< uno::XInterface > SAL_CALL _create(
-    const uno::Reference< uno::XComponentContext > & context)
-{
-    return static_cast< ::cppu::OWeakObject * >(new pcr::StringRepresentation(context));
-}
-
-} // closing component helper namespace
-
-
-extern "C" void SAL_CALL createRegistryInfo_StringRepresentation()
-{
-    ::pcr::PcrModule::getInstance().registerImplementation(
-            comp_StringRepresentation::_getImplementationName(),
-            comp_StringRepresentation::_getSupportedServiceNames(),
-            comp_StringRepresentation::_create
-        );
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

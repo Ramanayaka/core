@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <connectivity/TKey.hxx>
-#include <connectivity/TKeyColumns.hxx>
+#include <TKey.hxx>
+#include <TKeyColumns.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 #include <connectivity/TTableHelper.hxx>
 
 using namespace connectivity;
@@ -100,7 +100,7 @@ void OTableKeyHelper::refreshColumns()
     if ( m_pColumns )
         m_pColumns->reFill(aVector);
     else
-        m_pColumns = new OKeyColumnsHelper(this,m_aMutex,aVector);
+        m_pColumns.reset(new OKeyColumnsHelper(this,m_aMutex,aVector));
 }
 
 

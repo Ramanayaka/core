@@ -17,45 +17,36 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/ControlFactory.hxx>
-
-#include <com/sun/star/chart2/DataPointLabel.hpp>
 #include <com/sun/star/chart/ErrorBarStyle.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/chart/DataLabelPlacement.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/chart2/XDiagram.hpp>
+#include <com/sun/star/chart2/XDataSeries.hpp>
 #include <com/sun/star/chart2/XChartTypeContainer.hpp>
 #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
+#include <com/sun/star/chart2/XRegressionCurveContainer.hpp>
+#include <com/sun/star/util/XModifyBroadcaster.hpp>
+
+#include <vcl/svapp.hxx>
 
 #include "ChartSeriesPanel.hxx"
-#include "ChartController.hxx"
-#include <sfx2/bindings.hxx>
-#include <sfx2/dispatch.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/field.hxx>
-#include <vcl/toolbox.hxx>
-#include <svl/intitem.hxx>
-#include <svl/stritem.hxx>
-#include <comphelper/processfactory.hxx>
+#include <ChartController.hxx>
 
-#include "ChartModel.hxx"
-#include "DataSeriesHelper.hxx"
-#include "RegressionCurveHelper.hxx"
-#include "StatisticsHelper.hxx"
+#include <DataSeriesHelper.hxx>
+#include <RegressionCurveHelper.hxx>
+#include <StatisticsHelper.hxx>
 
 using namespace css;
 using namespace css::uno;
 
-namespace chart { namespace sidebar {
+namespace chart::sidebar {
 
 namespace {
 
 bool isDataLabelVisible(const css::uno::Reference<css::frame::XModel>& xModel, const OUString& rCID)
 {
-    css::uno::Reference< css::chart2::XDataSeries > xSeries(
-        ObjectIdentifier::getDataSeriesForCID(rCID, xModel), uno::UNO_QUERY );
+    css::uno::Reference< css::chart2::XDataSeries > xSeries =
+        ObjectIdentifier::getDataSeriesForCID(rCID, xModel);
 
     if (!xSeries.is())
         return false;
@@ -65,8 +56,8 @@ bool isDataLabelVisible(const css::uno::Reference<css::frame::XModel>& xModel, c
 
 void setDataLabelVisible(const css::uno::Reference<css::frame::XModel>& xModel, const OUString& rCID, bool bVisible)
 {
-    css::uno::Reference< css::chart2::XDataSeries > xSeries(
-        ObjectIdentifier::getDataSeriesForCID(rCID, xModel), uno::UNO_QUERY );
+    css::uno::Reference< css::chart2::XDataSeries > xSeries =
+        ObjectIdentifier::getDataSeriesForCID(rCID, xModel);
 
     if (!xSeries.is())
         return;
@@ -83,7 +74,7 @@ struct LabelPlacementMap
     sal_Int32 nApi;
 };
 
-LabelPlacementMap aLabelPlacementMap[] = {
+LabelPlacementMap const aLabelPlacementMap[] = {
     { 0, css::chart::DataLabelPlacement::TOP },
     { 1, css::chart::DataLabelPlacement::BOTTOM },
     { 2, css::chart::DataLabelPlacement::CENTER },
@@ -108,7 +99,7 @@ sal_Int32 getDataLabelPlacement(const css::uno::Reference<css::frame::XModel>& x
     sal_Int32 nPlacement = 0;
     aAny >>= nPlacement;
 
-    for (LabelPlacementMap & i : aLabelPlacementMap)
+    for (LabelPlacementMap const & i : aLabelPlacementMap)
     {
         if (i.nApi == nPlacement)
             return i.nPos;
@@ -127,7 +118,7 @@ void setDataLabelPlacement(const css::uno::Reference<css::frame::XModel>& xModel
         return;
 
     sal_Int32 nApi = 0;
-    for (LabelPlacementMap & i : aLabelPlacementMap)
+    for (LabelPlacementMap const & i : aLabelPlacementMap)
     {
         if (i.nPos == nPos)
         {
@@ -148,7 +139,7 @@ bool isTrendlineVisible(const css::uno::Reference<css::frame::XModel>& xModel,
     if (!xRegressionCurveContainer.is())
         return false;
 
-    return xRegressionCurveContainer->getRegressionCurves().getLength() != 0;
+    return xRegressionCurveContainer->getRegressionCurves().hasElements();
 }
 
 void setTrendlineVisible(const css::uno::Reference<css::frame::XModel>&
@@ -164,8 +155,7 @@ void setTrendlineVisible(const css::uno::Reference<css::frame::XModel>&
     {
         RegressionCurveHelper::addRegressionCurve(
                     SvxChartRegress::Linear,
-                    xRegressionCurveContainer,
-                    comphelper::getProcessComponentContext());
+                    xRegressionCurveContainer);
     }
     else
         RegressionCurveHelper::removeAllExceptMeanValueLine(
@@ -176,8 +166,8 @@ void setTrendlineVisible(const css::uno::Reference<css::frame::XModel>&
 bool isErrorBarVisible(const css::uno::Reference<css::frame::XModel>& xModel,
                        const OUString& rCID, bool bYError)
 {
-    css::uno::Reference< css::chart2::XDataSeries > xSeries(
-        ObjectIdentifier::getDataSeriesForCID(rCID, xModel), uno::UNO_QUERY );
+    css::uno::Reference< css::chart2::XDataSeries > xSeries =
+        ObjectIdentifier::getDataSeriesForCID(rCID, xModel);
 
     if (!xSeries.is())
         return false;
@@ -188,8 +178,8 @@ bool isErrorBarVisible(const css::uno::Reference<css::frame::XModel>& xModel,
 void setErrorBarVisible(const css::uno::Reference<css::frame::XModel>&
         xModel, const OUString& rCID, bool bYError, bool bVisible)
 {
-    css::uno::Reference< css::chart2::XDataSeries > xSeries(
-        ObjectIdentifier::getDataSeriesForCID(rCID, xModel), uno::UNO_QUERY );
+    css::uno::Reference< css::chart2::XDataSeries > xSeries =
+        ObjectIdentifier::getDataSeriesForCID(rCID, xModel);
 
     if (!xSeries.is())
         return;
@@ -209,8 +199,8 @@ void setErrorBarVisible(const css::uno::Reference<css::frame::XModel>&
 bool isPrimaryAxis(const css::uno::Reference<css::frame::XModel>&
         xModel, const OUString& rCID)
 {
-    css::uno::Reference< css::chart2::XDataSeries > xSeries(
-        ObjectIdentifier::getDataSeriesForCID(rCID, xModel), uno::UNO_QUERY );
+    css::uno::Reference< css::chart2::XDataSeries > xSeries =
+        ObjectIdentifier::getDataSeriesForCID(rCID, xModel);
 
     if (!xSeries.is())
         return true;
@@ -245,8 +235,8 @@ css::uno::Reference<css::chart2::XChartType> getChartType(
 
 OUString getSeriesLabel(const css::uno::Reference<css::frame::XModel>& xModel, const OUString& rCID)
 {
-    css::uno::Reference< css::chart2::XDataSeries > xSeries(
-        ObjectIdentifier::getDataSeriesForCID(rCID, xModel), uno::UNO_QUERY );
+    css::uno::Reference< css::chart2::XDataSeries > xSeries =
+        ObjectIdentifier::getDataSeriesForCID(rCID, xModel);
 
     if (!xSeries.is())
         return OUString();
@@ -268,9 +258,14 @@ OUString getCID(const css::uno::Reference<css::frame::XModel>& xModel)
 
     OUString aCID;
     aAny >>= aCID;
-#ifdef DBG_UTIL
+
+    if (aCID.isEmpty())
+        return OUString();
+
+#if defined DBG_UTIL && !defined NDEBUG
     ObjectType eType = ObjectIdentifier::getObjectType(aCID);
-    assert(eType == OBJECTTYPE_DATA_SERIES);
+    assert(eType == OBJECTTYPE_DATA_SERIES || eType == OBJECTTYPE_DATA_POINT
+           || eType == OBJECTTYPE_DATA_CURVE);
 #endif
 
     return aCID;
@@ -282,26 +277,22 @@ ChartSeriesPanel::ChartSeriesPanel(
     vcl::Window* pParent,
     const css::uno::Reference<css::frame::XFrame>& rxFrame,
     ChartController* pController)
-  : PanelLayout(pParent, "ChartSeriesPanel", "modules/schart/ui/sidebarseries.ui", rxFrame),
-    mxModel(pController->getModel()),
-    mxListener(new ChartSidebarModifyListener(this)),
-    mxSelectionListener(new ChartSidebarSelectionListener(this, OBJECTTYPE_DATA_SERIES)),
-    mbModelValid(true)
+    : PanelLayout(pParent, "ChartSeriesPanel", "modules/schart/ui/sidebarseries.ui", rxFrame)
+    , mxCBLabel(m_xBuilder->weld_check_button("checkbutton_label"))
+    , mxCBTrendline(m_xBuilder->weld_check_button("checkbutton_trendline"))
+    , mxCBXError(m_xBuilder->weld_check_button("checkbutton_x_error"))
+    , mxCBYError(m_xBuilder->weld_check_button("checkbutton_y_error"))
+    , mxRBPrimaryAxis(m_xBuilder->weld_radio_button("radiobutton_primary_axis"))
+    , mxRBSecondaryAxis(m_xBuilder->weld_radio_button("radiobutton_secondary_axis"))
+    , mxBoxLabelPlacement(m_xBuilder->weld_widget("datalabel_box"))
+    , mxLBLabelPlacement(m_xBuilder->weld_combo_box("comboboxtext_label"))
+    , mxFTSeriesName(m_xBuilder->weld_label("label_series_name"))
+    , mxFTSeriesTemplate(m_xBuilder->weld_label("label_series_tmpl"))
+    , mxModel(pController->getModel())
+    , mxListener(new ChartSidebarModifyListener(this))
+    , mxSelectionListener(new ChartSidebarSelectionListener(this, OBJECTTYPE_DATA_SERIES))
+    , mbModelValid(true)
 {
-    get(mpCBLabel, "checkbutton_label");
-    get(mpCBTrendline, "checkbutton_trendline");
-    get(mpCBXError, "checkbutton_x_error");
-    get(mpCBYError, "checkbutton_y_error");
-
-    get(mpRBPrimaryAxis, "radiobutton_primary_axis");
-    get(mpRBSecondaryAxis, "radiobutton_secondary_axis");
-
-    get(mpBoxLabelPlacement, "datalabel_box");
-    get(mpLBLabelPlacement, "comboboxtext_label");
-
-    get(mpFTSeriesName, "label_series_name");
-    get(mpFTSeriesTemplate, "label_series_tmpl");
-
     Initialize();
 }
 
@@ -318,19 +309,19 @@ void ChartSeriesPanel::dispose()
     if (xSelectionSupplier.is())
         xSelectionSupplier->removeSelectionChangeListener(mxSelectionListener);
 
-    mpCBLabel.clear();
-    mpCBTrendline.clear();
-    mpCBXError.clear();
-    mpCBYError.clear();
+    mxCBLabel.reset();
+    mxCBTrendline.reset();
+    mxCBXError.reset();
+    mxCBYError.reset();
 
-    mpRBPrimaryAxis.clear();
-    mpRBSecondaryAxis.clear();
+    mxRBPrimaryAxis.reset();
+    mxRBSecondaryAxis.reset();
 
-    mpBoxLabelPlacement.clear();
-    mpLBLabelPlacement.clear();
+    mxBoxLabelPlacement.reset();
+    mxLBLabelPlacement.reset();
 
-    mpFTSeriesName.clear();
-    mpFTSeriesTemplate.clear();
+    mxFTSeriesName.reset();
+    mxFTSeriesTemplate.reset();
 
     PanelLayout::dispose();
 }
@@ -345,17 +336,17 @@ void ChartSeriesPanel::Initialize()
 
     updateData();
 
-    Link<Button*,void> aLink = LINK(this, ChartSeriesPanel, CheckBoxHdl);
-    mpCBLabel->SetClickHdl(aLink);
-    mpCBTrendline->SetClickHdl(aLink);
-    mpCBXError->SetClickHdl(aLink);
-    mpCBYError->SetClickHdl(aLink);
+    Link<weld::ToggleButton&,void> aLink = LINK(this, ChartSeriesPanel, CheckBoxHdl);
+    mxCBLabel->connect_toggled(aLink);
+    mxCBTrendline->connect_toggled(aLink);
+    mxCBXError->connect_toggled(aLink);
+    mxCBYError->connect_toggled(aLink);
 
-    Link<RadioButton&,void> aLink2 = LINK(this, ChartSeriesPanel, RadioBtnHdl);
-    mpRBPrimaryAxis->SetToggleHdl(aLink2);
-    mpRBSecondaryAxis->SetToggleHdl(aLink2);
+    Link<weld::ToggleButton&,void> aLink2 = LINK(this, ChartSeriesPanel, RadioBtnHdl);
+    mxRBPrimaryAxis->connect_toggled(aLink2);
+    mxRBSecondaryAxis->connect_toggled(aLink2);
 
-    mpLBLabelPlacement->SetSelectHdl(LINK(this, ChartSeriesPanel, ListBoxHdl));
+    mxLBLabelPlacement->connect_changed(LINK(this, ChartSeriesPanel, ListBoxHdl));
 }
 
 void ChartSeriesPanel::updateData()
@@ -366,21 +357,21 @@ void ChartSeriesPanel::updateData()
     OUString aCID = getCID(mxModel);
     SolarMutexGuard aGuard;
     bool bLabelVisible = isDataLabelVisible(mxModel, aCID);
-    mpCBLabel->Check(bLabelVisible);
-    mpCBTrendline->Check(isTrendlineVisible(mxModel, aCID));
-    mpCBXError->Check(isErrorBarVisible(mxModel, aCID, false));
-    mpCBYError->Check(isErrorBarVisible(mxModel, aCID, true));
+    mxCBLabel->set_active(bLabelVisible);
+    mxCBTrendline->set_active(isTrendlineVisible(mxModel, aCID));
+    mxCBXError->set_active(isErrorBarVisible(mxModel, aCID, false));
+    mxCBYError->set_active(isErrorBarVisible(mxModel, aCID, true));
 
     bool bPrimaryAxis = isPrimaryAxis(mxModel, aCID);
-    mpRBPrimaryAxis->Check(bPrimaryAxis);
-    mpRBSecondaryAxis->Check(!bPrimaryAxis);
+    mxRBPrimaryAxis->set_active(bPrimaryAxis);
+    mxRBSecondaryAxis->set_active(!bPrimaryAxis);
 
-    mpBoxLabelPlacement->Enable(bLabelVisible);
-    mpLBLabelPlacement->SelectEntryPos(getDataLabelPlacement(mxModel, aCID));
+    mxBoxLabelPlacement->set_sensitive(bLabelVisible);
+    mxLBLabelPlacement->set_active(getDataLabelPlacement(mxModel, aCID));
 
-    OUString aFrameLabel = mpFTSeriesTemplate->GetText();
+    OUString aFrameLabel = mxFTSeriesTemplate->get_label();
     aFrameLabel = aFrameLabel.replaceFirst("%1", getSeriesLabel(mxModel, aCID));
-    mpFTSeriesName->SetText(aFrameLabel);
+    mxFTSeriesName->set_label(aFrameLabel);
 }
 
 VclPtr<vcl::Window> ChartSeriesPanel::Create (
@@ -412,8 +403,7 @@ void ChartSeriesPanel::HandleContextChange(
 void ChartSeriesPanel::NotifyItemUpdate(
     sal_uInt16 /*nSID*/,
     SfxItemState /*eState*/,
-    const SfxPoolItem* /*pState*/,
-    const bool )
+    const SfxPoolItem* /*pState*/ )
 {
 }
 
@@ -429,6 +419,12 @@ void ChartSeriesPanel::updateModel(
     {
         css::uno::Reference<css::util::XModifyBroadcaster> xBroadcaster(mxModel, css::uno::UNO_QUERY_THROW);
         xBroadcaster->removeModifyListener(mxListener);
+    }
+
+    css::uno::Reference<css::view::XSelectionSupplier> oldSelectionSupplier(
+        mxModel->getCurrentController(), css::uno::UNO_QUERY);
+    if (oldSelectionSupplier.is()) {
+        oldSelectionSupplier->removeSelectionChangeListener(mxSelectionListener.get());
     }
 
     mxModel = xModel;
@@ -448,41 +444,36 @@ void ChartSeriesPanel::selectionChanged(bool bCorrectType)
         updateData();
 }
 
-void ChartSeriesPanel::SelectionInvalid()
+IMPL_LINK(ChartSeriesPanel, CheckBoxHdl, weld::ToggleButton&, rCheckBox, void)
 {
-}
-
-IMPL_LINK(ChartSeriesPanel, CheckBoxHdl, Button*, pButton, void)
-{
-    CheckBox* pCheckBox = static_cast<CheckBox*>(pButton);
-    bool bChecked = pCheckBox->IsChecked();
+    bool bChecked = rCheckBox.get_active();
     OUString aCID = getCID(mxModel);
-    if (pCheckBox == mpCBLabel.get())
+    if (&rCheckBox == mxCBLabel.get())
         setDataLabelVisible(mxModel, aCID, bChecked);
-    else if (pCheckBox == mpCBTrendline.get())
+    else if (&rCheckBox == mxCBTrendline.get())
         setTrendlineVisible(mxModel, aCID, bChecked);
-    else if (pCheckBox == mpCBXError.get())
+    else if (&rCheckBox == mxCBXError.get())
         setErrorBarVisible(mxModel, aCID, false, bChecked);
-    else if (pCheckBox == mpCBYError.get())
+    else if (&rCheckBox == mxCBYError.get())
         setErrorBarVisible(mxModel, aCID, true, bChecked);
 }
 
-IMPL_LINK_NOARG(ChartSeriesPanel, RadioBtnHdl, RadioButton&, void)
+IMPL_LINK_NOARG(ChartSeriesPanel, RadioBtnHdl, weld::ToggleButton&, void)
 {
     OUString aCID = getCID(mxModel);
-    bool bChecked = mpRBPrimaryAxis->IsChecked();
+    bool bChecked = mxRBPrimaryAxis->get_active();
 
     setAttachedAxisType(mxModel, aCID, bChecked);
 }
 
-IMPL_LINK_NOARG(ChartSeriesPanel, ListBoxHdl, ListBox&, void)
+IMPL_LINK_NOARG(ChartSeriesPanel, ListBoxHdl, weld::ComboBox&, void)
 {
     OUString aCID = getCID(mxModel);
 
-    sal_Int32 nPos = mpLBLabelPlacement->GetSelectEntryPos();
+    sal_Int32 nPos = mxLBLabelPlacement->get_active();
     setDataLabelPlacement(mxModel, aCID, nPos);
 }
 
-}} // end of namespace ::chart::sidebar
+} // end of namespace ::chart::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

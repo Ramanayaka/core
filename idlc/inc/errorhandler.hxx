@@ -19,9 +19,9 @@
 #ifndef INCLUDED_IDLC_INC_ERRORHANDLER_HXX
 #define INCLUDED_IDLC_INC_ERRORHANDLER_HXX
 
-#include <astdeclaration.hxx>
-#include <astexpression.hxx>
-#include <astenum.hxx>
+#include "astdeclaration.hxx"
+#include "astexpression.hxx"
+#include "astenum.hxx"
 
 enum class ErrorCode
 {
@@ -36,7 +36,7 @@ enum class ErrorCode
     CantInherit,      // Cannot inherit from non-interface
     IdentNotFound,    // Identifier not found
     CannotInheritFromForward, // Cannot inherit from fwd decl interface
-    ExpectedConstant,       // We got something else..
+    ExpectedConstant,       // We got something else...
     Eval,                   // Error in evaluating expression
     ForwardDeclLookup,      // Tried to lookup in fwd declared intf
     RecursiveType,          // Illegal recursive use of type
@@ -80,13 +80,13 @@ public:
     static void error1(ErrorCode e, AstDeclaration const * d);
     static void error2(
         ErrorCode e, AstDeclaration const * d1, AstDeclaration const * d2);
-    static void error3(ErrorCode e, AstDeclaration* d1, AstDeclaration* d2, AstDeclaration* d3);
+    static void error3(ErrorCode e, AstDeclaration const * d1, AstDeclaration const * d2, AstDeclaration const * d3);
 
     // Warning
-    static void warning0(WarningCode e, const sal_Char* warningmsg);
+    static void warning0(WarningCode e, const char* warningmsg);
 
     // Report a syntax error in IDL input
-    static void syntaxError(ParseState state, sal_Int32 lineNumber, const sal_Char* errmsg);
+    static void syntaxError(ParseState state, sal_Int32 lineNumber, const char* errmsg);
 
     // Report an unsuccessful coercion attempt
     static void coercionError(AstExpression *pExpr, ExprType et);
@@ -94,19 +94,19 @@ public:
     // Report a failed name lookup attempt
     static void lookupError(const OString& n);
     // Report a failed name lookup attempt
-    static void lookupError(ErrorCode e, const OString& n, AstDeclaration* pScope);
+    static void lookupError(ErrorCode e, const OString& n, AstDeclaration const * pScope);
 
 
     // Report a type error
     static void noTypeError(AstDeclaration const * pDecl);
 
-    static void inheritanceError(NodeType nodeType, const OString* name, AstDeclaration* pDecl);
+    static void inheritanceError(NodeType nodeType, const OString* name, AstDeclaration const * pDecl);
 
     static void flagError(ErrorCode e, sal_uInt32 flag);
 
     static void forwardLookupError(const AstDeclaration* pForward, const OString& name);
 
-    static void constantExpected(AstDeclaration* pDecl, const OString& name);
+    static void constantExpected(AstDeclaration const * pDecl, const OString& name);
 
     static void evalError(AstExpression* pExpr);
 

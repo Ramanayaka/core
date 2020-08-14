@@ -20,6 +20,7 @@
 #ifndef INCLUDED_EDITENG_UNOEDPRX_HXX
 #define INCLUDED_EDITENG_UNOEDPRX_HXX
 
+#include <config_options.h>
 #include <memory>
 #include <svl/SfxBroadcaster.hxx>
 #include <editeng/unoedsrc.hxx>
@@ -27,7 +28,7 @@
 #include <editeng/editdata.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvxAccessibleTextAdapter : public SvxTextForwarder
+class SvxAccessibleTextAdapter final : public SvxTextForwarder
 {
 public:
     SvxAccessibleTextAdapter();
@@ -42,7 +43,7 @@ public:
     virtual void            RemoveAttribs( const ESelection& rSelection ) override;
     virtual void            GetPortions( sal_Int32 nPara, std::vector<sal_Int32>& rList ) const override;
 
-    sal_uInt16              CalcEditEngineIndex( sal_Int32 nPara, sal_Int32 nLogicalIndex );
+    sal_Int32               CalcEditEngineIndex( sal_Int32 nPara, sal_Int32 nLogicalIndex );
 
     virtual SfxItemState    GetItemState( const ESelection& rSel, sal_uInt16 nWhich ) const override;
     virtual SfxItemState    GetItemState( sal_Int32 nPara, sal_uInt16 nWhich ) const override;
@@ -54,8 +55,8 @@ public:
 
     virtual SfxItemPool*    GetPool() const override;
 
-    virtual OUString        CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rpTxtColor, Color*& rpFldColor ) override;
-    virtual void            FieldClicked( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos ) override;
+    virtual OUString        CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor ) override;
+    virtual void            FieldClicked( const SvxFieldItem& rField ) override;
 
     virtual bool            IsValid() const override;
 
@@ -72,8 +73,6 @@ public:
     virtual bool            GetAttributeRun( sal_Int32& nStartIndex, sal_Int32& nEndIndex, sal_Int32 nPara, sal_Int32 nIndex, bool bInCell = false ) const override;
     virtual sal_Int32       GetLineCount( sal_Int32 nPara ) const override;
     virtual sal_Int32       GetLineLen( sal_Int32 nPara, sal_Int32 nLine ) const override;
-    virtual void            SetUpdateModeForAcc( bool bUp) override;
-    virtual bool            GetUpdateModeForAcc() const override;
     virtual void            GetLineBoundaries( /*out*/sal_Int32 &rStart, /*out*/sal_Int32 &rEnd, sal_Int32 nParagraph, sal_Int32 nLine ) const override;
     virtual sal_Int32       GetLineNumberAtIndex( sal_Int32 nPara, sal_Int32 nIndex ) const override;
 
@@ -109,7 +108,7 @@ private:
     SvxTextForwarder* mpTextForwarder;
 };
 
-class SvxAccessibleTextEditViewAdapter : public SvxEditViewForwarder
+class SvxAccessibleTextEditViewAdapter final : public SvxEditViewForwarder
 {
 public:
 
@@ -118,7 +117,6 @@ public:
 
     // SvxViewForwarder interface
     virtual bool        IsValid() const override;
-    virtual tools::Rectangle   GetVisArea() const override;
     virtual Point       LogicToPixel( const Point& rPoint, const MapMode& rMapMode ) const override;
     virtual Point       PixelToLogic( const Point& rPoint, const MapMode& rMapMode ) const override;
 
@@ -136,13 +134,13 @@ private:
     SvxAccessibleTextAdapter*   mpTextForwarder;
 };
 
-class EDITENG_DLLPUBLIC SvxEditSourceAdapter : public SvxEditSource
+class UNLESS_MERGELIBS(EDITENG_DLLPUBLIC) SvxEditSourceAdapter final : public SvxEditSource
 {
 public:
     SvxEditSourceAdapter();
     virtual ~SvxEditSourceAdapter() override;
 
-    virtual SvxEditSource*                      Clone() const override;
+    virtual std::unique_ptr<SvxEditSource>      Clone() const override;
     virtual SvxTextForwarder*                   GetTextForwarder() override;
     SvxAccessibleTextAdapter*                   GetTextForwarderAdapter(); // covariant return types don't work on MSVC
     virtual SvxViewForwarder*                   GetViewForwarder() override;

@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "Clipping.hxx"
-#include "CommonConverters.hxx"
-#include "BaseGFXHelper.hxx"
+#include <Clipping.hxx>
+#include <CommonConverters.hxx>
+#include <BaseGFXHelper.hxx>
 
 #include <osl/diagnose.h>
 
@@ -140,6 +140,19 @@ bool lcl_clip2d_(drawing::Position3D& rPoint0, drawing::Position3D& rPoint1, con
     return bRet;
 }
 
+unsigned int round_up_nearest_pow2(unsigned int v)
+{
+    // compute the next highest power of 2 of 32-bit v
+    --v;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    ++v;
+    return v;
+}
+
 void lcl_addPointToPoly( drawing::PolyPolygonShape3D& rPoly
         , const drawing::Position3D& rPos
         , sal_Int32 nPolygonIndex
@@ -170,7 +183,7 @@ void lcl_addPointToPoly( drawing::PolyPolygonShape3D& rPoly
 
     if( nSeqLength <= nNewResultPointCount )
     {
-        sal_Int32 nReallocLength = nReservePointCount;
+        sal_Int32 nReallocLength = nReservePointCount > SAL_MAX_INT16 ? round_up_nearest_pow2(nNewResultPointCount) * 2 : nReservePointCount;
         if( nNewResultPointCount > nReallocLength )
         {
             nReallocLength = nNewResultPointCount;
@@ -202,7 +215,7 @@ void Clipping::clipPolygonAtRectangle( const drawing::PolyPolygonShape3D& rPolyg
     aResult.SequenceY.realloc(0);
     aResult.SequenceZ.realloc(0);
 
-    if(!rPolygon.SequenceX.getLength())
+    if(!rPolygon.SequenceX.hasElements())
         return;
 
     //need clipping?:
@@ -244,10 +257,10 @@ void Clipping::clipPolygonAtRectangle( const drawing::PolyPolygonShape3D& rPolyg
             aTo = getPointFromPoly(rPolygon,nOldPoint,nOldPolyIndex);
             if( lcl_clip2d_(aFrom, aTo, rRectangle) )
             {
-                // compose an Polygon of as many consecutive points as possible
+                // compose a Polygon of as many consecutive points as possible
                 if(aFrom == aLast)
                 {
-                    if( !(aTo==aFrom) )
+                    if( aTo != aFrom )
                     {
                         lcl_addPointToPoly( aResult, aTo, nNewPolyIndex, aResultPointCount, nOldPointCount );
                     }
@@ -261,7 +274,7 @@ void Clipping::clipPolygonAtRectangle( const drawing::PolyPolygonShape3D& rPolyg
                             nNewPolyIndex++;
                     }
                     lcl_addPointToPoly( aResult, aFrom, nNewPolyIndex, aResultPointCount, nOldPointCount );
-                    if( !(aTo==aFrom) )
+                    if( aTo != aFrom )
                         lcl_addPointToPoly( aResult, aTo, nNewPolyIndex, aResultPointCount, nOldPointCount );
                 }
                 aLast = aTo;

@@ -17,29 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "VCoordinateSystem.hxx"
+#include <BaseGFXHelper.hxx>
+#include <VCoordinateSystem.hxx>
 #include "VCartesianCoordinateSystem.hxx"
 #include "VPolarCoordinateSystem.hxx"
-#include "ScaleAutomatism.hxx"
-#include "VSeriesPlotter.hxx"
-#include "AbstractShapeFactory.hxx"
-#include "servicenames_coosystems.hxx"
-#include "macros.hxx"
-#include "AxisIndexDefines.hxx"
-#include "ObjectIdentifier.hxx"
-#include "ExplicitCategoriesProvider.hxx"
-#include "AxisHelper.hxx"
-#include "ContainerHelper.hxx"
+#include <ScaleAutomatism.hxx>
+#include <ShapeFactory.hxx>
+#include <servicenames_coosystems.hxx>
+#include <ObjectIdentifier.hxx>
+#include <ExplicitCategoriesProvider.hxx>
 #include "VAxisBase.hxx"
-#include "ViewDefines.hxx"
-#include "DataSeriesHelper.hxx"
-#include "defines.hxx"
-#include "chartview/ExplicitValueProvider.hxx"
+#include <defines.hxx>
+#include <chartview/ExplicitValueProvider.hxx>
+#include <com/sun/star/chart/TimeUnit.hpp>
 #include <com/sun/star/chart2/AxisType.hpp>
-#include <com/sun/star/chart2/XChartTypeContainer.hpp>
-#include <com/sun/star/chart2/XDataSeriesContainer.hpp>
+#include <com/sun/star/chart2/XCoordinateSystem.hpp>
 #include <comphelper/sequence.hxx>
-
+#include <tools/diagnose_ex.h>
 #include <algorithm>
 #include <rtl/math.hxx>
 
@@ -50,7 +44,7 @@ using namespace ::com::sun::star::chart2;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
 
-VCoordinateSystem* VCoordinateSystem::createCoordinateSystem(
+std::unique_ptr<VCoordinateSystem> VCoordinateSystem::createCoordinateSystem(
             const Reference< XCoordinateSystem >& xCooSysModel )
 {
     if( !xCooSysModel.is() )
@@ -59,22 +53,18 @@ VCoordinateSystem* VCoordinateSystem::createCoordinateSystem(
     OUString aViewServiceName = xCooSysModel->getViewServiceName();
 
     //@todo: in future the coordinatesystems should be instantiated via service factory
-    VCoordinateSystem* pRet=nullptr;
+    std::unique_ptr<VCoordinateSystem> pRet;
     if( aViewServiceName == CHART2_COOSYSTEM_CARTESIAN_VIEW_SERVICE_NAME )
-        pRet = new VCartesianCoordinateSystem(xCooSysModel);
+        pRet.reset( new VCartesianCoordinateSystem(xCooSysModel) );
     else if( aViewServiceName == CHART2_COOSYSTEM_POLAR_VIEW_SERVICE_NAME )
-        pRet = new VPolarCoordinateSystem(xCooSysModel);
+        pRet.reset( new VPolarCoordinateSystem(xCooSysModel) );
     if(!pRet)
-        pRet = new VCoordinateSystem(xCooSysModel);
+        pRet.reset( new VCoordinateSystem(xCooSysModel) );
     return pRet;
 }
 
 VCoordinateSystem::VCoordinateSystem( const Reference< XCoordinateSystem >& xCooSys )
     : m_xCooSysModel(xCooSys)
-    , m_xLogicTargetForGrids(nullptr)
-    , m_xLogicTargetForAxes(nullptr)
-    , m_xFinalTarget(nullptr)
-    , m_xShapeFactory(nullptr)
     , m_aMatrixSceneToScreen()
     , m_eLeftWallPos(CuboidPlanePosition_Left)
     , m_eBackWallPos(CuboidPlanePosition_Back)
@@ -82,7 +72,6 @@ VCoordinateSystem::VCoordinateSystem( const Reference< XCoordinateSystem >& xCoo
     , m_aMergedMinMaxSupplier()
     , m_aExplicitScales(3)
     , m_aExplicitIncrements(3)
-    , m_apExplicitCategoriesProvider(nullptr)
 {
     if( !m_xCooSysModel.is() || m_xCooSysModel->getDimension()<3 )
     {
@@ -105,7 +94,7 @@ void VCoordinateSystem::initPlottingTargets(  const Reference< drawing::XShapes 
 
     sal_Int32 nDimensionCount = m_xCooSysModel->getDimension();
     //create group shape for grids first thus axes are always painted above grids
-    AbstractShapeFactory* pShapeFactory = AbstractShapeFactory::getOrCreateShapeFactory(xShapeFactory);
+    ShapeFactory* pShapeFactory = ShapeFactory::getOrCreateShapeFactory(xShapeFactory);
     if(nDimensionCount==2)
     {
         //create and add to target
@@ -135,11 +124,9 @@ void VCoordinateSystem::setTransformationSceneToScreen(
     m_aMatrixSceneToScreen = rMatrix;
 
     //correct transformation for axis
-    tVAxisMap::iterator aIt( m_aAxisMap.begin() );
-    tVAxisMap::const_iterator aEnd( m_aAxisMap.end() );
-    for( ; aIt != aEnd; ++aIt )
+    for (auto const& elem : m_aAxisMap)
     {
-        VAxisBase* pVAxis = aIt->second.get();
+        VAxisBase* pVAxis = elem.second.get();
         if( pVAxis )
         {
             if(pVAxis->getDimensionCount()==2)
@@ -155,9 +142,8 @@ uno::Sequence< sal_Int32 > VCoordinateSystem::getCoordinateSystemResolution(
     uno::Sequence<sal_Int32> aResolution(
         std::max<sal_Int32>(m_xCooSysModel->getDimension(), 2));
 
-    sal_Int32 nN = 0;
-    for( nN = 0 ;nN<aResolution.getLength(); nN++ )
-        aResolution[nN]=1000;
+    for( auto& i : aResolution )
+        i = 1000;
 
     ::basegfx::B3DTuple aScale( BaseGFXHelper::GetScaleFromMatrix(
         BaseGFXHelper::HomogenMatrixToB3DHomMatrix(
@@ -178,7 +164,7 @@ uno::Sequence< sal_Int32 > VCoordinateSystem::getCoordinateSystemResolution(
     if( nYResolution < 10 )
         nYResolution = 10;
 
-    if( this->getPropertySwapXAndYAxis() )
+    if( getPropertySwapXAndYAxis() )
         std::swap(nXResolution,nYResolution);
 
     //2D
@@ -192,8 +178,8 @@ uno::Sequence< sal_Int32 > VCoordinateSystem::getCoordinateSystemResolution(
         //this maybe can be optimized further ...
         sal_Int32 nMaxResolution = std::max( nXResolution, nYResolution );
         nMaxResolution*=2;
-        for( nN = 0 ;nN<aResolution.getLength(); nN++ )
-            aResolution[nN]=nMaxResolution;
+        for( auto& i : aResolution )
+            i = nMaxResolution;
     }
 
     return aResolution;
@@ -213,7 +199,7 @@ Sequence< Reference< beans::XPropertySet > > VCoordinateSystem::getGridListFromA
     if( xAxis.is() )
     {
         aRet.push_back( xAxis->getGridProperties() );
-        std::vector< Reference< beans::XPropertySet > > aSubGrids( ContainerHelper::SequenceToVector( xAxis->getSubGridProperties() ) );
+        auto aSubGrids( comphelper::sequenceToContainer<std::vector< Reference< beans::XPropertySet > > >( xAxis->getSubGridProperties() ) );
         aRet.insert( aRet.end(), aSubGrids.begin(), aSubGrids.end() );
     }
 
@@ -232,7 +218,7 @@ void VCoordinateSystem::impl_adjustDimensionAndIndex( sal_Int32& rDimensionIndex
 {
     impl_adjustDimension( rDimensionIndex );
 
-    if( rAxisIndex < 0 || rAxisIndex > this->getMaximumAxisIndexByDimension(rDimensionIndex) )
+    if( rAxisIndex < 0 || rAxisIndex > getMaximumAxisIndexByDimension(rDimensionIndex) )
         rAxisIndex = 0;
 }
 
@@ -251,7 +237,7 @@ std::vector< ExplicitScaleData > VCoordinateSystem::getExplicitScales( sal_Int32
     std::vector< ExplicitScaleData > aRet(m_aExplicitScales);
 
     impl_adjustDimensionAndIndex( nDimensionIndex, nAxisIndex );
-    aRet[nDimensionIndex]=this->getExplicitScale( nDimensionIndex, nAxisIndex );
+    aRet[nDimensionIndex]=getExplicitScale( nDimensionIndex, nAxisIndex );
 
     return aRet;
 }
@@ -261,7 +247,7 @@ std::vector< ExplicitIncrementData > VCoordinateSystem::getExplicitIncrements( s
     std::vector< ExplicitIncrementData > aRet(m_aExplicitIncrements);
 
     impl_adjustDimensionAndIndex( nDimensionIndex, nAxisIndex );
-    aRet[nDimensionIndex]=this->getExplicitIncrement( nDimensionIndex, nAxisIndex );
+    aRet[nDimensionIndex]=getExplicitIncrement( nDimensionIndex, nAxisIndex );
 
     return aRet;
 }
@@ -312,12 +298,12 @@ ExplicitIncrementData VCoordinateSystem::getExplicitIncrement( sal_Int32 nDimens
     return aRet;
 }
 
-OUString VCoordinateSystem::createCIDForAxis( const Reference< chart2::XAxis >& /* xAxis */, sal_Int32 nDimensionIndex, sal_Int32 nAxisIndex )
+OUString VCoordinateSystem::createCIDForAxis( sal_Int32 nDimensionIndex, sal_Int32 nAxisIndex )
 {
     OUString aAxisParticle( ObjectIdentifier::createParticleForAxis( nDimensionIndex, nAxisIndex ) );
     return ObjectIdentifier::createClassifiedIdentifierForParticles( m_aCooSysParticle, aAxisParticle );
 }
-OUString VCoordinateSystem::createCIDForGrid( const Reference< chart2::XAxis >& /* xAxis */, sal_Int32 nDimensionIndex, sal_Int32 nAxisIndex )
+OUString VCoordinateSystem::createCIDForGrid( sal_Int32 nDimensionIndex, sal_Int32 nAxisIndex )
 {
     OUString aGridParticle( ObjectIdentifier::createParticleForGrid( nDimensionIndex, nAxisIndex ) );
     return ObjectIdentifier::createClassifiedIdentifierForParticles( m_aCooSysParticle, aGridParticle );
@@ -326,13 +312,11 @@ OUString VCoordinateSystem::createCIDForGrid( const Reference< chart2::XAxis >& 
 sal_Int32 VCoordinateSystem::getMaximumAxisIndexByDimension( sal_Int32 nDimensionIndex ) const
 {
     sal_Int32 nRet = 0;
-    tFullExplicitScaleMap::const_iterator aIt = m_aSecondaryExplicitScales.begin();
-    tFullExplicitScaleMap::const_iterator aEnd = m_aSecondaryExplicitScales.end();
-    for(; aIt!=aEnd; ++aIt)
+    for (auto const& elem : m_aSecondaryExplicitScales)
     {
-        if(aIt->first.first==nDimensionIndex)
+        if(elem.first.first==nDimensionIndex)
         {
-            sal_Int32 nLocalIdx = aIt->first.second;
+            sal_Int32 nLocalIdx = elem.first.second;
             if( nRet < nLocalIdx )
                 nRet = nLocalIdx;
         }
@@ -344,6 +328,7 @@ void VCoordinateSystem::createVAxisList(
               const uno::Reference<chart2::XChartDocument> & /* xChartDoc */
             , const awt::Size& /* rFontReferenceSize */
             , const awt::Rectangle& /* rMaximumSpaceForLabels */
+            , bool /* bLimitSpaceForLabels */
             )
 {
 }
@@ -450,11 +435,9 @@ void VCoordinateSystem::set3DWallPositions( CuboidPlanePosition eLeftWallPos, Cu
 
 void VCoordinateSystem::createMaximumAxesLabels()
 {
-    tVAxisMap::iterator aIt( m_aAxisMap.begin() );
-    tVAxisMap::const_iterator aEnd( m_aAxisMap.end() );
-    for( ; aIt != aEnd; ++aIt )
+    for (auto const& elem : m_aAxisMap)
     {
-        VAxisBase* pVAxis = aIt->second.get();
+        VAxisBase* pVAxis = elem.second.get();
         if( pVAxis )
         {
             if(pVAxis->getDimensionCount()==2)
@@ -465,11 +448,9 @@ void VCoordinateSystem::createMaximumAxesLabels()
 }
 void VCoordinateSystem::createAxesLabels()
 {
-    tVAxisMap::iterator aIt( m_aAxisMap.begin() );
-    tVAxisMap::const_iterator aEnd( m_aAxisMap.end() );
-    for( ; aIt != aEnd; ++aIt )
+    for (auto const& elem : m_aAxisMap)
     {
-        VAxisBase* pVAxis = aIt->second.get();
+        VAxisBase* pVAxis = elem.second.get();
         if( pVAxis )
         {
             if(pVAxis->getDimensionCount()==2)
@@ -481,11 +462,9 @@ void VCoordinateSystem::createAxesLabels()
 
 void VCoordinateSystem::updatePositions()
 {
-    tVAxisMap::iterator aIt( m_aAxisMap.begin() );
-    tVAxisMap::const_iterator aEnd( m_aAxisMap.end() );
-    for( ; aIt != aEnd; ++aIt )
+    for (auto const& elem : m_aAxisMap)
     {
-        VAxisBase* pVAxis = aIt->second.get();
+        VAxisBase* pVAxis = elem.second.get();
         if( pVAxis )
         {
             if(pVAxis->getDimensionCount()==2)
@@ -497,17 +476,15 @@ void VCoordinateSystem::updatePositions()
 
 void VCoordinateSystem::createAxesShapes()
 {
-    tVAxisMap::iterator aIt( m_aAxisMap.begin() );
-    tVAxisMap::const_iterator aEnd( m_aAxisMap.end() );
-    for( ; aIt != aEnd; ++aIt )
+    for (auto const& elem : m_aAxisMap)
     {
-        VAxisBase* pVAxis = aIt->second.get();
+        VAxisBase* pVAxis = elem.second.get();
         if( pVAxis )
         {
             if(pVAxis->getDimensionCount()==2)
                 pVAxis->setTransformationSceneToScreen( m_aMatrixSceneToScreen );
 
-            tFullAxisIndex aFullAxisIndex = aIt->first;
+            tFullAxisIndex aFullAxisIndex = elem.first;
             if( aFullAxisIndex.second == 0 )
             {
                 if( aFullAxisIndex.first == 0 )
@@ -554,9 +531,9 @@ bool VCoordinateSystem::getPropertySwapXAndYAxis() const
     {
         xProp->getPropertyValue( "SwapXAndYAxis" ) >>= bSwapXAndY;
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
     return bSwapXAndY;
 }

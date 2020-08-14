@@ -7,7 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "subtotalparam.hxx"
+#include <subtotalparam.hxx>
 
 #include <osl/diagnose.h>
 
@@ -80,6 +80,9 @@ void ScSubTotalParam::Clear()
 
 ScSubTotalParam& ScSubTotalParam::operator=( const ScSubTotalParam& r )
 {
+    if(this == &r)
+        return *this;
+
     nCol1           = r.nCol1;
     nRow1           = r.nRow1;
     nCol2           = r.nCol2;
@@ -179,24 +182,24 @@ void ScSubTotalParam::SetSubTotals( sal_uInt16 nGroup,
     OSL_ENSURE( (nCount > 0),
                 "ScSubTotalParam::SetSubTotals(): nCount <= 0!" );
 
-    if ( ptrSubTotals && ptrFunctions && (nCount > 0) && (nGroup <= MAXSUBTOTAL) )
+    if ( !(ptrSubTotals && ptrFunctions && (nCount > 0) && (nGroup <= MAXSUBTOTAL)) )
+        return;
+
+    // 0 is interpreted as 1, otherwise decrementing the array index
+    if (nGroup != 0)
+        nGroup--;
+
+    delete [] pSubTotals[nGroup];
+    delete [] pFunctions[nGroup];
+
+    pSubTotals[nGroup] = new SCCOL      [nCount];
+    pFunctions[nGroup] = new ScSubTotalFunc [nCount];
+    nSubTotals[nGroup] = static_cast<SCCOL>(nCount);
+
+    for ( sal_uInt16 i=0; i<nCount; i++ )
     {
-        // 0 is interpreted as 1, otherwise decrementing the array index
-        if (nGroup != 0)
-            nGroup--;
-
-        delete [] pSubTotals[nGroup];
-        delete [] pFunctions[nGroup];
-
-        pSubTotals[nGroup] = new SCCOL      [nCount];
-        pFunctions[nGroup] = new ScSubTotalFunc [nCount];
-        nSubTotals[nGroup] = static_cast<SCCOL>(nCount);
-
-        for ( sal_uInt16 i=0; i<nCount; i++ )
-        {
-            pSubTotals[nGroup][i] = ptrSubTotals[i];
-            pFunctions[nGroup][i] = ptrFunctions[i];
-        }
+        pSubTotals[nGroup][i] = ptrSubTotals[i];
+        pFunctions[nGroup][i] = ptrFunctions[i];
     }
 }
 

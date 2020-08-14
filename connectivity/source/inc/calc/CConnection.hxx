@@ -17,26 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_CALC_CCONNECTION_HXX
-#define INCLUDED_CONNECTIVITY_SOURCE_INC_CALC_CCONNECTION_HXX
+#pragma once
 
 #include <memory>
-#include "file/FConnection.hxx"
+#include <file/FConnection.hxx>
 #include <com/sun/star/frame/XDesktop2.hpp>
 #include <com/sun/star/frame/XTerminateListener.hpp>
-#include <com/sun/star/uno/DeploymentException.hpp>
+#include <rtl/ref.hxx>
 #include <unotools/closeveto.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sheet { class XSpreadsheetDocument; }
-} } }
+}
 
 namespace utl { class CloseVeto; }
 
 
-namespace connectivity
-{
-    namespace calc
+namespace connectivity::calc
     {
         class ODriver;
         class OCalcConnection : public file::OConnection
@@ -146,9 +143,7 @@ namespace connectivity
                 const css::uno::Reference< css::sheet::XSpreadsheetDocument>& getDoc() const { return m_xDoc; }
             };
         };
-    }
-}
 
-#endif // INCLUDED_CONNECTIVITY_SOURCE_INC_CALC_CCONNECTION_HXX
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

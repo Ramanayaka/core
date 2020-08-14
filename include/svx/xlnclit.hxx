@@ -24,19 +24,16 @@
 #include <svx/svxdllapi.h>
 
 
-// class XLineColorItem
 
-class SVX_DLLPUBLIC XLineColorItem : public XColorItem
+class SVXCORE_DLLPUBLIC XLineColorItem final : public XColorItem
 {
 public:
             static SfxPoolItem* CreateDefault();
             XLineColorItem() {}
             XLineColorItem(sal_Int32 nIndex, const Color& rTheColor);
             XLineColorItem(const OUString& rName, const Color& rTheColor);
-            XLineColorItem(SvStream& rIn);
 
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XLineColorItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -44,7 +41,7 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

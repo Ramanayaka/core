@@ -18,18 +18,17 @@
  */
 
 #include "BarChartType.hxx"
-#include "macros.hxx"
-#include "servicenames_charttypes.hxx"
+#include <servicenames_charttypes.hxx>
 #include <cppuhelper/supportsservice.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
 namespace chart
 {
 
-BarChartType::BarChartType(
-    const uno::Reference< uno::XComponentContext > & xContext ) :
-        ChartType( xContext )
+BarChartType::BarChartType()
 {}
 
 BarChartType::BarChartType( const BarChartType & rOther ) :
@@ -49,7 +48,7 @@ uno::Reference< util::XCloneable > SAL_CALL BarChartType::createClone()
 // ____ XChartType ____
 OUString SAL_CALL BarChartType::getChartType()
 {
-    return OUString(CHART2_SERVICE_NAME_CHARTTYPE_BAR);
+    return CHART2_SERVICE_NAME_CHARTTYPE_BAR;
 }
 
 uno::Sequence< OUString > BarChartType::getSupportedPropertyRoles()
@@ -63,7 +62,7 @@ uno::Sequence< OUString > BarChartType::getSupportedPropertyRoles()
 
 OUString SAL_CALL BarChartType::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.BarChartType");
+    return "com.sun.star.comp.chart.BarChartType";
 }
 
 sal_Bool SAL_CALL BarChartType::supportsService( const OUString& rServiceName )
@@ -80,11 +79,11 @@ css::uno::Sequence< OUString > SAL_CALL BarChartType::getSupportedServiceNames()
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart_BarChartType_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart_BarChartType_get_implementation(css::uno::XComponentContext * /*context*/,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::BarChartType(context));
+    return cppu::acquire(new ::chart::BarChartType);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

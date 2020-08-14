@@ -19,7 +19,10 @@
 #ifndef INCLUDED_REPORTDESIGN_SOURCE_UI_INC_DLGEDFUNC_HXX
 #define INCLUDED_REPORTDESIGN_SOURCE_UI_INC_DLGEDFUNC_HXX
 
+#include <tools/gen.hxx>
+#include <vcl/event.hxx>
 #include <vcl/timer.hxx>
+#include <com/sun/star/uno/XInterface.hpp>
 
 class Timer;
 class MouseEvent;
@@ -47,8 +50,8 @@ protected:
     Point           m_aMDPos;
     css::uno::Reference<css::uno::XInterface> m_xOverlappingObj;
     SdrObject *     m_pOverlappingObj;
-    sal_Int32       m_nOverlappedControlColor;
-    sal_Int32       m_nOldColor;
+    Color           m_nOverlappedControlColor;
+    Color           m_nOldColor;
     bool            m_bSelectionMode;
     bool            m_bUiActive;
     bool            m_bShowPropertyBrowser;
@@ -61,7 +64,7 @@ protected:
     */
     void    checkMovementAllowed(const MouseEvent& rMEvt);
 
-    /** sets the correct mouse pointer when moving a object
+    /** sets the correct mouse pointer when moving an object
     *
     * \param rMEvt
     * \return <TRUE/> when the pointer was already set.
@@ -73,7 +76,7 @@ protected:
         returns true, as long as only customshapes in the marked list,
         custom shapes can drop every where
     */
-    bool    isOnlyCustomShapeMarked();
+    bool    isOnlyCustomShapeMarked() const;
 
     /** activate object if it is of type OBJ_OLE2
     */
@@ -101,7 +104,7 @@ public:
     * \return <TRUE/> if overlapping, otherwise <FALSE/>
     */
     bool isOverlapping(const MouseEvent& rMEvt);
-    void setOverlappedControlColor(sal_Int32 _nColor);
+    void setOverlappedControlColor(Color _nColor);
     void stopScrollTimer();
 
     /** deactivate all ole object

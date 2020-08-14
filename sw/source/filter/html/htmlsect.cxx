@@ -17,38 +17,35 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <com/sun/star/text/HoriOrientation.hpp>
+#include <com/sun/star/text/VertOrientation.hpp>
 #include <rtl/uri.hxx>
 
 #include <svl/urihelper.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
 #include <editeng/adjustitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/formatbreakitem.hxx>
 #include <svtools/htmltokn.h>
 #include <svtools/htmlkywd.hxx>
 #include <sfx2/linkmgr.hxx>
+#include <osl/diagnose.h>
 
-#include "hintids.hxx"
-#include <fmtornt.hxx>
+#include <hintids.hxx>
 #include <fmthdft.hxx>
 #include <fmtcntnt.hxx>
-#include <fmtfsize.hxx>
 #include <fmtclds.hxx>
 #include <fmtanchr.hxx>
 #include <fmtpdsc.hxx>
-#include <fmtsrnd.hxx>
-#include <fmtflcnt.hxx>
-#include "frmatr.hxx"
-#include "doc.hxx"
-#include "pam.hxx"
-#include "ndtxt.hxx"
-#include "shellio.hxx"
-#include "section.hxx"
-#include "poolfmt.hxx"
-#include "pagedesc.hxx"
-#include "swtable.hxx"
-#include "viewsh.hxx"
+#include <frmatr.hxx>
+#include <doc.hxx>
+#include <pam.hxx>
+#include <ndtxt.hxx>
+#include <shellio.hxx>
+#include <section.hxx>
+#include <poolfmt.hxx>
+#include <pagedesc.hxx>
+#include <swtable.hxx>
 #include "swcss1.hxx"
 #include "swhtml.hxx"
 
@@ -113,7 +110,7 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
         bAppended = true;
     }
 
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( nToken );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(nToken));
 
     bool bStyleParsed = false, bPositioned = false;
     SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
@@ -126,20 +123,35 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
         {
             if ( aPropInfo.m_nColumnCount >= 2 )
             {
-                delete pCntxt;
+                xCntxt.reset();
                 NewMultiCol( aPropInfo.m_nColumnCount );
                 return;
             }
             bPositioned = HtmlTokenId::DIVISION_ON == nToken && !aClass.isEmpty() &&
-                          CreateContainer( aClass, aItemSet, aPropInfo,
-                                           pCntxt );
+                          CreateContainer(aClass, aItemSet, aPropInfo,
+                                          xCntxt.get());
             if( !bPositioned )
-                bPositioned = DoPositioning( aItemSet, aPropInfo, pCntxt );
+            {
+                if (aPropInfo.m_bVisible && m_aContexts.size())
+                {
+                    const std::unique_ptr<HTMLAttrContext>& pParent
+                        = m_aContexts[m_aContexts.size() - 1];
+                    if (!pParent->IsVisible())
+                    {
+                        // If the parent context is hidden, we are not visible, either.
+                        aPropInfo.m_bVisible = false;
+                    }
+                }
+                bPositioned = DoPositioning(aItemSet, aPropInfo, xCntxt.get());
+            }
         }
     }
 
-    if( !bPositioned && (bHeader || bFooter) && IsNewDoc() )
+    if (!bPositioned && (bHeader || bFooter) && IsNewDoc() && !m_bReadingHeaderOrFooter)
     {
+        m_bReadingHeaderOrFooter = true;
+        xCntxt->SetHeaderOrFooter(true);
+
         SwPageDesc *pPageDesc = m_pCSS1Parser->GetMasterPageDesc();
         SwFrameFormat& rPageFormat = pPageDesc->GetMaster();
 
@@ -195,7 +207,11 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
                 static_cast<const SwStartNode *>( &rContentStIdx.GetNode() );
             aDelPam.GetPoint()->nNode = pStNd->EndOfSectionIndex() - 1;
 
-            m_xDoc->getIDocumentContentOperations().DelFullPara( aDelPam );
+            if (!PendingObjectsInPaM(aDelPam))
+            {
+                ClearFootnotesMarksInRange(aDelPam.GetMark()->nNode, aDelPam.GetPoint()->nNode);
+                m_xDoc->getIDocumentContentOperations().DelFullPara(aDelPam);
+            }
 
             // update page style
             for( size_t i=0; i < m_xDoc->GetPageDescCnt(); i++ )
@@ -209,7 +225,7 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
         }
 
         SwPosition aNewPos( SwNodeIndex( rContentStIdx, 1 ), SwIndex( pCNd, 0 ) );
-        SaveDocContext( pCntxt, nFlags, &aNewPos );
+        SaveDocContext(xCntxt.get(), nFlags, &aNewPos);
     }
     else if( !bPositioned && aId.getLength() > 9 &&
              (aId[0] == 's' || aId[0] == 'S' ) &&
@@ -227,9 +243,9 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
             {
                 SwContentNode *pCNd =
                     m_xDoc->GetNodes()[pStartNdIdx->GetIndex()+1]->GetContentNode();
-                SwNodeIndex aTmpSwNodeIndex = SwNodeIndex(*pCNd);
+                SwNodeIndex aTmpSwNodeIndex(*pCNd);
                 SwPosition aNewPos( aTmpSwNodeIndex, SwIndex( pCNd, 0 ) );
-                SaveDocContext( pCntxt, HtmlContextFlags::MultiColMask, &aNewPos );
+                SaveDocContext(xCntxt.get(), HtmlContextFlags::MultiColMask, &aNewPos);
                 aId.clear();
                 aPropInfo.m_aId.clear();
             }
@@ -254,8 +270,8 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
                 bAppended = true;
             }
         }
-        HTMLAttrs *pPostIts = bAppended ? nullptr : new HTMLAttrs;
-        SetAttr( true, true, pPostIts );
+        std::unique_ptr<std::deque<std::unique_ptr<HTMLAttr>>> pPostIts(bAppended ? nullptr : new std::deque<std::unique_ptr<HTMLAttr>>);
+        SetAttr( true, true, pPostIts.get() );
 
         // make name of section unique
         const OUString aName( m_xDoc->GetUniqueSectionName( !aId.isEmpty() ? &aId : nullptr ) );
@@ -283,7 +299,7 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
             else
             {
                 aURL = URIHelper::SmartRel2Abs(INetURLObject( m_sBaseURL ), aHRef.copy( 0, nPos ), Link<OUString *, bool>(), false )
-                    + OUStringLiteral1(sfx2::cTokenSeparator);
+                    + OUStringChar(sfx2::cTokenSeparator);
                 if( nPos2 == -1 )
                 {
                     aURL += aHRef.copy( nPos+1 );
@@ -291,7 +307,7 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
                 else
                 {
                     aURL += aHRef.copy( nPos+1, nPos2 - (nPos+1) )
-                        + OUStringLiteral1(sfx2::cTokenSeparator)
+                        + OUStringChar(sfx2::cTokenSeparator)
                         + rtl::Uri::decode( aHRef.copy( nPos2+1 ),
                                               rtl_UriDecodeWithCharset,
                                               RTL_TEXTENCODING_ISO_8859_1 );
@@ -300,8 +316,8 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
             aHRef = aURL;
         }
 
-        SwSectionData aSection( (!aHRef.isEmpty()) ? FILE_LINK_SECTION
-                                        : CONTENT_SECTION, aName );
+        SwSectionData aSection( (!aHRef.isEmpty()) ? SectionType::FileLink
+                                        : SectionType::Content, aName );
         if( !aHRef.isEmpty() )
         {
             aSection.SetLinkFileName( aHRef );
@@ -330,14 +346,14 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
         m_xDoc->InsertSwSection( *m_pPam, aSection, nullptr, &aFrameItemSet, false );
 
         // maybe jump to section
-        if( JUMPTO_REGION == m_eJumpTo && aName == m_sJmpMark )
+        if( JumpToMarks::Region == m_eJumpTo && aName == m_sJmpMark )
         {
             m_bChkJumpMark = true;
-            m_eJumpTo = JUMPTO_NONE;
+            m_eJumpTo = JumpToMarks::NONE;
         }
 
         SwTextNode* pOldTextNd =
-            (bAppended) ? nullptr : m_pPam->GetPoint()->nNode.GetNode().GetTextNode();
+            bAppended ? nullptr : m_pPam->GetPoint()->nNode.GetNode().GetTextNode();
 
         m_pPam->Move( fnMoveBackward );
 
@@ -350,12 +366,11 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
         if( pPostIts )
         {
             // move still existing PostIts in the first paragraph of the table
-            InsertAttrs( *pPostIts );
-            delete pPostIts;
-            pPostIts = nullptr;
+            InsertAttrs( std::move(*pPostIts) );
+            pPostIts.reset();
         }
 
-        pCntxt->SetSpansSection( true );
+        xCntxt->SetSpansSection( true );
 
         // don't insert Bookmarks with same name as sections
         if( !aPropInfo.m_aId.isEmpty() && aPropInfo.m_aId==aName )
@@ -363,47 +378,48 @@ void SwHTMLParser::NewDivision( HtmlTokenId nToken )
     }
     else
     {
-        pCntxt->SetAppendMode( AM_NOSPACE );
+        xCntxt->SetAppendMode( AM_NOSPACE );
     }
 
     if( SvxAdjust::End != eAdjust )
     {
-        InsertAttr( &m_aAttrTab.pAdjust, SvxAdjustItem(eAdjust, RES_PARATR_ADJUST), pCntxt );
+        InsertAttr(&m_xAttrTab->pAdjust, SvxAdjustItem(eAdjust, RES_PARATR_ADJUST), xCntxt.get());
     }
 
     // parse style
     if( bStyleParsed )
-        InsertAttrs( aItemSet, aPropInfo, pCntxt, true );
+        InsertAttrs( aItemSet, aPropInfo, xCntxt.get(), true );
 
-    PushContext( pCntxt );
+    xCntxt->SetVisible(aPropInfo.m_bVisible);
+    PushContext(xCntxt);
 }
 
 void SwHTMLParser::EndDivision()
 {
     // search for the stack entry of the token (because we still have the div stack
     // we don't make a difference between DIV and CENTER)
-    HTMLAttrContext *pCntxt = nullptr;
+    std::unique_ptr<HTMLAttrContext> xCntxt;
     auto nPos = m_aContexts.size();
-    while( !pCntxt && nPos>m_nContextStMin )
+    while (!xCntxt && nPos>m_nContextStMin)
     {
         switch( m_aContexts[--nPos]->GetToken() )
         {
         case HtmlTokenId::CENTER_ON:
         case HtmlTokenId::DIVISION_ON:
-            pCntxt = m_aContexts[nPos];
+            xCntxt = std::move(m_aContexts[nPos]);
             m_aContexts.erase( m_aContexts.begin() + nPos );
             break;
         default: break;
         }
     }
 
-    if( pCntxt )
+    if (xCntxt)
     {
         // close attribute
-        EndContext( pCntxt );
+        EndContext(xCntxt.get());
         SetAttr();  // set paragraph attributes really fast because of JavaScript
-
-        delete pCntxt;
+        if (xCntxt->IsHeaderOrFooter())
+            m_bReadingHeaderOrFooter = false;
     }
 }
 
@@ -472,7 +488,7 @@ void SwHTMLParser::FixHeaderFooterDistance( bool bHeader,
                 ->SwContentNode::GetAttr( RES_UL_SPACE ));
 
         // The top paragraph padding becomes the padding
-        // to headline or footer if it is greater then the
+        // to headline or footer if it is greater than the
         // bottom padding of the paragraph beforehand
         if( rULSpace.GetUpper() > nSpace )
             nSpace = rULSpace.GetUpper();
@@ -510,7 +526,7 @@ bool SwHTMLParser::EndSection( bool bLFStripped )
         return true;
     }
 
-    OSL_ENSURE( false, "Falsche PaM Position Beenden eines Bereichs" );
+    OSL_ENSURE( false, "Wrong PaM position at end of section" );
 
     return false;
 }
@@ -521,7 +537,7 @@ bool SwHTMLParser::EndSections( bool bLFStripped )
     auto nPos = m_aContexts.size();
     while( nPos>m_nContextStMin )
     {
-        HTMLAttrContext *pCntxt = m_aContexts[--nPos];
+        HTMLAttrContext *pCntxt = m_aContexts[--nPos].get();
         if( pCntxt->GetSpansSection() && EndSection( bLFStripped ) )
         {
             bSectionClosed = true;
@@ -539,7 +555,7 @@ void SwHTMLParser::NewMultiCol( sal_uInt16 columnsFromCss )
     OUString aStyle, aClass, aLang, aDir;
     long nWidth = 100;
     sal_uInt16 nCols = columnsFromCss, nGutter = 10;
-    bool bPrcWidth = true;
+    bool bPercentWidth = true;
 
     const HTMLOptions& rHTMLOptions = GetOptions();
     for (size_t i = rHTMLOptions.size(); i; )
@@ -563,22 +579,22 @@ void SwHTMLParser::NewMultiCol( sal_uInt16 columnsFromCss )
             aDir = rOption.GetString();
             break;
         case HtmlOptionId::COLS:
-            nCols = (sal_uInt16)rOption.GetNumber();
+            nCols = static_cast<sal_uInt16>(rOption.GetNumber());
             break;
         case HtmlOptionId::WIDTH:
             nWidth = rOption.GetNumber();
-            bPrcWidth = (rOption.GetString().indexOf('%') != -1);
-            if( bPrcWidth && nWidth>100 )
+            bPercentWidth = (rOption.GetString().indexOf('%') != -1);
+            if( bPercentWidth && nWidth>100 )
                 nWidth = 100;
             break;
         case HtmlOptionId::GUTTER:
-            nGutter = (sal_uInt16)rOption.GetNumber();
+            nGutter = static_cast<sal_uInt16>(rOption.GetNumber());
             break;
         default: break;
         }
     }
 
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( HtmlTokenId::MULTICOL_ON );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(HtmlTokenId::MULTICOL_ON));
 
     //.is the multicol element contained in a container? That may be the
     // case for 5.0 documents.
@@ -596,16 +612,16 @@ void SwHTMLParser::NewMultiCol( sal_uInt16 columnsFromCss )
                                           aItemSet, aPropInfo, &aLang, &aDir );
 
     // Calculate width.
-    sal_uInt8 nPrcWidth = bPrcWidth ? (sal_uInt8)nWidth : 0;
+    sal_uInt8 nPercentWidth = bPercentWidth ? static_cast<sal_uInt8>(nWidth) : 0;
     SwTwips nTwipWidth = 0;
-    if( !bPrcWidth && nWidth && Application::GetDefaultDevice() )
+    if( !bPercentWidth && nWidth && Application::GetDefaultDevice() )
     {
         nTwipWidth = Application::GetDefaultDevice()
                              ->PixelToLogic( Size(nWidth, 0),
                                              MapMode(MapUnit::MapTwip) ).Width();
     }
 
-    if( !nPrcWidth && nTwipWidth < MINFLY )
+    if( !nPercentWidth && nTwipWidth < MINFLY )
         nTwipWidth = MINFLY;
 
     // Do positioning.
@@ -622,7 +638,7 @@ void SwHTMLParser::NewMultiCol( sal_uInt16 columnsFromCss )
 
         // The width is either the WIDTH attribute's value or contained
         // in some style option.
-        SetVarSize( aPropInfo, aFrameItemSet, nTwipWidth, nPrcWidth );
+        SetVarSize( aPropInfo, aFrameItemSet, nTwipWidth, nPercentWidth );
 
         SetSpace( Size(0,0), aItemSet, aPropInfo, aFrameItemSet );
 
@@ -635,16 +651,16 @@ void SwHTMLParser::NewMultiCol( sal_uInt16 columnsFromCss )
 
         // Insert fly frame. If the are columns, the fly frame's name is not
         // the sections name but a generated one.
-        OUString aFlyName( aEmptyOUStr );
+        OUString aFlyName;
         if( nCols < 2 )
         {
             aFlyName = aId;
             aPropInfo.m_aId.clear();
         }
 
-        InsertFlyFrame(aFrameItemSet, pCntxt, aFlyName);
+        InsertFlyFrame(aFrameItemSet, xCntxt.get(), aFlyName);
 
-        pCntxt->SetPopStack( true );
+        xCntxt->SetPopStack( true );
         bPositioned = true;
     }
 
@@ -662,12 +678,12 @@ void SwHTMLParser::NewMultiCol( sal_uInt16 columnsFromCss )
         }
     }
 
-    // If there are less then 2 columns, no section is inserted.
+    // If there are less than 2 columns, no section is inserted.
     if( nCols >= 2 )
     {
         if( !bAppended )
         {
-            // If the pam is at the start of a section, a additional text
+            // If the pam is at the start of a section, an additional text
             // node must be inserted. Otherwise, the new section will be
             // inserted in front of the old one.
             SwNodeIndex aPrvNdIdx( m_pPam->GetPoint()->nNode, -1 );
@@ -677,12 +693,12 @@ void SwHTMLParser::NewMultiCol( sal_uInt16 columnsFromCss )
                 bAppended = true;
             }
         }
-        HTMLAttrs *pPostIts = bAppended ? nullptr : new HTMLAttrs;
-        SetAttr( true, true, pPostIts );
+        std::unique_ptr<std::deque<std::unique_ptr<HTMLAttr>>> pPostIts(bAppended ? nullptr : new std::deque<std::unique_ptr<HTMLAttr>>);
+        SetAttr( true, true, pPostIts.get() );
 
         // Make section name unique.
         OUString aName( m_xDoc->GetUniqueSectionName( !aId.isEmpty() ? &aId : nullptr ) );
-        SwSectionData aSection( CONTENT_SECTION, aName );
+        SwSectionData aSection( SectionType::Content, aName );
 
         SfxItemSet aFrameItemSet( m_xDoc->GetAttrPool(),
                                 svl::Items<RES_FRMATR_BEGIN, RES_FRMATR_END-1>{} );
@@ -691,9 +707,9 @@ void SwHTMLParser::NewMultiCol( sal_uInt16 columnsFromCss )
 
         if( nGutter && Application::GetDefaultDevice() )
         {
-            nGutter = (sal_uInt16)Application::GetDefaultDevice()
+            nGutter = static_cast<sal_uInt16>(Application::GetDefaultDevice()
                              ->PixelToLogic( Size(nGutter, 0),
-                                             MapMode(MapUnit::MapTwip) ).Width();
+                                             MapMode(MapUnit::MapTwip) ).Width());
         }
 
         SwFormatCol aFormatCol;
@@ -717,14 +733,14 @@ void SwHTMLParser::NewMultiCol( sal_uInt16 columnsFromCss )
         m_xDoc->InsertSwSection( *m_pPam, aSection, nullptr, &aFrameItemSet, false );
 
         // Jump to section, if this is requested.
-        if( JUMPTO_REGION == m_eJumpTo && aName == m_sJmpMark )
+        if( JumpToMarks::Region == m_eJumpTo && aName == m_sJmpMark )
         {
             m_bChkJumpMark = true;
-            m_eJumpTo = JUMPTO_NONE;
+            m_eJumpTo = JumpToMarks::NONE;
         }
 
         SwTextNode* pOldTextNd =
-            (bAppended) ? nullptr : m_pPam->GetPoint()->nNode.GetNode().GetTextNode();
+            bAppended ? nullptr : m_pPam->GetPoint()->nNode.GetNode().GetTextNode();
 
         m_pPam->Move( fnMoveBackward );
 
@@ -737,12 +753,11 @@ void SwHTMLParser::NewMultiCol( sal_uInt16 columnsFromCss )
         if( pPostIts )
         {
             // Move pending PostIts into the section.
-            InsertAttrs( *pPostIts );
-            delete pPostIts;
-            pPostIts = nullptr;
+            InsertAttrs( std::move(*pPostIts) );
+            pPostIts.reset();
         }
 
-        pCntxt->SetSpansSection( true );
+        xCntxt->SetSpansSection( true );
 
         // Insert a bookmark if its name differs from the section's name only.
         if( !aPropInfo.m_aId.isEmpty() && aPropInfo.m_aId==aName )
@@ -751,9 +766,9 @@ void SwHTMLParser::NewMultiCol( sal_uInt16 columnsFromCss )
 
     // Additional attributes must be set as hard ones.
     if( bStyleParsed )
-        InsertAttrs( aItemSet, aPropInfo, pCntxt, true );
+        InsertAttrs( aItemSet, aPropInfo, xCntxt.get(), true );
 
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 }
 
 void SwHTMLParser::InsertFlyFrame( const SfxItemSet& rItemSet,
@@ -761,7 +776,7 @@ void SwHTMLParser::InsertFlyFrame( const SfxItemSet& rItemSet,
                                    const OUString& rName )
 {
     RndStdIds eAnchorId =
-        static_cast<const SwFormatAnchor&>(rItemSet.Get( RES_ANCHOR )).GetAnchorId();
+        rItemSet.Get( RES_ANCHOR ).GetAnchorId();
 
     // create frame
     SwFlyFrameFormat* pFlyFormat = m_xDoc->MakeFlySection( eAnchorId, m_pPam->GetPoint(),
@@ -777,7 +792,7 @@ void SwHTMLParser::InsertFlyFrame( const SfxItemSet& rItemSet,
                             ->GetContentNode();
 
     SwPosition aNewPos( SwNodeIndex( rFlyCntIdx, 1 ), SwIndex( pCNd, 0 ) );
-    const HtmlContextFlags nFlags = (HtmlContextFlags::ProtectStack|HtmlContextFlags::StripPara);
+    const HtmlContextFlags nFlags = HtmlContextFlags::ProtectStack|HtmlContextFlags::StripPara;
     SaveDocContext( pCntxt, nFlags, &aNewPos );
 }
 
@@ -827,7 +842,8 @@ void SwHTMLParser::MovePageDescAttrs( SwNode *pSrcNd,
         if( SfxItemState::SET == pFrameFormat->GetAttrSet().
                 GetItemState( RES_PAGEDESC, false, &pItem ) )
         {
-            pDestContentNd->SetAttr( *pItem );
+            if (pDestContentNd)
+                pDestContentNd->SetAttr(*pItem);
             pFrameFormat->ResetFormatAttr( RES_PAGEDESC );
         }
     }

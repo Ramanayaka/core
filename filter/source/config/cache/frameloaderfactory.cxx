@@ -19,25 +19,20 @@
 
 
 #include "frameloaderfactory.hxx"
-#include "macros.hxx"
-#include "constant.hxx"
-#include "versions.hxx"
 
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <comphelper/enumhelper.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config{
 
 FrameLoaderFactory::FrameLoaderFactory(const css::uno::Reference< css::uno::XComponentContext >& rxContext)
     : m_xContext(rxContext)
 {
     BaseContainer::init(rxContext                                              ,
-                        FrameLoaderFactory::impl_getImplementationName()   ,
-                        FrameLoaderFactory::impl_getSupportedServiceNames(),
+                        "com.sun.star.comp.filter.config.FrameLoaderFactory"  ,
+                        { "com.sun.star.frame.FrameLoaderFactory" },
                         FilterCache::E_FRAMELOADER                         );
 }
 
@@ -57,51 +52,15 @@ css::uno::Reference< css::uno::XInterface > SAL_CALL FrameLoaderFactory::createI
                                                                                                      const css::uno::Sequence< css::uno::Any >& lArguments)
 {
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
-    OUString sRealLoader = sLoader;
-
-    #ifdef FILTER_CONFIG_MIGRATION_Q_
-
-        /* -> TODO - HACK
-            check if the given loader name really exist ...
-            Because our old implementation worked with an internal
-            type name instead of a loader name. For a small migration time
-            we must simulate this old feature :-( */
-
-        auto & cache = TheFilterCache::get();
-
-        if (!cache.hasItem(FilterCache::E_FRAMELOADER, sLoader) && cache.hasItem(FilterCache::E_TYPE, sLoader))
-        {
-            FILTER_CONFIG_LOG_("FrameLoaderFactory::createInstanceWithArguments() ... simulate old type search functionality!\n");
-
-            css::uno::Sequence< OUString > lTypes { sLoader };
-
-            css::uno::Sequence< css::beans::NamedValue > lQuery { { PROPNAME_TYPES, css::uno::makeAny(lTypes) } };
-
-            css::uno::Reference< css::container::XEnumeration > xSet = BaseContainer::createSubSetEnumerationByProperties(lQuery);
-            while(xSet->hasMoreElements())
-            {
-                ::comphelper::SequenceAsHashMap lLoaderProps(xSet->nextElement());
-                if (!(lLoaderProps[PROPNAME_NAME] >>= sRealLoader))
-                    continue;
-            }
-
-            // prevent outside code against NoSuchElementException!
-            // But don't implement such defensive strategy for our new create handling :-)
-            if (!cache.hasItem(FilterCache::E_FRAMELOADER, sRealLoader))
-                return css::uno::Reference< css::uno::XInterface>();
-        }
-
-        /* <- HACK */
-
-    #endif // FILTER_CONFIG_MIGRATION_Q_
+    auto & cache = TheFilterCache::get();
 
     // search loader on cache
-    CacheItem aLoader = cache.getItem(m_eType, sRealLoader);
+    CacheItem aLoader = cache.getItem(m_eType, sLoader);
 
     // create service instance
-    css::uno::Reference< css::uno::XInterface > xLoader = m_xContext->getServiceManager()->createInstanceWithContext(sRealLoader, m_xContext);
+    css::uno::Reference< css::uno::XInterface > xLoader = m_xContext->getServiceManager()->createInstanceWithContext(sLoader, m_xContext);
 
     // initialize filter
     css::uno::Reference< css::lang::XInitialization > xInit(xLoader, css::uno::UNO_QUERY);
@@ -131,26 +90,15 @@ css::uno::Sequence< OUString > SAL_CALL FrameLoaderFactory::getAvailableServiceN
     return BaseContainer::getElementNames();
 }
 
+} // namespace filter::config
 
-OUString FrameLoaderFactory::impl_getImplementationName()
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_FrameLoaderFactory_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return OUString( "com.sun.star.comp.filter.config.FrameLoaderFactory" );
+    return cppu::acquire(new filter::config::FrameLoaderFactory(context));
 }
 
-
-css::uno::Sequence< OUString > FrameLoaderFactory::impl_getSupportedServiceNames()
-{
-    return { "com.sun.star.frame.FrameLoaderFactory" };
-}
-
-
-css::uno::Reference< css::uno::XInterface > SAL_CALL FrameLoaderFactory::impl_createInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& xSMGR)
-{
-    FrameLoaderFactory* pNew = new FrameLoaderFactory( comphelper::getComponentContext(xSMGR) );
-    return css::uno::Reference< css::uno::XInterface >(static_cast< css::lang::XMultiServiceFactory* >(pNew), css::uno::UNO_QUERY);
-}
-
-    } // namespace config
-} // namespace filter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

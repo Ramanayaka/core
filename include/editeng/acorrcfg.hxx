@@ -25,7 +25,8 @@
 
 class SvxAutoCorrect;
 class SvxAutoCorrCfg;
-class EDITENG_DLLPUBLIC SvxBaseAutoCorrCfg : public utl::ConfigItem
+
+class SvxBaseAutoCorrCfg final : public utl::ConfigItem
 {
 private:
     SvxAutoCorrCfg& rParent;
@@ -42,7 +43,7 @@ public:
     using ConfigItem::SetModified;
 };
 
-class EDITENG_DLLPUBLIC SvxSwAutoCorrCfg : public utl::ConfigItem
+class SvxSwAutoCorrCfg final : public utl::ConfigItem
 {
 private:
     SvxAutoCorrCfg& rParent;

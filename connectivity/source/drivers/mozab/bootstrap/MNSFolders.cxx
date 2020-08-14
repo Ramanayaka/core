@@ -20,17 +20,18 @@
 #include "MNSFolders.hxx"
 
 #ifdef UNIX
-#include <sys/types.h>
-#include <strings.h>
 #include <string.h>
 #endif // End UNIX
 
 #ifdef _WIN32
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <stdlib.h>
 #include <shlobj.h>
 #include <objidl.h>
-#endif // End WNT
+#endif // End _WIN32
 #include <osl/security.hxx>
 #include <osl/file.hxx>
 #include <osl/thread.h>
@@ -65,7 +66,7 @@ namespace
     // ProductRootEnvironmentVariable *must* match the constants
     // (minus 1) in offapi/com/sun/star/mozilla/MozillaProductType.idl
     // DO NOT CHANGE THE ORDER; ADD ONLY TO THE END
-    static const char* DefaultProductDir[NB_PRODUCTS][NB_CANDIDATES] =
+    const char* DefaultProductDir[NB_PRODUCTS][NB_CANDIDATES] =
     {
     #if defined(_WIN32)
         { "Mozilla/SeaMonkey/", nullptr, nullptr, nullptr },
@@ -82,7 +83,7 @@ namespace
     #endif
     };
 
-    static const char* ProductRootEnvironmentVariable[NB_PRODUCTS] =
+    const char* ProductRootEnvironmentVariable[NB_PRODUCTS] =
     {
         "MOZILLA_PROFILE_ROOT",
         "MOZILLA_FIREFOX_PROFILE_ROOT",
@@ -92,7 +93,7 @@ namespace
 
     OUString const & lcl_guessProfileRoot( MozillaProductType _product )
     {
-        size_t productIndex = (int)_product - 1;
+        size_t productIndex = static_cast<int>(_product) - 1;
 
         static OUString s_productDirectories[NB_PRODUCTS];
 

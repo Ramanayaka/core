@@ -18,23 +18,25 @@
  */
 
 #include "ooxmldocpropimport.hxx"
-#include "services.hxx"
 
 #include <vector>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/XHierarchicalStorageAccess.hpp>
 #include <com/sun/star/embed/XRelationshipAccess.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
-#include "oox/core/fastparser.hxx"
-#include "oox/core/relations.hxx"
-#include "oox/helper/containerhelper.hxx"
-#include "oox/helper/helper.hxx"
+#include <com/sun/star/io/IOException.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/xml/sax/InputSource.hpp>
+#include <oox/core/fastparser.hxx>
+#include <oox/core/relations.hxx>
+#include <oox/helper/containerhelper.hxx>
 #include "docprophandler.hxx"
 
 #include <cppuhelper/supportsservice.hxx>
 
-namespace oox {
-namespace docprop {
+using namespace ::com::sun::star;
+
+namespace oox::docprop {
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::document;
@@ -43,22 +45,6 @@ using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
-
-OUString SAL_CALL DocumentPropertiesImport_getImplementationName()
-{
-    return OUString( "com.sun.star.comp.oox.docprop.DocumentPropertiesImporter" );
-}
-
-Sequence< OUString > SAL_CALL DocumentPropertiesImport_getSupportedServiceNames()
-{
-    Sequence<OUString> aServices { "com.sun.star.document.OOXMLDocumentPropertiesImporter" };
-    return aServices;
-}
-
-Reference< XInterface > SAL_CALL DocumentPropertiesImport_createInstance( const Reference< XComponentContext >& rxContext )
-{
-    return static_cast< ::cppu::OWeakObject* >( new DocumentPropertiesImport( rxContext ) );
-}
 
 namespace {
 
@@ -69,33 +55,29 @@ Sequence< InputSource > lclGetRelatedStreams( const Reference< XStorage >& rxSto
     Reference< XRelationshipAccess > xRelation( rxStorage, UNO_QUERY_THROW );
     Reference< XHierarchicalStorageAccess > xHierarchy( rxStorage, UNO_QUERY_THROW );
 
-    Sequence< Sequence< StringPair > > aPropsInfo = xRelation->getRelationshipsByType( rStreamType );
+    const Sequence< Sequence< StringPair > > aPropsInfo = xRelation->getRelationshipsByType( rStreamType );
 
     ::std::vector< InputSource > aResult;
 
-    for( sal_Int32 nIndex = 0, nLength = aPropsInfo.getLength(); nIndex < nLength; ++nIndex )
+    for( const Sequence< StringPair >& rEntries : aPropsInfo )
     {
-        const Sequence< StringPair >& rEntries = aPropsInfo[ nIndex ];
-        for( sal_Int32 nEntryIndex = 0, nEntryLength = rEntries.getLength(); nEntryIndex < nEntryLength; ++nEntryIndex )
+        auto pEntry = std::find_if(rEntries.begin(), rEntries.end(),
+            [](const StringPair& rEntry) { return rEntry.First == "Target"; });
+        if (pEntry != rEntries.end())
         {
-            const StringPair& rEntry = rEntries[ nEntryIndex ];
-            if ( rEntry.First == "Target" )
-            {
-                // The stream path is always a relative one, ignore the leading "/" if it's there.
-                OUString aStreamPath = rEntry.Second;
-                if (aStreamPath.startsWith("/"))
-                    aStreamPath = aStreamPath.copy(1);
+            // The stream path is always a relative one, ignore the leading "/" if it's there.
+            OUString aStreamPath = pEntry->Second;
+            if (aStreamPath.startsWith("/"))
+                aStreamPath = aStreamPath.copy(1);
 
-                Reference< XExtendedStorageStream > xExtStream(
-                    xHierarchy->openStreamElementByHierarchicalName( aStreamPath, ElementModes::READ ), UNO_QUERY_THROW );
-                Reference< XInputStream > xInStream = xExtStream->getInputStream();
-                if( xInStream.is() )
-                {
-                    aResult.resize( aResult.size() + 1 );
-                    aResult.back().sSystemId = rEntry.Second;
-                    aResult.back().aInputStream = xExtStream->getInputStream();
-                }
-                break;
+            Reference< XExtendedStorageStream > xExtStream(
+                xHierarchy->openStreamElementByHierarchicalName( aStreamPath, ElementModes::READ ), UNO_SET_THROW );
+            Reference< XInputStream > xInStream = xExtStream->getInputStream();
+            if( xInStream.is() )
+            {
+                aResult.emplace_back();
+                aResult.back().sSystemId = pEntry->Second;
+                aResult.back().aInputStream = xExtStream->getInputStream();
             }
         }
     }
@@ -113,7 +95,7 @@ DocumentPropertiesImport::DocumentPropertiesImport( const Reference< XComponentC
 // XServiceInfo
 OUString SAL_CALL DocumentPropertiesImport::getImplementationName()
 {
-    return DocumentPropertiesImport_getImplementationName();
+    return "com.sun.star.comp.oox.docprop.DocumentPropertiesImporter";
 }
 
 sal_Bool SAL_CALL DocumentPropertiesImport::supportsService( const OUString& rServiceName )
@@ -123,7 +105,8 @@ sal_Bool SAL_CALL DocumentPropertiesImport::supportsService( const OUString& rSe
 
 Sequence< OUString > SAL_CALL DocumentPropertiesImport::getSupportedServiceNames()
 {
-    return DocumentPropertiesImport_getSupportedServiceNames();
+    Sequence<OUString> aServices { "com.sun.star.document.OOXMLDocumentPropertiesImporter" };
+    return aServices;
 }
 
 // XOOXMLDocumentPropertiesImporter
@@ -153,30 +136,36 @@ void SAL_CALL DocumentPropertiesImport::importProperties(
     if( !aCustomStreams.hasElements() )
         aCustomStreams = lclGetRelatedStreams( rxSource, CREATE_OFFICEDOC_RELATION_TYPE_STRICT( "custom-properties" ) );
 
-    if( aCoreStreams.hasElements() || aExtStreams.hasElements() || aCustomStreams.hasElements() )
-    {
-        if( aCoreStreams.getLength() > 1 )
-            throw IOException( "Unexpected core properties stream!" );
+    if( !(aCoreStreams.hasElements() || aExtStreams.hasElements() || aCustomStreams.hasElements()) )
+        return;
 
-        ::oox::core::FastParser aParser;
-        aParser.registerNamespace( NMSP_packageMetaCorePr );
-        aParser.registerNamespace( NMSP_dc );
-        aParser.registerNamespace( NMSP_dcTerms );
-        aParser.registerNamespace( NMSP_officeExtPr );
-        aParser.registerNamespace( NMSP_officeCustomPr );
-        aParser.registerNamespace( NMSP_officeDocPropsVT );
-        aParser.setDocumentHandler( new OOXMLDocPropHandler( mxContext, rxDocumentProperties ) );
+    if( aCoreStreams.getLength() > 1 )
+        throw IOException( "Unexpected core properties stream!" );
 
-        if( aCoreStreams.hasElements() )
-            aParser.parseStream( aCoreStreams[ 0 ], true );
-        for( sal_Int32 nIndex = 0; nIndex < aExtStreams.getLength(); ++nIndex )
-            aParser.parseStream( aExtStreams[ nIndex ], true );
-        for( sal_Int32 nIndex = 0; nIndex < aCustomStreams.getLength(); ++nIndex )
-            aParser.parseStream( aCustomStreams[ nIndex ], true );
-    }
+    ::oox::core::FastParser aParser;
+    aParser.registerNamespace( NMSP_packageMetaCorePr );
+    aParser.registerNamespace( NMSP_dc );
+    aParser.registerNamespace( NMSP_dcTerms );
+    aParser.registerNamespace( NMSP_officeExtPr );
+    aParser.registerNamespace( NMSP_officeCustomPr );
+    aParser.registerNamespace( NMSP_officeDocPropsVT );
+    aParser.setDocumentHandler( new OOXMLDocPropHandler( mxContext, rxDocumentProperties ) );
+
+    if( aCoreStreams.hasElements() )
+        aParser.parseStream( aCoreStreams[ 0 ], true );
+    for( const auto& rExtStream : std::as_const(aExtStreams) )
+        aParser.parseStream( rExtStream, true );
+    for( const auto& rCustomStream : std::as_const(aCustomStreams) )
+        aParser.parseStream( rCustomStream, true );
 }
 
-} // namespace docprop
-} // namespace oox
+} // namespace oox::docprop
+
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_comp_oox_docprop_DocumentPropertiesImporter_get_implementation(
+    uno::XComponentContext* pCtx, uno::Sequence<uno::Any> const& /*rSeq*/)
+{
+    return cppu::acquire(new oox::docprop::DocumentPropertiesImport(pCtx));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

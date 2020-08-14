@@ -25,7 +25,6 @@
 #endif
 #pragma warning(disable: 4917)
 #include <comdef.h>
-#include <tchar.h>
 #include <atlbase.h>
 #include <atlcom.h>
 
@@ -34,17 +33,17 @@ HRESULT doTest();
 int main(int /*argc*/, char** /*argv*/)
 {
     HRESULT hr;
-    if( FAILED( hr=CoInitialize(NULL)))
+    if( FAILED( hr=CoInitializeEx(NULL, COINIT_APARTMENTTHREADED)))
     {
-        _tprintf(_T("CoInitialize failed \n"));
+        printf("CoInitializeEx failed \n");
         return -1;
     }
 
     if( FAILED(hr=doTest()))
     {
         _com_error err( hr);
-        const TCHAR * errMsg= err.ErrorMessage();
-        MessageBox( NULL, errMsg, "Test failed", MB_ICONERROR);
+        const CHAR * errMsg= err.ErrorMessage();
+        MessageBoxA( NULL, errMsg, "Test failed", MB_ICONERROR);
     }
 
     CoUninitialize();

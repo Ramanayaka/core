@@ -20,7 +20,6 @@
 #ifndef INCLUDED_FILTER_SOURCE_T602_T602FILTER_HXX
 #define INCLUDED_FILTER_SOURCE_T602_T602FILTER_HXX
 
-#include <memory>
 #include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/document/XImporter.hpp>
 #include <com/sun/star/document/XExtendedFilterDetection.hpp>
@@ -31,9 +30,11 @@
 #include <com/sun/star/lang/XLocalizable.hpp>
 #include <com/sun/star/beans/XPropertyAccess.hpp>
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
+#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <xmloff/attrlist.hxx>
-#include <tools/resmgr.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 namespace T602ImportFilter {
 
@@ -54,7 +55,6 @@ typedef enum {
 
 enum class tnode {START,READCH,EOL,POCMD,EXPCMD,SETCMD,SETCH,WRITE,EEND,QUIT};
 
-// class T602ImportFilter
 
 
 struct inistruct
@@ -83,12 +83,10 @@ class T602ImportFilterDialog : public cppu::WeakImplHelper <
         css::beans::XPropertyAccess
 >
 {
-    css::lang::Locale meLocale;
-    std::unique_ptr<ResMgr> mpResMgr;
+    LanguageTag maLocale;
+    std::locale maResLocale;
     bool OptionsDlg();
-    ResMgr* getResMgr();
-    OUString getResStr( sal_Int16 resid );
-    void initLocale();
+    OUString getResStr(const char* resid);
 
     virtual ~T602ImportFilterDialog() override;
 
@@ -127,7 +125,7 @@ class T602ImportFilter : public cppu::WeakImplHelper <
 {
 private:
     css::uno::Reference<css::xml::sax::XDocumentHandler> mxHandler;
-    css::uno::Reference< css::lang::XMultiServiceFactory > mxMSF;
+    css::uno::Reference< css::uno::XComponentContext >   mxContext;
     css::uno::Reference< css::lang::XComponent >         mxDoc;
     css::uno::Reference < css::io::XInputStream >        mxInputStream;
 
@@ -223,10 +221,10 @@ private:
     void wrtfnt();
 
     /// @throws css::uno::RuntimeException
-    bool SAL_CALL importImpl( const css::uno::Sequence< css::beans::PropertyValue >& aDescriptor );
+    bool importImpl( const css::uno::Sequence< css::beans::PropertyValue >& aDescriptor );
 
     public:
-        explicit T602ImportFilter(const css::uno::Reference<css::lang::XMultiServiceFactory > &r );
+        explicit T602ImportFilter(const css::uno::Reference<css::uno::XComponentContext > &r );
         explicit T602ImportFilter(css::uno::Reference<css::io::XInputStream> const & xInputStream);
         virtual ~T602ImportFilter() override;
 
@@ -249,28 +247,8 @@ private:
         virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
-        bool SAL_CALL test();
+        void test();
 };
-
-/// @throws css::uno::RuntimeException
-OUString T602ImportFilter_getImplementationName();
-
-/// @throws css::uno::RuntimeException
-css::uno::Sequence< OUString > SAL_CALL T602ImportFilter_getSupportedServiceNames(  );
-
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface >
-SAL_CALL T602ImportFilter_createInstance( const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr);
-
-/// @throws css::uno::RuntimeException
-OUString T602ImportFilterDialog_getImplementationName();
-
-/// @throws css::uno::RuntimeException
-css::uno::Sequence< OUString > SAL_CALL T602ImportFilterDialog_getSupportedServiceNames(  );
-
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface >
-SAL_CALL T602ImportFilterDialog_createInstance( const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr);
 
 }
 

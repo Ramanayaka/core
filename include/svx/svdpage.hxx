@@ -21,14 +21,9 @@
 #define INCLUDED_SVX_SVDPAGE_HXX
 
 #include <svl/stylesheetuser.hxx>
-#include <vcl/bitmap.hxx>
-#include <vcl/print.hxx>
-#include <vcl/gdimtf.hxx>
-#include <tools/weakbase.hxx>
-#include <tools/contnr.hxx>
-#include <cppuhelper/weakref.hxx>
+#include <vcl/prntypes.hxx>
+#include <tools/weakbase.h>
 #include <svl/itemset.hxx>
-#include <svx/svdtypes.hxx>
 #include <svx/sdrpageuser.hxx>
 #include <svx/sdr/contact/viewobjectcontactredirector.hxx>
 #include <svx/sdrmasterpagedescriptor.hxx>
@@ -42,7 +37,7 @@
 
 // predefines
 namespace reportdesign { class OSection; }
-namespace sdr { namespace contact { class ViewContact; }}
+namespace sdr::contact { class ViewContact; }
 class SdrPage;
 class SdrModel;
 class SfxItemPool;
@@ -53,73 +48,84 @@ class Color;
 class SfxStyleSheet;
 class SvxUnoDrawPagesAccess;
 
-// class SdrObjList
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//  SdrObjList
+//      E3dObjList
+//      SdrPage -> see continuation there
 
-class SVX_DLLPUBLIC SdrObjList
+// class SdrObjList
+class SVXCORE_DLLPUBLIC SdrObjList
 {
+friend class SdrObjListIter;
+friend class SdrEditView;
+
+private:
     SdrObjList(const SdrObjList& rSrcList) = delete;
     SdrObjList &operator=(const SdrObjList& rSrcList) = delete;
 
-private:
-    ::std::vector<SdrObject*> maList;
+    ::std::vector<SdrObject*>   maList;
 
-protected:
-friend class SdrObjListIter;
-friend class SdrEditView;
-    SdrObjList* pUpList;   /// parent list
-    SdrModel*   pModel;    /// model to which the list belongs (Layer,ItemPool,Storage)
-    SdrPage*    pPage;     /// Page containing the list, may be "this".
-    SdrObject*  pOwnerObj; /// OwnerObject, if it's list of a Group object.
-    tools::Rectangle   aOutRect;
-    tools::Rectangle   aSnapRect;
-    SdrObjListKind eListKind;
-    bool        bObjOrdNumsDirty;
-    bool        bRectsDirty;
+    tools::Rectangle    maSdrObjListOutRect;
+    tools::Rectangle    maSdrObjListSnapRect;
+    bool                mbObjOrdNumsDirty;
+    bool                mbRectsDirty;
+
 protected:
     void RecalcRects();
 
-    SdrObjList();
-    void lateInit(const SdrObjList& rSrcList);
-
 private:
     /// simple ActionChildInserted forwarder to have it on a central place
-    static void impChildInserted(SdrObject& rChild);
-public:
-    SdrObjList(SdrModel* pNewModel, SdrPage* pNewPage);
+    static void impChildInserted(SdrObject const & rChild);
+
+    // tdf#116879 Clear SdrObjList, no Undo done. Used from destructor, but also
+    // from other places. When used from destructor, suppress broadcasts
+    // to not get callbacks to evtl. derived objects already in destruction
+    // (e.g. SdrPage)
+    void impClearSdrObjList(bool bBroadcast);
+
+protected:
+    // protected constructor to make clear that this class should only
+    // be used as base for derivations, not naked. See getSdrModelFromSdrObjList
+    // which is pure virtual to force this, too
+    SdrObjList();
     virtual ~SdrObjList();
 
-    virtual SdrObjList* Clone() const;
+public:
+    // SdrModel/SdrPage access on SdrObjList level
+    virtual SdrPage* getSdrPageFromSdrObjList() const;
+    virtual SdrObject* getSdrObjectFromSdrObjList() const;
 
     void CopyObjects(const SdrObjList& rSrcList);
-    /// clean up everything (without Undo)
-    void    Clear();
-    SdrObjListKind GetListKind() const                  { return eListKind; }
-    void           SetListKind(SdrObjListKind eNewKind) { eListKind=eNewKind; }
-    SdrObjList*    GetUpList() const                    { return pUpList; }
-    void           SetUpList(SdrObjList* pNewUpList)    { pUpList=pNewUpList; }
-    SdrObject*     GetOwnerObj() const                  { return pOwnerObj; }
-    void           SetOwnerObj(SdrObject* pNewOwner)    { pOwnerObj=pNewOwner; }
-    SdrPage*       GetPage() const;
-    void           SetPage(SdrPage* pNewPage);
-    SdrModel*      GetModel() const;
-    virtual void   SetModel(SdrModel* pNewModel);
+
+    // tdf#116879 clean up everything (without Undo), plus broadcasting
+    // changes. Split to this call and a private one (impClearSdrObjList)
+    // that allows cleanup without broadcasting in the destructor
+    void    ClearSdrObjList();
+
     /// recalculate order numbers / ZIndex
     void           RecalcObjOrdNums();
-    bool           IsObjOrdNumsDirty() const        { return bObjOrdNumsDirty; }
+    bool           IsObjOrdNumsDirty() const        { return mbObjOrdNumsDirty; }
     virtual void   NbcInsertObject(SdrObject* pObj, size_t nPos=SAL_MAX_SIZE);
     virtual void   InsertObject(SdrObject* pObj, size_t nPos=SAL_MAX_SIZE);
+    void           sort( std::vector<sal_Int32>& sortOrder );
+
+    void InsertObjectThenMakeNameUnique(SdrObject* pObj);
+    void InsertObjectThenMakeNameUnique(SdrObject* pObj, std::unordered_set<rtl::OUString>& rNameSet, size_t nPos=SAL_MAX_SIZE);
+
     /// remove from list without delete
     virtual SdrObject* NbcRemoveObject(size_t nObjNum);
     virtual SdrObject* RemoveObject(size_t nObjNum);
+
     /// Replace existing object by different one.
     /// Same as Remove(old)+Insert(new) but faster because the order numbers
     /// do not have to be set dirty.
-    virtual SdrObject* NbcReplaceObject(SdrObject* pNewObj, size_t nObjNum);
     virtual SdrObject* ReplaceObject(SdrObject* pNewObj, size_t nObjNum);
+
     /// Modify ZOrder of an SdrObject
     virtual SdrObject* SetObjectOrdNum(size_t nOldObjNum, size_t nNewObjNum);
 
-    void SetRectsDirty();
+    void SetSdrObjListRectsDirty();
 
     const tools::Rectangle& GetAllObjSnapRect() const;
     const tools::Rectangle& GetAllObjBoundRect() const;
@@ -140,9 +146,6 @@ public:
     /// linked page or linked group object
     virtual bool IsReadOnly() const;
 
-    /// count all objects including objects in Groups
-    size_t CountAllObjects() const;
-
     /** Makes the object list flat, i.e. the object list content are
         then tree leaves
 
@@ -151,6 +154,7 @@ public:
         removes the group object afterwards.
      */
     void FlattenGroups();
+
     /** Ungroup the object at the given index
 
         This method ungroups the content of the group object at the
@@ -166,7 +170,7 @@ public:
         order.  When there is one this method returns <TRUE/> and the
         GetObjectForNavigationPosition() and
         SdrObject::GetNavigationPosition() methods will return values
-        different from those returne by SdrObject::GetOrdNum() and
+        different from those returned by SdrObject::GetOrdNum() and
         GetObj().
     */
     bool HasObjectNavigationOrder() const;
@@ -219,13 +223,12 @@ public:
     void SetNavigationOrder (const css::uno::Reference<
                              css::container::XIndexAccess>& rxOrder);
 
-    virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
 private:
-    class WeakSdrObjectContainerType;
     /// This list, if it exists, defines the navigation order. If it does
     /// not exist then maList defines the navigation order.
-    std::unique_ptr<WeakSdrObjectContainerType> mxNavigationOrder;
+    std::unique_ptr<std::vector<tools::WeakReference<SdrObject>>> mxNavigationOrder;
 
     /// This flag is <TRUE/> when the mpNavigation list has been changed but
     /// the indices of the referenced SdrObjects still have their old values.
@@ -273,9 +276,6 @@ private:
 // Used for all methods which return a page number
 #define SDRPAGE_NOTFOUND 0xFFFF
 
-
-// class SdrPageGridFrame
-
 /// for the snap-to-grid in Writer
 class SdrPageGridFrame
 {
@@ -287,13 +287,14 @@ public:
     const tools::Rectangle& GetUserArea() const                   { return aUserArea; }
 };
 
-class SVX_DLLPUBLIC SdrPageGridFrameList {
+class SVXCORE_DLLPUBLIC SdrPageGridFrameList final
+{
     std::vector<SdrPageGridFrame*> aList;
-private:
+
     SdrPageGridFrameList(const SdrPageGridFrameList& rSrcList) = delete;
     void           operator=(const SdrPageGridFrameList& rSrcList) = delete;
-protected:
     SdrPageGridFrame* GetObject(sal_uInt16 i) const { return aList[i]; }
+
 public:
     SdrPageGridFrameList(): aList()                                    {}
     ~SdrPageGridFrameList()                                            { Clear(); }
@@ -304,10 +305,8 @@ public:
     const SdrPageGridFrame& operator[](sal_uInt16 nPos) const              { return *GetObject(nPos); }
 };
 
-
 // class SdrPageProperties
-
-class SVX_DLLPUBLIC SdrPageProperties : public SfxListener, public svl::StyleSheetUser
+class SVXCORE_DLLPUBLIC SdrPageProperties : public SfxListener, public svl::StyleSheetUser
 {
 private:
     // data
@@ -352,7 +351,18 @@ public:
   Also it's possible to request and directly set the order number (ZOrder)
   of SdrObjects.
 */
-class SVX_DLLPUBLIC SdrPage : public SdrObjList, public tools::WeakBase< SdrPage >
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//  SdrPage
+//      DlgEdPage
+//      FmFormPage
+//          ScDrawPage
+//          SdPage
+//          SwDPage
+//      OReportPage
+
+class SVXCORE_DLLPUBLIC SdrPage : public SdrObjList, public tools::WeakBase
 {
     // #i9076#
     friend class SdrModel;
@@ -362,7 +372,8 @@ class SVX_DLLPUBLIC SdrPage : public SdrObjList, public tools::WeakBase< SdrPage
     // and thus has to set mxUnoPage (it also relies on mxUnoPage not being WeakRef)
     friend class reportdesign::OSection;
 
-    SdrPage& operator=(const SdrPage& rSrcPage) = delete;
+    SdrPage& operator=(const SdrPage&) = delete;
+    SdrPage(const SdrPage&) = delete;
 
     // start PageUser section
 private:
@@ -375,8 +386,11 @@ public:
     void AddPageUser(sdr::PageUser& rNewUser);
     void RemovePageUser(sdr::PageUser& rOldUser);
 
+    // SdrModel access on SdrPage level
+    SdrModel& getSdrModelFromSdrPage() const { return mrSdrModelFromSdrPage; }
+
 protected:
-    sdr::contact::ViewContact* CreateObjectSpecificViewContact();
+    std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact();
 public:
     const sdr::contact::ViewContact& GetViewContact() const;
     sdr::contact::ViewContact& GetViewContact();
@@ -385,12 +399,16 @@ public:
     void ActionChanged();
 
 private:
-    sal_Int32 nWdt;     // Seitengroesse
-    sal_Int32 nHgt;     // Seitengroesse
-    sal_Int32 nBordLft; // Seitenrand links
-    sal_Int32 nBordUpp; // Seitenrand oben
-    sal_Int32 nBordRgt; // Seitenrand rechts
-    sal_Int32 nBordLwr; // Seitenrand unten
+    // the SdrModel this page was created with, unchanged during SdrPage lifetime
+    SdrModel&                   mrSdrModelFromSdrPage;
+
+private:
+    sal_Int32 mnWidth;       // page size
+    sal_Int32 mnHeight;      // page size
+    sal_Int32 mnBorderLeft;  // left page margin
+    sal_Int32 mnBorderUpper; // top page margin
+    sal_Int32 mnBorderRight; // right page margin
+    sal_Int32 mnBorderLower; // bottom page margin
 
     std::unique_ptr<SdrLayerAdmin> mpLayerAdmin;
     std::unique_ptr<SdrPageProperties> mpSdrPageProperties;
@@ -403,9 +421,8 @@ public:
 
 protected:
     // new MasterPageDescriptorVector
-    sdr::MasterPageDescriptor*                    mpMasterPageDescriptor;
+    std::unique_ptr<sdr::MasterPageDescriptor> mpMasterPageDescriptor;
 
-    SdrLayerIDSet           aPrefVisiLayers;
     sal_uInt16          nPageNum;
 
     bool                mbMaster : 1;               // flag if this is a MasterPage
@@ -415,27 +432,28 @@ protected:
     // #i93597#
     bool                mbPageBorderOnlyLeftRight : 1;
 
-    void                SetUnoPage(css::uno::Reference<
-                                   css::drawing::XDrawPage> const&);
+    void SetUnoPage(css::uno::Reference<css::drawing::XDrawPage> const&);
     virtual css::uno::Reference< css::uno::XInterface > createUnoPage();
 
     // Copying of pages is split into two parts: construction and copying of page objects,
-    // because the copying might need access to fully initialized page. Clone() is responsible
+    // because the copying might need access to fully initialized page. CloneSdrPage() is responsible
     // to call lateInit() after copy-construction of a new object. Any initialization in derived
     // classes that needs access to the page objects must be deferred to lateInit. And it must
     // call lateInit() of its parent class.
-    SdrPage(const SdrPage& rSrcPage);
-    void lateInit(const SdrPage& rSrcPage, SdrModel* pNewModel = nullptr);
+    void lateInit(const SdrPage& rSrcPage);
 
 public:
-    explicit SdrPage(SdrModel& rNewModel, bool bMasterPage=false);
+    explicit SdrPage(SdrModel& rModel, bool bMasterPage=false);
     virtual ~SdrPage() override;
-    virtual SdrPage* Clone() const override;
-    virtual SdrPage* Clone(SdrModel* pNewModel) const;
+
+    virtual SdrPage* CloneSdrPage(SdrModel& rTargetModel) const;
     bool             IsMasterPage() const       { return mbMaster; }
     void             SetInserted(bool bNew = true);
     bool             IsInserted() const         { return mbInserted; }
     void             SetChanged();
+
+    // derived from SdrObjList, returns this
+    virtual SdrPage* getSdrPageFromSdrObjList() const override;
 
     // #i68775# React on PageNum changes (from Model in most cases)
     void SetPageNum(sal_uInt16 nNew);
@@ -450,19 +468,17 @@ public:
     Size GetSize() const;
     virtual void SetOrientation(Orientation eOri);
     virtual Orientation GetOrientation() const;
-    sal_Int32 GetWdt() const;
-    sal_Int32 GetHgt() const;
+    sal_Int32 GetWidth() const;
+    sal_Int32 GetHeight() const;
     virtual void  SetBorder(sal_Int32 nLft, sal_Int32 nUpp, sal_Int32 nRgt, sal_Int32 Lwr);
-    virtual void  SetLftBorder(sal_Int32 nBorder);
-    virtual void  SetUppBorder(sal_Int32 nBorder);
-    virtual void  SetRgtBorder(sal_Int32 nBorder);
-    virtual void  SetLwrBorder(sal_Int32 nBorder);
-    sal_Int32 GetLftBorder() const;
-    sal_Int32 GetUppBorder() const;
-    sal_Int32 GetRgtBorder() const;
-    sal_Int32 GetLwrBorder() const;
-
-    virtual void SetModel(SdrModel* pNewModel) override;
+    virtual void  SetLeftBorder(sal_Int32 nBorder);
+    virtual void  SetUpperBorder(sal_Int32 nBorder);
+    virtual void  SetRightBorder(sal_Int32 nBorder);
+    virtual void  SetLowerBorder(sal_Int32 nBorder);
+    sal_Int32 GetLeftBorder() const;
+    sal_Int32 GetUpperBorder() const;
+    sal_Int32 GetRightBorder() const;
+    sal_Int32 GetLowerBorder() const;
 
     // New MasterPage interface
     bool TRG_HasMasterPage() const { return (nullptr != mpMasterPageDescriptor); }
@@ -472,6 +488,8 @@ public:
     const SdrLayerIDSet& TRG_GetMasterPageVisibleLayers() const;
     void TRG_SetMasterPageVisibleLayers(const SdrLayerIDSet& rNew);
     sdr::contact::ViewContact& TRG_GetMasterPageDescriptorViewContact() const;
+
+    void MakePageObjectsNamesUnique();
 
 protected:
     void TRG_ImpMasterPageRemoved(const SdrPage& rRemovedPage);
@@ -498,7 +516,7 @@ public:
 
     /** *deprecated* returns an averaged background color of this page */
     // #i75566# GetBackgroundColor -> GetPageBackgroundColor and bScreenDisplay hint value
-    Color GetPageBackgroundColor( SdrPageView* pView, bool bScreenDisplay = true) const;
+    Color GetPageBackgroundColor( SdrPageView const * pView, bool bScreenDisplay = true) const;
 
     /** this method returns true if the object from the ViewObjectContact should
         be visible on this page while rendering.
@@ -509,12 +527,7 @@ public:
         const sdr::contact::ViewObjectContact& rOriginal,
         const sdr::contact::DisplayInfo& rDisplayInfo,
         bool bEdit );
-
-private:
-    void impl_setModelForLayerAdmin(SdrModel* pNewModel);
 };
-
-typedef tools::WeakReference< SdrPage > SdrPageWeakRef;
 
 
 #endif // INCLUDED_SVX_SVDPAGE_HXX

@@ -27,21 +27,20 @@
 #include <sal/types.h>
 
 namespace oox { class AttributeList; }
-namespace oox { namespace core { class XmlFilterBase; } }
+namespace oox::core { class XmlFilterBase; }
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 class ControlModelBase;
 class EmbeddedControl;
 
 
 /** Context handler for ActiveX form control model properties. */
-class AxControlPropertyContext : public ::oox::core::ContextHandler2
+class AxControlPropertyContext final : public ::oox::core::ContextHandler2
 {
 public:
     explicit            AxControlPropertyContext(
-                            ::oox::core::FragmentHandler2& rFragment,
+                            ::oox::core::FragmentHandler2 const & rFragment,
                             ControlModelBase& rModel );
 
     virtual ::oox::core::ContextHandlerRef
@@ -54,7 +53,7 @@ private:
 
 
 /** Fragment handler for an embedded ActiveX form control fragment. */
-class AxControlFragment : public ::oox::core::FragmentHandler2
+class AxControlFragment final : public ::oox::core::FragmentHandler2
 {
 public:
     explicit            AxControlFragment(
@@ -70,8 +69,7 @@ private:
 };
 
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 #endif
 

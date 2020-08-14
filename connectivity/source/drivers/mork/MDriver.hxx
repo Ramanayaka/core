@@ -19,14 +19,14 @@
 
 #define MORK_DRIVER_IMPL_NAME "com.sun.star.comp.sdbc.MorkDriver"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno {
         class XComponentContext;
         class XInterface;
     }
-} } }
+}
 
-namespace connectivity { namespace mork {
+namespace connectivity::mork {
 class ProfileAccess;
 
 class MorkDriver:
@@ -35,8 +35,8 @@ class MorkDriver:
 public:
     explicit MorkDriver(const css::uno::Reference< css::uno::XComponentContext >& context);
 
-    const css::uno::Reference< com::sun::star::lang::XMultiServiceFactory >& getFactory(){return m_xFactory;}
-    const OUString& getProfilePath() {return m_sProfilePath;}
+    const css::uno::Reference< com::sun::star::lang::XMultiServiceFactory >& getFactory() const {return m_xFactory;}
+    const OUString& getProfilePath() const {return m_sProfilePath;}
 private:
 
     MorkDriver(const MorkDriver&) = delete;
@@ -72,7 +72,7 @@ private:
     OUString m_sProfilePath;
 };
 
-} }
+}
 
 #endif
 

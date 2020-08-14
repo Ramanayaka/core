@@ -21,10 +21,13 @@
 #include <svx/svdtrans.hxx>
 #include <math.h>
 #include <svx/xpoly.hxx>
+#include <rtl/ustrbuf.hxx>
 
 #include <vcl/virdev.hxx>
 #include <tools/bigint.hxx>
 #include <unotools/syslocale.hxx>
+#include <unotools/localedatawrapper.hxx>
+#include <sal/log.hxx>
 
 void MoveXPoly(XPolygon& rPoly, const Size& S)
 {
@@ -40,19 +43,19 @@ void ResizeRect(tools::Rectangle& rRect, const Point& rRef, const Fraction& rxFa
         SAL_WARN( "svx.svdraw", "invalid fraction xFract, using Fraction(1,1)" );
         aXFact = Fraction(1,1);
         long nWdt = rRect.Right() - rRect.Left();
-        if (nWdt == 0) rRect.Right()++;
+        if (nWdt == 0) rRect.AdjustRight( 1 );
     }
-    rRect.Left()  = rRef.X() + svx::Round( (rRect.Left()  - rRef.X()) * double(aXFact) );
-    rRect.Right() = rRef.X() + svx::Round( (rRect.Right() - rRef.X()) * double(aXFact) );
+    rRect.SetLeft( rRef.X() + FRound( (rRect.Left()  - rRef.X()) * double(aXFact) ) );
+    rRect.SetRight( rRef.X() + FRound( (rRect.Right() - rRef.X()) * double(aXFact) ) );
 
     if (!aYFact.IsValid()) {
         SAL_WARN( "svx.svdraw", "invalid fraction yFract, using Fraction(1,1)" );
         aYFact = Fraction(1,1);
         long nHgt = rRect.Bottom() - rRect.Top();
-        if (nHgt == 0) rRect.Bottom()++;
+        if (nHgt == 0) rRect.AdjustBottom( 1 );
     }
-    rRect.Top()    = rRef.Y() + svx::Round( (rRect.Top()    - rRef.Y()) * double(aYFact) );
-    rRect.Bottom() = rRef.Y() + svx::Round( (rRect.Bottom() - rRef.Y()) * double(aYFact) );
+    rRect.SetTop( rRef.Y() + FRound( (rRect.Top()    - rRef.Y()) * double(aYFact) ) );
+    rRect.SetBottom( rRef.Y() + FRound( (rRect.Bottom() - rRef.Y()) * double(aYFact) ) );
 
     rRect.Justify();
 }
@@ -104,27 +107,27 @@ void MirrorPoint(Point& rPnt, const Point& rRef1, const Point& rRef2)
     long my=rRef2.Y()-rRef1.Y();
     if (mx==0) { // vertical axis
         long dx=rRef1.X()-rPnt.X();
-        rPnt.X()+=2*dx;
+        rPnt.AdjustX(2*dx );
     } else if (my==0) { // horizontal axis
         long dy=rRef1.Y()-rPnt.Y();
-        rPnt.Y()+=2*dy;
+        rPnt.AdjustY(2*dy );
     } else if (mx==my) { // diagonal axis '\'
         long dx1=rPnt.X()-rRef1.X();
         long dy1=rPnt.Y()-rRef1.Y();
-        rPnt.X()=rRef1.X()+dy1;
-        rPnt.Y()=rRef1.Y()+dx1;
+        rPnt.setX(rRef1.X()+dy1 );
+        rPnt.setY(rRef1.Y()+dx1 );
     } else if (mx==-my) { // diagonal axis '/'
         long dx1=rPnt.X()-rRef1.X();
         long dy1=rPnt.Y()-rRef1.Y();
-        rPnt.X()=rRef1.X()-dy1;
-        rPnt.Y()=rRef1.Y()-dx1;
+        rPnt.setX(rRef1.X()-dy1 );
+        rPnt.setY(rRef1.Y()-dx1 );
     } else { // arbitrary axis
         // TODO: Optimize this! Raise perpendicular on the mirroring axis..?
         long nRefWink=GetAngle(rRef2-rRef1);
         rPnt-=rRef1;
         long nPntWink=GetAngle(rPnt);
         long nAngle=2*(nRefWink-nPntWink);
-        double a=nAngle*nPi180;
+        double a = nAngle * F_PI18000;
         double nSin=sin(a);
         double nCos=cos(a);
         RotatePoint(rPnt,Point(),nSin,nCos);
@@ -172,36 +175,36 @@ double CrookRotateXPoint(Point& rPnt, Point* pC1, Point* pC2, const Point& rCent
     if (bC1) {
         if (bVert) {
             // move into the direction of the center, as a basic position for the rotation
-            pC1->Y()-=y0;
+            pC1->AdjustY( -y0 );
             // resize, account for the distance from the center
-            pC1->Y()=svx::Round(((double)pC1->Y()) /rRad.X()*(cx-pC1->X()));
-            pC1->Y()+=cy;
+            pC1->setY(FRound(static_cast<double>(pC1->Y()) /rRad.X()*(cx-pC1->X())) );
+            pC1->AdjustY(cy );
         } else {
             // move into the direction of the center, as a basic position for the rotation
-            pC1->X()-=x0;
+            pC1->AdjustX( -x0 );
             // resize, account for the distance from the center
             long nPntRad=cy-pC1->Y();
-            double nFact=(double)nPntRad/(double)rRad.Y();
-            pC1->X()=svx::Round((double)pC1->X()*nFact);
-            pC1->X()+=cx;
+            double nFact=static_cast<double>(nPntRad)/static_cast<double>(rRad.Y());
+            pC1->setX(FRound(static_cast<double>(pC1->X())*nFact) );
+            pC1->AdjustX(cx );
         }
         RotatePoint(*pC1,rCenter,sn,cs);
     }
     if (bC2) {
         if (bVert) {
             // move into the direction of the center, as a basic position for the rotation
-            pC2->Y()-=y0;
+            pC2->AdjustY( -y0 );
             // resize, account for the distance from the center
-            pC2->Y()=svx::Round(((double)pC2->Y()) /rRad.X()*(rCenter.X()-pC2->X()));
-            pC2->Y()+=cy;
+            pC2->setY(FRound(static_cast<double>(pC2->Y()) /rRad.X()*(rCenter.X()-pC2->X())) );
+            pC2->AdjustY(cy );
         } else {
             // move into the direction of the center, as a basic position for the rotation
-            pC2->X()-=x0;
+            pC2->AdjustX( -x0 );
             // resize, account for the distance from the center
             long nPntRad=rCenter.Y()-pC2->Y();
-            double nFact=(double)nPntRad/(double)rRad.Y();
-            pC2->X()=svx::Round((double)pC2->X()*nFact);
-            pC2->X()+=cx;
+            double nFact=static_cast<double>(nPntRad)/static_cast<double>(rRad.Y());
+            pC2->setX(FRound(static_cast<double>(pC2->X())*nFact) );
+            pC2->AdjustX(cx );
         }
         RotatePoint(*pC2,rCenter,sn,cs);
     }
@@ -223,42 +226,42 @@ double CrookSlantXPoint(Point& rPnt, Point* pC1, Point* pC2, const Point& rCente
     if (bVert) {
         long nStart=rCenter.X()-rRad.X();
         dx1=rPnt.X()-nStart;
-        rPnt.X()=nStart;
+        rPnt.setX(nStart );
         if (bC1) {
             dxC1=pC1->X()-nStart;
-            pC1->X()=nStart;
+            pC1->setX(nStart );
         }
         if (bC2) {
             dxC2=pC2->X()-nStart;
-            pC2->X()=nStart;
+            pC2->setX(nStart );
         }
     } else {
         long nStart=rCenter.Y()-rRad.Y();
         dy1=rPnt.Y()-nStart;
-        rPnt.Y()=nStart;
+        rPnt.setY(nStart );
         if (bC1) {
             dyC1=pC1->Y()-nStart;
-            pC1->Y()=nStart;
+            pC1->setY(nStart );
         }
         if (bC2) {
             dyC2=pC2->Y()-nStart;
-            pC2->Y()=nStart;
+            pC2->setY(nStart );
         }
     }
     double nAngle=GetCrookAngle(rPnt,rCenter,rRad,bVert);
     double sn=sin(nAngle);
     double cs=cos(nAngle);
     RotatePoint(rPnt,rCenter,sn,cs);
-    if (bC1) { if (bVert) pC1->Y()-=y0-rCenter.Y(); else pC1->X()-=x0-rCenter.X(); RotatePoint(*pC1,rCenter,sn,cs); }
-    if (bC2) { if (bVert) pC2->Y()-=y0-rCenter.Y(); else pC2->X()-=x0-rCenter.X(); RotatePoint(*pC2,rCenter,sn,cs); }
+    if (bC1) { if (bVert) pC1->AdjustY( -(y0-rCenter.Y()) ); else pC1->AdjustX( -(x0-rCenter.X()) ); RotatePoint(*pC1,rCenter,sn,cs); }
+    if (bC2) { if (bVert) pC2->AdjustY( -(y0-rCenter.Y()) ); else pC2->AdjustX( -(x0-rCenter.X()) ); RotatePoint(*pC2,rCenter,sn,cs); }
     if (bVert) {
-        rPnt.X()+=dx1;
-        if (bC1) pC1->X()+=dxC1;
-        if (bC2) pC2->X()+=dxC2;
+        rPnt.AdjustX(dx1 );
+        if (bC1) pC1->AdjustX(dxC1 );
+        if (bC2) pC2->AdjustX(dxC2 );
     } else {
-        rPnt.Y()+=dy1;
-        if (bC1) pC1->Y()+=dyC1;
-        if (bC2) pC2->Y()+=dyC2;
+        rPnt.AdjustY(dy1 );
+        if (bC1) pC1->AdjustY(dyC1 );
+        if (bC2) pC2->AdjustY(dyC2 );
     }
     rSin=sn;
     rCos=cs;
@@ -277,29 +280,30 @@ double CrookStretchXPoint(Point& rPnt, Point* pC1, Point* pC2, const Point& rCen
         long nBtm=rRefRect.Bottom();
         long nHgt=nBtm-nTop;
         long dy=rPnt.Y()-y0;
-        double a=((double)(y0-nTop))/nHgt;
+        double a=static_cast<double>(y0-nTop)/nHgt;
         a*=dy;
-        rPnt.Y()=y0+svx::Round(a);
-    } return 0.0;
+        rPnt.setY(y0+FRound(a) );
+    }
+    return 0.0;
 }
 
 
 void CrookRotatePoly(XPolygon& rPoly, const Point& rCenter, const Point& rRad, bool bVert)
 {
     double nSin,nCos;
-    sal_uInt16 nPointAnz=rPoly.GetPointCount();
+    sal_uInt16 nPointCnt=rPoly.GetPointCount();
     sal_uInt16 i=0;
-    while (i<nPointAnz) {
+    while (i<nPointCnt) {
         Point* pPnt=&rPoly[i];
         Point* pC1=nullptr;
         Point* pC2=nullptr;
-        if (i+1<nPointAnz && rPoly.IsControl(i)) { // control point to the left
+        if (i+1<nPointCnt && rPoly.IsControl(i)) { // control point to the left
             pC1=pPnt;
             i++;
             pPnt=&rPoly[i];
         }
         i++;
-        if (i<nPointAnz && rPoly.IsControl(i)) { // control point to the right
+        if (i<nPointCnt && rPoly.IsControl(i)) { // control point to the right
             pC2=&rPoly[i];
             i++;
         }
@@ -310,19 +314,19 @@ void CrookRotatePoly(XPolygon& rPoly, const Point& rCenter, const Point& rRad, b
 void CrookSlantPoly(XPolygon& rPoly, const Point& rCenter, const Point& rRad, bool bVert)
 {
     double nSin,nCos;
-    sal_uInt16 nPointAnz=rPoly.GetPointCount();
+    sal_uInt16 nPointCnt=rPoly.GetPointCount();
     sal_uInt16 i=0;
-    while (i<nPointAnz) {
+    while (i<nPointCnt) {
         Point* pPnt=&rPoly[i];
         Point* pC1=nullptr;
         Point* pC2=nullptr;
-        if (i+1<nPointAnz && rPoly.IsControl(i)) { // control point to the left
+        if (i+1<nPointCnt && rPoly.IsControl(i)) { // control point to the left
             pC1=pPnt;
             i++;
             pPnt=&rPoly[i];
         }
         i++;
-        if (i<nPointAnz && rPoly.IsControl(i)) { // control point to the right
+        if (i<nPointCnt && rPoly.IsControl(i)) { // control point to the right
             pC2=&rPoly[i];
             i++;
         }
@@ -333,19 +337,19 @@ void CrookSlantPoly(XPolygon& rPoly, const Point& rCenter, const Point& rRad, bo
 void CrookStretchPoly(XPolygon& rPoly, const Point& rCenter, const Point& rRad, bool bVert, const tools::Rectangle& rRefRect)
 {
     double nSin,nCos;
-    sal_uInt16 nPointAnz=rPoly.GetPointCount();
+    sal_uInt16 nPointCnt=rPoly.GetPointCount();
     sal_uInt16 i=0;
-    while (i<nPointAnz) {
+    while (i<nPointCnt) {
         Point* pPnt=&rPoly[i];
         Point* pC1=nullptr;
         Point* pC2=nullptr;
-        if (i+1<nPointAnz && rPoly.IsControl(i)) { //  control point to the left
+        if (i+1<nPointCnt && rPoly.IsControl(i)) { //  control point to the left
             pC1=pPnt;
             i++;
             pPnt=&rPoly[i];
         }
         i++;
-        if (i<nPointAnz && rPoly.IsControl(i)) { // control point to the right
+        if (i<nPointCnt && rPoly.IsControl(i)) { // control point to the right
             pC2=&rPoly[i];
             i++;
         }
@@ -388,19 +392,20 @@ long GetAngle(const Point& rPnt)
         if (rPnt.Y()>0) a=-9000;
         else a=9000;
     } else {
-        a=svx::Round((atan2((double)-rPnt.Y(),(double)rPnt.X())/nPi180));
+        a = FRound(atan2(static_cast<double>(-rPnt.Y()), static_cast<double>(rPnt.X()))
+                   / F_PI18000);
     }
     return a;
 }
 
-long NormAngle180(long a)
+long NormAngle18000(long a)
 {
-    while (a<18000) a+=36000;
+    while (a<-18000) a+=36000;
     while (a>=18000) a-=36000;
     return a;
 }
 
-long NormAngle360(long a)
+long NormAngle36000(long a)
 {
     while (a<0) a+=36000;
     while (a>=36000) a-=36000;
@@ -425,7 +430,7 @@ long GetLen(const Point& rPnt)
         x*=x;
         y*=y;
         x+=y;
-        x=svx::Round(sqrt((double)x));
+        x=FRound(sqrt(static_cast<double>(x)));
         return x;
     } else {
         double nx=x;
@@ -437,7 +442,7 @@ long GetLen(const Point& rPnt)
         if (nx>0x7FFFFFFF) {
             return 0x7FFFFFFF; // we can't go any further, for fear of an overrun!
         } else {
-            return svx::Round(nx);
+            return FRound(nx);
         }
     }
 }
@@ -449,7 +454,7 @@ void GeoStat::RecalcSinCos()
         nSin=0.0;
         nCos=1.0;
     } else {
-        double a=nRotationAngle*nPi180;
+        double a = nRotationAngle * F_PI18000;
         nSin=sin(a);
         nCos=cos(a);
     }
@@ -460,7 +465,7 @@ void GeoStat::RecalcTan()
     if (nShearAngle==0) {
         nTan=0.0;
     } else {
-        double a=nShearAngle*nPi180;
+        double a = nShearAngle * F_PI18000;
         nTan=tan(a);
     }
 }
@@ -482,7 +487,7 @@ tools::Polygon Rect2Poly(const tools::Rectangle& rRect, const GeoStat& rGeo)
 void Poly2Rect(const tools::Polygon& rPol, tools::Rectangle& rRect, GeoStat& rGeo)
 {
     rGeo.nRotationAngle=GetAngle(rPol[1]-rPol[0]);
-    rGeo.nRotationAngle=NormAngle360(rGeo.nRotationAngle);
+    rGeo.nRotationAngle=NormAngle36000(rGeo.nRotationAngle);
     // rotation successful
     rGeo.RecalcSinCos();
 
@@ -506,17 +511,17 @@ void Poly2Rect(const tools::Polygon& rPol, tools::Rectangle& rRect, GeoStat& rGe
         nShW+=18000;
         aPt0=rPol[3];
     }
-    nShW=NormAngle180(nShW);
+    nShW=NormAngle18000(nShW);
     if (nShW<-9000 || nShW>9000) {
-        nShW=NormAngle180(nShW+18000);
+        nShW=NormAngle18000(nShW+18000);
     }
     if (nShW<-SDRMAXSHEAR) nShW=-SDRMAXSHEAR; // limit ShearWinkel (shear angle) to +/- 89.00 deg
     if (nShW>SDRMAXSHEAR)  nShW=SDRMAXSHEAR;
     rGeo.nShearAngle=nShW;
     rGeo.RecalcTan();
     Point aRU(aPt0);
-    aRU.X()+=nWdt;
-    aRU.Y()+=nHgt;
+    aRU.AdjustX(nWdt );
+    aRU.AdjustY(nHgt );
     rRect=tools::Rectangle(aPt0,aRU);
 }
 
@@ -528,12 +533,12 @@ void OrthoDistance8(const Point& rPt0, Point& rPt, bool bBigOrtho)
     long dxa=std::abs(dx);
     long dya=std::abs(dy);
     if (dx==0 || dy==0 || dxa==dya) return;
-    if (dxa>=dya*2) { rPt.Y()=rPt0.Y(); return; }
-    if (dya>=dxa*2) { rPt.X()=rPt0.X(); return; }
+    if (dxa>=dya*2) { rPt.setY(rPt0.Y() ); return; }
+    if (dya>=dxa*2) { rPt.setX(rPt0.X() ); return; }
     if ((dxa<dya) != bBigOrtho) {
-        rPt.Y()=rPt0.Y()+(dxa* (dy>=0 ? 1 : -1) );
+        rPt.setY(rPt0.Y()+(dxa* (dy>=0 ? 1 : -1) ) );
     } else {
-        rPt.X()=rPt0.X()+(dya* (dx>=0 ? 1 : -1) );
+        rPt.setX(rPt0.X()+(dya* (dx>=0 ? 1 : -1) ) );
     }
 }
 
@@ -544,9 +549,9 @@ void OrthoDistance4(const Point& rPt0, Point& rPt, bool bBigOrtho)
     long dxa=std::abs(dx);
     long dya=std::abs(dy);
     if ((dxa<dya) != bBigOrtho) {
-        rPt.Y()=rPt0.Y()+(dxa* (dy>=0 ? 1 : -1) );
+        rPt.setY(rPt0.Y()+(dxa* (dy>=0 ? 1 : -1) ) );
     } else {
-        rPt.X()=rPt0.X()+(dya* (dx>=0 ? 1 : -1) );
+        rPt.setX(rPt0.X()+(dya* (dx>=0 ? 1 : -1) ) );
     }
 }
 
@@ -571,7 +576,7 @@ long BigMulDiv(long nVal, long nMul, long nDiv)
 // How many eU units fit into a mm, respectively an inch?
 // Or: How many mm, respectively inches, are there in an eU (and then give me the inverse)
 
-FrPair GetInchOrMM(MapUnit eU)
+static FrPair GetInchOrMM(MapUnit eU)
 {
     switch (eU) {
         case MapUnit::Map1000thInch: return FrPair(1000,1);
@@ -603,20 +608,20 @@ FrPair GetInchOrMM(MapUnit eU)
     return Fraction(1,1);
 }
 
-FrPair GetInchOrMM(FieldUnit eU)
+static FrPair GetInchOrMM(FieldUnit eU)
 {
     switch (eU) {
-        case FUNIT_INCH       : return FrPair(   1,1);
-        case FUNIT_POINT      : return FrPair(  72,1);
-        case FUNIT_TWIP       : return FrPair(1440,1);
-        case FUNIT_100TH_MM   : return FrPair( 100,1);
-        case FUNIT_MM         : return FrPair(   1,1);
-        case FUNIT_CM         : return FrPair(   1,10);
-        case FUNIT_M          : return FrPair(   1,1000);
-        case FUNIT_KM         : return FrPair(   1,1000000);
-        case FUNIT_PICA       : return FrPair(   6,1);
-        case FUNIT_FOOT       : return FrPair(   1,12);
-        case FUNIT_MILE       : return FrPair(   1,63360);
+        case FieldUnit::INCH       : return FrPair(   1,1);
+        case FieldUnit::POINT      : return FrPair(  72,1);
+        case FieldUnit::TWIP       : return FrPair(1440,1);
+        case FieldUnit::MM_100TH   : return FrPair( 100,1);
+        case FieldUnit::MM         : return FrPair(   1,1);
+        case FieldUnit::CM         : return FrPair(   1,10);
+        case FieldUnit::M          : return FrPair(   1,1000);
+        case FieldUnit::KM         : return FrPair(   1,1000000);
+        case FieldUnit::PICA       : return FrPair(   6,1);
+        case FieldUnit::FOOT       : return FrPair(   1,12);
+        case FieldUnit::MILE       : return FrPair(   1,63360);
         default: break;
     }
     return Fraction(1,1);
@@ -659,7 +664,7 @@ FrPair GetMapFactor(FieldUnit eS, FieldUnit eD)
     // 1 yd      =  3 ft      =     36" =       914,4mm
     // 1 ft      = 12 "       =      1" =       304,8mm
 
-void GetMeterOrInch(MapUnit eMU, short& rnComma, long& rnMul, long& rnDiv, bool& rbMetr, bool& rbInch)
+static void GetMeterOrInch(MapUnit eMU, short& rnComma, long& rnMul, long& rnDiv, bool& rbMetr, bool& rbInch)
 {
     rnMul=1; rnDiv=1;
     short nComma=0;
@@ -723,14 +728,13 @@ void SdrFormatter::Undirty()
 }
 
 
-void SdrFormatter::TakeStr(long nVal, OUString& rStr) const
+OUString SdrFormatter::GetStr(long nVal) const
 {
-    OUString aNullCode("0");
+    const OUString aNullCode("0");
 
     if(!nVal)
     {
-        rStr = aNullCode;
-        return;
+        return aNullCode;
     }
 
     // we may lose some decimal places here, because of MulDiv instead of Real
@@ -825,176 +829,96 @@ void SdrFormatter::TakeStr(long nVal, OUString& rStr) const
     }
 
     if(aStr.isEmpty())
-        aStr.insert(aStr.getLength(), aNullCode);
+        aStr.append(aNullCode);
 
     if(bNeg && (aStr.getLength() > 1 || aStr[0] != aNullCode[0]))
     {
         aStr.insert(0, "-");
     }
 
-    rStr = aStr.makeStringAndClear();
+    return aStr.makeStringAndClear();
 }
 
-void SdrFormatter::TakeUnitStr(MapUnit eUnit, OUString& rStr)
+OUString SdrFormatter::GetUnitStr(MapUnit eUnit)
 {
     switch(eUnit)
     {
         // metrically
         case MapUnit::Map100thMM   :
-        {
-            rStr = "/100mm";
-            break;
-        }
+            return "/100mm";
         case MapUnit::Map10thMM    :
-        {
-            rStr = "/10mm";
-            break;
-        }
+            return "/10mm";
         case MapUnit::MapMM         :
-        {
-            rStr = "mm";
-            break;
-        }
+            return "mm";
         case MapUnit::MapCM         :
-        {
-            rStr = "cm";
-            break;
-        }
+            return "cm";
 
         // Inch
         case MapUnit::Map1000thInch:
-        {
-            rStr = "/1000\"";
-            break;
-        }
+            return "/1000\"";
         case MapUnit::Map100thInch :
-        {
-            rStr = "/100\"";
-            break;
-        }
+            return "/100\"";
         case MapUnit::Map10thInch  :
-        {
-            rStr = "/10\"";
-            break;
-        }
+            return "/10\"";
         case MapUnit::MapInch       :
-        {
-            rStr = "\"";
-            break;
-        }
+            return "\"";
         case MapUnit::MapPoint      :
-        {
-            rStr = "pt";
-            break;
-        }
+            return "pt";
         case MapUnit::MapTwip       :
-        {
-            rStr = "twip";
-            break;
-        }
+            return "twip";
 
         // others
         case MapUnit::MapPixel      :
-        {
-            rStr = "pixel";
-            break;
-        }
+            return "pixel";
         case MapUnit::MapSysFont    :
-        {
-            rStr = "sysfont";
-            break;
-        }
+            return "sysfont";
         case MapUnit::MapAppFont    :
-        {
-            rStr = "appfont";
-            break;
-        }
+            return "appfont";
         case MapUnit::MapRelative   :
-        {
-            rStr = "%";
-            break;
-        }
-        default: break;
+            return "%";
+        default:
+            return OUString();
     }
 }
 
-void SdrFormatter::TakeUnitStr(FieldUnit eUnit, OUString& rStr)
+OUString SdrFormatter::GetUnitStr(FieldUnit eUnit)
 {
     switch(eUnit)
     {
         default             :
-        case FUNIT_NONE     :
-        case FUNIT_CUSTOM   :
-        {
-            rStr.clear();
-            break;
-        }
+        case FieldUnit::NONE     :
+        case FieldUnit::CUSTOM   :
+            return OUString();
 
         // metrically
-        case FUNIT_100TH_MM:
-        {
-            rStr = "/100mm";
-            break;
-        }
-        case FUNIT_MM     :
-        {
-            rStr = "mm";
-            break;
-        }
-        case FUNIT_CM     :
-        {
-            rStr = "cm";
-            break;
-        }
-        case FUNIT_M      :
-        {
-            rStr = "m";
-            break;
-        }
-        case FUNIT_KM     :
-        {
-            rStr = "km";
-            break;
-        }
+        case FieldUnit::MM_100TH:
+            return "/100mm";
+        case FieldUnit::MM     :
+            return "mm";
+        case FieldUnit::CM     :
+            return "cm";
+        case FieldUnit::M      :
+            return "m";
+        case FieldUnit::KM     :
+            return "km";
 
         // Inch
-        case FUNIT_TWIP   :
-        {
-            rStr = "twip";
-            break;
-        }
-        case FUNIT_POINT  :
-        {
-            rStr = "pt";
-            break;
-        }
-        case FUNIT_PICA   :
-        {
-            rStr = "pica";
-            break;
-        }
-        case FUNIT_INCH   :
-        {
-            rStr = "\"";
-            break;
-        }
-        case FUNIT_FOOT   :
-        {
-            rStr = "ft";
-            break;
-        }
-        case FUNIT_MILE   :
-        {
-            rStr = "mile(s)";
-            break;
-        }
+        case FieldUnit::TWIP   :
+            return "twip";
+        case FieldUnit::POINT  :
+            return "pt";
+        case FieldUnit::PICA   :
+            return "pica";
+        case FieldUnit::INCH   :
+            return "\"";
+        case FieldUnit::FOOT   :
+            return "ft";
+        case FieldUnit::MILE   :
+            return "mile(s)";
 
         // others
-        case FUNIT_PERCENT:
-        {
-            rStr = "%";
-            break;
-        }
+        case FieldUnit::PERCENT:
+            return "%";
     }
 }
 

@@ -18,18 +18,13 @@
  */
 
 #include <jobs/configaccess.hxx>
-#include <general.h>
 #include <services.h>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XMultiHierarchicalPropertySet.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/util/XChangesBatch.hpp>
 
-#include <unotools/configpaths.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <tools/diagnose_ex.h>
 
 namespace framework{
 
@@ -96,45 +91,42 @@ void ConfigAccess::open( /*IN*/ EOpenMode eMode )
 
     // check if configuration is already open in the right mode.
     // By the way: Don't allow closing by using this method!
-    if (
-        (eMode  !=E_CLOSED) &&
-        (m_eMode!=eMode   )
-       )
+    if ( eMode == E_CLOSED || m_eMode == eMode )
+        return;
+
+    // We have to close the old access point without any question here.
+    // It will be open again using the new mode.
+    // can be called without checks! It does the checks by itself ...
+    // e.g. for already closed or not opened configuration.
+    // Flushing of all made changes will be done here too.
+    close();
+
+    // create the configuration provider, which provides sub access points
+    css::uno::Reference< css::lang::XMultiServiceFactory > xConfigProvider = css::configuration::theDefaultProvider::get(m_xContext);
+    css::beans::PropertyValue aParam;
+    aParam.Name    = "nodepath";
+    aParam.Value <<= m_sRoot;
+
+    css::uno::Sequence< css::uno::Any > lParams(1);
+    lParams[0] <<= aParam;
+
+    // open it
+    try
     {
-        // We have to close the old access point without any question here.
-        // It will be open again using the new mode.
-        // can be called without checks! It does the checks by itself ...
-        // e.g. for already closed or not opened configuration.
-        // Flushing of all made changes will be done here too.
-        close();
-
-        // create the configuration provider, which provides sub access points
-        css::uno::Reference< css::lang::XMultiServiceFactory > xConfigProvider = css::configuration::theDefaultProvider::get(m_xContext);
-        css::beans::PropertyValue aParam;
-        aParam.Name    = "nodepath";
-        aParam.Value <<= m_sRoot;
-
-        css::uno::Sequence< css::uno::Any > lParams(1);
-        lParams[0] <<= aParam;
-
-        // open it
-        try
-        {
-            if (eMode==E_READONLY)
-                m_xConfig = xConfigProvider->createInstanceWithArguments(SERVICENAME_CFGREADACCESS  , lParams);
-            else
-            if (eMode==E_READWRITE)
-                m_xConfig = xConfigProvider->createInstanceWithArguments(SERVICENAME_CFGUPDATEACCESS, lParams);
-        }
-        catch(const css::uno::Exception& ex)
-        {
-            SAL_INFO("fwk", "open config: " << ex.Message);
-        }
-
-        m_eMode = E_CLOSED;
-        if (m_xConfig.is())
-            m_eMode = eMode;
+        if (eMode==E_READONLY)
+            m_xConfig = xConfigProvider->createInstanceWithArguments(SERVICENAME_CFGREADACCESS  , lParams);
+        else
+        if (eMode==E_READWRITE)
+            m_xConfig = xConfigProvider->createInstanceWithArguments(SERVICENAME_CFGUPDATEACCESS, lParams);
     }
+    catch(const css::uno::Exception&)
+    {
+        TOOLS_INFO_EXCEPTION("fwk", "open config");
+    }
+
+    m_eMode = E_CLOSED;
+    if (m_xConfig.is())
+        m_eMode = eMode;
 }
 
 /**
@@ -170,7 +162,7 @@ void ConfigAccess::close()
                     aReadLock.unlock();
 
     @attention  During this time it's not allowed to call the methods open() or close()!
-                Otherwhise you will change your own referenced config access. Anything will
+                Otherwise you will change your own referenced config access. Anything will
                 be possible then.
 
     @return A c++(!) reference to the uno instance of the configuration access point.

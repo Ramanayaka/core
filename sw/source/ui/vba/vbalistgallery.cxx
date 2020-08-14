@@ -18,7 +18,6 @@
  */
 #include "vbalistgallery.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include "vbalisttemplates.hxx"
 
 using namespace ::ooo::vba;
@@ -44,18 +43,16 @@ SwVbaListGallery::ListTemplates( const uno::Any& index )
 OUString
 SwVbaListGallery::getServiceImplName()
 {
-    return OUString("SwVbaListGallery");
+    return "SwVbaListGallery";
 }
 
 uno::Sequence< OUString >
 SwVbaListGallery::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.ListGallery";
-    }
+        "ooo.vba.word.ListGallery"
+    };
     return aServiceNames;
 }
 

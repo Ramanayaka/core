@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
 #include <fesh.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -26,12 +25,14 @@
 #include <pagefrm.hxx>
 #include <rootfrm.hxx>
 #include <cntfrm.hxx>
+#include <txtfrm.hxx>
+#include <notxtfrm.hxx>
 #include <pam.hxx>
 #include <fmtpdsc.hxx>
 #include <pagedesc.hxx>
 #include <tabfrm.hxx>
-#include <edimp.hxx>
 #include <SwStyleNameMapper.hxx>
+#include <ndtxt.hxx>
 
 size_t SwFEShell::GetPageDescCnt() const
 {
@@ -54,11 +55,11 @@ void SwFEShell::ChgCurPageDesc( const SwPageDesc& rDesc )
 
     SwPageFrame *pPage = GetCurrFrame()->FindPageFrame();
     const SwFrame *pFlow = nullptr;
-    ::boost::optional<sal_uInt16> oPageNumOffset;
+    ::std::optional<sal_uInt16> oPageNumOffset;
 
     OSL_ENSURE( !GetCursor()->HasMark(), "ChgCurPageDesc only without selection!");
 
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     while ( pPage )
     {
         pFlow = pPage->FindFirstBodyContent();
@@ -66,7 +67,7 @@ void SwFEShell::ChgCurPageDesc( const SwPageDesc& rDesc )
         {
             if ( pFlow->IsInTab() )
                 pFlow = pFlow->FindTabFrame();
-            const SwFormatPageDesc& rPgDesc = pFlow->GetAttrSet()->GetPageDesc();
+            const SwFormatPageDesc& rPgDesc = pFlow->GetPageDescItem();
             if( rPgDesc.GetPageDesc() )
             {
                 // we found the culprit
@@ -96,8 +97,12 @@ void SwFEShell::ChgCurPageDesc( const SwPageDesc& rDesc )
         GetDoc()->SetAttr( aNew, *const_cast<SwFormat*>(static_cast<SwFormat const *>(pFlow->FindTabFrame()->GetFormat())) );
     else
     {
-        SwPaM aPaM( *static_cast<const SwContentFrame*>(pFlow)->GetNode() );
-        GetDoc()->getIDocumentContentOperations().InsertPoolItem( aPaM, aNew );
+        assert(pFlow->IsContentFrame());
+        SwPaM aPaM( pFlow->IsTextFrame()
+            ? *static_cast<SwTextFrame const*>(pFlow)->GetTextNodeFirst() // first, for PAGEDESC
+            : *static_cast<const SwNoTextFrame*>(pFlow)->GetNode() );
+        GetDoc()->getIDocumentContentOperations().InsertPoolItem(
+                aPaM, aNew, SetAttrMode::DEFAULT, GetLayout());
     }
     EndAllActionAndCall();
 }
@@ -105,7 +110,7 @@ void SwFEShell::ChgCurPageDesc( const SwPageDesc& rDesc )
 void SwFEShell::ChgPageDesc( size_t i, const SwPageDesc &rChged )
 {
     StartAllAction();
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     //Fix i64842: because Undo has a very special way to handle header/footer content
     // we have to copy the page descriptor before calling ChgPageDesc.
     SwPageDesc aDesc( rChged );
@@ -147,7 +152,7 @@ size_t SwFEShell::GetMousePageDesc( const Point &rPt ) const
             static_cast<const SwPageFrame*>( GetLayout()->Lower() );
         if( pPage )
         {
-            while( pPage->GetNext() && rPt.Y() > pPage->Frame().Bottom() )
+            while( pPage->GetNext() && rPt.Y() > pPage->getFrameArea().Bottom() )
                 pPage = static_cast<const SwPageFrame*>( pPage->GetNext() );
             SwDoc *pMyDoc = GetDoc();
             size_t nPos;
@@ -182,19 +187,20 @@ const SwPageDesc* SwFEShell::GetSelectedPageDescs() const
     const SwFrame* pMkFrame, *pPtFrame;
     const SwPageDesc* pFnd, *pRetDesc = reinterpret_cast<SwPageDesc*>(sal_IntPtr(-1));
     const Point aNulPt;
+    std::pair<Point, bool> const tmp(aNulPt, false);
 
-    for(SwPaM& rPaM : GetCursor()->GetRingContainer())
+    for(const SwPaM& rPaM : GetCursor()->GetRingContainer())
     {
 
         if( nullptr != (pCNd = rPaM.GetContentNode() ) &&
-            nullptr != ( pPtFrame = pCNd->getLayoutFrame( GetLayout(), &aNulPt, nullptr, false )) )
+            nullptr != (pPtFrame = pCNd->getLayoutFrame(GetLayout(), nullptr, &tmp)))
             pPtFrame = pPtFrame->FindPageFrame();
         else
             pPtFrame = nullptr;
 
         if( rPaM.HasMark() &&
             nullptr != (pCNd = rPaM.GetContentNode( false ) ) &&
-            nullptr != ( pMkFrame = pCNd->getLayoutFrame( GetLayout(), &aNulPt, nullptr, false )) )
+            nullptr != (pMkFrame = pCNd->getLayoutFrame(GetLayout(), nullptr, &tmp)))
             pMkFrame = pMkFrame->FindPageFrame();
         else
             pMkFrame = pPtFrame;

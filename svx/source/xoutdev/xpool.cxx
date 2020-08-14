@@ -19,16 +19,55 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
-#include <svx/xtable.hxx>
-#include <svx/xattr.hxx>
+#include <svx/xflbckit.hxx>
+#include <xftshtit.hxx>
+#include <svx/xflboxy.hxx>
+#include <svx/xflbstit.hxx>
+#include <svx/xflclit.hxx>
+#include <svx/xflgrit.hxx>
+#include <svx/xflhtit.hxx>
+#include <svx/xbtmpit.hxx>
+#include <svx/xflftrit.hxx>
+#include <svx/xsflclit.hxx>
+#include <svx/xlntrit.hxx>
+#include <svx/xfltrit.hxx>
+#include <svx/xgrscit.hxx>
+#include <svx/xflasit.hxx>
+#include <svx/xflbmtit.hxx>
+#include <svx/xflbmpit.hxx>
+#include <svx/xflbmsxy.hxx>
+#include <svx/xflbmsli.hxx>
+#include <svx/xflbtoxy.hxx>
+#include <svx/xlineit0.hxx>
+#include <svx/xlinjoit.hxx>
+#include <svx/xlncapit.hxx>
+#include <svx/xfillit0.hxx>
+#include <svx/xtextit0.hxx>
+#include <svx/xlnasit.hxx>
+#include <svx/xlndsit.hxx>
+#include <svx/xlnwtit.hxx>
+#include <svx/xlnclit.hxx>
+#include <svx/xlnstit.hxx>
+#include <svx/xlnedit.hxx>
+#include <svx/xlnstwit.hxx>
+#include <svx/xlnedwit.hxx>
+#include <svx/xlnstcit.hxx>
+#include <svx/xlnedcit.hxx>
 #include <svx/xpool.hxx>
-#include <svx/svdattr.hxx>
+#include <svx/svddef.hxx>
 #include <svx/svxids.hrc>
 #include <svl/itemset.hxx>
+#include <svx/xftadit.hxx>
+#include <svx/xftdiit.hxx>
+#include <svx/xftstit.hxx>
+#include <svx/xftmrit.hxx>
+#include <svx/xftouit.hxx>
+#include <svx/xftshit.hxx>
+#include <svx/xftshcit.hxx>
+#include <svx/xftshxy.hxx>
 
-XOutdevItemPool::XOutdevItemPool(SfxItemPool* _pMaster, bool bLoadRefCounts)
-    : SfxItemPool("XOutdevItemPool", SDRATTR_START, SDRATTR_END, nullptr, nullptr, bLoadRefCounts)
+XOutdevItemPool::XOutdevItemPool(SfxItemPool* _pMaster)
+    : SfxItemPool("XOutdevItemPool", SDRATTR_START, SDRATTR_END, nullptr, nullptr)
     , mpLocalPoolDefaults(new std::vector<SfxPoolItem*>(SDRATTR_END - SDRATTR_START + 1))
     , mpLocalItemInfos(new SfxItemInfo[SDRATTR_END - SDRATTR_START + 1])
 {
@@ -38,9 +77,8 @@ XOutdevItemPool::XOutdevItemPool(SfxItemPool* _pMaster, bool bLoadRefCounts)
     const basegfx::B2DPolyPolygon aNullPol;
     const Color aNullLineCol(COL_DEFAULT_SHAPE_STROKE); // #i121448# Use defined default color
     const Color aNullFillCol(COL_DEFAULT_SHAPE_FILLING); // #i121448# Use defined default color
-    const Color aNullShadowCol(RGB_Color(COL_LIGHTGRAY));
+    const Color aNullShadowCol(COL_LIGHTGRAY);
     const XDash aNullDash;
-    const XGradient aNullGrad(RGB_Color(COL_BLACK), RGB_Color(COL_WHITE));
     const XHatch aNullHatch(aNullLineCol);
 
     // get master pointer, evtl. add myself to the end of the pools
@@ -77,7 +115,7 @@ XOutdevItemPool::XOutdevItemPool(SfxItemPool* _pMaster, bool bLoadRefCounts)
     rPoolDefaults[XATTR_LINECAP            -XATTR_START] = new XLineCapItem;
     rPoolDefaults[XATTR_FILLSTYLE                -XATTR_START] = new XFillStyleItem;
     rPoolDefaults[XATTR_FILLCOLOR                -XATTR_START] = new XFillColorItem   (aNullStr,aNullFillCol);
-    rPoolDefaults[XATTR_FILLGRADIENT         -XATTR_START] = new XFillGradientItem(aNullGrad);
+    rPoolDefaults[XATTR_FILLGRADIENT         -XATTR_START] = new XFillGradientItem(XGradient(COL_BLACK, COL_WHITE));
     rPoolDefaults[XATTR_FILLHATCH                -XATTR_START] = new XFillHatchItem   (aNullHatch);
     rPoolDefaults[XATTR_FILLBITMAP               -XATTR_START] = new XFillBitmapItem  (aNullGraphic);
     rPoolDefaults[XATTR_FILLTRANSPARENCE     -XATTR_START] = new XFillTransparenceItem;
@@ -92,7 +130,7 @@ XOutdevItemPool::XOutdevItemPool(SfxItemPool* _pMaster, bool bLoadRefCounts)
     rPoolDefaults[XATTR_FILLBMP_STRETCH      -XATTR_START] = new XFillBmpStretchItem;
     rPoolDefaults[XATTR_FILLBMP_POSOFFSETX       -XATTR_START] = new XFillBmpPosOffsetXItem;
     rPoolDefaults[XATTR_FILLBMP_POSOFFSETY       -XATTR_START] = new XFillBmpPosOffsetYItem;
-    rPoolDefaults[XATTR_FILLFLOATTRANSPARENCE    -XATTR_START] = new XFillFloatTransparenceItem( aNullGrad, false );
+    rPoolDefaults[XATTR_FILLFLOATTRANSPARENCE    -XATTR_START] = new XFillFloatTransparenceItem( XGradient(COL_BLACK, COL_BLACK), false );
     rPoolDefaults[XATTR_SECONDARYFILLCOLOR       -XATTR_START] = new XSecondaryFillColorItem(aNullStr, aNullFillCol);
     rPoolDefaults[XATTR_FILLBACKGROUND           -XATTR_START] = new XFillBackgroundItem;
     rPoolDefaults[XATTR_FORMTXTSTYLE       -XATTR_START] = new XFormTextStyleItem;
@@ -110,10 +148,10 @@ XOutdevItemPool::XOutdevItemPool(SfxItemPool* _pMaster, bool bLoadRefCounts)
 
     // create SetItems
     rPoolDefaults[XATTRSET_LINE - XATTR_START] = new XLineAttrSetItem(
-        o3tl::make_unique<SfxItemSet>(
+        std::make_unique<SfxItemSet>(
             *_pMaster, svl::Items<XATTR_LINE_FIRST, XATTR_LINE_LAST>{}));
     rPoolDefaults[XATTRSET_FILL - XATTR_START] = new XFillAttrSetItem(
-        o3tl::make_unique<SfxItemSet>(
+        std::make_unique<SfxItemSet>(
             *_pMaster, svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST>{}));
 
     // create ItemInfos
@@ -161,15 +199,14 @@ XOutdevItemPool::XOutdevItemPool(SfxItemPool* _pMaster, bool bLoadRefCounts)
     if(XATTR_START == GetFirstWhich() && XATTR_END == GetLastWhich())
     {
         SetDefaults(mpLocalPoolDefaults);
-        SetItemInfos(mpLocalItemInfos);
+        SetItemInfos(mpLocalItemInfos.get());
     }
 }
 
 // copy ctor, clones all static defaults
 XOutdevItemPool::XOutdevItemPool(const XOutdevItemPool& rPool)
 :   SfxItemPool(rPool, true),
-    mpLocalPoolDefaults(nullptr),
-    mpLocalItemInfos(nullptr)
+    mpLocalPoolDefaults(nullptr)
 {
 }
 
@@ -183,8 +220,6 @@ XOutdevItemPool::~XOutdevItemPool()
     Delete();
     // release and delete static pool default items
     ReleaseDefaults(true);
-
-    delete[] mpLocalItemInfos;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

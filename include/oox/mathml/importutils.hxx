@@ -18,14 +18,11 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XFastAttributeList; } }
-} } }
+namespace com::sun::star {
+    namespace xml::sax { class XFastAttributeList; }
+}
 
-namespace oox
-{
-
-namespace formulaimport
+namespace oox::formulaimport
 {
 
 // used to differentiate between tags that opening or closing
@@ -191,7 +188,7 @@ public:
     Tag checkOpeningTag( int token );
     /**
      Ensures that a closing tag with the given token is read. Like ensureOpeningTag(),
-     if not, writes out a warning and tries to recover by skiping tags until found (or until the current element would end).
+     if not, writes out a warning and tries to recover by skipping tags until found (or until the current element would end).
      If found, the position in the stream is afterwards moved to the next tag.
     */
     void ensureClosingTag( int token );
@@ -250,7 +247,6 @@ sal_Unicode XmlStream::Tag::attribute( int t, sal_Unicode def ) const
     return attributes.attribute( t, def );
 }
 
-} // namespace
 } // namespace
 
 #endif

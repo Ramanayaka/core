@@ -34,7 +34,12 @@ class HTMLReader: public Reader
     // we don't want to have the streams/storages open
     virtual bool SetStrmStgPtr() override;
     virtual ErrCode Read(SwDoc &, const OUString& rBaseURL, SwPaM &, const OUString &) override;
-    virtual OUString GetTemplateName() const override;
+    virtual OUString GetTemplateName(SwDoc& rDoc) const override;
+
+    /// Parse FilterOptions passed to the importer.
+    void SetupFilterOptions();
+
+    OUString m_aNamespace;
 public:
     HTMLReader();
 };
@@ -43,34 +48,19 @@ class XMLReader : public Reader
 {
     virtual ErrCode Read(SwDoc &, const OUString& rBaseURL, SwPaM &, const OUString &) override;
 public:
-    virtual int GetReaderType() override;
+    virtual SwReaderType GetReaderType() override;
 
     XMLReader();
 
     // read the sections of the document, which is equal to the medium.
     // returns the count of it
     virtual size_t GetSectionList( SfxMedium& rMedium,
-                                   std::vector<OUString*>& rStrings ) const override;
+                                   std::vector<OUString>& rStrings) const override;
 };
 
 // the special writers
 
 void GetWW8Writer( const OUString&, const OUString&, WriterRef& );
-
-// Mapping of the LRSpaces in the currently imported document.
-// The foreign filters always provide absolute values for the levels of
-// a NumRule. We are now processing relative values related to the LR-Space-Item
-// though. The consequence of this is that, for all paragraphs, the indentations
-// of the NumRule must be subtracted from the paragraph indentation.
-class SW_DLLPUBLIC SwRelNumRuleSpaces
-{
-    SwNumRuleTable* pNumRuleTable;  // list of all named NumRules
-
-public:
-    SwRelNumRuleSpaces( SwDoc& rDoc, bool bNewDoc );
-    ~SwRelNumRuleSpaces();
-};
-
 
 // Get size of fly (if 'automatic' in WW) and check if not too small
 SW_DLLPUBLIC void CalculateFlySize(SfxItemSet& rFlySet, const SwNodeIndex& rAnchor,

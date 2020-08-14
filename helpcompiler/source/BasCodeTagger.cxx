@@ -8,6 +8,7 @@
  */
 
 #include <BasCodeTagger.hxx>
+#include <iostream>
 
 LibXmlTreeWalker::LibXmlTreeWalker( xmlDocPtr doc )
 {
@@ -43,7 +44,7 @@ void LibXmlTreeWalker::ignoreCurrNodesChildren()
           m_Queue.pop_back();
 }
 
-bool LibXmlTreeWalker::end()
+bool LibXmlTreeWalker::end() const
 {
     return m_pCurrentNode->next == nullptr && m_Queue.empty();
 }
@@ -52,18 +53,15 @@ bool LibXmlTreeWalker::end()
 BasicCodeTagger::BasicCodeTagger( xmlDocPtr rootDoc ):
     m_Highlighter(HighlighterLanguage::Basic)
 {
-      if ( rootDoc == nullptr )
-          throw NULL_DOCUMENT;
-      m_pDocument = rootDoc;
+    if ( rootDoc == nullptr )
+        throw NULL_DOCUMENT;
+    m_pDocument = rootDoc;
     m_pXmlTreeWalker = nullptr;
     m_bTaggingCompleted = false;
-
 }
 
 BasicCodeTagger::~BasicCodeTagger()
 {
-    if ( m_pXmlTreeWalker != nullptr )
-      delete m_pXmlTreeWalker;
 }
 //!Gathers all the <bascode> tag nodes from xml tree.
 /*!
@@ -71,13 +69,11 @@ BasicCodeTagger::~BasicCodeTagger()
  */
 void BasicCodeTagger::getBasicCodeContainerNodes()
 {
-      xmlNodePtr currentNode;
+    xmlNodePtr currentNode;
 
     m_BasicCodeContainerTags.clear();
 
-    if ( m_pXmlTreeWalker != nullptr )
-      delete m_pXmlTreeWalker;
-    m_pXmlTreeWalker = new LibXmlTreeWalker( m_pDocument );
+    m_pXmlTreeWalker.reset(new LibXmlTreeWalker( m_pDocument ));
 
     currentNode = m_pXmlTreeWalker->currentNode();
     if ( !( xmlStrcmp( currentNode->name, reinterpret_cast<const xmlChar*>("bascode") ) ) )
@@ -86,7 +82,7 @@ void BasicCodeTagger::getBasicCodeContainerNodes()
     }
     while ( !m_pXmlTreeWalker->end() )
     {
-          m_pXmlTreeWalker->nextNode();
+        m_pXmlTreeWalker->nextNode();
         if ( !( xmlStrcmp( m_pXmlTreeWalker->currentNode()->name, reinterpret_cast<const xmlChar*>("bascode") ) ) )
         { //Found <bascode>
             m_BasicCodeContainerTags.push_back( m_pXmlTreeWalker->currentNode() ); //it goes to the end of the list
@@ -103,19 +99,17 @@ void BasicCodeTagger::getBasicCodeContainerNodes()
 void BasicCodeTagger::tagBasCodeParagraphs()
 {
     //helper variables
-    xmlNodePtr currBascodeNode;
     xmlNodePtr currParagraph;
-    while ( !m_BasicCodeContainerTags.empty() )
+    for (auto const& currBascodeNode : m_BasicCodeContainerTags)
     {
-        currBascodeNode = m_BasicCodeContainerTags.front();
         currParagraph = currBascodeNode->xmlChildrenNode; //first <paragraph>
         while ( currParagraph != nullptr )
         {
             tagParagraph( currParagraph );
             currParagraph=currParagraph->next;
         }
-        m_BasicCodeContainerTags.pop_front(); //next element
     }
+    m_BasicCodeContainerTags.clear();
 }
 
 //! Used by tagBasCodeParagraphs(). It does the work on the current paragraph containing Basic code.
@@ -140,19 +134,18 @@ void BasicCodeTagger::tagParagraph( xmlNodePtr paragraph )
     }
 
     //3. create new paragraph content
-    OUString strLine( reinterpret_cast<const sal_Char*>(codeSnippet),
+    OUString strLine( reinterpret_cast<const char*>(codeSnippet),
                                 strlen(reinterpret_cast<const char*>(codeSnippet)),
                                 RTL_TEXTENCODING_UTF8 );
     std::vector<HighlightPortion> portions;
     m_Highlighter.getHighlightPortions( strLine, portions );
-    for (std::vector<HighlightPortion>::iterator i(portions.begin());
-         i != portions.end(); ++i)
+    for (auto const& portion : portions)
     {
-        OString sToken(OUStringToOString(strLine.copy(i->nBegin, i->nEnd-i->nBegin), RTL_TEXTENCODING_UTF8));
+        OString sToken(OUStringToOString(strLine.copy(portion.nBegin, portion.nEnd-portion.nBegin), RTL_TEXTENCODING_UTF8));
         xmlNodePtr text = xmlNewText(reinterpret_cast<const xmlChar*>(sToken.getStr()));
-        if ( i->tokenType != TokenType::Whitespace )
+        if ( portion.tokenType != TokenType::Whitespace )
         {
-            xmlChar* typeStr = getTypeString( i->tokenType );
+            xmlChar* typeStr = getTypeString( portion.tokenType );
             curNode = xmlNewTextChild( paragraph, nullptr, reinterpret_cast<xmlChar const *>("item"), nullptr );
             xmlNewProp( curNode, reinterpret_cast<xmlChar const *>("type"), typeStr );
             xmlAddChild( curNode, text );
@@ -170,7 +163,7 @@ void BasicCodeTagger::tagParagraph( xmlNodePtr paragraph )
  */
 void BasicCodeTagger::tagBasicCodes()
 {
-      if ( m_bTaggingCompleted )
+    if ( m_bTaggingCompleted )
         return;
     //gather <bascode> nodes
     try

@@ -19,20 +19,17 @@
 
 #include <cstddef>
 #include <cstdlib>
-#include <limits>
-#include <new>
 #include <string.h>
 
 #ifdef _WIN32
-#include "stdlib.h"
+#include <stdlib.h>
 #endif
 
 #include <osl/file.hxx>
-#include <tools/stream.hxx>
 #include <tools/config.hxx>
-#include <osl/security.h>
-#include <rtl/strbuf.hxx>
 #include <sal/log.hxx>
+
+namespace {
 
 struct ImplKeyData
 {
@@ -41,6 +38,8 @@ struct ImplKeyData
     OString         maValue;
     bool            mbIsComment;
 };
+
+}
 
 struct ImplGroupData
 {
@@ -54,9 +53,8 @@ struct ImplConfigData
 {
     ImplGroupData*  mpFirstGroup;
     OUString        maFileName;
-    sal_uIntPtr     mnDataUpdateId;
-    sal_uIntPtr     mnTimeStamp;
-    LineEnd         meLineEnd;
+    sal_uInt32      mnDataUpdateId;
+    sal_uInt32      mnTimeStamp;
     bool            mbModified;
     bool            mbRead;
     bool            mbIsUTF8BOM;
@@ -78,9 +76,9 @@ static OUString toUncPath( const OUString& rPath )
     return aFileURL;
 }
 
-static sal_uIntPtr ImplSysGetConfigTimeStamp( const OUString& rFileName )
+static sal_uInt32 ImplSysGetConfigTimeStamp( const OUString& rFileName )
 {
-    sal_uIntPtr nTimeStamp = 0;
+    sal_uInt32 nTimeStamp = 0;
     ::osl::DirectoryItem aItem;
     ::osl::FileStatus aStatus( osl_FileStatus_Mask_ModifyTime );
 
@@ -93,10 +91,10 @@ static sal_uIntPtr ImplSysGetConfigTimeStamp( const OUString& rFileName )
     return nTimeStamp;
 }
 
-static sal_uInt8* ImplSysReadConfig( const OUString& rFileName,
-                                sal_uInt64& rRead, bool& rbRead, bool& rbIsUTF8BOM, sal_uIntPtr& rTimeStamp )
+static std::unique_ptr<sal_uInt8[]> ImplSysReadConfig( const OUString& rFileName,
+                                sal_uInt64& rRead, bool& rbRead, bool& rbIsUTF8BOM, sal_uInt32& rTimeStamp )
 {
-    sal_uInt8*          pBuf = nullptr;
+    std::unique_ptr<sal_uInt8[]> pBuf;
     ::osl::File aFile( rFileName );
 
     if( aFile.open( osl_File_OpenFlag_Read ) == ::osl::FileBase::E_None )
@@ -108,16 +106,16 @@ static sal_uInt8* ImplSysReadConfig( const OUString& rFileName,
                 aFile.close();
                 return nullptr;
             }
-            pBuf = new sal_uInt8[static_cast< std::size_t >(nPos)];
+            pBuf.reset(new sal_uInt8[static_cast< std::size_t >(nPos)]);
             sal_uInt64 nRead = 0;
-            if( aFile.read( pBuf, nPos, nRead ) == ::osl::FileBase::E_None && nRead == nPos )
+            if( aFile.read( pBuf.get(), nPos, nRead ) == ::osl::FileBase::E_None && nRead == nPos )
             {
                 //skip the byte-order-mark 0xEF 0xBB 0xBF, if it was UTF8 files
-                unsigned char BOM[3] = {0xEF, 0xBB, 0xBF};
-                if (nRead > 2 && memcmp(pBuf, BOM, 3) == 0)
+                unsigned char const BOM[3] = {0xEF, 0xBB, 0xBF};
+                if (nRead > 2 && memcmp(pBuf.get(), BOM, 3) == 0)
                 {
                     nRead -= 3;
-                    memmove(pBuf, pBuf + 3, sal::static_int_cast<std::size_t>(nRead * sizeof(sal_uInt8)) );
+                    memmove(pBuf.get(), pBuf.get() + 3, sal::static_int_cast<std::size_t>(nRead * sizeof(sal_uInt8)) );
                     rbIsUTF8BOM = true;
                 }
 
@@ -127,8 +125,7 @@ static sal_uInt8* ImplSysReadConfig( const OUString& rFileName,
             }
             else
             {
-                delete[] pBuf;
-                pBuf = nullptr;
+                pBuf.reset();
             }
         }
         aFile.close();
@@ -138,7 +135,7 @@ static sal_uInt8* ImplSysReadConfig( const OUString& rFileName,
 }
 
 static bool ImplSysWriteConfig( const OUString& rFileName,
-                                const sal_uInt8* pBuf, sal_uIntPtr nBufLen, bool rbIsUTF8BOM, sal_uIntPtr& rTimeStamp )
+                                const sal_uInt8* pBuf, sal_uInt32 nBufLen, bool rbIsUTF8BOM, sal_uInt32& rTimeStamp )
 {
     bool bSuccess = false;
     bool bUTF8BOMSuccess = false;
@@ -156,7 +153,7 @@ static bool ImplSysWriteConfig( const OUString& rFileName,
         //write the byte-order-mark 0xEF 0xBB 0xBF first , if it was UTF8 files
         if ( rbIsUTF8BOM )
         {
-            unsigned char BOM[3] = {0xEF, 0xBB, 0xBF};
+            unsigned char const BOM[3] = {0xEF, 0xBB, 0xBF};
             sal_uInt64 nUTF8BOMWritten;
             if( aFile.write( BOM, 3, nUTF8BOMWritten ) == ::osl::FileBase::E_None && 3 == nUTF8BOMWritten )
             {
@@ -361,34 +358,21 @@ static void ImplMakeConfigList( ImplConfigData* pData,
     }
 }
 
-static sal_uInt8* ImplGetConfigBuffer( const ImplConfigData* pData, sal_uIntPtr& rLen )
+static std::unique_ptr<sal_uInt8[]> ImplGetConfigBuffer( const ImplConfigData* pData, sal_uInt32& rLen )
 {
-    sal_uInt8*      pWriteBuf;
+    std::unique_ptr<sal_uInt8[]> pWriteBuf;
     sal_uInt8*      pBuf;
     sal_uInt8       aLineEndBuf[2] = {0, 0};
     ImplKeyData*    pKey;
     ImplGroupData*  pGroup;
-    unsigned int    nBufLen;
+    sal_uInt32      nBufLen;
     sal_uInt32      nValueLen;
     sal_uInt32      nKeyLen;
     sal_uInt32      nLineEndLen;
 
-    if ( pData->meLineEnd == LINEEND_CR )
-    {
-        aLineEndBuf[0] = '\r';
-        nLineEndLen = 1;
-    }
-    else if ( pData->meLineEnd == LINEEND_LF )
-    {
-        aLineEndBuf[0] = '\n';
-        nLineEndLen = 1;
-    }
-    else
-    {
-        aLineEndBuf[0] = '\r';
-        aLineEndBuf[1] = '\n';
-        nLineEndLen = 2;
-    }
+    aLineEndBuf[0] = '\r';
+    aLineEndBuf[1] = '\n';
+    nLineEndLen = 2;
 
     nBufLen = 0;
     pGroup = pData->mpFirstGroup;
@@ -423,25 +407,18 @@ static sal_uInt8* ImplGetConfigBuffer( const ImplConfigData* pData, sal_uIntPtr&
     rLen = nBufLen;
     if ( !nBufLen )
     {
-        pWriteBuf = new sal_uInt8[nLineEndLen];
-        if ( pWriteBuf )
-        {
-            pWriteBuf[0] = aLineEndBuf[0];
-            if ( nLineEndLen == 2 )
-                pWriteBuf[1] = aLineEndBuf[1];
-            return pWriteBuf;
-        }
-        else
-            return nullptr;
+        pWriteBuf.reset(new sal_uInt8[nLineEndLen]);
+        pWriteBuf[0] = aLineEndBuf[0];
+        if ( nLineEndLen == 2 )
+            pWriteBuf[1] = aLineEndBuf[1];
+        return pWriteBuf;
     }
 
     // Allocate new write buffer (caller frees it)
-    pWriteBuf = new sal_uInt8[nBufLen];
-    if ( !pWriteBuf )
-        return nullptr;
+    pWriteBuf.reset(new sal_uInt8[nBufLen]);
 
     // fill buffer
-    pBuf = pWriteBuf;
+    pBuf = pWriteBuf.get();
     pGroup = pData->mpFirstGroup;
     while ( pGroup )
     {
@@ -513,17 +490,17 @@ static sal_uInt8* ImplGetConfigBuffer( const ImplConfigData* pData, sal_uIntPtr&
 
 static void ImplReadConfig( ImplConfigData* pData )
 {
-    sal_uIntPtr nTimeStamp = 0;
+    sal_uInt32   nTimeStamp = 0;
     sal_uInt64  nRead = 0;
     bool    bRead = false;
     bool    bIsUTF8BOM = false;
-    sal_uInt8*  pBuf = ImplSysReadConfig( pData->maFileName, nRead, bRead, bIsUTF8BOM, nTimeStamp );
+    std::unique_ptr<sal_uInt8[]> pBuf = ImplSysReadConfig( pData->maFileName, nRead, bRead, bIsUTF8BOM, nTimeStamp );
 
     // Read config list from buffer
     if ( pBuf )
     {
-        ImplMakeConfigList( pData, pBuf, nRead );
-        delete[] pBuf;
+        ImplMakeConfigList( pData, pBuf.get(), nRead );
+        pBuf.reset();
     }
     pData->mnTimeStamp = nTimeStamp;
     pData->mbModified  = false;
@@ -539,13 +516,12 @@ static void ImplWriteConfig( ImplConfigData* pData )
         "tools.generic", "Config overwrites modified configfile: " << pData->maFileName );
 
     // Read config list from buffer
-    sal_uIntPtr nBufLen;
-    sal_uInt8*  pBuf = ImplGetConfigBuffer( pData, nBufLen );
+    sal_uInt32 nBufLen;
+    std::unique_ptr<sal_uInt8[]> pBuf = ImplGetConfigBuffer( pData, nBufLen );
     if ( pBuf )
     {
-        if ( ImplSysWriteConfig( pData->maFileName, pBuf, nBufLen, pData->mbIsUTF8BOM, pData->mnTimeStamp ) )
+        if ( ImplSysWriteConfig( pData->maFileName, pBuf.get(), nBufLen, pData->mbIsUTF8BOM, pData->mnTimeStamp ) )
             pData->mbModified = false;
-        delete[] pBuf;
     }
     else
         pData->mbModified = false;
@@ -578,26 +554,17 @@ static void ImplDeleteConfigData( ImplConfigData* pData )
     pData->mpFirstGroup = nullptr;
 }
 
-static ImplConfigData* ImplGetConfigData( const OUString& rFileName )
+static std::unique_ptr<ImplConfigData> ImplGetConfigData( const OUString& rFileName )
 {
-    ImplConfigData* pData;
-
-    pData                   = new ImplConfigData;
+    std::unique_ptr<ImplConfigData> pData(new ImplConfigData);
     pData->maFileName       = rFileName;
     pData->mpFirstGroup     = nullptr;
     pData->mnDataUpdateId   = 0;
-    pData->meLineEnd        = LINEEND_CRLF;
     pData->mbRead           = false;
     pData->mbIsUTF8BOM      = false;
-    ImplReadConfig( pData );
+    ImplReadConfig( pData.get() );
 
     return pData;
-}
-
-static void ImplFreeConfigData( ImplConfigData* pDelData )
-{
-    ImplDeleteConfigData( pDelData );
-    delete pDelData;
 }
 
 bool Config::ImplUpdateConfig() const
@@ -605,8 +572,8 @@ bool Config::ImplUpdateConfig() const
     // Re-read file if timestamp differs
     if ( mpData->mnTimeStamp != ImplSysGetConfigTimeStamp( maFileName ) )
     {
-        ImplDeleteConfigData( mpData );
-        ImplReadConfig( mpData );
+        ImplDeleteConfigData( mpData.get() );
+        ImplReadConfig( mpData.get() );
         mpData->mnDataUpdateId++;
         return true;
     }
@@ -658,7 +625,6 @@ Config::Config( const OUString& rFileName )
     mpData          = ImplGetConfigData( maFileName );
     mpActGroup      = nullptr;
     mnDataUpdateId  = 0;
-    mnLockCount     = 1;
 
     SAL_INFO("tools.generic", "Config::Config( " << maFileName << " )");
 }
@@ -668,7 +634,7 @@ Config::~Config()
     SAL_INFO("tools.generic", "Config::~Config()" );
 
     Flush();
-    ImplFreeConfigData( mpData );
+    ImplDeleteConfigData( mpData.get() );
 }
 
 void Config::SetGroup(const OString& rGroup)
@@ -684,7 +650,7 @@ void Config::SetGroup(const OString& rGroup)
 void Config::DeleteGroup(const OString& rGroup)
 {
     // Update config data if necessary
-    if ( !mnLockCount || !mpData->mbRead )
+    if ( !mpData->mbRead )
     {
         ImplUpdateConfig();
         mpData->mbRead = true;
@@ -701,44 +667,35 @@ void Config::DeleteGroup(const OString& rGroup)
         pGroup = pGroup->mpNext;
     }
 
-    if ( pGroup )
+    if ( !pGroup )
+        return;
+
+    // Remove all keys
+    ImplKeyData* pTempKey;
+    ImplKeyData* pKey = pGroup->mpFirstKey;
+    while ( pKey )
     {
-        // Remove all keys
-        ImplKeyData* pTempKey;
-        ImplKeyData* pKey = pGroup->mpFirstKey;
-        while ( pKey )
-        {
-            pTempKey = pKey->mpNext;
-            delete pKey;
-            pKey = pTempKey;
-        }
-
-        // Rewire pointers and remove group
-        if ( pPrevGroup )
-            pPrevGroup->mpNext = pGroup->mpNext;
-        else
-            mpData->mpFirstGroup = pGroup->mpNext;
-        delete pGroup;
-
-        // Rewrite config data
-        if ( !mnLockCount )
-            ImplWriteConfig( mpData );
-        else
-        {
-            mpData->mbModified = true;
-        }
-
-        mnDataUpdateId = mpData->mnDataUpdateId;
-        mpData->mnDataUpdateId++;
+        pTempKey = pKey->mpNext;
+        delete pKey;
+        pKey = pTempKey;
     }
+
+    // Rewire pointers and remove group
+    if ( pPrevGroup )
+        pPrevGroup->mpNext = pGroup->mpNext;
+    else
+        mpData->mpFirstGroup = pGroup->mpNext;
+    delete pGroup;
+
+    // Rewrite config data
+    mpData->mbModified = true;
+
+    mnDataUpdateId = mpData->mnDataUpdateId;
+    mpData->mnDataUpdateId++;
 }
 
 OString Config::GetGroupName(sal_uInt16 nGroup) const
 {
-    // Update config data if necessary
-    if ( !mnLockCount )
-        ImplUpdateConfig();
-
     ImplGroupData*  pGroup = mpData->mpFirstGroup;
     sal_uInt16          nGroupCount = 0;
     OString aGroupName;
@@ -759,10 +716,6 @@ OString Config::GetGroupName(sal_uInt16 nGroup) const
 
 sal_uInt16 Config::GetGroupCount() const
 {
-    // Update config data if necessary
-    if ( !mnLockCount )
-        ImplUpdateConfig();
-
     ImplGroupData*  pGroup = mpData->mpFirstGroup;
     sal_uInt16          nGroupCount = 0;
     while ( pGroup )
@@ -776,10 +729,6 @@ sal_uInt16 Config::GetGroupCount() const
 
 bool Config::HasGroup(const OString& rGroup) const
 {
-    // Update config data if necessary
-    if ( !mnLockCount )
-        ImplUpdateConfig();
-
     ImplGroupData*  pGroup = mpData->mpFirstGroup;
     bool            bRet = false;
 
@@ -807,10 +756,6 @@ OString Config::ReadKey(const OString& rKey, const OString& rDefault) const
     SAL_INFO("tools.generic", "Config::ReadKey( " << rKey << " ) from " << GetGroup()
                       << " in " << maFileName);
 
-    // Update config data if necessary
-    if ( !mnLockCount )
-        ImplUpdateConfig();
-
     // Search key, return value if found
     ImplGroupData* pGroup = ImplGetGroup();
     if ( pGroup )
@@ -834,7 +779,7 @@ void Config::WriteKey(const OString& rKey, const OString& rStr)
                        << GetGroup() << " in " << maFileName);
 
     // Update config data if necessary
-    if ( !mnLockCount || !mpData->mbRead )
+    if ( !mpData->mbRead )
     {
         ImplUpdateConfig();
         mpData->mbRead = true;
@@ -842,53 +787,48 @@ void Config::WriteKey(const OString& rKey, const OString& rStr)
 
     // Search key and update value if found
     ImplGroupData* pGroup = ImplGetGroup();
-    if ( pGroup )
+    if ( !pGroup )
+        return;
+
+    ImplKeyData* pPrevKey = nullptr;
+    ImplKeyData* pKey = pGroup->mpFirstKey;
+    while ( pKey )
     {
-        ImplKeyData* pPrevKey = nullptr;
-        ImplKeyData* pKey = pGroup->mpFirstKey;
-        while ( pKey )
-        {
-            if ( !pKey->mbIsComment && pKey->maKey.equalsIgnoreAsciiCase(rKey) )
-                break;
+        if ( !pKey->mbIsComment && pKey->maKey.equalsIgnoreAsciiCase(rKey) )
+            break;
 
-            pPrevKey = pKey;
-            pKey = pKey->mpNext;
-        }
+        pPrevKey = pKey;
+        pKey = pKey->mpNext;
+    }
 
-        bool bNewValue;
-        if ( !pKey )
-        {
-            pKey              = new ImplKeyData;
-            pKey->mpNext      = nullptr;
-            pKey->maKey       = rKey;
-            pKey->mbIsComment = false;
-            if ( pPrevKey )
-                pPrevKey->mpNext = pKey;
-            else
-                pGroup->mpFirstKey = pKey;
-            bNewValue = true;
-        }
+    bool bNewValue;
+    if ( !pKey )
+    {
+        pKey              = new ImplKeyData;
+        pKey->mpNext      = nullptr;
+        pKey->maKey       = rKey;
+        pKey->mbIsComment = false;
+        if ( pPrevKey )
+            pPrevKey->mpNext = pKey;
         else
-            bNewValue = pKey->maValue != rStr;
+            pGroup->mpFirstKey = pKey;
+        bNewValue = true;
+    }
+    else
+        bNewValue = pKey->maValue != rStr;
 
-        if ( bNewValue )
-        {
-            pKey->maValue = rStr;
+    if ( bNewValue )
+    {
+        pKey->maValue = rStr;
 
-            if ( !mnLockCount )
-                ImplWriteConfig( mpData );
-            else
-            {
-                mpData->mbModified = true;
-            }
-        }
+        mpData->mbModified = true;
     }
 }
 
 void Config::DeleteKey(const OString& rKey)
 {
     // Update config data if necessary
-    if ( !mnLockCount || !mpData->mbRead )
+    if ( !mpData->mbRead )
     {
         ImplUpdateConfig();
         mpData->mbRead = true;
@@ -896,46 +836,36 @@ void Config::DeleteKey(const OString& rKey)
 
     // Search key and update value
     ImplGroupData* pGroup = ImplGetGroup();
-    if ( pGroup )
+    if ( !pGroup )
+        return;
+
+    ImplKeyData* pPrevKey = nullptr;
+    ImplKeyData* pKey = pGroup->mpFirstKey;
+    while ( pKey )
     {
-        ImplKeyData* pPrevKey = nullptr;
-        ImplKeyData* pKey = pGroup->mpFirstKey;
-        while ( pKey )
-        {
-            if ( !pKey->mbIsComment && pKey->maKey.equalsIgnoreAsciiCase(rKey) )
-                break;
+        if ( !pKey->mbIsComment && pKey->maKey.equalsIgnoreAsciiCase(rKey) )
+            break;
 
-            pPrevKey = pKey;
-            pKey = pKey->mpNext;
-        }
+        pPrevKey = pKey;
+        pKey = pKey->mpNext;
+    }
 
-        if ( pKey )
-        {
-            // Rewire group pointers and delete
-            if ( pPrevKey )
-                pPrevKey->mpNext = pKey->mpNext;
-            else
-                pGroup->mpFirstKey = pKey->mpNext;
-            delete pKey;
+    if ( pKey )
+    {
+        // Rewire group pointers and delete
+        if ( pPrevKey )
+            pPrevKey->mpNext = pKey->mpNext;
+        else
+            pGroup->mpFirstKey = pKey->mpNext;
+        delete pKey;
 
-            // Rewrite config file
-            if ( !mnLockCount )
-                ImplWriteConfig( mpData );
-            else
-            {
-                mpData->mbModified = true;
-            }
-        }
+        mpData->mbModified = true;
     }
 }
 
 sal_uInt16 Config::GetKeyCount() const
 {
     SAL_INFO("tools.generic", "Config::GetKeyCount() from " << GetGroup() << " in " << maFileName);
-
-    // Update config data if necessary
-    if ( !mnLockCount )
-        ImplUpdateConfig();
 
     // Search key and update value
     sal_uInt16 nCount = 0;
@@ -1010,7 +940,7 @@ OString Config::ReadKey(sal_uInt16 nKey) const
 void Config::Flush()
 {
     if ( mpData->mbModified )
-        ImplWriteConfig( mpData );
+        ImplWriteConfig( mpData.get() );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

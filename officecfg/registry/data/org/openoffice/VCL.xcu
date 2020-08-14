@@ -47,9 +47,6 @@
       <prop oor:name="CollateBox" oor:op="replace" oor:type="xs:string">
         <value>Default</value>
       </prop>
-      <prop oor:name="CollateSingleJobs" oor:op="replace" oor:type="xs:string">
-        <value>true</value>
-      </prop>
     </node>
     <node oor:name="WM" oor:op="replace">
       <prop oor:name="ShouldSwitchWorkspace" oor:op="replace" oor:type="xs:string">
@@ -63,7 +60,7 @@
         <value>Liberation Sans;Albany AMT;Albany;Arial;Arimo;Nimbus Sans L;DejaVu Sans;Helvetica;Lucida;Geneva;Helmet;Arial Unicode MS;Lucida Sans Unicode;Tahoma;SansSerif</value>
       </prop>
       <prop oor:name="CJK_DISPLAY" oor:type="xs:string" oor:op="replace">
-        <value>MS Gothic;HG Gothic J;HG Gothic B;HG Gothic;Gothic;AR PL ShanHeiSun Uni;MS PGothic;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>MS Gothic;Gothic;AR PL ShanHeiSun Uni;MS PGothic;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
       </prop>
       <prop oor:name="LATIN_HEADING" oor:type="xs:string" oor:op="replace">
         <value>Liberation Sans;Albany AMT;Albany;Arial;Arimo;Nimbus Sans L;DejaVu Sans;Helvetica;Lucida;Geneva;Helmet;Arial Unicode MS;Lucida Sans Unicode;Tahoma;SansSerif</value>
@@ -81,13 +78,13 @@
         <value>Liberation Serif;Thorndale AMT;Thorndale;Times New Roman;Tinos;Nimbus Roman No9 L;DejaVu Serif;Times;Lucida Serif;Lucida Bright;Timmons;New York;Serif</value>
       </prop>
       <prop oor:name="CJK_HEADING" oor:type="xs:string" oor:op="replace">
-        <value>HG Mincho Light J;MS Mincho;HG Mincho J;HG Mincho L;HG Mincho;Mincho;MS PMincho;HG Mincho Light J;MS Gothic;HG Gothic J;HG Gothic B;HG Gothic;Gothic;MS PGothic;AR PL ShanHeiSun Uni;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>MS Gothic;Gothic;MS PGothic;AR PL ShanHeiSun Uni;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
       </prop>
       <prop oor:name="CJK_PRESENTATION" oor:type="xs:string" oor:op="replace">
-        <value>HG Mincho Light J;MS Gothic;HG Gothic J;HG Gothic B;HG Gothic;Gothic;MS PGothic;AR PL ShanHeiSun Uni;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>MS Gothic;Gothic;MS PGothic;AR PL ShanHeiSun Uni;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
       </prop>
       <prop oor:name="CJK_SPREADSHEET" oor:type="xs:string" oor:op="replace">
-        <value>MS Gothic;HG Gothic J;HG Gothic B;HG Gothic;Gothic;MS PGothic;AR PL ShanHeiSun Uni;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>MS Gothic;Gothic;MS PGothic;AR PL ShanHeiSun Uni;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
       </prop>
       <prop oor:name="CTL_DISPLAY" oor:type="xs:string" oor:op="replace">
         <value>Tahoma;Lucidasans;Lucida Sans;Arial Unicode MS</value>
@@ -177,19 +174,19 @@
         <value>Tahoma;Arial Unicode MS;Lucida Sans Unicode;DejaVu Sans;Albany AMT;Albany;Arial;Nimbus Sans L;Interface User;Geneva;Tahoma;Dialog;Lucida;Helvetica;Helmet;Interface System;Sans Serif</value>
       </prop>
       <prop oor:name="CTL_DISPLAY" oor:type="xs:string" oor:op="replace">
-        <value>Nachlieli CLM;Miriam CLM;Ellinia CLM;Aharoni CLM;Drugulin CLM;Miriam Mono CLM;Lucida Sans Unicode;Arial Unicode MS</value>
+        <value>Nachlieli CLM;Alef;Noto Sans Hebrew;Liberation Sans;Arial;Arial Hebrew;Lucida Sans Unicode;Lucida Grande;Arial Unicode MS</value>
       </prop>
       <prop oor:name="CTL_HEADING" oor:type="xs:string" oor:op="replace">
-        <value>Nachlieli CLM;Miriam CLM;Ellinia CLM;Aharoni CLM;Drugulin CLM;Miriam Mono CLM;Lucida Sans Unicode;Arial Unicode MS</value>
+        <value>Nachlieli CLM;Alef;Noto Sans Hebrew;Liberation Sans;Arial;Arial Hebrew;Lucida Sans Unicode;Lucida Grande;Arial Unicode MS</value>
       </prop>
       <prop oor:name="CTL_PRESENTATION" oor:type="xs:string" oor:op="replace">
-        <value>Nachlieli CLM;Miriam CLM;Ellinia CLM;Aharoni CLM;Drugulin CLM;Miriam Mono CLM;Lucida Sans Unicode;Arial Unicode MS</value>
+        <value>Nachlieli CLM;Alef;Noto Sans Hebrew;Liberation Sans;Arial;Arial Hebrew;Lucida Sans Unicode;Lucida Grande;Arial Unicode MS</value>
       </prop>
       <prop oor:name="CTL_SPREADSHEET" oor:type="xs:string" oor:op="replace">
-        <value>Nachlieli CLM;Miriam CLM;Ellinia CLM;Aharoni CLM;Drugulin CLM;Miriam Mono CLM;Lucida Sans Unicode;Arial Unicode MS</value>
+        <value>Nachlieli CLM;Alef;Noto Sans Hebrew;Liberation Sans;Arial;Arial Hebrew;Lucida Sans Unicode;Lucida Grande;Arial Unicode MS</value>
       </prop>
       <prop oor:name="CTL_TEXT" oor:type="xs:string" oor:op="replace">
-        <value>Nachlieli CLM;Miriam CLM;Ellinia CLM;Aharoni CLM;Drugulin CLM;Miriam Mono CLM;Lucida Sans Unicode;Arial Unicode MS</value>
+        <value>David CLM;David Libre;Frank Ruehl CLM;Liberation Serif;David;Raanana;Lucida Sans Unicode;Lucida Grande;Arial Unicode MS</value>
       </prop>
     </node>
     <node oor:name="th" oor:op="replace">
@@ -214,232 +211,232 @@
     </node>
     <node oor:name="ja" oor:op="replace">
       <prop oor:name="CJK_TEXT" oor:type="xs:string" oor:op="replace">
-        <value>HG 明朝L Sun;HG MinchoL Sun;HG PゴシックB Sun;HG-PGothicB Sun;HG PゴシックB;HG-PGothicB;HG Mincho Light J;ＭＳ 明朝;ＭＳ Ｐ明朝;ヒラギノ明朝 ProN;ヒラギノ明朝 Pro;UmePlus Gothic;UmePlus P Gothic;TLP明朝;LX明朝;HGPMinchoL;IPA 明朝;IPA P明朝;東風明朝;Kochi Mincho;さざなみ明朝;Mincho;Serif</value>
+        <value>Noto Serif CJK JP;游明朝;ＭＳ 明朝;ＭＳ Ｐ明朝;ヒラギノ明朝 ProN;ヒラギノ明朝 Pro;IPA 明朝;IPA P明朝;Mincho;Serif</value>
       </prop>
       <prop oor:name="CJK_HEADING" oor:type="xs:string" oor:op="replace">
-        <value>HG 明朝L Sun;HG 明朝L;HG Mincho Light J;ＭＳ ゴシック;ＭＳ Ｐゴシック;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;TLPゴシック;LXゴシック;HGPGothicB;IPA ゴシック;IPA Pゴシック;東風ゴシック;さざなみゴシック;Gothic;ＭＳ 明朝;HG Mincho J;HG Mincho L;HG Mincho;Mincho;ＭＳ Ｐ明朝;HG Mincho Light J;HG Gothic J;HG Gothic B;HG Gothic;Gothic;UmePlus Gothic;UmePlus P Gothic</value>
+        <value>Noto Sans CJK JP;游ゴシック;ＭＳ ゴシック;ＭＳ Ｐゴシック;ヒラギノ角ゴシック;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;IPA ゴシック;IPA Pゴシック;Gothic;ＭＳ 明朝;Mincho;ＭＳ Ｐ明朝;Gothic</value>
       </prop>
       <prop oor:name="CJK_PRESENTATION" oor:type="xs:string" oor:op="replace">
-        <value>HG PゴシックB Sun;HG-PGothicB Sun;HG PゴシックB;ヒラギノ明朝 ProN;ヒラギノ明朝 Pro;HG-PGothicB;HG-GothicB;HG Mincho Light J;ＭＳ Ｐゴシック;TLPゴシック;LXゴシック;HGPGothicB;IPA Pゴシック;東風ゴシック;さざなみゴシック;ＭＳ ゴシック;ＭＳ Ｐゴシック;HG Gothic;HG Gothic B;UmePlus P Gothic;Gothic</value>
+        <value>Noto Sans CJK JP;ヒラギノ角ゴシック;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;游ゴシック;ＭＳ Ｐゴシック;IPA Pゴシック;ＭＳ ゴシック;ＭＳ Ｐゴシック;Gothic</value>
       </prop>
       <prop oor:name="LATIN_PRESENTATION" oor:type="xs:string" oor:op="replace">
-        <value>Andale;Arial</value>
+        <value>Noto Sans CJK JP;ヒラギノ角ゴシック;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;游ゴシック;ＭＳ Ｐゴシック;IPA Pゴシック;ＭＳ ゴシック;ＭＳ Ｐゴシック;Gothic</value>
       </prop>
       <prop oor:name="CJK_SPREADSHEET" oor:type="xs:string" oor:op="replace">
-        <value>HG PゴシックB Sun;HG-PGothicB Sun;HG PゴシックB;HG-PGothicB;ＭＳ Ｐゴシック;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;TLPゴシック;LXゴシック;ヒラギノ明朝 ProN;ヒラギノ明朝 Pro;HGPGothicB;IPA Pゴシック;東風ゴシック;さざなみゴシック;UmePlus P Gothic;Kochi Gothic;HG Gothic J;HG Gothic B;HG Gothic;Gothic</value>
+        <value>Noto Sans CJK JP;游ゴシック;ＭＳ Ｐゴシック;ヒラギノ角ゴシック;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;IPA Pゴシック;Gothic</value>
       </prop>
       <prop oor:name="LATIN_SPREADSHEET" oor:type="xs:string" oor:op="replace">
-        <value>HG PゴシックB Sun;HG-PGothicB Sun;HG PゴシックB;HG-PGothicB;ＭＳ Ｐゴシック;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;TLPゴシック;LXゴシック;HGPGothicB;IPA Pゴシック;東風ゴシック;MS Gothic;HG Gothic J;HG Gothic B;HG Gothic;Kochi Gothic;MS PGothic;UmePlus P Gothic;Gothic</value>
+        <value>Noto Sans CJK JP;游ゴシック;ＭＳ Ｐゴシック;ヒラギノ角ゴシック;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;IPA Pゴシック;MS Gothic;MS PGothic;Gothic</value>
       </prop>
       <prop oor:name="UI_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>HG ゴシックB Sun;HG-GothicB Sun;HG Mincho Light J;ＭＳ Ｐゴシック;Osaka;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;TLPゴシック;LXゴシック;HGPGothicB;IPA Pゴシック;東風ゴシック;さざなみゴシック;Kochi Gothic;UmePlus Gothic;Gothic</value>
+        <value>Noto Sans Mono CJK JP;Yu Gothic UI;ＭＳ ゴシック;Osaka;ヒラギノ角ゴシック;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;IPAゴシック;Gothic</value>
       </prop>
       <prop oor:name="FIXED" oor:type="xs:string" oor:op="replace">
-        <value>HG ゴシックB Sun;HG-GothicB Sun;HG ゴシックB;HG Mincho Light J;ＭＳ Ｐゴシック;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;TLPゴシック;LXゴシック;HGPGothicB;IPA Pゴシック;東風ゴシック;さざなみゴシック;Kochi Gothic;UmePlus Gothic;Gothic</value>
+        <value>Noto Sans Mono CJK JP:ＭＳ ゴシック;ヒラギノ角ゴシック;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;IPAゴシック;Gothic</value>
       </prop>
       <prop oor:name="UI_SANS" oor:type="xs:string" oor:op="replace">
-        <value>HG PゴシックB Sun;Osaka;ヒラギノ角ゴ ProN;ヒラギノ角ゴ Pro;HG-PGothicB Sun;HG PゴシックB;HG-PGothicB;HG-GothicB;UmePlus P Gothic;HG Mincho Light J;標準;TLPゴシック;LXゴシック;HGPGothicB;IPA Pゴシック;東風ゴシック;さざなみゴシック;Kochi Gothic;Gothic;Gnu-Unifont</value>
+        <value>IPA Pゴシック;IPA P Gothic;Noto Sans CJK JP;Yu Gothic UI;Meiryo UI;ヒラギノ角ゴシック;ヒラギノ角ゴ ProN;Hiragino Kaku Gothic ProN;ヒラギノ角ゴ Pro;Hiragino Kaku Gothic Pro</value>
       </prop>
       <prop oor:name="LATIN_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>hgmincholightj;cumberlandamt;cumberland;couriernew;nimbusmonol;courier;lucidasanstypewriter;lucidatypewriter;monaco;monospaced</value>
+        <value>cumberlandamt;cumberland;couriernew;nimbusmonol;courier;lucidasanstypewriter;lucidatypewriter;monaco;monospaced</value>
       </prop>
     </node>
     <node oor:name="zh-cn" oor:op="replace">
-      <prop oor:name="CJK_DISPLAY" oor:type="xs:string" oor:op="replace">
-        <value>微软雅黑;方正宋体;ZYSong18030;AR PL SungtiL GB;MSung Light SC;SimSun;Song;FZSongYi;FZShuSong;NSimSun;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
-      </prop>
       <prop oor:name="LATIN_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>方正宋体;ZYSong18030;AR PL SungtiL GB;新宋体;NSimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;MSung Light SC;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑体 HW;Source Han Sans HW SC;思源黑体 CN;Source Han Sans CN;Noto Sans Mono CJK SC;新宋体;NSimSun;Liberation Mono;Menlo;Courier New;Monospaced</value>
+      </prop>
+      <prop oor:name="CJK_DISPLAY" oor:type="xs:string" oor:op="replace">
+        <value>思源黑体;Source Han Sans SC;思源黑体 CN;Source Han Sans CN;Noto Sans CJK SC;微软雅黑;Microsoft Yahei;新宋体;NSimSun;萍方-简;PingFang SC;华文细黑;STXihei;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_HEADING" oor:type="xs:string" oor:op="replace">
-        <value>微软雅黑;方正黑体;方正宋体;ZYSong18030;AR PL SungtiL GB;宋体;SimSun;黑体;文鼎PL中楷Uni;AR PL ZenKai Uni;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;MSung Light SC;Song;FZSongYi;FZShuSong;NSimSun;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑体;Source Han Sans SC;思源黑体 CN;Source Han Sans CN;Noto Sans CJK SC;微软雅黑;Microsoft Yahei;新宋体;NSimSun;萍方-简;PingFang SC;华文细黑;STXihei;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_PRESENTATION" oor:type="xs:string" oor:op="replace">
-        <value>微软雅黑;方正宋体;ZYSong18030;AR PL SungtiL GB;宋体;SimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;MSung Light SC;Song;FZSongYi;FZShuSong;NSimSun;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑体;Source Han Sans SC;思源黑体 CN;Source Han Sans CN;Noto Sans CJK SC;微软雅黑;Microsoft Yahei;新宋体;NSimSun;萍方-简;PingFang SC;华文细黑;STXihei;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_SPREADSHEET" oor:type="xs:string" oor:op="replace">
-        <value>微软雅黑;方正宋体;ZYSong18030;AR PL SungtiL GB;宋体;SimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;MSung Light SC;Song;FZSongYi;FZShuSong;NSimSun;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑体;Source Han Sans SC;思源黑体 CN;Source Han Sans CN;Noto Sans CJK SC;微软雅黑;Microsoft Yahei;新宋体;NSimSun;萍方-简;PingFang SC;华文细黑;STXihei;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_TEXT" oor:type="xs:string" oor:op="replace">
-        <value>方正宋体;ZYSong18030;AR PL SungtiL GB;SimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;MSung Light SC;Song;FZSongYi;FZShuSong;NSimSun;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源宋体;Source Han Serif SC;思源宋体 CN;Source Han Serif CN;Noto Serif CJK SC;新宋体;NSimSun;宋体;SimSun;华文宋体;Songti SC;STSong;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="UI_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>方正宋体;ZYSong18030;AR PL SungtiL GB;新宋体;NSimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;MSung Light SC;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑体 HW;Source Han Sans HW SC;思源黑体 CN;Source Han Sans CN;Noto Sans Mono CJK SC;新宋体;NSimSun;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="FIXED" oor:type="xs:string" oor:op="replace">
-        <value>方正宋体;ZYSong18030;AR PL SungtiL GB;新宋体;NSimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;MSung Light SC;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑体 HW;Source Han Sans HW SC;思源黑体 CN;Source Han Sans CN;Noto Sans Mono CJK SC;新宋体;NSimSun;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="UI_SANS" oor:type="xs:string" oor:op="replace">
-        <value>方正宋体;ZYSong18030;AR PL SungtiL GB;SimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;ZYSong18030;AR PL SungtiL GB;AR PL KaitiM GB;SimSun;Arial Unicode MS;Fangsong;Hei;Song;Kai;Ming;gnu-unifont;Interface User;Geneva;Tahoma;Dialog;Albany AMT;Albany;Lucida;Arial;Nimbus Sans L;Helvetica;Helmet;Interface System;Sans Serif</value>
+        <value>思源黑体;Source Han Sans SC;思源黑体 CN;Source Han Sans CN;Noto Sans CJK SC;微软雅黑;Microsoft Yahei;新宋体;NSimSun;宋体;SimSun;萍方-简;PingFang SC;华文细黑;STXihei;Segoe UI;Tahoma;San Francisco;Lucida Grande;Sans Serif</value>
       </prop>
     </node>
     <node oor:name="zh-tw" oor:op="replace">
       <prop oor:name="LATIN_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛等寬微米黑;細明體;MingLiU;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑體 HW;Source Han Sans HW TC;Noto Sans Mono CJK TC;細明體;MingLiU;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="CJK_DISPLAY" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;PMingLiU;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體;Source Han Sans TC;Noto Sans CJK TC;蘋方-繁;PingFang TC;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_HEADING" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;PMingLiU;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體;Source Han Sans TC;Noto Sans CJK TC;蘋方-繁;PingFang TC;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_PRESENTATION" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;MingLiU;Ming;PMingLiU;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體;Source Han Sans TC;Noto Sans CJK TC;蘋方-繁;PingFang TC;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_SPREADSHEET" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;PMingLiU;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體;Source Han Sans TC;Noto Sans CJK TC;蘋方-繁;PingFang TC;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_TEXT" oor:type="xs:string" oor:op="replace">
-        <value>AR PL UMing TW;儷宋 Pro;LiSong Pro;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;新細明體;PMingLiU;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源宋體;Source Han Serif TC;Noto Serif CJK TC;宋體-繁;Songti TC;儷宋 Pro;LiSong Pro;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="UI_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛等寬微米黑;細明體;MingLiU;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑體 HW;Source Han Sans HW TC;Noto Sans Mono CJK TC;細明體;MingLiU;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="FIXED" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛等寬微米黑;細明體;MingLiU;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑體 HW;Source Han Sans HW TC;Noto Sans Mono CJK TC;細明體;MingLiU;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="UI_SANS" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;PMingLiU;Kai;Arial Unicode MS;Ming;gnu-unifont;Interface User;Geneva;Tahoma;Dialog;Albany AMT;Albany;Lucida;Arial;Nimbus Sans L;Helvetica;Helmet;Interface System;Sans Serif</value>
+        <value>思源黑體;Source Han Sans TC;Noto Sans CJK TC;蘋方-繁;PingFang TC;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Segoe UI;Tahoma;San Francisco;Lucida Grande;Sans Serif</value>
       </prop>
     </node>
     <node oor:name="zh-mo" oor:op="replace">
       <prop oor:name="LATIN_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛等寬微米黑;細明體;MingLiU;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑體 香港 HW;Source Han Sans HW HC;Noto Sans Mono CJK HK;細明體;MingLiU;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="CJK_DISPLAY" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體 香港;Source Han Sans HC;Noto Sans CJK HK;蘋方-港;PingFang HK;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_HEADING" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;PMingLiU;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體 香港;Source Han Sans HC;Noto Sans CJK HK;蘋方-港;PingFang HK;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_PRESENTATION" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;MingLiU;Ming;PMingLiU;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體 香港;Source Han Sans HC;Noto Sans CJK HK;蘋方-港;PingFang HK;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_SPREADSHEET" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;PMingLiU;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體 香港;Source Han Sans HC;Noto Sans CJK HK;蘋方-港;PingFang HK;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_TEXT" oor:type="xs:string" oor:op="replace">
-        <value>AR PL UMing HK;儷宋 Pro;LiSong Pro;新細明體;PMingLiU;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源宋體;Source Han Serif TC;Noto Serif CJK TC;宋體-繁;Songti TC;儷宋 Pro;LiSong Pro;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="UI_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛等寬微米黑;細明體;MingLiU;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑體 香港 HW;Source Han Sans HW HC;Noto Sans Mono CJK HK;細明體;MingLiU;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="FIXED" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛等寬微米黑;細明體;MingLiU;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑體 香港 HW;Source Han Sans HW HC;Noto Sans Mono CJK HK;細明體;MingLiU;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="UI_SANS" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;PMingLiU;Kai;Arial Unicode MS;Ming;gnu-unifont;Interface User;Geneva;Tahoma;Dialog;Albany AMT;Albany;Lucida;Arial;Nimbus Sans L;Helvetica;Helmet;Interface System;Sans Serif</value>
+        <value>思源黑體 香港;Source Han Sans HC;Noto Sans CJK HK;蘋方-港;PingFang HK;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Segoe UI;Tahoma;San Francisco;Lucida Grande;Sans Serif</value>
       </prop>
     </node>
     <node oor:name="zh-hk" oor:op="replace">
       <prop oor:name="LATIN_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛等寬微米黑;細明體;MingLiU;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑體 香港 HW;Source Han Sans HW HC;Noto Sans Mono CJK HK;細明體;MingLiU;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="CJK_DISPLAY" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體 香港;Source Han Sans HC;Noto Sans CJK HK;蘋方-港;PingFang HK;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_HEADING" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;PMingLiU;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體 香港;Source Han Sans HC;Noto Sans CJK HK;蘋方-港;PingFang HK;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_PRESENTATION" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;MingLiU;Ming;PMingLiU;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體 香港;Source Han Sans HC;Noto Sans CJK HK;蘋方-港;PingFang HK;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_SPREADSHEET" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;PMingLiU;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑體 香港;Source Han Sans HC;Noto Sans CJK HK;蘋方-港;PingFang HK;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_TEXT" oor:type="xs:string" oor:op="replace">
-        <value>AR PL UMing HK;儷宋 Pro;LiSong Pro;新細明體;PMingLiU;MingLiU;Ming;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源宋體;Source Han Serif TC;Noto Serif CJK TC;宋體-繁;Songti TC;儷宋 Pro;LiSong Pro;新細明體;PMingLiU;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="UI_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛等寬微米黑;細明體;MingLiU;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑體 香港 HW;Source Han Sans HW HC;Noto Sans Mono CJK HK;細明體;MingLiU;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="FIXED" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛等寬微米黑;細明體;MingLiU;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑體 香港 HW;Source Han Sans HW HC;Noto Sans Mono CJK HK;細明體;MingLiU;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="UI_SANS" oor:type="xs:string" oor:op="replace">
-        <value>文泉驛微米黑;黑體-繁;Heiti TC;儷黑 Pro;LiHei Pro;微軟正黑體;新細明體;PMingLiU;Kai;Arial Unicode MS;Ming;gnu-unifont;Interface User;Geneva;Tahoma;Dialog;Albany AMT;Albany;Lucida;Arial;Nimbus Sans L;Helvetica;Helmet;Interface System;Sans Serif</value>
+        <value>思源黑體 香港;Source Han Sans HC;Noto Sans CJK HK;蘋方-港;PingFang HK;儷黑 Pro;LiHei Pro;微軟正黑體;Microsoft JhengHei;新細明體;PMingLiU;Segoe UI;Tahoma;San Francisco;Lucida Grande;Sans Serif</value>
       </prop>
     </node>
     <node oor:name="zh-sg" oor:op="replace">
       <prop oor:name="LATIN_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>方正宋体;ZYSong18030;AR PL SungtiL GB;新宋体;NSimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;MSung Light TC;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑体 HW;Source Han Sans HW SC;思源黑体 CN;Source Han Sans CN;Noto Sans Mono CJK SC;新宋体;NSimSun;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="CJK_DISPLAY" oor:type="xs:string" oor:op="replace">
-        <value>微软雅黑;方正宋体;ZYSong18030;AR PL SungtiL GB;宋体;SimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;Song;FZSongYi;FZShuSong;MSung Light TC;MingLiU;Ming;PMingLiU;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑体;Source Han Sans SC;思源黑体 CN;Source Han Sans CN;Noto Sans CJK SC;微软雅黑;Microsoft Yahei;新宋体;NSimSun;萍方-简;PingFang SC;华文细黑;STXihei;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_HEADING" oor:type="xs:string" oor:op="replace">
-        <value>微软雅黑;方正黑体;方正宋体;ZYSong18030;AR PL SungtiL GB;宋体;SimSun;文鼎PL中楷Uni;AR PL ZenKai Uni;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;Song;FZSongYi;FZShuSong;MSung Light TC;MingLiU;Ming;PMingLiU;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑体;Source Han Sans SC;思源黑体 CN;Source Han Sans CN;Noto Sans CJK SC;微软雅黑;Microsoft Yahei;新宋体;NSimSun;萍方-简;PingFang SC;华文细黑;STXihei;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_PRESENTATION" oor:type="xs:string" oor:op="replace">
-        <value>微软雅黑;方正宋体;ZYSong18030;AR PL SungtiL GB;SimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;Song;FZSongYi;FZShuSong;MSung Light TC;MingLiU;Ming;PMingLiU;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑体;Source Han Sans SC;思源黑体 CN;Source Han Sans CN;Noto Sans CJK SC;微软雅黑;Microsoft Yahei;新宋体;NSimSun;萍方-简;PingFang SC;华文细黑;STXihei;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_SPREADSHEET" oor:type="xs:string" oor:op="replace">
-        <value>微软雅黑;方正宋体;ZYSong18030;AR PL SungtiL GB;SimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;Song;FZSongYi;FZShuSong;MSung Light TC;MingLiU;Ming;PMingLiU;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源黑体;Source Han Sans SC;思源黑体 CN;Source Han Sans CN;Noto Sans CJK SC;微软雅黑;Microsoft Yahei;新宋体;NSimSun;萍方-简;PingFang SC;华文细黑;STXihei;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="CJK_TEXT" oor:type="xs:string" oor:op="replace">
-        <value>微软雅黑;方正宋体;ZYSong18030;AR PL SungtiL GB;宋体;SimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;Song;FZSongYi;FZShuSong;MSung Light TC;MingLiU;Ming;PMingLiU;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>思源宋体;Source Han Serif SC;思源宋体 CN;Source Han Serif CN;Noto Serif CJK SC;新宋体;NSimSun;宋体;SimSun;华文宋体;Songti SC;STSong;Arial Unicode MS;Tahoma</value>
       </prop>
       <prop oor:name="UI_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>方正宋体;ZYSong18030;AR PL SungtiL GB;新宋体;NSimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;MSung Light TC;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑体 HW;Source Han Sans HW SC;思源黑体 CN;Source Han Sans CN;Noto Sans Mono CJK SC;新宋体;NSimSun;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="FIXED" oor:type="xs:string" oor:op="replace">
-        <value>方正宋体;ZYSong18030;AR PL SungtiL GB;新宋体;NSimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;MSung Light TC;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>思源黑体 HW;Source Han Sans HW SC;思源黑体 CN;Source Han Sans CN;Noto Sans Mono CJK SC;新宋体;NSimSun;Liberation Mono;Menlo;Courier New;Monospaced</value>
       </prop>
       <prop oor:name="UI_SANS" oor:type="xs:string" oor:op="replace">
-        <value>方正宋体;ZYSong18030;AR PL SungtiL GB;SimSun;文鼎PL细上海宋Uni;AR PL ShanHeiSun Uni;文鼎ＰＬ新宋;AR PL New Sung;ZYSong18030;AR PL SungtiL GB;AR PL KaitiM GB;SimSun;Arial Unicode MS;Fangsong;Hei;Song;Kai;Ming;gnu-unifont;Interface User;Geneva;Tahoma;Dialog;Albany AMT;Albany;Lucida;Arial;Nimbus Sans L;Helvetica;Helmet;Interface System;Sans Serif</value>
+        <value>思源黑体;Source Han Sans SC;思源黑体 CN;Source Han Sans CN;Noto Sans CJK SC;微软雅黑;Microsoft Yahei;新宋体;NSimSun;宋体;SimSun;萍方-简;PingFang SC;华文细黑;STXihei;Segoe UI;Tahoma;San Francisco;Lucida Grande;Sans Serif</value>
       </prop>
     </node>
     <node oor:name="ko-kr" oor:op="replace">
       <prop oor:name="LATIN_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>썬굴림;SunGulim;Baekmuk Gulim;굴림;Gulim;Baekmuk Batang;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>Noto Sans Mono CJK KR;Noto Sans Mono KR;Source Han Mono KR;Source Han Mono;D2 Coding;Nanum Gothic Coding;Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
       </prop>
       <prop oor:name="LATIN_DISPLAY" oor:type="xs:string" oor:op="replace">
-        <value>썬돋움;SunDotum;Baekmuk Dotum;돋움;Dotum;썬굴림;SunGulim;Baekmuk Gulim;굴림;Gulim;Baekmuk Batang;Roundgothic;Albany AMT;Albany;Arial;Nimbus Sans L;Helvetica;Lucida;Geneva;Helmet;Arial Unicode MS;Lucida Sans Unicode;Tahoma;SansSerif</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Albany AMT;Albany;Arial;Nimbus Sans L;Helvetica;Lucida;Geneva;Helmet;Arial Unicode MS;Lucida Sans Unicode;Tahoma;SansSerif</value>
       </prop>
       <prop oor:name="LATIN_HEADING" oor:type="xs:string" oor:op="replace">
-        <value>썬바탕;SunBatang;Baekmuk Batang;바탕;Batang;Myeongjo;썬굴림;SunGulim;Baekmuk Gulim;굴림;Gulim;Baekmuk Batang;Roundgothic;Albany AMT;Albany;Arial;Nimbus Sans L;Helvetica;Lucida;Geneva;Helmet;Arial Unicode MS;Lucida Sans Unicode;Tahoma;SansSerif</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Albany AMT;Albany;Arial;Nimbus Sans L;Helvetica;Lucida;Geneva;Helmet;Arial Unicode MS;Lucida Sans Unicode;Tahoma;SansSerif</value>
       </prop>
       <prop oor:name="LATIN_PRESENTATION" oor:type="xs:string" oor:op="replace">
-        <value>썬굴림;SunGulim;Baekmuk Gulim;굴림;Gulim;Batang;Myeongjo;Gulim;Baekmuk Batang;Roundgothic;Thorndale AMT;Thorndale;Times New Roman;Nimbus Roman No9 L;Times;Lucida Serif;Lucida Bright;Timmons;New York;Serif;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Thorndale AMT;Thorndale;Times New Roman;Nimbus Roman No9 L;Times;Lucida Serif;Lucida Bright;Timmons;New York;Serif;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
       </prop>
       <prop oor:name="LATIN_SPREADSHEET" oor:type="xs:string" oor:op="replace">
-        <value>썬돋움;SunDotum;Baekmuk Dotum;돋움;Dotum;백묵돋움;BaekmukDotum;Batang;Myeongjo;썬굴림;SunGulim;Baekmuk Gulim;Gulim;Baekmuk Batang;Roundgothic</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim</value>
       </prop>
       <prop oor:name="LATIN_TEXT" oor:type="xs:string" oor:op="replace">
-        <value>썬바탕;SunBatang;Baekmuk Batang;Batang;Myeongjo;썬굴림;SunGulim;Baekmuk Gulim;Gulim;Baekmuk Batang;Roundgothic;Thorndale AMT;Thorndale;Times New Roman;Nimbus Roman No9 L;Times;Lucida Serif;Lucida Bright;Timmons;New York;Serif;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
+        <value>Noto Serif CJK KR;Noto Serif KR;Source Han Serif KR;나눔명조;NanumMyeongjo;나눔명조 옛한글;NanumMyeongjo YetHangul;KoPubWorld바탕체;KoPubWorld Batang;KoPub바탕체;애플명조;AppleMyungjo;바탕;Batang;명조;Myeongjo;은 바탕;UnBatang;백묵 바탕;Baekmuk Batang;백묵 명조;Baekmuk Myeongjo;Thorndale AMT;Thorndale;Times New Roman;Nimbus Roman No9 L;Times;Lucida Serif;Lucida Bright;Timmons;New York;Serif;Arial Unicode MS;Lucida Sans Unicode;Tahoma</value>
       </prop>
       <prop oor:name="SANS" oor:type="xs:string" oor:op="replace">
-        <value>썬돋움;SunDotum;Baekmuk Dotum;돋움;Dotum;바탕;Batang;Myeongjo;썬굴림;SunGulim;Baekmuk Gulim;굴림;Gulim;Baekmuk Batang;Roundgothic;Albany AMT;Albany;Arial;Nimbus Sans L;Helvetica;Lucida;Geneva;Helmet;Arial Unicode MS;Lucida Sans Unicode;Tahoma;SansSerif</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Albany AMT;Albany;Arial;Nimbus Sans L;Helvetica;Lucida;Geneva;Helmet;Arial Unicode MS;Lucida Sans Unicode;Tahoma;SansSerif</value>
       </prop>
       <prop oor:name="SANS_UNICODE" oor:type="xs:string" oor:op="replace">
-        <value>썬굴림;SunGulim;Baekmuk Gulim;굴림;Gulim;Baekmuk Batang;Arial Unicode MS;Lucida Sans Unicode;Tahoma;Albany AMT;Albany;Arial;Nimbus Sans L;Helvetica;Lucida;Geneva;Helmet;SansSerif</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans CJK KR;Baekmuk Gulim;굴림;Gulim;Baekmuk Batang;Arial Unicode MS;Lucida Sans Unicode;Tahoma;Albany AMT;Albany;Arial;Nimbus Sans L;Helvetica;Lucida;Geneva;Helmet;SansSerif</value>
       </prop>
       <prop oor:name="SERIF" oor:type="xs:string" oor:op="replace">
-        <value>썬굴림;SunGulim;Baekmuk Gulim;굴림;Gulim;Batang;Myeongjo;Gulim;Baekmuk Batang;Roundgothic;Thorndale AMT;Thorndale;Times New Roman;Nimbus Roman No9 L;Times;Lucida Serif;Lucida Bright;Timmons;New York;Serif</value>
+        <value>Noto Serif CJK KR;Noto Serif KR;Source Han Serif KR;나눔명조;NanumMyeongjo;나눔명조 옛한글;NanumMyeongjo YetHangul;KoPubWorld바탕체;KoPubWorld Batang;KoPub바탕체;애플명조;AppleMyungjo;바탕;Batang;명조;Myeongjo;은 바탕;UnBatang;백묵 바탕;Baekmuk Batang;백묵 명조;Baekmuk Myeongjo;Thorndale AMT;Thorndale;Times New Roman;Nimbus Roman No9 L;Times;Lucida Serif;Lucida Bright;Timmons;New York;Serif</value>
       </prop>
       <prop oor:name="CJK_DISPLAY" oor:type="xs:string" oor:op="replace">
-        <value>썬굴림;SunGulim;Baekmuk Gulim;굴림;Gulim;Baekmuk Batang;Roundgothic;Arial Unicode MS</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Arial Unicode MS</value>
       </prop>
       <prop oor:name="CJK_HEADING" oor:type="xs:string" oor:op="replace">
-        <value>썬바탕;SunBatang;Baekmuk Batang;바탕;Batang;Myeongjo;썬굴림;SunGulim;Baekmuk Gulim;Gulim;Baekmuk Batang;Roundgothic;Arial Unicode MS;Lucida Sans Unicode</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Arial Unicode MS;Lucida Sans Unicode</value>
       </prop>
       <prop oor:name="CJK_PRESENTATION" oor:type="xs:string" oor:op="replace">
-        <value>썬굴림;SunGulim;Baekmuk Gulim;굴림;Gulim;바탕;Batang;Baekmuk Batang;Myeongjo;Gulim;Roundgothic;Arial Unicode MS;Lucida Sans Unicode</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Arial Unicode MS;Lucida Sans Unicode</value>
       </prop>
       <prop oor:name="CJK_SPREADSHEET" oor:type="xs:string" oor:op="replace">
-        <value>썬돋움;SunDotum;Baekmuk Dotum;돋움;Dotum;바탕;Batang;Myeongjo;썬굴림;SunGulim;Baekmuk Gulim;Baekmuk Batang;Gulim;Roundgothic;Arial Unicode MS;Lucida Sans Unicode</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Arial Unicode MS;Lucida Sans Unicode</value>
       </prop>
       <prop oor:name="CJK_TEXT" oor:type="xs:string" oor:op="replace">
-        <value>썬바탕;SunBatang;Baekmuk Batang;바탕;Batang;Myeongjo;썬굴림;SunGulim;Baekmuk Gulim;Gulim;Baekmuk Batang;Roundgothic;Arial Unicode MS;Lucida Sans Unicode</value>
+        <value>Noto Serif CJK KR;Noto Serif KR;Source Han Serif KR;Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔명조;NanumMyeongjo;나눔명조 옛한글;NanumMyeongjo YetHangul;나눔고딕;NanumGothic;KoPubWorld바탕체;KoPubWorld Batang;KoPub바탕체;맑은 고딕;Malgun Gothic;애플명조;AppleMyungjo;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;바탕;Batang;명조;Myeongjo;돋음;Dotum;굴림;Gulim;은 바탕;UnBatang;백묵 바탕;Baekmuk Batang;백묵 명조;Baekmuk Myeongjo;Arial Unicode MS;Lucida Sans Unicode</value>
       </prop>
       <prop oor:name="UI_FIXED" oor:type="xs:string" oor:op="replace">
-        <value>썬굴림;SunGulim;Baekmuk Gulim;굴림;Gulim;Baekmuk Batang;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
       </prop>
       <prop oor:name="UI_SANS" oor:type="xs:string" oor:op="replace">
-        <value>썬굴림;sungulim;굴림;Gulim;Baekmuk Batang;RoundGothic;Arial Unicode MS;Lucida Sans Unicode;AndaleSansUI;GNU-Unifont</value>
+        <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Arial Unicode MS;Lucida Sans Unicode;AndaleSansUI;GNU-Unifont</value>
       </prop>
       <prop oor:name="FIXED" oor:type="xs:string" oor:op="replace">
-        <value>썬굴림;SunGulim;Baekmuk Gulim;굴림;Gulim;Baekmuk Batang;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
+        <value>Noto Sans Mono CJK KR;Mto Sans Mono KR;Source Han Mono KR;Source Han Mono;D2 Coding;Nanum Gothic Coding;Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;Cumberland AMT;Cumberland;Courier New;Nimbus Mono L;Courier;Lucida Sans Typewriter;Lucida Typewriter;Monaco;Monospaced</value>
       </prop>
     </node>
     <node oor:name="bn" oor:op="replace">
@@ -1238,7 +1235,7 @@
       </node>
       <node oor:name="batang" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>썬바탕;sunbatang;baekmukbatang;썬굴림;sungulim;hymyeongjolightk;myeongjo;batangche;gungsuh;gungsuhche;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>Noto Serif CJK KR;Noto Serif KR;Source Han Serif KR;나눔명조;NanumMyeongjo;나눔명조 옛한글;NanumMyeongjo YetHangul;KoPubWorld바탕체;KoPubWorld Batang;KoPub바탕체;애플명조;AppleMyungjo;바탕;Batang;명조;Myeongjo;은 바탕;UnBatang;백묵 바탕;Baekmuk Batang;백묵 명조;Baekmuk Myeongjo;andalesansui;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value>바탕</value>
@@ -1259,32 +1256,9 @@
           <value>Standard,CJK,CJK_KR</value>
         </prop>
       </node>
-      <node oor:name="sunbatang" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬바탕;batang;baekmukbatang;myeongjo;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;썬굴림;sungulim;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>바탕;batang</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>Default,Standard,CJK,CJK_KR</value>
-        </prop>
-      </node>
       <node oor:name="batangche" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>썬바탕;sunbatang;baekmukbatang;썬굴림;sungulim;myeongjo;batang;gungsuh;gungsuhche;myeomjo;gulim;gulimche;썬돋움;sundotum;hymyeongjolightk;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>Noto Serif CJK KR;Noto Serif KR;Source Han Serif KR;나눔명조;NanumMyeongjo;나눔명조 옛한글;NanumMyeongjo YetHangul;KoPubWorld바탕체;KoPubWorld Batang;KoPub바탕체;애플명조;AppleMyungjo;바탕;Batang;명조;Myeongjo;은 바탕;UnBatang;백묵 바탕;Baekmuk Batang;백묵 명조;Baekmuk Myeongjo;andalesansui;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -2402,33 +2376,10 @@
       </node>
       <node oor:name="dotum" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>썬돋움;sundotum;baekmukdotum;gulim;gulimche;dotum;dotumche;roundgothic;kodig;andalesansui;썬굴림;sungulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;andalesansui;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>Standard,CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="sundotum" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬돋움;baekmukdotum;dotum;dotumche;gulim;gulimche;roundgothic;kodig;썬굴림;sungulim;hygothicmedium;hygraphicmedium;hymyeongjolightk;haansoftdotum;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>돋움;dotum</value>
         </prop>
         <prop oor:name="SubstFontsPS">
           <value/>
@@ -2448,30 +2399,7 @@
       </node>
       <node oor:name="dotumche" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>썬돋움;sundotum;baekmukdotum;gulim;gulimche;dotum;dotumche;roundgothic;kodig;andalesansui;썬굴림;sungulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hygothic" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬돋움;sundotum;baekmukdotum;gulim;gulimche;dotum;dotumche;roundgothic;kodig;andalesansui;썬굴림;sungulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;andalesansui;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -2494,30 +2422,7 @@
       </node>
       <node oor:name="haansoftdotum" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>썬돋움;sundotum;baekmukdotum;gulim;gulimche;dotum;dotumche;roundgothic;kodig;andalesansui;썬굴림;sungulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hygraphic" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬돋움;sundotum;gulim;gulimche;dotum;dotumche;roundgothic;kodig;andalesansui;썬굴림;sungulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;andalesansui;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -3069,7 +2974,7 @@
       </node>
       <node oor:name="gothic" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hggothicbsun;msgothic;mspgothic;hiraginominchopronw3;hiraginominchoprow3;hggothic;hggothicb;hggothice;ipagothic;kochigothic;sazanamigothic;andalesansui;gothic;hgmincholightj;msmincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;centurygothic;avantgarde;itcavantgarde;gothic;avantgardegothic;conga;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>msgothic;mspgothic;ipagothic;gothic;centurygothic;avantgarde;itcavantgarde;avantgardegothic;conga;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value>msgothic</value>
@@ -3092,7 +2997,7 @@
       </node>
       <node oor:name="gothicb" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hggothicbsun;msgothic;mspgothic;hggothic;hggothicb;hggothice;ipagothic;kochigothic;sazanamigothic;andalesansui;gothic;hgmincholightj;msmincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>msgothic;mspgothic;ipagothic;gothic;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value>msgothic</value>
@@ -3115,7 +3020,7 @@
       </node>
       <node oor:name="gothicl" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>msgothic;mspgothic;hggothic;hggothicb;hggothice;ipapgothic;sazanamigothic;kochigothic;andalesansui;gothic;hgmincholightj;msmincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;centurygothic;avantgarde;itcavantgarde;gothic;avantgardegothic;conga;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>msgothic;mspgothic;ipapgothic;gothic;centurygothic;avantgarde;itcavantgarde;avantgardegothic;conga;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value>msgothic</value>
@@ -3138,7 +3043,7 @@
       </node>
       <node oor:name="gulim" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>썬굴림;sungulim;baekmukgulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;andalesansui;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -3161,30 +3066,7 @@
       </node>
       <node oor:name="gulimche" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>썬굴림;sungulim;baekmukgulim;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="newgulim" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬굴림;sungulim;gulimche;baekmukgulim;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>Noto Sans CJK KR;Noto Sans KR;Source Han Sans KR;나눔고딕;NanumGothic;나눔바른고딕;NanumBarunGothic;나눔바른고딕 옛한글;NanumBarunGothic YetHangul;KoPubWorld돋움체;KoPubWorld Dotum;KoPub돋움체;맑은 고딕;Malgun Gothic;애플 SD 산돌고딕 Neo;Apple SD Gothic Neo;돋음;Dotum;굴림;Gulim;애플고딕;Apple Gothic;은 돋음;UnDotum;백묵 굴림;Baekmuk Gulim;andalesansui;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -3207,7 +3089,7 @@
       </node>
       <node oor:name="gungsuh" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>썬궁서;sungungseo;썬굴림;sungulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>궁서;gungsuh;궁서체;gungsuhche;은 궁서;Un Gungsuh;andalesansui;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -3230,53 +3112,7 @@
       </node>
       <node oor:name="gungsuhche" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>썬궁서;sungungseo;썬굴림;sungulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hygungso" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬궁서;sungungseo;썬굴림;sungulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hyhaeseo" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬궁서;sungungseo;썬굴림;sungulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>궁서;gungsuh;궁서체;gungsuhche;은 궁서;Un Gungsuh;andalesansui;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -3322,7 +3158,7 @@
       </node>
       <node oor:name="heiseimin" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hgmincholightj;msmincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>msmincho;mspmincho;minchol;mincho;heiseimin;minchou;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -3458,173 +3294,6 @@
           <value>Normal,SansSerif</value>
         </prop>
       </node>
-      <node oor:name="hggothicbsun" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>msgothic;hggothicb;hiraginokakugothicpronw3;hiraginokakugothicprow3;hggothice;andalesansui;gothic;hgmincholightj;msmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>msgothic</value>
-        </prop>
-      </node>
-      <node oor:name="hgpgothicbsun" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>mspgothic;hgpgothicb;hgpgothice;andalesansui</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>mspgothic</value>
-        </prop>
-      </node>
-      <node oor:name="hgmincholsun" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>hgmincholightj;msmincho;mspmincho;hgminchoj;hiraginominchopronw3;hiraginominchoprow3;minchol;mincho;hgheiseimin;heiseimin;minchou;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-      </node>
-      <node oor:name="hgpmincholsun" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>mspmincho;ipapmincho;sazanamimincho;kochimincho;andalesansui;mincho;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>msmincho</value>
-        </prop>
-      </node>
-      <node oor:name="hggothic" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>msgothic;mspgothic;hggothicb;hggothice;andalesansui;gothic;hgmincholightj;msmincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>msgothic</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_JP</value>
-        </prop>
-      </node>
-      <node oor:name="hggothicb" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>msgothic;mspgothic;hggothic;hggothice;ipagothic;ipapgothic;sazanamigothic;kochigothic;andalesansui;gothic;hgmincholightj;msmincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>msgothic</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_JP</value>
-        </prop>
-      </node>
-      <node oor:name="hggothice" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>msgothic;mspgothic;hggothic;hggothicb;ipagothic;ipapgothic;sazanamigothic;kochigothic;andalesansui;gothic;hgmincholightj;msmincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_JP</value>
-        </prop>
-      </node>
-      <node oor:name="hgminchoj" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>hgmincholightj;msmincho;mspmincho;ipapmincho;sazanamimincho;kochimincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>msmincho</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_JP</value>
-        </prop>
-      </node>
-      <node oor:name="hgminchol" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>hgmincholsun;hgmincholightj;msmincho;mspmincho;hgminchoj;ipamincho;ipapmincho;sazanamimincho;kochimincho;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_JP</value>
-        </prop>
-      </node>
-      <node oor:name="hgmincholightj" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>hgmincholsun;msmincho;mspmincho;ipapmincho;sazanamimincho;hgmincholightj;kochimincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>msmincho</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_JP</value>
-        </prop>
-      </node>
       <node oor:name="holidaypi" oor:op="replace">
         <prop oor:name="SubstFonts">
           <value>starsymbol;opensymbol;starbats;wingdings;zapfdingbats;itczapfdingbats;monotypesorts;dingbats;lucidadingbats;lucidasansdingbats;webdings;symbol;standardsymbols;standardsymbolsl;andalesansui;arialunicodems;lucidaunicode</value>
@@ -3671,630 +3340,9 @@
           <value>Symbol,Special</value>
         </prop>
       </node>
-      <node oor:name="hymyeongjolightk" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>hymyeongjolightk;myeongjo;batang;batangche;gungsuh;gungsuhche;myeomjo;썬굴림;sungulim;gulim;gulimche;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hymyeongjoextra" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬바탕;sunbatang;baekmukbatang;hymyeongjolightk;myeongjo;batang;batangche;gungsuh;gungsuhche;myeomjo;썬굴림;sungulim;gulim;gulimche;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
       <node oor:name="haansoftbatang" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>썬바탕;sunbatang;baekmukbatang;hymyeongjolightk;myeongjo;batang;batangche;gungsuh;gungsuhche;myeomjo;썬굴림;sungulim;gulim;gulimche;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hysinmyeongjo" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬바탕;sunbatang;baekmukbatang;hymyeongjolightk;myeongjo;batang;batangche;gungsuh;gungsuhche;myeomjo;썬굴림;sungulim;gulim;gulimche;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="sungulim" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬굴림;baekmukgulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>굴림;Gulim</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>Standard,CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="sungungseo" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬궁서;gungsuh;gungsuhche;hygungsobold;썬바탕;썬굴림;sungulim;baekmukgulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>궁서;gungsuh</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="sunheadline" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬헤드라인;hyheadlinemedium;baekmukheadline;yetr;hygothicextra;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>hy헤드라인m;hyheadlinemedium</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hyheadline" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬헤드라인;sunheadline;baekmukheadline;hyheadlinemedium;yetr;hygothicextra;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="yetr" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬헤드라인;sunheadline;hyheadlinemedium;baekmukheadline;yetr;hygothicextra;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hygothicextra" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬헤드라인;sunheadline;hyheadlinemedium;baekmukheadline;yetr;hygothicextra;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="sunmokpan" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬목판;hy목판l;썬바탕;썬굴림;sungulim;baekmukgulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>hy목판l</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="mdsol" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬목판;sunmokpan;썬목판;hy목판l;썬바탕;썬굴림;sungulim;baekmukgulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>hy목판l</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hy목판l" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬목판;sunmokpan;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;baekmukbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="sunyeopseo" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬엽서;hypostlight;magicr;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>hy엽서l;hypostlight</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hypost" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>sunyeopseo;썬엽서;hypostlight;magicr;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="mdgaesung" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>sunyeopseo;썬엽서;hypostlight;magicr;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="mdart" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>sunyeopseo;썬엽서;hypostlight;magicr;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="mdeasop" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>sunyeopseo;썬엽서;hypostlight;magicr;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="mdalong" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>sunyeopseo;썬엽서;hypostlight;magicr;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="magicr" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>sunyeopseo;썬엽서;hypostlight;magicr;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hy엽서m" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬엽서;sunyeopseo;hypostlight;magicr;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hy센스l" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬엽서;sunyeopseo;hypostlight;magicr;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="suncrystal" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬크리스탈;hy크리스탈m;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>hy크리스탈m</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hy크리스탈m" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬크리스탈;suncrystal;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="sunsaemmul" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬샘물;hyshortsamulmedium;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>hy얕은샘물m;hyshortsamulmedium</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hyshortsamul" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>sunsaemmul;썬샘물;hyshortsamulmedium;썬바탕;썬굴림;sungulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="sunbaeksong" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬백송;hy백송b;썬바탕;썬굴림;sungulim;baekmukgulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value>hy백송b</value>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
-        </prop>
-      </node>
-      <node oor:name="hy백송b" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>썬백송;sunbaeksong;썬바탕;썬굴림;sungulim;baekmukgulim;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;hymyeongjolightk;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>Noto Serif CJK KR;Noto Serif KR;Source Han Serif KR;나눔명조;NanumMyeongjo;나눔명조 옛한글;NanumMyeongjo YetHangul;KoPubWorld바탕체;KoPubWorld Batang;KoPub바탕체;애플명조;AppleMyungjo;바탕;Batang;명조;Myeongjo;은 바탕;UnBatang;백묵 바탕;Baekmuk Batang;백묵 명조;Baekmuk Myeongjo;andalesansui;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -4474,29 +3522,6 @@
         </prop>
         <prop oor:name="FontType">
           <value>Default,Standard,Italic,Script,Comic</value>
-        </prop>
-      </node>
-      <node oor:name="kodig" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>gulim;gulimche;썬돋움;sundotum;baekmukgulim;dotum;dotumche;roundgothic;kodig;andalesansui;썬굴림;sungulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
         </prop>
       </node>
       <node oor:name="kristen" oor:op="replace">
@@ -5053,10 +4078,10 @@
       </node>
       <node oor:name="mincho" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hgmincholsun;hgmincholightj;msmincho;mspmincho;hiraginominchopronw3;hiraginominchoprow3;ipamincho;ipapmincho;sazanamimincho;hgmincholightj;hgminchoj;kochimincho;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;arialunicodems;lucidaunicode</value>
+          <value>msmincho;mspmincho;hiraginominchopronw3;hiraginominchoprow3;ipamincho;ipapmincho;minchol;heiseimin;minchou;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
-          <value>msmincho</value>
+          <value></value>
         </prop>
         <prop oor:name="SubstFontsPS">
           <value/>
@@ -5076,10 +4101,10 @@
       </node>
       <node oor:name="minchoj" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hgmincholsun;hgmincholightj;msmincho;sazanamimincho;hgmincholightj;mspmincho;hgminchoj;hgminchol;minchol;hgheiseimin;heiseimin;mincho;minchou;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;arialunicodems;lucidaunicode</value>
+          <value>msmincho;mspmincho;minchol;hgheiseimin;heiseimin;mincho;minchou;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
-          <value>msmincho</value>
+          <value></value>
         </prop>
         <prop oor:name="SubstFontsPS">
           <value/>
@@ -5099,10 +4124,10 @@
       </node>
       <node oor:name="minchol" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hgmincholsun;hgmincholightj;msmincho;ipamincho;sazanamimincho;kochimincho;mspmincho;hgminchoj;hgminchol;mincho;hgheiseimin;heiseimin;minchou;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;arialunicodems;lucidaunicode</value>
+          <value>msmincho;ipamincho;mspmincho;mincho;heiseimin;minchou;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
-          <value>msmincho</value>
+          <value></value>
         </prop>
         <prop oor:name="SubstFontsPS">
           <value/>
@@ -5122,7 +4147,7 @@
       </node>
       <node oor:name="minchou" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hgmincholsun;hgmincholightj;msmincho;ipamicho;ipapmincho;sazanamimincho;kochimincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;arialunicodems;lucidaunicode</value>
+          <value>msmincho;ipamicho;ipapmincho;mspmincho;minchol;mincho;heiseimin;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -5473,7 +4498,7 @@
       </node>
       <node oor:name="msgothic" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hggothicbsun;mspgothic;hiraginokakugothicpronw3;hiraginokakugothicprow3;hggothic;hggothicb;ipagothic;sazanamigothic;kochigothic;hggothice;andalesansui;gothic;hgmincholightj;msmincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;arialunicodems;lucidaunicode</value>
+          <value>mspgothic;hiraginokakugothicpronw3;hiraginokakugothicprow3;ipagothic;gothic;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -5496,7 +4521,7 @@
       </node>
       <node oor:name="mspgothic" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hgpgothicbsun;mspgothic;msgothic;hiraginokakugothicpronw3;hiraginokakugothicprow3;hggothic;hggothicb;ipapgothic;sazanamigothic;kochigothic;hggothice;andalesansui;gothic;hgmincholightj;msmincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>mspgothic;msgothic;hiraginokakugothicpronw3;hiraginokakugothicprow3;ipapgothic;gothic;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="FontWeight">
           <value>Normal</value>
@@ -5510,7 +4535,7 @@
       </node>
       <node oor:name="msmincho" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hgmincholsun;hgmincholightj;ipamincho;hiraginominchopronw3;hiraginominchoprow3;sazanamimincho;kochimincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;arialunicodems;lucidaunicode</value>
+          <value>ipamincho;hiraginominchopronw3;hiraginominchoprow3;mspmincho;minchol;mincho;heiseimin;minchou;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -5556,7 +4581,7 @@
       </node>
       <node oor:name="mspmincho" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hgpmincholsun;hgmincholightj;msmincho;hiraginominchopronw3;hiraginominchoprow3;ipapmincho;sazanamimincho;hgminchoj;hgminchol;kochimincho;minchol;mincho;hgheiseimin;heiseimin;minchou;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;arialunicodems;lucidaunicode</value>
+          <value>msmincho;hiraginominchopronw3;hiraginominchoprow3;ipapmincho;minchol;mincho;heiseimin;minchou;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -5579,7 +4604,7 @@
       </node>
       <node oor:name="msuigothic" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hggothicbsun;mspgothic;msgothic;hggothic;hggothicb;ipauigothic;sazanamigothic;kochigothic;hggothice;andalesansui;gothic;hgmincholightj;msmincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;arialunicodems;lucidaunicode</value>
+          <value>mspgothic;msgothic;ipauigothic;gothic;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -5717,7 +4742,7 @@
       </node>
       <node oor:name="myeongjo" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>썬굴림;sungulim;baekmukgulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;gulim;gulimche;썬돋움;sundotum;dotum;dotumche;roundgothic;kodig;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>Noto Serif CJK KR;Noto Serif KR;Source Han Serif KR;나눔명조;NanumMyeongjo;나눔명조 옛한글;NanumMyeongjo YetHangul;KoPubWorld바탕체;KoPubWorld Batang;KoPub바탕체;애플명조;AppleMyungjo;바탕;Batang;명조;Myeongjo;은 바탕;UnBatang;백묵 바탕;Baekmuk Batang;백묵 명조;Baekmuk Myeongjo;andalesansui;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value/>
@@ -6177,7 +5202,7 @@
       </node>
       <node oor:name="pgothic" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hgpgothicbsun;mspgothic;msgothic;hggothic;hggothicb;ipapgothic;sazanamigothic;kochigothic;hggothice;andalesansui;gothic;hgmincholightj;msmincho;mspmincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;andalesansui;arialunicodems;lucidaunicode</value>
+          <value>mspgothic;msgothic;ipapgothic;gothic;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
           <value>mspgothic</value>
@@ -6246,10 +5271,10 @@
       </node>
       <node oor:name="pmincho" oor:op="replace">
         <prop oor:name="SubstFonts">
-          <value>hgpminchobsun;hgmincholightj;mspmincho;msmincho;ipapmincho;sazanamimincho;kochimincho;hgminchoj;hgminchol;minchol;mincho;hgheiseimin;heiseimin;minchou;msgothic;mspgothic;hggothic;hggothicb;hggothice;andalesansui;gothic;arialunicodems;lucidaunicode</value>
+          <value>mspmincho;msmincho;ipapmincho;minchol;mincho;hgheiseimin;heiseimin;minchou;arialunicodems;lucidaunicode</value>
         </prop>
         <prop oor:name="SubstFontsMS">
-          <value>mspmincho</value>
+          <value></value>
         </prop>
         <prop oor:name="SubstFontsPS">
           <value/>
@@ -6472,29 +5497,6 @@
         </prop>
         <prop oor:name="FontType">
           <value>Normal,Fixed</value>
-        </prop>
-      </node>
-      <node oor:name="roundgothic" oor:op="replace">
-        <prop oor:name="SubstFonts">
-          <value>gulim;gulimche;썬돋움;sundotum;baekmukdotum;dotum;dotumche;roundgothic;kodig;andalesansui;썬굴림;sungulim;hymyeongjolightk;myeongjo;썬바탕;sunbatang;batang;batangche;gungsuh;gungsuhche;myeomjo;andalesansui;arialunicodems;lucidaunicode</value>
-        </prop>
-        <prop oor:name="SubstFontsMS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsPS">
-          <value/>
-        </prop>
-        <prop oor:name="SubstFontsHTML">
-          <value/>
-        </prop>
-        <prop oor:name="FontWeight">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontWidth">
-          <value>Normal</value>
-        </prop>
-        <prop oor:name="FontType">
-          <value>CJK,CJK_KR</value>
         </prop>
       </node>
       <node oor:name="sans" oor:op="replace">

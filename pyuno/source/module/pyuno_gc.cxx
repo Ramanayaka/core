@@ -19,15 +19,18 @@
 
 #include "pyuno_impl.hxx"
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "rtl/ref.hxx"
-#include "salhelper/thread.hxx"
+#include <rtl/ref.hxx>
+#include <salhelper/thread.hxx>
 
 namespace pyuno
 {
 
 static bool g_destructorsOfStaticObjectsHaveBeenCalled;
+
+namespace {
+
 class StaticDestructorGuard
 {
 public:
@@ -36,6 +39,9 @@ public:
         g_destructorsOfStaticObjectsHaveBeenCalled = true;
     }
 };
+
+}
+
 static StaticDestructorGuard guard;
 
 static bool isAfterUnloadOrPy_Finalize()
@@ -43,6 +49,8 @@ static bool isAfterUnloadOrPy_Finalize()
     return g_destructorsOfStaticObjectsHaveBeenCalled ||
         !Py_IsInitialized();
 }
+
+namespace {
 
 class GCThread: public salhelper::Thread {
 public:
@@ -56,6 +64,8 @@ private:
     PyObject *mPyObject;
     PyInterpreterState *mPyInterpreter;
 };
+
+}
 
 GCThread::GCThread( PyInterpreterState *interpreter, PyObject * object ) :
     Thread( "pyunoGCThread" ), mPyObject( object ),
@@ -86,8 +96,7 @@ void GCThread::execute()
     }
     catch( const css::uno::RuntimeException & e )
     {
-        OString msg;
-        msg = OUStringToOString( e.Message, RTL_TEXTENCODING_ASCII_US );
+        OString msg = OUStringToOString( e.Message, RTL_TEXTENCODING_ASCII_US );
         fprintf( stderr, "Leaking python objects bridged to UNO for reason %s\n",msg.getStr());
     }
 }

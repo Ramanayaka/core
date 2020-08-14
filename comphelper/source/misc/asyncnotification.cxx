@@ -21,7 +21,6 @@
 #include <osl/mutex.hxx>
 #include <osl/conditn.hxx>
 #include <rtl/instance.hxx>
-#include <comphelper/guarding.hxx>
 
 #include <cassert>
 #include <deque>
@@ -39,6 +38,8 @@ namespace comphelper
     {
     }
 
+    namespace {
+
     struct ProcessableEvent
     {
         AnyEventRef                         aEvent;
@@ -55,9 +56,11 @@ namespace comphelper
         }
     };
 
+    }
 
     typedef std::deque< ProcessableEvent >    EventQueue;
 
+    namespace {
 
     struct EqualProcessor
     {
@@ -69,6 +72,8 @@ namespace comphelper
             return _rEvent.xProcessor.get() == rProcessor.get();
         }
     };
+
+    }
 
     struct EventNotifierImpl
     {
@@ -124,7 +129,7 @@ namespace comphelper
         ::osl::MutexGuard aGuard( m_xImpl->aMutex );
 
         // remember this event
-        m_xImpl->aEvents.push_back( ProcessableEvent( _rEvent, _xProcessor ) );
+        m_xImpl->aEvents.emplace_back( _rEvent, _xProcessor );
 
         // awake the thread
         m_xImpl->aPendingActions.set();
@@ -179,7 +184,12 @@ namespace comphelper
         return AsyncEventNotifierBase::terminate();
     }
 
+    namespace {
+
     struct theNotifiersMutex : public rtl::Static<osl::Mutex, theNotifiersMutex> {};
+
+    }
+
     static std::vector<std::weak_ptr<AsyncEventNotifierAutoJoin>> g_Notifiers;
 
     void JoinAsyncEventNotifiers()
@@ -266,7 +276,6 @@ namespace comphelper
     {
         // try to delete "this"
         m_xImpl->pKeepThisAlive.reset();
-        return osl::Thread::onTerminated();
     }
 
 } // namespace comphelper

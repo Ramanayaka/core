@@ -19,18 +19,14 @@
 
 #include "RecentMasterPagesSelector.hxx"
 
-#include "ViewShellBase.hxx"
+#include <ViewShellBase.hxx>
 #include "RecentlyUsedMasterPages.hxx"
-#include "MasterPageContainerProviders.hxx"
-#include "MasterPageObserver.hxx"
-#include "sdpage.hxx"
-#include "drawdoc.hxx"
-#include "app.hrc"
-#include "helpids.h"
+#include <MasterPageObserver.hxx>
+#include <sdpage.hxx>
+#include <drawdoc.hxx>
+#include <helpids.h>
 
-#include <vcl/bitmap.hxx>
-
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 VclPtr<vcl::Window> RecentMasterPagesSelector::Create (
     vcl::Window* pParent,
@@ -41,7 +37,7 @@ VclPtr<vcl::Window> RecentMasterPagesSelector::Create (
     if (pDocument == nullptr)
         return nullptr;
 
-    std::shared_ptr<MasterPageContainer> pContainer (new MasterPageContainer());
+    auto pContainer = std::make_shared<MasterPageContainer>();
 
     VclPtrInstance<RecentMasterPagesSelector> pSelector(
             pParent,
@@ -129,17 +125,17 @@ void RecentMasterPagesSelector::AssignMasterPageToPageList (
     SdPage* pMasterPage,
     const std::shared_ptr<std::vector<SdPage*> >& rpPageList)
 {
-    sal_uInt16 nSelectedItemId = PreviewValueSet::GetSelectItemId();
+    sal_uInt16 nSelectedItemId = mxPreviewValueSet->GetSelectedItemId();
 
     MasterPagesSelector::AssignMasterPageToPageList(pMasterPage, rpPageList);
 
     // Restore the selection.
-    if (PreviewValueSet::GetItemCount() > 0)
+    if (mxPreviewValueSet->GetItemCount() > 0)
     {
-        if (PreviewValueSet::GetItemCount() >= nSelectedItemId)
-            PreviewValueSet::SelectItem(nSelectedItemId);
+        if (mxPreviewValueSet->GetItemCount() >= nSelectedItemId)
+            mxPreviewValueSet->SelectItem(nSelectedItemId);
         else
-            PreviewValueSet::SelectItem(PreviewValueSet::GetItemCount());
+            mxPreviewValueSet->SelectItem(mxPreviewValueSet->GetItemCount());
     }
 }
 
@@ -150,6 +146,6 @@ void RecentMasterPagesSelector::ProcessPopupMenu (Menu& rMenu)
         rMenu.EnableItem(nItemid, false);
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

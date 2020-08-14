@@ -20,19 +20,31 @@
 #ifndef INCLUDED_SVX_SOURCE_DIALOG_DLGUNIT_HXX
 #define INCLUDED_SVX_SOURCE_DIALOG_DLGUNIT_HXX
 
+#include <rtl/ustrbuf.hxx>
 #include <svx/svdtrans.hxx>
+#include <vcl/fieldvalues.hxx>
 
 inline OUString GetUnitString( long nVal_100, FieldUnit eFieldUnit, sal_Unicode cSep )
 {
     OUStringBuffer aVal = OUString::number(
-        MetricField::ConvertValue(nVal_100, 2, MapUnit::Map100thMM, eFieldUnit));
+        vcl::ConvertValue(nVal_100, 2, MapUnit::Map100thMM, eFieldUnit));
 
     while( aVal.getLength() < 3 )
         aVal.insert( 0, "0" );
 
     aVal.insert( aVal.getLength() - 2, cSep );
-    aVal.append(" ");
-    aVal.append(SdrFormatter::GetUnitStr( eFieldUnit ));
+    OUString aSuffix = SdrFormatter::GetUnitStr(eFieldUnit);
+    if (eFieldUnit != FieldUnit::NONE && eFieldUnit != FieldUnit::DEGREE && eFieldUnit != FieldUnit::INCH)
+        aVal.append(" ");
+    if (eFieldUnit == FieldUnit::INCH)
+    {
+        OUString sDoublePrime = u"\u2033";
+        if (aSuffix != "\"" && aSuffix != sDoublePrime)
+            aVal.append(" ");
+        else
+            aSuffix = sDoublePrime;
+    }
+    aVal.append(aSuffix);
 
     return aVal.makeStringAndClear();
 }

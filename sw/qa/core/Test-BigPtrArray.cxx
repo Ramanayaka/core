@@ -17,20 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sal/types.h>
-#include <rtl/strbuf.hxx>
 #include <cppunit/TestAssert.h>
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
-#include <cppunit/plugin/TestPlugIn.h>
 
 //#define TIMELOG for measuring performance
 
-#include <string.h>
-#include <stdlib.h>
-
 #include <bparr.hxx>
-#include <ndarr.hxx>
 
 using namespace std;
 
@@ -75,7 +68,7 @@ namespace /* private */
         return true;
     }
 
-    void releaseBigPtrArrayContent(BigPtrArray& bparr)
+    void releaseBigPtrArrayContent(BigPtrArray const & bparr)
     {
         for (sal_uLong i = 0; i < bparr.Count(); i++)
             delete bparr[i];
@@ -342,7 +335,7 @@ public:
 
         while(bparr.Count())
         {
-            sal_uLong nRemove = (bparr.Count() > 3) ? 3 : bparr.Count();
+            sal_uLong nRemove = std::min<sal_uLong>(bparr.Count(), 3);
             sal_uLong oldCount = bparr.Count();
 
             for (sal_uLong i = 0; i < nRemove; i++)

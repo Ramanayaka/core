@@ -21,17 +21,13 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FTABLE_HXX
 
 #include <connectivity/sdbcx/VTable.hxx>
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
-#include "file/FConnection.hxx"
-#include "file/filedllapi.hxx"
+#include <file/FConnection.hxx>
+#include <file/filedllapi.hxx>
 #include <tools/stream.hxx>
 #include <connectivity/FValue.hxx>
-#include "TResultSetHelper.hxx"
+#include <TResultSetHelper.hxx>
 
-namespace connectivity
-{
-    namespace file
+namespace connectivity::file
     {
         typedef connectivity::sdbcx::OTable OTable_TYPEDEF;
 
@@ -39,12 +35,12 @@ namespace connectivity
         {
         protected:
             OConnection*                                        m_pConnection;
-            SvStream*                                           m_pFileStream;
+            std::unique_ptr<SvStream>                           m_pFileStream;
             ::rtl::Reference<OSQLColumns>                           m_aColumns;
             sal_Int32                                           m_nFilePos;                 // current IResultSetHelper::Movement
-            sal_uInt8*                                          m_pBuffer;
+            std::unique_ptr<sal_uInt8[]>                        m_pBuffer;
             sal_uInt16                                          m_nBufferSize;  // size of the ReadBuffer, if pBuffer != NULL
-            bool                                            m_bWriteable;   // svstream cann't say if we are writeable
+            bool                                            m_bWriteable;   // svstream can't say if we are writeable
                                                                                 // so we have to
 
             virtual void FileClose();
@@ -58,9 +54,9 @@ namespace connectivity
             OFileTable( sdbcx::OCollection* _pTables,OConnection* _pConnection,
                     const OUString& Name,
                     const OUString& Type,
-                    const OUString& Description = OUString(),
-                    const OUString& SchemaName = OUString(),
-                    const OUString& CatalogName = OUString()
+                    const OUString& Description,
+                    const OUString& SchemaName,
+                    const OUString& CatalogName
                 );
 
             //XInterface
@@ -85,12 +81,12 @@ namespace connectivity
 
             OUString SAL_CALL getName() override { return m_Name; }
 
-            const OUString& getSchema() { return m_SchemaName; }
+            const OUString& getSchema() const { return m_SchemaName; }
             bool isReadOnly() const { return !m_bWriteable; }
                 // m_pFileStream && !m_pFileStream->IsWritable(); }
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
 
             sal_Int32 getFilePos() const { return m_nFilePos; }
@@ -100,9 +96,9 @@ namespace connectivity
 
             // creates a stream using ::utl::UcbStreamHelper::CreateStream, but the error is simplified
             // (NULL or non-NULL is returned)
-            static SvStream* createStream_simpleError( const OUString& _rFileName, StreamMode _eOpenMode);
+            static std::unique_ptr<SvStream> createStream_simpleError( const OUString& _rFileName, StreamMode _eOpenMode);
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FTABLE_HXX
 

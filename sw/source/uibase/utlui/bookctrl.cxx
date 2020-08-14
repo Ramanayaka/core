@@ -17,24 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hintids.hxx"
 #include <swtypes.hxx>
-#include <utlui.hrc>
+#include <strings.hrc>
 
 #include <svl/intitem.hxx>
 #include <svl/stritem.hxx>
+#include <svl/eitem.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/viewfrm.hxx>
+#include <vcl/commandevent.hxx>
 #include <vcl/event.hxx>
 #include <vcl/status.hxx>
 #include <vcl/menu.hxx>
-#include "cmdid.h"
-#include "swmodule.hxx"
-#include "wrtsh.hxx"
-#include "IMark.hxx"
-#include "bookctrl.hxx"
+#include <cmdid.h>
+#include <swmodule.hxx>
+#include <wrtsh.hxx>
+#include <IMark.hxx>
+#include <bookctrl.hxx>
 #include <map>
 
 SFX_IMPL_STATUSBAR_CONTROL( SwBookmarkControl, SfxStringItem );
+
+namespace {
 
 class BookmarkPopup_Impl : public PopupMenu
 {
@@ -48,6 +52,8 @@ private:
 
     virtual void    Select() override;
 };
+
+}
 
 BookmarkPopup_Impl::BookmarkPopup_Impl() :
     PopupMenu(),
@@ -93,43 +99,42 @@ void SwBookmarkControl::StateChanged(
 
 void SwBookmarkControl::Paint( const UserDrawEvent&  )
 {
-    GetStatusBar().SetItemText( GetId(), sPageNumber );
 }
 
 void SwBookmarkControl::Command( const CommandEvent& rCEvt )
 {
-    if ( rCEvt.GetCommand() == CommandEventId::ContextMenu &&
-            !GetStatusBar().GetItemText( GetId() ).isEmpty() )
+    if ( rCEvt.GetCommand() != CommandEventId::ContextMenu ||
+            GetStatusBar().GetItemText( GetId() ).isEmpty())
+        return;
+
+    ScopedVclPtrInstance<BookmarkPopup_Impl> aPop;
+    SwWrtShell* pWrtShell = ::GetActiveWrtShell();
+    if( !(pWrtShell && pWrtShell->getIDocumentMarkAccess()->getAllMarksCount() > 0) )
+        return;
+
+    IDocumentMarkAccess* const pMarkAccess = pWrtShell->getIDocumentMarkAccess();
+    IDocumentMarkAccess::const_iterator_t ppBookmarkStart = pMarkAccess->getBookmarksBegin();
+    sal_uInt16 nPopupId = 1;
+    std::map<sal_Int32, sal_uInt16> aBookmarkIdx;
+    for(IDocumentMarkAccess::const_iterator_t ppBookmark = ppBookmarkStart;
+        ppBookmark != pMarkAccess->getBookmarksEnd();
+        ++ppBookmark)
     {
-        ScopedVclPtrInstance<BookmarkPopup_Impl> aPop;
-        SwWrtShell* pWrtShell = ::GetActiveWrtShell();
-        if( pWrtShell && pWrtShell->getIDocumentMarkAccess()->getAllMarksCount() > 0 )
+        if(IDocumentMarkAccess::MarkType::BOOKMARK == IDocumentMarkAccess::GetType(**ppBookmark))
         {
-            IDocumentMarkAccess* const pMarkAccess = pWrtShell->getIDocumentMarkAccess();
-            IDocumentMarkAccess::const_iterator_t ppBookmarkStart = pMarkAccess->getBookmarksBegin();
-            sal_uInt16 nPopupId = 1;
-            std::map<sal_Int32, sal_uInt16> aBookmarkIdx;
-            for(IDocumentMarkAccess::const_iterator_t ppBookmark = ppBookmarkStart;
-                ppBookmark != pMarkAccess->getBookmarksEnd();
-                ++ppBookmark)
-            {
-                if(IDocumentMarkAccess::MarkType::BOOKMARK == IDocumentMarkAccess::GetType(**ppBookmark))
-                {
-                    aPop->InsertItem( nPopupId, ppBookmark->get()->GetName() );
-                    aBookmarkIdx[nPopupId] = static_cast<sal_uInt16>(ppBookmark - ppBookmarkStart);
-                    nPopupId++;
-                }
-            }
-            aPop->Execute( &GetStatusBar(), rCEvt.GetMousePosPixel());
-            sal_uInt16 nCurrId = aPop->GetCurId();
-            if( nCurrId != USHRT_MAX)
-            {
-                SfxUInt16Item aBookmark( FN_STAT_BOOKMARK, aBookmarkIdx[nCurrId] );
-                SfxViewFrame::Current()->GetDispatcher()->ExecuteList(FN_STAT_BOOKMARK,
-                    SfxCallMode::ASYNCHRON|SfxCallMode::RECORD,
-                    { &aBookmark });
-            }
+            aPop->InsertItem( nPopupId, (*ppBookmark)->GetName() );
+            aBookmarkIdx[nPopupId] = static_cast<sal_uInt16>(ppBookmark - ppBookmarkStart);
+            nPopupId++;
         }
+    }
+    aPop->Execute( &GetStatusBar(), rCEvt.GetMousePosPixel());
+    sal_uInt16 nCurrId = aPop->GetCurId();
+    if( nCurrId != USHRT_MAX)
+    {
+        SfxUInt16Item aBookmark( FN_STAT_BOOKMARK, aBookmarkIdx[nCurrId] );
+        SfxViewFrame::Current()->GetDispatcher()->ExecuteList(FN_STAT_BOOKMARK,
+            SfxCallMode::ASYNCHRON|SfxCallMode::RECORD,
+            { &aBookmark });
     }
 }
 

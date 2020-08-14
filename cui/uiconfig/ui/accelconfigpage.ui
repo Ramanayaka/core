@@ -1,8 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.20.0 -->
-<interface>
-  <requires lib="gtk+" version="3.10"/>
-  <requires lib="LibreOffice" version="1.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="cui">
+  <requires lib="gtk+" version="3.18"/>
+  <object class="GtkTreeStore" id="liststore1">
+    <columns>
+      <!-- column-name text -->
+      <column type="gchararray"/>
+      <!-- column-name id -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
+  <object class="GtkTreeStore" id="liststore2">
+    <columns>
+      <!-- column-name text -->
+      <column type="gchararray"/>
+      <!-- column-name id -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
+  <object class="GtkTreeStore" id="liststore3">
+    <columns>
+      <!-- column-name text -->
+      <column type="gchararray"/>
+      <!-- column-name text2 -->
+      <column type="gchararray"/>
+      <!-- column-name id -->
+      <column type="gchararray"/>
+      <!-- column-name weight1 -->
+      <column type="gint"/>
+      <!-- column-name weight2 -->
+      <column type="gint"/>
+      <!-- column-name sensitive1 -->
+      <column type="gboolean"/>
+    </columns>
+  </object>
+  <object class="GtkTreeStore" id="liststore4">
+    <columns>
+      <!-- column-name text -->
+      <column type="gchararray"/>
+      <!-- column-name id -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
   <object class="GtkGrid" id="AccelConfigPage">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
@@ -31,16 +70,56 @@
                 <property name="can_focus">False</property>
                 <property name="hexpand">True</property>
                 <property name="vexpand">True</property>
+                <property name="xalign">0</property>
+                <property name="yalign">0</property>
                 <property name="top_padding">6</property>
-                <property name="left_padding">12</property>
                 <child>
-                  <object class="cuilo-SfxAccCfgTabListBox" id="shortcuts:border">
+                  <object class="GtkScrolledWindow">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="hexpand">True</property>
                     <property name="vexpand">True</property>
-                    <child internal-child="selection">
-                      <object class="GtkTreeSelection" id="AccCfgTabListBox-selection"/>
+                    <property name="shadow_type">in</property>
+                    <child>
+                      <object class="GtkTreeView" id="shortcuts">
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="receives_default">True</property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">True</property>
+                        <property name="model">liststore3</property>
+                        <property name="headers_visible">False</property>
+                        <property name="search_column">0</property>
+                        <property name="show_expanders">False</property>
+                        <child internal-child="selection">
+                          <object class="GtkTreeSelection" id="Macro Library List-selection2"/>
+                        </child>
+                        <child>
+                          <object class="GtkTreeViewColumn" id="treeviewcolumn3">
+                            <property name="resizable">True</property>
+                            <property name="spacing">6</property>
+                            <child>
+                              <object class="GtkCellRendererText" id="cellrenderer1"/>
+                              <attributes>
+                                <attribute name="sensitive">5</attribute>
+                                <attribute name="text">0</attribute>
+                              </attributes>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkTreeViewColumn" id="treeviewcolumn4">
+                            <property name="resizable">True</property>
+                            <property name="spacing">6</property>
+                            <child>
+                              <object class="GtkCellRendererText" id="cellrenderer2"/>
+                              <attributes>
+                                <attribute name="text">1</attribute>
+                              </attributes>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
                     </child>
                   </object>
                 </child>
@@ -50,10 +129,9 @@
               <object class="GtkLabel" id="label21">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">Shortcut Keys</property>
-                <attributes>
-                  <attribute name="weight" value="bold"/>
-                </attributes>
+                <property name="label" translatable="yes" context="accelconfigpage|label21">Shortcu_t Keys</property>
+                <property name="use_underline">True</property>
+                <property name="mnemonic_widget">shortcuts</property>
               </object>
             </child>
           </object>
@@ -77,14 +155,14 @@
                 <property name="spacing">6</property>
                 <child>
                   <object class="GtkRadioButton" id="office">
-                    <property name="label" translatable="yes">%PRODUCTNAME</property>
+                    <property name="label" translatable="yes" context="accelconfigpage|office">%PRODUCTNAME</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
                     <property name="use_underline">True</property>
                     <property name="xalign">0</property>
+                    <property name="active">True</property>
                     <property name="draw_indicator">True</property>
-                    <property name="group">module</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
@@ -94,7 +172,7 @@
                 </child>
                 <child>
                   <object class="GtkRadioButton" id="module">
-                    <property name="label" translatable="yes">$(MODULE)</property>
+                    <property name="label" translatable="yes" context="accelconfigpage|module">$(MODULE)</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
@@ -126,7 +204,7 @@
                 <property name="layout_style">start</property>
                 <child>
                   <object class="GtkButton" id="change">
-                    <property name="label" translatable="yes">_Modify</property>
+                    <property name="label" translatable="yes" context="accelconfigpage|change">_Modify</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
@@ -154,7 +232,7 @@
                 </child>
                 <child>
                   <object class="GtkButton" id="load">
-                    <property name="label" translatable="yes">_Load...</property>
+                    <property name="label" translatable="yes" context="accelconfigpage|load">_Load...</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
@@ -169,7 +247,7 @@
                 </child>
                 <child>
                   <object class="GtkButton" id="save">
-                    <property name="label" translatable="yes">_Save...</property>
+                    <property name="label" translatable="yes" context="accelconfigpage|save">_Save...</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
@@ -231,8 +309,9 @@
             <property name="can_focus">False</property>
             <property name="hexpand">True</property>
             <property name="vexpand">True</property>
+            <property name="xalign">0</property>
+            <property name="yalign">0</property>
             <property name="top_padding">6</property>
-            <property name="left_padding">12</property>
             <child>
               <object class="GtkBox">
                 <property name="visible">True</property>
@@ -242,7 +321,8 @@
                   <object class="GtkEntry" id="searchEntry">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="placeholder_text" translatable="yes">Type to search</property>
+                    <property name="margin_bottom">5</property>
+                    <property name="placeholder_text" translatable="yes" context="accelconfigpage|searchEntry">Type to search</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
@@ -262,9 +342,9 @@
                       <object class="GtkLabel" id="label23">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">_Category</property>
+                        <property name="label" translatable="yes" context="accelconfigpage|label23">_Category</property>
                         <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">category:border</property>
+                        <property name="mnemonic_widget">category</property>
                         <property name="xalign">0</property>
                       </object>
                       <packing>
@@ -276,9 +356,9 @@
                       <object class="GtkLabel" id="label24">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">_Function</property>
+                        <property name="label" translatable="yes" context="accelconfigpage|label24">_Function</property>
                         <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">function:border</property>
+                        <property name="mnemonic_widget">function</property>
                         <property name="xalign">0</property>
                       </object>
                       <packing>
@@ -290,9 +370,9 @@
                       <object class="GtkLabel" id="label25">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">_Keys</property>
+                        <property name="label" translatable="yes" context="accelconfigpage|label25">_Keys</property>
                         <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">keys:border</property>
+                        <property name="mnemonic_widget">keys</property>
                         <property name="xalign">0</property>
                       </object>
                       <packing>
@@ -301,13 +381,39 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="cuilo-SfxConfigGroupListBox" id="category:border">
+                      <object class="GtkScrolledWindow">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="hexpand">True</property>
                         <property name="vexpand">True</property>
-                        <child internal-child="selection">
-                          <object class="GtkTreeSelection" id="ConfigGroup ListBox-selection"/>
+                        <property name="shadow_type">in</property>
+                        <child>
+                          <object class="GtkTreeView" id="category">
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="receives_default">True</property>
+                            <property name="hexpand">True</property>
+                            <property name="vexpand">True</property>
+                            <property name="model">liststore1</property>
+                            <property name="headers_visible">False</property>
+                            <property name="search_column">0</property>
+                            <property name="show_expanders">True</property>
+                            <child internal-child="selection">
+                              <object class="GtkTreeSelection" id="Macro Library List-selection1"/>
+                            </child>
+                            <child>
+                              <object class="GtkTreeViewColumn" id="treeviewcolumn1">
+                                <property name="resizable">True</property>
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkCellRendererText" id="cellrenderer4"/>
+                                  <attributes>
+                                    <attribute name="text">0</attribute>
+                                  </attributes>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
                         </child>
                       </object>
                       <packing>
@@ -316,13 +422,40 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="cuilo-SfxConfigFunctionListBox" id="function:border">
+                      <object class="GtkScrolledWindow">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="hexpand">True</property>
                         <property name="vexpand">True</property>
-                        <child internal-child="selection">
-                          <object class="GtkTreeSelection" id="ConfigGroupFunction ListBox-selection"/>
+                        <property name="shadow_type">in</property>
+                        <child>
+                          <object class="GtkTreeView" id="function">
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="receives_default">True</property>
+                            <property name="has_tooltip">True</property>
+                            <property name="hexpand">True</property>
+                            <property name="vexpand">True</property>
+                            <property name="model">liststore2</property>
+                            <property name="headers_visible">False</property>
+                            <property name="search_column">0</property>
+                            <property name="show_expanders">False</property>
+                            <child internal-child="selection">
+                              <object class="GtkTreeSelection" id="Macro Library List-selection3"/>
+                            </child>
+                            <child>
+                              <object class="GtkTreeViewColumn" id="treeviewcolumn5">
+                                <property name="resizable">True</property>
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkCellRendererText" id="cellrenderer5"/>
+                                  <attributes>
+                                    <attribute name="text">0</attribute>
+                                  </attributes>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
                         </child>
                       </object>
                       <packing>
@@ -331,13 +464,39 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="svtlo-SvTreeListBox" id="keys:border">
+                      <object class="GtkScrolledWindow">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="hexpand">True</property>
                         <property name="vexpand">True</property>
-                        <child internal-child="selection">
-                          <object class="GtkTreeSelection" id="Tree List-selection"/>
+                        <property name="shadow_type">in</property>
+                        <child>
+                          <object class="GtkTreeView" id="keys">
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="receives_default">True</property>
+                            <property name="hexpand">True</property>
+                            <property name="vexpand">True</property>
+                            <property name="model">liststore4</property>
+                            <property name="headers_visible">False</property>
+                            <property name="search_column">0</property>
+                            <property name="show_expanders">False</property>
+                            <child internal-child="selection">
+                              <object class="GtkTreeSelection" id="Macro Library List-selection4"/>
+                            </child>
+                            <child>
+                              <object class="GtkTreeViewColumn" id="treeviewcolumn6">
+                                <property name="resizable">True</property>
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkCellRendererText" id="cellrenderer7"/>
+                                  <attributes>
+                                    <attribute name="text">0</attribute>
+                                  </attributes>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
                         </child>
                       </object>
                       <packing>
@@ -360,10 +519,9 @@
           <object class="GtkLabel" id="label22">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Functions</property>
-            <attributes>
-              <attribute name="weight" value="bold"/>
-            </attributes>
+            <property name="label" translatable="yes" context="accelconfigpage|label22">F_unctions</property>
+            <property name="use_underline">True</property>
+            <property name="mnemonic_widget">searchEntry</property>
           </object>
         </child>
       </object>

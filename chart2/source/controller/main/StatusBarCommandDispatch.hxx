@@ -20,11 +20,13 @@
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_STATUSBARCOMMANDDISPATCH_HXX
 
 #include "CommandDispatch.hxx"
-#include "ObjectIdentifier.hxx"
+#include <ObjectIdentifier.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
-#include <com/sun/star/util/XModifiable.hpp>
+#include <com/sun/star/view/XSelectionChangeListener.hpp>
+
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::util { class XModifiable; }
+namespace com::sun::star::view { class XSelectionSupplier; }
 
 namespace chart
 {

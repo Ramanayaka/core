@@ -11,15 +11,10 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_TABLEFILLINGANDNAVIGATIONTOOLS_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_TABLEFILLINGANDNAVIGATIONTOOLS_HXX
 
-#include "address.hxx"
-#include "rangelst.hxx"
+#include <address.hxx>
+#include <rangelst.hxx>
 
-#include "docsh.hxx"
-#include "document.hxx"
-#include "docfunc.hxx"
-#include "formulacell.hxx"
-
-#include <list>
+#include <vector>
 
 class FormulaTemplate
 {
@@ -46,7 +41,7 @@ public:
     void      autoReplaceUses3D(bool bUse3D) { mbUse3D = bUse3D; }
 
     void      applyRange(const OUString& aVariable, const ScRange& aRange, bool b3D = true);
-    void      applyRangeList(const OUString& aVariable, const ScRangeList& aRangeList);
+    void      applyRangeList(const OUString& aVariable, const ScRangeList& aRangeList, sal_Unicode cDelimiter );
     void      applyAddress(const OUString& aVariable, const ScAddress& aAddress, bool b3D = true);
     void      applyString(const OUString& aVariable, const OUString& aValue);
     void      applyNumber(const OUString& aVariable, sal_Int32 aValue);
@@ -55,7 +50,7 @@ public:
 class AddressWalker
 {
 public:
-    std::list<ScAddress> mAddressStack;
+    std::vector<ScAddress> mAddressStack;
 
     ScAddress mCurrentAddress;
     ScAddress mMinimumAddress;
@@ -85,7 +80,8 @@ public:
             formula::FormulaGrammar::Grammar eGrammar );
 
     void writeFormula(const OUString& aFormula);
-    void writeMatrixFormula(const OUString& aFormula);
+    void writeFormulas(const std::vector<OUString>& rFormulas);
+    void writeMatrixFormula(const OUString& aFormula, SCCOL nCols = 1, SCROW nRows = 1);
     void writeString(const OUString& aString);
     void writeString(const char* aCharArray);
     void writeBoldString(const OUString& aString);
@@ -101,10 +97,10 @@ private:
     SCROW   mRow;
 
 public:
-    DataCellIterator(ScRange aInputRange, bool aByColumn);
+    DataCellIterator(const ScRange& aInputRange, bool aByColumn);
     ~DataCellIterator();
 
-    bool hasNext();
+    bool hasNext() const;
     ScAddress get();
     void next();
     ScAddress getRelative(int aDelta);
@@ -131,13 +127,12 @@ public:
     virtual DataCellIterator iterateCells() = 0;
 };
 
-class DataRangeByColumnIterator : public DataRangeIterator
+class DataRangeByColumnIterator final : public DataRangeIterator
 {
-protected:
     SCCOL mCol;
 
 public:
-    DataRangeByColumnIterator(ScRange aInputRange);
+    DataRangeByColumnIterator(const ScRange& aInputRange);
 
     virtual bool hasNext() override;
     virtual void next() override;
@@ -147,13 +142,12 @@ public:
     virtual DataCellIterator iterateCells() override;
 };
 
-class DataRangeByRowIterator : public DataRangeIterator
+class DataRangeByRowIterator final : public DataRangeIterator
 {
-protected:
     SCROW mRow;
 
 public:
-    DataRangeByRowIterator(ScRange aInputRange);
+    DataRangeByRowIterator(const ScRange& aInputRange);
 
     virtual bool hasNext() override;
     virtual void next() override;

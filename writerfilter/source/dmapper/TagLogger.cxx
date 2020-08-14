@@ -19,8 +19,9 @@
 
 #include <string.h>
 #include "TagLogger.hxx"
-#include <ooxml/QNameToString.hxx>
-#include <unordered_map>
+#ifdef DBG_UTIL
+#include <unotools/pathoptions.hxx>
+#endif
 
 using namespace css;
 
@@ -37,7 +38,7 @@ namespace writerfilter
         pName = nullptr;
     }
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     void TagLogger::setFileName( const std::string & filename )
     {
         if ( pWriter )
@@ -49,7 +50,7 @@ namespace writerfilter
         if (temp != nullptr)
             fileName += temp;
         else
-            fileName += "/tmp";
+            fileName += SvtPathOptions().GetTempPath().toUtf8().getStr();
 
         std::string sPrefix = filename;
         size_t nLastSlash = sPrefix.find_last_of('/');
@@ -91,16 +92,20 @@ namespace writerfilter
 
 #endif
 
+namespace {
+
 struct TheTagLogger:
     public rtl::Static<TagLogger, TheTagLogger>
 {};
+
+}
 
     TagLogger& TagLogger::getInstance()
     {
         return TheTagLogger::get();
     }
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     void TagLogger::element(const std::string & name)
     {
         startElement(name);
@@ -110,14 +115,14 @@ struct TheTagLogger:
     void TagLogger::unoPropertySet(const uno::Reference<beans::XPropertySet>& rPropSet)
     {
         uno::Reference<beans::XPropertySetInfo> xPropSetInfo(rPropSet->getPropertySetInfo());
-        uno::Sequence<beans::Property> aProps(xPropSetInfo->getProperties());
+        const uno::Sequence<beans::Property> aProps(xPropSetInfo->getProperties());
 
         startElement( "unoPropertySet" );
 
-        for (int i = 0; i < aProps.getLength(); ++i)
+        for (beans::Property const & prop : aProps)
         {
             startElement( "property" );
-            OUString sName(aProps[i].Name);
+            OUString sName(prop.Name);
 
             attribute( "name", sName );
             try
@@ -161,7 +166,7 @@ struct TheTagLogger:
         xmlFree( xmlName );
     }
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     void TagLogger::attribute(const std::string & name, const OUString & value)
     {
         attribute( name, OUStringToOString( value, RTL_TEXTENCODING_ASCII_US ).getStr() );

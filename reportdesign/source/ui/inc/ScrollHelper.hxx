@@ -23,11 +23,8 @@
 #include <com/sun/star/report/XSection.hpp>
 #include <comphelper/propmultiplex.hxx>
 #include "ReportDefines.hxx"
-#include <svtools/colorcfg.hxx>
-#include <svx/svdedtv.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <rtl/ref.hxx>
-#include <vcl/dockwin.hxx>
 #include "MarkedSection.hxx"
 #include "ReportWindow.hxx"
 
@@ -61,8 +58,8 @@ namespace rptui
         void ImplInitSettings();
         void impl_initScrollBar( ScrollBar& _rScrollBar ) const;
 
-        OScrollWindowHelper(OScrollWindowHelper&) = delete;
-        void operator =(OScrollWindowHelper&) = delete;
+        OScrollWindowHelper(OScrollWindowHelper const &) = delete;
+        void operator =(OScrollWindowHelper const &) = delete;
     protected:
         virtual void DataChanged( const DataChangedEvent& rDCEvt ) override;
         // window
@@ -82,13 +79,13 @@ namespace rptui
         Point            getThumbPos() const { return Point(m_aHScroll->GetThumbPos(),m_aVScroll->GetThumbPos())/*m_aScrollOffset*/; }
         void                    setTotalSize(sal_Int32 _nWidth, sal_Int32 _nHeight);
         const Size&             getTotalSize() const { return m_aTotalPixelSize; }
-        ScrollBar&       GetHScroll() { return *m_aHScroll.get(); }
-        ScrollBar&       GetVScroll() { return *m_aVScroll.get(); }
+        ScrollBar&       GetHScroll() { return *m_aHScroll; }
+        ScrollBar&       GetVScroll() { return *m_aVScroll; }
 
         // forwards
         void                    SetMode( DlgEdMode _eMode );
         void                    SetInsertObj( sal_uInt16 eObj,const OUString& _sShapeType);
-        OUString                GetInsertObjString() const;
+        OUString const &        GetInsertObjString() const;
         void                    setGridSnap(bool bOn);
         void                    setDragStripes(bool bOn);
         /** copies the current selection in this section
@@ -114,7 +111,7 @@ namespace rptui
         */
         void SelectAll(const sal_uInt16 _nObjectType);
 
-        /** returns <TRUE/> when a object is marked
+        /** returns <TRUE/> when an object is marked
         */
         bool HasSelection() const;
 
@@ -165,7 +162,7 @@ namespace rptui
             @param  _pSectionView   the section where to set the marked flag
             @param  _bMark  the marked flag
         */
-        void                    setMarked(OSectionView* _pSectionView, bool _bMark);
+        void                    setMarked(OSectionView const * _pSectionView, bool _bMark);
         void                    setMarked(const css::uno::Reference< css::report::XSection>& _xSection, bool _bMark);
         void                    setMarked(const css::uno::Sequence< css::uno::Reference< css::report::XReportComponent> >& _xShape, bool _bMark);
 
@@ -181,11 +178,11 @@ namespace rptui
         */
         void fillCollapsedSections(::std::vector<sal_uInt16>& _rCollapsedPositions) const;
 
-        /** collpase all sections given by their position
+        /** collapse all sections given by their position
         *
-        * \param _aCollpasedSections The position of the sections which should be collapsed.
+        * \param _aCollapsedSections The position of the sections which should be collapsed.
         */
-        void collapseSections(const css::uno::Sequence< css::beans::PropertyValue>& _aCollpasedSections);
+        void collapseSections(const css::uno::Sequence< css::beans::PropertyValue>& _aCollapsedSections);
 
         /** align all marked objects in all sections
         */

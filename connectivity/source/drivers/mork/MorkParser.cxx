@@ -35,19 +35,16 @@
 #include "MorkParser.hxx"
 #include <boost/io/ios_state.hpp>
 #include <stdlib.h>
-#include <sstream>
 #include <string>
 #include <string.h>
-#include <stdexcept>
 #include <fstream>
 #include <iostream>
-#include <algorithm>
 
 std::string const g_Empty = "";
 
 const char * const MorkDictColumnMeta = "<(a=c)>";
 
-static const int defaultScope_ = 0x80;
+const int defaultScope_ = 0x80;
 
 MorkParser::MorkParser() :
     columns_(),
@@ -100,13 +97,10 @@ bool MorkParser::parse()
     // Run over mork chars and parse each term
     char cur = nextChar();
 
-    int i = 0;
-
     while ( Result && cur )
     {
         if ( !isWhiteSpace( cur ) )
         {
-            i++;
             // Figure out what a term
             switch ( cur )
             {
@@ -127,7 +121,7 @@ bool MorkParser::parse()
                 // Row
                 break;
             case '@':
-                Result = parseGroup();
+                parseGroup();
                 // Group
                 break;
             default:
@@ -299,7 +293,7 @@ bool MorkParser::parseCell()
             std::string HexChar;
             HexChar += nextChar();
             HexChar += nextChar();
-            Text += (char)strtoul(HexChar.c_str(), nullptr, 16);
+            Text += static_cast<char>(strtoul(HexChar.c_str(), nullptr, 16));
         }
         break;
         default:
@@ -324,7 +318,7 @@ bool MorkParser::parseCell()
     if ( NP::Rows != nowParsing_ )
     {
         // Dicts
-        if ( "" != Text )
+        if ( !Text.empty() )
         {
             if ( nowParsing_ == NP::Columns )
             {
@@ -338,7 +332,7 @@ bool MorkParser::parseCell()
     }
     else
     {
-        if ( "" != Text )
+        if ( !Text.empty() )
         {
             // Rows
             //int ValueId = string( Text.c_str() ).toInt( 0, 16 );
@@ -389,7 +383,7 @@ bool MorkParser::parseTable()
             switch ( cur )
             {
             case '{':
-                Result = parseMeta( '}' );
+                parseMeta( '}' );
                 break;
             case '[':
                 Result = parseRow( Id, Scope );
@@ -514,7 +508,7 @@ bool MorkParser::parseRow( int TableId, int TableScope )
                 Result = parseCell();
                 break;
             case '[':
-                Result = parseMeta( ']' );
+                parseMeta( ']' );
                 break;
             default:
                 Result = false;
@@ -528,12 +522,12 @@ bool MorkParser::parseRow( int TableId, int TableScope )
     return Result;
 }
 
-bool MorkParser::parseGroup()
+void MorkParser::parseGroup()
 {
-    return parseMeta( '@' );
+    parseMeta( '@' );
 }
 
-bool MorkParser::parseMeta( char c )
+void MorkParser::parseMeta( char c )
 {
     char cur = nextChar();
 
@@ -541,14 +535,11 @@ bool MorkParser::parseMeta( char c )
     {
         cur = nextChar();
     }
-
-    return true;
 }
 
 MorkTableMap *MorkParser::getTables( int TableScope )
 {
-    TableScopeMap::Map::iterator iter;
-    iter = mork_.map.find( TableScope );
+    TableScopeMap::Map::iterator iter = mork_.map.find( TableScope );
 
     if ( iter == mork_.map.end() )
     {
@@ -560,8 +551,7 @@ MorkTableMap *MorkParser::getTables( int TableScope )
 
 MorkRowMap *MorkParser::getRows( int RowScope, RowScopeMap *table )
 {
-    RowScopeMap::Map::iterator iter;
-    iter = table->map.find( RowScope );
+    RowScopeMap::Map::iterator iter = table->map.find( RowScope );
 
     if ( iter == table->map.end() )
     {
@@ -604,40 +594,32 @@ void MorkParser::retrieveLists(std::set<std::string>& lists)
 
     MorkTableMap* tables = getTables(defaultScope_);
     if (!tables) return;
-    for (MorkTableMap::Map::iterator TableIter = tables->map.begin();
-         TableIter != tables->map.end(); ++TableIter )
+    for (auto& rTable : tables->map)
     {
 #ifdef VERBOSE
         std::cout    << "\t Table:"
-        << ( ( int ) TableIter->first < 0 ? "-" : " " )
-        << TableIter->first << std::endl;
+        << ( ( int ) rTable.first < 0 ? "-" : " " )
+        << rTable.first << std::endl;
 #endif
-        MorkRowMap* rows = getRows( 0x81/*defaultListScope*/, &TableIter->second );
+        MorkRowMap* rows = getRows( 0x81/*defaultListScope*/, &rTable.second );
         if (!rows) return;
-        for ( MorkRowMap::Map::const_iterator RowIter = rows->map.begin();
-             RowIter != rows->map.end(); ++RowIter )
+        for ( const auto& rRow : rows->map )
         {
 #ifdef VERBOSE
             std::cout    << "\t\t\t Row Id:"
-                << ( ( int ) RowIter->first < 0 ? "-" : " ")
-                << RowIter->first << std::endl;
+                << ( ( int ) rRow.first < 0 ? "-" : " ")
+                << rRow.first << std::endl;
                 std::cout << "\t\t\t\t Cells:\r\n";
 #endif
             // Get cells
-            for ( MorkCells::const_iterator cellsIter = RowIter->second.begin();
-                 cellsIter != RowIter->second.end(); ++cellsIter )
-            {
-                if (cellsIter->first == 0xC1)
-                {
-                    lists.insert(getValue( cellsIter->second ));
-                    break;
-                }
-            }
+            MorkCells::const_iterator cellsIter = rRow.second.find(0xC1);
+            if (cellsIter != rRow.second.end())
+                lists.insert(getValue( cellsIter->second ));
         }
     }
 }
 
-void MorkParser::getRecordKeysForListTable(std::string& listName, std::set<int>& records)
+void MorkParser::getRecordKeysForListTable(std::string const & listName, std::set<int>& records)
 {
 #ifdef VERBOSE
     boost::io::ios_all_saver ias(std::cout);
@@ -646,41 +628,38 @@ void MorkParser::getRecordKeysForListTable(std::string& listName, std::set<int>&
 
     MorkTableMap* tables = getTables(defaultScope_);
     if (!tables) return;
-    for (MorkTableMap::Map::iterator TableIter = tables->map.begin();
-         TableIter != tables->map.end(); ++TableIter )
+    for (auto& rTable : tables->map)
     {
 #ifdef VERBOSE
         std::cout    << "\t Table:"
-        << ( ( int ) TableIter->first < 0 ? "-" : " " )
-        << TableIter->first << std::endl;
+        << ( ( int ) rTable.first < 0 ? "-" : " " )
+        << rTable.first << std::endl;
 #endif
-        MorkRowMap* rows = getRows( 0x81, &TableIter->second );
+        MorkRowMap* rows = getRows( 0x81, &rTable.second );
         if (!rows) return;
-        for ( MorkRowMap::Map::const_iterator RowIter = rows->map.begin();
-             RowIter != rows->map.end(); ++RowIter )
+        for ( const auto& rRow : rows->map )
         {
 #ifdef VERBOSE
             std::cout    << "\t\t\t Row Id:"
-            << ( ( int ) RowIter->first < 0 ? "-" : " ")
-            << RowIter->first << std::endl;
+            << ( ( int ) rRow.first < 0 ? "-" : " ")
+            << rRow.first << std::endl;
             std::cout << "\t\t\t\t Cells:\r\n";
 #endif
             // Get cells
             bool isListFound = false;
-            for ( MorkCells::const_iterator cellsIter = RowIter->second.begin();
-                 cellsIter != RowIter->second.end(); ++cellsIter )
+            for ( const auto& [rColumnId, rValueId] : rRow.second )
             {
                 if (isListFound)
                 {
-                    if (cellsIter->first >= 0xC7)
+                    if (rColumnId >= 0xC7)
                     {
-                        std::string value = getValue(cellsIter->second);
+                        std::string value = getValue(rValueId);
                         int id = strtoul(value.c_str(), nullptr, 16);
                         records.insert(id);
                     }
                 }
-                else if ((cellsIter->first == 0xC1) &&
-                         listName == getValue( cellsIter->second ))
+                else if ((rColumnId == 0xC1) &&
+                         listName == getValue( rValueId ))
                 {
                     isListFound = true;
                 }
@@ -699,12 +678,11 @@ void MorkParser::dump()
     std::cout << "=============================================\r\n\r\n";
 
     //// columns dict
-    for ( MorkDict::const_iterator iter = columns_.begin();
-          iter != columns_.end(); ++iter )
+    for ( const auto& [rColumnId, rText] : columns_ )
     {
-        std::cout  << iter->first
+        std::cout  << rColumnId
                    << " : "
-                   << iter->second
+                   << rText
                    << std::endl;
     }
 
@@ -712,16 +690,15 @@ void MorkParser::dump()
     std::cout << "\r\nValues Dict:\r\n";
     std::cout << "=============================================\r\n\r\n";
 
-    for ( MorkDict::const_iterator iter = values_.begin();
-          iter != values_.end(); ++iter )
+    for ( const auto& [rValueId, rText] : values_ )
     {
-        if (iter->first >= nextAddValueId_) {
+        if (rValueId >= nextAddValueId_) {
             continue;
         }
 
-        std::cout << iter->first
+        std::cout << rValueId
                   << " : "
-                  << iter->second
+                  << rText
                   << "\r\n";
     }
 
@@ -730,47 +707,42 @@ void MorkParser::dump()
               << std::endl << std::endl;
 
     //// Mork data
-    for ( TableScopeMap::Map::const_iterator iter = mork_.map.begin();
-          iter != mork_.map.end(); ++iter )
+    for ( const auto& [rTableScopeId, rTableScope] : mork_.map )
     {
-        std::cout << "\r\n Scope:" << iter->first << std::endl;
+        std::cout << "\r\n Scope:" << rTableScopeId << std::endl;
 
-        for ( MorkTableMap::Map::const_iterator TableIter = iter->second.map.begin();
-              TableIter != iter->second.map.end(); ++TableIter )
+        for ( const auto& [rTableId, rTable] : rTableScope.map )
         {
             std::cout << "\t Table:"
-                      << ( ( int ) TableIter->first < 0 ? "-" : " " )
-                      << TableIter->first << std::endl;
+                      << ( rTableId < 0 ? "-" : " " )
+                      << rTableId << std::endl;
 
-            for (RowScopeMap::Map::const_iterator RowScopeIter = TableIter->second.map.begin();
-                 RowScopeIter != TableIter->second.map.end(); ++RowScopeIter )
+            for (const auto& [rRowScopeId, rRowScope] : rTable.map)
             {
                 std::cout << "\t\t RowScope:"
-                          << RowScopeIter->first << std::endl;
+                          << rRowScopeId << std::endl;
 
-                for (MorkRowMap::Map::const_iterator RowIter = RowScopeIter->second.map.begin();
-                     RowIter != RowScopeIter->second.map.end(); ++RowIter )
+                for (const auto& [rRowId, rRow] : rRowScope.map)
                 {
                     std::cout << "\t\t\t Row Id:"
-                              << ((int) RowIter->first < 0 ? "-" : " ")
-                              << RowIter->first << std::endl;
+                              << (rRowId < 0 ? "-" : " ")
+                              << rRowId << std::endl;
                     std::cout << "\t\t\t\t Cells:" << std::endl;
 
-                    for (MorkCells::const_iterator CellsIter = RowIter->second.begin();
-                         CellsIter != RowIter->second.end(); ++CellsIter )
+                    for (const auto& [rColumnId, rValueId] : rRow)
                     {
                         // Write ids
                         std::cout << "\t\t\t\t\t"
-                                  << CellsIter->first
+                                  << rColumnId
                                   << " : "
-                                  << CellsIter->second
+                                  << rValueId
                                   << "  =>  ";
 
-                        MorkDict::const_iterator FoundIter = values_.find( CellsIter->second );
+                        MorkDict::const_iterator FoundIter = values_.find( rValueId );
                         if ( FoundIter != values_.end() )
                         {
                             // Write string values
-                            std::cout << columns_[ CellsIter->first ].c_str()
+                            std::cout << columns_[ rColumnId ].c_str()
                                       << " : "
                                       << FoundIter->second.c_str()
                                       << std::endl;

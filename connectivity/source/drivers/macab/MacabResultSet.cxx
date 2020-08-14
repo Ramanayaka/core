@@ -28,10 +28,12 @@
 #include "macaborder.hxx"
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/sdbcx/CompareBookmark.hpp>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
+#include <cppuhelper/typeprovider.hxx>
+#include <comphelper/types.hxx>
 #include <connectivity/dbexception.hxx>
-#include "resource/sharedresources.hxx"
-#include "resource/macab_res.hrc"
+#include <resource/sharedresources.hxx>
+#include <strings.hrc>
 
 using namespace connectivity::macab;
 using namespace cppu;
@@ -49,12 +51,11 @@ MacabResultSet::MacabResultSet(MacabCommonStatement* pStmt)
     : MacabResultSet_BASE(m_aMutex),
       OPropertySetHelper(MacabResultSet_BASE::rBHelper),
       m_xStatement(pStmt),
-      m_xMetaData(nullptr),
       m_aMacabRecords(),
       m_nRowPos(-1),
-      m_bWasNull(true)
+      m_bWasNull(true),
+      m_sTableName(MacabAddressBook::getDefaultTableName())
 {
-    m_sTableName = MacabAddressBook::getDefaultTableName();
 }
 
 MacabResultSet::~MacabResultSet()
@@ -143,8 +144,8 @@ void MacabResultSet::disposing()
 
     ::osl::MutexGuard aGuard(m_aMutex);
 
-m_xStatement.clear();
-m_xMetaData.clear();
+    m_xStatement.clear();
+    m_xMetaData.clear();
 }
 
 Any SAL_CALL MacabResultSet::queryInterface(const Type & rType)
@@ -234,7 +235,7 @@ sal_Bool SAL_CALL MacabResultSet::getBoolean(sal_Int32)
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(MacabResultSet_BASE::rBHelper.bDisposed);
 
-::dbtools::throwFunctionNotSupportedSQLException("getBoolean", nullptr);
+    ::dbtools::throwFunctionNotSupportedSQLException("getBoolean", nullptr);
 
     return false;
 }
@@ -244,7 +245,7 @@ sal_Int8 SAL_CALL MacabResultSet::getByte(sal_Int32)
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(MacabResultSet_BASE::rBHelper.bDisposed);
 
-::dbtools::throwFunctionNotSupportedSQLException("getByte", nullptr);
+    ::dbtools::throwFunctionNotSupportedSQLException("getByte", nullptr);
 
     return 0;
 }
@@ -254,7 +255,7 @@ sal_Int16 SAL_CALL MacabResultSet::getShort(sal_Int32)
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(MacabResultSet_BASE::rBHelper.bDisposed);
 
-::dbtools::throwFunctionNotSupportedSQLException("getShort", nullptr);
+    ::dbtools::throwFunctionNotSupportedSQLException("getShort", nullptr);
 
     return 0;
 }
@@ -489,7 +490,7 @@ Reference< XClob > SAL_CALL MacabResultSet::getClob(sal_Int32)
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(MacabResultSet_BASE::rBHelper.bDisposed);
 
-::dbtools::throwFunctionNotSupportedSQLException("getClob", nullptr);
+    ::dbtools::throwFunctionNotSupportedSQLException("getClob", nullptr);
 
     return nullptr;
 }
@@ -499,7 +500,7 @@ Reference< XArray > SAL_CALL MacabResultSet::getArray(sal_Int32)
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(MacabResultSet_BASE::rBHelper.bDisposed);
 
-::dbtools::throwFunctionNotSupportedSQLException("getArray", nullptr);
+    ::dbtools::throwFunctionNotSupportedSQLException("getArray", nullptr);
 
     return nullptr;
 }
@@ -896,7 +897,7 @@ sal_Bool SAL_CALL MacabResultSet::moveToBookmark(const  Any& bookmark)
     checkDisposed(MacabResultSet_BASE::rBHelper.bDisposed);
 
     OUString sBookmark = comphelper::getString(bookmark);
-        sal_Int32 nRecords = m_aMacabRecords->size();
+    sal_Int32 nRecords = m_aMacabRecords->size();
 
     for (sal_Int32 nRow = 0; nRow < nRecords; nRow++)
     {
@@ -1040,7 +1041,7 @@ void MacabResultSet::setFastPropertyValue_NoBroadcast(
         case PROPERTY_ID_CURSORNAME:
         case PROPERTY_ID_RESULTSETCONCURRENCY:
         case PROPERTY_ID_RESULTSETTYPE:
-            throw Exception();
+            throw Exception("cannot set prop " + OUString::number(nHandle), nullptr);
             break;
         case PROPERTY_ID_FETCHDIRECTION:
             break;

@@ -17,22 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "framework/ImpressModule.hxx"
+#include <framework/ImpressModule.hxx>
 
-#include "framework/FrameworkHelper.hxx"
+#include <framework/FrameworkHelper.hxx>
 #include "ViewTabBarModule.hxx"
 #include "CenterViewFocusModule.hxx"
 #include "SlideSorterModule.hxx"
-#include "ToolPanelModule.hxx"
 #include "ToolBarModule.hxx"
 #include "ShellStackGuard.hxx"
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
-void ImpressModule::Initialize (Reference<frame::XController>& rxController)
+void ImpressModule::Initialize (Reference<frame::XController> const & rxController)
 {
     new CenterViewFocusModule(rxController);
     new ViewTabBarModule(
@@ -43,13 +42,10 @@ void ImpressModule::Initialize (Reference<frame::XController>& rxController)
     new SlideSorterModule(
         rxController,
         FrameworkHelper::msLeftImpressPaneURL);
-    new ToolPanelModule(
-        rxController,
-        FrameworkHelper::msSidebarViewURL);
     new ToolBarModule(rxController);
     new ShellStackGuard(rxController);
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -25,17 +25,11 @@
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
-#include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/awt/XFocusListener.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 
 class SdPage;
-
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter { class SlideSorter; }
 
 namespace accessibility {
 
@@ -190,7 +184,7 @@ private:
         @return sal_True, if the object is disposed or in the course
         of being disposed. Otherwise, sal_False is returned.
     */
-    bool IsDisposed();
+    bool IsDisposed() const;
 };
 
 } // end of namespace ::accessibility

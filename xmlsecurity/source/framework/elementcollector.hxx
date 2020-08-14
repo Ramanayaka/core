@@ -21,8 +21,10 @@
 #define INCLUDED_XMLSECURITY_SOURCE_FRAMEWORK_ELEMENTCOLLECTOR_HXX
 
 #include "elementmark.hxx"
-#include <com/sun/star/xml/crypto/sax/XReferenceResolvedListener.hpp>
 #include <com/sun/star/xml/crypto/sax/ElementMarkPriority.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+
+namespace com::sun::star::xml::crypto::sax { class XReferenceResolvedListener; }
 
 class ElementCollector : public ElementMark
 /****** elementcollector.hxx/CLASS ElementCollector ***************************
@@ -44,13 +46,13 @@ private:
      * BEFOREMODIFY - this ElementCollector must notify before any
      *                    internal modification happens.
      */
-    css::xml::crypto::sax::ElementMarkPriority m_nPriority;
+    css::xml::crypto::sax::ElementMarkPriority const m_nPriority;
 
     /*
      * the modify flag, representing whether which elementcollector will
      * modify its data.
      */
-    bool m_bToModify;
+    bool const m_bToModify;
 
     /* the notify enable flag, see notifyListener method */
     bool m_bAbleToNotify;

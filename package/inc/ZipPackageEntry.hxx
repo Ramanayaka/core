@@ -27,7 +27,7 @@
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <ZipEntry.hxx>
+#include "ZipEntry.hxx"
 #include <cppuhelper/implbase.hxx>
 
 #include <vector>
@@ -59,16 +59,17 @@ public:
     ZipPackageEntry();
     virtual ~ZipPackageEntry() override;
 
-    const OUString& GetMediaType () const { return msMediaType; }
-    void SetMediaType ( const OUString & sNewType) { msMediaType = sNewType; }
-    void doSetParent ( ZipPackageFolder * pNewParent );
-    bool IsFolder ( ) { return mbIsFolder; }
-    void SetFolder ( bool bSetFolder ) { mbIsFolder = bSetFolder; }
+    const OUString& GetMediaType() const { return msMediaType; }
+    void SetMediaType(const OUString & sNewType) { msMediaType = sNewType; }
+    void doSetParent(ZipPackageFolder * pNewParent);
+    bool IsFolder() const { return mbIsFolder; }
+    void SetFolder(const bool bSetFolder) { mbIsFolder = bSetFolder; }
 
     virtual bool saveChild( const OUString &rPath,
                             std::vector < css::uno::Sequence < css::beans::PropertyValue > > &rManList,
                             ZipOutputStream & rZipOut,
                             const css::uno::Sequence < sal_Int8 >& rEncryptionKey,
+                            sal_Int32 nPBKDF2IterationCount,
                             const rtlRandomPool &rRandomPool ) = 0;
 
     void clearParent()

@@ -23,19 +23,16 @@
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
 
-// SFX_IMPL_MODULE_LIB
-#include <osl/module.hxx>
 #include <rtl/ustring.hxx>
-
-#include <sfx2/objsh.hxx>
+#include <sfx2/shell.hxx>
 #include <memory>
 
-class SfxMedium;
 class SfxFilter;
 class SfxViewFactory;
 struct SfxObjectFactory_Impl;
 class SfxFilterContainer;
-class SfxBindings;
+class SvGlobalName;
+class SfxModule;
 
 typedef void (*SfxVoidFunc)();
 
@@ -45,14 +42,12 @@ class SFX2_DLLPUBLIC SfxObjectFactory
 private:
     const OUString          m_sFactoryName;
     std::unique_ptr<SfxObjectFactory_Impl> pImpl;      // Additional Data
-    SfxObjectShellFlags     nFlags;
 
 public:
-    SfxObjectFactory( const SvGlobalName &rName, SfxObjectShellFlags nFlags, const OUString& sFactoryName );
+    SfxObjectFactory( const SvGlobalName &rName, const OUString& sFactoryName );
     ~SfxObjectFactory();
 
     const SvGlobalName& GetClassId() const;
-    SfxObjectShellFlags GetFlags() { return nFlags; }
     OUString        GetFactoryURL() const;  // shortcut for "private:factory/GetShortName()"
     const OUString& GetFactoryName() const { return m_sFactoryName; }
     OUString        GetModuleName() const;
@@ -90,10 +85,10 @@ public:                                                                     \
     static SfxObjectFactory&    Factory();                                  \
     virtual SfxObjectFactory&   GetFactory() const override { return Factory(); }
 
-#define SFX_IMPL_OBJECTFACTORY(ClassName,GlobName,Flags,ShortName)          \
+#define SFX_IMPL_OBJECTFACTORY(ClassName,GlobName,ShortName)          \
     SfxObjectFactory& ClassName::Factory()                                  \
     {                                                                       \
-        static SfxObjectFactory aObjectFactory(GlobName, Flags, ShortName); \
+        static SfxObjectFactory aObjectFactory(GlobName, ShortName); \
         return aObjectFactory;                                              \
     }
 #endif // INCLUDED_SFX2_DOCFAC_HXX

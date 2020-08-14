@@ -21,34 +21,28 @@
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/awt/FontDescriptor.hpp>
 #include <com/sun/star/awt/FontWidth.hpp>
-#include <com/sun/star/awt/FontWeight.hpp>
 #include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/awt/MouseWheelBehavior.hpp>
-#include <com/sun/star/graphic/XGraphicProvider.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/awt/XDevice.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
 #include <com/sun/star/io/XMarkableStream.hpp>
+#include <com/sun/star/i18n/Currency2.hpp>
+#include <com/sun/star/util/Date.hpp>
+#include <com/sun/star/util/Time.hpp>
 #include <toolkit/controls/unocontrolmodel.hxx>
-#include <toolkit/helper/macros.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <rtl/uuid.h>
+#include <sal/log.hxx>
 #include <tools/diagnose_ex.h>
-#include <tools/date.hxx>
-#include <tools/time.hxx>
 #include <tools/debug.hxx>
 #include <toolkit/helper/property.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <toolkit/helper/emptyfontdescriptor.hxx>
-#include <com/sun/star/lang/Locale.hpp>
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/configmgr.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/extract.hxx>
-#include <vcl/svapp.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <vcl/unohelp.hxx>
-#include <uno/data.h>
 
 #include <memory>
 #include <set>
@@ -60,7 +54,7 @@ using namespace ::com::sun::star::i18n;
 using ::com::sun::star::awt::FontDescriptor;
 
 
-#define UNOCONTROL_STREAMVERSION    (short)2
+#define UNOCONTROL_STREAMVERSION    short(2)
 
 static void lcl_ImplMergeFontProperty( FontDescriptor& rFD, sal_uInt16 nPropId, const Any& rValue )
 {
@@ -80,12 +74,12 @@ static void lcl_ImplMergeFontProperty( FontDescriptor& rFD, sal_uInt16 nPropId, 
                                                             break;
         case BASEPROPERTY_FONTDESCRIPTORPART_CHARSET:       rValue >>= rFD.CharSet;
                                                             break;
-        case BASEPROPERTY_FONTDESCRIPTORPART_HEIGHT:        rValue >>= nExtractFloat; rFD.Height = (sal_Int16)nExtractFloat;
+        case BASEPROPERTY_FONTDESCRIPTORPART_HEIGHT:        rValue >>= nExtractFloat; rFD.Height = static_cast<sal_Int16>(nExtractFloat);
                                                             break;
         case BASEPROPERTY_FONTDESCRIPTORPART_WEIGHT:        rValue >>= rFD.Weight;
                                                             break;
         case BASEPROPERTY_FONTDESCRIPTORPART_SLANT:         if ( rValue >>= nExtractShort )
-                                                                rFD.Slant = (css::awt::FontSlant)nExtractShort;
+                                                                rFD.Slant = static_cast<css::awt::FontSlant>(nExtractShort);
                                                             else
                                                                 rValue >>= rFD.Slant;
                                                             break;
@@ -112,7 +106,6 @@ static void lcl_ImplMergeFontProperty( FontDescriptor& rFD, sal_uInt16 nPropId, 
 }
 
 
-//  class UnoControlModel
 
 UnoControlModel::UnoControlModel( const Reference< XComponentContext >& rxContext )
     :UnoControlModel_Base()
@@ -141,8 +134,8 @@ css::uno::Sequence<sal_Int32> UnoControlModel::ImplGetPropertyIds() const
     css::uno::Sequence<sal_Int32>  aIDs( nIDs );
     sal_Int32* pIDs = aIDs.getArray();
     sal_uInt32 n = 0;
-    for ( ImplPropertyTable::const_iterator it = maData.begin(); it != maData.end(); ++it )
-        pIDs[n++] = it->first;
+    for ( const auto& rData : maData )
+        pIDs[n++] = rData.first;
     return aIDs;
 }
 
@@ -174,9 +167,9 @@ css::uno::Any UnoControlModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
             case BASEPROPERTY_FONTDESCRIPTORPART_STYLENAME:     aDefault <<= aFD.StyleName;         break;
             case BASEPROPERTY_FONTDESCRIPTORPART_FAMILY:        aDefault <<= aFD.Family;            break;
             case BASEPROPERTY_FONTDESCRIPTORPART_CHARSET:       aDefault <<= aFD.CharSet;           break;
-            case BASEPROPERTY_FONTDESCRIPTORPART_HEIGHT:        aDefault <<= (float)aFD.Height;     break;
+            case BASEPROPERTY_FONTDESCRIPTORPART_HEIGHT:        aDefault <<= static_cast<float>(aFD.Height);     break;
             case BASEPROPERTY_FONTDESCRIPTORPART_WEIGHT:        aDefault <<= aFD.Weight;            break;
-            case BASEPROPERTY_FONTDESCRIPTORPART_SLANT:         aDefault <<= (sal_Int16)aFD.Slant;  break;
+            case BASEPROPERTY_FONTDESCRIPTORPART_SLANT:         aDefault <<= static_cast<sal_Int16>(aFD.Slant);  break;
             case BASEPROPERTY_FONTDESCRIPTORPART_UNDERLINE:     aDefault <<= aFD.Underline;         break;
             case BASEPROPERTY_FONTDESCRIPTORPART_STRIKEOUT:     aDefault <<= aFD.Strikeout;         break;
             case BASEPROPERTY_FONTDESCRIPTORPART_WIDTH:         aDefault <<= aFD.Width;             break;
@@ -224,35 +217,35 @@ css::uno::Any UnoControlModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
             case BASEPROPERTY_STATE:
             case BASEPROPERTY_EXTDATEFORMAT:
             case BASEPROPERTY_EXTTIMEFORMAT:
-            case BASEPROPERTY_ECHOCHAR:             aDefault <<= (sal_Int16) 0; break;
-            case BASEPROPERTY_BORDER:               aDefault <<= (sal_Int16) 1; break;
-            case BASEPROPERTY_DECIMALACCURACY:      aDefault <<= (sal_Int16) 2; break;
-            case BASEPROPERTY_LINECOUNT:            aDefault <<= (sal_Int16) 5; break;
-            case BASEPROPERTY_ALIGN:                aDefault <<= (sal_Int16) PROPERTY_ALIGN_LEFT; break;
-            case BASEPROPERTY_IMAGEALIGN:           aDefault <<= (sal_Int16) 1 /*ImageAlign::Top*/; break;
-            case BASEPROPERTY_IMAGEPOSITION:        aDefault <<= (sal_Int16) 12 /*ImagePosition::Centered*/; break;
-            case BASEPROPERTY_PUSHBUTTONTYPE:       aDefault <<= (sal_Int16) 0 /*PushButtonType::STANDARD*/; break;
-            case BASEPROPERTY_MOUSE_WHEEL_BEHAVIOUR:aDefault <<= (sal_Int16) awt::MouseWheelBehavior::SCROLL_FOCUS_ONLY; break;
+            case BASEPROPERTY_ECHOCHAR:             aDefault <<= sal_Int16(0); break;
+            case BASEPROPERTY_BORDER:               aDefault <<= sal_Int16(1); break;
+            case BASEPROPERTY_DECIMALACCURACY:      aDefault <<= sal_Int16(2); break;
+            case BASEPROPERTY_LINECOUNT:            aDefault <<= sal_Int16(5); break;
+            case BASEPROPERTY_ALIGN:                aDefault <<= sal_Int16(PROPERTY_ALIGN_LEFT); break;
+            case BASEPROPERTY_IMAGEALIGN:           aDefault <<= sal_Int16(1) /*ImageAlign::Top*/; break;
+            case BASEPROPERTY_IMAGEPOSITION:        aDefault <<= sal_Int16(12) /*ImagePosition::Centered*/; break;
+            case BASEPROPERTY_PUSHBUTTONTYPE:       aDefault <<= sal_Int16(0) /*PushButtonType::STANDARD*/; break;
+            case BASEPROPERTY_MOUSE_WHEEL_BEHAVIOUR:aDefault <<= sal_Int16(awt::MouseWheelBehavior::SCROLL_FOCUS_ONLY); break;
 
             case BASEPROPERTY_DATEMAX:              aDefault <<= util::Date( 31, 12, 2200 );    break;
             case BASEPROPERTY_DATEMIN:              aDefault <<= util::Date( 1, 1, 1900 );  break;
             case BASEPROPERTY_TIMEMAX:              aDefault <<= util::Time(0, 0, 59, 23, false);  break;
             case BASEPROPERTY_TIMEMIN:              aDefault <<= util::Time();      break;
-            case BASEPROPERTY_VALUEMAX_DOUBLE:      aDefault <<= (double) 1000000;  break;
-            case BASEPROPERTY_VALUEMIN_DOUBLE:      aDefault <<= (double) -1000000; break;
-            case BASEPROPERTY_VALUESTEP_DOUBLE:     aDefault <<= (double ) 1;       break;
-            case BASEPROPERTY_PROGRESSVALUE_MAX:    aDefault <<= (sal_Int32) 100;   break;
-            case BASEPROPERTY_PROGRESSVALUE_MIN:    aDefault <<= (sal_Int32)   0;   break;
-            case BASEPROPERTY_SCROLLVALUE_MAX:      aDefault <<= (sal_Int32) 100;   break;
-            case BASEPROPERTY_SCROLLVALUE_MIN:      aDefault <<= (sal_Int32)   0;   break;
-            case BASEPROPERTY_LINEINCREMENT:        aDefault <<= (sal_Int32)   1;   break;
-            case BASEPROPERTY_BLOCKINCREMENT:       aDefault <<= (sal_Int32)  10;   break;
-            case BASEPROPERTY_ORIENTATION:          aDefault <<= (sal_Int32)   0;   break;
-            case BASEPROPERTY_SPINVALUE:            aDefault <<= (sal_Int32)   0;   break;
-            case BASEPROPERTY_SPININCREMENT:        aDefault <<= (sal_Int32)   1;   break;
-            case BASEPROPERTY_SPINVALUE_MIN:        aDefault <<= (sal_Int32)   0;   break;
-            case BASEPROPERTY_SPINVALUE_MAX:        aDefault <<= (sal_Int32) 100;   break;
-            case BASEPROPERTY_REPEAT_DELAY:         aDefault <<= (sal_Int32)  50;   break;    // 50 milliseconds
+            case BASEPROPERTY_VALUEMAX_DOUBLE:      aDefault <<= double(1000000);  break;
+            case BASEPROPERTY_VALUEMIN_DOUBLE:      aDefault <<= double(-1000000); break;
+            case BASEPROPERTY_VALUESTEP_DOUBLE:     aDefault <<= double(1);       break;
+            case BASEPROPERTY_PROGRESSVALUE_MAX:    aDefault <<= sal_Int32(100);   break;
+            case BASEPROPERTY_PROGRESSVALUE_MIN:    aDefault <<= sal_Int32(0);   break;
+            case BASEPROPERTY_SCROLLVALUE_MAX:      aDefault <<= sal_Int32(100);   break;
+            case BASEPROPERTY_SCROLLVALUE_MIN:      aDefault <<= sal_Int32(0);   break;
+            case BASEPROPERTY_LINEINCREMENT:        aDefault <<= sal_Int32(1);   break;
+            case BASEPROPERTY_BLOCKINCREMENT:       aDefault <<= sal_Int32(10);   break;
+            case BASEPROPERTY_ORIENTATION:          aDefault <<= sal_Int32(0);   break;
+            case BASEPROPERTY_SPINVALUE:            aDefault <<= sal_Int32(0);   break;
+            case BASEPROPERTY_SPININCREMENT:        aDefault <<= sal_Int32(1);   break;
+            case BASEPROPERTY_SPINVALUE_MIN:        aDefault <<= sal_Int32(0);   break;
+            case BASEPROPERTY_SPINVALUE_MAX:        aDefault <<= sal_Int32(100);   break;
+            case BASEPROPERTY_REPEAT_DELAY:         aDefault <<= sal_Int32(50);   break;    // 50 milliseconds
             case BASEPROPERTY_DEFAULTCONTROL:       aDefault <<= const_cast<UnoControlModel*>(this)->getServiceName();    break;
 
             case BASEPROPERTY_AUTOHSCROLL:
@@ -344,34 +337,36 @@ css::uno::Any UnoControlModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
                     sBankSymbol = aLocaleInfo.getCurrBankSymbol();
 
                 // look for the currency entry (for this language) which has the given bank symbol
-                Sequence< Currency2 > aAllCurrencies = aLocaleInfo.getAllCurrencies();
-                const Currency2* pAllCurrencies     =                       aAllCurrencies.getConstArray();
-                const Currency2* pAllCurrenciesEnd  =   pAllCurrencies  +   aAllCurrencies.getLength();
+                const Sequence< Currency2 > aAllCurrencies = aLocaleInfo.getAllCurrencies();
 
                 OUString sCurrencySymbol = aLocaleInfo.getCurrSymbol();
                 if ( sBankSymbol.isEmpty() )
                 {
-                    DBG_ASSERT( pAllCurrencies != pAllCurrenciesEnd, "UnoControlModel::ImplGetDefaultValue: no currencies at all!" );
-                    if ( pAllCurrencies != pAllCurrenciesEnd )
+                    DBG_ASSERT( aAllCurrencies.hasElements(), "UnoControlModel::ImplGetDefaultValue: no currencies at all!" );
+                    if ( aAllCurrencies.hasElements() )
                     {
-                        sBankSymbol = pAllCurrencies->BankSymbol;
-                        sCurrencySymbol = pAllCurrencies->Symbol;
+                        sBankSymbol = aAllCurrencies[0].BankSymbol;
+                        sCurrencySymbol = aAllCurrencies[0].Symbol;
                     }
                 }
 
                 if ( !sBankSymbol.isEmpty() )
                 {
                     bool bLegacy = false;
-                    for ( ;pAllCurrencies != pAllCurrenciesEnd; ++pAllCurrencies )
-                        if ( pAllCurrencies->BankSymbol == sBankSymbol )
+                    bool bFound = false;
+                    for ( const Currency2& rCurrency : aAllCurrencies )
+                        if ( rCurrency.BankSymbol == sBankSymbol )
                         {
-                            sCurrencySymbol = pAllCurrencies->Symbol;
-                            if ( pAllCurrencies->LegacyOnly )
+                            sCurrencySymbol = rCurrency.Symbol;
+                            if ( rCurrency.LegacyOnly )
                                 bLegacy = true;
                             else
+                            {
+                                bFound = true;
                                 break;
+                            }
                         }
-                    DBG_ASSERT( bLegacy || pAllCurrencies != pAllCurrenciesEnd, "UnoControlModel::ImplGetDefaultValue: did not find the given bank symbol!" );
+                    DBG_ASSERT( bLegacy || bFound, "UnoControlModel::ImplGetDefaultValue: did not find the given bank symbol!" );
                 }
 
                 aDefault <<= sCurrencySymbol;
@@ -409,11 +404,10 @@ void UnoControlModel::ImplRegisterProperty( sal_uInt16 nPropId )
 
 void UnoControlModel::ImplRegisterProperties( const std::vector< sal_uInt16 > &rIds )
 {
-    std::vector< sal_uInt16 >::const_iterator iter;
-    for( iter = rIds.begin(); iter != rIds.end(); ++iter)
+    for (const auto& rId : rIds)
     {
-        if( !ImplHasProperty( *iter ) )
-            ImplRegisterProperty( *iter, ImplGetDefaultValue( *iter ) );
+        if( !ImplHasProperty( rId ) )
+            ImplRegisterProperty( rId, ImplGetDefaultValue( rId ) );
     }
 }
 
@@ -427,7 +421,23 @@ css::uno::Any UnoControlModel::queryAggregation( const css::uno::Type & rType )
 }
 
 // css::lang::XUnoTunnel
-IMPL_XUNOTUNNEL_MINIMAL( UnoControlModel )
+namespace
+{
+    class theUnoControlModelUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theUnoControlModelUnoTunnelId> {};
+}
+
+const css::uno::Sequence< sal_Int8 >& UnoControlModel::getUnoTunnelId() throw()
+{
+    return theUnoControlModelUnoTunnelId::get().getSeq();
+}
+
+sal_Int64 UnoControlModel::getSomething( const css::uno::Sequence< sal_Int8 >& rIdentifier )
+{
+    if( isUnoTunnelId<UnoControlModel>(rIdentifier) )
+        return sal::static_int_cast< sal_Int64 >(reinterpret_cast< sal_IntPtr >(this));
+
+    return 0;
+}
 
 // XInterface
 IMPLEMENT_FORWARD_REFCOUNT( UnoControlModel, UnoControlModel_Base )
@@ -438,9 +448,8 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( UnoControlModel, UnoControlModel_Base, ::cppu:
 
 uno::Reference< util::XCloneable > UnoControlModel::createClone()
 {
-    UnoControlModel* pClone = Clone();
-    uno::Reference< util::XCloneable > xClone( static_cast<cppu::OWeakObject*>(pClone), uno::UNO_QUERY );
-    return xClone;
+    rtl::Reference<UnoControlModel> pClone = Clone();
+    return pClone.get();
 }
 
 // css::lang::XComponent
@@ -490,14 +499,12 @@ css::uno::Sequence< css::beans::PropertyState > UnoControlModel::getPropertyStat
 {
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
 
-    sal_uInt32 nNames = PropertyNames.getLength();
-    const OUString* pNames = PropertyNames.getConstArray();
+    sal_Int32 nNames = PropertyNames.getLength();
 
     css::uno::Sequence< css::beans::PropertyState > aStates( nNames );
-    css::beans::PropertyState* pStates = aStates.getArray();
 
-    for ( sal_uInt32 n = 0; n < nNames; n++ )
-        pStates[n] = getPropertyState( pNames[n] );
+    std::transform(PropertyNames.begin(), PropertyNames.end(), aStates.begin(),
+        [this](const OUString& rName) -> css::beans::PropertyState { return getPropertyState(rName); });
 
     return aStates;
 }
@@ -525,7 +532,7 @@ OUString UnoControlModel::getServiceName(  )
 {
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
 
-    OSL_FAIL( "ServiceName von UnoControlModel ?!" );
+    OSL_FAIL( "ServiceName of UnoControlModel ?!" );
     return OUString();
 }
 
@@ -540,12 +547,12 @@ void UnoControlModel::write( const css::uno::Reference< css::io::XObjectOutputSt
 
     std::set<sal_uInt16> aProps;
 
-    for (ImplPropertyTable::const_iterator it = maData.begin(); it != maData.end(); ++it )
+    for (const auto& rData : maData)
     {
-        if ( ( ( GetPropertyAttribs( it->first ) & css::beans::PropertyAttribute::TRANSIENT ) == 0 )
-            && ( getPropertyState( GetPropertyName( it->first ) ) != css::beans::PropertyState_DEFAULT_VALUE ) )
+        if ( ( ( GetPropertyAttribs( rData.first ) & css::beans::PropertyAttribute::TRANSIENT ) == 0 )
+            && ( getPropertyState( GetPropertyName( rData.first ) ) != css::beans::PropertyState_DEFAULT_VALUE ) )
         {
-            aProps.insert( it->first );
+            aProps.insert( rData.first );
         }
     }
 
@@ -554,13 +561,13 @@ void UnoControlModel::write( const css::uno::Reference< css::io::XObjectOutputSt
     // Save FontProperty always in the old format (due to missing distinction
     // between 5.0 and 5.1)
     OutStream->writeLong( ( aProps.find( BASEPROPERTY_FONTDESCRIPTOR ) != aProps.end() ) ? ( nProps + 3 ) : nProps );
-    for ( std::set<sal_uInt16>::const_iterator it = aProps.begin(); it != aProps.end(); ++it )
+    for ( const auto& rProp : aProps )
     {
         sal_Int32 nPropDataBeginMark = xMark->createMark();
-        OutStream->writeLong( 0L ); // DataLen
+        OutStream->writeLong( 0 ); // DataLen
 
-        const css::uno::Any* pProp = &(maData[*it]);
-        OutStream->writeShort( *it );
+        const css::uno::Any* pProp = &(maData[rProp]);
+        OutStream->writeShort( rProp );
 
         bool bVoid = pProp->getValueType().getTypeClass() == css::uno::TypeClass_VOID;
 
@@ -656,8 +663,8 @@ void UnoControlModel::write( const css::uno::Reference< css::io::XObjectOutputSt
                 rValue >>= aSeq;
                 long nEntries = aSeq.getLength();
                 OutStream->writeLong( nEntries );
-                for ( long n = 0; n < nEntries; n++ )
-                    OutStream->writeUTF( aSeq.getConstArray()[n] );
+                for ( const auto& rVal : std::as_const(aSeq) )
+                    OutStream->writeUTF( rVal );
             }
             else if ( rType == cppu::UnoType< cppu::UnoSequenceType<cppu::UnoUnsignedShortType> >::get() )
             {
@@ -665,8 +672,8 @@ void UnoControlModel::write( const css::uno::Reference< css::io::XObjectOutputSt
                 rValue >>= aSeq;
                 long nEntries = aSeq.getLength();
                 OutStream->writeLong( nEntries );
-                for ( long n = 0; n < nEntries; n++ )
-                    OutStream->writeShort( aSeq.getConstArray()[n] );
+                for ( const auto nVal : aSeq )
+                    OutStream->writeShort( nVal );
             }
             else if ( rType == cppu::UnoType< css::uno::Sequence<sal_Int16> >::get() )
             {
@@ -674,8 +681,8 @@ void UnoControlModel::write( const css::uno::Reference< css::io::XObjectOutputSt
                 rValue >>= aSeq;
                 long nEntries = aSeq.getLength();
                 OutStream->writeLong( nEntries );
-                for ( long n = 0; n < nEntries; n++ )
-                    OutStream->writeShort( aSeq.getConstArray()[n] );
+                for ( const auto nVal : aSeq )
+                    OutStream->writeShort( nVal );
             }
             else if ( rType.getTypeClass() == TypeClass_ENUM )
             {
@@ -689,7 +696,7 @@ void UnoControlModel::write( const css::uno::Reference< css::io::XObjectOutputSt
                 SAL_WARN( "toolkit", "UnoControlModel::write: don't know how to handle a property of type '"
                           << rType.getTypeName()
                           << "'.\n(Currently handling property '"
-                          << GetPropertyName( *it )
+                          << GetPropertyName( rProp )
                           << "'.)");
             }
 #endif
@@ -702,60 +709,60 @@ void UnoControlModel::write( const css::uno::Reference< css::io::XObjectOutputSt
         xMark->deleteMark(nPropDataBeginMark);
     }
 
-    if ( aProps.find( BASEPROPERTY_FONTDESCRIPTOR ) != aProps.end() )
+    if ( aProps.find( BASEPROPERTY_FONTDESCRIPTOR ) == aProps.end() )
+        return;
+
+    const css::uno::Any* pProp = &maData[ BASEPROPERTY_FONTDESCRIPTOR ];
+    // Until 5.0 export arrives, write old format...
+    css::awt::FontDescriptor aFD;
+    (*pProp) >>= aFD;
+
+    for ( sal_uInt16 n = BASEPROPERTY_FONT_TYPE; n <= BASEPROPERTY_FONT_ATTRIBS; n++ )
     {
-        const css::uno::Any* pProp = &maData[ BASEPROPERTY_FONTDESCRIPTOR ];
-        // Until 5.0 export arrives, write old format..
-        css::awt::FontDescriptor aFD;
-        (*pProp) >>= aFD;
+        sal_Int32 nPropDataBeginMark = xMark->createMark();
+        OutStream->writeLong( 0 ); // DataLen
+        OutStream->writeShort( n ); // PropId
+        OutStream->writeBoolean( false );   // Void
 
-        for ( sal_uInt16 n = BASEPROPERTY_FONT_TYPE; n <= BASEPROPERTY_FONT_ATTRIBS; n++ )
+        if ( n == BASEPROPERTY_FONT_TYPE )
         {
-            sal_Int32 nPropDataBeginMark = xMark->createMark();
-            OutStream->writeLong( 0L ); // DataLen
-            OutStream->writeShort( n ); // PropId
-            OutStream->writeBoolean( false );   // Void
-
-            if ( n == BASEPROPERTY_FONT_TYPE )
-            {
-                OutStream->writeUTF( aFD.Name );
-                OutStream->writeUTF( aFD.StyleName );
-                OutStream->writeShort( aFD.Family );
-                OutStream->writeShort( aFD.CharSet );
-                OutStream->writeShort( aFD.Pitch );
-            }
-            else if ( n == BASEPROPERTY_FONT_SIZE )
-            {
-                OutStream->writeLong( aFD.Width );
-                OutStream->writeLong( aFD.Height );
-                OutStream->writeShort(
-                    sal::static_int_cast< sal_Int16 >(
-                        vcl::unohelper::ConvertFontWidth(aFD.CharacterWidth)) );
-            }
-            else if ( n == BASEPROPERTY_FONT_ATTRIBS )
-            {
-                OutStream->writeShort(
-                    sal::static_int_cast< sal_Int16 >(
-                        vcl::unohelper::ConvertFontWeight(aFD.Weight)) );
-                OutStream->writeShort(
-                    sal::static_int_cast< sal_Int16 >(aFD.Slant) );
-                OutStream->writeShort( aFD.Underline );
-                OutStream->writeShort( aFD.Strikeout );
-                OutStream->writeShort( (short)(aFD.Orientation * 10) );
-                OutStream->writeBoolean( aFD.Kerning );
-                OutStream->writeBoolean( aFD.WordLineMode );
-            }
-            else
-            {
-                OSL_FAIL( "Property?!" );
-            }
-
-            sal_Int32 nPropDataLen = xMark->offsetToMark( nPropDataBeginMark );
-            xMark->jumpToMark( nPropDataBeginMark );
-            OutStream->writeLong( nPropDataLen );
-            xMark->jumpToFurthest();
-            xMark->deleteMark(nPropDataBeginMark);
+            OutStream->writeUTF( aFD.Name );
+            OutStream->writeUTF( aFD.StyleName );
+            OutStream->writeShort( aFD.Family );
+            OutStream->writeShort( aFD.CharSet );
+            OutStream->writeShort( aFD.Pitch );
         }
+        else if ( n == BASEPROPERTY_FONT_SIZE )
+        {
+            OutStream->writeLong( aFD.Width );
+            OutStream->writeLong( aFD.Height );
+            OutStream->writeShort(
+                sal::static_int_cast< sal_Int16 >(
+                    vcl::unohelper::ConvertFontWidth(aFD.CharacterWidth)) );
+        }
+        else if ( n == BASEPROPERTY_FONT_ATTRIBS )
+        {
+            OutStream->writeShort(
+                sal::static_int_cast< sal_Int16 >(
+                    vcl::unohelper::ConvertFontWeight(aFD.Weight)) );
+            OutStream->writeShort(
+                sal::static_int_cast< sal_Int16 >(aFD.Slant) );
+            OutStream->writeShort( aFD.Underline );
+            OutStream->writeShort( aFD.Strikeout );
+            OutStream->writeShort( static_cast<short>(aFD.Orientation * 10) );
+            OutStream->writeBoolean( aFD.Kerning );
+            OutStream->writeBoolean( aFD.WordLineMode );
+        }
+        else
+        {
+            OSL_FAIL( "Property?!" );
+        }
+
+        sal_Int32 nPropDataLen = xMark->offsetToMark( nPropDataBeginMark );
+        xMark->jumpToMark( nPropDataBeginMark );
+        OutStream->writeLong( nPropDataLen );
+        xMark->jumpToFurthest();
+        xMark->deleteMark(nPropDataBeginMark);
     }
 }
 
@@ -767,7 +774,7 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
     DBG_ASSERT( xMark.is(), "read: no css::io::XMarkableStream!" );
 
     short nVersion = InStream->readShort();
-    sal_uInt32 nProps = (sal_uInt32)InStream->readLong();
+    sal_uInt32 nProps = static_cast<sal_uInt32>(InStream->readLong());
     css::uno::Sequence< OUString> aProps( nProps );
     css::uno::Sequence< css::uno::Any> aValues( nProps );
     bool bInvalidEntries = false;
@@ -776,15 +783,14 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
     // No data for the model may be added following the properties
 
     // Used for import of old parts in css::awt::FontDescriptor
-    css::awt::FontDescriptor* pFD = nullptr;
+    std::unique_ptr<css::awt::FontDescriptor> pFD;
 
-    sal_uInt32 i;
-    for ( i = 0; i < nProps; i++ )
+    for ( sal_uInt32 i = 0; i < nProps; i++ )
     {
         sal_Int32 nPropDataBeginMark = xMark->createMark();
         sal_Int32 nPropDataLen = InStream->readLong();
 
-        sal_uInt16 nPropId = (sal_uInt16)InStream->readShort();
+        sal_uInt16 nPropId = static_cast<sal_uInt16>(InStream->readShort());
 
         css::uno::Any aValue;
         bool bIsVoid = InStream->readBoolean();
@@ -838,12 +844,12 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
                     aFD.Family = InStream->readShort();
                     aFD.CharSet = InStream->readShort();
                     aFD.Pitch = InStream->readShort();
-                    aFD.CharacterWidth = (float)InStream->readDouble();
-                    aFD.Weight = (float)InStream->readDouble();
-                    aFD.Slant =  (css::awt::FontSlant)InStream->readShort();
+                    aFD.CharacterWidth = static_cast<float>(InStream->readDouble());
+                    aFD.Weight = static_cast<float>(InStream->readDouble());
+                    aFD.Slant =  static_cast<css::awt::FontSlant>(InStream->readShort());
                     aFD.Underline = InStream->readShort();
                     aFD.Strikeout = InStream->readShort();
-                    aFD.Orientation = (float)InStream->readDouble();
+                    aFD.Orientation = static_cast<float>(InStream->readDouble());
                     aFD.Kerning = InStream->readBoolean() != 0;
                     aFD.WordLineMode = InStream->readBoolean() != 0;
                     aFD.Type = InStream->readShort();
@@ -877,7 +883,7 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
                     long nEntries = InStream->readLong();
                     css::uno::Sequence<sal_uInt16> aSeq( nEntries );
                     for ( long n = 0; n < nEntries; n++ )
-                        aSeq.getArray()[n] = (sal_uInt16)InStream->readShort();
+                        aSeq.getArray()[n] = static_cast<sal_uInt16>(InStream->readShort());
                     aValue <<= aSeq;
                 }
                 else if ( *pType == cppu::UnoType< css::uno::Sequence<sal_Int16> >::get() )
@@ -885,7 +891,7 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
                     long nEntries = InStream->readLong();
                     css::uno::Sequence<sal_Int16> aSeq( nEntries );
                     for ( long n = 0; n < nEntries; n++ )
-                        aSeq.getArray()[n] = (sal_Int16)InStream->readShort();
+                        aSeq.getArray()[n] = InStream->readShort();
                     aValue <<= aSeq;
                 }
                 else if ( pType->getTypeClass() == TypeClass_ENUM )
@@ -913,7 +919,7 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
                     {
                         if ( !pFD )
                         {
-                            pFD = new css::awt::FontDescriptor;
+                            pFD.reset(new css::awt::FontDescriptor);
                             if ( maData.find( BASEPROPERTY_FONTDESCRIPTOR ) != maData.end() ) // due to defaults...
                                 maData[ BASEPROPERTY_FONTDESCRIPTOR ] >>= *pFD;
                         }
@@ -930,12 +936,12 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
                     {
                         if ( !pFD )
                         {
-                            pFD = new css::awt::FontDescriptor;
+                            pFD.reset(new css::awt::FontDescriptor);
                             if ( maData.find(BASEPROPERTY_FONTDESCRIPTOR) != maData.end() ) // due to defaults...
                                 maData[BASEPROPERTY_FONTDESCRIPTOR] >>= *pFD;
                         }
-                        pFD->Width = (sal_Int16)InStream->readLong();
-                        pFD->Height = (sal_Int16)InStream->readLong();
+                        pFD->Width = static_cast<sal_Int16>(InStream->readLong());
+                        pFD->Height = static_cast<sal_Int16>(InStream->readLong());
                         InStream->readShort(); // ignore css::awt::FontWidth - it was
                                                // misspelled and is no longer needed
                         pFD->CharacterWidth = css::awt::FontWidth::DONTKNOW;
@@ -945,17 +951,17 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
                 {
                     if ( nVersion < 2 )
                     {
-                         if ( !pFD )
+                        if ( !pFD )
                         {
-                            pFD = new css::awt::FontDescriptor;
+                            pFD.reset(new css::awt::FontDescriptor);
                             if ( maData.find(BASEPROPERTY_FONTDESCRIPTOR) != maData.end() ) // due to defaults...
                                 maData[BASEPROPERTY_FONTDESCRIPTOR] >>= *pFD;
                         }
-                        pFD->Weight = vcl::unohelper::ConvertFontWeight((FontWeight) InStream->readShort());
-                        pFD->Slant =  (css::awt::FontSlant)InStream->readShort();
+                        pFD->Weight = vcl::unohelper::ConvertFontWeight(static_cast<FontWeight>(InStream->readShort()));
+                        pFD->Slant =  static_cast<css::awt::FontSlant>(InStream->readShort());
                         pFD->Underline = InStream->readShort();
                         pFD->Strikeout = InStream->readShort();
-                        pFD->Orientation = ( (float)(double)InStream->readShort() ) / 10;
+                        pFD->Orientation = static_cast<float>(static_cast<double>(InStream->readShort())) / 10;
                         pFD->Kerning = InStream->readBoolean() != 0;
                         pFD->WordLineMode = InStream->readBoolean() != 0;
                     }
@@ -992,7 +998,7 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
     }
     if ( bInvalidEntries )
     {
-        for ( i = 0; i < (sal_uInt32)aProps.getLength(); i++ )
+        for ( sal_Int32 i = 0; i < aProps.getLength(); i++ )
         {
             if ( aProps.getConstArray()[i].isEmpty() )
             {
@@ -1009,7 +1015,7 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
     }
     catch ( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("toolkit.controls");
     }
 
     if ( pFD )
@@ -1017,7 +1023,6 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
         css::uno::Any aValue;
         aValue <<= *pFD;
         setPropertyValue( GetPropertyName( BASEPROPERTY_FONTDESCRIPTOR ), aValue );
-        delete pFD;
     }
 }
 
@@ -1037,8 +1042,7 @@ sal_Bool UnoControlModel::supportsService( const OUString& rServiceName )
 
 css::uno::Sequence< OUString > UnoControlModel::getSupportedServiceNames(  )
 {
-    OUString sName( "com.sun.star.awt.UnoControlModel" );
-    return Sequence< OUString >( &sName, 1 );
+    return { "com.sun.star.awt.UnoControlModel" };
 }
 
 sal_Bool UnoControlModel::convertFastPropertyValue( Any & rConvertedValue, Any & rOldValue, sal_Int32 nPropId, const Any& rValue )
@@ -1052,7 +1056,7 @@ sal_Bool UnoControlModel::convertFastPropertyValue( Any & rConvertedValue, Any &
     }
     else
     {
-        const css::uno::Type* pDestType = GetPropertyType( (sal_uInt16)nPropId );
+        const css::uno::Type* pDestType = GetPropertyType( static_cast<sal_uInt16>(nPropId) );
         if ( pDestType->getTypeClass() == TypeClass_ANY )
         {
             rConvertedValue = rValue;
@@ -1082,7 +1086,7 @@ sal_Bool UnoControlModel::convertFastPropertyValue( Any & rConvertedValue, Any &
                             sal_Int32 nAsInteger = 0;
                             bConverted = ( rValue >>= nAsInteger );
                             if ( bConverted )
-                                rConvertedValue <<= (double)nAsInteger;
+                                rConvertedValue <<= static_cast<double>(nAsInteger);
                         }
                     }
                     break;
@@ -1146,7 +1150,7 @@ sal_Bool UnoControlModel::convertFastPropertyValue( Any & rConvertedValue, Any &
                 {
                     throw css::lang::IllegalArgumentException(
                         "Unable to convert the given value for the property "
-                        + GetPropertyName( (sal_uInt16)nPropId )
+                        + GetPropertyName( static_cast<sal_uInt16>(nPropId) )
                         + ".\nExpected type: " + pDestType->getTypeName()
                         + "\nFound type: " + rValue.getValueType().getTypeName(),
                         static_cast< css::beans::XPropertySet* >(this),
@@ -1169,7 +1173,7 @@ void UnoControlModel::setFastPropertyValue_NoBroadcast( sal_Int32 nPropId, const
     const css::uno::Any* pProp = it == maData.end() ? nullptr : &(it->second);
     ENSURE_OR_RETURN_VOID( pProp, "UnoControlModel::setFastPropertyValue_NoBroadcast: invalid property id!" );
 
-    DBG_ASSERT( ( rValue.getValueType().getTypeClass() != css::uno::TypeClass_VOID ) || ( GetPropertyAttribs( (sal_uInt16)nPropId ) & css::beans::PropertyAttribute::MAYBEVOID ), "Property should not be VOID!" );
+    DBG_ASSERT( ( rValue.getValueType().getTypeClass() != css::uno::TypeClass_VOID ) || ( GetPropertyAttribs( static_cast<sal_uInt16>(nPropId) ) & css::beans::PropertyAttribute::MAYBEVOID ), "Property should not be VOID!" );
     maData[ nPropId ] = rValue;
 }
 
@@ -1197,11 +1201,11 @@ void UnoControlModel::getFastPropertyValue( css::uno::Any& rValue, sal_Int32 nPr
                                                                 break;
             case BASEPROPERTY_FONTDESCRIPTORPART_CHARSET:       rValue <<= aFD.CharSet;
                                                                 break;
-            case BASEPROPERTY_FONTDESCRIPTORPART_HEIGHT:        rValue <<= (float)aFD.Height;
+            case BASEPROPERTY_FONTDESCRIPTORPART_HEIGHT:        rValue <<= static_cast<float>(aFD.Height);
                                                                 break;
             case BASEPROPERTY_FONTDESCRIPTORPART_WEIGHT:        rValue <<= aFD.Weight;
                                                                 break;
-            case BASEPROPERTY_FONTDESCRIPTORPART_SLANT:         rValue <<= (sal_Int16)aFD.Slant;
+            case BASEPROPERTY_FONTDESCRIPTORPART_SLANT:         rValue <<= static_cast<sal_Int16>(aFD.Slant);
                                                                 break;
             case BASEPROPERTY_FONTDESCRIPTORPART_UNDERLINE:     rValue <<= aFD.Underline;
                                                                 break;
@@ -1236,13 +1240,14 @@ void UnoControlModel::setPropertyValue( const OUString& rPropertyName, const css
     sal_Int32 nPropId = 0;
     {
         ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
-        nPropId = (sal_Int32) GetPropertyId( rPropertyName );
+        nPropId = static_cast<sal_Int32>(GetPropertyId( rPropertyName ));
         DBG_ASSERT( nPropId, "Invalid ID in UnoControlModel::setPropertyValue" );
     }
-    if( nPropId )
-        setFastPropertyValue( nPropId, rValue );
-    else
-        throw css::beans::UnknownPropertyException();
+    if( !nPropId )
+        throw css::beans::UnknownPropertyException(rPropertyName);
+
+    setFastPropertyValue( nPropId, rValue );
+
 }
 
 // css::beans::XFastPropertySet
@@ -1260,12 +1265,11 @@ void UnoControlModel::setFastPropertyValue( sal_Int32 nPropId, const css::uno::A
         (*pProp) >>= aOldFontDescriptor;
 
         FontDescriptor aNewFontDescriptor( aOldFontDescriptor );
-        lcl_ImplMergeFontProperty( aNewFontDescriptor, (sal_uInt16)nPropId, rValue );
+        lcl_ImplMergeFontProperty( aNewFontDescriptor, static_cast<sal_uInt16>(nPropId), rValue );
 
         Any aNewValue;
         aNewValue <<= aNewFontDescriptor;
-        sal_Int32 nDescriptorId( BASEPROPERTY_FONTDESCRIPTOR );
-        nDescriptorId = BASEPROPERTY_FONTDESCRIPTOR;
+        sal_Int32 nDescriptorId = BASEPROPERTY_FONTDESCRIPTOR;
 
         // also, we need  fire a propertyChange event for the single property, since with
         // the above line, only an event for the FontDescriptor property will be fired
@@ -1304,49 +1308,49 @@ void UnoControlModel::setPropertyValues( const css::uno::Sequence< OUString >& r
 
     sal_Int32 nValidHandles = getInfoHelper().fillHandles( pHandles, rPropertyNames );
 
+    if ( !nValidHandles )
+        return;
+
+    // if somebody sets properties which are single aspects of a font descriptor,
+    // remove them, and build a font descriptor instead
+    std::unique_ptr< awt::FontDescriptor > pFD;
+    for ( sal_Int32 n = 0; n < nProps; ++n )
+    {
+        if ( ( pHandles[n] >= BASEPROPERTY_FONTDESCRIPTORPART_START ) && ( pHandles[n] <= BASEPROPERTY_FONTDESCRIPTORPART_END ) )
+        {
+            if (!pFD)
+            {
+                css::uno::Any* pProp = &maData[ BASEPROPERTY_FONTDESCRIPTOR ];
+                pFD.reset( new awt::FontDescriptor );
+                (*pProp) >>= *pFD;
+            }
+            lcl_ImplMergeFontProperty( *pFD, static_cast<sal_uInt16>(pHandles[n]), pValues[n] );
+            pHandles[n] = -1;
+            nValidHandles--;
+        }
+    }
+
     if ( nValidHandles )
     {
-        // if somebody sets properties which are single aspects of a font descriptor,
-        // remove them, and build a font descriptor instead
-        std::unique_ptr< awt::FontDescriptor > pFD;
-        for ( sal_Int32 n = 0; n < nProps; ++n )
-        {
-            if ( ( pHandles[n] >= BASEPROPERTY_FONTDESCRIPTORPART_START ) && ( pHandles[n] <= BASEPROPERTY_FONTDESCRIPTORPART_END ) )
-            {
-                if ( !pFD.get() )
-                {
-                    css::uno::Any* pProp = &maData[ BASEPROPERTY_FONTDESCRIPTOR ];
-                    pFD.reset( new awt::FontDescriptor );
-                    (*pProp) >>= *pFD;
-                }
-                lcl_ImplMergeFontProperty( *pFD, (sal_uInt16)pHandles[n], pValues[n] );
-                pHandles[n] = -1;
-                nValidHandles--;
-            }
-        }
+        ImplNormalizePropertySequence( nProps, pHandles, pValues, &nValidHandles );
+        aGuard.clear();
+            // clear our guard before calling into setFastPropertyValues - this method
+            // will implicitly call property listeners, and this should not happen with
+            // our mutex locked
+            // #i23451#
+        setFastPropertyValues( nProps, pHandles, pValues, nValidHandles );
+    }
+    else
+        aGuard.clear();
+        // same as a few lines above
 
-        if ( nValidHandles )
-        {
-            ImplNormalizePropertySequence( nProps, pHandles, pValues, &nValidHandles );
-            aGuard.clear();
-                // clear our guard before calling into setFastPropertyValues - this method
-                // will implicitly call property listeners, and this should not happen with
-                // our mutex locked
-                // #i23451#
-             setFastPropertyValues( nProps, pHandles, pValues, nValidHandles );
-        }
-        else
-            aGuard.clear();
-            // same as a few lines above
-
-        // Don't merge FD property into array, as it is sorted
-        if ( pFD.get() )
-        {
-            css::uno::Any aValue;
-            aValue <<= *pFD;
-            sal_Int32 nHandle = BASEPROPERTY_FONTDESCRIPTOR;
-            setFastPropertyValues( 1, &nHandle, &aValue, 1 );
-        }
+    // Don't merge FD property into array, as it is sorted
+    if (pFD)
+    {
+        css::uno::Any aValue;
+        aValue <<= *pFD;
+        sal_Int32 nHandle = BASEPROPERTY_FONTDESCRIPTOR;
+        setFastPropertyValues( 1, &nHandle, &aValue, 1 );
     }
 }
 

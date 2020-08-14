@@ -17,13 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/helper/attributelist.hxx"
+#include <oox/helper/attributelist.hxx>
 
-#include <cassert>
 #include <osl/diagnose.h>
 #include <rtl/ustrbuf.hxx>
 #include <sax/fastattribs.hxx>
-#include "oox/token/tokenmap.hxx"
+#include <oox/token/tokenmap.hxx>
 
 namespace oox {
 
@@ -62,6 +61,30 @@ sal_Unicode lclGetXChar( const sal_Unicode*& rpcStr, const sal_Unicode* pcEnd )
 }
 
 } // namespace
+
+#define STRING_TO_TOKEN(color) if (sColorName == #color) return XML_##color
+sal_Int32 getHighlightColorTokenFromString(const OUString& sColorName)
+{
+    STRING_TO_TOKEN(black);
+    STRING_TO_TOKEN(blue);
+    STRING_TO_TOKEN(cyan);
+    STRING_TO_TOKEN(darkBlue);
+    STRING_TO_TOKEN(darkCyan);
+    STRING_TO_TOKEN(darkGreen);
+    STRING_TO_TOKEN(darkMagenta);
+    STRING_TO_TOKEN(darkRed);
+    STRING_TO_TOKEN(darkYellow);
+    STRING_TO_TOKEN(darkGray);
+    STRING_TO_TOKEN(green);
+    STRING_TO_TOKEN(lightGray);
+    STRING_TO_TOKEN(magenta);
+    STRING_TO_TOKEN(red);
+    STRING_TO_TOKEN(white);
+    STRING_TO_TOKEN(yellow);
+    STRING_TO_TOKEN(none);
+
+    return XML_TOKEN_INVALID;
+}
 
 sal_Int32 AttributeConversion::decodeToken( const OUString& rValue )
 {
@@ -116,8 +139,7 @@ sax_fastparser::FastAttributeList *AttributeList::getAttribList() const
 {
     if( mpAttribList == nullptr )
     {
-        assert( dynamic_cast< sax_fastparser::FastAttributeList *>( mxAttribs.get() ) != nullptr );
-        mpAttribList = static_cast< sax_fastparser::FastAttributeList *>( mxAttribs.get() );
+        mpAttribList = &sax_fastparser::castToFastAttributeList( mxAttribs );
     }
     return mpAttribList;
 }
@@ -125,6 +147,14 @@ sax_fastparser::FastAttributeList *AttributeList::getAttribList() const
 bool AttributeList::hasAttribute( sal_Int32 nAttrToken ) const
 {
     return mxAttribs->hasAttribute( nAttrToken );
+}
+
+oox::drawingml::Color AttributeList::getHighlightColor(sal_Int32 nAttrToken) const
+{
+    OUString sColorVal = mxAttribs->getValue(nAttrToken);
+    oox::drawingml::Color aColor;
+    aColor.setHighlight(getHighlightColorTokenFromString(sColorVal));
+    return aColor;
 }
 
 // optional return values -----------------------------------------------------
@@ -309,6 +339,19 @@ bool AttributeList::getBool( sal_Int32 nAttrToken, bool bDefault ) const
 util::DateTime AttributeList::getDateTime( sal_Int32 nAttrToken, const util::DateTime& rDefault ) const
 {
     return getDateTime( nAttrToken ).get( rDefault );
+}
+
+std::vector<sal_Int32> AttributeList::getTokenList(sal_Int32 nAttrToken) const
+{
+    std::vector<sal_Int32> aValues;
+    OUString sValue = getString(nAttrToken, "");
+    sal_Int32 nIndex = 0;
+    do
+    {
+        aValues.push_back(AttributeConversion::decodeToken(sValue.getToken(0, ' ', nIndex)));
+    } while (nIndex >= 0);
+
+    return aValues;
 }
 
 } // namespace oox

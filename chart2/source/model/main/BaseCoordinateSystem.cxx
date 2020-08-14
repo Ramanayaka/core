@@ -17,19 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "BaseCoordinateSystem.hxx"
-#include "macros.hxx"
-#include "PropertyHelper.hxx"
-#include "UserDefinedProperties.hxx"
-#include "ContainerHelper.hxx"
-#include "CloneHelper.hxx"
+#include <BaseCoordinateSystem.hxx>
+#include <PropertyHelper.hxx>
+#include <UserDefinedProperties.hxx>
+#include <CloneHelper.hxx>
+#include <ModifyListenerHelper.hxx>
 #include "Axis.hxx"
-#include "AxisHelper.hxx"
 #include <com/sun/star/chart2/AxisType.hpp>
+#include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <o3tl/safeint.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
-#include <iterator>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
@@ -48,12 +48,11 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "SwapXAndYAxis",
+    rOutProperties.emplace_back( "SwapXAndYAxis",
                   PROP_COORDINATESYSTEM_SWAPXANDYAXIS,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 }
 
 struct StaticCooSysDefaults_Initializer
@@ -116,10 +115,8 @@ namespace chart
 {
 
 BaseCoordinateSystem::BaseCoordinateSystem(
-    const Reference< uno::XComponentContext > & xContext,
     sal_Int32 nDimensionCount /* = 2 */ ) :
         ::property::OPropertySet( m_aMutex ),
-        m_xContext( xContext ),
         m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder()),
         m_nDimensionCount( nDimensionCount )
  {
@@ -127,7 +124,7 @@ BaseCoordinateSystem::BaseCoordinateSystem(
     for( sal_Int32 nN=0; nN<m_nDimensionCount; nN++ )
     {
         m_aAllAxis[nN].resize( 1 );
-        Reference< chart2::XAxis > xAxis( new Axis(m_xContext) );
+        Reference< chart2::XAxis > xAxis( new Axis );
         m_aAllAxis[nN][0] = xAxis;
 
         ModifyListenerHelper::addListenerToAllElements( m_aAllAxis[nN], m_xModifyEventForwarder );
@@ -147,23 +144,16 @@ BaseCoordinateSystem::BaseCoordinateSystem(
         xAxis->setScaleData( aScaleData );
     }
 
-    m_aOrigin.realloc( m_nDimensionCount );
-    for( sal_Int32 i = 0; i < m_nDimensionCount; ++i )
-        m_aOrigin[ i ] <<= 0.0;
-
     setFastPropertyValue_NoBroadcast( PROP_COORDINATESYSTEM_SWAPXANDYAXIS, uno::Any( false ));
 }
 
 // explicit
 BaseCoordinateSystem::BaseCoordinateSystem(
     const BaseCoordinateSystem & rSource ) :
-        impl::BaseCoordinateSystem_Base(),
-        MutexContainer(),
+        impl::BaseCoordinateSystem_Base(rSource),
         ::property::OPropertySet( rSource, m_aMutex ),
-    m_xContext( rSource.m_xContext ),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder()),
-    m_nDimensionCount( rSource.m_nDimensionCount ),
-    m_aOrigin( rSource.m_aOrigin )
+    m_nDimensionCount( rSource.m_nDimensionCount )
 {
     m_aAllAxis.resize(rSource.m_aAllAxis.size());
     tAxisVecVecType::size_type nN=0;
@@ -180,13 +170,13 @@ BaseCoordinateSystem::~BaseCoordinateSystem()
 {
     try
     {
-        for(tAxisVecVecType::value_type & i : m_aAllAxis)
+        for(const tAxisVecVecType::value_type & i : m_aAllAxis)
             ModifyListenerHelper::removeListenerFromAllElements( i, m_xModifyEventForwarder );
         ModifyListenerHelper::removeListenerFromAllElements( m_aChartTypes, m_xModifyEventForwarder );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2" );
     }
 }
 
@@ -207,7 +197,7 @@ void SAL_CALL BaseCoordinateSystem::setAxisByDimension(
     if( nIndex < 0 )
         throw lang::IndexOutOfBoundsException();
 
-    if( m_aAllAxis[ nDimensionIndex ].size() < static_cast< tAxisVecVecType::size_type >( nIndex+1 ))
+    if( m_aAllAxis[ nDimensionIndex ].size() < o3tl::make_unsigned( nIndex+1 ))
     {
         m_aAllAxis[ nDimensionIndex ].resize( nIndex+1 );
         m_aAllAxis[ nDimensionIndex ][nIndex] = nullptr;
@@ -230,7 +220,7 @@ Reference< chart2::XAxis > SAL_CALL BaseCoordinateSystem::getAxisByDimension(
 
     OSL_ASSERT( m_aAllAxis.size() == static_cast< size_t >( getDimension()));
 
-    if( nAxisIndex < 0 || nAxisIndex > this->getMaximumAxisIndexByDimension(nDimensionIndex) )
+    if( nAxisIndex < 0 || nAxisIndex > getMaximumAxisIndexByDimension(nDimensionIndex) )
         throw lang::IndexOutOfBoundsException();
 
     return m_aAllAxis[ nDimensionIndex ][nAxisIndex];
@@ -284,7 +274,7 @@ Sequence< Reference< chart2::XChartType > > SAL_CALL BaseCoordinateSystem::getCh
 void SAL_CALL BaseCoordinateSystem::setChartTypes( const Sequence< Reference< chart2::XChartType > >& aChartTypes )
 {
     ModifyListenerHelper::removeListenerFromAllElements( m_aChartTypes, m_xModifyEventForwarder );
-    m_aChartTypes = ContainerHelper::SequenceToVector( aChartTypes );
+    m_aChartTypes = comphelper::sequenceToContainer<std::vector< css::uno::Reference< css::chart2::XChartType > >>( aChartTypes );
     ModifyListenerHelper::addListenerToAllElements( m_aChartTypes, m_xModifyEventForwarder );
     fireModifyEvent();
 }
@@ -297,9 +287,9 @@ void SAL_CALL BaseCoordinateSystem::addModifyListener( const Reference< util::XM
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2" );
     }
 }
 
@@ -310,9 +300,9 @@ void SAL_CALL BaseCoordinateSystem::removeModifyListener( const Reference< util:
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2" );
     }
 }
 

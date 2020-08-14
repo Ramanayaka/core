@@ -22,16 +22,14 @@
 
 #include <drawingml/chart/chartcontextbase.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 
 struct TextModel;
 
 /** Handler for a chart text context (c:tx element).
  */
-class TextContext : public ContextBase< TextModel >
+class TextContext final : public ContextBase< TextModel >
 {
 public:
     explicit            TextContext(  ::oox::core::ContextHandler2Helper& rParent, TextModel& rModel );
@@ -46,7 +44,7 @@ struct TitleModel;
 
 /** Handler for a chart title context (c:title element).
  */
-class TitleContext : public ContextBase< TitleModel >
+class TitleContext final : public ContextBase< TitleModel >
 {
 public:
     explicit            TitleContext( ::oox::core::ContextHandler2Helper& rParent, TitleModel& rModel );
@@ -55,12 +53,24 @@ public:
     virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
 };
 
+struct LegendEntryModel;
+
+/** Handler for a chart legend entry context (c:legendEntry element).
+ */
+class LegendEntryContext final : public ContextBase< LegendEntryModel >
+{
+public:
+    explicit            LegendEntryContext( ::oox::core::ContextHandler2Helper& rParent, LegendEntryModel& rModel );
+    virtual             ~LegendEntryContext() override;
+
+    virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
+};
 
 struct LegendModel;
 
 /** Handler for a chart legend context (c:legend element).
  */
-class LegendContext : public ContextBase< LegendModel >
+class LegendContext final : public ContextBase< LegendModel >
 {
 public:
     explicit            LegendContext( ::oox::core::ContextHandler2Helper& rParent, LegendModel& rModel );
@@ -70,9 +80,7 @@ public:
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

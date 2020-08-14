@@ -21,12 +21,12 @@
 
 #include "MasterPageDescriptor.hxx"
 #include "MasterPageContainerProviders.hxx"
-#include "TemplateScanner.hxx"
+#include <TemplateScanner.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 MasterPageContainerFiller::MasterPageContainerFiller (ContainerAdapter& rpAdapter)
     : mrContainerAdapter(rpAdapter),
@@ -39,15 +39,15 @@ MasterPageContainerFiller::MasterPageContainerFiller (ContainerAdapter& rpAdapte
     // DefaultPagePreviewProvider to prevent the rendering (and the
     // expensive creation) of the default page.  It is replaced later on by
     // another.
-    SharedMasterPageDescriptor pDescriptor (new MasterPageDescriptor(
+    SharedMasterPageDescriptor pDescriptor = std::make_shared<MasterPageDescriptor>(
         MasterPageContainer::DEFAULT,
         0,
         OUString(),
         OUString(),
         OUString(),
         false,
-        std::shared_ptr<PageObjectProvider>(new DefaultPageObjectProvider()),
-        std::shared_ptr<PreviewProvider>(new PagePreviewProvider())));
+        std::make_shared<DefaultPageObjectProvider>(),
+        std::make_shared<PagePreviewProvider>());
     mrContainerAdapter.PutMasterPage(pDescriptor);
 }
 
@@ -85,7 +85,7 @@ void MasterPageContainerFiller::RunNextStep()
     {
         case DONE:
         case ERROR:
-            if (mpScannerTask.get() != nullptr)
+            if (mpScannerTask != nullptr)
             {
                 mrContainerAdapter.FillingDone();
                 mpScannerTask.reset();
@@ -113,7 +113,7 @@ MasterPageContainerFiller::State MasterPageContainerFiller::ScanTemplate()
 {
     State eState (ERROR);
 
-    if (mpScannerTask.get() != nullptr)
+    if (mpScannerTask != nullptr)
     {
         if (mpScannerTask->HasNextStep())
         {
@@ -140,25 +140,22 @@ MasterPageContainerFiller::State MasterPageContainerFiller::AddTemplate()
 {
     if (mpLastAddedEntry != nullptr)
     {
-        SharedMasterPageDescriptor pDescriptor (new MasterPageDescriptor(
+        SharedMasterPageDescriptor pDescriptor = std::make_shared<MasterPageDescriptor>(
             MasterPageContainer::TEMPLATE,
             mnIndex,
             mpLastAddedEntry->msPath,
             mpLastAddedEntry->msTitle,
             OUString(),
             false,
-            std::shared_ptr<PageObjectProvider>(
-                new TemplatePageObjectProvider(mpLastAddedEntry->msPath)),
-            std::shared_ptr<PreviewProvider>(
-                new TemplatePreviewProvider(mpLastAddedEntry->msPath))));
+            std::make_shared<TemplatePageObjectProvider>(mpLastAddedEntry->msPath),
+            std::make_shared<TemplatePreviewProvider>(mpLastAddedEntry->msPath));
         // For user supplied templates we use a different preview provider:
         // The preview in the document shows not only shapes on the master
         // page but also shapes on the foreground.  This is misleading and
         // therefore these previews are discarded and created directly from
         // the page objects.
         if (pDescriptor->GetURLClassification() == MasterPageDescriptor::URLCLASS_USER)
-            pDescriptor->mpPreviewProvider = std::shared_ptr<PreviewProvider>(
-                new PagePreviewProvider());
+            pDescriptor->mpPreviewProvider = std::make_shared<PagePreviewProvider>();
 
         mrContainerAdapter.PutMasterPage(pDescriptor);
         ++mnIndex;
@@ -167,6 +164,6 @@ MasterPageContainerFiller::State MasterPageContainerFiller::AddTemplate()
     return SCAN_TEMPLATE;
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

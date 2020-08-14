@@ -17,22 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/TabItem.hxx>
+#include <sidebar/TabItem.hxx>
 
-#include <sfx2/sidebar/DrawHelper.hxx>
-#include <sfx2/sidebar/Paint.hxx>
-#include <sfx2/sidebar/Tools.hxx>
+#include <sidebar/DrawHelper.hxx>
+#include <sidebar/Paint.hxx>
 
 #include <sfx2/sidebar/Theme.hxx>
+#include <vcl/event.hxx>
 
 using namespace css;
 using namespace css::uno;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 TabItem::TabItem (vcl::Window* pParentWindow)
-    : ImageRadioButton(pParentWindow),
-      mbIsLeftButtonDown(false)
+    : RadioButton(pParentWindow, false, 0)
+    , mbIsLeftButtonDown(false)
 {
     SetStyle(GetStyle() | WB_TABSTOP | WB_DIALOGCONTROL | WB_NOPOINTERFOCUS);
     SetBackground(Theme::GetPaint(Theme::Paint_TabBarBackground).GetWallpaper());
@@ -67,7 +67,7 @@ void TabItem::MouseMove(const MouseEvent& rEvent)
 {
     if (rEvent.IsEnterWindow() || rEvent.IsLeaveWindow())
         Invalidate();
-    ImageRadioButton::MouseMove(rEvent);
+    RadioButton::MouseMove(rEvent);
 }
 
 void TabItem::MouseButtonDown(const MouseEvent& rMouseEvent)
@@ -104,6 +104,6 @@ void TabItem::MouseButtonUp(const MouseEvent& rMouseEvent)
     }
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,18 +22,19 @@
 #include <comphelper/processfactory.hxx>
 
 #include <iderdll.hxx>
-#include <iderdll2.hxx>
+#include "iderdll2.hxx"
 #include <iderid.hxx>
 #include <basidesh.hxx>
-#include <basidesh.hrc>
-#include <basdoc.hxx>
-#include <basicmod.hxx>
+#include <basobj.hxx>
+#include "basdoc.hxx"
+#include "basicmod.hxx"
 
-#include <svl/srchitem.hxx>
+#include <basic/sbstar.hxx>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
-#include <vcl/settings.hxx>
-#include <o3tl/make_unique.hxx>
+#include <unotools/resmgr.hxx>
+#include <sfx2/app.hxx>
+#include <osl/diagnose.h>
 
 namespace basctl
 {
@@ -72,6 +73,7 @@ struct theDllInstance : public rtl::Static<DllInstance, theDllInstance> { };
 
 void EnsureIde ()
 {
+    // coverity[side_effect_free : FALSE] - not actually side-effect-free
     theDllInstance::get();
 }
 
@@ -89,7 +91,7 @@ void ShellCreated (Shell* pShell)
         pDll->SetShell(pShell);
 }
 
-void ShellDestroyed (Shell* pShell)
+void ShellDestroyed (Shell const * pShell)
 {
     Dll* pDll = theDllInstance::get().get();
     if (pDll && pDll->GetShell() == pShell)
@@ -103,10 +105,10 @@ ExtraData* GetExtraData()
     return nullptr;
 }
 
-
-IDEResId::IDEResId( sal_uInt16 nId ):
-    ResId(nId, *SfxApplication::GetModule(SfxToolsModule::Basic)->GetResMgr())
-{ }
+OUString IDEResId(const char *pId)
+{
+    return Translate::get(pId, SfxApplication::GetModule(SfxToolsModule::Basic)->GetResLocale());
+}
 
 namespace
 {
@@ -116,10 +118,7 @@ Dll::Dll () :
 {
     SfxObjectFactory& rFactory = DocShell::Factory();
 
-    ResMgr* pMgr = ResMgr::CreateResMgr(
-        "basctl", Application::GetSettings().GetUILanguageTag());
-
-    auto pModule = o3tl::make_unique<Module>( pMgr, &rFactory );
+    auto pModule = std::make_unique<Module>("basctl", &rFactory);
     SfxModule* pMod = pModule.get();
     SfxApplication::SetModule(SfxToolsModule::Basic, std::move(pModule));
 
@@ -146,7 +145,6 @@ ExtraData* Dll::GetExtraData ()
 
 
 ExtraData::ExtraData () :
-    pSearchItem(new SvxSearchItem(SID_SEARCH_ITEM)),
     bChoosingMacro(false),
     bShellInCriticalSection(false)
 {
@@ -162,11 +160,6 @@ ExtraData::~ExtraData ()
 //  StarBASIC::SetGlobalErrorHdl( Link() );
 //  StarBASIC::SetGlobalBreakHdl( Link() );
 //  StarBASIC::setGlobalStarScriptListener( XEngineListenerRef() );
-}
-
-void ExtraData::SetSearchItem (const SvxSearchItem& rItem)
-{
-    pSearchItem.reset(static_cast<SvxSearchItem*>(rItem.Clone()));
 }
 
 IMPL_STATIC_LINK(ExtraData, GlobalBasicBreakHdl, StarBASIC *, pBasic, BasicDebugFlags)
@@ -185,7 +178,7 @@ IMPL_STATIC_LINK(ExtraData, GlobalBasicBreakHdl, StarBASIC *, pBasic, BasicDebug
             if ( aDocument.isValid() )
             {
                 OUString aOULibName( pBasic->GetName() );
-                Reference< script::XLibraryContainer > xModLibContainer( aDocument.getLibraryContainer( E_SCRIPTS ), UNO_QUERY );
+                Reference< script::XLibraryContainer > xModLibContainer = aDocument.getLibraryContainer( E_SCRIPTS );
                 if ( xModLibContainer.is() && xModLibContainer->hasByName( aOULibName ) )
                 {
                     Reference< script::XLibraryContainerPassword > xPasswd( xModLibContainer, UNO_QUERY );

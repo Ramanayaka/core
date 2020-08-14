@@ -8,21 +8,24 @@
  *
  */
 
-#include "test/outputdevice.hxx"
+#include <test/outputdevice.hxx>
 
-namespace vcl {
-namespace test {
+namespace vcl::test {
 
 namespace
 {
 
-void drawPolygonOffset(OutputDevice& rDevice, tools::Rectangle& rRect, int nOffset)
+void drawPolygonOffset(OutputDevice& rDevice, tools::Rectangle const & rRect, int nOffset, int nFix = 0)
 {
+    // Note: According to https://lists.freedesktop.org/archives/libreoffice/2019-November/083709.html
+    // filling polygons always skips the right-most and bottom-most pixels, in order to avoid
+    // overlaps when drawing adjacent polygons. Specifying nFix = 1 allows to visually compensate
+    // for this by making the polygon explicitly larger.
     tools::Polygon aPolygon(4);
     aPolygon.SetPoint(Point(rRect.Left()  + nOffset, rRect.Top()    + nOffset), 0);
-    aPolygon.SetPoint(Point(rRect.Right() - nOffset, rRect.Top()    + nOffset), 1);
-    aPolygon.SetPoint(Point(rRect.Right() - nOffset, rRect.Bottom() - nOffset), 2);
-    aPolygon.SetPoint(Point(rRect.Left()  + nOffset, rRect.Bottom() - nOffset), 3);
+    aPolygon.SetPoint(Point(rRect.Right() - nOffset + nFix, rRect.Top()    + nOffset), 1);
+    aPolygon.SetPoint(Point(rRect.Right() - nOffset + nFix, rRect.Bottom() - nOffset + nFix), 2);
+    aPolygon.SetPoint(Point(rRect.Left()  + nOffset, rRect.Bottom() - nOffset + nFix), 3);
     aPolygon.Optimize(PolyOptimizeFlags::CLOSE);
 
     rDevice.DrawPolygon(aPolygon);
@@ -30,9 +33,9 @@ void drawPolygonOffset(OutputDevice& rDevice, tools::Rectangle& rRect, int nOffs
 
 } // end anonymous namespace
 
-Bitmap OutputDeviceTestPolygon::setupRectangle()
+Bitmap OutputDeviceTestPolygon::setupRectangle(bool bEnableAA)
 {
-    initialSetup(13, 13, constBackgroundColor);
+    initialSetup(13, 13, constBackgroundColor, bEnableAA);
 
     mpVirtualDevice->SetLineColor(constLineColor);
     mpVirtualDevice->SetFillColor();
@@ -43,13 +46,16 @@ Bitmap OutputDeviceTestPolygon::setupRectangle()
     return mpVirtualDevice->GetBitmap(maVDRectangle.TopLeft(), maVDRectangle.GetSize());
 }
 
-Bitmap OutputDeviceTestPolygon::setupFilledRectangle()
+Bitmap OutputDeviceTestPolygon::setupFilledRectangle(bool useLineColor)
 {
     initialSetup(13, 13, constBackgroundColor);
 
-    mpVirtualDevice->SetLineColor(constFillColor);
+    if(useLineColor)
+        mpVirtualDevice->SetLineColor(constLineColor);
+    else
+        mpVirtualDevice->SetLineColor();
     mpVirtualDevice->SetFillColor(constFillColor);
-    drawPolygonOffset(*mpVirtualDevice, maVDRectangle, 2);
+    drawPolygonOffset(*mpVirtualDevice, maVDRectangle, 2, useLineColor ? 0 : 1);
 
     return mpVirtualDevice->GetBitmap(maVDRectangle.TopLeft(), maVDRectangle.GetSize());
 }
@@ -146,6 +152,6 @@ Bitmap OutputDeviceTestPolygon::setupAALines()
     return mpVirtualDevice->GetBitmap(maVDRectangle.TopLeft(), maVDRectangle.GetSize());
 }
 
-}} // end namespace vcl::test
+} // end namespace vcl::test
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -76,7 +76,7 @@ void SAL_CALL DropTarget::disposing()
     if( m_threadIdTarget)
     {
         // Call RevokeDragDrop and wait for the OLE thread to die;
-        PostThreadMessage( m_threadIdTarget, WM_REVOKEDRAGDROP, reinterpret_cast<WPARAM>(this), 0);
+        PostThreadMessageW( m_threadIdTarget, WM_REVOKEDRAGDROP, reinterpret_cast<WPARAM>(this), 0);
         WaitForSingleObject( m_hOleThread, INFINITE);
         CloseHandle( m_hOleThread);
         //OSL_ENSURE( SUCCEEDED( hr), "HWND not valid!" );
@@ -112,7 +112,7 @@ void SAL_CALL DropTarget::initialize( const Sequence< Any >& aArguments )
 
     // Additionally even if RegisterDragDrop is called from an STA thread we have
     // to ensure that it is called from the same thread that created the Window
-    // otherwise meesages sent during DND won't reach the windows message queue.
+    // otherwise messages sent during DND won't reach the windows message queue.
     // Calling AttachThreadInput first would resolve this problem but would block
     // the message queue of the calling thread. So if the current thread
     // (even if it's an STA thread) and the thread that created the window are not
@@ -142,13 +142,13 @@ void SAL_CALL DropTarget::initialize( const Sequence< Any >& aArguments )
             m_threadIdWindow= GetWindowThreadProcessId( m_hWnd, nullptr);
             // The event is set by the thread that we will create momentarily.
             // It indicates that the thread is ready to receive messages.
-            HANDLE m_evtThreadReady= CreateEvent( nullptr, FALSE, FALSE, nullptr);
+            HANDLE m_evtThreadReady= CreateEventW( nullptr, FALSE, FALSE, nullptr);
 
             m_hOleThread= CreateThread( nullptr, 0, DndTargetOleSTAFunc,
                                             &m_evtThreadReady, 0, &m_threadIdTarget);
             WaitForSingleObject( m_evtThreadReady, INFINITE);
             CloseHandle( m_evtThreadReady);
-            PostThreadMessage( m_threadIdTarget, WM_REGISTERDRAGDROP, reinterpret_cast<WPARAM>(this), 0);
+            PostThreadMessageW( m_threadIdTarget, WM_REGISTERDRAGDROP, reinterpret_cast<WPARAM>(this), 0);
         }
         else if( hr == S_OK || hr == S_FALSE)
         {
@@ -180,7 +180,7 @@ void SAL_CALL DropTarget::initialize( const Sequence< Any >& aArguments )
             }
         }
         else
-            throw Exception();
+            throw Exception("OleInitialize failed with " + OUString::number(hr), nullptr);
 
     }
 }
@@ -197,7 +197,7 @@ DWORD WINAPI DndTargetOleSTAFunc(LPVOID pParams)
     {
         MSG msg;
         // force the creation of a message queue
-        PeekMessage( &msg, nullptr, 0, 0, PM_NOREMOVE);
+        PeekMessageW( &msg, nullptr, 0, 0, PM_NOREMOVE);
         // Signal the creator ( DropTarget::initialize) that the thread is
         // ready to receive messages.
         SetEvent( *static_cast<HANDLE*>(pParams));
@@ -206,7 +206,7 @@ DWORD WINAPI DndTargetOleSTAFunc(LPVOID pParams)
         DWORD threadId= GetCurrentThreadId();
         // We force the creation of a thread message queue. This is necessary
         // for a later call to AttachThreadInput
-        while( GetMessage(&msg, nullptr, 0, 0) )
+        while( GetMessageW(&msg, nullptr, 0, 0) )
         {
             if( msg.message == WM_REGISTERDRAGDROP)
             {
@@ -238,7 +238,7 @@ DWORD WINAPI DndTargetOleSTAFunc(LPVOID pParams)
                 break;
             }
             TranslateMessage(  &msg);
-            DispatchMessage( &msg);
+            DispatchMessageW( &msg);
         }
         OleUninitialize();
     }
@@ -248,7 +248,7 @@ DWORD WINAPI DndTargetOleSTAFunc(LPVOID pParams)
 // XServiceInfo
 OUString SAL_CALL DropTarget::getImplementationName(  )
 {
-    return OUString(DNDTARGET_IMPL_NAME);
+    return "com.sun.star.comp.datatransfer.dnd.OleDropTarget_V1";
 }
 // XServiceInfo
 sal_Bool SAL_CALL DropTarget::supportsService( const OUString& ServiceName )
@@ -258,8 +258,7 @@ sal_Bool SAL_CALL DropTarget::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL DropTarget::getSupportedServiceNames(  )
 {
-    OUString names[1]= {OUString(DNDTARGET_SERVICE_NAME)};
-    return Sequence<OUString>(names, 1);
+    return { "com.sun.star.datatransfer.dnd.OleDropTarget" };
 }
 
 // XDropTarget
@@ -312,8 +311,7 @@ HRESULT DropTarget::DragEnter( IDataObject *pDataObj,
         // will be DROPEFFECT_NONE throughout
         m_nLastDropAction= ACTION_DEFAULT | ACTION_MOVE;
 
-        m_currentDragContext= static_cast<XDropTargetDragContext*>( new TargetDragContext(
-            this ) );
+        m_currentDragContext = new TargetDragContext(this);
 
         //--> TRA
 
@@ -344,7 +342,7 @@ HRESULT DropTarget::DragEnter( IDataObject *pDataObj,
 
             fire_dragEnter( e);
             // Check if the action derived from grfKeyState (m_nCurrentDropAction) or the action set
-            // by the listener (m_nCurrentDropAction) is allowed by the source. Only a allowed action is set
+            // by the listener (m_nCurrentDropAction) is allowed by the source. Only an allowed action is set
             // in pdwEffect. The listener notification is asynchron, that is we cannot expect that the listener
             // has already reacted to the notification.
             // If there is more than one valid action which is the case when ALT or RIGHT MOUSE BUTTON is pressed
@@ -392,7 +390,7 @@ HRESULT DropTarget::DragOver( DWORD grfKeyState,
             // The Event contains a XDropTargetDragContext implementation.
             fire_dragOver( e);
             // Check if the action derived from grfKeyState (m_nCurrentDropAction) or the action set
-            // by the listener (m_nCurrentDropAction) is allowed by the source. Only a allowed action is set
+            // by the listener (m_nCurrentDropAction) is allowed by the source. Only an allowed action is set
             // in pdwEffect. The listener notification is asynchron, that is we cannot expect that the listener
             // has already reacted to the notification.
             // If there is more than one valid action which is the case when ALT or RIGHT MOUSE BUTTON is pressed
@@ -451,7 +449,7 @@ HRESULT DropTarget::Drop( IDataObject  * /*pDataObj*/,
         m_bDropComplete= false;
 
         m_nCurrentDropAction= getFilteredActions( grfKeyState, *pdwEffect);
-        m_currentDropContext= static_cast<XDropTargetDropContext*>( new TargetDropContext( this )  );
+        m_currentDropContext = new TargetDropContext(this);
         if( m_nCurrentDropAction)
         {
             DropTargetDropEvent e;
@@ -566,7 +564,7 @@ void DropTarget::fire_dropActionChanged( const DropTargetDragEvent& dtde )
 // XDropTargetDropContext
 // Returning sal_False would cause the XDropTargetDropContext or ..DragContext implementation
 // to throw an InvalidDNDOperationException, meaning that a Drag is not currently performed.
-// return sal_False results in throwing a InvalidDNDOperationException in the caller.
+// return sal_False results in throwing an InvalidDNDOperationException in the caller.
 
 void DropTarget::_acceptDrop(sal_Int8 dropOperation, const Reference<XDropTargetDropContext>& context)
 {
@@ -625,6 +623,13 @@ inline sal_Int8 DropTarget::getFilteredActions( DWORD grfKeyState, DWORD dwEffec
 {
     sal_Int8 actions= dndOleKeysToAction( grfKeyState, dndOleDropEffectsToActions( dwEffect));
     return actions &  m_nDefaultActions;
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+dtrans_DropTarget_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(static_cast<cppu::OWeakObject*>(new DropTarget(context)));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

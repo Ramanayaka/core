@@ -17,18 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AKeys.hxx"
-#include "ado/AKey.hxx"
+#include <ado/AKeys.hxx>
+#include <ado/AKey.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbcx/KeyType.hpp>
 #include <com/sun/star/sdbc/KeyRule.hpp>
-#include "ado/AConnection.hxx"
+#include <ado/AConnection.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
-#include "ado/Awrapado.hxx"
-#include <comphelper/property.hxx>
+#include <ado/Awrapado.hxx>
 #include <connectivity/dbexception.hxx>
-#include "resource/ado_res.hrc"
+#include <strings.hrc>
 
 using namespace ::comphelper;
 using namespace connectivity;
@@ -58,21 +58,15 @@ Reference< XPropertySet > OKeys::createDescriptor()
 // XAppend
 sdbcx::ObjectType OKeys::appendObject( const OUString&, const Reference< XPropertySet >& descriptor )
 {
-    OAdoKey* pKey = nullptr;
-    if ( !getImplementation( pKey, descriptor ) || pKey == nullptr)
+    OAdoKey* pKey = getUnoTunnelImplementation<OAdoKey>( descriptor );
+    if ( pKey == nullptr)
         m_pConnection->throwGenericSQLException( STR_INVALID_KEY_DESCRIPTOR_ERROR,static_cast<XTypeProvider*>(this) );
 
     // To pass as column parameter to Key's Append method
     OLEVariant vOptional;
     vOptional.setNoArg();
 
-#if OSL_DEBUG_LEVEL > 0
-    KeyTypeEnum eKey =
-#endif
-        OAdoKey::Map2KeyRule(getINT32(descriptor->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TYPE))));
-#if OSL_DEBUG_LEVEL > 0
-    (void)eKey;
-#endif
+    OAdoKey::Map2KeyRule(getINT32(descriptor->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TYPE))));
 
     WpADOKey aKey = pKey->getImpl();
     OUString sName = aKey.get_Name();

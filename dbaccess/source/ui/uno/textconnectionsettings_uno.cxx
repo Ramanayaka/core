@@ -17,21 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "textconnectionsettings.hxx"
-#include "uiservices.hxx"
-#include "dbu_reghelper.hxx"
-#include "moduledbu.hxx"
-#include "apitools.hxx"
-#include "unoadmin.hxx"
-#include "dbustrings.hrc"
-#include "propertystorage.hxx"
+#include <textconnectionsettings.hxx>
+#include <apitools.hxx>
+#include <unoadmin.hxx>
+#include <stringconstants.hxx>
+#include <propertystorage.hxx>
 
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/sdb/XTextConnectionSettings.hpp>
 
 #include <comphelper/processfactory.hxx>
-#include <svtools/genericunodialog.hxx>
+#include <comphelper/proparrhlp.hxx>
+#include <connectivity/CommonTools.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
+#include <vcl/svapp.hxx>
 #include <cppuhelper/implbase.hxx>
 
 namespace dbaui
@@ -39,47 +39,42 @@ namespace dbaui
 
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::XInterface;
-    using ::com::sun::star::uno::Exception;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Any;
     using ::com::sun::star::uno::XComponentContext;
     using ::com::sun::star::beans::XPropertySetInfo;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::beans::Property;
-    using ::com::sun::star::lang::IllegalArgumentException;
 
     namespace PropertyAttribute = ::com::sun::star::beans::PropertyAttribute;
 
     // OTextConnectionSettingsDialog
 
+    namespace {
+
     class OTextConnectionSettingsDialog;
+
+    }
+
     typedef ::cppu::ImplInheritanceHelper<   ODatabaseAdministrationDialog
                                          ,   css::sdb::XTextConnectionSettings
                                          >   OTextConnectionSettingsDialog_BASE;
     typedef ::comphelper::OPropertyArrayUsageHelper< OTextConnectionSettingsDialog >    OTextConnectionSettingsDialog_PBASE;
+
+    namespace {
 
     class OTextConnectionSettingsDialog
             :public OTextConnectionSettingsDialog_BASE
             ,public OTextConnectionSettingsDialog_PBASE
             ,public ::cppu::WeakImplHelper< css::sdb::XTextConnectionSettings >
     {
-        OModuleClient   m_aModuleClient;
         PropertyValues  m_aPropertyValues;
 
-    protected:
-        explicit OTextConnectionSettingsDialog( const Reference<XComponentContext>& _rContext );
-        virtual ~OTextConnectionSettingsDialog() override;
-
     public:
+        explicit OTextConnectionSettingsDialog( const Reference<XComponentContext>& _rContext );
+
         virtual css::uno::Sequence<sal_Int8> SAL_CALL getImplementationId() override;
 
         DECLARE_SERVICE_INFO();
-        /// @throws css::uno::RuntimeException
-        static OUString SAL_CALL getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_Static(  );
-        static css::uno::Reference< css::uno::XInterface >
-        SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
         DECLARE_PROPERTYCONTAINER_DEFAULTS( );
 
         virtual void SAL_CALL setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const Any& rValue ) override;
@@ -106,9 +101,11 @@ namespace dbaui
 
     protected:
         // OGenericUnoDialog overridables
-        virtual VclPtr<Dialog> createDialog( vcl::Window* _pParent ) override;
+        virtual std::unique_ptr<weld::DialogController> createDialog(const css::uno::Reference<css::awt::XWindow>& rParent) override;
         using OTextConnectionSettingsDialog_BASE::getFastPropertyValue;
     };
+
+    }
 
     // OTextConnectionSettingsDialog
     OTextConnectionSettingsDialog::OTextConnectionSettingsDialog( const Reference<XComponentContext>& _rContext )
@@ -117,24 +114,20 @@ namespace dbaui
         TextConnectionSettingsDialog::bindItemStorages( *m_pDatasourceItems, m_aPropertyValues );
     }
 
-    OTextConnectionSettingsDialog::~OTextConnectionSettingsDialog()
-    {
-    }
-
     css::uno::Sequence<sal_Int8>
     OTextConnectionSettingsDialog::getImplementationId()
     {
         return css::uno::Sequence<sal_Int8>();
     }
 
-    IMPLEMENT_SERVICE_INFO_IMPLNAME_STATIC(OTextConnectionSettingsDialog, "com.sun.star.comp.dbaccess.OTextConnectionSettingsDialog")
-    IMPLEMENT_SERVICE_INFO_SUPPORTS(OTextConnectionSettingsDialog)
-    IMPLEMENT_SERVICE_INFO_GETSUPPORTED1_STATIC(OTextConnectionSettingsDialog, "com.sun.star.sdb.TextConnectionSettings")
-
-    css::uno::Reference< css::uno::XInterface >
-        SAL_CALL OTextConnectionSettingsDialog::Create(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxORB)
+    OUString SAL_CALL OTextConnectionSettingsDialog::getImplementationName()
     {
-        return static_cast< XServiceInfo* >(new OTextConnectionSettingsDialog( comphelper::getComponentContext(_rxORB)));
+        return "com.sun.star.comp.dbaccess.OTextConnectionSettingsDialog";
+    }
+    IMPLEMENT_SERVICE_INFO_SUPPORTS(OTextConnectionSettingsDialog)
+    css::uno::Sequence< OUString > SAL_CALL OTextConnectionSettingsDialog::getSupportedServiceNames()
+    {
+        return { "com.sun.star.sdb.TextConnectionSettings" };
     }
 
     Reference< XPropertySetInfo >  SAL_CALL OTextConnectionSettingsDialog::getPropertySetInfo()
@@ -203,9 +196,9 @@ namespace dbaui
         return new ::cppu::OPropertyArrayHelper( aProps );
     }
 
-    VclPtr<Dialog> OTextConnectionSettingsDialog::createDialog(vcl::Window* _pParent)
+    std::unique_ptr<weld::DialogController> OTextConnectionSettingsDialog::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
     {
-        return VclPtr<TextConnectionSettingsDialog>::Create( _pParent, *m_pDatasourceItems );
+        return std::make_unique<TextConnectionSettingsDialog>(Application::GetFrameWeld(rParent), *m_pDatasourceItems);
     }
 
     void SAL_CALL OTextConnectionSettingsDialog::setFastPropertyValue_NoBroadcast( sal_Int32 _nHandle, const Any& _rValue )
@@ -256,9 +249,11 @@ namespace dbaui
 
 } // namespace dbaui
 
-extern "C" void SAL_CALL createRegistryInfo_OTextConnectionSettingsDialog()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_dbaccess_OTextConnectionSettingsDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static ::dbaui::OMultiInstanceAutoRegistration< ::dbaui::OTextConnectionSettingsDialog > aAutoRegistration;
+    return cppu::acquire(static_cast<dbaui::ODatabaseAdministrationDialog*>(new ::dbaui::OTextConnectionSettingsDialog(context)));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

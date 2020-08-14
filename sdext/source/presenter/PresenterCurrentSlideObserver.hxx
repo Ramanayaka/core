@@ -21,15 +21,12 @@
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERCURRENTSLIDEOBSERVER_HXX
 
 #include "PresenterController.hxx"
-#include <com/sun/star/presentation/XSlideShow.hpp>
 #include <com/sun/star/presentation/XSlideShowController.hpp>
-#include <com/sun/star/frame/XController.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <rtl/ref.hxx>
-#include <salhelper/timer.hxx>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::presentation::XSlideShowListener
@@ -77,7 +74,7 @@ private:
     css::uno::Reference<css::presentation::XSlideShowController> mxSlideShowController;
 };
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 #endif
 

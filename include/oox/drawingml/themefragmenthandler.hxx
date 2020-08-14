@@ -27,15 +27,14 @@
 #include <sal/types.h>
 
 namespace oox { class AttributeList; }
-namespace oox { namespace core { class XmlFilterBase; } }
+namespace oox::core { class XmlFilterBase; }
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 class Theme;
 
 
-class OOX_DLLPUBLIC ThemeFragmentHandler : public ::oox::core::FragmentHandler2
+class OOX_DLLPUBLIC ThemeFragmentHandler final : public ::oox::core::FragmentHandler2
 {
 public:
     explicit            ThemeFragmentHandler(
@@ -51,8 +50,7 @@ private:
 };
 
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 #endif
 

@@ -18,22 +18,16 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/numeric/ftools.hxx>
-#include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <osl/mutex.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
 #include <vcl/sysdata.hxx>
 #include <vcl/opengl/OpenGLWrapper.hxx>
-
-#include <canvas/canvastools.hxx>
+#include <vcl/skia/SkiaHelper.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 #include "cairo_canvas.hxx"
 
@@ -51,25 +45,25 @@ namespace cairocanvas
     void Canvas::initialize()
     {
         // #i64742# Only perform initialization when not in probe mode
-        if( maArguments.getLength() == 0 )
+        if( !maArguments.hasElements() )
             return;
 
         // tdf#93870 - force VCL canvas in OpenGL mode for now.
         assert( !OpenGLWrapper::isVCLOpenGLEnabled() );
+        assert( !SkiaHelper::isVCLSkiaEnabled() );
 
         /* maArguments:
            0: ptr to creating instance (Window or VirtualDevice)
-           1: SystemEnvData as a streamed Any (or empty for VirtualDevice)
-           2: current bounds of creating instance
-           3: bool, denoting always on top state for Window (always false for VirtualDevice)
-           4: XWindow for creating Window (or empty for VirtualDevice)
-           5: SystemGraphicsData as a streamed Any
+           1: current bounds of creating instance
+           2: bool, denoting always on top state for Window (always false for VirtualDevice)
+           3: XWindow for creating Window (or empty for VirtualDevice)
+           4: SystemGraphicsData as a streamed Any
          */
         SAL_INFO("canvas.cairo","Canvas created " <<  this);
 
-        ENSURE_ARG_OR_THROW( maArguments.getLength() >= 6 &&
+        ENSURE_ARG_OR_THROW( maArguments.getLength() >= 5 &&
                              maArguments[0].getValueTypeClass() == uno::TypeClass_HYPER &&
-                             maArguments[5].getValueTypeClass() == uno::TypeClass_SEQUENCE,
+                             maArguments[4].getValueTypeClass() == uno::TypeClass_SEQUENCE,
                              "Canvas::initialize: wrong number of arguments, or wrong types" );
 
         // We expect a single Any here, containing a pointer to a valid
@@ -82,10 +76,10 @@ namespace cairocanvas
                              "Canvas::initialize: invalid OutDev pointer" );
 
         awt::Rectangle aBounds;
-        maArguments[2] >>= aBounds;
+        maArguments[1] >>= aBounds;
 
         uno::Sequence<sal_Int8> aSeq;
-        maArguments[5] >>= aSeq;
+        maArguments[4] >>= aSeq;
 
         const SystemGraphicsData* pSysData=reinterpret_cast<const SystemGraphicsData*>(aSeq.getConstArray());
         if( !pSysData || !pSysData->nSize )
@@ -120,7 +114,22 @@ namespace cairocanvas
 
     OUString SAL_CALL Canvas::getServiceName(  )
     {
-        return OUString( CANVAS_SERVICE_NAME );
+        return "com.sun.star.rendering.Canvas.Cairo";
+    }
+
+    //  XServiceInfo
+    sal_Bool Canvas::supportsService(const OUString& sServiceName)
+    {
+        return cppu::supportsService(this, sServiceName);
+
+    }
+    OUString Canvas::getImplementationName()
+    {
+        return "com.sun.star.comp.rendering.Canvas.Cairo";
+    }
+    css::uno::Sequence< OUString > Canvas::getSupportedServiceNames()
+    {
+        return { getServiceName() };
     }
 
     bool Canvas::repaint( const SurfaceSharedPtr&       pSurface,
@@ -165,5 +174,22 @@ namespace cairocanvas
         return maDeviceHelper.getOutputDevice();
     }
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_rendering_Canvas_Cairo_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
+{
+    auto p = new cairocanvas::Canvas(args, context);
+    p->acquire();
+    try {
+        p->initialize();
+    } catch (css::uno::Exception&) {
+        p->dispose();
+        p->release();
+        throw;
+    }
+    return static_cast<cppu::OWeakObject*>(p);
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

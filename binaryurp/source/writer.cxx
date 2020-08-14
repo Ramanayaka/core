@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cassert>
 #include <cstddef>
@@ -26,14 +26,14 @@
 #include <limits>
 #include <vector>
 
-#include "com/sun/star/connection/XConnection.hpp"
-#include "com/sun/star/io/IOException.hpp"
-#include "com/sun/star/lang/WrappedTargetRuntimeException.hpp"
-#include "com/sun/star/uno/XCurrentContext.hpp"
-#include "cppuhelper/exc_hlp.hxx"
-#include "osl/mutex.hxx"
-#include "sal/log.hxx"
-#include "uno/dispatcher.hxx"
+#include <com/sun/star/connection/XConnection.hpp>
+#include <com/sun/star/io/IOException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
+#include <com/sun/star/uno/XCurrentContext.hpp>
+#include <cppuhelper/exc_hlp.hxx>
+#include <osl/mutex.hxx>
+#include <sal/log.hxx>
+#include <uno/dispatcher.hxx>
 
 #include "binaryany.hxx"
 #include "bridge.hxx"
@@ -108,7 +108,7 @@ void Writer::queueRequest(
 {
     css::uno::UnoInterfaceReference cc(current_context::get());
     osl::MutexGuard g(mutex_);
-    queue_.push_back(Item(tid, oid, type, member, inArguments, cc));
+    queue_.emplace_back(tid, oid, type, member, inArguments, cc);
     items_.set();
 }
 
@@ -119,10 +119,9 @@ void Writer::queueReply(
     std::vector< BinaryAny > const & outArguments, bool setCurrentContextMode)
 {
     osl::MutexGuard g(mutex_);
-    queue_.push_back(
-        Item(
+    queue_.emplace_back(
             tid, member, setter, exception, returnValue, outArguments,
-            setCurrentContextMode));
+            setCurrentContextMode);
     items_.set();
 }
 
@@ -181,7 +180,7 @@ void Writer::execute() {
             }
         }
     } catch (const css::uno::Exception & e) {
-        SAL_INFO("binaryurp", "caught UNO exception " << e.Message);
+        SAL_INFO("binaryurp", "caught " << e);
     } catch (const std::exception & e) {
         SAL_INFO("binaryurp", "caught C++ exception " << e.what());
     }
@@ -416,7 +415,7 @@ void Writer::sendMessage(std::vector< unsigned char > const & buffer) {
     Marshal::write32(&header, static_cast< sal_uInt32 >(buffer.size()));
     Marshal::write32(&header, 1);
     assert(!buffer.empty());
-    unsigned char const * p = &buffer[0];
+    unsigned char const * p = buffer.data();
     std::vector< unsigned char >::size_type n = buffer.size();
     assert(header.size() <= SAL_MAX_INT32);
     /*static_*/assert(SAL_MAX_INT32 <= std::numeric_limits<std::size_t>::max());
@@ -426,7 +425,7 @@ void Writer::sendMessage(std::vector< unsigned char > const & buffer) {
     }
     css::uno::Sequence<sal_Int8> s(header.size() + k);
     assert(!header.empty());
-    std::memcpy(s.getArray(), &header[0], header.size());
+    std::memcpy(s.getArray(), header.data(), header.size());
     for (;;) {
         std::memcpy(s.getArray() + s.getLength() - k, p, k);
         try {

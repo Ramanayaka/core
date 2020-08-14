@@ -21,20 +21,13 @@
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_ERRORBARITEMCONVERTER_HXX
 
 #include "ItemConverter.hxx"
-#include "GraphicPropertyItemConverter.hxx"
-#include "NumberFormatterWrapper.hxx"
 
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-
-#include <memory>
-#include <vector>
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
 
 class SdrModel;
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 class ErrorBarItemConverter : public ItemConverter
@@ -63,8 +56,7 @@ private:
     css::uno::Reference< css::frame::XModel >  m_xModel;
 };
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 #endif // INCLUDED_CHART2_SOURCE_CONTROLLER_INC_ERRORBARITEMCONVERTER_HXX
 

@@ -22,14 +22,13 @@
 
 #include <sal/config.h>
 
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <cppuhelper/component.hxx>
 #include <osl/mutex.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <osl/diagnose.h>
-#include <cppuhelper/typeprovider.hxx>
 #include <comphelper/sequence.hxx>
-#include <connectivity/CommonTools.hxx>
+#include <strings.hxx>
 
 // OSubComponent - a component which holds a hard ref to its parent
 //                 and is been hold itself (by the parent) with a weak ref
@@ -62,61 +61,29 @@ public:
 #define IMPLEMENT_SERVICE_INFO_IMPLNAME(classname, implasciiname)   \
     OUString SAL_CALL classname::getImplementationName(  )   \
     {   \
-        return OUString(implasciiname); \
+        return implasciiname; \
     }   \
 
-#define IMPLEMENT_SERVICE_INFO_IMPLNAME_STATIC(classname, implasciiname)    \
-    OUString SAL_CALL classname::getImplementationName(  )   \
-    {   \
-        return getImplementationName_Static();  \
-    }   \
-    OUString SAL_CALL classname::getImplementationName_Static(  )    \
-    {   \
-        return OUString(implasciiname); \
-    }   \
 
 #define IMPLEMENT_SERVICE_INFO_SUPPORTS(classname)  \
     sal_Bool SAL_CALL classname::supportsService( const OUString& _rServiceName ) \
     {   \
-        css::uno::Sequence< OUString > aSupported(getSupportedServiceNames());  \
-        const OUString* pSupported = aSupported.getConstArray(); \
-        for (sal_Int32 i=0; i<aSupported.getLength(); ++i, ++pSupported)    \
-            if (pSupported->equals(_rServiceName))  \
+        const css::uno::Sequence< OUString > aSupported(getSupportedServiceNames());  \
+        for (const OUString& s : aSupported)    \
+            if (s == _rServiceName)  \
                 return true;    \
     \
         return false;   \
     }   \
 
-#define IMPLEMENT_SERVICE_INFO_GETSUPPORTED1_STATIC(classname, serviceasciiname)    \
-    css::uno::Sequence< OUString > SAL_CALL classname::getSupportedServiceNames(  )  \
-    {   \
-        return getSupportedServiceNames_Static();   \
-    }   \
-    css::uno::Sequence< OUString > SAL_CALL classname::getSupportedServiceNames_Static(  )   \
-    {   \
-        css::uno::Sequence< OUString > aSupported { serviceasciiname }; \
-        return aSupported;  \
-    }   \
 
-#define IMPLEMENT_SERVICE_INFO_GETSUPPORTED2_STATIC(classname, serviceasciiname1, serviceasciiname2)    \
-    css::uno::Sequence< OUString > SAL_CALL classname::getSupportedServiceNames(  )  \
-    {   \
-        return getSupportedServiceNames_Static();   \
-    }   \
-    css::uno::Sequence< OUString > SAL_CALL classname::getSupportedServiceNames_Static(  )   \
-    {   \
-        css::uno::Sequence< OUString > aSupported(2);   \
-        aSupported[0] = serviceasciiname1;    \
-        aSupported[1] = serviceasciiname2;    \
-        return aSupported;  \
-    }   \
 
 #define IMPLEMENT_SERVICE_INFO1(classname, implasciiname, serviceasciiname) \
     IMPLEMENT_SERVICE_INFO_IMPLNAME(classname, implasciiname)   \
     IMPLEMENT_SERVICE_INFO_SUPPORTS(classname)  \
     css::uno::Sequence< OUString > SAL_CALL classname::getSupportedServiceNames(  )  \
     {   \
-        return css::uno::Sequence< OUString > { serviceasciiname }; \
+        return { serviceasciiname }; \
     }   \
 
 
@@ -125,19 +92,9 @@ public:
     IMPLEMENT_SERVICE_INFO_SUPPORTS(classname)  \
     css::uno::Sequence< OUString > SAL_CALL classname::getSupportedServiceNames(  )  \
     {   \
-        return css::uno::Sequence< OUString > { serviceasciiname1, serviceasciiname2 };    \
+        return { serviceasciiname1, serviceasciiname2 };    \
     }
 
-
-#define IMPLEMENT_SERVICE_INFO2_STATIC(classname, implasciiname, serviceasciiname1, serviceasciiname2)  \
-    IMPLEMENT_SERVICE_INFO_IMPLNAME_STATIC(classname, implasciiname)    \
-    IMPLEMENT_SERVICE_INFO_SUPPORTS(classname)  \
-    IMPLEMENT_SERVICE_INFO_GETSUPPORTED2_STATIC(classname, serviceasciiname1,serviceasciiname2) \
-    css::uno::Reference< css::uno::XInterface >   \
-        SAL_CALL classname::Create(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxORB)  \
-    {   \
-        return static_cast< XServiceInfo* >(new classname(_rxORB)); \
-    }
 
 
 #define IMPLEMENT_SERVICE_INFO3(classname, implasciiname, serviceasciiname1, serviceasciiname2, serviceasciiname3)  \
@@ -145,31 +102,11 @@ public:
     IMPLEMENT_SERVICE_INFO_SUPPORTS(classname)  \
     css::uno::Sequence< OUString > SAL_CALL classname::getSupportedServiceNames(  )  \
     {   \
-        return css::uno::Sequence< OUString > { serviceasciiname1, serviceasciiname2, serviceasciiname3 };  \
+        return { serviceasciiname1, serviceasciiname2, serviceasciiname3 };  \
     }   \
 
 
 // XTypeProvider helpers
-
-#define IMPLEMENT_IMPLEMENTATION_ID( classname )    \
-css::uno::Sequence< sal_Int8 > classname::getUnoTunnelImplementationId() \
-{   \
-    static ::cppu::OImplementationId* pId = nullptr;  \
-    if ( !pId ) \
-    {   \
-        ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() ); \
-        if ( !pId ) \
-        {   \
-            static ::cppu::OImplementationId aId;   \
-            pId = &aId; \
-        }   \
-    }   \
-    return pId->getImplementationId();  \
-} \
-css::uno::Sequence< sal_Int8 > classname::getImplementationId()    \
-{   \
-    return css::uno::Sequence<sal_Int8>(); \
-}
 
 #define IMPLEMENT_GETTYPES2( classname, baseclass1, baseclass2 )    \
     css::uno::Sequence< css::uno::Type > classname::getTypes()    \

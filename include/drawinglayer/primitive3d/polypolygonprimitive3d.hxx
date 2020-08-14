@@ -27,9 +27,7 @@
 #include <drawinglayer/attribute/materialattribute3d.hxx>
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
+namespace drawinglayer::primitive3d
     {
         /** PolyPolygonMaterialPrimitive3D class
 
@@ -39,7 +37,7 @@ namespace drawinglayer
 
             It is assumed here that the PolyPolgon is a single plane in 3D.
          */
-        class DRAWINGLAYER_DLLPUBLIC PolyPolygonMaterialPrimitive3D : public BasePrimitive3D
+        class DRAWINGLAYER_DLLPUBLIC PolyPolygonMaterialPrimitive3D final : public BasePrimitive3D
         {
         private:
             /// the tools::PolyPolygon geometry
@@ -71,8 +69,8 @@ namespace drawinglayer
             /// provide unique ID
             DeclPrimitive3DIDBlock()
         };
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::primitive3d
 
 
 #endif //INCLUDED_DRAWINGLAYER_PRIMITIVE3D_POLYPOLYGONPRIMITIVE3D_HXX

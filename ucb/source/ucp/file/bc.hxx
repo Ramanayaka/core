@@ -20,22 +20,18 @@
 #ifndef INCLUDED_UCB_SOURCE_UCP_FILE_BC_HXX
 #define INCLUDED_UCB_SOURCE_UCP_FILE_BC_HXX
 
-#include "osl/mutex.hxx"
-#include "rtl/ustring.hxx"
-#include <cppuhelper/weak.hxx>
-#include <ucbhelper/macros.hxx>
+#include <osl/mutex.hxx>
+#include <rtl/ustring.hxx>
+#include <cppuhelper/implbase.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 #include <com/sun/star/uno/XInterface.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/ucb/XCommandProcessor.hpp>
 #include <com/sun/star/beans/XPropertiesChangeNotifier.hpp>
 #include <com/sun/star/ucb/XContent.hpp>
-#include <com/sun/star/ucb/XContentProvider.hpp>
 #include <com/sun/star/ucb/XDynamicResultSet.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/beans/PropertyChangeEvent.hpp>
 #include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/ucb/XCommandInfo.hpp>
@@ -46,9 +42,8 @@
 #include <com/sun/star/beans/XPropertySetInfoChangeListener.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/ucb/XContentCreator.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/ucb/OpenCommandArgument2.hpp>
-#include <com/sun/star/ucb/InteractiveBadTransferURLException.hpp>
+#include <com/sun/star/ucb/TransferInfo.hpp>
 #include "filtask.hxx"
 
 
@@ -58,17 +53,16 @@ namespace fileaccess {
     class TaskManager;
 
     class BaseContent:
-        public cppu::OWeakObject,
-        public css::lang::XComponent,
-        public css::lang::XServiceInfo,
-        public css::lang::XTypeProvider,
-        public css::ucb::XCommandProcessor,
-        public css::beans::XPropertiesChangeNotifier,
-        public css::beans::XPropertyContainer,
-        public css::beans::XPropertySetInfoChangeNotifier,
-        public css::ucb::XContentCreator,
-        public css::container::XChild,
-        public css::ucb::XContent,
+        public cppu::WeakImplHelper<
+            css::lang::XComponent,
+            css::lang::XServiceInfo,
+            css::ucb::XCommandProcessor,
+            css::beans::XPropertiesChangeNotifier,
+            css::beans::XPropertyContainer,
+            css::beans::XPropertySetInfoChangeNotifier,
+            css::ucb::XContentCreator,
+            css::container::XChild,
+            css::ucb::XContent>,
         public fileaccess::Notifier    // implementation class
     {
     private:
@@ -86,19 +80,6 @@ namespace fileaccess {
 
         virtual ~BaseContent() override;
 
-        // XInterface
-        virtual css::uno::Any SAL_CALL
-        queryInterface( const css::uno::Type& aType ) override;
-
-        virtual void SAL_CALL
-        acquire()
-            throw() override;
-
-        virtual void SAL_CALL
-        release()
-            throw() override;
-
-
         // XComponent
         virtual void SAL_CALL
         dispose() override;
@@ -109,12 +90,6 @@ namespace fileaccess {
 
         virtual void SAL_CALL
         removeEventListener( const css::uno::Reference< css::lang::XEventListener >& aListener ) override;
-
-
-        // XTypeProvider
-
-        virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
-        virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
 
 
         // XServiceInfo
@@ -210,11 +185,11 @@ namespace fileaccess {
 
         // Notifier
 
-        ContentEventNotifier*          cDEL() override;
-        ContentEventNotifier*          cEXC( const OUString& aNewName ) override;
-        ContentEventNotifier*          cCEL() override;
-        PropertySetInfoChangeNotifier* cPSL() override;
-        PropertyChangeNotifier*        cPCL() override;
+        std::unique_ptr<ContentEventNotifier> cDEL() override;
+        std::unique_ptr<ContentEventNotifier> cEXC( const OUString& aNewName ) override;
+        std::unique_ptr<ContentEventNotifier> cCEL() override;
+        std::unique_ptr<PropertySetInfoChangeNotifier> cPSL() override;
+        std::unique_ptr<PropertyChangeNotifier> cPCL() override;
 
     private:
         // Data members
@@ -226,56 +201,56 @@ namespace fileaccess {
                      JustInserted = 2,
                      Deleted = 4,
                      FullFeatured = 8 };
-        bool                                                                    m_bFolder;
-        sal_uInt16                                                                  m_nState;
+        bool                                                  m_bFolder;
+        sal_uInt16                                            m_nState;
 
         osl::Mutex                         m_aMutex;
 
         osl::Mutex                          m_aEventListenerMutex;
-        comphelper::OInterfaceContainerHelper2*   m_pDisposeEventListeners;
-        comphelper::OInterfaceContainerHelper2*   m_pContentEventListeners;
-        comphelper::OInterfaceContainerHelper2*   m_pPropertySetInfoChangeListeners;
-        PropertyListeners*                  m_pPropertyListener;
+        std::unique_ptr<comphelper::OInterfaceContainerHelper2>   m_pDisposeEventListeners;
+        std::unique_ptr<comphelper::OInterfaceContainerHelper2>   m_pContentEventListeners;
+        std::unique_ptr<comphelper::OInterfaceContainerHelper2>   m_pPropertySetInfoChangeListeners;
+        std::unique_ptr<PropertyListeners>                  m_pPropertyListener;
 
 
         // Private Methods
         /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::ucb::XCommandInfo > SAL_CALL
+        css::uno::Reference< css::ucb::XCommandInfo >
         getCommandInfo();
 
         /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL
+        css::uno::Reference< css::beans::XPropertySetInfo >
         getPropertySetInfo();
 
         /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::sdbc::XRow > SAL_CALL
+        css::uno::Reference< css::sdbc::XRow >
         getPropertyValues(
             sal_Int32 nMyCommandIdentifier,
             const css::uno::Sequence< css::beans::Property >& PropertySet );
 
-        css::uno::Sequence< css::uno::Any > SAL_CALL
+        css::uno::Sequence< css::uno::Any >
         setPropertyValues(
             sal_Int32 nMyCommandIdentifier,
             const css::uno::Sequence< css::beans::PropertyValue >& Values );
 
-        css::uno::Reference< css::ucb::XDynamicResultSet > SAL_CALL
+        css::uno::Reference< css::ucb::XDynamicResultSet >
         open(
             sal_Int32 nMyCommandIdentifier,
             const css::ucb::OpenCommandArgument2& aCommandArgument );
 
-        void SAL_CALL
+        void
         deleteContent( sal_Int32 nMyCommandIdentifier );
 
 
-        void SAL_CALL
+        void
         transfer( sal_Int32 nMyCommandIdentifier,
                   const css::ucb::TransferInfo& aTransferInfo );
 
-        void SAL_CALL
+        void
         insert( sal_Int32 nMyCommandIdentifier,
                 const css::ucb::InsertCommandArgument& aInsertArgument );
 
-        void SAL_CALL endTask( sal_Int32 CommandId );
+        void endTask( sal_Int32 CommandId );
 
         friend class ContentEventNotifier;
     };

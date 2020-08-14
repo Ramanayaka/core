@@ -21,11 +21,9 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_SWXMLTEXTBLOCKS_HXX
 
 #include <sfx2/objsh.hxx>
-#include <sfx2/docfile.hxx>
-#include <swblocks.hxx>
+#include "swblocks.hxx"
 #include <o3tl/typed_flags_set.hxx>
 
-class SwPaM;
 class SwDoc;
 class SvxMacroTableDtor;
 
@@ -37,9 +35,8 @@ namespace o3tl {
     template<> struct typed_flags<SwXmlFlags> : is_typed_flags<SwXmlFlags, 0x0002> {};
 }
 
-class SwXMLTextBlocks : public SwImpBlocks
+class SwXMLTextBlocks final : public SwImpBlocks
 {
-protected:
     SfxObjectShellRef       xDocShellRef;
     SwXmlFlags              nFlags;
     OUString                aPackageName;
@@ -60,8 +57,7 @@ public:
     static OUString GeneratePackageName ( const OUString& rShort );
     virtual ~SwXMLTextBlocks() override;
     virtual ErrCode Delete( sal_uInt16 ) override;
-    virtual ErrCode Rename( sal_uInt16, const OUString&, const OUString& ) override;
-    virtual ErrCode CopyBlock( SwImpBlocks& rImp, OUString& rShort, const OUString& rLong) override;
+    virtual ErrCode Rename( sal_uInt16, const OUString& ) override;
     virtual void  ClearDoc() override;
     virtual ErrCode GetDoc( sal_uInt16 ) override;
     virtual ErrCode BeginPutDoc( const OUString&, const OUString& ) override;
@@ -69,7 +65,6 @@ public:
     virtual ErrCode PutText( const OUString&, const OUString&, const OUString& ) override;
     virtual ErrCode MakeBlockList() override;
 
-    virtual FileType GetFileType() const override;
     virtual ErrCode OpenFile( bool bReadOnly = true ) override;
     virtual void  CloseFile() override;
 
@@ -87,15 +82,13 @@ public:
                                  const SvxMacroTableDtor& rMacroTable ) override;
     virtual bool PutMuchEntries( bool bOn ) override;
 
-public:
-    SwDoc* GetDoc() const { return m_pDoc; }
+    SwDoc* GetDoc() const { return m_xDoc.get(); }
     //void  SetDoc( SwDoc * pNewDoc);
     ErrCode StartPutBlock( const OUString& rShort, const OUString& rPackageName );
     ErrCode PutBlock();
     ErrCode GetBlockText( const OUString& rShort, OUString& rText );
     ErrCode PutBlockText( const OUString& rShort, const OUString& rText, const OUString& rPackageName );
     void MakeBlockText( const OUString& rText );
-
 };
 
 #endif

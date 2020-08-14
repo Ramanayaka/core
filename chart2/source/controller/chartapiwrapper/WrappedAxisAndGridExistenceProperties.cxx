@@ -18,19 +18,23 @@
  */
 
 #include "WrappedAxisAndGridExistenceProperties.hxx"
-#include "AxisHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "TitleHelper.hxx"
-#include "macros.hxx"
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/chart2/XAxis.hpp>
+#include <com/sun/star/chart2/XDiagram.hpp>
+#include <AxisHelper.hxx>
+#include <WrappedProperty.hxx>
+#include "Chart2ModelContact.hxx"
+#include <TitleHelper.hxx>
+#include <osl/diagnose.h>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::Reference;
 
-namespace chart
+namespace chart::wrapper
 {
-namespace wrapper
-{
+
+namespace {
 
 class WrappedAxisAndGridExistenceProperty : public WrappedProperty
 {
@@ -51,22 +55,24 @@ private: //member
     sal_Int32   m_nDimensionIndex;
 };
 
-void WrappedAxisAndGridExistenceProperties::addWrappedProperties( std::vector< WrappedProperty* >& rList
+}
+
+void WrappedAxisAndGridExistenceProperties::addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList
             , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact )
 {
-    rList.push_back( new WrappedAxisAndGridExistenceProperty( true, true, 0, spChart2ModelContact ) );//x axis
-    rList.push_back( new WrappedAxisAndGridExistenceProperty( true, false, 0, spChart2ModelContact ) );//x secondary axis
-    rList.push_back( new WrappedAxisAndGridExistenceProperty( false, true, 0, spChart2ModelContact ) );//x grid
-    rList.push_back( new WrappedAxisAndGridExistenceProperty( false, false, 0, spChart2ModelContact ) );//x help grid
+    rList.emplace_back( new WrappedAxisAndGridExistenceProperty( true, true, 0, spChart2ModelContact ) );//x axis
+    rList.emplace_back( new WrappedAxisAndGridExistenceProperty( true, false, 0, spChart2ModelContact ) );//x secondary axis
+    rList.emplace_back( new WrappedAxisAndGridExistenceProperty( false, true, 0, spChart2ModelContact ) );//x grid
+    rList.emplace_back( new WrappedAxisAndGridExistenceProperty( false, false, 0, spChart2ModelContact ) );//x help grid
 
-    rList.push_back( new WrappedAxisAndGridExistenceProperty( true, true, 1, spChart2ModelContact ) );//y axis
-    rList.push_back( new WrappedAxisAndGridExistenceProperty( true, false, 1, spChart2ModelContact ) );//y secondary axis
-    rList.push_back( new WrappedAxisAndGridExistenceProperty( false, true, 1, spChart2ModelContact ) );//y grid
-    rList.push_back( new WrappedAxisAndGridExistenceProperty( false, false, 1, spChart2ModelContact ) );//y help grid
+    rList.emplace_back( new WrappedAxisAndGridExistenceProperty( true, true, 1, spChart2ModelContact ) );//y axis
+    rList.emplace_back( new WrappedAxisAndGridExistenceProperty( true, false, 1, spChart2ModelContact ) );//y secondary axis
+    rList.emplace_back( new WrappedAxisAndGridExistenceProperty( false, true, 1, spChart2ModelContact ) );//y grid
+    rList.emplace_back( new WrappedAxisAndGridExistenceProperty( false, false, 1, spChart2ModelContact ) );//y help grid
 
-    rList.push_back( new WrappedAxisAndGridExistenceProperty( true, true, 2, spChart2ModelContact ) );//z axis
-    rList.push_back( new WrappedAxisAndGridExistenceProperty( false, true, 2, spChart2ModelContact ) );//z grid
-    rList.push_back( new WrappedAxisAndGridExistenceProperty( false, false, 2, spChart2ModelContact ) );//z help grid
+    rList.emplace_back( new WrappedAxisAndGridExistenceProperty( true, true, 2, spChart2ModelContact ) );//z axis
+    rList.emplace_back( new WrappedAxisAndGridExistenceProperty( false, true, 2, spChart2ModelContact ) );//z grid
+    rList.emplace_back( new WrappedAxisAndGridExistenceProperty( false, false, 2, spChart2ModelContact ) );//z help grid
 }
 
 WrappedAxisAndGridExistenceProperty::WrappedAxisAndGridExistenceProperty( bool bAxis, bool bMain, sal_Int32 nDimensionIndex
@@ -153,7 +159,7 @@ void WrappedAxisAndGridExistenceProperty::setPropertyValue( const Any& rOuterVal
         if( m_bAxis )
             AxisHelper::showAxis( m_nDimensionIndex, m_bMain, xDiagram, m_spChart2ModelContact->m_xContext );
         else
-            AxisHelper::showGrid( m_nDimensionIndex, 0, m_bMain, xDiagram, m_spChart2ModelContact->m_xContext );
+            AxisHelper::showGrid( m_nDimensionIndex, 0, m_bMain, xDiagram );
     }
     else
     {
@@ -188,6 +194,8 @@ Any WrappedAxisAndGridExistenceProperty::getPropertyDefault( const Reference< be
     return aRet;
 }
 
+namespace {
+
 class WrappedAxisTitleExistenceProperty : public WrappedProperty
 {
 public:
@@ -205,14 +213,16 @@ private: //member
     TitleHelper::eTitleType             m_eTitleType;
 };
 
-void WrappedAxisTitleExistenceProperties::addWrappedProperties( std::vector< WrappedProperty* >& rList
+}
+
+void WrappedAxisTitleExistenceProperties::addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList
             , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact )
 {
-    rList.push_back( new WrappedAxisTitleExistenceProperty( 0, spChart2ModelContact ) );//x axis title
-    rList.push_back( new WrappedAxisTitleExistenceProperty( 1, spChart2ModelContact ) );//y axis title
-    rList.push_back( new WrappedAxisTitleExistenceProperty( 2, spChart2ModelContact ) );//z axis title
-    rList.push_back( new WrappedAxisTitleExistenceProperty( 3, spChart2ModelContact ) );//secondary x axis title
-    rList.push_back( new WrappedAxisTitleExistenceProperty( 4, spChart2ModelContact ) );//secondary y axis title
+    rList.emplace_back( new WrappedAxisTitleExistenceProperty( 0, spChart2ModelContact ) );//x axis title
+    rList.emplace_back( new WrappedAxisTitleExistenceProperty( 1, spChart2ModelContact ) );//y axis title
+    rList.emplace_back( new WrappedAxisTitleExistenceProperty( 2, spChart2ModelContact ) );//z axis title
+    rList.emplace_back( new WrappedAxisTitleExistenceProperty( 3, spChart2ModelContact ) );//secondary x axis title
+    rList.emplace_back( new WrappedAxisTitleExistenceProperty( 4, spChart2ModelContact ) );//secondary y axis title
 }
 
 WrappedAxisTitleExistenceProperty::WrappedAxisTitleExistenceProperty(sal_Int32 nTitleIndex
@@ -260,8 +270,7 @@ void WrappedAxisTitleExistenceProperty::setPropertyValue( const Any& rOuterValue
 
     if( bNewValue )
     {
-        OUString aTitleText;
-        TitleHelper::createTitle(  m_eTitleType, aTitleText
+        TitleHelper::createTitle(  m_eTitleType, OUString()
             , m_spChart2ModelContact->getChartModel(), m_spChart2ModelContact->m_xContext );
     }
     else
@@ -291,6 +300,8 @@ Any WrappedAxisTitleExistenceProperty::getPropertyDefault( const Reference< bean
     return aRet;
 }
 
+namespace {
+
 class WrappedAxisLabelExistenceProperty : public WrappedProperty
 {
 public:
@@ -309,14 +320,16 @@ private: //member
     sal_Int32   m_nDimensionIndex;
 };
 
-void WrappedAxisLabelExistenceProperties::addWrappedProperties( std::vector< WrappedProperty* >& rList
+}
+
+void WrappedAxisLabelExistenceProperties::addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList
             , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact )
 {
-    rList.push_back( new WrappedAxisLabelExistenceProperty( true, 0, spChart2ModelContact ) );//x axis
-    rList.push_back( new WrappedAxisLabelExistenceProperty( true, 1, spChart2ModelContact ) );//y axis
-    rList.push_back( new WrappedAxisLabelExistenceProperty( true, 2, spChart2ModelContact ) );//z axis
-    rList.push_back( new WrappedAxisLabelExistenceProperty( false, 0, spChart2ModelContact ) );//secondary x axis
-    rList.push_back( new WrappedAxisLabelExistenceProperty( false, 1, spChart2ModelContact ) );//secondary y axis
+    rList.emplace_back( new WrappedAxisLabelExistenceProperty( true, 0, spChart2ModelContact ) );//x axis
+    rList.emplace_back( new WrappedAxisLabelExistenceProperty( true, 1, spChart2ModelContact ) );//y axis
+    rList.emplace_back( new WrappedAxisLabelExistenceProperty( true, 2, spChart2ModelContact ) );//z axis
+    rList.emplace_back( new WrappedAxisLabelExistenceProperty( false, 0, spChart2ModelContact ) );//secondary x axis
+    rList.emplace_back( new WrappedAxisLabelExistenceProperty( false, 1, spChart2ModelContact ) );//secondary y axis
 }
 
 WrappedAxisLabelExistenceProperty::WrappedAxisLabelExistenceProperty(bool bMain, sal_Int32 nDimensionIndex
@@ -329,14 +342,14 @@ WrappedAxisLabelExistenceProperty::WrappedAxisLabelExistenceProperty(bool bMain,
     switch( m_nDimensionIndex )
     {
         case 0:
-            m_bMain ? m_aOuterName = "HasXAxisDescription" : m_aOuterName = "HasSecondaryXAxisDescription";
+            m_aOuterName = m_bMain ? OUStringLiteral("HasXAxisDescription") : OUStringLiteral("HasSecondaryXAxisDescription");
             break;
         case 2:
             OSL_ENSURE(m_bMain,"there is no description available for a secondary z axis");
             m_aOuterName = "HasZAxisDescription";
             break;
         default:
-            m_bMain ? m_aOuterName = "HasYAxisDescription" : m_aOuterName = "HasSecondaryYAxisDescription";
+            m_aOuterName = m_bMain ? OUStringLiteral("HasYAxisDescription") : OUStringLiteral("HasSecondaryYAxisDescription");
             break;
     }
 }
@@ -385,7 +398,6 @@ Any WrappedAxisLabelExistenceProperty::getPropertyDefault( const Reference< bean
     return aRet;
 }
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

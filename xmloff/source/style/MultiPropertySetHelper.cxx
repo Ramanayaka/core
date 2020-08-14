@@ -18,11 +18,12 @@
  */
 
 
-#include "MultiPropertySetHelper.hxx"
+#include <MultiPropertySetHelper.hxx>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 
+#include <sal/log.hxx>
 
 using ::com::sun::star::beans::XMultiPropertySet;
 using ::com::sun::star::beans::XPropertySet;
@@ -33,20 +34,18 @@ using ::com::sun::star::uno::UNO_QUERY;
 
 
 MultiPropertySetHelper::MultiPropertySetHelper(
-    const sal_Char** pNames ) :
-        pPropertyNames( nullptr ),
+    const char** pNames ) :
         nLength( 0 ),
         aPropertySequence(),
-        pSequenceIndex( nullptr ),
         aValues(),
         pValues( nullptr )
 {
     // first count the elements
-    for( const sal_Char** pPtr = pNames; *pPtr != nullptr; pPtr++ )
+    for( const char** pPtr = pNames; *pPtr != nullptr; pPtr++ )
         nLength++;
 
     // allocate array and create strings
-    pPropertyNames = new OUString[nLength];
+    pPropertyNames.reset( new OUString[nLength] );
     for( sal_Int16 i = 0; i < nLength; i++ )
         pPropertyNames[i] = OUString::createFromAscii( pNames[i] );
 }
@@ -55,9 +54,6 @@ MultiPropertySetHelper::MultiPropertySetHelper(
 MultiPropertySetHelper::~MultiPropertySetHelper()
 {
     pValues = nullptr; // memory 'owned' by aValues
-
-    delete[] pSequenceIndex;
-    delete[] pPropertyNames;
 }
 
 
@@ -67,8 +63,8 @@ void MultiPropertySetHelper::hasProperties(
     SAL_WARN_IF( !rInfo.is(), "xmloff", "I'd really like an XPropertySetInfo here." );
 
     // allocate sequence index
-    if ( nullptr == pSequenceIndex )
-        pSequenceIndex = new sal_Int16[nLength] ;
+    if ( !pSequenceIndex )
+        pSequenceIndex.reset( new sal_Int16[nLength] );
 
     // construct pSequenceIndex
     sal_Int16 nNumberOfProperties = 0;
@@ -120,7 +116,7 @@ void MultiPropertySetHelper::getValues(
 
     // re-alloc aValues (if necessary) and fill with values from XPropertySet
     sal_Int16 nSupportedPropertiesCount =
-        (sal_Int16)aPropertySequence.getLength();
+        static_cast<sal_Int16>(aPropertySequence.getLength());
     if ( aValues.getLength() != nSupportedPropertiesCount )
         aValues.realloc( nSupportedPropertiesCount );
     Any* pMutableArray = aValues.getArray();

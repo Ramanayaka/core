@@ -228,19 +228,24 @@ InitProgressUIStrings()
     WCHAR filename[MAX_PATH];
     if (!GetStringsFile(filename))
     {
-        return -1;
+        strcpy(sUIStrings.title, "LibreOffice Update");
+        strcpy(sUIStrings.info, "Please wait while we update your installation.");
+        return 0;
     }
 
     if (_waccess(filename, 04))
     {
-        return -1;
+        strcpy(sUIStrings.title, "LibreOffice Update");
+        strcpy(sUIStrings.info, "Please wait while we update your installation.");
+        return 0;
     }
 
     // If the updater.ini doesn't have the required strings, then we should not
     // bother showing UI.
     if (ReadStrings(filename, &sUIStrings) != OK)
     {
-        return -1;
+        strcpy(sUIStrings.title, "LibreOffice Update");
+        strcpy(sUIStrings.info, "Please wait while we update your installation.");
     }
 
     return 0;
@@ -340,4 +345,4 @@ UpdateProgressUI(float progress)
 {
     sProgress = progress;  // 32-bit writes are atomic
 }
-#endif  // WNT
+#endif  // _WIN32

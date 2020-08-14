@@ -12,10 +12,9 @@
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/frame/XController.hpp>
 
-#include "ObjectIdentifier.hxx"
+#include <ObjectIdentifier.hxx>
 
-namespace chart {
-namespace sidebar {
+namespace chart::sidebar {
 
 ChartSidebarSelectionListenerParent::~ChartSidebarSelectionListenerParent()
 {
@@ -41,6 +40,9 @@ ChartSidebarSelectionListener::~ChartSidebarSelectionListener()
 
 void ChartSidebarSelectionListener::selectionChanged(const css::lang::EventObject& rEvent)
 {
+    if (!mpParent)
+        return;
+
     bool bCorrectObjectSelected = false;
 
     css::uno::Reference<css::frame::XController> xController(rEvent.Source, css::uno::UNO_QUERY);
@@ -66,7 +68,10 @@ void ChartSidebarSelectionListener::selectionChanged(const css::lang::EventObjec
 
 void ChartSidebarSelectionListener::disposing(const css::lang::EventObject& /*rEvent*/)
 {
-    mpParent->SelectionInvalid();
+    if (!mpParent)
+        return;
+
+    mpParent = nullptr;
 }
 
 void ChartSidebarSelectionListener::setAcceptedTypes(const std::vector<ObjectType>& aTypes)
@@ -74,6 +79,6 @@ void ChartSidebarSelectionListener::setAcceptedTypes(const std::vector<ObjectTyp
     maTypes = aTypes;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

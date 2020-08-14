@@ -19,15 +19,17 @@
 #ifndef INCLUDED_SFX2_SOURCE_SIDEBAR_RESOURCEMANAGER_HXX
 #define INCLUDED_SFX2_SOURCE_SIDEBAR_RESOURCEMANAGER_HXX
 
-#include "DeckDescriptor.hxx"
-#include "PanelDescriptor.hxx"
-#include <sfx2/sidebar/Context.hxx>
 #include <unotools/confignode.hxx>
-#include <com/sun/star/frame/XController.hpp>
+#include <map>
 #include <set>
 #include <svtools/miscopt.hxx>
 
-namespace sfx2 { namespace sidebar {
+namespace com::sun::star::frame { class XController; }
+namespace com::sun::star::frame { class XModel; }
+namespace sfx2::sidebar { class DeckDescriptor; }
+namespace sfx2::sidebar { class PanelDescriptor; }
+
+namespace sfx2::sidebar {
 
 class Context;
 class ContextList;
@@ -51,6 +53,7 @@ public:
     void InitDeckContext(const Context& rContex);
     void SaveDecksSettings(const Context& rContext);
     void SaveDeckSettings(const DeckDescriptor* pDeckDesc);
+    void SaveLastActiveDeck(const Context& rContext, const OUString& rActiveDeck);
 
     void disposeDecks();
 
@@ -84,6 +87,9 @@ public:
                                             const OUString& rsDeckId,
                                             const css::uno::Reference<css::frame::XController>& rxController);
 
+    const OUString& GetLastActiveDeck( const Context& rContext );
+    void SetLastActiveDeck( const Context& rContext, const OUString& rsDeckId );
+
     /** Remember the expansions state per panel and context.
     */
     void StorePanelExpansionState(const OUString& rsPanelId,
@@ -98,12 +104,14 @@ private:
 
     typedef std::vector<std::shared_ptr<PanelDescriptor>> PanelContainer;
     PanelContainer maPanels;
-    mutable std::set<rtl::OUString> maProcessedApplications;
+    mutable std::set<OUString> maProcessedApplications;
+    std::map<OUString, OUString> maLastActiveDecks;
 
     SvtMiscOptions maMiscOptions;
 
     void ReadDeckList();
     void ReadPanelList();
+    void ReadLastActive();
     static void ReadContextList(const utl::OConfigurationNode& rNode,
                          ContextList& rContextList,
                          const OUString& rsDefaultMenuCommand);
@@ -120,7 +128,7 @@ private:
     std::shared_ptr<PanelDescriptor> ImplGetPanelDescriptor(const OUString& rsPanelId) const;
 };
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

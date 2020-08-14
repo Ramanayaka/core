@@ -234,26 +234,25 @@ void
 #endif // 0
 
 
-#pragma warning( disable : 4237 )
 #include <sal/config.h>
 
 #include <memory>
 
 #include <malloc.h>
 #include <new.h>
-#include <typeinfo.h>
+#include <typeinfo>
 #include <signal.h>
 
-#include "rtl/alloc.h"
-#include "rtl/strbuf.hxx"
-#include "rtl/ustrbuf.hxx"
+#include <rtl/alloc.h>
+#include <rtl/strbuf.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <osl/mutex.hxx>
 
-#include "com/sun/star/uno/Any.hxx"
+#include <com/sun/star/uno/Any.hxx>
 #include <unordered_map>
 #include "mscx.hxx"
-#include "except.hxx"
+#include <except.hxx>
 
 #pragma pack(push, 8)
 
@@ -263,10 +262,10 @@ using namespace ::osl;
 
 namespace CPPU_CURRENT_NAMESPACE
 {
-    int mscx_getRTTI_len(OUString const & rUNOname);
+    static int mscx_getRTTI_len(OUString const & rUNOname);
 
 
-static inline OUString toUNOname(
+static OUString toUNOname(
     OUString const & rRTTIname )
     throw ()
 {
@@ -286,7 +285,7 @@ static inline OUString toUNOname(
     return aRet.makeStringAndClear();
 }
 
-static inline OUString toRTTIname(
+static OUString toRTTIname(
     OUString const & rUNOname )
     throw ()
 {
@@ -306,7 +305,10 @@ static inline OUString toRTTIname(
 
 //RTTI simulation
 
-typedef std::unordered_map< OUString, void *, OUStringHash > t_string2PtrMap;
+typedef std::unordered_map< OUString, void * > t_string2PtrMap;
+
+namespace {
+
 class type_info_descriptor;
 
 class RTTInfos
@@ -324,8 +326,8 @@ public:
 class type_info_
 {
     friend type_info * RTTInfos::getRTTI( OUString const & ) throw ();
-    friend int mscx_filterCppException(
-        LPEXCEPTION_POINTERS, uno_Any *, uno_Mapping * );
+    friend int mscx::mscx_filterCppException(
+        EXCEPTION_POINTERS *, uno_Any *, uno_Mapping * );
 
 public:
     virtual ~type_info_() throw ();
@@ -339,10 +341,14 @@ private:
     char _m_d_name[1];
 };
 
+}
+
 type_info_::~type_info_() throw ()
 {
     (void)_m_data;
 }
+
+namespace {
 
 class type_info_descriptor
 {
@@ -368,11 +374,13 @@ public:
     }
 };
 
+}
+
 type_info_descriptor * RTTInfos::insert_new_type_info_descriptor(OUString const & rUNOname) {
 
     // insert new type_info
     OString aRawName(OUStringToOString(toRTTIname(rUNOname), RTL_TEXTENCODING_ASCII_US));
-    type_info_descriptor * pRTTI = new(::rtl_allocateMemory(sizeof(type_info_descriptor) + aRawName.getLength()))
+    type_info_descriptor * pRTTI = new(std::malloc(sizeof(type_info_descriptor) + aRawName.getLength()))
         type_info_descriptor(nullptr, aRawName.getStr());
 
     // put into map
@@ -426,7 +434,7 @@ RTTInfos::RTTInfos() throw ()
 {
 }
 
-void * __cdecl copyConstruct(
+static void * __cdecl copyConstruct(
     void * pExcThis,
     void * pSource,
     typelib_TypeDescription * pTD ) throw ()
@@ -435,7 +443,7 @@ void * __cdecl copyConstruct(
     return pExcThis;
 }
 
-void * __cdecl destruct(
+static void * __cdecl destruct(
     void * pExcThis,
     typelib_TypeDescription * pTD ) throw ()
 {
@@ -445,7 +453,7 @@ void * __cdecl destruct(
 
 const int codeSnippetSize = 40;
 
-void GenerateConstructorTrampoline(
+static void GenerateConstructorTrampoline(
     unsigned char * code,
     typelib_TypeDescription * pTD ) throw ()
 {
@@ -465,7 +473,7 @@ void GenerateConstructorTrampoline(
     assert( p < code + codeSnippetSize );
 }
 
-void GenerateDestructorTrampoline(
+static void GenerateDestructorTrampoline(
     unsigned char * code,
     typelib_TypeDescription * pTD ) throw ()
 {
@@ -484,6 +492,8 @@ void GenerateDestructorTrampoline(
 
     assert( p < code + codeSnippetSize );
 }
+
+namespace {
 
 // This looks like it is the struct catchabletype above
 
@@ -539,9 +549,13 @@ public:
     ExceptionInfos() throw ();
 };
 
+}
+
 DWORD ExceptionInfos::allocationGranularity = 0;
 
 // This corresponds to the struct throwinfo described above.
+
+namespace {
 
 struct RaiseInfo
 {
@@ -557,6 +571,8 @@ struct RaiseInfo
 
     explicit RaiseInfo(typelib_TypeDescription * pTD) throw ();
 };
+
+}
 
 /* Rewrite of 32-Bit-Code to work under 64 Bit:
 * To use the 32 Bit offset values in the ExceptionType we have to
@@ -594,7 +610,7 @@ RaiseInfo::RaiseInfo(typelib_TypeDescription * pTD)throw ()
     // 2.Pass: Get the total needed memory for class ExceptionType
     // (with embedded type_info) and keep the sizes for each instance
     // is stored in allocated int array
-    auto exceptionTypeSizeArray = std::unique_ptr<int[]>(new int[nLen]);
+    auto exceptionTypeSizeArray = std::make_unique<int[]>(nLen);
 
     nLen = 0;
     for (pCompTD = reinterpret_cast<typelib_CompoundTypeDescription*>(pTD);
@@ -622,7 +638,7 @@ RaiseInfo::RaiseInfo(typelib_TypeDescription * pTD)throw ()
     // 32 bit offsets
     const int totalSize = codeSize + typeInfoArraySize + excTypeAddLen;
     unsigned char * pCode = _code =
-        static_cast<unsigned char *>(::rtl_allocateMemory(totalSize));
+        static_cast<unsigned char *>(std::malloc(totalSize));
     int pCodeOffset = 0;
 
     // New base of types array, starts after Trampoline D-Tor / C-Tors
@@ -636,7 +652,7 @@ RaiseInfo::RaiseInfo(typelib_TypeDescription * pTD)throw ()
         & ~static_cast<sal_uInt64>(ExceptionInfos::allocationGranularity - 1);
 
     DWORD old_protect;
-    BOOL success =
+    bool success =
         VirtualProtect(pCode, codeSize, PAGE_EXECUTE_READWRITE, &old_protect);
     (void) success;
     assert(success && "VirtualProtect() failed!");
@@ -645,7 +661,7 @@ RaiseInfo::RaiseInfo(typelib_TypeDescription * pTD)throw ()
 
     // Fill pCode with D-Tor code
     GenerateDestructorTrampoline(pCode, pTD);
-    _pDtor = (sal_Int32)(reinterpret_cast<sal_uInt64>(pCode) - _codeBase);
+    _pDtor = static_cast<sal_Int32>(reinterpret_cast<sal_uInt64>(pCode) - _codeBase);
     pCodeOffset += codeSnippetSize;
 
     // Info count accompanied by type info ptrs: type, base type, base base type, ...
@@ -682,19 +698,13 @@ ExceptionInfos::ExceptionInfos() throw ()
 
 RaiseInfo * ExceptionInfos::getRaiseInfo( typelib_TypeDescription * pTD ) throw ()
 {
-    static ExceptionInfos * s_pInfos = nullptr;
-    if (! s_pInfos)
-    {
-        MutexGuard aGuard( Mutex::getGlobalMutex() );
-        if (! s_pInfos)
-        {
-            SYSTEM_INFO systemInfo;
-            GetSystemInfo( &systemInfo );
-            allocationGranularity = systemInfo.dwAllocationGranularity;
+    static ExceptionInfos* s_pInfos = []() {
+        SYSTEM_INFO systemInfo;
+        GetSystemInfo(&systemInfo);
+        allocationGranularity = systemInfo.dwAllocationGranularity;
 
-            s_pInfos = new ExceptionInfos();
-        }
-    }
+        return new ExceptionInfos();
+    }();
 
     assert( pTD &&
                 (pTD->eTypeClass == typelib_TypeClass_STRUCT ||
@@ -727,29 +737,13 @@ RaiseInfo * ExceptionInfos::getRaiseInfo( typelib_TypeDescription * pTD ) throw 
 type_info * mscx_getRTTI(
     OUString const & rUNOname )
 {
-    static RTTInfos * s_pRTTIs = nullptr;
-    if (! s_pRTTIs)
-    {
-        MutexGuard aGuard( Mutex::getGlobalMutex() );
-        if (! s_pRTTIs)
-        {
-            s_pRTTIs = new RTTInfos();
-        }
-    }
+    static RTTInfos* s_pRTTIs = new RTTInfos();
     return s_pRTTIs->getRTTI( rUNOname );
 }
 int mscx_getRTTI_len(
     OUString const & rUNOname)
 {
-    static RTTInfos * s_pRTTIs = nullptr;
-    if (!s_pRTTIs)
-    {
-        MutexGuard aGuard(Mutex::getGlobalMutex());
-        if (!s_pRTTIs)
-        {
-            s_pRTTIs = new RTTInfos();
-        }
-    }
+    static RTTInfos* s_pRTTIs = new RTTInfos();
     return s_pRTTIs->getRTTI_len(rUNOname);
 }
 
@@ -783,6 +777,61 @@ void mscx_raiseException(
     RaiseException( MSVC_ExceptionCode, EXCEPTION_NONCONTINUABLE, 4, arFilterArgs);
 }
 
+namespace
+{
+// This function does the same check as __CxxDetectRethrow from msvcrt (see its
+// crt/src/vcruntime/mgdframe.cpp). But it does not alter the global state, i.e. it does not
+// increment __ProcessingThrow, and so does not break following exception handling. We rely on the
+// definition of EHExceptionRecord, PER_IS_MSVC_EH and PER_PTHROW, that are current as of msvcrt
+// 2017 (14.14.26428).
+bool DetectRethrow(void* ppExcept)
+{
+    struct EHExceptionRecord
+    {
+        DWORD ExceptionCode;
+        DWORD ExceptionFlags;
+        struct _EXCEPTION_RECORD* ExceptionRecord;
+        PVOID ExceptionAddress;
+        DWORD NumberParameters;
+        struct alignas(8)
+        {
+            DWORD magicNumber;
+            PVOID pExceptionObject;
+            PVOID pThrowInfo;
+            PVOID pThrowImageBase;
+        } params;
+    };
+
+    constexpr auto PER_IS_MSVC_EH = [](EHExceptionRecord* p) {
+        constexpr DWORD EH_EXCEPTION_NUMBER = 0xE06D7363;           // The NT Exception # that msvcrt uses ('msc' | 0xE0000000)
+        constexpr DWORD EH_MAGIC_NUMBER1 = 0x19930520;              // latest magic # in thrown object
+        constexpr DWORD EH_MAGIC_NUMBER2 = 0x19930521;              // latest magic # in func info for exception specs
+        constexpr DWORD EH_MAGIC_NUMBER3 = 0x19930522;              // latest magic #
+        constexpr DWORD EH_EXCEPTION_PARAMETERS = 4;                // Number of parameters in exception record for AMD64
+
+        return p->ExceptionCode == EH_EXCEPTION_NUMBER
+               && p->NumberParameters == EH_EXCEPTION_PARAMETERS
+               && (p->params.magicNumber == EH_MAGIC_NUMBER1
+                   || p->params.magicNumber == EH_MAGIC_NUMBER2
+                   || p->params.magicNumber == EH_MAGIC_NUMBER3);
+    };
+
+    constexpr auto PER_PTHROW = [](EHExceptionRecord* p) {
+        return p->params.pThrowInfo;
+    };
+
+    EHExceptionRecord* pExcept;
+    if (!ppExcept)
+        return false;
+    pExcept = *static_cast<EHExceptionRecord**>(ppExcept);
+    if (PER_IS_MSVC_EH(pExcept) && PER_PTHROW(pExcept) == nullptr)
+    {
+        return true;
+    }
+    return false;
+}
+}
+
 int mscx_filterCppException(
     EXCEPTION_POINTERS * pPointers,
     uno_Any * pUnoExc,
@@ -797,7 +846,7 @@ int mscx_filterCppException(
     if (pRecord == nullptr || pRecord->ExceptionCode != MSVC_ExceptionCode)
         return EXCEPTION_CONTINUE_SEARCH;
 
-    bool rethrow = __CxxDetectRethrow( &pRecord );
+    const bool rethrow = DetectRethrow(&pRecord);
     assert(pRecord == pPointers->ExceptionRecord);
 
     if (rethrow && pRecord == pPointers->ExceptionRecord)
@@ -847,15 +896,12 @@ int mscx_filterCppException(
                     &pExcTD, aUNOname.pData );
                 if (pExcTD == nullptr)
                 {
-                    OUStringBuffer buf;
-                    buf.append(
-                            "[mscx_uno bridge error] UNO type of "
-                            "C++ exception unknown: \"" );
-                    buf.append( aUNOname );
-                    buf.append( "\", RTTI-name=\"" );
-                    buf.append( aRTTIname );
-                    buf.append( "\"!" );
-                    RuntimeException exc( buf.makeStringAndClear() );
+                    OUString sMsg = "[mscx_uno bridge error] UNO type of "
+                                    "C++ exception unknown: \""
+                                  + aUNOname + "\", RTTI-name=\""
+                                  + aRTTIname + "\"!";
+
+                    RuntimeException exc( sMsg );
                     uno_type_any_constructAndConvert(
                         pUnoExc, &exc,
                         cppu::UnoType<decltype(exc)>::get().getTypeLibType(), pCpp2Uno );

@@ -18,11 +18,10 @@
  */
 
 
-#include "osl/file.hxx"
+#include <osl/file.hxx>
 
-#include "vendorbase.hxx"
+#include <vendorbase.hxx>
 #include "util.hxx"
-#include "sunjre.hxx"
 
 using namespace std;
 using namespace osl;
@@ -31,59 +30,39 @@ using namespace osl;
 namespace jfw_plugin
 {
 
-MalformedVersionException::MalformedVersionException()
-{}
+MalformedVersionException::~MalformedVersionException() = default;
 
-MalformedVersionException::MalformedVersionException(
-    const MalformedVersionException & )
-{}
-
-MalformedVersionException::~MalformedVersionException()
-{}
-
-MalformedVersionException &
-MalformedVersionException::operator =(
-    const MalformedVersionException &)
-{
-    return *this;
-}
-
-
-VendorBase::VendorBase(): m_bAccessibility(false)
+VendorBase::VendorBase()
 {
 }
 
 bool VendorBase::initialize(vector<pair<OUString, OUString> > props)
 {
-    //get java.vendor, java.version, java.home,
-    //javax.accessibility.assistive_technologies from system properties
-
-    typedef vector<pair<OUString, OUString> >::const_iterator it_prop;
+    //get java.vendor, java.version, java.home
+    //from system properties
 
     bool bVersion = false;
     bool bVendor = false;
     bool bHome = false;
-    bool bAccess = false;
     bool bArch = false;
 
-    typedef vector<pair<OUString, OUString> >::const_iterator it_prop;
-    for (it_prop i = props.begin(); i != props.end(); ++i)
+    for (auto const& prop : props)
     {
-        if(! bVendor && i->first == "java.vendor")
+        if(! bVendor && prop.first == "java.vendor")
         {
-            m_sVendor = i->second;
+            m_sVendor = prop.second;
             bVendor = true;
         }
-        else if (!bVersion && i->first == "java.version")
+        else if (!bVersion && prop.first == "java.version")
         {
-            m_sVersion = i->second;
+            m_sVersion = prop.second;
             bVersion = true;
         }
-        else if (!bHome && i->first == "java.home")
+        else if (!bHome && prop.first == "java.home")
         {
 #ifndef JVM_ONE_PATH_CHECK
            OUString fileURL;
-           if (osl_getFileURLFromSystemPath(i->second.pData,& fileURL.pData) ==
+           if (osl_getFileURLFromSystemPath(prop.second.pData,& fileURL.pData) ==
                osl_File_E_None)
            {
                //make sure that the drive letter have all the same case
@@ -96,27 +75,18 @@ bool VendorBase::initialize(vector<pair<OUString, OUString> > props)
                }
            }
 #else
-           m_sHome = i->second;
+           m_sHome = prop.second;
            bHome = true;
 #endif
         }
-        else if (!bArch && i->first == "os.arch")
+        else if (!bArch && prop.first == "os.arch")
         {
-            m_sArch = i->second;
+            m_sArch = prop.second;
             bArch = true;
         }
-        else if (!bAccess
-                 && i->first == "javax.accessibility.assistive_technologies")
-        {
-            if (!i->second.isEmpty())
-            {
-                m_bAccessibility = true;
-                bAccess = true;
-            }
+        if (bVendor && bVersion && bHome && bArch) {
+            break;
         }
-        // the javax.accessibility.xxx property may not be set. Therefore we
-        //must search through all properties.
-
     }
     if (!bVersion || !bVendor || !bHome || !bArch)
         return false;
@@ -130,11 +100,10 @@ bool VendorBase::initialize(vector<pair<OUString, OUString> > props)
     vector<OUString> libpaths = getVectorFromCharArray(arRtPaths, size);
 
     bool bRt = false;
-    typedef vector<OUString>::const_iterator i_path;
-    for(i_path ip = libpaths.begin(); ip != libpaths.end(); ++ip)
+    for (auto const& libpath : libpaths)
     {
         //Construct an absolute path to the possible runtime
-        OUString usRt= m_sHome + *ip;
+        OUString usRt= m_sHome + libpath;
         DirectoryItem item;
         if(DirectoryItem::get(usRt, item) == File::E_None)
         {
@@ -153,20 +122,18 @@ bool VendorBase::initialize(vector<pair<OUString, OUString> > props)
     char const * const * arLDPaths = getLibraryPaths( & size);
     vector<OUString> ld_paths = getVectorFromCharArray(arLDPaths, size);
 
-    char arSep[]= {SAL_PATHSEPARATOR, 0};
-    OUString sPathSep= OUString::createFromAscii(arSep);
     bool bLdPath = true;
     int c = 0;
-    for(i_path il = ld_paths.begin(); il != ld_paths.end(); ++il, ++c)
+    for (auto const& ld_path : ld_paths)
     {
-        OUString usAbsUrl= m_sHome + *il;
+        OUString usAbsUrl= m_sHome + ld_path;
         // convert to system path
         OUString usSysPath;
         if(File::getSystemPathFromFileURL(usAbsUrl, usSysPath) == File::E_None)
         {
 
             if(c > 0)
-                m_sLD_LIBRARY_PATH+= sPathSep;
+                m_sLD_LIBRARY_PATH+= OUStringChar(SAL_PATHSEPARATOR);
             m_sLD_LIBRARY_PATH+= usSysPath;
         }
         else
@@ -174,6 +141,7 @@ bool VendorBase::initialize(vector<pair<OUString, OUString> > props)
             bLdPath = false;
             break;
         }
+        ++c;
     }
     return bLdPath;
 }
@@ -216,11 +184,6 @@ bool VendorBase::isValidArch() const
     (void)this;
     return true;
 #endif
-}
-
-bool VendorBase::supportsAccessibility() const
-{
-    return m_bAccessibility;
 }
 
 bool VendorBase::needsRestart() const

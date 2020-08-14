@@ -7,15 +7,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "xedbdata.hxx"
-#include "excrecds.hxx"
-#include "xltools.hxx"
-#include "dbdata.hxx"
-#include "document.hxx"
+#include <xedbdata.hxx>
+#include <excrecds.hxx>
+#include <dbdata.hxx>
+#include <document.hxx>
 #include <oox/export/utils.hxx>
 #include <oox/token/namespaces.hxx>
 
 using namespace oox;
+
+namespace {
 
 /** (So far) dummy implementation of table export for BIFF5/BIFF7. */
 class XclExpTablesImpl5 : public XclExpTables
@@ -37,6 +38,7 @@ public:
     virtual void        SaveXml( XclExpXmlStream& rStrm ) override;
 };
 
+}
 
 XclExpTablesImpl5::XclExpTablesImpl5( const XclExpRoot& rRoot ) :
     XclExpTables( rRoot )
@@ -68,7 +70,7 @@ void XclExpTablesImpl8::SaveXml( XclExpXmlStream& rStrm )
 {
 
     sax_fastparser::FSHelperPtr& pWorksheetStrm = rStrm.GetCurrentStream();
-    pWorksheetStrm->startElement( XML_tableParts, FSEND);
+    pWorksheetStrm->startElement(XML_tableParts);
     for (auto const& it : maTables)
     {
         OUString aRelId;
@@ -80,9 +82,7 @@ void XclExpTablesImpl8::SaveXml( XclExpXmlStream& rStrm )
                 CREATE_OFFICEDOC_RELATION_TYPE("table"),
                 &aRelId);
 
-        pWorksheetStrm->singleElement( XML_tablePart,
-                FSNS(XML_r, XML_id), XclXmlUtils::ToOString(aRelId).getStr(),
-                FSEND);
+        pWorksheetStrm->singleElement(XML_tablePart, FSNS(XML_r, XML_id), aRelId.toUtf8());
 
         rStrm.PushStream( pTableStrm);
         SaveTableXml( rStrm, it);
@@ -114,9 +114,9 @@ void XclExpTablesManager::Initialize()
         return;
 
     sal_Int32 nTableId = 0;
-    for (ScDBCollection::NamedDBs::iterator itDB(rDBs.begin()); itDB != rDBs.end(); ++itDB)
+    for (const auto& rxDB : rDBs)
     {
-        ScDBData* pDBData = itDB->get();
+        ScDBData* pDBData = rxDB.get();
         pDBData->RefreshTableColumnNames( &rDoc);   // currently not in sync, so refresh
         ScRange aRange( ScAddress::UNINITIALIZED);
         pDBData->GetArea( aRange);
@@ -124,14 +124,14 @@ void XclExpTablesManager::Initialize()
         TablesMapType::iterator it = maTablesMap.find( nTab);
         if (it == maTablesMap.end())
         {
-            ::std::shared_ptr< XclExpTables > pNew;
+            rtl::Reference< XclExpTables > pNew;
             switch( GetBiff() )
             {
                 case EXC_BIFF5:
-                    pNew.reset( new XclExpTablesImpl5( GetRoot()));
+                    pNew = new XclExpTablesImpl5( GetRoot());
                     break;
                 case EXC_BIFF8:
-                    pNew.reset( new XclExpTablesImpl8( GetRoot()));
+                    pNew = new XclExpTablesImpl8( GetRoot());
                     break;
                 default:
                     assert(!"Unknown BIFF type!");
@@ -149,7 +149,7 @@ void XclExpTablesManager::Initialize()
     }
 }
 
-::std::shared_ptr< XclExpTables > XclExpTablesManager::GetTablesBySheet( SCTAB nTab )
+rtl::Reference< XclExpTables > XclExpTablesManager::GetTablesBySheet( SCTAB nTab )
 {
     TablesMapType::iterator it = maTablesMap.find(nTab);
     return it == maTablesMap.end() ? nullptr : it->second;
@@ -171,7 +171,7 @@ XclExpTables::~XclExpTables()
 
 void XclExpTables::AppendTable( const ScDBData* pData, sal_Int32 nTableId )
 {
-    maTables.push_back( Entry( pData, nTableId));
+    maTables.emplace_back( pData, nTableId);
 }
 
 void XclExpTables::SaveTableXml( XclExpXmlStream& rStrm, const Entry& rEntry )
@@ -181,14 +181,14 @@ void XclExpTables::SaveTableXml( XclExpXmlStream& rStrm, const Entry& rEntry )
     rData.GetArea( aRange);
     sax_fastparser::FSHelperPtr& pTableStrm = rStrm.GetCurrentStream();
     pTableStrm->startElement( XML_table,
-        XML_xmlns, XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(xls))).getStr(),
-        XML_id, OString::number( rEntry.mnTableId).getStr(),
-        XML_name, XclXmlUtils::ToOString( rData.GetName()).getStr(),
-        XML_displayName, XclXmlUtils::ToOString( rData.GetName()).getStr(),
-        XML_ref, XclXmlUtils::ToOString(aRange),
-        XML_headerRowCount, BS(rData.HasHeader()),
-        XML_totalsRowCount, BS(rData.HasTotals()),
-        XML_totalsRowShown, BS(rData.HasTotals()),  // we don't support that but if there are totals they are shown
+        XML_xmlns, rStrm.getNamespaceURL(OOX_NS(xls)).toUtf8(),
+        XML_id, OString::number( rEntry.mnTableId),
+        XML_name, rData.GetName().toUtf8(),
+        XML_displayName, rData.GetName().toUtf8(),
+        XML_ref, XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), aRange),
+        XML_headerRowCount, ToPsz10(rData.HasHeader()),
+        XML_totalsRowCount, ToPsz10(rData.HasTotals()),
+        XML_totalsRowShown, ToPsz10(rData.HasTotals())  // we don't support that but if there are totals they are shown
         // OOXTODO: XML_comment, ...,
         // OOXTODO: XML_connectionId, ...,
         // OOXTODO: XML_dataCellStyle, ...,
@@ -203,8 +203,8 @@ void XclExpTables::SaveTableXml( XclExpXmlStream& rStrm, const Entry& rEntry )
         // OOXTODO: XML_tableType, ...,
         // OOXTODO: XML_totalsRowBorderDxfId, ...,
         // OOXTODO: XML_totalsRowCellStyle, ...,
-        // OOXTODO: XML_totalsRowDxfId, ...,
-        FSEND);
+        // OOXTODO: XML_totalsRowDxfId, ...
+    );
 
     if (rData.HasAutoFilter())
     {
@@ -223,9 +223,8 @@ void XclExpTables::SaveTableXml( XclExpXmlStream& rStrm, const Entry& rEntry )
     const std::vector< OUString >& rColNames = rData.GetTableColumnNames();
     if (!rColNames.empty())
     {
-        pTableStrm->startElement( XML_tableColumns,
-                XML_count, OString::number( aRange.aEnd.Col() - aRange.aStart.Col() + 1).getStr(),
-                FSEND);
+        pTableStrm->startElement(XML_tableColumns,
+                XML_count, OString::number(aRange.aEnd.Col() - aRange.aStart.Col() + 1));
 
         for (size_t i=0, n=rColNames.size(); i < n; ++i)
         {
@@ -236,8 +235,8 @@ void XclExpTables::SaveTableXml( XclExpXmlStream& rStrm, const Entry& rEntry )
             // OOXTODO: write <totalsRowFormula> once we support it.
 
             pTableStrm->singleElement( XML_tableColumn,
-                    XML_id, OString::number(i+1).getStr(),
-                    XML_name, OUStringToOString( rColNames[i], RTL_TEXTENCODING_UTF8).getStr(),
+                    XML_id, OString::number(i+1),
+                    XML_name, rColNames[i].toUtf8()
                     // OOXTODO: XML_dataCellStyle, ...,
                     // OOXTODO: XML_dataDxfId, ...,
                     // OOXTODO: XML_headerRowCellStyle, ...,
@@ -247,8 +246,8 @@ void XclExpTables::SaveTableXml( XclExpXmlStream& rStrm, const Entry& rEntry )
                     // OOXTODO: XML_totalsRowDxfId, ...,
                     // OOXTODO: XML_totalsRowFunction, ...,
                     // OOXTODO: XML_totalsRowLabel, ...,
-                    // OOXTODO: XML_uniqueName, ...,
-                    FSEND);
+                    // OOXTODO: XML_uniqueName, ...
+            );
         }
 
         pTableStrm->endElement( XML_tableColumns);

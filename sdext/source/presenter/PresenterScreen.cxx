@@ -28,18 +28,17 @@
 #include "PresenterWindowManager.hxx"
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/drawing/framework/Configuration.hpp>
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <com/sun/star/drawing/framework/ResourceId.hpp>
 #include <com/sun/star/drawing/framework/ResourceActivationMode.hpp>
-#include <com/sun/star/presentation/XSlideShow.hpp>
 #include <com/sun/star/presentation/XPresentation2.hpp>
 #include <com/sun/star/presentation/XPresentationSupplier.hpp>
 #include <com/sun/star/document/XEventBroadcaster.hpp>
 #include <cppuhelper/compbase.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
-#include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <vcl/svapp.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -47,7 +46,7 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::presentation;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 namespace {
     typedef ::cppu::WeakComponentImplHelper <
@@ -87,22 +86,31 @@ namespace {
     };
 }
 
-//----- Service ---------------------------------------------------------------
+//----- XServiceInfo ---------------------------------------------------------------
 
-OUString PresenterScreenJob::getImplementationName_static()
+Sequence< OUString > SAL_CALL PresenterScreenJob::getSupportedServiceNames()
 {
-    return OUString("org.libreoffice.comp.PresenterScreenJob");
+    return {  };
 }
 
-Sequence<OUString> PresenterScreenJob::getSupportedServiceNames_static()
+OUString SAL_CALL PresenterScreenJob::getImplementationName()
 {
-    return Sequence<OUString>();
+    return "org.libreoffice.comp.PresenterScreenJob";
 }
 
-Reference<XInterface> PresenterScreenJob::Create (const Reference<uno::XComponentContext>& rxContext)
+sal_Bool SAL_CALL PresenterScreenJob::supportsService(const OUString& aServiceName)
 {
-    return Reference<XInterface>(static_cast<XWeak*>(new PresenterScreenJob(rxContext)));
+    return cppu::supportsService(this, aServiceName);
 }
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+sdext_PresenterScreenJob_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new PresenterScreenJob(context));
+}
+
 
 //===== PresenterScreenJob ====================================================
 
@@ -127,30 +135,16 @@ Any SAL_CALL PresenterScreenJob::execute(
     const Sequence< beans::NamedValue >& Arguments )
 {
     Sequence< beans::NamedValue > lEnv;
-
-    sal_Int32               i = 0;
-    sal_Int32               c = Arguments.getLength();
-    const beans::NamedValue* p = Arguments.getConstArray();
-    for (i=0; i<c; ++i)
-    {
-        if ( p[i].Name == "Environment" )
-        {
-            p[i].Value >>= lEnv;
-            break;
-        }
-    }
+    auto pArg = std::find_if(Arguments.begin(), Arguments.end(),
+        [](const beans::NamedValue& rArg) { return rArg.Name == "Environment"; });
+    if (pArg != Arguments.end())
+        pArg->Value >>= lEnv;
 
     Reference<frame::XModel2> xModel;
-    c = lEnv.getLength();
-    p = lEnv.getConstArray();
-    for (i=0; i<c; ++i)
-    {
-        if ( p[i].Name == "Model" )
-        {
-            p[i].Value >>= xModel;
-            break;
-        }
-    }
+    auto pProp = std::find_if(lEnv.begin(), lEnv.end(),
+        [](const beans::NamedValue& rProp) { return rProp.Name == "Model"; });
+    if (pProp != lEnv.end())
+        pProp->Value >>= xModel;
 
     Reference< XServiceInfo > xInfo( xModel, UNO_QUERY );
     if( xInfo.is() && xInfo->supportsService("com.sun.star.presentation.PresentationDocument") )
@@ -253,7 +247,6 @@ PresenterScreen::PresenterScreen (
       mxController(),
       mxConfigurationControllerWeak(),
       mxContextWeak(rxContext),
-      mxSlideShowControllerWeak(),
       mpPresenterController(),
       mxSavedConfiguration(),
       mpPaneContainer(),
@@ -301,7 +294,6 @@ void SAL_CALL PresenterScreen::disposing()
 
 void SAL_CALL PresenterScreen::disposing (const lang::EventObject& /*rEvent*/)
 {
-    mxSlideShowControllerWeak = WeakReference<presentation::XSlideShowController>();
     RequestShutdownPresenterScreen();
 }
 
@@ -311,13 +303,11 @@ void PresenterScreen::InitializePresenterScreen()
     try
     {
         Reference<XComponentContext> xContext (mxContextWeak);
-        mpPaneContainer =
-            new PresenterPaneContainer(Reference<XComponentContext>(xContext));
+        mpPaneContainer = new PresenterPaneContainer(xContext);
 
         Reference<XPresentationSupplier> xPS ( mxModel, UNO_QUERY_THROW);
         Reference<XPresentation2> xPresentation(xPS->getPresentation(), UNO_QUERY_THROW);
         Reference<presentation::XSlideShowController> xSlideShowController( xPresentation->getController() );
-        mxSlideShowControllerWeak = xSlideShowController;
 
         if( !xSlideShowController.is() || !xSlideShowController->isFullScreen() )
             return;
@@ -435,14 +425,13 @@ sal_Int32 PresenterScreen::GetPresenterScreenNumber (
     sal_Int32 nScreenCount (1);
     try
     {
-        Reference<beans::XPropertySet> xProperties (rxPresentation, UNO_QUERY);
-        if ( ! xProperties.is())
+        if ( ! rxPresentation.is())
             return -1;
 
         // Determine the screen on which the full screen presentation is being
         // displayed.
         sal_Int32 nDisplayNumber (-1);
-        if ( ! (xProperties->getPropertyValue("Display") >>= nDisplayNumber))
+        if ( ! (rxPresentation->getPropertyValue("Display") >>= nDisplayNumber))
             return -1;
         if (nDisplayNumber == -1)
         {
@@ -581,7 +570,7 @@ void PresenterScreen::ShutdownPresenterScreen()
         xPaneFactoryComponent->dispose();
     mxPaneFactory = nullptr;
 
-    if (mpPresenterController.get() != nullptr)
+    if (mpPresenterController)
     {
         mpPresenterController->dispose();
         mpPresenterController.clear();
@@ -794,27 +783,27 @@ void PresenterScreen::SetupView(
     const PresenterPaneContainer::ViewInitializationFunction& rViewInitialization)
 {
     Reference<XConfigurationController> xCC (mxConfigurationControllerWeak);
-    if (xCC.is())
-    {
-        Reference<XResourceId> xPaneId (ResourceId::createWithAnchor(rxContext,rsPaneURL,rxAnchorId));
-        // Look up the view descriptor.
-        ViewDescriptor aViewDescriptor;
-        ViewDescriptorContainer::const_iterator iDescriptor (maViewDescriptors.find(rsViewURL));
-        if (iDescriptor != maViewDescriptors.end())
-            aViewDescriptor = iDescriptor->second;
+    if (!xCC.is())
+        return;
 
-        // Prepare the pane.
-        OSL_ASSERT(mpPaneContainer.get() != nullptr);
-        mpPaneContainer->PreparePane(
-            xPaneId,
-            rsViewURL,
-            aViewDescriptor.msTitle,
-            aViewDescriptor.msAccessibleTitle,
-            aViewDescriptor.mbIsOpaque,
-            rViewInitialization);
-    }
+    Reference<XResourceId> xPaneId (ResourceId::createWithAnchor(rxContext,rsPaneURL,rxAnchorId));
+    // Look up the view descriptor.
+    ViewDescriptor aViewDescriptor;
+    ViewDescriptorContainer::const_iterator iDescriptor (maViewDescriptors.find(rsViewURL));
+    if (iDescriptor != maViewDescriptors.end())
+        aViewDescriptor = iDescriptor->second;
+
+    // Prepare the pane.
+    OSL_ASSERT(mpPaneContainer);
+    mpPaneContainer->PreparePane(
+        xPaneId,
+        rsViewURL,
+        aViewDescriptor.msTitle,
+        aViewDescriptor.msAccessibleTitle,
+        aViewDescriptor.mbIsOpaque,
+        rViewInitialization);
 }
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,17 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbu_reghelper.hxx"
-#include "uiservices.hxx"
 #include "admindlg.hxx"
-#include "dbadmin.hxx"
+#include <dbadmin.hxx>
 #include <comphelper/processfactory.hxx>
+#include <vcl/svapp.hxx>
 
 using namespace dbaui;
 
-extern "C" void SAL_CALL createRegistryInfo_ODataSourcePropertyDialog()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+org_openoffice_comp_dbu_ODatasourceAdministrationDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static OMultiInstanceAutoRegistration< ODataSourcePropertyDialog > aAutoRegistration;
+    return cppu::acquire(new ODataSourcePropertyDialog(context));
 }
 
 namespace dbaui
@@ -47,30 +48,14 @@ Sequence<sal_Int8> SAL_CALL ODataSourcePropertyDialog::getImplementationId(  )
     return css::uno::Sequence<sal_Int8>();
 }
 
-Reference< XInterface > SAL_CALL ODataSourcePropertyDialog::Create(const Reference< XMultiServiceFactory >& _rxFactory)
-{
-    return *(new ODataSourcePropertyDialog( comphelper::getComponentContext(_rxFactory) ));
-}
-
 OUString SAL_CALL ODataSourcePropertyDialog::getImplementationName()
 {
-    return getImplementationName_Static();
-}
-
-OUString ODataSourcePropertyDialog::getImplementationName_Static()
-{
-    return OUString("org.openoffice.comp.dbu.ODatasourceAdministrationDialog");
+    return "org.openoffice.comp.dbu.ODatasourceAdministrationDialog";
 }
 
 css::uno::Sequence<OUString> SAL_CALL ODataSourcePropertyDialog::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-css::uno::Sequence<OUString> ODataSourcePropertyDialog::getSupportedServiceNames_Static()
-{
-    css::uno::Sequence<OUString> aSupported { "com.sun.star.sdb.DatasourceAdministrationDialog" };
-    return aSupported;
+    return { "com.sun.star.sdb.DatasourceAdministrationDialog" };
 }
 
 Reference<XPropertySetInfo>  SAL_CALL ODataSourcePropertyDialog::getPropertySetInfo()
@@ -91,15 +76,15 @@ Reference<XPropertySetInfo>  SAL_CALL ODataSourcePropertyDialog::getPropertySetI
     return new ::cppu::OPropertyArrayHelper(aProps);
 }
 
-VclPtr<Dialog> ODataSourcePropertyDialog::createDialog(vcl::Window* _pParent)
+std::unique_ptr<weld::DialogController> ODataSourcePropertyDialog::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
 {
-    VclPtrInstance<ODbAdminDialog> pDialog(_pParent, m_pDatasourceItems, m_aContext);
+    std::unique_ptr<ODbAdminDialog> xDialog(new ODbAdminDialog(Application::GetFrameWeld(rParent), m_pDatasourceItems.get(), m_aContext));
 
     // the initial selection
     if ( m_aInitialSelection.hasValue() )
-        pDialog->selectDataSource(m_aInitialSelection);
+        xDialog->selectDataSource(m_aInitialSelection);
 
-    return pDialog;
+    return xDialog;
 }
 
 }   // namespace dbaui

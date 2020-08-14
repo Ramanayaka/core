@@ -18,27 +18,18 @@
  */
 
 #include "RecentlyUsedMasterPages.hxx"
-#include "MasterPageObserver.hxx"
-#include "MasterPagesSelector.hxx"
+#include "MasterPageContainerProviders.hxx"
+#include <MasterPageObserver.hxx>
 #include "MasterPageDescriptor.hxx"
-#include "tools/ConfigurationAccess.hxx"
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
+#include <tools/ConfigurationAccess.hxx>
 
 #include <algorithm>
 #include <memory>
 #include <vector>
 
-#include <comphelper/processfactory.hxx>
-#include "unomodel.hxx"
-#include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
-#include <com/sun/star/drawing/XDrawPages.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/PropertyState.hpp>
-#include <unotools/confignode.hxx>
+#include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <osl/doublecheckedlocking.h>
 #include <osl/getglobalmutex.hxx>
 
@@ -50,16 +41,16 @@ namespace {
 
 OUString GetPathToImpressConfigurationRoot()
 {
-    return OUString("/org.openoffice.Office.Impress/");
+    return "/org.openoffice.Office.Impress/";
 }
 OUString GetPathToSetNode()
 {
-    return OUString("MultiPaneGUI/ToolPanel/RecentlyUsedMasterPages");
+    return "MultiPaneGUI/ToolPanel/RecentlyUsedMasterPages";
 }
 
 } // end of anonymous namespace
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 RecentlyUsedMasterPages* RecentlyUsedMasterPages::mpInstance = nullptr;
 
@@ -86,11 +77,12 @@ RecentlyUsedMasterPages&  RecentlyUsedMasterPages::Instance()
     return *mpInstance;
 }
 
+constexpr size_t gnMaxListSize(8);
+
 RecentlyUsedMasterPages::RecentlyUsedMasterPages()
     : maListeners(),
       mvMasterPages(),
-      mnMaxListSize(8),
-      mpContainer(new MasterPageContainer())
+      mpContainer(std::make_shared<MasterPageContainer>())
 {
 }
 
@@ -132,30 +124,28 @@ void RecentlyUsedMasterPages::LoadPersistentValues()
         OUString sName;
 
         // Read the names and URLs of the master pages.
-        Sequence<OUString> aKeys (xSet->getElementNames());
+        const Sequence<OUString> aKeys (xSet->getElementNames());
         mvMasterPages.clear();
         mvMasterPages.reserve(aKeys.getLength());
-        for (int i=0; i<aKeys.getLength(); i++)
+        for (const auto& rKey : aKeys)
         {
             Reference<container::XNameAccess> xSetItem (
-                xSet->getByName(aKeys[i]), UNO_QUERY);
+                xSet->getByName(rKey), UNO_QUERY);
             if (xSetItem.is())
             {
                 Any aURL (xSetItem->getByName(sURLMemberName));
                 Any aName (xSetItem->getByName(sNameMemberName));
                 aURL >>= sURL;
                 aName >>= sName;
-                SharedMasterPageDescriptor pDescriptor (new MasterPageDescriptor(
+                SharedMasterPageDescriptor pDescriptor = std::make_shared<MasterPageDescriptor>(
                     MasterPageContainer::TEMPLATE,
                     -1,
                     sURL,
                     OUString(),
                     sName,
                     false,
-                    std::shared_ptr<PageObjectProvider>(
-                        new TemplatePageObjectProvider(sURL)),
-                    std::shared_ptr<PreviewProvider>(
-                        new TemplatePreviewProvider(sURL))));
+                    std::make_shared<TemplatePageObjectProvider>(sURL),
+                    std::make_shared<TemplatePreviewProvider>(sURL));
                 // For user supplied templates we use a different
                 // preview provider: The preview in the document shows
                 // not only shapes on the master page but also shapes on
@@ -163,10 +153,9 @@ void RecentlyUsedMasterPages::LoadPersistentValues()
                 // these previews are discarded and created directly
                 // from the page objects.
                 if (pDescriptor->GetURLClassification() == MasterPageDescriptor::URLCLASS_USER)
-                    pDescriptor->mpPreviewProvider = std::shared_ptr<PreviewProvider>(
-                        new PagePreviewProvider());
+                    pDescriptor->mpPreviewProvider = std::make_shared<PagePreviewProvider>();
                 MasterPageContainer::Token aToken (mpContainer->PutMasterPage(pDescriptor));
-                mvMasterPages.push_back(Descriptor(aToken,sURL,sName));
+                mvMasterPages.emplace_back(aToken,sURL,sName);
             }
         }
 
@@ -192,10 +181,9 @@ void RecentlyUsedMasterPages::SavePersistentValues()
             return;
 
         // Clear the set.
-        Sequence<OUString> aKeys (xSet->getElementNames());
-        sal_Int32 i;
-        for (i=0; i<aKeys.getLength(); i++)
-            xSet->removeByName (aKeys[i]);
+        const Sequence<OUString> aKeys (xSet->getElementNames());
+        for (const auto& rKey : aKeys)
+            xSet->removeByName (rKey);
 
         // Fill it with the URLs of this object.
         const OUString sURLMemberName("URL");
@@ -205,27 +193,24 @@ void RecentlyUsedMasterPages::SavePersistentValues()
             xSet, UNO_QUERY);
         if ( ! xChildFactory.is())
             return;
-        MasterPageList::const_iterator iDescriptor;
         sal_Int32 nIndex(0);
-        for (iDescriptor=mvMasterPages.begin();
-                iDescriptor!=mvMasterPages.end();
-                ++iDescriptor,++nIndex)
+        for (const auto& rDescriptor : mvMasterPages)
         {
             // Create new child.
-            OUString sKey ("index_");
-            sKey += OUString::number(nIndex);
+            OUString sKey = "index_" + OUString::number(nIndex);
             Reference<container::XNameReplace> xChild(
                 xChildFactory->createInstance(), UNO_QUERY);
             if (xChild.is())
             {
                 xSet->insertByName (sKey, makeAny(xChild));
 
-                aValue <<= iDescriptor->msURL;
+                aValue <<= rDescriptor.msURL;
                 xChild->replaceByName (sURLMemberName, aValue);
 
-                aValue <<= iDescriptor->msName;
+                aValue <<= rDescriptor.msName;
                 xChild->replaceByName (sNameMemberName, aValue);
             }
+            ++nIndex;
         }
 
         // Write the data back to disk.
@@ -272,7 +257,7 @@ MasterPageContainer::Token RecentlyUsedMasterPages::GetTokenForIndex (sal_uInt32
 
 void RecentlyUsedMasterPages::SendEvent()
 {
-    for (auto& aLink : maListeners)
+    for (const auto& aLink : maListeners)
     {
         aLink.Call(nullptr);
     }
@@ -321,56 +306,54 @@ void RecentlyUsedMasterPages::AddMasterPage (
     // For the page to be inserted the token has to be valid and the page
     // has to have a valid URL.  This excludes master pages that do not come
     // from template files.
-    if (aToken != MasterPageContainer::NIL_TOKEN
-        && !mpContainer->GetURLForToken(aToken).isEmpty())
+    if (aToken == MasterPageContainer::NIL_TOKEN
+        || mpContainer->GetURLForToken(aToken).isEmpty())
+        return;
+
+    MasterPageList::iterator aIterator (
+        ::std::find_if(mvMasterPages.begin(),mvMasterPages.end(),
+            Descriptor::TokenComparator(aToken)));
+    if (aIterator != mvMasterPages.end())
     {
-
-        MasterPageList::iterator aIterator (
-            ::std::find_if(mvMasterPages.begin(),mvMasterPages.end(),
-                Descriptor::TokenComparator(aToken)));
-        if (aIterator != mvMasterPages.end())
-        {
-            // When an entry for the given token already exists then remove
-            // it now and insert it later at the head of the list.
-            mvMasterPages.erase (aIterator);
-        }
-
-        mvMasterPages.insert(mvMasterPages.begin(),
-            Descriptor(
-                aToken,
-                mpContainer->GetURLForToken(aToken),
-                mpContainer->GetStyleNameForToken(aToken)));
-
-        // Shorten list to maximal size.
-        while (mvMasterPages.size() > mnMaxListSize)
-        {
-            mvMasterPages.pop_back ();
-        }
-
-        SavePersistentValues ();
-        SendEvent();
+        // When an entry for the given token already exists then remove
+        // it now and insert it later at the head of the list.
+        mvMasterPages.erase (aIterator);
     }
+
+    mvMasterPages.insert(mvMasterPages.begin(),
+        Descriptor(
+            aToken,
+            mpContainer->GetURLForToken(aToken),
+            mpContainer->GetStyleNameForToken(aToken)));
+
+    // Shorten list to maximal size.
+    while (mvMasterPages.size() > gnMaxListSize)
+    {
+        mvMasterPages.pop_back ();
+    }
+
+    SavePersistentValues ();
+    SendEvent();
 }
 
 void RecentlyUsedMasterPages::ResolveList()
 {
     bool bNotify (false);
 
-    MasterPageList::iterator iDescriptor;
-    for (iDescriptor=mvMasterPages.begin(); iDescriptor!=mvMasterPages.end(); ++iDescriptor)
+    for (auto& rDescriptor : mvMasterPages)
     {
-        if (iDescriptor->maToken == MasterPageContainer::NIL_TOKEN)
+        if (rDescriptor.maToken == MasterPageContainer::NIL_TOKEN)
         {
-            MasterPageContainer::Token aToken (mpContainer->GetTokenForURL(iDescriptor->msURL));
-            iDescriptor->maToken = aToken;
+            MasterPageContainer::Token aToken (mpContainer->GetTokenForURL(rDescriptor.msURL));
+            rDescriptor.maToken = aToken;
             if (aToken != MasterPageContainer::NIL_TOKEN)
                 bNotify = true;
         }
         else
         {
-            if ( ! mpContainer->HasToken(iDescriptor->maToken))
+            if ( ! mpContainer->HasToken(rDescriptor.maToken))
             {
-                iDescriptor->maToken = MasterPageContainer::NIL_TOKEN;
+                rDescriptor.maToken = MasterPageContainer::NIL_TOKEN;
                 bNotify = true;
             }
         }
@@ -380,6 +363,6 @@ void RecentlyUsedMasterPages::ResolveList()
         SendEvent();
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

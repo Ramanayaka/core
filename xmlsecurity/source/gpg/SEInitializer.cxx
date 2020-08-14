@@ -7,18 +7,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "gpg/SEInitializer.hxx"
+#include <cppuhelper/supportsservice.hxx>
+#include <gpg/SEInitializer.hxx>
 #include "SecurityEnvironment.hxx"
 #include "XMLSecurityContext.hxx"
 
-#include <gpgme.h>
-#include <context.h>
+#include <global.h>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace css;
 using namespace css::lang;
 using namespace css::uno;
 using namespace css::xml::crypto;
-
 
 SEInitializerGpg::SEInitializerGpg()
 {
@@ -52,6 +53,29 @@ Reference< XXMLSecurityContext > SAL_CALL SEInitializerGpg::createSecurityContex
 
 void SAL_CALL SEInitializerGpg::freeSecurityContext( const uno::Reference< XXMLSecurityContext >& )
 {
+}
+
+/* XServiceInfo */
+sal_Bool SAL_CALL SEInitializerGpg::supportsService( const OUString& rServiceName )
+{
+    return cppu::supportsService(this, rServiceName);
+}
+
+uno::Sequence< OUString > SAL_CALL SEInitializerGpg::getSupportedServiceNames()
+{
+    return {"com.sun.star.xml.crypto.GPGSEInitializer"};
+}
+
+OUString SAL_CALL SEInitializerGpg::getImplementationName()
+{
+    return "com.sun.star.xml.security.SEInitializer_Gpg";
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_xml_security_SEInitializer_Gpg_get_implementation(
+    uno::XComponentContext* /*pCtx*/, uno::Sequence<uno::Any> const& /*rSeq*/)
+{
+    return cppu::acquire(new SEInitializerGpg());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

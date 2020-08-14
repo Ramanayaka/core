@@ -24,44 +24,43 @@
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
-#include <com/sun/star/frame/DispatchDescriptor.hpp>
 #include <com/sun/star/frame/XDispatchInformationProvider.hpp>
 #include <com/sun/star/frame/XController2.hpp>
 #include <com/sun/star/frame/XControllerBorder.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/frame/XFrame.hpp>
+#include <com/sun/star/frame/XInfobarProvider.hpp>
 #include <com/sun/star/frame/XTitle.hpp>
 #include <com/sun/star/frame/XTitleChangeBroadcaster.hpp>
-#include <com/sun/star/util/URL.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <com/sun/star/task/XStatusIndicatorSupplier.hpp>
 #include <com/sun/star/ui/XContextMenuInterception.hpp>
-#include <com/sun/star/ui/XContextMenuInterceptor.hpp>
-#include <com/sun/star/awt/XMouseClickHandler.hpp>
-#include <com/sun/star/awt/XKeyHandler.hpp>
 #include <com/sun/star/awt/XUserInputInterception.hpp>
 #include <tools/link.hxx>
-#include <vcl/button.hxx>
 
-#include <com/sun/star/ui/XSidebarProvider.hpp>
-
-#include <sfx2/viewsh.hxx>
-#include <sfx2/sfxuno.hxx>
 #include <sfx2/groupid.hxx>
+
+namespace com::sun::star::awt { class XKeyHandler; }
+namespace com::sun::star::awt { class XMouseClickHandler; }
+namespace com::sun::star::frame { class XDispatch; }
+namespace com::sun::star::frame { class XFrame; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::frame { struct DispatchDescriptor; }
+namespace com::sun::star::ui { class XContextMenuInterceptor; }
+namespace com::sun::star::ui { class XSidebarProvider; }
+namespace com::sun::star::util { struct URL; }
 
 struct  IMPL_SfxBaseController_DataContainer    ;   // impl. struct to hold member of class SfxBaseController
 
+class Button;
+class NotifyEvent;
 class SfxViewFrame;
+class SfxViewShell;
 
 sal_Int16 MapGroupIDToCommandGroup( SfxGroupId nGroupID );
 
 
-//  class declarations
 
 
 typedef ::cppu::WeakImplHelper  <   css::frame::XController2
@@ -71,6 +70,7 @@ typedef ::cppu::WeakImplHelper  <   css::frame::XController2
                                 ,   css::ui::XContextMenuInterception
                                 ,   css::awt::XUserInputInterception
                                 ,   css::frame::XDispatchInformationProvider
+                                ,   css::frame::XInfobarProvider
                                 ,   css::frame::XTitle
                                 ,   css::frame::XTitleChangeBroadcaster
                                 ,   css::lang::XInitialization
@@ -130,7 +130,7 @@ public:
 
     virtual css::uno::Reference< css::frame::XDispatch > SAL_CALL queryDispatch(  const   css::util::URL &    aURL            ,
                                                                                   const   OUString &   sTargetFrameName,
-                                                                                  FrameSearchFlags            eSearchFlags    ) override ;
+                                                                                  sal_Int32            eSearchFlags    ) override ;
 
     virtual css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL queryDispatches( const css::uno::Sequence< css::frame::DispatchDescriptor >& seqDescriptor ) override ;
 
@@ -176,12 +176,24 @@ public:
     // css::lang::XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
 
+    // XInfobarProvider
+    virtual void SAL_CALL
+    appendInfobar(const OUString& sId, const OUString& sPrimaryMessage,
+                  const OUString& sSecondaryMessage, sal_Int32 aInfobarType,
+                  const css::uno::Sequence<css::beans::StringPair>& actionButtons,
+                  sal_Bool bShowCloseButton) override;
+    virtual void SAL_CALL updateInfobar(const OUString& sId, const OUString& sPrimaryMessage,
+                                        const OUString& sSecondaryMessage,
+                                        sal_Int32 aInfobarType) override;
+    virtual void SAL_CALL removeInfobar(const OUString& sId) override;
+    virtual sal_Bool SAL_CALL hasInfobar(const OUString& sId) override;
+
     // FIXME: TL needs this in sw/source/ui/uno/unotxdoc.cxx now;
     // either the _Impl name should vanish or there should be an "official" API
     SfxViewShell* GetViewShell_Impl() const;
-    SAL_DLLPRIVATE bool HandleEvent_Impl( NotifyEvent& rEvent );
-    SAL_DLLPRIVATE bool HasKeyListeners_Impl();
-    SAL_DLLPRIVATE bool HasMouseClickListeners_Impl();
+    SAL_DLLPRIVATE bool HandleEvent_Impl( NotifyEvent const & rEvent );
+    SAL_DLLPRIVATE bool HasKeyListeners_Impl() const;
+    SAL_DLLPRIVATE bool HasMouseClickListeners_Impl() const;
     SAL_DLLPRIVATE void SetCreationArguments_Impl( const css::uno::Sequence< css::beans::PropertyValue >& i_rCreationArgs );
     SAL_DLLPRIVATE css::uno::Reference< css::frame::XTitle > impl_getTitleHelper ();
 private:

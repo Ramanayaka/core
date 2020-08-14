@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ole/axcontrol.hxx"
+#include <oox/ole/axcontrol.hxx>
 
 #include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/awt/FontStrikeout.hpp>
@@ -34,6 +34,7 @@
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
+#include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/form/XFormComponent.hpp>
 #include <com/sun/star/form/XFormsSupplier.hpp>
@@ -41,25 +42,29 @@
 #include <com/sun/star/form/binding/XListEntrySink.hpp>
 #include <com/sun/star/form/binding/XListEntrySource.hpp>
 #include <com/sun/star/form/binding/XValueBinding.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sheet/XCellRangeAddressable.hpp>
 #include <com/sun/star/sheet/XCellRangeReferrer.hpp>
 #include <com/sun/star/style/VerticalAlignment.hpp>
 #include <com/sun/star/table/CellAddress.hpp>
 #include <com/sun/star/table/CellRangeAddress.hpp>
-#include <comphelper/string.hxx>
 #include <rtl/tencinfo.h>
 #include <osl/diagnose.h>
-#include "oox/helper/attributelist.hxx"
-#include "oox/helper/binaryinputstream.hxx"
-#include "oox/helper/containerhelper.hxx"
-#include "oox/helper/graphichelper.hxx"
-#include "oox/helper/propertymap.hxx"
-#include "oox/ole/axbinarywriter.hxx"
+#include <vcl/font.hxx>
+#include <vcl/outdev.hxx>
+#include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
+#include <oox/helper/attributelist.hxx>
+#include <oox/helper/binaryinputstream.hxx>
+#include <oox/helper/graphichelper.hxx>
+#include <oox/helper/propertymap.hxx>
+#include <oox/ole/axbinarywriter.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-namespace oox {
-namespace ole {
+#include <tools/diagnose_ex.h>
+
+namespace oox::ole {
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::awt;
@@ -172,9 +177,9 @@ bool lclExtractRangeFromName( CellRangeAddress& orRangeAddr, const Reference< XM
         orRangeAddr = xAddressable->getRangeAddress();
         return true;
     }
-    catch (const Exception& e)
+    catch (const Exception&)
     {
-        SAL_WARN("oox", "exception: " << e.Message);
+        TOOLS_WARN_EXCEPTION("oox", "");
     }
     return false;
 }
@@ -205,9 +210,9 @@ void lclPrepareConverter( PropertySet& rConverter, const Reference< XModel >& rx
             OUString( "com.sun.star.table.CellAddressConversion" );
         rConverter.set( xModelFactory->createInstance( aServiceName ) );
     }
-    catch (const Exception& e)
+    catch (const Exception&)
     {
-        SAL_WARN("oox", "exception: " << e.Message);
+        TOOLS_WARN_EXCEPTION("oox", "");
     }
     rConverter.setProperty( PROP_XLA1Representation, rAddressString );
     rConverter.setProperty( PROP_ReferenceSheet, nRefSheet );
@@ -251,7 +256,7 @@ void ControlConverter::convertColor( PropertyMap& rPropMap, sal_Int32 nPropId, s
     rPropMap.setProperty( nPropId, OleHelper::decodeOleColor( mrGraphicHelper, nOleColor, mbDefaultColorBgr ) );
 }
 
-void ControlConverter::convertToMSColor( PropertySet& rPropSet, sal_Int32 nPropId, sal_uInt32& nOleColor, sal_uInt32 nDefault )
+void ControlConverter::convertToMSColor( PropertySet const & rPropSet, sal_Int32 nPropId, sal_uInt32& nOleColor, sal_uInt32 nDefault )
 {
     sal_uInt32 nRGB = 0;
     if (rPropSet.getProperty( nRGB, nPropId ))
@@ -263,9 +268,9 @@ void ControlConverter::convertPicture( PropertyMap& rPropMap, const StreamDataSe
 {
     if( rPicData.hasElements() )
     {
-        OUString aGraphicUrl = mrGraphicHelper.importGraphicObject( rPicData );
-        if( !aGraphicUrl.isEmpty() )
-            rPropMap.setProperty( PROP_ImageURL, aGraphicUrl );
+        uno::Reference<graphic::XGraphic> xGraphic = mrGraphicHelper.importGraphic(rPicData);
+        if (xGraphic.is())
+            rPropMap.setProperty(PROP_Graphic, xGraphic);
     }
 }
 
@@ -275,7 +280,7 @@ void ControlConverter::convertOrientation( PropertyMap& rPropMap, bool bHorizont
     rPropMap.setProperty( PROP_Orientation, nScrollOrient );
 }
 
-void ControlConverter::convertToMSOrientation( PropertySet& rPropSet, bool& bHorizontal )
+void ControlConverter::convertToMSOrientation( PropertySet const & rPropSet, bool& bHorizontal )
 {
     sal_Int32 nScrollOrient = ScrollBarOrientation::HORIZONTAL;
     if ( rPropSet.getProperty( nScrollOrient, PROP_Orientation ) )
@@ -349,13 +354,16 @@ void ControlConverter::bindToSources( const Reference< XControlModel >& rxCtrlMo
         Reference< XValueBinding > xBinding( xModelFactory->createInstanceWithArguments( "com.sun.star.table.CellValueBinding", aArgs ), UNO_QUERY_THROW );
         xBindable->setValueBinding( xBinding );
     }
-    catch (const Exception& e)
+    catch (const Exception&)
     {
-        SAL_WARN("oox", "exception: " << e.Message);
+        TOOLS_WARN_EXCEPTION("oox", "");
     }
 
     // list entry source
-    if( !rRowSource.isEmpty() ) try
+    if( rRowSource.isEmpty() )
+        return;
+
+    try
     {
         // first check if the XListEntrySink interface is supported
         Reference< XListEntrySink > xEntrySink( rxCtrlModel, UNO_QUERY_THROW );
@@ -381,9 +389,9 @@ void ControlConverter::bindToSources( const Reference< XControlModel >& rxCtrlMo
         Reference< XListEntrySource > xEntrySource( xModelFactory->createInstanceWithArguments("com.sun.star.table.CellRangeListSource", aArgs ), UNO_QUERY_THROW );
         xEntrySink->setListEntrySource( xEntrySource );
     }
-    catch (const Exception& e)
+    catch (const Exception&)
     {
-        SAL_WARN("oox", "exception: " << e.Message);
+        TOOLS_WARN_EXCEPTION("oox", "");
     }
 }
 
@@ -416,7 +424,7 @@ void ControlConverter::convertAxBorder( PropertyMap& rPropMap,
     convertColor( rPropMap, PROP_BorderColor, nBorderColor );
 }
 
-void ControlConverter::convertToAxBorder( PropertySet& rPropSet,
+void ControlConverter::convertToAxBorder( PropertySet const & rPropSet,
         sal_uInt32& nBorderColor, sal_Int32& nBorderStyle, sal_Int32& nSpecialEffect )
 {
     sal_Int16 nBorder = API_BORDER_NONE;
@@ -444,7 +452,7 @@ void ControlConverter::convertAxVisualEffect( PropertyMap& rPropMap, sal_Int32 n
     rPropMap.setProperty( PROP_VisualEffect, nVisualEffect );
 }
 
-void ControlConverter::convertToAxVisualEffect( PropertySet& rPropSet, sal_Int32& nSpecialEffect )
+void ControlConverter::convertToAxVisualEffect( PropertySet const & rPropSet, sal_Int32& nSpecialEffect )
 {
     sal_Int16 nVisualEffect = AX_SPECIALEFFECT_FLAT;
     rPropSet.getProperty( nVisualEffect, PROP_VisualEffect );
@@ -523,14 +531,14 @@ void ControlConverter::convertAxState( PropertyMap& rPropMap,
         rPropMap.setProperty( PROP_TriState, nMultiSelect == AX_SELECTION_MULTI );
 }
 
-void ControlConverter::convertToAxState( PropertySet& rPropSet,
-        OUString& rValue, sal_Int32& nMultiSelect, ApiDefaultStateMode eDefStateMode, bool /*bAwtModel*/ )
+void ControlConverter::convertToAxState( PropertySet const & rPropSet,
+        OUString& rValue, sal_Int32& nMultiSelect, ApiDefaultStateMode eDefStateMode )
 {
     bool bSupportsTriState = eDefStateMode == API_DEFAULTSTATE_TRISTATE;
 
     sal_Int16 nState = API_STATE_DONTKNOW;
 
-    bool bTmp = false;
+    bool bTriStateEnabled = false;
     // need to use State for current state ( I think this is regardless of whether
     // control is awt or not )
     rPropSet.getProperty( nState, PROP_State );
@@ -542,8 +550,12 @@ void ControlConverter::convertToAxState( PropertySet& rPropSet,
         rValue = "1";
 
     // tristate
-    if( bSupportsTriState && rPropSet.getProperty( bTmp, PROP_TriState ) )
-        nMultiSelect = AX_SELECTION_MULTI;
+    if( bSupportsTriState )
+    {
+        bool bPropertyExists = rPropSet.getProperty( bTriStateEnabled, PROP_TriState );
+        if( bPropertyExists && bTriStateEnabled )
+            nMultiSelect = AX_SELECTION_MULTI;
+    }
 }
 
 void ControlConverter::convertAxOrientation( PropertyMap& rPropMap,
@@ -560,8 +572,8 @@ void ControlConverter::convertAxOrientation( PropertyMap& rPropMap,
     convertOrientation( rPropMap, bHorizontal );
 }
 
-void ControlConverter::convertToAxOrientation( PropertySet& rPropSet,
-        const AxPairData& /*rSize*/, sal_Int32& nOrientation )
+void ControlConverter::convertToAxOrientation( PropertySet const & rPropSet,
+        sal_Int32& nOrientation )
 {
     bool bHorizontal = true;
     convertToMSOrientation( rPropSet, bHorizontal );
@@ -587,39 +599,39 @@ OUString ControlModelBase::getServiceName() const
     ApiControlType eCtrlType = getControlType();
     if( mbAwtModel ) switch( eCtrlType )
     {
-        case API_CONTROL_BUTTON:        return OUString( "com.sun.star.awt.UnoControlButtonModel" );
-        case API_CONTROL_FIXEDTEXT:     return OUString( "com.sun.star.awt.UnoControlFixedTextModel" );
-        case API_CONTROL_IMAGE:         return OUString( "com.sun.star.awt.UnoControlImageControlModel" );
-        case API_CONTROL_CHECKBOX:      return OUString( "com.sun.star.awt.UnoControlCheckBoxModel" );
-        case API_CONTROL_RADIOBUTTON:   return OUString( "com.sun.star.form.component.RadioButton" );
-        case API_CONTROL_EDIT:          return OUString( "com.sun.star.awt.UnoControlEditModel" );
-        case API_CONTROL_NUMERIC:       return OUString( "com.sun.star.awt.UnoControlNumericFieldModel" );
-        case API_CONTROL_LISTBOX:       return OUString( "com.sun.star.form.component.ListBox" );
-        case API_CONTROL_COMBOBOX:      return OUString( "com.sun.star.form.component.ComboBox" );
-        case API_CONTROL_SPINBUTTON:    return OUString( "com.sun.star.form.component.SpinButton" );
-        case API_CONTROL_SCROLLBAR:     return OUString( "com.sun.star.form.component.ScrollBar" );
-        case API_CONTROL_PROGRESSBAR:   return OUString( "com.sun.star.awt.UnoControlProgressBarModel" );
-        case API_CONTROL_GROUPBOX:      return OUString( "com.sun.star.form.component.GroupBox" );
-        case API_CONTROL_FRAME:         return OUString( "com.sun.star.awt.UnoFrameModel" );
-        case API_CONTROL_PAGE:          return OUString( "com.sun.star.awt.UnoPageModel" );
-        case API_CONTROL_MULTIPAGE:     return OUString( "com.sun.star.awt.UnoMultiPageModel" );
-        case API_CONTROL_DIALOG:        return OUString( "com.sun.star.awt.UnoControlDialogModel" );
+        case API_CONTROL_BUTTON:        return "com.sun.star.awt.UnoControlButtonModel";
+        case API_CONTROL_FIXEDTEXT:     return "com.sun.star.awt.UnoControlFixedTextModel";
+        case API_CONTROL_IMAGE:         return "com.sun.star.awt.UnoControlImageControlModel";
+        case API_CONTROL_CHECKBOX:      return "com.sun.star.awt.UnoControlCheckBoxModel";
+        case API_CONTROL_RADIOBUTTON:   return "com.sun.star.form.component.RadioButton";
+        case API_CONTROL_EDIT:          return "com.sun.star.awt.UnoControlEditModel";
+        case API_CONTROL_NUMERIC:       return "com.sun.star.awt.UnoControlNumericFieldModel";
+        case API_CONTROL_LISTBOX:       return "com.sun.star.form.component.ListBox";
+        case API_CONTROL_COMBOBOX:      return "com.sun.star.form.component.ComboBox";
+        case API_CONTROL_SPINBUTTON:    return "com.sun.star.form.component.SpinButton";
+        case API_CONTROL_SCROLLBAR:     return "com.sun.star.form.component.ScrollBar";
+        case API_CONTROL_PROGRESSBAR:   return "com.sun.star.awt.UnoControlProgressBarModel";
+        case API_CONTROL_GROUPBOX:      return "com.sun.star.form.component.GroupBox";
+        case API_CONTROL_FRAME:         return "com.sun.star.awt.UnoFrameModel";
+        case API_CONTROL_PAGE:          return "com.sun.star.awt.UnoPageModel";
+        case API_CONTROL_MULTIPAGE:     return "com.sun.star.awt.UnoMultiPageModel";
+        case API_CONTROL_DIALOG:        return "com.sun.star.awt.UnoControlDialogModel";
         default:    OSL_FAIL( "ControlModelBase::getServiceName - no AWT model service supported" );
     }
     else switch( eCtrlType )
     {
-        case API_CONTROL_BUTTON:        return OUString( "com.sun.star.form.component.CommandButton" );
-        case API_CONTROL_FIXEDTEXT:     return OUString( "com.sun.star.form.component.FixedText" );
-        case API_CONTROL_IMAGE:         return OUString( "com.sun.star.form.component.DatabaseImageControl" );
-        case API_CONTROL_CHECKBOX:      return OUString( "com.sun.star.form.component.CheckBox" );
-        case API_CONTROL_RADIOBUTTON:   return OUString( "com.sun.star.form.component.RadioButton" );
-        case API_CONTROL_EDIT:          return OUString( "com.sun.star.form.component.TextField" );
-        case API_CONTROL_NUMERIC:       return OUString( "com.sun.star.form.component.NumericField" );
-        case API_CONTROL_LISTBOX:       return OUString( "com.sun.star.form.component.ListBox" );
-        case API_CONTROL_COMBOBOX:      return OUString( "com.sun.star.form.component.ComboBox" );
-        case API_CONTROL_SPINBUTTON:    return OUString( "com.sun.star.form.component.SpinButton" );
-        case API_CONTROL_SCROLLBAR:     return OUString( "com.sun.star.form.component.ScrollBar" );
-        case API_CONTROL_GROUPBOX:      return OUString( "com.sun.star.form.component.GroupBox" );
+        case API_CONTROL_BUTTON:        return "com.sun.star.form.component.CommandButton";
+        case API_CONTROL_FIXEDTEXT:     return "com.sun.star.form.component.FixedText";
+        case API_CONTROL_IMAGE:         return "com.sun.star.form.component.DatabaseImageControl";
+        case API_CONTROL_CHECKBOX:      return "com.sun.star.form.component.CheckBox";
+        case API_CONTROL_RADIOBUTTON:   return "com.sun.star.form.component.RadioButton";
+        case API_CONTROL_EDIT:          return "com.sun.star.form.component.TextField";
+        case API_CONTROL_NUMERIC:       return "com.sun.star.form.component.NumericField";
+        case API_CONTROL_LISTBOX:       return "com.sun.star.form.component.ListBox";
+        case API_CONTROL_COMBOBOX:      return "com.sun.star.form.component.ComboBox";
+        case API_CONTROL_SPINBUTTON:    return "com.sun.star.form.component.SpinButton";
+        case API_CONTROL_SCROLLBAR:     return "com.sun.star.form.component.ScrollBar";
+        case API_CONTROL_GROUPBOX:      return "com.sun.star.form.component.GroupBox";
         default:    OSL_FAIL( "ControlModelBase::getServiceName - no form component service supported" );
     }
     return OUString();
@@ -742,7 +754,7 @@ bool ComCtlModelBase::importComplexPart( BinaryInputStream& rInStrm )
         sal_uInt32 nContFlags = rInStrm.readuInt32();
         bool bReadOk =
             (!getFlag( nContFlags, COMCTL_COMPLEX_FONT ) || OleHelper::importStdFont( maFontData, rInStrm, true )) &&
-            (!getFlag( nContFlags, COMCTL_COMPLEX_MOUSEICON ) || OleHelper::importStdPic( maMouseIcon, rInStrm, true ));
+            (!getFlag( nContFlags, COMCTL_COMPLEX_MOUSEICON ) || OleHelper::importStdPic( maMouseIcon, rInStrm ));
         return bReadOk && !rInStrm.isEof();
     }
     return false;
@@ -917,7 +929,7 @@ void AxFontDataModel::convertProperties( PropertyMap& rPropMap, const ControlCon
 void AxFontDataModel::convertFromProperties( PropertySet& rPropSet, const ControlConverter& /*rConv */)
 {
     rPropSet.getProperty( maFontData.maFontName, PROP_FontName );
-    float fontWeight = (float)0;
+    float fontWeight = float(0);
     if ( rPropSet.getProperty(fontWeight, PROP_FontWeight ) )
         setFlag( maFontData.mnFontEffects, AxFontFlags::Bold, ( fontWeight == awt::FontWeight::BOLD ) );
     FontSlant nSlant = FontSlant_NONE;
@@ -926,14 +938,21 @@ void AxFontDataModel::convertFromProperties( PropertySet& rPropSet, const Contro
 
     sal_Int16 nUnderLine = awt::FontUnderline::NONE;
     if ( rPropSet.getProperty( nUnderLine, PROP_FontUnderline ) )
-        setFlag( maFontData.mnFontEffects, AxFontFlags::Underline, nUnderLine != awt::FontUnderline::NONE );
+        setFlag( maFontData.mnFontEffects, AxFontFlags::Underline, nUnderLine != awt::FontUnderline::NONE && nUnderLine != awt::FontUnderline::DONTKNOW);
     sal_Int16 nStrikeout = awt::FontStrikeout::NONE ;
     if ( rPropSet.getProperty( nStrikeout, PROP_FontStrikeout ) )
-        setFlag( maFontData.mnFontEffects, AxFontFlags::Strikeout, nStrikeout != awt::FontStrikeout::NONE );
+        setFlag( maFontData.mnFontEffects, AxFontFlags::Strikeout, nStrikeout != awt::FontStrikeout::NONE && nStrikeout != awt::FontStrikeout::DONTKNOW);
 
     float fontHeight = 0.0;
     if ( rPropSet.getProperty( fontHeight, PROP_FontHeight ) )
+    {
+        if ( fontHeight == 0 )  // tdf#118684
+        {
+            vcl::Font aDefaultVCLFont = Application::GetDefaultDevice()->GetSettings().GetStyleSettings().GetAppFont();
+            fontHeight = static_cast< float >( aDefaultVCLFont.GetFontHeight() );
+        }
         maFontData.setHeightPoints( static_cast< sal_Int16 >( fontHeight ) );
+    }
 
     // TODO - handle textencoding
     sal_Int16 nAlign = 0;
@@ -977,7 +996,7 @@ void AxCommandButtonModel::importPictureData( sal_Int32 nPropId, BinaryInputStre
 {
     switch( nPropId )
     {
-        case XML_Picture:   OleHelper::importStdPic( maPictureData, rInStrm, true );    break;
+        case XML_Picture:   OleHelper::importStdPic( maPictureData, rInStrm );    break;
         default:            AxFontDataModel::importPictureData( nPropId, rInStrm );
     }
 }
@@ -1241,7 +1260,7 @@ void AxImageModel::importPictureData( sal_Int32 nPropId, BinaryInputStream& rInS
 {
     switch( nPropId )
     {
-        case XML_Picture:   OleHelper::importStdPic( maPictureData, rInStrm, true );    break;
+        case XML_Picture:   OleHelper::importStdPic( maPictureData, rInStrm );    break;
         default:            AxControlModelBase::importPictureData( nPropId, rInStrm );
     }
 }
@@ -1425,7 +1444,7 @@ void AxMorphDataModelBase::importPictureData( sal_Int32 nPropId, BinaryInputStre
 {
     switch( nPropId )
     {
-        case XML_Picture:   OleHelper::importStdPic( maPictureData, rInStrm, true );    break;
+        case XML_Picture:   OleHelper::importStdPic( maPictureData, rInStrm );    break;
         default:            AxFontDataModel::importPictureData( nPropId, rInStrm );
     }
 }
@@ -1514,7 +1533,7 @@ void AxMorphDataModelBase::exportBinaryModel( BinaryOutputStream& rOutStrm )
     aWriter.skipProperty(); // mnShowDropButton );
     aWriter.skipProperty();
     aWriter.skipProperty(); // drop down style
-    if ( mnDisplayStyle == AX_DISPLAYSTYLE_LISTBOX && mnMultiSelect != AX_SELECTION_SINGLE )
+    if ( (mnDisplayStyle == AX_DISPLAYSTYLE_LISTBOX || mnDisplayStyle == AX_DISPLAYSTYLE_CHECKBOX) && mnMultiSelect != AX_SELECTION_SINGLE )
         aWriter.writeIntProperty< sal_uInt8 >( mnMultiSelect );
     // although CheckBox, ListBox, OptionButton, ToggleButton are also supported
     // they can only have the fileformat default
@@ -1540,7 +1559,7 @@ void AxMorphDataModelBase::exportBinaryModel( BinaryOutputStream& rOutStrm )
     aWriter.skipProperty(); // accelerator
     aWriter.skipProperty(); // undefined
     aWriter.writeBoolProperty(true); // must be 1 for morph
-    if ( ( mnDisplayStyle == AX_DISPLAYSTYLE_CHECKBOX ) || ( mnDisplayStyle == AX_DISPLAYSTYLE_OPTBUTTON ) )
+    if ( mnDisplayStyle == AX_DISPLAYSTYLE_OPTBUTTON )
         aWriter.writeStringProperty( maGroupName );
     else
         aWriter.skipProperty(); //maGroupName
@@ -1552,7 +1571,21 @@ void AxMorphDataModelBase::convertProperties( PropertyMap& rPropMap, const Contr
 {
     rPropMap.setProperty( PROP_Enabled, getFlag( mnFlags, AX_FLAGS_ENABLED ) );
     rConv.convertColor( rPropMap, PROP_TextColor, mnTextColor );
+    if ( mnDisplayStyle == AX_DISPLAYSTYLE_OPTBUTTON )
+    {
+        // If unspecified, radio buttons autoGroup in the same document/sheet
+        // NOTE: form controls should not autoGroup with ActiveX controls - see drawingfragment.cxx
+        OUString sGroupName = !maGroupName.isEmpty() ? maGroupName : "autoGroup_";
+        rPropMap.setProperty( PROP_GroupName, sGroupName );
+    }
     AxFontDataModel::convertProperties( rPropMap, rConv );
+}
+
+void AxMorphDataModelBase::convertFromProperties( PropertySet& rPropSet, const ControlConverter& rConv )
+{
+    if ( mnDisplayStyle == AX_DISPLAYSTYLE_OPTBUTTON )
+        rPropSet.getProperty( maGroupName, PROP_GroupName );
+    AxFontDataModel::convertFromProperties( rPropSet, rConv );
 }
 
 AxToggleButtonModel::AxToggleButtonModel()
@@ -1575,8 +1608,9 @@ void AxToggleButtonModel::convertFromProperties( PropertySet& rPropSet, const Co
         setFlag( mnFlags, AX_FLAGS_WORDWRAP, bRes );
 
     ControlConverter::convertToMSColor( rPropSet, PROP_BackgroundColor, mnBackColor );
+    ControlConverter::convertToMSColor( rPropSet, PROP_TextColor, mnTextColor );
     // need to process the image if one exists
-    ControlConverter::convertToAxState( rPropSet, maValue, mnMultiSelect, API_DEFAULTSTATE_BOOLEAN, mbAwtModel );
+    ControlConverter::convertToAxState( rPropSet, maValue, mnMultiSelect, API_DEFAULTSTATE_BOOLEAN );
     AxMorphDataModelBase::convertFromProperties( rPropSet, rConv );
 }
 
@@ -1650,8 +1684,9 @@ void AxCheckBoxModel::convertFromProperties( PropertySet& rPropSet, const Contro
 
     ControlConverter::convertToAxVisualEffect( rPropSet, mnSpecialEffect );
     ControlConverter::convertToMSColor( rPropSet, PROP_BackgroundColor, mnBackColor );
+    ControlConverter::convertToMSColor( rPropSet, PROP_TextColor, mnTextColor );
     // need to process the image if one exists
-    ControlConverter::convertToAxState( rPropSet, maValue, mnMultiSelect, API_DEFAULTSTATE_BOOLEAN, mbAwtModel );
+    ControlConverter::convertToAxState( rPropSet, maValue, mnMultiSelect, API_DEFAULTSTATE_TRISTATE );
     AxMorphDataModelBase::convertFromProperties( rPropSet, rConv );
 }
 
@@ -1712,8 +1747,9 @@ void AxOptionButtonModel::convertFromProperties( PropertySet& rPropSet, const Co
 
     ControlConverter::convertToAxVisualEffect( rPropSet, mnSpecialEffect );
     ControlConverter::convertToMSColor( rPropSet, PROP_BackgroundColor, mnBackColor );
+    ControlConverter::convertToMSColor( rPropSet, PROP_TextColor, mnTextColor );
     // need to process the image if one exists
-    ControlConverter::convertToAxState( rPropSet, maValue, mnMultiSelect, API_DEFAULTSTATE_BOOLEAN, mbAwtModel );
+    ControlConverter::convertToAxState( rPropSet, maValue, mnMultiSelect, API_DEFAULTSTATE_BOOLEAN );
     AxMorphDataModelBase::convertFromProperties( rPropSet, rConv );
 }
 
@@ -1755,8 +1791,12 @@ ApiControlType AxTextBoxModel::getControlType() const
 
 void AxTextBoxModel::convertProperties( PropertyMap& rPropMap, const ControlConverter& rConv ) const
 {
-    rPropMap.setProperty( PROP_MultiLine, getFlag( mnFlags, AX_FLAGS_MULTILINE ) );
+    if (getFlag( mnFlags, AX_FLAGS_MULTILINE ) && getFlag( mnFlags, AX_FLAGS_WORDWRAP ))
+        rPropMap.setProperty( PROP_MultiLine, true );
+    else
+        rPropMap.setProperty( PROP_MultiLine, false );
     rPropMap.setProperty( PROP_HideInactiveSelection, getFlag( mnFlags, AX_FLAGS_HIDESELECTION ) );
+    rPropMap.setProperty( PROP_ReadOnly, getFlag( mnFlags, AX_FLAGS_LOCKED ) );
     rPropMap.setProperty( mbAwtModel ? PROP_Text : PROP_DefaultText, maValue );
     rPropMap.setProperty( PROP_MaxTextLen, getLimitedValue< sal_Int16, sal_Int32 >( mnMaxLength, 0, SAL_MAX_INT16 ) );
     if( (0 < mnPasswordChar) && (mnPasswordChar <= SAL_MAX_INT16) )
@@ -1771,10 +1811,14 @@ void AxTextBoxModel::convertProperties( PropertyMap& rPropMap, const ControlConv
 void AxTextBoxModel::convertFromProperties( PropertySet& rPropSet, const ControlConverter& rConv )
 {
     bool bRes = false;
-    if ( rPropSet.getProperty( bRes,  PROP_MultiLine ) )
+    if ( rPropSet.getProperty( bRes,  PROP_MultiLine ) ) {
         setFlag( mnFlags, AX_FLAGS_WORDWRAP, bRes );
+        setFlag( mnFlags, AX_FLAGS_MULTILINE, bRes );
+    }
     if ( rPropSet.getProperty( bRes,  PROP_HideInactiveSelection ) )
         setFlag( mnFlags, AX_FLAGS_HIDESELECTION, bRes );
+    if ( rPropSet.getProperty( bRes,  PROP_ReadOnly ) )
+        setFlag( mnFlags, AX_FLAGS_LOCKED, bRes );
     rPropSet.getProperty( maValue, ( mbAwtModel ? PROP_Text : PROP_DefaultText ) );
     if (maValue.isEmpty() && !mbAwtModel)
         // No default value? Then try exporting the current one.
@@ -1790,6 +1834,7 @@ void AxTextBoxModel::convertFromProperties( PropertySet& rPropSet, const Control
         setFlag( mnScrollBars, AX_SCROLLBAR_VERTICAL, bRes );
 
     ControlConverter::convertToMSColor( rPropSet, PROP_BackgroundColor, mnBackColor, 0x80000005L );
+    ControlConverter::convertToMSColor( rPropSet, PROP_TextColor, mnTextColor );
 
     ControlConverter::convertToAxBorder( rPropSet, mnBorderColor, mnBorderStyle, mnSpecialEffect );
     AxMorphDataModelBase::convertFromProperties( rPropSet, rConv );
@@ -1852,6 +1897,7 @@ void AxNumericFieldModel::convertFromProperties( PropertySet& rPropSet, const Co
         setFlag( mnScrollBars, AX_SCROLLBAR_VERTICAL, bRes );
 
     ControlConverter::convertToMSColor( rPropSet, PROP_BackgroundColor, mnBackColor );
+    ControlConverter::convertToMSColor( rPropSet, PROP_TextColor, mnTextColor );
 
     ControlConverter::convertToAxBorder( rPropSet, mnBorderColor, mnBorderStyle, mnSpecialEffect );
     AxMorphDataModelBase::convertFromProperties( rPropSet, rConv );
@@ -1909,6 +1955,7 @@ void AxListBoxModel::convertFromProperties( PropertySet& rPropSet, const Control
         ControlConverter::convertToMSColor( rPropSet, PROP_BackgroundColor, mnBackColor );
 
     ControlConverter::convertToAxBorder( rPropSet, mnBorderColor, mnBorderStyle, mnSpecialEffect );
+    ControlConverter::convertToMSColor( rPropSet, PROP_TextColor, mnTextColor );
     AxMorphDataModelBase::convertFromProperties( rPropSet, rConv );
 }
 
@@ -1994,6 +2041,7 @@ void AxComboBoxModel::convertFromProperties( PropertySet& rPropSet, const Contro
             mnListRows = 1;
     }
     ControlConverter::convertToMSColor( rPropSet, PROP_BackgroundColor, mnBackColor );
+    ControlConverter::convertToMSColor( rPropSet, PROP_TextColor, mnTextColor );
 
     ControlConverter::convertToAxBorder( rPropSet, mnBorderColor, mnBorderStyle, mnSpecialEffect );
     AxMorphDataModelBase::convertFromProperties( rPropSet, rConv );
@@ -2135,7 +2183,7 @@ void AxSpinButtonModel::convertFromProperties( PropertySet& rPropSet, const Cont
     ControlConverter::convertToMSColor( rPropSet, PROP_SymbolColor, mnArrowColor);
     ControlConverter::convertToMSColor( rPropSet, PROP_BackgroundColor, mnBackColor );
 
-    ControlConverter::convertToAxOrientation( rPropSet, maSize, mnOrientation );
+    ControlConverter::convertToAxOrientation( rPropSet, mnOrientation );
 }
 
 void AxSpinButtonModel::exportCompObj( BinaryOutputStream& rOutStream )
@@ -2306,7 +2354,7 @@ void AxScrollBarModel::convertFromProperties( PropertySet& rPropSet, const Contr
     mnPropThumb = AX_PROPTHUMB_ON; // default
     ControlConverter::convertToMSColor( rPropSet, PROP_SymbolColor, mnArrowColor);
     ControlConverter::convertToMSColor( rPropSet, PROP_BackgroundColor, mnBackColor );
-    ControlConverter::convertToAxOrientation( rPropSet, maSize, mnOrientation );
+    ControlConverter::convertToAxOrientation( rPropSet, mnOrientation );
 
     rPropSet.getProperty( mnMin, PROP_ScrollValueMin );
     rPropSet.getProperty( mnMax, PROP_ScrollValueMax );
@@ -2350,7 +2398,7 @@ bool AxContainerModelBase::importBinaryModel( BinaryInputStream& rInStrm )
     aReader.skipUndefinedProperty();
     aReader.readIntProperty< sal_uInt32 >( mnBackColor );
     aReader.readIntProperty< sal_uInt32 >( mnTextColor );
-    aReader.skipIntProperty< sal_uInt32 >(); // next availbale control ID
+    aReader.skipIntProperty< sal_uInt32 >(); // next available control ID
     aReader.skipUndefinedProperty();
     aReader.skipUndefinedProperty();
     aReader.readIntProperty< sal_uInt32 >( mnFlags );
@@ -2396,7 +2444,7 @@ bool AxContainerModelBase::importClassTable( BinaryInputStream& rInStrm, AxClass
         sal_uInt16 nCount = rInStrm.readuInt16();
         for( sal_uInt16 nIndex = 0; bValid && (nIndex < nCount); ++nIndex )
         {
-            orClassTable.push_back( OUString() );
+            orClassTable.emplace_back( );
             AxBinaryPropertyReader aReader( rInStrm );
             aReader.readGuidProperty( orClassTable.back() );
             aReader.skipGuidProperty(); // source interface GUID
@@ -2524,30 +2572,32 @@ HtmlSelectModel::HtmlSelectModel()
 bool
 HtmlSelectModel::importBinaryModel( BinaryInputStream& rInStrm )
 {
+    if (rInStrm.size()<=0)
+        return true;
+
     OUString sStringContents = rInStrm.readUnicodeArray( rInStrm.size() );
 
-    OUString data = sStringContents;
-
     // replace crlf with lf
-    data = data.replaceAll( "\x0D\x0A" , "\x0A" );
+    OUString data = sStringContents.replaceAll( "\x0D\x0A" , "\x0A" );
+
     std::vector< OUString > listValues;
     std::vector< sal_Int16 > selectedIndices;
 
     // Ultra hacky parser for the info
-    sal_Int32 nTokenCount = comphelper::string::getTokenCount(data, '\n');
-
-    for ( sal_Int32 nToken = 0; nToken < nTokenCount; ++nToken )
+    sal_Int32 nLineIdx {0};
+    // first line will tell us if multiselect is enabled
+    if (data.getToken( 0, '\n', nLineIdx )=="<SELECT MULTIPLE")
+        mnMultiSelect = AX_SELECTION_MULTI;
+    // skip first and last lines, no data there
+    if (nLineIdx>0)
     {
-        OUString sLine( data.getToken( nToken, '\n' ) );
-        if ( !nToken ) // first line will tell us if multiselect is enabled
+        for (;;)
         {
-            if ( sLine == "<SELECT MULTIPLE" )
-                mnMultiSelect = AX_SELECTION_MULTI;
-        }
-        // skip first and last lines, no data there
-        else if ( nToken < nTokenCount - 1)
-        {
-            if ( comphelper::string::getTokenCount(sLine, '>') )
+            OUString sLine( data.getToken( 0, '\n', nLineIdx ) );
+            if (nLineIdx<0)
+                break;  // skip last line
+
+            if ( !sLine.isEmpty() )
             {
                 OUString displayValue  = sLine.getToken( 1, '>' );
                 if ( displayValue.getLength() )
@@ -2569,15 +2619,15 @@ HtmlSelectModel::importBinaryModel( BinaryInputStream& rInStrm )
     {
         msListData.realloc( listValues.size() );
         sal_Int32 index = 0;
-        for( std::vector< OUString >::iterator it = listValues.begin(); it != listValues.end(); ++it, ++index )
-             msListData[ index ] = *it;
+        for (auto const& listValue : listValues)
+             msListData[ index++ ] = listValue;
     }
     if ( !selectedIndices.empty() )
     {
         msIndices.realloc( selectedIndices.size() );
         sal_Int32 index = 0;
-        for( std::vector< sal_Int16 >::iterator it = selectedIndices.begin(); it != selectedIndices.end(); ++it, ++index )
-             msIndices[ index ] = *it;
+        for (auto const& selectedIndice : selectedIndices)
+             msIndices[ index++ ] = selectedIndice;
     }
     return true;
 }
@@ -2638,12 +2688,12 @@ ControlModelBase* EmbeddedControl::createModelFromGuid( const OUString& rClassId
 
 OUString EmbeddedControl::getServiceName() const
 {
-    return mxModel.get() ? mxModel->getServiceName() : OUString();
+    return mxModel ? mxModel->getServiceName() : OUString();
 }
 
 bool EmbeddedControl::convertProperties( const Reference< XControlModel >& rxCtrlModel, const ControlConverter& rConv ) const
 {
-    if( mxModel.get() && rxCtrlModel.is() && !maName.isEmpty() )
+    if( mxModel && rxCtrlModel.is() && !maName.isEmpty() )
     {
         PropertyMap aPropMap;
         aPropMap.setProperty( PROP_Name, maName );
@@ -2651,9 +2701,9 @@ bool EmbeddedControl::convertProperties( const Reference< XControlModel >& rxCtr
         {
             aPropMap.setProperty( PROP_GenerateVbaEvents, true);
         }
-        catch (const Exception& e)
+        catch (const Exception&)
         {
-            SAL_WARN("oox", "exception: " << e.Message);
+            TOOLS_WARN_EXCEPTION("oox", "");
         }
         mxModel->convertProperties( aPropMap, rConv );
         PropertySet aPropSet( rxCtrlModel );
@@ -2665,7 +2715,7 @@ bool EmbeddedControl::convertProperties( const Reference< XControlModel >& rxCtr
 
 void EmbeddedControl::convertFromProperties( const Reference< XControlModel >& rxCtrlModel, const ControlConverter& rConv )
 {
-    if( mxModel.get() && rxCtrlModel.is() && !maName.isEmpty() )
+    if( mxModel && rxCtrlModel.is() && !maName.isEmpty() )
     {
         PropertySet aPropSet( rxCtrlModel );
         aPropSet.getProperty( maName, PROP_Name );
@@ -2700,9 +2750,9 @@ Reference< XControlModel > EmbeddedForm::convertAndInsert( const EmbeddedControl
         rnCtrlIndex = xFormIC->getCount();
         xFormIC->insertByIndex( rnCtrlIndex, Any( xFormComp ) );
     }
-    catch (const Exception& e)
+    catch (const Exception&)
     {
-        SAL_WARN("oox", "exception creating Control: " << e.Message);
+        TOOLS_WARN_EXCEPTION("oox", "exception creating Control");
     }
     return xRet;
 }
@@ -2726,9 +2776,9 @@ Reference< XIndexContainer > const & EmbeddedForm::createXForm()
                 mxFormIC.set( xForm, UNO_QUERY_THROW );
             }
         }
-        catch (const Exception& e)
+        catch (const Exception&)
         {
-            SAL_WARN("oox", "exception creating Form: " << e.Message);
+            TOOLS_WARN_EXCEPTION("oox", "exception creating Form");
         }
         // always clear the forms supplier to not try to create the form again
         mxFormsSupp.clear();
@@ -2736,7 +2786,6 @@ Reference< XIndexContainer > const & EmbeddedForm::createXForm()
     return mxFormIC;
 }
 
-} // namespace ole
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

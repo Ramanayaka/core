@@ -24,9 +24,6 @@
 
 #include "resource.h"
 
-#pragma warning (push,1)
-#pragma warning (disable:4265)
-
 #include <ExDispID.h>
 #include <ExDisp.h>
 #include <shlguid.h>
@@ -37,12 +34,10 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnon-virtual-dtor"
 #endif
-#include "so_activex.h"
+#include <so_activex.h>
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
-
-#pragma warning (pop)
 
 class SODispatchInterceptor;
 
@@ -90,7 +85,7 @@ protected:
     OLECHAR const *         mCurFileUrl;
     BOOL                    mbLoad;
     BOOL                    mbViewOnly;
-    WNDCLASS                mPWinClass;
+    WNDCLASSW               mPWinClass;
     HWND                    mParentWin;
     HWND                    mOffWin;
 
@@ -100,7 +95,7 @@ protected:
     BOOL                    mbReadyForActivation;
     CComPtr<IDispatch>      mpDispTempFile;
 
-    BOOL                    mbDrawLocked;
+    bool                    mbDrawLocked;
 
 public:
     CSOActiveX();
@@ -202,7 +197,7 @@ public:
     HRESULT GetUnoStruct( OLECHAR const * sStructName, CComPtr<IDispatch>& pdispResult );
     HRESULT LoadURLToFrame();
     HRESULT CallDispatchMethod( OLECHAR const * sUrl, CComVariant* sArgNames, CComVariant* sArgVal, unsigned int count );
-    HRESULT CallLoadComponentFromURL1PBool( OLECHAR* sUrl, OLECHAR* sArgName, BOOL sArgVal );
+    HRESULT CallLoadComponentFromURL1PBool( OLECHAR const * sUrl, OLECHAR const * sArgName, BOOL sArgVal );
     HRESULT GetUrlStruct( OLECHAR const * sUrl, CComPtr<IDispatch>& pdispUrl );
     HRESULT Cleanup();
     HRESULT TerminateOffice();

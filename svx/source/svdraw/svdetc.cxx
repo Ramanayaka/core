@@ -17,27 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "editeng/forbiddencharacterstable.hxx"
-#include "officecfg/Office/Common.hxx"
-#include <tools/resmgr.hxx>
+#include <officecfg/Office/Common.hxx>
+#include <svtools/colorcfg.hxx>
 #include <svx/svdetc.hxx>
+#include <svx/svdedxv.hxx>
 #include <svx/svdmodel.hxx>
-#include <svx/svdtrans.hxx>
-#include "svdglob.hxx"
-#include "svx/svdstr.hrc"
-#include "svx/svdviter.hxx"
-#include <svx/svdview.hxx>
 #include <svx/svdoutl.hxx>
 #include <vcl/bitmapaccess.hxx>
-#include <editeng/editdata.hxx>
 #include <editeng/eeitem.hxx>
 #include <svl/itemset.hxx>
 #include <svl/whiter.hxx>
-#include "editeng/fontitem.hxx"
-#include <editeng/colritem.hxx>
-#include <editeng/fhgtitem.hxx>
 #include <svx/xgrad.hxx>
 #include <svx/xfillit0.hxx>
 #include <svx/xflclit.hxx>
@@ -46,9 +37,9 @@
 #include <svx/xflgrit.hxx>
 #include <svx/svdoole2.hxx>
 #include <svl/itempool.hxx>
+#include <tools/debug.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/localedatawrapper.hxx>
-#include <i18nlangtag/lang.h>
 #include <unotools/syslocale.hxx>
 #include <svx/xflbckit.hxx>
 #include <svx/extrusionbar.hxx>
@@ -57,24 +48,21 @@
 #include <vcl/settings.hxx>
 #include <svx/sdr/contact/viewcontact.hxx>
 #include <svx/svdpage.hxx>
+#include <svx/svdpagv.hxx>
 #include <svx/svdotable.hxx>
 #include <svx/sdrhittesthelper.hxx>
 
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
-#include <com/sun/star/embed/EmbedStates.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 
 using namespace ::com::sun::star;
 
 // Global data of the DrawingEngine
-SdrGlobalData::SdrGlobalData() :
-    pSysLocale(nullptr),
-    pLocaleData(nullptr),
-    pDefaults(nullptr),
-    pResMgr(nullptr)
+SdrGlobalData::SdrGlobalData()
+    : pSysLocale(nullptr)
+    , pLocaleData(nullptr)
 {
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
     {
         svx::ExtrusionBar::RegisterInterface();
         svx::FontworkBar::RegisterInterface();
@@ -106,24 +94,22 @@ SdrGlobalData & GetSdrGlobalData() {
 
 OLEObjCache::OLEObjCache()
 {
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
         nSize = officecfg::Office::Common::Cache::DrawingEngine::OLE_Objects::get();
     else
         nSize = 100;
-    pTimer = new AutoTimer( "svx OLEObjCache pTimer UnloadCheck" );
+    pTimer.reset( new AutoTimer( "svx OLEObjCache pTimer UnloadCheck" ) );
     pTimer->SetInvokeHandler( LINK(this, OLEObjCache, UnloadCheckHdl) );
     pTimer->SetTimeout(20000);
-    pTimer->Invoke();
-    pTimer->Start();
+    pTimer->SetStatic();
 }
 
 OLEObjCache::~OLEObjCache()
 {
     pTimer->Stop();
-    delete pTimer;
 }
 
-void OLEObjCache::UnloadOnDemand()
+IMPL_LINK_NOARG(OLEObjCache, UnloadCheckHdl, Timer*, void)
 {
     if (nSize >= maObjs.size())
         return;
@@ -191,11 +177,12 @@ void OLEObjCache::InsertObj(SdrOle2Obj* pObj)
     // insert object into first position
     maObjs.insert(maObjs.begin(), pObj);
 
-    if ( !bFound )
-    {
-        // a new object was inserted, recalculate the cache
-        UnloadOnDemand();
-    }
+    // if a new object was inserted, recalculate the cache
+    if (!bFound)
+        pTimer->Invoke();
+
+    if (!bFound || !pTimer->IsActive())
+        pTimer->Start();
 }
 
 void OLEObjCache::RemoveObj(SdrOle2Obj* pObj)
@@ -203,6 +190,8 @@ void OLEObjCache::RemoveObj(SdrOle2Obj* pObj)
     std::vector<SdrOle2Obj*>::iterator it = std::find(maObjs.begin(), maObjs.end(), pObj);
     if (it != maObjs.end())
         maObjs.erase(it);
+    if (maObjs.empty())
+        pTimer->Stop();
 }
 
 size_t OLEObjCache::size() const
@@ -244,36 +233,30 @@ bool OLEObjCache::UnloadObj(SdrOle2Obj* pObj)
     return bUnloaded;
 }
 
-IMPL_LINK_NOARG(OLEObjCache, UnloadCheckHdl, Timer*, void)
-{
-    UnloadOnDemand();
-}
-
-
 bool GetDraftFillColor(const SfxItemSet& rSet, Color& rCol)
 {
-    drawing::FillStyle eFill=static_cast<const XFillStyleItem&>(rSet.Get(XATTR_FILLSTYLE)).GetValue();
+    drawing::FillStyle eFill=rSet.Get(XATTR_FILLSTYLE).GetValue();
     bool bRetval = false;
 
     switch(eFill)
     {
         case drawing::FillStyle_SOLID:
         {
-            rCol = static_cast<const XFillColorItem&>(rSet.Get(XATTR_FILLCOLOR)).GetColorValue();
+            rCol = rSet.Get(XATTR_FILLCOLOR).GetColorValue();
             bRetval = true;
 
             break;
         }
         case drawing::FillStyle_HATCH:
         {
-            Color aCol1(static_cast<const XFillHatchItem&>(rSet.Get(XATTR_FILLHATCH)).GetHatchValue().GetColor());
+            Color aCol1(rSet.Get(XATTR_FILLHATCH).GetHatchValue().GetColor());
             Color aCol2(COL_WHITE);
 
             // when hatched background is activated, use object fill color as hatch color
-            bool bFillHatchBackground = static_cast<const XFillBackgroundItem&>(rSet.Get(XATTR_FILLBACKGROUND)).GetValue();
+            bool bFillHatchBackground = rSet.Get(XATTR_FILLBACKGROUND).GetValue();
             if(bFillHatchBackground)
             {
-                aCol2 = static_cast<const XFillColorItem&>(rSet.Get(XATTR_FILLCOLOR)).GetColorValue();
+                aCol2 = rSet.Get(XATTR_FILLCOLOR).GetColorValue();
             }
 
             const basegfx::BColor aAverageColor(basegfx::average(aCol1.getBColor(), aCol2.getBColor()));
@@ -283,7 +266,7 @@ bool GetDraftFillColor(const SfxItemSet& rSet, Color& rCol)
             break;
         }
         case drawing::FillStyle_GRADIENT: {
-            const XGradient& rGrad=static_cast<const XFillGradientItem&>(rSet.Get(XATTR_FILLGRADIENT)).GetGradientValue();
+            const XGradient& rGrad=rSet.Get(XATTR_FILLGRADIENT).GetGradientValue();
             Color aCol1(rGrad.GetStartColor());
             Color aCol2(rGrad.GetEndColor());
             const basegfx::BColor aAverageColor(basegfx::average(aCol1.getBColor(), aCol2.getBColor()));
@@ -294,25 +277,28 @@ bool GetDraftFillColor(const SfxItemSet& rSet, Color& rCol)
         }
         case drawing::FillStyle_BITMAP:
         {
-            Bitmap aBitmap(static_cast<const XFillBitmapItem&>(rSet.Get(XATTR_FILLBITMAP)).GetGraphicObject().GetGraphic().GetBitmapEx().GetBitmap());
+            Bitmap aBitmap(rSet.Get(XATTR_FILLBITMAP).GetGraphicObject().GetGraphic().GetBitmapEx().GetBitmap());
             const Size aSize(aBitmap.GetSizePixel());
             const sal_uInt32 nWidth = aSize.Width();
             const sal_uInt32 nHeight = aSize.Height();
+            if (nWidth <= 0 || nHeight <= 0)
+                return bRetval;
+
             Bitmap::ScopedReadAccess pAccess(aBitmap);
 
-            if(pAccess && nWidth > 0 && nHeight > 0)
+            if (pAccess)
             {
-                sal_uInt32 nRt(0L);
-                sal_uInt32 nGn(0L);
-                sal_uInt32 nBl(0L);
-                const sal_uInt32 nMaxSteps(8L);
-                const sal_uInt32 nXStep((nWidth > nMaxSteps) ? nWidth / nMaxSteps : 1L);
-                const sal_uInt32 nYStep((nHeight > nMaxSteps) ? nHeight / nMaxSteps : 1L);
-                sal_uInt32 nCount(0L);
+                sal_uInt32 nRt(0);
+                sal_uInt32 nGn(0);
+                sal_uInt32 nBl(0);
+                const sal_uInt32 nMaxSteps(8);
+                const sal_uInt32 nXStep((nWidth > nMaxSteps) ? nWidth / nMaxSteps : 1);
+                const sal_uInt32 nYStep((nHeight > nMaxSteps) ? nHeight / nMaxSteps : 1);
+                sal_uInt32 nCount(0);
 
-                for(sal_uInt32 nY(0L); nY < nHeight; nY += nYStep)
+                for(sal_uInt32 nY(0); nY < nHeight; nY += nYStep)
                 {
-                    for(sal_uInt32 nX(0L); nX < nWidth; nX += nXStep)
+                    for(sal_uInt32 nX(0); nX < nWidth; nX += nXStep)
                     {
                         const BitmapColor& rCol2 = pAccess->GetColor(nY, nX);
 
@@ -339,25 +325,10 @@ bool GetDraftFillColor(const SfxItemSet& rSet, Color& rCol)
     return bRetval;
 }
 
-SdrEngineDefaults::SdrEngineDefaults():
-    aFontColor(COL_AUTO),
-    aMapFraction(1,1)
-{
-}
-
-SdrEngineDefaults& SdrEngineDefaults::GetDefaults()
-{
-    SdrGlobalData& rGlobalData=GetSdrGlobalData();
-    if (rGlobalData.pDefaults==nullptr) {
-        rGlobalData.pDefaults=new SdrEngineDefaults;
-    }
-    return *rGlobalData.pDefaults;
-}
-
-SdrOutliner* SdrMakeOutliner(OutlinerMode nOutlinerMode, SdrModel& rModel)
+std::unique_ptr<SdrOutliner> SdrMakeOutliner(OutlinerMode nOutlinerMode, SdrModel& rModel)
 {
     SfxItemPool* pPool = &rModel.GetItemPool();
-    SdrOutliner* pOutl = new SdrOutliner( pPool, nOutlinerMode );
+    std::unique_ptr<SdrOutliner> pOutl(new SdrOutliner( pPool, nOutlinerMode ));
     pOutl->SetEditTextObjectPool( pPool );
     pOutl->SetStyleSheetPool( static_cast<SfxStyleSheetPool*>(rModel.GetStyleSheetPool()));
     pOutl->SetDefTab(rModel.GetDefaultTabulator());
@@ -372,38 +343,6 @@ std::vector<Link<SdrObjCreatorParams, SdrObject*>>& ImpGetUserMakeObjHdl()
 {
     SdrGlobalData& rGlobalData=GetSdrGlobalData();
     return rGlobalData.aUserMakeObjHdl;
-}
-
-std::vector<Link<SdrObjUserDataCreatorParams, SdrObjUserData*>>& ImpGetUserMakeObjUserDataHdl()
-{
-    SdrGlobalData& rGlobalData=GetSdrGlobalData();
-    return rGlobalData.aUserMakeObjUserDataHdl;
-}
-
-ResMgr* ImpGetResMgr()
-{
-    SdrGlobalData& rGlobalData = GetSdrGlobalData();
-
-    if(!rGlobalData.pResMgr)
-    {
-        rGlobalData.pResMgr =
-            ResMgr::CreateResMgr( "svx", Application::GetSettings().GetUILanguageTag() );
-    }
-
-    return rGlobalData.pResMgr;
-}
-
-OUString ImpGetResStr(sal_uInt16 nResID)
-{
-    return ResId(nResID, *ImpGetResMgr());
-}
-
-namespace sdr
-{
-    OUString GetResourceString(sal_uInt16 nResID)
-    {
-        return ImpGetResStr(nResID);
-    }
 }
 
 bool SearchOutlinerItems(const SfxItemSet& rSet, bool bInklDefaults, bool* pbOnlyEE)
@@ -429,7 +368,7 @@ bool SearchOutlinerItems(const SfxItemSet& rSet, bool bInklDefaults, bool* pbOnl
     return bHas;
 }
 
-sal_uInt16* RemoveWhichRange(const sal_uInt16* pOldWhichTable, sal_uInt16 nRangeBeg, sal_uInt16 nRangeEnd)
+std::unique_ptr<sal_uInt16[]> RemoveWhichRange(const sal_uInt16* pOldWhichTable, sal_uInt16 nRangeBeg, sal_uInt16 nRangeEnd)
 {
     // Six possible cases (per range):
     //         [Beg..End]          Range, to delete
@@ -455,8 +394,8 @@ sal_uInt16* RemoveWhichRange(const sal_uInt16* pOldWhichTable, sal_uInt16 nRange
         else /* nCase=6 */ nAlloc+=2;
     }
 
-    sal_uInt16* pNewWhichTable=new sal_uInt16[nAlloc];
-    memcpy(pNewWhichTable,pOldWhichTable,nAlloc*sizeof(sal_uInt16));
+    std::unique_ptr<sal_uInt16[]> pNewWhichTable(new sal_uInt16[nAlloc]);
+    memcpy(pNewWhichTable.get(), pOldWhichTable, nAlloc*sizeof(sal_uInt16));
     pNewWhichTable[nAlloc-1]=0; // in case 3, there's no 0 at the end.
     // now remove the unwanted ranges
     nNum=nAlloc-1;
@@ -571,11 +510,8 @@ namespace
         const SdrLayerIDSet& rVisLayers,
         Color& rCol)
     {
-        if(!rList.GetModel())
-            return false;
-
         bool bRet(false);
-        bool bMaster(rList.GetPage() && rList.GetPage()->IsMasterPage());
+        bool bMaster(rList.getSdrPageFromSdrObjList() && rList.getSdrPageFromSdrObjList()->IsMasterPage());
 
         for(size_t no(rList.GetObjCount()); !bRet && no > 0; )
         {
@@ -616,9 +552,6 @@ namespace
         Color& rCol,
         bool bSkipBackgroundShape)
     {
-        if(!rPage.GetModel())
-            return false;
-
         bool bRet(impGetSdrObjListFillColor(rPage, rPnt, rTextEditPV, rVisLayers, rCol));
 
         if(!bRet && !rPage.IsMasterPage())
@@ -688,8 +621,8 @@ namespace
                     {
                         // TopLeft-Spot
                         aSpotPos[i] = rArea.TopLeft();
-                        aSpotPos[i].X() += nWidth14;
-                        aSpotPos[i].Y() += nHeight14;
+                        aSpotPos[i].AdjustX(nWidth14 );
+                        aSpotPos[i].AdjustY(nHeight14 );
                     }
                     break;
 
@@ -697,8 +630,8 @@ namespace
                     {
                         // TopRight-Spot
                         aSpotPos[i] = rArea.TopLeft();
-                        aSpotPos[i].X() += nWidth34;
-                        aSpotPos[i].Y() += nHeight14;
+                        aSpotPos[i].AdjustX(nWidth34 );
+                        aSpotPos[i].AdjustY(nHeight14 );
                     }
                     break;
 
@@ -706,8 +639,8 @@ namespace
                     {
                         // BottomLeft-Spot
                         aSpotPos[i] = rArea.TopLeft();
-                        aSpotPos[i].X() += nWidth14;
-                        aSpotPos[i].Y() += nHeight34;
+                        aSpotPos[i].AdjustX(nWidth14 );
+                        aSpotPos[i].AdjustY(nHeight34 );
                     }
                     break;
 
@@ -715,14 +648,14 @@ namespace
                     {
                         // BottomRight-Spot
                         aSpotPos[i] = rArea.TopLeft();
-                        aSpotPos[i].X() += nWidth34;
-                        aSpotPos[i].Y() += nHeight34;
+                        aSpotPos[i].AdjustX(nWidth34 );
+                        aSpotPos[i].AdjustY(nHeight34 );
                     }
                     break;
 
                 }
 
-                aSpotColor[i] = Color( COL_WHITE );
+                aSpotColor[i] = COL_WHITE;
                 impGetSdrPageFillColor(rPage, aSpotPos[i], rTextEditPV, rTextEditPV.GetVisibleLayers(), aSpotColor[i], false);
             }
 
@@ -776,7 +709,7 @@ Color GetTextEditBackgroundColor(const SdrObjEditView& rView)
     if(!rStyleSettings.GetHighContrastMode())
     {
         bool bFound(false);
-        SdrTextObj* pText = dynamic_cast< SdrTextObj * >(rView.GetTextEditObject());
+        SdrTextObj* pText = rView.GetTextEditObject();
 
         if(pText && pText->IsClosedObj())
         {

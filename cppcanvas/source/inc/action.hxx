@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CPPCANVAS_SOURCE_INC_ACTION_HXX
-#define INCLUDED_CPPCANVAS_SOURCE_INC_ACTION_HXX
+#pragma once
 
 #include <sal/types.h>
-#include <memory>
 
 namespace basegfx
 {
@@ -32,9 +30,7 @@ namespace basegfx
 
 /* Definition of Action interface */
 
-namespace cppcanvas
-{
-    namespace internal
+namespace cppcanvas::internal
     {
         /** Interface for internal render actions
 
@@ -144,12 +140,6 @@ namespace cppcanvas
              */
             virtual sal_Int32 getActionCount() const = 0;
         };
-
-        typedef std::shared_ptr< Action > ActionSharedPtr;
-
-    }
 }
-
-#endif // INCLUDED_CPPCANVAS_SOURCE_INC_ACTION_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

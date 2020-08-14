@@ -20,13 +20,11 @@
 #include "xmlQuery.hxx"
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
 #include "xmlEnums.hxx"
-#include "xmlstrings.hrc"
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
+#include <strings.hxx>
+#include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 namespace dbaxml
 {
@@ -37,35 +35,26 @@ namespace dbaxml
 
 
 OXMLQuery::OXMLQuery( ODBFilter& rImport
-                ,sal_uInt16 nPrfx
-                ,const OUString& _sLocalName
-                ,const Reference< XAttributeList > & _xAttrList
+                ,const Reference< XFastAttributeList > & _xAttrList
                 ,const css::uno::Reference< css::container::XNameAccess >& _xParentContainer
                 ) :
-    OXMLTable( rImport, nPrfx, _sLocalName,_xAttrList,_xParentContainer, "com.sun.star.sdb.CommandDefinition" )
+    OXMLTable( rImport, _xAttrList,_xParentContainer, "com.sun.star.sdb.CommandDefinition" )
         ,m_bEscapeProcessing(true)
 {
-
-    OSL_ENSURE(_xAttrList.is(),"Attribute list is NULL!");
-    const SvXMLNamespaceMap& rMap = rImport.GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = rImport.GetQueryElemTokenMap();
-
-    sal_Int16 nLength = (_xAttrList.is()) ? _xAttrList->getLength() : 0;
-    for(sal_Int16 i = 0; i < nLength; ++i)
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
     {
-        OUString sLocalName;
-        OUString sAttrName = _xAttrList->getNameByIndex( i );
-        sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-        OUString sValue = _xAttrList->getValueByIndex( i );
+        OUString sValue = aIter.toString();
 
-        switch( rTokenMap.Get( nPrefix, sLocalName ) )
+        switch( aIter.getToken() & TOKEN_MASK )
         {
-            case XML_TOK_COMMAND:
+            case XML_COMMAND:
                 m_sCommand = sValue;
                 break;
-            case XML_TOK_ESCAPE_PROCESSING:
+            case XML_ESCAPE_PROCESSING:
                 m_bEscapeProcessing = sValue == "true";
                 break;
+            default:
+                SAL_WARN("dbaccess", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << "=" << aIter.toString());
         }
     }
 }
@@ -75,32 +64,25 @@ OXMLQuery::~OXMLQuery()
 
 }
 
-SvXMLImportContext* OXMLQuery::CreateChildContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const Reference< XAttributeList > & xAttrList )
+css::uno::Reference< css::xml::sax::XFastContextHandler > OXMLQuery::createFastChildContext(
+            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList )
 {
-    SvXMLImportContext* pContext = OXMLTable::CreateChildContext(nPrefix, rLocalName,xAttrList );
-    if ( !pContext )
+    css::uno::Reference< css::xml::sax::XFastContextHandler > xContext = OXMLTable::createFastChildContext(nElement,xAttrList );
+    if (!xContext)
     {
-        const SvXMLTokenMap& rTokenMap = GetOwnImport().GetQueryElemTokenMap();
-
-        switch( rTokenMap.Get( nPrefix, rLocalName ) )
+        switch( nElement & TOKEN_MASK )
         {
-            case XML_TOK_UPDATE_TABLE:
-                {
-                    GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-                    OUString s1;
-                    fillAttributes(xAttrList,s1,m_sTable,m_sSchema,m_sCatalog);
-                }
+            case XML_UPDATE_TABLE:
+            {
+                GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
+                OUString s1;
+                fillAttributes(xAttrList,s1,m_sTable,m_sSchema,m_sCatalog);
                 break;
+            }
         }
     }
 
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-
-    return pContext;
+    return xContext;
 }
 
 void OXMLQuery::setProperties(Reference< XPropertySet > & _xProp )

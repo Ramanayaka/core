@@ -23,7 +23,8 @@
 using namespace com::sun::star;
 using namespace ooo::vba;
 
-VbaButton::VbaButton( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, AbstractGeometryAttributes* pGeomHelper ) : ButtonImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+VbaButton::VbaButton( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<AbstractGeometryAttributes> pGeomHelper )
+    : ButtonImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 {
 }
 
@@ -111,18 +112,16 @@ uno::Reference< msforms::XNewFont > SAL_CALL VbaButton::getFont()
 OUString
 VbaButton::getServiceImplName()
 {
-    return OUString("VbaButton");
+    return "VbaButton";
 }
 
 uno::Sequence< OUString >
 VbaButton::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.Button";
-    }
+        "ooo.vba.msforms.Button"
+    };
     return aServiceNames;
 }
 

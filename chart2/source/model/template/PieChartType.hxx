@@ -24,11 +24,10 @@
 namespace chart
 {
 
-class PieChartType : public ChartType
+class PieChartType final: public ChartType
 {
 public:
-    explicit PieChartType(
-        css::uno::Reference< css::uno::XComponentContext > const & xContext );
+    explicit PieChartType();
     virtual ~PieChartType() override;
 
     virtual OUString SAL_CALL
@@ -38,7 +37,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL
         getSupportedServiceNames() override;
 
-protected:
+private:
     explicit PieChartType( const PieChartType & rOther );
 
     // ____ XChartType ____

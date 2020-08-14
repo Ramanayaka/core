@@ -25,7 +25,7 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnon-virtual-dtor"
 #endif
-#include  "UAccCOM.h"
+#include  <UAccCOM.h>
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
@@ -40,7 +40,7 @@ using namespace com::sun::star::accessibility;
 
 
 /**
-   * enumarate method,get next element
+   * enumerate method,get next element
    * @param  cElements The number of elements to be returned.
    * @param  pvar      An array of at least size celt in which the elements are to be returned.
    * @param  pcElementFetched Pointer to the number of elements returned in rgVar, or Null
@@ -65,7 +65,7 @@ HRESULT STDMETHODCALLTYPE CEnumVariant::Next(ULONG cElements,VARIANT __RPC_FAR *
     {
         Reference< XAccessible > pRXAcc = m_pXAccessibleSelection->getSelectedAccessibleChild(l1);
         IAccessible* pChild = nullptr;
-        BOOL isGet = CMAccessible::get_IAccessibleFromXAccessible(pRXAcc.get(),
+        bool isGet = CMAccessible::get_IAccessibleFromXAccessible(pRXAcc.get(),
                         &pChild);
         if(isGet)
         {
@@ -94,7 +94,7 @@ HRESULT STDMETHODCALLTYPE CEnumVariant::Next(ULONG cElements,VARIANT __RPC_FAR *
 }
 
 /**
-   * skip the elements in the given range when enumarate elements
+   * skip the elements in the given range when enumerate elements
    * @param  cElements The number of elements to skip.
    * @return Result.
    */
@@ -103,7 +103,7 @@ HRESULT STDMETHODCALLTYPE CEnumVariant::Skip(ULONG cElements)
     SolarMutexGuard g;
 
     m_lCurrent += cElements;
-    if (m_lCurrent > (long)(m_lLBound+m_pXAccessibleSelection->getSelectedAccessibleChildCount()))
+    if (m_lCurrent > static_cast<long>(m_lLBound+m_pXAccessibleSelection->getSelectedAccessibleChildCount()))
     {
         m_lCurrent =  m_lLBound+m_pXAccessibleSelection->getSelectedAccessibleChildCount();
         return E_FAIL;
@@ -195,7 +195,7 @@ long CEnumVariant::GetCountOfElements()
    * @param.
    * @return Result
    */
-STDMETHODIMP CEnumVariant::ClearEnumeration()
+COM_DECLSPEC_NOTHROW STDMETHODIMP CEnumVariant::ClearEnumeration()
 {
     // internal IEnumVariant - no mutex meeded
 
@@ -229,7 +229,7 @@ static Reference<XAccessibleSelection> GetXAccessibleSelection(XAccessible* pXAc
 /**
    * Put valid UNO XAccessible interface.
    * @param pXSelection XAccessible interface.
-   * @return Result..
+   * @return Result...
    */
 STDMETHODIMP CEnumVariant::PutSelection(hyper pXSelection)
 {

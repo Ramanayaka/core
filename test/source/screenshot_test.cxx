@@ -1,4 +1,4 @@
-    /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -7,16 +7,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "test/screenshot_test.hxx"
+#include <sal/config.h>
 
-#include <com/sun/star/util/XCloseable.hpp>
+#include <iostream>
+
+#include <test/screenshot_test.hxx>
+
 #include <com/sun/star/frame/Desktop.hpp>
 #include <comphelper/processfactory.hxx>
 #include <vcl/abstdlg.hxx>
 #include <vcl/pngwrite.hxx>
 #include <vcl/svapp.hxx>
-#include <unotools/configmgr.hxx>
-#include <unotools/syslocaleoptions.hxx>
+#include <vcl/virdev.hxx>
+#include <vcl/weld.hxx>
+#include <tools/stream.hxx>
 
 
 namespace {
@@ -35,12 +39,15 @@ namespace {
 using namespace css;
 using namespace css::uno;
 
+    /// the target directory for screenshots
+constexpr OUStringLiteral g_aScreenshotDirectory("screenshots");
+
 ScreenshotTest::ScreenshotTest()
-:   m_aScreenshotDirectory("/screenshots/"),
-    maKnownDialogs()
+    : maKnownDialogs()
+    , maParent(nullptr, "vcl/ui/screenshotparent.ui", "ScreenShot")
+    , mxParentWidget(maParent.getDialog()->weld_content_area())
 {
-    SvtSysLocaleOptions localeOptions;
-    maCurrentLanguage = localeOptions.GetRealUILanguageTag().getBcp47();
+    maCurrentLanguage = OUString::fromUtf8(getenv("LO_TEST_LOCALE"));
 }
 
 ScreenshotTest::~ScreenshotTest()
@@ -54,7 +61,7 @@ void ScreenshotTest::setUp()
     mxDesktop = css::frame::Desktop::create( comphelper::getComponentContext(getMultiServiceFactory()) );
     CPPUNIT_ASSERT_MESSAGE("no desktop!", mxDesktop.is());
 
-    osl::Directory::create( m_directories.getURLFromWorkdir( OUStringToOString(m_aScreenshotDirectory, RTL_TEXTENCODING_UTF8).getStr())) ;
+    osl::Directory::create( m_directories.getURLFromWorkdir( g_aScreenshotDirectory)) ;
 
     // initialize maKnownDialogs
     if (maKnownDialogs.empty())
@@ -63,26 +70,34 @@ void ScreenshotTest::setUp()
     }
 }
 
-void ScreenshotTest::implSaveScreenshot(const Bitmap& rScreenshot, const OString& rScreenshotId)
+void ScreenshotTest::implSaveScreenshot(const BitmapEx& rScreenshot, const OString& rScreenshotId)
 {
     OUString aDirname, aBasename;
     splitHelpId(rScreenshotId, aDirname, aBasename);
-    aDirname = m_aScreenshotDirectory + "/" + aDirname +
+    aDirname = g_aScreenshotDirectory + "/" + aDirname +
                ( (maCurrentLanguage == "en-US") ? OUString() : "/" + maCurrentLanguage );
 
-    osl::Directory::createPath(m_directories.getURLFromWorkdir(OUStringToOString(aDirname,RTL_TEXTENCODING_UTF8).getStr()));
+    auto const dirUrl = m_directories.getURLFromWorkdir(aDirname);
+    auto const e = osl::Directory::createPath(dirUrl);
+    if (e != osl::FileBase::E_EXIST) {
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(
+            OUStringToOString(
+                "Failed to create " + dirUrl, RTL_TEXTENCODING_UTF8).getStr(),
+            osl::FileBase::E_None, e);
+    }
 
-    OUString aFullPath = m_directories.getPathFromWorkdir(OUStringToOString(aDirname + "/" + aBasename + ".png",RTL_TEXTENCODING_UTF8).getStr());
-    SvFileStream aNew(aFullPath, StreamMode::WRITE | StreamMode::TRUNC);
-    CPPUNIT_ASSERT_MESSAGE(OUStringToOString("Failed to open " + OUString::number(sal_uInt32(aNew.GetErrorCode())), RTL_TEXTENCODING_UTF8).getStr(), aNew.IsOpen());
+    auto const pngUrl = OUString(dirUrl + "/" + aBasename + ".png");
+    SvFileStream aNew(pngUrl, StreamMode::WRITE | StreamMode::TRUNC);
+    CPPUNIT_ASSERT_MESSAGE(OUStringToOString("Failed to open <" + pngUrl + ">: " + OUString::number(sal_uInt32(aNew.GetErrorCode())), RTL_TEXTENCODING_UTF8).getStr(), aNew.IsOpen());
 
+    std::cout << "saving " << pngUrl << ":\n";
     vcl::PNGWriter aPNGWriter(rScreenshot);
     aPNGWriter.Write(aNew);
 }
 
-void ScreenshotTest::saveScreenshot(VclAbstractDialog& rDialog)
+void ScreenshotTest::saveScreenshot(VclAbstractDialog const & rDialog)
 {
-    const Bitmap aScreenshot(rDialog.createScreenshot());
+    const BitmapEx aScreenshot(rDialog.createScreenshot());
 
     if (!aScreenshot.IsEmpty())
     {
@@ -95,18 +110,16 @@ void ScreenshotTest::saveScreenshot(VclAbstractDialog& rDialog)
     }
 }
 
-void ScreenshotTest::saveScreenshot(Dialog& rDialog)
+void ScreenshotTest::saveScreenshot(weld::Window& rDialog)
 {
-    const Bitmap aScreenshot(rDialog.createScreenshot());
+    VclPtr<VirtualDevice> xDialogSurface(rDialog.screenshot());
+    const BitmapEx aScreenshot(xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel()));
 
     if (!aScreenshot.IsEmpty())
     {
-        const OString aScreenshotId = rDialog.GetScreenshotId();
-
-        if (!aScreenshotId.isEmpty())
-        {
-            implSaveScreenshot(aScreenshot, aScreenshotId);
-        }
+        const OString aScreenshotId = rDialog.get_help_id();
+        assert(!aScreenshotId.isEmpty());
+        implSaveScreenshot(aScreenshot, aScreenshotId);
     }
 }
 
@@ -126,7 +139,7 @@ void ScreenshotTest::dumpDialogToPath(VclAbstractDialog& rDialog)
 {
     const std::vector<OString> aPageDescriptions(rDialog.getAllPageUIXMLDescriptions());
 
-    if (aPageDescriptions.size())
+    if (!aPageDescriptions.empty())
     {
         for (size_t a(0); a < aPageDescriptions.size(); a++)
         {
@@ -146,17 +159,29 @@ void ScreenshotTest::dumpDialogToPath(VclAbstractDialog& rDialog)
     }
 }
 
-void ScreenshotTest::dumpDialogToPath(Dialog& rDialog)
+void ScreenshotTest::dumpDialogToPath(weld::Builder& rBuilder)
 {
-    const std::vector<OString> aPageDescriptions(rDialog.getAllPageUIXMLDescriptions());
+    std::unique_ptr<weld::Window> xDialog(rBuilder.create_screenshot_window());
 
-    if (aPageDescriptions.size())
+    auto xTabCtrl = rBuilder.weld_notebook("tabcontrol");
+
+    int nPages = xTabCtrl ? xTabCtrl->get_n_pages() : 0;
+    if (nPages)
     {
-        for (size_t a(0); a < aPageDescriptions.size(); a++)
+        for (int i = 0; i < nPages; ++i)
         {
-            if (rDialog.selectPageByUIXMLDescription(aPageDescriptions[a]))
+            OString sIdent(xTabCtrl->get_page_ident(i));
+            xTabCtrl->set_current_page(sIdent);
+            if (xTabCtrl->get_current_page_ident() == sIdent)
             {
-                saveScreenshot(rDialog);
+                OString sOrigHelpId(xDialog->get_help_id());
+                // skip empty pages
+                weld::Container* pPage = xTabCtrl->get_page(sIdent);
+                OString sBuildableName(pPage->get_buildable_name());
+                if (!sBuildableName.isEmpty() && !sBuildableName.startsWith("__"))
+                    xDialog->set_help_id(pPage->get_help_id());
+                saveScreenshot(*xDialog);
+                xDialog->set_help_id(sOrigHelpId);
             }
             else
             {
@@ -166,41 +191,40 @@ void ScreenshotTest::dumpDialogToPath(Dialog& rDialog)
     }
     else
     {
-        saveScreenshot(rDialog);
+        saveScreenshot(*xDialog);
     }
 }
 
 void ScreenshotTest::dumpDialogToPath(const OString& rUIXMLDescription)
 {
-    if (!rUIXMLDescription.isEmpty())
-    {
-        VclPtrInstance<Dialog> pDialog(Application::GetDefDialogParent(), WB_STDDIALOG | WB_SIZEABLE, Dialog::InitFlag::NoParent);
+    if (rUIXMLDescription.isEmpty())
+        return;
 
-        {
-            VclBuilder aBuilder(pDialog, VclBuilderContainer::getUIRootDir(), OStringToOUString(rUIXMLDescription, RTL_TEXTENCODING_UTF8));
-            vcl::Window *pRoot = aBuilder.get_widget_root();
-            Dialog *pRealDialog = dynamic_cast<Dialog*>(pRoot);
-
-            if (!pRealDialog)
-            {
-                pRealDialog = pDialog;
-            }
-
-            pRealDialog->SetText(utl::ConfigManager::getProductName());
-            pRealDialog->SetStyle(pDialog->GetStyle() | WB_CLOSEABLE);
-
-            dumpDialogToPath(*pRealDialog);
-        }
-
-        pDialog.disposeAndClear();
-    }
+    bool bNonConforming = rUIXMLDescription == "modules/swriter/ui/sidebarstylepresets.ui" ||
+                          rUIXMLDescription == "modules/swriter/ui/sidebartheme.ui" ||
+                          rUIXMLDescription == "modules/swriter/ui/notebookbar.ui" ||
+                          rUIXMLDescription == "modules/scalc/ui/sidebaralignment.ui" ||
+                          rUIXMLDescription == "modules/scalc/ui/sidebarcellappearance.ui" ||
+                          rUIXMLDescription == "modules/scalc/ui/sidebarnumberformat.ui" ||
+                          rUIXMLDescription == "sfx/ui/helpbookmarkpage.ui" ||
+                          rUIXMLDescription == "sfx/ui/helpcontentpage.ui" ||
+                          rUIXMLDescription == "sfx/ui/helpindexpage.ui" ||
+                          rUIXMLDescription == "sfx/ui/helpsearchpage.ui" ||
+                          rUIXMLDescription == "sfx/ui/startcenter.ui" ||
+                          rUIXMLDescription == "svx/ui/datanavigator.ui" ||
+                          rUIXMLDescription == "svx/ui/xformspage.ui" ||
+                          rUIXMLDescription == "modules/dbreport/ui/conditionwin.ui";
+    if (bNonConforming) // skip these broken ones
+        return;
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(mxParentWidget.get(), OStringToOUString(rUIXMLDescription, RTL_TEXTENCODING_UTF8)));
+    dumpDialogToPath(*xBuilder);
 }
 
 void ScreenshotTest::processAllKnownDialogs()
 {
-    for (mapType::const_iterator i = getKnownDialogs().begin(); i != getKnownDialogs().end(); ++i)
+    for (const auto& rDialog : getKnownDialogs())
     {
-        ScopedVclPtr<VclAbstractDialog> pDlg(createDialogByID((*i).second));
+        ScopedVclPtr<VclAbstractDialog> pDlg(createDialogByID(rDialog.second));
 
         if (pDlg)
         {
@@ -211,7 +235,7 @@ void ScreenshotTest::processAllKnownDialogs()
         {
             // unknown dialog, should not happen in this basic loop.
             // You have probably forgotten to add a case and
-            // implementastion to createDialogByID, please do this
+            // implementation to createDialogByID, please do this
         }
     }
 }
@@ -228,6 +252,8 @@ void ScreenshotTest::processDialogBatchFile(const OUString& rFile)
     {
         if (!aNextUIFile.isEmpty() && !aNextUIFile.startsWith(aComment))
         {
+            std::cout << "processing " << aNextUIFile << ":\n";
+
             // first check if it's a known dialog
             ScopedVclPtr<VclAbstractDialog> pDlg(createDialogByName(aNextUIFile));
 
@@ -239,7 +265,7 @@ void ScreenshotTest::processDialogBatchFile(const OUString& rFile)
             else
             {
                 // unknown dialog, try fallback to generic created
-                // VclBuilder-generated instance. Keep in mind that Dialogs
+                // Builder-generated instance. Keep in mind that Dialogs
                 // using this mechanism will probably not be layouted well
                 // since the setup/initialization part is missing. Thus,
                 // only use for fallback when only the UI file is available.

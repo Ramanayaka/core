@@ -27,6 +27,8 @@ $(eval $(call gb_Library_use_libraries,pdfimport,\
     cppu \
     cppuhelper \
     sal \
+    tl \
+    xo \
 ))
 
 $(eval $(call gb_Library_use_externals,pdfimport,\
@@ -35,8 +37,14 @@ $(eval $(call gb_Library_use_externals,pdfimport,\
     $(if $(filter-out WNT MACOSX,$(OS)),fontconfig) \
 ))
 
+ifeq ($(COM),MSC)
 $(eval $(call gb_Library_add_defs,pdfimport, \
-    -DBOOST_SPIRIT_USE_OLD_NAMESPACE \
+    -D_SILENCE_CXX17_ALLOCATOR_VOID_DEPRECATION_WARNING \
+))
+endif
+
+$(eval $(call gb_Library_add_defs,pdfimport, \
+    -DBOOST_ALL_NO_LIB \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,pdfimport,\
@@ -49,7 +57,6 @@ $(eval $(call gb_Library_add_exception_objects,pdfimport,\
     sdext/source/pdfimport/pdfparse/pdfparse \
     sdext/source/pdfimport/sax/emitcontext \
     sdext/source/pdfimport/sax/saxattrlist \
-    sdext/source/pdfimport/services \
     sdext/source/pdfimport/tree/drawtreevisiting \
     sdext/source/pdfimport/tree/genericelements \
     sdext/source/pdfimport/tree/imagecontainer \

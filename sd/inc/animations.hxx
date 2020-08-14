@@ -20,7 +20,11 @@
 #ifndef INCLUDED_SD_INC_ANIMATIONS_HXX
 #define INCLUDED_SD_INC_ANIMATIONS_HXX
 
-#include <sddllapi.h>
+#include "sddllapi.h"
+
+#include <com/sun/star/uno/Reference.hxx>
+
+namespace com::sun::star::animations { class XAnimationNode; }
 
 namespace sd
 {
@@ -38,11 +42,9 @@ struct AfterEffectNode
         : mxNode( xNode ), mxMaster( xMaster ), mbOnNextEffect( bOnNextEffect ) {}
 };
 
-typedef std::list< AfterEffectNode > AfterEffectNodeList;
-
 /** inserts the animation node in the given AfterEffectNode at the correct position
     in the timing hierarchy of its master */
-SD_DLLPUBLIC void stl_process_after_effect_node_func(AfterEffectNode& rNode);
+SD_DLLPUBLIC void stl_process_after_effect_node_func(AfterEffectNode const & rNode);
 
 } // namespace sd;
 

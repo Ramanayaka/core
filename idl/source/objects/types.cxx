@@ -96,7 +96,7 @@ bool SvMetaAttribute::ReadSvIdl( SvIdlDataBase & rBase,
     return bOk;
 }
 
-sal_uLong SvMetaAttribute::MakeSfx( OStringBuffer& rAttrArray )
+sal_uLong SvMetaAttribute::MakeSfx( OStringBuffer& rAttrArray ) const
 {
     SvMetaType * pType = GetType();
     DBG_ASSERT( pType, "no type for attribute" );
@@ -218,12 +218,12 @@ sal_uLong SvMetaType::MakeSfx( OStringBuffer& rAttrArray )
 }
 
 void SvMetaType::WriteSfxItem(
-    const OString& rItemName, SvIdlDataBase& rBase, SvStream& rOutStm )
+    const OString& rItemName, SvIdlDataBase const & rBase, SvStream& rOutStm )
 {
     WriteStars( rOutStm );
     OString aVarName = " a" + rItemName + "_Impl";
 
-    OStringBuffer aAttrArray;
+    OStringBuffer aAttrArray(1024);
     sal_uLong   nAttrCount = MakeSfx( aAttrArray );
     OString aAttrCount( OString::number(nAttrCount));
     OString aTypeName = "SfxType" + aAttrCount;
@@ -251,7 +251,7 @@ void SvMetaType::WriteSfxItem(
 
     // write the implementation part
     rOutStm.WriteCharPtr( "#ifdef SFX_TYPEMAP" ) << endl;
-    rOutStm.WriteCharPtr( "#if !defined(_WIN32) && ((defined(DISABLE_DYNLOADING) && (defined(ANDROID) || defined(IOS) || defined(LINUX))) || STATIC_LINKING)" ) << endl;
+    rOutStm.WriteCharPtr( "#if !defined(_WIN32) && (defined(DISABLE_DYNLOADING) && (defined(ANDROID) || defined(IOS) || defined(LINUX)))" ) << endl;
     rOutStm.WriteCharPtr( "__attribute__((__weak__))" ) << endl;
     rOutStm.WriteCharPtr( "#endif" ) << endl;
     rOutStm.WriteOString( aTypeName ).WriteOString( aVarName )

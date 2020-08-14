@@ -19,24 +19,22 @@
 
 #include "BasicViewFactory.hxx"
 
-#include "framework/ViewShellWrapper.hxx"
-#include "framework/FrameworkHelper.hxx"
+#include <framework/ViewShellWrapper.hxx>
+#include <framework/FrameworkHelper.hxx>
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include "framework/Pane.hxx"
-#include "DrawController.hxx"
-#include "DrawSubController.hxx"
-#include "ViewShellBase.hxx"
-#include "ViewShellManager.hxx"
-#include "DrawDocShell.hxx"
-#include "DrawViewShell.hxx"
-#include "GraphicViewShell.hxx"
-#include "OutlineViewShell.hxx"
-#include "PresentationViewShell.hxx"
-#include "SlideSorterViewShell.hxx"
-#include "FrameView.hxx"
-#include "facreg.hxx"
-#include "Window.hxx"
+#include <framework/Pane.hxx>
+#include <DrawController.hxx>
+#include <ViewShellBase.hxx>
+#include <ViewShellManager.hxx>
+#include <DrawDocShell.hxx>
+#include <DrawViewShell.hxx>
+#include <GraphicViewShell.hxx>
+#include <OutlineViewShell.hxx>
+#include <PresentationViewShell.hxx>
+#include <SlideSorterViewShell.hxx>
+#include <FrameView.hxx>
+#include <Window.hxx>
 
 #include <sfx2/viewfrm.hxx>
 #include <vcl/wrkwin.hxx>
@@ -50,7 +48,7 @@ using namespace ::com::sun::star::drawing::framework;
 
 using ::sd::framework::FrameworkHelper;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 //===== ViewDescriptor ========================================================
 
@@ -90,7 +88,7 @@ BasicViewFactory::BasicViewFactory ()
       mpBase(nullptr),
       mpFrameView(nullptr),
       mpWindow(VclPtr<WorkWindow>::Create(nullptr,WB_STDWORK)),
-      mpViewCache(new ViewCache()),
+      mpViewCache(std::make_shared<ViewCache>()),
       mxLocalPane(new Pane(Reference<XResourceId>(), mpWindow.get()))
 {
 }
@@ -109,20 +107,19 @@ void SAL_CALL BasicViewFactory::disposing()
     }
 
     // Release the view cache.
-    ViewShellContainer::const_iterator iView;
-    for (iView=mpViewCache->begin(); iView!=mpViewCache->end(); ++iView)
+    for (const auto& rxView : *mpViewCache)
     {
-        ReleaseView(*iView, true);
+        ReleaseView(rxView, true);
     }
 
     // Release the view shell container.  At this point no one other than us
     // should hold references to the view shells (at the moment this is a
-    // trivial requirement, because no one other then us holds a shared
+    // trivial requirement, because no one other than us holds a shared
     // pointer).
     //    ViewShellContainer::const_iterator iView;
-    for (iView=mpViewShellContainer->begin(); iView!=mpViewShellContainer->end(); ++iView)
+    for (const auto& rxView : *mpViewShellContainer)
     {
-        OSL_ASSERT((*iView)->mpViewShell.unique());
+        OSL_ASSERT(rxView->mpViewShell.use_count() == 1);
     }
     mpViewShellContainer.reset();
 }
@@ -162,12 +159,12 @@ Reference<XResource> SAL_CALL BasicViewFactory::createResource (
         std::shared_ptr<ViewDescriptor> pDescriptor (GetViewFromCache(rxViewId, xPane));
 
         // When the requested view is not in the cache then create a new view.
-        if (pDescriptor.get() == nullptr)
+        if (pDescriptor == nullptr)
         {
             pDescriptor = CreateView(rxViewId, *pFrame, *pWindow, xPane, pFrameView, bIsCenterPane);
         }
 
-        if (pDescriptor.get() != nullptr)
+        if (pDescriptor != nullptr)
             xView = pDescriptor->mxView;
 
         mpViewShellContainer->push_back(pDescriptor);
@@ -186,89 +183,87 @@ void SAL_CALL BasicViewFactory::releaseResource (const Reference<XResource>& rxV
     if ( ! rxView.is())
         throw lang::IllegalArgumentException();
 
-    if (rxView.is() && mpBase!=nullptr)
+    if (!rxView.is() || !mpBase)
+        return;
+
+    ViewShellContainer::iterator iViewShell (
+        ::std::find_if(
+            mpViewShellContainer->begin(),
+            mpViewShellContainer->end(),
+            [&] (std::shared_ptr<ViewDescriptor> const& pVD) {
+                return ViewDescriptor::CompareView(pVD, rxView);
+            } ));
+    if (iViewShell == mpViewShellContainer->end())
     {
-        ViewShellContainer::iterator iViewShell (
-            ::std::find_if(
-                mpViewShellContainer->begin(),
-                mpViewShellContainer->end(),
-                [&] (std::shared_ptr<ViewDescriptor> const& pVD) {
-                    return ViewDescriptor::CompareView(pVD, rxView);
-                } ));
-        if (iViewShell != mpViewShellContainer->end())
-        {
-            std::shared_ptr<ViewShell> pViewShell ((*iViewShell)->mpViewShell);
-
-            if ((*iViewShell)->mxViewId->isBoundToURL(
-                FrameworkHelper::msCenterPaneURL, AnchorBindingMode_DIRECT))
-            {
-                // Obtain a pointer to and connect to the frame view of the
-                // view.  The next view, that is created, will be
-                // initialized with this frame view.
-                if (mpFrameView == nullptr)
-                {
-                    mpFrameView = pViewShell->GetFrameView();
-                    if (mpFrameView)
-                        mpFrameView->Connect();
-                }
-
-                // With the view in the center pane the sub controller is
-                // released, too.
-                mpBase->GetDrawController().SetSubController(
-                    Reference<drawing::XDrawSubController>());
-
-                SfxViewShell* pSfxViewShell = pViewShell->GetViewShell();
-                if (pSfxViewShell != nullptr)
-                    pSfxViewShell->DisconnectAllClients();
-            }
-
-            ReleaseView(*iViewShell, false);
-
-            mpViewShellContainer->erase(iViewShell);
-        }
-        else
-        {
-            throw lang::IllegalArgumentException();
-        }
+        throw lang::IllegalArgumentException();
     }
+
+    std::shared_ptr<ViewShell> pViewShell ((*iViewShell)->mpViewShell);
+
+    if ((*iViewShell)->mxViewId->isBoundToURL(
+        FrameworkHelper::msCenterPaneURL, AnchorBindingMode_DIRECT))
+    {
+        // Obtain a pointer to and connect to the frame view of the
+        // view.  The next view, that is created, will be
+        // initialized with this frame view.
+        if (mpFrameView == nullptr)
+        {
+            mpFrameView = pViewShell->GetFrameView();
+            if (mpFrameView)
+                mpFrameView->Connect();
+        }
+
+        // With the view in the center pane the sub controller is
+        // released, too.
+        mpBase->GetDrawController().SetSubController(
+            Reference<drawing::XDrawSubController>());
+
+        SfxViewShell* pSfxViewShell = pViewShell->GetViewShell();
+        if (pSfxViewShell != nullptr)
+            pSfxViewShell->DisconnectAllClients();
+    }
+
+    ReleaseView(*iViewShell, false);
+
+    mpViewShellContainer->erase(iViewShell);
 }
 
 void SAL_CALL BasicViewFactory::initialize (const Sequence<Any>& aArguments)
 {
-    if (aArguments.getLength() > 0)
+    if (!aArguments.hasElements())
+        return;
+
+    try
     {
-        try
-        {
-            // Get the XController from the first argument.
-            Reference<frame::XController> xController (aArguments[0], UNO_QUERY_THROW);
+        // Get the XController from the first argument.
+        Reference<frame::XController> xController (aArguments[0], UNO_QUERY_THROW);
 
-            // Tunnel through the controller to obtain a ViewShellBase.
-            Reference<lang::XUnoTunnel> xTunnel (xController, UNO_QUERY_THROW);
-            ::sd::DrawController* pController = reinterpret_cast<sd::DrawController*>(
-                xTunnel->getSomething(sd::DrawController::getUnoTunnelId()));
-            if (pController != nullptr)
-                mpBase = pController->GetViewShellBase();
+        // Tunnel through the controller to obtain a ViewShellBase.
+        Reference<lang::XUnoTunnel> xTunnel (xController, UNO_QUERY_THROW);
+        ::sd::DrawController* pController = reinterpret_cast<sd::DrawController*>(
+            xTunnel->getSomething(sd::DrawController::getUnoTunnelId()));
+        if (pController != nullptr)
+            mpBase = pController->GetViewShellBase();
 
-            // Register the factory for its supported views.
-            Reference<XControllerManager> xCM (xController,UNO_QUERY_THROW);
-            mxConfigurationController = xCM->getConfigurationController();
-            if ( ! mxConfigurationController.is())
-                throw RuntimeException();
-            mxConfigurationController->addResourceFactory(FrameworkHelper::msImpressViewURL, this);
-            mxConfigurationController->addResourceFactory(FrameworkHelper::msDrawViewURL, this);
-            mxConfigurationController->addResourceFactory(FrameworkHelper::msOutlineViewURL, this);
-            mxConfigurationController->addResourceFactory(FrameworkHelper::msNotesViewURL, this);
-            mxConfigurationController->addResourceFactory(FrameworkHelper::msHandoutViewURL, this);
-            mxConfigurationController->addResourceFactory(FrameworkHelper::msPresentationViewURL, this);
-            mxConfigurationController->addResourceFactory(FrameworkHelper::msSlideSorterURL, this);
-        }
-        catch (RuntimeException&)
-        {
-            mpBase = nullptr;
-            if (mxConfigurationController.is())
-                mxConfigurationController->removeResourceFactoryForReference(this);
-            throw;
-        }
+        // Register the factory for its supported views.
+        Reference<XControllerManager> xCM (xController,UNO_QUERY_THROW);
+        mxConfigurationController = xCM->getConfigurationController();
+        if ( ! mxConfigurationController.is())
+            throw RuntimeException();
+        mxConfigurationController->addResourceFactory(FrameworkHelper::msImpressViewURL, this);
+        mxConfigurationController->addResourceFactory(FrameworkHelper::msDrawViewURL, this);
+        mxConfigurationController->addResourceFactory(FrameworkHelper::msOutlineViewURL, this);
+        mxConfigurationController->addResourceFactory(FrameworkHelper::msNotesViewURL, this);
+        mxConfigurationController->addResourceFactory(FrameworkHelper::msHandoutViewURL, this);
+        mxConfigurationController->addResourceFactory(FrameworkHelper::msPresentationViewURL, this);
+        mxConfigurationController->addResourceFactory(FrameworkHelper::msSlideSorterURL, this);
+    }
+    catch (RuntimeException&)
+    {
+        mpBase = nullptr;
+        if (mxConfigurationController.is())
+            mxConfigurationController->removeResourceFactoryForReference(this);
+        throw;
     }
 }
 
@@ -280,7 +275,7 @@ std::shared_ptr<BasicViewFactory::ViewDescriptor> BasicViewFactory::CreateView (
     FrameView* pFrameView,
     const bool bIsCenterPane)
 {
-    std::shared_ptr<ViewDescriptor> pDescriptor (new ViewDescriptor);
+    auto pDescriptor = std::make_shared<ViewDescriptor>();
 
     pDescriptor->mpViewShell = CreateViewShell(
         rxViewId,
@@ -289,7 +284,7 @@ std::shared_ptr<BasicViewFactory::ViewDescriptor> BasicViewFactory::CreateView (
         pFrameView);
     pDescriptor->mxViewId = rxViewId;
 
-    if (pDescriptor->mpViewShell.get() != nullptr)
+    if (pDescriptor->mpViewShell != nullptr)
     {
         pDescriptor->mpViewShell->Init(bIsCenterPane);
         mpBase->GetViewShellManager()->ActivateViewShell(pDescriptor->mpViewShell.get());
@@ -324,65 +319,63 @@ std::shared_ptr<ViewShell> BasicViewFactory::CreateViewShell (
 {
     std::shared_ptr<ViewShell> pViewShell;
     const OUString& rsViewURL (rxViewId->getResourceURL());
-    if (rsViewURL.equals(FrameworkHelper::msImpressViewURL))
+    if (rsViewURL == FrameworkHelper::msImpressViewURL)
     {
-        pViewShell.reset(
-            new DrawViewShell(
+        pViewShell =
+            std::make_shared<DrawViewShell>(
                 *mpBase,
                 &rWindow,
                 PageKind::Standard,
-                pFrameView));
+                pFrameView);
         pViewShell->GetContentWindow()->set_id("impress_win");
     }
-    else if (rsViewURL.equals(FrameworkHelper::msDrawViewURL))
+    else if (rsViewURL == FrameworkHelper::msDrawViewURL)
     {
-        pViewShell.reset(
-            new GraphicViewShell (
-                *mpBase,
-                &rWindow,
-                pFrameView));
+        pViewShell = std::shared_ptr<GraphicViewShell>(
+                new GraphicViewShell(*mpBase, &rWindow, pFrameView),
+                o3tl::default_delete<GraphicViewShell>());
         pViewShell->GetContentWindow()->set_id("draw_win");
     }
-    else if (rsViewURL.equals(FrameworkHelper::msOutlineViewURL))
+    else if (rsViewURL == FrameworkHelper::msOutlineViewURL)
     {
-        pViewShell.reset(
-            new OutlineViewShell (
+        pViewShell =
+            std::make_shared<OutlineViewShell>(
                 &rFrame,
                 *mpBase,
                 &rWindow,
-                pFrameView));
+                pFrameView);
         pViewShell->GetContentWindow()->set_id("outline_win");
     }
-    else if (rsViewURL.equals(FrameworkHelper::msNotesViewURL))
+    else if (rsViewURL == FrameworkHelper::msNotesViewURL)
     {
-        pViewShell.reset(
-            new DrawViewShell(
+        pViewShell =
+            std::make_shared<DrawViewShell>(
                 *mpBase,
                 &rWindow,
                 PageKind::Notes,
-                pFrameView));
+                pFrameView);
         pViewShell->GetContentWindow()->set_id("notes_win");
     }
-    else if (rsViewURL.equals(FrameworkHelper::msHandoutViewURL))
+    else if (rsViewURL == FrameworkHelper::msHandoutViewURL)
     {
-        pViewShell.reset(
-            new DrawViewShell(
+        pViewShell =
+            std::make_shared<DrawViewShell>(
                 *mpBase,
                 &rWindow,
                 PageKind::Handout,
-                pFrameView));
+                pFrameView);
         pViewShell->GetContentWindow()->set_id("handout_win");
     }
-    else if (rsViewURL.equals(FrameworkHelper::msPresentationViewURL))
+    else if (rsViewURL == FrameworkHelper::msPresentationViewURL)
     {
-        pViewShell.reset(
-            new PresentationViewShell(
+        pViewShell =
+            std::make_shared<PresentationViewShell>(
                 *mpBase,
                 &rWindow,
-                pFrameView));
+                pFrameView);
         pViewShell->GetContentWindow()->set_id("presentation_win");
     }
-    else if (rsViewURL.equals(FrameworkHelper::msSlideSorterURL))
+    else if (rsViewURL == FrameworkHelper::msSlideSorterURL)
     {
         pViewShell = ::sd::slidesorter::SlideSorterViewShell::Create (
             &rFrame,
@@ -406,9 +399,8 @@ void BasicViewFactory::ReleaseView (
         Reference<XRelocatableResource> xResource (rpDescriptor->mxView, UNO_QUERY);
         if (xResource.is())
         {
-            Reference<XResource> xNewAnchor (mxLocalPane, UNO_QUERY);
-            if (xNewAnchor.is())
-                if (xResource->relocateToAnchor(xNewAnchor))
+            if (mxLocalPane.is())
+                if (xResource->relocateToAnchor(mxLocalPane))
                     mpViewCache->push_back(rpDescriptor);
                 else
                     bIsCacheable = false;
@@ -441,27 +433,21 @@ bool BasicViewFactory::IsCacheable (const std::shared_ptr<ViewDescriptor>& rpDes
     Reference<XRelocatableResource> xResource (rpDescriptor->mxView, UNO_QUERY);
     if (xResource.is())
     {
-        static ::std::vector<Reference<XResourceId> > s_aCacheableResources;
-        if (s_aCacheableResources.empty() )
+        static ::std::vector<Reference<XResourceId> > s_aCacheableResources = [&]()
         {
-            std::shared_ptr<FrameworkHelper> pHelper (FrameworkHelper::Instance(*mpBase));
+            ::std::vector<Reference<XResourceId> > tmp;
+            FrameworkHelper::Instance(*mpBase);
 
             // The slide sorter and the task panel are cacheable and relocatable.
-            s_aCacheableResources.push_back(FrameworkHelper::CreateResourceId(
+            tmp.push_back(FrameworkHelper::CreateResourceId(
                 FrameworkHelper::msSlideSorterURL, FrameworkHelper::msLeftDrawPaneURL));
-            s_aCacheableResources.push_back(FrameworkHelper::CreateResourceId(
+            tmp.push_back(FrameworkHelper::CreateResourceId(
                 FrameworkHelper::msSlideSorterURL, FrameworkHelper::msLeftImpressPaneURL));
-        }
+            return tmp;
+        }();
 
-        ::std::vector<Reference<XResourceId> >::const_iterator iId;
-        for (iId=s_aCacheableResources.begin(); iId!=s_aCacheableResources.end(); ++iId)
-        {
-            if ((*iId)->compareTo(rpDescriptor->mxViewId) == 0)
-            {
-                bIsCacheable = true;
-                break;
-            }
-        }
+        bIsCacheable = std::any_of(s_aCacheableResources.begin(), s_aCacheableResources.end(),
+            [&rpDescriptor](const Reference<XResourceId>& rxId) { return rxId->compareTo(rpDescriptor->mxViewId) == 0; });
     }
 
     return bIsCacheable;
@@ -474,20 +460,17 @@ std::shared_ptr<BasicViewFactory::ViewDescriptor> BasicViewFactory::GetViewFromC
     std::shared_ptr<ViewDescriptor> pDescriptor;
 
     // Search for the requested view in the cache.
-    ViewCache::iterator iEntry;
-    for (iEntry=mpViewCache->begin(); iEntry!=mpViewCache->end(); ++iEntry)
+    ViewCache::iterator iEntry = std::find_if(mpViewCache->begin(), mpViewCache->end(),
+        [&rxViewId](const ViewCache::value_type& rxEntry) { return rxEntry->mxViewId->compareTo(rxViewId) == 0; });
+    if (iEntry != mpViewCache->end())
     {
-        if ((*iEntry)->mxViewId->compareTo(rxViewId) == 0)
-        {
-            pDescriptor = *iEntry;
-            mpViewCache->erase(iEntry);
-            break;
-        }
+        pDescriptor = *iEntry;
+        mpViewCache->erase(iEntry);
     }
 
     // When the view has been found then relocate it to the given pane and
     // remove it from the cache.
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor != nullptr)
     {
         bool bRelocationSuccessfull (false);
         Reference<XRelocatableResource> xResource (pDescriptor->mxView, UNO_QUERY);
@@ -523,10 +506,10 @@ void BasicViewFactory::ActivateCenterView (
         rpDescriptor->mpViewShell->CreateSubController());
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_framework_BasicViewFactory_get_implementation(css::uno::XComponentContext*,
                                                                      css::uno::Sequence<css::uno::Any> const &)
 {

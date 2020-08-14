@@ -20,10 +20,8 @@
 #ifndef INCLUDED_VCL_UNX_GENERIC_DTRANS_X11_CLIPBOARD_HXX
 #define INCLUDED_VCL_UNX_GENERIC_DTRANS_X11_CLIPBOARD_HXX
 
-#include <X11_selection.hxx>
+#include "X11_selection.hxx"
 
-#include <com/sun/star/datatransfer/clipboard/XClipboardEx.hpp>
-#include <com/sun/star/datatransfer/clipboard/XClipboardNotifier.hpp>
 #include <com/sun/star/datatransfer/clipboard/XSystemClipboard.hpp>
 #include <cppuhelper/compbase.hxx>
 
@@ -42,12 +40,10 @@ namespace x11 {
         css::uno::Reference< css::datatransfer::clipboard::XClipboardOwner > m_aOwner;
 
         rtl::Reference<SelectionManager>                        m_xSelectionManager;
-        ::std::list< css::uno::Reference< css::datatransfer::clipboard::XClipboardListener > > m_aListeners;
+        ::std::vector< css::uno::Reference< css::datatransfer::clipboard::XClipboardListener > > m_aListeners;
         Atom                                                    m_aSelection;
 
         X11Clipboard( SelectionManager& rManager, Atom aSelection );
-
-    protected:
 
         friend class SelectionManager;
 
@@ -107,7 +103,7 @@ namespace x11 {
         virtual css::uno::Reference< css::uno::XInterface > getReference() throw() override;
     };
 
-    css::uno::Sequence< OUString > SAL_CALL X11Clipboard_getSupportedServiceNames();
+    css::uno::Sequence< OUString > X11Clipboard_getSupportedServiceNames();
     css::uno::Reference< css::uno::XInterface > SAL_CALL X11Clipboard_createInstance(
         const css::uno::Reference< css::lang::XMultiServiceFactory > & xMultiServiceFactory);
 

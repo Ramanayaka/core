@@ -36,17 +36,13 @@ public:
     static LanguageType GetLanguageTypeAtIndex( sal_uInt32 nIndex );
 
     /** Add a language tag to the table.
-
-        @param  rString
-                UI visible description string. If empty, the rLanguageTag Bcp47
-                string placed in curly brackets is used instead, e.g. "{en-DK}"
      */
-    static sal_uInt32   AddLanguageTag( const LanguageTag& rLanguageTag, const OUString& rString );
+    static sal_uInt32   AddLanguageTag( const LanguageTag& rLanguageTag );
 };
 
 // Add LRE or RLE embedding characters to the string based on the
 // String content (see #i78466#, #i32179#)
-SVT_DLLPUBLIC const OUString ApplyLreOrRleEmbedding( const OUString &rText );
+SVT_DLLPUBLIC OUString ApplyLreOrRleEmbedding( const OUString &rText );
 
 #endif
 

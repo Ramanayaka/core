@@ -20,17 +20,14 @@
 #define INCLUDED_CHART2_SOURCE_MODEL_TEMPLATE_CHARTTYPETEMPLATE_HXX
 
 #include <cppuhelper/implbase.hxx>
-#include "DataInterpreter.hxx"
-#include "StackMode.hxx"
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <StackMode.hxx>
 #include <com/sun/star/chart2/XChartTypeTemplate.hpp>
-#include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
-#include <com/sun/star/chart2/XLegend.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
-#include <com/sun/star/chart2/XChartType.hpp>
-#include <com/sun/star/chart2/XDataSeries.hpp>
 
-#include <utility>
+namespace com::sun::star::chart2 { class XChartType; }
+namespace com::sun::star::chart2 { class XCoordinateSystemContainer; }
+namespace com::sun::star::chart2 { class XDataSeries; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace chart
 {
@@ -107,7 +104,7 @@ protected:
         const css::uno::Reference< css::chart2::XDiagram >& xDiagram ) override;
 
     /// @throws css::uno::RuntimeException
-    void SAL_CALL applyStyles(
+    void applyStyles(
         const css::uno::Reference< css::chart2::XDiagram >& xDiagram );
 
     // ____ XServiceName ____
@@ -216,7 +213,7 @@ protected:
      */
     virtual sal_Int32 getAxisCountByDimension( sal_Int32 nDimension );
 
-    /** adapt properties of exsisting axes and remove superfluous axes
+    /** adapt properties of existing axes and remove superfluous axes
     */
     virtual void adaptAxes(
         const css::uno::Sequence< css::uno::Reference< css::chart2::XCoordinateSystem > > & rCoordSys );

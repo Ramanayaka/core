@@ -17,13 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "EnhancedCustomShapeToken.hxx"
+#include <EnhancedCustomShapeToken.hxx>
 #include <osl/mutex.hxx>
 #include <unordered_map>
 #include <memory>
-#include <string.h>
 
-namespace xmloff { namespace EnhancedCustomShapeToken {
+namespace xmloff::EnhancedCustomShapeToken {
 
 typedef std::unordered_map< const char*, EnhancedCustomShapeTokenEnum, rtl::CStringHash, rtl::CStringEqual> TypeNameHashMap;
 static TypeNameHashMap* pHashMap = nullptr;
@@ -33,13 +32,17 @@ static ::osl::Mutex& getHashMapMutex()
     return s_aHashMapProtection;
 }
 
+namespace {
+
 struct TokenTable
 {
     const char*                         pS;
     EnhancedCustomShapeTokenEnum        pE;
 };
 
-static const TokenTable pTokenTableArray[] =
+}
+
+const TokenTable pTokenTableArray[] =
 {
     { "type",                               EAS_type },
     { "name",                               EAS_name },
@@ -108,6 +111,7 @@ static const TokenTable pTokenTableArray[] =
     { "MirroredY",                          EAS_MirroredY },
     { "ViewBox",                            EAS_ViewBox },
     { "TextRotateAngle",                    EAS_TextRotateAngle },
+    { "TextPreRotateAngle",                 EAS_TextPreRotateAngle },
     { "ExtrusionAllowed",                   EAS_ExtrusionAllowed },
     { "TextPathAllowed",                    EAS_TextPathAllowed },
     { "ConcentricGradientFillAllowed",      EAS_ConcentricGradientFillAllowed },
@@ -184,7 +188,7 @@ EnhancedCustomShapeTokenEnum EASGet( const OUString& rShapeType )
     int i, nLen = rShapeType.getLength();
     std::unique_ptr<char[]> pBuf(new char[ nLen + 1 ]);
     for ( i = 0; i < nLen; i++ )
-        pBuf[ i ] = (char)rShapeType[ i ];
+        pBuf[ i ] = static_cast<char>(rShapeType[ i ]);
     pBuf[ i ] = 0;
     TypeNameHashMap::iterator aHashIter( pHashMap->find( pBuf.get() ) );
     if ( aHashIter != pHashMap->end() )
@@ -195,12 +199,11 @@ EnhancedCustomShapeTokenEnum EASGet( const OUString& rShapeType )
 OUString EASGet( const EnhancedCustomShapeTokenEnum eToken )
 {
     sal_uInt32 i = eToken >= EAS_Last
-        ? (sal_uInt32)EAS_NotFound
-        : (sal_uInt32)eToken;
+        ? sal_uInt32(EAS_NotFound)
+        : static_cast<sal_uInt32>(eToken);
     return OUString::createFromAscii( pTokenTableArray[ i ].pS );
 }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,19 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/ADriver.hxx"
-#include "ado/AConnection.hxx"
-#include "ado/Awrapadox.hxx"
-#include "ado/ACatalog.hxx"
-#include "ado/Awrapado.hxx"
-#include "ado/adoimp.hxx"
+#include <ado/ADriver.hxx>
+#include <ado/AConnection.hxx>
+#include <ado/Awrapadox.hxx>
+#include <ado/ACatalog.hxx>
+#include <ado/Awrapado.hxx>
+#include <ado/adoimp.hxx>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <connectivity/dbexception.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "resource/ado_res.hrc"
+#include <o3tl/safeCoInitUninit.hxx>
+#include <strings.hrc>
 #include <objbase.h>
 
-#include "resource/sharedresources.hxx"
+#include <resource/sharedresources.hxx>
 
 #include <memory>
 
@@ -42,23 +43,17 @@ using namespace com::sun::star::sdbc;
 using namespace com::sun::star::sdbcx;
 
 
-ODriver::ODriver(const css::uno::Reference< css::lang::XMultiServiceFactory >& _xORB)
+ODriver::ODriver(const css::uno::Reference< css::uno::XComponentContext >& _xORB)
     : ODriver_BASE(m_aMutex)
-    ,m_xORB(_xORB)
+    ,m_xContext(_xORB)
+    ,mnNbCallCoInitializeExForReinit(0)
 {
-     if ( FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)) )
-     {
-         CoUninitialize();
-         int h = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-         (void)h;
-         ++h;
-     }
+     o3tl::safeCoInitializeEx(COINIT_APARTMENTTHREADED, mnNbCallCoInitializeExForReinit);
 }
 
 ODriver::~ODriver()
 {
-    CoUninitialize();
-    CoInitialize(nullptr);
+    o3tl::safeCoUninitializeReinit(COINIT_MULTITHREADED, mnNbCallCoInitializeExForReinit);
 }
 
 void ODriver::disposing()
@@ -66,9 +61,9 @@ void ODriver::disposing()
     ::osl::MutexGuard aGuard(m_aMutex);
 
 
-    for (OWeakRefArray::iterator i = m_xConnections.begin(); m_xConnections.end() != i; ++i)
+    for (auto& rxConnection : m_xConnections)
     {
-        Reference< XComponent > xComp(i->get(), UNO_QUERY);
+        Reference< XComponent > xComp(rxConnection.get(), UNO_QUERY);
         if (xComp.is())
             xComp->dispose();
     }
@@ -78,41 +73,20 @@ void ODriver::disposing()
 }
 // static ServiceInfo
 
-OUString ODriver::getImplementationName_Static(  )
+OUString ODriver::getImplementationName( )
 {
-    return OUString("com.sun.star.comp.sdbc.ado.ODriver");
+    return "com.sun.star.comp.sdbc.ado.ODriver";
 }
 
-Sequence< OUString > ODriver::getSupportedServiceNames_Static(  )
+Sequence< OUString > ODriver::getSupportedServiceNames( )
 {
-    Sequence< OUString > aSNS( 2 );
-    aSNS[0] = "com.sun.star.sdbc.Driver";
-    aSNS[1] = "com.sun.star.sdbcx.Driver";
-    return aSNS;
-}
-
-css::uno::Reference< css::uno::XInterface >  SAL_CALL connectivity::ado::ODriver_CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory)
-{
-    return *(new ODriver(_rxFactory));
-}
-
-
-OUString SAL_CALL ODriver::getImplementationName(  )
-{
-    return getImplementationName_Static();
+    return { "com.sun.star.sdbc.Driver", "com.sun.star.sdbcx.Driver" };
 }
 
 sal_Bool SAL_CALL ODriver::supportsService( const OUString& _rServiceName )
 {
     return cppu::supportsService(this, _rServiceName);
 }
-
-
-Sequence< OUString > SAL_CALL ODriver::getSupportedServiceNames(  )
-{
-    return getSupportedServiceNames_Static();
-}
-
 
 Reference< XConnection > SAL_CALL ODriver::connect( const OUString& url, const Sequence< PropertyValue >& info )
 {
@@ -176,7 +150,7 @@ Sequence< DriverPropertyInfo > SAL_CALL ODriver::getPropertyInfo( const OUString
                 ,OUString( )
                 ,Sequence< OUString > ())
         );
-        return Sequence< DriverPropertyInfo >(&aDriverInfo[0],aDriverInfo.size());
+        return Sequence< DriverPropertyInfo >(aDriverInfo.data(),aDriverInfo.size());
     }
     return Sequence< DriverPropertyInfo >();
 }
@@ -202,20 +176,16 @@ Reference< XTablesSupplier > SAL_CALL ODriver::getDataDefinitionByConnection( co
     Reference< css::lang::XUnoTunnel> xTunnel(connection,UNO_QUERY);
     if(xTunnel.is())
     {
-        OConnection* pSearchConnection = reinterpret_cast< OConnection* >( xTunnel->getSomething(OConnection::getUnoTunnelImplementationId()) );
+        OConnection* pSearchConnection = reinterpret_cast< OConnection* >( xTunnel->getSomething(OConnection::getUnoTunnelId()) );
 
-        for (OWeakRefArray::const_iterator i = m_xConnections.begin(); m_xConnections.end() != i; ++i)
-        {
-            if (static_cast<OConnection*>(Reference< XConnection >::query(i->get().get()).get()) == pSearchConnection)
-            {
-                pConnection = pSearchConnection;
-                break;
-            }
-        }
-
+        auto foundConnection = std::any_of(m_xConnections.begin(), m_xConnections.end(),
+            [&pSearchConnection](const css::uno::WeakReferenceHelper& rxConnection) {
+                return static_cast<OConnection*>(Reference< XConnection >::query(rxConnection.get().get()).get()) == pSearchConnection; });
+        if (foundConnection)
+            pConnection = pSearchConnection;
     }
 
-    Reference< XTablesSupplier > xTab = nullptr;
+    Reference< XTablesSupplier > xTab;
     if(pConnection)
     {
         WpADOCatalog aCatalog;
@@ -267,7 +237,7 @@ void ADOS::ThrowException(ADOConnection* _pAdoCon,const Reference< XInterface >&
                     aException = SQLException(aErr.GetDescription(),_xInterface,aErr.GetSQLState(),aErr.GetNumber(),Any());
                 else
                 {
-                    SQLException aTemp = SQLException(aErr.GetDescription(),
+                    SQLException aTemp(aErr.GetDescription(),
                         _xInterface,aErr.GetSQLState(),aErr.GetNumber(),makeAny(aException));
                     aTemp.NextException <<= aException;
                     aException = aTemp;
@@ -281,5 +251,10 @@ void ADOS::ThrowException(ADOConnection* _pAdoCon,const Reference< XInterface >&
     pErrors->Release();
 }
 
-
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+connectivity_ado_ODriver_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new ODriver(context));
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

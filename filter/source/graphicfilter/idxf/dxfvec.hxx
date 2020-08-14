@@ -28,7 +28,6 @@ class Point;
 class DXFLineInfo {
 public:
     LineStyle       eStyle;
-    double          fWidth;
     sal_Int32       nDashCount;
     double          fDashLen;
     sal_Int32       nDotCount;
@@ -37,7 +36,6 @@ public:
 
     DXFLineInfo() :
         eStyle(LineStyle::Solid),
-        fWidth(0),
         nDashCount(0),
         fDashLen(0),
         nDotCount(0),
@@ -130,7 +128,7 @@ public:
 
     bool TransCircleToEllipse(double fRadius, double & rEx, double & rEy) const;
         // Attempt to transform a circle (in xy plane) so that it results
-        // in an aligned ellipse. If the does not work because a ellipse of
+        // in an aligned ellipse. If the does not work because an ellipse of
         // arbitrary position would be created, sal_False is returned.
         // (The center point will not be transformed, use Transform(..))
 

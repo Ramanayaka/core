@@ -21,13 +21,13 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_WORKBOOKHELPER_HXX
 
 #include <memory>
-#include <rtl/ref.hxx>
 #include <oox/helper/storagebase.hxx>
-#include <oox/drawingml/chart/chartconverter.hxx>
-#include "biffhelper.hxx"
-#include "rangenam.hxx"
+#include <address.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace oox::drawingml::chart { class ChartConverter; }
+namespace rtl { template <class reference_type> class Reference; }
+
+namespace com::sun::star {
     namespace container { class XNameContainer; }
     namespace sheet { class XDatabaseRange; }
     namespace sheet { class XSpreadsheet; }
@@ -35,27 +35,26 @@ namespace com { namespace sun { namespace star {
     namespace sheet { struct FormulaToken; }
     namespace style { class XStyle; }
     namespace table { class XCellRange; }
-} } }
+}
 
 namespace oox {
-    class AttributeList;
     class SegmentProgressBar;
 }
 
-namespace oox { namespace core {
+namespace oox::core {
     class FilterBase;
     class FragmentHandler;
     class XmlFilterBase;
     class FastParser;
-} }
+}
 
 class ScDocument;
 class ScDocumentImport;
 class ScEditEngineDefaulter;
 class ScDBData;
+class ScRangeData;
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 class ExcelFilter;
 
@@ -87,7 +86,7 @@ class FormulaBuffer;
 class WorkbookGlobals;
 typedef std::shared_ptr< WorkbookGlobals > WorkbookGlobalsRef;
 
-/** Helper class to provice access to global workbook data.
+/** Helper class to provide access to global workbook data.
 
     All classes derived from this helper class will have access to a singleton
     object of type WorkbookGlobals containing global workbook settings,
@@ -103,6 +102,11 @@ class WorkbookHelper
 public:
     /*implicit*/ WorkbookHelper( WorkbookGlobals& rBookGlob ) : mrBookGlob( rBookGlob ) {}
     virtual             ~WorkbookHelper();
+
+    WorkbookHelper(WorkbookHelper const &) = default;
+    WorkbookHelper(WorkbookHelper &&) = default;
+    WorkbookHelper & operator =(WorkbookHelper const &) = delete; // due to mrBookGlob
+    WorkbookHelper & operator =(WorkbookHelper &&) = delete; // due to mrBookGlob
 
     static WorkbookGlobalsRef constructGlobals( ExcelFilter& rFilter );
 
@@ -120,7 +124,7 @@ public:
     /** Sets the VBA project storage used to import VBA source code and forms. */
     void                setVbaProjectStorage( const StorageRef& rxVbaPrjStrg );
     /** Sets the index of the current Calc sheet, if filter currently processes a sheet. */
-    void                setCurrentSheetIndex( sal_Int16 nSheet );
+    void                setCurrentSheetIndex( SCTAB nSheet );
     /** Final conversion after importing the workbook. */
     void                finalizeWorkbookImport();
     void                useInternalChartDataTable( bool bInternal );
@@ -134,7 +138,7 @@ public:
 
     ScEditEngineDefaulter& getEditEngine() const;
     /** Returns a reference to the source/target spreadsheet document model. */
-    css::uno::Reference< css::sheet::XSpreadsheetDocument >
+    const css::uno::Reference< css::sheet::XSpreadsheetDocument >&
                         getDocument() const;
 
     /** Returns a reference to the specified spreadsheet in the document model. */
@@ -262,8 +266,7 @@ private:
     WorkbookGlobals&    mrBookGlob;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

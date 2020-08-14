@@ -17,18 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "rtl/ustring.hxx"
-#include "rtl/ustrbuf.hxx"
-#include "rtl/uri.hxx"
-#include "osl/thread.hxx"
-#include "osl/process.h"
-#include "libxml/xpathInternals.h"
-#include "osl/file.hxx"
-#include "osl/module.hxx"
+#include <rtl/ustring.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
+#include <libxml/xpathInternals.h>
+#include <osl/file.hxx>
+#include <osl/thread.hxx>
 #include "framework.hxx"
-#include "fwkutil.hxx"
-#include "elements.hxx"
-#include "fwkbase.hxx"
+#include <fwkutil.hxx>
+#include <elements.hxx>
+#include <fwkbase.hxx>
 
 using namespace osl;
 
@@ -78,20 +76,17 @@ OUString getParamFirstUrl(OUString const & name)
     // Some parameters can consist of multiple URLs (separated by space
     // characters, although trim() harmlessly also removes other white-space),
     // of which only the first is used:
-    sal_Int32 i = 0;
-    return getParam(name).trim().getToken(0, ' ', i);
+    return getParam(name).trim().getToken(0, ' ');
 }
 
 }//blind namespace
 
 
-VendorSettings::VendorSettings():
-    m_xmlDocVendorSettingsFileUrl(BootParams::getVendorSettings())
+VendorSettings::VendorSettings()
 {
-    OString sMsgExc("[Java framework] Error in constructor "
-                         "VendorSettings::VendorSettings() (fwkbase.cxx)");
+    OUString xmlDocVendorSettingsFileUrl(BootParams::getVendorSettings());
     //Prepare the xml document and context
-    OString sSettingsPath = getVendorSettingsPath(m_xmlDocVendorSettingsFileUrl);
+    OString sSettingsPath = getVendorSettingsPath(xmlDocVendorSettingsFileUrl);
     if (sSettingsPath.isEmpty())
     {
         OString sMsg("[Java framework] A vendor settings file was not specified."
@@ -99,36 +94,47 @@ VendorSettings::VendorSettings():
         SAL_WARN( "jfw", sMsg );
         throw FrameworkException(JFW_E_CONFIGURATION, sMsg);
     }
-    if (!sSettingsPath.isEmpty())
-    {
-        m_xmlDocVendorSettings = xmlParseFile(sSettingsPath.getStr());
-        if (m_xmlDocVendorSettings == nullptr)
-            throw FrameworkException(
-                JFW_E_ERROR,
-                OString("[Java framework] Error while parsing file: ")
-                + sSettingsPath + ".");
+    if (sSettingsPath.isEmpty())
+        return;
 
-        m_xmlPathContextVendorSettings = xmlXPathNewContext(m_xmlDocVendorSettings);
-        int res = xmlXPathRegisterNs(
-            m_xmlPathContextVendorSettings, reinterpret_cast<xmlChar const *>("jf"),
-            reinterpret_cast<xmlChar const *>(NS_JAVA_FRAMEWORK));
-        if (res == -1)
-            throw FrameworkException(JFW_E_ERROR, sMsgExc);
-    }
+    m_xmlDocVendorSettings = xmlParseFile(sSettingsPath.getStr());
+    if (m_xmlDocVendorSettings == nullptr)
+        throw FrameworkException(
+            JFW_E_ERROR,
+            OStringLiteral("[Java framework] Error while parsing file: ")
+            + sSettingsPath + ".");
+
+    m_xmlPathContextVendorSettings = xmlXPathNewContext(m_xmlDocVendorSettings);
+    int res = xmlXPathRegisterNs(
+        m_xmlPathContextVendorSettings, reinterpret_cast<xmlChar const *>("jf"),
+        reinterpret_cast<xmlChar const *>(NS_JAVA_FRAMEWORK));
+    if (res == -1)
+        throw FrameworkException(JFW_E_ERROR,
+                "[Java framework] Error in constructor VendorSettings::VendorSettings() (fwkbase.cxx)");
 }
 
-VersionInfo VendorSettings::getVersionInformation(const OUString & sVendor)
+std::optional<VersionInfo> VendorSettings::getVersionInformation(const OUString & sVendor) const
 {
     OSL_ASSERT(!sVendor.isEmpty());
-    VersionInfo aVersionInfo;
     OString osVendor = OUStringToOString(sVendor, RTL_TEXTENCODING_UTF8);
-    //Get minVersion
-    OString sExpression = OString(
-        "/jf:javaSelection/jf:vendorInfos/jf:vendor[@name=\"") +
-        osVendor + OString("\"]/jf:minVersion");
+    CXPathObjectPtr pathObject = xmlXPathEvalExpression(
+        reinterpret_cast<xmlChar const *>(
+            OString(
+                "/jf:javaSelection/jf:vendorInfos/jf:vendor[@name=\"" + osVendor
+                + "\"]/jf:minVersion").getStr()),
+        m_xmlPathContextVendorSettings);
+    if (xmlXPathNodeSetIsEmpty(pathObject->nodesetval))
+    {
+        return {};
+    }
 
-    CXPathObjectPtr xPathObjectMin;
-    xPathObjectMin =
+    VersionInfo aVersionInfo;
+    //Get minVersion
+    OString sExpression =
+        "/jf:javaSelection/jf:vendorInfos/jf:vendor[@name=\"" +
+        osVendor + "\"]/jf:minVersion";
+
+    CXPathObjectPtr xPathObjectMin =
         xmlXPathEvalExpression(reinterpret_cast<xmlChar const *>(sExpression.getStr()),
                                m_xmlPathContextVendorSettings);
     if (xmlXPathNodeSetIsEmpty(xPathObjectMin->nodesetval))
@@ -137,8 +143,7 @@ VersionInfo VendorSettings::getVersionInformation(const OUString & sVendor)
     }
     else
     {
-        CXmlCharPtr sVersion;
-        sVersion = xmlNodeListGetString(
+        CXmlCharPtr sVersion = xmlNodeListGetString(
             m_xmlDocVendorSettings,
             xPathObjectMin->nodesetval->nodeTab[0]->xmlChildrenNode, 1);
         OString osVersion(sVersion);
@@ -147,10 +152,9 @@ VersionInfo VendorSettings::getVersionInformation(const OUString & sVendor)
     }
 
     //Get maxVersion
-    sExpression = OString("/jf:javaSelection/jf:vendorInfos/jf:vendor[@name=\"") +
-        osVendor + OString("\"]/jf:maxVersion");
-    CXPathObjectPtr xPathObjectMax;
-    xPathObjectMax = xmlXPathEvalExpression(
+    sExpression = "/jf:javaSelection/jf:vendorInfos/jf:vendor[@name=\"" +
+        osVendor + "\"]/jf:maxVersion";
+    CXPathObjectPtr xPathObjectMax = xmlXPathEvalExpression(
         reinterpret_cast<xmlChar const *>(sExpression.getStr()),
         m_xmlPathContextVendorSettings);
     if (xmlXPathNodeSetIsEmpty(xPathObjectMax->nodesetval))
@@ -159,8 +163,7 @@ VersionInfo VendorSettings::getVersionInformation(const OUString & sVendor)
     }
     else
     {
-        CXmlCharPtr sVersion;
-        sVersion = xmlNodeListGetString(
+        CXmlCharPtr sVersion = xmlNodeListGetString(
             m_xmlDocVendorSettings,
             xPathObjectMax->nodesetval->nodeTab[0]->xmlChildrenNode, 1);
         OString osVersion(sVersion);
@@ -169,10 +172,9 @@ VersionInfo VendorSettings::getVersionInformation(const OUString & sVendor)
     }
 
     //Get excludeVersions
-    sExpression = OString("/jf:javaSelection/jf:vendorInfos/jf:vendor[@name=\"") +
-        osVendor + OString("\"]/jf:excludeVersions/jf:version");
-    CXPathObjectPtr xPathObjectVersions;
-    xPathObjectVersions =
+    sExpression = "/jf:javaSelection/jf:vendorInfos/jf:vendor[@name=\"" +
+        osVendor + "\"]/jf:excludeVersions/jf:version";
+    CXPathObjectPtr xPathObjectVersions =
         xmlXPathEvalExpression(reinterpret_cast<xmlChar const *>(sExpression.getStr()),
                                m_xmlPathContextVendorSettings);
     if (!xmlXPathNodeSetIsEmpty(xPathObjectVersions->nodesetval))
@@ -184,8 +186,7 @@ VersionInfo VendorSettings::getVersionInformation(const OUString & sVendor)
             {
                 if (xmlStrcmp(cur->name, reinterpret_cast<xmlChar const *>("version")) == 0)
                 {
-                    CXmlCharPtr sVersion;
-                    sVersion = xmlNodeListGetString(
+                    CXmlCharPtr sVersion = xmlNodeListGetString(
                         m_xmlDocVendorSettings, cur->xmlChildrenNode, 1);
                     OString osVersion(sVersion);
                     OUString usVersion = OStringToOUString(
@@ -197,32 +198,6 @@ VersionInfo VendorSettings::getVersionInformation(const OUString & sVendor)
         }
     }
     return aVersionInfo;
-}
-
-std::vector<OUString> VendorSettings::getSupportedVendors()
-{
-    std::vector<OUString> vecVendors;
-    //get the nodeset for the vendor elements
-    jfw::CXPathObjectPtr result;
-    result = xmlXPathEvalExpression(
-        reinterpret_cast<xmlChar const *>("/jf:javaSelection/jf:vendorInfos/jf:vendor"),
-        m_xmlPathContextVendorSettings);
-    if (!xmlXPathNodeSetIsEmpty(result->nodesetval))
-    {
-        //get the values of the vendor elements + name attribute
-        xmlNode* cur = result->nodesetval->nodeTab[0];
-        while (cur != nullptr)
-        {
-            //between vendor elements are also text elements
-            if (cur->type == XML_ELEMENT_NODE)
-            {
-                jfw::CXmlCharPtr sAttrVendor(xmlGetProp(cur, reinterpret_cast<xmlChar const *>("name")));
-                vecVendors.push_back(sAttrVendor);
-            }
-            cur = cur->next;
-        }
-    }
-    return vecVendors;
 }
 
 ::std::vector<OString> BootParams::getVMParameters()
@@ -278,7 +253,7 @@ OString BootParams::getClasspath()
         if (pCp)
         {
             char szSep[] = {SAL_PATHSEPARATOR,0};
-            sClassPath += OString(szSep) + OString(pCp);
+            sClassPath += OStringLiteral(szSep) + pCp;
         }
         SAL_INFO(
             "jfw.level2",
@@ -317,7 +292,7 @@ OUString BootParams::getVendorSettings()
                                  UNO_JAVA_JFW_VENDOR_SETTINGS);
             }
         }
-    SAL_INFO(
+        SAL_INFO(
         "jfw.level2",
         "Using bootstrap parameter " UNO_JAVA_JFW_VENDOR_SETTINGS " = "
             << sVendor);
@@ -365,9 +340,7 @@ OUString BootParams::getJREHome()
             "Using bootstrap parameter " UNO_JAVA_JFW_ENV_JREHOME
                 " with JAVA_HOME = " << pJRE);
     }
-    else if (getMode() == JFW_MODE_DIRECT
-        && !bEnvJRE
-        && !bJRE)
+    else if (getMode() == JFW_MODE_DIRECT && !bJRE)
     {
         throw FrameworkException(
             JFW_E_CONFIGURATION,
@@ -436,10 +409,9 @@ JFW_MODE getMode()
 OUString getApplicationClassPath()
 {
     OSL_ASSERT(getMode() == JFW_MODE_APPLICATION);
-    OUString retVal;
     OUString sParams = BootParams::getClasspathUrls();
     if (sParams.isEmpty())
-        return retVal;
+        return OUString();
 
     OUStringBuffer buf;
     sal_Int32 index = 0;
@@ -481,8 +453,7 @@ OString makeClassPathOption(OUString const & sUserClassPath)
     {
         if (!sUserClassPath.isEmpty())
         {
-            char szSep[] = {SAL_PATHSEPARATOR,0};
-            sBufCP.appendAscii(szSep);
+            sBufCP.append(SAL_PATHSEPARATOR);
         }
         sBufCP.append(sAppCP);
     }
@@ -490,8 +461,7 @@ OString makeClassPathOption(OUString const & sUserClassPath)
     sPaths = OUStringToOString(
         sBufCP.makeStringAndClear(), osl_getThreadTextEncoding());
 
-    OString sOptionClassPath("-Djava.class.path=");
-    sOptionClassPath += sPaths;
+    OString sOptionClassPath = "-Djava.class.path=" + sPaths;
     return sOptionClassPath;
 }
 

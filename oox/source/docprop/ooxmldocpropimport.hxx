@@ -23,11 +23,9 @@
 #include <com/sun/star/document/XOOXMLDocumentPropertiesImporter.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/xml/sax/InputSource.hpp>
 #include <cppuhelper/implbase.hxx>
 
-namespace oox {
-namespace docprop {
+namespace oox::docprop {
 
 class DocumentPropertiesImport :
     public ::cppu::WeakImplHelper<
@@ -52,8 +50,7 @@ private:
     css::uno::Reference< css::uno::XComponentContext > mxContext;
 };
 
-} // namespace docprop
-} // namespace oox
+} // namespace oox::docprop
 
 #endif
 

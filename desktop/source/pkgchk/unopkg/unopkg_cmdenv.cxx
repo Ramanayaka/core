@@ -18,30 +18,28 @@
  */
 
 
-#include "dp_gui.hrc"
-#include "dp_gui_shared.hxx"
+#include <strings.hrc>
+#include <dp_misc.h>
+#include <dp_shared.hxx>
 #include "unopkg_shared.h"
-#include <osl/thread.h>
-#include <tools/resmgr.hxx>
+#include <i18nlangtag/languagetag.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/exc_hlp.hxx>
 #include <comphelper/anytostring.hxx>
+#include <tools/diagnose_ex.h>
 #include <unotools/configmgr.hxx>
 #include <com/sun/star/lang/WrappedTargetException.hpp>
 #include <com/sun/star/task/XInteractionAbort.hpp>
 #include <com/sun/star/task/XInteractionApprove.hpp>
 #include <com/sun/star/deployment/DeploymentException.hpp>
 #include <com/sun/star/deployment/InstallException.hpp>
-#include <com/sun/star/container/ElementExistException.hpp>
 #include <com/sun/star/deployment/LicenseException.hpp>
 #include <com/sun/star/deployment/VersionException.hpp>
 #include <com/sun/star/deployment/PlatformException.hpp>
 #include <com/sun/star/i18n/Collator.hpp>
 #include <com/sun/star/i18n/CollatorOptions.hpp>
 
-#include <stdio.h>
-#include "deployment.hrc"
-#include "dp_version.hxx"
+#include <dp_version.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::ucb;
@@ -73,7 +71,6 @@ public:
     virtual ~CommandEnvironmentImpl() override;
     CommandEnvironmentImpl(
         Reference<XComponentContext> const & xComponentContext,
-        OUString const & log_file,
         bool option_force_overwrite,
         bool option_verbose,
         bool option_suppress_license);
@@ -96,7 +93,6 @@ public:
 
 CommandEnvironmentImpl::CommandEnvironmentImpl(
     Reference<XComponentContext> const & xComponentContext,
-    OUString const & log_file,
     bool option_force_overwrite,
     bool option_verbose,
     bool option_suppressLicense)
@@ -106,15 +102,12 @@ CommandEnvironmentImpl::CommandEnvironmentImpl(
       m_option_suppress_license( option_suppressLicense ),
       m_xComponentContext(xComponentContext)
 {
-    if (!log_file.isEmpty()) {
-        const Any logfile(log_file);
-        m_xLogFile.set(
-            xComponentContext->getServiceManager()
-            ->createInstanceWithArgumentsAndContext(
-                "com.sun.star.comp.deployment.ProgressLog",
-                Sequence<Any>( &logfile, 1 ), xComponentContext ),
-            UNO_QUERY_THROW );
-    }
+    m_xLogFile.set(
+        xComponentContext->getServiceManager()
+        ->createInstanceWithArgumentsAndContext(
+            "com.sun.star.comp.deployment.ProgressLog",
+            Sequence<Any>(), xComponentContext ),
+        UNO_QUERY_THROW );
 }
 
 
@@ -125,8 +118,8 @@ CommandEnvironmentImpl::~CommandEnvironmentImpl()
         if (xComp.is())
             xComp->dispose();
     }
-    catch (const RuntimeException & exc) {
-        SAL_WARN( "desktop", exc.Message );
+    catch (const RuntimeException &) {
+        TOOLS_WARN_EXCEPTION( "desktop", "" );
     }
 }
 
@@ -134,16 +127,15 @@ CommandEnvironmentImpl::~CommandEnvironmentImpl()
 void CommandEnvironmentImpl::printLicense(
     const OUString & sName, const OUString& sLicense, bool & accept, bool &decline)
 {
-    ResMgr * pResMgr = DeploymentResMgr::get();
-    OUString s1tmp(ResId(RID_STR_UNOPKG_ACCEPT_LIC_1, *pResMgr));
+    OUString s1tmp(DpResId(RID_STR_UNOPKG_ACCEPT_LIC_1));
     OUString s1(s1tmp.replaceAll("$NAME", sName));
-    OUString s2 = ResId(RID_STR_UNOPKG_ACCEPT_LIC_2, *pResMgr);
-    OUString s3 = ResId(RID_STR_UNOPKG_ACCEPT_LIC_3, *pResMgr);
-    OUString s4 = ResId(RID_STR_UNOPKG_ACCEPT_LIC_4, *pResMgr);
-    OUString sYES = ResId(RID_STR_UNOPKG_ACCEPT_LIC_YES, *pResMgr);
-    OUString sY = ResId(RID_STR_UNOPKG_ACCEPT_LIC_Y, *pResMgr);
-    OUString sNO = ResId(RID_STR_UNOPKG_ACCEPT_LIC_NO, *pResMgr);
-    OUString sN = ResId(RID_STR_UNOPKG_ACCEPT_LIC_N, *pResMgr);
+    OUString s2 = DpResId(RID_STR_UNOPKG_ACCEPT_LIC_2);
+    OUString s3 = DpResId(RID_STR_UNOPKG_ACCEPT_LIC_3);
+    OUString s4 = DpResId(RID_STR_UNOPKG_ACCEPT_LIC_4);
+    OUString sYES = DpResId(RID_STR_UNOPKG_ACCEPT_LIC_YES);
+    OUString sY = DpResId(RID_STR_UNOPKG_ACCEPT_LIC_Y);
+    OUString sNO = DpResId(RID_STR_UNOPKG_ACCEPT_LIC_NO);
+    OUString sN = DpResId(RID_STR_UNOPKG_ACCEPT_LIC_N);
 
     OUString sNewLine("\n");
 
@@ -156,7 +148,7 @@ void CommandEnvironmentImpl::printLicense(
     Reference< css::i18n::XCollator > xCollator =
         css::i18n::Collator::create( m_xComponentContext );
     xCollator->loadDefaultCollator(
-        LanguageTag(utl::ConfigManager::getLocale()).getLocale(),
+        LanguageTag(utl::ConfigManager::getUILocale()).getLocale(),
         css::i18n::CollatorOptions::CollatorOptions_IGNORE_CASE);
 
     do
@@ -214,8 +206,6 @@ void CommandEnvironmentImpl::handle(
     deployment::LicenseException licExc;
     deployment::InstallException instExc;
     deployment::PlatformException platExc;
-    deployment::VersionException verExc;
-
 
     if (request >>= wtExc) {
         // ignore intermediate errors of legacy packages, i.e.
@@ -254,15 +244,15 @@ void CommandEnvironmentImpl::handle(
             abort = false;
         }
     }
-       else if (request >>= instExc)
+    else if (request >>= instExc)
     {
-        //Only if the unopgk was started with gui + extension then we user is asked.
+        //Only if the unopgk was started with gui + extension then the user is asked.
         //In console mode there is no asking.
         approve = true;
     }
     else if (request >>= platExc)
     {
-        OUString sMsg(ResId(RID_STR_UNSUPPORTED_PLATFORM, *dp_gui::DeploymentGuiResMgr::get()));
+        OUString sMsg(DpResId(RID_STR_UNSUPPORTED_PLATFORM));
         sMsg = sMsg.replaceAll("%Name", platExc.package->getDisplayName());
         dp_misc::writeConsole("\n" + sMsg + "\n\n");
         approve = true;
@@ -286,16 +276,12 @@ void CommandEnvironmentImpl::handle(
     }
 
     // select:
-    Sequence< Reference<task::XInteractionContinuation> > conts(
-        xRequest->getContinuations() );
-    Reference<task::XInteractionContinuation> const * pConts =
-        conts.getConstArray();
-    sal_Int32 len = conts.getLength();
-    for ( sal_Int32 pos = 0; pos < len; ++pos )
+    const css::uno::Sequence<css::uno::Reference<css::task::XInteractionContinuation>> xIC = xRequest->getContinuations();
+    for ( auto const& rCont : xIC )
     {
         if (approve) {
             Reference<task::XInteractionApprove> xInteractionApprove(
-                pConts[ pos ], UNO_QUERY );
+                rCont, UNO_QUERY );
             if (xInteractionApprove.is()) {
                 xInteractionApprove->select();
                 break;
@@ -303,7 +289,7 @@ void CommandEnvironmentImpl::handle(
         }
         else if (abort) {
             Reference<task::XInteractionAbort> xInteractionAbort(
-                pConts[ pos ], UNO_QUERY );
+                rCont, UNO_QUERY );
             if (xInteractionAbort.is()) {
                 xInteractionAbort->select();
                 break;
@@ -389,13 +375,12 @@ namespace unopkg {
 
 Reference< XCommandEnvironment > createCmdEnv(
     Reference< XComponentContext > const & xContext,
-    OUString const & logFile,
     bool option_force_overwrite,
     bool option_verbose,
     bool option_suppress_license)
 {
     return new CommandEnvironmentImpl(
-        xContext, logFile, option_force_overwrite, option_verbose, option_suppress_license);
+        xContext, option_force_overwrite, option_verbose, option_suppress_license);
 }
 } // unopkg
 

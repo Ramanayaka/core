@@ -21,14 +21,11 @@
 
 #include <sfx2/sidebar/ControllerItem.hxx>
 #include <sfx2/sidebar/IContextChangeReceiver.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
+#include <sfx2/weldutils.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
+#include <vcl/EnumContext.hxx>
 
-class FixedText;
-class ListBox;
-class NumericField;
-class Edit;
-
-namespace sc { namespace sidebar {
+namespace sc::sidebar {
 
 class NumberFormatPropertyPanel
 :   public PanelLayout,
@@ -51,8 +48,11 @@ public:
     virtual void NotifyItemUpdate(
         const sal_uInt16 nSId,
         const SfxItemState eState,
-        const SfxPoolItem* pState,
-        const bool bIsEnabled) override;
+        const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
 
     SfxBindings* GetBindings() { return mpBindings;}
 
@@ -65,16 +65,18 @@ public:
     virtual void dispose() override;
 private:
     //ui controls
-    VclPtr<ListBox>                                mpLbCategory;
-    VclPtr<ToolBox>                                mpTBCategory;
-    VclPtr<FixedText>                              mpFtDecimals;
-    VclPtr<NumericField>                           mpEdDecimals;
-    VclPtr<FixedText>                              mpFtDenominator;
-    VclPtr<NumericField>                           mpEdDenominator;
-    VclPtr<NumericField>                           mpEdLeadZeroes;
-    VclPtr<CheckBox>                               mpBtnNegRed;
-    VclPtr<CheckBox>                               mpBtnThousand;
-    VclPtr<CheckBox>                               mpBtnEngineering;
+    std::unique_ptr<weld::ComboBox> mxLbCategory;
+    std::unique_ptr<weld::Toolbar> mxTBCategory;
+    std::unique_ptr<ToolbarUnoDispatcher> mxCatagoryDispatch;
+    std::unique_ptr<weld::Label> mxFtDecimals;
+    std::unique_ptr<weld::SpinButton> mxEdDecimals;
+    std::unique_ptr<weld::Label> mxFtDenominator;
+    std::unique_ptr<weld::SpinButton> mxEdDenominator;
+    std::unique_ptr<weld::Label> mxFtLeadZeroes;
+    std::unique_ptr<weld::SpinButton> mxEdLeadZeroes;
+    std::unique_ptr<weld::CheckButton> mxBtnNegRed;
+    std::unique_ptr<weld::CheckButton> mxBtnThousand;
+    std::unique_ptr<weld::CheckButton> mxBtnEngineering;
 
     ::sfx2::sidebar::ControllerItem         maNumFormatControl;
     ::sfx2::sidebar::ControllerItem         maFormatControl;
@@ -84,15 +86,15 @@ private:
     vcl::EnumContext                        maContext;
     SfxBindings*                            mpBindings;
 
-    DECL_LINK(NumFormatSelectHdl, ListBox&, void);
-    DECL_LINK(NumFormatValueHdl, Edit&, void);
-    DECL_LINK(NumFormatValueClickHdl, Button*, void);
+    DECL_LINK(NumFormatSelectHdl, weld::ComboBox&, void);
+    DECL_LINK(NumFormatValueHdl, weld::SpinButton&, void);
+    DECL_LINK(NumFormatValueClickHdl, weld::ToggleButton&, void);
 
     void Initialize();
     void DisableControls();
 };
 
-} } // end of namespace ::sc::sidebar
+} // end of namespace ::sc::sidebar
 
 #endif
 

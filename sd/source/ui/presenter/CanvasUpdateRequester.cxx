@@ -20,13 +20,14 @@
 #include "CanvasUpdateRequester.hxx"
 #include <vcl/svapp.hxx>
 #include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/rendering/XSpriteCanvas.hpp>
 #include <cppuhelper/weakref.hxx>
 #include <vector>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace presenter {
+namespace sd::presenter {
 
 //===== CanvasUpdateRequester::Deleter ========================================
 
@@ -76,7 +77,7 @@ std::shared_ptr<CanvasUpdateRequester> CanvasUpdateRequester::Instance (
     // No requester for the given canvas found.  Create a new one.
     std::shared_ptr<CanvasUpdateRequester> pRequester (
         new CanvasUpdateRequester(rxSharedCanvas), Deleter());
-    s_RequesterMap.push_back(std::make_pair(rxSharedCanvas, pRequester));
+    s_RequesterMap.emplace_back(rxSharedCanvas, pRequester);
     return pRequester;
 }
 
@@ -125,6 +126,6 @@ IMPL_LINK_NOARG(CanvasUpdateRequester, Callback, void*, void)
     m_pThis.reset(); // possibly delete "this"
 }
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

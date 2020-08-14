@@ -24,9 +24,9 @@
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/uno3.hxx>
 
-#include <canvas/base/spritecanvasbase.hxx>
-#include <canvas/base/disambiguationhelper.hxx>
-#include <canvas/base/bufferedgraphicdevicebase.hxx>
+#include <base/canvasbase.hxx>
+#include <base/disambiguationhelper.hxx>
+#include <base/bufferedgraphicdevicebase.hxx>
 
 #include "ogl_spritedevicehelper.hxx"
 #include "ogl_canvashelper.hxx"
@@ -96,14 +96,14 @@ namespace oglcanvas
         virtual sal_Bool SAL_CALL updateScreen( sal_Bool bUpdateAll ) override;
 
         // XServiceName
-        virtual ::rtl::OUString SAL_CALL getServiceName(  ) override;
+        virtual OUString SAL_CALL getServiceName(  ) override;
 
         void show( const ::rtl::Reference< CanvasCustomSprite >& );
         void hide( const ::rtl::Reference< CanvasCustomSprite >& );
 
         /** Write out recorded actions
          */
-        bool renderRecordedActions() const;
+        void renderRecordedActions() const;
 
     private:
         css::uno::Sequence< css::uno::Any >                maArguments;

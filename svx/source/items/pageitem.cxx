@@ -21,21 +21,22 @@
 
 #include <utility>
 
-#include <tools/stream.hxx>
-
-
+#include <osl/diagnose.h>
+#include <comphelper/processfactory.hxx>
+#include <tools/resary.hxx>
 #include <svx/pageitem.hxx>
+#include <svx/strarray.hxx>
 #include <editeng/itemtype.hxx>
 #include <svx/unomid.hxx>
+#include <com/sun/star/text/DefaultNumberingProvider.hpp>
+#include <com/sun/star/text/XNumberingTypeInfo.hpp>
 #include <com/sun/star/style/NumberingType.hpp>
 #include <com/sun/star/style/PageStyleLayout.hpp>
-#include <com/sun/star/style/BreakType.hpp>
 #include <svl/itemset.hxx>
-#include <svx/svxitems.hrc>
+#include <svx/strings.hrc>
 #include <svx/dialmgr.hxx>
 
 using namespace ::com::sun::star;
-
 
 SfxPoolItem* SvxPageItem::CreateDefault() { return new   SvxPageItem(0);}
 
@@ -59,7 +60,7 @@ SvxPageItem::SvxPageItem( const SvxPageItem& rItem )
 SvxPageItem::~SvxPageItem() {}
 
 // Clone
-SfxPoolItem* SvxPageItem::Clone( SfxItemPool * ) const
+SvxPageItem* SvxPageItem::Clone( SfxItemPool * ) const
 {
     return new SvxPageItem( *this );
 }
@@ -74,7 +75,7 @@ bool SvxPageItem::operator==( const SfxPoolItem& rAttr ) const
              eUse       == rItem.eUse );
 }
 
-inline OUString GetUsageText( const SvxPageUsage eU )
+static OUString GetUsageText( const SvxPageUsage eU )
 {
     switch( eU )
     {
@@ -86,17 +87,46 @@ inline OUString GetUsageText( const SvxPageUsage eU )
     }
 }
 
+static const char* RID_SVXITEMS_PAGE_NUMS[] =
+{
+    RID_SVXITEMS_PAGE_NUM_CHR_UPPER,
+    RID_SVXITEMS_PAGE_NUM_CHR_LOWER,
+    RID_SVXITEMS_PAGE_NUM_ROM_UPPER,
+    RID_SVXITEMS_PAGE_NUM_ROM_LOWER,
+    RID_SVXITEMS_PAGE_NUM_ARABIC,
+    RID_SVXITEMS_PAGE_NUM_NONE
+};
+
+namespace
+{
+    OUString GetNumberingDescription(SvxNumType eNumType)
+    {
+        // classic ones, keep displaying the old name
+        if (eNumType <= css::style::NumberingType::NUMBER_NONE)
+            return SvxResId(RID_SVXITEMS_PAGE_NUMS[eNumType]);
+        // new ones, reuse the text used in the numbering dropdown list
+        sal_uInt32 n = SvxNumberingTypeTable::FindIndex(eNumType);
+        if (n != RESARRAY_INDEX_NOTFOUND)
+            return SvxNumberingTypeTable::GetString(n);
+        css::uno::Reference<css::uno::XComponentContext> xContext = comphelper::getProcessComponentContext();
+        css::uno::Reference<css::text::XDefaultNumberingProvider> xDefNum = css::text::DefaultNumberingProvider::create(xContext);
+        css::uno::Reference<css::text::XNumberingTypeInfo> xInfo(xDefNum, css::uno::UNO_QUERY);
+        if (!xInfo.is())
+            return OUString();
+        return xInfo->getNumberingIdentifier(eNumType);
+    }
+}
 
 bool SvxPageItem::GetPresentation
 (
     SfxItemPresentation ePres,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     rText.clear();
-    OUString cpDelimTmp = OUString(cpDelim);
+    OUString cpDelimTmp(cpDelim);
 
     switch ( ePres )
     {
@@ -106,8 +136,7 @@ bool SvxPageItem::GetPresentation
             {
                 rText = aDescName + cpDelimTmp;
             }
-            DBG_ASSERT( eNumType <= css::style::NumberingType::NUMBER_NONE, "enum overflow" );
-            rText += SvxResId(RID_SVXITEMS_PAGE_NUM_BEGIN + eNumType) + cpDelimTmp;
+            rText += GetNumberingDescription(eNumType) + cpDelimTmp;
             if ( bLandscape )
                 rText += SvxResId(RID_SVXITEMS_PAGE_LAND_TRUE);
             else
@@ -126,8 +155,7 @@ bool SvxPageItem::GetPresentation
             {
                 rText += aDescName + cpDelimTmp;
             }
-            DBG_ASSERT( eNumType <= css::style::NumberingType::NUMBER_NONE, "enum overflow" );
-            rText += SvxResId(RID_SVXITEMS_PAGE_NUM_BEGIN + eNumType) + cpDelimTmp;
+            rText += GetNumberingDescription(eNumType) + cpDelimTmp;
             if ( bLandscape )
                 rText += SvxResId(RID_SVXITEMS_PAGE_LAND_TRUE);
             else
@@ -154,11 +182,11 @@ bool SvxPageItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
         case MID_PAGE_NUMTYPE:
         {
             //! constants aren't in IDLs any more ?!?
-            rVal <<= (sal_Int16)( eNumType );
+            rVal <<= static_cast<sal_Int16>( eNumType );
         }
         break;
         case MID_PAGE_ORIENTATION:
-            rVal <<= (bool) bLandscape;
+            rVal <<= bLandscape;
         break;
         case MID_PAGE_LAYOUT     :
         {
@@ -191,7 +219,7 @@ bool SvxPageItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             if(!(rVal >>= nValue))
                 return false;
 
-            eNumType = (SvxNumType)nValue;
+            eNumType = static_cast<SvxNumType>(nValue);
         }
         break;
         case MID_PAGE_ORIENTATION:
@@ -205,7 +233,7 @@ bool SvxPageItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
                 sal_Int32 nValue = 0;
                 if(!(rVal >>= nValue))
                     return false;
-                eLayout = (style::PageStyleLayout)nValue;
+                eLayout = static_cast<style::PageStyleLayout>(nValue);
             }
             switch( eLayout )
             {
@@ -219,38 +247,6 @@ bool SvxPageItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
         break;
     }
     return true;
-}
-
-
-SfxPoolItem* SvxPageItem::Create( SvStream& rStream, sal_uInt16 ) const
-{
-    sal_uInt8 eType;
-    bool bLand;
-    sal_uInt16 nUse;
-
-    // UNICODE: rStream >> sStr;
-    OUString sStr = rStream.ReadUniOrByteString( rStream.GetStreamCharSet() );
-
-    rStream.ReadUChar( eType );
-    rStream.ReadCharAsBool( bLand );
-    rStream.ReadUInt16( nUse );
-
-    SvxPageItem* pPage = new SvxPageItem( Which() );
-    pPage->SetDescName( sStr );
-    pPage->SetNumType( (SvxNumType)eType );
-    pPage->SetLandscape( bLand );
-    pPage->SetPageUsage( (SvxPageUsage)nUse );
-    return pPage;
-}
-
-
-SvStream& SvxPageItem::Store( SvStream &rStrm, sal_uInt16 /*nItemVersion*/ ) const
-{
-    // UNICODE: rStrm << aDescName;
-    rStrm.WriteUniOrByteString(aDescName, rStrm.GetStreamCharSet());
-
-    rStrm.WriteUChar( eNumType ).WriteBool( bLandscape ).WriteUInt16( (sal_uInt16)eUse );
-    return rStrm;
 }
 
 // HeaderFooterSet
@@ -272,39 +268,21 @@ SvxSetItem::SvxSetItem( const sal_uInt16 nId, std::unique_ptr<SfxItemSet>&& _pSe
 {
 }
 
-SfxPoolItem* SvxSetItem::Clone( SfxItemPool * ) const
+SvxSetItem* SvxSetItem::Clone( SfxItemPool * ) const
 {
     return new SvxSetItem(*this);
 }
-
 
 bool SvxSetItem::GetPresentation
 (
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper *
+    OUString&           rText, const IntlWrapper&
 )   const
 {
     rText.clear();
     return false;
-}
-
-SfxPoolItem* SvxSetItem::Create(SvStream &rStrm, sal_uInt16 /*nVersion*/) const
-{
-    SfxItemSet* _pSet = new SfxItemSet( *GetItemSet().GetPool(),
-                                       GetItemSet().GetRanges() );
-
-    _pSet->Load( rStrm );
-
-    return new SvxSetItem( Which(), *_pSet );
-}
-
-SvStream& SvxSetItem::Store(SvStream &rStrm, sal_uInt16 nItemVersion) const
-{
-    GetItemSet().Store( rStrm, nItemVersion );
-
-    return rStrm;
 }
 
 

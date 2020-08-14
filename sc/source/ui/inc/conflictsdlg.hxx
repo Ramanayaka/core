@@ -20,17 +20,14 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_CONFLICTSDLG_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_CONFLICTSDLG_HXX
 
-#include <vcl/button.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
 #include <vcl/idle.hxx>
 #include <svx/ctredlin.hxx>
 
-#include "chgtrack.hxx"
 #include "docsh.hxx"
 
 class ScViewData;
+class ScChangeTrack;
+class ScChangeAction;
 
 enum ScConflictAction
 {
@@ -39,15 +36,13 @@ enum ScConflictAction
     SC_CONFLICT_ACTION_KEEP_OTHER
 };
 
-typedef ::std::vector< sal_uLong > ScChangeActionList;
-
 // struct ScConflictsListEntry
 
 struct ScConflictsListEntry
 {
     ScConflictAction    meConflictAction;
-    ScChangeActionList  maSharedActions;
-    ScChangeActionList  maOwnActions;
+    std::vector<sal_uLong>  maSharedActions;
+    std::vector<sal_uLong>  maOwnActions;
 
     bool                HasSharedAction( sal_uLong nSharedAction ) const;
     bool                HasOwnAction( sal_uLong nOwnAction ) const;
@@ -55,12 +50,11 @@ struct ScConflictsListEntry
 
 typedef ::std::vector< ScConflictsListEntry > ScConflictsList;
 
-// class ScConflictsListHelper
 
 class ScConflictsListHelper
 {
 private:
-    static void                     Transform_Impl( ScChangeActionList& rActionList, ScChangeActionMergeMap* pMergeMap );
+    static void                     Transform_Impl( std::vector<sal_uLong>& rActionList, ScChangeActionMergeMap* pMergeMap );
 
 public:
     static bool                     HasOwnAction( ScConflictsList& rConflictsList, sal_uLong nOwnAction );
@@ -72,21 +66,20 @@ public:
                                         ScChangeActionMergeMap* pSharedMap, ScChangeActionMergeMap* pOwnMap );
 };
 
-// class ScConflictsFinder
 
 class ScConflictsFinder final
 {
 private:
     ScChangeTrack*          mpTrack;
-    sal_uLong                   mnStartShared;
-    sal_uLong                   mnEndShared;
-    sal_uLong                   mnStartOwn;
-    sal_uLong                   mnEndOwn;
+    sal_uLong               mnStartShared;
+    sal_uLong               mnEndShared;
+    sal_uLong               mnStartOwn;
+    sal_uLong               mnEndOwn;
     ScConflictsList&        mrConflictsList;
 
     static bool             DoActionsIntersect( const ScChangeAction* pAction1, const ScChangeAction* pAction2 );
     ScConflictsListEntry*   GetIntersectingEntry( const ScChangeAction* pAction ) const;
-    ScConflictsListEntry*   GetEntry( sal_uLong nSharedAction, const ScChangeActionList& rOwnActions );
+    ScConflictsListEntry&   GetEntry(sal_uLong nSharedAction, const std::vector<sal_uLong>& rOwnActions);
 
 public:
                             ScConflictsFinder( ScChangeTrack* pTrack, sal_uLong nStartShared, sal_uLong nEndShared,
@@ -96,7 +89,6 @@ public:
     bool                    Find();
 };
 
-// class ScConflictsResolver
 
 class ScConflictsResolver final
 {
@@ -112,55 +104,46 @@ public:
                             bool bHandleContentAction, bool bHandleNonContentAction );
 };
 
-// class ScConflictsDlg
 
-class ScConflictsDlg : public ModalDialog
+class ScConflictsDlg : public weld::GenericDialogController
 {
 private:
-    VclPtr<SvSimpleTableContainer> m_pLbConflictsContainer;
-    VclPtr<SvxRedlinTable>      m_pLbConflicts;
-    VclPtr<PushButton>          m_pBtnKeepMine;
-    VclPtr<PushButton>          m_pBtnKeepOther;
-    VclPtr<PushButton>          m_pBtnKeepAllMine;
-    VclPtr<PushButton>          m_pBtnKeepAllOthers;
-
-    OUString            maStrTitleConflict;
-    OUString            maStrTitleAuthor;
-    OUString            maStrTitleDate;
     OUString            maStrUnknownUser;
 
-    ScViewData*         mpViewData;
+    ScViewData* const   mpViewData;
     ScDocument*         mpOwnDoc;
     ScChangeTrack*      mpOwnTrack;
-    ScDocument*         mpSharedDoc;
+    ScDocument* const   mpSharedDoc;
     ScChangeTrack*      mpSharedTrack;
     ScConflictsList&    mrConflictsList;
-    Size                maDialogSize;
 
     Idle                maSelectionIdle;
     bool                mbInSelectHdl;
-    bool                mbInDeselectHdl;
+
+    std::unique_ptr<weld::Button> m_xBtnKeepMine;
+    std::unique_ptr<weld::Button> m_xBtnKeepOther;
+    std::unique_ptr<weld::Button> m_xBtnKeepAllMine;
+    std::unique_ptr<weld::Button> m_xBtnKeepAllOthers;
+    std::unique_ptr<SvxRedlinTable> m_xLbConflicts;
 
     OUString            GetConflictString( const ScConflictsListEntry& rConflictEntry );
-    OUString            GetActionString( const ScChangeAction* pAction, ScDocument* pDoc );
-    void                HandleListBoxSelection( bool bSelectHandle );
+    void                SetActionString(const ScChangeAction* pAction, ScDocument* pDoc, const weld::TreeIter& rEntry);
+    void                HandleListBoxSelection();
 
-    static void         SetConflictAction( SvTreeListEntry* pRootEntry, ScConflictAction eConflictAction );
+    void                SetConflictAction(const weld::TreeIter& rRootEntry, ScConflictAction eConflictAction);
     void                KeepHandler( bool bMine );
     void                KeepAllHandler( bool bMine );
 
-    DECL_LINK( SelectHandle, SvTreeListBox*, void );
-    DECL_LINK( DeselectHandle, SvTreeListBox*, void );
+    DECL_LINK( SelectHandle, weld::TreeView&, void );
     DECL_LINK( UpdateSelectionHdl, Timer*, void );
-    DECL_LINK( KeepMineHandle, Button*, void );
-    DECL_LINK( KeepOtherHandle, Button*, void );
-    DECL_LINK( KeepAllMineHandle, Button*, void );
-    DECL_LINK( KeepAllOthersHandle, Button*, void );
+    DECL_LINK( KeepMineHandle, weld::Button&, void );
+    DECL_LINK( KeepOtherHandle, weld::Button&, void );
+    DECL_LINK( KeepAllMineHandle, weld::Button&, void );
+    DECL_LINK( KeepAllOthersHandle, weld::Button&, void );
 
 public:
-                        ScConflictsDlg( vcl::Window* pParent, ScViewData* pViewData, ScDocument* pSharedDoc, ScConflictsList& rConflictsList );
-                        virtual ~ScConflictsDlg() override;
-    virtual void        dispose() override;
+    ScConflictsDlg(weld::Window* pParent, ScViewData* pViewData, ScDocument* pSharedDoc, ScConflictsList& rConflictsList);
+    virtual ~ScConflictsDlg() override;
 
     void                UpdateView();
 };

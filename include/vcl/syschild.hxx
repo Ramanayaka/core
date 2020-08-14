@@ -41,6 +41,7 @@ public:
                             // create a SystemChildWindow using the given SystemWindowData
     explicit                SystemChildWindow( vcl::Window* pParent, WinBits nStyle, SystemWindowData *pData, bool bShow = true );
     virtual                 ~SystemChildWindow() override;
+    virtual Size            GetOptimalSize() const override;
     virtual void            dispose() override;
 
     virtual const SystemEnvData* GetSystemData() const override;
@@ -56,7 +57,9 @@ public:
     //no visible flash
     void                    SetLeaveEnterBackgrounds(const css::uno::Sequence<css::uno::Any>& rLeaveArgs, const css::uno::Sequence<css::uno::Any>& rEnterArgs);
     // return the platform specific handle/id of this window;
-    sal_IntPtr              GetParentWindowHandle();
+    sal_IntPtr              GetParentWindowHandle() const;
+
+    void*                   CreateGStreamerSink();
 };
 
 #endif // INCLUDED_VCL_SYSCHILD_HXX

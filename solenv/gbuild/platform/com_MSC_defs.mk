@@ -29,7 +29,6 @@ gb_LINK := link
 gb_AWK := awk
 gb_CLASSPATHSEP := ;
 gb_RC := rc
-gb_YACC := bison
 
 # use CC/CXX if they are nondefaults
 ifneq ($(origin CC),default)
@@ -47,6 +46,10 @@ gb_COMPILERDEFS := \
 	-DBOOST_ERROR_CODE_HEADER_ONLY \
 	-DBOOST_OPTIONAL_USE_OLD_DEFINITION_OF_NONE \
 	-DBOOST_SYSTEM_NO_DEPRECATED \
+	-D_HAS_AUTO_PTR_ETC \
+	-D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING \
+	-D_SILENCE_CXX17_OLD_ALLOCATOR_MEMBERS_DEPRECATION_WARNING \
+	-D_SILENCE_CXX17_RESULT_OF_DEPRECATION_WARNING \
 	-D_CRT_NON_CONFORMING_SWPRINTFS \
 	-D_CRT_NONSTDC_NO_DEPRECATE \
 	-D_CRT_SECURE_NO_DEPRECATE \
@@ -62,8 +65,7 @@ gb_COMPILERDEFS += \
 endif
 
 gb_RCDEFS := \
-	-DWINVER=0x0502 \
-	-DWIN32 \
+	$(gb_WIN_VERSION_DEFS) \
 
 gb_RCFLAGS :=
 
@@ -132,6 +134,7 @@ gb_AFLAGS := $(AFLAGS)
 #   warning)
 
 gb_CFLAGS := \
+	-utf-8 \
 	-Gd \
 	-GR \
 	-Gs \
@@ -152,6 +155,8 @@ gb_CFLAGS := \
 	-wd4800 \
 	-wd4267 \
 
+gb_CXXFLAGS_DISABLE_WARNINGS = -w
+
 ifneq ($(COM_IS_CLANG),TRUE)
 
 # clang-cl doesn't support -Wv:18 for now
@@ -161,6 +166,8 @@ gb_CFLAGS += \
 endif
 
 gb_CXXFLAGS := \
+	-utf-8 \
+	$(CXXFLAGS_CXX11) \
 	-Gd \
 	-GR \
 	-Gs \
@@ -202,8 +209,13 @@ endif
 
 ifneq ($(COM_IS_CLANG),TRUE)
 
+# clang-cl doesn't support -Wv:18 for now
+# Work around MSVC 2017 C4702 compiler bug with release builds
+# http://document-foundation-mail-archive.969070.n3.nabble.com/Windows-32-bit-build-failure-unreachable-code-tp4243848.html
+# http://document-foundation-mail-archive.969070.n3.nabble.com/64-bit-Windows-build-failure-after-MSVC-Update-tp4246816.html
 gb_CXXFLAGS += \
 	-Wv:18 \
+	$(if $(filter 0,$(gb_DEBUGLEVEL)),-wd4702) \
 
 endif
 
@@ -222,7 +234,7 @@ gb_PCHWARNINGS = \
 gb_STDLIBS := \
 	advapi32.lib \
 
-gb_CFLAGS_WERROR := $(if $(ENABLE_WERROR),-WX)
+gb_CFLAGS_WERROR = $(if $(ENABLE_WERROR),-WX)
 
 # there does not seem to be a way to force C++03 with MSVC
 gb_CXX03FLAGS :=
@@ -248,19 +260,22 @@ gb_DEBUGINFO_FLAGS := \
 	-FS \
 	-Zi \
 
-gb_DEBUG_CFLAGS :=
+# See gb_Windows_PE_TARGETTYPEFLAGS_DEBUGINFO
+gb_LINKER_DEBUGINFO_FLAGS :=
 
 gb_COMPILEROPTFLAGS := -O2 -Oy-
 gb_COMPILERNOOPTFLAGS := -Od
+gb_COMPILERDEBUGOPTFLAGS :=
 
 ifeq ($(gb_FULLDEPS),$(true))
 gb_COMPILERDEPFLAGS := -showIncludes
 define gb_create_deps
-| $(GBUILDDIR)/platform/filter-showIncludes.awk -vdepfile=$(1) -vobjectfile=$(2) -vsourcefile=$(3); exit $${PIPESTATUS[0]}
+| LC_ALL=C $(GBUILDDIR)/platform/filter-showIncludes.awk -vdepfile=$(1) -vobjectfile=$(2) -vsourcefile=$(3); exit $${PIPESTATUS[0]}
 endef
 else
 gb_COMPILERDEPFLAGS :=
 define gb_create_deps
+| LC_ALL=C $(GBUILDDIR)/platform/filter-sourceName.awk; exit $${PIPESTATUS[0]}
 endef
 endif
 
@@ -268,7 +283,11 @@ gb_LTOFLAGS := $(if $(filter TRUE,$(ENABLE_LTO)),-GL)
 
 # When compiling for CLR, disable "warning C4339: use of undefined type detected
 # in CLR meta-data - use of this type may lead to a runtime exception":
-gb_CXXCLRFLAGS := $(gb_CXXFLAGS) $(gb_LinkTarget_EXCEPTIONFLAGS) \
+gb_CXXCLRFLAGS := \
+	$(if $(COM_IS_CLANG), \
+	    $(patsubst -std=%,-std:c++17 -Zc:__cplusplus,$(gb_CXXFLAGS)), \
+	    $(gb_CXXFLAGS)) \
+	$(gb_LinkTarget_EXCEPTIONFLAGS) \
 	-AI $(INSTDIR)/$(LIBO_URE_LIB_FOLDER) \
 	-EHa \
 	-clr \
@@ -290,13 +309,37 @@ gb_CXXFLAGS += \
 	-Wendif-labels \
 	-Wimplicit-fallthrough \
 	-Wno-missing-braces \
-	-Wno-missing-braces \
 	-Wnon-virtual-dtor \
 	-Woverloaded-virtual \
 	-Wshadow \
 	-Wundef \
 	-Wunused-macros \
 
+endif
+
+ifeq ($(COM_IS_CLANG),TRUE)
+gb_COMPILER_TEST_FLAGS := -Xclang -plugin-arg-loplugin -Xclang --unit-test-mode
+ifeq ($(COMPILER_PLUGIN_TOOL),)
+gb_COMPILER_PLUGINS := -Xclang -load -Xclang $(BUILDDIR)/compilerplugins/clang/plugin.dll -Xclang -add-plugin -Xclang loplugin
+ifneq ($(COMPILER_PLUGIN_WARNINGS_ONLY),)
+gb_COMPILER_PLUGINS += -Xclang -plugin-arg-loplugin -Xclang \
+    --warnings-only='$(COMPILER_PLUGIN_WARNINGS_ONLY)'
+endif
+else
+gb_COMPILER_PLUGINS := -Xclang -load -Xclang $(BUILDDIR)/compilerplugins/clang/plugin.dll -Xclang -plugin -Xclang loplugin $(foreach plugin,$(COMPILER_PLUGIN_TOOL), -Xclang -plugin-arg-loplugin -Xclang $(plugin))
+ifneq ($(UPDATE_FILES),)
+gb_COMPILER_PLUGINS += -Xclang -plugin-arg-loplugin -Xclang --scope=$(UPDATE_FILES)
+endif
+endif
+ifeq ($(COMPILER_PLUGINS_DEBUG),TRUE)
+gb_COMPILER_PLUGINS += -Xclang -plugin-arg-loplugin -Xclang --debug
+endif
+gb_COMPILER_PLUGINS_WARNINGS_AS_ERRORS := \
+    -Xclang -plugin-arg-loplugin -Xclang --warnings-as-errors
+else
+gb_COMPILER_TEST_FLAGS :=
+gb_COMPILER_PLUGINS :=
+gb_COMPILER_PLUGINS_WARNINGS_AS_ERRORS :=
 endif
 
 # Helper class

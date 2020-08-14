@@ -20,13 +20,11 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_CONTROLLER_SLSLISTENER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_CONTROLLER_SLSLISTENER_HXX
 
-#include "MutexOwner.hxx"
-#include "controller/SlideSorterController.hxx"
+#include <MutexOwner.hxx>
+#include <controller/SlideSorterController.hxx>
 #include <com/sun/star/document/XEventListener.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventListener.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XFrameActionListener.hpp>
 #include <cppuhelper/compbase.hxx>
 
@@ -34,19 +32,16 @@
 #include <tools/link.hxx>
 #include <memory>
 
+class SdrPage;
+
 namespace sd {
 class ViewShellBase;
 }
 
-namespace sd { namespace tools {
-class EventMultiplexerEvent;
-} }
+namespace sd::tools { class EventMultiplexerEvent; }
+namespace sd::slidesorter { class SlideSorter; }
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
-
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 typedef cppu::WeakComponentImplHelper<
     css::document::XEventListener,
@@ -54,8 +49,6 @@ typedef cppu::WeakComponentImplHelper<
     css::accessibility::XAccessibleEventListener,
     css::frame::XFrameActionListener
     > ListenerInterfaceBase;
-
-class SlideSorterController;
 
 /** Listen for events of various types and sources and react to them.  This
     class is a part of the controller.
@@ -168,7 +161,7 @@ private:
     DECL_LINK(EventMultiplexerCallback, tools::EventMultiplexerEvent&, void);
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

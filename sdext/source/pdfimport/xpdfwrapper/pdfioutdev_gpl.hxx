@@ -28,17 +28,19 @@
 # pragma GCC diagnostic ignored "-Wundef"
 # pragma GCC diagnostic ignored "-Wunused-parameter"
 #elif defined _MSC_VER
-#pragma warning(push, 1)
+#pragma warning(push)
+#pragma warning(disable : 4100) // unreferenced formal parameter
+#pragma warning(disable : 4310) // cast truncates constant value
 #endif
 
-#include "GfxState.h"
-#include "GfxFont.h"
-#include "UnicodeMap.h"
-#include "Link.h"
-#include "Object.h"
-#include "OutputDev.h"
-#include "GlobalParams.h"
-#include "PDFDoc.h"
+#include <GfxState.h>
+#include <GfxFont.h>
+#include <UnicodeMap.h>
+#include <Link.h>
+#include <Object.h>
+#include <OutputDev.h>
+#include <GlobalParams.h>
+#include <PDFDoc.h>
 
 #if defined __GNUC__ || defined __clang__
 # pragma GCC diagnostic pop
@@ -129,6 +131,13 @@ namespace pdfi
         { return const_cast<GooString &>(familyName); }
     };
 
+    // Versions before 0.15 defined GBool as int; 0.15 redefined it as bool; 0.71 dropped GBool
+#if POPPLER_VERSION_MAJOR == 0 && POPPLER_VERSION_MINOR < 71
+    typedef GBool poppler_bool;
+#else
+    typedef bool poppler_bool;
+#endif
+
     class PDFOutDev : public OutputDev
     {
         // not owned by this class
@@ -140,7 +149,11 @@ namespace pdfi
 
         int  parseFont( long long nNewId, GfxFont* pFont, GfxState* state ) const;
         void writeFontFile( GfxFont* gfxFont ) const;
+#if POPPLER_CHECK_VERSION(0, 83, 0)
+        static void printPath( const GfxPath* pPath );
+#else
         static void printPath( GfxPath* pPath );
+#endif
 
     public:
         explicit PDFOutDev( PDFDoc* pDoc );
@@ -150,22 +163,26 @@ namespace pdfi
 
         // Does this device use upside-down coordinates?
         // (Upside-down means (0,0) is the top left corner of the page.)
-        virtual GBool upsideDown() override { return gTrue; }
+        virtual poppler_bool upsideDown() override { return true; }
 
         // Does this device use drawChar() or drawString()?
-        virtual GBool useDrawChar() override { return gTrue; }
+        virtual poppler_bool useDrawChar() override { return true; }
 
         // Does this device use beginType3Char/endType3Char?  Otherwise,
         // text in Type 3 fonts will be drawn with drawChar/drawString.
-        virtual GBool interpretType3Chars() override { return gFalse; }
+        virtual poppler_bool interpretType3Chars() override { return false; }
 
         // Does this device need non-text content?
-        virtual GBool needNonText() override { return gTrue; }
+        virtual poppler_bool needNonText() override { return true; }
 
         //----- initialization and control
 
         // Set default transform matrix.
+#if POPPLER_CHECK_VERSION(0, 71, 0)
+        virtual void setDefaultCTM(const double *ctm) override;
+#else
         virtual void setDefaultCTM(double *ctm) override;
+#endif
 
         // Start a page.
         virtual void startPage(int pageNum, GfxState *state
@@ -219,50 +236,56 @@ namespace pdfi
         virtual void eoClip(GfxState *state) override;
 
         //----- text drawing
+#if POPPLER_CHECK_VERSION(0, 82, 0)
+        virtual void drawChar(GfxState *state, double x, double y,
+                              double dx, double dy,
+                              double originX, double originY,
+                              CharCode code, int nBytes, const Unicode *u, int uLen) override;
+#else
         virtual void drawChar(GfxState *state, double x, double y,
                               double dx, double dy,
                               double originX, double originY,
                               CharCode code, int nBytes, Unicode *u, int uLen) override;
+#endif
+#if POPPLER_CHECK_VERSION(0, 64, 0)
+        virtual void drawString(GfxState *state, const GooString *s) override;
+#else
         virtual void drawString(GfxState *state, GooString *s) override;
+#endif
         virtual void endTextObject(GfxState *state) override;
 
         //----- image drawing
         virtual void drawImageMask(GfxState *state, Object *ref, Stream *str,
-                                   int width, int height, GBool invert,
-#if POPPLER_CHECK_VERSION(0, 12, 0)
-                                   GBool interpolate,
-#endif
-                                   GBool inlineImg) override;
+                                   int width, int height, poppler_bool invert,
+                                   poppler_bool interpolate,
+                                   poppler_bool inlineImg) override;
+#if POPPLER_CHECK_VERSION(0, 82, 0)
         virtual void drawImage(GfxState *state, Object *ref, Stream *str,
                                int width, int height, GfxImageColorMap *colorMap,
-#if POPPLER_CHECK_VERSION(0, 12, 0)
-                               GBool interpolate,
+                               poppler_bool interpolate,
+                               const int* maskColors, poppler_bool inlineImg) override;
+#else
+        virtual void drawImage(GfxState *state, Object *ref, Stream *str,
+                       int width, int height, GfxImageColorMap *colorMap,
+                       poppler_bool interpolate,
+                       int* maskColors, poppler_bool inlineImg) override;
 #endif
-                               int *maskColors, GBool inlineImg) override;
         virtual void drawMaskedImage(GfxState *state, Object *ref, Stream *str,
                                      int width, int height,
                                      GfxImageColorMap *colorMap,
-#if POPPLER_CHECK_VERSION(0, 12, 0)
-                                     GBool interpolate,
-#endif
+                                     poppler_bool interpolate,
                                      Stream *maskStr, int maskWidth, int maskHeight,
-                                     GBool maskInvert
-#if POPPLER_CHECK_VERSION(0, 12, 0)
-                                     , GBool maskInterpolate
-#endif
+                                     poppler_bool maskInvert,
+                                     poppler_bool maskInterpolate
                                     ) override;
         virtual void drawSoftMaskedImage(GfxState *state, Object *ref, Stream *str,
                                          int width, int height,
                                          GfxImageColorMap *colorMap,
-#if POPPLER_CHECK_VERSION(0, 12, 0)
-                                         GBool interpolate,
-#endif
+                                         poppler_bool interpolate,
                                          Stream *maskStr,
                                          int maskWidth, int maskHeight,
                                          GfxImageColorMap *maskColorMap
-#if POPPLER_CHECK_VERSION(0, 12, 0)
-                                         , GBool maskInterpolate
-#endif
+                                         , poppler_bool maskInterpolate
                                         ) override;
 
         static void setPageNum( int nNumPages );
@@ -274,8 +297,12 @@ extern FILE* g_binary_out;
 
 // note: if you ever change Output_t, please keep in mind that the current code
 // relies on it being of 8 bit size
-typedef Guchar Output_t;
+typedef unsigned char Output_t;
 typedef std::vector< Output_t > OutputBuffer;
+
+#if !POPPLER_CHECK_VERSION(0, 73, 0)
+static_assert(std::is_same_v<Guchar, unsigned char>, "unexpected typedef");
+#endif
 
 #endif // INCLUDED_SDEXT_SOURCE_PDFIMPORT_XPDFWRAPPER_PDFIOUTDEV_GPL_HXX
 

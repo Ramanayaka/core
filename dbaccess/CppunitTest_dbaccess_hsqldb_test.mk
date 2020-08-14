@@ -32,6 +32,10 @@ $(eval $(call gb_CppunitTest_use_libraries,dbaccess_hsqldb_test, \
     xo \
 ))
 
+$(eval $(call gb_CppunitTest_use_jars,dbaccess_hsqldb_test, \
+    sdbc_hsqldb \
+))
+
 $(eval $(call gb_CppunitTest_use_api,dbaccess_hsqldb_test,\
     offapi \
     oovbaapi \
@@ -41,14 +45,13 @@ $(eval $(call gb_CppunitTest_use_api,dbaccess_hsqldb_test,\
 $(eval $(call gb_CppunitTest_use_ure,dbaccess_hsqldb_test))
 $(eval $(call gb_CppunitTest_use_vcl,dbaccess_hsqldb_test))
 
-$(eval $(call gb_CppunitTest_use_java_ure,dbaccess_hsqldb_test))
-
 $(eval $(call gb_CppunitTest_use_components,dbaccess_hsqldb_test,\
     basic/util/sb \
     comphelper/util/comphelp \
     configmgr/source/configmgr \
     connectivity/source/cpool/dbpool2 \
     connectivity/source/drivers/hsqldb/hsqldb \
+    $(if $(ENABLE_FIREBIRD_SDBC),connectivity/source/drivers/firebird/firebird_sdbc) \
     connectivity/source/drivers/jdbc/jdbc \
     connectivity/source/manager/sdbc2 \
     dbaccess/util/dba \
@@ -72,13 +75,6 @@ $(eval $(call gb_CppunitTest_use_components,dbaccess_hsqldb_test,\
     xmloff/util/xo \
 ))
 
-$(eval $(call gb_CppunitTest_use_jars,dbaccess_hsqldb_test,\
-	sdbc_hsqldb \
-))
-
 $(eval $(call gb_CppunitTest_use_configuration,dbaccess_hsqldb_test))
-
-$(call gb_CppunitTest_get_target,dbaccess_hsqldb_test): \
-    $(call gb_AllLangResTarget_get_target,ofa)
 
 # vim: set noet sw=4 ts=4:

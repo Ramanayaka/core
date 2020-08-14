@@ -19,13 +19,13 @@
 
 #include "XMLIndexBibliographyEntryContext.hxx"
 #include "XMLIndexTemplateContext.hxx"
-#include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
+#include <xmloff/xmlement.hxx>
 #include <com/sun/star/text/BibliographyDataField.hpp>
 
 
@@ -35,7 +35,6 @@ using namespace ::xmloff::token;
 using ::com::sun::star::beans::PropertyValue;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
-using ::com::sun::star::uno::Any;
 using ::com::sun::star::xml::sax::XAttributeList;
 
 
@@ -110,8 +109,8 @@ void XMLIndexBibliographyEntryContext::StartElement(
         {
             if ( IsXMLToken( sLocalName, XML_STYLE_NAME ) )
             {
-                sCharStyleName = xAttrList->getValueByIndex(nAttr);
-                bCharStyleNameOK = true;
+                m_sCharStyleName = xAttrList->getValueByIndex(nAttr);
+                m_bCharStyleNameOK = true;
             }
             else if ( IsXMLToken( sLocalName, XML_BIBLIOGRAPHY_DATA_FIELD ) )
             {
@@ -128,13 +127,13 @@ void XMLIndexBibliographyEntryContext::StartElement(
     }
 
     // if we have a style name, set it!
-    if (bCharStyleNameOK)
+    if (m_bCharStyleNameOK)
     {
-        nValues++;
+        m_nValues++;
     }
 
     // always bibliography; else element is not valid
-    nValues++;
+    m_nValues++;
 }
 
 void XMLIndexBibliographyEntryContext::EndElement()
@@ -153,7 +152,7 @@ void XMLIndexBibliographyEntryContext::FillPropertyValues(
     XMLIndexSimpleEntryContext::FillPropertyValues(rValues);
 
     // bibliography data field
-    sal_Int32 nIndex = bCharStyleNameOK ? 2 : 1;
+    sal_Int32 nIndex = m_bCharStyleNameOK ? 2 : 1;
     rValues[nIndex].Name = "BibliographyDataField";
     rValues[nIndex].Value <<= nBibliographyInfo;
 }

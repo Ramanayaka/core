@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "SchXMLAutoStylePoolP.hxx"
+#include <SchXMLAutoStylePoolP.hxx>
 #include "PropertyMap.hxx"
-#include "SchXMLExport.hxx"
-#include "XMLChartPropertySetMapper.hxx"
+#include <SchXMLExport.hxx>
 #include <xmloff/families.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmltoken.hxx>
+#include <xmloff/namespacemap.hxx>
 
 
 SchXMLAutoStylePoolP::SchXMLAutoStylePoolP( SchXMLExport& rSchXMLExport ) :
@@ -36,7 +34,7 @@ SchXMLAutoStylePoolP::~SchXMLAutoStylePoolP()
 
 void SchXMLAutoStylePoolP::exportStyleAttributes(
     SvXMLAttributeList& rAttrList,
-    sal_Int32 nFamily,
+    XmlStyleFamily nFamily,
     const ::std::vector< XMLPropertyState >& rProperties,
     const SvXMLExportPropertyMapper& rPropExp
     , const SvXMLUnitConverter& rUnitConverter,
@@ -46,31 +44,30 @@ void SchXMLAutoStylePoolP::exportStyleAttributes(
     SvXMLAutoStylePoolP::exportStyleAttributes( rAttrList, nFamily, rProperties,
                                                 rPropExp, rUnitConverter, rNamespaceMap );
 
-    if( nFamily == XML_STYLE_FAMILY_SCH_CHART_ID )
-    {
-        for( ::std::vector< XMLPropertyState >::const_iterator iter = rProperties.begin();
-             (iter != rProperties.end()); ++iter )
-        {
-            if( iter->mnIndex == -1 )
-                continue;
+    if( nFamily != XmlStyleFamily::SCH_CHART_ID )
+        return;
 
-            rtl::Reference< XMLPropertySetMapper > aPropMapper =
-                mrSchXMLExport.GetPropertySetMapper();
-            sal_Int16 nContextID = aPropMapper->GetEntryContextId( iter->mnIndex );
-            if( nContextID == XML_SCH_CONTEXT_SPECIAL_NUMBER_FORMAT )
+    for( const auto& rProp : rProperties )
+    {
+        if( rProp.mnIndex == -1 )
+            continue;
+
+        rtl::Reference< XMLPropertySetMapper > aPropMapper =
+            mrSchXMLExport.GetPropertySetMapper();
+        sal_Int16 nContextID = aPropMapper->GetEntryContextId( rProp.mnIndex );
+        if( nContextID == XML_SCH_CONTEXT_SPECIAL_NUMBER_FORMAT )
+        {
+            sal_Int32 nNumberFormat = -1;
+            if( ( rProp.maValue >>= nNumberFormat ) &&
+                ( nNumberFormat != -1 ))
             {
-                sal_Int32 nNumberFormat = -1;
-                if( ( iter->maValue >>= nNumberFormat ) &&
-                    ( nNumberFormat != -1 ))
+                OUString sAttrValue = mrSchXMLExport.getDataStyleName( nNumberFormat );
+                if( !sAttrValue.isEmpty() )
                 {
-                    OUString sAttrValue = mrSchXMLExport.getDataStyleName( nNumberFormat );
-                    if( !sAttrValue.isEmpty() )
-                    {
-                        mrSchXMLExport.AddAttribute(
-                            aPropMapper->GetEntryNameSpace( iter->mnIndex ),
-                            aPropMapper->GetEntryXMLName( iter->mnIndex ),
-                            sAttrValue );
-                    }
+                    mrSchXMLExport.AddAttribute(
+                        aPropMapper->GetEntryNameSpace( rProp.mnIndex ),
+                        aPropMapper->GetEntryXMLName( rProp.mnIndex ),
+                        sAttrValue );
                 }
             }
         }

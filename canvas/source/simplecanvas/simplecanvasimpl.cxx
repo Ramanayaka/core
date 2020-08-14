@@ -21,16 +21,15 @@
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
 #include <com/sun/star/rendering/PanoseLetterForm.hpp>
 #include <com/sun/star/rendering/PanoseWeight.hpp>
 #include <com/sun/star/rendering/XSimpleCanvas.hpp>
-#include <comphelper/servicedecl.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <o3tl/lazy_update.hxx>
 
 #include <canvas/canvastools.hxx>
@@ -38,14 +37,12 @@
 
 #include <functional>
 
-#define SERVICE_NAME "com.sun.star.rendering.SimpleCanvas"
-
 using namespace ::com::sun::star;
 using namespace canvas;
 
 namespace
 {
-    inline uno::Sequence< double > color2Sequence( sal_Int32 nColor )
+    uno::Sequence< double > color2Sequence( sal_Int32 nColor )
     {
         // TODO(F3): Color management
         uno::Sequence< double > aRes( 4 );
@@ -58,7 +55,7 @@ namespace
         return aRes;
     }
 
-    inline uno::Reference< rendering::XPolyPolygon2D > rect2Poly( uno::Reference<rendering::XGraphicDevice> const& xDevice,
+    uno::Reference< rendering::XPolyPolygon2D > rect2Poly( uno::Reference<rendering::XGraphicDevice> const& xDevice,
                                                                   geometry::RealRectangle2D const&                 rRect )
     {
         uno::Sequence< geometry::RealPoint2D > rectSequence( 4 );
@@ -71,9 +68,8 @@ namespace
         uno::Sequence< uno::Sequence< geometry::RealPoint2D > > sequenceSequence( 1 );
         sequenceSequence[0] = rectSequence;
 
-        uno::Reference< rendering::XPolyPolygon2D > xRes(
-            xDevice->createCompatibleLinePolyPolygon( sequenceSequence ),
-            uno::UNO_QUERY );
+        uno::Reference< rendering::XPolyPolygon2D > xRes =
+            xDevice->createCompatibleLinePolyPolygon( sequenceSequence );
         if( xRes.is() )
             xRes->setClosed( 0, true );
         return xRes;
@@ -112,7 +108,7 @@ namespace
     private:
         bool isStrokingEnabled() const
         {
-            return maRenderState.m_aPenColor.getInValue() && sal_Int32(0xFF) != 0;
+            return maRenderState.m_aPenColor.getInValue() % 0x100 != 0;
         }
 
         rendering::RenderState createStrokingRenderState() const
@@ -125,7 +121,7 @@ namespace
 
         bool isFillingEnabled() const
         {
-            return maRenderState.m_aFillColor.getInValue() && sal_Int32(0xFF) != 0;
+            return maRenderState.m_aFillColor.getInValue() % 0x100 != 0;
         }
 
         rendering::RenderState createFillingRenderState() const
@@ -141,7 +137,7 @@ namespace
             uno::Reference<rendering::XCanvas> xRet;
 
             // can't do much without an XCanvas, can't we?
-            if( rArgs.getLength() < 1 )
+            if( !rArgs.hasElements() )
                 throw lang::IllegalArgumentException();
 
             xRet.set( rArgs[0], uno::UNO_QUERY );
@@ -173,7 +169,7 @@ namespace
         // Ifc XServiceName
         virtual OUString SAL_CALL getServiceName(  ) override
         {
-            return OUString( SERVICE_NAME );
+            return "com.sun.star.rendering.SimpleCanvas";
         }
 
         // Ifc XSimpleCanvas
@@ -270,7 +266,7 @@ namespace
                                         ::sal_Int8                      nTextDirection ) override
         {
             ::osl::MutexGuard aGuard( m_aMutex );
-            const basegfx::B2DHomMatrix offsetTransform(basegfx::tools::createTranslateB2DHomMatrix(aOutPos.X,aOutPos.Y));
+            const basegfx::B2DHomMatrix offsetTransform(basegfx::utils::createTranslateB2DHomMatrix(aOutPos.X,aOutPos.Y));
             rendering::RenderState aRenderState( createStrokingRenderState() );
             tools::appendToRenderState(aRenderState, offsetTransform);
 
@@ -285,7 +281,7 @@ namespace
                                           const geometry::RealPoint2D&                aLeftTop ) override
         {
             ::osl::MutexGuard aGuard( m_aMutex );
-            const basegfx::B2DHomMatrix offsetTransform(basegfx::tools::createTranslateB2DHomMatrix(aLeftTop.X,aLeftTop.Y));
+            const basegfx::B2DHomMatrix offsetTransform(basegfx::utils::createTranslateB2DHomMatrix(aLeftTop.X,aLeftTop.Y));
             rendering::RenderState aRenderState( createStrokingRenderState() );
             tools::appendToRenderState(aRenderState, offsetTransform);
 
@@ -367,18 +363,13 @@ namespace
         SimpleRenderState                  maRenderState;
     };
 
-    namespace sdecl = comphelper::service_decl;
-    const sdecl::ServiceDecl simpleCanvasDecl(
-        sdecl::class_<SimpleCanvasImpl, sdecl::with_args<true> >(),
-        "com.sun.star.comp.rendering.SimpleCanvas",
-        SERVICE_NAME );
 }
 
-// The C shared lib entry points
-extern "C" SAL_DLLPUBLIC_EXPORT void* SAL_CALL simplecanvas_component_getFactory( sal_Char const* pImplName,
-                                         void*, void* )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_rendering_SimpleCanvas(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
 {
-    return sdecl::component_getFactoryHelper( pImplName, {&simpleCanvasDecl} );
+    return cppu::acquire(new SimpleCanvasImpl(args, context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

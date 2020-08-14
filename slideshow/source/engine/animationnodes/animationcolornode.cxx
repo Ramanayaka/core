@@ -20,16 +20,15 @@
 
 #include <com/sun/star/animations/AnimationColorSpace.hpp>
 
-#include "coloranimation.hxx"
-#include "hslcoloranimation.hxx"
+#include <coloranimation.hxx>
+#include <hslcoloranimation.hxx>
 #include "animationcolornode.hxx"
-#include "animationfactory.hxx"
-#include "activitiesfactory.hxx"
+#include <animationfactory.hxx>
+#include <activitiesfactory.hxx>
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 namespace {
 /** Little wrapper for HSL to RGB mapping.
@@ -49,8 +48,7 @@ public:
             "HSLWrapper::HSLWrapper(): Invalid color animation delegate" );
     }
 
-    virtual void prefetch( const AnimatableShapeSharedPtr&,
-                           const ShapeAttributeLayerSharedPtr& ) override
+    virtual void prefetch() override
     {}
 
     virtual void start( const AnimatableShapeSharedPtr&     rShape,
@@ -93,7 +91,8 @@ AnimationActivitySharedPtr AnimationColorNode::createActivity() const
                 mxColorNode->getAttributeName(),
                 getShape(),
                 getContext().mpSubsettableShapeManager,
-                getSlideSize() ),
+                getSlideSize(),
+                getContext().mpBox2DWorld ),
             getXAnimateNode() );
 
     case animations::AnimationColorSpace::HSL:
@@ -102,13 +101,13 @@ AnimationActivitySharedPtr AnimationColorNode::createActivity() const
         // interface, and internally converts HSL to RGB color
         return ActivitiesFactory::createAnimateActivity(
             aParms,
-            HSLColorAnimationSharedPtr(
-                new HSLWrapper(
+            std::make_shared<HSLWrapper>(
                     AnimationFactory::createColorPropertyAnimation(
                         mxColorNode->getAttributeName(),
                         getShape(),
                         getContext().mpSubsettableShapeManager,
-                        getSlideSize() ))),
+                        getSlideSize(),
+                        getContext().mpBox2DWorld )),
             mxColorNode );
 
     default:
@@ -119,7 +118,6 @@ AnimationActivitySharedPtr AnimationColorNode::createActivity() const
     return AnimationActivitySharedPtr();
 }
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

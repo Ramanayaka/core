@@ -18,11 +18,11 @@
  */
 
 #include "CustomAnimationPanel.hxx"
-#include "createcustomanimationpanel.hxx"
+#include <createcustomanimationpanel.hxx>
 
-#include "ViewShellBase.hxx"
+#include <ViewShellBase.hxx>
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 CustomAnimationPanel::CustomAnimationPanel (
     vcl::Window* pParentWindow,
@@ -34,6 +34,7 @@ CustomAnimationPanel::CustomAnimationPanel (
         rViewShellBase),
       mxFrame( rxFrame )
 {
+    SetStyle( GetStyle() | WB_DIALOGCONTROL );
 #ifdef DEBUG
     SetText(OUString("sd:CustomAnimationPanel"));
 #endif
@@ -57,6 +58,6 @@ css::ui::LayoutSize CustomAnimationPanel::GetHeightForWidth (const sal_Int32 /*n
     return css::ui::LayoutSize(nMinimumHeight,-1, nMinimumHeight);
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -18,10 +18,12 @@
  */
 
 #include "formatnormalizer.hxx"
-#include "RptModel.hxx"
+#include <RptModel.hxx>
 
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdb/XParametersSupplier.hpp>
+#include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
 
 #include <dbaccess/dbsubcomponentcontroller.hxx>
@@ -29,6 +31,7 @@
 #include <connectivity/statementcomposer.hxx>
 #include <connectivity/dbtools.hxx>
 #include <tools/diagnose_ex.h>
+#include <i18nlangtag/languagetag.hxx>
 
 
 namespace rptui
@@ -132,7 +135,7 @@ namespace rptui
             try
             {
                 sal_Int32 nCount( _rxColumns->getCount() );
-                _inout_rFields.reserve( _inout_rFields.size() + (size_t)nCount );
+                _inout_rFields.reserve( _inout_rFields.size() + static_cast<size_t>(nCount) );
 
                 Reference< XPropertySet > xColumn;
                 FormatNormalizer::Field aField;
@@ -149,7 +152,7 @@ namespace rptui
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("reportdesign");
             }
         }
     }
@@ -185,17 +188,17 @@ namespace rptui
             lcl_collectFields_throw( xColumns, m_aFields );
 
             Reference< XParametersSupplier > xSuppParams( xComposer, UNO_QUERY_THROW );
-            Reference< XIndexAccess > xParams( xSuppParams->getParameters(), UNO_QUERY_THROW );
+            Reference< XIndexAccess > xParams( xSuppParams->getParameters(), css::uno::UNO_SET_THROW );
             lcl_collectFields_throw( xParams, m_aFields );
         }
         catch( const SQLException& )
         {
-            // silence it. This might happen for instance when the user sets an non-existent table,
+            // silence it. This might happen for instance when the user sets a non-existent table,
             // or things like this
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
         }
 
         m_bFieldListDirty = false;
@@ -230,17 +233,13 @@ namespace rptui
             }
             sDataField = sDataField.copy( sFieldPrefix.getLength(), sDataField.getLength() - sFieldPrefix.getLength() - 1 );
 
-            FieldList::const_iterator field = m_aFields.begin();
-            for ( ; field != m_aFields.end(); ++field )
-            {
-                if ( field->sName == sDataField )
-                    break;
-            }
+            FieldList::const_iterator field = std::find_if(m_aFields.begin(), m_aFields.end(),
+                [&sDataField](const Field& rField) { return rField.sName == sDataField; });
             if ( field == m_aFields.end() )
                 // unknown field
                 return;
 
-            Reference< XNumberFormatsSupplier >  xSuppNumFmts( _rxFormatted->getFormatsSupplier(), UNO_QUERY_THROW );
+            Reference< XNumberFormatsSupplier >  xSuppNumFmts( _rxFormatted->getFormatsSupplier(), css::uno::UNO_SET_THROW );
             Reference< XNumberFormatTypes > xNumFmtTypes( xSuppNumFmts->getNumberFormats(), UNO_QUERY_THROW );
 
             nFormatKey = ::dbtools::getDefaultNumberFormat( field->nDataType, field->nScale, field->bIsCurrency, xNumFmtTypes,
@@ -249,7 +248,7 @@ namespace rptui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
         }
     }
 

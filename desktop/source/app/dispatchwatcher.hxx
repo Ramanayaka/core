@@ -22,9 +22,8 @@
 
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/frame/XDispatchResultListener.hpp>
+#include <optional>
 
-#include "officeipcthread.hxx"
-#include <unordered_map>
 #include <vector>
 
 namespace desktop
@@ -60,7 +59,7 @@ class DispatchWatcher : public ::cppu::WeakImplHelper< css::frame::XDispatchResu
         {
             RequestType aRequestType;
             OUString    aURL;
-            boost::optional< OUString > aCwdUrl;
+            std::optional< OUString > aCwdUrl;
             OUString    aPrinterName;  // also conversion params
             OUString    aPreselectedFactory;
         };
@@ -80,8 +79,6 @@ class DispatchWatcher : public ::cppu::WeakImplHelper< css::frame::XDispatchResu
 
     private:
         osl::Mutex m_mutex;
-
-        std::unordered_map<OUString, sal_Int32, OUStringHash> m_aRequestContainer;
 
         sal_Int16                   m_nRequestCount;
 };

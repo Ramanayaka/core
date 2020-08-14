@@ -25,19 +25,19 @@
 #include <oox/dllapi.h>
 #include <oox/helper/binarystreambase.hxx>
 #include <oox/helper/graphichelper.hxx>
-#include <oox/helper/helper.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <tools/ref.hxx>
+#include <memory>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { class XControlModel; }
     namespace awt { struct Size; }
     namespace form { class XFormComponent; }
     namespace frame { class XModel; }
     namespace io { class XOutputStream; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 class SotStorage;
 class SotStorageStream;
@@ -48,10 +48,9 @@ namespace oox {
     class BinaryOutputStream;
 }
 
-namespace oox {
-
-
-namespace ole {
+namespace oox::ole {
+    class ControlModelBase;
+    class EmbeddedControl;
 
 
 #define OLE_GUID_STDFONT "{0BE35203-8F91-11CE-9DE3-00AA004BB851}"
@@ -99,7 +98,7 @@ namespace OleHelper
             True = OLE default color type is treated as BGR color.
             False = OLE default color type is treated as palette color.
      */
-    OOX_DLLPUBLIC sal_Int32    decodeOleColor(
+    OOX_DLLPUBLIC ::Color decodeOleColor(
                             const GraphicHelper& rGraphicHelper,
                             sal_uInt32 nOleColor,
                             bool bDefaultColorBgr );
@@ -107,6 +106,7 @@ namespace OleHelper
     /** Returns the OLE color from the passed UNO RGB color.
      */
     OOX_DLLPUBLIC sal_uInt32   encodeOleColor( sal_Int32 nRgbColor );
+    inline sal_uInt32          encodeOleColor( Color nRgbColor ) { return encodeOleColor(sal_Int32(nRgbColor)); }
 
     /** Imports a GUID from the passed binary stream and returns its string
         representation (in uppercase characters).
@@ -127,9 +127,40 @@ namespace OleHelper
      */
     OOX_DLLPUBLIC bool         importStdPic(
                             StreamDataSequence& orGraphicData,
-                            BinaryInputStream& rInStrm,
-                            bool bWithGuid );
+                            BinaryInputStream& rInStrm );
 }
+
+class OOX_DLLPUBLIC OleFormCtrlExportHelper final
+{
+    std::unique_ptr<::oox::ole::EmbeddedControl> mpControl;
+    ::oox::ole::ControlModelBase* mpModel;
+    ::oox::GraphicHelper maGrfHelper;
+    css::uno::Reference< css::frame::XModel > mxDocModel;
+    css::uno::Reference< css::awt::XControlModel > mxControlModel;
+
+    OUString maName;
+    OUString maTypeName;
+    OUString maFullName;
+    OUString maGUID;
+public:
+    OleFormCtrlExportHelper( const css::uno::Reference< css::uno::XComponentContext >& rxCtx, const css::uno::Reference< css::frame::XModel >& xDocModel, const css::uno::Reference< css::awt::XControlModel >& xModel );
+    ~OleFormCtrlExportHelper();
+
+    OUString getGUID() const
+    {
+        OUString sResult;
+        if ( maGUID.getLength() > 2 )
+            sResult = maGUID.copy(1, maGUID.getLength() - 2 );
+        return sResult;
+    }
+    const OUString& getFullName() const { return maFullName; }
+    const OUString& getTypeName() const { return maTypeName; }
+    const OUString& getName() const { return maName; }
+    bool isValid() const { return mpModel != nullptr; }
+    void exportName( const css::uno::Reference< css::io::XOutputStream >& rxOut );
+    void exportCompObj( const css::uno::Reference< css::io::XOutputStream >& rxOut );
+    void exportControl( const css::uno::Reference< css::io::XOutputStream >& rxOut, const css::awt::Size& rSize, bool bAutoClose = false );
+};
 
 // ideally it would be great to get rid of SvxMSConvertOCXControls
 // however msfilter/source/msfilter/svdfppt.cxx still uses
@@ -152,16 +183,15 @@ protected:
 public:
     MSConvertOCXControls( const css::uno::Reference< css::frame::XModel >& rxModel );
     virtual ~MSConvertOCXControls() override;
-    bool ReadOCXStorage( tools::SvRef<SotStorage>& rSrc1, css::uno::Reference< css::form::XFormComponent > & rxFormComp );
-    bool ReadOCXCtlsStream(tools::SvRef<SotStorageStream>& rSrc1, css::uno::Reference< css::form::XFormComponent > & rxFormComp,
+    bool ReadOCXStorage( tools::SvRef<SotStorage> const & rSrc1, css::uno::Reference< css::form::XFormComponent > & rxFormComp );
+    bool ReadOCXCtlsStream(tools::SvRef<SotStorageStream> const & rSrc1, css::uno::Reference< css::form::XFormComponent > & rxFormComp,
                                    sal_Int32 nPos, sal_Int32 nSize );
-    static bool WriteOCXStream( const css::uno::Reference< css::frame::XModel >& rxModel, tools::SvRef<SotStorage> &rSrc1, const css::uno::Reference< css::awt::XControlModel > &rControlModel, const css::awt::Size& rSize,OUString &rName);
+    static bool WriteOCXStream( const css::uno::Reference< css::frame::XModel >& rxModel, tools::SvRef<SotStorage> const &rSrc1, const css::uno::Reference< css::awt::XControlModel > &rControlModel, const css::awt::Size& rSize,OUString &rName);
     static bool WriteOCXExcelKludgeStream( const css::uno::Reference< css::frame::XModel >& rxModel, const css::uno::Reference< css::io::XOutputStream >& xOutStrm, const css::uno::Reference< css::awt::XControlModel > &rControlModel, const css::awt::Size& rSize,OUString &rName);
 };
 
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 #endif
 

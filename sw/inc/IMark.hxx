@@ -20,21 +20,22 @@
 #define INCLUDED_SW_INC_IMARK_HXX
 
 #include <vcl/keycod.hxx>
-#include <calbck.hxx>
-#include <pam.hxx>
-#include <boost/operators.hpp>
+#include "calbck.hxx"
+#include "pam.hxx"
 #include <map>
 #include <memory>
-#include <swdllapi.h>
+#include "swdllapi.h"
 
-struct SwPosition;
-
-namespace sw { namespace mark
+namespace sw::mark
 {
+    enum class InsertMode
+    {
+        New,
+        CopyText,
+    };
 
     class SW_DLLPUBLIC IMark
-        : virtual public SwModify // inherited as interface
-        , public ::boost::totally_ordered<IMark>
+        : virtual public sw::BroadcastingModify // inherited as interface
     {
         protected:
             IMark() = default;
@@ -56,22 +57,10 @@ namespace sw { namespace mark
             // inside core, you can cast to MarkBase and use its setters,
             // make sure to update the sorting in Markmanager in this case
 
-            //operators and comparisons (non-virtual)
-            bool operator<(const IMark& rOther) const
-                { return GetMarkStart() < rOther.GetMarkStart(); }
-            bool operator==(const IMark& rOther) const
-                { return GetMarkStart() == rOther.GetMarkStart(); }
-            bool StartsBefore(const SwPosition& rPos) const
-                { return GetMarkStart() < rPos; }
-            bool StartsAfter(const SwPosition& rPos) const
-                { return GetMarkStart() > rPos; }
-            bool EndsBefore(const SwPosition& rPos) const
-                { return GetMarkEnd() < rPos; }
-
             virtual OUString ToString( ) const =0;
-            virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const = 0;
+            virtual void dumpAsXml(xmlTextWriterPtr pWriter) const = 0;
         private:
-            IMark(IMark&) = delete;
+            IMark(IMark const &) = delete;
             IMark &operator =(IMark const&) = delete;
     };
 
@@ -86,8 +75,12 @@ namespace sw { namespace mark
             virtual const vcl::KeyCode& GetKeyCode() const =0;
             virtual void SetShortName(const OUString&) =0;
             virtual void SetKeyCode(const vcl::KeyCode&) =0;
+            virtual bool IsHidden() const =0;
+            virtual const OUString& GetHideCondition() const =0;
+            virtual void Hide(bool hide) =0;
+            virtual void SetHideCondition(const OUString&) =0;
         private:
-            IBookmark(IBookmark&) = delete;
+            IBookmark(IBookmark const &) = delete;
             IBookmark &operator =(IBookmark const&) = delete;
     };
 
@@ -110,7 +103,7 @@ namespace sw { namespace mark
             virtual void SetFieldHelptext(const OUString& rFieldHelptext) =0;
             virtual void Invalidate() = 0;
         private:
-            IFieldmark(IFieldmark&) = delete;
+            IFieldmark(IFieldmark const &) = delete;
             IFieldmark &operator =(IFieldmark const&) = delete;
     };
 
@@ -124,33 +117,32 @@ namespace sw { namespace mark
             virtual bool IsChecked() const =0;
             virtual void SetChecked(bool checked) =0;
         private:
-            ICheckboxFieldmark(ICheckboxFieldmark&) = delete;
+            ICheckboxFieldmark(ICheckboxFieldmark const &) = delete;
             ICheckboxFieldmark &operator =(ICheckboxFieldmark const&) = delete;
     };
 
-    // Apple llvm-g++ 4.2.1 with _GLIBCXX_DEBUG won't eat boost::bind for this
-    // Neither will MSVC 2008 with _DEBUG
-    struct CompareIMarkStartsAfter
+    class SW_DLLPUBLIC IDateFieldmark
+        : virtual public IFieldmark
     {
-        bool operator()(SwPosition const& rPos,
-                        std::shared_ptr<sw::mark::IMark> const& pMark)
-        {
-            return pMark->StartsAfter(rPos);
-        }
-    };
+        protected:
+            IDateFieldmark() = default;
 
-    struct CompareIMarkStartsBefore
-    {
-        bool operator()(std::shared_ptr<sw::mark::IMark> const& pMark,
-                        SwPosition const& rPos)
-        {
-            return pMark->StartsBefore(rPos);
-        }
+        public:
+            virtual OUString GetContent() const = 0;
+            virtual void ReplaceContent(const OUString& sNewContent) = 0;
+
+            virtual std::pair<bool, double> GetCurrentDate() const = 0;
+            virtual void SetCurrentDate(double fDate) = 0;
+            virtual OUString GetDateInStandardDateFormat(double fDate) const = 0;
+
+    private:
+            IDateFieldmark(ICheckboxFieldmark const &) = delete;
+            IDateFieldmark &operator =(ICheckboxFieldmark const&) = delete;
     };
 
     OUString ExpandFieldmark(IFieldmark* pBM);
 
-}}
+}
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

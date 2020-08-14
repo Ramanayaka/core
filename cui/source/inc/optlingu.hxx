@@ -19,94 +19,67 @@
 #ifndef INCLUDED_CUI_SOURCE_INC_OPTLINGU_HXX
 #define INCLUDED_CUI_SOURCE_INC_OPTLINGU_HXX
 
-#include <vcl/group.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/toolbox.hxx>
-#include <vcl/field.hxx>
-#include <vcl/fixedhyper.hxx>
 #include <sfx2/tabdlg.hxx>
-#include <svx/checklbx.hxx>
 #include <svx/langbox.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
 
-namespace com{namespace sun{namespace star{
-namespace beans{
-    class XPropertySet;
+namespace com::sun::star{
+    namespace beans{
+        class XPropertySet;
+    }
+    namespace linguistic2{
+        class XDictionary;
+        class XDictionaryList;
+        class XLinguProperties;
+    }
 }
-namespace linguistic2{
-    class XDictionary;
-    class XDictionaryList;
-    class XLinguProperties;
-}}}}
 
-class SvTreeListEntry;
 class SvxLinguData_Impl;
 
 // define ----------------------------------------------------------------
 
-#define GROUP_MODULES   ((sal_uInt16)0x0008)
+#define GROUP_MODULES   (sal_uInt16(0x0008))
 
 // forward ---------------------------------------------------------------
 
-class SvxEditModulesDlg : public ModalDialog
+class SvxEditModulesDlg : public weld::GenericDialogController
 {
-    VclPtr<SvxLanguageBox>     m_pLanguageLB;
-
-    VclPtr<SvxCheckListBox>    m_pModulesCLB;
-    VclPtr<PushButton>         m_pPrioUpPB;
-    VclPtr<PushButton>         m_pPrioDownPB;
-    VclPtr<PushButton>         m_pBackPB;
-    VclPtr<FixedHyperlink>     m_pMoreDictsLink;
-
-    VclPtr<CloseButton>        m_pClosePB;
-
     OUString            sSpell;
     OUString            sHyph;
     OUString            sThes;
     OUString            sGrammar;
 
-    SvxLinguData_Impl*  pDefaultLinguData;
+    std::unique_ptr<SvxLinguData_Impl>  pDefaultLinguData;
     SvxLinguData_Impl&  rLinguData;
 
-    SvLBoxButtonData*   pCheckButtonData;
+    std::unique_ptr<weld::TreeView> m_xModulesCLB;
+    std::unique_ptr<weld::Button> m_xPrioUpPB;
+    std::unique_ptr<weld::Button> m_xPrioDownPB;
+    std::unique_ptr<weld::Button> m_xBackPB;
+    std::unique_ptr<weld::LinkButton> m_xMoreDictsLink;
+    std::unique_ptr<weld::Button> m_xClosePB;
+    std::unique_ptr<SvxLanguageBox> m_xLanguageLB;
 
-    SvTreeListEntry*    CreateEntry(OUString& rTxt, sal_uInt16 nCol);
-
-    DECL_LINK( SelectHdl_Impl, SvTreeListBox*, void );
-    DECL_LINK( UpDownHdl_Impl, Button*, void );
-    DECL_LINK( ClickHdl_Impl, Button*, void );
-    DECL_LINK( BackHdl_Impl, Button*, void );
-    DECL_LINK( LangSelectListBoxHdl_Impl, ListBox&, void );
-    DECL_LINK( BoxCheckButtonHdl_Impl2, SvLBoxButtonData*, void );
-    DECL_LINK( BoxCheckButtonHdl_Impl, SvTreeListBox*, void );
-    void LangSelectHdl_Impl(ListBox*);
+    DECL_LINK( SelectHdl_Impl, weld::TreeView&, void );
+    DECL_LINK( UpDownHdl_Impl, weld::Button&, void );
+    DECL_LINK( ClickHdl_Impl, weld::Button&, void );
+    DECL_LINK( BackHdl_Impl, weld::Button&, void );
+    DECL_LINK( LangSelectListBoxHdl_Impl, weld::ComboBox&, void );
+    DECL_LINK( BoxCheckButtonHdl_Impl, const weld::TreeView::iter_col&, void );
+    void LangSelectHdl_Impl(const SvxLanguageBox* pBox);
 
 public:
-    SvxEditModulesDlg(vcl::Window* pParent, SvxLinguData_Impl& rData);
+    SvxEditModulesDlg(weld::Window* pParent, SvxLinguData_Impl& rData);
     virtual ~SvxEditModulesDlg() override;
-    virtual void dispose() override;
 };
 
-// class SvxLinguTabPage -------------------------------------------------
+struct ImplSVEvent;
 
+// class SvxLinguTabPage -------------------------------------------------
 class SvxLinguTabPage : public SfxTabPage
 {
-    friend class VclPtr<SvxLinguTabPage>;
 private:
-    VclPtr<FixedText>          m_pLinguModulesFT;
-    VclPtr<SvxCheckListBox>    m_pLinguModulesCLB;
-    VclPtr<PushButton>         m_pLinguModulesEditPB;
-    VclPtr<FixedText>          m_pLinguDicsFT;
-    VclPtr<SvxCheckListBox>    m_pLinguDicsCLB;
-    VclPtr<PushButton>         m_pLinguDicsNewPB;
-    VclPtr<PushButton>         m_pLinguDicsEditPB;
-    VclPtr<PushButton>         m_pLinguDicsDelPB;
-    VclPtr<SvxCheckListBox>    m_pLinguOptionsCLB;
-    VclPtr<PushButton>         m_pLinguOptionsEditPB;
-    VclPtr<FixedHyperlink>     m_pMoreDictsLink;
-
     OUString            sCapitalWords;
     OUString            sWordsWithDigits;
     OUString            sSpellSpecial;
@@ -118,6 +91,12 @@ private:
     OUString            sHyphAuto;
     OUString            sHyphSpecial;
 
+    int nUPN_HYPH_MIN_WORD_LENGTH;
+    int nUPN_HYPH_MIN_LEADING;
+    int nUPN_HYPH_MIN_TRAILING;
+
+    ImplSVEvent* m_nDlbClickEventId;
+
     css::uno::Reference<
         css::linguistic2::XLinguProperties >     xProp;
 
@@ -127,29 +106,37 @@ private:
         css::uno::Reference<
             css::linguistic2::XDictionary > >    aDics;
 
-    SvLBoxButtonData*   pCheckButtonData;
+    std::unique_ptr<SvxLinguData_Impl>  pLinguData;
 
-    SvxLinguData_Impl*  pLinguData;
-
-    SvxLinguTabPage( vcl::Window* pParent, const SfxItemSet& rCoreSet );
-    SvTreeListEntry*    CreateEntry(OUString& rTxt, sal_uInt16 nCol);
+    std::unique_ptr<weld::Label> m_xLinguModulesFT;
+    std::unique_ptr<weld::TreeView> m_xLinguModulesCLB;
+    std::unique_ptr<weld::Button> m_xLinguModulesEditPB;
+    std::unique_ptr<weld::Label> m_xLinguDicsFT;
+    std::unique_ptr<weld::TreeView> m_xLinguDicsCLB;
+    std::unique_ptr<weld::Button> m_xLinguDicsNewPB;
+    std::unique_ptr<weld::Button> m_xLinguDicsEditPB;
+    std::unique_ptr<weld::Button> m_xLinguDicsDelPB;
+    std::unique_ptr<weld::TreeView> m_xLinguOptionsCLB;
+    std::unique_ptr<weld::Button> m_xLinguOptionsEditPB;
+    std::unique_ptr<weld::LinkButton> m_xMoreDictsLink;
 
     void    AddDicBoxEntry( const css::uno::Reference< css::linguistic2::XDictionary > &rxDic, sal_uInt16 nIdx );
-    static sal_uLong GetDicUserData( const css::uno::Reference< css::linguistic2::XDictionary > &rxDic, sal_uInt16 nIdx );
+    static sal_uInt32 GetDicUserData( const css::uno::Reference< css::linguistic2::XDictionary > &rxDic, sal_uInt16 nIdx );
 
-    DECL_LINK( SelectHdl_Impl, SvTreeListBox*, void );
-    DECL_LINK( ClickHdl_Impl, Button *, void );
-    DECL_LINK( BoxDoubleClickHdl_Impl, SvTreeListBox*, bool );
-    DECL_LINK( BoxCheckButtonHdl_Impl, SvTreeListBox*, void );
+    DECL_LINK( SelectHdl_Impl, weld::TreeView&, void );
+    DECL_LINK( ClickHdl_Impl, weld::Button&, void );
+    DECL_LINK( BoxDoubleClickHdl_Impl, weld::TreeView&, bool );
+    DECL_LINK( ModulesBoxCheckButtonHdl_Impl, const weld::TreeView::iter_col&, void );
+    DECL_LINK( DicsBoxCheckButtonHdl_Impl, const weld::TreeView::iter_col&, void );
     DECL_LINK( PostDblClickHdl_Impl, void *, void);
 
     void                UpdateModulesBox_Impl();
     void                UpdateDicBox_Impl();
 
 public:
-    virtual             ~SvxLinguTabPage() override;
-    virtual void        dispose() override;
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rSet );
+    SvxLinguTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rCoreSet);
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet );
+    virtual ~SvxLinguTabPage() override;
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;

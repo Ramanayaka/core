@@ -22,8 +22,8 @@ using namespace com::sun::star;
 using namespace ooo::vba;
 
 
-VbaSystemAXControl::VbaSystemAXControl(  const uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, AbstractGeometryAttributes* pGeomHelper )
-: SystemAXControlImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+VbaSystemAXControl::VbaSystemAXControl(  const uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<AbstractGeometryAttributes> pGeomHelper )
+: SystemAXControlImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 , m_xControlInvocation( xControl, uno::UNO_QUERY_THROW )
 {
 }
@@ -68,19 +68,17 @@ sal_Bool SAL_CALL VbaSystemAXControl::hasProperty( const OUString& aName )
 OUString
 VbaSystemAXControl::getServiceImplName()
 {
-    return OUString( "VbaSystemAXControl" );
+    return "VbaSystemAXControl";
 }
 
 
 uno::Sequence< OUString >
 VbaSystemAXControl::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.Frame";
-    }
+        "ooo.vba.msforms.Frame"
+    };
     return aServiceNames;
 }
 

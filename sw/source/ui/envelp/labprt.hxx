@@ -19,11 +19,9 @@
 #ifndef INCLUDED_SW_SOURCE_UI_ENVELP_LABPRT_HXX
 #define INCLUDED_SW_SOURCE_UI_ENVELP_LABPRT_HXX
 
-#include <vcl/button.hxx>
-#include <vcl/field.hxx>
-#include <vcl/group.hxx>
-#include <vcl/layout.hxx>
 #include <sfx2/tabdlg.hxx>
+
+#include <label.hxx>
 
 class SwLabDlg;
 class SwLabItem;
@@ -32,30 +30,25 @@ class SwLabPrtPage : public SfxTabPage
 {
     VclPtr<Printer>      pPrinter; // for the shaft setting - unfortunately
 
-    VclPtr<RadioButton>  m_pPageButton;
-    VclPtr<RadioButton>  m_pSingleButton;
-    VclPtr<VclContainer> m_pSingleGrid;
-    VclPtr<VclContainer> m_pPrinterFrame;
-    VclPtr<NumericField> m_pColField;
-    VclPtr<NumericField> m_pRowField;
-    VclPtr<CheckBox>     m_pSynchronCB;
+    std::unique_ptr<weld::RadioButton>  m_xPageButton;
+    std::unique_ptr<weld::RadioButton>  m_xSingleButton;
+    std::unique_ptr<weld::Widget> m_xSingleGrid;
+    std::unique_ptr<weld::Widget> m_xPrinterFrame;
+    std::unique_ptr<weld::SpinButton> m_xColField;
+    std::unique_ptr<weld::SpinButton> m_xRowField;
+    std::unique_ptr<weld::CheckButton>  m_xSynchronCB;
+    std::unique_ptr<weld::Label>  m_xPrinterInfo;
+    std::unique_ptr<weld::Button> m_xPrtSetup;
 
-    VclPtr<FixedText>    m_pPrinterInfo;
-    VclPtr<PushButton>   m_pPrtSetup;
+    DECL_LINK( CountHdl, weld::Button&, void );
 
-    DECL_LINK( CountHdl, Button *, void );
-
-    SwLabDlg* GetParentSwLabDlg() {return static_cast<SwLabDlg*>(GetParentDialog());}
-
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
+    SwLabDlg* GetParentSwLabDlg() {return static_cast<SwLabDlg*>(GetDialogController());}
 
 public:
-    SwLabPrtPage(vcl::Window* pParent, const SfxItemSet& rSet);
+    SwLabPrtPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SwLabPrtPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage> Create(vcl::Window* pParent, const SfxItemSet* rSet);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet);
 
     virtual void ActivatePage(const SfxItemSet& rSet) override;
     virtual DeactivateRC DeactivatePage(SfxItemSet* pSet) override;

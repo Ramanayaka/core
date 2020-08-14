@@ -20,10 +20,10 @@
 #ifndef INCLUDED_IDL_INC_MODULE_HXX
 #define INCLUDED_IDL_INC_MODULE_HXX
 
-#include <slot.hxx>
-#include <object.hxx>
+#include "slot.hxx"
+#include "object.hxx"
 
-class SvMetaModule : public SvMetaObject
+class SvMetaModule final : public SvMetaObject
 {
 public:
     SvRefMemberList<SvMetaClass *>  aClassList;

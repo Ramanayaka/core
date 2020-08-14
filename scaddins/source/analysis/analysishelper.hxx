@@ -20,36 +20,23 @@
 #define INCLUDED_SCADDINS_SOURCE_ANALYSIS_ANALYSISHELPER_HXX
 
 
-#include <com/sun/star/lang/XServiceName.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/Date.hpp>
-#include <com/sun/star/util/XNumberFormatter2.hpp>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
-#include <com/sun/star/sheet/XAddIn.hpp>
-#include <com/sun/star/sheet/addin/XAnalysis.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <math.h>
 
-#include <tools/resid.hxx>
-
-#include "analysisdefs.hxx"
-
+#include <memory>
 #include <vector>
 
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::util { class XNumberFormatter2; }
 
-class ResMgr;
+namespace sca::analysis {
 
-namespace sca { namespace analysis {
-
-class SortedIndividualInt32List;
 class ScaAnyConverter;
 
 
 #define PI          3.1415926535897932
-#define EOL         ( ( const sal_Char* ) 1 )
-#define EOE         ( ( const sal_Char* ) 2 )
 
 
 inline bool     IsLeapYear( sal_uInt16 nYear );
@@ -159,8 +146,8 @@ double              GetOddlprice( sal_Int32 nNullDate, sal_Int32 nSettle, sal_In
 /// @throws css::lang::IllegalArgumentException
 double              GetOddlyield( sal_Int32 nNullDate, sal_Int32 nSettle, sal_Int32 nMat, sal_Int32 nLastInterest,
                                 double fRate, double fPrice, double fRedemp, sal_Int32 nFreq, sal_Int32 nBase );
-double              GetRmz( double fZins, double fZzr, double fBw, double fZw, sal_Int32 nF );
-double              GetZw( double fZins, double fZzr, double fRmz, double fBw, sal_Int32 nF );
+double              GetPmt( double fRate, double fNper, double fPv, double fFv, sal_Int32 nPayType );
+double              GetFv( double fRate, double fNper, double fPmt, double fPv, sal_Int32 nPayType );
 
 /// @throws css::uno::RuntimeException
 /// @throws css::lang::IllegalArgumentException
@@ -201,9 +188,9 @@ enum class FDCategory
 
 struct FuncDataBase
 {
-    const sal_Char*         pIntName;
-    sal_uInt16              nUINameID;          // resource ID to UI name
-    sal_uInt16              nDescrID;           // resource ID to description, parameter names and ~ description
+    const char*         pIntName;
+    const char*             pUINameID;          // resource ID to UI name
+    const char**            pDescrID;           // resource ID to description, parameter names and ~ description
     bool                    bDouble;            // name already exist in Calc
     bool                    bWithOpt;           // first parameter is internal
     const char**            pCompListID;        // list of valid names
@@ -217,8 +204,8 @@ class FuncData final
 {
 private:
     OUString                aIntName;
-    sal_uInt16              nUINameID;
-    sal_uInt16              nDescrID;           // leads also to parameter descriptions!
+    const char*             pUINameID;
+    const char**            pDescrID;           // leads also to parameter descriptions!
     bool                    bDouble;            // flag for names that already exist in Calc
     bool                    bWithOpt;           // has internal parameter on first position
 
@@ -229,10 +216,9 @@ private:
 
 public:
                             FuncData(const FuncDataBase& rBaseData);
-                            ~FuncData();
 
-    inline sal_uInt16       GetUINameID() const;
-    inline sal_uInt16       GetDescrID() const;
+    inline const char*      GetUINameID() const;
+    inline const char**     GetDescrID() const;
     inline bool             IsDouble() const;
     inline const OUString&  GetSuffix() const;
 
@@ -254,13 +240,7 @@ struct FindFuncData
 {
     const OUString& m_rId;
     explicit FindFuncData( const OUString& rId ) : m_rId(rId) {}
-    bool operator() ( FuncData& rCandidate ) const { return rCandidate.Is(m_rId); }
-};
-
-class AnalysisResId : public ResId
-{
- public:
-                    AnalysisResId( sal_uInt16 nId, ResMgr& rResMgr );
+    bool operator() ( FuncData const & rCandidate ) const { return rCandidate.Is(m_rId); }
 };
 
 /// sorted list with unique sal_Int32 values
@@ -485,35 +465,27 @@ public:
 };
 
 
-enum ComplListAppendHandl
-{
-    AH_EmptyAsErr,
-    AH_EmpyAs0,
-    AH_IgnoreEmpty
-};
-
-
 class ComplexList final
 {
 private:
-    std::vector<Complex*>  maVector;
+    std::vector<Complex>  maVector;
 public:
                            ~ComplexList();
 
-    inline const Complex*   Get( sal_uInt32 nIndex ) const;
+    inline const Complex&   Get( sal_uInt32 nIndex ) const;
 
     bool             empty() const
                                 { return maVector.empty(); }
     sal_uInt32       Count() const
                                 { return maVector.size(); }
 
-    inline void             Append( Complex* pNew );
+    inline void             Append( Complex&& pNew );
     /// @throws css::uno::RuntimeException
     /// @throws css::lang::IllegalArgumentException
-    void                    Append( const css::uno::Sequence< css::uno::Sequence< OUString > >& rComplexNumList, ComplListAppendHandl eAH );
+    void                    Append( const css::uno::Sequence< css::uno::Sequence< OUString > >& rComplexNumList );
     /// @throws css::uno::RuntimeException
     /// @throws css::lang::IllegalArgumentException
-    void                    Append( const css::uno::Sequence< css::uno::Any >& aMultPars,ComplListAppendHandl eAH );
+    void                    Append( const css::uno::Sequence< css::uno::Any >& aMultPars );
 };
 
 
@@ -527,8 +499,6 @@ enum ConvertDataClass
 #define INV_MATCHLEV        1764                    // guess, what this is... :-)
 
 
-class ConvertDataList;
-
 class ConvertData
 {
 protected:
@@ -539,7 +509,7 @@ protected:
     bool                bPrefixSupport;
 public:
                             ConvertData(
-                                const sal_Char      pUnitName[],
+                                const char      pUnitName[],
                                 double              fConvertConstant,
                                 ConvertDataClass    eClass,
                                 bool                bPrefSupport = false );
@@ -556,22 +526,17 @@ public:
     /// @throws css::lang::IllegalArgumentException
     virtual double          Convert( double fVal, const ConvertData& rTo,
                                 sal_Int16 nMatchLevelFrom, sal_Int16 nMatchLevelTo ) const;
-                                    // converts fVal from this unit to rFrom unit
-                                    // throws exception if not from same class
-                                    // this implementation is for proportional cases only
-    virtual double          ConvertToBase( double fVal, sal_Int16 nMatchLevel ) const;
     virtual double          ConvertFromBase( double fVal, sal_Int16 nMatchLevel ) const;
 
     inline ConvertDataClass Class() const;
 };
 
-class ConvertDataLinear : public ConvertData
+class ConvertDataLinear final : public ConvertData
 {
-protected:
     double                  fOffs;
 public:
     inline                  ConvertDataLinear(
-                                const sal_Char      pUnitName[],
+                                const char      pUnitName[],
                                 double              fConvertConstant,
                                 double              fConvertOffset,
                                 ConvertDataClass    eClass,
@@ -583,7 +548,10 @@ public:
                                 sal_Int16 nMatchLevelFrom, sal_Int16 nMatchLevelTo ) const override;
                                     // for cases where f(x) = a + bx applies (e.g. Temperatures)
 
-    virtual double          ConvertToBase( double fVal, sal_Int16 nMatchLevel ) const override;
+                            // converts fVal from this unit to rFrom unit
+                            // throws exception if not from same class
+                           // this implementation is for proportional cases only
+    double                  ConvertToBase( double fVal, sal_Int16 nMatchLevel ) const;
     virtual double          ConvertFromBase( double fVal, sal_Int16 nMatchLevel ) const override;
 };
 
@@ -591,7 +559,7 @@ public:
 class ConvertDataList
 {
 private:
-    std::vector<ConvertData*> maVector;
+    std::vector<std::unique_ptr<ConvertData>> maVector;
 public:
                             ConvertDataList();
                             ~ConvertDataList();
@@ -626,15 +594,15 @@ inline double GetYearFrac( const css::uno::Reference< css::beans::XPropertySet >
 }
 
 
-inline sal_uInt16 FuncData::GetUINameID() const
+inline const char* FuncData::GetUINameID() const
 {
-    return nUINameID;
+    return pUINameID;
 }
 
 
-inline sal_uInt16 FuncData::GetDescrID() const
+inline const char** FuncData::GetDescrID() const
 {
-    return nDescrID;
+    return pDescrID;
 }
 
 
@@ -733,15 +701,15 @@ inline void Complex::Add( const Complex& rAdd )
 }
 
 
-inline const Complex* ComplexList::Get( sal_uInt32 n ) const
+inline const Complex& ComplexList::Get( sal_uInt32 n ) const
 {
     return maVector[n];
 }
 
 
-inline void ComplexList::Append( Complex* p )
+inline void ComplexList::Append( Complex&& p )
 {
-    maVector.push_back(p);
+    maVector.emplace_back(p);
 }
 
 
@@ -750,7 +718,7 @@ inline ConvertDataClass ConvertData::Class() const
     return eClass;
 }
 
-inline ConvertDataLinear::ConvertDataLinear( const sal_Char* p, double fC, double fO, ConvertDataClass e,
+inline ConvertDataLinear::ConvertDataLinear( const char p[], double fC, double fO, ConvertDataClass e,
         bool bPrefSupport ) :
     ConvertData( p, fC, e, bPrefSupport ),
     fOffs( fO )
@@ -936,7 +904,7 @@ public:
                                     sal_Int32 nDefault );
 };
 
-} }
+}
 
 #endif
 

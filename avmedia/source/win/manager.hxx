@@ -17,22 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_WIN_MANAGER_HXX
-#define INCLUDED_AVMEDIA_SOURCE_WIN_MANAGER_HXX
+#pragma once
 
 #include "wincommon.hxx"
 #include <cppuhelper/implbase.hxx>
-#include "com/sun/star/media/XManager.hpp"
+#include <com/sun/star/media/XManager.hpp>
 
 
-namespace avmedia { namespace win {
+namespace avmedia::win {
 
 class Manager : public ::cppu::WeakImplHelper< css::media::XManager,
                                                css::lang::XServiceInfo >
 {
 public:
 
-    explicit Manager( const css::uno::Reference< css::lang::XMultiServiceFactory >& rxMgr );
+    explicit Manager();
     ~Manager() override;
 
     // XManager
@@ -42,14 +41,8 @@ public:
     virtual OUString SAL_CALL getImplementationName(  ) override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
-private:
-
-    css::uno::Reference< css::lang::XMultiServiceFactory > mxMgr;
 };
 
-} // namespace win
-} // namespace avmedia
-
-#endif // INCLUDED_AVMEDIA_SOURCE_WIN_MANAGER_HXX
+} // namespace avmedia::win
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

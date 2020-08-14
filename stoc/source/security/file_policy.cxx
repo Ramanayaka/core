@@ -21,21 +21,19 @@
 #include <osl/diagnose.h>
 #include <osl/file.h>
 #include <rtl/byteseq.hxx>
-#include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
 
 #include <cppuhelper/access_control.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/security/XAccessController.hpp>
 #include <com/sun/star/security/XPolicy.hpp>
 #include <com/sun/star/security/AllPermission.hpp>
 #include <com/sun/star/security/RuntimePermission.hpp>
 #include <com/sun/star/io/FilePermission.hpp>
 #include <com/sun/star/connection/SocketPermission.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <unordered_map>
 
@@ -63,7 +61,7 @@ class FilePolicy
     AccessControl m_ac;
 
     Sequence< Any > m_defaultPermissions;
-    typedef std::unordered_map< OUString, Sequence< Any >, OUStringHash > t_permissions;
+    typedef std::unordered_map< OUString, Sequence< Any > > t_permissions;
     t_permissions m_userPermissions;
     bool m_init;
 
@@ -174,11 +172,8 @@ void PolicyReader::assureToken( sal_Unicode token )
     sal_Unicode c = get();
     if (c == token)
         return;
-    OUStringBuffer buf( 16 );
-    buf.append( "expected >" );
-    buf.append( c );
-    buf.append( "<!" );
-    error( buf.makeStringAndClear() );
+    OUString msg = "expected >" + OUStringChar(c) + "<!";
+    error( msg );
 }
 
 OUString PolicyReader::assureQuotedToken()
@@ -474,7 +469,7 @@ void FilePolicy::refresh()
 
 OUString FilePolicy::getImplementationName()
 {
-    return OUString(IMPL_NAME);
+    return IMPL_NAME;
 }
 
 sal_Bool FilePolicy::supportsService( OUString const & serviceName )
@@ -484,13 +479,12 @@ sal_Bool FilePolicy::supportsService( OUString const & serviceName )
 
 Sequence< OUString > FilePolicy::getSupportedServiceNames()
 {
-    Sequence<OUString> aSNS { "com.sun.star.security.Policy" };
-    return aSNS;
+    return { "com.sun.star.security.Policy" };
 }
 
 } // namespace
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_security_comp_stoc_FilePolicy_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

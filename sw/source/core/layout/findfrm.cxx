@@ -17,21 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "pagefrm.hxx"
-#include "rootfrm.hxx"
+#include <pagefrm.hxx>
+#include <rootfrm.hxx>
 #include <cellfrm.hxx>
 #include <rowfrm.hxx>
 #include <swtable.hxx>
-
-#include "tabfrm.hxx"
-#include "sectfrm.hxx"
-#include "flyfrms.hxx"
-#include "ftnfrm.hxx"
-#include "txtftn.hxx"
-#include "fmtftn.hxx"
+#include <notxtfrm.hxx>
+#include <tabfrm.hxx>
+#include <sectfrm.hxx>
+#include <frmatr.hxx>
+#include <flyfrm.hxx>
+#include <ftnfrm.hxx>
+#include <txtftn.hxx>
+#include <fmtftn.hxx>
+#include <fmtpdsc.hxx>
 #include <txtfrm.hxx>
+#include <bodyfrm.hxx>
 #include <calbck.hxx>
 #include <viewopt.hxx>
+#include <ndtxt.hxx>
+#include <sal/log.hxx>
 
 /// Searches the first ContentFrame in BodyText below the page.
 SwLayoutFrame *SwFootnoteBossFrame::FindBodyCont()
@@ -311,18 +316,25 @@ const SwLayoutFrame *SwFrame::ImplGetNextLayoutLeaf( bool bFwd ) const
 
          bool bGoingFwdOrBwd = false;
 
-         bool bGoingDown = ( !bGoingUp && ( nullptr != (p = lcl_GetLower( pFrame, bFwd ) ) ) );
+         bool bGoingDown = !bGoingUp;
+         if (bGoingDown)
+         {
+            p = lcl_GetLower( pFrame, bFwd );
+            bGoingDown = nullptr != p;
+         }
          if ( !bGoingDown )
          {
              // I cannot go down, because either I'm currently going up or
              // because the is no lower.
              // I'll try to go forward:
-             bGoingFwdOrBwd = (nullptr != (p = lcl_FindLayoutFrame( pFrame, bFwd ) ) );
+             p = lcl_FindLayoutFrame( pFrame, bFwd );
+             bGoingFwdOrBwd = nullptr != p;
              if ( !bGoingFwdOrBwd )
              {
                  // I cannot go forward, because there is no next frame.
                  // I'll try to go up:
-                 bGoingUp = (nullptr != (p = pFrame->GetUpper() ) );
+                 p = pFrame->GetUpper();
+                 bGoingUp = nullptr != p;
                  if ( !bGoingUp )
                  {
                     // I cannot go up, because there is no upper frame.
@@ -331,11 +343,11 @@ const SwLayoutFrame *SwFrame::ImplGetNextLayoutLeaf( bool bFwd ) const
              }
          }
 
-        // If I could not go down or forward, I'll have to go up
-        bGoingUp = !bGoingFwdOrBwd && !bGoingDown;
+         // If I could not go down or forward, I'll have to go up
+         bGoingUp = !bGoingFwdOrBwd && !bGoingDown;
 
-        pFrame = p;
-        p = lcl_GetLower( pFrame, true );
+         pFrame = p;
+         p = lcl_GetLower( pFrame, true );
 
     } while( ( p && !p->IsFlowFrame() ) ||
              pFrame == this ||
@@ -364,13 +376,20 @@ const SwContentFrame* SwContentFrame::ImplGetNextContentFrame( bool bFwd ) const
         const SwFrame *p = nullptr;
         bool bGoingFwdOrBwd = false;
 
-        bool bGoingDown = ( !bGoingUp && ( nullptr != ( p = lcl_GetLower( pFrame, true ) ) ) );
+        bool bGoingDown = !bGoingUp;
+        if (bGoingDown)
+        {
+            p = lcl_GetLower( pFrame, true ) ;
+            bGoingDown = nullptr != p;
+        }
         if ( !bGoingDown )
         {
-            bGoingFwdOrBwd = ( nullptr != ( p = lcl_FindLayoutFrame( pFrame, bFwd ) ) );
+            p = lcl_FindLayoutFrame( pFrame, bFwd );
+            bGoingFwdOrBwd = nullptr != p;
             if ( !bGoingFwdOrBwd )
             {
-                bGoingUp = ( nullptr != ( p = pFrame->GetUpper() ) );
+                p = pFrame->GetUpper();
+                bGoingUp = nullptr != p;
                 if ( !bGoingUp )
                 {
                     return nullptr;
@@ -379,10 +398,9 @@ const SwContentFrame* SwContentFrame::ImplGetNextContentFrame( bool bFwd ) const
         }
 
         bGoingUp = !(bGoingFwdOrBwd || bGoingDown);
-
-        if ( !bFwd )
+        assert(p);
+        if (!bFwd && bGoingDown)
         {
-            if( bGoingDown && p )
                 while ( p->GetNext() )
                     p = p->GetNext();
         }
@@ -471,6 +489,18 @@ SwSectionFrame* SwFrame::ImplFindSctFrame()
     return static_cast<SwSectionFrame*>(pRet);
 }
 
+const SwBodyFrame* SwFrame::ImplFindBodyFrame() const
+{
+    const SwFrame *pRet = this;
+    while ( !pRet->IsBodyFrame() )
+    {
+        pRet = pRet->GetUpper();
+        if ( !pRet )
+            return nullptr;
+    }
+    return static_cast<const SwBodyFrame*>(pRet);
+}
+
 SwFootnoteFrame *SwFrame::ImplFindFootnoteFrame()
 {
     SwFrame *pRet = this;
@@ -547,18 +577,18 @@ const SwPageFrame* SwRootFrame::GetPageAtPos( const Point& rPt, const Size* pSiz
     if ( pSize )
     {
         aRect.Pos()  = rPt;
-        aRect.SSize() = *pSize;
+        aRect.SSize( *pSize );
     }
 
     const SwFrame* pPage = Lower();
 
     if ( !bExtend )
     {
-        if( !Frame().IsInside( rPt ) )
+        if( !getFrameArea().IsInside( rPt ) )
             return nullptr;
 
         // skip pages above point:
-        while( pPage && rPt.Y() > pPage->Frame().Bottom() )
+        while( pPage && rPt.Y() > pPage->getFrameArea().Bottom() )
             pPage = pPage->GetNext();
     }
 
@@ -567,7 +597,7 @@ const SwPageFrame* SwRootFrame::GetPageAtPos( const Point& rPt, const Size* pSiz
 
     while ( pPage && !pRet )
     {
-        const SwRect& rBoundRect = bExtend ? maPageRects[ nPageIdx++ ] : pPage->Frame();
+        const SwRect& rBoundRect = bExtend ? maPageRects[ nPageIdx++ ] : pPage->getFrameArea();
 
         if ( (!pSize && rBoundRect.IsInside(rPt)) ||
               (pSize && rBoundRect.IsOver(aRect)) )
@@ -583,7 +613,7 @@ const SwPageFrame* SwRootFrame::GetPageAtPos( const Point& rPt, const Size* pSiz
 
 bool SwRootFrame::IsBetweenPages(const Point& rPt) const
 {
-    if (!Frame().IsInside(rPt))
+    if (!getFrameArea().IsInside(rPt))
         return false;
 
     // top visible page
@@ -592,15 +622,15 @@ bool SwRootFrame::IsBetweenPages(const Point& rPt) const
         return false;
 
     // skip pages above point:
-    while (pPage && rPt.Y() > pPage->Frame().Bottom())
+    while (pPage && rPt.Y() > pPage->getFrameArea().Bottom())
         pPage = pPage->GetNext();
 
     if (pPage &&
-        rPt.X() >= pPage->Frame().Left() &&
-        rPt.X() <= pPage->Frame().Right())
+        rPt.X() >= pPage->getFrameArea().Left() &&
+        rPt.X() <= pPage->getFrameArea().Right())
     {
         // Trivial case when we're right in between.
-        if (!pPage->Frame().IsInside(rPt))
+        if (!pPage->getFrameArea().IsInside(rPt))
             return true;
 
         // In normal mode the gap is large enough and
@@ -612,8 +642,8 @@ bool SwRootFrame::IsBetweenPages(const Point& rPt) const
         if (pSh && pSh->GetViewOptions()->IsWhitespaceHidden())
         {
             // If we are really close to the bottom or top of a page.
-            const auto toEdge = std::min(std::abs(pPage->Frame().Top() - rPt.Y()),
-                                         std::abs(pPage->Frame().Bottom() - rPt.Y()));
+            const auto toEdge = std::min(std::abs(pPage->getFrameArea().Top() - rPt.Y()),
+                                         std::abs(pPage->getFrameArea().Bottom() - rPt.Y()));
             return toEdge <= MmToTwips(2.0);
         }
     }
@@ -621,19 +651,52 @@ bool SwRootFrame::IsBetweenPages(const Point& rPt) const
     return false;
 }
 
+const SvxFormatBreakItem& SwFrame::GetBreakItem() const
+{
+    return GetAttrSet()->GetBreak();
+}
+
+const SwFormatPageDesc& SwFrame::GetPageDescItem() const
+{
+    return GetAttrSet()->GetPageDesc();
+}
+
+const SvxFormatBreakItem& SwTextFrame::GetBreakItem() const
+{
+    return GetTextNodeFirst()->GetSwAttrSet().GetBreak();
+}
+
+const SwFormatPageDesc& SwTextFrame::GetPageDescItem() const
+{
+    return GetTextNodeFirst()->GetSwAttrSet().GetPageDesc();
+}
+
 const SwAttrSet* SwFrame::GetAttrSet() const
 {
-    if ( IsContentFrame() )
-        return &static_cast<const SwContentFrame*>(this)->GetNode()->GetSwAttrSet();
+    if (IsTextFrame())
+    {
+        return &static_cast<const SwTextFrame*>(this)->GetTextNodeForParaProps()->GetSwAttrSet();
+    }
+    else if (IsNoTextFrame())
+    {
+        return &static_cast<const SwNoTextFrame*>(this)->GetNode()->GetSwAttrSet();
+    }
     else
+    {
+        assert(IsLayoutFrame());
         return &static_cast<const SwLayoutFrame*>(this)->GetFormat()->GetAttrSet();
+    }
 }
 
 drawinglayer::attribute::SdrAllFillAttributesHelperPtr SwFrame::getSdrAllFillAttributesHelper() const
 {
-    if(IsContentFrame())
+    if (IsTextFrame())
     {
-        return static_cast< const SwContentFrame* >(this)->GetNode()->getSdrAllFillAttributesHelper();
+        return static_cast<const SwTextFrame*>(this)->GetTextNodeForParaProps()->getSdrAllFillAttributesHelper();
+    }
+    else if (IsNoTextFrame())
+    {
+        return static_cast<const SwNoTextFrame*>(this)->GetNode()->getSdrAllFillAttributesHelper();
     }
     else
     {
@@ -679,14 +742,20 @@ static SwFrame* lcl_NextFrame( SwFrame* pFrame )
         SwFrame *p = nullptr;
 
         bool bGoingFwd = false;
-        bool bGoingDown = (!bGoingUp && ( nullptr != (p = pFrame->IsLayoutFrame() ? static_cast<SwLayoutFrame*>(pFrame)->Lower() : nullptr)));
-
+        bool bGoingDown = !bGoingUp && pFrame->IsLayoutFrame();
+        if (bGoingDown)
+        {
+            p = static_cast<SwLayoutFrame*>(pFrame)->Lower();
+            bGoingDown = nullptr != p;
+        }
         if( !bGoingDown )
         {
-            bGoingFwd = (nullptr != (p = ( pFrame->IsFlyFrame() ? static_cast<SwFlyFrame*>(pFrame)->GetNextLink() : pFrame->GetNext())));
+            p = pFrame->IsFlyFrame() ? static_cast<SwFlyFrame*>(pFrame)->GetNextLink() : pFrame->GetNext();
+            bGoingFwd = nullptr != p;
             if ( !bGoingFwd )
             {
-                bGoingUp = (nullptr != (p = pFrame->GetUpper()));
+                p = pFrame->GetUpper();
+                bGoingUp = nullptr != p;
                 if ( !bGoingUp )
                 {
                     return nullptr;
@@ -713,7 +782,7 @@ SwFrame *SwFrame::FindNext_()
         if ( static_cast<SwTabFrame*>(this)->GetFollow() )
             return static_cast<SwTabFrame*>(this)->GetFollow();
 
-        pThis = static_cast<SwTabFrame*>(this)->FindLastContent();
+        pThis = static_cast<SwTabFrame*>(this)->FindLastContentOrTable();
         if ( !pThis )
             pThis = this;
         bIgnoreTab = true;
@@ -750,7 +819,7 @@ SwFrame *SwFrame::FindNext_()
         SwLayoutFrame *pUp = pThis->GetUpper();
         while (pUp && !pUp->IsCellFrame())
             pUp = pUp->GetUpper();
-        SAL_WARN_IF(!pUp, "sw.core", "Content in table but not in cell.");
+        assert(pUp && "Content flag says it's in table but it's not in cell.");
         SwFrame* pNxt = pUp ? static_cast<SwCellFrame*>(pUp)->GetFollowCell() : nullptr;
         if ( pNxt )
             pNxt = static_cast<SwCellFrame*>(pNxt)->ContainsContent();
@@ -843,7 +912,7 @@ SwContentFrame *SwFrame::FindNextCnt_( const bool _bInSameFootnote )
             if( pThis )
                 return static_cast<SwContentFrame*>(pThis);
         }
-        pThis = static_cast<SwTabFrame*>(this)->FindLastContent();
+        pThis = static_cast<SwTabFrame*>(this)->FindLastContentOrTable();
         if ( !pThis )
             return nullptr;
     }
@@ -1059,7 +1128,7 @@ SwContentFrame* SwFrame::FindPrevCnt_()
                     // handling for environments 'page header' and 'page footer':
                     // Assure that found previous frame is also in the same
                     // page header respectively page footer as <pCurrContentFrame>
-                    // Note: At this point its clear, that <pCurrContentFrame> has
+                    // Note: At this point it's clear that <pCurrContentFrame> has
                     //       to be inside a page header or page footer and that
                     //       neither <pCurrContentFrame> nor <pPrevContentFrame> are
                     //       inside a fly frame.
@@ -1108,7 +1177,7 @@ SwFrame *SwFrame::FindPrev_()
             SwLayoutFrame *pUp = pThis->GetUpper();
             while (pUp && !pUp->IsCellFrame())
                 pUp = pUp->GetUpper();
-            SAL_WARN_IF(!pUp, "sw.core", "Content in table but not in cell.");
+            assert(pUp && "Content flag says it's in table but it's not in cell.");
             if (pUp && pUp->IsAnLower(pPrvCnt))
                 return pPrvCnt;
         }
@@ -1160,45 +1229,45 @@ SwFrame *SwFrame::FindPrev_()
 
 void SwFrame::ImplInvalidateNextPos( bool bNoFootnote )
 {
-    SwFrame *pFrame;
-    if ( nullptr != (pFrame = FindNext_()) )
+    SwFrame *pFrame = FindNext_();
+    if ( nullptr == pFrame )
+        return;
+
+    if( pFrame->IsSctFrame() )
     {
-        if( pFrame->IsSctFrame() )
+        while( pFrame && pFrame->IsSctFrame() )
         {
-            while( pFrame && pFrame->IsSctFrame() )
+            if( static_cast<SwSectionFrame*>(pFrame)->GetSection() )
             {
-                if( static_cast<SwSectionFrame*>(pFrame)->GetSection() )
-                {
-                    SwFrame* pTmp = static_cast<SwSectionFrame*>(pFrame)->ContainsAny();
-                    if( pTmp )
-                        pTmp->InvalidatePos();
-                    else if( !bNoFootnote )
-                        static_cast<SwSectionFrame*>(pFrame)->InvalidateFootnotePos();
-                    if( !IsInSct() || FindSctFrame()->GetFollow() != pFrame )
-                        pFrame->InvalidatePos();
-                    return;
-                }
-                pFrame = pFrame->FindNext();
+                SwFrame* pTmp = static_cast<SwSectionFrame*>(pFrame)->ContainsAny();
+                if( pTmp )
+                    pTmp->InvalidatePos();
+                else if( !bNoFootnote )
+                    static_cast<SwSectionFrame*>(pFrame)->InvalidateFootnotePos();
+                if( !IsInSct() || FindSctFrame()->GetFollow() != pFrame )
+                    pFrame->InvalidatePos();
+                return;
             }
-            if( pFrame )
+            pFrame = pFrame->FindNext();
+        }
+        if( pFrame )
+        {
+            if ( pFrame->IsSctFrame())
             {
-                if ( pFrame->IsSctFrame())
-                {
-                    // We need to invalidate the section's content so it gets
-                    // the chance to flow to a different page.
-                    SwFrame* pTmp = static_cast<SwSectionFrame*>(pFrame)->ContainsAny();
-                    if( pTmp )
-                        pTmp->InvalidatePos();
-                    if( !IsInSct() || FindSctFrame()->GetFollow() != pFrame )
-                        pFrame->InvalidatePos();
-                }
-                else
+                // We need to invalidate the section's content so it gets
+                // the chance to flow to a different page.
+                SwFrame* pTmp = static_cast<SwSectionFrame*>(pFrame)->ContainsAny();
+                if( pTmp )
+                    pTmp->InvalidatePos();
+                if( !IsInSct() || FindSctFrame()->GetFollow() != pFrame )
                     pFrame->InvalidatePos();
             }
+            else
+                pFrame->InvalidatePos();
         }
-        else
-            pFrame->InvalidatePos();
     }
+    else
+        pFrame->InvalidatePos();
 }
 
 /** method to invalidate printing area of next frame
@@ -1224,31 +1293,31 @@ void SwFrame::InvalidateNextPrtArea()
     }
 
     // Invalidate printing area of found next frame
-    if ( pNextFrame )
-    {
-        if ( pNextFrame->IsSctFrame() )
-        {
-            // Invalidate printing area of found section frame, if
-            // (1) this text frame isn't in a section OR
-            // (2) found section frame isn't a follow of the section frame this
-            //     text frame is in.
-            if ( !IsInSct() || FindSctFrame()->GetFollow() != pNextFrame )
-            {
-                pNextFrame->InvalidatePrt();
-            }
+    if ( !pNextFrame )
+        return;
 
-            // Invalidate printing area of first content in found section.
-            SwFrame* pFstContentOfSctFrame =
-                    static_cast<SwSectionFrame*>(pNextFrame)->ContainsAny();
-            if ( pFstContentOfSctFrame )
-            {
-                pFstContentOfSctFrame->InvalidatePrt();
-            }
-        }
-        else
+    if ( pNextFrame->IsSctFrame() )
+    {
+        // Invalidate printing area of found section frame, if
+        // (1) this text frame isn't in a section OR
+        // (2) found section frame isn't a follow of the section frame this
+        //     text frame is in.
+        if ( !IsInSct() || FindSctFrame()->GetFollow() != pNextFrame )
         {
             pNextFrame->InvalidatePrt();
         }
+
+        // Invalidate printing area of first content in found section.
+        SwFrame* pFstContentOfSctFrame =
+                static_cast<SwSectionFrame*>(pNextFrame)->ContainsAny();
+        if ( pFstContentOfSctFrame )
+        {
+            pFstContentOfSctFrame->InvalidatePrt();
+        }
+    }
+    else
+    {
+        pNextFrame->InvalidatePrt();
     }
 }
 
@@ -1256,10 +1325,22 @@ void SwFrame::InvalidateNextPrtArea()
 ///     but not if it sits in a table which itself sits in a section.
 static bool lcl_IsInSectionDirectly( const SwFrame *pUp )
 {
+    bool bSeenColumn = false;
+
     while( pUp )
     {
-        if( pUp->IsSctFrame() )
-            return true;
+        if( pUp->IsColumnFrame() )
+            bSeenColumn = true;
+        else if( pUp->IsSctFrame() )
+        {
+            auto pSection = static_cast<const SwSectionFrame*>(pUp);
+            const SwFrame* pHeaderFooter = pSection->FindFooterOrHeader();
+            // When the section frame is not in header/footer:
+            // Allow move of frame in case our only column is not growable.
+            // Also allow if there is a previous section frame (to move back).
+            bool bAllowOutsideHeaderFooter = !pSection->Growable() || pSection->GetPrecede();
+            return bSeenColumn || (!pHeaderFooter && bAllowOutsideHeaderFooter);
+        }
         else if( pUp->IsTabFrame() )
             return false;
         pUp = pUp->GetUpper();
@@ -1272,8 +1353,8 @@ static bool lcl_IsInSectionDirectly( const SwFrame *pUp )
     OD 08.08.2003 #110978#
     method replaced 'old' method <sal_Bool IsMoveable() const>.
     Determines, if frame is moveable in given environment. if no environment
-    is given (parameter _pLayoutFrame == 0L), the movability in the actual
-    environment (<this->GetUpper()) is checked.
+    is given (parameter _pLayoutFrame == 0), the movability in the actual
+    environment (<GetUpper()) is checked.
 */
 bool SwFrame::IsMoveable( const SwLayoutFrame* _pLayoutFrame ) const
 {
@@ -1294,8 +1375,14 @@ bool SwFrame::IsMoveable( const SwLayoutFrame* _pLayoutFrame ) const
                   _pLayoutFrame->IsInDocBody() ||
                   _pLayoutFrame->IsInFootnote() )
         {
+            // If IsMovable() is called before a MoveFwd() the method
+            // may return false if there is no NextCellLeaf. If
+            // IsMovable() is called before a MoveBwd() the method may
+            // return false if there is no PrevCellLeaf.
             if ( _pLayoutFrame->IsInTab() && !IsTabFrame() &&
-                 ( !IsContentFrame() || !const_cast<SwFrame*>(this)->GetNextCellLeaf() ) )
+                 ( !IsContentFrame() || (!const_cast<SwFrame*>(this)->GetNextCellLeaf()
+                                      && !const_cast<SwFrame*>(this)->GetPrevCellLeaf()) )
+                )
             {
                 bRetVal = false;
             }
@@ -1390,12 +1477,22 @@ void SwFrame::SetDirFlags( bool bVert )
             if( pAsk )
             {
                 mbVertical = pAsk->IsVertical();
-                mbReverse  = pAsk->IsReverse();
-
                 mbVertLR  = pAsk->IsVertLR();
+                mbVertLRBT = pAsk->IsVertLRBT();
 
                 if ( !pAsk->mbInvalidVert )
                     mbInvalidVert = false;
+
+                if ( IsCellFrame() )
+                {
+                    SwCellFrame* pPrv = static_cast<SwCellFrame*>(this)->GetPreviousCell();
+                    if ( pPrv && !mbVertical && pPrv->IsVertical() )
+                    {
+                        mbVertical = pPrv->IsVertical();
+                        mbVertLR  = pPrv->IsVertLR();
+                        mbVertLRBT = pPrv->IsVertLRBT();
+                    }
+                }
             }
         }
         else
@@ -1435,11 +1532,11 @@ SwLayoutFrame* SwFrame::GetNextCellLeaf()
 SwLayoutFrame* SwFrame::GetPrevCellLeaf()
 {
     SwFrame* pTmpFrame = this;
-    while ( !pTmpFrame->IsCellFrame() )
+    while (pTmpFrame && !pTmpFrame->IsCellFrame())
         pTmpFrame = pTmpFrame->GetUpper();
 
-    OSL_ENSURE( pTmpFrame, "SwFrame::GetNextPreviousLeaf() without cell" );
-    return static_cast<SwCellFrame*>(pTmpFrame)->GetPreviousCell();
+    SAL_WARN_IF(!pTmpFrame, "sw.core", "SwFrame::GetNextPreviousLeaf() without cell");
+    return pTmpFrame ? static_cast<SwCellFrame*>(pTmpFrame)->GetPreviousCell() : nullptr;
 }
 
 static SwCellFrame* lcl_FindCorrespondingCellFrame( const SwRowFrame& rOrigRow,
@@ -1551,14 +1648,14 @@ SwCellFrame* SwCellFrame::GetPreviousCell() const
 
     // find most upper row frame
     const SwFrame* pRow = GetUpper();
-    while( !pRow->IsRowFrame() || !pRow->GetUpper()->IsTabFrame() )
+    while( !pRow->IsRowFrame() || (pRow->GetUpper() && !pRow->GetUpper()->IsTabFrame()) )
         pRow = pRow->GetUpper();
 
     OSL_ENSURE( pRow->GetUpper() && pRow->GetUpper()->IsTabFrame(), "GetPreviousCell without Table" );
 
     const SwTabFrame* pTab = static_cast<const SwTabFrame*>(pRow->GetUpper());
 
-    if ( pTab->IsFollow() )
+    if ( pTab && pTab->IsFollow() )
     {
         const SwFrame* pTmp = pTab->GetFirstNonHeadlineRow();
         const bool bIsInFirstLine = ( pTmp == pRow );
@@ -1583,8 +1680,6 @@ SwCellFrame* SwCellFrame::GetPreviousCell() const
 // --> NEW TABLES
 const SwCellFrame& SwCellFrame::FindStartEndOfRowSpanCell( bool bStart ) const
 {
-    const SwCellFrame* pRet = nullptr;
-
     const SwTabFrame* pTableFrame = dynamic_cast<const SwTabFrame*>(GetUpper()->GetUpper());
 
     if ( !bStart && pTableFrame && pTableFrame->IsFollow() && pTableFrame->IsInHeadline( *this ) )
@@ -1641,17 +1736,17 @@ const SwCellFrame& SwCellFrame::FindStartEndOfRowSpanCell( bool bStart ) const
 
                 if ( pMasterTable == pTableFrame )
                 {
-                    pRet = pMasterCell;
-                    break;
+                    return *pMasterCell;
                 }
             }
         }
     }
 
-    assert(pRet && "SwCellFrame::FindStartRowSpanCell: No result");
+    SAL_WARN("sw.core", "SwCellFrame::FindStartRowSpanCell: No result");
 
-    return *pRet;
+    return *this;
 }
+
 // <-- NEW TABLES
 
 const SwRowFrame* SwFrame::IsInSplitTableRow() const
@@ -1671,7 +1766,7 @@ const SwRowFrame* SwFrame::IsInSplitTableRow() const
     const SwTabFrame* pTab = static_cast<const SwTabFrame*>(pRow->GetUpper());
 
     // If most upper row frame is a headline row, the current frame
-    // can't be in a splitted table row. Thus, add corresponding condition.
+    // can't be in a split table row. Thus, add corresponding condition.
     if ( pRow->GetNext() ||
          pTab->GetTable()->IsHeadline(
                     *(static_cast<const SwRowFrame*>(pRow)->GetTabLine()) ) ||

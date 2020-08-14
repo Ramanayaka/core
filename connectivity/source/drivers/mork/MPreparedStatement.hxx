@@ -25,9 +25,7 @@
 #include <com/sun/star/sdbc/XMultipleResults.hpp>
 #include <cppuhelper/implbase5.hxx>
 
-namespace connectivity
-{
-    namespace mork
+namespace connectivity::mork
     {
 
         typedef ::cppu::ImplHelper5<    css::sdbc::XPreparedStatement,
@@ -36,10 +34,9 @@ namespace connectivity
                                         css::sdbc::XMultipleResults,
                                         css::lang::XServiceInfo> OPreparedStatement_BASE;
 
-        class OPreparedStatement :  public  OCommonStatement,
+        class OPreparedStatement final : public  OCommonStatement,
                                     public  OPreparedStatement_BASE
         {
-        protected:
             // Data attributes
 
             OUString                                    m_sSqlStatement;
@@ -48,7 +45,6 @@ namespace connectivity
             ::rtl::Reference<connectivity::OSQLColumns> m_xParamColumns;    // the parameter columns
             OValueRow                                   m_aParameterRow;
 
-        protected:
             virtual void SAL_CALL setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,
                                                                    const css::uno::Any& rValue) override;
             virtual ~OPreparedStatement() override;
@@ -66,10 +62,10 @@ namespace connectivity
             void checkAndResizeParameters(sal_Int32 parameterIndex);
             void setParameter(sal_Int32 parameterIndex, const ORowSetValue& x);
 
-            void AddParameter(connectivity::OSQLParseNode * pParameter,
+            void AddParameter(connectivity::OSQLParseNode const * pParameter,
                                 const css::uno::Reference< css::beans::XPropertySet>& _xCol);
             void scanParameter(OSQLParseNode* pParseNode,std::vector< OSQLParseNode*>& _rParaNodes);
-            void describeColumn(OSQLParseNode* _pParameter,OSQLParseNode* _pNode,const OSQLTable& _xTable);
+            void describeColumn(OSQLParseNode const * _pParameter, OSQLParseNode const * _pNode, const OSQLTable& _xTable);
             void describeParameter();
 
         public:
@@ -125,10 +121,10 @@ namespace connectivity
             using OCommonStatement::executeQuery;
             using OCommonStatement::executeUpdate;
             using OCommonStatement::execute;
-        protected:
+        private:
             using OPropertySetHelper::getFastPropertyValue;
         };
-    }
+
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MPREPAREDSTATEMENT_HXX

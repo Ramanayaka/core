@@ -9,31 +9,22 @@
  */
 
 #include <memory>
-#include <sfx2/dispatch.hxx>
-#include <svl/zforlist.hxx>
-#include <svl/undo.hxx>
 
-#include "formulacell.hxx"
-#include "rangelst.hxx"
-#include "scitems.hxx"
-#include "docsh.hxx"
-#include "document.hxx"
-#include "uiitems.hxx"
-#include "reffact.hxx"
-#include "docfunc.hxx"
-#include "TableFillingAndNavigationTools.hxx"
-
-#include "DescriptiveStatisticsDialog.hxx"
+#include <reffact.hxx>
+#include <TableFillingAndNavigationTools.hxx>
+#include <DescriptiveStatisticsDialog.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
 
 namespace
 {
 
 struct StatisticCalculation {
-    sal_Int16   aCalculationNameId;
+    const char* aCalculationNameId;
     const char* aFormula;
 };
 
-static const StatisticCalculation lclCalcDefinitions[] =
+const StatisticCalculation lclCalcDefinitions[] =
 {
     { STRID_CALC_MEAN,           "=AVERAGE(%RANGE%)" },
     { STRID_CALC_STD_ERROR,      "=SQRT(VAR(%RANGE%)/COUNT(%RANGE%))"},
@@ -50,37 +41,38 @@ static const StatisticCalculation lclCalcDefinitions[] =
     { STRID_CALC_MAX,            "=MAX(%RANGE%)"},
     { STRID_CALC_SUM,            "=SUM(%RANGE%)"},
     { STRID_CALC_COUNT,          "=COUNT(%RANGE%)" },
-    { 0,                         nullptr }
+    { nullptr,                   nullptr }
 };
 
 }
 
 ScDescriptiveStatisticsDialog::ScDescriptiveStatisticsDialog(
                     SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
-                    vcl::Window* pParent, ScViewData* pViewData ) :
+                    weld::Window* pParent, ScViewData* pViewData ) :
     ScStatisticsInputOutputDialog(
             pSfxBindings, pChildWindow, pParent, pViewData,
-            "DescriptiveStatisticsDialog", "modules/scalc/ui/descriptivestatisticsdialog.ui" )
+            "modules/scalc/ui/descriptivestatisticsdialog.ui",
+            "DescriptiveStatisticsDialog")
 {}
 
 ScDescriptiveStatisticsDialog::~ScDescriptiveStatisticsDialog()
 {}
 
-bool ScDescriptiveStatisticsDialog::Close()
+void ScDescriptiveStatisticsDialog::Close()
 {
-    return DoClose( ScDescriptiveStatisticsDialogWrapper::GetChildWindowId() );
+    DoClose( ScDescriptiveStatisticsDialogWrapper::GetChildWindowId() );
 }
 
-sal_Int16 ScDescriptiveStatisticsDialog::GetUndoNameId()
+const char* ScDescriptiveStatisticsDialog::GetUndoNameId()
 {
     return STR_DESCRIPTIVE_STATISTICS_UNDO_NAME;
 }
 
 ScRange ScDescriptiveStatisticsDialog::ApplyOutput(ScDocShell* pDocShell)
 {
-    AddressWalkerWriter aOutput(mOutputAddress, pDocShell, mDocument,
+    AddressWalkerWriter aOutput(mOutputAddress, pDocShell, &mDocument,
             formula::FormulaGrammar::mergeToGrammar( formula::FormulaGrammar::GRAM_ENGLISH, mAddressDetails.eConv));
-    FormulaTemplate aTemplate(mDocument);
+    FormulaTemplate aTemplate(&mDocument);
 
     std::unique_ptr<DataRangeIterator> pIterator;
     if (mGroupedBy == BY_COLUMN)

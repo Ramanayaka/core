@@ -20,14 +20,16 @@
 #define INCLUDED_CHART2_SOURCE_VIEW_INC_VLEGENDSYMBOLFACTORY_HXX
 
 #include "LegendEntryProvider.hxx"
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
+#include <com/sun/star/uno/Reference.h>
 
-namespace chart
-{
+namespace com::sun::star::awt { struct Size; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::drawing { class XShapes; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+namespace com::sun::star::uno { class Any; }
 
-namespace VLegendSymbolFactory
+namespace chart::VLegendSymbolFactory
 {
     enum class PropertyType
     {
@@ -45,7 +47,6 @@ namespace VLegendSymbolFactory
             const css::uno::Reference< css::beans::XPropertySet > & xLegendEntryProperties,
             PropertyType ePropertyType,
             const css::uno::Any& rExplicitSymbol /*should contain a css::chart2::Symbol without automatic symbol if the charttype does support symbols else empty*/);
-}
 
 } //  namespace chart
 

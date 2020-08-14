@@ -26,9 +26,9 @@
 #include <stdio.h>
 
 #include <systools/win32/uwinapi.h>
-#include <../tools/seterror.hxx>
+#include "../tools/seterror.hxx"
 
-extern "C" UINT __stdcall CheckInstallDirectory(MSIHANDLE handle)
+extern "C" __declspec(dllexport) UINT __stdcall CheckInstallDirectory(MSIHANDLE handle)
 {
     std::wstring sInstallPath = GetMsiPropertyW(handle, L"INSTALLLOCATION");
     std::wstring sOfficeHostnamePath = GetMsiPropertyW(handle, L"OFFICEDIRHOSTNAME");
@@ -43,7 +43,7 @@ extern "C" UINT __stdcall CheckInstallDirectory(MSIHANDLE handle)
 
     std::wstring sSetupIniPath = sInstallPath + sOfficeHostnamePath + L"\\program\\setup.ini";
 
-    WIN32_FIND_DATA data;
+    WIN32_FIND_DATAW data;
     HANDLE hdl = FindFirstFileW(sSetupIniPath.c_str(), &data);
 
     // std::wstring mystr = L"Searching for " + sSetupIniPath;

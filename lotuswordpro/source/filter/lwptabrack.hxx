@@ -60,7 +60,7 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPTABRACK_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPTABRACK_HXX
 
-#include "lwpobj.hxx"
+#include <lwpobj.hxx>
 
 class   LwpObjectStream;
 class   LwpTab;
@@ -95,12 +95,20 @@ public:
     };
 public:
     void    Read(LwpObjectStream *pStrm);
-    inline sal_uInt32 GetPosition();
-    inline TabType GetTabType();
-    inline LeaderType GetLeaderType();
-    inline sal_uInt16 GetAlignChar();
-
-protected:
+    inline sal_uInt32 GetPosition() const;
+    sal_uInt8 GetTabType() const
+    {
+        return m_nType;
+    }
+    sal_uInt8 GetLeaderType() const
+    {
+        return m_nLeader;
+    }
+    sal_uInt16 GetAlignChar() const
+    {
+        return m_nAlignChar;
+    }
+private:
     sal_uInt32      m_nX;
     sal_uInt8       m_nType;
     sal_uInt8       m_nLeader;
@@ -108,24 +116,9 @@ protected:
     sal_uInt16      m_nAlignChar;       //be careful
 };
 
-inline sal_uInt32 LwpTab::GetPosition()
+inline sal_uInt32 LwpTab::GetPosition() const
 {
     return m_nX;
-}
-
-inline LwpTab::TabType LwpTab::GetTabType()
-{
-    return (LwpTab::TabType)m_nType;
-}
-
-inline LwpTab::LeaderType LwpTab::GetLeaderType()
-{
-    return (LwpTab::LeaderType)m_nLeader;
-}
-
-inline sal_uInt16 LwpTab::GetAlignChar()
-{
-    return m_nAlignChar;
 }
 
 class   LwpTabRack : public LwpObject

@@ -7,11 +7,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <XBufferedThreadedStream.hxx>
+#include "XBufferedThreadedStream.hxx"
 #include <com/sun/star/packages/zip/ZipIOException.hpp>
+#include <cppuhelper/exc_hlp.hxx>
+#include <sal/log.hxx>
 
 using namespace css::uno;
-using com::sun::star::packages::zip::ZipIOException;
 
 namespace {
 
@@ -27,20 +28,9 @@ private:
         {
             mxStream.produce();
         }
-        catch( const RuntimeException &e )
+        catch (...)
         {
-            SAL_WARN("package", "RuntimeException from unbuffered Stream " << e.Message );
-            mxStream.saveException( new RuntimeException( e ) );
-        }
-        catch( const ZipIOException &e )
-        {
-            SAL_WARN("package", "ZipIOException from unbuffered Stream " << e.Message );
-            mxStream.saveException( new ZipIOException( e ) );
-        }
-        catch( const Exception &e )
-        {
-            SAL_WARN("package", "Unexpected exception " << e.Message );
-            mxStream.saveException( new Exception( e ) );
+            mxStream.saveException(std::current_exception());
         }
 
         mxStream.setTerminateThread();
@@ -50,14 +40,14 @@ private:
 }
 
 XBufferedThreadedStream::XBufferedThreadedStream(
-                    const Reference<XInputStream>& xSrcStream )
+                    const Reference<XInputStream>& xSrcStream,
+                    sal_Int64 nStreamSize)
 : mxSrcStream( xSrcStream )
 , mnPos(0)
-, mnStreamSize( xSrcStream->available() )
+, mnStreamSize( nStreamSize )
 , mnOffset( 0 )
 , mxUnzippingThread( new UnzippingThread(*this) )
 , mbTerminateThread( false )
-, maSavedException( nullptr )
 {
     mxUnzippingThread->launch();
 }
@@ -75,6 +65,7 @@ XBufferedThreadedStream::~XBufferedThreadedStream()
 void XBufferedThreadedStream::produce()
 {
     Buffer pProducedBuffer;
+    sal_Int64 nTotalBytesRead(0);
     std::unique_lock<std::mutex> aGuard( maBufferProtector );
     do
     {
@@ -85,7 +76,7 @@ void XBufferedThreadedStream::produce()
         }
 
         aGuard.unlock();
-        mxSrcStream->readBytes( pProducedBuffer, nBufferSize );
+        nTotalBytesRead += mxSrcStream->readBytes( pProducedBuffer, nBufferSize );
 
         aGuard.lock();
         maPendingBuffers.push( pProducedBuffer );
@@ -94,7 +85,7 @@ void XBufferedThreadedStream::produce()
         if (!mbTerminateThread)
             maBufferProduceResume.wait( aGuard, [&]{return canProduce(); } );
 
-    } while( !mbTerminateThread && hasBytes() );
+    } while( !mbTerminateThread && nTotalBytesRead < mnStreamSize );
 }
 
 /**
@@ -114,8 +105,8 @@ const Buffer& XBufferedThreadedStream::getNextBlock()
         if( maPendingBuffers.empty() )
         {
             maInUseBuffer = Buffer();
-            if( maSavedException )
-                throw *maSavedException;
+            if (maSavedException)
+                std::rethrow_exception(maSavedException);
         }
         else
         {
@@ -133,7 +124,7 @@ const Buffer& XBufferedThreadedStream::getNextBlock()
 
 void XBufferedThreadedStream::setTerminateThread()
 {
-    std::unique_lock<std::mutex> aGuard( maBufferProtector );
+    std::scoped_lock<std::mutex> aGuard( maBufferProtector );
     mbTerminateThread = true;
     maBufferProduceResume.notify_one();
     maBufferConsumeResume.notify_one();
@@ -144,14 +135,14 @@ sal_Int32 SAL_CALL XBufferedThreadedStream::readBytes( Sequence< sal_Int8 >& rDa
     if( !hasBytes() )
         return 0;
 
-    const sal_Int32 nAvailableSize = std::min<sal_Int32>( nBytesToRead, remainingSize() );
+    const sal_Int32 nAvailableSize = static_cast< sal_Int32 > ( std::min< sal_Int64 >( nBytesToRead, remainingSize() ) );
     rData.realloc( nAvailableSize );
     sal_Int32 i = 0, nPendingBytes = nAvailableSize;
 
     while( nPendingBytes )
     {
         const Buffer &pBuffer = getNextBlock();
-        if( pBuffer.getLength() <= 0 )
+        if( !pBuffer.hasElements() )
         {
             rData.realloc( nAvailableSize - nPendingBytes );
             return nAvailableSize - nPendingBytes;
@@ -187,7 +178,7 @@ sal_Int32 SAL_CALL XBufferedThreadedStream::available()
     if( !hasBytes() )
         return 0;
 
-    return remainingSize();
+    return static_cast< sal_Int32 > ( std::min< sal_Int64 >( SAL_MAX_INT32, remainingSize() ) );
 }
 
 void SAL_CALL XBufferedThreadedStream::closeInput()

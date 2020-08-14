@@ -18,7 +18,7 @@ $(eval $(call gb_Library_set_include,rptui,\
 
 $(eval $(call gb_Library_use_external,rptui,boost_headers))
 
-$(eval $(call gb_Library_set_precompiled_header,rptui,$(SRCDIR)/reportdesign/inc/pch/precompiled_rptui))
+$(eval $(call gb_Library_set_precompiled_header,rptui,reportdesign/inc/pch/precompiled_rptui))
 
 $(eval $(call gb_Library_use_sdk_api,rptui))
 
@@ -31,7 +31,7 @@ $(eval $(call gb_Library_use_libraries,rptui,\
     editeng \
     for \
     forui \
-    fwe \
+    fwk \
     i18nlangtag \
     rpt \
     sal \
@@ -68,10 +68,8 @@ $(eval $(call gb_Library_add_exception_objects,rptui,\
     reportdesign/source/ui/inspection/ReportComponentHandler \
     reportdesign/source/ui/misc/ColorListener \
     reportdesign/source/ui/misc/FunctionHelper \
-    reportdesign/source/ui/misc/rptuiservices \
     reportdesign/source/ui/misc/RptUndo \
     reportdesign/source/ui/misc/statusbarcontroller \
-    reportdesign/source/ui/misc/toolboxcontroller \
     reportdesign/source/ui/misc/UITools \
     reportdesign/source/ui/report/DesignView \
     reportdesign/source/ui/report/dlgedclip \

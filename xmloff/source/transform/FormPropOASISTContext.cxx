@@ -18,8 +18,8 @@
  */
 
 #include "MutableAttrList.hxx"
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include "ActionMapTypesOASIS.hxx"
 #include "AttrTransformerAction.hxx"
 #include "TransformerActions.hxx"
@@ -69,7 +69,7 @@ XMLTokenEnum XMLFormPropOASISTransformerContext::GetValueType(
 
     if( nPos == nLen )
     {
-        // It's a integer number
+        // It's an integer number
         if( bOverflow )
             eRet = XML_LONG;
         else if( nVal > (bNeg ? 32768UL : 32767UL) )
@@ -122,7 +122,7 @@ void XMLFormPropOASISTransformerContext::StartElement(
         XMLTransformerActions::key_type aKey( nPrefix, aLocalName );
         XMLTransformerActions::const_iterator aIter =
             pActions->find( aKey );
-        if( !(aIter == pActions->end() ) )
+        if( aIter != pActions->end() )
         {
             const OUString& rAttrValue = xAttrList->getValueByIndex( i );
             switch( (*aIter).second.m_nActionType )
@@ -179,28 +179,27 @@ void XMLFormPropOASISTransformerContext::StartElement(
 
     if( !m_bIsListValue )
         XMLRenameElemTransformerContext::StartElement( xAttrList );
-    if( !m_bIsList )
-    {
-        pMutableAttrList =
-            new XMLMutableAttributeList;
-        xAttrList = pMutableAttrList;
-        if( bIsVoid )
-        {
-            OUString aNewAttrQName(
-                GetTransformer().GetNamespaceMap().GetQNameByKey(
-                    XML_NAMESPACE_FORM, GetXMLToken( XML_PROPERTY_IS_VOID ) ) );
-            pMutableAttrList->AddAttribute( aNewAttrQName,
-                                        GetXMLToken( XML_TRUE ) );
-        }
+    if( m_bIsList )
+        return;
 
-        OUString aValueElemQName(
+    pMutableAttrList = new XMLMutableAttributeList;
+    xAttrList = pMutableAttrList;
+    if( bIsVoid )
+    {
+        OUString aNewAttrQName(
             GetTransformer().GetNamespaceMap().GetQNameByKey(
-                    XML_NAMESPACE_FORM, GetXMLToken( XML_PROPERTY_VALUE ) ) );
-        GetTransformer().GetDocHandler()->startElement( aValueElemQName,
-                                                        xAttrList );
-        GetTransformer().GetDocHandler()->characters( aValue );
-        GetTransformer().GetDocHandler()->endElement( aValueElemQName );
+                XML_NAMESPACE_FORM, GetXMLToken( XML_PROPERTY_IS_VOID ) ) );
+        pMutableAttrList->AddAttribute( aNewAttrQName,
+                                    GetXMLToken( XML_TRUE ) );
     }
+
+    OUString aValueElemQName(
+        GetTransformer().GetNamespaceMap().GetQNameByKey(
+                XML_NAMESPACE_FORM, GetXMLToken( XML_PROPERTY_VALUE ) ) );
+    GetTransformer().GetDocHandler()->startElement( aValueElemQName,
+                                                    xAttrList );
+    GetTransformer().GetDocHandler()->characters( aValue );
+    GetTransformer().GetDocHandler()->endElement( aValueElemQName );
 }
 
 void XMLFormPropOASISTransformerContext::EndElement()

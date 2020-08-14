@@ -17,8 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <ManifestReader.hxx>
-#include <ManifestImport.hxx>
+#include "ManifestReader.hxx"
+#include "ManifestImport.hxx"
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/factory.hxx>
@@ -62,41 +64,27 @@ Sequence< Sequence< PropertyValue > > SAL_CALL ManifestReader::readManifestSeque
         xParser->parseStream( aParserInput );
         aManifestSequence = comphelper::containerToSequence(aManVector);
     }
-    catch (SAXParseException& e)
+    catch (const SAXParseException&)
     {
-        SAL_WARN("package", "ignoring SAXParseException " + e.Message);
+        TOOLS_WARN_EXCEPTION("package", "ignoring");
     }
-    catch (SAXException& e)
+    catch (const SAXException&)
     {
-        SAL_WARN("package", "ignoring SAXException " + e.Message);
+        TOOLS_WARN_EXCEPTION("package", "ignoring");
     }
-    catch (IOException& e)
+    catch (const IOException&)
     {
-        SAL_WARN("package", "ignoring IOException " + e.Message);
+        TOOLS_WARN_EXCEPTION("package", "ignoring");
     }
     xParser->setDocumentHandler ( Reference < XDocumentHandler > () );
     return aManifestSequence;
 }
 // Component functions
 
-Reference < XInterface > SAL_CALL ManifestReader_createInstance( Reference< XMultiServiceFactory > const & rServiceFactory )
-{
-    return *new ManifestReader( comphelper::getComponentContext(rServiceFactory) );
-}
-OUString ManifestReader::static_getImplementationName()
-{
-    return OUString( "com.sun.star.packages.manifest.comp.ManifestReader" );
-}
-
-Sequence < OUString > ManifestReader::static_getSupportedServiceNames()
-{
-    Sequence < OUString > aNames { "com.sun.star.packages.manifest.ManifestReader" };
-    return aNames;
-}
 
 OUString ManifestReader::getImplementationName()
 {
-    return static_getImplementationName();
+    return "com.sun.star.packages.manifest.comp.ManifestReader";
 }
 
 sal_Bool SAL_CALL ManifestReader::supportsService(OUString const & rServiceName)
@@ -106,14 +94,16 @@ sal_Bool SAL_CALL ManifestReader::supportsService(OUString const & rServiceName)
 
 Sequence < OUString > ManifestReader::getSupportedServiceNames()
 {
-    return static_getSupportedServiceNames();
+    return { "com.sun.star.packages.manifest.ManifestReader" };
 }
-Reference < XSingleServiceFactory > ManifestReader::createServiceFactory( Reference < XMultiServiceFactory > const & rServiceFactory )
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+package_ManifestReader_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
 {
-    return cppu::createSingleFactory (rServiceFactory,
-                                           static_getImplementationName(),
-                                           ManifestReader_createInstance,
-                                           static_getSupportedServiceNames());
+    return cppu::acquire(new ManifestReader(context));
 }
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

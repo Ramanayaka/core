@@ -41,6 +41,29 @@
         </prop>
       </node>
 
+      <node oor:name="InspectorDeck" oor:op="replace">
+        <prop oor:name="Title" oor:type="xs:string">
+          <value xml:lang="en-US">Styles Inspector</value>
+        </prop>
+        <prop oor:name="Id" oor:type="xs:string">
+          <value>InspectorDeck</value>
+        </prop>
+        <prop oor:name="IconURL" oor:type="xs:string">
+          <value>private:graphicrepository/cmd/lc_editglossary.png</value>
+        </prop>
+        <prop oor:name="ContextList">
+          <value oor:separator=";">
+            WriterVariants, any, visible ;
+          </value>
+        </prop>
+        <prop oor:name="OrderIndex" oor:type="xs:int">
+          <value>450</value>
+        </prop>
+        <prop oor:name="IsExperimental" oor:type="xs:boolean">
+          <value>true</value>
+        </prop>
+      </node>
+
       <node oor:name="WriterPageDeck" oor:op="replace">
         <prop oor:name="Title" oor:type="xs:string">
           <value xml:lang="en-US">Page</value>
@@ -53,7 +76,7 @@
         </prop>
         <prop oor:name="ContextList">
           <value oor:separator=";">
-            Writer, any, visible ;
+            WriterVariants, any, visible ;
           </value>
         </prop>
         <prop oor:name="OrderIndex" oor:type="xs:int">
@@ -78,9 +101,6 @@
         </prop>
         <prop oor:name="OrderIndex" oor:type="xs:int">
           <value>200</value>
-        </prop>
-        <prop oor:name="IsExperimental" oor:type="xs:boolean">
-          <value>true</value>
         </prop>
       </node>
 
@@ -107,7 +127,7 @@
 
       <node oor:name="SdMasterPagesDeck" oor:op="replace">
         <prop oor:name="Title" oor:type="xs:string">
-          <value xml:lang="en-US">Master Pages</value>
+          <value xml:lang="en-US">Master Slides</value>
         </prop>
         <prop oor:name="Id" oor:type="xs:string">
           <value>SdMasterPagesDeck</value>
@@ -187,7 +207,7 @@
 
       <node oor:name="StyleListDeck" oor:op="replace">
         <prop oor:name="Title" oor:type="xs:string">
-          <value xml:lang="en-US">Styles and Formatting</value>
+          <value xml:lang="en-US">Styles</value>
         </prop>
         <prop oor:name="Id" oor:type="xs:string">
           <value>StyleListDeck</value>
@@ -375,6 +395,35 @@
         </prop>
       </node>
 
+      <node oor:name="InspectorTextPanel" oor:op="replace">
+        <prop oor:name="Title" oor:type="xs:string">
+          <value xml:lang="en-US">Styles Inspector</value>
+        </prop>
+        <prop oor:name="TitleBarIsOptional" oor:type="xs:boolean">
+          <value>true</value>
+        </prop>
+        <prop oor:name="Id" oor:type="xs:string">
+          <value>InspectorTextPanel</value>
+        </prop>
+        <prop oor:name="DeckId" oor:type="xs:string">
+          <value>InspectorDeck</value>
+        </prop>
+        <prop oor:name="ContextList">
+          <value oor:separator=";">
+            WriterVariants, any, visible ;
+          </value>
+        </prop>
+        <prop oor:name="ImplementationURL" oor:type="xs:string">
+          <value>private:resource/toolpanel/SwPanelFactory/WriterInspectorTextPanel</value>
+        </prop>
+        <prop oor:name="OrderIndex" oor:type="xs:int">
+          <value>100</value>
+        </prop>
+        <prop oor:name="IsExperimental" oor:type="xs:boolean">
+          <value>true</value>
+        </prop>
+      </node>
+
       <node oor:name="MediaPlaybackPanel" oor:op="replace">
         <prop oor:name="Title" oor:type="xs:string">
           <value xml:lang="en-US">Media Playback</value>
@@ -413,7 +462,7 @@
         </prop>
         <prop oor:name="ContextList">
           <value oor:separator=";">
-            Writer, any,  visible ;
+            WriterVariants, any,  visible ;
           </value>
         </prop>
         <prop oor:name="ImplementationURL" oor:type="xs:string">
@@ -439,7 +488,7 @@
         </prop>
         <prop oor:name="ContextList">
           <value oor:separator=";">
-            Writer, any,    visible ;
+            WriterVariants, any,    visible ;
           </value>
         </prop>
         <prop oor:name="ImplementationURL" oor:type="xs:string">
@@ -465,7 +514,7 @@
         </prop>
         <prop oor:name="ContextList">
           <value oor:separator=";">
-            Writer, any,    hidden ;
+            WriterVariants, any,    hidden ;
           </value>
         </prop>
         <prop oor:name="ImplementationURL" oor:type="xs:string">
@@ -491,7 +540,7 @@
         </prop>
         <prop oor:name="ContextList">
           <value oor:separator=";">
-            Writer, any,    hidden ;
+            WriterVariants, any,    hidden ;
           </value>
         </prop>
         <prop oor:name="ImplementationURL" oor:type="xs:string">
@@ -538,6 +587,58 @@
         </prop>
       </node>
 
+      <node oor:name="GlowPropertyPanel" oor:op="replace">
+        <prop oor:name="Title" oor:type="xs:string">
+          <value xml:lang="en-US">Glow</value>
+        </prop>
+        <prop oor:name="Id" oor:type="xs:string">
+          <value>GlowPropertyPanel</value>
+        </prop>
+        <prop oor:name="DeckId" oor:type="xs:string">
+          <value>PropertyDeck</value>
+        </prop>
+        <prop oor:name="ContextList">
+          <value oor:separator=";">
+            Calc,           Draw,       hidden  ;
+            DrawImpress,    Draw,       hidden  ;
+            DrawImpress,    Graphic,    hidden  ;
+            WriterVariants, Draw,       hidden  ;
+          </value>
+        </prop>
+        <prop oor:name="ImplementationURL" oor:type="xs:string">
+          <value>private:resource/toolpanel/SvxPanelFactory/GlowPropertyPanel</value>
+        </prop>
+        <prop oor:name="OrderIndex" oor:type="xs:int">
+          <value>300</value>
+        </prop>
+      </node>
+
+      <node oor:name="SoftEdgePropertyPanel" oor:op="replace">
+        <prop oor:name="Title" oor:type="xs:string">
+          <value xml:lang="en-US">Soft Edge</value>
+        </prop>
+        <prop oor:name="Id" oor:type="xs:string">
+          <value>SoftEdgePropertyPanel</value>
+        </prop>
+        <prop oor:name="DeckId" oor:type="xs:string">
+          <value>PropertyDeck</value>
+        </prop>
+        <prop oor:name="ContextList">
+          <value oor:separator=";">
+            Calc,           Draw,       hidden  ;
+            DrawImpress,    Draw,       hidden  ;
+            DrawImpress,    Graphic,    hidden  ;
+            WriterVariants, Draw,       hidden  ;
+          </value>
+        </prop>
+        <prop oor:name="ImplementationURL" oor:type="xs:string">
+          <value>private:resource/toolpanel/SvxPanelFactory/SoftEdgePropertyPanel</value>
+        </prop>
+        <prop oor:name="OrderIndex" oor:type="xs:int">
+          <value>300</value>
+        </prop>
+      </node>
+
       <node oor:name="ShadowPropertyPanel" oor:op="replace">
         <prop oor:name="Title" oor:type="xs:string">
           <value xml:lang="en-US">Shadow</value>
@@ -556,7 +657,7 @@
             Calc,           Draw,       visible ;
             Calc,           OLE,        hidden  ;
             DrawImpress,    3DObject,   visible ;
-            DrawImpress,    Draw,       visible ;
+            DrawImpress,    Draw,       hidden ;
             DrawImpress,    Graphic,    hidden  ;
             DrawImpress,    TextObject, hidden  ;
             DrawImpress,    OLE,        hidden  ;
@@ -656,7 +757,7 @@
             Calc,           MultiObject, visible                       ;
             Calc,           OLE,         visible                       ;
             DrawImpress,    3DObject,    visible                       ;
-            DrawImpress,    Draw,        hidden                        ;
+            DrawImpress,    Draw,        visible                       ;
             DrawImpress,    DrawLine,    visible                       ;
             DrawImpress,    Form,        visible                       ;
             DrawImpress,    Graphic,     hidden                        ;
@@ -1097,6 +1198,34 @@
         </prop>
       </node>
 
+      <node oor:name="ListsPropertyPanel" oor:op="replace">
+        <prop oor:name="Title" oor:type="xs:string">
+          <value xml:lang="en-US">Lists</value>
+        </prop>
+        <prop oor:name="Id" oor:type="xs:string">
+          <value>ListsPropertyPanel</value>
+        </prop>
+        <prop oor:name="DeckId" oor:type="xs:string">
+          <value>PropertyDeck</value>
+        </prop>
+        <prop oor:name="DefaultMenuCommand">
+          <value>.uno:OutlineBullet</value>
+        </prop>
+        <prop oor:name="ContextList">
+          <value oor:separator=";">
+            DrawImpress,    DrawText,   visible ;
+            DrawImpress,    Table,      visible ;
+            DrawImpress,    TextObject, hidden  ;
+          </value>
+        </prop>
+        <prop oor:name="ImplementationURL" oor:type="xs:string">
+          <value>private:resource/toolpanel/SvxPanelFactory/ListsPropertyPanel</value>
+        </prop>
+        <prop oor:name="OrderIndex" oor:type="xs:int">
+          <value>300</value>
+        </prop>
+      </node>
+
       <node oor:name="SwWrapPropertyPanel" oor:op="replace">
         <prop oor:name="Title" oor:type="xs:string">
           <value xml:lang="en-US">Wrap</value>
@@ -1243,7 +1372,7 @@
 
       <node oor:name="StyleListPanel" oor:op="replace">
         <prop oor:name="Title" oor:type="xs:string">
-          <value xml:lang="en-US">Styles and Formatting</value>
+          <value xml:lang="en-US">Styles</value>
         </prop>
         <prop oor:name="TitleBarIsOptional" oor:type="xs:boolean">
           <value>true</value>
@@ -1526,12 +1655,41 @@
         </prop>
       </node>
 
-      <node oor:name="ChartCharacterPanel" oor:op="replace">
+      <node oor:name="TableEditPanel" oor:op="replace">
         <prop oor:name="Title" oor:type="xs:string">
-          <value xml:lang="en-US">Character</value>
+          <value xml:lang="en-US">Table</value>
+        </prop>
+        <prop oor:name="TitleBarIsOptional" oor:type="xs:boolean">
+          <value>false</value>
         </prop>
         <prop oor:name="Id" oor:type="xs:string">
-          <value>ChartCharacterPanel</value>
+          <value>TableEditPanel</value>
+        </prop>
+        <prop oor:name="DeckId" oor:type="xs:string">
+          <value>PropertyDeck</value>
+        </prop>
+        <prop oor:name="DefaultMenuCommand">
+          <value>.uno:TableDialog</value>
+        </prop>
+        <prop oor:name="ContextList">
+          <value oor:separator=";">
+            WriterVariants, Table,  visible ;
+          </value>
+        </prop>
+        <prop oor:name="ImplementationURL" oor:type="xs:string">
+          <value>private:resource/toolpanel/SwPanelFactory/TableEditPanel</value>
+        </prop>
+        <prop oor:name="OrderIndex" oor:type="xs:int">
+          <value>300</value>
+        </prop>
+      </node>
+
+      <node oor:name="ChartTypePanel" oor:op="replace">
+        <prop oor:name="Title" oor:type="xs:string">
+          <value xml:lang="en-US">Chart Type</value>
+        </prop>
+        <prop oor:name="Id" oor:type="xs:string">
+          <value>ChartTypePanel</value>
         </prop>
         <prop oor:name="DeckId" oor:type="xs:string">
           <value>ChartDeck</value>
@@ -1542,13 +1700,12 @@
           </value>
         </prop>
         <prop oor:name="ImplementationURL" oor:type="xs:string">
-          <value>private:resource/toolpanel/ChartPanelFactory/CharacterPanel</value>
+          <value>private:resource/toolpanel/ChartPanelFactory/TypePanel</value>
         </prop>
         <prop oor:name="OrderIndex" oor:type="xs:int">
-          <value>8</value>
+          <value>0</value>
         </prop>
       </node>
-
     </node>
   </node>
 </oor:component-data>

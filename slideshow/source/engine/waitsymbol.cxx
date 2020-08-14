@@ -20,25 +20,24 @@
 
 #include <canvas/canvastools.hxx>
 
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
+#include <cppcanvas/customsprite.hxx>
 
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/vector/b2dvector.hxx>
 
 #include <com/sun/star/rendering/XCanvas.hpp>
 #include <com/sun/star/presentation/XSlideShowView.hpp>
+#include <tools/diagnose_ex.h>
 
 #include "waitsymbol.hxx"
-#include "eventmultiplexer.hxx"
+#include <eventmultiplexer.hxx>
 
 #include <algorithm>
 
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 const sal_Int32 LEFT_BORDER_SPACE  = 10;
 const sal_Int32 LOWER_BORDER_SPACE = 10;
@@ -67,29 +66,29 @@ WaitSymbol::WaitSymbol( uno::Reference<rendering::XBitmap> const &   xBitmap,
     mbVisible(false)
 {
     for( const auto& pView : rViewContainer )
-        this->viewAdded( pView );
+        viewAdded( pView );
 }
 
 void WaitSymbol::setVisible( const bool bVisible )
 {
-    if( mbVisible != bVisible )
+    if( mbVisible == bVisible )
+        return;
+
+    mbVisible = bVisible;
+
+    for( const auto& rView : maViews )
     {
-        mbVisible = bVisible;
-
-        for( const auto& rView : maViews )
+        if( rView.second )
         {
-            if( rView.second )
-            {
-                if( bVisible )
-                    rView.second->show();
-                else
-                    rView.second->hide();
-            }
+            if( bVisible )
+                rView.second->show();
+            else
+                rView.second->hide();
         }
-
-        // sprites changed, need a screen update for this frame.
-        mrScreenUpdater.requestImmediateUpdate();
     }
+
+    // sprites changed, need a screen update for this frame.
+    mrScreenUpdater.requestImmediateUpdate();
 }
 
 basegfx::B2DPoint WaitSymbol::calcSpritePos(
@@ -129,10 +128,10 @@ void WaitSymbol::viewAdded( const UnoViewSharedPtr& rView )
     }
     catch( uno::Exception& )
     {
-        SAL_WARN( "slideshow", comphelper::anyToString( cppu::getCaughtException() ) );
+        TOOLS_WARN_EXCEPTION( "slideshow", "" );
     }
 
-    maViews.push_back( ViewsVecT::value_type( rView, sprite ) );
+    maViews.emplace_back( rView, sprite );
 }
 
 void WaitSymbol::viewRemoved( const UnoViewSharedPtr& rView )
@@ -177,7 +176,6 @@ void WaitSymbol::viewsChanged()
     }
 }
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

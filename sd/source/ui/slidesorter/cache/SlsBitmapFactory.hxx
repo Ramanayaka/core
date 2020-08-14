@@ -20,13 +20,12 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_CACHE_SLSBITMAPFACTORY_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_CACHE_SLSBITMAPFACTORY_HXX
 
-#include "PreviewRenderer.hxx"
-#include <memory>
+#include <PreviewRenderer.hxx>
 
 class SdPage;
 class Size;
 
-namespace sd { namespace slidesorter { namespace cache {
+namespace sd::slidesorter::cache {
 
 /** This factory class creates preview bitmaps for page objects.  It is
     merely an adapter for the PreviewRenderer.
@@ -37,7 +36,7 @@ public:
     BitmapFactory();
     ~BitmapFactory();
 
-    Bitmap CreateBitmap (
+    BitmapEx CreateBitmap (
         const SdPage& rPage,
         const Size& rPixelSize,
         const bool bDoSuperSampling);
@@ -46,7 +45,7 @@ private:
     PreviewRenderer maRenderer;
 };
 
-} } } // end of namespace ::sd::slidesorter::cache
+} // end of namespace ::sd::slidesorter::cache
 
 #endif
 

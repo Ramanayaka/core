@@ -20,22 +20,13 @@
 #ifndef INCLUDED_SC_INC_DPTABDAT_HXX
 #define INCLUDED_SC_INC_DPTABDAT_HXX
 
-#include "address.hxx"
-#include "dpoutput.hxx"
 #include "dpfilteredcache.hxx"
-#include "dpcache.hxx"
 #include "calcmacros.hxx"
 
 #include <svl/zforlist.hxx>
 
-#include <set>
 #include <unordered_set>
-#include <unordered_map>
 #include <vector>
-
-namespace com { namespace sun { namespace star { namespace sheet {
-    struct DataPilotFieldFilter;
-}}}}
 
 #define SC_DAPI_HIERARCHY_FLAT      0
 #define SC_DAPI_HIERARCHY_QUARTER   1
@@ -56,7 +47,6 @@ class ScDPResultMember;
 class ScDPDimension;
 class ScDPLevel;
 class ScDPInitState;
-class ScDPResultMember;
 class ScDocument;
 
 /**
@@ -76,7 +66,7 @@ public:
     /** This structure stores dimension information used when calculating
         results.  These data are read only during result calculation, so it
         should be passed as a const instance. */
-    struct CalcInfo
+    struct SAL_DLLPRIVATE CalcInfo
     {
         ::std::vector<long>             aColLevelDims;
         ::std::vector<ScDPDimension*>   aColDims;
@@ -96,7 +86,7 @@ public:
 
     ScDPTableData(const ScDPTableData&) = delete;
     const ScDPTableData& operator=(const ScDPTableData&) = delete;
-    ScDPTableData(ScDocument* pDoc);
+    ScDPTableData(const ScDocument* pDoc);
     virtual     ~ScDPTableData();
 
     OUString GetFormattedString(long nDim, const ScDPItemData& rItem, bool bLocaleIndependent) const;
@@ -111,7 +101,7 @@ public:
     virtual OUString                getDimensionName(long nColumn) = 0;
     virtual bool                    getIsDataLayoutDimension(long nColumn) = 0;
     virtual bool                    IsDateDimension(long nDim) = 0;
-    virtual sal_uLong               GetNumberFormat(long nDim);
+    virtual sal_uInt32              GetNumberFormat(long nDim);
     sal_uInt32                      GetNumberFormatByIdx( NfIndexTableOffset );
     virtual void                    DisposeData() = 0;
     virtual void                    SetEmptyFlags( bool bIgnoreEmptyRows, bool bRepeatIfEmpty ) = 0;

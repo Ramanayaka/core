@@ -19,11 +19,11 @@
 
 #include "acceptor.hxx"
 
-#include <exception>
 #include <unordered_set>
 
 #include <osl/mutex.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <com/sun/star/connection/XConnection.hpp>
 #include <com/sun/star/connection/XConnectionBroadcaster.hpp>
 #include <com/sun/star/connection/ConnectionSetupException.hpp>
 #include <com/sun/star/io/IOException.hpp>
@@ -37,31 +37,11 @@ using namespace ::com::sun::star::connection;
 
 
 namespace io_acceptor {
-    template<class T>
-    struct ReferenceHash
-    {
-        size_t operator () (const css::uno::Reference<T> & ref) const
-        {
-            return reinterpret_cast<size_t>(ref.get());
-        }
-    };
 
-    template<class T>
-    struct ReferenceEqual
-    {
-        bool operator () (const css::uno::Reference<T> & op1,
-                          const css::uno::Reference<T> & op2) const
-        {
-            return op1.get() == op2.get();
-        }
-    };
-
-
-    typedef std::unordered_set< css::uno::Reference< css::io::XStreamListener>,
-                                ReferenceHash< css::io::XStreamListener>,
-                                ReferenceEqual< css::io::XStreamListener> >
+    typedef std::unordered_set< css::uno::Reference< css::io::XStreamListener> >
             XStreamListener_hash_set;
 
+    namespace {
 
     class SocketConnection : public ::cppu::WeakImplHelper<
         css::connection::XConnection,
@@ -86,7 +66,6 @@ namespace io_acceptor {
         void completeConnectionString();
 
         ::osl::StreamSocket m_socket;
-        ::osl::SocketAddr m_addr;
         oslInterlockedCount m_nStatus;
         OUString m_sDescription;
 
@@ -97,10 +76,12 @@ namespace io_acceptor {
         XStreamListener_hash_set _listeners;
     };
 
+    }
+
     template<class T>
-    void notifyListeners(SocketConnection * pCon, bool * notified, T t)
+    static void notifyListeners(SocketConnection * pCon, bool * notified, T t)
     {
-          XStreamListener_hash_set listeners;
+        XStreamListener_hash_set listeners;
 
         {
             ::osl::MutexGuard guard(pCon->_mutex);
@@ -120,6 +101,8 @@ namespace io_acceptor {
         xStreamListener->started();
     }
 
+    namespace {
+
     struct callError {
         const Any & any;
 
@@ -127,6 +110,8 @@ namespace io_acceptor {
 
         void operator () (const Reference<XStreamListener>& xStreamListener);
     };
+
+    }
 
     callError::callError(const Any & aAny)
         : any(aAny)
@@ -171,7 +156,7 @@ namespace io_acceptor {
         buf.append( ",localHost=" );
         buf.append( m_socket.getLocalHost() );
 
-        m_sDescription += buf.makeStringAndClear();
+        m_sDescription += buf;
     }
 
     sal_Int32 SocketConnection::read( Sequence < sal_Int8 > & aReadBytes , sal_Int32 nBytesToRead )
@@ -190,8 +175,8 @@ namespace io_acceptor {
 
             if(i != nBytesToRead)
             {
-                OUString message("acc_socket.cxx:SocketConnection::read: error - ");
-                message +=  m_socket.getErrorAsString();
+                OUString message = "acc_socket.cxx:SocketConnection::read: error - " +
+                    m_socket.getErrorAsString();
 
                 IOException ioException(message, static_cast<XConnection *>(this));
 
@@ -207,9 +192,7 @@ namespace io_acceptor {
         }
         else
         {
-            OUString message("acc_socket.cxx:SocketConnection::read: error - connection already closed");
-
-            IOException ioException(message, static_cast<XConnection *>(this));
+            IOException ioException("acc_socket.cxx:SocketConnection::read: error - connection already closed", static_cast<XConnection *>(this));
 
             Any any;
             any <<= ioException;
@@ -226,8 +209,8 @@ namespace io_acceptor {
         {
             if( m_socket.write( seq.getConstArray() , seq.getLength() ) != seq.getLength() )
             {
-                OUString message("acc_socket.cxx:SocketConnection::write: error - ");
-                message += m_socket.getErrorAsString();
+                OUString message = "acc_socket.cxx:SocketConnection::write: error - " +
+                    m_socket.getErrorAsString();
 
                 IOException ioException(message, static_cast<XConnection *>(this));
 
@@ -241,9 +224,7 @@ namespace io_acceptor {
         }
         else
         {
-            OUString message("acc_socket.cxx:SocketConnection::write: error - connection already closed");
-
-            IOException ioException(message, static_cast<XConnection *>(this));
+            IOException ioException("acc_socket.cxx:SocketConnection::write: error - connection already closed", static_cast<XConnection *>(this));
 
             Any any;
             any <<= ioException;
@@ -335,22 +316,22 @@ namespace io_acceptor {
 
     Reference< XConnection > SocketAcceptor::accept( )
     {
-        SocketConnection *pConn = new SocketConnection( m_sConnectionDescription );
+        std::unique_ptr<SocketConnection> pConn(new SocketConnection( m_sConnectionDescription ));
 
         if( m_socket.acceptConnection( pConn->m_socket )!= osl_Socket_Ok )
         {
             // stopAccepting was called
-            delete pConn;
             return Reference < XConnection > ();
         }
         if( m_bClosed )
         {
-            delete pConn;
             return Reference < XConnection > ();
         }
 
         pConn->completeConnectionString();
-        OUString remoteHostname = pConn->m_addr.getHostname();
+        ::osl::SocketAddr remoteAddr;
+        pConn->m_socket.getPeerAddr(remoteAddr);
+        OUString remoteHostname = remoteAddr.getHostname();
         // we enable tcpNoDelay for loopback connections because
         // it can make a significant speed difference on linux boxes.
         if( m_bTcpNoDelay || remoteHostname == "localhost" ||
@@ -361,7 +342,7 @@ namespace io_acceptor {
                                        sizeof( nTcpNoDelay ) , osl_Socket_LevelTcp );
         }
 
-        return Reference < XConnection > ( static_cast<XConnection *>(pConn) );
+        return Reference < XConnection > ( static_cast<XConnection *>(pConn.release()) );
     }
 
     void SocketAcceptor::stopAccepting()

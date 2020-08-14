@@ -17,12 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVX_MSDFFDEF_HXX
-#define INCLUDED_SVX_MSDFFDEF_HXX
+#pragma once
 
 #include <limits.h>
 #include <sal/types.h>
-#include <svx/svxdllapi.h>
 
 #define DFF_COMMON_RECORD_HEADER_SIZE           8
 
@@ -268,7 +266,6 @@ enum DFF_TextHeader {
 #define DFF_Prop_tableRowProperties          928  //  LONG*
 #define DFF_Prop_fHidden                     958  //  sal_Bool              Do not display
 #define DFF_Prop_fPrint                      959  //  sal_Bool              Print this shape
-// entsprechende BitFlags
 
 // properties of the second property set
 #define DFF_Prop_metroBlob                   937  // XML ZipPackage*
@@ -613,7 +610,7 @@ enum MSO_BlipFlags {
    /* Or the following flags with any of the above. */
    mso_blipflagDontSave = 4,  // A "dont" is the depression in the metal
                               // body work of an automobile caused when a
-                              // cyclist violently thrusts his or her nose
+                              // cyclist violently trusts his or her nose
                               // at it, thus a DontSave is another name for
                               // a cycle lane.
    mso_blipflagDoNotSave = 4, // For those who prefer English
@@ -848,14 +845,14 @@ enum MSO_SYSCOLORINDEX {
 
 enum MSO_TextGeometryProperties {
     use_gtextFBestFit   = 0x00000100,
+    use_gtextFShrinkFit = 0x00000200,
     use_gtextFStretch   = 0x00000400,
     gtextFBestFit       = 0x01000000,
+    gtextFShrinkFit     = 0x02000000,
     gtextFStretch       = 0x04000000
 };
 
 //ALT_TXT_MSINTEROP
 #define MSPROP_DESCRIPTION_MAX_LEN  4096
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

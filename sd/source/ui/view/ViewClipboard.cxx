@@ -17,19 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ViewClipboard.hxx"
+#include <ViewClipboard.hxx>
 
-#include "DrawDocShell.hxx"
-#include "View.hxx"
-#include "ViewShell.hxx"
-#include "Window.hxx"
+#include <DrawDocShell.hxx>
+#include <DrawViewShell.hxx>
+#include <View.hxx>
+#include <ViewShell.hxx>
+#include <Window.hxx>
 
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
-#include "sdxfer.hxx"
-#include "sdresid.hxx"
-#include "glob.hrc"
-#include "strings.hxx"
+#include <drawdoc.hxx>
+#include <sdmod.hxx>
+#include <sdpage.hxx>
+#include <sdxfer.hxx>
+#include <strings.hxx>
 
 #include <svx/svdpagv.hxx>
 #include <vcl/svapp.hxx>
@@ -49,11 +49,14 @@ void ViewClipboard::HandlePageDrop (const SdTransferable& rTransferable)
 {
     // Determine whether to insert the given set of slides or to assign a
     // given master page.
-    SdPage* pMasterPage = GetFirstMasterPage (rTransferable);
-    if (pMasterPage != nullptr)
+    // tdf#113405 only assign master pages to normal pages, don't attempt to assign a master
+    // page to a master page
+    sd::DrawViewShell* pDrawViewShell = dynamic_cast<::sd::DrawViewShell*>(mrView.GetViewShell());
+    SdPage* pMasterPage = (pDrawViewShell && pDrawViewShell->GetEditMode() == EditMode::Page) ? GetFirstMasterPage(rTransferable) : nullptr;
+    if (pMasterPage)
         AssignMasterPage (rTransferable, pMasterPage);
     else
-        InsertSlides (rTransferable, DetermineInsertPosition (rTransferable));
+        InsertSlides (rTransferable, DetermineInsertPosition ());
 }
 
 SdPage* ViewClipboard::GetFirstMasterPage (const SdTransferable& rTransferable)
@@ -77,10 +80,8 @@ SdPage* ViewClipboard::GetFirstMasterPage (const SdTransferable& rTransferable)
             if (pDocument == nullptr)
                 break;
 
-            std::vector<OUString>::const_iterator pIter;
-            for ( pIter = rBookmarks.begin(); pIter != rBookmarks.end(); ++pIter )
+            for (const OUString& sName : rBookmarks)
             {
-                OUString sName (*pIter);
                 bool bIsMasterPage;
 
                 // SdPage* GetMasterSdPage(sal_uInt16 nPgNum, PageKind ePgKind);
@@ -112,7 +113,7 @@ SdPage* ViewClipboard::GetFirstMasterPage (const SdTransferable& rTransferable)
 
 void ViewClipboard::AssignMasterPage (
     const SdTransferable& rTransferable,
-    SdPage* pMasterPage)
+    SdPage const * pMasterPage)
 {
     if (pMasterPage == nullptr)
         return;
@@ -156,8 +157,7 @@ void ViewClipboard::AssignMasterPage (
         );
 }
 
-sal_uInt16 ViewClipboard::DetermineInsertPosition  (
-    const SdTransferable& )
+sal_uInt16 ViewClipboard::DetermineInsertPosition  ()
 {
     SdDrawDocument& rDoc = mrView.GetDoc();
     sal_uInt16 nPgCnt = rDoc.GetSdPageCount( PageKind::Standard );
@@ -194,7 +194,7 @@ sal_uInt16 ViewClipboard::InsertSlides (
         // pages are inserted.
         pBookmarkList = &rTransferable.GetPageBookmarks();
         pDataDocSh = rTransferable.GetPageDocShell();
-        nInsertPgCnt = (sal_uInt16)pBookmarkList->size();
+        nInsertPgCnt = static_cast<sal_uInt16>(pBookmarkList->size());
     }
     else
     {

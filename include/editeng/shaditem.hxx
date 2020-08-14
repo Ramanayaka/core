@@ -20,7 +20,9 @@
 #define INCLUDED_EDITENG_SHADITEM_HXX
 
 #include <tools/color.hxx>
-#include <svl/eitem.hxx>
+#include <tools/mapunit.hxx>
+#include <svl/cenumitm.hxx>
+
 #include <editeng/svxenum.hxx>
 #include <editeng/editengdllapi.h>
 
@@ -33,7 +35,7 @@
 */
 enum class SvxShadowItemSide { TOP, BOTTOM, LEFT, RIGHT };
 
-class EDITENG_DLLPUBLIC SvxShadowItem : public SfxEnumItemInterface
+class EDITENG_DLLPUBLIC SvxShadowItem final : public SfxEnumItemInterface
 {
     Color               aShadowColor;
     sal_uInt16              nWidth;
@@ -45,8 +47,6 @@ public:
                  const Color *pColor = nullptr, const sal_uInt16 nWidth = 100 /*5pt*/,
                  const SvxShadowLocation eLoc = SvxShadowLocation::NONE );
 
-    inline SvxShadowItem& operator=( const SvxShadowItem& rFmtShadow );
-
     // "pure virtual Methods" from SfxPoolItem
     virtual bool             operator==( const SfxPoolItem& ) const override;
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
@@ -55,11 +55,9 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion ) const override;
+    virtual SvxShadowItem*   Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual void             ScaleMetrics( long nMult, long nDiv ) override;
     virtual bool             HasMetrics() const override;
 
@@ -76,19 +74,10 @@ public:
     sal_uInt16 CalcShadowSpace( SvxShadowItemSide nShadow ) const;
 
     virtual sal_uInt16      GetValueCount() const override;
-    virtual OUString   GetValueTextByPos( sal_uInt16 nPos ) const override;
     virtual sal_uInt16      GetEnumValue() const override;
     virtual void            SetEnumValue( sal_uInt16 nNewVal ) override;
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
-
-inline SvxShadowItem &SvxShadowItem::operator=( const SvxShadowItem& rFmtShadow )
-{
-    aShadowColor = rFmtShadow.aShadowColor;
-    nWidth = rFmtShadow.GetWidth();
-    eLocation = rFmtShadow.GetLocation();
-    return *this;
-}
 
 #endif // INCLUDED_EDITENG_SHADITEM_HXX
 

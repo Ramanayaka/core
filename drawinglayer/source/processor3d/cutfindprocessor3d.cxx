@@ -20,18 +20,16 @@
 #include <drawinglayer/processor3d/cutfindprocessor3d.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 #include <drawinglayer/primitive3d/transformprimitive3d.hxx>
-#include <drawinglayer/primitive3d/hatchtextureprimitive3d.hxx>
+#include <primitive3d/hatchtextureprimitive3d.hxx>
 #include <drawinglayer/primitive3d/polypolygonprimitive3d.hxx>
 #include <basegfx/polygon/b3dpolygon.hxx>
 #include <basegfx/polygon/b3dpolygontools.hxx>
 #include <basegfx/polygon/b3dpolypolygontools.hxx>
-#include <drawinglayer/primitive3d/hiddengeometryprimitive3d.hxx>
+#include <primitive3d/hiddengeometryprimitive3d.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::processor3d
 {
-    namespace processor3d
-    {
         CutFindProcessor::CutFindProcessor(const geometry::ViewInformation3D& rViewInformation,
             const basegfx::B3DPoint& rFront,
             const basegfx::B3DPoint& rBack,
@@ -47,7 +45,7 @@ namespace drawinglayer
 
         void CutFindProcessor::processBasePrimitive3D(const primitive3d::BasePrimitive3D& rCandidate)
         {
-            if(mbAnyHit && maResult.size())
+            if(mbAnyHit && !maResult.empty())
             {
                 // stop processing as soon as a hit was recognized
                 return;
@@ -118,7 +116,7 @@ namespace drawinglayer
                     // so force this primitive to process its children directly if the switch is set
                     // (which is the default). Else, ignore invisible content
                     const primitive3d::HiddenGeometryPrimitive3D& rHiddenGeometry(static_cast< const primitive3d::HiddenGeometryPrimitive3D& >(rCandidate));
-                       const primitive3d::Primitive3DContainer& rChildren = rHiddenGeometry.getChildren();
+                    const primitive3d::Primitive3DContainer& rChildren = rHiddenGeometry.getChildren();
 
                     if(!rChildren.empty())
                     {
@@ -132,7 +130,7 @@ namespace drawinglayer
                     const primitive3d::UnifiedTransparenceTexturePrimitive3D& rPrimitive = static_cast< const primitive3d::UnifiedTransparenceTexturePrimitive3D& >(rCandidate);
                     const primitive3d::Primitive3DContainer& rChildren = rPrimitive.getChildren();
 
-                    if(rChildren.size())
+                    if(!rChildren.empty())
                     {
                         process(rChildren);
                     }
@@ -146,12 +144,12 @@ namespace drawinglayer
 
                     if(!maFront.equal(maBack))
                     {
-                           const basegfx::B3DPolyPolygon& rPolyPolygon = rPrimitive.getB3DPolyPolygon();
+                        const basegfx::B3DPolyPolygon& rPolyPolygon = rPrimitive.getB3DPolyPolygon();
                         const sal_uInt32 nPolyCount(rPolyPolygon.count());
 
                         if(nPolyCount)
                         {
-                               const basegfx::B3DPolygon aPolygon(rPolyPolygon.getB3DPolygon(0));
+                            const basegfx::B3DPolygon& aPolygon(rPolyPolygon.getB3DPolygon(0));
                             const sal_uInt32 nPointCount(aPolygon.count());
 
                             if(nPointCount > 2)
@@ -163,11 +161,11 @@ namespace drawinglayer
                                     const basegfx::B3DPoint aPointOnPlane(aPolygon.getB3DPoint(0));
                                     double fCut(0.0);
 
-                                    if(basegfx::tools::getCutBetweenLineAndPlane(aPlaneNormal, aPointOnPlane, maFront, maBack, fCut))
+                                    if(basegfx::utils::getCutBetweenLineAndPlane(aPlaneNormal, aPointOnPlane, maFront, maBack, fCut))
                                     {
                                         const basegfx::B3DPoint aCutPoint(basegfx::interpolate(maFront, maBack, fCut));
 
-                                        if(basegfx::tools::isInside(rPolyPolygon, aCutPoint))
+                                        if(basegfx::utils::isInside(rPolyPolygon, aCutPoint))
                                         {
                                             // #i102956# add result. Do not forget to do this in the coordinate
                                             // system the processor get started with, so use the collected
@@ -190,7 +188,7 @@ namespace drawinglayer
                 }
             }
         }
-    } // end of namespace processor3d
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

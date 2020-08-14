@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_SHADOWPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_SHADOWPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
@@ -27,17 +26,15 @@
 #include <basegfx/color/bcolor.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** ShadowPrimitive2D class
 
             This primitive defines a generic shadow geometry construction
             for 2D objects. It decomposes to a TransformPrimitive2D embedded
             into a ModifiedColorPrimitive2D.
 
-            It's for primtive usage convenience, so that not everyone has
+            It's for primitive usage convenience, so that not everyone has
             to implement the generic shadow construction by himself.
 
             The same geometry as sequence of primitives is used as geometry and
@@ -45,7 +42,7 @@ namespace drawinglayer
             are needed for the shadow itself; all the local decompositions of the
             original geometry can be reused from the renderer for shadow visualisation.
         */
-        class DRAWINGLAYER_DLLPUBLIC ShadowPrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC ShadowPrimitive2D final : public GroupPrimitive2D
         {
         private:
             /// the shadow transformation, normally just an offset
@@ -54,17 +51,22 @@ namespace drawinglayer
             /// the shadow color to which all geometry is to be forced
             basegfx::BColor                         maShadowColor;
 
-        public:
+            /// the blur radius of the shadow
+            double mfShadowBlur;
+
+
+    public:
             /// constructor
             ShadowPrimitive2D(
                 const basegfx::B2DHomMatrix& rShadowTransform,
                 const basegfx::BColor& rShadowColor,
+                double fShadowBlur,
                 const Primitive2DContainer& rChildren);
 
             /// data read access
             const basegfx::B2DHomMatrix& getShadowTransform() const { return maShadowTransform; }
             const basegfx::BColor& getShadowColor() const { return maShadowColor; }
-
+            double getShadowBlur() const { return mfShadowBlur; }
             /// compare operator
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
@@ -75,12 +77,9 @@ namespace drawinglayer
             virtual void get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_SHADOWPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

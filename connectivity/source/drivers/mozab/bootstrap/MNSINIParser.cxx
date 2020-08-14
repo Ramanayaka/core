@@ -18,7 +18,10 @@
  */
 
 #include "MNSINIParser.hxx"
+#include <com/sun/star/io/IOException.hpp>
+#include <osl/file.h>
 #include <rtl/byteseq.hxx>
+#include <sal/log.hxx>
 
 IniParser::IniParser(OUString const & rIniName)
 {
@@ -63,7 +66,7 @@ IniParser::IniParser(OUString const & rIniName)
                 nameValue.sValue = OStringToOUString(
                     line.copy(nIndex+1).trim(), RTL_TEXTENCODING_UTF8 );
 
-                aSection->lList.push_back(nameValue);
+                aSection->vVector.push_back(nameValue);
 
             }
             else
@@ -76,9 +79,6 @@ IniParser::IniParser(OUString const & rIniName)
                         line.copy(nIndexStart + 1,nIndexEnd - nIndexStart -1).trim(), RTL_TEXTENCODING_ASCII_US );
                     if (sectionName.isEmpty())
                         sectionName = "no name section";
-
-                    ini_Section *aSection = &mAllSection[sectionName];
-                    aSection->sName = sectionName;
                 }
             }
         }

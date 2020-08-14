@@ -21,17 +21,16 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_XESTYLE_HXX
 
 #include <map>
-#include <tools/mempool.hxx>
 #include <svl/zforlist.hxx>
 #include <svl/nfkeytab.hxx>
 #include <editeng/svxfont.hxx>
 #include "xerecord.hxx"
 #include "xlstyle.hxx"
 #include "xeroot.hxx"
-#include "conditio.hxx"
-#include "fonthelper.hxx"
+#include <fonthelper.hxx>
 #include <memory>
 #include <vector>
+#include <o3tl/sorted_vector.hxx>
 
 /* ============================================================================
 - Buffers for style records (PALETTE, FONT, FORMAT, XF, STYLE).
@@ -119,8 +118,6 @@ private:
 };
 
 // FONT record - font information =============================================
-
-class SvxFont;
 
 const size_t EXC_FONTLIST_NOTFOUND = static_cast< size_t >( -1 );
 
@@ -267,7 +264,6 @@ struct XclExpNumFmt
     void SaveXml( XclExpXmlStream& rStrm );
 };
 
-class SvNumberFormatter;
 typedef ::std::unique_ptr< SvNumberFormatter >    SvNumberFormatterPtr;
 
 /** Stores all number formats used in the document. */
@@ -289,13 +285,13 @@ public:
     virtual void        Save( XclExpStream& rStrm ) override;
     virtual void        SaveXml( XclExpXmlStream& rStrm ) override;
 
+    OUString            GetFormatCode ( sal_uInt32 nScNumFmt );
+
 private:
     /** Writes the FORMAT record with index nXclIx and format string rFormatStr. */
     void                WriteFormatRecord( XclExpStream& rStrm, sal_uInt16 nXclNumFmt, const OUString& rFormatStr );
     /** Writes the FORMAT record represented by rFormat. */
     void                WriteFormatRecord( XclExpStream& rStrm, const XclExpNumFmt& rFormat );
-
-    OUString            GetFormatCode ( sal_uInt32 nScNumFmt );
 
 private:
     typedef ::std::vector< XclExpNumFmt >           XclExpNumFmtVec;
@@ -434,7 +430,7 @@ public:
                             const XclExpRoot& rRoot,
                             const ScPatternAttr& rPattern,
                             sal_Int16 nScript,
-                            sal_uLong nScForceNumFmt = NUMBERFORMAT_ENTRY_NOT_FOUND,
+                            sal_uInt32 nScForceNumFmt = NUMBERFORMAT_ENTRY_NOT_FOUND,
                             sal_uInt16 nForceXclFont = EXC_FONT_NOTFOUND,
                             bool bForceLineBreak = false );
     /** Constructs a style XF record from the passed cell style sheet. */
@@ -455,7 +451,7 @@ public:
         @descr  Searches for cell XFs only. */
     bool                Equals(
                             const ScPatternAttr& rPattern,
-                            sal_uLong nScForceNumFmt,
+                            sal_uInt32 nScForceNumFmt,
                             sal_uInt16 nForceXclFont,
                             bool bForceLineBreak ) const;
 
@@ -473,6 +469,11 @@ public:
 
     virtual void        SaveXml( XclExpXmlStream& rStrm ) override;
 
+    const SfxItemSet*   GetItemSet() const { return mpItemSet; }
+
+    sal_uInt32          GetScNumFmt() const { return mnScNumFmt; }
+    sal_uInt16          GetXclFont() const { return mnXclFont; }
+
 protected:
     explicit            XclExpXF( const XclExpRoot& rRoot, bool bCellXF );
 
@@ -484,7 +485,7 @@ protected:  // access for XclExpDefaultXF
     XclExpCellBorder    maBorder;           /// Border line style.
     XclExpCellArea      maArea;             /// Background area style.
     sal_uInt32          mnParentXFId;       /// XF ID of parent XF record.
-    sal_uLong               mnScNumFmt;         /// Calc number format index.
+    sal_uInt32          mnScNumFmt;         /// Calc number format index.
     sal_uInt16          mnXclFont;          /// Excel font index.
     sal_uInt16          mnXclNumFmt;        /// Excel number format index.
     sal_Int32           mnBorderId;         /// OOXML Border Index
@@ -500,7 +501,7 @@ private:
     void                Init(
                             const SfxItemSet& rItemSet,
                             sal_Int16 nScript,
-                            sal_uLong nForceScNumFmt,
+                            sal_uInt32 nForceScNumFmt,
                             sal_uInt16 nForceXclFont,
                             bool bForceLineBreak,
                             bool bDefStyle );
@@ -599,7 +600,7 @@ public:
         @return  A unique XF record ID. */
     sal_uInt32          InsertWithNumFmt(
                             const ScPatternAttr* pPattern, sal_Int16 nScript,
-                            sal_uLong nForceScNumFmt,
+                            sal_uInt32 nForceScNumFmt,
                             bool bForceLineBreak );
     /** Inserts the passed cell style. Creates a style XF record and a STYLE record.
         @return  A unique XF record ID. */
@@ -628,11 +629,10 @@ public:
 private:
     typedef XclExpRecordList< XclExpXF >    XclExpXFList;
     typedef XclExpXFList::RecordRefType     XclExpXFRef;
-    typedef XclExpRecordList< XclExpStyle > XclExpStyleList;
 
 private:
     /** Returns the XF ID of the cell XF containing the passed format. */
-    sal_uInt32          FindXF( const ScPatternAttr& rPattern, sal_uLong nForceScNumFmt,
+    sal_uInt32          FindXF( const ScPatternAttr& rPattern, sal_uInt32 nForceScNumFmt,
                             sal_uInt16 nForceXclFont, bool bForceLineBreak ) const;
     /** Returns the XF ID of the style XF containing the passed style. */
     sal_uInt32          FindXF( const SfxStyleSheetBase& rStyleSheet ) const;
@@ -643,7 +643,7 @@ private:
     /** Tries to find the XF record containing the passed format or inserts a new record.
         @return  The XF record ID. */
     sal_uInt32          InsertCellXF( const ScPatternAttr* pPattern, sal_Int16 nScript,
-                            sal_uLong nForceScNumFmt,
+                            sal_uInt32 nForceScNumFmt,
                             sal_uInt16 nForceXclFont, bool bForceLineBreak );
     /** Inserts the passed cell style. Creates a style XF record and a STYLE record.
         @return  The XF record ID. */
@@ -684,8 +684,32 @@ private:
     typedef ::std::vector< XclExpCellBorder >           XclExpBorderList;
     typedef ::std::vector< XclExpCellArea >             XclExpFillList;
 
+    /** composite key for the find-map, so we can do partial key searching */
+    struct FindKey
+    {
+        bool mbCellXF; // is this a hard cell format, or a cell style
+        const SfxItemSet* mpItemSet;
+        sal_uInt32 mnScNumFmt;
+        sal_uInt16 mnXclFont;
+
+        bool operator<(const FindKey& other) const
+        {
+            if (mbCellXF != other.mbCellXF)
+                return mbCellXF < other.mbCellXF;
+            if (mpItemSet != other.mpItemSet)
+                return mpItemSet < other.mpItemSet;
+            if (mnScNumFmt != other.mnScNumFmt)
+                return mnScNumFmt < other.mnScNumFmt;
+            return mnXclFont < other.mnXclFont;
+        }
+    };
+    static FindKey ToFindKey(XclExpXF const &);
+
     XclExpXFList        maXFList;           /// List of all XF records.
-    XclExpStyleList     maStyleList;        /// List of all STYLE records.
+    std::map<FindKey, std::vector<sal_uInt32>>
+                        maXFFindMap;        /// map of itemset to vector of positions, to speed up find
+    XclExpRecordList< XclExpStyle >
+                        maStyleList;        /// List of all STYLE records.
     XclExpBuiltInMap    maBuiltInMap;       /// Contained elements describe built-in XFs.
     ScfUInt16Vec        maXFIndexVec;       /// Maps XF IDs to XF indexes.
     ScfUInt16Vec        maStyleIndexes;     /// Maps XF IDs to OOXML Style indexes
@@ -699,11 +723,13 @@ private:
 class XclExpDxf : public XclExpRecordBase, protected XclExpRoot
 {
 public:
-    XclExpDxf( const XclExpRoot& rRoot, XclExpCellAlign* pAlign, XclExpCellBorder* pBorder,
-            XclExpDxfFont* pFont, XclExpNumFmt* pNumberFmt, XclExpCellProt* pProt, XclExpColor* pColor);
+    XclExpDxf( const XclExpRoot& rRoot, std::unique_ptr<XclExpCellAlign> pAlign, std::unique_ptr<XclExpCellBorder> pBorder,
+            std::unique_ptr<XclExpDxfFont> pFont, std::unique_ptr<XclExpNumFmt> pNumberFmt,
+            std::unique_ptr<XclExpCellProt> pProt, std::unique_ptr<XclExpColor> pColor);
     virtual ~XclExpDxf() override;
 
     virtual void SaveXml( XclExpXmlStream& rStrm ) override;
+    void SaveXmlExt( XclExpXmlStream& rStrm);
 
 private:
     std::unique_ptr<XclExpCellAlign> mpAlign;
@@ -726,7 +752,6 @@ private:
     typedef std::vector< std::unique_ptr<XclExpDxf> > DxfContainer;
     std::map<OUString, sal_Int32> maStyleNameToDxfId;
     DxfContainer maDxf;
-    SvNumberFormatterPtr mxFormatter;   /// Special number formatter for conversion.
     std::unique_ptr<NfKeywordTable>   mpKeywordTable; /// Replacement table.
 };
 

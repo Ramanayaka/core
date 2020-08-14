@@ -22,6 +22,9 @@
 
 #include <swrect.hxx>
 
+#include <tools/solar.h>
+
+#include <memory>
 #include <vector>
 #include <deque>
 
@@ -29,7 +32,6 @@ class SwDoc;
 class SwFrame;
 class SwLayoutFrame;
 class SwPageFrame;
-class SwFlyFrame;
 class SwSectionFrame;
 class SwSectionNode;
 class SvStream;
@@ -53,6 +55,7 @@ typedef std::vector<SwFlyCache> SwPageFlyCache;
 class SwLayCacheImpl
 {
     std::vector<sal_uLong> mIndices;
+    /// either a textframe character offset, or a row index inside a table
     std::deque<sal_Int32> aOffset;
     std::vector<sal_uInt16> aType;
     SwPageFlyCache m_FlyCache;
@@ -91,6 +94,7 @@ public:
     SwSectionFrame    *GetSectionFrame()                    { return pSectFrame; }
     void             SetSectionFrame( SwSectionFrame *p )   { pSectFrame = p; }
     SwSectionNode   *GetSectionNode()                   { return pSectNode;}
+    void             SetUpper(SwActualSection *p)       { pUpper = p; }
     SwActualSection *GetUpper()                         { return pUpper; }
 };
 
@@ -102,7 +106,7 @@ class SwLayHelper
     SwFrame* &mrpPrv;
     SwPageFrame* &mrpPage;
     SwLayoutFrame* &mrpLay;
-    SwActualSection* &mrpActualSection;
+    std::unique_ptr<SwActualSection> &mrpActualSection;
     bool mbBreakAfter;
     SwDoc* mpDoc;
     SwLayCacheImpl* mpImpl;
@@ -115,7 +119,7 @@ class SwLayHelper
     void CheckFlyCache_( SwPageFrame* pPage );
 public:
     SwLayHelper( SwDoc *pD, SwFrame* &rpF, SwFrame* &rpP, SwPageFrame* &rpPg,
-            SwLayoutFrame* &rpL, SwActualSection* &rpA,
+            SwLayoutFrame* &rpL, std::unique_ptr<SwActualSection> &rpA,
             sal_uLong nNodeIndex, bool bCache );
     ~SwLayHelper();
     sal_uLong CalcPageCount();
@@ -165,11 +169,11 @@ public:
     SvStream& GetStream() const { return *pStream; }
 
     /// Open a record of type "nType"
-    bool OpenRec( sal_uInt8 nType );
+    void OpenRec( sal_uInt8 nType );
 
     /// Close a record. This skips any unread data that
     /// remains in the record.
-    bool CloseRec();
+    void CloseRec();
 
     /// Return the number of bytes contained in the current record that
     /// haven't been read by now.

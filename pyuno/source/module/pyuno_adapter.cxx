@@ -20,12 +20,14 @@
 
 #include <o3tl/any.hxx>
 
-#include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
-
 #include <com/sun/star/beans/MethodConcept.hpp>
 #include <com/sun/star/beans/UnknownPropertyException.hpp>
+#include <com/sun/star/script/CannotConvertException.hpp>
+#include <com/sun/star/script/XInvocationAdapterFactory2.hpp>
+#include <com/sun/star/beans/XIntrospection.hpp>
 
+#include <comphelper/sequence.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/typeprovider.hxx>
 
 
@@ -66,7 +68,7 @@ Adapter::~Adapter()
 
 static cppu::OImplementationId g_id( false );
 
-Sequence<sal_Int8> Adapter::getUnoTunnelImplementationId()
+Sequence<sal_Int8> Adapter::getUnoTunnelId()
 {
     return g_id.getImplementationId();
 }
@@ -136,33 +138,18 @@ Sequence< sal_Int16 > Adapter::getOutIndexes( const OUString & functionName )
                     "pyuno bridge: Couldn't get reflection for method " + functionName );
             }
 
-            Sequence< ParamInfo > seqInfo = method->getParameterInfos();
-            int i;
-            int nOuts = 0;
-            for( i = 0 ; i < seqInfo.getLength() ; i ++ )
+            const Sequence< ParamInfo > seqInfo = method->getParameterInfos();
+            std::vector<sal_Int16> retVec;
+            for( sal_Int32 i = 0; i < seqInfo.getLength(); ++i )
             {
                 if( seqInfo[i].aMode == css::reflection::ParamMode_OUT ||
                     seqInfo[i].aMode == css::reflection::ParamMode_INOUT )
                 {
-                    // sequence must be interpreted as return value/outparameter tuple !
-                    nOuts ++;
+                    retVec.push_back(static_cast<sal_Int16>(i));
                 }
             }
 
-            if( nOuts )
-            {
-                ret.realloc( nOuts );
-                sal_Int32 nOutsAssigned = 0;
-                for( i = 0 ; i < seqInfo.getLength() ; i ++ )
-                {
-                    if( seqInfo[i].aMode == css::reflection::ParamMode_OUT ||
-                        seqInfo[i].aMode == css::reflection::ParamMode_INOUT )
-                    {
-                        ret[nOutsAssigned] = (sal_Int16) i;
-                        nOutsAssigned ++;
-                    }
-                }
-            }
+            ret = comphelper::containerToSequence(retVec);
         }
         // guard active again !
         m_methodOutIndexMap[ functionName ] = ret;
@@ -238,12 +225,13 @@ Any Adapter::invoke( const OUString &aFunctionName,
         raiseInvocationTargetExceptionWhenNeeded( runtime);
         if( !method.is() )
         {
-            OUStringBuffer buf;
-            buf.append( "pyuno::Adapter: Method " ).append( aFunctionName );
-            buf.append( " is not implemented at object " );
             PyRef str( PyObject_Repr( mWrappedObject.get() ), SAL_NO_ACQUIRE );
-            buf.append(pyString2ustring(str.get()));
-            throw IllegalArgumentException( buf.makeStringAndClear(), Reference< XInterface > (),0 );
+
+            OUString sMsg = "pyuno::Adapter: Method "
+                          + aFunctionName
+                          + " is not implemented at object "
+                          + pyString2ustring(str.get());
+            throw IllegalArgumentException( sMsg, Reference< XInterface > (),0 );
         }
 
         PyRef pyRet( PyObject_CallObject( method.get(), argsTuple.get() ), SAL_NO_ACQUIRE );
@@ -264,7 +252,7 @@ Any Adapter::invoke( const OUString &aFunctionName,
                 // I can only decide for one solution by checking the method signature,
                 // so I need the reflection of the adapter !
                 aOutParamIndex = getOutIndexes( aFunctionName );
-                if( aOutParamIndex.getLength() )
+                if( aOutParamIndex.hasElements() )
                 {
                     // out parameters exist, extract the sequence
                     Sequence< Any  > seq;
@@ -274,25 +262,22 @@ Any Adapter::invoke( const OUString &aFunctionName,
                             "pyuno bridge: Couldn't extract out parameters for method " + aFunctionName );
                     }
 
-                    if( aOutParamIndex.getLength() +1 != seq.getLength() )
+                    auto nOutLength = aOutParamIndex.getLength();
+                    if( nOutLength + 1 != seq.getLength() )
                     {
-                        OUStringBuffer buf;
-                        buf.append( "pyuno bridge: expected for method " );
-                        buf.append( aFunctionName );
-                        buf.append( " one return value and " );
-                        buf.append( aOutParamIndex.getLength() );
-                        buf.append( " out parameters, got a sequence of " );
-                        buf.append( seq.getLength() );
-                        buf.append( " elements as return value." );
-                        throw RuntimeException(buf.makeStringAndClear(), *this );
+                        OUString sMsg = "pyuno bridge: expected for method "
+                                      + aFunctionName
+                                      + " one return value and "
+                                      + OUString::number(nOutLength)
+                                      + " out parameters, got a sequence of "
+                                      + OUString::number(seq.getLength())
+                                      + " elements as return value.";
+                        throw RuntimeException( sMsg, *this );
                     }
 
-                    aOutParam.realloc( aOutParamIndex.getLength() );
+                    aOutParam.realloc( nOutLength );
                     ret = seq[0];
-                    for( i = 0 ; i < aOutParamIndex.getLength() ; i ++ )
-                    {
-                        aOutParam[i] = seq[1+i];
-                    }
+                    std::copy_n(std::next(seq.begin()), nOutLength, aOutParam.begin());
                 }
                 // else { sequence is a return value !}
             }
@@ -378,7 +363,8 @@ void Adapter::setValue( const OUString & aPropertyName, const Any & value )
     }
     catch( const IllegalArgumentException & exc )
     {
-        throw InvocationTargetException( exc.Message, *this, css::uno::makeAny( exc ) );
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw InvocationTargetException( exc.Message, *this, anyEx );
     }
 }
 

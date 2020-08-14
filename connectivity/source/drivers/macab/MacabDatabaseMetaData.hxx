@@ -24,17 +24,10 @@
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 #include <cppuhelper/implbase.hxx>
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
 
-        //************ Class: MacabDatabaseMetaData
-
-
-        typedef ::cppu::WeakImplHelper< css::sdbc::XDatabaseMetaData> MacabDatabaseMetaData_BASE;
-
-        class MacabDatabaseMetaData : public MacabDatabaseMetaData_BASE
+        class MacabDatabaseMetaData : public ::cppu::WeakImplHelper< css::sdbc::XDatabaseMetaData>
         {
             rtl::Reference< MacabConnection > m_xConnection;
             bool                                   m_bUseCatalog;
@@ -198,7 +191,6 @@ namespace connectivity
             virtual css::uno::Reference< css::sdbc::XResultSet > SAL_CALL getUDTs( const css::uno::Any& catalog, const OUString& schemaPattern, const OUString& typeNamePattern, const css::uno::Sequence< sal_Int32 >& types ) override;
             virtual css::uno::Reference< css::sdbc::XConnection > SAL_CALL getConnection(  ) override;
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABDATABASEMETADATA_HXX

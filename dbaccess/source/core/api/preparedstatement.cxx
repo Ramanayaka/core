@@ -18,21 +18,18 @@
  */
 
 
-#include "dbastrings.hrc"
-
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 
-#include <comphelper/property.hxx>
-#include <comphelper/sequence.hxx>
+#include <connectivity/dbtools.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <preparedstatement.hxx>
-#include <resultcolumn.hxx>
-#include <resultset.hxx>
-#include <tools/debug.hxx>
+#include "resultcolumn.hxx"
+#include "resultset.hxx"
 #include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star::sdbc;
@@ -52,15 +49,13 @@ OPreparedStatement::OPreparedStatement(const Reference< XConnection > & _xConn,
     m_xAggregateAsParameters.set( m_xAggregateAsSet, UNO_QUERY_THROW );
 
     Reference<XDatabaseMetaData> xMeta = _xConn->getMetaData();
-    m_pColumns = new OColumns(*this, m_aMutex, xMeta.is() && xMeta->supportsMixedCaseQuotedIdentifiers(),std::vector< OUString>(), nullptr,nullptr);
+    m_pColumns.reset( new OColumns(*this, m_aMutex, xMeta.is() && xMeta->supportsMixedCaseQuotedIdentifiers(),std::vector< OUString>(), nullptr,nullptr) );
 }
 
 OPreparedStatement::~OPreparedStatement()
 {
     m_pColumns->acquire();
     m_pColumns->disposing();
-    delete m_pColumns;
-
 }
 
 // css::lang::XTypeProvider
@@ -111,7 +106,7 @@ void OPreparedStatement::release() throw ()
 // XServiceInfo
 OUString OPreparedStatement::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdb.OPreparedStatement");
+    return "com.sun.star.sdb.OPreparedStatement";
 }
 
 sal_Bool OPreparedStatement::supportsService( const OUString& _rServiceName )
@@ -121,10 +116,7 @@ sal_Bool OPreparedStatement::supportsService( const OUString& _rServiceName )
 
 Sequence< OUString > OPreparedStatement::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aSNS( 2 );
-    aSNS.getArray()[0] = SERVICE_SDBC_PREPAREDSTATEMENT;
-    aSNS.getArray()[1] = SERVICE_SDB_PREPAREDSTATMENT;
-    return aSNS;
+    return { SERVICE_SDBC_PREPAREDSTATEMENT, SERVICE_SDB_PREPAREDSTATMENT };
 }
 
 // OComponentHelper
@@ -160,16 +152,22 @@ Reference< css::container::XNameAccess > OPreparedStatement::getColumns()
                 // retrieve the name of the column
                 OUString aName = xMetaData->getColumnName(i + 1);
                 OResultColumn* pColumn = new OResultColumn(xMetaData, i + 1, xDBMeta);
+                // don't silently assume that the name is unique - preparedStatement implementations
+                // are allowed to return duplicate names, but we are required to have
+                // unique column names
+                if ( m_pColumns->hasByName( aName ) )
+                    aName = ::dbtools::createUniqueName( m_pColumns.get(), aName );
+
                 m_pColumns->append(aName, pColumn);
             }
         }
         catch (const SQLException& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
         m_pColumns->setInitialized();
     }
-    return m_pColumns;
+    return m_pColumns.get();
 }
 
 // XResultSetMetaDataSupplier

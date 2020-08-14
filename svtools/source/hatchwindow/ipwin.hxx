@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_SOURCE_HATCHWINDOW_IPWIN_HXX
-#define INCLUDED_SVTOOLS_SOURCE_HATCHWINDOW_IPWIN_HXX
+#pragma once
 
 #include <tools/gen.hxx>
 #include <vcl/window.hxx>
+#include <array>
 
 /********************** SvResizeHelper ***********************************
 *************************************************************************/
@@ -48,8 +48,8 @@ public:
     }
                 // Clockwise, start at upper left
 
-    void        FillHandleRectsPixel( tools::Rectangle aRects[ 8 ] ) const;
-    void        FillMoveRectsPixel( tools::Rectangle aRects[ 4 ] ) const;
+    std::array<tools::Rectangle,8> FillHandleRectsPixel() const;
+    std::array<tools::Rectangle,4> FillMoveRectsPixel() const;
     void        Draw(vcl::RenderContext& rRenderContext);
     void        InvalidateBorder( vcl::Window * );
     bool        SelectBegin( vcl::Window *, const Point & rPos );
@@ -66,7 +66,7 @@ public:
 class VCLXHatchWindow;
 class SvResizeWindow : public vcl::Window
 {
-    Pointer         m_aOldPointer;
+    PointerStyle    m_aOldPointer;
     short           m_nMoveGrab;  // last pointer type
     SvResizeHelper  m_aResizer;
     bool        m_bActive;
@@ -88,6 +88,5 @@ public:
     virtual bool    PreNotify( NotifyEvent& rNEvt ) override;
 };
 
-#endif // INCLUDED_SVTOOLS_SOURCE_HATCHWINDOW_IPWIN_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

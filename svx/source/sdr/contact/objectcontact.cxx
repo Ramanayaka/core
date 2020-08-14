@@ -20,21 +20,35 @@
 #include <svx/sdr/contact/objectcontact.hxx>
 #include <tools/debug.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
-#include <svx/svdpage.hxx>
 #include <svx/sdr/contact/viewcontact.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <svx/sdr/animation/objectanimator.hxx>
-
-#include "eventhandler.hxx"
 
 using namespace com::sun::star;
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
+
+bool ObjectContact::supportsGridOffsets() const
+{
+    // default does not support GridOffset
+    return false;
+}
+
+void ObjectContact::calculateGridOffsetForViewOjectContact(
+    basegfx::B2DVector& /*rTarget*/,
+    const ViewObjectContact& /*rClient*/) const
+{
+    // default does not on-demand calculate GridOffset
+}
+
+void ObjectContact::calculateGridOffsetForB2DRange(
+    basegfx::B2DVector& /*rTarget*/,
+    const basegfx::B2DRange& /*rB2DRange*/) const
+{
+    // default does not on-demand calculate GridOffset
+}
 
 ObjectContact::ObjectContact()
 :   maViewObjectContactVector(),
     maPrimitiveAnimator(),
-    mpEventHandler(nullptr),
     mpViewObjectContactRedirector(nullptr),
     maViewInformation2D(uno::Sequence< beans::PropertyValue >()),
     mbIsPreviewRenderer(false)
@@ -47,31 +61,17 @@ ObjectContact::~ObjectContact() COVERITY_NOEXCEPT_FALSE
     // #i84257# To avoid that each 'delete pCandidate' again uses
     // the local RemoveViewObjectContact with a search and removal in the
     // vector, simply copy and clear local vector.
-    std::vector< ViewObjectContact* > aLocalVOCList(maViewObjectContactVector);
-    maViewObjectContactVector.clear();
+    std::vector< ViewObjectContact* > aLocalVOCList;
+    aLocalVOCList.swap(maViewObjectContactVector);
 
-    while(!aLocalVOCList.empty())
-    {
-        ViewObjectContact* pCandidate = aLocalVOCList.back();
-        aLocalVOCList.pop_back();
-        DBG_ASSERT(pCandidate, "Corrupted ViewObjectContactList (!)");
-
+    for (const auto & pCandidate : aLocalVOCList)
         // ViewObjectContacts only make sense with View and Object contacts.
         // When the contact to the SdrObject is deleted like in this case,
         // all ViewObjectContacts can be deleted, too.
         delete pCandidate;
-    }
 
     // assert when there were new entries added during deletion
     DBG_ASSERT(maViewObjectContactVector.empty(), "Corrupted ViewObjectContactList (!)");
-
-    // delete the EventHandler. This will destroy all still contained events.
-    if(mpEventHandler)
-    {
-        // If there are still Events registered, something has went wrong
-        delete mpEventHandler;
-        mpEventHandler = nullptr;
-    }
 }
 
 // LazyInvalidate request. Default implementation directly handles
@@ -130,36 +130,10 @@ void ObjectContact::InvalidatePartOfView(const basegfx::B2DRange& /*rRange*/) co
     // nothing to do here in the default version
 }
 
-// Get info if given Rectangle is visible in this view
-bool ObjectContact::IsAreaVisible(const basegfx::B2DRange& /*rRange*/) const
-{
-    // always visible in default version
-    return true;
-}
-
 // Get info about the need to visualize GluePoints
 bool ObjectContact::AreGluePointsVisible() const
 {
     return false;
-}
-
-// method to get the primitiveAnimator
-
-// method to get the EventHandler. It will
-// return a existing one or create a new one using CreateEventHandler().
-sdr::event::TimerEventHandler& ObjectContact::GetEventHandler() const
-{
-    if(!HasEventHandler())
-    {
-        const_cast< ObjectContact* >(this)->mpEventHandler = new sdr::event::TimerEventHandler();
-    }
-    return *mpEventHandler;
-}
-
-// test if there is an EventHandler without creating one on demand
-bool ObjectContact::HasEventHandler() const
-{
-    return (nullptr != mpEventHandler);
 }
 
 // check if text animation is allowed. Default is sal_true.
@@ -174,12 +148,6 @@ bool ObjectContact::IsGraphicAnimationAllowed() const
     return true;
 }
 
-// check if asynchronous graphics loading is allowed. Default is false.
-bool ObjectContact::IsAsynchronGraphicsLoadingAllowed() const
-{
-    return false;
-}
-
 void ObjectContact::SetViewObjectContactRedirector(ViewObjectContactRedirector* pNew)
 {
     if(mpViewObjectContactRedirector != pNew)
@@ -190,18 +158,6 @@ void ObjectContact::SetViewObjectContactRedirector(ViewObjectContactRedirector* 
 
 // print? Default is false
 bool ObjectContact::isOutputToPrinter() const
-{
-    return false;
-}
-
-// window? Default is true
-bool ObjectContact::isOutputToWindow() const
-{
-    return true;
-}
-
-// VirtualDevice? Default is false
-bool ObjectContact::isOutputToVirtualDevice() const
 {
     return false;
 }
@@ -224,12 +180,6 @@ bool ObjectContact::isDrawModeGray() const
     return false;
 }
 
-// gray display mode
-bool ObjectContact::isDrawModeBlackWhite() const
-{
-    return false;
-}
-
 // high contrast display mode
 bool ObjectContact::isDrawModeHighContrast() const
 {
@@ -248,26 +198,18 @@ OutputDevice* ObjectContact::TryToGetOutputDevice() const
     return nullptr;
 }
 
-void ObjectContact::resetViewPort()
+void ObjectContact::resetAllGridOffsets()
 {
-    const drawinglayer::geometry::ViewInformation2D& rCurrentVI2D = getViewInformation2D();
+    const sal_uInt32 nVOCCount(getViewObjectContactCount());
 
-    if(!rCurrentVI2D.getViewport().isEmpty())
+    for(sal_uInt32 a(0); a < nVOCCount; a++)
     {
-        const basegfx::B2DRange aEmptyRange;
-
-        drawinglayer::geometry::ViewInformation2D aNewVI2D(
-            rCurrentVI2D.getObjectTransformation(),
-            rCurrentVI2D.getViewTransformation(),
-            aEmptyRange,
-            rCurrentVI2D.getVisualizedPage(),
-            rCurrentVI2D.getViewTime(),
-            rCurrentVI2D.getExtendedInformationSequence());
-
-        updateViewInformation2D(aNewVI2D);
+        ViewObjectContact* pVOC(getViewObjectContact(a));
+        assert(pVOC && "ObjectContact: ViewObjectContact list Corrupt (!)");
+        pVOC->resetGridOffset();
     }
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

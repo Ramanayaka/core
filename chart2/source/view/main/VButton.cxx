@@ -9,18 +9,20 @@
 
 #include "VButton.hxx"
 
-#include "AbstractShapeFactory.hxx"
+#include <ShapeFactory.hxx>
 #include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
 #include <com/sun/star/drawing/TextVerticalAdjust.hpp>
 #include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <memory>
 
-#include "CommonConverters.hxx"
+#include <CommonConverters.hxx>
 #include <editeng/unoprnms.hxx>
-#include "macros.hxx"
 
 namespace chart
 {
@@ -28,11 +30,9 @@ namespace chart
 using namespace css;
 
 VButton::VButton()
-    : m_xShapeFactory(nullptr)
-    , m_xTarget(nullptr)
-    , m_xShape(nullptr)
-    , m_bShowArrow(true)
+    : m_bShowArrow(true)
     , m_nArrowColor(0x00000000)
+    , m_nBGColor(0x00E6E6E6)
 {
 }
 
@@ -85,14 +85,14 @@ uno::Reference<drawing::XShape> VButton::createTriangle(awt::Size aSize)
     xProperies->setPropertyValue("Name", uno::makeAny(m_sCID));
     xProperies->setPropertyValue(UNO_NAME_POLYPOLYGON, uno::Any(PolyToPointSequence(aPolyPolygon)));
     xProperies->setPropertyValue("LineStyle", uno::makeAny(drawing::LineStyle_NONE));
-    xProperies->setPropertyValue("FillColor", uno::Any(m_nArrowColor));
+    xProperies->setPropertyValue("FillColor", uno::makeAny(m_nArrowColor));
 
     return xShape;
 }
 
 void VButton::createShapes(const uno::Reference<beans::XPropertySet>& xTextProp)
 {
-    AbstractShapeFactory* pShapeFactory = AbstractShapeFactory::getOrCreateShapeFactory(m_xShapeFactory);
+    ShapeFactory* pShapeFactory = ShapeFactory::getOrCreateShapeFactory(m_xShapeFactory);
 
     std::unique_ptr<tNameSequence> pPropNames(new tNameSequence);
     std::unique_ptr<tAnySequence> pPropValues(new tAnySequence);
@@ -109,7 +109,9 @@ void VButton::createShapes(const uno::Reference<beans::XPropertySet>& xTextProp)
 
     tPropertyNameValueMap aTextValueMap;
     aTextValueMap["CharHeight"] <<= 10.0f;
-    aTextValueMap["FillColor"] <<= sal_Int32(0xe6e6e6);
+    aTextValueMap["CharHeightAsian"] <<= 10.0f;
+    aTextValueMap["CharHeightComplex"] <<= 10.0f;
+    aTextValueMap["FillColor"] <<= m_nBGColor;
     aTextValueMap["FillStyle"] <<= drawing::FillStyle_SOLID;
     aTextValueMap["LineColor"] <<= sal_Int32(0xcccccc);
     aTextValueMap["LineStyle"] <<= drawing::LineStyle_SOLID;
@@ -132,18 +134,18 @@ void VButton::createShapes(const uno::Reference<beans::XPropertySet>& xTextProp)
         xEntry->setSize(m_aSize);
     }
 
-    if (m_bShowArrow)
-    {
-        awt::Size aPolySize {280, 180};
+    if (!m_bShowArrow)
+        return;
 
-        uno::Reference<drawing::XShape> xPoly = createTriangle(aPolySize);
-        if (xPoly.is())
-        {
-            xPoly->setSize(aPolySize);
-            xPoly->setPosition({ sal_Int32(m_aPosition.X + m_aSize.Width - aPolySize.Width - 100),
-                                 sal_Int32(m_aPosition.Y + (m_aSize.Height / 2.0) - (aPolySize.Height / 2.0)) });
-            xContainer->add(xPoly);
-        }
+    awt::Size aPolySize {280, 180};
+
+    uno::Reference<drawing::XShape> xPoly = createTriangle(aPolySize);
+    if (xPoly.is())
+    {
+        xPoly->setSize(aPolySize);
+        xPoly->setPosition({ sal_Int32(m_aPosition.X + m_aSize.Width - aPolySize.Width - 100),
+                             sal_Int32(m_aPosition.Y + (m_aSize.Height / 2.0) - (aPolySize.Height / 2.0)) });
+        xContainer->add(xPoly);
     }
 }
 

@@ -19,7 +19,9 @@
 
 #include <config_locales.h>
 
-#include "lrl_include.hxx"
+#include <sal/log.hxx>
+
+#include <lrl_include.hxx>
 
 #include <rtl/ustrbuf.hxx>
 #include <i18nlangtag/languagetag.hxx>
@@ -30,14 +32,16 @@
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace ::com::sun::star;
+using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
+
+const char implementationName[] = "com.sun.star.i18n.Collator_Unicode";
 
 Collator_Unicode::Collator_Unicode()
 {
-    implementationName = "com.sun.star.i18n.Collator_Unicode";
     collator = nullptr;
     uca_base = nullptr;
 #ifndef DISABLE_DYNLOADING
@@ -47,8 +51,8 @@ Collator_Unicode::Collator_Unicode()
 
 Collator_Unicode::~Collator_Unicode()
 {
-    delete collator;
-    delete uca_base;
+    collator.reset();
+    uca_base.reset();
 #ifndef DISABLE_DYNLOADING
     if (hModule) osl_unloadModule(hModule);
 #endif
@@ -121,12 +125,13 @@ Collator_Unicode::compareSubstring( const OUString& str1, sal_Int32 off1, sal_In
 sal_Int32 SAL_CALL
 Collator_Unicode::compareString( const OUString& str1, const OUString& str2)
 {
-    return collator->compare(reinterpret_cast<const UChar *>(str1.getStr()), reinterpret_cast<const UChar *>(str2.getStr()));
+    return collator->compare(reinterpret_cast<const UChar *>(str1.getStr()), str1.getLength(),
+                             reinterpret_cast<const UChar *>(str2.getStr()), str2.getLength());
 }
 
 #ifndef DISABLE_DYNLOADING
 
-extern "C" { static void SAL_CALL thisModule() {} }
+extern "C" { static void thisModule() {} }
 
 #endif
 
@@ -137,8 +142,12 @@ Collator_Unicode::loadCollatorAlgorithm(const OUString& rAlgorithm, const lang::
         UErrorCode status = U_ZERO_ERROR;
         OUString rule = LocaleDataImpl::get()->getCollatorRuleByAlgorithm(rLocale, rAlgorithm);
         if (!rule.isEmpty()) {
-            collator = new RuleBasedCollator(reinterpret_cast<const UChar *>(rule.getStr()), status);
-            if (! U_SUCCESS(status)) throw RuntimeException();
+            collator.reset( new icu::RuleBasedCollator(reinterpret_cast<const UChar *>(rule.getStr()), status) );
+            if (! U_SUCCESS(status)) {
+                OUString message = "icu::RuleBasedCollator ctor failed: " + OUString::createFromAscii(u_errorName(status));
+                SAL_WARN("i18npool", message);
+                throw RuntimeException(message);
+            }
         }
         if (!collator && OUString(LOCAL_RULE_LANGS).indexOf(rLocale.Language) >= 0) {
             const sal_uInt8* (*func)() = nullptr;
@@ -342,7 +351,7 @@ Collator_Unicode::loadCollatorAlgorithm(const OUString& rAlgorithm, const lang::
                 size_t ruleImageSize = funclen();
 
 #if (U_ICU_VERSION_MAJOR_NUM == 4) && (U_ICU_VERSION_MINOR_NUM <= 2)
-                uca_base = new RuleBasedCollator(static_cast<UChar*>(NULL), status);
+                uca_base = new icu::RuleBasedCollator(static_cast<UChar*>(NULL), status);
 #else
                 // Not only changed ICU 53.1 the API behavior that a negative
                 // length (ruleImageSize) now leads to failure, but also that
@@ -353,35 +362,60 @@ Collator_Unicode::loadCollatorAlgorithm(const OUString& rAlgorithm, const lang::
                 // The default collator of the en-US locale would also fulfill
                 // the requirement. The collator of the actual locale or the
                 // NULL (default) locale does not.
-                uca_base = static_cast<RuleBasedCollator*>(icu::Collator::createInstance(
-                            icu::Locale::getRoot(), status));
+                uca_base.reset( static_cast<icu::RuleBasedCollator*>(icu::Collator::createInstance(
+                            icu::Locale::getRoot(), status)) );
 #endif
-                if (! U_SUCCESS(status)) throw RuntimeException();
-                collator = new RuleBasedCollator(
-                        reinterpret_cast<const uint8_t*>(ruleImage), ruleImageSize, uca_base, status);
-                if (! U_SUCCESS(status)) throw RuntimeException();
+                if (! U_SUCCESS(status)) {
+                    OUString message = "icu::Collator::createInstance() failed: " + OUString::createFromAscii(u_errorName(status));
+                    SAL_WARN("i18npool", message);
+                    throw RuntimeException(message);
+                }
+                collator.reset( new icu::RuleBasedCollator(
+                        reinterpret_cast<const uint8_t*>(ruleImage), ruleImageSize, uca_base.get(), status) );
+                if (! U_SUCCESS(status)) {
+                    OUString message = "icu::RuleBasedCollator ctor failed: " + OUString::createFromAscii(u_errorName(status));
+                    SAL_WARN("i18npool", message);
+                    throw RuntimeException(message);
+                }
             }
         }
         if (!collator) {
             /** ICU collators are loaded using a locale only.
                 ICU uses Variant as collation algorithm name (like de__PHONEBOOK
                 locale), note the empty territory (Country) designator in this special
-                case here. The icu::Locale constructor changes the algorithm name to
+                case here.
+                But sometimes the mapping fails, eg for German (from Germany) phonebook, we'll have "de_DE_PHONEBOOK"
+                this one won't be remapping to collation keyword specifiers "de@collation=phonebook"
+                See http://userguide.icu-project.org/locale#TOC-Variant-code, Level 2 canonicalization, 8.
+                So let variant empty and use the fourth arg of icuLocale "keywords"
+                See LanguageTagIcu::getIcuLocale from i18nlangtag/source/languagetag/languagetagicu.cxx
+                The icu::Locale constructor changes the algorithm name to
                 uppercase itself, so we don't have to bother with that.
             */
-            icu::Locale icuLocale( LanguageTagIcu::getIcuLocale( LanguageTag( rLocale), rAlgorithm));
+            icu::Locale icuLocale( LanguageTagIcu::getIcuLocale( LanguageTag( rLocale),
+                        "", rAlgorithm.isEmpty() ? OUString("") : "collation=" + rAlgorithm));
+
+            // FIXME: apparently we get here in LOKit case only. When the language is Japanese, we pass "ja@collation=phonetic (alphanumeric first)" to ICU
+            // and ICU does not like this (U_ILLEGAL_ARGUMENT_ERROR). Subsequently LOKit crashes, because collator is nullptr.
+            if (!strcmp(icuLocale.getLanguage(), "ja"))
+                icuLocale = icu::Locale::getJapanese();
+
             // load ICU collator
-            collator = static_cast<RuleBasedCollator*>( icu::Collator::createInstance(icuLocale, status) );
-            if (! U_SUCCESS(status)) throw RuntimeException();
+            collator.reset( static_cast<icu::RuleBasedCollator*>( icu::Collator::createInstance(icuLocale, status) ) );
+            if (! U_SUCCESS(status)) {
+                OUString message = "icu::Collator::createInstance() failed: " + OUString::createFromAscii(u_errorName(status));
+                SAL_WARN("i18npool", message);
+                throw RuntimeException(message);
+            }
         }
     }
 
     if (options & CollatorOptions::CollatorOptions_IGNORE_CASE_ACCENT)
-        collator->setStrength(Collator::PRIMARY);
+        collator->setStrength(icu::Collator::PRIMARY);
     else if (options & CollatorOptions::CollatorOptions_IGNORE_CASE)
-        collator->setStrength(Collator::SECONDARY);
+        collator->setStrength(icu::Collator::SECONDARY);
     else
-        collator->setStrength(Collator::TERTIARY);
+        collator->setStrength(icu::Collator::TERTIARY);
 
     return 0;
 }
@@ -390,7 +424,7 @@ Collator_Unicode::loadCollatorAlgorithm(const OUString& rAlgorithm, const lang::
 OUString SAL_CALL
 Collator_Unicode::getImplementationName()
 {
-    return OUString::createFromAscii(implementationName);
+    return implementationName;
 }
 
 sal_Bool SAL_CALL
@@ -402,10 +436,10 @@ Collator_Unicode::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 Collator_Unicode::getSupportedServiceNames()
 {
-    Sequence< OUString > aRet { OUString::createFromAscii(implementationName) };
+    Sequence< OUString > aRet { OUString(implementationName) };
     return aRet;
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

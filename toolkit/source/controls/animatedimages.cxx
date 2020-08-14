@@ -18,7 +18,7 @@
  */
 
 
-#include <toolkit/controls/animatedimages.hxx>
+#include <controls/animatedimages.hxx>
 #include <toolkit/helper/property.hxx>
 
 #include <com/sun/star/lang/DisposedException.hpp>
@@ -31,13 +31,13 @@
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
-
+#include <o3tl/safeint.hxx>
 #include <toolkit/controls/unocontrolbase.hxx>
 #include <toolkit/controls/unocontrolmodel.hxx>
 
 #include <cppuhelper/implbase2.hxx>
 
-#include "helper/unopropertyarrayhelper.hxx"
+#include <helper/unopropertyarrayhelper.hxx>
 
 using namespace css::awt;
 using namespace css::container;
@@ -88,7 +88,7 @@ public:
 
     OUString AnimatedImagesControl::GetComponentServiceName()
     {
-        return OUString( "AnimatedImages" );
+        return "AnimatedImages";
     }
 
 
@@ -119,7 +119,7 @@ public:
 
     OUString SAL_CALL AnimatedImagesControl::getImplementationName(  )
     {
-        return OUString( "org.openoffice.comp.toolkit.AnimatedImagesControl" );
+        return "org.openoffice.comp.toolkit.AnimatedImagesControl";
     }
 
 
@@ -131,21 +131,16 @@ public:
         return aServices;
     }
 
-
-    namespace
+    void lcl_updatePeer( Reference< XWindowPeer > const& i_peer, Reference< XControlModel > const& i_model )
     {
-        void lcl_updatePeer( Reference< XWindowPeer > const& i_peer, Reference< XControlModel > const& i_model )
+        const Reference< css::util::XModifyListener > xPeerModify( i_peer, UNO_QUERY );
+        if ( xPeerModify.is() )
         {
-            const Reference< css::util::XModifyListener > xPeerModify( i_peer, UNO_QUERY );
-            if ( xPeerModify.is() )
-            {
-                EventObject aEvent;
-                aEvent.Source = i_model;
-                xPeerModify->modified( aEvent );
-            }
+            EventObject aEvent;
+            aEvent.Source = i_model;
+            xPeerModify->modified( aEvent );
         }
     }
-
 
     sal_Bool SAL_CALL AnimatedImagesControl::setModel( const Reference< XControlModel >& i_rModel )
     {
@@ -218,11 +213,11 @@ namespace toolkit {
         void lcl_checkIndex( const AnimatedImagesControlModel_Data& i_data, const sal_Int32 i_index, const Reference< XInterface >& i_context,
             const bool i_forInsert = false )
         {
-            if ( ( i_index < 0 ) || ( size_t( i_index ) > i_data.aImageSets.size() + ( i_forInsert ? 1 : 0 ) ) )
+            if ( ( i_index < 0 ) || ( o3tl::make_unsigned( i_index ) > i_data.aImageSets.size() + ( i_forInsert ? 1 : 0 ) ) )
                 throw IndexOutOfBoundsException( OUString(), i_context );
         }
 
-        void lcl_notify( ::osl::ClearableMutexGuard& i_guard, ::cppu::OBroadcastHelper& i_broadcaseHelper,
+        void lcl_notify( ::osl::ClearableMutexGuard& i_guard, ::cppu::OBroadcastHelper const & i_broadcaseHelper,
             void ( SAL_CALL XContainerListener::*i_notificationMethod )( const ContainerEvent& ),
             const sal_Int32 i_accessor, const Sequence< OUString >& i_imageURLs, const Reference< XInterface >& i_context )
         {
@@ -270,7 +265,7 @@ namespace toolkit {
     }
 
 
-    UnoControlModel* AnimatedImagesControlModel::Clone() const
+    rtl::Reference<UnoControlModel> AnimatedImagesControlModel::Clone() const
     {
         return new AnimatedImagesControlModel( *this );
     }
@@ -285,22 +280,19 @@ namespace toolkit {
 
     OUString SAL_CALL AnimatedImagesControlModel::getServiceName()
     {
-        return OUString("com.sun.star.awt.AnimatedImagesControlModel");
+        return "com.sun.star.awt.AnimatedImagesControlModel";
     }
 
 
     OUString SAL_CALL AnimatedImagesControlModel::getImplementationName(  )
     {
-        return OUString("org.openoffice.comp.toolkit.AnimatedImagesControlModel");
+        return "org.openoffice.comp.toolkit.AnimatedImagesControlModel";
     }
 
 
     Sequence< OUString > SAL_CALL AnimatedImagesControlModel::getSupportedServiceNames()
     {
-        Sequence< OUString > aServiceNames(2);
-        aServiceNames[0] = "com.sun.star.awt.AnimatedImagesControlModel";
-        aServiceNames[1] = "com.sun.star.awt.UnoControlModel";
-        return aServiceNames;
+        return { "com.sun.star.awt.AnimatedImagesControlModel", "com.sun.star.awt.UnoControlModel" };
     }
 
 
@@ -336,7 +328,7 @@ namespace toolkit {
             return makeAny( css::awt::VisualEffect::NONE );
 
         case BASEPROPERTY_STEP_TIME:
-            return makeAny( (sal_Int32) 100 );
+            return makeAny( sal_Int32(100) );
 
         case BASEPROPERTY_AUTO_REPEAT:
             return makeAny( true );
@@ -352,13 +344,8 @@ namespace toolkit {
 
     ::cppu::IPropertyArrayHelper& SAL_CALL AnimatedImagesControlModel::getInfoHelper()
     {
-        static UnoPropertyArrayHelper* pHelper = nullptr;
-        if ( !pHelper )
-        {
-            Sequence< sal_Int32 > aIDs = ImplGetPropertyIds();
-            pHelper = new UnoPropertyArrayHelper( aIDs );
-        }
-        return *pHelper;
+        static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+        return aHelper;
     }
 
 
@@ -492,7 +479,7 @@ namespace toolkit {
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 org_openoffice_comp_toolkit_AnimatedImagesControl_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)
@@ -500,7 +487,7 @@ org_openoffice_comp_toolkit_AnimatedImagesControl_get_implementation(
     return cppu::acquire(new AnimatedImagesControl());
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 org_openoffice_comp_toolkit_AnimatedImagesControlModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

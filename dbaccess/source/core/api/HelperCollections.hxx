@@ -19,10 +19,8 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_API_HELPERCOLLECTIONS_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_API_HELPERCOLLECTIONS_HXX
 
-#include "connectivity/sdbcx/VCollection.hxx"
-#include <connectivity/dbtools.hxx>
+#include <connectivity/sdbcx/VCollection.hxx>
 #include <connectivity/dbconversion.hxx>
-#include <connectivity/PColumn.hxx>
 #include <rtl/ref.hxx>
 
 namespace dbaccess
@@ -63,14 +61,14 @@ namespace dbaccess
 
         /** creates a columns instance as above, but taking the names from the columns itself
         */
-        static OPrivateColumns* createWithIntrinsicNames(
+        static std::unique_ptr<OPrivateColumns> createWithIntrinsicNames(
             const ::rtl::Reference< ::connectivity::OSQLColumns >& _rColumns,
             bool _bCase,
             ::cppu::OWeakObject& _rParent,
             ::osl::Mutex& _rMutex
         );
 
-        virtual void SAL_CALL disposing() override;
+        virtual void disposing() override;
     };
     typedef connectivity::sdbcx::OCollection OPrivateTables_BASE;
 
@@ -95,7 +93,7 @@ namespace dbaccess
                         ,m_aTables(_rTables)
         {
         }
-        virtual void SAL_CALL disposing() override
+        virtual void disposing() override
         {
             clear_NoDispose();
                 // we're not owner of the objects we're holding, instead the object we got in our ctor is

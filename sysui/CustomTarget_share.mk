@@ -12,7 +12,7 @@ include $(SRCDIR)/sysui/productlist.mk
 
 ifeq ($(ENABLE_GIO),TRUE)
 	brand_URIPARAM := --urls
-else ifeq ($(ENABLE_KDE4),TRUE)
+else ifeq ($(ENABLE_QT5),TRUE)
 	brand_URIPARAM := --urls
 else
 	brand_URIPARAM :=
@@ -21,10 +21,10 @@ endif
 share_WORKDIR := $(call gb_CustomTarget_get_workdir,sysui/share)
 share_SRCDIR := $(SRCDIR)/sysui/desktop
 
-share_TRANSLATE := $(SRCDIR)/solenv/bin/desktop-translate.pl
+share_TRANSLATE := $(SRCDIR)/solenv/bin/desktop-translate.py
 
 LAUNCHERLIST_APPS := writer calc draw impress math base startcenter
-LAUNCHERLIST := $(LAUNCHERLIST_APPS) qstart xsltfilter
+LAUNCHERLIST := $(LAUNCHERLIST_APPS) xsltfilter
 LAUNCHERS := $(foreach launcher,$(LAUNCHERLIST),$(share_SRCDIR)/menus/$(launcher).desktop)
 
 MIMELIST := \
@@ -127,72 +127,103 @@ $(eval $(call gb_CustomTarget_register_targets,sysui/share,\
 		$(product)/openoffice.keys \
 		$(product)/openoffice.sh \
 		$(product)/create_tree.sh \
-		$(product)/mimelnklist \
+		$(if $(INTROSPECTION_SCANNER),\
+			$(product)/LOKDocView-0.1.gir \
+			$(product)/LOKDocView-0.1.typelib) \
 		$(product)/launcherlist) \
 ))
 
 $(share_WORKDIR)/%/openoffice.org.xml: $(share_WORKDIR)/documents.ulf $(MIMEDESKTOPS) $(share_SRCDIR)/share/create_mime_xml.pl
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),PRL,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),PRL)
 	$(PERL) $(share_SRCDIR)/share/create_mime_xml.pl $< > $@
-
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),PRL)
 
 $(share_WORKDIR)/%/openoffice.keys:  \
 	$(share_SRCDIR)/mimetypes/openoffice.mime $(MIMEKEYS) $(share_SRCDIR)/share/brand.pl \
-	$(share_TRANSLATE)  $(share_WORKDIR)/documents.ulf
+	$(share_TRANSLATE)  $(share_WORKDIR)/documents.ulf \
+	$(call gb_ExternalExecutable_get_dependencies,python)
 	mkdir -p $(dir $@)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),PRL,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),PRL)
 	$(PERL) $(share_SRCDIR)/share/brand.pl -p $* -u $(UNIXFILENAME.$*) \
-		--iconprefix $(UNIXFILENAME.$*)- $^ $(share_WORKDIR)/$*
-	$(PERL) $(share_TRANSLATE) -p $* -d $(share_WORKDIR)/$* \
+		--iconprefix $(UNIXFILENAME.$*)- $(MIMEKEYS) $(share_WORKDIR)/$*
+	$(call gb_ExternalExecutable_get_command,python) $(share_TRANSLATE) \
+		-p $* -d $(share_WORKDIR)/$* \
 		--ext "keys" --key "description" $(share_WORKDIR)/documents.ulf
 	cat $(MIMEKEYS) > $@
-
-$(share_WORKDIR)/%/mimelnklist: $(MIMEDESKTOPS) $(share_SRCDIR)/share/brand.pl \
-	$(share_TRANSLATE) $(share_WORKDIR)/documents.ulf
-	mkdir -p $(dir $@)
-	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),PRL,1)
-	$(PERL) $(share_SRCDIR)/share/brand.pl -p $* -u $(UNIXFILENAME.$*) \
-		--iconprefix $(UNIXFILENAME.$*)- $^ $(share_WORKDIR)/$*
-	$(PERL) $(share_TRANSLATE) -p $* -d $(share_WORKDIR)/$* \
-		--ext "desktop" --key "Comment" $(share_WORKDIR)/documents.ulf
-	echo "$(MIMEDESKTOPS)" > $@
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),PRL)
 
 $(share_WORKDIR)/%/openoffice.mime: $(share_SRCDIR)/mimetypes/openoffice.mime
 	mkdir -p $(dir $@)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),CAT,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),CAT)
 	cat $< | tr -d "\015" > $@
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),CAT)
 
 $(share_WORKDIR)/%/openoffice.sh: $(share_SRCDIR)/share/openoffice.sh
 	mkdir -p $(dir $@)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),CAT,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),CAT)
 	cat $< | tr -d "\015" | sed -e "s/%PREFIX/$(UNIXFILENAME.$*)/g" > $@
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),CAT)
 
-$(share_WORKDIR)/%/create_tree.sh: $(share_SRCDIR)/share/create_tree.sh $(share_WORKDIR)/%/mimelnklist \
+$(share_WORKDIR)/%/create_tree.sh: $(share_SRCDIR)/share/create_tree.sh \
 	$(share_WORKDIR)/%/openoffice.org.xml $(share_WORKDIR)/%/openoffice.applications $(share_WORKDIR)/%/openoffice.mime \
-	$(share_WORKDIR)/%/openoffice.keys $(share_WORKDIR)/%/launcherlist $(if $(INTROSPECTION_SCANNER),$(call gb_Library_get_target,libreofficekitgtk))
+	$(share_WORKDIR)/%/openoffice.keys $(share_WORKDIR)/%/launcherlist
 	mkdir -p $(dir $@)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),CAT,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),CAT)
 	echo "#!/bin/sh" > $@
 	echo "PREFIX=$(UNIXFILENAME.$*)" >> $@
 	echo "ICON_PREFIX=$(UNIXFILENAME.$*)" >> $@
 	echo "ICON_SOURCE_DIR=$(SRCDIR)/sysui/desktop/icons" >> $@
 	echo "APPDATA_SOURCE_DIR=$(SRCDIR)/sysui/desktop/appstream-appdata" >> $@
 	echo "PRODUCTVERSION=$(PRODUCTVERSION)" >> $@
-	echo "INTROSPECTION_SCANNER=$(INTROSPECTION_SCANNER)" >> $@
 	cat $< >> $@
 	chmod 774 $@
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),CAT)
 
+# Generate gobject-introspection files
+# These are *not* packaged in rpms because there's no good place to put them
+# where the system will actually find them and where it won't conflict with a
+# distro packaged LO; on Fedora 30 at least there's no /opt path in
+# $XDG_DATA_DIRS
+ifneq ($(INTROSPECTION_SCANNER),)
+
+$(share_WORKDIR)/%/LOKDocView-0.1.gir: \
+		$(call gb_Library_get_target,libreofficekitgtk)
+	mkdir -p $(dir $@)
+	g-ir-scanner "${SRCDIR}/include/LibreOfficeKit/LibreOfficeKitGtk.h" \
+				 "${SRCDIR}/libreofficekit/source/gtk/lokdocview.cxx" \
+                 `${PKG_CONFIG} --cflags gobject-introspection-1.0 gtk+-3.0` \
+				 -I"${SRCDIR}/include/" \
+                 --include=GLib-2.0 --include=GObject-2.0 --include=Gio-2.0 \
+                 --library=libreofficekitgtk --library-path="${INSTDIR}/program" \
+                 --include=Gdk-3.0 --include=GdkPixbuf-2.0 --include=Gtk-3.0 \
+                 --namespace=LOKDocView --nsversion=0.1 --identifier-prefix=LOKDoc --symbol-prefix=lok_doc \
+                 --c-include="LibreOfficeKit/LibreOfficeKitGtk.h" \
+				 --output="$@" --warn-all --no-libtool
+
+$(share_WORKDIR)/%/LOKDocView-0.1.typelib: $(share_WORKDIR)/%/LOKDocView-0.1.gir
+	g-ir-compiler "$<" --output="$@"
+
+endif
 
 $(share_WORKDIR)/%/launcherlist: $(LAUNCHERS)
 	mkdir -p $(dir $@)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),ECH,1)
-	echo "$(addsuffix .desktop,$(filter-out qstart,$(LAUNCHERLIST)))" > $@
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),ECH)
+	echo "$(addsuffix .desktop,$(LAUNCHERLIST))" > $@
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),ECH)
 
 
 $(share_WORKDIR)/%/openoffice.applications: $(share_SRCDIR)/mimetypes/openoffice.applications
 	mkdir -p $(dir $@)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),CAT,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),CAT)
 	cat $< | tr -d "\015" | sed -e "s/OFFICENAME/$(UNIXFILENAME.$*)/" -e "s/%PRODUCTNAME/$(PRODUCTNAME.$*) $(PRODUCTVERSION.$*)/" > $@
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),CAT)
 
 # these .desktop files are written by brand.pl below
 # need to have a rule for these because they are targets in Package_share
@@ -205,19 +236,22 @@ endef
 $(foreach launcher,$(LAUNCHERLIST),$(eval $(call sysui_Desktop_rule,$(launcher))))
 
 $(share_WORKDIR)/%/build.flag: $(share_SRCDIR)/share/brand.pl $(LAUNCHERS) \
-		$(share_TRANSLATE) $(addprefix $(share_WORKDIR)/,$(ULFS))
+		$(share_TRANSLATE) $(addprefix $(share_WORKDIR)/,$(ULFS)) \
+		$(call gb_ExternalExecutable_get_dependencies,python)
 	mkdir -p $(dir $@)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),PRL,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),PRL)
 	$(PERL) $(share_SRCDIR)/share/brand.pl -p '$${PRODUCTNAME} $${PRODUCTVERSION}' -u $(UNIXFILENAME.$*) \
 		$(brand_URIPARAM) \
-		--iconprefix '$${UNIXBASISROOTNAME}-' $^ $(share_WORKDIR)/$*
-	$(PERL) $(share_TRANSLATE) -p $(PRODUCTNAME.$*)$(PRODUCTVERSION) -d $(share_WORKDIR)/$* \
+		--iconprefix '$${UNIXBASISROOTNAME}-' $(LAUNCHERS) $(share_WORKDIR)/$*
+	$(call gb_ExternalExecutable_get_command,python) $(share_TRANSLATE) -p $(PRODUCTNAME.$*)$(PRODUCTVERSION) -d $(share_WORKDIR)/$* \
 		--ext "desktop" --key "Comment" $(share_WORKDIR)/launcher_comment.ulf
-	$(PERL) $(share_TRANSLATE) -p $(PRODUCTNAME.$*)$(PRODUCTVERSION) -d $(share_WORKDIR)/$* \
+	$(call gb_ExternalExecutable_get_command,python) $(share_TRANSLATE) -p $(PRODUCTNAME.$*)$(PRODUCTVERSION) -d $(share_WORKDIR)/$* \
 		--ext "desktop" --key "GenericName" $(share_WORKDIR)/launcher_genericname.ulf
-	$(PERL) $(share_TRANSLATE) -p $(PRODUCTNAME.$*)$(PRODUCTVERSION) -d $(share_WORKDIR)/$* \
+	$(call gb_ExternalExecutable_get_command,python) $(share_TRANSLATE) -p $(PRODUCTNAME.$*)$(PRODUCTVERSION) -d $(share_WORKDIR)/$* \
 		--ext "desktop" --key "UnityQuickList" $(share_WORKDIR)/launcher_unityquicklist.ulf
 	touch $@
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),PRL)
 
 $(eval $(call gb_CustomTarget_ulfex_rule,\
 	$(share_WORKDIR)/%.ulf,\

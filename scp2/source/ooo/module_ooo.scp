@@ -381,7 +381,7 @@ End
 
 Module gid_Module_Root_Extension_Dictionary_Hu
     MOD_NAME_DESC ( MODULE_EXTENSION_DICTIONARY_HU );
-    Files = (gid_File_Extension_Dictionary_Hu);
+    Files = (gid_File_Extension_Dictionary_Hu, gid_File_Extra_Wordbook_hu_AkH11);
     InstallOrder = "2000";
     Sortkey = "600";
     Spellcheckerlanguage = "hu";
@@ -396,6 +396,17 @@ Module gid_Module_Root_Extension_Dictionary_Hr
     InstallOrder = "2000";
     Sortkey = "605";
     Spellcheckerlanguage = "hr";
+    PackageInfo = "packinfo_office.txt";
+    ParentID = gid_Module_Dictionaries;
+    Styles = ();
+End
+
+Module gid_Module_Root_Extension_Dictionary_Id
+    MOD_NAME_DESC ( MODULE_EXTENSION_DICTIONARY_ID );
+    Files = (gid_File_Extension_Dictionary_Id);
+    InstallOrder = "2000";
+    Sortkey = "607";
+    Spellcheckerlanguage = "id";
     PackageInfo = "packinfo_office.txt";
     ParentID = gid_Module_Dictionaries;
     Styles = ();
@@ -599,6 +610,17 @@ Module gid_Module_Root_Extension_Dictionary_Sl
     Styles = ();
 End
 
+Module gid_Module_Root_Extension_Dictionary_Sq
+    MOD_NAME_DESC ( MODULE_EXTENSION_DICTIONARY_SQ );
+    Files = (gid_File_Extension_Dictionary_Sq);
+    InstallOrder = "2000";
+    Sortkey = "505";
+    Spellcheckerlanguage = "sq";
+    PackageInfo = "packinfo_office.txt";
+    ParentID = gid_Module_Dictionaries;
+    Styles = ();
+End
+
 Module gid_Module_Root_Extension_Dictionary_Sr
     MOD_NAME_DESC ( MODULE_EXTENSION_DICTIONARY_SR );
     Files = (gid_File_Extension_Dictionary_Sr);
@@ -649,6 +671,17 @@ Module gid_Module_Root_Extension_Dictionary_Th
     InstallOrder = "2000";
     Sortkey = "750";
     Spellcheckerlanguage = "th";
+    PackageInfo = "packinfo_office.txt";
+    ParentID = gid_Module_Dictionaries;
+    Styles = ();
+End
+
+Module gid_Module_Root_Extension_Dictionary_Tr
+    MOD_NAME_DESC ( MODULE_EXTENSION_DICTIONARY_TR );
+    Files = (gid_File_Extension_Dictionary_Tr);
+    InstallOrder = "2000";
+    Sortkey = "505";
+    Spellcheckerlanguage = "tr";
     PackageInfo = "packinfo_office.txt";
     ParentID = gid_Module_Dictionaries;
     Styles = ();

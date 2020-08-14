@@ -20,7 +20,7 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_ACCESS_ACCFRMOBJSLIST_HXX
 #define INCLUDED_SW_SOURCE_CORE_ACCESS_ACCFRMOBJSLIST_HXX
 
-#include <accfrmobj.hxx>
+#include "accfrmobj.hxx"
 #include <swrect.hxx>
 
 class SwAccessibleMap;
@@ -47,12 +47,6 @@ private:
     SwAccessibleChildSList_const_iterator& next_visible();
 
 public:
-    SwAccessibleChildSList_const_iterator( const SwAccessibleChildSList_const_iterator& rIter )
-        : m_rList( rIter.m_rList )
-        , m_aCurr( rIter.m_aCurr )
-        , m_nNextObj( rIter.m_nNextObj )
-    {}
-
     bool operator==( const SwAccessibleChildSList_const_iterator& r ) const
     {
         return m_aCurr == r.m_aCurr;

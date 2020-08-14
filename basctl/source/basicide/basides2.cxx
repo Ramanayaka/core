@@ -17,19 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "docsignature.hxx"
+#include <docsignature.hxx>
 
 #include "basicrenderable.hxx"
 
 #include <com/sun/star/frame/XTitle.hpp>
 
-#include <basidesh.hrc>
-#include <baside2.hxx>
-#include <basdoc.hxx>
-#include <vcl/xtextedt.hxx>
-#include <sfx2/dispatch.hxx>
+#include <iderid.hxx>
+#include <strings.hrc>
+#include "baside2.hxx"
+#include "basdoc.hxx"
+#include <basidesh.hxx>
+#include <tools/debug.hxx>
+#include <vcl/texteng.hxx>
+#include <vcl/textview.hxx>
 #include <sfx2/signaturestate.hxx>
-#include <com/sun/star/container/XNamed.hpp>
+#include <sfx2/viewfrm.hxx>
 
 namespace basctl
 {
@@ -108,31 +111,31 @@ void Shell::SetMDITitle()
     DocumentSignature aCurSignature( m_aCurDocument );
     if ( aCurSignature.getScriptingSignatureState() == SignatureState::OK )
     {
-        aTitle += " " + OUString(IDEResId(RID_STR_SIGNED)) + " ";
+        aTitle += " " + IDEResId(RID_STR_SIGNED) + " ";
     }
 
     SfxViewFrame* pViewFrame = GetViewFrame();
-    if ( pViewFrame )
-    {
-        SfxObjectShell* pShell = pViewFrame->GetObjectShell();
-        if ( pShell && pShell->GetTitle( SFX_TITLE_CAPTION ) != aTitle )
-        {
-            pShell->SetTitle( aTitle );
-            pShell->SetModified(false);
-        }
+    if ( !pViewFrame )
+        return;
 
-        css::uno::Reference< css::frame::XController > xController = GetController ();
-        css::uno::Reference< css::frame::XTitle >      xTitle      (xController, css::uno::UNO_QUERY);
-        if (xTitle.is ())
-            xTitle->setTitle (aTitle);
+    SfxObjectShell* pShell = pViewFrame->GetObjectShell();
+    if ( pShell && pShell->GetTitle( SFX_TITLE_CAPTION ) != aTitle )
+    {
+        pShell->SetTitle( aTitle );
+        pShell->SetModified(false);
     }
+
+    css::uno::Reference< css::frame::XController > xController = GetController ();
+    css::uno::Reference< css::frame::XTitle >      xTitle      (xController, css::uno::UNO_QUERY);
+    if (xTitle.is ())
+        xTitle->setTitle (aTitle);
 }
 
 VclPtr<ModulWindow> Shell::CreateBasWin( const ScriptDocument& rDocument, const OUString& rLibName, const OUString& rModName )
 {
     bCreatingWindow = true;
 
-    sal_uLong nKey = 0;
+    sal_uInt16 nKey = 0;
     VclPtr<ModulWindow> pWin;
 
     OUString aLibName( rLibName );
@@ -165,7 +168,7 @@ VclPtr<ModulWindow> Shell::CreateBasWin( const ScriptDocument& rDocument, const 
             {
                 // new module window
                 if (!pModulLayout)
-                    pModulLayout.reset(VclPtr<ModulWindowLayout>::Create(&GetViewFrame()->GetWindow(), *aObjectCatalog.get()));
+                    pModulLayout.reset(VclPtr<ModulWindowLayout>::Create(&GetViewFrame()->GetWindow(), *aObjectCatalog));
                 pWin = VclPtr<ModulWindow>::Create(pModulLayout.get(), rDocument, aLibName, aModName, aModule);
                 nKey = InsertWindowInTable( pWin );
             }
@@ -190,7 +193,7 @@ VclPtr<ModulWindow> Shell::CreateBasWin( const ScriptDocument& rDocument, const 
             aModName += " (" + sObjName + ")";
         }
     }
-    pTabBar->InsertPage( (sal_uInt16)nKey, aModName );
+    pTabBar->InsertPage( nKey, aModName );
     pTabBar->Sort();
     if(pWin)
     {

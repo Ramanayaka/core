@@ -19,32 +19,30 @@
 
 #include "SlsListener.hxx"
 
-#include "SlideSorter.hxx"
-#include "SlideSorterViewShell.hxx"
-#include "ViewShellHint.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsPageSelector.hxx"
-#include "controller/SlsCurrentSlideManager.hxx"
-#include "controller/SlsSelectionManager.hxx"
-#include "controller/SlsSelectionObserver.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageEnumerationProvider.hxx"
-#include "view/SlideSorterView.hxx"
-#include "cache/SlsPageCache.hxx"
-#include "cache/SlsPageCacheManager.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
+#include <SlideSorter.hxx>
+#include <ViewShell.hxx>
+#include <ViewShellHint.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsPageSelector.hxx>
+#include <controller/SlsCurrentSlideManager.hxx>
+#include <controller/SlsSelectionManager.hxx>
+#include <controller/SlsSelectionObserver.hxx>
+#include <model/SlideSorterModel.hxx>
+#include <view/SlideSorterView.hxx>
+#include <cache/SlsPageCache.hxx>
+#include <cache/SlsPageCacheManager.hxx>
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
+#include <DrawDocShell.hxx>
+#include <svx/svdpage.hxx>
 
-#include "glob.hrc"
-#include "ViewShellBase.hxx"
-#include "ViewShellManager.hxx"
-#include "FrameView.hxx"
-#include "EventMultiplexer.hxx"
+#include <ViewShellBase.hxx>
+#include <EventMultiplexer.hxx>
 #include <com/sun/star/document/XEventBroadcaster.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/FrameActionEvent.hpp>
 #include <com/sun/star/frame/FrameAction.hpp>
-#include <sfx2/viewfrm.hxx>
+#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star::accessibility;
@@ -52,7 +50,7 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 Listener::Listener (
     SlideSorter& rSlideSorter)
@@ -190,84 +188,82 @@ void Listener::ConnectToController()
 
     // Register at the controller of the main view shell (if we are that not
     // ourself).
-    if (pShell==nullptr || ! pShell->IsMainViewShell())
+    if (pShell!=nullptr && pShell->IsMainViewShell())
+        return;
+
+    Reference<frame::XController> xController (mrSlideSorter.GetXController());
+
+    // Listen to changes of certain properties.
+    Reference<beans::XPropertySet> xSet (xController, UNO_QUERY);
+    if (xSet.is())
     {
-        Reference<frame::XController> xController (mrSlideSorter.GetXController());
-
-        // Listen to changes of certain properties.
-        Reference<beans::XPropertySet> xSet (xController, UNO_QUERY);
-        if (xSet.is())
+        try
         {
-            try
-            {
-                xSet->addPropertyChangeListener("CurrentPage", this);
-            }
-            catch (beans::UnknownPropertyException&)
-            {
-                DBG_UNHANDLED_EXCEPTION();
-            }
-            try
-            {
-                xSet->addPropertyChangeListener("IsMasterPageMode", this);
-            }
-            catch (beans::UnknownPropertyException&)
-            {
-                DBG_UNHANDLED_EXCEPTION();
-            }
+            xSet->addPropertyChangeListener("CurrentPage", this);
         }
-
-        // Listen for disposing events.
-        Reference<XComponent> xComponent (xController, UNO_QUERY);
-        if (xComponent.is())
+        catch (beans::UnknownPropertyException&)
         {
-            xComponent->addEventListener (
-                Reference<lang::XEventListener>(static_cast<XWeak*>(this), UNO_QUERY));
-
-            mxControllerWeak = xController;
-            mbListeningToController = true;
+            DBG_UNHANDLED_EXCEPTION("sd");
         }
+        try
+        {
+            xSet->addPropertyChangeListener("IsMasterPageMode", this);
+        }
+        catch (beans::UnknownPropertyException&)
+        {
+            DBG_UNHANDLED_EXCEPTION("sd");
+        }
+    }
+
+    // Listen for disposing events.
+    if (xController.is())
+    {
+        xController->addEventListener (
+            Reference<lang::XEventListener>(static_cast<XWeak*>(this), UNO_QUERY));
+
+        mxControllerWeak = xController;
+        mbListeningToController = true;
     }
 }
 
 void Listener::DisconnectFromController()
 {
-    if (mbListeningToController)
+    if (!mbListeningToController)
+        return;
+
+    Reference<frame::XController> xController = mxControllerWeak;
+    Reference<beans::XPropertySet> xSet (xController, UNO_QUERY);
+    try
     {
-        Reference<frame::XController> xController = mxControllerWeak;
-        Reference<beans::XPropertySet> xSet (xController, UNO_QUERY);
-        try
+        // Remove the property listener.
+        if (xSet.is())
         {
-            // Remove the property listener.
-            if (xSet.is())
-            {
-                xSet->removePropertyChangeListener( "CurrentPage", this );
-                xSet->removePropertyChangeListener( "IsMasterPageMode", this);
-            }
-
-            // Remove the dispose listener.
-            Reference<XComponent> xComponent (xController, UNO_QUERY);
-            if (xComponent.is())
-                xComponent->removeEventListener (
-                    Reference<lang::XEventListener>(
-                        static_cast<XWeak*>(this), UNO_QUERY));
-        }
-        catch (beans::UnknownPropertyException&)
-        {
-            DBG_UNHANDLED_EXCEPTION();
+            xSet->removePropertyChangeListener( "CurrentPage", this );
+            xSet->removePropertyChangeListener( "IsMasterPageMode", this);
         }
 
-        mbListeningToController = false;
-        mxControllerWeak = Reference<frame::XController>();
+        // Remove the dispose listener.
+        if (xController.is())
+            xController->removeEventListener (
+                Reference<lang::XEventListener>(
+                    static_cast<XWeak*>(this), UNO_QUERY));
     }
+    catch (beans::UnknownPropertyException&)
+    {
+        DBG_UNHANDLED_EXCEPTION("sd");
+    }
+
+    mbListeningToController = false;
+    mxControllerWeak = Reference<frame::XController>();
 }
 
 void Listener::Notify (
     SfxBroadcaster& rBroadcaster,
     const SfxHint& rHint)
 {
-    const SdrHint* pSdrHint = dynamic_cast<const SdrHint*>(&rHint);
-    if (pSdrHint)
+    if (rHint.GetId() == SfxHintId::ThisIsAnSdrHint)
     {
+        const SdrHint* pSdrHint = static_cast<const SdrHint*>(&rHint);
         switch (pSdrHint->GetKind())
         {
             case SdrHintKind::ModelCleared:
@@ -286,6 +282,11 @@ void Listener::Notify (
                 break;
         }
     }
+    else if (rHint.GetId() == SfxHintId::DocChanged)
+    {
+        mrController.CheckForMasterPageAssignment();
+        mrController.CheckForSlideTransitionAssignment();
+    }
     else if (dynamic_cast<const ViewShellHint*>(&rHint))
     {
         const ViewShellHint& rViewShellHint = static_cast<const ViewShellHint&>(rHint);
@@ -294,7 +295,8 @@ void Listener::Notify (
             case ViewShellHint::HINT_PAGE_RESIZE_START:
                 // Initiate a model change but do nothing (well, not much)
                 // until we are told that all slides have been resized.
-                mpModelChangeLock.reset(new SlideSorterController::ModelChangeLock(mrController));
+                mpModelChangeLock.reset(new SlideSorterController::ModelChangeLock(mrController),
+                                        o3tl::default_delete<SlideSorterController::ModelChangeLock>());
                 mrController.HandleModelChange();
                 break;
 
@@ -312,18 +314,14 @@ void Listener::Notify (
                 break;
 
             case ViewShellHint::HINT_COMPLEX_MODEL_CHANGE_START:
-                mpModelChangeLock.reset(new SlideSorterController::ModelChangeLock(mrController));
+                mpModelChangeLock.reset(new SlideSorterController::ModelChangeLock(mrController),
+                                        o3tl::default_delete<SlideSorterController::ModelChangeLock>());
                 break;
 
             case ViewShellHint::HINT_COMPLEX_MODEL_CHANGE_END:
                 mpModelChangeLock.reset();
                 break;
         }
-    }
-    else if (rHint.GetId() == SfxHintId::DocChanged)
-    {
-        mrController.CheckForMasterPageAssignment();
-        mrController.CheckForSlideTransitionAssignment();
     }
 }
 
@@ -381,7 +379,7 @@ IMPL_LINK(Listener, EventMultiplexerCallback, ::sd::tools::EventMultiplexerEvent
             if (rEvent.mpUserData != nullptr)
             {
                 const SdrObject* pObject = static_cast<const SdrObject*>(rEvent.mpUserData);
-                HandleShapeModification(pObject->GetPage());
+                HandleShapeModification(pObject->getSdrPageFromSdrObject());
             }
             break;
 
@@ -451,7 +449,7 @@ void SAL_CALL Listener::propertyChange (
             }
             catch (beans::UnknownPropertyException&)
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("sd");
             }
             catch (lang::DisposedException&)
             {
@@ -583,26 +581,26 @@ void Listener::HandleShapeModification (const SdrPage* pPage)
 
     // When the page is a master page then invalidate the previews of all
     // pages that are linked to this master page.
-    if (pPage->IsMasterPage())
+    if (!pPage->IsMasterPage())
+        return;
+
+    for (sal_uInt16 nIndex=0,nCount=pDocument->GetSdPageCount(PageKind::Standard);
+         nIndex<nCount;
+         ++nIndex)
     {
-        for (sal_uInt16 nIndex=0,nCount=pDocument->GetSdPageCount(PageKind::Standard);
-             nIndex<nCount;
-             ++nIndex)
+        const SdPage* pCandidate = pDocument->GetSdPage(nIndex, PageKind::Standard);
+        if (pCandidate!=nullptr && pCandidate->TRG_HasMasterPage())
         {
-            const SdPage* pCandidate = pDocument->GetSdPage(nIndex, PageKind::Standard);
-            if (pCandidate!=nullptr && pCandidate->TRG_HasMasterPage())
-            {
-                if (&pCandidate->TRG_GetMasterPage() == pPage)
-                    pCacheManager->InvalidatePreviewBitmap(pDocument->getUnoModel(), pCandidate);
-            }
-            else
-            {
-                OSL_ASSERT(pCandidate!=nullptr && pCandidate->TRG_HasMasterPage());
-            }
+            if (&pCandidate->TRG_GetMasterPage() == pPage)
+                pCacheManager->InvalidatePreviewBitmap(pDocument->getUnoModel(), pCandidate);
+        }
+        else
+        {
+            OSL_ASSERT(pCandidate!=nullptr && pCandidate->TRG_HasMasterPage());
         }
     }
 }
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

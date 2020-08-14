@@ -20,9 +20,13 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_CONFIGURATIONTRACER_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_CONFIGURATIONTRACER_HXX
 
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
+#include <sal/types.h>
 
-namespace sd { namespace framework {
+namespace com::sun::star::drawing::framework { class XConfiguration; }
+namespace com::sun::star::drawing::framework { class XResourceId; }
+namespace com::sun::star::uno { template <typename > class Reference; }
+
+namespace sd::framework {
 
 /** Print debug information about configurations to the standard error
     output channel.
@@ -33,7 +37,7 @@ public:
     static void TraceConfiguration (
         const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration,
         const char* pMessage);
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >=1
     static void TraceBoundResources (
         const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration,
         const css::uno::Reference<css::drawing::framework::XResourceId>& rxResourceId,
@@ -41,7 +45,7 @@ public:
 #endif
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

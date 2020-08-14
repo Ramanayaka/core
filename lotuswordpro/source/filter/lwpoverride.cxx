@@ -58,14 +58,12 @@
  *  For LWP filter architecture prototype
  ************************************************************************/
 
+#include <sal/log.hxx>
 #include <memory>
 
 #include "clone.hxx"
-#include "lwpoverride.hxx"
-#include "lwpfilehdr.hxx"
-#include "lwpatomholder.hxx"
-#include "lwpborderstuff.hxx"
-#include "lwpmargins.hxx"
+#include <lwpoverride.hxx>
+#include <lwpfilehdr.hxx>
 #include "lwpbackgroundstuff.hxx"
 
 /*class LwpOverride*/
@@ -164,7 +162,7 @@ void LwpTextAttributeOverride::Read(LwpObjectStream* pStrm)
     pStrm->SkipExtra();
 }
 
-bool LwpTextAttributeOverride::IsHighlight()
+bool LwpTextAttributeOverride::IsHighlight() const
 {
     return (m_nValues & TAO_HIGHLIGHT) != 0;
 }
@@ -311,7 +309,11 @@ void LwpAlignmentOverride::Read(LwpObjectStream * pStrm)
     if (pStrm->QuickReadBool())
     {
         ReadCommon(pStrm);
-        m_nAlignType = static_cast<AlignType>(pStrm->QuickReaduInt8());
+        sal_uInt8 nAlignType = pStrm->QuickReaduInt8();
+        if (nAlignType <= ALIGN_SQUEEZE)
+            m_nAlignType = static_cast<AlignType>(nAlignType);
+        else
+            SAL_WARN("lwp", "unknown align type:" << nAlignType);
         m_nPosition = pStrm->QuickReaduInt32();
         m_nAlignChar = pStrm->QuickReaduInt16();
     }
@@ -359,27 +361,15 @@ m_pParaSpacingBelow(new LwpSpacingCommonOverride)
 
 LwpSpacingOverride::~LwpSpacingOverride()
 {
-    delete m_pSpacing;
-    delete m_pAboveLineSpacing;
-    delete m_pParaSpacingAbove;
-    delete m_pParaSpacingBelow;
 }
 
 LwpSpacingOverride::LwpSpacingOverride(LwpSpacingOverride const& rOther)
     : LwpOverride(rOther)
-    , m_pSpacing(nullptr)
-    , m_pAboveLineSpacing(nullptr)
-    , m_pParaSpacingAbove(nullptr)
-    , m_pParaSpacingBelow(nullptr)
 {
-    std::unique_ptr<LwpSpacingCommonOverride> pSpacing(::clone(rOther.m_pSpacing));
-    std::unique_ptr<LwpSpacingCommonOverride> pAboveLineSpacing(::clone(rOther.m_pAboveLineSpacing));
-    std::unique_ptr<LwpSpacingCommonOverride> pParaSpacingAbove(::clone(rOther.m_pParaSpacingAbove));
-    std::unique_ptr<LwpSpacingCommonOverride> pParaSpacingBelow(::clone(rOther.m_pParaSpacingBelow));
-    m_pSpacing = pSpacing.release();
-    m_pAboveLineSpacing = pAboveLineSpacing.release();
-    m_pParaSpacingAbove = pParaSpacingAbove.release();
-    m_pParaSpacingBelow = pParaSpacingBelow.release();
+    m_pSpacing.reset( ::clone(rOther.m_pSpacing.get()) );
+    m_pAboveLineSpacing.reset( ::clone(rOther.m_pAboveLineSpacing.get()) );
+    m_pParaSpacingAbove.reset( ::clone(rOther.m_pParaSpacingAbove.get()) );
+    m_pParaSpacingBelow.reset( ::clone(rOther.m_pParaSpacingBelow.get()) );
 }
 
 LwpSpacingOverride* LwpSpacingOverride::clone() const
@@ -509,7 +499,7 @@ void LwpIndentOverride::Override(LwpIndentOverride* other)
         other->OverrideRelative(GetRelative());
 }
 
-sal_uInt16 LwpIndentOverride::GetRelative()
+sal_uInt16 LwpIndentOverride::GetRelative() const
 {
     if ((m_nOverride & IO_REL_FLAGS) == IO_REL_FIRST)
         return RELATIVE_FIRST;
@@ -518,7 +508,7 @@ sal_uInt16 LwpIndentOverride::GetRelative()
     return RELATIVE_REST;
 }
 
-bool LwpIndentOverride::IsUseRelative()
+bool LwpIndentOverride::IsUseRelative() const
 {
     return (m_nValues & IO_USE_RELATIVE) != 0;
 }

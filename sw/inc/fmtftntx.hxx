@@ -20,9 +20,9 @@
 #define INCLUDED_SW_INC_FMTFTNTX_HXX
 
 #include <svl/eitem.hxx>
-#include <hintids.hxx>
-#include <format.hxx>
-#include <numrule.hxx>
+#include <editeng/numitem.hxx>
+#include "hintids.hxx"
+#include "format.hxx"
 #include "swdllapi.h"
 
 enum SwFootnoteEndPosEnum
@@ -36,19 +36,14 @@ enum SwFootnoteEndPosEnum
 
 class SW_DLLPUBLIC SwFormatFootnoteEndAtTextEnd : public SfxEnumItem<SwFootnoteEndPosEnum>
 {
-    OUString sPrefix;
-    OUString sSuffix;
-    SvxNumberType aFormat;
-    sal_uInt16      nOffset;
+    OUString m_sPrefix;
+    OUString m_sSuffix;
+    SvxNumberType m_aFormat;
+    sal_uInt16      m_nOffset;
 
 protected:
     SwFormatFootnoteEndAtTextEnd( sal_uInt16 nWhichL, SwFootnoteEndPosEnum ePos )
-        : SfxEnumItem( nWhichL, ePos ), nOffset( 0 )
-    {}
-    SwFormatFootnoteEndAtTextEnd( const SwFormatFootnoteEndAtTextEnd& rAttr )
-        : SfxEnumItem( rAttr ), sPrefix( rAttr.sPrefix ),
-        sSuffix( rAttr.sSuffix ), aFormat( rAttr.aFormat ),
-        nOffset( rAttr.nOffset )
+        : SfxEnumItem( nWhichL, ePos ), m_nOffset( 0 )
     {}
 
 public:
@@ -63,25 +58,27 @@ public:
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     bool IsAtEnd() const { return FTNEND_ATPGORDOCEND != GetValue(); }
 
     SwFormatFootnoteEndAtTextEnd & operator=( const SwFormatFootnoteEndAtTextEnd & rAttr );
+    SwFormatFootnoteEndAtTextEnd(SwFormatFootnoteEndAtTextEnd const &) = default;
+        // SfxPoolItem copy function dichotomy
 
-    SvxNumType GetNumType() const        { return aFormat.GetNumberingType(); }
-    void SetNumType( SvxNumType eType )  { aFormat.SetNumberingType(eType); }
+    SvxNumType GetNumType() const        { return m_aFormat.GetNumberingType(); }
+    void SetNumType( SvxNumType eType )  { m_aFormat.SetNumberingType(eType); }
 
-    const SvxNumberType& GetSwNumType() const   { return aFormat; }
+    const SvxNumberType& GetSwNumType() const   { return m_aFormat; }
 
-    sal_uInt16 GetOffset() const                { return nOffset; }
-    void SetOffset( sal_uInt16 nOff )           { nOffset = nOff; }
+    sal_uInt16 GetOffset() const                { return m_nOffset; }
+    void SetOffset( sal_uInt16 nOff )           { m_nOffset = nOff; }
 
-    const OUString& GetPrefix() const      { return sPrefix; }
-    void SetPrefix(const OUString& rSet)   { sPrefix = rSet; }
+    const OUString& GetPrefix() const      { return m_sPrefix; }
+    void SetPrefix(const OUString& rSet)   { m_sPrefix = rSet; }
 
-    const OUString& GetSuffix() const      { return sSuffix; }
-    void SetSuffix(const OUString& rSet)   { sSuffix = rSet; }
+    const OUString& GetSuffix() const      { return m_sSuffix; }
+    void SetSuffix(const OUString& rSet)   { m_sSuffix = rSet; }
 };
 
 class SW_DLLPUBLIC SwFormatFootnoteAtTextEnd : public SwFormatFootnoteEndAtTextEnd
@@ -91,7 +88,7 @@ public:
         : SwFormatFootnoteEndAtTextEnd( RES_FTN_AT_TXTEND, ePos )
     {}
 
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwFormatFootnoteAtTextEnd* Clone( SfxItemPool *pPool = nullptr ) const override;
 };
 
 class SW_DLLPUBLIC SwFormatEndAtTextEnd : public SwFormatFootnoteEndAtTextEnd
@@ -103,13 +100,13 @@ public:
         SetNumType( SVX_NUM_ROMAN_LOWER );
     }
 
-    virtual SfxPoolItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwFormatEndAtTextEnd* Clone( SfxItemPool *pPool = nullptr ) const override;
 };
 
 inline const SwFormatFootnoteAtTextEnd &SwAttrSet::GetFootnoteAtTextEnd(bool bInP) const
-    { return static_cast<const SwFormatFootnoteAtTextEnd&>(Get( RES_FTN_AT_TXTEND, bInP)); }
+    { return Get( RES_FTN_AT_TXTEND, bInP); }
 inline const SwFormatEndAtTextEnd &SwAttrSet::GetEndAtTextEnd(bool bInP) const
-    { return static_cast<const SwFormatEndAtTextEnd&>(Get( RES_END_AT_TXTEND, bInP)); }
+    { return Get( RES_END_AT_TXTEND, bInP); }
 
 inline const SwFormatFootnoteAtTextEnd &SwFormat::GetFootnoteAtTextEnd(bool bInP) const
     { return m_aSet.GetFootnoteAtTextEnd(bInP); }

@@ -20,6 +20,8 @@
 #ifndef INCLUDED_XMLOFF_SOURCE_FORMS_OFFICEFORMS_HXX
 #define INCLUDED_XMLOFF_SOURCE_FORMS_OFFICEFORMS_HXX
 
+#include <com/sun/star/beans/XPropertySet.hpp>
+
 #include "formattributes.hxx"
 #include <xmloff/xmlictxt.hxx>
 #include <memory>
@@ -42,12 +44,12 @@ namespace xmloff
         virtual ~OFormsRootImport() override;
 
         // SvXMLImportContext overridable
-        virtual SvXMLImportContext * CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName,
+        virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
         virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& _rxAttrList ) override;
         virtual void EndElement() override;
 
-    protected:
+    private:
         void implImportBool(
             const css::uno::Reference< css::xml::sax::XAttributeList >& _rxAttributes,
             OfficeFormsAttributes _eAttribute,

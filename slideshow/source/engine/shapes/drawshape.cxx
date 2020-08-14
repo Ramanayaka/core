@@ -19,58 +19,38 @@
 
 #include <tools/diagnose_ex.h>
 
-#include <osl/diagnose.hxx>
-#include <com/sun/star/awt/Rectangle.hpp>
+#include <sal/log.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/awt/FontWeight.hpp>
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
 
 #include <vcl/metaact.hxx>
 #include <vcl/gdimtf.hxx>
-#include <vcl/wrkwin.hxx>
+#include <vcl/graph.hxx>
 
 #include <basegfx/numeric/ftools.hxx>
 
-#include <rtl/math.hxx>
-
 #include <com/sun/star/drawing/TextAnimationKind.hpp>
 
-#include <vcl/svapp.hxx>
-#include <vcl/window.hxx>
-#include <tools/stream.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/datatransfer/XTransferable.hpp>
-
 #include <comphelper/scopeguard.hxx>
-#include <canvas/canvastools.hxx>
 
-#include <cmath>
 #include <algorithm>
 #include <iterator>
 #include <functional>
-#include <limits>
 
 #include "drawshapesubsetting.hxx"
 #include "drawshape.hxx"
-#include "eventqueue.hxx"
-#include "wakeupevent.hxx"
-#include "subsettableshapemanager.hxx"
+#include <eventqueue.hxx>
+#include <wakeupevent.hxx>
+#include <subsettableshapemanager.hxx>
 #include "intrinsicanimationactivity.hxx"
-#include "slideshowexceptions.hxx"
-#include "tools.hxx"
+#include <tools.hxx>
 #include "gdimtftools.hxx"
 #include "drawinglayeranimation.hxx"
-
-#include <math.h>
 
 using namespace ::com::sun::star;
 
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
 
 
         // Private methods
@@ -87,7 +67,7 @@ namespace slideshow
                                         mxComponentContext);
 
                 if (!mpCurrMtf)
-                    mpCurrMtf.reset( new GDIMetaFile );
+                    mpCurrMtf = std::make_shared<GDIMetaFile>();
 
                 // TODO(F1): Currently, the scroll metafile will
                 // never contain any verbose text comments. Thus,
@@ -280,7 +260,7 @@ namespace slideshow
 
                     // setup cached values to defaults (might fail to
                     // retrieve true bounds below)
-                    maCurrentShapeUnitBounds.reset( aDefaultBounds );
+                    maCurrentShapeUnitBounds = aDefaultBounds;
 
                     // TODO(P2): the subset of the master shape (that from
                     // which the subsets are subtracted) changes
@@ -344,7 +324,7 @@ namespace slideshow
                             ::basegfx::B2DRange( 0.0, 0.0,
                                                  1.0, 1.0 ));
 
-                        maCurrentShapeUnitBounds.reset( aTotalBounds );
+                        maCurrentShapeUnitBounds = aTotalBounds;
                     }
                 }
 
@@ -405,7 +385,7 @@ namespace slideshow
                                     xContainingPage, mnCurrMtfLoadFlags,
                                     mxComponentContext );
             if (!mpCurrMtf)
-                mpCurrMtf.reset(new GDIMetaFile);
+                mpCurrMtf = std::make_shared<GDIMetaFile>();
 
             maSubsetting.reset( mpCurrMtf );
 
@@ -565,9 +545,9 @@ namespace slideshow
                     std::back_insert_iterator< std::vector<double> >( aTimeout ),
                     std::mem_fn(&MtfAnimationFrame::getDuration) );
 
-                WakeupEventSharedPtr pWakeupEvent(
-                    new WakeupEvent( rContext.mrEventQueue.getTimer(),
-                                     rContext.mrActivitiesQueue ) );
+                WakeupEventSharedPtr pWakeupEvent =
+                    std::make_shared<WakeupEvent>( rContext.mrEventQueue.getTimer(),
+                                     rContext.mrActivitiesQueue );
 
                 ActivitySharedPtr pActivity =
                     createIntrinsicAnimationActivity(
@@ -597,9 +577,9 @@ namespace slideshow
                 if( pActivity )
                     pActivity->dispose();
             }
-            catch (uno::Exception &)
+            catch (uno::Exception const &)
             {
-                SAL_WARN( "slideshow", "" << comphelper::anyToString(cppu::getCaughtException() ) );
+                DBG_UNHANDLED_EXCEPTION("slideshow");
             }
         }
 
@@ -622,7 +602,7 @@ namespace slideshow
                 return;
             }
 
-            ViewShapeSharedPtr pNewShape( new ViewShape( rNewLayer ) );
+            ViewShapeSharedPtr pNewShape = std::make_shared<ViewShape>( rNewLayer );
 
             maViewShapes.push_back( pNewShape );
 
@@ -869,17 +849,15 @@ namespace slideshow
                             maHyperlinkIndices.pop_back();
                             maHyperlinkRegions.pop_back();
                         }
-                        maHyperlinkIndices.push_back(
-                            HyperlinkIndexPair( nIndex + 1,
-                                                -1 /* to be filled below */ ) );
-                        maHyperlinkRegions.push_back(
-                            HyperlinkRegion(
+                        maHyperlinkIndices.emplace_back( nIndex + 1,
+                                                -1 /* to be filled below */ );
+                        maHyperlinkRegions.emplace_back(
                                 basegfx::B2DRectangle(),
                                 OUString(
                                     reinterpret_cast<sal_Unicode const*>(
                                         pAct->GetData()),
                                     pAct->GetDataSize() / sizeof(sal_Unicode) )
-                                ) );
+                                );
                     }
                     else if (pAct->GetComment().equalsIgnoreAsciiCase("FIELD_SEQ_END") &&
                              // pending end is expected:
@@ -977,12 +955,11 @@ namespace slideshow
             for( const auto& cp : maHyperlinkRegions )
             {
                 basegfx::B2DRange const& relRegion( cp.first );
-                aTranslatedRegions.push_back(
-                    std::make_pair(
+                aTranslatedRegions.emplace_back(
                         basegfx::B2DRange(
                             relRegion.getMinimum() + rOffset,
                             relRegion.getMaximum() + rOffset),
-                        cp.second) );
+                        cp.second );
             }
 
             return aTranslatedRegions;
@@ -1036,7 +1013,7 @@ namespace slideshow
         ShapeAttributeLayerSharedPtr DrawShape::createAttributeLayer()
         {
             // create new layer, with last as its new child
-            mpAttributeLayer.reset( new ShapeAttributeLayer( mpAttributeLayer ) );
+            mpAttributeLayer = std::make_shared<ShapeAttributeLayer>( mpAttributeLayer );
 
             // Update the local state ids to reflect those of the new layer.
             updateStateIds();
@@ -1218,7 +1195,6 @@ namespace slideshow
         {
             return maSubsetting.getSubsetTreeNode( rParentNode, nNodeIndex, eNodeType );
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,7 +21,7 @@
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <comphelper/sequence.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/typeprovider.hxx>
 
@@ -77,7 +77,7 @@ namespace toolkit
     }
 
 
-    void GridColumn::broadcast_changed( sal_Char const * const i_asciiAttributeName, const Any& i_oldValue, const Any& i_newValue,
+    void GridColumn::broadcast_changed( char const * const i_asciiAttributeName, const Any& i_oldValue, const Any& i_newValue,
         ::comphelper::ComponentGuard& i_Guard )
     {
         Reference< XInterface > const xSource( static_cast< ::cppu::OWeakObject* >( this ) );
@@ -264,7 +264,7 @@ namespace toolkit
 
     OUString SAL_CALL GridColumn::getImplementationName(  )
     {
-        return OUString( "org.openoffice.comp.toolkit.GridColumn" );
+        return "org.openoffice.comp.toolkit.GridColumn";
     }
 
     sal_Bool SAL_CALL GridColumn::supportsService( const OUString& i_serviceName )
@@ -274,9 +274,7 @@ namespace toolkit
 
     css::uno::Sequence< OUString > SAL_CALL GridColumn::getSupportedServiceNames(  )
     {
-        const OUString aServiceName("com.sun.star.awt.grid.GridColumn");
-        const Sequence< OUString > aSeq( &aServiceName, 1 );
-        return aSeq;
+        return { "com.sun.star.awt.grid.GridColumn" };
     }
 
 
@@ -288,7 +286,7 @@ namespace toolkit
 
     sal_Int64 SAL_CALL GridColumn::getSomething( const Sequence< sal_Int8 >& i_identifier )
     {
-        if ( ( i_identifier.getLength() == 16 ) && ( i_identifier == getUnoTunnelId() ) )
+        if ( isUnoTunnelId<GridColumn>(i_identifier) )
             return ::sal::static_int_cast< sal_Int64 >( reinterpret_cast< sal_IntPtr >( this ) );
         return 0;
     }
@@ -299,18 +297,9 @@ namespace toolkit
         static ::cppu::OImplementationId const aId;
         return aId.getImplementationId();
     }
-
-
-    GridColumn* GridColumn::getImplementation( const Reference< XInterface >& i_component )
-    {
-        Reference< XUnoTunnel > const xTunnel( i_component, UNO_QUERY );
-        if ( xTunnel.is() )
-            return reinterpret_cast< GridColumn* >( ::sal::static_int_cast< sal_IntPtr >( xTunnel->getSomething( getUnoTunnelId() ) ) );
-        return nullptr;
-    }
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 org_openoffice_comp_toolkit_GridColumn_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

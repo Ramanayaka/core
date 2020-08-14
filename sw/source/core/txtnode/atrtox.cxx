@@ -19,9 +19,7 @@
 
 #include <doc.hxx>
 #include <txttxmrk.hxx>
-#include <swfont.hxx>
 #include <tox.hxx>
-#include <ndtxt.hxx>
 
 SwTextTOXMark::SwTextTOXMark( SwTOXMark& rAttr,
             sal_Int32 const nStartPos, sal_Int32 const*const pEnd)
@@ -48,9 +46,16 @@ SwTextTOXMark::~SwTextTOXMark()
 {
 }
 
-sal_Int32* SwTextTOXMark::GetEnd()
+const sal_Int32* SwTextTOXMark::GetEnd() const
 {
     return m_pEnd;
+}
+
+void SwTextTOXMark::SetEnd(sal_Int32 n)
+{
+    *m_pEnd = n;
+    if (m_pHints)
+        m_pHints->EndPosChanged();
 }
 
 void SwTextTOXMark::CopyTOXMark( SwDoc* pDoc )

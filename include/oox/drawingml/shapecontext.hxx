@@ -28,17 +28,17 @@
 
 namespace oox { class AttributeList; }
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 class OOX_DLLPUBLIC ShapeContext : public ::oox::core::ContextHandler2
 {
 public:
-    ShapeContext( ::oox::core::ContextHandler2Helper& rParent, ShapePtr const & pMasterShapePtr, ShapePtr const & pShapePtr );
+    ShapeContext( ::oox::core::ContextHandler2Helper const & rParent, ShapePtr const & pMasterShapePtr, ShapePtr const & pShapePtr );
     virtual ~ShapeContext() override;
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
-    const ShapePtr& getShape() { return mpShapePtr;}
+    const ShapePtr& getShape() const { return mpShapePtr;}
 
 protected:
 
@@ -46,7 +46,7 @@ protected:
     ShapePtr mpShapePtr;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_SHAPECONTEXT_HXX
 

@@ -17,6 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <string_view>
+
 #include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
 #include <sfx2/objsh.hxx>
@@ -26,7 +30,7 @@
 #include <svtools/ctrltool.hxx>
 #include <svx/svdotext.hxx>
 #include <editeng/outlobj.hxx>
-#include "scitems.hxx"
+#include <scitems.hxx>
 #include <editeng/fhgtitem.hxx>
 #include <editeng/flstitem.hxx>
 #include <editeng/colritem.hxx>
@@ -34,19 +38,21 @@
 #include <editeng/flditem.hxx>
 #include <editeng/escapementitem.hxx>
 #include <editeng/svxfont.hxx>
+#include <editeng/editids.hrc>
 
-#include "document.hxx"
-#include "docpool.hxx"
-#include "formulacell.hxx"
-#include "editutil.hxx"
-#include "patattr.hxx"
-#include "scmatrix.hxx"
-#include "xestyle.hxx"
-#include "fprogressbar.hxx"
-#include "xltracer.hxx"
-#include "xecontent.hxx"
-#include "xelink.hxx"
-#include "xehelper.hxx"
+#include <document.hxx>
+#include <docpool.hxx>
+#include <editutil.hxx>
+#include <patattr.hxx>
+#include <scmatrix.hxx>
+#include <xestyle.hxx>
+#include <fprogressbar.hxx>
+#include <globstr.hrc>
+#include <xltracer.hxx>
+#include <xltools.hxx>
+#include <xecontent.hxx>
+#include <xelink.hxx>
+#include <xehelper.hxx>
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::i18n::XBreakIterator;
@@ -141,7 +147,7 @@ void XclExpProgressBar::Progress()
 namespace {
 
 /** Fills the passed Excel address with the passed Calc cell coordinates without checking any limits. */
-inline void lclFillAddress( XclAddress& rXclPos, SCCOL nScCol, SCROW nScRow )
+void lclFillAddress( XclAddress& rXclPos, SCCOL nScCol, SCROW nScRow )
 {
     rXclPos.mnCol = static_cast< sal_uInt16 >( nScCol );
     rXclPos.mnRow = static_cast< sal_uInt32 >( nScRow );
@@ -250,8 +256,8 @@ void XclExpAddressConverter::ValidateRangeList( ScRangeList& rScRanges, bool bWa
 {
     for ( size_t nRange = rScRanges.size(); nRange > 0; )
     {
-        ScRange* pScRange = rScRanges[ --nRange ];
-        if( !CheckRange( *pScRange, bWarn ) )
+        ScRange & rScRange = rScRanges[ --nRange ];
+        if( !CheckRange( rScRange, bWarn ) )
             rScRanges.Remove(nRange);
     }
 }
@@ -262,12 +268,10 @@ void XclExpAddressConverter::ConvertRangeList( XclRangeList& rXclRanges,
     rXclRanges.clear();
     for( size_t nPos = 0, nCount = rScRanges.size(); nPos < nCount; ++nPos )
     {
-        if( const ScRange* pScRange = rScRanges[ nPos ] )
-        {
-            XclRange aXclRange( ScAddress::UNINITIALIZED );
-            if( ConvertRange( aXclRange, *pScRange, bWarn ) )
-                rXclRanges.push_back( aXclRange );
-        }
+        const ScRange & rScRange = rScRanges[ nPos ];
+        XclRange aXclRange( ScAddress::UNINITIALIZED );
+        if( ConvertRange( aXclRange, rScRange, bWarn ) )
+            rXclRanges.push_back( aXclRange );
     }
 }
 
@@ -304,7 +308,7 @@ OUString XclExpHyperlinkHelper::ProcessUrlField( const SvxURLField& rUrlField )
         // there was/is already a HLINK record
         mbMultipleUrls = static_cast< bool >(mxLinkRec);
 
-        mxLinkRec.reset( new XclExpHyperlink( GetRoot(), rUrlField, maScPos ) );
+        mxLinkRec = new XclExpHyperlink( GetRoot(), rUrlField, maScPos );
 
         if( const OUString* pRepr = mxLinkRec->GetRepr() )
             aUrlRepr = *pRepr;
@@ -322,7 +326,7 @@ bool XclExpHyperlinkHelper::HasLinkRecord() const
     return !mbMultipleUrls && mxLinkRec;
 }
 
-XclExpHyperlinkHelper::XclExpHyperlinkRef XclExpHyperlinkHelper::GetLinkRecord()
+XclExpHyperlinkHelper::XclExpHyperlinkRef XclExpHyperlinkHelper::GetLinkRecord() const
 {
     if( HasLinkRecord() )
         return mxLinkRec;
@@ -443,9 +447,9 @@ XclExpStringRef lclCreateFormattedString(
         rEE.GetPortions( nPara, aPosList );
 
         // process all portions in the paragraph
-        for( std::vector<sal_Int32>::const_iterator it(aPosList.begin()); it != aPosList.end(); ++it )
+        for( const auto& rPos : aPosList )
         {
-            aSel.nEndPos =  *it;
+            aSel.nEndPos = rPos;
             OUString aXclPortionText = aParaText.copy( aSel.nStartPos, aSel.nEndPos - aSel.nStartPos );
 
             aItemSet.ClearItem();
@@ -453,7 +457,7 @@ XclExpStringRef lclCreateFormattedString(
             ScPatternAttr::GetFromEditItemSet( aItemSet, aEditSet );
 
             // get escapement value
-            short nEsc = GETITEM( aEditSet, SvxEscapementItem, EE_CHAR_ESCAPEMENT ).GetEsc();
+            short nEsc = aEditSet.Get( EE_CHAR_ESCAPEMENT ).GetEsc();
 
             // process text fields
             bool bIsHyperlink = false;
@@ -497,8 +501,8 @@ XclExpStringRef lclCreateFormattedString(
                 // add escapement
                 aFont.SetEscapement( nEsc );
                 // modify automatic font color for hyperlinks
-                if( bIsHyperlink && (GETITEM( aItemSet, SvxColorItem, ATTR_FONT_COLOR ).GetValue().GetColor() == COL_AUTO) )
-                    aFont.SetColor( Color( COL_LIGHTBLUE ) );
+                if( bIsHyperlink && aItemSet.Get( ATTR_FONT_COLOR ).GetValue() == COL_AUTO)
+                    aFont.SetColor( COL_LIGHTBLUE );
 
                 // insert font into buffer
                 sal_uInt16 nFontIdx = rFontBuffer.Insert( aFont, EXC_COLOR_CELLTEXT );
@@ -522,7 +526,7 @@ XclExpStringRef lclCreateFormattedString(
 XclExpStringRef XclExpStringHelper::CreateString(
         const XclExpRoot& rRoot, const OUString& rString, XclStrFlags nFlags, sal_uInt16 nMaxLen )
 {
-    XclExpStringRef xString( new XclExpString );
+    XclExpStringRef xString = std::make_shared<XclExpString>();
     if( rRoot.GetBiff() == EXC_BIFF8 )
         xString->Assign( rString, nFlags, nMaxLen );
     else
@@ -574,12 +578,12 @@ XclExpStringRef XclExpStringHelper::CreateCellString(
 
     // default items
     const SfxItemSet& rItemSet = pCellAttr ? pCellAttr->GetItemSet() : rRoot.GetDoc().GetDefPattern()->GetItemSet();
-    SfxItemSet* pEEItemSet = new SfxItemSet( rEE.GetEmptyItemSet() );
+    auto pEEItemSet = std::make_unique<SfxItemSet>( rEE.GetEmptyItemSet() );
     ScPatternAttr::FillToEditItemSet( *pEEItemSet, rItemSet );
-    rEE.SetDefaults( pEEItemSet );      // edit engine takes ownership
+    rEE.SetDefaults( std::move(pEEItemSet) );      // edit engine takes ownership
 
     // create the string
-    rEE.SetText(rEditText);
+    rEE.SetTextCurrentDefaults(rEditText);
     xString = lclCreateFormattedString( rRoot, rEE, &rLinkHelper, nFlags, nMaxLen );
     rEE.SetUpdateMode( bOldUpdateMode );
 
@@ -690,7 +694,7 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
     if( const XclExpFont* pFirstFont = GetFontBuffer().GetFont( EXC_FONT_APP ) )
     {
         aFontData = pFirstFont->GetFontData();
-        (aFontData.mnHeight += 10) /= 20;   // using pt here, not twips
+        aFontData.mnHeight = (aFontData.mnHeight + 10) / 20;   // using pt here, not twips
     }
     else
         aFontData.mnHeight = 10;
@@ -707,14 +711,14 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
     for( sal_Int32 nPara = 0; nPara < nParaCount; ++nPara )
     {
         ESelection aSel( nPara, 0 );
-        OUString aParaText;
+        OUStringBuffer aParaText;
         sal_Int32 nParaHeight = 0;
         std::vector<sal_Int32> aPosList;
         mrEE.GetPortions( nPara, aPosList );
 
-        for( std::vector<sal_Int32>::const_iterator it( aPosList.begin() ); it != aPosList.end(); ++it )
+        for( const auto& rPos : aPosList )
         {
-            aSel.nEndPos = *it;
+            aSel.nEndPos = rPos;
             if( aSel.nStartPos < aSel.nEndPos )
             {
 
@@ -730,12 +734,12 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
                 aNewData.maName = XclTools::GetXclFontName( aFont.GetFamilyName() );
                 aNewData.mnWeight = (aFont.GetWeight() > WEIGHT_NORMAL) ? EXC_FONTWGHT_BOLD : EXC_FONTWGHT_NORMAL;
                 aNewData.mbItalic = (aFont.GetItalic() != ITALIC_NONE);
-                bool bNewFont = !(aFontData.maName == aNewData.maName);
+                bool bNewFont = (aFontData.maName != aNewData.maName);
                 bool bNewStyle = (aFontData.mnWeight != aNewData.mnWeight) ||
                                  (aFontData.mbItalic != aNewData.mbItalic);
                 if( bNewFont || (bNewStyle && pFontList) )
                 {
-                    aParaText = "&\"" + aNewData.maName;
+                    aParaText.append("&\"").append(aNewData.maName);
                     if( pFontList )
                     {
                         FontMetric aFontMetric( pFontList->Get(
@@ -744,19 +748,19 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
                             aNewData.mbItalic ? ITALIC_NORMAL : ITALIC_NONE ) );
                         aNewData.maStyle = pFontList->GetStyleName( aFontMetric );
                         if( !aNewData.maStyle.isEmpty() )
-                            aParaText += "," + aNewData.maStyle;
+                            aParaText.append(",").append(aNewData.maStyle);
                     }
-                    aParaText += "\"";
+                    aParaText.append("\"");
                 }
 
                 // height
                 // is calculated wrong in ScPatternAttr::GetFromEditItemSet, because already in twips and not 100thmm
                 // -> get it directly from edit engine item set
-                aNewData.mnHeight = ulimit_cast< sal_uInt16 >( GETITEM( aEditSet, SvxFontHeightItem, EE_CHAR_FONTHEIGHT ).GetHeight() );
-                (aNewData.mnHeight += 10) /= 20;
+                aNewData.mnHeight = ulimit_cast< sal_uInt16 >( aEditSet.Get( EE_CHAR_FONTHEIGHT ).GetHeight() );
+                aNewData.mnHeight = (aNewData.mnHeight + 10) / 20;
                 bool bFontHtChanged = (aFontData.mnHeight != aNewData.mnHeight);
                 if( bFontHtChanged )
-                    aParaText += "&" + OUString::number( aNewData.mnHeight );
+                    aParaText.append("&").append(OUString::number( aNewData.mnHeight ));
                 // update maximum paragraph height, convert to twips
                 nParaHeight = ::std::max< sal_Int32 >( nParaHeight, aNewData.mnHeight * 20 );
 
@@ -773,25 +777,32 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
                 {
                     sal_uInt8 nTmpUnderl = (aNewData.mnUnderline == EXC_FONTUNDERL_NONE) ?
                         aFontData.mnUnderline : aNewData.mnUnderline;
-                    (nTmpUnderl == EXC_FONTUNDERL_SINGLE)? aParaText += "&U" : aParaText += "&E";
+                    (nTmpUnderl == EXC_FONTUNDERL_SINGLE)? aParaText.append("&U") : aParaText.append("&E");
+                }
+
+                // font color
+                aNewData.maColor = aFont.GetColor();
+                if ( !aFontData.maColor.IsRGBEqual( aNewData.maColor ) )
+                {
+                    aParaText.append("&K").append(aNewData.maColor.AsRGBHexString());
                 }
 
                 // strikeout
                 aNewData.mbStrikeout = (aFont.GetStrikeout() != STRIKEOUT_NONE);
                 if( aFontData.mbStrikeout != aNewData.mbStrikeout )
-                    aParaText += "&S";
+                    aParaText.append("&S");
 
                 // super/sub script
-                const SvxEscapementItem& rEscapeItem = GETITEM( aEditSet, SvxEscapementItem, EE_CHAR_ESCAPEMENT );
+                const SvxEscapementItem& rEscapeItem = aEditSet.Get( EE_CHAR_ESCAPEMENT );
                 aNewData.SetScEscapement( rEscapeItem.GetEsc() );
                 if( aFontData.mnEscapem != aNewData.mnEscapem )
                 {
                     switch(aNewData.mnEscapem)
                     {
                         // close the previous super/sub script.
-                        case EXC_FONTESC_NONE:  (aFontData.mnEscapem == EXC_FONTESC_SUPER) ? aParaText += "&X" : aParaText += "&Y"; break;
-                        case EXC_FONTESC_SUPER: aParaText += "&X";  break;
-                        case EXC_FONTESC_SUB:   aParaText += "&Y";  break;
+                        case EXC_FONTESC_NONE:  (aFontData.mnEscapem == EXC_FONTESC_SUPER) ? aParaText.append("&X") : aParaText.append("&Y"); break;
+                        case EXC_FONTESC_SUPER: aParaText.append("&X");  break;
+                        case EXC_FONTESC_SUB:   aParaText.append("&Y");  break;
                         default: break;
                     }
                 }
@@ -807,30 +818,30 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
                     if( const SvxFieldData* pFieldData = static_cast< const SvxFieldItem* >( pItem )->GetField() )
                     {
                         if( dynamic_cast<const SvxPageField*>( pFieldData) !=  nullptr )
-                            aParaText += "&P";
+                            aParaText.append("&P");
                         else if( dynamic_cast<const SvxPagesField*>( pFieldData) !=  nullptr )
-                            aParaText += "&N";
+                            aParaText.append("&N");
                         else if( dynamic_cast<const SvxDateField*>( pFieldData) !=  nullptr )
-                            aParaText += "&D";
+                            aParaText.append("&D");
                         else if( dynamic_cast<const SvxTimeField*>( pFieldData) != nullptr || dynamic_cast<const SvxExtTimeField*>( pFieldData) !=  nullptr )
-                            aParaText += "&T";
+                            aParaText.append("&T");
                         else if( dynamic_cast<const SvxTableField*>( pFieldData) !=  nullptr )
-                            aParaText += "&A";
+                            aParaText.append("&A");
                         else if( dynamic_cast<const SvxFileField*>( pFieldData) !=  nullptr )  // title -> file name
-                            aParaText += "&F";
+                            aParaText.append("&F");
                         else if( const SvxExtFileField* pFileField = dynamic_cast<const SvxExtFileField*>( pFieldData )  )
                         {
                             switch( pFileField->GetFormat() )
                             {
-                                case SVXFILEFORMAT_NAME_EXT:
-                                case SVXFILEFORMAT_NAME:
-                                    aParaText += "&F";
+                                case SvxFileFormat::NameAndExt:
+                                case SvxFileFormat::NameOnly:
+                                    aParaText.append("&F");
                                 break;
-                                case SVXFILEFORMAT_PATH:
-                                    aParaText += "&Z";
+                                case SvxFileFormat::PathOnly:
+                                    aParaText.append("&Z");
                                 break;
-                                case SVXFILEFORMAT_FULLPATH:
-                                    aParaText += "&Z&F";
+                                case SvxFileFormat::PathFull:
+                                    aParaText.append("&Z&F");
                                 break;
                                 default:
                                     OSL_FAIL( "XclExpHFConverter::AppendPortion - unknown file field" );
@@ -848,16 +859,16 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
                         sal_Unicode cLast = aParaText[ aParaText.getLength() - 1 ];
                         sal_Unicode cFirst = aPortionText[0];
                         if( ('0' <= cLast) && (cLast <= '9') && ('0' <= cFirst) && (cFirst <= '9') )
-                            aParaText += " ";
+                            aParaText.append(" ");
                     }
-                    aParaText += aPortionText;
+                    aParaText.append(aPortionText);
                 }
             }
 
             aSel.nStartPos = aSel.nEndPos;
         }
 
-        aText = ScGlobal::addToken( aText, aParaText, '\n' );
+        aText = ScGlobal::addToken( aText, aParaText.makeStringAndClear(), '\n' );
         if( nParaHeight == 0 )
             nParaHeight = aFontData.mnHeight * 20;  // points -> twips
         nHeight += nParaHeight;
@@ -867,7 +878,7 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
 
     if( !aText.isEmpty() )
     {
-        maHFString += "&" + OUStringLiteral1(cPortionCode) + aText;
+        maHFString += "&" + OUStringChar(cPortionCode) + aText;
         mnTotalHeight = ::std::max( mnTotalHeight, nHeight );
     }
 }
@@ -888,13 +899,13 @@ OUString lclEncodeDosUrl(
         OUString aOldUrl = rUrl;
         aBuf.append(EXC_URLSTART_ENCODED);
 
-        if ( aOldUrl.getLength() > 2 && aOldUrl.copy(0,2) == "\\\\" )
+        if ( aOldUrl.getLength() > 2 && aOldUrl.startsWith("\\\\") )
         {
             // UNC
             aBuf.append(EXC_URL_DOSDRIVE).append('@');
             aOldUrl = aOldUrl.copy(2);
         }
-        else if ( aOldUrl.getLength() > 2 && aOldUrl.copy(1,2) == ":\\" )
+        else if ( aOldUrl.getLength() > 2 && aOldUrl.match(":\\", 1) )
         {
             // drive letter
             sal_Unicode cThisDrive = rBase.isEmpty() ? ' ' : rBase[0];
@@ -916,12 +927,12 @@ OUString lclEncodeDosUrl(
         sal_Int32 nPos = -1;
         while((nPos = aOldUrl.indexOf('\\')) != -1)
         {
-            if ( aOldUrl.copy(0,2) == ".." )
+            if ( aOldUrl.startsWith("..") )
                 // parent dir (NOTE: the MS-XLS spec doesn't mention this, and
                 // Excel seems confused by this token).
                 aBuf.append(EXC_URL_PARENTDIR);
             else
-                aBuf.append(aOldUrl.copy(0,nPos)).append(EXC_URL_SUBDIR);
+                aBuf.append(std::u16string_view(aOldUrl).substr(0,nPos)).append(EXC_URL_SUBDIR);
 
             aOldUrl = aOldUrl.copy(nPos + 1);
         }
@@ -971,9 +982,7 @@ OUString XclExpUrlHelper::EncodeUrl( const XclExpRoot& rRoot, const OUString& rA
 
 OUString XclExpUrlHelper::EncodeDde( const OUString& rApplic, const OUString& rTopic )
 {
-    OUStringBuffer aBuf;
-    aBuf.append(rApplic).append(EXC_DDE_DELIM).append(rTopic);
-    return aBuf.makeStringAndClear();
+    return rApplic + OUStringChar(EXC_DDE_DELIM) + rTopic;
 }
 
 // Cached Value Lists =========================================================
@@ -1036,7 +1045,7 @@ void XclExpCachedMatrix::Save( XclExpStream& rStrm ) const
             }
             else if( ScMatrix::IsNonValueType( nMatVal.nType ) )
             {
-                XclExpString aStr( nMatVal.GetString().getString(), EXC_STR_DEFAULT );
+                XclExpString aStr( nMatVal.GetString().getString(), XclStrFlags::NONE );
                 rStrm.SetSliceSize( 6 );
                 rStrm << EXC_CACHEDVAL_STRING << aStr;
             }

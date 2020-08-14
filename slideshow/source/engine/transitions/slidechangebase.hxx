@@ -20,15 +20,15 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_TRANSITIONS_SLIDECHANGEBASE_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_TRANSITIONS_SLIDECHANGEBASE_HXX
 
-#include "unoview.hxx"
-#include "vieweventhandler.hxx"
-#include "numberanimation.hxx"
-#include "slide.hxx"
-#include "screenupdater.hxx"
-#include "soundplayer.hxx"
+#include <unoview.hxx>
+#include <vieweventhandler.hxx>
+#include <numberanimation.hxx>
+#include <slide.hxx>
+#include <screenupdater.hxx>
+#include <soundplayer.hxx>
 
 #include <memory>
-#include <boost/optional.hpp>
+#include <optional>
 
 namespace cppcanvas
 {
@@ -36,8 +36,7 @@ namespace cppcanvas
     class CustomSprite;
 }
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /** Base class for all slide change effects.
 
@@ -57,8 +56,7 @@ public:
     virtual double getUnderlyingValue() const override;
 
     // Animation
-    virtual void prefetch( const AnimatableShapeSharedPtr&,
-                           const ShapeAttributeLayerSharedPtr& ) override;
+    virtual void prefetch() override;
     virtual void start( const AnimatableShapeSharedPtr&,
                         const ShapeAttributeLayerSharedPtr& ) override;
     virtual void end() override;
@@ -74,7 +72,7 @@ protected:
         entering slides.
     */
     SlideChangeBase(
-        ::boost::optional<SlideSharedPtr> const & leavingSlide,
+        ::std::optional<SlideSharedPtr> const & leavingSlide,
         const SlideSharedPtr&                     pEnteringSlide,
         const SoundPlayerSharedPtr&               pSoundPlayer,
         const UnoViewContainer&                   rViewContainer,
@@ -115,12 +113,12 @@ protected:
     SlideBitmapSharedPtr getEnteringBitmap( const ViewEntry& rViewEntry ) const;
 
     SlideBitmapSharedPtr createBitmap( const UnoViewSharedPtr&                pView,
-                                       const boost::optional<SlideSharedPtr>& rSlide_ ) const;
+                                       const std::optional<SlideSharedPtr>& rSlide_ ) const;
 
     ::basegfx::B2ISize getEnteringSlideSizePixel( const UnoViewSharedPtr& pView ) const;
 
-    static void renderBitmap( SlideBitmapSharedPtr const&                 pSlideBitmap,
-                       std::shared_ptr<cppcanvas::Canvas> const& pCanvas );
+    static void renderBitmap( SlideBitmapSharedPtr const&       pSlideBitmap,
+                              cppcanvas::CanvasSharedPtr const& pCanvas );
 
     /** Called on derived classes to perform actions before first run.
 
@@ -146,10 +144,10 @@ protected:
         Current parameter value
     */
     virtual void performIn(
-        const std::shared_ptr<cppcanvas::CustomSprite>&   rSprite,
-        const ViewEntry&                                    rViewEntry,
-        const std::shared_ptr<cppcanvas::Canvas>&         rDestinationCanvas,
-        double                                              t );
+        const cppcanvas::CustomSpriteSharedPtr&   rSprite,
+        const ViewEntry&                          rViewEntry,
+        const cppcanvas::CanvasSharedPtr&         rDestinationCanvas,
+        double                                    t );
 
     /** Called on derived classes to implement actual slide change.
 
@@ -163,16 +161,16 @@ protected:
         Current parameter value
     */
     virtual void performOut(
-        const std::shared_ptr<cppcanvas::CustomSprite>& rSprite,
-        const ViewEntry&                                  rViewEntry,
-        const std::shared_ptr<cppcanvas::Canvas>&       rDestinationCanvas,
-        double                                            t );
+        const cppcanvas::CustomSpriteSharedPtr&   rSprite,
+        const ViewEntry&                          rViewEntry,
+        const cppcanvas::CanvasSharedPtr&         rDestinationCanvas,
+        double                                    t );
 
     ScreenUpdater& getScreenUpdater() const { return mrScreenUpdater; }
 
 private:
 
-    std::shared_ptr<cppcanvas::CustomSprite> createSprite(
+    cppcanvas::CustomSpriteSharedPtr createSprite(
         UnoViewSharedPtr const &   pView,
         ::basegfx::B2DSize const & rSpriteSize,
         double                     nPrio ) const;
@@ -185,7 +183,7 @@ private:
     EventMultiplexer&                   mrEventMultiplexer;
     ScreenUpdater&                      mrScreenUpdater;
 
-    ::boost::optional<SlideSharedPtr>   maLeavingSlide;
+    ::std::optional<SlideSharedPtr>   maLeavingSlide;
     SlideSharedPtr                      mpEnteringSlide;
 
     ViewsVecT                           maViewData;
@@ -198,8 +196,7 @@ private:
     bool                                mbPrefetched;
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_TRANSITIONS_SLIDECHANGEBASE_HXX
 

@@ -6,12 +6,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
+#ifndef LO_CLANG_SHARED_PLUGINS
 
 #include <string>
 #include <iostream>
 
 #include "plugin.hxx"
-#include "compat.hxx"
 #include "check.hxx"
 #include "clang/AST/CXXInheritance.h"
 
@@ -23,23 +23,18 @@ forgotten and hard to notice.
 namespace {
 
 class SfxPoolItem:
-    public RecursiveASTVisitor<SfxPoolItem>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<SfxPoolItem>
 {
 public:
-    explicit SfxPoolItem(InstantiationData const & data): Plugin(data) {}
+    explicit SfxPoolItem(loplugin::InstantiationData const & data): FilteringPlugin(data)
+    {}
 
     virtual void run() override { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
 
     bool VisitCXXRecordDecl( const CXXRecordDecl* );
 };
 
-bool BaseCheckNotSfxPoolItemSubclass(
-    const CXXRecordDecl *BaseDefinition
-#if CLANG_VERSION < 30800
-    , void *
-#endif
-    )
-{
+bool BaseCheckNotSfxPoolItemSubclass(const CXXRecordDecl *BaseDefinition) {
     if (BaseDefinition && loplugin::TypeCheck(BaseDefinition).Class("SfxPoolItem").GlobalNamespace()) {
         return false;
     }
@@ -57,20 +52,14 @@ bool isDerivedFromSfxPoolItem(const CXXRecordDecl *decl) {
     if (// not sure what hasAnyDependentBases() does,
         // but it avoids classes we don't want, e.g. WeakAggComponentImplHelper1
         !decl->hasAnyDependentBases() &&
-        !compat::forallBases(*decl, BaseCheckNotSfxPoolItemSubclass, nullptr, true)) {
+        !decl->forallBases(BaseCheckNotSfxPoolItemSubclass)) {
         return true;
     }
     return false;
 }
 
 
-bool BaseCheckNotSwMsgPoolItemSubclass(
-    const CXXRecordDecl *BaseDefinition
-#if CLANG_VERSION < 30800
-    , void *
-#endif
-    )
-{
+bool BaseCheckNotSwMsgPoolItemSubclass(const CXXRecordDecl *BaseDefinition) {
     if (BaseDefinition && loplugin::TypeCheck(BaseDefinition).Class("SwMsgPoolItem")) {
         return false;
     }
@@ -88,7 +77,7 @@ bool isDerivedFromSwMsgPoolItem(const CXXRecordDecl *decl) {
     if (// not sure what hasAnyDependentBases() does,
         // but it avoids classes we don't want, e.g. WeakAggComponentImplHelper1
         !decl->hasAnyDependentBases() &&
-        !compat::forallBases(*decl, BaseCheckNotSwMsgPoolItemSubclass, nullptr, true)) {
+        !decl->forallBases(BaseCheckNotSwMsgPoolItemSubclass)) {
         return true;
     }
     return false;
@@ -123,10 +112,6 @@ bool SfxPoolItem::VisitCXXRecordDecl(const CXXRecordDecl* decl)
     if (tc.Class("SfxEnumItem").GlobalNamespace() || tc.Class("SfxAllEnumItem").GlobalNamespace())
         return true;
 
-    // the new field is only used for reading and writing to storage
-    if (tc.Class("SvxCharSetColorItem").GlobalNamespace())
-        return true;
-
     for (auto it = decl->method_begin(); it != decl->method_end(); ++it) {
         if ( endsWith((*it)->getQualifiedNameAsString(), "::operator==") )
             return true;
@@ -134,14 +119,16 @@ bool SfxPoolItem::VisitCXXRecordDecl(const CXXRecordDecl* decl)
     report(
             DiagnosticsEngine::Warning,
             "SfxPoolItem subclass %0 declares new fields, but does not override operator==",
-            decl->getLocStart())
+            compat::getBeginLoc(decl))
         << decl->getQualifiedNameAsString() << decl->getSourceRange();
     return true;
 }
 
 
-loplugin::Plugin::Registration< SfxPoolItem > X("sfxpoolitem");
+loplugin::Plugin::Registration< SfxPoolItem > sfxpoolitem("sfxpoolitem");
 
-}
+} // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,18 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DrawViewWrapper.hxx"
-#include "chartview/DrawModelWrapper.hxx"
-#include "ConfigurationAccess.hxx"
-#include "macros.hxx"
+#include <DrawViewWrapper.hxx>
+#include <chartview/DrawModelWrapper.hxx>
+#include <ConfigurationAccess.hxx>
 
 #include <unotools/lingucfg.hxx>
 #include <editeng/langitem.hxx>
+#include <svl/intitem.hxx>
 #include <svl/itempool.hxx>
-#include <svx/svdpage.hxx>
+#include <svx/obj3d.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdmodel.hxx>
-#include <svx/scene3d.hxx>
 #include <svx/svdetc.hxx>
 #include <svx/svdoutl.hxx>
 #include <svx/svxids.hrc>
@@ -37,6 +36,7 @@
 #include <editeng/fhgtitem.hxx>
 
 #include <com/sun/star/container/XChild.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 
 #include <sfx2/objsh.hxx>
@@ -49,7 +49,7 @@ namespace chart
 
 namespace
 {
-    short lcl_getHitTolerance( OutputDevice* pOutDev )
+    short lcl_getHitTolerance( OutputDevice const * pOutDev )
     {
         const short HITPIX=2; //hit-tolerance in pixel
         short nHitTolerance = 50;
@@ -73,7 +73,7 @@ SfxObjectShell * lcl_GetParentObjectShell( const uno::Reference< frame::XModel >
             {
                 SvGlobalName aSfxIdent( SFX_GLOBAL_CLASSID );
                 pResult = reinterpret_cast< SfxObjectShell * >(
-                    xParentTunnel->getSomething( uno::Sequence< sal_Int8 >( aSfxIdent.GetByteSequence() ) ) );
+                    xParentTunnel->getSomething( aSfxIdent.GetByteSequence() ) );
             }
         }
     }
@@ -85,8 +85,8 @@ SfxObjectShell * lcl_GetParentObjectShell( const uno::Reference< frame::XModel >
     return pResult;
 }
 
-// this code is copied from sfx2/source/doc/objembed.cxx.  It is a workaround to
-// get the reference device (e.g. printer) fromthe parent document
+// this code is copied from sfx2/source/doc/objembed.cxx. It is a workaround to
+// get the reference device (e.g. printer) from the parent document
 OutputDevice * lcl_GetParentRefDevice( const uno::Reference< frame::XModel > & xModel )
 {
     SfxObjectShell * pParent = lcl_GetParentObjectShell( xModel );
@@ -97,11 +97,13 @@ OutputDevice * lcl_GetParentRefDevice( const uno::Reference< frame::XModel > & x
 
 }
 
-DrawViewWrapper::DrawViewWrapper( SdrModel* pSdrModel, OutputDevice* pOut)
-            : E3dView(pSdrModel, pOut)
-            , m_pMarkHandleProvider(nullptr)
-            , m_apOutliner(SdrMakeOutliner(OutlinerMode::TextObject, *pSdrModel))
-            , m_bRestoreMapMode( false )
+DrawViewWrapper::DrawViewWrapper(
+    SdrModel& rSdrModel,
+    OutputDevice* pOut)
+:   E3dView(rSdrModel, pOut)
+    ,m_pMarkHandleProvider(nullptr)
+    ,m_apOutliner(SdrMakeOutliner(OutlinerMode::TextObject, rSdrModel))
+    ,m_bRestoreMapMode( false )
 {
     SetBufferedOutputAllowed(true);
     SetBufferedOverlayAllowed(true);
@@ -114,12 +116,10 @@ DrawViewWrapper::DrawViewWrapper( SdrModel* pSdrModel, OutputDevice* pOut)
     {
         SvtLinguConfig aLinguConfig;
         SvtLinguOptions aLinguOptions;
-        if ( aLinguConfig.GetOptions( aLinguOptions ) )
-        {
-            pOutlinerPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage, EE_CHAR_LANGUAGE ) );
-            pOutlinerPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage_CJK, EE_CHAR_LANGUAGE_CJK ) );
-            pOutlinerPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage_CTL, EE_CHAR_LANGUAGE_CTL ) );
-        }
+        aLinguConfig.GetOptions( aLinguOptions );
+        pOutlinerPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage, EE_CHAR_LANGUAGE ) );
+        pOutlinerPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage_CJK, EE_CHAR_LANGUAGE_CJK ) );
+        pOutlinerPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage_CTL, EE_CHAR_LANGUAGE_CTL ) );
 
         // set font height without changing SdrEngineDefaults
         pOutlinerPool->SetPoolDefaultItem( SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT ) );  // 12pt
@@ -133,7 +133,7 @@ DrawViewWrapper::DrawViewWrapper( SdrModel* pSdrModel, OutputDevice* pOut)
 
 void DrawViewWrapper::ReInit()
 {
-    OutputDevice* pOutDev = this->GetFirstOutputDevice();
+    OutputDevice* pOutDev = GetFirstOutputDevice();
     Size aOutputSize(100,100);
     if(pOutDev)
         aOutputSize = pOutDev->GetOutputSize();
@@ -144,13 +144,13 @@ void DrawViewWrapper::ReInit()
     mbGridVisible = false;
     mbHlplVisible = false;
 
-    this->SetNoDragXorPolys(true);//for interactive 3D resize-dragging: paint only a single rectangle (not a simulated 3D object)
+    SetNoDragXorPolys(true);//for interactive 3D resize-dragging: paint only a single rectangle (not a simulated 3D object)
 
     //a correct work area is at least necessary for correct values in the position and  size dialog
     tools::Rectangle aRect(Point(0,0), aOutputSize);
-    this->SetWorkArea(aRect);
+    SetWorkArea(aRect);
 
-    this->ShowSdrPage(this->GetModel()->GetPage(0));
+    ShowSdrPage(GetModel()->GetPage(0));
 }
 
 DrawViewWrapper::~DrawViewWrapper()
@@ -161,7 +161,7 @@ DrawViewWrapper::~DrawViewWrapper()
 
 SdrPageView* DrawViewWrapper::GetPageView() const
 {
-    SdrPageView* pSdrPageView = this->GetSdrPageView();
+    SdrPageView* pSdrPageView = GetSdrPageView();
     return pSdrPageView;
 };
 
@@ -199,8 +199,9 @@ SdrObject* DrawViewWrapper::getHitObject( const Point& rPnt ) const
         E3dObject* pE3d = dynamic_cast< E3dObject* >(pRet);
         if( pE3d )
         {
-            E3dScene* pScene = pE3d->GetScene();
-            if( pScene )
+            E3dScene* pScene(pE3d->getRootE3dSceneFromE3dObject());
+
+            if(nullptr != pScene)
             {
                 // prepare result vector and call helper
                 std::vector< const E3dCompoundObject* > aHitList;
@@ -226,9 +227,9 @@ void DrawViewWrapper::MarkObject( SdrObject* pObj )
     if( m_pMarkHandleProvider )
         bFrameDragSingles = m_pMarkHandleProvider->getFrameDragSingles();
 
-    this->SetFrameDragSingles(bFrameDragSingles);//decide whether each single object should get handles
-    this->SdrView::MarkObj( pObj, this->GetPageView() );
-    this->showMarkHandles();
+    SetFrameDragSingles(bFrameDragSingles);//decide whether each single object should get handles
+    SdrView::MarkObj( pObj, GetPageView() );
+    showMarkHandles();
 }
 
 void DrawViewWrapper::setMarkHandleProvider( MarkHandleProvider* pMarkHandleProvider )
@@ -240,14 +241,14 @@ void DrawViewWrapper::CompleteRedraw(OutputDevice* pOut, const vcl::Region& rReg
 {
     svtools::ColorConfig aColorConfig;
     Color aFillColor( aColorConfig.GetColorValue( svtools::DOCCOLOR ).nColor );
-    this->SetApplicationBackgroundColor(aFillColor);
-    this->E3dView::CompleteRedraw( pOut, rReg );
+    SetApplicationBackgroundColor(aFillColor);
+    E3dView::CompleteRedraw( pOut, rReg );
 }
 
 SdrObject* DrawViewWrapper::getSelectedObject() const
 {
     SdrObject* pObj(nullptr);
-    const SdrMarkList& rMarkList = this->GetMarkedObjectList();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
     if(rMarkList.GetMarkCount() == 1)
     {
         SdrMark* pMark = rMarkList.GetMark(0);
@@ -258,10 +259,10 @@ SdrObject* DrawViewWrapper::getSelectedObject() const
 
 SdrObject* DrawViewWrapper::getTextEditObject() const
 {
-    SdrObject* pObj = this->getSelectedObject();
+    SdrObject* pObj = getSelectedObject();
     SdrObject* pTextObj = nullptr;
     if( pObj && pObj->HasTextEdit())
-        pTextObj = static_cast<SdrTextObj*>(pObj);
+        pTextObj = pObj;
     return pTextObj;
 }
 
@@ -299,7 +300,7 @@ SdrObject* DrawViewWrapper::getNamedSdrObject( const OUString& rName ) const
 {
     if(rName.isEmpty())
         return nullptr;
-    SdrPageView* pSdrPageView = this->GetPageView();
+    SdrPageView* pSdrPageView = GetPageView();
     if( pSdrPageView )
     {
         return DrawModelWrapper::getNamedSdrObject( rName, pSdrPageView->GetObjList() );
@@ -307,7 +308,7 @@ SdrObject* DrawViewWrapper::getNamedSdrObject( const OUString& rName ) const
     return nullptr;
 }
 
-bool DrawViewWrapper::IsObjectHit( SdrObject* pObj, const Point& rPnt )
+bool DrawViewWrapper::IsObjectHit( SdrObject const * pObj, const Point& rPnt )
 {
     if(pObj)
     {
@@ -320,14 +321,14 @@ bool DrawViewWrapper::IsObjectHit( SdrObject* pObj, const Point& rPnt )
 void DrawViewWrapper::Notify(SfxBroadcaster& rBC, const SfxHint& rHint)
 {
     //prevent wrong reselection of objects
-    SdrModel* pSdrModel( this->GetModel() );
+    SdrModel* pSdrModel( GetModel() );
     if( pSdrModel && pSdrModel->isLocked() )
         return;
 
-    const SdrHint* pSdrHint = dynamic_cast< const SdrHint* >( &rHint );
+    const SdrHint* pSdrHint = ( rHint.GetId() == SfxHintId::ThisIsAnSdrHint ? static_cast<const SdrHint*>(&rHint) : nullptr );
 
     //#i76053# do nothing when only changes on the hidden draw page were made ( e.g. when the symbols for the dialogs are created )
-    SdrPageView* pSdrPageView = this->GetPageView();
+    SdrPageView* pSdrPageView = GetPageView();
     if( pSdrHint && pSdrPageView )
     {
         if( pSdrPageView->GetPage() != pSdrHint->GetPage() )
@@ -336,32 +337,32 @@ void DrawViewWrapper::Notify(SfxBroadcaster& rBC, const SfxHint& rHint)
 
     E3dView::Notify(rBC, rHint);
 
-    if( pSdrHint != nullptr )
+    if( pSdrHint == nullptr )
+        return;
+
+    SdrHintKind eKind = pSdrHint->GetKind();
+    if( eKind == SdrHintKind::BeginEdit )
     {
-        SdrHintKind eKind = pSdrHint->GetKind();
-        if( eKind == SdrHintKind::BeginEdit )
+        // #i79965# remember map mode
+        OSL_ASSERT( ! m_bRestoreMapMode );
+        OutputDevice* pOutDev = GetFirstOutputDevice();
+        if( pOutDev )
         {
-            // #i79965# remember map mode
-            OSL_ASSERT( ! m_bRestoreMapMode );
-            OutputDevice* pOutDev = this->GetFirstOutputDevice();
+            m_aMapModeToRestore = pOutDev->GetMapMode();
+            m_bRestoreMapMode = true;
+        }
+    }
+    else if( eKind == SdrHintKind::EndEdit )
+    {
+        // #i79965# scroll back view when ending text edit
+        OSL_ASSERT( m_bRestoreMapMode );
+        if( m_bRestoreMapMode )
+        {
+            OutputDevice* pOutDev = GetFirstOutputDevice();
             if( pOutDev )
             {
-                m_aMapModeToRestore = pOutDev->GetMapMode();
-                m_bRestoreMapMode = true;
-            }
-        }
-        else if( eKind == SdrHintKind::EndEdit )
-        {
-            // #i79965# scroll back view when ending text edit
-            OSL_ASSERT( m_bRestoreMapMode );
-            if( m_bRestoreMapMode )
-            {
-                OutputDevice* pOutDev = this->GetFirstOutputDevice();
-                if( pOutDev )
-                {
-                    pOutDev->SetMapMode( m_aMapModeToRestore );
-                    m_bRestoreMapMode = false;
-                }
+                pOutDev->SetMapMode( m_aMapModeToRestore );
+                m_bRestoreMapMode = false;
             }
         }
     }
@@ -371,11 +372,10 @@ SdrObject* DrawViewWrapper::getSdrObject( const uno::Reference<
                     drawing::XShape >& xShape )
 {
     SdrObject* pRet = nullptr;
-    uno::Reference< lang::XUnoTunnel > xUnoTunnel( xShape, uno::UNO_QUERY );
     uno::Reference< lang::XTypeProvider > xTypeProvider( xShape, uno::UNO_QUERY );
-    if(xUnoTunnel.is()&&xTypeProvider.is())
+    if(xTypeProvider.is())
     {
-        SvxShape* pSvxShape = reinterpret_cast<SvxShape*>(xUnoTunnel->getSomething( SvxShape::getUnoTunnelId() ));
+        SvxShape* pSvxShape = comphelper::getUnoTunnelImplementation<SvxShape>(xShape);
         if(pSvxShape)
             pRet = pSvxShape->GetSdrObject();
     }

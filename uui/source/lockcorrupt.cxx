@@ -17,28 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ids.hrc"
+#include <strings.hrc>
 #include "lockcorrupt.hxx"
+#include <unotools/resmgr.hxx>
+#include <vcl/stdtext.hxx>
+#include <vcl/svapp.hxx>
 
-#include <vcl/button.hxx>
-
-LockCorruptQueryBox::LockCorruptQueryBox( vcl::Window* pParent, ResMgr* pResMgr ) :
-    MessBox(pParent, 0,
-            ResId(STR_LOCKCORRUPT_TITLE, *pResMgr).toString(),
-            OUString() )
+LockCorruptQueryBox::LockCorruptQueryBox(weld::Window* pParent, const std::locale& rResLocale)
+    : m_xQueryBox(Application::CreateMessageDialog(pParent, VclMessageType::Question,
+                  VclButtonsType::NONE, Translate::get(STR_LOCKCORRUPT_MSG, rResLocale)))
 {
-    SetImage( ErrorBox::GetStandardImage() );
-
-    AddButton(ResId(STR_LOCKCORRUPT_OPENREADONLY_BTN, *pResMgr).toString(), RET_OK,
-        ButtonDialogFlags::Default | ButtonDialogFlags::OK | ButtonDialogFlags::Focus);
-
-    AddButton( StandardButtonType::Cancel, RET_CANCEL, ButtonDialogFlags::Cancel );
-
-    SetMessText(ResId(STR_LOCKCORRUPT_MSG, *pResMgr ).toString());
-}
-
-LockCorruptQueryBox::~LockCorruptQueryBox()
-{
+    m_xQueryBox->set_title(Translate::get(STR_LOCKCORRUPT_TITLE, rResLocale));
+    m_xQueryBox->add_button(Translate::get(STR_LOCKCORRUPT_OPENREADONLY_BTN, rResLocale), RET_OK);
+    m_xQueryBox->add_button(GetStandardText(StandardButtonType::Cancel), RET_CANCEL);
+    m_xQueryBox->set_default_response(RET_OK);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

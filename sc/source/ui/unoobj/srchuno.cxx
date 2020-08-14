@@ -17,19 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
+#include <scitems.hxx>
 #include <svl/srchitem.hxx>
 #include <vcl/svapp.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
-#include "srchuno.hxx"
-#include "docsh.hxx"
-#include "undoblk.hxx"
-#include "hints.hxx"
-#include "markdata.hxx"
-#include "miscuno.hxx"
-#include "unonames.hxx"
+#include <srchuno.hxx>
+#include <miscuno.hxx>
+#include <unonames.hxx>
 
 using namespace com::sun::star;
 
@@ -41,20 +36,20 @@ static const SfxItemPropertyMapEntry* lcl_GetSearchPropertyMap()
 {
     static const SfxItemPropertyMapEntry aSearchPropertyMap_Impl[] =
     {
-        {OUString(SC_UNO_SRCHBACK),     0,      cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNO_SRCHBYROW),    0,      cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNO_SRCHCASE),     0,      cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNO_SRCHREGEXP),   0,      cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNO_SRCHWILDCARD), 0,      cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNO_SRCHSIM),      0,      cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNO_SRCHSIMADD),   0,      cppu::UnoType<sal_Int16>::get(), 0, 0},
-        {OUString(SC_UNO_SRCHSIMEX),    0,      cppu::UnoType<sal_Int16>::get(), 0, 0},
-        {OUString(SC_UNO_SRCHSIMREL),   0,      cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNO_SRCHSIMREM),   0,      cppu::UnoType<sal_Int16>::get(), 0, 0},
-        {OUString(SC_UNO_SRCHSTYLES),   0,      cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNO_SRCHTYPE),     0,      cppu::UnoType<sal_Int16>::get(), 0, 0}, // enum TableSearch is gone
-        {OUString(SC_UNO_SRCHWORDS),    0,      cppu::UnoType<bool>::get(),       0, 0},
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        {SC_UNO_SRCHBACK,     0,      cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNO_SRCHBYROW,    0,      cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNO_SRCHCASE,     0,      cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNO_SRCHREGEXP,   0,      cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNO_SRCHWILDCARD, 0,      cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNO_SRCHSIM,      0,      cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNO_SRCHSIMADD,   0,      cppu::UnoType<sal_Int16>::get(), 0, 0},
+        {SC_UNO_SRCHSIMEX,    0,      cppu::UnoType<sal_Int16>::get(), 0, 0},
+        {SC_UNO_SRCHSIMREL,   0,      cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNO_SRCHSIMREM,   0,      cppu::UnoType<sal_Int16>::get(), 0, 0},
+        {SC_UNO_SRCHSTYLES,   0,      cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNO_SRCHTYPE,     0,      cppu::UnoType<sal_Int16>::get(), 0, 0}, // enum TableSearch is gone
+        {SC_UNO_SRCHWORDS,    0,      cppu::UnoType<bool>::get(),       0, 0},
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aSearchPropertyMap_Impl;
 }
@@ -166,10 +161,10 @@ uno::Any SAL_CALL ScCellSearchObj::getPropertyValue( const OUString& aPropertyNa
     else if (aPropertyName == SC_UNO_SRCHSIMREL) aRet <<= pSearchItem->IsLEVRelaxed();
     else if (aPropertyName == SC_UNO_SRCHSTYLES) aRet <<= pSearchItem->GetPattern();
     else if (aPropertyName == SC_UNO_SRCHWORDS)  aRet <<= pSearchItem->GetWordOnly();
-    else if (aPropertyName == SC_UNO_SRCHSIMADD) aRet <<= (sal_Int16) pSearchItem->GetLEVLonger();
-    else if (aPropertyName == SC_UNO_SRCHSIMEX)  aRet <<= (sal_Int16) pSearchItem->GetLEVOther();
-    else if (aPropertyName == SC_UNO_SRCHSIMREM) aRet <<= (sal_Int16) pSearchItem->GetLEVShorter();
-    else if (aPropertyName == SC_UNO_SRCHTYPE)   aRet <<= (sal_Int16) pSearchItem->GetCellType();
+    else if (aPropertyName == SC_UNO_SRCHSIMADD) aRet <<= static_cast<sal_Int16>(pSearchItem->GetLEVLonger());
+    else if (aPropertyName == SC_UNO_SRCHSIMEX)  aRet <<= static_cast<sal_Int16>(pSearchItem->GetLEVOther());
+    else if (aPropertyName == SC_UNO_SRCHSIMREM) aRet <<= static_cast<sal_Int16>(pSearchItem->GetLEVShorter());
+    else if (aPropertyName == SC_UNO_SRCHTYPE)   aRet <<= static_cast<sal_Int16>(pSearchItem->GetCellType());
     else if (aPropertyName == SC_UNO_SRCHFILTERED) aRet <<= pSearchItem->IsSearchFiltered();
     else if (aPropertyName == SC_UNO_SRCHFORMATTED) aRet <<= pSearchItem->IsSearchFormatted();
 
@@ -182,7 +177,7 @@ SC_IMPL_DUMMY_PROPERTY_LISTENER( ScCellSearchObj )
 
 OUString SAL_CALL ScCellSearchObj::getImplementationName()
 {
-    return OUString( "ScCellSearchObj" );
+    return "ScCellSearchObj";
 }
 
 sal_Bool SAL_CALL ScCellSearchObj::supportsService( const OUString& rServiceName )
@@ -197,35 +192,6 @@ uno::Sequence<OUString> SAL_CALL ScCellSearchObj::getSupportedServiceNames()
 
 // XUnoTunnel
 
-sal_Int64 SAL_CALL ScCellSearchObj::getSomething(
-                const uno::Sequence<sal_Int8 >& rId )
-{
-    if ( rId.getLength() == 16 &&
-          0 == memcmp( getUnoTunnelId().getConstArray(),
-                                    rId.getConstArray(), 16 ) )
-    {
-        return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_IntPtr>(this));
-    }
-    return 0;
-}
-
-namespace
-{
-    class theScCellSearchObjUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theScCellSearchObjUnoTunnelId> {};
-}
-
-const uno::Sequence<sal_Int8>& ScCellSearchObj::getUnoTunnelId()
-{
-    return theScCellSearchObjUnoTunnelId::get().getSeq();
-}
-
-ScCellSearchObj* ScCellSearchObj::getImplementation(const uno::Reference<util::XSearchDescriptor>& rObj)
-{
-    ScCellSearchObj* pRet = nullptr;
-    uno::Reference<lang::XUnoTunnel> xUT(rObj, uno::UNO_QUERY);
-    if (xUT.is())
-        pRet = reinterpret_cast<ScCellSearchObj*>(sal::static_int_cast<sal_IntPtr>(xUT->getSomething(getUnoTunnelId())));
-    return pRet;
-}
+UNO3_GETIMPLEMENTATION_IMPL(ScCellSearchObj);
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

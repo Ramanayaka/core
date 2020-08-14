@@ -21,14 +21,17 @@
 
 #include <cassert>
 #include <cstddef>
+#include <limits>
 #include <functional>
 
 #include "system.hxx"
+#include "unixerrnostring.hxx"
 #include <string.h>
 #if defined(OPENBSD)
 #include <sched.h>
 #endif
 #include <config_options.h>
+#include <o3tl/safeint.hxx>
 #include <osl/thread.h>
 #include <osl/nlsupport.h>
 #include <rtl/textenc.h>
@@ -42,10 +45,7 @@
 #endif
 
 #if defined LINUX && ! defined __FreeBSD_kernel__
-#include <sys/prctl.h>
-#ifndef PR_SET_NAME
-#define PR_SET_NAME 15
-#endif
+#include <sys/syscall.h>
 #endif
 
 /****************************************************************************
@@ -77,10 +77,12 @@
 #define THREADIMPL_FLAGS_ATTACHED   0x00010
 #define THREADIMPL_FLAGS_DESTROYED  0x00020
 
+namespace {
+
 typedef struct osl_thread_impl_st
 {
     pthread_t           m_hThread;
-    sal_uInt16          m_Ident; /* @@@ see TODO @@@ */
+    oslThreadIdentifier m_Ident; /* @@@ see TODO @@@ */
     short               m_Flags;
     oslWorkerFunction   m_WorkerFunction;
     void*               m_pData;
@@ -88,6 +90,7 @@ typedef struct osl_thread_impl_st
     pthread_cond_t      m_Cond;
 } Thread_Impl;
 
+#if !defined NO_PTHREAD_PRIORITY
 struct osl_thread_priority_st
 {
     int m_Highest;
@@ -96,9 +99,17 @@ struct osl_thread_priority_st
     int m_Below_Normal;
     int m_Lowest;
 };
+#endif
 
+}
+
+#if !defined NO_PTHREAD_PRIORITY
 #define OSL_THREAD_PRIORITY_INITIALIZER { 127, 96, 64, 32, 0 }
+#endif
+
 static void osl_thread_priority_init_Impl();
+
+namespace {
 
 struct osl_thread_textencoding_st
 {
@@ -106,20 +117,30 @@ struct osl_thread_textencoding_st
     rtl_TextEncoding m_default; /* the default text encoding */
 };
 
+}
+
 #define OSL_THREAD_TEXTENCODING_INITIALIZER { 0, RTL_TEXTENCODING_DONTKNOW }
 static void osl_thread_textencoding_init_Impl();
+
+namespace {
 
 struct osl_thread_global_st
 {
     pthread_once_t                    m_once;
+#if !defined NO_PTHREAD_PRIORITY
     struct osl_thread_priority_st     m_priority;
+#endif
     struct osl_thread_textencoding_st m_textencoding;
 };
+
+}
 
 static struct osl_thread_global_st g_thread =
 {
     PTHREAD_ONCE_INIT,
+#if !defined NO_PTHREAD_PRIORITY
     OSL_THREAD_PRIORITY_INITIALIZER,
+#endif
     OSL_THREAD_TEXTENCODING_INITIALIZER
 };
 
@@ -135,9 +156,9 @@ static oslThread osl_thread_create_Impl (
     oslWorkerFunction pWorker, void * pThreadData, short nFlags);
 
 /* @@@ see TODO @@@ */
-static sal_uInt16 insertThreadId (pthread_t hThread);
-static sal_uInt16 lookupThreadId (pthread_t hThread);
-static void       removeThreadId (pthread_t hThread);
+static oslThreadIdentifier insertThreadId (pthread_t hThread);
+static oslThreadIdentifier lookupThreadId (pthread_t hThread);
+static void                removeThreadId (pthread_t hThread);
 
 static void osl_thread_init_Impl()
 {
@@ -295,8 +316,7 @@ static oslThread osl_thread_create_Impl (
     {
         SAL_WARN(
             "sal.osl",
-            "pthread_create failed with " << nRet << " \"" << strerror(nRet)
-                << "\"");
+            "pthread_create failed: " << UnixErrnoString(nRet));
 
         pthread_mutex_unlock (&(pImpl->m_Lock));
         osl_thread_destruct_Impl (&pImpl);
@@ -532,12 +552,25 @@ void SAL_CALL osl_yieldThread()
     sched_yield();
 }
 
-void SAL_CALL osl_setThreadName(char const * name) {
+void SAL_CALL osl_setThreadName(char const * name)
+{
+    assert( name );
 #if defined LINUX && ! defined __FreeBSD_kernel__
-    if (prctl(PR_SET_NAME, reinterpret_cast<unsigned long>(name), 0, 0, 0) != 0) {
-        int e = errno;
-        SAL_WARN("sal.osl", "prctl(PR_SET_NAME) failed with errno " << e);
-    }
+    const int LINUX_THREAD_NAME_MAXLEN = 15;
+    if ( strlen( name ) > LINUX_THREAD_NAME_MAXLEN )
+        SAL_INFO( "sal.osl", "osl_setThreadName truncated thread name to "
+                  << LINUX_THREAD_NAME_MAXLEN << " chars from name '"
+                  << name << "'" );
+    char shortname[ LINUX_THREAD_NAME_MAXLEN + 1 ];
+    shortname[ LINUX_THREAD_NAME_MAXLEN ] = '\0';
+    strncpy( shortname, name, LINUX_THREAD_NAME_MAXLEN );
+    int err = pthread_setname_np( pthread_self(), shortname );
+    if ( 0 != err )
+        SAL_WARN("sal.osl", "pthread_setname_np failed with errno " << err);
+#elif defined __FreeBSD_kernel__
+    pthread_setname_np( pthread_self(), name );
+#elif defined MACOSX || defined IOS
+    pthread_setname_np( name );
 #else
     (void) name;
 #endif
@@ -545,19 +578,25 @@ void SAL_CALL osl_setThreadName(char const * name) {
 
 /* osl_getThreadIdentifier @@@ see TODO @@@ */
 
+namespace {
+
 struct HashEntry
 {
-    pthread_t         Handle;
-    sal_uInt16        Ident;
-    HashEntry *       Next;
+    pthread_t            Handle;
+    oslThreadIdentifier  Ident;
+    HashEntry *          Next;
 };
 
+}
+
 static HashEntry* HashTable[31];
-static int HashSize = SAL_N_ELEMENTS(HashTable);
+const int HashSize = SAL_N_ELEMENTS(HashTable);
 
 static pthread_mutex_t HashLock = PTHREAD_MUTEX_INITIALIZER;
 
-static sal_uInt16 LastIdent = 0;
+#if ! ((defined LINUX && !defined __FreeBSD_kernel__) || defined MACOSX || defined IOS)
+static oslThreadIdentifier LastIdent = 0;
+#endif
 
 namespace {
 
@@ -566,29 +605,29 @@ std::size_t HASHID(pthread_t x)
 
 }
 
-static sal_uInt16 lookupThreadId (pthread_t hThread)
+static oslThreadIdentifier lookupThreadId (pthread_t hThread)
 {
     HashEntry *pEntry;
 
     pthread_mutex_lock(&HashLock);
 
-        pEntry = HashTable[HASHID(hThread)];
-        while (pEntry != nullptr)
+    pEntry = HashTable[HASHID(hThread)];
+    while (pEntry != nullptr)
+    {
+        if (pthread_equal(pEntry->Handle, hThread))
         {
-            if (pthread_equal(pEntry->Handle, hThread))
-            {
-                pthread_mutex_unlock(&HashLock);
-                return pEntry->Ident;
-            }
-            pEntry = pEntry->Next;
+            pthread_mutex_unlock(&HashLock);
+            return pEntry->Ident;
         }
+        pEntry = pEntry->Next;
+    }
 
     pthread_mutex_unlock(&HashLock);
 
     return 0;
 }
 
-static sal_uInt16 insertThreadId (pthread_t hThread)
+static oslThreadIdentifier insertThreadId (pthread_t hThread)
 {
     HashEntry *pEntry, *pInsert = nullptr;
 
@@ -611,12 +650,37 @@ static sal_uInt16 insertThreadId (pthread_t hThread)
 
         pEntry->Handle = hThread;
 
-        ++ LastIdent;
-
-        if ( LastIdent == 0 )
+#if defined LINUX && ! defined __FreeBSD_kernel__
+#if defined __GLIBC__ && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 30))
+        // gettid returns a pid_t, which POSIX defines to be a signed integer type; assume that all
+        // valid pid_t values on Linux are positive (zero is filtered out in the generic code
+        // below):
+        pid_t const tid = gettid();
+        assert(tid >= 0);
+#else
+        long const tid = syscall(SYS_gettid);
+        if (tid < 0 || o3tl::make_unsigned(tid) > std::numeric_limits<sal_uInt32>::max()) {
+            std::abort();
+        }
+#endif
+        pEntry->Ident = tid;
+#elif defined MACOSX || defined IOS
+        // currently the value of pthread_threadid_np is the same then
+        // syscall(SYS_thread_selfid), which returns an int as the TID.
+        // may change, as the syscall interface was deprecated.
+        uint64_t mac_tid;
+        pthread_threadid_np(nullptr, &mac_tid);
+        if (mac_tid > SAL_MAX_UINT32)
+            std::abort();
+        pEntry->Ident = mac_tid;
+#else
+        ++LastIdent;
+        if (0 == LastIdent)
             LastIdent = 1;
-
-        pEntry->Ident  = LastIdent;
+        pEntry->Ident = LastIdent;
+#endif
+        if (0 == pEntry->Ident)
+            std::abort();
 
         if (pInsert)
             pInsert->Next = pEntry;
@@ -661,7 +725,7 @@ static void removeThreadId (pthread_t hThread)
 oslThreadIdentifier SAL_CALL osl_getThreadIdentifier(oslThread Thread)
 {
     Thread_Impl* pImpl= static_cast<Thread_Impl*>(Thread);
-    sal_uInt16   Ident;
+    oslThreadIdentifier Ident;
 
     if (pImpl)
         Ident = pImpl->m_Ident;
@@ -676,7 +740,7 @@ oslThreadIdentifier SAL_CALL osl_getThreadIdentifier(oslThread Thread)
             Ident = insertThreadId (current);
     }
 
-    return (oslThreadIdentifier)Ident;
+    return Ident;
 }
 
 /*****************************************************************************
@@ -704,8 +768,7 @@ static void osl_thread_priority_init_Impl()
     {
         SAL_WARN(
             "sal.osl",
-            "pthread_getschedparam failed with " << nRet << " \""
-                << strerror(nRet) << "\"");
+            "pthread_getschedparam failed: " << UnixErrnoString(nRet));
         return;
     }
 
@@ -730,8 +793,7 @@ static void osl_thread_priority_init_Impl()
         int e = errno;
         SAL_WARN(
             "sal.osl",
-            "sched_get_priority_min failed with " << e << " \"" << strerror(e)
-                << "\"");
+            "sched_get_priority_min failed: " << UnixErrnoString(e));
     }
 
     if ((nRet = sched_get_priority_max(policy) ) != -1)
@@ -745,8 +807,7 @@ static void osl_thread_priority_init_Impl()
         int e = errno;
         SAL_WARN(
             "sal.osl",
-            "sched_get_priority_max failed with " << e << " \"" << strerror(e)
-                << "\"");
+            "sched_get_priority_max failed: " << UnixErrnoString(e));
     }
 
     g_thread.m_priority.m_Normal =
@@ -764,8 +825,7 @@ static void osl_thread_priority_init_Impl()
     {
         SAL_WARN(
             "sal.osl",
-            "pthread_setschedparam failed with " << nRet << " \""
-                << strerror(nRet) << "\"");
+            "pthread_setschedparam failed: " << UnixErrnoString(nRet));
         SAL_INFO(
             "sal.osl",
             "Thread ID " << pthread_self() << ", Policy " << policy
@@ -859,8 +919,7 @@ void SAL_CALL osl_setThreadPriority (
     {
         SAL_WARN(
             "sal.osl",
-            "pthread_setschedparam failed with " << nRet << " \""
-                << strerror(nRet) << "\"");
+            "pthread_setschedparam failed: " << UnixErrnoString(nRet));
     }
 
 #endif /* NO_PTHREAD_PRIORITY */
@@ -928,15 +987,19 @@ oslThreadPriority SAL_CALL osl_getThreadPriority(const oslThread Thread)
     return Priority;
 }
 
+namespace {
+
 struct wrapper_pthread_key
 {
     pthread_key_t m_key;
     oslThreadKeyCallbackFunction pfnCallback;
 };
 
+}
+
 oslThreadKey SAL_CALL osl_createThreadKey( oslThreadKeyCallbackFunction pCallback )
 {
-    wrapper_pthread_key *pKey = static_cast<wrapper_pthread_key*>(rtl_allocateMemory(sizeof(wrapper_pthread_key)));
+    wrapper_pthread_key *pKey = static_cast<wrapper_pthread_key*>(malloc(sizeof(wrapper_pthread_key)));
 
     if (pKey)
     {
@@ -944,7 +1007,7 @@ oslThreadKey SAL_CALL osl_createThreadKey( oslThreadKeyCallbackFunction pCallbac
 
         if (pthread_key_create(&(pKey->m_key), pKey->pfnCallback) != 0)
         {
-            rtl_freeMemory(pKey);
+            free(pKey);
             pKey = nullptr;
         }
     }
@@ -958,7 +1021,7 @@ void SAL_CALL osl_destroyThreadKey(oslThreadKey Key)
     if (pKey)
     {
         pthread_key_delete(pKey->m_key);
-        rtl_freeMemory(pKey);
+        free(pKey);
     }
 }
 
@@ -997,7 +1060,7 @@ static void osl_thread_textencoding_init_Impl()
     /* determine default text encoding */
     defaultEncoding = osl_getTextEncodingFromLocale(nullptr);
     // Tools string functions call abort() on an unknown encoding so ASCII is a
-    // meaningfull fallback:
+    // meaningful fallback:
     if ( RTL_TEXTENCODING_DONTKNOW == defaultEncoding )
     {
         SAL_WARN("sal.osl", "RTL_TEXTENCODING_DONTKNOW -> _ASCII_US");

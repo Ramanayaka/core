@@ -20,9 +20,10 @@
 #ifndef INCLUDED_SVX_SVDTEXT_HXX
 #define INCLUDED_SVX_SVDTEXT_HXX
 
-#include <sal/types.h>
+#include <svx/sdr/properties/defaultproperties.hxx>
 #include <svx/svxdllapi.h>
 #include <tools/weakbase.hxx>
+#include <memory>
 
 
 class OutlinerParaObject;
@@ -32,24 +33,23 @@ class SdrModel;
 class SfxItemSet;
 enum class OutlinerMode;
 
-namespace sdr { namespace properties {
+namespace sdr::properties {
     class TextProperties;
-}}
+}
 
 /** This class stores information about one text inside a shape.
 */
 
 class SfxStyleSheet;
-class SVX_DLLPUBLIC SdrText : public tools::WeakBase< SdrText >
+class SVXCORE_DLLPUBLIC SdrText : public tools::WeakBase
 {
 public:
-    SdrText( SdrTextObj& rObject, OutlinerParaObject* pOutlinerParaObject = nullptr );
-    virtual ~SdrText();
+    explicit SdrText( SdrTextObj& rObject );
+    virtual ~SdrText() override;
 
-    virtual void SetModel(SdrModel* pNewModel);
     void ForceOutlinerParaObject( OutlinerMode nOutlMode );
 
-    virtual void SetOutlinerParaObject( OutlinerParaObject* pTextObject );
+    virtual void SetOutlinerParaObject( std::unique_ptr<OutlinerParaObject> pTextObject );
     OutlinerParaObject* GetOutlinerParaObject() const;
 
     void CheckPortionInfo( SdrOutliner& rOutliner );
@@ -57,25 +57,24 @@ public:
 
     // default uses GetObjectItemSet, but may be overridden to
     // return a text-specific ItemSet
-    virtual const SfxItemSet& GetItemSet() const;
+    const SfxItemSet& GetItemSet() const;
 
-    SdrModel* GetModel() const { return mpModel; }
+    // This class does not need an own SdrModel reference - always
+    // has the SdrTextObj working with so can use SdrModel::getSdrModelFromSdrObject()
     SdrTextObj& GetObject() const { return mrObject; }
 
     /** returns the current OutlinerParaObject and removes it from this instance */
-    OutlinerParaObject* RemoveOutlinerParaObject();
+    std::unique_ptr<OutlinerParaObject> RemoveOutlinerParaObject();
 
-    void dumpAsXml(struct _xmlTextWriter * pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
 protected:
     virtual const SfxItemSet& GetObjectItemSet();
-    virtual void SetObjectItem(const SfxPoolItem& rItem);
     virtual SfxStyleSheet* GetStyleSheet() const;
 
 private:
-    OutlinerParaObject* mpOutlinerParaObject;
+    std::unique_ptr<OutlinerParaObject> mpOutlinerParaObject;
     SdrTextObj& mrObject;
-    SdrModel* mpModel;
     bool mbPortionInfoChecked;
 };
 

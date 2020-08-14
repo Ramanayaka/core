@@ -26,25 +26,17 @@
 
 #include <xmloff/dllapi.h>
 #include <xmloff/prhdlfac.hxx>
-#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
-#include <xmloff/xmlexppr.hxx>
 #include <xmloff/XMLConstantsPropertyHandler.hxx>
-
-template<typename EnumT> struct SvXMLEnumMapEntry;
-class Color;
+#include <xmloff/NamedBoolPropertyHdl.hxx>
 
 namespace xmloff
 {
 
 
-    class IFormsExportContext;
-    class OFormLayerXMLImport_Impl;
-
-
     //= ORotationAngleHandler
 
-    class ORotationAngleHandler : public XMLPropertyHandler
+    class XMLOFF_DLLPUBLIC ORotationAngleHandler final : public XMLPropertyHandler
     {
     public:
         ORotationAngleHandler();
@@ -56,7 +48,7 @@ namespace xmloff
 
     //= OFontWidthHandler
 
-    class OFontWidthHandler : public XMLPropertyHandler
+    class XMLOFF_DLLPUBLIC OFontWidthHandler final : public XMLPropertyHandler
     {
     public:
         OFontWidthHandler();
@@ -68,7 +60,7 @@ namespace xmloff
 
     //= OControlBorderHandlerBase
 
-    class OControlBorderHandler : public XMLPropertyHandler
+    class XMLOFF_DLLPUBLIC OControlBorderHandler final : public XMLPropertyHandler
     {
     public:
         enum BorderFacet
@@ -89,7 +81,7 @@ namespace xmloff
 
     //= OControlTextEmphasisHandler
 
-    class OControlTextEmphasisHandler : public XMLPropertyHandler
+    class OControlTextEmphasisHandler final : public XMLPropertyHandler
     {
     public:
         OControlTextEmphasisHandler();
@@ -101,7 +93,7 @@ namespace xmloff
 
     //= ImageScaleModeHandler
 
-    class XMLOFF_DLLPUBLIC ImageScaleModeHandler : public XMLConstantsPropertyHandler
+    class XMLOFF_DLLPUBLIC ImageScaleModeHandler final : public XMLConstantsPropertyHandler
     {
     public:
         ImageScaleModeHandler();
@@ -119,6 +111,7 @@ namespace xmloff
         mutable std::unique_ptr<OFontWidthHandler>              m_pFontWidthHandler;
         mutable std::unique_ptr<XMLConstantsPropertyHandler>    m_pFontEmphasisHandler;
         mutable std::unique_ptr<XMLConstantsPropertyHandler>    m_pFontReliefHandler;
+        mutable std::unique_ptr<XMLNamedBoolPropertyHdl>        m_pTextLineModeHandler;
 
     public:
         OControlPropertyHandlerFactory();

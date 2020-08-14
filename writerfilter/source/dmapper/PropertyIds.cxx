@@ -19,8 +19,7 @@
 #include <rtl/ustring.hxx>
 #include "PropertyIds.hxx"
 
-namespace writerfilter {
-namespace dmapper{
+namespace writerfilter::dmapper{
 
 OUString getPropertyName( PropertyIds eId )
 {
@@ -91,6 +90,7 @@ OUString getPropertyName( PropertyIds eId )
         case PROP_PARA_CONTEXT_MARGIN:       sName = "ParaContextMargin"; break;
         case PROP_PARA_BOTTOM_MARGIN:       sName = "ParaBottomMargin"; break;
         case PROP_PARA_IS_HYPHENATION:     sName = "ParaIsHyphenation"; break;
+        case PROP_PARA_HYPHENATION_NO_CAPS: sName = "ParaHyphenationNoCaps"; break;
         case PROP_PARA_LINE_NUMBER_COUNT:     sName = "ParaLineNumberCount"; break;
         case PROP_PARA_IS_HANGING_PUNCTUATION: sName = "ParaIsHangingPunctuation"; break;
         case PROP_PARA_LINE_SPACING:     sName = "ParaLineSpacing"; break;
@@ -153,10 +153,6 @@ OUString getPropertyName( PropertyIds eId )
         case PROP_ADJUST_CONTRAST       :    sName = "AdjustContrast"; break;
         case PROP_ADJUST_LUMINANCE      :    sName = "AdjustLuminance"; break;
         case PROP_GRAPHIC_COLOR_MODE    :    sName = "GraphicColorMode"; break;
-        case PROP_GAMMA                 :    sName = "Gamma"; break;
-        case PROP_HORI_MIRRORED_ON_EVEN_PAGES:    sName = "HoriMirroredOnEvenPages"; break;
-        case PROP_HORI_MIRRORED_ON_ODD_PAGES :    sName = "HoriMirroredOnOddPages"; break;
-        case PROP_VERT_MIRRORED        :    sName = "VertMirrored"; break;
         case PROP_CONTOUR_OUTSIDE      :    sName = "ContourOutside"; break;
         case PROP_CONTOUR_POLY_POLYGON :    sName = "ContourPolyPolygon"; break;
         case PROP_PAGE_TOGGLE          :    sName = "PageToggle"; break;
@@ -172,12 +168,12 @@ OUString getPropertyName( PropertyIds eId )
         case PROP_FOOTER_IS_SHARED     :    sName = "FooterIsShared"; break;
         case PROP_FOOTER_IS_ON         :    sName = "FooterIsOn"; break;
         case PROP_FOOTNOTE_COUNTING    :    sName = "FootnoteCounting"; break;
+        case PROP_FOOTNOTE_LINE_ADJUST :    sName = "FootnoteLineAdjust"; break;
         case PROP_WIDTH                :    sName = "Width"; break;
         case PROP_HEIGHT               :    sName = "Height"; break;
         case PROP_TEXT_COLUMNS         :    sName = "TextColumns"; break;
         case PROP_AUTOMATIC_DISTANCE   :    sName = "AutomaticDistance"; break;
         case PROP_IS_LANDSCAPE         :    sName = "IsLandscape"; break;
-        case PROP_PRINTER_PAPER_TRAY_INDEX:    sName = "PrinterPaperTrayIndex"; break;
         case PROP_FIRST_PAGE       :    sName = "First Page"; break;
         case PROP_PAGE_DESC_NAME   :    sName = "PageDescName"; break;
         case PROP_PAGE_NUMBER_OFFSET:    sName = "PageNumberOffset"; break;
@@ -210,6 +206,7 @@ OUString getPropertyName( PropertyIds eId )
         case PROP_LEVEL_FOLLOW           :    sName = "LabelFollowedBy"; break;
         case PROP_LEVEL_PARAGRAPH_STYLES :    sName = "LevelParagraphStyles"; break;
         case PROP_LEVEL_FORMAT           :    sName = "LevelFormat"; break;
+        case PROP_LIST_FORMAT            :    sName = "ListFormat"; break;
         case PROP_TOKEN_TYPE             :    sName = "TokenType"; break;
         case PROP_TOKEN_HYPERLINK_START  :    sName = "TokenHyperlinkStart"; break;
         case PROP_TOKEN_HYPERLINK_END    :    sName = "TokenHyperlinkEnd"; break;
@@ -233,6 +230,7 @@ OUString getPropertyName( PropertyIds eId )
         case PROP_REDLINE_DATE_TIME     :    sName = "RedlineDateTime"; break;
         case PROP_REDLINE_TYPE          :    sName = "RedlineType"; break;
         case PROP_REDLINE_REVERT_PROPERTIES: sName = "RedlineRevertProperties"; break;
+        case PROP_IS_PROTECTED          :    sName = "IsProtected"; break;
         case PROP_SIZE_PROTECTED        :    sName = "SizeProtected"; break;
         case PROP_POSITION_PROTECTED    :    sName = "PositionProtected"; break;
         case PROP_OPAQUE                :    sName = "Opaque"; break;
@@ -291,7 +289,6 @@ OUString getPropertyName( PropertyIds eId )
         case PROP_SHADOW_FORMAT: sName = "ShadowFormat"; break;
         case PROP_RELATIVE_WIDTH: sName = "RelativeWidth"; break;
         case PROP_IS_WIDTH_RELATIVE: sName = "IsWidthRelative"; break;
-        case PROP_GRAPHIC_URL: sName = "GraphicURL"; break;
         case PROP_GRAPHIC_BITMAP: sName = "GraphicBitmap"; break;
         case PROP_GRAPHIC_SIZE: sName = "GraphicSize"; break;
         case PROP_CHAR_SHADING_VALUE: sName = "CharShadingValue"; break;
@@ -337,7 +334,6 @@ OUString getPropertyName( PropertyIds eId )
         case PROP_CELL_INTEROP_GRAB_BAG          :   sName = "CellInteropGrabBag"; break;
         case PROP_TABLE_INTEROP_GRAB_BAG         :   sName = "TableInteropGrabBag"; break;
         case PROP_APPLY_PARAGRAPH_MARK_FORMAT_TO_NUMBERING : sName = "ApplyParagraphMarkFormatToNumbering"; break;
-        case PROP_CELL_DIRECTION: sName = "CellDirection"; break;
         case PROP_SDT_END_BEFORE: sName = "SdtEndBefore"; break;
         case PROP_PARA_SDT_END_BEFORE: sName = "ParaSdtEndBefore"; break;
         case META_PROP_TABLE_LOOK: sName = "TableStyleLook"; break;
@@ -353,12 +349,27 @@ OUString getPropertyName( PropertyIds eId )
         case PROP_RUBY_STYLE: sName = "RubyCharStyleName"; break;
         case PROP_RUBY_TEXT: sName = "RubyText"; break;
         case PROP_RUBY_ADJUST: sName = "RubyAdjust"; break;
+        case PROP_RUBY_POSITION: sName = "RubyPosition"; break;
+        case PROP_DATABASE_NAME: sName = "DataBaseName"; break;
+        case PROP_COMMAND_TYPE: sName = "DataCommandType"; break;
+        case PROP_DATATABLE_NAME: sName = "DataTableName"; break;
+        case PROP_DATACOLUMN_NAME: sName = "DataColumnName"; break;
+        case PROP_CHAR_TRANSPARENCE: sName = "CharTransparence"; break;
     }
     assert(sName.getLength()>0);
     return sName;
 }
 
-} //namespace dmapper
+bool isCharacterProperty( const PropertyIds eId )
+{
+    return eId > PROP_CHARACTER_STYLES && eId < PROP_CHARACTER_END;
+}
+
+bool isParagraphProperty( const PropertyIds eId )
+{
+    return (eId >= PROP_PARA_ADJUST && eId <= PROP_PARA_WIDOWS) || eId == PROP_FILL_COLOR;
+}
+
 } //namespace writerfilter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

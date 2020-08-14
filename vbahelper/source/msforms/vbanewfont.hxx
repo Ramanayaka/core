@@ -21,13 +21,11 @@
 #define INCLUDED_VBAHELPER_SOURCE_MSFORMS_VBANEWFONT_HXX
 
 #include <ooo/vba/msforms/XNewFont.hpp>
-#include <vbahelper/vbahelperinterface.hxx>
+#include <vbahelper/vbahelper.hxx>
 #include <cppuhelper/implbase.hxx>
 
 
-typedef cppu::WeakImplHelper< ov::msforms::XNewFont > VbaNewFont_BASE;
-
-class VbaNewFont : public VbaNewFont_BASE
+class VbaNewFont : public cppu::WeakImplHelper< ov::msforms::XNewFont >
 {
 public:
     /// @throws css::uno::RuntimeException

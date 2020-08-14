@@ -29,10 +29,8 @@
 #include <vcl/window.hxx>
 
 #include <comphelper/containermultiplexer.hxx>
-#include "cppuhelper/basemutex.hxx"
+#include <cppuhelper/basemutex.hxx>
 #include <o3tl/typed_flags_set.hxx>
-
-class SvTreeListEntry;
 
 // Flags for the size adjustment of SbaJoinTabWins
 enum class SizingFlags {
@@ -87,19 +85,11 @@ namespace dbaui
         virtual void    DataChanged( const DataChangedEvent& rDCEvt ) override;
 
             // called at FIRST Init
-        bool FillListBox();
+        void FillListBox();
             // called at EACH Init
 
-        virtual void OnEntryDoubleClicked(SvTreeListEntry* /*pEntry*/) { }
+        virtual void OnEntryDoubleClicked(weld::TreeIter& /*rEntry*/) { }
             // called from the DoubleClickHdl of the ListBox
-
-        /** HandleKeyInput tries to handle the KeyEvent. Movement or deletion
-            @param  rEvt
-                The KEyEvent
-            @return
-                <TRUE/> when the table could handle the keyevent.
-        */
-        bool            HandleKeyInput( const KeyEvent& rEvt );
 
         /** delete the user data with the equal type as created within createUserData
             @param  _pUserData
@@ -146,12 +136,12 @@ namespace dbaui
 
         void                        Remove();
 
-        OUString             GetTableName() const { return m_pData->GetTableName(); }
-        OUString             GetWinName() const { return m_pData->GetWinName(); }
-        OUString             GetComposedName() const { return m_pData->GetComposedName(); }
+        OUString const &    GetTableName() const { return m_pData->GetTableName(); }
+        OUString const &    GetWinName() const { return m_pData->GetWinName(); }
+        OUString const &    GetComposedName() const { return m_pData->GetComposedName(); }
         const VclPtr<OTableWindowListBox>&  GetListBox() const { return m_xListBox; }
         const TTableWindowData::value_type& GetData() const { return m_pData; }
-        const VclPtr<OTableWindowTitle>&    GetTitleCtrl() { return m_xTitle; }
+        const VclPtr<OTableWindowTitle>&    GetTitleCtrl() const { return m_xTitle; }
 
         /** returns the name which should be used when displaying join or relations
             @return

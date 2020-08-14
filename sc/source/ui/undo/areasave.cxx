@@ -19,9 +19,9 @@
 
 #include <sfx2/linkmgr.hxx>
 
-#include "areasave.hxx"
-#include "arealink.hxx"
-#include "document.hxx"
+#include <areasave.hxx>
+#include <arealink.hxx>
+#include <document.hxx>
 #include <documentlinkmgr.hxx>
 
 ScAreaLinkSaver::ScAreaLinkSaver( const ScAreaLink& rSource ) :
@@ -34,22 +34,12 @@ ScAreaLinkSaver::ScAreaLinkSaver( const ScAreaLink& rSource ) :
 {
 }
 
-ScAreaLinkSaver::ScAreaLinkSaver( const ScAreaLinkSaver& rCopy ) :
-    aFileName   ( rCopy.aFileName ),
-    aFilterName ( rCopy.aFilterName ),
-    aOptions    ( rCopy.aOptions ),
-    aSourceArea ( rCopy.aSourceArea ),
-    aDestArea   ( rCopy.aDestArea ),
-    nRefresh    ( rCopy.nRefresh )
-{
-}
-
 bool ScAreaLinkSaver::IsEqualSource( const ScAreaLink& rCompare ) const
 {
-    return ( aFileName.equals(rCompare.GetFile()) &&
-             aFilterName.equals(rCompare.GetFilter()) &&
-             aOptions.equals(rCompare.GetOptions()) &&
-             aSourceArea.equals(rCompare.GetSource()) &&
+    return ( aFileName == rCompare.GetFile() &&
+             aFilterName == rCompare.GetFilter() &&
+             aOptions == rCompare.GetOptions() &&
+             aSourceArea == rCompare.GetSource() &&
              nRefresh == rCompare.GetRefreshDelay() );
 }
 
@@ -78,16 +68,13 @@ void ScAreaLinkSaver::InsertNewLink( ScDocument* pDoc )
         pLink->SetInCreate( true );
         pLink->SetDestArea( aDestArea );
         OUString aTmp1(aFilterName), aTmp2(aSourceArea);
-        pLinkManager->InsertFileLink( *pLink, OBJECT_CLIENT_FILE, aFileName, &aTmp1, &aTmp2 );
+        pLinkManager->InsertFileLink( *pLink, sfx2::SvBaseLinkObjectType::ClientFile, aFileName, &aTmp1, &aTmp2 );
         pLink->Update();
         pLink->SetInCreate( false );
     }
 }
 
 ScAreaLinkSaveCollection::ScAreaLinkSaveCollection() {}
-
-ScAreaLinkSaveCollection::ScAreaLinkSaveCollection( const ScAreaLinkSaveCollection& r ) :
-    maData(r.maData) {}
 
 ScAreaLinkSaveCollection::~ScAreaLinkSaveCollection() {}
 
@@ -143,25 +130,25 @@ void ScAreaLinkSaveCollection::Restore( ScDocument* pDoc )
     // of links changes if deleted entries are re-added to the link manager (always at the end).
 
     sfx2::LinkManager* pLinkManager = pDoc->GetDocLinkManager().getLinkManager(false);
-    if (pLinkManager)
+    if (!pLinkManager)
+        return;
+
+    const ::sfx2::SvBaseLinks& rLinks = pLinkManager->GetLinks();
+    size_t nSaveCount = size();
+    for (size_t nPos=0; nPos<nSaveCount; ++nPos)
     {
-        const ::sfx2::SvBaseLinks& rLinks = pLinkManager->GetLinks();
-        size_t nSaveCount = size();
-        for (size_t nPos=0; nPos<nSaveCount; ++nPos)
-        {
-            ScAreaLinkSaver& rSaver = (*this)[nPos];
-            ScAreaLink* pLink = lcl_FindLink( rLinks, rSaver );
-            if ( pLink )
-                rSaver.WriteToLink( *pLink );          // restore output position
-            else
-                rSaver.InsertNewLink( pDoc );          // re-insert deleted link
-        }
+        ScAreaLinkSaver& rSaver = (*this)[nPos];
+        ScAreaLink* pLink = lcl_FindLink( rLinks, rSaver );
+        if ( pLink )
+            rSaver.WriteToLink( *pLink );          // restore output position
+        else
+            rSaver.InsertNewLink( pDoc );          // re-insert deleted link
     }
 }
 
-ScAreaLinkSaveCollection* ScAreaLinkSaveCollection::CreateFromDoc( const ScDocument* pDoc )
+std::unique_ptr<ScAreaLinkSaveCollection> ScAreaLinkSaveCollection::CreateFromDoc( const ScDocument* pDoc )
 {
-    ScAreaLinkSaveCollection* pColl = nullptr;
+    std::unique_ptr<ScAreaLinkSaveCollection> pColl;
 
     sfx2::LinkManager* pLinkManager = const_cast<ScDocument*>(pDoc)->GetLinkManager();
     if (pLinkManager)
@@ -174,7 +161,7 @@ ScAreaLinkSaveCollection* ScAreaLinkSaveCollection::CreateFromDoc( const ScDocum
             if (dynamic_cast<const ScAreaLink*>( pBase) != nullptr)
             {
                 if (!pColl)
-                    pColl = new ScAreaLinkSaveCollection;
+                    pColl.reset(new ScAreaLinkSaveCollection);
 
                 pColl->push_back( ScAreaLinkSaver( *static_cast<ScAreaLink*>(pBase ) ) );
             }

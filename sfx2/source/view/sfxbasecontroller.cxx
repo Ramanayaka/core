@@ -19,11 +19,8 @@
 
 #include <time.h>
 #include <sfx2/sfxbasecontroller.hxx>
-
-#include <com/sun/star/awt/KeyEvent.hpp>
-#include <com/sun/star/awt/KeyModifier.hpp>
-#include <com/sun/star/awt/MouseEvent.hpp>
-#include <com/sun/star/awt/MouseButton.hpp>
+#include <com/sun/star/awt/XWindowPeer.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
 #include <com/sun/star/util/XCloseBroadcaster.hpp>
 #include <com/sun/star/util/XCloseListener.hpp>
@@ -37,15 +34,13 @@
 #include <com/sun/star/frame/CommandGroup.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XBorderResizeListener.hpp>
+#include <com/sun/star/frame/XUntitledNumbers.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/EventObject.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <cppuhelper/interfacecontainer.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <basic/sbstar.hxx>
-#include <uno/mapping.hxx>
+#include <comphelper/interfacecontainer2.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/docfac.hxx>
 #include <sfx2/viewfrm.hxx>
@@ -55,33 +50,33 @@
 #include <sfx2/dispatch.hxx>
 #include <sfx2/userinputinterception.hxx>
 
-#include <viewimp.hxx>
-#include <sfx2/unoctitm.hxx>
+#include <unoctitm.hxx>
 #include <sfx2/childwin.hxx>
 #include <sfx2/sfxsids.hrc>
-#include <sfx2/sfx.hrc>
 #include <sfx2/sfxresid.hxx>
 #include <workwin.hxx>
-#include <sfx2/objface.hxx>
 #include <sfx2/infobar.hxx>
 
 #include <osl/mutex.hxx>
 #include <tools/diagnose_ex.h>
+#include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/sequence.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <toolkit/helper/convert.hxx>
 #include <framework/titlehelper.hxx>
 #include <comphelper/processfactory.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/button.hxx>
+#include <vcl/svapp.hxx>
+#include <tools/svborder.hxx>
 
 #include <sfx2/event.hxx>
 #include <sfx2/viewfac.hxx>
-#include "sfxbasecontroller_internal.hxx"
+#include <sfx2/strings.hrc>
+#include <sfxbasecontroller_internal.hxx>
 
 #include <unordered_map>
 
 #include <com/sun/star/ui/XSidebarProvider.hpp>
-#include <sfx2/sidebar/UnoSidebar.hxx>
+#include <sidebar/UnoSidebar.hxx>
 
 #define TIMEOUT_START_RESCHEDULE    10L /* 10th s */
 
@@ -96,6 +91,7 @@ using ::com::sun::star::frame::XDispatchProvider;
 using ::com::sun::star::document::XViewDataSupplier;
 using ::com::sun::star::container::XIndexAccess;
 using ::com::sun::star::beans::PropertyValue;
+using ::com::sun::star::beans::StringPair;
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::UNO_QUERY;
 using ::com::sun::star::uno::Exception;
@@ -107,62 +103,40 @@ using ::com::sun::star::frame::XTitle;
 using ::com::sun::star::ui::XSidebarProvider;
 
 
-struct GroupIDToCommandGroup
-{
-    SfxGroupId  nGroupID;
-    sal_Int16   nCommandGroup;
-};
-
-static bool                 bGroupIDMapInitialized = false;
-static const GroupIDToCommandGroup    GroupIDCommandGroupMap[] =
-{
-    { GID_INTERN        ,   frame::CommandGroup::INTERNAL       },
-    { GID_APPLICATION   ,   frame::CommandGroup::APPLICATION    },
-    { GID_DOCUMENT      ,   frame::CommandGroup::DOCUMENT       },
-    { GID_VIEW          ,   frame::CommandGroup::VIEW           },
-    { GID_EDIT          ,   frame::CommandGroup::EDIT           },
-    { GID_MACRO         ,   frame::CommandGroup::MACRO          },
-    { GID_OPTIONS       ,   frame::CommandGroup::OPTIONS        },
-    { GID_MATH          ,   frame::CommandGroup::MATH           },
-    { GID_NAVIGATOR     ,   frame::CommandGroup::NAVIGATOR      },
-    { GID_INSERT        ,   frame::CommandGroup::INSERT         },
-    { GID_FORMAT        ,   frame::CommandGroup::FORMAT         },
-    { GID_TEMPLATE      ,   frame::CommandGroup::TEMPLATE       },
-    { GID_TEXT          ,   frame::CommandGroup::TEXT           },
-    { GID_FRAME         ,   frame::CommandGroup::FRAME          },
-    { GID_GRAPHIC       ,   frame::CommandGroup::GRAPHIC        },
-    { GID_TABLE         ,   frame::CommandGroup::TABLE          },
-    { GID_ENUMERATION   ,   frame::CommandGroup::ENUMERATION    },
-    { GID_DATA          ,   frame::CommandGroup::DATA           },
-    { GID_SPECIAL       ,   frame::CommandGroup::SPECIAL        },
-    { GID_IMAGE         ,   frame::CommandGroup::IMAGE          },
-    { GID_CHART         ,   frame::CommandGroup::CHART          },
-    { GID_EXPLORER      ,   frame::CommandGroup::EXPLORER       },
-    { GID_CONNECTOR     ,   frame::CommandGroup::CONNECTOR      },
-    { GID_MODIFY        ,   frame::CommandGroup::MODIFY         },
-    { GID_DRAWING       ,   frame::CommandGroup::DRAWING        },
-    { GID_CONTROLS      ,   frame::CommandGroup::CONTROLS       },
-    { SfxGroupId(0)     ,   0                                                   }
-};
-
 typedef std::unordered_map< SfxGroupId, sal_Int16 > GroupHashMap;
 
 sal_Int16 MapGroupIDToCommandGroup( SfxGroupId nGroupID )
 {
-    static GroupHashMap s_aHashMap;
-
-    if ( !bGroupIDMapInitialized )
+    static GroupHashMap s_aHashMap
     {
-        sal_Int32 i = 0;
-        while ( GroupIDCommandGroupMap[i].nGroupID != SfxGroupId(0) )
-        {
-            s_aHashMap.insert( GroupHashMap::value_type(
-                GroupIDCommandGroupMap[i].nGroupID,
-                GroupIDCommandGroupMap[i].nCommandGroup ));
-            ++i;
-        }
-        bGroupIDMapInitialized = true;
-    }
+        { SfxGroupId::Intern        ,   frame::CommandGroup::INTERNAL       },
+        { SfxGroupId::Application   ,   frame::CommandGroup::APPLICATION    },
+        { SfxGroupId::Document      ,   frame::CommandGroup::DOCUMENT       },
+        { SfxGroupId::View          ,   frame::CommandGroup::VIEW           },
+        { SfxGroupId::Edit          ,   frame::CommandGroup::EDIT           },
+        { SfxGroupId::Macro         ,   frame::CommandGroup::MACRO          },
+        { SfxGroupId::Options       ,   frame::CommandGroup::OPTIONS        },
+        { SfxGroupId::Math          ,   frame::CommandGroup::MATH           },
+        { SfxGroupId::Navigator     ,   frame::CommandGroup::NAVIGATOR      },
+        { SfxGroupId::Insert        ,   frame::CommandGroup::INSERT         },
+        { SfxGroupId::Format        ,   frame::CommandGroup::FORMAT         },
+        { SfxGroupId::Template      ,   frame::CommandGroup::TEMPLATE       },
+        { SfxGroupId::Text          ,   frame::CommandGroup::TEXT           },
+        { SfxGroupId::Frame         ,   frame::CommandGroup::FRAME          },
+        { SfxGroupId::Graphic       ,   frame::CommandGroup::GRAPHIC        },
+        { SfxGroupId::Table         ,   frame::CommandGroup::TABLE          },
+        { SfxGroupId::Enumeration   ,   frame::CommandGroup::ENUMERATION    },
+        { SfxGroupId::Data          ,   frame::CommandGroup::DATA           },
+        { SfxGroupId::Special       ,   frame::CommandGroup::SPECIAL        },
+        { SfxGroupId::Image         ,   frame::CommandGroup::IMAGE          },
+        { SfxGroupId::Chart         ,   frame::CommandGroup::CHART          },
+        { SfxGroupId::Explorer      ,   frame::CommandGroup::EXPLORER       },
+        { SfxGroupId::Connector     ,   frame::CommandGroup::CONNECTOR      },
+        { SfxGroupId::Modify        ,   frame::CommandGroup::MODIFY         },
+        { SfxGroupId::Drawing       ,   frame::CommandGroup::DRAWING        },
+        { SfxGroupId::Controls      ,   frame::CommandGroup::CONTROLS       },
+    };
+
 
     GroupHashMap::const_iterator pIter = s_aHashMap.find( nGroupID );
     if ( pIter != s_aHashMap.end() )
@@ -173,13 +147,13 @@ sal_Int16 MapGroupIDToCommandGroup( SfxGroupId nGroupID )
 
 sal_uInt32 Get10ThSec()
 {
-    sal_uInt32 n10Ticks = 10 * (sal_uInt32)clock();
+    sal_uInt32 n10Ticks = 10 * static_cast<sal_uInt32>(clock());
     return n10Ticks / CLOCKS_PER_SEC;
 }
 
 static sal_Int32 m_nInReschedule = 0;  /// static counter for rescheduling
 
-void reschedule()
+static void reschedule()
 {
     if ( m_nInReschedule == 0 )
     {
@@ -189,9 +163,10 @@ void reschedule()
     }
 }
 
+namespace {
+
 class SfxStatusIndicator : public ::cppu::WeakImplHelper< task::XStatusIndicator, lang::XEventListener >
 {
-friend class SfxBaseController;
     Reference < XController > xOwner;
     Reference < task::XStatusIndicator > xProgress;
     SfxWorkWindow*          pWorkWindow;
@@ -202,12 +177,12 @@ public:
                                 , pWorkWindow( pWork )
                                 , _nStartTime(0)
                             {
-                                ++m_refCount;
+                                osl_atomic_increment(&m_refCount);
                                 Reference< lang::XComponent > xComponent(
-                                    (static_cast< ::cppu::OWeakObject* >(pController)), uno::UNO_QUERY );
+                                    static_cast< ::cppu::OWeakObject* >(pController), uno::UNO_QUERY );
                                 if (xComponent.is())
                                     xComponent->addEventListener(this);
-                                --m_refCount;
+                                osl_atomic_decrement(&m_refCount);
                             }
 
     virtual void SAL_CALL   start(const OUString& aText, sal_Int32 nRange) override;
@@ -218,6 +193,8 @@ public:
 
     virtual void SAL_CALL   disposing( const lang::EventObject& Source ) override;
 };
+
+}
 
 void SAL_CALL SfxStatusIndicator::start(const OUString& aText, sal_Int32 nRange)
 {
@@ -307,6 +284,7 @@ void SAL_CALL SfxStatusIndicator::disposing( const lang::EventObject& /*Source*/
 
 //  declaration IMPL_SfxBaseController_ListenerHelper
 
+namespace {
 
 class IMPL_SfxBaseController_ListenerHelper : public ::cppu::WeakImplHelper< frame::XFrameActionListener >
 {
@@ -336,6 +314,8 @@ private:
     SfxBaseController*      m_pController;
 
 } ; // class IMPL_SfxBaseController_ListenerContainer
+
+}
 
 IMPL_SfxBaseController_CloseListenerHelper::IMPL_SfxBaseController_CloseListenerHelper( SfxBaseController*  pController )
         : m_pController ( pController   )
@@ -497,7 +477,7 @@ Sequence< PropertyValue > SAL_CALL SfxBaseController::getCreationArguments()
 
 void SfxBaseController::SetCreationArguments_Impl( const Sequence< PropertyValue >& i_rCreationArgs )
 {
-    OSL_ENSURE( m_pData->m_aCreationArgs.getLength() == 0, "SfxBaseController::SetCreationArguments_Impl: not intended to be called twice!" );
+    OSL_ENSURE( !m_pData->m_aCreationArgs.hasElements(), "SfxBaseController::SetCreationArguments_Impl: not intended to be called twice!" );
     m_pData->m_aCreationArgs = i_rCreationArgs;
 }
 
@@ -538,22 +518,22 @@ void SAL_CALL SfxBaseController::attachFrame( const Reference< frame::XFrame >& 
 
     m_pData->m_xFrame = xFrame;
 
-    if ( xFrame.is() )
+    if ( !xFrame.is() )
+        return;
+
+    xFrame->addFrameActionListener( m_pData->m_xListener ) ;
+    Reference < util::XCloseBroadcaster > xCloseable( xFrame, uno::UNO_QUERY );
+    if ( xCloseable.is() )
+        xCloseable->addCloseListener( m_pData->m_xCloseListener );
+
+    if ( m_pData->m_pViewShell )
     {
-        xFrame->addFrameActionListener( m_pData->m_xListener ) ;
-        Reference < util::XCloseBroadcaster > xCloseable( xFrame, uno::UNO_QUERY );
-        if ( xCloseable.is() )
-            xCloseable->addCloseListener( m_pData->m_xCloseListener );
+        ConnectSfxFrame_Impl( E_CONNECT );
+        ShowInfoBars( );
 
-        if ( m_pData->m_pViewShell )
-        {
-            ConnectSfxFrame_Impl( E_CONNECT );
-            ShowInfoBars( );
-
-            // attaching the frame to the controller is the last step in the creation of a new view, so notify this
-            SfxViewEventHint aHint( SfxEventHintId::ViewCreated, GlobalEventConfig::GetEventName( GlobalEventId::VIEWCREATED ), m_pData->m_pViewShell->GetObjectShell(), Reference< frame::XController2 >( this ) );
-            SfxGetpApp()->NotifyEvent( aHint );
-        }
+        // attaching the frame to the controller is the last step in the creation of a new view, so notify this
+        SfxViewEventHint aHint( SfxEventHintId::ViewCreated, GlobalEventConfig::GetEventName( GlobalEventId::VIEWCREATED ), m_pData->m_pViewShell->GetObjectShell(), Reference< frame::XController2 >( this ) );
+        SfxGetpApp()->NotifyEvent( aHint );
     }
 }
 
@@ -705,12 +685,12 @@ Reference< frame::XDispatch > SAL_CALL SfxBaseController::queryDispatch(   const
             if ( sTargetFrameName == "_beamer" )
             {
                 SfxViewFrame *pFrame = m_pData->m_pViewShell->GetViewFrame();
-                if ( eSearchFlags & ( frame::FrameSearchFlag::CREATE ))
+                if ( eSearchFlags & frame::FrameSearchFlag::CREATE )
                     pFrame->SetChildWindow( SID_BROWSER, true );
                 SfxChildWindow* pChildWin = pFrame->GetChildWindow( SID_BROWSER );
                 Reference < frame::XFrame > xFrame;
                 if ( pChildWin )
-                    xFrame = ( pChildWin->GetFrame() );
+                    xFrame = pChildWin->GetFrame();
                 if ( xFrame.is() )
                     xFrame->setName( sTargetFrameName );
 
@@ -740,7 +720,7 @@ Reference< frame::XDispatch > SAL_CALL SfxBaseController::queryDispatch(   const
                     Reference< frame::XFrame > xParentFrame;
                     Reference< frame::XFrame > xOwnFrame = pAct->GetFrame().GetFrameInterface();
                     if ( xOwnFrame.is() )
-                        xParentFrame.set( xOwnFrame->getCreator(), uno::UNO_QUERY );
+                        xParentFrame = xOwnFrame->getCreator();
 
                     if ( xParentFrame.is() )
                     {
@@ -777,7 +757,7 @@ Reference< frame::XDispatch > SAL_CALL SfxBaseController::queryDispatch(   const
             }
             else if ( aURL.Protocol == "slot:" )
             {
-                sal_uInt16 nId = (sal_uInt16) aURL.Path.toInt32();
+                sal_uInt16 nId = static_cast<sal_uInt16>(aURL.Path.toInt32());
 
                 pAct = m_pData->m_pViewShell->GetViewFrame() ;
                 if (nId >= SID_VERB_START && nId <= SID_VERB_END)
@@ -797,7 +777,7 @@ Reference< frame::XDispatch > SAL_CALL SfxBaseController::queryDispatch(   const
                     Reference< frame::XFrame > xParentFrame;
                     Reference< frame::XFrame > xOwnFrame = pAct->GetFrame().GetFrameInterface();
                     if ( xOwnFrame.is() )
-                        xParentFrame.set( xOwnFrame->getCreator(), uno::UNO_QUERY );
+                        xParentFrame = xOwnFrame->getCreator();
 
                     if ( xParentFrame.is() )
                     {
@@ -856,12 +836,9 @@ uno::Sequence< Reference< frame::XDispatch > > SAL_CALL SfxBaseController::query
     sal_Int32 nCount = seqDescripts.getLength();
     uno::Sequence< Reference< frame::XDispatch > > lDispatcher( nCount );
 
-    for( sal_Int32 i=0; i<nCount; ++i )
-    {
-        lDispatcher[i] = queryDispatch( seqDescripts[i].FeatureURL  ,
-                                        seqDescripts[i].FrameName   ,
-                                        seqDescripts[i].SearchFlags );
-    }
+    std::transform(seqDescripts.begin(), seqDescripts.end(), lDispatcher.begin(),
+        [this](const frame::DispatchDescriptor& rDesc) -> Reference< frame::XDispatch > {
+            return queryDispatch(rDesc.FeatureURL, rDesc.FrameName, rDesc.SearchFlags); });
 
     return lDispatcher;
 }
@@ -914,24 +891,24 @@ awt::Rectangle SAL_CALL SfxBaseController::queryBorderedArea( const awt::Rectang
 
 void SfxBaseController::BorderWidthsChanged_Impl()
 {
-       ::cppu::OInterfaceContainerHelper* pContainer = m_pData->m_aListenerContainer.getContainer(
+    ::cppu::OInterfaceContainerHelper* pContainer = m_pData->m_aListenerContainer.getContainer(
                         cppu::UnoType<frame::XBorderResizeListener>::get());
-    if ( pContainer )
-    {
-        frame::BorderWidths aBWidths = getBorder();
-        Reference< uno::XInterface > xThis( static_cast< ::cppu::OWeakObject* >(this), uno::UNO_QUERY );
+    if ( !pContainer )
+        return;
 
-        ::cppu::OInterfaceIteratorHelper pIterator(*pContainer);
-        while (pIterator.hasMoreElements())
+    frame::BorderWidths aBWidths = getBorder();
+    Reference< uno::XInterface > xThis( static_cast< ::cppu::OWeakObject* >(this), uno::UNO_QUERY );
+
+    ::cppu::OInterfaceIteratorHelper pIterator(*pContainer);
+    while (pIterator.hasMoreElements())
+    {
+        try
         {
-            try
-            {
-                static_cast<frame::XBorderResizeListener*>(pIterator.next())->borderWidthsChanged( xThis, aBWidths );
-            }
-            catch (const RuntimeException&)
-            {
-                pIterator.remove();
-            }
+            static_cast<frame::XBorderResizeListener*>(pIterator.next())->borderWidthsChanged( xThis, aBWidths );
+        }
+        catch (const RuntimeException&)
+        {
+            pIterator.remove();
         }
     }
 }
@@ -943,7 +920,7 @@ void SfxBaseController::BorderWidthsChanged_Impl()
 void SAL_CALL SfxBaseController::dispose()
 {
     SolarMutexGuard aGuard;
-    Reference< XController > xTmp( this );
+    Reference< XController > xKeepAlive( this );
     m_pData->m_bDisposing = true ;
 
     lang::EventObject aEventObject;
@@ -953,56 +930,56 @@ void SAL_CALL SfxBaseController::dispose()
     if ( m_pData->m_pController && m_pData->m_pController->getFrame().is() )
         m_pData->m_pController->getFrame()->removeFrameActionListener( m_pData->m_xListener ) ;
 
-    if ( m_pData->m_pViewShell )
+    if ( !m_pData->m_pViewShell )
+        return;
+
+    SfxViewFrame* pFrame = m_pData->m_pViewShell->GetViewFrame() ;
+    if ( pFrame && pFrame->GetViewShell() == m_pData->m_pViewShell )
+        pFrame->GetFrame().SetIsClosing_Impl();
+    m_pData->m_pViewShell->DisconnectAllClients();
+
+    if ( !pFrame )
+        return;
+
+    lang::EventObject aObject;
+    aObject.Source = *this ;
+
+    SfxObjectShell* pDoc = pFrame->GetObjectShell() ;
+    SfxViewFrame *pView = SfxViewFrame::GetFirst(pDoc);
+    while( pView )
     {
-        SfxViewFrame* pFrame = m_pData->m_pViewShell->GetViewFrame() ;
-        if ( pFrame && pFrame->GetViewShell() == m_pData->m_pViewShell )
-            pFrame->GetFrame().SetIsClosing_Impl();
-        m_pData->m_pViewShell->DiscardClients_Impl();
+        // if there is another ViewFrame or currently the ViewShell in my ViewFrame is switched (PagePreview)
+        if ( pView != pFrame || pView->GetViewShell() != m_pData->m_pViewShell )
+            break;
+        pView = SfxViewFrame::GetNext( *pView, pDoc );
+    }
 
-        if ( pFrame )
-        {
-            lang::EventObject aObject;
-            aObject.Source = *this ;
+    SfxGetpApp()->NotifyEvent( SfxViewEventHint(SfxEventHintId::CloseView, GlobalEventConfig::GetEventName( GlobalEventId::CLOSEVIEW ), pDoc, Reference< frame::XController2 >( this ) ) );
+    if ( !pView )
+        SfxGetpApp()->NotifyEvent( SfxEventHint(SfxEventHintId::CloseDoc, GlobalEventConfig::GetEventName( GlobalEventId::CLOSEDOC ), pDoc) );
 
-            SfxObjectShell* pDoc = pFrame->GetObjectShell() ;
-            SfxViewFrame *pView = SfxViewFrame::GetFirst(pDoc);
-            while( pView )
-            {
-                // if there is another ViewFrame or currently the ViewShell in my ViewFrame is switched (PagePreview)
-                if ( pView != pFrame || pView->GetViewShell() != m_pData->m_pViewShell )
-                    break;
-                pView = SfxViewFrame::GetNext( *pView, pDoc );
-            }
+    Reference< frame::XModel > xModel = pDoc->GetModel();
+    Reference < util::XCloseable > xCloseable( xModel, uno::UNO_QUERY );
+    if ( xModel.is() )
+    {
+        xModel->disconnectController( this );
+        if ( xCloseable.is() )
+            xCloseable->removeCloseListener( m_pData->m_xCloseListener );
+    }
 
-            SfxGetpApp()->NotifyEvent( SfxViewEventHint(SfxEventHintId::CloseView, GlobalEventConfig::GetEventName( GlobalEventId::CLOSEVIEW ), pDoc, Reference< frame::XController2 >( this ) ) );
-            if ( !pView )
-                SfxGetpApp()->NotifyEvent( SfxEventHint(SfxEventHintId::CloseDoc, GlobalEventConfig::GetEventName( GlobalEventId::CLOSEDOC ), pDoc) );
+    Reference < frame::XFrame > aXFrame;
+    attachFrame( aXFrame );
 
-            Reference< frame::XModel > xModel = pDoc->GetModel();
-            Reference < util::XCloseable > xCloseable( xModel, uno::UNO_QUERY );
-            if ( xModel.is() )
-            {
-                xModel->disconnectController( this );
-                if ( xCloseable.is() )
-                    xCloseable->removeCloseListener( m_pData->m_xCloseListener );
-            }
-
-            Reference < frame::XFrame > aXFrame;
-            attachFrame( aXFrame );
-
-            m_pData->m_xListener->disposing( aObject );
-            SfxViewShell *pShell = m_pData->m_pViewShell;
-            m_pData->m_pViewShell = nullptr;
-            if ( pFrame->GetViewShell() == pShell )
-            {
-                // Enter registrations only allowed if we are the owner!
-                if ( pFrame->GetFrame().OwnsBindings_Impl() )
-                    pFrame->GetBindings().ENTERREGISTRATIONS();
-                pFrame->GetFrame().SetFrameInterface_Impl(  aXFrame );
-                pFrame->GetFrame().DoClose_Impl();
-            }
-        }
+    m_pData->m_xListener->disposing( aObject );
+    SfxViewShell *pShell = m_pData->m_pViewShell;
+    m_pData->m_pViewShell = nullptr;
+    if ( pFrame->GetViewShell() == pShell )
+    {
+        // Enter registrations only allowed if we are the owner!
+        if ( pFrame->GetFrame().OwnsBindings_Impl() )
+            pFrame->GetBindings().ENTERREGISTRATIONS();
+        pFrame->GetFrame().SetFrameInterface_Impl(  aXFrame );
+        pFrame->GetFrame().DoClose_Impl();
     }
 }
 
@@ -1027,22 +1004,22 @@ void SAL_CALL SfxBaseController::removeEventListener( const Reference< lang::XEv
 void SfxBaseController::ReleaseShell_Impl()
 {
     SolarMutexGuard aGuard;
-    if ( m_pData->m_pViewShell )
-    {
-        SfxObjectShell* pDoc = m_pData->m_pViewShell->GetObjectShell() ;
-        Reference< frame::XModel > xModel = pDoc->GetModel();
-        Reference < util::XCloseable > xCloseable( xModel, uno::UNO_QUERY );
-        if ( xModel.is() )
-        {
-            xModel->disconnectController( this );
-            if ( xCloseable.is() )
-                xCloseable->removeCloseListener( m_pData->m_xCloseListener );
-        }
-        m_pData->m_pViewShell = nullptr;
+    if ( !m_pData->m_pViewShell )
+        return;
 
-        Reference < frame::XFrame > aXFrame;
-        attachFrame( aXFrame );
+    SfxObjectShell* pDoc = m_pData->m_pViewShell->GetObjectShell() ;
+    Reference< frame::XModel > xModel = pDoc->GetModel();
+    Reference < util::XCloseable > xCloseable( xModel, uno::UNO_QUERY );
+    if ( xModel.is() )
+    {
+        xModel->disconnectController( this );
+        if ( xCloseable.is() )
+            xCloseable->removeCloseListener( m_pData->m_xCloseListener );
     }
+    m_pData->m_pViewShell = nullptr;
+
+    Reference < frame::XFrame > aXFrame;
+    attachFrame( aXFrame );
 }
 
 SfxViewShell* SfxBaseController::GetViewShell_Impl() const
@@ -1107,10 +1084,8 @@ uno::Sequence< sal_Int16 > SAL_CALL SfxBaseController::getSupportedCommandGroups
     SolarMutexGuard aGuard;
 
     std::vector< sal_Int16 > aGroupList;
-    SfxViewFrame* pViewFrame( m_pData->m_pViewShell->GetFrame() );
-    SfxSlotPool*  pPool = &SfxSlotPool::GetSlotPool( pViewFrame );
-
-    SfxSlotPool* pSlotPool = pPool ? pPool : &SFX_SLOTPOOL();
+    SfxViewFrame* pViewFrame = m_pData->m_pViewShell ? m_pData->m_pViewShell->GetFrame() : nullptr;
+    SfxSlotPool* pSlotPool = pViewFrame ? &SfxSlotPool::GetSlotPool(pViewFrame) : &SFX_SLOTPOOL();
     const SfxSlotMode nMode( SfxSlotMode::TOOLBOXCONFIG|SfxSlotMode::ACCELCONFIG|SfxSlotMode::MENUCONFIG );
 
     // Select Group ( Group 0 is internal )
@@ -1135,7 +1110,7 @@ uno::Sequence< sal_Int16 > SAL_CALL SfxBaseController::getSupportedCommandGroups
 
 uno::Sequence< frame::DispatchInformation > SAL_CALL SfxBaseController::getConfigurableDispatchInformation( sal_Int16 nCmdGroup )
 {
-    std::list< frame::DispatchInformation > aCmdList;
+    std::vector< frame::DispatchInformation > aCmdVector;
 
     SolarMutexGuard aGuard;
     if ( m_pData->m_pViewShell )
@@ -1143,9 +1118,8 @@ uno::Sequence< frame::DispatchInformation > SAL_CALL SfxBaseController::getConfi
         const SfxSlotMode nMode( SfxSlotMode::TOOLBOXCONFIG|SfxSlotMode::ACCELCONFIG|SfxSlotMode::MENUCONFIG );
 
         SfxViewFrame* pViewFrame( m_pData->m_pViewShell->GetFrame() );
-        SfxSlotPool*  pPool( &SfxSlotPool::GetSlotPool( pViewFrame ));
-
-        SfxSlotPool* pSlotPool = pPool ? pPool : &SFX_SLOTPOOL();
+        SfxSlotPool* pSlotPool
+            = pViewFrame ? &SfxSlotPool::GetSlotPool(pViewFrame) : &SFX_SLOTPOOL();
         for ( sal_uInt16 i=0; i<pSlotPool->GetGroupCount(); i++ )
         {
             pSlotPool->SeekGroup( i );
@@ -1162,7 +1136,7 @@ uno::Sequence< frame::DispatchInformation > SAL_CALL SfxBaseController::getConfi
                             frame::DispatchInformation aCmdInfo;
                             aCmdInfo.Command = ".uno:" + OUString::createFromAscii( pSfxSlot->GetUnoName() );
                             aCmdInfo.GroupId = nCommandGroup;
-                            aCmdList.push_back( aCmdInfo );
+                            aCmdVector.push_back( aCmdInfo );
                         }
                         pSfxSlot = pSlotPool->NextSlot();
                     }
@@ -1171,20 +1145,20 @@ uno::Sequence< frame::DispatchInformation > SAL_CALL SfxBaseController::getConfi
         }
     }
 
-    return comphelper::containerToSequence( aCmdList );
+    return comphelper::containerToSequence( aCmdVector );
 }
 
-bool SfxBaseController::HandleEvent_Impl( NotifyEvent& rEvent )
+bool SfxBaseController::HandleEvent_Impl( NotifyEvent const & rEvent )
 {
     return m_pData->m_aUserInputInterception.handleNotifyEvent( rEvent );
 }
 
-bool SfxBaseController::HasKeyListeners_Impl()
+bool SfxBaseController::HasKeyListeners_Impl() const
 {
     return m_pData->m_aUserInputInterception.hasKeyHandlers();
 }
 
-bool SfxBaseController::HasMouseClickListeners_Impl()
+bool SfxBaseController::HasMouseClickListeners_Impl() const
 {
     return m_pData->m_aUserInputInterception.hasMouseClickListeners();
 }
@@ -1223,7 +1197,7 @@ void SfxBaseController::ConnectSfxFrame_Impl( const ConnectSfxFrame i_eConnect )
                     }
                     catch (const uno::Exception&)
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("sfx.view");
                     }
                 }
             }
@@ -1234,14 +1208,12 @@ void SfxBaseController::ConnectSfxFrame_Impl( const ConnectSfxFrame i_eConnect )
         if ( i_eConnect != E_RECONNECT )
         {
             pViewFrame->GetDispatcher()->Push( *m_pData->m_pViewShell );
-            if ( m_pData->m_pViewShell->GetSubShell() )
-                pViewFrame->GetDispatcher()->Push( *m_pData->m_pViewShell->GetSubShell() );
             m_pData->m_pViewShell->PushSubShells_Impl();
             pViewFrame->GetDispatcher()->Flush();
         }
 
         vcl::Window* pEditWin = m_pData->m_pViewShell->GetWindow();
-        if ( pEditWin && m_pData->m_pViewShell->IsShowView_Impl() )
+        if ( pEditWin )
             pEditWin->Show();
 
         if ( SfxViewFrame::Current() == pViewFrame )
@@ -1366,13 +1338,13 @@ void SfxBaseController::ConnectSfxFrame_Impl( const ConnectSfxFrame i_eConnect )
                     {
                         Sequence< PropertyValue > aViewData;
                         OSL_VERIFY( xViewData->getByIndex( nViewDataIndex ) >>= aViewData );
-                        if ( aViewData.getLength() > 0 )
+                        if ( aViewData.hasElements() )
                             m_pData->m_pViewShell->ReadUserDataSequence( aViewData );
                     }
                 }
                 catch (const Exception&)
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("sfx.view");
                 }
             }
         }
@@ -1387,49 +1359,50 @@ void SfxBaseController::ConnectSfxFrame_Impl( const ConnectSfxFrame i_eConnect )
 
 void SfxBaseController::ShowInfoBars( )
 {
-    if ( m_pData->m_pViewShell )
+    if ( !m_pData->m_pViewShell )
+        return;
+
+    // CMIS verifications
+    Reference< document::XCmisDocument > xCmisDoc( m_pData->m_pViewShell->GetObjectShell()->GetModel(), uno::UNO_QUERY );
+    if ( !xCmisDoc.is( ) || !xCmisDoc->canCheckOut( ) )
+        return;
+
+    const uno::Sequence< document::CmisProperty> aCmisProperties = xCmisDoc->getCmisProperties( );
+
+    if ( !(xCmisDoc->isVersionable( ) && aCmisProperties.hasElements( )) )
+        return;
+
+    // Loop over the CMIS Properties to find cmis:isVersionSeriesCheckedOut
+    // and find if it is a Google Drive file.
+    bool bIsGoogleFile = false;
+    bool bCheckedOut = false;
+    for ( const auto& rCmisProp : aCmisProperties )
     {
-        // CMIS verifications
-        Reference< document::XCmisDocument > xCmisDoc( m_pData->m_pViewShell->GetObjectShell()->GetModel(), uno::UNO_QUERY );
-        if ( xCmisDoc.is( ) && xCmisDoc->canCheckOut( ) )
-        {
-            uno::Sequence< document::CmisProperty> aCmisProperties = xCmisDoc->getCmisProperties( );
-
-            if ( xCmisDoc->isVersionable( ) && aCmisProperties.hasElements( ) )
-            {
-                // Loop over the CMIS Properties to find cmis:isVersionSeriesCheckedOut
-                // and find if it is a Google Drive file.
-                bool bIsGoogleFile = false;
-                bool bCheckedOut = false;
-                for ( sal_Int32 i = 0; i < aCmisProperties.getLength(); ++i )
-                {
-                    if ( aCmisProperties[i].Id == "cmis:isVersionSeriesCheckedOut" ) {
-                        uno::Sequence< sal_Bool > bTmp;
-                        aCmisProperties[i].Value >>= bTmp;
-                        bCheckedOut = bTmp[0];
-                    }
-                    // if it is a Google Drive file, we don't need the checkout bar,
-                    // still need the checkout feature for the version dialog.
-                    if ( aCmisProperties[i].Name == "title" )
-                        bIsGoogleFile = true;
-                }
-
-                if ( !bCheckedOut && !bIsGoogleFile )
-                {
-                    // Get the Frame and show the InfoBar if not checked out
-                    SfxViewFrame* pViewFrame = m_pData->m_pViewShell->GetFrame();
-                    auto pInfoBar = pViewFrame->AppendInfoBar( "checkout", SfxResId( STR_NONCHECKEDOUT_DOCUMENT ), InfoBarType::Warning);
-                    if (pInfoBar)
-                    {
-                        VclPtrInstance<PushButton> xBtn(&pViewFrame->GetWindow());
-                        xBtn->SetText(SfxResId(STR_CHECKOUT));
-                        xBtn->SetSizePixel(xBtn->GetOptimalSize());
-                        xBtn->SetClickHdl(LINK(this, SfxBaseController, CheckOutHandler));
-                        pInfoBar->addButton(xBtn);
-                    }
-                }
-            }
+        if ( rCmisProp.Id == "cmis:isVersionSeriesCheckedOut" ) {
+            uno::Sequence< sal_Bool > bTmp;
+            rCmisProp.Value >>= bTmp;
+            bCheckedOut = bTmp[0];
         }
+        // if it is a Google Drive file, we don't need the checkout bar,
+        // still need the checkout feature for the version dialog.
+        if ( rCmisProp.Name == "title" )
+            bIsGoogleFile = true;
+    }
+
+    if ( bCheckedOut || bIsGoogleFile )
+        return;
+
+    // Get the Frame and show the InfoBar if not checked out
+    SfxViewFrame* pViewFrame = m_pData->m_pViewShell->GetFrame();
+    auto pInfoBar = pViewFrame->AppendInfoBar("checkout", "", SfxResId(STR_NONCHECKEDOUT_DOCUMENT),
+                                              InfobarType::WARNING);
+    if (pInfoBar)
+    {
+        VclPtrInstance<PushButton> xBtn(&pViewFrame->GetWindow());
+        xBtn->SetText(SfxResId(STR_CHECKOUT));
+        xBtn->SetSizePixel(xBtn->GetOptimalSize());
+        xBtn->SetClickHdl(LINK(this, SfxBaseController, CheckOutHandler));
+        pInfoBar->addButton(xBtn);
     }
 }
 
@@ -1494,6 +1467,79 @@ void SAL_CALL SfxBaseController::removeTitleChangeListener(const Reference< fram
 
 void SfxBaseController::initialize( const css::uno::Sequence< css::uno::Any >& /*aArguments*/ )
 {
+}
+
+void SAL_CALL SfxBaseController::appendInfobar(const OUString& sId, const OUString& sPrimaryMessage,
+                                               const OUString& sSecondaryMessage,
+                                               sal_Int32 aInfobarType,
+                                               const Sequence<StringPair>& actionButtons,
+                                               sal_Bool bShowCloseButton)
+{
+    SolarMutexGuard aGuard;
+
+    if (aInfobarType < static_cast<sal_Int32>(InfobarType::INFO)
+        || aInfobarType > static_cast<sal_Int32>(InfobarType::DANGER))
+        throw lang::IllegalArgumentException("Undefined InfobarType: "
+                                                 + OUString::number(aInfobarType),
+                                             static_cast<::cppu::OWeakObject*>(this), 0);
+    SfxViewFrame* pViewFrame = m_pData->m_pViewShell->GetFrame();
+    if (pViewFrame->HasInfoBarWithID(sId))
+        throw lang::IllegalArgumentException("Infobar with ID '" + sId + "' already existing.",
+                                             static_cast<::cppu::OWeakObject*>(this), 0);
+
+    auto pInfoBar
+        = pViewFrame->AppendInfoBar(sId, sPrimaryMessage, sSecondaryMessage,
+                                    static_cast<InfobarType>(aInfobarType), bShowCloseButton);
+    if (!pInfoBar)
+        throw uno::RuntimeException("Could not create Infobar");
+
+    auto vActionButtons = comphelper::sequenceToContainer<std::vector<StringPair>>(actionButtons);
+    for (auto& actionButton : vActionButtons)
+    {
+        if (actionButton.First.isEmpty() || actionButton.Second.isEmpty())
+            continue;
+        VclPtrInstance<PushButton> xBtn(&pViewFrame->GetWindow());
+        xBtn->SetText(actionButton.First);
+        xBtn->SetSizePixel(xBtn->GetOptimalSize());
+        xBtn->SetCommandHandler(actionButton.Second);
+        pInfoBar->addButton(xBtn);
+    }
+}
+
+void SAL_CALL SfxBaseController::updateInfobar(const OUString& sId, const OUString& sPrimaryMessage,
+                                               const OUString& sSecondaryMessage,
+                                               sal_Int32 aInfobarType)
+{
+    SolarMutexGuard aGuard;
+
+    if (aInfobarType < static_cast<sal_Int32>(InfobarType::INFO)
+        || aInfobarType > static_cast<sal_Int32>(InfobarType::DANGER))
+        throw lang::IllegalArgumentException("Undefined InfobarType: "
+                                                 + OUString::number(aInfobarType),
+                                             static_cast<::cppu::OWeakObject*>(this), 0);
+    SfxViewFrame* pViewFrame = m_pData->m_pViewShell->GetFrame();
+    if (!pViewFrame->HasInfoBarWithID(sId))
+        throw css::container::NoSuchElementException("Infobar with ID '" + sId + "' not found.");
+
+    pViewFrame->UpdateInfoBar(sId, sPrimaryMessage, sSecondaryMessage,
+                              static_cast<InfobarType>(aInfobarType));
+}
+
+void SAL_CALL SfxBaseController::removeInfobar(const OUString& sId)
+{
+    SolarMutexGuard aGuard;
+
+    SfxViewFrame* pViewFrame = m_pData->m_pViewShell->GetFrame();
+    if (!pViewFrame->HasInfoBarWithID(sId))
+        throw css::container::NoSuchElementException("Infobar with ID '" + sId + "' not found.");
+    pViewFrame->RemoveInfoBar(sId);
+}
+
+sal_Bool SAL_CALL SfxBaseController::hasInfobar(const OUString& sId)
+{
+    SolarMutexGuard aGuard;
+    SfxViewFrame* pViewFrame = m_pData->m_pViewShell->GetFrame();
+    return pViewFrame->HasInfoBarWithID(sId);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

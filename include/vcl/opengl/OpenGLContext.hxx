@@ -10,27 +10,18 @@
 #ifndef INCLUDED_VCL_OPENGL_OPENGLCONTEXT_HXX
 #define INCLUDED_VCL_OPENGL_OPENGLCONTEXT_HXX
 
-#include <string.h>
-
 #include <epoxy/gl.h>
 
 #include <vcl/dllapi.h>
-#include <vcl/window.hxx>
-#include <tools/gen.hxx>
 #include <vcl/syschild.hxx>
-#include <rtl/crc.h>
 #include <rtl/ref.hxx>
 
-#include <map>
 #include <memory>
-#include <set>
 #include <unordered_map>
 
 class OpenGLFramebuffer;
 class OpenGLProgram;
 class OpenGLTexture;
-class SalGraphicsImpl;
-class OpenGLTests;
 class RenderState;
 
 /// Holds the information of our new child window
@@ -74,17 +65,15 @@ public:
     void dispose();
 
     void requestLegacyContext();
-    void requestSingleBufferedRendering();
 
-    bool init(vcl::Window* pParent = nullptr);
-    bool init(SystemChildWindow* pChildWindow);
+    bool init(vcl::Window* pParent);
 
     void reset();
 
     // use these methods right after setting a context to make sure drawing happens
     // in the right FBO (default one is for onscreen painting)
-    bool               BindFramebuffer( OpenGLFramebuffer* pFramebuffer );
-    bool               AcquireDefaultFramebuffer();
+    void               BindFramebuffer( OpenGLFramebuffer* pFramebuffer );
+    void               AcquireDefaultFramebuffer();
     OpenGLFramebuffer* AcquireFramebuffer( const OpenGLTexture& rTexture );
     static void        ReleaseFramebuffer( OpenGLFramebuffer* pFramebuffer );
     void UnbindTextureFromFramebuffers( GLuint nTexture );
@@ -96,7 +85,6 @@ public:
     // retrieve a program from the cache or compile/link it
     OpenGLProgram*      GetProgram( const OUString& rVertexShader, const OUString& rFragmentShader, const OString& preamble = "" );
     OpenGLProgram*      UseProgram( const OUString& rVertexShader, const OUString& rFragmentShader, const OString& preamble = "" );
-    void                UseNoProgram();
 
     RenderState& state()
     {
@@ -136,28 +124,26 @@ public:
     void show();
 
     void setWinPosAndSize(const Point &rPos, const Size& rSize);
-    void setWinSize(const Size& rSize);
     virtual const GLWindow& getOpenGLWindow() const = 0;
 
     SystemChildWindow* getChildWindow();
     const SystemChildWindow* getChildWindow() const;
 
-    bool isInitialized()
+    bool isInitialized() const
     {
         return mbInitialized;
     }
 
     /// VCL promiscuously re-uses its own contexts:
     void setVCLOnly() { mbVCLOnly = true; }
-    bool isVCLOnly() { return mbVCLOnly; }
-
-    bool supportMultiSampling() const;
+    bool isVCLOnly() const { return mbVCLOnly; }
 
     virtual SystemWindowData generateWinData(vcl::Window* pParent, bool bRequestLegacyContext);
 
 private:
-    virtual bool initWindow();
+    virtual void initWindow();
     virtual void destroyCurrentContext();
+    virtual void adjustToNewSize();
 
 protected:
     bool InitGL();
@@ -173,7 +159,6 @@ protected:
     bool mbInitialized;
     int  mnRefCount;
     bool mbRequestLegacyContext;
-    bool mbUseDoubleBufferedRendering;
     bool mbVCLOnly;
 
     int mnFramebufferCount;
@@ -184,15 +169,7 @@ protected:
     OpenGLCapabilitySwitch maOpenGLCapabilitySwitch;
 
 private:
-    struct ProgramHash
-    {
-        size_t operator()( const rtl::OString& aDigest ) const
-        {
-            return (size_t)( rtl_crc32( 0, aDigest.getStr(), aDigest.getLength() ) );
-        }
-    };
-
-    typedef std::unordered_map< rtl::OString, std::shared_ptr<OpenGLProgram>, ProgramHash > ProgramCollection;
+    typedef std::unordered_map< OString, std::shared_ptr<OpenGLProgram> > ProgramCollection;
     ProgramCollection maPrograms;
     OpenGLProgram* mpCurrentProgram;
 
@@ -200,7 +177,6 @@ private:
 
 public:
     vcl::Region maClipRegion;
-    int mnPainting;
 
     // Don't hold references to ourselves:
     OpenGLContext *mpPrevContext;

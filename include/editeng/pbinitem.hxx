@@ -24,7 +24,7 @@
 
 // define ----------------------------------------------------------------
 
-#define PAPERBIN_PRINTER_SETTINGS   ((sal_uInt8)0xFF)
+#define PAPERBIN_PRINTER_SETTINGS   (sal_uInt8(0xFF))
 
 // class SvxPaperBinItem -------------------------------------------------
 
@@ -33,35 +33,25 @@
     This item describes selecting a paper tray of the printer.
 */
 
-class EDITENG_DLLPUBLIC SvxPaperBinItem : public SfxByteItem
+class EDITENG_DLLPUBLIC SvxPaperBinItem final : public SfxByteItem
 {
 public:
     static SfxPoolItem* CreateDefault();
 
     explicit inline SvxPaperBinItem( const sal_uInt16 nId ,
                             const sal_uInt8 nTray = PAPERBIN_PRINTER_SETTINGS );
-    inline SvxPaperBinItem &operator=( const SvxPaperBinItem &rCpy );
 
     // "pure virtual Methods" from SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream &, sal_uInt16 ) const override;
-    virtual SvStream&       Store( SvStream &, sal_uInt16 nItemVersion ) const override;
+    virtual SvxPaperBinItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 inline SvxPaperBinItem::SvxPaperBinItem( const sal_uInt16 nId, const sal_uInt8 nT )
     : SfxByteItem( nId, nT )
 {}
-
-inline SvxPaperBinItem &SvxPaperBinItem::operator=(
-    const SvxPaperBinItem &rCpy )
-{
-    SetValue( rCpy.GetValue() );
-    return *this;
-}
 
 #endif
 

@@ -20,14 +20,12 @@
 #ifndef INCLUDED_SC_INC_DPTABSRC_HXX
 #define INCLUDED_SC_INC_DPTABSRC_HXX
 
-#include "global.hxx"
 #include <com/sun/star/sheet/XDimensionsSupplier.hpp>
 #include <com/sun/star/sheet/XHierarchiesSupplier.hpp>
 #include <com/sun/star/sheet/XLevelsSupplier.hpp>
 #include <com/sun/star/sheet/XMembersSupplier.hpp>
 #include <com/sun/star/sheet/XDataPilotResults.hpp>
 #include <com/sun/star/sheet/XDataPilotMemberResults.hpp>
-#include <com/sun/star/sheet/MemberResult.hpp>
 #include <com/sun/star/sheet/DataPilotFieldAutoShowInfo.hpp>
 #include <com/sun/star/sheet/DataPilotFieldLayoutInfo.hpp>
 #include <com/sun/star/sheet/DataPilotFieldLayoutMode.hpp>
@@ -44,28 +42,24 @@
 #include <rtl/ref.hxx>
 
 #include "dptabdat.hxx"
-#include "dpglobal.hxx"
 #include "dpresfilter.hxx"
 
-#include <list>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <optional>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sheet {
         struct DataPilotFieldFilter;
+        struct MemberResult;
     }
-    namespace table {
-        struct CellAddress;
-    }
-}}}
+}
 
 class ScDPResultMember;
 class ScDPResultData;
 class ScDPItemData;
-class ScDPTableData;
 class ScDPDimensions;
 class ScDPDimension;
 class ScDPHierarchies;
@@ -78,7 +72,7 @@ enum class ScGeneralFunction;
 
 //  implementation of DataPilotSource using ScDPTableData
 
-class ScDPSource : public cppu::WeakImplHelper<
+class ScDPSource final : public cppu::WeakImplHelper<
                             css::sheet::XDimensionsSupplier,
                             css::sheet::XDataPilotResults,
                             css::util::XRefreshable,
@@ -105,17 +99,17 @@ private:
     long                    nDupCount;
 
                                                 // results:
-    ScDPResultData*         pResData;           // keep the rest in this!
-    ScDPResultMember*       pColResRoot;
-    ScDPResultMember*       pRowResRoot;
-    css::uno::Sequence<css::sheet::MemberResult>* pColResults;
-    css::uno::Sequence<css::sheet::MemberResult>* pRowResults;
+    std::unique_ptr<ScDPResultData>   pResData;           // keep the rest in this!
+    std::unique_ptr<ScDPResultMember> pColResRoot;
+    std::unique_ptr<ScDPResultMember> pRowResRoot;
+    std::unique_ptr<css::uno::Sequence<css::sheet::MemberResult>[]> pColResults;
+    std::unique_ptr<css::uno::Sequence<css::sheet::MemberResult>[]> pRowResults;
     std::vector<ScDPLevel*> aColLevelList;
     std::vector<ScDPLevel*> aRowLevelList;
     bool                    bResultOverflow;
     bool                    bPageFiltered;      // set if page field filters have been applied to cache table
 
-    ::std::unique_ptr<OUString> mpGrandTotalName;
+    std::optional<OUString> mpGrandTotalName;
 
     void                    CreateRes_Impl();
     void                    FillMemberResults();
@@ -150,14 +144,15 @@ public:
     ScDPTableData*          GetData()       { return pData; }
     const ScDPTableData*    GetData() const { return pData; }
 
-    const OUString*  GetGrandTotalName() const;
+    const std::optional<OUString> &
+                            GetGrandTotalName() const;
 
     css::sheet::DataPilotFieldOrientation
                             GetOrientation(long nColumn);
     void                    SetOrientation(long nColumn, css::sheet::DataPilotFieldOrientation nNew);
     long                    GetPosition(long nColumn);
 
-    long                    GetDataDimensionCount();
+    long                    GetDataDimensionCount() const;
     ScDPDimension*          GetDataDimension(long nIndex);
     OUString GetDataDimName(long nIndex);
     const ScDPCache* GetCache();
@@ -176,7 +171,7 @@ public:
     long                    GetSourceDim(long nDim);
 
     const css::uno::Sequence<css::sheet::MemberResult>*
-                            GetMemberResults( ScDPLevel* pLevel );
+                            GetMemberResults( const ScDPLevel* pLevel );
 
     ScDPDimensions*         GetDimensionsObject();
 
@@ -273,8 +268,8 @@ class ScDPDimension : public cppu::WeakImplHelper<
     rtl::Reference<ScDPHierarchies> mxHierarchies;
     ScGeneralFunction   nFunction;
     OUString            aName;              // if empty, take from source
-    std::unique_ptr<OUString> mpLayoutName;
-    std::unique_ptr<OUString> mpSubtotalName;
+    std::optional<OUString> mpLayoutName;
+    std::optional<OUString> mpSubtotalName;
     long                nSourceDim;         // >=0 if dup'ed
     css::sheet::DataPilotFieldReference
                         aReferenceValue;    // settings for "show data as" / "displayed value"
@@ -296,8 +291,8 @@ public:
     ScDPDimension*          CreateCloneObject();
     ScDPHierarchies*        GetHierarchiesObject();
 
-    SC_DLLPUBLIC const OUString*  GetLayoutName() const;
-    const OUString*  GetSubtotalName() const;
+    const std::optional<OUString> & GetLayoutName() const;
+    const std::optional<OUString> & GetSubtotalName() const;
 
                             // XNamed
     virtual OUString SAL_CALL getName() override;
@@ -547,7 +542,7 @@ public:
 };
 
 // hash map from name to index in the member array, for fast name access
-typedef std::unordered_map< OUString, sal_Int32, OUStringHash > ScDPMembersHashMap;
+typedef std::unordered_map< OUString, sal_Int32 > ScDPMembersHashMap;
 
 class ScDPMembers : public cppu::WeakImplHelper<
                             css::sheet::XMembersAccess,
@@ -608,8 +603,8 @@ private:
     long            nHier;
     long            nLev;
 
-    SCROW       mnDataId;
-    std::unique_ptr<OUString> mpLayoutName;
+    SCROW           mnDataId;
+    std::optional<OUString> mpLayoutName;
 
     sal_Int32       nPosition;          // manual sorting
     bool            bVisible;
@@ -627,7 +622,7 @@ public:
     SCROW GetItemDataId() const { return mnDataId; }
     bool IsNamedItem(SCROW nIndex) const;
 
-    SC_DLLPUBLIC const OUString* GetLayoutName() const;
+    const std::optional<OUString> & GetLayoutName() const;
     long GetDim() const { return nDim;}
 
     sal_Int32               Compare( const ScDPMember& rOther ) const;      // visible order

@@ -17,36 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "unx/cairotextrender.hxx"
+#include <unx/cairotextrender.hxx>
 
-#include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <vcl/settings.hxx>
-#include <vcl/sysdata.hxx>
+#include <unx/fc_fontoptions.hxx>
+#include <unx/freetype_glyphcache.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/fontcharmap.hxx>
-
-#include "unx/printergfx.hxx"
-#include "unx/genpspgraphics.h"
-#include "unx/geninst.h"
-#include "unx/glyphcache.hxx"
-#include "unx/fc_fontoptions.hxx"
-#include "PhysicalFontFace.hxx"
-#include "impfont.hxx"
-#include "impfontmetricdata.hxx"
+#include <sallayout.hxx>
 
 #include <cairo.h>
 #include <cairo-ft.h>
-#include "CommonSalLayout.hxx"
-
-#ifdef ANDROID
-namespace std
-{
-double fmax(double x, double y)
-{
-    return ::fmax(x, y);
-}
-}
-#endif
 
 namespace {
 
@@ -82,56 +61,6 @@ public:
 
 CairoFontsCache::LRUFonts CairoFontsCache::maLRUFonts;
 
-}
-
-CairoTextRender::CairoTextRender()
-    : mnTextColor(MAKE_SALCOLOR(0x00, 0x00, 0x00)) //black
-{
-    for(FreetypeFont* & rp : mpFreetypeFont)
-        rp = nullptr;
-}
-
-bool CairoTextRender::setFont( const FontSelectPattern *pEntry, int nFallbackLevel )
-{
-    // release all no longer needed font resources
-    for( int i = nFallbackLevel; i < MAX_FALLBACK; ++i )
-    {
-        if( mpFreetypeFont[i] != nullptr )
-        {
-            // old server side font is no longer referenced
-            GlyphCache::GetInstance().UncacheFont( *mpFreetypeFont[i] );
-            mpFreetypeFont[i] = nullptr;
-        }
-    }
-
-    // return early if there is no new font
-    if( !pEntry )
-        return false;
-
-    // return early if this is not a valid font for this graphics
-    if( !pEntry->mpFontData )
-        return false;
-
-    // handle the request for a non-native X11-font => use the GlyphCache
-    FreetypeFont* pFreetypeFont = GlyphCache::GetInstance().CacheFont( *pEntry );
-    if( pFreetypeFont != nullptr )
-    {
-        // ignore fonts with e.g. corrupted font files
-        if( !pFreetypeFont->TestFont() )
-        {
-            GlyphCache::GetInstance().UncacheFont( *pFreetypeFont );
-            return false;
-        }
-
-        // register to use the font
-        mpFreetypeFont[ nFallbackLevel ] = pFreetypeFont;
-
-        return true;
-    }
-
-    return false;
-}
-
 void CairoFontsCache::CacheFont(void *pFont, const CairoFontsCache::CacheId &rId)
 {
     maLRUFonts.push_front( std::pair<void*, CairoFontsCache::CacheId>(pFont, rId) );
@@ -144,11 +73,13 @@ void CairoFontsCache::CacheFont(void *pFont, const CairoFontsCache::CacheId &rId
 
 void* CairoFontsCache::FindCachedFont(const CairoFontsCache::CacheId &rId)
 {
-    LRUFonts::iterator aEnd = maLRUFonts.end();
-    for (LRUFonts::iterator aI = maLRUFonts.begin(); aI != aEnd; ++aI)
-        if (aI->second == rId)
-            return aI->first;
+    auto aI = std::find_if(maLRUFonts.begin(), maLRUFonts.end(),
+        [&rId](const LRUFonts::value_type& rFont) { return rFont.second == rId; });
+    if (aI != maLRUFonts.end())
+        return aI->first;
     return nullptr;
+}
+
 }
 
 namespace
@@ -160,13 +91,31 @@ namespace
 
     double toRadian(int nDegree10th)
     {
-        return (3600 - (nDegree10th)) * M_PI / 1800.0;
+        return (3600 - nDegree10th) * M_PI / 1800.0;
+    }
+
+    cairo_t* syncCairoContext(cairo_t* cr)
+    {
+        //rhbz#1283420 tdf#117413 bodge to force a read from the underlying surface which has
+        //the side effect of making the mysterious xrender related problem go away
+        cairo_surface_t *target = cairo_get_target(cr);
+        if (cairo_surface_get_type(target) == CAIRO_SURFACE_TYPE_XLIB)
+        {
+            cairo_surface_t *throw_away = cairo_surface_create_similar(target, cairo_surface_get_content(target), 1, 1);
+            cairo_t *force_read_cr = cairo_create(throw_away);
+            cairo_set_source_surface(force_read_cr, target, 0, 0);
+            cairo_paint(force_read_cr);
+            cairo_destroy(force_read_cr);
+            cairo_surface_destroy(throw_away);
+        }
+        return cr;
     }
 }
 
-void CairoTextRender::DrawTextLayout(const CommonSalLayout& rLayout)
+void CairoTextRender::DrawTextLayout(const GenericSalLayout& rLayout, const SalGraphics& rGraphics)
 {
-    const FreetypeFont& rFont = rLayout.getFontData();
+    const FreetypeFontInstance& rInstance = static_cast<FreetypeFontInstance&>(rLayout.GetFont());
+    const FreetypeFont& rFont = rInstance.GetFreetypeFont();
 
     std::vector<cairo_glyph_t> cairo_glyphs;
     std::vector<int> glyph_extrarotation;
@@ -175,10 +124,10 @@ void CairoTextRender::DrawTextLayout(const CommonSalLayout& rLayout)
     Point aPos;
     const GlyphItem* pGlyph;
     int nStart = 0;
-    while (rLayout.GetNextGlyphs(1, &pGlyph, aPos, nStart))
+    while (rLayout.GetNextGlyph(&pGlyph, aPos, nStart))
     {
         cairo_glyph_t aGlyph;
-        aGlyph.index = pGlyph->maGlyphId;
+        aGlyph.index = pGlyph->glyphId();
         aGlyph.x = aPos.X();
         aGlyph.y = aPos.Y();
         cairo_glyphs.push_back(aGlyph);
@@ -192,10 +141,14 @@ void CairoTextRender::DrawTextLayout(const CommonSalLayout& rLayout)
     if (cairo_glyphs.empty())
         return;
 
-    const FontSelectPattern& rFSD = rFont.GetFontSelData();
+    const FontSelectPattern& rFSD = rInstance.GetFontSelectPattern();
     int nHeight = rFSD.mnHeight;
     int nWidth = rFSD.mnWidth ? rFSD.mnWidth : nHeight;
     if (nWidth == 0 || nHeight == 0)
+        return;
+
+    int nRatio = nWidth * 10 / nHeight;
+    if (FreetypeFont::AlmostHorizontalDrainsRenderingPool(nRatio, rFSD))
         return;
 
     /*
@@ -204,7 +157,7 @@ void CairoTextRender::DrawTextLayout(const CommonSalLayout& rLayout)
      * least change the SalFrame etc impls to dtor the SalGraphics *before* the
      * destruction of the windows they reference
     */
-    cairo_t *cr = getCairoContext();
+    cairo_t *cr = syncCairoContext(getCairoContext());
     if (!cr)
     {
         SAL_WARN("vcl", "no cairo context for text");
@@ -213,7 +166,20 @@ void CairoTextRender::DrawTextLayout(const CommonSalLayout& rLayout)
 
     ImplSVData* pSVData = ImplGetSVData();
     if (const cairo_font_options_t* pFontOptions = pSVData->mpDefInst->GetCairoFontOptions())
-        cairo_set_font_options(cr, pFontOptions);
+    {
+        const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
+        if (!rStyleSettings.GetUseFontAAFromSystem() && !rGraphics.getAntiAliasB2DDraw())
+        {
+            // Disable font AA in case global AA setting is supposed to affect
+            // font rendering (not the default) and AA is disabled.
+            cairo_font_options_t* pOptions = cairo_font_options_copy(pFontOptions);
+            cairo_font_options_set_antialias(pOptions, CAIRO_ANTIALIAS_NONE);
+            cairo_set_font_options(cr, pOptions);
+            cairo_font_options_destroy(pOptions);
+        }
+        else
+            cairo_set_font_options(cr, pFontOptions);
+    }
 
     double nDX, nDY;
     getSurfaceOffset(nDX, nDY);
@@ -222,9 +188,9 @@ void CairoTextRender::DrawTextLayout(const CommonSalLayout& rLayout)
     clipRegion(cr);
 
     cairo_set_source_rgb(cr,
-        SALCOLOR_RED(mnTextColor)/255.0,
-        SALCOLOR_GREEN(mnTextColor)/255.0,
-        SALCOLOR_BLUE(mnTextColor)/255.0);
+        mnTextColor.GetRed()/255.0,
+        mnTextColor.GetGreen()/255.0,
+        mnTextColor.GetBlue()/255.0);
 
     FT_Face aFace = rFont.GetFtFace();
     CairoFontsCache::CacheId aId;
@@ -288,17 +254,16 @@ void CairoTextRender::DrawTextLayout(const CommonSalLayout& rLayout)
             //like them
             double xdiff = 0.0;
             double ydiff = 0.0;
-            if (nGlyphRotation)
-            {
-                // The y is the origin point position, but Cairo will draw
-                // the glyph *above* that point, we need to move it down to
-                // the glyph’s baseline.
-                cairo_text_extents_t aExt;
-                cairo_glyph_extents(cr, &cairo_glyphs[nStartIndex], nLen, &aExt);
-                double nDescender = std::fmax(aExt.height + aExt.y_bearing, 0);
-                ydiff = (aExt.x_advance - nDescender) / nHeight;
-                xdiff = -font_extents.descent/nHeight;
-            }
+
+            // The y is the origin point position, but Cairo will draw
+            // the glyph *above* that point, we need to move it down to
+            // the glyph’s baseline.
+            cairo_text_extents_t aExt;
+            cairo_glyph_extents(cr, &cairo_glyphs[nStartIndex], nLen, &aExt);
+            double nDescender = std::fmax(aExt.height + aExt.y_bearing, 0);
+            ydiff = (aExt.x_advance - nDescender) / nHeight;
+            xdiff = -font_extents.descent/nHeight;
+
             cairo_matrix_translate(&m, xdiff, ydiff);
         }
 
@@ -312,6 +277,10 @@ void CairoTextRender::DrawTextLayout(const CommonSalLayout& rLayout)
 
         cairo_set_font_matrix(cr, &m);
         cairo_show_glyphs(cr, &cairo_glyphs[nStartIndex], nLen);
+        if (cairo_status(cr) != CAIRO_STATUS_SUCCESS)
+        {
+            SAL_WARN("vcl", "rendering text failed with stretch ratio of: " << nRatio << ", " << cairo_status_to_string(cairo_status(cr)));
+        }
 
 #if OSL_DEBUG_LEVEL > 2
         //draw origin
@@ -328,83 +297,6 @@ void CairoTextRender::DrawTextLayout(const CommonSalLayout& rLayout)
     releaseCairoContext(cr);
 }
 
-const FontCharMapRef CairoTextRender::GetFontCharMap() const
-{
-    if( !mpFreetypeFont[0] )
-        return nullptr;
-
-    const FontCharMapRef xFCMap = mpFreetypeFont[0]->GetFontCharMap();
-    return xFCMap;
-}
-
-bool CairoTextRender::GetFontCapabilities(vcl::FontCapabilities &rGetImplFontCapabilities) const
-{
-    if (!mpFreetypeFont[0])
-        return false;
-    return mpFreetypeFont[0]->GetFontCapabilities(rGetImplFontCapabilities);
-}
-
-// SalGraphics
-
-void CairoTextRender::SetFont( FontSelectPattern *pEntry, int nFallbackLevel )
-{
-    setFont(pEntry, nFallbackLevel);
-}
-
-void
-CairoTextRender::SetTextColor( SalColor nSalColor )
-{
-    if( mnTextColor != nSalColor )
-    {
-        mnTextColor = nSalColor;
-    }
-}
-
-bool CairoTextRender::AddTempDevFont( PhysicalFontCollection* pFontCollection,
-                                     const OUString& rFileURL,
-                                     const OUString& rFontName )
-{
-    return GenPspGraphics::AddTempDevFontHelper( pFontCollection, rFileURL, rFontName, getPlatformGlyphCache() );
-}
-
-void CairoTextRender::ClearDevFontCache()
-{
-    GlyphCache& rGC = getPlatformGlyphCache();
-    rGC.ClearFontCache();
-}
-
-void CairoTextRender::GetDevFontList( PhysicalFontCollection* pFontCollection )
-{
-    // prepare the GlyphCache using psprint's font infos
-    GlyphCache& rGC = getPlatformGlyphCache();
-
-    psp::PrintFontManager& rMgr = psp::PrintFontManager::get();
-    ::std::list< psp::fontID > aList;
-    ::std::list< psp::fontID >::iterator it;
-    psp::FastPrintFontInfo aInfo;
-    rMgr.getFontList( aList );
-    for( it = aList.begin(); it != aList.end(); ++it )
-    {
-        if( !rMgr.getFontFastInfo( *it, aInfo ) )
-            continue;
-
-        // normalize face number to the GlyphCache
-        int nFaceNum = rMgr.getFontFaceNumber( aInfo.m_nID );
-
-        // inform GlyphCache about this font provided by the PsPrint subsystem
-        FontAttributes aDFA = GenPspGraphics::Info2FontAttributes( aInfo );
-        aDFA.IncreaseQualityBy( 4096 );
-        const OString& rFileName = rMgr.getFontFileSysPath( aInfo.m_nID );
-        rGC.AddFontFile( rFileName, nFaceNum, aInfo.m_nID, aDFA );
-   }
-
-    // announce glyphcache fonts
-    rGC.AnnounceFonts( pFontCollection );
-
-    // register platform specific font substitutions if available
-    SalGenericInstance::RegisterFontSubstitutors( pFontCollection );
-}
-
 void FontConfigFontOptions::cairo_font_options_substitute(FcPattern* pPattern)
 {
     ImplSVData* pSVData = ImplGetSVData();
@@ -414,143 +306,4 @@ void FontConfigFontOptions::cairo_font_options_substitute(FcPattern* pPattern)
     cairo_ft_font_options_substitute(pFontOptions, pPattern);
 }
 
-void CairoTextRender::GetFontMetric( ImplFontMetricDataRef& rxFontMetric, int nFallbackLevel )
-{
-    if( nFallbackLevel >= MAX_FALLBACK )
-        return;
-
-    if( mpFreetypeFont[nFallbackLevel] != nullptr )
-        mpFreetypeFont[nFallbackLevel]->GetFontMetric(rxFontMetric);
-}
-
-bool CairoTextRender::GetGlyphBoundRect(const GlyphItem& rGlyph, tools::Rectangle& rRect)
-{
-    const int nLevel = rGlyph.mnFallbackLevel;
-    if( nLevel >= MAX_FALLBACK )
-        return false;
-
-    FreetypeFont* pSF = mpFreetypeFont[ nLevel ];
-    if( !pSF )
-        return false;
-
-    tools::Rectangle aRect = pSF->GetGlyphBoundRect(rGlyph);
-
-    if ( pSF->mnCos != 0x10000 && pSF->mnSin != 0 )
-    {
-        double nCos = pSF->mnCos / 65536.0;
-        double nSin = pSF->mnSin / 65536.0;
-        rRect.Left() =  nCos*aRect.Left() + nSin*aRect.Top();
-        rRect.Top()  = -nSin*aRect.Left() - nCos*aRect.Top();
-
-        rRect.Right()  =  nCos*aRect.Right() + nSin*aRect.Bottom();
-        rRect.Bottom() = -nSin*aRect.Right() - nCos*aRect.Bottom();
-    }
-    else
-        rRect = aRect;
-
-    return true;
-}
-
-bool CairoTextRender::GetGlyphOutline(const GlyphItem& rGlyph,
-    basegfx::B2DPolyPolygon& rPolyPoly )
-{
-    const int nLevel = rGlyph.mnFallbackLevel;
-    if( nLevel >= MAX_FALLBACK )
-        return false;
-
-    FreetypeFont* pSF = mpFreetypeFont[ nLevel ];
-    if( !pSF )
-        return false;
-
-    return pSF->GetGlyphOutline(rGlyph, rPolyPoly);
-}
-
-SalLayout* CairoTextRender::GetTextLayout(ImplLayoutArgs& /*rArgs*/, int nFallbackLevel)
-{
-    if (mpFreetypeFont[nFallbackLevel])
-        return new CommonSalLayout(*mpFreetypeFont[nFallbackLevel]);
-
-    return nullptr;
-}
-
-#if ENABLE_CAIRO_CANVAS
-SystemFontData CairoTextRender::GetSysFontData( int nFallbackLevel ) const
-{
-    SystemFontData aSysFontData;
-
-    if (nFallbackLevel >= MAX_FALLBACK) nFallbackLevel = MAX_FALLBACK - 1;
-    if (nFallbackLevel < 0 ) nFallbackLevel = 0;
-
-    if (mpFreetypeFont[nFallbackLevel] != nullptr)
-    {
-        FreetypeFont* rFont = mpFreetypeFont[nFallbackLevel];
-        aSysFontData.nFontId = rFont->GetFtFace();
-        aSysFontData.nFontFlags = rFont->GetLoadFlags();
-        aSysFontData.bFakeBold = rFont->NeedsArtificialBold();
-        aSysFontData.bFakeItalic = rFont->NeedsArtificialItalic();
-        aSysFontData.bAntialias = rFont->GetAntialiasAdvice();
-        aSysFontData.bVerticalCharacterType = rFont->GetFontSelData().mbVertical;
-    }
-
-    return aSysFontData;
-}
-#endif
-
-bool CairoTextRender::CreateFontSubset(
-                                   const OUString& rToFile,
-                                   const PhysicalFontFace* pFont,
-                                   const sal_GlyphId* pGlyphIds,
-                                   const sal_uInt8* pEncoding,
-                                   sal_Int32* pWidths,
-                                   int nGlyphCount,
-                                   FontSubsetInfo& rInfo
-                                   )
-{
-    // in this context the pFont->GetFontId() is a valid PSP
-    // font since they are the only ones left after the PDF
-    // export has filtered its list of subsettable fonts (for
-    // which this method was created). The correct way would
-    // be to have the GlyphCache search for the PhysicalFontFace pFont
-    psp::fontID aFont = pFont->GetFontId();
-
-    psp::PrintFontManager& rMgr = psp::PrintFontManager::get();
-    bool bSuccess = rMgr.createFontSubset( rInfo,
-                                 aFont,
-                                 rToFile,
-                                 pGlyphIds,
-                                 pEncoding,
-                                 pWidths,
-                                 nGlyphCount );
-    return bSuccess;
-}
-
-const void* CairoTextRender::GetEmbedFontData(const PhysicalFontFace* pFont, long* pDataLen)
-{
-    // in this context the pFont->GetFontId() is a valid PSP
-    // font since they are the only ones left after the PDF
-    // export has filtered its list of subsettable fonts (for
-    // which this method was created). The correct way would
-    // be to have the GlyphCache search for the PhysicalFontFace pFont
-    psp::fontID aFont = pFont->GetFontId();
-    return GenPspGraphics::DoGetEmbedFontData(aFont, pDataLen);
-}
-
-void CairoTextRender::FreeEmbedFontData( const void* pData, long nLen )
-{
-    GenPspGraphics::DoFreeEmbedFontData( pData, nLen );
-}
-
-void CairoTextRender::GetGlyphWidths( const PhysicalFontFace* pFont,
-                                   bool bVertical,
-                                   std::vector< sal_Int32 >& rWidths,
-                                   Ucs2UIntMap& rUnicodeEnc )
-{
-    // in this context the pFont->GetFontId() is a valid PSP
-    // font since they are the only ones left after the PDF
-    // export has filtered its list of subsettable fonts (for
-    // which this method was created). The correct way would
-    // be to have the GlyphCache search for the PhysicalFontFace pFont
-    psp::fontID aFont = pFont->GetFontId();
-    GenPspGraphics::DoGetGlyphWidths( aFont, bVertical, rWidths, rUnicodeEnc );
-}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

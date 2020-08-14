@@ -21,10 +21,8 @@
 #include <svx/svdorect.hxx>
 
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         RectangleProperties::RectangleProperties(SdrObject& rObj)
         :   TextProperties(rObj)
         {
@@ -39,9 +37,9 @@ namespace sdr
         {
         }
 
-        BaseProperties& RectangleProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> RectangleProperties::Clone(SdrObject& rObj) const
         {
-            return *(new RectangleProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new RectangleProperties(*this, rObj));
         }
 
         void RectangleProperties::ItemSetChanged(const SfxItemSet& rSet)
@@ -58,15 +56,13 @@ namespace sdr
         // set a new StyleSheet and broadcast
         void RectangleProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr)
         {
-            SdrRectObj& rObj = static_cast<SdrRectObj&>(GetSdrObject());
-
-            // call parent
+            // call parent (always first thing to do, may create the SfxItemSet)
             TextProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
 
             // local changes
+            SdrRectObj& rObj = static_cast<SdrRectObj&>(GetSdrObject());
             rObj.SetXPolyDirty();
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

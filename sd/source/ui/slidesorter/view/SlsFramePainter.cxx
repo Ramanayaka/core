@@ -19,9 +19,9 @@
 
 #include "SlsFramePainter.hxx"
 #include <vcl/outdev.hxx>
-#include <vcl/bitmapaccess.hxx>
+#include <osl/diagnose.h>
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 
 FramePainter::FramePainter (const BitmapEx& rShadowBitmap)
     : maTopLeft(rShadowBitmap,-1,-1),
@@ -78,12 +78,7 @@ void FramePainter::AdaptColor (
     // Get the source color.
     if (maCenter.maBitmap.IsEmpty())
         return;
-    Bitmap aBitmap = maCenter.maBitmap.GetBitmap();
-    Bitmap::ScopedReadAccess pReadAccess(aBitmap);
-    if (!pReadAccess)
-        return;
-    const Color aSourceColor = pReadAccess->GetColor(0,0);
-    pReadAccess.reset();
+    const Color aSourceColor = maCenter.maBitmap.GetPixelColor(0,0);
 
     // Erase the center bitmap.
     maCenter.maBitmap.SetEmpty();
@@ -227,6 +222,6 @@ void FramePainter::OffsetBitmap::PaintCenter (
                 maBitmap);
 }
 
-} } } // end of namespace sd::slidesorter::view
+} // end of namespace sd::slidesorter::view
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

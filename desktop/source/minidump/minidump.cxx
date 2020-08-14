@@ -10,20 +10,21 @@
 #include <desktop/minidump.hxx>
 
 #include <map>
-#include <memory>
 #include <fstream>
 #include <sstream>
 #include <string>
 
 #include <curl/curl.h>
 
-static const char kUserAgent[] = "Breakpad/1.0 (Linux)";
+const char kUserAgent[] = "Breakpad/1.0 (Linux)";
 
-std::map<std::string, std::string> readStrings(std::istream& file)
+static std::map<std::string, std::string> readStrings(std::istream& file)
 {
     std::map<std::string, std::string> parameters;
 
-    while (!file.eof())
+    // when file is not readable, the status eof would not be set
+    // better test of state is okay
+    while (file)
     {
         std::string line;
         std::getline(file, line);
@@ -40,7 +41,7 @@ std::map<std::string, std::string> readStrings(std::istream& file)
 }
 
 // Callback to get the response data from server.
-static size_t WriteCallback(void *ptr, size_t size,
+static size_t WriteCallback(void const *ptr, size_t size,
                             size_t nmemb, void *userp)
 {
   if (!userp)
@@ -48,11 +49,11 @@ static size_t WriteCallback(void *ptr, size_t size,
 
   std::string* response = static_cast<std::string *>(userp);
   size_t real_size = size * nmemb;
-  response->append(static_cast<char *>(ptr), real_size);
+  response->append(static_cast<char const *>(ptr), real_size);
   return real_size;
 }
 
-void getProperty(const std::string& key, std::string& value,
+static void getProperty(const std::string& key, std::string& value,
         std::map<std::string, std::string>& parameters)
 {
     auto itr = parameters.find(key);
@@ -63,7 +64,7 @@ void getProperty(const std::string& key, std::string& value,
     }
 }
 
-std::string generate_json(const std::map<std::string, std::string>& parameters)
+static std::string generate_json(const std::map<std::string, std::string>& parameters)
 {
     std::ostringstream stream;
     stream << "{\n";
@@ -82,7 +83,7 @@ std::string generate_json(const std::map<std::string, std::string>& parameters)
     return stream.str();
 }
 
-bool uploadContent(std::map<std::string, std::string>& parameters, std::string& response)
+static bool uploadContent(std::map<std::string, std::string>& parameters, std::string& response)
 {
     CURL* curl = curl_easy_init();
     if (!curl)
@@ -108,11 +109,19 @@ bool uploadContent(std::map<std::string, std::string>& parameters, std::string& 
 
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_USERAGENT, kUserAgent);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
     // Set proxy information if necessary.
     if (!proxy.empty())
+    {
         curl_easy_setopt(curl, CURLOPT_PROXY, proxy.c_str());
-    if (!proxy_user_pwd.empty())
-        curl_easy_setopt(curl, CURLOPT_PROXYUSERPWD, proxy_user_pwd.c_str());
+
+        curl_easy_setopt(curl, CURLOPT_PROXYAUTH, CURLAUTH_ANYSAFE);
+
+        if (!proxy_user_pwd.empty())
+            curl_easy_setopt(curl, CURLOPT_PROXYUSERPWD, proxy_user_pwd.c_str());
+        else
+            curl_easy_setopt(curl, CURLOPT_PROXYUSERPWD, ":");
+    }
 
     if (!ca_certificate_file.empty())
         curl_easy_setopt(curl, CURLOPT_CAINFO, ca_certificate_file.c_str());
@@ -181,7 +190,7 @@ bool uploadContent(std::map<std::string, std::string>& parameters, std::string& 
 
 namespace crashreport {
 
-bool readConfig(const std::string& iniPath, std::string& response)
+bool readConfig(const std::string& iniPath, std::string * response)
 {
     std::ifstream file(iniPath);
     std::map<std::string, std::string> parameters = readStrings(file);
@@ -189,17 +198,29 @@ bool readConfig(const std::string& iniPath, std::string& response)
     // make sure that at least the mandatory parameters are in there
     if (parameters.find("DumpFile") == parameters.end())
     {
-        response = "ini file needs to contain a key DumpFile!";
+        if(response != nullptr)
+            *response = "ini file needs to contain a key DumpFile!";
         return false;
     }
 
     if (parameters.find("Version") == parameters.end())
     {
-        response = "ini file needs to contain a key Version!";
+        if (response != nullptr)
+            *response = "ini file needs to contain a key Version!";
         return false;
     }
 
-    return uploadContent(parameters, response);
+    if (parameters.find("URL") == parameters.end())
+    {
+        if (response != nullptr)
+            *response = "ini file needs to contain a key URL!";
+        return false;
+    }
+
+    if (response != nullptr)
+        return uploadContent(parameters, *response);
+
+    return true;
 }
 
 }

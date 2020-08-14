@@ -20,13 +20,12 @@
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_CELLCOLORHANDLER_HXX
 
 #include "LoggedResources.hxx"
-#include <memory>
+#include "PropertyMap.hxx"
 #include <vector>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 class TablePropertyMap;
 class CellColorHandler : public LoggedProperties
@@ -38,6 +37,7 @@ private:
     sal_Int32 m_nColor;
     sal_Int32 m_nFillColor;
     bool      m_bAutoFillColor;
+    bool      m_bFillSpecified;
     OutputFormat m_OutputFormat;
 
     OUString m_aInteropGrabBagName;
@@ -53,17 +53,16 @@ public:
     CellColorHandler( );
     virtual ~CellColorHandler() override;
 
-    ::std::shared_ptr<TablePropertyMap>            getProperties();
+    TablePropertyMapPtr getProperties();
 
     void setOutputFormat( OutputFormat format ) { m_OutputFormat = format; }
 
     void enableInteropGrabBag(const OUString& aName);
     css::beans::PropertyValue getInteropGrabBag();
     void disableInteropGrabBag();
-    bool isInteropGrabBagEnabled();
+    bool isInteropGrabBagEnabled() const;
 };
-typedef std::shared_ptr< CellColorHandler >          CellColorHandlerPtr;
-}}
+}
 
 #endif
 

@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SW_INC_UNOTEXTCURSOR_HXX
 #define INCLUDED_SW_INC_UNOTEXTCURSOR_HXX
 
-#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
@@ -40,8 +39,8 @@
 
 #include <comphelper/uno3.hxx>
 
-#include <unobaseclass.hxx>
-#include <TextCursorHelper.hxx>
+#include "unobaseclass.hxx"
+#include "TextCursorHelper.hxx"
 
 class SwDoc;
 struct SwPosition;
@@ -64,7 +63,7 @@ typedef ::cppu::WeakImplHelper
 ,   css::text::XMarkingAccess
 > SwXTextCursor_Base;
 
-class SwXTextCursor
+class SwXTextCursor final
     : public SwXTextCursor_Base
     , public OTextCursorHelper
 {

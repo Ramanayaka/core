@@ -18,42 +18,39 @@
  */
 
 
-#include "svx/svdstr.hrc"
-#include "svdglob.hxx"
-#include <tools/poly.hxx>
-#include <svx/svdpage.hxx>
-#include "svx/globl3d.hxx"
+#include <svx/deflt3d.hxx>
+#include <svx/strings.hrc>
+#include <svx/dialmgr.hxx>
+#include <svx/globl3d.hxx>
 #include <svx/lathe3d.hxx>
-#include <svx/xpoly.hxx>
-#include <svx/svxids.hrc>
 #include <svx/svdopath.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/svx3ditems.hxx>
+#include <svx/xlineit0.hxx>
 #include <sdr/properties/e3dlatheproperties.hxx>
 #include <sdr/contact/viewcontactofe3dlathe.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <rtl/ustrbuf.hxx>
 
 
 // DrawContact section
-
-sdr::contact::ViewContact* E3dLatheObj::CreateObjectSpecificViewContact()
+std::unique_ptr<sdr::contact::ViewContact> E3dLatheObj::CreateObjectSpecificViewContact()
 {
-    return new sdr::contact::ViewContactOfE3dLathe(*this);
+    return std::make_unique<sdr::contact::ViewContactOfE3dLathe>(*this);
 }
 
-
-sdr::properties::BaseProperties* E3dLatheObj::CreateObjectSpecificProperties()
+std::unique_ptr<sdr::properties::BaseProperties> E3dLatheObj::CreateObjectSpecificProperties()
 {
-    return new sdr::properties::E3dLatheProperties(*this);
+    return std::make_unique<sdr::properties::E3dLatheProperties>(*this);
 }
-
 
 // Constructor from 3D polygon, scale is the conversion factor for the coordinates
-
-E3dLatheObj::E3dLatheObj(E3dDefaultAttributes& rDefault, const basegfx::B2DPolyPolygon& rPoly2D)
-:   E3dCompoundObject(rDefault),
+E3dLatheObj::E3dLatheObj(
+    SdrModel& rSdrModel,
+    const E3dDefaultAttributes& rDefault,
+    const basegfx::B2DPolyPolygon& rPoly2D)
+:   E3dCompoundObject(rSdrModel),
     maPolyPoly2D(rPoly2D)
 {
     // since the old class PolyPolygon3D did mirror the given PolyPolygons in Y, do the same here
@@ -70,7 +67,7 @@ E3dLatheObj::E3dLatheObj(E3dDefaultAttributes& rDefault, const basegfx::B2DPolyP
 
     if(maPolyPoly2D.count())
     {
-        const basegfx::B2DPolygon rPoly(maPolyPoly2D.getB2DPolygon(0L));
+        const basegfx::B2DPolygon rPoly(maPolyPoly2D.getB2DPolygon(0));
         sal_uInt32 nSegCnt(rPoly.count());
 
         if(nSegCnt && !rPoly.isClosed())
@@ -82,15 +79,20 @@ E3dLatheObj::E3dLatheObj(E3dDefaultAttributes& rDefault, const basegfx::B2DPolyP
     }
 }
 
-E3dLatheObj::E3dLatheObj()
-:    E3dCompoundObject()
+E3dLatheObj::E3dLatheObj(SdrModel& rSdrModel)
+:    E3dCompoundObject(rSdrModel)
 {
     // Set Defaults
-    E3dDefaultAttributes aDefault;
+    const E3dDefaultAttributes aDefault;
+
     SetDefaultAttributes(aDefault);
 }
 
-void E3dLatheObj::SetDefaultAttributes(E3dDefaultAttributes& rDefault)
+E3dLatheObj::~E3dLatheObj()
+{
+}
+
+void E3dLatheObj::SetDefaultAttributes(const E3dDefaultAttributes& rDefault)
 {
     GetProperties().SetObjectItemDirect(Svx3DSmoothNormalsItem(rDefault.GetDefaultLatheSmoothed()));
     GetProperties().SetObjectItemDirect(Svx3DSmoothLidsItem(rDefault.GetDefaultLatheSmoothFrontBack()));
@@ -104,14 +106,25 @@ sal_uInt16 E3dLatheObj::GetObjIdentifier() const
     return E3D_LATHEOBJ_ID;
 }
 
-E3dLatheObj* E3dLatheObj::Clone() const
+E3dLatheObj* E3dLatheObj::CloneSdrObject(SdrModel& rTargetModel) const
 {
-    return CloneHelper< E3dLatheObj >();
+    return CloneHelper< E3dLatheObj >(rTargetModel);
+}
+
+E3dLatheObj& E3dLatheObj::operator=(const E3dLatheObj& rObj)
+{
+    if( this == &rObj )
+        return *this;
+    E3dCompoundObject::operator=(rObj);
+
+    maPolyPoly2D = rObj.maPolyPoly2D;
+
+    return *this;
 }
 
 // Convert the object to group object consisting of n polygons
 
-SdrObject *E3dLatheObj::DoConvertToPolyObj(bool /*bBezier*/, bool /*bAddText*/) const
+SdrObjectUniquePtr E3dLatheObj::DoConvertToPolyObj(bool /*bBezier*/, bool /*bAddText*/) const
 {
     return nullptr;
 }
@@ -120,33 +133,33 @@ SdrObject *E3dLatheObj::DoConvertToPolyObj(bool /*bBezier*/, bool /*bAddText*/) 
 
 void E3dLatheObj::SetPolyPoly2D(const basegfx::B2DPolyPolygon& rNew)
 {
-    if(maPolyPoly2D != rNew)
+    if(maPolyPoly2D == rNew)
+        return;
+
+    maPolyPoly2D = rNew;
+    maPolyPoly2D.removeDoublePoints();
+
+    if(maPolyPoly2D.count())
     {
-        maPolyPoly2D = rNew;
-        maPolyPoly2D.removeDoublePoints();
+        const basegfx::B2DPolygon rPoly(maPolyPoly2D.getB2DPolygon(0));
+        sal_uInt32 nSegCnt(rPoly.count());
 
-        if(maPolyPoly2D.count())
+        if(nSegCnt && !rPoly.isClosed())
         {
-            const basegfx::B2DPolygon rPoly(maPolyPoly2D.getB2DPolygon(0L));
-            sal_uInt32 nSegCnt(rPoly.count());
-
-            if(nSegCnt && !rPoly.isClosed())
-            {
-                nSegCnt -= 1;
-            }
-
-            GetProperties().SetObjectItemDirect(makeSvx3DVerticalSegmentsItem(nSegCnt));
+            nSegCnt -= 1;
         }
 
-        ActionChanged();
+        GetProperties().SetObjectItemDirect(makeSvx3DVerticalSegmentsItem(nSegCnt));
     }
+
+    ActionChanged();
 }
 
 // Get the name of the object (singular)
 
 OUString E3dLatheObj::TakeObjNameSingul() const
 {
-    OUStringBuffer sName(ImpGetResStr(STR_ObjNameSingulLathe3d));
+    OUStringBuffer sName(SvxResId(STR_ObjNameSingulLathe3d));
 
     OUString aName(GetName());
     if (!aName.isEmpty())
@@ -163,7 +176,7 @@ OUString E3dLatheObj::TakeObjNameSingul() const
 
 OUString E3dLatheObj::TakeObjNamePlural() const
 {
-    return ImpGetResStr(STR_ObjNamePluralLathe3d);
+    return SvxResId(STR_ObjNamePluralLathe3d);
 }
 
 bool E3dLatheObj::IsBreakObjPossible()
@@ -171,12 +184,12 @@ bool E3dLatheObj::IsBreakObjPossible()
     return true;
 }
 
-SdrAttrObj* E3dLatheObj::GetBreakObj()
+std::unique_ptr<SdrAttrObj,SdrObjectFreeOp> E3dLatheObj::GetBreakObj()
 {
     // create PathObj
-    basegfx::B3DPolyPolygon aLathePoly3D(basegfx::tools::createB3DPolyPolygonFromB2DPolyPolygon(maPolyPoly2D));
+    basegfx::B3DPolyPolygon aLathePoly3D(basegfx::utils::createB3DPolyPolygonFromB2DPolyPolygon(maPolyPoly2D));
     basegfx::B2DPolyPolygon aTransPoly(TransformToScreenCoor(aLathePoly3D));
-    SdrPathObj* pPathObj = new SdrPathObj(OBJ_PLIN, aTransPoly);
+    std::unique_ptr<SdrPathObj,SdrObjectFreeOp> pPathObj(new SdrPathObj(getSdrModelFromSdrObject(), OBJ_PLIN, aTransPoly));
 
     // Set Attribute
     SfxItemSet aSet(GetObjectItemSet());
@@ -186,7 +199,7 @@ SdrAttrObj* E3dLatheObj::GetBreakObj()
 
     pPathObj->SetMergedItemSet(aSet);
 
-    return pPathObj;
+    return std::unique_ptr<SdrAttrObj,SdrObjectFreeOp>(pPathObj.release());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

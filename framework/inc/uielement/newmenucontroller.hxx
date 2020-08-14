@@ -20,28 +20,16 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_NEWMENUCONTROLLER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_NEWMENUCONTROLLER_HXX
 
-#include <macros/xserviceinfo.hxx>
-#include <stdtypes.h>
-
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/ui/XAcceleratorConfiguration.hpp>
 
 #include <svtools/popupmenucontrollerbase.hxx>
-#include <toolkit/awt/vclxmenu.hxx>
-#include <framework/menuconfiguration.hxx>
-#include <cppuhelper/weak.hxx>
 #include <rtl/ustring.hxx>
-#include <vcl/accel.hxx>
 #include <vcl/menu.hxx>
-#include <unordered_map>
 
 namespace framework
 {
-    class NewMenuController :  public svt::PopupMenuControllerBase
+    class NewMenuController final : public svt::PopupMenuControllerBase
     {
         using svt::PopupMenuControllerBase::disposing;
 
@@ -49,12 +37,10 @@ namespace framework
             NewMenuController( const css::uno::Reference< css::uno::XComponentContext >& xContext );
             virtual ~NewMenuController() override;
 
-            // XServiceInfo
-            DECLARE_XSERVICEINFO_NOFACTORY
-            /* Helper for registry */
-            /// @throws css::uno::Exception
-            static css::uno::Reference< css::uno::XInterface >             SAL_CALL impl_createInstance                ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
-            static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL impl_createFactory                 ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
+            /* interface XServiceInfo */
+            virtual OUString SAL_CALL getImplementationName() override;
+            virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
+            virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
             // XInitialization
             virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -72,7 +58,7 @@ namespace framework
         private:
             virtual void impl_setPopupMenu() override;
 
-            void fillPopupMenu( css::uno::Reference< css::awt::XPopupMenu >& rPopupMenu );
+            void fillPopupMenu( css::uno::Reference< css::awt::XPopupMenu > const & rPopupMenu );
             void retrieveShortcutsFromConfiguration( const css::uno::Reference< css::ui::XAcceleratorConfiguration >& rAccelCfg,
                                                      const css::uno::Sequence< OUString >& rCommands,
                                                      std::vector< vcl::KeyCode >& aMenuShortCuts );

@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "XMLRangeHelper.hxx"
-#include <unotools/charclass.hxx>
+#include <XMLRangeHelper.hxx>
+#include <rtl/character.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
 
@@ -83,23 +83,23 @@ void lcl_getXMLStringForCell( const ::chart::XMLRangeHelper::Cell & rCell, OUStr
 
     // get A, B, C, ..., AA, AB, ... representation of column number
     if( nCol < 26 )
-        output->append( (sal_Unicode)('A' + nCol) );
+        output->append( static_cast<sal_Unicode>('A' + nCol) );
     else if( nCol < 702 )
     {
-        output->append( (sal_Unicode)('A' + nCol / 26 - 1 ));
-        output->append( (sal_Unicode)('A' + nCol % 26) );
+        output->append( static_cast<sal_Unicode>('A' + nCol / 26 - 1 ));
+        output->append( static_cast<sal_Unicode>('A' + nCol % 26) );
     }
     else    // works for nCol <= 18,278
     {
-        output->append( (sal_Unicode)('A' + nCol / 702 - 1 ));
-        output->append( (sal_Unicode)('A' + (nCol % 702) / 26 ));
-        output->append( (sal_Unicode)('A' + nCol % 26) );
+        output->append( static_cast<sal_Unicode>('A' + nCol / 702 - 1 ));
+        output->append( static_cast<sal_Unicode>('A' + (nCol % 702) / 26 ));
+        output->append( static_cast<sal_Unicode>('A' + nCol % 26) );
     }
 
     // write row number as number
     if( ! rCell.bRelativeRow )
         output->append( '$' );
-    output->append( rCell.nRow + (sal_Int32)1 );
+    output->append( rCell.nRow + sal_Int32(1) );
 }
 
 void lcl_getSingleCellAddressFromXMLString(
@@ -274,7 +274,7 @@ bool lcl_getCellRangeAddressFromXMLString(
         }
         if( bResult &&
             !sTableSecondName.isEmpty() &&
-            ! sTableSecondName.equals( rOutRange.aTableName ))
+            sTableSecondName != rOutRange.aTableName )
             bResult = false;
     }
 
@@ -283,9 +283,7 @@ bool lcl_getCellRangeAddressFromXMLString(
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace XMLRangeHelper
+namespace chart::XMLRangeHelper
 {
 
 CellRange getCellRangeFromXMLString( const OUString & rXMLString )
@@ -296,17 +294,15 @@ CellRange getCellRangeFromXMLString( const OUString & rXMLString )
     static const sal_Unicode aDollar( '$' );
     static const sal_Unicode aBackslash( '\\' );
 
-    sal_Int32 nStartPos = 0;
-    sal_Int32 nEndPos = nStartPos;
     const sal_Int32 nLength = rXMLString.getLength();
 
     // reset
     CellRange aResult;
 
     // iterate over different ranges
-    for( sal_Int32 i = 0;
+    for( sal_Int32 nStartPos = 0, nEndPos = nStartPos;
          nEndPos < nLength;
-         nStartPos = ++nEndPos, i++ )
+         nStartPos = ++nEndPos )
     {
         // find start point of next range
 
@@ -349,7 +345,7 @@ OUString getXMLStringFromCellRange( const CellRange & rRange )
 
     OUStringBuffer aBuffer;
 
-    if( !(rRange.aTableName).isEmpty())
+    if( !rRange.aTableName.isEmpty())
     {
         bool bNeedsEscaping = ( rRange.aTableName.indexOf( aQuote ) > -1 );
         bool bNeedsQuoting = bNeedsEscaping || ( rRange.aTableName.indexOf( aSpace ) > -1 );
@@ -391,7 +387,6 @@ OUString getXMLStringFromCellRange( const CellRange & rRange )
     return aBuffer.makeStringAndClear();
 }
 
-} //  namespace XMLRangeHelper
-} //  namespace chart
+} //  namespace chart::XMLRangeHelper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

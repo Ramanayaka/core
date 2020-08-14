@@ -18,18 +18,19 @@
  */
 
 #include "MinMaxLineWrapper.hxx"
-#include "macros.hxx"
 #include "Chart2ModelContact.hxx"
-#include "DiagramHelper.hxx"
-#include "servicenames_charttypes.hxx"
+#include <DiagramHelper.hxx>
+#include <servicenames_charttypes.hxx>
+#include <cppuhelper/propshlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/chart2/XChartType.hpp>
 #include <com/sun/star/chart2/XDataSeriesContainer.hpp>
 #include <com/sun/star/drawing/LineJoint.hpp>
 #include <comphelper/sequence.hxx>
 
-#include "LinePropertiesHelper.hxx"
-#include "UserDefinedProperties.hxx"
+#include <LinePropertiesHelper.hxx>
+#include <UserDefinedProperties.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -112,9 +113,7 @@ struct StaticMinMaxLineWrapperInfo : public rtl::StaticAggregate< uno::Reference
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 MinMaxLineWrapper::MinMaxLineWrapper(const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
@@ -155,21 +154,20 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL MinMaxLineWrapper::getPropert
 
 void SAL_CALL MinMaxLineWrapper::setPropertyValue( const OUString& rPropertyName, const uno::Any& rValue )
 {
-    Reference< beans::XPropertySet > xPropSet(nullptr);
+    Reference< beans::XPropertySet > xPropSet;
 
     Reference< chart2::XDiagram > xDiagram( m_spChart2ModelContact->getChart2Diagram() );
-    Sequence< Reference< chart2::XChartType > > aTypes(
+    const Sequence< Reference< chart2::XChartType > > aTypes(
             ::chart::DiagramHelper::getChartTypesFromDiagram( xDiagram ) );
-    for( sal_Int32 nN = 0; nN < aTypes.getLength(); nN++ )
+    for( Reference< chart2::XChartType > const & xType : aTypes )
     {
-        Reference< chart2::XChartType > xType( aTypes[nN] );
         if( xType->getChartType() == CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK )
         {
             Reference< chart2::XDataSeriesContainer > xSeriesContainer(xType,uno::UNO_QUERY);
             if( xSeriesContainer.is() )
             {
                 Sequence< Reference< chart2::XDataSeries > > aSeriesSeq( xSeriesContainer->getDataSeries() );
-                if(aSeriesSeq.getLength())
+                if(aSeriesSeq.hasElements())
                 {
                     xPropSet.set(aSeriesSeq[0],uno::UNO_QUERY);
                     if(xPropSet.is())
@@ -178,7 +176,7 @@ void SAL_CALL MinMaxLineWrapper::setPropertyValue( const OUString& rPropertyName
                             xPropSet->setPropertyValue( "Color", rValue );
                         else if( rPropertyName == "LineTransparence" )
                             xPropSet->setPropertyValue( "Transparency", rValue );
-                        else if( rPropertyName.equals( m_aWrappedLineJointProperty.getOuterName() ) )
+                        else if( rPropertyName == m_aWrappedLineJointProperty.getOuterName() )
                             m_aWrappedLineJointProperty.setPropertyValue( rValue, xPropSet );
                         else
                             xPropSet->setPropertyValue( rPropertyName, rValue );
@@ -193,21 +191,20 @@ uno::Any SAL_CALL MinMaxLineWrapper::getPropertyValue( const OUString& rProperty
 {
     Any aRet;
 
-    Reference< beans::XPropertySet > xPropSet(nullptr);
+    Reference< beans::XPropertySet > xPropSet;
 
     Reference< chart2::XDiagram > xDiagram( m_spChart2ModelContact->getChart2Diagram() );
-    Sequence< Reference< chart2::XChartType > > aTypes(
+    const Sequence< Reference< chart2::XChartType > > aTypes(
             ::chart::DiagramHelper::getChartTypesFromDiagram( xDiagram ) );
-    for( sal_Int32 nN = 0; nN < aTypes.getLength(); nN++ )
+    for( Reference< chart2::XChartType > const & xType : aTypes )
     {
-        Reference< chart2::XChartType > xType( aTypes[nN] );
         if( xType->getChartType() == CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK )
         {
             Reference< chart2::XDataSeriesContainer > xSeriesContainer(xType,uno::UNO_QUERY);
             if( xSeriesContainer.is() )
             {
                 Sequence< Reference< chart2::XDataSeries > > aSeriesSeq( xSeriesContainer->getDataSeries() );
-                if(aSeriesSeq.getLength())
+                if(aSeriesSeq.hasElements())
                 {
                     xPropSet.set(aSeriesSeq[0],uno::UNO_QUERY);
                     break;
@@ -221,7 +218,7 @@ uno::Any SAL_CALL MinMaxLineWrapper::getPropertyValue( const OUString& rProperty
             aRet = xPropSet->getPropertyValue( "Color" );
         else if( rPropertyName == "LineTransparence" )
             aRet = xPropSet->getPropertyValue( "Transparency" );
-        else if( rPropertyName.equals( m_aWrappedLineJointProperty.getOuterName() ) )
+        else if( rPropertyName == m_aWrappedLineJointProperty.getOuterName() )
             aRet = m_aWrappedLineJointProperty.getPropertyValue( xPropSet );
         else
             aRet = xPropSet->getPropertyValue( rPropertyName );
@@ -257,11 +254,11 @@ void SAL_CALL MinMaxLineWrapper::setPropertyValues( const uno::Sequence< OUStrin
         OUString aPropertyName( rNameSeq[nN] );
         try
         {
-            this->setPropertyValue( aPropertyName, rValueSeq[nN] );
+            setPropertyValue( aPropertyName, rValueSeq[nN] );
         }
-        catch( const beans::UnknownPropertyException& ex )
+        catch( const beans::UnknownPropertyException& )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
     //todo: store unknown properties elsewhere
@@ -269,13 +266,13 @@ void SAL_CALL MinMaxLineWrapper::setPropertyValues( const uno::Sequence< OUStrin
 uno::Sequence< uno::Any > SAL_CALL MinMaxLineWrapper::getPropertyValues( const uno::Sequence< OUString >& rNameSeq )
 {
     Sequence< Any > aRetSeq;
-    if( rNameSeq.getLength() )
+    if( rNameSeq.hasElements() )
     {
         aRetSeq.realloc( rNameSeq.getLength() );
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
             OUString aPropertyName( rNameSeq[nN] );
-            aRetSeq[nN] = this->getPropertyValue( aPropertyName );
+            aRetSeq[nN] = getPropertyValue( aPropertyName );
         }
     }
     return aRetSeq;
@@ -301,11 +298,11 @@ void SAL_CALL MinMaxLineWrapper::firePropertiesChangeEvent(
 //XPropertyState
 beans::PropertyState SAL_CALL MinMaxLineWrapper::getPropertyState( const OUString& rPropertyName )
 {
-    if( rPropertyName.equals( m_aWrappedLineJointProperty.getOuterName() ) )
+    if( rPropertyName == m_aWrappedLineJointProperty.getOuterName() )
         return beans::PropertyState_DEFAULT_VALUE;
 
-    uno::Any aDefault( this->getPropertyDefault( rPropertyName ) );
-    uno::Any aValue( this->getPropertyValue( rPropertyName ) );
+    uno::Any aDefault( getPropertyDefault( rPropertyName ) );
+    uno::Any aValue( getPropertyValue( rPropertyName ) );
 
     if( aDefault == aValue )
         return beans::PropertyState_DEFAULT_VALUE;
@@ -315,20 +312,20 @@ beans::PropertyState SAL_CALL MinMaxLineWrapper::getPropertyState( const OUStrin
 uno::Sequence< beans::PropertyState > SAL_CALL MinMaxLineWrapper::getPropertyStates( const uno::Sequence< OUString >& rNameSeq )
 {
     Sequence< beans::PropertyState > aRetSeq;
-    if( rNameSeq.getLength() )
+    if( rNameSeq.hasElements() )
     {
         aRetSeq.realloc( rNameSeq.getLength() );
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
             OUString aPropertyName( rNameSeq[nN] );
-            aRetSeq[nN] = this->getPropertyState( aPropertyName );
+            aRetSeq[nN] = getPropertyState( aPropertyName );
         }
     }
     return aRetSeq;
 }
 void SAL_CALL MinMaxLineWrapper::setPropertyToDefault( const OUString& rPropertyName )
 {
-    this->setPropertyValue( rPropertyName, this->getPropertyDefault(rPropertyName) );
+    setPropertyValue( rPropertyName, getPropertyDefault(rPropertyName) );
 }
 
 uno::Any SAL_CALL MinMaxLineWrapper::getPropertyDefault( const OUString& rPropertyName )
@@ -345,30 +342,28 @@ uno::Any SAL_CALL MinMaxLineWrapper::getPropertyDefault( const OUString& rProper
 void SAL_CALL MinMaxLineWrapper::setAllPropertiesToDefault(  )
 {
     const Sequence< beans::Property >& rPropSeq = *StaticMinMaxLineWrapperPropertyArray::get();
-    for(sal_Int32 nN=0; nN<rPropSeq.getLength(); nN++)
+    for(beans::Property const & prop : rPropSeq)
     {
-        OUString aPropertyName( rPropSeq[nN].Name );
-        this->setPropertyToDefault( aPropertyName );
+        setPropertyToDefault( prop.Name );
     }
 }
 void SAL_CALL MinMaxLineWrapper::setPropertiesToDefault( const uno::Sequence< OUString >& rNameSeq )
 {
-    for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
+    for(OUString const & s : rNameSeq)
     {
-        OUString aPropertyName( rNameSeq[nN] );
-        this->setPropertyToDefault( aPropertyName );
+        setPropertyToDefault( s );
     }
 }
 uno::Sequence< uno::Any > SAL_CALL MinMaxLineWrapper::getPropertyDefaults( const uno::Sequence< OUString >& rNameSeq )
 {
     Sequence< Any > aRetSeq;
-    if( rNameSeq.getLength() )
+    if( rNameSeq.hasElements() )
     {
         aRetSeq.realloc( rNameSeq.getLength() );
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
             OUString aPropertyName( rNameSeq[nN] );
-            aRetSeq[nN] = this->getPropertyDefault( aPropertyName );
+            aRetSeq[nN] = getPropertyDefault( aPropertyName );
         }
     }
     return aRetSeq;
@@ -376,7 +371,7 @@ uno::Sequence< uno::Any > SAL_CALL MinMaxLineWrapper::getPropertyDefaults( const
 
 OUString SAL_CALL MinMaxLineWrapper::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.ChartLine");
+    return "com.sun.star.comp.chart.ChartLine";
 }
 
 sal_Bool SAL_CALL MinMaxLineWrapper::supportsService( const OUString& rServiceName )
@@ -393,7 +388,6 @@ css::uno::Sequence< OUString > SAL_CALL MinMaxLineWrapper::getSupportedServiceNa
     };
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

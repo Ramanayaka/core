@@ -10,24 +10,27 @@
 #ifndef INCLUDED_SVTOOLS_FILECHANGEDCHECKER_HXX
 #define INCLUDED_SVTOOLS_FILECHANGEDCHECKER_HXX
 
+#include <config_options.h>
 #include <svtools/svtdllapi.h>
 
-#include <osl/file.hxx>
-#include <vcl/timer.hxx>
+#include <osl/time.h>
+#include <rtl/ustring.hxx>
 #include <vcl/idle.hxx>
 
 #include <functional>
+
+class Timer;
 
 /** Periodically checks if a file has been modified
 
     Instances of this class setup a vcl timer to occasionally wake up
     check whether file modification time has changed.
  */
-class SVT_DLLPUBLIC FileChangedChecker
+class UNLESS_MERGELIBS(SVT_DLLPUBLIC) FileChangedChecker
 {
 private:
     Idle                    mIdle;
-    OUString            mFileName;
+    OUString                 mFileName;
     TimeValue                mLastModTime;
     ::std::function<void ()> mpCallback;
 

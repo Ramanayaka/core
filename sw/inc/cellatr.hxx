@@ -24,25 +24,27 @@
 #include <svl/zforlist.hxx>
 #include "swdllapi.h"
 #include "format.hxx"
+#include "hintids.hxx"
 #include "cellfml.hxx"
 
-namespace rtl { class OUString; }
+/** The number formatter's default locale's @ Text format.
+    Not necessarily system locale, but the locale the formatter was constructed
+    with. For this SvNumberFormatter::IsTextFormat() always returns true.
+ */
+constexpr sal_uInt32 getSwDefaultTextFormat() { return NF_STANDARD_FORMAT_TEXT; }
 
 class SW_DLLPUBLIC SwTableBoxNumFormat : public SfxUInt32Item
 {
-    bool m_bAuto;     ///< automatically given flag
 public:
-    SwTableBoxNumFormat( sal_uInt32 nFormat = css::util::NumberFormat::TEXT,
-                        bool bAuto = false );
+    SwTableBoxNumFormat( sal_uInt32 nFormat = getSwDefaultTextFormat() );
 
     // "pure virtual methods" of SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwTableBoxNumFormat* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     SwTableBoxNumFormat& operator=( const SwTableBoxNumFormat& rAttr )
     {
         SetValue( rAttr.GetValue() );
-        m_bAuto = rAttr.m_bAuto;
         return *this;
     }
 };
@@ -57,7 +59,7 @@ public:
 
     // "pure virtual methods" of SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwTableBoxFormula* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     const SwModify* GetDefinedIn() const { return m_pDefinedIn; }
     void ChgDefinedIn( const SwModify* pNew )
@@ -82,7 +84,7 @@ public:
 
     // "pure virtual methods" of SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwTableBoxValue* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     SwTableBoxValue& operator=( const SwTableBoxValue& rCmp )
     {
@@ -94,11 +96,11 @@ public:
 };
 
 inline const SwTableBoxNumFormat      &SwAttrSet::GetTableBoxNumFormat(bool bInP) const
-    {   return static_cast<const SwTableBoxNumFormat&>(Get( RES_BOXATR_FORMAT,bInP)); }
+    {   return Get( RES_BOXATR_FORMAT,bInP); }
 inline const SwTableBoxFormula        &SwAttrSet::GetTableBoxFormula(bool bInP) const
-    {   return static_cast<const SwTableBoxFormula&>(Get( RES_BOXATR_FORMULA,bInP)); }
+    {   return Get( RES_BOXATR_FORMULA,bInP); }
 inline const SwTableBoxValue          &SwAttrSet::GetTableBoxValue(bool bInP) const
-    {   return static_cast<const SwTableBoxValue&>(Get( RES_BOXATR_VALUE, bInP)); }
+    {   return Get( RES_BOXATR_VALUE, bInP); }
 
 inline const SwTableBoxNumFormat      &SwFormat::GetTableBoxNumFormat(bool bInP) const
     {   return m_aSet.GetTableBoxNumFormat(bInP); }

@@ -19,33 +19,31 @@
 
 #include "CellLineStyleValueSet.hxx"
 #include <i18nlangtag/mslangid.hxx>
+#include <vcl/event.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
 
-namespace sc { namespace sidebar {
+namespace sc::sidebar {
 
-CellLineStyleValueSet::CellLineStyleValueSet(vcl::Window* pParent)
-    : ValueSet(pParent, WB_TABSTOP)
-    , pVDev(nullptr)
+CellLineStyleValueSet::CellLineStyleValueSet()
+    : ValueSet(nullptr)
     , nSelItem(0)
 {
-    SetColCount();
-    SetLineCount( 9);
 }
 
 CellLineStyleValueSet::~CellLineStyleValueSet()
 {
-    disposeOnce();
 }
 
-void CellLineStyleValueSet::dispose()
+void CellLineStyleValueSet::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 {
-    pVDev.disposeAndClear();
-    ValueSet::dispose();
-}
+    ValueSet::SetDrawingArea(pDrawingArea);
+    Size aSize = pDrawingArea->get_ref_device().LogicToPixel(Size(80, 12 * 9), MapMode(MapUnit::MapAppFont));
+    pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
+    SetOutputSizePixel(aSize);
 
-Size CellLineStyleValueSet::GetOptimalSize() const
-{
-    return LogicToPixel(Size(80, 12 * 9), MapUnit::MapAppFont);
+    SetColCount();
+    SetLineCount( 9);
 }
 
 void CellLineStyleValueSet::SetUnit(const OUString* str)
@@ -87,16 +85,15 @@ void CellLineStyleValueSet::UserDraw( const UserDrawEvent& rUDEvt )
 
     vcl::Font aFont(OutputDevice::GetDefaultFont(DefaultFontType::UI_SANS, MsLangId::getSystemLanguage(), GetDefaultFontFlags::OnlyOne));
     Size aSize = aFont.GetFontSize();
-    aSize.Height() = nRectHeight*3/5;
+    aSize.setHeight( nRectHeight*3/5 );
     aFont.SetFontSize( aSize );
 
     if( nSelItem ==  nItemId )
     {
-        Color aBackColor(50,107,197);
         tools::Rectangle aBackRect = aRect;
-        aBackRect.Top() += 3;
-        aBackRect.Bottom() -= 2;
-        pDev->SetFillColor(aBackColor);
+        aBackRect.AdjustTop(3 );
+        aBackRect.AdjustBottom( -2 );
+        pDev->SetFillColor(Color(50,107,197));
         pDev->DrawRect(aBackRect);
     }
     else
@@ -105,11 +102,13 @@ void CellLineStyleValueSet::UserDraw( const UserDrawEvent& rUDEvt )
         pDev->DrawRect(aRect);
     }
 
+    const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
+
     //draw text
     if (nSelItem ==  nItemId )
         aFont.SetColor(COL_WHITE);
     else
-        aFont.SetColor(GetSettings().GetStyleSettings().GetFieldTextColor()); //high contrast
+        aFont.SetColor(rStyleSettings.GetFieldTextColor()); //high contrast
 
     pDev->SetFont(aFont);
     long nTextWidth = pDev->GetTextWidth(maStrUnit[nItemId - 1]);
@@ -126,8 +125,8 @@ void CellLineStyleValueSet::UserDraw( const UserDrawEvent& rUDEvt )
     }
     else
     {
-        pDev->SetFillColor(GetSettings().GetStyleSettings().GetFieldTextColor());   //high contrast
-        pDev->SetLineColor(GetSettings().GetStyleSettings().GetFieldTextColor());   //high contrast
+        pDev->SetFillColor(rStyleSettings.GetFieldTextColor());   //high contrast
+        pDev->SetLineColor(rStyleSettings.GetFieldTextColor());   //high contrast
     }
 
     switch( nItemId )
@@ -167,6 +166,6 @@ void CellLineStyleValueSet::UserDraw( const UserDrawEvent& rUDEvt )
 
 }
 
-} } // end of namespace svx::sidebar
+} // end of namespace sc::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

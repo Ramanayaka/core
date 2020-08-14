@@ -21,7 +21,6 @@
 
 #include <com/sun/star/drawing/XShape.hpp>
 #include <ooo/vba/msforms/XColorFormat.hpp>
-#include <ooo/vba/msforms/XFillFormat.hpp>
 #include <vbahelper/vbahelperinterface.hxx>
 #include "vbafillformat.hxx"
 
@@ -40,7 +39,7 @@ public:
 struct MsoColorIndices
 {
     const static sal_Int32 HAPICOLOR_BLACK = 0;
-    const static sal_Int32 HAPICOLOR_WITHE = 16777215;
+    const static sal_Int32 HAPICOLOR_WHITE = 16777215;
     const static sal_Int32 HAPICOLOR_RED = 16711680;
     const static sal_Int32 HAPICOLOR_BRIGHTGREEN = 65280;
     const static sal_Int32 HAPICOLOR_BLUE = 255;

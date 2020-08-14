@@ -18,10 +18,11 @@
  */
 
 
-#include "pdfihelper.hxx"
+#include <pdfihelper.hxx>
 
 #include <rtl/ustrbuf.hxx>
 #include <basegfx/numeric/ftools.hxx>
+#include <rtl/math.hxx>
 
 #include <math.h>
 
@@ -101,10 +102,7 @@ OUString pdfi::getColorString( const rendering::ARGBColor& rCol )
 
 OUString pdfi::getPercentString(double value)
 {
-    OUStringBuffer buf(32);
-    buf.append(value);
-    buf.append("%");
-    return buf.makeStringAndClear();
+    return OUString::number(value) + "%";
 }
 
 OUString pdfi::unitMMString( double fMM )

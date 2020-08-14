@@ -16,13 +16,13 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLTABLECELL_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLTABLECELL_HXX
+#pragma once
 
 #include <comphelper/accessibletexthelper.hxx>
 #include <cppuhelper/implbase2.hxx>
-#include "extended/AccessibleGridControlBase.hxx"
-#include <svtools/accessibletable.hxx>
+#include <extended/AccessibleGridControlBase.hxx>
+#include <vcl/accessibletable.hxx>
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 
 namespace accessibility
 {
@@ -43,13 +43,13 @@ namespace accessibility
     protected:
         AccessibleGridControlCell(
             const css::uno::Reference< css::accessibility::XAccessible >& _rxParent,
-            ::svt::table::IAccessibleTable& _rTable,
+            ::vcl::table::IAccessibleTable& _rTable,
             sal_Int32 _nRowPos,
             sal_uInt16 _nColPos,
-            ::svt::table::AccessibleTableControlObjType _eType
+            ::vcl::table::AccessibleTableControlObjType _eType
         );
 
-        virtual ~AccessibleGridControlCell() override;
+        virtual ~AccessibleGridControlCell() override = default;
 
     private:
         AccessibleGridControlCell( const AccessibleGridControlCell& ) = delete;
@@ -60,21 +60,21 @@ namespace accessibility
                                 ,   css::accessibility::XAccessible
                                 >   AccessibleTextHelper_BASE;
     // implementation of a table cell of GridControl
-    class AccessibleGridControlTableCell    :public AccessibleGridControlCell
+    class AccessibleGridControlTableCell final   :public AccessibleGridControlCell
                                         ,public AccessibleTextHelper_BASE
                                         ,public ::comphelper::OCommonAccessibleText
     {
-    protected:
+    private:
         // OCommonAccessibleText
         virtual OUString                        implGetText() override;
         virtual css::lang::Locale               implGetLocale() override;
-        virtual void                            implGetSelection( sal_Int32& nStartIndex, sal_Int32& nEndIndex ) override;
+        virtual void                            implGetSelection( sal_Int32& nStartIndex, sal_Int32& nEndIndex ) override final;
         virtual tools::Rectangle implGetBoundingBox() override;
         virtual tools::Rectangle implGetBoundingBoxOnScreen() override;
 
     public:
         AccessibleGridControlTableCell( const css::uno::Reference< css::accessibility::XAccessible >& _rxParent,
-                                    ::svt::table::IAccessibleTable& _rTable,
+                                    ::vcl::table::IAccessibleTable& _rTable,
                                     sal_Int32 _nRowId,
                                     sal_uInt16 _nColId);
 
@@ -83,7 +83,7 @@ namespace accessibility
         /** Queries for a new interface. */
         css::uno::Any SAL_CALL queryInterface( const css::uno::Type& rType ) override;
 
-        /** Aquires the object (calls acquire() on base class). */
+        /** Acquires the object (calls acquire() on base class). */
         virtual void SAL_CALL acquire() throw () override;
 
         /** Releases the object (calls release() on base class). */
@@ -139,8 +139,8 @@ namespace accessibility
         virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+        virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
     };
 }
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLTABLECELL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

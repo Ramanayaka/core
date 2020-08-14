@@ -20,26 +20,27 @@
 #include <com/sun/star/i18n/TextConversionOption.hpp>
 
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
+#include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <comphelper/propertysequence.hxx>
 #include <cppuhelper/bootstrap.hxx>
-#include <vcl/msgbox.hxx>
 #include <svl/style.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/langitem.hxx>
 #include <editeng/fontitem.hxx>
 
 #include <fuhhconv.hxx>
-#include "drawdoc.hxx"
-#include "Outliner.hxx"
-#include "DrawViewShell.hxx"
-#include "OutlineViewShell.hxx"
-#include "Window.hxx"
-#include "ViewShellBase.hxx"
+#include <drawdoc.hxx>
+#include <Outliner.hxx>
+#include <DrawViewShell.hxx>
+#include <OutlineViewShell.hxx>
+#include <Window.hxx>
+#include <ViewShellBase.hxx>
 
-#include "sdresid.hxx"
-#include "strings.hrc"
+#include <sdresid.hxx>
+#include <strings.hrc>
 
 class SfxRequest;
 
@@ -48,8 +49,6 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
 
 namespace sd {
-
-class ViewShell;
 
 
 FuHangulHanjaConversion::FuHangulHanjaConversion (
@@ -156,7 +155,7 @@ void FuHangulHanjaConversion::ConvertStyles( LanguageType nTargetLanguage, const
     if( !pStyleSheetPool )
         return;
 
-    SfxStyleSheetBase* pStyle = pStyleSheetPool->First();
+    SfxStyleSheetBase* pStyle = pStyleSheetPool->First(SfxStyleFamily::All);
     while( pStyle )
     {
         SfxItemSet& rSet = pStyle->GetItemSet();
@@ -170,7 +169,7 @@ void FuHangulHanjaConversion::ConvertStyles( LanguageType nTargetLanguage, const
             ( !bHasParent || rSet.GetItemState( EE_CHAR_FONTINFO_CJK, false ) == SfxItemState::SET ) )
         {
             // set new font attribute
-            SvxFontItem aFontItem( static_cast<const SvxFontItem&>( rSet.Get( EE_CHAR_FONTINFO_CJK ) ) );
+            SvxFontItem aFontItem( rSet.Get( EE_CHAR_FONTINFO_CJK ) );
             aFontItem.SetFamilyName(   pTargetFont->GetFamilyName());
             aFontItem.SetFamily(       pTargetFont->GetFamilyType());
             aFontItem.SetStyleName(    pTargetFont->GetStyleName());
@@ -190,69 +189,67 @@ void FuHangulHanjaConversion::StartChineseConversion()
     //open ChineseTranslationDialog
     Reference< XComponentContext > xContext(
         ::cppu::defaultBootstrap_InitialComponentContext() ); //@todo get context from calc if that has one
-    if(xContext.is())
+    if(!xContext.is())
+        return;
+
+    Reference< lang::XMultiComponentFactory > xMCF( xContext->getServiceManager() );
+    if(!xMCF.is())
+        return;
+
+    Reference< ui::dialogs::XExecutableDialog > xDialog(
+            xMCF->createInstanceWithContext("com.sun.star.linguistic2.ChineseTranslationDialog"
+                , xContext), UNO_QUERY);
+    Reference< lang::XInitialization > xInit( xDialog, UNO_QUERY );
+    if( xInit.is() )
     {
-        Reference< lang::XMultiComponentFactory > xMCF( xContext->getServiceManager() );
-        if(xMCF.is())
+        //  initialize dialog
+        Reference< awt::XWindow > xDialogParentWindow;
+        Sequence<Any> aSeq(comphelper::InitAnyPropertySequence(
         {
-            Reference< ui::dialogs::XExecutableDialog > xDialog(
-                    xMCF->createInstanceWithContext("com.sun.star.linguistic2.ChineseTranslationDialog"
-                        , xContext), UNO_QUERY);
-            Reference< lang::XInitialization > xInit( xDialog, UNO_QUERY );
-            if( xInit.is() )
+            {"ParentWindow", uno::Any(xDialogParentWindow)}
+        }));
+        xInit->initialize( aSeq );
+
+        //execute dialog
+        sal_Int16 nDialogRet = xDialog->execute();
+        if( RET_OK == nDialogRet )
+        {
+            //get some parameters from the dialog
+            bool bToSimplified = true;
+            bool bUseVariants = true;
+            bool bCommonTerms = true;
+            Reference< beans::XPropertySet >  xProp( xDialog, UNO_QUERY );
+            if( xProp.is() )
             {
-                //  initialize dialog
-                Reference< awt::XWindow > xDialogParentWindow(nullptr);
-                Sequence<Any> aSeq(1);
-                Any* pArray = aSeq.getArray();
-                PropertyValue aParam;
-                aParam.Name = "ParentWindow";
-                aParam.Value <<= xDialogParentWindow;
-                pArray[0] <<= aParam;
-                xInit->initialize( aSeq );
-
-                //execute dialog
-                sal_Int16 nDialogRet = xDialog->execute();
-                if( RET_OK == nDialogRet )
+                try
                 {
-                    //get some parameters from the dialog
-                    bool bToSimplified = true;
-                    bool bUseVariants = true;
-                    bool bCommonTerms = true;
-                    Reference< beans::XPropertySet >  xProp( xDialog, UNO_QUERY );
-                    if( xProp.is() )
-                    {
-                        try
-                        {
-                            xProp->getPropertyValue( "IsDirectionToSimplified" ) >>= bToSimplified;
-                            xProp->getPropertyValue( "IsUseCharacterVariants" ) >>= bUseVariants;
-                            xProp->getPropertyValue( "IsTranslateCommonTerms" ) >>= bCommonTerms;
-                        }
-                        catch( Exception& )
-                        {
-                        }
-                    }
-
-                    //execute translation
-                    LanguageType nSourceLang = bToSimplified ? LANGUAGE_CHINESE_TRADITIONAL : LANGUAGE_CHINESE_SIMPLIFIED;
-                    LanguageType nTargetLang = bToSimplified ? LANGUAGE_CHINESE_SIMPLIFIED : LANGUAGE_CHINESE_TRADITIONAL;
-                    sal_Int32 nOptions       = bUseVariants ? i18n::TextConversionOption::USE_CHARACTER_VARIANTS : 0;
-                    if( !bCommonTerms )
-                        nOptions = nOptions | i18n::TextConversionOption::CHARACTER_BY_CHARACTER;
-
-                    vcl::Font aTargetFont = OutputDevice::GetDefaultFont(
-                                        DefaultFontType::CJK_PRESENTATION,
-                                        nTargetLang, GetDefaultFontFlags::OnlyOne );
-
-                    StartConversion( nSourceLang, nTargetLang, &aTargetFont, nOptions, false );
-                    ConvertStyles( nTargetLang, &aTargetFont );
+                    xProp->getPropertyValue( "IsDirectionToSimplified" ) >>= bToSimplified;
+                    xProp->getPropertyValue( "IsUseCharacterVariants" ) >>= bUseVariants;
+                    xProp->getPropertyValue( "IsTranslateCommonTerms" ) >>= bCommonTerms;
+                }
+                catch( Exception& )
+                {
                 }
             }
-            Reference< lang::XComponent > xComponent( xDialog, UNO_QUERY );
-            if( xComponent.is() )
-                xComponent->dispose();
+
+            //execute translation
+            LanguageType nSourceLang = bToSimplified ? LANGUAGE_CHINESE_TRADITIONAL : LANGUAGE_CHINESE_SIMPLIFIED;
+            LanguageType nTargetLang = bToSimplified ? LANGUAGE_CHINESE_SIMPLIFIED : LANGUAGE_CHINESE_TRADITIONAL;
+            sal_Int32 nOptions       = bUseVariants ? i18n::TextConversionOption::USE_CHARACTER_VARIANTS : 0;
+            if( !bCommonTerms )
+                nOptions = nOptions | i18n::TextConversionOption::CHARACTER_BY_CHARACTER;
+
+            vcl::Font aTargetFont = OutputDevice::GetDefaultFont(
+                                DefaultFontType::CJK_PRESENTATION,
+                                nTargetLang, GetDefaultFontFlags::OnlyOne );
+
+            StartConversion( nSourceLang, nTargetLang, &aTargetFont, nOptions, false );
+            ConvertStyles( nTargetLang, &aTargetFont );
         }
     }
+    Reference< lang::XComponent > xComponent( xDialog, UNO_QUERY );
+    if( xComponent.is() )
+        xComponent->dispose();
 }
 } // end of namespace
 

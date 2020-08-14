@@ -18,33 +18,22 @@
  */
 
 
-#include "options.hxx"
+#include <options.hxx>
 
 #include <osl/diagnose.h>
 #include <rtl/string.hxx>
 #include <rtl/strbuf.hxx>
 
-#include "rtl/ustring.hxx"
-#include "osl/file.hxx"
+#include <rtl/ustring.hxx>
+#include <osl/file.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #ifdef _WIN32
+#   if !defined WIN32_LEAN_AND_MEAN
+#      define WIN32_LEAN_AND_MEAN
+#   endif
 #   include <windows.h>
 #endif
-
-/*
-#ifndef WIN32_LEAN_AND_MEAN
-#   define WIN32_LEAN_AND_MEAN
-# ifdef _MSC_VER
-#   pragma warning(push,1)
-# endif
-#   include <windows.h>
-# ifdef _MSC_VER
-#   pragma warning(pop)
-# endif
-#   include <tchar.h>
-#   undef WIN32_LEAN_AND_MEAN
-#endif
-*/
 
 #include <stdio.h>
 #include <string.h>
@@ -101,14 +90,14 @@ bool Options::checkArgument (std::vector< std::string > & rArgs, char const * ar
           }
         default:
           // "-<option>" ([long] option, w/o param)
-          rArgs.push_back(std::string(arg, len));
+          rArgs.emplace_back(arg, len);
           break;
         }
       }
       break;
     default:
       // "<param>"
-      rArgs.push_back(std::string(arg, len));
+      rArgs.emplace_back(arg, len);
       break;
     }
   }
@@ -155,7 +144,7 @@ bool Options::checkCommandFile (std::vector< std::string > & rArgs, char const *
               }
               break;
           }
-          SAL_FALLTHROUGH;
+          [[fallthrough]];
         default:
           buffer.push_back(sal::static_int_cast<char>(c));
           break;
@@ -198,17 +187,17 @@ bool Options::setOption(char const * option, std::string const & rArg)
    a windows short Url. The ucpp preprocessor has problems with such paths and returns
    with error.
 */
-OString convertIncPathtoShortWindowsPath(const OString& incPath) {
+static OString convertIncPathtoShortWindowsPath(const OString& incPath) {
     OUString path = OStringToOUString(incPath, RTL_TEXTENCODING_UTF8);
 
     std::vector<sal_Unicode> vec(path.getLength() + 1);
     //GetShortPathNameW only works if the file can be found!
     const DWORD len = GetShortPathNameW(
-        reinterpret_cast<LPCWSTR>(path.getStr()), reinterpret_cast<LPWSTR>(&vec[0]), path.getLength() + 1);
+        o3tl::toW(path.getStr()), o3tl::toW(vec.data()), path.getLength() + 1);
 
     if (len > 0)
     {
-        OUString ret(&vec[0], len);
+        OUString ret(vec.data(), len);
         return OUStringToOString(ret, RTL_TEXTENCODING_UTF8);
     }
 
@@ -238,7 +227,7 @@ bool Options::initOptions(std::vector< std::string > & rArgs)
     {
     case 'O':
       {
-        if (!((++first != last) && ((*first)[0] != '-')))
+        if ((++first == last) || ((*first)[0] == '-'))
         {
           return badOption("invalid", option);
         }
@@ -248,7 +237,7 @@ bool Options::initOptions(std::vector< std::string > & rArgs)
       }
     case 'M':
       {
-        if (!((++first != last) && ((*first)[0] != '-')))
+        if ((++first == last) || ((*first)[0] == '-'))
         {
           return badOption("invalid", option);
         }
@@ -258,7 +247,7 @@ bool Options::initOptions(std::vector< std::string > & rArgs)
       }
     case 'I':
       {
-        if (!((++first != last) && ((*first)[0] != '-')))
+        if ((++first == last) || ((*first)[0] == '-'))
         {
           return badOption("invalid", option);
         }
@@ -285,25 +274,21 @@ bool Options::initOptions(std::vector< std::string > & rArgs)
         if (m_options.count("-I") > 0)
         {
           // append param.
-          OStringBuffer buffer(m_options["-I"]);
-          buffer.append(' '); buffer.append(param);
-          param = buffer.makeStringAndClear();
+          param = m_options["-I"] + " " + param;
         }
         m_options["-I"] = param;
         break;
       }
     case 'D':
       {
-        if (!((++first != last) && ((*first)[0] != '-')))
+        if ((++first == last) || ((*first)[0] == '-'))
         {
           return badOption("invalid", option);
         }
-        OString param("-D"); param += OString((*first).c_str(), (*first).size());
+        OString param = "-D" + rtl::OStringView((*first).c_str(), (*first).size());
         if (m_options.count("-D") > 0)
         {
-          OStringBuffer buffer(m_options["-D"]);
-          buffer.append(' '); buffer.append(param);
-          param = buffer.makeStringAndClear();
+          param = m_options["-D"] + " " + param;
         }
         m_options["-D"] = param;
         break;
@@ -379,49 +364,47 @@ bool Options::initOptions(std::vector< std::string > & rArgs)
   return true;
 }
 
-OString Options::prepareHelp()
+OString Options::prepareHelp() const
 {
-    OString help("\nusing: ");
-    help += m_program + " [-options] <file_1> ... <file_n> | @<filename> | -stdin\n";
-    help += "    <file_n>    = file_n specifies one or more idl files.\n";
-    help += "                  Only files with the extension '.idl' are valid.\n";
-    help += "    @<filename> = filename specifies the name of a command file.\n";
-    help += "    -stdin      = read idl file from standard input.\n";
-    help += "  Options:\n";
-    help += "    -O<path>    = path specifies the output directory.\n";
-    help += "                  The generated output is a registry file with\n";
-    help += "                  the same name as the idl input file (or 'stdin'\n";
-    help += "                  for -stdin).\n";
-    help += "    -M<path>    = path specifies the output directory for deps.\n";
-    help += "                  Generate GNU make dependency files with the\n";
-    help += "                  same name as the idl input file.\n";
-    help += "    -I<path>    = path specifies a directory where include\n";
-    help += "                  files will be searched by the preprocessor.\n";
-    help += "                  Multiple directories can be combined with ';'.\n";
-    help += "    -D<name>    = name defines a macro for the preprocessor.\n";
-    help += "    -C          = generate complete type information, including\n";
-    help += "                  documentation.\n";
-    help += "    -cid        = check if identifiers fulfill the UNO naming\n";
-    help += "                  requirements.\n";
-    help += "    -quiet      = no output.\n";
-    help += "    -verbose    = verbose output.\n";
-    help += "    -w          = display warning messages.\n";
-    help += "    -we         = treat warnings as errors.\n";
-    help += "    -h|-?       = print this help message and exit.\n\n";
-    help += prepareVersion();
+    OString help = "\nusing: " +
+        m_program + " [-options] <file_1> ... <file_n> | @<filename> | -stdin\n"
+         "    <file_n>    = file_n specifies one or more idl files.\n"
+         "                  Only files with the extension '.idl' are valid.\n"
+         "    @<filename> = filename specifies the name of a command file.\n"
+         "    -stdin      = read idl file from standard input.\n"
+         "  Options:\n"
+         "    -O<path>    = path specifies the output directory.\n"
+         "                  The generated output is a registry file with\n"
+         "                  the same name as the idl input file (or 'stdin'\n"
+         "                  for -stdin).\n"
+         "    -M<path>    = path specifies the output directory for deps.\n"
+         "                  Generate GNU make dependency files with the\n"
+         "                  same name as the idl input file.\n"
+         "    -I<path>    = path specifies a directory where include\n"
+         "                  files will be searched by the preprocessor.\n"
+         "                  Multiple directories can be combined with ';'.\n"
+         "    -D<name>    = name defines a macro for the preprocessor.\n"
+         "    -C          = generate complete type information, including\n"
+         "                  documentation.\n"
+         "    -cid        = check if identifiers fulfill the UNO naming\n"
+         "                  requirements.\n"
+         "    -quiet      = no output.\n"
+         "    -verbose    = verbose output.\n"
+         "    -w          = display warning messages.\n"
+         "    -we         = treat warnings as errors.\n"
+         "    -h|-?       = print this help message and exit.\n\n" +
+        prepareVersion();
 
     return help;
 }
 
-OString Options::prepareVersion()
+OString Options::prepareVersion() const
 {
-    OString version(m_program);
-    version += " Version 1.1\n\n";
-    return version;
+    return m_program + " Version 1.1\n\n";
 }
 
 
-bool Options::isValid(const OString& option)
+bool Options::isValid(const OString& option) const
 {
     return (m_options.count(option) > 0);
 }

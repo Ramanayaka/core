@@ -16,27 +16,28 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <vbahelper/helperdecl.hxx>
 
 #include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/sheet/XCellRangeAddressable.hpp>
+#include <com/sun/star/sheet/XNamedRange.hpp>
+#include <com/sun/star/sheet/XNamedRanges.hpp>
 
+#include "excelvbahelper.hxx"
 #include "vbanames.hxx"
 #include "vbaname.hxx"
 #include "vbarange.hxx"
-#include "vbaglobals.hxx"
-#include <vector>
-#include <vcl/msgbox.hxx>
-#include "tabvwsh.hxx"
-#include "viewdata.hxx"
-#include "compiler.hxx"
-#include "tokenarray.hxx"
-#include "cellsuno.hxx"
+#include <tabvwsh.hxx>
+#include <viewdata.hxx>
+#include <compiler.hxx>
+#include <tokenarray.hxx>
+#include <cellsuno.hxx>
 
 #include <memory>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
+
+namespace {
 
 class NamesEnumeration : public EnumerationHelperImpl
 {
@@ -53,6 +54,8 @@ public:
     }
 
 };
+
+}
 
 ScVbaNames::ScVbaNames(const css::uno::Reference< ov::XHelperInterface >& xParent,
             const css::uno::Reference< css::uno::XComponentContext >& xContext,
@@ -72,7 +75,7 @@ ScVbaNames::~ScVbaNames()
 ScDocument *
 ScVbaNames::getScDocument()
 {
-    uno::Reference< frame::XModel > xModel( getModel() , uno::UNO_QUERY_THROW );
+    uno::Reference< frame::XModel > xModel( getModel() , uno::UNO_SET_THROW );
     ScTabViewShell * pTabViewShell = excel::getBestViewShell( xModel );
     if ( !pTabViewShell )
         throw uno::RuntimeException( "No ViewShell available" );
@@ -103,13 +106,9 @@ ScVbaNames::Add( const css::uno::Any& Name ,
     {
         if ( ScRangeData::IsNameValid( sName , getScDocument() )  != ScRangeData::NAME_VALID )
         {
-            sal_Int32 nIndex = 0;
-            OUString sResult = sName.getToken( 0 , '!' , nIndex );
-            if ( -1 == nIndex )
-                sResult = sName;
-            else
-                sResult = sName.copy( nIndex );
-            sName = sResult ;
+            const sal_Int32 nIndex{ sName.indexOf('!') };
+            if (nIndex>=0)
+                sName = sName.copy(nIndex+1);
             if ( ScRangeData::IsNameValid( sName , getScDocument() ) != ScRangeData::NAME_VALID )
                 throw uno::RuntimeException( "This Name is not valid ." );
         }
@@ -170,7 +169,7 @@ ScVbaNames::Add( const css::uno::Any& Name ,
                     if ( ScVbaRange::getCellRangesForAddress( nFlags, sFormula, pDocSh, aCellRanges, eConv , ',' ) )
                     {
                         if ( aCellRanges.size() == 1 )
-                            xUnoRange =  new ScCellRangeObj( pDocSh, *aCellRanges.front() );
+                            xUnoRange =  new ScCellRangeObj( pDocSh, aCellRanges.front() );
                         else
                         {
                             uno::Reference< sheet::XSheetCellRangeContainer > xRanges( new ScCellRangesObj( pDocSh, aCellRanges ) );
@@ -201,7 +200,7 @@ ScVbaNames::Add( const css::uno::Any& Name ,
             table::CellAddress aCellAddr( aAddr.Sheet , aAddr.StartColumn , aAddr.StartRow );
             if ( mxNames->hasByName( sName ) )
                 mxNames->removeByName(sName);
-            OUString sTmp = "$";
+            OUStringBuffer sTmp = "$";
             uno::Reference< ov::XCollection > xCol( xRange->Areas( uno::Any() ), uno::UNO_QUERY );
             for ( sal_Int32 nArea = 1; nArea <= xCol->getCount(); ++nArea )
             {
@@ -209,10 +208,10 @@ ScVbaNames::Add( const css::uno::Any& Name ,
 
                 OUString sRangeAdd = xArea->Address( aAny2, aAny2 , aAny2 , aAny2, aAny2 );
                 if ( nArea > 1 )
-                    sTmp += ",";
-                sTmp = sTmp + "'" + xRange->getWorksheet()->getName() + "'." + sRangeAdd;
+                    sTmp.append(",");
+                sTmp.append("'").append(xRange->getWorksheet()->getName()).append("'.").append(sRangeAdd);
             }
-            mxNames->addNewByName( sName, sTmp, aCellAddr, 0/*nUnoType*/);
+            mxNames->addNewByName( sName, sTmp.makeStringAndClear(), aCellAddr, 0/*nUnoType*/);
             return Item( uno::makeAny( sName ), uno::Any() );
         }
     }
@@ -243,18 +242,16 @@ ScVbaNames::createCollectionObject( const uno::Any& aSource )
 OUString
 ScVbaNames::getServiceImplName()
 {
-    return OUString( "ScVbaNames" );
+    return "ScVbaNames";
 }
 
 css::uno::Sequence<OUString>
 ScVbaNames::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.NamedRanges";
-    }
+        "ooo.vba.excel.NamedRanges"
+    };
     return aServiceNames;
 }
 

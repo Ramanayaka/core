@@ -21,10 +21,8 @@
 #define INCLUDED_SOT_SOURCE_SDSTOR_STGOLE_HXX
 
 #include <memory>
-#include <string.h>
 
-#include "sot/stg.hxx"
-#include "stgelem.hxx"
+#include <sot/stg.hxx>
 
 class StgInternalStream : public SvStream
 {
@@ -43,9 +41,9 @@ public:
 
 class StgCompObjStream : public StgInternalStream
 {
-    ClsId       m_aClsId;
+    ClsId       m_aClsId = {};
     OUString    m_aUserName;
-    SotClipboardFormatId m_nCbFormat;
+    SotClipboardFormatId m_nCbFormat = SotClipboardFormatId::NONE;
 public:
     StgCompObjStream( BaseStorage&, bool );
     ClsId&     GetClsId()    { return m_aClsId;    }

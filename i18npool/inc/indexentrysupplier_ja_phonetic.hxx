@@ -20,12 +20,11 @@
 #ifndef INCLUDED_I18NPOOL_INC_INDEXENTRYSUPPLIER_JA_PHONETIC_HXX
 #define INCLUDED_I18NPOOL_INC_INDEXENTRYSUPPLIER_JA_PHONETIC_HXX
 
-#include <indexentrysupplier_common.hxx>
+#include "indexentrysupplier_common.hxx"
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 
-//  class IndexEntrySupplier_ja_phonetic
 
 
 class IndexEntrySupplier_ja_phonetic : public IndexEntrySupplier_Common {
@@ -43,23 +42,24 @@ public:
         const css::lang::Locale& rLocale2 ) override;
 };
 
-#define INDEXENTRYSUPPLIER_JA_PHONETIC( algorithm ) \
-class IndexEntrySupplier_##algorithm : public IndexEntrySupplier_ja_phonetic {\
+#define INDEXENTRYSUPPLIER_JA_PHONETIC( algorithm, algo_descr ) \
+class IndexEntrySupplier_##algorithm final : public IndexEntrySupplier_ja_phonetic {\
 public:\
     IndexEntrySupplier_##algorithm (const css::uno::Reference < css::uno::XComponentContext >& rxContext) : IndexEntrySupplier_ja_phonetic (rxContext) {\
-        implementationName = "com.sun.star.i18n.IndexEntrySupplier_"#algorithm;\
+        implementationName = "com.sun.star.i18n.IndexEntrySupplier_"#algo_descr;\
     };\
     virtual sal_Bool SAL_CALL loadAlgorithm(\
         const css::lang::Locale& rLocale,\
         const OUString& SortAlgorithm, sal_Int32 collatorOptions ) override;\
 };
 
-INDEXENTRYSUPPLIER_JA_PHONETIC( ja_phonetic_alphanumeric_first_by_syllable )
-INDEXENTRYSUPPLIER_JA_PHONETIC( ja_phonetic_alphanumeric_first_by_consonant )
-INDEXENTRYSUPPLIER_JA_PHONETIC( ja_phonetic_alphanumeric_last_by_syllable )
-INDEXENTRYSUPPLIER_JA_PHONETIC( ja_phonetic_alphanumeric_last_by_consonant )
+/** descriptions formed by concatenating strings here must match names in .component file */
+INDEXENTRYSUPPLIER_JA_PHONETIC( ja_phonetic_alphanumeric_first_by_syllable,  " (alphanumeric first) (grouped by syllable)" )
+INDEXENTRYSUPPLIER_JA_PHONETIC( ja_phonetic_alphanumeric_first_by_consonant, " (alphanumeric first) (grouped by consonant)" )
+INDEXENTRYSUPPLIER_JA_PHONETIC( ja_phonetic_alphanumeric_last_by_syllable,   " (alphanumeric last) (grouped by consonant)" )
+INDEXENTRYSUPPLIER_JA_PHONETIC( ja_phonetic_alphanumeric_last_by_consonant,  " (alphanumeric last) (grouped by consonant)" )
 
-} } } }
+}
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

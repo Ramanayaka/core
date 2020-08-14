@@ -21,23 +21,21 @@
 #define INCLUDED_SC_INC_XMLWRAP_HXX
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/frame/XModel.hpp>
 #include "importfilterdata.hxx"
-#include <sal/types.h>
 
 #include <vcl/errcode.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { struct PropertyValue; }
     namespace frame { class XModel; }
     namespace task { class XStatusIndicator; }
-    namespace lang { class XMultiServiceFactory; }
-    namespace uno { class XInterface; }
+    namespace uno { class XComponentContext; }
+    namespace uno { template <class E> class Sequence; }
     namespace embed { class XStorage; }
     namespace xml {
-        namespace sax { struct InputSource; class XParser; class XWriter; } }
-} } }
+        namespace sax { struct InputSource; class XParser; class XWriter; }
+    }
+}
 
 class ScDocument;
 class SfxMedium;
@@ -66,23 +64,23 @@ class ScXMLImportWrapper
     SfxMedium*      pMedium;
     css::uno::Reference< css::embed::XStorage > xStorage;
 
-    css::uno::Reference< css::task::XStatusIndicator> GetStatusIndicator();
+    css::uno::Reference< css::task::XStatusIndicator> GetStatusIndicator() const;
 
     ErrCode ImportFromComponent(const css::uno::Reference<css::uno::XComponentContext>& xContext,
-        css::uno::Reference<css::frame::XModel>& xModel,
-        css::uno::Reference<css::xml::sax::XParser>& xParser,
+        const css::uno::Reference<css::frame::XModel>& xModel,
+        const css::uno::Reference<css::xml::sax::XParser>& xParser,
         css::xml::sax::InputSource& aParserInput,
-        const OUString& sComponentName, const OUString& sDocName, const OUString& sOldDocName,
-        css::uno::Sequence<css::uno::Any>& aArgs,
+        const OUString& sComponentName, const OUString& sDocName,
+        const css::uno::Sequence<css::uno::Any>& aArgs,
         bool bMustBeSuccessfull);
 
     bool ExportToComponent(const css::uno::Reference<css::uno::XComponentContext>& xContext,
-        css::uno::Reference<css::frame::XModel>& xModel,
-        css::uno::Reference<css::xml::sax::XWriter>& xWriter,
-        css::uno::Sequence<css::beans::PropertyValue>& aDescriptor,
+        const css::uno::Reference<css::frame::XModel>& xModel,
+        const css::uno::Reference<css::xml::sax::XWriter>& xWriter,
+        const css::uno::Sequence<css::beans::PropertyValue>& aDescriptor,
         const OUString& sName, const OUString& sMediaType, const OUString& sComponentName,
-        css::uno::Sequence<css::uno::Any>& aArgs,
-        ScMySharedData*& pSharedData);
+        const css::uno::Sequence<css::uno::Any>& aArgs,
+        std::unique_ptr<ScMySharedData>& pSharedData);
 
 public:
 
@@ -93,18 +91,6 @@ public:
     bool Export(bool bStylesOnly);
 
     const sc::ImportPostProcessData& GetImportPostProcessData() const { return maPostProcessData;}
-};
-
-class ScXMLChartExportWrapper
-{
-public:
-    ScXMLChartExportWrapper( css::uno::Reference< css::frame::XModel > const & xModel, SfxMedium& rMed );
-    bool Export();
-
-private:
-    css::uno::Reference< css::frame::XModel > mxModel;
-    css::uno::Reference< css::embed::XStorage > mxStorage;
-    SfxMedium& mrMedium;
 };
 
 #endif

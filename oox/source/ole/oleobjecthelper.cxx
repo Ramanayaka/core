@@ -17,24 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ole/oleobjecthelper.hxx"
+#include <oox/ole/oleobjecthelper.hxx>
 
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/document/XEmbeddedObjectResolver.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <osl/diagnose.h>
 #include <comphelper/sequenceashashmap.hxx>
-#include "oox/helper/propertymap.hxx"
+#include <oox/helper/propertymap.hxx>
 #include <oox/token/properties.hxx>
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::container;
@@ -50,7 +51,7 @@ OleObjectInfo::OleObjectInfo() :
 {
 }
 
-static const char g_aEmbeddedObjScheme[] = "vnd.sun.star.EmbeddedObject:";
+const char g_aEmbeddedObjScheme[] = "vnd.sun.star.EmbeddedObject:";
 
 OleObjectHelper::OleObjectHelper(
         const Reference< XMultiServiceFactory >& rxModelFactory,
@@ -173,7 +174,6 @@ bool OleObjectHelper::importOleObject( PropertyMap& rPropMap, const OleObjectInf
     return bRet;
 }
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

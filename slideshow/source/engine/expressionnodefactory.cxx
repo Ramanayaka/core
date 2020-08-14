@@ -20,19 +20,13 @@
 
 #include <expressionnodefactory.hxx>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/point/b2dpoint.hxx>
-
-#include <functional>
 #include <algorithm>
 
 
 /* Implementation of ExpressionNodeFactory class */
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         namespace
         {
             class ConstantValueExpression : public ExpressionNode
@@ -196,51 +190,50 @@ namespace slideshow
 
         std::shared_ptr<ExpressionNode> ExpressionNodeFactory::createConstantValueExpression( double rConstantValue )
         {
-            return std::shared_ptr<ExpressionNode>( new ConstantValueExpression(rConstantValue) );
+            return std::make_shared<ConstantValueExpression>(rConstantValue);
         }
 
         std::shared_ptr<ExpressionNode> ExpressionNodeFactory::createValueTExpression()
         {
-            return std::shared_ptr<ExpressionNode>( new TValueExpression() );
+            return std::make_shared<TValueExpression>();
         }
 
         std::shared_ptr<ExpressionNode> ExpressionNodeFactory::createPlusExpression( const std::shared_ptr<ExpressionNode>& rLHS,
                                                                              const std::shared_ptr<ExpressionNode>& rRHS )
         {
-            return std::shared_ptr<ExpressionNode>( new PlusExpression(rLHS, rRHS) );
+            return std::make_shared<PlusExpression>(rLHS, rRHS);
         }
 
         std::shared_ptr<ExpressionNode> ExpressionNodeFactory::createMinusExpression( const std::shared_ptr<ExpressionNode>&    rLHS,
                                                                               const std::shared_ptr<ExpressionNode>&    rRHS )
         {
-            return std::shared_ptr<ExpressionNode>( new MinusExpression(rLHS, rRHS) );
+            return std::make_shared<MinusExpression>(rLHS, rRHS);
         }
 
         std::shared_ptr<ExpressionNode> ExpressionNodeFactory::createMultipliesExpression( const std::shared_ptr<ExpressionNode>&   rLHS,
                                                                                    const std::shared_ptr<ExpressionNode>&   rRHS )
         {
-            return std::shared_ptr<ExpressionNode>( new MultipliesExpression(rLHS, rRHS) );
+            return std::make_shared<MultipliesExpression>(rLHS, rRHS);
         }
 
         std::shared_ptr<ExpressionNode> ExpressionNodeFactory::createDividesExpression( const std::shared_ptr<ExpressionNode>&  rLHS,
                                                                                 const std::shared_ptr<ExpressionNode>&  rRHS )
         {
-            return std::shared_ptr<ExpressionNode>( new DividesExpression(rLHS, rRHS) );
+            return std::make_shared<DividesExpression>(rLHS, rRHS);
         }
 
         std::shared_ptr<ExpressionNode> ExpressionNodeFactory::createMinExpression   ( const std::shared_ptr<ExpressionNode>&   rOuterFunction,
                                                                                const std::shared_ptr<ExpressionNode>&   rInnerFunction )
         {
-            return std::shared_ptr<ExpressionNode>( new MinExpression(rOuterFunction, rInnerFunction) );
+            return std::make_shared<MinExpression>(rOuterFunction, rInnerFunction);
         }
 
         std::shared_ptr<ExpressionNode> ExpressionNodeFactory::createMaxExpression   ( const std::shared_ptr<ExpressionNode>&   rOuterFunction,
                                                                                const std::shared_ptr<ExpressionNode>&   rInnerFunction )
         {
-            return std::shared_ptr<ExpressionNode>( new MaxExpression(rOuterFunction, rInnerFunction) );
+            return std::make_shared<MaxExpression>(rOuterFunction, rInnerFunction);
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

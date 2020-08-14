@@ -22,12 +22,10 @@
 
 #include <memory>
 #include <tools/color.hxx>
-#include <vcl/bitmap.hxx>
-#include <svtools/grfmgr.hxx>
-#include <svx/xenum.hxx>
+#include <vcl/GraphicObject.hxx>
 #include <svx/svxdllapi.h>
 
-class SVX_DLLPUBLIC XOBitmap
+class SVXCORE_DLLPUBLIC XOBitmap
 {
 private:
     std::unique_ptr<GraphicObject> xGraphicObject;
@@ -43,7 +41,7 @@ private:
 
 
 public:
-    XOBitmap( const Bitmap& rBitmap );
+    XOBitmap( const BitmapEx& rBitmap );
     ~XOBitmap();
 
     void Bitmap2Array();
@@ -52,7 +50,7 @@ public:
     void SetPixelColor( const Color& rColor )           { aPixelColor = rColor; bGraphicDirty = true; }
     void SetBackgroundColor( const Color& rColor )      { aBckgrColor = rColor; bGraphicDirty = true; }
 
-    Bitmap                  GetBitmap() const;
+    BitmapEx                GetBitmap() const;
     const Color&            GetBackgroundColor() const  { return aBckgrColor; }
 };
 

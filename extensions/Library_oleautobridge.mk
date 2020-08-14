@@ -13,7 +13,11 @@ $(eval $(call gb_Library_Library,oleautobridge))
 
 $(eval $(call gb_Library_set_componentfile,oleautobridge,extensions/source/ole/oleautobridge))
 
-$(eval $(call gb_Library_use_sdk_api,oleautobridge))
+$(eval $(call gb_Library_use_api,oleautobridge,\
+    offapi \
+    oovbaapi \
+    udkapi \
+))
 
 $(eval $(call gb_Library_set_include,oleautobridge,\
 	$(foreach inc,$(ATL_INCLUDE),-I$(inc)) \
@@ -31,6 +35,7 @@ $(eval $(call gb_Library_use_libraries,oleautobridge,\
 	cppuhelper \
 	cppu \
 	sal \
+	tl \
 ))
 
 $(eval $(call gb_Library_use_system_win32_libs,oleautobridge,\

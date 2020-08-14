@@ -31,14 +31,12 @@ namespace basegfx {
     class B3DVector;
 }
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpSdr3DLightAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC Sdr3DLightAttribute
         {
@@ -54,11 +52,11 @@ namespace drawinglayer
                 const basegfx::BColor& rColor,
                 const basegfx::B3DVector& rDirection,
                 bool bSpecular);
-            Sdr3DLightAttribute(const Sdr3DLightAttribute& rCandidate);
+            Sdr3DLightAttribute(const Sdr3DLightAttribute&);
             ~Sdr3DLightAttribute();
 
             // assignment operator
-            Sdr3DLightAttribute& operator=(const Sdr3DLightAttribute& rCandidate);
+            Sdr3DLightAttribute& operator=(const Sdr3DLightAttribute&);
 
             // compare operator
             bool operator==(const Sdr3DLightAttribute& rCandidate) const;
@@ -68,8 +66,8 @@ namespace drawinglayer
             const basegfx::B3DVector& getDirection() const;
             bool getSpecular() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_SDRLIGHTATTRIBUTE3D_HXX

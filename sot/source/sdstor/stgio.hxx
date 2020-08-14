@@ -20,10 +20,8 @@
 #ifndef INCLUDED_SOT_SOURCE_SDSTOR_STGIO_HXX
 #define INCLUDED_SOT_SOURCE_SDSTOR_STGIO_HXX
 
-#include <stgcache.hxx>
-#include <stgelem.hxx>
-#include <tools/link.hxx>
-#include <tools/solar.h>
+#include "stgcache.hxx"
+#include "stgelem.hxx"
 
 class StgFATStrm;
 class StgDataStrm;
@@ -41,11 +39,6 @@ enum class FatError
     BothError
 };
 
-struct StgLinkArg
-{
-    OUString aFile;
-};
-
 class StgIo : public StgCache {
     void SetupStreams();            // load all internal streams
     bool         m_bCopied;
@@ -57,13 +50,11 @@ public:
     StgDirStrm*  m_pTOC;              // TOC stream
     StgDataStrm* m_pDataFAT;          // small data FAT stream
     StgDataStrm* m_pDataStrm;         // small data stream
-    short        GetDataPageSize(); // get the logical data page size
+    short        GetDataPageSize() const; // get the logical data page size
     bool Load();                    // load a storage file
     bool Init();                    // set up an empty file
     bool CommitAll();               // commit everything (root commit)
 
-    static void SetErrorLink( const Link<StgLinkArg&,void>& );
-    static const Link<StgLinkArg&,void>& GetErrorLink();
     FatError ValidateFATs( );
 };
 

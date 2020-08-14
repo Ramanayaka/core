@@ -25,15 +25,13 @@
 #include <cstddef>
 #include <initializer_list>
 #include <type_traits>
+#include <memory>
 
 #include <svl/svldllapi.h>
 #include <svl/poolitem.hxx>
+#include <svl/typedwhich.hxx>
 
 class SfxItemPool;
-class SfxPoolItem;
-class SvStream;
-
-typedef SfxPoolItem const** SfxItemArray;
 
 namespace svl {
 
@@ -58,9 +56,7 @@ constexpr bool validRanges() {
 // std::size_t is no smaller than sal_uInt16:
 
 constexpr std::size_t rangeSize(sal_uInt16 wid1, sal_uInt16 wid2) {
-#if HAVE_CXX14_CONSTEXPR
     assert(validRange(wid1, wid2));
-#endif
     return wid2 - wid1 + 1;
 }
 
@@ -83,7 +79,8 @@ class SAL_WARN_UNUSED SVL_DLLPUBLIC SfxItemSet
 
     SfxItemPool*      m_pPool;         ///< pool that stores the items
     const SfxItemSet* m_pParent;       ///< derivation
-    SfxItemArray      m_pItems;        ///< array of items
+    std::unique_ptr<SfxPoolItem const*[]>
+                      m_pItems;        ///< array of items
     sal_uInt16*       m_pWhichRanges;  ///< array of Which Ranges
     sal_uInt16        m_nCount;        ///< number of items
 
@@ -98,7 +95,7 @@ private:
         std::size_t items);
 
 public:
-    SfxItemArray                GetItems_Impl() const { return m_pItems; }
+    SfxPoolItem const**         GetItems_Impl() const { return m_pItems.get(); }
 
 private:
     const SfxItemSet&           operator=(const SfxItemSet &) = delete;
@@ -109,10 +106,13 @@ protected:
 
     void                        PutDirect(const SfxPoolItem &rItem);
 
+    virtual const SfxPoolItem*  PutImpl( const SfxPoolItem&, sal_uInt16 nWhich, bool bPassingOwnership );
+
 public:
     struct Pair { sal_uInt16 wid1, wid2; };
 
                                 SfxItemSet( const SfxItemSet& );
+                                SfxItemSet( SfxItemSet&& ) noexcept;
 
                                 SfxItemSet( SfxItemPool&);
     template<sal_uInt16... WIDs> SfxItemSet(
@@ -124,13 +124,18 @@ public:
                                 SfxItemSet( SfxItemPool&, const sal_uInt16* nWhichPairTable );
     virtual                     ~SfxItemSet();
 
-    virtual SfxItemSet *        Clone(bool bItems = true, SfxItemPool *pToPool = nullptr) const;
+    virtual std::unique_ptr<SfxItemSet> Clone(bool bItems = true, SfxItemPool *pToPool = nullptr) const;
 
     // Get number of items
     sal_uInt16                  Count() const { return m_nCount; }
     sal_uInt16                  TotalCount() const;
 
     const SfxPoolItem&          Get( sal_uInt16 nWhich, bool bSrchInParent = true ) const;
+    template<class T>
+    const T&                    Get( TypedWhichId<T> nWhich, bool bSrchInParent = true ) const
+    {
+        return static_cast<const T&>(Get(sal_uInt16(nWhich), bSrchInParent));
+    }
 
     /** This method eases accessing single Items in the SfxItemSet.
 
@@ -149,20 +154,29 @@ public:
         assert(!pItem || pCastedItem); // if it exists, must have the correct type
         return pCastedItem;
     }
+    template<class T> const T* GetItem( TypedWhichId<T> nWhich, bool bSearchInParent = true ) const
+    {
+        return GetItem<T>(sal_uInt16(nWhich), bSearchInParent);
+    }
+
 
     /// Templatized static version of GetItem() to directly return the correct type if the SfxItemSet is available.
-    template<class T> static const T* GetItem(const SfxItemSet* pItemSet, sal_uInt16 nWhich, bool bSearchInParent = true)
+    template<class T> static const T* GetItem(const SfxItemSet* pItemSet, sal_uInt16 nWhich, bool bSearchInParent)
     {
         if (pItemSet)
             return pItemSet->GetItem<T>(nWhich, bSearchInParent);
 
         return nullptr;
     }
+    template <class T>
+    static const T* GetItem(const SfxItemSet* pItemSet, TypedWhichId<T> nWhich,
+                            bool bSearchInParent)
+    {
+        return GetItem<T>(pItemSet, static_cast<sal_uInt16>(nWhich), bSearchInParent);
+    }
 
-    // Get Which-value of the item at position nPos
     sal_uInt16                  GetWhichByPos(sal_uInt16 nPos) const;
 
-    // Get item-status
     SfxItemState                GetItemState(   sal_uInt16 nWhich,
                                                 bool bSrchInParent = true,
                                                 const SfxPoolItem **ppItem = nullptr ) const;
@@ -178,16 +192,20 @@ public:
     inline void                 SetParent( const SfxItemSet* pNew );
 
     // add, delete items, work on items
-protected:
-    virtual const SfxPoolItem*  Put( const SfxPoolItem&, sal_uInt16 nWhich );
 public:
+    const SfxPoolItem*          Put( const SfxPoolItem& rItem, sal_uInt16 nWhich )
+    { return PutImpl(rItem, nWhich, /*bPassingOwnership*/false); }
+    const SfxPoolItem*          Put( std::unique_ptr<SfxPoolItem> xItem, sal_uInt16 nWhich )
+    { return PutImpl(*xItem.release(), nWhich, /*bPassingOwnership*/true); }
     const SfxPoolItem*          Put( const SfxPoolItem& rItem )
                                 { return Put(rItem, rItem.Which()); }
+    const SfxPoolItem*          Put( std::unique_ptr<SfxPoolItem> xItem )
+                                { auto nWhich = xItem->Which(); return Put(std::move(xItem), nWhich); }
     bool                        Put( const SfxItemSet&,
                                      bool bInvalidAsDefault = true );
     void                        PutExtended( const SfxItemSet&,
-                                             SfxItemState eDontCareAs = SfxItemState::UNKNOWN,
-                                             SfxItemState eDefaultAs = SfxItemState::UNKNOWN );
+                                             SfxItemState eDontCareAs,
+                                             SfxItemState eDefaultAs );
 
     bool                        Set( const SfxItemSet&, bool bDeep = true );
 
@@ -202,13 +220,22 @@ public:
     void                        MergeRange( sal_uInt16 nFrom, sal_uInt16 nTo );
     const SfxItemSet*           GetParent() const { return m_pParent; }
 
-    void                        Load( SvStream & );
-    void                        Store( SvStream &, bool bDirect = false ) const;
-
     bool                        operator==(const SfxItemSet &) const;
-    sal_Int32                   getHash() const;
-    OString                     stringify() const;
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+
+    /** Compare possibly ignoring SfxItemPool pointer.
+
+        This can be used to compare the content of two SfxItemSet even if they
+        don't share the same pool. EditTextObject::Equals(...,false) uses this
+        which is needed in ScGlobal::EETextObjEqual() for
+        ScPageHFItem::operator==()
+
+        @param  bComparePool
+                if <FALSE/> ignore SfxItemPool pointer,
+                if <TRUE/> compare also SfxItemPool pointer (identical to operator==())
+     */
+    bool                        Equals(const SfxItemSet &, bool bComparePool) const;
+
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 inline void SfxItemSet::SetParent( const SfxItemSet* pNew )
@@ -228,9 +255,9 @@ public:
                                 SfxAllItemSet( const SfxItemSet & );
                                 SfxAllItemSet( const SfxAllItemSet & );
 
-    virtual SfxItemSet *        Clone( bool bItems = true, SfxItemPool *pToPool = nullptr ) const override;
-    virtual const SfxPoolItem*  Put( const SfxPoolItem&, sal_uInt16 nWhich ) override;
-    using SfxItemSet::Put;
+    virtual std::unique_ptr<SfxItemSet> Clone( bool bItems = true, SfxItemPool *pToPool = nullptr ) const override;
+protected:
+    virtual const SfxPoolItem*  PutImpl( const SfxPoolItem&, sal_uInt16 nWhich, bool bPassingOwnership ) override;
 };
 
 #endif // INCLUDED_SVL_ITEMSET_HXX

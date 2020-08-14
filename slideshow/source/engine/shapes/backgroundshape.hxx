@@ -22,17 +22,15 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 
-namespace com { namespace sun { namespace star { namespace drawing
-{
-    class XDrawPage;
-} } } }
+#include <memory>
 
-namespace slideshow
-{
-    namespace internal
+namespace com::sun::star::drawing { class XDrawPage; }
+
+namespace slideshow::internal
     {
         class  Shape;
         struct SlideShowContext;
+        typedef ::std::shared_ptr< Shape > ShapeSharedPtr;
 
         /** Representation of a draw document's background shape.
 
@@ -41,11 +39,11 @@ namespace slideshow
             nor attributable, those more specialized derivations of
             the Shape interface are not implemented here.
          */
-        std::shared_ptr<Shape> createBackgroundShape(
+        ShapeSharedPtr createBackgroundShape(
             const css::uno::Reference< css::drawing::XDrawPage >& xDrawPage,
             const css::uno::Reference< css::drawing::XDrawPage >& xMasterPage,
             const SlideShowContext&                       rContext ); // throw ShapeLoadFailedException;
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_BACKGROUNDSHAPE_HXX

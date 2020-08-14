@@ -23,7 +23,6 @@
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <ooo/vba/word/WdUnderline.hpp>
 #include <sal/macros.h>
-#include <ooo/vba/word/WdColorIndex.hpp>
 #include <unordered_map>
 
 using namespace ::ooo::vba;
@@ -32,13 +31,17 @@ using namespace ::com::sun::star;
 const uno::Any aLongAnyTrue( sal_Int16(-1) );
 const uno::Any aLongAnyFalse( sal_Int16( 0 ) );
 
+namespace {
+
 struct MapPair
 {
     sal_Int32 nMSOConst;
     sal_Int32 nOOOConst;
 };
 
-static MapPair UnderLineTable[] = {
+}
+
+MapPair const UnderLineTable[] = {
         { word::WdUnderline::wdUnderlineNone, css::awt::FontUnderline::NONE },
         { word::WdUnderline::wdUnderlineSingle, css::awt::FontUnderline::SINGLE },
         { word::WdUnderline::wdUnderlineWords, css::awt::FontUnderline::SINGLE },
@@ -60,6 +63,9 @@ static MapPair UnderLineTable[] = {
 };
 
 typedef std::unordered_map< sal_Int32, sal_Int32 > ConstToConst;
+
+namespace {
+
 class UnderLineMapper
 {
     ConstToConst MSO2OOO;
@@ -76,7 +82,7 @@ private:
 public:
     static OUString propName()
     {
-        return OUString("CharUnderline");
+        return "CharUnderline";
     }
 
     static UnderLineMapper& instance()
@@ -102,6 +108,8 @@ public:
         return it->second;
     }
 };
+
+}
 
 SwVbaFont::SwVbaFont( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< container::XIndexAccess >& xPalette, uno::Reference< css::beans::XPropertySet > const & xPropertySet ) : SwVbaFont_BASE( xParent, xContext, xPalette, xPropertySet )
 {
@@ -130,7 +138,7 @@ SwVbaFont::setUnderline( const uno::Any& _underline )
 OUString
 SwVbaFont::getServiceImplName()
 {
-    return OUString("SwVbaFont");
+    return "SwVbaFont";
 }
 
 void SAL_CALL
@@ -144,7 +152,7 @@ SwVbaFont::setColorIndex( const uno::Any& _colorindex )
 uno::Any SAL_CALL
 SwVbaFont::getColorIndex()
 {
-        sal_Int32 nColor = 0;
+    sal_Int32 nColor = 0;
 
     XLRGBToOORGB( getColor() ) >>= nColor;
     sal_Int32 nElems = mxPalette->getCount();
@@ -224,12 +232,10 @@ SwVbaFont::getShadow()
 uno::Sequence< OUString >
 SwVbaFont::getServiceNames()
 {
-        static uno::Sequence< OUString > aServiceNames;
-        if ( aServiceNames.getLength() == 0 )
+        static uno::Sequence< OUString > const aServiceNames
         {
-                aServiceNames.realloc( 1 );
-                aServiceNames[ 0 ] = "ooo.vba.word.Font";
-        }
+            "ooo.vba.word.Font"
+        };
         return aServiceNames;
 }
 

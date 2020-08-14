@@ -20,17 +20,13 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_CONTROLLER_SLSDRAGANDDROPCONTEXT_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_CONTROLLER_SLSDRAGANDDROPCONTEXT_HXX
 
-#include <tools/gen.hxx>
+#include <controller/SlsInsertionIndicatorHandler.hxx>
 
-#include "model/SlsSharedPageDescriptor.hxx"
-#include "controller/SlsInsertionIndicatorHandler.hxx"
-#include <vector>
+class Point;
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter {  class SlideSorter; }
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 /** A DragAndDropContext object handles an active drag and drop operation.
     When the mouse is moved from one slide sorter window to another the
@@ -46,7 +42,7 @@ public:
     ~DragAndDropContext() COVERITY_NOEXCEPT_FALSE;
 
     /** Call this method (for example as reaction to ESC key press) to avoid
-        processing (ie moving or inserting) the substition when the called
+        processing (ie moving or inserting) the substitution when the called
         DragAndDropContext object is destroyed.
     */
     void Dispose();
@@ -60,14 +56,14 @@ public:
         const InsertionIndicatorHandler::Mode eMode,
         const bool bAllowAutoScroll);
 
-    void SetTargetSlideSorter(const Point& rMousePosition);
+    void SetTargetSlideSorter();
 
 private:
     SlideSorter* mpTargetSlideSorter;
     sal_Int32 mnInsertionIndex;
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

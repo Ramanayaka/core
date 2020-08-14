@@ -22,7 +22,6 @@
 
 #include "MacabConnection.hxx"
 #include "MacabHeader.hxx"
-#include <list>
 #include <connectivity/sqliterator.hxx>
 #include <connectivity/sqlparse.hxx>
 #include <com/sun/star/sdbc/XStatement.hpp>
@@ -32,10 +31,8 @@
 #include <cppuhelper/basemutex.hxx>
 #include <comphelper/proparrhlp.hxx>
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
         typedef ::cppu::WeakComponentImplHelper<   css::sdbc::XStatement,
                                                    css::sdbc::XWarningsSupplier,
                                                    css::util::XCancellable,
@@ -54,7 +51,6 @@ namespace connectivity
             css::sdbc::SQLWarning               m_aLastWarning;
 
         protected:
-            std::list< OUString>              m_aBatchList;
             connectivity::OSQLParser            m_aParser;
             connectivity::OSQLParseTreeIterator m_aSQLIterator;
             connectivity::OSQLParseNode*        m_pParseTree;
@@ -168,7 +164,6 @@ namespace connectivity
             explicit MacabStatement(MacabConnection* _pConnection);
             DECLARE_SERVICE_INFO();
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABSTATEMENT_HXX

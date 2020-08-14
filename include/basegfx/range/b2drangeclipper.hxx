@@ -17,17 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_RANGE_B2DRANGECLIPPER_HXX
-#define INCLUDED_BASEGFX_RANGE_B2DRANGECLIPPER_HXX
+#pragma once
 
 #include <basegfx/range/b2dpolyrange.hxx>
 #include <vector>
 #include <basegfx/basegfxdllapi.h>
 
-namespace basegfx
+namespace basegfx::utils
 {
-    namespace tools
-    {
         /** Extract poly-polygon w/o self-intersections from poly-range
 
             Similar to the solveCrossovers(const B2DPolyPolygon&)
@@ -37,9 +34,6 @@ namespace basegfx
          */
         BASEGFX_DLLPUBLIC B2DPolyPolygon solveCrossovers(const std::vector<B2DRange>& rRanges,
                                        const std::vector<B2VectorOrientation>& rOrientations);
-    }
 }
-
-#endif // INCLUDED_BASEGFX_RANGE_B2DRANGECLIPPER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

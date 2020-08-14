@@ -20,10 +20,8 @@
 #include <standard/vclxaccessibletoolboxitem.hxx>
 #include <toolkit/helper/convert.hxx>
 #include <helper/accresmgr.hxx>
-#include <helper/accessiblestrings.hrc>
-#include <com/sun/star/awt/Point.hpp>
+#include <strings.hrc>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/awt/Size.hpp>
 
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
@@ -37,14 +35,15 @@
 #include <vcl/unohelp2.hxx>
 #include <vcl/help.hxx>
 #include <vcl/settings.hxx>
-#include <toolkit/awt/vclxwindow.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
-#include "strings.hxx"
+#include <strings.hxx>
+#include <sal/log.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
+
+#include <array>
 
 // class VCLXAccessibleToolBoxItem ------------------------------------------
 
@@ -153,7 +152,7 @@ void VCLXAccessibleToolBoxItem::SetFocus( bool _bFocus )
         else
             aNewValue <<= AccessibleStateType::FOCUSED;
         m_bHasFocus = _bFocus;
-         NotifyAccessibleEvent( AccessibleEventId::STATE_CHANGED, aOldValue, aNewValue );
+        NotifyAccessibleEvent( AccessibleEventId::STATE_CHANGED, aOldValue, aNewValue );
     }
 }
 
@@ -216,7 +215,7 @@ void VCLXAccessibleToolBoxItem::NotifyChildEvent( const Reference< XAccessible >
 
 void VCLXAccessibleToolBoxItem::ToggleEnableState()
 {
-    Any aOldValue[2], aNewValue[2];
+    std::array<Any, 2> aOldValue, aNewValue;
     if ( m_pToolBox->IsItemEnabled( m_nItemId ) )
     {
         aNewValue[0] <<= AccessibleStateType::SENSITIVE;
@@ -289,7 +288,7 @@ void SAL_CALL VCLXAccessibleToolBoxItem::disposing()
 
 OUString VCLXAccessibleToolBoxItem::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleToolBoxItem" );
+    return "com.sun.star.comp.toolkit.AccessibleToolBoxItem";
 }
 
 sal_Bool VCLXAccessibleToolBoxItem::supportsService( const OUString& rServiceName )
@@ -357,9 +356,9 @@ OUString SAL_CALL VCLXAccessibleToolBoxItem::getAccessibleDescription(  )
 {
     OExternalLockGuard aGuard( this );
 
-    if (m_nRole == AccessibleRole::PANEL && getAccessibleChildCount() > 0)
+    if (m_nRole == AccessibleRole::PANEL && m_xChild.is())
     {
-        return TK_RES_STRING( RID_STR_ACC_PANEL_DESCRIPTION );
+        return AccResId( RID_STR_ACC_PANEL_DESCRIPTION );
     }
     else
     {
@@ -421,6 +420,32 @@ Reference< XAccessibleStateSet > SAL_CALL VCLXAccessibleToolBoxItem::getAccessib
 
 // XAccessibleText
 
+OUString VCLXAccessibleToolBoxItem::getText()
+{
+    OExternalLockGuard aGuard( this );
+
+    return GetText();
+}
+
+sal_Int32 VCLXAccessibleToolBoxItem::getCharacterCount()
+{
+    return GetText().getLength();
+}
+
+sal_Unicode VCLXAccessibleToolBoxItem::getCharacter( sal_Int32 nIndex )
+{
+     OExternalLockGuard aGuard( this );
+
+     return OCommonAccessibleText::implGetCharacter( GetText(), nIndex );
+}
+
+OUString VCLXAccessibleToolBoxItem::getTextRange( sal_Int32 nStartIndex, sal_Int32 nEndIndex )
+{
+     OExternalLockGuard aGuard( this );
+
+     return OCommonAccessibleText::implGetTextRange( GetText(), nStartIndex, nEndIndex );
+}
+
 sal_Int32 SAL_CALL VCLXAccessibleToolBoxItem::getCaretPosition()
 {
     return -1;
@@ -430,7 +455,7 @@ sal_Bool SAL_CALL VCLXAccessibleToolBoxItem::setCaretPosition( sal_Int32 nIndex 
 {
     OExternalLockGuard aGuard( this );
 
-    if ( !implIsValidRange( nIndex, nIndex, implGetText().getLength() ) )
+    if ( !implIsValidRange( nIndex, nIndex, GetText().getLength() ) )
         throw IndexOutOfBoundsException();
 
     return false;
@@ -512,7 +537,7 @@ sal_Bool SAL_CALL VCLXAccessibleToolBoxItem::copyText( sal_Int32 nStartIndex, sa
         Reference< datatransfer::clipboard::XClipboard > xClipboard = m_pToolBox->GetClipboard();
         if ( xClipboard.is() )
         {
-            OUString sText( getTextRange( nStartIndex, nEndIndex ) );
+            OUString sText( OCommonAccessibleText::implGetTextRange( implGetText(), nStartIndex, nEndIndex ) );
 
             vcl::unohelper::TextDataObject* pDataObj = new vcl::unohelper::TextDataObject( sText );
 
@@ -528,6 +553,11 @@ sal_Bool SAL_CALL VCLXAccessibleToolBoxItem::copyText( sal_Int32 nStartIndex, sa
     }
 
     return bReturn;
+}
+
+sal_Bool VCLXAccessibleToolBoxItem::scrollSubstringTo( sal_Int32, sal_Int32, AccessibleScrollType )
+{
+    return false;
 }
 
 // XAccessibleComponent
@@ -556,22 +586,22 @@ sal_Int32 SAL_CALL VCLXAccessibleToolBoxItem::getForeground(  )
 {
     OExternalLockGuard aGuard( this );
 
-    sal_Int32 nColor = 0;
+    Color nColor;
     if ( m_pToolBox )
-       nColor = m_pToolBox->GetControlForeground().GetColor();
+       nColor = m_pToolBox->GetControlForeground();
 
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 sal_Int32 SAL_CALL VCLXAccessibleToolBoxItem::getBackground(  )
 {
     OExternalLockGuard aGuard( this );
 
-    sal_Int32 nColor = 0;
+    Color nColor;
     if ( m_pToolBox )
-       nColor = m_pToolBox->GetControlBackground().GetColor();
+       nColor = m_pToolBox->GetControlBackground();
 
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 // XAccessibleExtendedComponent
@@ -621,7 +651,7 @@ sal_Bool VCLXAccessibleToolBoxItem::doAccessibleAction ( sal_Int32 nIndex )
 {
     OExternalLockGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex != 0 )
         throw IndexOutOfBoundsException();
 
     if ( m_pToolBox )
@@ -634,17 +664,17 @@ OUString VCLXAccessibleToolBoxItem::getAccessibleActionDescription ( sal_Int32 n
 {
     OExternalLockGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex != 0 )
         throw IndexOutOfBoundsException();
 
-    return OUString(RID_STR_ACC_ACTION_CLICK);
+    return RID_STR_ACC_ACTION_CLICK;
 }
 
 Reference< XAccessibleKeyBinding > VCLXAccessibleToolBoxItem::getAccessibleActionKeyBinding( sal_Int32 nIndex )
 {
     OContextEntryGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex != 0 )
         throw IndexOutOfBoundsException();
 
     return Reference< XAccessibleKeyBinding >();
@@ -658,10 +688,10 @@ Any VCLXAccessibleToolBoxItem::getCurrentValue(  )
 
     Any aValue;
     if ( m_pToolBox )
-        aValue <<= (sal_Int32)m_pToolBox->IsItemChecked( m_nItemId );
+        aValue <<= static_cast<sal_Int32>(m_pToolBox->IsItemChecked( m_nItemId ));
 
     if( m_nRole == AccessibleRole::PANEL )
-        aValue <<= (sal_Int32)0;
+        aValue <<= sal_Int32(0);
     return aValue;
 }
 
@@ -690,12 +720,12 @@ sal_Bool VCLXAccessibleToolBoxItem::setCurrentValue( const Any& aNumber )
 
 Any VCLXAccessibleToolBoxItem::getMaximumValue(  )
 {
-    return Any((sal_Int32)1);
+    return Any(sal_Int32(1));
 }
 
 Any VCLXAccessibleToolBoxItem::getMinimumValue(  )
 {
-    return Any((sal_Int32)0);
+    return Any(sal_Int32(0));
 }
 
 

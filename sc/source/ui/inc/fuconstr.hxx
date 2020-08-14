@@ -25,9 +25,9 @@
 /** Draw rectangle */
 class FuConstruct : public FuDraw
 {
- public:
-    FuConstruct(ScTabViewShell* pViewSh, vcl::Window* pWin, ScDrawView* pView,
-                   SdrModel* pDoc, SfxRequest& rReq);
+public:
+    FuConstruct(ScTabViewShell& rViewSh, vcl::Window* pWin, ScDrawView* pView,
+                SdrModel* pDoc, const SfxRequest& rReq);
 
     virtual ~FuConstruct() override;
                                        // Mouse- & Key-Events
@@ -37,10 +37,6 @@ class FuConstruct : public FuDraw
     virtual bool MouseButtonDown(const MouseEvent& rMEvt) override;
 
             bool SimpleMouseButtonUp(const MouseEvent& rMEvt);
-
-    // Returns grid sync offset for rInOutPos, additionally adjusts rInOutPos
-    // by the offset
-    Point CurrentGridSyncOffsetAndPos( Point& rInOutPos);
 };
 
 #endif      // _SD_FUCONSTR_HXX

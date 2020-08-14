@@ -23,9 +23,7 @@
 #include <sdr/properties/textproperties.hxx>
 
 
-namespace sdr
-{
-    namespace properties
+namespace sdr::properties
     {
         class RectangleProperties : public TextProperties
         {
@@ -44,13 +42,12 @@ namespace sdr
             virtual ~RectangleProperties() override;
 
             // Clone() operator, normally just calls the local copy constructor
-            virtual BaseProperties& Clone(SdrObject& rObj) const override;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
 
             // set a new StyleSheet and broadcast
             virtual void SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr) override;
         };
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace sdr::properties
 
 
 #endif // INCLUDED_SVX_SDR_PROPERTIES_RECTANGLEPROPERTIES_HXX

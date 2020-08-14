@@ -19,11 +19,10 @@
 
 #include "fileurl.hxx"
 
-#include "rtl/ustring.hxx"
-#include "osl/diagnose.h"
-#include "osl/file.hxx"
-#include "osl/process.h"
-#include "osl/thread.h"
+#include <rtl/ustring.hxx>
+#include <osl/file.hxx>
+#include <osl/process.h>
+#include <osl/thread.h>
 
 #include <string.h>
 
@@ -35,9 +34,7 @@
 
 using osl::FileBase;
 
-namespace registry
-{
-namespace tools
+namespace registry::tools
 {
 
 OUString convertToFileUrl(char const * filename, sal_Int32 length)
@@ -52,7 +49,7 @@ OUString convertToFileUrl(char const * filename, sal_Int32 length)
     OUString uFileUrl;
     if (length > 0)
     {
-        if ((filename[0] == '.') || (filename[0] != SEPARATOR))
+        if (filename[0] != SEPARATOR)
         {
             // relative path name.
             OUString uWorkingDir;
@@ -77,7 +74,6 @@ OUString convertToFileUrl(char const * filename, sal_Int32 length)
     return uFileUrl;
 }
 
-} // namespace tools
-} // namespace registry
+} // namespace registry::tools
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

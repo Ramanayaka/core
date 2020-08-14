@@ -6,6 +6,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
+#ifndef LO_CLANG_SHARED_PLUGINS
 
 #include <algorithm>
 
@@ -22,12 +23,12 @@ bool isAlwaysNull(CXXDynamicCastExpr const * expr) {
   QualType SrcType = expr->getSubExpr()->getType();
   QualType DestType = expr->getType();
 
-  if (const PointerType *SrcPTy = SrcType->getAs<PointerType>()) {
+  if (const clang::PointerType *SrcPTy = SrcType->getAs<clang::PointerType>()) {
     SrcType = SrcPTy->getPointeeType();
 #if 0
     DestType = DestType->castAs<PointerType>()->getPointeeType();
 #else
-    auto DstPTy = DestType->getAs<PointerType>();
+    auto DstPTy = DestType->getAs<clang::PointerType>();
     if (!DstPTy)
       return false;
     DestType = DstPTy->getPointeeType();
@@ -80,24 +81,36 @@ bool isAlwaysNull(CXXDynamicCastExpr const * expr) {
     return false;
 #endif
 
+#if 0
   return !DestRD->isDerivedFrom(SrcRD);
+#else
+  return !(DestRD->isDerivedFrom(SrcRD)
+           || SrcRD->isDerivedFrom(DestRD)
+           || SrcRD == DestRD);
+#endif
 }
 
 class FailedDynCast:
-    public RecursiveASTVisitor<FailedDynCast>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<FailedDynCast>
 {
 public:
-    explicit FailedDynCast(InstantiationData const & data): Plugin(data) {}
+    explicit FailedDynCast(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     bool shouldVisitTemplateInstantiations() const { return true; }
 
+    bool preRun() override;
     void run() override;
 
     bool VisitCXXDynamicCastExpr(CXXDynamicCastExpr const * expr);
 };
 
+bool FailedDynCast::preRun() {
+    return compiler.getLangOpts().CPlusPlus;
+}
+
 void FailedDynCast::run() {
-    if (compiler.getLangOpts().CPlusPlus) {
+    if (preRun()) {
         TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
     }
 }
@@ -109,15 +122,17 @@ bool FailedDynCast::VisitCXXDynamicCastExpr(CXXDynamicCastExpr const * expr) {
     if (isAlwaysNull(expr)) {
         report(
             DiagnosticsEngine::Warning,
-            "dynamic_cast from %0 to %1 always fails", expr->getLocStart())
+            "dynamic_cast from %0 to %1 always fails", compat::getBeginLoc(expr))
             << expr->getSubExpr()->getType() << expr->getType()
             << expr->getSourceRange();
     }
     return true;
 }
 
-loplugin::Plugin::Registration<FailedDynCast> X("faileddyncast");
+loplugin::Plugin::Registration<FailedDynCast> faileddyncast("faileddyncast");
 
-}
+} // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

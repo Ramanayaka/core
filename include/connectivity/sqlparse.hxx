@@ -20,14 +20,10 @@
 #define INCLUDED_CONNECTIVITY_SQLPARSE_HXX
 
 #include <memory>
-#include <config_features.h>
 
 #include <com/sun/star/uno/Reference.h>
 #include <osl/mutex.hxx>
 #include <connectivity/sqlnode.hxx>
-#include <com/sun/star/i18n/XCharacterClassification.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/i18n/XLocaleData4.hpp>
 #include <connectivity/IParseContext.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
 #include <connectivity/sqlerror.hxx>
@@ -35,36 +31,28 @@
 
 #include <map>
 
-namespace com
+namespace com::sun::star::i18n { class XCharacterClassification; }
+namespace com::sun::star::i18n { class XLocaleData4; }
+
+namespace com::sun::star
 {
-    namespace sun
+    namespace beans
     {
-        namespace star
-        {
-            namespace beans
-            {
-                class XPropertySet;
-            }
-            namespace util
-            {
-                class XNumberFormatter;
-            }
-            namespace lang
-            {
-                struct Locale;
-            }
-        }
+        class XPropertySet;
+    }
+    namespace util
+    {
+        class XNumberFormatter;
     }
 }
 
 namespace connectivity
 {
     class OSQLScanner;
-    class SQLError;
 
     //= OParseContext
 
-    class OOO_DLLPUBLIC_DBTOOLS OParseContext : public IParseContext
+    class OParseContext final : public IParseContext
     {
     public:
         OParseContext();
@@ -82,7 +70,7 @@ namespace connectivity
         // determines the default international setting
         static const css::lang::Locale& getDefaultLocale();
 
-        /** get's a locale instance which should be used when parsing in the context specified by this instance
+        /** gets a locale instance which should be used when parsing in the context specified by this instance
             <p>if this is not overridden by derived classes, it returns the static default locale.</p>
         */
         virtual css::lang::Locale getPreferredLocale( ) const override;
@@ -113,11 +101,6 @@ namespace connectivity
     {
         css::lang::Locale               aLocale;
         ::connectivity::SQLError        aErrors;
-
-        OSQLParser_Data( const css::uno::Reference< css::uno::XComponentContext >& _rxContext )
-            :aErrors( _rxContext )
-        {
-        }
     };
 
     /** Parser for SQL92
@@ -141,7 +124,7 @@ namespace connectivity
 
     // information on the current parse action
         const IParseContext*        m_pContext;
-        OSQLParseNode*              m_pParseTree;   // result from parsing
+        std::unique_ptr<OSQLParseNode> m_pParseTree;   // result from parsing
         ::std::unique_ptr< OSQLParser_Data >
                                     m_pData;
         OUString                     m_sFieldName;   // current field name for a predicate
@@ -157,10 +140,10 @@ namespace connectivity
         css::uno::Reference< css::i18n::XCharacterClassification> m_xCharClass;
         static css::uno::Reference< css::i18n::XLocaleData4>       s_xLocaleData;
 
-        // convert a string into double trim it to scale of _nscale and than transform it back to string
+        // convert a string into double trim it to scale of _nscale and then transform it back to string
         OUString stringToDouble(const OUString& _rValue,sal_Int16 _nScale);
         OSQLParseNode*  buildDate(sal_Int32 _nType,OSQLParseNode*& pLiteral);
-        bool            extractDate(OSQLParseNode* pLiteral,double& _rfValue);
+        bool            extractDate(OSQLParseNode const * pLiteral,double& _rfValue);
         void            killThousandSeparator(OSQLParseNode* pLiteral);
         OSQLParseNode*  convertNode(sal_Int32 nType, OSQLParseNode* pLiteral);
         // makes a string out of a number, pLiteral will be deleted
@@ -176,14 +159,14 @@ namespace connectivity
         ~OSQLParser();
 
         // Parsing an SQLStatement
-        OSQLParseNode* parseTree(OUString& rErrorMessage,
+        std::unique_ptr<OSQLParseNode> parseTree(OUString& rErrorMessage,
                        const OUString& rStatement,
                        bool bInternational = false);
 
         // Check a Predicate
         // set bUseRealName to false if you pass a xField that comes from where you got that field,
         // as opposed from to from yourself.
-        OSQLParseNode* predicateTree(OUString& rErrorMessage, const OUString& rStatement,
+        std::unique_ptr<OSQLParseNode> predicateTree(OUString& rErrorMessage, const OUString& rStatement,
                        const css::uno::Reference< css::util::XNumberFormatter > & xFormatter,
                        const css::uno::Reference< css::beans::XPropertySet > & xField,
                        bool bUseRealName = true);
@@ -202,7 +185,7 @@ namespace connectivity
         static OUString RuleIDToStr(sal_uInt32 nRuleID);
 #endif
 
-        // StrToRuleID calculates the RuleID for a OUString (that is, css::sdbcx::Index in yytname)
+        // StrToRuleID calculates the RuleID for an OUString (that is, css::sdbcx::Index in yytname)
         // (0 if not found). The search for an ID based on a String is
         // extremely inefficient (sequential search for OUString)!
         static sal_uInt32 StrToRuleID(const OString & rValue);
@@ -212,12 +195,12 @@ namespace connectivity
         // RuleId with enum, far more efficient
         static sal_uInt32 RuleID(OSQLParseNode::Rule eRule);
         // compares the _sFunctionName with all known function names and return the DataType of the return value
-        static sal_Int32 getFunctionReturnType(const OUString& _sFunctionName, const IParseContext* pContext = nullptr);
+        static sal_Int32 getFunctionReturnType(const OUString& _sFunctionName, const IParseContext* pContext);
 
         // returns the type for a parameter in a given function name
         static sal_Int32 getFunctionParameterType(sal_uInt32 _nTokenId,sal_uInt32 _nPos);
 
-        void error(const sal_Char *fmt);
+        void error(const char *fmt);
         static int SQLlex();
 #ifdef YYBISON
         void setParseTree(OSQLParseNode * pNewParseTree);
@@ -231,7 +214,7 @@ namespace connectivity
          // does not change the pLiteral argument
         sal_Int16 buildNode(OSQLParseNode*& pAppend,OSQLParseNode* pCompare,OSQLParseNode* pLiteral,OSQLParseNode* pLiteral2);
 
-        sal_Int16 buildComparsionRule(OSQLParseNode*& pAppend,OSQLParseNode* pLiteral);
+        sal_Int16 buildComparisonRule(OSQLParseNode*& pAppend,OSQLParseNode* pLiteral);
         // pCompre will be deleted if it is not used
         sal_Int16 buildPredicateRule(OSQLParseNode*& pAppend,OSQLParseNode* const pLiteral,OSQLParseNode* pCompare,OSQLParseNode* pLiteral2 = nullptr);
 

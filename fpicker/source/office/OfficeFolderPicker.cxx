@@ -21,13 +21,10 @@
 
 #include "iodlg.hxx"
 
-#include <list>
+#include <vector>
 #include <tools/urlobj.hxx>
-#include <com/sun/star/container/XContentEnumerationAccess.hpp>
-#include <com/sun/star/container/XSet.hpp>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <o3tl/make_shared.hxx>
 #include <unotools/pathoptions.hxx>
 
 using namespace     ::com::sun::star::container;
@@ -63,13 +60,18 @@ void SAL_CALL SvtFolderPicker::startExecuteModal( const Reference< css::ui::dial
     m_xListener = xListener;
     prepareDialog();
     prepareExecute();
-    getDialog()->EnableAutocompletion();
-    getDialog()->StartExecuteModal( LINK( this, SvtFolderPicker, DialogClosedHdl ) );
+
+    m_xDlg->EnableAutocompletion();
+    if (!m_xDlg->PrepareExecute())
+        return;
+    weld::DialogController::runAsync(m_xDlg, [this](sal_Int32 nResult){
+        DialogClosedHdl(nResult);
+    });
 }
 
-VclPtr<SvtFileDialog_Base> SvtFolderPicker::implCreateDialog( vcl::Window* _pParent )
+std::shared_ptr<SvtFileDialog_Base> SvtFolderPicker::implCreateDialog( weld::Window* pParent )
 {
-    return VclPtr<SvtFileDialog>::Create( _pParent, PickerFlags::PathDialog );
+    return o3tl::make_shared<SvtFileDialog>(pParent, PickerFlags::PathDialog);
 }
 
 sal_Int16 SvtFolderPicker::implExecutePicker( )
@@ -77,30 +79,28 @@ sal_Int16 SvtFolderPicker::implExecutePicker( )
     prepareExecute();
 
     // now we are ready to execute the dialog
-    getDialog()->EnableAutocompletion( false );
-    sal_Int16 nRet = getDialog()->Execute();
-
-    return nRet;
+    m_xDlg->EnableAutocompletion( false );
+    return m_xDlg->run();
 }
 
 void SvtFolderPicker::prepareExecute()
 {
     // set the default directory
     if ( !m_aDisplayDirectory.isEmpty() )
-        getDialog()->SetPath( m_aDisplayDirectory );
+        m_xDlg->SetPath( m_aDisplayDirectory );
     else
     {
         // set the default standard dir
         INetURLObject aStdDirObj( SvtPathOptions().GetWorkPath() );
-        getDialog()->SetPath( aStdDirObj.GetMainURL( INetURLObject::DecodeMechanism::NONE) );
+        m_xDlg->SetPath( aStdDirObj.GetMainURL( INetURLObject::DecodeMechanism::NONE) );
     }
 }
 
-IMPL_LINK( SvtFolderPicker, DialogClosedHdl, Dialog&, rDlg, void )
+void SvtFolderPicker::DialogClosedHdl(sal_Int32 nResult)
 {
     if ( m_xListener.is() )
     {
-        sal_Int16 nRet = static_cast< sal_Int16 >( rDlg.GetResult() );
+        sal_Int16 nRet = static_cast<sal_Int16>(nResult);
         css::ui::dialogs::DialogClosedEvent aEvent( *this, nRet );
         m_xListener->dialogClosed( aEvent );
         m_xListener.clear();
@@ -114,10 +114,10 @@ void SAL_CALL SvtFolderPicker::setDisplayDirectory( const OUString& aDirectory )
 
 OUString SAL_CALL SvtFolderPicker::getDisplayDirectory()
 {
-    if ( ! getDialog() )
+    if (!m_xDlg)
         return m_aDisplayDirectory;
 
-    std::vector<OUString> aPathList(getDialog()->GetPathList());
+    std::vector<OUString> aPathList(m_xDlg->GetPathList());
 
     if(!aPathList.empty())
         return aPathList[0];
@@ -127,10 +127,10 @@ OUString SAL_CALL SvtFolderPicker::getDisplayDirectory()
 
 OUString SAL_CALL SvtFolderPicker::getDirectory()
 {
-    if ( ! getDialog() )
+    if (!m_xDlg)
         return m_aDisplayDirectory;
 
-    std::vector<OUString> aPathList(getDialog()->GetPathList());
+    std::vector<OUString> aPathList(m_xDlg->GetPathList());
 
     if(!aPathList.empty())
         return aPathList[0];
@@ -138,9 +138,8 @@ OUString SAL_CALL SvtFolderPicker::getDirectory()
     return OUString();
 }
 
-void SAL_CALL SvtFolderPicker::setDescription( const OUString& aDescription )
+void SAL_CALL SvtFolderPicker::setDescription( const OUString& )
 {
-    m_aDescription = aDescription;
 }
 
 void SvtFolderPicker::cancel()
@@ -151,7 +150,7 @@ void SvtFolderPicker::cancel()
 /* XServiceInfo */
 OUString SAL_CALL SvtFolderPicker::getImplementationName()
 {
-    return impl_getStaticImplementationName();
+    return "com.sun.star.svtools.OfficeFolderPicker";
 }
 
 /* XServiceInfo */
@@ -163,26 +162,14 @@ sal_Bool SAL_CALL SvtFolderPicker::supportsService( const OUString& sServiceName
 /* XServiceInfo */
 Sequence< OUString > SAL_CALL SvtFolderPicker::getSupportedServiceNames()
 {
-    return impl_getStaticSupportedServiceNames();
+    return { "com.sun.star.ui.dialogs.OfficeFolderPicker" };
 }
 
-/* Helper for XServiceInfo */
-Sequence< OUString > SvtFolderPicker::impl_getStaticSupportedServiceNames()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+fpicker_SvtFolderPicker_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    Sequence< OUString > seqServiceNames { "com.sun.star.ui.dialogs.OfficeFolderPicker" };
-    return seqServiceNames ;
-}
-
-/* Helper for XServiceInfo */
-OUString SvtFolderPicker::impl_getStaticImplementationName()
-{
-    return OUString( "com.sun.star.svtools.OfficeFolderPicker" );
-}
-
-/* Helper for registry */
-Reference< XInterface > SAL_CALL SvtFolderPicker::impl_createInstance( const Reference< XComponentContext >&  )
-{
-    return Reference< XInterface >( *new SvtFolderPicker );
+    return cppu::acquire(new SvtFolderPicker());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

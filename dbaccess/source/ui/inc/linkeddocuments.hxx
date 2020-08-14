@@ -25,21 +25,17 @@
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/ucb/XContent.hpp>
 #include <com/sun/star/sdb/application/XDatabaseDocumentUI.hpp>
 #include <comphelper/namedvaluecollection.hxx>
-#include <vcl/vclptr.hxx>
 
-namespace vcl { class Window; }
+namespace weld { class Window; }
 namespace dbaui
 {
 
     // OLinkedDocumentsAccess
-    class OLinkedDocumentsAccess
+    class OLinkedDocumentsAccess final
     {
-    protected:
         css::uno::Reference< css::uno::XComponentContext >
                     m_xContext;
         css::uno::Reference< css::container::XNameAccess >
@@ -48,12 +44,12 @@ namespace dbaui
                     m_xConnection;
         css::uno::Reference< css::sdb::application::XDatabaseDocumentUI >
                     m_xDocumentUI;
-        VclPtr<vcl::Window>    m_pDialogParent;
+        weld::Window* m_pDialogParent;
         OUString    m_sDataSourceName;
 
     public:
         OLinkedDocumentsAccess(
-            vcl::Window* _pDialogParent,
+            weld::Window* pDialogParent,
             const css::uno::Reference< css::sdb::application::XDatabaseDocumentUI >& i_rDocumentUI,
             const css::uno::Reference< css::uno::XComponentContext >& _rxContext,
             const css::uno::Reference< css::container::XNameAccess >& _rxContainer,

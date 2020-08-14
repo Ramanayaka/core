@@ -19,19 +19,19 @@
 #ifndef INCLUDED_SW_INC_FMTCNCT_HXX
 #define INCLUDED_SW_INC_FMTCNCT_HXX
 
-#include <hintids.hxx>
+#include "hintids.hxx"
 #include <svl/poolitem.hxx>
-#include <format.hxx>
-#include <calbck.hxx>
-#include <frmfmt.hxx>
+#include "format.hxx"
+#include "calbck.hxx"
+#include "frmfmt.hxx"
 
 class IntlWrapper;
 
 /// Connection (text flow) between two FlyFrames.
 class SW_DLLPUBLIC SwFormatChain: public SfxPoolItem
 {
-    SwClient aPrev, ///< Previous SwFlyFrameFormat (if existent).
-             aNext; ///< Next SwFlyFrameFormat (if existent).
+    SwClient m_aPrev, ///< Previous SwFlyFrameFormat (if existent).
+             m_aNext; ///< Next SwFlyFrameFormat (if existent).
 
 public:
     SwFormatChain() : SfxPoolItem( RES_CHAIN ) {}
@@ -41,17 +41,17 @@ public:
 
     /// "Pure virtual methods" of SfxPoolItem.
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatChain*  Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
 
-    SwFlyFrameFormat* GetPrev() const { return const_cast<SwFlyFrameFormat*>(static_cast<const SwFlyFrameFormat*>(aPrev.GetRegisteredIn())); }
-    SwFlyFrameFormat* GetNext() const { return const_cast<SwFlyFrameFormat*>(static_cast<const SwFlyFrameFormat*>(aNext.GetRegisteredIn())); }
+    SwFlyFrameFormat* GetPrev() const { return const_cast<SwFlyFrameFormat*>(static_cast<const SwFlyFrameFormat*>(m_aPrev.GetRegisteredIn())); }
+    SwFlyFrameFormat* GetNext() const { return const_cast<SwFlyFrameFormat*>(static_cast<const SwFlyFrameFormat*>(m_aNext.GetRegisteredIn())); }
 
     void SetPrev( SwFlyFrameFormat *pFormat );
     void SetNext( SwFlyFrameFormat *pFormat );
@@ -65,7 +65,7 @@ SwFormatChain &SwFormatChain::operator=( const SwFormatChain &rCpy )
 }
 
 inline const SwFormatChain &SwAttrSet::GetChain(bool bInP) const
-    { return static_cast<const SwFormatChain&>(Get( RES_CHAIN,bInP)); }
+    { return Get( RES_CHAIN,bInP); }
 
 inline const SwFormatChain &SwFormat::GetChain(bool bInP) const
     { return m_aSet.GetChain(bInP); }

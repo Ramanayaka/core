@@ -21,7 +21,7 @@
 
 #include <vcl/window.hxx>
 #include "printfun.hxx"
-#include "markdata.hxx"
+#include <markdata.hxx>
 
 #include <vector>
 
@@ -29,7 +29,7 @@ class ScDocShell;
 class ScPreviewShell;
 class FmFormView;
 
-class ScPreview : public vcl::Window
+class SAL_DLLPUBLIC_RTTI ScPreview : public vcl::Window
 {
 private:
     ScMarkData::MarkedTabsType maSelectedTabs;
@@ -47,13 +47,11 @@ private:
     long            nTabPage;           // Page of sheet
     long            nTabStart;          // First (real) page of the sheet
     long            nDisplayStart;      // same as above, relative to the start of counting
-    Date            aDate;
-    tools::Time     aTime;
+    DateTime        aDateTime;
     long            nTotalPages;
-    Size            aPageSize;          // for GetOptimalZoom
     ScPrintState    aState;
-    ScPreviewLocationData* pLocationData;   // stores table layout for accessibility API
-    FmFormView*     pDrawView;
+    std::unique_ptr<ScPreviewLocationData> pLocationData;   // stores table layout for accessibility API
+    std::unique_ptr<FmFormView> pDrawView;
 
                                         // internal:
     ScDocShell*     pDocShell;
@@ -82,7 +80,7 @@ private:
     bool            mbHasEmptyRangeTable:1; /// we have at least one sheet with empty print range (print range set to '- none -').
 
     ScRange         aPageArea;
-    long            nRight[ MAXCOL+1 ];
+    std::vector<long> mvRight;
     long            nLeftPosition;
     long            mnScale;
     SCCOL           nColNumberButttonDown;
@@ -157,7 +155,7 @@ public:
     DECL_STATIC_LINK( ScPreview, InvalidateHdl, void*, void );
     static void StaticInvalidate();
 
-    FmFormView* GetDrawView() { return pDrawView; }
+    FmFormView* GetDrawView() { return pDrawView.get(); }
 
     SC_DLLPUBLIC void SetSelectedTabs(const ScMarkData& rMark);
     const ScMarkData::MarkedTabsType& GetSelectedTabs() const { return maSelectedTabs; }

@@ -34,8 +34,8 @@
  *
  ************************************************************************/
 
+#include <sal/log.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
 
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
@@ -55,12 +55,10 @@ using osl::MutexGuard;
 
 
 using com::sun::star::uno::Reference;
-using com::sun::star::uno::makeAny;
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::UNO_QUERY;
 using com::sun::star::uno::Any;
 using com::sun::star::uno::Type;
-using com::sun::star::uno::RuntimeException;
 
 using com::sun::star::sdbc::XGeneratedResultSet;
 using com::sun::star::sdbc::XResultSetMetaDataSupplier;
@@ -123,7 +121,7 @@ css::uno::Reference< css::sdbc::XCloseable > UpdateableResultSet::createFromPGRe
     UpdateableResultSet *pRS =  new UpdateableResultSet(
         mutex, owner, columnNames, data, ppSettings, schema, table, primaryKey );
 
-    Reference <XCloseable > ret = pRS; // give it an refcount
+    Reference <XCloseable > ret = pRS; // give it a refcount
 
     pRS->m_meta = new ResultSetMetaData( mutex, pRS,nullptr, ppSettings, result, schema, table );
 
@@ -147,20 +145,12 @@ css::uno::Any  UpdateableResultSet::queryInterface(
 
 css::uno::Sequence< css::uno::Type > UpdateableResultSet::getTypes()
 {
-    static cppu::OTypeCollection *pCollection;
-    if( ! pCollection )
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( !pCollection )
-        {
-            static cppu::OTypeCollection collection(
-                cppu::UnoType<XResultSetUpdate>::get(),
-                cppu::UnoType<XRowUpdate>::get(),
-                SequenceResultSet::getTypes());
-            pCollection = &collection;
-        }
-    }
-    return pCollection->getTypes();
+    static cppu::OTypeCollection collection(
+        cppu::UnoType<XResultSetUpdate>::get(),
+        cppu::UnoType<XRowUpdate>::get(),
+        SequenceResultSet::getTypes());
+
+    return collection.getTypes();
 
 }
 
@@ -172,7 +162,7 @@ css::uno::Sequence< sal_Int8> UpdateableResultSet::getImplementationId()
 OUString UpdateableResultSet::buildWhereClause()
 {
     OUString ret;
-    if( m_primaryKey.size() )
+    if( !m_primaryKey.empty() )
     {
         OUStringBuffer buf( 128 );
         buf.append( " WHERE " );
@@ -194,10 +184,8 @@ OUString UpdateableResultSet::buildWhereClause()
 void UpdateableResultSet::insertRow(  )
 {
     MutexGuard guard( m_xMutex->GetMutex() );
-    if (isLog(*m_ppSettings, LogLevel::Info))
-    {
-        log(*m_ppSettings, LogLevel::Info, "UpdateableResultSet::insertRow got called");
-    }
+    SAL_INFO("connectivity.postgresql", "UpdateableResultSet::insertRow() got called");
+
     if( ! m_insertRow )
         throw SQLException(
             "pq_resultset.insertRow: moveToInsertRow has not been called !",
@@ -222,7 +210,7 @@ void UpdateableResultSet::insertRow(  )
     buf.append( " ) VALUES ( " );
 
     columns = 0;
-    for(UpdateableField & i : m_updateableField)
+    for(const UpdateableField & i : m_updateableField)
     {
         if( i.isTouched )
         {
@@ -288,10 +276,8 @@ void UpdateableResultSet::insertRow(  )
 void UpdateableResultSet::updateRow(  )
 {
     MutexGuard guard( m_xMutex->GetMutex() );
-    if (isLog(*m_ppSettings, LogLevel::Info))
-    {
-        log(*m_ppSettings, LogLevel::Info, "UpdateableResultSet::updateRow got called");
-    }
+    SAL_INFO("connectivity.postgresql", "UpdateableResultSet::updateRow() got called");
+
     if( m_insertRow )
         throw SQLException(
             "pq_resultset.updateRow: moveToCurrentRow has not been called !",
@@ -337,10 +323,8 @@ void UpdateableResultSet::updateRow(  )
 
 void UpdateableResultSet::deleteRow(  )
 {
-    if (isLog(*m_ppSettings, LogLevel::Info))
-    {
-        log(*m_ppSettings, LogLevel::Info, "UpdateableResultSet::deleteRow got called");
-    }
+    SAL_INFO("connectivity.postgresql", "UpdateableResultSet::deleteRow() got called");
+
     if( m_insertRow )
         throw SQLException(
             "pq_resultset.deleteRow: deleteRow cannot be called when on insert row !",
@@ -493,7 +477,7 @@ void UpdateableResultSet::updateBytes( sal_Int32 columnIndex, const css::uno::Se
             "pq_preparedstatement.setBytes: Error during converting bytesequence to an SQL conform string",
             *this, OUString(), 1, Any() );
     }
-//     buf.append( (const sal_Char *)escapedString, len -1 );
+//     buf.append( (const char *)escapedString, len -1 );
 
     m_updateableField[columnIndex-1].value <<=
         OUString( reinterpret_cast<char*>(escapedString), len, RTL_TEXTENCODING_ASCII_US );

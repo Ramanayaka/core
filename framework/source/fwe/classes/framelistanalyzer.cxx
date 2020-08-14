@@ -21,17 +21,16 @@
 
 #include <targets.h>
 #include <properties.h>
-#include <services.h>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
 #include <com/sun/star/frame/UnknownModuleException.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
 
 #include <comphelper/processfactory.hxx>
-#include <vcl/svapp.hxx>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 namespace framework{
 
@@ -57,7 +56,7 @@ FrameListAnalyzer::~FrameListAnalyzer()
     frame wrong. Further we analyze this list and split into different parts.
     E.g. for "CloseDoc" we must know, which frames of the given list refer to the same model.
     These frames must be closed then. But all other frames must be untouched.
-    In case the request was "CloseWin" these splitted lists can be used too, to decide if the last window
+    In case the request was "CloseWin" these split lists can be used too, to decide if the last window
     or document was closed. Then we have to initialize the backing window...
     Last but not least we must know something about our special help frame. It must be handled
     separately. And last but not least - the backing component frame must be detected too.
@@ -73,7 +72,7 @@ void FrameListAnalyzer::impl_analyze()
     m_xBackingComponent.clear();
 
     // try to get the task container by using the given supplier
-    css::uno::Reference< css::container::XIndexAccess > xFrameContainer(m_xSupplier->getFrames(), css::uno::UNO_QUERY);
+    css::uno::Reference< css::container::XIndexAccess > xFrameContainer = m_xSupplier->getFrames();
 
     // All return list get an initial size to include all possible frames.
     // They will be packed at the end of this method ... using the actual step positions then.
@@ -124,7 +123,7 @@ void FrameListAnalyzer::impl_analyze()
         }
         catch(const css::uno::Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("fwk");
         }
     }
 

@@ -17,25 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_MARKERARRAYPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_MARKERARRAYPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
-#include <basegfx/color/bcolor.hxx>
 #include <vcl/bitmapex.hxx>
 
 
 // MarkerArrayPrimitive2D class
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** MarkerArrayPrimitive2D class
 
-            This primtive defines an array of markers. Their size is defined
+            This primitive defines an array of markers. Their size is defined
             in pixels and independent from the view transformation which makes
             this primitive highly view-dependent. It is also transformation
             invariant, so that the bitmap is always visualized unscaled and
@@ -46,7 +42,7 @@ namespace drawinglayer
             It decomposes to the needed number of BitmapPrimitive2D's, so it would
             be efficient to handle it directly in a renderer.
          */
-        class DRAWINGLAYER_DLLPUBLIC MarkerArrayPrimitive2D : public BufferedDecompositionPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC MarkerArrayPrimitive2D final : public BufferedDecompositionPrimitive2D
         {
         private:
             /// the positions for the marker
@@ -55,7 +51,6 @@ namespace drawinglayer
             /// the marker definition to visualize
             BitmapEx                                        maMarker;
 
-        protected:
             /// create local decomposition
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
@@ -76,12 +71,9 @@ namespace drawinglayer
             virtual basegfx::B2DRange getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_MARKERARRAYPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -23,31 +23,58 @@
 #include "layfrm.hxx"
 
 class SwContentFrame;
+class SwRootFrame;
+class SwTextNode;
 class SwTextFootnote;
 class SwBorderAttrs;
 class SwFootnoteFrame;
 
 void sw_RemoveFootnotes( SwFootnoteBossFrame* pBoss, bool bPageOnly, bool bEndNotes );
 
-// There exists a special section on a page for footnotes. It's called
+namespace sw {
+
+void RemoveFootnotesForNode(
+        SwRootFrame const& rLayout, SwTextNode const& rTextNode,
+        std::vector<std::pair<sal_Int32, sal_Int32>> const*const pExtents);
+
+}
+
+// There exists a special container frame on a page for footnotes. It's called
 // SwFootnoteContFrame. Each footnote is separated by a SwFootnoteFrame which contains
-// the paragraphs of a footnote. SwFootnoteFrame can be splitted and will then
+// the text frames of a footnote. SwFootnoteFrame can be split and will then
 // continue on another page.
 class SwFootnoteContFrame: public SwLayoutFrame
 {
+    static SwFootnoteFrame* AddChained(bool bAppend, SwFrame *pNewUpper, bool bDefaultFormat);
+
 public:
     SwFootnoteContFrame( SwFrameFormat*, SwFrame* );
 
     const SwFootnoteFrame* FindFootNote() const;
 
+    static inline SwFootnoteFrame* AppendChained(SwFrame* pThis, bool bDefaultFormat);
+    static inline SwFootnoteFrame* PrependChained(SwFrame* pThis, bool bDefaultFormat);
+
     virtual SwTwips ShrinkFrame( SwTwips, bool bTst = false, bool bInfo = false ) override;
     virtual SwTwips GrowFrame  ( SwTwips, bool bTst = false, bool bInfo = false ) override;
     virtual void    Format( vcl::RenderContext* pRenderContext, const SwBorderAttrs *pAttrs = nullptr ) override;
-    virtual void    PaintBorder( const SwRect &, const SwPageFrame *pPage,
-                                 const SwBorderAttrs & ) const override;
+    virtual void    PaintSwFrameShadowAndBorder(
+        const SwRect&,
+        const SwPageFrame* pPage,
+        const SwBorderAttrs&) const override;
     virtual void PaintSubsidiaryLines( const SwPageFrame*, const SwRect& ) const override;
             void    PaintLine( const SwRect &, const SwPageFrame * ) const;
 };
+
+inline SwFootnoteFrame* SwFootnoteContFrame::AppendChained(SwFrame* pThis, bool bDefaultFormat)
+{
+    return AddChained(true, pThis, bDefaultFormat);
+}
+
+inline SwFootnoteFrame* SwFootnoteContFrame::PrependChained(SwFrame* pThis, bool bDefaultFormat)
+{
+    return AddChained(false, pThis, bDefaultFormat);
+}
 
 class SwFootnoteFrame: public SwLayoutFrame
 {
@@ -55,19 +82,20 @@ class SwFootnoteFrame: public SwLayoutFrame
     //  - 0     no following existent
     //  - this  for the last one
     //  - otherwise the following FootnoteFrame
-    SwFootnoteFrame     *pFollow;
-    SwFootnoteFrame     *pMaster;      // FootnoteFrame from which I am the following
-    SwContentFrame   *pRef;         // in this ContentFrame is the footnote reference
-    SwTextFootnote     *pAttr;        // footnote attribute (for recognition)
+    SwFootnoteFrame     *mpFollow;
+    SwFootnoteFrame     *mpMaster;      // FootnoteFrame from which I am the following
+    SwContentFrame   *mpReference;         // in this ContentFrame is the footnote reference
+    SwTextFootnote     *mpAttribute;        // footnote attribute (for recognition)
 
     // if true paragraphs in this footnote are NOT permitted to flow backwards
-    bool bBackMoveLocked : 1;
+    bool mbBackMoveLocked : 1;
     // #i49383# - control unlock of position of lower anchored objects.
     bool mbUnlockPosOfLowerObjs : 1;
 
 public:
     SwFootnoteFrame( SwFrameFormat*, SwFrame*, SwContentFrame*, SwTextFootnote* );
 
+    virtual bool IsDeleteForbidden() const override;
     virtual void Cut() override;
     virtual void Paste( SwFrame* pParent, SwFrame* pSibling = nullptr ) override;
 
@@ -79,30 +107,30 @@ public:
     const SwContentFrame *GetRef() const;
          SwContentFrame  *GetRef();
 #else
-    const SwContentFrame *GetRef() const    { return pRef; }
-         SwContentFrame  *GetRef()          { return pRef; }
+    const SwContentFrame *GetRef() const    { return mpReference; }
+         SwContentFrame  *GetRef()          { return mpReference; }
 #endif
     const SwContentFrame *GetRefFromAttr()  const;
           SwContentFrame *GetRefFromAttr();
 
-    const SwFootnoteFrame *GetFollow() const   { return pFollow; }
-          SwFootnoteFrame *GetFollow()         { return pFollow; }
+    const SwFootnoteFrame *GetFollow() const   { return mpFollow; }
+          SwFootnoteFrame *GetFollow()         { return mpFollow; }
 
-    const SwFootnoteFrame *GetMaster() const   { return pMaster; }
-          SwFootnoteFrame *GetMaster()         { return pMaster; }
+    const SwFootnoteFrame *GetMaster() const   { return mpMaster; }
+          SwFootnoteFrame *GetMaster()         { return mpMaster; }
 
-    const SwTextFootnote   *GetAttr() const   { return pAttr; }
-          SwTextFootnote   *GetAttr()         { return pAttr; }
+    const SwTextFootnote   *GetAttr() const   { return mpAttribute; }
+          SwTextFootnote   *GetAttr()         { return mpAttribute; }
 
-    void SetFollow( SwFootnoteFrame *pNew ) { pFollow = pNew; }
-    void SetMaster( SwFootnoteFrame *pNew ) { pMaster = pNew; }
-    void SetRef   ( SwContentFrame *pNew ) { pRef = pNew; }
+    void SetFollow( SwFootnoteFrame *pNew ) { mpFollow = pNew; }
+    void SetMaster( SwFootnoteFrame *pNew ) { mpMaster = pNew; }
+    void SetRef   ( SwContentFrame *pNew ) { mpReference = pNew; }
 
-    void InvalidateNxtFootnoteCnts( SwPageFrame* pPage );
+    void InvalidateNxtFootnoteCnts( SwPageFrame const * pPage );
 
-    void LockBackMove()     { bBackMoveLocked = true; }
-    void UnlockBackMove()   { bBackMoveLocked = false;}
-    bool IsBackMoveLocked() { return bBackMoveLocked; }
+    void LockBackMove()     { mbBackMoveLocked = true; }
+    void UnlockBackMove()   { mbBackMoveLocked = false;}
+    bool IsBackMoveLocked() const { return mbBackMoveLocked; }
 
     // prevents that the last content deletes the SwFootnoteFrame as well (Cut())
     void ColLock()       { mbColLocked = true; }
@@ -117,7 +145,7 @@ public:
     {
         mbUnlockPosOfLowerObjs = false;
     }
-    bool IsUnlockPosOfLowerObjs()
+    bool IsUnlockPosOfLowerObjs() const
     {
         return mbUnlockPosOfLowerObjs;
     }

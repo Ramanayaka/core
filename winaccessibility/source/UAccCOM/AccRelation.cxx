@@ -24,7 +24,7 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnon-virtual-dtor"
 #endif
-#include  "UAccCOM.h"
+#include  <UAccCOM.h>
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
@@ -44,7 +44,7 @@ using namespace com::sun::star::uno;
    * @param relationType Variant to get relation type.
    * @return Result.
 */
-STDMETHODIMP CAccRelation::get_relationType(BSTR * relationType)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccRelation::get_relationType(BSTR * relationType)
 {
     SolarMutexGuard g;
 
@@ -63,7 +63,7 @@ STDMETHODIMP CAccRelation::get_relationType(BSTR * relationType)
 }
 
 // Gets what the type of localized relation is.
-STDMETHODIMP CAccRelation::get_localizedRelationType(BSTR *)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccRelation::get_localizedRelationType(BSTR *)
 {
 
 
@@ -79,7 +79,7 @@ STDMETHODIMP CAccRelation::get_localizedRelationType(BSTR *)
    * @param nTargets Variant to get targets length.
    * @return Result.
 */
-STDMETHODIMP CAccRelation::get_nTargets(long * nTargets)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccRelation::get_nTargets(long * nTargets)
 {
     SolarMutexGuard g;
 
@@ -101,7 +101,7 @@ STDMETHODIMP CAccRelation::get_nTargets(long * nTargets)
    * @param target      Variant to get special target.
    * @return Result.
 */
-STDMETHODIMP CAccRelation::get_target(long targetIndex, IUnknown * * target)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccRelation::get_target(long targetIndex, IUnknown * * target)
 {
     SolarMutexGuard g;
 
@@ -118,7 +118,7 @@ STDMETHODIMP CAccRelation::get_target(long targetIndex, IUnknown * * target)
     Reference<XAccessible> xRAcc(xTargets[targetIndex], UNO_QUERY);
     IAccessible* pRet = nullptr;
 
-    BOOL isGet = CMAccessible::get_IAccessibleFromXAccessible(xRAcc.get(), &pRet);
+    bool isGet = CMAccessible::get_IAccessibleFromXAccessible(xRAcc.get(), &pRet);
     if(isGet)
     {
         *target = /*(IAccessible2 *)*/static_cast<IUnknown*>(pRet);
@@ -138,7 +138,7 @@ STDMETHODIMP CAccRelation::get_target(long targetIndex, IUnknown * * target)
    * @param nTargets Variant to accept actual target length.
    * @return Result.
 */
-STDMETHODIMP CAccRelation::get_targets(long, IUnknown * * target, long * nTargets)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccRelation::get_targets(long, IUnknown * * target, long * nTargets)
 {
     SolarMutexGuard g;
 
@@ -180,7 +180,7 @@ STDMETHODIMP CAccRelation::get_targets(long, IUnknown * * target, long * nTarget
    * @param pXSubInterface AccessibleRelation pointer.
    * @return Result.
 */
-STDMETHODIMP CAccRelation::put_XSubInterface(hyper pXSubInterface)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccRelation::put_XSubInterface(hyper pXSubInterface)
 {
     // internal IUNOXWrapper - no mutex meeded
 
@@ -195,9 +195,9 @@ STDMETHODIMP CAccRelation::put_XSubInterface(hyper pXSubInterface)
 */
 BSTR CAccRelation::getRelationTypeBSTR(int type)
 {
-    static LPCTSTR map[] =
+    static LPCWSTR map[] =
         {
-            _T("INVALID"),               // AccessibleRelationType::INVALID
+            L"INVALID",                  // AccessibleRelationType::INVALID
             IA2_RELATION_FLOWS_FROM,     // AccessibleRelationType::CONTENT_FLOWS_FROM
             IA2_RELATION_FLOWS_TO,       // AccessibleRelationType::CONTENT_FLOWS_TO
             IA2_RELATION_CONTROLLED_BY,  // AccessibleRelationType::CONTROLLED_BY
@@ -211,7 +211,7 @@ BSTR CAccRelation::getRelationTypeBSTR(int type)
         };
 
     return ::SysAllocString( (type >= AccessibleRelationType::INVALID && type <= AccessibleRelationType::DESCRIBED_BY)
-                             ? map[type] : _T(""));
+                             ? map[type] : L"");
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

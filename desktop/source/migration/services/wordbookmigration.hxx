@@ -27,7 +27,6 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <osl/mutex.hxx>
-#include <osl/file.hxx>
 
 
 class INetURLObject;
@@ -35,16 +34,6 @@ class INetURLObject;
 
 namespace migration
 {
-
-
-    OUString SAL_CALL WordbookMigration_getImplementationName();
-    css::uno::Sequence< OUString > SAL_CALL WordbookMigration_getSupportedServiceNames();
-    css::uno::Reference< css::uno::XInterface > SAL_CALL WordbookMigration_create(
-        css::uno::Reference< css::uno::XComponentContext > const & xContext );
-
-
-    // class WordbookMigration
-
 
     typedef ::cppu::WeakImplHelper<
         css::lang::XServiceInfo,
@@ -58,7 +47,7 @@ namespace migration
         OUString         m_sSourceDir;
 
         TStringVectorPtr        getFiles( const OUString& rBaseURL ) const;
-        void                    checkAndCreateDirectory( INetURLObject& rDirURL );
+        void                    checkAndCreateDirectory( INetURLObject const & rDirURL );
         void                    copyFiles();
 
     public:

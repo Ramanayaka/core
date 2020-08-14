@@ -18,12 +18,7 @@
  */
 
 
-#include "dp_misc.h"
-#include "dp_resource.h"
-#include <osl/module.hxx>
-#include <osl/mutex.hxx>
-#include <tools/resmgr.hxx>
-#include <rtl/ustring.h>
+#include <dp_resource.h>
 #include <unotools/configmgr.hxx>
 #include <i18nlangtag/languagetag.hxx>
 
@@ -36,8 +31,8 @@ namespace {
 
 struct OfficeLocale :
         public rtl::StaticWithInit<LanguageTag, OfficeLocale> {
-    const LanguageTag operator () () {
-        OUString slang(utl::ConfigManager::getLocale());
+    LanguageTag operator () () {
+        OUString slang(utl::ConfigManager::getUILocale());
         //fallback, the locale is currently only set when the user starts the
         //office for the first time.
         if (slang.isEmpty())
@@ -46,31 +41,7 @@ struct OfficeLocale :
     }
 };
 
-struct DeploymentResMgr : public rtl::StaticWithInit<
-    ResMgr *, DeploymentResMgr> {
-    ResMgr * operator () () {
-        return ResMgr::CreateResMgr( "deployment", OfficeLocale::get() );
-    }
-};
-
-class theResourceMutex : public rtl::Static<osl::Mutex, theResourceMutex> {};
-
 } // anon namespace
-
-
-ResId getResId( sal_uInt16 id )
-{
-    const osl::MutexGuard guard( theResourceMutex::get() );
-    return ResId( id, *DeploymentResMgr::get() );
-}
-
-
-OUString getResourceString( sal_uInt16 id )
-{
-    const osl::MutexGuard guard(theResourceMutex::get());
-    OUString ret(ResId(id, *DeploymentResMgr::get()));
-    return ret.replaceAll("%PRODUCTNAME", utl::ConfigManager::getProductName());
-}
 
 const LanguageTag & getOfficeLanguageTag()
 {

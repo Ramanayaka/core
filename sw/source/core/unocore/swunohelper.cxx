@@ -26,7 +26,6 @@
 #include <com/sun/star/ucb/NameClash.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/extract.hxx>
 #include <o3tl/any.hxx>
@@ -37,8 +36,9 @@
 #include <ucbhelper/contentidentifier.hxx>
 #include <ucbhelper/content.hxx>
 #include <swunohelper.hxx>
+#include <svx/xdef.hxx>
 #include <svx/xfillit0.hxx>
-#include <editeng/memberids.hrc>
+#include <editeng/memberids.h>
 #include <svl/itemset.hxx>
 
 using namespace com::sun::star;
@@ -69,18 +69,18 @@ bool UCB_DeleteFile( const OUString& rURL )
     catch( css::uno::Exception& )
     {
         bRemoved = false;
-        OSL_FAIL( "Exeception from executeCommand( delete )" );
+        OSL_FAIL( "Exception from executeCommand( delete )" );
     }
     return bRemoved;
 }
 
-bool UCB_CopyFile( const OUString& rURL, const OUString& rNewURL, bool bCopyIsMove )
+bool UCB_MoveFile( const OUString& rURL, const OUString& rNewURL )
 {
     bool bCopyCompleted = true;
     try
     {
         INetURLObject aURL( rNewURL );
-        const OUString sName( aURL.GetName() );
+        const OUString sName(aURL.GetLastName());
         aURL.removeSegment();
         const OUString sMainURL( aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE) );
 
@@ -92,12 +92,12 @@ bool UCB_CopyFile( const OUString& rURL, const OUString& rNewURL, bool bCopyIsMo
         aInfo.NameClash = css::ucb::NameClash::ERROR;
         aInfo.NewTitle = sName;
         aInfo.SourceURL = rURL;
-        aInfo.MoveData = bCopyIsMove;
+        aInfo.MoveData = true;
         aTempContent.executeCommand( "transfer", uno::Any(aInfo) );
     }
     catch( css::uno::Exception& )
     {
-        OSL_FAIL( "Exeception from executeCommand( transfer )" );
+        OSL_FAIL( "Exception from executeCommand( transfer )" );
         bCopyCompleted = false;
     }
     return bCopyCompleted;
@@ -126,7 +126,7 @@ bool UCB_IsCaseSensitiveFileName( const OUString& rURL )
     catch( css::uno::Exception& )
     {
         bCaseSensitive = false;
-        OSL_FAIL( "Exeception from compareContentIds()" );
+        OSL_FAIL( "Exception from compareContentIds()" );
     }
     return bCaseSensitive;
 }
@@ -184,7 +184,7 @@ bool UCB_IsDirectory( const OUString& rURL )
 bool UCB_GetFileListOfFolder( const OUString& rURL,
                                 std::vector<OUString>& rList,
                                 const OUString* pExtension,
-                                std::vector< ::DateTime* >* pDateTimeList )
+                                std::vector< ::DateTime >* pDateTimeList )
 {
     bool bOk = false;
     try
@@ -227,7 +227,7 @@ bool UCB_GetFileListOfFolder( const OUString& rURL,
                             if( pDateTimeList )
                             {
                                 css::util::DateTime aStamp = xRow->getTimestamp(2);
-                                ::DateTime* pDateTime = new ::DateTime(
+                                ::DateTime aDateTime(
                                         ::Date( aStamp.Day,
                                                 aStamp.Month,
                                                 aStamp.Year ),
@@ -235,7 +235,7 @@ bool UCB_GetFileListOfFolder( const OUString& rURL,
                                                 aStamp.Minutes,
                                                 aStamp.Seconds,
                                                 aStamp.NanoSeconds ));
-                                pDateTimeList->push_back( pDateTime );
+                                pDateTimeList->push_back( aDateTime );
                             }
                         }
 
@@ -311,7 +311,7 @@ bool needToMapFillItemsToSvxBrushItemTypes(const SfxItemSet& rSet,
         case drawing::FillStyle_BITMAP:
             switch (nMID)
             {
-                case MID_GRAPHIC_URL:
+                case MID_GRAPHIC:
                     return SfxItemState::SET == rSet.GetItemState(XATTR_FILLBITMAP);
                 case MID_GRAPHIC_POSITION:
                     return SfxItemState::SET == rSet.GetItemState(XATTR_FILLBMP_STRETCH)

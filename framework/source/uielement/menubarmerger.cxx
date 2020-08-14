@@ -19,18 +19,19 @@
 
 #include <uielement/menubarmerger.hxx>
 #include <framework/addonsoptions.hxx>
+#include <com/sun/star/uno/Sequence.hxx>
 
 using namespace ::com::sun::star;
 
-static const char SEPARATOR_STRING[]               = "private:separator";
+const char SEPARATOR_STRING[]               = "private:separator";
 
-static const char MERGECOMMAND_ADDAFTER[]          = "AddAfter";
-static const char MERGECOMMAND_ADDBEFORE[]         = "AddBefore";
-static const char MERGECOMMAND_REPLACE[]           = "Replace";
-static const char MERGECOMMAND_REMOVE[]            = "Remove";
+const char MERGECOMMAND_ADDAFTER[]          = "AddAfter";
+const char MERGECOMMAND_ADDBEFORE[]         = "AddBefore";
+const char MERGECOMMAND_REPLACE[]           = "Replace";
+const char MERGECOMMAND_REMOVE[]            = "Remove";
 
-static const char MERGEFALLBACK_ADDPATH[]           = "AddPath";
-static const char MERGEFALLBACK_IGNORE[]            = "Ignore";
+const char MERGEFALLBACK_ADDPATH[]           = "AddPath";
+const char MERGEFALLBACK_IGNORE[]            = "Ignore";
 
 namespace framework
 {
@@ -63,7 +64,7 @@ void MenuBarMerger::RetrieveReferencePath(
     const OUString& rReferencePathString,
     ::std::vector< OUString >& rReferencePath )
 {
-    const sal_Char aDelimiter = '\\';
+    const char aDelimiter = '\\';
 
     rReferencePath.clear();
     sal_Int32 nIndex( 0 );
@@ -142,7 +143,7 @@ ReferencePathInfo MenuBarMerger::FindReferencePath(
     return aResult;
 }
 
-sal_uInt16 MenuBarMerger::FindMenuItem( const OUString& rCmd, Menu* pCurrMenu )
+sal_uInt16 MenuBarMerger::FindMenuItem( const OUString& rCmd, Menu const * pCurrMenu )
 {
     for ( sal_uInt16 i = 0; i < pCurrMenu->GetItemCount(); i++ )
     {
@@ -257,9 +258,7 @@ bool MenuBarMerger::RemoveMenuItems(
     const OUString&    rMergeCommandParameter )
 {
     const sal_uInt16 nParam( sal_uInt16( rMergeCommandParameter.toInt32() ));
-    sal_uInt16       nCount( 1 );
-
-    nCount = std::max( nParam, nCount );
+    sal_uInt16       nCount = std::max( nParam, sal_uInt16(1) );
 
     sal_uInt16 i = 0;
     while (( nPos < pMenu->GetItemCount() ) && ( i < nCount ))
@@ -389,21 +388,21 @@ void MenuBarMerger::GetMenuEntry(
     // Reset submenu member
     rAddonMenuItem.aSubMenu.clear();
 
-    for ( sal_Int32 i = 0; i < rAddonMenuEntry.getLength(); i++ )
+    for ( const beans::PropertyValue& rProp : rAddonMenuEntry )
     {
-        OUString aMenuEntryPropName = rAddonMenuEntry[i].Name;
+        OUString aMenuEntryPropName = rProp.Name;
         if ( aMenuEntryPropName == ADDONSMENUITEM_STRING_URL )
-            rAddonMenuEntry[i].Value >>= rAddonMenuItem.aURL;
+            rProp.Value >>= rAddonMenuItem.aURL;
         else if ( aMenuEntryPropName == ADDONSMENUITEM_STRING_TITLE )
-            rAddonMenuEntry[i].Value >>= rAddonMenuItem.aTitle;
+            rProp.Value >>= rAddonMenuItem.aTitle;
         else if ( aMenuEntryPropName == ADDONSMENUITEM_STRING_SUBMENU )
         {
             uno::Sequence< uno::Sequence< beans::PropertyValue > > aSubMenu;
-            rAddonMenuEntry[i].Value >>= aSubMenu;
+            rProp.Value >>= aSubMenu;
             GetSubMenu( aSubMenu, rAddonMenuItem.aSubMenu );
         }
         else if ( aMenuEntryPropName == ADDONSMENUITEM_STRING_CONTEXT )
-            rAddonMenuEntry[i].Value >>= rAddonMenuItem.aContext;
+            rProp.Value >>= rAddonMenuItem.aContext;
     }
 }
 

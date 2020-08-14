@@ -22,17 +22,17 @@
 
 #include <svtools/svtdllapi.h>
 
-#include <com/sun/star/task/XInteractionHandler.hpp>
-#include <com/sun/star/task/XInteractionRequest.hpp>
 #include <com/sun/star/uno/XCurrentContext.hpp>
 
+
+namespace com :: sun :: star :: task { class XInteractionHandler; }
 
 namespace svt
 {
 // We cannot derive from  cppu::WeakImplHelper because we would export the inline
 //generated class. This conflicts with other libraries if they use the same inline
 //class.
-    class SVT_DLLPUBLIC JavaContext :
+    class SVT_DLLPUBLIC JavaContext final :
         public css::uno::XCurrentContext
     {
 
@@ -58,8 +58,8 @@ namespace svt
         virtual css::uno::Any SAL_CALL getValueByName( const OUString& Name ) override;
 
     private:
-        JavaContext(JavaContext&) = delete;
-        JavaContext& operator = (JavaContext&) = delete;
+        JavaContext(JavaContext const &) = delete;
+        JavaContext& operator = (JavaContext const &) = delete;
 
         oslInterlockedCount                                  m_aRefCount;
         css::uno::Reference< css::uno::XCurrentContext >     m_xNextContext;

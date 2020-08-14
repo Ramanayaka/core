@@ -27,6 +27,8 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::i18n;
 
+namespace i18npool {
+
 ChapterCollator::ChapterCollator( const Reference < XComponentContext >& rxContext ) : CollatorImpl(rxContext)
 {
     cclass = CharacterClassification::create( rxContext );
@@ -70,12 +72,12 @@ ChapterCollator::compareSubstring( const OUString& str1, sal_Int32 off1, sal_Int
     return res1.Value == res2.Value ? 0 : res1.Value > res2.Value ? 1 : -1;
 }
 
-const sal_Char cChapCollator[] = "com.sun.star.i18n.ChapterCollator";
+const char cChapCollator[] = "com.sun.star.i18n.ChapterCollator";
 
 OUString SAL_CALL
 ChapterCollator::getImplementationName()
 {
-    return OUString(cChapCollator);
+    return cChapCollator;
 }
 
 sal_Bool SAL_CALL
@@ -91,4 +93,5 @@ ChapterCollator::getSupportedServiceNames()
     return aRet;
 }
 
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

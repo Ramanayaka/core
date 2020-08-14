@@ -20,15 +20,14 @@
 #ifndef INCLUDED_SVGIO_INC_SVGANODE_HXX
 #define INCLUDED_SVGIO_INC_SVGANODE_HXX
 
-#include <svgnode.hxx>
-#include <svgstyleattributes.hxx>
+#include "svgnode.hxx"
+#include "svgstyleattributes.hxx"
+#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <memory>
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
-        class SvgANode : public SvgNode
+        class SvgANode final : public SvgNode
         {
         private:
             /// use styles
@@ -51,8 +50,8 @@ namespace svgio
             const basegfx::B2DHomMatrix* getTransform() const { return mpaTransform.get(); }
             void setTransform(const basegfx::B2DHomMatrix* pMatrix) { mpaTransform.reset(); if(pMatrix) mpaTransform.reset( new basegfx::B2DHomMatrix(*pMatrix) ); }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGANODE_HXX
 

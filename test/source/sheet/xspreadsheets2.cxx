@@ -13,19 +13,11 @@
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheets2.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
-#include <com/sun/star/sheet/XCellRangeAddressable.hpp>
-#include <com/sun/star/sheet/XCellRangeReferrer.hpp>
 #include <com/sun/star/sheet/XNamedRanges.hpp>
 #include <com/sun/star/sheet/XNamedRange.hpp>
 #include <com/sun/star/table/XCell.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-
-#include <com/sun/star/table/CellAddress.hpp>
-#include <com/sun/star/table/CellRangeAddress.hpp>
-#include <com/sun/star/sheet/Border.hpp>
-#include <com/sun/star/sheet/NamedRangeFlag.hpp>
 
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
@@ -33,17 +25,21 @@
 #include <com/sun/star/util/XCloseable.hpp>
 
 #include <rtl/ustring.hxx>
-#include "cppunit/extensions/HelperMacros.h"
+#include <cppunit/TestAssert.h>
 
 using namespace css;
 using namespace css::uno;
 
 namespace apitest {
 
-XSpreadsheets2::XSpreadsheets2():
-    aSrcSheetName("SheetToCopy"),
-    aSrcFileName("rangenamessrc.ods"),
-    aDestFileBase("ScNamedRangeObj.ods")
+constexpr OUStringLiteral gaSrcSheetName("SheetToCopy");
+constexpr OUStringLiteral gaSrcFileName("rangenamessrc.ods");
+constexpr OUStringLiteral gaDestFileBase("ScNamedRangeObj.ods");
+
+static sal_Int32 nInsertedSheets(0);
+
+
+XSpreadsheets2::XSpreadsheets2()
 {
 }
 
@@ -59,13 +55,13 @@ XSpreadsheets2::~XSpreadsheets2()
 void XSpreadsheets2::testImportedSheetNameAndIndex()
 {
 /**
-    Verfiy that the imported sheet has the correct name and is placed at the right requested index
+    Verify that the imported sheet has the correct name and is placed at the right requested index
 */
 
     importSheetToCopy();
 
     uno::Reference< container::XNameAccess > xDestSheetNameAccess(xDestDoc->getSheets(), UNO_QUERY_THROW);
-    CPPUNIT_ASSERT_MESSAGE("Wrong sheet name", xDestSheetNameAccess->hasByName(aSrcSheetName));
+    CPPUNIT_ASSERT_MESSAGE("Wrong sheet name", xDestSheetNameAccess->hasByName(gaSrcSheetName));
 
 }
 
@@ -84,7 +80,7 @@ void XSpreadsheets2::testImportString()
     uno::Reference< text::XTextRange > xDestTextRange(xDestCell, UNO_QUERY_THROW);
     OUString aDestString = xDestTextRange->getString();
 
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong string imported", aDestString, aSrcString);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong string imported", aSrcString, aDestString);
 }
 
 void XSpreadsheets2::testImportValue()
@@ -118,7 +114,7 @@ void XSpreadsheets2::testImportFormulaBasicMath()
 
     // potential problem later: formulas might be adjusted
     // add some tests that the formulas are correctly adjusted
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong formula imported", aDestFormula, aSrcFormula);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong formula imported", aSrcFormula, aDestFormula);
 }
 
 void XSpreadsheets2::testImportFormulaWithNamedRange()
@@ -134,7 +130,7 @@ void XSpreadsheets2::testImportFormulaWithNamedRange()
     uno::Reference< table::XCell > xDestCell = xDestSheet->getCellByPosition(3,0);
     OUString aDestFormula = xDestCell->getFormula();
 
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong Namedrange formula imported", aDestFormula, aSrcFormula);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong Namedrange formula imported", aSrcFormula, aDestFormula);
 }
 
 void XSpreadsheets2::testImportOverExistingNamedRange()
@@ -153,10 +149,8 @@ void XSpreadsheets2::testImportOverExistingNamedRange()
     uno::Reference< sheet::XNamedRange > xDestNamedRange(aNr, UNO_QUERY_THROW);
     OUString aNrDestContent = xDestNamedRange->getContent();
 
-    OUString const aExpectedContent("$Sheet1.$B$1");
-
     std::cout << "testImportSheet : initial1 aNrDestContent " << aNrDestContent << std::endl;
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong address for initial1", aNrDestContent, aExpectedContent);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong address for initial1", OUString("$Sheet1.$B$1"), aNrDestContent);
 
 }
 
@@ -181,7 +175,7 @@ void XSpreadsheets2::testImportNamedRangeDefinedInSource()
 
     std::cout << "testImportSheet : InSheetRangeName content " << aNewInSheetNrDestContent << std::endl;
     std::cout << "testImportSheet : InSheetRangeName expected " << aNewInSheetExpectedContent << std::endl;
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong address for InSheetRangeName", aNewInSheetNrDestContent, aNewInSheetExpectedContent);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong address for InSheetRangeName", aNewInSheetExpectedContent, aNewInSheetNrDestContent);
 }
 
 void XSpreadsheets2::testImportNamedRangeRedefinedInSource()
@@ -201,9 +195,8 @@ void XSpreadsheets2::testImportNamedRangeRedefinedInSource()
     uno::Any aRedefinedInSheetNr = xDestNamedRangesNameAccess->getByName(aRedefinedInSheetNamedRangeString);
     uno::Reference< sheet::XNamedRange > xDestRedefinedInSheetNamedRange(aRedefinedInSheetNr, UNO_QUERY_THROW);
     OUString aRedefinedInSheetNrDestContent = xDestRedefinedInSheetNamedRange->getContent();
-    OUString const aRedefinedInSheetExpectedContent("$Sheet1.$B$2");
     std::cout << "testImportSheet : initial2 content " << aRedefinedInSheetNrDestContent << std::endl;
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong address for Redefined InSheet named range", aRedefinedInSheetNrDestContent, aRedefinedInSheetExpectedContent);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong address for Redefined InSheet named range", OUString("$Sheet1.$B$2"), aRedefinedInSheetNrDestContent);
 }
 
 void XSpreadsheets2::testImportNewNamedRange()
@@ -257,10 +250,10 @@ void XSpreadsheets2::testImportCellStyle()
     OUString aDestStyleName;
     CPPUNIT_ASSERT(xDestCellPropSet->getPropertyValue(aCellProperty) >>= aDestStyleName);
 
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong imported Cell Style", aDestStyleName, aSrcStyleName);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong imported Cell Style", aSrcStyleName, aDestStyleName);
 
     uno::Reference< style::XStyleFamiliesSupplier > xFamiliesSupplier (xDestDoc, UNO_QUERY_THROW);
-    uno::Reference< container::XNameAccess > xFamiliesNameAccess (xFamiliesSupplier->getStyleFamilies(), UNO_QUERY_THROW);
+    uno::Reference< container::XNameAccess > xFamiliesNameAccess (xFamiliesSupplier->getStyleFamilies(), UNO_SET_THROW);
     uno::Any aCellStylesFamily = xFamiliesNameAccess->getByName("CellStyles");
     uno::Reference< container::XNameContainer > xCellStylesFamilyNameAccess (aCellStylesFamily, UNO_QUERY_THROW);
 
@@ -271,21 +264,69 @@ void XSpreadsheets2::testImportCellStyle()
     sal_Int32 aVertJustify = 0;
     CPPUNIT_ASSERT(xCellStyleProp->getPropertyValue("VertJustify") >>= aVertJustify);
 
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("New style: VertJustify not set", table::CellVertJustify_CENTER, (table::CellVertJustify)aVertJustify);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("New style: VertJustify not set", table::CellVertJustify_CENTER, static_cast<table::CellVertJustify>(aVertJustify));
 }
 
-uno::Reference< sheet::XSpreadsheetDocument> XSpreadsheets2::getDoc(const OUString& aFileBase, uno::Reference< lang::XComponent >& xComp)
+void XSpreadsheets2::testLastAfterInsertCopy()
+{
+    /** Test that results in row 1 of all inserted sheets are equal to the
+        source sheet. The loaded destination document is kept open so several
+        sheets are imported.
+    */
+
+    CPPUNIT_ASSERT(nInsertedSheets > 0);
+    constexpr sal_Int32 nCols = 7;
+
+    uno::Reference< container::XNameAccess> xSrcNameAccess(init(),UNO_QUERY_THROW);
+    xSrcSheet.set( xSrcNameAccess->getByName(gaSrcSheetName), UNO_QUERY_THROW);
+
+    OUString aSrcString[nCols];
+    for (sal_Int32 nCol=0; nCol < nCols; ++nCol)
+    {
+        uno::Reference< table::XCell > xSrcCell = xSrcSheet->getCellByPosition(nCol, 0);
+        uno::Reference< text::XTextRange > xSrcTextRange(xSrcCell, UNO_QUERY_THROW);
+        aSrcString[nCol] = xSrcTextRange->getString();
+    }
+    // The named range 'initial2' is already present in the destination
+    // document defined to $Sheet1.$B$2 and thus is not copied, pointing to
+    // "content2" instead.
+    aSrcString[6] = "content2";
+
+    xDestDoc = getDoc(gaDestFileBase);
+    CPPUNIT_ASSERT(xDestDoc.is());
+    uno::Reference< container::XIndexAccess > xDestSheetIndexAccess (xDestDoc->getSheets(), UNO_QUERY_THROW);
+    CPPUNIT_ASSERT( nInsertedSheets < xDestSheetIndexAccess->getCount());
+    for (sal_Int32 nSheet=0; nSheet < nInsertedSheets; ++nSheet)
+    {
+        xDestSheet.set( xDestSheetIndexAccess->getByIndex(nSheet), UNO_QUERY_THROW);
+        for (sal_Int32 nCol=0; nCol < nCols; ++nCol)
+        {
+            uno::Reference< table::XCell > xDestCell = xDestSheet->getCellByPosition(nCol, 0);
+            uno::Reference< text::XTextRange > xDestTextRange(xDestCell, UNO_QUERY_THROW);
+            OUString aDestString = xDestTextRange->getString();
+
+            if (nCol == 4 && aDestString == "Err:540")
+                // The created external reference to the source document not
+                // allowed may result in Err:540
+                continue;
+
+            OString aMessage("Imported result does not match, sheet " + OString::number(nSheet)
+                    + " column " + OString::number(nCol));
+            CPPUNIT_ASSERT_EQUAL_MESSAGE( aMessage.getStr(), aSrcString[nCol], aDestString);
+        }
+    }
+}
+
+uno::Reference< sheet::XSpreadsheetDocument> XSpreadsheets2::getDoc(const OUString& aFileBase)
 {
     OUString aFileURL;
     createFileURL(aFileBase, aFileURL);
 
-    if (!xComp.is())
-        xComp = loadFromDesktop(aFileURL);
+    uno::Reference< lang::XComponent > xComp = loadFromDesktop(aFileURL);
 
     CPPUNIT_ASSERT(xComp.is());
 
     uno::Reference< sheet::XSpreadsheetDocument > xDoc(xComp, UNO_QUERY_THROW);
-    CPPUNIT_ASSERT(xDoc.is());
     return xDoc;
 }
 
@@ -293,35 +334,26 @@ uno::Reference< sheet::XNamedRanges> XSpreadsheets2::getNamedRanges(uno::Referen
 {
     uno::Reference< beans::XPropertySet > xPropSet (xDoc, UNO_QUERY_THROW);
     uno::Reference< sheet::XNamedRanges > xNamedRanges(xPropSet->getPropertyValue("NamedRanges"), UNO_QUERY_THROW);
-    CPPUNIT_ASSERT(xNamedRanges.is());
-
     return xNamedRanges;
 }
 
 void XSpreadsheets2::importSheetToCopy()
 {
     uno::Reference< container::XNameAccess> xSrcNameAccess(init(),UNO_QUERY_THROW);
-    xSrcSheet.set( xSrcNameAccess->getByName(aSrcSheetName), UNO_QUERY_THROW);
+    xSrcSheet.set( xSrcNameAccess->getByName(gaSrcSheetName), UNO_QUERY_THROW);
 
-    uno::Reference< lang::XComponent > xDestComponent;
-    if (!xDestComponent.is())
-    {
-        xDestDoc = getDoc(aDestFileBase, xDestComponent);
-        CPPUNIT_ASSERT(xDestDoc.is());
+    xDestDoc = getDoc(gaDestFileBase);
+    CPPUNIT_ASSERT(xDestDoc.is());
 
-        // import sheet
-        uno::Reference< sheet::XSpreadsheets2 > xDestSheets (xDestDoc->getSheets(), UNO_QUERY_THROW);
-        sal_Int32 nDestPos = 0;
-        sal_Int32 nDestPosEffective = xDestSheets->importSheet(xDocument, aSrcSheetName, nDestPos);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong sheet index", nDestPosEffective, nDestPos);
-    }
-    else
-    {
-        xDestDoc.set(xDestComponent,UNO_QUERY_THROW);
-    }
+    // import sheet
+    uno::Reference< sheet::XSpreadsheets2 > xDestSheets (xDestDoc->getSheets(), UNO_QUERY_THROW);
+    sal_Int32 nDestPos = 0;
+    sal_Int32 nDestPosEffective = xDestSheets->importSheet(xDocument, gaSrcSheetName, nDestPos);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong sheet index", nDestPos, nDestPosEffective);
+    ++nInsertedSheets;
 
-    uno::Reference< container::XNameAccess > xDestSheetNameAccess (xDestDoc->getSheets(), UNO_QUERY_THROW);
-    xDestSheet.set( xDestSheetNameAccess->getByName(aSrcSheetName), UNO_QUERY_THROW);
+    uno::Reference< container::XIndexAccess > xDestSheetIndexAccess (xDestDoc->getSheets(), UNO_QUERY_THROW);
+    xDestSheet.set( xDestSheetIndexAccess->getByIndex(nDestPosEffective), UNO_QUERY_THROW);
 }
 
 bool XSpreadsheets2::isExternalReference(const OUString& aDestContent, const OUString& aSrcContent )
@@ -329,7 +361,7 @@ bool XSpreadsheets2::isExternalReference(const OUString& aDestContent, const OUS
     CPPUNIT_ASSERT(aDestContent.startsWith("'file://"));
 
     return  (aDestContent.endsWithIgnoreAsciiCase(aSrcContent) // same cell address
-            && aDestContent.indexOf(aSrcFileName)>0); // contains source file name
+            && aDestContent.indexOf(gaSrcFileName)>0); // contains source file name
 }
 
 }

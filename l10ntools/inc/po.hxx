@@ -51,13 +51,14 @@ public:
 
                     PoEntry( const PoEntry& rPo );
     PoEntry&        operator=( const PoEntry& rPo );
-    PoEntry&        operator=( PoEntry&& rPo );
+    PoEntry&        operator=( PoEntry&& rPo ) noexcept;
 
     OString const &  getSourceFile() const;      ///< Get name of file from which entry is extracted
     OString         getGroupId() const;
     OString         getLocalId() const;
     OString         getResourceType() const;    ///< Get the type of component from which entry is extracted
     TYPE            getType() const;            ///< Get the type of entry
+    OString const & getMsgCtxt() const;
     OString const & getMsgId() const;
     OString const & getMsgStr() const;
     bool            isFuzzy() const;
@@ -87,6 +88,7 @@ public:
     friend class PoIfstream;
 
                     PoHeader( const OString& rExtSrc ); ///< Template Constructor
+                    PoHeader( const OString& rExtSrc, const OString& rPoHeaderMsgStr );
                     ~PoHeader();
                     PoHeader(const PoHeader&) = delete;
     PoHeader&       operator=(const PoHeader&) = delete;
@@ -127,7 +129,7 @@ private:
 
 public:
 
-    class Exception : public std::exception { };
+    class Exception final : public std::exception { };
 
             PoIfstream();
             PoIfstream( const OString& rFileName );
@@ -138,6 +140,7 @@ public:
     bool    eof() const     { return m_bEof; }
 
     void    open(const OString& rFileName);
+    void    open(const OString& rFileName, OString& sPoHeader);
     void    close();
     void    readEntry(PoEntry& rPo);
 };

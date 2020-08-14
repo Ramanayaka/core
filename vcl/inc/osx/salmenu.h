@@ -20,11 +20,11 @@
 #ifndef INCLUDED_VCL_INC_OSX_SALMENU_H
 #define INCLUDED_VCL_INC_OSX_SALMENU_H
 
-#include "premac.h"
+#include <premac.h>
 #include <Cocoa/Cocoa.h>
-#include "postmac.h"
+#include <postmac.h>
 
-#include "salmenu.hxx"
+#include <salmenu.hxx>
 
 #include <vector>
 
@@ -56,8 +56,6 @@ public:
     virtual ~AquaSalMenu() override;
 
     virtual bool VisibleMenuBar() override;
-    // must return true to actually display native menu bars
-    // otherwise only menu messages are processed (eg, OLE on Windows)
 
     virtual void InsertItem( SalMenuItem* pSalMenuItem, unsigned nPos ) override;
     virtual void RemoveItem( unsigned nPos ) override;

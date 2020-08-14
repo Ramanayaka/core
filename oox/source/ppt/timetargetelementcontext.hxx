@@ -20,17 +20,17 @@
 #ifndef INCLUDED_OOX_SOURCE_PPT_TIMETARGETELEMENTCONTEXT_HXX
 #define INCLUDED_OOX_SOURCE_PPT_TIMETARGETELEMENTCONTEXT_HXX
 
-#include "oox/core/fragmenthandler2.hxx"
-#include "oox/ppt/animationspersist.hxx"
+#include <oox/core/fragmenthandler2.hxx>
+#include <oox/ppt/animationspersist.hxx>
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
     /** context CT_TLTimeTargetElement */
     class TimeTargetElementContext
         : public ::oox::core::FragmentHandler2
     {
     public:
-        TimeTargetElementContext( ::oox::core::FragmentHandler2& rParent, const AnimTargetElementPtr & aValue );
+        TimeTargetElementContext( ::oox::core::FragmentHandler2 const & rParent, const AnimTargetElementPtr & aValue );
         virtual ~TimeTargetElementContext( ) throw( ) override;
         virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs ) override;
 
@@ -38,7 +38,7 @@ namespace oox { namespace ppt {
         AnimTargetElementPtr mpTarget;
     };
 
-} }
+}
 
 #endif
 

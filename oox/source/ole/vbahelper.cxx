@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ole/vbahelper.hxx"
-#include <rtl/ustrbuf.hxx>
+#include <oox/ole/vbahelper.hxx>
 #include <osl/diagnose.h>
-#include "oox/helper/binaryinputstream.hxx"
+#include <oox/helper/binaryinputstream.hxx>
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 using namespace ::com::sun::star::uno;
 
@@ -55,7 +53,6 @@ bool VbaHelper::extractKeyValue( OUString& rKey, OUString& rValue, const OUStrin
     return false;
 }
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

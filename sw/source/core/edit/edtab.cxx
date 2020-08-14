@@ -21,12 +21,7 @@
 #include <hintids.hxx>
 #include <hints.hxx>
 
-#include <vcl/svapp.hxx>
-#include <vcl/window.hxx>
-#include <editeng/boxitem.hxx>
 #include <swwait.hxx>
-#include <fmtfsize.hxx>
-#include <frmatr.hxx>
 #include <editsh.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -36,26 +31,39 @@
 #include <cntfrm.hxx>
 #include <pam.hxx>
 #include <ndtxt.hxx>
-#include <fldbas.hxx>
 #include <swtable.hxx>
 #include <swundo.hxx>
 #include <tblsel.hxx>
-#include <edimp.hxx>
-#include <tabfrm.hxx>
 #include <cellfrm.hxx>
 #include <cellatr.hxx>
 #include <swtblfmt.hxx>
 #include <swddetbl.hxx>
 #include <mdiexp.hxx>
-#include <unochart.hxx>
+#include <itabenum.hxx>
+#include <vcl/uitest/logger.hxx>
+#include <vcl/uitest/eventdescription.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
+namespace {
 
-//Added for bug #i119954# Application crashed if undo/redo covert nest table to text
-bool ConvertTableToText( const SwTableNode *pTableNode, sal_Unicode cCh );
+void collectUIInformation(const OUString& rAction, const OUString& aParameters)
+{
+    EventDescription aDescription;
+    aDescription.aAction = rAction;
+    aDescription.aParameters = {{"parameters", aParameters}};
+    aDescription.aID = "writer_edit";
+    aDescription.aKeyWord = "SwEditWinUIObject";
+    aDescription.aParent = "MainWindow";
+    UITestLogger::getInstance().logEvent(aDescription);
+}
 
-void    ConvertNestedTablesToText( const SwTableLines &rTableLines, sal_Unicode cCh )
+}
+
+//Added for bug #i119954# Application crashed if undo/redo convert nest table to text
+static bool ConvertTableToText( const SwTableNode *pTableNode, sal_Unicode cCh );
+
+static void    ConvertNestedTablesToText( const SwTableLines &rTableLines, sal_Unicode cCh )
 {
     for (size_t n = 0; n < rTableLines.size(); ++n)
     {
@@ -113,6 +121,10 @@ const SwTable& SwEditShell::InsertTable( const SwInsertTableOptions& rInsTableOp
         EndUndo( SwUndoId::END );
 
     EndAllAction();
+
+    OUString parameter = " Columns : " + OUString::number( nCols ) + " , Rows : " + OUString::number( nRows ) + " ";
+    collectUIInformation("CREATE_TABLE", parameter);
+
     return *pTable;
 }
 
@@ -123,7 +135,7 @@ bool SwEditShell::TextToTable( const SwInsertTableOptions& rInsTableOpts,
     SwWait aWait( *GetDoc()->GetDocShell(), true );
     bool bRet = false;
     StartAllAction();
-    for(SwPaM& rPaM : GetCursor()->GetRingContainer())
+    for(const SwPaM& rPaM : GetCursor()->GetRingContainer())
     {
         if( rPaM.HasMark() )
             bRet |= nullptr != GetDoc()->TextToTable( rInsTableOpts, rPaM, cCh,
@@ -163,7 +175,7 @@ bool SwEditShell::TableToText( sal_Unicode cCh )
     pCursor->SetMark();
     pCursor->DeleteMark();
 
-    //Modified for bug #i119954# Application crashed if undo/redo covert nest table to text
+    //Modified for bug #i119954# Application crashed if undo/redo convert nest table to text
     StartUndo();
     bRet = ConvertTableToText( pTableNd, cCh );
     EndUndo();
@@ -224,15 +236,15 @@ void SwEditShell::InsertDDETable( const SwInsertTableOptions& rInsTableOpts,
         GetDoc()->getIDocumentContentOperations().SplitNode( *pPos, false );
     }
 
-    const SwInsertTableOptions aInsTableOpts( rInsTableOpts.mnInsMode | tabopts::DEFAULT_BORDER,
+    const SwInsertTableOptions aInsTableOpts( rInsTableOpts.mnInsMode | SwInsertTableFlags::DefaultBorder,
                                             rInsTableOpts.mnRowsToRepeat );
     SwTable* pTable = const_cast<SwTable*>(GetDoc()->InsertTable( aInsTableOpts, *pPos,
                                                      nRows, nCols, css::text::HoriOrientation::FULL ));
 
     SwTableNode* pTableNode = const_cast<SwTableNode*>(pTable->GetTabSortBoxes()[ 0 ]->
                                                 GetSttNd()->FindTableNode());
-    SwDDETable* pDDETable = new SwDDETable( *pTable, pDDEType );
-    pTableNode->SetNewTable( pDDETable );       // set the DDE table
+    std::unique_ptr<SwDDETable> pDDETable(new SwDDETable( *pTable, pDDEType ));
+    pTableNode->SetNewTable( std::move(pDDETable) );   // set the DDE table
 
     if( bEndUndo )
         EndUndo( SwUndoId::END );
@@ -330,7 +342,7 @@ bool SwEditShell::GetTableBoxFormulaAttrs( SfxItemSet& rSet ) const
 
 void SwEditShell::SetTableBoxFormulaAttrs( const SfxItemSet& rSet )
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     SwSelBoxes aBoxes;
     if( IsTableMode() )
         ::GetTableSelCrs( *this, aBoxes );
@@ -387,8 +399,7 @@ bool SwEditShell::IsTableBoxTextFormat() const
         RES_BOXATR_FORMAT, true, &pItem ))
     {
         nFormat = static_cast<const SwTableBoxNumFormat*>(pItem)->GetValue();
-        return GetDoc()->GetNumberFormatter()->IsTextFormat( nFormat ) ||
-                static_cast<sal_uInt32>(css::util::NumberFormat::TEXT) == nFormat;
+        return GetDoc()->GetNumberFormatter()->IsTextFormat( nFormat );
     }
 
     sal_uLong nNd = pBox->IsValidNumTextNd();
@@ -425,22 +436,20 @@ OUString SwEditShell::GetTableBoxText() const
     return sRet;
 }
 
-bool SwEditShell::SplitTable( SplitTable_HeadlineOption eMode )
+void SwEditShell::SplitTable( SplitTable_HeadlineOption eMode )
 {
-    bool bRet = false;
     SwPaM *pCursor = GetCursor();
     if( pCursor->GetNode().FindTableNode() )
     {
         StartAllAction();
         GetDoc()->GetIDocumentUndoRedo().StartUndo(SwUndoId::EMPTY, nullptr);
 
-        bRet = GetDoc()->SplitTable( *pCursor->GetPoint(), eMode, true );
+        GetDoc()->SplitTable( *pCursor->GetPoint(), eMode, true );
 
         GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::EMPTY, nullptr);
-        ClearFEShellTabCols();
+        ClearFEShellTabCols(*GetDoc(), nullptr);
         EndAllAction();
     }
-    return bRet;
 }
 
 bool SwEditShell::MergeTable( bool bWithPrev )
@@ -455,7 +464,7 @@ bool SwEditShell::MergeTable( bool bWithPrev )
         bRet = GetDoc()->MergeTable( *pCursor->GetPoint(), bWithPrev );
 
         GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::EMPTY, nullptr);
-        ClearFEShellTabCols();
+        ClearFEShellTabCols(*GetDoc(), nullptr);
         EndAllAction();
     }
     return bRet;

@@ -17,179 +17,91 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <comphelper/processfactory.hxx>
 #include <tools/datetime.hxx>
 #include <unotools/datetime.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/settings.hxx>
+#include <vcl/commandevent.hxx>
+#include <vcl/event.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <ucbhelper/content.hxx>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <sfx2/app.hxx>
-#include "helpid.hrc"
-#include "svx/gallery1.hxx"
-#include "svx/galtheme.hxx"
-#include "svx/galmisc.hxx"
+#include <helpids.h>
+#include <svx/gallery1.hxx>
+#include <svx/galtheme.hxx>
+#include <svx/galmisc.hxx>
 #include "galbrws1.hxx"
 #include <com/sun/star/util/DateTime.hpp>
-#include "gallery.hrc"
+#include <svx/strings.hrc>
 #include <algorithm>
-#include <svx/dialogs.hrc>
 #include <svx/dialmgr.hxx>
 
 #include <svx/svxdlg.hxx>
 #include <memory>
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
 
 using namespace ::com::sun::star;
 
-
-GalleryButton::GalleryButton( GalleryBrowser1* pParent, WinBits nWinBits ) :
-    PushButton( pParent, nWinBits )
-{
-}
-
-void GalleryButton::KeyInput( const KeyEvent& rKEvt )
-{
-    if( !static_cast< GalleryBrowser1* >( GetParent() )->KeyInput( rKEvt, this ) )
-        PushButton::KeyInput( rKEvt );
-}
-
-
-GalleryThemeListBox::GalleryThemeListBox( GalleryBrowser1* pParent, WinBits nWinBits ) :
-    ListBox( pParent, nWinBits )
-{
-    InitSettings();
-}
-
-void GalleryThemeListBox::InitSettings()
-{
-    SetBackground( Wallpaper( GALLERY_BG_COLOR ) );
-    SetControlBackground( GALLERY_BG_COLOR );
-    SetControlForeground( GALLERY_FG_COLOR );
-}
-
-void GalleryThemeListBox::DataChanged( const DataChangedEvent& rDCEvt )
-{
-    if ( ( rDCEvt.GetType() == DataChangedEventType::SETTINGS ) && ( rDCEvt.GetFlags() & AllSettingsFlags::STYLE ) )
-        InitSettings();
-    else
-        ListBox::DataChanged( rDCEvt );
-}
-
-bool GalleryThemeListBox::PreNotify( NotifyEvent& rNEvt )
-{
-    bool bDone = false;
-
-    if( rNEvt.GetType() == MouseNotifyEvent::COMMAND )
-    {
-        const CommandEvent* pCEvt = rNEvt.GetCommandEvent();
-
-        if( pCEvt && pCEvt->GetCommand() == CommandEventId::ContextMenu )
-            static_cast< GalleryBrowser1* >( GetParent() )->ShowContextMenu();
-    }
-    else if( rNEvt.GetType() == MouseNotifyEvent::KEYINPUT )
-    {
-        const KeyEvent* pKEvt = rNEvt.GetKeyEvent();
-
-        if( pKEvt )
-            bDone = static_cast< GalleryBrowser1* >( GetParent() )->KeyInput( *pKEvt, this );
-    }
-
-    return( bDone || ListBox::PreNotify( rNEvt ) );
-}
-
-
 GalleryBrowser1::GalleryBrowser1(
-    vcl::Window* pParent,
+    weld::Builder& rBuilder,
     Gallery* pGallery,
-    const std::function<sal_Bool (const KeyEvent&,Window*)>& rKeyInputHandler,
     const std::function<void ()>& rThemeSlectionHandler)
     :
-    Control               ( pParent, WB_TABSTOP ),
-    maNewTheme            ( VclPtr<GalleryButton>::Create(this, WB_3DLOOK) ),
-    mpThemes              ( VclPtr<GalleryThemeListBox>::Create( this, WB_TABSTOP | WB_3DLOOK | WB_BORDER | WB_HSCROLL | WB_VSCROLL | WB_AUTOHSCROLL | WB_SORT ) ),
+    mxNewTheme(rBuilder.weld_button("insert")),
+    mxThemes(rBuilder.weld_tree_view("themelist")),
     mpGallery             ( pGallery ),
     mpExchangeData        ( new ExchangeData ),
-    mpThemePropsDlgItemSet( nullptr ),
-    aImgNormal            ( GalleryResGetBitmapEx( RID_SVXBMP_THEME_NORMAL ) ),
-    aImgDefault           ( GalleryResGetBitmapEx( RID_SVXBMP_THEME_DEFAULT ) ),
-    aImgReadOnly          ( GalleryResGetBitmapEx( RID_SVXBMP_THEME_READONLY ) ),
-    maKeyInputHandler(rKeyInputHandler),
+    aImgNormal            ( RID_SVXBMP_THEME_NORMAL ),
+    aImgDefault           ( RID_SVXBMP_THEME_DEFAULT ),
+    aImgReadOnly          ( RID_SVXBMP_THEME_READONLY ),
     maThemeSlectionHandler(rThemeSlectionHandler)
 {
-    StartListening( *mpGallery );
+    mxNewTheme->set_help_id(HID_GALLERY_NEWTHEME);
+    mxNewTheme->connect_clicked( LINK( this, GalleryBrowser1, ClickNewThemeHdl ) );
 
-    maNewTheme->SetHelpId( HID_GALLERY_NEWTHEME );
-    maNewTheme->SetText( GalResId(RID_SVXSTR_GALLERY_CREATETHEME));
-    maNewTheme->SetClickHdl( LINK( this, GalleryBrowser1, ClickNewThemeHdl ) );
+    mxThemes->make_sorted();
+    mxThemes->set_help_id( HID_GALLERY_THEMELIST );
+    mxThemes->connect_changed( LINK( this, GalleryBrowser1, SelectThemeHdl ) );
+    mxThemes->connect_popup_menu(LINK(this, GalleryBrowser1, PopupMenuHdl));
+    mxThemes->connect_key_press(LINK(this, GalleryBrowser1, KeyInputHdl));
+    mxThemes->set_size_request(-1, mxThemes->get_height_rows(6));
 
     // disable creation of new themes if a writable directory is not available
     if( mpGallery->GetUserURL().GetProtocol() == INetProtocol::NotValid )
-        maNewTheme->Disable();
+        mxNewTheme->set_sensitive(false);
 
-    mpThemes->SetHelpId( HID_GALLERY_THEMELIST );
-    mpThemes->SetSelectHdl( LINK( this, GalleryBrowser1, SelectThemeHdl ) );
-    mpThemes->SetAccessibleName(SvxResId(RID_SVXSTR_GALLERYPROPS_GALTHEME));
+    StartListening( *mpGallery );
 
-    for( sal_uIntPtr i = 0, nCount = mpGallery->GetThemeCount(); i < nCount; i++ )
+    for (size_t i = 0, nCount = mpGallery->GetThemeCount(); i < nCount; ++i)
         ImplInsertThemeEntry( mpGallery->GetThemeInfo( i ) );
-
-    ImplAdjustControls();
-    maNewTheme->Show();
-    mpThemes->Show();
 }
 
 GalleryBrowser1::~GalleryBrowser1()
 {
-    disposeOnce();
-}
-
-void GalleryBrowser1::dispose()
-{
     EndListening( *mpGallery );
-    mpThemePropertiesDialog.clear();
-    mpThemes.disposeAndClear();
-    delete mpExchangeData;
-    mpExchangeData = nullptr;
-    maNewTheme.disposeAndClear();
-    Control::dispose();
+    mpExchangeData.reset();
 }
 
-sal_uIntPtr GalleryBrowser1::ImplInsertThemeEntry( const GalleryThemeEntry* pEntry )
+void GalleryBrowser1::ImplInsertThemeEntry( const GalleryThemeEntry* pEntry )
 {
     static const bool bShowHiddenThemes = ( getenv( "GALLERY_SHOW_HIDDEN_THEMES" ) != nullptr );
 
-    sal_uIntPtr nRet = LISTBOX_ENTRY_NOTFOUND;
+    if( !(pEntry && ( !pEntry->IsHidden() || bShowHiddenThemes )) )
+        return;
 
-    if( pEntry && ( !pEntry->IsHidden() || bShowHiddenThemes ) )
-    {
-        const Image* pImage;
+    const OUString* pImage;
 
-        if( pEntry->IsReadOnly() )
-            pImage = &aImgReadOnly;
-        else if( pEntry->IsDefault() )
-            pImage = &aImgDefault;
-        else
-            pImage = &aImgNormal;
+    if( pEntry->IsReadOnly() )
+        pImage = &aImgReadOnly;
+    else if( pEntry->IsDefault() )
+        pImage = &aImgDefault;
+    else
+        pImage = &aImgNormal;
 
-        nRet = mpThemes->InsertEntry( pEntry->GetThemeName(), *pImage );
-    }
-
-    return nRet;
-}
-
-void GalleryBrowser1::ImplAdjustControls()
-{
-    const Size  aOutSize( GetOutputSizePixel() );
-    const long  nNewThemeHeight = LogicToPixel( Size( 0, 14 ), MapUnit::MapAppFont ).Height();
-    const long  nStartY = nNewThemeHeight + 4;
-
-    maNewTheme->SetPosSizePixel( Point(),
-                                Size( aOutSize.Width(), nNewThemeHeight ) );
-
-    mpThemes->SetPosSizePixel( Point( 0, nStartY ),
-                               Size( aOutSize.Width(), aOutSize.Height() - nStartY ) );
+    mxThemes->append("", pEntry->GetThemeName(), *pImage);
 }
 
 void GalleryBrowser1::ImplFillExchangeData( const GalleryTheme* pThm, ExchangeData& rData )
@@ -223,68 +135,68 @@ void GalleryBrowser1::ImplGetExecuteVector(std::vector<OString>& o_aExec)
 {
     GalleryTheme*           pTheme = mpGallery->AcquireTheme( GetSelectedTheme(), *this );
 
-    if( pTheme )
+    if( !pTheme )
+        return;
+
+    bool                bUpdateAllowed, bRenameAllowed, bRemoveAllowed;
+    static const bool   bIdDialog = ( getenv( "GALLERY_ENABLE_ID_DIALOG" ) != nullptr );
+
+    if( pTheme->IsReadOnly() )
+        bUpdateAllowed = bRenameAllowed = bRemoveAllowed = false;
+    else if( pTheme->IsDefault() )
     {
-        bool                bUpdateAllowed, bRenameAllowed, bRemoveAllowed;
-        static const bool   bIdDialog = ( getenv( "GALLERY_ENABLE_ID_DIALOG" ) != nullptr );
-
-        if( pTheme->IsReadOnly() )
-            bUpdateAllowed = bRenameAllowed = bRemoveAllowed = false;
-        else if( pTheme->IsDefault() )
-        {
-            bUpdateAllowed = bRenameAllowed = true;
-            bRemoveAllowed = false;
-        }
-        else
-            bUpdateAllowed = bRenameAllowed = bRemoveAllowed = true;
-
-        if( bUpdateAllowed && pTheme->GetObjectCount() )
-            o_aExec.push_back("update");
-
-        if( bRenameAllowed )
-            o_aExec.push_back("rename");
-
-        if( bRemoveAllowed )
-            o_aExec.push_back("delete");
-
-        if( bIdDialog && !pTheme->IsReadOnly() )
-            o_aExec.push_back("assign");
-
-        o_aExec.push_back("properties");
-
-        mpGallery->ReleaseTheme( pTheme, *this );
+        bUpdateAllowed = bRenameAllowed = true;
+        bRemoveAllowed = false;
     }
+    else
+        bUpdateAllowed = bRenameAllowed = bRemoveAllowed = true;
+
+    if( bUpdateAllowed && pTheme->GetObjectCount() )
+        o_aExec.emplace_back("update");
+
+    if( bRenameAllowed )
+        o_aExec.emplace_back("rename");
+
+    if( bRemoveAllowed )
+        o_aExec.emplace_back("delete");
+
+    if( bIdDialog && !pTheme->IsReadOnly() )
+        o_aExec.emplace_back("assign");
+
+    o_aExec.emplace_back("properties");
+
+    mpGallery->ReleaseTheme( pTheme, *this );
 }
 
 void GalleryBrowser1::ImplGalleryThemeProperties( const OUString & rThemeName, bool bCreateNew )
 {
     DBG_ASSERT(!mpThemePropsDlgItemSet, "mpThemePropsDlgItemSet already set!");
-    mpThemePropsDlgItemSet = new SfxItemSet( SfxGetpApp()->GetPool() );
+    mpThemePropsDlgItemSet.reset(new SfxItemSet( SfxGetpApp()->GetPool() ));
     GalleryTheme*   pTheme = mpGallery->AcquireTheme( rThemeName, *this );
 
     ImplFillExchangeData( pTheme, *mpExchangeData );
 
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-    assert(pFact && "Got no AbstractDialogFactory!");
-    mpThemePropertiesDialog = pFact->CreateGalleryThemePropertiesDialog( mpExchangeData, mpThemePropsDlgItemSet );
-    assert(mpThemePropertiesDialog && "Got no GalleryThemePropertiesDialog!");
+    VclPtr<VclAbstractDialog> xThemePropertiesDialog = pFact->CreateGalleryThemePropertiesDialog(mxThemes.get(), mpExchangeData.get(), mpThemePropsDlgItemSet.get());
 
     if ( bCreateNew )
     {
-        mpThemePropertiesDialog->StartExecuteModal(
-            LINK( this, GalleryBrowser1, EndNewThemePropertiesDlgHdl ) );
+        xThemePropertiesDialog->StartExecuteAsync([xThemePropertiesDialog, this](sal_Int32 nResult){
+            EndNewThemePropertiesDlgHdl(nResult);
+            xThemePropertiesDialog->disposeOnce();
+        });
     }
     else
     {
-        mpThemePropertiesDialog->StartExecuteModal(
-            LINK( this, GalleryBrowser1, EndThemePropertiesDlgHdl ) );
+        xThemePropertiesDialog->StartExecuteAsync([xThemePropertiesDialog, this](sal_Int32 nResult){
+            EndThemePropertiesDlgHdl(nResult);
+            xThemePropertiesDialog->disposeOnce();
+        });
     }
 }
 
-void GalleryBrowser1::ImplEndGalleryThemeProperties(bool bCreateNew)
+void GalleryBrowser1::ImplEndGalleryThemeProperties(bool bCreateNew, sal_Int32 nRet)
 {
-    long nRet = mpThemePropertiesDialog->GetResult();
-
     if( nRet == RET_OK )
     {
         OUString aName( mpExchangeData->pTheme->GetName() );
@@ -296,9 +208,7 @@ void GalleryBrowser1::ImplEndGalleryThemeProperties(bool bCreateNew)
 
             while( mpGallery->HasTheme( aTitle ) && ( nCount++ < 16000 ) )
             {
-                aTitle = mpExchangeData->aEditedTitle;
-                aTitle += " ";
-                aTitle += OUString::number( nCount );
+                aTitle = mpExchangeData->aEditedTitle + " " + OUString::number( nCount );
             }
 
             mpGallery->RenameTheme( aName, aTitle );
@@ -306,8 +216,8 @@ void GalleryBrowser1::ImplEndGalleryThemeProperties(bool bCreateNew)
 
         if ( bCreateNew )
         {
-            mpThemes->SelectEntry( mpExchangeData->pTheme->GetName() );
-            SelectThemeHdl( *mpThemes );
+            mxThemes->select_text( mpExchangeData->pTheme->GetName() );
+            SelectThemeHdl( *mxThemes );
         }
     }
 
@@ -318,26 +228,16 @@ void GalleryBrowser1::ImplEndGalleryThemeProperties(bool bCreateNew)
     {
         mpGallery->RemoveTheme( aThemeName );
     }
-
-    // destroy mpThemeProps asynchronously
-    Application::PostUserEvent( LINK( this, GalleryBrowser1, DestroyThemePropertiesDlgHdl ), nullptr, true );
 }
 
-IMPL_LINK( GalleryBrowser1, EndNewThemePropertiesDlgHdl, Dialog&, /*rDialog*/, void )
+void GalleryBrowser1::EndNewThemePropertiesDlgHdl(sal_Int32 nResult)
 {
-    ImplEndGalleryThemeProperties(true);
+    ImplEndGalleryThemeProperties(true, nResult);
 }
 
-IMPL_LINK( GalleryBrowser1, EndThemePropertiesDlgHdl, Dialog&, /*rDialog*/, void )
+void GalleryBrowser1::EndThemePropertiesDlgHdl(sal_Int32 nResult)
 {
-    ImplEndGalleryThemeProperties(false);
-}
-
-IMPL_LINK( GalleryBrowser1, DestroyThemePropertiesDlgHdl, void*, /*p*/, void )
-{
-    mpThemePropertiesDialog.disposeAndClear();
-    delete mpThemePropsDlgItemSet;
-    mpThemePropsDlgItemSet = nullptr;
+    ImplEndGalleryThemeProperties(false, nResult);
 }
 
 void GalleryBrowser1::ImplExecute(const OString &rIdent)
@@ -347,20 +247,17 @@ void GalleryBrowser1::ImplExecute(const OString &rIdent)
         GalleryTheme*       pTheme = mpGallery->AcquireTheme( GetSelectedTheme(), *this );
 
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        if(pFact)
-        {
-            ScopedVclPtr<VclAbstractRefreshableDialog> aActualizeProgress(pFact->CreateActualizeProgressDialog( this, pTheme ));
-            DBG_ASSERT(aActualizeProgress, "Dialog creation failed!");
+        ScopedVclPtr<VclAbstractDialog> aActualizeProgress(pFact->CreateActualizeProgressDialog(mxThemes.get(), pTheme));
 
-            aActualizeProgress->Update();
-            aActualizeProgress->Execute();
-            mpGallery->ReleaseTheme( pTheme, *this );
-        }
+        aActualizeProgress->Execute();
+        mpGallery->ReleaseTheme( pTheme, *this );
     }
     else if (rIdent == "delete")
     {
-        if( ScopedVclPtrInstance<MessageDialog>(nullptr, "QueryDeleteThemeDialog","svx/ui/querydeletethemedialog.ui")->Execute() == RET_YES )
-            mpGallery->RemoveTheme( mpThemes->GetSelectEntry() );
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(mxThemes.get(), "svx/ui/querydeletethemedialog.ui"));
+        std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog("QueryDeleteThemeDialog"));
+        if (xQuery->run() == RET_YES)
+            mpGallery->RemoveTheme( mxThemes->get_selected_text() );
     }
     else if (rIdent == "rename")
     {
@@ -368,9 +265,7 @@ void GalleryBrowser1::ImplExecute(const OString &rIdent)
         const OUString  aOldName( pTheme->GetName() );
 
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        DBG_ASSERT(pFact, "Dialog creation failed!");
-        ScopedVclPtr<AbstractTitleDialog> aDlg(pFact->CreateTitleDialog( this, aOldName ));
-        DBG_ASSERT(aDlg, "Dialog creation failed!");
+        ScopedVclPtr<AbstractTitleDialog> aDlg(pFact->CreateTitleDialog(mxThemes.get(), aOldName));
 
         if( aDlg->Execute() == RET_OK )
         {
@@ -383,9 +278,7 @@ void GalleryBrowser1::ImplExecute(const OString &rIdent)
 
                 while( mpGallery->HasTheme( aName ) && ( nCount++ < 16000 ) )
                 {
-                    aName = aNewName;
-                    aName += " ";
-                    aName += OUString::number( nCount );
+                    aName = aNewName + " " + OUString::number( nCount );
                 }
 
                 mpGallery->RenameTheme( aOldName, aName );
@@ -401,14 +294,9 @@ void GalleryBrowser1::ImplExecute(const OString &rIdent)
         {
 
             SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-            if(pFact)
-            {
-                ScopedVclPtr<AbstractGalleryIdDialog> aDlg(pFact->CreateGalleryIdDialog( this, pTheme ));
-                DBG_ASSERT(aDlg, "Dialog creation failed!");
-
-                if( aDlg->Execute() == RET_OK )
-                    pTheme->SetId( aDlg->GetId(), true );
-            }
+            ScopedVclPtr<AbstractGalleryIdDialog> aDlg(pFact->CreateGalleryIdDialog(mxThemes.get(), pTheme));
+            if( aDlg->Execute() == RET_OK )
+                pTheme->SetId( aDlg->GetId(), true );
         }
 
         mpGallery->ReleaseTheme( pTheme, *this );
@@ -419,17 +307,12 @@ void GalleryBrowser1::ImplExecute(const OString &rIdent)
     }
 }
 
-void GalleryBrowser1::Resize()
+void GalleryBrowser1::GrabFocus()
 {
-    Control::Resize();
-    ImplAdjustControls();
-}
-
-void GalleryBrowser1::GetFocus()
-{
-    Control::GetFocus();
-    if( mpThemes )
-        mpThemes->GrabFocus();
+    if (mxNewTheme->get_sensitive())
+        mxNewTheme->grab_focus();
+    else
+        mxThemes->grab_focus();
 }
 
 void GalleryBrowser1::Notify( SfxBroadcaster&, const SfxHint& rHint )
@@ -438,47 +321,47 @@ void GalleryBrowser1::Notify( SfxBroadcaster&, const SfxHint& rHint )
 
     switch( rGalleryHint.GetType() )
     {
-        case( GalleryHintType::THEME_CREATED ):
+        case GalleryHintType::THEME_CREATED:
             ImplInsertThemeEntry( mpGallery->GetThemeInfo( rGalleryHint.GetThemeName() ) );
         break;
 
-        case( GalleryHintType::THEME_RENAMED ):
+        case GalleryHintType::THEME_RENAMED:
         {
-            const sal_Int32 nCurSelectPos = mpThemes->GetSelectEntryPos();
-            const sal_Int32 nRenameEntryPos = mpThemes->GetEntryPos( rGalleryHint.GetThemeName() );
+            const sal_Int32 nCurSelectPos = mxThemes->get_selected_index();
+            const sal_Int32 nRenameEntryPos = mxThemes->find_text( rGalleryHint.GetThemeName() );
 
-            mpThemes->RemoveEntry( rGalleryHint.GetThemeName() );
+            mxThemes->remove_text( rGalleryHint.GetThemeName() );
             ImplInsertThemeEntry( mpGallery->GetThemeInfo( rGalleryHint.GetStringData() ) );
 
             if( nCurSelectPos == nRenameEntryPos )
             {
-                mpThemes->SelectEntry( rGalleryHint.GetStringData() );
-                SelectThemeHdl( *mpThemes );
+                mxThemes->select_text( rGalleryHint.GetStringData() );
+                SelectThemeHdl( *mxThemes );
             }
         }
         break;
 
-        case( GalleryHintType::THEME_REMOVED ):
+        case GalleryHintType::THEME_REMOVED:
         {
-            mpThemes->RemoveEntry( rGalleryHint.GetThemeName() );
+            mxThemes->remove_text( rGalleryHint.GetThemeName() );
         }
         break;
 
-        case( GalleryHintType::CLOSE_THEME ):
+        case GalleryHintType::CLOSE_THEME:
         {
-            const sal_Int32 nCurSelectPos = mpThemes->GetSelectEntryPos();
-            const sal_Int32 nCloseEntryPos = mpThemes->GetEntryPos( rGalleryHint.GetThemeName() );
+            const sal_Int32 nCurSelectPos = mxThemes->get_selected_index();
+            const sal_Int32 nCloseEntryPos = mxThemes->find_text( rGalleryHint.GetThemeName() );
 
             if( nCurSelectPos == nCloseEntryPos )
             {
-                if( nCurSelectPos < ( mpThemes->GetEntryCount() - 1 ) )
-                    mpThemes->SelectEntryPos( nCurSelectPos + 1 );
+                if( nCurSelectPos < ( mxThemes->n_children() - 1 ) )
+                    mxThemes->select( nCurSelectPos + 1 );
                 else if( nCurSelectPos )
-                    mpThemes->SelectEntryPos( nCurSelectPos - 1 );
+                    mxThemes->select( nCurSelectPos - 1 );
                 else
-                    mpThemes->SetNoSelection();
+                    mxThemes->select(-1);
 
-                SelectThemeHdl( *mpThemes );
+                SelectThemeHdl( *mxThemes );
             }
         }
         break;
@@ -488,131 +371,111 @@ void GalleryBrowser1::Notify( SfxBroadcaster&, const SfxHint& rHint )
     }
 }
 
-void GalleryBrowser1::ShowContextMenu()
-{
-    Application::PostUserEvent( LINK( this, GalleryBrowser1, ShowContextMenuHdl ), this, true );
-}
-
-bool GalleryBrowser1::KeyInput( const KeyEvent& rKEvt, vcl::Window* pWindow )
+IMPL_LINK(GalleryBrowser1, KeyInputHdl, const KeyEvent&, rKEvt, bool)
 {
     bool bRet = false;
-    if (maKeyInputHandler)
-        bRet = maKeyInputHandler(rKEvt, pWindow);
 
-    if( !bRet )
+    std::vector<OString> aExecVector;
+    ImplGetExecuteVector(aExecVector);
+    OString sExecuteIdent;
+    bool bMod1 = rKEvt.GetKeyCode().IsMod1();
+
+    switch( rKEvt.GetKeyCode().GetCode() )
     {
-        std::vector<OString> aExecVector;
-        ImplGetExecuteVector(aExecVector);
-        OString sExecuteIdent;
-        bool bMod1 = rKEvt.GetKeyCode().IsMod1();
+        case KEY_INSERT:
+            ClickNewThemeHdl(*mxNewTheme);
+        break;
 
-        switch( rKEvt.GetKeyCode().GetCode() )
+        case KEY_I:
         {
-            case KEY_INSERT:
-                ClickNewThemeHdl( nullptr );
-            break;
+            if( bMod1 )
+               ClickNewThemeHdl(*mxNewTheme);
+        }
+        break;
 
-            case KEY_I:
-            {
-                if( bMod1 )
-                   ClickNewThemeHdl( nullptr );
-            }
-            break;
+        case KEY_U:
+        {
+            if( bMod1 )
+                sExecuteIdent = "update";
+        }
+        break;
 
-            case KEY_U:
-            {
-                if( bMod1 )
-                    sExecuteIdent = "update";
-            }
-            break;
+        case KEY_DELETE:
+            sExecuteIdent = "delete";
+        break;
 
-            case KEY_DELETE:
+        case KEY_D:
+        {
+            if( bMod1 )
                 sExecuteIdent = "delete";
-            break;
-
-            case KEY_D:
-            {
-                if( bMod1 )
-                    sExecuteIdent = "delete";
-            }
-            break;
-
-            case KEY_R:
-            {
-                if( bMod1 )
-                    sExecuteIdent = "rename";
-            }
-            break;
-
-            case KEY_RETURN:
-            {
-                if( bMod1 )
-                    sExecuteIdent = "properties";
-            }
-            break;
         }
+        break;
 
-        if (!sExecuteIdent.isEmpty() && (std::find( aExecVector.begin(), aExecVector.end(), sExecuteIdent) != aExecVector.end()))
+        case KEY_R:
         {
-            ImplExecute(sExecuteIdent);
-            bRet = true;
+            if( bMod1 )
+                sExecuteIdent = "rename";
         }
+        break;
+
+        case KEY_RETURN:
+        {
+            if( bMod1 )
+                sExecuteIdent = "properties";
+        }
+        break;
+    }
+
+    if (!sExecuteIdent.isEmpty() && (std::find( aExecVector.begin(), aExecVector.end(), sExecuteIdent) != aExecVector.end()))
+    {
+        ImplExecute(sExecuteIdent);
+        bRet = true;
     }
 
     return bRet;
 }
 
-IMPL_LINK_NOARG(GalleryBrowser1, ShowContextMenuHdl, void*, void)
+IMPL_LINK(GalleryBrowser1, PopupMenuHdl, const CommandEvent&, rCEvt, bool)
 {
+    if (rCEvt.GetCommand() != CommandEventId::ContextMenu)
+        return false;
+
     std::vector<OString> aExecVector;
     ImplGetExecuteVector(aExecVector);
 
-    if( !aExecVector.empty() )
-    {
-        VclBuilder aBuilder(nullptr, VclBuilderContainer::getUIRootDir(), "svx/ui/gallerymenu1.ui", "");
-        VclPtr<PopupMenu> aMenu(aBuilder.get_menu("menu"));
+    if (aExecVector.empty())
+        return true;
 
-        aMenu->EnableItem( aMenu->GetItemId("update"), std::find( aExecVector.begin(), aExecVector.end(), "update" ) != aExecVector.end() );
-        aMenu->EnableItem( aMenu->GetItemId("rename"), std::find( aExecVector.begin(), aExecVector.end(), "rename" ) != aExecVector.end() );
-        aMenu->EnableItem( aMenu->GetItemId("delete"), std::find( aExecVector.begin(), aExecVector.end(), "delete" ) != aExecVector.end() );
-        aMenu->EnableItem( aMenu->GetItemId("assign"), std::find( aExecVector.begin(), aExecVector.end(), "assign" ) != aExecVector.end() );
-        aMenu->EnableItem( aMenu->GetItemId("properties"), std::find( aExecVector.begin(), aExecVector.end(), "properties" ) != aExecVector.end() );
-        aMenu->SetSelectHdl( LINK( this, GalleryBrowser1, PopupMenuHdl ) );
-        aMenu->RemoveDisabledEntries();
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(mxThemes.get(), "svx/ui/gallerymenu1.ui"));
+    std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu("menu"));
 
-        const tools::Rectangle aThemesRect( mpThemes->GetPosPixel(), mpThemes->GetOutputSizePixel() );
-        Point           aSelPos( mpThemes->GetBoundingRectangle( mpThemes->GetSelectEntryPos() ).Center() );
+    xMenu->set_visible("update", std::find( aExecVector.begin(), aExecVector.end(), "update" ) != aExecVector.end());
+    xMenu->set_visible("rename", std::find( aExecVector.begin(), aExecVector.end(), "rename" ) != aExecVector.end());
+    xMenu->set_visible("delete", std::find( aExecVector.begin(), aExecVector.end(), "delete" ) != aExecVector.end());
+    xMenu->set_visible("assign", std::find( aExecVector.begin(), aExecVector.end(), "assign" ) != aExecVector.end());
+    xMenu->set_visible("properties", std::find( aExecVector.begin(), aExecVector.end(), "properties" ) != aExecVector.end());
 
-        aSelPos.X() = std::max( std::min( aSelPos.X(), aThemesRect.Right() ), aThemesRect.Left() );
-        aSelPos.Y() = std::max( std::min( aSelPos.Y(), aThemesRect.Bottom() ), aThemesRect.Top() );
+    OString sCommand(xMenu->popup_at_rect(mxThemes.get(), tools::Rectangle(rCEvt.GetMousePosPixel(), Size(1,1))));
+    ImplExecute(sCommand);
 
-        aMenu->Execute( this, aSelPos );
-    }
+    return true;
 }
 
-IMPL_LINK( GalleryBrowser1, PopupMenuHdl, Menu*, pMenu, bool )
-{
-    ImplExecute(pMenu->GetCurItemIdent());
-    return false;
-}
-
-IMPL_LINK_NOARG(GalleryBrowser1, SelectThemeHdl, ListBox&, void)
+IMPL_LINK_NOARG(GalleryBrowser1, SelectThemeHdl, weld::TreeView&, void)
 {
     if (maThemeSlectionHandler)
         maThemeSlectionHandler();
 }
 
-IMPL_LINK_NOARG(GalleryBrowser1, ClickNewThemeHdl, Button*, void)
+IMPL_LINK_NOARG(GalleryBrowser1, ClickNewThemeHdl, weld::Button&, void)
 {
-    OUString  aNewTheme( GalResId(RID_SVXSTR_GALLERY_NEWTHEME) );
+    OUString  aNewTheme( SvxResId(RID_SVXSTR_GALLERY_NEWTHEME) );
     OUString  aName( aNewTheme );
-    sal_uIntPtr nCount = 0;
+    sal_uInt16 nCount = 0;
 
     while( mpGallery->HasTheme( aName ) && ( nCount++ < 16000 ) )
     {
-        aName = aNewTheme;
-        aName += " ";
-        aName += OUString::number( nCount );
+        aName = aNewTheme + " " + OUString::number( nCount );
     }
 
     if( !mpGallery->HasTheme( aName ) && mpGallery->CreateTheme( aName ) )

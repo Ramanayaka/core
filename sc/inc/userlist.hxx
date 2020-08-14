@@ -22,6 +22,8 @@
 
 #include "scdllapi.h"
 
+#include <rtl/ustring.hxx>
+
 #include <memory>
 #include <vector>
 
@@ -31,7 +33,7 @@
 class SC_DLLPUBLIC ScUserListData
 {
 public:
-    struct SubStr
+    struct SAL_DLLPRIVATE SubStr
     {
         OUString maReal;
         OUString maUpper;

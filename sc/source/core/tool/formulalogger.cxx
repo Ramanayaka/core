@@ -14,7 +14,6 @@
 #include <interpre.hxx>
 
 #include <osl/file.hxx>
-#include <o3tl/make_unique.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/docfile.hxx>
 #include <tools/urlobj.hxx>
@@ -39,7 +38,7 @@ std::unique_ptr<osl::File> initFile()
     aURL.SetSmartURL(aPath);
     aPath = aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE);
 
-    return o3tl::make_unique<osl::File>(aPath);
+    return std::make_unique<osl::File>(aPath);
 }
 
 ScRefFlags getRefFlags( const ScAddress& rCellPos, const ScAddress& rRefPos )
@@ -76,20 +75,20 @@ struct FormulaLogger::GroupScope::Impl
     {
         ++mrLogger.mnNestLevel;
 
-        if (mbOutputEnabled)
-        {
-            sc::TokenStringContext aCxt(&rDoc, rDoc.GetGrammar());
-            OUString aFormula = rCell.GetCode()->CreateString(aCxt, rCell.aPos);
+        if (!mbOutputEnabled)
+            return;
 
-            mrLogger.write(maPrefix);
-            mrLogger.writeNestLevel();
+        sc::TokenStringContext aCxt(&rDoc, rDoc.GetGrammar());
+        OUString aFormula = rCell.GetCode()->CreateString(aCxt, rCell.aPos);
 
-            mrLogger.writeAscii("-- enter (formula='");
-            mrLogger.write(aFormula);
-            mrLogger.writeAscii("', size=");
-            mrLogger.write(rCell.GetSharedLength());
-            mrLogger.writeAscii(")\n");
-        }
+        mrLogger.write(maPrefix);
+        mrLogger.writeNestLevel();
+
+        mrLogger.writeAscii("-- enter (formula='");
+        mrLogger.write(aFormula);
+        mrLogger.writeAscii("', size=");
+        mrLogger.write(rCell.GetSharedLength());
+        mrLogger.writeAscii(")\n");
     }
 
     ~Impl()
@@ -125,9 +124,9 @@ struct FormulaLogger::GroupScope::Impl
 FormulaLogger::GroupScope::GroupScope(
     FormulaLogger& rLogger, const OUString& rPrefix, const ScDocument& rDoc,
     const ScFormulaCell& rCell, bool bOutputEnabled ) :
-    mpImpl(o3tl::make_unique<Impl>(rLogger, rPrefix, rDoc, rCell, bOutputEnabled)) {}
+    mpImpl(std::make_unique<Impl>(rLogger, rPrefix, rDoc, rCell, bOutputEnabled)) {}
 
-FormulaLogger::GroupScope::GroupScope( GroupScope&& r ) : mpImpl(std::move(r.mpImpl)) {}
+FormulaLogger::GroupScope::GroupScope(GroupScope&& r) noexcept : mpImpl(std::move(r.mpImpl)) {}
 
 FormulaLogger::GroupScope::~GroupScope() {}
 
@@ -144,7 +143,7 @@ void FormulaLogger::GroupScope::addRefMessage(
 
     ScRange aRefRange(rRefPos);
     aRefRange.aEnd.IncRow(nLen-1);
-    OUString aRangeStr = aRefRange.Format(getRefFlags(rCellPos, rRefPos), &mpImpl->mrDoc);
+    OUString aRangeStr = aRefRange.Format(mpImpl->mrDoc, getRefFlags(rCellPos, rRefPos));
     aBuf.append(aRangeStr);
     aBuf.append(": ");
 
@@ -269,8 +268,6 @@ FormulaLogger::FormulaLogger()
     writeAscii("---\n");
     writeAscii("OpenCL: ");
     writeAscii(ScCalcConfig::isOpenCLEnabled() ? "enabled\n" : "disabled\n");
-    writeAscii("Software Interpreter: ");
-    writeAscii(ScCalcConfig::isSwInterpreterEnabled() ? "enabled\n" : "disabled\n");
     writeAscii("---\n");
 
     sync();
@@ -302,7 +299,7 @@ void FormulaLogger::writeAscii( const char* s, size_t n )
 
 void FormulaLogger::write( const OUString& ou )
 {
-    OString s = rtl::OUStringToOString(ou, RTL_TEXTENCODING_UTF8).getStr();
+    OString s = OUStringToOString(ou, RTL_TEXTENCODING_UTF8).getStr();
     writeAscii(s.getStr(), s.getLength());
 }
 
@@ -339,16 +336,15 @@ FormulaLogger::GroupScope FormulaLogger::enterGroup(
 {
     // Get the file name if available.
     const SfxObjectShell* pShell = rDoc.GetDocumentShell();
-    const SfxMedium* pMedium = pShell->GetMedium();
-    OUString aName = pMedium->GetURLObject().GetLastName();
+    const SfxMedium* pMedium = pShell ? pShell->GetMedium() : nullptr;
+    OUString aName;
+    if (pMedium)
+        aName = pMedium->GetURLObject().GetLastName();
     if (aName.isEmpty())
         aName = "-"; // unsaved document.
 
-    OUString aGroupPrefix = aName;
-
-    aGroupPrefix += ": formula-group: ";
-    aGroupPrefix += rCell.aPos.Format(ScRefFlags::VALID | ScRefFlags::TAB_3D, &rDoc, rDoc.GetAddressConvention());
-    aGroupPrefix += ": ";
+    OUString aGroupPrefix = aName + ": formula-group: " +
+        rCell.aPos.Format(ScRefFlags::VALID | ScRefFlags::TAB_3D, &rDoc, rDoc.GetAddressConvention()) + ": ";
 
     bool bOutputEnabled = mpLastGroup != rCell.GetCellGroup().get();
     mpLastGroup = rCell.GetCellGroup().get();

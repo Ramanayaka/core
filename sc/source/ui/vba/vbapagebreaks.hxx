@@ -20,18 +20,11 @@
 #define INCLUDED_SC_SOURCE_UI_VBA_VBAPAGEBREAKS_HXX
 
 #include <ooo/vba/excel/XHPageBreaks.hpp>
-#include <ooo/vba/excel/XHPageBreak.hpp>
 #include <ooo/vba/excel/XVPageBreaks.hpp>
-#include <ooo/vba/excel/XVPageBreak.hpp>
-#include <ooo/vba/excel/XRange.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/sheet/XSheetPageBreak.hpp>
-#include <com/sun/star/sheet/TablePageBreakData.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/table/XColumnRowRange.hpp>
-#include <vbahelper/vbahelperinterface.hxx>
 #include <vbahelper/vbacollectionimpl.hxx>
+
+namespace com::sun::star::sheet { class XSheetPageBreak; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 typedef CollTestImplHelper< ov::excel::XHPageBreaks > ScVbaHPageBreaks_BASE;
 
@@ -40,8 +33,8 @@ class ScVbaHPageBreaks : public ScVbaHPageBreaks_BASE
 public:
     /// @throws css::uno::RuntimeException
     ScVbaHPageBreaks( const css::uno::Reference< ov::XHelperInterface >& xParent,
-                    const css::uno::Reference< css::uno::XComponentContext >& xContext,
-                    css::uno::Reference< css::sheet::XSheetPageBreak >& xSheetPageBreak);
+                      const css::uno::Reference< css::uno::XComponentContext >& xContext,
+                      const css::uno::Reference< css::sheet::XSheetPageBreak >& xSheetPageBreak);
 
     // XHPageBreaks
     virtual css::uno::Any SAL_CALL Add( const css::uno::Any& Before) override;
@@ -65,7 +58,7 @@ public:
     /// @throws css::uno::RuntimeException
     ScVbaVPageBreaks( const css::uno::Reference< ov::XHelperInterface >& xParent,
                       const css::uno::Reference< css::uno::XComponentContext >& xContext,
-                      css::uno::Reference< css::sheet::XSheetPageBreak >& xSheetPageBreak );
+                      const css::uno::Reference< css::sheet::XSheetPageBreak >& xSheetPageBreak );
 
     virtual ~ScVbaVPageBreaks() override;
 

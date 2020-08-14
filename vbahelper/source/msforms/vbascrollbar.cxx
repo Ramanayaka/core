@@ -22,7 +22,8 @@
 using namespace com::sun::star;
 using namespace ooo::vba;
 
-ScVbaScrollBar::ScVbaScrollBar(  const css::uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, AbstractGeometryAttributes* pGeomHelper ) : ScrollBarImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+ScVbaScrollBar::ScVbaScrollBar(  const css::uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<AbstractGeometryAttributes> pGeomHelper )
+    : ScrollBarImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 {
 }
 
@@ -98,18 +99,16 @@ ScVbaScrollBar::setSmallChange( ::sal_Int32 _smallchange )
 OUString
 ScVbaScrollBar::getServiceImplName()
 {
-    return OUString("ScVbaScrollBar" );
+    return "ScVbaScrollBar";
 }
 
 uno::Sequence< OUString >
 ScVbaScrollBar::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.Frame";
-    }
+        "ooo.vba.msforms.Frame"
+    };
     return aServiceNames;
 }
 

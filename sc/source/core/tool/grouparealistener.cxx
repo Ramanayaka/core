@@ -18,6 +18,9 @@
 #include <document.hxx>
 #include <table.hxx>
 
+#include <o3tl/safeint.hxx>
+#include <sal/log.hxx>
+
 namespace sc {
 
 namespace {
@@ -74,6 +77,7 @@ public:
 FormulaGroupAreaListener::FormulaGroupAreaListener( const ScRange& rRange, const ScDocument& rDocument,
         const ScAddress& rTopCellPos, SCROW nGroupLen, bool bStartFixed, bool bEndFixed ) :
     maRange(rRange),
+    mrDocument(rDocument),
     mpColumn(nullptr),
     mnTopCellRow(rTopCellPos.Row()),
     mnGroupLen(nGroupLen),
@@ -86,7 +90,7 @@ FormulaGroupAreaListener::FormulaGroupAreaListener( const ScRange& rRange, const
     assert(mpColumn);
     SAL_INFO( "sc.core.grouparealistener",
             "FormulaGroupAreaListener ctor this " << this <<
-            " range " << (maRange == BCA_LISTEN_ALWAYS ? "LISTEN-ALWAYS" : maRange.Format(ScRefFlags::VALID)) <<
+            " range " << (maRange == BCA_LISTEN_ALWAYS ? "LISTEN-ALWAYS" : maRange.Format(mrDocument, ScRefFlags::VALID)) <<
             " mnTopCellRow " << mnTopCellRow << " length " << mnGroupLen <<
             ", col/tab " << mpColumn->GetCol() << "/" << mpColumn->GetTab());
 }
@@ -175,7 +179,7 @@ void FormulaGroupAreaListener::collectFormulaCells(
 {
     SAL_INFO( "sc.core.grouparealistener",
             "FormulaGroupAreaListener::collectFormulaCells() this " << this <<
-            " range " << (maRange == BCA_LISTEN_ALWAYS ? "LISTEN-ALWAYS" : maRange.Format(ScRefFlags::VALID)) <<
+            " range " << (maRange == BCA_LISTEN_ALWAYS ? "LISTEN-ALWAYS" : maRange.Format(mrDocument, ScRefFlags::VALID)) <<
             " mnTopCellRow " << mnTopCellRow << " length " << mnGroupLen <<
             ", col/tab " << mpColumn->GetCol() << "/" << mpColumn->GetTab());
 
@@ -226,8 +230,8 @@ void FormulaGroupAreaListener::collectFormulaCells(
      * newly created, so mpColumn still points to the old column that then has
      * the content of a shifted column. Effectively this workaround has the
      * consequence that the group area listener is fouled up and not all
-     * formula cells are notified.. */
-    if (nBlockSize < static_cast<size_t>(mnGroupLen))
+     * formula cells are notified... */
+    if (nBlockSize < o3tl::make_unsigned(mnGroupLen))
     {
         SAL_WARN("sc.core","FormulaGroupAreaListener::collectFormulaCells() nBlockSize " <<
                 nBlockSize << " < " << mnGroupLen << " mnGroupLen");
@@ -237,7 +241,7 @@ void FormulaGroupAreaListener::collectFormulaCells(
         // least not in the original bug scenario (insert a column before H on
         // sheet w) of tdf#89957 with
         // http://bugs.documentfoundation.org/attachment.cgi?id=114042
-        // Apparently this was fixed in the mean time, let's assume and get the
+        // Apparently this was fixed in the meantime, let's assume and get the
         // assert bat out to hit us if it wasn't.
         assert(!"something is still messing up the formula goup and block size length");
     }

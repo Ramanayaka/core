@@ -22,17 +22,15 @@
 
 #include <drawingml/chart/converterbase.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace chart2 { class XChartType; }
     namespace chart2 { class XCoordinateSystem; }
     namespace chart2 { class XDataSeries; }
     namespace chart2 { class XDiagram; }
-    namespace chart2 { namespace data { class XLabeledDataSequence; } }
-} } }
+    namespace chart2::data { class XLabeledDataSequence; }
+}
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 /** Enumerates different chart types. */
 enum TypeId
@@ -77,7 +75,7 @@ struct TypeGroupInfo
 {
     TypeId              meTypeId;               /// Unique chart type identifier.
     TypeCategory        meTypeCategory;         /// Category this chart type belongs to.
-    const sal_Char*     mpcServiceName;         /// Service name of the type.
+    const char*         mpcServiceName;         /// Service name of the type.
     VarPointMode        meVarPointMode;         /// Mode for varying point colors.
     sal_Int32           mnDefLabelPos;          /// Default data label position (API constant).
     bool                mbPolarCoordSystem;     /// True = polar, false = cartesian.
@@ -86,7 +84,6 @@ struct TypeGroupInfo
     bool                mbCategoryAxis;         /// True = X axis contains categories.
     bool                mbSwappedAxesSet;       /// True = X axis and Y axis are swapped.
     bool                mbSupportsStacking;     /// True = data points can be stacked on each other.
-    bool                mbReverseSeries;        /// True = insert unstacked series in reverse order.
     bool                mbPictureOptions;       /// True = bitmaps support options from c:pictureOptions.
 };
 
@@ -94,7 +91,7 @@ const TypeGroupInfo& GetTypeGroupInfo( TypeId eType );
 
 struct UpDownBarsModel;
 
-class UpDownBarsConverter : public ConverterBase< UpDownBarsModel >
+class UpDownBarsConverter final : public ConverterBase< UpDownBarsModel >
 {
 public:
     explicit            UpDownBarsConverter( const ConverterRoot& rParent, UpDownBarsModel& rModel );
@@ -108,7 +105,7 @@ public:
 struct TypeGroupModel;
 struct View3DModel;
 
-class TypeGroupConverter : public ConverterBase< TypeGroupModel >
+class TypeGroupConverter final : public ConverterBase< TypeGroupModel >
 {
 public:
     explicit            TypeGroupConverter( const ConverterRoot& rParent, TypeGroupModel& rModel );
@@ -173,9 +170,7 @@ private:
     bool                mb3dChart;          /// True = type is a 3D chart type.
 };
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

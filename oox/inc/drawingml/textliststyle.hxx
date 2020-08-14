@@ -23,7 +23,7 @@
 #include <drawingml/textparagraphproperties.hxx>
 #include <oox/helper/refvector.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 typedef RefVector< TextParagraphProperties > TextParagraphPropertiesVector;
 
@@ -49,13 +49,13 @@ public:
     void dump() const;
 #endif
 
-protected:
+private:
 
     TextParagraphPropertiesVector maListStyle;
     TextParagraphPropertiesVector maAggregationListStyle;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TEXTLISTSTYLE_HXX
 

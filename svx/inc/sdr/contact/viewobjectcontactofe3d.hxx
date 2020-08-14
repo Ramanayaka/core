@@ -23,17 +23,14 @@
 #include <svx/sdr/contact/viewobjectcontactofsdrobj.hxx>
 #include <drawinglayer/primitive3d/baseprimitive3d.hxx>
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
     class ViewObjectContactOfE3dScene;
-}}
+}
 
-namespace sdr
-{
-    namespace contact
+namespace sdr::contact
     {
-        class ViewObjectContactOfE3d : public ViewObjectContactOfSdrObj
+        class ViewObjectContactOfE3d final : public ViewObjectContactOfSdrObj
         {
-        protected:
             // Primitive3D sequence of the ViewContact. This contains all necessary information
             // for the graphical visualisation and needs to be supported by all VCs which
             // can be visualized.
@@ -46,7 +43,7 @@ namespace sdr
             // This method will not handle included hierarchies and not check geometric visibility.
             drawinglayer::primitive3d::Primitive3DContainer createPrimitive3DContainer(const DisplayInfo& rDisplayInfo) const;
 
-            // also override the 2d method to deliver a 2d object with embedd3d 3d and the 3d transformation which is able to
+            // also override the 2d method to deliver a 2d object with embedded 3d and the 3d transformation which is able to
             // answer the get2DRange question accordingly
             virtual drawinglayer::primitive2d::Primitive2DContainer createPrimitive2DSequence(const DisplayInfo& rDisplayInfo) const override;
 
@@ -59,8 +56,8 @@ namespace sdr
             // This method will not handle included hierarchies or visibility.
             drawinglayer::primitive3d::Primitive3DContainer const & getPrimitive3DContainer(const DisplayInfo& rDisplayInfo) const;
         };
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace sdr::contact
 
 #endif // INCLUDED_SVX_INC_SDR_CONTACT_VIEWOBJECTCONTACTOFE3D_HXX
 

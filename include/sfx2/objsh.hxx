@@ -26,62 +26,48 @@
 #include <vcl/errcode.hxx>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/script/XLibraryContainer.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/security/DocumentSignatureInformation.hpp>
-#include <com/sun/star/security/XDocumentDigitalSignatures.hpp>
-#include <com/sun/star/task/XInteractionHandler.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/document/CmisVersion.hpp>
 
-#include <vcl/vclptr.hxx>
-#include <vcl/button.hxx>
 #include <svl/poolitem.hxx>
-#include <vcl/bitmap.hxx>
 #include <sot/formats.hxx>
 #include <sot/object.hxx>
-#include <rsc/rscsfx.hxx>
+#include <tools/gen.hxx>
+#include <tools/link.hxx>
 
-#include <sfx2/XmlIdRegistry.hxx>
 #include <sfx2/shell.hxx>
 #include <comphelper/embeddedobjectcontainer.hxx>
-#include <com/sun/star/frame/XModel.hpp>
 #include <memory>
 #include <set>
 #include <o3tl/typed_flags_set.hxx>
 #include <functional>
-
-#include <LibreOfficeKit/LibreOfficeKitTypes.h>
+#include <sfx2/AccessibilityIssue.hxx>
 
 class SbxValue;
-class SvxMacro;
 class SbxArray;
 class BasicManager;
 class SfxMedium;
 class SfxObjectFactory;
 class SfxDocumentInfoDialog;
 class SfxStyleSheetBasePool;
-class INote;
-class SfxStyleSheetPool;
-class SfxFrame;
-class SbMethod;
 class StarBASIC;
 class Printer;
 class SvKeyValueIterator;
 class SfxBaseModel;
 class SfxModule;
-class SvData;
 class SfxProgress;
 class GDIMetaFile;
-class Bitmap;
 class INetURLObject;
 class IndexBitSet;
 class JobSetup;
-class Size;
-class Point;
+class Button;
+class OutputDevice;
+class Color;
+class Fraction;
+class SvGlobalName;
+class InfobarData;
+
 enum class SfxModelFlags;
 enum class SfxEventHintId;
+enum class InfobarType;
 
 // These values presumably must match exactly the corresponding
 // css::embed::Aspects ones (in offapi/com/sun/star/embed/Aspects.idl)
@@ -98,9 +84,20 @@ namespace sfx2
     class StyleManager;
 }
 
-namespace com { namespace sun { namespace star { namespace datatransfer { class XTransferable; } } } }
+namespace vcl { class Window; }
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::document { struct CmisVersion; }
+namespace com::sun::star::embed { class XStorage; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::graphic { class XGraphic; }
+namespace com::sun::star::io { class XStream; }
+namespace com::sun::star::script { class XLibraryContainer; }
+namespace com::sun::star::security { class XCertificate; }
+namespace com::sun::star::security { class XDocumentDigitalSignatures; }
+namespace com::sun::star::security { struct DocumentSignatureInformation; }
+namespace com::sun::star::task { class XInteractionHandler; }
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace document {
         class XDocumentProperties;
     }
@@ -110,20 +107,9 @@ namespace com { namespace sun { namespace star {
     namespace text {
         class XTextRange;
     }
-} } }
-
-enum class SfxObjectShellFlags
-{
-    STD_NORMAL      = 0x0000000,
-    HASMENU         = 0x0000004,
-    DONTCLOSE       = 0x0000010,
-    NODOCINFO       = 0x0000020,
-    UNDEFINED       = 0xf000000
-};
-namespace o3tl
-{
-    template<> struct typed_flags<SfxObjectShellFlags> : is_typed_flags<SfxObjectShellFlags, 0xf000034> {};
 }
+
+namespace sfx2 { class IXmlIdRegistry; }
 
 #define SFX_TITLE_TITLE    0
 #define SFX_TITLE_FILENAME 1
@@ -159,6 +145,8 @@ namespace o3tl
     template<> struct typed_flags<HiddenInformation> : is_typed_flags<HiddenInformation, 0x07> {};
 }
 
+namespace weld { class Window; }
+
 enum class HiddenWarningFact
 {
     WhenSaving = 0,
@@ -179,9 +167,9 @@ enum class SfxObjectCreateMode
     The class SfxObjectShell is the base class for SFx-objects, ie documents
     and parts of documents that can be integrated as separate objects
     into foreign objects.
+    There can be multiple edit windows (SfxViewShell) for one SfxObjectShell.
 */
 
-class SfxToolBoxConfig;
 struct TransferableObjectDescriptor;
 template<class T> bool checkSfxObjectShell(const SfxObjectShell* pShell)
 {
@@ -230,6 +218,13 @@ protected:
     // helper method
     void AddToRecentlyUsedList();
 
+    // Parent class for actual guard objects that would do useful work
+    class LockAllViewsGuard
+    {
+    public:
+        virtual ~LockAllViewsGuard() {}
+    };
+
 public:
                                 SFX_DECL_INTERFACE(SFX_INTERFACE_SFXDOCSH)
 
@@ -259,14 +254,12 @@ public:
 
     virtual void                Invalidate(sal_uInt16 nId = 0) override;
 
-    SfxObjectShellFlags         GetFlags( ) const;
-
     SfxModule*                  GetModule() const;
 
     virtual SfxObjectFactory&   GetFactory() const=0;
     SfxMedium *                 GetMedium() const { return pMedium; }
     css::uno::Reference< css::document::XDocumentProperties >
-                                getDocProperties();
+                                getDocProperties() const;
     void                        UpdateDocInfoForSave(  );
     void                        FlushDocInfo();
     bool                        HasName() const { return bHasName; }
@@ -315,6 +308,8 @@ public:
 
     // TODO/LATER: currently only overridden in Calc, should be made non-virtual
     virtual bool                DoSaveCompleted( SfxMedium* pNewStor=nullptr, bool bRegisterRecent=true );
+    /// Terminate any in-flight editing. Used before saving, primarily by Calc to commit cell changes.
+    virtual void                TerminateEditing() {}
 
     bool                        LoadOwnFormat( SfxMedium& pMedium );
     virtual bool                SaveAsOwnFormat( SfxMedium& pMedium );
@@ -330,18 +325,13 @@ public:
                                     const css::uno::Reference< css::embed::XStorage >& xStorage );
     virtual void                UpdateLinks();
     virtual bool                LoadExternal( SfxMedium& rMedium );
-    /**
-     * Called when the Options dialog is dismissed with the OK button, to
-     * handle potentially conflicting option settings.
-     */
-    virtual void                CheckConfigOptions();
     bool                        IsConfigOptionsChecked() const;
     void                        SetConfigOptionsChecked( bool bChecked );
 
     // called for a few slots like SID_SAVE[AS]DOC, SID_PRINTDOC[DIRECT], derived classes may abort the action
     virtual bool                QuerySlotExecutable( sal_uInt16 nSlotId );
 
-    bool                        SaveChildren(bool bObjectsOnly=false);
+    void                        SaveChildren(bool bObjectsOnly=false);
     bool                        SaveAsChildren( SfxMedium &rMedium );
     bool                        SwitchChildrenPersistance(
                                     const css::uno::Reference< css::embed::XStorage >& xStorage,
@@ -356,17 +346,34 @@ public:
             css::uno::Reference<css::text::XTextRange> const& xInsertPosition);
     bool                        ExportTo( SfxMedium &rMedium );
 
-    // xmlsec05, check with SFX team
+    /** Returns to if preparing was successful, else false. */
+    bool PrepareForSigning(weld::Window* pDialogParent);
+    bool CheckIsReadonly(bool bSignScriptingContent);
+    void RecheckSignature(bool bAlsoRecheckScriptingSignature);
+    void AfterSigning(bool bSignSuccess, bool bSignScriptingContent);
+    bool HasValidSignatures() const;
     SignatureState              GetDocumentSignatureState();
-    void                        SignDocumentContent();
+    void                        SignDocumentContent(weld::Window* pDialogParent);
+    css::uno::Sequence<css::security::DocumentSignatureInformation> GetDocumentSignatureInformation(
+        bool bScriptingContent,
+        const css::uno::Reference<css::security::XDocumentDigitalSignatures>& xSigner
+        = css::uno::Reference<css::security::XDocumentDigitalSignatures>());
+
+    bool SignDocumentContentUsingCertificate(const css::uno::Reference<css::security::XCertificate>& xCertificate);
+
+    void SignSignatureLine(weld::Window* pDialogParent, const OUString& aSignatureLineId,
+                           const css::uno::Reference<css::security::XCertificate>& xCert,
+                           const css::uno::Reference<css::graphic::XGraphic>& xValidGraphic,
+                           const css::uno::Reference<css::graphic::XGraphic>& xInvalidGraphic,
+                           const OUString& aComment);
     SignatureState              GetScriptingSignatureState();
-    void                        SignScriptingContent();
+    void                        SignScriptingContent(weld::Window* pDialogParent);
     DECL_LINK(SignDocumentHandler, Button*, void);
 
-    virtual VclPtr<SfxDocumentInfoDialog> CreateDocumentInfoDialog( const SfxItemSet& );
+    virtual std::shared_ptr<SfxDocumentInfoDialog> CreateDocumentInfoDialog(weld::Window* pParent, const SfxItemSet& rItemSet);
 
     ErrCode                     CallBasic( const OUString& rMacro, const OUString& rBasicName,
-                                    SbxArray* pArgs = nullptr, SbxValue* pRet = nullptr );
+                                    SbxArray* pArgs, SbxValue* pRet = nullptr );
 
     ErrCode     CallXScript(
         const OUString& rScriptURL,
@@ -397,6 +404,10 @@ public:
     */
     bool                        AdjustMacroMode();
 
+    static bool                 UnTrustedScript(const OUString& rScriptURL);
+
+    static bool                 isScriptAccessAllowed(const css::uno::Reference<css::uno::XInterface>& rScriptContext);
+
     SvKeyValueIterator*         GetHeaderAttributes();
     void                        ClearHeaderAttributesForSourceViewHack();
     void                        SetHeaderAttributesForSourceViewHack();
@@ -417,20 +428,22 @@ public:
     sal_uInt32                  GetModifyPasswordHash() const;
     bool                        SetModifyPasswordHash( sal_uInt32 nHash );
 
+    void                        SetMacroCallsSeenWhileLoading();
+    bool                        GetMacroCallsSeenWhileLoading() const;
+
     const css::uno::Sequence< css::beans::PropertyValue >& GetModifyPasswordInfo() const;
     bool                        SetModifyPasswordInfo( const css::uno::Sequence< css::beans::PropertyValue >& aInfo );
 
-    static ErrCode              HandleFilter( SfxMedium* pMedium, SfxObjectShell* pDoc );
+    static ErrCode              HandleFilter( SfxMedium* pMedium, SfxObjectShell const * pDoc );
 
     virtual bool                PrepareClose(bool bUI = true);
     virtual HiddenInformation   GetHiddenInformationState( HiddenInformation nStates );
-    sal_Int16                   QueryHiddenInformation( HiddenWarningFact eFact, vcl::Window* pParent );
+    sal_Int16                   QueryHiddenInformation( HiddenWarningFact eFact, weld::Window* pParent );
     bool                        IsSecurityOptOpenReadOnly() const;
     void                        SetSecurityOptOpenReadOnly( bool bOpenReadOnly );
 
-    Size                        GetFirstPageSize();
+    Size                        GetFirstPageSize() const;
     bool                        DoClose();
-    virtual void                PrepareReload();
     std::shared_ptr<GDIMetaFile> GetPreviewMetaFile( bool bFullContent = false ) const;
     virtual void                CancelTransfers();
 
@@ -457,9 +470,8 @@ public:
     bool                        IsAbortingImport() const;
     void                        FinishedLoading( SfxLoadedFlags nWhich = SfxLoadedFlags::ALL );
 
-    virtual void                SetFormatSpecificCompatibilityOptions( const OUString& /*rFilterTypeName*/ ) { /* Do not do anything here; Derived classes must overload to do actual work */ };
-
     void                        TemplateDisconnectionAfterLoad();
+    void                        SetLoading(SfxLoadedFlags nFlags);
     bool                        IsLoading() const;
     bool                        IsLoadingFinished() const;
     void                        SetAutoLoad( const INetURLObject&, sal_uInt32 nTime, bool bReload );
@@ -539,7 +551,7 @@ public:
 
     // Determine the position of the "Automatic" filter in the stylist
     void                        SetAutoStyleFilterIndex(sal_uInt16 nSet);
-    sal_uInt16                  GetAutoStyleFilterIndex();
+    sal_uInt16                  GetAutoStyleFilterIndex() const;
     bool                        HasBasic() const;
     BasicManager*               GetBasicManager() const;
     css::uno::Reference< css::script::XLibraryContainer >
@@ -549,6 +561,9 @@ public:
     StarBASIC*                  GetBasic() const;
 
     virtual std::set<Color>     GetDocColors();
+
+    // Accessibility Check
+    virtual sfx::AccessibilityIssueCollection runAccessibilityCheck();
 
                                 // Documents, for which to format the view size
 
@@ -563,37 +578,43 @@ public:
 
     virtual css::uno::Sequence< OUString > GetEventNames();
 
-    vcl::Window*                GetDialogParent( SfxMedium* pMedium=nullptr );
+    vcl::Window*                GetDialogParent( SfxMedium const * pMedium=nullptr );
     static SfxObjectShell*      CreateObject( const OUString& rServiceName, SfxObjectCreateMode = SfxObjectCreateMode::STANDARD );
     static SfxObjectShell*      CreateObjectByFactoryName( const OUString& rURL, SfxObjectCreateMode = SfxObjectCreateMode::STANDARD );
     static css::uno::Reference< css::lang::XComponent >
                                 CreateAndLoadComponent( const SfxItemSet& rSet );
     static SfxObjectShell*      GetShellFromComponent( const css::uno::Reference< css::lang::XComponent >& xComp );
     static OUString             GetServiceNameFromFactory( const OUString& rFact );
-    bool                        IsInPlaceActive();
-    bool                        IsUIActive();
-    virtual void                InPlaceActivate( bool );
+    bool                        IsInPlaceActive() const;
+    bool                        IsUIActive() const;
 
     static bool                 CopyStoragesOfUnknownMediaType(
                                     const css::uno::Reference< css::embed::XStorage >& xSource,
-                                    const css::uno::Reference< css::embed::XStorage >& xTarget );
+                                    const css::uno::Reference<css::embed::XStorage>& xTarget,
+                                    const css::uno::Sequence<OUString>& rExceptions = css::uno::Sequence<OUString>());
+
+    bool isEditDocLocked();
+    bool isContentExtractionLocked();
+    bool isExportLocked();
+    bool isPrintLocked();
+    bool isSaveLocked();
 
     // The functions from SvPersist
     void            EnableSetModified( bool bEnable = true );
     bool            IsEnableSetModified() const;
     virtual void    SetModified( bool bModified = true );
-    bool            IsModified();
+    bool            IsModified() const;
 
     /**
      * @param bChart true if the file is a chart doc and FillClass should not be called
      */
     void            SetupStorage(
                         const css::uno::Reference< css::embed::XStorage >& xStorage,
-                        sal_Int32 nVersion, bool bTemplate, bool bChart = false ) const;
+                        sal_Int32 nVersion, bool bTemplate ) const;
 
-    css::uno::Reference< css::embed::XStorage > GetStorage();
+    css::uno::Reference< css::embed::XStorage > const & GetStorage();
 
-    SvGlobalName    GetClassName() const;
+    SvGlobalName const & GetClassName() const;
 
     // comphelper::IEmbeddedHelper
     virtual css::uno::Reference< css::task::XInteractionHandler > getInteractionHandler() const override;
@@ -632,14 +653,12 @@ public:
                             const JobSetup & rSetup,
                             sal_uInt16 nAspect = ASPECT_CONTENT );
     virtual void    Draw( OutputDevice *, const JobSetup & rSetup,
-                          sal_uInt16 nAspect = ASPECT_CONTENT ) = 0;
+                          sal_uInt16 nAspect ) = 0;
 
 
     virtual void    FillClass( SvGlobalName * pClassName,
                                SotClipboardFormatId * pFormat,
-                               OUString * pAppName,
                                OUString * pFullTypeName,
-                               OUString * pShortTypeName,
                                sal_Int32 nVersion,
                                bool bTemplate = false) const = 0;
 
@@ -653,6 +672,13 @@ public:
     virtual bool    GetProtectionHash( /*out*/ css::uno::Sequence< sal_Int8 > &rPasswordHash );
 
     static bool IsOwnStorageFormat(const SfxMedium &);
+
+    /** Append Infobar once the frame is ready.
+        Useful when you want to register an Infobar before the doc/frame is fully loaded. */
+    void AppendInfoBarWhenReady(const OUString& sId, const OUString& sPrimaryMessage,
+                                const OUString& sSecondaryMessage, InfobarType aInfobarType,
+                                bool bShowCloseButton = true);
+    std::vector<InfobarData>& getPendingInfobars();
 
     SAL_DLLPRIVATE std::shared_ptr<GDIMetaFile> CreatePreviewMetaFile_Impl(bool bFullContent) const;
 
@@ -673,11 +699,9 @@ public:
     SAL_DLLPRIVATE void BreakMacroSign_Impl( bool bBreakMacroSing );
     SAL_DLLPRIVATE void CheckSecurityOnLoading_Impl();
     SAL_DLLPRIVATE void CheckForBrokenDocSignatures_Impl();
-    SAL_DLLPRIVATE static SignatureState ImplCheckSignaturesInformation(
-                const css::uno::Sequence< css::security::DocumentSignatureInformation >& aInfos );
     SAL_DLLPRIVATE void CheckEncryption_Impl( const css::uno::Reference< css::task::XInteractionHandler >& xHandler );
     SAL_DLLPRIVATE void SetModifyPasswordEntered( bool bEntered = true );
-    SAL_DLLPRIVATE bool IsModifyPasswordEntered();
+    SAL_DLLPRIVATE bool IsModifyPasswordEntered() const;
 
     SAL_DLLPRIVATE void InitBasicManager_Impl();
     SAL_DLLPRIVATE SfxObjectShell_Impl* Get_Impl() { return pImpl.get(); }
@@ -715,9 +739,15 @@ public:
     SAL_DLLPRIVATE void SetNamedVisibility_Impl();
     SAL_DLLPRIVATE bool DoSave_Impl( const SfxItemSet* pSet );
     SAL_DLLPRIVATE bool Save_Impl( const SfxItemSet* pSet );
-    SAL_DLLPRIVATE bool PreDoSaveAs_Impl(const OUString& rFileName, const OUString& rFiltName, SfxItemSet& rItemSet);
-    SAL_DLLPRIVATE bool APISaveAs_Impl(const OUString& aFileName, SfxItemSet& rItemSet);
-    SAL_DLLPRIVATE bool CommonSaveAs_Impl(const INetURLObject& aURL, const OUString& aFilterName, SfxItemSet& rItemSet);
+    SAL_DLLPRIVATE bool
+    PreDoSaveAs_Impl(const OUString& rFileName, const OUString& rFiltName,
+                     SfxItemSet const& rItemSet,
+                     const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
+    SAL_DLLPRIVATE bool APISaveAs_Impl(const OUString& aFileName, SfxItemSet& rItemSet,
+                                       const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
+    SAL_DLLPRIVATE bool
+    CommonSaveAs_Impl(const INetURLObject& aURL, const OUString& aFilterName, SfxItemSet& rItemSet,
+                      const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
     SAL_DLLPRIVATE bool GeneralInit_Impl(
                                     const css::uno::Reference< css::embed::XStorage >& xStorage,
                                     bool bTypeMustBeSetAlready );
@@ -727,29 +757,38 @@ public:
     // public-internals
     SAL_DLLPRIVATE IndexBitSet& GetNoSet_Impl();
     SAL_DLLPRIVATE void SetProgress_Impl( SfxProgress *pProgress );
-    SAL_DLLPRIVATE void PostActivateEvent_Impl( SfxViewFrame* );
+    SAL_DLLPRIVATE void PostActivateEvent_Impl( SfxViewFrame const * );
     SAL_DLLPRIVATE void SetActivateEvent_Impl(SfxEventHintId );
     SAL_DLLPRIVATE SfxObjectShell* GetParentShellByModel_Impl();
 
     // configuration items
     SAL_DLLPRIVATE SignatureState ImplGetSignatureState( bool bScriptingContent = false );
 
-    SAL_DLLPRIVATE css::uno::Sequence< css::security::DocumentSignatureInformation >
-        ImplAnalyzeSignature(
-            bool bScriptingContent,
-            const css::uno::Reference< css::security::XDocumentDigitalSignatures >& xSigner
-                = css::uno::Reference< css::security::XDocumentDigitalSignatures >() );
-
-    SAL_DLLPRIVATE void ImplSign( bool bScriptingContent = false );
     SAL_DLLPRIVATE bool QuerySaveSizeExceededModules_Impl( const css::uno::Reference< css::task::XInteractionHandler >& xHandler );
+    SAL_DLLPRIVATE static bool QueryAllowExoticFormat_Impl( const css::uno::Reference< css::task::XInteractionHandler >& xHandler,
+                                                     const OUString& rURL,
+                                                     const OUString& rFilterUIName);
 
     SAL_DLLPRIVATE void CheckOut( );
     SAL_DLLPRIVATE void CancelCheckOut( );
     SAL_DLLPRIVATE void CheckIn( );
-    SAL_DLLPRIVATE css::uno::Sequence< css::document::CmisVersion > GetCmisVersions();
+    SAL_DLLPRIVATE css::uno::Sequence< css::document::CmisVersion > GetCmisVersions() const;
 
     /** override this if you have a XmlIdRegistry. */
     virtual const sfx2::IXmlIdRegistry* GetXmlIdRegistry() const { return nullptr; }
+
+    /// Is this read-only object shell opened via .uno:SignPDF?
+    bool IsSignPDF() const;
+
+    /// Gets the certificate that is already picked by the user but not yet used for signing.
+    css::uno::Reference<css::security::XCertificate> GetSignPDFCertificate() const;
+
+    // Lock all unlocked views, and returns a guard object which unlocks those views when destructed
+    virtual std::unique_ptr<LockAllViewsGuard> LockAllViews()
+    {
+        return std::make_unique<LockAllViewsGuard>();
+    }
+
 };
 
 #define SFX_GLOBAL_CLASSID \
@@ -783,7 +822,7 @@ protected:
 public:
     SfxObjectShellLock() { pObj = nullptr; }
     inline               SfxObjectShellLock( const SfxObjectShellLock & rObj );
-    inline               SfxObjectShellLock( SfxObjectShellLock && rObj );
+    inline               SfxObjectShellLock( SfxObjectShellLock && rObj ) noexcept;
     inline               SfxObjectShellLock( SfxObjectShell * pObjP );
     inline void          Clear();
     inline               ~SfxObjectShellLock();
@@ -802,7 +841,7 @@ inline SfxObjectShellLock::SfxObjectShellLock( const SfxObjectShellLock & rObj )
     if( pObj )
         pObj->OwnerLock( true );
 }
-inline SfxObjectShellLock::SfxObjectShellLock( SfxObjectShellLock && rObj )
+inline SfxObjectShellLock::SfxObjectShellLock( SfxObjectShellLock && rObj ) noexcept
 {
     pObj = rObj.pObj;
     rObj.pObj = nullptr;
@@ -847,10 +886,11 @@ inline SfxObjectShellLock & SfxObjectShellLock::operator=( SfxObjectShellLock &&
 }
 inline SfxObjectShellLock & SfxObjectShellLock::operator=( SfxObjectShell * pObjP )
 {
-    return *this = SfxObjectShellLock( pObjP );
+    *this = SfxObjectShellLock( pObjP );
+    return *this;
 }
 
-class SFX2_DLLPUBLIC SfxObjectShellItem: public SfxPoolItem
+class SFX2_DLLPUBLIC SfxObjectShellItem final : public SfxPoolItem
 {
     SfxObjectShell*         pObjSh;
 
@@ -868,7 +908,7 @@ public:
                             {}
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SfxObjectShellItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 };

@@ -25,24 +25,18 @@
 #include <map>
 #include <vector>
 
-#include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/implbase7.hxx>
 #include <osl/mutex.hxx>
-#include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/XContainer.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/beans/XVetoableChangeListener.hpp>
 #include <com/sun/star/container/XContainerApproveBroadcaster.hpp>
 #include "ContentHelper.hxx"
 #include "containerapprove.hxx"
 #include <comphelper/uno3.hxx>
-#include <rtl/ref.hxx>
-#include "apitools.hxx"
 
 namespace dbaccess
 {
@@ -71,7 +65,7 @@ public:
 
     void insert( const OUString& _rName, TContentPtr _pDefinition )
     {
-        m_aDefinitions.insert( NamedDefinitions::value_type( _rName, _pDefinition ) );
+        m_aDefinitions.emplace(  _rName, _pDefinition );
     }
 
 private:
@@ -96,7 +90,6 @@ class ODefinitionContainer
 {
 protected:
     typedef std::map< OUString, css::uno::WeakReference< css::ucb::XContent > > Documents;
-    typedef std::vector<Documents::iterator> DocumentsIndexAccess;
 
     enum ContainerOperation
     {
@@ -117,8 +110,9 @@ private:
 protected:
     // we can't just hold a vector of XContentRefs, as after initialization they're all empty
     // cause we load them only on access
-    DocumentsIndexAccess    m_aDocuments;               // for a efficient index access
-    Documents               m_aDocumentMap;             // for a efficient name access
+    std::vector<Documents::iterator>
+                            m_aDocuments;               // for an efficient index access
+    Documents               m_aDocumentMap;             // for an efficient name access
 
     ::comphelper::OInterfaceContainerHelper2
                             m_aApproveListeners;
@@ -130,7 +124,7 @@ protected:
 
 protected:
     /** Additionally to our own approvals which new elements must pass, derived classes
-        can specifiy an additional approval instance here.
+        can specify an additional approval instance here.
 
         Every time a new element is inserted into the container (or an element is replaced
         with a new one), this new element must pass our own internal approval, plus the approval
@@ -144,12 +138,12 @@ protected:
 
     const ODefinitionContainer_Impl& getDefinitions() const
     {
-        return dynamic_cast< const ODefinitionContainer_Impl& >( *m_pImpl.get() );
+        return dynamic_cast< const ODefinitionContainer_Impl& >( *m_pImpl );
     }
 
     ODefinitionContainer_Impl&  getDefinitions()
     {
-        return dynamic_cast<       ODefinitionContainer_Impl& >( *m_pImpl.get() );
+        return dynamic_cast<       ODefinitionContainer_Impl& >( *m_pImpl );
     }
 public:
     /** constructs the container.
@@ -214,7 +208,7 @@ protected:
     // helper
     virtual void SAL_CALL disposing() override;
 
-    /** create a object from its persistent data within the configuration. To be overwritten by derived classes.
+    /** create an object from its persistent data within the configuration. To be overwritten by derived classes.
         @param      _rName          the name the object has within the container
         @return                     the newly created object or an empty reference if something went wrong
     */
@@ -265,7 +259,7 @@ protected:
     */
     void implRemove(const OUString& _rName);
 
-    /** remove a object in the container. No plausibility checks are done, e.g. whether
+    /** remove an object in the container. No plausibility checks are done, e.g. whether
         or not there exists an object with the given name or the object is non-NULL. This is the responsibility of the caller.<BR>
         Additionally all object-related information within the registry will be deleted. The new object config node,
         where the caller may want to store the new objects information, is returned.<BR>
@@ -292,7 +286,7 @@ protected:
             ListenerType _eType
         );
 
-    SAL_CALL operator css::uno::Reference< css::uno::XInterface > () const
+    operator css::uno::Reference< css::uno::XInterface > () const
     {
         return const_cast< XContainer* >( static_cast< const XContainer* >( this ) );
     }

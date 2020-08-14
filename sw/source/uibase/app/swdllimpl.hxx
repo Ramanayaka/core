@@ -12,6 +12,8 @@
 
 #include <sal/config.h>
 
+#include <sal/types.h>
+
 #include <memory>
 
 namespace sw { class Filters; }
@@ -26,7 +28,7 @@ public:
     static void RegisterControls();
 
     SwDLL();
-    ~SwDLL();
+    ~SwDLL() COVERITY_NOEXCEPT_FALSE;
 
     sw::Filters & getFilters();
 

@@ -21,7 +21,6 @@
 
 #include <xmloff/xmlictxt.hxx>
 #include <com/sun/star/report/XSection.hpp>
-#include <vector>
 
 namespace rptxml
 {
@@ -37,16 +36,16 @@ namespace rptxml
     public:
 
         OXMLSection( ORptFilter& rImport
-                    ,sal_uInt16 nPrfx
-                    ,const OUString& rLName
-                    ,const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList
+                    ,const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList
                     ,const css::uno::Reference< css::report::XSection >& _xSection
                     ,bool _bPageHeader = true);
         virtual ~OXMLSection() override;
 
-        virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                    const OUString& rLocalName,
-                    const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
+        virtual void SAL_CALL startFastElement(
+                sal_Int32 /*nElement*/,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ ) override {}
+        virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+                sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
     };
 
 } // namespace rptxml

@@ -25,10 +25,7 @@
 #include <com/sun/star/xforms/XFormsEvent.hpp>
 #include <com/sun/star/xml/dom/events/XEventTarget.hpp>
 
-namespace com {
-namespace sun {
-namespace star {
-namespace xforms {
+namespace com::sun::star::xforms {
 
 class XFormsEventConcrete : public cppu::WeakImplHelper< XFormsEvent > {
 
@@ -60,17 +57,14 @@ class XFormsEventConcrete : public cppu::WeakImplHelper< XFormsEvent > {
             sal_Bool canBubbleArg,
             sal_Bool cancelableArg) override;
 
-    protected:
+    private:
 
         OUString m_eventType;
-        css::uno::Reference< css::xml::dom::events::XEventTarget > m_target;
-        css::uno::Reference< css::xml::dom::events::XEventTarget > m_currentTarget;
         bool m_bubbles;
         bool m_cancelable;
-        css::util::Time m_time;
 };
 
-} } } }
+}
 
 #endif
 

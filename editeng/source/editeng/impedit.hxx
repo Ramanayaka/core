@@ -21,23 +21,22 @@
 
 #include <eerdll2.hxx>
 #include <editdoc.hxx>
-#include <editsel.hxx>
-#include <editundo.hxx>
-#include <editobj2.hxx>
-#include <editstt2.hxx>
+#include "editsel.hxx"
+#include "editundo.hxx"
+#include "editstt2.hxx"
 #include <editeng/editdata.hxx>
-#include <editeng/svxacorr.hxx>
 #include <editeng/SpellPortions.hxx>
-#include <editeng/eedata.hxx>
-#include "editeng/editeng.hxx"
+#include <editeng/editeng.hxx>
 #include <editeng/editview.hxx>
 #include <svtools/colorcfg.hxx>
+#include <editeng/outliner.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/gdimtf.hxx>
 #include <vcl/cursor.hxx>
 #include <vcl/vclptr.hxx>
 #include <tools/fract.hxx>
 #include <vcl/idle.hxx>
+#include <vcl/commandevent.hxx>
+#include <vcl/ptrstyle.hxx>
 
 #include <vcl/dndhelp.hxx>
 #include <svl/ondemand.hxx>
@@ -46,7 +45,6 @@
 #include <com/sun/star/linguistic2/XSpellChecker1.hpp>
 #include <com/sun/star/linguistic2/XHyphenator.hpp>
 #include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <com/sun/star/i18n/CharacterIteratorMode.hpp>
 #include <com/sun/star/i18n/WordType.hpp>
@@ -54,10 +52,10 @@
 #include <com/sun/star/uno/Sequence.hxx>
 
 #include <i18nlangtag/lang.h>
-#include <rtl/ref.hxx>
-#include <LibreOfficeKit/LibreOfficeKitTypes.h>
+#include <o3tl/deleter.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
+#include <optional>
 #include <memory>
 #include <vector>
 
@@ -73,15 +71,9 @@ class SvxForbiddenCharactersTable;
 class SvtCTLOptions;
 namespace vcl { class Window; }
 class SvxNumberFormat;
-
-
-namespace com {
-namespace sun {
-namespace star {
-namespace datatransfer {
-namespace clipboard {
+namespace com::sun::star::datatransfer::clipboard {
     class XClipboard;
-}}}}}
+}
 
 namespace editeng {
     struct MisspellRanges;
@@ -130,10 +122,10 @@ struct DragAndDropInfo
     bool            bDragAccepted           : 1;
 
     DragAndDropInfo()
+      : nSensibleRange(0), nCursorWidth(0), nOutlinerDropDest(0), pBackground(nullptr),
+        pField(nullptr), bVisCursor(false), bDroppedInMe(false), bStarterOfDD(false),
+        bHasValidData(false), bUndoAction(false), bOutlinerMode(false), bDragAccepted(false)
     {
-            pBackground = nullptr; bVisCursor = false; bDroppedInMe = false; bStarterOfDD = false;
-            bHasValidData = false; bUndoAction = false; bOutlinerMode = false;
-            nSensibleRange = 0; nCursorWidth = 0; pField = nullptr; nOutlinerDropDest = 0; bDragAccepted = false;
     }
     ~DragAndDropInfo()
     {
@@ -170,8 +162,8 @@ struct SpellInfo
     bool        bMultipleDoc;
     svx::SpellPortions    aLastSpellPortions;
     SpellContentSelections  aLastSpellContentSelections;
-    SpellInfo()
-        { bSpellToEnd = true; eState = EESpellState::Ok; bMultipleDoc = false; }
+    SpellInfo() : eState(EESpellState::Ok), bSpellToEnd(true), bMultipleDoc(false)
+        { }
 };
 
 // used for text conversion
@@ -191,7 +183,7 @@ struct FormatterFontMetric
     sal_uInt16 nMaxAscent;
     sal_uInt16 nMaxDescent;
 
-    FormatterFontMetric()               { nMaxAscent = 0; nMaxDescent = 0; /* nMinLeading = 0xFFFF; */ }
+    FormatterFontMetric() : nMaxAscent(0), nMaxDescent(0) { /* nMinLeading = 0xFFFF; */ }
     sal_uInt16  GetHeight() const       { return nMaxAscent+nMaxDescent; }
 };
 
@@ -211,8 +203,48 @@ public:
     EditView*   GetView()       { return pView; }
 };
 
+class ImpEditView;
+/// This is meant just for Calc, where all positions in logical units (twips for LOK) are computed by
+/// doing independent pixel-alignment for each cell's size. LOKSpecialPositioning stores
+/// both 'output-area' and 'visible-doc-position' in pure logical unit (twips for LOK).
+/// This allows the cursor/selection messages to be in regular(print) twips unit like in Writer.
+class LOKSpecialPositioning
+{
+public:
+    LOKSpecialPositioning(const ImpEditView& rImpEditView, MapUnit eUnit, const tools::Rectangle& rOutputArea,
+                          const Point& rVisDocStartPos);
 
-//  class ImpEditView
+    void ReInit(MapUnit eUnit, const tools::Rectangle& rOutputArea, const Point& rVisDocStartPos);
+
+    void SetOutputArea(const tools::Rectangle& rOutputArea);
+    const tools::Rectangle& GetOutputArea() const;
+    void SetVisDocStartPos(const Point& rVisDocStartPos);
+
+    bool IsVertical() const;
+    bool IsTopToBottom() const;
+
+    long GetVisDocLeft() const { return maVisDocStartPos.X(); }
+    long GetVisDocTop() const  { return maVisDocStartPos.Y(); }
+    long GetVisDocRight() const  { return maVisDocStartPos.X() + (!IsVertical() ? maOutArea.GetWidth() : maOutArea.GetHeight()); }
+    long GetVisDocBottom() const { return maVisDocStartPos.Y() + (!IsVertical() ? maOutArea.GetHeight() : maOutArea.GetWidth()); }
+    tools::Rectangle GetVisDocArea() const;
+
+    Point            GetWindowPos(const Point& rDocPos, MapUnit eDocPosUnit) const;
+    tools::Rectangle GetWindowPos(const tools::Rectangle& rDocRect, MapUnit eDocRectUnit) const;
+
+    Point GetRefPoint() const;
+
+private:
+    Point convertUnit(const Point& rPos, MapUnit ePosUnit) const;
+    tools::Rectangle convertUnit(const tools::Rectangle& rRect, MapUnit eRectUnit) const;
+
+    const ImpEditView& mrImpEditView;
+    tools::Rectangle maOutArea;
+    Point maVisDocStartPos;
+    MapUnit meUnit;
+};
+
+
 
 class ImpEditView : public vcl::unohelper::DragAndDropClient
 {
@@ -225,16 +257,16 @@ class ImpEditView : public vcl::unohelper::DragAndDropClient
 
 private:
     EditView*                 pEditView;
-    vcl::Cursor*              pCursor;
-    Color*                    pBackgroundColor;
+    std::unique_ptr<vcl::Cursor, o3tl::default_delete<vcl::Cursor>>  pCursor;
+    std::unique_ptr<Color>    pBackgroundColor;
     /// Containing view shell, if any.
     OutlinerViewShell*        mpViewShell;
-    /// An other shell, just listening to our state, if any.
+    /// Another shell, just listening to our state, if any.
     OutlinerViewShell*        mpOtherShell;
     EditEngine*               pEditEngine;
     VclPtr<vcl::Window>       pOutWin;
     EditView::OutWindowSet    aOutWindowSet;
-    Pointer*                  pPointer;
+    std::optional<PointerStyle>  mxPointer;
     std::unique_ptr<DragAndDropInfo>  pDragAndDropInfo;
 
     css::uno::Reference< css::datatransfer::dnd::XDragSourceListener > mxDnDListener;
@@ -257,6 +289,38 @@ private:
     EditSelection       aEditSelection;
     EEAnchorMode        eAnchorMode;
 
+    /// mechanism to change from the classic refresh mode that simply
+    // invalidates the area where text was changed. When set, the invalidate
+    // and the direct repaint of the Window-plugged EditView will be suppressed.
+    // Instead, a consumer that has registered using an EditViewCallbacks
+    // incarnation has to handle that. Used e.g. to represent the edited text
+    // in Draw/Impress in an OverlayObject which avoids evtl. expensive full
+    // repaints of the EditView(s)
+    const EditViewCallbacks* mpEditViewCallbacks;
+    std::unique_ptr<LOKSpecialPositioning> mpLOKSpecialPositioning;
+    bool mbBroadcastLOKViewCursor:1;
+    bool mbSupressLOKMessages:1;
+
+    const EditViewCallbacks* getEditViewCallbacks() const
+    {
+        return mpEditViewCallbacks;
+    }
+
+    void setEditViewCallbacks(const EditViewCallbacks* pEditViewCallbacks)
+    {
+        mpEditViewCallbacks = pEditViewCallbacks;
+    }
+
+    void InvalidateAtWindow(const tools::Rectangle& rRect);
+
+    css::uno::Reference<css::datatransfer::clipboard::XClipboard> GetClipboard() const;
+    css::uno::Reference<css::datatransfer::clipboard::XClipboard> GetSelection() const;
+
+    void SetBroadcastLOKViewCursor(bool bSet)
+    {
+        mbBroadcastLOKViewCursor = bSet;
+    }
+
 protected:
 
     // DragAndDropClient
@@ -271,6 +335,8 @@ protected:
     void HideDDCursor();
 
     void ImplDrawHighlightRect( OutputDevice* _pTarget, const Point& rDocPosTopLeft, const Point& rDocPosBottomRight, tools::PolyPolygon* pPolyPoly );
+    tools::Rectangle ImplGetEditCursor(EditPaM& aPaM, GetCursorFlags nShowCursorFlags,
+            sal_Int32& nTextPortionStart, const ParaPortion* pParaPortion) const;
 
 public:
                     ImpEditView( EditView* pView, EditEngine* pEng, vcl::Window* pWindow );
@@ -295,7 +361,7 @@ public:
     bool            IsVertical() const;
     bool            IsTopToBottom() const;
 
-    bool            PostKeyEvent( const KeyEvent& rKeyEvent, vcl::Window* pFrameWin );
+    bool            PostKeyEvent( const KeyEvent& rKeyEvent, vcl::Window const * pFrameWin );
 
     bool            MouseButtonUp( const MouseEvent& rMouseEvent );
     bool            MouseButtonDown( const MouseEvent& rMouseEvent );
@@ -303,8 +369,8 @@ public:
     bool            MouseMove( const MouseEvent& rMouseEvent );
     void            Command( const CommandEvent& rCEvt );
 
-    void            CutCopy( css::uno::Reference< css::datatransfer::clipboard::XClipboard >& rxClipboard, bool bCut );
-    void            Paste( css::uno::Reference< css::datatransfer::clipboard::XClipboard >& rxClipboard, bool bUseSpecial = false );
+    void            CutCopy( css::uno::Reference< css::datatransfer::clipboard::XClipboard > const & rxClipboard, bool bCut );
+    void            Paste( css::uno::Reference< css::datatransfer::clipboard::XClipboard > const & rxClipboard, bool bUseSpecial = false );
 
     void            SetVisDocStartPos( const Point& rPos ) { aVisDocStartPos = rPos; }
 
@@ -314,19 +380,20 @@ public:
     long            GetVisDocBottom() const { return aVisDocStartPos.Y() + ( !IsVertical() ? aOutArea.GetHeight() : aOutArea.GetWidth() ); }
     tools::Rectangle       GetVisDocArea() const;
 
-    EditSelection&  GetEditSelection()          { return aEditSelection; }
+    const EditSelection&  GetEditSelection() const { return aEditSelection; }
     void            SetEditSelection( const EditSelection& rEditSelection );
     bool            HasSelection() const { return aEditSelection.HasRange(); }
 
-    void            DrawSelection() { DrawSelection( aEditSelection ); }
-    void            DrawSelection( EditSelection, vcl::Region* pRegion = nullptr, OutputDevice* pTargetDevice = nullptr );
-    void GetSelectionRectangles(std::vector<tools::Rectangle>& rLogicRects);
+    void SelectionChanged();
+    void            DrawSelectionXOR() { DrawSelectionXOR( aEditSelection ); }
+    void            DrawSelectionXOR( EditSelection, vcl::Region* pRegion = nullptr, OutputDevice* pTargetDevice = nullptr );
+    void GetSelectionRectangles(EditSelection aTmpSel, std::vector<tools::Rectangle>& rLogicRects);
 
     vcl::Window*    GetWindow() const           { return pOutWin; }
 
     void            SetSelectionMode( EESelectionMode eMode );
 
-    inline const Pointer&   GetPointer();
+    inline PointerStyle GetPointer();
 
     inline vcl::Cursor*     GetCursor();
 
@@ -348,6 +415,8 @@ public:
     void            CalcAnchorPoint();
     void            RecalcOutputArea();
 
+    tools::Rectangle GetEditCursor() const;
+
     void            ShowCursor( bool bGotoCursor, bool bForceVisCursor );
     Pair            Scroll( long ndX, long ndY, ScrollRangeCheck nRangeCheck = ScrollRangeCheck::NoNegative );
 
@@ -358,7 +427,6 @@ public:
 
     bool        DoSingleLinePaste() const       { return bool( nControl & EVControlBits::SINGLELINEPASTE ); }
     bool        DoAutoScroll() const            { return bool( nControl & EVControlBits::AUTOSCROLL ); }
-    bool        DoBigScroll() const             { return bool( nControl & EVControlBits::BIGSCROLL ); }
     bool        DoAutoSize() const              { return bool( nControl & EVControlBits::AUTOSIZE ); }
     bool        DoAutoWidth() const             { return bool( nControl & EVControlBits::AUTOSIZEX); }
     bool        DoAutoHeight() const            { return bool( nControl & EVControlBits::AUTOSIZEY); }
@@ -382,7 +450,18 @@ public:
 
     //  If possible invalidate more than OutputArea, for the DrawingEngine text frame
     void            SetInvalidateMore( sal_uInt16 nPixel ) { nInvMore = nPixel; }
-    sal_uInt16      GetInvalidateMore() const { return (sal_uInt16)nInvMore; }
+    sal_uInt16      GetInvalidateMore() const { return static_cast<sal_uInt16>(nInvMore); }
+
+    void InitLOKSpecialPositioning(MapUnit eUnit, const tools::Rectangle& rOutputArea,
+                                   const Point& rVisDocStartPos);
+    void SetLOKSpecialOutputArea(const tools::Rectangle& rOutputArea);
+    tools::Rectangle GetLOKSpecialOutputArea() const;
+    void SetLOKSpecialVisArea(const tools::Rectangle& rVisArea);
+    tools::Rectangle GetLOKSpecialVisArea() const;
+    bool HasLOKSpecialPositioning() const;
+
+    void SupressLOKMessages(bool bSet) { mbSupressLOKMessages = bSet; }
+    bool IsSupressLOKMessages() const { return mbSupressLOKMessages; }
 };
 
 
@@ -392,7 +471,6 @@ public:
 class ImpEditEngine : public SfxListener
 {
     friend class EditEngine;
-    friend class EditDbg;
 
     typedef EditEngine::ViewsType ViewsType;
 
@@ -414,7 +492,7 @@ private:
     EditEngine*         pEditEngine;
     ViewsType           aEditViews;
     EditView*           pActiveView;
-    TextRanger*         pTextRanger;
+    std::unique_ptr<TextRanger> pTextRanger;
 
     SfxStyleSheetPool*  pStylePool;
     SfxItemPool*        pTextObjectPool;
@@ -424,15 +502,13 @@ private:
     VclPtr<VirtualDevice> mpOwnDev;
 
     svtools::ColorConfig maColorConfig;
-    mutable SvtCTLOptions*  pCTLOptions;
+    mutable std::unique_ptr<SvtCTLOptions> pCTLOptions;
 
-    std::unique_ptr<SfxItemSet> pEmptyItemSet;
+    mutable std::unique_ptr<SfxItemSet> pEmptyItemSet;
     EditUndoManager*    pUndoManager;
-    ESelection*         pUndoMarkSelection;
+    std::unique_ptr<ESelection> pUndoMarkSelection;
 
-    ImplIMEInfos*       mpIMEInfos;
-
-    std::vector<EENotify> aNotifyCache;
+    std::unique_ptr<ImplIMEInfos> mpIMEInfos;
 
     OUString            aWordDelimiters;
 
@@ -441,7 +517,6 @@ private:
 
     Color               maBackgroundColor;
 
-    sal_uInt32          nBlockNotifications;
     sal_uInt16          nStretchX;
     sal_uInt16          nStretchY;
 
@@ -452,11 +527,11 @@ private:
     sal_Int32          nBigTextObjectStart;
     css::uno::Reference< css::linguistic2::XSpellChecker1 > xSpeller;
     css::uno::Reference< css::linguistic2::XHyphenator >    xHyphenator;
-    SpellInfo*          pSpellInfo;
+    std::unique_ptr<SpellInfo> pSpellInfo;
     mutable css::uno::Reference < css::i18n::XBreakIterator > xBI;
     mutable css::uno::Reference < css::i18n::XExtendedInputSequenceChecker > xISC;
 
-    ConvInfo *          pConvInfo;
+    std::unique_ptr<ConvInfo> pConvInfo;
 
     OUString            aAutoCompleteText;
 
@@ -467,7 +542,7 @@ private:
     OnDemandLocaleDataWrapper       xLocaleDataWrapper;
     OnDemandTransliterationWrapper  xTransliterationWrapper;
 
-    // For Formatting / Update ....
+    // For Formatting / Update...
     std::vector<std::unique_ptr<DeletedNodeInfo> > aDeletedNodes;
     tools::Rectangle           aInvalidRect;
     sal_uInt32          nCurTextHeight;
@@ -486,6 +561,8 @@ private:
     // If it is detected at one point that the StatusHdl has to be called, but
     // this should not happen immediately (critical section):
     Timer               aStatusTimer;
+    Size                aLOKSpecialPaperSize;
+
     Link<EditStatus&,void>         aStatusHdlLink;
     Link<EENotify&,void>           aNotifyHdl;
     Link<HtmlImportInfo&,void>     aHtmlImportHdl;
@@ -497,8 +574,6 @@ private:
     Link<LinkParamNone*,void>      aModifyHdl;
     Link<EditView*,void>           maBeginDropHdl;
     Link<EditView*,void>           maEndDropHdl;
-
-    rtl::Reference<SvxForbiddenCharactersTable> xForbiddenCharsTable;
 
     bool            bKernAsianPunctuation:1;
     bool            bAddExtLeading:1;
@@ -512,27 +587,28 @@ private:
     bool            bUseAutoColor:1;
     bool            bForceAutoColor:1;
     bool            bCallParaInsertedOrDeleted:1;
-    bool            bImpConvertFirstCall:1;   // specifies if ImpConvert is called the very first time after Convert was called
     bool            bFirstWordCapitalization:1;   // specifies if auto-correction should capitalize the first word or not
     bool            mbLastTryMerge:1;
     bool            mbReplaceLeadingSingleQuotationMark:1;
+
+    bool            mbNbspRunNext;  // can't be a bitfield as it is passed as bool&
 
 
     // Methods...
 
 
-    void                CursorMoved( ContentNode* pPrevNode );
-    void                ParaAttribsChanged( ContentNode* pNode );
+    void                CursorMoved( const ContentNode* pPrevNode );
+    void                ParaAttribsChanged( ContentNode const * pNode, bool bIgnoreUndoCheck = false );
     void                TextModified();
     void                CalcHeight( ParaPortion* pPortion );
 
-    void                InsertUndo( EditUndo* pUndo, bool bTryMerge = false );
+    void                InsertUndo( std::unique_ptr<EditUndo> pUndo, bool bTryMerge = false );
     void                ResetUndoManager();
     bool            HasUndoManager() const  { return pUndoManager != nullptr; }
 
-    EditUndoSetAttribs* CreateAttribUndo( EditSelection aSel, const SfxItemSet& rSet );
+    std::unique_ptr<EditUndoSetAttribs> CreateAttribUndo( EditSelection aSel, const SfxItemSet& rSet );
 
-    EditTextObject* GetEmptyTextObject();
+    std::unique_ptr<EditTextObject> GetEmptyTextObject();
 
     EditPaM             GetPaM( Point aDocPos, bool bSmart = true );
     EditPaM             GetPaM( ParaPortion* pPortion, Point aPos, bool bSmart );
@@ -545,7 +621,8 @@ private:
     void                ParaAttribsToCharAttribs( ContentNode* pNode );
     void                GetCharAttribs( sal_Int32 nPara, std::vector<EECharAttrib>& rLst ) const;
 
-    EditTextObject*     CreateTextObject(EditSelection aSelection, SfxItemPool*, bool bAllowBigObjects = false, sal_Int32 nBigObjStart = 0);
+    std::unique_ptr<EditTextObject>
+                        CreateTextObject(EditSelection aSelection, SfxItemPool*, bool bAllowBigObjects = false, sal_Int32 nBigObjStart = 0);
     EditSelection       InsertTextObject( const EditTextObject&, EditPaM aPaM );
     EditSelection       PasteText( css::uno::Reference< css::datatransfer::XTransferable > const & rxDataObj, const OUString& rBaseURL, const EditPaM& rPaM, bool bUseSpecial );
 
@@ -563,7 +640,7 @@ private:
     void                RecalcFormatterFontMetrics( FormatterFontMetric& rCurMetrics, SvxFont& rFont );
     void                CheckAutoPageSize();
 
-    void                ImpBreakLine( ParaPortion* pParaPortion, EditLine* pLine, TextPortion* pPortion, sal_Int32 nPortionStart, long nRemainingWidth, bool bCanHyphenate );
+    void                ImpBreakLine( ParaPortion* pParaPortion, EditLine* pLine, TextPortion const * pPortion, sal_Int32 nPortionStart, long nRemainingWidth, bool bCanHyphenate );
     void                ImpAdjustBlocks( ParaPortion* pParaPortion, EditLine* pLine, long nRemainingSpace );
     EditPaM             ImpConnectParagraphs( ContentNode* pLeft, ContentNode* pRight, bool bBackward = false );
     EditPaM             ImpDeleteSelection(const EditSelection& rCurSel);
@@ -590,10 +667,10 @@ private:
 
     void                ShowParagraph( sal_Int32 nParagraph, bool bShow );
 
-    EditPaM             PageUp( const EditPaM& rPaM, EditView* pView);
-    EditPaM             PageDown( const EditPaM& rPaM, EditView* pView);
-    EditPaM             CursorUp( const EditPaM& rPaM, EditView* pEditView );
-    EditPaM             CursorDown( const EditPaM& rPaM, EditView* pEditView );
+    EditPaM             PageUp( const EditPaM& rPaM, EditView const * pView);
+    EditPaM             PageDown( const EditPaM& rPaM, EditView const * pView);
+    EditPaM             CursorUp( const EditPaM& rPaM, EditView const * pEditView );
+    EditPaM             CursorDown( const EditPaM& rPaM, EditView const * pEditView );
     EditPaM             CursorLeft( const EditPaM& rPaM, sal_uInt16 nCharacterIteratorMode = css::i18n::CharacterIteratorMode::SKIPCELL );
     EditPaM             CursorRight( const EditPaM& rPaM, sal_uInt16 nCharacterIteratorMode = css::i18n::CharacterIteratorMode::SKIPCELL );
     EditPaM             CursorStartOfLine( const EditPaM& rPaM );
@@ -608,8 +685,8 @@ private:
     EditPaM             EndOfWord( const EditPaM& rPaM );
     EditSelection       SelectWord( const EditSelection& rCurSelection, sal_Int16 nWordType = css::i18n::WordType::ANYWORD_IGNOREWHITESPACES, bool bAcceptStartOfWord = true );
     EditSelection       SelectSentence( const EditSelection& rCurSel ) const;
-    EditPaM             CursorVisualLeftRight( EditView* pEditView, const EditPaM& rPaM, sal_uInt16 nCharacterIteratorMode, bool bToLeft );
-    EditPaM             CursorVisualStartEnd( EditView* pEditView, const EditPaM& rPaM, bool bStart );
+    EditPaM             CursorVisualLeftRight( EditView const * pEditView, const EditPaM& rPaM, sal_uInt16 nCharacterIteratorMode, bool bToLeft );
+    EditPaM             CursorVisualStartEnd( EditView const * pEditView, const EditPaM& rPaM, bool bStart );
 
 
     void                InitScriptTypes( sal_Int32 nPara );
@@ -631,16 +708,14 @@ private:
     EditPaM             ReadRTF( SvStream& rInput, EditSelection aSel );
     EditPaM             ReadXML( SvStream& rInput, EditSelection aSel );
     EditPaM             ReadHTML( SvStream& rInput, const OUString& rBaseURL, EditSelection aSel, SvKeyValueIterator* pHTTPHeaderAttrs );
-    EditPaM             ReadBin( SvStream& rInput, EditSelection aSel );
     ErrCode             WriteText( SvStream& rOutput, EditSelection aSel );
     ErrCode             WriteRTF( SvStream& rOutput, EditSelection aSel );
-    sal_uInt32          WriteXML(SvStream& rOutput, const EditSelection& rSel);
-    sal_uInt32          WriteBin(SvStream& rOutput, const EditSelection& rSel, bool bStoreUnicode = false);
+    void                WriteXML(SvStream& rOutput, const EditSelection& rSel);
 
     void                WriteItemAsRTF( const SfxPoolItem& rItem, SvStream& rOutput, sal_Int32 nPara, sal_Int32 nPos,
-                            std::vector<SvxFontItem*>& rFontTable, SvxColorList& rColorList );
+                            std::vector<std::unique_ptr<SvxFontItem>>& rFontTable, SvxColorList& rColorList );
     bool                WriteItemListAsRTF( ItemList& rLst, SvStream& rOutput, sal_Int32 nPara, sal_Int32 nPos,
-                            std::vector<SvxFontItem*>& rFontTable, SvxColorList& rColorList );
+                            std::vector<std::unique_ptr<SvxFontItem>>& rFontTable, SvxColorList& rColorList );
     sal_Int32           LogicToTwips( sal_Int32 n );
 
     inline short        GetXValue( short nXValue ) const;
@@ -649,8 +724,8 @@ private:
     inline short        GetYValue( short nYValue ) const;
     inline sal_uInt16   GetYValue( sal_uInt16 nYValue ) const;
 
-    ContentNode*        GetPrevVisNode( ContentNode* pCurNode );
-    ContentNode*        GetNextVisNode( ContentNode* pCurNode );
+    ContentNode*        GetPrevVisNode( ContentNode const * pCurNode );
+    ContentNode*        GetNextVisNode( ContentNode const * pCurNode );
 
     const ParaPortion*  GetPrevVisPortion( const ParaPortion* pCurPortion ) const;
     const ParaPortion*  GetNextVisPortion( const ParaPortion* pCurPortion ) const;
@@ -677,7 +752,7 @@ private:
     void                CheckIdleFormatter();
 
     inline const ParaPortion* FindParaPortion( const ContentNode* pNode ) const;
-    inline ParaPortion* FindParaPortion( ContentNode* pNode );
+    inline ParaPortion* FindParaPortion( ContentNode const * pNode );
 
     css::uno::Reference< css::datatransfer::XTransferable > CreateTransferable( const EditSelection& rSelection );
 
@@ -689,7 +764,7 @@ private:
     void ImplUpdateOverflowingParaNum( sal_uInt32 );
     void ImplUpdateOverflowingLineNum( sal_uInt32, sal_uInt32, sal_uInt32 );
 
-    SpellInfo *     CreateSpellInfo( bool bMultipleDocs );
+    void CreateSpellInfo( bool bMultipleDocs );
     /// Obtains a view shell ID from the active EditView.
     ViewShellId CreateViewShellId();
 
@@ -710,7 +785,7 @@ public:
     ImpEditEngine&          operator=(const ImpEditEngine&) = delete;
 
     inline EditUndoManager& GetUndoManager();
-    inline ::svl::IUndoManager* SetUndoManager(::svl::IUndoManager* pNew);
+    inline SfxUndoManager* SetUndoManager(SfxUndoManager* pNew);
 
     void                    SetUpdateMode( bool bUp, EditView* pCurView = nullptr, bool bForceUpdate = false );
     bool                    GetUpdateMode() const   { return bUpdate; }
@@ -721,9 +796,12 @@ public:
     const Size&             GetPaperSize() const                    { return aPaperSize; }
     void                    SetPaperSize( const Size& rSz )         { aPaperSize = rSz; }
 
-    void                    SetVertical( bool bVertical, bool bTopToBottom = true);
+    void                    SetVertical( bool bVertical);
     bool                    IsVertical() const                      { return GetEditDoc().IsVertical(); }
     bool                    IsTopToBottom() const                   { return GetEditDoc().IsTopToBottom(); }
+    bool                    GetDirectVertical() const               { return GetEditDoc().GetDirectVertical(); }
+    void                    SetRotation( TextRotation nRotation);
+    TextRotation            GetRotation() const                     { return GetEditDoc().GetRotation(); }
 
     bool IsPageOverflow( ) const;
 
@@ -739,8 +817,8 @@ public:
     sal_uInt8               GetRightToLeft( sal_Int32 nPara, sal_Int32 nChar, sal_Int32* pStart = nullptr, sal_Int32* pEnd = nullptr );
     bool                    HasDifferentRTLLevels( const ContentNode* pNode );
 
-    void                    SetTextRanger( TextRanger* pRanger );
-    TextRanger*             GetTextRanger() const { return pTextRanger; }
+    void                    SetTextRanger( std::unique_ptr<TextRanger> pRanger );
+    TextRanger*             GetTextRanger() const { return pTextRanger.get(); }
 
     const Size&             GetMinAutoPaperSize() const             { return aMinAutoPaperSize; }
     void                    SetMinAutoPaperSize( const Size& rSz )  { aMinAutoPaperSize = rSz; }
@@ -763,21 +841,14 @@ public:
     EditSelectionEngine&    GetSelEngine() { return aSelEngine; }
     OUString                GetSelected( const EditSelection& rSel ) const;
 
-    const SfxItemSet&       GetEmptyItemSet();
+    const SfxItemSet& GetEmptyItemSet() const;
 
     void                    UpdateSelections();
 
     void                EnableUndo( bool bEnable );
-    bool                IsUndoEnabled()         { return bUndoEnabled; }
-    void                SetUndoMode( bool b )
-    {
-        bIsInUndo = b;
-        if (bIsInUndo)
-            EnterBlockNotifications();
-        else
-            LeaveBlockNotifications();
-    }
-    bool                IsInUndo()              { return bIsInUndo; }
+    bool                IsUndoEnabled() const   { return bUndoEnabled; }
+    void                SetUndoMode( bool b )   { bIsInUndo = b; }
+    bool                IsInUndo() const        { return bIsInUndo; }
 
     void                SetCallParaInsertedOrDeleted( bool b ) { bCallParaInsertedOrDeleted = b; }
     bool                IsCallParaInsertedOrDeleted() const { return bCallParaInsertedOrDeleted; }
@@ -789,7 +860,7 @@ public:
     EditPaM         DeleteSelected(const EditSelection& rEditSelection);
     EditPaM         InsertTextUserInput( const EditSelection& rCurEditSelection, sal_Unicode c, bool bOverwrite );
     EditPaM         InsertText(const EditSelection& aCurEditSelection, const OUString& rStr);
-    EditPaM         AutoCorrect( const EditSelection& rCurEditSelection, sal_Unicode c, bool bOverwrite, vcl::Window* pFrameWin = nullptr );
+    EditPaM         AutoCorrect( const EditSelection& rCurEditSelection, sal_Unicode c, bool bOverwrite, vcl::Window const * pFrameWin = nullptr );
     EditPaM         DeleteLeftOrRight( const EditSelection& rEditSelection, sal_uInt8 nMode, DeleteMode nDelMode );
     EditPaM         InsertParaBreak(const EditSelection& rEditSelection);
     EditPaM         InsertLineBreak(const EditSelection& aEditSelection);
@@ -800,20 +871,21 @@ public:
     EditPaM         Read(SvStream& rInput, const OUString& rBaseURL, EETextFormat eFormat, const EditSelection& rSel, SvKeyValueIterator* pHTTPHeaderAttrs = nullptr);
     void            Write(SvStream& rOutput, EETextFormat eFormat, const EditSelection& rSel);
 
-    EditTextObject* CreateTextObject();
-    EditTextObject* CreateTextObject(const EditSelection& rSel);
+    std::unique_ptr<EditTextObject> CreateTextObject();
+    std::unique_ptr<EditTextObject> CreateTextObject(const EditSelection& rSel);
     void            SetText( const EditTextObject& rTextObject );
     EditSelection   InsertText( const EditTextObject& rTextObject, EditSelection aSel );
 
-    EditSelection   MoveCursor( const KeyEvent& rKeyEvent, EditView* pEditView );
+    EditSelection const & MoveCursor( const KeyEvent& rKeyEvent, EditView* pEditView );
 
     EditSelection   MoveParagraphs( Range aParagraphs, sal_Int32 nNewPos, EditView* pCurView );
 
     sal_uInt32      CalcTextHeight( sal_uInt32* pHeightNTP );
     sal_uInt32      GetTextHeight() const;
     sal_uInt32      GetTextHeightNTP() const;
-    sal_uInt32      CalcTextWidth( bool bIgnoreExtraSpace );
-    sal_uInt32      CalcLineWidth( ParaPortion* pPortion, EditLine* pLine, bool bIgnoreExtraSpace );
+    sal_uInt32      CalcTextWidth( bool bIgnoreExtraSpace);
+    sal_uInt32      CalcParaWidth( sal_Int32 nParagraph, bool bIgnoreExtraSpace );
+    sal_uInt32      CalcLineWidth( ParaPortion* pPortion, EditLine* pLine, bool bIgnoreExtraSpace);
     sal_Int32       GetLineCount( sal_Int32 nParagraph ) const;
     sal_Int32       GetLineLen( sal_Int32 nParagraph, sal_Int32 nLine ) const;
     void            GetLineBoundaries( /*out*/sal_Int32& rStart, /*out*/sal_Int32& rEnd, sal_Int32 nParagraph, sal_Int32 nLine ) const;
@@ -833,6 +905,11 @@ public:
 
     bool            HasParaAttrib( sal_Int32 nPara, sal_uInt16 nWhich ) const;
     const SfxPoolItem&  GetParaAttrib( sal_Int32 nPara, sal_uInt16 nWhich ) const;
+    template<class T>
+    const T&            GetParaAttrib( sal_Int32 nPara, TypedWhichId<T> nWhich ) const
+    {
+        return static_cast<const T&>(GetParaAttrib(nPara, sal_uInt16(nWhich)));
+    }
 
     tools::Rectangle       PaMtoEditCursor( EditPaM aPaM, GetCursorFlags nFlags = GetCursorFlags::NONE );
     tools::Rectangle       GetEditCursor( ParaPortion* pPortion, sal_Int32 nIndex, GetCursorFlags nFlags = GetCursorFlags::NONE );
@@ -842,9 +919,7 @@ public:
     void            SetModifyHdl( const Link<LinkParamNone*,void>& rLink ) { aModifyHdl = rLink; }
     const Link<LinkParamNone*,void>& GetModifyHdl() const { return aModifyHdl; }
 
-    bool            IsInSelectionMode() { return bInSelection; }
-
-    void            IndentBlock( EditView* pView, bool bRight );
+    bool            IsInSelectionMode() const { return bInSelection; }
 
 //  For Undo/Redo
     void            Undo( EditView* pView );
@@ -853,7 +928,7 @@ public:
 //  OV-Special
     void            InvalidateFromParagraph( sal_Int32 nFirstInvPara );
     EditPaM         InsertParagraph( sal_Int32 nPara );
-    EditSelection*  SelectParagraph( sal_Int32 nPara );
+    std::unique_ptr<EditSelection> SelectParagraph( sal_Int32 nPara );
 
     void            SetStatusEventHdl( const Link<EditStatus&, void>& rLink ) { aStatusHdlLink = rLink; }
     const Link<EditStatus&,void>& GetStatusEventHdl() const               { return aStatusHdlLink; }
@@ -883,21 +958,17 @@ public:
     SfxStyleSheet*      GetStyleSheet( sal_Int32 nPara );
 
     void                UpdateParagraphsWithStyleSheet( SfxStyleSheet* pStyle );
-    void                RemoveStyleFromParagraphs( SfxStyleSheet* pStyle );
+    void                RemoveStyleFromParagraphs( SfxStyleSheet const * pStyle );
 
     OutputDevice*       GetRefDevice() const { return pRefDev.get(); }
     void                SetRefDevice( OutputDevice* pRefDef );
 
-    const MapMode&      GetRefMapMode() { return pRefDev->GetMapMode(); }
+    const MapMode&      GetRefMapMode() const { return pRefDev->GetMapMode(); }
     void                SetRefMapMode( const MapMode& rMapMode );
 
     InternalEditStatus& GetStatus() { return aStatus; }
     void                CallStatusHdl();
     void                DelayedCallStatusHdl()  { aStatusTimer.Start(); }
-
-    void                CallNotify( EENotify& rNotify );
-    void                EnterBlockNotifications();
-    void                LeaveBlockNotifications();
 
     void                UndoActionStart( sal_uInt16 nId );
     void                UndoActionStart( sal_uInt16 nId, const ESelection& rSel );
@@ -912,13 +983,13 @@ public:
                             { xSpeller = xSpl; }
     const css::uno::Reference< css::linguistic2::XHyphenator >&
                         GetHyphenator() const { return xHyphenator; }
-    void                SetHyphenator( css::uno::Reference< css::linguistic2::XHyphenator >  &xHyph )
+    void                SetHyphenator( css::uno::Reference< css::linguistic2::XHyphenator > const &xHyph )
                             { xHyphenator = xHyph; }
 
     void GetAllMisspellRanges( std::vector<editeng::MisspellRanges>& rRanges ) const;
     void SetAllMisspellRanges( const std::vector<editeng::MisspellRanges>& rRanges );
 
-    SpellInfo*          GetSpellInfo() const { return pSpellInfo; }
+    SpellInfo*          GetSpellInfo() const { return pSpellInfo.get(); }
 
     void                SetDefaultLanguage( LanguageType eLang ) { eDefLanguage = eLang; }
     LanguageType        GetDefaultLanguage() const { return eDefLanguage; }
@@ -938,7 +1009,7 @@ public:
     void                Convert( EditView* pEditView, LanguageType nSrcLang, LanguageType nDestLang, const vcl::Font *pDestFont, sal_Int32 nOptions, bool bIsInteractive, bool bMultipleDoc );
     void                ImpConvert( OUString &rConvTxt, LanguageType &rConvTxtLang, EditView* pEditView, LanguageType nSrcLang, const ESelection &rConvRange,
                                     bool bAllowImplicitChangesForNotConvertibleText, LanguageType nTargetLang, const vcl::Font *pTargetFont );
-    ConvInfo *          GetConvInfo() const { return pConvInfo; }
+    ConvInfo *          GetConvInfo() const { return pConvInfo.get(); }
     bool                HasConvertibleTextPortion( LanguageType nLang );
     void                SetLanguageAndFont( const ESelection &rESel,
                                 LanguageType nLang, sal_uInt16 nLangWhichId,
@@ -951,14 +1022,14 @@ public:
     css::uno::Reference< css::linguistic2::XSpellAlternatives >
                         ImpFindNextError(EditSelection& rSelection);
     //spell and return a sentence
-    bool                SpellSentence(EditView& rView, svx::SpellPortions& rToFill );
+    bool                SpellSentence(EditView const & rView, svx::SpellPortions& rToFill );
     //put spelling back to start of current sentence - needed after switch of grammar support
-    void                PutSpellingToSentenceStart( EditView& rEditView );
+    void                PutSpellingToSentenceStart( EditView const & rEditView );
     //applies a changed sentence
-    void                ApplyChangedSentence(EditView& rEditView, const svx::SpellPortions& rNewPortions, bool bRecheck );
+    void                ApplyChangedSentence(EditView const & rEditView, const svx::SpellPortions& rNewPortions, bool bRecheck );
     //adds one or more portions of text to the SpellPortions depending on language changes
     void                AddPortionIterated(
-                          EditView& rEditView,
+                          EditView const & rEditView,
                           const EditSelection &rSel,
                           const css::uno::Reference< css::linguistic2::XSpellAlternatives >& xAlt,
                           svx::SpellPortions& rToFill);
@@ -1015,8 +1086,8 @@ public:
     void                SetAddExtLeading( bool b );
     bool                IsAddExtLeading() const { return bAddExtLeading; }
 
-    rtl::Reference<SvxForbiddenCharactersTable> GetForbiddenCharsTable() const;
-    static void         SetForbiddenCharsTable( const rtl::Reference<SvxForbiddenCharactersTable>& xForbiddenChars );
+    static std::shared_ptr<SvxForbiddenCharactersTable> const & GetForbiddenCharsTable();
+    static void         SetForbiddenCharsTable( const std::shared_ptr<SvxForbiddenCharactersTable>& xForbiddenChars );
 
     /** sets a link that is called at the beginning of a drag operation at an edit view */
     void                SetBeginDropHdl( const Link<EditView*,void>& rLink ) { maBeginDropHdl = rLink; }
@@ -1034,7 +1105,13 @@ public:
         mark (apostrophe) or not (default is on) */
     void            SetReplaceLeadingSingleQuotationMark( bool bReplace ) { mbReplaceLeadingSingleQuotationMark = bReplace; }
     bool            IsReplaceLeadingSingleQuotationMark() const { return mbReplaceLeadingSingleQuotationMark; }
+
+    /** Whether last AutoCorrect inserted a NO-BREAK SPACE that may need to be removed again. */
+    bool            IsNbspRunNext() const { return mbNbspRunNext; }
+
     void Dispose();
+    void SetLOKSpecialPaperSize(const Size& rSize) { aLOKSpecialPaperSize = rSize; }
+    const Size& GetLOKSpecialPaperSize() const { return aLOKSpecialPaperSize; }
 };
 
 inline EPaM ImpEditEngine::CreateEPaM( const EditPaM& rPaM )
@@ -1109,9 +1186,9 @@ inline EditUndoManager& ImpEditEngine::GetUndoManager()
     return *pUndoManager;
 }
 
-inline ::svl::IUndoManager* ImpEditEngine::SetUndoManager(::svl::IUndoManager* pNew)
+inline SfxUndoManager* ImpEditEngine::SetUndoManager(SfxUndoManager* pNew)
 {
-    ::svl::IUndoManager* pRetval = pUndoManager;
+    SfxUndoManager* pRetval = pUndoManager;
 
     if(pUndoManager)
     {
@@ -1135,7 +1212,7 @@ inline const ParaPortion* ImpEditEngine::FindParaPortion( const ContentNode* pNo
     return GetParaPortions()[ nPos ];
 }
 
-inline ParaPortion* ImpEditEngine::FindParaPortion( ContentNode* pNode )
+inline ParaPortion* ImpEditEngine::FindParaPortion( ContentNode const * pNode )
 {
     sal_Int32 nPos = aEditDoc.GetPos( pNode );
     DBG_ASSERT( nPos < GetParaPortions().Count(), "Portionloser Node?" );
@@ -1153,7 +1230,7 @@ inline short ImpEditEngine::GetXValue( short nXValue ) const
     if ( !aStatus.DoStretch() || ( nStretchX == 100 ) )
         return nXValue;
 
-    return (short) ((long)nXValue*nStretchX/100);
+    return static_cast<short>(static_cast<long>(nXValue)*nStretchX/100);
 }
 
 
@@ -1170,7 +1247,7 @@ inline short ImpEditEngine::GetYValue( short nYValue ) const
     if ( !aStatus.DoStretch() || ( nStretchY == 100 ) )
         return nYValue;
 
-    return (short) ((long)nYValue*nStretchY/100);
+    return static_cast<short>(static_cast<long>(nYValue)*nStretchY/100);
 }
 
 inline sal_uInt16 ImpEditEngine::GetYValue( sal_uInt16 nYValue ) const
@@ -1178,39 +1255,37 @@ inline sal_uInt16 ImpEditEngine::GetYValue( sal_uInt16 nYValue ) const
     if ( !aStatus.DoStretch() || ( nStretchY == 100 ) )
         return nYValue;
 
-    return (sal_uInt16) ((long)nYValue*nStretchY/100);
+    return static_cast<sal_uInt16>(static_cast<long>(nYValue)*nStretchY/100);
 }
 
-inline const Pointer& ImpEditView::GetPointer()
+inline PointerStyle ImpEditView::GetPointer()
 {
-    if ( !pPointer )
+    if ( !mxPointer )
     {
-        pPointer = new Pointer( IsVertical() ? PointerStyle::TextVertical : PointerStyle::Text );
-        return *pPointer;
+        mxPointer = IsVertical() ? PointerStyle::TextVertical : PointerStyle::Text;
+        return *mxPointer;
     }
 
-    if(PointerStyle::Text == pPointer->GetStyle() && IsVertical())
+    if(PointerStyle::Text == *mxPointer && IsVertical())
     {
-        delete pPointer;
-        pPointer = new Pointer(PointerStyle::TextVertical);
+        mxPointer = PointerStyle::TextVertical;
     }
-    else if(PointerStyle::TextVertical == pPointer->GetStyle() && !IsVertical())
+    else if(PointerStyle::TextVertical == *mxPointer && !IsVertical())
     {
-        delete pPointer;
-        pPointer = new Pointer(PointerStyle::Text);
+        mxPointer = PointerStyle::Text;
     }
 
-    return *pPointer;
+    return *mxPointer;
 }
 
 inline vcl::Cursor* ImpEditView::GetCursor()
 {
     if ( !pCursor )
-        pCursor = new vcl::Cursor;
-    return pCursor;
+        pCursor.reset( new vcl::Cursor );
+    return pCursor.get();
 }
 
-void ConvertItem( SfxPoolItem& rPoolItem, MapUnit eSourceUnit, MapUnit eDestUnit );
+void ConvertItem( std::unique_ptr<SfxPoolItem>& rPoolItem, MapUnit eSourceUnit, MapUnit eDestUnit );
 void ConvertAndPutItems( SfxItemSet& rDest, const SfxItemSet& rSource, const MapUnit* pSourceUnit = nullptr, const MapUnit* pDestUnit = nullptr );
 AsianCompressionFlags GetCharTypeForCompression( sal_Unicode cChar );
 Point Rotate( const Point& rPoint, short nOrientation, const Point& rOrigin );

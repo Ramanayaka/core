@@ -19,38 +19,33 @@
 
 #include <memory>
 #include <sal/config.h>
+#include <sal/log.hxx>
 
-#include "scitems.hxx"
+#include <scitems.hxx>
 #include <editeng/eeitem.hxx>
 #include <svx/svdpool.hxx>
 #include <svx/svdobj.hxx>
 #include <editeng/editeng.hxx>
 #include <editeng/editobj.hxx>
 #include <editeng/flditem.hxx>
-#include <svx/unomid.hxx>
+#include <editeng/fhgtitem.hxx>
 #include <editeng/unoprnms.hxx>
 #include <editeng/unofored.hxx>
-#include <vcl/virdev.hxx>
 #include <vcl/svapp.hxx>
-#include <com/sun/star/awt/FontSlant.hpp>
 
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <editeng/unoipset.hxx>
-#include "textuno.hxx"
-#include "fielduno.hxx"
-#include "servuno.hxx"
-#include "editsrc.hxx"
-#include "docsh.hxx"
-#include "editutil.hxx"
-#include "miscuno.hxx"
-#include "cellsuno.hxx"
-#include "hints.hxx"
-#include "cellvalue.hxx"
-#include "cellform.hxx"
-#include "patattr.hxx"
-#include "formulacell.hxx"
-#include "docfunc.hxx"
-#include "scmod.hxx"
+#include <textuno.hxx>
+#include <fielduno.hxx>
+#include <editsrc.hxx>
+#include <docsh.hxx>
+#include <editutil.hxx>
+#include <miscuno.hxx>
+#include <cellsuno.hxx>
+#include <cellvalue.hxx>
+#include <cellform.hxx>
+#include <patattr.hxx>
+#include <docfunc.hxx>
+#include <scmod.hxx>
 
 using namespace com::sun::star;
 
@@ -62,7 +57,7 @@ static const SvxItemPropertySet * lcl_GetHdFtPropertySet()
         SVX_UNOEDIT_FONT_PROPERTIES,
         SVX_UNOEDIT_PARA_PROPERTIES,
         SVX_UNOEDIT_NUMBERING_PROPERTIE,    // for completeness of service ParagraphProperties
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     static bool bTwipsSet = false;
 
@@ -72,7 +67,7 @@ static const SvxItemPropertySet * lcl_GetHdFtPropertySet()
         //  (headers/footers are in twips)
 
         SfxItemPropertyMapEntry* pEntry = aHdFtPropertyMap_Impl;
-        while (!pEntry->aName.isEmpty())
+        while (pEntry->aName.getLength())
         {
             if ( ( pEntry->nWID == EE_CHAR_FONTHEIGHT ||
                    pEntry->nWID == EE_CHAR_FONTHEIGHT_CJK ||
@@ -142,9 +137,7 @@ uno::Reference<text::XText> SAL_CALL ScHeaderFooterContentObj::getRightText()
 sal_Int64 SAL_CALL ScHeaderFooterContentObj::getSomething(
                 const uno::Sequence<sal_Int8 >& rId )
 {
-    if ( rId.getLength() == 16 &&
-          0 == memcmp( getUnoTunnelId().getConstArray(),
-                                    rId.getConstArray(), 16 ) )
+    if ( isUnoTunnelId<ScHeaderFooterContentObj>(rId) )
     {
         return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_IntPtr>(this));
     }
@@ -164,11 +157,7 @@ const uno::Sequence<sal_Int8>& ScHeaderFooterContentObj::getUnoTunnelId()
 rtl::Reference<ScHeaderFooterContentObj> ScHeaderFooterContentObj::getImplementation(
                                 const uno::Reference<sheet::XHeaderFooterContent>& rObj)
 {
-    rtl::Reference<ScHeaderFooterContentObj> pRet;
-    uno::Reference<lang::XUnoTunnel> xUT(rObj, uno::UNO_QUERY);
-    if (xUT.is())
-        pRet = reinterpret_cast<ScHeaderFooterContentObj*>(sal::static_int_cast<sal_IntPtr>(xUT->getSomething(getUnoTunnelId())));
-    return pRet;
+    return comphelper::getUnoTunnelImplementation<ScHeaderFooterContentObj>(rObj);
 }
 
 void ScHeaderFooterContentObj::Init( const EditTextObject* pLeft,
@@ -186,8 +175,6 @@ ScHeaderFooterTextData::ScHeaderFooterTextData(
     mpTextObj(pTextObj ? pTextObj->Clone() : nullptr),
     xContentObj( xContent ),
     nPart( nP ),
-    pEditEngine( nullptr ),
-    pForwarder( nullptr ),
     bDataValid(false)
 {
 }
@@ -196,8 +183,8 @@ ScHeaderFooterTextData::~ScHeaderFooterTextData()
 {
     SolarMutexGuard aGuard;     //  needed for EditEngine dtor
 
-    delete pForwarder;
-    delete pEditEngine;
+    pForwarder.reset();
+    pEditEngine.reset();
 }
 
 SvxTextForwarder* ScHeaderFooterTextData::GetTextForwarder()
@@ -206,56 +193,53 @@ SvxTextForwarder* ScHeaderFooterTextData::GetTextForwarder()
     {
         SfxItemPool* pEnginePool = EditEngine::CreatePool();
         pEnginePool->FreezeIdRanges();
-        ScHeaderEditEngine* pHdrEngine = new ScHeaderEditEngine( pEnginePool );
+        std::unique_ptr<ScHeaderEditEngine> pHdrEngine(new ScHeaderEditEngine( pEnginePool ));
 
         pHdrEngine->EnableUndo( false );
-        pHdrEngine->SetRefMapMode( MapUnit::MapTwip );
+        pHdrEngine->SetRefMapMode(MapMode(MapUnit::MapTwip));
 
         //  default font must be set, independently of document
         //  -> use global pool from module
 
         SfxItemSet aDefaults( pHdrEngine->GetEmptyItemSet() );
-        const ScPatternAttr& rPattern = static_cast<const ScPatternAttr&>(SC_MOD()->GetPool().GetDefaultItem(ATTR_PATTERN));
+        const ScPatternAttr& rPattern = SC_MOD()->GetPool().GetDefaultItem(ATTR_PATTERN);
         rPattern.FillEditItemSet( &aDefaults );
         //  FillEditItemSet adjusts font height to 1/100th mm,
         //  but for header/footer twips is needed, as in the PatternAttr:
-        std::unique_ptr<SfxPoolItem> pNewItem( rPattern.GetItem(ATTR_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT) );
-        aDefaults.Put( *pNewItem );
-        pNewItem.reset( rPattern.GetItem(ATTR_CJK_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CJK) );
-        aDefaults.Put( *pNewItem );
-        pNewItem.reset( rPattern.GetItem(ATTR_CTL_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CTL) );
-        aDefaults.Put( *pNewItem );
+        aDefaults.Put( rPattern.GetItem(ATTR_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT) );
+        aDefaults.Put( rPattern.GetItem(ATTR_CJK_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CJK) ) ;
+        aDefaults.Put( rPattern.GetItem(ATTR_CTL_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CTL) );
         pHdrEngine->SetDefaults( aDefaults );
 
         ScHeaderFieldData aData;
         ScHeaderFooterTextObj::FillDummyFieldData( aData );
         pHdrEngine->SetData( aData );
 
-        pEditEngine = pHdrEngine;
-        pForwarder = new SvxEditEngineForwarder(*pEditEngine);
+        pEditEngine = std::move(pHdrEngine);
+        pForwarder.reset( new SvxEditEngineForwarder(*pEditEngine) );
     }
 
     if (bDataValid)
-        return pForwarder;
+        return pForwarder.get();
 
     if (mpTextObj)
-        pEditEngine->SetText(*mpTextObj);
+        pEditEngine->SetTextCurrentDefaults(*mpTextObj);
 
     bDataValid = true;
-    return pForwarder;
+    return pForwarder.get();
 }
 
 void ScHeaderFooterTextData::UpdateData()
 {
     if (pEditEngine)
     {
-        mpTextObj.reset(pEditEngine->CreateTextObject());
+        mpTextObj = pEditEngine->CreateTextObject();
     }
 }
 
 void ScHeaderFooterTextData::UpdateData(EditEngine& rEditEngine)
 {
-    mpTextObj.reset(rEditEngine.CreateTextObject());
+    mpTextObj = rEditEngine.CreateTextObject();
     bDataValid = false;
 }
 
@@ -358,7 +342,7 @@ OUString SAL_CALL ScHeaderFooterTextObj::getString()
         FillDummyFieldData( aData );
         aEditEngine.SetData( aData );
 
-        aEditEngine.SetText(*pData);
+        aEditEngine.SetTextCurrentDefaults(*pData);
         aRet = ScEditUtil::GetSpaceDelimitedString( aEditEngine );
     }
     return aRet;
@@ -370,7 +354,7 @@ void SAL_CALL ScHeaderFooterTextObj::setString( const OUString& aText )
 
     // for pure text, no font info is needed in pool defaults
     ScHeaderEditEngine aEditEngine(EditEngine::CreatePool());
-    aEditEngine.SetText( aText );
+    aEditEngine.SetTextCurrentDefaults( aText );
     aTextData.UpdateData(aEditEngine);
 }
 
@@ -401,10 +385,10 @@ void SAL_CALL ScHeaderFooterTextObj::insertTextContent(
     SolarMutexGuard aGuard;
     if ( xContent.is() && xRange.is() )
     {
-        ScEditFieldObj* pHeaderField = ScEditFieldObj::getImplementation( xContent );
+        ScEditFieldObj* pHeaderField = comphelper::getUnoTunnelImplementation<ScEditFieldObj>( xContent );
 
         SvxUnoTextRangeBase* pTextRange =
-            ScHeaderFooterTextCursor::getImplementation( xRange );
+            comphelper::getUnoTunnelImplementation<ScHeaderFooterTextCursor>( xRange );
 
         if ( pHeaderField && !pHeaderField->IsInserted() && pTextRange )
         {
@@ -434,20 +418,17 @@ void SAL_CALL ScHeaderFooterTextObj::insertTextContent(
             switch ( aTextData.GetPart() )
             {
                 case ScHeaderFooterPart::LEFT:
-                    xTextRange = uno::Reference<text::XTextRange>(
-                                  aTextData.GetContentObj()->getLeftText(), uno::UNO_QUERY);
+                    xTextRange = aTextData.GetContentObj()->getLeftText();
                 break;
                 case ScHeaderFooterPart::CENTER:
-                    xTextRange = uno::Reference<text::XTextRange>(
-                                  aTextData.GetContentObj()->getCenterText(), uno::UNO_QUERY);
+                    xTextRange = aTextData.GetContentObj()->getCenterText();
                 break;
                 case ScHeaderFooterPart::RIGHT:
-                    xTextRange = uno::Reference<text::XTextRange>(
-                                  aTextData.GetContentObj()->getRightText(), uno::UNO_QUERY);
+                    xTextRange = aTextData.GetContentObj()->getRightText();
                 break;
             }
 
-            pHeaderField->InitDoc(xTextRange, new ScHeaderFooterEditSource(aTextData), aSelection);
+            pHeaderField->InitDoc(xTextRange, std::make_unique<ScHeaderFooterEditSource>(aTextData), aSelection);
 
             //  for bAbsorb=FALSE, the new selection must be behind the inserted content
             //  (the xml filter relies on this)
@@ -471,7 +452,7 @@ void SAL_CALL ScHeaderFooterTextObj::removeTextContent(
     SolarMutexGuard aGuard;
     if ( xContent.is() )
     {
-        ScEditFieldObj* pHeaderField = ScEditFieldObj::getImplementation(xContent);
+        ScEditFieldObj* pHeaderField = comphelper::getUnoTunnelImplementation<ScEditFieldObj>(xContent);
         if ( pHeaderField && pHeaderField->IsInserted() )
         {
             //! check if the field is in this cell
@@ -563,31 +544,21 @@ sal_Bool SAL_CALL ScHeaderFooterTextObj::hasElements()
     return mxUnoText->hasElements();
 }
 
-ScCellTextCursor::ScCellTextCursor(const ScCellTextCursor& rOther) :
-    SvxUnoTextCursor( rOther ),
-    rTextObj( rOther.rTextObj )
-{
-    rTextObj.acquire();
-}
-
 ScCellTextCursor::ScCellTextCursor(ScCellObj& rText) :
     SvxUnoTextCursor( rText.GetUnoText() ),
-    rTextObj( rText )
+    mxTextObj( &rText )
 {
-    rTextObj.acquire();
 }
 
 ScCellTextCursor::~ScCellTextCursor() throw()
 {
-    rTextObj.release();
 }
 
 // SvxUnoTextCursor methods reimplemented here to return the right objects:
 
 uno::Reference<text::XText> SAL_CALL ScCellTextCursor::getText()
 {
-    SolarMutexGuard aGuard;
-    return &rTextObj;
+    return mxTextObj.get();
 }
 
 uno::Reference<text::XTextRange> SAL_CALL ScCellTextCursor::getStart()
@@ -626,36 +597,7 @@ uno::Reference<text::XTextRange> SAL_CALL ScCellTextCursor::getEnd()
 
 // XUnoTunnel
 
-sal_Int64 SAL_CALL ScCellTextCursor::getSomething(
-                const uno::Sequence<sal_Int8 >& rId )
-{
-    if ( rId.getLength() == 16 &&
-          0 == memcmp( getUnoTunnelId().getConstArray(),
-                                    rId.getConstArray(), 16 ) )
-    {
-        return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_IntPtr>(this));
-    }
-    return SvxUnoTextCursor::getSomething( rId );
-}
-
-namespace
-{
-    class theScCellTextCursorUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theScCellTextCursorUnoTunnelId> {};
-}
-
-const uno::Sequence<sal_Int8>& ScCellTextCursor::getUnoTunnelId()
-{
-    return theScCellTextCursorUnoTunnelId::get().getSeq();
-}
-
-ScCellTextCursor* ScCellTextCursor::getImplementation(const uno::Reference<uno::XInterface>& rObj)
-{
-    ScCellTextCursor* pRet = nullptr;
-    uno::Reference<lang::XUnoTunnel> xUT(rObj, uno::UNO_QUERY);
-    if (xUT.is())
-        pRet = reinterpret_cast<ScCellTextCursor*>(sal::static_int_cast<sal_IntPtr>(xUT->getSomething(getUnoTunnelId())));
-    return pRet;
-}
+UNO3_GETIMPLEMENTATION2_IMPL(ScCellTextCursor, SvxUnoTextCursor);
 
 ScHeaderFooterTextCursor::ScHeaderFooterTextCursor(rtl::Reference<ScHeaderFooterTextObj> const & rText) :
     SvxUnoTextCursor( rText->GetUnoText() ),
@@ -708,43 +650,7 @@ uno::Reference<text::XTextRange> SAL_CALL ScHeaderFooterTextCursor::getEnd()
 
 // XUnoTunnel
 
-sal_Int64 SAL_CALL ScHeaderFooterTextCursor::getSomething(
-                const uno::Sequence<sal_Int8 >& rId )
-{
-    if ( rId.getLength() == 16 &&
-          0 == memcmp( getUnoTunnelId().getConstArray(),
-                                    rId.getConstArray(), 16 ) )
-    {
-        return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_IntPtr>(this));
-    }
-    return SvxUnoTextCursor::getSomething( rId );
-}
-
-namespace
-{
-    class theScHeaderFooterTextCursorUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theScHeaderFooterTextCursorUnoTunnelId> {};
-}
-
-const uno::Sequence<sal_Int8>& ScHeaderFooterTextCursor::getUnoTunnelId()
-{
-    return theScHeaderFooterTextCursorUnoTunnelId::get().getSeq();
-}
-
-ScHeaderFooterTextCursor* ScHeaderFooterTextCursor::getImplementation(
-                                const uno::Reference<uno::XInterface>& rObj)
-{
-    ScHeaderFooterTextCursor* pRet = nullptr;
-    uno::Reference<lang::XUnoTunnel> xUT(rObj, uno::UNO_QUERY);
-    if (xUT.is())
-        pRet = reinterpret_cast<ScHeaderFooterTextCursor*>(sal::static_int_cast<sal_IntPtr>(xUT->getSomething(getUnoTunnelId())));
-    return pRet;
-}
-
-ScDrawTextCursor::ScDrawTextCursor(const ScDrawTextCursor& rOther) :
-    SvxUnoTextCursor( rOther ),
-    xParentText( rOther.xParentText )
-{
-}
+UNO3_GETIMPLEMENTATION2_IMPL(ScHeaderFooterTextCursor, SvxUnoTextCursor);
 
 ScDrawTextCursor::ScDrawTextCursor( const uno::Reference<text::XText>& xParent,
                                     const SvxUnoTextBase& rText ) :
@@ -802,36 +708,7 @@ uno::Reference<text::XTextRange> SAL_CALL ScDrawTextCursor::getEnd()
 
 // XUnoTunnel
 
-sal_Int64 SAL_CALL ScDrawTextCursor::getSomething(
-                const uno::Sequence<sal_Int8 >& rId )
-{
-    if ( rId.getLength() == 16 &&
-          0 == memcmp( getUnoTunnelId().getConstArray(),
-                                    rId.getConstArray(), 16 ) )
-    {
-        return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_IntPtr>(this));
-    }
-    return SvxUnoTextCursor::getSomething( rId );
-}
-
-namespace
-{
-    class theScDrawTextCursorUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theScDrawTextCursorUnoTunnelId> {};
-}
-
-const uno::Sequence<sal_Int8>& ScDrawTextCursor::getUnoTunnelId()
-{
-    return theScDrawTextCursorUnoTunnelId::get().getSeq();
-}
-
-ScDrawTextCursor* ScDrawTextCursor::getImplementation(const uno::Reference<uno::XInterface>& rObj)
-{
-    ScDrawTextCursor* pRet = nullptr;
-    uno::Reference<lang::XUnoTunnel> xUT(rObj, uno::UNO_QUERY);
-    if (xUT.is())
-        pRet = reinterpret_cast<ScDrawTextCursor*>(sal::static_int_cast<sal_IntPtr>(xUT->getSomething(getUnoTunnelId())));
-    return pRet;
-}
+UNO3_GETIMPLEMENTATION2_IMPL(ScDrawTextCursor, SvxUnoTextCursor);
 
 ScSimpleEditSourceHelper::ScSimpleEditSourceHelper()
 {
@@ -839,18 +716,18 @@ ScSimpleEditSourceHelper::ScSimpleEditSourceHelper()
     pEnginePool->SetDefaultMetric( MapUnit::Map100thMM );
     pEnginePool->FreezeIdRanges();
 
-    pEditEngine = new ScFieldEditEngine(nullptr, pEnginePool, nullptr, true);     // TRUE: become owner of pool
-    pForwarder = new SvxEditEngineForwarder( *pEditEngine );
-    pOriginalSource = new ScSimpleEditSource( pForwarder );
+    pEditEngine.reset( new ScFieldEditEngine(nullptr, pEnginePool, nullptr, true) );     // TRUE: become owner of pool
+    pForwarder.reset( new SvxEditEngineForwarder( *pEditEngine ) );
+    pOriginalSource.reset( new ScSimpleEditSource( pForwarder.get() ) );
 }
 
 ScSimpleEditSourceHelper::~ScSimpleEditSourceHelper()
 {
     SolarMutexGuard aGuard;     //  needed for EditEngine dtor
 
-    delete pOriginalSource;
-    delete pForwarder;
-    delete pEditEngine;
+    pOriginalSource.reset();
+    pForwarder.reset();
+    pEditEngine.reset();
 }
 
 ScEditEngineTextObj::ScEditEngineTextObj() :
@@ -864,14 +741,14 @@ ScEditEngineTextObj::~ScEditEngineTextObj() throw()
 
 void ScEditEngineTextObj::SetText( const EditTextObject& rTextObject )
 {
-    GetEditEngine()->SetText( rTextObject );
+    GetEditEngine()->SetTextCurrentDefaults( rTextObject );
 
     ESelection aSel;
     ::GetSelection( aSel, GetEditSource()->GetTextForwarder() );
     SetSelection( aSel );
 }
 
-EditTextObject* ScEditEngineTextObj::CreateTextObject()
+std::unique_ptr<EditTextObject> ScEditEngineTextObj::CreateTextObject()
 {
     return GetEditEngine()->CreateTextObject();
 }
@@ -879,9 +756,6 @@ EditTextObject* ScEditEngineTextObj::CreateTextObject()
 ScCellTextData::ScCellTextData(ScDocShell* pDocSh, const ScAddress& rP) :
     pDocShell( pDocSh ),
     aCellPos( rP ),
-    pEditEngine( nullptr ),
-    pForwarder( nullptr ),
-    pOriginalSource( nullptr ),
     bDataValid( false ),
     bInUpdate( false ),
     bDirty( false ),
@@ -901,18 +775,18 @@ ScCellTextData::~ScCellTextData()
         pDocShell->GetDocument().DisposeFieldEditEngine(pEditEngine);
     }
     else
-        delete pEditEngine;
+        pEditEngine.reset();
 
-    delete pForwarder;
+    pForwarder.reset();
 
-    delete pOriginalSource;
+    pOriginalSource.reset();
 }
 
 ScCellEditSource* ScCellTextData::GetOriginalSource()
 {
     if (!pOriginalSource)
-        pOriginalSource = new ScCellEditSource(pDocShell, aCellPos);
-    return pOriginalSource;
+        pOriginalSource.reset( new ScCellEditSource(pDocShell, aCellPos) );
+    return pOriginalSource.get();
 }
 
 SvxTextForwarder* ScCellTextData::GetTextForwarder()
@@ -928,7 +802,7 @@ SvxTextForwarder* ScCellTextData::GetTextForwarder()
         {
             SfxItemPool* pEnginePool = EditEngine::CreatePool();
             pEnginePool->FreezeIdRanges();
-            pEditEngine = new ScFieldEditEngine(nullptr, pEnginePool, nullptr, true);
+            pEditEngine.reset( new ScFieldEditEngine(nullptr, pEnginePool, nullptr, true) );
         }
         //  currently, GetPortions doesn't work if UpdateMode is sal_False,
         //  this will be fixed (in EditEngine) by src600
@@ -937,12 +811,12 @@ SvxTextForwarder* ScCellTextData::GetTextForwarder()
         if (pDocShell)
             pEditEngine->SetRefDevice(pDocShell->GetRefDevice());
         else
-            pEditEngine->SetRefMapMode( MapUnit::Map100thMM );
-        pForwarder = new SvxEditEngineForwarder(*pEditEngine);
+            pEditEngine->SetRefMapMode(MapMode(MapUnit::Map100thMM));
+        pForwarder.reset( new SvxEditEngineForwarder(*pEditEngine) );
     }
 
     if (bDataValid)
-        return pForwarder;
+        return pForwarder.get();
 
     OUString aText;
 
@@ -966,7 +840,7 @@ SvxTextForwarder* ScCellTextData::GetTextForwarder()
         }
         else
         {
-            sal_uLong nFormat = rDoc.GetNumberFormat(aCellPos);
+            sal_uInt32 nFormat = rDoc.GetNumberFormat(aCellPos);
             ScCellFormat::GetInputString(aCell, nFormat, aText, *rDoc.GetFormatTable(), &rDoc);
             if (!aText.isEmpty())
                 pEditEngine->SetTextNewDefaults(aText, aDefaults);
@@ -976,7 +850,7 @@ SvxTextForwarder* ScCellTextData::GetTextForwarder()
     }
 
     bDataValid = true;
-    return pForwarder;
+    return pForwarder.get();
 }
 
 void ScCellTextData::UpdateData()
@@ -1002,27 +876,18 @@ void ScCellTextData::UpdateData()
 
 void ScCellTextData::Notify( SfxBroadcaster&, const SfxHint& rHint )
 {
-    if ( dynamic_cast<const ScUpdateRefHint*>(&rHint) )
+    const SfxHintId nId = rHint.GetId();
+    if ( nId == SfxHintId::Dying )
     {
-//        const ScUpdateRefHint& rRef = (const ScUpdateRefHint&)rHint;
+        pDocShell = nullptr;                       // invalid now
 
-        //! Ref-Update
+        pForwarder.reset();
+        pEditEngine.reset();     // EditEngine uses document's pool
     }
-    else
+    else if ( nId == SfxHintId::DataChanged )
     {
-        const SfxHintId nId = rHint.GetId();
-        if ( nId == SfxHintId::Dying )
-        {
-            pDocShell = nullptr;                       // invalid now
-
-            DELETEZ( pForwarder );
-            DELETEZ( pEditEngine );     // EditEngine uses document's pool
-        }
-        else if ( nId == SfxHintId::DataChanged )
-        {
-            if (!bInUpdate)                         // not for own UpdateData calls
-                bDataValid = false;                 // text has to be read from the cell again
-        }
+        if (!bInUpdate)                         // not for own UpdateData calls
+            bDataValid = false;                 // text has to be read from the cell again
     }
 }
 
@@ -1032,7 +897,7 @@ ScCellTextObj::ScCellTextObj(ScDocShell* pDocSh, const ScAddress& rP) :
 {
 }
 
-ScCellTextObj::~ScCellTextObj() throw()
+ScCellTextObj::~ScCellTextObj() COVERITY_NOEXCEPT_FALSE
 {
 }
 

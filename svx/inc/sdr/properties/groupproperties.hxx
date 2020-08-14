@@ -23,13 +23,10 @@
 #include <svx/sdr/properties/defaultproperties.hxx>
 
 
-namespace sdr
-{
-    namespace properties
+namespace sdr::properties
     {
-        class GroupProperties : public DefaultProperties
+        class GroupProperties final : public DefaultProperties
         {
-        protected:
             // create a new itemset
             virtual std::unique_ptr<SfxItemSet> CreateObjectSpecificItemSet(SfxItemPool& rPool) override;
 
@@ -56,7 +53,7 @@ namespace sdr
             virtual ~GroupProperties() override;
 
             // Clone() operator, normally just calls the local copy constructor
-            virtual BaseProperties& Clone(SdrObject& rObj) const override;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
 
             // get itemset
             virtual const SfxItemSet& GetObjectItemSet() const override;
@@ -81,7 +78,7 @@ namespace sdr
             virtual void ClearObjectItem(const sal_uInt16 nWhich = 0) override;
 
             // clear single item direct, do not do any notifies or things like that.
-            // Also supports complete deleteion of items when default parameter 0 is used.
+            // Also supports complete deletion of items when default parameter 0 is used.
             virtual void ClearObjectItemDirect(const sal_uInt16 nWhich) override;
 
             // Set a single item, iterate over hierarchies if necessary.
@@ -103,15 +100,11 @@ namespace sdr
             // DefaultProperties::GetObjectItemSet() if a new ItemSet is created
             virtual void ForceDefaultAttributes() override;
 
-            // Move properties to a new ItemPool.
-            virtual void MoveToItemPool(SfxItemPool* pSrcPool, SfxItemPool* pDestPool, SdrModel* pNewModel) override;
-
             // force all attributes which come from styles to hard attributes
             // to be able to live without the style.
             virtual void ForceStyleToHardAttributes() override;
         };
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace sdr::properties
 
 
 #endif // INCLUDED_SVX_INC_SDR_PROPERTIES_GROUPPROPERTIES_HXX

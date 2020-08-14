@@ -23,47 +23,49 @@
 #include <memory>
 #include <svx/svdobj.hxx>
 #include <svx/svxdllapi.h>
-
+#include <svx/svdpage.hxx>
 
 // Forward declarations
-
-
-class SdrObjList;
-class SdrObjListIter;
 class SfxItemSet;
 
-
 //   SdrObjGroup
-
-
-class SVX_DLLPUBLIC SdrObjGroup : public SdrObject
+class SVXCORE_DLLPUBLIC SdrObjGroup final : public SdrObject, public SdrObjList
 {
 private:
-protected:
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
 
-    std::unique_ptr<SdrObjList> pSub;    // sub list (children)
-    Point                       aRefPoint; // Reference point inside the object group
+    Point                       aRefPoint;      // Reference point inside the object group
+
+private:
+    // protected destructor - due to final, make private
+    virtual ~SdrObjGroup() override;
 
 public:
-    SdrObjGroup();
-    virtual ~SdrObjGroup() override;
+    SdrObjGroup(SdrModel& rSdrModel);
+
+    // derived from SdrObjList
+    virtual SdrPage* getSdrPageFromSdrObjList() const override;
+    virtual SdrObject* getSdrObjectFromSdrObjList() const override;
+
+    // derived from SdrObject
+    virtual SdrObjList* getChildrenOfSdrObject() const override;
 
     virtual void SetBoundRectDirty() override;
     virtual sal_uInt16 GetObjIdentifier() const override;
     virtual void TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
     virtual SdrLayerID GetLayer() const override;
     virtual void NbcSetLayer(SdrLayerID nLayer) override;
-    virtual void SetObjList(SdrObjList* pNewObjList) override;
-    virtual void SetPage(SdrPage* pNewPage) override;
-    virtual void SetModel(SdrModel* pNewModel) override;
+
+    // react on model/page change
+    virtual void handlePageChange(SdrPage* pOldPage, SdrPage* pNewPage) override;
+
     virtual SdrObjList* GetSubList() const override;
 
     virtual const tools::Rectangle& GetCurrentBoundRect() const override;
     virtual const tools::Rectangle& GetSnapRect() const override;
 
-    virtual SdrObjGroup* Clone() const override;
+    virtual SdrObjGroup* CloneSdrObject(SdrModel& rTargetModel) const override;
     SdrObjGroup& operator=(const SdrObjGroup& rObj);
 
     virtual OUString TakeObjNameSingul() const override;
@@ -101,11 +103,10 @@ public:
     virtual void NbcSetLogicRect(const tools::Rectangle& rRect) override;
 
     virtual void NbcReformatText() override;
-    virtual void ReformatText() override;
 
-    virtual SdrObject* DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
+    virtual SdrObjectUniquePtr DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
 
-    virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif // INCLUDED_SVX_SVDOGRP_HXX

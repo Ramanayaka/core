@@ -21,21 +21,21 @@
 
 #include "PropertyMapper.hxx"
 
-#include <com/sun/star/chart2/DataPointLabel.hpp>
-#include <com/sun/star/chart2/Symbol.hpp>
 #include <com/sun/star/chart2/StackingDirection.hpp>
-#include <com/sun/star/chart2/data/XLabeledDataSequence.hpp>
-#include <com/sun/star/chart2/XChartType.hpp>
-#include <com/sun/star/chart2/XDataSeries.hpp>
-#include <com/sun/star/drawing/HomogenMatrix.hpp>
 #include <com/sun/star/drawing/PolyPolygonShape3D.hpp>
-#include <com/sun/star/drawing/XShape.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <cppuhelper/weakref.hxx>
+#include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/awt/Point.hpp>
 
 #include <memory>
-#include <vector>
 #include <map>
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::chart2 { class XChartType; }
+namespace com::sun::star::chart2 { class XDataSeries; }
+namespace com::sun::star::chart2::data { class XDataSequence; }
+namespace com::sun::star::chart2 { struct DataPointLabel; }
+namespace com::sun::star::chart2 { struct Symbol; }
+namespace com::sun::star::drawing { class XShapes; }
 
 namespace chart
 {
@@ -103,11 +103,13 @@ public:
     bool        hasExplicitNumberFormat( sal_Int32 nPointIndex, bool bForPercentage ) const;
     sal_Int32   getExplicitNumberFormat( sal_Int32 nPointIndex, bool bForPercentage ) const;
     sal_Int32   detectNumberFormatKey( sal_Int32 nPointIndex ) const;
-    bool        shouldLabelNumberFormatKeyBeDetectedFromYAxis() const;
 
     sal_Int32 getLabelPlacement(
         sal_Int32 nPointIndex, const css::uno::Reference<css::chart2::XChartType>& xChartType,
         bool bSwapXAndY ) const;
+
+    css::awt::Point getLabelPosition( css::awt::Point aTextShapePos, sal_Int32 nPointIndex ) const;
+    bool isLabelCustomPos( sal_Int32 nPointIndex ) const;
 
     css::uno::Reference<css::beans::XPropertySet> getPropertiesOfPoint( sal_Int32 index ) const;
 

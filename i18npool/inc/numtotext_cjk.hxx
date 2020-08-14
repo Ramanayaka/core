@@ -20,12 +20,12 @@
 #ifndef INCLUDED_I18NPOOL_INC_NUMTOTEXT_CJK_HXX
 #define INCLUDED_I18NPOOL_INC_NUMTOTEXT_CJK_HXX
 
-#include <transliteration_Numeric.hxx>
+#include "transliteration_Numeric.hxx"
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 #define TRANSLITERATION_NUMTOTEXT_CJK( name ) \
-class NumToText##name : public transliteration_Numeric \
+class NumToText##name final : public transliteration_Numeric \
 { \
 public: \
         NumToText##name (); \
@@ -64,7 +64,7 @@ TRANSLITERATION_NUMTOTEXT_CJK ( HangulCircledSyllable_ko )
 
 #undef TRANSLITERATION_NUMTOTEXT
 
-} } } }
+}
 
 #endif // INCLUDED_I18NPOOL_INC_NUMTOTEXT_CJK_HXX
 

@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "apitools.hxx"
-#include "dbastrings.hrc"
+#include <apitools.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;

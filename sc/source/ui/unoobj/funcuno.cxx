@@ -21,30 +21,30 @@
 #include <sfx2/app.hxx>
 #include <svl/itemprop.hxx>
 #include <svl/sharedstringpool.hxx>
+#include <unotools/charclass.hxx>
+#include <osl/diagnose.h>
+#include <vcl/svapp.hxx>
 
-#include "scitems.hxx"
-#include "funcuno.hxx"
-#include "miscuno.hxx"
-#include "cellsuno.hxx"
-#include "scdll.hxx"
-#include "document.hxx"
-#include "compiler.hxx"
+#include <funcuno.hxx>
+#include <miscuno.hxx>
+#include <cellsuno.hxx>
+#include <scdll.hxx>
+#include <document.hxx>
+#include <compiler.hxx>
 #include <formula/errorcodes.hxx>
-#include "callform.hxx"
-#include "addincol.hxx"
-#include "rangeseq.hxx"
-#include "formulacell.hxx"
-#include "docoptio.hxx"
-#include "optuno.hxx"
-#include <docuno.hxx>
-#include "markdata.hxx"
-#include "patattr.hxx"
-#include "docpool.hxx"
-#include "attrib.hxx"
-#include "clipparam.hxx"
-#include "dociter.hxx"
-#include "stringutil.hxx"
-#include "tokenarray.hxx"
+#include <callform.hxx>
+#include <addincol.hxx>
+#include <rangeseq.hxx>
+#include <formulacell.hxx>
+#include <docoptio.hxx>
+#include <optuno.hxx>
+#include <markdata.hxx>
+#include <patattr.hxx>
+#include <docpool.hxx>
+#include <attrib.hxx>
+#include <clipparam.hxx>
+#include <stringutil.hxx>
+#include <tokenarray.hxx>
 #include <memory>
 
 using namespace com::sun::star;
@@ -56,6 +56,8 @@ using namespace com::sun::star;
 #define SCDOCSETTINGS_SERVICE       "com.sun.star.sheet.SpreadsheetDocumentSettings"
 
 // helper to use cached document if not in use, temporary document otherwise
+
+namespace {
 
 class ScTempDocSource
 {
@@ -72,9 +74,11 @@ public:
     ScDocument*     GetDocument();
 };
 
+}
+
 ScDocument* ScTempDocSource::CreateDocument()
 {
-    ScDocument* pDoc = new ScDocument;                  // SCDOCMODE_DOCUMENT
+    ScDocument* pDoc = new ScDocument( SCDOCMODE_FUNCTIONACCESS );
     pDoc->MakeTable( 0 );
     return pDoc;
 }
@@ -141,23 +145,23 @@ static bool lcl_CopyData( ScDocument* pSrcDoc, const ScRange& rSrcRange,
                 rSrcRange.aEnd.Row() - rSrcRange.aStart.Row() + rDestPos.Row(),
                 nDestTab ) );
 
-    std::unique_ptr<ScDocument> pClipDoc(new ScDocument( SCDOCMODE_CLIP ));
-    ScMarkData aSourceMark;
+    ScDocumentUniquePtr pClipDoc(new ScDocument( SCDOCMODE_CLIP ));
+    ScMarkData aSourceMark(pSrcDoc->GetSheetLimits());
     aSourceMark.SelectOneTable( nSrcTab );      // for CopyToClip
     aSourceMark.SetMarkArea( rSrcRange );
     ScClipParam aClipParam(rSrcRange, false);
     pSrcDoc->CopyToClip(aClipParam, pClipDoc.get(), &aSourceMark, false, false);
 
-    if ( pClipDoc->HasAttrib( 0,0,nSrcTab, MAXCOL,MAXROW,nSrcTab,
+    if ( pClipDoc->HasAttrib( 0,0,nSrcTab, pClipDoc->MaxCol(), pClipDoc->MaxRow(),nSrcTab,
                                 HasAttrFlags::Merged | HasAttrFlags::Overlapped ) )
     {
         ScPatternAttr aPattern( pSrcDoc->GetPool() );
         aPattern.GetItemSet().Put( ScMergeAttr() );             // Defaults
         aPattern.GetItemSet().Put( ScMergeFlagAttr() );
-        pClipDoc->ApplyPatternAreaTab( 0,0, MAXCOL,MAXROW, nSrcTab, aPattern );
+        pClipDoc->ApplyPatternAreaTab( 0,0, pClipDoc->MaxCol(), pClipDoc->MaxRow(), nSrcTab, aPattern );
     }
 
-    ScMarkData aDestMark;
+    ScMarkData aDestMark(pDestDoc->GetSheetLimits());
     aDestMark.SelectOneTable( nDestTab );
     aDestMark.SetMarkArea( aNewRange );
     pDestDoc->CopyFromClip( aNewRange, aDestMark, InsertDeleteFlags::ALL & ~InsertDeleteFlags::FORMULA, nullptr, pClipDoc.get(), false );
@@ -166,7 +170,6 @@ static bool lcl_CopyData( ScDocument* pSrcDoc, const ScRange& rSrcRange,
 }
 
 ScFunctionAccess::ScFunctionAccess() :
-    pOptions( nullptr ),
     aPropertyMap( ScDocOptionsHelper::GetPropertyMap() ),
     mbArray( true ),    // default according to behaviour of older Office versions
     mbValid( true )
@@ -176,7 +179,7 @@ ScFunctionAccess::ScFunctionAccess() :
 
 ScFunctionAccess::~ScFunctionAccess()
 {
-    delete pOptions;
+    pOptions.reset();
     {
         // SfxBroadcaster::RemoveListener checks DBG_TESTSOLARMUTEX():
         SolarMutexGuard g;
@@ -194,7 +197,7 @@ void ScFunctionAccess::Notify( SfxBroadcaster&, const SfxHint& rHint )
     }
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 ScFunctionAcceess_get_implementation(css::uno::XComponentContext*, css::uno::Sequence<css::uno::Any> const &)
 {
     SolarMutexGuard aGuard;
@@ -205,7 +208,7 @@ ScFunctionAcceess_get_implementation(css::uno::XComponentContext*, css::uno::Seq
 // XServiceInfo
 OUString SAL_CALL ScFunctionAccess::getImplementationName()
 {
-    return OUString("stardiv.StarCalc.ScFunctionAccess");
+    return "stardiv.StarCalc.ScFunctionAccess";
 }
 
 sal_Bool SAL_CALL ScFunctionAccess::supportsService( const OUString& rServiceName )
@@ -241,13 +244,13 @@ void SAL_CALL ScFunctionAccess::setPropertyValue(
     else
     {
         if ( !pOptions )
-            pOptions = new ScDocOptions();
+            pOptions.reset( new ScDocOptions() );
 
         // options aren't initialized from configuration - always get the same default behaviour
 
         bool bDone = ScDocOptionsHelper::setPropertyValue( *pOptions, aPropertyMap, aPropertyName, aValue );
         if (!bDone)
-            throw beans::UnknownPropertyException();
+            throw beans::UnknownPropertyException(aPropertyName);
     }
 }
 
@@ -259,7 +262,7 @@ uno::Any SAL_CALL ScFunctionAccess::getPropertyValue( const OUString& aPropertyN
         return uno::Any( mbArray );
 
     if ( !pOptions )
-        pOptions = new ScDocOptions();
+        pOptions.reset( new ScDocOptions() );
 
     // options aren't initialized from configuration - always get the same default behaviour
 
@@ -273,7 +276,7 @@ SC_IMPL_DUMMY_PROPERTY_LISTENER( ScFunctionAccess )
 static bool lcl_AddFunctionToken( ScTokenArray& rArray, const OUString& rName,const ScCompiler& rCompiler )
 {
     // function names are always case-insensitive
-    OUString aUpper = ScGlobal::pCharClass->uppercase(rName);
+    OUString aUpper = ScGlobal::getCharClassPtr()->uppercase(rName);
 
     // same options as in ScCompiler::IsOpCode:
     // 1. built-in function name
@@ -313,6 +316,8 @@ static void lcl_AddRef( ScTokenArray& rArray, long nStartRow, long nColCount, lo
     rArray.AddDoubleReference(aRef);
 }
 
+namespace {
+
 class SimpleVisitor
 {
 protected:
@@ -329,15 +334,15 @@ public:
 
     void visitElem( long nCol, long nRow, sal_Int16 elem )
     {
-        mpDoc->SetValue( (SCCOL) nCol, (SCROW) nRow, 0, elem );
+        mpDoc->SetValue( static_cast<SCCOL>(nCol), static_cast<SCROW>(nRow), 0, elem );
     }
     void visitElem( long nCol, long nRow, sal_Int32 elem )
     {
-        mpDoc->SetValue( (SCCOL) nCol, (SCROW) nRow, 0, elem );
+        mpDoc->SetValue( static_cast<SCCOL>(nCol), static_cast<SCROW>(nRow), 0, elem );
     }
     void visitElem( long nCol, long nRow, const double& elem )
     {
-        mpDoc->SetValue( (SCCOL) nCol, (SCROW) nRow, 0, elem );
+        mpDoc->SetValue( static_cast<SCCOL>(nCol), static_cast<SCROW>(nRow), 0, elem );
     }
     void visitElem( long nCol, long nRow, const OUString& elem )
     {
@@ -405,15 +410,14 @@ public:
         long nStartRow = mrDocRow;
         long nRowCount = maSeq.getLength();
         long nMaxColCount = 0;
-        const uno::Sequence< seq >* pRowArr = maSeq.getConstArray();
-        for ( long nRow=0; nRow<nRowCount; nRow++ )
+        for ( const uno::Sequence< seq >& rRow : maSeq )
         {
-            long nColCount = pRowArr[nRow].getLength();
+            long nColCount = rRow.getLength();
             if ( nColCount > nMaxColCount )
                 nMaxColCount = nColCount;
-            const seq* pColArr = pRowArr[nRow].getConstArray();
+            const seq* pColArr = rRow.getConstArray();
             for (long nCol=0; nCol<nColCount; nCol++)
-                if ( nCol <= MAXCOL && mrDocRow <= MAXROW )
+                if ( nCol <= mpDoc->MaxCol() && mrDocRow <= mpDoc->MaxRow() )
                     aVisitor.visitElem( nCol, mrDocRow, pColArr[ nCol ] );
                 else
                     mbOverflow=true;
@@ -441,6 +445,8 @@ static void processSequences( ScDocument* pDoc, const uno::Any& rArg, ScTokenArr
 }
 };
 
+}
+
 uno::Any SAL_CALL ScFunctionAccess::callFunction( const OUString& aName,
                             const uno::Sequence<uno::Any>& aArguments )
 {
@@ -465,7 +471,7 @@ uno::Any SAL_CALL ScFunctionAccess::callFunction( const OUString& aName,
 
     //  find function
 
-    ScTokenArray aTokenArr;
+    ScTokenArray aTokenArr(pDoc);
     if ( !lcl_AddFunctionToken( aTokenArr, aName,aCompiler ) )
     {
         // function not found
@@ -542,25 +548,25 @@ uno::Any SAL_CALL ScFunctionAccess::callFunction( const OUString& aName,
             // currently, only our own cell ranges are supported
 
             uno::Reference<table::XCellRange> xRange(rArg, uno::UNO_QUERY);
-            ScCellRangesBase* pImpl = ScCellRangesBase::getImplementation( xRange );
+            ScCellRangesBase* pImpl = comphelper::getUnoTunnelImplementation<ScCellRangesBase>( xRange );
             if ( pImpl )
             {
                 ScDocument* pSrcDoc = pImpl->GetDocument();
                 const ScRangeList& rRanges = pImpl->GetRangeList();
                 if ( pSrcDoc && rRanges.size() == 1 )
                 {
-                    ScRange aSrcRange = *rRanges[ 0 ];
+                    ScRange const & rSrcRange = rRanges[ 0 ];
 
                     long nStartRow = nDocRow;
-                    long nColCount = aSrcRange.aEnd.Col() - aSrcRange.aStart.Col() + 1;
-                    long nRowCount = aSrcRange.aEnd.Row() - aSrcRange.aStart.Row() + 1;
+                    long nColCount = rSrcRange.aEnd.Col() - rSrcRange.aStart.Col() + 1;
+                    long nRowCount = rSrcRange.aEnd.Row() - rSrcRange.aStart.Row() + 1;
 
                     if ( nStartRow + nRowCount > MAXROWCOUNT )
                         bOverflow = true;
                     else
                     {
                         // copy data
-                        if ( !lcl_CopyData( pSrcDoc, aSrcRange, pDoc, ScAddress( 0, (SCROW)nDocRow, 0 ) ) )
+                        if ( !lcl_CopyData( pSrcDoc, rSrcRange, pDoc, ScAddress( 0, static_cast<SCROW>(nDocRow), 0 ) ) )
                             bOverflow = true;
                     }
 
@@ -629,7 +635,7 @@ uno::Any SAL_CALL ScFunctionAccess::callFunction( const OUString& aName,
             bArgErr = true;
         }
 
-        pDoc->DeleteAreaTab( 0, 0, MAXCOL, MAXROW, 0, InsertDeleteFlags::ALL );
+        pDoc->DeleteAreaTab( 0, 0, pDoc->MaxCol(), pDoc->MaxRow(), 0, InsertDeleteFlags::ALL );
         pDoc->DeleteAreaTab( 0, 0, 0, 0, nTempSheet, InsertDeleteFlags::ALL );
     }
 

@@ -17,10 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <config_features.h>
+
 #include <tools/urlobj.hxx>
 #include <svx/fmglob.hxx>
 #include <svx/svdouno.hxx>
-#include <svx/svdpagv.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/docfile.hxx>
 
@@ -30,10 +31,10 @@
 
 using namespace com::sun::star;
 
-#include "tabvwsh.hxx"
-#include "document.hxx"
-#include "drawview.hxx"
-#include "globstr.hrc"
+#include <tabvwsh.hxx>
+#include <document.hxx>
+#include <drawview.hxx>
+#include <globstr.hrc>
 #include <gridwin.hxx>
 #include <avmedia/mediawindow.hxx>
 
@@ -58,8 +59,11 @@ void ScTabViewShell::InsertURLButton( const OUString& rName, const OUString& rUR
     ScDrawView* pDrView = pView->GetScDrawView();
     SdrModel*   pModel  = pDrView->GetModel();
 
-    SdrObject* pObj = SdrObjFactory::MakeNewObject(SdrInventor::FmForm, OBJ_FM_BUTTON,
-                               pDrView->GetSdrPageView()->GetPage(), pModel);
+    SdrObject* pObj = SdrObjFactory::MakeNewObject(
+        *pModel,
+        SdrInventor::FmForm,
+        OBJ_FM_BUTTON);
+
     SdrUnoObj* pUnoCtrl = dynamic_cast<SdrUnoObj*>( pObj );
     OSL_ENSURE( pUnoCtrl, "no SdrUnoObj");
     if( !pUnoCtrl )
@@ -84,10 +88,12 @@ void ScTabViewShell::InsertURLButton( const OUString& rName, const OUString& rUR
 
     xPropSet->setPropertyValue("ButtonType", uno::Any(form::FormButtonType_URL) );
 
-        if ( ::avmedia::MediaWindow::isMediaURL( rURL, ""/*TODO?*/ ) )
+#if HAVE_FEATURE_AVMEDIA
+    if ( ::avmedia::MediaWindow::isMediaURL( rURL, ""/*TODO?*/ ) )
     {
         xPropSet->setPropertyValue("DispatchURLInternal", uno::Any(true) );
     }
+#endif
 
     Point aPos;
     if (pInsPos)
@@ -99,7 +105,7 @@ void ScTabViewShell::InsertURLButton( const OUString& rName, const OUString& rUR
     Size aSize = GetActiveWin()->PixelToLogic(Size(140, 20));
 
     if ( pDoc->IsNegativePage(nTab) )
-        aPos.X() -= aSize.Width();
+        aPos.AdjustX( -(aSize.Width()) );
 
     pObj->SetLogicRect(tools::Rectangle(aPos, aSize));
 

@@ -23,30 +23,13 @@
 #include <rtl/ustring.hxx>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/frame/XNotifyingDispatch.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/frame/DispatchDescriptor.hpp>
 #include <com/sun/star/uno/Reference.h>
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-namespace com
-{
-    namespace sun
-    {
-        namespace star
-        {
-            namespace lang
-            {
-                class XMultiServiceFactory;
-            }
-            namespace beans
-            {
-                struct PropertyValue;
-            }
-        }
-    }
-}
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::frame { struct DispatchDescriptor; }
 
 class SdUnoModule : public ::cppu::WeakImplHelper< css::frame::XDispatchProvider, css::frame::XNotifyingDispatch, css::lang::XServiceInfo >
 {

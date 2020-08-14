@@ -16,74 +16,66 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
+#include <numeric>
+#include <algorithm>
 
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <osl/diagnose.h>
 #include <rtl/math.hxx>
-#include <rtl/instance.hxx>
 #include <sal/log.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/curve/b2dcubicbezier.hxx>
-#include <basegfx/polygon/b2dpolypolygoncutter.hxx>
 #include <basegfx/point/b3dpoint.hxx>
 #include <basegfx/matrix/b3dhommatrix.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/curve/b2dbeziertools.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 
-#include <numeric>
-#include <limits>
-
 // #i37443#
 #define ANGLE_BOUND_START_VALUE     (2.25)
 #define ANGLE_BOUND_MINIMUM_VALUE   (0.1)
-#ifdef DBG_UTIL
-static double fAngleBoundStartValue = ANGLE_BOUND_START_VALUE;
-#endif
 #define STEPSPERQUARTER     (3)
 
-namespace basegfx
+namespace basegfx::utils
 {
-    namespace tools
-    {
         void openWithGeometryChange(B2DPolygon& rCandidate)
         {
-            if(rCandidate.isClosed())
+            if(!rCandidate.isClosed())
+                return;
+
+            if(rCandidate.count())
             {
-                if(rCandidate.count())
+                rCandidate.append(rCandidate.getB2DPoint(0));
+
+                if(rCandidate.areControlPointsUsed() && rCandidate.isPrevControlPointUsed(0))
                 {
-                    rCandidate.append(rCandidate.getB2DPoint(0));
-
-                    if(rCandidate.areControlPointsUsed() && rCandidate.isPrevControlPointUsed(0))
-                    {
-                        rCandidate.setPrevControlPoint(rCandidate.count() - 1, rCandidate.getPrevControlPoint(0));
-                        rCandidate.resetPrevControlPoint(0);
-                    }
+                    rCandidate.setPrevControlPoint(rCandidate.count() - 1, rCandidate.getPrevControlPoint(0));
+                    rCandidate.resetPrevControlPoint(0);
                 }
-
-                rCandidate.setClosed(false);
             }
+
+            rCandidate.setClosed(false);
         }
 
         void closeWithGeometryChange(B2DPolygon& rCandidate)
         {
-            if(!rCandidate.isClosed())
-            {
-                while(rCandidate.count() > 1 && rCandidate.getB2DPoint(0) == rCandidate.getB2DPoint(rCandidate.count() - 1))
-                {
-                    if(rCandidate.areControlPointsUsed() && rCandidate.isPrevControlPointUsed(rCandidate.count() - 1))
-                    {
-                        rCandidate.setPrevControlPoint(0, rCandidate.getPrevControlPoint(rCandidate.count() - 1));
-                    }
+            if(rCandidate.isClosed())
+                return;
 
-                    rCandidate.remove(rCandidate.count() - 1);
+            while(rCandidate.count() > 1 && rCandidate.getB2DPoint(0) == rCandidate.getB2DPoint(rCandidate.count() - 1))
+            {
+                if(rCandidate.areControlPointsUsed() && rCandidate.isPrevControlPointUsed(rCandidate.count() - 1))
+                {
+                    rCandidate.setPrevControlPoint(0, rCandidate.getPrevControlPoint(rCandidate.count() - 1));
                 }
 
-                rCandidate.setClosed(true);
+                rCandidate.remove(rCandidate.count() - 1);
             }
+
+            rCandidate.setClosed(true);
         }
 
         void checkClosed(B2DPolygon& rCandidate)
@@ -271,11 +263,7 @@ namespace basegfx
                     // #i37443# prepare convenient AngleBound if none was given
                     if(fAngleBound == 0.0)
                     {
-#ifdef DBG_UTIL
-                        fAngleBound = fAngleBoundStartValue;
-#else
                         fAngleBound = ANGLE_BOUND_START_VALUE;
-#endif
                     }
                     else if(fTools::less(fAngleBound, ANGLE_BOUND_MINIMUM_VALUE))
                     {
@@ -343,15 +331,15 @@ namespace basegfx
                         const B2DPoint aPreviousPoint(aCurrentPoint);
                         aCurrentPoint = aCandidate.getB2DPoint(a);
 
-                        // cross-over in Y?
-                        const bool bCompYA(fTools::more(aPreviousPoint.getY(), rPoint.getY()));
-                        const bool bCompYB(fTools::more(aCurrentPoint.getY(), rPoint.getY()));
+                        // cross-over in Y? tdf#130150 use full precision, no need for epsilon
+                        const bool bCompYA(aPreviousPoint.getY() > rPoint.getY());
+                        const bool bCompYB(aCurrentPoint.getY() > rPoint.getY());
 
                         if(bCompYA != bCompYB)
                         {
-                            // cross-over in X?
-                            const bool bCompXA(fTools::more(aPreviousPoint.getX(), rPoint.getX()));
-                            const bool bCompXB(fTools::more(aCurrentPoint.getX(), rPoint.getX()));
+                            // cross-over in X? tdf#130150 use full precision, no need for epsilon
+                            const bool bCompXA(aPreviousPoint.getX() > rPoint.getX());
+                            const bool bCompXB(aCurrentPoint.getX() > rPoint.getX());
 
                             if(bCompXA == bCompXB)
                             {
@@ -367,7 +355,8 @@ namespace basegfx
                                     (aPreviousPoint.getX() - aCurrentPoint.getX()) /
                                     (aPreviousPoint.getY() - aCurrentPoint.getY()));
 
-                                if(fTools::more(fCompare, rPoint.getX()))
+                                // tdf#130150 use full precision, no need for epsilon
+                                if(fCompare > rPoint.getX())
                                 {
                                     bRetval = !bRetval;
                                 }
@@ -573,7 +562,7 @@ namespace basegfx
                     {
                         // if fDistance >= fLength decrement with multiple of fLength
                         sal_uInt32 nCount(sal_uInt32(fDistance / fLength));
-                        fDistance -= (double)(nCount) * fLength;
+                        fDistance -= static_cast<double>(nCount) * fLength;
                     }
                     else
                     {
@@ -625,7 +614,6 @@ namespace basegfx
                     else if(fTools::equalZero(fDistance))
                     {
                         // start point of chosen edge
-                        aRetval = aRetval;
                     }
                     else
                     {
@@ -884,7 +872,7 @@ namespace basegfx
             CutFlagValue aRetval(CutFlagValue::NONE);
             double fCut1(0.0);
             double fCut2(0.0);
-            bool bFinished(!((bool)(aCutFlags & CutFlagValue::ALL)));
+            bool bFinished(!static_cast<bool>(aCutFlags & CutFlagValue::ALL));
 
             // test for same points?
             if(!bFinished
@@ -946,7 +934,7 @@ namespace basegfx
 
             if(!bFinished && (aCutFlags & CutFlagValue::LINE))
             {
-                if((aCutFlags & CutFlagValue::START1))
+                if(aCutFlags & CutFlagValue::START1)
                 {
                     // start1 on line 2 ?
                     if(isPointOnEdge(rEdge1Start, rEdge2Start, rEdge2Delta, &fCut2))
@@ -1123,7 +1111,102 @@ namespace basegfx
             return false;
         }
 
-        void applyLineDashing(const B2DPolygon& rCandidate, const std::vector<double>& rDotDashArray, B2DPolyPolygon* pLineTarget, B2DPolyPolygon* pGapTarget, double fDotDashLength)
+        void applyLineDashing(
+            const B2DPolygon& rCandidate,
+            const std::vector<double>& rDotDashArray,
+            B2DPolyPolygon* pLineTarget,
+            B2DPolyPolygon* pGapTarget,
+            double fDotDashLength)
+        {
+            // clear targets in any case
+            if(pLineTarget)
+            {
+                pLineTarget->clear();
+            }
+
+            if(pGapTarget)
+            {
+                pGapTarget->clear();
+            }
+
+            // provide callbacks as lambdas
+            auto aLineCallback(
+                nullptr == pLineTarget
+                ? std::function<void(const basegfx::B2DPolygon&)>()
+                : [&pLineTarget](const basegfx::B2DPolygon& rSnippet){ pLineTarget->append(rSnippet); });
+            auto aGapCallback(
+                nullptr == pGapTarget
+                ? std::function<void(const basegfx::B2DPolygon&)>()
+                : [&pGapTarget](const basegfx::B2DPolygon& rSnippet){ pGapTarget->append(rSnippet); });
+
+            // call version that uses callbacks
+            applyLineDashing(
+                rCandidate,
+                rDotDashArray,
+                aLineCallback,
+                aGapCallback,
+                fDotDashLength);
+        }
+
+        static void implHandleSnippet(
+            const B2DPolygon& rSnippet,
+            std::function<void(const basegfx::B2DPolygon& rSnippet)>& rTargetCallback,
+            B2DPolygon& rFirst,
+            B2DPolygon& rLast)
+        {
+            if(rSnippet.isClosed())
+            {
+                if(!rFirst.count())
+                {
+                    rFirst = rSnippet;
+                }
+                else
+                {
+                    if(rLast.count())
+                    {
+                        rTargetCallback(rLast);
+                    }
+
+                    rLast = rSnippet;
+                }
+            }
+            else
+            {
+                rTargetCallback(rSnippet);
+            }
+        }
+
+        static void implHandleFirstLast(
+            std::function<void(const basegfx::B2DPolygon& rSnippet)>& rTargetCallback,
+            B2DPolygon& rFirst,
+            B2DPolygon& rLast)
+        {
+            if(rFirst.count() && rLast.count()
+                && rFirst.getB2DPoint(0).equal(rLast.getB2DPoint(rLast.count() - 1)))
+            {
+                // start of first and end of last are the same -> merge them
+                rLast.append(rFirst);
+                rLast.removeDoublePoints();
+                rFirst.clear();
+            }
+
+            if(rLast.count())
+            {
+                rTargetCallback(rLast);
+            }
+
+            if(rFirst.count())
+            {
+                rTargetCallback(rFirst);
+            }
+        }
+
+        void applyLineDashing(
+            const B2DPolygon& rCandidate,
+            const std::vector<double>& rDotDashArray,
+            std::function<void(const basegfx::B2DPolygon& rSnippet)> aLineTargetCallback,
+            std::function<void(const basegfx::B2DPolygon& rSnippet)> aGapTargetCallback,
+            double fDotDashLength)
         {
             const sal_uInt32 nPointCount(rCandidate.count());
             const sal_uInt32 nDotDashCount(rDotDashArray.size());
@@ -1133,154 +1216,159 @@ namespace basegfx
                 fDotDashLength = std::accumulate(rDotDashArray.begin(), rDotDashArray.end(), 0.0);
             }
 
-            if(fTools::more(fDotDashLength, 0.0) && (pLineTarget || pGapTarget) && nPointCount)
+            if(fTools::lessOrEqual(fDotDashLength, 0.0) || (!aLineTargetCallback && !aGapTargetCallback) || !nPointCount)
             {
-                // clear targets
-                if(pLineTarget)
+                // parameters make no sense, just add source to targets
+                if(aLineTargetCallback)
                 {
-                    pLineTarget->clear();
+                    aLineTargetCallback(rCandidate);
                 }
 
-                if(pGapTarget)
+                if(aGapTargetCallback)
                 {
-                    pGapTarget->clear();
+                    aGapTargetCallback(rCandidate);
                 }
 
-                // prepare current edge's start
-                B2DCubicBezier aCurrentEdge;
-                const sal_uInt32 nEdgeCount(rCandidate.isClosed() ? nPointCount : nPointCount - 1);
-                aCurrentEdge.setStartPoint(rCandidate.getB2DPoint(0));
+                return;
+            }
 
-                // prepare DotDashArray iteration and the line/gap switching bool
-                sal_uInt32 nDotDashIndex(0);
-                bool bIsLine(true);
-                double fDotDashMovingLength(rDotDashArray[0]);
-                B2DPolygon aSnippet;
+            // precalculate maximal acceptable length of candidate polygon assuming
+            // we want to create a maximum of fNumberOfAllowedSnippets. For
+            // fNumberOfAllowedSnippets use ca. 65536, double due to line & gap.
+            static double fNumberOfAllowedSnippets(65535.0 * 2.0);
+            const double fAllowedLength((fNumberOfAllowedSnippets * fDotDashLength) / double(rDotDashArray.size()));
+            const double fCandidateLength(basegfx::utils::getLength(rCandidate));
+            std::vector<double> aDotDashArray(rDotDashArray);
 
-                // iterate over all edges
-                for(sal_uInt32 a(0); a < nEdgeCount; a++)
+            if(fCandidateLength > fAllowedLength)
+            {
+                // we would produce more than fNumberOfAllowedSnippets, so
+                // adapt aDotDashArray to exactly produce assumed number. Also
+                // assert this to let the caller know about it.
+                // If this asserts: Please think about checking your DotDashArray
+                // before calling this function or evtl. use the callback version
+                // to *not* produce that much of data. Even then, you may still
+                // think about producing too much runtime (!)
+                assert(true && "applyLineDashing: potentially too expensive to do the requested dismantle - please consider stretched LineDash pattern (!)");
+
+                // calculate correcting factor, apply to aDotDashArray and fDotDashLength
+                // to enlarge these as needed
+                const double fFactor(fCandidateLength / fAllowedLength);
+                std::for_each(aDotDashArray.begin(), aDotDashArray.end(), [&fFactor](double &f){ f *= fFactor; });
+                fDotDashLength *= fFactor;
+            }
+
+            // prepare current edge's start
+            B2DCubicBezier aCurrentEdge;
+            const bool bIsClosed(rCandidate.isClosed());
+            const sal_uInt32 nEdgeCount(bIsClosed ? nPointCount : nPointCount - 1);
+            aCurrentEdge.setStartPoint(rCandidate.getB2DPoint(0));
+
+            // prepare DotDashArray iteration and the line/gap switching bool
+            sal_uInt32 nDotDashIndex(0);
+            bool bIsLine(true);
+            double fDotDashMovingLength(aDotDashArray[0]);
+            B2DPolygon aSnippet;
+
+            // remember 1st and last snippets to try to merge after execution
+            // is complete and hand to callback
+            B2DPolygon aFirstLine, aLastLine;
+            B2DPolygon aFirstGap, aLastGap;
+
+            // iterate over all edges
+            for(sal_uInt32 a(0); a < nEdgeCount; a++)
+            {
+                // update current edge (fill in C1, C2 and end point)
+                double fLastDotDashMovingLength(0.0);
+                const sal_uInt32 nNextIndex((a + 1) % nPointCount);
+                aCurrentEdge.setControlPointA(rCandidate.getNextControlPoint(a));
+                aCurrentEdge.setControlPointB(rCandidate.getPrevControlPoint(nNextIndex));
+                aCurrentEdge.setEndPoint(rCandidate.getB2DPoint(nNextIndex));
+
+                // check if we have a trivial bezier segment -> possible fallback to edge
+                aCurrentEdge.testAndSolveTrivialBezier();
+
+                if(aCurrentEdge.isBezier())
                 {
-                    // update current edge (fill in C1, C2 and end point)
-                    double fLastDotDashMovingLength(0.0);
-                    const sal_uInt32 nNextIndex((a + 1) % nPointCount);
-                    aCurrentEdge.setControlPointA(rCandidate.getNextControlPoint(a));
-                    aCurrentEdge.setControlPointB(rCandidate.getPrevControlPoint(nNextIndex));
-                    aCurrentEdge.setEndPoint(rCandidate.getB2DPoint(nNextIndex));
+                    // bezier segment
+                    const B2DCubicBezierHelper aCubicBezierHelper(aCurrentEdge);
+                    const double fEdgeLength(aCubicBezierHelper.getLength());
 
-                    // check if we have a trivial bezier segment -> possible fallback to edge
-                    aCurrentEdge.testAndSolveTrivialBezier();
-
-                    if(aCurrentEdge.isBezier())
+                    if(!fTools::equalZero(fEdgeLength))
                     {
-                        // bezier segment
-                        const B2DCubicBezierHelper aCubicBezierHelper(aCurrentEdge);
-                        const double fEdgeLength(aCubicBezierHelper.getLength());
-
-                        if(!fTools::equalZero(fEdgeLength))
+                        while(fTools::less(fDotDashMovingLength, fEdgeLength))
                         {
-                            while(fTools::less(fDotDashMovingLength, fEdgeLength))
-                            {
-                                // new split is inside edge, create and append snippet [fLastDotDashMovingLength, fDotDashMovingLength]
-                                const bool bHandleLine(bIsLine && pLineTarget);
-                                const bool bHandleGap(!bIsLine && pGapTarget);
-
-                                if(bHandleLine || bHandleGap)
-                                {
-                                    const double fBezierSplitStart(aCubicBezierHelper.distanceToRelative(fLastDotDashMovingLength));
-                                    const double fBezierSplitEnd(aCubicBezierHelper.distanceToRelative(fDotDashMovingLength));
-                                    B2DCubicBezier aBezierSnippet(aCurrentEdge.snippet(fBezierSplitStart, fBezierSplitEnd));
-
-                                    if(!aSnippet.count())
-                                    {
-                                        aSnippet.append(aBezierSnippet.getStartPoint());
-                                    }
-
-                                    aSnippet.appendBezierSegment(aBezierSnippet.getControlPointA(), aBezierSnippet.getControlPointB(), aBezierSnippet.getEndPoint());
-
-                                    if(bHandleLine)
-                                    {
-                                        pLineTarget->append(aSnippet);
-                                    }
-                                    else
-                                    {
-                                        pGapTarget->append(aSnippet);
-                                    }
-
-                                    aSnippet.clear();
-                                }
-
-                                // prepare next DotDashArray step and flip line/gap flag
-                                fLastDotDashMovingLength = fDotDashMovingLength;
-                                fDotDashMovingLength += rDotDashArray[(++nDotDashIndex) % nDotDashCount];
-                                bIsLine = !bIsLine;
-                            }
-
-                            // append closing snippet [fLastDotDashMovingLength, fEdgeLength]
-                            const bool bHandleLine(bIsLine && pLineTarget);
-                            const bool bHandleGap(!bIsLine && pGapTarget);
+                            // new split is inside edge, create and append snippet [fLastDotDashMovingLength, fDotDashMovingLength]
+                            const bool bHandleLine(bIsLine && aLineTargetCallback);
+                            const bool bHandleGap(!bIsLine && aGapTargetCallback);
 
                             if(bHandleLine || bHandleGap)
                             {
-                                B2DCubicBezier aRight;
-                                const double fBezierSplit(aCubicBezierHelper.distanceToRelative(fLastDotDashMovingLength));
-
-                                aCurrentEdge.split(fBezierSplit, nullptr, &aRight);
+                                const double fBezierSplitStart(aCubicBezierHelper.distanceToRelative(fLastDotDashMovingLength));
+                                const double fBezierSplitEnd(aCubicBezierHelper.distanceToRelative(fDotDashMovingLength));
+                                B2DCubicBezier aBezierSnippet(aCurrentEdge.snippet(fBezierSplitStart, fBezierSplitEnd));
 
                                 if(!aSnippet.count())
                                 {
-                                    aSnippet.append(aRight.getStartPoint());
+                                    aSnippet.append(aBezierSnippet.getStartPoint());
                                 }
 
-                                aSnippet.appendBezierSegment(aRight.getControlPointA(), aRight.getControlPointB(), aRight.getEndPoint());
-                            }
+                                aSnippet.appendBezierSegment(aBezierSnippet.getControlPointA(), aBezierSnippet.getControlPointB(), aBezierSnippet.getEndPoint());
 
-                            // prepare move to next edge
-                            fDotDashMovingLength -= fEdgeLength;
-                        }
-                    }
-                    else
-                    {
-                        // simple edge
-                        const double fEdgeLength(aCurrentEdge.getEdgeLength());
-
-                        if(!fTools::equalZero(fEdgeLength))
-                        {
-                            while(fTools::less(fDotDashMovingLength, fEdgeLength))
-                            {
-                                // new split is inside edge, create and append snippet [fLastDotDashMovingLength, fDotDashMovingLength]
-                                const bool bHandleLine(bIsLine && pLineTarget);
-                                const bool bHandleGap(!bIsLine && pGapTarget);
-
-                                if(bHandleLine || bHandleGap)
+                                if(bHandleLine)
                                 {
-                                    if(!aSnippet.count())
-                                    {
-                                        aSnippet.append(interpolate(aCurrentEdge.getStartPoint(), aCurrentEdge.getEndPoint(), fLastDotDashMovingLength / fEdgeLength));
-                                    }
-
-                                    aSnippet.append(interpolate(aCurrentEdge.getStartPoint(), aCurrentEdge.getEndPoint(), fDotDashMovingLength / fEdgeLength));
-
-                                    if(bHandleLine)
-                                    {
-                                        pLineTarget->append(aSnippet);
-                                    }
-                                    else
-                                    {
-                                        pGapTarget->append(aSnippet);
-                                    }
-
-                                    aSnippet.clear();
+                                    implHandleSnippet(aSnippet, aLineTargetCallback, aFirstLine, aLastLine);
                                 }
 
-                                // prepare next DotDashArray step and flip line/gap flag
-                                fLastDotDashMovingLength = fDotDashMovingLength;
-                                fDotDashMovingLength += rDotDashArray[(++nDotDashIndex) % nDotDashCount];
-                                bIsLine = !bIsLine;
+                                if(bHandleGap)
+                                {
+                                    implHandleSnippet(aSnippet, aGapTargetCallback, aFirstGap, aLastGap);
+                                }
+
+                                aSnippet.clear();
                             }
 
-                            // append snippet [fLastDotDashMovingLength, fEdgeLength]
-                            const bool bHandleLine(bIsLine && pLineTarget);
-                            const bool bHandleGap(!bIsLine && pGapTarget);
+                            // prepare next DotDashArray step and flip line/gap flag
+                            fLastDotDashMovingLength = fDotDashMovingLength;
+                            fDotDashMovingLength += aDotDashArray[(++nDotDashIndex) % nDotDashCount];
+                            bIsLine = !bIsLine;
+                        }
+
+                        // append closing snippet [fLastDotDashMovingLength, fEdgeLength]
+                        const bool bHandleLine(bIsLine && aLineTargetCallback);
+                        const bool bHandleGap(!bIsLine && aGapTargetCallback);
+
+                        if(bHandleLine || bHandleGap)
+                        {
+                            B2DCubicBezier aRight;
+                            const double fBezierSplit(aCubicBezierHelper.distanceToRelative(fLastDotDashMovingLength));
+
+                            aCurrentEdge.split(fBezierSplit, nullptr, &aRight);
+
+                            if(!aSnippet.count())
+                            {
+                                aSnippet.append(aRight.getStartPoint());
+                            }
+
+                            aSnippet.appendBezierSegment(aRight.getControlPointA(), aRight.getControlPointB(), aRight.getEndPoint());
+                        }
+
+                        // prepare move to next edge
+                        fDotDashMovingLength -= fEdgeLength;
+                    }
+                }
+                else
+                {
+                    // simple edge
+                    const double fEdgeLength(aCurrentEdge.getEdgeLength());
+
+                    if(!fTools::equalZero(fEdgeLength))
+                    {
+                        while(fTools::less(fDotDashMovingLength, fEdgeLength))
+                        {
+                            // new split is inside edge, create and append snippet [fLastDotDashMovingLength, fDotDashMovingLength]
+                            const bool bHandleLine(bIsLine && aLineTargetCallback);
+                            const bool bHandleGap(!bIsLine && aGapTargetCallback);
 
                             if(bHandleLine || bHandleGap)
                             {
@@ -1289,88 +1377,75 @@ namespace basegfx
                                     aSnippet.append(interpolate(aCurrentEdge.getStartPoint(), aCurrentEdge.getEndPoint(), fLastDotDashMovingLength / fEdgeLength));
                                 }
 
-                                aSnippet.append(aCurrentEdge.getEndPoint());
+                                aSnippet.append(interpolate(aCurrentEdge.getStartPoint(), aCurrentEdge.getEndPoint(), fDotDashMovingLength / fEdgeLength));
+
+                                if(bHandleLine)
+                                {
+                                    implHandleSnippet(aSnippet, aLineTargetCallback, aFirstLine, aLastLine);
+                                }
+
+                                if(bHandleGap)
+                                {
+                                    implHandleSnippet(aSnippet, aGapTargetCallback, aFirstGap, aLastGap);
+                                }
+
+                                aSnippet.clear();
                             }
 
-                            // prepare move to next edge
-                            fDotDashMovingLength -= fEdgeLength;
+                            // prepare next DotDashArray step and flip line/gap flag
+                            fLastDotDashMovingLength = fDotDashMovingLength;
+                            fDotDashMovingLength += aDotDashArray[(++nDotDashIndex) % nDotDashCount];
+                            bIsLine = !bIsLine;
                         }
-                    }
 
-                    // prepare next edge step (end point gets new start point)
-                    aCurrentEdge.setStartPoint(aCurrentEdge.getEndPoint());
-                }
+                        // append snippet [fLastDotDashMovingLength, fEdgeLength]
+                        const bool bHandleLine(bIsLine && aLineTargetCallback);
+                        const bool bHandleGap(!bIsLine && aGapTargetCallback);
 
-                // append last intermediate results (if exists)
-                if(aSnippet.count())
-                {
-                    if(bIsLine && pLineTarget)
-                    {
-                        pLineTarget->append(aSnippet);
-                    }
-                    else if(!bIsLine && pGapTarget)
-                    {
-                        pGapTarget->append(aSnippet);
-                    }
-                }
-
-                // check if start and end polygon may be merged
-                if(pLineTarget)
-                {
-                    const sal_uInt32 nCount(pLineTarget->count());
-
-                    if(nCount > 1)
-                    {
-                        // these polygons were created above, there exists none with less than two points,
-                        // thus dircet point access below is allowed
-                        const B2DPolygon aFirst(pLineTarget->getB2DPolygon(0));
-                        B2DPolygon aLast(pLineTarget->getB2DPolygon(nCount - 1));
-
-                        if(aFirst.getB2DPoint(0).equal(aLast.getB2DPoint(aLast.count() - 1)))
+                        if(bHandleLine || bHandleGap)
                         {
-                            // start of first and end of last are the same -> merge them
-                            aLast.append(aFirst);
-                            aLast.removeDoublePoints();
-                            pLineTarget->setB2DPolygon(0, aLast);
-                            pLineTarget->remove(nCount - 1);
+                            if(!aSnippet.count())
+                            {
+                                aSnippet.append(interpolate(aCurrentEdge.getStartPoint(), aCurrentEdge.getEndPoint(), fLastDotDashMovingLength / fEdgeLength));
+                            }
+
+                            aSnippet.append(aCurrentEdge.getEndPoint());
                         }
+
+                        // prepare move to next edge
+                        fDotDashMovingLength -= fEdgeLength;
                     }
                 }
 
-                if(pGapTarget)
+                // prepare next edge step (end point gets new start point)
+                aCurrentEdge.setStartPoint(aCurrentEdge.getEndPoint());
+            }
+
+            // append last intermediate results (if exists)
+            if(aSnippet.count())
+            {
+                const bool bHandleLine(bIsLine && aLineTargetCallback);
+                const bool bHandleGap(!bIsLine && aGapTargetCallback);
+
+                if(bHandleLine)
                 {
-                    const sal_uInt32 nCount(pGapTarget->count());
+                    implHandleSnippet(aSnippet, aLineTargetCallback, aFirstLine, aLastLine);
+                }
 
-                    if(nCount > 1)
-                    {
-                        // these polygons were created above, there exists none with less than two points,
-                        // thus dircet point access below is allowed
-                        const B2DPolygon aFirst(pGapTarget->getB2DPolygon(0));
-                        B2DPolygon aLast(pGapTarget->getB2DPolygon(nCount - 1));
-
-                        if(aFirst.getB2DPoint(0).equal(aLast.getB2DPoint(aLast.count() - 1)))
-                        {
-                            // start of first and end of last are the same -> merge them
-                            aLast.append(aFirst);
-                            aLast.removeDoublePoints();
-                            pGapTarget->setB2DPolygon(0, aLast);
-                            pGapTarget->remove(nCount - 1);
-                        }
-                    }
+                if(bHandleGap)
+                {
+                    implHandleSnippet(aSnippet, aGapTargetCallback, aFirstGap, aLastGap);
                 }
             }
-            else
-            {
-                // parameters make no sense, just add source to targets
-                if(pLineTarget)
-                {
-                    pLineTarget->append(rCandidate);
-                }
 
-                if(pGapTarget)
-                {
-                    pGapTarget->append(rCandidate);
-                }
+            if(bIsClosed && aLineTargetCallback)
+            {
+                implHandleFirstLast(aLineTargetCallback, aFirstLine, aLastLine);
+            }
+
+            if(bIsClosed && aGapTargetCallback)
+            {
+                implHandleFirstLast(aGapTargetCallback, aFirstGap, aLastGap);
             }
         }
 
@@ -1452,7 +1527,7 @@ namespace basegfx
         bool isInEpsilonRange(const B2DPolygon& rCandidate, const B2DPoint& rTestPosition, double fDistance)
         {
             // force to non-bezier polygon
-            const B2DPolygon aCandidate(rCandidate.getDefaultAdaptiveSubdivision());
+            const B2DPolygon& aCandidate(rCandidate.getDefaultAdaptiveSubdivision());
             const sal_uInt32 nPointCount(aCandidate.count());
 
             if(nPointCount)
@@ -1491,29 +1566,28 @@ namespace basegfx
             return false;
         }
 
+        // Calculates distance of curve point to its control point for a Bézier curve, that
+        // approximates a unit circle arc. fAngle is the center angle of the circle arc. The
+        // constrain 0<=fAngle<=pi/2 must not be violated to give a useful accuracy. For details
+        // and alternatives read document "ApproxCircleInfo.odt", attachment of bug tdf#121425.
+        static double impDistanceBezierPointToControl(double fAngle)
+        {
+            SAL_WARN_IF(fAngle < 0 || fAngle > F_PI2,"basegfx","angle not suitable for approximate circle");
+            if (0 <= fAngle && fAngle <= F_PI2)
+            {
+                return 4.0/3.0 * ( tan(fAngle/4.0));
+            }
+            else
+                return 0;
+        }
+
         B2DPolygon createPolygonFromRect( const B2DRectangle& rRect, double fRadiusX, double fRadiusY )
         {
             const double fZero(0.0);
             const double fOne(1.0);
 
-            // crop to useful values
-            if(fTools::less(fRadiusX, fZero))
-            {
-                fRadiusX = fZero;
-            }
-            else if(fTools::more(fRadiusX, fOne))
-            {
-                fRadiusX = fOne;
-            }
-
-            if(fTools::less(fRadiusY, fZero))
-            {
-                fRadiusY = fZero;
-            }
-            else if(fTools::more(fRadiusY, fOne))
-            {
-                fRadiusY = fOne;
-            }
+            fRadiusX = std::clamp(fRadiusX, 0.0, 1.0);
+            fRadiusY = std::clamp(fRadiusY, 0.0, 1.0);
 
             if(rtl::math::approxEqual(fZero, fRadiusX) || rtl::math::approxEqual(fZero, fRadiusY))
             {
@@ -1550,7 +1624,7 @@ namespace basegfx
                 B2DPolygon aRetval;
                 const double fBowX((rRect.getWidth() / 2.0) * fRadiusX);
                 const double fBowY((rRect.getHeight() / 2.0) * fRadiusY);
-                const double fKappa((M_SQRT2 - 1.0) * 4.0 / 3.0);
+                const double fKappa(impDistanceBezierPointToControl(F_PI2));
 
                 // create start point at bottom center
                 if(!rtl::math::approxEqual(fOne, fRadiusX))
@@ -1623,13 +1697,9 @@ namespace basegfx
             return aPolygon;
         }
 
-        namespace
+        B2DPolygon const & createUnitPolygon()
         {
-            struct theUnitPolygon :
-                public rtl::StaticWithInit<B2DPolygon, theUnitPolygon>
-            {
-                B2DPolygon operator () ()
-                {
+            static auto const singleton = [] {
                     B2DPolygon aPolygon {
                         { 0.0, 0.0 },
                         { 1.0, 0.0 },
@@ -1641,13 +1711,8 @@ namespace basegfx
                     aPolygon.setClosed( true );
 
                     return aPolygon;
-                }
-            };
-        }
-
-        B2DPolygon createUnitPolygon()
-        {
-            return theUnitPolygon::get();
+            }();
+            return singleton;
         }
 
         B2DPolygon createPolygonFromCircle( const B2DPoint& rCenter, double fRadius )
@@ -1655,16 +1720,15 @@ namespace basegfx
             return createPolygonFromEllipse( rCenter, fRadius, fRadius );
         }
 
-        B2DPolygon impCreateUnitCircle(sal_uInt32 nStartQuadrant)
+        static B2DPolygon impCreateUnitCircle(sal_uInt32 nStartQuadrant)
         {
             B2DPolygon aUnitCircle;
-            const double fKappa((M_SQRT2 - 1.0) * 4.0 / 3.0);
-            const double fScaledKappa(fKappa * (1.0 / STEPSPERQUARTER));
+            const double fSegmentKappa = impDistanceBezierPointToControl(F_PI2 / STEPSPERQUARTER);
             const B2DHomMatrix aRotateMatrix(createRotateB2DHomMatrix(F_PI2 / STEPSPERQUARTER));
 
             B2DPoint aPoint(1.0, 0.0);
-            B2DPoint aForward(1.0, fScaledKappa);
-            B2DPoint aBackward(1.0, -fScaledKappa);
+            B2DPoint aForward(1.0, fSegmentKappa);
+            B2DPoint aBackward(1.0, -fSegmentKappa);
 
             if(nStartQuadrant != 0)
             {
@@ -1690,20 +1754,15 @@ namespace basegfx
             return aUnitCircle;
         }
 
-        namespace
+        B2DPolygon const & createHalfUnitCircle()
         {
-            struct theUnitHalfCircle :
-                public rtl::StaticWithInit<B2DPolygon, theUnitHalfCircle>
-            {
-                B2DPolygon operator()()
-                {
+            static auto const singleton = [] {
                     B2DPolygon aUnitHalfCircle;
-                    const double fKappa((M_SQRT2 - 1.0) * 4.0 / 3.0);
-                    const double fScaledKappa(fKappa * (1.0 / STEPSPERQUARTER));
+                    const double fSegmentKappa(impDistanceBezierPointToControl(F_PI2 / STEPSPERQUARTER));
                     const B2DHomMatrix aRotateMatrix(createRotateB2DHomMatrix(F_PI2 / STEPSPERQUARTER));
                     B2DPoint aPoint(1.0, 0.0);
-                    B2DPoint aForward(1.0, fScaledKappa);
-                    B2DPoint aBackward(1.0, -fScaledKappa);
+                    B2DPoint aForward(1.0, fSegmentKappa);
+                    B2DPoint aBackward(1.0, -fSegmentKappa);
 
                     aUnitHalfCircle.append(aPoint);
 
@@ -1715,63 +1774,43 @@ namespace basegfx
                         aForward *= aRotateMatrix;
                     }
                     return aUnitHalfCircle;
-                }
-            };
+                }();
+            return singleton;
         }
 
-        B2DPolygon createHalfUnitCircle()
-        {
-            return theUnitHalfCircle::get();
-        }
-
-        namespace
-        {
-            struct theUnitCircleStartQuadrantOne :
-                public rtl::StaticWithInit<B2DPolygon, theUnitCircleStartQuadrantOne>
-            {
-                B2DPolygon operator()() { return impCreateUnitCircle(1); }
-            };
-
-            struct theUnitCircleStartQuadrantTwo :
-                public rtl::StaticWithInit<B2DPolygon, theUnitCircleStartQuadrantTwo>
-            {
-                B2DPolygon operator()() { return impCreateUnitCircle(2); }
-            };
-
-            struct theUnitCircleStartQuadrantThree :
-                public rtl::StaticWithInit<B2DPolygon, theUnitCircleStartQuadrantThree>
-            {
-                B2DPolygon operator()() { return impCreateUnitCircle(3); }
-            };
-
-            struct theUnitCircleStartQuadrantZero :
-                public rtl::StaticWithInit<B2DPolygon, theUnitCircleStartQuadrantZero>
-            {
-                B2DPolygon operator()() { return impCreateUnitCircle(0); }
-            };
-        }
-
-        B2DPolygon createPolygonFromUnitCircle(sal_uInt32 nStartQuadrant)
+        B2DPolygon const & createPolygonFromUnitCircle(sal_uInt32 nStartQuadrant)
         {
             switch(nStartQuadrant % 4)
             {
                 case 1 :
-                    return theUnitCircleStartQuadrantOne::get();
+                    {
+                        static auto const singleton = impCreateUnitCircle(1);
+                        return singleton;
+                    }
 
                 case 2 :
-                    return theUnitCircleStartQuadrantTwo::get();
+                    {
+                        static auto const singleton = impCreateUnitCircle(2);
+                        return singleton;
+                    }
 
                 case 3 :
-                    return theUnitCircleStartQuadrantThree::get();
+                    {
+                        static auto const singleton = impCreateUnitCircle(3);
+                        return singleton;
+                    }
 
                 default : // case 0 :
-                    return theUnitCircleStartQuadrantZero::get();
+                    {
+                        static auto const singleton = impCreateUnitCircle(0);
+                        return singleton;
+                    }
             }
         }
 
-        B2DPolygon createPolygonFromEllipse( const B2DPoint& rCenter, double fRadiusX, double fRadiusY )
+        B2DPolygon createPolygonFromEllipse( const B2DPoint& rCenter, double fRadiusX, double fRadiusY, sal_uInt32 nStartQuadrant)
         {
-            B2DPolygon aRetval(createPolygonFromUnitCircle());
+            B2DPolygon aRetval(createPolygonFromUnitCircle(nStartQuadrant));
             const B2DHomMatrix aMatrix(createScaleTranslateB2DHomMatrix(fRadiusX, fRadiusY, rCenter.getX(), rCenter.getY()));
 
             aRetval.transform(aMatrix);
@@ -1816,8 +1855,7 @@ namespace basegfx
                 const double fAnglePerSegment(F_PI2 / STEPSPERQUARTER);
                 const sal_uInt32 nStartSegment(sal_uInt32(fStart / fAnglePerSegment) % nSegments);
                 const sal_uInt32 nEndSegment(sal_uInt32(fEnd / fAnglePerSegment) % nSegments);
-                const double fKappa((M_SQRT2 - 1.0) * 4.0 / 3.0);
-                const double fScaledKappa(fKappa * (1.0 / STEPSPERQUARTER));
+                const double fSegmentKappa(impDistanceBezierPointToControl(fAnglePerSegment));
 
                 B2DPoint aSegStart(cos(fStart), sin(fStart));
                 aRetval.append(aSegStart);
@@ -1826,7 +1864,7 @@ namespace basegfx
                 {
                     // start and end in one sector and in the right order, create in one segment
                     const B2DPoint aSegEnd(cos(fEnd), sin(fEnd));
-                    const double fFactor(fScaledKappa * ((fEnd - fStart) / fAnglePerSegment));
+                    const double fFactor(impDistanceBezierPointToControl(fEnd - fStart));
 
                     aRetval.appendBezierSegment(
                         aSegStart + (B2DPoint(-aSegStart.getY(), aSegStart.getX()) * fFactor),
@@ -1836,7 +1874,7 @@ namespace basegfx
                 else
                 {
                     double fSegEndRad((nStartSegment + 1) * fAnglePerSegment);
-                    double fFactor(fScaledKappa * ((fSegEndRad - fStart) / fAnglePerSegment));
+                    double fFactor(impDistanceBezierPointToControl(fSegEndRad - fStart));
                     B2DPoint aSegEnd(cos(fSegEndRad), sin(fSegEndRad));
 
                     aRetval.appendBezierSegment(
@@ -1854,8 +1892,8 @@ namespace basegfx
                         aSegEnd = B2DPoint(cos(fSegEndRad), sin(fSegEndRad));
 
                         aRetval.appendBezierSegment(
-                            aSegStart + (B2DPoint(-aSegStart.getY(), aSegStart.getX()) * fScaledKappa),
-                            aSegEnd - (B2DPoint(-aSegEnd.getY(), aSegEnd.getX()) * fScaledKappa),
+                            aSegStart + (B2DPoint(-aSegStart.getY(), aSegStart.getX()) * fSegmentKappa),
+                            aSegEnd - (B2DPoint(-aSegEnd.getY(), aSegEnd.getX()) * fSegmentKappa),
                             aSegEnd);
 
                         nSegment = (nSegment + 1) % nSegments;
@@ -1864,7 +1902,7 @@ namespace basegfx
 
                     // End in this sector
                     const double fSegStartRad(nSegment * fAnglePerSegment);
-                    fFactor = fScaledKappa * ((fEnd - fSegStartRad) / fAnglePerSegment);
+                    fFactor= impDistanceBezierPointToControl(fEnd - fSegStartRad);
                     aSegEnd = B2DPoint(cos(fEnd), sin(fEnd));
 
                     aRetval.appendBezierSegment(
@@ -2134,34 +2172,37 @@ namespace basegfx
             return ((fCrossA > 0.0) == (fCrossB > 0.0));
         }
 
-        void addTriangleFan(const B2DPolygon& rCandidate, B2DPolygon& rTarget)
+        void addTriangleFan(
+            const B2DPolygon& rCandidate,
+            triangulator::B2DTriangleVector& rTarget)
         {
             const sal_uInt32 nCount(rCandidate.count());
 
-            if(nCount > 2)
+            if(nCount <= 2)
+                return;
+
+            const B2DPoint aStart(rCandidate.getB2DPoint(0));
+            B2DPoint aLast(rCandidate.getB2DPoint(1));
+
+            for(sal_uInt32 a(2); a < nCount; a++)
             {
-                const B2DPoint aStart(rCandidate.getB2DPoint(0));
-                B2DPoint aLast(rCandidate.getB2DPoint(1));
+                const B2DPoint aCurrent(rCandidate.getB2DPoint(a));
+                rTarget.emplace_back(
+                    aStart,
+                    aLast,
+                    aCurrent);
 
-                for(sal_uInt32 a(2); a < nCount; a++)
-                {
-                    const B2DPoint aCurrent(rCandidate.getB2DPoint(a));
-                    rTarget.append(aStart);
-                    rTarget.append(aLast);
-                    rTarget.append(aCurrent);
-
-                    // prepare next
-                    aLast = aCurrent;
-                }
+                // prepare next
+                aLast = aCurrent;
             }
         }
 
         namespace
         {
             /// return 0 for input of 0, -1 for negative and 1 for positive input
-            inline int lcl_sgn( const double n )
+            int lcl_sgn( const double n )
             {
-                return n == 0.0 ? 0 : 1 - 2*int(rtl::math::isSignBitSet(n));
+                return n == 0.0 ? 0 : 1 - 2*int(std::signbit(n));
             }
         }
 
@@ -2444,10 +2485,10 @@ namespace basegfx
                 const double fRelativeY((rCandidate.getY() - rOriginal.getMinY()) / rOriginal.getHeight());
                 const double fOneMinusRelativeX(1.0 - fRelativeX);
                 const double fOneMinusRelativeY(1.0 - fRelativeY);
-                const double fNewX((fOneMinusRelativeY) * ((fOneMinusRelativeX) * rTopLeft.getX() + fRelativeX * rTopRight.getX()) +
-                    fRelativeY * ((fOneMinusRelativeX) * rBottomLeft.getX() + fRelativeX * rBottomRight.getX()));
-                const double fNewY((fOneMinusRelativeX) * ((fOneMinusRelativeY) * rTopLeft.getY() + fRelativeY * rBottomLeft.getY()) +
-                    fRelativeX * ((fOneMinusRelativeY) * rTopRight.getY() + fRelativeY * rBottomRight.getY()));
+                const double fNewX(fOneMinusRelativeY * (fOneMinusRelativeX * rTopLeft.getX() + fRelativeX * rTopRight.getX()) +
+                    fRelativeY * (fOneMinusRelativeX * rBottomLeft.getX() + fRelativeX * rBottomRight.getX()));
+                const double fNewY(fOneMinusRelativeX * (fOneMinusRelativeY * rTopLeft.getY() + fRelativeY * rBottomLeft.getY()) +
+                    fRelativeX * (fOneMinusRelativeY * rTopRight.getY() + fRelativeY * rBottomRight.getY()));
 
                 return B2DPoint(fNewX, fNewY);
             }
@@ -2765,7 +2806,7 @@ namespace basegfx
 
                     for(sal_uInt32 a(0); a < nLoopCount; a++)
                     {
-                        const double fRelativePos((double)a / (double)nSegments); // 0.0 .. 1.0
+                        const double fRelativePos(static_cast<double>(a) / static_cast<double>(nSegments)); // 0.0 .. 1.0
                         const B2DPoint aNewPoint(getPositionRelative(rCandidate, fRelativePos, fLength));
                         aRetval.append(aNewPoint);
                     }
@@ -3205,8 +3246,7 @@ namespace basegfx
         // converters for css::drawing::PointSequence
 
         B2DPolygon UnoPointSequenceToB2DPolygon(
-            const css::drawing::PointSequence& rPointSequenceSource,
-            bool bCheckClosed)
+            const css::drawing::PointSequence& rPointSequenceSource)
         {
             B2DPolygon aRetval;
             const sal_uInt32 nLength(rPointSequenceSource.getLength());
@@ -3222,11 +3262,8 @@ namespace basegfx
                     aRetval.append(B2DPoint(pArray->X, pArray->Y));
                 }
 
-                if(bCheckClosed)
-                {
-                    // check for closed state flag
-                    tools::checkClosed(aRetval);
-                }
+                // check for closed state flag
+                utils::checkClosed(aRetval);
             }
 
             return aRetval;
@@ -3282,100 +3319,100 @@ namespace basegfx
 
         B2DPolygon UnoPolygonBezierCoordsToB2DPolygon(
             const css::drawing::PointSequence& rPointSequenceSource,
-            const css::drawing::FlagSequence& rFlagSequenceSource,
-            bool bCheckClosed)
+            const css::drawing::FlagSequence& rFlagSequenceSource)
         {
-            const sal_uInt32 nCount((sal_uInt32)rPointSequenceSource.getLength());
-            OSL_ENSURE(nCount == (sal_uInt32)rFlagSequenceSource.getLength(),
+            const sal_uInt32 nCount(static_cast<sal_uInt32>(rPointSequenceSource.getLength()));
+            OSL_ENSURE(nCount == static_cast<sal_uInt32>(rFlagSequenceSource.getLength()),
                 "UnoPolygonBezierCoordsToB2DPolygon: Unequal count of Points and Flags (!)");
 
             // prepare new polygon
             B2DPolygon aRetval;
-            const css::awt::Point* pPointSequence = rPointSequenceSource.getConstArray();
-            const css::drawing::PolygonFlags* pFlagSequence = rFlagSequenceSource.getConstArray();
 
-            // get first point and flag
-            B2DPoint aNewCoordinatePair(pPointSequence->X, pPointSequence->Y); pPointSequence++;
-            css::drawing::PolygonFlags ePolygonFlag(*pFlagSequence); pFlagSequence++;
-            B2DPoint aControlA;
-            B2DPoint aControlB;
-
-            // first point is not allowed to be a control point
-            OSL_ENSURE(ePolygonFlag != css::drawing::PolygonFlags_CONTROL,
-                "UnoPolygonBezierCoordsToB2DPolygon: Start point is a control point, illegal input polygon (!)");
-
-            // add first point as start point
-            aRetval.append(aNewCoordinatePair);
-
-            for(sal_uInt32 b(1); b < nCount;)
+            if(0 != nCount)
             {
-                // prepare loop
-                bool bControlA(false);
-                bool bControlB(false);
+                const css::awt::Point* pPointSequence = rPointSequenceSource.getConstArray();
+                const css::drawing::PolygonFlags* pFlagSequence = rFlagSequenceSource.getConstArray();
 
-                // get next point and flag
-                aNewCoordinatePair = B2DPoint(pPointSequence->X, pPointSequence->Y);
-                ePolygonFlag = *pFlagSequence;
-                pPointSequence++; pFlagSequence++; b++;
+                // get first point and flag
+                B2DPoint aNewCoordinatePair(pPointSequence->X, pPointSequence->Y); pPointSequence++;
+                css::drawing::PolygonFlags ePolygonFlag(*pFlagSequence); pFlagSequence++;
+                B2DPoint aControlA;
+                B2DPoint aControlB;
 
-                if(b < nCount && ePolygonFlag == css::drawing::PolygonFlags_CONTROL)
+                // first point is not allowed to be a control point
+                OSL_ENSURE(ePolygonFlag != css::drawing::PolygonFlags_CONTROL,
+                    "UnoPolygonBezierCoordsToB2DPolygon: Start point is a control point, illegal input polygon (!)");
+
+                // add first point as start point
+                aRetval.append(aNewCoordinatePair);
+
+                for(sal_uInt32 b(1); b < nCount;)
                 {
-                    aControlA = aNewCoordinatePair;
-                    bControlA = true;
+                    // prepare loop
+                    bool bControlA(false);
+                    bool bControlB(false);
 
                     // get next point and flag
                     aNewCoordinatePair = B2DPoint(pPointSequence->X, pPointSequence->Y);
                     ePolygonFlag = *pFlagSequence;
                     pPointSequence++; pFlagSequence++; b++;
+
+                    if(b < nCount && ePolygonFlag == css::drawing::PolygonFlags_CONTROL)
+                    {
+                        aControlA = aNewCoordinatePair;
+                        bControlA = true;
+
+                        // get next point and flag
+                        aNewCoordinatePair = B2DPoint(pPointSequence->X, pPointSequence->Y);
+                        ePolygonFlag = *pFlagSequence;
+                        pPointSequence++; pFlagSequence++; b++;
+                    }
+
+                    if(b < nCount && ePolygonFlag == css::drawing::PolygonFlags_CONTROL)
+                    {
+                        aControlB = aNewCoordinatePair;
+                        bControlB = true;
+
+                        // get next point and flag
+                        aNewCoordinatePair = B2DPoint(pPointSequence->X, pPointSequence->Y);
+                        ePolygonFlag = *pFlagSequence;
+                        pPointSequence++; pFlagSequence++; b++;
+                    }
+
+                    // two or no control points are consumed, another one would be an error.
+                    // It's also an error if only one control point was read
+                    SAL_WARN_IF(ePolygonFlag == css::drawing::PolygonFlags_CONTROL || bControlA != bControlB,
+                        "basegfx", "UnoPolygonBezierCoordsToB2DPolygon: Illegal source polygon (!)");
+
+                    // the previous writes used the B2DPolyPoygon -> utils::PolyPolygon converter
+                    // which did not create minimal PolyPolygons, but created all control points
+                    // as null vectors (identical points). Because of the former P(CA)(CB)-norm of
+                    // B2DPolygon and it's unused sign of being the zero-vector and CA and CB being
+                    // relative to P, an empty edge was exported as P == CA == CB. Luckily, the new
+                    // export format can be read without errors by the old OOo-versions, so we need only
+                    // to correct here at read and do not need to export a wrong but compatible version
+                    // for the future.
+                    if(bControlA
+                        && aControlA.equal(aControlB)
+                        && aControlA.equal(aRetval.getB2DPoint(aRetval.count() - 1)))
+                    {
+                        bControlA = false;
+                    }
+
+                    if(bControlA)
+                    {
+                        // add bezier edge
+                        aRetval.appendBezierSegment(aControlA, aControlB, aNewCoordinatePair);
+                    }
+                    else
+                    {
+                        // add edge
+                        aRetval.append(aNewCoordinatePair);
+                    }
                 }
 
-                if(b < nCount && ePolygonFlag == css::drawing::PolygonFlags_CONTROL)
-                {
-                    aControlB = aNewCoordinatePair;
-                    bControlB = true;
-
-                    // get next point and flag
-                    aNewCoordinatePair = B2DPoint(pPointSequence->X, pPointSequence->Y);
-                    ePolygonFlag = *pFlagSequence;
-                    pPointSequence++; pFlagSequence++; b++;
-                }
-
-                // two or no control points are consumed, another one would be an error.
-                // It's also an error if only one control point was read
-                SAL_WARN_IF(ePolygonFlag == css::drawing::PolygonFlags_CONTROL || bControlA != bControlB,
-                    "basegfx", "UnoPolygonBezierCoordsToB2DPolygon: Illegal source polygon (!)");
-
-                // the previous writes used the B2DPolyPoygon -> tools::PolyPolygon converter
-                // which did not create minimal PolyPolygons, but created all control points
-                // as null vectors (identical points). Because of the former P(CA)(CB)-norm of
-                // B2DPolygon and it's unused sign of being the zero-vector and CA and CB being
-                // relative to P, an empty edge was exported as P == CA == CB. Luckily, the new
-                // export format can be read without errors by the old OOo-versions, so we need only
-                // to correct here at read and do not need to export a wrong but compatible version
-                // for the future.
-                if(bControlA
-                    && aControlA.equal(aControlB)
-                    && aControlA.equal(aRetval.getB2DPoint(aRetval.count() - 1)))
-                {
-                    bControlA = false;
-                }
-
-                if(bControlA)
-                {
-                    // add bezier edge
-                    aRetval.appendBezierSegment(aControlA, aControlB, aNewCoordinatePair);
-                }
-                else
-                {
-                    // add edge
-                    aRetval.append(aNewCoordinatePair);
-                }
-            }
-
-            // #i72807# API import uses old line start/end-equal definition for closed,
-            // so we need to correct this to closed state here
-            if(bCheckClosed)
-            {
+                // #i72807# API import uses old line start/end-equal definition for closed,
+                // so we need to correct this to closed state here
                 checkClosed(aRetval);
             }
 
@@ -3419,10 +3456,9 @@ namespace basegfx
                         {
                             // add current point (always) and remember StartPointIndex for evtl. later corrections
                             const sal_uInt32 nStartPointIndex(aCollectPoints.size());
-                            aCollectPoints.push_back(
-                                css::awt::Point(
+                            aCollectPoints.emplace_back(
                                     fround(aBezierSegment.getStartPoint().getX()),
-                                    fround(aBezierSegment.getStartPoint().getY())));
+                                    fround(aBezierSegment.getStartPoint().getY()));
                             aCollectFlags.push_back(css::drawing::PolygonFlags_NORMAL);
 
                             // prepare next segment
@@ -3434,16 +3470,14 @@ namespace basegfx
                             if(aBezierSegment.isBezier())
                             {
                                 // if bezier is used, add always two control points due to the old schema
-                                aCollectPoints.push_back(
-                                    css::awt::Point(
+                                aCollectPoints.emplace_back(
                                         fround(aBezierSegment.getControlPointA().getX()),
-                                        fround(aBezierSegment.getControlPointA().getY())));
+                                        fround(aBezierSegment.getControlPointA().getY()));
                                 aCollectFlags.push_back(css::drawing::PolygonFlags_CONTROL);
 
-                                aCollectPoints.push_back(
-                                    css::awt::Point(
+                                aCollectPoints.emplace_back(
                                         fround(aBezierSegment.getControlPointB().getX()),
-                                        fround(aBezierSegment.getControlPointB().getY())));
+                                        fround(aBezierSegment.getControlPointB().getY()));
                                 aCollectFlags.push_back(css::drawing::PolygonFlags_CONTROL);
                             }
 
@@ -3476,10 +3510,9 @@ namespace basegfx
                         {
                             // add last point as closing point
                             const B2DPoint aClosingPoint(rPolygon.getB2DPoint(nPointCount - 1));
-                            aCollectPoints.push_back(
-                                css::awt::Point(
+                            aCollectPoints.emplace_back(
                                     fround(aClosingPoint.getX()),
-                                    fround(aClosingPoint.getY())));
+                                    fround(aClosingPoint.getY()));
                             aCollectFlags.push_back(css::drawing::PolygonFlags_NORMAL);
                         }
 
@@ -3487,8 +3520,8 @@ namespace basegfx
                         const sal_uInt32 nTargetCount(aCollectPoints.size());
                         OSL_ENSURE(nTargetCount == aCollectFlags.size(), "Unequal Point and Flag count (!)");
 
-                        rPointSequenceRetval.realloc((sal_Int32)nTargetCount);
-                        rFlagSequenceRetval.realloc((sal_Int32)nTargetCount);
+                        rPointSequenceRetval.realloc(static_cast<sal_Int32>(nTargetCount));
+                        rFlagSequenceRetval.realloc(static_cast<sal_Int32>(nTargetCount));
                         css::awt::Point* pPointSequence = rPointSequenceRetval.getArray();
                         css::drawing::PolygonFlags* pFlagSequence = rFlagSequenceRetval.getArray();
 
@@ -3506,8 +3539,8 @@ namespace basegfx
                     // straightforward point list creation
                     const sal_uInt32 nTargetCount(nPointCount + (bClosed ? 1 : 0));
 
-                    rPointSequenceRetval.realloc((sal_Int32)nTargetCount);
-                    rFlagSequenceRetval.realloc((sal_Int32)nTargetCount);
+                    rPointSequenceRetval.realloc(static_cast<sal_Int32>(nTargetCount));
+                    rFlagSequenceRetval.realloc(static_cast<sal_Int32>(nTargetCount));
 
                     css::awt::Point* pPointSequence = rPointSequenceRetval.getArray();
                     css::drawing::PolygonFlags* pFlagSequence = rFlagSequenceRetval.getArray();
@@ -3540,7 +3573,6 @@ namespace basegfx
             }
         }
 
-    } // end of namespace tools
-} // end of namespace basegfx
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

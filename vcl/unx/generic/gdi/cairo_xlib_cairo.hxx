@@ -21,7 +21,6 @@
 #define INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_XLIB_CAIRO_HXX
 
 #include <sal/config.h>
-#include <sal/types.h>
 #include <vcl/cairo.hxx>
 #include <vcl/salgtype.hxx>
 
@@ -91,7 +90,6 @@ namespace cairo {
         int getDepth() const;
         DeviceFormat getFormat() const;
         const X11PixmapSharedPtr& getPixmap() const { return mpPixmap; }
-        void* getRenderFormat() const { return maSysData.pRenderFormat; }
     };
 }
 

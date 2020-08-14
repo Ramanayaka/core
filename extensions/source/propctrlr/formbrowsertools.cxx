@@ -21,7 +21,8 @@
 #include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include "formresid.hrc"
+#include <osl/diagnose.h>
+#include <strings.hrc>
 #include "modulepcr.hxx"
 #include "formstrings.hxx"
 
@@ -38,9 +39,6 @@ namespace pcr
 
     OUString GetUIHeadlineName(sal_Int16 nClassId, const Any& aUnoObj)
     {
-        PcrClient aResourceAccess;
-            // this ensures that we have our resource file loaded
-
         OUString sClassName;
         switch (nClassId)
         {

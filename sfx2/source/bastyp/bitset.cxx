@@ -18,18 +18,18 @@
  */
 
 #include <sal/log.hxx>
+#include <sal/types.h>
 
-#include "bitset.hxx"
+#include <bitset.hxx>
 
 #include <string.h>
-#include <limits.h>
 
 // creates the asymmetric difference with another bitset
 
 IndexBitSet& IndexBitSet::operator-=(sal_uInt16 nBit)
 {
     sal_uInt16 nBlock = nBit / 32;
-    sal_uInt32 nBitVal = 1L << (nBit % 32);
+    sal_uInt32 nBitVal = 1U << (nBit % 32);
 
     if ( nBlock >= nBlocks )
       return *this;
@@ -37,18 +37,17 @@ IndexBitSet& IndexBitSet::operator-=(sal_uInt16 nBit)
     if ( pBitmap[nBlock] & nBitVal )
     {
         pBitmap[nBlock] &= ~nBitVal;
-        --nCount;
     }
 
     return *this;
 }
 
-// unites with a single bit
+// unify with a single bit
 
 IndexBitSet& IndexBitSet::operator|=( sal_uInt16 nBit )
 {
     sal_uInt16 nBlock = nBit / 32;
-    sal_uInt32 nBitVal = 1L << (nBit % 32);
+    sal_uInt32 nBitVal = 1U << (nBit % 32);
 
     if ( nBlock >= nBlocks )
     {
@@ -66,7 +65,6 @@ IndexBitSet& IndexBitSet::operator|=( sal_uInt16 nBit )
     if ( (pBitmap[nBlock] & nBitVal) == 0 )
     {
         pBitmap[nBlock] |= nBitVal;
-        ++nCount;
     }
 
     return *this;
@@ -78,7 +76,7 @@ IndexBitSet& IndexBitSet::operator|=( sal_uInt16 nBit )
 bool IndexBitSet::Contains( sal_uInt16 nBit ) const
 {
     sal_uInt16 nBlock = nBit / 32;
-    sal_uInt32 nBitVal = 1L << (nBit % 32);
+    sal_uInt32 nBitVal = 1U << (nBit % 32);
 
     if ( nBlock >= nBlocks )
         return false;
@@ -87,7 +85,6 @@ bool IndexBitSet::Contains( sal_uInt16 nBit ) const
 
 IndexBitSet::IndexBitSet()
 {
-    nCount = 0;
     nBlocks = 0;
 }
 
@@ -97,13 +94,13 @@ IndexBitSet::~IndexBitSet()
 
 sal_uInt16 IndexBitSet::GetFreeIndex()
 {
-  for(int i=0;i<USHRT_MAX;i++)
+  for(sal_uInt16 i=0;i<SAL_MAX_UINT16;i++)
     if(!Contains(i))
       {
         *this|=i;
         return i;
       }
-  SAL_WARN( "sfx", "IndexBitSet enthaelt mehr als USHRT_MAX Eintraege");
+  SAL_WARN( "sfx", "IndexBitSet contains more than SAL_MAX_UINT16 entries");
   return 0;
 }
 

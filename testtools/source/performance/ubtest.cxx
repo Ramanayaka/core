@@ -28,11 +28,14 @@
 #include <osl/mutex.hxx>
 #include <osl/module.h>
 #include <osl/process.h>
-#include <osl/thread.h>
+#include <osl/thread.hxx>
 #include <osl/conditn.hxx>
 #include <osl/time.h>
 
-#ifdef SAL_W32
+#ifdef _WIN32
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #else
 #include <sys/times.h>
@@ -81,7 +84,7 @@ namespace benchmark_test
 
 static inline sal_uInt32 getSystemTicks()
 {
-#ifdef SAL_W32
+#ifdef _WIN32
     return (sal_uInt32)GetTickCount();
 #else // only UNX supported for now
     static sal_uInt32   nImplTicksPerSecond = 0;
@@ -108,12 +111,12 @@ static inline sal_uInt32 getSystemTicks()
 }
 
 
-static void out( const sal_Char * pText, FILE * stream = stderr,
-                 sal_Int32 nStart = -1, sal_Char cFillchar = ' ' )
+static void out( const char * pText, FILE * stream = stderr,
+                 sal_Int32 nStart = -1, char cFillchar = ' ' )
 {
     static sal_Int32 s_nPos = 0;
 
-    sal_Char ar[2] = { cFillchar, 0 };
+    char ar[2] = { cFillchar, 0 };
     while (s_nPos < nStart)
     {
         ::fprintf( stream, ar );
@@ -122,7 +125,7 @@ static void out( const sal_Char * pText, FILE * stream = stderr,
 
     ::fprintf( stream, pText );
 
-    for ( const sal_Char * p = pText; *p; ++p )
+    for ( const char * p = pText; *p; ++p )
     {
         if (*p == '\n')
             s_nPos = 0;
@@ -132,24 +135,24 @@ static void out( const sal_Char * pText, FILE * stream = stderr,
 }
 
 static inline void out( const OUString & rText, FILE * stream = stderr,
-                        sal_Int32 nStart = -1, sal_Char cFillchar = ' ' )
+                        sal_Int32 nStart = -1, char cFillchar = ' ' )
 {
     OString aText( OUStringToOString( rText, RTL_TEXTENCODING_ASCII_US ) );
     out( aText.getStr(), stream, nStart, cFillchar );
 }
 
 static inline void out( double fVal, FILE * stream = stderr,
-                        sal_Int32 nStart = -1, sal_Char cFillchar = ' ' )
+                        sal_Int32 nStart = -1, char cFillchar = ' ' )
 {
-    sal_Char ar[128];
+    char ar[128];
     ::snprintf( ar, sizeof(ar), (fVal < 0.000001 ? "%g" : "%f"), fVal );
     out( ar, stream, nStart, cFillchar );
 }
 
 static inline void out( sal_Int64 nVal, FILE * stream = stderr,
-                        sal_Int32 nStart = -1, sal_Char cFillchar = ' ' )
+                        sal_Int32 nStart = -1, char cFillchar = ' ' )
 {
-    sal_Char ar[128];
+    char ar[128];
     ::snprintf( ar, sizeof(ar), "%ld", nVal );
     out( ar, stream, nStart, cFillchar );
 }
@@ -183,7 +186,7 @@ Reference< XSingleServiceFactory > loadLibComponentFactory(
         {
             uno_Environment * pCurrentEnv = 0;
             uno_Environment * pEnv = 0;
-            const sal_Char * pEnvTypeName = 0;
+            const char * pEnvTypeName = 0;
             (*((component_getImplementationEnvironmentFunc)pSym))( &pEnvTypeName, &pEnv );
 
             sal_Bool bNeedsMapping =
@@ -339,7 +342,7 @@ static void createInstance( Reference< T > & rxOut,
                         xMgr, Reference< XRegistryKey >() ) ) );
                     // connector
                     xSet->insert( makeAny( loadLibComponentFactory(
-                        OUString("connectr"),
+                        OUString("connector"),
                         OUString("com.sun.star.comp.stoc.Connector"),
                         xMgr, Reference< XRegistryKey >() ) ) );
                     // iiop bridge
@@ -385,8 +388,7 @@ static void createInstance( Reference< T > & rxOut,
 
 inline static Sequence< OUString > getSupportedServiceNames()
 {
-    OUString aName( SERVICENAME );
-    return Sequence< OUString >( &aName, 1 );
+    return { SERVICENAME };
 }
 
 
@@ -526,10 +528,10 @@ typedef std::map< std::string, TimeEntry > t_TimeEntryMap;
 struct TimingSheet
 {
     t_TimeEntryMap      _entries;
-    void insert( const sal_Char * pText, sal_Int64 nLoop, sal_uInt32 nTicks );
+    void insert( const char * pText, sal_Int64 nLoop, sal_uInt32 nTicks );
 };
 
-void TimingSheet::insert( const sal_Char * pText, sal_Int64 nLoop, sal_uInt32 nTicks )
+void TimingSheet::insert( const char * pText, sal_Int64 nLoop, sal_uInt32 nTicks )
 {
     _entries[ pText ] = TimeEntry( nLoop, nTicks );
 }
@@ -890,7 +892,7 @@ static void benchmark(
 //      while (i--)
 //          xBench->setSequence( aSeq );
 //      tEnd = getSystemTicks();
-//      rSheet.insert( "transfer of exisiting objects", nLoop, tEnd - tStart );
+//      rSheet.insert( "transfer of existing objects", nLoop, tEnd - tStart );
 
     // exceptions
     i = nLoop;
@@ -1100,9 +1102,7 @@ sal_Int32 TestImpl::run( const Sequence< OUString > & rArgs )
             osl_freeProcessHandle( hProcess );
 
             // wait three seconds
-            TimeValue threeSeconds;
-            threeSeconds.Seconds = 3;
-            osl_waitThread( &threeSeconds );
+            osl::Thread::wait(std::chrono::seconds(3));
 
             // connect and resolve outer process object
             Reference< XInterface > xResolvedObject( resolveObject( OUString("uno:socket,host=localhost,port=6000;iiop;TestRemoteObject") ) );
@@ -1145,18 +1145,16 @@ sal_Int32 TestImpl::run( const Sequence< OUString > & rArgs )
 
         sal_Int32 nPos = 60;
         out( "[direct in process]", stream, nPos );
-        t_TimingSheetMap::const_iterator iSheets( aSheets.begin() );
-        for ( ; iSheets != aSheets.end(); ++iSheets )
+        for ( const auto& rSheet : aSheets )
         {
             nPos += 40;
             out( "[", stream, nPos );
-            out( (*iSheets).first.c_str(), stream );
+            out( rSheet.first.c_str(), stream );
             out( "]", stream );
         }
-        for ( t_TimeEntryMap::const_iterator iTopics( aDirect._entries.begin() );
-              iTopics != aDirect._entries.end(); ++iTopics )
+        for ( const auto& rTopics : aDirect._entries )
         {
-            const std::string & rTopic = (*iTopics).first;
+            const std::string & rTopic = rTopics.first;
 
             out( "\n", stream );
             out( rTopic.c_str(), stream );
@@ -1165,7 +1163,7 @@ sal_Int32 TestImpl::run( const Sequence< OUString > & rArgs )
 
             sal_Int32 nPos = 60;
 
-            double secs = (*iTopics).second.secPerCall();
+            double secs = rTopics.second.secPerCall();
             if (secs > 0.0)
             {
                 out( secs * 1000, stream, nPos );
@@ -1176,11 +1174,10 @@ sal_Int32 TestImpl::run( const Sequence< OUString > & rArgs )
                 out( "NA", stream, nPos );
             }
 
-            iSheets = aSheets.begin();
-            for ( ; iSheets != aSheets.end(); ++iSheets )
+            for ( const auto& rSheet : aSheets )
             {
-                const t_TimeEntryMap::const_iterator iFind( (*iSheets).second._entries.find( rTopic ) );
-                OSL_ENSURE( iFind != (*iSheets).second._entries.end(), "####" );
+                const t_TimeEntryMap::const_iterator iFind( rSheet.second._entries.find( rTopic ) );
+                OSL_ENSURE( iFind != rSheet.second._entries.end(), "####" );
 
                 nPos += 40;
 
@@ -1191,7 +1188,7 @@ sal_Int32 TestImpl::run( const Sequence< OUString > & rArgs )
                     out( "ms", stream );
 
                     out( " (", stream );
-                    double ratio = (*iFind).second.ratio( (*iTopics).second );
+                    double ratio = (*iFind).second.ratio( rTopics.second );
                     if (ratio != 0.0)
                     {
                         out( ratio, stream );
@@ -1252,7 +1249,7 @@ sal_Bool SAL_CALL component_writeInfo(
 }
 
 SAL_DLLPUBLIC_EXPORT void * SAL_CALL component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
+    const char * pImplName, void * pServiceManager, void * pRegistryKey )
 {
     void * pRet = 0;
 

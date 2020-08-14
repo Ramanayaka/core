@@ -18,22 +18,16 @@
  */
 
 #include <uielement/macrosmenucontroller.hxx>
-#include <uielement/menubarmanager.hxx>
-#include "services.h"
-#include <classes/resource.hrc>
-#include <classes/fwkresid.hxx>
-#include <com/sun/star/awt/MenuItemStyle.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <services.h>
 #include <com/sun/star/container/XContentEnumerationAccess.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
-#include <comphelper/processfactory.hxx>
+#include <officecfg/Office/Common.hxx>
+#include <toolkit/awt/vclxmenu.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/i18nhelp.hxx>
 #include <vcl/commandinfoprovider.hxx>
-#include <rtl/ustrbuf.hxx>
-#include "helper/mischelper.hxx"
 #include <osl/mutex.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
@@ -45,14 +39,23 @@ using namespace com::sun::star::container;
 
 namespace framework
 {
-class
-DEFINE_XSERVICEINFO_MULTISERVICE_2      (   MacrosMenuController                    ,
-                                            OWeakObject                             ,
-                                            SERVICENAME_POPUPMENUCONTROLLER         ,
-                                            IMPLEMENTATIONNAME_MACROSMENUCONTROLLER
-                                        )
 
-DEFINE_INIT_SERVICE                     (   MacrosMenuController, {} )
+// XInterface, XTypeProvider, XServiceInfo
+
+OUString SAL_CALL MacrosMenuController::getImplementationName()
+{
+    return "com.sun.star.comp.framework.MacrosMenuController";
+}
+
+sal_Bool SAL_CALL MacrosMenuController::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL MacrosMenuController::getSupportedServiceNames()
+{
+    return { SERVICENAME_POPUPMENUCONTROLLER };
+}
 
 MacrosMenuController::MacrosMenuController( const css::uno::Reference< css::uno::XComponentContext >& xContext ) :
     svt::PopupMenuControllerBase( xContext ),
@@ -65,9 +68,13 @@ MacrosMenuController::~MacrosMenuController()
 }
 
 // private function
-void MacrosMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >& rPopupMenu )
+void MacrosMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu > const & rPopupMenu )
 {
-    VCLXPopupMenu* pVCLPopupMenu = static_cast<VCLXPopupMenu *>(VCLXMenu::GetImplementation( rPopupMenu ));
+    bool bMacrosDisabled = officecfg::Office::Common::Security::Scripting::DisableMacrosExecution::get();
+    if (bMacrosDisabled)
+        return;
+
+    VCLXPopupMenu* pVCLPopupMenu = static_cast<VCLXPopupMenu *>(comphelper::getUnoTunnelImplementation<VCLXMenu>( rPopupMenu ));
     PopupMenu*     pPopupMenu    = nullptr;
 
     SolarMutexGuard aSolarMutexGuard;
@@ -81,7 +88,8 @@ void MacrosMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >& rPo
 
     // insert basic
     OUString aCommand(".uno:MacroDialog");
-    OUString aDisplayName = vcl::CommandInfoProvider::GetMenuLabelForCommand(aCommand, m_aModuleName);
+    auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(aCommand, m_aModuleName);
+    OUString aDisplayName = vcl::CommandInfoProvider::GetMenuLabelForCommand(aProperties);
     pPopupMenu->InsertItem( 2, aDisplayName );
     pPopupMenu->SetItemCommand( 2, aCommand );
 
@@ -121,10 +129,9 @@ void MacrosMenuController::addScriptItems( PopupMenu* pPopupMenu, sal_uInt16 sta
     const OUString aCmdBase(".uno:ScriptOrganizer?ScriptOrganizer.Language:string=");
     const OUString ellipsis( "..." );
     const OUString providerKey("com.sun.star.script.provider.ScriptProviderFor");
-    const OUString languageProviderName("com.sun.star.script.provider.LanguageScriptProvider");
     sal_uInt16 itemId = startItemId;
     Reference< XContentEnumerationAccess > xEnumAccess( m_xContext->getServiceManager(), UNO_QUERY_THROW );
-    Reference< XEnumeration > xEnum = xEnumAccess->createContentEnumeration ( languageProviderName );
+    Reference< XEnumeration > xEnum = xEnumAccess->createContentEnumeration ( "com.sun.star.script.provider.LanguageScriptProvider" );
 
     while ( xEnum->hasMoreElements() )
     {
@@ -133,34 +140,37 @@ void MacrosMenuController::addScriptItems( PopupMenu* pPopupMenu, sal_uInt16 sta
         {
             break;
         }
-        Sequence< OUString > serviceNames = xServiceInfo->getSupportedServiceNames();
+        const Sequence< OUString > serviceNames = xServiceInfo->getSupportedServiceNames();
 
-        if ( serviceNames.getLength() > 0 )
+        for ( OUString const & serviceName : serviceNames )
         {
-            for ( sal_Int32 index = 0; index < serviceNames.getLength(); index++ )
+            if ( serviceName.startsWith( providerKey ) )
             {
-                if ( serviceNames[ index ].startsWith( providerKey ) )
+                OUString aCommand = aCmdBase;
+                OUString aDisplayName = serviceName.copy( providerKey.getLength() );
+                if( aDisplayName == "Java" || aDisplayName == "Basic" )
                 {
-                    OUString serviceName = serviceNames[ index ];
-                    OUString aCommand = aCmdBase;
-                    OUString aDisplayName = serviceName.copy( providerKey.getLength() );
-                    if( aDisplayName == "Java" || aDisplayName == "Basic" )
-                    {
-                        // no entries for Java & Basic added elsewhere
-                        break;
-                    }
-                    aCommand += aDisplayName;
-                    aDisplayName += ellipsis;
-                    pPopupMenu->InsertItem( itemId, aDisplayName );
-                    pPopupMenu->SetItemCommand( itemId, aCommand );
-                    itemId++;
+                    // no entries for Java & Basic added elsewhere
                     break;
                 }
+                aCommand += aDisplayName;
+                aDisplayName += ellipsis;
+                pPopupMenu->InsertItem( itemId, aDisplayName );
+                pPopupMenu->SetItemCommand( itemId, aCommand );
+                itemId++;
+                break;
             }
         }
     }
 }
 
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_MacrosMenuController_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::MacrosMenuController(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

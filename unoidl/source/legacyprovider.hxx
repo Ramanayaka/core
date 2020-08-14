@@ -10,13 +10,13 @@
 #ifndef INCLUDED_UNOIDL_SOURCE_LEGACYPROVIDER_HXX
 #define INCLUDED_UNOIDL_SOURCE_LEGACYPROVIDER_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "registry/registry.hxx"
-#include "rtl/ref.hxx"
-#include "unoidl/unoidl.hxx"
+#include <registry/registry.hxx>
+#include <rtl/ref.hxx>
+#include <unoidl/unoidl.hxx>
 
-namespace unoidl { namespace detail {
+namespace unoidl::detail {
 
 class LegacyProvider: public Provider {
 public:
@@ -37,7 +37,7 @@ private:
     mutable RegistryKey ucr_;
 };
 
-} }
+}
 
 #endif
 

@@ -44,7 +44,7 @@ else
 liborcus_LIBS+=-L$(gb_StaticLibrary_WORKDIR) -lboost_system -lboost_iostreams -lboost_filesystem
 endif
 ifeq ($(OS),ANDROID)
-liborcus_LIBS+=-lgnustl_shared -lm
+liborcus_LIBS+=$(gb_STDLIBS)
 endif
 
 liborcus_CPPCLAGS=$(CPPFLAGS)
@@ -58,7 +58,7 @@ endif
 # library (glibc), the NDK does offer the GNU C++ library as one of
 # the C++ libraries available, and we use it.
 #
-ifneq (,$(filter ANDROID DRAGONFLY FREEBSD IOS LINUX NETBSD OPENBSD,$(OS)))
+ifneq (,$(filter ANDROID DRAGONFLY FREEBSD iOS LINUX NETBSD OPENBSD,$(OS)))
 ifneq (,$(gb_ENABLE_DBGUTIL))
 liborcus_CPPFLAGS+=-D_GLIBCXX_DEBUG
 endif
@@ -82,7 +82,16 @@ ifeq ($(OS),LINUX)
 liborcus_LDFLAGS+=-Wl,-z,origin -Wl,-rpath,\$$$$ORIGIN
 endif
 
+ifeq ($(ENABLE_GDB_INDEX),TRUE)
+liborcus_LDFLAGS+=-Wl,--gdb-index
+liborcus_CXXFLAGS+=-ggnu-pubnames
+ifneq ($(USE_LD),)
+liborcus_LDFLAGS += $(USE_LD)
+endif
+endif
+
 $(call gb_ExternalProject_get_state_target,liborcus,build) :
+	$(call gb_Trace_StartRange,liborcus,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		$(if $(liborcus_LIBS),LIBS='$(liborcus_LIBS)') \
 		$(if $(liborcus_CXXFLAGS),CXXFLAGS='$(liborcus_CXXFLAGS)') \
@@ -114,9 +123,10 @@ $(call gb_ExternalProject_get_state_target,liborcus,build) :
 		   $(MAKE) \
 		$(if $(filter MACOSX,$(OS)),\
 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
-				$(gb_Package_SOURCEDIR_liborcus)/src/liborcus/.libs/liborcus-0.12.0.dylib \
-				$(gb_Package_SOURCEDIR_liborcus)/src/parser/.libs/liborcus-parser-0.12.0.dylib \
+				$(EXTERNAL_WORKDIR)/src/liborcus/.libs/liborcus-0.15.0.dylib \
+				$(EXTERNAL_WORKDIR)/src/parser/.libs/liborcus-parser-0.15.0.dylib \
 		) \
 	)
+	$(call gb_Trace_EndRange,liborcus,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

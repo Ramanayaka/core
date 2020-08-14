@@ -19,17 +19,16 @@
 
 #include <unotools/textsearch.hxx>
 
-#include "chgviset.hxx"
-#include "rechead.hxx"
-#include "chgtrack.hxx"
-#include "document.hxx"
+#include <chgviset.hxx>
+#include <rechead.hxx>
+#include <chgtrack.hxx>
+#include <document.hxx>
 
 ScChangeViewSettings::~ScChangeViewSettings()
 {
 }
 
 ScChangeViewSettings::ScChangeViewSettings( const ScChangeViewSettings& r ):
-    pCommentSearcher(nullptr),
     aFirstDateTime( DateTime::EMPTY ),
     aLastDateTime( DateTime::EMPTY )
 {
@@ -45,7 +44,6 @@ ScChangeViewSettings::ScChangeViewSettings( const ScChangeViewSettings& r ):
     bIsAuthor       =r.bIsAuthor;
     bIsComment      =r.bIsComment;
     bIsRange        =r.bIsRange;
-    bEveryoneButMe  =r.bEveryoneButMe;
     bShowAccepted   =r.bShowAccepted;
     bShowRejected   =r.bShowRejected;
     mbIsActionRange = r.mbIsActionRange;
@@ -69,7 +67,6 @@ ScChangeViewSettings& ScChangeViewSettings::operator=( const ScChangeViewSetting
     bIsAuthor       =r.bIsAuthor;
     bIsComment      =r.bIsComment;
     bIsRange        =r.bIsRange;
-    bEveryoneButMe  =r.bEveryoneButMe;
     bShowAccepted   =r.bShowAccepted;
     bShowRejected   =r.bShowRejected;
     mbIsActionRange = r.mbIsActionRange;
@@ -102,7 +99,7 @@ void ScChangeViewSettings::SetTheComment(const OUString& rString)
         utl::SearchParam aSearchParam( rString,
             utl::SearchParam::SearchType::Regexp,false );
 
-        pCommentSearcher.reset( new utl::TextSearch( aSearchParam, *ScGlobal::pCharClass ) );
+        pCommentSearcher.reset( new utl::TextSearch( aSearchParam, *ScGlobal::getCharClassPtr() ) );
     }
 }
 

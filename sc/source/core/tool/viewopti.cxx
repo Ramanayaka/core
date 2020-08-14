@@ -18,24 +18,23 @@
  */
 
 #include <vcl/svapp.hxx>
+#include <osl/diagnose.h>
 
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 
-#include "global.hxx"
-#include "globstr.hrc"
-#include "cfgids.hxx"
-#include "viewopti.hxx"
-#include "rechead.hxx"
-#include "scresid.hxx"
-#include "sc.hrc"
-#include "miscuno.hxx"
+#include <global.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <viewopti.hxx>
+#include <rechead.hxx>
+#include <sc.hrc>
+#include <miscuno.hxx>
 
 using namespace utl;
 using namespace com::sun::star::uno;
 
 
-// class ScGridOptions
 
 void ScGridOptions::SetDefaults()
 {
@@ -62,22 +61,6 @@ void ScGridOptions::SetDefaults()
     nFldDivisionY = 1;
 }
 
-ScGridOptions& ScGridOptions::operator=( const ScGridOptions& rCpy )
-{
-    nFldDrawX       = rCpy.nFldDrawX;       // UINT32
-    nFldDivisionX   = rCpy.nFldDivisionX;
-    nFldDrawY       = rCpy.nFldDrawY;
-    nFldDivisionY   = rCpy.nFldDivisionY;
-    nFldSnapX       = rCpy.nFldSnapX;
-    nFldSnapY       = rCpy.nFldSnapY;
-    bUseGridsnap    = rCpy.bUseGridsnap;    // BitBool
-    bSynchronize    = rCpy.bSynchronize;
-    bGridVisible    = rCpy.bGridVisible;
-    bEqualGrid      = rCpy.bEqualGrid;
-
-    return *this;
-}
-
 bool ScGridOptions::operator==( const ScGridOptions& rCpy ) const
 {
     return (   nFldDrawX        == rCpy.nFldDrawX
@@ -92,7 +75,6 @@ bool ScGridOptions::operator==( const ScGridOptions& rCpy ) const
             && bEqualGrid       == rCpy.bEqualGrid );
 }
 
-// class ScViewOptions
 
 ScViewOptions::ScViewOptions()
 {
@@ -125,13 +107,13 @@ void ScViewOptions::SetDefaults()
     aOptArr[ VOPT_ANCHOR      ] = true;
     aOptArr[ VOPT_PAGEBREAKS  ] = true;
     aOptArr[ VOPT_CLIPMARKS   ] = true;
+    aOptArr[ VOPT_SUMMARY     ] = true;
 
     aModeArr[VOBJ_TYPE_OLE ]  = VOBJ_MODE_SHOW;
     aModeArr[VOBJ_TYPE_CHART] = VOBJ_MODE_SHOW;
     aModeArr[VOBJ_TYPE_DRAW ] = VOBJ_MODE_SHOW;
 
-    aGridCol     = Color( SC_STD_GRIDCOLOR );
-    aGridColName = ScGlobal::GetRscString( STR_GRIDCOLOR );
+    aGridCol     = SC_STD_GRIDCOLOR;
 
     aGridOpt.SetDefaults();
 }
@@ -173,9 +155,9 @@ bool ScViewOptions::operator==( const ScViewOptions& rOpt ) const
     return bEqual;
 }
 
-SvxGridItem* ScViewOptions::CreateGridItem() const
+std::unique_ptr<SvxGridItem> ScViewOptions::CreateGridItem() const
 {
-    SvxGridItem* pItem = new SvxGridItem( SID_ATTR_GRID_OPTIONS );
+    std::unique_ptr<SvxGridItem> pItem(new SvxGridItem( SID_ATTR_GRID_OPTIONS ));
 
     pItem->SetFieldDrawX      ( aGridOpt.GetFieldDrawX() );
     pItem->SetFieldDivisionX  ( aGridOpt.GetFieldDivisionX() );
@@ -199,12 +181,6 @@ ScTpViewItem::ScTpViewItem( const ScViewOptions& rOpt )
 {
 }
 
-ScTpViewItem::ScTpViewItem( const ScTpViewItem& rItem )
-    :   SfxPoolItem ( rItem ),
-        theOptions  ( rItem.theOptions )
-{
-}
-
 ScTpViewItem::~ScTpViewItem()
 {
 }
@@ -218,7 +194,7 @@ bool ScTpViewItem::operator==( const SfxPoolItem& rItem ) const
     return ( theOptions == rPItem.theOptions );
 }
 
-SfxPoolItem* ScTpViewItem::Clone( SfxItemPool * ) const
+ScTpViewItem* ScTpViewItem::Clone( SfxItemPool * ) const
 {
     return new ScTpViewItem( *this );
 }
@@ -237,6 +213,7 @@ SfxPoolItem* ScTpViewItem::Clone( SfxItemPool * ) const
 #define SCLAYOUTOPT_SHEETTAB        7
 #define SCLAYOUTOPT_OUTLINE         8
 #define SCLAYOUTOPT_GRID_ONCOLOR    9
+#define SCLAYOUTOPT_SUMMARY         10
 
 #define CFGPATH_DISPLAY     "Office.Calc/Content/Display"
 
@@ -274,7 +251,8 @@ Sequence<OUString> ScViewCfg::GetLayoutPropertyNames()
             "Window/VerticalScroll",    // SCLAYOUTOPT_VERTSCROLL
             "Window/SheetTab",          // SCLAYOUTOPT_SHEETTAB
             "Window/OutlineSymbol",     // SCLAYOUTOPT_OUTLINE
-            "Line/GridOnColoredCells"}; // SCLAYOUTOPT_GRID_ONCOLOR;
+            "Line/GridOnColoredCells",  // SCLAYOUTOPT_GRID_ONCOLOR;
+            "Window/SearchSummary"};    // SCLAYOUTOPT_SUMMARY
 }
 
 Sequence<OUString> ScViewCfg::GetDisplayPropertyNames()
@@ -362,6 +340,9 @@ ScViewCfg::ScViewCfg() :
                     case SCLAYOUTOPT_OUTLINE:
                         SetOption( VOPT_OUTLINER, ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
                         break;
+                    case SCLAYOUTOPT_SUMMARY:
+                        SetOption( VOPT_SUMMARY, ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
+                        break;
                 }
             }
         }
@@ -404,27 +385,27 @@ ScViewCfg::ScViewCfg() :
                         if ( pValues[nProp] >>= nIntVal )
                         {
                             //#i80528# adapt to new range eventually
-                            if((sal_Int32)VOBJ_MODE_HIDE < nIntVal) nIntVal = (sal_Int32)VOBJ_MODE_SHOW;
+                            if(sal_Int32(VOBJ_MODE_HIDE) < nIntVal) nIntVal = sal_Int32(VOBJ_MODE_SHOW);
 
-                            SetObjMode( VOBJ_TYPE_OLE, (ScVObjMode)nIntVal);
+                            SetObjMode( VOBJ_TYPE_OLE, static_cast<ScVObjMode>(nIntVal));
                         }
                         break;
                     case SCDISPLAYOPT_CHART:
                         if ( pValues[nProp] >>= nIntVal )
                         {
                             //#i80528# adapt to new range eventually
-                            if((sal_Int32)VOBJ_MODE_HIDE < nIntVal) nIntVal = (sal_Int32)VOBJ_MODE_SHOW;
+                            if(sal_Int32(VOBJ_MODE_HIDE) < nIntVal) nIntVal = sal_Int32(VOBJ_MODE_SHOW);
 
-                            SetObjMode( VOBJ_TYPE_CHART, (ScVObjMode)nIntVal);
+                            SetObjMode( VOBJ_TYPE_CHART, static_cast<ScVObjMode>(nIntVal));
                         }
                         break;
                     case SCDISPLAYOPT_DRAWING:
                         if ( pValues[nProp] >>= nIntVal )
                         {
                             //#i80528# adapt to new range eventually
-                            if((sal_Int32)VOBJ_MODE_HIDE < nIntVal) nIntVal = (sal_Int32)VOBJ_MODE_SHOW;
+                            if(sal_Int32(VOBJ_MODE_HIDE) < nIntVal) nIntVal = sal_Int32(VOBJ_MODE_SHOW);
 
-                            SetObjMode( VOBJ_TYPE_DRAW, (ScVObjMode)nIntVal);
+                            SetObjMode( VOBJ_TYPE_DRAW, static_cast<ScVObjMode>(nIntVal));
                         }
                         break;
                 }
@@ -497,7 +478,7 @@ IMPL_LINK_NOARG(ScViewCfg, LayoutCommitHdl, ScLinkConfigItem&, void)
         switch(nProp)
         {
             case SCLAYOUTOPT_GRIDCOLOR:
-                pValues[nProp] <<= (sal_Int32) GetGridColor().GetColor();
+                pValues[nProp] <<= GetGridColor();
                 break;
             case SCLAYOUTOPT_GRIDLINES:
                 pValues[nProp] <<= GetOption( VOPT_GRID );
@@ -525,6 +506,9 @@ IMPL_LINK_NOARG(ScViewCfg, LayoutCommitHdl, ScLinkConfigItem&, void)
                 break;
             case SCLAYOUTOPT_OUTLINE:
                 pValues[nProp] <<= GetOption( VOPT_OUTLINER );
+                break;
+            case SCLAYOUTOPT_SUMMARY:
+                pValues[nProp] <<= GetOption( VOPT_SUMMARY );
                 break;
         }
     }
@@ -560,13 +544,13 @@ IMPL_LINK_NOARG(ScViewCfg, DisplayCommitHdl, ScLinkConfigItem&, void)
                 pValues[nProp] <<= GetOption( VOPT_CLIPMARKS );
                 break;
             case SCDISPLAYOPT_OBJECTGRA:
-                pValues[nProp] <<= (sal_Int32) GetObjMode( VOBJ_TYPE_OLE );
+                pValues[nProp] <<= static_cast<sal_Int32>(GetObjMode( VOBJ_TYPE_OLE ));
                 break;
             case SCDISPLAYOPT_CHART:
-                pValues[nProp] <<= (sal_Int32) GetObjMode( VOBJ_TYPE_CHART );
+                pValues[nProp] <<= static_cast<sal_Int32>(GetObjMode( VOBJ_TYPE_CHART ));
                 break;
             case SCDISPLAYOPT_DRAWING:
-                pValues[nProp] <<= (sal_Int32) GetObjMode( VOBJ_TYPE_DRAW );
+                pValues[nProp] <<= static_cast<sal_Int32>(GetObjMode( VOBJ_TYPE_DRAW ));
                 break;
         }
     }
@@ -586,22 +570,22 @@ IMPL_LINK_NOARG(ScViewCfg, GridCommitHdl, ScLinkConfigItem&, void)
         switch(nProp)
         {
             case SCGRIDOPT_RESOLU_X:
-                pValues[nProp] <<= (sal_Int32) rGrid.GetFieldDrawX();
+                pValues[nProp] <<= static_cast<sal_Int32>(rGrid.GetFieldDrawX());
                 break;
             case SCGRIDOPT_RESOLU_Y:
-                pValues[nProp] <<= (sal_Int32) rGrid.GetFieldDrawY();
+                pValues[nProp] <<= static_cast<sal_Int32>(rGrid.GetFieldDrawY());
                 break;
             case SCGRIDOPT_SUBDIV_X:
-                pValues[nProp] <<= (sal_Int32) rGrid.GetFieldDivisionX();
+                pValues[nProp] <<= static_cast<sal_Int32>(rGrid.GetFieldDivisionX());
                 break;
             case SCGRIDOPT_SUBDIV_Y:
-                pValues[nProp] <<= (sal_Int32) rGrid.GetFieldDivisionY();
+                pValues[nProp] <<= static_cast<sal_Int32>(rGrid.GetFieldDivisionY());
                 break;
             case SCGRIDOPT_OPTION_X:
-                pValues[nProp] <<= (sal_Int32) rGrid.GetFieldSnapX();
+                pValues[nProp] <<= static_cast<sal_Int32>(rGrid.GetFieldSnapX());
                 break;
             case SCGRIDOPT_OPTION_Y:
-                pValues[nProp] <<= (sal_Int32) rGrid.GetFieldSnapY();
+                pValues[nProp] <<= static_cast<sal_Int32>(rGrid.GetFieldSnapY());
                 break;
             case SCGRIDOPT_SNAPTOGRID:
                 pValues[nProp] <<= rGrid.GetUseGridSnap();

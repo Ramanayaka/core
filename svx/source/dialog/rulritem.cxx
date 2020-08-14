@@ -17,10 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/dialogs.hrc>
-#include "svx/rulritem.hxx"
+#include <svx/svxids.hrc>
+#include <svx/rulritem.hxx>
+#include <svx/unomid.hxx>
+#include <tools/debug.hxx>
 #include <tools/mapunit.hxx>
+#include <tools/UnitConversion.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/frame/status/LeftRightMargin.hpp>
 #include <com/sun/star/frame/status/UpperLowerMargin.hpp>
@@ -120,12 +124,12 @@ bool SvxLongLRSpaceItem::GetPresentation(
                         MapUnit             /*eCoreUnit*/,
                         MapUnit             /*ePresUnit*/,
                         OUString&           /*rText*/,
-                        const IntlWrapper*  /*pWrapper*/) const
+                        const IntlWrapper&  /*rWrapper*/) const
 {
     return false;
 }
 
-SfxPoolItem* SvxLongLRSpaceItem::Clone(SfxItemPool *) const
+SvxLongLRSpaceItem* SvxLongLRSpaceItem::Clone(SfxItemPool *) const
 {
     return new SvxLongLRSpaceItem(*this);
 }
@@ -141,13 +145,6 @@ SvxLongLRSpaceItem::SvxLongLRSpaceItem() :
     mlLeft      (0),
     mlRight     (0)
 {}
-
-SvxLongLRSpaceItem::SvxLongLRSpaceItem(const SvxLongLRSpaceItem &rCpy) :
-    SfxPoolItem (rCpy),
-    mlLeft      (rCpy.mlLeft),
-    mlRight     (rCpy.mlRight)
-{}
-
 
 void SvxLongLRSpaceItem::SetLeft(long lArgLeft)
 {
@@ -246,12 +243,12 @@ bool SvxLongULSpaceItem::GetPresentation(
                         MapUnit             /*eCoreUnit*/,
                         MapUnit             /*ePresUnit*/,
                         OUString&           /*rText*/,
-                        const IntlWrapper*  /*pWrapper*/ ) const
+                        const IntlWrapper&  /*rWrapper*/ ) const
 {
     return false;
 }
 
-SfxPoolItem* SvxLongULSpaceItem::Clone(SfxItemPool *) const
+SvxLongULSpaceItem* SvxLongULSpaceItem::Clone(SfxItemPool *) const
 {
     return new SvxLongULSpaceItem(*this);
 }
@@ -260,12 +257,6 @@ SvxLongULSpaceItem::SvxLongULSpaceItem(long lLeft, long lRight, sal_uInt16 nId) 
     SfxPoolItem (nId),
     mlLeft       (lLeft),
     mlRight      (lRight)
-{}
-
-SvxLongULSpaceItem::SvxLongULSpaceItem(const SvxLongULSpaceItem &rCpy) :
-    SfxPoolItem (rCpy),
-    mlLeft      (rCpy.mlLeft),
-    mlRight     (rCpy.mlRight)
 {}
 
 SvxLongULSpaceItem::SvxLongULSpaceItem() :
@@ -335,8 +326,8 @@ bool SvxPagePosSizeItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberI
         css::awt::Rectangle aPagePosSize;
         if ( rVal >>= aPagePosSize )
         {
-            aPos.X() = aPagePosSize.X;
-            aPos.Y() = aPagePosSize.Y;
+            aPos.setX( aPagePosSize.X );
+            aPos.setY( aPagePosSize.Y );
             lWidth   = aPagePosSize.Width;
             lHeight  = aPagePosSize.Height;
             return true;
@@ -348,8 +339,8 @@ bool SvxPagePosSizeItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberI
     {
         switch ( nMemberId )
         {
-            case MID_X: aPos.X() = nVal; break;
-            case MID_Y: aPos.Y() = nVal; break;
+            case MID_X: aPos.setX( nVal ); break;
+            case MID_Y: aPos.setY( nVal ); break;
             case MID_WIDTH: lWidth = nVal; break;
             case MID_HEIGHT: lHeight = nVal; break;
 
@@ -367,12 +358,12 @@ bool SvxPagePosSizeItem::GetPresentation(
                         MapUnit             /*eCoreUnit*/,
                         MapUnit             /*ePresUnit*/,
                         OUString&           /*rText*/,
-                        const IntlWrapper*  /*pWrapper*/ ) const
+                        const IntlWrapper&  /*rWrapper*/ ) const
 {
     return false;
 }
 
-SfxPoolItem* SvxPagePosSizeItem::Clone(SfxItemPool *) const
+SvxPagePosSizeItem* SvxPagePosSizeItem::Clone(SfxItemPool *) const
 {
     return new SvxPagePosSizeItem(*this);
 }
@@ -382,13 +373,6 @@ SvxPagePosSizeItem::SvxPagePosSizeItem(const Point &rP, long lW, long lH) :
     aPos        (rP),
     lWidth      (lW),
     lHeight     (lH)
-{}
-
-SvxPagePosSizeItem::SvxPagePosSizeItem(const SvxPagePosSizeItem &rCpy) :
-    SfxPoolItem (rCpy),
-    aPos        (rCpy.aPos),
-    lWidth      (rCpy.lWidth),
-    lHeight     (rCpy.lHeight)
 {}
 
 SvxPagePosSizeItem::SvxPagePosSizeItem() :
@@ -438,47 +422,19 @@ SvxColumnItem::SvxColumnItem( sal_uInt16 nActCol, sal_uInt16 left, sal_uInt16 ri
     bOrtho      (true)
 {}
 
-SvxColumnItem::SvxColumnItem( const SvxColumnItem& rCopy ) :
-    SfxPoolItem (rCopy),
-    nLeft       (rCopy.nLeft),
-    nRight      (rCopy.nRight),
-    nActColumn  (rCopy.nActColumn),
-    bTable      (rCopy.bTable),
-    bOrtho      (rCopy.bOrtho)
-{
-    aColumns.resize(rCopy.aColumns.size());
-    std::copy(rCopy.aColumns.begin(), rCopy.aColumns.end(), aColumns.begin());
-}
-
-SvxColumnItem::~SvxColumnItem()
-{}
-
 bool SvxColumnItem::GetPresentation(
                         SfxItemPresentation /*ePres*/,
                         MapUnit             /*eCoreUnit*/,
                         MapUnit             /*ePresUnit*/,
                         OUString&           /*rText*/,
-                        const IntlWrapper*  /*pWrapper*/ ) const
+                        const IntlWrapper&  /*rWrapper*/ ) const
 {
     return false;
 }
 
-SfxPoolItem* SvxColumnItem::Clone(SfxItemPool* /*pPool*/) const
+SvxColumnItem* SvxColumnItem::Clone(SfxItemPool* /*pPool*/) const
 {
     return new SvxColumnItem(*this);
-}
-
-SvxColumnItem& SvxColumnItem::operator=(const SvxColumnItem& rCopy)
-{
-    nLeft = rCopy.nLeft;
-    nRight = rCopy.nRight;
-    bTable = rCopy.bTable;
-    nActColumn = rCopy.nActColumn;
-    aColumns.resize(rCopy.aColumns.size());
-
-    std::copy(rCopy.aColumns.begin(), rCopy.aColumns.end(), aColumns.begin());
-
-    return *this;
 }
 
 bool SvxColumnItem::CalcOrtho() const
@@ -514,7 +470,7 @@ bool SvxColumnItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) const
             rVal <<= bOrtho;
             break;
         case MID_ACTUAL:
-            rVal <<= (sal_Int32) nActColumn;
+            rVal <<= static_cast<sal_Int32>(nActColumn);
             break;
         case MID_TABLE:
             rVal <<= bTable;
@@ -546,15 +502,15 @@ bool SvxColumnItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
             break;
         case MID_ORTHO:
             rVal >>= nVal;
-            bOrtho = (bool) nVal;
+            bOrtho = static_cast<bool>(nVal);
             break;
         case MID_ACTUAL:
             rVal >>= nVal;
-            nActColumn = (sal_uInt16) nVal;
+            nActColumn = static_cast<sal_uInt16>(nVal);
             break;
         case MID_TABLE:
             rVal >>= nVal;
-            bTable = (bool) nVal;
+            bTable = static_cast<bool>(nVal);
             break;
         default:
             OSL_FAIL("Wrong MemberId!");
@@ -614,22 +570,6 @@ bool SvxColumnItem::IsLastAct() const
 {
     return nActColumn == Count() - 1;
 }
-
-SvxColumnDescription::SvxColumnDescription() :
-    nStart   (0),
-    nEnd     (0),
-    bVisible (true),
-    nEndMin  (0),
-    nEndMax  (0)
-{}
-
-SvxColumnDescription::SvxColumnDescription(const SvxColumnDescription &rCopy) :
-    nStart   (rCopy.nStart),
-    nEnd     (rCopy.nEnd),
-    bVisible (rCopy.bVisible),
-    nEndMin  (rCopy.nEndMin),
-    nEndMax  (rCopy.nEndMax)
-{}
 
 SvxColumnDescription::SvxColumnDescription(long start, long end, bool bVis) :
     nStart   (start),
@@ -693,12 +633,12 @@ bool SvxObjectItem::GetPresentation(
                         MapUnit             /*eCoreUnit*/,
                         MapUnit             /*ePresUnit*/,
                         OUString&           /*rText*/,
-                        const IntlWrapper*  /*pWrapper*/ ) const
+                        const IntlWrapper&  /*rWrapper*/ ) const
 {
     return false;
 }
 
-SfxPoolItem* SvxObjectItem::Clone(SfxItemPool *) const
+SvxObjectItem* SvxObjectItem::Clone(SfxItemPool *) const
 {
     return new SvxObjectItem(*this);
 }
@@ -711,15 +651,6 @@ SvxObjectItem::SvxObjectItem( long nSX, long nEX,
     nStartY     (nSY),
     nEndY       (nEY),
     bLimits     (false)
-{}
-
-SvxObjectItem::SvxObjectItem( const SvxObjectItem& rCopy ) :
-    SfxPoolItem (rCopy),
-    nStartX     (rCopy.nStartX),
-    nEndX       (rCopy.nEndX),
-    nStartY     (rCopy.nStartY),
-    nEndY       (rCopy.nEndY),
-    bLimits     (rCopy.bLimits)
 {}
 
 bool SvxObjectItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) const

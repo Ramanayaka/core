@@ -17,8 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/bitmapaccess.hxx>
+#include <bitmapwriteaccess.hxx>
 #include <vcl/graph.hxx>
+#include <tools/stream.hxx>
+#include <graphic/GraphicReader.hxx>
 #include "rgbtable.hxx"
 #include "xpmread.hxx"
 #include <cstring>
@@ -28,7 +30,7 @@
 #define XPMTEMPBUFSIZE      0x00008000
 #define XPMSTRINGBUF        0x00008000
 
-#define XPMIDENTIFIER       0x00000001          // mnIdentifier includes on of the six phases
+#define XPMIDENTIFIER       0x00000001          // mnIdentifier includes one of the six phases
 #define XPMDEFINITION       0x00000002          // the XPM format consists of
 #define XPMVALUES           0x00000003
 #define XPMCOLORS           0x00000004
@@ -41,6 +43,8 @@
 #define XPMSTRING           0x00000004
 #define XPMFINISHED         0x00000008
 
+namespace {
+
 enum ReadState
 {
     XPMREAD_OK,
@@ -48,8 +52,12 @@ enum ReadState
     XPMREAD_NEED_MORE
 };
 
+}
+
 class BitmapWriteAccess;
 class Graphic;
+
+namespace {
 
 class XPMReader : public GraphicReader
 {
@@ -57,9 +65,9 @@ private:
 
     SvStream&                   mrIStm;
     Bitmap                      maBmp;
-    Bitmap::ScopedWriteAccess   mpAcc;
+    BitmapScopedWriteAccess     mpAcc;
     Bitmap                      maMaskBmp;
-    Bitmap::ScopedWriteAccess   mpMaskAcc;
+    BitmapScopedWriteAccess     mpMaskAcc;
     long                        mnLastPos;
 
     sal_uLong               mnWidth;
@@ -102,6 +110,8 @@ public:
 
     ReadState           ReadXPM( Graphic& rGraphic );
 };
+
+}
 
 XPMReader::XPMReader(SvStream& rStm)
     : mrIStm(rStm)
@@ -162,7 +172,7 @@ ReadState XPMReader::ReadXPM( Graphic& rGraphic )
                 mbStatus = false;
             //xpms are a minimum of one character (one byte) per pixel, so if the file isn't
             //even that long, it's not all there
-            if (mrIStm.remainingSize() < static_cast<sal_uInt64>(mnWidth) * mnHeight)
+            if (mrIStm.remainingSize() + mnTempAvail < static_cast<sal_uInt64>(mnWidth) * mnHeight)
                 mbStatus = false;
             if ( mbStatus && mnWidth && mnHeight && mnColors && mnCpp )
             {
@@ -191,13 +201,13 @@ ReadState XPMReader::ReadXPM( Graphic& rGraphic )
                         nBits = 1;
 
                     maBmp = Bitmap( Size( mnWidth, mnHeight ), nBits );
-                    mpAcc = Bitmap::ScopedWriteAccess(maBmp);
+                    mpAcc = BitmapScopedWriteAccess(maBmp);
 
                     // mbTransparent is TRUE if at least one colour is transparent
                     if ( mbTransparent )
                     {
                         maMaskBmp = Bitmap( Size( mnWidth, mnHeight ), 1 );
-                        mpMaskAcc = Bitmap::ScopedWriteAccess(maMaskBmp);
+                        mpMaskAcc = BitmapScopedWriteAccess(maMaskBmp);
                         if ( !mpMaskAcc )
                             mbStatus = false;
                     }
@@ -275,7 +285,7 @@ bool XPMReader::ImplGetColor()
     if (mnStringSize < mnCpp)
         return false;
 
-    OString aKey(reinterpret_cast<sal_Char*>(pString), mnCpp);
+    OString aKey(reinterpret_cast<char*>(pString), mnCpp);
     colordata aValue;
     bool bStatus = ImplGetColSub(aValue);
     if (bStatus)
@@ -298,30 +308,27 @@ bool XPMReader::ImplGetScanLine( sal_uLong nY )
     {
         if ( mpMaskAcc )
         {
-            aWhite = mpMaskAcc->GetBestMatchingColor( Color( COL_WHITE ) );
-            aBlack = mpMaskAcc->GetBestMatchingColor( Color( COL_BLACK ) );
+            aWhite = mpMaskAcc->GetBestMatchingColor( COL_WHITE );
+            aBlack = mpMaskAcc->GetBestMatchingColor( COL_BLACK );
         }
         if ( mnStringSize != ( mnWidth * mnCpp ))
             bStatus = false;
         else
         {
+            Scanline pScanline = mpAcc->GetScanline(nY);
+            Scanline pMaskScanline = mpMaskAcc ? mpMaskAcc->GetScanline(nY) : nullptr;
             for (sal_uLong i = 0; i < mnWidth; ++i)
             {
-                for (sal_uLong j = 0; j < mnColors; ++j)
+                OString aKey(reinterpret_cast<char*>(pString), mnCpp);
+                auto it = maColMap.find(aKey);
+                if (it != maColMap.end())
                 {
-                    OString aKey(reinterpret_cast<sal_Char*>(pString), mnCpp);
-                    auto it = maColMap.find(aKey);
-                    if (it != maColMap.end())
-                    {
-                        if (mnColors > 256)
-                            mpAcc->SetPixel(nY, i, Color(it->second[1], it->second[2], it->second[3]));
-                        else
-                            mpAcc->SetPixel(nY, i, BitmapColor(it->second[1]));
-                        if (mpMaskAcc)
-                            mpMaskAcc->SetPixel(nY, i, it->second[0] ? aWhite : aBlack);
-
-                        break;
-                    }
+                    if (mnColors > 256)
+                        mpAcc->SetPixelOnData(pScanline, i, Color(it->second[1], it->second[2], it->second[3]));
+                    else
+                        mpAcc->SetPixelOnData(pScanline, i, BitmapColor(it->second[1]));
+                    if (pMaskScanline)
+                        mpMaskAcc->SetPixelOnData(pMaskScanline, i, it->second[0] ? aWhite : aBlack);
                 }
                 pString += mnCpp;
             }
@@ -405,6 +412,9 @@ bool XPMReader::ImplGetColSub(colordata &rDest)
 bool XPMReader::ImplGetColKey( sal_uInt8 nKey )
 {
     sal_uInt8 nTemp, nPrev = ' ';
+
+    if (mnStringSize < mnCpp + 1)
+        return false;
 
     mpPara = mpStringBuf + mnCpp + 1;
     mnParaSize = 0;
@@ -555,16 +565,16 @@ bool XPMReader::ImplGetPara ( sal_uLong nNumb )
         nSize++;
         pPtr++;
     }
-    return ( ( nCount == nNumb ) && ( mpPara ) );
+    return ( ( nCount == nNumb ) && mpPara );
 }
 
 // The next string is read and stored in mpStringBuf (terminated with 0);
 // mnStringSize contains the size of the string read.
-// Comments like '//' and '/*....*/' are skipped.
+// Comments like '//' and '/*...*/' are skipped.
 
 bool XPMReader::ImplGetString()
 {
-    sal_uInt8       sID[] = "/* XPM */";
+    sal_uInt8 const sID[] = "/* XPM */";
     sal_uInt8*      pString = mpStringBuf;
 
     mnStringSize = 0;
@@ -659,8 +669,8 @@ bool XPMReader::ImplGetString()
 
 VCL_DLLPUBLIC bool ImportXPM( SvStream& rStm, Graphic& rGraphic )
 {
-    std::shared_ptr<GraphicReader> pContext = rGraphic.GetContext();
-    rGraphic.SetContext(nullptr);
+    std::shared_ptr<GraphicReader> pContext = rGraphic.GetReaderContext();
+    rGraphic.SetReaderContext(nullptr);
     XPMReader* pXPMReader = dynamic_cast<XPMReader*>( pContext.get() );
     if (!pXPMReader)
     {
@@ -677,7 +687,7 @@ VCL_DLLPUBLIC bool ImportXPM( SvStream& rStm, Graphic& rGraphic )
         bRet = false;
     }
     else if( eReadState == XPMREAD_NEED_MORE )
-        rGraphic.SetContext( pContext );
+        rGraphic.SetReaderContext( pContext );
 
     return bRet;
 }

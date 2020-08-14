@@ -8,11 +8,8 @@
  */
 
 #include "basictest.hxx"
-#include <cppunit/TestFixture.h>
-#include <cppunit/extensions/HelperMacros.h>
 #include <cppunit/plugin/TestPlugIn.h>
 #include <basic/sbstar.hxx>
-#include <basic/basrdll.hxx>
 #include <basic/sbmod.hxx>
 #include <basic/sbmeth.hxx>
 #include <basic/sbuno.hxx>
@@ -20,7 +17,6 @@
 
 void MacroSnippet::InitSnippet()
 {
-    CPPUNIT_ASSERT_MESSAGE( "No resource manager", maDll.GetBasResMgr() != nullptr );
     mpBasic = new StarBASIC();
     StarBASIC::SetGlobalErrorHdl( LINK( this, MacroSnippet, BasicErrorHdl ) );
 }
@@ -61,7 +57,7 @@ void MacroSnippet::LoadSourceFromFile( const OUString& sMacroFileURL )
             {
                 if(size == size_read)
                 {
-                    OUString sCode(static_cast<sal_Char*>(buffer), size, RTL_TEXTENCODING_UTF8);
+                    OUString sCode(static_cast<char*>(buffer), size, RTL_TEXTENCODING_UTF8);
                     sSource = sCode;
                 }
             }
@@ -75,20 +71,20 @@ void MacroSnippet::LoadSourceFromFile( const OUString& sMacroFileURL )
 
 SbxVariableRef MacroSnippet::Run( const css::uno::Sequence< css::uno::Any >& rArgs )
 {
-    SbxVariableRef pReturn = nullptr;
+    SbxVariableRef pReturn;
     if ( !Compile() )
         return pReturn;
     SbMethod* pMeth = mpMod.is() ? static_cast<SbMethod*>(mpMod->Find( "doUnitTest",  SbxClassType::Method )) : nullptr;
     if ( pMeth )
     {
-        if ( rArgs.getLength() )
+        if ( rArgs.hasElements() )
         {
             SbxArrayRef aArgs = new SbxArray;
             for ( int i=0; i < rArgs.getLength(); ++i )
             {
                 SbxVariable* pVar = new SbxVariable();
                 unoToSbxValue( pVar, rArgs[ i ] );
-                aArgs->Put(  pVar, i + 1 );
+                aArgs->Put32(  pVar, i + 1 );
             }
             pMeth->SetParameters( aArgs.get() );
         }
@@ -105,12 +101,14 @@ SbxVariableRef MacroSnippet::Run()
 
 bool MacroSnippet::Compile()
 {
-    CPPUNIT_ASSERT_MESSAGE("module is NULL", mpMod.get() != nullptr );
+    CPPUNIT_ASSERT_MESSAGE("module is NULL", mpMod );
     mpMod->Compile();
     return !mbError;
 }
 
-bool MacroSnippet::HasError() { return mbError; }
+bool MacroSnippet::HasError() const { return mbError; }
+
+const ErrCode& MacroSnippet::getError() const { return maErrCode; }
 
 IMPL_LINK( MacroSnippet, BasicErrorHdl, StarBASIC *, /*pBasic*/, bool)
 {
@@ -118,6 +116,7 @@ IMPL_LINK( MacroSnippet, BasicErrorHdl, StarBASIC *, /*pBasic*/, bool)
             StarBASIC::GetLine(), StarBASIC::GetCol1());
     fprintf(stderr,"Basic error: %s\n", OUStringToOString( StarBASIC::GetErrorText(), RTL_TEXTENCODING_UTF8 ).getStr() );
     mbError = true;
+    maErrCode = StarBASIC::GetErrorCode();
     return false;
 }
 

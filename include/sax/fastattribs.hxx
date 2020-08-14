@@ -22,14 +22,15 @@
 
 #include <com/sun/star/xml/sax/XFastAttributeList.hpp>
 #include <com/sun/star/xml/sax/XFastTokenHandler.hpp>
-#include <com/sun/star/xml/Attribute.hpp>
-#include <com/sun/star/xml/FastAttribute.hpp>
 
 #include <cppuhelper/implbase.hxx>
 #include <sax/saxdllapi.h>
 
-#include <map>
 #include <vector>
+
+namespace com::sun::star::xml::sax { class XFastTokenHandler; }
+namespace com::sun::star::xml { struct Attribute; }
+namespace com::sun::star::xml { struct FastAttribute; }
 
 namespace sax_fastparser
 {
@@ -46,10 +47,9 @@ struct UnknownAttribute
     void FillAttribute( css::xml::Attribute* pAttrib ) const;
 };
 
-typedef std::vector< UnknownAttribute > UnknownAttributeList;
-
 /// A native C++ interface to tokenisation
-class SAX_DLLPUBLIC FastTokenHandlerBase
+class SAX_DLLPUBLIC FastTokenHandlerBase :
+        public cppu::WeakImplHelper< css::xml::sax::XFastTokenHandler >
 {
  public:
     virtual ~FastTokenHandlerBase();
@@ -57,41 +57,48 @@ class SAX_DLLPUBLIC FastTokenHandlerBase
 
     /**
      * Client method to attempt the use of this interface if possible.
-     * @xTokenHandler - the UNO handle for the token lookup interface
-     * @pTokenHandler - a dynamic_cast version of @xTokenHandler to this interface
+     * @xTokenHandler - the token lookup interface
      * @pStr - string buffer to lookup
      * @nLength - optional length of chars in that buffer
      *
      * @return Tokenized form of pStr
      */
     static sal_Int32 getTokenFromChars(
-                         const css::uno::Reference<css::xml::sax::XFastTokenHandler > &xTokenHandler,
-                         FastTokenHandlerBase *pTokenHandler /* can be NULL */,
+                         const FastTokenHandlerBase *pTokenHandler,
                          const char *pStr, size_t nLength );
 };
 
-class SAX_DLLPUBLIC FastAttributeList : public cppu::WeakImplHelper< css::xml::sax::XFastAttributeList >
+
+class SAX_DLLPUBLIC FastAttributeList final : public cppu::WeakImplHelper< css::xml::sax::XFastAttributeList >
 {
 public:
-    FastAttributeList( const css::uno::Reference< css::xml::sax::XFastTokenHandler >& xTokenHandler,
-                       FastTokenHandlerBase *pOptHandlerBase = nullptr );
+    FastAttributeList( FastTokenHandlerBase *pTokenHandler );
     virtual ~FastAttributeList() override;
 
     void clear();
-    void add( sal_Int32 nToken, const sal_Char* pValue );
-    void add( sal_Int32 nToken, const sal_Char* pValue, size_t nValueLength );
+    void reserve( sal_Int32 nNumTokens )
+    {
+        maAttributeValues.reserve(nNumTokens+1);
+        maAttributeTokens.reserve(nNumTokens);
+    }
+    void add( sal_Int32 nToken, const char* pValue );
+    void add( sal_Int32 nToken, const char* pValue, size_t nValueLength );
     void add( sal_Int32 nToken, const OString& rValue );
     void addNS( sal_Int32 nNamespaceToken, sal_Int32 nToken, const OString& rValue );
-    void addUnknown( const OUString& rNamespaceURL, const OString& rName, const OString& value );
+    // note: rQName is *namespace-prefixed*
+    void addUnknown( const OUString& rNamespaceURL, const OString& rQName, const OString& value );
     void addUnknown( const OString& rName, const OString& value );
     const std::vector< sal_Int32 >&  getFastAttributeTokens() const { return maAttributeTokens; }
     const char* getFastAttributeValue(size_t nIndex) const { return mpChunk + maAttributeValues[nIndex]; }
     sal_Int32 AttributeValueLength(size_t i) const { return maAttributeValues[i + 1] - maAttributeValues[i] - 1; }
 
     // performance sensitive shortcuts to avoid allocation ...
-    bool getAsInteger( sal_Int32 nToken, sal_Int32 &rInt);
-    bool getAsDouble( sal_Int32 nToken, double &rDouble);
+    bool getAsInteger( sal_Int32 nToken, sal_Int32 &rInt) const;
+    bool getAsDouble( sal_Int32 nToken, double &rDouble) const;
     bool getAsChar( sal_Int32 nToken, const char*& rPos ) const;
+    sal_Int32 getAsIntegerByIndex( sal_Int32 nTokenIndex ) const;
+    const char* getAsCharByIndex( sal_Int32 nTokenIndex ) const;
+    OUString getValueByIndex( sal_Int32 nTokenIndex ) const;
 
     // XFastAttributeList
     virtual sal_Bool SAL_CALL hasAttribute( ::sal_Int32 Token ) override;
@@ -101,6 +108,14 @@ public:
     virtual OUString SAL_CALL getOptionalValue( ::sal_Int32 Token ) override;
     virtual css::uno::Sequence< css::xml::Attribute > SAL_CALL getUnknownAttributes(  ) override;
     virtual css::uno::Sequence< css::xml::FastAttribute > SAL_CALL getFastAttributes() override;
+
+    sal_Int32 getAttributeIndex( ::sal_Int32 Token )
+    {
+        for (size_t i=0; i<maAttributeTokens.size(); ++i)
+            if (maAttributeTokens[i] == Token)
+                return i;
+        return -1;
+    }
 
     /// Use for fast iteration and conversion of attributes
     class FastAttributeIter {
@@ -143,6 +158,11 @@ public:
             assert(mnIdx < mrList.maAttributeTokens.size());
             return rtl_str_toInt32(mrList.getFastAttributeValue(mnIdx), 10);
         }
+        double toDouble() const
+        {
+            assert(mnIdx < mrList.maAttributeTokens.size());
+            return rtl_str_toDouble(mrList.getFastAttributeValue(mnIdx));
+        }
         OUString toString() const
         {
             assert(mnIdx < mrList.maAttributeTokens.size());
@@ -150,11 +170,15 @@ public:
                             mrList.AttributeValueLength(mnIdx),
                             RTL_TEXTENCODING_UTF8);
         }
-
         const char* toCString() const
         {
             assert(mnIdx < mrList.maAttributeTokens.size());
             return mrList.getFastAttributeValue(mnIdx);
+        }
+        sal_Int32 getLength() const
+        {
+            assert(mnIdx < mrList.maAttributeTokens.size());
+            return mrList.AttributeValueLength(mnIdx);
         }
         bool isString(const char *str) const
         {
@@ -162,22 +186,28 @@ public:
             return !strcmp(str, mrList.getFastAttributeValue(mnIdx));
         }
     };
-    const FastAttributeIter begin() const { return FastAttributeIter(*this, 0); }
-    const FastAttributeIter end() const { return FastAttributeIter(*this, maAttributeTokens.size()); }
-    const FastAttributeIter find( sal_Int32 nToken ) const;
+    FastAttributeIter begin() const { return FastAttributeIter(*this, 0); }
+    FastAttributeIter end() const { return FastAttributeIter(*this, maAttributeTokens.size()); }
+    FastAttributeIter find( sal_Int32 nToken ) const;
 
 private:
-    sal_Char *mpChunk; ///< buffer to store all attribute values - null terminated strings
+    char     *mpChunk; ///< buffer to store all attribute values - null terminated strings
     sal_Int32 mnChunkLength; ///< size of allocated memory for mpChunk
     // maAttributeValues stores pointers, relative to mpChunk, for each attribute value string
     // length of the string is maAttributeValues[n+1] - maAttributeValues[n] - 1
     // maAttributeValues[0] == 0
     std::vector< sal_Int32 > maAttributeValues;
     std::vector< sal_Int32 > maAttributeTokens;
-    UnknownAttributeList maUnknownAttributes;
-    css::uno::Reference< css::xml::sax::XFastTokenHandler > mxTokenHandler;
-    FastTokenHandlerBase *mpTokenHandler;
+    std::vector< UnknownAttribute > maUnknownAttributes;
+    FastTokenHandlerBase * mpTokenHandler;
 };
+
+inline FastAttributeList& castToFastAttributeList(
+                    const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList )
+{
+    assert( dynamic_cast <FastAttributeList *> ( xAttrList.get() ) != nullptr );
+    return *static_cast <FastAttributeList *> ( xAttrList.get() );
+}
 
 }
 

@@ -18,8 +18,6 @@
  */
 
 #include "DeepTContext.hxx"
-#include "FlatTContext.hxx"
-#include "EventOOoTContext.hxx"
 #include "TransformerActions.hxx"
 #include "ElemTransformerAction.hxx"
 #include "PersMixedContentTContext.hxx"
@@ -86,7 +84,7 @@ rtl::Reference<XMLTransformerContext> XMLPersElemContentTContext::CreateChildCon
     XMLTransformerActions::const_iterator aIter =
         GetTransformer().GetElemActions().find( aKey );
 
-    if( !(aIter == GetTransformer().GetElemActions().end()) )
+    if( aIter != GetTransformer().GetElemActions().end() )
     {
         switch( (*aIter).second.m_nActionType )
         {

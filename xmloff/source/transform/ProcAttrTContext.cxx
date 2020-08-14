@@ -18,10 +18,8 @@
  */
 
 #include "ProcAttrTContext.hxx"
-#include "MutableAttrList.hxx"
 #include "TransformerBase.hxx"
-#include "TransformerActions.hxx"
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 
 
 using namespace ::com::sun::star::uno;

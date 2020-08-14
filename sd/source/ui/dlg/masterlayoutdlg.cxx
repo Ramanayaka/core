@@ -17,27 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/dialogs.hrc>
-
-#include "sdresid.hxx"
-
-#include "strings.hrc"
-#include "masterlayoutdlg.hxx"
-#include "drawdoc.hxx"
+#include <masterlayoutdlg.hxx>
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
 
 using namespace ::sd;
 
-MasterLayoutDialog::MasterLayoutDialog( vcl::Window* pParent, SdDrawDocument* pDoc, SdPage* pCurrentPage )
-    : ModalDialog(pParent, "MasterLayoutDialog", "modules/simpress/ui/masterlayoutdlg.ui")
+MasterLayoutDialog::MasterLayoutDialog(weld::Window* pParent, SdDrawDocument* pDoc, SdPage* pCurrentPage)
+    : GenericDialogController(pParent, "modules/simpress/ui/masterlayoutdlg.ui", "MasterLayoutDialog")
     , mpDoc(pDoc)
     , mpCurrentPage(pCurrentPage)
+    , mxCBDate(m_xBuilder->weld_check_button("datetime"))
+    , mxCBPageNumber(m_xBuilder->weld_check_button("pagenumber"))
+    , mxCBSlideNumber(m_xBuilder->weld_check_button("slidenumber"))
+    , mxCBHeader(m_xBuilder->weld_check_button("header"))
+    , mxCBFooter(m_xBuilder->weld_check_button("footer"))
 {
-    get(mpCBDate, "datetime");
-    get(mpCBPageNumber, "pagenumber");
-    get(mpCBSlideNumber, "slidenumber");
-    get(mpCBHeader, "header");
-    get(mpCBFooter, "footer");
-
     if( mpCurrentPage && !mpCurrentPage->IsMasterPage() )
     {
         mpCurrentPage = static_cast<SdPage*>(&(mpCurrentPage->TRG_GetMasterPage()));
@@ -53,8 +48,8 @@ MasterLayoutDialog::MasterLayoutDialog( vcl::Window* pParent, SdDrawDocument* pD
     {
         case PageKind::Standard:
         {
-            mpCBHeader->Enable(false);
-            mpCBPageNumber->SetText(mpCBSlideNumber->GetText());
+            mxCBHeader->set_sensitive(false);
+            mxCBPageNumber->set_label(mxCBSlideNumber->get_label());
             break;
         }
         case PageKind::Notes:
@@ -63,73 +58,62 @@ MasterLayoutDialog::MasterLayoutDialog( vcl::Window* pParent, SdDrawDocument* pD
             break;
     }
 
-    mbOldHeader = mpCurrentPage->GetPresObj( PRESOBJ_HEADER ) != nullptr;
-    mbOldDate = mpCurrentPage->GetPresObj( PRESOBJ_DATETIME ) != nullptr;
-    mbOldFooter = mpCurrentPage->GetPresObj( PRESOBJ_FOOTER ) != nullptr;
-    mbOldPageNumber = mpCurrentPage->GetPresObj( PRESOBJ_SLIDENUMBER ) != nullptr;
+    mbOldHeader = mpCurrentPage->GetPresObj( PresObjKind::Header ) != nullptr;
+    mbOldDate = mpCurrentPage->GetPresObj( PresObjKind::DateTime ) != nullptr;
+    mbOldFooter = mpCurrentPage->GetPresObj( PresObjKind::Footer ) != nullptr;
+    mbOldPageNumber = mpCurrentPage->GetPresObj( PresObjKind::SlideNumber ) != nullptr;
 
-    mpCBHeader->Check( mbOldHeader );
-    mpCBDate->Check( mbOldDate );
-    mpCBFooter->Check( mbOldFooter );
-    mpCBPageNumber->Check( mbOldPageNumber );
+    mxCBHeader->set_active( mbOldHeader );
+    mxCBDate->set_active( mbOldDate );
+    mxCBFooter->set_active( mbOldFooter );
+    mxCBPageNumber->set_active( mbOldPageNumber );
 }
 
 MasterLayoutDialog::~MasterLayoutDialog()
 {
-    disposeOnce();
 }
 
-void MasterLayoutDialog::dispose()
+short MasterLayoutDialog::run()
 {
-    mpCBDate.clear();
-    mpCBPageNumber.clear();
-    mpCBSlideNumber.clear();
-    mpCBHeader.clear();
-    mpCBFooter.clear();
-    ModalDialog::dispose();
-}
-
-short MasterLayoutDialog::Execute()
-{
-    if ( ModalDialog::Execute() )
+    if (GenericDialogController::run() == RET_OK)
         applyChanges();
-    return 1;
+    return RET_OK;
 }
 
 void MasterLayoutDialog::applyChanges()
 {
-    mpDoc->BegUndo(GetText());
+    mpDoc->BegUndo(m_xDialog->get_title());
 
-    if( (mpCurrentPage->GetPageKind() != PageKind::Standard) && (mbOldHeader != mpCBHeader->IsChecked() ) )
+    if( (mpCurrentPage->GetPageKind() != PageKind::Standard) && (mbOldHeader != mxCBHeader->get_active() ) )
     {
         if( mbOldHeader )
-            remove( PRESOBJ_HEADER );
+            remove( PresObjKind::Header );
         else
-            create( PRESOBJ_HEADER );
+            create( PresObjKind::Header );
     }
 
-    if( mbOldFooter != mpCBFooter->IsChecked() )
+    if( mbOldFooter != mxCBFooter->get_active() )
     {
         if( mbOldFooter )
-            remove( PRESOBJ_FOOTER );
+            remove( PresObjKind::Footer );
         else
-            create( PRESOBJ_FOOTER );
+            create( PresObjKind::Footer );
     }
 
-    if( mbOldDate != mpCBDate->IsChecked() )
+    if( mbOldDate != mxCBDate->get_active() )
     {
         if( mbOldDate )
-            remove( PRESOBJ_DATETIME );
+            remove( PresObjKind::DateTime );
         else
-            create( PRESOBJ_DATETIME );
+            create( PresObjKind::DateTime );
     }
 
-    if( mbOldPageNumber != mpCBPageNumber->IsChecked() )
+    if( mbOldPageNumber != mxCBPageNumber->get_active() )
     {
         if( mbOldPageNumber )
-            remove( PRESOBJ_SLIDENUMBER );
+            remove( PresObjKind::SlideNumber );
         else
-            create( PRESOBJ_SLIDENUMBER );
+            create( PresObjKind::SlideNumber );
     }
 
     mpDoc->EndUndo();

@@ -17,13 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_SOURCE_TABLE_TABLECONTROL_IMPL_HXX
-#define INCLUDED_SVTOOLS_SOURCE_TABLE_TABLECONTROL_IMPL_HXX
+#pragma once
 
-#include <svtools/table/tablemodel.hxx>
-#include "table/tablecontrolinterface.hxx"
+#include <table/tablemodel.hxx>
+#include <table/tablecontrolinterface.hxx>
 
-#include "svtaccessiblefactory.hxx"
+#include <vcl/svtaccessiblefactory.hxx>
+#include <vcl/accessibletable.hxx>
 
 #include <vcl/seleng.hxx>
 
@@ -32,7 +32,7 @@
 class ScrollBar;
 class ScrollBarBox;
 
-namespace svt { namespace table
+namespace svt::table
 {
     struct MutableColumnMetrics : public ColumnMetrics
     {
@@ -121,17 +121,17 @@ namespace svt { namespace table
         VclPtr<ScrollBar>       m_pHScroll;
         VclPtr<ScrollBarBox>    m_pScrollCorner;
         //selection engine - for determining selection range, e.g. single, multiple
-        SelectionEngine*        m_pSelEngine;
+        std::unique_ptr<SelectionEngine> m_pSelEngine;
         //vector which contains the selected rows
         std::vector<RowPos>     m_aSelectedRows;
         //part of selection engine
-        TableFunctionSet*       m_pTableFunctionSet;
+        std::unique_ptr<TableFunctionSet> m_pTableFunctionSet;
         //part of selection engine
         RowPos                  m_nAnchor;
         bool                    m_bUpdatingColWidths;
 
-        AccessibleFactoryAccess     m_aFactoryAccess;
-        IAccessibleTableControl*    m_pAccessibleTable;
+        vcl::AccessibleFactoryAccess     m_aFactoryAccess;
+        vcl::table::IAccessibleTableControl*    m_pAccessibleTable;
 
     public:
         void        setModel( const PTableModel& _pModel );
@@ -220,7 +220,7 @@ namespace svt { namespace table
         */
         bool        markRowAsDeselected( RowPos const i_rowIndex );
 
-        /** marks the given row as selectged, by putting it into m_aSelectedRows
+        /** marks the given row as selected, by putting it into m_aSelectedRows
             @return
                 <TRUE/> if and only if the row was previously <em>not</em> marked as selected
         */
@@ -252,7 +252,7 @@ namespace svt { namespace table
         virtual RowPos              getCurrentRow() const override;
         virtual void                activateCell( ColPos const i_col, RowPos const i_row ) override;
         virtual ::Size              getTableSizePixel() const override;
-        virtual void                setPointer( Pointer const & i_pointer ) override;
+        virtual void                setPointer( PointerStyle i_pointer ) override;
         virtual void                captureMouse() override;
         virtual void                releaseMouse() override;
         virtual void                invalidate( TableArea const i_what ) override;
@@ -465,16 +465,15 @@ namespace svt { namespace table
         virtual void BeginDrag() override;
         virtual void CreateAnchor() override;
         virtual void DestroyAnchor() override;
-        virtual bool SetCursorAtPoint(const Point& rPoint, bool bDontSelectAtCursor = false) override;
+        virtual void SetCursorAtPoint(const Point& rPoint, bool bDontSelectAtCursor = false) override;
         virtual bool IsSelectionAtPoint( const Point& rPoint ) override;
         virtual void DeselectAtPoint( const Point& rPoint ) override;
         virtual void DeselectAll() override;
     };
 
 
-} } // namespace svt::table
+} // namespace svt::table
 
 
-#endif // INCLUDED_SVTOOLS_SOURCE_TABLE_TABLECONTROL_IMPL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

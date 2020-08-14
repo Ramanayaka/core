@@ -23,15 +23,15 @@
 #include "dependencies.hxx"
 #include "dumputils.hxx"
 
-#include "codemaker/global.hxx"
-#include "codemaker/typemanager.hxx"
-#include "codemaker/unotype.hxx"
+#include <codemaker/global.hxx>
+#include <codemaker/typemanager.hxx>
+#include <codemaker/unotype.hxx>
 
-#include "osl/diagnose.h"
-#include "rtl/ref.hxx"
-#include "rtl/string.hxx"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
+#include <osl/diagnose.h>
+#include <rtl/ref.hxx>
+#include <rtl/string.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
 
 #include <vector>
 
@@ -57,7 +57,7 @@ Includes::Includes(
         || dependencies.hasShortDependency()
         || dependencies.hasUnsignedShortDependency()
         || dependencies.hasLongDependency()
-        || dependencies.hasUnsignedShortDependency()
+        || dependencies.hasUnsignedLongDependency()
         || dependencies.hasHyperDependency()
         || dependencies.hasUnsignedHyperDependency()
         || dependencies.hasCharDependency()),
@@ -104,15 +104,14 @@ void Includes::add(OString const & entityName) {
         {
             add(arg);
         }
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case codemaker::UnoType::Sort::Sequence:
     case codemaker::UnoType::Sort::Enum:
     case codemaker::UnoType::Sort::PlainStruct:
     case codemaker::UnoType::Sort::Exception:
     case codemaker::UnoType::Sort::Interface:
     case codemaker::UnoType::Sort::Typedef:
-        m_map.insert(
-            Dependencies::Map::value_type(n, Dependencies::KIND_NORMAL));
+        m_map.emplace(n, Dependencies::KIND_NORMAL);
         break;
     default:
         throw CannotDumpException(
@@ -162,7 +161,10 @@ void Includes::dump(
             if (m_hpp || pair.second == Dependencies::KIND_BASE
                 || !isInterfaceType(u2b(pair.first)))
             {
-                dumpInclude(out, u2b(pair.first), m_hpp);
+                // If we know our name, then avoid including ourselves.
+                if (!companionHdl || *companionHdl != pair.first) {
+                    dumpInclude(out, u2b(pair.first), m_hpp);
+                }
             } else {
                 bool ns = dumpNamespaceOpen(out, pair.first, false);
                 if (ns) {
@@ -202,11 +204,11 @@ void Includes::dump(
     }
     if (m_includeCppuMacrosHxx) {
         dumpEmptyLineBeforeFirst(out, &first);
-        out << ("#include \"cppu/macros.hxx\"\n");
+        out << "#include \"cppu/macros.hxx\"\n";
     }
     if (m_includeCppuUnotypeHxx) {
         dumpEmptyLineBeforeFirst(out, &first);
-        out << ("#include \"cppu/unotype.hxx\"\n");
+        out << "#include \"cppu/unotype.hxx\"\n";
     }
     if (m_includeOslMutexHxx) {
         dumpEmptyLineBeforeFirst(out, &first);
@@ -214,7 +216,7 @@ void Includes::dump(
     }
     if (m_includeRtlStrbufHxx) {
         dumpEmptyLineBeforeFirst(out, &first);
-        out << ("#include \"rtl/strbuf.hxx\"\n");
+        out << "#include \"rtl/strbuf.hxx\"\n";
     }
     if (m_includeRtlStringH) {
         dumpEmptyLineBeforeFirst(out, &first);
@@ -226,7 +228,7 @@ void Includes::dump(
     }
     if (m_includeRtlUstrbufHxx) {
         dumpEmptyLineBeforeFirst(out, &first);
-        out << ("#include \"rtl/ustrbuf.hxx\"\n");
+        out << "#include \"rtl/ustrbuf.hxx\"\n";
     }
     if (m_includeRtlUstringH) {
         dumpEmptyLineBeforeFirst(out, &first);
@@ -234,7 +236,7 @@ void Includes::dump(
     }
     if (m_includeRtlUstringHxx) {
         dumpEmptyLineBeforeFirst(out, &first);
-        out << ("#include \"rtl/ustring.hxx\"\n");
+        out << "#include \"rtl/ustring.hxx\"\n";
     }
     if (m_includeRtlInstanceHxx) {
         dumpEmptyLineBeforeFirst(out, &first);
@@ -246,12 +248,14 @@ void Includes::dump(
     }
     if (m_includeTypelibTypeclassH) {
         dumpEmptyLineBeforeFirst(out, &first);
-        out << ("#include \"typelib/typeclass.h\"\n");
+        out << "#include \"typelib/typeclass.h\"\n";
     }
     if (m_includeTypelibTypedescriptionH) {
         dumpEmptyLineBeforeFirst(out, &first);
-        out << ("#include \"typelib/typedescription.h\"\n");
+        out << "#include \"typelib/typedescription.h\"\n";
     }
+    for (OUString const & s : m_custom)
+        out << s << "\n";
 }
 
 void Includes::dumpInclude(

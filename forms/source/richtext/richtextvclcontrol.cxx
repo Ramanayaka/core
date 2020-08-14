@@ -19,24 +19,19 @@
 
 #include "richtextvclcontrol.hxx"
 #include "richtextimplcontrol.hxx"
-#include <svl/itempool.hxx>
 #include <svl/itemset.hxx>
-#include <svl/languageoptions.hxx>
 #if OSL_DEBUG_LEVEL > 0
     #include <unotools/ucbstreamhelper.hxx>
-    #include <vcl/msgbox.hxx>
     #include <sfx2/filedlghelper.hxx>
     #include <tools/urlobj.hxx>
-    #include "com/sun/star/ui/dialogs/TemplateDescription.hpp"
+    #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
 #endif
-#include <editeng/scripttypeitem.hxx>
 #include <editeng/editeng.hxx>
 #include <editeng/editview.hxx>
-#include <editeng/eeitem.hxx>
-#include <editeng/fontitem.hxx>
-#include <editeng/fhgtitem.hxx>
 #include <editeng/editids.hrc>
 #include <svx/svxids.hrc>
+#include <osl/diagnose.h>
+#include <vcl/event.hxx>
 
 namespace frm
 {
@@ -44,7 +39,6 @@ namespace frm
     RichTextControl::RichTextControl( RichTextEngine* _pEngine, vcl::Window* _pParent, WinBits _nStyle,
         ITextAttributeListener* _pTextAttribListener, ITextSelectionListener* _pSelectionListener )
         :Control( _pParent, implInitStyle( _nStyle ) )
-        ,m_pImpl( nullptr )
     {
         implInit( _pEngine, _pTextAttribListener, _pSelectionListener );
     }
@@ -222,20 +216,20 @@ namespace frm
                     )
                 {
                     bool bLoad = KEY_F11 == nCode;
-                    struct
+                    static struct
                     {
-                        const sal_Char* pDescription;
-                        const sal_Char* pExtension;
-                        EETextFormat    eFormat;
-                    } aExportFormats[] =
+                        const char*   pDescription;
+                        const char*   pExtension;
+                        EETextFormat  eFormat;
+                    } const aExportFormats[] =
                     {
-                        { "OASIS OpenDocument (*.xml)", "*.xml", EE_FORMAT_XML },
-                        { "HyperText Markup Language (*.html)", "*.html", EE_FORMAT_HTML },
-                        { "Rich Text format (*.rtf)", "*.rtf", EE_FORMAT_RTF },
-                        { "Text (*.txt)", "*.txt", EE_FORMAT_TEXT }
+                        { "OASIS OpenDocument (*.xml)", "*.xml", EETextFormat::Xml },
+                        { "HyperText Markup Language (*.html)", "*.html", EETextFormat::Html },
+                        { "Rich Text format (*.rtf)", "*.rtf", EETextFormat::Rtf },
+                        { "Text (*.txt)", "*.txt", EETextFormat::Text }
                     };
 
-                    ::sfx2::FileDialogHelper aFP( bLoad ? css::ui::dialogs::TemplateDescription::FILEOPEN_SIMPLE : css::ui::dialogs::TemplateDescription::FILESAVE_AUTOEXTENSION, FileDialogFlags::NONE, this );
+                    ::sfx2::FileDialogHelper aFP( bLoad ? css::ui::dialogs::TemplateDescription::FILEOPEN_SIMPLE : css::ui::dialogs::TemplateDescription::FILESAVE_AUTOEXTENSION, FileDialogFlags::NONE, GetFrameWeld() );
 
                     for (auto & aExportFormat : aExportFormats)
                     {
@@ -247,12 +241,12 @@ namespace frm
                     if ( nResult == ERRCODE_NONE )
                     {
                         OUString sFileName = aFP.GetPath();
-                        SvStream* pStream = ::utl::UcbStreamHelper::CreateStream(
+                        std::unique_ptr<SvStream> pStream = ::utl::UcbStreamHelper::CreateStream(
                             sFileName, ( bLoad ? StreamMode::READ : StreamMode::WRITE | StreamMode::TRUNC ) | StreamMode::SHARE_DENYALL
                         );
                         if ( pStream )
                         {
-                            EETextFormat eFormat = EE_FORMAT_XML;
+                            EETextFormat eFormat = EETextFormat::Xml;
                             OUString sFilter = aFP.GetCurrentFilter();
                             for (auto & aExportFormat : aExportFormats)
                             {
@@ -273,7 +267,6 @@ namespace frm
                                 getEngine().Write( *pStream, eFormat );
                             }
                         }
-                        DELETEZ( pStream );
                     }
                     return true;   // handled
                 }
@@ -295,12 +288,10 @@ namespace frm
         return bDone || Control::EventNotify(_rNEvt);
     }
 
-
-    void RichTextControl::Draw( OutputDevice* _pDev, const Point& _rPos, const Size& _rSize, DrawFlags /*_nFlags*/ )
+    void RichTextControl::Draw( OutputDevice* _pDev, const Point& _rPos, DrawFlags /*_nFlags*/ )
     {
-        m_pImpl->Draw( _pDev, _rPos, _rSize );
+        m_pImpl->Draw( _pDev, _rPos, _pDev->PixelToLogic(GetSizePixel()) );
     }
-
 
     EditView& RichTextControl::getView()
     {

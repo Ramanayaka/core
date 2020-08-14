@@ -24,7 +24,6 @@
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/text/XAutoTextGroup.hpp>
 #include <com/sun/star/text/XAutoTextEntry.hpp>
 #include <com/sun/star/text/XAutoTextContainer2.hpp>
@@ -153,7 +152,7 @@ public:
     void    Invalidate();
 };
 
-class SwXAutoTextEntry
+class SwXAutoTextEntry final
         :public SfxListener
         ,public cppu::BaseMutex
         ,public cppu::WeakComponentImplHelper
@@ -181,7 +180,6 @@ class SwXAutoTextEntry
 
     void SAL_CALL disposing() override;
 
-protected:
     /** ensure that the current content (which may only be in-memory so far) is flushed to the auto text group file
 
         <p>If somebody modifies an auto text via this class, then this is not directly reflected to the respective
@@ -198,7 +196,6 @@ protected:
     // SfxListener overridables
     virtual void        Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
-protected:
     virtual ~SwXAutoTextEntry() override;    // ref-counted objects are not to be deleted from outside -> protected dtor
 
 public:
@@ -236,16 +233,14 @@ public:
     virtual css::uno::Reference< css::container::XNameReplace > SAL_CALL getEvents(  ) override;
 
     void    Invalidate() {pGlossaries = nullptr;}
-    const SwGlossaries* GetGlossaries() { return pGlossaries; }
-    const OUString&   GetGroupName() {return sGroupName;}
-    const OUString&   GetEntryName() {return sEntryName;}
+    const SwGlossaries* GetGlossaries() const { return pGlossaries; }
+    const OUString&   GetGroupName() const {return sGroupName;}
+    const OUString&   GetEntryName() const {return sEntryName;}
 };
 
 /** Implement the XNameAccess for the AutoText events */
 class SwAutoTextEventDescriptor : public SvBaseEventDescriptor
 {
-    OUString sSwAutoTextEventDescriptor;
-
     SwXAutoTextEntry& rAutoTextEntry;
 
     using SvBaseEventDescriptor::replaceByName;
@@ -261,13 +256,13 @@ public:
 protected:
 
     virtual void replaceByName(
-        const sal_uInt16 nEvent,        /// item ID of event
-        const SvxMacro& rMacro)     /// event (will be copied)
+        const SvMacroItemId nEvent,  /// item ID of event
+        const SvxMacro& rMacro)      /// event (will be copied)
              override;
 
     virtual void getByName(
-        SvxMacro& rMacro,           /// macro to be filled
-        const sal_uInt16 nEvent )       /// item ID of event
+        SvxMacro& rMacro,             /// macro to be filled
+        const SvMacroItemId nEvent )  /// item ID of event
              override;
 };
 

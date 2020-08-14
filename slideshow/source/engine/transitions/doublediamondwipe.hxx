@@ -23,11 +23,9 @@
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 
 #include "parametricpolypolygon.hxx"
-#include "transitiontools.hxx"
 
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /// Generates a double diamond wipe:
 class DoubleDiamondWipe : public ParametricPolyPolygon
@@ -37,7 +35,7 @@ public:
     virtual ::basegfx::B2DPolyPolygon operator()( double x ) override;
 };
 
-}
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_TRANSITIONS_DOUBLEDIAMONDWIPE_HXX

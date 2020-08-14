@@ -20,6 +20,8 @@
 #include <rtl/ref.hxx>
 #include <xmlscript/xmllib_imexp.hxx>
 #include <xmlscript/xml_helper.hxx>
+#include <xmlscript/xmlns.h>
+#include <com/sun/star/xml/sax/XWriter.hpp>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star;
@@ -31,7 +33,7 @@ const char aTrueStr[] = "true";
 const char aFalseStr[] = "false";
 
 void
-SAL_CALL exportLibraryContainer(
+exportLibraryContainer(
     Reference< xml::sax::XWriter > const & xOut,
     const LibDescriptorArray* pLibArray )
 {
@@ -60,9 +62,7 @@ SAL_CALL exportLibraryContainer(
     {
         LibDescriptor& rLib = pLibArray->mpLibs[i];
 
-        XMLElement* pLibElement = new XMLElement( XMLNS_LIBRARY_PREFIX ":library" );
-        Reference< xml::sax::XAttributeList > xLibElementAttribs;
-        xLibElementAttribs = static_cast< xml::sax::XAttributeList* >( pLibElement );
+        rtl::Reference<XMLElement> pLibElement(new XMLElement( XMLNS_LIBRARY_PREFIX ":library" ));
 
         pLibElement->addAttribute( XMLNS_LIBRARY_PREFIX ":name", rLib.aName );
 
@@ -89,7 +89,7 @@ SAL_CALL exportLibraryContainer(
 }
 
 void
-SAL_CALL exportLibrary(
+exportLibrary(
     css::uno::Reference< css::xml::sax::XWriter > const & xOut,
     const LibDescriptor& rLib )
 {
@@ -116,21 +116,14 @@ SAL_CALL exportLibrary(
     if( rLib.bPreload )
         pLibElement->addAttribute( XMLNS_LIBRARY_PREFIX ":preload", sTrueStr );
 
-    sal_Int32 nElementCount = rLib.aElementNames.getLength();
-    if( nElementCount )
+    for( const auto& rElementName : rLib.aElementNames )
     {
-        const OUString* pElementNames = rLib.aElementNames.getConstArray();
-        for( sal_Int32 i = 0 ; i < nElementCount ; i++ )
-        {
-            XMLElement* pElement = new XMLElement( XMLNS_LIBRARY_PREFIX ":element" );
-            Reference< xml::sax::XAttributeList > xElementAttribs;
-            xElementAttribs = static_cast< xml::sax::XAttributeList* >( pElement );
+        rtl::Reference<XMLElement> pElement(new XMLElement( XMLNS_LIBRARY_PREFIX ":element" ));
 
-            pElement->addAttribute( XMLNS_LIBRARY_PREFIX ":name",
-                                        pElementNames[i] );
+        pElement->addAttribute( XMLNS_LIBRARY_PREFIX ":name",
+                                    rElementName );
 
-            pLibElement->addSubElement( pElement );
-        }
+        pLibElement->addSubElement( pElement.get() );
     }
 
     pLibElement->dump( xOut.get() );

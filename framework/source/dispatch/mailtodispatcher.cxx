@@ -18,7 +18,6 @@
  */
 
 #include <dispatch/mailtodispatcher.hxx>
-#include <general.h>
 #include <services.h>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
@@ -26,27 +25,27 @@
 #include <com/sun/star/system/SystemShellExecuteException.hpp>
 #include <com/sun/star/system/SystemShellExecuteFlags.hpp>
 #include <com/sun/star/frame/DispatchResultState.hpp>
-
-#include <vcl/svapp.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 namespace framework{
 
 // XInterface, XTypeProvider, XServiceInfo
 
-DEFINE_XSERVICEINFO_MULTISERVICE_2(MailToDispatcher                   ,
-                                 ::cppu::OWeakObject                ,
-                                 SERVICENAME_PROTOCOLHANDLER        ,
-                                 IMPLEMENTATIONNAME_MAILTODISPATCHER)
+OUString SAL_CALL MailToDispatcher::getImplementationName()
+{
+    return "com.sun.star.comp.framework.MailToDispatcher";
+}
 
-DEFINE_INIT_SERVICE(MailToDispatcher,
-                    {
-                        /*Attention
-                            I think we don't need any mutex or lock here ... because we are called by our own static method impl_createInstance()
-                            to create a new instance of this class by our own supported service factory.
-                            see macro DEFINE_XSERVICEINFO_MULTISERVICE and "impl_initService()" for further information!
-                        */
-                    }
-                   )
+sal_Bool SAL_CALL MailToDispatcher::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL MailToDispatcher::getSupportedServiceNames()
+{
+    return { SERVICENAME_PROTOCOLHANDLER };
+}
+
 
 /**
     @short      standard ctor
@@ -69,7 +68,7 @@ MailToDispatcher::~MailToDispatcher()
 
 /**
     @short      decide if this dispatch implementation can be used for requested URL or not
-    @descr      A protocol handler is registered for an URL pattern inside configuration and will
+    @descr      A protocol handler is registered for a URL pattern inside configuration and will
                 be asked by the generic dispatch mechanism inside framework, if he can handle this
                 special URL which match his registration. He can agree by returning of a valid dispatch
                 instance or disagree by returning <NULL/>.
@@ -95,7 +94,7 @@ css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL Mail
     css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > lDispatcher( nCount );
     for( sal_Int32 i=0; i<nCount; ++i )
     {
-        lDispatcher[i] = this->queryDispatch(
+        lDispatcher[i] = queryDispatch(
                             lDescriptor[i].FeatureURL,
                             lDescriptor[i].FrameName,
                             lDescriptor[i].SearchFlags);
@@ -115,12 +114,12 @@ css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL Mail
                     list of optional arguments for this mail request
 */
 void SAL_CALL MailToDispatcher::dispatch( const css::util::URL&                                  aURL       ,
-                                          const css::uno::Sequence< css::beans::PropertyValue >& lArguments )
+                                          const css::uno::Sequence< css::beans::PropertyValue >& /*lArguments*/ )
 {
     // dispatch() is an [oneway] call ... and may our user release his reference to us immediately.
     // So we should hold us self alive till this call ends.
     css::uno::Reference< css::frame::XNotifyingDispatch > xSelfHold(static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY);
-    implts_dispatch(aURL,lArguments);
+    implts_dispatch(aURL);
     // No notification for status listener!
 }
 
@@ -137,7 +136,7 @@ void SAL_CALL MailToDispatcher::dispatch( const css::util::URL&                 
                     reference to a valid listener for state events
 */
 void SAL_CALL MailToDispatcher::dispatchWithNotification( const css::util::URL&                                             aURL      ,
-                                                          const css::uno::Sequence< css::beans::PropertyValue >&            lArguments,
+                                                          const css::uno::Sequence< css::beans::PropertyValue >&            /*lArguments*/,
                                                           const css::uno::Reference< css::frame::XDispatchResultListener >& xListener )
 {
     // This class was designed to die by reference. And if user release his reference to us immediately after calling this method
@@ -145,7 +144,7 @@ void SAL_CALL MailToDispatcher::dispatchWithNotification( const css::util::URL& 
     // Another reason: We can use this reference as source of sending event at the end too.
     css::uno::Reference< css::frame::XNotifyingDispatch > xThis(static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY);
 
-    bool bState = implts_dispatch(aURL,lArguments);
+    bool bState = implts_dispatch(aURL);
     if (xListener.is())
     {
         css::frame::DispatchResultEvent aEvent;
@@ -167,16 +166,13 @@ void SAL_CALL MailToDispatcher::dispatchWithNotification( const css::util::URL& 
 
     @param      aURL
                     mail URL which should be executed
-    @param      lArguments
-                    list of optional arguments for this mail request
 
     @return     <TRUE/> if dispatch could be started successfully
                 Note: Our internal used shell executor doesn't return any state value - so we must
-                believe that call was successfully.
+                believe that call was successful.
                 <FALSE/> if necessary resource couldn't be created or an exception was thrown.
 */
-bool MailToDispatcher::implts_dispatch( const css::util::URL&                                  aURL       ,
-                                            const css::uno::Sequence< css::beans::PropertyValue >& /*lArguments*/ )
+bool MailToDispatcher::implts_dispatch( const css::util::URL& aURL )
 {
     bool bSuccess = false;
 
@@ -224,5 +220,12 @@ void SAL_CALL MailToDispatcher::removeStatusListener( const css::uno::Reference<
 }
 
 } //  namespace framework
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_MailToDispatcher_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::MailToDispatcher(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

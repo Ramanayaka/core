@@ -22,31 +22,24 @@
 #include <cppunit/extensions/HelperMacros.h>
 #include <cppunit/plugin/TestPlugIn.h>
 #include <test/bootstrapfixture.hxx>
-#include <cppuhelper/weak.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/beans/Pair.hpp>
 #include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <com/sun/star/xml/sax/XFastDocumentHandler.hpp>
-#include <com/sun/star/xml/sax/XFastAttributeList.hpp>
+#include <com/sun/star/xml/sax/XFastTokenHandler.hpp>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/XParser.hpp>
-#include <com/sun/star/xml/sax/FastParser.hpp>
-#include <com/sun/star/xml/sax/XFastParser.hpp>
 #include <com/sun/star/xml/sax/XLocator.hpp>
-#include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/xml/sax/FastToken.hpp>
-#include <com/sun/star/xml/Attribute.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
 #include <osl/file.hxx>
-#include <osl/conditn.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <unotools/streamwrap.hxx>
 #include <sax/fastattribs.hxx>
-#include <string>
 #include <stack>
 #include <deque>
-#include <sax/fastparser.hxx>
+#include <rtl/ref.hxx>
 
 
 namespace {
@@ -65,10 +58,10 @@ Reference< XInputStream > createStreamFromFile (
     Reference<  XInputStream >  xInputStream;
     OUString aInStr;
     FileBase::getFileURLFromSystemPath(filePath, aInStr);
-    SvStream* pStream = utl::UcbStreamHelper::CreateStream(aInStr, StreamMode::READ);
+    std::unique_ptr<SvStream> pStream = utl::UcbStreamHelper::CreateStream(aInStr, StreamMode::READ);
     if(pStream == nullptr)
         CPPUNIT_ASSERT(false);
-    Reference< XStream > xStream(new utl::OStreamWrapper(*pStream));
+    Reference< XStream > xStream(new utl::OStreamWrapper(std::move(pStream)));
     xInputStream.set(xStream, UNO_QUERY);
     return xInputStream;
 }
@@ -85,7 +78,7 @@ private:
 
 public:
     TestDocumentHandler() {}
-    const OUString & getString() { return m_aStr; }
+    const OUString & getString() const { return m_aStr; }
 
     // XDocumentHandler
     virtual void SAL_CALL startDocument() override;
@@ -105,9 +98,9 @@ OUString TestDocumentHandler::canonicalform(const OUString &sName, const OUStrin
     {
         m_aCountStack.top() += 1;
         if ( nIndex < 0 )
-            m_aNamespaceStack.push_back( make_pair( OUString( "default" ), sValue ) );
+            m_aNamespaceStack.emplace_back( OUString( "default" ), sValue );
         else
-            m_aNamespaceStack.push_back( make_pair( sName.copy( nIndex + 1 ), sValue ) );
+            m_aNamespaceStack.emplace_back( sName.copy( nIndex + 1 ), sValue );
     }
     else
     {
@@ -163,15 +156,15 @@ void SAL_CALL TestDocumentHandler::startElement( const OUString& aName, const Re
         OUString sAttrValue = xAttribs->getValueByIndex(i);
         OUString sAttrName = canonicalform(xAttribs->getNameByIndex(i), sAttrValue, false);
         if (!sAttrName.isEmpty())
-            sAttributes = sAttributes + sAttrName + sAttrValue;
+            sAttributes += sAttrName + sAttrValue;
     }
-    m_aStr = m_aStr + canonicalform(aName, "", true) + sAttributes;
+    m_aStr += canonicalform(aName, "", true) + sAttributes;
 }
 
 
 void SAL_CALL TestDocumentHandler::endElement( const OUString& aName )
 {
-    m_aStr = m_aStr + canonicalform(aName, "", true);
+    m_aStr += canonicalform(aName, "", true);
     sal_uInt16 nPopQty = m_aCountStack.top();
     for (sal_uInt16 i=0; i<nPopQty; i++)
         m_aNamespaceStack.pop_back();
@@ -181,19 +174,19 @@ void SAL_CALL TestDocumentHandler::endElement( const OUString& aName )
 
 void SAL_CALL TestDocumentHandler::characters( const OUString& aChars )
 {
-    m_aStr = m_aStr + aChars;
+    m_aStr += aChars;
 }
 
 
 void SAL_CALL TestDocumentHandler::ignorableWhitespace( const OUString& aWhitespaces )
 {
-    m_aStr = m_aStr + aWhitespaces;
+    m_aStr += aWhitespaces;
 }
 
 
 void SAL_CALL TestDocumentHandler::processingInstruction( const OUString& aTarget, const OUString& aData )
 {
-    m_aStr = m_aStr + aTarget + aData;
+    m_aStr += aTarget + aData;
 }
 
 
@@ -236,9 +229,8 @@ OUString resolveNamespace( const OUString& aName )
     {
         if ( aName.getLength() > index + 1 )
         {
-            OUString aAttributeName = getNamespaceValue( aName.copy( 0, index ) );
-            aAttributeName += ":";
-            aAttributeName += aName.copy( index + 1 );
+            OUString aAttributeName = getNamespaceValue( aName.copy( 0, index ) ) +
+                ":" + aName.copy( index + 1 );
             return aAttributeName;
         }
     }
@@ -259,13 +251,12 @@ void SAL_CALL NSDocumentHandler::startElement( const OUString& aName, const Refe
         CPPUNIT_ASSERT(false);
 }
 
-class DummyTokenHandler : public cppu::WeakImplHelper< XFastTokenHandler >,
-                          public sax_fastparser::FastTokenHandlerBase
+class DummyTokenHandler : public sax_fastparser::FastTokenHandlerBase
 {
 public:
-    const static OString tokens[];
+    const static OStringLiteral tokens[];
     const static OUStringLiteral namespaceURIs[];
-    const static OString namespacePrefixes[];
+    const static OStringLiteral namespacePrefixes[];
 
     // XFastTokenHandler
     virtual Sequence< sal_Int8 > SAL_CALL getUTF8Identifier( sal_Int32 nToken ) override;
@@ -274,20 +265,27 @@ public:
     virtual sal_Int32 getTokenDirect( const char *pToken, sal_Int32 nLength ) const override;
 };
 
-const OString DummyTokenHandler::tokens[] = { "Signature", "CanonicalizationMethod", "Algorithm", "Type",
-                                              "DigestMethod", "Reference", "document",
-                                              "spacing", "Player", "Height" };
+const OStringLiteral DummyTokenHandler::tokens[] = {
+    OStringLiteral("Signature"), OStringLiteral("CanonicalizationMethod"),
+    OStringLiteral("Algorithm"), OStringLiteral("Type"),
+    OStringLiteral("DigestMethod"), OStringLiteral("Reference"),
+    OStringLiteral("document"), OStringLiteral("spacing"),
+    OStringLiteral("Player"), OStringLiteral("Height") };
 
-const OUStringLiteral DummyTokenHandler::namespaceURIs[] = { "http://www.w3.org/2000/09/xmldsig#",
-                                                  "http://schemas.openxmlformats.org/wordprocessingml/2006/main/",
-                                                  "xyzsports.com/players/football/" };
+const OUStringLiteral DummyTokenHandler::namespaceURIs[] = {
+    "http://www.w3.org/2000/09/xmldsig#",
+    "http://schemas.openxmlformats.org/wordprocessingml/2006/main/",
+    "xyzsports.com/players/football/" };
 
-const OString DummyTokenHandler::namespacePrefixes[] = { "", "w", "Player" };
+const OStringLiteral DummyTokenHandler::namespacePrefixes[] = {
+    OStringLiteral(""),
+    OStringLiteral("w"),
+    OStringLiteral("Player") };
 
 Sequence< sal_Int8 > DummyTokenHandler::getUTF8Identifier( sal_Int32 nToken )
 {
     OString aUtf8Token;
-    if ( ( ( nToken & 0xffff0000 ) != 0 ) ) //namespace
+    if ( ( nToken & 0xffff0000 ) != 0 ) //namespace
     {
         sal_uInt32 nNamespaceToken = ( nToken >> 16 ) - 1;
         if ( nNamespaceToken < SAL_N_ELEMENTS(namespacePrefixes) )
@@ -295,11 +293,11 @@ Sequence< sal_Int8 > DummyTokenHandler::getUTF8Identifier( sal_Int32 nToken )
     }
     else //element or attribute
     {
-        sal_uInt32 nElementToken = nToken & 0xffff;
+        size_t nElementToken = nToken & 0xffff;
         if ( nElementToken < SAL_N_ELEMENTS(tokens) )
             aUtf8Token = tokens[ nElementToken ];
     }
-    Sequence< sal_Int8 > aSeq = Sequence< sal_Int8 >( reinterpret_cast< const sal_Int8* >(
+    Sequence< sal_Int8 > aSeq( reinterpret_cast< const sal_Int8* >(
                 aUtf8Token.getStr() ), aUtf8Token.getLength() );
     return aSeq;
 }
@@ -313,10 +311,10 @@ sal_Int32 DummyTokenHandler::getTokenFromUTF8( const uno::Sequence< sal_Int8 >& 
 sal_Int32 DummyTokenHandler::getTokenDirect( const char* pToken, sal_Int32 nLength ) const
 {
     OString sToken( pToken, nLength );
-    for( sal_uInt16  i = 0; i < SAL_N_ELEMENTS(tokens); i++ )
+    for( size_t  i = 0; i < SAL_N_ELEMENTS(tokens); i++ )
     {
         if ( tokens[i] == sToken )
-            return (sal_Int32)i;
+            return static_cast<sal_Int32>(i);
     }
     return FastToken::DONTKNOW;
 }
@@ -369,8 +367,7 @@ void XMLImportTest::setUp()
     namespaceArgs[0] <<= OUString( "registerNamespaces" );
     for (sal_Int32 i = 1; i <= nNamespaceCount; i++ )
     {
-        css::beans::Pair <OUString, sal_Int32> rPair;
-        rPair = css::beans::Pair<OUString, sal_Int32>( DummyTokenHandler::namespaceURIs[i - 1], i << 16 );
+        css::beans::Pair<OUString, sal_Int32> rPair( DummyTokenHandler::namespaceURIs[i - 1], i << 16 );
         namespaceArgs[i] <<= rPair;
     }
     xInit->initialize( namespaceArgs );
@@ -384,7 +381,7 @@ void XMLImportTest::parse()
                             "multiplens.xml", "multiplepfx.xml",
                             "nstoattributes.xml", "nestedns.xml", "testthreading.xml"};
 
-    for (sal_uInt16 i = 0; i < SAL_N_ELEMENTS( fileNames ); i++)
+    for (size_t i = 0; i < SAL_N_ELEMENTS( fileNames ); i++)
     {
         InputSource source;
         source.sSystemId    = "internal";
@@ -430,7 +427,7 @@ void XMLImportTest::testMissingNamespaceDeclaration()
 
             CPPUNIT_ASSERT_EQUAL( rParserStr, rLegacyFastParserStr );
         }
-        catch( SAXException )
+        catch( const SAXException & )
         {
         }
     }

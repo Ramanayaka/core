@@ -21,19 +21,17 @@
 #define INCLUDED_EXTENSIONS_SOURCE_CONFIG_LDAP_LDAPUSERPROFILEBE_HXX
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <cppuhelper/compbase.hxx>
 
 #include "ldapaccess.hxx"
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-} } } }
+}
 
-namespace extensions { namespace config { namespace ldap {
+namespace extensions::config::ldap {
 
 namespace uno = css::uno ;
 namespace lang = css::lang ;
@@ -48,7 +46,7 @@ struct LdapProfileMutexHolder { osl::Mutex mMutex; };
 /**
   Implements the PlatformBackend service, a specialization of the
   XPropertySet service for retrieving LDAP user profile
-  configuration settings from a LDAP repository.
+  configuration settings from an LDAP repository.
   */
 class LdapUserProfileBe : private LdapProfileMutexHolder, public BackendBase
 {
@@ -98,32 +96,20 @@ class LdapUserProfileBe : private LdapProfileMutexHolder, public BackendBase
             css::uno::Reference< css::beans::XVetoableChangeListener > const &) override
         {}
 
-         /**
-          Provides the implementation name.
-          @return   implementation name
-          */
-        static OUString SAL_CALL getLdapUserProfileBeName() ;
-        /**
-          Provides the supported services names
-          @return   service names
-          */
-        static uno::Sequence<OUString> SAL_CALL
-            getLdapUserProfileBeServiceNames() ;
-
     private:
         /** Check if LDAP is configured */
         static bool readLdapConfiguration(
             uno::Reference<uno::XComponentContext> const & context,
             LdapDefinition * definition, OUString * loggedOnUser);
 
-        static bool getLdapStringParam(uno::Reference<container::XNameAccess>& xAccess,
+        static bool getLdapStringParam(uno::Reference<container::XNameAccess> const & xAccess,
                                 const OUString& aLdapSetting,
                                 OUString& aServerParameter);
 
     LdapData data_;
 } ;
 
-}}}
+}
 
 #endif // EXTENSIONS_CONFIG_LDAP_LDAPUSERPROFILE_HXX_
 

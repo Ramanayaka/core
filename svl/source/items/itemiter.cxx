@@ -19,7 +19,6 @@
 
 
 #include <svl/itemiter.hxx>
-#include <svl/itempool.hxx>
 #include <svl/itemset.hxx>
 
 SfxItemIter::SfxItemIter( const SfxItemSet& rItemSet )
@@ -27,12 +26,12 @@ SfxItemIter::SfxItemIter( const SfxItemSet& rItemSet )
 {
     if (!m_rSet.m_nCount)
     {
-        m_nStart = 1;
+        m_nStart = 0;
         m_nEnd = 0;
     }
     else
     {
-        SfxItemArray ppFnd = m_rSet.m_pItems;
+        SfxPoolItem const** ppFnd = m_rSet.m_pItems.get();
 
         // Find the first Item that is set
         for (m_nStart = 0; !*(ppFnd + m_nStart ); ++m_nStart)
@@ -51,18 +50,14 @@ SfxItemIter::~SfxItemIter()
 {
 }
 
-const SfxPoolItem* SfxItemIter::NextItem()
+// Precondition : m_nCurrent < m_nEnd
+const SfxPoolItem* SfxItemIter::ImplNextItem()
 {
-    SfxItemArray ppFnd = m_rSet.m_pItems;
-
-    if (m_nCurrent < m_nEnd)
-    {
-        do {
-            m_nCurrent++;
-        } while (m_nCurrent < m_nEnd && !*(ppFnd + m_nCurrent ));
-        return *(ppFnd+m_nCurrent);
-    }
-    return nullptr;
+    SfxPoolItem const** ppFnd = m_rSet.m_pItems.get();
+    do {
+        m_nCurrent++;
+    } while (m_nCurrent < m_nEnd && !*(ppFnd + m_nCurrent ));
+    return *(ppFnd+m_nCurrent);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

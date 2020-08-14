@@ -17,22 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbu_reghelper.hxx"
-#include "uiservices.hxx"
-#include <com/sun/star/document/XEventListener.hpp>
-#include <com/sun/star/container/XSet.hpp>
 #include "DBTypeWizDlgSetup.hxx"
-#include "dbwizsetup.hxx"
-#include <com/sun/star/sdb/XOfficeDatabaseDocument.hpp>
-#include <com/sun/star/sdbc/XDataSource.hpp>
-#include <vcl/msgbox.hxx>
+#include <dbwizsetup.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
 #include <comphelper/processfactory.hxx>
+#include <vcl/svapp.hxx>
 
 using namespace dbaui;
 
-extern "C" void SAL_CALL createRegistryInfo_ODBTypeWizDialogSetup()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+org_openoffice_comp_dbu_ODBTypeWizDialogSetup_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static OMultiInstanceAutoRegistration< ODBTypeWizDialogSetup > aAutoRegistration;
+    return cppu::acquire(new ODBTypeWizDialogSetup(context));
 }
 
 namespace dbaui
@@ -41,7 +39,6 @@ namespace dbaui
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
-    using namespace ::com::sun::star::sdb;
     using namespace ::com::sun::star::sdbc;
 
 ODBTypeWizDialogSetup::ODBTypeWizDialogSetup(const Reference< XComponentContext >& _rxORB)
@@ -61,31 +58,14 @@ Sequence<sal_Int8> SAL_CALL ODBTypeWizDialogSetup::getImplementationId(  )
     return css::uno::Sequence<sal_Int8>();
 }
 
-Reference< XInterface > SAL_CALL ODBTypeWizDialogSetup::Create(const Reference< XMultiServiceFactory >& _rxFactory)
-{
-    Reference < XInterface > xDBWizard = *(new ODBTypeWizDialogSetup( comphelper::getComponentContext(_rxFactory) ));
-    return xDBWizard;
-}
-
 OUString SAL_CALL ODBTypeWizDialogSetup::getImplementationName()
 {
-    return getImplementationName_Static();
-}
-
-OUString ODBTypeWizDialogSetup::getImplementationName_Static()
-{
-    return OUString("org.openoffice.comp.dbu.ODBTypeWizDialogSetup");
+    return "org.openoffice.comp.dbu.ODBTypeWizDialogSetup";
 }
 
 css::uno::Sequence<OUString> SAL_CALL ODBTypeWizDialogSetup::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-css::uno::Sequence<OUString> ODBTypeWizDialogSetup::getSupportedServiceNames_Static()
-{
-    css::uno::Sequence<OUString> aSupported { "com.sun.star.sdb.DatabaseWizardDialog" };
-    return aSupported;
+    return { "com.sun.star.sdb.DatabaseWizardDialog" };
 }
 
 Reference<XPropertySetInfo>  SAL_CALL ODBTypeWizDialogSetup::getPropertySetInfo()
@@ -105,16 +85,16 @@ Reference<XPropertySetInfo>  SAL_CALL ODBTypeWizDialogSetup::getPropertySetInfo(
     return new ::cppu::OPropertyArrayHelper(aProps);
 }
 
-VclPtr<Dialog> ODBTypeWizDialogSetup::createDialog(vcl::Window* _pParent)
+std::unique_ptr<weld::DialogController> ODBTypeWizDialogSetup::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
 {
-    return VclPtr<ODbTypeWizDialogSetup>::Create(_pParent, m_pDatasourceItems, m_aContext, m_aInitialSelection);
+    return std::make_unique<ODbTypeWizDialogSetup>(Application::GetFrameWeld(rParent), m_pDatasourceItems.get(), m_aContext, m_aInitialSelection);
 }
 
-void ODBTypeWizDialogSetup::executedDialog(sal_Int16 _nExecutionResult)
+void ODBTypeWizDialogSetup::executedDialog(sal_Int16 nExecutionResult)
 {
-    if ( _nExecutionResult == RET_OK )
+    if (nExecutionResult == css::ui::dialogs::ExecutableDialogResults::OK)
     {
-        const ODbTypeWizDialogSetup* pDialog = static_cast< ODbTypeWizDialogSetup* >( m_pDialog.get() );
+        const ODbTypeWizDialogSetup* pDialog = static_cast<ODbTypeWizDialogSetup*>(m_xDialog.get());
         m_bOpenDatabase = pDialog->IsDatabaseDocumentToBeOpened();
         m_bStartTableWizard = pDialog->IsTableWizardToBeStarted();
     }

@@ -17,8 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <toolkit/controls/formattedcontrol.hxx>
+#include <controls/formattedcontrol.hxx>
 #include <toolkit/helper/property.hxx>
+#include <helper/servicenames.hxx>
 
 #include <com/sun/star/awt/XVclWindowPeer.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -29,7 +30,7 @@
 #include <comphelper/processfactory.hxx>
 #include <osl/diagnose.h>
 
-#include "helper/unopropertyarrayhelper.hxx"
+#include <helper/unopropertyarrayhelper.hxx>
 
 namespace toolkit
 {
@@ -59,22 +60,16 @@ namespace toolkit
         }
 
 
-        bool& lcl_getTriedCreation()
-        {
-            static bool s_bTriedCreation = false;
-            return s_bTriedCreation;
-        }
-
+        bool s_bTriedCreation = false;
 
         const Reference< XNumberFormatsSupplier >& lcl_getDefaultFormats_throw()
         {
             ::osl::MutexGuard aGuard( getDefaultFormatsMutex() );
 
-            bool& rbTriedCreation = lcl_getTriedCreation();
             Reference< XNumberFormatsSupplier >& rDefaultFormats( lcl_getDefaultFormatsAccess_nothrow() );
-            if ( !rDefaultFormats.is() && !rbTriedCreation )
+            if ( !rDefaultFormats.is() && !s_bTriedCreation )
             {
-                rbTriedCreation = true;
+                s_bTriedCreation = true;
                 rDefaultFormats = NumberFormatsSupplier::createWithDefaultLocale( ::comphelper::getProcessComponentContext() );
             }
             if ( !rDefaultFormats.is() )
@@ -84,7 +79,7 @@ namespace toolkit
         }
 
 
-        static oslInterlockedCount  s_refCount(0);
+        oslInterlockedCount  s_refCount(0);
 
 
         void    lcl_registerDefaultFormatsClient()
@@ -101,7 +96,7 @@ namespace toolkit
                 Reference< XNumberFormatsSupplier >& rDefaultFormats( lcl_getDefaultFormatsAccess_nothrow() );
                 Reference< XNumberFormatsSupplier > xReleasePotentialLastReference( rDefaultFormats );
                 rDefaultFormats.clear();
-                lcl_getTriedCreation() = false;
+                s_bTriedCreation = false;
 
                 aGuard.clear();
                 xReleasePotentialLastReference.clear();
@@ -166,7 +161,7 @@ namespace toolkit
 
     OUString UnoControlFormattedFieldModel::getServiceName()
     {
-        return OUString::createFromAscii( szServiceName_UnoControlFormattedFieldModel );
+        return "stardiv.vcl.controlmodel.FormattedField";
     }
 
 
@@ -222,7 +217,7 @@ namespace toolkit
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("toolkit.controls");
         }
     }
 
@@ -248,7 +243,7 @@ namespace toolkit
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("toolkit.controls");
         }
     }
 
@@ -307,15 +302,12 @@ namespace toolkit
     {
         bool bSettingValue = false;
         bool bSettingText = false;
-        for (   const OUString* pPropertyNames = _rPropertyNames.getConstArray();
-                pPropertyNames != _rPropertyNames.getConstArray() + _rPropertyNames.getLength();
-                ++pPropertyNames
-            )
+        for ( auto const & propertyName : _rPropertyNames )
         {
-            if ( BASEPROPERTY_EFFECTIVE_VALUE == GetPropertyId( *pPropertyNames ) )
+            if ( BASEPROPERTY_EFFECTIVE_VALUE == GetPropertyId( propertyName ) )
                 bSettingValue = true;
 
-            if ( BASEPROPERTY_TEXT == GetPropertyId( *pPropertyNames ) )
+            if ( BASEPROPERTY_TEXT == GetPropertyId( propertyName ) )
                 bSettingText = true;
         }
 
@@ -364,7 +356,7 @@ namespace toolkit
 
             throw IllegalArgumentException(
                 ("Unable to convert the given value for the property "
-                 + GetPropertyName((sal_uInt16)nPropId)
+                 + GetPropertyName(static_cast<sal_uInt16>(nPropId))
                  + " (double, integer, or string expected)."),
                 static_cast< XPropertySet* >(this),
                 1);
@@ -379,7 +371,7 @@ namespace toolkit
         Any aReturn;
         switch (nPropId)
         {
-            case BASEPROPERTY_DEFAULTCONTROL: aReturn <<= OUString::createFromAscii( szServiceName_UnoControlFormattedField ); break;
+            case BASEPROPERTY_DEFAULTCONTROL: aReturn <<= OUString("stardiv.vcl.control.FormattedField"); break;
 
             case BASEPROPERTY_TREATASNUMBER: aReturn <<= true; break;
 
@@ -401,13 +393,8 @@ namespace toolkit
 
     ::cppu::IPropertyArrayHelper& UnoControlFormattedFieldModel::getInfoHelper()
     {
-        static UnoPropertyArrayHelper* pHelper = nullptr;
-        if ( !pHelper )
-        {
-            Sequence<sal_Int32> aIDs = ImplGetPropertyIds();
-            pHelper = new UnoPropertyArrayHelper( aIDs );
-        }
-        return *pHelper;
+        static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+        return aHelper;
     }
 
     // beans::XMultiPropertySet
@@ -420,7 +407,7 @@ namespace toolkit
 
     OUString UnoControlFormattedFieldModel::getImplementationName()
     {
-        return OUString("stardiv.Toolkit.UnoControlFormattedFieldModel");
+        return "stardiv.Toolkit.UnoControlFormattedFieldModel";
     }
 
     css::uno::Sequence<OUString>
@@ -444,7 +431,7 @@ namespace toolkit
 
     OUString UnoFormattedFieldControl::GetComponentServiceName()
     {
-        return OUString("FormattedField");
+        return "FormattedField";
     }
 
 
@@ -469,7 +456,7 @@ namespace toolkit
 
     OUString UnoFormattedFieldControl::getImplementationName()
     {
-        return OUString("stardiv.Toolkit.UnoFormattedFieldControl");
+        return "stardiv.Toolkit.UnoFormattedFieldControl";
     }
 
     css::uno::Sequence<OUString>
@@ -484,7 +471,7 @@ namespace toolkit
 }   // namespace toolkit
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoControlFormattedFieldModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -492,7 +479,7 @@ stardiv_Toolkit_UnoControlFormattedFieldModel_get_implementation(
     return cppu::acquire(new toolkit::UnoControlFormattedFieldModel(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoFormattedFieldControl_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

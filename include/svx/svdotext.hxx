@@ -20,20 +20,21 @@
 #ifndef INCLUDED_SVX_SVDOTEXT_HXX
 #define INCLUDED_SVX_SVDOTEXT_HXX
 
-#include <vcl/field.hxx>
 #include <svx/itextprovider.hxx>
 #include <svx/svdoattr.hxx>
+#include <svx/sdtaitm.hxx>
+#include <svx/sdtakitm.hxx>
+#include <svx/sdtaditm.hxx>
 #include <svx/svdtrans.hxx>
 #include <tools/datetime.hxx>
-#include <rsc/rscsfx.hxx>
-#include <svx/xtextit0.hxx>
+#include <svl/style.hxx>
 #include <svx/svdtext.hxx>
-#include <vector>
 #include <svx/svxdllapi.h>
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
-#include <svx/svdpagv.hxx>
-#include <rtl/ref.hxx>
+#include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
+#include <memory>
+#include <vector>
 
+#include <com/sun/star/drawing/TextFitToSizeType.hpp>
 
 //   forward declarations
 
@@ -41,6 +42,7 @@
 class OutlinerParaObject;
 class OverflowingText;
 class SdrOutliner;
+class SdrPathObj;
 class SdrTextObj;
 class SdrTextObjTest;
 class SvxFieldItem;
@@ -48,34 +50,36 @@ class ImpSdrObjTextLink;
 class EditStatus;
 class TextChain;
 class TextChainFlow;
+
 enum class EEAnchorMode;
+enum class EETextFormat;
 
-namespace sdr { namespace properties {
+namespace sdr::properties {
     class TextProperties;
-}}
+}
 
-namespace drawinglayer { namespace primitive2d {
+namespace drawinglayer::primitive2d {
     class SdrContourTextPrimitive2D;
     class SdrPathTextPrimitive2D;
     class SdrBlockTextPrimitive2D;
     class SdrAutoFitTextPrimitive2D;
     class SdrStretchTextPrimitive2D;
     class SdrChainedTextPrimitive2D;
-}}
+}
 
-namespace drawinglayer { namespace animation {
+namespace drawinglayer::animation {
     class AnimationEntryList;
-}}
+}
 
-namespace drawinglayer { namespace geometry {
+namespace drawinglayer::geometry {
     class ViewInformation2D;
-}}
+}
 
-namespace sdr { namespace table {
+namespace sdr::table {
     class Cell;
     class SdrTableRtfExporter;
     class SdrTableRTFParser;
-}}
+}
 
 
 //   Defines
@@ -98,7 +102,7 @@ public:
 //   helper class ImpSdrObjTextLinkUserData
 
 
-class ImpSdrObjTextLinkUserData : public SdrObjUserData
+class ImpSdrObjTextLinkUserData final : public SdrObjUserData
 {
     friend class                SdrTextObj;
     friend class                ImpSdrObjTextLink;
@@ -114,7 +118,7 @@ public:
     ImpSdrObjTextLinkUserData();
     virtual ~ImpSdrObjTextLinkUserData() override;
 
-    virtual SdrObjUserData* Clone(SdrObject* pObj1) const override;
+    virtual std::unique_ptr<SdrObjUserData> Clone(SdrObject* pObj1) const override;
 };
 
 namespace sdr
@@ -126,30 +130,27 @@ namespace sdr
     } // end of namespace properties
 } // end of namespace sdr
 
-
 //   SdrTextObj
 
+typedef std::unique_ptr<SdrPathObj, SdrObjectFreeOp> SdrPathObjUniquePtr;
 
-class SVX_DLLPUBLIC SdrTextObj : public SdrAttrObj, public svx::ITextProvider
+class SVXCORE_DLLPUBLIC SdrTextObj : public SdrAttrObj, public svx::ITextProvider
 {
 private:
     // Cell needs access to ImpGetDrawOutliner();
-
     friend class                sdr::table::Cell;
     friend class                sdr::table::SdrTableRtfExporter;
     friend class                sdr::table::SdrTableRTFParser;
-
     friend class                TextChain;
     friend class                TextChainFlow;
     friend class                EditingTextChainFlow;
-
 
     // CustomShapeproperties need to access the "bTextFrame" member:
     friend class sdr::properties::CustomShapeProperties;
 
 protected:
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
 
 private:
     // This method is only allowed for sdr::properties::TextProperties
@@ -184,7 +185,7 @@ protected:
     GeoStat                     aGeo;
 
     // this is the active text
-    SdrText*                    mpText;
+    std::unique_ptr<SdrText>    mpText;
 
     // This contains the dimensions of the text
     Size                        aTextSize;
@@ -196,7 +197,6 @@ protected:
 
     // Possible values for eTextKind are:
     //     OBJ_TEXT         regular text frame
-    //     OBJ_TEXTEXT      text continuation frame
     //     OBJ_TITLETEXT    TitleText for presentations
     //     OBJ_OUTLINETEXT  OutlineText for presentations
     // eTextKind only has meaning when bTextFrame=sal_True, since otherwise
@@ -209,7 +209,8 @@ protected:
     // and maintaining the OutlinerView.
     Point                       maTextEditOffset;
 
-    virtual SdrObject* getFullDragClone() const override;
+    virtual SdrObjectUniquePtr getFullDragClone() const override;
+
 
 public:
     const Point& GetTextEditOffset() const { return maTextEditOffset; }
@@ -229,7 +230,6 @@ protected:
     // bTextFrame=sal_True.
     bool                        bTextFrame : 1;
     bool                        bNoShear : 1;            // disable shearing   (->graphic+Ole+TextFrame)
-    bool                        bNoMirror : 1;           // disable mirroring (->Ole,TextFrame)
     bool                        bTextSizeDirty : 1;
 
     bool                        mbInEditMode : 1;   // Is this text object in edit mode?
@@ -253,7 +253,6 @@ protected:
     SdrOutliner& ImpGetDrawOutliner() const;
 
 private:
-    SVX_DLLPRIVATE void ImpCheckMasterCachable();
     // #101029#: Extracted from ImpGetDrawOutliner()
     SVX_DLLPRIVATE void ImpInitDrawOutliner( SdrOutliner& rOutl ) const;
     // #101029#: Extracted from Paint()
@@ -262,14 +261,13 @@ private:
                                        tools::Rectangle&       rTextRect,
                                        tools::Rectangle&       rAnchorRect,
                                        tools::Rectangle&       rPaintRect,
-                                       Fraction&        aFitXKorreg ) const;
+                                       Fraction&        aFitXCorrection ) const;
     void ImpAutoFitText( SdrOutliner& rOutliner ) const;
     static void ImpAutoFitText( SdrOutliner& rOutliner, const Size& rShapeSize, bool bIsVerticalWriting );
-    SVX_DLLPRIVATE SdrObject* ImpConvertContainedTextToSdrPathObjs(bool bToPoly) const;
+    SVX_DLLPRIVATE SdrObjectUniquePtr ImpConvertContainedTextToSdrPathObjs(bool bToPoly) const;
     SVX_DLLPRIVATE void ImpRegisterLink();
     SVX_DLLPRIVATE void ImpDeregisterLink();
     SVX_DLLPRIVATE ImpSdrObjTextLinkUserData* GetLinkUserData() const;
-//  void ImpCheckItemSetChanges(const SfxItemSet& rAttr);
 
     /** Appends the style family to a provided style name */
     static void AppendFamilyToStyleName(OUString& styleName, SfxStyleFamily family);
@@ -279,10 +277,10 @@ private:
 
 protected:
     bool ImpCanConvTextToCurve() const;
-    SdrObject* ImpConvertMakeObj(const basegfx::B2DPolyPolygon& rPolyPolygon, bool bClosed, bool bBezier) const;
-    SdrObject* ImpConvertAddText(SdrObject* pObj, bool bBezier) const;
+    SdrPathObjUniquePtr ImpConvertMakeObj(const basegfx::B2DPolyPolygon& rPolyPolygon, bool bClosed, bool bBezier) const;
+    SdrObjectUniquePtr ImpConvertAddText(SdrObjectUniquePtr pObj, bool bBezier) const;
     void ImpSetTextStyleSheetListeners();
-    static void ImpSetCharStretching(SdrOutliner& rOutliner, const Size& rTextSize, const Size& rShapeSize, Fraction& rFitXKorreg);
+    static void ImpSetCharStretching(SdrOutliner& rOutliner, const Size& rTextSize, const Size& rShapeSize, Fraction& rFitXCorrection);
     static void ImpJustifyRect(tools::Rectangle& rRect);
     void ImpCheckShear();
     tools::Rectangle ImpDragCalcRect(const SdrDragStat& rDrag) const;
@@ -290,7 +288,7 @@ protected:
     void SetTextSizeDirty() { bTextSizeDirty=true; }
 
     // rAnchorRect is InOut-Parameter!
-    void ImpSetContourPolygon( SdrOutliner& rOutliner, tools::Rectangle& rAnchorRect, bool bLineWidth ) const;
+    void ImpSetContourPolygon( SdrOutliner& rOutliner, tools::Rectangle const & rAnchorRect, bool bLineWidth ) const;
 
     virtual SdrObjGeoData* NewGeoData() const override;
     virtual void SaveGeoData(SdrObjGeoData& rGeo) const override;
@@ -303,13 +301,21 @@ protected:
     virtual void AdaptTextMinSize();
 
     // constructors for labeled graphical objects
-    SdrTextObj();
-    SdrTextObj(const tools::Rectangle& rNewRect);
+    SdrTextObj(SdrModel& rSdrModel);
+    SdrTextObj(
+        SdrModel& rSdrModel,
+        const tools::Rectangle& rNewRect);
 
     // constructors for text frames
-    SdrTextObj(SdrObjKind eNewTextKind);
-    SdrTextObj(SdrObjKind eNewTextKind, const tools::Rectangle& rNewRect);
+    SdrTextObj(
+        SdrModel& rSdrModel,
+        SdrObjKind eNewTextKind);
+    SdrTextObj(
+        SdrModel& rSdrModel,
+        SdrObjKind eNewTextKind,
+        const tools::Rectangle& rNewRect);
 
+    // protected destructor
     virtual ~SdrTextObj() override;
 
 public:
@@ -377,12 +383,13 @@ public:
     void SetDisableAutoWidthOnDragging(bool bOn) { bDisableAutoWidthOnDragging=bOn; }
     void NbcSetText(const OUString& rStr);
     void SetText(const OUString& rStr);
-    void NbcSetText(SvStream& rInput, const OUString& rBaseURL, sal_uInt16 eFormat);
-    void SetText(SvStream& rInput, const OUString& rBaseURL, sal_uInt16 eFormat);
+    void NbcSetText(SvStream& rInput, const OUString& rBaseURL, EETextFormat eFormat);
+    void SetText(SvStream& rInput, const OUString& rBaseURL, EETextFormat eFormat);
 
     // FitToSize and Fontwork are not taken into account in GetTextSize()!
     virtual const Size& GetTextSize() const;
     void FitFrameToTextSize();
+    double GetFontScaleY() const;
 
     // Simultaneously sets the text into the Outliner (possibly
     // the one of the EditOutliner) and sets the PaperSize.
@@ -400,7 +407,7 @@ public:
     long GetMinTextFrameWidth() const;
     long GetMaxTextFrameWidth() const;
 
-    SdrFitToSizeType GetFitToSize() const;
+    css::drawing::TextFitToSizeType GetFitToSize() const;
     const tools::Rectangle &GetGeoRect() const;
 
     // check if it's a TextFontwork
@@ -429,8 +436,9 @@ public:
     SdrTextAniKind GetTextAniKind() const;
     SdrTextAniDirection GetTextAniDirection() const;
 
-    virtual void SetPage(SdrPage* pNewPage) override;
-    virtual void SetModel(SdrModel* pNewModel) override;
+    // react on model/page change
+    virtual void handlePageChange(SdrPage* pOldPage, SdrPage* pNewPage) override;
+
     virtual void TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
     virtual sal_uInt16 GetObjIdentifier() const override;
 
@@ -438,7 +446,7 @@ public:
     virtual void TakeUnrotatedSnapRect(tools::Rectangle& rRect) const;
     virtual OUString TakeObjNameSingul() const override;
     virtual OUString TakeObjNamePlural() const override;
-    virtual SdrTextObj* Clone() const override;
+    virtual SdrTextObj* CloneSdrObject(SdrModel& rTargetModel) const override;
     SdrTextObj& operator=(const SdrTextObj& rObj);
     virtual basegfx::B2DPolyPolygon TakeXorPoly() const override;
     virtual basegfx::B2DPolyPolygon TakeContour() const override;
@@ -453,7 +461,7 @@ public:
     virtual Point GetSnapPoint(sal_uInt32 i) const override;
 
     virtual sal_uInt32 GetHdlCount() const override;
-    virtual SdrHdl* GetHdl(sal_uInt32 nHdlNum) const override;
+    virtual void AddToHdlList(SdrHdlList& rHdlList) const override;
 
     // special drag methods
     virtual bool hasSpecialDrag() const override;
@@ -466,7 +474,7 @@ public:
     virtual bool BckCreate(SdrDragStat& rStat) override;
     virtual void BrkCreate(SdrDragStat& rStat) override;
     virtual basegfx::B2DPolyPolygon TakeCreatePoly(const SdrDragStat& rDrag) const override;
-    virtual Pointer GetCreatePointer() const override;
+    virtual PointerStyle GetCreatePointer() const override;
 
     virtual void NbcMove(const Size& rSiz) override;
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
@@ -475,23 +483,24 @@ public:
     virtual void NbcShear(const Point& rRef, long nAngle, double tn, bool bVShear) override;
 
     virtual bool HasTextEdit() const override;
-    virtual bool BegTextEdit(SdrOutliner& rOutl) override;
+    // returns true if TextEditMode started
+    virtual bool BegTextEdit(SdrOutliner& rOutl);
     virtual void TakeTextEditArea(Size* pPaperMin, Size* pPaperMax, tools::Rectangle* pViewInit, tools::Rectangle* pViewMin) const;
-    virtual void EndTextEdit(SdrOutliner& rOutl) override;
+    virtual void EndTextEdit(SdrOutliner& rOutl);
     virtual EEAnchorMode GetOutlinerViewAnchorMode() const;
 
-    virtual void NbcSetOutlinerParaObject(OutlinerParaObject* pTextObject) override;
-    void NbcSetOutlinerParaObjectForText( OutlinerParaObject* pTextObject, SdrText* pText );
+    virtual void NbcSetOutlinerParaObject(std::unique_ptr<OutlinerParaObject> pTextObject) override;
+    void NbcSetOutlinerParaObjectForText( std::unique_ptr<OutlinerParaObject> pTextObject, SdrText* pText );
     virtual OutlinerParaObject* GetOutlinerParaObject() const override;
-    OutlinerParaObject* GetEditOutlinerParaObject() const;
+    bool CanCreateEditOutlinerParaObject() const;
+    std::unique_ptr<OutlinerParaObject> CreateEditOutlinerParaObject() const;
 
     virtual void NbcReformatText() override;
-    virtual void ReformatText() override;
 
     virtual bool CalcFieldValue(const SvxFieldItem& rField, sal_Int32 nPara, sal_uInt16 nPos,
-        bool bEdit, Color*& rpTxtColor, Color*& rpFldColor, OUString& rRet) const;
+        bool bEdit, std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor, OUString& rRet) const;
 
-    virtual SdrObject* DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
+    virtual SdrObjectUniquePtr DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
 
     void SetTextEditOutliner(SdrOutliner* pOutl) { pEdtOutl=pOutl; }
 
@@ -598,16 +607,24 @@ public:
         const drawinglayer::geometry::ViewInformation2D& aViewInformation) const;
     void impHandleChainingEventsDuringDecomposition(SdrOutliner &rOutliner) const;
 
-
     // timing generators
     void impGetBlinkTextTiming(drawinglayer::animation::AnimationEntryList& rAnimList) const;
     void impGetScrollTextTiming(drawinglayer::animation::AnimationEntryList& rAnimList, double fFrameLength, double fTextLength) const;
+
+    // Direct decomposer for text visualization when you already have a prepared
+    // Outliner containing all the needed information
+    static void impDecomposeBlockTextPrimitiveDirect(
+        drawinglayer::primitive2d::Primitive2DContainer& rTarget,
+        SdrOutliner& rOutliner,
+        const basegfx::B2DHomMatrix& rNewTransformA,
+        const basegfx::B2DHomMatrix& rNewTransformB,
+        const basegfx::B2DRange& rClipRange);
 
     /** returns false if the given pointer is NULL
         or if the given SdrOutliner contains no text.
         Also checks for one empty paragraph.
     */
-    static bool HasTextImpl( SdrOutliner* pOutliner );
+    static bool HasTextImpl( SdrOutliner const * pOutliner );
 
     friend class ::SdrTextObjTest;
 };

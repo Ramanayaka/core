@@ -19,6 +19,8 @@
 #include <rtl/bootstrap.hxx>
 #include <rtl/strbuf.hxx>
 #include <osl/file.hxx>
+#include <osl/process.h>
+#include <vcl/graph.hxx>
 #include <vcl/print.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wmf.hxx>
@@ -47,19 +49,27 @@ namespace
         return uri;
     }
 
+    OUString getExecutableName()
+    {
+        OUString uri;
+        if (osl_getExecutableFile(&uri.pData) != osl_Process_E_None) {
+            abort();
+        }
+        return uri.copy(uri.lastIndexOf('/') + 1);
+    }
+
     void setFontConfigConf(const OUString &execdir)
     {
         osl::File aFontConfig("file:///tmp/wmffuzzerfonts.conf");
         if (aFontConfig.open(osl_File_OpenFlag_Create | osl_File_OpenFlag_Write) == osl::File::E_None)
         {
-            OUString path;
-            osl::FileBase::getSystemPathFromFileURL(execdir, path);
-            OString sFontDir = OUStringToOString(path, osl_getThreadTextEncoding());
+            OUString sExecDir;
+            osl::FileBase::getSystemPathFromFileURL(execdir, sExecDir);
 
-            rtl::OStringBuffer aBuffer("<?xml version=\"1.0\"?>\n<fontconfig><dir>");
-            aBuffer.append(sFontDir);
+            OStringBuffer aBuffer("<?xml version=\"1.0\"?>\n<fontconfig><dir>");
+            aBuffer.append(OUStringToOString(sExecDir + getExecutableName() + ".fonts", osl_getThreadTextEncoding()));
             aBuffer.append("</dir><cachedir>/tmp/cache/fontconfig</cachedir></fontconfig>");
-            rtl::OString aConf = aBuffer.makeStringAndClear();
+            OString aConf = aBuffer.makeStringAndClear();
             sal_uInt64 aBytesWritten;
             aFontConfig.write(aConf.getStr(), aConf.getLength(), aBytesWritten);
             assert(aBytesWritten == aConf.getLength());
@@ -78,9 +88,21 @@ void CommonInitialize(int *argc, char ***argv)
 {
     setenv("SAL_USE_VCLPLUGIN", "svp", 1);
     setenv("JPEGMEM", "768M", 1);
+    setenv("SC_MAX_MATRIX_ELEMENTS", "60000000", 1);
+    setenv("SC_NO_THREADED_CALCULATION", "1", 1);
     setenv("SAL_WMF_COMPLEXCLIP_VIA_REGION", "1", 1);
     setenv("SAL_DISABLE_PRINTERLIST", "1", 1);
+    setenv("SAL_DISABLE_DEFAULTPRINTER", "1", 1);
     setenv("SAL_NO_FONT_LOOKUP", "1", 1);
+
+    //allow bubbling of max input len to fuzzer targets
+    int nMaxLen = 0;
+    for (int i = 0; i < *argc; ++i)
+    {
+        if (strncmp((*argv)[i], "-max_len=", 9) == 0)
+            nMaxLen = atoi((*argv)[i] + 9);
+    }
+    setenv("FUZZ_MAX_INPUT_LEN", "1", nMaxLen);
 
     osl_setCommandArgs(*argc, *argv);
 
@@ -90,12 +112,14 @@ void CommonInitialize(int *argc, char ***argv)
 
     tools::extendApplicationEnvironment();
 
-    Reference< XComponentContext > xContext = defaultBootstrap_InitialComponentContext();
+    Reference< XComponentContext > xContext =
+        defaultBootstrap_InitialComponentContext(sExecDir + getExecutableName() + ".unorc");
     Reference< XMultiServiceFactory > xServiceManager( xContext->getServiceManager(), UNO_QUERY );
     if( !xServiceManager.is() )
         Application::Abort( "Failed to bootstrap" );
     comphelper::setProcessServiceFactory( xServiceManager );
-    utl::ConfigManager::EnableAvoidConfig();
+    utl::ConfigManager::EnableFuzzing();
+    Application::EnableHeadlessMode(false);
     InitVCL();
 
     //we don't have a de-init, so inside this leak disabled region...

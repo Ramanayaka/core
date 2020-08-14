@@ -20,7 +20,7 @@
 #ifndef INCLUDED_FILTER_SOURCE_GRAPHICFILTER_EGIF_GIFLZWC_HXX
 #define INCLUDED_FILTER_SOURCE_GRAPHICFILTER_EGIF_GIFLZWC_HXX
 
-#include <vcl/bitmapaccess.hxx>
+#include <vcl/mapmod.hxx>
 
 
 class   GIFImageDataOutputStream;
@@ -31,8 +31,8 @@ class GIFLZWCompressor
 {
 private:
 
-    GIFImageDataOutputStream*   pIDOS;
-    GIFLZWCTreeNode*            pTable;
+    std::unique_ptr<GIFImageDataOutputStream> pIDOS;
+    std::unique_ptr<GIFLZWCTreeNode[]> pTable;
     GIFLZWCTreeNode*            pPrefix;
     sal_uInt16                  nDataSize;
     sal_uInt16                  nClearCode;
@@ -46,7 +46,7 @@ public:
                                 ~GIFLZWCompressor();
 
     void                        StartCompression( SvStream& rGIF, sal_uInt16 nPixelSize );
-    void                        Compress( sal_uInt8* pSrc, sal_uLong nSize );
+    void                        Compress(sal_uInt8* pSrc, sal_uInt32 nSize);
     void                        EndCompression();
 };
 

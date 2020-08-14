@@ -61,16 +61,14 @@ $(eval $(call gb_Executable_use_system_win32_libs,gengal,\
 ))
 endif
 
-ifeq ($(ENABLE_HEADLESS),TRUE)
+ifeq ($(DISABLE_GUI),TRUE)
 $(eval $(call gb_Executable_add_libs,gengal,\
 	$(DLOPEN_LIBS) \
-	-lpthread \
 ))
 else
 ifeq ($(OS), $(filter LINUX %BSD SOLARIS, $(OS)))
 $(eval $(call gb_Executable_add_libs,gengal,\
 	$(DLOPEN_LIBS) \
-	-lpthread \
     -lX11 \
 ))
 
@@ -81,5 +79,7 @@ $(eval $(call gb_Executable_use_static_libraries,gengal,\
 endif
 endif
 endif
+
+$(eval $(call gb_Executable_add_default_nativeres,gengal))
 
 # vim: set noet sw=4 ts=4:

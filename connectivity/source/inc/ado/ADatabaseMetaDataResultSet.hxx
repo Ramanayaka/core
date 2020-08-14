@@ -32,13 +32,10 @@
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include "ado/AStatement.hxx"
-#include <connectivity/StdTypeDefs.hxx>
+#include <ado/AStatement.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         /*
         **  java_sql_ResultSet
         */
@@ -57,8 +54,8 @@ namespace connectivity
         {
             std::vector<sal_Int32>        m_aColMapping; // pos 0 is unused so we don't have to decrement 1 every time
 
-            std::map<sal_Int32, TInt2IntMap > m_aValueRange;
-            std::map<sal_Int32, TInt2IntMap >::iterator   m_aValueRangeIter;
+            std::map<sal_Int32, ::std::map<sal_Int32,sal_Int32> >            m_aValueRange;
+            std::map<sal_Int32, ::std::map<sal_Int32,sal_Int32> >::iterator  m_aValueRangeIter;
 
             std::map<sal_Int32, std::map< OUString,sal_Int32> >              m_aStrValueRange;
             std::map<sal_Int32, std::map< OUString,sal_Int32> >::iterator    m_aStrValueRangeIter;
@@ -223,7 +220,6 @@ namespace connectivity
 
             return map;
         }
-    }
 
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ADATABASEMETADATARESULTSET_HXX

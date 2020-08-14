@@ -36,9 +36,6 @@
 #include <vector>
 #include <memory>
 
-#include "linguistic/misc.hxx"
-#include "defs.hxx"
-
 class SpellCheckerDispatcher;
 class HyphenatorDispatcher;
 class ThesaurusDispatcher;
@@ -46,13 +43,13 @@ class GrammarCheckingIterator;
 class LngSvcMgrListenerHelper;
 struct SvcInfo;
 
-namespace com { namespace sun { namespace star { namespace linguistic2 {
+namespace com::sun::star::linguistic2 {
     class XLinguServiceEventBroadcaster;
     class XSpellChecker;
     class XProofreadingIterator;
     class XHyphenator;
     class XThesaurus;
-} } } }
+}
 
 
 class LngSvcMgr :
@@ -91,10 +88,10 @@ class LngSvcMgr :
     rtl::Reference<LngSvcMgrListenerHelper>             mxListenerHelper;
 
     typedef std::vector< std::unique_ptr<SvcInfo> >    SvcInfoArray;
-    SvcInfoArray *                                      pAvailSpellSvcs;
-    SvcInfoArray *                                      pAvailGrammarSvcs;
-    SvcInfoArray *                                      pAvailHyphSvcs;
-    SvcInfoArray *                                      pAvailThesSvcs;
+    std::unique_ptr<SvcInfoArray>                      pAvailSpellSvcs;
+    std::unique_ptr<SvcInfoArray>                      pAvailGrammarSvcs;
+    std::unique_ptr<SvcInfoArray>                      pAvailHyphSvcs;
+    std::unique_ptr<SvcInfoArray>                      pAvailThesSvcs;
 
     bool bDisposing;
 
@@ -118,8 +115,6 @@ class LngSvcMgr :
     void    SetCfgServiceLists( ThesaurusDispatcher &rThesDsp );
 
     bool    SaveCfgSvcs( const OUString &rServiceName );
-
-    static void clearSvcInfoArray(SvcInfoArray *&rpInfo);
 
     // utl::ConfigItem (to allow for listening of changes of relevant properties)
     virtual void    Notify( const css::uno::Sequence< OUString > &rPropertyNames ) override;
@@ -162,18 +157,9 @@ public:
     // XModifyListener
     virtual void SAL_CALL modified( const css::lang::EventObject& rEvent ) override;
 
-    static inline OUString   getImplementationName_Static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static() throw();
-
     bool    AddLngSvcEvtBroadcaster(
                 const css::uno::Reference< css::linguistic2::XLinguServiceEventBroadcaster > &rxBroadcaster );
 };
-
-
-inline OUString LngSvcMgr::getImplementationName_Static()
-{
-    return OUString( "com.sun.star.lingu2.LngSvcMgr" );
-}
 
 
 #endif

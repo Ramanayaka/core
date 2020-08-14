@@ -36,11 +36,12 @@
 #include <com/sun/star/frame/XModuleManager2.hpp>
 #include <com/sun/star/ui/XUIElementFactoryManager.hpp>
 
-#include <rtl/ustrbuf.hxx>
+#include <rtl/ref.hxx>
+#include <sal/log.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <vcl/svapp.hxx>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
@@ -127,8 +128,7 @@ void ConfigurationAccess_FactoryManager::addFactorySpecifierToTypeNameModule( co
 
     if ( pIter != m_aFactoryManagerMap.end() )
         throw ElementExistException();
-    else
-        m_aFactoryManagerMap.insert( FactoryManagerMap::value_type( aHashKey, rServiceSpecifier ));
+    m_aFactoryManagerMap.emplace( aHashKey, rServiceSpecifier );
 }
 
 void ConfigurationAccess_FactoryManager::removeFactorySpecifierFromTypeNameModule( const OUString& rType, const OUString& rName, const OUString& rModule )
@@ -142,8 +142,7 @@ void ConfigurationAccess_FactoryManager::removeFactorySpecifierFromTypeNameModul
 
     if ( pIter == m_aFactoryManagerMap.end() )
         throw NoSuchElementException();
-    else
-        m_aFactoryManagerMap.erase( aHashKey );
+    m_aFactoryManagerMap.erase( aHashKey );
 }
 
 Sequence< Sequence< PropertyValue > > ConfigurationAccess_FactoryManager::getFactoriesDescription() const
@@ -154,10 +153,9 @@ Sequence< Sequence< PropertyValue > > ConfigurationAccess_FactoryManager::getFac
     Sequence< Sequence< PropertyValue > > aSeqSeq;
 
     sal_Int32 nIndex( 0 );
-    FactoryManagerMap::const_iterator pIter = m_aFactoryManagerMap.begin();
-    while ( pIter != m_aFactoryManagerMap.end() )
+    for ( const auto& rEntry : m_aFactoryManagerMap )
     {
-        OUString aFactory = pIter->first;
+        OUString aFactory = rEntry.first;
         if ( !aFactory.isEmpty() )
         {
             sal_Int32                 nToken = 0;
@@ -181,8 +179,6 @@ Sequence< Sequence< PropertyValue > > ConfigurationAccess_FactoryManager::getFac
 
             aSeqSeq[nIndex++] = aSeq;
         }
-
-        ++pIter;
     }
 
     return aSeqSeq;
@@ -204,7 +200,7 @@ void SAL_CALL ConfigurationAccess_FactoryManager::elementInserted( const Contain
         // Create hash key from type, name and module as they are together a primary key to
         // the UNO service that implements a user interface factory.
         OUString aHashKey( getHashKeyFromStrings( aType, aName, aModule ));
-        m_aFactoryManagerMap.insert( FactoryManagerMap::value_type( aHashKey, aService ));
+        m_aFactoryManagerMap.emplace( aHashKey, aService );
     }
 }
 
@@ -243,7 +239,7 @@ void SAL_CALL ConfigurationAccess_FactoryManager::elementReplaced( const Contain
         // the UNO service that implements the popup menu controller.
         OUString aHashKey( getHashKeyFromStrings( aType, aName, aModule ));
         m_aFactoryManagerMap.erase( aHashKey );
-        m_aFactoryManagerMap.insert( FactoryManagerMap::value_type( aHashKey, aService ));
+        m_aFactoryManagerMap.emplace( aHashKey, aService );
     }
 }
 
@@ -263,12 +259,10 @@ void ConfigurationAccess_FactoryManager::readConfigurationData()
 
     if ( !m_bConfigAccessInitialized )
     {
-        Sequence< Any > aArgs( 1 );
-        PropertyValue   aPropValue;
-
-        aPropValue.Name  = "nodepath";
-        aPropValue.Value <<= m_sRoot;
-        aArgs[0] <<= aPropValue;
+        Sequence<Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", Any(m_sRoot)}
+        }));
 
         try
         {
@@ -282,32 +276,32 @@ void ConfigurationAccess_FactoryManager::readConfigurationData()
         m_bConfigAccessInitialized = true;
     }
 
-    if ( m_xConfigAccess.is() )
+    if ( !m_xConfigAccess.is() )
+        return;
+
+    const Sequence< OUString > aUIElementFactories = m_xConfigAccess->getElementNames();
+
+    OUString             aType;
+    OUString             aName;
+    OUString             aModule;
+    OUString             aService;
+    OUString             aHashKey;
+    for ( OUString const & factoryName : aUIElementFactories )
     {
-        Sequence< OUString >   aUIElementFactories = m_xConfigAccess->getElementNames();
-
-        OUString             aType;
-        OUString             aName;
-        OUString             aModule;
-        OUString             aService;
-        OUString             aHashKey;
-        for ( sal_Int32 i = 0; i < aUIElementFactories.getLength(); i++ )
+        if ( impl_getElementProps( m_xConfigAccess->getByName( factoryName ), aType, aName, aModule, aService ))
         {
-            if ( impl_getElementProps( m_xConfigAccess->getByName( aUIElementFactories[i] ), aType, aName, aModule, aService ))
-            {
-                // Create hash key from type, name and module as they are together a primary key to
-                // the UNO service that implements the user interface element factory.
-                aHashKey = getHashKeyFromStrings( aType, aName, aModule );
-                m_aFactoryManagerMap.insert( FactoryManagerMap::value_type( aHashKey, aService ));
-            }
+            // Create hash key from type, name and module as they are together a primary key to
+            // the UNO service that implements the user interface element factory.
+            aHashKey = getHashKeyFromStrings( aType, aName, aModule );
+            m_aFactoryManagerMap.emplace( aHashKey, aService );
         }
+    }
 
-        Reference< XContainer > xContainer( m_xConfigAccess, UNO_QUERY );
-        if ( xContainer.is() )
-        {
-            m_xConfigListener = new WeakContainerListener(this);
-            xContainer->addContainerListener(m_xConfigListener);
-        }
+    Reference< XContainer > xContainer( m_xConfigAccess, UNO_QUERY );
+    if ( xContainer.is() )
+    {
+        m_xConfigListener = new WeakContainerListener(this);
+        xContainer->addContainerListener(m_xConfigListener);
     }
 }
 
@@ -355,7 +349,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.UIElementFactoryManager");
+        return "com.sun.star.comp.framework.UIElementFactoryManager";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -421,12 +415,12 @@ Reference< XUIElement > SAL_CALL UIElementFactoryManager::createUIElement(
     // Retrieve the frame instance from the arguments to determine the module identifier. This must be provided
     // to the search function. An empty module identifier is provided if the frame is missing or the module id cannot
     // retrieve from it.
-    for ( int i = 0; i < Args.getLength(); i++ )
+    for ( auto const & arg : Args )
     {
-        if ( Args[i].Name == "Frame")
-            Args[i].Value >>= xFrame;
-        if (Args[i].Name == "Module")
-            Args[i].Value >>= aModuleId;
+        if ( arg.Name == "Frame")
+            arg.Value >>= xFrame;
+        if (arg.Name == "Module")
+            arg.Value >>= aModuleId;
     }
     } // SAFE
 
@@ -563,7 +557,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_UIElementFactoryManager_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

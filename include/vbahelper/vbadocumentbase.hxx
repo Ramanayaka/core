@@ -33,15 +33,15 @@
 #include <vbahelper/vbahelper.hxx>
 #include <vbahelper/vbahelperinterface.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace frame { class XModel; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
-namespace ooo { namespace vba {
+namespace ooo::vba {
     class XDocumentBase;
     class XHelperInterface;
-} }
+}
 
 typedef InheritedHelperInterfaceWeakImpl< ooo::vba::XDocumentBase > VbaDocumentBase_BASE;
 
@@ -51,7 +51,7 @@ protected:
     css::uno::Reference< css::frame::XModel > mxModel;
     css::uno::Reference< css::uno::XInterface > mxVBProject;
 protected:
-    const css::uno::Reference< css::frame::XModel >& getModel() { return mxModel; }
+    const css::uno::Reference< css::frame::XModel >& getModel() const { return mxModel; }
 public:
     VbaDocumentBase(    const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext >& xContext,
             css::uno::Reference< css::frame::XModel > const & xModel );

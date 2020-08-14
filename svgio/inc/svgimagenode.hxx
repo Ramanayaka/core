@@ -20,15 +20,14 @@
 #ifndef INCLUDED_SVGIO_INC_SVGIMAGENODE_HXX
 #define INCLUDED_SVGIO_INC_SVGIMAGENODE_HXX
 
-#include <svgnode.hxx>
-#include <svgstyleattributes.hxx>
+#include "svgnode.hxx"
+#include "svgstyleattributes.hxx"
+#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <memory>
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
-        class SvgImageNode : public SvgNode
+        class SvgImageNode final : public SvgNode
         {
         private:
             /// use styles
@@ -75,8 +74,8 @@ namespace svgio
             /// height content, set if found in current context
             const SvgNumber& getHeight() const { return maHeight; }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGIMAGENODE_HXX
 

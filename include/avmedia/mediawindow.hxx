@@ -20,27 +20,25 @@
 #ifndef INCLUDED_AVMEDIA_MEDIAWINDOW_HXX
 #define INCLUDED_AVMEDIA_MEDIAWINDOW_HXX
 
-#include <memory>
 #include <vector>
 #include <tools/gen.hxx>
-#include <com/sun/star/media/ZoomLevel.hpp>
-#include <com/sun/star/media/XPlayer.hpp>
-#include <com/sun/star/graphic/XGraphic.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
-#include <vcl/bitmapex.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 #include <vcl/vclptr.hxx>
 #include <avmedia/avmediadllapi.h>
 
 #define AVMEDIA_FRAMEGRABBER_DEFAULTFRAME -1.0
 
+namespace com::sun::star::graphic { class XGraphic; }
+namespace com::sun::star::media { class XPlayer; }
+
 namespace vcl { class Window; }
+namespace weld { class Window; }
 class KeyEvent;
 class MouseEvent;
 class CommandEvent;
-class PopupMenu;
-class Pointer;
 struct AcceptDropEvent;
 struct ExecuteDropEvent;
+enum class PointerStyle;
 
 
 namespace avmedia
@@ -67,7 +65,7 @@ namespace avmedia
 
         void                setPosSize( const tools::Rectangle& rNewRect );
 
-        void                setPointer( const Pointer& rPointer );
+        void                setPointer( PointerStyle aPointer );
 
         bool                start();
 
@@ -95,11 +93,11 @@ namespace avmedia
 
     public:
 
-        static void         getMediaFilters( FilterNameVector& rFilterNameVector );
+        static FilterNameVector getMediaFilters();
         /// @param o_pbLink if not 0, this is an "insert" dialog: display link
         ///                 checkbox and store its state in *o_pbLink
-        static bool         executeMediaURLDialog( OUString& rURL, bool *const o_pbLink );
-        static void         executeFormatErrorBox( vcl::Window* pParent );
+        static bool         executeMediaURLDialog(weld::Window* pParent, OUString& rURL, bool *const o_pbLink);
+        static void         executeFormatErrorBox(weld::Window* pParent);
         static bool         isMediaURL( const OUString& rURL, const OUString& rReferer, bool bDeep = false, Size* pPreferredSizePixel = nullptr );
 
         static css::uno::Reference< css::media::XPlayer > createPlayer( const OUString& rURL, const OUString& rReferer, const OUString* pMimeType = nullptr );

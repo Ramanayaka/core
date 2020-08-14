@@ -20,15 +20,13 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ACALLABLESTATEMENT_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ACALLABLESTATEMENT_HXX
 
-#include "ado/APreparedStatement.hxx"
+#include <ado/APreparedStatement.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XOutParameters.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
 
         //************ Class: java.sql.CallableStatement
 
@@ -73,7 +71,6 @@ namespace connectivity
             virtual void SAL_CALL registerOutParameter( sal_Int32 parameterIndex, sal_Int32 sqlType, const OUString& typeName ) override;
             virtual void SAL_CALL registerNumericOutParameter( sal_Int32 parameterIndex, sal_Int32 sqlType, sal_Int32 scale ) override;
         };
-    }
 }
 #endif // _CONNECTIVITY_OCallableStatement_HXX_
 

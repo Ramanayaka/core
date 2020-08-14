@@ -23,7 +23,6 @@
 #include <svl/languageoptions.hxx>
 #include <i18nlangtag/lang.h>
 #include <unotools/configitem.hxx>
-#include <tools/solar.h>
 #include <com/sun/star/uno/Any.h>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <osl/mutex.hxx>
@@ -116,37 +115,37 @@ SvtCJKOptions_Impl::SvtCJKOptions_Impl() :
 void    SvtCJKOptions_Impl::SetAll(bool bSet)
 {
     if (
-        !bROCJKFont          &&
-        !bROVerticalText     &&
-        !bROAsianTypography  &&
-        !bROJapaneseFind     &&
-        !bRORuby             &&
-        !bROChangeCaseMap    &&
-        !bRODoubleLines      &&
-        !bROEmphasisMarks    &&
-        !bROVerticalCallOut
+        bROCJKFont          ||
+        bROVerticalText     ||
+        bROAsianTypography  ||
+        bROJapaneseFind     ||
+        bRORuby             ||
+        bROChangeCaseMap    ||
+        bRODoubleLines      ||
+        bROEmphasisMarks    ||
+        bROVerticalCallOut
        )
-    {
-        bCJKFont=bSet;
-        bVerticalText=bSet;
-        bAsianTypography=bSet;
-        bJapaneseFind=bSet;
-        bRuby=bSet;
-        bChangeCaseMap=bSet;
-        bDoubleLines=bSet;
-        bEmphasisMarks=bSet;
-        bVerticalCallOut=bSet;
+        return;
 
-        SetModified();
-        Commit();
-        NotifyListeners(ConfigurationHints::NONE);
-    }
+    bCJKFont=bSet;
+    bVerticalText=bSet;
+    bAsianTypography=bSet;
+    bJapaneseFind=bSet;
+    bRuby=bSet;
+    bChangeCaseMap=bSet;
+    bDoubleLines=bSet;
+    bEmphasisMarks=bSet;
+    bVerticalCallOut=bSet;
+
+    SetModified();
+    Commit();
+    NotifyListeners(ConfigurationHints::NONE);
 }
 
 void SvtCJKOptions_Impl::Load()
 {
     Sequence<OUString> &rPropertyNames = PropertyNames::get();
-    if(!rPropertyNames.getLength())
+    if(!rPropertyNames.hasElements())
     {
         rPropertyNames.realloc(9);
         OUString* pNames = rPropertyNames.getArray();

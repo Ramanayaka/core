@@ -24,12 +24,10 @@
 #include <editeng/editengdllapi.h>
 #include <memory>
 
-class SvXMLNamespaceMap;
-
 
 class SvXMLAttrContainerData;
 
-class EDITENG_DLLPUBLIC SvXMLAttrContainerItem: public SfxPoolItem
+class EDITENG_DLLPUBLIC SvXMLAttrContainerItem final : public SfxPoolItem
 {
     std::unique_ptr<SvXMLAttrContainerData> pImpl;
 
@@ -41,19 +39,16 @@ public:
 
     virtual bool operator==( const SfxPoolItem& ) const override;
 
-    virtual bool GetPresentation(
-                                SfxItemPresentation ePresentation,
-                                MapUnit eCoreMetric,
-                                MapUnit ePresentationMetric,
-                                OUString &rText,
-                                const IntlWrapper *pIntlWrapper = nullptr ) const override;
-
-    virtual sal_uInt16 GetVersion( sal_uInt16 nFileFormatVersion ) const override;
+    virtual bool GetPresentation(SfxItemPresentation ePresentation,
+                                 MapUnit eCoreMetric,
+                                 MapUnit ePresentationMetric,
+                                 OUString &rText,
+                                 const IntlWrapper& rIntlWrapper) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual SfxPoolItem *Clone( SfxItemPool * = nullptr) const override
+    virtual SvXMLAttrContainerItem* Clone( SfxItemPool * = nullptr) const override
     { return new SvXMLAttrContainerItem( *this ); }
 
     bool AddAttr( const OUString& rLName,

@@ -19,11 +19,14 @@
 #ifndef INCLUDED_I18NPOOL_INC_BREAKITERATOR_UNICODE_HXX
 #define INCLUDED_I18NPOOL_INC_BREAKITERATOR_UNICODE_HXX
 
-#include <breakiteratorImpl.hxx>
+#include "breakiteratorImpl.hxx"
 
 #include <unicode/brkiter.h>
+#include <unicode/utext.h>
+#include <memory>
+#include <unordered_map>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 #define LOAD_CHARACTER_BREAKITERATOR    0
 #define LOAD_WORD_BREAKITERATOR         1
@@ -31,7 +34,6 @@ namespace com { namespace sun { namespace star { namespace i18n {
 #define LOAD_LINE_BREAKITERATOR         3
 
 
-//  class BreakIterator_Unicode
 
 class BreakIterator_Unicode : public BreakIteratorImpl
 {
@@ -46,11 +48,11 @@ public:
         const css::lang::Locale& rLocale, sal_Int16 nCharacterIteratorMode, sal_Int32 nCount,
         sal_Int32& nDone ) override;
 
-    virtual Boundary SAL_CALL previousWord( const OUString& Text, sal_Int32 nStartPos,
+    virtual css::i18n::Boundary SAL_CALL previousWord( const OUString& Text, sal_Int32 nStartPos,
         const css::lang::Locale& nLocale, sal_Int16 WordType) override;
-    virtual Boundary SAL_CALL nextWord( const OUString& Text, sal_Int32 nStartPos,
+    virtual css::i18n::Boundary SAL_CALL nextWord( const OUString& Text, sal_Int32 nStartPos,
         const css::lang::Locale& nLocale, sal_Int16 WordType) override;
-    virtual Boundary SAL_CALL getWordBoundary( const OUString& Text, sal_Int32 nPos,
+    virtual css::i18n::Boundary SAL_CALL getWordBoundary( const OUString& Text, sal_Int32 nPos,
         const css::lang::Locale& nLocale, sal_Int16 WordType, sal_Bool bDirection ) override;
 
     virtual sal_Int32 SAL_CALL beginOfSentence( const OUString& Text, sal_Int32 nStartPos,
@@ -58,9 +60,10 @@ public:
     virtual sal_Int32 SAL_CALL endOfSentence( const OUString& Text, sal_Int32 nStartPos,
         const css::lang::Locale& nLocale ) override;
 
-    virtual LineBreakResults SAL_CALL getLineBreak( const OUString& Text, sal_Int32 nStartPos,
+    virtual css::i18n::LineBreakResults SAL_CALL getLineBreak( const OUString& Text, sal_Int32 nStartPos,
         const css::lang::Locale& nLocale, sal_Int32 nMinBreakPos,
-        const LineBreakHyphenationOptions& hOptions, const LineBreakUserOptions& bOptions ) override;
+        const css::i18n::LineBreakHyphenationOptions& hOptions,
+        const css::i18n::LineBreakUserOptions& bOptions ) override;
 
     //XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
@@ -68,32 +71,40 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
 protected:
-    const sal_Char *cBreakIterator, *lineRule;
+    const char *cBreakIterator, *lineRule;
+
+    /** Used as map value. */
+    struct BI_ValueData
+    {
+        OUString                                maICUText;
+        UText*                                  mpUt;
+        std::shared_ptr< icu::BreakIterator >   mpBreakIterator;
+
+        BI_ValueData() : mpUt(nullptr)
+        {
+        }
+        ~BI_ValueData()
+        {
+            utext_close(mpUt);
+        }
+    };
 
     struct BI_Data
     {
-        OUString            aICUText;
-        UText*              ut;
-        icu::BreakIterator* aBreakIterator;
-        css::lang::Locale   maLocale;
-
-        BI_Data() : ut(nullptr), aBreakIterator(nullptr)
-        {
-        }
-        ~BI_Data()
-        {
-            utext_close(ut);
-        }
-
+        std::shared_ptr< BI_ValueData > mpValue;
+        OString                         maBIMapKey;
     } character, sentence, line, *icuBI;
     BI_Data words[4]; // 4 is css::i18n::WordType enumeration size
 
     /// @throws css::uno::RuntimeException
-    void SAL_CALL loadICUBreakIterator(const css::lang::Locale& rLocale,
-        sal_Int16 rBreakType, sal_Int16 rWordType, const sal_Char* name, const OUString& rText);
+    void loadICUBreakIterator(const css::lang::Locale& rLocale,
+        sal_Int16 rBreakType, sal_Int16 rWordType, const char* name, const OUString& rText);
+
+public:
+    typedef std::unordered_map< OString, std::shared_ptr< BI_ValueData > > BIMap;
 };
 
-} } } }
+}
 
 #endif
 

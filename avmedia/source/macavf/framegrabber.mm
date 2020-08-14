@@ -20,6 +20,7 @@
 #include "framegrabber.hxx"
 #include "player.hxx"
 
+#include <sal/log.hxx>
 #include <tools/stream.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/cvtgrf.hxx>
@@ -27,9 +28,9 @@
 
 using namespace ::com::sun::star;
 
-namespace avmedia { namespace macavf {
+namespace avmedia::macavf {
 
-FrameGrabber::FrameGrabber( const uno::Reference< lang::XMultiServiceFactory >& /*rxMgr*/ )
+FrameGrabber::FrameGrabber()
 :   mpImageGen( nullptr )
 {}
 
@@ -38,24 +39,6 @@ FrameGrabber::~FrameGrabber()
 {
     if( mpImageGen )
         CFRelease( mpImageGen );
-}
-
-
-bool FrameGrabber::create( const ::rtl::OUString& rURL )
-{
-    NSString* pNSStr = [NSString stringWithCharacters:reinterpret_cast<unichar const *>(rURL.getStr()) length:rURL.getLength()];
-    SAL_WNODEPRECATED_DECLARATIONS_PUSH
-        //TODO: 10.11 stringByAddingPercentEscapesUsingEncoding
-    NSURL* pNSURL = [NSURL URLWithString: [pNSStr stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding]];
-    SAL_WNODEPRECATED_DECLARATIONS_POP
-    AVAsset* pMovie = [AVURLAsset URLAssetWithURL:pNSURL options:nil];
-    if( !pMovie )
-    {
-        SAL_WARN("avmedia", "AVGrabber::create() cannot load url=" << [pNSStr UTF8String] );
-        return false;
-    }
-
-    return create( pMovie );
 }
 
 
@@ -103,22 +86,21 @@ uno::Reference< graphic::XGraphic > SAL_CALL FrameGrabber::grabFrame( double fMe
 }
 
 
-::rtl::OUString SAL_CALL FrameGrabber::getImplementationName(  )
+OUString SAL_CALL FrameGrabber::getImplementationName(  )
 {
-    return ::rtl::OUString( AVMEDIA_MACAVF_FRAMEGRABBER_IMPLEMENTATIONNAME );
+    return AVMEDIA_MACAVF_FRAMEGRABBER_IMPLEMENTATIONNAME;
 }
 
-sal_Bool SAL_CALL FrameGrabber::supportsService( const ::rtl::OUString& ServiceName )
+sal_Bool SAL_CALL FrameGrabber::supportsService( const OUString& ServiceName )
 {
     return ServiceName == AVMEDIA_MACAVF_FRAMEGRABBER_SERVICENAME;
 }
 
-uno::Sequence< ::rtl::OUString > SAL_CALL FrameGrabber::getSupportedServiceNames(  )
+uno::Sequence< OUString > SAL_CALL FrameGrabber::getSupportedServiceNames(  )
 {
     return { AVMEDIA_MACAVF_FRAMEGRABBER_SERVICENAME };
 }
 
-} // namespace macavf
-} // namespace avmedia
+} // namespace avmedia::macavf
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

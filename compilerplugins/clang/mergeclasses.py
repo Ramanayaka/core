@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python2
 
 import sys
 
@@ -7,7 +7,7 @@ definitionSet = set()
 parentChildDict = {}
 definitionToFileDict = {}
 
-with open("loplugin.mergeclasses.log") as txt:
+with open("workdir/loplugin.mergeclasses.log") as txt:
     for line in txt:
         tokens = line.strip().split("\t")
     
@@ -56,11 +56,12 @@ def extractModuleName(clazz):
 with open("compilerplugins/clang/mergeclasses.results", "wt") as f:
     # loop over defined, but not instantiated classes
     for clazz in sorted(definitionSet - instantiatedSet):
+        if clazz == "svl::IUndoManager": print parentChildDict[clazz]
         # ignore classes without any children, and classes with more than one child
         if (clazz not in parentChildDict) or (len(parentChildDict[clazz]) != 1):
             continue
         # exclude some common false positives
-        a = ['Dialog', 'Dlg', 'com::sun', 'Base']
+        a = ['Dialog', 'Dlg', 'com::sun']
         if any(x in clazz for x in a):
             continue
         # ignore base class that contain the word "mutex", they are normally there to
@@ -68,6 +69,8 @@ with open("compilerplugins/clang/mergeclasses.results", "wt") as f:
         if ("mutex" in clazz) or ("Mutex" in clazz):
             continue
         otherclazz = next(iter(parentChildDict[clazz]))
+        if clazz == "svl::IUndoManager": print extractModuleName(clazz)
+        if clazz == "svl::IUndoManager": print extractModuleName(otherclazz)
         # exclude combinations that span modules because we often use those to make cross-module dependencies more manageable.
         if extractModuleName(clazz) != extractModuleName(otherclazz):
             continue

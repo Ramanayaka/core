@@ -19,17 +19,17 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_LABIMP_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_LABIMP_HXX
 
-#include <sfx2/tabdlg.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/fixed.hxx>
-#include <svtools/svmedit.hxx>
-#include <vcl/field.hxx>
-#include <svtools/treelistbox.hxx>
-#include <label.hxx>
-#include <labimg.hxx>
+#include <vcl/weld.hxx>
 
-#define GETFLDVAL(rField)         (rField).Denormalize((rField).GetValue(FUNIT_TWIP))
-#define SETFLDVAL(rField, lValue) (rField).SetValue((rField).Normalize(lValue), FUNIT_TWIP)
+inline int getfldval(const weld::MetricSpinButton& rField)
+{
+    return rField.denormalize(rField.get_value(FieldUnit::TWIP));
+}
+
+inline void setfldval(weld::MetricSpinButton& rField, int lValue)
+{
+    rField.set_value(rField.normalize(lValue), FieldUnit::TWIP);
+}
 
 #endif // INCLUDED_SW_SOURCE_UIBASE_INC_LABIMP_HXX
 

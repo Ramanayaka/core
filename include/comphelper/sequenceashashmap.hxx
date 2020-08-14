@@ -20,14 +20,13 @@
 #ifndef INCLUDED_COMPHELPER_SEQUENCEASHASHMAP_HXX
 #define INCLUDED_COMPHELPER_SEQUENCEASHASHMAP_HXX
 
-#include <algorithm>
 #include <unordered_map>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
 
 #include <comphelper/comphelperdllapi.h>
 
+namespace com::sun::star::beans { struct NamedValue; }
+namespace com::sun::star::beans { struct PropertyValue; }
 
 namespace comphelper{
 
@@ -40,14 +39,9 @@ namespace comphelper{
             such name sequences very easy ...
  */
 
-struct SequenceAsHashMapBase : public std::unordered_map<
-    OUString                    ,
-    css::uno::Any         ,
-    OUStringHash >
-{
-};
+using SequenceAsHashMapBase = std::unordered_map<OUString, css::uno::Any>;
 
-class SAL_WARN_UNUSED COMPHELPER_DLLPUBLIC SequenceAsHashMap : public SequenceAsHashMapBase
+class SAL_WARN_UNUSED COMPHELPER_DLLPUBLIC SequenceAsHashMap
 {
 
     public:
@@ -164,7 +158,7 @@ class SAL_WARN_UNUSED COMPHELPER_DLLPUBLIC SequenceAsHashMap : public SequenceAs
             @return A const Any, which
                     contains all items of this map.
          */
-        const css::uno::Any getAsConstAny(bool bAsPropertyValue) const;
+        css::uno::Any getAsConstAny(bool bAsPropertyValue) const;
 
 
         /** @short  return this map instance to as a
@@ -178,7 +172,7 @@ class SAL_WARN_UNUSED COMPHELPER_DLLPUBLIC SequenceAsHashMap : public SequenceAs
             @return A const sequence of type NamedValue, which
                     contains all items of this map.
          */
-        const css::uno::Sequence< css::beans::NamedValue > getAsConstNamedValueList() const;
+        css::uno::Sequence< css::beans::NamedValue > getAsConstNamedValueList() const;
 
 
         /** @short  return this map instance to as a
@@ -192,7 +186,7 @@ class SAL_WARN_UNUSED COMPHELPER_DLLPUBLIC SequenceAsHashMap : public SequenceAs
             @return A const sequence of type PropertyValue, which
                     contains all items of this map.
          */
-        const css::uno::Sequence< css::beans::PropertyValue > getAsConstPropertyValueList() const;
+        css::uno::Sequence< css::beans::PropertyValue > getAsConstPropertyValueList() const;
 
 
         /** @short  check if the specified item exists
@@ -221,8 +215,8 @@ class SAL_WARN_UNUSED COMPHELPER_DLLPUBLIC SequenceAsHashMap : public SequenceAs
         TValueType getUnpackedValueOrDefault(const OUString& sKey    ,
                                              const TValueType&      aDefault) const
         {
-            const_iterator pIt = find(sKey);
-            if (pIt == end())
+            auto pIt = m_aMap.find(sKey);
+            if (pIt == m_aMap.end())
                 return aDefault;
 
             TValueType aValue = TValueType();
@@ -249,8 +243,8 @@ class SAL_WARN_UNUSED COMPHELPER_DLLPUBLIC SequenceAsHashMap : public SequenceAs
          */
         css::uno::Any getValue(const OUString& sKey) const
         {
-            const_iterator pIt = find(sKey);
-            if (pIt == end())
+            auto pIt = m_aMap.find(sKey);
+            if (pIt == m_aMap.end())
                 return css::uno::Any();
 
             return pIt->second;
@@ -281,7 +275,7 @@ class SAL_WARN_UNUSED COMPHELPER_DLLPUBLIC SequenceAsHashMap : public SequenceAs
         bool createItemIfMissing(const OUString& sKey  ,
                                      const TValueType&      aValue)
         {
-            if (find(sKey) == end())
+            if (m_aMap.find(sKey) == m_aMap.end())
             {
                 (*this)[sKey] = css::uno::toAny(aValue);
                 return true;
@@ -320,6 +314,72 @@ class SAL_WARN_UNUSED COMPHELPER_DLLPUBLIC SequenceAsHashMap : public SequenceAs
                     the map containing all items for the update.
          */
         void update(const SequenceAsHashMap& rSource);
+
+        css::uno::Any& operator[](const OUString& rKey)
+        {
+            return m_aMap[rKey];
+        }
+
+        using iterator = SequenceAsHashMapBase::iterator;
+        using const_iterator = SequenceAsHashMapBase::const_iterator;
+
+        void clear()
+        {
+            m_aMap.clear();
+        }
+
+        size_t size() const
+        {
+            return m_aMap.size();
+        }
+
+        bool empty() const
+        {
+            return m_aMap.empty();
+        }
+
+        iterator begin()
+        {
+            return m_aMap.begin();
+        }
+
+        const_iterator begin() const
+        {
+            return m_aMap.begin();
+        }
+
+        iterator end()
+        {
+            return m_aMap.end();
+        }
+
+        const_iterator end() const
+        {
+            return m_aMap.end();
+        }
+
+        iterator find(const OUString& rKey)
+        {
+            return m_aMap.find(rKey);
+        }
+
+        const_iterator find(const OUString& rKey) const
+        {
+            return m_aMap.find(rKey);
+        }
+
+        iterator erase(iterator it)
+        {
+            return m_aMap.erase(it);
+        }
+
+        size_t erase(const OUString& rKey)
+        {
+            return m_aMap.erase(rKey);
+        }
+
+private:
+        SequenceAsHashMapBase m_aMap;
 };
 
 } // namespace comphelper

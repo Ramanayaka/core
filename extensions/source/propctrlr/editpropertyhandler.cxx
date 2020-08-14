@@ -20,20 +20,14 @@
 #include "editpropertyhandler.hxx"
 #include "formstrings.hxx"
 #include "formmetadata.hxx"
-#include "pcrservices.hxx"
 
 #include <com/sun/star/inspection/XObjectInspectorUI.hpp>
 #include <com/sun/star/lang/NullPointerException.hpp>
+#include <tools/diagnose_ex.h>
 
 #define TEXTTYPE_SINGLELINE     0
 #define TEXTTYPE_MULTILINE      1
 #define TEXTTYPE_RICHTEXT       2
-
-
-extern "C" void SAL_CALL createRegistryInfo_EditPropertyHandler()
-{
-    ::pcr::EditPropertyHandler::registerImplementation();
-}
 
 
 namespace pcr
@@ -52,7 +46,7 @@ namespace pcr
 
 
     EditPropertyHandler::EditPropertyHandler( const Reference< XComponentContext >& _rxContext )
-        :EditPropertyHandler_Base( _rxContext )
+        :PropertyHandlerComponent( _rxContext )
     {
     }
 
@@ -62,16 +56,15 @@ namespace pcr
     }
 
 
-    OUString SAL_CALL EditPropertyHandler::getImplementationName_static(  )
+    OUString EditPropertyHandler::getImplementationName(  )
     {
-        return OUString( "com.sun.star.comp.extensions.EditPropertyHandler" );
+        return "com.sun.star.comp.extensions.EditPropertyHandler";
     }
 
 
-    Sequence< OUString > SAL_CALL EditPropertyHandler::getSupportedServiceNames_static(  )
+    Sequence< OUString > EditPropertyHandler::getSupportedServiceNames(  )
     {
-        Sequence<OUString> aSupported { "com.sun.star.form.inspection.EditPropertyHandler" };
-        return aSupported;
+        return { "com.sun.star.form.inspection.EditPropertyHandler" };
     }
 
 
@@ -92,7 +85,7 @@ namespace pcr
                 bool bHasHScroll = false;
                 m_xComponent->getPropertyValue( PROPERTY_HSCROLL ) >>= bHasHScroll;
 
-                aReturn <<= (sal_Int32)( ( bHasVScroll ? 2 : 0 ) + ( bHasHScroll ? 1 : 0 ) );
+                aReturn <<= static_cast<sal_Int32>( ( bHasVScroll ? 2 : 0 ) + ( bHasHScroll ? 1 : 0 ) );
             }
             break;
 
@@ -124,7 +117,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EditPropertyHandler::getPropertyValue: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EditPropertyHandler::getPropertyValue" );
         }
 
         return aReturn;
@@ -179,7 +172,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "EditPropertyHandler::setPropertyValue: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "EditPropertyHandler::setPropertyValue" );
         }
     }
 
@@ -210,7 +203,7 @@ namespace pcr
     }
 
 
-    Sequence< Property > SAL_CALL EditPropertyHandler::doDescribeSupportedProperties() const
+    Sequence< Property > EditPropertyHandler::doDescribeSupportedProperties() const
     {
         std::vector< Property > aProperties;
 
@@ -222,7 +215,7 @@ namespace pcr
 
         if ( aProperties.empty() )
             return Sequence< Property >();
-        return Sequence< Property >( &(*aProperties.begin()), aProperties.size() );
+        return comphelper::containerToSequence(aProperties);
     }
 
 
@@ -242,7 +235,7 @@ namespace pcr
         }
         if ( aSuperseded.empty() )
             return Sequence< OUString >();
-        return Sequence< OUString >( &(*aSuperseded.begin()), aSuperseded.size() );
+        return comphelper::containerToSequence(aSuperseded);
     }
 
 
@@ -253,7 +246,7 @@ namespace pcr
         if ( implHaveTextTypeProperty() )
             aInterestingActuatingProps.push_back(  PROPERTY_TEXTTYPE );
         aInterestingActuatingProps.push_back( PROPERTY_MULTILINE );
-        return Sequence< OUString >( &(*aInterestingActuatingProps.begin()), aInterestingActuatingProps.size() );
+        return comphelper::containerToSequence(aInterestingActuatingProps);
     }
 
 
@@ -305,5 +298,11 @@ namespace pcr
 
 }   // namespace pcr
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_EditPropertyHandler_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new pcr::EditPropertyHandler(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

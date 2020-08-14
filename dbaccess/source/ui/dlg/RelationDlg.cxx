@@ -17,27 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RelationDlg.hxx"
+#include <RelationDlg.hxx>
 
-#include <vcl/wrkwin.hxx>
-
-#include <vcl/svapp.hxx>
-#include "dbu_dlg.hrc"
-#include "dbaccess_helpid.hrc"
 #include <com/sun/star/sdbc/KeyRule.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include "UITools.hxx"
-#include "JoinDesignView.hxx"
-#include "JoinController.hxx"
+#include <JoinDesignView.hxx>
+#include <JoinController.hxx>
 #include <connectivity/dbexception.hxx>
-#include "RTableConnectionData.hxx"
-#include "RelationControl.hxx"
+#include <connectivity/dbtools.hxx>
+#include <RTableConnectionData.hxx>
+#include <RelationControl.hxx>
 #include <cppuhelper/exc_hlp.hxx>
-#include <comphelper/processfactory.hxx>
-
-#include <algorithm>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdbc;
@@ -46,36 +38,32 @@ using namespace ::com::sun::star::beans;
 using namespace ::dbaui;
 using namespace ::dbtools;
 
-// class ORelationDialog
 ORelationDialog::ORelationDialog( OJoinTableView* pParent,
                                  const TTableConnectionData::value_type& pConnectionData,
                                  bool bAllowTableSelect )
-    : ModalDialog(pParent, "RelationDialog",
-        "dbaccess/ui/relationdialog.ui")
-    , m_pTableMap(&pParent->GetTabWinMap())
+    : GenericDialogController(pParent->GetFrameWeld(),
+        "dbaccess/ui/relationdialog.ui", "RelationDialog")
+    , m_pParent(pParent)
     , m_pOrigConnData(pConnectionData)
     , m_bTriedOneUpdate(false)
+    , m_xRB_NoCascUpd(m_xBuilder->weld_radio_button("addaction"))
+    , m_xRB_CascUpd(m_xBuilder->weld_radio_button("addcascade"))
+    , m_xRB_CascUpdNull(m_xBuilder->weld_radio_button("addnull"))
+    , m_xRB_CascUpdDefault(m_xBuilder->weld_radio_button("adddefault"))
+    , m_xRB_NoCascDel(m_xBuilder->weld_radio_button("delaction"))
+    , m_xRB_CascDel(m_xBuilder->weld_radio_button("delcascade"))
+    , m_xRB_CascDelNull(m_xBuilder->weld_radio_button("delnull"))
+    , m_xRB_CascDelDefault(m_xBuilder->weld_radio_button("deldefault"))
+    , m_xPB_OK(m_xBuilder->weld_button("ok"))
 {
-    get(m_pRB_NoCascUpd, "addaction");
-    get(m_pRB_CascUpd, "addcascade");
-    get(m_pRB_CascUpdNull, "addnull");
-    get(m_pRB_CascUpdDefault, "adddefault");
-    get(m_pRB_NoCascDel, "delaction");
-    get(m_pRB_CascDel, "delcascade");
-    get(m_pRB_CascDelNull, "delnull");
-    get(m_pRB_CascDelDefault, "deldefault");
-    get(m_pPB_OK, "ok");
-
-    m_xConnection = pParent->getDesignView()->getController().getConnection();
-
     // Copy connection
-    m_pConnData.reset( static_cast<ORelationTableConnectionData*>(pConnectionData->NewInstance()) );
+    m_pConnData = pConnectionData->NewInstance();
     m_pConnData->CopyFrom( *pConnectionData );
 
     Init(m_pConnData);
-    m_xTableControl.reset( new OTableListBoxControl(this, m_pTableMap, this) );
+    m_xTableControl.reset(new OTableListBoxControl(m_xBuilder.get(), &pParent->GetTabWinMap(), this));
 
-    m_pPB_OK->SetClickHdl( LINK(this, ORelationDialog, OKClickHdl) );
+    m_xPB_OK->connect_clicked(LINK(this, ORelationDialog, OKClickHdl));
 
     m_xTableControl->Init( m_pConnData );
     if ( bAllowTableSelect )
@@ -90,23 +78,7 @@ ORelationDialog::ORelationDialog( OJoinTableView* pParent,
 
 ORelationDialog::~ORelationDialog()
 {
-    disposeOnce();
 }
-
-void ORelationDialog::dispose()
-{
-    m_pRB_NoCascUpd.clear();
-    m_pRB_CascUpd.clear();
-    m_pRB_CascUpdNull.clear();
-    m_pRB_CascUpdDefault.clear();
-    m_pRB_NoCascDel.clear();
-    m_pRB_CascDel.clear();
-    m_pRB_CascDelNull.clear();
-    m_pRB_CascDelDefault.clear();
-    m_pPB_OK.clear();
-    ModalDialog::dispose();
-}
-
 
 void ORelationDialog::Init(const TTableConnectionData::value_type& _pConnectionData)
 {
@@ -116,18 +88,18 @@ void ORelationDialog::Init(const TTableConnectionData::value_type& _pConnectionD
     {
     case KeyRule::NO_ACTION:
     case KeyRule::RESTRICT:
-        m_pRB_NoCascUpd->Check();
+        m_xRB_NoCascUpd->set_active(true);
         break;
 
     case KeyRule::CASCADE:
-        m_pRB_CascUpd->Check();
+        m_xRB_CascUpd->set_active(true);
         break;
 
     case KeyRule::SET_NULL:
-        m_pRB_CascUpdNull->Check();
+        m_xRB_CascUpdNull->set_active(true);
         break;
     case KeyRule::SET_DEFAULT:
-        m_pRB_CascUpdDefault->Check();
+        m_xRB_CascUpdDefault->set_active(true);
         break;
     }
 
@@ -136,35 +108,35 @@ void ORelationDialog::Init(const TTableConnectionData::value_type& _pConnectionD
     {
     case KeyRule::NO_ACTION:
     case KeyRule::RESTRICT:
-        m_pRB_NoCascDel->Check();
+        m_xRB_NoCascDel->set_active(true);
         break;
 
     case KeyRule::CASCADE:
-        m_pRB_CascDel->Check();
+        m_xRB_CascDel->set_active(true);
         break;
 
     case KeyRule::SET_NULL:
-        m_pRB_CascDelNull->Check();
+        m_xRB_CascDelNull->set_active(true);
         break;
     case KeyRule::SET_DEFAULT:
-        m_pRB_CascDelDefault->Check();
+        m_xRB_CascDelDefault->set_active(true);
         break;
     }
 }
 
-IMPL_LINK_NOARG( ORelationDialog, OKClickHdl, Button*, void )
+IMPL_LINK_NOARG(ORelationDialog, OKClickHdl, weld::Button&, void)
 {
     // Read out RadioButtons
     sal_uInt16 nAttrib = 0;
 
     // Delete Rules
-    if( m_pRB_NoCascDel->IsChecked() )
+    if( m_xRB_NoCascDel->get_active() )
         nAttrib |= KeyRule::NO_ACTION;
-    if( m_pRB_CascDel->IsChecked() )
+    if( m_xRB_CascDel->get_active() )
         nAttrib |= KeyRule::CASCADE;
-    if( m_pRB_CascDelNull->IsChecked() )
+    if( m_xRB_CascDelNull->get_active() )
         nAttrib |= KeyRule::SET_NULL;
-    if( m_pRB_CascDelDefault->IsChecked() )
+    if( m_xRB_CascDelDefault->get_active() )
         nAttrib |= KeyRule::SET_DEFAULT;
 
     ORelationTableConnectionData* pConnData = static_cast<ORelationTableConnectionData*>(m_pConnData.get());
@@ -172,13 +144,13 @@ IMPL_LINK_NOARG( ORelationDialog, OKClickHdl, Button*, void )
 
     // Update Rules
     nAttrib = 0;
-    if( m_pRB_NoCascUpd->IsChecked() )
+    if( m_xRB_NoCascUpd->get_active() )
         nAttrib |= KeyRule::NO_ACTION;
-    if( m_pRB_CascUpd->IsChecked() )
+    if( m_xRB_CascUpd->get_active() )
         nAttrib |= KeyRule::CASCADE;
-    if( m_pRB_CascUpdNull->IsChecked() )
+    if( m_xRB_CascUpdNull->get_active() )
         nAttrib |= KeyRule::SET_NULL;
-    if( m_pRB_CascUpdDefault->IsChecked() )
+    if( m_xRB_CascUpdDefault->get_active() )
         nAttrib |= KeyRule::SET_DEFAULT;
     pConnData->SetUpdateRules( nAttrib );
 
@@ -196,19 +168,19 @@ IMPL_LINK_NOARG( ORelationDialog, OKClickHdl, Button*, void )
         if ( *pConnData == *pOrigConnData || pConnData->Update())
         {
             m_pOrigConnData->CopyFrom( *m_pConnData );
-            EndDialog( RET_OK );
+            m_xDialog->response(RET_OK);
             return;
         }
     }
     catch( const SQLException& )
     {
-        ::dbaui::showError( SQLExceptionInfo( ::cppu::getCaughtException() ),
-                            this,
-                            static_cast<OJoinTableView*>(GetParent())->getDesignView()->getController().getORB());
+        ::dbtools::showError(SQLExceptionInfo(::cppu::getCaughtException()),
+                             m_xDialog->GetXWindow(),
+                             m_pParent->getDesignView()->getController().getORB());
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 
     m_bTriedOneUpdate = true;
@@ -221,9 +193,9 @@ IMPL_LINK_NOARG( ORelationDialog, OKClickHdl, Button*, void )
     m_xTableControl->lateInit();
 }
 
-short ORelationDialog::Execute()
+short ORelationDialog::run()
 {
-    short nResult = ModalDialog::Execute();
+    short nResult = GenericDialogController::run();
     if ((nResult != RET_OK) && m_bTriedOneUpdate)
         return RET_NO;
 
@@ -232,7 +204,7 @@ short ORelationDialog::Execute()
 
 void ORelationDialog::setValid(bool _bValid)
 {
-    m_pPB_OK->Enable(_bValid);
+    m_xPB_OK->set_sensitive(_bValid);
 }
 
 void ORelationDialog::notifyConnectionChange()

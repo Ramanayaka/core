@@ -17,29 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cstddef>
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <map>
 #include <vector>
 #include <algorithm>
 
-#include "osl/file.h"
-#include "osl/file.hxx"
-#include "osl/thread.h"
-#include "rtl/string.h"
-#include "rtl/string.hxx"
-#include "rtl/textcvt.h"
-#include "rtl/strbuf.hxx"
-#include "rtl/ustring.h"
-#include "rtl/ustring.hxx"
-#include "sal/macros.h"
-#include "sal/main.h"
-#include "sal/types.h"
+#include <osl/file.h>
+#include <osl/file.hxx>
+#include <osl/thread.h>
+#include <rtl/string.h>
+#include <rtl/string.hxx>
+#include <rtl/textcvt.h>
+#include <rtl/strbuf.hxx>
+#include <rtl/ustring.h>
+#include <rtl/ustring.hxx>
+#include <sal/macros.h>
+#include <sal/main.h>
+#include <sal/types.h>
 
-#include "po.hxx"
+#include <po.hxx>
 
 using namespace std;
 
@@ -58,6 +59,8 @@ bool matchList(
 
 bool passesNegativeList(const OUString& rUrl) {
     static const OUStringLiteral list[] = {
+        "/desktop/test/deployment/passive/help/en/help.tree",
+        "/desktop/test/deployment/passive/help/en/main.xhp",
         "/dictionaries.xcu",
         "/dictionaries/da_DK/help/da/help.tree",
         ("/dictionaries/da_DK/help/da/"
@@ -81,11 +84,20 @@ bool passesPositiveList(const OUString& rUrl) {
 
 void handleCommand(
     const OString& rInPath, const OString& rOutPath,
-    const OString& rExecutable)
+    const std::string& rExecutable)
 {
-    OStringBuffer buf(OString(getenv("WORKDIR_FOR_BUILD")));
-    buf.append("/LinkTarget/Executable/");
-    buf.append(rExecutable);
+    OStringBuffer buf;
+    if (rExecutable == "uiex" || rExecutable == "hrcex")
+    {
+        buf.append(OString(getenv("SRC_ROOT")));
+        buf.append("/solenv/bin/");
+    }
+    else
+    {
+        buf.append(OString(getenv("WORKDIR_FOR_BUILD")));
+        buf.append("/LinkTarget/Executable/");
+    }
+    buf.append(rExecutable.data());
     buf.append(" -i ");
     buf.append(rInPath);
     buf.append(" -o ");
@@ -143,18 +155,30 @@ void InitPoFile(
     aPoOutPut.close();
 }
 
-bool handleFile(
-    const OString& rProject, const OUString& rUrl,
-    const OString& rPotDir, bool bInitPoFile )
+bool fileExists(const OString& fileName)
+{
+    FILE *f = fopen(fileName.getStr(), "r");
+
+    if (f != nullptr)
+    {
+        fclose(f);
+        return true;
+    }
+
+    return false;
+}
+
+OString gDestRoot;
+
+bool handleFile(const OString& rProject, const OUString& rUrl, const OString& rPotDir)
 {
     struct Command {
         OUStringLiteral extension;
-        OString executable;
+        std::string executable;
         bool positive;
     };
     static Command const commands[] = {
-        { OUStringLiteral(".src"), "transex3", false },
-        { OUStringLiteral(".hrc"), "transex3", true },
+        { OUStringLiteral(".hrc"), "hrcex", false },
         { OUStringLiteral(".ulf"), "ulfex", false },
         { OUStringLiteral(".xcu"), "cfgex", false },
         { OUStringLiteral(".xrm"), "xrmex", false },
@@ -182,13 +206,35 @@ bool handleFile(
                     }
                     sInPath = OUStringToOString( sInPathTmp, RTL_TEXTENCODING_UTF8 );
                 }
-                OString sOutPath = rPotDir.concat(".pot");
+                OString sOutPath;
+                if (commands[i].executable == "uiex" || commands[i].executable == "hrcex")
+                    sOutPath = gDestRoot + "/" + rProject + "/messages.pot";
+                else
+                    sOutPath = rPotDir.concat(".pot");
 
-                if ( bInitPoFile )
-                {
+                if (!fileExists(sOutPath))
                     InitPoFile(rProject, sInPath, rPotDir, sOutPath);
-                }
                 handleCommand(sInPath, sOutPath, commands[i].executable);
+
+                {
+                    //Delete pot file if it contain only the header
+                    PoIfstream aPOStream(sOutPath);
+                    PoEntry aPO;
+                    aPOStream.readEntry( aPO );
+                    bool bDel = aPOStream.eof();
+                    aPOStream.close();
+                    if (bDel)
+                    {
+                        if ( system(OString("rm " + sOutPath).getStr()) != 0 )
+                        {
+                            cerr
+                                << "Error: Cannot remove entryless pot file: "
+                                << sOutPath << "\n";
+                            throw false; //TODO
+                        }
+                    }
+                }
+
                 return true;
             }
             break;
@@ -204,42 +250,13 @@ void handleFilesOfDir(
     ///Handle files in lexical order
     std::sort(aFiles.begin(), aFiles.end());
 
-    typedef std::vector<OUString>::const_iterator citer_t;
-
-    bool bFirstLocFile = true; ///< First file in directory which needs localization
-
-    for( citer_t aIt = aFiles.begin(); aIt != aFiles.end(); ++aIt )
-    {
-        if (handleFile( rProject, *aIt, rPotDir, bFirstLocFile))
-        {
-            bFirstLocFile = false;
-        }
-    }
-
-    if( !bFirstLocFile )
-    {
-        //Delete pot file if it contain only the header
-        OString sPotFile = rPotDir.concat(".pot");
-        PoIfstream aPOStream( sPotFile );
-        PoEntry aPO;
-        aPOStream.readEntry( aPO );
-        bool bDel = aPOStream.eof();
-        aPOStream.close();
-        if( bDel )
-        {
-            if ( system(OString("rm " + sPotFile).getStr()) != 0 )
-            {
-                cerr
-                    << "Error: Cannot remove entryless pot file: "
-                    << sPotFile << "\n";
-                    throw false; //TODO
-            }
-        }
-    }
+    for (auto const& elem : aFiles)
+        handleFile(rProject, elem, rPotDir);
 }
 
 bool includeProject(const OString& rProject) {
     static const char *projects[] = {
+        "include",
         "accessibility",
         "avmedia",
         "basctl",
@@ -264,6 +281,7 @@ bool includeProject(const OString& rProject) {
         "mysqlc",
         "nlpsolver",
         "officecfg",
+        "oox",
         "readlicense_oo",
         "reportbuilder",
         "reportdesign",
@@ -303,10 +321,9 @@ bool includeProject(const OString& rProject) {
 ///
 /// @param rUrl the absolute file URL of this directory
 ///
-/// @param nLevel 0 if this is either the root directory that contains the
-/// projects or one of the clone/* or src/* directories that contain the
-/// additional projects; -1 if this is the clone directory; 1 if this
-/// is a project directory; 2 if this is a directory inside a project
+/// @param nLevel 0 if this is the root directory (core repository)
+/// that contains the individual modules. 1 if it is a toplevel module and
+/// larger values for the subdirectories.
 ///
 /// @param rProject the name of the project (empty and ignored if nLevel <= 0)
 /// @param rPotDir the path of pot directory
@@ -321,6 +338,7 @@ void handleDirectory(
         throw false; //TODO
     }
     std::vector<OUString> aFileNames;
+    std::map<OUString, std::map<OString, OString>> aSubDirs;
     for (;;) {
         osl::DirectoryItem item;
         osl::FileBase::RC e = dir.getNextItem(item);
@@ -340,42 +358,34 @@ void handleDirectory(
         }
         const OString sDirName =
             OUStringToOString(stat.getFileName(),RTL_TEXTENCODING_UTF8);
-        switch (nLevel) {
-        case -1: // the clone or src directory
-            if (stat.getFileType() == osl::FileStatus::Directory) {
-                handleDirectory(
-                    stat.getFileURL(), 0, OString(), rPotDir);
-            }
-            break;
-        case 0: // a root directory
-            if (stat.getFileType() == osl::FileStatus::Directory) {
-                if (includeProject(sDirName)) {
-                    handleDirectory(
-                        stat.getFileURL(), 1, sDirName, rPotDir.concat("/").concat(sDirName));
-                } else if ( sDirName == "clone" ||
-                            sDirName == "src" )
-                {
-                    handleDirectory( stat.getFileURL(), -1, OString(), rPotDir);
-                }
-            }
-            break;
-        default:
-            if (stat.getFileType() == osl::FileStatus::Directory)
-            {
-                handleDirectory(
-                    stat.getFileURL(), 2, rProject, rPotDir.concat("/").concat(sDirName));
-            }
-            else
-            {
-                aFileNames.push_back(stat.getFileURL());
-            }
-            break;
+        switch (nLevel)
+        {
+            case 0: // a root directory
+                if (stat.getFileType() == osl::FileStatus::Directory && includeProject(sDirName))
+                    aSubDirs[stat.getFileURL()][sDirName] = rPotDir.concat("/").concat(sDirName);
+                break;
+            default:
+                if (stat.getFileType() == osl::FileStatus::Directory)
+                    aSubDirs[stat.getFileURL()][rProject] = rPotDir.concat("/").concat(sDirName);
+                else
+                    aFileNames.push_back(stat.getFileURL());
+                break;
         }
     }
 
+    OString aPotDir(rPotDir);
     if( !aFileNames.empty() )
     {
-        handleFilesOfDir( aFileNames, rProject, rPotDir );
+        OString aProject(rProject);
+        if (aProject == "include" && nLevel > 1)
+        {
+            aProject = aPotDir.copy(aPotDir.lastIndexOf('/') + 1);
+            aPotDir = aPotDir.copy(0, aPotDir.lastIndexOf("include")) + aProject + "/messages";
+        }
+        if (aProject != "include")
+        {
+            handleFilesOfDir(aFileNames, aProject, aPotDir);
+        }
     }
 
     if (dir.close() != osl::FileBase::E_None) {
@@ -383,10 +393,14 @@ void handleDirectory(
         throw false; //TODO
     }
 
+    for (auto const& elem : aSubDirs)
+        handleDirectory(elem.first, nLevel + 1, elem.second.begin()->first,
+                        elem.second.begin()->second);
+
     //Remove empty pot directory
     OUString sPoPath =
         OStringToOUString(
-            rPotDir.copy(0,rPotDir.lastIndexOf('/')), RTL_TEXTENCODING_UTF8);
+            aPotDir.copy(0,aPotDir.lastIndexOf('/')), RTL_TEXTENCODING_UTF8);
     OUString sPoUrl;
     if (osl::FileBase::getFileURLFromSystemPath(sPoPath, sPoUrl)
         != osl::FileBase::E_None)
@@ -402,7 +416,7 @@ void handleDirectory(
     osl::Directory::remove(sPoUrl);
 }
 
-void handleProjects(char * sSourceRoot, char const * sDestRoot)
+void handleProjects(char const * sSourceRoot, char const * sDestRoot)
 {
     OUString root16;
     if (!rtl_convertStringToUString(
@@ -427,7 +441,8 @@ void handleProjects(char * sSourceRoot, char const * sDestRoot)
             << "\n";
         throw false; //TODO
     }
-    handleDirectory(rootUrl, 0, OString(), OString(sDestRoot));
+    gDestRoot = OString(sDestRoot);
+    handleDirectory(rootUrl, 0, OString(), gDestRoot);
 }
 }
 

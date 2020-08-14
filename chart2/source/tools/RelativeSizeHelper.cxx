@@ -17,8 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RelativeSizeHelper.hxx"
-#include "macros.hxx"
+#include <RelativeSizeHelper.hxx>
+#include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <tools/diagnose_ex.h>
 
 #include <vector>
 #include <algorithm>
@@ -60,26 +62,25 @@ void RelativeSizeHelper::adaptFontSizes(
     float fFontHeight = 0;
 
     vector< OUString > aProperties;
-    aProperties.push_back( "CharHeight" );
-    aProperties.push_back( "CharHeightAsian" );
-    aProperties.push_back( "CharHeightComplex" );
+    aProperties.emplace_back("CharHeight" );
+    aProperties.emplace_back("CharHeightAsian" );
+    aProperties.emplace_back("CharHeightComplex" );
 
-    for( vector< OUString >::const_iterator aIt = aProperties.begin();
-         aIt != aProperties.end(); ++aIt )
+    for (auto const& property : aProperties)
     {
         try
         {
-            if( xTargetProperties->getPropertyValue( *aIt ) >>= fFontHeight )
+            if( xTargetProperties->getPropertyValue(property) >>= fFontHeight )
             {
                 xTargetProperties->setPropertyValue(
-                    *aIt,
+                    property,
                     Any( static_cast< float >(
                                  calculate( fFontHeight, rOldReferenceSize, rNewReferenceSize ))));
             }
         }
-        catch( const Exception & ex )
+        catch( const Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 }

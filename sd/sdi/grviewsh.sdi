@@ -22,7 +22,7 @@ interface GraphicEditView : DrawView
     [
         ExecMethod = Execute ;
         StateMethod = GetState ;
-        GroupId = GID_DOCUMENT ;
+        GroupId = SfxGroupId::Document ;
     ]
     SID_SEARCH_ITEM // ole : ?, status : ?
     [
@@ -35,6 +35,11 @@ shell GraphicViewShell
 {
     import GraphicEditView;
     SID_INSERT_POSTIT
+    [
+        ExecMethod = ExecuteAnnotation;
+        StateMethod = GetAnnotationState;
+    ]
+    SID_EDIT_POSTIT
     [
         ExecMethod = ExecuteAnnotation;
         StateMethod = GetAnnotationState;

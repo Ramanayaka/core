@@ -18,16 +18,16 @@
  */
 #ifndef INCLUDED_SW_INC_SWCLI_HXX
 #define INCLUDED_SW_INC_SWCLI_HXX
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
-
-#include <svtools/embedhlp.hxx>
-
 #include <sfx2/ipclient.hxx>
 
 class SwView;
 class SwEditWin;
+namespace svt
+{
+class EmbeddedObjectRef;
+}
 
-class SwOleClient : public SfxInPlaceClient
+class SwOleClient final : public SfxInPlaceClient
 {
     bool m_IsInDoVerb;
     bool m_IsOldCheckForOLEInCaption;

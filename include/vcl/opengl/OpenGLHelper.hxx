@@ -11,11 +11,12 @@
 #define INCLUDED_VCL_OPENGL_OPENGLHELPER_HXX
 
 #include <epoxy/gl.h>
-#include <sal/log.hxx>
+#include <sal/detail/log.h>
 #include <vcl/dllapi.h>
 #include <vcl/bitmapex.hxx>
 
 #include <rtl/ustring.hxx>
+#include <sstream>
 
 /// Helper to do a SAL_INFO as well as a GL log.
 #define VCL_GL_INFO(stream) \
@@ -54,30 +55,33 @@ public:
     static GLint LoadShaders(const OUString& rVertexShaderName, const OUString& rFragmentShaderName);
 
     /**
-     * The caller is responsible for allocate the memory for the RGBA buffer, before call
-     * this method. RGBA buffer size is assumed to be 4*width*height.
-     * Since OpenGL uses textures flipped relative to BitmapEx storage this method
-     * also adds the possibility to mirror the bitmap vertically at the same time.
+     * The caller is responsible for allocating the memory for the buffer before calling
+     * this method. The buffer size is assumed to be 4*width*height and the format
+     * to be OptimalBufferFormat().
     **/
-    static void ConvertBitmapExToRGBATextureBuffer(const BitmapEx& rBitmapEx, sal_uInt8* o_pRGBABuffer, const bool bFlip = false);
-    static BitmapEx ConvertBGRABufferToBitmapEx(const sal_uInt8* const pBuffer, long nWidth, long nHeight);
+    static BitmapEx ConvertBufferToBitmapEx(const sal_uInt8* const pBuffer, long nWidth, long nHeight);
+    /**
+     * Returns the optimal buffer format for OpenGL (GL_BGRA or GL_RGBA).
+    **/
+    static GLenum OptimalBufferFormat();
     static void renderToFile(long nWidth, long nHeight, const OUString& rFileName);
 
     static const char* GLErrorString(GLenum errorCode);
 
     /**
      * The caller is responsible for deleting the buffer objects identified by
-     * nFramebufferId, nRenderbufferDepthId and nRenderbufferColorId
+     * nFramebufferId, nRenderbufferDepthId and nRenderbufferColorId.
+     * This create a buffer for rendering to texture and should be freed with
+     * glDeleteTextures.
+     *
      * @param nWidth                Width of frame
      * @param nHeight               Height of frame
      * @param nFramebufferId        FrameBuffer ID
      * @param nRenderbufferDepthId  RenderBuffer's depth ID
      * @param nRenderbufferColorId  RenderBuffer's color ID
-     * @param bRenderbuffer         true => off-screen rendering, false => rendering to texture
-     *          This also affects whether to free with glDeleteRenderbuffers or glDeleteTextures
      */
     static void createFramebuffer(long nWidth, long nHeight, GLuint& nFramebufferId,
-            GLuint& nRenderbufferDepthId, GLuint& nRenderbufferColorId, bool bRenderbuffer = true);
+            GLuint& nRenderbufferDepthId, GLuint& nRenderbufferColorId);
 
     /// Get OpenGL version (needs a context)
     static float getGLVersion();
@@ -88,14 +92,17 @@ public:
      * Insert a glDebugMessage into the queue - helpful for debugging
      * with apitrace to annotate the output and correlate it with code.
      */
+#if defined __GNUC__
+    __attribute__ ((format (printf, 2, 3)))
+#endif
     static void debugMsgPrint(const int nType, const char *pFormat, ...);
     static void debugMsgStream(std::ostringstream const &pStream);
     static void debugMsgStreamWarn(std::ostringstream const &pStream);
 
     /**
-     * checks if the device/driver pair is on our OpenGL blacklist
+     * checks if the device/driver pair is on our OpenGL denylist
      */
-    static bool isDeviceBlacklisted();
+    static bool isDeviceDenylisted();
 
     /**
      * checks if the system supports all features that are necessary for the OpenGL VCL support

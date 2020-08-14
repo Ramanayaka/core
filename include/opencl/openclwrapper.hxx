@@ -10,23 +10,21 @@
 #ifndef INCLUDED_SC_SOURCE_CORE_OPENCL_OPENCLWRAPPER_HXX
 #define INCLUDED_SC_SOURCE_CORE_OPENCL_OPENCLWRAPPER_HXX
 
-#include <cassert>
 #include <vector>
 
 #include <clew/clew.h>
 
-#include <sal/detail/log.h>
 #include <opencl/opencldllapi.h>
-#include <opencl/platforminfo.hxx>
-#include <osl/file.hxx>
-#include <rtl/string.hxx>
+#include <rtl/ustring.hxx>
 
 #define MAX_CLFILE_NUM 50
 #define OPENCL_CMDQUEUE_SIZE 1 // number of command queues per OpenCL device.
 
 #include <cstdio>
 
-namespace opencl
+struct OpenCLPlatformInfo;
+
+namespace openclwrapper
 {
 
 struct KernelEnv
@@ -78,6 +76,8 @@ OPENCL_DLLPUBLIC bool switchOpenCLDevice(const OUString* pDeviceId, bool bAutoSe
                                          OUString& rOutSelectedDeviceVersionIDString);
 
 OPENCL_DLLPUBLIC void getOpenCLDeviceInfo(size_t& rDeviceId, size_t& rPlatformId);
+
+OPENCL_DLLPUBLIC void getOpenCLDeviceName(OUString& rDeviceName, OUString& rPlatformName);
 
 /**
  * Set the current command queue position in case of multiple command queues

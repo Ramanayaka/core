@@ -20,7 +20,7 @@
 #include <vcl/oldprintadaptor.hxx>
 #include <vcl/gdimtf.hxx>
 
-#include "com/sun/star/awt/Size.hpp"
+#include <com/sun/star/awt/Size.hpp>
 
 #include <vector>
 
@@ -32,11 +32,15 @@ using namespace com::sun::star::beans;
 
 namespace vcl
 {
+    namespace {
+
     struct AdaptorPage
     {
         GDIMetaFile          maPage;
         css::awt::Size       maPageSize;
     };
+
+    }
 
     struct ImplOldStyleAdaptorData
     {
@@ -44,9 +48,9 @@ namespace vcl
     };
 }
 
-OldStylePrintAdaptor::OldStylePrintAdaptor( const VclPtr< Printer >& i_xPrinter )
-    : PrinterController( i_xPrinter )
-    , mpData( new ImplOldStyleAdaptorData )
+OldStylePrintAdaptor::OldStylePrintAdaptor(const VclPtr<Printer>& i_xPrinter, weld::Window* i_pWindow)
+    : PrinterController(i_xPrinter, i_pWindow)
+    , mpData(new ImplOldStyleAdaptorData)
 {
 }
 
@@ -57,7 +61,7 @@ OldStylePrintAdaptor::~OldStylePrintAdaptor()
 void OldStylePrintAdaptor::StartPage()
 {
     Size aPaperSize( getPrinter()->PixelToLogic( getPrinter()->GetPaperSizePixel(), MapMode( MapUnit::Map100thMM ) ) );
-    mpData->maPages.push_back( AdaptorPage() );
+    mpData->maPages.emplace_back( );
     mpData->maPages.back().maPageSize.Width = aPaperSize.getWidth();
     mpData->maPages.back().maPageSize.Height = aPaperSize.getHeight();
     getPrinter()->SetConnectMetaFile( &mpData->maPages.back().maPage );

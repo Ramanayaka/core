@@ -17,35 +17,33 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
-
-#include "osl/time.h"
+#include <sal/config.h>
 
 #include <boost/property_tree/json_parser.hpp>
 
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/office/XAnnotation.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/lok.hxx>
-#include <comphelper/string.hxx>
 #include <cppuhelper/propertysetmixin.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 
 #include <unotools/datetime.hxx>
-#include <tools/datetime.hxx>
 
 #include <sfx2/viewsh.hxx>
+#include <svx/svdundo.hxx>
 
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 
-#include "Annotation.hxx"
-#include "drawdoc.hxx"
-#include "notifydocumentevent.hxx"
-#include "sdpage.hxx"
-#include "textapi.hxx"
+#include <Annotation.hxx>
+#include <drawdoc.hxx>
+#include <notifydocumentevent.hxx>
+#include <sdpage.hxx>
+#include <textapi.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
@@ -59,6 +57,8 @@ using namespace ::com::sun::star;
 
 namespace sd {
 
+namespace {
+
 class Annotation : private ::cppu::BaseMutex,
                    public ::cppu::WeakComponentImplHelper< XAnnotation>,
                    public ::cppu::PropertySetMixin< XAnnotation >
@@ -71,7 +71,7 @@ public:
     static sal_uInt32 m_nLastId;
 
     SdPage* GetPage() const { return mpPage; }
-    SdrModel* GetModel() { return (mpPage != nullptr) ? mpPage->GetModel() : nullptr; }
+    SdrModel* GetModel() { return (mpPage != nullptr) ? &mpPage->getSdrModelFromSdrPage() : nullptr; }
     sal_uInt32 GetId() const { return m_nId; }
 
     // XInterface:
@@ -182,6 +182,8 @@ protected:
     AnnotationData maUndoData;
     AnnotationData maRedoData;
 };
+
+}
 
 void createAnnotation( Reference< XAnnotation >& xAnnotation, SdPage* pPage )
 {
@@ -351,15 +353,18 @@ void SAL_CALL Annotation::setDateTime(const util::DateTime & the_value)
 
 void Annotation::createChangeUndo()
 {
-    SdrModel* pModel = GetModel();
+    SdrModel* pModel = GetModel(); // TTTT should use reference
     if( pModel && pModel->IsUndoEnabled() )
-        pModel->AddUndo( new UndoAnnotation( *this ) );
+        pModel->AddUndo( std::make_unique<UndoAnnotation>( *this ) );
 
     if( pModel )
     {
         pModel->SetChanged();
         Reference< XInterface > xSource( static_cast<uno::XWeak*>( this ) );
-        NotifyDocumentEvent( static_cast< SdDrawDocument* >( pModel ), "OnAnnotationChanged" , xSource );
+        NotifyDocumentEvent(
+            static_cast< SdDrawDocument& >( *pModel ),
+            "OnAnnotationChanged" ,
+            xSource );
     }
 }
 
@@ -368,17 +373,17 @@ Reference< XText > SAL_CALL Annotation::getTextRange()
     osl::MutexGuard g(m_aMutex);
     if( !m_TextRange.is() && (mpPage != nullptr) )
     {
-        m_TextRange = TextApiObject::create( static_cast< SdDrawDocument* >( mpPage->GetModel() ) );
+        m_TextRange = TextApiObject::create( static_cast< SdDrawDocument* >( &mpPage->getSdrModelFromSdrPage() ) );
     }
     return Reference< XText >( m_TextRange.get() );
 }
 
-SdrUndoAction* CreateUndoInsertOrRemoveAnnotation( const Reference< XAnnotation >& xAnnotation, bool bInsert )
+std::unique_ptr<SdrUndoAction> CreateUndoInsertOrRemoveAnnotation( const Reference< XAnnotation >& xAnnotation, bool bInsert )
 {
     Annotation* pAnnotation = dynamic_cast< Annotation* >( xAnnotation.get() );
     if( pAnnotation )
     {
-        return new UndoInsertOrRemoveAnnotation( *pAnnotation, bInsert );
+        return std::make_unique< UndoInsertOrRemoveAnnotation >( *pAnnotation, bInsert );
     }
     else
     {
@@ -412,7 +417,7 @@ const SdPage* getAnnotationPage(const Reference<XAnnotation>& xAnnotation)
 
 namespace
 {
-std::string lcl_LOKGetCommentPayload(CommentNotificationType nType, Reference<XAnnotation>& rxAnnotation)
+std::string lcl_LOKGetCommentPayload(CommentNotificationType nType, Reference<XAnnotation> const & rxAnnotation)
 {
     boost::property_tree::ptree aAnnotation;
     aAnnotation.put("action", (nType == CommentNotificationType::Add ? "Add" :
@@ -428,6 +433,12 @@ std::string lcl_LOKGetCommentPayload(CommentNotificationType nType, Reference<XA
         aAnnotation.put("text", xText->getString());
         const SdPage* pPage = sd::getAnnotationPage(rxAnnotation);
         aAnnotation.put("parthash", pPage ? OString::number(pPage->GetHashCode()) : OString());
+        geometry::RealPoint2D const & rPoint = rxAnnotation->getPosition();
+        geometry::RealSize2D const & rSize = rxAnnotation->getSize();
+        ::tools::Rectangle aRectangle(Point(rPoint.X * 100.0, rPoint.Y * 100.0), Size(rSize.Width * 100.0, rSize.Height * 100.0));
+        aRectangle = OutputDevice::LogicToLogic(aRectangle, MapMode(MapUnit::Map100thMM), MapMode(MapUnit::MapTwip));
+        OString sRectangle = aRectangle.toString();
+        aAnnotation.put("rectangle", sRectangle.getStr());
     }
 
     boost::property_tree::ptree aTree;
@@ -439,7 +450,7 @@ std::string lcl_LOKGetCommentPayload(CommentNotificationType nType, Reference<XA
 }
 } // anonymous ns
 
-void LOKCommentNotify(CommentNotificationType nType, const SfxViewShell* pViewShell, Reference<XAnnotation>& rxAnnotation)
+void LOKCommentNotify(CommentNotificationType nType, const SfxViewShell* pViewShell, Reference<XAnnotation> const & rxAnnotation)
 {
     // callbacks only if tiled annotations are explicitly turned off by LOK client
     if (!comphelper::LibreOfficeKit::isActive() || comphelper::LibreOfficeKit::isTiledAnnotations())
@@ -449,7 +460,7 @@ void LOKCommentNotify(CommentNotificationType nType, const SfxViewShell* pViewSh
     pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_COMMENT, aPayload.c_str());
 }
 
-void LOKCommentNotifyAll(CommentNotificationType nType, Reference<XAnnotation>& rxAnnotation)
+void LOKCommentNotifyAll(CommentNotificationType nType, Reference<XAnnotation> const & rxAnnotation)
 {
     // callbacks only if tiled annotations are explicitly turned off by LOK client
     if (!comphelper::LibreOfficeKit::isActive() || comphelper::LibreOfficeKit::isTiledAnnotations())
@@ -477,13 +488,8 @@ UndoInsertOrRemoveAnnotation::UndoInsertOrRemoveAnnotation( Annotation& rAnnotat
         Reference< XAnnotation > xAnnotation( &rAnnotation );
 
         const AnnotationVector& rVec = pPage->getAnnotations();
-        for( AnnotationVector::const_iterator iter = rVec.begin(); iter != rVec.end(); ++iter )
-        {
-            if( (*iter) == xAnnotation )
-                break;
-
-            mnIndex++;
-        }
+        auto iter = std::find(rVec.begin(), rVec.end(), xAnnotation);
+        mnIndex += std::distance(rVec.begin(), iter);
     }
 }
 
@@ -491,18 +497,18 @@ void UndoInsertOrRemoveAnnotation::Undo()
 {
     SdPage* pPage = mxAnnotation->GetPage();
     SdrModel* pModel = mxAnnotation->GetModel();
-    if( pPage && pModel )
+    if( !(pPage && pModel) )
+        return;
+
+    Reference< XAnnotation > xAnnotation( mxAnnotation.get() );
+    if( mbInsert )
     {
-        Reference< XAnnotation > xAnnotation( mxAnnotation.get() );
-        if( mbInsert )
-        {
-            pPage->removeAnnotation( xAnnotation );
-        }
-        else
-        {
-            pPage->addAnnotation( xAnnotation, mnIndex );
-            LOKCommentNotifyAll( CommentNotificationType::Add, xAnnotation );
-        }
+        pPage->removeAnnotation( xAnnotation );
+    }
+    else
+    {
+        pPage->addAnnotation( xAnnotation, mnIndex );
+        LOKCommentNotifyAll( CommentNotificationType::Add, xAnnotation );
     }
 }
 
@@ -510,19 +516,19 @@ void UndoInsertOrRemoveAnnotation::Redo()
 {
     SdPage* pPage = mxAnnotation->GetPage();
     SdrModel* pModel = mxAnnotation->GetModel();
-    if( pPage && pModel )
-    {
-        Reference< XAnnotation > xAnnotation( mxAnnotation.get() );
+    if( !(pPage && pModel) )
+        return;
 
-        if( mbInsert )
-        {
-            pPage->addAnnotation( xAnnotation, mnIndex );
-            LOKCommentNotifyAll( CommentNotificationType::Add, xAnnotation );
-        }
-        else
-        {
-            pPage->removeAnnotation( xAnnotation );
-        }
+    Reference< XAnnotation > xAnnotation( mxAnnotation.get() );
+
+    if( mbInsert )
+    {
+        pPage->addAnnotation( xAnnotation, mnIndex );
+        LOKCommentNotifyAll( CommentNotificationType::Add, xAnnotation );
+    }
+    else
+    {
+        pPage->removeAnnotation( xAnnotation );
     }
 }
 

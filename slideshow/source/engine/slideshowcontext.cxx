@@ -20,21 +20,19 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
-#include "slideshowcontext.hxx"
-#include "subsettableshapemanager.hxx"
-#include "screenupdater.hxx"
-#include "eventqueue.hxx"
-#include "activitiesqueue.hxx"
-#include "usereventqueue.hxx"
-#include "eventmultiplexer.hxx"
-#include "unoviewcontainer.hxx"
+#include <slideshowcontext.hxx>
+#include <subsettableshapemanager.hxx>
+#include <screenupdater.hxx>
+#include <eventqueue.hxx>
+#include <activitiesqueue.hxx>
+#include <usereventqueue.hxx>
+#include <eventmultiplexer.hxx>
+#include <unoviewcontainer.hxx>
 
 
 using namespace ::com::sun::star;
 
-namespace slideshow
-{
-namespace internal
+namespace slideshow::internal
 {
 
 SlideShowContext::SlideShowContext( SubsettableShapeManagerSharedPtr& rSubsettableShapeManager,
@@ -44,9 +42,11 @@ SlideShowContext::SlideShowContext( SubsettableShapeManagerSharedPtr& rSubsettab
                                     ActivitiesQueue&                  rActivitiesQueue,
                                     UserEventQueue&                   rUserEventQueue,
                                     CursorManager&                    rCursorManager,
+                                    MediaFileManager&                    rMediaFileManager,
                                     const UnoViewContainer&           rViewContainer,
                                     const uno::Reference<
-                                          uno::XComponentContext>&    rComponentContext ) :
+                                          uno::XComponentContext>&    rComponentContext,
+                                    box2d::utils::Box2DWorldSharedPtr& rBox2DWorldPtr ) :
         mpSubsettableShapeManager( rSubsettableShapeManager ),
         mrEventQueue( rEventQueue ),
         mrEventMultiplexer( rEventMultiplexer ),
@@ -54,8 +54,10 @@ SlideShowContext::SlideShowContext( SubsettableShapeManagerSharedPtr& rSubsettab
         mrActivitiesQueue( rActivitiesQueue ),
         mrUserEventQueue( rUserEventQueue ),
         mrCursorManager( rCursorManager ),
+        mrMediaFileManager( rMediaFileManager ),
         mrViewContainer( rViewContainer ),
-        mxComponentContext( rComponentContext )
+        mxComponentContext( rComponentContext ),
+        mpBox2DWorld( rBox2DWorldPtr )
     {}
 
 void SlideShowContext::dispose()
@@ -63,7 +65,6 @@ void SlideShowContext::dispose()
     mxComponentContext.clear();
 }
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

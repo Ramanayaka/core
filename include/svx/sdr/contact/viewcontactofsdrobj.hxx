@@ -29,9 +29,9 @@ class SdrObject;
 class GeoStat;
 class Bitmap;
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
-class SVX_DLLPUBLIC ViewContactOfSdrObj : public ViewContact
+class SVXCORE_DLLPUBLIC ViewContactOfSdrObj : public ViewContact
 {
 protected:
     // the owner of this ViewContact. Set from constructor and not
@@ -42,7 +42,7 @@ protected:
     // has changed in ActionChanged()
     SdrTextAniKind                                  meRememberedAnimationKind;
 
-    // Create a Object-Specific ViewObjectContact, set ViewContact and
+    // Create an Object-Specific ViewObjectContact, set ViewContact and
     // ObjectContact. Always needs to return something.
     virtual ViewObjectContact& CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact) override;
 
@@ -77,10 +77,10 @@ public:
     // allow embedding if needed (e.g. for SdrObjects, evtl. Name, Title and description get added). This
     // is a helper normally used from getViewIndependentPrimitive2DContainer(), but there is one exception
     // for 3D scenes
-    virtual drawinglayer::primitive2d::Primitive2DContainer embedToObjectSpecificInformation(const drawinglayer::primitive2d::Primitive2DContainer& rSource) const override;
+    virtual drawinglayer::primitive2d::Primitive2DContainer embedToObjectSpecificInformation(drawinglayer::primitive2d::Primitive2DContainer aSource) const override;
 };
 
-}}
+}
 
 #endif // INCLUDED_SVX_SDR_CONTACT_VIEWCONTACTOFSDROBJ_HXX
 

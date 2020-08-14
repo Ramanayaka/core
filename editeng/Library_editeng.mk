@@ -27,7 +27,7 @@ $(eval $(call gb_Library_set_include,editeng,\
 
 $(eval $(call gb_Library_use_custom_headers,editeng,editeng/generated))
 
-$(eval $(call gb_Library_set_precompiled_header,editeng,$(SRCDIR)/editeng/inc/pch/precompiled_editeng))
+$(eval $(call gb_Library_set_precompiled_header,editeng,editeng/inc/pch/precompiled_editeng))
 
 $(eval $(call gb_Library_add_defs,editeng,\
     -DEDITENG_DLLIMPLEMENTATION \
@@ -70,12 +70,14 @@ $(eval $(call gb_Library_add_exception_objects,editeng,\
     editeng/source/editeng/textconv \
     editeng/source/items/borderline \
     editeng/source/items/bulitem \
+    editeng/source/items/CustomPropertyField \
     editeng/source/items/charhiddenitem \
     editeng/source/items/flditem \
     editeng/source/items/frmitems \
     editeng/source/items/itemtype \
     editeng/source/items/justifyitem \
     editeng/source/items/numitem \
+    editeng/source/items/legacyitem \
     editeng/source/items/optitems \
     editeng/source/items/paperinf \
     editeng/source/items/paraitem \
@@ -96,6 +98,7 @@ $(eval $(call gb_Library_add_exception_objects,editeng,\
     editeng/source/misc/swafopt \
     editeng/source/misc/txtrange \
     editeng/source/misc/unolingu \
+    editeng/source/misc/urlfieldhelper \
     editeng/source/outliner/outleeng \
     editeng/source/outliner/outlin2 \
     editeng/source/outliner/outliner \
@@ -156,8 +159,5 @@ $(eval $(call gb_Library_use_externals,editeng,\
 	icu_headers \
 	libxml2 \
 ))
-
-# Runtime dependency for unit-tests
-$(eval $(call gb_Library_use_restarget,editeng,editeng))
 
 # vim: set noet sw=4 ts=4:

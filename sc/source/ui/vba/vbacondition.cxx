@@ -20,8 +20,8 @@
 #include "vbacondition.hxx"
 #include <ooo/vba/excel/XlFormatConditionOperator.hpp>
 #include <ooo/vba/excel/XFormatCondition.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/sheet/XCellRangeAddressable.hpp>
+#include <com/sun/star/sheet/XSheetCondition.hpp>
 #include <basic/sberrors.hxx>
 
 using namespace ::ooo::vba;
@@ -41,7 +41,7 @@ ScVbaCondition< Ifc... >::retrieveAPIOperator( const uno::Any& _aOperator)
 {
     sheet::ConditionOperator aRetAPIOperator = sheet::ConditionOperator_NONE;
     sal_Int32 nOperator = 0;
-    if ( (_aOperator >>= nOperator ) )
+    if ( _aOperator >>= nOperator )
     {
         switch(nOperator)
         {
@@ -92,20 +92,6 @@ ScVbaCondition< Ifc... >::Formula2( )
 }
 
 template< typename... Ifc >
-void
-ScVbaCondition< Ifc... >::setFormula1( const uno::Any& _aFormula1)
-{
-    OUString sFormula;
-    if ( (_aFormula1 >>= sFormula ))
-    {
-        mxSheetCondition->setFormula1( sFormula );
-        table::CellRangeAddress aCellRangeAddress = mxAddressable->getRangeAddress();
-        table::CellAddress aCellAddress( aCellRangeAddress.Sheet, aCellRangeAddress.StartColumn,  aCellRangeAddress.StartRow );
-        mxSheetCondition->setSourcePosition(aCellAddress);
-    }
-}
-
-template< typename... Ifc >
 sal_Int32
 ScVbaCondition< Ifc... >::Operator(bool _bIncludeFormulaValue)
 {
@@ -145,7 +131,7 @@ ScVbaCondition< Ifc... >::Operator(bool _bIncludeFormulaValue)
                 retvalue = ISFORMULA;
                 break;
             }
-            SAL_FALLTHROUGH; //TODO ???
+            [[fallthrough]]; //TODO ???
         case sheet::ConditionOperator_NONE:
         default:
             DebugHelper::basicexception(ERRCODE_BASIC_METHOD_FAILED, "Operator not supported");

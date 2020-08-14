@@ -20,16 +20,7 @@
 #include "NTables.hxx"
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
-#include <connectivity/sdbcx/VTable.hxx>
 #include "NCatalog.hxx"
-#include "NConnection.hxx"
-#include <comphelper/extract.hxx>
-#include <connectivity/dbtools.hxx>
-#include <connectivity/dbexception.hxx>
-#include <cppuhelper/interfacecontainer.h>
 #include <comphelper/types.hxx>
 #include "NTable.hxx"
 using namespace ::comphelper;
@@ -51,7 +42,7 @@ ObjectType OEvoabTables::createObject(const OUString& aName)
 
     Reference< XResultSet > xResult = m_xMetaData->getTables(Any(),"%",aName,aTypes);
 
-    ObjectType xRet = nullptr;
+    ObjectType xRet;
     if(xResult.is())
     {
         Reference< XRow > xRow(xResult,UNO_QUERY);
@@ -63,8 +54,9 @@ ObjectType OEvoabTables::createObject(const OUString& aName)
                     aName,
                     xRow->getString(4),
                     xRow->getString(5),
+                    "",
                     "");
-                    xRet = pRet;
+            xRet = pRet;
         }
     }
 
@@ -80,7 +72,7 @@ void OEvoabTables::impl_refresh(  )
 
 void OEvoabTables::disposing()
 {
-m_xMetaData.clear();
+    m_xMetaData.clear();
     OCollection::disposing();
 }
 

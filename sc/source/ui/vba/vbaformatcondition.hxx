@@ -28,15 +28,14 @@
 #include "vbacondition.hxx"
 
 typedef ScVbaCondition< ov::excel::XFormatCondition >  ScVbaFormatCondition_BASE;
-class ScVbaFormatCondition : public ScVbaFormatCondition_BASE
+class ScVbaFormatCondition final : public ScVbaFormatCondition_BASE
 {
-protected:
     OUString msStyleName;
-    css::uno::Reference< css::sheet::XSheetConditionalEntry > mxSheetConditionalEntry;
     css::uno::Reference< css::sheet::XSheetConditionalEntries > mxSheetConditionalEntries;
     css::uno::Reference< ov::excel::XFormatConditions> moFormatConditions;
     css::uno::Reference< ov::excel::XStyle > mxStyle;
     css::uno::Reference< css::beans::XPropertySet > mxParentRangePropertySet;
+
 public:
     /// @throws css::uno::RuntimeException
     /// @throws css::script::BasicErrorException
@@ -56,9 +55,8 @@ public:
     virtual void SAL_CALL Delete(  ) override;
     virtual void SAL_CALL Modify( ::sal_Int32 Type, const css::uno::Any& Operator, const css::uno::Any& Formula1, const css::uno::Any& Formula2 ) override;
     virtual ::sal_Int32 SAL_CALL Type(  ) override;
-    virtual ::sal_Int32 Operator( bool  ) override;
+    using ScVbaFormatCondition_BASE::Operator;
     virtual ::sal_Int32 SAL_CALL Operator(  ) override;
-    virtual void setFormula1( const css::uno::Any& _aFormula1) override;
     virtual css::uno::Reference< ::ooo::vba::excel::XInterior > SAL_CALL Interior(  ) override;
     virtual css::uno::Any SAL_CALL Borders( const css::uno::Any& Index ) override;
     virtual css::uno::Reference< ::ooo::vba::excel::XFont > SAL_CALL Font(  ) override;

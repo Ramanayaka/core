@@ -22,9 +22,7 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/chart2/data/XDataSource.hpp>
 #include <com/sun/star/chart2/data/XDataSink.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/uno3.hxx>
 
 namespace chart
 {
@@ -36,7 +34,7 @@ class DataSource : public
         css::chart2::data::XDataSink >
 {
 public:
-    explicit DataSource( const css::uno::Reference< css::uno::XComponentContext > & xContext );
+    explicit DataSource();
     explicit DataSource(
         const css::uno::Sequence< css::uno::Reference< css::chart2::data::XLabeledDataSequence > > & rSequences );
 

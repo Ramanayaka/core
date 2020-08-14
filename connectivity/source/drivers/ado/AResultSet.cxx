@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AResultSet.hxx"
-#include "ado/AResultSetMetaData.hxx"
+#include <ado/AResultSet.hxx>
+#include <ado/AResultSetMetaData.hxx>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/KeyRule.hpp>
 #include <com/sun/star/sdbc/IndexType.hpp>
@@ -56,7 +56,7 @@ using namespace com::sun::star::sdbc;
 //  IMPLEMENT_SERVICE_INFO(OResultSet,"com.sun.star.sdbcx.AResultSet","com.sun.star.sdbc.ResultSet");
 OUString SAL_CALL OResultSet::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdbcx.ado.ResultSet");
+    return "com.sun.star.sdbcx.ado.ResultSet";
 }
 
 css::uno::Sequence< OUString > SAL_CALL OResultSet::getSupportedServiceNames(  )
@@ -74,7 +74,6 @@ OResultSet::OResultSet(ADORecordset* _pRecordSet,OStatement_Base* pStmt) :  ORes
                         ,m_pRecordSet(_pRecordSet)
                         ,m_pStmt(pStmt)
                         ,m_xStatement(*pStmt)
-                        ,m_xMetaData(nullptr)
                         ,m_nRowPos(0)
                         ,m_bEOF(false)
                         ,m_bOnFirstAfterOpen(false)
@@ -85,8 +84,6 @@ OResultSet::OResultSet(ADORecordset* _pRecordSet) : OResultSet_BASE(m_aMutex)
                         ,OPropertySetHelper(OResultSet_BASE::rBHelper)
                         ,m_pRecordSet(_pRecordSet)
                         ,m_pStmt(nullptr)
-                        ,m_xStatement(nullptr)
-                        ,m_xMetaData(nullptr)
                         ,m_nRowPos(0)
                         ,m_bEOF(false)
                         ,m_bOnFirstAfterOpen(false)
@@ -123,8 +120,8 @@ void OResultSet::disposing()
     ::osl::MutexGuard aGuard(m_aMutex);
     if(m_pRecordSet)
         m_pRecordSet->Close();
-m_xStatement.clear();
-m_xMetaData.clear();
+    m_xStatement.clear();
+    m_xMetaData.clear();
 }
 
 Any SAL_CALL OResultSet::queryInterface( const Type & rType )
@@ -820,13 +817,13 @@ Any SAL_CALL OResultSet::getBookmark(  )
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OResultSet_BASE::rBHelper.bDisposed);
 
-    if(m_nRowPos < (sal_Int32)m_aBookmarks.size()) // this bookmark was already fetched
+    if(m_nRowPos < static_cast<sal_Int32>(m_aBookmarks.size())) // this bookmark was already fetched
         return makeAny(sal_Int32(m_nRowPos-1));
 
     OLEVariant aVar;
     m_pRecordSet->get_Bookmark(&aVar);
     m_aBookmarks.push_back(aVar);
-    return makeAny((sal_Int32)(m_aBookmarks.size()-1));
+    return makeAny(static_cast<sal_Int32>(m_aBookmarks.size()-1));
 
 }
 
@@ -838,8 +835,8 @@ sal_Bool SAL_CALL OResultSet::moveToBookmark( const Any& bookmark )
 
     sal_Int32 nPos = 0;
     bookmark >>= nPos;
-    OSL_ENSURE(nPos >= 0 && nPos < (sal_Int32)m_aBookmarks.size(),"Invalid Index for vector");
-    if(nPos < 0 || nPos >= (sal_Int32)m_aBookmarks.size())
+    OSL_ENSURE(nPos >= 0 && nPos < static_cast<sal_Int32>(m_aBookmarks.size()),"Invalid Index for vector");
+    if(nPos < 0 || nPos >= static_cast<sal_Int32>(m_aBookmarks.size()))
         ::dbtools::throwFunctionSequenceException(*this);
 
     return SUCCEEDED(m_pRecordSet->Move(0,m_aBookmarks[nPos]));
@@ -854,8 +851,8 @@ sal_Bool SAL_CALL OResultSet::moveRelativeToBookmark( const Any& bookmark, sal_I
     sal_Int32 nPos = 0;
     bookmark >>= nPos;
     nPos += rows;
-    OSL_ENSURE(nPos >= 0 && nPos < (sal_Int32)m_aBookmarks.size(),"Invalid Index for vector");
-    if(nPos < 0 || nPos >= (sal_Int32)m_aBookmarks.size())
+    OSL_ENSURE(nPos >= 0 && nPos < static_cast<sal_Int32>(m_aBookmarks.size()),"Invalid Index for vector");
+    if(nPos < 0 || nPos >= static_cast<sal_Int32>(m_aBookmarks.size()))
         ::dbtools::throwFunctionSequenceException(*this);
     return SUCCEEDED(m_pRecordSet->Move(rows,m_aBookmarks[nPos]));
 }
@@ -872,11 +869,11 @@ sal_Int32 SAL_CALL OResultSet::compareBookmarks( const Any& bookmark1, const Any
     if(nPos1 == nPos2)  // they should be equal
         return css::sdbcx::CompareBookmark::EQUAL;
 
-    OSL_ENSURE((nPos1 >= 0 && nPos1 < (sal_Int32)m_aBookmarks.size()) || (nPos1 >= 0 && nPos2 < (sal_Int32)m_aBookmarks.size()),"Invalid Index for vector");
+    OSL_ENSURE((nPos1 >= 0 && nPos1 < static_cast<sal_Int32>(m_aBookmarks.size())) || (nPos1 >= 0 && nPos2 < static_cast<sal_Int32>(m_aBookmarks.size())),"Invalid Index for vector");
 
     CompareEnum eNum;
     m_pRecordSet->CompareBookmarks(m_aBookmarks[nPos1],m_aBookmarks[nPos2],&eNum);
-    return ((sal_Int32)eNum) - 1;
+    return static_cast<sal_Int32>(eNum) - 1;
 }
 
 sal_Bool SAL_CALL OResultSet::hasOrderedBookmarks(  )
@@ -1097,7 +1094,7 @@ void OResultSet::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,const Any& r
         case PROPERTY_ID_CURSORNAME:
         case PROPERTY_ID_RESULTSETCONCURRENCY:
         case PROPERTY_ID_RESULTSETTYPE:
-            throw Exception();
+            throw Exception("cannot set prop " + OUString::number(nHandle), nullptr);
             break;
         case PROPERTY_ID_FETCHDIRECTION:
             setFetchDirection(getINT32(rValue));

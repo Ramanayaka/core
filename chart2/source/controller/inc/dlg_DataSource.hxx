@@ -19,56 +19,58 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_DLG_DATASOURCE_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_DLG_DATASOURCE_HXX
 
-#include <vcl/tabdlg.hxx>
-#include <vcl/tabctrl.hxx>
-#include <vcl/button.hxx>
+#include <vcl/weld.hxx>
 
 #include "TabPageNotifiable.hxx"
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/chart2/XChartDocument.hpp>
+
+namespace com::sun::star::chart2 { class XChartDocument; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 #include <memory>
+
+class BuilderPage;
 
 namespace chart
 {
 
-class DataSourceTabControl;
 class RangeChooserTabPage;
 class DataSourceTabPage;
 class ChartTypeTemplateProvider;
 class DialogModel;
 
-class DataSourceDialog :
-        public TabDialog,
+class DataSourceDialog final :
+        public weld::GenericDialogController,
         public TabPageNotifiable
 {
 public:
     explicit DataSourceDialog(
-        vcl::Window * pParent,
+        weld::Window * pParent,
         const css::uno::Reference< css::chart2::XChartDocument > & xChartDocument,
         const css::uno::Reference< css::uno::XComponentContext > & xContext );
     virtual ~DataSourceDialog() override;
-    virtual void dispose() override;
 
-    // from Dialog (base of TabDialog)
-    virtual short Execute() override;
+    // from GenericDialogController base
+    virtual short run() override;
 
     // TabPageNotifiable
-    virtual void setInvalidPage( TabPage * pTabPage ) override;
-    virtual void setValidPage( TabPage * pTabPage ) override;
+    virtual void setInvalidPage( BuilderPage * pTabPage ) override;
+    virtual void setValidPage( BuilderPage * pTabPage ) override;
 
-protected:
+private:
+    DECL_LINK(ActivatePageHdl, const OString&, void);
+    DECL_LINK(DeactivatePageHdl, const OString&, bool);
+
     std::unique_ptr< ChartTypeTemplateProvider >  m_apDocTemplateProvider;
     std::unique_ptr< DialogModel >                m_apDialogModel;
 
-private:
-    VclPtr<DataSourceTabControl> m_pTabControl;
-    VclPtr<OKButton>             m_pBtnOK;
-
-    VclPtr<RangeChooserTabPage> m_pRangeChooserTabPage;
-    VclPtr<DataSourceTabPage>   m_pDataSourceTabPage;
+    std::unique_ptr<RangeChooserTabPage> m_xRangeChooserTabPage;
+    std::unique_ptr<DataSourceTabPage> m_xDataSourceTabPage;
     bool                  m_bRangeChooserTabIsValid;
     bool                  m_bDataSourceTabIsValid;
+    bool                  m_bTogglingEnabled;
+
+    std::unique_ptr<weld::Notebook> m_xTabControl;
+    std::unique_ptr<weld::Button> m_xBtnOK;
 
     static sal_uInt16         m_nLastPageId;
 };

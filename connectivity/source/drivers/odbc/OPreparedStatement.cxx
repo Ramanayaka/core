@@ -20,23 +20,18 @@
 
 #include <string.h>
 #include <osl/diagnose.h>
-#include "odbc/OPreparedStatement.hxx"
-#include "odbc/OBoundParam.hxx"
+#include <odbc/OPreparedStatement.hxx>
+#include <odbc/OBoundParam.hxx>
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
-#include "odbc/OTools.hxx"
-#include "odbc/ODriver.hxx"
-#include "odbc/OResultSet.hxx"
-#include "odbc/OResultSetMetaData.hxx"
-#include <cppuhelper/typeprovider.hxx>
-#include <comphelper/processfactory.hxx>
+#include <odbc/OTools.hxx>
+#include <odbc/OResultSet.hxx>
+#include <odbc/OResultSetMetaData.hxx>
 #include <comphelper/sequence.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <connectivity/dbtools.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/FValue.hxx>
-#include "resource/common_res.hrc"
-#include <connectivity/sqlparse.hxx>
+#include <strings.hrc>
 #include <memory>
 #include <type_traits>
 
@@ -65,29 +60,13 @@ namespace
 OPreparedStatement::OPreparedStatement( OConnection* _pConnection,const OUString& sql)
     :OStatement_BASE2(_pConnection)
     ,numParams(0)
-    ,boundParams(nullptr)
     ,m_bPrepared(false)
 {
     m_sSqlStatement = sql;
-    try
-    {
-        if(_pConnection->isParameterSubstitutionEnabled())
-        {
-            OSQLParser aParser( comphelper::getComponentContext(_pConnection->getDriver()->getORB()) );
-            OUString sErrorMessage;
-            OUString sNewSql;
-            std::unique_ptr<OSQLParseNode> pNode( aParser.parseTree(sErrorMessage,sql) );
-            if ( pNode.get() )
-            {   // special handling for parameters
-                OSQLParseNode::substituteParameterNames(pNode.get());
-                pNode->parseNodeToStr( sNewSql, _pConnection );
-                m_sSqlStatement = sNewSql;
-            }
-        }
-    }
-    catch(Exception&)
-    {
-    }
+}
+
+OPreparedStatement::~OPreparedStatement()
+{
 }
 
 void SAL_CALL OPreparedStatement::acquire() throw()
@@ -257,7 +236,7 @@ Reference< XResultSet > SAL_CALL OPreparedStatement::executeQuery(  )
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
-    Reference< XResultSet > rs = nullptr;
+    Reference< XResultSet > rs;
 
     prepareStatement();
 
@@ -671,7 +650,7 @@ void SAL_CALL OPreparedStatement::clearBatch(  )
 {
     ::dbtools::throwFunctionNotSupportedSQLException( "XPreparedBatchExecution::clearBatch", *this );
     //  clearParameters(  );
-    //  m_aBatchList.erase();
+    //  m_aBatchVector.erase();
 }
 
 
@@ -708,10 +687,7 @@ void OPreparedStatement::initBoundParam ()
 
     if (numParams > 0)
     {
-        // Allocate an array of bound parameter objects
-
-        boundParams = new OBoundParam[numParams];
-
+        boundParams.reset(new OBoundParam[numParams]);
     }
 }
 
@@ -873,8 +849,7 @@ void OPreparedStatement::setStream(
 void OPreparedStatement::FreeParams()
 {
     numParams = 0;
-    delete [] boundParams;
-    boundParams = nullptr;
+    boundParams.reset();
 }
 
 void OPreparedStatement::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,const Any& rValue)

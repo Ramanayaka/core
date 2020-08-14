@@ -20,68 +20,21 @@
 #ifndef INCLUDED_VCL_INC_UNX_CAIROTEXTRENDER_HXX
 #define INCLUDED_VCL_INC_UNX_CAIROTEXTRENDER_HXX
 
-#include <vcl/region.hxx>
+#include <unx/freetypetextrender.hxx>
 
-#include "textrender.hxx"
-
-#include <deque>
-
-class FreetypeFont;
-class GlyphCache;
 typedef struct _cairo cairo_t;
 
-class VCL_DLLPUBLIC CairoTextRender : public TextRenderImpl
+class VCL_DLLPUBLIC CairoTextRender : public FreeTypeTextRenderImpl
 {
-    FreetypeFont*   mpFreetypeFont[ MAX_FALLBACK ];
-
-    SalColor        mnTextColor;
-
 protected:
-    virtual GlyphCache&         getPlatformGlyphCache() = 0;
     virtual cairo_t*            getCairoContext() = 0;
     virtual void                getSurfaceOffset(double& nDX, double& nDY) = 0;
     virtual void                releaseCairoContext(cairo_t* cr) = 0;
 
-    bool                        setFont( const FontSelectPattern *pEntry, int nFallbackLevel );
-
     virtual void                clipRegion(cairo_t* cr) = 0;
 
 public:
-                                CairoTextRender();
-
-
-    virtual void                SetTextColor( SalColor nSalColor ) override;
-    virtual void                SetFont( FontSelectPattern*, int nFallbackLevel ) override;
-    virtual void                GetFontMetric( ImplFontMetricDataRef&, int nFallbackLevel ) override;
-    virtual const FontCharMapRef GetFontCharMap() const override;
-    virtual bool                GetFontCapabilities(vcl::FontCapabilities &rFontCapabilities) const override;
-    virtual void                GetDevFontList( PhysicalFontCollection* ) override;
-    virtual void                ClearDevFontCache() override;
-    virtual bool                AddTempDevFont( PhysicalFontCollection*, const OUString& rFileURL, const OUString& rFontName ) override;
-    virtual bool                CreateFontSubset(
-                                    const OUString& rToFile,
-                                    const PhysicalFontFace*,
-                                    const sal_GlyphId* pGlyphIDs,
-                                    const sal_uInt8* pEncoding,
-                                    sal_Int32* pWidths,
-                                    int nGlyphs,
-                                    FontSubsetInfo& rInfo) override;
-
-    virtual const void*         GetEmbedFontData(const PhysicalFontFace*, long* pDataLen) override;
-    virtual void                FreeEmbedFontData( const void* pData, long nDataLen ) override;
-    virtual void                GetGlyphWidths(
-                                    const PhysicalFontFace*,
-                                    bool bVertical,
-                                    std::vector< sal_Int32 >& rWidths,
-                                    Ucs2UIntMap& rUnicodeEnc ) override;
-
-    virtual bool                GetGlyphBoundRect(const GlyphItem&, tools::Rectangle&) override;
-    virtual bool                GetGlyphOutline(const GlyphItem&, basegfx::B2DPolyPolygon&) override;
-    virtual SalLayout*          GetTextLayout( ImplLayoutArgs&, int nFallbackLevel ) override;
-    virtual void                DrawTextLayout(const CommonSalLayout&) override;
-#if ENABLE_CAIRO_CANVAS
-    virtual SystemFontData      GetSysFontData( int nFallbackLevel ) const override;
-#endif
+    virtual void                DrawTextLayout(const GenericSalLayout&, const SalGraphics&) override;
 };
 
 #endif

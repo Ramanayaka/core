@@ -17,16 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
-#include <xmloff/xmlnmspe.hxx>
+#include <com/sun/star/frame/XModel.hpp>
+#include <osl/diagnose.h>
 #include <xmloff/xmlmetai.hxx>
-#include <xmloff/xmlmetae.hxx>
-#include <editeng/langitem.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
+#include <o3tl/safeint.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/nmspmap.hxx>
-#include "docstat.hxx"
-#include "docsh.hxx"
+#include <docstat.hxx>
 #include <doc.hxx>
 #include <IDocumentStatistics.hxx>
 #include "xmlimp.hxx"
@@ -52,7 +50,7 @@ SwXMLImport::GetDocumentProperties() const
 }
 
 SvXMLImportContext *SwXMLImport::CreateMetaContext(
-                                       const OUString& rLocalName )
+                                       const sal_Int32 /*nElement*/ )
 {
     SvXMLImportContext *pContext = nullptr;
 
@@ -60,16 +58,13 @@ SvXMLImportContext *SwXMLImport::CreateMetaContext(
     {
         uno::Reference<document::XDocumentProperties> const xDocProps(
                 GetDocumentProperties());
-        pContext = new SvXMLMetaDocumentContext(*this,
-                    XML_NAMESPACE_OFFICE, rLocalName, xDocProps);
+        pContext = new SvXMLMetaDocumentContext(*this, xDocProps);
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( *this,
-                        XML_NAMESPACE_OFFICE, rLocalName );
 
     return pContext;
 }
+
+namespace {
 
 enum SvXMLTokenMapAttrs
 {
@@ -91,7 +86,9 @@ struct statistic {
     sal_uLong  SwDocStat::* target32; /* or 64, on LP64 platforms */
 };
 
-static const struct statistic s_stats [] = {
+}
+
+const struct statistic s_stats [] = {
     { XML_TOK_META_STAT_TABLE, "TableCount",     &SwDocStat::nTable, nullptr  },
     { XML_TOK_META_STAT_IMAGE, "ImageCount",     &SwDocStat::nGrf, nullptr  },
     { XML_TOK_META_STAT_OLE,   "ObjectCount",    &SwDocStat::nOLE, nullptr  },
@@ -116,12 +113,12 @@ void SwXMLImport::SetStatistics(
 
     sal_uInt32 nTokens = 0;
 
-    for (sal_Int32 i = 0; i < i_rStats.getLength(); ++i) {
+    for (const auto& rStat : i_rStats) {
         for (struct statistic const* pStat = s_stats; pStat->name != nullptr;
                 ++pStat) {
-            if (i_rStats[i].Name.equalsAscii(pStat->name)) {
+            if (rStat.Name.equalsAscii(pStat->name)) {
                 sal_Int32 val = 0;
-                if (i_rStats[i].Value >>= val) {
+                if (rStat.Value >>= val) {
                     if (pStat->target16 != nullptr) {
                         aDocStat.*(pStat->target16)
                             = static_cast<sal_uInt16> (val);
@@ -144,13 +141,22 @@ void SwXMLImport::SetStatistics(
     // use #pages*10, or guesstimate 250 paragraphs. Additionally
     // guesstimate PROGRESS_BAR_STEPS each for meta+settings, styles,
     // and autostyles.
-    sal_Int32 nProgressReference = 250;
-    if( nTokens & XML_TOK_META_STAT_PARA )
-        nProgressReference = (sal_Int32)aDocStat.nPara;
-    else if ( nTokens & XML_TOK_META_STAT_PAGE )
-        nProgressReference = 10 * (sal_Int32)aDocStat.nPage;
+    bool bSetFallback = true;
+    sal_Int32 nProgressReference = sal_Int32(); // silence C4701
+    const sal_Int32 nProgressReferenceWriggleRoom = 3 * PROGRESS_BAR_STEP;
+    if (nTokens & XML_TOK_META_STAT_PARA)
+    {
+        nProgressReference = static_cast<sal_Int32>(aDocStat.nPara);
+        bSetFallback = false;
+    }
+    else if (nTokens & XML_TOK_META_STAT_PAGE)
+        bSetFallback = o3tl::checked_multiply<sal_Int32>(aDocStat.nPage, 10, nProgressReference);
+    if (!bSetFallback)
+        bSetFallback = o3tl::checked_add(nProgressReference, nProgressReferenceWriggleRoom, nProgressReference);
+    if (bSetFallback)
+        nProgressReference = 250 + nProgressReferenceWriggleRoom;
     ProgressBarHelper* pProgress = GetProgressBarHelper();
-    pProgress->SetReference( nProgressReference + 3*PROGRESS_BAR_STEP );
+    pProgress->SetReference(nProgressReference);
     pProgress->SetValue( 0 );
 }
 
@@ -158,14 +164,10 @@ void SwXMLExport::ExportMeta_()
 {
     SvXMLExport::ExportMeta_();
 
-    if( !m_bBlock )
+    if( !m_bBlock && IsShowProgress() )
     {
-
-        if( IsShowProgress() )
-        {
-            ProgressBarHelper *pProgress = GetProgressBarHelper();
-            pProgress->SetValue( pProgress->GetValue() + 2 );
-        }
+        ProgressBarHelper *pProgress = GetProgressBarHelper();
+        pProgress->SetValue( pProgress->GetValue() + 2 );
     }
 }
 

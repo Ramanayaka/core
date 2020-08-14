@@ -17,25 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
 #include <rtl/ustrbuf.hxx>
-#include "headless/svpdummies.hxx"
-#include "headless/svpinst.hxx"
-
-// SalObject
-SvpSalObject::SvpSalObject()
-{
-    // fast and easy cross-platform wiping of the data
-    memset( static_cast<void *>(&m_aSystemChildData), 0, sizeof( SystemEnvData ) );
-    m_aSystemChildData.nSize = sizeof( SystemEnvData );
-}
+#include <headless/svpdummies.hxx>
+#include <headless/svpinst.hxx>
 
 SvpSalObject::~SvpSalObject()
 {
 }
 
 void SvpSalObject::ResetClipRegion() {}
-void SvpSalObject::BeginSetClipRegion( sal_uLong ) {}
+void SvpSalObject::BeginSetClipRegion( sal_uInt32 ) {}
 void SvpSalObject::UnionClipRegion( long, long, long, long ) {}
 void SvpSalObject::EndSetClipRegion() {}
 void SvpSalObject::SetPosSize( long, long, long, long ) {}
@@ -59,7 +50,7 @@ tools::Rectangle SvpSalSystem::GetDisplayScreenPosSizePixel( unsigned int nScree
 }
 
 int SvpSalSystem::ShowNativeDialog( const OUString&, const OUString&,
-                                    const std::list< OUString >&, int )
+                                    const std::vector< OUString >& )
 {
     return 0;
 }

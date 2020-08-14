@@ -24,9 +24,8 @@
 #include <sal/log.hxx>
 #include <tools/gen.hxx>
 #include <vcl/outdev.hxx>
-#include <vcl/metric.hxx>
 
-#include "format.hxx"
+class SmFormat;
 
 
 inline long SmFromTo(long nFrom, long nTo, double fRelDist)
@@ -116,7 +115,7 @@ public:
 
             void SetItalicSpaces(long nLeftSpace, long nRightSpace);
 
-            void SetWidth(sal_uLong nWidth)     { aSize.Width()  = nWidth; }
+            void SetWidth(sal_uLong nWidth)     { aSize.setWidth(nWidth); }
 
             void SetLeft(long nLeft);
             void SetRight(long nRight);
@@ -154,7 +153,7 @@ public:
 
             const Size & GetSize() const    { return aSize; }
 
-            const Size  GetItalicSize() const
+            Size  GetItalicSize() const
             {   return Size(GetItalicWidth(), GetHeight()); }
 
             void Move  (const Point &rPosition);
@@ -167,7 +166,7 @@ public:
 
             bool HasAlignInfo() const { return bHasAlignInfo; }
 
-            const Point AlignTo(const SmRect &rRect, RectPos ePos,
+            Point AlignTo(const SmRect &rRect, RectPos ePos,
                                 RectHorAlign eHor, RectVerAlign eVer) const;
 
             SmRect & ExtendBy(const SmRect &rRect, RectCopyMBL eCopyMode);

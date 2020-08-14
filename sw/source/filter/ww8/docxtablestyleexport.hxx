@@ -12,10 +12,12 @@
 
 #include <memory>
 
-#include <com/sun/star/beans/PropertyValue.hpp>
-
 #include <sax/fshelper.hxx>
 
+namespace com::sun::star::beans
+{
+struct PropertyValue;
+}
 class SwDoc;
 
 /// Handles DOCX export of table styles, based on InteropGrabBag.
@@ -23,14 +25,12 @@ class DocxTableStyleExport
 {
     struct Impl;
     std::unique_ptr<Impl> m_pImpl;
+
 public:
     void TableStyles(sal_Int32 nCountStylesToWrite);
 
-    /// Writes <w:rPr>...</w:rPr> based on grab-bagged character properties.
-    void CharFormat(css::uno::Sequence<css::beans::PropertyValue>& rRPr);
-
     /// Writes <w:cnfStyle .../> based on grab-bagged para, cell or row properties.
-    void CnfStyle(css::uno::Sequence<css::beans::PropertyValue>& rAttributeList);
+    void CnfStyle(const css::uno::Sequence<css::beans::PropertyValue>& rAttributeList);
 
     void SetSerializer(const sax_fastparser::FSHelperPtr& pSerializer);
     DocxTableStyleExport(SwDoc* pDoc, const sax_fastparser::FSHelperPtr& pSerializer);

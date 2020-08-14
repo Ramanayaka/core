@@ -20,23 +20,9 @@
 #ifndef INCLUDED_SD_SOURCE_UI_DLG_REMOTEDIALOGCLIENTBOX_HXX
 #define INCLUDED_SD_SOURCE_UI_DLG_REMOTEDIALOGCLIENTBOX_HXX
 
-#include "rtl/ustring.hxx"
-#include <vcl/scrbar.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/field.hxx>
-
-#include "svtools/extensionlistbox.hxx"
-#include <cppuhelper/implbase.hxx>
-
-#include "com/sun/star/lang/Locale.hpp"
-#include "com/sun/star/lang/XEventListener.hpp"
-#include "com/sun/star/deployment/XPackage.hpp"
+#include <vcl/weld.hxx>
 
 #include <memory>
-
-#include "sdresid.hxx"
 
 namespace sd {
 
@@ -48,7 +34,7 @@ namespace sd {
 #define RIGHT_ICON_OFFSET    5
 #define SPACE_BETWEEN        3
 
-// struct ClientBoxEntry
+class ClientBox;
 struct ClientBoxEntry;
 struct ClientInfo;
 
@@ -56,100 +42,42 @@ typedef std::shared_ptr<ClientBoxEntry> TClientBoxEntry;
 
 struct ClientBoxEntry
 {
-    bool m_bActive :1;
-    std::shared_ptr<ClientInfo> m_pClientInfo;
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Container> m_xContainer;
+    std::unique_ptr<weld::Label> m_xDeviceName;
+    std::unique_ptr<weld::Label> m_xPinLabel;
+    std::unique_ptr<weld::Entry> m_xPinBox;
+    std::unique_ptr<weld::Button> m_xDeauthoriseButton;
 
-    explicit ClientBoxEntry(const std::shared_ptr<ClientInfo>& pClientInfo);
-   ~ClientBoxEntry();
+    std::shared_ptr<ClientInfo> m_xClientInfo;
+    ClientBox* m_pClientBox;
 
+    DECL_LINK(DeauthoriseHdl, weld::Button&, void);
+    DECL_LINK(FocusHdl, weld::Widget&, void);
+
+    ClientBoxEntry(ClientBox* pClientBox, const std::shared_ptr<ClientInfo>& pClientInfo);
+    ~ClientBoxEntry();
 };
 
-// class ExtensionBox_Impl
-class ClientBox;
-
-class ClientRemovedListener : public ::cppu::WeakImplHelper<css::lang::XEventListener>
+class ClientBox
 {
-    VclPtr<ClientBox> m_pParent;
+    std::unique_ptr<weld::ScrolledWindow> m_xScroll;
+    std::unique_ptr<weld::Container> m_xContents;
 
-public:
-
-    explicit ClientRemovedListener(ClientBox *pParent)
-    {
-        m_pParent = pParent;
-    }
-    virtual ~ClientRemovedListener() override;
-
-    // XEventListener
-    virtual void SAL_CALL disposing(css::lang::EventObject const & evt) override;
-};
-
-class ClientBox : public Control
-{
-    bool m_bHasScrollBar : 1;
-    bool m_bHasActive : 1;
-    bool m_bNeedsRecalc : 1;
-    bool m_bInCheckMode : 1;
-    bool m_bAdjustActive : 1;
-    bool m_bInDelete : 1;
-    //Must be guarded together with m_vEntries to ensure a valid index at all times.
-    //Use m_entriesMutex as guard.
-    long m_nActive;
-    long m_nTopIndex;
-    long m_nStdHeight;
-    long m_nActiveHeight;
-
-    VclPtr<NumericBox> m_aPinBox;
-    VclPtr<PushButton> m_aDeauthoriseButton;
-    ::tools::Rectangle m_sPinTextRect;
-
-    VclPtr<ScrollBar> m_aScrollBar;
-
-    rtl::Reference< ClientRemovedListener > m_xRemoveListener;
-
-    //This mutex is used for synchronizing access to m_vEntries.
-    //Currently it is used to synchronize adding, removing entries and
-    //functions like getItemName, getItemDescription, etc. to prevent
-    //that m_vEntries is accessed at an invalid index.
-    //ToDo: There are many more places where m_vEntries is read and which may
-    //fail. For example the Paint method is probable called from the main thread
-    //while new entries are added / removed in a separate thread.
-    mutable ::osl::Mutex    m_entriesMutex;
     std::vector< TClientBoxEntry > m_vEntries;
-    std::vector< TClientBoxEntry > m_vRemovedEntries;
-
-    void CalcActiveHeight();
-    long GetTotalHeight() const;
-    void SetupScrollBar();
-    void DrawRow(vcl::RenderContext& rRenderContext, const ::tools::Rectangle& rRect, const TClientBoxEntry& rEntry);
-    bool HandleCursorKey( sal_uInt16 nKeyCode );
-    void DeleteRemoved();
-
-    DECL_LINK( ScrollHdl, ScrollBar*, void );
-    DECL_LINK( DeauthoriseHdl, Button*, void );
+    ClientBoxEntry* m_pActive;
 
 public:
-    ClientBox( vcl::Window* pParent, WinBits nStyle );
-    virtual ~ClientBox() override;
-    virtual void dispose() override;
+    ClientBox(std::unique_ptr<weld::ScrolledWindow> xScroll, std::unique_ptr<weld::Container> xContents);
+    weld::Container* GetContainer() { return m_xContents.get(); }
+    ~ClientBox();
 
-    void MouseButtonDown( const MouseEvent& rMEvt ) override;
-    void Paint( vcl::RenderContext& rRenderContext, const ::tools::Rectangle &rPaintRect ) override;
-    void Resize() override;
-    Size GetOptimalSize() const override;
-    bool EventNotify( NotifyEvent& rNEvt ) override;
+    ClientBoxEntry* GetActiveEntry();
 
-    TClientBoxEntry GetEntryData( long nPos ) { return m_vEntries[ nPos ]; }
-    long GetActiveEntryIndex();
-    ::tools::Rectangle GetEntryRect( const long nPos ) const;
-    long PointToPos( const Point& rPos );
-    void DoScroll( long nDelta );
-    void RecalcAll();
-
-    void selectEntry( const long nPos );
     void addEntry(const std::shared_ptr<ClientInfo>& pClientInfo);
+    void setActive(ClientBoxEntry* pClientData);
     void clearEntries();
 
-    OUString getPin();
     void populateEntries();
 };
 

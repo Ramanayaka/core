@@ -24,20 +24,17 @@
 #include <com/sun/star/awt/XDisplayConnection.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <osl/mutex.hxx>
-#include <rtl/ref.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <list>
+#include <vector>
 
 namespace vcl {
 
-class DisplayConnectionDispatch :
+class DisplayConnectionDispatch final :
     public cppu::WeakImplHelper< css::awt::XDisplayConnection >
 {
     ::osl::Mutex                    m_aMutex;
-    ::std::list< css::uno::Reference< css::awt::XEventHandler > >
+    ::std::vector< css::uno::Reference< css::awt::XEventHandler > >
                                     m_aHandlers;
-    ::std::list< css::uno::Reference< css::awt::XEventHandler > >
-                                    m_aErrorHandlers;
     OUString                        m_ConnectionIdentifier;
 public:
     DisplayConnectionDispatch();
@@ -46,7 +43,7 @@ public:
     void start();
     void terminate();
 
-    bool dispatchEvent( void* pData, int nBytes );
+    bool dispatchEvent( void const * pData, int nBytes );
 
     // XDisplayConnection
     virtual void SAL_CALL addEventHandler( const css::uno::Any& window, const css::uno::Reference< css::awt::XEventHandler >& handler, sal_Int32 eventMask ) override;

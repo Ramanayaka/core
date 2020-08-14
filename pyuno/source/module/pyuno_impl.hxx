@@ -26,15 +26,6 @@
 
 #include <Python.h>
 
-#if PY_VERSION_HEX < 0x03020000
-typedef long Py_hash_t;
-#endif
-
-//Must define PyVarObject_HEAD_INIT for Python 2.5 or older
-#ifndef PyVarObject_HEAD_INIT
-#define PyVarObject_HEAD_INIT(type, size)  PyObject_HEAD_INIT(type) size,
-#endif
-
 //Python 3.0 and newer don't have these flags
 #ifndef Py_TPFLAGS_HAVE_ITER
 #  define Py_TPFLAGS_HAVE_ITER 0
@@ -51,101 +42,23 @@ typedef long Py_hash_t;
 #include <unordered_map>
 #include <unordered_set>
 
-#include <com/sun/star/beans/XIntrospection.hpp>
-#include <com/sun/star/script/XTypeConverter.hpp>
-#include <com/sun/star/script/XInvocation2.hpp>
-#include <com/sun/star/script/XInvocationAdapterFactory2.hpp>
-
-#include <com/sun/star/reflection/XIdlReflection.hpp>
-
-#include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
-
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/script/XInvocation.hpp>
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/weakref.hxx>
 
 #include <osl/module.hxx>
 
-// In Python 3, the PyString_* functions have been replaced by PyBytes_*
-// and PyUnicode_* functions.
-#if PY_MAJOR_VERSION >= 3
-
-// compatibility wrappers for Python "str" type (PyUnicode in 3, PyString in 2)
-inline PyObject* PyStr_FromString(const char *string)
-{
-    return PyUnicode_FromString(string);
-}
-
-inline char * PyStr_AsString(PyObject *object)
-{
-    return PyUnicode_AsUTF8(object);
-}
-
-inline bool PyStr_Check(PyObject *object)
-{
-    return PyUnicode_Check(object);
-}
-
-// compatibility wrappers for Python non-Unicode string/buffer type
-// (PyBytes in 3, PyString in 2)
-inline bool PyStrBytes_Check(PyObject *object)
-{
-    return PyBytes_Check(object);
-}
-
-inline char* PyStrBytes_AsString(PyObject *object)
-{
-    return PyBytes_AsString(object);
-}
-
-inline Py_ssize_t PyStrBytes_Size(PyObject *object)
-{
-    return PyBytes_Size(object);
-}
-
-inline PyObject* PyStrBytes_FromStringAndSize(const char *string, Py_ssize_t len)
-{
-    return PyBytes_FromStringAndSize(string, len);
-}
-#else
-inline char * PyStr_AsString(PyObject *object)
-{
-    return PyString_AsString(object);
-}
-
-inline PyObject* PyStr_FromString(const char *string)
-{
-    return PyString_FromString(string);
-}
-
-inline bool PyStr_Check(PyObject *object)
-{
-    return PyString_Check(object);
-}
-inline bool PyStrBytes_Check(PyObject *object)
-{
-    return PyString_Check(object);
-}
-
-inline char* PyStrBytes_AsString(PyObject *object)
-{
-    return PyString_AsString(object);
-}
-
-inline Py_ssize_t PyStrBytes_Size(PyObject *object)
-{
-    return PyString_Size(object);
-}
-
-inline PyObject* PyStrBytes_FromStringAndSize(const char *string, Py_ssize_t len)
-{
-    return PyString_FromStringAndSize(string, len);
-}
-#endif /* PY_MAJOR_VERSION >= 3 */
+namespace com::sun::star::beans { class XIntrospection; }
+namespace com::sun::star::container { class XEnumeration; }
+namespace com::sun::star::container { class XHierarchicalNameAccess; }
+namespace com::sun::star::lang { class XSingleServiceFactory; }
+namespace com::sun::star::reflection { class XIdlReflection; }
+namespace com::sun::star::script { class XInvocation2; }
+namespace com::sun::star::script { class XInvocationAdapterFactory2; }
+namespace com::sun::star::script { class XTypeConverter; }
 
 namespace pyuno
 {
@@ -157,12 +70,12 @@ struct RuntimeCargo;
 namespace LogLevel
 {
 // when you add a loglevel, extend the log function !
-static const sal_Int32 NONE = 0;
-static const sal_Int32 CALL = 1;
-static const sal_Int32 ARGS = 2;
+const sal_Int32 NONE = 0;
+const sal_Int32 CALL = 1;
+const sal_Int32 ARGS = 2;
 }
 
-bool isLog( RuntimeCargo *cargo, sal_Int32 loglevel );
+bool isLog( RuntimeCargo const *cargo, sal_Int32 loglevel );
 void log( RuntimeCargo *cargo, sal_Int32 level, const OUString &logString );
 void log( RuntimeCargo *cargo, sal_Int32 level, const char *str );
 void logCall( RuntimeCargo *cargo, const char *intro,
@@ -175,8 +88,8 @@ void logReply( RuntimeCargo *cargo, const char *intro,
 void logException( RuntimeCargo *cargo, const char *intro,
                    void * ptr, const OUString &aFunctionName,
                    const void * data, const css::uno::Type & type );
-static const sal_Int32 VAL2STR_MODE_DEEP = 0;
-static const sal_Int32 VAL2STR_MODE_SHALLOW = 1;
+const sal_Int32 VAL2STR_MODE_DEEP = 0;
+const sal_Int32 VAL2STR_MODE_SHALLOW = 1;
 OUString val2str( const void * pVal, typelib_TypeDescriptionReference * pTypeRef, sal_Int32 mode = VAL2STR_MODE_DEEP );
 
 
@@ -190,16 +103,14 @@ typedef std::unordered_map
 
 typedef std::unordered_map
 <
-OUString,
-PyRef,
-OUStringHash
+    OUString,
+    PyRef
 > ExceptionClassMap;
 
 typedef std::unordered_map
 <
     OUString,
-    css::uno::Sequence< sal_Int16 >,
-    OUStringHash
+    css::uno::Sequence< sal_Int16 >
 > MethodOutIndexMap;
 
 typedef std::unordered_set< PyRef , PyRef::Hash > ClassSet;
@@ -215,11 +126,11 @@ PyRef PyUNOStruct_new (
     const css::uno::Any &targetInterface,
     const  css::uno::Reference<css::lang::XSingleServiceFactory> &ssf );
 
-typedef struct
+struct PyUNOInternals
 {
     css::uno::Reference <css::script::XInvocation2> xInvocation;
     css::uno::Any wrappedObject;
-} PyUNOInternals;
+};
 
 typedef struct
 {
@@ -230,10 +141,10 @@ typedef struct
 PyObject* PyUNO_iterator_new (
     const css::uno::Reference<css::container::XEnumeration>& xEnumeration);
 
-typedef struct
+struct PyUNO_iterator_Internals
 {
     css::uno::Reference <css::container::XEnumeration> xEnumeration;
-} PyUNO_iterator_Internals;
+};
 
 typedef struct
 {
@@ -244,11 +155,11 @@ typedef struct
 PyObject* PyUNO_list_iterator_new (
     const css::uno::Reference<css::container::XIndexAccess> &xIndexAccess);
 
-typedef struct
+struct PyUNO_list_iterator_Internals
 {
     css::uno::Reference <css::container::XIndexAccess> xIndexAccess;
     int index;
-} PyUNO_list_iterator_Internals;
+};
 
 typedef struct
 {
@@ -350,7 +261,7 @@ public:
     Adapter( const PyRef &obj,
              const css::uno::Sequence< css::uno::Type > & types );
 
-    static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+    static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
     const PyRef& getWrappedObject() const { return mWrappedObject; }
     const css::uno::Sequence< css::uno::Type >& getWrappedTypes() const { return mTypes; }
     virtual ~Adapter() override;

@@ -17,25 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <resultset.hxx>
-#include "dbastrings.hrc"
-#include "apitools.hxx"
-#include <com/sun/star/lang/DisposedException.hpp>
+#include "resultset.hxx"
+#include <sal/log.hxx>
+#include <stringconstants.hxx>
+#include <apitools.hxx>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <comphelper/property.hxx>
-#include <comphelper/sequence.hxx>
 #include <comphelper/types.hxx>
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include <datacolumn.hxx>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include "datacolumn.hxx"
 #include <connectivity/dbexception.hxx>
 #include <connectivity/dbtools.hxx>
-#include <cppuhelper/exc_hlp.hxx>
-#include <osl/thread.h>
 
 
 using namespace ::com::sun::star::sdbc;
@@ -57,11 +52,10 @@ OResultSet::OResultSet(const css::uno::Reference< css::sdbc::XResultSet >& _xRes
            ,OPropertySetHelper(OResultSetBase::rBHelper)
            ,m_xDelegatorResultSet(_xResultSet)
            ,m_aWarnings( Reference< XWarningsSupplier >( _xResultSet, UNO_QUERY ) )
-           ,m_nResultSetType(0)
            ,m_nResultSetConcurrency(0)
            ,m_bIsBookmarkable(false)
 {
-    m_pColumns = new OColumns(*this, m_aMutex, _bCaseSensitive, std::vector< OUString>(), nullptr,nullptr);
+    m_pColumns.reset( new OColumns(*this, m_aMutex, _bCaseSensitive, std::vector< OUString>(), nullptr,nullptr) );
 
     try
     {
@@ -71,11 +65,12 @@ OResultSet::OResultSet(const css::uno::Reference< css::sdbc::XResultSet >& _xRes
         m_xDelegatorRowUpdate.set(m_xDelegatorResultSet, css::uno::UNO_QUERY);
 
         Reference< XPropertySet > xSet(m_xDelegatorResultSet, UNO_QUERY);
-        xSet->getPropertyValue(PROPERTY_RESULTSETTYPE) >>= m_nResultSetType;
+        sal_Int32 nResultSetType(0);
+        xSet->getPropertyValue(PROPERTY_RESULTSETTYPE) >>= nResultSetType;
         xSet->getPropertyValue(PROPERTY_RESULTSETCONCURRENCY) >>= m_nResultSetConcurrency;
 
         // test for Bookmarks
-        if (ResultSetType::FORWARD_ONLY != m_nResultSetType)
+        if (ResultSetType::FORWARD_ONLY != nResultSetType)
         {
             Reference <XPropertySetInfo > xInfo(xSet->getPropertySetInfo());
             if (xInfo->hasPropertyByName(PROPERTY_ISBOOKMARKABLE))
@@ -96,8 +91,6 @@ OResultSet::~OResultSet()
 {
     m_pColumns->acquire();
     m_pColumns->disposing();
-    delete m_pColumns;
-
 }
 
 // css::lang::XTypeProvider
@@ -148,7 +141,7 @@ void OResultSet::disposing()
     m_pColumns->disposing();
 
     // close the pending result set
-    Reference< XCloseable > (m_xDelegatorResultSet, UNO_QUERY)->close();
+    Reference< XCloseable > (m_xDelegatorResultSet, UNO_QUERY_THROW)->close();
 
     m_xDelegatorResultSet = nullptr;
     m_xDelegatorRow = nullptr;
@@ -170,7 +163,7 @@ void OResultSet::close()
 // XServiceInfo
 OUString OResultSet::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdb.OResultSet");
+    return "com.sun.star.sdb.OResultSet";
 }
 
 sal_Bool OResultSet::supportsService( const OUString& _rServiceName )
@@ -180,10 +173,7 @@ sal_Bool OResultSet::supportsService( const OUString& _rServiceName )
 
 Sequence< OUString > OResultSet::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aSNS( 2 );
-    aSNS[0] = SERVICE_SDBC_RESULTSET;
-    aSNS[1] = SERVICE_SDB_RESULTSET;
-    return aSNS;
+    return { SERVICE_SDBC_RESULTSET, SERVICE_SDB_RESULTSET };
 }
 
 // css::beans::XPropertySet
@@ -254,7 +244,7 @@ void OResultSet::getFastPropertyValue( Any& rValue, sal_Int32 nHandle ) const
             OSL_ENSURE(!aPropName.isEmpty(), "property not found?");
 
             // now read the value
-            rValue = Reference< XPropertySet >(m_xDelegatorResultSet, UNO_QUERY)->getPropertyValue(aPropName);
+            rValue = Reference< XPropertySet >(m_xDelegatorResultSet, UNO_QUERY_THROW)->getPropertyValue(aPropName);
         }
     }
 }
@@ -280,7 +270,7 @@ Reference< XResultSetMetaData > OResultSet::getMetaData()
     MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(OResultSetBase::rBHelper.bDisposed);
 
-    return Reference< XResultSetMetaDataSupplier >(m_xDelegatorResultSet, UNO_QUERY)->getMetaData();
+    return Reference< XResultSetMetaDataSupplier >(m_xDelegatorResultSet, UNO_QUERY_THROW)->getMetaData();
 }
 
 // css::sdbc::XColumnLocate
@@ -289,7 +279,7 @@ sal_Int32 OResultSet::findColumn(const OUString& columnName)
     MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(OResultSetBase::rBHelper.bDisposed);
 
-    return Reference< XColumnLocate >(m_xDelegatorResultSet, UNO_QUERY)->findColumn(columnName);
+    return Reference< XColumnLocate >(m_xDelegatorResultSet, UNO_QUERY_THROW)->findColumn(columnName);
 }
 
 namespace
@@ -311,7 +301,7 @@ namespace
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
         return xDBMetaData;
     }
@@ -327,7 +317,7 @@ Reference< css::container::XNameAccess > OResultSet::getColumns()
     if (!m_pColumns->isInitialized())
     {
         // get the metadata
-        Reference< XResultSetMetaData > xMetaData = Reference< XResultSetMetaDataSupplier >(m_xDelegatorResultSet, UNO_QUERY)->getMetaData();
+        Reference< XResultSetMetaData > xMetaData = Reference< XResultSetMetaDataSupplier >(m_xDelegatorResultSet, UNO_QUERY_THROW)->getMetaData();
 
         sal_Int32 nColCount = 0;
         // do we have columns
@@ -346,14 +336,14 @@ Reference< css::container::XNameAccess > OResultSet::getColumns()
                 // are allowed to return duplicate names, but we are required to have
                 // unique column names
                 if ( m_pColumns->hasByName( sName ) )
-                    sName = ::dbtools::createUniqueName( m_pColumns, sName );
+                    sName = ::dbtools::createUniqueName( m_pColumns.get(), sName );
 
                 m_pColumns->append( sName, pColumn );
             }
         }
         catch ( const SQLException& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
         m_pColumns->setInitialized();
 
@@ -362,29 +352,26 @@ Reference< css::container::XNameAccess > OResultSet::getColumns()
         // this might be reasonable
         try
         {
-            const Reference< XNameAccess > xColNames( static_cast< XNameAccess* >( m_pColumns ), UNO_SET_THROW );
+            const Reference< XNameAccess > xColNames( static_cast< XNameAccess* >( m_pColumns.get() ), UNO_SET_THROW );
             const Sequence< OUString > aNames( xColNames->getElementNames() );
             SAL_WARN_IF( aNames.getLength() != nColCount, "dbaccess",
                 "OResultSet::getColumns: invalid column count!" );
-            for (   const OUString* pName = aNames.getConstArray();
-                    pName != aNames.getConstArray() + aNames.getLength();
-                    ++pName
-                )
+            for (  auto const & name : aNames )
             {
-                Reference< XPropertySet > xColProps( xColNames->getByName( *pName ), UNO_QUERY_THROW );
+                Reference< XPropertySet > xColProps( xColNames->getByName( name ), UNO_QUERY_THROW );
                 OUString sName;
                 OSL_VERIFY( xColProps->getPropertyValue( PROPERTY_NAME ) >>= sName );
-                SAL_WARN_IF( sName != *pName, "dbaccess", "OResultSet::getColumns: invalid column name!" );
+                SAL_WARN_IF( sName != name, "dbaccess", "OResultSet::getColumns: invalid column name!" );
             }
 
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     #endif
     }
-    return m_pColumns;
+    return m_pColumns.get();
 }
 
 // css::sdbc::XRow
@@ -872,7 +859,7 @@ Any OResultSet::getBookmark()
 
     checkBookmarkable();
 
-    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY)->getBookmark();
+    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY_THROW)->getBookmark();
 }
 
 sal_Bool OResultSet::moveToBookmark(const Any& bookmark)
@@ -882,7 +869,7 @@ sal_Bool OResultSet::moveToBookmark(const Any& bookmark)
 
     checkBookmarkable();
 
-    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY)->moveToBookmark(bookmark);
+    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY_THROW)->moveToBookmark(bookmark);
 }
 
 sal_Bool OResultSet::moveRelativeToBookmark(const Any& bookmark, sal_Int32 rows)
@@ -892,7 +879,7 @@ sal_Bool OResultSet::moveRelativeToBookmark(const Any& bookmark, sal_Int32 rows)
 
     checkBookmarkable();
 
-    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY)->moveRelativeToBookmark(bookmark, rows);
+    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY_THROW)->moveRelativeToBookmark(bookmark, rows);
 }
 
 sal_Int32 OResultSet::compareBookmarks(const Any& _first, const Any& _second)
@@ -902,7 +889,7 @@ sal_Int32 OResultSet::compareBookmarks(const Any& _first, const Any& _second)
 
     checkBookmarkable();
 
-    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY)->compareBookmarks(_first, _second);
+    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY_THROW)->compareBookmarks(_first, _second);
 }
 
 sal_Bool OResultSet::hasOrderedBookmarks()
@@ -912,7 +899,7 @@ sal_Bool OResultSet::hasOrderedBookmarks()
 
     checkBookmarkable();
 
-    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY)->hasOrderedBookmarks();
+    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY_THROW)->hasOrderedBookmarks();
 }
 
 sal_Int32 OResultSet::hashBookmark(const Any& bookmark)
@@ -922,7 +909,7 @@ sal_Int32 OResultSet::hashBookmark(const Any& bookmark)
 
     checkBookmarkable();
 
-    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY)->hashBookmark(bookmark);
+    return Reference< XRowLocate >(m_xDelegatorResultSet, UNO_QUERY_THROW)->hashBookmark(bookmark);
 }
 
 // css::sdbc::XResultSetUpdate

@@ -20,11 +20,11 @@
 #ifndef INCLUDED_FRAMEWORK_SOURCE_INC_ACCELERATORS_ACCELERATORCACHE_HXX
 #define INCLUDED_FRAMEWORK_SOURCE_INC_ACCELERATORS_ACCELERATORCACHE_HXX
 
-#include <general.h>
 #include <stdtypes.h>
 
 #include <com/sun/star/awt/KeyEvent.hpp>
 
+#include <unordered_map>
 #include <vector>
 
 // definition
@@ -35,7 +35,7 @@ namespace framework
 /**
     @short  implements a cache for any accelerator configuration.
 
-    @descr  Its implemented threadsafe, supports copy-on-write pattern
+    @descr  It's implemented threadsafe, supports copy-on-write pattern
             and a flush mechanism to support concurrent access to the same
             configuration.
 
@@ -52,7 +52,7 @@ class AcceleratorCache
             commands -> keys
         */
         typedef ::std::vector< css::awt::KeyEvent > TKeyList;
-        typedef std::unordered_map<OUString, TKeyList, OUStringHash> TCommand2Keys;
+        typedef std::unordered_map<OUString, TKeyList> TCommand2Keys;
 
         /** TODO document me
             keys -> commands
@@ -76,26 +76,6 @@ class AcceleratorCache
     // interface
 
     public:
-
-        /** @short  creates a new - but empty - cache instance. */
-        AcceleratorCache();
-
-        /** @short  make a copy of this cache.
-            @descr  Used for the copy-on-write feature.
-        */
-        AcceleratorCache(const AcceleratorCache& rCopy);
-
-        /** @short  write changes back to the original container.
-
-            @param  rCopy
-                    the (changed!) copy, which should be written
-                    back to this original container.
-          */
-        void takeOver(const AcceleratorCache& rCopy);
-
-        /** TODO document me */
-        AcceleratorCache& operator=(const AcceleratorCache& rCopy);
-
         /** @short  checks if the specified key exists.
 
             @param  aKey

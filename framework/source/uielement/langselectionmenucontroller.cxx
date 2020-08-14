@@ -19,31 +19,24 @@
 
 #include <uielement/langselectionmenucontroller.hxx>
 
-#include "services.h"
+#include <services.h>
 
-#include <com/sun/star/awt/XDevice.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/awt/MenuItemStyle.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
+#include <com/sun/star/util/XURLTransformer.hpp>
 
+#include <toolkit/awt/vclxmenu.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/i18nhelp.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <vcl/mnemonic.hxx>
-#include <comphelper/processfactory.hxx>
 
-#include <com/sun/star/document/XDocumentLanguages.hpp>
-
-#include <i18nlangtag/mslangid.hxx>
 #include <svl/languageoptions.hxx>
 #include <svtools/langtab.hxx>
 #include <classes/fwkresid.hxx>
 
-#include <classes/resource.hrc>
+#include <strings.hrc>
 
-#include "helper/mischelper.hxx"
+#include <helper/mischelper.hxx>
 #include <osl/mutex.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 #include <map>
 #include <set>
@@ -60,13 +53,23 @@ using namespace com::sun::star::util;
 namespace framework
 {
 
-DEFINE_XSERVICEINFO_MULTISERVICE_2      (   LanguageSelectionMenuController         ,
-                                            OWeakObject                             ,
-                                            SERVICENAME_POPUPMENUCONTROLLER         ,
-                                            IMPLEMENTATIONNAME_LANGUAGESELECTIONMENUCONTROLLER
-                                        )
+// XInterface, XTypeProvider, XServiceInfo
 
-DEFINE_INIT_SERVICE                     (   LanguageSelectionMenuController, {} )
+OUString SAL_CALL LanguageSelectionMenuController::getImplementationName()
+{
+    return "com.sun.star.comp.framework.LanguageSelectionMenuController";
+}
+
+sal_Bool SAL_CALL LanguageSelectionMenuController::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL LanguageSelectionMenuController::getSupportedServiceNames()
+{
+    return { SERVICENAME_POPUPMENUCONTROLLER };
+}
+
 
 LanguageSelectionMenuController::LanguageSelectionMenuController( const css::uno::Reference< css::uno::XComponentContext >& xContext )
     : svt::PopupMenuControllerBase(xContext)
@@ -154,9 +157,9 @@ void LanguageSelectionMenuController::impl_setPopupMenu()
     m_xMenuDispatch_CharDlgForParagraph = xDispatchProvider->queryDispatch( aTargetURL, OUString(), 0 );
 }
 
-void LanguageSelectionMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >& rPopupMenu , const Mode eMode )
+void LanguageSelectionMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu > const & rPopupMenu , const Mode eMode )
 {
-    VCLXPopupMenu* pVCLPopupMenu = static_cast<VCLXPopupMenu *>(VCLXMenu::GetImplementation( rPopupMenu ));
+    VCLXPopupMenu* pVCLPopupMenu = static_cast<VCLXPopupMenu *>(comphelper::getUnoTunnelImplementation<VCLXMenu>( rPopupMenu ));
     PopupMenu*     pPopupMenu    = nullptr;
 
     SolarMutexGuard aSolarMutexGuard;
@@ -168,7 +171,6 @@ void LanguageSelectionMenuController::fillPopupMenu( Reference< css::awt::XPopup
     if ( pVCLPopupMenu )
         pPopupMenu = static_cast<PopupMenu *>(pVCLPopupMenu->GetMenu());
 
-    OUString aCmd;
     OUString aCmd_Dialog;
     OUString aCmd_Language;
     if( eMode == MODE_SetLanguageSelectionMenu )
@@ -199,19 +201,16 @@ void LanguageSelectionMenuController::fillPopupMenu( Reference< css::awt::XPopup
     sal_Int16 nItemId = 1;  // in this control the item id is not important for executing the command
     const OUString sAsterisk("*");  // multiple languages in current selection
     const OUString sNone( SvtLanguageTable::GetLanguageString( LANGUAGE_NONE ));
-    std::set< OUString >::const_iterator it;
-    for (it = aLangItems.begin(); it != aLangItems.end(); ++it)
+    for (auto const& langItem : aLangItems)
     {
-        const OUString & rStr( *it );
-        if (rStr != sNone &&
-            rStr != sAsterisk &&
-            !rStr.isEmpty()) // 'no language found' from language guessing
+        if (langItem != sNone &&
+            langItem != sAsterisk &&
+            !langItem.isEmpty()) // 'no language found' from language guessing
         {
-            pPopupMenu->InsertItem( nItemId, rStr );
-            aCmd = aCmd_Language;
-            aCmd += rStr;
+            pPopupMenu->InsertItem( nItemId, langItem);
+            OUString aCmd = aCmd_Language + langItem;
             pPopupMenu->SetItemCommand( nItemId, aCmd );
-            if (rStr == m_aCurLang && eMode == MODE_SetLanguageSelectionMenu )
+            if (langItem == m_aCurLang && eMode == MODE_SetLanguageSelectionMenu )
             {
                 //make a sign for the current language
                 pPopupMenu->CheckItem( nItemId );
@@ -223,7 +222,7 @@ void LanguageSelectionMenuController::fillPopupMenu( Reference< css::awt::XPopup
     // entry for LANGUAGE_NONE
     ++nItemId;
     pPopupMenu->InsertItem( nItemId, FwkResId(STR_LANGSTATUS_NONE) );
-    aCmd = aCmd_Language + "LANGUAGE_NONE";
+    OUString aCmd = aCmd_Language + "LANGUAGE_NONE";
     pPopupMenu->SetItemCommand( nItemId, aCmd );
 
     // entry for 'Reset to default language'
@@ -252,8 +251,8 @@ void SAL_CALL LanguageSelectionMenuController::updatePopupMenu()
 
     if ( xDispatch.is() )
     {
-        xDispatch->addStatusListener( (static_cast< XStatusListener* >(this)), aTargetURL );
-        xDispatch->removeStatusListener( (static_cast< XStatusListener* >(this)), aTargetURL );
+        xDispatch->addStatusListener( static_cast< XStatusListener* >(this), aTargetURL );
+        xDispatch->removeStatusListener( static_cast< XStatusListener* >(this), aTargetURL );
     }
 
     // TODO: Fill menu with the information retrieved by the status update
@@ -293,5 +292,13 @@ void SAL_CALL LanguageSelectionMenuController::initialize( const Sequence< Any >
 }
 
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_LanguageSelectionMenuController_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::LanguageSelectionMenuController(context));
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

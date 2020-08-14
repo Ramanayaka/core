@@ -20,9 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_JOBS_JOBURL_HXX
 #define INCLUDED_FRAMEWORK_INC_JOBS_JOBURL_HXX
 
-#include <stdtypes.h>
-#include <general.h>
-
 #include <rtl/ustring.hxx>
 
 namespace framework{
@@ -86,15 +83,6 @@ class JobURL
         /** holds the service part of a job URL */
         OUString m_sService;
 
-        /** holds the event arguments */
-        OUString m_sEventArgs;
-
-        /** holds the alias arguments */
-        OUString m_sAliasArgs;
-
-        /** holds the service arguments */
-        OUString m_sServiceArgs;
-
     // native interface
 
     public:
@@ -110,7 +98,7 @@ class JobURL
     private:
 
         static bool implst_split( const OUString& sPart           ,
-                                      const sal_Char*        pPartIdentifier ,
+                                      const char*        pPartIdentifier ,
                                             sal_Int32        nPartLength     ,
                                             OUString& rPartValue      ,
                                             OUString& rPartArguments  );

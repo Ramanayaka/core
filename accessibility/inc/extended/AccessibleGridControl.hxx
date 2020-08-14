@@ -17,40 +17,37 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROL_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROL_HXX
+#pragma once
 
 #include <extended/AccessibleGridControlBase.hxx>
 #include <extended/AccessibleGridControlTable.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/weakref.hxx>
-#include <svtools/accessibletable.hxx>
-#include <memory>
+#include <rtl/ref.hxx>
+#include <vcl/accessibletable.hxx>
 
 namespace accessibility {
 
-    class AccessibleGridControl_Impl;
+    class AccessibleGridControlHeader;
 
 
 /** This class represents the complete accessible Grid Control object. */
-class AccessibleGridControl : public AccessibleGridControlBase
+class AccessibleGridControl final : public AccessibleGridControlBase
 {
     friend class AccessibleGridControlAccess;
 
-protected:
     AccessibleGridControl(
         const css::uno::Reference< css::accessibility::XAccessible >& _rxParent,
         const css::uno::Reference< css::accessibility::XAccessible >& _rxCreator,
-    ::svt::table::IAccessibleTable& _rTable
+    ::vcl::table::IAccessibleTable& _rTable
     );
 
-    virtual ~AccessibleGridControl() override;
+    virtual ~AccessibleGridControl() override = default;
 
     /** Cleans up members. */
     using AccessibleGridControlBase::disposing;
     virtual void SAL_CALL disposing() override;
 
-protected:
     // XAccessibleContext -----------------------------------------------------
 
     /** @return  The count of visible children. */
@@ -106,7 +103,7 @@ public:
      void commitTableEvent(sal_Int16 nEventId, const css::uno::Any& rNewValue,
              const css::uno::Any& rOldValue);
 
-protected:
+private:
     // internal virtual methods -----------------------------------------------
 
     /** @attention  This method requires locked mutex's and a living object.
@@ -127,7 +124,7 @@ protected:
         @attention  This method requires locked mutex's and a living object.
         @return  The XAccessible interface of the header bar. */
     css::uno::Reference< css::accessibility::XAccessible >
-        implGetHeaderBar( ::svt::table::AccessibleTableControlObjType eObjType );
+        implGetHeaderBar( ::vcl::table::AccessibleTableControlObjType eObjType );
 
     /** This method returns one of the children that are always present:
         Data table, row and column header bar or corner control.
@@ -140,9 +137,20 @@ protected:
         @return  An AccessibleGridControlTable. */
     AccessibleGridControlTable* createAccessibleTable();
 
-private:
-    // members ----------------------------------------------------------------
-    std::unique_ptr< AccessibleGridControl_Impl > m_xImpl;
+    /// the css::accessibility::XAccessible which created the AccessibleGridControl
+    css::uno::WeakReference< css::accessibility::XAccessible >                    m_aCreator;
+
+    /** The data table child. */
+    rtl::Reference<AccessibleGridControlTable>                m_xTable;
+
+    /** The header bar for rows. */
+    rtl::Reference<AccessibleGridControlHeader>               m_xRowHeaderBar;
+
+    /** The header bar for columns (first row of the table). */
+    rtl::Reference<AccessibleGridControlHeader>               m_xColumnHeaderBar;
+
+    /** The table cell child. */
+    rtl::Reference<AccessibleGridControlTableCell>            m_xCell;
 };
 
 
@@ -154,17 +162,17 @@ private:
 
 class AccessibleGridControlAccess :
      public ::cppu::WeakImplHelper< css::accessibility::XAccessible >
-    ,public ::svt::table::IAccessibleTableControl
+    ,public ::vcl::table::IAccessibleTableControl
 {
 private:
     css::uno::Reference< css::accessibility::XAccessible > m_xParent;
-    ::svt::table::IAccessibleTable *                       m_pTable;
+    ::vcl::table::IAccessibleTable *                       m_pTable;
     rtl::Reference<AccessibleGridControl>                  m_xContext;
 
 public:
     AccessibleGridControlAccess(
         const css::uno::Reference< css::accessibility::XAccessible >& _rxParent,
-        ::svt::table::IAccessibleTable& _rTable
+        ::vcl::table::IAccessibleTable& _rTable
     );
 
     /// returns the AccessibleContext belonging to this Accessible
@@ -219,6 +227,5 @@ private:
 } // namespace accessibility
 
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

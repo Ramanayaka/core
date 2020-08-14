@@ -33,6 +33,8 @@ using namespace com::sun::star::awt;
 
 //struct SAL_DLLPUBLIC_IMPORT ::cppu::OBroadcastHelperVar< OMultiTypeInterfaceContainerHelper, OMultiTypeInterfaceContainerHelper::keyType >;
 
+namespace {
+
 // Handles for properties
 // (PLEASE SORT THIS FIELD, IF YOU ADD NEW PROPERTIES!)
 // We use an enum to define these handles, to use all numbers from 0 to nn and
@@ -48,15 +50,15 @@ enum EPROPERTIES
     PROPERTYCOUNT
 };
 
+}
+
 namespace framework
 {
 
 ActionTriggerPropertySet::ActionTriggerPropertySet()
     : OBroadcastHelper         ( m_aMutex )
-    ,   OPropertySetHelper       ( *(static_cast< OBroadcastHelper * >(this)))
+    , OPropertySetHelper       ( *static_cast< OBroadcastHelper * >(this) )
     , OWeakObject              ()
-    , m_xBitmap                ( nullptr )
-    , m_xActionTriggerContainer( nullptr )
 {
 }
 
@@ -69,8 +71,8 @@ Any SAL_CALL ActionTriggerPropertySet::queryInterface( const Type& aType )
 {
     Any a = ::cppu::queryInterface(
                 aType,
-                (static_cast< XServiceInfo* >(this)),
-                (static_cast< XTypeProvider* >(this)));
+                static_cast< XServiceInfo* >(this),
+                static_cast< XTypeProvider* >(this));
 
     if( a.hasValue() )
         return a;
@@ -98,7 +100,7 @@ void SAL_CALL ActionTriggerPropertySet::release() throw ()
 // XServiceInfo
 OUString SAL_CALL ActionTriggerPropertySet::getImplementationName()
 {
-    return OUString( IMPLEMENTATIONNAME_ACTIONTRIGGER );
+    return IMPLEMENTATIONNAME_ACTIONTRIGGER;
 }
 
 sal_Bool SAL_CALL ActionTriggerPropertySet::supportsService( const OUString& ServiceName )
@@ -251,9 +253,9 @@ Reference< XPropertySetInfo > SAL_CALL ActionTriggerPropertySet::getPropertySetI
     return xInfo;
 }
 
-const Sequence< Property > ActionTriggerPropertySet::impl_getStaticPropertyDescriptor()
+Sequence< Property > ActionTriggerPropertySet::impl_getStaticPropertyDescriptor()
 {
-    const Property pActionTriggerPropertys[] =
+    return
     {
         Property( "CommandURL"   , HANDLE_COMMANDURL   , cppu::UnoType<OUString>::get(), PropertyAttribute::TRANSIENT  ),
         Property( "HelpURL"      , HANDLE_HELPURL      , cppu::UnoType<OUString>::get(), PropertyAttribute::TRANSIENT  ),
@@ -261,12 +263,6 @@ const Sequence< Property > ActionTriggerPropertySet::impl_getStaticPropertyDescr
         Property( "SubContainer" , HANDLE_SUBCONTAINER , cppu::UnoType<OUString>::get(), PropertyAttribute::TRANSIENT  ),
         Property( "Text"         , HANDLE_TEXT         , cppu::UnoType<XInterface>::get(), PropertyAttribute::TRANSIENT  )
     };
-
-    // Use it to initialize sequence!
-    const Sequence< Property > seqActionTriggerPropertyDescriptor( pActionTriggerPropertys, PROPERTYCOUNT );
-
-    // Return "PropertyDescriptor"
-    return seqActionTriggerPropertyDescriptor;
 }
 
 bool ActionTriggerPropertySet::impl_tryToChangeProperty(

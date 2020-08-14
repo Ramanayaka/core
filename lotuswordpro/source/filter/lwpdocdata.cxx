@@ -54,14 +54,13 @@
  *
  ************************************************************************/
 #include <memory>
-#include "lwpdocdata.hxx"
-#include "xfilter/xfofficemeta.hxx"
-#include "localtime.hxx"
-#include <rtl/ustrbuf.hxx>
-#include "lwpfilehdr.hxx"
-#include "lwpglobalmgr.hxx"
+#include <lwpdocdata.hxx>
+#include <xfilter/xfofficemeta.hxx>
+#include <localtime.hxx>
+#include <lwpfilehdr.hxx>
+#include <lwpglobalmgr.hxx>
 
-LwpDocData::LwpDocData(LwpObjectHeader &objHdr, LwpSvStream* pStrm)
+LwpDocData::LwpDocData(LwpObjectHeader const &objHdr, LwpSvStream* pStrm)
     :LwpObject(objHdr, pStrm)//m_pEditorAttrList(0)
 {}
 
@@ -116,8 +115,8 @@ void LwpDocData::Read()
 
     //EditorList
     m_DocInfo.nNumEditedBy = m_pObjStrm->QuickReaduInt16();
-    LwpAtomHolder* pCDLNList = new LwpAtomHolder[m_DocInfo.nNumEditedBy];
-    LwpAtomHolder* pEditorList = new LwpAtomHolder[m_DocInfo.nNumEditedBy];
+    std::unique_ptr<LwpAtomHolder[]> pCDLNList(new LwpAtomHolder[m_DocInfo.nNumEditedBy]);
+    std::unique_ptr<LwpAtomHolder[]> pEditorList(new LwpAtomHolder[m_DocInfo.nNumEditedBy]);
     sal_uInt16 i = 0;
     for ( i = 0; i < m_DocInfo.nNumEditedBy; i++)
     {
@@ -131,8 +130,8 @@ void LwpDocData::Read()
 
     m_pObjStrm->SkipExtra();
 
-    delete [] pCDLNList;
-    delete [] pEditorList;
+    pCDLNList.reset();
+    pEditorList.reset();
 
     //doc control
     //cGreeting
@@ -293,14 +292,14 @@ void LwpDocData::Read()
         pGlobal->SetEditorAttrMap(nID, xEditorAttr.release());
     }
 }
-OUString   LwpDocData::DateTimeToOUString(LtTm& dt)
+OUString   LwpDocData::DateTimeToOUString(LtTm const & dt)
 {
     OUString aResult = OUString::number(dt.tm_year) + "-" + OUString::number(dt.tm_mon) + "-" + OUString::number(dt.tm_mday) +
         "T" + OUString::number(dt.tm_hour) + ":" + OUString::number(dt.tm_min) + ":" + OUString::number(dt.tm_sec) + ".0";
 
     return aResult;
 }
-OUString   LwpDocData::TimeToOUString(LtTm& dt)
+OUString   LwpDocData::TimeToOUString(LtTm const & dt)
 {
     //PT3H43M44S
     OUString aResult = "PT" + OUString::number(dt.tm_hour) + "H" + OUString::number(dt.tm_min) + "M" + OUString::number(dt.tm_sec) + "S";

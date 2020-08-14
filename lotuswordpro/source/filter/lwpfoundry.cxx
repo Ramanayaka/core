@@ -58,8 +58,8 @@
  *  For LWP filter architecture prototype
  ************************************************************************/
 
-#include "lwpfoundry.hxx"
-#include "lwpfilehdr.hxx"
+#include <lwpfoundry.hxx>
+#include <lwpfilehdr.hxx>
 #include "lwpdoc.hxx"
 #include "lwpmarker.hxx"
 #include "lwpholder.hxx"
@@ -68,9 +68,9 @@
 #include "lwpvpointer.hxx"
 #include "lwpsection.hxx"
 #include "lwpcharacterstyle.hxx"
-#include "lwpglobalmgr.hxx"
-#include "xfilter/xfstylemanager.hxx"
-#include "lwplayout.hxx"
+#include <lwpglobalmgr.hxx>
+#include <lwpobjtags.hxx>
+#include <xfilter/xfstylemanager.hxx>
 
 #include <osl/diagnose.h>
 
@@ -216,15 +216,15 @@ LwpBookMark* LwpFoundry::GetBookMark(LwpObjectID objMarker)
     if (!pHeadHolder)
         return nullptr;
 
-    LwpObjectID& rObjID = pHeadHolder->GetHeadID();
-    LwpBookMark* pBookMark = dynamic_cast<LwpBookMark*>(rObjID.obj().get());
+    LwpObjectID* pObjID = &pHeadHolder->GetHeadID();
+    LwpBookMark* pBookMark = dynamic_cast<LwpBookMark*>(pObjID->obj().get());
 
     while (pBookMark)
     {
         if (pBookMark->IsRightMarker(objMarker))
             return pBookMark;
-        rObjID = pBookMark->GetNext();
-        pBookMark = dynamic_cast<LwpBookMark*>(rObjID.obj().get());
+        pObjID = &pBookMark->GetNext();
+        pBookMark = dynamic_cast<LwpBookMark*>(pObjID->obj().get());
     }
     return nullptr;
 }
@@ -266,7 +266,6 @@ LwpObjectID * LwpFoundry::GetDefaultTextStyle()
 */
 LwpObjectID * LwpFoundry::FindParaStyleByName(const OUString& name)
 {
-    //Register all text styles: para styles, character styles
     LwpDLVListHeadHolder* pParaStyleHolder = dynamic_cast<LwpDLVListHeadHolder*>(GetTextStyleHead().obj().get());
     if(pParaStyleHolder)
     {
@@ -442,7 +441,7 @@ LwpOrderedObject* LwpOrderedObjectManager::Enumerate(LwpOrderedObject * pLast)
     LwpListList* pList = nullptr;
     if(pLast)
     {
-        // We're at the end of Last's list (not Liszt's list).
+        // We're at the end of Last's list (not list's list).
         // Start with the next active list
         pList = dynamic_cast<LwpListList*>(pLast->GetListList().obj().get());
         pList= GetNextActiveListList(pList);
@@ -506,13 +505,13 @@ VO_PARASTYLE/VO_CHARACTERSTYLE call this method to add its created style to XFSt
 Prerequisite: pStyle has been created and all properties has been set to it.
 Return the XFStyle* added by XFStyleManager
 */
-void LwpStyleManager::AddStyle(LwpObjectID styleObjID, IXFStyle* pStyle)
+void LwpStyleManager::AddStyle(LwpObjectID styleObjID, std::unique_ptr<IXFStyle> pNewStyle)
 {
-    assert(pStyle);
+    assert(pNewStyle);
     //pStyle may change if same style is found in XFStyleManager
     XFStyleManager* pXFStyleManager = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
-    pStyle = pXFStyleManager->AddStyle(pStyle).m_pStyle;
-    m_StyleList.insert(LwpStyleMap::value_type(styleObjID, pStyle));
+    auto pStyle = pXFStyleManager->AddStyle(std::move(pNewStyle)).m_pStyle;
+    m_StyleList.emplace(styleObjID, pStyle);
 }
 
 /*

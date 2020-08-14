@@ -20,11 +20,9 @@
 #include <uifactory/factoryconfiguration.hxx>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/container/XContainer.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/frame/XUIControllerFactory.hpp>
 
-#include <rtl/ustrbuf.hxx>
 #include <rtl/ref.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
@@ -60,7 +58,7 @@ public:
     virtual void SAL_CALL deregisterController( const OUString& aCommandURL, const OUString& aModuleName ) override;
 
 protected:
-    UIControllerFactory( const css::uno::Reference< css::uno::XComponentContext >& xContext, const rtl::OUString &rUINode  );
+    UIControllerFactory( const css::uno::Reference< css::uno::XComponentContext >& xContext, const OUString &rUINode  );
     bool                                                    m_bConfigRead;
     css::uno::Reference< css::uno::XComponentContext >       m_xContext;
     rtl::Reference<ConfigurationAccess_ControllerFactory>    m_pConfigAccess;
@@ -71,7 +69,7 @@ private:
 
 UIControllerFactory::UIControllerFactory(
     const Reference< XComponentContext >& xContext,
-    const rtl::OUString &rConfigurationNode )
+    const OUString &rConfigurationNode )
     : UIControllerFactory_BASE(m_aMutex)
     , m_bConfigRead( false )
     , m_xContext( xContext )
@@ -120,17 +118,16 @@ Reference< XInterface > SAL_CALL UIControllerFactory::createInstanceWithArgument
     const Reference< XComponentContext >& )
 {
     const OUString aPropModuleName( "ModuleIdentifier" );
-    const OUString aPropValueName( "Value" );
 
     OUString   aPropName;
     PropertyValue   aPropValue;
 
-    // Retrieve the optional module name form the Arguments sequence. It is used as a part of
+    // Retrieve the optional module name from the Arguments sequence. It is used as a part of
     // the hash map key to support different controller implementation for the same URL but different
     // module!!
-    for ( int i = 0; i < Arguments.getLength(); i++ )
+    for ( Any const & arg : Arguments )
     {
-        if (( Arguments[i] >>= aPropValue ) && ( aPropValue.Name.equals( aPropModuleName )))
+        if (( arg >>= aPropValue ) && ( aPropValue.Name == aPropModuleName ))
         {
             aPropValue.Value >>= aPropName;
             break;
@@ -151,7 +148,7 @@ Reference< XInterface > SAL_CALL UIControllerFactory::createInstanceWithArgument
     // Append the optional value argument. It's an empty string if no additional info
     // is provided to the controller.
     OUString aValue = m_pConfigAccess->getValueFromCommandModule( ServiceSpecifier, aPropName );
-    aPropValue.Name = aPropValueName;
+    aPropValue.Name = "Value";
     aPropValue.Value <<= aValue;
     aNewArgs[nAppendIndex+1] <<= aPropValue;
 
@@ -239,7 +236,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.PopupMenuControllerFactory");
+        return "com.sun.star.comp.framework.PopupMenuControllerFactory";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -284,7 +281,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.ToolBarControllerFactory");
+        return "com.sun.star.comp.framework.ToolBarControllerFactory";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -329,7 +326,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.StatusBarControllerFactory");
+        return "com.sun.star.comp.framework.StatusBarControllerFactory";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -369,7 +366,7 @@ struct StatusbarControllerFactorySingleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_PopupMenuControllerFactory_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -378,7 +375,7 @@ com_sun_star_comp_framework_PopupMenuControllerFactory_get_implementation(
             PopupMenuControllerFactorySingleton::get(context).instance.get()));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_ToolBarControllerFactory_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -387,7 +384,7 @@ com_sun_star_comp_framework_ToolBarControllerFactory_get_implementation(
             ToolbarControllerFactorySingleton::get(context).instance.get()));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_StatusBarControllerFactory_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

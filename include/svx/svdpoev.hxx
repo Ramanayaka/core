@@ -25,11 +25,10 @@
 
 #include <svx/ipolypolygoneditorcontroller.hxx>
 
-class SVX_DLLPUBLIC SdrPolyEditView: public SdrEditView, public IPolyPolygonEditorController
+class SVXCORE_DLLPUBLIC SdrPolyEditView : public SdrEditView, public IPolyPolygonEditorController
 {
     friend class                SdrEditView;
 
-protected:
     bool                        bSetMarkedPointsSmoothPossible : 1;
     bool                        bSetMarkedSegmentsKindPossible : 1;
 
@@ -45,7 +44,10 @@ private:
 
 protected:
     // #i71538# make constructors of SdrView sub-components protected to avoid incomplete incarnations which may get casted to SdrView
-    SdrPolyEditView(SdrModel* pModel1, OutputDevice* pOut);
+    SdrPolyEditView(
+        SdrModel& rSdrModel,
+        OutputDevice* pOut);
+
     virtual ~SdrPolyEditView() override;
 
 public:
@@ -66,7 +68,7 @@ public:
     void ResizeMarkedPoints(const Point& rRef, const Fraction& xFact, const Fraction& yFact);
     void RotateMarkedPoints(const Point& rRef, long nAngle);
 
-    // This probably creates an abitrary amount of new objects
+    // This probably creates an arbitrary amount of new objects
     void RipUpAtMarkedPoints() override;
     bool IsRipUpAtMarkedPointsPossible() const override;
 

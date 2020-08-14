@@ -17,24 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
-#include "ContentHelper.hxx"
+#include <ContentHelper.hxx>
+#include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <ucbhelper/cancelcommandexecution.hxx>
-#include <comphelper/property.hxx>
 #include <com/sun/star/ucb/UnsupportedCommandException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/IllegalAccessException.hpp>
-#include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/io/XActiveDataSink.hpp>
 #include <com/sun/star/beans/IllegalTypeException.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/container/ElementExistException.hpp>
 #include <ucbhelper/propertyvalueset.hxx>
 #include <ucbhelper/contentidentifier.hxx>
-#include "myucp_resultset.hxx"
-#include <com/sun/star/container/XNameContainer.hpp>
-#include "sdbcoretools.hxx"
-#include "dbastrings.hrc"
+#include <cppuhelper/interfacecontainer.hxx>
+#include <comphelper/servicehelper.hxx>
+#include <cppuhelper/typeprovider.hxx>
+#include <apitools.hxx>
+#include <sdbcoretools.hxx>
+#include <stringconstants.hxx>
+
+#include <map>
 
 namespace dbaccess
 {
@@ -47,7 +51,6 @@ using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::embed;
 using namespace ::com::sun::star::container;
-using namespace ::comphelper;
 using namespace ::cppu;
 
 OContentHelper_Impl::OContentHelper_Impl()
@@ -67,7 +70,6 @@ OContentHelper::OContentHelper(const Reference< XComponentContext >& _xORB
     ,m_aPropertyChangeListeners(m_aMutex)
     ,m_xParentContainer( _xParentContainer )
     ,m_aContext( _xORB )
-    ,m_aErrorHelper( m_aContext )
     ,m_pImpl(_pImpl)
     ,m_nCommandId(0)
 {
@@ -85,7 +87,17 @@ void SAL_CALL OContentHelper::disposing()
 }
 
 IMPLEMENT_SERVICE_INFO1(OContentHelper,"com.sun.star.comp.sdb.Content","com.sun.star.ucb.Content");
-IMPLEMENT_IMPLEMENTATION_ID(OContentHelper)
+
+css::uno::Sequence<sal_Int8> OContentHelper::getUnoTunnelId()
+{
+    static cppu::OImplementationId aId;
+    return aId.getImplementationId();
+}
+
+css::uno::Sequence<sal_Int8> OContentHelper::getImplementationId()
+{
+    return css::uno::Sequence<sal_Int8>();
+}
 
 // XContent
 Reference< XContentIdentifier > SAL_CALL OContentHelper::getIdentifier(  )
@@ -110,7 +122,7 @@ OUString OContentHelper::impl_getHierarchicalName( bool _includingRootContainer 
             xProp->getPropertyValue( PROPERTY_NAME ) >>= sName;
 
             OUString sPrevious = aHierarchicalName.makeStringAndClear();
-            aHierarchicalName.append( sName + "/" + sPrevious );
+            aHierarchicalName.append( sName ).append( "/" ).append( sPrevious );
         }
     }
     OUString sHierarchicalName( aHierarchicalName.makeStringAndClear() );
@@ -125,7 +137,7 @@ OUString SAL_CALL OContentHelper::getContentType()
 
     if ( !m_pImpl->m_aProps.aContentType )
     {   // content type not yet retrieved
-        m_pImpl->m_aProps.aContentType.reset( determineContentType() );
+        m_pImpl->m_aProps.aContentType = determineContentType();
     }
 
     return *m_pImpl->m_aProps.aContentType;
@@ -191,7 +203,7 @@ Any SAL_CALL OContentHelper::execute( const Command& aCommand, sal_Int32 /*Comma
             // Unreachable
         }
 
-        if ( !aProperties.getLength() )
+        if ( !aProperties.hasElements() )
         {
             OSL_FAIL( "No properties!" );
             ucbhelper::cancelCommandExecution(
@@ -203,7 +215,7 @@ Any SAL_CALL OContentHelper::execute( const Command& aCommand, sal_Int32 /*Comma
             // Unreachable
         }
 
-        aRet <<= setPropertyValues( aProperties, Environment );
+        aRet <<= setPropertyValues( aProperties );
     }
     else if ( aCommand.Name == "getPropertySetInfo" )
     {
@@ -315,7 +327,7 @@ void SAL_CALL OContentHelper::initialize( const Sequence< Any >& _aArguments )
     }
 }
 
-Sequence< Any > OContentHelper::setPropertyValues(const Sequence< PropertyValue >& rValues,const Reference< XCommandEnvironment >& /*xEnv*/ )
+Sequence< Any > OContentHelper::setPropertyValues(const Sequence< PropertyValue >& rValues )
 {
     osl::ClearableGuard< osl::Mutex > aGuard( m_aMutex );
 
@@ -335,19 +347,7 @@ Sequence< Any > OContentHelper::setPropertyValues(const Sequence< PropertyValue 
     {
         const PropertyValue& rValue = pValues[ n ];
 
-        if ( rValue.Name == "ContentType" )
-        {
-            // Read-only property!
-            aRet[ n ] <<= IllegalAccessException("Property is read-only!",
-                            static_cast< cppu::OWeakObject * >( this ) );
-        }
-        else if ( rValue.Name == "IsDocument" )
-        {
-            // Read-only property!
-            aRet[ n ] <<= IllegalAccessException("Property is read-only!",
-                            static_cast< cppu::OWeakObject * >( this ) );
-        }
-        else if ( rValue.Name == "IsFolder" )
+        if ( rValue.Name == "ContentType" || rValue.Name == "IsDocument" || rValue.Name == "IsFolder" )
         {
             // Read-only property!
             aRet[ n ] <<= IllegalAccessException("Property is read-only!",
@@ -481,94 +481,75 @@ void OContentHelper::notifyPropertiesChange( const Sequence< PropertyChangeEvent
 {
 
     sal_Int32 nCount = evt.getLength();
-    if ( nCount )
+    if ( !nCount )
+        return;
+
+    // First, notify listeners interested in changes of every property.
+    OInterfaceContainerHelper* pAllPropsContainer = m_aPropertyChangeListeners.getContainer( OUString() );
+    if ( pAllPropsContainer )
     {
-        // First, notify listeners interested in changes of every property.
-        OInterfaceContainerHelper* pAllPropsContainer = m_aPropertyChangeListeners.getContainer( OUString() );
-        if ( pAllPropsContainer )
+        OInterfaceIteratorHelper aIter( *pAllPropsContainer );
+        while ( aIter.hasMoreElements() )
         {
-            OInterfaceIteratorHelper aIter( *pAllPropsContainer );
+            // Propagate event.
+            Reference< XPropertiesChangeListener > xListener( aIter.next(), UNO_QUERY );
+            if ( xListener.is() )
+                xListener->propertiesChange( evt );
+        }
+    }
+
+    typedef std::map< XPropertiesChangeListener*, Sequence< PropertyChangeEvent > > PropertiesEventListenerMap;
+    PropertiesEventListenerMap aListeners;
+
+    const PropertyChangeEvent* propertyChangeEvent = evt.getConstArray();
+
+    for ( sal_Int32 n = 0; n < nCount; ++n, ++propertyChangeEvent )
+    {
+        const PropertyChangeEvent& rEvent = *propertyChangeEvent;
+        const OUString& rName = rEvent.PropertyName;
+
+        OInterfaceContainerHelper* pPropsContainer = m_aPropertyChangeListeners.getContainer( rName );
+        if ( pPropsContainer )
+        {
+            OInterfaceIteratorHelper aIter( *pPropsContainer );
             while ( aIter.hasMoreElements() )
             {
-                // Propagate event.
-                Reference< XPropertiesChangeListener > xListener( aIter.next(), UNO_QUERY );
-                if ( xListener.is() )
-                    xListener->propertiesChange( evt );
-            }
-        }
+                Sequence< PropertyChangeEvent >* propertyEvents;
 
-        typedef Sequence< PropertyChangeEvent > PropertyEventSequence;
-        typedef std::map< XPropertiesChangeListener*, PropertyEventSequence* > PropertiesEventListenerMap;
-        PropertiesEventListenerMap aListeners;
-
-        const PropertyChangeEvent* propertyChangeEvent = evt.getConstArray();
-
-        for ( sal_Int32 n = 0; n < nCount; ++n, ++propertyChangeEvent )
-        {
-            const PropertyChangeEvent& rEvent = *propertyChangeEvent;
-            const OUString& rName = rEvent.PropertyName;
-
-            OInterfaceContainerHelper* pPropsContainer = m_aPropertyChangeListeners.getContainer( rName );
-            if ( pPropsContainer )
-            {
-                OInterfaceIteratorHelper aIter( *pPropsContainer );
-                while ( aIter.hasMoreElements() )
+                XPropertiesChangeListener* pListener = static_cast< XPropertiesChangeListener * >( aIter.next() );
+                PropertiesEventListenerMap::iterator it = aListeners.find( pListener );
+                if ( it == aListeners.end() )
                 {
-                    PropertyEventSequence* propertyEvents = nullptr;
-
-                    XPropertiesChangeListener* pListener = static_cast< XPropertiesChangeListener * >( aIter.next() );
-                    PropertiesEventListenerMap::const_iterator it = aListeners.find( pListener );
-                    if ( it == aListeners.end() )
-                    {
-                        // Not in map - create and insert new entry.
-                        propertyEvents = new PropertyEventSequence( nCount );
-                        aListeners[ pListener ] = propertyEvents;
-                    }
-                    else
-                        propertyEvents = (*it).second;
-
-                    if ( propertyEvents )
-                        (*propertyEvents)[n] = rEvent;
+                    // Not in map - create and insert new entry.
+                    auto pair = aListeners.emplace( pListener, Sequence< PropertyChangeEvent >( nCount ));
+                    propertyEvents = &pair.first->second;
                 }
+                else
+                    propertyEvents = &(*it).second;
+
+                (*propertyEvents)[n] = rEvent;
             }
         }
+    }
 
-        // Notify listeners.
-        PropertiesEventListenerMap::const_iterator it = aListeners.begin();
-        while ( !aListeners.empty() )
-        {
-            XPropertiesChangeListener* pListener = (*it).first;
-            PropertyEventSequence* pSeq = (*it).second;
+    // Notify listeners.
+    for (auto & rPair : aListeners)
+    {
+        XPropertiesChangeListener* pListener = rPair.first;
+        Sequence< PropertyChangeEvent >& rSeq = rPair.second;
 
-            // Remove current element.
-            it = aListeners.erase( it );
-
-            // Propagate event.
-            pListener->propertiesChange( *pSeq );
-
-            delete pSeq;
-        }
+        // Propagate event.
+        pListener->propertiesChange( rSeq );
     }
 }
 
 // css::lang::XUnoTunnel
 sal_Int64 OContentHelper::getSomething( const Sequence< sal_Int8 > & rId )
 {
-    if (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    if (isUnoTunnelId<OContentHelper>(rId))
         return reinterpret_cast<sal_Int64>(this);
 
     return 0;
-}
-
-OContentHelper* OContentHelper::getImplementation( const Reference< XInterface >& _rxComponent )
-{
-    OContentHelper* pContent( nullptr );
-
-    Reference< XUnoTunnel > xUnoTunnel( _rxComponent, UNO_QUERY );
-    if ( xUnoTunnel.is() )
-        pContent = reinterpret_cast< OContentHelper* >( xUnoTunnel->getSomething( getUnoTunnelImplementationId() ) );
-
-    return pContent;
 }
 
 Reference< XInterface > SAL_CALL OContentHelper::getParent(  )
@@ -586,7 +567,7 @@ void SAL_CALL OContentHelper::setParent( const Reference< XInterface >& _xParent
 void OContentHelper::impl_rename_throw(const OUString& _sNewName,bool _bNotify )
 {
     osl::ClearableGuard< osl::Mutex > aGuard(m_aMutex);
-    if ( _sNewName.equals( m_pImpl->m_aProps.aTitle ) )
+    if ( _sNewName == m_pImpl->m_aProps.aTitle )
         return;
     try
     {
@@ -621,7 +602,7 @@ void SAL_CALL OContentHelper::rename( const OUString& newName )
 
 void OContentHelper::notifyDataSourceModified()
 {
-    ::dbaccess::notifyDataSourceModified(m_xParentContainer,true);
+    ::dbaccess::notifyDataSourceModified(m_xParentContainer);
 }
 
 }   // namespace dbaccess

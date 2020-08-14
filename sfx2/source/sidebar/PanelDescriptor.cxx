@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/PanelDescriptor.hxx>
+#include <sidebar/PanelDescriptor.hxx>
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 PanelDescriptor::PanelDescriptor()
     : msTitle(),
@@ -28,7 +28,6 @@ PanelDescriptor::PanelDescriptor()
       msDeckId(),
       msTitleBarIconURL(),
       msHighContrastTitleBarIconURL(),
-      msHelpURL(),
       maContextList(),
       msImplementationURL(),
       mnOrderIndex(10000), // Default value as defined in Sidebar.xcs
@@ -45,7 +44,6 @@ PanelDescriptor::PanelDescriptor (const PanelDescriptor& rOther)
       msDeckId(rOther.msDeckId),
       msTitleBarIconURL(rOther.msTitleBarIconURL),
       msHighContrastTitleBarIconURL(rOther.msHighContrastTitleBarIconURL),
-      msHelpURL(rOther.msHelpURL),
       maContextList(rOther.maContextList),
       msImplementationURL(rOther.msImplementationURL),
       mnOrderIndex(rOther.mnOrderIndex),
@@ -59,6 +57,6 @@ PanelDescriptor::~PanelDescriptor()
 {
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -10,13 +10,14 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <osl/diagnose.h>
 
-#include "defaultsoptions.hxx"
-#include "miscuno.hxx"
-#include "global.hxx"
-#include "attrib.hxx"
-#include "scitems.hxx"
-#include "globstr.hrc"
-#include "sc.hrc"
+#include <defaultsoptions.hxx>
+#include <miscuno.hxx>
+#include <global.hxx>
+#include <attrib.hxx>
+#include <scitems.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <sc.hrc>
 
 using namespace utl;
 using namespace com::sun::star::uno;
@@ -27,49 +28,23 @@ ScDefaultsOptions::ScDefaultsOptions()
     SetDefaults();
 }
 
-ScDefaultsOptions::ScDefaultsOptions( const ScDefaultsOptions& rCpy ) :
-    nInitTabCount( rCpy.nInitTabCount ),
-    aInitTabPrefix( rCpy.aInitTabPrefix )
-{
-}
-
-ScDefaultsOptions::~ScDefaultsOptions()
-{
-}
-
 void ScDefaultsOptions::SetDefaults()
 {
     nInitTabCount  = 1;
-    aInitTabPrefix = ScGlobal::GetRscString(STR_TABLE_DEF); // Default Prefix "Sheet"
-}
-
-ScDefaultsOptions& ScDefaultsOptions::operator=( const ScDefaultsOptions& rCpy )
-{
-    nInitTabCount  = rCpy.nInitTabCount;
-    aInitTabPrefix = rCpy.aInitTabPrefix;
-
-    return *this;
+    aInitTabPrefix = ScResId(STR_TABLE_DEF); // Default Prefix "Sheet"
+    bJumboSheets = false;
 }
 
 bool ScDefaultsOptions::operator==( const ScDefaultsOptions& rOpt ) const
 {
     return rOpt.nInitTabCount  == nInitTabCount
-        && rOpt.aInitTabPrefix == aInitTabPrefix;
+        && rOpt.aInitTabPrefix == aInitTabPrefix
+        && rOpt.bJumboSheets == bJumboSheets;
 }
-
-ScTableListItem::ScTableListItem()
-    : SfxPoolItem(ATTR_PAGE_PRINTTABLES), nCount(0), pTabArr(nullptr)
-{}
 
 ScTpDefaultsItem::ScTpDefaultsItem( const ScDefaultsOptions& rOpt ) :
     SfxPoolItem ( SID_SCDEFAULTSOPTIONS ),
     theOptions  ( rOpt )
-{
-}
-
-ScTpDefaultsItem::ScTpDefaultsItem( const ScTpDefaultsItem& rItem ) :
-    SfxPoolItem ( rItem ),
-    theOptions  ( rItem.theOptions )
 {
 }
 
@@ -85,7 +60,7 @@ bool ScTpDefaultsItem::operator==( const SfxPoolItem& rItem ) const
     return ( theOptions == rPItem.theOptions );
 }
 
-SfxPoolItem* ScTpDefaultsItem::Clone( SfxItemPool * ) const
+ScTpDefaultsItem* ScTpDefaultsItem::Clone( SfxItemPool * ) const
 {
     return new ScTpDefaultsItem( *this );
 }
@@ -94,40 +69,48 @@ SfxPoolItem* ScTpDefaultsItem::Clone( SfxItemPool * ) const
 
 #define SCDEFAULTSOPT_TAB_COUNT  0
 #define SCDEFAULTSOPT_TAB_PREFIX 1
+#define SCDEFAULTSOPT_JUMBO_SHEETS 2
 
 Sequence<OUString> ScDefaultsCfg::GetPropertyNames()
 {
     return {"Sheet/SheetCount",   // SCDEFAULTSOPT_TAB_COUNT
-            "Sheet/SheetPrefix"}; // SCDEFAULTSOPT_TAB_PREFIX
+            "Sheet/SheetPrefix",  // SCDEFAULTSOPT_TAB_PREFIX
+            "Sheet/JumboSheets"};  // SCDEFAULTSOPT_JUMBO_SHEETS
+
 }
 
 ScDefaultsCfg::ScDefaultsCfg() :
     ConfigItem( CFGPATH_FORMULA )
 {
     OUString aPrefix;
+    bool bValue;
 
     Sequence<OUString> aNames = GetPropertyNames();
     Sequence<Any> aValues = GetProperties(aNames);
     const Any* pValues = aValues.getConstArray();
     OSL_ENSURE(aValues.getLength() == aNames.getLength(), "GetProperties failed");
-    if(aValues.getLength() == aNames.getLength())
+    if(aValues.getLength() != aNames.getLength())
+        return;
+
+    sal_Int32 nIntVal = 0;
+    for(int nProp = 0; nProp < aNames.getLength(); nProp++)
     {
-        sal_Int32 nIntVal = 0;
-        for(int nProp = 0; nProp < aNames.getLength(); nProp++)
+        if(pValues[nProp].hasValue())
         {
-            if(pValues[nProp].hasValue())
+            switch (nProp)
             {
-                switch (nProp)
-                {
-                case SCDEFAULTSOPT_TAB_COUNT:
-                    if (pValues[nProp] >>= nIntVal)
-                        SetInitTabCount( static_cast<SCTAB>(nIntVal) );
-                    break;
-                case SCDEFAULTSOPT_TAB_PREFIX:
-                    if (pValues[nProp] >>= aPrefix)
-                        SetInitTabPrefix(aPrefix);
-                    break;
-                }
+            case SCDEFAULTSOPT_TAB_COUNT:
+                if (pValues[nProp] >>= nIntVal)
+                    SetInitTabCount( static_cast<SCTAB>(nIntVal) );
+                break;
+            case SCDEFAULTSOPT_TAB_PREFIX:
+                if (pValues[nProp] >>= aPrefix)
+                    SetInitTabPrefix(aPrefix);
+                break;
+            case SCDEFAULTSOPT_JUMBO_SHEETS:
+                if (pValues[nProp] >>= bValue)
+                    SetInitJumboSheets(bValue);
+                break;
             }
         }
     }
@@ -148,6 +131,9 @@ void ScDefaultsCfg::ImplCommit()
         break;
         case SCDEFAULTSOPT_TAB_PREFIX:
             pValues[nProp] <<= GetInitTabPrefix();
+        break;
+        case SCDEFAULTSOPT_JUMBO_SHEETS:
+            pValues[nProp] <<= GetInitJumboSheets();
         break;
         }
     }

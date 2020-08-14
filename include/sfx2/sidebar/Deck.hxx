@@ -22,20 +22,21 @@
 #include <sfx2/sidebar/Panel.hxx>
 
 #include <vcl/window.hxx>
-#include <vcl/image.hxx>
-#include <com/sun/star/ui/LayoutSize.hpp>
 
 class ScrollBar;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 class DeckDescriptor;
 class DeckTitleBar;
 
 /** This is the parent window of the panels.
     It displays the deck title.
+
+    A deck consists of multiple panels.
+    E.g. Properties, Styles, Navigator.
 */
-class Deck : public vcl::Window
+class Deck final : public vcl::Window
 {
 public:
     Deck(const DeckDescriptor& rDeckDescriptor,
@@ -46,7 +47,7 @@ public:
 
     const OUString& GetId() const { return msId; }
 
-    VclPtr<DeckTitleBar> GetTitleBar() const;
+    VclPtr<DeckTitleBar> const & GetTitleBar() const;
     tools::Rectangle GetContentArea() const;
     void ResetPanels (const SharedPanelContainer& rPanels);
     const SharedPanelContainer& GetPanels() const  { return maPanels; }
@@ -66,12 +67,15 @@ public:
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rUpdateArea) override;
     virtual void DataChanged (const DataChangedEvent& rEvent) override;
     virtual bool EventNotify(NotifyEvent& rEvent) override;
+    virtual void Resize() override;
+
+    virtual void DumpAsPropertyTree(tools::JsonWriter&) override;
 
     static void PrintWindowSubTree (vcl::Window* pRoot, int nIndentation);
 
     sal_Int32 GetMinimalWidth() const { return mnMinimalWidth; }
 
-    class ScrollContainerWindow : public vcl::Window
+    class ScrollContainerWindow final : public vcl::Window
     {
     public:
         ScrollContainerWindow(vcl::Window* pParentWindow);
@@ -82,8 +86,12 @@ public:
     };
 
 private:
+    void RequestLayoutInternal();
+
+private:
     const OUString msId;
     sal_Int32 mnMinimalWidth;
+    sal_Int32 mnMinimalHeight;
     SharedPanelContainer maPanels;
     VclPtr<DeckTitleBar> mpTitleBar;
     VclPtr<vcl::Window> mpScrollClipWindow;
@@ -92,11 +100,11 @@ private:
     VclPtr<ScrollBar> mpVerticalScrollBar;
 
     DECL_LINK(HandleVerticalScrollBarChange, ScrollBar*, void);
-    bool ProcessWheelEvent(CommandEvent* pCommandEvent);
+    bool ProcessWheelEvent(CommandEvent const * pCommandEvent);
 
 };
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

@@ -22,18 +22,19 @@
 
 #include <oox/core/contexthandler2.hxx>
 
-namespace oox {
-namespace drawingml {
+#include <vector>
+
+namespace oox::drawingml {
 
 class Color;
 
 
 /** Context handler for the different color value elements (a:scrgbClr,
     a:srgbClr, a:hslClr, a:sysClr, a:schemeClr, a:prstClr). */
-class ColorValueContext : public ::oox::core::ContextHandler2
+class ColorValueContext final : public ::oox::core::ContextHandler2
 {
 public:
-    explicit            ColorValueContext( ::oox::core::ContextHandler2Helper& rParent, Color& rColor );
+    explicit            ColorValueContext( ::oox::core::ContextHandler2Helper const & rParent, Color& rColor );
 
 
     virtual void onStartElement(
@@ -54,7 +55,7 @@ private:
 class ColorContext : public ::oox::core::ContextHandler2
 {
 public:
-    explicit            ColorContext( ::oox::core::ContextHandler2Helper& rParent, Color& rColor );
+    explicit            ColorContext( ::oox::core::ContextHandler2Helper const & rParent, Color& rColor );
 
     virtual ::oox::core::ContextHandlerRef
                         onCreateContext(
@@ -65,9 +66,21 @@ private:
     Color&              mrColor;
 };
 
+/// Same as ColorContext, but handles multiple colors.
+class ColorsContext : public ::oox::core::ContextHandler2
+{
+public:
+    explicit ColorsContext(::oox::core::ContextHandler2Helper const& rParent,
+                           std::vector<Color>& rColors);
 
-} // namespace drawingml
-} // namespace oox
+    virtual ::oox::core::ContextHandlerRef
+    onCreateContext(sal_Int32 nElement, const ::oox::AttributeList& rAttribs) override;
+
+private:
+    std::vector<Color>& mrColors;
+};
+
+} // namespace oox::drawingml
 
 #endif
 

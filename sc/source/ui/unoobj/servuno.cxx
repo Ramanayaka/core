@@ -23,35 +23,35 @@
 #include <sal/macros.h>
 #include <svtools/unoimap.hxx>
 #include <svx/unofill.hxx>
-#include <editeng/unonrule.hxx>
+#include <vcl/svapp.hxx>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/text/textfield/Type.hpp>
 
-#include "servuno.hxx"
-#include "unonames.hxx"
-#include "cellsuno.hxx"
-#include "fielduno.hxx"
-#include "styleuno.hxx"
-#include "afmtuno.hxx"
-#include "defltuno.hxx"
-#include "drdefuno.hxx"
-#include "docsh.hxx"
-#include "drwlayer.hxx"
-#include "confuno.hxx"
-#include "shapeuno.hxx"
+#include <editsrc.hxx>
+#include <servuno.hxx>
+#include <unonames.hxx>
+#include <appluno.hxx>
+#include <cellsuno.hxx>
+#include <fielduno.hxx>
+#include <styleuno.hxx>
+#include <afmtuno.hxx>
+#include <defltuno.hxx>
+#include <drdefuno.hxx>
+#include <docsh.hxx>
+#include <drwlayer.hxx>
+#include <confuno.hxx>
+#include <shapeuno.hxx>
 #include "cellvaluebinding.hxx"
 #include "celllistsource.hxx"
-#include "addruno.hxx"
-#include "chart2uno.hxx"
-#include "tokenuno.hxx"
-#include "PivotTableDataProvider.hxx"
+#include <addruno.hxx>
+#include <chart2uno.hxx>
+#include <tokenuno.hxx>
+#include <PivotTableDataProvider.hxx>
 
-// Support creation of GraphicObjectResolver and EmbeddedObjectResolver
+// Support creation of GraphicStorageHandler and EmbeddedObjectResolver
 #include <svx/xmleohlp.hxx>
 #include <svx/xmlgrhlp.hxx>
-#include <sfx2/docfile.hxx>
-#include <sfx2/docfilt.hxx>
 #include <com/sun/star/script/vba/XVBAEventProcessor.hpp>
 #include <com/sun/star/document/XCodeNameQuery.hpp>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
@@ -63,13 +63,14 @@
 #include <basic/basmgr.hxx>
 #include <sfx2/app.hxx>
 
-#include <cppuhelper/component_context.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/script/vba/XVBACompatibility.hpp>
 
 using namespace ::com::sun::star;
 
-bool isInVBAMode( ScDocShell& rDocSh )
+#if HAVE_FEATURE_SCRIPTING
+
+static bool isInVBAMode( ScDocShell& rDocSh )
 {
     uno::Reference<script::XLibraryContainer> xLibContainer = rDocSh.GetBasicContainer();
     uno::Reference<script::vba::XVBACompatibility> xVBACompat( xLibContainer, uno::UNO_QUERY );
@@ -77,6 +78,10 @@ bool isInVBAMode( ScDocShell& rDocSh )
         return xVBACompat->getVBACompatibilityMode();
     return false;
 }
+
+#endif
+
+namespace {
 
 class ScVbaObjectForCodeNameProvider : public ::cppu::WeakImplHelper< container::XNameAccess >
 {
@@ -119,14 +124,14 @@ public:
                     {
                         uno::Reference< frame::XModel > xModel( mpDocShell->GetModel() );
                         uno::Reference <sheet::XSpreadsheetDocument> xSpreadDoc( xModel, uno::UNO_QUERY_THROW );
-                        uno::Reference<sheet::XSpreadsheets > xSheets( xSpreadDoc->getSheets(), uno::UNO_QUERY_THROW );
+                        uno::Reference<sheet::XSpreadsheets > xSheets( xSpreadDoc->getSheets(), uno::UNO_SET_THROW );
                         uno::Reference< container::XIndexAccess > xIndexAccess( xSheets, uno::UNO_QUERY_THROW );
                         uno::Reference< sheet::XSpreadsheet > xSheet( xIndexAccess->getByIndex( i ), uno::UNO_QUERY_THROW );
                         uno::Sequence< uno::Any > aArgs(3);
                         aArgs[0] = maWorkbook;
                         aArgs[1] <<= xModel;
                         aArgs[2] <<= sSheetName;
-                        // use the convience function
+                        // use the convenience function
                         maCachedObject <<= ooo::vba::createVBAUnoAPIServiceWithArgs( mpDocShell, "ooo.vba.excel.Worksheet", aArgs );
                         break;
                     }
@@ -237,8 +242,6 @@ public:
     }
 };
 
-namespace {
-
 using Type = ScServiceProvider::Type;
 
 struct ProvNamesId_Type
@@ -262,7 +265,11 @@ const ProvNamesId_Type aProvNamesId[] =
     { "com.sun.star.style.CellStyle",                   Type::CELLSTYLE },
     { "com.sun.star.style.PageStyle",                   Type::PAGESTYLE },
     { "com.sun.star.sheet.TableAutoFormat",             Type::AUTOFORMAT },
+    { "com.sun.star.sheet.TableAutoFormats",            Type::AUTOFORMATS },
     { "com.sun.star.sheet.SheetCellRanges",             Type::CELLRANGES },
+    { "com.sun.star.sheet.FunctionDescriptions",        Type::FUNCTIONDESCRIPTIONS },
+    { "com.sun.star.sheet.GlobalSheetSettings",         Type::GLOBALSHEETSETTINGS },
+    { "com.sun.star.sheet.RecentFunctions",             Type::RECENTFUNCTIONS },
     { "com.sun.star.drawing.GradientTable",             Type::GRADTAB },
     { "com.sun.star.drawing.HatchTable",                Type::HATCHTAB },
     { "com.sun.star.drawing.BitmapTable",               Type::BITMAPTAB },
@@ -278,9 +285,9 @@ const ProvNamesId_Type aProvNamesId[] =
     { "com.sun.star.image.ImageMapCircleObject",        Type::IMAP_CIRC },
     { "com.sun.star.image.ImageMapPolygonObject",       Type::IMAP_POLY },
 
-    // Support creation of GraphicObjectResolver and EmbeddedObjectResolver
-    { "com.sun.star.document.ExportGraphicObjectResolver",  Type::EXPORT_GOR },
-    { "com.sun.star.document.ImportGraphicObjectResolver",  Type::IMPORT_GOR },
+    // Support creation of GraphicStorageHandler and EmbeddedObjectResolver
+    { "com.sun.star.document.ExportGraphicStorageHandler",  Type::EXPORT_GRAPHIC_STORAGE_HANDLER },
+    { "com.sun.star.document.ImportGraphicStorageHandler",  Type::IMPORT_GRAPHIC_STORAGE_HANDLER },
     { "com.sun.star.document.ExportEmbeddedObjectResolver", Type::EXPORT_EOR },
     { "com.sun.star.document.ImportEmbeddedObjectResolver", Type::IMPORT_EOR },
 
@@ -420,11 +427,23 @@ uno::Reference<uno::XInterface> ScServiceProvider::MakeInstance(
         case Type::AUTOFORMAT:
             xRet.set(static_cast<container::XIndexAccess*>(new ScAutoFormatObj( SC_AFMTOBJ_INVALID )));
             break;
+        case Type::AUTOFORMATS:
+            xRet.set(static_cast<container::XIndexAccess*>(new ScAutoFormatsObj()));
+            break;
         case Type::CELLRANGES:
             //  isn't inserted, rather filled
             //  -> DocShell must be set, but empty ranges
             if (pDocShell)
                 xRet.set(static_cast<sheet::XSheetCellRanges*>(new ScCellRangesObj( pDocShell, ScRangeList() )));
+            break;
+        case Type::FUNCTIONDESCRIPTIONS:
+            xRet.set(static_cast<sheet::XFunctionDescriptions*>(new ScFunctionListObj()));
+            break;
+        case Type::GLOBALSHEETSETTINGS:
+            xRet.set(static_cast<sheet::XGlobalSheetSettings*>(new ScSpreadsheetSettings()));
+            break;
+        case Type::RECENTFUNCTIONS:
+            xRet.set(static_cast<sheet::XRecentFunctions*>(new ScRecentFunctionsObj()));
             break;
         case Type::DOCDEFLTS:
             if (pDocShell)
@@ -483,11 +502,11 @@ uno::Reference<uno::XInterface> ScServiceProvider::MakeInstance(
             xRet.set(SvUnoImageMapPolygonObject_createInstance( ScShapeObj::GetSupportedMacroItems() ));
             break;
 
-        // Support creation of GraphicObjectResolver and EmbeddedObjectResolver
-        case Type::EXPORT_GOR:
+        // Support creation of GraphicStorageHandler and EmbeddedObjectResolver
+        case Type::EXPORT_GRAPHIC_STORAGE_HANDLER:
             xRet.set(static_cast<cppu::OWeakObject *>(new SvXMLGraphicHelper( SvXMLGraphicHelperMode::Write )));
             break;
-        case Type::IMPORT_GOR:
+        case Type::IMPORT_GRAPHIC_STORAGE_HANDLER:
             xRet.set(static_cast<cppu::OWeakObject *>(new SvXMLGraphicHelper( SvXMLGraphicHelperMode::Read )));
             break;
         case Type::EXPORT_EOR:

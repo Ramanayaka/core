@@ -20,15 +20,15 @@
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventListener.hpp>
 #include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <cppuhelper/supportsservice.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <toolkit/awt/vclxaccessiblecomponent.hxx>
 #include <toolkit/awt/vclxwindow.hxx>
 #include <toolkit/helper/convert.hxx>
 #include <toolkit/awt/vclxfont.hxx>
-#include <vcl/dialog.hxx>
+#include <vcl/toolkit/dialog.hxx>
 #include <vcl/vclevent.hxx>
 #include <vcl/window.hxx>
 #include <vcl/edit.hxx>
@@ -84,7 +84,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER3( VCLXAccessibleComponent, OAccessibleExtendedCo
 
 OUString VCLXAccessibleComponent::getImplementationName()
 {
-    return OUString("com.sun.star.comp.toolkit.AccessibleWindow");
+    return "com.sun.star.comp.toolkit.AccessibleWindow";
 }
 
 sal_Bool VCLXAccessibleComponent::supportsService( const OUString& rServiceName )
@@ -122,7 +122,7 @@ IMPL_LINK( VCLXAccessibleComponent, WindowChildEventListener, VclWindowEvent&, r
         if( !rEvent.GetWindow()->IsAccessibilityEventsSuppressed() )
         {
             // #103087# to prevent an early release of the component
-            uno::Reference< accessibility::XAccessibleContext > xTmp = this;
+            uno::Reference< accessibility::XAccessibleContext > xHoldAlive = this;
 
             ProcessWindowChildEvent( rEvent );
         }
@@ -201,12 +201,13 @@ void VCLXAccessibleComponent::ProcessWindowEvent( const VclWindowEvent& rVclWind
         break;
         case VclEventId::WindowActivate:
         {
+            sal_Int16 aAccessibleRole = getAccessibleRole();
             // avoid notification if a child frame is already active
             // only one frame may be active at a given time
             if ( !pAccWindow->HasActiveChildFrame() &&
-                 ( getAccessibleRole() == accessibility::AccessibleRole::FRAME ||
-                   getAccessibleRole() == accessibility::AccessibleRole::ALERT ||
-                   getAccessibleRole() == accessibility::AccessibleRole::DIALOG ) )  // #i18891#
+                 ( aAccessibleRole == accessibility::AccessibleRole::FRAME ||
+                   aAccessibleRole == accessibility::AccessibleRole::ALERT ||
+                   aAccessibleRole == accessibility::AccessibleRole::DIALOG ) )  // #i18891#
             {
                 aNewValue <<= accessibility::AccessibleStateType::ACTIVE;
                 NotifyAccessibleEvent( accessibility::AccessibleEventId::STATE_CHANGED, aOldValue, aNewValue );
@@ -215,9 +216,10 @@ void VCLXAccessibleComponent::ProcessWindowEvent( const VclWindowEvent& rVclWind
         break;
         case VclEventId::WindowDeactivate:
         {
-            if ( getAccessibleRole() == accessibility::AccessibleRole::FRAME ||
-                 getAccessibleRole() == accessibility::AccessibleRole::ALERT ||
-                 getAccessibleRole() == accessibility::AccessibleRole::DIALOG )  // #i18891#
+            sal_Int16 aAccessibleRole = getAccessibleRole();
+            if ( aAccessibleRole == accessibility::AccessibleRole::FRAME ||
+                 aAccessibleRole == accessibility::AccessibleRole::ALERT ||
+                 aAccessibleRole == accessibility::AccessibleRole::DIALOG )  // #i18891#
             {
                 aOldValue <<= accessibility::AccessibleStateType::ACTIVE;
                 NotifyAccessibleEvent( accessibility::AccessibleEventId::STATE_CHANGED, aOldValue, aNewValue );
@@ -350,28 +352,28 @@ VclPtr<vcl::Window> VCLXAccessibleComponent::GetWindow() const
 void VCLXAccessibleComponent::FillAccessibleRelationSet( utl::AccessibleRelationSetHelper& rRelationSet )
 {
     VclPtr<vcl::Window> pWindow = GetWindow();
-    if ( pWindow )
+    if ( !pWindow )
+        return;
+
+    vcl::Window *pLabeledBy = pWindow->GetAccessibleRelationLabeledBy();
+    if ( pLabeledBy && pLabeledBy != pWindow )
     {
-        vcl::Window *pLabeledBy = pWindow->GetAccessibleRelationLabeledBy();
-        if ( pLabeledBy && pLabeledBy != pWindow )
-        {
-            uno::Sequence< uno::Reference< uno::XInterface > > aSequence { pLabeledBy->GetAccessible() };
-            rRelationSet.AddRelation( accessibility::AccessibleRelation( accessibility::AccessibleRelationType::LABELED_BY, aSequence ) );
-        }
+        uno::Sequence< uno::Reference< uno::XInterface > > aSequence { pLabeledBy->GetAccessible() };
+        rRelationSet.AddRelation( accessibility::AccessibleRelation( accessibility::AccessibleRelationType::LABELED_BY, aSequence ) );
+    }
 
-        vcl::Window* pLabelFor = pWindow->GetAccessibleRelationLabelFor();
-        if ( pLabelFor && pLabelFor != pWindow )
-        {
-            uno::Sequence< uno::Reference< uno::XInterface > > aSequence { pLabelFor->GetAccessible() };
-            rRelationSet.AddRelation( accessibility::AccessibleRelation( accessibility::AccessibleRelationType::LABEL_FOR, aSequence ) );
-        }
+    vcl::Window* pLabelFor = pWindow->GetAccessibleRelationLabelFor();
+    if ( pLabelFor && pLabelFor != pWindow )
+    {
+        uno::Sequence< uno::Reference< uno::XInterface > > aSequence { pLabelFor->GetAccessible() };
+        rRelationSet.AddRelation( accessibility::AccessibleRelation( accessibility::AccessibleRelationType::LABEL_FOR, aSequence ) );
+    }
 
-        vcl::Window* pMemberOf = pWindow->GetAccessibleRelationMemberOf();
-        if ( pMemberOf && pMemberOf != pWindow )
-        {
-            uno::Sequence< uno::Reference< uno::XInterface > > aSequence { pMemberOf->GetAccessible() };
-            rRelationSet.AddRelation( accessibility::AccessibleRelation( accessibility::AccessibleRelationType::MEMBER_OF, aSequence ) );
-        }
+    vcl::Window* pMemberOf = pWindow->GetAccessibleRelationMemberOf();
+    if ( pMemberOf && pMemberOf != pWindow )
+    {
+        uno::Sequence< uno::Reference< uno::XInterface > > aSequence { pMemberOf->GetAccessible() };
+        rRelationSet.AddRelation( accessibility::AccessibleRelation( accessibility::AccessibleRelationType::MEMBER_OF, aSequence ) );
     }
 }
 
@@ -503,7 +505,7 @@ uno::Reference< accessibility::XAccessible > VCLXAccessibleComponent::getAccessi
     uno::Reference< accessibility::XAccessible > xAcc;
     if ( GetWindow() )
     {
-        vcl::Window* pChild = GetWindow()->GetAccessibleChildWindow( (sal_uInt16)i );
+        vcl::Window* pChild = GetWindow()->GetAccessibleChildWindow( static_cast<sal_uInt16>(i) );
         if ( pChild )
             xAcc = pChild->GetAccessible();
     }
@@ -527,10 +529,8 @@ uno::Reference< accessibility::XAccessible > VCLXAccessibleComponent::getAccessi
 {
     OExternalLockGuard aGuard( this );
 
-    uno::Reference< accessibility::XAccessible > xAcc( implGetForeignControlledParent() );
-    if ( !xAcc.is() )
-        // we do _not_ have a foreign-controlled parent -> default to our VCL parent
-        xAcc = getVclParent();
+    // we do _not_ have a foreign-controlled parent -> default to our VCL parent
+    uno::Reference< accessibility::XAccessible > xAcc = getVclParent();
 
     return xAcc;
 }
@@ -541,39 +541,30 @@ sal_Int32 VCLXAccessibleComponent::getAccessibleIndexInParent(  )
 
     sal_Int32 nIndex = -1;
 
-    uno::Reference< accessibility::XAccessible > xAcc( implGetForeignControlledParent() );
-    if ( xAcc.is() )
-    {   // we _do_ have a foreign-controlled parent -> use the base class' implementation,
-        // which goes the UNO way
-        nIndex = OAccessibleExtendedComponentHelper::getAccessibleIndexInParent( );
-    }
-    else
+    if ( GetWindow() )
     {
-        if ( GetWindow() )
+        vcl::Window* pParent = GetWindow()->GetAccessibleParentWindow();
+        if ( pParent )
         {
-            vcl::Window* pParent = GetWindow()->GetAccessibleParentWindow();
-            if ( pParent )
+            //  Iterate over all the parent's children and search for this object.
+            // this should be compatible with the code in SVX
+            uno::Reference< accessibility::XAccessible > xParentAcc( pParent->GetAccessible() );
+            if ( xParentAcc.is() )
             {
-                //  Iterate over all the parent's children and search for this object.
-                // this should be compatible with the code in SVX
-                uno::Reference< accessibility::XAccessible > xParentAcc( pParent->GetAccessible() );
-                if ( xParentAcc.is() )
+                uno::Reference< accessibility::XAccessibleContext > xParentContext ( xParentAcc->getAccessibleContext() );
+                if ( xParentContext.is() )
                 {
-                    uno::Reference< accessibility::XAccessibleContext > xParentContext ( xParentAcc->getAccessibleContext() );
-                    if ( xParentContext.is() )
+                    sal_Int32 nChildCount = xParentContext->getAccessibleChildCount();
+                    for ( sal_Int32 i=0; i<nChildCount; i++ )
                     {
-                        sal_Int32 nChildCount = xParentContext->getAccessibleChildCount();
-                        for ( sal_Int32 i=0; i<nChildCount; i++ )
+                        uno::Reference< accessibility::XAccessible > xChild( xParentContext->getAccessibleChild(i) );
+                        if ( xChild.is() )
                         {
-                            uno::Reference< accessibility::XAccessible > xChild( xParentContext->getAccessibleChild(i) );
-                            if ( xChild.is() )
+                            uno::Reference< accessibility::XAccessibleContext > xChildContext = xChild->getAccessibleContext();
+                            if ( xChildContext == static_cast<accessibility::XAccessibleContext*>(this) )
                             {
-                                uno::Reference< accessibility::XAccessibleContext > xChildContext = xChild->getAccessibleContext();
-                                if ( xChildContext == static_cast<accessibility::XAccessibleContext*>(this) )
-                                {
-                                    nIndex = i;
-                                    break;
-                                }
+                                nIndex = i;
+                                break;
                             }
                         }
                     }
@@ -617,12 +608,23 @@ OUString VCLXAccessibleComponent::getAccessibleName(  )
     {
         aName = GetWindow()->GetAccessibleName();
 #if OSL_DEBUG_LEVEL > 0
-        aName += " (Type = ";
-        aName += OUString::number(static_cast<sal_Int32>(GetWindow()->GetType()));
-        aName += ")";
+        aName += " (Type = " + OUString::number(static_cast<sal_Int32>(GetWindow()->GetType())) + ")";
 #endif
     }
     return aName;
+}
+
+OUString VCLXAccessibleComponent::getAccessibleId(  )
+{
+    OExternalLockGuard aGuard( this );
+
+    OUString aId;
+    if ( GetWindow() )
+    {
+        const OUString &aWindowId = GetWindow()->get_id();
+        aId = aWindowId;
+    }
+    return aId;
 }
 
 uno::Reference< accessibility::XAccessibleRelationSet > VCLXAccessibleComponent::getAccessibleRelationSet(  )
@@ -699,36 +701,6 @@ awt::Rectangle VCLXAccessibleComponent::implGetBounds()
         }
     }
 
-    uno::Reference< accessibility::XAccessible > xParent( implGetForeignControlledParent() );
-    if ( xParent.is() )
-    {   // hmm, we can't rely on our VCL coordinates, as in the Accessibility Hierarchy, somebody gave
-        // us a parent which is different from our VCL parent
-        // (actually, we did not check if it's really different ...)
-
-        // the screen location of the foreign parent
-        uno::Reference< accessibility::XAccessibleComponent > xParentComponent( xParent->getAccessibleContext(), uno::UNO_QUERY );
-        DBG_ASSERT( xParentComponent.is(), "VCLXAccessibleComponent::implGetBounds: invalid (foreign) parent component!" );
-
-        awt::Point aScreenLocForeign( 0, 0 );
-        if ( xParentComponent.is() )
-            aScreenLocForeign = xParentComponent->getLocationOnScreen();
-
-        // the screen location of the VCL parent
-        xParent = getVclParent();
-        if ( xParent.is() )
-            xParentComponent.set(xParent->getAccessibleContext(), css::uno::UNO_QUERY);
-
-        awt::Point aScreenLocVCL( 0, 0 );
-        if ( xParentComponent.is() )
-            aScreenLocVCL = xParentComponent->getLocationOnScreen();
-
-        // the difference between them
-        awt::Size aOffset( aScreenLocVCL.X - aScreenLocForeign.X, aScreenLocVCL.Y - aScreenLocForeign.Y );
-        // move the bounds
-        aBounds.X += aOffset.Width;
-        aBounds.Y += aOffset.Height;
-    }
-
     return aBounds;
 }
 
@@ -760,12 +732,12 @@ sal_Int32 SAL_CALL VCLXAccessibleComponent::getForeground(  )
 {
     OExternalLockGuard aGuard( this );
 
-    sal_Int32 nColor = 0;
+    Color nColor;
     VclPtr<vcl::Window> pWindow = GetWindow();
     if ( pWindow )
     {
         if ( pWindow->IsControlForeground() )
-            nColor = pWindow->GetControlForeground().GetColor();
+            nColor = pWindow->GetControlForeground();
         else
         {
             vcl::Font aFont;
@@ -773,31 +745,31 @@ sal_Int32 SAL_CALL VCLXAccessibleComponent::getForeground(  )
                 aFont = pWindow->GetControlFont();
             else
                 aFont = pWindow->GetFont();
-            nColor = aFont.GetColor().GetColor();
+            nColor = aFont.GetColor();
             // COL_AUTO is not very meaningful for AT
-            if ( nColor == (sal_Int32)COL_AUTO)
-                nColor = pWindow->GetTextColor().GetColor();
+            if ( nColor == COL_AUTO)
+                nColor = pWindow->GetTextColor();
         }
     }
 
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 sal_Int32 SAL_CALL VCLXAccessibleComponent::getBackground(  )
 {
     OExternalLockGuard aGuard( this );
 
-    sal_Int32 nColor = 0;
+    Color nColor;
     VclPtr<vcl::Window> pWindow = GetWindow();
     if ( pWindow )
     {
         if ( pWindow->IsControlBackground() )
-            nColor = pWindow->GetControlBackground().GetColor();
+            nColor = pWindow->GetControlBackground();
         else
-            nColor = pWindow->GetBackground().GetColor().GetColor();
+            nColor = pWindow->GetBackground().GetColor();
     }
 
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 // XAccessibleExtendedComponent
@@ -819,7 +791,7 @@ uno::Reference< awt::XFont > SAL_CALL VCLXAccessibleComponent::getFont(  )
             else
                 aFont = pWindow->GetFont();
             VCLXFont* pVCLXFont = new VCLXFont;
-            pVCLXFont->Init( *xDev.get(), aFont );
+            pVCLXFont->Init( *xDev, aFont );
             xFont = pVCLXFont;
         }
     }

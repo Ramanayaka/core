@@ -27,12 +27,13 @@ class EditTextObject;
 struct ESelection;
 class ScEditEngineDefaulter;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace text { class XText; }
-} } }
+}
 
-namespace oox {
-namespace xls {
+namespace oox { class SequenceInputStream; }
+
+namespace oox::xls {
 
 /** Contains text data and font attributes for a part of a rich formatted string. */
 class RichStringPortion : public WorkbookHelper
@@ -53,7 +54,7 @@ public:
     /** Returns the text data of this portion. */
     const OUString& getText() const { return maText; }
     /** Returns true, if the portion contains font formatting. */
-    bool         hasFont() const { return mxFont.get() != nullptr; }
+    bool         hasFont() const { return bool(mxFont); }
 
     /** Converts the portion and replaces or appends to the passed XText. */
     void                convert(
@@ -68,7 +69,7 @@ private:
     OUString            maText;         /// Portion text.
     FontRef             mxFont;         /// Embedded portion font, may be empty.
     sal_Int32           mnFontId;       /// Link to global font list.
-    bool                mbConverted;    /// Without repeatly convert
+    bool                mbConverted;    /// Without repeatedly convert
 };
 
 typedef std::shared_ptr< RichStringPortion > RichStringPortionRef;
@@ -211,9 +212,9 @@ public:
     explicit            RichString( const WorkbookHelper& rHelper );
 
     /** Appends and returns a portion object for a plain string (t element). */
-    RichStringPortionRef importText( const AttributeList& rAttribs );
+    RichStringPortionRef importText();
     /** Appends and returns a portion object for a new formatting run (r element). */
-    RichStringPortionRef importRun( const AttributeList& rAttribs );
+    RichStringPortionRef importRun();
     /** Appends and returns a phonetic text object for a new phonetic run (rPh element). */
     RichStringPhoneticRef importPhoneticRun( const AttributeList& rAttribs );
     /** Imports phonetic settings from the rPhoneticPr element. */
@@ -235,7 +236,7 @@ public:
         @param rxText  The XText interface of the target object.
      */
     void                convert( const css::uno::Reference< css::text::XText >& rxText ) const;
-    ::EditTextObject*   convert( ScEditEngineDefaulter& rEE, const oox::xls::Font* pFont ) const;
+    std::unique_ptr<EditTextObject> convert( ScEditEngineDefaulter& rEE, const oox::xls::Font* pFont ) const;
 
 private:
     /** Creates, appends, and returns a new empty string portion. */
@@ -259,8 +260,7 @@ private:
 
 typedef std::shared_ptr< RichString > RichStringRef;
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

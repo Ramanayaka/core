@@ -7,6 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef LO_CLANG_SHARED_PLUGINS
+
 #include <string>
 #include <iostream>
 #include <map>
@@ -19,16 +21,18 @@
  * Check for data member being shadowed.
  *
  * @TODO check for any members in superclass hierarchy with duplicate names,
+ *       regardless of their visibility,
  *       more specific names will make the code easier to read
  */
 namespace
 {
 
 class DataMemberShadow:
-    public RecursiveASTVisitor<DataMemberShadow>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<DataMemberShadow>
 {
 public:
-    explicit DataMemberShadow(InstantiationData const & data): Plugin(data) {}
+    explicit DataMemberShadow(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     virtual void run() override {
         TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
@@ -42,58 +46,21 @@ bool DataMemberShadow::VisitFieldDecl(FieldDecl const * fieldDecl)
     if (ignoreLocation(fieldDecl)) {
         return true;
     }
-    StringRef aFileName = compiler.getSourceManager().getFilename(
-            compiler.getSourceManager().getSpellingLoc(fieldDecl->getLocStart()));
+    StringRef aFileName = getFilenameOfLocation(
+        compiler.getSourceManager().getSpellingLoc(compat::getBeginLoc(fieldDecl)));
 
     // FIXME complex stuff to fix later
 
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/connectivity/source/inc/calc/CTable.hxx"))
-        return true;
     if (loplugin::hasPathnamePrefix(aFileName, SRCDIR "/chart2/source/"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/cppcanvas/source/mtfrenderer/emfplus.cxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/cui/source/customize/eventdlg.hxx"))
         return true;
     if (loplugin::isSamePathname(aFileName, SRCDIR "/include/sfx2/recentdocsview.hxx"))
         return true;
     if (loplugin::isSamePathname(aFileName, SRCDIR "/include/sfx2/templatelocalview.hxx"))
         return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/filter/source/graphicfilter/idxf/dxfentrd.hxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/framework/source/uielement/popuptoolbarcontroller.cxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/lotuswordpro/source/filter/xfilter/xfcellstyle.hxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/lotuswordpro/source/filter/xfilter/xfdrawobj.hxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/sc/source/ui/vba/vbastyles.hxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/sd/inc/Outliner.hxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/sd/source/ui/annotations/annotationtag.cxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/sd/source/ui/inc/FrameView.hxx")
-        || loplugin::isSamePathname(aFileName, SRCDIR "/sd/source/filter/ppt/../../ui/inc/FrameView.hxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/sd/source/ui/inc/unopage.hxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/sd/source/ui/view/viewoverlaymanager.cxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/sdext/source/presenter/PresenterSpritePane.hxx"))
-        return true;
     if (loplugin::isSamePathname(aFileName, SRCDIR "/store/source/stortree.hxx")
         || loplugin::isSamePathname(aFileName, SRCDIR "/store/source/stordata.hxx"))
         return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/svx/source/table/cell.hxx")
-        || loplugin::isSamePathname(aFileName, SRCDIR "/svx/source/unodraw/../table/cell.hxx")
-        || loplugin::isSamePathname(aFileName, SRCDIR "/svx/source/accessibility/../table/cell.hxx"))
-        return true;
     if (loplugin::isSamePathname(aFileName, SRCDIR "/sw/source/uibase/inc/dbtree.hxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/vcl/unx/generic/print/genpspgraphics.cxx"))
-        return true;
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/xmloff/source/draw/ximplink.hxx"))
         return true;
 
     const CXXRecordDecl* parentCXXRecordDecl = dyn_cast<CXXRecordDecl>(fieldDecl->getDeclContext());
@@ -102,8 +69,6 @@ bool DataMemberShadow::VisitFieldDecl(FieldDecl const * fieldDecl)
     }
 
     fieldDecl = fieldDecl->getCanonicalDecl();
-
-#if CLANG_VERSION >= 30800
 
     auto BaseMatchesCallback = [&](const CXXBaseSpecifier *cxxBaseSpecifier, CXXBasePath& Paths)
     {
@@ -116,6 +81,8 @@ bool DataMemberShadow::VisitFieldDecl(FieldDecl const * fieldDecl)
             return false;
         for (const FieldDecl* baseFieldDecl : baseCXXRecordDecl->fields())
         {
+            // TODO look for overlaps even with private fields
+
             if (baseFieldDecl->getAccess() == AS_private
                 || !baseFieldDecl->getDeclName().isIdentifier()
                 || fieldDecl->getName() != baseFieldDecl->getName()) {
@@ -132,13 +99,13 @@ bool DataMemberShadow::VisitFieldDecl(FieldDecl const * fieldDecl)
             sPath += baseCXXRecordDecl->getNameAsString();
             report(DiagnosticsEngine::Warning,
                     "data member %0 is shadowing member in superclass, through inheritance path %1",
-                    fieldDecl->getLocStart())
+                    compat::getBeginLoc(fieldDecl))
                 << fieldDecl->getName()
                 << sPath
                 << fieldDecl->getSourceRange();
             report(DiagnosticsEngine::Note,
                     "superclass member here",
-                    baseFieldDecl->getLocStart())
+                    compat::getBeginLoc(baseFieldDecl))
                 << baseFieldDecl->getSourceRange();
         }
         return false;
@@ -146,12 +113,13 @@ bool DataMemberShadow::VisitFieldDecl(FieldDecl const * fieldDecl)
 
     CXXBasePaths aPaths;
     parentCXXRecordDecl->lookupInBases(BaseMatchesCallback, aPaths);
-#endif
     return true;
 }
 
-loplugin::Plugin::Registration< DataMemberShadow > X("datamembershadow", true);
+loplugin::Plugin::Registration< DataMemberShadow > datamembershadow("datamembershadow", true);
 
 }
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

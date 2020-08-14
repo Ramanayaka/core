@@ -18,14 +18,11 @@
  */
 
 #include <sdr/properties/e3dlatheproperties.hxx>
-#include <svl/itemset.hxx>
 #include <svx/lathe3d.hxx>
 
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         E3dLatheProperties::E3dLatheProperties(SdrObject& rObj)
         :   E3dCompoundProperties(rObj)
         {
@@ -40,9 +37,9 @@ namespace sdr
         {
         }
 
-        BaseProperties& E3dLatheProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> E3dLatheProperties::Clone(SdrObject& rObj) const
         {
-            return *(new E3dLatheProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new E3dLatheProperties(*this, rObj));
         }
 
         void E3dLatheProperties::PostItemChange(const sal_uInt16 nWhich)
@@ -82,7 +79,6 @@ namespace sdr
                 }
             }
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

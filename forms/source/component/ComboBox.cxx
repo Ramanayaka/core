@@ -19,31 +19,21 @@
 
 
 #include "ComboBox.hxx"
-#include "property.hxx"
-#include "property.hrc"
-#include "services.hxx"
+#include <property.hxx>
+#include <services.hxx>
 
-#include "frm_resource.hxx"
-#include "frm_resource.hrc"
+#include <frm_resource.hxx>
+#include <strings.hrc>
 #include "BaseListBox.hxx"
 
-#include <com/sun/star/sdb/SQLErrorEvent.hpp>
+#include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/sdb/XSQLQueryComposerFactory.hpp>
-#include <com/sun/star/sdb/XQueriesSupplier.hpp>
-#include <com/sun/star/util/NumberFormat.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/sdb/SQLContext.hpp>
-#include <com/sun/star/sdb/CommandType.hpp>
 
-#include <comphelper/numbers.hxx>
 #include <comphelper/basicio.hxx>
-#include <comphelper/processfactory.hxx>
+#include <comphelper/property.hxx>
 #include <connectivity/dbtools.hxx>
-#include <connectivity/dbconversion.hxx>
-#include <cppuhelper/queryinterface.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
@@ -70,7 +60,6 @@ using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::form::binding;
 
 
-// class OComboBoxModel
 Sequence<Type> OComboBoxModel::_getTypes()
 {
     return ::comphelper::concatSequences(
@@ -165,7 +154,6 @@ void OComboBoxModel::disposing()
     OBoundControlModel::disposing();
     OEntryListHelper::disposing();
     OErrorBroadcaster::disposing();
-    m_xFormatter = nullptr;
 }
 
 
@@ -329,7 +317,7 @@ void OComboBoxModel::describeAggregateProperties( Sequence< Property >& _rAggreg
 
 OUString SAL_CALL OComboBoxModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_COMBOBOX);  // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_COMBOBOX;  // old (non-sun) name for compatibility !
 }
 
 
@@ -352,7 +340,7 @@ void SAL_CALL OComboBoxModel::write(const Reference<css::io::XObjectOutputStream
 
     css::uno::Sequence<OUString> aListSourceSeq(&m_aListSource, 1);
     _rxOutStream << aListSourceSeq;
-    _rxOutStream << (sal_Int16)m_eListSourceType;
+    _rxOutStream << static_cast<sal_Int16>(m_eListSourceType);
 
     if ((nAnyMask & BOUNDCOLUMN) == BOUNDCOLUMN)
     {
@@ -396,7 +384,7 @@ void SAL_CALL OComboBoxModel::read(const Reference<css::io::XObjectInputStream>&
     {
         OSL_FAIL("OComboBoxModel::read : invalid (means unknown) version !");
         m_aListSource.clear();
-        m_aBoundColumn <<= (sal_Int16)0;
+        m_aBoundColumn <<= sal_Int16(0);
         m_aDefaultText.clear();
         m_eListSourceType = ListSourceType_TABLE;
         m_bEmptyIsNull = true;
@@ -418,15 +406,13 @@ void SAL_CALL OComboBoxModel::read(const Reference<css::io::XObjectInputStream>&
         m_aListSource.clear();
         css::uno::Sequence<OUString> aListSource;
         _rxInStream >> aListSource;
-        const OUString* pToken = aListSource.getConstArray();
-        sal_Int32 nLen = aListSource.getLength();
-        for (sal_Int32 i = 0; i < nLen; ++i, ++pToken)
-            m_aListSource += *pToken;
+        for (const OUString& rToken : std::as_const(aListSource))
+            m_aListSource += rToken;
     }
 
     sal_Int16 nListSourceType;
     _rxInStream >> nListSourceType;
-    m_eListSourceType = (ListSourceType)nListSourceType;
+    m_eListSourceType = static_cast<ListSourceType>(nListSourceType);
 
     if ((nAnyMask & BOUNDCOLUMN) == BOUNDCOLUMN)
     {
@@ -479,10 +465,9 @@ void OComboBoxModel::loadData( bool _bForce )
         return;
 
     // Get Connection
-    Reference<XRowSet> xForm(m_xCursor, UNO_QUERY);
-    if (!xForm.is())
+    if (!m_xCursor.is())
         return;
-    Reference<XConnection> xConnection = getConnection(xForm);
+    Reference<XConnection> xConnection = getConnection(m_xCursor);
     if (!xConnection.is())
         return;
 
@@ -523,7 +508,7 @@ void OComboBoxModel::loadData( bool _bForce )
                 else
                 {
                     // otherwise look for the alias
-                    Reference<XPropertySet> xFormProp(xForm,UNO_QUERY);
+                    Reference<XPropertySet> xFormProp(m_xCursor,UNO_QUERY);
                     Reference< XColumnsSupplier > xSupplyFields;
                     xFormProp->getPropertyValue("SingleSelectQueryComposer") >>= xSupplyFields;
 
@@ -597,7 +582,7 @@ void OComboBoxModel::loadData( bool _bForce )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.component");
         return;
     }
 
@@ -632,7 +617,7 @@ void OComboBoxModel::loadData( bool _bForce )
                 if ( !xDataField.is() )
                     return;
 
-                ::dbtools::FormattedColumnValue aValueFormatter( getContext(), xForm, xDataField );
+                ::dbtools::FormattedColumnValue aValueFormatter( getContext(), m_xCursor, xDataField );
 
                 // Fill Lists
                 sal_Int16 i = 0;
@@ -648,12 +633,9 @@ void OComboBoxModel::loadData( bool _bForce )
                 Reference<XNameAccess> xFieldNames = getTableFields(xConnection, m_aListSource);
                 if (xFieldNames.is())
                 {
-                    css::uno::Sequence<OUString> seqNames = xFieldNames->getElementNames();
-                    sal_Int32 nFieldsCount = seqNames.getLength();
-                    const OUString* pustrNames = seqNames.getConstArray();
-
-                    for (sal_Int32 k=0; k<nFieldsCount; ++k)
-                        aStringList.push_back(pustrNames[k]);
+                    const Sequence<OUString> aFieldNames = xFieldNames->getElementNames();
+                    for (const OUString& rustrNames : aFieldNames)
+                        aStringList.push_back(rustrNames);
                 }
             }
             break;
@@ -669,7 +651,7 @@ void OComboBoxModel::loadData( bool _bForce )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.component");
         return;
     }
 
@@ -744,8 +726,9 @@ bool OComboBoxModel::commitControlValueToDbColumn( bool _bPostReset )
         {
             try
             {
-                OSL_PRECOND( m_pValueFormatter.get(), "OComboBoxModel::commitControlValueToDbColumn: no value formatter!" );
-                if ( m_pValueFormatter.get() )
+                OSL_PRECOND(m_pValueFormatter,
+                            "OComboBoxModel::commitControlValueToDbColumn: no value formatter!");
+                if (m_pValueFormatter)
                 {
                     if ( !m_pValueFormatter->setFormattedValue( sNewValue ) )
                         return false;
@@ -771,20 +754,19 @@ bool OComboBoxModel::commitControlValueToDbColumn( bool _bPostReset )
         css::uno::Sequence<OUString> aStringItemList;
         if ( getPropertyValue( PROPERTY_STRINGITEMLIST ) >>= aStringItemList )
         {
-            const OUString* pStringItems = aStringItemList.getConstArray();
-            sal_Int32 i;
-            for (i=0; i<aStringItemList.getLength(); ++i, ++pStringItems)
+            bool bFound = false;
+            for (const OUString& rStringItem : std::as_const(aStringItemList))
             {
-                if ( pStringItems->equals( sNewValue ) )
+                if ( (bFound = rStringItem == sNewValue) )
                     break;
             }
 
             // not found -> add
-            if (i >= aStringItemList.getLength())
+            if (!bFound)
             {
                 sal_Int32 nOldLen = aStringItemList.getLength();
                 aStringItemList.realloc( nOldLen + 1 );
-                aStringItemList.getArray()[ nOldLen ] = sNewValue;
+                aStringItemList[ nOldLen ] = sNewValue;
 
                 setFastPropertyValue( PROPERTY_ID_STRINGITEMLIST, makeAny( aStringItemList ) );
                 setFastPropertyValue( PROPERTY_ID_TYPEDITEMLIST, makeAny( css::uno::Sequence<css::uno::Any>() ) );
@@ -799,8 +781,9 @@ bool OComboBoxModel::commitControlValueToDbColumn( bool _bPostReset )
 
 Any OComboBoxModel::translateDbColumnToControlValue()
 {
-    OSL_PRECOND( m_pValueFormatter.get(), "OComboBoxModel::translateDbColumnToControlValue: no value formatter!" );
-    if ( m_pValueFormatter.get() )
+    OSL_PRECOND(m_pValueFormatter,
+                "OComboBoxModel::translateDbColumnToControlValue: no value formatter!");
+    if (m_pValueFormatter)
     {
         OUString sValue( m_pValueFormatter->getFormattedValue() );
         if  (   sValue.isEmpty()
@@ -837,18 +820,6 @@ void OComboBoxModel::stringItemListChanged( ControlModelLock& /*_rInstanceLock*/
         m_xAggregateSet->setPropertyValue( PROPERTY_STRINGITEMLIST, makeAny( comphelper::containerToSequence(getStringItemList()) ) );
         m_xAggregateSet->setPropertyValue( PROPERTY_TYPEDITEMLIST, makeAny( getTypedItemList()) ) ;
     }
-}
-
-
-void OComboBoxModel::connectedExternalListSource( )
-{
-    // TODO?
-}
-
-
-void OComboBoxModel::disconnectedExternalListSource( )
-{
-    // TODO?
 }
 
 
@@ -894,14 +865,14 @@ css::uno::Sequence<OUString> SAL_CALL OComboBoxControl::getSupportedServiceNames
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OComboBoxModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::OComboBoxModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OComboBoxControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

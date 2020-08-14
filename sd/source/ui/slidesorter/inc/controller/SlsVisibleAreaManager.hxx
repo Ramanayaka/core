@@ -20,11 +20,14 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSVISIBLEAREAMANAGER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSVISIBLEAREAMANAGER_HXX
 
-#include "controller/SlsAnimator.hxx"
-#include "model/SlsSharedPageDescriptor.hxx"
-#include <boost/optional.hpp>
+#include <model/SlsSharedPageDescriptor.hxx>
+#include <optional>
+#include <tools/gen.hxx>
+#include <vector>
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter { class SlideSorter; }
+
+namespace sd::slidesorter::controller {
 
 /** Manage requests for scrolling page objects into view.
 */
@@ -58,7 +61,7 @@ public:
     class TemporaryDisabler
     {
     public:
-        explicit TemporaryDisabler (SlideSorter& rSlideSorter);
+        explicit TemporaryDisabler (SlideSorter const & rSlideSorter);
         ~TemporaryDisabler();
     private:
         VisibleAreaManager& mrVisibleAreaManager;
@@ -73,20 +76,15 @@ private:
     */
     ::std::vector<::tools::Rectangle> maVisibleRequests;
 
-    /** Animation id for a scroll animation that sets the top
-        and left of the visible area to maRequestedVisibleTopLeft.
-    */
-    Animator::AnimationId mnScrollAnimationId;
     Point maRequestedVisibleTopLeft;
-    Animator::AnimationMode meRequestedAnimationMode;
     bool mbIsCurrentSlideTrackingActive;
     int  mnDisableCount;
 
     void MakeVisible();
-    ::boost::optional<Point> GetRequestedTopLeft() const;
+    ::std::optional<Point> GetRequestedTopLeft() const;
 };
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 #endif
 

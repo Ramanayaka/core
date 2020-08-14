@@ -16,21 +16,20 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLHEADERCELL_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLHEADERCELL_HXX
+#pragma once
 
-#include "extended/AccessibleGridControlTableCell.hxx"
+#include <extended/AccessibleGridControlTableCell.hxx>
 
 namespace accessibility
 {
-    class AccessibleGridControlHeaderCell : public AccessibleGridControlCell, public css::accessibility::XAccessible
+    class AccessibleGridControlHeaderCell final : public AccessibleGridControlCell, public css::accessibility::XAccessible
     {
         sal_Int32   m_nColumnRowId;
     public:
         AccessibleGridControlHeaderCell(sal_Int32 _nColumnRowId,
                         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-                        ::svt::table::IAccessibleTable& _rTable,
-                        ::svt::table::AccessibleTableControlObjType  _eObjType);
+                        ::vcl::table::IAccessibleTable& _rTable,
+                        ::vcl::table::AccessibleTableControlObjType  _eObjType);
         /** @return  The count of visible children. */
         virtual sal_Int32 SAL_CALL getAccessibleChildCount() override;
 
@@ -49,7 +48,7 @@ namespace accessibility
         /** Queries for a new interface. */
         css::uno::Any SAL_CALL queryInterface( const css::uno::Type& rType ) override;
 
-        /** Aquires the object (calls acquire() on base class). */
+        /** Acquires the object (calls acquire() on base class). */
         virtual void SAL_CALL acquire() throw () override;
 
         /** Releases the object (calls release() on base class). */
@@ -72,13 +71,12 @@ namespace accessibility
         */
         ::utl::AccessibleStateSetHelper* implCreateStateSetHelper() override;
 
-    protected:
+    private:
         virtual tools::Rectangle implGetBoundingBox() override;
 
         virtual tools::Rectangle implGetBoundingBoxOnScreen() override;
     };
 }
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLHEADERCELL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

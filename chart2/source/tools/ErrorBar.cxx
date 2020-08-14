@@ -17,33 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ErrorBar.hxx"
-#include "macros.hxx"
-#include "ContainerHelper.hxx"
-#include "EventListenerHelper.hxx"
-#include "PropertyHelper.hxx"
-#include "CloneHelper.hxx"
+#include <ErrorBar.hxx>
+#include <EventListenerHelper.hxx>
+#include <CloneHelper.hxx>
+#include <ModifyListenerHelper.hxx>
 
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <svl/itemprop.hxx>
 #include <vcl/svapp.hxx>
 
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/chart/ErrorBarStyle.hpp>
 
 #include <com/sun/star/drawing/LineStyle.hpp>
 #include <com/sun/star/util/Color.hpp>
 #include <com/sun/star/drawing/LineJoint.hpp>
 
-#include <rtl/math.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 
 namespace
 {
 
-static const char lcl_aServiceName[] = "com.sun.star.comp.chart2.ErrorBar";
+const char lcl_aServiceName[] = "com.sun.star.comp.chart2.ErrorBar";
 
 bool lcl_isInternalData( const uno::Reference< chart2::data::XLabeledDataSequence > & xLSeq )
 {
@@ -55,22 +53,22 @@ const SfxItemPropertySet* GetErrorBarPropertySet()
 {
     static const SfxItemPropertyMapEntry aErrorBarPropertyMap_Impl[] =
     {
-        {OUString("ShowPositiveError"),0,cppu::UnoType<bool>::get(), 0, 0},
-        {OUString("ShowNegativeError"),1,cppu::UnoType<bool>::get(), 0, 0},
-        {OUString("PositiveError"),2,cppu::UnoType<double>::get(),0,0},
-        {OUString("NegativeError"),3,cppu::UnoType<double>::get(), 0, 0},
-        {OUString("PercentageError"),4,cppu::UnoType<double>::get(), 0, 0},
-        {OUString("ErrorBarStyle"),5,cppu::UnoType<sal_Int32>::get(),0,0},
-        {OUString("ErrorBarRangePositive"),6,cppu::UnoType<OUString>::get(),0,0}, // read-only for export
-        {OUString("ErrorBarRangeNegative"),7,cppu::UnoType<OUString>::get(),0,0}, // read-only for export
-        {OUString("Weight"),8,cppu::UnoType<double>::get(),0,0},
-        {OUString("LineStyle"),9,cppu::UnoType<css::drawing::LineStyle>::get(),0,0},
-        {OUString("LineDash"),10,cppu::UnoType<drawing::LineDash>::get(),0,0},
-        {OUString("LineWidth"),11,cppu::UnoType<sal_Int32>::get(),0,0},
-        {OUString("LineColor"),12,cppu::UnoType<css::util::Color>::get(),0,0},
-        {OUString("LineTransparence"),13,cppu::UnoType<sal_Int16>::get(),0,0},
-        {OUString("LineJoint"),14,cppu::UnoType<css::drawing::LineJoint>::get(),0,0},
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        {"ShowPositiveError",0,cppu::UnoType<bool>::get(), 0, 0},
+        {"ShowNegativeError",1,cppu::UnoType<bool>::get(), 0, 0},
+        {"PositiveError",2,cppu::UnoType<double>::get(),0,0},
+        {"NegativeError",3,cppu::UnoType<double>::get(), 0, 0},
+        {"PercentageError",4,cppu::UnoType<double>::get(), 0, 0},
+        {"ErrorBarStyle",5,cppu::UnoType<sal_Int32>::get(),0,0},
+        {"ErrorBarRangePositive",6,cppu::UnoType<OUString>::get(),0,0}, // read-only for export
+        {"ErrorBarRangeNegative",7,cppu::UnoType<OUString>::get(),0,0}, // read-only for export
+        {"Weight",8,cppu::UnoType<double>::get(),0,0},
+        {"LineStyle",9,cppu::UnoType<css::drawing::LineStyle>::get(),0,0},
+        {"LineDash",10,cppu::UnoType<drawing::LineDash>::get(),0,0},
+        {"LineWidth",11,cppu::UnoType<sal_Int32>::get(),0,0},
+        {"LineColor",12,cppu::UnoType<css::util::Color>::get(),0,0},
+        {"LineTransparence",13,cppu::UnoType<sal_Int16>::get(),0,0},
+        {"LineJoint",14,cppu::UnoType<css::drawing::LineJoint>::get(),0,0},
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     static SfxItemPropertySet aPropSet( aErrorBarPropertyMap_Impl );
     return &aPropSet;
@@ -97,8 +95,7 @@ ErrorBar::ErrorBar() :
 {}
 
 ErrorBar::ErrorBar( const ErrorBar & rOther ) :
-    MutexContainer(),
-    impl::ErrorBar_Base(),
+    impl::ErrorBar_Base(rOther),
     maDashName(rOther.maDashName),
     maLineDash(rOther.maLineDash),
     mnLineWidth(rOther.mnLineWidth),
@@ -194,13 +191,13 @@ OUString getSourceRangeStrFromLabeledSequences( const uno::Sequence< uno::Refere
     else
         aDirection = "negative";
 
-    for( sal_Int32 nI=0; nI< aSequences.getLength(); ++nI )
+    for( uno::Reference< chart2::data::XLabeledDataSequence > const & labeledData : aSequences )
     {
         try
         {
-            if( aSequences[nI].is())
+            if( labeledData.is())
             {
-                uno::Reference< chart2::data::XDataSequence > xSequence( aSequences[nI]->getValues());
+                uno::Reference< chart2::data::XDataSequence > xSequence( labeledData->getValues());
                 uno::Reference< beans::XPropertySet > xSeqProp( xSequence, uno::UNO_QUERY_THROW );
                 OUString aRole;
                 if( ( xSeqProp->getPropertyValue( "Role" ) >>= aRole ) &&
@@ -210,11 +207,17 @@ OUString getSourceRangeStrFromLabeledSequences( const uno::Sequence< uno::Refere
                 }
             }
         }
+        catch (uno::Exception const &)
+        {
+            // we can't be sure that this is 100% safe and we don't want to kill the export
+            // we should at least check why the exception is thrown
+            TOOLS_WARN_EXCEPTION("chart2", "unexpected exception");
+        }
         catch (...)
         {
             // we can't be sure that this is 100% safe and we don't want to kill the export
             // we should at least check why the exception is thrown
-            SAL_WARN("chart2", "unexpected exception!");
+            SAL_WARN("chart2", "unexpected exception! ");
         }
     }
 
@@ -402,9 +405,9 @@ void SAL_CALL ErrorBar::addModifyListener( const uno::Reference< util::XModifyLi
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -415,9 +418,9 @@ void SAL_CALL ErrorBar::removeModifyListener( const uno::Reference< util::XModif
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -438,7 +441,7 @@ void SAL_CALL ErrorBar::setData( const uno::Sequence< uno::Reference< chart2::da
 {
     ModifyListenerHelper::removeListenerFromAllElements( m_aDataSequences, m_xModifyEventForwarder );
     EventListenerHelper::removeListenerFromAllElements( m_aDataSequences, this );
-    m_aDataSequences = ContainerHelper::SequenceToVector( aData );
+    m_aDataSequences = comphelper::sequenceToContainer<tDataSequenceContainer>( aData );
     EventListenerHelper::addListenerToAllElements( m_aDataSequences, this );
     ModifyListenerHelper::addListenerToAllElements( m_aDataSequences, m_xModifyEventForwarder );
 }
@@ -451,7 +454,7 @@ uno::Sequence< uno::Reference< chart2::data::XLabeledDataSequence > > SAL_CALL E
 
 OUString SAL_CALL ErrorBar::getImplementationName()
 {
-    return OUString(lcl_aServiceName);
+    return lcl_aServiceName;
 }
 
 sal_Bool SAL_CALL ErrorBar::supportsService( const OUString& rServiceName )
@@ -472,7 +475,7 @@ using impl::ErrorBar_Base;
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_ErrorBar_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {

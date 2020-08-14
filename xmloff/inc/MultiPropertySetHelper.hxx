@@ -21,19 +21,20 @@
 
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <memory>
 
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { class XMultiPropertySet; }
     namespace beans { class XPropertySet; }
     namespace beans { class XPropertySetInfo; }
-} } }
+}
 
 
 /**
  * The MultiPropertySetHelper performs the following functions:
  *
- * Given a list of property names (as sal_Char** or OUString*), it can
+ * Given a list of property names (as char** or OUString*), it can
  * query an XMultiPropertySet (or XPropertySet) which of these properties
  * it supports (method hasProperties(...)). The properties *MUST* be
  * sorted alphabetically.
@@ -54,7 +55,7 @@ namespace com { namespace sun { namespace star {
 class MultiPropertySetHelper
 {
     /// names of all properties
-    OUString* pPropertyNames;
+    std::unique_ptr<OUString[]> pPropertyNames;
 
     /// length of pPropertyNames array
     sal_Int16 nLength;
@@ -65,7 +66,7 @@ class MultiPropertySetHelper
 
     /// an array of indices that maps from pPropertyNames indices to
     /// aPropertySequence indices
-    sal_Int16* pSequenceIndex;
+    std::unique_ptr<sal_Int16[]> pSequenceIndex;
 
     /// the last set of values retrieved by getValues
     css::uno::Sequence< css::uno::Any > aValues;
@@ -78,7 +79,7 @@ class MultiPropertySetHelper
 
 public:
 
-    MultiPropertySetHelper( const sal_Char** pNames );
+    MultiPropertySetHelper( const char** pNames );
 
     ~MultiPropertySetHelper();
 

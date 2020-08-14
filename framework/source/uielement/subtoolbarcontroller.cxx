@@ -29,15 +29,19 @@
 #include <vcl/commandinfoprovider.hxx>
 
 #include <com/sun/star/awt/XDockableWindow.hpp>
+#include <com/sun/star/frame/XLayoutManager.hpp>
 #include <com/sun/star/frame/XSubToolbarController.hpp>
 #include <com/sun/star/frame/status/Visibility.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/ui/theUIElementFactoryManager.hpp>
+#include <com/sun/star/container/NoSuchElementException.hpp>
 
 typedef cppu::ImplInheritanceHelper< svt::ToolboxController,
                                      css::frame::XSubToolbarController,
                                      css::awt::XDockableWindowListener,
                                      css::lang::XServiceInfo > ToolBarBase;
+
+namespace {
 
 class SubToolBarController : public ToolBarBase
 {
@@ -86,18 +90,21 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
+}
+
 SubToolBarController::SubToolBarController( const css::uno::Sequence< css::uno::Any >& rxArgs )
 {
-    css::beans::PropertyValue aPropValue;
-    for ( sal_Int32 i = 0; i < rxArgs.getLength(); ++i )
+    for ( css::uno::Any const & arg : rxArgs )
     {
-        rxArgs[i] >>= aPropValue;
+        css::beans::PropertyValue aPropValue;
+        arg >>= aPropValue;
         if ( aPropValue.Name == "Value" )
         {
+            sal_Int32 nIdx{ 0 };
             OUString aValue;
             aPropValue.Value >>= aValue;
-            m_aSubTbName = aValue.getToken(0, ';');
-            m_aLastCommand = aValue.getToken(1, ';');
+            m_aSubTbName = aValue.getToken(0, ';', nIdx);
+            m_aLastCommand = aValue.getToken(0, ';', nIdx);
             break;
         }
     }
@@ -129,48 +136,48 @@ void SubToolBarController::statusChanged( const css::frame::FeatureStateEvent& E
 
     ToolBox* pToolBox = nullptr;
     sal_uInt16 nId = 0;
-    if ( getToolboxId( nId, &pToolBox ) )
+    if ( !getToolboxId( nId, &pToolBox ) )
+        return;
+
+    ToolBoxItemBits nItemBits = pToolBox->GetItemBits( nId );
+    nItemBits &= ~ToolBoxItemBits::CHECKABLE;
+    TriState eTri = TRISTATE_FALSE;
+
+    if ( Event.FeatureURL.Complete == m_aCommandURL )
     {
-        ToolBoxItemBits nItemBits = pToolBox->GetItemBits( nId );
-        nItemBits &= ~ToolBoxItemBits::CHECKABLE;
-        TriState eTri = TRISTATE_FALSE;
+        pToolBox->EnableItem( nId, Event.IsEnabled );
 
-        if ( Event.FeatureURL.Complete == m_aCommandURL )
+        OUString aStrValue;
+        css::frame::status::Visibility aItemVisibility;
+        if ( Event.State >>= aStrValue )
         {
-            pToolBox->EnableItem( nId, Event.IsEnabled );
-
-            OUString aStrValue;
-            css::frame::status::Visibility aItemVisibility;
-            if ( Event.State >>= aStrValue )
+            // Enum command, such as the current custom shape,
+            // toggle checked state.
+            if ( m_aLastCommand == ( m_aCommandURL + "." + aStrValue ) )
             {
-                // Enum command, such as the current custom shape,
-                // toggle checked state.
-                if ( m_aLastCommand == ( m_aCommandURL + "." + aStrValue ) )
-                {
-                    eTri = TRISTATE_TRUE;
-                    nItemBits |= ToolBoxItemBits::CHECKABLE;
-                }
-            }
-            else if ( Event.State >>= aItemVisibility )
-            {
-                pToolBox->ShowItem( nId, aItemVisibility.bVisible );
-            }
-        }
-        else
-        {
-            bool bValue;
-            if ( Event.State >>= bValue )
-            {
-                // Boolean, treat it as checked/unchecked
-                if ( bValue )
-                    eTri = TRISTATE_TRUE;
+                eTri = TRISTATE_TRUE;
                 nItemBits |= ToolBoxItemBits::CHECKABLE;
             }
         }
-
-        pToolBox->SetItemState( nId, eTri );
-        pToolBox->SetItemBits( nId, nItemBits );
+        else if ( Event.State >>= aItemVisibility )
+        {
+            pToolBox->ShowItem( nId, aItemVisibility.bVisible );
+        }
     }
+    else
+    {
+        bool bValue;
+        if ( Event.State >>= bValue )
+        {
+            // Boolean, treat it as checked/unchecked
+            if ( bValue )
+                eTri = TRISTATE_TRUE;
+            nItemBits |= ToolBoxItemBits::CHECKABLE;
+        }
+    }
+
+    pToolBox->SetItemState( nId, eTri );
+    pToolBox->SetItemBits( nId, nItemBits );
 }
 
 void SubToolBarController::execute( sal_Int16 nKeyModifier )
@@ -197,9 +204,7 @@ css::uno::Reference< css::awt::XWindow > SubToolBarController::createPopupWindow
         // create element with factory
         static css::uno::WeakReference< css::ui::XUIElementFactoryManager > xWeakUIElementFactory;
         css::uno::Reference< css::ui::XUIElement > xUIElement;
-        css::uno::Reference< css::ui::XUIElementFactoryManager > xUIElementFactory;
-
-        xUIElementFactory = xWeakUIElementFactory;
+        css::uno::Reference< css::ui::XUIElementFactoryManager > xUIElementFactory = xWeakUIElementFactory;
         if ( !xUIElementFactory.is() )
         {
             xUIElementFactory = css::ui::theUIElementFactoryManager::get( m_xContext );
@@ -208,6 +213,7 @@ css::uno::Reference< css::awt::XWindow > SubToolBarController::createPopupWindow
 
         auto aPropSeq( comphelper::InitPropertySequence( {
             { "Frame", css::uno::makeAny( xFrame ) },
+            { "ParentWindow", css::uno::makeAny( m_xParentWindow ) },
             { "Persistent", css::uno::makeAny( false ) },
             { "PopupMode", css::uno::makeAny( true ) }
         } ) );
@@ -239,7 +245,6 @@ css::uno::Reference< css::awt::XWindow > SubToolBarController::createPopupWindow
                 if ( pTbxWindow && pTbxWindow->GetType() == WindowType::TOOLBOX )
                 {
                     ToolBox* pToolBar = static_cast< ToolBox* >( pTbxWindow.get() );
-                    pToolBar->SetParent( pToolBox );
                     // calc and set size for popup mode
                     Size aSize = pToolBar->CalcPopupWindowSizePixel();
                     pToolBar->SetSizePixel( aSize );
@@ -340,49 +345,49 @@ void SubToolBarController::endPopupMode( const css::awt::EndPopupModeEvent& e )
     m_xUIElement = nullptr;
 
     // if the toolbar was teared-off recreate it and place it at the given position
-    if( e.bTearoff )
+    if( !e.bTearoff )
+        return;
+
+    css::uno::Reference< css::ui::XUIElement > xUIElement;
+    css::uno::Reference< css::frame::XLayoutManager > xLayoutManager = getLayoutManager();
+
+    if ( !xLayoutManager.is() )
+        return;
+
+    xLayoutManager->createElement( aSubToolBarResName );
+    xUIElement = xLayoutManager->getElement( aSubToolBarResName );
+    if ( !xUIElement.is() )
+        return;
+
+    css::uno::Reference< css::awt::XWindow > xSubToolBar( xUIElement->getRealInterface(), css::uno::UNO_QUERY );
+    css::uno::Reference< css::beans::XPropertySet > xProp( xUIElement, css::uno::UNO_QUERY );
+    if ( !(xSubToolBar.is() && xProp.is()) )
+        return;
+
+    OUString aPersistentString( "Persistent" );
+    try
     {
-        css::uno::Reference< css::ui::XUIElement > xUIElement;
-        css::uno::Reference< css::frame::XLayoutManager > xLayoutManager = getLayoutManager();
-
-        if ( !xLayoutManager.is() )
-            return;
-
-        xLayoutManager->createElement( aSubToolBarResName );
-        xUIElement = xLayoutManager->getElement( aSubToolBarResName );
-        if ( xUIElement.is() )
+        VclPtr<vcl::Window> pTbxWindow = VCLUnoHelper::GetWindow( xSubToolBar );
+        if ( pTbxWindow && pTbxWindow->GetType() == WindowType::TOOLBOX )
         {
-            css::uno::Reference< css::awt::XWindow > xSubToolBar( xUIElement->getRealInterface(), css::uno::UNO_QUERY );
-            css::uno::Reference< css::beans::XPropertySet > xProp( xUIElement, css::uno::UNO_QUERY );
-            if ( xSubToolBar.is() && xProp.is() )
-            {
-                OUString aPersistentString( "Persistent" );
-                try
-                {
-                    VclPtr<vcl::Window> pTbxWindow = VCLUnoHelper::GetWindow( xSubToolBar );
-                    if ( pTbxWindow && pTbxWindow->GetType() == WindowType::TOOLBOX )
-                    {
-                        css::uno::Any a = xProp->getPropertyValue( aPersistentString );
-                        xProp->setPropertyValue( aPersistentString, css::uno::makeAny( false ) );
+            css::uno::Any a = xProp->getPropertyValue( aPersistentString );
+            xProp->setPropertyValue( aPersistentString, css::uno::makeAny( false ) );
 
-                        xLayoutManager->hideElement( aSubToolBarResName );
-                        xLayoutManager->floatWindow( aSubToolBarResName );
+            xLayoutManager->hideElement( aSubToolBarResName );
+            xLayoutManager->floatWindow( aSubToolBarResName );
 
-                        xLayoutManager->setElementPos( aSubToolBarResName, e.FloatingPosition );
-                        xLayoutManager->showElement( aSubToolBarResName );
+            xLayoutManager->setElementPos( aSubToolBarResName, e.FloatingPosition );
+            xLayoutManager->showElement( aSubToolBarResName );
 
-                        xProp->setPropertyValue("Persistent", a );
-                    }
-                }
-                catch ( css::uno::RuntimeException& )
-                {
-                    throw;
-                }
-                catch ( css::uno::Exception& )
-                {}
-            }
+            xProp->setPropertyValue("Persistent", a );
         }
     }
+    catch ( css::uno::RuntimeException& )
+    {
+        throw;
+    }
+    catch ( css::uno::Exception& )
+    {}
 }
 
 void SubToolBarController::disposing( const css::lang::EventObject& e )
@@ -418,7 +423,7 @@ void SubToolBarController::dispose()
 
 OUString SubToolBarController::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.framework.SubToolBarController" );
+    return "com.sun.star.comp.framework.SubToolBarController";
 }
 
 sal_Bool SubToolBarController::supportsService( const OUString& rServiceName )
@@ -431,7 +436,7 @@ css::uno::Sequence< OUString > SubToolBarController::getSupportedServiceNames()
     return {"com.sun.star.frame.ToolbarController"};
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_SubToolBarController_get_implementation(
     css::uno::XComponentContext*,
     css::uno::Sequence<css::uno::Any> const & rxArgs )

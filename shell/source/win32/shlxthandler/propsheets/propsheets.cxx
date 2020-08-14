@@ -17,24 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "config.hxx"
-#include "global.hxx"
+#include <config.hxx>
+#include <global.hxx>
 
-#include "propsheets.hxx"
-#include "utilities.hxx"
-#include "resource.h"
+#include <propsheets.hxx>
+#include <utilities.hxx>
+#include <resource.h>
 #include "listviewbuilder.hxx"
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#endif
 #include <shellapi.h>
-#ifdef _WIN32_WINNT_WINBLUE
-#include <VersionHelpers.h>
-#endif
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
+
+#include <sal/macros.h>
 
 #include <memory>
 #include <string>
@@ -57,14 +50,14 @@
 CPropertySheet::CPropertySheet(long RefCnt) :
     m_RefCnt(RefCnt)
 {
-    OutputDebugStringFormatA("CPropertySheet::CTor [%d], [%d]", m_RefCnt, g_DllRefCnt );
+    OutputDebugStringFormatW(L"CPropertySheet::CTor [%d], [%d]", m_RefCnt, g_DllRefCnt );
     InterlockedIncrement(&g_DllRefCnt);
 }
 
 
 CPropertySheet::~CPropertySheet()
 {
-    OutputDebugStringFormatA("CPropertySheet::DTor [%d], [%d]", m_RefCnt, g_DllRefCnt );
+    OutputDebugStringFormatW(L"CPropertySheet::DTor [%d], [%d]", m_RefCnt, g_DllRefCnt );
     InterlockedDecrement(&g_DllRefCnt);
 }
 
@@ -99,14 +92,14 @@ HRESULT STDMETHODCALLTYPE CPropertySheet::QueryInterface(
 
 ULONG STDMETHODCALLTYPE CPropertySheet::AddRef()
 {
-    OutputDebugStringFormatA("CPropertySheet::AddRef [%d]", m_RefCnt );
+    OutputDebugStringFormatW(L"CPropertySheet::AddRef [%d]", m_RefCnt );
     return InterlockedIncrement(&m_RefCnt);
 }
 
 
 ULONG STDMETHODCALLTYPE CPropertySheet::Release()
 {
-    OutputDebugStringFormatA("CPropertySheet::Release [%d]", m_RefCnt );
+    OutputDebugStringFormatW(L"CPropertySheet::Release [%d]", m_RefCnt );
     long refcnt = InterlockedDecrement(&m_RefCnt);
 
     if (0 == refcnt)
@@ -120,7 +113,7 @@ ULONG STDMETHODCALLTYPE CPropertySheet::Release()
 
 
 HRESULT STDMETHODCALLTYPE CPropertySheet::Initialize(
-    LPCITEMIDLIST /*pidlFolder*/, LPDATAOBJECT lpdobj, HKEY /*hkeyProgID*/)
+    LPCITEMIDLIST /*pidlFolder*/, IDataObject * lpdobj, HKEY /*hkeyProgID*/)
 {
     InitCommonControls();
 
@@ -131,7 +124,7 @@ HRESULT STDMETHODCALLTYPE CPropertySheet::Initialize(
 
     // save the file name
     if (SUCCEEDED(hr) &&
-        (1 == DragQueryFileA(
+        (1 == DragQueryFileW(
             static_cast<HDROP>(medium.hGlobal),
             0xFFFFFFFF,
             nullptr,
@@ -140,15 +133,14 @@ HRESULT STDMETHODCALLTYPE CPropertySheet::Initialize(
         UINT size = DragQueryFileW( static_cast<HDROP>(medium.hGlobal), 0, nullptr, 0 );
         if ( size != 0 )
         {
-            auto buffer = std::unique_ptr<WCHAR[]>(new WCHAR[ size + 1 ]);
+            auto buffer = std::make_unique<WCHAR[]>( size + 1 );
             UINT result_size = DragQueryFileW( static_cast<HDROP>(medium.hGlobal),
                                                0, buffer.get(), size + 1 );
             if ( result_size != 0 )
             {
                 std::wstring fname = getShortPathName( buffer.get() );
-                std::string fnameA = WStringToString( fname );
                 ZeroMemory( m_szFileName, sizeof( m_szFileName ) );
-                strncpy( m_szFileName, fnameA.c_str(), ( sizeof( m_szFileName ) - 1 ) );
+                wcsncpy( m_szFileName, fname.c_str(), ( SAL_N_ELEMENTS( m_szFileName ) - 1 ) );
                 hr = S_OK;
             }
             else
@@ -169,64 +161,30 @@ HRESULT STDMETHODCALLTYPE CPropertySheet::Initialize(
 // IShellPropSheetExt
 
 
-HRESULT STDMETHODCALLTYPE CPropertySheet::AddPages(LPFNADDPROPSHEETPAGE lpfnAddPage, LPARAM lParam)
+HRESULT STDMETHODCALLTYPE CPropertySheet::AddPages(LPFNSVADDPROPSHEETPAGE lpfnAddPage, LPARAM lParam)
 {
-// the Win32 SDK 8.1 deprecates GetVersionEx()
-#ifdef _WIN32_WINNT_WINBLUE
-    bool bIsVistaOrLater = IsWindowsVistaOrGreater();
-#else
-    // Get OS version (we don't need the summary page on Windows Vista or later)
-    OSVERSIONINFO sInfoOS;
-
-    ZeroMemory( &sInfoOS, sizeof(OSVERSIONINFO) );
-    sInfoOS.dwOSVersionInfoSize = sizeof( OSVERSIONINFO );
-    GetVersionEx( &sInfoOS );
-    bool bIsVistaOrLater = (sInfoOS.dwMajorVersion >= 6);
-#endif
-
     std::wstring proppage_header;
 
-    PROPSHEETPAGE psp;
-    ZeroMemory(&psp, sizeof(PROPSHEETPAGEA));
+    PROPSHEETPAGEW psp;
+    ZeroMemory(&psp, sizeof(psp));
 
     // add the summary property page
-    psp.dwSize      = sizeof(PROPSHEETPAGE);
+    psp.dwSize      = sizeof(psp);
     psp.dwFlags     = PSP_DEFAULT | PSP_USETITLE | PSP_USECALLBACK;
     psp.hInstance   = GetModuleHandleW(MODULE_NAME);
     psp.lParam      = reinterpret_cast<LPARAM>(this);
-    psp.pfnCallback = reinterpret_cast<LPFNPSPCALLBACK>(CPropertySheet::PropPageSummaryCallback);
+    psp.pfnCallback = reinterpret_cast<LPFNPSPCALLBACKW>(CPropertySheet::PropPageSummaryCallback);
 
     HPROPSHEETPAGE hPage = nullptr;
-
-    if ( !bIsVistaOrLater )
-    {
-        proppage_header = GetResString(IDS_PROPPAGE_SUMMARY_TITLE);
-
-        psp.pszTemplate = MAKEINTRESOURCE(IDD_PROPPAGE_SUMMARY);
-        psp.pszTitle    = proppage_header.c_str();
-        psp.pfnDlgProc  = reinterpret_cast<DLGPROC>(CPropertySheet::PropPageSummaryProc);
-
-        hPage = CreatePropertySheetPage(&psp);
-
-        // keep this instance alive, will be released when the
-        // page is about to be destroyed in the callback function
-        if (hPage)
-        {
-            if (lpfnAddPage(hPage, lParam))
-                AddRef();
-            else
-                DestroyPropertySheetPage(hPage);
-        }
-    }
 
     // add the statistics property page
     proppage_header = GetResString(IDS_PROPPAGE_STATISTICS_TITLE);
 
-    psp.pszTemplate = MAKEINTRESOURCE(IDD_PROPPAGE_STATISTICS);
+    psp.pszTemplate = MAKEINTRESOURCEW(IDD_PROPPAGE_STATISTICS);
     psp.pszTitle    = proppage_header.c_str();
     psp.pfnDlgProc  = reinterpret_cast<DLGPROC>(CPropertySheet::PropPageStatisticsProc);
 
-    hPage = CreatePropertySheetPage(&psp);
+    hPage = CreatePropertySheetPageW(&psp);
 
     if (hPage)
     {
@@ -242,7 +200,7 @@ HRESULT STDMETHODCALLTYPE CPropertySheet::AddPages(LPFNADDPROPSHEETPAGE lpfnAddP
 
 
 HRESULT STDMETHODCALLTYPE CPropertySheet::ReplacePage(
-    UINT /*uPageID*/, LPFNADDPROPSHEETPAGE /*lpfnReplaceWith*/, LPARAM /*lParam*/)
+    EXPPS /*uPageID*/, LPFNSVADDPROPSHEETPAGE /*lpfnReplaceWith*/, LPARAM /*lParam*/)
 {
     return E_NOTIMPL;
 }
@@ -264,7 +222,7 @@ UINT CALLBACK CPropertySheet::PropPageSummaryCallback(
 }
 
 
-BOOL CALLBACK CPropertySheet::PropPageSummaryProc(HWND hwnd, UINT uiMsg, WPARAM /*wParam*/, LPARAM lParam)
+bool CALLBACK CPropertySheet::PropPageSummaryProc(HWND hwnd, UINT uiMsg, WPARAM /*wParam*/, LPARAM lParam)
 {
     switch (uiMsg)
     {
@@ -273,11 +231,11 @@ BOOL CALLBACK CPropertySheet::PropPageSummaryProc(HWND hwnd, UINT uiMsg, WPARAM 
             LPPROPSHEETPAGE psp = reinterpret_cast<LPPROPSHEETPAGE>(lParam);
             CPropertySheet* pImpl = reinterpret_cast<CPropertySheet*>(psp->lParam);
             pImpl->InitPropPageSummary(hwnd, psp);
-            return TRUE;
+            return true;
         }
     }
 
-    return FALSE;
+    return false;
 }
 
 
@@ -303,10 +261,10 @@ void CPropertySheet::InitPropPageSummary(HWND hwnd, LPPROPSHEETPAGE /*lppsp*/)
     {
         CMetaInfoReader metaInfo(m_szFileName);
 
-        SetWindowText(GetDlgItem(hwnd,IDC_TITLE),    metaInfo.getTagData( META_INFO_TITLE ).c_str() );
-        SetWindowText(GetDlgItem(hwnd,IDC_AUTHOR),   metaInfo.getTagData( META_INFO_AUTHOR ).c_str() );
-        SetWindowText(GetDlgItem(hwnd,IDC_SUBJECT),  metaInfo.getTagData( META_INFO_SUBJECT ).c_str() );
-        SetWindowText(GetDlgItem(hwnd,IDC_KEYWORDS), metaInfo.getTagData( META_INFO_KEYWORDS ).c_str() );
+        SetWindowTextW(GetDlgItem(hwnd,IDC_TITLE),    metaInfo.getTagData( META_INFO_TITLE ).c_str() );
+        SetWindowTextW(GetDlgItem(hwnd,IDC_AUTHOR),   metaInfo.getTagData( META_INFO_AUTHOR ).c_str() );
+        SetWindowTextW(GetDlgItem(hwnd,IDC_SUBJECT),  metaInfo.getTagData( META_INFO_SUBJECT ).c_str() );
+        SetWindowTextW(GetDlgItem(hwnd,IDC_KEYWORDS), metaInfo.getTagData( META_INFO_KEYWORDS ).c_str() );
 
         // comments read from meta.xml use "\n" for return, but this will not displayable in Edit control, add
         // "\r" before "\n" to form "\r\n" in order to display return in Edit control.
@@ -317,7 +275,7 @@ void CPropertySheet::InitPropPageSummary(HWND hwnd, LPPROPSHEETPAGE /*lppsp*/)
             tempStr.insert(itor, L"\r");
             itor = tempStr.find(L"\n", itor + 2);
         }
-        SetWindowText(GetDlgItem(hwnd,IDC_COMMENTS), tempStr.c_str());
+        SetWindowTextW(GetDlgItem(hwnd,IDC_COMMENTS), tempStr.c_str());
     }
     catch (const std::exception&)
     {

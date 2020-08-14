@@ -440,6 +440,92 @@ published constants NumberingType
      */
     const short NUMBER_HEBREW = 56;
 
+    /** Numbering in Arabic-Indic numerals
+
+        @since LibreOffice 6.1
+     */
+    const short NUMBER_ARABIC_INDIC = 57;
+
+    /** Numbering in East Arabic-Indic numerals
+
+        @since LibreOffice 6.1
+     */
+    const short NUMBER_EAST_ARABIC_INDIC = 58;
+
+    /** Numbering in Indic Devanagari numerals
+
+        @since LibreOffice 6.1
+     */
+    const short NUMBER_INDIC_DEVANAGARI = 59;
+
+    /** Numbering in ordinal numbers of the language
+        of the text node
+        for example, 1st, 2nd, 3rd... in English
+
+        @since LibreOffice 6.1
+     */
+    const short TEXT_NUMBER = 60;
+
+    /** Numbering in cardinal numbers of the language
+        of the text node
+        for example, One, Two, Three... in English
+
+        @since LibreOffice 6.1
+     */
+    const short TEXT_CARDINAL = 61;
+
+    /** Numbering in ordinal numbers of the language
+        of the text node
+        for example, First, Second, Third... in English
+
+        @since LibreOffice 6.1
+     */
+    const short TEXT_ORDINAL = 62;
+
+    /** Footnoting symbols according the University of Chicago style:
+          \*, &#2020;, &#2021;, &#00a7;, **, &#2020;&#2020; etc.
+
+        @since LibreOffice 6.4
+     */
+     /*
+        ASTERISK, DAGGER, DOUBLE DAGGER, SECTION SIGN,
+        ASTERISK ASTERISK, DAGGER DAGGER, etc.
+      */
+    const short SYMBOL_CHICAGO = 63;
+
+    /** Numbering is in Arabic numbers, padded with zero to have a length of at least two, as "01,
+        02, ..., 10, 11, ...".
+
+        @since LibreOffice 7.0
+     */
+    const short ARABIC_ZERO = 64;
+
+    /** Numbering is in Arabic numbers, padded with zero to have a length of at least three, as
+        "001, 002, ..., 100, 101, ...".
+
+        @since LibreOffice 7.0
+     */
+    const short ARABIC_ZERO3 = 65;
+
+    /** Numbering is in Arabic numbers, padded with zero to have a length of at least four, as
+        "0001, 0002, ..., 1000, 1001, ...".
+
+        @since LibreOffice 7.0
+     */
+    const short ARABIC_ZERO4 = 66;
+
+    /** Numbering is in Arabic numbers, padded with zero to have a length of at least five, as
+        "00001, 00002, ..., 10000, 10001, ...".
+
+        @since LibreOffice 7.0
+     */
+    const short ARABIC_ZERO5 = 67;
+
+    /** Numbering is in Szekely rovas (Old Hungarian) numerals
+
+        @since LibreOffice 7.1
+     */
+    const short SZEKELY_ROVAS = 68;
 };
 
 

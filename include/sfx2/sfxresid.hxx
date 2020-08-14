@@ -20,18 +20,9 @@
 #define INCLUDED_SFX2_SFXRESID_HXX
 
 #include <sfx2/dllapi.h>
-#include <tools/resid.hxx>
+#include <rtl/ustring.hxx>
 
-struct SFX2_DLLPUBLIC SfxResMgr
-{
-    static ResMgr* GetResMgr();
-    static void DeleteResMgr();
-};
-
-inline OUString SfxResId(sal_uInt16 nId)
-{
-    return ResId(nId, *SfxResMgr::GetResMgr());
-}
+SFX2_DLLPUBLIC OUString SfxResId(const char* pId);
 
 #endif
 

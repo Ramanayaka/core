@@ -22,15 +22,12 @@
 
 #include "porlin.hxx"
 #include "inftxt.hxx"
-#include "portxt.hxx"
 #include "pormulti.hxx"
-#include "porglue.hxx"
-#include "blink.hxx"
 #if OSL_DEBUG_LEVEL > 0
 
-bool ChkChain( SwLinePortion *pStart )
+static bool ChkChain( SwLinePortion *pStart )
 {
-    SwLinePortion *pPor = pStart->GetPortion();
+    SwLinePortion *pPor = pStart->GetNextPortion();
     sal_uInt16 nCount = 0;
     while( pPor )
     {
@@ -40,13 +37,13 @@ bool ChkChain( SwLinePortion *pStart )
         if( nCount >= 200 || pPor == pStart )
         {
             // the lifesaver
-            pPor = pStart->GetPortion();
-            pStart->SetPortion(nullptr);
+            pPor = pStart->GetNextPortion();
+            pStart->SetNextPortion(nullptr);
             pPor->Truncate();
-            pStart->SetPortion( pPor );
+            pStart->SetNextPortion( pPor );
             return false;
         }
-        pPor = pPor->GetPortion();
+        pPor = pPor->GetNextPortion();
     }
     return true;
 }
@@ -54,8 +51,6 @@ bool ChkChain( SwLinePortion *pStart )
 
 SwLinePortion::~SwLinePortion()
 {
-    if( pBlink )
-        pBlink->Delete( this );
 }
 
 SwLinePortion *SwLinePortion::Compress()
@@ -69,10 +64,10 @@ sal_uInt16 SwLinePortion::GetViewWidth( const SwTextSizeInfo & ) const
 }
 
 SwLinePortion::SwLinePortion( ) :
-    pPortion( nullptr ),
+    mpNextPortion( nullptr ),
     nLineLength( 0 ),
     nAscent( 0 ),
-    nWhichPor( POR_LIN ),
+    nWhichPor( PortionType::NONE ),
     m_bJoinBorderWithPrev(false),
     m_bJoinBorderWithNext(false)
 {
@@ -93,7 +88,7 @@ void SwLinePortion::PrePaint( const SwTextPaintInfo& rInf,
     sal_uInt16 nLastWidth = pLast->Width();
 
     if ( pLast->InSpaceGrp() && rInf.GetSpaceAdd() )
-        nLastWidth = nLastWidth + (sal_uInt16)pLast->CalcSpacing( rInf.GetSpaceAdd(), rInf );
+        nLastWidth = nLastWidth + static_cast<sal_uInt16>(pLast->CalcSpacing( rInf.GetSpaceAdd(), rInf ));
 
     sal_uInt16 nPos;
     SwTextPaintInfo aInf( rInf );
@@ -105,32 +100,33 @@ void SwLinePortion::PrePaint( const SwTextPaintInfo& rInf,
                   1800 :
                   rInf.GetFont()->GetOrientation( rInf.GetTextFrame()->IsVertical() );
 
-    switch ( nDir )
+    // pLast == this *only* for the 1st portion in the line so nLastWidth is 0;
+    // allow this too, will paint outside the frame but might look better...
+    if (nLastWidth > nHalfView || pLast == this)
     {
-    case 0 :
-        nPos = sal_uInt16( rInf.X() );
-        if( nLastWidth > nHalfView )
+        switch (nDir)
+        {
+        case 0:
+            nPos = sal_uInt16( rInf.X() );
             nPos += nLastWidth - nHalfView;
-        aInf.X( nPos );
-        break;
-    case 900 :
-        nPos = sal_uInt16( rInf.Y() );
-        if( nLastWidth > nHalfView )
-            nPos -= nLastWidth + nHalfView;
-        aInf.Y( nPos );
-        break;
-    case 1800 :
-        nPos = sal_uInt16( rInf.X() );
-        if( nLastWidth > nHalfView )
-            nPos -= nLastWidth + nHalfView;
-        aInf.X( nPos );
-        break;
-    case 2700 :
-        nPos = sal_uInt16( rInf.Y() );
-        if( nLastWidth > nHalfView )
+            aInf.X( nPos );
+            break;
+        case 900:
+            nPos = sal_uInt16( rInf.Y() );
+            nPos -= nLastWidth - nHalfView;
+            aInf.Y( nPos );
+            break;
+        case 1800:
+            nPos = sal_uInt16( rInf.X() );
+            nPos -= nLastWidth - nHalfView;
+            aInf.X( nPos );
+            break;
+        case 2700:
+            nPos = sal_uInt16( rInf.Y() );
             nPos += nLastWidth - nHalfView;
-        aInf.Y( nPos );
-        break;
+            aInf.Y( nPos );
+            break;
+        }
     }
 
     SwLinePortion *pThis = const_cast<SwLinePortion*>(this);
@@ -154,24 +150,25 @@ void SwLinePortion::CalcTextSize( const SwTextSizeInfo &rInf )
 // all following portions will be deleted
 void SwLinePortion::Truncate_()
 {
-    SwLinePortion *pPos = pPortion;
+    SwLinePortion *pPos = mpNextPortion;
     do
-    { OSL_ENSURE( pPos != this, "SwLinePortion::Truncate: loop" );
+    {
+        OSL_ENSURE( pPos != this, "SwLinePortion::Truncate: loop" );
         SwLinePortion *pLast = pPos;
-        pPos = pPos->GetPortion();
-        pLast->SetPortion( nullptr );
+        pPos = pPos->GetNextPortion();
+        pLast->SetNextPortion( nullptr );
         delete pLast;
 
     } while( pPos );
 
-    pPortion = nullptr;
+    mpNextPortion = nullptr;
 }
 
 // It always will be inserted after us.
 SwLinePortion *SwLinePortion::Insert( SwLinePortion *pIns )
 {
-    pIns->FindLastPortion()->SetPortion( pPortion );
-    SetPortion( pIns );
+    pIns->FindLastPortion()->SetNextPortion( mpNextPortion );
+    SetNextPortion( pIns );
 #if OSL_DEBUG_LEVEL > 0
     ChkChain( this );
 #endif
@@ -182,9 +179,9 @@ SwLinePortion *SwLinePortion::FindLastPortion()
 {
     SwLinePortion *pPos = this;
     // Find the end and link pLinPortion to the last one...
-    while( pPos->GetPortion() )
+    while( pPos->GetNextPortion() )
     {
-        pPos = pPos->GetPortion();
+        pPos = pPos->GetNextPortion();
     }
     return pPos;
 }
@@ -192,8 +189,8 @@ SwLinePortion *SwLinePortion::FindLastPortion()
 SwLinePortion *SwLinePortion::Append( SwLinePortion *pIns )
 {
     SwLinePortion *pPos = FindLastPortion();
-    pPos->SetPortion( pIns );
-    pIns->SetPortion( nullptr );
+    pPos->SetNextPortion( pIns );
+    pIns->SetNextPortion( nullptr );
 #if OSL_DEBUG_LEVEL > 0
     ChkChain( this );
 #endif
@@ -204,8 +201,8 @@ SwLinePortion *SwLinePortion::Cut( SwLinePortion *pVictim )
 {
     SwLinePortion *pPrev = pVictim->FindPrevPortion( this );
     OSL_ENSURE( pPrev, "SwLinePortion::Cut(): can't cut" );
-    pPrev->SetPortion( pVictim->GetPortion() );
-    pVictim->SetPortion(nullptr);
+    pPrev->SetNextPortion( pVictim->GetNextPortion() );
+    pVictim->SetNextPortion(nullptr);
     return pVictim;
 }
 
@@ -213,21 +210,21 @@ SwLinePortion *SwLinePortion::FindPrevPortion( const SwLinePortion *pRoot )
 {
     OSL_ENSURE( pRoot != this, "SwLinePortion::FindPrevPortion(): invalid root" );
     SwLinePortion *pPos = const_cast<SwLinePortion*>(pRoot);
-    while( pPos->GetPortion() && pPos->GetPortion() != this )
+    while( pPos->GetNextPortion() && pPos->GetNextPortion() != this )
     {
-        pPos = pPos->GetPortion();
+        pPos = pPos->GetNextPortion();
     }
-    OSL_ENSURE( pPos->GetPortion(),
+    OSL_ENSURE( pPos->GetNextPortion(),
             "SwLinePortion::FindPrevPortion: blowing in the wind");
     return pPos;
 }
 
-sal_Int32 SwLinePortion::GetCursorOfst( const sal_uInt16 nOfst ) const
+TextFrameIndex SwLinePortion::GetModelPositionForViewPoint(const sal_uInt16 nOfst) const
 {
     if( nOfst > ( PrtWidth() / 2 ) )
         return GetLen();
     else
-        return 0;
+        return TextFrameIndex(0);
 }
 
 SwPosSize SwLinePortion::GetTextSize( const SwTextSizeInfo & ) const

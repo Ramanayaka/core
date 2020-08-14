@@ -19,17 +19,17 @@
 #include "LineWidthValueSet.hxx"
 
 #include <i18nlangtag/mslangid.hxx>
+#include <vcl/event.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
-LineWidthValueSet::LineWidthValueSet(vcl::Window* pParent)
-    : ValueSet(pParent, WB_TABSTOP)
-    , pVDev(nullptr)
+LineWidthValueSet::LineWidthValueSet()
+    : ValueSet(nullptr)
     , nSelItem(0)
     , bCusEnable(false)
 {
-    strUnit = new OUString[9];
 }
 
 void LineWidthValueSet::Resize()
@@ -41,22 +41,11 @@ void LineWidthValueSet::Resize()
 
 LineWidthValueSet::~LineWidthValueSet()
 {
-    disposeOnce();
 }
 
-void LineWidthValueSet::dispose()
+void LineWidthValueSet::SetUnit(std::array<OUString,9> const & strUnits)
 {
-    pVDev.disposeAndClear();
-    delete[] strUnit;
-    ValueSet::dispose();
-}
-
-void LineWidthValueSet::SetUnit(OUString* str)
-{
-    for(int i = 0; i < 9; i++)
-    {
-        strUnit[i] = str[i];
-    }
+    maStrUnits = strUnits;
 }
 
 void LineWidthValueSet::SetSelItem(sal_uInt16 nSel)
@@ -103,37 +92,36 @@ void  LineWidthValueSet::UserDraw( const UserDrawEvent& rUDEvt )
 
     vcl::Font aFont(OutputDevice::GetDefaultFont(DefaultFontType::UI_SANS, MsLangId::getSystemLanguage(), GetDefaultFontFlags::OnlyOne));
     Size aSize = aFont.GetFontSize();
-    aSize.Height() = nRectHeight*3/5;
+    aSize.setHeight( nRectHeight*3/5 );
     aFont.SetFontSize( aSize );
 
     Point aLineStart(aBLPos.X() + 5,            aBLPos.Y() + ( nRectHeight - nItemId )/2);
     Point aLineEnd(aBLPos.X() + nRectWidth * 7 / 9 - 10, aBLPos.Y() + ( nRectHeight - nItemId )/2);
-    if(nItemId == 9)
+    if (nItemId == 9)
     {
         Point aImgStart(aBLPos.X() + 5,         aBLPos.Y() + ( nRectHeight - 23 ) / 2);
         pDev->DrawImage(aImgStart, imgCus);
-    //  Point aStart(aImgStart.X() + 14 + 20 , aBLPos.Y() + nRectHeight/6);
+
         tools::Rectangle aStrRect = aRect;
-        aStrRect.Top() += nRectHeight/6;
-        aStrRect.Bottom() -= nRectHeight/6;
-        aStrRect.Left() += imgCus.GetSizePixel().Width() + 20;
+        aStrRect.AdjustTop(nRectHeight/6 );
+        aStrRect.AdjustBottom( -(nRectHeight/6) );
+        aStrRect.AdjustLeft(imgCus.GetSizePixel().Width() + 20 );
         if(bCusEnable)
-            aFont.SetColor(GetSettings().GetStyleSettings().GetFieldTextColor());
+            aFont.SetColor(Application::GetSettings().GetStyleSettings().GetFieldTextColor());
         else
-            aFont.SetColor(GetSettings().GetStyleSettings().GetDisableColor());
+            aFont.SetColor(Application::GetSettings().GetStyleSettings().GetDisableColor());
 
         pDev->SetFont(aFont);
-        pDev->DrawText(aStrRect, strUnit[ nItemId - 1 ], DrawTextFlags::EndEllipsis);
+        pDev->DrawText(aStrRect, maStrUnits[ nItemId - 1 ], DrawTextFlags::EndEllipsis);
     }
     else
     {
         if( nSelItem ==  nItemId )
         {
-            Color aBackColor(50,107,197);
             tools::Rectangle aBackRect = aRect;
-            aBackRect.Top() += 3;
-            aBackRect.Bottom() -= 2;
-            pDev->SetFillColor(aBackColor);
+            aBackRect.AdjustTop(3 );
+            aBackRect.AdjustBottom( -2 );
+            pDev->SetFillColor(Color(50,107,197));
             pDev->DrawRect(aBackRect);
         }
         else
@@ -146,16 +134,16 @@ void  LineWidthValueSet::UserDraw( const UserDrawEvent& rUDEvt )
         if(nSelItem ==  nItemId )
             aFont.SetColor(COL_WHITE);
         else
-            aFont.SetColor(GetSettings().GetStyleSettings().GetFieldTextColor());
+            aFont.SetColor(Application::GetSettings().GetStyleSettings().GetFieldTextColor());
         pDev->SetFont(aFont);
         Point aStart(aBLPos.X() + nRectWidth * 7 / 9 , aBLPos.Y() + nRectHeight/6);
-        pDev->DrawText(aStart, strUnit[ nItemId - 1 ]);  //can't set DrawTextFlags::EndEllipsis here ,or the text will disappear
+        pDev->DrawText(aStart, maStrUnits[ nItemId - 1 ]);  //can't set DrawTextFlags::EndEllipsis here ,or the text will disappear
 
         //draw line
         if( nSelItem ==  nItemId )
             pDev->SetLineColor(COL_WHITE);
         else
-            pDev->SetLineColor(GetSettings().GetStyleSettings().GetFieldTextColor());
+            pDev->SetLineColor(Application::GetSettings().GetStyleSettings().GetFieldTextColor());
 
         for(sal_uInt16 i = 1; i <= nItemId; i++)
         {
@@ -171,11 +159,14 @@ void  LineWidthValueSet::UserDraw( const UserDrawEvent& rUDEvt )
     pDev->SetFont(aOldFont);
 }
 
-Size LineWidthValueSet::GetOptimalSize() const
+void LineWidthValueSet::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 {
-    return LogicToPixel(Size(80, 12 * 9), MapUnit::MapAppFont);
+    ValueSet::SetDrawingArea(pDrawingArea);
+    Size aSize(pDrawingArea->get_ref_device().LogicToPixel(Size(80, 12 * 9), MapMode(MapUnit::MapAppFont)));
+    pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
+    SetOutputSizePixel(aSize);
 }
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

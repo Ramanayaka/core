@@ -13,8 +13,6 @@
 
 #include <comphelper/processfactory.hxx>
 
-#include <o3tl/make_unique.hxx>
-
 #include <ucbhelper/content.hxx>
 
 #include <test/bootstrapfixture.hxx>
@@ -33,7 +31,6 @@ using writerperfect::DirectoryStream;
 
 namespace
 {
-
 class DirectoryStreamTest : public test::BootstrapFixture
 {
 public:
@@ -59,9 +56,9 @@ private:
     uno::Reference<ucb::XContent> m_xNonexistent;
 };
 
-static const char g_aDirPath[] = "/writerperfect/qa/unit/data/stream/test.dir";
-static const char g_aNondirPath[] = "/writerperfect/qa/unit/data/stream/test.dir/mimetype";
-static const char g_aNonexistentPath[] = "/writerperfect/qa/unit/data/stream/foo/bar";
+const char g_aDirPath[] = "/writerperfect/qa/unit/data/stream/test.dir";
+const char g_aNondirPath[] = "/writerperfect/qa/unit/data/stream/test.dir/mimetype";
+const char g_aNonexistentPath[] = "/writerperfect/qa/unit/data/stream/foo/bar";
 
 DirectoryStreamTest::DirectoryStreamTest()
 {
@@ -72,7 +69,8 @@ DirectoryStreamTest::DirectoryStreamTest()
 
     m_xDir = Content(m_directories.getURLFromSrc(g_aDirPath), xCmdEnv, xContext).get();
     m_xFile = Content(m_directories.getURLFromSrc(g_aNondirPath), xCmdEnv, xContext).get();
-    m_xNonexistent = Content(m_directories.getURLFromSrc(g_aNonexistentPath), xCmdEnv, xContext).get();
+    m_xNonexistent
+        = Content(m_directories.getURLFromSrc(g_aNonexistentPath), xCmdEnv, xContext).get();
 }
 
 void DirectoryStreamTest::testConstruction()
@@ -102,7 +100,7 @@ void DirectoryStreamTest::testDetection()
     CPPUNIT_ASSERT(!DirectoryStream::isDirectory(m_xNonexistent));
 }
 
-void lcl_testDataOperations(RVNGInputStream &rStream)
+void lcl_testDataOperations(RVNGInputStream& rStream)
 {
     CPPUNIT_ASSERT(rStream.isEnd());
     CPPUNIT_ASSERT_EQUAL(0L, rStream.tell());
@@ -125,7 +123,7 @@ void DirectoryStreamTest::testDataOperations()
     lcl_testDataOperations(aFile);
 }
 
-void lcl_testStructuredOperations(RVNGInputStream &rStream)
+void lcl_testStructuredOperations(RVNGInputStream& rStream)
 {
     CPPUNIT_ASSERT(rStream.isStructured());
     unique_ptr<RVNGInputStream> pSubstream(rStream.getSubStreamByName("mimetype"));
@@ -141,11 +139,10 @@ void DirectoryStreamTest::testStructuredOperations()
 
     unique_ptr<DirectoryStream> pDir(DirectoryStream::createForParent(m_xFile));
     CPPUNIT_ASSERT(bool(pDir));
-    lcl_testStructuredOperations(*pDir.get());
+    lcl_testStructuredOperations(*pDir);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(DirectoryStreamTest);
-
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

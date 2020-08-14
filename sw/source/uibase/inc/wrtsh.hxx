@@ -19,14 +19,15 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_WRTSH_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_WRTSH_HXX
 
-#include "swdllapi.h"
+#include <swdllapi.h>
 #include <fesh.hxx>
-#include <sortopt.hxx>
 #include <swurl.hxx>
 #include <IMark.hxx>
 #include "navmgr.hxx"
-#include <boost/optional.hpp>
+#include <optional>
 #include <o3tl/typed_flags_set.hxx>
+#include <svx/swframetypes.hxx>
+#include <vcl/weld.hxx>
 
 namespace vcl { class Window; }
 class SbxArray;
@@ -46,6 +47,9 @@ class SvxAutoCorrect;
 class NaviContentBookmark;
 struct SwCallMouseEvent;
 class SfxStringListItem;
+enum class SvMacroItemId : sal_uInt16;
+class SwFieldMgr;
+class SfxRequest;
 
 namespace i18nutil {
     struct SearchOptions2;
@@ -70,10 +74,12 @@ enum class SelectionType : sal_Int32
     ExtrudedCustomShape  = 0x008000, // extruded custom shape
     FontWork             = 0x010000, // fontwork
     PostIt               = 0x020000, // annotation
-    All                  = 0x03fff3,
+    TableRow             = 0x040000, // table rows are selected
+    TableCol             = 0x080000, // table columns are selected
+    All                  = 0x0ffff3,
 };
 namespace o3tl {
-    template<> struct typed_flags<SelectionType> : is_typed_flags<SelectionType, 0x03fff3> {};
+    template<> struct typed_flags<SelectionType> : is_typed_flags<SelectionType, 0x0ffff3> {};
 }
 
 /** Used by the UI to modify the document model.
@@ -97,11 +103,12 @@ private:
     using SwCursorShell::GotoMark;
 
     typedef long (SwWrtShell::*SELECTFUNC)(const Point *, bool bProp );
+    typedef void (SwWrtShell::*SELECTFUNC2)(const Point *, bool bProp );
 
-    SELECTFUNC  m_fnDrag;
-    SELECTFUNC  m_fnSetCursor;
-    SELECTFUNC  m_fnEndDrag;
-    SELECTFUNC  m_fnKillSel;
+    SELECTFUNC2 m_fnDrag      = &SwWrtShell::BeginDrag;
+    SELECTFUNC  m_fnSetCursor = &SwWrtShell::SetCursor;
+    SELECTFUNC2 m_fnEndDrag   = &SwWrtShell::DefaultEndDrag;
+    SELECTFUNC  m_fnKillSel   = &SwWrtShell::Ignore;
 
 public:
 
@@ -111,6 +118,9 @@ public:
     void Drag         (const Point* pPt, bool bProp) { (this->*m_fnDrag)(pPt, bProp); }
     void EndDrag      (const Point* pPt, bool bProp) { (this->*m_fnEndDrag)(pPt, bProp); }
     long KillSelection(const Point* pPt, bool bProp) { return (this->*m_fnKillSel)(pPt, bProp); }
+
+    bool IsSplitVerticalByDefault() const;
+    void SetSplitVerticalByDefault(bool value);
 
     // reset all selections
     long ResetSelect( const Point *, bool );
@@ -185,7 +195,7 @@ public:
     // #i32329# Enhanced selection
     void    SelSentence (const Point *);
     void    SelPara     (const Point *);
-    long    SelAll();
+    void    SelAll();
 
     // basecursortravelling
 typedef bool (SwWrtShell:: *FNSimpleMove)();
@@ -203,8 +213,8 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
     bool LeftMargin ( bool bSelect, bool bBasicCall );
     bool RightMargin( bool bSelect, bool bBasicCall );
 
-    bool SttDoc     ( bool bSelect = false );
-    bool EndDoc     ( bool bSelect = false );
+    bool StartOfSection( bool bSelect = false );
+    bool EndOfSection  ( bool bSelect = false );
 
     bool SttNxtPg   ( bool bSelect = false );
     void SttPrvPg   ( bool bSelect = false );
@@ -240,7 +250,7 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
     void EndOfPrevColumn    ();
 
     // set the cursor to page "nPage" at the beginning
-    // additionally to a identically named implementation in crsrsh.hxx
+    // additionally to an identically named implementation in crsrsh.hxx
     // here all existing selections are being reset before setting the
     // cursor
     bool    GotoPage( sal_uInt16 nPage, bool bRecord );
@@ -266,13 +276,13 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
     void    DelToEndOfLine();
     void    DelToStartOfLine();
     void    DelLine();
-    long    DelLeft();
+    bool    DelLeft();
 
     // also deletes the frame or sets the cursor in the frame when bDelFrame == false
-    long    DelRight();
+    bool    DelRight();
     void    DelToEndOfPara();
     void    DelToStartOfPara();
-    long    DelToEndOfSentence();
+    bool    DelToEndOfSentence();
     void    DelToStartOfSentence();
     void    DelNxtWord();
     void    DelPrvWord();
@@ -290,7 +300,7 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
     int     IntelligentCut(SelectionType nSelectionType, bool bCut = true);
 
     // edit
-    void    Insert(SwField &);
+    void    Insert(SwField const &, SwPaM* pAnnotationRange = nullptr);
     void    Insert(const OUString &);
     // graphic
     void    Insert( const OUString &rPath, const OUString &rFilter,
@@ -298,7 +308,7 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
                     RndStdIds nAnchorType = RndStdIds::FLY_AT_PARA);
 
     void    InsertByWord( const OUString & );
-    void    InsertPageBreak(const OUString *pPageDesc = nullptr, const ::boost::optional<sal_uInt16>& rPgNum = boost::none);
+    void    InsertPageBreak(const OUString *pPageDesc = nullptr, const ::std::optional<sal_uInt16>& rPgNum = std::nullopt);
     void    InsertLineBreak();
     void    InsertColumnBreak();
     void    InsertFootnote(const OUString &, bool bEndNote = false, bool bEdit = true );
@@ -307,7 +317,7 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
 
     // indexes
     void    InsertTableOf(const SwTOXBase& rTOX, const SfxItemSet* pSet = nullptr);
-    bool    UpdateTableOf(const SwTOXBase& rTOX, const SfxItemSet* pSet = nullptr);
+    void    UpdateTableOf(const SwTOXBase& rTOX, const SfxItemSet* pSet = nullptr);
 
     // numbering and bullets
     /**
@@ -324,7 +334,7 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
     //OLE
     void    InsertObject(     /*SvInPlaceObjectRef *pObj, */       // != 0 for clipboard
                           const svt::EmbeddedObjectRef&,
-                          SvGlobalName *pName,      // != 0 create object accordingly
+                          SvGlobalName const *pName,      // != 0 create object accordingly
                           sal_uInt16 nSlotId = 0);       // SlotId for dialog
 
     bool    InsertOleObject( const svt::EmbeddedObjectRef& xObj, SwFlyFrameFormat **pFlyFrameFormat = nullptr );
@@ -352,12 +362,14 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
 
     void            SetPageStyle(const OUString &rCollName);
 
-    OUString        GetCurPageStyle() const;
+    OUString const & GetCurPageStyle() const;
 
     // change current style using the attributes in effect
     void    QuickUpdateStyle();
 
     enum DoType { UNDO, REDO, REPEAT };
+
+    enum class FieldDialogPressedButton { NONE, Previous, Next };
 
     void    Do( DoType eDoType, sal_uInt16 nCnt = 1 );
     OUString  GetDoString( DoType eDoType ) const;
@@ -390,9 +402,9 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
     void    MoveCursor( bool bWithSelect = false );
 
     // update input fields
-    bool    StartInputFieldDlg(SwField*, bool bNextButton, vcl::Window* pParentWin = nullptr, OString* pWindowState = nullptr);
+    bool    StartInputFieldDlg(SwField*, bool bPrevButton, bool bNextButton, weld::Widget* pParentWin, FieldDialogPressedButton* pPressedButton = nullptr);
     // update DropDown fields
-    bool    StartDropDownFieldDlg(SwField*, bool bNextButton, OString* pWindowState = nullptr);
+    bool    StartDropDownFieldDlg(SwField*, bool bPrevButton, bool bNextButton, weld::Widget* pParentWin, FieldDialogPressedButton* pPressedButton = nullptr);
 
     //"Handler" for changes at DrawView - for controls.
     virtual void DrawSelChanged( ) override;
@@ -416,10 +428,10 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
     const SwView&       GetView() const { return m_rView; }
     SwView&             GetView() { return m_rView; }
 
-    // Because nobody else is doing it, here is a ExecMacro()
+    // Because nobody else is doing it, here is an ExecMacro()
     void ExecMacro( const SvxMacro& rMacro, OUString* pRet = nullptr, SbxArray* pArgs = nullptr );
     // call into the dark Basic/JavaScript
-    sal_uInt16 CallEvent( sal_uInt16 nEvent, const SwCallMouseEvent& rCallEvent,
+    sal_uInt16 CallEvent( SvMacroItemId nEvent, const SwCallMouseEvent& rCallEvent,
                         bool bCheckPtr = false );
 
     // a click at the given field. the cursor is on it.
@@ -442,8 +454,8 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
     void AutoUpdateFrame(SwFrameFormat* pFormat, const SfxItemSet& rStyleSet);
     void AutoUpdatePara(SwTextFormatColl* pColl, const SfxItemSet& rStyleSet, SwPaM* pPaM = nullptr );
 
-    // link for inserting ranges via Drag&Drop/Clipboard
-    DECL_LINK( InsertRegionDialog, void*, void );
+    // starts dialog for inserting ranges via Drag&Drop/Clipboard
+    void StartInsertRegionDialog(const SwSectionData&);
 
     // ctor, the first one is a kind of a controlled copy ctor for more views of a document
     SwWrtShell( SwWrtShell&, vcl::Window *pWin, SwView &rShell);
@@ -464,15 +476,22 @@ typedef bool (SwWrtShell:: *FNSimpleMove)();
     void GotoOutline( SwOutlineNodes::size_type nIdx );
     bool GotoOutline( const OUString& rName );
     bool GotoRegion( const OUString& rName );
-    void GotoRefMark( const OUString& rRefMark, sal_uInt16 nSubType = 0,
+    bool GotoRefMark( const OUString& rRefMark, sal_uInt16 nSubType = 0,
         sal_uInt16 nSeqNo = 0 );
     bool GotoNextTOXBase( const OUString* pName = nullptr);
     bool GotoTable( const OUString& rName );
-    bool GotoFormatField( const SwFormatField& rField );
+    void GotoFormatField( const SwFormatField& rField );
     const SwRangeRedline* GotoRedline( SwRedlineTable::size_type nArrPos, bool bSelect);
 
     void ChangeHeaderOrFooter(const OUString& rStyleName, bool bHeader, bool bOn, bool bShowWarning);
     virtual void SetShowHeaderFooterSeparator( FrameControlType eControl, bool bShow ) override;
+
+    /// Inserts a new annotation/comment at the current cursor position / selection.
+    void InsertPostIt(SwFieldMgr& rFieldMgr, const SfxRequest& rReq);
+
+    bool IsOutlineContentFolded(const size_t nPos);
+    void ToggleOutlineContentVisibility(SwNode* pNd, bool bForceFold = false);
+    void ToggleOutlineContentVisibility(const size_t nPos, bool bForceFold = false);
 
 private:
 
@@ -493,7 +512,7 @@ private:
             bExt(_bExt),
             bIns(_bIns)
              {}
-    } *m_pModeStack;
+    } *m_pModeStack = nullptr;
 
     // carry cursor along when PageUp / -Down
     enum PageMove
@@ -501,41 +520,41 @@ private:
         MV_NO,
         MV_PAGE_UP,
         MV_PAGE_DOWN
-    }  m_ePageMove;
+    } m_ePageMove = MV_NO;
 
     struct CursorStack
     {
         Point aDocPos;
-        CursorStack *pNext;
+        std::unique_ptr<CursorStack> pNext;
         bool bValidCurPos : 1;
         bool bIsFrameSel : 1;
         SwTwips lOffset;
 
         CursorStack( bool bValid, bool bFrameSel, const Point &rDocPos,
-                    SwTwips lOff, CursorStack *pN )
+                    SwTwips lOff, std::unique_ptr<CursorStack> pN )
             : aDocPos(rDocPos),
-            pNext(pN),
+            pNext(std::move(pN)),
             bValidCurPos( bValid ),
             bIsFrameSel( bFrameSel ),
             lOffset(lOff)
         {
-
         }
 
-    } *m_pCursorStack;
+    };
+    std::unique_ptr<CursorStack> m_pCursorStack;
 
     SwView  &m_rView;
     SwNavigationMgr m_aNavigationMgr;
 
     Point   m_aDest;
-    bool    m_bDestOnStack;
+    bool    m_bDestOnStack = false;
     bool    HasCursorStack() const { return nullptr != m_pCursorStack; }
     SAL_DLLPRIVATE bool  PushCursor(SwTwips lOffset, bool bSelect);
     SAL_DLLPRIVATE bool  PopCursor(bool bUpdate, bool bSelect = false);
 
     // take END cursor along when PageUp / -Down
-    SAL_DLLPRIVATE bool SttWrd();
-    SAL_DLLPRIVATE bool EndWrd();
+    SAL_DLLPRIVATE void SttWrd();
+    SAL_DLLPRIVATE void EndWrd();
     SAL_DLLPRIVATE bool NxtWrd_();
     SAL_DLLPRIVATE bool PrvWrd_();
     // #i92468#
@@ -570,17 +589,17 @@ private:
 
     SAL_DLLPRIVATE long  SetCursorKillSel(const Point *, bool bProp );
 
-    SAL_DLLPRIVATE long  BeginDrag(const Point *, bool bProp );
-    SAL_DLLPRIVATE long  DefaultDrag(const Point *, bool bProp );
-    SAL_DLLPRIVATE long  DefaultEndDrag(const Point *, bool bProp );
+    SAL_DLLPRIVATE void  BeginDrag(const Point *, bool bProp );
+    SAL_DLLPRIVATE void  DefaultDrag(const Point *, bool bProp );
+    SAL_DLLPRIVATE void  DefaultEndDrag(const Point *, bool bProp );
 
-    SAL_DLLPRIVATE long  ExtSelWrd(const Point *, bool bProp );
-    SAL_DLLPRIVATE long  ExtSelLn(const Point *, bool bProp );
+    SAL_DLLPRIVATE void  ExtSelWrd(const Point *, bool bProp );
+    SAL_DLLPRIVATE void  ExtSelLn(const Point *, bool bProp );
 
-    SAL_DLLPRIVATE long  BeginFrameDrag(const Point *, bool bProp );
+    SAL_DLLPRIVATE void  BeginFrameDrag(const Point *, bool bProp );
 
     // after SSize/Move of a frame update; Point is destination.
-    SAL_DLLPRIVATE long  UpdateLayoutFrame(const Point *, bool bProp );
+    SAL_DLLPRIVATE void  UpdateLayoutFrame(const Point *, bool bProp );
 
     SAL_DLLPRIVATE void  SttLeaveSelect();
     SAL_DLLPRIVATE void  AddLeaveSelect();
@@ -589,7 +608,7 @@ private:
     SAL_DLLPRIVATE void  LeaveExtSel() { m_bSelWrd = m_bSelLn = false;}
 
     SAL_DLLPRIVATE bool  GoStart(bool KeepArea, bool *,
-            bool bSelect = false, bool bDontMoveRegion = false);
+            bool bSelect, bool bDontMoveRegion = false);
     SAL_DLLPRIVATE bool  GoEnd(bool KeepArea = false, const bool * = nullptr);
 
     enum BookMarkMove
@@ -625,7 +644,7 @@ inline bool SwWrtShell::IsInClickToEdit() const { return m_bIsInClickToEdit; }
 inline bool SwWrtShell::Is_FnDragEQBeginDrag() const
 {
 #ifdef __GNUC__
-    SELECTFUNC  fnTmp = &SwWrtShell::BeginDrag;
+    SELECTFUNC2 fnTmp = &SwWrtShell::BeginDrag;
     return m_fnDrag == fnTmp;
 #else
     return m_fnDrag == &SwWrtShell::BeginDrag;

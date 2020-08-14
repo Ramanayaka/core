@@ -22,22 +22,14 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 
-#include <vector>
-#include <memory>
-
 #include "unoview.hxx"
 
 
-namespace com { namespace sun { namespace star { namespace presentation
-{
-    class XSlideShowView;
-} } } }
+namespace com::sun::star::presentation { class XSlideShowView; }
 
 /* Definition of UnoViewContainer class */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** Contains UnoViews
          */
@@ -82,9 +74,6 @@ namespace slideshow
             UnoViewVector   maViews;
         };
 
-        typedef ::std::shared_ptr< UnoViewContainer > UnoViewContainerSharedPtr;
-
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_UNOVIEWCONTAINER_HXX

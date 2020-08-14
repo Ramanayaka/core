@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PolynomialRegressionCurveCalculator.hxx"
-#include "macros.hxx"
-#include "RegressionCalculationHelper.hxx"
+#include <PolynomialRegressionCurveCalculator.hxx>
+#include <RegressionCalculationHelper.hxx>
 
 #include <cmath>
 #include <rtl/math.hxx>
@@ -32,18 +31,66 @@ using namespace com::sun::star;
 namespace chart
 {
 
+static double lcl_GetDotProduct(std::vector<double>& aVec1, std::vector<double>& aVec2)
+{
+    double fResult = 0.0;
+    assert(aVec1.size() == aVec2.size());
+    for (size_t i = 0; i < aVec1.size(); ++i)
+        fResult += aVec1[i] * aVec2[i];
+    return fResult;
+}
+
 PolynomialRegressionCurveCalculator::PolynomialRegressionCurveCalculator()
 {}
 
 PolynomialRegressionCurveCalculator::~PolynomialRegressionCurveCalculator()
 {}
 
+void PolynomialRegressionCurveCalculator::computeCorrelationCoefficient(
+    RegressionCalculationHelper::tDoubleVectorPair& rValues,
+    const sal_Int32 aNoValues,
+    double yAverage )
+{
+    double aSumError = 0.0;
+    double aSumTotal = 0.0;
+    double aSumYpred2 = 0.0;
+
+    for( sal_Int32 i = 0; i < aNoValues; i++ )
+    {
+        double xValue = rValues.first[i];
+        double yActual = rValues.second[i];
+        double yPredicted = getCurveValue( xValue );
+        aSumTotal += (yActual - yAverage) * (yActual - yAverage);
+        aSumError += (yActual - yPredicted) * (yActual - yPredicted);
+        if(mForceIntercept)
+            aSumYpred2 += (yPredicted - mInterceptValue) * (yPredicted - mInterceptValue);
+    }
+
+    double aRSquared = 0.0;
+    if(mForceIntercept)
+    {
+        if (auto const div = aSumError + aSumYpred2)
+        {
+            aRSquared = aSumYpred2 / div;
+        }
+    }
+    else if (aSumTotal != 0.0)
+    {
+        aRSquared = 1.0 - (aSumError / aSumTotal);
+    }
+
+    if (aRSquared > 0.0)
+        m_fCorrelationCoefficient = std::sqrt(aRSquared);
+    else
+        m_fCorrelationCoefficient = 0.0;
+}
+
 // ____ XRegressionCurveCalculator ____
 void SAL_CALL PolynomialRegressionCurveCalculator::recalculateRegression(
     const uno::Sequence< double >& aXValues,
     const uno::Sequence< double >& aYValues )
 {
-    rtl::math::setNan(&m_fCorrelationCoeffitient);
+    rtl::math::setNan(&m_fCorrelationCoefficient);
 
     RegressionCalculationHelper::tDoubleVectorPair aValues(
         RegressionCalculationHelper::cleanup( aXValues, aYValues, RegressionCalculationHelper::isValid()));
@@ -57,9 +104,6 @@ void SAL_CALL PolynomialRegressionCurveCalculator::recalculateRegression(
 
     double yAverage = 0.0;
 
-    std::vector<double> aQRTransposed;
-    aQRTransposed.resize(aNoValues * aNoPowers, 0.0);
-
     std::vector<double> yVector;
     yVector.resize(aNoValues, 0.0);
 
@@ -71,7 +115,61 @@ void SAL_CALL PolynomialRegressionCurveCalculator::recalculateRegression(
         yVector[i] = yValue;
         yAverage += yValue;
     }
-    yAverage /= aNoValues;
+    if (aNoValues != 0)
+    {
+        yAverage /= aNoValues;
+    }
+
+    // Special case for single variable regression like in LINEST
+    // implementation in Calc.
+    if (mDegree == 1)
+    {
+        std::vector<double> xVector;
+        xVector.resize(aNoValues, 0.0);
+        double xAverage = 0.0;
+
+        for(sal_Int32 i = 0; i < aNoValues; ++i)
+        {
+            double xValue = aValues.first[i];
+            xVector[i] = xValue;
+            xAverage += xValue;
+        }
+        if (aNoValues != 0)
+        {
+            xAverage /= aNoValues;
+        }
+
+        if (!mForceIntercept)
+        {
+            for (sal_Int32 i = 0; i < aNoValues; ++i)
+            {
+                xVector[i] -= xAverage;
+                yVector[i] -= yAverage;
+            }
+        }
+        double fSumXY = lcl_GetDotProduct(xVector, yVector);
+        double fSumX2 = lcl_GetDotProduct(xVector, xVector);
+
+        double fSlope = fSumXY / fSumX2;
+
+        if (!mForceIntercept)
+        {
+            mInterceptValue = ::rtl::math::approxSub(yAverage, fSlope * xAverage);
+            mCoefficients[0] = mInterceptValue;
+            mCoefficients[1] = fSlope;
+        }
+        else
+        {
+            mCoefficients[0] = fSlope;
+            mCoefficients.insert(mCoefficients.begin(), mInterceptValue);
+        }
+
+        computeCorrelationCoefficient(aValues, aNoValues, yAverage);
+        return;
+    }
+
+    std::vector<double> aQRTransposed;
+    aQRTransposed.resize(aNoValues * aNoPowers, 0.0);
 
     for(sal_Int32 j = 0; j < aNoPowers; j++)
     {
@@ -80,7 +178,7 @@ void SAL_CALL PolynomialRegressionCurveCalculator::recalculateRegression(
         for(sal_Int32 i = 0; i < aNoValues; i++)
         {
             double xValue = aValues.first[i];
-            aQRTransposed[i + aColumnIndex] = std::pow(xValue, (int) aPower);
+            aQRTransposed[i + aColumnIndex] = std::pow(xValue, static_cast<int>(aPower));
         }
     }
 
@@ -165,36 +263,8 @@ void SAL_CALL PolynomialRegressionCurveCalculator::recalculateRegression(
         mCoefficients.insert(mCoefficients.begin(), mInterceptValue);
     }
 
-    // Calculate correlation coeffitient
-    double aSumError = 0.0;
-    double aSumTotal = 0.0;
-    double aSumYpred2 = 0.0;
-
-    for( sal_Int32 i = 0; i < aNoValues; i++ )
-    {
-        double xValue = aValues.first[i];
-        double yActual = aValues.second[i];
-        double yPredicted = getCurveValue( xValue );
-        aSumTotal += (yActual - yAverage) * (yActual - yAverage);
-        aSumError += (yActual - yPredicted) * (yActual - yPredicted);
-        if(mForceIntercept)
-            aSumYpred2 += (yPredicted - mInterceptValue) * (yPredicted - mInterceptValue);
-    }
-
-    double aRSquared = 0.0;
-    if(mForceIntercept)
-    {
-        aRSquared = aSumYpred2 / (aSumError + aSumYpred2);
-    }
-    else
-    {
-        aRSquared = 1.0 - (aSumError / aSumTotal);
-    }
-
-    if (aRSquared > 0.0)
-        m_fCorrelationCoeffitient = std::sqrt(aRSquared);
-    else
-        m_fCorrelationCoeffitient = 0.0;
+    // Calculate correlation coefficient
+    computeCorrelationCoefficient(aValues, aNoValues, yAverage);
 }
 
 double SAL_CALL PolynomialRegressionCurveCalculator::getCurveValue( double x )
@@ -207,7 +277,7 @@ double SAL_CALL PolynomialRegressionCurveCalculator::getCurveValue( double x )
         return fResult;
     }
 
-    sal_Int32 aNoCoefficients = (sal_Int32) mCoefficients.size();
+    sal_Int32 aNoCoefficients = static_cast<sal_Int32>(mCoefficients.size());
 
     // Horner's method
     fResult = 0.0;
@@ -235,12 +305,12 @@ OUString PolynomialRegressionCurveCalculator::ImplGetRepresentation(
         {
             double aValue = mCoefficients[i];
             if ( aValue == 0.0 )
-            { // do not count coeffitient if it is 0
+            { // do not count coefficient if it is 0
                 nCoefficients --;
                 continue;
             }
             if ( rtl::math::approxEqual( fabs( aValue ) , 1.0 ) )
-            { // do not count coeffitient if it is 1
+            { // do not count coefficient if it is 1
                 nCoefficients --;
                 if ( i == 0 ) // intercept = 1
                     nCharMin ++;
@@ -275,7 +345,7 @@ OUString PolynomialRegressionCurveCalculator::ImplGetRepresentation(
         {
             if ( bFindValue ) // if it is not the first aValue
                 aTmpBuf.append( " " );
-            aTmpBuf.append( OUStringLiteral1(aMinusSign) + " ");
+            aTmpBuf.append( OUStringChar(aMinusSign) ).append(" ");
             aValue = - aValue;
         }
         else
@@ -315,7 +385,7 @@ OUString PolynomialRegressionCurveCalculator::ImplGetRepresentation(
         }
         addStringToEquation( aBuf, nLineLength, aTmpBuf, pFormulaMaxWidth );
     }
-    if ( aBuf.toString().equals( OUString( mYName + " = ") ) )
+    if ( aBuf.toString() == ( mYName + " = ") )
         aBuf.append( "0" );
 
     return aBuf.makeStringAndClear();

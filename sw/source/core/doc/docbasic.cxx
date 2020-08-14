@@ -20,8 +20,9 @@
 #include <hintids.hxx>
 
 #include <rtl/ustring.hxx>
-#include <svtools/imap.hxx>
-#include <svtools/imapobj.hxx>
+#include <sal/log.hxx>
+#include <vcl/imap.hxx>
+#include <vcl/imapobj.hxx>
 #include <basic/sbx.hxx>
 #include <frmfmt.hxx>
 #include <fmtinfmt.hxx>
@@ -31,6 +32,7 @@
 #include <doc.hxx>
 #include <docsh.hxx>
 #include <swevent.hxx>
+#include <frameformats.hxx>
 #include <memory>
 
 using namespace ::com::sun::star::uno;
@@ -39,25 +41,25 @@ static Sequence<Any> *lcl_docbasic_convertArgs( SbxArray& rArgs )
 {
     Sequence<Any> *pRet = nullptr;
 
-    sal_uInt16 nCount = rArgs.Count();
+    sal_uInt32 nCount = rArgs.Count32();
     if( nCount > 1 )
     {
         nCount--;
         pRet = new Sequence<Any>( nCount );
         Any *pUnoArgs = pRet->getArray();
-        for( sal_uInt16 i=0; i<nCount; i++ )
+        for( sal_uInt32 i=0; i<nCount; i++ )
         {
-            SbxVariable *pVar = rArgs.Get( i+1 );
+            SbxVariable *pVar = rArgs.Get32( i+1 );
             switch( pVar->GetType() )
             {
             case SbxSTRING:
                 pUnoArgs[i] <<= pVar->GetOUString();
                 break;
             case SbxCHAR:
-                pUnoArgs[i] <<= (sal_Int16)pVar->GetChar() ;
+                pUnoArgs[i] <<= static_cast<sal_Int16>(pVar->GetChar()) ;
                 break;
             case SbxUSHORT:
-                pUnoArgs[i] <<= (sal_Int16)pVar->GetUShort();
+                pUnoArgs[i] <<= static_cast<sal_Int16>(pVar->GetUShort());
                 break;
             case SbxLONG:
                 pUnoArgs[i] <<= pVar->GetLong();
@@ -72,9 +74,8 @@ static Sequence<Any> *lcl_docbasic_convertArgs( SbxArray& rArgs )
     return pRet;
 }
 
-bool SwDoc::ExecMacro( const SvxMacro& rMacro, OUString* pRet, SbxArray* pArgs )
+void SwDoc::ExecMacro( const SvxMacro& rMacro, OUString* pRet, SbxArray* pArgs )
 {
-    ErrCode eErr = ERRCODE_NONE;
     switch( rMacro.GetScriptType() )
     {
     case STARBASIC:
@@ -82,7 +83,7 @@ bool SwDoc::ExecMacro( const SvxMacro& rMacro, OUString* pRet, SbxArray* pArgs )
             SbxBaseRef aRef;
             SbxValue* pRetValue = new SbxValue;
             aRef = pRetValue;
-            eErr = mpDocShell->CallBasic( rMacro.GetMacName(),
+            mpDocShell->CallBasic( rMacro.GetMacName(),
                                          rMacro.GetLibName(),
                                          pArgs, pRet ? pRetValue : nullptr );
 
@@ -119,17 +120,15 @@ bool SwDoc::ExecMacro( const SvxMacro& rMacro, OUString* pRet, SbxArray* pArgs )
 
             SAL_INFO("sw", "SwDoc::ExecMacro URL is " << rMacro.GetMacName() );
 
-            eErr = mpDocShell->CallXScript(
+            mpDocShell->CallXScript(
                 rMacro.GetMacName(), *pUnoArgs, aRet, aOutArgsIndex, aOutArgs);
 
             break;
         }
     }
-
-    return ERRCODE_NONE == eErr;
 }
 
-sal_uInt16 SwDoc::CallEvent( sal_uInt16 nEvent, const SwCallMouseEvent& rCallEvent,
+sal_uInt16 SwDoc::CallEvent( SvMacroItemId nEvent, const SwCallMouseEvent& rCallEvent,
                     bool bCheckPtr )
 {
     if( !mpDocShell )        // we can't do that without a DocShell!
@@ -142,12 +141,10 @@ sal_uInt16 SwDoc::CallEvent( sal_uInt16 nEvent, const SwCallMouseEvent& rCallEve
     case EVENT_OBJECT_INETATTR:
         if( bCheckPtr  )
         {
-            sal_uInt32 n, nMaxItems = GetAttrPool().GetItemCount2( RES_TXTATR_INETFMT );
-            for( n = 0; n < nMaxItems; ++n )
+            for (const SfxPoolItem* pItem : GetAttrPool().GetItemSurrogates(RES_TXTATR_INETFMT))
             {
-                const SfxPoolItem* pItem;
-                if( nullptr != (pItem = GetAttrPool().GetItem2( RES_TXTATR_INETFMT, n ) )
-                    && rCallEvent.PTR.pINetAttr == pItem )
+                auto pFormatItem = dynamic_cast<const SwFormatINetFormat*>(pItem);
+                if( pFormatItem && rCallEvent.PTR.pINetAttr == pFormatItem )
                 {
                     bCheckPtr = false;       // misuse as a flag
                     break;
@@ -182,16 +179,18 @@ sal_uInt16 SwDoc::CallEvent( sal_uInt16 nEvent, const SwCallMouseEvent& rCallEve
             if( bCheckPtr )
             {
                 const SwFrameFormat* pFormat = rCallEvent.PTR.IMAP.pFormat;
-                const ImageMap* pIMap;
-                if (GetSpzFrameFormats()->IsAlive(pFormat) &&
-                    nullptr != (pIMap = pFormat->GetURL().GetMap()) )
+                if (GetSpzFrameFormats()->IsAlive(pFormat))
                 {
-                    for( size_t nPos = pIMap->GetIMapObjectCount(); nPos; )
-                        if( pIMapObj == pIMap->GetIMapObject( --nPos ))
-                        {
-                            bCheckPtr = false;      // misuse as a flag
-                            break;
-                        }
+                    const ImageMap* pIMap = pFormat->GetURL().GetMap();
+                    if (pIMap)
+                    {
+                        for( size_t nPos = pIMap->GetIMapObjectCount(); nPos; )
+                            if( pIMapObj == pIMap->GetIMapObject( --nPos ))
+                            {
+                                bCheckPtr = false;      // misuse as a flag
+                                break;
+                            }
+                    }
                 }
             }
             if( !bCheckPtr )

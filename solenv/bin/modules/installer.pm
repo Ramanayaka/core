@@ -232,11 +232,6 @@ sub run {
 
     if ( $installer::globals::iswindowsbuild ) { installer::control::read_lcidlist($includepatharrayref); }
 
-    ####################################################################
-    # MacOS dmg build requires special DS_Store file to arrange icons
-    ####################################################################
-    # if (($installer::globals::ismacdmgbuild) && ($installer::globals::product eq "OpenOffice_Dev")) { $installer::globals::devsnapshotbuild = 1; }
-
     #####################################################################
     # Including additional inc files for variable settings, if defined
     #####################################################################
@@ -324,10 +319,9 @@ sub run {
     my $scpactionsinproductarrayref = installer::setupscript::get_all_items_from_script($setupscriptref, "ScpAction");
 
     if ( $installer::globals::languagepack ) { installer::scriptitems::use_langpack_copy_scpaction($scpactionsinproductarrayref); }
-    if ( $installer::globals::helppack ) { installer::scriptitems::use_langpack_copy_scpaction($scpactionsinproductarrayref); }
-#   if (($installer::globals::devsnapshotbuild)) { installer::scriptitems::use_dev_copy_scpaction($scpactionsinproductarrayref); }
+    elsif ( $installer::globals::helppack ) { installer::scriptitems::use_langpack_copy_scpaction($scpactionsinproductarrayref); }
     # TODO: why is this not done in scp2 based on the value of $(ENABLE_RELEASE_BUILD)?
-    if ( $allvariableshashref->{'PRODUCTNAME'} eq "LibreOfficeDev" ) { installer::scriptitems::use_devversion_copy_scpaction($scpactionsinproductarrayref); }
+    elsif ( $allvariableshashref->{'PRODUCTNAME'} eq "LibreOfficeDev" ) { installer::scriptitems::use_devversion_copy_scpaction($scpactionsinproductarrayref); }
 
     installer::scriptitems::change_keys_of_scpactions($scpactionsinproductarrayref);
 
@@ -458,9 +452,6 @@ sub run {
         @installer::globals::logfileinfo = ();  # new logfile array and new logfile name
         installer::logger::copy_globalinfo_into_logfile();
 
-        my $logminor = "";
-        $logminor = $installer::globals::minor;
-
         my $loglanguagestring = $$languagestringref;
         my $loglanguagestring_orig = $loglanguagestring;
         if (length($loglanguagestring) > $installer::globals::max_lang_length)
@@ -474,7 +465,6 @@ sub run {
         }
 
         $installer::globals::logfilename = "log_" . $installer::globals::build;
-        if ( $logminor ne "" ) { $installer::globals::logfilename .= "_" . $logminor; }
         $installer::globals::logfilename .= "_" . $loglanguagestring;
         $installer::globals::logfilename .= ".log";
         $loggingdir = $loggingdir . $loglanguagestring . $installer::globals::separator;
@@ -636,6 +626,18 @@ sub run {
 
         installer::scpzipfiles::resolving_scpzip_replace_flag($filesinproductlanguageresolvedarrayref, $allvariableshashref, "File", $languagestringref);
 
+        #########################################################
+        # language dependent unix links part
+        #########################################################
+
+        installer::logger::print_message( "... analyzing unix links ...\n" );
+
+        my $unixlinksinproductlanguageresolvedarrayref = installer::scriptitems::resolving_all_languages_in_productlists($unixlinksinproductarrayref, $languagesarrayref);
+
+        installer::scriptitems::changing_name_of_language_dependent_keys($unixlinksinproductlanguageresolvedarrayref);
+
+        installer::scriptitems::get_Destination_Directory_For_Item_From_Directorylist($unixlinksinproductlanguageresolvedarrayref, $dirsinproductarrayref);
+
         ############################################
         # Collecting directories for epm list file
         ############################################
@@ -646,11 +648,10 @@ sub run {
         # 1. Looking for all destination paths in the files array
         # 2. Looking for directories with CREATE flag in the directory array
         # Advantage: Many paths are hidden in zip files, they are not defined in the setup script.
-        # It will be possible, that in the setup script only those directoies have to be defined,
+        # It will be possible, that in the setup script only those directories have to be defined,
         # that have a CREATE flag. All other directories are created, if they contain at least one file.
 
-        my ($directoriesforepmarrayref, $alldirectoryhash) = installer::scriptitems::collect_directories_from_filesarray($filesinproductlanguageresolvedarrayref);
-
+        my ($directoriesforepmarrayref, $alldirectoryhash) = installer::scriptitems::collect_directories_from_filesarray($filesinproductlanguageresolvedarrayref, $unixlinksinproductlanguageresolvedarrayref);
         ($directoriesforepmarrayref, $alldirectoryhash) = installer::scriptitems::collect_directories_with_create_flag_from_directoryarray($dirsinproductlanguageresolvedarrayref, $alldirectoryhash);
 
         #########################################################
@@ -688,18 +689,6 @@ sub run {
         $linksinproductlanguageresolvedarrayref = installer::scriptitems::remove_workstation_only_items($linksinproductlanguageresolvedarrayref);
 
         installer::scriptitems::resolve_links_with_flag_relative($linksinproductlanguageresolvedarrayref);
-
-        #########################################################
-        # language dependent unix links part
-        #########################################################
-
-        installer::logger::print_message( "... analyzing unix links ...\n" );
-
-        my $unixlinksinproductlanguageresolvedarrayref = installer::scriptitems::resolving_all_languages_in_productlists($unixlinksinproductarrayref, $languagesarrayref);
-
-        installer::scriptitems::changing_name_of_language_dependent_keys($unixlinksinproductlanguageresolvedarrayref);
-
-        installer::scriptitems::get_Destination_Directory_For_Item_From_Directorylist($unixlinksinproductlanguageresolvedarrayref, $dirsinproductarrayref);
 
         #########################################################
         # language dependent part for profiles and profileitems
@@ -814,7 +803,7 @@ sub run {
             @{$folderitemsinproductlanguageresolvedarrayref} = (); # no folderitems in languagepacks
 
             # Collecting the directories again, to include only the language specific directories
-            ($directoriesforepmarrayref, $alldirectoryhash) = installer::scriptitems::collect_directories_from_filesarray($filesinproductlanguageresolvedarrayref);
+            ($directoriesforepmarrayref, $alldirectoryhash) = installer::scriptitems::collect_directories_from_filesarray($filesinproductlanguageresolvedarrayref, $unixlinksinproductlanguageresolvedarrayref);
             ($directoriesforepmarrayref, $alldirectoryhash) = installer::scriptitems::collect_directories_with_create_flag_from_directoryarray($dirsinproductlanguageresolvedarrayref, $alldirectoryhash);
             @$directoriesforepmarrayref = sort { $a->{"HostName"} cmp $b->{"HostName"} } @$directoriesforepmarrayref;
 
@@ -835,7 +824,7 @@ sub run {
             @{$folderitemsinproductlanguageresolvedarrayref} = (); # no folderitems in helppacks
 
             # Collecting the directories again, to include only the language specific directories
-            ($directoriesforepmarrayref, $alldirectoryhash) = installer::scriptitems::collect_directories_from_filesarray($filesinproductlanguageresolvedarrayref);
+            ($directoriesforepmarrayref, $alldirectoryhash) = installer::scriptitems::collect_directories_from_filesarray($filesinproductlanguageresolvedarrayref, $unixlinksinproductlanguageresolvedarrayref);
             ($directoriesforepmarrayref, $alldirectoryhash) = installer::scriptitems::collect_directories_with_create_flag_from_directoryarray($dirsinproductlanguageresolvedarrayref, $alldirectoryhash);
             @$directoriesforepmarrayref = sort { $a->{"HostName"} cmp $b->{"HostName"} } @$directoriesforepmarrayref;
 
@@ -1003,14 +992,23 @@ sub run {
                     $packagerootpath = $installer::globals::rootpath;
                 }
 
+                #################################
+                # collecting items for package
+                #################################
+
+                my $filesinpackage = installer::packagelist::find_files_for_package($filesinproductlanguageresolvedarrayref, $onepackage);
+                my $unixlinksinpackage = installer::packagelist::find_files_for_package($unixlinksinproductlanguageresolvedarrayref, $onepackage);
+                my $linksinpackage = installer::packagelist::find_links_for_package($linksinproductlanguageresolvedarrayref, $onepackage);
+                my $dirsinpackage = installer::packagelist::find_dirs_for_package($directoriesforepmarrayref, $onepackage);
+
                 #############################################
                 # copying the collectors for each package
                 #############################################
 
-                my $filesinpackage = installer::converter::copy_collector($filesinproductlanguageresolvedarrayref);
-                my $linksinpackage = installer::converter::copy_collector($linksinproductlanguageresolvedarrayref);
-                my $unixlinksinpackage = installer::converter::copy_collector($unixlinksinproductlanguageresolvedarrayref);
-                my $dirsinpackage = installer::converter::copy_collector($directoriesforepmarrayref);
+                $filesinpackage = installer::converter::copy_collector($filesinpackage);
+                $linksinpackage = installer::converter::copy_collector($linksinpackage);
+                $unixlinksinpackage = installer::converter::copy_collector($unixlinksinpackage);
+                $dirsinpackage = installer::converter::copy_collector($dirsinpackage);
 
                 ###########################################
                 # setting the root path for the packages
@@ -1020,15 +1018,6 @@ sub run {
                 installer::scriptitems::add_rootpath_to_files($filesinpackage, $packagerootpath);
                 installer::scriptitems::add_rootpath_to_links($linksinpackage, $packagerootpath);
                 installer::scriptitems::add_rootpath_to_files($unixlinksinpackage, $packagerootpath);
-
-                #################################
-                # collecting items for package
-                #################################
-
-                $filesinpackage = installer::packagelist::find_files_for_package($filesinpackage, $onepackage);
-                $unixlinksinpackage = installer::packagelist::find_files_for_package($unixlinksinpackage, $onepackage);
-                $linksinpackage = installer::packagelist::find_links_for_package($linksinpackage, $filesinpackage);
-                $dirsinpackage = installer::packagelist::find_dirs_for_package($dirsinpackage, $onepackage);
 
                 ###############################################
                 # nothing to do, if $filesinpackage is empty
@@ -1160,7 +1149,14 @@ sub run {
                             {
                                 # ... now epm can be started, to create the installation sets
 
-                                installer::logger::print_message( "... starting unpatched epm ... \n" );
+                                if ( $installer::globals::is_special_epm )
+                                {
+                                       installer::logger::print_message( "... starting patched epm ... \n" );
+                                }
+                                else
+                                {
+                                       installer::logger::print_message( "... starting unpatched epm ... \n" );
+                                }
 
                                 if ( $installer::globals::call_epm ) { installer::epmfile::call_epm($epmexecutable, $completeepmfilename, $packagename, $includepatharrayref); }
 
@@ -1667,34 +1663,6 @@ sub run {
                 if ( $allvariableshashref->{'OOODOWNLOADNAME'} ) { $$downloadname = installer::download::set_download_filename($languagestringref, $allvariableshashref); }
                 else { $$downloadname = installer::download::resolve_variables_in_downloadname($allvariableshashref, $$downloadname, $languagestringref); }
                 installer::systemactions::rename_one_file( $finalinstalldir . $installer::globals::separator . $installer::globals::shortmsidatabasename, $finalinstalldir . $installer::globals::separator . $$downloadname . ".msi" );
-                if ( defined($ENV{'WINDOWS_BUILD_SIGNING'}) && ($ENV{'WINDOWS_BUILD_SIGNING'} eq 'TRUE') && ( $allvariableshashref->{'CREATE_MSP_INSTALLSET'} eq '0'))
-                {
-                    my $systemcall = "signtool.exe sign ";
-                    if ( defined($ENV{'PFXFILE'}) ) { $systemcall .= "-f $ENV{'PFXFILE'} "; }
-                    if ( defined($ENV{'PFXPASSWORD'}) ) { $systemcall .= "-p $ENV{'PFXPASSWORD'} "; }
-                    if ( defined($ENV{'TIMESTAMPURL'}) ) { $systemcall .= "-t $ENV{'TIMESTAMPURL'} "; } else { $systemcall .= "-t http://timestamp.globalsign.com/scripts/timestamp.dll "; }
-                    $systemcall .= "-d \"" . installer::download::get_downloadname_productname($allvariableshashref) . " " . installer::download::get_download_version($allvariableshashref) . " " . installer::download::get_downloadname_language($languagestringref) . " " . installer::download::get_download_functionality($allvariableshashref) . "\" ";
-                    $systemcall .= $finalinstalldir . $installer::globals::separator . $$downloadname . ".msi";
-                    installer::logger::print_message( "... code signing and timestamping with signtool.exe ...\n" );
-
-                    my $returnvalue = system($systemcall);
-
-                    # do not print password to log
-                    if ( defined($ENV{'PFXPASSWORD'}) ) { $systemcall =~ s/$ENV{'PFXPASSWORD'}/********/; }
-                    my $infoline = "Systemcall: $systemcall\n";
-                    push( @installer::globals::logfileinfo, $infoline);
-
-                    if ($returnvalue)
-                    {
-                        $infoline = "ERROR: Could not execute \"$systemcall\"!\n";
-                        push( @installer::globals::logfileinfo, $infoline);
-                    }
-                    else
-                    {
-                        $infoline = "Success: Executed \"$systemcall\" successfully!\n";
-                        push( @installer::globals::logfileinfo, $infoline);
-                    }
-                }
             }
             if (( $is_success ) && ( $create_download ) && ( $ENV{'ENABLE_DOWNLOADSETS'} ))
             {

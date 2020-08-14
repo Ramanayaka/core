@@ -20,14 +20,16 @@
 #ifndef INCLUDED_FRAMEWORK_ACTIONTRIGGERHELPER_HXX
 #define INCLUDED_FRAMEWORK_ACTIONTRIGGERHELPER_HXX
 
-#include <com/sun/star/container/XIndexContainer.hpp>
-#include <vcl/menu.hxx>
-#include <framework/fwedllapi.h>
+#include <framework/fwkdllapi.h>
+#include <com/sun/star/uno/Reference.hxx>
+
+namespace com::sun::star::container { class XIndexContainer; }
+class Menu;
 
 
 namespace framework
 {
-    class FWE_DLLPUBLIC ActionTriggerHelper
+    class FWK_DLLPUBLIC ActionTriggerHelper
     {
         public:
             // Fills the submitted menu with the structure contained in the second
@@ -41,7 +43,7 @@ namespace framework
 
             // Creates a "css::ui::ActionTriggerContainer" with the structure of the menu
             // provided as a parameter. The implementation class stores the menu pointer
-            // to optimize the time of creation of a menu from a actiontrigger structure.
+            // to optimize the time of creation of a menu from an actiontrigger structure.
             // IMPORTANT: The caller must ensure that the menu pointer is valid through the
             //            life time of the XIndexContainer object!!!
             // @param pNewMenu = Must be a valid menu. Please be aware that this implementation is based on
@@ -56,7 +58,7 @@ namespace framework
             // @param pNewMenu = must be a valid menu
             static void
                 FillActionTriggerContainerFromMenu(
-                    css::uno::Reference< css::container::XIndexContainer >& rActionTriggerContainer,
+                    css::uno::Reference< css::container::XIndexContainer > const & rActionTriggerContainer,
                     const Menu* pMenu );
 
     };

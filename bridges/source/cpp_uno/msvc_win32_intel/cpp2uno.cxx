@@ -55,8 +55,8 @@ static inline typelib_TypeClass cpp2uno_call(
         TYPELIB_DANGER_GET( &pReturnTypeDescr, pReturnTypeRef );
     }
 
-    void * pUnoReturn = 0;
-    void * pCppReturn = 0; // complex return ptr: if != 0 && != pUnoReturn, reconversion need
+    void * pUnoReturn = nullptr;
+    void * pCppReturn = nullptr; // complex return ptr: if != 0 && != pUnoReturn, reconversion need
 
     if (pReturnTypeDescr)
     {
@@ -241,6 +241,13 @@ static typelib_TypeClass __cdecl cpp_mediate(
             pThis);
 
     typelib_InterfaceTypeDescription * pTypeDescr = pCppI->getTypeDescr();
+
+    SAL_INFO( "bridges.win32", "cpp_vtable_call: pCallStack=[" <<
+            std::hex << pCallStack[0] << "," << pCallStack[1] << "," << pCallStack[2] << ",...]" <<
+            ", pThis=" << pThis << ", pCppI=" << pCppI <<
+            std::dec << ", nFunctionIndex=" << nFunctionIndex << ", nVtableOffset=" << nVtableOffset );
+    SAL_INFO( "bridges.win32", "name=" << OUString::unacquired(&pTypeDescr->aBase.pTypeName) );
+
     if (nFunctionIndex >= pTypeDescr->nMapFunctionIndexToMemberIndex)
     {
         SAL_WARN(
@@ -260,6 +267,8 @@ static typelib_TypeClass __cdecl cpp_mediate(
     assert(nMemberPos < pTypeDescr->nAllMembers);
 
     TypeDescription aMemberDescr( pTypeDescr->ppAllMembers[nMemberPos] );
+
+    SAL_INFO( "bridges.win32", "Calling " << OUString::unacquired(&aMemberDescr.get()->pTypeName) );
 
     typelib_TypeClass eRet = typelib_TypeClass_VOID;
     switch (aMemberDescr.get()->eTypeClass)

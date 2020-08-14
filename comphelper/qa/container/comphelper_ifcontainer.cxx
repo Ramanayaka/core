@@ -19,20 +19,19 @@
 
 #include <sal/types.h>
 
-#include <string.h>
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
 #include <cppunit/plugin/TestPlugIn.h>
 
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <comphelper/interfacecontainer2.hxx>
-#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/propshlp.hxx>
 
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
+
+namespace {
 
 struct ContainerStats {
     int m_nAlive;
@@ -42,7 +41,7 @@ struct ContainerStats {
 
 class ContainerListener : public cppu::WeakImplHelper< XEventListener >
 {
-    ContainerStats *m_pStats;
+    ContainerStats * const m_pStats;
 public:
     explicit ContainerListener(ContainerStats *pStats)
         : m_pStats(pStats) { m_pStats->m_nAlive++; }
@@ -53,9 +52,11 @@ public:
     }
 };
 
+}
+
 namespace comphelper_ifcontainer
 {
-    static const int nTests = 10;
+    const int nTests = 10;
     class IfTest : public CppUnit::TestFixture
     {
         osl::Mutex m_aGuard;
@@ -112,8 +113,8 @@ namespace comphelper_ifcontainer
             std::vector< Reference< XInterface > > aElements = pContainer->getElements();
 
             CPPUNIT_ASSERT_EQUAL_MESSAGE("query contents",
-                                   (int)aElements.size(), nTests);
-            if ((int)aElements.size() == nTests)
+                                   nTests, static_cast<int>(aElements.size()));
+            if (static_cast<int>(aElements.size()) == nTests)
             {
                 for (i = 0; i < nTests; i++)
                 {

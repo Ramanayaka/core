@@ -17,15 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/awt/KeyEvent.hpp>
-#include <com/sun/star/awt/KeyModifier.hpp>
 #include <vcl/event.hxx>
-
-KeyEvent::KeyEvent (const KeyEvent& rKeyEvent) :
-    maKeyCode (rKeyEvent.maKeyCode),
-    mnRepeat  (rKeyEvent.mnRepeat),
-    mnCharCode(rKeyEvent.mnCharCode)
-{}
 
 KeyEvent KeyEvent::LogicalTextDirectionality (TextDirectionality eMode) const
 {

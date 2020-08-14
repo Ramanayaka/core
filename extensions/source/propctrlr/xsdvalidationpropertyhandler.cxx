@@ -19,14 +19,13 @@
 
 #include <sal/config.h>
 
-#include "pcrservices.hxx"
 #include "xsdvalidationpropertyhandler.hxx"
 #include "formstrings.hxx"
 #include "formmetadata.hxx"
 #include "xsddatatypes.hxx"
 #include "modulepcr.hxx"
-#include "formresid.hrc"
-#include "propctrlr.hrc"
+#include <strings.hrc>
+#include <propctrlr.h>
 #include "newdatatype.hxx"
 #include "xsdvalidationhelper.hxx"
 #include "pcrcommon.hxx"
@@ -40,19 +39,13 @@
 #include <com/sun/star/beans/Optional.hpp>
 #include <com/sun/star/inspection/XObjectInspectorUI.hpp>
 #include <com/sun/star/inspection/PropertyLineElement.hpp>
-#include <vcl/msgbox.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <tools/debug.hxx>
 #include <sal/macros.h>
 
 #include <algorithm>
-#include <functional>
 #include <limits>
-
-
-extern "C" void SAL_CALL createRegistryInfo_XSDValidationPropertyHandler()
-{
-    ::pcr::XSDValidationPropertyHandler::registerImplementation();
-}
 
 
 namespace pcr
@@ -74,7 +67,7 @@ namespace pcr
     //= XSDValidationPropertyHandler
 
     XSDValidationPropertyHandler::XSDValidationPropertyHandler( const Reference< XComponentContext >& _rxContext )
-        :XSDValidationPropertyHandler_Base( _rxContext )
+        :PropertyHandlerComponent( _rxContext )
     {
     }
 
@@ -84,16 +77,15 @@ namespace pcr
     }
 
 
-    OUString SAL_CALL XSDValidationPropertyHandler::getImplementationName_static(  )
+    OUString XSDValidationPropertyHandler::getImplementationName(  )
     {
-        return OUString( "com.sun.star.comp.extensions.XSDValidationPropertyHandler" );
+        return "com.sun.star.comp.extensions.XSDValidationPropertyHandler";
     }
 
 
-    Sequence< OUString > SAL_CALL XSDValidationPropertyHandler::getSupportedServiceNames_static(  )
+    Sequence< OUString > XSDValidationPropertyHandler::getSupportedServiceNames(  )
     {
-        Sequence<OUString> aSupported { "com.sun.star.form.inspection.XSDValidationPropertyHandler" };
-        return aSupported;
+        return{ "com.sun.star.form.inspection.XSDValidationPropertyHandler" };
     }
 
 
@@ -102,8 +94,8 @@ namespace pcr
         ::osl::MutexGuard aGuard( m_aMutex );
         PropertyId nPropId( impl_getPropertyId_throwUnknownProperty( _rPropertyName ) );
 
-        OSL_ENSURE( m_pHelper.get(), "XSDValidationPropertyHandler::getPropertyValue: inconsistency!" );
-            // if we survived impl_getPropertyId_throwUnknownProperty, we should have a helper, since no helper implies no properties
+        OSL_ENSURE(m_pHelper, "XSDValidationPropertyHandler::getPropertyValue: inconsistency!");
+        // if we survived impl_getPropertyId_throwUnknownProperty, we should have a helper, since no helper implies no properties
 
         Any aReturn;
         ::rtl::Reference< XSDDataType > pType = m_pHelper->getValidatingDataType();
@@ -132,8 +124,8 @@ namespace pcr
         ::osl::MutexGuard aGuard( m_aMutex );
         PropertyId nPropId( impl_getPropertyId_throwUnknownProperty( _rPropertyName ) );
 
-        OSL_ENSURE( m_pHelper.get(), "XSDValidationPropertyHandler::getPropertyValue: inconsistency!" );
-            // if we survived impl_getPropertyId_throwUnknownProperty, we should have a helper, since no helper implies no properties
+        OSL_ENSURE(m_pHelper, "XSDValidationPropertyHandler::getPropertyValue: inconsistency!");
+        // if we survived impl_getPropertyId_throwUnknownProperty, we should have a helper, since no helper implies no properties
 
         if ( PROPERTY_ID_XSD_DATA_TYPE == nPropId )
         {
@@ -158,7 +150,7 @@ namespace pcr
 
     void XSDValidationPropertyHandler::onNewComponent()
     {
-        XSDValidationPropertyHandler_Base::onNewComponent();
+        PropertyHandlerComponent::onNewComponent();
 
         Reference< frame::XModel > xDocument( impl_getContextDocument_nothrow() );
         DBG_ASSERT( xDocument.is(), "XSDValidationPropertyHandler::onNewComponent: no document!" );
@@ -173,7 +165,7 @@ namespace pcr
     {
         std::vector< Property > aProperties;
 
-        if ( m_pHelper.get() )
+        if (m_pHelper)
         {
             bool bAllowBinding = m_pHelper->canBindToAnyDataType();
 
@@ -227,7 +219,7 @@ namespace pcr
         ::osl::MutexGuard aGuard( m_aMutex );
 
         std::vector< OUString > aSuperfluous;
-        if ( m_pHelper.get() )
+        if (m_pHelper)
         {
             aSuperfluous.push_back(  OUString(PROPERTY_CONTROLSOURCE) );
             aSuperfluous.push_back(  OUString(PROPERTY_EMPTY_IS_NULL) );
@@ -261,7 +253,7 @@ namespace pcr
     {
         ::osl::MutexGuard aGuard( m_aMutex );
         std::vector< OUString > aInterestedInActuations;
-        if ( m_pHelper.get() )
+        if (m_pHelper)
         {
             aInterestedInActuations.push_back(  OUString(PROPERTY_XSD_DATA_TYPE) );
             aInterestedInActuations.push_back(  OUString(PROPERTY_XML_DATA_MODEL) );
@@ -288,7 +280,7 @@ namespace pcr
         ::osl::MutexGuard aGuard( m_aMutex );
         if ( !_rxControlFactory.is() )
             throw NullPointerException();
-        if ( !m_pHelper.get() )
+        if (!m_pHelper)
             throw RuntimeException();
 
         PropertyId nPropId( impl_getPropertyId_throwUnknownProperty( _rPropertyName ) );
@@ -402,7 +394,7 @@ namespace pcr
             aDescriptor.Control = PropertyHandlerHelper::createListBoxControl( _rxControlFactory, aListEntries, false, false );
             break;
         case PropertyControlType::NumericField:
-            aDescriptor.Control = PropertyHandlerHelper::createNumericControl( _rxControlFactory, 0, aMinValue, aMaxValue, false );
+            aDescriptor.Control = PropertyHandlerHelper::createNumericControl( _rxControlFactory, 0, aMinValue, aMaxValue );
             break;
         default:
             aDescriptor.Control = _rxControlFactory->createPropertyControl( nControlType, false );
@@ -423,8 +415,9 @@ namespace pcr
             throw NullPointerException();
 
         ::osl::MutexGuard aGuard( m_aMutex );
-        OSL_ENSURE( m_pHelper.get(), "XSDValidationPropertyHandler::onInteractivePropertySelection: we don't have any SupportedProperties!" );
-        if ( !m_pHelper.get() )
+        OSL_ENSURE(m_pHelper, "XSDValidationPropertyHandler::onInteractivePropertySelection: we "
+                              "don't have any SupportedProperties!");
+        if (!m_pHelper)
             return InteractiveSelectionResult_Cancelled;
 
         PropertyId nPropId( impl_getPropertyId_throwUnknownProperty( _rPropertyName ) );
@@ -458,8 +451,8 @@ namespace pcr
     void SAL_CALL XSDValidationPropertyHandler::addPropertyChangeListener( const Reference< XPropertyChangeListener >& _rxListener )
     {
         ::osl::MutexGuard aGuard( m_aMutex );
-        XSDValidationPropertyHandler_Base::addPropertyChangeListener( _rxListener );
-        if ( m_pHelper.get() )
+        PropertyHandlerComponent::addPropertyChangeListener( _rxListener );
+        if (m_pHelper)
             m_pHelper->registerBindingListener( _rxListener );
     }
 
@@ -467,15 +460,17 @@ namespace pcr
     void SAL_CALL XSDValidationPropertyHandler::removePropertyChangeListener( const Reference< XPropertyChangeListener >& _rxListener )
     {
         ::osl::MutexGuard aGuard( m_aMutex );
-        if ( m_pHelper.get() )
+        if (m_pHelper)
             m_pHelper->revokeBindingListener( _rxListener );
-        XSDValidationPropertyHandler_Base::removePropertyChangeListener( _rxListener );
+        PropertyHandlerComponent::removePropertyChangeListener( _rxListener );
     }
 
 
     bool XSDValidationPropertyHandler::implPrepareCloneDataCurrentType( OUString& _rNewName )
     {
-        OSL_PRECOND( m_pHelper.get(), "XSDValidationPropertyHandler::implPrepareCloneDataCurrentType: this will crash!" );
+        OSL_PRECOND(
+            m_pHelper,
+            "XSDValidationPropertyHandler::implPrepareCloneDataCurrentType: this will crash!");
 
         ::rtl::Reference< XSDDataType > pType = m_pHelper->getValidatingDataType();
         if ( !pType.is() )
@@ -487,18 +482,19 @@ namespace pcr
         std::vector< OUString > aExistentNames;
         m_pHelper->getAvailableDataTypeNames( aExistentNames );
 
-        ScopedVclPtrInstance<NewDataTypeDialog> aDialog( nullptr, pType->getName(), aExistentNames );  // TODO/eForms: proper parent
-        if ( aDialog->Execute() != RET_OK )
+        NewDataTypeDialog aDialog( nullptr, pType->getName(), aExistentNames );  // TODO/eForms: proper parent
+        if (aDialog.run() != RET_OK)
             return false;
 
-        _rNewName = aDialog->GetName();
+        _rNewName = aDialog.GetName();
         return true;
     }
 
 
     void XSDValidationPropertyHandler::implDoCloneCurrentDataType( const OUString& _rNewName )
     {
-        OSL_PRECOND( m_pHelper.get(), "XSDValidationPropertyHandler::implDoCloneCurrentDataType: this will crash!" );
+        OSL_PRECOND(m_pHelper,
+                    "XSDValidationPropertyHandler::implDoCloneCurrentDataType: this will crash!");
 
         ::rtl::Reference< XSDDataType > pType = m_pHelper->getValidatingDataType();
         if ( !pType.is() )
@@ -510,10 +506,11 @@ namespace pcr
         m_pHelper->setValidatingDataTypeByName( _rNewName );
     }
 
-
     bool XSDValidationPropertyHandler::implPrepareRemoveCurrentDataType()
     {
-        OSL_PRECOND( m_pHelper.get(), "XSDValidationPropertyHandler::implPrepareRemoveCurrentDataType: this will crash!" );
+        OSL_PRECOND(
+            m_pHelper,
+            "XSDValidationPropertyHandler::implPrepareRemoveCurrentDataType: this will crash!");
 
         ::rtl::Reference< XSDDataType > pType = m_pHelper->getValidatingDataType();
         if ( !pType.is() )
@@ -525,17 +522,17 @@ namespace pcr
         // confirmation message
         OUString sConfirmation( PcrRes( RID_STR_CONFIRM_DELETE_DATA_TYPE ) );
         sConfirmation = sConfirmation.replaceFirst( "#type#", pType->getName() );
-        ScopedVclPtrInstance<QueryBox> aQuery( nullptr, WB_YES_NO, sConfirmation ); // TODO/eForms: proper parent
-        if ( aQuery->Execute() != RET_YES )
-            return false;
 
-        return true;
+        std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(nullptr, // TODO/eForms: proper parent
+                                                       VclMessageType::Question, VclButtonsType::YesNo,
+                                                       sConfirmation));
+        return xQueryBox->run() == RET_YES;
     }
-
 
     bool XSDValidationPropertyHandler::implDoRemoveCurrentDataType()
     {
-        OSL_PRECOND( m_pHelper.get(), "XSDValidationPropertyHandler::implDoRemoveCurrentDataType: this will crash!" );
+        OSL_PRECOND(m_pHelper,
+                    "XSDValidationPropertyHandler::implDoRemoveCurrentDataType: this will crash!");
 
         ::rtl::Reference< XSDDataType > pType = m_pHelper->getValidatingDataType();
         if ( !pType.is() )
@@ -560,7 +557,7 @@ namespace pcr
 
         ::osl::MutexGuard aGuard( m_aMutex );
         PropertyId nActuatingPropId( impl_getPropertyId_throwRuntime( _rActuatingPropertyName ) );
-        if ( !m_pHelper.get() )
+        if (!m_pHelper)
             throw RuntimeException();
             // if we survived impl_getPropertyId_throwRuntime, we should have a helper, since no helper implies no properties
 
@@ -645,7 +642,9 @@ namespace pcr
 
     void XSDValidationPropertyHandler::implGetAvailableDataTypeNames( std::vector< OUString >& /* [out] */ _rNames ) const
     {
-        OSL_PRECOND( m_pHelper.get(), "XSDValidationPropertyHandler::implGetAvailableDataTypeNames: this will crash!" );
+        OSL_PRECOND(
+            m_pHelper,
+            "XSDValidationPropertyHandler::implGetAvailableDataTypeNames: this will crash!");
         // start with *all* types which are available at the model
         std::vector< OUString > aAllTypes;
         m_pHelper->getAvailableDataTypeNames( aAllTypes );
@@ -653,19 +652,22 @@ namespace pcr
         _rNames.reserve( aAllTypes.size() );
 
         // then allow only those which are "compatible" with our control
-        for ( std::vector< OUString >::const_iterator dataType = aAllTypes.begin();
-              dataType != aAllTypes.end();
-              ++dataType
-            )
+        for (auto const& dataType : aAllTypes)
         {
-            ::rtl::Reference< XSDDataType > pType = m_pHelper->getDataTypeByName( *dataType );
+            ::rtl::Reference< XSDDataType > pType = m_pHelper->getDataTypeByName(dataType);
             if ( pType.is() && m_pHelper->canBindToDataType( pType->classify() ) )
-                _rNames.push_back( *dataType );
+                _rNames.push_back(dataType);
         }
     }
 
 
 } // namespace pcr
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_XSDValidationPropertyHandler_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new pcr::XSDValidationPropertyHandler(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

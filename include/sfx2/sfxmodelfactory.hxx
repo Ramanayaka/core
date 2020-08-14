@@ -22,9 +22,15 @@
 
 #include <sfx2/dllapi.h>
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <functional>
+
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+namespace com::sun::star::lang { class XSingleServiceFactory; }
+namespace com::sun::star::uno { class XInterface; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { template <class E> class Sequence; }
 
 enum class SfxModelFlags
 {
@@ -41,29 +47,16 @@ namespace o3tl
 
 namespace sfx2
 {
-    typedef css::uno::Reference< css::uno::XInterface > ( SAL_CALL * SfxModelFactoryFunc ) (
-        const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory,
-        SfxModelFlags _nCreationFlags
-    );
-
-
-    //= createSfxModelFactory
-
-    /** creates a XSingleServiceFactory which can be used to created instances
-        of classes derived from SfxBaseModel
-
-        In opposite to the default implementations from module cppuhelper, this
-        factory evaluates certain creation arguments (passed to createInstanceWithArguments)
-        and passes them to the factory function of the derived class.
-    */
-    css::uno::Reference< css::lang::XSingleServiceFactory >
-        SFX2_DLLPUBLIC createSfxModelFactory(
-            const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxServiceFactory,
-            const OUString& _rImplementationName,
-            const SfxModelFactoryFunc _pComponentFactoryFunc,
-            const css::uno::Sequence< OUString >& _rServiceNames
+    /**
+     * Intended to be called from UNO constructor functions
+     * This evaluates certain creation arguments (passed to createInstanceWithArguments)
+     * and passes them to the factory function of the derived class.
+     */
+    css::uno::Reference<css::uno::XInterface>
+        SFX2_DLLPUBLIC createSfxModelInstance(
+            const css::uno::Sequence<css::uno::Any> & rxArgs,
+            std::function<css::uno::Reference<css::uno::XInterface>( SfxModelFlags )> creationFunc
         );
-
 
 } // namespace sfx2
 

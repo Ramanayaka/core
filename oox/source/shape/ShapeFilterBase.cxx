@@ -17,20 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ShapeFilterBase.hxx"
-#include "oox/drawingml/chart/chartconverter.hxx"
+#include <oox/shape/ShapeFilterBase.hxx>
+#include <oox/drawingml/chart/chartconverter.hxx>
+#include <oox/drawingml/themefragmenthandler.hxx>
 #include <oox/helper/graphichelper.hxx>
-#include "oox/ole/vbaproject.hxx"
-#include "oox/drawingml/theme.hxx"
+#include <oox/ole/vbaproject.hxx>
+#include <oox/drawingml/theme.hxx>
 
-namespace oox {
-namespace shape {
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/xml/sax/XFastSAXSerializable.hpp>
+
+namespace oox::shape {
 
 using namespace ::com::sun::star;
 
 ShapeFilterBase::ShapeFilterBase( const uno::Reference< uno::XComponentContext >& rxContext ) :
     XmlFilterBase( rxContext ),
-    mxChartConv( new ::oox::drawingml::chart::ChartConverter )
+    mxChartConv( std::make_shared<::oox::drawingml::chart::ChartConverter>() )
 {
 }
 
@@ -53,7 +57,7 @@ void ShapeFilterBase::setCurrentTheme(const ::oox::drawingml::ThemePtr& pTheme)
     return nullptr;
 }
 
-const ::oox::drawingml::table::TableStyleListPtr ShapeFilterBase::getTableStyles()
+::oox::drawingml::table::TableStyleListPtr ShapeFilterBase::getTableStyles()
 {
     return ::oox::drawingml::table::TableStyleListPtr();
 }
@@ -73,15 +77,19 @@ OUString ShapeFilterBase::getImplementationName()
     return OUString();
 }
 
+namespace {
+
 /// Graphic helper for shapes, that can manage color schemes.
 class ShapeGraphicHelper : public GraphicHelper
 {
 public:
     explicit            ShapeGraphicHelper( const ShapeFilterBase& rFilter );
-    virtual sal_Int32   getSchemeColor( sal_Int32 nToken ) const override;
+    virtual ::Color     getSchemeColor( sal_Int32 nToken ) const override;
 private:
     const ShapeFilterBase& mrFilter;
 };
+
+}
 
 ShapeGraphicHelper::ShapeGraphicHelper( const ShapeFilterBase& rFilter ) :
     GraphicHelper( rFilter.getComponentContext(), rFilter.getTargetFrame(), rFilter.getStorage() ),
@@ -89,7 +97,7 @@ ShapeGraphicHelper::ShapeGraphicHelper( const ShapeFilterBase& rFilter ) :
 {
 }
 
-sal_Int32 ShapeGraphicHelper::getSchemeColor( sal_Int32 nToken ) const
+::Color ShapeGraphicHelper::getSchemeColor( sal_Int32 nToken ) const
 {
     return mrFilter.getSchemeColor( nToken );
 }
@@ -99,17 +107,39 @@ GraphicHelper* ShapeFilterBase::implCreateGraphicHelper() const
     return new ShapeGraphicHelper( *this );
 }
 
-sal_Int32 ShapeFilterBase::getSchemeColor( sal_Int32 nToken ) const
+::Color ShapeFilterBase::getSchemeColor( sal_Int32 nToken ) const
 {
-    sal_Int32 nColor = 0;
+    ::Color nColor;
 
-    if (mpTheme.get())
+    if (mpTheme)
         mpTheme->getClrScheme().getColor( nToken, nColor );
 
     return nColor;
 }
 
+void ShapeFilterBase::importTheme()
+{
+    drawingml::ThemePtr pTheme = std::make_shared<drawingml::Theme>();
+    uno::Reference<beans::XPropertySet> xPropSet(getModel(), uno::UNO_QUERY_THROW);
+    uno::Sequence<beans::PropertyValue> aGrabBag;
+    xPropSet->getPropertyValue("InteropGrabBag") >>= aGrabBag;
+
+    for (const auto& rProp : std::as_const(aGrabBag))
+    {
+        if (rProp.Name == "OOXTheme")
+        {
+            uno::Reference<xml::sax::XFastSAXSerializable> xDoc;
+            if (rProp.Value >>= xDoc)
+            {
+                rtl::Reference<core::FragmentHandler> xFragmentHandler(
+                    new drawingml::ThemeFragmentHandler(*this, OUString(), *pTheme));
+                importFragment(xFragmentHandler, xDoc);
+                setCurrentTheme(pTheme);
+            }
+        }
+    }
 }
+
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

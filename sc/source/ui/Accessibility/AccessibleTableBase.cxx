@@ -17,19 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "AccessibleTableBase.hxx"
-#include "miscuno.hxx"
-#include "document.hxx"
-#include "scresid.hxx"
-#include "scres.hrc"
-#include "strings.hxx"
-#include "table.hxx"
+#include <AccessibleTableBase.hxx>
+#include <document.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
+#include <strings.hxx>
+#include <table.hxx>
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleTableModelChange.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <comphelper/sequence.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <vcl/svapp.hxx>
 
 using namespace ::com::sun::star;
@@ -105,7 +104,7 @@ sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleColumnCount(  )
 
 OUString SAL_CALL ScAccessibleTableBase::getAccessibleRowDescription( sal_Int32 nRow )
 {
-    OSL_FAIL("Here should be a implementation to fill the description");
+    OSL_FAIL("Here should be an implementation to fill the description");
 
     if ((nRow > (maRange.aEnd.Row() - maRange.aStart.Row())) || (nRow < 0))
         throw lang::IndexOutOfBoundsException();
@@ -116,7 +115,7 @@ OUString SAL_CALL ScAccessibleTableBase::getAccessibleRowDescription( sal_Int32 
 
 OUString SAL_CALL ScAccessibleTableBase::getAccessibleColumnDescription( sal_Int32 nColumn )
 {
-    OSL_FAIL("Here should be a implementation to fill the description");
+    OSL_FAIL("Here should be an implementation to fill the description");
 
     if ((nColumn > (maRange.aEnd.Col() - maRange.aStart.Col())) || (nColumn < 0))
         throw lang::IndexOutOfBoundsException();
@@ -194,7 +193,7 @@ sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleColumnExtentAt( sal_Int32
 uno::Reference< XAccessibleTable > SAL_CALL ScAccessibleTableBase::getAccessibleRowHeaders(  )
 {
     uno::Reference< XAccessibleTable > xAccessibleTable;
-    OSL_FAIL("Here should be a implementation to fill the row headers");
+    OSL_FAIL("Here should be an implementation to fill the row headers");
 
     //CommitChange
     return xAccessibleTable;
@@ -203,7 +202,7 @@ uno::Reference< XAccessibleTable > SAL_CALL ScAccessibleTableBase::getAccessible
 uno::Reference< XAccessibleTable > SAL_CALL ScAccessibleTableBase::getAccessibleColumnHeaders(  )
 {
     uno::Reference< XAccessibleTable > xAccessibleTable;
-    OSL_FAIL("Here should be a implementation to fill the column headers");
+    OSL_FAIL("Here should be an implementation to fill the column headers");
 
     //CommitChange
     return xAccessibleTable;
@@ -311,8 +310,8 @@ sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleChildCount()
 
     // FIXME: representing rows & columns this way is a plain and simple madness.
     // this needs a radical re-think.
-    sal_Int64 nMax = ((sal_Int64)(maRange.aEnd.Row() - maRange.aStart.Row() + 1) *
-                      (sal_Int64)(maRange.aEnd.Col() - maRange.aStart.Col() + 1));
+    sal_Int64 nMax = static_cast<sal_Int64>(maRange.aEnd.Row() - maRange.aStart.Row() + 1) *
+                     static_cast<sal_Int64>(maRange.aEnd.Col() - maRange.aStart.Col() + 1);
     if (nMax > SAL_MAX_INT32)
         nMax = SAL_MAX_INT32;
     if (nMax < 0)
@@ -340,13 +339,13 @@ uno::Reference< XAccessible > SAL_CALL
     return getAccessibleCellAt(nRow, nColumn);
 }
 
-OUString SAL_CALL
+OUString
     ScAccessibleTableBase::createAccessibleDescription()
 {
-    return OUString(STR_ACC_TABLE_DESCR);
+    return STR_ACC_TABLE_DESCR;
 }
 
-OUString SAL_CALL ScAccessibleTableBase::createAccessibleName()
+OUString ScAccessibleTableBase::createAccessibleName()
 {
     OUString sName(ScResId(STR_ACC_TABLE_NAME));
     OUString sCoreName;
@@ -415,7 +414,7 @@ void SAL_CALL ScAccessibleTableBase::deselectAccessibleChild( sal_Int32 /* nSele
 
 OUString SAL_CALL ScAccessibleTableBase::getImplementationName()
 {
-    return OUString("ScAccessibleTableBase");
+    return "ScAccessibleTableBase";
 }
 
     //=====  XTypeProvider  ===================================================

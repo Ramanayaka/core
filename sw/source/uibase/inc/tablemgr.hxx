@@ -19,22 +19,23 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_TABLEMGR_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_TABLEMGR_HXX
 
-#include "swdllapi.h"
-#include "swtypes.hxx"
-#include "tabcol.hxx"
+#include <swdllapi.h>
+#include <swtypes.hxx>
+#include <tabcol.hxx>
+
+#include <vcl/weld.hxx>
 
 class SwFrameFormat;
 class SwWrtShell;
 namespace vcl { class Window; }
 class SwFlyFrameFormat;
 
-namespace com { namespace sun { namespace star {
-    namespace frame {
-        class XModel; }
+namespace com::sun::star {
+    namespace frame { class XModel; }
     namespace chart2 {
-    namespace data {
-        class XDataProvider; } }
-}}}
+        namespace data {
+            class XDataProvider; } }
+}
 
 const SwTwips lAutoWidth = INVALID_TWIPS;
 const char cParaDelim = 0x0a;
@@ -53,7 +54,7 @@ public:
            ~SwTableFUNC();
 
     void    InitTabCols();
-    void    ColWidthDlg(vcl::Window *pParent );
+    void    ColWidthDlg(weld::Window *pParent);
     SwTwips GetColWidth(sal_uInt16 nNum) const;
     SwTwips GetMaxColWidth(sal_uInt16 nNum) const;
     void    SetColWidth(sal_uInt16 nNum, SwTwips nWidth );
@@ -67,7 +68,7 @@ public:
 
     /// @return the XModel of the newly inserted chart if successful
     css::uno::Reference< css::frame::XModel >
-        InsertChart( css::uno::Reference< css::chart2::data::XDataProvider > &rxDataProvider, bool bFillWithData, const OUString &rCellRange, SwFlyFrameFormat** ppFlyFrameFormat = nullptr );
+        InsertChart( css::uno::Reference< css::chart2::data::XDataProvider > const &rxDataProvider, bool bFillWithData, const OUString &rCellRange, SwFlyFrameFormat** ppFlyFrameFormat = nullptr );
 };
 
 #endif

@@ -21,8 +21,9 @@ $(eval $(call gb_ExternalProject_register_targets,redland,\
 # note: this can intentionally only build against internal raptor/rasqal
 
 $(call gb_ExternalProject_get_state_target,redland,build):
+	$(call gb_Trace_StartRange,redland,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
-		CFLAGS="$(CFLAGS) $(if $(filter TRUE,$(DISABLE_DYNLOADING)),-fvisibility=hidden)" \
+		CFLAGS="$(CFLAGS) $(if $(filter TRUE,$(DISABLE_DYNLOADING)),-fvisibility=hidden) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))" \
 		LDFLAGS=" \
 			$(if $(filter LINUX FREEBSD,$(OS)),-Wl$(COMMA)-z$(COMMA)origin -Wl$(COMMA)-rpath$(COMMA)\\"\$$\$$ORIGIN") \
 			$(if $(SYSBASE),$(if $(filter LINUX SOLARIS,$(OS)),-L$(SYSBASE)/lib -L$(SYSBASE)/usr/lib -lpthread -ldl))" \
@@ -40,6 +41,7 @@ $(call gb_ExternalProject_get_state_target,redland,build):
 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM) \
 			$(if $(filter INTEL ARM,$(CPUNAME)),ac_cv_c_bigendian=no)) \
 			$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
+			$(if $(ENABLE_DEBUG),--enable-debug) \
 			$(if $(DISABLE_DYNLOADING), \
 				--enable-static --disable-shared \
 			, \
@@ -48,7 +50,8 @@ $(call gb_ExternalProject_get_state_target,redland,build):
 		&& $(MAKE) \
 		$(if $(filter MACOSX,$(OS)),&& $(PERL) \
 			$(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
-			$(gb_Package_SOURCEDIR_redland)/src/.libs/librdf-lo.$(REDLAND_MAJOR).dylib) \
+			$(EXTERNAL_WORKDIR)/src/.libs/librdf-lo.$(REDLAND_MAJOR).dylib) \
 	)
+	$(call gb_Trace_EndRange,redland,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

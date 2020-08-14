@@ -26,8 +26,8 @@ $(eval $(call gb_Library_use_external,graphicfilter,boost_headers))
 $(eval $(call gb_Library_use_sdk_api,graphicfilter))
 
 $(eval $(call gb_Library_set_include,graphicfilter,\
-	-I$(SRCDIR)/filter/inc \
 	$$(INCLUDE) \
+	-I$(SRCDIR)/filter/inc \
 ))
 
 $(eval $(call gb_Library_use_libraries,graphicfilter,\
@@ -48,8 +48,6 @@ $(eval $(call gb_Library_use_libraries,graphicfilter,\
 
 $(eval $(call gb_Library_add_exception_objects,graphicfilter,\
 	filter/source/graphic/GraphicExportFilter \
-	filter/source/graphic/GraphicExportDialog \
-	filter/source/graphic/Services \
 ))
 
 # vim: set noet sw=4 ts=4:

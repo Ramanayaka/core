@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/linepropertiescontext.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
-#include "drawingml/misccontexts.hxx"
-#include "drawingml/lineproperties.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <drawingml/linepropertiescontext.hxx>
+#include <drawingml/misccontexts.hxx>
+#include <drawingml/lineproperties.hxx>
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
@@ -31,9 +30,9 @@ using namespace ::com::sun::star::xml::sax;
 
 // CT_LineProperties
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-LinePropertiesContext::LinePropertiesContext( ContextHandler2Helper& rParent, const AttributeList& rAttribs,
+LinePropertiesContext::LinePropertiesContext( ContextHandler2Helper const & rParent, const AttributeList& rAttribs,
     LineProperties& rLineProperties ) throw()
 : ContextHandler2( rParent )
 , mrLineProperties( rLineProperties )
@@ -109,7 +108,7 @@ ContextHandlerRef LinePropertiesContext::onCreateContext( sal_Int32 nElement, co
                 nSp = rAttribs.getInteger( XML_sp, 0 );
             }
 
-            mrLineProperties.maCustomDash.push_back( LineProperties::DashStop( nDash, nSp ) );
+            mrLineProperties.maCustomDash.emplace_back( nDash, nSp );
         }
         break;
 
@@ -134,6 +133,6 @@ ContextHandlerRef LinePropertiesContext::onCreateContext( sal_Int32 nElement, co
     return nullptr;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

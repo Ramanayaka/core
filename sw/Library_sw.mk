@@ -23,7 +23,7 @@ $(eval $(call gb_Library_add_sdi_headers,sw,sw/sdi/swslots))
 
 $(eval $(call gb_Library_set_componentfile,sw,sw/util/sw))
 
-$(eval $(call gb_Library_set_precompiled_header,sw,$(SRCDIR)/sw/inc/pch/precompiled_sw))
+$(eval $(call gb_Library_set_precompiled_header,sw,sw/inc/pch/precompiled_sw))
 
 $(eval $(call gb_Library_set_include,sw,\
     -I$(SRCDIR)/sw/source/core/inc \
@@ -39,7 +39,11 @@ $(eval $(call gb_Library_use_custom_headers,sw,\
 	sw/generated \
 ))
 
-$(eval $(call gb_Library_use_sdk_api,sw))
+$(eval $(call gb_Library_use_api,sw,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_Library_add_defs,sw,\
     -DSW_DLLIMPLEMENTATION \
@@ -59,6 +63,7 @@ $(eval $(call gb_Library_use_libraries,sw,\
     i18nlangtag \
     i18nutil \
     lng \
+    msfilter \
     sal \
     salhelper \
 	sax \
@@ -90,6 +95,8 @@ $(eval $(call gb_Library_use_externals,sw,\
 $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/core/SwNumberTree/SwNodeNum \
     sw/source/core/SwNumberTree/SwNumberTree \
+    sw/source/core/access/AccessibilityCheck \
+    sw/source/core/access/AccessibilityIssue \
     sw/source/core/access/acccell \
     sw/source/core/access/acccontext \
     sw/source/core/access/accdoc \
@@ -145,10 +152,13 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/core/crsr/crsrsh \
     sw/source/core/crsr/crstrvl \
     sw/source/core/crsr/crstrvl1 \
+    sw/source/core/crsr/DateFormFieldButton \
+    sw/source/core/crsr/DropDownFormFieldButton \
     sw/source/core/crsr/findattr \
     sw/source/core/crsr/findcoll \
     sw/source/core/crsr/findfmt \
     sw/source/core/crsr/findtxt \
+    sw/source/core/crsr/FormFieldButton \
     sw/source/core/crsr/pam \
     sw/source/core/crsr/paminit \
     sw/source/core/crsr/swcrsr \
@@ -158,6 +168,7 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/core/crsr/trvltbl \
     sw/source/core/crsr/viscrs \
     sw/source/core/crsr/overlayrangesoutline \
+    sw/source/core/doc/SwDocIdle \
     sw/source/core/doc/SwStyleNameMapper \
     sw/source/core/doc/acmplwrd \
     sw/source/core/doc/CntntIdxStore \
@@ -319,6 +330,7 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/core/layout/layact \
     sw/source/core/layout/laycache \
     sw/source/core/layout/layouter \
+    sw/source/core/layout/legacyitem \
     sw/source/core/layout/movedfwdfrmsbyobjpos \
     sw/source/core/layout/newfrm \
     sw/source/core/layout/objectformatter \
@@ -357,7 +369,6 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/core/text/EnhancedPDFExportHelper \
     sw/source/core/text/SwGrammarMarkUp \
     sw/source/core/text/atrstck \
-    sw/source/core/text/blink \
     sw/source/core/text/frmcrsr \
     sw/source/core/text/frmform \
     sw/source/core/text/frminf \
@@ -391,7 +402,6 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/core/text/txtftn \
     sw/source/core/text/txthyph \
     sw/source/core/text/txtinit \
-    sw/source/core/text/txtio \
     sw/source/core/text/txtpaint \
     sw/source/core/text/txttab \
     sw/source/core/text/widorp \
@@ -483,6 +493,7 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/core/unocore/unotbl  \
     sw/source/core/unocore/unotext \
     sw/source/core/unocore/unotextmarkup \
+    sw/source/core/view/dialoghelp \
     sw/source/core/view/pagepreviewlayout \
     sw/source/core/view/printdata \
     sw/source/core/view/vdraw \
@@ -521,6 +532,7 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/filter/html/htmlnumreader \
     sw/source/filter/html/htmlnumwriter \
     sw/source/filter/html/htmlplug \
+    sw/source/filter/html/htmlreqifreader \
     sw/source/filter/html/htmlsect \
     sw/source/filter/html/htmltab \
     sw/source/filter/html/htmltabw \
@@ -575,7 +587,6 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/uibase/dbui/maildispatcher \
     sw/source/uibase/dbui/mailmergehelper \
     sw/source/uibase/dbui/mmconfigitem \
-    sw/source/uibase/cctrl/actctrl \
     sw/source/uibase/chrdlg/ccoll \
     sw/source/uibase/config/StoredChapterNumbering \
     sw/source/uibase/config/barcfg \
@@ -601,6 +612,7 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/uibase/docvw/AnnotationWin2 \
     sw/source/uibase/docvw/DashedLine \
     sw/source/uibase/docvw/FrameControlsManager \
+    sw/source/uibase/docvw/UnfloatTableButton \
     sw/source/uibase/docvw/PageBreakWin \
     sw/source/uibase/docvw/OverlayRanges \
     sw/source/uibase/docvw/PostItMgr \
@@ -610,6 +622,7 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/uibase/docvw/SidebarTxtControlAcc \
     sw/source/uibase/docvw/SidebarWinAcc \
     sw/source/uibase/docvw/HeaderFooterWin \
+    sw/source/uibase/docvw/OutlineContentVisibilityWin \
     sw/source/uibase/docvw/edtdd \
     sw/source/uibase/docvw/edtwin \
     sw/source/uibase/docvw/edtwin2 \
@@ -692,8 +705,10 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/uibase/sidebar/PageFooterPanel \
     sw/source/uibase/sidebar/PageStylesPanel \
     sw/source/uibase/sidebar/WrapPropertyPanel \
+    sw/source/uibase/sidebar/TableEditPanel \
     sw/source/uibase/sidebar/ThemePanel \
     sw/source/uibase/sidebar/SwPanelFactory \
+    sw/source/uibase/sidebar/WriterInspectorTextPanel \
     sw/source/uibase/table/chartins \
     sw/source/uibase/table/swtablerep \
     sw/source/uibase/table/tablemgr \
@@ -726,7 +741,6 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/uibase/uno/unodefaults \
     sw/source/uibase/uno/unodispatch \
     sw/source/uibase/uno/unodoc \
-    sw/source/uibase/uno/unofreg \
     sw/source/uibase/uno/unomailmerge \
     sw/source/uibase/uno/unomod \
     sw/source/uibase/uno/unomodule \
@@ -788,8 +802,5 @@ $(eval $(call gb_SdiTarget_set_include,sw/sdi/swslots,\
     -I$(SRCDIR)/sfx2/sdi \
     $$(INCLUDE) \
 ))
-
-# Runtime dependency for unit-tests
-$(eval $(call gb_Library_use_restarget,sw,sw))
 
 # vim: set noet sw=4 ts=4:

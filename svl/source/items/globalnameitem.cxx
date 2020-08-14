@@ -21,8 +21,6 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/script/Converter.hpp>
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-
 #include <osl/diagnose.h>
 
 #include <comphelper/processfactory.hxx>
@@ -43,19 +41,17 @@ SfxGlobalNameItem::SfxGlobalNameItem( sal_uInt16 nW, const SvGlobalName& rName )
 {
 }
 
-
 SfxGlobalNameItem::~SfxGlobalNameItem()
 {
 }
 
-
 bool SfxGlobalNameItem::operator==( const SfxPoolItem& rItem ) const
 {
-    return static_cast<const SfxGlobalNameItem&>(rItem).m_aName == m_aName;
+    return SfxPoolItem::operator==(rItem) &&
+        static_cast<const SfxGlobalNameItem&>(rItem).m_aName == m_aName;
 }
 
-
-SfxPoolItem* SfxGlobalNameItem::Clone(SfxItemPool *) const
+SfxGlobalNameItem* SfxGlobalNameItem::Clone(SfxItemPool *) const
 {
     return new SfxGlobalNameItem( *this );
 }
@@ -84,7 +80,7 @@ bool SfxGlobalNameItem::PutValue( const css::uno::Any& rVal, sal_uInt8 )
 // virtual
 bool SfxGlobalNameItem::QueryValue( css::uno::Any& rVal, sal_uInt8 ) const
 {
-       css::uno::Sequence< sal_Int8 > aSeq( 16 );
+    css::uno::Sequence< sal_Int8 > aSeq( 16 );
     void const * pData = &m_aName.GetCLSID();
     memcpy( aSeq.getArray(), pData, 16 );
     rVal <<= aSeq;

@@ -20,22 +20,16 @@
 #ifndef INCLUDED_SVGIO_INC_SVGSYMBOLNODE_HXX
 #define INCLUDED_SVGIO_INC_SVGSYMBOLNODE_HXX
 
-#include <svgstyleattributes.hxx>
-#include <memory>
+#include "svgstyleattributes.hxx"
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
-        class SvgSymbolNode : public SvgNode
+        class SvgSymbolNode final : public SvgNode
         {
         private:
             /// use styles
             SvgStyleAttributes      maSvgStyleAttributes;
 
-            /// variable scan values, dependent of given XAttributeList
-            std::unique_ptr<basegfx::B2DRange>
-                                    mpViewBox;
             SvgAspectRatio          maSvgAspectRatio;
 
         public:
@@ -46,12 +40,9 @@ namespace svgio
 
             virtual const SvgStyleAttributes* getSvgStyleAttributes() const override;
             virtual void parseAttribute(const OUString& rTokenName, SVGToken aSVGToken, const OUString& aContent) override;
-
-            /// viewBox content
-            void setViewBox(const basegfx::B2DRange* pViewBox) { mpViewBox.reset(); if(pViewBox) mpViewBox.reset( new basegfx::B2DRange(*pViewBox) ); }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGSYMBOLNODE_HXX
 

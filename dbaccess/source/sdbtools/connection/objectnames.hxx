@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DBACCESS_SOURCE_SDBTOOLS_CONNECTION_OBJECTNAMES_HXX
-#define INCLUDED_DBACCESS_SOURCE_SDBTOOLS_CONNECTION_OBJECTNAMES_HXX
+#pragma once
 
-#include "connectiondependent.hxx"
-#include "module_sdbt.hxx"
+#include <connectiondependent.hxx>
 
 #include <com/sun/star/sdb/tools/XObjectNames.hpp>
 
@@ -40,9 +38,6 @@ namespace sdbtools
     class ObjectNames   :public ObjectNames_Base
                         ,public ConnectionDependentComponent
     {
-    private:
-        SdbtClient  m_aModuleClient;    // keep the module alive as long as this instance lives
-
     public:
         /** constructs the instance
 
@@ -75,7 +70,5 @@ namespace sdbtools
     };
 
 } // namespace sdbtools
-
-#endif // INCLUDED_DBACCESS_SOURCE_SDBTOOLS_CONNECTION_OBJECTNAMES_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

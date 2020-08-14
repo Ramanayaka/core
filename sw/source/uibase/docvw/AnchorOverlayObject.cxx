@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <AnchorOverlayObject.hxx>
+#include "AnchorOverlayObject.hxx"
 #include <SidebarWindowsConsts.hxx>
 
 #include <swrect.hxx>
@@ -28,11 +28,12 @@
 
 #include <sw_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/primitivetools2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/shadowprimitive2d.hxx>
 
-namespace sw { namespace sidebarwindows {
+namespace sw::sidebarwindows {
+
+namespace {
 
 // helper class: Primitive for discrete visualisation
 class AnchorPrimitive : public drawinglayer::primitive2d::DiscreteMetricDependentPrimitive2D
@@ -79,8 +80,10 @@ public:
 
     virtual bool operator==( const drawinglayer::primitive2d::BasePrimitive2D& rPrimitive ) const override;
 
-    DeclPrimitive2DIDBlock()
+    virtual sal_uInt32 getPrimitive2DID() const override;
 };
+
+}
 
 void AnchorPrimitive::create2DDecomposition(
     drawinglayer::primitive2d::Primitive2DContainer& rContainer,
@@ -172,25 +175,25 @@ bool AnchorPrimitive::operator==( const drawinglayer::primitive2d::BasePrimitive
 
 ImplPrimitive2DIDBlock(AnchorPrimitive, PRIMITIVE2D_ID_SWSIDEBARANCHORPRIMITIVE)
 
-/*static*/ AnchorOverlayObject* AnchorOverlayObject::CreateAnchorOverlayObject(
-                                                       SwView& rDocView,
+/*static*/ std::unique_ptr<AnchorOverlayObject> AnchorOverlayObject::CreateAnchorOverlayObject(
+                                                       SwView const & rDocView,
                                                        const SwRect& aAnchorRect,
                                                        long aPageBorder,
                                                        const Point& aLineStart,
                                                        const Point& aLineEnd,
                                                        const Color& aColorAnchor )
 {
-    AnchorOverlayObject* pAnchorOverlayObject( nullptr );
+    std::unique_ptr<AnchorOverlayObject> pAnchorOverlayObject;
     if ( rDocView.GetDrawView() )
     {
         SdrPaintWindow* pPaintWindow = rDocView.GetDrawView()->GetPaintWindow(0);
         if( pPaintWindow )
         {
-            rtl::Reference< sdr::overlay::OverlayManager > xOverlayManager = pPaintWindow->GetOverlayManager();
+            const rtl::Reference< sdr::overlay::OverlayManager >& xOverlayManager = pPaintWindow->GetOverlayManager();
 
             if ( xOverlayManager.is() )
             {
-                pAnchorOverlayObject = new AnchorOverlayObject(
+                pAnchorOverlayObject.reset(new AnchorOverlayObject(
                     basegfx::B2DPoint( aAnchorRect.Left() , aAnchorRect.Bottom()-5*15),
                     basegfx::B2DPoint( aAnchorRect.Left()-5*15 , aAnchorRect.Bottom()+5*15),
                     basegfx::B2DPoint( aAnchorRect.Left()+5*15 , aAnchorRect.Bottom()+5*15),
@@ -198,26 +201,13 @@ ImplPrimitive2DIDBlock(AnchorPrimitive, PRIMITIVE2D_ID_SWSIDEBARANCHORPRIMITIVE)
                     basegfx::B2DPoint( aPageBorder ,aAnchorRect.Bottom()+2*15),
                     basegfx::B2DPoint( aLineStart.X(),aLineStart.Y()),
                     basegfx::B2DPoint( aLineEnd.X(),aLineEnd.Y()) ,
-                    aColorAnchor);
+                    aColorAnchor));
                 xOverlayManager->add(*pAnchorOverlayObject);
             }
         }
     }
 
     return pAnchorOverlayObject;
-}
-
-/*static*/ void AnchorOverlayObject::DestroyAnchorOverlayObject( AnchorOverlayObject* pAnchor )
-{
-    if ( pAnchor )
-    {
-        if ( pAnchor->getOverlayManager() )
-        {
-            // remove this object from the chain
-            pAnchor->getOverlayManager()->remove(*pAnchor);
-        }
-        delete pAnchor;
-    }
 }
 
 AnchorOverlayObject::AnchorOverlayObject( const basegfx::B2DPoint& rBasePos,
@@ -245,6 +235,11 @@ AnchorOverlayObject::AnchorOverlayObject( const basegfx::B2DPoint& rBasePos,
 
 AnchorOverlayObject::~AnchorOverlayObject()
 {
+    if ( getOverlayManager() )
+    {
+        // remove this object from the chain
+        getOverlayManager()->remove(*this);
+    }
 }
 
 void AnchorOverlayObject::implEnsureGeometry()
@@ -264,7 +259,7 @@ void AnchorOverlayObject::implEnsureGeometry()
         maLine.append(GetSixthPosition());
     }
 
-  if(!maLineTop.count())
+    if(!maLineTop.count())
     {
         maLineTop.append(GetSixthPosition());
         maLineTop.append(GetSeventhPosition());
@@ -282,7 +277,7 @@ drawinglayer::primitive2d::Primitive2DContainer AnchorOverlayObject::createOverl
 {
     implEnsureGeometry();
 
-    static double aDiscreteLineWidth(1.6);
+    static const double aDiscreteLineWidth(1.6);
     const drawinglayer::primitive2d::Primitive2DReference aReference(
         new AnchorPrimitive( maTriangle,
                              maLine,
@@ -303,25 +298,25 @@ void AnchorOverlayObject::SetAllPosition( const basegfx::B2DPoint& rPoint1,
                                           const basegfx::B2DPoint& rPoint6,
                                           const basegfx::B2DPoint& rPoint7)
 {
-    if ( rPoint1 != getBasePosition() ||
+    if ( !(rPoint1 != getBasePosition() ||
          rPoint2 != GetSecondPosition() ||
          rPoint3 != GetThirdPosition() ||
          rPoint4 != GetFourthPosition() ||
          rPoint5 != GetFifthPosition() ||
          rPoint6 != GetSixthPosition() ||
-         rPoint7 != GetSeventhPosition() )
-    {
-        maBasePosition = rPoint1;
-        maSecondPosition = rPoint2;
-        maThirdPosition = rPoint3;
-        maFourthPosition = rPoint4;
-        maFifthPosition = rPoint5;
-        maSixthPosition = rPoint6;
-        maSeventhPosition = rPoint7;
+         rPoint7 != GetSeventhPosition()) )
+        return;
 
-        implResetGeometry();
-        objectChange();
-    }
+    maBasePosition = rPoint1;
+    maSecondPosition = rPoint2;
+    maThirdPosition = rPoint3;
+    maFourthPosition = rPoint4;
+    maFifthPosition = rPoint5;
+    maSixthPosition = rPoint6;
+    maSeventhPosition = rPoint7;
+
+    implResetGeometry();
+    objectChange();
 }
 
 void AnchorOverlayObject::SetSixthPosition(const basegfx::B2DPoint& rNew)
@@ -329,7 +324,7 @@ void AnchorOverlayObject::SetSixthPosition(const basegfx::B2DPoint& rNew)
   if(rNew != maSixthPosition)
   {
       maSixthPosition = rNew;
-        implResetGeometry();
+      implResetGeometry();
       objectChange();
   }
 }
@@ -339,7 +334,7 @@ void AnchorOverlayObject::SetSeventhPosition(const basegfx::B2DPoint& rNew)
   if(rNew != maSeventhPosition)
   {
       maSeventhPosition = rNew;
-        implResetGeometry();
+      implResetGeometry();
       objectChange();
   }
 }
@@ -382,6 +377,6 @@ void AnchorOverlayObject::SetAnchorState( const AnchorState aState)
   }
 }
 
-} } // end of namespace sw::annotation
+} // end of namespace sw::sidebarwindows
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

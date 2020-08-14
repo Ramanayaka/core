@@ -17,26 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/instance.hxx>
-#include <osl/diagnose.h>
 #include <basegfx/polygon/b3dpolypolygontools.hxx>
 #include <basegfx/range/b3drange.hxx>
 #include <basegfx/polygon/b3dpolypolygon.hxx>
 #include <basegfx/polygon/b3dpolygon.hxx>
 #include <basegfx/polygon/b3dpolygontools.hxx>
-#include <numeric>
 #include <basegfx/matrix/b3dhommatrix.hxx>
 #include <basegfx/numeric/ftools.hxx>
 #include <com/sun/star/drawing/DoubleSequence.hpp>
+#include <com/sun/star/drawing/PolyPolygonShape3D.hpp>
+#include <sal/log.hxx>
 
 // predefines
 #define nMinSegments sal_uInt32(1)
 #define nMaxSegments sal_uInt32(512)
 
-namespace basegfx
+namespace basegfx::utils
 {
-    namespace tools
-    {
         // B3DPolyPolygon tools
         B3DRange getRange(const B3DPolyPolygon& rCandidate)
         {
@@ -45,20 +42,16 @@ namespace basegfx
 
             for(sal_uInt32 a(0); a < nPolygonCount; a++)
             {
-                B3DPolygon aCandidate = rCandidate.getB3DPolygon(a);
+                const B3DPolygon& aCandidate = rCandidate.getB3DPolygon(a);
                 aRetval.expand(getRange(aCandidate));
             }
 
             return aRetval;
         }
 
-        namespace
+        B3DPolyPolygon const & createUnitCubePolyPolygon()
         {
-            struct theUnitCubePolyPolygon : public rtl::StaticWithInit<B3DPolyPolygon,
-                                                                       theUnitCubePolyPolygon>
-            {
-                B3DPolyPolygon operator()()
-                {
+            static auto const singleton = [] {
                     B3DPolyPolygon aRetval;
                     B3DPolygon aTemp;
                     aTemp.append(B3DPoint(0.0, 0.0, 1.0));
@@ -96,22 +89,13 @@ namespace basegfx
                     aTemp.append(B3DPoint(1.0, 0.0, 1.0));
                     aRetval.append(aTemp);
                     return aRetval;
-                }
-            };
+                }();
+            return singleton;
         }
 
-        B3DPolyPolygon createUnitCubePolyPolygon()
+        B3DPolyPolygon const & createUnitCubeFillPolyPolygon()
         {
-            return theUnitCubePolyPolygon::get();
-        }
-
-        namespace
-        {
-            struct theUnitCubeFillPolyPolygon : public rtl::StaticWithInit<B3DPolyPolygon,
-                                                                           theUnitCubeFillPolyPolygon>
-            {
-                B3DPolyPolygon operator()()
-                {
+            static auto const singleton = [] {
                     B3DPolyPolygon aRetval;
                     B3DPolygon aTemp;
 
@@ -178,13 +162,8 @@ namespace basegfx
                     aTemp.setClosed(true);
                     aRetval.append(aTemp);
                     return aRetval;
-                }
-            };
-        }
-
-        B3DPolyPolygon createUnitCubeFillPolyPolygon()
-        {
-            return theUnitCubeFillPolyPolygon::get();
+                }();
+            return singleton;
         }
 
         B3DPolyPolygon createCubePolyPolygonFromB3DRange( const B3DRange& rRange)
@@ -223,7 +202,7 @@ namespace basegfx
 
         // helper for getting the 3D Point from given cartesian coordinates. fHor is defined from
         // [F_PI2 .. -F_PI2], fVer from [0.0 .. F_2PI]
-        inline B3DPoint getPointFromCartesian(double fHor, double fVer)
+        static B3DPoint getPointFromCartesian(double fHor, double fVer)
         {
             const double fCosVer(cos(fVer));
             return B3DPoint(fCosVer * cos(fHor), sin(fVer), fCosVer * -sin(fHor));
@@ -254,8 +233,8 @@ namespace basegfx
             nVerSeg = std::min(nMaxSegments, std::max(nMinSegments, nVerSeg));
 
             // create constants
-            const double fVerDiffPerStep((fVerStop - fVerStart) / (double)nVerSeg);
-            const double fHorDiffPerStep((fHorStop - fHorStart) / (double)nHorSeg);
+            const double fVerDiffPerStep((fVerStop - fVerStart) / static_cast<double>(nVerSeg));
+            const double fHorDiffPerStep((fHorStop - fHorStart) / static_cast<double>(nHorSeg));
             bool bHorClosed(fTools::equal(fHorStop - fHorStart, F_2PI));
             bool bVerFromTop(fTools::equal(fVerStart, F_PI2));
             bool bVerToBottom(fTools::equal(fVerStop, -F_PI2));
@@ -267,12 +246,12 @@ namespace basegfx
 
             for(a = nLoopVerInit; a < nLoopVerLimit; a++)
             {
-                const double fVer(fVerStart + ((double)(a) * fVerDiffPerStep));
+                const double fVer(fVerStart + (static_cast<double>(a) * fVerDiffPerStep));
                 B3DPolygon aNew;
 
                 for(b = 0; b < nLoopHorLimit; b++)
                 {
-                    const double fHor(fHorStart + ((double)(b) * fHorDiffPerStep));
+                    const double fHor(fHorStart + (static_cast<double>(b) * fHorDiffPerStep));
                     aNew.append(getPointFromCartesian(fHor, fVer));
                 }
 
@@ -283,7 +262,7 @@ namespace basegfx
             // create vertical half-rings
             for(a = 0; a < nLoopHorLimit; a++)
             {
-                const double fHor(fHorStart + ((double)(a) * fHorDiffPerStep));
+                const double fHor(fHorStart + (static_cast<double>(a) * fHorDiffPerStep));
                 B3DPolygon aNew;
 
                 if(bVerFromTop)
@@ -293,7 +272,7 @@ namespace basegfx
 
                 for(b = nLoopVerInit; b < nLoopVerLimit; b++)
                 {
-                    const double fVer(fVerStart + ((double)(b) * fVerDiffPerStep));
+                    const double fVer(fVerStart + (static_cast<double>(b) * fVerDiffPerStep));
                     aNew.append(getPointFromCartesian(fHor, fVer));
                 }
 
@@ -455,13 +434,13 @@ namespace basegfx
             return aRetval;
         }
 
-        bool isInside(const B3DPolyPolygon& rCandidate, const B3DPoint& rPoint, bool bWithBorder)
+        bool isInside(const B3DPolyPolygon& rCandidate, const B3DPoint& rPoint)
         {
             const sal_uInt32 nPolygonCount(rCandidate.count());
 
             if(nPolygonCount == 1)
             {
-                return isInside(rCandidate.getB3DPolygon(0), rPoint, bWithBorder);
+                return isInside(rCandidate.getB3DPolygon(0), rPoint, false/*bWithBorder*/);
             }
             else
             {
@@ -469,8 +448,8 @@ namespace basegfx
 
                 for(sal_uInt32 a(0); a < nPolygonCount; a++)
                 {
-                    const B3DPolygon aPolygon(rCandidate.getB3DPolygon(a));
-                    const bool bInside(isInside(aPolygon, rPoint, bWithBorder));
+                    const B3DPolygon& aPolygon(rCandidate.getB3DPolygon(a));
+                    const bool bInside(isInside(aPolygon, rPoint, false/*bWithBorder*/));
 
                     if(bInside)
                     {
@@ -484,17 +463,18 @@ namespace basegfx
 
 /// converters for css::drawing::PolyPolygonShape3D
         B3DPolyPolygon UnoPolyPolygonShape3DToB3DPolyPolygon(
-            const css::drawing::PolyPolygonShape3D& rPolyPolygonShape3DSource,
-            bool bCheckClosed)
+            const css::drawing::PolyPolygonShape3D& rPolyPolygonShape3DSource)
         {
             B3DPolyPolygon aRetval;
             const sal_Int32 nOuterSequenceCount(rPolyPolygonShape3DSource.SequenceX.getLength());
 
             if(nOuterSequenceCount)
             {
-                OSL_ENSURE(nOuterSequenceCount == rPolyPolygonShape3DSource.SequenceY.getLength()
-                    && nOuterSequenceCount == rPolyPolygonShape3DSource.SequenceZ.getLength(),
-                    "UnoPolyPolygonShape3DToB3DPolygon: Not all double sequences have the same length (!)");
+                assert(nOuterSequenceCount == rPolyPolygonShape3DSource.SequenceY.getLength()
+                           && nOuterSequenceCount
+                                  == rPolyPolygonShape3DSource.SequenceZ.getLength()&&
+                       "UnoPolyPolygonShape3DToB3DPolygon: Not all double sequences have the same "
+                       "length (!)" );
 
                 const css::drawing::DoubleSequence* pInnerSequenceX = rPolyPolygonShape3DSource.SequenceX.getConstArray();
                 const css::drawing::DoubleSequence* pInnerSequenceY = rPolyPolygonShape3DSource.SequenceY.getConstArray();
@@ -504,9 +484,10 @@ namespace basegfx
                 {
                     basegfx::B3DPolygon aNewPolygon;
                     const sal_Int32 nInnerSequenceCount(pInnerSequenceX->getLength());
-                    OSL_ENSURE(nInnerSequenceCount == pInnerSequenceY->getLength()
-                        && nInnerSequenceCount == pInnerSequenceZ->getLength(),
-                        "UnoPolyPolygonShape3DToB3DPolygon: Not all double sequences have the same length (!)");
+                    assert(nInnerSequenceCount == pInnerSequenceY->getLength()
+                           && nInnerSequenceCount == pInnerSequenceZ->getLength()
+                           && "UnoPolyPolygonShape3DToB3DPolygon: Not all double sequences have "
+                              "the same length (!)");
 
                     const double* pArrayX = pInnerSequenceX->getConstArray();
                     const double* pArrayY = pInnerSequenceY->getConstArray();
@@ -523,10 +504,7 @@ namespace basegfx
 
                     // #i101520# correction is needed for imported polygons of old format,
                     // see callers
-                    if(bCheckClosed)
-                    {
-                        basegfx::tools::checkClosed(aNewPolygon);
-                    }
+                    basegfx::utils::checkClosed(aNewPolygon);
 
                     aRetval.append(aNewPolygon);
                 }
@@ -553,7 +531,7 @@ namespace basegfx
 
                 for(sal_uInt32 a(0); a < nPolygonCount; a++)
                 {
-                    const basegfx::B3DPolygon aPoly(rPolyPolygonSource.getB3DPolygon(a));
+                    const basegfx::B3DPolygon& aPoly(rPolyPolygonSource.getB3DPolygon(a));
                     const sal_uInt32 nPointCount(aPoly.count());
 
                     if(nPointCount)
@@ -606,7 +584,6 @@ namespace basegfx
             }
         }
 
-    } // end of namespace tools
-} // end of namespace basegfx
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

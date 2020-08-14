@@ -23,10 +23,9 @@
 #include <unordered_map>
 #include <vector>
 #include "address.hxx"
-#include "global.hxx"
 
 typedef std::vector< ScAddress > ScAutoNameAddresses;
-typedef std::unordered_map< OUString, ScAutoNameAddresses, OUStringHash > ScAutoNameHashMap;
+typedef std::unordered_map< OUString, ScAutoNameAddresses > ScAutoNameHashMap;
 
 /**  Cache for faster lookup of automatic names during CompileXML
      (during CompileXML, no document content is changed). */

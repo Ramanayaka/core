@@ -20,9 +20,12 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_DRAWMODULE_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_DRAWMODULE_HXX
 
-#include <com/sun/star/frame/XController.hpp>
+#include <sal/types.h>
 
-namespace sd { namespace framework {
+namespace com::sun::star::frame { class XController; }
+namespace com::sun::star::uno { template <typename > class Reference; }
+
+namespace sd::framework {
 
 /** The task of this module is to instantiate all modules that belong to the
     Draw application.
@@ -31,10 +34,10 @@ class DrawModule
 {
 public:
     static void Initialize (
-        css::uno::Reference<css::frame::XController>& rxController);
+        css::uno::Reference<css::frame::XController> const & rxController);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

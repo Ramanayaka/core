@@ -19,14 +19,11 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_MYSQL_YCATALOG_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_MYSQL_YCATALOG_HXX
 
-#include <connectivity/sdbcx/VCatalog.hxx>
-#include <connectivity/StdTypeDefs.hxx>
+#include <sdbcx/VCatalog.hxx>
 
-namespace connectivity
-{
-    namespace mysql
+namespace connectivity::mysql
     {
-        // please don't name the class the same name as in an other namespaces
+        // please don't name the class the same name as in another namespaces
         // some compilers have problems with this task as I noticed on windows
         class OMySQLCatalog : public connectivity::sdbcx::OCatalog
         {
@@ -38,7 +35,7 @@ namespace connectivity
                 @param  _rNames
                     The container for the names to be filled. <OUT/>
             */
-            void refreshObjects(const css::uno::Sequence< OUString >& _sKindOfObject,TStringVector& _rNames);
+            void refreshObjects(const css::uno::Sequence< OUString >& _sKindOfObject,::std::vector< OUString>& _rNames);
 
         public:
             // implementation of the pure virtual methods
@@ -50,15 +47,15 @@ namespace connectivity
         public:
             OMySQLCatalog(const css::uno::Reference< css::sdbc::XConnection >& _xConnection);
 
-            sdbcx::OCollection*      getPrivateTables()  const { return m_pTables;}
-            sdbcx::OCollection*      getPrivateViews()   const { return m_pViews; }
+            sdbcx::OCollection*      getPrivateTables()  const { return m_pTables.get();}
+            sdbcx::OCollection*      getPrivateViews()   const { return m_pViews.get(); }
             const css::uno::Reference< css::sdbc::XConnection >& getConnection() const { return m_xConnection; }
 
             virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
             // ::cppu::OComponentHelper
             virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_MYSQL_YCATALOG_HXX
 

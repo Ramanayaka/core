@@ -17,24 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "java/sql/PreparedStatement.hxx"
-#include "java/sql/ResultSet.hxx"
-#include "java/sql/ResultSetMetaData.hxx"
-#include "java/sql/Connection.hxx"
-#include "java/sql/Timestamp.hxx"
-#include "java/math/BigDecimal.hxx"
-#include "java/tools.hxx"
+#include <java/sql/PreparedStatement.hxx>
+#include <java/sql/ResultSet.hxx>
+#include <java/sql/ResultSetMetaData.hxx>
+#include <java/sql/Connection.hxx>
+#include <java/sql/Timestamp.hxx>
+#include <java/math/BigDecimal.hxx>
+#include <java/tools.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <comphelper/sequence.hxx>
+#include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/FValue.hxx>
 #include <connectivity/dbexception.hxx>
-#include "resource/conn_shared_res.hrc"
-#include "resource/common_res.hrc"
-#include "resource/sharedresources.hxx"
-#include "java/LocalRef.hxx"
-#include "strings.hxx"
+#include <strings.hrc>
+#include <resource/sharedresources.hxx>
+#include <java/LocalRef.hxx>
+#include <strings.hxx>
 #include <string.h>
 #include <memory>
 
@@ -177,7 +177,7 @@ void SAL_CALL java_sql_PreparedStatement::setBoolean( sal_Int32 parameterIndex, 
 
 void SAL_CALL java_sql_PreparedStatement::setByte( sal_Int32 parameterIndex, sal_Int8 x )
 {
-    m_aLogger.log( LogLevel::FINER, STR_LOG_BYTE_PARAMETER, parameterIndex, (sal_Int32)x );
+    m_aLogger.log( LogLevel::FINER, STR_LOG_BYTE_PARAMETER, parameterIndex, static_cast<sal_Int32>(x) );
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(java_sql_Statement_BASE::rBHelper.bDisposed);
 
@@ -655,41 +655,42 @@ void java_sql_PreparedStatement::createStatement(JNIEnv* _pEnv)
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(java_sql_Statement_BASE::rBHelper.bDisposed);
 
-    if( !object && _pEnv ){
-        // initialize temporary variable
-        static const char * const cMethodName = "prepareStatement";
+    if( !(!object && _pEnv) )
+        return;
 
-        jvalue args[1];
-        // convert Parameter
-        args[0].l = convertwchar_tToJavaString(_pEnv,m_sSqlStatement);
-        // Java-Call
-        jobject out = nullptr;
-        static jmethodID mID(nullptr);
-        if ( !mID )
+    // initialize temporary variable
+    static const char * const cMethodName = "prepareStatement";
+
+    jvalue args[1];
+    // convert Parameter
+    args[0].l = convertwchar_tToJavaString(_pEnv,m_sSqlStatement);
+    // Java-Call
+    jobject out = nullptr;
+    static jmethodID mID(nullptr);
+    if ( !mID )
+    {
+        static const char * const cSignature = "(Ljava/lang/String;II)Ljava/sql/PreparedStatement;";
+        mID  = _pEnv->GetMethodID( m_pConnection->getMyClass(), cMethodName, cSignature );
+    }
+    if( mID )
+    {
+        out = _pEnv->CallObjectMethod( m_pConnection->getJavaObject(), mID, args[0].l ,m_nResultSetType,m_nResultSetConcurrency);
+    }
+    else
+    {
+        static jmethodID mID2 = nullptr;
+        if ( !mID2 )
         {
-            static const char * const cSignature = "(Ljava/lang/String;II)Ljava/sql/PreparedStatement;";
-            mID  = _pEnv->GetMethodID( m_pConnection->getMyClass(), cMethodName, cSignature );
+            static const char * const cSignature2 = "(Ljava/lang/String;)Ljava/sql/PreparedStatement;";
+            mID2 = _pEnv->GetMethodID( m_pConnection->getMyClass(), cMethodName, cSignature2 );
         }
-        if( mID )
-        {
-            out = _pEnv->CallObjectMethod( m_pConnection->getJavaObject(), mID, args[0].l ,m_nResultSetType,m_nResultSetConcurrency);
-        }
-        else
-        {
-            static jmethodID mID2 = nullptr;
-            if ( !mID2 )
-            {
-                static const char * const cSignature2 = "(Ljava/lang/String;)Ljava/sql/PreparedStatement;";
-                mID2 = _pEnv->GetMethodID( m_pConnection->getMyClass(), cMethodName, cSignature2 );
-            }
-            if ( mID2 )
-                out = _pEnv->CallObjectMethod( m_pConnection->getJavaObject(), mID2, args[0].l );
-        }
-        _pEnv->DeleteLocalRef(static_cast<jstring>(args[0].l));
-        ThrowLoggedSQLException( m_aLogger, _pEnv, *this );
-        if ( out )
-            object = _pEnv->NewGlobalRef( out );
-    } //t.pEnv
+        if ( mID2 )
+            out = _pEnv->CallObjectMethod( m_pConnection->getJavaObject(), mID2, args[0].l );
+    }
+    _pEnv->DeleteLocalRef(static_cast<jstring>(args[0].l));
+    ThrowLoggedSQLException( m_aLogger, _pEnv, *this );
+    if ( out )
+        object = _pEnv->NewGlobalRef( out );
 }
 
 

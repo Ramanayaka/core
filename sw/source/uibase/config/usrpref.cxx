@@ -19,22 +19,17 @@
 
 #include <sal/config.h>
 
+#include <cstring>
+#include <osl/diagnose.h>
 #include <o3tl/any.hxx>
-#include <tools/stream.hxx>
+#include <tools/UnitConversion.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/syslocale.hxx>
 
-#include "swtypes.hxx"
-#include "hintids.hxx"
-#include "uitool.hxx"
-#include "usrpref.hxx"
-#include "crstate.hxx"
-#include <linguistic/lngprops.hxx>
+#include <usrpref.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <unotools/localedatawrapper.hxx>
-
-#include <unomid.h>
 
 using namespace utl;
 using namespace ::com::sun::star;
@@ -50,7 +45,7 @@ SwMasterUsrPref::SwMasterUsrPref(bool bWeb) :
     m_nLinkUpdateMode(0),
     m_bIsHScrollMetricSet(false),
     m_bIsVScrollMetricSet(false),
-    m_nDefTab( MM50 * 4 ),
+    m_nDefTabInMm100( 2000 ), // 2 cm
     m_bIsSquaredPageMode(false),
     m_bIsAlignMathObjectsToBaseline(false),
     m_aContentConfig(bWeb, *this),
@@ -60,13 +55,13 @@ SwMasterUsrPref::SwMasterUsrPref(bool bWeb) :
     m_pWebColorConfig(bWeb ? new SwWebColorConfig(*this) : nullptr),
     m_bApplyCharUnit(false)
 {
-    if (utl::ConfigManager::IsAvoidConfig())
+    if (utl::ConfigManager::IsFuzzing())
     {
-        m_eHScrollMetric = m_eVScrollMetric = m_eUserMetric = FUNIT_CM;
+        m_eHScrollMetric = m_eVScrollMetric = m_eUserMetric = FieldUnit::CM;
         return;
     }
     MeasurementSystem eSystem = SvtSysLocale().GetLocaleData().getMeasurementSystemEnum();
-    m_eUserMetric = MeasurementSystem::Metric == eSystem ? FUNIT_CM : FUNIT_INCH;
+    m_eUserMetric = MeasurementSystem::Metric == eSystem ? FieldUnit::CM : FieldUnit::INCH;
     m_eHScrollMetric = m_eVScrollMetric = m_eUserMetric;
 
     m_aContentConfig.Load();
@@ -81,9 +76,11 @@ SwMasterUsrPref::~SwMasterUsrPref()
 {
 }
 
-Sequence<OUString> SwContentViewConfig::GetPropertyNames()
+const auto g_UpdateLinkIndex = 17;
+
+Sequence<OUString> SwContentViewConfig::GetPropertyNames() const
 {
-    static const char* aPropNames[] =
+    static constexpr const char*const aPropNames[] =
     {
         "Display/GraphicObject",                    //  0
         "Display/Table",                            //  1
@@ -101,12 +98,19 @@ Sequence<OUString> SwContentViewConfig::GetPropertyNames()
         "NonprintingCharacter/HiddenText",      // 13
         "NonprintingCharacter/HiddenParagraph", // 14
         "NonprintingCharacter/HiddenCharacter",      // 15
-        "Update/Link",                          // 16
-        "Update/Field",                         // 17
-        "Update/Chart"                          // 18
-
+        "NonprintingCharacter/Bookmarks",       // 16
+        "Update/Link",                          // 17
+        "Update/Field",                         // 18
+        "Update/Chart",                         // 19
+        "Display/ShowInlineTooltips",           // 20
+        "Display/UseHeaderFooterMenu",          // 21
+        "Display/ShowOutlineContentVisibilityButton" // 22
     };
-    const int nCount = bWeb ? 12 : 19;
+#if defined(__GNUC__) && !defined(__clang__)
+    // clang 8.0.0 says strcmp isn't constexpr
+    static_assert(std::strcmp("Update/Link", aPropNames[g_UpdateLinkIndex]) == 0);
+#endif
+    const int nCount = bWeb ? 12 : SAL_N_ELEMENTS(aPropNames);
     Sequence<OUString> aNames(nCount);
     OUString* pNames = aNames.getArray();
     for(int i = 0; i < nCount; i++)
@@ -162,11 +166,15 @@ void SwContentViewConfig::ImplCommit()
             case 13: bVal = rParent.IsShowHiddenField(); break;// "NonprintingCharacter/Fields: HiddenText",
             case 14: bVal = rParent.IsShowHiddenPara(); break;// "NonprintingCharacter/Fields: HiddenParagraph",
             case 15: bVal = rParent.IsShowHiddenChar(true);    break;// "NonprintingCharacter/HiddenCharacter",
-            case 16: pValues[nProp] <<= rParent.GetUpdateLinkMode();    break;// "Update/Link",
-            case 17: bVal = rParent.IsUpdateFields(); break;// "Update/Field",
-            case 18: bVal = rParent.IsUpdateCharts(); break;// "Update/Chart"
+            case 16: bVal = rParent.IsShowBookmarks(true);    break;// "NonprintingCharacter/Bookmarks",
+            case 17: pValues[nProp] <<= rParent.GetUpdateLinkMode();    break;// "Update/Link",
+            case 18: bVal = rParent.IsUpdateFields(); break;// "Update/Field",
+            case 19: bVal = rParent.IsUpdateCharts(); break;// "Update/Chart"
+            case 20: bVal = rParent.IsShowInlineTooltips(); break;// "Display/ShowInlineTooltips"
+            case 21: bVal = rParent.IsUseHeaderFooterMenu(); break;// "Display/UseHeaderFooterMenu"
+            case 22: bVal = rParent.IsShowOutlineContentVisibilityButton(); break;// "Display/ShowOutlineContnetVisibilityButton"
         }
-        if(nProp != 16)
+        if (nProp != g_UpdateLinkIndex)
             pValues[nProp] <<= bVal;
     }
     PutProperties(aNames, aValues);
@@ -178,47 +186,51 @@ void SwContentViewConfig::Load()
     Sequence<Any> aValues = GetProperties(aNames);
     const Any* pValues = aValues.getConstArray();
     OSL_ENSURE(aValues.getLength() == aNames.getLength(), "GetProperties failed");
-    if(aValues.getLength() == aNames.getLength())
+    if(aValues.getLength() != aNames.getLength())
+        return;
+
+    for(int nProp = 0; nProp < aNames.getLength(); nProp++)
     {
-        for(int nProp = 0; nProp < aNames.getLength(); nProp++)
+        if(pValues[nProp].hasValue())
         {
-            if(pValues[nProp].hasValue())
+            bool bSet = nProp != g_UpdateLinkIndex && *o3tl::doAccess<bool>(pValues[nProp]);
+            switch(nProp)
             {
-                bool bSet = nProp != 16 && *o3tl::doAccess<bool>(pValues[nProp]);
-                switch(nProp)
+                case  0: rParent.SetGraphic(bSet);  break;// "Display/GraphicObject",
+                case  1: rParent.SetTable(bSet);    break;// "Display/Table",
+                case  2: rParent.SetDraw(bSet);     break;// "Display/DrawingControl",
+                case  3: rParent.SetFieldName(bSet);  break;// "Display/FieldCode",
+                case  4: rParent.SetPostIts(bSet);  break;// "Display/Note",
+                case  5: rParent.SetShowContentTips(bSet);  break;// "Display/ShowContentTips",
+                case  6: rParent.SetViewMetaChars(bSet); break; //"NonprintingCharacter/MetaCharacters"
+                case  7: rParent.SetParagraph(bSet); break;// "NonprintingCharacter/ParagraphEnd",
+                case  8: rParent.SetSoftHyph(bSet); break;// "NonprintingCharacter/OptionalHyphen",
+                case  9: rParent.SetBlank(bSet);    break;// "NonprintingCharacter/Space",
+                case 10: rParent.SetLineBreak(bSet);break;// "NonprintingCharacter/Break",
+                case 11: rParent.SetHardBlank(bSet); break;// "NonprintingCharacter/ProtectedSpace",
+                case 12: rParent.SetTab(bSet);      break;// "NonprintingCharacter/Tab",
+                case 13: rParent.SetShowHiddenField(bSet);   break;// "NonprintingCharacter/Fields: HiddenText",
+                case 14: rParent.SetShowHiddenPara(bSet); break;// "NonprintingCharacter/Fields: HiddenParagraph",
+                case 15: rParent.SetShowHiddenChar(bSet); break;// "NonprintingCharacter/HiddenCharacter",
+                case 16: rParent.SetShowBookmarks(bSet); break;// "NonprintingCharacter/Bookmarks",
+                case 17:
                 {
-                    case  0: rParent.SetGraphic(bSet);  break;// "Display/GraphicObject",
-                    case  1: rParent.SetTable(bSet);    break;// "Display/Table",
-                    case  2: rParent.SetDraw(bSet);     break;// "Display/DrawingControl",
-                    case  3: rParent.SetFieldName(bSet);  break;// "Display/FieldCode",
-                    case  4: rParent.SetPostIts(bSet);  break;// "Display/Note",
-                    case  5: rParent.SetShowContentTips(bSet);  break;// "Display/ShowContentTips",
-                    case  6: rParent.SetViewMetaChars(bSet); break; //"NonprintingCharacter/MetaCharacters"
-                    case  7: rParent.SetParagraph(bSet); break;// "NonprintingCharacter/ParagraphEnd",
-                    case  8: rParent.SetSoftHyph(bSet); break;// "NonprintingCharacter/OptionalHyphen",
-                    case  9: rParent.SetBlank(bSet);    break;// "NonprintingCharacter/Space",
-                    case 10: rParent.SetLineBreak(bSet);break;// "NonprintingCharacter/Break",
-                    case 11: rParent.SetHardBlank(bSet); break;// "NonprintingCharacter/ProtectedSpace",
-                    case 12: rParent.SetTab(bSet);      break;// "NonprintingCharacter/Tab",
-                    case 13: rParent.SetShowHiddenField(bSet);   break;// "NonprintingCharacter/Fields: HiddenText",
-                    case 14: rParent.SetShowHiddenPara(bSet); break;// "NonprintingCharacter/Fields: HiddenParagraph",
-                    case 15: rParent.SetShowHiddenChar(bSet); break;// "NonprintingCharacter/HiddenCharacter",
-                    case 16:
-                    {
-                        sal_Int32 nSet = 0;
-                        pValues[nProp] >>= nSet;
-                        rParent.SetUpdateLinkMode(nSet, true);
-                    }
-                    break;// "Update/Link",
-                    case 17: rParent.SetUpdateFields(bSet); break;// "Update/Field",
-                    case 18: rParent.SetUpdateCharts(bSet); break;// "Update/Chart"
+                    sal_Int32 nSet = 0;
+                    pValues[nProp] >>= nSet;
+                    rParent.SetUpdateLinkMode(nSet, true);
                 }
+                break;// "Update/Link",
+                case 18: rParent.SetUpdateFields(bSet); break;// "Update/Field",
+                case 19: rParent.SetUpdateCharts(bSet); break;// "Update/Chart"
+                case 20: rParent.SetShowInlineTooltips(bSet); break;// "Display/ShowInlineTooltips"
+                case 21: rParent.SetUseHeaderFooterMenu(bSet); break;// "Display/UseHeaderFooterMenu"
+                case 22: rParent.SetShowOutlineContentVisibilityButton(bSet); break;// "Display/ShowOutlineContententVisibilityButton"
             }
         }
     }
 }
 
-Sequence<OUString> SwLayoutViewConfig::GetPropertyNames()
+Sequence<OUString> SwLayoutViewConfig::GetPropertyNames() const
 {
     static const char* aPropNames[] =
     {
@@ -256,7 +268,7 @@ Sequence<OUString> SwLayoutViewConfig::GetPropertyNames()
 
 SwLayoutViewConfig::SwLayoutViewConfig(bool bIsWeb, SwMasterUsrPref& rPar) :
     ConfigItem(bIsWeb ? OUString("Office.WriterWeb/Layout") :  OUString("Office.Writer/Layout"),
-        ConfigItemMode::DelayedUpdate|ConfigItemMode::ReleaseTree),
+        ConfigItemMode::ReleaseTree),
     rParent(rPar),
     bWeb(bIsWeb)
 {
@@ -288,20 +300,20 @@ void SwLayoutViewConfig::ImplCommit()
             case  5: rVal <<= rParent.IsViewVRuler(true); break;         // "Window/VerticalRuler",
             case  6:
                 if(rParent.m_bIsHScrollMetricSet)
-                    rVal <<= (sal_Int32)rParent.m_eHScrollMetric;                     // "Window/HorizontalRulerUnit"
+                    rVal <<= static_cast<sal_Int32>(rParent.m_eHScrollMetric);                     // "Window/HorizontalRulerUnit"
             break;
             case  7:
                 if(rParent.m_bIsVScrollMetricSet)
-                    rVal <<= (sal_Int32)rParent.m_eVScrollMetric;                     // "Window/VerticalRulerUnit"
+                    rVal <<= static_cast<sal_Int32>(rParent.m_eVScrollMetric);                     // "Window/VerticalRulerUnit"
             break;
             case  8: rVal <<= rParent.IsSmoothScroll(); break;                      // "Window/SmoothScroll",
-            case  9: rVal <<= (sal_Int32)rParent.GetZoom(); break;                  // "Zoom/Value",
-            case 10: rVal <<= (sal_Int32)rParent.GetZoomType(); break;              // "Zoom/Type",
+            case  9: rVal <<= static_cast<sal_Int32>(rParent.GetZoom()); break;                  // "Zoom/Value",
+            case 10: rVal <<= static_cast<sal_Int32>(rParent.GetZoomType()); break;              // "Zoom/Type",
             case 11: rVal <<= rParent.IsAlignMathObjectsToBaseline(); break;        // "Other/IsAlignMathObjectsToBaseline"
-            case 12: rVal <<= (sal_Int32)rParent.GetMetric(); break;                // "Other/MeasureUnit",
-            case 13: rVal <<= static_cast<sal_Int32>(convertTwipToMm100(rParent.GetDefTab())); break;// "Other/TabStop",
+            case 12: rVal <<= static_cast<sal_Int32>(rParent.GetMetric()); break;                // "Other/MeasureUnit",
+            case 13: rVal <<= rParent.GetDefTabInMm100(); break;// "Other/TabStop",
             case 14: rVal <<= rParent.IsVRulerRight(); break;                       // "Window/IsVerticalRulerRight",
-            case 15: rVal <<= (sal_Int32)rParent.GetViewLayoutColumns(); break;     // "ViewLayout/Columns",
+            case 15: rVal <<= static_cast<sal_Int32>(rParent.GetViewLayoutColumns()); break;     // "ViewLayout/Columns",
             case 16: rVal <<= rParent.IsViewLayoutBookMode(); break;                // "ViewLayout/BookMode",
             case 17: rVal <<= rParent.IsSquaredPageMode(); break;                   // "Other/IsSquaredPageMode",
             case 18: rVal <<= rParent.IsApplyCharUnit(); break;                     // "Other/ApplyCharUnit",
@@ -317,50 +329,50 @@ void SwLayoutViewConfig::Load()
     Sequence<Any> aValues = GetProperties(aNames);
     const Any* pValues = aValues.getConstArray();
     OSL_ENSURE(aValues.getLength() == aNames.getLength(), "GetProperties failed");
-    if(aValues.getLength() == aNames.getLength())
-    {
-        for(int nProp = 0; nProp < aNames.getLength(); nProp++)
-        {
-            if(pValues[nProp].hasValue())
-            {
-                sal_Int32   nInt32Val   = 0;
-                bool    bSet        = false;
-                pValues[nProp] >>= nInt32Val;
-                pValues[nProp] >>= bSet;
+    if(aValues.getLength() != aNames.getLength())
+        return;
 
-                switch(nProp)
+    for(int nProp = 0; nProp < aNames.getLength(); nProp++)
+    {
+        if(pValues[nProp].hasValue())
+        {
+            sal_Int32   nInt32Val   = 0;
+            bool    bSet        = false;
+            pValues[nProp] >>= nInt32Val;
+            pValues[nProp] >>= bSet;
+
+            switch(nProp)
+            {
+                case  0: rParent.SetCrossHair(bSet); break;// "Line/Guide",
+                case  1: rParent.SetViewHScrollBar(bSet); break;// "Window/HorizontalScroll",
+                case  2: rParent.SetViewVScrollBar(bSet); break;// "Window/VerticalScroll",
+                case  3: rParent.SetViewAnyRuler(bSet);break; // "Window/ShowRulers"
+                case  4: rParent.SetViewHRuler(bSet); break;// "Window/HorizontalRuler",
+                case  5: rParent.SetViewVRuler(bSet); break;// "Window/VerticalRuler",
+                case  6:
                 {
-                    case  0: rParent.SetCrossHair(bSet); break;// "Line/Guide",
-                    case  1: rParent.SetViewHScrollBar(bSet); break;// "Window/HorizontalScroll",
-                    case  2: rParent.SetViewVScrollBar(bSet); break;// "Window/VerticalScroll",
-                    case  3: rParent.SetViewAnyRuler(bSet);break; // "Window/ShowRulers"
-                    case  4: rParent.SetViewHRuler(bSet); break;// "Window/HorizontalRuler",
-                    case  5: rParent.SetViewVRuler(bSet); break;// "Window/VerticalRuler",
-                    case  6:
-                    {
-                        rParent.m_bIsHScrollMetricSet = true;
-                        rParent.m_eHScrollMetric = ((FieldUnit)nInt32Val);  // "Window/HorizontalRulerUnit"
-                    }
-                    break;
-                    case  7:
-                    {
-                        rParent.m_bIsVScrollMetricSet = true;
-                        rParent.m_eVScrollMetric = ((FieldUnit)nInt32Val); // "Window/VerticalRulerUnit"
-                    }
-                    break;
-                    case  8: rParent.SetSmoothScroll(bSet); break;// "Window/SmoothScroll",
-                    case  9: rParent.SetZoom( static_cast< sal_uInt16 >(nInt32Val) ); break;// "Zoom/Value",
-                    case 10: rParent.SetZoomType( static_cast< SvxZoomType >(nInt32Val) ); break;// "Zoom/Type",
-                    case 11: rParent.SetAlignMathObjectsToBaseline(bSet); break;// "Other/IsAlignMathObjectsToBaseline"
-                    case 12: rParent.SetMetric((FieldUnit)nInt32Val, true); break;// "Other/MeasureUnit",
-                    case 13: rParent.SetDefTab(convertMm100ToTwip(nInt32Val), true); break;// "Other/TabStop",
-                    case 14: rParent.SetVRulerRight(bSet); break;// "Window/IsVerticalRulerRight",
-                    case 15: rParent.SetViewLayoutColumns( static_cast<sal_uInt16>(nInt32Val) ); break;// "ViewLayout/Columns",
-                    case 16: rParent.SetViewLayoutBookMode(bSet); break;// "ViewLayout/BookMode",
-                    case 17: rParent.SetDefaultPageMode(bSet,true); break;// "Other/IsSquaredPageMode",
-                    case 18: rParent.SetApplyCharUnit(bSet); break;// "Other/ApplyUserChar"
-                    case 19: rParent.SetShowScrollBarTips(bSet); break;// "Window/ShowScrollBarTips",
+                    rParent.m_bIsHScrollMetricSet = true;
+                    rParent.m_eHScrollMetric = static_cast<FieldUnit>(nInt32Val);  // "Window/HorizontalRulerUnit"
                 }
+                break;
+                case  7:
+                {
+                    rParent.m_bIsVScrollMetricSet = true;
+                    rParent.m_eVScrollMetric = static_cast<FieldUnit>(nInt32Val); // "Window/VerticalRulerUnit"
+                }
+                break;
+                case  8: rParent.SetSmoothScroll(bSet); break;// "Window/SmoothScroll",
+                case  9: rParent.SetZoom( static_cast< sal_uInt16 >(nInt32Val) ); break;// "Zoom/Value",
+                case 10: rParent.SetZoomType( static_cast< SvxZoomType >(nInt32Val) ); break;// "Zoom/Type",
+                case 11: rParent.SetAlignMathObjectsToBaseline(bSet, true); break;// "Other/IsAlignMathObjectsToBaseline"
+                case 12: rParent.SetMetric(static_cast<FieldUnit>(nInt32Val), true); break;// "Other/MeasureUnit",
+                case 13: rParent.SetDefTabInMm100(nInt32Val, true); break;// "Other/TabStop",
+                case 14: rParent.SetVRulerRight(bSet); break;// "Window/IsVerticalRulerRight",
+                case 15: rParent.SetViewLayoutColumns( static_cast<sal_uInt16>(nInt32Val) ); break;// "ViewLayout/Columns",
+                case 16: rParent.SetViewLayoutBookMode(bSet); break;// "ViewLayout/BookMode",
+                case 17: rParent.SetDefaultPageMode(bSet,true); break;// "Other/IsSquaredPageMode",
+                case 18: rParent.SetApplyCharUnit(bSet, true); break;// "Other/ApplyUserChar"
+                case 19: rParent.SetShowScrollBarTips(bSet); break;// "Window/ShowScrollBarTips",
             }
         }
     }
@@ -392,7 +404,7 @@ Sequence<OUString> SwGridConfig::GetPropertyNames()
 
 SwGridConfig::SwGridConfig(bool bIsWeb, SwMasterUsrPref& rPar) :
     ConfigItem(bIsWeb ? OUString("Office.WriterWeb/Grid") :  OUString("Office.Writer/Grid"),
-        ConfigItemMode::DelayedUpdate|ConfigItemMode::ReleaseTree),
+        ConfigItemMode::ReleaseTree),
     rParent(rPar)
 {
 }
@@ -415,10 +427,10 @@ void SwGridConfig::ImplCommit()
             case  0: pValues[nProp] <<= rParent.IsSnap(); break;//      "Option/SnapToGrid",
             case  1: pValues[nProp] <<= rParent.IsGridVisible(); break;//"Option/VisibleGrid",
             case  2: pValues[nProp] <<= rParent.IsSynchronize(); break;//  "Option/Synchronize",
-            case  3: pValues[nProp] <<= (sal_Int32)convertTwipToMm100(rParent.GetSnapSize().Width()); break;//      "Resolution/XAxis",
-            case  4: pValues[nProp] <<= (sal_Int32)convertTwipToMm100(rParent.GetSnapSize().Height()); break;//      "Resolution/YAxis",
-            case  5: pValues[nProp] <<= (sal_Int16)rParent.GetDivisionX(); break;//   "Subdivision/XAxis",
-            case  6: pValues[nProp] <<= (sal_Int16)rParent.GetDivisionY(); break;//   "Subdivision/YAxis"
+            case  3: pValues[nProp] <<= static_cast<sal_Int32>(convertTwipToMm100(rParent.GetSnapSize().Width())); break;//      "Resolution/XAxis",
+            case  4: pValues[nProp] <<= static_cast<sal_Int32>(convertTwipToMm100(rParent.GetSnapSize().Height())); break;//      "Resolution/YAxis",
+            case  5: pValues[nProp] <<= static_cast<sal_Int16>(rParent.GetDivisionX()); break;//   "Subdivision/XAxis",
+            case  6: pValues[nProp] <<= static_cast<sal_Int16>(rParent.GetDivisionY()); break;//   "Subdivision/YAxis"
         }
     }
     PutProperties(aNames, aValues);
@@ -430,31 +442,31 @@ void SwGridConfig::Load()
     Sequence<Any> aValues = GetProperties(aNames);
     const Any* pValues = aValues.getConstArray();
     OSL_ENSURE(aValues.getLength() == aNames.getLength(), "GetProperties failed");
-    if(aValues.getLength() == aNames.getLength())
+    if(aValues.getLength() != aNames.getLength())
+        return;
+
+    Size aSnap(rParent.GetSnapSize());
+    for(int nProp = 0; nProp < aNames.getLength(); nProp++)
     {
-        Size aSnap(rParent.GetSnapSize());
-        for(int nProp = 0; nProp < aNames.getLength(); nProp++)
+        if(pValues[nProp].hasValue())
         {
-            if(pValues[nProp].hasValue())
+            bool bSet = nProp < 3 && *o3tl::doAccess<bool>(pValues[nProp]);
+            sal_Int32 nSet = 0;
+            if(nProp >= 3)
+                pValues[nProp] >>= nSet;
+            switch(nProp)
             {
-                bool bSet = nProp < 3 && *o3tl::doAccess<bool>(pValues[nProp]);
-                sal_Int32 nSet = 0;
-                if(nProp >= 3)
-                    pValues[nProp] >>= nSet;
-                switch(nProp)
-                {
-                    case  0: rParent.SetSnap(bSet); break;//        "Option/SnapToGrid",
-                    case  1: rParent.SetGridVisible(bSet); break;//"Option/VisibleGrid",
-                    case  2: rParent.SetSynchronize(bSet); break;//  "Option/Synchronize",
-                    case  3: aSnap.Width() = convertMm100ToTwip(nSet); break;//      "Resolution/XAxis",
-                    case  4: aSnap.Height() = convertMm100ToTwip(nSet); break;//      "Resolution/YAxis",
-                    case  5: rParent.SetDivisionX((short)nSet); break;//   "Subdivision/XAxis",
-                    case  6: rParent.SetDivisionY((short)nSet); break;//   "Subdivision/YAxis"
-                }
+                case  0: rParent.SetSnap(bSet); break;//        "Option/SnapToGrid",
+                case  1: rParent.SetGridVisible(bSet); break;//"Option/VisibleGrid",
+                case  2: rParent.SetSynchronize(bSet); break;//  "Option/Synchronize",
+                case  3: aSnap.setWidth( convertMm100ToTwip(nSet) ); break;//      "Resolution/XAxis",
+                case  4: aSnap.setHeight( convertMm100ToTwip(nSet) ); break;//      "Resolution/YAxis",
+                case  5: rParent.SetDivisionX(static_cast<short>(nSet)); break;//   "Subdivision/XAxis",
+                case  6: rParent.SetDivisionY(static_cast<short>(nSet)); break;//   "Subdivision/YAxis"
             }
         }
-        rParent.SetSnapSize(aSnap);
     }
+    rParent.SetSnapSize(aSnap);
 }
 
 void SwGridConfig::Notify( const css::uno::Sequence< OUString >& ) {}
@@ -476,8 +488,7 @@ Sequence<OUString> SwCursorConfig::GetPropertyNames()
 }
 
 SwCursorConfig::SwCursorConfig(SwMasterUsrPref& rPar) :
-    ConfigItem("Office.Writer/Cursor",
-        ConfigItemMode::DelayedUpdate|ConfigItemMode::ReleaseTree),
+    ConfigItem("Office.Writer/Cursor", ConfigItemMode::ReleaseTree),
     rParent(rPar)
 {
 }
@@ -498,7 +509,7 @@ void SwCursorConfig::ImplCommit()
         switch(nProp)
         {
             case  0: pValues[nProp] <<= rParent.IsShadowCursor();                   break; // "DirectCursor/UseDirectCursor",
-            case  1: pValues[nProp] <<= (sal_Int32)rParent.GetShdwCursorFillMode(); break; // "DirectCursor/Insert",
+            case  1: pValues[nProp] <<= static_cast<sal_Int32>(rParent.GetShdwCursorFillMode()); break; // "DirectCursor/Insert",
             case  2: pValues[nProp] <<= rParent.IsCursorInProtectedArea();          break; // "Option/ProtectedArea"
         }
     }
@@ -511,36 +522,34 @@ void SwCursorConfig::Load()
     Sequence<Any> aValues = GetProperties(aNames);
     const Any* pValues = aValues.getConstArray();
     OSL_ENSURE(aValues.getLength() == aNames.getLength(), "GetProperties failed");
-    if(aValues.getLength() == aNames.getLength())
-    {
+    if(aValues.getLength() != aNames.getLength())
+        return;
 
-        for(int nProp = 0; nProp < aNames.getLength(); nProp++)
+
+    for(int nProp = 0; nProp < aNames.getLength(); nProp++)
+    {
+        if(pValues[nProp].hasValue())
         {
-            if(pValues[nProp].hasValue())
+            bool bSet = false;
+            sal_Int32 nSet = 0;
+            if(nProp != 1 )
+                bSet = *o3tl::doAccess<bool>(pValues[nProp]);
+            else
+                pValues[nProp] >>= nSet;
+            switch(nProp)
             {
-                bool bSet = false;
-                sal_Int32 nSet = 0;
-                if(nProp != 1 )
-                    bSet = *o3tl::doAccess<bool>(pValues[nProp]);
-                else
-                    pValues[nProp] >>= nSet;
-                switch(nProp)
-                {
-                    case  0: rParent.SetShadowCursor(bSet);                  break; // "DirectCursor/UseDirectCursor",
-                    case  1: rParent.SetShdwCursorFillMode((sal_uInt8)nSet); break; // "DirectCursor/Insert",
-                    case  2: rParent.SetCursorInProtectedArea(bSet);         break; // "Option/ProtectedArea"
-                }
+                case  0: rParent.SetShadowCursor(bSet);                  break; // "DirectCursor/UseDirectCursor",
+                case  1: rParent.SetShdwCursorFillMode(static_cast<SwFillMode>(nSet)); break; // "DirectCursor/Insert",
+                case  2: rParent.SetCursorInProtectedArea(bSet);         break; // "Option/ProtectedArea"
             }
         }
-
     }
 }
 
 void SwCursorConfig::Notify( const css::uno::Sequence< OUString >& ) {}
 
 SwWebColorConfig::SwWebColorConfig(SwMasterUsrPref& rPar) :
-    ConfigItem("Office.WriterWeb/Background",
-        ConfigItemMode::DelayedUpdate|ConfigItemMode::ReleaseTree),
+    ConfigItem("Office.WriterWeb/Background", ConfigItemMode::ReleaseTree),
     rParent(rPar),
     aPropNames(1)
 {
@@ -559,7 +568,7 @@ void SwWebColorConfig::ImplCommit()
     {
         switch(nProp)
         {
-            case  0: pValues[nProp] <<= (sal_Int32)rParent.GetRetoucheColor().GetColor();   break;// "Color",
+            case  0: pValues[nProp] <<= rParent.GetRetoucheColor();   break;// "Color",
         }
     }
     PutProperties(aPropNames, aValues);
@@ -572,19 +581,19 @@ void SwWebColorConfig::Load()
     Sequence<Any> aValues = GetProperties(aPropNames);
     const Any* pValues = aValues.getConstArray();
     OSL_ENSURE(aValues.getLength() == aPropNames.getLength(), "GetProperties failed");
-    if(aValues.getLength() == aPropNames.getLength())
+    if(aValues.getLength() != aPropNames.getLength())
+        return;
+
+    for(int nProp = 0; nProp < aPropNames.getLength(); nProp++)
     {
-        for(int nProp = 0; nProp < aPropNames.getLength(); nProp++)
+        if(pValues[nProp].hasValue())
         {
-            if(pValues[nProp].hasValue())
+            switch(nProp)
             {
-                switch(nProp)
-                {
-                    case  0:
-                        sal_Int32 nSet = 0;
-                        pValues[nProp] >>= nSet; rParent.SetRetoucheColor(nSet);
-                    break;// "Color",
-                }
+                case  0:
+                    Color nSet;
+                    pValues[nProp] >>= nSet; rParent.SetRetoucheColor(nSet);
+                break;// "Color",
             }
         }
     }

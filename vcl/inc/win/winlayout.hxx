@@ -25,12 +25,7 @@
 #include <sallayout.hxx>
 #include <svsys.h>
 #include <win/salgdi.h>
-
-#include <usp10.h>
-#include <d2d1.h>
-#include <dwrite.h>
-
-#include "opengl/PackedTextureAtlas.hxx"
+#include <o3tl/sorted_vector.hxx>
 
 class WinFontInstance;
 
@@ -42,11 +37,11 @@ const int GLYPH_SPACE_RATIO = 8;
 const int GLYPH_OFFSET_RATIO = GLYPH_SPACE_RATIO * 2;
 }
 
-struct OpenGLGlyphDrawElement
+struct WinGlyphDrawElement
 {
     tools::Rectangle maLocation;
     int maLeftOverhangs;
-    OpenGLTexture maTexture;
+    std::unique_ptr<CompatibleDC::Texture> maTexture;
     int mnBaselineOffset;
     int mnHeight;
     bool mbVertical;
@@ -62,108 +57,99 @@ struct OpenGLGlyphDrawElement
     }
 };
 
-class GlyphCache;
+class WinGlyphCache;
 
-struct GlobalGlyphCache
+struct GlobalWinGlyphCache
 {
-    GlobalGlyphCache()
-        : maPackedTextureAtlas(2048, 2048)
-    {}
+    o3tl::sorted_vector<WinGlyphCache*> maWinGlyphCaches;
 
-    PackedTextureAtlasManager maPackedTextureAtlas;
-    std::unordered_set<GlyphCache*> maGlyphCaches;
+    static GlobalWinGlyphCache * get();
 
-    static GlobalGlyphCache * get();
+    virtual ~GlobalWinGlyphCache() {}
+    virtual bool AllocateTexture(WinGlyphDrawElement& rElement, CompatibleDC* dc) = 0;
+    virtual void NotifyElementUsed(WinGlyphDrawElement& /*rElement*/) {}
+    virtual void Prune() {}
 };
 
-class GlyphCache
+class WinGlyphCache
 {
-private:
-    std::unordered_map<int, OpenGLGlyphDrawElement> maOpenGLTextureCache;
+protected:
+    std::unordered_map<int, WinGlyphDrawElement> maWinTextureCache;
 
 public:
-    GlyphCache()
+    WinGlyphCache()
     {
-        GlobalGlyphCache::get()->maGlyphCaches.insert(this);
+        if(GlobalWinGlyphCache* c = GlobalWinGlyphCache::get())
+            c->maWinGlyphCaches.insert(this);
     }
 
-    ~GlyphCache()
+    virtual ~WinGlyphCache()
     {
-        GlobalGlyphCache::get()->maGlyphCaches.erase(this);
+        if(GlobalWinGlyphCache* c = GlobalWinGlyphCache::get())
+            c->maWinGlyphCaches.erase(this);
     }
 
-    static bool ReserveTextureSpace(OpenGLGlyphDrawElement& rElement, int nWidth, int nHeight)
+    void PutDrawElementInCache(WinGlyphDrawElement&& rElement, int nGlyphIndex)
     {
-        GlobalGlyphCache* pGlobalGlyphCache = GlobalGlyphCache::get();
-        rElement.maTexture = pGlobalGlyphCache->maPackedTextureAtlas.Reserve(nWidth, nHeight);
-        if (!rElement.maTexture)
-            return false;
-        std::vector<GLuint> aTextureIDs = pGlobalGlyphCache->maPackedTextureAtlas.ReduceTextureNumber(8);
-        if (!aTextureIDs.empty())
-        {
-            for (auto& pGlyphCache: pGlobalGlyphCache->maGlyphCaches)
-            {
-                pGlyphCache->RemoveTextures(aTextureIDs);
-            }
-        }
-        return true;
-    }
-
-    void RemoveTextures(std::vector<GLuint>& rTextureIDs)
-    {
-        auto it = maOpenGLTextureCache.begin();
-
-        while (it != maOpenGLTextureCache.end())
-        {
-            GLuint nTextureID = it->second.maTexture.Id();
-
-            if (std::find(rTextureIDs.begin(), rTextureIDs.end(), nTextureID) != rTextureIDs.end())
-            {
-                it = maOpenGLTextureCache.erase(it);
-            }
-            else
-            {
-                ++it;
-            }
-        }
-    }
-
-    void PutDrawElementInCache(const OpenGLGlyphDrawElement& rElement, int nGlyphIndex)
-    {
+        assert(GlobalWinGlyphCache::get());
         assert(!IsGlyphCached(nGlyphIndex));
-        maOpenGLTextureCache[nGlyphIndex] = OpenGLGlyphDrawElement(rElement);
+        maWinTextureCache[nGlyphIndex] = std::move( rElement );
     }
 
-    OpenGLGlyphDrawElement& GetDrawElement(int nGlyphIndex)
+    WinGlyphDrawElement& GetDrawElement(int nGlyphIndex)
     {
+        assert(GlobalWinGlyphCache::get());
         assert(IsGlyphCached(nGlyphIndex));
-        return maOpenGLTextureCache[nGlyphIndex];
+        WinGlyphDrawElement& element = maWinTextureCache[nGlyphIndex];
+        GlobalWinGlyphCache::get()->NotifyElementUsed(element);
+        return element;
     }
 
     bool IsGlyphCached(int nGlyphIndex) const
     {
-        return maOpenGLTextureCache.find(nGlyphIndex) != maOpenGLTextureCache.end();
+        return maWinTextureCache.find(nGlyphIndex) != maWinTextureCache.end();
     }
 };
 
-// win32 specific physical font instance
+// win32 specific logical font instance
 class WinFontInstance : public LogicalFontInstance
 {
+    friend rtl::Reference<LogicalFontInstance> WinFontFace::CreateFontInstance(const FontSelectPattern&) const;
+
 public:
-    explicit                WinFontInstance( FontSelectPattern& );
-    virtual                 ~WinFontInstance() override;
+    ~WinFontInstance() override;
+
+    bool hasHScale() const;
+    float getHScale() const;
+
+    void SetGraphics(WinSalGraphics*);
+    WinSalGraphics* GetGraphics() const { return m_pGraphics; }
+
+    HFONT GetHFONT() const { return m_hFont; }
+    float GetScale() const { return m_fScale; }
+
+    // Prevent deletion of the HFONT in the WinFontInstance destructor
+    // Used for the ScopedFont handling
+    void SetHFONT(HFONT hFont) { m_hFont = hFont; }
+
+    const WinFontFace * GetFontFace() const { return static_cast<const WinFontFace *>(LogicalFontInstance::GetFontFace()); }
+    WinFontFace * GetFontFace() { return static_cast<WinFontFace *>(LogicalFontInstance::GetFontFace()); }
+
+    bool CacheGlyphToAtlas(HDC hDC, HFONT hFont, int nGlyphIndex, SalGraphics& rGraphics, const GenericSalLayout& rLayout);
+    WinGlyphCache& GetWinGlyphCache() { return maWinGlyphCache; }
+
+    bool GetGlyphOutline(sal_GlyphId, basegfx::B2DPolyPolygon&, bool) const override;
 
 private:
-    // TODO: also add HFONT??? Watch out for issues with too many active fonts...
+    explicit WinFontInstance(const WinFontFace&, const FontSelectPattern&);
 
-    GlyphCache maGlyphCache;
-public:
-    bool CacheGlyphToAtlas(HDC hDC, HFONT hFont, int nGlyphIndex, SalGraphics& rGraphics);
+    hb_font_t* ImplInitHbFont() override;
+    bool ImplGetGlyphBoundRect(sal_GlyphId, tools::Rectangle&, bool) const override;
 
-    GlyphCache& GetGlyphCache()
-    {
-        return maGlyphCache;
-    }
+    WinSalGraphics *m_pGraphics;
+    HFONT m_hFont;
+    float m_fScale;
+    WinGlyphCache maWinGlyphCache;
 };
 
 class TextOutRenderer
@@ -178,7 +164,7 @@ public:
 
     virtual ~TextOutRenderer() = default;
 
-    virtual bool operator ()(CommonSalLayout const &rLayout,
+    virtual bool operator ()(GenericSalLayout const &rLayout,
         SalGraphics &rGraphics,
         HDC hDC) = 0;
 };
@@ -191,71 +177,9 @@ class ExTextOutRenderer : public TextOutRenderer
 public:
     explicit ExTextOutRenderer() = default;
 
-    bool operator ()(CommonSalLayout const &rLayout,
+    bool operator ()(GenericSalLayout const &rLayout,
         SalGraphics &rGraphics,
         HDC hDC) override;
-};
-
-class D2DWriteTextOutRenderer : public TextOutRenderer
-{
-    typedef HRESULT(WINAPI *pD2D1CreateFactory_t)(D2D1_FACTORY_TYPE,
-        REFIID, const D2D1_FACTORY_OPTIONS *, void **);
-
-    typedef HRESULT(WINAPI *pDWriteCreateFactory_t)(DWRITE_FACTORY_TYPE,
-        REFIID, IUnknown **);
-
-    static HINSTANCE mmD2d1, mmDWrite;
-    static pD2D1CreateFactory_t     D2D1CreateFactory;
-    static pDWriteCreateFactory_t   DWriteCreateFactory;
-
-public:
-    static bool InitModules();
-
-    explicit D2DWriteTextOutRenderer();
-    virtual ~D2DWriteTextOutRenderer() override;
-
-    bool operator ()(CommonSalLayout const &rLayout,
-        SalGraphics &rGraphics,
-        HDC hDC) override;
-
-    bool BindDC(HDC hDC, tools::Rectangle const & rRect = tools::Rectangle(0, 0, 0, 0)) {
-        RECT const rc = { rRect.Left(), rRect.Top(), rRect.Right(), rRect.Bottom() };
-        return SUCCEEDED(mpRT->BindDC(hDC, &rc));
-    }
-
-    bool BindFont(HDC hDC) /*override*/;
-    bool ReleaseFont() /*override*/;
-
-    std::vector<tools::Rectangle>  GetGlyphInkBoxes(uint16_t * pGid, uint16_t * pGidEnd) const /*override*/;
-    ID2D1RenderTarget * GetRenderTarget() const { return mpRT; }
-    IDWriteFontFace   * GetFontFace() const { return mpFontFace; }
-    float               GetEmHeight() const { return mlfEmHeight; }
-
-    HRESULT CreateRenderTarget() {
-        if (mpRT) mpRT->Release(); mpRT = nullptr;
-        return mpD2DFactory->CreateDCRenderTarget(&mRTProps, &mpRT);
-    }
-
-    bool Ready() const { return mpGdiInterop && mpRT; }
-
-private:
-    static void CleanupModules();
-
-    // This is a singleton object disable copy ctor and assignment operator
-    D2DWriteTextOutRenderer(const D2DWriteTextOutRenderer &) = delete;
-    D2DWriteTextOutRenderer & operator = (const D2DWriteTextOutRenderer &) = delete;
-
-    bool GetDWriteFaceFromHDC(HDC hDC, IDWriteFontFace ** ppFontFace, float * lfSize) const;
-
-    ID2D1Factory        * mpD2DFactory;
-    IDWriteFactory      * mpDWriteFactory;
-    IDWriteGdiInterop   * mpGdiInterop;
-    ID2D1DCRenderTarget * mpRT;
-    const D2D1_RENDER_TARGET_PROPERTIES mRTProps;
-
-    IDWriteFontFace * mpFontFace;
-    float             mlfEmHeight;
-    HDC               mhDC;
 };
 
 #endif // INCLUDED_VCL_INC_WIN_WINLAYOUT_HXX

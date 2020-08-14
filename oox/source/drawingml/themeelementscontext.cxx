@@ -17,15 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/themeelementscontext.hxx"
-#include "drawingml/clrschemecontext.hxx"
-#include "drawingml/lineproperties.hxx"
-#include "drawingml/linepropertiescontext.hxx"
-#include "drawingml/fillproperties.hxx"
-#include "drawingml/misccontexts.hxx"
-#include "drawingml/textcharacterproperties.hxx"
-#include "oox/drawingml/theme.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <drawingml/themeelementscontext.hxx>
+#include <drawingml/clrschemecontext.hxx>
+#include <drawingml/lineproperties.hxx>
+#include <drawingml/linepropertiescontext.hxx>
+#include <drawingml/fillproperties.hxx>
+#include <drawingml/misccontexts.hxx>
+#include <drawingml/textcharacterproperties.hxx>
+#include <oox/drawingml/theme.hxx>
+#include <oox/helper/attributelist.hxx>
 #include "effectproperties.hxx"
 #include "effectpropertiescontext.hxx"
 #include <oox/token/namespaces.hxx>
@@ -35,20 +35,23 @@ using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
+
+namespace {
 
 class FillStyleListContext : public ContextHandler2
 {
 public:
-    FillStyleListContext( ContextHandler2Helper& rParent, FillStyleList& rFillStyleList );
+    FillStyleListContext( ContextHandler2Helper const & rParent, FillStyleList& rFillStyleList );
     virtual ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
 
 private:
     FillStyleList& mrFillStyleList;
 };
 
-FillStyleListContext::FillStyleListContext( ContextHandler2Helper& rParent, FillStyleList& rFillStyleList ) :
+}
+
+FillStyleListContext::FillStyleListContext( ContextHandler2Helper const & rParent, FillStyleList& rFillStyleList ) :
     ContextHandler2( rParent ),
     mrFillStyleList( rFillStyleList )
 {
@@ -70,17 +73,21 @@ ContextHandlerRef FillStyleListContext::onCreateContext( sal_Int32 nElement, con
     return nullptr;
 }
 
+namespace {
+
 class LineStyleListContext : public ContextHandler2
 {
 public:
-    LineStyleListContext( ContextHandler2Helper& rParent, LineStyleList& rLineStyleList );
+    LineStyleListContext( ContextHandler2Helper const & rParent, LineStyleList& rLineStyleList );
     virtual ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
 
 private:
     LineStyleList& mrLineStyleList;
 };
 
-LineStyleListContext::LineStyleListContext( ContextHandler2Helper& rParent, LineStyleList& rLineStyleList ) :
+}
+
+LineStyleListContext::LineStyleListContext( ContextHandler2Helper const & rParent, LineStyleList& rLineStyleList ) :
     ContextHandler2( rParent ),
     mrLineStyleList( rLineStyleList )
 {
@@ -97,17 +104,21 @@ ContextHandlerRef LineStyleListContext::onCreateContext( sal_Int32 nElement, con
     return nullptr;
 }
 
+namespace {
+
 class EffectStyleListContext : public ContextHandler2
 {
 public:
-    EffectStyleListContext( ContextHandler2Helper& rParent, EffectStyleList& rEffectStyleList );
+    EffectStyleListContext( ContextHandler2Helper const & rParent, EffectStyleList& rEffectStyleList );
     virtual ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
 
 private:
     EffectStyleList& mrEffectStyleList;
 };
 
-EffectStyleListContext::EffectStyleListContext( ContextHandler2Helper& rParent, EffectStyleList& rEffectStyleList ) :
+}
+
+EffectStyleListContext::EffectStyleListContext( ContextHandler2Helper const & rParent, EffectStyleList& rEffectStyleList ) :
     ContextHandler2( rParent ),
     mrEffectStyleList( rEffectStyleList )
 {
@@ -129,10 +140,12 @@ ContextHandlerRef EffectStyleListContext::onCreateContext( sal_Int32 nElement, c
     return nullptr;
 }
 
+namespace {
+
 class FontSchemeContext : public ContextHandler2
 {
 public:
-    FontSchemeContext( ContextHandler2Helper& rParent, FontScheme& rFontScheme );
+    FontSchemeContext( ContextHandler2Helper const & rParent, FontScheme& rFontScheme );
     virtual ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
     virtual void onEndElement() override;
 
@@ -141,7 +154,9 @@ private:
     TextCharacterPropertiesPtr mxCharProps;
 };
 
-FontSchemeContext::FontSchemeContext( ContextHandler2Helper& rParent, FontScheme& rFontScheme ) :
+}
+
+FontSchemeContext::FontSchemeContext( ContextHandler2Helper const & rParent, FontScheme& rFontScheme ) :
     ContextHandler2( rParent ),
     mrFontScheme( rFontScheme )
 {
@@ -152,24 +167,24 @@ ContextHandlerRef FontSchemeContext::onCreateContext( sal_Int32 nElement, const 
     switch( nElement )
     {
         case A_TOKEN( majorFont ):
-            mxCharProps.reset( new TextCharacterProperties );
+            mxCharProps = std::make_shared<TextCharacterProperties>();
             mrFontScheme[ XML_major ] = mxCharProps;
             return this;
         case A_TOKEN( minorFont ):
-            mxCharProps.reset( new TextCharacterProperties );
+            mxCharProps = std::make_shared<TextCharacterProperties>();
             mrFontScheme[ XML_minor ] = mxCharProps;
             return this;
 
         case A_TOKEN( latin ):
-            if( mxCharProps.get() )
+            if( mxCharProps )
                 mxCharProps->maLatinFont.setAttributes( rAttribs );
         break;
         case A_TOKEN( ea ):
-            if( mxCharProps.get() )
+            if( mxCharProps )
                 mxCharProps->maAsianFont.setAttributes( rAttribs );
         break;
         case A_TOKEN( cs ):
-            if( mxCharProps.get() )
+            if( mxCharProps )
                 mxCharProps->maComplexFont.setAttributes( rAttribs );
         break;
     }
@@ -187,7 +202,7 @@ void FontSchemeContext::onEndElement()
     }
 }
 
-ThemeElementsContext::ThemeElementsContext( ContextHandler2Helper& rParent, Theme& rTheme ) :
+ThemeElementsContext::ThemeElementsContext( ContextHandler2Helper const & rParent, Theme& rTheme ) :
     ContextHandler2( rParent ),
     mrTheme( rTheme )
 {
@@ -219,7 +234,6 @@ ContextHandlerRef ThemeElementsContext::onCreateContext( sal_Int32 nElement, con
     return nullptr;
 }
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/configsettings.hxx>
+#include <configsettings.hxx>
 
 #include <svdata.hxx>
 
@@ -25,6 +25,7 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <o3tl/any.hxx>
+#include <sal/log.hxx>
 
 using namespace utl;
 using namespace vcl;
@@ -39,12 +40,12 @@ SettingsConfigItem* SettingsConfigItem::get()
 {
     ImplSVData* pSVData = ImplGetSVData();
     if( ! pSVData->mpSettingsConfigItem )
-        pSVData->mpSettingsConfigItem = new SettingsConfigItem();
-    return pSVData->mpSettingsConfigItem;
+        pSVData->mpSettingsConfigItem.reset( new SettingsConfigItem() );
+    return pSVData->mpSettingsConfigItem.get();
 }
 
 SettingsConfigItem::SettingsConfigItem()
- :  ConfigItem( SETTINGS_CONFIGNODE, ConfigItemMode::DelayedUpdate ),
+ :  ConfigItem( SETTINGS_CONFIGNODE, ConfigItemMode::NONE ),
     m_aSettings( 0 )
 {
     getValues();
@@ -57,21 +58,18 @@ SettingsConfigItem::~SettingsConfigItem()
 
 void SettingsConfigItem::ImplCommit()
 {
-    std::unordered_map< OUString, SmallOUStrMap, OUStringHash >::const_iterator group;
-
-    for( group = m_aSettings.begin(); group != m_aSettings.end(); ++group )
+    for (auto const& setting : m_aSettings)
     {
-        OUString aKeyName( group->first );
+        OUString aKeyName( setting.first );
         /*bool bAdded =*/ AddNode( OUString(), aKeyName );
-        Sequence< PropertyValue > aValues( group->second.size() );
+        Sequence< PropertyValue > aValues( setting.second.size() );
         PropertyValue* pValues = aValues.getArray();
         int nIndex = 0;
-        SmallOUStrMap::const_iterator it;
-        for( it = group->second.begin(); it != group->second.end(); ++it )
+        for (auto const& elem : setting.second)
         {
-            pValues[nIndex].Name    = aKeyName + "/" + it->first;
+            pValues[nIndex].Name    = aKeyName + "/" + elem.first;
             pValues[nIndex].Handle  = 0;
-            pValues[nIndex].Value <<= it->second;
+            pValues[nIndex].Value <<= elem.second;
             pValues[nIndex].State   = PropertyState_DIRECT_VALUE;
             nIndex++;
         }
@@ -88,23 +86,19 @@ void SettingsConfigItem::getValues()
 {
     m_aSettings.clear();
 
-    Sequence< OUString > aNames( GetNodeNames( OUString() ) );
+    const Sequence< OUString > aNames( GetNodeNames( OUString() ) );
 
-    for( int j = 0; j < aNames.getLength(); j++ )
+    for( const auto& aKeyName : aNames )
     {
 #if OSL_DEBUG_LEVEL > 2
-        SAL_INFO( "vcl", "found settings data for " << aNames.getConstArray()[j] );
+        SAL_INFO( "vcl", "found settings data for " << aKeyName );
 #endif
-        OUString aKeyName( aNames.getConstArray()[j] );
         Sequence< OUString > aKeys( GetNodeNames( aKeyName ) );
         Sequence< OUString > aSettingsKeys( aKeys.getLength() );
-        const OUString* pFrom = aKeys.getConstArray();
-        OUString* pTo = aSettingsKeys.getArray();
-        for( int m = 0; m < aKeys.getLength(); m++ )
-        {
-            pTo[m] = aKeyName + "/" + pFrom[m];
-        }
+        std::transform(aKeys.begin(), aKeys.end(), aSettingsKeys.begin(),
+            [&aKeyName](const OUString& rKey) -> OUString { return aKeyName + "/" + rKey; });
         Sequence< Any > aValues( GetProperties( aSettingsKeys ) );
+        const OUString* pFrom = aKeys.getConstArray();
         const Any* pValue = aValues.getConstArray();
         for( int i = 0; i < aValues.getLength(); i++, pValue++ )
         {
@@ -122,7 +116,7 @@ void SettingsConfigItem::getValues()
 
 OUString SettingsConfigItem::getValue( const OUString& rGroup, const OUString& rKey ) const
 {
-    std::unordered_map< OUString, SmallOUStrMap, OUStringHash >::const_iterator group = m_aSettings.find( rGroup );
+    std::unordered_map< OUString, SmallOUStrMap >::const_iterator group = m_aSettings.find( rGroup );
     if( group == m_aSettings.end() || group->second.find( rKey ) == group->second.end() )
     {
         return OUString();

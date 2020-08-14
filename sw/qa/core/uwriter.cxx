@@ -10,12 +10,28 @@
 #include <sal/config.h>
 #include <test/bootstrapfixture.hxx>
 
-#include <rtl/strbuf.hxx>
-#include <osl/file.hxx>
+#include <com/sun/star/i18n/WordType.hpp>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/random.hxx>
 #include <i18nutil/transliteration.hxx>
+#include <editeng/adjustitem.hxx>
+#include <editeng/boxitem.hxx>
+#include <editeng/brushitem.hxx>
+#include <editeng/colritem.hxx>
+#include <editeng/contouritem.hxx>
+#include <editeng/crossedoutitem.hxx>
+#include <editeng/fhgtitem.hxx>
+#include <editeng/fontitem.hxx>
+#include <editeng/justifyitem.hxx>
+#include <editeng/lineitem.hxx>
+#include <editeng/postitem.hxx>
+#include <editeng/shdditem.hxx>
+#include <editeng/udlnitem.hxx>
+#include <editeng/wghtitem.hxx>
+#include <svl/intitem.hxx>
+#include <svx/algitem.hxx>
+#include <svx/rotmodit.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/tempfile.hxx>
 #include <unotools/transliterationwrapper.hxx>
@@ -23,48 +39,47 @@
 #include <editeng/langitem.hxx>
 #include <editeng/charhiddenitem.hxx>
 
-#include <sfx2/app.hxx>
 #include <sfx2/docfilt.hxx>
 #include <sfx2/docfile.hxx>
-#include <sfx2/sfxmodelfactory.hxx>
 
 #include <xmloff/odffields.hxx>
+#include <osl/process.h>
 
-#include "breakit.hxx"
-#include "doc.hxx"
+#include <breakit.hxx>
+#include <doc.hxx>
+#include <IDocumentUndoRedo.hxx>
 #include <IDocumentRedlineAccess.hxx>
 #include <IDocumentFieldsAccess.hxx>
 #include <IDocumentStatistics.hxx>
-#include "cellfml.hxx"
-#include "docsh.hxx"
-#include "docstat.hxx"
-#include "docufld.hxx"
-#include "fmtanchr.hxx"
-#include "init.hxx"
-#include "ndtxt.hxx"
-#include "shellio.hxx"
-#include "shellres.hxx"
-#include "swcrsr.hxx"
-#include "swscanner.hxx"
-#include "swmodule.hxx"
+#include <cellfml.hxx>
+#include <docsh.hxx>
+#include <docstat.hxx>
+#include <docufld.hxx>
+#include <fmtanchr.hxx>
+#include <ndtxt.hxx>
+#include <shellres.hxx>
+#include <swscanner.hxx>
+#include <swmodule.hxx>
 #include <swdll.hxx>
-#include "swtypes.hxx"
-#include "fmtftn.hxx"
-#include "fmtrfmrk.hxx"
+#include <swtypes.hxx>
+#include <fmtftn.hxx>
+#include <fmtrfmrk.hxx>
 #include <fmtinfmt.hxx>
 #include <fchrfmt.hxx>
-#include "fmtfld.hxx"
-#include "redline.hxx"
-#include "docary.hxx"
-#include "modeltoviewhelper.hxx"
-#include "scriptinfo.hxx"
-#include "IMark.hxx"
-#include "ring.hxx"
-#include "calbck.hxx"
-#include "pagedesc.hxx"
-#include "calc.hxx"
+#include <fmtfld.hxx>
+#include <redline.hxx>
+#include <docary.hxx>
+#include <modeltoviewhelper.hxx>
+#include <IMark.hxx>
+#include <ring.hxx>
+#include <calbck.hxx>
+#include <pagedesc.hxx>
+#include <calc.hxx>
 
+#include <tblafmt.hxx>
 #include <unotbl.hxx>
+#include <IDocumentMarkAccess.hxx>
+#include <itabenum.hxx>
 
 typedef tools::SvRef<SwDocShell> SwDocShellRef;
 
@@ -84,6 +99,7 @@ public:
     virtual void tearDown() override;
 
     void randomTest();
+    void testTableAutoFormats();
     void testPageDescName();
     void testFileNameFields();
     void testDocStat();
@@ -112,6 +128,8 @@ public:
     void testFormulas();
     void testIntrusiveRing();
     void testClientModify();
+    void testBroadcastingModify();
+    void testWriterMultiListener();
     void test64kPageDescs();
     void testTdf92308();
     void testTableCellComparison();
@@ -120,6 +138,7 @@ public:
 
     CPPUNIT_TEST(testTransliterate);
     CPPUNIT_TEST(randomTest);
+    CPPUNIT_TEST(testTableAutoFormats);
     CPPUNIT_TEST(testPageDescName);
     CPPUNIT_TEST(testFileNameFields);
     CPPUNIT_TEST(testDocStat);
@@ -147,6 +166,8 @@ public:
     CPPUNIT_TEST(testFormulas);
     CPPUNIT_TEST(testIntrusiveRing);
     CPPUNIT_TEST(testClientModify);
+    CPPUNIT_TEST(testBroadcastingModify);
+    CPPUNIT_TEST(testWriterMultiListener);
     CPPUNIT_TEST(test64kPageDescs);
     CPPUNIT_TEST(testTdf92308);
     CPPUNIT_TEST(testTableCellComparison);
@@ -188,10 +209,10 @@ void SwDocTest::testFileNameFields()
     OUString sFileURL = aTempFileURL.GetMainURL(INetURLObject::DecodeMechanism::NONE);
     SfxMedium aDstMed(sFileURL, StreamMode::STD_READWRITE);
 
-    std::shared_ptr<SfxFilter> pFilter(new SfxFilter(
+    auto pFilter = std::make_shared<SfxFilter>(
         "Text",
         OUString(), SfxFilterFlags::NONE, SotClipboardFormatId::NONE, OUString(), OUString(),
-        "TEXT", OUString() ));
+        "TEXT", OUString() );
     aDstMed.SetFilter(pFilter);
 
     m_xDocShRef->DoSaveAs(aDstMed);
@@ -279,7 +300,7 @@ void SwDocTest::testUserPerceivedCharCount()
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Surrogate Pair should be counted as single character", static_cast<sal_Int32>(1), nCount);
 }
 
-SwTextNode* getModelToViewTestDocument(SwDoc *pDoc)
+static SwTextNode* getModelToViewTestDocument(SwDoc *pDoc)
 {
     SwNodeIndex aIdx(pDoc->GetNodes().GetEndOfContent(), -1);
     SwPaM aPaM(aIdx);
@@ -324,7 +345,7 @@ SwTextNode* getModelToViewTestDocument(SwDoc *pDoc)
     return pTextNode;
 }
 
-SwTextNode* getModelToViewTestDocument2(SwDoc *pDoc)
+static SwTextNode* getModelToViewTestDocument2(SwDoc *pDoc)
 {
     getModelToViewTestDocument(pDoc);
 
@@ -334,8 +355,8 @@ SwTextNode* getModelToViewTestDocument2(SwDoc *pDoc)
     pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
     pDoc->getIDocumentContentOperations().InsertString(aPaM, "AAAAA");
     IDocumentMarkAccess* pMarksAccess = pDoc->getIDocumentMarkAccess();
-    sw::mark::IFieldmark *pFieldmark = dynamic_cast<sw::mark::IFieldmark*>(
-            pMarksAccess->makeNoTextFieldBookmark(aPaM, "test", ODF_FORMDROPDOWN));
+    sw::mark::IFieldmark *pFieldmark =
+            pMarksAccess->makeNoTextFieldBookmark(aPaM, "test", ODF_FORMDROPDOWN);
     CPPUNIT_ASSERT(pFieldmark);
     uno::Sequence< OUString > vListEntries { "BBBBB" };
     (*pFieldmark->GetParameters())[ODF_FORMDROPDOWN_LISTENTRY] <<= vListEntries;
@@ -352,7 +373,7 @@ void SwDocTest::testModelToViewHelperPassthrough()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode, ExpandMode::PassThrough);
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr, ExpandMode::PassThrough);
     OUString sViewText = aModelToViewHelper.getViewText();
     OUString sModelText = pTextNode->GetText();
     CPPUNIT_ASSERT_EQUAL(sModelText, sViewText);
@@ -362,7 +383,8 @@ void SwDocTest::testModelToViewHelperExpandFieldsExpandFootnote()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode, ExpandMode::ExpandFields | ExpandMode::ExpandFootnote);
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
+            ExpandMode::ExpandFields | ExpandMode::ExpandFootnote);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
         OUString("AAAAA BBBBB foo CCCCC foo DDDDD"), sViewText);
@@ -372,11 +394,11 @@ void SwDocTest::testModelToViewHelperExpandFieldsExpandFootnoteReplaceMode()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode,
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
             ExpandMode::ExpandFields | ExpandMode::ExpandFootnote | ExpandMode::ReplaceMode);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
-        OUString("AAAAA BBBBB " + OUStringLiteral1(CHAR_ZWSP) + " CCCCC " + OUStringLiteral1(CHAR_ZWSP) + " DDDDD"),
+        OUString("AAAAA BBBBB " + OUStringChar(CHAR_ZWSP) + " CCCCC " + OUStringChar(CHAR_ZWSP) + " DDDDD"),
         sViewText);
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(2),
         aModelToViewHelper.getFootnotePositions().size());
@@ -392,7 +414,7 @@ void SwDocTest::testModelToViewHelperExpandFields()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode, ExpandMode::ExpandFields);
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr, ExpandMode::ExpandFields);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
         OUString("AAAAA BBBBB  CCCCC  DDDDD"), sViewText);
@@ -402,7 +424,7 @@ void SwDocTest::testModelToViewHelperExpandFieldsReplaceMode()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode,
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
         ExpandMode::ExpandFields | ExpandMode::ReplaceMode);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(OUString("AAAAA BBBBB  CCCCC  DDDDD"),
@@ -417,10 +439,10 @@ void SwDocTest::testModelToViewHelperExpandFieldsHideInvisible()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode, ExpandMode::HideInvisible);
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr, ExpandMode::HideInvisible);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
-        OUString("AAAAA CCCCC " + OUStringLiteral1(CH_TXTATR_BREAKWORD) + " DDDDD"),
+        OUString("AAAAA CCCCC " + OUStringChar(CH_TXTATR_BREAKWORD) + " DDDDD"),
         sViewText);
 }
 
@@ -428,10 +450,10 @@ void SwDocTest::testModelToViewHelperExpandFieldsHideRedlined()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode, ExpandMode::HideDeletions);
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr, ExpandMode::HideDeletions);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
-        OUString("AAAABB " + OUStringLiteral1(CH_TXTATR_BREAKWORD) + " CCCCC " + OUStringLiteral1(CH_TXTATR_BREAKWORD) + " DDDDD"),
+        OUString("AAAABB " + OUStringChar(CH_TXTATR_BREAKWORD) + " CCCCC " + OUStringChar(CH_TXTATR_BREAKWORD) + " DDDDD"),
         sViewText);
 }
 
@@ -439,7 +461,8 @@ void SwDocTest::testModelToViewHelperExpandFieldsHideInvisibleExpandFootnote()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode, ExpandMode::ExpandFields | ExpandMode::HideInvisible | ExpandMode::ExpandFootnote);
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
+        ExpandMode::ExpandFields | ExpandMode::HideInvisible | ExpandMode::ExpandFootnote);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(OUString("AAAAA CCCCC foo DDDDD"), sViewText);
 }
@@ -448,11 +471,11 @@ void SwDocTest::testModelToViewHelperExpandFieldsHideInvisibleExpandFootnoteRepl
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode,
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
         ExpandMode::ExpandFields | ExpandMode::HideInvisible | ExpandMode::ExpandFootnote | ExpandMode::ReplaceMode);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
-        OUString("AAAAA CCCCC " + OUStringLiteral1(CHAR_ZWSP) + " DDDDD"),
+        OUString("AAAAA CCCCC " + OUStringChar(CHAR_ZWSP) + " DDDDD"),
         sViewText);
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1),
         aModelToViewHelper.getFootnotePositions().size());
@@ -466,7 +489,8 @@ void SwDocTest::testModelToViewHelperExpandFieldsHideHideRedlinedExpandFootnote(
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode, ExpandMode::ExpandFields | ExpandMode::HideDeletions | ExpandMode::ExpandFootnote);
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
+        ExpandMode::ExpandFields | ExpandMode::HideDeletions | ExpandMode::ExpandFootnote);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
         OUString("AAAABB foo CCCCC foo DDDDD"), sViewText);
@@ -476,11 +500,11 @@ void SwDocTest::testModelToViewHelperExpandFieldsHideHideRedlinedExpandFootnoteR
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode,
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
         ExpandMode::ExpandFields | ExpandMode::HideDeletions | ExpandMode::ExpandFootnote | ExpandMode::ReplaceMode);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
-       OUString("AAAABB " + OUStringLiteral1(CHAR_ZWSP) + " CCCCC " + OUStringLiteral1(CHAR_ZWSP) + " DDDDD"),
+       OUString("AAAABB " + OUStringChar(CHAR_ZWSP) + " CCCCC " + OUStringChar(CHAR_ZWSP) + " DDDDD"),
        sViewText);
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(2),
         aModelToViewHelper.getFootnotePositions().size());
@@ -496,20 +520,21 @@ void SwDocTest::testModelToViewHelperHideInvisibleHideRedlined()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode, ExpandMode::HideInvisible | ExpandMode::HideDeletions);
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
+        ExpandMode::HideInvisible | ExpandMode::HideDeletions);
     OUString sViewText = aModelToViewHelper.getViewText();
-    OUStringBuffer aBuffer;
-    aBuffer.append("AAAACCCCC ");
-    aBuffer.append(CH_TXTATR_BREAKWORD);
-    aBuffer.append(" DDDDD");
-    CPPUNIT_ASSERT_EQUAL(aBuffer.makeStringAndClear(), sViewText);
+    OUString aBuffer = "AAAACCCCC " +
+        OUStringChar(CH_TXTATR_BREAKWORD) +
+        " DDDDD";
+    CPPUNIT_ASSERT_EQUAL(aBuffer, sViewText);
 }
 
 void SwDocTest::testModelToViewHelperExpandFieldsHideInvisibleHideRedlinedExpandFootnote()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode, ExpandMode::ExpandFields | ExpandMode::HideInvisible | ExpandMode::HideDeletions | ExpandMode::ExpandFootnote);
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
+        ExpandMode::ExpandFields | ExpandMode::HideInvisible | ExpandMode::HideDeletions | ExpandMode::ExpandFootnote);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(OUString("AAAACCCCC foo DDDDD"), sViewText);
 }
@@ -518,11 +543,11 @@ void SwDocTest::testModelToViewHelperExpandFieldsHideInvisibleHideRedlinedExpand
 {
     SwTextNode* pTextNode = getModelToViewTestDocument(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode,
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
         ExpandMode::ExpandFields | ExpandMode::HideInvisible | ExpandMode::HideDeletions | ExpandMode::ExpandFootnote | ExpandMode::ReplaceMode);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(sViewText,
-        OUString("AAAACCCCC " + OUStringLiteral1(CHAR_ZWSP) + " DDDDD"));
+        OUString("AAAACCCCC " + OUStringChar(CHAR_ZWSP) + " DDDDD"));
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1),
         aModelToViewHelper.getFootnotePositions().size());
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(10),
@@ -535,7 +560,8 @@ void SwDocTest::testModelToViewHelperExpandFieldsExpandFootnote2()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument2(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode, ExpandMode::ExpandFields | ExpandMode::ExpandFootnote);
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
+        ExpandMode::ExpandFields | ExpandMode::ExpandFootnote);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(OUString("AAAAABBBBBCCCCC"), sViewText);
 }
@@ -544,11 +570,11 @@ void SwDocTest::testModelToViewHelperExpandFieldsExpandFootnoteReplaceMode2()
 {
     SwTextNode* pTextNode = getModelToViewTestDocument2(m_pDoc);
 
-    ModelToViewHelper aModelToViewHelper(*pTextNode,
+    ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
         ExpandMode::ExpandFields | ExpandMode::ExpandFootnote | ExpandMode::ReplaceMode);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
-        OUString("AAAAA" + OUStringLiteral1(CHAR_ZWSP) + "CCCCC"),
+        OUString("AAAAA" + OUStringChar(CHAR_ZWSP) + "CCCCC"),
         sViewText);
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(0),
         aModelToViewHelper.getFootnotePositions().size());
@@ -739,7 +765,7 @@ void SwDocTest::testSwScanner()
         m_pDoc->getIDocumentContentOperations().InsertString(aPaM, aString);
         pTextNode = aPaM.GetNode().GetTextNode();
         pTextNode->CountWords(aDocStat, 0, pTextNode->Len());
-        CPPUNIT_ASSERT_EQUAL(aDocStat.nWord, static_cast<sal_uLong>(2));
+        CPPUNIT_ASSERT_EQUAL(static_cast<sal_uLong>(2), aDocStat.nWord);
 
         //turn on red-lining and show changes
         m_pDoc->getIDocumentRedlineAccess().SetRedlineFlags(RedlineFlags::On | RedlineFlags::ShowDelete|RedlineFlags::ShowInsert);
@@ -756,7 +782,7 @@ void SwDocTest::testSwScanner()
         aDocStat.Reset();
         pTextNode->SetWordCountDirty(true);
         pTextNode->CountWords(aDocStat, 0, pTextNode->Len()); //but word-counting the text should only count the non-deleted text
-        CPPUNIT_ASSERT_EQUAL(aDocStat.nWord, static_cast<sal_uLong>(1));
+        CPPUNIT_ASSERT_EQUAL(static_cast<sal_uLong>(1), aDocStat.nWord);
 
         pTextNode->SetWordCountDirty(true);
 
@@ -1031,17 +1057,29 @@ getRandomPosition(SwDoc *pDoc, int /* nOffset */)
 {
     const SwPosition aPos(pDoc->GetNodes().GetEndOfContent());
     size_t nNodes = aPos.nNode.GetNode().GetIndex() - aPos.nNode.GetNode().StartOfSectionIndex();
-    size_t n = comphelper::rng::uniform_size_distribution(0, nNodes);
+    // exclude body start/end node
+    size_t n = comphelper::rng::uniform_size_distribution(1, nNodes - 1);
     SwPaM pam(aPos);
     for (sal_uLong i = 0; i < n; ++i)
     {
         pam.Move(fnMoveBackward, GoInNode);
+    }
+    SwTextNode *const pTextNode(pam.GetPoint()->nNode.GetNode().GetTextNode());
+    assert(pTextNode);
+    int n2 = comphelper::rng::uniform_int_distribution(0, pTextNode->Len());
+    for (sal_Int32 i = 0; i < n2; ++i)
+    {
+        pam.Move(fnMoveBackward, GoInContent);
     }
     return *pam.GetPoint();
 }
 
 void SwDocTest::randomTest()
 {
+    OUString aEnvKey("SAL_RAND_REPEATABLE");
+    OUString aEnvValue("1");
+    osl_setEnvironment(aEnvKey.pData, aEnvValue.pData);
+
     CPPUNIT_ASSERT_MESSAGE("SwDoc::IsRedlineOn()", !m_pDoc->getIDocumentRedlineAccess().IsRedlineOn());
     RedlineFlags modes[] = {
         RedlineFlags::On,
@@ -1049,7 +1087,6 @@ void SwDocTest::randomTest()
         RedlineFlags::NONE,
         RedlineFlags::On | RedlineFlags::ShowMask,
         RedlineFlags::On | RedlineFlags::Ignore,
-        RedlineFlags::On | RedlineFlags::Ignore | RedlineFlags::ShowMask,
         RedlineFlags::On | RedlineFlags::ShowInsert,
         RedlineFlags::On | RedlineFlags::ShowDelete
     };
@@ -1059,6 +1096,7 @@ void SwDocTest::randomTest()
 
     for( size_t rlm = 0; rlm < SAL_N_ELEMENTS(modes); rlm++ )
     {
+        m_pDoc->GetIDocumentUndoRedo().DoUndo(true);
         m_pDoc->ClearDoc();
 
         // setup redlining
@@ -1067,15 +1105,31 @@ void SwDocTest::randomTest()
 
         for( int i = 0; i < 2000; i++ )
         {
-            SwCursor aCrs(getRandomPosition(m_pDoc, i/20), nullptr);
-            aCrs.SetMark();
+            std::shared_ptr<SwUnoCursor> pCrs(
+                m_pDoc->CreateUnoCursor(getRandomPosition(m_pDoc, i/20)));
 
             switch (getRand (i < 50 ? 3 : 6)) {
             // insert ops first
             case 0: {
-                if (!m_pDoc->getIDocumentContentOperations().InsertString(aCrs, getRandString())) {
-//                    fprintf (stderr, "failed to insert string !\n");
+                OUString const tmp(getRandString());
+                sal_Int32 current(0);
+                sal_Int32 nextBreak(tmp.indexOf('\n'));
+                do
+                {
+                    sal_Int32 const len((nextBreak == -1 ? tmp.getLength() : nextBreak - current));
+                    if (0 < len)
+                    {
+                        m_pDoc->getIDocumentContentOperations().InsertString(
+                            *pCrs, tmp.copy(current, len));
+                    }
+                    if (nextBreak != -1)
+                    {
+                        m_pDoc->getIDocumentContentOperations().SplitNode(*pCrs->GetPoint(), false);
+                        current = nextBreak + 1;
+                        nextBreak = tmp.indexOf('\n', current);
+                    }
                 }
+                while (nextBreak != -1);
                 break;
             }
             case 1:
@@ -1088,19 +1142,27 @@ void SwDocTest::randomTest()
 
             // movement / deletion ops later
             case 3: // deletion
+                pCrs->SetMark();
                 switch (getRand(6)) {
                 case 0:
-                    m_pDoc->getIDocumentContentOperations().DelFullPara(aCrs);
+                    *pCrs->GetMark() = getRandomPosition(m_pDoc, 42);
+                    m_pDoc->getIDocumentContentOperations().DelFullPara(*pCrs);
                     break;
                 case 1:
-                    m_pDoc->getIDocumentContentOperations().DeleteRange(aCrs);
+                    *pCrs->GetMark() = getRandomPosition(m_pDoc, 42);
+                    m_pDoc->getIDocumentContentOperations().DeleteRange(*pCrs);
                     break;
                 case 2:
-                    m_pDoc->getIDocumentContentOperations().DeleteAndJoin(aCrs, !!getRand(1));
+                    *pCrs->GetMark() = getRandomPosition(m_pDoc, 42);
+                    m_pDoc->getIDocumentContentOperations().DeleteAndJoin(*pCrs, !!getRand(1));
                     break;
                 case 3:
                 default:
-                    m_pDoc->getIDocumentContentOperations().Overwrite(aCrs, getRandString());
+                    OUString const tmp(getRandString());
+                    if (tmp.getLength())
+                    {
+                        m_pDoc->getIDocumentContentOperations().Overwrite(*pCrs, tmp);
+                    }
                     break;
                 }
                 break;
@@ -1108,12 +1170,11 @@ void SwDocTest::randomTest()
                 SwMoveFlags nFlags =
                          getRand(1) // FIXME: puterb this more ?
                          ? SwMoveFlags::DEFAULT
-                         : SwMoveFlags::ALLFLYS |
-                           SwMoveFlags::CREATEUNDOOBJ |
+                         : SwMoveFlags::CREATEUNDOOBJ |
                            SwMoveFlags::REDLINES |
                            SwMoveFlags::NO_DELFRMS;
                 SwPosition aTo(getRandomPosition(m_pDoc, i/10));
-                m_pDoc->getIDocumentContentOperations().MoveRange(aCrs, aTo, nFlags);
+                m_pDoc->getIDocumentContentOperations().MoveRange(*pCrs, aTo, nFlags);
                 break;
             }
 
@@ -1142,8 +1203,309 @@ void SwDocTest::randomTest()
     }
 }
 
+void SwDocTest::testTableAutoFormats()
+{
+    SwGlobals::ensure();
+
+    //create new AutoFormatTable
+    SwTableAutoFormatTable aTableAFT;
+
+    //check the style size - default is expected
+    CPPUNIT_ASSERT_EQUAL( size_t(1),  aTableAFT.size() );
+
+    //create new style
+    SwTableAutoFormat aTableAF( "TestItemStyle" );
+
+    //create new AutoFormat
+    SwBoxAutoFormat aBoxAF;
+
+    //SetFont
+    SvxFontItem aFont( RES_CHRATR_FONT );
+    aFont.SetFamily( FontFamily::FAMILY_DECORATIVE );
+    aFont.SetPitch( FontPitch::PITCH_VARIABLE );
+    aFont.SetCharSet( RTL_TEXTENCODING_MS_1251 );
+    aBoxAF.SetFont( aFont );
+    //SetHeight
+    SvxFontHeightItem aHeight( 280, 120, RES_CHRATR_FONTSIZE );
+    aBoxAF.SetHeight( aHeight );
+    //SetWeight
+    SvxWeightItem aWeight( FontWeight::WEIGHT_BOLD, RES_CHRATR_WEIGHT );
+    aBoxAF.SetWeight( aWeight );
+    //SetPosture
+    SvxPostureItem aPosture( FontItalic::ITALIC_NORMAL, RES_CHRATR_POSTURE );
+    aBoxAF.SetPosture( aPosture );
+    //SetCJKFont
+    SvxFontItem aCJKFont( RES_CHRATR_FONT );
+    aCJKFont.SetFamily( FontFamily::FAMILY_MODERN );
+    aCJKFont.SetPitch( FontPitch::PITCH_FIXED );
+    aCJKFont.SetCharSet( RTL_TEXTENCODING_MS_1251 );
+    aBoxAF.SetCJKFont( aCJKFont );
+    //SetCJKHeight
+    SvxFontHeightItem aCJKHeight( 230, 110, RES_CHRATR_FONTSIZE );
+    aBoxAF.SetCJKHeight( aCJKHeight );
+    //SetCJKWeight
+    SvxWeightItem aCJKWeight( FontWeight::WEIGHT_SEMIBOLD, RES_CHRATR_WEIGHT );
+    aBoxAF.SetCJKWeight( aCJKWeight );
+    //SetCJKPosture
+    SvxPostureItem aCJKPosture( FontItalic::ITALIC_OBLIQUE, RES_CHRATR_POSTURE );
+    aBoxAF.SetCJKPosture( aCJKPosture );
+    //SetCTLFont
+    SvxFontItem aCTLFont( RES_CHRATR_FONT );
+    aCTLFont.SetFamily( FontFamily::FAMILY_ROMAN );
+    aCTLFont.SetPitch( FontPitch::PITCH_FIXED );
+    aCTLFont.SetCharSet( RTL_TEXTENCODING_MS_1251 );
+    aBoxAF.SetCTLFont( aCTLFont );
+    //SetCTLHeight
+    SvxFontHeightItem aCTLHeight( 215, 105, RES_CHRATR_FONTSIZE );
+    aBoxAF.SetCTLHeight( aCTLHeight );
+    //SetCTLWeight
+    SvxWeightItem aCTLWeight( FontWeight::WEIGHT_ULTRABOLD, RES_CHRATR_WEIGHT );
+    aBoxAF.SetCTLWeight( aCTLWeight );
+    //SetCTLPosture
+    SvxPostureItem aCTLPosture( FontItalic::ITALIC_OBLIQUE, RES_CHRATR_POSTURE );
+    aBoxAF.SetCTLPosture( aCTLPosture );
+    //SetUnderline
+    SvxUnderlineItem aUnderline( FontLineStyle::LINESTYLE_DOTTED, RES_CHRATR_UNDERLINE );
+    aBoxAF.SetUnderline( aUnderline );
+    //SetOverline
+    SvxOverlineItem aOverline( FontLineStyle::LINESTYLE_DASH, RES_CHRATR_OVERLINE );
+    aBoxAF.SetOverline( aOverline );
+    //SetCrossedOut
+    SvxCrossedOutItem aCrossedOut( FontStrikeout::STRIKEOUT_BOLD, RES_CHRATR_CROSSEDOUT );
+    aBoxAF.SetCrossedOut( aCrossedOut );
+    //SetContour
+    SvxContourItem aContour( true, RES_CHRATR_CONTOUR );
+    aBoxAF.SetContour( aContour );
+    //SetShadowed
+    SvxShadowedItem aShadowed( false, RES_CHRATR_SHADOWED );
+    aBoxAF.SetShadowed( aShadowed );
+    //SetColor
+    SvxColorItem aColor( Color(0xFF23FF), RES_CHRATR_COLOR );
+    aBoxAF.SetColor( aColor );
+    //SetAdjust
+    SvxAdjustItem aAdjust( SvxAdjust::Center, RES_PARATR_ADJUST );
+    aBoxAF.SetAdjust( aAdjust );
+    //SetTextOrientation
+    SvxFrameDirectionItem aTOrientation( SvxFrameDirection::Vertical_RL_TB, RES_FRAMEDIR );
+    aBoxAF.SetTextOrientation( aTOrientation );
+    //SetVerticalAlignment
+    SwFormatVertOrient aVAlignment( 3, css::text::VertOrientation::CENTER, css::text::RelOrientation::PAGE_LEFT );
+    aBoxAF.SetVerticalAlignment( aVAlignment );
+    //SetBox
+    SvxBoxItem aBox( RES_BOX );
+    aBox.SetAllDistances( 5 );
+    aBoxAF.SetBox( aBox );
+    //SetBackground
+    SvxBrushItem aBackground( Color(0xFF11FF), RES_BACKGROUND );
+    aBoxAF.SetBackground( aBackground );
+    //Set m_aTLBR
+    SvxLineItem aTLBRLine(0); aTLBRLine.ScaleMetrics( 11,12 );
+    aBoxAF.SetTLBR(aTLBRLine);
+    //Set m_aBLTR
+    SvxLineItem aBLTRLine(0); aBLTRLine.ScaleMetrics( 13,14 );
+    aBoxAF.SetBLTR(aBLTRLine);
+    //Set m_aHorJustify
+    SvxHorJustifyItem aHJustify( SvxCellHorJustify::Center, 0 );
+    aBoxAF.SetHorJustify(aHJustify);
+    //Set m_aVerJustify
+    SvxVerJustifyItem aVJustify( SvxCellVerJustify::Center , 0 );
+    aBoxAF.SetVerJustify(aVJustify);
+    //Set m_aStacked
+    SfxBoolItem aStacked(0, true);
+    aBoxAF.SetStacked(aStacked);
+    //Set m_aMargin
+    SvxMarginItem aSvxMarginItem(sal_Int16(4), sal_Int16(2), sal_Int16(3), sal_Int16(3), 0);
+    aBoxAF.SetMargin(aSvxMarginItem);
+    //Set m_aLinebreak
+    SfxBoolItem aLBreak(0, true);
+    aBoxAF.SetLinebreak(aLBreak);
+    //Set m_aRotateAngle
+    SfxInt32Item aRAngle(sal_Int32(5));
+    aBoxAF.SetRotateAngle(aRAngle);
+    //Set m_aRotateMode
+    SvxRotateModeItem aSvxRotateModeItem(SVX_ROTATE_MODE_CENTER, 0);
+    aBoxAF.SetRotateMode(aSvxRotateModeItem);
+    //Set m_sNumFormatString
+    OUString aNFString = "UnitTestFormat";
+    aBoxAF.SetNumFormatString(aNFString);
+    //Set m_eSysLanguage
+    LanguageType aSLang( LANGUAGE_ENGLISH_INDIA );
+    aBoxAF.SetSysLanguage(aSLang);
+    //Set m_eNumFormatLanguage
+    LanguageType aNFLang( LANGUAGE_GERMAN );
+    aBoxAF.SetNumFormatLanguage(aNFLang);
+    //Set m_aBreak
+    SvxFormatBreakItem aBreak( SvxBreak::PageBefore, 0 );
+    aTableAF.SetBreak(aBreak);
+    //Set m_aKeepWithNextPara
+    SvxFormatKeepItem aKWNPara( true, 0 );
+    aTableAF.SetKeepWithNextPara(aKWNPara);
+    //Set m_aPageDesc
+    SwFormatPageDesc aPDesc;
+    uno::Any aPDAny( sal_uInt16(3) );
+    aPDesc.PutValue( aPDAny, 0 );
+    aTableAF.m_aPageDesc = aPDesc;
+    //Set m_aRepeatHeading
+    sal_uInt16 aRHeading = 3;
+    aTableAF.m_aRepeatHeading = aRHeading;
+    //Set m_bLayoutSplit
+    bool aLSplit = false;
+    aTableAF.m_bLayoutSplit = aLSplit;
+    //Set m_bRowSplit
+    bool aRSplit = false;
+    aTableAF.m_bRowSplit = aRSplit;
+    //Set m_bCollapsingBorders
+    bool aCBorders = false;
+    aTableAF.m_bCollapsingBorders = aCBorders;
+    //Set m_aShadow
+    SvxShadowItem aShadow( 0, nullptr, 103, SvxShadowLocation::BottomLeft );
+    aTableAF.SetShadow(aShadow);
+    //Set bInclFont
+    bool aIFont = false;
+    aTableAF.m_bInclFont = aIFont;
+    //Set bInclJustify
+    bool aIJustify = false;
+    aTableAF.m_bInclJustify = aIJustify;
+    //Set bInclFrame
+    bool aIFrame = false;
+    aTableAF.m_bInclFrame = aIFrame;
+    //Set bInclBackground
+    bool aIBackground = false;
+    aTableAF.m_bInclBackground = aIBackground;
+    //Set bInclValueFormat
+    bool aIVFormat = false;
+    aTableAF.m_bInclValueFormat = aIVFormat;
+
+    //set the box format to AutoFormat
+    aTableAF.SetBoxFormat( aBoxAF, sal_uInt8(0) );
+    //add AutoFormat to AutoFormatTable
+    aTableAFT.AddAutoFormat( aTableAF );
+
+    //check the style size
+    CPPUNIT_ASSERT_EQUAL( size_t(2),  aTableAFT.size() );
+
+    //save the bInclFontstyles
+    aTableAFT.Save();
+
+    //check the style size after save
+    CPPUNIT_ASSERT_EQUAL( size_t(2),  aTableAFT.size() );
+
+    //create new AutoFormatTable
+    SwTableAutoFormatTable aLoadTAFT;
+
+    //check the style size
+    CPPUNIT_ASSERT_EQUAL( size_t(1),  aLoadTAFT.size() );
+
+    //load the saved styles
+    aLoadTAFT.Load();
+
+    //check the style size after load
+    CPPUNIT_ASSERT_EQUAL( size_t(2),  aLoadTAFT.size() );
+
+    //assert the values
+    SwTableAutoFormat* pLoadAF = aLoadTAFT.FindAutoFormat( "TestItemStyle" );
+    CPPUNIT_ASSERT( pLoadAF );
+    //GetFont
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetFont() == aFont ) );
+    //GetHeight
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetHeight() == aHeight ) );
+    //GetWeight
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetWeight() == aWeight ) );
+    //GetPosture
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetPosture() == aPosture ) );
+    //GetCJKFont
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCJKFont() == aCJKFont ) );
+    //GetCJKHeight
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCJKHeight() == aCJKHeight ) );
+    //GetCJKWeight
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCJKWeight() == aCJKWeight ) );
+    //GetCJKPosture
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCJKPosture() == aCJKPosture ) );
+    //GetCTLFont
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCTLFont() == aCTLFont ) );
+    //GetCTLHeight
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCTLHeight() == aCTLHeight ) );
+    //GetCTLWeight
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCTLWeight() == aCTLWeight ) );
+    //GetCTLPosture
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCTLPosture() == aCTLPosture ) );
+    //GetUnderline
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetUnderline() == aUnderline ) );
+    //GetOverline
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetOverline() == aOverline ) );
+    //GetCrossedOut
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCrossedOut() == aCrossedOut ) );
+    //GetContour
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetContour() == aContour ) );
+    //GetShadowed
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetShadowed() == aShadowed ) );
+    //GetColor
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetColor() == aColor) );
+    //GetAdjust
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetAdjust() == aAdjust ) );
+    //GetTextOrientation
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetTextOrientation() == aTOrientation ) );
+    //GetVerticalAlignment
+    CPPUNIT_ASSERT (bool( pLoadAF->GetBoxFormat(0).GetVerticalAlignment() == aVAlignment ) );
+    //GetBox
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetBox() == aBox ) );
+    //GetBackground
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetBackground() == aBackground ) );
+    //Get m_aTLBR
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetTLBR() == aTLBRLine ) );
+    //Get m_aBLTR
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetBLTR() == aBLTRLine ) );
+    //Get m_aHorJustify
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetHorJustify() == aHJustify ) );
+    //Get m_aVerJustify
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetVerJustify() == aVJustify ) );
+    //Get m_aStacked
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetStacked() == aStacked ) );
+    //Get m_aMargin
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetMargin() == aSvxMarginItem ) );
+    //Get m_aLinebreak
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetLinebreak() == aLBreak ) );
+    //Get m_aRotateAngle
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetRotateAngle() == aRAngle ) );
+    //Get m_aRotateMode
+    //SvxRotateModeItem aRMode = aBoxAF.m_aRotateMode;GetRotateMode
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetRotateMode() == aSvxRotateModeItem ) );
+    //Get m_sNumFormatString
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetNumFormatString() == aNFString ) );
+    //Get m_eSysLanguage
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetSysLanguage() == aSLang ) );
+    //Get m_eNumFormatLanguage
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetNumFormatLanguage() == aNFLang ) );
+    //Get m_aBreak
+    CPPUNIT_ASSERT( bool( pLoadAF->GetBreak() == aBreak ) );
+    //Get m_aKeepWithNextPara
+    CPPUNIT_ASSERT( bool( pLoadAF->GetKeepWithNextPara() == aKWNPara ) );
+    //Get m_aPageDesc
+    CPPUNIT_ASSERT( bool( pLoadAF->m_aPageDesc == aPDesc ) );
+    //Get m_aRepeatHeading
+    CPPUNIT_ASSERT( bool( pLoadAF->m_aRepeatHeading == aRHeading ) );
+    //Get m_bLayoutSplit
+    CPPUNIT_ASSERT( bool( pLoadAF->m_bLayoutSplit == aLSplit ) );
+    //Get m_bRowSplit
+    CPPUNIT_ASSERT( bool( pLoadAF->m_bRowSplit == aRSplit ) );
+    //Get m_bCollapsingBorders
+    CPPUNIT_ASSERT( bool( pLoadAF->m_bCollapsingBorders == aCBorders ) );
+    //Get m_aShadow
+    CPPUNIT_ASSERT( bool( pLoadAF->GetShadow() == aShadow ) );
+    //Get bInclFont
+    CPPUNIT_ASSERT( bool( pLoadAF->m_bInclFont == aIFont ) );
+    //Get bInclJustify
+    CPPUNIT_ASSERT( bool( pLoadAF->m_bInclJustify == aIJustify ) );
+    //Get bInclFrame
+    CPPUNIT_ASSERT( bool( pLoadAF->m_bInclFrame == aIFrame ) );
+    //Get bInclBackground
+    CPPUNIT_ASSERT( bool( pLoadAF->m_bInclBackground == aIBackground ) );
+    //Get bInclValueFormat
+    CPPUNIT_ASSERT( bool( pLoadAF->m_bInclValueFormat == aIVFormat ) );
+}
+
 static OUString
-translitTest(SwDoc & rDoc, SwPaM & rPaM, TransliterationFlags const nType)
+translitTest(SwDoc & rDoc, const SwPaM & rPaM, TransliterationFlags const nType)
 {
     utl::TransliterationWrapper aTrans(
             ::comphelper::getProcessComponentContext(), nType);
@@ -1179,6 +1541,14 @@ void SwDocTest::testTransliterate()
     CPPUNIT_ASSERT_EQUAL(OUString("Foobar"),
             translitTest(*m_pDoc, aPaM,
                 TransliterationFlags::HIRAGANA_KATAKANA));
+
+    m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
+    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "one (two) three");
+    aPaM.SetMark();
+    aPaM.GetMark()->nContent = 0;
+    CPPUNIT_ASSERT_EQUAL(OUString("One (Two) Three"),
+            translitTest(*m_pDoc, aPaM,
+                TransliterationFlags::TITLE_CASE));
 }
 
 namespace
@@ -1207,7 +1577,7 @@ void SwDocTest::testFormulas()
     SwPosition aPos(aIdx);
 
     const SwTable *pTable = m_pDoc->InsertTable(
-        SwInsertTableOptions(tabopts::HEADLINE_NO_BORDER, 0), aPos, 1, 3, 0);
+        SwInsertTableOptions(SwInsertTableFlags::HeadlineNoBorder, 0), aPos, 1, 3, 0);
     SwTableNode* pTableNode = pTable->GetTableNode();
     SwTableFormulaTest aFormula("<\x12-1,0>+<Table1.A1>", pTableNode);
 
@@ -1236,19 +1606,22 @@ void SwDocTest::testMarkMove()
         m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "Paragraph 1");
         aPaM.SetMark();
         aPaM.GetMark()->nContent -= aPaM.GetMark()->nContent.GetIndex();
-        pMarksAccess->makeMark(aPaM, "Para1", IDocumentMarkAccess::MarkType::BOOKMARK);
+        pMarksAccess->makeMark(aPaM, "Para1",
+            IDocumentMarkAccess::MarkType::BOOKMARK, sw::mark::InsertMode::New);
 
         m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
         m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "Paragraph 2");
         aPaM.SetMark();
         aPaM.GetMark()->nContent -= aPaM.GetMark()->nContent.GetIndex();
-        pMarksAccess->makeMark(aPaM, "Para2", IDocumentMarkAccess::MarkType::BOOKMARK);
+        pMarksAccess->makeMark(aPaM, "Para2",
+            IDocumentMarkAccess::MarkType::BOOKMARK, sw::mark::InsertMode::New);
 
         m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
         m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "Paragraph 3");
         aPaM.SetMark();
         aPaM.GetMark()->nContent -= aPaM.GetMark()->nContent.GetIndex();
-        pMarksAccess->makeMark(aPaM, "Para3", IDocumentMarkAccess::MarkType::BOOKMARK);
+        pMarksAccess->makeMark(aPaM, "Para3",
+            IDocumentMarkAccess::MarkType::BOOKMARK, sw::mark::InsertMode::New);
     }
 
     // join paragraph 2 and 3 and check
@@ -1257,24 +1630,24 @@ void SwDocTest::testMarkMove()
         SwTextNode& rParaNode2 = dynamic_cast<SwTextNode&>(aIdx.GetNode());
         rParaNode2.JoinNext();
     }
-    ::sw::mark::IMark* pBM1 = pMarksAccess->findMark("Para1")->get();
-    ::sw::mark::IMark* pBM2 = pMarksAccess->findMark("Para2")->get();
-    ::sw::mark::IMark* pBM3 = pMarksAccess->findMark("Para3")->get();
+    ::sw::mark::IMark* pBM1 = *pMarksAccess->findMark("Para1");
+    ::sw::mark::IMark* pBM2 = *pMarksAccess->findMark("Para2");
+    ::sw::mark::IMark* pBM3 = *pMarksAccess->findMark("Para3");
 
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 0 , pBM1->GetMarkStart().nContent.GetIndex());
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 11, pBM1->GetMarkEnd().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0) , pBM1->GetMarkStart().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(11), pBM1->GetMarkEnd().nContent.GetIndex());
     CPPUNIT_ASSERT_EQUAL(
         pBM1->GetMarkStart().nNode.GetIndex(),
         pBM1->GetMarkEnd().nNode.GetIndex());
 
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 0 , pBM2->GetMarkStart().nContent.GetIndex());
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 11, pBM2->GetMarkEnd().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0) , pBM2->GetMarkStart().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(11), pBM2->GetMarkEnd().nContent.GetIndex());
     CPPUNIT_ASSERT_EQUAL(
         pBM2->GetMarkStart().nNode.GetIndex(),
         pBM2->GetMarkEnd().nNode.GetIndex());
 
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 11, pBM3->GetMarkStart().nContent.GetIndex());
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 22, pBM3->GetMarkEnd().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(11), pBM3->GetMarkStart().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(22), pBM3->GetMarkEnd().nContent.GetIndex());
     CPPUNIT_ASSERT_EQUAL(
         pBM3->GetMarkStart().nNode.GetIndex(),
         pBM3->GetMarkEnd().nNode.GetIndex());
@@ -1294,24 +1667,24 @@ void SwDocTest::testMarkMove()
         aPaM.GetMark()->nContent += 6;
         m_pDoc->getIDocumentContentOperations().DeleteAndJoin(aPaM);
     }
-    pBM1 = pMarksAccess->findMark("Para1")->get();
-    pBM2 = pMarksAccess->findMark("Para2")->get();
-    pBM3 = pMarksAccess->findMark("Para3")->get();
+    pBM1 = *pMarksAccess->findMark("Para1");
+    pBM2 = *pMarksAccess->findMark("Para2");
+    pBM3 = *pMarksAccess->findMark("Para3");
 
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 0, pBM1->GetMarkStart().nContent.GetIndex());
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 6, pBM1->GetMarkEnd().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), pBM1->GetMarkStart().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(6), pBM1->GetMarkEnd().nContent.GetIndex());
     CPPUNIT_ASSERT_EQUAL(
         pBM1->GetMarkStart().nNode.GetIndex(),
         pBM1->GetMarkEnd().nNode.GetIndex());
 
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 6, pBM2->GetMarkStart().nContent.GetIndex());
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 12, pBM2->GetMarkEnd().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(6), pBM2->GetMarkStart().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(12), pBM2->GetMarkEnd().nContent.GetIndex());
     CPPUNIT_ASSERT_EQUAL(
         pBM2->GetMarkStart().nNode.GetIndex(),
         pBM2->GetMarkEnd().nNode.GetIndex());
 
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 12, pBM3->GetMarkStart().nContent.GetIndex());
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 23, pBM3->GetMarkEnd().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(12), pBM3->GetMarkStart().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(23), pBM3->GetMarkEnd().nContent.GetIndex());
     CPPUNIT_ASSERT_EQUAL(
         pBM3->GetMarkStart().nNode.GetIndex(),
         pBM3->GetMarkEnd().nNode.GetIndex());
@@ -1330,24 +1703,24 @@ void SwDocTest::testMarkMove()
         aPos.nContent += 8;
         m_pDoc->getIDocumentContentOperations().SplitNode(aPos, false);
     }
-    pBM1 = pMarksAccess->findMark("Para1")->get();
-    pBM2 = pMarksAccess->findMark("Para2")->get();
-    pBM3 = pMarksAccess->findMark("Para3")->get();
+    pBM1 = *pMarksAccess->findMark("Para1");
+    pBM2 = *pMarksAccess->findMark("Para2");
+    pBM3 = *pMarksAccess->findMark("Para3");
 
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 0, pBM1->GetMarkStart().nContent.GetIndex());
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 6, pBM1->GetMarkEnd().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), pBM1->GetMarkStart().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(6), pBM1->GetMarkEnd().nContent.GetIndex());
     CPPUNIT_ASSERT_EQUAL(
         pBM1->GetMarkStart().nNode.GetIndex(),
         pBM1->GetMarkEnd().nNode.GetIndex());
 
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 6, pBM2->GetMarkStart().nContent.GetIndex());
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 4, pBM2->GetMarkEnd().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(6), pBM2->GetMarkStart().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4), pBM2->GetMarkEnd().nContent.GetIndex());
     CPPUNIT_ASSERT_EQUAL(
         pBM2->GetMarkStart().nNode.GetIndex()+1,
         pBM2->GetMarkEnd().nNode.GetIndex());
 
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 4, pBM3->GetMarkStart().nContent.GetIndex());
-    CPPUNIT_ASSERT_EQUAL((sal_Int32) 15, pBM3->GetMarkEnd().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4), pBM3->GetMarkStart().nContent.GetIndex());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(15), pBM3->GetMarkEnd().nContent.GetIndex());
     CPPUNIT_ASSERT_EQUAL(
         pBM3->GetMarkStart().nNode.GetIndex(),
         pBM3->GetMarkEnd().nNode.GetIndex());
@@ -1389,24 +1762,24 @@ void SwDocTest::testIntrusiveRing()
     vRings.push_back(&aRing3);
     vRings.push_back(&aRing4);
     vRings.push_back(&aRing5);
-    CPPUNIT_ASSERT_EQUAL(aRing1.GetRingContainer().size(), static_cast<size_t>(1));
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aRing1.GetRingContainer().size());
     CPPUNIT_ASSERT(aRing1.lonely());
     CPPUNIT_ASSERT(aRing2.lonely());
     CPPUNIT_ASSERT(aRing3.lonely());
     aRing2.MoveTo(&aRing1);
     aRing3.MoveTo(&aRing1);
-    CPPUNIT_ASSERT_EQUAL(aRing1.GetRingContainer().size(), static_cast<size_t>(3));
-    CPPUNIT_ASSERT_EQUAL(aRing2.GetRingContainer().size(), static_cast<size_t>(3));
-    CPPUNIT_ASSERT_EQUAL(aRing3.GetRingContainer().size(), static_cast<size_t>(3));
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), aRing1.GetRingContainer().size());
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), aRing2.GetRingContainer().size());
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), aRing3.GetRingContainer().size());
     CPPUNIT_ASSERT(!aRing1.lonely());
     CPPUNIT_ASSERT(!aRing2.lonely());
     CPPUNIT_ASSERT(!aRing3.lonely());
     aRing5.MoveTo(&aRing4);
-    CPPUNIT_ASSERT_EQUAL(aRing4.GetRingContainer().size(), static_cast<size_t>(2));
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(2), aRing4.GetRingContainer().size());
     aRing4.GetRingContainer().merge(aRing1.GetRingContainer());
     for(TestRing* pRing : vRings)
     {
-        CPPUNIT_ASSERT_EQUAL(pRing->GetRingContainer().size(), static_cast<size_t>(5));
+        CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(5), pRing->GetRingContainer().size());
     }
     for(std::vector<TestRing*>::iterator ppRing = vRings.begin(); ppRing != vRings.end(); ++ppRing)
     {
@@ -1451,24 +1824,39 @@ namespace
     {
         int m_nModifyCount;
         int m_nNotifyCount;
-        TestClient() : m_nModifyCount(0), m_nNotifyCount(0) {};
+        int m_nModifyChangedCount;
+        const SwModify* m_pLastChangedModify;
+        TestClient() : m_nModifyCount(0), m_nNotifyCount(0), m_nModifyChangedCount(0), m_pLastChangedModify(nullptr) {};
         virtual void Modify( const SfxPoolItem*, const SfxPoolItem*) override
-        { ++m_nModifyCount; }
-        virtual void SwClientNotify(const SwModify& rModify, const SfxHint& rHint) override
+        { assert(false); }
+        virtual void SwClientNotify(const SwModify&, const SfxHint& rHint) override
         {
             if(typeid(TestHint) == typeid(rHint))
                 ++m_nNotifyCount;
-            else
-                SwClient::SwClientNotify(rModify, rHint);
+            else if(dynamic_cast<const sw::LegacyModifyHint*>(&rHint))
+                ++m_nModifyCount;
+            else if(auto pModifyChangedHint = dynamic_cast<const sw::ModifyChangedHint*>(&rHint))
+            {
+                ++m_nModifyChangedCount;
+                m_pLastChangedModify = pModifyChangedHint->m_pNew;
+            }
         }
     };
-    // sad copypasta as tools/rtti.hxx little brain can't cope with templates
     struct OtherTestClient : SwClient
     {
         int m_nModifyCount;
         OtherTestClient() : m_nModifyCount(0) {};
         virtual void Modify( const SfxPoolItem*, const SfxPoolItem*) override
-        { ++m_nModifyCount; }
+            { ++m_nModifyCount; }
+    };
+    struct TestListener : SvtListener
+    {
+        int m_nNotifyCount;
+        TestListener() : m_nNotifyCount(0) {};
+        virtual void Notify( const SfxHint& ) override
+        {
+            ++m_nNotifyCount;
+        }
     };
 }
 void SwDocTest::testClientModify()
@@ -1480,36 +1868,36 @@ void SwDocTest::testClientModify()
     // test client registration
     CPPUNIT_ASSERT(!aMod.HasWriterListeners());
     CPPUNIT_ASSERT(!aMod.HasOnlyOneListener());
-    CPPUNIT_ASSERT_EQUAL(aClient1.GetRegisteredIn(),static_cast<SwModify*>(nullptr));
-    CPPUNIT_ASSERT_EQUAL(aClient2.GetRegisteredIn(),static_cast<SwModify*>(nullptr));
-    CPPUNIT_ASSERT_EQUAL(aClient2.GetRegisteredIn(),static_cast<SwModify*>(nullptr));
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(nullptr),aClient1.GetRegisteredIn());
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(nullptr),aClient2.GetRegisteredIn());
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(nullptr),aClient2.GetRegisteredIn());
     aMod.Add(&aClient1);
     CPPUNIT_ASSERT(aMod.HasWriterListeners());
     CPPUNIT_ASSERT(aMod.HasOnlyOneListener());
     aMod.Add(&aClient2);
-    CPPUNIT_ASSERT_EQUAL(aClient1.GetRegisteredIn(),static_cast<SwModify*>(&aMod));
-    CPPUNIT_ASSERT_EQUAL(aClient2.GetRegisteredIn(),static_cast<SwModify*>(&aMod));
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(&aMod),aClient1.GetRegisteredIn());
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(&aMod), aClient2.GetRegisteredIn());
     CPPUNIT_ASSERT(aMod.HasWriterListeners());
     CPPUNIT_ASSERT(!aMod.HasOnlyOneListener());
     // test broadcast
     aMod.ModifyBroadcast(nullptr, nullptr);
-    CPPUNIT_ASSERT_EQUAL(aClient1.m_nModifyCount,1);
-    CPPUNIT_ASSERT_EQUAL(aClient2.m_nModifyCount,1);
-    CPPUNIT_ASSERT_EQUAL(aClient1.m_nNotifyCount,0);
-    CPPUNIT_ASSERT_EQUAL(aClient2.m_nNotifyCount,0);
+    CPPUNIT_ASSERT_EQUAL(1,aClient1.m_nModifyCount);
+    CPPUNIT_ASSERT_EQUAL(1,aClient2.m_nModifyCount);
+    CPPUNIT_ASSERT_EQUAL(0,aClient1.m_nNotifyCount);
+    CPPUNIT_ASSERT_EQUAL(0,aClient2.m_nNotifyCount);
     aMod.ModifyBroadcast(nullptr, nullptr);
-    CPPUNIT_ASSERT_EQUAL(aClient1.m_nModifyCount,2);
-    CPPUNIT_ASSERT_EQUAL(aClient2.m_nModifyCount,2);
-    CPPUNIT_ASSERT_EQUAL(aClient1.m_nNotifyCount,0);
-    CPPUNIT_ASSERT_EQUAL(aClient2.m_nNotifyCount,0);
+    CPPUNIT_ASSERT_EQUAL(2,aClient1.m_nModifyCount);
+    CPPUNIT_ASSERT_EQUAL(2,aClient2.m_nModifyCount);
+    CPPUNIT_ASSERT_EQUAL(0,aClient1.m_nNotifyCount);
+    CPPUNIT_ASSERT_EQUAL(0,aClient2.m_nNotifyCount);
     // test notify
     {
         TestHint aHint;
         aMod.CallSwClientNotify(aHint);
-        CPPUNIT_ASSERT_EQUAL(aClient1.m_nModifyCount,2);
-        CPPUNIT_ASSERT_EQUAL(aClient2.m_nModifyCount,2);
-        CPPUNIT_ASSERT_EQUAL(aClient1.m_nNotifyCount,1);
-        CPPUNIT_ASSERT_EQUAL(aClient2.m_nNotifyCount,1);
+        CPPUNIT_ASSERT_EQUAL(2,aClient1.m_nModifyCount);
+        CPPUNIT_ASSERT_EQUAL(2,aClient2.m_nModifyCount);
+        CPPUNIT_ASSERT_EQUAL(1,aClient1.m_nNotifyCount);
+        CPPUNIT_ASSERT_EQUAL(1,aClient2.m_nNotifyCount);
     }
     // test typed iteration
     CPPUNIT_ASSERT(typeid(aClient1) != typeid(OtherTestClient));
@@ -1523,28 +1911,28 @@ void SwDocTest::testClientModify()
         SwIterator<TestClient,SwModify> aIter(aMod);
         for(TestClient* pClient = aIter.First(); pClient ; pClient = aIter.Next())
         {
-            CPPUNIT_ASSERT_EQUAL(pClient->m_nModifyCount,2);
+            CPPUNIT_ASSERT_EQUAL(2,pClient->m_nModifyCount);
             ++nCount;
         }
-        CPPUNIT_ASSERT_EQUAL(nCount,2);
+        CPPUNIT_ASSERT_EQUAL(2,nCount);
     }
     aMod.Add(&aOtherClient1);
-    CPPUNIT_ASSERT_EQUAL(aOtherClient1.m_nModifyCount,0);
+    CPPUNIT_ASSERT_EQUAL(0,aOtherClient1.m_nModifyCount);
     {
         int nCount = 0;
         SwIterator<TestClient,SwModify> aIter(aMod);
         for(TestClient* pClient = aIter.First(); pClient ; pClient = aIter.Next())
         {
-            CPPUNIT_ASSERT_EQUAL(pClient->m_nModifyCount,2);
+            CPPUNIT_ASSERT_EQUAL(2,pClient->m_nModifyCount);
             ++nCount;
         }
-        CPPUNIT_ASSERT_EQUAL(nCount,2);
+        CPPUNIT_ASSERT_EQUAL(2,nCount);
     }
-    CPPUNIT_ASSERT_EQUAL(aOtherClient1.m_nModifyCount,0);
+    CPPUNIT_ASSERT_EQUAL(0,aOtherClient1.m_nModifyCount);
     aMod.Remove(&aOtherClient1);
-    CPPUNIT_ASSERT_EQUAL(aClient1.GetRegisteredIn(),static_cast<SwModify*>(&aMod));
-    CPPUNIT_ASSERT_EQUAL(aClient2.GetRegisteredIn(),static_cast<SwModify*>(&aMod));
-    CPPUNIT_ASSERT_EQUAL(aOtherClient1.GetRegisteredIn(),static_cast<SwModify*>(nullptr));
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(&aMod),aClient1.GetRegisteredIn());
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(&aMod),aClient2.GetRegisteredIn());
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(nullptr),aOtherClient1.GetRegisteredIn());
     // test client self-deregistration during iteration
     {
         int nCount = 0;
@@ -1554,10 +1942,10 @@ void SwDocTest::testClientModify()
             aMod.Remove(pClient);
             ++nCount;
         }
-        CPPUNIT_ASSERT_EQUAL(nCount,2);
+        CPPUNIT_ASSERT_EQUAL(2,nCount);
     }
-    CPPUNIT_ASSERT_EQUAL(aClient1.GetRegisteredIn(), static_cast<SwModify*>(nullptr));
-    CPPUNIT_ASSERT_EQUAL(aClient2.GetRegisteredIn(), static_cast<SwModify*>(nullptr));
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(nullptr),aClient1.GetRegisteredIn());
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(nullptr),aClient2.GetRegisteredIn());
     {
         SwIterator<TestClient,SwModify> aIter(aMod);
         for(TestClient* pClient = aIter.First(); pClient ; pClient = aIter.Next())
@@ -1566,10 +1954,48 @@ void SwDocTest::testClientModify()
         }
     }
     aMod.ModifyBroadcast(nullptr, nullptr);
-    CPPUNIT_ASSERT_EQUAL(aClient1.m_nModifyCount,2);
-    CPPUNIT_ASSERT_EQUAL(aClient2.m_nModifyCount,2);
-    CPPUNIT_ASSERT_EQUAL(aClient1.m_nNotifyCount,1);
-    CPPUNIT_ASSERT_EQUAL(aClient2.m_nNotifyCount,1);
+    CPPUNIT_ASSERT_EQUAL(2,aClient1.m_nModifyCount);
+    CPPUNIT_ASSERT_EQUAL(2,aClient2.m_nModifyCount);
+    CPPUNIT_ASSERT_EQUAL(1,aClient1.m_nNotifyCount);
+    CPPUNIT_ASSERT_EQUAL(1,aClient2.m_nNotifyCount);
+}
+void SwDocTest::testBroadcastingModify()
+{
+    sw::BroadcastingModify aMod;
+    TestClient aClient;
+    TestListener aListener;
+
+    aMod.Add(&aClient);
+    aListener.StartListening(aMod.GetNotifier());
+
+    aMod.ModifyBroadcast(nullptr, nullptr);
+    CPPUNIT_ASSERT_EQUAL(1,aClient.m_nModifyCount);
+    CPPUNIT_ASSERT_EQUAL(1,aClient.m_nModifyCount);
+    CPPUNIT_ASSERT_EQUAL(1,aListener.m_nNotifyCount);
+}
+void SwDocTest::testWriterMultiListener()
+{
+    TestModify aMod;
+    TestClient aClient;
+    sw::WriterMultiListener aMulti(aClient);
+    CPPUNIT_ASSERT(!aMulti.IsListeningTo(&aMod));
+    aMulti.StartListening(&aMod);
+    CPPUNIT_ASSERT(aMulti.IsListeningTo(&aMod));
+    aMulti.EndListeningAll();
+    CPPUNIT_ASSERT(!aMulti.IsListeningTo(&aMod));
+    aMulti.StartListening(&aMod);
+    aMulti.EndListening(&aMod);
+    CPPUNIT_ASSERT(!aMulti.IsListeningTo(&aMod));
+    int nPreDeathChangedCount;
+    {
+        TestModify aTempMod;
+        aMod.Add(&aTempMod);
+        aMulti.StartListening(&aTempMod);
+        nPreDeathChangedCount = aClient.m_nModifyChangedCount;
+    }
+    CPPUNIT_ASSERT(aMulti.IsListeningTo(&aMod));
+    CPPUNIT_ASSERT_EQUAL(nPreDeathChangedCount+1, aClient.m_nModifyChangedCount);
+    CPPUNIT_ASSERT_EQUAL(static_cast<const SwModify*>(&aMod),aClient.m_pLastChangedModify);
 }
 
 void SwDocTest::test64kPageDescs()
@@ -1607,7 +2033,7 @@ void SwDocTest::test64kPageDescs()
     rZeroDesc = m_pDoc->GetPageDesc( 0 );
     CPPUNIT_ASSERT_EQUAL( aZeroName, rZeroDesc.GetName() );
 
-    m_pDoc->DelPageDesc( aChanged, nPos );
+    m_pDoc->DelPageDesc( aChanged, /*bBroadcast*/true );
     pDesc = m_pDoc->FindPageDesc( aChanged, &nPos );
     // not there anymore
     CPPUNIT_ASSERT( !pDesc );
@@ -1621,7 +2047,7 @@ void SwDocTest::test64kPageDescs()
 
 void SwDocTest::testTdf92308()
 {
-    CPPUNIT_ASSERT_EQUAL(m_pDoc->HasInvisibleContent(), false);
+    CPPUNIT_ASSERT_EQUAL(false, m_pDoc->HasInvisibleContent());
 }
 
 void SwDocTest::testTableCellComparison()
@@ -1656,8 +2082,8 @@ void SwDocTest::testTableCellComparison()
     CPPUNIT_ASSERT_EQUAL( +1, sw_CompareCellRanges("A2", "Z2", "A1", "Z1", true) );
     CPPUNIT_ASSERT_EQUAL( +1, sw_CompareCellRanges("A6", "Z2", "A1", "Z1", true) );
 
-    OUString rCell1 = OUString("A1");
-    OUString rCell2 = OUString("C5");
+    OUString rCell1("A1");
+    OUString rCell2("C5");
 
     sw_NormalizeRange(rCell1, rCell2);
     CPPUNIT_ASSERT_EQUAL( OUString("A1"), rCell1 );

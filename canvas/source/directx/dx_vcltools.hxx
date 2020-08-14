@@ -26,10 +26,8 @@
 
 namespace Gdiplus { class Graphics; }
 
-namespace dxcanvas
+namespace dxcanvas::tools
 {
-    namespace tools
-    {
         /** Raw RGBA bitmap data,
             contiguous in memory
         */
@@ -37,14 +35,14 @@ namespace dxcanvas
         {
             sal_Int32                           mnWidth;
             sal_Int32                           mnHeight;
-            std::shared_ptr< sal_uInt8 >    mpBitmapData;
+            std::vector<sal_uInt8>              maBitmapData;
         };
 
         bool drawVCLBitmapFromXBitmap( const std::shared_ptr< Gdiplus::Graphics >& rGraphics,
                                        const css::uno::Reference<
                                              css::rendering::XBitmap >&   xBitmap );
-    }
 }
+
 
 #endif // INCLUDED_CANVAS_SOURCE_DIRECTX_DX_VCLTOOLS_HXX
 

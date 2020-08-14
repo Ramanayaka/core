@@ -19,10 +19,15 @@
 
 #include <sal/config.h>
 
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/ucb/IllegalIdentifierException.hpp>
 #include <com/sun/star/ucb/UniversalContentBroker.hpp>
-#include <comphelper/processfactory.hxx>
-#include <osl/socket.hxx>
+#include <cppuhelper/exc_hlp.hxx>
+#include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/typeprovider.hxx>
+#include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/factory.hxx>
+#include <ucbhelper/getcomponentcontext.hxx>
 #include "ftpcontentprovider.hxx"
 #include "ftpcontent.hxx"
 #include "ftploaderthread.hxx"
@@ -38,8 +43,6 @@ using namespace com::sun::star::beans;
 
 FTPContentProvider::FTPContentProvider( const Reference< XComponentContext >& rxContext)
     : ::ucbhelper::ContentProviderImplHelper(rxContext)
-    , m_ftpLoaderThread(nullptr)
-    , m_pProxyDecider(nullptr)
 {
 }
 
@@ -47,8 +50,8 @@ FTPContentProvider::FTPContentProvider( const Reference< XComponentContext >& rx
 // virtual
 FTPContentProvider::~FTPContentProvider()
 {
-    delete m_ftpLoaderThread;
-    delete m_pProxyDecider;
+    m_ftpLoaderThread.reset();
+    m_pProxyDecider.reset();
 }
 
 // XInterface methods.
@@ -67,9 +70,9 @@ void SAL_CALL FTPContentProvider::release()
 css::uno::Any SAL_CALL FTPContentProvider::queryInterface( const css::uno::Type & rType )
 {
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< XTypeProvider* >(this)),
-                                               (static_cast< XServiceInfo* >(this)),
-                                               (static_cast< XContentProvider* >(this))
+                                               static_cast< XTypeProvider* >(this),
+                                               static_cast< XServiceInfo* >(this),
+                                               static_cast< XContentProvider* >(this)
         );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -96,12 +99,7 @@ css::uno::Sequence< css::uno::Type > SAL_CALL FTPContentProvider::getTypes()
 
 OUString SAL_CALL FTPContentProvider::getImplementationName()
 {
-    return getImplementationName_Static();
-}
-
-OUString FTPContentProvider::getImplementationName_Static()
-{
-    return OUString("com.sun.star.comp.FTPContentProvider");
+    return "com.sun.star.comp.FTPContentProvider";
 }
 
 sal_Bool SAL_CALL FTPContentProvider::supportsService( const OUString& ServiceName )
@@ -111,39 +109,10 @@ sal_Bool SAL_CALL FTPContentProvider::supportsService( const OUString& ServiceNa
 
 css::uno::Sequence< OUString > SAL_CALL FTPContentProvider::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
+    return { FTP_CONTENT_PROVIDER_SERVICE_NAME };
 }
 
-/// @throws css::uno::Exception
-static css::uno::Reference< css::uno::XInterface > SAL_CALL
-FTPContentProvider_CreateInstance( const css::uno::Reference<
-                                   css::lang::XMultiServiceFactory> & rSMgr )
-{
-    css::lang::XServiceInfo* pX = static_cast<css::lang::XServiceInfo*>(
-        new FTPContentProvider( ucbhelper::getComponentContext(rSMgr) ));
-    return css::uno::Reference< css::uno::XInterface >::query( pX );
-}
 
-css::uno::Sequence< OUString > FTPContentProvider::getSupportedServiceNames_Static()
-{
-    css::uno::Sequence<OUString> aSNS { FTP_CONTENT_PROVIDER_SERVICE_NAME };
-    return aSNS;
-}
-
-// Service factory implementation.
-
-css::uno::Reference< css::lang::XSingleServiceFactory >
-FTPContentProvider::createServiceFactory( const css::uno::Reference<
-            css::lang::XMultiServiceFactory >& rxServiceMgr )
-{
-    return css::uno::Reference<
-        css::lang::XSingleServiceFactory >(
-            cppu::createOneInstanceFactory(
-                rxServiceMgr,
-                FTPContentProvider::getImplementationName_Static(),
-                FTPContentProvider_CreateInstance,
-                FTPContentProvider::getSupportedServiceNames_Static() ) );
-}
 
 // XContentProvider methods.
 
@@ -164,6 +133,11 @@ Reference<XContent> SAL_CALL FTPContentProvider::queryContent(
         {
             try {
                 init();
+            } catch (css::uno::Exception const & ex) {
+                css::uno::Any anyEx = cppu::getCaughtException();
+                throw css::lang::WrappedTargetRuntimeException( ex.Message,
+                                css::uno::Reference< css::uno::XInterface >(),
+                                anyEx );
             } catch( ... ) {
                 throw RuntimeException();
             }
@@ -187,10 +161,9 @@ Reference<XContent> SAL_CALL FTPContentProvider::queryContent(
         }
         else {
             Reference<XContentProvider> xProvider(UniversalContentBroker::create( m_xContext )->queryContentProvider("http:"));
-            if(xProvider.is())
-                return xProvider->queryContent(xCanonicId);
-            else
+            if(!xProvider.is())
                 throw RuntimeException();
+            return xProvider->queryContent(xCanonicId);
         }
     } catch(const malformed_exception&) {
         throw IllegalIdentifierException();
@@ -202,8 +175,8 @@ Reference<XContent> SAL_CALL FTPContentProvider::queryContent(
 
 void FTPContentProvider::init()
 {
-    m_ftpLoaderThread = new FTPLoaderThread();
-    m_pProxyDecider = new ucbhelper::InternetProxyDecider( m_xContext );
+    m_ftpLoaderThread.reset( new FTPLoaderThread() );
+    m_pProxyDecider.reset( new ucbhelper::InternetProxyDecider( m_xContext ) );
 }
 
 CURL* FTPContentProvider::handle()
@@ -213,24 +186,22 @@ CURL* FTPContentProvider::handle()
 }
 
 
-bool FTPContentProvider::forHost( const OUString& host,
+void FTPContentProvider::forHost( const OUString& host,
                                   const OUString& port,
                                   const OUString& username,
                                   OUString& password,
                                   OUString& account)
 {
     osl::MutexGuard aGuard(m_aMutex);
-    for(ServerInfo & i : m_ServerInfo)
+    for(const ServerInfo & i : m_ServerInfo)
         if(host == i.host &&
            port == i.port &&
            username == i.username )
         {
             password = i.password;
             account = i.account;
-            return true;
+            return;
         }
-
-    return false;
 }
 
 bool  FTPContentProvider::setHost( const OUString& host,
@@ -262,6 +233,15 @@ bool  FTPContentProvider::setHost( const OUString& host,
         m_ServerInfo.push_back(inf);
 
     return !present;
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_ftp_FTPContentProvider_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    static rtl::Reference<FTPContentProvider> g_Instance(new FTPContentProvider(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

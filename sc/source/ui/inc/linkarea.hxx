@@ -20,41 +20,36 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_LINKAREA_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_LINKAREA_HXX
 
-#include <vcl/dialog.hxx>
-
-#include <vcl/button.hxx>
-#include <vcl/field.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
 #include <sfx2/objsh.hxx>
-#include <svtools/inettbc.hxx>
+#include <tools/solar.h>
+#include <vcl/weld.hxx>
 
 namespace sfx2 { class DocumentInserter; }
 namespace sfx2 { class FileDialogHelper; }
 
 class ScDocShell;
+class SvtURLBox;
 
-class ScLinkedAreaDlg : public ModalDialog
+class ScLinkedAreaDlg : public weld::GenericDialogController
 {
 private:
-    VclPtr<SvtURLBox>    m_pCbUrl;
-    VclPtr<PushButton>   m_pBtnBrowse;
-    VclPtr<ListBox>      m_pLbRanges;
-    VclPtr<CheckBox>     m_pBtnReload;
-    VclPtr<NumericField> m_pNfDelay;
-    VclPtr<FixedText>    m_pFtSeconds;
-    VclPtr<OKButton>     m_pBtnOk;
-
-    ScDocShell*             pSourceShell;
-    sfx2::DocumentInserter* pDocInserter;
-
+    ScDocShell*             m_pSourceShell;
+    std::unique_ptr<sfx2::DocumentInserter> m_xDocInserter;
     SfxObjectShellRef   aSourceRef;
 
-    DECL_LINK(FileHdl, ComboBox&, void);
-    DECL_LINK(BrowseHdl, Button*, void);
-    DECL_LINK(RangeHdl, ListBox&, void);
-    DECL_LINK(ReloadHdl, Button*, void);
-    DECL_LINK( DialogClosedHdl, sfx2::FileDialogHelper*, void );
+    std::unique_ptr<SvtURLBox> m_xCbUrl;
+    std::unique_ptr<weld::Button> m_xBtnBrowse;
+    std::unique_ptr<weld::TreeView> m_xLbRanges;
+    std::unique_ptr<weld::CheckButton> m_xBtnReload;
+    std::unique_ptr<weld::SpinButton> m_xNfDelay;
+    std::unique_ptr<weld::Label> m_xFtSeconds;
+    std::unique_ptr<weld::Button> m_xBtnOk;
+
+    DECL_LINK(FileHdl, weld::ComboBox&, bool);
+    DECL_LINK(BrowseHdl, weld::Button&, void);
+    DECL_LINK(RangeHdl, weld::TreeView&, void);
+    DECL_LINK(ReloadHdl, weld::Button&, void);
+    DECL_LINK(DialogClosedHdl, sfx2::FileDialogHelper*, void);
 
     void                UpdateSourceRanges();
     void                UpdateEnable();
@@ -62,19 +57,18 @@ private:
                                         const OUString& rOptions );
 
 public:
-            ScLinkedAreaDlg( vcl::Window* pParent );
-            virtual ~ScLinkedAreaDlg() override;
-    virtual void dispose() override;
+    ScLinkedAreaDlg(weld::Window* pParent);
+    virtual ~ScLinkedAreaDlg() override;
 
     void            InitFromOldLink( const OUString& rFile, const OUString& rFilter,
                                         const OUString& rOptions, const OUString& rSource,
                                         sal_uLong nRefresh );
 
-    OUString       GetURL();
-    OUString       GetFilter();        // may be empty
-    OUString       GetOptions();       // filter options
-    OUString       GetSource();        // separated by ";"
-    sal_uLong           GetRefresh();       // 0 if disabled
+    OUString       GetURL() const;
+    OUString       GetFilter() const;        // may be empty
+    OUString       GetOptions() const;       // filter options
+    OUString       GetSource() const;        // separated by ";"
+    sal_uLong      GetRefresh() const;       // 0 if disabled
 };
 
 #endif

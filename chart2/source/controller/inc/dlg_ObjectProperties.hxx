@@ -19,10 +19,11 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_DLG_OBJECTPROPERTIES_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_DLG_OBJECTPROPERTIES_HXX
 
-#include "ObjectIdentifier.hxx"
+#include <ObjectIdentifier.hxx>
 #include <sfx2/tabdlg.hxx>
-#include <svx/dlgctrl.hxx>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
+
+namespace com::sun::star::util { class XNumberFormatsSupplier; }
+class Graphic;
 
 namespace chart
 {
@@ -47,12 +48,14 @@ public:
     bool HasNumberProperties() const { return m_bHasNumberProperties;}
     bool ProvidesStartingAngle() const { return m_bProvidesStartingAngle;}
     bool ProvidesMissingValueTreatments() const { return m_bProvidesMissingValueTreatments;}
+    bool IsPieChartDataPoint() const { return m_bIsPieChartDataPoint;}
 
     bool HasScaleProperties() const { return m_bHasScaleProperties;}
     bool CanAxisLabelsBeStaggered() const { return m_bCanAxisLabelsBeStaggered;}
     bool IsSupportingAxisPositioning() const { return m_bSupportingAxisPositioning;}
     bool ShowAxisOrigin() const { return m_bShowAxisOrigin;}
     bool IsCrossingAxisIsCategoryAxis() const { return m_bIsCrossingAxisIsCategoryAxis;}
+    bool IsSupportingCategoryPositioning() const { return m_bSupportingCategoryPositioning;}
     const css::uno::Sequence< OUString >& GetCategories() const { return m_aCategories;}
 
     const css::uno::Reference< css::chart2::XChartDocument >&
@@ -79,6 +82,7 @@ private:
     bool m_bHasNumberProperties;
     bool m_bProvidesStartingAngle;
     bool m_bProvidesMissingValueTreatments;
+    bool m_bIsPieChartDataPoint;
 
     bool m_bHasScaleProperties;
     bool m_bCanAxisLabelsBeStaggered;
@@ -86,6 +90,7 @@ private:
     bool m_bSupportingAxisPositioning;
     bool m_bShowAxisOrigin;
     bool m_bIsCrossingAxisIsCategoryAxis;
+    bool m_bSupportingCategoryPositioning;
     css::uno::Sequence< OUString > m_aCategories;
 
     css::uno::Reference< css::chart2::XChartDocument > m_xChartDocument;
@@ -103,39 +108,33 @@ private:
 
 class ViewElementListProvider;
 
-class SchAttribTabDlg : public SfxTabDialog
+class SchAttribTabDlg : public SfxTabDialogController
 {
 private:
-    ObjectType               eObjectType;
-    sal_uInt16                   nDlgType;
-
     const ObjectPropertiesDialogParameter * const        m_pParameter;
     const ViewElementListProvider* const                 m_pViewElementListProvider;
     SvNumberFormatter* m_pNumberFormatter;
 
-    SfxItemSet*     m_pSymbolShapeProperties;
-    Graphic*        m_pAutoSymbolGraphic;
+    std::unique_ptr<SfxItemSet>     m_pSymbolShapeProperties;
+    std::unique_ptr<Graphic>        m_pAutoSymbolGraphic;
 
     double          m_fAxisMinorStepWidthForErrorBarDecimals;
     bool            m_bOKPressed;
 
-    virtual void PageCreated(sal_uInt16 nId, SfxTabPage& rPage) override;
+    DECL_LINK(OKPressed, weld::Button&, void);
 
-    Link<Button*,void> m_aOriginalOKClickHdl;
-    DECL_LINK( OKPressed, Button*, void );
+    virtual void PageCreated(const OString& rId, SfxTabPage& rPage) override;
 
 public:
-    SchAttribTabDlg(vcl::Window* pParent, const SfxItemSet* pAttr,
+    SchAttribTabDlg(weld::Window* pParent, const SfxItemSet* pAttr,
                     const ObjectPropertiesDialogParameter* pDialogParameter,
                     const ViewElementListProvider* pViewElementListProvider,
                     const css::uno::Reference< css::util::XNumberFormatsSupplier >& xNumberFormatsSupplier );
     virtual ~SchAttribTabDlg() override;
-    virtual void dispose() override;
 
     //pSymbolShapeProperties: Properties to be set on the symbollist shapes
     //pAutoSymbolGraphic: Graphic to be shown if AutoSymbol gets selected
-    //this class takes ownership over both parameter
-    void setSymbolInformation( SfxItemSet* pSymbolShapeProperties, Graphic* pAutoSymbolGraphic );
+    void setSymbolInformation( std::unique_ptr<SfxItemSet> pSymbolShapeProperties, std::unique_ptr<Graphic> pAutoSymbolGraphic );
 
     void SetAxisMinorStepWidthForErrorBarDecimals( double fMinorStepWidth );
 

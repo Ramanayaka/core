@@ -17,18 +17,15 @@
 #include <com/sun/star/frame/XInterceptorInfo.hpp>
 
 #include <comphelper/processfactory.hxx>
+#include <rtl/ref.hxx>
 
 using namespace ::com::sun::star;
 
 namespace
 {
-
 /// Sample interception implementation that asserts getInterceptedURLs() and queryDispatch() is in sync.
-class MyInterceptor : public cppu::WeakImplHelper
-    <
-    frame::XDispatchProviderInterceptor,
-    frame::XInterceptorInfo
-    >
+class MyInterceptor
+    : public cppu::WeakImplHelper<frame::XDispatchProviderInterceptor, frame::XInterceptorInfo>
 {
     uno::Reference<frame::XDispatchProvider> m_xMaster;
     uno::Reference<frame::XDispatchProvider> m_xSlave;
@@ -48,20 +45,25 @@ public:
     virtual uno::Sequence<OUString> SAL_CALL getInterceptedURLs() override;
 
     // frame::XDispatchProviderInterceptor
-    virtual void SAL_CALL setMasterDispatchProvider(const uno::Reference<frame::XDispatchProvider>& xNewSupplier) override;
+    virtual void SAL_CALL setMasterDispatchProvider(
+        const uno::Reference<frame::XDispatchProvider>& xNewSupplier) override;
     virtual uno::Reference<frame::XDispatchProvider> SAL_CALL getMasterDispatchProvider() override;
-    virtual void SAL_CALL setSlaveDispatchProvider(const uno::Reference<frame::XDispatchProvider>& xNewSupplier) override;
+    virtual void SAL_CALL
+    setSlaveDispatchProvider(const uno::Reference<frame::XDispatchProvider>& xNewSupplier) override;
     virtual uno::Reference<frame::XDispatchProvider> SAL_CALL getSlaveDispatchProvider() override;
 
     // frame::XDispatchProvider
-    virtual uno::Sequence<uno::Reference<frame::XDispatch>> SAL_CALL queryDispatches(const uno::Sequence<frame::DispatchDescriptor>& xRequests) override;
-    virtual uno::Reference<frame::XDispatch> SAL_CALL queryDispatch(const util::URL& rURL, const OUString& rTargetFrameName, sal_Int32 SearchFlags) override;
+    virtual uno::Sequence<uno::Reference<frame::XDispatch>> SAL_CALL
+    queryDispatches(const uno::Sequence<frame::DispatchDescriptor>& rRequests) override;
+    virtual uno::Reference<frame::XDispatch>
+        SAL_CALL queryDispatch(const util::URL& rURL, const OUString& rTargetFrameName,
+                               sal_Int32 SearchFlags) override;
 };
 
 MyInterceptor::MyInterceptor()
-    : m_aDisabledCommands {".uno:Bold"},
-      m_nExpected(0),
-      m_nUnexpected(0)
+    : m_aDisabledCommands{ ".uno:Bold" }
+    , m_nExpected(0)
+    , m_nUnexpected(0)
 {
 }
 
@@ -79,12 +81,10 @@ int MyInterceptor::getUnexpected()
     return nRet;
 }
 
-uno::Sequence<OUString> MyInterceptor::getInterceptedURLs()
-{
-    return m_aDisabledCommands;
-}
+uno::Sequence<OUString> MyInterceptor::getInterceptedURLs() { return m_aDisabledCommands; }
 
-void MyInterceptor::setMasterDispatchProvider(const uno::Reference<frame::XDispatchProvider>& xNewSupplier)
+void MyInterceptor::setMasterDispatchProvider(
+    const uno::Reference<frame::XDispatchProvider>& xNewSupplier)
 {
     m_xMaster = xNewSupplier;
 }
@@ -94,7 +94,8 @@ uno::Reference<frame::XDispatchProvider> MyInterceptor::getMasterDispatchProvide
     return m_xMaster;
 }
 
-void MyInterceptor::setSlaveDispatchProvider(const uno::Reference<frame::XDispatchProvider>& xNewSupplier)
+void MyInterceptor::setSlaveDispatchProvider(
+    const uno::Reference<frame::XDispatchProvider>& xNewSupplier)
 {
     m_xSlave = xNewSupplier;
 }
@@ -104,21 +105,26 @@ uno::Reference<frame::XDispatchProvider> MyInterceptor::getSlaveDispatchProvider
     return m_xSlave;
 }
 
-uno::Sequence<uno::Reference<frame::XDispatch>> MyInterceptor::queryDispatches(const uno::Sequence<frame::DispatchDescriptor>& rRequests)
+uno::Sequence<uno::Reference<frame::XDispatch>>
+MyInterceptor::queryDispatches(const uno::Sequence<frame::DispatchDescriptor>& rRequests)
 {
     uno::Sequence<uno::Reference<frame::XDispatch>> aResult(rRequests.getLength());
 
     for (sal_Int32 i = 0; i < rRequests.getLength(); ++i)
     {
-        aResult[i] = queryDispatch(rRequests[i].FeatureURL, rRequests[i].FrameName, rRequests[i].SearchFlags);
+        aResult[i] = queryDispatch(rRequests[i].FeatureURL, rRequests[i].FrameName,
+                                   rRequests[i].SearchFlags);
     }
 
     return aResult;
 }
 
-uno::Reference<frame::XDispatch> MyInterceptor::queryDispatch(const util::URL& rURL, const OUString& /*rTargetFrameName*/, sal_Int32 /*SearchFlags*/)
+uno::Reference<frame::XDispatch> MyInterceptor::queryDispatch(const util::URL& rURL,
+                                                              const OUString& /*rTargetFrameName*/,
+                                                              sal_Int32 /*SearchFlags*/)
 {
-    if (std::find(m_aDisabledCommands.begin(), m_aDisabledCommands.end(), rURL.Complete) != m_aDisabledCommands.end())
+    if (std::find(m_aDisabledCommands.begin(), m_aDisabledCommands.end(), rURL.Complete)
+        != m_aDisabledCommands.end())
         ++m_nExpected;
     else
         ++m_nUnexpected;
@@ -129,25 +135,21 @@ uno::Reference<frame::XDispatch> MyInterceptor::queryDispatch(const util::URL& r
 /// Tests how InterceptionHelper invokes a registered interceptor.
 class DispatchTest : public test::BootstrapFixture, public unotest::MacrosTest
 {
-    uno::Reference<uno::XComponentContext> mxComponentContext;
+protected:
     uno::Reference<lang::XComponent> mxComponent;
-    void dispatchCommand(const uno::Reference<lang::XComponent>& xComponent, const OUString& rCommand, const uno::Sequence<beans::PropertyValue>& rPropertyValues);
+    void dispatchCommand(const uno::Reference<lang::XComponent>& xComponent,
+                         const OUString& rCommand,
+                         const uno::Sequence<beans::PropertyValue>& rPropertyValues);
 
 public:
     virtual void setUp() override;
     virtual void tearDown() override;
-    void testInterception();
-
-    CPPUNIT_TEST_SUITE(DispatchTest);
-    CPPUNIT_TEST(testInterception);
-    CPPUNIT_TEST_SUITE_END();
 };
 
 void DispatchTest::setUp()
 {
     test::BootstrapFixture::setUp();
 
-    mxComponentContext.set(comphelper::getComponentContext(getMultiServiceFactory()));
     mxDesktop.set(frame::Desktop::create(mxComponentContext));
 }
 
@@ -159,9 +161,12 @@ void DispatchTest::tearDown()
     test::BootstrapFixture::tearDown();
 }
 
-void DispatchTest::dispatchCommand(const uno::Reference<lang::XComponent>& xComponent, const OUString& rCommand, const uno::Sequence<beans::PropertyValue>& rPropertyValues)
+void DispatchTest::dispatchCommand(const uno::Reference<lang::XComponent>& xComponent,
+                                   const OUString& rCommand,
+                                   const uno::Sequence<beans::PropertyValue>& rPropertyValues)
 {
-    uno::Reference<frame::XController> xController = uno::Reference<frame::XModel>(xComponent, uno::UNO_QUERY)->getCurrentController();
+    uno::Reference<frame::XController> xController
+        = uno::Reference<frame::XModel>(xComponent, uno::UNO_QUERY_THROW)->getCurrentController();
     CPPUNIT_ASSERT(xController.is());
     uno::Reference<frame::XDispatchProvider> xFrame(xController->getFrame(), uno::UNO_QUERY);
     CPPUNIT_ASSERT(xFrame.is());
@@ -173,18 +178,20 @@ void DispatchTest::dispatchCommand(const uno::Reference<lang::XComponent>& xComp
     xDispatchHelper->executeDispatch(xFrame, rCommand, OUString(), 0, rPropertyValues);
 }
 
-void DispatchTest::testInterception()
+CPPUNIT_TEST_FIXTURE(DispatchTest, testInterception)
 {
     mxComponent = loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument");
     CPPUNIT_ASSERT(mxComponent.is());
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
     CPPUNIT_ASSERT(xModel.is());
 
-    uno::Reference<frame::XDispatchProviderInterception> xRegistration(xModel->getCurrentController()->getFrame(), uno::UNO_QUERY);
+    uno::Reference<frame::XDispatchProviderInterception> xRegistration(
+        xModel->getCurrentController()->getFrame(), uno::UNO_QUERY);
     CPPUNIT_ASSERT(xRegistration.is());
 
     rtl::Reference<MyInterceptor> pInterceptor(new MyInterceptor());
-    xRegistration->registerDispatchProviderInterceptor(uno::Reference<frame::XDispatchProviderInterceptor>(pInterceptor.get()));
+    xRegistration->registerDispatchProviderInterceptor(
+        uno::Reference<frame::XDispatchProviderInterceptor>(pInterceptor.get()));
 
     dispatchCommand(mxComponent, ".uno:Bold", {});
     CPPUNIT_ASSERT_EQUAL(1, pInterceptor->getExpected());
@@ -194,9 +201,6 @@ void DispatchTest::testInterception()
     // This was 1: MyInterceptor::queryDispatch() was called for .uno:Italic.
     CPPUNIT_ASSERT_EQUAL(0, pInterceptor->getUnexpected());
 }
-
-CPPUNIT_TEST_SUITE_REGISTRATION(DispatchTest);
-
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

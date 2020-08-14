@@ -12,8 +12,7 @@
 
 #include <rangeutl.hxx>
 #include <importfilterdata.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <formula/grammar.hxx>
 
@@ -21,44 +20,41 @@ using namespace com::sun::star;
 using namespace xmloff::token;
 
 ScXMLDataStreamContext::ScXMLDataStreamContext(
-    ScXMLImport& rImport, sal_Int32 /*nElement*/,
-    const css::uno::Reference< css::xml::sax::XFastAttributeList>& xAttrList ) :
+    ScXMLImport& rImport,
+    const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList ) :
     ScXMLImportContext(rImport),
     mbRefreshOnEmpty(false),
     meInsertPos(sc::ImportPostProcessData::DataStream::InsertBottom)
 {
-    if( xAttrList.is() )
-    {
-        sax_fastparser::FastAttributeList *pAttribList =
-            static_cast< sax_fastparser::FastAttributeList *>( xAttrList.get() );
+    if ( !rAttrList.is() )
+        return;
 
-        for( auto &aIter : *pAttribList )
+    for (auto &aIter : *rAttrList)
+    {
+        switch ( aIter.getToken() )
         {
-            switch ( aIter.getToken() )
+            case XML_ELEMENT( XLINK, XML_HREF ):
+                maURL = GetScImport().GetAbsoluteReference( aIter.toString() );
+            break;
+            case XML_ELEMENT( TABLE, XML_TARGET_RANGE_ADDRESS ):
             {
-                case XML_ELEMENT( XLINK, XML_HREF ):
-                    maURL = GetScImport().GetAbsoluteReference( aIter.toString() );
-                break;
-                case XML_ELEMENT( TABLE, XML_TARGET_RANGE_ADDRESS ):
-                {
-                    ScDocument* pDoc = GetScImport().GetDocument();
-                    sal_Int32 nOffset = 0;
-                    if (!ScRangeStringConverter::GetRangeFromString(
-                        maRange, aIter.toString(), pDoc, formula::FormulaGrammar::CONV_OOO, nOffset))
-                        maRange.SetInvalid();
-                }
-                break;
-                case XML_ELEMENT( CALC_EXT, XML_EMPTY_LINE_REFRESH ):
-                    mbRefreshOnEmpty = IsXMLToken( aIter.toCString(), XML_TRUE );
-                break;
-                case XML_ELEMENT( CALC_EXT, XML_INSERTION_POSITION ):
-                    meInsertPos = IsXMLToken( aIter.toCString(), XML_TOP ) ?
-                        sc::ImportPostProcessData::DataStream::InsertTop :
-                        sc::ImportPostProcessData::DataStream::InsertBottom;
-                break;
-                default:
-                    ;
+                ScDocument* pDoc = GetScImport().GetDocument();
+                sal_Int32 nOffset = 0;
+                if (!ScRangeStringConverter::GetRangeFromString(
+                    maRange, aIter.toString(), pDoc, formula::FormulaGrammar::CONV_OOO, nOffset))
+                    maRange.SetInvalid();
             }
+            break;
+            case XML_ELEMENT( CALC_EXT, XML_EMPTY_LINE_REFRESH ):
+                mbRefreshOnEmpty = IsXMLToken( aIter, XML_TRUE );
+            break;
+            case XML_ELEMENT( CALC_EXT, XML_INSERTION_POSITION ):
+                meInsertPos = IsXMLToken( aIter, XML_TOP ) ?
+                    sc::ImportPostProcessData::DataStream::InsertTop :
+                    sc::ImportPostProcessData::DataStream::InsertBottom;
+            break;
+            default:
+                ;
         }
     }
 }

@@ -26,20 +26,20 @@
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/embed/XEmbeddedOleObject.hpp>
 #include <com/sun/star/embed/XInplaceObject.hpp>
-#include <com/sun/star/embed/XVisualObject.hpp>
 #include <com/sun/star/embed/XEmbedPersist.hpp>
 #include <com/sun/star/embed/XLinkageSupport.hpp>
-#include <com/sun/star/embed/XClassifiedObject.hpp>
-#include <com/sun/star/embed/XComponentSupplier.hpp>
 #include <com/sun/star/embed/VerbDescriptor.hpp>
-#include <com/sun/star/document/XEventBroadcaster.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
 #include <com/sun/star/util/XCloseListener.hpp>
+#include <com/sun/star/io/XActiveDataStreamer.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
 
 #include <osl/thread.h>
+#include <memory>
 
 namespace cppu {
     class OMultiTypeInterfaceContainerHelper;
@@ -104,13 +104,19 @@ public:
 
 class OleComponent;
 class OwnView_Impl;
+/**
+ * Represents an OLE object that has native data and we try to let an external
+ * application handle that data.
+ */
 class OleEmbeddedObject : public ::cppu::WeakImplHelper
                         < css::embed::XEmbeddedObject
                         , css::embed::XEmbeddedOleObject
                         , css::embed::XEmbedPersist
                         , css::embed::XLinkageSupport
                         , css::embed::XInplaceObject
-                        , css::container::XChild >
+                        , css::container::XChild
+                        , css::io::XActiveDataStreamer
+                        , css::lang::XInitialization >
 {
     friend class OleComponent;
 
@@ -118,7 +124,7 @@ class OleEmbeddedObject : public ::cppu::WeakImplHelper
 
     OleComponent*   m_pOleComponent;
 
-    ::cppu::OMultiTypeInterfaceContainerHelper* m_pInterfaceContainer;
+    std::unique_ptr<::cppu::OMultiTypeInterfaceContainerHelper> m_pInterfaceContainer;
 
     bool m_bReadOnly;
 
@@ -127,7 +133,7 @@ class OleEmbeddedObject : public ::cppu::WeakImplHelper
     sal_Int32 m_nTargetState;
     sal_Int32 m_nUpdateMode;
 
-    css::uno::Reference< css::lang::XMultiServiceFactory > m_xFactory;
+    css::uno::Reference< css::uno::XComponentContext > m_xContext;
 
     css::uno::Sequence< sal_Int8 > m_aClassID;
     OUString m_aClassName;
@@ -197,6 +203,9 @@ class OleEmbeddedObject : public ::cppu::WeakImplHelper
     OUString m_aFilterName; // if m_bTriedConversion, then the filter detected by that
 
     css::uno::Reference< css::uno::XInterface > m_xParent;
+
+    /// If it is allowed to modify entries in the stream of the OLE storage.
+    bool m_bStreamReadOnly = false;
 
 protected:
     /// @throws css::uno::Exception
@@ -279,21 +288,21 @@ protected:
     void MoveListeners();
     css::uno::Reference< css::embed::XStorage > CreateTemporarySubstorage( OUString& o_aStorageName );
     OUString MoveToTemporarySubstream();
-    bool TryToConvertToOOo();
+    bool TryToConvertToOOo( const css::uno::Reference< css::io::XStream >& xStream );
 
 public:
     // in case a new object must be created the class ID must be specified
-    OleEmbeddedObject( const css::uno::Reference< css::lang::XMultiServiceFactory >& xFactory,
+    OleEmbeddedObject( const css::uno::Reference< css::uno::XComponentContext >& xContext,
                         const css::uno::Sequence< sal_Int8 >& aClassID,
                         const OUString& aClassName );
 
     // in case object will be loaded from a persistent entry or from a file the class ID will be detected on loading
     // factory can do it for OOo objects, but for OLE objects OS dependent code is required
-    OleEmbeddedObject( const css::uno::Reference< css::lang::XMultiServiceFactory >& xFactory,
+    OleEmbeddedObject( const css::uno::Reference< css::uno::XComponentContext >& xContext,
                         bool bLink );
 #ifdef _WIN32
     // this constructor let object be initialized from clipboard
-    OleEmbeddedObject( const css::uno::Reference< css::lang::XMultiServiceFactory >& xFactory );
+    OleEmbeddedObject( const css::uno::Reference< css::uno::XComponentContext >& xContext );
 #endif
 
     virtual ~OleEmbeddedObject() override;
@@ -431,6 +440,12 @@ public:
     virtual css::uno::Reference< css::uno::XInterface > SAL_CALL getParent(  ) override;
     virtual void SAL_CALL setParent( const css::uno::Reference< css::uno::XInterface >& Parent ) override;
 
+    // XActiveDataStreamer
+    void SAL_CALL setStream(const css::uno::Reference<css::io::XStream>& xStream) override;
+    css::uno::Reference<css::io::XStream> SAL_CALL getStream() override;
+
+    // XInitialization
+    void SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>& rArguments) override;
 };
 
 #endif

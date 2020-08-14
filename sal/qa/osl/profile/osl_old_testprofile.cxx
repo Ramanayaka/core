@@ -18,10 +18,10 @@
  */
 
 #include <sal/types.h>
-#include "cppunit/TestAssert.h"
-#include "cppunit/TestFixture.h"
-#include "cppunit/extensions/HelperMacros.h"
-#include "cppunit/plugin/TestPlugIn.h"
+#include <cppunit/TestAssert.h>
+#include <cppunit/TestFixture.h>
+#include <cppunit/extensions/HelperMacros.h>
+#include <cppunit/plugin/TestPlugIn.h>
 
 #include <osl/profile.h>
 #include <rtl/bootstrap.hxx>
@@ -40,11 +40,11 @@ namespace osl_Profile
 
 void oldtests::test_profile()
 {
-    rtl::OUString baseUrl;
+    OUString baseUrl;
     CPPUNIT_ASSERT(rtl::Bootstrap::get("UserInstallation", baseUrl));
 
     // successful write
-    oslProfile hProfile = osl_openProfile( rtl::OUString(baseUrl + "/soffice.ini").pData, osl_Profile_WRITELOCK );
+    oslProfile hProfile = osl_openProfile( OUString(baseUrl + "/soffice.ini").pData, osl_Profile_WRITELOCK );
     CPPUNIT_ASSERT(hProfile != nullptr);
     CPPUNIT_ASSERT_MESSAGE(
         "cannot write into init file",
@@ -52,7 +52,7 @@ void oldtests::test_profile()
     CPPUNIT_ASSERT(osl_closeProfile( hProfile ));
 
     // unsuccessful open
-    CPPUNIT_ASSERT_EQUAL(oslProfile(nullptr), osl_openProfile( rtl::OUString(baseUrl + "/not_existing_path/soffice.ini").pData, osl_Profile_WRITELOCK ));
+    CPPUNIT_ASSERT_EQUAL(oslProfile(nullptr), osl_openProfile( OUString(baseUrl + "/not_existing_path/soffice.ini").pData, osl_Profile_WRITELOCK ));
 }
 
 } // namespace osl_Profile

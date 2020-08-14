@@ -26,9 +26,7 @@
 #include <basegfx/color/bcolormodifier.hxx>
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
+namespace drawinglayer::primitive3d
     {
         /** ModifiedColorPrimitive3D class
 
@@ -37,7 +35,7 @@ namespace drawinglayer
             visualisation. Please see the ModifiedColorPrimitive2D
             description for more info.
          */
-        class DRAWINGLAYER_DLLPUBLIC ModifiedColorPrimitive3D : public GroupPrimitive3D
+        class DRAWINGLAYER_DLLPUBLIC ModifiedColorPrimitive3D final : public GroupPrimitive3D
         {
         private:
             /// The ColorModifier to use
@@ -58,8 +56,8 @@ namespace drawinglayer
             /// provide unique ID
             DeclPrimitive3DIDBlock()
         };
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::primitive3d
 
 
 #endif //INCLUDED_DRAWINGLAYER_PRIMITIVE3D_MODIFIEDCOLORPRIMITIVE3D_HXX

@@ -17,15 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hintids.hxx"
-
 #include <vcl/status.hxx>
-#include <sfx2/app.hxx>
 #include <svl/stritem.hxx>
 #include <sfx2/zoomitem.hxx>
 
-#include "swtypes.hxx"
-#include "zoomctrl.hxx"
+#include <zoomctrl.hxx>
 
 SFX_IMPL_STATUSBAR_CONTROL( SwZoomControl, SvxZoomItem );
 
@@ -56,12 +52,8 @@ void SwZoomControl::StateChanged( sal_uInt16 nSID, SfxItemState eState,
     }
 }
 
-void SwZoomControl::Paint( const UserDrawEvent& rUsrEvt )
+void SwZoomControl::Paint( const UserDrawEvent& )
 {
-    if (sPreviewZoom.isEmpty())
-        SvxZoomStatusBarControl::Paint(rUsrEvt);
-    else
-        GetStatusBar().SetItemText(GetId(), sPreviewZoom);
 }
 
 void SwZoomControl::Command( const CommandEvent& rCEvt )

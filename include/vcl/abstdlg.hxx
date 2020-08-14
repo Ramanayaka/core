@@ -19,16 +19,28 @@
 #ifndef INCLUDED_VCL_ABSTDLG_HXX
 #define INCLUDED_VCL_ABSTDLG_HXX
 
+#include <sal/types.h>
 #include <rtl/ustring.hxx>
-#include <tools/link.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/vclptr.hxx>
 #include <vcl/vclreferencebase.hxx>
 #include <vector>
+#include <functional>
+#include <memory>
 
-namespace vcl { class Window; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
+
+namespace com::sun::star::frame { class XModel; }
+
 class Dialog;
-class Bitmap;
+class BitmapEx;
+class DiagramDataInterface;
+namespace weld
+{
+    class Dialog;
+    class DialogController;
+    class Window;
+}
 
 /**
 * Some things multiple-inherit from VclAbstractDialog and OutputDevice,
@@ -42,20 +54,33 @@ protected:
 public:
     virtual short       Execute() = 0;
 
+    struct AsyncContext {
+        // for the case where the owner is the dialog itself, and the dialog is an unwelded VclPtr based dialog
+        VclPtr<VclReferenceBase> mxOwner;
+        // for the case where the dialog is welded, and owned by a DialogController
+        std::shared_ptr<weld::DialogController> mxOwnerDialogController;
+        // for the case where the dialog is welded, and is running async without a DialogController
+        std::shared_ptr<weld::Dialog> mxOwnerSelf;
+        std::function<void(sal_Int32)> maEndDialogFn;
+        bool isSet() const { return !!maEndDialogFn; }
+    };
+
+    bool StartExecuteAsync(const std::function<void(sal_Int32)> &rEndDialogFn)
+    {
+        AsyncContext aCtx;
+        aCtx.mxOwner = this;
+        aCtx.maEndDialogFn = rEndDialogFn;
+        return StartExecuteAsync(aCtx);
+    }
+
+    /// Commence execution of a modal dialog.
+    virtual bool StartExecuteAsync(AsyncContext &);
+
     // Screenshot interface
     virtual std::vector<OString> getAllPageUIXMLDescriptions() const;
     virtual bool selectPageByUIXMLDescription(const OString& rUIXMLDescription);
-    virtual Bitmap createScreenshot() const;
+    virtual BitmapEx createScreenshot() const;
     virtual OString GetScreenshotId() const { return OString(); };
-};
-
-class VCL_DLLPUBLIC VclAbstractDialog2 : public virtual VclReferenceBase
-{
-protected:
-    virtual             ~VclAbstractDialog2() override;
-public:
-    virtual void        StartExecuteModal( const Link<Dialog&,void>& rEndDialogHdl ) = 0;
-    virtual long        GetResult() = 0;
 };
 
 class VCL_DLLPUBLIC VclAbstractTerminatedDialog : public VclAbstractDialog
@@ -63,15 +88,7 @@ class VCL_DLLPUBLIC VclAbstractTerminatedDialog : public VclAbstractDialog
 protected:
     virtual             ~VclAbstractTerminatedDialog() override = default;
 public:
-    virtual void        EndDialog(long nResult) = 0;
-};
-
-class VCL_DLLPUBLIC VclAbstractRefreshableDialog : public VclAbstractDialog
-{
-protected:
-    virtual             ~VclAbstractRefreshableDialog() override = default;
-public:
-    virtual void        Update() = 0;
+    virtual void        EndDialog(sal_Int32 nResult) = 0;
 };
 
 class VCL_DLLPUBLIC AbstractPasswordToOpenModifyDialog : public VclAbstractDialog
@@ -90,21 +107,79 @@ protected:
     virtual             ~AbstractScreenshotAnnotationDlg() override = default;
 };
 
+class VCL_DLLPUBLIC AbstractSignatureLineDialog : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractSignatureLineDialog() override = default;
+};
+
+class VCL_DLLPUBLIC AbstractSignSignatureLineDialog : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractSignSignatureLineDialog() override = default;
+};
+
+class VCL_DLLPUBLIC AbstractQrCodeGenDialog : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractQrCodeGenDialog() override = default;
+};
+
+class VCL_DLLPUBLIC AbstractAdditionsDialog : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractAdditionsDialog() override = default;
+};
+
+/** Edit Diagram dialog */
+class VCL_DLLPUBLIC AbstractDiagramDialog : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractDiagramDialog() override = default;
+};
+
 class VCL_DLLPUBLIC VclAbstractDialogFactory
 {
 public:
     virtual             ~VclAbstractDialogFactory();    // needed for export of vtable
     static VclAbstractDialogFactory* Create();
     // The Id is an implementation detail of the factory
-    virtual VclPtr<VclAbstractDialog> CreateVclDialog(vcl::Window* pParent, sal_uInt32 nId) = 0;
+    virtual VclPtr<VclAbstractDialog> CreateVclDialog(weld::Window* pParent, sal_uInt32 nId) = 0;
 
     // creates instance of PasswordToOpenModifyDialog from cui
-    virtual VclPtr<AbstractPasswordToOpenModifyDialog> CreatePasswordToOpenModifyDialog( vcl::Window * pParent, sal_uInt16 nMaxPasswdLen, bool bIsPasswordToModify ) = 0;
+    virtual VclPtr<AbstractPasswordToOpenModifyDialog> CreatePasswordToOpenModifyDialog(weld::Window * pParent, sal_uInt16 nMaxPasswdLen, bool bIsPasswordToModify) = 0;
+
+    // creates instance of SignatureDialog from cui
+    virtual VclPtr<AbstractSignatureLineDialog>
+    CreateSignatureLineDialog(weld::Window* pParent,
+                              const css::uno::Reference<css::frame::XModel> xModel,
+                              bool bEditExisting)
+        = 0;
+
+    // creates instance of SignSignatureDialog from cui
+    virtual VclPtr<AbstractSignSignatureLineDialog>
+    CreateSignSignatureLineDialog(weld::Window* pParent,
+                                  const css::uno::Reference<css::frame::XModel> xModel)
+        = 0;
+
+    // creates instance of QrCodeDialog from cui
+    virtual VclPtr<AbstractQrCodeGenDialog>
+    CreateQrCodeGenDialog(weld::Window* pParent,
+                              const css::uno::Reference<css::frame::XModel> xModel,
+                              bool bEditExisting)
+        = 0;
 
     // creates instance of ScreenshotAnnotationDlg from cui
     virtual VclPtr<AbstractScreenshotAnnotationDlg> CreateScreenshotAnnotationDlg(
-        vcl::Window* pParent,
-        Dialog& rParentDialog) = 0;
+        weld::Dialog& rParentDialog) = 0;
+
+    // create additions dialog
+    virtual VclPtr<AbstractAdditionsDialog>
+        CreateAdditionsDialog(weld::Window* pParent, const OUString& sAdditionsTag) = 0;
+
+    virtual VclPtr<AbstractDiagramDialog> CreateDiagramDialog(
+        weld::Window* pParent,
+        std::shared_ptr<DiagramDataInterface> pDiagramData) = 0;
 };
 
 #endif

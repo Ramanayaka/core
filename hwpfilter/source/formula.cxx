@@ -88,24 +88,24 @@ void Formula::makeLines(Node *res)
 
 void Formula::makeLine(Node *res)
 {
-  if( !res ) return;
+    if( !res ) return;
 #ifdef DEBUG
-     inds; fprintf(stderr,"<math:mrow>\n");
+    inds; fprintf(stderr,"<math:mrow>\n");
 #else
-     rstartEl("math:mrow", mxList.get());
+    rstartEl("math:mrow", mxList.get());
 #endif
-     if( res->child )
+    if( res->child )
          makeExprList( res->child );
 #ifdef DEBUG
-     inde; fprintf(stderr,"</math:mrow>\n");
+    inde; fprintf(stderr,"</math:mrow>\n");
 #else
-     rendEl("math:mrow");
+    rendEl("math:mrow");
 #endif
 }
 
 void Formula::makeExprList(Node *res)
 {
-   if( !res ) return;
+    if( !res ) return;
     Node *tmp = res->child;
     if( !tmp ) return ;
 
@@ -121,7 +121,7 @@ void Formula::makeExprList(Node *res)
 
 void Formula::makeExpr(Node *res)
 {
-  if( !res ) return;
+    if( !res ) return;
     Node *tmp = res->child;
     if( !tmp ) return;
     switch( tmp->id ) {
@@ -184,10 +184,10 @@ void Formula::makeExpr(Node *res)
 
 void Formula::makeIdentifier(Node *res)
 {
-     Node *tmp = res;
-  if( !tmp ) return;
-  if( !tmp->value ) return;
-     switch( tmp->id ){
+    Node *tmp = res;
+    if( !tmp ) return;
+    if( !tmp->value ) return;
+    switch( tmp->id ){
      case ID_CHARACTER :
 #ifdef DEBUG
           inds;
@@ -233,7 +233,7 @@ void Formula::makeIdentifier(Node *res)
 #endif
           break;
      case ID_OPERATOR :
-     case ID_DELIMETER :
+     case ID_DELIMITER :
         {
 #ifdef DEBUG
           inds; fprintf(stderr,"<math:mo>%s</math:mo>\n",tmp->value); indo;
@@ -613,12 +613,7 @@ void Formula::parse()
      if( res ){
           makeMathML( res );
      }
-     int count = nodelist.size();
-     for( i = 0 ; i < count ; i++ ){
-         const Node *tmpNode = nodelist.front();
-         nodelist.pop_front();
-         delete tmpNode;
-     }
+     nodelist.clear();
 }
 
 void Formula::trim()

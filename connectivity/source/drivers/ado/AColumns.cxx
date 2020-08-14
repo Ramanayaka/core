@@ -17,19 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AColumns.hxx"
-#include "ado/AColumn.hxx"
-#include "ado/AConnection.hxx"
-#include "ado/Awrapado.hxx"
+#include <ado/AColumns.hxx>
+#include <ado/AColumn.hxx>
+#include <ado/AConnection.hxx>
+#include <ado/Awrapado.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <comphelper/property.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/dbexception.hxx>
 #include <algorithm>
-#include "resource/ado_res.hrc"
+#include <strings.hrc>
 
 using namespace connectivity::ado;
 using namespace connectivity;
@@ -59,9 +60,9 @@ Reference< XPropertySet > OColumns::createDescriptor()
 // XAppend
 sdbcx::ObjectType OColumns::appendObject( const OUString&, const Reference< XPropertySet >& descriptor )
 {
-    OAdoColumn* pColumn = nullptr;
+    OAdoColumn* pColumn = getUnoTunnelImplementation<OAdoColumn>( descriptor );
     Reference< XPropertySet > xColumn;
-    if ( !getImplementation( pColumn, descriptor ) || pColumn == nullptr )
+    if ( pColumn == nullptr )
     {
         // m_pConnection->throwGenericSQLException( STR_INVALID_COLUMN_DESCRIPTOR_ERROR,static_cast<XTypeProvider*>(this) );
         pColumn = new OAdoColumn(isCaseSensitive(),m_pConnection);

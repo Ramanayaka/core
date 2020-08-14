@@ -23,11 +23,9 @@
 #include <memory>
 #include <oox/drawingml/theme.hxx>
 #include "workbookhelper.hxx"
+#include "stylesbuffer.hxx"
 
-namespace oox {
-namespace xls {
-
-struct FontModel;
+namespace oox::xls {
 
 class ThemeBuffer : public ::oox::drawingml::Theme, public WorkbookHelper
 {
@@ -36,9 +34,9 @@ public:
     virtual             ~ThemeBuffer() override;
 
     /** Returns the theme color with the specified token identifier. */
-    sal_Int32           getColorByToken( sal_Int32 nToken ) const;
+    ::Color             getColorByToken( sal_Int32 nToken ) const;
 
-    sal_Int32           getColorByIndex(size_t nIndex) const;
+    ::Color             getColorByIndex(size_t nIndex) const;
 
     /** Returns the default font data for the current file type. */
     const FontModel& getDefaultFontModel() const { return *mxDefFontModel; }
@@ -48,8 +46,7 @@ private:
     FontModelPtr        mxDefFontModel;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

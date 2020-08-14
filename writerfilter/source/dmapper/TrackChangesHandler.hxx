@@ -10,12 +10,10 @@
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_TRACKCHANGESHANDLER_HXX
 
 #include "LoggedResources.hxx"
-#include <memory>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <DomainMapper_Impl.hxx>
+#include <dmapper/PropertyMap.hxx>
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 /** Handler for sprms that contain 'track changes' attributes
     - Author
@@ -38,8 +36,7 @@ public:
     /// Compute the UNO properties for the track changes object based on the received tokens.
     css::uno::Sequence<css::beans::PropertyValue> getRedlineProperties() const;
 };
-typedef std::shared_ptr<TrackChangesHandler> TrackChangesHandlerPtr;
-}}
+}
 
 #endif
 

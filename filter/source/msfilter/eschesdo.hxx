@@ -20,13 +20,10 @@
 #define INCLUDED_FILTER_SOURCE_MSFILTER_ESCHESDO_HXX
 #include <filter/msfilter/escherex.hxx>
 #include <o3tl/any.hxx>
-#include <svx/unopage.hxx>
 #include <vcl/mapmod.hxx>
 
 
 // fractions of Draw PPTWriter etc.
-
-enum ImplEESdrPageType { NORMAL = 0, MASTER = 1, NOTICE = 2, UNDEFINED = 3 };
 
 class ImplEESdrWriter;
 class SdrObject;
@@ -92,7 +89,7 @@ public:
 // fractions of the Draw PPTWriter
 
 class EscherEx;
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace drawing {
         class XDrawPage;
         class XShape;
@@ -100,7 +97,7 @@ namespace com { namespace sun { namespace star {
     namespace task {
         class XStatusIndicator;
     }
-}}}
+}
 class EscherExHostAppData;
 
 class ImplEESdrWriter
@@ -115,17 +112,16 @@ class ImplEESdrWriter
     EscherExHostAppData*    mpHostAppData;
     bool                    mbIsTitlePossible;
     const SdrPage*          mpSdrPage;
-    EscherSolverContainer*  mpSolverContainer;
+    std::unique_ptr<EscherSolverContainer> mpSolverContainer;
 
-    bool                ImplInitPageValues();
+    void                ImplInitPageValues();
     void                ImplWritePage( EscherSolverContainer& rSolver );
     sal_uInt32          ImplWriteShape( ImplEESdrObject& rObj,
                             EscherSolverContainer& rSolver,
                             const bool bOOxmlExport = false );  // returns ShapeID
     static void         ImplFlipBoundingBox( ImplEESdrObject& rObj, EscherPropertyContainer& rPropOpt );
     void                ImplWriteAdditionalText(
-                            ImplEESdrObject& rObj,
-                            const Point& rTextRefPoint );
+                            ImplEESdrObject& rObj );
     sal_uInt32          ImplEnterAdditionalTextGroup(
                             const css::uno::Reference< css::drawing::XShape >& rShape,
                             const tools::Rectangle* pBoundRect );

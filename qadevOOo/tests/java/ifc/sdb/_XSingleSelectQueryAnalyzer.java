@@ -76,7 +76,7 @@ public class _XSingleSelectQueryAnalyzer extends MultiMethodTest {
     }
     /**
     * call <code>setQuery()</code> once with valid query, once with invalid
-    * query. Has ok if only on sceond call <code>SQLException</code> was thrown
+    * query. Has ok if only on second call <code>SQLException</code> was thrown
     */
     public void _setQuery() {
 
@@ -134,7 +134,7 @@ public class _XSingleSelectQueryAnalyzer extends MultiMethodTest {
     /**
     * Object relation <code>xComposer</code> set a complex filter with method
     . <code>setFilter</code>. Then <code>getStructuredFilter</code> returns a
-    * sequenze of <code>PropertyValue</code> which was set with method
+    * sequence of <code>PropertyValue</code> which was set with method
     * <code>setStructuredFilter</code> from <xComposer>.
     * Then test has ok status if <getFilter> returns the complex filter.
     * <p>
@@ -183,8 +183,8 @@ public class _XSingleSelectQueryAnalyzer extends MultiMethodTest {
     }
 
     /**
-    * Method <code>getGroupColumns</code> retunrs a <code>XIndexAccess</code>
-    * Test has ok status if returned value is an useable <code>XIndexAccess</code>
+    * Method <code>getGroupColumns</code> returns a <code>XIndexAccess</code>
+    * Test has ok status if returned value is a usable <code>XIndexAccess</code>
     */
     public void _getGroupColumns() {
         try{
@@ -267,8 +267,8 @@ public class _XSingleSelectQueryAnalyzer extends MultiMethodTest {
     }
 
     /**
-    * Method <code>getGroupColumns</code> retunrs a <code>XIndexAccess</code>
-    * Test has ok status if returned value is an useable <code>XIndexAccess</code>
+    * Method <code>getGroupColumns</code> returns a <code>XIndexAccess</code>
+    * Test has ok status if returned value is a usable <code>XIndexAccess</code>
     */
     public void _getOrderColumns() {
         try{

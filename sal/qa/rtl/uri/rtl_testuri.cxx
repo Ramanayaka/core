@@ -19,9 +19,9 @@
 
 #include <config_locales.h>
 
-#include "rtl/strbuf.hxx"
-#include "rtl/uri.hxx"
-#include "rtl/ustrbuf.hxx"
+#include <rtl/strbuf.hxx>
+#include <rtl/uri.hxx>
+#include <rtl/ustrbuf.hxx>
 
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
@@ -44,13 +44,12 @@ void Test::test_Uri() {
     rtl_UriCharClass const eFirstCharClass = rtl_UriCharClassNone;
     rtl_UriCharClass const eLastCharClass = rtl_UriCharClassUnoParamValue;
 
-    rtl::OUStringBuffer aBuffer;
-    rtl::OUString aText1;
-    rtl::OUString aText2;
+    OUString aText1;
+    OUString aText2;
 
     // Check that all characters map back to themselves when encoded/decoded:
 
-    aText1 = rtl::OUString(
+    aText1 = OUString(
         RTL_CONSTASCII_USTRINGPARAM(
             "\x00\x01\x02\x03\x04\x05\x06\x07"
             "\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F"
@@ -123,7 +122,7 @@ void Test::test_Uri() {
                 rtl_UriDecodeWithCharset, RTL_TEXTENCODING_UTF8));
     }
 
-    aText1 = rtl::OUString(
+    aText1 = OUString(
         ("\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F"
          "\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F"
          "\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2A\x2B\x2C\x2D\x2E\x2F"
@@ -182,12 +181,10 @@ void Test::test_Uri() {
 
     // Check surrogate handling:
 
-    aBuffer.append(u'\xD800'); // %ED%A0%80
-    aBuffer.append(u'\xD800'); // %F0%90%8F%BF
-    aBuffer.append(u'\xDFFF');
-    aBuffer.append(u'\xDFFF'); // %ED%BF%BF
-    aBuffer.append('A'); // A
-    aText1 = aBuffer.makeStringAndClear();
+    aText1 = u"\xD800" // %ED%A0%80
+             u"\U000103FF" // 0xD800,0xDFFF -> %F0%90%8F%BF
+             u"\xDFFF" // %ED%BF%BF
+             u"A"; // A
     aText2 = "%ED%A0%80" "%F0%90%8F%BF" "%ED%BF%BF" "A";
     CPPUNIT_ASSERT_EQUAL_MESSAGE(
         "failure 11",
@@ -209,12 +206,7 @@ void Test::test_Uri() {
             RTL_TEXTENCODING_UTF8));
 
     aText1 = "%ed%a0%80" "%f0%90%8f%bf" "%ed%bf%bf" "A";
-    aBuffer.append("%ED%A0%80");
-    aBuffer.append(u'\xD800');
-    aBuffer.append(u'\xDFFF');
-    aBuffer.append("%ED%BF%BF");
-    aBuffer.append('A');
-    aText2 = aBuffer.makeStringAndClear();
+    aText2 = u"%ED%A0%80" u"\U000103FF" u"%ED%BF%BF" u"A";
     CPPUNIT_ASSERT_EQUAL_MESSAGE(
         "failure 14",
         aText2,
@@ -250,9 +242,7 @@ void Test::test_Uri() {
     // Check IURI handling:
 
     aText1 = "%30%C3%BF";
-    aBuffer.append("%30");
-    aBuffer.append(u'\x00FF');
-    aText2 = aBuffer.makeStringAndClear();
+    aText2 = u"%30\u00FF";
     CPPUNIT_ASSERT_EQUAL_MESSAGE(
         "failure 18",
         aText2,
@@ -338,12 +328,12 @@ void Test::test_Uri() {
 
     for (std::size_t i = 0; i < SAL_N_ELEMENTS(aRelToAbsTest); ++i)
     {
-        rtl::OUString aAbs;
+        OUString aAbs;
         bool bMalformed = false;
         try {
             aAbs = rtl::Uri::convertRelToAbs(
-                rtl::OUString::createFromAscii(aRelToAbsTest[i].pBase),
-                rtl::OUString::createFromAscii(aRelToAbsTest[i].pRel));
+                OUString::createFromAscii(aRelToAbsTest[i].pBase),
+                OUString::createFromAscii(aRelToAbsTest[i].pRel));
         } catch (const rtl::MalformedUriException &) {
             bMalformed = true;
         }
@@ -357,7 +347,7 @@ void Test::test_Uri() {
                 aRelToAbsTest[i].pBase, aRelToAbsTest[i].pRel,
                 (bMalformed
                  ? "<MALFORMED>"
-                 : rtl::OUStringToOString(
+                 : OUStringToOString(
                      aAbs, RTL_TEXTENCODING_UTF8).getStr()),
                 (aRelToAbsTest[i].pAbs == nullptr
                  ? "<MALFORMED>" : aRelToAbsTest[i].pAbs));
@@ -369,7 +359,7 @@ void Test::test_Uri() {
 
     {
         sal_Unicode const aText1U[] = { ' ', '!', 0x0401, 0x045F, 0 };
-        aText1 = rtl::OUString(aText1U);
+        aText1 = OUString(aText1U);
         aText2 = "%20!%A1%FF";
         CPPUNIT_ASSERT_EQUAL_MESSAGE(
             "failure 20",
@@ -385,10 +375,10 @@ void Test::test_Uri() {
     }
     {
         sal_Unicode const aText1U[] = { ' ', '!', 0x0401, 0x0700, 0x045F, 0 };
-        aText1 = rtl::OUString(aText1U);
+        aText1 = OUString(aText1U);
         sal_Unicode const aText2U[] = {
             '%', '2', '0', '!', '%', 'A', '1', 0x0700, '%', 'F', 'F', 0 };
-        aText2 = rtl::OUString(aText2U);
+        aText2 = OUString(aText2U);
         CPPUNIT_ASSERT_EQUAL_MESSAGE(
             "failure 21",
             aText2,
@@ -404,7 +394,7 @@ void Test::test_Uri() {
 #if WITH_LOCALE_ALL || WITH_LOCALE_zh
     {
         sal_Unicode const aText1U[] = { ' ', '!', 0x028A, 0xD849, 0xDD13, 0 };
-        aText1 = rtl::OUString(aText1U);
+        aText1 = OUString(aText1U);
         aText2 = "%20!%81%30%B1%33%95%39%C5%37";
         CPPUNIT_ASSERT_EQUAL_MESSAGE(
             "failure 22",
@@ -423,8 +413,8 @@ void Test::test_Uri() {
 
     {
         sal_Unicode const aText1U[] = { ' ', '!', 0x0401, 0x0700, 0x045F, 0 };
-        aText1 = rtl::OUString(aText1U);
-        aText2 = rtl::OUString();
+        aText1 = OUString(aText1U);
+        aText2 = OUString();
         CPPUNIT_ASSERT_EQUAL_MESSAGE(
             "failure 23",
             aText2,
@@ -434,7 +424,7 @@ void Test::test_Uri() {
     }
     {
         aText1 = "%20%C4%80%FF";
-        aText2 = rtl::OUString();
+        aText2 = OUString();
         CPPUNIT_ASSERT_EQUAL_MESSAGE(
             "failure 24",
             aText2,
@@ -444,7 +434,7 @@ void Test::test_Uri() {
 #if WITH_LOCALE_ALL || WITH_LOCALE_zh
     {
         aText1 = "%81 ";
-        aText2 = rtl::OUString();
+        aText2 = OUString();
         CPPUNIT_ASSERT_EQUAL_MESSAGE(
             "failure 25",
             aText2,
@@ -453,7 +443,7 @@ void Test::test_Uri() {
     }
     {
         aText1 = "%81%20";
-        aText2 = rtl::OUString();
+        aText2 = OUString();
         CPPUNIT_ASSERT_EQUAL_MESSAGE(
             "failure 26",
             aText2,
@@ -463,7 +453,7 @@ void Test::test_Uri() {
     {
         aText1 = "%81%30%B1%33";
         sal_Unicode const aText2U[] = { 0x028A, 0 };
-        aText2 = rtl::OUString(aText2U);
+        aText2 = OUString(aText2U);
         CPPUNIT_ASSERT_EQUAL_MESSAGE(
             "failure 27",
             aText2,
@@ -473,7 +463,7 @@ void Test::test_Uri() {
     {
         aText1 = "%810%B13";
         sal_Unicode const aText2U[] = { 0x028A, 0 };
-        aText2 = rtl::OUString(aText2U);
+        aText2 = OUString(aText2U);
         CPPUNIT_ASSERT_EQUAL_MESSAGE(
             "failure 28",
             aText2,
@@ -495,7 +485,7 @@ void Test::test_Uri() {
     }
     {
         sal_Unicode const aText1U[] = { 0x00EA, 0 };
-        aText1 = rtl::OUString(aText1U);
+        aText1 = OUString(aText1U);
         aText2 = "%C3%AA";
         CPPUNIT_ASSERT_EQUAL_MESSAGE(
             "failure 30",
@@ -506,8 +496,8 @@ void Test::test_Uri() {
     }
     {
         sal_Unicode const aText1U[] = { ' ', '!', 0x0401, 0x0700, 0x045F, 0 };
-        aText1 = rtl::OUString(aText1U);
-        aText2 = rtl::OUString();
+        aText1 = OUString(aText1U);
+        aText2 = OUString();
         CPPUNIT_ASSERT_EQUAL_MESSAGE(
             "failure 23",
             aText2,

@@ -17,15 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "consoli.hxx"
-#include "document.hxx"
-#include "olinetab.hxx"
-#include "globstr.hrc"
-#include "subtotal.hxx"
+#include <consoli.hxx>
+#include <document.hxx>
+#include <olinetab.hxx>
+#include <subtotal.hxx>
 #include <formula/errorcodes.hxx>
-#include "formulacell.hxx"
-#include "tokenarray.hxx"
+#include <formulacell.hxx>
+#include <tokenarray.hxx>
 #include <osl/diagnose.h>
+#include <refdata.hxx>
 
 #include <math.h>
 #include <string.h>
@@ -33,7 +33,7 @@
 
 #define SC_CONS_NOTFOUND    -1
 
-static const OpCode eOpCodeTable[] = {      //  order as for enum ScSubTotalFunc
+const OpCode eOpCodeTable[] = {      //  order as for enum ScSubTotalFunc
         ocBad,                              //  none
         ocAverage,
         ocCount,
@@ -61,49 +61,21 @@ ScConsData::ScConsData() :
     bRowByName(false),
     nColCount(0),
     nRowCount(0),
-    ppUsed(nullptr),
-    ppSum(nullptr),
-    ppCount(nullptr),
-    ppSumSqr(nullptr),
-    ppRefs(nullptr),
     nDataCount(0),
-    ppTitlePos(nullptr),
     bCornerUsed(false)
 {
 }
 
 ScConsData::~ScConsData()
 {
-    DeleteData();
-}
-
-#define DELETEARR(ppArray,nCount)   \
-{                                   \
-    sal_uLong i;                        \
-    if (ppArray)                    \
-        for(i=0; i<nCount; i++)     \
-            delete[] ppArray[i];    \
-    delete[] ppArray;               \
-    ppArray = nullptr;                 \
 }
 
 void ScConsData::DeleteData()
 {
-    if (ppRefs)
-    {
-        for (SCSIZE i=0; i<nColCount; i++)
-        {
-            delete[] ppRefs[i];
-        }
-        delete[] ppRefs;
-        ppRefs = nullptr;
-    }
-
-    DELETEARR( ppCount, nColCount );
-    DELETEARR( ppSum,   nColCount );
-    DELETEARR( ppSumSqr,nColCount );
-    DELETEARR( ppUsed,  nColCount );
-    DELETEARR( ppTitlePos, nRowCount );
+    ppRefs.reset();
+    ppFunctionData.reset();
+    ppUsed.reset();
+    ppTitlePos.reset();
     ::std::vector<OUString>().swap( maColHeaders);
     ::std::vector<OUString>().swap( maRowHeaders);
     ::std::vector<OUString>().swap( maTitles);
@@ -116,47 +88,40 @@ void ScConsData::DeleteData()
     aCornerText.clear();
 }
 
-#undef DELETEARR
-#undef DELETESTR
-
 void ScConsData::InitData()
 {
     if (bReference && nColCount && !ppRefs)
     {
-        ppRefs = new ScReferenceList*[nColCount];
+        ppRefs.reset(new std::unique_ptr<ScReferenceList[]>[nColCount]);
         for (SCSIZE i=0; i<nColCount; i++)
-            ppRefs[i] = new ScReferenceList[nRowCount];
+            ppRefs[i].reset(new ScReferenceList[nRowCount]);
     }
-    else if (nColCount && !ppCount)
+    else if (nColCount && !ppFunctionData)
     {
-        ppCount  = new double*[nColCount];
-        ppSum    = new double*[nColCount];
-        ppSumSqr = new double*[nColCount];
+        ppFunctionData.reset( new std::unique_ptr<ScFunctionData[]>[nColCount] );
         for (SCSIZE i=0; i<nColCount; i++)
         {
-            ppCount[i]  = new double[nRowCount];
-            ppSum[i]    = new double[nRowCount];
-            ppSumSqr[i] = new double[nRowCount];
+            ppFunctionData[i].reset( new ScFunctionData[nRowCount] );
         }
     }
 
     if (nColCount && !ppUsed)
     {
-        ppUsed = new bool*[nColCount];
+        ppUsed.reset( new std::unique_ptr<bool[]>[nColCount] );
         for (SCSIZE i=0; i<nColCount; i++)
         {
-            ppUsed[i] = new bool[nRowCount];
-            memset( ppUsed[i], 0, nRowCount * sizeof(bool) );
+            ppUsed[i].reset( new bool[nRowCount] );
+            memset( ppUsed[i].get(), 0, nRowCount * sizeof(bool) );
         }
     }
 
     if (nRowCount && nDataCount && !ppTitlePos)
     {
-        ppTitlePos = new SCSIZE*[nRowCount];
+        ppTitlePos.reset( new std::unique_ptr<SCSIZE[]>[nRowCount] );
         for (SCSIZE i=0; i<nRowCount; i++)
         {
-            ppTitlePos[i] = new SCSIZE[nDataCount];
-            memset( ppTitlePos[i], 0, nDataCount * sizeof(SCSIZE) );    //TODO: not necessary ?
+            ppTitlePos[i].reset( new SCSIZE[nDataCount] );
+            memset( ppTitlePos[i].get(), 0, nDataCount * sizeof(SCSIZE) );    //TODO: not necessary ?
         }
     }
 
@@ -192,7 +157,7 @@ void ScConsData::SetFlags( ScSubTotalFunc eFunc, bool bColName, bool bRowName, b
     eFunction = eFunc;
 }
 
-void ScConsData::AddFields( ScDocument* pSrcDoc, SCTAB nTab,
+void ScConsData::AddFields( const ScDocument* pSrcDoc, SCTAB nTab,
                             SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 )
 {
     ++nDataCount;
@@ -221,20 +186,20 @@ void ScConsData::AddFields( ScDocument* pSrcDoc, SCTAB nTab,
         }
     }
 
-    if (bRowByName)
+    if (!bRowByName)
+        return;
+
+    for (SCROW nRow=nStartRow; nRow<=nRow2; nRow++)
     {
-        for (SCROW nRow=nStartRow; nRow<=nRow2; nRow++)
+        aTitle = pSrcDoc->GetString(nCol1, nRow, nTab);
+        if (!aTitle.isEmpty())
         {
-            aTitle = pSrcDoc->GetString(nCol1, nRow, nTab);
-            if (!aTitle.isEmpty())
-            {
-                bool bFound = false;
-                for (SCSIZE i=0; i<nRowCount && !bFound; i++)
-                    if ( maRowHeaders[i] == aTitle )
-                        bFound = true;
-                if (!bFound)
-                    lcl_AddString( maRowHeaders, nRowCount, aTitle );
-            }
+            bool bFound = false;
+            for (SCSIZE i=0; i<nRowCount && !bFound; i++)
+                if ( maRowHeaders[i] == aTitle )
+                    bFound = true;
+            if (!bFound)
+                lcl_AddString( maRowHeaders, nRowCount, aTitle );
         }
     }
 }
@@ -244,184 +209,32 @@ void ScConsData::AddName( const OUString& rName )
     SCSIZE nArrX;
     SCSIZE nArrY;
 
-    if (bReference)
-    {
-        maTitles.push_back( rName);
-        size_t nTitleCount = maTitles.size();
-
-        for (nArrY=0; nArrY<nRowCount; nArrY++)
-        {
-            //  set all data to same length
-
-            SCSIZE nMax = 0;
-            for (nArrX=0; nArrX<nColCount; nArrX++)
-                nMax = std::max( nMax, ppRefs[nArrX][nArrY].size() );
-
-            for (nArrX=0; nArrX<nColCount; nArrX++)
-            {
-                ppUsed[nArrX][nArrY] = true;
-                ppRefs[nArrX][nArrY].resize( nMax, { SC_CONS_NOTFOUND, SC_CONS_NOTFOUND, SC_CONS_NOTFOUND });
-            }
-
-            //  store positions
-
-            if (ppTitlePos)
-                if (nTitleCount < nDataCount)
-                    ppTitlePos[nArrY][nTitleCount] = nMax;
-        }
-    }
-}
-
-// rCount < 0 <=> error
-static void lcl_UpdateArray( ScSubTotalFunc eFunc,
-                         double& rCount, double& rSum, double& rSumSqr, double nVal )
-{
-    if (rCount < 0.0)
+    if (!bReference)
         return;
-    switch (eFunc)
-    {
-        case SUBTOTAL_FUNC_SUM:
-            if (!SubTotal::SafePlus(rSum, nVal))
-                rCount = -MAXDOUBLE;
-            break;
-        case SUBTOTAL_FUNC_PROD:
-            if (!SubTotal::SafeMult(rSum, nVal))
-                rCount = -MAXDOUBLE;
-            break;
-        case SUBTOTAL_FUNC_CNT:
-        case SUBTOTAL_FUNC_CNT2:
-            rCount += 1.0;
-            break;
-        case SUBTOTAL_FUNC_AVE:
-            if (!SubTotal::SafePlus(rSum, nVal))
-                rCount = -MAXDOUBLE;
-            else
-                rCount += 1.0;
-            break;
-        case SUBTOTAL_FUNC_MAX:
-            if (nVal > rSum)
-                rSum = nVal;
-            break;
-        case SUBTOTAL_FUNC_MIN:
-            if (nVal < rSum)
-                rSum = nVal;
-            break;
-        case SUBTOTAL_FUNC_STD:
-        case SUBTOTAL_FUNC_STDP:
-        case SUBTOTAL_FUNC_VAR:
-        case SUBTOTAL_FUNC_VARP:
-        {
-            bool bOk = SubTotal::SafePlus(rSum, nVal);
-            bOk = bOk && SubTotal::SafeMult(nVal, nVal);
-            bOk = bOk && SubTotal::SafePlus(rSumSqr, nVal);
-            if (!bOk)
-                rCount = -MAXDOUBLE;
-            else
-                rCount += 1.0;
-            break;
-        }
-        default:
-        {
-            // added to avoid warnings
-        }
-    }
-}
 
-static void lcl_InitArray( ScSubTotalFunc eFunc,
-                       double& rCount, double& rSum, double& rSumSqr, double nVal )
-{
-    rCount = 1.0;
-    switch (eFunc)
-    {
-        case SUBTOTAL_FUNC_SUM:
-        case SUBTOTAL_FUNC_MAX:
-        case SUBTOTAL_FUNC_MIN:
-        case SUBTOTAL_FUNC_PROD:
-        case SUBTOTAL_FUNC_AVE:
-            rSum = nVal;
-            break;
-        case SUBTOTAL_FUNC_STD:
-        case SUBTOTAL_FUNC_STDP:
-        case SUBTOTAL_FUNC_VAR:
-        case SUBTOTAL_FUNC_VARP:
-        {
-            rSum = nVal;
-            bool bOk = SubTotal::SafeMult(nVal, nVal);
-            if (bOk)
-                rSumSqr = nVal;
-            else
-                rCount = -MAXDOUBLE;
-        }
-            break;
-        default:
-            break;
-    }
-}
+    maTitles.push_back( rName);
+    size_t nTitleCount = maTitles.size();
 
-static double lcl_CalcData( ScSubTotalFunc eFunc,
-                        double& fCount, double fSum, double fSumSqr)
-{
-    if (fCount < 0.0)
-        return 0.0;
-    double fVal = 0.0;
-    switch (eFunc)
+    for (nArrY=0; nArrY<nRowCount; nArrY++)
     {
-        case SUBTOTAL_FUNC_CNT:
-        case SUBTOTAL_FUNC_CNT2:
-            fVal = fCount;
-            break;
-        case SUBTOTAL_FUNC_SUM:
-        case SUBTOTAL_FUNC_MAX:
-        case SUBTOTAL_FUNC_MIN:
-        case SUBTOTAL_FUNC_PROD:
-            fVal = fSum;
-            break;
-        case SUBTOTAL_FUNC_AVE:
-            if (fCount > 0.0)
-                fVal = fSum / fCount;
-            else
-                fCount = -MAXDOUBLE;
-            break;
-        case SUBTOTAL_FUNC_STD:
+        //  set all data to same length
+
+        SCSIZE nMax = 0;
+        for (nArrX=0; nArrX<nColCount; nArrX++)
+            nMax = std::max( nMax, ppRefs[nArrX][nArrY].size() );
+
+        for (nArrX=0; nArrX<nColCount; nArrX++)
         {
-            if (fCount > 1 && SubTotal::SafeMult(fSum, fSum))
-                fVal = sqrt((fSumSqr - fSum/fCount)/(fCount-1.0));
-            else
-                fCount = -MAXDOUBLE;
+            ppUsed[nArrX][nArrY] = true;
+            ppRefs[nArrX][nArrY].resize( nMax, { SC_CONS_NOTFOUND, SC_CONS_NOTFOUND, SC_CONS_NOTFOUND });
         }
-            break;
-        case SUBTOTAL_FUNC_STDP:
-        {
-            if (fCount > 0 && SubTotal::SafeMult(fSum, fSum))
-                fVal = sqrt((fSumSqr - fSum/fCount)/fCount);
-            else
-                fCount = -MAXDOUBLE;
-        }
-            break;
-        case SUBTOTAL_FUNC_VAR:
-        {
-            if (fCount > 1 && SubTotal::SafeMult(fSum, fSum))
-                fVal = (fSumSqr - fSum/fCount)/(fCount-1.0);
-            else
-                fCount = -MAXDOUBLE;
-        }
-            break;
-        case SUBTOTAL_FUNC_VARP:
-        {
-            if (fCount > 0 && SubTotal::SafeMult(fSum, fSum))
-                fVal = (fSumSqr - fSum/fCount)/fCount;
-            else
-                fCount = -MAXDOUBLE;
-        }
-            break;
-        default:
-        {
-            OSL_FAIL("Consoli::CalcData: unknown function");
-            fCount = -MAXDOUBLE;
-        }
-            break;
+
+        //  store positions
+
+        if (ppTitlePos)
+            if (nTitleCount < nDataCount)
+                ppTitlePos[nArrY][nTitleCount] = nMax;
     }
-    return fVal;
 }
 
 void ScConsData::AddData( ScDocument* pSrcDoc, SCTAB nTab,
@@ -540,17 +353,12 @@ void ScConsData::AddData( ScDocument* pSrcDoc, SCTAB nTab,
                     {
                         double nVal;
                         pSrcDoc->GetValue( nCol, nRow, nTab, nVal );
-                        if (ppUsed[nArrX][nArrY])
-                            lcl_UpdateArray( eFunction, ppCount[nArrX][nArrY],
-                                         ppSum[nArrX][nArrY], ppSumSqr[nArrX][nArrY],
-                                         nVal);
-                        else
+                        if (!ppUsed[nArrX][nArrY])
                         {
                             ppUsed[nArrX][nArrY] = true;
-                            lcl_InitArray( eFunction, ppCount[nArrX][nArrY],
-                                                  ppSum[nArrX][nArrY],
-                                                  ppSumSqr[nArrX][nArrY], nVal );
+                            ppFunctionData[nArrX][nArrY] = ScFunctionData( eFunction);
                         }
+                        ppFunctionData[nArrX][nArrY].update( nVal);
                     }
                 }
             }
@@ -613,16 +421,14 @@ void ScConsData::OutputToDocument( ScDocument* pDestDoc, SCCOL nCol, SCROW nRow,
 
     // data
 
-    if ( ppCount && ppUsed )    // insert values directly
+    if ( ppFunctionData && ppUsed )    // insert values directly
     {
         for (nArrX=0; nArrX<nColCount; nArrX++)
             for (nArrY=0; nArrY<nRowCount; nArrY++)
                 if (ppUsed[nArrX][nArrY])
                 {
-                    double fVal = lcl_CalcData( eFunction, ppCount[nArrX][nArrY],
-                                                ppSum[nArrX][nArrY],
-                                                ppSumSqr[nArrX][nArrY]);
-                    if (ppCount[nArrX][nArrY] < 0.0)
+                    double fVal = ppFunctionData[nArrX][nArrY].getResult();
+                    if (ppFunctionData[nArrX][nArrY].getError())
                         pDestDoc->SetError( sal::static_int_cast<SCCOL>(nCol+nArrX),
                                             sal::static_int_cast<SCROW>(nRow+nArrY), nTab, FormulaError::NoValue );
                     else
@@ -631,108 +437,108 @@ void ScConsData::OutputToDocument( ScDocument* pDestDoc, SCCOL nCol, SCROW nRow,
                 }
     }
 
-    if ( ppRefs && ppUsed )     // insert Reference
+    if ( !(ppRefs && ppUsed) )     // insert Reference
+                                return;
+
+                            //TODO: differentiate, if split into categories
+    OUString aString;
+
+    ScSingleRefData aSRef;  // data for Reference formula cells
+    aSRef.InitFlags();      // this reference is absolute at all times
+    aSRef.SetFlag3D(true);
+
+    ScComplexRefData aCRef; // data for Sum cells
+    aCRef.InitFlags();
+    aCRef.Ref1.SetColRel(true); aCRef.Ref1.SetRowRel(true); aCRef.Ref1.SetTabRel(true);
+    aCRef.Ref2.SetColRel(true); aCRef.Ref2.SetRowRel(true); aCRef.Ref2.SetTabRel(true);
+
+    for (nArrY=0; nArrY<nRowCount; nArrY++)
     {
-                                //TODO: differentiate, if split into categories
-        OUString aString;
+        SCSIZE nNeeded = 0;
+        for (nArrX=0; nArrX<nColCount; nArrX++)
+            nNeeded = std::max( nNeeded, ppRefs[nArrX][nArrY].size() );
 
-        ScSingleRefData aSRef;  // data for Reference formula cells
-        aSRef.InitFlags();      // this reference is absolute at all times
-        aSRef.SetFlag3D(true);
-
-        ScComplexRefData aCRef; // data for Sum cells
-        aCRef.InitFlags();
-        aCRef.Ref1.SetColRel(true); aCRef.Ref1.SetRowRel(true); aCRef.Ref1.SetTabRel(true);
-        aCRef.Ref2.SetColRel(true); aCRef.Ref2.SetRowRel(true); aCRef.Ref2.SetTabRel(true);
-
-        for (nArrY=0; nArrY<nRowCount; nArrY++)
+        if (nNeeded)
         {
-            SCSIZE nNeeded = 0;
+            pDestDoc->InsertRow( 0,nTab, pDestDoc->MaxCol(),nTab, nRow+nArrY, nNeeded );
+
             for (nArrX=0; nArrX<nColCount; nArrX++)
-                nNeeded = std::max( nNeeded, ppRefs[nArrX][nArrY].size() );
-
-            if (nNeeded)
-            {
-                pDestDoc->InsertRow( 0,nTab, MAXCOL,nTab, nRow+nArrY, nNeeded );
-
-                for (nArrX=0; nArrX<nColCount; nArrX++)
-                    if (ppUsed[nArrX][nArrY])
-                    {
-                        SCSIZE nCount = ppRefs[nArrX][nArrY].size();
-                        if (nCount)
-                        {
-                            for (SCSIZE nPos=0; nPos<nCount; nPos++)
-                            {
-                                ScReferenceEntry aRef = ppRefs[nArrX][nArrY][nPos];
-                                if (aRef.nTab != SC_CONS_NOTFOUND)
-                                {
-                                    // insert reference (absolute, 3d)
-
-                                    aSRef.SetAddress(ScAddress(aRef.nCol,aRef.nRow,aRef.nTab), ScAddress());
-
-                                    ScTokenArray aRefArr;
-                                    aRefArr.AddSingleReference(aSRef);
-                                    aRefArr.AddOpCode(ocStop);
-                                    ScAddress aDest( sal::static_int_cast<SCCOL>(nCol+nArrX),
-                                                     sal::static_int_cast<SCROW>(nRow+nArrY+nPos), nTab );
-                                    ScFormulaCell* pCell = new ScFormulaCell(pDestDoc, aDest, aRefArr);
-                                    pDestDoc->SetFormulaCell(aDest, pCell);
-                                }
-                            }
-
-                            // insert sum (relative, not 3d)
-
-                            ScAddress aDest( sal::static_int_cast<SCCOL>(nCol+nArrX),
-                                             sal::static_int_cast<SCROW>(nRow+nArrY+nNeeded), nTab );
-
-                            ScRange aRange(sal::static_int_cast<SCCOL>(nCol+nArrX), nRow+nArrY, nTab);
-                            aRange.aEnd.SetRow(nRow+nArrY+nNeeded-1);
-                            aCRef.SetRange(aRange, aDest);
-
-                            ScTokenArray aArr;
-                            aArr.AddOpCode(eOpCode);            // selected function
-                            aArr.AddOpCode(ocOpen);
-                            aArr.AddDoubleReference(aCRef);
-                            aArr.AddOpCode(ocClose);
-                            aArr.AddOpCode(ocStop);
-                            ScFormulaCell* pCell = new ScFormulaCell(pDestDoc, aDest, aArr);
-                            pDestDoc->SetFormulaCell(aDest, pCell);
-                        }
-                    }
-
-                // insert outline
-
-                ScOutlineArray& rOutArr = pDestDoc->GetOutlineTable( nTab, true )->GetRowArray();
-                SCROW nOutStart = nRow+nArrY;
-                SCROW nOutEnd = nRow+nArrY+nNeeded-1;
-                bool bSize = false;
-                rOutArr.Insert( nOutStart, nOutEnd, bSize );
-                for (SCROW nOutRow=nOutStart; nOutRow<=nOutEnd; nOutRow++)
-                    pDestDoc->ShowRow( nOutRow, nTab, false );
-                pDestDoc->SetDrawPageSize(nTab);
-                pDestDoc->UpdateOutlineRow( nOutStart, nOutEnd, nTab, false );
-
-                // sub title
-
-                if (ppTitlePos && !maTitles.empty() && !maRowHeaders.empty())
+                if (ppUsed[nArrX][nArrY])
                 {
-                    for (SCSIZE nPos=0; nPos<nDataCount; nPos++)
+                    SCSIZE nCount = ppRefs[nArrX][nArrY].size();
+                    if (nCount)
                     {
-                        SCSIZE nTPos = ppTitlePos[nArrY][nPos];
-                        bool bDo = true;
-                        if (nPos+1<nDataCount)
-                            if (ppTitlePos[nArrY][nPos+1] == nTPos)
-                                bDo = false;                                    // empty
-                        if ( bDo && nTPos < nNeeded )
+                        for (SCSIZE nPos=0; nPos<nCount; nPos++)
                         {
-                            aString = maRowHeaders[nArrY] + " / " + maTitles[nPos];
-                            pDestDoc->SetString( nCol-1, nRow+nArrY+nTPos, nTab, aString );
+                            ScReferenceEntry aRef = ppRefs[nArrX][nArrY][nPos];
+                            if (aRef.nTab != SC_CONS_NOTFOUND)
+                            {
+                                // insert reference (absolute, 3d)
+
+                                aSRef.SetAddress(pDestDoc->GetSheetLimits(), ScAddress(aRef.nCol,aRef.nRow,aRef.nTab), ScAddress());
+
+                                ScTokenArray aRefArr(pDestDoc);
+                                aRefArr.AddSingleReference(aSRef);
+                                aRefArr.AddOpCode(ocStop);
+                                ScAddress aDest( sal::static_int_cast<SCCOL>(nCol+nArrX),
+                                                 sal::static_int_cast<SCROW>(nRow+nArrY+nPos), nTab );
+                                ScFormulaCell* pCell = new ScFormulaCell(pDestDoc, aDest, aRefArr);
+                                pDestDoc->SetFormulaCell(aDest, pCell);
+                            }
                         }
+
+                        // insert sum (relative, not 3d)
+
+                        ScAddress aDest( sal::static_int_cast<SCCOL>(nCol+nArrX),
+                                         sal::static_int_cast<SCROW>(nRow+nArrY+nNeeded), nTab );
+
+                        ScRange aRange(sal::static_int_cast<SCCOL>(nCol+nArrX), nRow+nArrY, nTab);
+                        aRange.aEnd.SetRow(nRow+nArrY+nNeeded-1);
+                        aCRef.SetRange(pDestDoc->GetSheetLimits(), aRange, aDest);
+
+                        ScTokenArray aArr(pDestDoc);
+                        aArr.AddOpCode(eOpCode);            // selected function
+                        aArr.AddOpCode(ocOpen);
+                        aArr.AddDoubleReference(aCRef);
+                        aArr.AddOpCode(ocClose);
+                        aArr.AddOpCode(ocStop);
+                        ScFormulaCell* pCell = new ScFormulaCell(pDestDoc, aDest, aArr);
+                        pDestDoc->SetFormulaCell(aDest, pCell);
                     }
                 }
 
-                nRow += nNeeded;
+            // insert outline
+
+            ScOutlineArray& rOutArr = pDestDoc->GetOutlineTable( nTab, true )->GetRowArray();
+            SCROW nOutStart = nRow+nArrY;
+            SCROW nOutEnd = nRow+nArrY+nNeeded-1;
+            bool bSize = false;
+            rOutArr.Insert( nOutStart, nOutEnd, bSize );
+            for (SCROW nOutRow=nOutStart; nOutRow<=nOutEnd; nOutRow++)
+                pDestDoc->ShowRow( nOutRow, nTab, false );
+            pDestDoc->SetDrawPageSize(nTab);
+            pDestDoc->UpdateOutlineRow( nOutStart, nOutEnd, nTab, false );
+
+            // sub title
+
+            if (ppTitlePos && !maTitles.empty() && !maRowHeaders.empty())
+            {
+                for (SCSIZE nPos=0; nPos<nDataCount; nPos++)
+                {
+                    SCSIZE nTPos = ppTitlePos[nArrY][nPos];
+                    bool bDo = true;
+                    if (nPos+1<nDataCount)
+                        if (ppTitlePos[nArrY][nPos+1] == nTPos)
+                            bDo = false;                                    // empty
+                    if ( bDo && nTPos < nNeeded )
+                    {
+                        aString = maRowHeaders[nArrY] + " / " + maTitles[nPos];
+                        pDestDoc->SetString( nCol-1, nRow+nArrY+nTPos, nTab, aString );
+                    }
+                }
             }
+
+            nRow += nNeeded;
         }
     }
 }

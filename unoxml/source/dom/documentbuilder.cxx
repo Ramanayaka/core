@@ -17,20 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <documentbuilder.hxx>
+#include "documentbuilder.hxx"
 
 #include <string.h>
-#include <stdio.h>
-#include <stdarg.h>
 
 #include <libxml/xmlerror.h>
-#include <libxml/tree.h>
 
 #include <memory>
 
-#include <rtl/alloc.h>
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -39,12 +37,12 @@
 #include <com/sun/star/xml/sax/SAXParseException.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
+#include <com/sun/star/ucb/SimpleFileAccess.hpp>
 
 #include <ucbhelper/content.hxx>
 #include <ucbhelper/commandenvironment.hxx>
 
-#include <node.hxx>
-#include <document.hxx>
+#include "document.hxx"
 
 using namespace css::io;
 using namespace css::lang;
@@ -59,6 +57,7 @@ using css::xml::sax::InputSource;
 
 namespace DOM
 {
+    namespace {
 
     class CDefaultEntityResolver : public cppu::WeakImplHelper< XEntityResolver >
     {
@@ -86,6 +85,8 @@ namespace DOM
 
     };
 
+    }
+
     CDocumentBuilder::CDocumentBuilder()
         : m_xEntityResolver(new CDefaultEntityResolver)
     {
@@ -95,39 +96,14 @@ namespace DOM
         xmlInitParser();
     }
 
-    Reference< XInterface > CDocumentBuilder::_getInstance(const Reference< XMultiServiceFactory >& )
-    {
-        return static_cast< XDocumentBuilder* >(new CDocumentBuilder);
-    }
-
-    const char* CDocumentBuilder::aImplementationName = "com.sun.star.comp.xml.dom.DocumentBuilder";
-    const char* CDocumentBuilder::aSupportedServiceNames[] = {
-        "com.sun.star.xml.dom.DocumentBuilder",
-        nullptr
-    };
-
-    OUString CDocumentBuilder::_getImplementationName()
-    {
-        return OUString::createFromAscii(aImplementationName);
-    }
-    Sequence<OUString> CDocumentBuilder::_getSupportedServiceNames()
-    {
-        Sequence<OUString> aSequence;
-        for (int i=0; aSupportedServiceNames[i]!=nullptr; i++) {
-            aSequence.realloc(i+1);
-            aSequence[i]=(OUString::createFromAscii(aSupportedServiceNames[i]));
-        }
-        return aSequence;
-    }
-
     Sequence< OUString > SAL_CALL CDocumentBuilder::getSupportedServiceNames()
     {
-        return CDocumentBuilder::_getSupportedServiceNames();
+        return { "com.sun.star.xml.dom.DocumentBuilder" };
     }
 
     OUString SAL_CALL CDocumentBuilder::getImplementationName()
     {
-        return CDocumentBuilder::_getImplementationName();
+        return "com.sun.star.comp.xml.dom.DocumentBuilder";
     }
 
     sal_Bool SAL_CALL CDocumentBuilder::supportsService(const OUString& aServiceName)
@@ -178,12 +154,16 @@ namespace DOM
     // -- c-linkage, so the callbacks can be used by libxml
     extern "C" {
 
+    namespace {
+
     // context struct passed to IO functions
     typedef struct context {
         Reference< XInputStream > rInputStream;
         bool close;
         bool freeOnClose;
     } context_t;
+
+    }
 
     static int xmlIO_read_func( void *context, char *buffer, int len)
     {
@@ -199,8 +179,8 @@ namespace DOM
             // copy bytes to the provided buffer
             memcpy(buffer, chunk.getConstArray(), nread);
             return nread;
-        } catch (const css::uno::Exception& ex) {
-            SAL_WARN( "unoxml", ex.Message);
+        } catch (const css::uno::Exception&) {
+            TOOLS_WARN_EXCEPTION( "unoxml", "");
             return -1;
         }
     }
@@ -218,8 +198,8 @@ namespace DOM
             if (pctx->freeOnClose)
                 delete pctx;
             return 0;
-        } catch (const css::uno::Exception& ex) {
-            SAL_WARN( "unoxml", ex.Message);
+        } catch (const css::uno::Exception&) {
+            TOOLS_WARN_EXCEPTION( "unoxml", "");
             return -1;
         }
     }
@@ -269,24 +249,70 @@ namespace DOM
     // default warning handler does not trigger assertion
     static void warning_func(void * ctx, const char * /*msg*/, ...)
     {
-        SAL_INFO(
-            "unoxml",
-            "libxml2 warning: "
-                << make_error_message(static_cast<xmlParserCtxtPtr>(ctx)));
+        try
+        {
+            xmlParserCtxtPtr const pctx = static_cast<xmlParserCtxtPtr>(ctx);
+
+            SAL_INFO(
+                "unoxml",
+                "libxml2 warning: "
+                << make_error_message(pctx));
+
+            CDocumentBuilder * const pDocBuilder = static_cast<CDocumentBuilder*>(pctx->_private);
+
+            if (pDocBuilder->getErrorHandler().is())   // if custom error handler is set (using setErrorHandler ())
+            {
+                // Prepare SAXParseException to be passed to custom XErrorHandler::warning function
+                css::xml::sax::SAXParseException saxex;
+                saxex.Message = make_error_message(pctx);
+                saxex.LineNumber = static_cast<sal_Int32>(pctx->lastError.line);
+                saxex.ColumnNumber = static_cast<sal_Int32>(pctx->lastError.int2);
+
+                // Call custom warning function
+                pDocBuilder->getErrorHandler()->warning(::css::uno::Any(saxex));
+            }
+        }
+        catch (const css::uno::Exception &)
+        {
+            // Protect lib2xml from UNO Exception
+            TOOLS_WARN_EXCEPTION("unoxml", "DOM::warning_func");
+        }
     }
 
     // default error handler triggers assertion
     static void error_func(void * ctx, const char * /*msg*/, ...)
     {
-        SAL_WARN(
-            "unoxml",
-            "libxml2 error: "
-                << make_error_message(static_cast<xmlParserCtxtPtr>(ctx)));
-    }
+        try
+        {
+            xmlParserCtxtPtr const pctx = static_cast<xmlParserCtxtPtr>(ctx);
+            SAL_WARN(
+                "unoxml",
+                "libxml2 error: "
+                << make_error_message(pctx));
 
+            CDocumentBuilder * const pDocBuilder = static_cast<CDocumentBuilder*>(pctx->_private);
+
+            if (pDocBuilder->getErrorHandler().is())   // if custom error handler is set (using setErrorHandler ())
+            {
+                // Prepare SAXParseException to be passed to custom XErrorHandler::error function
+                css::xml::sax::SAXParseException saxex;
+                saxex.Message = make_error_message(pctx);
+                saxex.LineNumber = static_cast<sal_Int32>(pctx->lastError.line);
+                saxex.ColumnNumber = static_cast<sal_Int32>(pctx->lastError.int2);
+
+                // Call custom warning function
+                pDocBuilder->getErrorHandler()->error(::css::uno::Any(saxex));
+            }
+        }
+        catch (const css::uno::Exception &)
+        {
+            // Protect lib2xml from UNO Exception
+            TOOLS_WARN_EXCEPTION("unoxml", "DOM::error_func");
+        }
+    }
     } // extern "C"
 
-    void throwEx(xmlParserCtxtPtr ctxt)
+    static void throwEx(xmlParserCtxtPtr ctxt)
     {
         css::xml::sax::SAXParseException saxex;
         saxex.Message = make_error_message(ctxt);
@@ -354,11 +380,27 @@ namespace DOM
         OString oUri = OUStringToOString(sUri, RTL_TEXTENCODING_UTF8);
         char *uri = const_cast<char*>(oUri.getStr());
         xmlDocPtr pDoc = xmlCtxtReadFile(pContext.get(), uri, nullptr, 0);
+
+        Reference< XDocument > xRet;
+
+        // if we failed to parse the URI as a simple file, lets try via a ucb stream.
+        // For Android file:///assets/ URLs which must go via the osl/ file API.
         if (pDoc == nullptr) {
-            throwEx(pContext.get());
-        }
-        Reference< XDocument > const xRet(
-                CDocument::CreateCDocument(pDoc).get());
+            Reference < XSimpleFileAccess3 > xStreamAccess(
+                SimpleFileAccess::create( comphelper::getProcessComponentContext() ) );
+            Reference< XInputStream > xInStream = xStreamAccess->openFileRead( sUri );
+            if (!xInStream.is())
+                throwEx(pContext.get());
+
+            // loop over every layout entry in current file
+            xRet = parse( xInStream );
+
+            xInStream->closeInput();
+            xInStream.clear();
+
+        } else
+            xRet = CDocument::CreateCDocument(pDoc).get();
+
         return xRet;
     }
 
@@ -370,7 +412,7 @@ namespace DOM
         m_xEntityResolver = xER;
     }
 
-    Reference< XEntityResolver > SAL_CALL CDocumentBuilder::getEntityResolver()
+    Reference< XEntityResolver > CDocumentBuilder::getEntityResolver()
     {
         ::osl::MutexGuard const g(m_Mutex);
 
@@ -384,6 +426,13 @@ namespace DOM
 
         m_xErrorHandler = xEH;
     }
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+unoxml_CDocumentBuilder_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new DOM::CDocumentBuilder());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

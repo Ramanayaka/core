@@ -17,20 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "EventMultiplexer.hxx"
+#include <EventMultiplexer.hxx>
 
-#include "MutexOwner.hxx"
-#include "ViewShellBase.hxx"
-#include "drawdoc.hxx"
-#include "DrawController.hxx"
-#include "SlideSorterViewShell.hxx"
-#include "framework/FrameworkHelper.hxx"
+#include <MutexOwner.hxx>
+#include <ViewShellBase.hxx>
+#include <drawdoc.hxx>
+#include <DrawController.hxx>
+#include <SlideSorterViewShell.hxx>
+#include <framework/FrameworkHelper.hxx>
+#include <sal/log.hxx>
+#include <tools/debug.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <cppuhelper/weak.hxx>
+#include <com/sun/star/drawing/framework/XView.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <sfx2/viewfrm.hxx>
 
@@ -44,12 +46,12 @@ using ::sd::framework::FrameworkHelper;
 class SdDrawDocument;
 
 namespace {
-static const sal_Int32 ResourceActivationEvent = 0;
-static const sal_Int32 ResourceDeactivationEvent = 1;
-static const sal_Int32 ConfigurationUpdateEvent = 2;
+const sal_Int32 ResourceActivationEvent = 0;
+const sal_Int32 ResourceDeactivationEvent = 1;
+const sal_Int32 ConfigurationUpdateEvent = 2;
 }
 
-namespace sd { namespace tools {
+namespace sd::tools {
 
 typedef cppu::WeakComponentImplHelper<
       css::beans::XPropertyChangeListener,
@@ -132,7 +134,7 @@ private:
 
     void CallListeners (
         EventMultiplexerEventId eId,
-        void* pUserData = nullptr);
+        void const * pUserData = nullptr);
 
     DECL_LINK(SlideSorterSelectionChangeListener, LinkParamNone*, void);
 };
@@ -175,7 +177,7 @@ void EventMultiplexer::RemoveEventListener (
 
 void EventMultiplexer::MultiplexEvent(
     EventMultiplexerEventId eEventId,
-    void* pUserData )
+    void const * pUserData )
 {
     EventMultiplexerEvent aEvent(eEventId, pUserData);
     mpImpl->CallListeners(aEvent);
@@ -197,9 +199,8 @@ EventMultiplexer::Implementation::Implementation (ViewShellBase& rBase)
 {
     // Connect to the frame to listen for controllers being exchanged.
     // Listen to changes of certain properties.
-    Reference<frame::XFrame> xFrame (
-        mrBase.GetFrame()->GetFrame().GetFrameInterface(),
-        uno::UNO_QUERY);
+    Reference<frame::XFrame> xFrame =
+        mrBase.GetFrame()->GetFrame().GetFrameInterface();
     mxFrameWeak = xFrame;
     if (xFrame.is())
     {
@@ -220,31 +221,31 @@ EventMultiplexer::Implementation::Implementation (ViewShellBase& rBase)
     // Listen for configuration changes.
     Reference<XControllerManager> xControllerManager (
         Reference<XWeak>(&mrBase.GetDrawController()), UNO_QUERY);
-    if (xControllerManager.is())
-    {
-        Reference<XConfigurationController> xConfigurationController (
-            xControllerManager->getConfigurationController());
-        mxConfigurationControllerWeak = xConfigurationController;
-        if (xConfigurationController.is())
-        {
-            Reference<XComponent> xComponent (xConfigurationController, UNO_QUERY);
-            if (xComponent.is())
-                xComponent->addEventListener(static_cast<beans::XPropertyChangeListener*>(this));
+    if (!xControllerManager.is())
+        return;
 
-            xConfigurationController->addConfigurationChangeListener(
-                this,
-                FrameworkHelper::msResourceActivationEvent,
-                makeAny(ResourceActivationEvent));
-            xConfigurationController->addConfigurationChangeListener(
-                this,
-                FrameworkHelper::msResourceDeactivationEvent,
-                makeAny(ResourceDeactivationEvent));
-            xConfigurationController->addConfigurationChangeListener(
-                this,
-                FrameworkHelper::msConfigurationUpdateEndEvent,
-                makeAny(ConfigurationUpdateEvent));
-        }
-    }
+    Reference<XConfigurationController> xConfigurationController (
+        xControllerManager->getConfigurationController());
+    mxConfigurationControllerWeak = xConfigurationController;
+    if (!xConfigurationController.is())
+        return;
+
+    Reference<XComponent> xComponent (xConfigurationController, UNO_QUERY);
+    if (xComponent.is())
+        xComponent->addEventListener(static_cast<beans::XPropertyChangeListener*>(this));
+
+    xConfigurationController->addConfigurationChangeListener(
+        this,
+        FrameworkHelper::msResourceActivationEvent,
+        makeAny(ResourceActivationEvent));
+    xConfigurationController->addConfigurationChangeListener(
+        this,
+        FrameworkHelper::msResourceDeactivationEvent,
+        makeAny(ResourceDeactivationEvent));
+    xConfigurationController->addConfigurationChangeListener(
+        this,
+        FrameworkHelper::msConfigurationUpdateEndEvent,
+        makeAny(ConfigurationUpdateEvent));
 }
 
 EventMultiplexer::Implementation::~Implementation()
@@ -301,14 +302,9 @@ void EventMultiplexer::Implementation::AddEventListener (
 void EventMultiplexer::Implementation::RemoveEventListener (
     const Link<EventMultiplexerEvent&,void>& rCallback)
 {
-    ListenerList::iterator iListener (maListeners.begin());
-    ListenerList::const_iterator iEnd (maListeners.end());
-    for (;iListener!=iEnd; ++iListener)
-        if (*iListener == rCallback)
-        {
-            maListeners.erase(iListener);
-            break;
-        }
+    auto iListener = std::find(maListeners.begin(), maListeners.end(), rCallback);
+    if (iListener != maListeners.end())
+        maListeners.erase(iListener);
 }
 
 void EventMultiplexer::Implementation::ConnectToController()
@@ -328,10 +324,9 @@ void EventMultiplexer::Implementation::ConnectToController()
     try
     {
         // Listen for disposing events.
-        Reference<lang::XComponent> xComponent (xController, UNO_QUERY);
-        if (xComponent.is())
+        if (xController.is())
         {
-            xComponent->addEventListener (
+            xController->addEventListener (
                 Reference<lang::XEventListener>(
                     static_cast<XWeak*>(this), UNO_QUERY));
             mbListeningToController = true;
@@ -375,49 +370,48 @@ void EventMultiplexer::Implementation::ConnectToController()
 
 void EventMultiplexer::Implementation::DisconnectFromController()
 {
-    if (mbListeningToController)
+    if (!mbListeningToController)
+        return;
+
+    mbListeningToController = false;
+
+    Reference<frame::XController> xController = mxControllerWeak;
+
+    Reference<beans::XPropertySet> xSet (xController, UNO_QUERY);
+    // Remove the property listener.
+    if (xSet.is())
     {
-        mbListeningToController = false;
-
-        Reference<frame::XController> xController = mxControllerWeak;
-
-        Reference<beans::XPropertySet> xSet (xController, UNO_QUERY);
-        // Remove the property listener.
-        if (xSet.is())
+        try
         {
-            try
-            {
-                xSet->removePropertyChangeListener(aCurrentPagePropertyName, this);
-            }
-            catch (const beans::UnknownPropertyException&)
-            {
-                SAL_WARN("sd", "DisconnectFromController: CurrentPage unknown");
-            }
-
-            try
-            {
-                xSet->removePropertyChangeListener(aEditModePropertyName, this);
-            }
-            catch (const beans::UnknownPropertyException&)
-            {
-                SAL_WARN("sd", "DisconnectFromController: IsMasterPageMode unknown");
-            }
+            xSet->removePropertyChangeListener(aCurrentPagePropertyName, this);
+        }
+        catch (const beans::UnknownPropertyException&)
+        {
+            SAL_WARN("sd", "DisconnectFromController: CurrentPage unknown");
         }
 
-        // Remove selection change listener.
-        Reference<view::XSelectionSupplier> xSelection (xController, UNO_QUERY);
-        if (xSelection.is())
+        try
         {
-            xSelection->removeSelectionChangeListener(this);
+            xSet->removePropertyChangeListener(aEditModePropertyName, this);
         }
+        catch (const beans::UnknownPropertyException&)
+        {
+            SAL_WARN("sd", "DisconnectFromController: IsMasterPageMode unknown");
+        }
+    }
 
-        // Remove listener for disposing events.
-        Reference<lang::XComponent> xComponent (xController, UNO_QUERY);
-        if (xComponent.is())
-        {
-            xComponent->removeEventListener (
-                Reference<lang::XEventListener>(static_cast<XWeak*>(this), UNO_QUERY));
-        }
+    // Remove selection change listener.
+    Reference<view::XSelectionSupplier> xSelection (xController, UNO_QUERY);
+    if (xSelection.is())
+    {
+        xSelection->removeSelectionChangeListener(this);
+    }
+
+    // Remove listener for disposing events.
+    if (xController.is())
+    {
+        xController->removeEventListener (
+            Reference<lang::XEventListener>(static_cast<XWeak*>(this), UNO_QUERY));
     }
 }
 
@@ -477,29 +471,31 @@ void SAL_CALL EventMultiplexer::Implementation::frameAction (
     const frame::FrameActionEvent& rEvent)
 {
     Reference<frame::XFrame> xFrame (mxFrameWeak);
-    if (rEvent.Frame == xFrame)
-        switch (rEvent.Action)
-        {
-            case frame::FrameAction_COMPONENT_DETACHING:
-                DisconnectFromController();
-                CallListeners (EventMultiplexerEventId::ControllerDetached);
-                break;
+    if (rEvent.Frame != xFrame)
+        return;
 
-            case frame::FrameAction_COMPONENT_REATTACHED:
-                CallListeners (EventMultiplexerEventId::ControllerDetached);
-                DisconnectFromController();
-                ConnectToController();
-                CallListeners (EventMultiplexerEventId::ControllerAttached);
-                break;
+    switch (rEvent.Action)
+    {
+        case frame::FrameAction_COMPONENT_DETACHING:
+            DisconnectFromController();
+            CallListeners (EventMultiplexerEventId::ControllerDetached);
+            break;
 
-            case frame::FrameAction_COMPONENT_ATTACHED:
-                ConnectToController();
-                CallListeners (EventMultiplexerEventId::ControllerAttached);
-                break;
+        case frame::FrameAction_COMPONENT_REATTACHED:
+            CallListeners (EventMultiplexerEventId::ControllerDetached);
+            DisconnectFromController();
+            ConnectToController();
+            CallListeners (EventMultiplexerEventId::ControllerAttached);
+            break;
 
-            default:
-                break;
-        }
+        case frame::FrameAction_COMPONENT_ATTACHED:
+            ConnectToController();
+            CallListeners (EventMultiplexerEventId::ControllerAttached);
+            break;
+
+        default:
+            break;
+    }
 }
 
 //===== view::XSelectionChangeListener ========================================
@@ -531,7 +527,7 @@ void SAL_CALL EventMultiplexer::Implementation::notifyConfigurationChange (
                 }
 
                 // Add selection change listener at slide sorter.
-                if (rEvent.ResourceId->getResourceURL().equals(FrameworkHelper::msSlideSorterURL))
+                if (rEvent.ResourceId->getResourceURL() == FrameworkHelper::msSlideSorterURL)
                 {
                     slidesorter::SlideSorterViewShell* pViewShell
                         = dynamic_cast<slidesorter::SlideSorterViewShell*>(
@@ -557,7 +553,7 @@ void SAL_CALL EventMultiplexer::Implementation::notifyConfigurationChange (
 
                 // Remove selection change listener from slide sorter.  Add
                 // selection change listener at slide sorter.
-                if (rEvent.ResourceId->getResourceURL().equals(FrameworkHelper::msSlideSorterURL))
+                if (rEvent.ResourceId->getResourceURL() == FrameworkHelper::msSlideSorterURL)
                 {
                     slidesorter::SlideSorterViewShell* pViewShell
                         = dynamic_cast<slidesorter::SlideSorterViewShell*>(
@@ -589,9 +585,9 @@ void EventMultiplexer::Implementation::Notify (
     SfxBroadcaster&,
     const SfxHint& rHint)
 {
-    const SdrHint* pSdrHint = dynamic_cast<const SdrHint*>(&rHint);
-    if (pSdrHint)
+    if (rHint.GetId() == SfxHintId::ThisIsAnSdrHint)
     {
+        const SdrHint* pSdrHint = static_cast<const SdrHint*>(&rHint);
         switch (pSdrHint->GetKind())
         {
             case SdrHintKind::ModelCleared:
@@ -605,17 +601,17 @@ void EventMultiplexer::Implementation::Notify (
 
             case SdrHintKind::ObjectChange:
                 CallListeners(EventMultiplexerEventId::ShapeChanged,
-                    const_cast<void*>(static_cast<const void*>(pSdrHint->GetPage())));
+                    static_cast<const void*>(pSdrHint->GetPage()));
                 break;
 
             case SdrHintKind::ObjectInserted:
                 CallListeners(EventMultiplexerEventId::ShapeInserted,
-                    const_cast<void*>(static_cast<const void*>(pSdrHint->GetPage())));
+                    static_cast<const void*>(pSdrHint->GetPage()));
                 break;
 
             case SdrHintKind::ObjectRemoved:
                 CallListeners(EventMultiplexerEventId::ShapeRemoved,
-                    const_cast<void*>(static_cast<const void*>(pSdrHint->GetPage())));
+                    static_cast<const void*>(pSdrHint->GetPage()));
                 break;
             default:
                 break;
@@ -630,7 +626,7 @@ void EventMultiplexer::Implementation::Notify (
 
 void EventMultiplexer::Implementation::CallListeners (
     EventMultiplexerEventId eId,
-    void* pUserData)
+    void const * pUserData)
 {
     EventMultiplexerEvent aEvent(eId, pUserData);
     CallListeners(aEvent);
@@ -639,11 +635,9 @@ void EventMultiplexer::Implementation::CallListeners (
 void EventMultiplexer::Implementation::CallListeners (EventMultiplexerEvent& rEvent)
 {
     ListenerList aCopyListeners( maListeners );
-    ListenerList::iterator iListener (aCopyListeners.begin());
-    ListenerList::const_iterator iListenerEnd (aCopyListeners.end());
-    for (; iListener!=iListenerEnd; ++iListener)
+    for (const auto& rListener : aCopyListeners)
     {
-        iListener->Call(rEvent);
+        rListener.Call(rEvent);
     }
 }
 
@@ -662,6 +656,6 @@ EventMultiplexerEvent::EventMultiplexerEvent (
 {
 }
 
-} } // end of namespace ::sd::tools
+} // end of namespace ::sd::tools
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

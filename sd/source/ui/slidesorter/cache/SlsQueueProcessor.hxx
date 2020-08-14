@@ -20,27 +20,13 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_CACHE_SLSQUEUEPROCESSOR_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_CACHE_SLSQUEUEPROCESSOR_HXX
 
-#include "cache/SlsPageCache.hxx"
+#include <cache/SlsCacheContext.hxx>
 #include "SlsRequestPriorityClass.hxx"
 #include "SlsBitmapFactory.hxx"
-#include "view/SlideSorterView.hxx"
-#include "tools/IdleDetection.hxx"
-#include "SlsBitmapCache.hxx"
-#include "sdpage.hxx"
-#include "Window.hxx"
 
-#include <svx/svdpagv.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/timer.hxx>
-#include <comphelper/profilezone.hxx>
 
-#include <functional>
-
-namespace sd { namespace slidesorter { namespace view {
-class SlideSorterView;
-} } }
-
-namespace sd { namespace slidesorter { namespace cache {
+namespace sd::slidesorter::cache {
 
 class BitmapCache;
 class RequestQueue;
@@ -53,7 +39,6 @@ class RequestQueue;
 class QueueProcessor final
 {
 public:
-    typedef ::std::function<bool ()> IdleDetectionCallback;
     QueueProcessor (
         RequestQueue& rQueue,
         const std::shared_ptr<BitmapCache>& rpCache,
@@ -63,7 +48,7 @@ public:
     ~QueueProcessor();
 
     /** Start the processor.  This implementation is timer based and waits
-        an defined amount of time that depends on the given argument before
+        a defined amount of time that depends on the given argument before
         the next entry in the queue is processed.
         @param nPriorityClass
             A priority class of 0 tells the processor that a high priority
@@ -108,7 +93,7 @@ private:
         const RequestPriorityClass ePriorityClass);
 };
 
-} } } // end of namespace ::sd::slidesorter::cache
+} // end of namespace ::sd::slidesorter::cache
 
 #endif
 

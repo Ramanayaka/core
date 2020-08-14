@@ -16,19 +16,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "rtl/tencinfo.h"
-#include "rtl/textenc.h"
+#include <rtl/tencinfo.h>
+#include <rtl/textenc.h>
 
 #include "convertiso2022jp.hxx"
 #include "tenchelp.hxx"
 
-static ImplIso2022JpConverterData const aImplIso2022JpConvertData
+ImplIso2022JpConverterData const aImplIso2022JpConvertData
     = { aJIS0208UniLeadTab, /* from tcvtjp6.tab */
         aJIS0208DBCSHighTab }; /* from tcvtjp6.tab */
 
-static ImplTextEncodingData const aImplIso2022JpTextEncodingData
+ImplTextEncodingData const aImplIso2022JpTextEncodingData
     = { { &aImplIso2022JpConvertData,
           &ImplConvertIso2022JpToUnicode,
           &ImplConvertUnicodeToIso2022Jp,

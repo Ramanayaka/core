@@ -5,7 +5,7 @@
 #   * autogen.lastrun (rw)
 #   * autogen.lastrun.bak (rw)
 #
-# If _no_ parmeters:
+# If _no_ parameters:
 #   Read args from autogen.input or autogen.lastrun
 # Else
 #   Backup autogen.lastrun as autogen.lastrun.bak
@@ -31,14 +31,8 @@ chdir ($build_path);
 # old path from the environment, not cwd.
 $ENV{PWD} = $build_path;
 
-sub clean()
-{
-    system ("rm -Rf autom4te.cache");
-    system ("rm -f missing install-sh mkinstalldirs libtool ltmain.sh");
-    print "Cleaned the build tree\n";
-}
-
 my $aclocal;
+my $autoconf;
 
 # check we have various vital tools
 sub sanity_checks($)
@@ -48,7 +42,7 @@ sub sanity_checks($)
     my %required =
       (
        'pkg-config' => "pkg-config is required to be installed",
-       'autoconf'   => "autoconf is required",
+       $autoconf    => "autoconf is required",
        $aclocal     => "$aclocal is required",
       );
 
@@ -77,6 +71,7 @@ sub read_args($)
     open ($fh, $file) || die "can't open file: $file";
     while (<$fh>) {
         chomp();
+        s/^\s+//;
         s/\s+$//;
         # migrate from the old system
         if ( substr($_, 0, 1) eq "'" ) {
@@ -89,6 +84,13 @@ sub read_args($)
                     print STDERR "  $opt\n";
                 }
             }
+        } elsif ( /^INCLUDE:(.*)/ ) {
+            # include another .conf into this one
+            my $config = "$src_path/distro-configs/$1.conf";
+            if (! -f $config) {
+                invalid_distro ($config, $1);
+            }
+            push @lst, read_args ($config);
         } elsif ( substr($_, 0, 1) eq "#" ) {
             # comment
         } elsif ( length == 0 ) {
@@ -134,6 +136,9 @@ die "\$src_path must not contain spaces, but it is '$src_path'." if ($src_path =
 
 # Alloc $ACLOCAL to specify which aclocal to use
 $aclocal = $ENV{ACLOCAL} ? $ENV{ACLOCAL} : 'aclocal';
+# Alloc $AUTOCONF to specify which autoconf to use
+# (e.g. autoconf268 from a backports repo)
+$autoconf = $ENV{AUTOCONF} ? $ENV{AUTOCONF} : 'autoconf';
 
 my $system = `uname -s`;
 chomp $system;
@@ -164,12 +169,18 @@ if ($src_path ne $build_path)
 {
     system ("ln -sf $src_path/configure.ac configure.ac");
     system ("ln -sf $src_path/g g");
+    my $src_path_win=$src_path;
+    if ($system =~ /CYGWIN.*/) {
+        $src_path_win=`cygpath -m $src_path`;
+        chomp $src_path_win;
+    }
     my @modules = <$src_path/*/Makefile>;
     foreach my $module (@modules)
     {
         my $dir = basename (dirname ($module));
         mkdir ($dir);
-        system ("ln -sf $src_path/$dir/Makefile $dir/Makefile");
+        system ("rm -f $dir/Makefile");
+        system ("printf 'module_directory:=$src_path_win/$dir/\ninclude \$(module_directory)/../solenv/gbuild/partial_build.mk\n' > $dir/Makefile");
     }
     my @external_modules = <$src_path/external/*/Makefile>;
     mkdir ("external");
@@ -178,19 +189,21 @@ if ($src_path ne $build_path)
     {
         my $dir = basename (dirname ($module));
         mkdir ("external/$dir");
-        system ("ln -sf $src_path/external/$dir/Makefile external/$dir/Makefile");
+        system ("rm -f external/$dir/Makefile");
+        system ("printf 'module_directory:=$src_path_win/external/$dir/\ninclude \$(module_directory)/../../solenv/gbuild/partial_build.mk\n' > external/$dir/Makefile");
     }
 }
 system ("$aclocal $aclocal_flags") && die "Failed to run aclocal";
 unlink ("configure");
-system ("autoconf -I ${src_path}") && die "Failed to run autoconf";
+system ("$autoconf -I ${src_path}") && die "Failed to run autoconf";
 die "Failed to generate the configure script" if (! -f "configure");
 
 # Handle help arguments first, so we don't clobber autogen.lastrun
 for my $arg (@ARGV) {
     if ($arg =~ /^(--help|-h|-\?)$/) {
         print STDOUT "autogen.sh - libreoffice configuration helper\n";
-        print STDOUT "   --clean        forcibly re-generate configuration\n";
+        print STDOUT "   --with-distro  use a config from distro-configs/\n";
+        print STDOUT "                  the name needs to be passed without extension\n";
         print STDOUT "   --best-effort  don't fail on un-known configure with/enable options\n";
         print STDOUT "\nOther arguments passed directly to configure:\n\n";
         system ("./configure --help");
@@ -242,9 +255,7 @@ if (-f $default_config) {
     push @args, read_args ($default_config);
 }
 for my $arg (@cmdline_args) {
-    if ($arg eq '--clean') {
-        clean();
-    } elsif ($arg =~ m/--with-distro=(.*)$/) {
+    if ($arg =~ m/--with-distro=(.*)$/) {
         my $config = "$src_path/distro-configs/$1.conf";
         if (! -f $config) {
             invalid_distro ($config, $1);
@@ -254,11 +265,6 @@ for my $arg (@cmdline_args) {
         $option_checking = 'warn';
     } else {
         push @args, $arg;
-    }
-}
-for my $arg (@args) {
-    if ($arg =~ /^([A-Z]+)=(.*)/) {
-        $ENV{$1} = $2;
     }
 }
 

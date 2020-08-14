@@ -21,7 +21,6 @@
 #define INCLUDED_SD_SOURCE_FILTER_PPT_PPTIN_HXX
 
 #include <filter/msfilter/svdfppt.hxx>
-#include <svx/msdffdef.hxx>
 #include <diadef.h>
 #include <svx/svdtypes.hxx>
 #include <memory>
@@ -31,18 +30,16 @@ class SfxMedium;
 
 /*************************************************************************
 |*
-|* lokaler Import
+|* local import
 |*
 \************************************************************************/
 
 class SdPage;
 class SdAnimationInfo;
-struct PptInteractiveInfoAtom;
 class Ppt97Animation;
 
 typedef std::shared_ptr< Ppt97Animation > Ppt97AnimationPtr;
 typedef ::std::map < SdrObject*, Ppt97AnimationPtr > tAnimationMap;
-typedef std::vector< std::pair< SdrObject*, Ppt97AnimationPtr > > tAnimationVector;
 
 class ImplSdPPTImport : public SdrPowerPointImport
 {
@@ -54,16 +51,15 @@ class ImplSdPPTImport : public SdrPowerPointImport
     sal_uInt32      mnFilterOptions;
     SdDrawDocument* mpDoc;
     PresChange      mePresChange;
-    SdrLayerID      mnBackgroundLayerID;
     SdrLayerID      mnBackgroundObjectsLayerID;
 
     tAnimationMap   maAnimations;
     void            SetHeaderFooterPageSettings( SdPage* pPage, const PptSlidePersistEntry* pMasterPersist );
     void            ImportPageEffect( SdPage* pPage, const bool bNewAnimationsUsed );
 
-    void            FillSdAnimationInfo( SdAnimationInfo* pInfo, PptInteractiveInfoAtom* pIAtom, const OUString& aMacroName );
+    void            FillSdAnimationInfo( SdAnimationInfo* pInfo, PptInteractiveInfoAtom const * pIAtom, const OUString& aMacroName );
 
-    virtual         SdrObject* ProcessObj( SvStream& rSt, DffObjData& rData, void* pData, ::tools::Rectangle& rTextRect, SdrObject* pObj ) override;
+    virtual         SdrObject* ProcessObj( SvStream& rSt, DffObjData& rData, SvxMSDffClientData& rClientData, ::tools::Rectangle& rTextRect, SdrObject* pObj ) override;
     virtual         SdrObject* ApplyTextObj( PPTTextObj* pTextObj, SdrTextObj* pText, SdPageCapsule pPage,
                                             SfxStyleSheet*, SfxStyleSheet** ) const override;
 

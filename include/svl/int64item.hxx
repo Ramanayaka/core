@@ -13,22 +13,25 @@
 #include <svl/poolitem.hxx>
 #include <svl/svldllapi.h>
 
-class SVL_DLLPUBLIC SfxInt64Item : public SfxPoolItem
+class SVL_DLLPUBLIC SfxInt64Item final : public SfxPoolItem
 {
     sal_Int64 mnValue;
 
 public:
     SfxInt64Item( sal_uInt16 nWhich, sal_Int64 nVal );
-    SfxInt64Item( sal_uInt16 nWhich, SvStream & rStream );
-    SfxInt64Item( const SfxInt64Item& rItem );
 
     virtual ~SfxInt64Item() override;
+
+    SfxInt64Item(SfxInt64Item const &) = default;
+    SfxInt64Item(SfxInt64Item &&) = default;
+    SfxInt64Item & operator =(SfxInt64Item const &) = delete; // due to SfxPoolItem;
+    SfxInt64Item & operator =(SfxInt64Item &&) = delete; // due to SfxPoolItem
 
     virtual bool operator== ( const SfxPoolItem& rItem ) const override;
 
     virtual bool GetPresentation(
         SfxItemPresentation, MapUnit, MapUnit,
-        OUString& rText, const IntlWrapper* pIntlWrapper = nullptr ) const override;
+        OUString& rText, const IntlWrapper& rIntlWrapper ) const override;
 
     virtual bool QueryValue(
         css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
@@ -36,11 +39,7 @@ public:
     virtual bool PutValue(
         const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual SfxPoolItem* Create( SvStream& rStream, sal_uInt16 nItemVersion ) const override;
-
-    virtual SvStream& Store( SvStream& rStream, sal_uInt16 nItemVersion ) const override;
-
-    virtual SfxPoolItem* Clone( SfxItemPool* pOther = nullptr ) const override;
+    virtual SfxInt64Item* Clone( SfxItemPool* pOther = nullptr ) const override;
 
     sal_Int64 GetValue() const { return mnValue;}
 

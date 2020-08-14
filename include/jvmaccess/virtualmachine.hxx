@@ -24,13 +24,13 @@
 #include <rtl/ref.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 
-#include "jni.h"
+#include <jni.h>
 
 namespace jvmaccess {
 
 /** An encapsulating wrapper around a Java virtual machine.
  */
-class JVMACCESS_DLLPUBLIC VirtualMachine: public salhelper::SimpleReferenceObject
+class JVMACCESS_DLLPUBLIC VirtualMachine final : public salhelper::SimpleReferenceObject
 {
 public:
     /** A helper to attach a thread to a Java virtual machine.
@@ -82,8 +82,8 @@ public:
         JNIEnv * getEnvironment() const { return m_pEnvironment; }
 
     private:
-        AttachGuard(AttachGuard &) = delete;
-        void operator =(AttachGuard) = delete;
+        AttachGuard(AttachGuard const &) = delete;
+        AttachGuard& operator =(AttachGuard const &) = delete;
 
         rtl::Reference< VirtualMachine > m_xMachine;
         JNIEnv * m_pEnvironment;
@@ -125,11 +125,11 @@ public:
         the future).
      */
     VirtualMachine(JavaVM * pVm, int nVersion, bool bDestroy,
-                   JNIEnv * pMainThreadEnv);
+                   JNIEnv const * pMainThreadEnv);
 
 private:
-    VirtualMachine(VirtualMachine &) = delete;
-    void operator =(VirtualMachine) = delete;
+    VirtualMachine(VirtualMachine const &) = delete;
+    VirtualMachine& operator =(VirtualMachine const & ) = delete;
 
     virtual ~VirtualMachine() override;
 

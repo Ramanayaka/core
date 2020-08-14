@@ -20,7 +20,7 @@
 #ifndef INCLUDED_BASIC_INC_SBPROP_HXX
 #define INCLUDED_BASIC_INC_SBPROP_HXX
 
-#include <basic/sbxprop.hxx>
+#include "sbxprop.hxx"
 #include <basic/sbdef.hxx>
 
 class SbModule;
@@ -52,7 +52,7 @@ public:
             , mbSet( false )
     {}
 
-    bool isSet()
+    bool isSet() const
         { return mbSet; }
     void setSet( bool bSet )
         { mbSet = bSet; }

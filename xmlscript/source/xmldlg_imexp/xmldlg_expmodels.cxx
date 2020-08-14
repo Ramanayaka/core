@@ -17,16 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include "common.hxx"
 #include "exp_share.hxx"
+#include <misc.hxx>
+#include <xmlscript/xmlns.h>
 
-#include <com/sun/star/form/binding/XListEntrySink.hpp>
-#include <com/sun/star/form/binding/XBindableValue.hpp>
-#include <com/sun/star/form/binding/XValueBinding.hpp>
-#include <com/sun/star/table/CellAddress.hpp>
-#include <com/sun/star/table/CellRangeAddress.hpp>
+#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
-#include <com/sun/star/document/XStorageBasedDocument.hpp>
-#include <com/sun/star/document/XGraphicObjectResolver.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <o3tl/any.hxx>
 
@@ -36,7 +33,7 @@ using namespace ::com::sun::star::uno;
 namespace xmlscript
 {
 
-static inline bool readBorderProps(
+static bool readBorderProps(
     ElementDescriptor * element, Style & style )
 {
     if (element->readProp( &style._border, "Border" )) {
@@ -50,7 +47,7 @@ static inline bool readBorderProps(
     return false;
 }
 
-static inline bool readFontProps( ElementDescriptor * element, Style & style )
+static bool readFontProps( ElementDescriptor * element, Style & style )
 {
     bool ret = element->readProp(
         &style._descr, "FontDescriptor" );
@@ -88,7 +85,7 @@ void ElementDescriptor::readMultiPageModel( StyleBag * all_styles )
 
     readEvents();
     uno::Reference< container::XNameContainer > xPagesContainer( _xProps, uno::UNO_QUERY );
-    if ( xPagesContainer.is() && xPagesContainer->getElementNames().getLength() )
+    if ( xPagesContainer.is() && xPagesContainer->getElementNames().hasElements() )
     {
         ElementDescriptor * pElem = new ElementDescriptor( _xProps, _xPropState, XMLNS_DIALOGS_PREFIX ":bulletinboard", _xDocument );
         pElem->readBullitinBoard( all_styles );
@@ -123,7 +120,7 @@ void ElementDescriptor::readFrameModel( StyleBag * all_styles )
         addSubElement( title );
     }
     uno::Reference< container::XNameContainer > xControlContainer( _xProps, uno::UNO_QUERY );
-    if ( xControlContainer.is() && xControlContainer->getElementNames().getLength() )
+    if ( xControlContainer.is() && xControlContainer->getElementNames().hasElements() )
     {
         ElementDescriptor * pElem = new ElementDescriptor( _xProps, _xPropState, XMLNS_DIALOGS_PREFIX ":bulletinboard", _xDocument );
         pElem->readBullitinBoard( all_styles );
@@ -153,7 +150,7 @@ void ElementDescriptor::readPageModel( StyleBag * all_styles )
     readDefaults();
     readStringAttr( "Title", XMLNS_DIALOGS_PREFIX ":title" );
     uno::Reference< container::XNameContainer > xControlContainer( _xProps, uno::UNO_QUERY );
-    if ( xControlContainer.is() && xControlContainer->getElementNames().getLength() )
+    if ( xControlContainer.is() && xControlContainer->getElementNames().hasElements() )
     {
         ElementDescriptor * pElem = new ElementDescriptor( _xProps, _xPropState, XMLNS_DIALOGS_PREFIX ":bulletinboard", _xDocument );
         pElem->readBullitinBoard( all_styles );
@@ -187,8 +184,7 @@ void ElementDescriptor::readButtonModel( StyleBag * all_styles )
     readAlignAttr( "Align", XMLNS_DIALOGS_PREFIX ":align" );
     readVerticalAlignAttr( "VerticalAlign", XMLNS_DIALOGS_PREFIX ":valign" );
     readButtonTypeAttr( "PushButtonType", XMLNS_DIALOGS_PREFIX ":button-type" );
-    readImageURLAttr( "ImageURL", XMLNS_DIALOGS_PREFIX ":image-src" );
-
+    readImageOrGraphicAttr(XMLNS_DIALOGS_PREFIX ":image-src");
     readImagePositionAttr( "ImagePosition", XMLNS_DIALOGS_PREFIX ":image-position" );
     readImageAlignAttr( "ImageAlign", XMLNS_DIALOGS_PREFIX ":image-align" );
 
@@ -247,7 +243,7 @@ void ElementDescriptor::readCheckBoxModel( StyleBag * all_styles )
     readStringAttr( "Label", XMLNS_DIALOGS_PREFIX ":value" );
     readAlignAttr( "Align",  XMLNS_DIALOGS_PREFIX ":align" );
     readVerticalAlignAttr( "VerticalAlign", XMLNS_DIALOGS_PREFIX ":valign" );
-    readImageURLAttr( "ImageURL", XMLNS_DIALOGS_PREFIX ":image-src" );
+    readImageOrGraphicAttr(XMLNS_DIALOGS_PREFIX ":image-src");
     readImagePositionAttr( "ImagePosition", XMLNS_DIALOGS_PREFIX ":image-position" );
     readBoolAttr( "MultiLine", XMLNS_DIALOGS_PREFIX ":multiline" );
 
@@ -314,15 +310,14 @@ void ElementDescriptor::readComboBoxModel( StyleBag * all_styles )
 
     // string item list
     Sequence< OUString > itemValues;
-    if ((readProp( "StringItemList" ) >>= itemValues) &&  itemValues.getLength() > 0)
+    if ((readProp( "StringItemList" ) >>= itemValues) &&  itemValues.hasElements())
     {
         ElementDescriptor * popup = new ElementDescriptor( _xProps, _xPropState, XMLNS_DIALOGS_PREFIX ":menupopup", _xDocument );
 
-        OUString const * pItemValues = itemValues.getConstArray();
-        for ( sal_Int32 nPos = 0; nPos < itemValues.getLength(); ++nPos )
+        for ( const auto& rItemValue : std::as_const(itemValues) )
         {
             ElementDescriptor * item = new ElementDescriptor( _xProps, _xPropState, XMLNS_DIALOGS_PREFIX ":menuitem", _xDocument );
-            item->addAttribute( XMLNS_DIALOGS_PREFIX ":value", pItemValues[ nPos ] );
+            item->addAttribute( XMLNS_DIALOGS_PREFIX ":value", rItemValue );
             popup->addSubElement( item );
         }
 
@@ -362,16 +357,14 @@ void ElementDescriptor::readListBoxModel( StyleBag * all_styles )
     readDataAwareAttr( XMLNS_DIALOGS_PREFIX ":source-cell-range" );
     // string item list
     Sequence< OUString > itemValues;
-    if ((readProp( "StringItemList" ) >>= itemValues) && itemValues.getLength() > 0)
+    if ((readProp( "StringItemList" ) >>= itemValues) && itemValues.hasElements())
     {
         ElementDescriptor * popup = new ElementDescriptor( _xProps, _xPropState, XMLNS_DIALOGS_PREFIX ":menupopup", _xDocument );
 
-        OUString const * pItemValues = itemValues.getConstArray();
-        sal_Int32 nPos;
-        for ( nPos = 0; nPos < itemValues.getLength(); ++nPos )
+        for ( const auto& rItemValue : std::as_const(itemValues) )
         {
             ElementDescriptor * item = new ElementDescriptor(_xProps, _xPropState, XMLNS_DIALOGS_PREFIX ":menuitem", _xDocument );
-            item->addAttribute( XMLNS_DIALOGS_PREFIX ":value", pItemValues[ nPos ] );
+            item->addAttribute( XMLNS_DIALOGS_PREFIX ":value", rItemValue );
             popup->addSubElement( item );
         }
 
@@ -379,7 +372,7 @@ void ElementDescriptor::readListBoxModel( StyleBag * all_styles )
         if (readProp( "SelectedItems" ) >>= selected)
         {
             sal_Int16 const * pSelected = selected.getConstArray();
-            for ( nPos = selected.getLength(); nPos--; )
+            for ( sal_Int32 nPos = selected.getLength(); nPos--; )
             {
                 ElementDescriptor * item = static_cast< ElementDescriptor * >(
                     popup->getSubElement( pSelected[ nPos ] ).get() );
@@ -417,7 +410,7 @@ void ElementDescriptor::readRadioButtonModel( StyleBag * all_styles  )
     readStringAttr( "Label", XMLNS_DIALOGS_PREFIX ":value" );
     readAlignAttr( "Align", XMLNS_DIALOGS_PREFIX ":align" );
     readVerticalAlignAttr( "VerticalAlign", XMLNS_DIALOGS_PREFIX ":valign" );
-    readImageURLAttr( "ImageURL", XMLNS_DIALOGS_PREFIX ":image-src" );
+    readImageOrGraphicAttr(XMLNS_DIALOGS_PREFIX ":image-src");
     readImagePositionAttr( "ImagePosition", XMLNS_DIALOGS_PREFIX ":image-position" );
     readBoolAttr( "MultiLine", XMLNS_DIALOGS_PREFIX ":multiline" );
     readStringAttr( "GroupName", XMLNS_DIALOGS_PREFIX ":group-name" );
@@ -524,7 +517,6 @@ void ElementDescriptor::readFixedHyperLinkModel( StyleBag * all_styles )
     readDefaults();
     readStringAttr( "Label",XMLNS_DIALOGS_PREFIX ":value" );
     readStringAttr( "URL", XMLNS_DIALOGS_PREFIX ":url" );
-    readStringAttr( "Description", XMLNS_DIALOGS_PREFIX ":description" );
     readAlignAttr( "Align", XMLNS_DIALOGS_PREFIX ":align" );
     readVerticalAlignAttr( "VerticalAlign", XMLNS_DIALOGS_PREFIX ":valign" );
     readBoolAttr( "MultiLine", XMLNS_DIALOGS_PREFIX ":multiline" );
@@ -569,7 +561,7 @@ void ElementDescriptor::readEditModel( StyleBag * all_styles )
     sal_Int16 nEcho = 0;
     if (readProp( "EchoChar" ) >>= nEcho)
     {
-        sal_Unicode cEcho = (sal_Unicode)nEcho;
+        sal_Unicode cEcho = static_cast<sal_Unicode>(nEcho);
         addAttribute( XMLNS_DIALOGS_PREFIX ":echochar", OUString( &cEcho, 1 ) );
     }
     readDataAwareAttr( XMLNS_DIALOGS_PREFIX ":linked-cell" );
@@ -594,7 +586,7 @@ void ElementDescriptor::readImageControlModel( StyleBag * all_styles )
     readBoolAttr( "ScaleImage", XMLNS_DIALOGS_PREFIX ":scale-image" );
     readImageScaleModeAttr( "ScaleMode", XMLNS_DIALOGS_PREFIX ":scale-mode" );
     readBoolAttr( "Tabstop", XMLNS_DIALOGS_PREFIX ":tabstop" );
-    readImageURLAttr( "ImageURL", XMLNS_DIALOGS_PREFIX ":src" );
+    readImageOrGraphicAttr(XMLNS_DIALOGS_PREFIX ":src");
     readEvents();
 }
 
@@ -1009,6 +1001,42 @@ void ElementDescriptor::readScrollBarModel( StyleBag * all_styles )
     readEvents();
 }
 
+void ElementDescriptor::readGridControlModel( StyleBag * all_styles )
+{
+    // collect styles
+    Style aStyle( 0x1 | 0x2 | 0x4 | 0x8 | 0x20 );
+    if (readProp("BackgroundColor") >>= aStyle._backgroundColor)
+        aStyle._set |= 0x1;
+    if (readBorderProps( this, aStyle ))
+        aStyle._set |= 0x4;
+    if (readProp("TextColor") >>= aStyle._textColor)
+        aStyle._set |= 0x2;
+    if (readProp("TextLineColor") >>= aStyle._textLineColor)
+        aStyle._set |= 0x20;
+    if (readFontProps( this, aStyle ))
+        aStyle._set |= 0x8;
+    if (aStyle._set)
+    {
+        addAttribute( XMLNS_DIALOGS_PREFIX ":style-id",all_styles->getStyleId( aStyle ) );
+    }
+    // collect elements
+    readDefaults();
+    readBoolAttr("Tabstop", XMLNS_DIALOGS_PREFIX ":tabstop");
+    readVerticalAlignAttr( "VerticalAlign", XMLNS_DIALOGS_PREFIX ":valign");
+    readSelectionTypeAttr( "SelectionModel", XMLNS_DIALOGS_PREFIX ":selectiontype");
+    readBoolAttr( "ShowColumnHeader", XMLNS_DIALOGS_PREFIX ":showcolumnheader");
+    readBoolAttr( "ShowRowHeader", XMLNS_DIALOGS_PREFIX ":showrowheader");
+    readHexLongAttr( "GridLineColor", XMLNS_DIALOGS_PREFIX ":gridline-color");
+    readBoolAttr( "UseGridLines", XMLNS_DIALOGS_PREFIX ":usegridlines" );
+    readHexLongAttr( "HeaderBackgroundColor", XMLNS_DIALOGS_PREFIX ":headerbackground-color");
+    readHexLongAttr( "HeaderTextColor", XMLNS_DIALOGS_PREFIX ":headertext-color");
+    readHexLongAttr( "ActiveSelectionBackgroundColor", XMLNS_DIALOGS_PREFIX ":activeselectionbackground-color");
+    readHexLongAttr( "ActiveSelectionTextColor", XMLNS_DIALOGS_PREFIX ":activeselectiontext-color");
+    readHexLongAttr( "InactiveSelectionBackgroundColor", XMLNS_DIALOGS_PREFIX ":inactiveselectionbackground-color");
+    readHexLongAttr( "InactiveSelectionTextColor", XMLNS_DIALOGS_PREFIX ":inactiveselectiontext-color");
+    readEvents();
+}
+
 void ElementDescriptor::readDialogModel( StyleBag * all_styles )
 {
     // collect elements
@@ -1042,7 +1070,7 @@ void ElementDescriptor::readDialogModel( StyleBag * all_styles )
     bool bDecoration = false;
     if ( (aDecorationAny >>= bDecoration) && !bDecoration )
         addAttribute( XMLNS_DIALOGS_PREFIX ":withtitlebar", "false" );
-    readImageURLAttr( "ImageURL", XMLNS_DIALOGS_PREFIX ":image-src" );
+    readImageOrGraphicAttr(XMLNS_DIALOGS_PREFIX ":image-src");
     readEvents();
 }
 
@@ -1054,15 +1082,13 @@ void ElementDescriptor::readBullitinBoard( StyleBag * all_styles )
     Reference<  container::XNameContainer > xDialogModel( _xProps, UNO_QUERY );
     if ( !xDialogModel.is() )
         return; // #TODO throw???
-    Sequence< OUString > aElements( xDialogModel->getElementNames() );
-    OUString const * pElements = aElements.getConstArray();
+    const Sequence< OUString > aElements( xDialogModel->getElementNames() );
 
     ElementDescriptor * pRadioGroup = nullptr;
 
-    sal_Int32 nPos;
-    for ( nPos = 0; nPos < aElements.getLength(); ++nPos )
+    for ( const auto& rElement : aElements )
     {
-        Any aControlModel( xDialogModel->getByName( pElements[ nPos ] ) );
+        Any aControlModel( xDialogModel->getByName( rElement ) );
         Reference< beans::XPropertySet > xProps;
         OSL_VERIFY( aControlModel >>= xProps );
         if (! xProps.is())
@@ -1216,6 +1242,11 @@ void ElementDescriptor::readBullitinBoard( StyleBag * all_styles )
                 pElem = new ElementDescriptor( xProps, xPropState, XMLNS_DIALOGS_PREFIX ":progressmeter", _xDocument );
                 pElem->readProgressBarModel( all_styles );
             }
+            else if (xServiceInfo->supportsService( "com.sun.star.awt.grid.UnoControlGridModel" ) )
+            {
+                pElem = new ElementDescriptor( xProps, xPropState, XMLNS_DIALOGS_PREFIX ":table", _xDocument );
+                pElem->readGridControlModel( all_styles );
+            }
 
             if (pElem)
             {
@@ -1228,12 +1259,9 @@ void ElementDescriptor::readBullitinBoard( StyleBag * all_styles )
             }
         }
     }
-    if (! all_elements.empty())
+    for (ElementDescriptor* p : all_elements)
     {
-        for (ElementDescriptor* p : all_elements)
-        {
-            addSubElement( p );
-        }
+        addSubElement( p );
     }
 }
 

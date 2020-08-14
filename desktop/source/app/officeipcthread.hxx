@@ -26,29 +26,27 @@
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/frame/XTerminateListener.hpp>
-#include <osl/pipe.hxx>
-#include <osl/security.hxx>
 #include <osl/signal.h>
 #include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
+#include <salhelper/simplereferenceobject.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <osl/conditn.hxx>
-#include <salhelper/thread.hxx>
-#include <boost/optional.hpp>
+#include <optional>
 
 namespace desktop
 {
 
-oslSignalAction SAL_CALL SalMainPipeExchangeSignal_impl(void* /*pData*/, oslSignalInfo* pInfo);
+oslSignalAction SalMainPipeExchangeSignal_impl(void* /*pData*/, oslSignalInfo* pInfo);
 
 // A request for the current office
 // that was given by command line or by IPC pipe communication.
 struct ProcessDocumentsRequest
 {
-    explicit ProcessDocumentsRequest(boost::optional< OUString > const & cwdUrl):
+    explicit ProcessDocumentsRequest(std::optional< OUString > const & cwdUrl):
         aCwdUrl(cwdUrl), pcProcessed( nullptr ), bTextCat( false ), bScriptCat( false ) {}
 
-    boost::optional< OUString > aCwdUrl;
+    std::optional< OUString > aCwdUrl;
     OUString aModule;
     std::vector< OUString > aOpenList; // Documents that should be opened in the default way
     std::vector< OUString > aViewList; // Documents that should be opened in viewmode
@@ -61,8 +59,10 @@ struct ProcessDocumentsRequest
     std::vector< OUString > aConversionList;
     OUString aConversionParams;
     OUString aConversionOut;
+    OUString aImageConversionType;
     std::vector< OUString > aInFilter;
     ::osl::Condition *pcProcessed;  // pointer condition to be set when the request has been processed
+    bool* mpbSuccess = nullptr; // pointer to boolean receiving if the processing was successful
     bool bTextCat; // boolean flag indicating whether to dump text content to console
     bool bScriptCat; // boolean flag indicating whether to dump script content to console
 };
@@ -90,6 +90,8 @@ class RequestHandler: public salhelper::SimpleReferenceObject
 
     /* condition to be set when the request has been processed */
     ::osl::Condition cProcessed;
+    /* receives if the processing was successful (may be false e.g. when shutting down) */
+    bool mbSuccess = false;
 
     /* condition to be set when the main event loop is ready
        otherwise an error dialogs event loop could eat away

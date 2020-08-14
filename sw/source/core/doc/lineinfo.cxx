@@ -17,15 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "doc.hxx"
+#include <doc.hxx>
 #include <IDocumentLayoutAccess.hxx>
 #include <IDocumentStylePoolAccess.hxx>
 #include <IDocumentState.hxx>
-#include "lineinfo.hxx"
-#include "charfmt.hxx"
-#include "poolfmt.hxx"
-#include "rootfrm.hxx"
-#include "viewsh.hxx"
+#include <lineinfo.hxx>
+#include <charfmt.hxx>
+#include <poolfmt.hxx>
+#include <rootfrm.hxx>
 #include <set>
 
 void SwDoc::SetLineNumberInfo( const SwLineNumberInfo &rNew )
@@ -53,50 +52,46 @@ const SwLineNumberInfo& SwDoc::GetLineNumberInfo() const
 }
 
 SwLineNumberInfo::SwLineNumberInfo() :
-    nPosFromLeft( MM50 ),
-    nCountBy( 5 ),
-    nDividerCountBy( 3 ),
-    ePos( LINENUMBER_POS_LEFT ),
-    bPaintLineNumbers( false ),
-    bCountBlankLines( true ),
-    bCountInFlys( false ),
-    bRestartEachPage( false )
+    m_nPosFromLeft( MM50 ),
+    m_nCountBy( 5 ),
+    m_nDividerCountBy( 3 ),
+    m_ePos( LINENUMBER_POS_LEFT ),
+    m_bPaintLineNumbers( false ),
+    m_bCountBlankLines( true ),
+    m_bCountInFlys( false ),
+    m_bRestartEachPage( false )
 {
 }
 
 SwLineNumberInfo::SwLineNumberInfo(const SwLineNumberInfo &rCpy ) : SwClient(),
-    aType( rCpy.GetNumType() ),
-    aDivider( rCpy.GetDivider() ),
-    nPosFromLeft( rCpy.GetPosFromLeft() ),
-    nCountBy( rCpy.GetCountBy() ),
-    nDividerCountBy( rCpy.GetDividerCountBy() ),
-    ePos( rCpy.GetPos() ),
-    bPaintLineNumbers( rCpy.IsPaintLineNumbers() ),
-    bCountBlankLines( rCpy.IsCountBlankLines() ),
-    bCountInFlys( rCpy.IsCountInFlys() ),
-    bRestartEachPage( rCpy.IsRestartEachPage() )
+    m_aType( rCpy.GetNumType() ),
+    m_aDivider( rCpy.GetDivider() ),
+    m_nPosFromLeft( rCpy.GetPosFromLeft() ),
+    m_nCountBy( rCpy.GetCountBy() ),
+    m_nDividerCountBy( rCpy.GetDividerCountBy() ),
+    m_ePos( rCpy.GetPos() ),
+    m_bPaintLineNumbers( rCpy.IsPaintLineNumbers() ),
+    m_bCountBlankLines( rCpy.IsCountBlankLines() ),
+    m_bCountInFlys( rCpy.IsCountInFlys() ),
+    m_bRestartEachPage( rCpy.IsRestartEachPage() )
 {
-    if ( rCpy.GetRegisteredIn() )
-        const_cast<SwModify*>(rCpy.GetRegisteredIn())->Add( this );
+    StartListeningToSameModifyAs(rCpy);
 }
 
 SwLineNumberInfo& SwLineNumberInfo::operator=(const SwLineNumberInfo &rCpy)
 {
-    if ( rCpy.GetRegisteredIn() )
-        const_cast<SwModify*>(rCpy.GetRegisteredIn())->Add( this );
-    else if ( GetRegisteredIn() )
-        GetRegisteredInNonConst()->Remove( this );
+    StartListeningToSameModifyAs(rCpy);
 
-    aType = rCpy.GetNumType();
-    aDivider = rCpy.GetDivider();
-    nPosFromLeft = rCpy.GetPosFromLeft();
-    nCountBy = rCpy.GetCountBy();
-    nDividerCountBy = rCpy.GetDividerCountBy();
-    ePos = rCpy.GetPos();
-    bPaintLineNumbers = rCpy.IsPaintLineNumbers();
-    bCountBlankLines = rCpy.IsCountBlankLines();
-    bCountInFlys = rCpy.IsCountInFlys();
-    bRestartEachPage = rCpy.IsRestartEachPage();
+    m_aType = rCpy.GetNumType();
+    m_aDivider = rCpy.GetDivider();
+    m_nPosFromLeft = rCpy.GetPosFromLeft();
+    m_nCountBy = rCpy.GetCountBy();
+    m_nDividerCountBy = rCpy.GetDividerCountBy();
+    m_ePos = rCpy.GetPos();
+    m_bPaintLineNumbers = rCpy.IsPaintLineNumbers();
+    m_bCountBlankLines = rCpy.IsCountBlankLines();
+    m_bCountInFlys = rCpy.IsCountInFlys();
+    m_bRestartEachPage = rCpy.IsRestartEachPage();
 
     return *this;
 }

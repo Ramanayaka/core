@@ -20,25 +20,26 @@
 #ifndef INCLUDED_VCL_MENUBTN_HXX
 #define INCLUDED_VCL_MENUBTN_HXX
 
+#include <config_options.h>
 #include <vcl/button.hxx>
 #include <vcl/dllapi.h>
+#include <memory>
 
-class FloatingWindow;
 class Timer;
 class PopupMenu;
-class VclBuilder;
-class VclSimpleEvent;
 
 class VCL_DLLPUBLIC MenuButton : public PushButton
 {
 private:
     friend class VclBuilder;
 
-    Timer*          mpMenuTimer;
+    std::unique_ptr<Timer> mpMenuTimer;
     VclPtr<PopupMenu> mpMenu;
-    VclPtr<FloatingWindow> mpFloatingWindow;
+    VclPtr<Window>  mpFloatingWindow;
+    OString         msCurItemIdent;
     sal_uInt16      mnCurItemId;
     bool            mbDelayMenu;
+    bool            mbStartingMenu;
     Link<MenuButton*,void> maActivateHdl;
     Link<MenuButton*,void> maSelectHdl;
 
@@ -63,6 +64,8 @@ public:
     virtual void    Select();
 
     void            ExecuteMenu();
+    bool            InPopupMode() const;
+    void            CancelMenu();
 
     //if false then the whole button launches the menu
     //if true, then the button has a separator
@@ -75,17 +78,21 @@ public:
     void            SetPopupMenu(PopupMenu* pNewMenu);
     PopupMenu*      GetPopupMenu() const { return mpMenu; }
 
-    void            SetPopover(FloatingWindow* pFloatingWindow);
+    void            SetPopover(Window* pWindow);
 
-    sal_uInt16      GetCurItemId() const { return mnCurItemId; }
-    OString         GetCurItemIdent() const;
+    OString const & GetCurItemIdent() const { return msCurItemIdent; }
 
     void            SetActivateHdl( const Link<MenuButton *, void>& rLink ) { maActivateHdl = rLink; }
     void            SetSelectHdl( const Link<MenuButton *, void>& rLink ) { maSelectHdl = rLink; }
+
+    virtual FactoryFunction GetUITestFactory() const override;
+
+    void SetCurItemId();
+
 };
 
 
-class VCL_DLLPUBLIC MenuToggleButton : public MenuButton
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) MenuToggleButton final : public MenuButton
 {
 public:
     explicit        MenuToggleButton( vcl::Window* pParent, WinBits nStyle );

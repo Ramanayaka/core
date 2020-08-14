@@ -23,21 +23,21 @@
 #include <memory>
 #include "ViewShell.hxx"
 #include "tools/AsynchronousCall.hxx"
-#include <sfx2/viewfac.hxx>
-#include <sfx2/viewsh.hxx>
 #include "TabControl.hxx"
-#include "pres.hxx"
-#include <svx/sidebar/SelectionChangeHandler.hxx>
-#include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/scanner/XScannerManager2.hpp>
+#include <glob.hxx>
+#include <pres.hxx>
 #include <unotools/caserotate.hxx>
 #include <unotools/options.hxx>
+#include <sddllapi.h>
+
+namespace svx::sidebar { class SelectionChangeHandler; }
+namespace com::sun::star::lang { class XEventListener; }
+namespace com::sun::star::scanner { class XScannerManager2; }
 
 class Outliner;
 class SdPage;
 class SdStyleSheet;
 class SdrExternalToolEdit;
-class DrawDocShell;
 class TabBar;
 class SdrObject;
 class SdrPageView;
@@ -65,7 +65,7 @@ class ViewOverlayManager;
     overview over several slides or a textual
     overview over the text in an Impress document (OutlineViewShell).
 */
-class DrawViewShell
+class SAL_DLLPUBLIC_RTTI DrawViewShell
     : public ViewShell,
       public SfxListener,
       public utl::ConfigurationListener
@@ -116,10 +116,12 @@ public:
     virtual void    MouseButtonUp(const MouseEvent& rMEvt, ::sd::Window* pWin) override;
     virtual void    MouseButtonDown(const MouseEvent& rMEvt, ::sd::Window* pWin) override;
     virtual void    Command(const CommandEvent& rCEvt, ::sd::Window* pWin) override;
+    bool            IsMouseButtonDown() const { return mbMouseButtonDown; }
+    bool            IsMouseSelecting() const { return mbMouseSelecting; }
 
     virtual void    Resize() override;
 
-    void            ShowMousePosInfo(const ::tools::Rectangle& rRect, ::sd::Window* pWin);
+    void            ShowMousePosInfo(const ::tools::Rectangle& rRect, ::sd::Window const * pWin);
 
     virtual void    ChangeEditMode (EditMode eMode, bool bIsLayerModeActive);
 
@@ -139,7 +141,7 @@ public:
     OUString        GetSelectionText( bool bCompleteWords );
     bool            HasSelection( bool bText ) const;
 
-    //If we are editing an PRESOBJ_OUTLINE return the Outliner and fill rSel
+    //If we are editing a PresObjKind::Outline return the Outliner and fill rSel
     //with the current selection
     ::Outliner*     GetOutlinerForMasterPageOutlineTextObj(ESelection &rSel);
 
@@ -159,6 +161,7 @@ public:
 
     void            SetPageProperties (SfxRequest& rReq);
     void            GetPageProperties(SfxItemSet& rSet);
+    void            GetMarginProperties(SfxItemSet& rSet);
 
     void            GetState (SfxItemSet& rSet);
     void            Execute (SfxRequest& rReq);
@@ -181,7 +184,7 @@ public:
     void            ExecNavigatorWin(SfxRequest& rReq);
     void            GetNavigatorWinState(SfxItemSet& rSet);
 
-    void            ExecutePropPanelAttr (SfxRequest& rReq);
+    void            ExecutePropPanelAttr (SfxRequest const & rReq);
     void            GetStatePropPanelAttr(SfxItemSet& rSet);
 
     void            ExecEffectWin(SfxRequest& rReq);
@@ -189,19 +192,19 @@ public:
     void            Update3DWindow();
     void            AssignFrom3DWindow();
 
-    void            ExecGallery(SfxRequest& rReq);
+    void            ExecGallery(SfxRequest const & rReq);
 
-    void            ExecBmpMask( SfxRequest& rReq );
+    void            ExecBmpMask( SfxRequest const & rReq );
     void            GetBmpMaskState( SfxItemSet& rSet );
 
-    void            ExecIMap( SfxRequest& rReq );
+    void            ExecIMap( SfxRequest const & rReq );
     void            GetIMapState( SfxItemSet& rSet );
 
     void            FuTemporary(SfxRequest& rReq);
     void            FuPermanent(SfxRequest& rReq);
     void            FuSupport(SfxRequest& rReq);
     void            FuDeleteSelectedObjects();
-    void            FuSupportRotate(SfxRequest& rReq);
+    void            FuSupportRotate(SfxRequest const & rReq);
     void            FuTable(SfxRequest& rReq);
 
     void            AttrExec (SfxRequest& rReq);
@@ -221,16 +224,16 @@ public:
 
     SD_DLLPUBLIC void ExecChar(SfxRequest& rReq);
 
-    void            ExecuteAnnotation (SfxRequest& rRequest);
+    void            ExecuteAnnotation (SfxRequest const & rRequest);
     void            GetAnnotationState (SfxItemSet& rItemSet);
 
     void            StartRulerDrag (const Ruler& rRuler, const MouseEvent& rMEvt);
 
     virtual bool    PrepareClose( bool bUI = true ) override;
 
-    PageKind        GetPageKind() { return mePageKind; }
+    PageKind        GetPageKind() const { return mePageKind; }
     void            SetPageKind( PageKind ePageKind ) { mePageKind = ePageKind; }
-    const Point&    GetMousePos() { return maMousePos; }
+    const Point&    GetMousePos() const { return maMousePos; }
     void            SetMousePosFreezed( bool bIn ) { mbMousePosFreezed = bIn; }
 
     EditMode        GetEditMode() const { return meEditMode; }
@@ -244,11 +247,18 @@ public:
     bool            SwitchPage(sal_uInt16 nPage);
     bool            IsSwitchPageAllowed() const;
 
+    /**
+     * Mark the desired page as selected (1), deselected (0), toggle (2).
+     * nPage refers to the page in question.
+     */
+    bool            SelectPage(sal_uInt16 nPage, sal_uInt16 nSelect);
+    bool            IsSelected(sal_uInt16 nPage);
+    bool            IsVisible(sal_uInt16 nPage);
+
     void            GotoBookmark(const OUString& rBookmark);
     //Realize multi-selection of objects, If object is marked, the
     //corresponding entry is set true, else the corresponding entry is set
     //false.
-    void            FreshNavigatrEntry();
     void            FreshNavigatrTree();
     void            MakeVisible(const ::tools::Rectangle& rRect, vcl::Window& rWin);
 
@@ -259,7 +269,7 @@ public:
     virtual bool    ActivateObject(SdrOle2Obj* pObj, long nVerb) override;
 
     void            SetZoomOnPage( bool bZoom ) { mbZoomOnPage = bZoom; }
-    bool            IsZoomOnPage() { return mbZoomOnPage; }
+    bool            IsZoomOnPage() const { return mbZoomOnPage; }
     static void     CheckLineTo (SfxRequest& rReq);
     void            SetChildWindowState( SfxItemSet& rSet );
 
@@ -267,10 +277,9 @@ public:
 
     void            LockInput();
     void            UnlockInput();
-    bool            IsInputLocked() const { return mnLockCount > 0UL; }
+    bool            IsInputLocked() const { return mnLockCount > 0; }
 
-    sal_uInt16      GetCurPageId() { return maTabControl->GetCurPageId(); }
-    sal_uInt16      GetCurPagePos() { return maTabControl->GetCurPagePos(); }
+    sal_uInt16      GetCurPagePos() const { return maTabControl->GetCurPagePos(); }
 
     /** Show controls of the UI or hide them, depending on the given flag.
         Do not call this method directly.  Call the method at ViewShellBase
@@ -287,8 +296,8 @@ public:
     virtual sal_Int8    ExecuteDrop( const ExecuteDropEvent& rEvt, DropTargetHelper& rTargetHelper,
                                     ::sd::Window* pTargetWindow, sal_uInt16 nPage, SdrLayerID nLayer ) override;
 
-    virtual void    WriteUserDataSequence ( css::uno::Sequence < css::beans::PropertyValue >&, bool bBrowse ) override;
-    virtual void    ReadUserDataSequence ( const css::uno::Sequence < css::beans::PropertyValue >&, bool bBrowse ) override;
+    virtual void    WriteUserDataSequence ( css::uno::Sequence < css::beans::PropertyValue >& ) override;
+    virtual void    ReadUserDataSequence ( const css::uno::Sequence < css::beans::PropertyValue >& ) override;
 
     virtual void    VisAreaChanged(const ::tools::Rectangle& rRect) override;
 
@@ -326,18 +335,18 @@ public:
         @param nId
             The id is expected to be a number between zero (inclusive) and
             the number of layers as returned by the
-            <member>GetTabLayerCount</member> method (exclusive).  Note that
-            Invalid values are ignored.  No excpetion is thrown in that case.
+            <member>GetTabLayerCount</member> method (exclusive). Note that
+            Invalid values are ignored. No exception is thrown in that case.
     */
     void SetActiveTabLayerIndex (int nId);
 
     /** Return a pointer to the tab control for pages.
     */
-    TabControl& GetPageTabControl() { return *maTabControl.get(); }
+    TabControl& GetPageTabControl() { return *maTabControl; }
 
     /** Return a pointer to the tab control for layers.
     */
-    LayerTabBar* GetLayerTabControl();
+    SD_DLLPUBLIC LayerTabBar* GetLayerTabControl(); // export for unit test
 
     /** Renames the given slide using an SvxNameDialog
 
@@ -355,21 +364,21 @@ public:
 
     virtual css::uno::Reference<css::drawing::XDrawSubController> CreateSubController() override;
 
-    DrawView*   GetDrawView() const { return mpDrawView; }
+    DrawView*   GetDrawView() const { return mpDrawView.get(); }
 
     /** Relocation to a new parent window is not supported for DrawViewShell
         objects so this method always returns <FALSE/>.
     */
     virtual bool RelocateToParentWindow (vcl::Window* pParentWindow) override;
 
-    OUString GetSidebarContextName() const;
+    OUString const & GetSidebarContextName() const;
 
-    bool IsInSwitchPage() { return mbIsInSwitchPage; }
+    bool IsInSwitchPage() const { return mbIsInSwitchPage; }
 
     //move this method to ViewShell.
     //void  NotifyAccUpdate();
 protected:
-    DrawView*           mpDrawView;
+    std::unique_ptr<DrawView> mpDrawView;
     SdPage*             mpActualPage;
     ::tools::Rectangle           maMarkRect;
     Point               maMousePos;
@@ -397,7 +406,7 @@ protected:
     virtual void    UpdateVRuler() override;
     virtual void    SetZoomFactor(const Fraction& rZoomX, const Fraction& rZoomY) override;
 
-    void            SetupPage( Size &rSize, long nLeft, long nRight, long nUpper, long nLower,
+    void            SetupPage( Size const &rSize, long nLeft, long nRight, long nUpper, long nLower,
                                bool bSize, bool bMargin, bool bScaleAll );
 
     void            GetMenuStateSel(SfxItemSet& rSet);
@@ -441,10 +450,14 @@ private:
         SdPage* pPage,
         const sal_Int32 nInsertPosition = -1) override;
 
+    void DuplicateSelectedSlides (SfxRequest& rRequest);
+
     css::uno::Reference< css::scanner::XScannerManager2 > mxScannerManager;
     css::uno::Reference< css::lang::XEventListener >      mxScannerListener;
     rtl::Reference<TransferableClipboardListener>         mxClipEvtLstnr;
     bool                                                  mbPastePossible;
+    bool                                                  mbMouseButtonDown;
+    bool                                                  mbMouseSelecting;
 
     virtual void Notify (SfxBroadcaster& rBC, const SfxHint& rHint) override;
 

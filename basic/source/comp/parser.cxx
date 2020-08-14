@@ -17,12 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <basic/sberrors.hxx>
+#include <basic/sbxmeth.hxx>
+#include <basic/sbmod.hxx>
+#include <basic/sbstar.hxx>
 #include <basic/sbx.hxx>
-#include "parser.hxx"
+#include <parser.hxx>
 #include <com/sun/star/script/ModuleType.hpp>
-#include <svtools/miscopt.hxx>
 #include <rtl/character.hxx>
-#include <o3tl/make_unique.hxx>
 
 struct SbiParseStack {              // "Stack" for statement-blocks
     SbiParseStack* pNext;           // Chain
@@ -31,6 +33,8 @@ struct SbiParseStack {              // "Stack" for statement-blocks
     sal_uInt32  nChain;                 // JUMP-Chain
 };
 
+namespace {
+
 struct SbiStatement {
     SbiToken eTok;
     void( SbiParser::*Func )();
@@ -38,10 +42,12 @@ struct SbiStatement {
     bool  bSubr;                    // true: OK inside the SUB
 };
 
+}
+
 #define Y   true
 #define N   false
 
-static const SbiStatement StmntTable [] = {
+const SbiStatement StmntTable [] = {
 { ATTRIBUTE, &SbiParser::Attribute, Y, Y, }, // ATTRIBUTE
 { CALL,     &SbiParser::Call,       N, Y, }, // CALL
 { CLOSE,    &SbiParser::Close,      N, Y, }, // CLOSE
@@ -205,19 +211,19 @@ void SbiParser::OpenBlock( SbiToken eTok, SbiExprNode* pVar )
 
 void SbiParser::CloseBlock()
 {
-    if( pStack )
-    {
-        SbiParseStack* p = pStack;
+    if( !pStack )
+        return;
 
-        // #29955 service the for-loop level
-        if( p->eExitTok == FOR )
-            aGen.DecForLevel();
+    SbiParseStack* p = pStack;
 
-        aGen.BackChain( p->nChain );
-        pStack = p->pNext;
-        pWithVar = p->pWithVar;
-        delete p;
-    }
+    // #29955 service the for-loop level
+    if( p->eExitTok == FOR )
+        aGen.DecForLevel();
+
+    aGen.BackChain( p->nChain );
+    pStack = p->pNext;
+    pWithVar = p->pWithVar;
+    delete p;
 }
 
 // EXIT ...
@@ -399,7 +405,7 @@ bool SbiParser::Parse()
             Next();
             Push( eCurTok );
             aGen.Statement();
-                Symbol(nullptr);
+            Symbol(nullptr);
         }
     }
     else
@@ -508,10 +514,10 @@ void SbiParser::Symbol( const KeywordSymbolInfo* pKeywordSymbolInfo )
                 if( nParCount == 2 || nParCount == 3 )
                 {
                     if( nParCount == 2 )
-                        pPar->addExpression( o3tl::make_unique<SbiExpression>( this, -1, SbxLONG ) );
+                        pPar->addExpression( std::make_unique<SbiExpression>( this, -1, SbxLONG ) );
 
                     TestToken( EQ );
-                    pPar->addExpression( o3tl::make_unique<SbiExpression>( this ) );
+                    pPar->addExpression( std::make_unique<SbiExpression>( this ) );
 
                     bSpecialMidHandling = true;
                 }
@@ -519,37 +525,37 @@ void SbiParser::Symbol( const KeywordSymbolInfo* pKeywordSymbolInfo )
         }
     }
     aVar.Gen( eRecMode );
-    if( !bSpecialMidHandling )
+    if( bSpecialMidHandling )
+        return;
+
+    if( !bEQ )
     {
-        if( !bEQ )
+        aGen.Gen( SbiOpcode::GET_ );
+    }
+    else
+    {
+        // so it must be an assignment!
+        if( !aVar.IsLvalue() )
+            Error( ERRCODE_BASIC_LVALUE_EXPECTED );
+        TestToken( EQ );
+        SbiExpression aExpr( this );
+        aExpr.Gen();
+        SbiOpcode eOp = SbiOpcode::PUT_;
+        if( pDef )
         {
-            aGen.Gen( SbiOpcode::GET_ );
-        }
-        else
-        {
-            // so it must be an assignment!
-            if( !aVar.IsLvalue() )
-                Error( ERRCODE_BASIC_LVALUE_EXPECTED );
-            TestToken( EQ );
-            SbiExpression aExpr( this );
-            aExpr.Gen();
-            SbiOpcode eOp = SbiOpcode::PUT_;
-            if( pDef )
+            if( pDef->GetConstDef() )
+                Error( ERRCODE_BASIC_DUPLICATE_DEF, pDef->GetName() );
+            if( pDef->GetType() == SbxOBJECT )
             {
-                if( pDef->GetConstDef() )
-                    Error( ERRCODE_BASIC_DUPLICATE_DEF, pDef->GetName() );
-                if( pDef->GetType() == SbxOBJECT )
+                eOp = SbiOpcode::SET_;
+                if( pDef->GetTypeId() )
                 {
-                    eOp = SbiOpcode::SET_;
-                    if( pDef->GetTypeId() )
-                    {
-                        aGen.Gen( SbiOpcode::SETCLASS_, pDef->GetTypeId() );
-                        return;
-                    }
+                    aGen.Gen( SbiOpcode::SETCLASS_, pDef->GetTypeId() );
+                    return;
                 }
             }
-            aGen.Gen( eOp );
         }
+        aGen.Gen( eOp );
     }
 }
 
@@ -590,8 +596,7 @@ void SbiParser::Set()
     if( eTok == NEW )
     {
         Next();
-        OUString aStr;
-        SbiSymDef* pTypeDef = new SbiSymDef( aStr );
+        auto pTypeDef = std::make_unique<SbiSymDef>( OUString() );
         TypeDecl( *pTypeDef, true );
 
         aLvalue.Gen();
@@ -606,7 +611,7 @@ void SbiParser::Set()
         // It's a good idea to distinguish between
         // set something = another &
         // something = another
-        // ( its necessary for vba objects where set is object
+        // ( it's necessary for vba objects where set is object
         // specific and also doesn't involve processing default params )
         if( pDef->GetTypeId() )
         {
@@ -763,13 +768,10 @@ void SbiParser::Option()
         case BASIC_EXPLICIT:
             bExplicit = true; break;
         case BASE:
-            if( Next() == NUMBER )
+            if( Next() == NUMBER && ( nVal == 0 || nVal == 1 ) )
             {
-                if( nVal == 0 || nVal == 1 )
-                {
-                    nBase = (short) nVal;
-                    break;
-                }
+                nBase = static_cast<short>(nVal);
+                break;
             }
             Error( ERRCODE_BASIC_EXPECTED, "0/1" );
             break;
@@ -831,7 +833,7 @@ void SbiParser::Option()
     }
 }
 
-void addStringConst( SbiSymPool& rPool, const OUString& pSym, const OUString& rStr )
+static void addStringConst( SbiSymPool& rPool, const OUString& pSym, const OUString& rStr )
 {
     SbiConstDef* pConst = new SbiConstDef( pSym );
     pConst->SetType( SbxSTRING );
@@ -855,9 +857,7 @@ void SbiParser::AddConstants()
     addStringConst( aPublics, "vbTab", "\x09" );
     addStringConst( aPublics, "vbVerticalTab", "\x0B" );
 
-    // Force length 1 and make char 0 afterwards
-    OUString aNullCharStr(u'\0');
-    addStringConst( aPublics, "vbNullChar", aNullCharStr );
+    addStringConst( aPublics, "vbNullChar", OUString(u'\0') );
 }
 
 // ERROR n

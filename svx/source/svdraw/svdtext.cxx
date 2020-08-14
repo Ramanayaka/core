@@ -17,21 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/svdotext.hxx"
-#include "svx/svdetc.hxx"
-#include "editeng/outlobj.hxx"
-#include "svx/svdoutl.hxx"
-#include "svx/svdmodel.hxx"
-#include "editeng/fhgtitem.hxx"
-#include <editeng/eeitem.hxx>
+#include <svx/svdotext.hxx>
+#include <svx/svdetc.hxx>
+#include <editeng/outlobj.hxx>
+#include <svx/svdoutl.hxx>
+#include <svx/svdmodel.hxx>
 #include <svl/itemset.hxx>
 #include <libxml/xmlwriter.h>
 #include <memory>
 
-SdrText::SdrText( SdrTextObj& rObject, OutlinerParaObject* pOutlinerParaObject /* = 0 */ )
-: mpOutlinerParaObject( pOutlinerParaObject )
-, mrObject( rObject )
-, mpModel( rObject.GetModel() )
+SdrText::SdrText( SdrTextObj& rObject )
+: mrObject( rObject )
 , mbPortionInfoChecked( false )
 {
     OSL_ENSURE(&mrObject, "SdrText created without SdrTextObj (!)");
@@ -40,26 +36,25 @@ SdrText::SdrText( SdrTextObj& rObject, OutlinerParaObject* pOutlinerParaObject /
 SdrText::~SdrText()
 {
     clearWeak();
-    delete mpOutlinerParaObject;
 }
 
 void SdrText::CheckPortionInfo( SdrOutliner& rOutliner )
 {
-    if(!mbPortionInfoChecked)
-    {
-        // #i102062# no action when the Outliner is the HitTestOutliner,
-        // this will remove WrongList info at the OPO
-        if(mpModel && &rOutliner == &mpModel->GetHitTestOutliner())
-            return;
+    if(mbPortionInfoChecked)
+        return;
 
-        // TODO: optimization: we could create a BigTextObject
-        mbPortionInfoChecked=true;
-        if(mpOutlinerParaObject!=nullptr && rOutliner.ShouldCreateBigTextObject())
-        {
-            // #i102062# MemoryLeak closed
-            delete mpOutlinerParaObject;
-            mpOutlinerParaObject = rOutliner.CreateParaObject();
-        }
+    // #i102062# no action when the Outliner is the HitTestOutliner,
+    // this will remove WrongList info at the OPO
+    if(&rOutliner == &mrObject.getSdrModelFromSdrObject().GetHitTestOutliner())
+        return;
+
+    // TODO: optimization: we could create a BigTextObject
+    mbPortionInfoChecked=true;
+
+    if(mpOutlinerParaObject!=nullptr && rOutliner.ShouldCreateBigTextObject())
+    {
+        // #i102062# MemoryLeak closed
+        mpOutlinerParaObject = rOutliner.CreateParaObject();
     }
 }
 
@@ -74,116 +69,60 @@ const SfxItemSet& SdrText::GetItemSet() const
     return const_cast< SdrText* >(this)->GetObjectItemSet();
 }
 
-void SdrText::SetOutlinerParaObject( OutlinerParaObject* pTextObject )
+void SdrText::SetOutlinerParaObject( std::unique_ptr<OutlinerParaObject> pTextObject )
 {
-    if( mpOutlinerParaObject != pTextObject )
+    assert ( !mpOutlinerParaObject || (mpOutlinerParaObject.get() != pTextObject.get()) );
+
+    // Update HitTestOutliner
+    const SdrTextObj* pTestObj(mrObject.getSdrModelFromSdrObject().GetHitTestOutliner().GetTextObj());
+
+    if(pTestObj && pTestObj->GetOutlinerParaObject() == mpOutlinerParaObject.get())
     {
-        if( mpModel )
-        {
-            // Update HitTestOutliner
-            const SdrTextObj* pTestObj = mpModel->GetHitTestOutliner().GetTextObj();
-            if( pTestObj && pTestObj->GetOutlinerParaObject() == mpOutlinerParaObject )
-                mpModel->GetHitTestOutliner().SetTextObj( nullptr );
-        }
-
-        delete mpOutlinerParaObject;
-
-        mpOutlinerParaObject = pTextObject;
-
-        mbPortionInfoChecked = false;
+        mrObject.getSdrModelFromSdrObject().GetHitTestOutliner().SetTextObj(nullptr);
     }
+
+    mpOutlinerParaObject = std::move(pTextObject);
+    mbPortionInfoChecked = false;
 }
 
 OutlinerParaObject* SdrText::GetOutlinerParaObject() const
 {
-    return mpOutlinerParaObject;
+    return mpOutlinerParaObject.get();
 }
 
 /** returns the current OutlinerParaObject and removes it from this instance */
-OutlinerParaObject* SdrText::RemoveOutlinerParaObject()
+std::unique_ptr<OutlinerParaObject> SdrText::RemoveOutlinerParaObject()
 {
-    if( mpModel )
+    // Update HitTestOutliner
+    const SdrTextObj* pTestObj(mrObject.getSdrModelFromSdrObject().GetHitTestOutliner().GetTextObj());
+
+    if(pTestObj && pTestObj->GetOutlinerParaObject() == mpOutlinerParaObject.get())
     {
-        // Update HitTestOutliner
-        const SdrTextObj* pTestObj = mpModel->GetHitTestOutliner().GetTextObj();
-        if( pTestObj && pTestObj->GetOutlinerParaObject() == mpOutlinerParaObject )
-            mpModel->GetHitTestOutliner().SetTextObj( nullptr );
+        mrObject.getSdrModelFromSdrObject().GetHitTestOutliner().SetTextObj(nullptr);
     }
 
-    OutlinerParaObject* pOPO = mpOutlinerParaObject;
-
-    mpOutlinerParaObject = nullptr;
+    std::unique_ptr<OutlinerParaObject> pOPO = std::move(mpOutlinerParaObject);
     mbPortionInfoChecked = false;
 
     return pOPO;
 }
 
-void SdrText::SetModel( SdrModel* pNewModel )
-{
-    if( pNewModel == mpModel )
-        return;
-
-    SdrModel* pOldModel = mpModel;
-    mpModel = pNewModel;
-
-    if( mpOutlinerParaObject && pOldModel!=nullptr && pNewModel!=nullptr)
-    {
-        bool bHgtSet = GetObjectItemSet().GetItemState(EE_CHAR_FONTHEIGHT) == SfxItemState::SET;
-
-        MapUnit aOldUnit(pOldModel->GetScaleUnit());
-        MapUnit aNewUnit(pNewModel->GetScaleUnit());
-        bool bScaleUnitChanged=aNewUnit!=aOldUnit;
-        // Now move the OutlinerParaObject into a new Pool.
-        // TODO: We should compare the DefTab and RefDevice of both Models to
-        // see whether we need to use AutoGrow!
-        sal_uIntPtr nOldFontHgt=pOldModel->GetDefaultFontHeight();
-        sal_uIntPtr nNewFontHgt=pNewModel->GetDefaultFontHeight();
-        bool bDefHgtChanged=nNewFontHgt!=nOldFontHgt;
-        bool bSetHgtItem=bDefHgtChanged && !bHgtSet;
-        if (bSetHgtItem)
-        {
-            // fix the value of HeightItem, so
-            // 1. it remains and
-            // 2. DoStretchChars gets the right value
-            SetObjectItem(SvxFontHeightItem(nOldFontHgt, 100, EE_CHAR_FONTHEIGHT));
-        }
-        // now use the Outliner, etc. so the above SetAttr can work at all
-        SdrOutliner& rOutliner = mrObject.ImpGetDrawOutliner();
-        rOutliner.SetText(*mpOutlinerParaObject);
-        delete mpOutlinerParaObject;
-        mpOutlinerParaObject=nullptr;
-        if (bScaleUnitChanged)
-        {
-            Fraction aMetricFactor=GetMapFactor(aOldUnit,aNewUnit).X();
-
-            if (bSetHgtItem)
-            {
-                // Now correct the frame attribute
-                nOldFontHgt=BigMulDiv(nOldFontHgt,aMetricFactor.GetNumerator(),aMetricFactor.GetDenominator());
-                SetObjectItem(SvxFontHeightItem(nOldFontHgt, 100, EE_CHAR_FONTHEIGHT));
-            }
-        }
-        SetOutlinerParaObject(rOutliner.CreateParaObject());
-        mpOutlinerParaObject->ClearPortionInfo();
-        mbPortionInfoChecked=false;
-        rOutliner.Clear();
-    }
-}
-
 void SdrText::ForceOutlinerParaObject( OutlinerMode nOutlMode )
 {
-    if( mpModel && !mpOutlinerParaObject )
-    {
-        std::unique_ptr<Outliner> pOutliner(SdrMakeOutliner(nOutlMode, *mpModel));
-        if( pOutliner )
-        {
-            Outliner& aDrawOutliner = mpModel->GetDrawOutliner();
-            pOutliner->SetCalcFieldValueHdl( aDrawOutliner.GetCalcFieldValueHdl() );
+    if(mpOutlinerParaObject)
+        return;
 
-            pOutliner->SetStyleSheet( 0, GetStyleSheet());
-            OutlinerParaObject* pOutlinerParaObject = pOutliner->CreateParaObject();
-            SetOutlinerParaObject( pOutlinerParaObject );
-        }
+    std::unique_ptr<Outliner> pOutliner(
+        SdrMakeOutliner(
+            nOutlMode,
+            mrObject.getSdrModelFromSdrObject()));
+
+    if(pOutliner)
+    {
+        Outliner& aDrawOutliner(mrObject.getSdrModelFromSdrObject().GetDrawOutliner());
+        pOutliner->SetCalcFieldValueHdl( aDrawOutliner.GetCalcFieldValueHdl() );
+        pOutliner->SetStyleSheet( 0, GetStyleSheet());
+        SetOutlinerParaObject( pOutliner->CreateParaObject() );
     }
 }
 
@@ -192,17 +131,12 @@ const SfxItemSet& SdrText::GetObjectItemSet()
     return mrObject.GetObjectItemSet();
 }
 
-void SdrText::SetObjectItem(const SfxPoolItem& rItem)
-{
-    mrObject.SetObjectItem( rItem );
-}
-
 SfxStyleSheet* SdrText::GetStyleSheet() const
 {
     return mrObject.GetStyleSheet();
 }
 
-void SdrText::dumpAsXml(struct _xmlTextWriter * pWriter) const
+void SdrText::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     xmlTextWriterStartElement(pWriter, BAD_CAST("SdrText"));
     mpOutlinerParaObject->dumpAsXml(pWriter);

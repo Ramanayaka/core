@@ -36,6 +36,7 @@
 
 #include <com/sun/star/sheet/XMultiFormulaTokens.hpp>
 #include <com/sun/star/sheet/FormulaToken.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include "address.hxx"
@@ -43,7 +44,6 @@
 
 class ScDocument;
 class ScTableConditionalEntry;
-class ScConditionalFormat;
 class ScValidationData;
 
 struct ScCondFormatEntryItem
@@ -65,7 +65,7 @@ struct ScCondFormatEntryItem
     ScCondFormatEntryItem();
 };
 
-class ScTableConditionalFormat : public cppu::WeakImplHelper<
+class ScTableConditionalFormat final : public cppu::WeakImplHelper<
                             css::sheet::XSheetConditionalEntries,
                             css::container::XNameAccess,
                             css::container::XEnumerationAccess,
@@ -79,7 +79,7 @@ private:
     void                        AddEntry_Impl(const ScCondFormatEntryItem& aEntry);
 public:
                             ScTableConditionalFormat() = delete;
-                            ScTableConditionalFormat(ScDocument* pDoc, sal_uLong nKey,
+                            ScTableConditionalFormat(const ScDocument* pDoc, sal_uLong nKey,
                                     SCTAB nTab, formula::FormulaGrammar::Grammar eGrammar);
     virtual                 ~ScTableConditionalFormat() override;
 
@@ -109,10 +109,7 @@ public:
     virtual sal_Bool SAL_CALL hasElements() override;
 
                             // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScTableConditionalFormat* getImplementation(const css::uno::Reference<css::sheet::XSheetConditionalEntries>& rObj);
+    UNO3_GETIMPLEMENTATION_DECL(ScTableConditionalFormat)
 
                             // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
@@ -157,7 +154,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScTableValidationObj : public cppu::WeakImplHelper<
+class ScTableValidationObj final : public cppu::WeakImplHelper<
                             css::sheet::XSheetCondition2,
                             css::sheet::XMultiFormulaTokens,
                             css::beans::XPropertySet,
@@ -193,7 +190,7 @@ private:
 public:
 
                             ScTableValidationObj() = delete;
-                            ScTableValidationObj(ScDocument* pDoc, sal_uLong nKey,
+                            ScTableValidationObj(const ScDocument* pDoc, sal_uLong nKey,
                                                 const formula::FormulaGrammar::Grammar eGrammar);
     virtual                 ~ScTableValidationObj() override;
 
@@ -236,10 +233,7 @@ public:
                                     const css::uno::Reference< css::beans::XVetoableChangeListener >& aListener ) override;
 
                             // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScTableValidationObj* getImplementation(const css::uno::Reference<css::beans::XPropertySet>& rObj);
+    UNO3_GETIMPLEMENTATION_DECL(ScTableValidationObj)
 
                             // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;

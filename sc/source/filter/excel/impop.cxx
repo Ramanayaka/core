@@ -18,71 +18,54 @@
  */
 
 #include <memory>
-#include "imp_op.hxx"
+#include <imp_op.hxx>
 
 #include <filter/msfilter/countryid.hxx>
 
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
+#include <scitems.hxx>
 
-#include <editeng/editdata.hxx>
-#include <editeng/editeng.hxx>
-#include <editeng/editobj.hxx>
-#include <editeng/editstat.hxx>
-#include <editeng/flditem.hxx>
-#include <svx/pageitem.hxx>
-#include <editeng/colritem.hxx>
-#include <sfx2/printer.hxx>
+#include <o3tl/safeint.hxx>
 #include <sfx2/docfile.hxx>
+#include <svx/svxids.hrc>
 #include <svl/zforlist.hxx>
+#include <unotools/configmgr.hxx>
+#include <sal/log.hxx>
 
 #include <sfx2/objsh.hxx>
 #include <tools/urlobj.hxx>
-#include "docuno.hxx"
+#include <docuno.hxx>
 
-#include "formulacell.hxx"
-#include "document.hxx"
-#include "rangenam.hxx"
-#include "compiler.hxx"
-#include "patattr.hxx"
-#include "attrib.hxx"
-#include "globstr.hrc"
-#include "global.hxx"
-#include "markdata.hxx"
-#include "olinetab.hxx"
-#include "stlsheet.hxx"
-#include "stlpool.hxx"
-#include "viewopti.hxx"
-#include "docoptio.hxx"
-#include "scextopt.hxx"
-#include "editutil.hxx"
-#include "filtopt.hxx"
-#include "scerrors.hxx"
-#include "unonames.hxx"
-#include "paramisc.hxx"
-#include "postit.hxx"
+#include <formulacell.hxx>
+#include <document.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <global.hxx>
+#include <olinetab.hxx>
+#include <stlpool.hxx>
+#include <viewopti.hxx>
+#include <docoptio.hxx>
+#include <scextopt.hxx>
+#include <unonames.hxx>
+#include <paramisc.hxx>
+#include <colrowst.hxx>
+#include <otlnbuff.hxx>
+#include <xistyle.hxx>
 
-#include "fapihelper.hxx"
-#include "namebuff.hxx"
-#include "xltools.hxx"
-#include "xltable.hxx"
-#include "xlview.hxx"
-#include "xltracer.hxx"
-#include "xihelper.hxx"
-#include "xipage.hxx"
-#include "xiview.hxx"
-#include "xilink.hxx"
-#include "xiescher.hxx"
-#include "xicontent.hxx"
+#include <namebuff.hxx>
+#include <xltools.hxx>
+#include <xltable.hxx>
+#include <xltracer.hxx>
+#include <xihelper.hxx>
+#include <xipage.hxx>
+#include <xiview.hxx>
+#include <xiescher.hxx>
+#include <xicontent.hxx>
 
-#include "excimp8.hxx"
-#include "excform.hxx"
-#include "documentimport.hxx"
+#include <excform.hxx>
+#include <documentimport.hxx>
 
 #if defined(_WIN32)
 #include <math.h>
-#else
-#include <stdlib.h>
 #endif
 
 using namespace ::com::sun::star;
@@ -97,11 +80,6 @@ ImportTyp::ImportTyp( ScDocument* pDoc, rtl_TextEncoding eQ )
 
 ImportTyp::~ImportTyp()
 {
-}
-
-ErrCode ImportTyp::Read()
-{
-    return SCERR_IMPORT_INTERNAL;
 }
 
 ImportExcel::ImportExcel( XclImpRootData& rImpData, SvStream& rStrm ):
@@ -126,14 +104,15 @@ ImportExcel::ImportExcel( XclImpRootData& rImpData, SvStream& rStrm ):
     pExcRoot = &GetOldRoot();
     pExcRoot->pIR = this;   // ExcRoot -> XclImpRoot
     pExcRoot->eDateiTyp = BiffX;
-    pExcRoot->pExtSheetBuff = new ExtSheetBuffer( pExcRoot );   //&aExtSheetBuff;
-    pExcRoot->pShrfmlaBuff = new SharedFormulaBuffer( pExcRoot );     //&aShrfrmlaBuff;
-    pExcRoot->pExtNameBuff = new ExtNameBuff ( *this );
+    pExcRoot->pExtSheetBuff.reset( new ExtSheetBuffer( pExcRoot ) );   //&aExtSheetBuff;
+    pExcRoot->pShrfmlaBuff.reset( new SharedFormulaBuffer( pExcRoot ) );     //&aShrfrmlaBuff;
+    pExcRoot->pExtNameBuff.reset( new ExtNameBuff ( *this ) );
 
-    pOutlineListBuffer = new XclImpOutlineListBuffer;
+    pOutlineListBuffer.reset(new XclImpOutlineListBuffer);
 
-    // ab Biff8
-    pFormConv = pExcRoot->pFmlaConverter = new ExcelToSc( GetRoot() );
+    // from Biff8 on
+    pFormConv.reset(new ExcelToSc( GetRoot() ));
+    pExcRoot->pFmlaConverter = pFormConv.get();
 
     bTabTruncated = false;
 
@@ -155,9 +134,9 @@ ImportExcel::~ImportExcel()
 {
     GetDoc().SetSrcCharSet( GetTextEncoding() );
 
-    delete pOutlineListBuffer;
+    pOutlineListBuffer.reset();
 
-    delete pFormConv;
+    pFormConv.reset();
 }
 
 void ImportExcel::SetLastFormula( SCCOL nCol, SCROW nRow, double fVal, sal_uInt16 nXF, ScFormulaCell* pCell )
@@ -166,8 +145,7 @@ void ImportExcel::SetLastFormula( SCCOL nCol, SCROW nRow, double fVal, sal_uInt1
     if (it == maLastFormulaCells.end())
     {
         std::pair<LastFormulaMapType::iterator, bool> r =
-            maLastFormulaCells.insert(
-                LastFormulaMapType::value_type(nCol, LastFormula()));
+            maLastFormulaCells.emplace(nCol, LastFormula());
         it = r.first;
     }
 
@@ -186,18 +164,18 @@ void ImportExcel::ReadFileSharing()
     nRecommendReadOnly = maStrm.ReaduInt16();
     nPasswordHash = maStrm.ReaduInt16();
 
-    if( (nRecommendReadOnly != 0) || (nPasswordHash != 0) )
-    {
-        if( SfxItemSet* pItemSet = GetMedium().GetItemSet() )
-            pItemSet->Put( SfxBoolItem( SID_DOC_READONLY, true ) );
+    if((nRecommendReadOnly == 0) && (nPasswordHash == 0))
+        return;
 
-        if( SfxObjectShell* pShell = GetDocShell() )
-        {
-            if( nRecommendReadOnly != 0 )
-                pShell->SetLoadReadonly( true );
-            if( nPasswordHash != 0 )
-                pShell->SetModifyPasswordHash( nPasswordHash );
-        }
+    if( SfxItemSet* pItemSet = GetMedium().GetItemSet() )
+        pItemSet->Put( SfxBoolItem( SID_DOC_READONLY, true ) );
+
+    if( SfxObjectShell* pShell = GetDocShell() )
+    {
+        if( nRecommendReadOnly != 0 )
+            pShell->SetLoadReadonly( true );
+        if( nPasswordHash != 0 )
+            pShell->SetModifyPasswordHash( nPasswordHash );
     }
 }
 
@@ -245,7 +223,7 @@ sal_uInt16 ImportExcel::ReadXFIndex( const ScAddress& rScPos, bool bBiff2 )
 
 void ImportExcel::ReadDimensions()
 {
-    XclRange aXclUsedArea( ScAddress::UNINITIALIZED );
+    XclRange aXclUsedArea;
     if( (maStrm.GetRecId() == EXC_ID2_DIMENSIONS) || (GetBiff() <= EXC_BIFF5) )
     {
         maStrm >> aXclUsedArea;
@@ -263,13 +241,13 @@ void ImportExcel::ReadDimensions()
     }
     else
     {
-        sal_uInt32 nXclRow1, nXclRow2;
+        sal_uInt32 nXclRow1 = 0, nXclRow2 = 0;
         nXclRow1 = maStrm.ReaduInt32();
         nXclRow2 = maStrm.ReaduInt32();
         aXclUsedArea.maFirst.mnCol = maStrm.ReaduInt16();
         aXclUsedArea.maLast.mnCol = maStrm.ReaduInt16();
         if( (nXclRow1 < nXclRow2) && (aXclUsedArea.GetColCount() > 1) &&
-            (nXclRow1 <= static_cast< sal_uInt32 >( GetScMaxPos().Row() )) )
+            (nXclRow1 <= o3tl::make_unsigned( GetScMaxPos().Row() )) )
         {
             // Excel stores first unused row/column index
             --nXclRow2;
@@ -340,28 +318,28 @@ void ImportExcel::ReadLabel()
     maStrm >> aXclPos;
 
     ScAddress aScPos( ScAddress::UNINITIALIZED );
-    if( GetAddressConverter().ConvertAddress( aScPos, aXclPos, GetCurrScTab(), true ) )
-    {
-        /*  Record ID   BIFF    XF type     String type
-            0x0004      2-7     3 byte      8-bit length, byte string
-            0x0004      8       3 byte      16-bit length, unicode string
-            0x0204      2-7     2 byte      16-bit length, byte string
-            0x0204      8       2 byte      16-bit length, unicode string */
-        bool bBiff2 = maStrm.GetRecId() == EXC_ID2_LABEL;
-        sal_uInt16 nXFIdx = ReadXFIndex( aScPos, bBiff2 );
-        XclStrFlags nFlags = (bBiff2 && (GetBiff() <= EXC_BIFF5)) ? EXC_STR_8BITLENGTH : EXC_STR_DEFAULT;
-        XclImpString aString;
+    if( !GetAddressConverter().ConvertAddress( aScPos, aXclPos, GetCurrScTab(), true ) )
+        return;
 
-        // #i63105# use text encoding from FONT record
-        rtl_TextEncoding eOldTextEnc = GetTextEncoding();
-        if( const XclImpFont* pFont = GetXFBuffer().GetFont( nXFIdx ) )
-            SetTextEncoding( pFont->GetFontEncoding() );
-        aString.Read( maStrm, nFlags );
-        SetTextEncoding( eOldTextEnc );
+    /*  Record ID   BIFF    XF type     String type
+        0x0004      2-7     3 byte      8-bit length, byte string
+        0x0004      8       3 byte      16-bit length, unicode string
+        0x0204      2-7     2 byte      16-bit length, byte string
+        0x0204      8       2 byte      16-bit length, unicode string */
+    bool bBiff2 = maStrm.GetRecId() == EXC_ID2_LABEL;
+    sal_uInt16 nXFIdx = ReadXFIndex( aScPos, bBiff2 );
+    XclStrFlags nFlags = (bBiff2 && (GetBiff() <= EXC_BIFF5)) ? XclStrFlags::EightBitLength : XclStrFlags::NONE;
+    XclImpString aString;
 
-        GetXFRangeBuffer().SetXF( aScPos, nXFIdx );
-        XclImpStringHelper::SetToDocument(GetDocImport(), aScPos, GetRoot(), aString, nXFIdx);
-    }
+    // #i63105# use text encoding from FONT record
+    rtl_TextEncoding eOldTextEnc = GetTextEncoding();
+    if( const XclImpFont* pFont = GetXFBuffer().GetFont( nXFIdx ) )
+        SetTextEncoding( pFont->GetFontEncoding() );
+    aString.Read( maStrm, nFlags );
+    SetTextEncoding( eOldTextEnc );
+
+    GetXFRangeBuffer().SetXF( aScPos, nXFIdx );
+    XclImpStringHelper::SetToDocument(GetDocImport(), aScPos, GetRoot(), aString, nXFIdx);
 }
 
 void ImportExcel::ReadBoolErr()
@@ -370,24 +348,26 @@ void ImportExcel::ReadBoolErr()
     maStrm >> aXclPos;
 
     ScAddress aScPos( ScAddress::UNINITIALIZED );
-    if( GetAddressConverter().ConvertAddress( aScPos, aXclPos, GetCurrScTab(), true ) )
-    {
-        sal_uInt16 nXFIdx = ReadXFIndex( aScPos, maStrm.GetRecId() == EXC_ID2_BOOLERR );
-        sal_uInt8 nValue, nType;
-        nValue = maStrm.ReaduInt8();
-        nType = maStrm.ReaduInt8();
+    if( !GetAddressConverter().ConvertAddress( aScPos, aXclPos, GetCurrScTab(), true ) )
+        return;
 
-        if( nType == EXC_BOOLERR_BOOL )
-            GetXFRangeBuffer().SetBoolXF( aScPos, nXFIdx );
-        else
-            GetXFRangeBuffer().SetXF( aScPos, nXFIdx );
+    sal_uInt16 nXFIdx = ReadXFIndex( aScPos, maStrm.GetRecId() == EXC_ID2_BOOLERR );
+    sal_uInt8 nValue, nType;
+    nValue = maStrm.ReaduInt8();
+    nType = maStrm.ReaduInt8();
 
-        double fValue;
-        const ScTokenArray* pScTokArr = ErrorToFormula( nType, nValue, fValue );
-        ScFormulaCell* pCell = pScTokArr ? new ScFormulaCell(pD, aScPos, *pScTokArr) : new ScFormulaCell(pD, aScPos);
-        pCell->SetHybridDouble( fValue );
-        GetDocImport().setFormulaCell(aScPos, pCell);
-    }
+    if( nType == EXC_BOOLERR_BOOL )
+        GetXFRangeBuffer().SetBoolXF( aScPos, nXFIdx );
+    else
+        GetXFRangeBuffer().SetXF( aScPos, nXFIdx );
+
+    double fValue;
+    std::unique_ptr<ScTokenArray> pScTokArr = ErrorToFormula( nType != EXC_BOOLERR_BOOL, nValue, fValue );
+    ScFormulaCell* pCell = pScTokArr
+        ? new ScFormulaCell(pD, aScPos, std::move(pScTokArr))
+        : new ScFormulaCell(pD, aScPos);
+    pCell->SetHybridDouble( fValue );
+    GetDocImport().setFormulaCell(aScPos, pCell);
 }
 
 void ImportExcel::ReadRk()
@@ -419,26 +399,26 @@ void ImportExcel::Row25()
     nRow = aIn.ReaduInt16();
     aIn.Ignore( 4 );
 
-    if( ValidRow( nRow ) )
-    {
-        nRowHeight = aIn.ReaduInt16();  // specify direct in Twips
-        aIn.Ignore( 2 );
+    if( !GetRoot().GetDoc().ValidRow( nRow ) )
+        return;
 
-        if( GetBiff() == EXC_BIFF2 )
-        {// -------------------- BIFF2
-            pColRowBuff->SetHeight( nRow, nRowHeight );
-        }
-        else
-        {// -------------------- BIFF5
-            sal_uInt16  nGrbit;
+    nRowHeight = aIn.ReaduInt16();  // specify direct in Twips
+    aIn.Ignore( 2 );
 
-            aIn.Ignore( 2 );   // reserved
-            nGrbit = aIn.ReaduInt16();
+    if( GetBiff() == EXC_BIFF2 )
+    {// -------------------- BIFF2
+        pColRowBuff->SetHeight( nRow, nRowHeight );
+    }
+    else
+    {// -------------------- BIFF5
+        sal_uInt16  nGrbit;
 
-            sal_uInt8 nLevel = ::extract_value< sal_uInt8 >( nGrbit, 0, 3 );
-            pRowOutlineBuff->SetLevel( nRow, nLevel, ::get_flag( nGrbit, EXC_ROW_COLLAPSED ) );
-            pColRowBuff->SetRowSettings( nRow, nRowHeight, nGrbit );
-        }
+        aIn.Ignore( 2 );   // reserved
+        nGrbit = aIn.ReaduInt16();
+
+        sal_uInt8 nLevel = ::extract_value< sal_uInt8 >( nGrbit, 0, 3 );
+        pRowOutlineBuff->SetLevel( nRow, nLevel, ::get_flag( nGrbit, EXC_ROW_COLLAPSED ) );
+        pColRowBuff->SetRowSettings( nRow, nRowHeight, nGrbit );
     }
 }
 
@@ -497,13 +477,13 @@ void ImportExcel::Columndefault()
     nColMic = aIn.ReaduInt16();
     nColMac = aIn.ReaduInt16();
 
-    OSL_ENSURE( aIn.GetRecLeft() == (std::size_t)(nColMac - nColMic) * 3 + 2,
+    OSL_ENSURE( aIn.GetRecLeft() == static_cast<std::size_t>(nColMac - nColMic) * 3 + 2,
                 "ImportExcel::Columndefault - wrong record size" );
 
     nColMac--;
 
-    if( nColMac > MAXCOL )
-        nColMac = static_cast<sal_uInt16>(MAXCOL);
+    if( nColMac > pD->MaxCol() )
+        nColMac = static_cast<sal_uInt16>(pD->MaxCol());
 
     for( sal_uInt16 nCol = nColMic ; nCol <= nColMac ; nCol++ )
     {
@@ -534,24 +514,24 @@ void ImportExcel::Array25()
         nFormLen = aIn.ReaduInt16();
     }
 
-    const ScTokenArray* pErgebnis = nullptr;
+    std::unique_ptr<ScTokenArray> pResult;
 
-    if (ValidColRow(nLastCol, nLastRow))
+    if (GetRoot().GetDoc().ValidColRow(nLastCol, nLastRow))
     {
         // the read mark is now on the formula, length in nFormLen
 
         pFormConv->Reset( ScAddress( static_cast<SCCOL>(nFirstCol),
                     static_cast<SCROW>(nFirstRow), GetCurrScTab() ) );
-        pFormConv->Convert(pErgebnis, maStrm, nFormLen, true);
+        pFormConv->Convert(pResult, maStrm, nFormLen, true);
 
-        SAL_WARN_IF(!pErgebnis, "sc", "*ImportExcel::Array25(): ScTokenArray is NULL!");
+        SAL_WARN_IF(!pResult, "sc", "*ImportExcel::Array25(): ScTokenArray is NULL!");
     }
 
-    if (pErgebnis)
+    if (pResult)
     {
         ScDocumentImport& rDoc = GetDocImport();
         ScRange aArrayRange(nFirstCol, nFirstRow, GetCurrScTab(), nLastCol, nLastRow, GetCurrScTab());
-        rDoc.setMatrixCells(aArrayRange, *pErgebnis, formula::FormulaGrammar::GRAM_ENGLISH_XL_A1);
+        rDoc.setMatrixCells(aArrayRange, *pResult, formula::FormulaGrammar::GRAM_ENGLISH_XL_A1);
     }
 }
 
@@ -604,8 +584,8 @@ void ImportExcel::Colwidth()
     nColWidth = aIn.ReaduInt16();
 
 //TODO: add a check for the unlikely case of changed MAXCOL (-> XclImpAddressConverter)
-//   if( nColLast > MAXCOL )
-//       nColLast = static_cast<sal_uInt16>(MAXCOL);
+//   if( nColLast > pD->MaxCol() )
+//       nColLast = static_cast<sal_uInt16>(pD->MaxCol());
 
     sal_uInt16 nScWidth = XclTools::GetScColumnWidth( nColWidth, GetCharWidth() );
     pColRowBuff->SetWidthRange( nColFirst, nColLast, nScWidth );
@@ -683,11 +663,11 @@ void ImportExcel::Colinfo()
     nXF = aIn.ReaduInt16();
     nOpt = aIn.ReaduInt16();
 
-    if( nColFirst > MAXCOL )
+    if( nColFirst > pD->MaxCol() )
         return;
 
-    if( nColLast > MAXCOL )
-        nColLast = static_cast<sal_uInt16>(MAXCOL);
+    if( nColLast > pD->MaxCol() )
+        nColLast = static_cast<sal_uInt16>(pD->MaxCol());
 
     bool bHidden = ::get_flag( nOpt, EXC_COLINFO_HIDDEN );
     bool bCollapsed = ::get_flag( nOpt, EXC_COLINFO_COLLAPSED );
@@ -841,7 +821,7 @@ void ImportExcel::Shrfmla()
 
     // read mark is now on the formula
 
-    const ScTokenArray* pErgebnis;
+    std::unique_ptr<ScTokenArray> pResult;
 
     // The shared range in this record is erroneous more than half the time.
     // Don't ever rely on it. Use the one from the formula cell above.
@@ -850,22 +830,27 @@ void ImportExcel::Shrfmla()
 
     ScAddress aPos(nCol1, nRow1, GetCurrScTab());
     pFormConv->Reset(aPos);
-    pFormConv->Convert( pErgebnis, maStrm, nLenExpr, true, FT_SharedFormula );
+    pFormConv->Convert( pResult, maStrm, nLenExpr, true, FT_SharedFormula );
 
-    OSL_ENSURE( pErgebnis, "+ImportExcel::Shrfmla(): ScTokenArray is NULL!" );
+    if (!pResult)
+    {
+        SAL_WARN("sc", "+ImportExcel::Shrfmla(): ScTokenArray is NULL!");
+        return;
+    }
 
-    pExcRoot->pShrfmlaBuff->Store(aPos, *pErgebnis);
+    pExcRoot->pShrfmlaBuff->Store(aPos, *pResult);
 
     // Create formula cell for the last formula record.
 
     ScDocumentImport& rDoc = GetDocImport();
 
-    ScFormulaCell* pCell = new ScFormulaCell(pD, aPos, *pErgebnis);
+    ScFormulaCell* pCell = new ScFormulaCell(pD, aPos, std::move(pResult));
     pCell->GetCode()->WrapReference(aPos, EXC_MAXCOL8, EXC_MAXROW8);
+    rDoc.getDoc().CheckLinkFormulaNeedingCheck( *pCell->GetCode());
     rDoc.getDoc().EnsureTable(aPos.Tab());
     rDoc.setFormulaCell(aPos, pCell);
     pCell->SetNeedNumberFormat(false);
-    if (rtl::math::isFinite(mpLastFormula->mfValue))
+    if (std::isfinite(mpLastFormula->mfValue))
         pCell->SetResultDouble(mpLastFormula->mfValue);
 
     GetXFRangeBuffer().SetXF(aPos, mpLastFormula->mnXF);
@@ -919,25 +904,19 @@ void ImportExcel::Rstring()
     nXFIdx = aIn.ReaduInt16();
 
     ScAddress aScPos( ScAddress::UNINITIALIZED );
-    if( GetAddressConverter().ConvertAddress( aScPos, aXclPos, GetCurrScTab(), true ) )
-    {
-        // unformatted Unicode string with separate formatting information
-        XclImpString aString;
+    if( !GetAddressConverter().ConvertAddress( aScPos, aXclPos, GetCurrScTab(), true ) )
+        return;
 
-        // #i63105# use text encoding from FONT record
-        rtl_TextEncoding eOldTextEnc = GetTextEncoding();
-        if( const XclImpFont* pFont = GetXFBuffer().GetFont( nXFIdx ) )
-            SetTextEncoding( pFont->GetFontEncoding() );
-        aString.Read( maStrm );
-        SetTextEncoding( eOldTextEnc );
+    // unformatted Unicode string with separate formatting information
+    XclImpString aString;
+    aString.Read( maStrm );
 
-        // character formatting runs
-        if( !aString.IsRich() )
-            aString.ReadFormats( maStrm );
+    // character formatting runs
+    if( !aString.IsRich() )
+        aString.ReadFormats( maStrm );
 
-        GetXFRangeBuffer().SetXF( aScPos, nXFIdx );
-        XclImpStringHelper::SetToDocument(GetDocImport(), aScPos, *this, aString, nXFIdx);
-    }
+    GetXFRangeBuffer().SetXF( aScPos, nXFIdx );
+    XclImpStringHelper::SetToDocument(GetDocImport(), aScPos, *this, aString, nXFIdx);
 }
 
 void ImportExcel::Cellmerging()
@@ -976,25 +955,25 @@ void ImportExcel::Row34()
 
     SCROW nScRow = static_cast< SCROW >( nRow );
 
-    if( ValidRow( nScRow ) )
-    {
-        nRowHeight = aIn.ReaduInt16();  // specify direct in Twips
-        aIn.Ignore( 4 );
+    if( !GetRoot().GetDoc().ValidRow( nScRow ) )
+        return;
 
-        nRowHeight = nRowHeight & 0x7FFF; // Bit 15: Row Height not changed manually
-        if( !nRowHeight )
-            nRowHeight = (GetBiff() == EXC_BIFF2) ? 0x25 : 0x225;
+    nRowHeight = aIn.ReaduInt16();  // specify direct in Twips
+    aIn.Ignore( 4 );
 
-        nGrbit = aIn.ReaduInt16();
-        nXF = aIn.ReaduInt16();
+    nRowHeight = nRowHeight & 0x7FFF; // Bit 15: Row Height not changed manually
+    if( !nRowHeight )
+        nRowHeight = (GetBiff() == EXC_BIFF2) ? 0x25 : 0x225;
 
-        sal_uInt8 nLevel = ::extract_value< sal_uInt8 >( nGrbit, 0, 3 );
-        pRowOutlineBuff->SetLevel( nScRow, nLevel, ::get_flag( nGrbit, EXC_ROW_COLLAPSED ) );
-        pColRowBuff->SetRowSettings( nScRow, nRowHeight, nGrbit );
+    nGrbit = aIn.ReaduInt16();
+    nXF = aIn.ReaduInt16();
 
-        if( nGrbit & EXC_ROW_USEDEFXF )
-            GetXFRangeBuffer().SetRowDefXF( nScRow, nXF & EXC_ROW_XFMASK );
-    }
+    sal_uInt8 nLevel = ::extract_value< sal_uInt8 >( nGrbit, 0, 3 );
+    pRowOutlineBuff->SetLevel( nScRow, nLevel, ::get_flag( nGrbit, EXC_ROW_COLLAPSED ) );
+    pColRowBuff->SetRowSettings( nScRow, nRowHeight, nGrbit );
+
+    if( nGrbit & EXC_ROW_USEDEFXF )
+        GetXFRangeBuffer().SetRowDefXF( nScRow, nXF & EXC_ROW_XFMASK );
 }
 
 void ImportExcel::Bof3()
@@ -1027,24 +1006,24 @@ void ImportExcel::Array34()
     aIn.Ignore( (GetBiff() >= EXC_BIFF5) ? 6 : 2 );
     nFormLen = aIn.ReaduInt16();
 
-    const ScTokenArray* pErgebnis = nullptr;
+    std::unique_ptr<ScTokenArray> pResult;
 
-    if( ValidColRow( nLastCol, nLastRow ) )
+    if( GetRoot().GetDoc().ValidColRow( nLastCol, nLastRow ) )
     {
         // the read mark is now on the formula, length in nFormLen
 
         pFormConv->Reset( ScAddress( static_cast<SCCOL>(nFirstCol),
                     static_cast<SCROW>(nFirstRow), GetCurrScTab() ) );
-        pFormConv->Convert( pErgebnis, maStrm, nFormLen, true );
+        pFormConv->Convert( pResult, maStrm, nFormLen, true );
 
-        SAL_WARN_IF(!pErgebnis, "sc", "+ImportExcel::Array34(): ScTokenArray is NULL!");
+        SAL_WARN_IF(!pResult, "sc", "+ImportExcel::Array34(): ScTokenArray is NULL!");
     }
 
-    if (pErgebnis)
+    if (pResult)
     {
         ScDocumentImport& rDoc = GetDocImport();
         ScRange aArrayRange(nFirstCol, nFirstRow, GetCurrScTab(), nLastCol, nLastRow, GetCurrScTab());
-        rDoc.setMatrixCells(aArrayRange, *pErgebnis, formula::FormulaGrammar::GRAM_ENGLISH_XL_A1);
+        rDoc.setMatrixCells(aArrayRange, *pResult, formula::FormulaGrammar::GRAM_ENGLISH_XL_A1);
     }
 }
 
@@ -1080,7 +1059,13 @@ void ImportExcel::TableOp()
     nInpRow2 = aIn.ReaduInt16();
     nInpCol2 = aIn.ReaduInt16();
 
-    if( ValidColRow( nLastCol, nLastRow ) )
+    if (utl::ConfigManager::IsFuzzing())
+    {
+        //shrink to smallish arbitrary value to not timeout
+        nLastRow = std::min<sal_uInt16>(nLastRow, MAXROW_30);
+    }
+
+    if( GetRoot().GetDoc().ValidColRow( nLastCol, nLastRow ) )
     {
         if( nFirstCol && nFirstRow )
         {
@@ -1141,7 +1126,7 @@ void ImportExcel::TableOp()
     else
     {
         bTabTruncated = true;
-        GetTracer().TraceInvalidRow(nLastRow, MAXROW);
+        GetTracer().TraceInvalidRow(nLastRow, pD->MaxRow());
     }
 }
 
@@ -1185,7 +1170,7 @@ void ImportExcel::Bof5()
     }
 
     if( nVers == 0x0600 && (GetBiff() == EXC_BIFF8) )
-        eDatei = ( BiffTyp ) ( eDatei - Biff5 + Biff8 );
+        eDatei = static_cast<BiffTyp>( eDatei - Biff5 + Biff8 );
 
     pExcRoot->eDateiTyp = eDatei;
 }
@@ -1230,7 +1215,7 @@ void ImportExcel::NewTable()
     pRowOutlineBuff = pNewItem->GetRowOutline();
 }
 
-const ScTokenArray* ImportExcel::ErrorToFormula( bool bErrOrVal, sal_uInt8 nError, double& rVal )
+std::unique_ptr<ScTokenArray> ImportExcel::ErrorToFormula( bool bErrOrVal, sal_uInt8 nError, double& rVal )
 {
     return pFormConv->GetBoolErr( XclTools::ErrorToEnum( rVal, bErrOrVal, nError ) );
 }
@@ -1250,12 +1235,12 @@ void ImportExcel::PostDocLoad()
     /*  Set automatic page numbering in Default page style (default is "page number = 1").
         Otherwise hidden tables (i.e. for scenarios) which have Default page style will
         break automatic page numbering. */
-    if( SfxStyleSheetBase* pStyleSheet = GetStyleSheetPool().Find( ScGlobal::GetRscString( STR_STYLENAME_STANDARD ), SfxStyleFamily::Page ) )
+    if( SfxStyleSheetBase* pStyleSheet = GetStyleSheetPool().Find( ScResId( STR_STYLENAME_STANDARD_PAGE ), SfxStyleFamily::Page ) )
         pStyleSheet->GetItemSet().Put( SfxUInt16Item( ATTR_PAGE_FIRSTPAGENO, 0 ) );
 
     // outlines for all sheets, sets hidden rows and columns (#i11776# after filtered ranges)
-    for (XclImpOutlineListBuffer::iterator itBuffer = pOutlineListBuffer->begin(); itBuffer != pOutlineListBuffer->end(); ++itBuffer)
-        (*itBuffer)->Convert();
+    for (auto& rxBuffer : *pOutlineListBuffer)
+        rxBuffer->Convert();
 
     // document view settings (before visible OLE area)
     GetDocViewSettings().Finalize();
@@ -1302,7 +1287,7 @@ void ImportExcel::PostDocLoad()
     GetExtDocOptions().SetChanged( true );
 
     // root data owns the extended document options -> create a new object
-    GetDoc().SetExtDocOptions( new ScExtDocOptions( GetExtDocOptions() ) );
+    GetDoc().SetExtDocOptions( std::make_unique<ScExtDocOptions>( GetExtDocOptions() ) );
 
     const SCTAB     nLast = pD->GetTableCount();
     const ScRange*      p;
@@ -1330,32 +1315,32 @@ void ImportExcel::PostDocLoad()
         GetTracer().TracePrintRange();
     }
 
-    if( pExcRoot->pPrintTitles->HasRanges() )
+    if( !pExcRoot->pPrintTitles->HasRanges() )
+        return;
+
+    for( SCTAB n = 0 ; n < nLast ; n++ )
     {
-        for( SCTAB n = 0 ; n < nLast ; n++ )
+        p = pExcRoot->pPrintTitles->First(n);
+        if( p )
         {
-            p = pExcRoot->pPrintTitles->First(n);
-            if( p )
+            bool    bRowVirgin = true;
+            bool    bColVirgin = true;
+
+            while( p )
             {
-                bool    bRowVirgin = true;
-                bool    bColVirgin = true;
-
-                while( p )
+                if( p->aStart.Col() == 0 && p->aEnd.Col() == pD->MaxCol() && bRowVirgin )
                 {
-                    if( p->aStart.Col() == 0 && p->aEnd.Col() == MAXCOL && bRowVirgin )
-                    {
-                        pD->SetRepeatRowRange( n, p );
-                        bRowVirgin = false;
-                    }
-
-                    if( p->aStart.Row() == 0 && p->aEnd.Row() == MAXROW && bColVirgin )
-                    {
-                        pD->SetRepeatColRange( n, p );
-                        bColVirgin = false;
-                    }
-
-                    p = pExcRoot->pPrintTitles->Next();
+                    pD->SetRepeatRowRange( n, std::unique_ptr<ScRange>(new ScRange(*p)) );
+                    bRowVirgin = false;
                 }
+
+                if( p->aStart.Row() == 0 && p->aEnd.Row() == pD->MaxRow() && bColVirgin )
+                {
+                    pD->SetRepeatColRange( n, std::unique_ptr<ScRange>(new ScRange(*p)) );
+                    bColVirgin = false;
+                }
+
+                p = pExcRoot->pPrintTitles->Next();
             }
         }
     }
@@ -1363,9 +1348,9 @@ void ImportExcel::PostDocLoad()
 
 XclImpOutlineDataBuffer::XclImpOutlineDataBuffer( const XclImpRoot& rRoot, SCTAB nScTab ) :
     XclImpRoot( rRoot ),
-    mxColOutlineBuff( new XclImpOutlineBuffer( rRoot.GetXclMaxPos().Col() + 1 ) ),
-    mxRowOutlineBuff( new XclImpOutlineBuffer( rRoot.GetXclMaxPos().Row() + 1 ) ),
-    mxColRowBuff( new XclImpColRowSettings( rRoot ) ),
+    mxColOutlineBuff( std::make_shared<XclImpOutlineBuffer>( rRoot.GetXclMaxPos().Col() + 1 ) ),
+    mxRowOutlineBuff( std::make_shared<XclImpOutlineBuffer>( rRoot.GetXclMaxPos().Row() + 1 ) ),
+    mxColRowBuff( std::make_shared<XclImpColRowSettings>( rRoot ) ),
     mnScTab( nScTab )
 {
 }

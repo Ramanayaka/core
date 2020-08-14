@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hsqldb/HColumns.hxx"
-#include "TConnection.hxx"
+#include <hsqldb/HColumns.hxx>
+#include <TConnection.hxx>
 
 
 using namespace ::comphelper;
@@ -34,7 +34,7 @@ using namespace ::com::sun::star::lang;
 
 OHSQLColumns::OHSQLColumns( ::cppu::OWeakObject& _rParent
                                 ,::osl::Mutex& _rMutex
-                                ,const TStringVector &_rVector
+                                ,const ::std::vector< OUString> &_rVector
             ) : OColumnsHelper(_rParent,true/*_bCase*/,_rMutex,_rVector,true/*_bUseHardRef*/)
 {
 }
@@ -69,9 +69,7 @@ void OHSQLColumn::construct()
 
 Sequence< OUString > SAL_CALL OHSQLColumn::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aSupported { "com.sun.star.sdbcx.Column" };
-
-    return aSupported;
+    return { "com.sun.star.sdbcx.Column" };
 }
 
 

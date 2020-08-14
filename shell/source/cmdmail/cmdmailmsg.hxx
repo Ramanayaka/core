@@ -21,14 +21,11 @@
 #define INCLUDED_SHELL_SOURCE_CMDMAIL_CMDMAILMSG_HXX
 
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 
 #include <com/sun/star/system/XSimpleMailMessage2.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
 
-// class declaration
 
 
 class CmdMailMsg :

@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_EDITENG_SOURCE_EDITENG_EEHTML_HXX
-#define INCLUDED_EDITENG_SOURCE_EDITENG_EEHTML_HXX
+#pragma once
 
 #include <memory>
 #include <editdoc.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <svtools/parhtml.hxx>
 
 class EditEngine;
@@ -80,7 +80,5 @@ public:
 };
 
 typedef tools::SvRef<EditHTMLParser> EditHTMLParserRef;
-
-#endif // INCLUDED_EDITENG_SOURCE_EDITENG_EEHTML_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

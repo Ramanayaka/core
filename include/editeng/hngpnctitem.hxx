@@ -29,27 +29,18 @@
     This item describe how to handle the last character of a line.
 */
 
-class EDITENG_DLLPUBLIC SvxHangingPunctuationItem : public SfxBoolItem
+class EDITENG_DLLPUBLIC SvxHangingPunctuationItem final : public SfxBoolItem
 {
 public:
     SvxHangingPunctuationItem( bool bOn /*= false*/, const sal_uInt16 nId  );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual sal_uInt16          GetVersion( sal_uInt16 nFileVersion ) const override;
+    virtual SvxHangingPunctuationItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper * = nullptr ) const override;
-
-    SvxHangingPunctuationItem& operator=(
-                                    const SvxHangingPunctuationItem& rItem )
-    {
-        SetValue( rItem.GetValue() );
-        return *this;
-    }
+                                  const IntlWrapper& ) const override;
 };
 
 #endif

@@ -19,15 +19,13 @@
 
 #include <memory>
 #include <xmloff/MarkerStyle.hxx>
-#include "xexptran.hxx"
-#include <xmloff/attrlist.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xexptran.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/drawing/PolyPolygonBezierCoords.hpp>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
@@ -98,7 +96,7 @@ void XMLMarkerStyleImport::importXML(
     {
         basegfx::B2DPolyPolygon aPolyPolygon;
 
-        if(basegfx::tools::importFromSvgD(aPolyPolygon, strPathData, rImport.needFixPositionAfterZ(), nullptr))
+        if(basegfx::utils::importFromSvgD(aPolyPolygon, strPathData, rImport.needFixPositionAfterZ(), nullptr))
         {
             if(aPolyPolygon.count())
             {
@@ -115,7 +113,7 @@ void XMLMarkerStyleImport::importXML(
                 if(!aSourceRange.equal(aTargetRange))
                 {
                     aPolyPolygon.transform(
-                        basegfx::tools::createSourceRangeTargetRangeTransform(
+                        basegfx::utils::createSourceRangeTargetRangeTransform(
                             aSourceRange,
                             aTargetRange));
                 }
@@ -123,7 +121,7 @@ void XMLMarkerStyleImport::importXML(
                 // always use PolyPolygonBezierCoords here
                 drawing::PolyPolygonBezierCoords aSourcePolyPolygon;
 
-                basegfx::tools::B2DPolyPolygonToUnoPolyPolygonBezierCoords(
+                basegfx::utils::B2DPolyPolygonToUnoPolyPolygonBezierCoords(
                     aPolyPolygon,
                     aSourcePolyPolygon);
                 rValue <<= aSourcePolyPolygon;
@@ -132,7 +130,7 @@ void XMLMarkerStyleImport::importXML(
 
         if( !aDisplayName.isEmpty() )
         {
-            rImport.AddStyleDisplayName( XML_STYLE_FAMILY_SD_MARKER_ID, rStrName,
+            rImport.AddStyleDisplayName( XmlStyleFamily::SD_MARKER_ID, rStrName,
                                         aDisplayName );
             rStrName = aDisplayName;
         }
@@ -156,52 +154,52 @@ void XMLMarkerStyleExport::exportXML(
     const OUString& rStrName,
     const uno::Any& rValue )
 {
-    if(!rStrName.isEmpty())
+    if(rStrName.isEmpty())
+        return;
+
+    drawing::PolyPolygonBezierCoords aBezier;
+
+    if(!(rValue >>= aBezier))
+        return;
+
+    // Name
+    bool bEncoded(false);
+
+    rExport.AddAttribute(XML_NAMESPACE_DRAW, XML_NAME, rExport.EncodeStyleName( rStrName, &bEncoded ) );
+
+    if( bEncoded )
     {
-        drawing::PolyPolygonBezierCoords aBezier;
-
-        if(rValue >>= aBezier)
-        {
-            // Name
-            bool bEncoded(false);
-
-            rExport.AddAttribute(XML_NAMESPACE_DRAW, XML_NAME, rExport.EncodeStyleName( rStrName, &bEncoded ) );
-
-            if( bEncoded )
-            {
-                rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DISPLAY_NAME, rStrName );
-            }
-
-            const basegfx::B2DPolyPolygon aPolyPolygon(
-                basegfx::tools::UnoPolyPolygonBezierCoordsToB2DPolyPolygon(
-                    aBezier));
-            const basegfx::B2DRange aPolyPolygonRange(aPolyPolygon.getB2DRange());
-
-
-            // Viewbox (viewBox="0 0 1500 1000")
-
-            SdXMLImExViewBox aViewBox(
-                aPolyPolygonRange.getMinX(),
-                aPolyPolygonRange.getMinY(),
-                aPolyPolygonRange.getWidth(),
-                aPolyPolygonRange.getHeight());
-            rExport.AddAttribute( XML_NAMESPACE_SVG, XML_VIEWBOX, aViewBox.GetExportString() );
-
-            // Pathdata
-            const OUString aPolygonString(
-                basegfx::tools::exportToSvgD(
-                    aPolyPolygon,
-                    true,           // bUseRelativeCoordinates
-                    false,          // bDetectQuadraticBeziers: not used in old, but maybe activated now
-                    true));         // bHandleRelativeNextPointCompatible
-
-            // write point array
-            rExport.AddAttribute(XML_NAMESPACE_SVG, XML_D, aPolygonString);
-
-            // Do Write
-            SvXMLElementExport rElem( rExport, XML_NAMESPACE_DRAW, XML_MARKER, true, false );
-        }
+        rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DISPLAY_NAME, rStrName );
     }
+
+    const basegfx::B2DPolyPolygon aPolyPolygon(
+        basegfx::utils::UnoPolyPolygonBezierCoordsToB2DPolyPolygon(
+            aBezier));
+    const basegfx::B2DRange aPolyPolygonRange(aPolyPolygon.getB2DRange());
+
+
+    // Viewbox (viewBox="0 0 1500 1000")
+
+    SdXMLImExViewBox aViewBox(
+        aPolyPolygonRange.getMinX(),
+        aPolyPolygonRange.getMinY(),
+        aPolyPolygonRange.getWidth(),
+        aPolyPolygonRange.getHeight());
+    rExport.AddAttribute( XML_NAMESPACE_SVG, XML_VIEWBOX, aViewBox.GetExportString() );
+
+    // Pathdata
+    const OUString aPolygonString(
+        basegfx::utils::exportToSvgD(
+            aPolyPolygon,
+            true,           // bUseRelativeCoordinates
+            false,          // bDetectQuadraticBeziers: not used in old, but maybe activated now
+            true));         // bHandleRelativeNextPointCompatible
+
+    // write point array
+    rExport.AddAttribute(XML_NAMESPACE_SVG, XML_D, aPolygonString);
+
+    // Do Write
+    SvXMLElementExport rElem( rExport, XML_NAMESPACE_DRAW, XML_MARKER, true, false );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,14 +19,13 @@
 #ifndef INCLUDED_I18NPOOL_INC_INPUTSEQUENCECHECKER_TH_HXX
 #define INCLUDED_I18NPOOL_INC_INPUTSEQUENCECHECKER_TH_HXX
 
-#include <inputsequencechecker.hxx>
+#include "inputsequencechecker.hxx"
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 
-//  class InputSequenceChecker_th
 
-class InputSequenceChecker_th : public InputSequenceCheckerImpl
+class InputSequenceChecker_th final : public InputSequenceCheckerImpl
 {
 public:
     InputSequenceChecker_th();
@@ -39,7 +38,7 @@ public:
         sal_Unicode inputChar, sal_Int16 inputCheckMode) override;
 };
 
-} } } }
+}
 
 #endif // INCLUDED_I18NPOOL_INC_INPUTSEQUENCECHECKER_TH_HXX
 

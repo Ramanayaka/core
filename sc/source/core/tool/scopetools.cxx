@@ -7,8 +7,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "scopetools.hxx"
-#include "document.hxx"
+#include <scopetools.hxx>
+#include <document.hxx>
+#include <column.hxx>
 #include <vcl/window.hxx>
 
 namespace sc {
@@ -57,17 +58,52 @@ IdleSwitch::~IdleSwitch()
     mrDoc.EnableIdle(mbOldValue);
 }
 
-WaitPointerSwitch::WaitPointerSwitch(vcl::Window* pWin) :
-    mpFrameWin(pWin)
+DelayFormulaGroupingSwitch::DelayFormulaGroupingSwitch(ScDocument& rDoc, bool delay) :
+    mrDoc(rDoc), mbOldValue(rDoc.IsDelayedFormulaGrouping())
 {
-    if (mpFrameWin)
-        mpFrameWin->EnterWait();
+    mrDoc.DelayFormulaGrouping(delay);
 }
 
-WaitPointerSwitch::~WaitPointerSwitch()
+DelayFormulaGroupingSwitch::~DelayFormulaGroupingSwitch() COVERITY_NOEXCEPT_FALSE
 {
-    if (mpFrameWin)
-        mpFrameWin->LeaveWait();
+    mrDoc.DelayFormulaGrouping(mbOldValue);
+}
+
+void DelayFormulaGroupingSwitch::reset()
+{
+    mrDoc.DelayFormulaGrouping(mbOldValue);
+}
+
+DelayStartListeningFormulaCells::DelayStartListeningFormulaCells(ScColumn& column, bool delay)
+    : mColumn(column), mbOldValue(column.GetDoc()->IsEnabledDelayStartListeningFormulaCells(&column))
+{
+    column.GetDoc()->EnableDelayStartListeningFormulaCells(&column, delay);
+}
+
+DelayStartListeningFormulaCells::DelayStartListeningFormulaCells(ScColumn& column)
+    : mColumn(column), mbOldValue(column.GetDoc()->IsEnabledDelayStartListeningFormulaCells(&column))
+{
+}
+
+DelayStartListeningFormulaCells::~DelayStartListeningFormulaCells()
+{
+#if defined(__COVERITY__)
+    try
+    {
+        mColumn.GetDoc()->EnableDelayStartListeningFormulaCells(&mColumn, mbOldValue);
+    }
+    catch (...)
+    {
+        std::abort();
+    }
+#else
+    mColumn.GetDoc()->EnableDelayStartListeningFormulaCells(&mColumn, mbOldValue);
+#endif
+}
+
+void DelayStartListeningFormulaCells::set()
+{
+    mColumn.GetDoc()->EnableDelayStartListeningFormulaCells(&mColumn, true);
 }
 
 }

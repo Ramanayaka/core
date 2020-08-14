@@ -17,30 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/table/tablerow.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include "oox/helper/propertyset.hxx"
-#include <com/sun/star/table/XTable.hpp>
-#include <com/sun/star/table/XMergeableCellRange.hpp>
-#include <com/sun/star/table/BorderLine2.hpp>
+#include <drawingml/table/tablerow.hxx>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
 TableRow::TableRow()
 : mnHeight( 0 )
 {
 }
-TableRow::~TableRow()
-{
-}
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

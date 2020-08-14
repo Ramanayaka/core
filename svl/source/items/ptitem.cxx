@@ -22,11 +22,11 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/awt/Point.hpp>
 #include <osl/diagnose.h>
-#include <tools/stream.hxx>
 #include <tools/mapunit.hxx>
+#include <tools/UnitConversion.hxx>
 
 #include <svl/poolitem.hxx>
-#include <svl/memberid.hrc>
+#include <svl/memberid.h>
 
 using namespace ::com::sun::star;
 
@@ -46,20 +46,13 @@ SfxPointItem::SfxPointItem( sal_uInt16 nW, const Point& rVal ) :
 }
 
 
-SfxPointItem::SfxPointItem( const SfxPointItem& rItem ) :
-    SfxPoolItem( rItem ),
-    aVal( rItem.aVal )
-{
-}
-
-
 bool SfxPointItem::GetPresentation
 (
     SfxItemPresentation     /*ePresentation*/,
     MapUnit                 /*eCoreMetric*/,
     MapUnit                 /*ePresentationMetric*/,
     OUString&               rText,
-    const IntlWrapper *
+    const IntlWrapper&
 )   const
 {
     rText = OUString::number(aVal.X()) + ", " + OUString::number(aVal.Y()) + ", ";
@@ -73,27 +66,10 @@ bool SfxPointItem::operator==( const SfxPoolItem& rItem ) const
     return static_cast<const SfxPointItem&>(rItem).aVal == aVal;
 }
 
-
-SfxPoolItem* SfxPointItem::Clone(SfxItemPool *) const
+SfxPointItem* SfxPointItem::Clone(SfxItemPool *) const
 {
     return new SfxPointItem( *this );
 }
-
-
-SfxPoolItem* SfxPointItem::Create(SvStream &rStream, sal_uInt16 ) const
-{
-    Point aStr;
-    ReadPair( rStream, aStr );
-    return new SfxPointItem(Which(), aStr);
-}
-
-
-SvStream& SfxPointItem::Store(SvStream &rStream, sal_uInt16 ) const
-{
-    WritePair( rStream, aVal );
-    return rStream;
-}
-
 
 bool SfxPointItem::QueryValue( uno::Any& rVal,
                                sal_uInt8 nMemberId ) const

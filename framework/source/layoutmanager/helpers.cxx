@@ -18,7 +18,6 @@
  */
 
 #include "helpers.hxx"
-#include <services.h>
 
 #include <com/sun/star/ui/DockingArea.hpp>
 #include <com/sun/star/awt/Toolkit.hpp>
@@ -29,7 +28,6 @@
 #include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/ui/XUIElement.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <unotools/mediadescriptor.hxx>
 #include <vcl/svapp.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
@@ -61,7 +59,7 @@ bool isReverseOrderDockingArea( const sal_Int32 nDockArea )
             ( eDockArea == ui::DockingArea_DOCKINGAREA_RIGHT ));
 }
 
-bool isToolboxHorizontalAligned( ToolBox* pToolBox )
+bool isToolboxHorizontalAligned( ToolBox const * pToolBox )
 {
     if ( pToolBox )
         return (( pToolBox->GetAlign() == WindowAlign::Top ) || ( pToolBox->GetAlign() == WindowAlign::Bottom ));
@@ -139,7 +137,7 @@ void setZeroRectangle( ::tools::Rectangle& rRect )
 // ATTENTION!
 // This value is directly copied from the sfx2 project.
 // You have to change BOTH values, see sfx2/inc/sfx2/sfxsids.hrc (SID_DOCKWIN_START)
-static const sal_Int32 DOCKWIN_ID_BASE = 9800;
+const sal_Int32 DOCKWIN_ID_BASE = 9800;
 
 bool lcl_checkUIElement(const uno::Reference< ui::XUIElement >& xUIElement, awt::Rectangle& _rPosSize, uno::Reference< awt::XWindow >& _xWindow)
 {
@@ -170,11 +168,11 @@ uno::Reference< awt::XWindowPeer > createToolkitWindow( const uno::Reference< un
     aDescriptor.Type                =   awt::WindowClass_SIMPLE;
     aDescriptor.WindowServiceName   =   OUString::createFromAscii( pService );
     aDescriptor.ParentIndex         =   -1;
-    aDescriptor.Parent.set( rParent, uno::UNO_QUERY );
+    aDescriptor.Parent = rParent;
     aDescriptor.Bounds              =   awt::Rectangle(0,0,0,0);
     aDescriptor.WindowAttributes    =   0;
 
-    // create a awt window
+    // create an awt window
     uno::Reference< awt::XWindowPeer > xPeer = xToolkit->createWindow( aDescriptor );
 
     return xPeer;
@@ -195,19 +193,14 @@ WindowAlign ImplConvertAlignment( ui::DockingArea aAlignment )
 
 OUString getElementTypeFromResourceURL( const OUString& aResourceURL )
 {
-    OUString aType;
-
     OUString aUIResourceURL( UIRESOURCE_URL );
     if ( aResourceURL.startsWith( aUIResourceURL ) )
     {
-        sal_Int32       nIndex = 0;
-        OUString aPathPart   = aResourceURL.copy( aUIResourceURL.getLength() );
-        aPathPart.getToken( 0, '/', nIndex );
-
-        return aPathPart.getToken( 0, '/', nIndex );
+        sal_Int32 nIndex{ aUIResourceURL.getLength() };
+        return aResourceURL.getToken( 1, '/', nIndex );
     }
 
-    return aType;
+    return OUString();
 }
 
 void parseResourceURL( const OUString& aResourceURL, OUString& aElementType, OUString& aElementName )
@@ -215,12 +208,9 @@ void parseResourceURL( const OUString& aResourceURL, OUString& aElementType, OUS
     OUString aUIResourceURL( UIRESOURCE_URL );
     if ( aResourceURL.startsWith( aUIResourceURL ) )
     {
-        sal_Int32       nIndex = 0;
-        OUString aPathPart   = aResourceURL.copy( aUIResourceURL.getLength() );
-        aPathPart.getToken( 0, '/', nIndex );
-
-        aElementType = aPathPart.getToken( 0, '/', nIndex );
-        aElementName = aPathPart.getToken( 0, '/', nIndex );
+        sal_Int32 nIndex{ aUIResourceURL.getLength() };
+        aElementType = aResourceURL.getToken( 1, '/', nIndex );
+        aElementName = aResourceURL.getToken( 0, '/', nIndex );
     }
 }
 
@@ -238,10 +228,10 @@ css::awt::Rectangle putRectangleValueToAWT( const ::tools::Rectangle& rRect )
 ::tools::Rectangle putAWTToRectangle( const css::awt::Rectangle& rRect )
 {
     ::tools::Rectangle aRect;
-    aRect.Left() = rRect.X;
-    aRect.Top() = rRect.Y;
-    aRect.Right() = rRect.Width;
-    aRect.Bottom() = rRect.Height;
+    aRect.SetLeft( rRect.X );
+    aRect.SetTop( rRect.Y );
+    aRect.SetRight( rRect.Width );
+    aRect.SetBottom( rRect.Height );
 
     return aRect;
 }
@@ -259,12 +249,12 @@ uno::Reference< frame::XModel > impl_getModelFromFrame( const uno::Reference< fr
 {
     // Query for the model to get check the context information
     uno::Reference< frame::XModel > xModel;
-        if ( rFrame.is() )
-        {
-        uno::Reference< frame::XController > xController( rFrame->getController(), uno::UNO_QUERY );
-            if ( xController.is() )
-                xModel = xController->getModel();
-        }
+    if ( rFrame.is() )
+    {
+        uno::Reference< frame::XController > xController = rFrame->getController();
+        if ( xController.is() )
+            xModel = xController->getModel();
+    }
 
     return xModel;
 }
@@ -304,24 +294,24 @@ void impl_setDockingWindowVisibility( const css::uno::Reference< css::uno::XComp
     sal_Int32 nIndex = nID - DOCKWIN_ID_BASE;
 
     css::uno::Reference< css::frame::XDispatchProvider > xProvider(rFrame, css::uno::UNO_QUERY);
-    if ( nIndex >= 0 && xProvider.is() )
-    {
-        OUString aDockWinArgName = "DockingWindow" + OUString::number( nIndex );
+    if ( !(nIndex >= 0 && xProvider.is()) )
+        return;
 
-        css::uno::Sequence< css::beans::PropertyValue > aArgs(1);
-        aArgs[0].Name  = aDockWinArgName;
-        aArgs[0].Value <<= bVisible;
+    OUString aDockWinArgName = "DockingWindow" + OUString::number( nIndex );
 
-        css::uno::Reference< css::frame::XDispatchHelper > xDispatcher = css::frame::DispatchHelper::create( rxContext );
+    css::uno::Sequence< css::beans::PropertyValue > aArgs(1);
+    aArgs[0].Name  = aDockWinArgName;
+    aArgs[0].Value <<= bVisible;
 
-        OUString aDockWinCommand = ".uno:" + aDockWinArgName;
-        xDispatcher->executeDispatch(
-            xProvider,
-            aDockWinCommand,
-            "_self",
-            0,
-            aArgs);
-    }
+    css::uno::Reference< css::frame::XDispatchHelper > xDispatcher = css::frame::DispatchHelper::create( rxContext );
+
+    OUString aDockWinCommand = ".uno:" + aDockWinArgName;
+    xDispatcher->executeDispatch(
+        xProvider,
+        aDockWinCommand,
+        "_self",
+        0,
+        aArgs);
 }
 
 void impl_addWindowListeners(
@@ -330,21 +320,21 @@ void impl_addWindowListeners(
 {
     css::uno::Reference< css::awt::XWindow > xWindow( xUIElement->getRealInterface(), css::uno::UNO_QUERY );
     css::uno::Reference< css::awt::XDockableWindow > xDockWindow( xUIElement->getRealInterface(), css::uno::UNO_QUERY );
-    if ( xDockWindow.is() && xWindow.is() )
+    if ( !(xDockWindow.is() && xWindow.is()) )
+        return;
+
+    try
     {
-        try
-        {
-            xDockWindow->addDockableWindowListener(
-                css::uno::Reference< css::awt::XDockableWindowListener >(
-                    xThis, css::uno::UNO_QUERY ));
-            xWindow->addWindowListener(
-                css::uno::Reference< css::awt::XWindowListener >(
-                    xThis, css::uno::UNO_QUERY ));
-            xDockWindow->enableDocking( true );
-        }
-        catch ( const css::uno::Exception& )
-        {
-        }
+        xDockWindow->addDockableWindowListener(
+            css::uno::Reference< css::awt::XDockableWindowListener >(
+                xThis, css::uno::UNO_QUERY ));
+        xWindow->addWindowListener(
+            css::uno::Reference< css::awt::XWindowListener >(
+                xThis, css::uno::UNO_QUERY ));
+        xDockWindow->enableDocking( true );
+    }
+    catch ( const css::uno::Exception& )
+    {
     }
 }
 

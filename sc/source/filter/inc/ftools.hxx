@@ -21,13 +21,9 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_FTOOLS_HXX
 
 #include <vector>
-#include <map>
 #include <limits>
-#include <sal/macros.h>
-#include <sot/storage.hxx>
-#include <oox/helper/helper.hxx>
-#include "filter.hxx"
-#include "scdllapi.h"
+#include <tools/ref.hxx>
+#include <filter.hxx>
 
 // Common macros ==============================================================
 
@@ -103,9 +99,9 @@ inline void set_flag( Type& rnBitField, Type nMask, bool bSet = true )
 template< typename Type, typename InsertType >
 void insert_value( Type& rnBitField, InsertType nValue, sal_uInt8 nStartBit, sal_uInt8 nBitCount )
 {
-    unsigned long nMask = ((1UL << nBitCount) - 1);
+    unsigned int nMask = (1U << nBitCount) - 1;
     Type nNewValue = static_cast< Type >( nValue & nMask );
-    (rnBitField &= ~(nMask << nStartBit)) |= (nNewValue << nStartBit);
+    rnBitField = (rnBitField & ~(nMask << nStartBit)) | (nNewValue << nStartBit);
 }
 
 class Color;
@@ -114,6 +110,8 @@ class SfxItemSet;
 class ScStyleSheet;
 class ScStyleSheetPool;
 class SvStream;
+class SotStorage;
+class SotStorageStream;
 
 /** Contains static methods used anywhere in the filters. */
 class ScfTools
@@ -256,6 +254,41 @@ typedef ::std::vector< sal_uInt16 >                 ScfUInt16Vec;
 typedef ::std::vector< sal_Int32 >                  ScfInt32Vec;
 typedef ::std::vector< sal_uInt32 >                 ScfUInt32Vec;
 typedef ::std::vector< OUString >            ScfStringVec;
+
+class ScFormatFilterPluginImpl : public ScFormatFilterPlugin
+{
+public:
+    ScFormatFilterPluginImpl();
+    virtual ~ScFormatFilterPluginImpl();
+    // various import filters
+    virtual ErrCode ScImportLotus123( SfxMedium&, ScDocument*, rtl_TextEncoding eSrc ) override;
+    virtual ErrCode ScImportQuattroPro(SvStream* pStream, ScDocument *pDoc) override;
+    virtual ErrCode ScImportExcel( SfxMedium&, ScDocument*, const EXCIMPFORMAT ) override;
+        // eFormat == EIF_AUTO  -> matching filter is used automatically
+        // eFormat == EIF_BIFF5 -> only Biff5 stream leads to success (even in an Excel97 doc)
+        // eFormat == EIF_BIFF8 -> only Biff8 stream leads to success (only in Excel97 docs)
+        // eFormat == EIF_BIFF_LE4 -> only non-storage files _could_ lead to success
+    virtual ErrCode ScImportDif( SvStream&, ScDocument*, const ScAddress& rInsPos,
+                 const rtl_TextEncoding eSrc ) override;
+    virtual ErrCode ScImportRTF( SvStream&, const OUString& rBaseURL, ScDocument*, ScRange& rRange ) override;
+    virtual ErrCode ScImportHTML( SvStream&, const OUString& rBaseURL, ScDocument*, ScRange& rRange,
+                                   double nOutputFactor, bool bCalcWidthHeight,
+                                   SvNumberFormatter* pFormatter, bool bConvertDate ) override;
+
+    virtual std::unique_ptr<ScEEAbsImport> CreateRTFImport( ScDocument* pDoc, const ScRange& rRange ) override;
+    virtual std::unique_ptr<ScEEAbsImport> CreateHTMLImport( ScDocument* pDocP, const OUString& rBaseURL, const ScRange& rRange ) override;
+    virtual OUString       GetHTMLRangeNameList( ScDocument* pDoc, const OUString& rOrigName ) override;
+
+    // various export filters
+    virtual ErrCode ScExportExcel5( SfxMedium&, ScDocument*, ExportFormatExcel eFormat, rtl_TextEncoding eDest ) override;
+    virtual void ScExportDif( SvStream&, ScDocument*, const ScAddress& rOutPos, const rtl_TextEncoding eDest ) override;
+    virtual void ScExportDif( SvStream&, ScDocument*, const ScRange& rRange, const rtl_TextEncoding eDest ) override;
+    virtual void ScExportHTML( SvStream&, const OUString& rBaseURL, ScDocument*, const ScRange& rRange, const rtl_TextEncoding eDest, bool bAll,
+                  const OUString& rStreamPath, OUString& rNonConvertibleChars, const OUString& rFilterOptions ) override;
+    virtual void ScExportRTF( SvStream&, ScDocument*, const ScRange& rRange, const rtl_TextEncoding eDest ) override;
+
+    virtual ScOrcusFilters* GetOrcusFilters() override;
+};
 
 #endif
 

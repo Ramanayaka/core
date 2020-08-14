@@ -19,11 +19,11 @@
 #ifndef INCLUDED_FORMS_SOURCE_RICHTEXT_RICHTEXTMODEL_HXX
 #define INCLUDED_FORMS_SOURCE_RICHTEXT_RICHTEXTMODEL_HXX
 
-#include "FormComponent.hxx"
-#include "formcontrolfont.hxx"
+#include <FormComponent.hxx>
+#include <formcontrolfont.hxx>
 #include "richtextunowrapper.hxx"
+#include <comphelper/interfacecontainer2.hxx>
 #include <comphelper/propertycontainerhelper.hxx>
-#include <comphelper/listenernotification.hxx>
 
 #include <com/sun/star/awt/XDevice.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>

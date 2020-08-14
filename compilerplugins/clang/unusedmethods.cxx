@@ -18,7 +18,6 @@
 #include "clang/AST/Attr.h"
 
 #include "plugin.hxx"
-#include "compat.hxx"
 
 /**
 This plugin performs 3 different analyses:
@@ -78,7 +77,8 @@ class UnusedMethods:
     public RecursiveASTVisitor<UnusedMethods>, public loplugin::Plugin
 {
 public:
-    explicit UnusedMethods(InstantiationData const & data): Plugin(data) {}
+    explicit UnusedMethods(loplugin::InstantiationData const & data):
+        Plugin(data) {}
 
     virtual void run() override
     {
@@ -89,8 +89,12 @@ public:
 
         std::string output;
         for (const MyFuncInfo & s : definitionSet)
-            output += "definition:\t" + s.access + "\t" + s.returnType + "\t" + s.nameAndParams
-                      + "\t" + s.sourceLocation + "\t" + s.virtualness + "\n";
+        {
+            // ignore external code
+            if (s.sourceLocation.rfind("external/", 0) != 0)
+                output += "definition:\t" + s.access + "\t" + s.returnType + "\t" + s.nameAndParams
+                          + "\t" + s.sourceLocation + "\t" + s.virtualness + "\n";
+        }
         // for the "unused method" analysis
         for (const MyFuncInfo & s : callSet)
             output += "call:\t" + s.returnType + "\t" + s.nameAndParams + "\n";
@@ -101,7 +105,7 @@ public:
         for (const MyFuncInfo & s : calledFromOutsideSet)
             output += "outside:\t" + s.returnType + "\t" + s.nameAndParams + "\n";
         std::ofstream myfile;
-        myfile.open( SRCDIR "/loplugin.unusedmethods.log", std::ios::app | std::ios::out);
+        myfile.open( WORKDIR "/loplugin.unusedmethods.log", std::ios::app | std::ios::out);
         myfile << output;
         myfile.close();
     }
@@ -113,24 +117,36 @@ public:
     bool VisitFunctionDecl( const FunctionDecl* decl );
     bool VisitDeclRefExpr( const DeclRefExpr* );
     bool VisitCXXConstructExpr( const CXXConstructExpr* );
+    bool TraverseCXXRecordDecl( CXXRecordDecl* );
+    bool TraverseFunctionDecl( FunctionDecl* );
+    bool TraverseCXXMethodDecl( CXXMethodDecl* );
+    bool TraverseCXXConversionDecl( CXXConversionDecl* );
+    bool TraverseCXXDeductionGuideDecl( CXXDeductionGuideDecl* );
+
 private:
     void logCallToRootMethods(const FunctionDecl* functionDecl, std::set<MyFuncInfo>& funcSet);
     MyFuncInfo niceName(const FunctionDecl* functionDecl);
     std::string toString(SourceLocation loc);
     void functionTouchedFromExpr( const FunctionDecl* calleeFunctionDecl, const Expr* expr );
+    CXXRecordDecl const * currentCxxRecordDecl = nullptr;
+    FunctionDecl const * currentFunctionDecl = nullptr;
 };
 
 MyFuncInfo UnusedMethods::niceName(const FunctionDecl* functionDecl)
 {
-    if (functionDecl->getInstantiatedFromMemberFunction())
-        functionDecl = functionDecl->getInstantiatedFromMemberFunction();
-    else if (functionDecl->getClassScopeSpecializationPattern())
-        functionDecl = functionDecl->getClassScopeSpecializationPattern();
-// workaround clang-3.5 issue
-#if CLANG_VERSION >= 30600
-    else if (functionDecl->getTemplateInstantiationPattern())
-        functionDecl = functionDecl->getTemplateInstantiationPattern();
+    for(;;)
+    {
+        if (functionDecl->getInstantiatedFromMemberFunction())
+            functionDecl = functionDecl->getInstantiatedFromMemberFunction();
+#if CLANG_VERSION < 90000
+        else if (functionDecl->getClassScopeSpecializationPattern())
+            functionDecl = functionDecl->getClassScopeSpecializationPattern();
 #endif
+        else if (functionDecl->getTemplateInstantiationPattern())
+            functionDecl = functionDecl->getTemplateInstantiationPattern();
+        else
+            break;
+    }
 
     MyFuncInfo aInfo;
     switch (functionDecl->getAccess())
@@ -141,21 +157,26 @@ MyFuncInfo UnusedMethods::niceName(const FunctionDecl* functionDecl)
     default: aInfo.access = "unknown"; break;
     }
     if (!isa<CXXConstructorDecl>(functionDecl)) {
-        aInfo.returnType = compat::getReturnType(*functionDecl).getCanonicalType().getAsString();
+        aInfo.returnType = functionDecl->getReturnType().getCanonicalType().getAsString();
     } else {
         aInfo.returnType = "";
     }
 
-    if (const CXXMethodDecl* methodDecl = dyn_cast<CXXMethodDecl>(functionDecl)) {
+    if (auto methodDecl = dyn_cast<CXXMethodDecl>(functionDecl)) {
         const CXXRecordDecl* recordDecl = methodDecl->getParent();
-        aInfo.nameAndParams += recordDecl->getQualifiedNameAsString();
-        aInfo.nameAndParams += "::";
+        aInfo.nameAndParams = recordDecl->getQualifiedNameAsString()
+                + "::"
+                + functionDecl->getNameAsString()
+                + "(";
         if (methodDecl->isVirtual())
             aInfo.virtualness = "virtual";
     }
-    aInfo.nameAndParams += functionDecl->getNameAsString() + "(";
+    else
+    {
+        aInfo.nameAndParams = functionDecl->getQualifiedNameAsString() + "(";
+    }
     bool bFirst = true;
-    for (const ParmVarDecl *pParmVarDecl : compat::parameters(*functionDecl)) {
+    for (const ParmVarDecl *pParmVarDecl : functionDecl->parameters()) {
         if (bFirst)
             bFirst = false;
         else
@@ -175,9 +196,9 @@ MyFuncInfo UnusedMethods::niceName(const FunctionDecl* functionDecl)
 std::string UnusedMethods::toString(SourceLocation loc)
 {
     SourceLocation expansionLoc = compiler.getSourceManager().getExpansionLoc( loc );
-    StringRef name = compiler.getSourceManager().getFilename(expansionLoc);
+    StringRef name = getFilenameOfLocation(expansionLoc);
     std::string sourceLocation = std::string(name.substr(strlen(SRCDIR)+1)) + ":" + std::to_string(compiler.getSourceManager().getSpellingLineNumber(expansionLoc));
-    normalizeDotDotInFilePath(sourceLocation);
+    loplugin::normalizeDotDotInFilePath(sourceLocation);
     return sourceLocation;
 }
 
@@ -220,23 +241,30 @@ bool UnusedMethods::VisitCallExpr(CallExpr* expr)
             if (calleeFunctionDecl)
                 goto gotfunc;
         }
-        /*
-        expr->dump();
-        throw "Can't touch this";
-        */
         return true;
     }
 
 gotfunc:
-    logCallToRootMethods(calleeFunctionDecl, callSet);
 
-    const Stmt* parent = parentStmt(expr);
+
+    if (currentFunctionDecl == calleeFunctionDecl)
+        ; // for "unused method" analysis, ignore recursive calls
+    else if (currentFunctionDecl
+            && currentFunctionDecl->getIdentifier()
+            && currentFunctionDecl->getName() == "Clone"
+            && currentFunctionDecl->getParent() == calleeFunctionDecl->getParent()
+            && isa<CXXConstructorDecl>(calleeFunctionDecl))
+        ; // if we are inside Clone(), ignore calls to the same class's constructor
+    else
+        logCallToRootMethods(calleeFunctionDecl, callSet);
+
+    const Stmt* parent = getParentStmt(expr);
 
     // Now do the checks necessary for the "can be private" analysis
     CXXMethodDecl* calleeMethodDecl = dyn_cast<CXXMethodDecl>(calleeFunctionDecl);
     if (calleeMethodDecl && calleeMethodDecl->getAccess() != AS_private)
     {
-        const FunctionDecl* parentFunctionOfCallSite = parentFunctionDecl(expr);
+        const FunctionDecl* parentFunctionOfCallSite = getParentFunctionDecl(expr);
         if (parentFunctionOfCallSite != calleeFunctionDecl) {
             if (!parentFunctionOfCallSite || !ignoreLocation(parentFunctionOfCallSite)) {
                 calledFromOutsideSet.insert(niceName(calleeFunctionDecl));
@@ -245,7 +273,7 @@ gotfunc:
     }
 
     // Now do the checks necessary for the "unused return value" analysis
-    if (compat::getReturnType(*calleeFunctionDecl)->isVoidType()) {
+    if (calleeFunctionDecl->getReturnType()->isVoidType()) {
         return true;
     }
     if (!parent) {
@@ -283,6 +311,10 @@ bool UnusedMethods::VisitCXXConstructExpr( const CXXConstructExpr* constructExpr
     }
 
     logCallToRootMethods(constructorDecl, callSet);
+
+    // Now do the checks necessary for the "can be private" analysis
+    if (constructorDecl->getParent() != currentCxxRecordDecl)
+        calledFromOutsideSet.insert(niceName(constructorDecl));
 
     return true;
 }
@@ -333,7 +365,7 @@ bool UnusedMethods::VisitDeclRefExpr( const DeclRefExpr* declRefExpr )
     const CXXMethodDecl* methodDecl = dyn_cast<CXXMethodDecl>(functionDecl);
     if (methodDecl && methodDecl->getAccess() != AS_private)
     {
-        const FunctionDecl* parentFunctionOfCallSite = parentFunctionDecl(declRefExpr);
+        const FunctionDecl* parentFunctionOfCallSite = getParentFunctionDecl(declRefExpr);
         if (parentFunctionOfCallSite != functionDecl) {
             if (!parentFunctionOfCallSite || !ignoreLocation(parentFunctionOfCallSite)) {
                 calledFromOutsideSet.insert(niceName(functionDecl));
@@ -342,6 +374,48 @@ bool UnusedMethods::VisitDeclRefExpr( const DeclRefExpr* declRefExpr )
     }
 
     return true;
+}
+
+bool UnusedMethods::TraverseCXXRecordDecl(CXXRecordDecl* cxxRecordDecl)
+{
+    auto copy = currentCxxRecordDecl;
+    currentCxxRecordDecl = cxxRecordDecl;
+    bool ret = RecursiveASTVisitor::TraverseCXXRecordDecl(cxxRecordDecl);
+    currentCxxRecordDecl = copy;
+    return ret;
+}
+
+bool UnusedMethods::TraverseFunctionDecl(FunctionDecl* f)
+{
+    auto copy = currentFunctionDecl;
+    currentFunctionDecl = f;
+    bool ret = RecursiveASTVisitor::TraverseFunctionDecl(f);
+    currentFunctionDecl = copy;
+    return ret;
+}
+bool UnusedMethods::TraverseCXXMethodDecl(CXXMethodDecl* f)
+{
+    auto copy = currentFunctionDecl;
+    currentFunctionDecl = f;
+    bool ret = RecursiveASTVisitor::TraverseCXXMethodDecl(f);
+    currentFunctionDecl = copy;
+    return ret;
+}
+bool UnusedMethods::TraverseCXXConversionDecl(CXXConversionDecl* f)
+{
+    auto copy = currentFunctionDecl;
+    currentFunctionDecl = f;
+    bool ret = RecursiveASTVisitor::TraverseCXXConversionDecl(f);
+    currentFunctionDecl = copy;
+    return ret;
+}
+bool UnusedMethods::TraverseCXXDeductionGuideDecl(CXXDeductionGuideDecl* f)
+{
+    auto copy = currentFunctionDecl;
+    currentFunctionDecl = f;
+    bool ret = RecursiveASTVisitor::TraverseCXXDeductionGuideDecl(f);
+    currentFunctionDecl = copy;
+    return ret;
 }
 
 loplugin::Plugin::Registration< UnusedMethods > X("unusedmethods", false);

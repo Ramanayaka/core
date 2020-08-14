@@ -20,13 +20,11 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ATABLES_HXX
 
 #include <connectivity/sdbcx/VCollection.hxx>
-#include "ado/Awrapadox.hxx"
-#include "ado/ACatalog.hxx"
+#include <ado/Awrapadox.hxx>
+#include <ado/ACatalog.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class OCatalog;
         class OTables : public sdbcx::OCollection
         {
@@ -40,7 +38,7 @@ namespace connectivity
             virtual void dropObject(sal_Int32 _nPos,const OUString& _sElementName) override;
         public:
             OTables(OCatalog* _pParent, ::osl::Mutex& _rMutex,
-                const TStringVector &_rVector,
+                const ::std::vector< OUString> &_rVector,
                 const WpADOTables& _rCollection,
                 bool _bCase) : sdbcx::OCollection(*_pParent,_bCase,_rMutex,_rVector)
                 ,m_aCollection(_rCollection)
@@ -50,7 +48,6 @@ namespace connectivity
             }
             void appendNew(const OUString& _rsNewTable);
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ATABLES_HXX
 

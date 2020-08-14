@@ -17,15 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "toolkit/controls/tkscrollbar.hxx"
-#include "toolkit/helper/property.hxx"
+#include <controls/tkscrollbar.hxx>
+#include <toolkit/helper/property.hxx>
+#include <helper/servicenames.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
 
 #include <toolkit/awt/vclxwindows.hxx>
 
-#include "helper/unopropertyarrayhelper.hxx"
+#include <helper/unopropertyarrayhelper.hxx>
 
 namespace toolkit
 {
@@ -40,18 +41,18 @@ namespace toolkit
     UnoControlScrollBarModel::UnoControlScrollBarModel( const uno::Reference< uno::XComponentContext >& i_factory )
         :UnoControlModel( i_factory )
     {
-        UNO_CONTROL_MODEL_REGISTER_PROPERTIES( VCLXScrollBar );
+        UNO_CONTROL_MODEL_REGISTER_PROPERTIES<VCLXScrollBar>();
     }
 
 
     OUString UnoControlScrollBarModel::getServiceName( )
     {
-        return OUString::createFromAscii( szServiceName_UnoControlScrollBarModel );
+        return "stardiv.vcl.controlmodel.ScrollBar";
     }
 
     OUString UnoControlScrollBarModel::getImplementationName()
     {
-        return OUString("stardiv.Toolkit.UnoControlScrollBarModel");
+        return "stardiv.Toolkit.UnoControlScrollBarModel";
     }
 
     css::uno::Sequence<OUString>
@@ -71,7 +72,7 @@ namespace toolkit
         case BASEPROPERTY_LIVE_SCROLL:
             return uno::makeAny( false );
         case BASEPROPERTY_DEFAULTCONTROL:
-            return uno::makeAny( OUString::createFromAscii( szServiceName_UnoControlScrollBar ) );
+            return uno::makeAny( OUString( "stardiv.vcl.control.ScrollBar" ) );
 
         default:
             return UnoControlModel::ImplGetDefaultValue( nPropId );
@@ -81,13 +82,8 @@ namespace toolkit
 
     ::cppu::IPropertyArrayHelper& UnoControlScrollBarModel::getInfoHelper()
     {
-        static UnoPropertyArrayHelper* pHelper = nullptr;
-        if ( !pHelper )
-        {
-            uno::Sequence<sal_Int32>    aIDs = ImplGetPropertyIds();
-            pHelper = new UnoPropertyArrayHelper( aIDs );
-        }
-        return *pHelper;
+        static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+        return aHelper;
     }
 
 
@@ -108,24 +104,31 @@ namespace toolkit
 
     OUString UnoScrollBarControl::GetComponentServiceName()
     {
-        return OUString("ScrollBar");
+        return "ScrollBar";
     }
 
     // css::uno::XInterface
     uno::Any UnoScrollBarControl::queryAggregation( const uno::Type & rType )
     {
         uno::Any aRet = ::cppu::queryInterface( rType,
-                                            (static_cast< awt::XAdjustmentListener* >(this)),
-                                            (static_cast< awt::XScrollBar* >(this)) );
+                                            static_cast< awt::XAdjustmentListener* >(this),
+                                            static_cast< awt::XScrollBar* >(this) );
         return (aRet.hasValue() ? aRet : UnoControlBase::queryAggregation( rType ));
     }
 
+    IMPL_IMPLEMENTATION_ID( UnoScrollBarControl )
+
     // css::lang::XTypeProvider
-    IMPL_XTYPEPROVIDER_START( UnoScrollBarControl )
-        cppu::UnoType<awt::XAdjustmentListener>::get(),
-        cppu::UnoType<awt::XScrollBar>::get(),
-        UnoControlBase::getTypes()
-    IMPL_XTYPEPROVIDER_END
+    css::uno::Sequence< css::uno::Type > UnoScrollBarControl::getTypes()
+    {
+        static const ::cppu::OTypeCollection aTypeList(
+            cppu::UnoType<css::lang::XTypeProvider>::get(),
+            cppu::UnoType<awt::XAdjustmentListener>::get(),
+            cppu::UnoType<awt::XScrollBar>::get(),
+            UnoControlBase::getTypes()
+        );
+        return aTypeList.getTypes();
+    }
 
     void UnoScrollBarControl::dispose()
     {
@@ -287,7 +290,7 @@ namespace toolkit
 
     OUString UnoScrollBarControl::getImplementationName()
     {
-        return OUString("stardiv.Toolkit.UnoScrollBarControl");
+        return "stardiv.Toolkit.UnoScrollBarControl";
     }
 
     css::uno::Sequence<OUString> UnoScrollBarControl::getSupportedServiceNames()
@@ -302,7 +305,7 @@ namespace toolkit
 }  // namespace toolkit
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoControlScrollBarModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -310,7 +313,7 @@ stardiv_Toolkit_UnoControlScrollBarModel_get_implementation(
     return cppu::acquire(new toolkit::UnoControlScrollBarModel(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoScrollBarControl_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

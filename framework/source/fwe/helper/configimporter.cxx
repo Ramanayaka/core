@@ -18,10 +18,9 @@
  */
 
 #include <framework/configimporter.hxx>
-#include <framework/toolboxconfiguration.hxx>
+#include <toolboxconfiguration.hxx>
 #include <com/sun/star/embed/ElementModes.hpp>
-
-#include <rtl/ustrbuf.hxx>
+#include <com/sun/star/ui/XUIConfigurationManager2.hpp>
 
 using namespace ::com::sun::star;
 

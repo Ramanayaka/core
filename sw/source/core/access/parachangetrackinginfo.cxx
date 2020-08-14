@@ -17,12 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <parachangetrackinginfo.hxx>
+#include "parachangetrackinginfo.hxx"
 
 #include <wrong.hxx>
 #include <com/sun/star/text/TextMarkupType.hpp>
 
 #include <txtfrm.hxx>
+#include <rootfrm.hxx>
 #include <ndtxt.hxx>
 #include <IDocumentRedlineAccess.hxx>
 #include <docary.hxx>
@@ -32,44 +33,49 @@
 
 namespace {
     void initChangeTrackTextMarkupLists( const SwTextFrame& rTextFrame,
-                                         SwWrongList*& opChangeTrackInsertionTextMarkupList,
-                                         SwWrongList*& opChangeTrackDeletionTextMarkupList,
-                                         SwWrongList*& opChangeTrackFormatChangeTextMarkupList )
+                                         std::unique_ptr<SwWrongList>& opChangeTrackInsertionTextMarkupList,
+                                         std::unique_ptr<SwWrongList>& opChangeTrackDeletionTextMarkupList,
+                                         std::unique_ptr<SwWrongList>& opChangeTrackFormatChangeTextMarkupList )
     {
-        opChangeTrackInsertionTextMarkupList = new SwWrongList( WRONGLIST_CHANGETRACKING );
-        opChangeTrackDeletionTextMarkupList = new SwWrongList( WRONGLIST_CHANGETRACKING );
-        opChangeTrackFormatChangeTextMarkupList = new SwWrongList( WRONGLIST_CHANGETRACKING );
+        opChangeTrackInsertionTextMarkupList.reset( new SwWrongList( WRONGLIST_CHANGETRACKING ) );
+        opChangeTrackDeletionTextMarkupList.reset( new SwWrongList( WRONGLIST_CHANGETRACKING ) );
+        opChangeTrackFormatChangeTextMarkupList.reset( new SwWrongList( WRONGLIST_CHANGETRACKING ) );
 
-        if ( !rTextFrame.GetTextNode() )
+        if (!rTextFrame.GetTextNodeFirst())
         {
             OSL_FAIL( "<initChangeTrackTextMarkupLists(..) - missing <SwTextNode> instance!" );
             return;
         }
-        const SwTextNode& rTextNode( *(rTextFrame.GetTextNode()) );
+        // sw_redlinehide: the first node is sufficient - there are only
+        // multiple ones in Hide case and the code below returns early then
+        const SwTextNode& rTextNode(*(rTextFrame.GetTextNodeFirst()));
 
         const IDocumentRedlineAccess& rIDocChangeTrack( rTextNode.getIDocumentRedlineAccess() );
 
-        if ( !IDocumentRedlineAccess::IsShowChanges( rIDocChangeTrack.GetRedlineFlags() ) ||
-             rIDocChangeTrack.GetRedlineTable().empty() )
+        if (!IDocumentRedlineAccess::IsShowChanges(rIDocChangeTrack.GetRedlineFlags())
+           || rTextFrame.getRootFrame()->IsHideRedlines()
+           || rIDocChangeTrack.GetRedlineTable().empty())
         {
             // nothing to do --> empty change track text markup lists.
             return;
         }
 
         const SwRedlineTable::size_type nIdxOfFirstRedlineForTextNode =
-                    rIDocChangeTrack.GetRedlinePos( rTextNode, USHRT_MAX );
+                    rIDocChangeTrack.GetRedlinePos( rTextNode, RedlineType::Any );
         if ( nIdxOfFirstRedlineForTextNode == SwRedlineTable::npos )
         {
             // nothing to do --> empty change track text markup lists.
             return;
         }
 
+        // sw_redlinehide: rely on the Hide early return above & cast
+        // TextFrameIndex to SwIndex directly
         const sal_Int32 nTextFrameTextStartPos = rTextFrame.IsFollow()
-                                               ? rTextFrame.GetOfst()
-                                               : 0;
+            ? sal_Int32(rTextFrame.GetOffset())
+            : 0;
         const sal_Int32 nTextFrameTextEndPos = rTextFrame.HasFollow()
-                                             ? rTextFrame.GetFollow()->GetOfst()
-                                             : rTextFrame.GetText().getLength();
+            ? sal_Int32(rTextFrame.GetFollow()->GetOffset())
+            : rTextFrame.GetText().getLength();
 
         // iteration over the redlines which overlap with the text node.
         const SwRedlineTable& rRedlineTable = rIDocChangeTrack.GetRedlineTable();
@@ -99,19 +105,19 @@ namespace {
             SwWrongList* pMarkupList( nullptr );
             switch ( pActRedline->GetType() )
             {
-                case nsRedlineType_t::REDLINE_INSERT:
+                case RedlineType::Insert:
                 {
-                    pMarkupList = opChangeTrackInsertionTextMarkupList;
+                    pMarkupList = opChangeTrackInsertionTextMarkupList.get();
                 }
                 break;
-                case nsRedlineType_t::REDLINE_DELETE:
+                case RedlineType::Delete:
                 {
-                    pMarkupList = opChangeTrackDeletionTextMarkupList;
+                    pMarkupList = opChangeTrackDeletionTextMarkupList.get();
                 }
                 break;
-                case nsRedlineType_t::REDLINE_FORMAT:
+                case RedlineType::Format:
                 {
-                    pMarkupList = opChangeTrackFormatChangeTextMarkupList;
+                    pMarkupList = opChangeTrackFormatChangeTextMarkupList.get();
                 }
                 break;
                 default:
@@ -138,9 +144,6 @@ namespace {
 
 SwParaChangeTrackingInfo::SwParaChangeTrackingInfo( const SwTextFrame& rTextFrame )
     : mrTextFrame( rTextFrame )
-    , mpChangeTrackInsertionTextMarkupList( nullptr )
-    , mpChangeTrackDeletionTextMarkupList( nullptr )
-    , mpChangeTrackFormatChangeTextMarkupList( nullptr )
 {
 }
 
@@ -151,14 +154,9 @@ SwParaChangeTrackingInfo::~SwParaChangeTrackingInfo()
 
 void SwParaChangeTrackingInfo::reset()
 {
-    delete mpChangeTrackInsertionTextMarkupList;
-    mpChangeTrackInsertionTextMarkupList = nullptr;
-
-    delete mpChangeTrackDeletionTextMarkupList;
-    mpChangeTrackDeletionTextMarkupList = nullptr;
-
-    delete mpChangeTrackFormatChangeTextMarkupList;
-    mpChangeTrackFormatChangeTextMarkupList = nullptr;
+    mpChangeTrackInsertionTextMarkupList.reset();
+    mpChangeTrackDeletionTextMarkupList.reset();
+    mpChangeTrackFormatChangeTextMarkupList.reset();
 }
 
 const SwWrongList* SwParaChangeTrackingInfo::getChangeTrackingTextMarkupList( const sal_Int32 nTextMarkupType )
@@ -181,17 +179,17 @@ const SwWrongList* SwParaChangeTrackingInfo::getChangeTrackingTextMarkupList( co
     {
         case css::text::TextMarkupType::TRACK_CHANGE_INSERTION:
         {
-            pChangeTrackingTextMarkupList = mpChangeTrackInsertionTextMarkupList;
+            pChangeTrackingTextMarkupList = mpChangeTrackInsertionTextMarkupList.get();
         }
         break;
         case css::text::TextMarkupType::TRACK_CHANGE_DELETION:
         {
-            pChangeTrackingTextMarkupList = mpChangeTrackDeletionTextMarkupList;
+            pChangeTrackingTextMarkupList = mpChangeTrackDeletionTextMarkupList.get();
         }
         break;
         case css::text::TextMarkupType::TRACK_CHANGE_FORMATCHANGE:
         {
-            pChangeTrackingTextMarkupList = mpChangeTrackFormatChangeTextMarkupList;
+            pChangeTrackingTextMarkupList = mpChangeTrackFormatChangeTextMarkupList.get();
         }
         break;
         default:

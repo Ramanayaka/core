@@ -21,46 +21,42 @@
 #define INCLUDED_SW_SOURCE_UI_ENVELP_ENVPRT_HXX
 
 #include <sfx2/tabdlg.hxx>
-#include <vcl/toolbox.hxx>
-#include <vcl/field.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/group.hxx>
-#include <vcl/button.hxx>
+#include <vcl/print.hxx>
+#include <vcl/weld.hxx>
 
-#include "envimg.hxx"
-#include "envlop.hxx"
+#include <envimg.hxx>
+#include <envlop.hxx>
 
 class SwEnvDlg;
 
 class SwEnvPrtPage : public SfxTabPage
 {
-    VclPtr<ToolBox>     m_pAlignBox;
-    VclPtr<RadioButton> m_pTopButton;
-    VclPtr<RadioButton> m_pBottomButton;
-    VclPtr<MetricField> m_pRightField;
-    VclPtr<MetricField> m_pDownField;
-    VclPtr<FixedText>   m_pPrinterInfo;
-    VclPtr<PushButton>  m_pPrtSetup;
+    std::unique_ptr<weld::Widget> m_xUpper;
+    std::unique_ptr<weld::Widget> m_xLower;
+    std::unique_ptr<weld::RadioButton> m_xTopButton;
+    std::unique_ptr<weld::RadioButton> m_xBottomButton;
+    std::unique_ptr<weld::MetricSpinButton> m_xRightField;
+    std::unique_ptr<weld::MetricSpinButton> m_xDownField;
+    std::unique_ptr<weld::Label>   m_xPrinterInfo;
+    std::unique_ptr<weld::Button>  m_xPrtSetup;
 
-    sal_uInt16 m_aIds[ENV_VER_RGHT-ENV_HOR_LEFT+1];
+    std::unique_ptr<weld::RadioButton> m_aIdsL[ENV_VER_RGHT-ENV_HOR_LEFT+1];
+    std::unique_ptr<weld::RadioButton> m_aIdsU[ENV_VER_RGHT-ENV_HOR_LEFT+1];
 
-    VclPtr<Printer>     pPrt;
+    VclPtr<Printer>     m_xPrt;
 
-    DECL_LINK(ClickHdl, Button*, void);
-    DECL_LINK(AlignHdl, ToolBox *, void);
-    DECL_LINK(ButtonHdl, Button *, void );
+    DECL_LINK(LowerHdl, weld::ToggleButton&, void);
+    DECL_LINK(UpperHdl, weld::ToggleButton&, void);
+    DECL_LINK(ClickHdl, weld::ToggleButton&, void);
+    DECL_LINK(ButtonHdl, weld::Button&, void );
 
-    SwEnvDlg* GetParentSwEnvDlg() {return static_cast<SwEnvDlg*>( GetParentDialog());}
-
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
+    SwEnvDlg* GetParentSwEnvDlg() {return static_cast<SwEnvDlg*>(GetDialogController()); }
 
 public:
-    SwEnvPrtPage(vcl::Window* pParent, const SfxItemSet& rSet);
+    SwEnvPrtPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SwEnvPrtPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage> Create(vcl::Window* pParent, const SfxItemSet* rSet);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet);
 
     virtual void ActivatePage(const SfxItemSet& rSet) override;
     virtual DeactivateRC DeactivatePage(SfxItemSet* pSet) override;
@@ -68,7 +64,7 @@ public:
     virtual bool FillItemSet(SfxItemSet* rSet) override;
     virtual void Reset(const SfxItemSet* rSet) override;
 
-    void SetPrt(Printer* pPrinter) { pPrt = pPrinter; }
+    void SetPrt(Printer* pPrinter) { m_xPrt = pPrinter; }
 };
 
 #endif

@@ -20,15 +20,17 @@
 #ifndef INCLUDED_UNOTOOLS_PROGRESSHANDLERWRAP_HXX
 #define INCLUDED_UNOTOOLS_PROGRESSHANDLERWRAP_HXX
 
+#include <config_options.h>
 #include <unotools/unotoolsdllapi.h>
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/task/XStatusIndicator.hpp>
 #include <com/sun/star/ucb/XProgressHandler.hpp>
+
+namespace com::sun::star::task { class XStatusIndicator; }
 
 namespace utl
 {
 
-class UNOTOOLS_DLLPUBLIC ProgressHandlerWrap : public ::cppu::WeakImplHelper< css::ucb::XProgressHandler >
+class UNLESS_MERGELIBS(UNOTOOLS_DLLPUBLIC) ProgressHandlerWrap final : public ::cppu::WeakImplHelper< css::ucb::XProgressHandler >
 {
     css::uno::Reference< css::task::XStatusIndicator > m_xStatusIndicator;
 

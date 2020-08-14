@@ -18,11 +18,7 @@
  */
 
 #include "BarPositionHelper.hxx"
-#include "Linear3DTransformation.hxx"
-#include "ViewDefines.hxx"
-#include "CommonConverters.hxx"
-#include "DateHelper.hxx"
-#include <com/sun/star/chart/TimeUnit.hpp>
+#include <DateHelper.hxx>
 
 namespace chart
 {
@@ -46,10 +42,9 @@ BarPositionHelper::~BarPositionHelper()
 {
 }
 
-PlottingPositionHelper* BarPositionHelper::clone() const
+std::unique_ptr<PlottingPositionHelper> BarPositionHelper::clone() const
 {
-    BarPositionHelper* pRet = new BarPositionHelper(*this);
-    return pRet;
+    return std::make_unique<BarPositionHelper>(*this);
 }
 
 void BarPositionHelper::updateSeriesCount( double fSeriesCount )

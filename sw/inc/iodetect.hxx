@@ -20,12 +20,11 @@
 #ifndef INCLUDED_SW_INC_IODETECT_HXX
 #define INCLUDED_SW_INC_IODETECT_HXX
 
-#include <osl/endian.h>
+#include <memory>
 #include <rtl/ustring.hxx>
-#include <sfx2/docfilt.hxx>
-#include <sfx2/docfile.hxx>
-#include <sfx2/fcontnr.hxx>
-#include <swdllapi.h>
+#include <tools/lineend.hxx>
+#include <tools/solar.h>
+#include "swdllapi.h"
 
 #define FILTER_RTF      "RTF"       ///< RTF filter
 #define sRtfWH          "WH_RTF"
@@ -43,6 +42,13 @@
 
 #define sSWRITER        "swriter"
 #define sSWRITERWEB     "swriter/web"
+
+class SfxFilter;
+class SfxFilterContainer;
+class SotStorage;
+class SvStream;
+namespace com::sun::star::embed { class XStorage; }
+namespace com::sun::star::uno { template <typename> class Reference; }
 
 struct SwIoDetect
 {
@@ -97,11 +103,13 @@ public:
     static bool IsValidStgFilter( SotStorage& , const SfxFilter& );
     static bool IsValidStgFilter( const css::uno::Reference < css::embed::XStorage >& rStg, const SfxFilter& rFilter);
 
-    static bool IsDetectableText( const sal_Char* pBuf, sal_uLong &rLen,
-            rtl_TextEncoding *pCharSet, bool *pSwap, LineEnd *pLineEnd=nullptr );
+    static bool IsDetectableText( const char* pBuf, sal_uLong &rLen,
+            rtl_TextEncoding *pCharSet, bool *pSwap, LineEnd *pLineEnd );
 
-    static const OUString GetSubStorageName( const SfxFilter& rFltr );
+    static OUString GetSubStorageName( const SfxFilter& rFltr );
 };
+
+extern "C" SAL_DLLPUBLIC_EXPORT bool SAL_CALL TestImportFODT(SvStream &rStream);
 
 #endif
 

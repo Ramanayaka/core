@@ -24,9 +24,9 @@
 #include <ucbhelper/interactionrequest.hxx>
 #include <ucbhelper/ucbhelperdllapi.h>
 
-namespace com { namespace sun { namespace star { namespace ucb {
+namespace com::sun::star::ucb {
   class URLAuthenticationRequest;
-} } } }
+}
 
 namespace ucbhelper {
 
@@ -36,7 +36,7 @@ namespace ucbhelper {
   * instance contains an AuthenticationRequest and three interaction
   * continuations: "Abort", "Retry" and "SupplyAuthentication". The parameters
   * for the AuthenticationRequest and the InteractionSupplyAuthentication
-  * objects are partly taken from contructors parameters and partly defaulted
+  * objects are partly taken from constructors parameters and partly defaulted
   * as follows:
   *
   * Read-only values : servername, realm
@@ -49,7 +49,7 @@ namespace ucbhelper {
   * @see InteractionRetry
   * @see InteractionSupplyAuthentication
   */
-class UCBHELPER_DLLPUBLIC SimpleAuthenticationRequest : public ucbhelper::InteractionRequest
+class UCBHELPER_DLLPUBLIC SimpleAuthenticationRequest final : public ucbhelper::InteractionRequest
 {
     rtl::Reference<
         ucbhelper::InteractionSupplyAuthentication > m_xAuthSupplier;

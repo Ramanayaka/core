@@ -10,14 +10,14 @@
 #ifndef INCLUDED_UNOIDL_SOURCE_SOURCETREEPROVIDER_HXX
 #define INCLUDED_UNOIDL_SOURCE_SOURCETREEPROVIDER_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <map>
 
-#include "rtl/ref.hxx"
-#include "unoidl/unoidl.hxx"
+#include <rtl/ref.hxx>
+#include <unoidl/unoidl.hxx>
 
-namespace unoidl { namespace detail {
+namespace unoidl::detail {
 
 class SourceTreeProvider: public Provider {
 public:
@@ -38,7 +38,7 @@ private:
     mutable std::map< OUString, rtl::Reference<Entity> > cache_; //TODO: at manager
 };
 
-} }
+}
 
 #endif
 

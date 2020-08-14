@@ -17,35 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include "attrib.hxx"
-#include "patattr.hxx"
-#include "docpool.hxx"
-#include "formulacell.hxx"
-#include "table.hxx"
-#include "column.hxx"
-#include "document.hxx"
-#include "drwlayer.hxx"
-#include "olinetab.hxx"
-#include "userlist.hxx"
-#include "stlsheet.hxx"
-#include "global.hxx"
-#include "rechead.hxx"
-#include "stlpool.hxx"
-#include "brdcst.hxx"
-#include "tabprotection.hxx"
-#include "globstr.hrc"
-#include "segmenttree.hxx"
-#include "columniterator.hxx"
-#include "globalnames.hxx"
-#include "scmod.hxx"
-#include "printopt.hxx"
+#include <scitems.hxx>
+#include <attrib.hxx>
+#include <formulacell.hxx>
+#include <table.hxx>
+#include <column.hxx>
+#include <document.hxx>
+#include <drwlayer.hxx>
+#include <global.hxx>
+#include <stlpool.hxx>
+#include <tabprotection.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <segmenttree.hxx>
+#include <columniterator.hxx>
+#include <globalnames.hxx>
+#include <scmod.hxx>
+#include <printopt.hxx>
+#include <bcaslot.hxx>
+#include <compressedarray.hxx>
 
 #include <com/sun/star/sheet/TablePageBreakData.hpp>
 
 #include <algorithm>
 #include <limits>
-#include <iostream>
 
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::sheet::TablePageBreakData;
@@ -79,11 +74,10 @@ void ScTable::UpdatePageBreaks( const ScRange* pUserArea )
     SfxItemSet* pStyleSet = &pStyle->GetItemSet();
     const SfxPoolItem* pItem;
 
-    SCCOL nX;
     SCCOL nStartCol = 0;
     SCROW nStartRow = 0;
-    SCCOL nEndCol = MAXCOL;
-    SCROW nEndRow = MAXROW;
+    SCCOL nEndCol = pDocument->MaxCol();
+    SCROW nEndRow = pDocument->MaxRow();
     if (pUserArea)
     {
         nStartCol = pUserArea->aStart.Col();
@@ -98,10 +92,10 @@ void ScTable::UpdatePageBreaks( const ScRange* pUserArea )
         {
             // Show nothing, when multiple ranges
 
-            for (nX=0; nX<MAXCOL; nX++)
+            for (SCCOL nX : GetColumnsRange(0, pDocument->MaxCol()))
                 RemoveColBreak(nX, true, false);
 
-            RemoveRowPageBreaks(0, MAXROW-1);
+            RemoveRowPageBreaks(0, pDocument->MaxRow()-1);
 
             return;
         }
@@ -149,7 +143,7 @@ void ScTable::UpdatePageBreaks( const ScRange* pUserArea )
 
         //  Beginning: Remove breaks
 
-    for (nX=0; nX<nStartCol; nX++)
+    for (SCCOL nX : GetColumnsRange(0, nStartCol-1))
         RemoveColBreak(nX, true, false);
     RemoveRowPageBreaks(0, nStartRow-1);
 
@@ -163,10 +157,10 @@ void ScTable::UpdatePageBreaks( const ScRange* pUserArea )
     bool bRepeatCol = ( nRepeatStartX != SCCOL_REPEAT_NONE );
     bool bColFound = false;
     long nSizeX = 0;
-    for (nX=nStartCol; nX<=nEndCol; nX++)
+    for (SCCOL nX=nStartCol; nX<=nEndCol; nX++)
     {
         bool bStartOfPage = false;
-        long nThisX = ColHidden(nX) ? 0 : pColWidth[nX];
+        long nThisX = ColHidden(nX) ? 0 : mpColWidth->GetValue(nX);
         bool bManualBreak = HasColManualBreak(nX);
         if ( (nSizeX+nThisX > nPageSizeX) || (bManualBreak && !bSkipColBreaks) )
         {
@@ -183,7 +177,7 @@ void ScTable::UpdatePageBreaks( const ScRange* pUserArea )
         {
             // subtract size of repeat columns from page size
             for (SCCOL i=nRepeatStartX; i<=nRepeatEndX; i++)
-                nPageSizeX -= ColHidden(i) ? 0 : pColWidth[i];
+                nPageSizeX -= ColHidden(i) ? 0 : mpColWidth->GetValue(i);
             while (nX<=nRepeatEndX)
                 RemoveColBreak(++nX, true, false);
             bColFound = true;
@@ -206,13 +200,16 @@ void ScTable::UpdatePageBreaks( const ScRange* pUserArea )
     {
         bool bStartOfPage = false;
         bool bThisRowHidden = false;
-        aIterHidden.getValue(nY, bThisRowHidden);
+        const bool bHasValue = aIterHidden.getValue(nY, bThisRowHidden);
+        assert(bHasValue); (void)bHasValue;
         long nThisY = 0;
         if (!bThisRowHidden)
         {
             sal_uInt16 nTmp;
-            aIterHeights.getValue(nY, nTmp);
-            nThisY = static_cast<long>(nTmp);
+            const bool bHasHeight = aIterHeights.getValue(nY, nTmp);
+            assert(bHasHeight);
+            if (bHasHeight)
+                nThisY = static_cast<long>(nTmp);
         }
 
         bool bManualBreak = false;
@@ -286,17 +283,17 @@ void ScTable::UpdatePageBreaks( const ScRange* pUserArea )
 
         //  End: Remove Break
 
-    if (nEndCol < MAXCOL)
+    if (nEndCol < pDocument->MaxCol())
     {
         SetColBreak(nEndCol+1, true, false);  // AREABREAK
-        for (nX=nEndCol+2; nX<=MAXCOL; nX++)
-            RemoveColBreak(nX, true, false);
+        for (SCCOL nCol : GetColumnsRange(nEndCol + 2, pDocument->MaxCol()))
+            RemoveColBreak(nCol, true, false);
     }
-    if (nEndRow < MAXROW)
+    if (nEndRow < pDocument->MaxRow())
     {
         SetRowBreak(nEndRow+1, true, false);  // AREABREAK
-        if (nEndRow+2 <= MAXROW)
-            RemoveRowPageBreaks(nEndRow+2, MAXROW);
+        if (nEndRow+2 <= pDocument->MaxRow())
+            RemoveRowPageBreaks(nEndRow+2, pDocument->MaxRow());
     }
     mbPageBreaksValid = !pUserArea;     // #i116881# the valid flag can only apply to the "no user area" case
 }
@@ -307,8 +304,7 @@ void ScTable::RemoveManualBreaks()
     maColManualBreaks.clear();
     InvalidatePageBreaks();
 
-    if (IsStreamValid())
-        SetStreamValid(false);
+    SetStreamValid(false);
 }
 
 bool ScTable::HasManualBreaks() const
@@ -320,16 +316,14 @@ void ScTable::SetRowManualBreaks( const ::std::set<SCROW>& rBreaks )
 {
     maRowManualBreaks = rBreaks;
     InvalidatePageBreaks();
-    if (IsStreamValid())
-        SetStreamValid(false);
+    SetStreamValid(false);
 }
 
 void ScTable::SetColManualBreaks( const ::std::set<SCCOL>& rBreaks )
 {
     maColManualBreaks = rBreaks;
     InvalidatePageBreaks();
-    if (IsStreamValid())
-        SetStreamValid(false);
+    SetStreamValid(false);
 }
 
 void ScTable::GetAllRowBreaks(set<SCROW>& rBreaks, bool bPage, bool bManual) const
@@ -474,16 +468,16 @@ Sequence<TablePageBreakData> ScTable::GetRowBreakData() const
     set<SCROW> aRowBreaks = maRowPageBreaks;
     copy(maRowManualBreaks.begin(), maRowManualBreaks.end(), inserter(aRowBreaks, aRowBreaks.begin()));
 
-    set<SCROW>::const_iterator itr = aRowBreaks.begin(), itrEnd = aRowBreaks.end();
+    sal_Int32 i = 0;
     Sequence<TablePageBreakData> aSeq(aRowBreaks.size());
 
-    for (sal_Int32 i = 0; itr != itrEnd; ++itr, ++i)
+    for (const SCROW nRow : aRowBreaks)
     {
-        SCROW nRow = *itr;
         TablePageBreakData aData;
         aData.Position = nRow;
         aData.ManualBreak = HasRowManualBreak(nRow);
         aSeq[i] = aData;
+        ++i;
     }
 
     return aSeq;
@@ -589,13 +583,30 @@ bool ScTable::SetRowHidden(SCROW nStartRow, SCROW nEndRow, bool bHidden)
     else
         bChanged = mpHiddenRows->setFalse(nStartRow, nEndRow);
 
+    std::vector<SdrObject*> aRowDrawObjects;
+    ScDrawLayer* pDrawLayer = pDocument->GetDrawLayer();
+    if (pDrawLayer) {
+        aRowDrawObjects = pDrawLayer->GetObjectsAnchoredToRows(GetTab(), nStartRow, nEndRow);
+        for (auto aObj : aRowDrawObjects)
+        {
+            aObj->SetVisible(!bHidden);
+        }
+    }
+
     if (bChanged)
     {
-        if (IsStreamValid())
-            SetStreamValid(false);
-        for (SCCOL i = 0; i < aCol.size(); i++)
-        {
-            aCol[i].BroadcastRows(nStartRow, nEndRow, SfxHintId::ScHiddenRowsChanged);
+        SetStreamValid(false);
+
+        {   // Scoped bulk broadcast.
+            // Only subtotal formula cells will accept the notification of
+            // SfxHintId::ScHiddenRowsChanged, leaving the bulk will track
+            // those and broadcast SfxHintId::ScDataChanged to notify all
+            // dependents.
+            ScBulkBroadcast aBulkBroadcast( pDocument->GetBASM(), SfxHintId::ScDataChanged);
+            for (SCCOL i = 0; i < aCol.size(); i++)
+            {
+                aCol[i].BroadcastRows(nStartRow, nEndRow, SfxHintId::ScHiddenRowsChanged);
+            }
         }
     }
 
@@ -611,13 +622,10 @@ void ScTable::SetColHidden(SCCOL nStartCol, SCCOL nEndCol, bool bHidden)
         bChanged = mpHiddenCols->setFalse(nStartCol, nEndCol);
 
     if (bChanged)
-    {
-        if (IsStreamValid())
-            SetStreamValid(false);
-    }
+        SetStreamValid(false);
 }
 
-void ScTable::CopyColHidden(ScTable& rTable, SCCOL nStartCol, SCCOL nEndCol)
+void ScTable::CopyColHidden(const ScTable& rTable, SCCOL nStartCol, SCCOL nEndCol)
 {
     SCCOL nCol = nStartCol;
     while (nCol <= nEndCol)
@@ -632,7 +640,7 @@ void ScTable::CopyColHidden(ScTable& rTable, SCCOL nStartCol, SCCOL nEndCol)
     }
 }
 
-void ScTable::CopyRowHidden(ScTable& rTable, SCROW nStartRow, SCROW nEndRow)
+void ScTable::CopyRowHidden(const ScTable& rTable, SCROW nStartRow, SCROW nEndRow)
 {
     SCROW nRow = nStartRow;
     while (nRow <= nEndRow)
@@ -646,7 +654,7 @@ void ScTable::CopyRowHidden(ScTable& rTable, SCROW nStartRow, SCROW nEndRow)
     }
 }
 
-void ScTable::CopyRowHeight(ScTable& rSrcTable, SCROW nStartRow, SCROW nEndRow, SCROW nSrcOffset)
+void ScTable::CopyRowHeight(const ScTable& rSrcTable, SCROW nStartRow, SCROW nEndRow, SCROW nSrcOffset)
 {
     SCROW nRow = nStartRow;
     ScFlatUInt16RowSegments::RangeData aSrcData;
@@ -762,10 +770,10 @@ SCCOLROW ScTable::LastHiddenColRow(SCCOLROW nPos, bool bCol) const
         SCCOL nCol = static_cast<SCCOL>(nPos);
         if (ColHidden(nCol))
         {
-            for (SCCOL i = nCol+1; i <= MAXCOL; ++i)
+            for (SCCOL i = nCol+1; i <= pDocument->MaxCol(); ++i)
             {
-                if (!ColHidden(nCol))
-                    return nCol - 1;
+                if (!ColHidden(i))
+                    return i - 1;
             }
         }
     }
@@ -830,7 +838,7 @@ bool ScTable::HasFilteredRows(SCROW nStartRow, SCROW nEndRow) const
     return false;
 }
 
-void ScTable::CopyColFiltered(ScTable& rTable, SCCOL nStartCol, SCCOL nEndCol)
+void ScTable::CopyColFiltered(const ScTable& rTable, SCCOL nStartCol, SCCOL nEndCol)
 {
     SCCOL nCol = nStartCol;
     while (nCol <= nEndCol)
@@ -845,7 +853,7 @@ void ScTable::CopyColFiltered(ScTable& rTable, SCCOL nStartCol, SCCOL nEndCol)
     }
 }
 
-void ScTable::CopyRowFiltered(ScTable& rTable, SCROW nStartRow, SCROW nEndRow)
+void ScTable::CopyRowFiltered(const ScTable& rTable, SCROW nStartRow, SCROW nEndRow)
 {
     SCROW nRow = nStartRow;
     while (nRow <= nEndRow)
@@ -949,23 +957,22 @@ bool ScTable::IsManualRowHeight(SCROW nRow) const
 
 namespace {
 
-void lcl_syncFlags(ScFlatBoolColSegments& rColSegments, ScFlatBoolRowSegments& rRowSegments,
-    CRFlags* pColFlags, ScBitMaskCompressedArray< SCROW, CRFlags>* pRowFlags, const CRFlags nFlagMask)
+void lcl_syncFlags(const ScDocument* pDocument, ScFlatBoolColSegments& rColSegments, const ScFlatBoolRowSegments& rRowSegments,
+    ScBitMaskCompressedArray<SCCOL, CRFlags>* pColFlags, ScBitMaskCompressedArray< SCROW, CRFlags>* pRowFlags, const CRFlags nFlagMask)
 {
     using ::sal::static_int_cast;
 
     CRFlags nFlagMaskComplement = ~nFlagMask;
 
-    pRowFlags->AndValue(0, MAXROW, nFlagMaskComplement);
-    for (SCCOL i = 0; i <= MAXCOL; ++i)
-        pColFlags[i] &= nFlagMaskComplement;
+    pRowFlags->AndValue(0, pDocument->MaxRow(), nFlagMaskComplement);
+    pColFlags->AndValue(0, pDocument->MaxCol()+1, nFlagMaskComplement);
 
     {
         // row hidden flags.
 
         SCROW nRow = 0;
         ScFlatBoolRowSegments::RangeData aData;
-        while (nRow <= MAXROW)
+        while (nRow <= pDocument->MaxRow())
         {
             if (!rRowSegments.getRangeData(nRow, aData))
                 break;
@@ -982,16 +989,13 @@ void lcl_syncFlags(ScFlatBoolColSegments& rColSegments, ScFlatBoolRowSegments& r
 
         SCCOL nCol = 0;
         ScFlatBoolColSegments::RangeData aData;
-        while (nCol <= MAXCOL)
+        while (nCol <= pDocument->MaxCol())
         {
             if (!rColSegments.getRangeData(nCol, aData))
                 break;
 
             if (aData.mbValue)
-            {
-                for (SCCOL i = nCol; i <= aData.mnCol2; ++i)
-                    pColFlags[i] |= nFlagMask;
-            }
+                pColFlags->OrValue(nCol, aData.mnCol2, nFlagMask);
 
             nCol = aData.mnCol2 + 1;
         }
@@ -1002,37 +1006,26 @@ void lcl_syncFlags(ScFlatBoolColSegments& rColSegments, ScFlatBoolRowSegments& r
 
 void ScTable::SyncColRowFlags()
 {
-    using ::sal::static_int_cast;
-
     CRFlags nManualBreakComplement = ~CRFlags::ManualBreak;
 
     // Manual breaks.
-    pRowFlags->AndValue(0, MAXROW, nManualBreakComplement);
-    for (SCCOL i = 0; i <= MAXCOL; ++i)
-        pColFlags[i] &= nManualBreakComplement;
+    pRowFlags->AndValue(0, pDocument->MaxRow(), nManualBreakComplement);
+    mpColFlags->AndValue(0, pDocument->MaxCol()+1, nManualBreakComplement);
 
-    if (!maRowManualBreaks.empty())
-    {
-        for (set<SCROW>::const_iterator itr = maRowManualBreaks.begin(), itrEnd = maRowManualBreaks.end();
-              itr != itrEnd; ++itr)
-            pRowFlags->OrValue(*itr, CRFlags::ManualBreak);
-    }
+    for (const auto& rBreakPos : maRowManualBreaks)
+        pRowFlags->OrValue(rBreakPos, CRFlags::ManualBreak);
 
-    if (!maColManualBreaks.empty())
-    {
-        for (set<SCCOL>::const_iterator itr = maColManualBreaks.begin(), itrEnd = maColManualBreaks.end();
-              itr != itrEnd; ++itr)
-            pColFlags[*itr] |= CRFlags::ManualBreak;
-    }
+    for (const auto& rBreakPos : maColManualBreaks)
+        mpColFlags->OrValue(rBreakPos, CRFlags::ManualBreak);
 
     // Hidden flags.
-    lcl_syncFlags(*mpHiddenCols, *mpHiddenRows, pColFlags, pRowFlags, CRFlags::Hidden);
-    lcl_syncFlags(*mpFilteredCols, *mpFilteredRows, pColFlags, pRowFlags, CRFlags::Filtered);
+    lcl_syncFlags(pDocument, *mpHiddenCols, *mpHiddenRows, mpColFlags.get(), pRowFlags.get(), CRFlags::Hidden);
+    lcl_syncFlags(pDocument, *mpFilteredCols, *mpFilteredRows, mpColFlags.get(), pRowFlags.get(), CRFlags::Filtered);
 }
 
 void ScTable::SetPageSize( const Size& rSize )
 {
-    if ( rSize.Width() != 0 && rSize.Height() != 0 )
+    if ( !rSize.IsEmpty() )
     {
         if (aPageSizeTwips != rSize)
             InvalidatePageBreaks();
@@ -1046,7 +1039,7 @@ void ScTable::SetPageSize( const Size& rSize )
 
 bool ScTable::IsProtected() const
 {
-    return pTabProtection.get() && pTabProtection->isProtected();
+    return pTabProtection && pTabProtection->isProtected();
 }
 
 void ScTable::SetProtection(const ScTableProtection* pProtect)
@@ -1056,8 +1049,7 @@ void ScTable::SetProtection(const ScTableProtection* pProtect)
     else
         pTabProtection.reset();
 
-    if (IsStreamValid())
-        SetStreamValid(false);
+    SetStreamValid(false);
 }
 
 ScTableProtection* ScTable::GetProtection()
@@ -1090,7 +1082,7 @@ void ScTable::StartListening( const ScAddress& rAddress, SvtListener* pListener 
     if (!ValidCol(rAddress.Col()))
         return;
 
-    aCol[rAddress.Col()].StartListening( *pListener, rAddress.Row() );
+    CreateColumnIfNotExists(rAddress.Col()).StartListening( *pListener, rAddress.Row() );
 }
 
 void ScTable::EndListening( const ScAddress& rAddress, SvtListener* pListener )
@@ -1098,7 +1090,8 @@ void ScTable::EndListening( const ScAddress& rAddress, SvtListener* pListener )
     if (!ValidCol(rAddress.Col()))
         return;
 
-    aCol[rAddress.Col()].EndListening( *pListener, rAddress.Row() );
+    if (rAddress.Col() < aCol.size())
+        aCol[rAddress.Col()].EndListening( *pListener, rAddress.Row() );
 }
 
 void ScTable::StartListening( sc::StartListeningContext& rCxt, const ScAddress& rAddress, SvtListener& rListener )
@@ -1106,7 +1099,7 @@ void ScTable::StartListening( sc::StartListeningContext& rCxt, const ScAddress& 
     if (!ValidCol(rAddress.Col()))
         return;
 
-    aCol[rAddress.Col()].StartListening(rCxt, rAddress, rListener);
+    CreateColumnIfNotExists(rAddress.Col()).StartListening(rCxt, rAddress, rListener);
 }
 
 void ScTable::EndListening( sc::EndListeningContext& rCxt, const ScAddress& rAddress, SvtListener& rListener )
@@ -1119,44 +1112,43 @@ void ScTable::EndListening( sc::EndListeningContext& rCxt, const ScAddress& rAdd
 
 void ScTable::SetPageStyle( const OUString& rName )
 {
-    if ( aPageStyle != rName )
+    if ( aPageStyle == rName )
+        return;
+
+    OUString           aStrNew    = rName;
+    SfxStyleSheetBasePool*  pStylePool = pDocument->GetStyleSheetPool();
+    SfxStyleSheetBase*      pNewStyle  = pStylePool->Find( aStrNew, SfxStyleFamily::Page );
+
+    if ( !pNewStyle )
     {
-        OUString           aStrNew    = rName;
-        SfxStyleSheetBasePool*  pStylePool = pDocument->GetStyleSheetPool();
-        SfxStyleSheetBase*      pNewStyle  = pStylePool->Find( aStrNew, SfxStyleFamily::Page );
-
-        if ( !pNewStyle )
-        {
-            aStrNew = ScGlobal::GetRscString(STR_STYLENAME_STANDARD);
-            pNewStyle = pStylePool->Find( aStrNew, SfxStyleFamily::Page );
-        }
-
-        if ( aPageStyle != aStrNew )
-        {
-            SfxStyleSheetBase* pOldStyle = pStylePool->Find( aPageStyle, SfxStyleFamily::Page );
-            if ( pOldStyle && pNewStyle )
-            {
-                SfxItemSet&  rOldSet          = pOldStyle->GetItemSet();
-                SfxItemSet&  rNewSet          = pNewStyle->GetItemSet();
-                auto getScaleValue = [](const SfxItemSet& rSet, sal_uInt16 nId)
-                    { return static_cast<const SfxUInt16Item&>(rSet.Get(nId)).GetValue(); };
-
-                const sal_uInt16 nOldScale        = getScaleValue(rOldSet,ATTR_PAGE_SCALE);
-                const sal_uInt16 nOldScaleToPages = getScaleValue(rOldSet,ATTR_PAGE_SCALETOPAGES);
-                const sal_uInt16 nNewScale        = getScaleValue(rNewSet,ATTR_PAGE_SCALE);
-                const sal_uInt16 nNewScaleToPages = getScaleValue(rNewSet,ATTR_PAGE_SCALETOPAGES);
-
-                if ( (nOldScale != nNewScale) || (nOldScaleToPages != nNewScaleToPages) )
-                    InvalidateTextWidth(nullptr, nullptr, false, false);
-            }
-
-            if ( pNewStyle )            // also without the old one (for UpdateStdNames)
-                aPageStyle = aStrNew;
-
-            if (IsStreamValid())
-                SetStreamValid(false);
-        }
+        aStrNew = ScResId(STR_STYLENAME_STANDARD_PAGE);
+        pNewStyle = pStylePool->Find( aStrNew, SfxStyleFamily::Page );
     }
+
+    if ( aPageStyle == aStrNew )
+        return;
+
+    SfxStyleSheetBase* pOldStyle = pStylePool->Find( aPageStyle, SfxStyleFamily::Page );
+    if ( pOldStyle && pNewStyle )
+    {
+        SfxItemSet&  rOldSet          = pOldStyle->GetItemSet();
+        SfxItemSet&  rNewSet          = pNewStyle->GetItemSet();
+        auto getScaleValue = [](const SfxItemSet& rSet, sal_uInt16 nId)
+            { return static_cast<const SfxUInt16Item&>(rSet.Get(nId)).GetValue(); };
+
+        const sal_uInt16 nOldScale        = getScaleValue(rOldSet,ATTR_PAGE_SCALE);
+        const sal_uInt16 nOldScaleToPages = getScaleValue(rOldSet,ATTR_PAGE_SCALETOPAGES);
+        const sal_uInt16 nNewScale        = getScaleValue(rNewSet,ATTR_PAGE_SCALE);
+        const sal_uInt16 nNewScaleToPages = getScaleValue(rNewSet,ATTR_PAGE_SCALETOPAGES);
+
+        if ( (nOldScale != nNewScale) || (nOldScaleToPages != nNewScaleToPages) )
+            InvalidateTextWidth(nullptr, nullptr, false, false);
+    }
+
+    if ( pNewStyle )            // also without the old one (for UpdateStdNames)
+        aPageStyle = aStrNew;
+
+    SetStreamValid(false);
 }
 
 void ScTable::PageStyleModified( const OUString& rNewName )
@@ -1208,17 +1200,19 @@ void ScTable::InvalidateTextWidth( const ScAddress* pAdrFrom, const ScAddress* p
     const SCCOL nCol1 = pAdrFrom ? pAdrFrom->Col() : 0;
     const SCROW nRow1 = pAdrFrom ? pAdrFrom->Row() : 0;
     const SCCOL nCol2 = pAdrTo   ? pAdrTo->Col()   : aCol.size() - 1;
-    const SCROW nRow2 = pAdrTo   ? pAdrTo->Row()   : MAXROW;
+    const SCROW nRow2 = pAdrTo   ? pAdrTo->Row()   : pDocument->MaxRow();
 
     for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
     {
-        ScColumnTextWidthIterator aIter(aCol[nCol], nRow1, nRow2);
+        ScColumnTextWidthIterator aIter(GetDoc(), aCol[nCol], nRow1, nRow2);
+        sc::ColumnBlockPosition blockPos; // cache mdds position
+        InitColumnBlockPosition( blockPos, nCol );
 
         for (; aIter.hasCell(); aIter.next())
         {
             SCROW nRow = aIter.getPos();
             aIter.setValue(TEXTWIDTH_DIRTY);
-            ScRefCellValue aCell = aCol[nCol].GetCellValue(nRow);
+            ScRefCellValue aCell = aCol[nCol].GetCellValue(blockPos, nRow);
             if (aCell.isEmpty())
                 continue;
 

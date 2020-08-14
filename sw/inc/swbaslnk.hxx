@@ -20,22 +20,21 @@
 #define INCLUDED_SW_INC_SWBASLNK_HXX
 
 #include <sfx2/lnkbase.hxx>
+#include <tools/solar.h>
 
 class SwNode;
 class SwContentNode;
 
 class SwBaseLink : public ::sfx2::SvBaseLink
 {
-    SwContentNode* pContentNode;
-    bool bSwapIn : 1;
-    bool bNoDataFlag : 1;
-    bool bIgnoreDataChanged : 1;
+    SwContentNode* m_pContentNode;
+    bool m_bNoDataFlag : 1;
 
 public:
 
     SwBaseLink( SfxLinkUpdateMode nMode, SotClipboardFormatId nFormat, SwContentNode* pNode = nullptr )
-        : ::sfx2::SvBaseLink( nMode, nFormat ), pContentNode( pNode ),
-        bSwapIn( false ), bNoDataFlag( false ), bIgnoreDataChanged( false )
+        : ::sfx2::SvBaseLink( nMode, nFormat ), m_pContentNode( pNode ),
+        m_bNoDataFlag( false )
     {}
     virtual ~SwBaseLink() override;
 
@@ -49,18 +48,17 @@ public:
     // For graphics only.
     bool SwapIn( bool bWaitForData = false, bool bNativFormat = false );
 
-    bool Connect() { return nullptr != SvBaseLink::GetRealObject(); }
+    void Connect() { SvBaseLink::GetRealObject(); }
 
     // Only for graphics-links (for switching between DDE / Grf-link).
     using SvBaseLink::SetObjType;
 
     bool IsRecursion( const SwBaseLink* pChkLnk ) const;
-    virtual bool IsInRange( sal_uLong nSttNd, sal_uLong nEndNd, sal_Int32 nStt = 0,
-                            sal_Int32 nEnd = -1 ) const;
+    virtual bool IsInRange( sal_uLong nSttNd, sal_uLong nEndNd ) const;
 
-    void SetNoDataFlag() { bNoDataFlag = true; }
-    bool ChkNoDataFlag() { const bool bRet = bNoDataFlag; bNoDataFlag = false; return bRet; }
-    bool IsNoDataFlag() const { return bNoDataFlag; }
+    void SetNoDataFlag() { m_bNoDataFlag = true; }
+    bool ChkNoDataFlag() { const bool bRet = m_bNoDataFlag; m_bNoDataFlag = false; return bRet; }
+    bool IsNoDataFlag() const { return m_bNoDataFlag; }
 };
 
 #endif

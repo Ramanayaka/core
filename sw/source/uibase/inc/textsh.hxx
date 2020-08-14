@@ -20,13 +20,15 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_TEXTSH_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_TEXTSH_HXX
 
-#include <basesh.hxx>
+#include "basesh.hxx"
 #include <unotools/caserotate.hxx>
+#include <com/sun/star/ui/dialogs/DialogClosedEvent.hpp>
 
 class AbstractSvxPostItDialog;
 class SwFieldMgr;
 class SwFlyFrameAttrMgr;
 class SvxHyperlinkItem;
+class SwInsertChart;
 
 class SW_DLLPUBLIC SwTextShell: public SwBaseShell
 {
@@ -34,7 +36,7 @@ class SW_DLLPUBLIC SwTextShell: public SwBaseShell
 
     void InsertSymbol( SfxRequest& );
     void InsertHyperlink( const SvxHyperlinkItem& rHlnkItem );
-    bool InsertMediaDlg( SfxRequest& );
+    bool InsertMediaDlg( SfxRequest const & );
 
 public:
     SFX_DECL_INTERFACE(SW_TEXTSHELL)
@@ -46,6 +48,7 @@ private:
 public:
     DECL_LINK( RedlineNextHdl, AbstractSvxPostItDialog&, void );
     DECL_LINK( RedlinePrevHdl, AbstractSvxPostItDialog&, void );
+    DECL_STATIC_LINK( SwTextShell, DialogClosedHdl, css::ui::dialogs::DialogClosedEvent*, void );
 
     void    Execute(SfxRequest &);
     void    GetState(SfxItemSet &);
@@ -61,9 +64,9 @@ public:
     void    ExecMoveLingu(SfxRequest &);
     void    ExecMoveMisc(SfxRequest &);
     void    ExecField(SfxRequest &rReq);
-    void    ExecSetNumber(SfxRequest &);
+    void    ExecSetNumber(SfxRequest const &);
     void    StateField(SfxItemSet &);
-    void    ExecIdx(SfxRequest &);
+    void    ExecIdx(SfxRequest const &);
     void    GetIdxState(SfxItemSet &);
     void    ExecGlossary(SfxRequest &);
 
@@ -71,9 +74,9 @@ public:
     void    ExecCharAttrArgs(SfxRequest &);
     void    ExecParaAttr(SfxRequest &);
     void    ExecParaAttrArgs(SfxRequest &);
-    void    ExecDB(SfxRequest &);
-    void    ExecTransliteration(SfxRequest &);
-    void    ExecRotateTransliteration(SfxRequest &);
+    void    ExecDB(SfxRequest const &);
+    void    ExecTransliteration(SfxRequest const &);
+    void    ExecRotateTransliteration(SfxRequest const &);
 
     void    GetAttrState(SfxItemSet &);
 
@@ -82,8 +85,6 @@ public:
     /// Create item set for the insert frame dialog.
     SfxItemSet CreateInsertFrameItemSet(SwFlyFrameAttrMgr& rMgr);
 };
-
-void sw_CharDialog( SwWrtShell &rWrtSh, bool bUseDialog, sal_uInt16 nSlot,const SfxItemSet *pArgs, SfxRequest *pReq );
 
 #endif
 

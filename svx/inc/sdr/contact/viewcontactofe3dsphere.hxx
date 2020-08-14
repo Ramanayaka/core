@@ -20,15 +20,13 @@
 #ifndef INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFE3DSPHERE_HXX
 #define INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFE3DSPHERE_HXX
 
-#include <svx/sdr/contact/viewcontactofe3d.hxx>
+#include <sdr/contact/viewcontactofe3d.hxx>
 #include <svx/sphere3d.hxx>
 
 
-namespace sdr
-{
-    namespace contact
+namespace sdr::contact
     {
-        class ViewContactOfE3dSphere : public ViewContactOfE3d
+        class ViewContactOfE3dSphere final : public ViewContactOfE3d
         {
         public:
             // basic constructor, used from SdrObject.
@@ -41,13 +39,13 @@ namespace sdr
                 return static_cast<const E3dSphereObj&>(GetE3dObject());
             }
 
-        protected:
+        private:
             // This method is responsible for creating the graphical visualisation data which is
             // stored in the local primitive list. Default creates a yellow replacement rectangle.
             virtual drawinglayer::primitive3d::Primitive3DContainer createViewIndependentPrimitive3DContainer() const override;
         };
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace sdr::contact
 
 
 #endif // INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFE3DSPHERE_HXX

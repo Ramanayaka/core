@@ -78,7 +78,8 @@ for arg in "$@" $EXTRAOPT ; do
     case "$arg" in
         --record)
             if which rr >/dev/null 2>&1 ; then
-                RRCHECK="rr record"
+                # smoketest may already be recorded => use ignore-nested
+                RRCHECK="rr record --ignore-nested"
                 checks="c$checks"
             else
                 echo "Error: Can't find the tool \"rr\", --record option will be ignored."
@@ -125,6 +126,13 @@ for arg in "$@" $EXTRAOPT ; do
                     export G_SLICE=always-malloc
                     export GLIBCXX_FORCE_NEW=1
                     ;;
+                callgrind)
+                    unset MALLOC_CHECK_ MALLOC_PERTURB_ G_SLICE
+                    export SAL_DISABLE_FLOATGRAB=1
+                    export OOO_DISABLE_RECOVERY=1
+                    export SAL_DISABLE_WATCHDOG=1
+                    export LD_BIND_NOW=1
+                    ;;
                 esac
             else
                 echo "Error: Can't find the tool \"valgrind\", --valgrind option will be ignored"
@@ -141,7 +149,7 @@ if echo "$checks" | grep -q "cc" ; then
 fi
 
 case "$(uname -s)" in
-NetBSD|OpenBSD|DragonFly)
+OpenBSD)
 # this is a temporary hack until we can live with the default search paths
     LD_LIBRARY_PATH="$sd_prog${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     JAVA_HOME=$(javaPathHelper -h libreoffice-java 2> /dev/null)
@@ -150,14 +158,23 @@ NetBSD|OpenBSD|DragonFly)
         export JAVA_HOME
     fi
     ;;
+NetBSD|DragonFly)
+# this is a temporary hack until we can live with the default search paths
+    LD_LIBRARY_PATH="$sd_prog${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export LD_LIBRARY_PATH
+    ;;
 AIX)
     LIBPATH="$sd_prog${LIBPATH:+:$LIBPATH}"
     export LIBPATH
     ;;
 esac
 
-# restore locale setting
-LC_ALL="$LO_SAVE_LC_ALL"
+# restore locale setting, avoiding to export empty LC_ALL, s. tdf#130080
+if [ -n "$LO_SAVE_LC_ALL" ]; then
+    LC_ALL="$LO_SAVE_LC_ALL"
+else
+    unset LC_ALL
+fi
 
 # run soffice.bin directly when you want to get the backtrace
 if [ -n "$GDBTRACECHECK" ] ; then

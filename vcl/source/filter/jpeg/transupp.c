@@ -17,8 +17,8 @@
 #include <sal/config.h>
 
 #include "jinclude.h"
-#include "jerror.h"
-#include "jpeglib.h"
+#include <jerror.h>
+#include <jpeglib.h>
 #include "transupp.h"       /* My own external interface */
 #include "jpegcomp.h"
 
@@ -30,7 +30,7 @@ jdiv_round_up (long a, long b)
 /* Compute a/b rounded up to next integer, ie, ceil(a/b) */
 /* Assumes a >= 0, b > 0 */
 {
-  return (a + b - 1L) / b;
+  return (a + b - 1) / b;
 }
 
 #if JPEG_LIB_VERSION >= 70
@@ -857,18 +857,18 @@ jtransform_request_workspace (j_decompress_ptr srcinfo,
   if (info->perfect) {
     if (info->num_components == 1) {
       if (!jtransform_perfect_transform(srcinfo->output_width,
-      srcinfo->output_height,
-      srcinfo->min_DCT_h_scaled_size_,
-      srcinfo->min_DCT_v_scaled_size_,
-      info->transform))
-    return FALSE;
+          srcinfo->output_height,
+          srcinfo->min_DCT_h_scaled_size_,
+          srcinfo->min_DCT_v_scaled_size_,
+          info->transform))
+        return FALSE;
     } else {
       if (!jtransform_perfect_transform(srcinfo->output_width,
-      srcinfo->output_height,
-      srcinfo->max_h_samp_factor * srcinfo->min_DCT_h_scaled_size_,
-      srcinfo->max_v_samp_factor * srcinfo->min_DCT_v_scaled_size_,
-      info->transform))
-    return FALSE;
+          srcinfo->output_height,
+          srcinfo->max_h_samp_factor * srcinfo->min_DCT_h_scaled_size_,
+          srcinfo->max_v_samp_factor * srcinfo->min_DCT_v_scaled_size_,
+          info->transform))
+        return FALSE;
     }
   }
 
@@ -1533,7 +1533,7 @@ jcopy_markers_execute (j_decompress_ptr srcinfo, j_compress_ptr dstinfo,
    * But to avoid confusion, we do not output JFIF and Adobe APP14 markers
    * if the encoder library already wrote one.
    */
-   if (option) {}
+  (void)option;
 
   for (marker = srcinfo->marker_list; marker != NULL; marker = marker->next) {
     if (dstinfo->write_JFIF_header &&

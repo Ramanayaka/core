@@ -17,17 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xlpage.hxx"
-#include <sfx2/printer.hxx>
-#include <editeng/svxenum.hxx>
+#include <xlpage.hxx>
+#include <xltools.hxx>
 #include <editeng/paperinf.hxx>
-#include <vcl/svapp.hxx>
 #include <sal/macros.h>
-#include "scitems.hxx"
 #include <editeng/brushitem.hxx>
-#include "global.hxx"
-#include "xlconst.hxx"
-#include <oox/core/xmlfilterbase.hxx>
+#include <global.hxx>
+#include <xlconst.hxx>
 
 namespace{
 
@@ -184,6 +180,8 @@ void XclPageData::SetDefaults()
     mxBrushItem.reset();
     maHeader.clear();
     maFooter.clear();
+    maHeaderEven.clear();
+    maFooterEven.clear();
     mfLeftMargin    = mfRightMargin    = XclTools::GetInchFromHmm( EXC_MARGIN_DEFAULT_LR );
     mfTopMargin     = mfBottomMargin   = XclTools::GetInchFromHmm( EXC_MARGIN_DEFAULT_TB );
     mfHeaderMargin  = mfFooterMargin   = XclTools::GetInchFromHmm( EXC_MARGIN_DEFAULT_HF );
@@ -197,6 +195,7 @@ void XclPageData::SetDefaults()
     mnScaling = 100;
     mnFitToWidth = mnFitToHeight = 1;
     mnHorPrintRes = mnVerPrintRes = 300;
+    mbUseEvenHF = /*mbUseFirstHF =*/ false;
     mbValid = false;
     mbPortrait = true;
     mbPrintInRows = mbBlackWhite = mbDraftQuality = mbPrintNotes = mbManualStart = mbFitToPages = false;
@@ -220,7 +219,12 @@ Size XclPageData::GetScPaperSize() const
         aSize = SvxPaperInfo::GetDefaultPaperSize();
 
     if( !mbPortrait )
-        ::std::swap( aSize.Width(), aSize.Height() );
+    {
+        // swap width and height
+        long n = aSize.Width();
+        aSize.setWidth(aSize.Height());
+        aSize.setHeight(n);
+    }
 
     return aSize;
 }

@@ -7,11 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <app.hrc>
-#include <docvw.hrc>
-#include <globals.hrc>
-#include <svtools/svtools.hrc>
+#include <strings.hrc>
 
+#include <doc.hxx>
+#include <drawdoc.hxx>
 #include <cmdid.h>
 #include <DashedLine.hxx>
 #include <docsh.hxx>
@@ -20,10 +19,10 @@
 #include <HeaderFooterWin.hxx>
 #include <pagedesc.hxx>
 #include <pagefrm.hxx>
-#include <SwRewriter.hxx>
 #include <view.hxx>
 #include <viewopt.hxx>
 #include <wrtsh.hxx>
+#include <IDocumentDrawModelAccess.hxx>
 
 #include <basegfx/color/bcolortools.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
@@ -35,15 +34,18 @@
 #include <drawinglayer/primitive2d/fillgradientprimitive2d.hxx>
 #include <drawinglayer/primitive2d/modifiedcolorprimitive2d.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/textlayoutdevice.hxx>
 #include <drawinglayer/primitive2d/textprimitive2d.hxx>
 #include <editeng/boxitem.hxx>
-#include <svtools/svtresid.hxx>
 #include <svx/hdft.hxx>
+#include <sfx2/bindings.hxx>
+#include <sfx2/viewfrm.hxx>
+#include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processorfromoutputdevice.hxx>
-#include <vcl/decoview.hxx>
-#include <vcl/gradient.hxx>
+#include <vcl/canvastools.hxx>
+#include <vcl/menu.hxx>
+#include <vcl/metric.hxx>
 #include <vcl/menubtn.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
@@ -54,32 +56,32 @@
 #define BUTTON_WIDTH 18
 
 using namespace basegfx;
-using namespace basegfx::tools;
+using namespace basegfx::utils;
 using namespace drawinglayer::attribute;
 
 namespace
 {
     basegfx::BColor lcl_GetFillColor(const basegfx::BColor& rLineColor)
     {
-        basegfx::BColor aHslLine = basegfx::tools::rgb2hsl(rLineColor);
+        basegfx::BColor aHslLine = basegfx::utils::rgb2hsl(rLineColor);
         double nLuminance = aHslLine.getZ() * 2.5;
         if ( nLuminance == 0 )
             nLuminance = 0.5;
         else if ( nLuminance >= 1.0 )
             nLuminance = aHslLine.getZ() * 0.4;
         aHslLine.setZ( nLuminance );
-        return basegfx::tools::hsl2rgb( aHslLine );
+        return basegfx::utils::hsl2rgb( aHslLine );
     }
 
     basegfx::BColor lcl_GetLighterGradientColor(const basegfx::BColor& rDarkColor)
     {
-        basegfx::BColor aHslDark = basegfx::tools::rgb2hsl(rDarkColor);
+        basegfx::BColor aHslDark = basegfx::utils::rgb2hsl(rDarkColor);
         double nLuminance = aHslDark.getZ() * 255 + 20;
         aHslDark.setZ( nLuminance / 255.0 );
-        return basegfx::tools::hsl2rgb( aHslDark );
+        return basegfx::utils::hsl2rgb( aHslDark );
     }
 
-    B2DPolygon lcl_GetPolygon( const ::tools::Rectangle& rRect, bool bHeader )
+    B2DPolygon lcl_GetPolygon( const ::tools::Rectangle& rRect, bool bOnTop )
     {
         const double nRadius = 3;
         const double nKappa((M_SQRT2 - 1.0) * 4.0 / 3.0);
@@ -111,9 +113,9 @@ namespace
 
         aPolygon.append( B2DPoint( rRect.Right(), rRect.Top() ) );
 
-        if ( !bHeader )
+        if ( !bOnTop )
         {
-            B2DRectangle aBRect( rRect.Left(), rRect.Top(), rRect.Right(), rRect.Bottom() );
+            B2DRectangle aBRect = vcl::unotools::b2DRectangleFromRectangle(rRect);
             B2DHomMatrix aRotation = createRotateAroundPoint(
                    aBRect.getCenterX(), aBRect.getCenterY(), M_PI );
             aPolygon.transform( aRotation );
@@ -123,9 +125,45 @@ namespace
     }
 }
 
+void SwFrameButtonPainter::PaintButton(drawinglayer::primitive2d::Primitive2DContainer& rSeq,
+                                       const tools::Rectangle& rRect, bool bOnTop)
+{
+    rSeq.clear();
+    B2DPolygon aPolygon = lcl_GetPolygon(rRect, bOnTop);
+
+    // Colors
+    basegfx::BColor aLineColor = SwViewOption::GetHeaderFooterMarkColor().getBColor();
+    basegfx::BColor aFillColor = lcl_GetFillColor(aLineColor);
+    basegfx::BColor aLighterColor = lcl_GetLighterGradientColor(aFillColor);
+
+    const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
+    if (rSettings.GetHighContrastMode())
+    {
+        aFillColor = rSettings.GetDialogColor().getBColor();
+        aLineColor = rSettings.GetDialogTextColor().getBColor();
+
+        rSeq.push_back(drawinglayer::primitive2d::Primitive2DReference(
+                            new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(B2DPolyPolygon(aPolygon), aFillColor)));
+    }
+    else
+    {
+        B2DRectangle aGradientRect = vcl::unotools::b2DRectangleFromRectangle(rRect);
+        double nAngle = M_PI;
+        if (bOnTop)
+            nAngle = 0;
+        FillGradientAttribute aFillAttrs(drawinglayer::attribute::GradientStyle::Linear, 0.0, 0.0, 0.0, nAngle, aLighterColor, aFillColor, 10);
+        rSeq.push_back(drawinglayer::primitive2d::Primitive2DReference(
+                            new drawinglayer::primitive2d::FillGradientPrimitive2D(aGradientRect, aFillAttrs)));
+    }
+
+    // Create the border lines primitive
+    rSeq.push_back(drawinglayer::primitive2d::Primitive2DReference(
+                new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(aPolygon, aLineColor)));
+}
+
 SwHeaderFooterWin::SwHeaderFooterWin( SwEditWin* pEditWin, const SwFrame *pFrame, bool bHeader ) :
     SwFrameMenuButtonBase( pEditWin, pFrame ),
-    m_aBuilder(nullptr, VclBuilderContainer::getUIRootDir(), "modules/swriter/ui/headerfootermenu.ui", ""),
+    m_aBuilder(nullptr, AllSettings::GetUIRootDir(), "modules/swriter/ui/headerfootermenu.ui", ""),
     m_bIsHeader( bHeader ),
     m_pPopupMenu(m_aBuilder.get_menu("menu")),
     m_pLine( nullptr ),
@@ -254,42 +292,13 @@ void SwHeaderFooterWin::Paint(vcl::RenderContext& rRenderContext, const ::tools:
 {
     // Use pixels for the rest of the drawing
     SetMapMode(MapMode(MapUnit::MapPixel));
-
+    drawinglayer::primitive2d::Primitive2DContainer aSeq;
     const ::tools::Rectangle aRect(::tools::Rectangle(Point(0, 0), rRenderContext.PixelToLogic(GetSizePixel())));
-    drawinglayer::primitive2d::Primitive2DContainer aSeq(3);
 
-    B2DPolygon aPolygon = lcl_GetPolygon(aRect, m_bIsHeader);
-
-    // Colors
-    basegfx::BColor aLineColor = SwViewOption::GetHeaderFooterMarkColor().getBColor();
-    basegfx::BColor aFillColor = lcl_GetFillColor(aLineColor);
-    basegfx::BColor aLighterColor = lcl_GetLighterGradientColor(aFillColor);
-
-    const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
-    if (rSettings.GetHighContrastMode())
-    {
-        aFillColor = rSettings.GetDialogColor().getBColor();
-        aLineColor = rSettings.GetDialogTextColor().getBColor();
-
-        aSeq[0] = drawinglayer::primitive2d::Primitive2DReference(
-                    new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(B2DPolyPolygon(aPolygon), aFillColor));
-    }
-    else
-    {
-        B2DRectangle aGradientRect(aRect.Left(), aRect.Top(), aRect.Right(), aRect.Bottom());
-        double nAngle = M_PI;
-        if (m_bIsHeader)
-            nAngle = 0;
-        FillGradientAttribute aFillAttrs(drawinglayer::attribute::GradientStyle::Linear, 0.0, 0.0, 0.0, nAngle, aLighterColor, aFillColor, 10);
-        aSeq[0] = drawinglayer::primitive2d::Primitive2DReference(
-                    new drawinglayer::primitive2d::FillGradientPrimitive2D(aGradientRect, aFillAttrs));
-    }
-
-    // Create the border lines primitive
-    aSeq[1] = drawinglayer::primitive2d::Primitive2DReference(
-                new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(aPolygon, aLineColor));
+    SwFrameButtonPainter::PaintButton(aSeq, aRect, m_bIsHeader);
 
     // Create the text primitive
+    basegfx::BColor aLineColor = SwViewOption::GetHeaderFooterMarkColor().getBColor();
     B2DVector aFontSize;
     FontAttribute aFontAttr = drawinglayer::primitive2d::getFontAttributeFromVclFont(aFontSize, rRenderContext.GetFont(), false, false);
 
@@ -301,10 +310,10 @@ void SwHeaderFooterWin::Paint(vcl::RenderContext& rRenderContext, const ::tools:
                                             aFontSize.getX(), aFontSize.getY(),
                                             double(aTextPos.X()), double(aTextPos.Y())));
 
-    aSeq[2] = drawinglayer::primitive2d::Primitive2DReference(
+    aSeq.push_back(drawinglayer::primitive2d::Primitive2DReference(
                     new drawinglayer::primitive2d::TextSimplePortionPrimitive2D(
                         aTextMatrix, m_sLabel, 0, m_sLabel.getLength(),
-                        std::vector<double>(), aFontAttr, css::lang::Locale(), aLineColor));
+                        std::vector<double>(), aFontAttr, css::lang::Locale(), aLineColor)));
 
     // Create the 'plus' or 'arrow' primitive
     B2DRectangle aSignArea(B2DPoint(aRect.Right() - BUTTON_WIDTH, 0.0),
@@ -347,14 +356,13 @@ void SwHeaderFooterWin::Paint(vcl::RenderContext& rRenderContext, const ::tools:
         aSign.setClosed(true);
     }
 
-    BColor aSignColor = Color(COL_BLACK).getBColor();
+    BColor aSignColor = COL_BLACK.getBColor();
     if (Application::GetSettings().GetStyleSettings().GetHighContrastMode())
-        aSignColor = Color(COL_WHITE).getBColor();
+        aSignColor = COL_WHITE.getBColor();
 
-    aSeq.resize(aSeq.size() + 1);
-    aSeq[aSeq.size() - 1] = drawinglayer::primitive2d::Primitive2DReference(
+    aSeq.push_back( drawinglayer::primitive2d::Primitive2DReference(
                                     new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
-                                        B2DPolyPolygon(aSign), aSignColor));
+                                        B2DPolyPolygon(aSign), aSignColor)) );
 
     // Create the processor and process the primitives
     const drawinglayer::geometry::ViewInformation2D aNewViewInfos;
@@ -365,9 +373,9 @@ void SwHeaderFooterWin::Paint(vcl::RenderContext& rRenderContext, const ::tools:
     drawinglayer::primitive2d::Primitive2DContainer aGhostedSeq(1);
     double nFadeRate = double(m_nFadeRate) / 100.0;
 
-    const basegfx::BColorModifierSharedPtr aBColorModifier(
-        new basegfx::BColorModifier_interpolate(Color(COL_WHITE).getBColor(),
-                                                1.0 - nFadeRate));
+    const basegfx::BColorModifierSharedPtr aBColorModifier =
+        std::make_shared<basegfx::BColorModifier_interpolate>(COL_WHITE.getBColor(),
+                                                1.0 - nFadeRate);
 
     aGhostedSeq[0] = drawinglayer::primitive2d::Primitive2DReference(
                         new drawinglayer::primitive2d::ModifiedColorPrimitive2D(aSeq, aBColorModifier));
@@ -375,7 +383,7 @@ void SwHeaderFooterWin::Paint(vcl::RenderContext& rRenderContext, const ::tools:
     pProcessor->process(aGhostedSeq);
 }
 
-bool SwHeaderFooterWin::IsEmptyHeaderFooter( )
+bool SwHeaderFooterWin::IsEmptyHeaderFooter( ) const
 {
     bool bResult = true;
 
@@ -416,52 +424,50 @@ void SwHeaderFooterWin::ExecuteCommand(const OString& rIdent)
         SwFrameFormat* pHFFormat = const_cast< SwFrameFormat* >( rMaster.GetFooter().GetFooterFormat() );
         if ( m_bIsHeader )
             pHFFormat = const_cast< SwFrameFormat* >( rMaster.GetHeader().GetHeaderFormat() );
+        SfxItemSet aSet( pHFFormat->GetAttrSet() );
 
-        SfxItemPool* pPool = pHFFormat->GetAttrSet().GetPool();
-        SfxItemSet aSet(
-            *pPool,
-            svl::Items<
-                RES_BACKGROUND, RES_SHADOW,
-                SID_ATTR_BORDER_INNER, SID_ATTR_BORDER_INNER>{});
+        // Items to hand over XPropertyList things like XColorList,
+        // XHatchList, XGradientList, and XBitmapList to the Area TabPage:
+        aSet.MergeRange( SID_COLOR_TABLE, SID_PATTERN_LIST );
+        // create needed items for XPropertyList entries from the DrawModel so that
+        // the Area TabPage can access them
+        rSh.GetDoc()->getIDocumentDrawModelAccess().GetDrawModel()->PutAreaListItems( aSet );
 
-        aSet.Put( pHFFormat->GetAttrSet() );
-
+        aSet.MergeRange(SID_ATTR_BORDER_INNER, SID_ATTR_BORDER_INNER);
         // Create a box info item... needed by the dialog
-        SvxBoxInfoItem aBoxInfo( SID_ATTR_BORDER_INNER );
+        std::shared_ptr<SvxBoxInfoItem> aBoxInfo(std::make_shared<SvxBoxInfoItem>(SID_ATTR_BORDER_INNER));
         const SfxPoolItem *pBoxInfo;
-        if ( SfxItemState::SET == pHFFormat->GetAttrSet().GetItemState( SID_ATTR_BORDER_INNER,
-                                                true, &pBoxInfo) )
-            aBoxInfo = *static_cast<const SvxBoxInfoItem*>(pBoxInfo);
+        if (SfxItemState::SET == pHFFormat->GetAttrSet().GetItemState(SID_ATTR_BORDER_INNER, true, &pBoxInfo))
+            aBoxInfo.reset(static_cast<SvxBoxInfoItem*>(pBoxInfo->Clone()));
 
-        aBoxInfo.SetTable( false );
-        aBoxInfo.SetDist( true);
-        aBoxInfo.SetMinDist( false );
-        aBoxInfo.SetDefDist( MIN_BORDER_DIST );
-        aBoxInfo.SetValid( SvxBoxInfoItemValidFlags::DISABLE );
-        aSet.Put( aBoxInfo );
+        aBoxInfo->SetTable(false);
+        aBoxInfo->SetDist(true);
+        aBoxInfo->SetMinDist(false);
+        aBoxInfo->SetDefDist(MIN_BORDER_DIST);
+        aBoxInfo->SetValid(SvxBoxInfoItemValidFlags::DISABLE);
+        aSet.Put(*aBoxInfo);
 
-        if ( svx::ShowBorderBackgroundDlg( this, &aSet, true ) )
+        if (svx::ShowBorderBackgroundDlg( GetFrameWeld(), &aSet ) )
         {
-            const SfxPoolItem* pItem;
-            if ( SfxItemState::SET == aSet.GetItemState( RES_BACKGROUND, false, &pItem ) ) {
-                pHFFormat->SetFormatAttr( *pItem );
-                rView.GetDocShell()->SetModified();
-            }
-
-            if ( SfxItemState::SET == aSet.GetItemState( RES_BOX, false, &pItem ) ) {
-                pHFFormat->SetFormatAttr( *pItem );
-                rView.GetDocShell()->SetModified();
-            }
-
-            if ( SfxItemState::SET == aSet.GetItemState( RES_SHADOW, false, &pItem ) ) {
-                pHFFormat->SetFormatAttr( *pItem );
-                rView.GetDocShell()->SetModified();
-            }
+            pHFFormat->SetFormatAttr( aSet );
+            rView.GetDocShell()->SetModified();
         }
     }
     else if (rIdent == "delete")
     {
         rSh.ChangeHeaderOrFooter( rStyleName, m_bIsHeader, false, true );
+        // warning: "this" may be disposed now
+        rSh.GetWin()->GrabFocusToDocument();
+    }
+    else if (rIdent == "insert_pagenumber")
+    {
+        SfxViewFrame* pVFrame = rSh.GetView().GetViewFrame();
+        pVFrame->GetBindings().Execute(FN_INSERT_FLD_PGNUMBER);
+    }
+    else if (rIdent == "insert_pagecount")
+    {
+        SfxViewFrame* pVFrame = rSh.GetView().GetViewFrame();
+        pVFrame->GetBindings().Execute(FN_INSERT_FLD_PGCOUNT);
     }
 }
 

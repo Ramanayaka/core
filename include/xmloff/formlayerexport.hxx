@@ -22,17 +22,17 @@
 
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
-#include <com/sun/star/drawing/XDrawPage.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
 #include <salhelper/simplereferenceobject.hxx>
-#include <xmloff/xmlexppr.hxx>
 #include <memory>
 
-namespace com { namespace sun { namespace star { namespace awt {
+namespace com::sun::star::awt {
     class XControlModel;
-} } } }
+}
+
+namespace com::sun::star::drawing { class XDrawPage; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 class SvXMLExport;
 
@@ -48,13 +48,12 @@ namespace xmloff
 
     /** provides functionality for exporting a complete form layer.
     */
-    class XMLOFF_DLLPUBLIC OFormLayerXMLExport
+    class XMLOFF_DLLPUBLIC OFormLayerXMLExport final
                 :public ::salhelper::SimpleReferenceObject
     {
         // impl class
         std::unique_ptr<OFormLayerXMLExport_Impl> m_pImpl;
 
-    protected:
         virtual ~OFormLayerXMLExport() override;
 
     public:
@@ -122,7 +121,7 @@ namespace xmloff
             expect the forms collection to be stored like
                 <listing>
                     &lt;Forms&gt;
-                        ....    // all the forms stuff here
+                        ...    // all the forms stuff here
                     &lt;/Forms&gt;
                 </listing>
             you have to start the Forms element yourself.</p>

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_POLYPOLYACTION_HXX
-#define INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_POLYPOLYACTION_HXX
+#pragma once
 
 #include <action.hxx>
 #include <cppcanvas/canvas.hxx>
@@ -27,18 +26,16 @@
 namespace basegfx {
     class B2DPolyPolygon;
 }
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
     struct Texture;
     struct StrokeAttributes;
-} } } }
+}
 
 
 /* Definition of internal::PolyPolyActionFactory */
 
-namespace cppcanvas
-{
-    namespace internal
+namespace cppcanvas::internal
     {
         struct OutDevState;
 
@@ -52,36 +49,34 @@ namespace cppcanvas
         namespace PolyPolyActionFactory
         {
             /// Create polygon, fill/stroke according to state
-            ActionSharedPtr createPolyPolyAction( const ::basegfx::B2DPolyPolygon&,
+            std::shared_ptr<Action> createPolyPolyAction( const ::basegfx::B2DPolyPolygon&,
                                                   const CanvasSharedPtr&,
                                                   const OutDevState&     );
 
             /// Create texture-filled polygon
-            ActionSharedPtr createPolyPolyAction( const ::basegfx::B2DPolyPolygon&,
+            std::shared_ptr<Action> createPolyPolyAction( const ::basegfx::B2DPolyPolygon&,
                                                   const CanvasSharedPtr&,
                                                   const OutDevState&,
                                                   const css::rendering::Texture& );
 
             /// Create line polygon (always stroked, not filled)
-            ActionSharedPtr createLinePolyPolyAction( const ::basegfx::B2DPolyPolygon&,
+            std::shared_ptr<Action> createLinePolyPolyAction( const ::basegfx::B2DPolyPolygon&,
                                                       const CanvasSharedPtr&,
                                                       const OutDevState& );
 
             /// Create stroked polygon
-            ActionSharedPtr createPolyPolyAction( const ::basegfx::B2DPolyPolygon&,
+            std::shared_ptr<Action> createPolyPolyAction( const ::basegfx::B2DPolyPolygon&,
                                                   const CanvasSharedPtr&,
                                                   const OutDevState&,
                                                   const css::rendering::StrokeAttributes& );
 
             /// For transparent painting of the given polygon (normally, we take the colors always opaque)
-            ActionSharedPtr createPolyPolyAction( const ::basegfx::B2DPolyPolygon&,
+            std::shared_ptr<Action> createPolyPolyAction( const ::basegfx::B2DPolyPolygon&,
                                                   const CanvasSharedPtr&,
                                                   const OutDevState&,
                                                   int nTransparency );
         }
-    }
-}
 
-#endif // INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_POLYPOLYACTION_HXX
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

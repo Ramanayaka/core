@@ -31,17 +31,16 @@
 #include <sax/fshelper.hxx>
 #include <vcl/checksum.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace drawing {
         class XShape;
     }
-}}}
-
-namespace oox {
-    namespace drawingml {
-        class DrawingML;
-    }
 }
+
+namespace oox::drawingml {
+   class DrawingML;
+}
+
 
 namespace sax_fastparser {
     class FastAttributeList;
@@ -51,9 +50,7 @@ class Point;
 namespace tools { class Rectangle; }
 class SdrObject;
 
-namespace oox {
-
-namespace vml {
+namespace oox::vml {
 
 /// Interface to be implemented by the parent exporter that knows how to handle shape text.
 class OOX_DLLPUBLIC VMLTextExport
@@ -82,9 +79,7 @@ class OOX_DLLPUBLIC VMLExport : public EscherEx
 
     /// Anchoring.
     sal_Int16 m_eHOri, m_eVOri, m_eHRel, m_eVRel;
-
-    /// Parent position.
-    const Point* m_pNdTopLeft;
+    bool m_bInline; // css::text::TextContentAnchorType_AS_CHARACTER
 
     /// The object we're exporting.
     const SdrObject* m_pSdrObject;
@@ -96,31 +91,61 @@ class OOX_DLLPUBLIC VMLExport : public EscherEx
     sal_uInt32 m_nShapeType;
 
     /// Remember the shape flags.
-    sal_uInt32 m_nShapeFlags;
+    ShapeFlag m_nShapeFlags;
 
     /// Remember style, the most important shape attribute ;-)
     OStringBuffer m_ShapeStyle;
 
+    /// style for textbox
+    OStringBuffer m_TextboxStyle;
+
+    /// Remember the generated shape id.
+    OString m_sShapeId;
+
     /// Remember which shape types we had already written.
     std::vector<bool> m_aShapeTypeWritten;
 
+    /// It seems useless to write out an XML_ID attribute next to XML_id which defines the actual shape id
+    bool m_bSkipwzName;
+
+    /// Use '#' mark for type attribute (check Type Attribute of VML shape in OOXML documentation)
+    bool m_bUseHashMarkForType;
+
+    /** There is a shapeid generation mechanism in EscherEx, but it does not seem to work
+    *   so override the existing behavior to get actually unique ids.
+    */
+    bool m_bOverrideShapeIdGeneration;
+
+    /// Prefix for overridden shape id generation (used if m_bOverrideShapeIdGeneration is true)
+    OString m_sShapeIDPrefix;
+
+    /// Counter for generating shape ids (used if m_bOverrideShapeIdGeneration is true)
+    sal_uInt64 m_nShapeIDCounter;
+
 public:
-                        VMLExport( ::sax_fastparser::FSHelperPtr const & pSerializer, VMLTextExport* pTextExport = nullptr );
+                        VMLExport( ::sax_fastparser::FSHelperPtr const & pSerializer, VMLTextExport* pTextExport = nullptr);
     virtual             ~VMLExport() override;
 
     const ::sax_fastparser::FSHelperPtr&
-                        GetFS() { return m_pSerializer; }
+                        GetFS() const { return m_pSerializer; }
 
     void SetFS(const ::sax_fastparser::FSHelperPtr& pSerializer);
 
     /// Export the sdr object as VML.
     ///
     /// Call this when you need to export the object as VML.
-    void AddSdrObject( const SdrObject& rObj, sal_Int16 eHOri = -1,
+    OString const & AddSdrObject( const SdrObject& rObj, sal_Int16 eHOri = -1,
             sal_Int16 eVOri = -1, sal_Int16 eHRel = -1,
-            sal_Int16 eVRel = -1, const Point* pNdTopLeft = nullptr, const bool bOOxmlExport = false );
+            sal_Int16 eVRel = -1, const bool bOOxmlExport = false );
+    OString const & AddInlineSdrObject( const SdrObject& rObj, const bool bOOxmlExport );
     virtual void  AddSdrObjectVMLObject( const SdrObject& rObj) override;
     static bool IsWaterMarkShape(const OUString& rStr);
+
+    void    SetSkipwzName(bool bSkipwzName) { m_bSkipwzName = bSkipwzName; }
+    void    SetHashMarkForType(bool bUseHashMarkForType) { m_bUseHashMarkForType = bUseHashMarkForType; }
+    void    OverrideShapeIDGen(bool bOverrideShapeIdGeneration,
+                            const OString& sShapeIDPrefix = OString());
+
 protected:
     /// Add an attribute to the generated <v:shape/> element.
     ///
@@ -130,6 +155,9 @@ protected:
 
     using EscherEx::StartShape;
     using EscherEx::EndShape;
+
+    /// Override shape ID generation when m_bOverrideShapeIdGeneration is set to true
+    virtual sal_uInt32   GenerateShapeId() override;
 
     /// Start the shape for which we just collected the information.
     ///
@@ -150,11 +178,11 @@ private:
     virtual sal_uInt32 EnterGroup( const OUString& rShapeName, const tools::Rectangle* pBoundRect ) override;
     virtual void LeaveGroup() override;
 
-    virtual void AddShape( sal_uInt32 nShapeType, sal_uInt32 nShapeFlags, sal_uInt32 nShapeId = 0 ) override;
+    virtual void AddShape( sal_uInt32 nShapeType, ShapeFlag nShapeFlags, sal_uInt32 nShapeId = 0 ) override;
 
 private:
     /// Create an OString representing the id from a numerical id.
-    static OString ShapeIdString( sal_uInt32 nId );
+    OString ShapeIdString( sal_uInt32 nId );
 
     /// Add flip X and\or flip Y
     void AddFlipXY( );
@@ -166,9 +194,8 @@ private:
     void AddRectangleDimensions( OStringBuffer& rBuffer, const tools::Rectangle& rRectangle, bool rbAbsolutePos = true );
 };
 
-} // namespace vml
 
-} // namespace oox
+} // namespace oox::vml
 
 #endif
 

@@ -17,9 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "VLineProperties.hxx"
-#include "macros.hxx"
+#include <VLineProperties.hxx>
 #include <com/sun/star/drawing/LineStyle.hpp>
+#include <com/sun/star/drawing/LineCap.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <tools/diagnose_ex.h>
 
 namespace chart
 {
@@ -29,10 +31,11 @@ using namespace ::com::sun::star;
 
 VLineProperties::VLineProperties()
 {
-    this->Color <<= sal_Int32(0x000000); //type sal_Int32 UNO_NAME_LINECOLOR
-    this->LineStyle <<= drawing::LineStyle_SOLID; //type drawing::LineStyle for property UNO_NAME_LINESTYLE
-    this->Transparence <<= sal_Int16(0);//type sal_Int16 for property UNO_NAME_LINETRANSPARENCE
-    this->Width <<= sal_Int32(0);//type sal_Int32 for property UNO_NAME_LINEWIDTH
+    Color <<= sal_Int32(0x000000); //type sal_Int32 UNO_NAME_LINECOLOR
+    LineStyle <<= drawing::LineStyle_SOLID; //type drawing::LineStyle for property UNO_NAME_LINESTYLE
+    Transparence <<= sal_Int16(0);//type sal_Int16 for property UNO_NAME_LINETRANSPARENCE
+    Width <<= sal_Int32(0);//type sal_Int32 for property UNO_NAME_LINEWIDTH
+    LineCap <<= drawing::LineCap_BUTT; //type drawing::LineCap for property UNO_NAME_LINECAP
 }
 
 void VLineProperties::initFromPropertySet( const uno::Reference< beans::XPropertySet >& xProp )
@@ -41,19 +44,20 @@ void VLineProperties::initFromPropertySet( const uno::Reference< beans::XPropert
     {
         try
         {
-            this->Color = xProp->getPropertyValue( "LineColor" );
-            this->LineStyle = xProp->getPropertyValue( "LineStyle" );
-            this->Transparence = xProp->getPropertyValue( "LineTransparence" );
-            this->Width = xProp->getPropertyValue( "LineWidth" );
-            this->DashName = xProp->getPropertyValue( "LineDashName" );
+            Color = xProp->getPropertyValue( "LineColor" );
+            LineStyle = xProp->getPropertyValue( "LineStyle" );
+            Transparence = xProp->getPropertyValue( "LineTransparence" );
+            Width = xProp->getPropertyValue( "LineWidth" );
+            DashName = xProp->getPropertyValue( "LineDashName" );
+            LineCap = xProp->getPropertyValue( "LineCap" );
         }
-        catch( const uno::Exception& e )
+        catch( const uno::Exception& )
         {
-            ASSERT_EXCEPTION( e );
+            TOOLS_WARN_EXCEPTION("chart2", "" );
         }
     }
     else
-        this->LineStyle <<= drawing::LineStyle_NONE;
+        LineStyle <<= drawing::LineStyle_NONE;
 }
 
 bool VLineProperties::isLineVisible() const
@@ -61,11 +65,11 @@ bool VLineProperties::isLineVisible() const
     bool bRet = false;
 
     drawing::LineStyle aLineStyle(drawing::LineStyle_SOLID);
-    this->LineStyle >>= aLineStyle;
+    LineStyle >>= aLineStyle;
     if( aLineStyle != drawing::LineStyle_NONE )
     {
         sal_Int16 nLineTransparence=0;
-        this->Transparence >>= nLineTransparence;
+        Transparence >>= nLineTransparence;
         if(nLineTransparence!=100)
         {
             bRet = true;

@@ -19,7 +19,7 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_VIEWUTIL_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_VIEWUTIL_HXX
 
-#include "address.hxx"
+#include <address.hxx>
 #include <sal/types.h>
 #include <i18nlangtag/lang.h>
 
@@ -31,8 +31,6 @@ class SfxViewFrame;
 class ScChangeAction;
 class ScChangeViewSettings;
 class ScDocument;
-class ScAddress;
-class ScRange;
 class ScMarkData;
 enum class SvtScriptType;
 enum class TransliterationFlags;
@@ -43,10 +41,8 @@ enum class ScUpdateMode { All, Marks };
 class SC_DLLPUBLIC ScViewUtil
 {
 public:
-    static bool ExecuteCharMap( const SvxFontItem&  rOldFont,
-                                SfxViewFrame&       rFrame,
-                                SvxFontItem&        rNewFont,
-                                OUString&           rString );
+    static void ExecuteCharMap( const SvxFontItem&  rOldFont,
+                                SfxViewFrame&       rFrame );
 
     static bool IsActionShown( const ScChangeAction& rAction,
                                 const ScChangeViewSettings& rSettings,
@@ -59,18 +55,18 @@ public:
 
     static TransliterationFlags GetTransliterationType( sal_uInt16 nSlotID );
 
-    static bool HasFiltered( const ScRange& rRange, ScDocument* pDoc );
+    static bool HasFiltered( const ScRange& rRange, const ScDocument* pDoc );
     /** Fit a range to cover nRows number of unfiltered rows.
         @return <TRUE/> if the resulting range covers nRows unfiltered rows. */
-    static bool FitToUnfilteredRows( ScRange & rRange, ScDocument * pDoc, size_t nRows );
-    static void UnmarkFiltered( ScMarkData& rMark, ScDocument* pDoc );
+    static bool FitToUnfilteredRows( ScRange & rRange, const ScDocument * pDoc, size_t nRows );
+    static void UnmarkFiltered( ScMarkData& rMark, const ScDocument* pDoc );
 
     static void HideDisabledSlot( SfxItemSet& rSet, SfxBindings& rBindings, sal_uInt16 nSlotId );
 
     /** Returns true, if the passed view shell is in full screen mode. */
-    static bool IsFullScreen( SfxViewShell& rViewShell );
+    static bool IsFullScreen( const SfxViewShell& rViewShell );
     /** Enters or leaves full screen mode at the passed view shell. */
-    static void SetFullScreen( SfxViewShell& rViewShell, bool bSet );
+    static void SetFullScreen( const SfxViewShell& rViewShell, bool bSet );
 };
 
 class ScUpdateRect

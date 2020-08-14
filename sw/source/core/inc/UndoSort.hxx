@@ -35,7 +35,7 @@ struct SwSortUndoElement
 {
     union {
         struct {
-            sal_uLong nKenn;
+            sal_uLong nID;
             sal_uLong nSource, nTarget;
         } TXT;
         struct {
@@ -52,19 +52,17 @@ struct SwSortUndoElement
     {
         SORT_TXT_TBL.TXT.nSource = nS;
         SORT_TXT_TBL.TXT.nTarget = nT;
-        SORT_TXT_TBL.TXT.nKenn   = 0xffffffff;
+        SORT_TXT_TBL.TXT.nID   = 0xffffffff;
     }
     ~SwSortUndoElement();
 };
 
-typedef std::vector<SwNodeIndex*> SwUndoSortList;
-
 class SwUndoSort : public SwUndo, private SwUndRng
 {
-    SwSortOptions*    pSortOpt;
+    std::unique_ptr<SwSortOptions>    m_pSortOptions;
     std::vector<std::unique_ptr<SwSortUndoElement>> m_SortList;
-    SwUndoAttrTable*  pUndoTableAttr;
-    sal_uLong         nTableNd;
+    std::unique_ptr<SwUndoAttrTable>  m_pUndoAttrTable;
+    sal_uLong         m_nTableNode;
 
 public:
     SwUndoSort( const SwPaM&, const SwSortOptions& );

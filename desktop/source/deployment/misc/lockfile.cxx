@@ -21,22 +21,23 @@
 
 #include <memory>
 
-#include <stdlib.h>
 #include <time.h>
 #ifndef _WIN32
 #include <unistd.h>
 #else
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #endif
 #include <comphelper/random.hxx>
 #include <sal/types.h>
 #include <osl/file.hxx>
-#include <osl/socket.hxx>
 #include <osl/security.hxx>
 #include <unotools/bootstrap.hxx>
 #include <tools/config.hxx>
 
-#include "lockfile.hxx"
+#include <lockfile.hxx>
 
 using namespace ::osl;
 using namespace ::utl;
@@ -51,14 +52,14 @@ static OString impl_getHostname()
        hostname by using the netbios name
        */
     DWORD sz = MAX_COMPUTERNAME_LENGTH + 1;
-    auto szHost = std::unique_ptr<char[]>(new char[sz]);
-    if (GetComputerName(szHost.get(), &sz))
+    auto szHost = std::make_unique<char[]>(sz);
+    if (GetComputerNameA(szHost.get(), &sz))
         aHost = OString(szHost.get());
     else
         aHost = OString("UNKNOWN");
 #else
     /* Don't do dns lookup on Linux either */
-    sal_Char pHostName[1024];
+    char pHostName[1024];
 
     if ( gethostname( pHostName, sizeof( pHostName ) - 1 ) == 0 )
     {
@@ -127,7 +128,7 @@ namespace desktop {
                 // remove file and create new
                 File::remove( m_aLockname );
                 File aFile(m_aLockname);
-                aFile.open( osl_File_OpenFlag_Create );
+                (void)aFile.open( osl_File_OpenFlag_Create );
                 aFile.close( );
                 syncToFile( );
                 m_bRemove = true;
@@ -152,7 +153,7 @@ namespace desktop {
         Config aConfig(aLockname);
         aConfig.SetGroup(LOCKFILE_GROUP);
         OString aIPCserver  = aConfig.ReadKey( LOCKFILE_IPCKEY );
-        if (!aIPCserver.equalsIgnoreAsciiCase(OString("true")))
+        if (!aIPCserver.equalsIgnoreAsciiCase("true"))
             return false;
 
         OString aHost = aConfig.ReadKey( LOCKFILE_HOSTKEY );

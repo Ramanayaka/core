@@ -10,13 +10,20 @@
  */
 
 #include <memory>
-#include "compat.hxx"
+#include <system_error>
+#include <utility>
+
+#include "plugin.hxx"
 #include "pluginhandler.hxx"
 
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/FrontendPluginRegistry.h>
 #include <clang/Lex/PPCallbacks.h>
 #include <stdio.h>
+
+#if CLANG_VERSION >= 90000
+#include <llvm/Support/TimeProfiler.h>
+#endif
 
 #if defined _WIN32
 #include <process.h>
@@ -40,21 +47,36 @@ namespace loplugin
 
 struct PluginData
 {
-    Plugin* (*create)( const Plugin::InstantiationData& );
+    Plugin* (*create)( const InstantiationData& );
     Plugin* object;
     const char* optionName;
     bool isPPCallback;
+    bool isSharedPlugin;
     bool byDefault;
+    bool disabledRun;
 };
 
-const int MAX_PLUGINS = 100;
+const int MAX_PLUGINS = 200;
 static PluginData plugins[ MAX_PLUGINS ];
 static int pluginCount = 0;
 static bool bPluginObjectsCreated = false;
 static bool unitTestMode = false;
 
+StringRef initMainFileName(CompilerInstance& compiler)
+{
+    StringRef const& fn(compiler.getASTContext().getSourceManager().getFileEntryForID(
+        compiler.getASTContext().getSourceManager().getMainFileID())->getName());
+    if (fn == "<stdin>")
+        // stdin means icecream, so we can rely on -main-file-name containing the full path name
+        return compiler.getCodeGenOpts().MainFileName;
+    else
+        // this is always a full path name
+        return fn;
+}
+
 PluginHandler::PluginHandler( CompilerInstance& compiler, const std::vector< std::string >& args )
     : compiler( compiler )
+    , mainFileName(initMainFileName(compiler))
     , rewriter( compiler.getSourceManager(), compiler.getLangOpts())
     , scope( "mainfile" )
     , warningsAsErrors( false )
@@ -96,9 +118,11 @@ void PluginHandler::handleOption( const std::string& option )
             ; // ok
         else
         {
+#if !defined _WIN32 //TODO, S_ISDIR
             struct stat st;
             if( stat(( SRCDIR "/" + scope ).c_str(), &st ) != 0 || !S_ISDIR( st.st_mode ))
                 report( DiagnosticsEngine::Fatal, "unknown scope %0 (no such module directory)" ) << scope;
+#endif
         }
     }
     else if( option.substr( 0, 14 ) == "warnings-only=" )
@@ -109,6 +133,8 @@ void PluginHandler::handleOption( const std::string& option )
         warningsAsErrors = true;
     else if( option == "unit-test-mode" )
         unitTestMode = true;
+    else if (option == "debug")
+        debugMode = true;
     else
         report( DiagnosticsEngine::Fatal, "unknown option %0" ) << option;
 }
@@ -118,18 +144,43 @@ void PluginHandler::createPlugins( std::set< std::string > rewriters )
     for( int i = 0; i < pluginCount; ++i )
     {
         const char* name = plugins[i].optionName;
+        // When in unit-test mode, ignore plugins whose names don't match the filename of the test,
+        // so that we only generate warnings for the plugin that we want to test.
+        // Sharedvisitor plugins still need to remain enabled, they don't do anything on their own,
+        // but sharing-capable plugins need them to actually work (if compiled so) and they register
+        // with them in the code below.
+        if (unitTestMode && mainFileName.find(plugins[ i ].optionName) == StringRef::npos
+            && !plugins[ i ].isSharedPlugin)
+            continue;
         if( rewriters.erase( name ) != 0 )
-            plugins[ i ].object = plugins[ i ].create( Plugin::InstantiationData { name, *this, compiler, &rewriter } );
+            plugins[ i ].object = plugins[ i ].create( InstantiationData { name, *this, compiler, &rewriter } );
         else if( plugins[ i ].byDefault )
-            plugins[ i ].object = plugins[ i ].create( Plugin::InstantiationData { name, *this, compiler, NULL } );
+            plugins[ i ].object = plugins[ i ].create( InstantiationData { name, *this, compiler, NULL } );
         else if( unitTestMode && strcmp(name, "unusedmethodsremove") != 0 && strcmp(name, "unusedfieldsremove") != 0)
-            plugins[ i ].object = plugins[ i ].create( Plugin::InstantiationData { name, *this, compiler, NULL } );
+            plugins[ i ].object = plugins[ i ].create( InstantiationData { name, *this, compiler, NULL } );
     }
     for( auto r: rewriters )
         report( DiagnosticsEngine::Fatal, "unknown plugin tool %0" ) << r;
+    // If there is a shared plugin, make it handle all plugins that it can handle.
+    for( int i = 0; i < pluginCount; ++i )
+    {
+        if( plugins[ i ].isSharedPlugin && plugins[ i ].object != nullptr )
+        {
+            Plugin* plugin = plugins[ i ].object;
+            for( int j = 0; j < pluginCount; ++j )
+            {
+                if( plugins[ j ].object != nullptr
+                    && plugin->setSharedPlugin( plugins[ j ].object, plugins[ j ].optionName ))
+                {
+                    plugins[ j ].disabledRun = true;
+                }
+            }
+        }
+    }
 }
 
-void PluginHandler::registerPlugin( Plugin* (*create)( const Plugin::InstantiationData& ), const char* optionName, bool isPPCallback, bool byDefault )
+void PluginHandler::registerPlugin( Plugin* (*create)( const InstantiationData& ), const char* optionName,
+    bool isPPCallback, bool isSharedPlugin, bool byDefault )
 {
     assert( !bPluginObjectsCreated );
     assert( pluginCount < MAX_PLUGINS );
@@ -137,7 +188,9 @@ void PluginHandler::registerPlugin( Plugin* (*create)( const Plugin::Instantiati
     plugins[ pluginCount ].object = NULL;
     plugins[ pluginCount ].optionName = optionName;
     plugins[ pluginCount ].isPPCallback = isPPCallback;
+    plugins[ pluginCount ].isSharedPlugin = isSharedPlugin;
     plugins[ pluginCount ].byDefault = byDefault;
+    plugins[ pluginCount ].disabledRun = false;
     ++pluginCount;
 }
 
@@ -158,9 +211,9 @@ DiagnosticBuilder PluginHandler::report( DiagnosticsEngine::Level level, const c
     }
     fullMessage += "]";
     if( loc.isValid())
-        return diag.Report( loc, compat::getCustomDiagID(diag, level, fullMessage) );
+        return diag.Report( loc, diag.getDiagnosticIDs()->getCustomDiagID(static_cast<DiagnosticIDs::Level>(level), fullMessage) );
     else
-        return diag.Report( compat::getCustomDiagID(diag, level, fullMessage) );
+        return diag.Report( diag.getDiagnosticIDs()->getCustomDiagID(static_cast<DiagnosticIDs::Level>(level), fullMessage) );
 }
 
 DiagnosticBuilder PluginHandler::report( DiagnosticsEngine::Level level, StringRef message, SourceLocation loc )
@@ -168,16 +221,90 @@ DiagnosticBuilder PluginHandler::report( DiagnosticsEngine::Level level, StringR
     return report( level, nullptr, message, compiler, loc );
 }
 
-bool PluginHandler::addRemoval( SourceLocation loc )
+bool PluginHandler::ignoreLocation(SourceLocation loc) {
+    auto i = ignored_.find(loc);
+    if (i == ignored_.end()) {
+        i = ignored_.emplace(loc, checkIgnoreLocation(loc)).first;
+    }
+    return i->second;
+}
+
+bool PluginHandler::checkIgnoreLocation(SourceLocation loc)
 {
-    return removals.insert( loc ).second;
+    SourceLocation expansionLoc = compiler.getSourceManager().getExpansionLoc( loc );
+    if( compiler.getSourceManager().isInSystemHeader( expansionLoc ))
+        return true;
+    PresumedLoc presumedLoc = compiler.getSourceManager().getPresumedLoc( expansionLoc );
+    if( presumedLoc.isInvalid())
+        return true;
+    const char* bufferName = presumedLoc.getFilename();
+    if (bufferName == NULL
+        || hasPathnamePrefix(bufferName, SRCDIR "/external/")
+        || isSamePathname(bufferName, SRCDIR "/sdext/source/pdfimport/wrapper/keyword_list") )
+            // workdir/CustomTarget/sdext/pdfimport/hash.cxx is generated from
+            // sdext/source/pdfimport/wrapper/keyword_list by gperf, which
+            // inserts various #line directives denoting the latter into the
+            // former, but fails to add a #line directive returning back to
+            // hash.cxx itself before the gperf generated boilerplate, so
+            // compilers erroneously consider errors in the boilerplate to come
+            // from keyword_list instead of hash.cxx (for Clang on Linux/macOS
+            // this is not an issue due to the '#pragma GCC system_header'
+            // generated into the start of hash.cxx, #if'ed for __GNUC__, but
+            // for clang-cl it is an issue)
+        return true;
+    if( hasPathnamePrefix(bufferName, WORKDIR "/") )
+    {
+        // workdir/CustomTarget/vcl/unx/kde4/tst_exclude_socket_notifiers.moc
+        // includes
+        // "../../../../../vcl/unx/kde4/tst_exclude_socket_notifiers.hxx",
+        // making the latter file erroneously match here; so strip any ".."
+        // segments:
+        if (strstr(bufferName, "/..") == nullptr) {
+            return true;
+        }
+        std::string s(bufferName);
+        normalizeDotDotInFilePath(s);
+        if (hasPathnamePrefix(s, WORKDIR "/"))
+            return true;
+    }
+    if( hasPathnamePrefix(bufferName, BUILDDIR "/")
+        || hasPathnamePrefix(bufferName, SRCDIR "/") )
+        return false; // ok
+    return true;
+}
+
+// If we overlap with a previous area we modified, we cannot perform this change
+// without corrupting the source
+bool PluginHandler::checkOverlap(SourceRange range)
+{
+    SourceManager& SM = compiler.getSourceManager();
+    char const  *p1 = SM.getCharacterData( range.getBegin() );
+    char const *p2 = SM.getCharacterData( range.getEnd() );
+    for (std::pair<char const *, char const *> const & rPair : mvModifiedRanges)
+    {
+        if (rPair.first <= p1 && p1 <= rPair.second)
+            return false;
+        if (p1 <= rPair.second && rPair.first <= p2)
+            return false;
+    }
+    return true;
+}
+
+void PluginHandler::addSourceModification(SourceRange range)
+{
+    SourceManager& SM = compiler.getSourceManager();
+    char const  *p1 = SM.getCharacterData( range.getBegin() );
+    char const *p2 = SM.getCharacterData( range.getEnd() );
+    mvModifiedRanges.emplace_back(p1, p2);
 }
 
 void PluginHandler::HandleTranslationUnit( ASTContext& context )
 {
+#if CLANG_VERSION >= 90000
+    llvm::TimeTraceScope mainTimeScope("LOPluginMain", StringRef(""));
+#endif
     if( context.getDiagnostics().hasErrorOccurred())
         return;
-    StringRef const mainFileName = context.getSourceManager().getFileEntryForID(context.getSourceManager().getMainFileID())->getName();
     if (mainFileName.endswith(".ii"))
     {
         report(DiagnosticsEngine::Fatal,
@@ -187,12 +314,12 @@ void PluginHandler::HandleTranslationUnit( ASTContext& context )
 
     for( int i = 0; i < pluginCount; ++i )
     {
-        if( plugins[ i ].object != NULL )
+        if( plugins[ i ].object != NULL && !plugins[ i ].disabledRun )
         {
-            // When in unit-test mode, ignore plugins whose names don't match the filename of the test,
-            // so that we only generate warnings for the plugin that we want to test.
-            if (!unitTestMode || mainFileName.find(plugins[ i ].optionName) != StringRef::npos)
-                plugins[ i ].object->run();
+#if CLANG_VERSION >= 90000
+            llvm::TimeTraceScope timeScope("LOPlugin", [&]() { return plugins[i].optionName; });
+#endif
+            plugins[ i ].object->run();
         }
     }
 #if defined _WIN32
@@ -227,7 +354,7 @@ void PluginHandler::HandleTranslationUnit( ASTContext& context )
             bSkip = true;
         }
         if( modifyFile.empty())
-            modifyFile = name;
+            modifyFile = name.str();
         // Check whether the modified file is in the wanted scope
         if( scope == "mainfile" )
         {
@@ -250,15 +377,18 @@ void PluginHandler::HandleTranslationUnit( ASTContext& context )
         sprintf( filename, "%s.new.%d", modifyFile.c_str(), getpid());
         std::string error;
         bool bOk = false;
+        std::error_code ec;
         std::unique_ptr<raw_fd_ostream> ostream(
-            compat::create_raw_fd_ostream(filename, error) );
-        if( error.empty())
+            new raw_fd_ostream(filename, ec, sys::fs::F_None));
+        if( !ec)
         {
             it->second.write( *ostream );
             ostream->close();
             if( !ostream->has_error() && rename( filename, modifyFile.c_str()) == 0 )
                 bOk = true;
         }
+        else
+            error = "error: " + ec.message();
         ostream->clear_error();
         unlink( filename );
         if( !bOk )
@@ -268,17 +398,120 @@ void PluginHandler::HandleTranslationUnit( ASTContext& context )
 #endif
  }
 
-#if CLANG_VERSION >= 30600
+namespace {
+
+// BEGIN code copied from LLVM's clang/lib/Sema/Sema.cpp
+
+/// Returns true, if all methods and nested classes of the given
+/// CXXRecordDecl are defined in this translation unit.
+///
+/// Should only be called from ActOnEndOfTranslationUnit so that all
+/// definitions are actually read.
+static bool MethodsAndNestedClassesComplete(const CXXRecordDecl *RD,
+                                            RecordCompleteMap &MNCComplete) {
+  RecordCompleteMap::iterator Cache = MNCComplete.find(RD);
+  if (Cache != MNCComplete.end())
+    return Cache->second;
+  if (!RD->isCompleteDefinition())
+    return false;
+  bool Complete = true;
+  for (DeclContext::decl_iterator I = RD->decls_begin(),
+                                  E = RD->decls_end();
+       I != E && Complete; ++I) {
+    if (const CXXMethodDecl *M = dyn_cast<CXXMethodDecl>(*I))
+      Complete = M->isDefined() || M->isDefaulted() ||
+                 (M->isPure() && !isa<CXXDestructorDecl>(M));
+    else if (const FunctionTemplateDecl *F = dyn_cast<FunctionTemplateDecl>(*I))
+      // If the template function is marked as late template parsed at this
+      // point, it has not been instantiated and therefore we have not
+      // performed semantic analysis on it yet, so we cannot know if the type
+      // can be considered complete.
+      Complete = !F->getTemplatedDecl()->isLateTemplateParsed() &&
+                  F->getTemplatedDecl()->isDefined();
+    else if (const CXXRecordDecl *R = dyn_cast<CXXRecordDecl>(*I)) {
+      if (R->isInjectedClassName())
+        continue;
+      if (R->hasDefinition())
+        Complete = MethodsAndNestedClassesComplete(R->getDefinition(),
+                                                   MNCComplete);
+      else
+        Complete = false;
+    }
+  }
+  MNCComplete[RD] = Complete;
+  return Complete;
+}
+
+/// Returns true, if the given CXXRecordDecl is fully defined in this
+/// translation unit, i.e. all methods are defined or pure virtual and all
+/// friends, friend functions and nested classes are fully defined in this
+/// translation unit.
+///
+/// Should only be called from ActOnEndOfTranslationUnit so that all
+/// definitions are actually read.
+static bool IsRecordFullyDefined(const CXXRecordDecl *RD,
+                                 RecordCompleteMap &RecordsComplete,
+                                 RecordCompleteMap &MNCComplete) {
+  RecordCompleteMap::iterator Cache = RecordsComplete.find(RD);
+  if (Cache != RecordsComplete.end())
+    return Cache->second;
+  bool Complete = MethodsAndNestedClassesComplete(RD, MNCComplete);
+  for (CXXRecordDecl::friend_iterator I = RD->friend_begin(),
+                                      E = RD->friend_end();
+       I != E && Complete; ++I) {
+    // Check if friend classes and methods are complete.
+    if (TypeSourceInfo *TSI = (*I)->getFriendType()) {
+      // Friend classes are available as the TypeSourceInfo of the FriendDecl.
+      if (CXXRecordDecl *FriendD = TSI->getType()->getAsCXXRecordDecl())
+        Complete = MethodsAndNestedClassesComplete(FriendD, MNCComplete);
+      else
+        Complete = false;
+    } else {
+      // Friend functions are available through the NamedDecl of FriendDecl.
+      if (const FunctionDecl *FD =
+          dyn_cast<FunctionDecl>((*I)->getFriendDecl()))
+        Complete = FD->isDefined();
+      else
+        // This is a template friend, give up.
+        Complete = false;
+    }
+  }
+  RecordsComplete[RD] = Complete;
+  return Complete;
+}
+
+// END code copied from LLVM's clang/lib/Sema/Sema.cpp
+
+}
+
+bool PluginHandler::isAllRelevantCodeDefined(NamedDecl const * decl) {
+    switch (decl->getAccess()) {
+    case AS_protected:
+        if (!cast<CXXRecordDecl>(decl->getDeclContext())->hasAttr<FinalAttr>()) {
+            break;
+        }
+        LLVM_FALLTHROUGH;
+    case AS_private:
+        if (IsRecordFullyDefined(
+                cast<CXXRecordDecl>(decl->getDeclContext()), RecordsComplete_, MNCComplete_))
+        {
+            return true;
+        }
+        break;
+    default:
+        break;
+    }
+    return !decl->isExternallyVisible();
+}
+
 std::unique_ptr<ASTConsumer> LibreOfficeAction::CreateASTConsumer( CompilerInstance& Compiler, StringRef )
 {
-    return llvm::make_unique<PluginHandler>( Compiler, _args );
-}
+#if __cplusplus >= 201402L
+    return std::make_unique<PluginHandler>( Compiler, _args );
 #else
-ASTConsumer* LibreOfficeAction::CreateASTConsumer( CompilerInstance& Compiler, StringRef )
-{
-    return new PluginHandler( Compiler, _args );
-}
+    return llvm::make_unique<PluginHandler>( Compiler, _args );
 #endif
+}
 
 bool LibreOfficeAction::ParseArgs( const CompilerInstance&, const std::vector< std::string >& args )
 {

@@ -22,10 +22,11 @@
 
 #include <sal/config.h>
 
-#include <sal/types.h>
 #include <unotools/unotoolsdllapi.h>
+#include <rtl/ustring.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno {
         class Any;
         class XComponentContext;
@@ -33,10 +34,10 @@ namespace com { namespace sun { namespace star {
     namespace ucb{
         class XCommandEnvironment;
     }
-} } }
+}
 namespace ucbhelper { class Content; }
 
-namespace utl { namespace UCBContentHelper {
+namespace utl::UCBContentHelper {
 
 UNOTOOLS_DLLPUBLIC bool IsDocument(OUString const & url);
 
@@ -105,7 +106,7 @@ UNOTOOLS_DLLPUBLIC bool EqualURLs(
 UNOTOOLS_DLLPUBLIC
     css::uno::Reference< css::ucb::XCommandEnvironment > getDefaultCommandEnvironment();
 
-} }
+}
 
 #endif
 

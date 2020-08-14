@@ -138,7 +138,7 @@ public class Helper  {
              // example: data = "firstData;secondData;;forthData"
              // => three tokens => missing one data because the imagine
              // "thirdData" was not received by data.nextToken()
-             // Therefore here comes a special handling for empty datas
+             // Therefore here comes a special handling for empty data
              boolean nextIsData = false;
              int dataCount = 0;
              while (data.hasMoreTokens()) {
@@ -352,7 +352,7 @@ public class Helper  {
     /** Returns the file type for the given file name containing in files.csv
      * @param fileAlias the alias name of the file
      * @return file type
-     * @throws FileAliasNotFoundException was thrown if not alias was thorwn
+     * @throws FileAliasNotFoundException was thrown if not alias was thrown
      */
     public String getTypeforfileAlias(String fileAlias)
                                         throws FileAliasNotFoundException{
@@ -366,7 +366,7 @@ public class Helper  {
     /**
      *  Fills the Hashtable m_hFileURLs with all file names and their URL
      *  and the Hashtable m_hFilesTypes with all file names and their file
-     *  type name. This information are extracted from "files.csv"
+     *  type name. This information is extracted from "files.csv"
      *  This is for faster access to get fileURL and fileType of fileAlias
      */
     private void createFilesList(){

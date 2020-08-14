@@ -19,20 +19,20 @@
 
 
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <com/sun/star/drawing/XLayerManager.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/drawing/XLayerSupplier.hpp>
-#include <comphelper/extract.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/xmluconv.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include "layerimp.hxx"
 
 
-#include "XMLStringBufferImportContext.hxx"
+#include <XMLStringBufferImportContext.hxx>
 
 using namespace ::std;
 using namespace ::cppu;
@@ -47,12 +47,14 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
 using ::xmloff::token::IsXMLToken;
 
+namespace {
+
 class SdXMLLayerContext : public SvXMLImportContext
 {
 public:
     SdXMLLayerContext( SvXMLImport& rImport, sal_uInt16 nPrefix, const OUString& rLocalName, const Reference< XAttributeList >& xAttrList, const Reference< XNameAccess >& xLayerManager );
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName, const Reference< XAttributeList >& xAttrList ) override;
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName, const Reference< XAttributeList >& xAttrList ) override;
     virtual void EndElement() override;
 
 private:
@@ -60,7 +62,11 @@ private:
     OUString msName;
     OUStringBuffer sDescriptionBuffer;
     OUStringBuffer sTitleBuffer;
+    OUString msDisplay;
+    OUString msProtected;
 };
+
+}
 
 SdXMLLayerContext::SdXMLLayerContext( SvXMLImport& rImport, sal_uInt16 nPrefix, const OUString& rLocalName, const Reference< XAttributeList >& xAttrList, const Reference< XNameAccess >& xLayerManager )
 : SvXMLImportContext(rImport, nPrefix, rLocalName)
@@ -77,14 +83,21 @@ SdXMLLayerContext::SdXMLLayerContext( SvXMLImport& rImport, sal_uInt16 nPrefix, 
             if( IsXMLToken( aLocalName, XML_NAME ) )
             {
                 msName = sValue;
-                break; // no more attributes needed
+            }
+            else if ( IsXMLToken( aLocalName, XML_DISPLAY))
+            {
+                msDisplay = sValue;
+            }
+            else if ( IsXMLToken( aLocalName, XML_PROTECTED))
+            {
+                msProtected = sValue;
             }
         }
     }
 
 }
 
-SvXMLImportContext * SdXMLLayerContext::CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName, const Reference< XAttributeList >& )
+SvXMLImportContextRef SdXMLLayerContext::CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName, const Reference< XAttributeList >& )
 {
     if( (XML_NAMESPACE_SVG == nPrefix) && IsXMLToken(rLocalName, XML_TITLE) )
     {
@@ -94,16 +107,16 @@ SvXMLImportContext * SdXMLLayerContext::CreateChildContext( sal_uInt16 nPrefix, 
     {
         return new XMLStringBufferImportContext( GetImport(), nPrefix, rLocalName, sDescriptionBuffer);
     }
-    else
-    {
-        return new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-    }
+    return nullptr;
 }
 
 void SdXMLLayerContext::EndElement()
 {
     SAL_WARN_IF( msName.isEmpty(), "xmloff", "xmloff::SdXMLLayerContext::EndElement(), draw:layer element without draw:name!" );
-    if( !msName.isEmpty() ) try
+    if( msName.isEmpty() )
+        return;
+
+    try
     {
         Reference< XPropertySet > xLayer;
 
@@ -116,7 +129,7 @@ void SdXMLLayerContext::EndElement()
         {
             Reference< XLayerManager > xLayerManager( mxLayerManager, UNO_QUERY );
             if( xLayerManager.is() )
-                xLayer.set( xLayerManager->insertNewByIndex( xLayerManager->getCount() ), UNO_QUERY );
+                xLayer = xLayerManager->insertNewByIndex( xLayerManager->getCount() );
             SAL_WARN_IF( !xLayer.is(), "xmloff", "xmloff::SdXMLLayerContext::EndElement(), failed to create new XLayer!" );
 
             if( xLayer.is() )
@@ -127,6 +140,28 @@ void SdXMLLayerContext::EndElement()
         {
             xLayer->setPropertyValue("Title", Any( sTitleBuffer.makeStringAndClear() ) );
             xLayer->setPropertyValue("Description", Any( sDescriptionBuffer.makeStringAndClear() ) );
+            bool bIsVisible( true );
+            bool bIsPrintable( true );
+            if ( !msDisplay.isEmpty() )
+            {
+                bIsVisible = (msDisplay == "always") || (msDisplay == "screen");
+                bIsPrintable = (msDisplay == "always") || (msDisplay == "printer");
+            }
+            xLayer->setPropertyValue("IsVisible", Any( bIsVisible ) );
+            xLayer->setPropertyValue("IsPrintable", Any( bIsPrintable ) );
+            bool bIsLocked( false );
+            if ( !msProtected.isEmpty() )
+                bIsLocked = (msProtected == "true");
+            xLayer->setPropertyValue("IsLocked", Any( bIsLocked ) );
+
+            // tdf#129898 repair layer "DrawnInSlideshow", which was wrongly written
+            // in LO 6.2 to 6.4. It should always have ODF defaults.
+            if (msName == "DrawnInSlideshow")
+            {
+                xLayer->setPropertyValue("IsVisible", Any(true));
+                xLayer->setPropertyValue("IsPrintable", Any(true));
+                xLayer->setPropertyValue("IsLocked", Any(false));
+            }
         }
     }
     catch( Exception& )
@@ -146,11 +181,20 @@ SdXMLLayerSetContext::SdXMLLayerSetContext( SvXMLImport& rImport, sal_uInt16 nPr
         mxLayerManager = xLayerSupplier->getLayerManager();
 }
 
+SdXMLLayerSetContext::SdXMLLayerSetContext( SvXMLImport& rImport )
+: SvXMLImportContext(rImport)
+{
+    Reference< XLayerSupplier > xLayerSupplier( rImport.GetModel(), UNO_QUERY );
+    SAL_WARN_IF( !xLayerSupplier.is(), "xmloff", "xmloff::SdXMLLayerSetContext::SdXMLLayerSetContext(), XModel is not supporting XLayerSupplier!" );
+    if( xLayerSupplier.is() )
+        mxLayerManager = xLayerSupplier->getLayerManager();
+}
+
 SdXMLLayerSetContext::~SdXMLLayerSetContext()
 {
 }
 
-SvXMLImportContext * SdXMLLayerSetContext::CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName,
+SvXMLImportContextRef SdXMLLayerSetContext::CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList )
 {
     return new SdXMLLayerContext( GetImport(), nPrefix, rLocalName, xAttrList, mxLayerManager );

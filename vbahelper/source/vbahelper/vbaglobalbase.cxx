@@ -16,32 +16,33 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "vbahelper/vbaglobalbase.hxx"
+#include <vbahelper/vbaglobalbase.hxx>
 #include <sal/macros.h>
 
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/component_context.hxx>
 #include <cppuhelper/exc_hlp.hxx>
-#include <comphelper/processfactory.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 using namespace com::sun::star;
 using namespace ooo::vba;
 
 // special key to return the Application
 const char sAppService[] = "ooo.vba.Application";
+const OUStringLiteral gsApplication( "Application" );
 
 VbaGlobalsBase::VbaGlobalsBase(
 const uno::Reference< ov::XHelperInterface >& xParent,
 const uno::Reference< uno::XComponentContext >& xContext, const OUString& sDocCtxName )
     : Globals_BASE( xParent, xContext )
     , msDocCtxName( sDocCtxName )
-    , msApplication( "Application" )
 {
     // overwrite context with custom one ( that contains the application )
-    // wrap the service manager as we don't want the disposing context to tear down the 'normal' ServiceManager ( or at least thats what the code appears like it wants to do )
+    // wrap the service manager as we don't want the disposing context to tear down the 'normal' ServiceManager ( or at least that's what the code appears like it wants to do )
     uno::Reference< uno::XInterface > aSrvMgr;
     if ( xContext.is() && xContext->getServiceManager().is() )
     {
@@ -50,7 +51,7 @@ const uno::Reference< uno::XComponentContext >& xContext, const OUString& sDocCt
 
     ::cppu::ContextEntry_Init aHandlerContextInfo[] =
     {
-        ::cppu::ContextEntry_Init( msApplication, uno::Any() ),
+        ::cppu::ContextEntry_Init( gsApplication, uno::Any() ),
         ::cppu::ContextEntry_Init( sDocCtxName, uno::Any() ),
         ::cppu::ContextEntry_Init( "/singletons/com.sun.star.lang.theServiceManager" , uno::makeAny( aSrvMgr ) )
     };
@@ -59,26 +60,26 @@ const uno::Reference< uno::XComponentContext >& xContext, const OUString& sDocCt
     mxContext = ::cppu::createComponentContext(
                         aHandlerContextInfo,
                         SAL_N_ELEMENTS( aHandlerContextInfo ), nullptr );
-    if ( aSrvMgr.is() )
+    if ( !aSrvMgr.is() )
+        return;
+
+    try
     {
-        try
-        {
-            uno::Reference< beans::XPropertySet >(
-                aSrvMgr, uno::UNO_QUERY_THROW )->
-                setPropertyValue( "DefaultContext", uno::makeAny( mxContext ) );
-        }
-        catch ( uno::RuntimeException & )
-        {
-            throw;
-        }
-        catch ( uno::Exception & )
-        {
-            uno::Any e(cppu::getCaughtException());
-            throw lang::WrappedTargetRuntimeException(
-                ("VbaGlobalsBase ctor, setting OServiceManagerWrapper"
-                 " DefaultContext failed"),
-                uno::Reference< uno::XInterface >(), e);
-        }
+        uno::Reference< beans::XPropertySet >(
+            aSrvMgr, uno::UNO_QUERY_THROW )->
+            setPropertyValue( "DefaultContext", uno::makeAny( mxContext ) );
+    }
+    catch ( uno::RuntimeException & )
+    {
+        throw;
+    }
+    catch ( uno::Exception & )
+    {
+        uno::Any e(cppu::getCaughtException());
+        throw lang::WrappedTargetRuntimeException(
+            ("VbaGlobalsBase ctor, setting OServiceManagerWrapper"
+             " DefaultContext failed"),
+            uno::Reference< uno::XInterface >(), e);
     }
 }
 
@@ -89,10 +90,10 @@ VbaGlobalsBase::~VbaGlobalsBase()
         uno::Reference< container::XNameContainer > xNameContainer( mxContext, uno::UNO_QUERY );
         if ( xNameContainer.is() )
         {
-            // release document reference ( we don't wan't the component context trying to dispose that )
+            // release document reference (we don't want the component context trying to dispose that)
             xNameContainer->removeByName( msDocCtxName );
             // release application reference, as it is holding onto the context
-            xNameContainer->removeByName( msApplication );
+            xNameContainer->removeByName( gsApplication );
         }
     }
     catch ( const uno::Exception& )
@@ -103,18 +104,17 @@ VbaGlobalsBase::~VbaGlobalsBase()
 void
 VbaGlobalsBase::init(  const uno::Sequence< beans::PropertyValue >& aInitArgs )
 {
-    sal_Int32 nLen = aInitArgs.getLength();
-    for ( sal_Int32 nIndex = 0; nIndex < nLen; ++nIndex )
+    for ( const auto& rInitArg : aInitArgs )
     {
         uno::Reference< container::XNameContainer > xNameContainer( mxContext, uno::UNO_QUERY_THROW );
-        if ( aInitArgs[ nIndex ].Name.equals( msApplication ) )
+        if ( rInitArg.Name == gsApplication )
         {
-            xNameContainer->replaceByName( msApplication, aInitArgs[ nIndex ].Value );
-            uno::Reference< XHelperInterface > xParent( aInitArgs[ nIndex ].Value, uno::UNO_QUERY );
+            xNameContainer->replaceByName( gsApplication, rInitArg.Value );
+            uno::Reference< XHelperInterface > xParent( rInitArg.Value, uno::UNO_QUERY );
             mxParent = xParent;
         }
         else
-            xNameContainer->replaceByName( aInitArgs[ nIndex ].Name, aInitArgs[ nIndex ].Value );
+            xNameContainer->replaceByName( rInitArg.Name, rInitArg.Value );
     }
 }
 
@@ -126,7 +126,7 @@ VbaGlobalsBase::createInstance( const OUString& aServiceSpecifier )
     {
         // try to extract the Application from the context
         uno::Reference< container::XNameContainer > xNameContainer( mxContext, uno::UNO_QUERY );
-        xNameContainer->getByName( msApplication ) >>= xReturn;
+        xNameContainer->getByName( gsApplication ) >>= xReturn;
     }
     else if ( hasServiceName( aServiceSpecifier ) )
         xReturn = mxContext->getServiceManager()->createInstanceWithContext( aServiceSpecifier, mxContext );
@@ -142,7 +142,7 @@ VbaGlobalsBase::createInstanceWithArguments( const OUString& aServiceSpecifier, 
     {
         // try to extract the Application from the context
         uno::Reference< container::XNameContainer > xNameContainer( mxContext, uno::UNO_QUERY );
-        xNameContainer->getByName( msApplication ) >>= xReturn;
+        xNameContainer->getByName( gsApplication ) >>= xReturn;
     }
     else if ( hasServiceName( aServiceSpecifier ) )
         xReturn = mxContext->getServiceManager()->createInstanceWithArgumentsAndContext( aServiceSpecifier, Arguments, mxContext );
@@ -160,13 +160,7 @@ bool
 VbaGlobalsBase::hasServiceName( const OUString& serviceName )
 {
     uno::Sequence< OUString > sServiceNames( getAvailableServiceNames() );
-    sal_Int32 nLen = sServiceNames.getLength();
-    for ( sal_Int32 index = 0; index < nLen; ++index )
-    {
-        if ( sServiceNames[ index ].equals( serviceName ) )
-            return true;
-    }
-    return false;
+    return comphelper::findValue(sServiceNames, serviceName) != -1;
 }
 
 

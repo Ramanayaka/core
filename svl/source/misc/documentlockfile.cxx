@@ -18,30 +18,26 @@
  */
 
 
-#include <com/sun/star/ucb/XSimpleFileAccess.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/ucb/InsertCommandArgument.hpp>
 #include <com/sun/star/ucb/NameClashException.hpp>
 #include <com/sun/star/io/WrongFormatException.hpp>
 #include <com/sun/star/io/TempFile.hpp>
+#include <com/sun/star/io/XStream.hpp>
+#include <com/sun/star/io/XInputStream.hpp>
+#include <com/sun/star/io/XOutputStream.hpp>
+#include <com/sun/star/io/XSeekable.hpp>
+#include <com/sun/star/io/XTruncate.hpp>
 
-#include <osl/time.h>
-#include <osl/security.hxx>
-#include <osl/socket.hxx>
 #include <o3tl/enumrange.hxx>
 
 #include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
-#include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
 
 #include <comphelper/processfactory.hxx>
 
-#include <unotools/bootstrap.hxx>
-
 #include <ucbhelper/content.hxx>
-
-#include <unotools/useroptions.hxx>
 
 #include <svl/documentlockfile.hxx>
 
@@ -49,42 +45,28 @@ using namespace ::com::sun::star;
 
 namespace svt {
 
-bool DocumentLockFile::m_bAllowInteraction = true;
-
-
-DocumentLockFile::DocumentLockFile( const OUString& aOrigURL )
-: LockFileCommon( aOrigURL, ".~lock." )
+GenDocumentLockFile::GenDocumentLockFile(const OUString& aLockFileURL)
+    : LockFileCommon(aLockFileURL)
 {
 }
 
 
-DocumentLockFile::~DocumentLockFile()
+GenDocumentLockFile::~GenDocumentLockFile()
 {
 }
 
-
-void DocumentLockFile::WriteEntryToStream( const LockFileEntry& aEntry, const uno::Reference< io::XOutputStream >& xOutput )
+uno::Reference< io::XInputStream > GenDocumentLockFile::OpenStream()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    OUStringBuffer aBuffer;
+    uno::Reference < css::ucb::XCommandEnvironment > xEnv;
+    ::ucbhelper::Content aSourceContent( GetURL(), xEnv, comphelper::getProcessComponentContext() );
 
-    for ( LockFileComponent lft : o3tl::enumrange<LockFileComponent>() )
-    {
-        aBuffer.append( EscapeCharacters( aEntry[lft] ) );
-        if ( lft < LockFileComponent::LAST )
-            aBuffer.append( ',' );
-        else
-            aBuffer.append( ';' );
-    }
-
-    OString aStringData( OUStringToOString( aBuffer.makeStringAndClear(), RTL_TEXTENCODING_UTF8 ) );
-    uno::Sequence< sal_Int8 > aData( reinterpret_cast<sal_Int8 const *>(aStringData.getStr()), aStringData.getLength() );
-    xOutput->writeBytes( aData );
+    // the file can be opened readonly, no locking will be done
+    return aSourceContent.openStream();
 }
 
-
-bool DocumentLockFile::CreateOwnLockFile()
+bool GenDocumentLockFile::CreateOwnLockFile()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
@@ -108,7 +90,7 @@ bool DocumentLockFile::CreateOwnLockFile()
         xSeekable->seek( 0 );
 
         uno::Reference < css::ucb::XCommandEnvironment > xEnv;
-        ::ucbhelper::Content aTargetContent( m_aURL, xEnv, comphelper::getProcessComponentContext() );
+        ::ucbhelper::Content aTargetContent( GetURL(), xEnv, comphelper::getProcessComponentContext() );
 
         ucb::InsertCommandArgument aInsertArg;
         aInsertArg.Data = xInput;
@@ -130,50 +112,13 @@ bool DocumentLockFile::CreateOwnLockFile()
     return true;
 }
 
-
-LockFileEntry DocumentLockFile::GetLockData()
-{
-    ::osl::MutexGuard aGuard( m_aMutex );
-
-    uno::Reference< io::XInputStream > xInput = OpenStream();
-    if ( !xInput.is() )
-        throw uno::RuntimeException();
-
-    const sal_Int32 nBufLen = 32000;
-    uno::Sequence< sal_Int8 > aBuffer( nBufLen );
-
-    sal_Int32 nRead = 0;
-
-    nRead = xInput->readBytes( aBuffer, nBufLen );
-    xInput->closeInput();
-
-    if ( nRead == nBufLen )
-        throw io::WrongFormatException();
-
-    sal_Int32 nCurPos = 0;
-    return ParseEntry( aBuffer, nCurPos );
-}
-
-
-uno::Reference< io::XInputStream > DocumentLockFile::OpenStream()
-{
-    ::osl::MutexGuard aGuard( m_aMutex );
-
-    uno::Reference < css::ucb::XCommandEnvironment > xEnv;
-    ::ucbhelper::Content aSourceContent( m_aURL, xEnv, comphelper::getProcessComponentContext() );
-
-    // the file can be opened readonly, no locking will be done
-    return aSourceContent.openStream();
-}
-
-
-bool DocumentLockFile::OverwriteOwnLockFile()
+bool GenDocumentLockFile::OverwriteOwnLockFile()
 {
     // allows to overwrite the lock file with the current data
     try
     {
         uno::Reference < css::ucb::XCommandEnvironment > xEnv;
-        ::ucbhelper::Content aTargetContent( m_aURL, xEnv, comphelper::getProcessComponentContext() );
+        ::ucbhelper::Content aTargetContent( GetURL(), xEnv, comphelper::getProcessComponentContext() );
 
         LockFileEntry aNewEntry = GenerateOwnEntry();
 
@@ -193,8 +138,7 @@ bool DocumentLockFile::OverwriteOwnLockFile()
     return true;
 }
 
-
-void DocumentLockFile::RemoveFile()
+void GenDocumentLockFile::RemoveFile()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
@@ -202,21 +146,75 @@ void DocumentLockFile::RemoveFile()
     LockFileEntry aNewEntry = GenerateOwnEntry();
     LockFileEntry aFileData = GetLockData();
 
-    if ( !aFileData[LockFileComponent::SYSUSERNAME].equals( aNewEntry[LockFileComponent::SYSUSERNAME] )
-      || !aFileData[LockFileComponent::LOCALHOST].equals( aNewEntry[LockFileComponent::LOCALHOST] )
-      || !aFileData[LockFileComponent::USERURL].equals( aNewEntry[LockFileComponent::USERURL] ) )
+    if ( aFileData[LockFileComponent::SYSUSERNAME] != aNewEntry[LockFileComponent::SYSUSERNAME]
+      || aFileData[LockFileComponent::LOCALHOST] != aNewEntry[LockFileComponent::LOCALHOST]
+      || aFileData[LockFileComponent::USERURL] != aNewEntry[LockFileComponent::USERURL] )
         throw io::IOException(); // not the owner, access denied
 
     RemoveFileDirectly();
 }
 
-void DocumentLockFile::RemoveFileDirectly()
+void GenDocumentLockFile::RemoveFileDirectly()
 {
     uno::Reference < css::ucb::XCommandEnvironment > xEnv;
-    ::ucbhelper::Content aCnt(m_aURL, xEnv, comphelper::getProcessComponentContext());
+    ::ucbhelper::Content aCnt(GetURL(), xEnv, comphelper::getProcessComponentContext());
     aCnt.executeCommand("delete",
         uno::makeAny(true));
 }
+
+
+DocumentLockFile::DocumentLockFile( const OUString& aOrigURL )
+    : GenDocumentLockFile(GenerateOwnLockFileURL(aOrigURL, ".~lock."))
+{
+}
+
+
+DocumentLockFile::~DocumentLockFile()
+{
+}
+
+
+void DocumentLockFile::WriteEntryToStream( const LockFileEntry& aEntry, const uno::Reference< io::XOutputStream >& xOutput )
+{
+    ::osl::MutexGuard aGuard( m_aMutex );
+
+    OUStringBuffer aBuffer(256);
+
+    for ( LockFileComponent lft : o3tl::enumrange<LockFileComponent>() )
+    {
+        aBuffer.append( EscapeCharacters( aEntry[lft] ) );
+        if ( lft < LockFileComponent::LAST )
+            aBuffer.append( ',' );
+        else
+            aBuffer.append( ';' );
+    }
+
+    OString aStringData( OUStringToOString( aBuffer.makeStringAndClear(), RTL_TEXTENCODING_UTF8 ) );
+    uno::Sequence< sal_Int8 > aData( reinterpret_cast<sal_Int8 const *>(aStringData.getStr()), aStringData.getLength() );
+    xOutput->writeBytes( aData );
+}
+
+LockFileEntry DocumentLockFile::GetLockData()
+{
+    ::osl::MutexGuard aGuard( m_aMutex );
+
+    uno::Reference< io::XInputStream > xInput = OpenStream();
+    if ( !xInput.is() )
+        throw uno::RuntimeException();
+
+    const sal_Int32 nBufLen = 32000;
+    uno::Sequence< sal_Int8 > aBuffer( nBufLen );
+
+    sal_Int32 nRead = xInput->readBytes( aBuffer, nBufLen );
+    xInput->closeInput();
+
+    if ( nRead == nBufLen )
+        throw io::WrongFormatException();
+
+    sal_Int32 nCurPos = 0;
+    return ParseEntry( aBuffer, nCurPos );
+}
+
 
 
 

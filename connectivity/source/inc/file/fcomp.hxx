@@ -19,9 +19,7 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FCOMP_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FCOMP_HXX
 
-#include "file/fcode.hxx"
-#include "file/filedllapi.hxx"
-#include <list>
+#include <file/fcode.hxx>
 
 namespace connectivity
 {
@@ -31,9 +29,9 @@ namespace connectivity
         class OCode;
         class OOperand;
         class OSQLAnalyzer;
-        typedef std::vector<OCode*> OCodeList;
+        typedef std::vector<std::unique_ptr<OCode>> OCodeList;
 
-        class OPredicateCompiler : public ::salhelper::SimpleReferenceObject
+        class OPredicateCompiler final : public ::salhelper::SimpleReferenceObject
         {
             friend class OPredicateInterpreter;
             friend class OSQLAnalyzer;
@@ -41,54 +39,44 @@ namespace connectivity
             OCodeList                               m_aCodeList;
             css::uno::Reference< css::container::XNameAccess> m_orgColumns; // in filecurs this are the filecolumns
             OSQLAnalyzer*                           m_pAnalyzer;
-            css::uno::Reference< css::container::XNameAccess> m_xIndexes;
             sal_Int32                               m_nParamCounter;
-            bool                                    m_bORCondition;
         public:
             OPredicateCompiler(OSQLAnalyzer* pAnalyzer);
 
             virtual ~OPredicateCompiler() override;
 
-            static void * SAL_CALL operator new( size_t nSize )
-                { return ::rtl_allocateMemory( nSize ); }
-            static void * SAL_CALL operator new( size_t /*nSize*/,void* _pHint )
-                { return _pHint; }
-            static void SAL_CALL operator delete( void * pMem )
-                { ::rtl_freeMemory( pMem ); }
-            static void SAL_CALL operator delete( void * /*pMem*/,void* /*_pHint*/ )
-                {  }
             void dispose();
 
-            void start(connectivity::OSQLParseNode* pSQLParseNode);
-            OOperand* execute(connectivity::OSQLParseNode* pPredicateNode);
+            void start(connectivity::OSQLParseNode const * pSQLParseNode);
+            OOperand* execute(connectivity::OSQLParseNode const * pPredicateNode);
 
             void Clean();
             bool isClean() const {return m_aCodeList.empty();}
             bool hasCode() const {return !isClean();}
             void  setOrigColumns(const css::uno::Reference< css::container::XNameAccess>& rCols) { m_orgColumns = rCols; }
             const css::uno::Reference< css::container::XNameAccess>& getOrigColumns() const { return m_orgColumns; }
-        protected:
+        private:
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            void execute_COMPARE(connectivity::OSQLParseNode* pPredicateNode);
+            void execute_COMPARE(connectivity::OSQLParseNode const * pPredicateNode);
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            void execute_LIKE(connectivity::OSQLParseNode* pPredicateNode);
+            void execute_LIKE(connectivity::OSQLParseNode const * pPredicateNode);
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            void execute_BETWEEN(connectivity::OSQLParseNode* pPredicateNode);
+            void execute_BETWEEN(connectivity::OSQLParseNode const * pPredicateNode);
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            void execute_ISNULL(connectivity::OSQLParseNode* pPredicateNode);
+            void execute_ISNULL(connectivity::OSQLParseNode const * pPredicateNode);
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            OOperand* execute_Operand(connectivity::OSQLParseNode* pPredicateNode);
+            OOperand* execute_Operand(connectivity::OSQLParseNode const * pPredicateNode);
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            void execute_Fold(OSQLParseNode* pPredicateNode);
+            void execute_Fold(OSQLParseNode const * pPredicateNode);
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            void executeFunction(OSQLParseNode* pPredicateNode);
+            void executeFunction(OSQLParseNode const * pPredicateNode);
         };
 
 
@@ -103,14 +91,14 @@ namespace connectivity
             virtual ~OPredicateInterpreter() override;
 
             bool        evaluate(OCodeList& rCodeList);
-            void        evaluateSelection(OCodeList& rCodeList,ORowSetValueDecoratorRef& _rVal);
+            void        evaluateSelection(OCodeList& rCodeList, ORowSetValueDecoratorRef const & _rVal);
 
             bool start()
             {
                 return evaluate(m_rCompiler->m_aCodeList);
             }
 
-            void startSelection(ORowSetValueDecoratorRef& _rVal)
+            void startSelection(ORowSetValueDecoratorRef const & _rVal)
             {
                 evaluateSelection(m_rCompiler->m_aCodeList,_rVal);
             }

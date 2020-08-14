@@ -18,25 +18,27 @@
  */
 
 #include <memory>
-#include "lotattr.hxx"
+#include <lotattr.hxx>
 
+#include <editeng/borderline.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/brushitem.hxx>
+#include <editeng/colritem.hxx>
 #include <editeng/justifyitem.hxx>
-#include <svx/algitem.hxx>
+#include <sal/log.hxx>
 
-#include "attrib.hxx"
-#include "docpool.hxx"
-#include "document.hxx"
-#include "lotfntbf.hxx"
-#include "patattr.hxx"
-#include "root.hxx"
-#include "scitems.hxx"
+#include <docpool.hxx>
+#include <document.hxx>
+#include <lotfntbf.hxx>
+#include "lotfilter.hxx"
+#include <patattr.hxx>
+#include <root.hxx>
+#include <scitems.hxx>
 
 using namespace ::com::sun::star;
 
-LotAttrCache::ENTRY::ENTRY (ScPatternAttr* p)
-    : pPattAttr(p)
+LotAttrCache::ENTRY::ENTRY (std::unique_ptr<ScPatternAttr> p)
+    : pPattAttr(std::move(p))
     , nHash0(0)
 {
 }
@@ -45,41 +47,33 @@ LotAttrCache::ENTRY::~ENTRY ()
 {
 }
 
-LotAttrCache::LotAttrCache (LOTUS_ROOT* pLotRoot)
-    : mpLotusRoot(pLotRoot)
+LotAttrCache::LotAttrCache (LotusContext& rContext)
+    : mrContext(rContext)
 {
-    pDocPool = mpLotusRoot->pDoc->GetPool();
+    pDocPool = rContext.pDoc->GetPool();
 
-    pColTab = new Color [ 8 ];
-    pColTab[ 0 ] = Color( COL_WHITE );
-    pColTab[ 1 ] = Color( COL_LIGHTBLUE );
-    pColTab[ 2 ] = Color( COL_LIGHTGREEN );
-    pColTab[ 3 ] = Color( COL_LIGHTCYAN );
-    pColTab[ 4 ] = Color( COL_LIGHTRED );
-    pColTab[ 5 ] = Color( COL_LIGHTMAGENTA );
-    pColTab[ 6 ] = Color( COL_YELLOW );
-    pColTab[ 7 ] = Color( COL_BLACK );
+    pColTab.reset( new Color [ 8 ] );
+    pColTab[ 0 ] = COL_WHITE;
+    pColTab[ 1 ] = COL_LIGHTBLUE;
+    pColTab[ 2 ] = COL_LIGHTGREEN;
+    pColTab[ 3 ] = COL_LIGHTCYAN;
+    pColTab[ 4 ] = COL_LIGHTRED;
+    pColTab[ 5 ] = COL_LIGHTMAGENTA;
+    pColTab[ 6 ] = COL_YELLOW;
+    pColTab[ 7 ] = COL_BLACK;
 
-    ppColorItems[ 0 ] = new SvxColorItem( GetColor( 1 ), ATTR_FONT_COLOR );     // 1
-    ppColorItems[ 1 ] = new SvxColorItem( GetColor( 2 ), ATTR_FONT_COLOR );
-    ppColorItems[ 2 ] = new SvxColorItem( GetColor( 3 ), ATTR_FONT_COLOR );
-    ppColorItems[ 3 ] = new SvxColorItem( GetColor( 4 ), ATTR_FONT_COLOR );
-    ppColorItems[ 4 ] = new SvxColorItem( GetColor( 5 ), ATTR_FONT_COLOR );
-    ppColorItems[ 5 ] = new SvxColorItem( GetColor( 6 ), ATTR_FONT_COLOR );     // 6
+    ppColorItems[ 0 ].reset( new SvxColorItem( GetColor( 1 ), ATTR_FONT_COLOR ) );     // 1
+    ppColorItems[ 1 ].reset( new SvxColorItem( GetColor( 2 ), ATTR_FONT_COLOR ) );
+    ppColorItems[ 2 ].reset( new SvxColorItem( GetColor( 3 ), ATTR_FONT_COLOR ) );
+    ppColorItems[ 3 ].reset( new SvxColorItem( GetColor( 4 ), ATTR_FONT_COLOR ) );
+    ppColorItems[ 4 ].reset( new SvxColorItem( GetColor( 5 ), ATTR_FONT_COLOR ) );
+    ppColorItems[ 5 ].reset( new SvxColorItem( GetColor( 6 ), ATTR_FONT_COLOR ) );     // 6
 
-    pBlack = new SvxColorItem( Color( COL_BLACK ), ATTR_FONT_COLOR );
-    pWhite = new SvxColorItem( Color( COL_WHITE ), ATTR_FONT_COLOR );
+    pWhite.reset( new SvxColorItem( COL_WHITE, ATTR_FONT_COLOR ) );
 }
 
 LotAttrCache::~LotAttrCache()
 {
-    for(SvxColorItem* p : ppColorItems)
-        delete p;
-
-    delete pBlack;
-    delete pWhite;
-
-    delete[] pColTab;
 }
 
 const ScPatternAttr& LotAttrCache::GetPattAttr( const LotAttrWK3& rAttr )
@@ -98,11 +92,11 @@ const ScPatternAttr& LotAttrCache::GetPattAttr( const LotAttrWK3& rAttr )
     ScPatternAttr*  pNewPatt = new ScPatternAttr(pDocPool);
 
     SfxItemSet&     rItemSet = pNewPatt->GetItemSet();
-    ENTRY *pAkt = new ENTRY( pNewPatt );
+    ENTRY *pCurrent = new ENTRY( std::unique_ptr<ScPatternAttr>(pNewPatt) );
 
-    pAkt->nHash0 = nRefHash;
+    pCurrent->nHash0 = nRefHash;
 
-    mpLotusRoot->maFontBuff.Fill( rAttr.nFont, rItemSet );
+    mrContext.maFontBuff.Fill( rAttr.nFont, rItemSet );
 
     sal_uInt8 nLine = rAttr.nLineStyle;
     if( nLine )
@@ -146,7 +140,7 @@ const ScPatternAttr& LotAttrCache::GetPattAttr( const LotAttrWK3& rAttr )
         rItemSet.Put( aHorJustify );
     }
 
-    aEntries.push_back(std::unique_ptr<ENTRY>(pAkt));
+    aEntries.push_back(std::unique_ptr<ENTRY>(pCurrent));
 
     return *pNewPatt;
 }
@@ -171,8 +165,8 @@ void LotAttrCache::LotusToScBorderLine( sal_uInt8 nLine, ::editeng::SvxBorderLin
 
 const SvxColorItem& LotAttrCache::GetColorItem( const sal_uInt8 nLotIndex ) const
 {
-    OSL_ENSURE( nLotIndex > 0 && nLotIndex < 7,
-        "-LotAttrCache::GetColorItem(): caller hast to check index!" );
+    // *LotAttrCache::GetColorItem(): caller has to check index!
+    assert( nLotIndex > 0 && nLotIndex < 7 );
 
     return *ppColorItems[ nLotIndex - 1 ];
 }
@@ -180,16 +174,17 @@ const SvxColorItem& LotAttrCache::GetColorItem( const sal_uInt8 nLotIndex ) cons
 const Color& LotAttrCache::GetColor( const sal_uInt8 nLotIndex ) const
 {
     // color <-> index fits background, but not for fonts (0 <-> 7)!
-    OSL_ENSURE( nLotIndex < 8, "*LotAttrCache::GetColor(): Index > 7, caller hast to check index!" );
+    // *LotAttrCache::GetColor(): Index > 7, caller hast to check index!"
+    assert( nLotIndex < 8 );
 
     return pColTab[ nLotIndex ];
 }
 
-void LotAttrCol::SetAttr( const SCROW nRow, const ScPatternAttr& rAttr )
+void LotAttrCol::SetAttr( const ScDocument* pDoc, const SCROW nRow, const ScPatternAttr& rAttr )
 {
     // Actually with the current implementation of MAXROWCOUNT>=64k and nRow
-    // being read as sal_uInt16 there's no chance that nRow would be invalid..
-    OSL_ENSURE( ValidRow(nRow), "*LotAttrCol::SetAttr(): ... and failed?!" );
+    // being read as sal_uInt16 there's no chance that nRow would be invalid...
+    SAL_WARN_IF( !pDoc->ValidRow(nRow), "sc.filter", "*LotAttrCol::SetAttr(): ... and failed?!" );
 
     std::vector<std::unique_ptr<ENTRY> >::reverse_iterator iterLast = aEntries.rbegin();
 
@@ -199,42 +194,41 @@ void LotAttrCol::SetAttr( const SCROW nRow, const ScPatternAttr& rAttr )
             (*iterLast)->nLastRow = nRow;
         else
         {
-            ENTRY *pAkt = new ENTRY;
+            ENTRY *pCurrent = new ENTRY;
 
-            pAkt->pPattAttr = &rAttr;
-            pAkt->nFirstRow = pAkt->nLastRow = nRow;
+            pCurrent->pPattAttr = &rAttr;
+            pCurrent->nFirstRow = pCurrent->nLastRow = nRow;
 
-            aEntries.push_back(std::unique_ptr<ENTRY>(pAkt));
+            aEntries.push_back(std::unique_ptr<ENTRY>(pCurrent));
         }
     }
     else
     {   // first entry
-        ENTRY *pAkt = new ENTRY;
-        pAkt->pPattAttr = &rAttr;
-        pAkt->nFirstRow = pAkt->nLastRow = nRow;
+        ENTRY *pCurrent = new ENTRY;
+        pCurrent->pPattAttr = &rAttr;
+        pCurrent->nFirstRow = pCurrent->nLastRow = nRow;
 
-        aEntries.push_back(std::unique_ptr<ENTRY>(pAkt));
+        aEntries.push_back(std::unique_ptr<ENTRY>(pCurrent));
     }
 }
 
-void LotAttrCol::Apply(LOTUS_ROOT* pLotusRoot, const SCCOL nColNum, const SCTAB nTabNum)
+void LotAttrCol::Apply(LotusContext& rContext, const SCCOL nColNum, const SCTAB nTabNum)
 {
-    ScDocument*     pDoc = pLotusRoot->pDoc;
+    ScDocument*     pDoc = rContext.pDoc;
 
-    std::vector<std::unique_ptr<ENTRY> >::iterator iter;
-    for (iter = aEntries.begin(); iter != aEntries.end(); ++iter)
+    for (const auto& rxEntry : aEntries)
     {
-        pDoc->ApplyPatternAreaTab(nColNum, (*iter)->nFirstRow, nColNum, (*iter)->nLastRow,
-                                  nTabNum, *((*iter)->pPattAttr));
+        pDoc->ApplyPatternAreaTab(nColNum, rxEntry->nFirstRow, nColNum, rxEntry->nLastRow,
+                                  nTabNum, *(rxEntry->pPattAttr));
     }
 }
 
-LotAttrTable::LotAttrTable(LOTUS_ROOT* pLotRoot):
-    aAttrCache(pLotRoot)
+LotAttrTable::LotAttrTable(LotusContext& rContext):
+    aAttrCache(rContext)
 {
 }
 
-void LotAttrTable::SetAttr( const SCCOL nColFirst, const SCCOL nColLast, const SCROW nRow,
+void LotAttrTable::SetAttr( LotusContext& rContext, const SCCOL nColFirst, const SCCOL nColLast, const SCROW nRow,
                             const LotAttrWK3& rAttr )
 {
     // With the current implementation of MAXCOLCOUNT>=1024 and nColFirst and
@@ -244,14 +238,14 @@ void LotAttrTable::SetAttr( const SCCOL nColFirst, const SCCOL nColLast, const S
     SCCOL nColCnt;
 
     for( nColCnt = nColFirst ; nColCnt <= nColLast ; nColCnt++ )
-        pCols[ nColCnt ].SetAttr( nRow, rPattAttr );
+        pCols[ nColCnt ].SetAttr( rContext.pDoc, nRow, rPattAttr );
 }
 
-void LotAttrTable::Apply(LOTUS_ROOT* pLotusRoot, const SCTAB nTabNum)
+void LotAttrTable::Apply(LotusContext& rContext, const SCTAB nTabNum)
 {
     SCCOL nColCnt;
-    for( nColCnt = 0 ; nColCnt <= MAXCOL ; nColCnt++ )
-        pCols[ nColCnt ].Apply(pLotusRoot, nColCnt, nTabNum);     // does a Clear() at end
+    for( nColCnt = 0 ; nColCnt <= aAttrCache.mrContext.pDoc->MaxCol() ; nColCnt++ )
+        pCols[ nColCnt ].Apply(rContext, nColCnt, nTabNum);     // does a Clear() at end
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

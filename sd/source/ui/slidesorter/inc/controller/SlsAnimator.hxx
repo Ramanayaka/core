@@ -20,19 +20,19 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSANIMATOR_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSANIMATOR_HXX
 
-#include "SlideSorter.hxx"
-#include "view/SlideSorterView.hxx"
+#include <view/SlideSorterView.hxx>
 #include <canvas/elapsedtime.hxx>
-#include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
 #include <sal/types.h>
-
-#include <memory>
+#include <o3tl/deleter.hxx>
 
 #include <functional>
+#include <memory>
 #include <vector>
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter { class SlideSorter; }
+
+namespace sd::slidesorter::controller {
 
 /** Experimental class for simple eye candy animations.
 */
@@ -96,7 +96,7 @@ private:
     AnimationList maAnimations;
     ::canvas::tools::ElapsedTime maElapsedTime;
 
-    std::unique_ptr<view::SlideSorterView::DrawLock> mpDrawLock;
+    std::unique_ptr<view::SlideSorterView::DrawLock, o3tl::default_delete<view::SlideSorterView::DrawLock>> mpDrawLock;
 
     AnimationId mnNextAnimationId;
 
@@ -104,7 +104,7 @@ private:
 
     /** Execute one step of every active animation.
         @param nTime
-            Time measured in milli seconds with some arbitrary reference point.
+            Time measured in milliseconds with some arbitrary reference point.
         @return
             When one or more animation has finished then <TRUE/> is
             returned.  Call CleanUpAnimationList() in this case.
@@ -118,7 +118,7 @@ private:
     void RequestNextFrame();
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

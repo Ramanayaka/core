@@ -33,6 +33,7 @@ using namespace ::com::sun::star::uno;
 namespace sfx2
 {
 
+namespace {
 
 class SvLinkSourceTimer : public Timer
 {
@@ -42,6 +43,8 @@ public:
     explicit SvLinkSourceTimer( SvLinkSource * pOwn );
 };
 
+}
+
 SvLinkSourceTimer::SvLinkSourceTimer( SvLinkSource * pOwn )
     : pOwner( pOwn )
 {
@@ -50,12 +53,12 @@ SvLinkSourceTimer::SvLinkSourceTimer( SvLinkSource * pOwn )
 void SvLinkSourceTimer::Invoke()
 {
     // Secure against being destroyed in Handler
-    SvLinkSourceRef aAdv( pOwner );
+    SvLinkSourceRef xHoldAlive( pOwner );
     pOwner->SendDataChanged();
 }
 
 static void StartTimer( std::unique_ptr<SvLinkSourceTimer>& pTimer, SvLinkSource * pOwner,
-                        sal_uIntPtr nTimeout )
+                        sal_uInt64 nTimeout )
 {
     if( !pTimer )
     {
@@ -65,6 +68,7 @@ static void StartTimer( std::unique_ptr<SvLinkSourceTimer>& pTimer, SvLinkSource
     }
 }
 
+namespace {
 
 struct SvLinkSource_Entry_Impl
 {
@@ -86,70 +90,65 @@ struct SvLinkSource_Entry_Impl
 
 class SvLinkSource_Array_Impl
 {
+friend class SvLinkSource_EntryIter_Impl;
 private:
-    std::vector<SvLinkSource_Entry_Impl*> mvData;
+    std::vector<std::unique_ptr<SvLinkSource_Entry_Impl>> mvData;
 
 public:
     SvLinkSource_Array_Impl() : mvData() {}
 
     size_t size() const { return mvData.size(); }
-    SvLinkSource_Entry_Impl *operator[](size_t idx) const { return mvData[idx]; }
-    std::vector<SvLinkSource_Entry_Impl*>::const_iterator cbegin() const { return mvData.cbegin(); }
-    std::vector<SvLinkSource_Entry_Impl*>::const_iterator cend() const { return mvData.cend(); }
-    void clear() { mvData.clear(); }
-    void push_back(SvLinkSource_Entry_Impl* rData) { mvData.push_back(rData); }
+    SvLinkSource_Entry_Impl *operator[](size_t idx) const { return mvData[idx].get(); }
+    void push_back(SvLinkSource_Entry_Impl* rData) { mvData.emplace_back(rData); }
 
-    void DeleteAndDestroy(SvLinkSource_Entry_Impl* p)
+    void DeleteAndDestroy(SvLinkSource_Entry_Impl const * p)
     {
-        std::vector<SvLinkSource_Entry_Impl*>::iterator it = std::find(mvData.begin(), mvData.end(), p);
+        auto it = std::find_if(mvData.begin(), mvData.end(),
+            [&p](const std::unique_ptr<SvLinkSource_Entry_Impl>& rxData) { return rxData.get() == p; });
         if (it != mvData.end())
-        {
             mvData.erase(it);
-            delete p;
-        }
-    }
-
-    ~SvLinkSource_Array_Impl()
-    {
-        for(std::vector<SvLinkSource_Entry_Impl*>::const_iterator it = mvData.begin(); it != mvData.end(); ++it)
-            delete *it;
     }
 };
 
 class SvLinkSource_EntryIter_Impl
 {
-    SvLinkSource_Array_Impl aArr;
+    std::vector<SvLinkSource_Entry_Impl*> aArr;
     const SvLinkSource_Array_Impl& rOrigArr;
     sal_uInt16 nPos;
 public:
     explicit SvLinkSource_EntryIter_Impl( const SvLinkSource_Array_Impl& rArr );
-    ~SvLinkSource_EntryIter_Impl();
     SvLinkSource_Entry_Impl* Curr()
                             { return nPos < aArr.size() ? aArr[ nPos ] : nullptr; }
     SvLinkSource_Entry_Impl* Next();
-    bool IsValidCurrValue( SvLinkSource_Entry_Impl* pEntry );
+    bool IsValidCurrValue( SvLinkSource_Entry_Impl const * pEntry );
 };
+
+}
 
 SvLinkSource_EntryIter_Impl::SvLinkSource_EntryIter_Impl(
         const SvLinkSource_Array_Impl& rArr )
-    : aArr( rArr ), rOrigArr( rArr ), nPos( 0 )
+    : rOrigArr( rArr ), nPos( 0 )
 {
-}
-SvLinkSource_EntryIter_Impl::~SvLinkSource_EntryIter_Impl()
-{
-    aArr.clear();
+    for (auto const & i : rArr.mvData)
+        aArr.push_back(i.get());
 }
 
-bool SvLinkSource_EntryIter_Impl::IsValidCurrValue( SvLinkSource_Entry_Impl* pEntry )
+bool SvLinkSource_EntryIter_Impl::IsValidCurrValue( SvLinkSource_Entry_Impl const * pEntry )
 {
-    return ( nPos < aArr.size() && aArr[nPos] == pEntry
-       && std::find( rOrigArr.cbegin(), rOrigArr.cend(), pEntry ) != rOrigArr.cend() );
+    if ( nPos >= aArr.size() )
+        return false;
+    if (aArr[nPos] != pEntry)
+        return false;
+    for (auto const & i : rOrigArr.mvData)
+        if (i.get() == pEntry)
+            return true;
+    return false;
 }
 
 SvLinkSource_Entry_Impl* SvLinkSource_EntryIter_Impl::Next()
 {
     SvLinkSource_Entry_Impl* pRet = nullptr;
-    if( nPos + 1 < (sal_uInt16)aArr.size() )
+    if( nPos + 1 < static_cast<sal_uInt16>(aArr.size()) )
     {
         ++nPos;
         if( rOrigArr.size() == aArr.size() &&
@@ -160,8 +159,9 @@ SvLinkSource_Entry_Impl* SvLinkSource_EntryIter_Impl::Next()
             // then we must search the current (or the next) in the orig
             do {
                 pRet = aArr[ nPos ];
-                if( std::find(rOrigArr.cbegin(), rOrigArr.cend(), pRet ) != rOrigArr.cend() )
-                    break;
+                for (auto const & i : rOrigArr.mvData)
+                    if (i.get() == pRet)
+                        return pRet;
                 pRet = nullptr;
                 ++nPos;
             } while( nPos < aArr.size() );
@@ -179,14 +179,13 @@ struct SvLinkSource_Impl
     OUString                aDataMimeType;
     std::unique_ptr<SvLinkSourceTimer>
                             pTimer;
-    sal_uIntPtr             nTimeout;
+    sal_uInt64              nTimeout;
     css::uno::Reference<css::io::XInputStream>
                             m_xInputStreamToLoadFrom;
     bool                    m_bIsReadOnly;
 
     SvLinkSource_Impl()
-        : pTimer(nullptr)
-        , nTimeout(3000)
+        : nTimeout(3000)
         , m_bIsReadOnly(false)
     {
     }
@@ -229,12 +228,12 @@ void  SvLinkSource::Closed()
             p->xSink->Closed();
 }
 
-sal_uIntPtr SvLinkSource::GetUpdateTimeout() const
+sal_uInt64 SvLinkSource::GetUpdateTimeout() const
 {
     return pImpl->nTimeout;
 }
 
-void SvLinkSource::SetUpdateTimeout( sal_uIntPtr nTimeout )
+void SvLinkSource::SetUpdateTimeout( sal_uInt64 nTimeout )
 {
     pImpl->nTimeout = nTimeout;
     if( pImpl->pTimer )
@@ -347,7 +346,7 @@ void SvLinkSource::AddDataAdvise( SvBaseLink * pLink, const OUString& rMimeType,
     pImpl->aArr.push_back( pNew );
 }
 
-void SvLinkSource::RemoveAllDataAdvise( SvBaseLink * pLink )
+void SvLinkSource::RemoveAllDataAdvise( SvBaseLink const * pLink )
 {
     SvLinkSource_EntryIter_Impl aIter( pImpl->aArr );
     for( SvLinkSource_Entry_Impl* p = aIter.Curr(); p; p = aIter.Next() )
@@ -364,7 +363,7 @@ void SvLinkSource::AddConnectAdvise( SvBaseLink * pLink )
     pImpl->aArr.push_back( pNew );
 }
 
-void SvLinkSource::RemoveConnectAdvise( SvBaseLink * pLink )
+void SvLinkSource::RemoveConnectAdvise( SvBaseLink const * pLink )
 {
     SvLinkSource_EntryIter_Impl aIter( pImpl->aArr );
     for( SvLinkSource_Entry_Impl* p = aIter.Curr(); p; p = aIter.Next() )
@@ -408,7 +407,7 @@ bool SvLinkSource::GetData( css::uno::Any &, const OUString &, bool )
     return false;
 }
 
-void SvLinkSource::Edit( vcl::Window *, SvBaseLink *, const Link<const OUString&, void>& )
+void SvLinkSource::Edit(weld::Window *, SvBaseLink *, const Link<const OUString&, void>&)
 {
 }
 

@@ -22,8 +22,6 @@
 #include <svl/poolitem.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxHyphenZoneItem -----------------------------------------------
 
 /*  [Description]
@@ -32,10 +30,11 @@ class SvXMLUnitConverter;
     characters at the end of the line and start).
 */
 
-class EDITENG_DLLPUBLIC SvxHyphenZoneItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxHyphenZoneItem final : public SfxPoolItem
 {
     bool      bHyphen  : 1;
     bool      bPageEnd : 1;
+    bool      bNoCapsHyphenation : 1;
     sal_uInt8 nMinLead;
     sal_uInt8 nMinTrail;
     sal_uInt8 nMaxHyphens;
@@ -54,17 +53,18 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion ) const override;
+    virtual SvxHyphenZoneItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     void SetHyphen( const bool bNew ) { bHyphen = bNew; }
     bool IsHyphen() const { return bHyphen; }
 
     void SetPageEnd( const bool bNew ) { bPageEnd = bNew; }
     bool IsPageEnd() const { return bPageEnd; }
+
+    void SetNoCapsHyphenation( const bool bNew ) { bNoCapsHyphenation = bNew; }
+    bool IsNoCapsHyphenation() const { return bNoCapsHyphenation; }
 
     sal_uInt8 &GetMinLead() { return nMinLead; }
     sal_uInt8 GetMinLead() const { return nMinLead; }
@@ -74,16 +74,6 @@ public:
 
     sal_uInt8 &GetMaxHyphens() { return nMaxHyphens; }
     sal_uInt8 GetMaxHyphens() const { return nMaxHyphens; }
-
-    SvxHyphenZoneItem &operator=( const SvxHyphenZoneItem &rNew )
-    {
-        bHyphen = rNew.IsHyphen();
-        bPageEnd = rNew.IsPageEnd();
-        nMinLead = rNew.GetMinLead();
-        nMinTrail = rNew.GetMinTrail();
-        nMaxHyphens = rNew.GetMaxHyphens();
-        return *this;
-    }
 };
 
 #endif

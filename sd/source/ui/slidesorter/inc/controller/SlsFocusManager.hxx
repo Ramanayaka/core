@@ -26,11 +26,9 @@
 #include <tools/link.hxx>
 #include <vector>
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter { class SlideSorter; }
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 /** This class manages the focus of the slide sorter.  There is the focus
     page which is or is not focused.  Initialized to point to the first page
@@ -115,7 +113,7 @@ public:
             One of the page descriptors that are currently managed by the
             SlideSorterModel.
     */
-    void SetFocusedPage (const model::SharedPageDescriptor& rDescriptor);
+    bool SetFocusedPage (const model::SharedPageDescriptor& rDescriptor);
 
     /** Set the focused page to the one described by the given page
         index.  The visibility of the focus indicator is not modified.
@@ -124,9 +122,9 @@ public:
     */
     void SetFocusedPage (sal_Int32 nPageIndex);
 
-    void SetFocusedPageToCurrentPage();
+    bool SetFocusedPageToCurrentPage();
 
-    /** Return <TRUE/> when the focus inidcator is currently shown.  A
+    /** Return <TRUE/> when the focus indicator is currently shown.  A
         prerequisite is that the window managed by this focus manager has
         the input focus as indicated by a <TRUE/> return value of
         HasFocus().  It is not necessary that the focus indicator is
@@ -158,7 +156,7 @@ public:
     {
     public:
         FocusHider (FocusManager&);
-        ~FocusHider();
+        ~FocusHider() COVERITY_NOEXCEPT_FALSE;
     private:
         bool mbFocusVisible;
         FocusManager& mrManager;
@@ -206,7 +204,7 @@ private:
     void NotifyFocusChangeListeners() const;
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

@@ -22,13 +22,10 @@
 #include <com/sun/star/container/XIndexReplace.hpp>
 #include <sax/tools/converter.hxx>
 #include "XMLIndexTemplateContext.hxx"
-#include "XMLIndexTitleTemplateContext.hxx"
-#include "XMLIndexTOCStylesContext.hxx"
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <rtl/ustring.hxx>
 
@@ -129,14 +126,13 @@ void XMLIndexTOCSourceContext::EndElement()
     rIndexPropertySet->setPropertyValue("CreateFromOutline", css::uno::Any(bUseOutline));
     rIndexPropertySet->setPropertyValue("CreateFromLevelParagraphStyles", css::uno::Any(bUseParagraphStyles));
 
-    rIndexPropertySet->setPropertyValue("Level", css::uno::Any((sal_Int16)nOutlineLevel));
+    rIndexPropertySet->setPropertyValue("Level", css::uno::Any(static_cast<sal_Int16>(nOutlineLevel)));
 
     // process common attributes
     XMLIndexSourceBaseContext::EndElement();
 }
 
-
-SvXMLImportContext* XMLIndexTOCSourceContext::CreateChildContext(
+SvXMLImportContextRef XMLIndexTOCSourceContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList> & xAttrList )

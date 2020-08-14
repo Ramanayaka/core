@@ -23,6 +23,9 @@
 
 #include <basegfx/polygon/b3dpolypolygon.hxx>
 
+class E3dScene;
+namespace chart { class DrawViewWrapper; }
+
 namespace chart
 {
 
@@ -44,13 +47,15 @@ public:
         );
     virtual ~DragMethod_RotateDiagram() override;
 
-    virtual void TakeSdrDragComment(OUString& rStr) const override;
+    virtual OUString GetSdrDragComment() const override;
 
     virtual bool BeginSdrDrag() override;
     virtual void MoveSdrDrag(const Point& rPnt) override;
     virtual bool EndSdrDrag(bool bCopy) override;
 
-    virtual void CreateOverlayGeometry(sdr::overlay::OverlayManager& rOverlayManager) override;
+    virtual void CreateOverlayGeometry(
+        sdr::overlay::OverlayManager& rOverlayManager,
+        const sdr::contact::ObjectContact& rObjectContact) override;
 
 private:
     E3dScene*   m_pScene;

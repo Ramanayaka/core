@@ -30,8 +30,6 @@
 #include <svl/lstner.hxx>
 #include <svx/xit.hxx>
 
-#include <svx/xdef.hxx>
-
 class SdrModel;
 class SfxItemPool;
 class SfxItemSet;
@@ -48,13 +46,13 @@ private:
 
     ItemPoolVector maItemSetVector;
 
-    void SAL_CALL ImplInsertByName( const OUString& aName, const css::uno::Any& aElement );
+    void ImplInsertByName( const OUString& aName, const css::uno::Any& aElement );
 
 public:
     SvxUnoNameItemTable( SdrModel* pModel, sal_uInt16 nWhich, sal_uInt8 nMemberId ) throw();
     virtual ~SvxUnoNameItemTable() throw() override;
 
-    virtual NameOrIndex* createItem() const throw() = 0;
+    virtual NameOrIndex* createItem() const = 0;
     virtual bool isValid( const NameOrIndex* pItem ) const;
 
     void dispose();

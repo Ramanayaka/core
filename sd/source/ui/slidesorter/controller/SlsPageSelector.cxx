@@ -17,26 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "controller/SlsPageSelector.hxx"
+#include <controller/SlsPageSelector.hxx>
 
-#include "SlideSorter.hxx"
-#include "SlideSorterViewShell.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsSelectionManager.hxx"
-#include "controller/SlsAnimator.hxx"
-#include "controller/SlsCurrentSlideManager.hxx"
-#include "controller/SlsVisibleAreaManager.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "model/SlsPageEnumerationProvider.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "view/SlideSorterView.hxx"
+#include <SlideSorter.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsSelectionManager.hxx>
+#include <controller/SlsCurrentSlideManager.hxx>
+#include <controller/SlsVisibleAreaManager.hxx>
+#include <model/SlsPageDescriptor.hxx>
+#include <model/SlsPageEnumerationProvider.hxx>
+#include <model/SlideSorterModel.hxx>
+#include <view/SlideSorterView.hxx>
 
-#include "sdpage.hxx"
-#include "ViewShell.hxx"
-#include "DrawViewShell.hxx"
-#include "ViewShellBase.hxx"
-#include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <sdpage.hxx>
+#include <tools/debug.hxx>
 #include <memory>
 
 using namespace ::com::sun::star;
@@ -44,7 +38,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::sd::slidesorter::model;
 using namespace ::sd::slidesorter::view;
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 PageSelector::PageSelector (SlideSorter& rSlideSorter)
     : mrModel(rSlideSorter.GetModel()),
@@ -131,7 +125,7 @@ void PageSelector::SetCoreSelection()
 void PageSelector::SelectPage (int nPageIndex)
 {
     SharedPageDescriptor pDescriptor (mrModel.GetPageDescriptor(nPageIndex));
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
         SelectPage(pDescriptor);
 }
 
@@ -139,37 +133,37 @@ void PageSelector::SelectPage (const SdPage* pPage)
 {
     const sal_Int32 nPageIndex (mrModel.GetIndex(pPage));
     SharedPageDescriptor pDescriptor (mrModel.GetPageDescriptor(nPageIndex));
-    if (pDescriptor.get()!=nullptr && pDescriptor->GetPage()==pPage)
+    if (pDescriptor && pDescriptor->GetPage()==pPage)
         SelectPage(pDescriptor);
 }
 
 void PageSelector::SelectPage (const SharedPageDescriptor& rpDescriptor)
 {
-    if (rpDescriptor.get()!=nullptr
-        && mrSlideSorter.GetView().SetState(rpDescriptor, PageDescriptor::ST_Selected, true))
-    {
-        ++mnSelectedPageCount;
-        mrSlideSorter.GetController().GetVisibleAreaManager().RequestVisible(rpDescriptor,true);
-        mrSlideSorter.GetView().RequestRepaint(rpDescriptor);
+    if (!rpDescriptor
+        || !mrSlideSorter.GetView().SetState(rpDescriptor, PageDescriptor::ST_Selected, true))
+        return;
 
-        mpMostRecentlySelectedPage = rpDescriptor;
-        if (mpSelectionAnchor == nullptr)
-            mpSelectionAnchor = rpDescriptor;
+    ++mnSelectedPageCount;
+    mrSlideSorter.GetController().GetVisibleAreaManager().RequestVisible(rpDescriptor,true);
+    mrSlideSorter.GetView().RequestRepaint(rpDescriptor);
 
-        if (mnBroadcastDisableLevel > 0)
-            mbSelectionChangeBroadcastPending = true;
-        else
-            mrController.GetSelectionManager()->SelectionHasChanged();
-        UpdateCurrentPage();
+    mpMostRecentlySelectedPage = rpDescriptor;
+    if (mpSelectionAnchor == nullptr)
+        mpSelectionAnchor = rpDescriptor;
 
-        CheckConsistency();
-    }
+    if (mnBroadcastDisableLevel > 0)
+        mbSelectionChangeBroadcastPending = true;
+    else
+        mrController.GetSelectionManager()->SelectionHasChanged();
+    UpdateCurrentPage();
+
+    CheckConsistency();
 }
 
 void PageSelector::DeselectPage (int nPageIndex)
 {
     model::SharedPageDescriptor pDescriptor (mrModel.GetPageDescriptor(nPageIndex));
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
         DeselectPage(pDescriptor);
 }
 
@@ -177,23 +171,23 @@ void PageSelector::DeselectPage (
     const SharedPageDescriptor& rpDescriptor,
     const bool bUpdateCurrentPage)
 {
-    if (rpDescriptor.get()!=nullptr
-        && mrSlideSorter.GetView().SetState(rpDescriptor, PageDescriptor::ST_Selected, false))
-    {
-        --mnSelectedPageCount;
-        mrSlideSorter.GetController().GetVisibleAreaManager().RequestVisible(rpDescriptor);
-        mrSlideSorter.GetView().RequestRepaint(rpDescriptor);
-        if (mpMostRecentlySelectedPage == rpDescriptor)
-            mpMostRecentlySelectedPage.reset();
-        if (mnBroadcastDisableLevel > 0)
-            mbSelectionChangeBroadcastPending = true;
-        else
-            mrController.GetSelectionManager()->SelectionHasChanged();
-        if (bUpdateCurrentPage)
-            UpdateCurrentPage();
+    if (!rpDescriptor
+        || !mrSlideSorter.GetView().SetState(rpDescriptor, PageDescriptor::ST_Selected, false))
+        return;
 
-        CheckConsistency();
-    }
+    --mnSelectedPageCount;
+    mrSlideSorter.GetController().GetVisibleAreaManager().RequestVisible(rpDescriptor);
+    mrSlideSorter.GetView().RequestRepaint(rpDescriptor);
+    if (mpMostRecentlySelectedPage == rpDescriptor)
+        mpMostRecentlySelectedPage.reset();
+    if (mnBroadcastDisableLevel > 0)
+        mbSelectionChangeBroadcastPending = true;
+    else
+        mrController.GetSelectionManager()->SelectionHasChanged();
+    if (bUpdateCurrentPage)
+        UpdateCurrentPage();
+
+    CheckConsistency();
 }
 
 void PageSelector::CheckConsistency() const
@@ -216,11 +210,20 @@ void PageSelector::CheckConsistency() const
     }
 }
 
-bool PageSelector::IsPageSelected (int nPageIndex)
+bool PageSelector::IsPageSelected(int nPageIndex)
 {
     SharedPageDescriptor pDescriptor (mrModel.GetPageDescriptor(nPageIndex));
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
         return pDescriptor->HasState(PageDescriptor::ST_Selected);
+    else
+        return false;
+}
+
+bool PageSelector::IsPageVisible(int nPageIndex)
+{
+    SharedPageDescriptor pDescriptor (mrModel.GetPageDescriptor(nPageIndex));
+    if (pDescriptor)
+        return pDescriptor->HasState(PageDescriptor::ST_Visible);
     else
         return false;
 }
@@ -260,14 +263,14 @@ void PageSelector::DisableBroadcasting()
 
 std::shared_ptr<PageSelector::PageSelection> PageSelector::GetPageSelection() const
 {
-    std::shared_ptr<PageSelection> pSelection (new PageSelection);
+    auto pSelection = std::make_shared<PageSelection>();
     pSelection->reserve(GetSelectedPageCount());
 
     int nPageCount = GetPageCount();
     for (int nIndex=0; nIndex<nPageCount; nIndex++)
     {
         SharedPageDescriptor pDescriptor (mrModel.GetPageDescriptor(nIndex));
-        if (pDescriptor.get()!=nullptr && pDescriptor->HasState(PageDescriptor::ST_Selected))
+        if (pDescriptor && pDescriptor->HasState(PageDescriptor::ST_Selected))
             pSelection->push_back(pDescriptor->GetPage());
     }
 
@@ -278,9 +281,8 @@ void PageSelector::SetPageSelection (
     const std::shared_ptr<PageSelection>& rpSelection,
     const bool bUpdateCurrentPage)
 {
-    PageSelection::const_iterator iPage;
-    for (iPage=rpSelection->begin(); iPage!=rpSelection->end(); ++iPage)
-        SelectPage(*iPage);
+    for (const auto& rpPage : *rpSelection)
+        SelectPage(rpPage);
     if (bUpdateCurrentPage)
         UpdateCurrentPage();
 }
@@ -313,25 +315,25 @@ void PageSelector::UpdateCurrentPage (const bool bUpdateOnlyWhenPending)
         }
     }
 
-    if (pCurrentPageDescriptor)
-    {
-        // Switching the current slide normally sets also the
-        // selection to just the new current slide.  To prevent that,
-        // we store (and at the end of this scope restore) the current
-        // selection.
-        std::shared_ptr<PageSelection> pSelection (GetPageSelection());
+    if (!pCurrentPageDescriptor)
+        return;
 
-        mrController.GetCurrentSlideManager()->SwitchCurrentSlide(pCurrentPageDescriptor);
+    // Switching the current slide normally sets also the
+    // selection to just the new current slide.  To prevent that,
+    // we store (and at the end of this scope restore) the current
+    // selection.
+    std::shared_ptr<PageSelection> pSelection (GetPageSelection());
 
-        // Restore the selection and prevent a recursive call to
-        // UpdateCurrentPage().
-        SetPageSelection(pSelection, false);
-    }
+    mrController.GetCurrentSlideManager()->SwitchCurrentSlide(pCurrentPageDescriptor);
+
+    // Restore the selection and prevent a recursive call to
+    // UpdateCurrentPage().
+    SetPageSelection(pSelection, false);
 }
 
 //===== PageSelector::UpdateLock ==============================================
 
-PageSelector::UpdateLock::UpdateLock (SlideSorter& rSlideSorter)
+PageSelector::UpdateLock::UpdateLock (SlideSorter const & rSlideSorter)
     : mpSelector(&rSlideSorter.GetController().GetPageSelector())
 {
     ++mpSelector->mnUpdateLockCount;
@@ -363,7 +365,7 @@ void PageSelector::UpdateLock::Release()
 
 //===== PageSelector::BroadcastLock ==============================================
 
-PageSelector::BroadcastLock::BroadcastLock (SlideSorter& rSlideSorter)
+PageSelector::BroadcastLock::BroadcastLock (SlideSorter const & rSlideSorter)
     : mrSelector(rSlideSorter.GetController().GetPageSelector())
 {
     mrSelector.DisableBroadcasting();
@@ -380,6 +382,6 @@ PageSelector::BroadcastLock::~BroadcastLock()
     mrSelector.EnableBroadcasting();
 }
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

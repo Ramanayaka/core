@@ -22,31 +22,27 @@
 
 #include <vcl/window.hxx>
 
-#include <tools/resid.hxx>
-
-#include <com/sun/star/awt/PosSize.hpp>
 #include <dbaccess/dataview.hxx>
 #include <unotools/eventlisteneradapter.hxx>
+#include "dbtreelistbox.hxx"
 
-namespace com { namespace sun { namespace star { namespace awt {
+namespace com::sun::star::awt {
     class XControl;
     class XControlContainer;
     class XControlModel;
-}}}}
+}
 
 class Splitter;
 
 namespace dbaui
 {
-    class DBTreeView;
     class SbaGridControl;
 
-    class UnoDataBrowserView : public ODataView, public ::utl::OEventListenerAdapter
+    class UnoDataBrowserView final : public ODataView, public ::utl::OEventListenerAdapter
     {
-    protected:
         css::uno::Reference< css::awt::XControl >                 m_xGrid;            // our grid's UNO representation
         css::uno::Reference< css::awt::XControlContainer >        m_xMe;              // our own UNO representation
-        VclPtr<DBTreeView>             m_pTreeView;
+        VclPtr<InterimDBTreeListBox>   m_pTreeView;
         VclPtr<Splitter>               m_pSplitter;
         mutable VclPtr<SbaGridControl> m_pVclControl;  // our grid's VCL representation
         VclPtr<vcl::Window>            m_pStatus;
@@ -57,7 +53,6 @@ namespace dbaui
         const css::uno::Reference< css::awt::XControl >&  getGridControl() const  { return m_xGrid; }
         SbaGridControl*         getVclControl() const;
 
-    public:
         UnoDataBrowserView( vcl::Window* pParent,
                             IController& _rController,
                             const css::uno::Reference< css::uno::XComponentContext >& );
@@ -73,27 +68,25 @@ namespace dbaui
         sal_uInt16 View2ModelPos(sal_uInt16 nPos) const;
         /// for the same reason the view column count isn't the same as the model column count
 
-        void setSplitter(Splitter* _pSplitter);
-        void setTreeView(DBTreeView* _pTreeView);
+        void setSplitter(Splitter* pSplitter);
+        void setTreeView(InterimDBTreeListBox* pTreeView);
 
         void    showStatus( const OUString& _rStatus );
         void    hideStatus();
 
-        const css::uno::Reference< css::awt::XControlContainer >& getContainer() { return m_xMe; }
+        const css::uno::Reference< css::awt::XControlContainer >& getContainer() const { return m_xMe; }
 
-    protected:
+    private:
         virtual bool PreNotify( NotifyEvent& rNEvt ) override;
         virtual void GetFocus() override;
         virtual void resizeDocumentView(tools::Rectangle& rRect) override;
         virtual void _disposing( const css::lang::EventObject& _rSource ) override;
 
-    private:
         using ODataView::Construct;
     };
 
-    class BrowserViewStatusDisplay
+    class BrowserViewStatusDisplay final
     {
-    protected:
         VclPtr<UnoDataBrowserView>     m_pView;
 
     public:

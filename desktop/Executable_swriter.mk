@@ -11,10 +11,6 @@ $(eval $(call gb_Executable_Executable,swriter))
 
 $(eval $(call gb_Executable_set_targettype_gui,swriter,YES))
 
-$(eval $(call gb_Executable_add_defs,swriter,\
-    -DUNICODE \
-))
-
 $(eval $(call gb_Executable_add_ldflags,swriter,\
     /ENTRY:wWinMainCRTStartup \
 ))
@@ -28,5 +24,7 @@ $(eval $(call gb_Executable_add_exception_objects,swriter,\
 ))
 
 $(eval $(call gb_Executable_add_nativeres,swriter,swriter/launcher))
+
+$(eval $(call gb_Executable_add_default_nativeres,swriter,$(PRODUCTNAME) Writer))
 
 # vim: set ts=4 sw=4 et:

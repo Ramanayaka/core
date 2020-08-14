@@ -17,15 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "cache/SlsPageCacheManager.hxx"
+#include <cache/SlsPageCacheManager.hxx>
 
 #include "SlsBitmapCache.hxx"
-#include "view/SlideSorterView.hxx"
-#include "model/SlideSorterModel.hxx"
 
 #include <deque>
 #include <map>
 #include <memory>
+#include <unordered_map>
 
 namespace {
 
@@ -61,11 +60,11 @@ class RecentlyUsedCacheDescriptor
 {
 public:
     Size maPreviewSize;
-    std::shared_ptr< ::sd::slidesorter::cache::PageCacheManager::Cache> mpCache;
+    std::shared_ptr< ::sd::slidesorter::cache::BitmapCache> mpCache;
 
     RecentlyUsedCacheDescriptor(
         const Size& rPreviewSize,
-        const std::shared_ptr< ::sd::slidesorter::cache::PageCacheManager::Cache>& rpCache)
+        const std::shared_ptr< ::sd::slidesorter::cache::BitmapCache>& rpCache)
         :maPreviewSize(rPreviewSize),mpCache(rpCache)
     {}
 };
@@ -89,10 +88,10 @@ public:
     bool operator()(const ::sd::slidesorter::cache::PageCacheManager::BestFittingPageCaches::value_type& rElement1,
         const ::sd::slidesorter::cache::PageCacheManager::BestFittingPageCaches::value_type& rElement2)
     {
-        if (rElement1.first == maPreferredSize)
-            return true;
-        else if (rElement2.first == maPreferredSize)
+        if (rElement2.first == maPreferredSize)
             return false;
+        else if (rElement1.first == maPreferredSize)
+            return true;
         else
             return (rElement1.first.Width()*rElement1.first.Height()
                 > rElement2.first.Width()*rElement2.first.Height());
@@ -104,13 +103,13 @@ private:
 
 } // end of anonymous namespace
 
-namespace sd { namespace slidesorter { namespace cache {
+namespace sd::slidesorter::cache {
 
 /** Container for the active caches.
 */
 class PageCacheManager::PageCacheContainer
     : public std::unordered_map<CacheDescriptor,
-                             std::shared_ptr<PageCacheManager::Cache>,
+                             std::shared_ptr<BitmapCache>,
                              CacheDescriptor::Hash,
                              CacheDescriptor::Equal>
 {
@@ -121,12 +120,12 @@ public:
         address only.
     */
     class CompareWithCache { public:
-        explicit CompareWithCache(const std::shared_ptr<PageCacheManager::Cache>& rpCache)
+        explicit CompareWithCache(const std::shared_ptr<BitmapCache>& rpCache)
             : mpCache(rpCache) {}
         bool operator () (const PageCacheContainer::value_type& rValue) const
         { return rValue.second == mpCache; }
     private:
-        std::shared_ptr<PageCacheManager::Cache> mpCache;
+        std::shared_ptr<BitmapCache> mpCache;
     };
 };
 
@@ -137,7 +136,6 @@ class PageCacheManager::RecentlyUsedPageCaches
 public:
     typedef DocumentKey                                 key_type;
     typedef RecentlyUsedQueue                           mapped_type;
-    typedef std::pair<const key_type,mapped_type>       value_type;
     typedef std::map<key_type,mapped_type>::iterator    iterator;
 private:
     std::map<key_type,mapped_type> maMap;
@@ -147,7 +145,8 @@ public:
     iterator end() { return maMap.end(); }
     void clear() { maMap.clear(); }
     iterator find(const key_type& key) { return maMap.find(key); }
-    std::pair<iterator,bool> insert(const value_type& value) { return maMap.insert(value); }
+    template<class... Args>
+    std::pair<iterator,bool> emplace(Args&&... args) { return maMap.emplace(std::forward<Args>(args)...); }
 };
 
 class PageCacheManager::Deleter
@@ -167,7 +166,7 @@ std::shared_ptr<PageCacheManager> PageCacheManager::Instance()
     ::osl::MutexGuard aGuard (::osl::Mutex::getGlobalMutex());
 
     pInstance = mpInstance.lock();
-    if (pInstance.get() == nullptr)
+    if (pInstance == nullptr)
     {
         pInstance = std::shared_ptr<PageCacheManager>(
             new PageCacheManager(),
@@ -188,11 +187,11 @@ PageCacheManager::~PageCacheManager()
 {
 }
 
-std::shared_ptr<PageCacheManager::Cache> PageCacheManager::GetCache (
+std::shared_ptr<BitmapCache> PageCacheManager::GetCache (
     const DocumentKey& pDocument,
     const Size& rPreviewSize)
 {
-    std::shared_ptr<Cache> pResult;
+    std::shared_ptr<BitmapCache> pResult;
 
     // Look for the cache in the list of active caches.
     CacheDescriptor aKey (pDocument, rPreviewSize);
@@ -201,12 +200,12 @@ std::shared_ptr<PageCacheManager::Cache> PageCacheManager::GetCache (
         pResult = iCache->second;
 
     // Look for the cache in the list of recently used caches.
-    if (pResult.get() == nullptr)
+    if (pResult == nullptr)
         pResult = GetRecentlyUsedCache(pDocument, rPreviewSize);
 
     // Create the cache when no suitable one does exist.
-    if (pResult.get() == nullptr)
-        pResult.reset(new Cache());
+    if (pResult == nullptr)
+        pResult = std::make_shared<BitmapCache>();
 
     // The cache may be newly created and thus empty or is old and may
     // contain previews that are not up-to-date.  Recycle previews from
@@ -214,48 +213,44 @@ std::shared_ptr<PageCacheManager::Cache> PageCacheManager::GetCache (
     Recycle(pResult, pDocument,rPreviewSize);
 
     // Put the new (or old) cache into the container.
-    if (pResult.get() != nullptr)
-        mpPageCaches->insert(PageCacheContainer::value_type(aKey, pResult));
+    mpPageCaches->emplace(aKey, pResult);
 
     return pResult;
 }
 
 void PageCacheManager::Recycle (
-    const std::shared_ptr<Cache>& rpCache,
+    const std::shared_ptr<BitmapCache>& rpCache,
     const DocumentKey& pDocument,
     const Size& rPreviewSize)
 {
     BestFittingPageCaches aCaches;
 
     // Add bitmap caches from active caches.
-    PageCacheContainer::iterator iActiveCache;
-    for (iActiveCache=mpPageCaches->begin(); iActiveCache!=mpPageCaches->end(); ++iActiveCache)
+    for (auto& rActiveCache : *mpPageCaches)
     {
-        if (iActiveCache->first.mpDocument == pDocument)
-            aCaches.push_back(BestFittingPageCaches::value_type(
-                iActiveCache->first.maPreviewSize, iActiveCache->second));
+        if (rActiveCache.first.mpDocument == pDocument)
+            aCaches.emplace_back(
+                rActiveCache.first.maPreviewSize, rActiveCache.second);
     }
 
     // Add bitmap caches from recently used caches.
     RecentlyUsedPageCaches::iterator iQueue (mpRecentlyUsedPageCaches->find(pDocument));
     if (iQueue != mpRecentlyUsedPageCaches->end())
     {
-        RecentlyUsedQueue::const_iterator iRecentCache;
-        for (iRecentCache=iQueue->second.begin();iRecentCache!=iQueue->second.end();++iRecentCache)
-            aCaches.push_back(BestFittingPageCaches::value_type(
-                iRecentCache->maPreviewSize, iRecentCache->mpCache));
+        for (const auto& rRecentCache : iQueue->second)
+            aCaches.emplace_back(
+                rRecentCache.maPreviewSize, rRecentCache.mpCache);
     }
 
     ::std::sort(aCaches.begin(), aCaches.end(), BestFittingCacheComparer(rPreviewSize));
 
-    BestFittingPageCaches::const_iterator iBestCache;
-    for (iBestCache=aCaches.begin(); iBestCache!=aCaches.end(); ++iBestCache)
+    for (const auto& rBestCache : aCaches)
     {
-        rpCache->Recycle(*iBestCache->second);
+        rpCache->Recycle(*rBestCache.second);
     }
 }
 
-void PageCacheManager::ReleaseCache (const std::shared_ptr<Cache>& rpCache)
+void PageCacheManager::ReleaseCache (const std::shared_ptr<BitmapCache>& rpCache)
 {
     PageCacheContainer::iterator iCache (::std::find_if(
         mpPageCaches->begin(),
@@ -272,14 +267,14 @@ void PageCacheManager::ReleaseCache (const std::shared_ptr<Cache>& rpCache)
     }
 }
 
-std::shared_ptr<PageCacheManager::Cache> PageCacheManager::ChangeSize (
-    const std::shared_ptr<Cache>& rpCache,
+std::shared_ptr<BitmapCache> PageCacheManager::ChangeSize (
+    const std::shared_ptr<BitmapCache>& rpCache,
     const Size&,
     const Size& rNewPreviewSize)
 {
-    std::shared_ptr<Cache> pResult;
+    std::shared_ptr<BitmapCache> pResult;
 
-    if (rpCache.get() != nullptr)
+    if (rpCache != nullptr)
     {
         // Look up the given cache in the list of active caches.
         PageCacheContainer::iterator iCacheToChange (::std::find_if(
@@ -296,9 +291,9 @@ std::shared_ptr<PageCacheManager::Cache> PageCacheManager::ChangeSize (
             const ::sd::slidesorter::cache::PageCacheManager::DocumentKey aKey (
                 iCacheToChange->first.mpDocument);
             mpPageCaches->erase(iCacheToChange);
-            mpPageCaches->insert(PageCacheContainer::value_type(
+            mpPageCaches->emplace(
                 CacheDescriptor(aKey,rNewPreviewSize),
-                rpCache));
+                rpCache);
 
             pResult = rpCache;
         }
@@ -321,19 +316,17 @@ bool PageCacheManager::InvalidatePreviewBitmap (
     {
         // Iterate over all caches that are currently in use and invalidate
         // the previews in those that belong to the document.
-        PageCacheContainer::iterator iCache;
-        for (iCache=mpPageCaches->begin(); iCache!=mpPageCaches->end();  ++iCache)
-            if (iCache->first.mpDocument == pDocument)
-                bHasChanged |= iCache->second->InvalidateBitmap(pKey);
+        for (auto& rCache : *mpPageCaches)
+            if (rCache.first.mpDocument == pDocument)
+                bHasChanged |= rCache.second->InvalidateBitmap(pKey);
 
         // Invalidate the previews in the recently used caches belonging to
         // the given document.
         RecentlyUsedPageCaches::iterator iQueue (mpRecentlyUsedPageCaches->find(pDocument));
         if (iQueue != mpRecentlyUsedPageCaches->end())
         {
-            RecentlyUsedQueue::const_iterator iCache2;
-            for (iCache2=iQueue->second.begin(); iCache2!=iQueue->second.end(); ++iCache2)
-                bHasChanged |= iCache2->mpCache->InvalidateBitmap(pKey);
+            for (const auto& rCache2 : iQueue->second)
+                bHasChanged |= rCache2.mpCache->InvalidateBitmap(pKey);
         }
     }
 
@@ -347,19 +340,17 @@ void PageCacheManager::InvalidateAllPreviewBitmaps (const DocumentKey& pDocument
 
     // Iterate over all caches that are currently in use and invalidate the
     // previews in those that belong to the document.
-    PageCacheContainer::iterator iCache;
-    for (iCache=mpPageCaches->begin(); iCache!=mpPageCaches->end();  ++iCache)
-        if (iCache->first.mpDocument == pDocument)
-            iCache->second->InvalidateCache();
+    for (auto& rCache : *mpPageCaches)
+        if (rCache.first.mpDocument == pDocument)
+            rCache.second->InvalidateCache();
 
     // Invalidate the previews in the recently used caches belonging to the
     // given document.
     RecentlyUsedPageCaches::iterator iQueue (mpRecentlyUsedPageCaches->find(pDocument));
     if (iQueue != mpRecentlyUsedPageCaches->end())
     {
-        RecentlyUsedQueue::const_iterator iCache2;
-        for (iCache2=iQueue->second.begin(); iCache2!=iQueue->second.end(); ++iCache2)
-            iCache2->mpCache->InvalidateCache();
+        for (const auto& rCache2 : iQueue->second)
+            rCache2.mpCache->InvalidateCache();
     }
 }
 
@@ -367,9 +358,8 @@ void PageCacheManager::InvalidateAllCaches()
 {
     // Iterate over all caches that are currently in use and invalidate
     // them.
-    PageCacheContainer::iterator iCache;
-    for (iCache=mpPageCaches->begin(); iCache!=mpPageCaches->end();  ++iCache)
-        iCache->second->InvalidateCache();
+    for (auto& rCache : *mpPageCaches)
+        rCache.second->InvalidateCache();
 
     // Remove all recently used caches, there is not much sense in storing
     // invalidated and unused caches.
@@ -378,29 +368,27 @@ void PageCacheManager::InvalidateAllCaches()
 
 void PageCacheManager::ReleasePreviewBitmap (const SdrPage* pPage)
 {
-    PageCacheContainer::iterator iCache;
-    for (iCache=mpPageCaches->begin(); iCache!=mpPageCaches->end(); ++iCache)
-        iCache->second->ReleaseBitmap(pPage);
+    for (auto& rCache : *mpPageCaches)
+        rCache.second->ReleaseBitmap(pPage);
 }
 
-std::shared_ptr<PageCacheManager::Cache> PageCacheManager::GetRecentlyUsedCache (
+std::shared_ptr<BitmapCache> PageCacheManager::GetRecentlyUsedCache (
     const DocumentKey& pDocument,
     const Size& rPreviewSize)
 {
-    std::shared_ptr<Cache> pCache;
+    std::shared_ptr<BitmapCache> pCache;
 
     // Look for the cache in the list of recently used caches.
     RecentlyUsedPageCaches::iterator iQueue (mpRecentlyUsedPageCaches->find(pDocument));
     if (iQueue != mpRecentlyUsedPageCaches->end())
     {
-        RecentlyUsedQueue::iterator iCache;
-        for (iCache=iQueue->second.begin(); iCache!= iQueue->second.end(); ++iCache)
-            if (iCache->maPreviewSize == rPreviewSize)
-            {
-                pCache = iCache->mpCache;
-                iQueue->second.erase(iCache);
-                break;
-            }
+        RecentlyUsedQueue::iterator iCache = std::find_if(iQueue->second.begin(), iQueue->second.end(),
+            [&rPreviewSize](const RecentlyUsedCacheDescriptor& rCache) { return rCache.maPreviewSize == rPreviewSize; });
+        if (iCache != iQueue->second.end())
+        {
+            pCache = iCache->mpCache;
+            iQueue->second.erase(iCache);
+        }
     }
 
     return pCache;
@@ -409,13 +397,13 @@ std::shared_ptr<PageCacheManager::Cache> PageCacheManager::GetRecentlyUsedCache 
 void PageCacheManager::PutRecentlyUsedCache(
     DocumentKey const & pDocument,
     const Size& rPreviewSize,
-    const std::shared_ptr<Cache>& rpCache)
+    const std::shared_ptr<BitmapCache>& rpCache)
 {
     // Look up the list of recently used caches for the given document.
     RecentlyUsedPageCaches::iterator iQueue (mpRecentlyUsedPageCaches->find(pDocument));
     if (iQueue == mpRecentlyUsedPageCaches->end())
-        iQueue = mpRecentlyUsedPageCaches->insert(
-            RecentlyUsedPageCaches::value_type(pDocument, RecentlyUsedQueue())
+        iQueue = mpRecentlyUsedPageCaches->emplace(
+            pDocument, RecentlyUsedQueue()
             ).first;
 
     if (iQueue != mpRecentlyUsedPageCaches->end())
@@ -427,6 +415,6 @@ void PageCacheManager::PutRecentlyUsedCache(
     }
 }
 
-} } } // end of namespace ::sd::slidesorter::cache
+} // end of namespace ::sd::slidesorter::cache
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

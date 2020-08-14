@@ -25,16 +25,14 @@
 
 // predefines
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpSdrFormTextOutlineAttribute;
     class LineAttribute;
     class StrokeAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class SdrFormTextOutlineAttribute
         {
@@ -53,7 +51,7 @@ namespace drawinglayer
             SdrFormTextOutlineAttribute();
             SdrFormTextOutlineAttribute(const SdrFormTextOutlineAttribute& rCandidate);
             SdrFormTextOutlineAttribute& operator=(const SdrFormTextOutlineAttribute& rCandidate);
-            SdrFormTextOutlineAttribute& operator=(SdrFormTextOutlineAttribute&& rCandidate);
+            SdrFormTextOutlineAttribute& operator=(SdrFormTextOutlineAttribute&& rCandidate) noexcept;
             ~SdrFormTextOutlineAttribute();
 
             // checks if the incarnation is default constructed
@@ -67,8 +65,8 @@ namespace drawinglayer
             const StrokeAttribute& getStrokeAttribute() const;
             sal_uInt8 getTransparence() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif // INCLUDED_SVX_INC_SDR_ATTRIBUTE_SDRFORMTEXTOUTLINEATTRIBUTE_HXX

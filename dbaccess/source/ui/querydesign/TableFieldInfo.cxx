@@ -20,12 +20,10 @@
 #include "TableFieldInfo.hxx"
 
 using namespace dbaui;
-// class OTableFieldInfo
 
 OTableFieldInfo::OTableFieldInfo()  :
-    m_eDataType(1000)
+    m_eFieldType(TAB_NORMAL_FIELD), m_eDataType(1000)
 {
-    m_eFieldType = TAB_NORMAL_FIELD;
 }
 
 OTableFieldInfo::~OTableFieldInfo()

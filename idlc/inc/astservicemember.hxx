@@ -19,9 +19,9 @@
 #ifndef INCLUDED_IDLC_INC_ASTSERVICEMEMBER_HXX
 #define INCLUDED_IDLC_INC_ASTSERVICEMEMBER_HXX
 
-#include <astservice.hxx>
+#include "astservice.hxx"
 
-class AstServiceMember : public AstDeclaration
+class AstServiceMember final : public AstDeclaration
 {
 public:
     AstServiceMember(const sal_uInt32 flags, AstService* pRealService,
@@ -33,7 +33,7 @@ public:
 
     AstService* getRealService()
         { return m_pRealService; }
-    bool isOptional()
+    bool isOptional() const
         { return ((m_flags & AF_OPTIONAL) == AF_OPTIONAL); }
 private:
     const sal_uInt32    m_flags;

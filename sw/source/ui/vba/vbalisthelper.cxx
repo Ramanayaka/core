@@ -17,7 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include "vbalisthelper.hxx"
-#include <tools/diagnose_ex.h>
+#include <vbahelper/vbahelper.hxx>
+#include <sal/log.hxx>
 #include <ooo/vba/word/WdListGalleryType.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
@@ -28,23 +29,23 @@
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
-static const sal_Int32 LIST_LEVEL_COUNT = 9;
+const sal_Int32 LIST_LEVEL_COUNT = 9;
 
-static const char UNO_NAME_PARENT_NUMBERING[] = "ParentNumbering";
-static const char UNO_NAME_PREFIX[] = "Prefix";
-static const char UNO_NAME_SUFFIX[] = "Suffix";
-static const char UNO_NAME_CHAR_STYLE_NAME[] = "CharStyleName";
-static const char UNO_NAME_NUMBERING_TYPE[] = "NumberingType";
-static const char UNO_NAME_BULLET_CHAR[] = "BulletChar";
+const char UNO_NAME_PARENT_NUMBERING[] = "ParentNumbering";
+const char UNO_NAME_PREFIX[] = "Prefix";
+const char UNO_NAME_SUFFIX[] = "Suffix";
+const char UNO_NAME_CHAR_STYLE_NAME[] = "CharStyleName";
+const char UNO_NAME_NUMBERING_TYPE[] = "NumberingType";
+const char UNO_NAME_BULLET_CHAR[] = "BulletChar";
 
-static const sal_Int16 CHAR_CLOSED_DOT = 8226;
-static const sal_Int16 CHAR_EMPTY_DOT = 111;
-static const sal_Int16 CHAR_SQUARE = 9632;
-static const sal_Int16 CHAR_STAR_SYMBOL = 10026;
-static const sal_Int16 CHAR_FOUR_DIAMONDS = 10070;
-static const sal_Int16 CHAR_DIAMOND = 10022;
-static const sal_Int16 CHAR_ARROW = 10146;
-static const sal_Int16 CHAR_CHECK_MARK = 10003;
+const sal_Unicode CHAR_CLOSED_DOT[] = u"\u2022";
+const char CHAR_EMPTY_DOT[] = "o";
+const sal_Unicode CHAR_SQUARE[] = u"\u2540";
+const sal_Unicode CHAR_STAR_SYMBOL[] = u"\u272A";
+const sal_Unicode CHAR_FOUR_DIAMONDS[] = u"\u2756";
+const sal_Unicode CHAR_DIAMOND[] = u"\u2726";
+const sal_Unicode CHAR_ARROW[] = u"\u27A2";
+const sal_Unicode CHAR_CHECK_MARK[] = u"\u2713";
 
 SwVbaListHelper::SwVbaListHelper( const css::uno::Reference< css::text::XTextDocument >& xTextDoc, sal_Int32 nGalleryType, sal_Int32 nTemplateType ) : mxTextDocument( xTextDoc ), mnGalleryType( nGalleryType ), mnTemplateType( nTemplateType )
 {
@@ -81,7 +82,7 @@ void SwVbaListHelper::Init()
     // get the numbering style
     uno::Reference< style::XStyleFamiliesSupplier > xStyleSupplier( mxTextDocument, uno::UNO_QUERY_THROW );
     mxStyleFamily.set( xStyleSupplier->getStyleFamilies()->getByName("NumberingStyles"), uno::UNO_QUERY_THROW );
-    SAL_INFO("sw", "numbering style name: " << msStyleName );
+    SAL_INFO("sw.vba", "numbering style name: " << msStyleName );
     if( mxStyleFamily->hasByName( msStyleName ) )
     {
         mxStyleProps.set( mxStyleFamily->getByName( msStyleName ), uno::UNO_QUERY_THROW );
@@ -142,37 +143,37 @@ void SwVbaListHelper::CreateBulletListTemplate()
     {
         case 1:
         {
-            aBulletChar = OUString( sal_Unicode( CHAR_CLOSED_DOT ) );
+            aBulletChar = CHAR_CLOSED_DOT;
             break;
         }
         case 2:
         {
-            aBulletChar = OUStringLiteral1(CHAR_EMPTY_DOT);
+            aBulletChar = CHAR_EMPTY_DOT;
             break;
         }
         case 3:
         {
-            aBulletChar = OUString( sal_Unicode( CHAR_SQUARE ) );
+            aBulletChar = CHAR_SQUARE;
             break;
         }
         case 4:
         {
-            aBulletChar = OUString( sal_Unicode( CHAR_STAR_SYMBOL ) );
+            aBulletChar = CHAR_STAR_SYMBOL;
             break;
         }
         case 5:
         {
-            aBulletChar = OUString( sal_Unicode( CHAR_FOUR_DIAMONDS ) );
+            aBulletChar = CHAR_FOUR_DIAMONDS;
             break;
         }
         case 6:
         {
-            aBulletChar = OUString( sal_Unicode( CHAR_ARROW ) );
+            aBulletChar = CHAR_ARROW;
             break;
         }
         case 7:
         {
-            aBulletChar = OUString( sal_Unicode( CHAR_CHECK_MARK ) );
+            aBulletChar = CHAR_CHECK_MARK;
             break;
         }
         default:
@@ -378,7 +379,7 @@ void SwVbaListHelper::CreateOutlineNumberForType1()
 void SwVbaListHelper::CreateOutlineNumberForType2()
 {
     sal_Int16 nParentNumbering = 0;
-    OUString sSuffix = OUString( '.' );
+    OUString sSuffix( '.' );
     uno::Sequence< beans::PropertyValue > aPropertyValues;
 
     for( sal_Int32 nLevel = 0; nLevel < LIST_LEVEL_COUNT; nLevel++ )
@@ -409,31 +410,31 @@ void SwVbaListHelper::CreateOutlineNumberForType3()
         {
             case 0:
             {
-                aBulletChar = OUString( sal_Unicode( CHAR_FOUR_DIAMONDS ) );
+                aBulletChar = CHAR_FOUR_DIAMONDS;
                 break;
             }
             case 1:
             case 5:
             {
-                aBulletChar = OUString( sal_Unicode( CHAR_ARROW ) );
+                aBulletChar = CHAR_ARROW;
                 break;
             }
             case 2:
             case 6:
             {
-                aBulletChar = OUString( sal_Unicode( CHAR_SQUARE ) );
+                aBulletChar = CHAR_SQUARE;
                 break;
             }
             case 3:
             case 7:
             {
-                aBulletChar = OUString( sal_Unicode( CHAR_CLOSED_DOT ) );
+                aBulletChar = CHAR_CLOSED_DOT;
                 break;
             }
             case 4:
             case 8:
             {
-                aBulletChar = OUString( sal_Unicode( CHAR_DIAMOND ) );
+                aBulletChar = CHAR_DIAMOND;
                 break;
             }
         }

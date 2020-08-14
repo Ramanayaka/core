@@ -46,24 +46,24 @@ void AttributesTest::test()
     CPPUNIT_ASSERT( xAttributeList->hasAttribute(1) );
     CPPUNIT_ASSERT( !xAttributeList->hasAttribute(3) );
 
-    CPPUNIT_ASSERT_EQUAL( xAttributeList->getOptionalValue(2), OUString("2") );
-    CPPUNIT_ASSERT_EQUAL( xAttributeList->getOptionalValue(3), OUString() );
+    CPPUNIT_ASSERT_EQUAL( OUString("2"), xAttributeList->getOptionalValue(2)  );
+    CPPUNIT_ASSERT_EQUAL( OUString(), xAttributeList->getOptionalValue(3) );
 
-    CPPUNIT_ASSERT_EQUAL( xAttributeList->getValue(1), OUString("1") );
+    CPPUNIT_ASSERT_EQUAL( OUString("1"), xAttributeList->getValue(1) );
     CPPUNIT_ASSERT_THROW( xAttributeList->getValue(3), xml::sax::SAXException );
 
     xAttributeList->addUnknown("a", "a");
     xAttributeList->addUnknown("b", "b", "b");
     xAttributeList->addUnknown("c", "c");
-    CPPUNIT_ASSERT_EQUAL( (sal_Int32) 3, xAttributeList->getUnknownAttributes().getLength() );
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(3), xAttributeList->getUnknownAttributes().getLength() );
 
-    CPPUNIT_ASSERT_EQUAL( (sal_Int32) 2, xAttributeList->getFastAttributes().getLength() );
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(2), xAttributeList->getFastAttributes().getLength() );
 
     xAttributeList->clear();
     CPPUNIT_ASSERT( !xAttributeList->hasAttribute(1) );
-    CPPUNIT_ASSERT_EQUAL( (sal_Int32) 0, xAttributeList->getFastAttributes().getLength() );
+    CPPUNIT_ASSERT( !xAttributeList->getFastAttributes().hasElements() );
     xAttributeList->addUnknown("c", "c");
-    CPPUNIT_ASSERT_EQUAL( (sal_Int32) 1, xAttributeList->getUnknownAttributes().getLength() );
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(1), xAttributeList->getUnknownAttributes().getLength() );
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION( AttributesTest );

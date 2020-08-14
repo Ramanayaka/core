@@ -17,40 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "model/SlsVisualState.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "controller/SlsAnimator.hxx"
+#include <model/SlsVisualState.hxx>
 
-namespace sd { namespace slidesorter { namespace model {
+namespace sd::slidesorter::model {
 
 VisualState::VisualState (const sal_Int32 nPageId)
     : mnPageId(nPageId),
-      meCurrentVisualState(VS_None),
       maLocationOffset(0,0)
 {
 }
 
 VisualState::~VisualState()
 {
-}
-
-void VisualState::SetVisualState (const State eState)
-{
-    meCurrentVisualState = eState;
-}
-
-void VisualState::UpdateVisualState (const PageDescriptor& rDescriptor)
-{
-    if (rDescriptor.HasState(PageDescriptor::ST_Excluded))
-        SetVisualState(VS_Excluded);
-    else if (rDescriptor.HasState(PageDescriptor::ST_Current))
-        SetVisualState(VS_Current);
-    else if (rDescriptor.HasState(PageDescriptor::ST_Focused))
-        SetVisualState(VS_Focused);
-    else if (rDescriptor.HasState(PageDescriptor::ST_Selected))
-        SetVisualState(VS_Selected);
-    else
-        SetVisualState(VS_None);
 }
 
 void VisualState::SetLocationOffset (const Point& rOffset)
@@ -61,6 +39,6 @@ void VisualState::SetLocationOffset (const Point& rOffset)
     }
 }
 
-} } } // end of namespace ::sd::slidesorter::model
+} // end of namespace ::sd::slidesorter::model
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

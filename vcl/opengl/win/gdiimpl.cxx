@@ -8,8 +8,11 @@
  */
 
 #include <memory>
-#include "opengl/win/gdiimpl.hxx"
+#include <thread>
+#include <opengl/win/gdiimpl.hxx>
+#include <vcl/opengl/OpenGLHelper.hxx>
 
+#include <sal/log.hxx>
 #include <comphelper/windowserrorstring.hxx>
 #include <opengl/zone.hxx>
 #include <win/wincomp.hxx>
@@ -17,10 +20,12 @@
 #include <win/salframe.h>
 #include <win/salinst.h>
 #include <epoxy/wgl.h>
-#include "ControlCacheKey.hxx"
+#include <ControlCacheKey.hxx>
 
 static std::vector<HGLRC> g_vShareList;
 static bool g_bAnyCurrent;
+
+namespace {
 
 class GLWinWindow : public GLWindow
 {
@@ -31,6 +36,8 @@ public:
     GLWinWindow();
 };
 
+}
+
 GLWinWindow::GLWinWindow()
     : hWnd(nullptr)
     , hDC(nullptr)
@@ -38,11 +45,13 @@ GLWinWindow::GLWinWindow()
 {
 }
 
+namespace {
+
 class WinOpenGLContext : public OpenGLContext
 {
 public:
     bool init( HDC hDC, HWND hWnd );
-    virtual bool initWindow() override;
+    virtual void initWindow() override;
 private:
     GLWinWindow m_aGLWin;
     virtual const GLWindow& getOpenGLWindow() const override { return m_aGLWin; }
@@ -55,6 +64,8 @@ private:
     virtual void resetCurrent() override;
     virtual void swapBuffers() override;
 };
+
+}
 
 void WinOpenGLContext::swapBuffers()
 {
@@ -75,11 +86,23 @@ void WinOpenGLContext::resetCurrent()
     g_bAnyCurrent = false;
 }
 
+static void ensureDispatchTable()
+{
+    thread_local bool bEpoxyDispatchMakeCurrentCalled = false;
+    if (!bEpoxyDispatchMakeCurrentCalled)
+    {
+        epoxy_handle_external_wglMakeCurrent();
+        bEpoxyDispatchMakeCurrentCalled = true;
+    }
+}
+
 bool WinOpenGLContext::isCurrent()
 {
     OpenGLZone aZone;
-    return g_bAnyCurrent && m_aGLWin.hRC && wglGetCurrentContext() == m_aGLWin.hRC &&
-           wglGetCurrentDC() == m_aGLWin.hDC;
+    if (!g_bAnyCurrent || !m_aGLWin.hRC)
+        return false;
+    ensureDispatchTable();
+    return wglGetCurrentContext() == m_aGLWin.hRC && wglGetCurrentDC() == m_aGLWin.hDC;
 }
 
 bool WinOpenGLContext::isAnyCurrent()
@@ -96,12 +119,14 @@ void WinOpenGLContext::makeCurrent()
 
     clearCurrent();
 
-    epoxy_handle_external_wglMakeCurrent();
+    ensureDispatchTable();
 
     if (!wglMakeCurrent(m_aGLWin.hDC, m_aGLWin.hRC))
     {
         g_bAnyCurrent = false;
-        SAL_WARN("vcl.opengl", "wglMakeCurrent failed: " << WindowsErrorString(GetLastError()));
+        DWORD nLastError = GetLastError();
+        if (nLastError != ERROR_SUCCESS)
+            SAL_WARN("vcl.opengl", "wglMakeCurrent failed: " << WindowsErrorString(nLastError));
         return;
     }
 
@@ -120,7 +145,7 @@ bool WinOpenGLContext::init(HDC hDC, HWND hWnd)
     return ImplInit();
 }
 
-bool WinOpenGLContext::initWindow()
+void WinOpenGLContext::initWindow()
 {
     if( !m_pChildWindow )
     {
@@ -136,7 +161,6 @@ bool WinOpenGLContext::initWindow()
     }
 
     m_aGLWin.hDC = GetDC(m_aGLWin.hWnd);
-    return true;
 }
 
 void WinOpenGLContext::destroyCurrentContext()
@@ -170,17 +194,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
     case WM_DESTROY:
         return 0;
     default:
-        return DefWindowProc(hwnd, message, wParam, lParam);
+        return DefWindowProcW(hwnd, message, wParam, lParam);
     }
 }
 
-bool InitTempWindow(HWND& hwnd, int width, int height, const PIXELFORMATDESCRIPTOR& inPfd, GLWinWindow& glWin)
+static bool InitTempWindow(HWND& hwnd, int width, int height, const PIXELFORMATDESCRIPTOR& inPfd, GLWinWindow& glWin)
 {
     OpenGLZone aZone;
 
     PIXELFORMATDESCRIPTOR  pfd = inPfd;
     int ret;
-    WNDCLASS wc;
+    WNDCLASSW wc;
     wc.style = 0;
     wc.lpfnWndProc = WndProc;
     wc.cbClsExtra = wc.cbWndExtra = 0;
@@ -189,9 +213,9 @@ bool InitTempWindow(HWND& hwnd, int width, int height, const PIXELFORMATDESCRIPT
     wc.hCursor = nullptr;
     wc.hbrBackground = nullptr;
     wc.lpszMenuName = nullptr;
-    wc.lpszClassName = "GLRenderer";
-    RegisterClass(&wc);
-    hwnd = CreateWindow(wc.lpszClassName, nullptr, WS_DISABLED, 0, 0, width, height, nullptr, nullptr, wc.hInstance, nullptr);
+    wc.lpszClassName = L"GLRenderer";
+    RegisterClassW(&wc);
+    hwnd = CreateWindowW(wc.lpszClassName, nullptr, WS_DISABLED, 0, 0, width, height, nullptr, nullptr, wc.hInstance, nullptr);
     glWin.hDC = GetDC(hwnd);
 
     int nPixelFormat = ChoosePixelFormat(glWin.hDC, &pfd);
@@ -230,7 +254,7 @@ bool InitTempWindow(HWND& hwnd, int width, int height, const PIXELFORMATDESCRIPT
     return true;
 }
 
-bool WGLisExtensionSupported(const char *extension)
+static bool WGLisExtensionSupported(const char *extension)
 {
     OpenGLZone aZone;
 
@@ -269,7 +293,7 @@ bool WGLisExtensionSupported(const char *extension)
     }
 }
 
-bool InitMultisample(const PIXELFORMATDESCRIPTOR& pfd, int& rPixelFormat,
+static bool InitMultisample(const PIXELFORMATDESCRIPTOR& pfd, int& rPixelFormat,
         bool bUseDoubleBufferedRendering, bool bRequestVirtualDevice)
 {
     OpenGLZone aZone;
@@ -409,6 +433,10 @@ bool tryShaders(const OUString& rVertexShader, const OUString& rFragmentShader, 
     }
     if (!nId)
         return false;
+
+    // We're interested in the error returned by glDeleteProgram().
+    glGetError();
+
     glDeleteProgram(nId);
     return glGetError() == GL_NO_ERROR;
 }
@@ -458,7 +486,6 @@ bool compiledShaderBinariesWork()
          // vcl
          tryShaders("combinedVertexShader", "combinedFragmentShader") &&
          tryShaders("dumbVertexShader", "invert50FragmentShader") &&
-         tryShaders("combinedTextureVertexShader", "combinedTextureFragmentShader") &&
          tryShaders("textureVertexShader", "areaScaleFragmentShader") &&
          tryShaders("transformedTextureVertexShader", "maskedTextureFragmentShader") &&
          tryShaders("transformedTextureVertexShader", "areaScaleFastFragmentShader") &&
@@ -496,7 +523,7 @@ bool WinOpenGLContext::ImplInit()
         1,                              // Version Number
         PFD_SUPPORT_OPENGL,
         PFD_TYPE_RGBA,                  // Request An RGBA Format
-        (BYTE)32,                       // Select Our Color Depth
+        BYTE(32),                       // Select Our Color Depth
         0, 0, 0, 0, 0, 0,               // Color Bits Ignored
         0,                              // No Alpha Buffer
         0,                              // Shift Bit Ignored
@@ -510,9 +537,7 @@ bool WinOpenGLContext::ImplInit()
         0, 0, 0                         // Layer Masks Ignored
     };
 
-    if (mbUseDoubleBufferedRendering)
-        PixelFormatFront.dwFlags |= PFD_DOUBLEBUFFER;
-
+    PixelFormatFront.dwFlags |= PFD_DOUBLEBUFFER;
     PixelFormatFront.dwFlags |= PFD_DRAW_TO_WINDOW;
 
     //  we must check whether can set the MSAA
@@ -520,7 +545,7 @@ bool WinOpenGLContext::ImplInit()
     bool bMultiSampleSupport = false;
 
     if (!mbVCLOnly)
-        bMultiSampleSupport = InitMultisample(PixelFormatFront, WindowPix, mbUseDoubleBufferedRendering, false);
+        bMultiSampleSupport = InitMultisample(PixelFormatFront, WindowPix, /*bUseDoubleBufferedRendering*/true, false);
     else
         VCL_GL_INFO("Skipping multisample detection for VCL.");
 
@@ -534,8 +559,8 @@ bool WinOpenGLContext::ImplInit()
 #if OSL_DEBUG_LEVEL > 0
         PIXELFORMATDESCRIPTOR pfd;
         DescribePixelFormat(m_aGLWin.hDC, WindowPix, sizeof(PIXELFORMATDESCRIPTOR), &pfd);
-        SAL_WARN("vcl.opengl", "Render Target: Window: " << (int) ((pfd.dwFlags & PFD_DRAW_TO_WINDOW) != 0) << ", Bitmap: " << (int) ((pfd.dwFlags & PFD_DRAW_TO_BITMAP) != 0));
-        SAL_WARN("vcl.opengl", "Supports OpenGL: " << (int) ((pfd.dwFlags & PFD_SUPPORT_OPENGL) != 0));
+        SAL_WARN("vcl.opengl", "Render Target: Window: " << static_cast<int>((pfd.dwFlags & PFD_DRAW_TO_WINDOW) != 0) << ", Bitmap: " << static_cast<int>((pfd.dwFlags & PFD_DRAW_TO_BITMAP) != 0));
+        SAL_WARN("vcl.opengl", "Supports OpenGL: " << static_cast<int>((pfd.dwFlags & PFD_SUPPORT_OPENGL) != 0));
 #endif
     }
 
@@ -589,7 +614,7 @@ bool WinOpenGLContext::ImplInit()
 
     // now setup the shared context; this needs a temporary context already
     // set up in order to work
-    int attribs [] =
+    int const attribs [] =
     {
 #ifdef DBG_UTIL
         WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
@@ -729,25 +754,56 @@ void WinOpenGLSalGraphicsImpl::Init()
     OpenGLSalGraphicsImpl::Init();
 }
 
-TheTextureCache::TheTextureCache(): cache(200) {}
+OpenGLControlsCache::OpenGLControlsCache(): cache(200) {}
 
-ControlCacheType & TheTextureCache::get() {
+OpenGLControlCacheType & OpenGLControlsCache::get() {
     SalData * data = GetSalData();
-    if (!data->m_pTextureCache) {
-        data->m_pTextureCache.reset(new TheTextureCache);
+    if (!data->m_pOpenGLControlsCache) {
+        data->m_pOpenGLControlsCache.reset(new OpenGLControlsCache);
     }
-    return data->m_pTextureCache->cache;
+    return data->m_pOpenGLControlsCache->cache;
 }
 
-bool WinOpenGLSalGraphicsImpl::TryRenderCachedNativeControl(ControlCacheKey& rControlCacheKey, int nX, int nY)
+OpenGLCompatibleDC::OpenGLCompatibleDC(SalGraphics &rGraphics, int x, int y, int width, int height)
+: CompatibleDC( rGraphics, x, y, width, height, false )
+{
+}
+
+OpenGLTexture* OpenGLCompatibleDC::getOpenGLTexture() const
+{
+    if (!mpImpl)
+        return nullptr;
+
+    // turn what's in the mpData into a texture
+    return new OpenGLTexture(maRects.mnSrcWidth, maRects.mnSrcHeight, GL_BGRA, GL_UNSIGNED_BYTE, mpData);
+}
+
+std::unique_ptr<CompatibleDC::Texture> OpenGLCompatibleDC::getAsMaskTexture() const
+{
+    auto ret = std::make_unique<OpenGLCompatibleDC::Texture>();
+    ret->texture = OpenGLTexture(maRects.mnSrcWidth, maRects.mnSrcHeight, GL_BGRA, GL_UNSIGNED_BYTE, mpData);
+    return ret;
+}
+
+bool OpenGLCompatibleDC::copyToTexture(CompatibleDC::Texture& aTexture) const
+{
+    if (!mpImpl)
+        return false;
+
+    assert(dynamic_cast<OpenGLCompatibleDC::Texture*>(&aTexture));
+    return static_cast<OpenGLCompatibleDC::Texture&>(aTexture).texture.CopyData(
+        maRects.mnSrcWidth, maRects.mnSrcHeight, GL_BGRA, GL_UNSIGNED_BYTE, reinterpret_cast<sal_uInt8*>(mpData));
+}
+
+bool WinOpenGLSalGraphicsImpl::TryRenderCachedNativeControl(ControlCacheKey const & rControlCacheKey, int nX, int nY)
 {
     static bool gbCacheEnabled = !getenv("SAL_WITHOUT_WIDGET_CACHE");
 
     if (!gbCacheEnabled)
         return false;
 
-    auto & gTextureCache = TheTextureCache::get();
-    ControlCacheType::const_iterator iterator = gTextureCache.find(rControlCacheKey);
+    auto & gTextureCache = OpenGLControlsCache::get();
+    OpenGLControlCacheType::const_iterator iterator = gTextureCache.find(rControlCacheKey);
 
     if (iterator == gTextureCache.end())
         return false;
@@ -765,7 +821,7 @@ bool WinOpenGLSalGraphicsImpl::TryRenderCachedNativeControl(ControlCacheKey& rCo
     return bRet;
 }
 
-bool WinOpenGLSalGraphicsImpl::RenderTextureCombo(TextureCombo& rCombo, int nX, int nY)
+bool WinOpenGLSalGraphicsImpl::RenderTextureCombo(TextureCombo const & rCombo, int nX, int nY)
 {
     OpenGLTexture& rTexture = *rCombo.mpTexture;
 
@@ -784,8 +840,8 @@ bool WinOpenGLSalGraphicsImpl::RenderCompatibleDC(OpenGLCompatibleDC& rWhite, Op
 
     PreDraw();
 
-    rCombo.mpTexture.reset(rWhite.getTexture());
-    rCombo.mpMask.reset(rBlack.getTexture());
+    rCombo.mpTexture.reset(rWhite.getOpenGLTexture());
+    rCombo.mpMask.reset(rBlack.getOpenGLTexture());
 
     bRet = RenderTextureCombo(rCombo, nX, nY);
 
@@ -793,22 +849,50 @@ bool WinOpenGLSalGraphicsImpl::RenderCompatibleDC(OpenGLCompatibleDC& rWhite, Op
     return bRet;
 }
 
-bool WinOpenGLSalGraphicsImpl::RenderAndCacheNativeControl(OpenGLCompatibleDC& rWhite, OpenGLCompatibleDC& rBlack,
+bool WinOpenGLSalGraphicsImpl::RenderAndCacheNativeControl(CompatibleDC& rWhite, CompatibleDC& rBlack,
                                                            int nX, int nY , ControlCacheKey& aControlCacheKey)
 {
+    assert(dynamic_cast<OpenGLCompatibleDC*>(&rWhite));
+    assert(dynamic_cast<OpenGLCompatibleDC*>(&rBlack));
+
     std::unique_ptr<TextureCombo> pCombo(new TextureCombo);
 
-    bool bResult = RenderCompatibleDC(rWhite, rBlack, nX, nY, *pCombo);
+    bool bResult = RenderCompatibleDC(static_cast<OpenGLCompatibleDC&>(rWhite),
+        static_cast<OpenGLCompatibleDC&>(rBlack), nX, nY, *pCombo);
     if (!bResult)
         return false;
 
     if (!aControlCacheKey.canCacheControl())
         return true;
 
-    ControlCachePair pair(aControlCacheKey, std::move(pCombo));
-    TheTextureCache::get().insert(std::move(pair));
+    OpenGLControlCachePair pair(aControlCacheKey, std::move(pCombo));
+    OpenGLControlsCache::get().insert(std::move(pair));
 
     return bResult;
+}
+
+void WinOpenGLSalGraphicsImpl::PreDrawText()
+{
+    PreDraw();
+}
+
+void WinOpenGLSalGraphicsImpl::PostDrawText()
+{
+    PostDraw();
+}
+
+void WinOpenGLSalGraphicsImpl::DeferredTextDraw(const CompatibleDC::Texture* pTexture, Color aMaskColor, const SalTwoRect& rPosAry)
+{
+    assert(dynamic_cast<const OpenGLCompatibleDC::Texture*>(pTexture));
+    mpRenderList->addDrawTextureWithMaskColor(
+        static_cast<const OpenGLCompatibleDC::Texture*>(pTexture)->texture, aMaskColor, rPosAry);
+    PostBatchDraw();
+}
+
+void WinOpenGLSalGraphicsImpl::DrawTextMask( CompatibleDC::Texture* pTexture, Color nMaskColor, const SalTwoRect& rPosAry )
+{
+    assert(dynamic_cast<OpenGLCompatibleDC::Texture*>(pTexture));
+    DrawMask( static_cast<OpenGLCompatibleDC::Texture*>(pTexture)->texture, nMaskColor, rPosAry );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

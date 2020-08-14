@@ -23,15 +23,11 @@
 #include <svx/svddef.hxx>
 
 // Number of loops. 0=infinite.
-class SdrTextAniCountItem: public SfxUInt16Item {
+class SAL_DLLPUBLIC_RTTI SdrTextAniCountItem final : public SfxUInt16Item {
 public:
     SdrTextAniCountItem(sal_uInt16 nVal=0): SfxUInt16Item(SDRATTR_TEXT_ANICOUNT,nVal) {}
-    SdrTextAniCountItem(SvStream& rIn): SfxUInt16Item(SDRATTR_TEXT_ANICOUNT,rIn) {}
 
-    virtual SfxPoolItem * Create(SvStream & rStream, sal_uInt16) const override
-    { return new SdrTextAniCountItem(rStream); }
-
-    virtual SfxPoolItem * Clone(SfxItemPool * = nullptr) const override
+    virtual SdrTextAniCountItem* Clone(SfxItemPool * = nullptr) const override
     { return new SdrTextAniCountItem(*this); }
 };
 

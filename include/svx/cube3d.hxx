@@ -25,11 +25,9 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <svx/obj3d.hxx>
-#include <svx/svdobj.hxx>
 #include <svx/svxdllapi.h>
-#include <o3tl/typed_flags_set.hxx>
 
-namespace sdr { namespace contact { class ViewContact; } }
+namespace sdr::contact { class ViewContact; }
 
 class E3dDefaultAttributes;
 
@@ -46,24 +44,8 @@ class E3dDefaultAttributes;
 |*
 \************************************************************************/
 
-enum class CubeFaces
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC E3dCubeObj final : public E3dCompoundObject
 {
-    Bottom        = 0x0001,
-    Back          = 0x0002,
-    Left          = 0x0004,
-    Top           = 0x0008,
-    Right         = 0x0010,
-    Front         = 0x0020,
-    Full          = Bottom | Back | Left | Top | Right | Front
-};
-namespace o3tl
-{
-    template<> struct typed_flags<CubeFaces> : is_typed_flags<CubeFaces, 0x003f> {};
-}
-
-class SAL_WARN_UNUSED SVX_DLLPUBLIC E3dCubeObj : public E3dCompoundObject
-{
-private:
     // Parameter
     basegfx::B3DPoint                   aCubePos;
     basegfx::B3DVector                  aCubeSize;
@@ -71,18 +53,27 @@ private:
     // BOOLeans
     bool                                bPosIsCenter : 1;
 
-protected:
-    void SetDefaultAttributes(E3dDefaultAttributes& rDefault);
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
+    void SetDefaultAttributes(const E3dDefaultAttributes& rDefault);
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
+
+private:
+    // protected destructor - due to final, make private
+    virtual ~E3dCubeObj() override;
 
 public:
-    E3dCubeObj(E3dDefaultAttributes& rDefault, const basegfx::B3DPoint& aPos, const basegfx::B3DVector& r3DSize);
-    E3dCubeObj();
+    E3dCubeObj(SdrModel& rSdrModel,
+        const E3dDefaultAttributes& rDefault,
+        const basegfx::B3DPoint& aPos,
+        const basegfx::B3DVector& r3DSize);
+    E3dCubeObj(SdrModel& rSdrModel);
 
     virtual sal_uInt16 GetObjIdentifier() const override;
-    virtual SdrObject* DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
+    virtual SdrObjectUniquePtr DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
 
-    virtual E3dCubeObj* Clone() const override;
+    virtual E3dCubeObj* CloneSdrObject(SdrModel& rTargetModel) const override;
+
+    // implemented mainly for the purposes of Clone()
+    E3dCubeObj& operator=(const E3dCubeObj& rObj);
 
     // Set local parameters with geometry recreation
     void SetCubePos(const basegfx::B3DPoint& rNew);

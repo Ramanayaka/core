@@ -20,15 +20,12 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_INC_SHAPESUBSET_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_INC_SHAPESUBSET_HXX
 
-#include "attributableshape.hxx"
 #include "subsettableshapemanager.hxx"
 #include "doctreenode.hxx"
 
 #include <memory>
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         class ShapeSubset;
         typedef ::std::shared_ptr< ShapeSubset > ShapeSubsetSharedPtr;
@@ -91,6 +88,12 @@ namespace slideshow
 
             ~ShapeSubset();
 
+            // For a rationale for this hacky combination of user-provided dtor, defaulted copy
+            // ctor, and deleted copy assignment op, see the "TODO(Q1)" comment in
+            // CloningNodeCreator (slideshow/source/engine/animationnodes/animationnodefactory.cxx):
+            ShapeSubset(ShapeSubset const &) = default;
+            void operator =(ShapeSubset const &) = delete;
+
             /** Get the actual subset shape.
 
                 If the subset is currently revoked, this method
@@ -134,7 +137,7 @@ namespace slideshow
             DocTreeNode                      maTreeNode;
             SubsettableShapeManagerSharedPtr mpShapeManager;
         };
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_SHAPESUBSET_HXX

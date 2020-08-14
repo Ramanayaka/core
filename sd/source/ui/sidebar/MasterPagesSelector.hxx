@@ -20,23 +20,17 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SIDEBAR_MASTERPAGESSELECTOR_HXX
 #define INCLUDED_SD_SOURCE_UI_SIDEBAR_MASTERPAGESSELECTOR_HXX
 
+#include <map>
 #include <memory>
 #include "MasterPageContainer.hxx"
-#include "SlideSorterViewShell.hxx"
 #include "PreviewValueSet.hxx"
-#include "ISidebarReceiver.hxx"
 #include <sfx2/sidebar/ILayoutableWindow.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
+#include <vcl/menu.hxx>
 
-#include "pres.hxx"
-#include <sfx2/shell.hxx>
-#include <vcl/image.hxx>
-#include "glob.hxx"
 #include <osl/mutex.hxx>
-#include <com/sun/star/ui/XSidebar.hpp>
 
-#include <queue>
-
-
+namespace com::sun::star::ui { class XSidebar; }
 class MouseEvent;
 class SdDrawDocument;
 class SdPage;
@@ -45,16 +39,13 @@ namespace sd {
 class ViewShellBase;
 }
 
-namespace sd { namespace sidebar {
-
-class PreviewValueSet;
+namespace sd::sidebar {
 
 /** Base class of a menu that lets the user select from a list of
     templates or designs that are loaded from files.
 */
-class MasterPagesSelector
-    : public PreviewValueSet,
-      public sfx2::sidebar::ILayoutableWindow
+class MasterPagesSelector : public PanelLayout
+                          , public sfx2::sidebar::ILayoutableWindow
 {
 public:
     MasterPagesSelector (
@@ -69,20 +60,6 @@ public:
     virtual void LateInit();
 
     sal_Int32 GetPreferredHeight (sal_Int32 nWidth);
-
-    /** Update the selection of previews according to whatever
-        influences them apart from mouse and keyboard.  If, for
-        example, the current page of the main pane changes, then call
-        this method at the CurrentMasterPagesSelector to select the
-        previews of the master pages that are assigned to the new
-        current page.
-
-        The default implementation of this method ignores the call. This is
-        used by e.g. the RecentMasterPagesSelector because it does not show
-        the currently used master pages by default and thus is not
-        influenced by its changes.
-    */
-    virtual void UpdateSelection();
 
     /** Make the selector empty.  This method clear the value set from any
         entries. Override this method to add functionality, especially to
@@ -104,6 +81,8 @@ public:
 
     void UpdateAllPreviews();
 
+    void ShowContextMenu(const Point* pPos);
+
     // ILayoutableWindow
     virtual css::ui::LayoutSize GetHeightForWidth (const sal_Int32 nWidth) override;
 
@@ -111,12 +90,11 @@ protected:
     mutable ::osl::Mutex maMutex;
     std::shared_ptr<MasterPageContainer> mpContainer;
 
+    std::unique_ptr<PreviewValueSet> mxPreviewValueSet;
+    std::unique_ptr<weld::CustomWeld> mxPreviewValueSetWin;
+
     SdDrawDocument& mrDocument;
     ViewShellBase& mrBase;
-    /** menu entry that is executed as default action when the left mouse button is
-        clicked over a master page.
-    */
-    OString msDefaultClickAction;
 
     SdPage* GetSelectedMasterPage();
 
@@ -135,13 +113,13 @@ protected:
 
     virtual void AssignMasterPageToPageList (
         SdPage* pMasterPage,
-        const ::sd::slidesorter::SharedPageSelection& rPageList);
+        const std::shared_ptr<std::vector<SdPage*>>& rPageList);
 
     virtual void NotifyContainerChangeEvent (const MasterPageContainerChangeEvent& rEvent);
 
     typedef ::std::pair<int, MasterPageContainer::Token> UserData;
     UserData* GetUserData (int nIndex) const;
-    void SetUserData (int nIndex, UserData* pData);
+    void SetUserData (int nIndex, std::unique_ptr<UserData> pData);
 
     sal_Int32 GetIndexForToken (MasterPageContainer::Token aToken) const;
     typedef ::std::vector<MasterPageContainer::Token> ItemList;
@@ -159,7 +137,7 @@ protected:
     TokenToValueSetIndex maTokenToValueSetIndex;
 
     ItemList maLockedMasterPages;
-    /** Lock master pages in the given list and release locks that where
+    /** Lock master pages in the given list and release locks that were
         previously acquired.
     */
     void UpdateLocks (const ItemList& rItemList);
@@ -201,7 +179,7 @@ private:
         MasterPageContainer::Token aToken);
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

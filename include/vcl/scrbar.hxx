@@ -20,11 +20,9 @@
 #ifndef INCLUDED_VCL_SCRBAR_HXX
 #define INCLUDED_VCL_SCRBAR_HXX
 
-#include <tools/solar.h>
 #include <vcl/dllapi.h>
 #include <vcl/ctrl.hxx>
-
-class AutoTimer;
+#include <memory>
 
 
 enum class ScrollType
@@ -32,7 +30,7 @@ enum class ScrollType
     DontKnow,
     LineUp, LineDown,
     PageUp, PageDown,
-    Drag, Set
+    Drag
 };
 
 
@@ -47,7 +45,7 @@ private:
     tools::Rectangle       maPage2Rect;
     tools::Rectangle       maThumbRect;
     tools::Rectangle       maTrackRect;
-    ImplScrollBarData* mpData;
+    std::unique_ptr<ImplScrollBarData> mpData;
     long            mnStartPos;
     long            mnMouseOff;
     long            mnThumbPixRange;
@@ -95,7 +93,8 @@ public:
     virtual void Tracking(const TrackingEvent& rTEvt) override;
     virtual void KeyInput(const KeyEvent& rKEvt) override;
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
-    virtual void Draw(OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags nFlags) override;
+    virtual void Draw(OutputDevice* pDev, const Point& rPos, DrawFlags nFlags) override;
+    virtual void Move() override;
     virtual void Resize() override;
     virtual void StateChanged(StateChangedType nType) override;
     virtual void DataChanged(const DataChangedEvent& rDCEvt) override;
@@ -132,14 +131,14 @@ public:
     ScrollType      GetType() const { return meScrollType; }
 
     void            SetScrollHdl( const Link<ScrollBar*,void>& rLink ) { maScrollHdl = rLink; }
+    const Link<ScrollBar*,void>&   GetScrollHdl() const { return maScrollHdl; }
     void            SetEndScrollHdl( const Link<ScrollBar*,void>& rLink ) { maEndScrollHdl = rLink; }
-    const Link<ScrollBar*,void>&   GetEndScrollHdl() const { return maEndScrollHdl; }
 
     virtual Size    GetOptimalSize() const override;
 };
 
 
-class VCL_DLLPUBLIC ScrollBarBox : public vcl::Window
+class VCL_DLLPUBLIC ScrollBarBox final : public vcl::Window
 {
 private:
     using Window::ImplInit;

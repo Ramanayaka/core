@@ -19,20 +19,18 @@
 
 #include <sal/config.h>
 
-#include <cstddef>
 #include <memory>
 #include <boost/property_tree/json_parser.hpp>
 
 #include <hintids.hxx>
 #include <sfx2/request.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/childwin.hxx>
 #include <unotools/useroptions.hxx>
-#include <cppuhelper/weak.hxx>
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <svx/colorwindow.hxx>
 #include <svx/dataaccessdescriptor.hxx>
+#include <editeng/editids.hrc>
 #include <editeng/wghtitem.hxx>
 #include <editeng/postitem.hxx>
 #include <editeng/udlnitem.hxx>
@@ -40,7 +38,6 @@
 #include <editeng/cmapitem.hxx>
 #include <editeng/colritem.hxx>
 #include <editeng/brushitem.hxx>
-#include <vcl/msgbox.hxx>
 #include <svl/cjkoptions.hxx>
 #include <swmodule.hxx>
 #include <swtypes.hxx>
@@ -51,19 +48,16 @@
 #include <wview.hxx>
 #include <wrtsh.hxx>
 #include <docsh.hxx>
-#include <dbmgr.hxx>
 #include <uinums.hxx>
 #include <prtopt.hxx>
 #include <navicfg.hxx>
 #include <doc.hxx>
-#include <cmdid.h>
-#include <app.hrc>
-#include "helpid.h"
+#include <strings.hrc>
 #include <IDocumentLayoutAccess.hxx>
 
-#include <unomid.h>
 #include <tools/color.hxx>
-#include "PostItMgr.hxx"
+#include <tools/json_writer.hxx>
+#include <PostItMgr.hxx>
 
 using namespace ::svx;
 using namespace ::com::sun::star;
@@ -132,9 +126,9 @@ SwView* SwModule::GetFirstView()
     return pView;
 }
 
-SwView* SwModule::GetNextView(SwView* pView)
+SwView* SwModule::GetNextView(SwView const * pView)
 {
-    OSL_ENSURE(dynamic_cast<SwView*>( pView),"return no SwView" );
+    OSL_ENSURE( pView,"return no SwView" );
     SwView* pNView = static_cast<SwView*>(SfxViewShell::GetNext(*pView, true, checkSfxViewShell<SwView>));
     return pNView;
 }
@@ -149,7 +143,7 @@ void SwModule::ApplyUsrPref(const SwViewOption &rUsrPref, SwView* pActView,
     SwMasterUsrPref* pPref = const_cast<SwMasterUsrPref*>(GetUsrPref(
                                          nDest == SvViewOpt::DestWeb
                                          || (nDest != SvViewOpt::DestText
-                                             && pCurrView && dynamic_cast< const SwWebView *>( pCurrView ) !=  nullptr) ));
+                                             && dynamic_cast< const SwWebView *>( pCurrView )) ));
 
     // with Uno, only sdbcx::View, but not the Module should be changed
     bool bViewOnly = SvViewOpt::DestViewOnly == nDest;
@@ -215,13 +209,13 @@ void SwModule::ApplyUserMetric( FieldUnit eMetric, bool bWeb )
         {
             if(!m_pWebUsrPref)
                 GetUsrPref(true);
-            pPref = m_pWebUsrPref;
+            pPref = m_pWebUsrPref.get();
         }
         else
         {
             if(!m_pUsrPref)
                 GetUsrPref(false);
-            pPref = m_pUsrPref;
+            pPref = m_pUsrPref.get();
         }
         FieldUnit eOldMetric = pPref->GetMetric();
         if(eOldMetric != eMetric)
@@ -251,13 +245,13 @@ void SwModule::ApplyRulerMetric( FieldUnit eMetric, bool bHorizontal, bool bWeb 
     {
         if(!m_pWebUsrPref)
             GetUsrPref(true);
-        pPref = m_pWebUsrPref;
+        pPref = m_pWebUsrPref.get();
     }
     else
     {
         if(!m_pUsrPref)
             GetUsrPref(false);
-        pPref = m_pUsrPref;
+        pPref = m_pUsrPref.get();
     }
     if( bHorizontal )
         pPref->SetHScrollMetric(eMetric);
@@ -287,13 +281,13 @@ void SwModule::ApplyUserCharUnit(bool bApplyChar, bool bWeb)
     {
         if(!m_pWebUsrPref)
             GetUsrPref(true);
-        pPref = m_pWebUsrPref;
+        pPref = m_pWebUsrPref.get();
     }
     else
     {
         if(!m_pUsrPref)
             GetUsrPref(false);
-        pPref = m_pUsrPref;
+        pPref = m_pUsrPref.get();
     }
     bool bOldApplyCharUnit = pPref->IsApplyCharUnit();
     bool bHasChanged = false;
@@ -310,20 +304,20 @@ void SwModule::ApplyUserCharUnit(bool bApplyChar, bool bWeb)
     FieldUnit eVScrollMetric = pPref->IsVScrollMetric() ? pPref->GetVScrollMetric() : pPref->GetMetric();
     if(bApplyChar)
     {
-        eHScrollMetric = FUNIT_CHAR;
-        eVScrollMetric = FUNIT_LINE;
+        eHScrollMetric = FieldUnit::CHAR;
+        eVScrollMetric = FieldUnit::LINE;
     }
     else
     {
         SvtCJKOptions aCJKOptions;
-        if ( !aCJKOptions.IsAsianTypographyEnabled() && ( eHScrollMetric == FUNIT_CHAR ))
-            eHScrollMetric = FUNIT_INCH;
-        else if ( eHScrollMetric == FUNIT_CHAR )
-            eHScrollMetric = FUNIT_CM;
-        if ( !aCJKOptions.IsAsianTypographyEnabled() && ( eVScrollMetric == FUNIT_LINE ))
-            eVScrollMetric = FUNIT_INCH;
-        else if ( eVScrollMetric == FUNIT_LINE )
-            eVScrollMetric = FUNIT_CM;
+        if ( !aCJKOptions.IsAsianTypographyEnabled() && ( eHScrollMetric == FieldUnit::CHAR ))
+            eHScrollMetric = FieldUnit::INCH;
+        else if ( eHScrollMetric == FieldUnit::CHAR )
+            eHScrollMetric = FieldUnit::CM;
+        if ( !aCJKOptions.IsAsianTypographyEnabled() && ( eVScrollMetric == FieldUnit::LINE ))
+            eVScrollMetric = FieldUnit::INCH;
+        else if ( eVScrollMetric == FieldUnit::LINE )
+            eVScrollMetric = FieldUnit::CM;
     }
     SwView* pTmpView = SwModule::GetFirstView();
     // switch rulers for all MDI-Windows
@@ -343,53 +337,54 @@ SwNavigationConfig*  SwModule::GetNavigationConfig()
 {
     if(!m_pNavigationConfig)
     {
-        m_pNavigationConfig = new SwNavigationConfig;
+        m_pNavigationConfig.reset( new SwNavigationConfig );
     }
-    return m_pNavigationConfig;
+    return m_pNavigationConfig.get();
 }
 
 SwPrintOptions*     SwModule::GetPrtOptions(bool bWeb)
 {
     if(bWeb && !m_pWebPrintOptions)
     {
-        m_pWebPrintOptions = new SwPrintOptions(true);
+        m_pWebPrintOptions.reset(new SwPrintOptions(true));
     }
     else if(!bWeb && !m_pPrintOptions)
     {
-        m_pPrintOptions = new SwPrintOptions(false);
+        m_pPrintOptions.reset(new SwPrintOptions(false));
     }
 
-    return bWeb ? m_pWebPrintOptions : m_pPrintOptions;
+    return bWeb ? m_pWebPrintOptions.get() : m_pPrintOptions.get();
 }
 
 SwChapterNumRules*  SwModule::GetChapterNumRules()
 {
     if(!m_pChapterNumRules)
-        m_pChapterNumRules = new SwChapterNumRules;
-    return m_pChapterNumRules;
+        m_pChapterNumRules.reset(new SwChapterNumRules);
+    return m_pChapterNumRules.get();
 }
 
-void SwModule::ShowDBObj(SwView& rView, const SwDBData& rData)
+void SwModule::ShowDBObj(SwView const & rView, const SwDBData& rData)
 {
     Reference<XFrame> xFrame = rView.GetViewFrame()->GetFrame().GetFrameInterface();
 
     uno::Reference<XFrame> xBeamerFrame = xFrame->findFrame("_beamer", FrameSearchFlag::CHILDREN);
-    if (xBeamerFrame.is())
-    {   // the beamer has been opened by the SfxViewFrame
-        Reference<XController> xController = xBeamerFrame->getController();
-        Reference<XSelectionSupplier> xControllerSelection(xController, UNO_QUERY);
-        if (xControllerSelection.is())
-        {
+    if (!xBeamerFrame.is())
+        return;
 
-            ODataAccessDescriptor aSelection;
-            aSelection.setDataSource(rData.sDataSource);
-            aSelection[DataAccessDescriptorProperty::Command]       <<= rData.sCommand;
-            aSelection[DataAccessDescriptorProperty::CommandType]   <<= rData.nCommandType;
-            xControllerSelection->select(makeAny(aSelection.createPropertyValueSequence()));
-        }
-        else {
-            OSL_FAIL("no selection supplier in the beamer!");
-        }
+// the beamer has been opened by the SfxViewFrame
+    Reference<XController> xController = xBeamerFrame->getController();
+    Reference<XSelectionSupplier> xControllerSelection(xController, UNO_QUERY);
+    if (xControllerSelection.is())
+    {
+
+        ODataAccessDescriptor aSelection;
+        aSelection.setDataSource(rData.sDataSource);
+        aSelection[DataAccessDescriptorProperty::Command]       <<= rData.sCommand;
+        aSelection[DataAccessDescriptorProperty::CommandType]   <<= rData.nCommandType;
+        xControllerSelection->select(makeAny(aSelection.createPropertyValueSequence()));
+    }
+    else {
+        OSL_FAIL("no selection supplier in the beamer!");
     }
 }
 
@@ -417,19 +412,19 @@ void SwModule::SetRedlineAuthor(const OUString &rAuthor)
     InsertRedlineAuthor( m_sActAuthor );
 }
 
-OUString SwModule::GetRedlineAuthor(std::size_t nPos)
+OUString const & SwModule::GetRedlineAuthor(std::size_t nPos)
 {
     OSL_ENSURE(nPos < m_pAuthorNames.size(), "author not found!"); //#i45342# RTF doc with no author table caused reader to crash
-    while(!(nPos < m_pAuthorNames.size()))
+    while(nPos >= m_pAuthorNames.size())
     {
         InsertRedlineAuthor("nn");
     }
     return m_pAuthorNames[nPos];
 }
 
-static ColorData lcl_GetAuthorColor(std::size_t nPos)
+static Color lcl_GetAuthorColor(std::size_t nPos)
 {
-    static const ColorData aColArr[] =
+    static const Color aColArr[] =
     {
         COL_AUTHOR1_DARK, COL_AUTHOR2_DARK, COL_AUTHOR3_DARK,
         COL_AUTHOR4_DARK, COL_AUTHOR5_DARK, COL_AUTHOR6_DARK,
@@ -440,29 +435,16 @@ static ColorData lcl_GetAuthorColor(std::size_t nPos)
 }
 
 /// Returns a JSON representation of a redline author.
-boost::property_tree::ptree lcl_AuthorToJson(const OUString& rAuthor, std::size_t nIndex)
+void SwModule::GetRedlineAuthorInfo(tools::JsonWriter& rJsonWriter)
 {
-    boost::property_tree::ptree aRet;
-    aRet.put("index", nIndex);
-    aRet.put("name", rAuthor.toUtf8().getStr());
-    aRet.put("color", lcl_GetAuthorColor(nIndex));
-    return aRet;
-}
-
-OUString SwModule::GetRedlineAuthorInfo()
-{
-    boost::property_tree::ptree aTable;
+    auto authorsNode = rJsonWriter.startNode("authors");
     for (std::size_t nAuthor = 0; nAuthor < m_pAuthorNames.size(); ++nAuthor)
     {
-        boost::property_tree::ptree aAuthor = lcl_AuthorToJson(m_pAuthorNames[nAuthor], nAuthor);
-        aTable.push_back(std::make_pair("", aAuthor));
+        auto authorNode = rJsonWriter.startNode("");
+        rJsonWriter.put("index", static_cast<sal_Int64>(nAuthor));
+        rJsonWriter.put("name", m_pAuthorNames[nAuthor]);
+        rJsonWriter.put("color", sal_uInt32(lcl_GetAuthorColor(nAuthor)));
     }
-
-    boost::property_tree::ptree aTree;
-    aTree.add_child("authors", aTable);
-    std::stringstream aStream;
-    boost::property_tree::write_json(aStream, aTree);
-    return OUString::fromUtf8(aStream.str().c_str());
 }
 
 std::size_t SwModule::InsertRedlineAuthor(const OUString& rAuthor)
@@ -481,18 +463,18 @@ std::size_t SwModule::InsertRedlineAuthor(const OUString& rAuthor)
 static void lcl_FillAuthorAttr( std::size_t nAuthor, SfxItemSet &rSet,
                         const AuthorCharAttr &rAttr )
 {
-    Color aCol( rAttr.nColor );
+    Color aCol( rAttr.m_nColor );
 
-    if( COL_TRANSPARENT == rAttr.nColor )
-        aCol.SetColor(lcl_GetAuthorColor(nAuthor));
+    if( rAttr.m_nColor == COL_TRANSPARENT )
+        aCol = lcl_GetAuthorColor(nAuthor);
 
-    bool bBackGr = COL_NONE_COLOR == rAttr.nColor;
+    bool bBackGr = rAttr.m_nColor == COL_NONE_COLOR;
 
-    switch (rAttr.nItemId)
+    switch (rAttr.m_nItemId)
     {
     case SID_ATTR_CHAR_WEIGHT:
         {
-            SvxWeightItem aW( (FontWeight)rAttr.nAttr, RES_CHRATR_WEIGHT );
+            SvxWeightItem aW( static_cast<FontWeight>(rAttr.m_nAttr), RES_CHRATR_WEIGHT );
             rSet.Put( aW );
             aW.SetWhich( RES_CHRATR_CJK_WEIGHT );
             rSet.Put( aW );
@@ -503,7 +485,7 @@ static void lcl_FillAuthorAttr( std::size_t nAuthor, SfxItemSet &rSet,
 
     case SID_ATTR_CHAR_POSTURE:
         {
-            SvxPostureItem aP( (FontItalic)rAttr.nAttr, RES_CHRATR_POSTURE );
+            SvxPostureItem aP( static_cast<FontItalic>(rAttr.m_nAttr), RES_CHRATR_POSTURE );
             rSet.Put( aP );
             aP.SetWhich( RES_CHRATR_CJK_POSTURE );
             rSet.Put( aP );
@@ -513,17 +495,17 @@ static void lcl_FillAuthorAttr( std::size_t nAuthor, SfxItemSet &rSet,
         break;
 
     case SID_ATTR_CHAR_UNDERLINE:
-        rSet.Put( SvxUnderlineItem( (FontLineStyle)rAttr.nAttr,
+        rSet.Put( SvxUnderlineItem( static_cast<FontLineStyle>(rAttr.m_nAttr),
                                     RES_CHRATR_UNDERLINE));
         break;
 
     case SID_ATTR_CHAR_STRIKEOUT:
-        rSet.Put(SvxCrossedOutItem( (FontStrikeout)rAttr.nAttr,
+        rSet.Put(SvxCrossedOutItem( static_cast<FontStrikeout>(rAttr.m_nAttr),
                                     RES_CHRATR_CROSSEDOUT));
         break;
 
     case SID_ATTR_CHAR_CASEMAP:
-        rSet.Put( SvxCaseMapItem( (SvxCaseMap)rAttr.nAttr,
+        rSet.Put( SvxCaseMapItem( static_cast<SvxCaseMap>(rAttr.m_nAttr),
                                     RES_CHRATR_CASEMAP));
         break;
 
@@ -553,7 +535,7 @@ void SwModule::GetFormatAuthorAttr( std::size_t nAuthor, SfxItemSet &rSet )
     lcl_FillAuthorAttr( nAuthor, rSet, m_pModuleConfig->GetFormatAuthorAttr() );
 }
 
-sal_uInt16 SwModule::GetRedlineMarkPos()
+sal_uInt16 SwModule::GetRedlineMarkPos() const
 {
     return m_pModuleConfig->GetMarkAlignMode();
 }
@@ -573,7 +555,17 @@ bool SwModule::IsInsTableAlignNum(bool bHTML) const
     return m_pModuleConfig->IsInsTableAlignNum(bHTML);
 }
 
-const Color &SwModule::GetRedlineMarkColor()
+bool SwModule::IsSplitVerticalByDefault(bool bHTML) const
+{
+    return m_pModuleConfig->IsSplitVerticalByDefault(bHTML);
+}
+
+void SwModule::SetSplitVerticalByDefault(bool bHTML, bool value)
+{
+    m_pModuleConfig->SetSplitVerticalByDefault(bHTML, value);
+}
+
+const Color &SwModule::GetRedlineMarkColor() const
 {
     return m_pModuleConfig->GetMarkAlignColor();
 }
@@ -583,7 +575,7 @@ const SwViewOption* SwModule::GetViewOption(bool bWeb)
     return GetUsrPref( bWeb );
 }
 
-OUString SwModule::GetDocStatWordDelim() const
+OUString const & SwModule::GetDocStatWordDelim() const
 {
     return m_pModuleConfig->GetWordDelimiter();
 }
@@ -596,13 +588,13 @@ FieldUnit SwModule::GetMetric( bool bWeb ) const
     {
         if(!m_pWebUsrPref)
             GetUsrPref(true);
-        pPref = m_pWebUsrPref;
+        pPref = m_pWebUsrPref.get();
     }
     else
     {
         if(!m_pUsrPref)
             GetUsrPref(false);
-        pPref = m_pUsrPref;
+        pPref = m_pUsrPref.get();
     }
     return pPref->GetMetric();
 }
@@ -612,7 +604,7 @@ sal_uInt16 SwModule::GetLinkUpdMode() const
 {
     if(!m_pUsrPref)
         GetUsrPref(false);
-    return (sal_uInt16)m_pUsrPref->GetUpdateLinkMode();
+    return static_cast<sal_uInt16>(m_pUsrPref->GetUpdateLinkMode());
 }
 
 SwFieldUpdateFlags SwModule::GetFieldUpdateFlags() const
@@ -641,20 +633,20 @@ void SwModule::CheckSpellChanges( bool bOnlineSpelling,
 {
     bool bOnlyWrong = bIsSpellWrongAgain && !bIsSpellAllAgain;
     bool bInvalid = bOnlyWrong || bIsSpellAllAgain;
-    if( bOnlineSpelling || bInvalid )
+    if( !(bOnlineSpelling || bInvalid) )
+        return;
+
+    for( SwDocShell *pDocSh = static_cast<SwDocShell*>(SfxObjectShell::GetFirst(checkSfxObjectShell<SwDocShell>));
+         pDocSh;
+         pDocSh = static_cast<SwDocShell*>(SfxObjectShell::GetNext( *pDocSh, checkSfxObjectShell<SwDocShell> ) ) )
     {
-        for( SwDocShell *pDocSh = static_cast<SwDocShell*>(SfxObjectShell::GetFirst(checkSfxObjectShell<SwDocShell>));
-             pDocSh;
-             pDocSh = static_cast<SwDocShell*>(SfxObjectShell::GetNext( *pDocSh, checkSfxObjectShell<SwDocShell> ) ) )
+        SwDoc* pTmp = pDocSh->GetDoc();
+        if ( pTmp->getIDocumentLayoutAccess().GetCurrentViewShell() )
         {
-            SwDoc* pTmp = pDocSh->GetDoc();
-            if ( pTmp->getIDocumentLayoutAccess().GetCurrentViewShell() )
-            {
-                pTmp->SpellItAgainSam( bInvalid, bOnlyWrong, bSmartTags );
-                SwViewShell* pViewShell = pTmp->getIDocumentLayoutAccess().GetCurrentViewShell();
-                if ( bSmartTags && pViewShell && pViewShell->GetWin() )
-                    pViewShell->GetWin()->Invalidate();
-            }
+            pTmp->SpellItAgainSam( bInvalid, bOnlyWrong, bSmartTags );
+            SwViewShell* pViewShell = pTmp->getIDocumentLayoutAccess().GetCurrentViewShell();
+            if ( bSmartTags && pViewShell && pViewShell->GetWin() )
+                pViewShell->GetWin()->Invalidate();
         }
     }
 }

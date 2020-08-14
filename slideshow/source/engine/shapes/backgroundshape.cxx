@@ -18,35 +18,27 @@
  */
 
 
-#include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/awt/FontWeight.hpp>
 
-#include <vcl/metaact.hxx>
-#include <vcl/gdimtf.hxx>
+#include <sal/log.hxx>
 
-#include <basegfx/numeric/ftools.hxx>
-
-#include <cmath>
 #include <algorithm>
-#include <functional>
-#include <limits>
 
 #include "backgroundshape.hxx"
-#include "slideshowexceptions.hxx"
-#include "slideshowcontext.hxx"
+#include <slideshowexceptions.hxx>
+#include <slideshowcontext.hxx>
 #include "gdimtftools.hxx"
-#include "shape.hxx"
+#include <shape.hxx>
 #include "viewbackgroundshape.hxx"
 
 
 using namespace ::com::sun::star;
 
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
+        namespace {
+
         /** Representation of a draw document's background shape.
 
             This class implements the Shape interface for the
@@ -91,6 +83,7 @@ namespace slideshow
             virtual ::basegfx::B2DRectangle getUpdateArea() const override;
             virtual bool isVisible() const override;
             virtual double getPriority() const override;
+            virtual bool isForeground() const override { return false; }
             virtual bool isBackgroundDetached() const override;
 
 
@@ -113,6 +106,7 @@ namespace slideshow
             ViewBackgroundShapeVector   maViewShapes;
         };
 
+        }
 
         BackgroundShape::BackgroundShape( const uno::Reference< drawing::XDrawPage >& xDrawPage,
                                           const uno::Reference< drawing::XDrawPage >& xMasterPage,
@@ -288,18 +282,16 @@ namespace slideshow
         }
 
 
-        ShapeSharedPtr createBackgroundShape(
+       ShapeSharedPtr createBackgroundShape(
             const uno::Reference< drawing::XDrawPage >& xDrawPage,
             const uno::Reference< drawing::XDrawPage >& xMasterPage,
             const SlideShowContext&                     rContext )
         {
-            return ShapeSharedPtr(
-                new BackgroundShape(
+            return std::make_shared<BackgroundShape>(
                     xDrawPage,
                     xMasterPage,
-                    rContext ));
+                    rContext );
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -18,8 +18,8 @@
  */
 
 #include "richtextcontrol.hxx"
-#include "property.hrc"
-#include "services.hxx"
+#include <frm_strings.hxx>
+#include <services.hxx>
 
 #include "richtextmodel.hxx"
 #include "richtextvclcontrol.hxx"
@@ -30,7 +30,9 @@
 #include <com/sun/star/awt/PosSize.hpp>
 
 #include <toolkit/helper/vclunohelper.hxx>
+#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 
 #include <svx/svxids.hrc>
@@ -38,6 +40,7 @@
 #include <svl/itemset.hxx>
 #include <svl/itempool.hxx>
 #include <sfx2/msgpool.hxx>
+#include <sfx2/msg.hxx>
 
 namespace frm
 {
@@ -137,7 +140,7 @@ namespace frm
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("forms.richtext");
             }
             return nBits;
         }
@@ -154,7 +157,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.richtext");
         }
 
         if ( !bReallyActAsRichText )
@@ -165,59 +168,56 @@ namespace frm
 
         SolarMutexGuard aGuard;
 
-        if (!getPeer().is())
+        if (getPeer().is())
+            return;
+
+        mbCreatingPeer = true;
+
+        // determine the VLC window for the parent
+        vcl::Window* pParentWin = nullptr;
+        if ( _rParentPeer.is() )
         {
-            mbCreatingPeer = true;
-
-            // determine the VLC window for the parent
-            vcl::Window* pParentWin = nullptr;
-            if ( _rParentPeer.is() )
-            {
-                VCLXWindow* pParentXWin = VCLXWindow::GetImplementation( _rParentPeer );
-                if ( pParentXWin )
-                    pParentWin = pParentXWin->GetWindow().get();
-                DBG_ASSERT( pParentWin, "ORichTextControl::createPeer: could not obtain the VCL-level parent window!" );
-            }
-
-            // create the peer
-            Reference< XControlModel > xModel( getModel() );
-            ORichTextPeer* pPeer = ORichTextPeer::Create( xModel, pParentWin, getWinBits( xModel ) );
-            DBG_ASSERT( pPeer, "ORichTextControl::createPeer: invalid peer returned!" );
-            if ( pPeer )
-            {
-                // by definition, the returned component is acquired once
-                pPeer->release();
-
-                // announce the peer to the base class
-                setPeer( pPeer );
-
-                // initialize ourself (and thus the peer) with the model properties
-                updateFromModel();
-
-                Reference< XView >  xPeerView( getPeer(), UNO_QUERY );
-                if ( xPeerView.is() )
-                {
-                    xPeerView->setZoom( maComponentInfos.nZoomX, maComponentInfos.nZoomY );
-                    xPeerView->setGraphics( mxGraphics );
-                }
-
-                // a lot of initial settings from our component infos
-                setPosSize( maComponentInfos.nX, maComponentInfos.nY, maComponentInfos.nWidth, maComponentInfos.nHeight, PosSize::POSSIZE );
-
-                pPeer->setVisible   ( maComponentInfos.bVisible && !mbDesignMode );
-                pPeer->setEnable    ( maComponentInfos.bEnable                   );
-                pPeer->setDesignMode( mbDesignMode                               );
-
-                peerCreated();
-            }
-
-            mbCreatingPeer = false;
+            VCLXWindow* pParentXWin = comphelper::getUnoTunnelImplementation<VCLXWindow>( _rParentPeer );
+            if ( pParentXWin )
+                pParentWin = pParentXWin->GetWindow().get();
+            DBG_ASSERT( pParentWin, "ORichTextControl::createPeer: could not obtain the VCL-level parent window!" );
         }
+
+        // create the peer
+        Reference< XControlModel > xModel( getModel() );
+        rtl::Reference<ORichTextPeer> pPeer = ORichTextPeer::Create( xModel, pParentWin, getWinBits( xModel ) );
+        DBG_ASSERT( pPeer, "ORichTextControl::createPeer: invalid peer returned!" );
+        if ( pPeer )
+        {
+            // announce the peer to the base class
+            setPeer( pPeer.get() );
+
+            // initialize ourself (and thus the peer) with the model properties
+            updateFromModel();
+
+            Reference< XView >  xPeerView( getPeer(), UNO_QUERY );
+            if ( xPeerView.is() )
+            {
+                xPeerView->setZoom( maComponentInfos.nZoomX, maComponentInfos.nZoomY );
+                xPeerView->setGraphics( mxGraphics );
+            }
+
+            // a lot of initial settings from our component infos
+            setPosSize( maComponentInfos.nX, maComponentInfos.nY, maComponentInfos.nWidth, maComponentInfos.nHeight, PosSize::POSSIZE );
+
+            pPeer->setVisible   ( maComponentInfos.bVisible && !mbDesignMode );
+            pPeer->setEnable    ( maComponentInfos.bEnable                   );
+            pPeer->setDesignMode( mbDesignMode                               );
+
+            peerCreated();
+        }
+
+        mbCreatingPeer = false;
     }
 
     OUString SAL_CALL ORichTextControl::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.form.ORichTextControl" );
+        return "com.sun.star.comp.form.ORichTextControl";
     }
 
     Sequence< OUString > SAL_CALL ORichTextControl::getSupportedServiceNames()
@@ -255,7 +255,7 @@ namespace frm
     }
 
     // ORichTextPeer
-    ORichTextPeer* ORichTextPeer::Create( const Reference< XControlModel >& _rxModel, vcl::Window* _pParentWindow, WinBits _nStyle )
+    rtl::Reference<ORichTextPeer> ORichTextPeer::Create( const Reference< XControlModel >& _rxModel, vcl::Window* _pParentWindow, WinBits _nStyle )
     {
         DBG_TESTSOLARMUTEX();
 
@@ -266,14 +266,13 @@ namespace frm
             return nullptr;
 
         // the peer itself
-        ORichTextPeer* pPeer = new ORichTextPeer;
-        pPeer->acquire();   // by definition, the returned object is acquired once
+        rtl::Reference<ORichTextPeer> pPeer(new ORichTextPeer);
 
         // the VCL control for the peer
-        VclPtrInstance<RichTextControl> pRichTextControl( pEngine, _pParentWindow, _nStyle, nullptr, pPeer );
+        VclPtrInstance<RichTextControl> pRichTextControl( pEngine, _pParentWindow, _nStyle, nullptr, pPeer.get() );
 
         // some knittings
-        pRichTextControl->SetComponentInterface( pPeer );
+        pRichTextControl->SetComponentInterface( pPeer.get() );
 
         // outta here
         return pPeer;
@@ -298,13 +297,10 @@ namespace frm
 
             if ( pRichTextControl )
             {
-                for (   AttributeDispatchers::iterator aDisposeLoop = m_aDispatchers.begin();
-                        aDisposeLoop != m_aDispatchers.end();
-                        ++aDisposeLoop
-                    )
+                for (auto const& dispatcher : m_aDispatchers)
                 {
-                    pRichTextControl->disableAttributeNotification( aDisposeLoop->first );
-                    aDisposeLoop->second->dispose();
+                    pRichTextControl->disableAttributeNotification(dispatcher.first);
+                    dispatcher.second->dispose();
                 }
             }
 
@@ -329,17 +325,13 @@ namespace frm
         if ( !pTargetDevice )
             return;
 
-        ::Size aSize = pControl->GetSizePixel();
         const MapUnit eTargetUnit = pTargetDevice->GetMapMode().GetMapUnit();
-        if ( eTargetUnit != MapUnit::MapPixel )
-            aSize = pTargetDevice->PixelToLogic( aSize );
-
         ::Point aPos( _nX, _nY );
         // the XView::draw API talks about pixels, always ...
         if ( eTargetUnit != MapUnit::MapPixel )
             aPos = pTargetDevice->PixelToLogic( aPos );
 
-        pControl->Draw( pTargetDevice, aPos, aSize, DrawFlags::NoControls );
+        pControl->Draw( pTargetDevice, aPos, DrawFlags::NoControls );
     }
 
 
@@ -362,9 +354,9 @@ namespace frm
             }
             else
             {
-                sal_Int32 nColor = COL_TRANSPARENT;
+                Color nColor = COL_TRANSPARENT;
                 _rValue >>= nColor;
-                pControl->SetBackgroundColor( Color( nColor ) );
+                pControl->SetBackgroundColor( nColor );
             }
         }
         else if ( _rPropertyName == PROPERTY_HSCROLL )
@@ -387,12 +379,9 @@ namespace frm
             pControl->SetReadOnly( bReadOnly );
 
             // update the dispatchers
-            for (   AttributeDispatchers::iterator aDispatcherLoop = m_aDispatchers.begin();
-                    aDispatcherLoop != m_aDispatchers.end();
-                    ++aDispatcherLoop
-                )
+            for (auto const& dispatcher : m_aDispatchers)
             {
-                aDispatcherLoop->second->invalidate();
+                dispatcher.second->invalidate();
             }
         }
         else if ( _rPropertyName == PROPERTY_HIDEINACTIVESELECTION )
@@ -568,7 +557,7 @@ namespace frm
 
     namespace
     {
-        SfxSlotId lcl_getSlotFromUnoName( SfxSlotPool& _rSlotPool, const OUString& _rUnoSlotName )
+        SfxSlotId lcl_getSlotFromUnoName( SfxSlotPool const & _rSlotPool, const OUString& _rUnoSlotName )
         {
             const SfxSlot* pSlot = _rSlotPool.GetUnoSlot( _rUnoSlotName );
             if ( pSlot )
@@ -601,7 +590,7 @@ namespace frm
             return xReturn;
         }
 
-        // is it an UNO slot?
+        // is it a UNO slot?
         OUString sUnoProtocolPrefix( ".uno:" );
         if ( _rURL.Complete.startsWith( sUnoProtocolPrefix ) )
         {
@@ -616,7 +605,7 @@ namespace frm
                     SingleAttributeDispatcher pDispatcher = implCreateDispatcher( nSlotId, _rURL );
                     if ( pDispatcher.is() )
                     {
-                        aDispatcherPos = m_aDispatchers.insert( AttributeDispatchers::value_type( nSlotId, pDispatcher ) ).first;
+                        aDispatcherPos = m_aDispatchers.emplace( nSlotId, pDispatcher ).first;
                     }
                 }
 
@@ -644,21 +633,21 @@ namespace frm
     }
 
 
-    void ORichTextPeer::onSelectionChanged( const ESelection& /*_rSelection*/ )
+    void ORichTextPeer::onSelectionChanged()
     {
         AttributeDispatchers::iterator aDispatcherPos = m_aDispatchers.find( SID_COPY );
         if ( aDispatcherPos != m_aDispatchers.end() )
-            aDispatcherPos->second.get()->invalidate();
+            aDispatcherPos->second->invalidate();
 
         aDispatcherPos = m_aDispatchers.find( SID_CUT );
         if ( aDispatcherPos != m_aDispatchers.end() )
-            aDispatcherPos->second.get()->invalidate();
+            aDispatcherPos->second->invalidate();
     }
 
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_form_ORichTextControl_get_implementation(css::uno::XComponentContext*,
         css::uno::Sequence<css::uno::Any> const &)
 {

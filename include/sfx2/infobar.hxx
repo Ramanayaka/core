@@ -11,96 +11,113 @@
 
 #include <vector>
 
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
 #include <basegfx/color/bcolor.hxx>
 
-#include <sfx2/dllapi.h>
 #include <sfx2/childwin.hxx>
+#include <sfx2/dllapi.h>
 
-enum class InfoBarType {
-    Info,
-    Success,
-    Warning,
-    Danger
+class FixedImage;
+class FixedText;
+class Button;
+class PushButton;
+
+// These must match the values in offapi/com/sun/star/frame/InfobarType.idl
+enum class InfobarType
+{
+    INFO = 0,
+    SUCCESS = 1,
+    WARNING = 2,
+    DANGER = 3
+};
+
+class InfobarData
+{
+public:
+    OUString msId;
+    OUString msPrimaryMessage;
+    OUString msSecondaryMessage;
+    InfobarType maInfobarType;
+    bool mbShowCloseButton;
 };
 
 /** SfxChildWindow for positioning the InfoBar in the view.
   */
-class SFX2_DLLPUBLIC SfxInfoBarContainerChild : public SfxChildWindow
+class SFX2_DLLPUBLIC SfxInfoBarContainerChild final : public SfxChildWindow
 {
-    private:
-        SfxBindings* m_pBindings;
+private:
+    SfxBindings* m_pBindings;
 
-    public:
-        SfxInfoBarContainerChild( vcl::Window* pParent,
-                                  sal_uInt16 nId,
-                                  SfxBindings* pBindings,
-                                  SfxChildWinInfo* pInfo );
-        virtual ~SfxInfoBarContainerChild() override;
+public:
+    SfxInfoBarContainerChild(vcl::Window* pParent, sal_uInt16 nId, SfxBindings* pBindings,
+                             SfxChildWinInfo* pInfo);
+    virtual ~SfxInfoBarContainerChild() override;
 
-        SFX_DECL_CHILDWINDOW_WITHID( SfxInfoBarContainerChild );
+    SFX_DECL_CHILDWINDOW_WITHID(SfxInfoBarContainerChild);
 
-        void Update( );
+    void Update();
 };
 
 /** Class representing a single InfoBar to be added in a SfxInfoBarContainerWindow.
   */
-class SfxInfoBarWindow : public vcl::Window
+class SFX2_DLLPUBLIC SfxInfoBarWindow final : public vcl::Window
 {
-    private:
-        OUString                           m_sId;
-        VclPtr<FixedImage>        m_pImage;
-        VclPtr<FixedText>           m_pMessage;
-        VclPtr<Button>                m_pCloseBtn;
-        std::vector< VclPtr<PushButton> >  m_aActionBtns;
+private:
+    OUString m_sId;
+    InfobarType m_eType;
+    VclPtr<FixedImage> m_pImage;
+    VclPtr<FixedText> m_pPrimaryMessage;
+    VclPtr<FixedText> m_pSecondaryMessage;
+    VclPtr<Button> m_pCloseBtn;
+    std::vector<VclPtr<PushButton>> m_aActionBtns;
 
-    public:
-        SfxInfoBarWindow( vcl::Window* parent, const OUString& sId,
-                          const OUString& sMessage,
-                          InfoBarType infoBarType,
-                          WinBits nMessageStyle);
-        virtual ~SfxInfoBarWindow( ) override;
-        virtual void dispose() override;
+    void SetForeAndBackgroundColors(InfobarType eType);
 
-        const OUString& getId() const { return m_sId; }
-        virtual void Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& ) override;
-        virtual void Resize( ) override;
-        basegfx::BColor                m_aBackgroundColor;
-        basegfx::BColor                m_aForegroundColor;
+public:
+    SfxInfoBarWindow(vcl::Window* parent, const OUString& sId, const OUString& sPrimaryMessage,
+                     const OUString& sSecondaryMessage, InfobarType InfobarType,
+                     WinBits nMessageStyle, bool bShowCloseButton);
+    virtual ~SfxInfoBarWindow() override;
+    virtual void dispose() override;
 
-        /** Add button to Infobar.
+    const OUString& getId() const { return m_sId; }
+    virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&) override;
+    virtual void Resize() override;
+    void Update(const OUString& sPrimaryMessage, const OUString& sSecondaryMessage,
+                InfobarType eType);
+    basegfx::BColor m_aBackgroundColor;
+    basegfx::BColor m_aForegroundColor;
+
+    /** Add button to Infobar.
          * Infobar takes ownership of the button so the button is
          * destroyed when the infobar gets destroyed.
          */
-        void addButton(PushButton* pButton);
+    void addButton(PushButton* pButton);
 
-    private:
-        DECL_LINK( CloseHandler, Button*, void );
+private:
+    DECL_LINK(CloseHandler, Button*, void);
 };
 
-class SfxInfoBarContainerWindow : public vcl::Window
+class SfxInfoBarContainerWindow final : public vcl::Window
 {
-    private:
-        SfxInfoBarContainerChild*               m_pChildWin;
-        std::vector< VclPtr<SfxInfoBarWindow> > m_pInfoBars;
+private:
+    SfxInfoBarContainerChild* m_pChildWin;
+    std::vector<VclPtr<SfxInfoBarWindow>> m_pInfoBars;
 
-    public:
-        SfxInfoBarContainerWindow(SfxInfoBarContainerChild* pChildWin);
-        virtual ~SfxInfoBarContainerWindow( ) override;
-        virtual void dispose() override;
+public:
+    SfxInfoBarContainerWindow(SfxInfoBarContainerChild* pChildWin);
+    virtual ~SfxInfoBarContainerWindow() override;
+    virtual void dispose() override;
 
-        VclPtr<SfxInfoBarWindow> appendInfoBar(const OUString& sId,
-                                        const OUString& sMessage,
-                                        InfoBarType ibType,
-                                        WinBits nMessageStyle = WB_LEFT|WB_VCENTER);
-        VclPtr<SfxInfoBarWindow> getInfoBar(const OUString& sId);
-        bool hasInfoBarWithID(const OUString& sId);
-        void removeInfoBar(VclPtr<SfxInfoBarWindow> const & pInfoBar);
+    VclPtr<SfxInfoBarWindow> appendInfoBar(const OUString& sId, const OUString& sPrimaryMessage,
+                                           const OUString& sSecondaryMessage, InfobarType ibType,
+                                           WinBits nMessageStyle, bool bShowCloseButton);
+    VclPtr<SfxInfoBarWindow> getInfoBar(const OUString& sId);
+    bool hasInfoBarWithID(const OUString& sId);
+    void removeInfoBar(VclPtr<SfxInfoBarWindow> const& pInfoBar);
+    static bool isInfobarEnabled(const OUString& sId);
 
-        virtual void Resize() override;
+    virtual void Resize() override;
 };
-
 
 #endif
 

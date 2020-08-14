@@ -18,29 +18,28 @@
  */
 
 #include <drawinglayer/primitive2d/sceneprimitive2d.hxx>
-#include <basegfx/tools/canvastools.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolygonclipper.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <drawinglayer/attribute/sdrlightattribute3d.hxx>
 #include <drawinglayer/primitive2d/bitmapprimitive2d.hxx>
-#include <drawinglayer/processor3d/zbufferprocessor3d.hxx>
-#include <drawinglayer/processor3d/shadow3dextractor.hxx>
+#include <processor3d/zbufferprocessor3d.hxx>
+#include <processor3d/shadow3dextractor.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 #include <svtools/optionsdrawinglayer.hxx>
-#include <drawinglayer/processor3d/geometry2dextractor.hxx>
+#include <processor3d/geometry2dextractor.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <basegfx/raster/bzpixelraster.hxx>
-#include <vcl/bitmapaccess.hxx>
+#include <vcl/BitmapTools.hxx>
 #include <comphelper/threadpool.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 
 using namespace com::sun::star;
 
 namespace
 {
-    BitmapEx BPixelRasterToBitmapEx(const basegfx::BPixelRaster& rRaster, sal_uInt16 mnAntiAlialize)
+    BitmapEx BPixelRasterToBitmapEx(const basegfx::BZPixelRaster& rRaster, sal_uInt16 mnAntiAlialize)
     {
         BitmapEx aRetval;
         const sal_uInt32 nWidth(mnAntiAlialize ? rRaster.getWidth()/mnAntiAlialize : rRaster.getWidth());
@@ -49,82 +48,75 @@ namespace
         if(nWidth && nHeight)
         {
             const Size aDestSize(nWidth, nHeight);
-            sal_uInt8 nInitAlpha(255);
-            Bitmap aContent(aDestSize, 24);
-            AlphaMask aAlpha(aDestSize, &nInitAlpha);
-            Bitmap::ScopedWriteAccess pContent(aContent);
-            AlphaMask::ScopedWriteAccess pAlpha(aAlpha);
+            vcl::bitmap::RawBitmap aContent(aDestSize, 32);
 
-            if (pContent && pAlpha)
+            if(mnAntiAlialize)
             {
-                if(mnAntiAlialize)
+                const sal_uInt16 nDivisor(mnAntiAlialize * mnAntiAlialize);
+
+                for(sal_uInt32 y(0); y < nHeight; y++)
                 {
-                    const sal_uInt16 nDivisor(mnAntiAlialize * mnAntiAlialize);
-
-                    for(sal_uInt32 y(0L); y < nHeight; y++)
+                    for(sal_uInt32 x(0); x < nWidth; x++)
                     {
-                        for(sal_uInt32 x(0L); x < nWidth; x++)
+                        sal_uInt16 nRed(0);
+                        sal_uInt16 nGreen(0);
+                        sal_uInt16 nBlue(0);
+                        sal_uInt16 nOpacity(0);
+                        sal_uInt32 nIndex(rRaster.getIndexFromXY(x * mnAntiAlialize, y * mnAntiAlialize));
+
+                        for(sal_uInt32 c(0); c < mnAntiAlialize; c++)
                         {
-                            sal_uInt16 nRed(0);
-                            sal_uInt16 nGreen(0);
-                            sal_uInt16 nBlue(0);
-                            sal_uInt16 nOpacity(0);
-                            sal_uInt32 nIndex(rRaster.getIndexFromXY(x * mnAntiAlialize, y * mnAntiAlialize));
-
-                            for(sal_uInt32 c(0); c < mnAntiAlialize; c++)
+                            for(sal_uInt32 d(0); d < mnAntiAlialize; d++)
                             {
-                                for(sal_uInt32 d(0); d < mnAntiAlialize; d++)
-                                {
-                                    const basegfx::BPixel& rPixel(rRaster.getBPixel(nIndex++));
-                                    nRed = nRed + rPixel.getRed();
-                                    nGreen = nGreen + rPixel.getGreen();
-                                    nBlue = nBlue + rPixel.getBlue();
-                                    nOpacity = nOpacity + rPixel.getOpacity();
-                                }
-
-                                nIndex += rRaster.getWidth() - mnAntiAlialize;
+                                const basegfx::BPixel& rPixel(rRaster.getBPixel(nIndex++));
+                                nRed = nRed + rPixel.getRed();
+                                nGreen = nGreen + rPixel.getGreen();
+                                nBlue = nBlue + rPixel.getBlue();
+                                nOpacity = nOpacity + rPixel.getOpacity();
                             }
 
-                            nOpacity = nOpacity / nDivisor;
-
-                            if(nOpacity)
-                            {
-                                pContent->SetPixel(y, x, BitmapColor(
-                                    (sal_uInt8)(nRed / nDivisor),
-                                    (sal_uInt8)(nGreen / nDivisor),
-                                    (sal_uInt8)(nBlue / nDivisor)));
-                                pAlpha->SetPixel(y, x, BitmapColor(255 - (sal_uInt8)nOpacity));
-                            }
+                            nIndex += rRaster.getWidth() - mnAntiAlialize;
                         }
+
+                        nOpacity = nOpacity / nDivisor;
+
+                        if(nOpacity)
+                        {
+                            aContent.SetPixel(y, x, Color(
+                                255 - static_cast<sal_uInt8>(nOpacity),
+                                static_cast<sal_uInt8>(nRed / nDivisor),
+                                static_cast<sal_uInt8>(nGreen / nDivisor),
+                                static_cast<sal_uInt8>(nBlue / nDivisor) ));
+                        }
+                        else
+                            aContent.SetPixel(y, x, Color(255, 0, 0, 0));
                     }
                 }
-                else
+            }
+            else
+            {
+                sal_uInt32 nIndex(0);
+
+                for(sal_uInt32 y(0); y < nHeight; y++)
                 {
-                    sal_uInt32 nIndex(0L);
-
-                    for(sal_uInt32 y(0L); y < nHeight; y++)
+                    for(sal_uInt32 x(0); x < nWidth; x++)
                     {
-                        for(sal_uInt32 x(0L); x < nWidth; x++)
-                        {
-                            const basegfx::BPixel& rPixel(rRaster.getBPixel(nIndex++));
+                        const basegfx::BPixel& rPixel(rRaster.getBPixel(nIndex++));
 
-                            if(rPixel.getOpacity())
-                            {
-                                pContent->SetPixel(y, x, BitmapColor(rPixel.getRed(), rPixel.getGreen(), rPixel.getBlue()));
-                                pAlpha->SetPixel(y, x, BitmapColor(255 - rPixel.getOpacity()));
-                            }
+                        if(rPixel.getOpacity())
+                        {
+                            aContent.SetPixel(y, x, Color(255 - rPixel.getOpacity(), rPixel.getRed(), rPixel.getGreen(), rPixel.getBlue()));
                         }
+                        else
+                            aContent.SetPixel(y, x, Color(255, 0, 0, 0));
                     }
                 }
             }
 
-            pAlpha.reset();
-            pContent.reset();
-
-            aRetval = BitmapEx(aContent, aAlpha);
+            aRetval = vcl::bitmap::CreateFromData(std::move(aContent));
 
             // #i101811# set PrefMapMode and PrefSize at newly created Bitmap
-            aRetval.SetPrefMapMode(MapUnit::MapPixel);
+            aRetval.SetPrefMapMode(MapMode(MapUnit::MapPixel));
             aRetval.SetPrefSize(Size(nWidth, nHeight));
         }
 
@@ -132,10 +124,8 @@ namespace
     }
 } // end of anonymous namespace
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         bool ScenePrimitive2D::impGetShadow3D() const
         {
             ::osl::MutexGuard aGuard( m_aMutex );
@@ -147,7 +137,7 @@ namespace drawinglayer
                 const double fShadowSlant(getSdrSceneAttribute().getShadowSlant());
                 const basegfx::B3DRange aScene3DRange(getChildren3D().getB3DRange(getViewInformation3D()));
 
-                if(maSdrLightingAttribute.getLightVector().size())
+                if(!maSdrLightingAttribute.getLightVector().empty())
                 {
                     // get light normal from first light and normalize
                     aLightNormal = maSdrLightingAttribute.getLightVector()[0].getDirection();
@@ -246,29 +236,32 @@ namespace drawinglayer
 
             calculateDiscreteSizes(rViewInformation, aDiscreteRange, aVisibleDiscreteRange, aUnitVisibleRange);
 
-            if(!aVisibleDiscreteRange.isEmpty())
+            if(aVisibleDiscreteRange.isEmpty())
+                return;
+
+            // test if discrete view size (pixel) maybe too big and limit it
+            double fViewSizeX(aVisibleDiscreteRange.getWidth());
+            double fViewSizeY(aVisibleDiscreteRange.getHeight());
+            const double fViewVisibleArea(fViewSizeX * fViewSizeY);
+            const SvtOptionsDrawinglayer aDrawinglayerOpt;
+            const double fMaximumVisibleArea(aDrawinglayerOpt.GetQuadratic3DRenderLimit());
+            double fReduceFactor(1.0);
+
+            if(fViewVisibleArea > fMaximumVisibleArea)
             {
-                // test if discrete view size (pixel) maybe too big and limit it
-                double fViewSizeX(aVisibleDiscreteRange.getWidth());
-                double fViewSizeY(aVisibleDiscreteRange.getHeight());
-                const double fViewVisibleArea(fViewSizeX * fViewSizeY);
-                const SvtOptionsDrawinglayer aDrawinglayerOpt;
-                const double fMaximumVisibleArea(aDrawinglayerOpt.GetQuadratic3DRenderLimit());
-                double fReduceFactor(1.0);
+                fReduceFactor = sqrt(fMaximumVisibleArea / fViewVisibleArea);
+                fViewSizeX *= fReduceFactor;
+                fViewSizeY *= fReduceFactor;
+            }
 
-                if(fViewVisibleArea > fMaximumVisibleArea)
+            if(rViewInformation.getReducedDisplayQuality())
+            {
+                // when reducing the visualisation is allowed (e.g. an OverlayObject
+                // only needed for dragging), reduce resolution extra
+                // to speed up dragging interactions
+                const double fArea(fViewSizeX * fViewSizeY);
+                if (fArea != 0.0)
                 {
-                    fReduceFactor = sqrt(fMaximumVisibleArea / fViewVisibleArea);
-                    fViewSizeX *= fReduceFactor;
-                    fViewSizeY *= fReduceFactor;
-                }
-
-                if(rViewInformation.getReducedDisplayQuality())
-                {
-                    // when reducing the visualisation is allowed (e.g. an OverlayObject
-                    // only needed for dragging), reduce resolution extra
-                    // to speed up dragging interactions
-                    const double fArea(fViewSizeX * fViewSizeY);
                     double fReducedVisualisationFactor(1.0 / (sqrt(fArea) * (1.0 / 170.0)));
 
                     if(fReducedVisualisationFactor > 1.0)
@@ -285,209 +278,213 @@ namespace drawinglayer
                         fReduceFactor *= fReducedVisualisationFactor;
                     }
                 }
+            }
 
-                // determine the oversample value
-                static sal_uInt16 nDefaultOversampleValue(3);
-                const sal_uInt16 nOversampleValue(aDrawinglayerOpt.IsAntiAliasing() ? nDefaultOversampleValue : 0);
+            // determine the oversample value
+            static const sal_uInt16 nDefaultOversampleValue(3);
+            const sal_uInt16 nOversampleValue(aDrawinglayerOpt.IsAntiAliasing() ? nDefaultOversampleValue : 0);
 
-                geometry::ViewInformation3D aViewInformation3D(getViewInformation3D());
+            geometry::ViewInformation3D aViewInformation3D(getViewInformation3D());
+            {
+                // calculate a transformation from DiscreteRange to evtl. rotated/sheared content.
+                // Start with full transformation from object to discrete units
+                basegfx::B2DHomMatrix aObjToUnit(rViewInformation.getObjectToViewTransformation() * getObjectTransformation());
+
+                // bring to unit coordinates by applying inverse DiscreteRange
+                aObjToUnit.translate(-aDiscreteRange.getMinX(), -aDiscreteRange.getMinY());
+                if (aDiscreteRange.getWidth() != 0.0 && aDiscreteRange.getHeight() != 0.0)
                 {
-                    // calculate a transformation from DiscreteRange to evtl. rotated/sheared content.
-                    // Start with full transformation from object to discrete units
-                    basegfx::B2DHomMatrix aObjToUnit(rViewInformation.getObjectToViewTransformation() * getObjectTransformation());
-
-                    // bring to unit coordinates by applying inverse DiscreteRange
-                    aObjToUnit.translate(-aDiscreteRange.getMinX(), -aDiscreteRange.getMinY());
                     aObjToUnit.scale(1.0 / aDiscreteRange.getWidth(), 1.0 / aDiscreteRange.getHeight());
-
-                    // calculate transformed user coordinate system
-                    const basegfx::B2DPoint aStandardNull(0.0, 0.0);
-                    const basegfx::B2DPoint aUnitRangeTopLeft(aObjToUnit * aStandardNull);
-                    const basegfx::B2DVector aStandardXAxis(1.0, 0.0);
-                    const basegfx::B2DVector aUnitRangeXAxis(aObjToUnit * aStandardXAxis);
-                    const basegfx::B2DVector aStandardYAxis(0.0, 1.0);
-                    const basegfx::B2DVector aUnitRangeYAxis(aObjToUnit * aStandardYAxis);
-
-                    if(!aUnitRangeTopLeft.equal(aStandardNull) || !aUnitRangeXAxis.equal(aStandardXAxis) || !aUnitRangeYAxis.equal(aStandardYAxis))
-                    {
-                        // build transformation from unit range to user coordinate system; the unit range
-                        // X and Y axes are the column vectors, the null point is the offset
-                        basegfx::B2DHomMatrix aUnitRangeToUser;
-
-                        aUnitRangeToUser.set3x2(
-                            aUnitRangeXAxis.getX(), aUnitRangeYAxis.getX(), aUnitRangeTopLeft.getX(),
-                            aUnitRangeXAxis.getY(), aUnitRangeYAxis.getY(), aUnitRangeTopLeft.getY());
-
-                        // decompose to allow to apply this to the 3D transformation
-                        basegfx::B2DVector aScale, aTranslate;
-                        double fRotate, fShearX;
-                        aUnitRangeToUser.decompose(aScale, aTranslate, fRotate, fShearX);
-
-                        // apply before DeviceToView and after Projection, 3D is in range [-1.0 .. 1.0] in X,Y and Z
-                        // and not yet flipped in Y
-                        basegfx::B3DHomMatrix aExtendedProjection(aViewInformation3D.getProjection());
-
-                        // bring to unit coordinates, flip Y, leave Z unchanged
-                        aExtendedProjection.scale(0.5, -0.5, 1.0);
-                        aExtendedProjection.translate(0.5, 0.5, 0.0);
-
-                        // apply extra; Y is flipped now, go with positive shear and rotate values
-                        aExtendedProjection.scale(aScale.getX(), aScale.getY(), 1.0);
-                        aExtendedProjection.shearXZ(fShearX, 0.0);
-                        aExtendedProjection.rotate(0.0, 0.0, fRotate);
-                        aExtendedProjection.translate(aTranslate.getX(), aTranslate.getY(), 0.0);
-
-                        // back to state after projection
-                        aExtendedProjection.translate(-0.5, -0.5, 0.0);
-                        aExtendedProjection.scale(2.0, -2.0, 1.0);
-
-                        aViewInformation3D = geometry::ViewInformation3D(
-                            aViewInformation3D.getObjectTransformation(),
-                            aViewInformation3D.getOrientation(),
-                            aExtendedProjection,
-                            aViewInformation3D.getDeviceToView(),
-                            aViewInformation3D.getViewTime(),
-                            aViewInformation3D.getExtendedInformationSequence());
-                    }
                 }
 
-                // calculate logic render size in world coordinates for usage in renderer
-                const basegfx::B2DHomMatrix& aInverseOToV(rViewInformation.getInverseObjectToViewTransformation());
-                const double fLogicX((aInverseOToV * basegfx::B2DVector(aDiscreteRange.getWidth() * fReduceFactor, 0.0)).getLength());
-                const double fLogicY((aInverseOToV * basegfx::B2DVector(0.0, aDiscreteRange.getHeight() * fReduceFactor)).getLength());
+                // calculate transformed user coordinate system
+                const basegfx::B2DPoint aStandardNull(0.0, 0.0);
+                const basegfx::B2DPoint aUnitRangeTopLeft(aObjToUnit * aStandardNull);
+                const basegfx::B2DVector aStandardXAxis(1.0, 0.0);
+                const basegfx::B2DVector aUnitRangeXAxis(aObjToUnit * aStandardXAxis);
+                const basegfx::B2DVector aStandardYAxis(0.0, 1.0);
+                const basegfx::B2DVector aUnitRangeYAxis(aObjToUnit * aStandardYAxis);
 
-                // generate ViewSizes
-                const double fFullViewSizeX((rViewInformation.getObjectToViewTransformation() * basegfx::B2DVector(fLogicX, 0.0)).getLength());
-                const double fFullViewSizeY((rViewInformation.getObjectToViewTransformation() * basegfx::B2DVector(0.0, fLogicY)).getLength());
-
-                // generate RasterWidth and RasterHeight for visible part
-                const sal_Int32 nRasterWidth(basegfx::fround(fFullViewSizeX * aUnitVisibleRange.getWidth()) + 1);
-                const sal_Int32 nRasterHeight(basegfx::fround(fFullViewSizeY * aUnitVisibleRange.getHeight()) + 1);
-
-                if(nRasterWidth && nRasterHeight)
+                if(!aUnitRangeTopLeft.equal(aStandardNull) || !aUnitRangeXAxis.equal(aStandardXAxis) || !aUnitRangeYAxis.equal(aStandardYAxis))
                 {
-                    // create view unit buffer
-                    basegfx::BZPixelRaster aBZPixelRaster(
-                        nOversampleValue ? nRasterWidth * nOversampleValue : nRasterWidth,
-                        nOversampleValue ? nRasterHeight * nOversampleValue : nRasterHeight);
+                    // build transformation from unit range to user coordinate system; the unit range
+                    // X and Y axes are the column vectors, the null point is the offset
+                    basegfx::B2DHomMatrix aUnitRangeToUser;
 
-                    // check for parallel execution possibilities
-                    static bool bMultithreadAllowed = true;
-                    sal_Int32 nThreadCount(0);
-                    comphelper::ThreadPool& rThreadPool(comphelper::ThreadPool::getSharedOptimalPool());
+                    aUnitRangeToUser.set3x2(
+                        aUnitRangeXAxis.getX(), aUnitRangeYAxis.getX(), aUnitRangeTopLeft.getX(),
+                        aUnitRangeXAxis.getY(), aUnitRangeYAxis.getY(), aUnitRangeTopLeft.getY());
 
-                    if(bMultithreadAllowed)
-                    {
-                        nThreadCount = rThreadPool.getWorkerCount();
+                    // decompose to allow to apply this to the 3D transformation
+                    basegfx::B2DVector aScale, aTranslate;
+                    double fRotate, fShearX;
+                    aUnitRangeToUser.decompose(aScale, aTranslate, fRotate, fShearX);
 
-                        if(nThreadCount > 1)
-                        {
-                            // at least use 10px per processor, so limit number of processors to
-                            // target pixel size divided by 10 (which might be zero what is okay)
-                            nThreadCount = std::min(nThreadCount, nRasterHeight / 10);
-                        }
-                    }
+                    // apply before DeviceToView and after Projection, 3D is in range [-1.0 .. 1.0] in X,Y and Z
+                    // and not yet flipped in Y
+                    basegfx::B3DHomMatrix aExtendedProjection(aViewInformation3D.getProjection());
 
-                    if(nThreadCount > 1)
-                    {
-                        class Executor : public comphelper::ThreadTask
-                        {
-                        private:
-                            processor3d::ZBufferProcessor3D*            mpZBufferProcessor3D;
-                            const primitive3d::Primitive3DContainer&    mrChildren3D;
+                    // bring to unit coordinates, flip Y, leave Z unchanged
+                    aExtendedProjection.scale(0.5, -0.5, 1.0);
+                    aExtendedProjection.translate(0.5, 0.5, 0.0);
 
-                        public:
-                            explicit Executor(
-                                std::shared_ptr<comphelper::ThreadTaskTag>& rTag,
-                                processor3d::ZBufferProcessor3D* pZBufferProcessor3D,
-                                const primitive3d::Primitive3DContainer& rChildren3D)
-                            :   comphelper::ThreadTask(rTag),
-                                mpZBufferProcessor3D(pZBufferProcessor3D),
-                                mrChildren3D(rChildren3D)
-                            {
-                            }
+                    // apply extra; Y is flipped now, go with positive shear and rotate values
+                    aExtendedProjection.scale(aScale.getX(), aScale.getY(), 1.0);
+                    aExtendedProjection.shearXZ(fShearX, 0.0);
+                    aExtendedProjection.rotate(0.0, 0.0, fRotate);
+                    aExtendedProjection.translate(aTranslate.getX(), aTranslate.getY(), 0.0);
 
-                            virtual void doWork() override
-                            {
-                                mpZBufferProcessor3D->process(mrChildren3D);
-                                mpZBufferProcessor3D->finish();
-                                delete mpZBufferProcessor3D;
-                            }
-                        };
+                    // back to state after projection
+                    aExtendedProjection.translate(-0.5, -0.5, 0.0);
+                    aExtendedProjection.scale(2.0, -2.0, 1.0);
 
-                        std::vector< processor3d::ZBufferProcessor3D* > aProcessors;
-                        const sal_uInt32 nLinesPerThread(aBZPixelRaster.getHeight() / nThreadCount);
-                        std::shared_ptr<comphelper::ThreadTaskTag> aTag = comphelper::ThreadPool::createThreadTaskTag();
-
-                        for(sal_Int32 a(0); a < nThreadCount; a++)
-                        {
-                            processor3d::ZBufferProcessor3D* pNewZBufferProcessor3D = new processor3d::ZBufferProcessor3D(
-                                aViewInformation3D,
-                                getSdrSceneAttribute(),
-                                getSdrLightingAttribute(),
-                                aUnitVisibleRange,
-                                nOversampleValue,
-                                fFullViewSizeX,
-                                fFullViewSizeY,
-                                aBZPixelRaster,
-                                nLinesPerThread * a,
-                                a + 1 == nThreadCount ? aBZPixelRaster.getHeight() : nLinesPerThread * (a + 1));
-                            aProcessors.push_back(pNewZBufferProcessor3D);
-                            Executor* pExecutor = new Executor(aTag, pNewZBufferProcessor3D, getChildren3D());
-                            rThreadPool.pushTask(pExecutor);
-                        }
-
-                        rThreadPool.waitUntilDone(aTag);
-                    }
-                    else
-                    {
-                        // use default 3D primitive processor to create BitmapEx for aUnitVisiblePart and process
-                        processor3d::ZBufferProcessor3D aZBufferProcessor3D(
-                            aViewInformation3D,
-                            getSdrSceneAttribute(),
-                            getSdrLightingAttribute(),
-                            aUnitVisibleRange,
-                            nOversampleValue,
-                            fFullViewSizeX,
-                            fFullViewSizeY,
-                            aBZPixelRaster,
-                            0,
-                            aBZPixelRaster.getHeight());
-
-                        aZBufferProcessor3D.process(getChildren3D());
-                        aZBufferProcessor3D.finish();
-                    }
-
-                    const_cast< ScenePrimitive2D* >(this)->maOldRenderedBitmap = BPixelRasterToBitmapEx(aBZPixelRaster, nOversampleValue);
-                    const Size aBitmapSizePixel(maOldRenderedBitmap.GetSizePixel());
-
-                    if(aBitmapSizePixel.getWidth() && aBitmapSizePixel.getHeight())
-                    {
-                        // create transform for the created bitmap in discrete coordinates first.
-                        basegfx::B2DHomMatrix aNew2DTransform;
-
-                        aNew2DTransform.set(0, 0, aVisibleDiscreteRange.getWidth());
-                        aNew2DTransform.set(1, 1, aVisibleDiscreteRange.getHeight());
-                        aNew2DTransform.set(0, 2, aVisibleDiscreteRange.getMinX());
-                        aNew2DTransform.set(1, 2, aVisibleDiscreteRange.getMinY());
-
-                        // transform back to world coordinates for usage in primitive creation
-                        aNew2DTransform *= aInverseOToV;
-
-                        // create bitmap primitive and add
-                        rContainer.push_back(new BitmapPrimitive2D(maOldRenderedBitmap, aNew2DTransform));
-
-                        // test: Allow to add an outline in the debugger when tests are needed
-                        static bool bAddOutlineToCreated3DSceneRepresentation(false);
-
-                        if(bAddOutlineToCreated3DSceneRepresentation)
-                        {
-                            basegfx::B2DPolygon aOutline(basegfx::tools::createUnitPolygon());
-                            aOutline.transform(aNew2DTransform);
-                            rContainer.push_back(new PolygonHairlinePrimitive2D(aOutline, basegfx::BColor(1.0, 0.0, 0.0)));
-                        }
-                    }
+                    aViewInformation3D = geometry::ViewInformation3D(
+                        aViewInformation3D.getObjectTransformation(),
+                        aViewInformation3D.getOrientation(),
+                        aExtendedProjection,
+                        aViewInformation3D.getDeviceToView(),
+                        aViewInformation3D.getViewTime(),
+                        aViewInformation3D.getExtendedInformationSequence());
                 }
+            }
+
+            // calculate logic render size in world coordinates for usage in renderer
+            const basegfx::B2DHomMatrix& aInverseOToV(rViewInformation.getInverseObjectToViewTransformation());
+            const double fLogicX((aInverseOToV * basegfx::B2DVector(aDiscreteRange.getWidth() * fReduceFactor, 0.0)).getLength());
+            const double fLogicY((aInverseOToV * basegfx::B2DVector(0.0, aDiscreteRange.getHeight() * fReduceFactor)).getLength());
+
+            // generate ViewSizes
+            const double fFullViewSizeX((rViewInformation.getObjectToViewTransformation() * basegfx::B2DVector(fLogicX, 0.0)).getLength());
+            const double fFullViewSizeY((rViewInformation.getObjectToViewTransformation() * basegfx::B2DVector(0.0, fLogicY)).getLength());
+
+            // generate RasterWidth and RasterHeight for visible part
+            const sal_Int32 nRasterWidth(basegfx::fround(fFullViewSizeX * aUnitVisibleRange.getWidth()) + 1);
+            const sal_Int32 nRasterHeight(basegfx::fround(fFullViewSizeY * aUnitVisibleRange.getHeight()) + 1);
+
+            if(!(nRasterWidth && nRasterHeight))
+                return;
+
+            // create view unit buffer
+            basegfx::BZPixelRaster aBZPixelRaster(
+                nOversampleValue ? nRasterWidth * nOversampleValue : nRasterWidth,
+                nOversampleValue ? nRasterHeight * nOversampleValue : nRasterHeight);
+
+            // check for parallel execution possibilities
+            static bool bMultithreadAllowed = false; // loplugin:constvars:ignore
+            sal_Int32 nThreadCount(0);
+            comphelper::ThreadPool& rThreadPool(comphelper::ThreadPool::getSharedOptimalPool());
+
+            if(bMultithreadAllowed)
+            {
+                nThreadCount = rThreadPool.getWorkerCount();
+
+                if(nThreadCount > 1)
+                {
+                    // at least use 10px per processor, so limit number of processors to
+                    // target pixel size divided by 10 (which might be zero what is okay)
+                    nThreadCount = std::min(nThreadCount, nRasterHeight / 10);
+                }
+            }
+
+            if(nThreadCount > 1)
+            {
+                class Executor : public comphelper::ThreadTask
+                {
+                private:
+                    std::unique_ptr<processor3d::ZBufferProcessor3D> mpZBufferProcessor3D;
+                    const primitive3d::Primitive3DContainer&    mrChildren3D;
+
+                public:
+                    explicit Executor(
+                        std::shared_ptr<comphelper::ThreadTaskTag> const & rTag,
+                        std::unique_ptr<processor3d::ZBufferProcessor3D> pZBufferProcessor3D,
+                        const primitive3d::Primitive3DContainer& rChildren3D)
+                    :   comphelper::ThreadTask(rTag),
+                        mpZBufferProcessor3D(std::move(pZBufferProcessor3D)),
+                        mrChildren3D(rChildren3D)
+                    {
+                    }
+
+                    virtual void doWork() override
+                    {
+                        mpZBufferProcessor3D->process(mrChildren3D);
+                        mpZBufferProcessor3D->finish();
+                        mpZBufferProcessor3D.reset();
+                    }
+                };
+
+                const sal_uInt32 nLinesPerThread(aBZPixelRaster.getHeight() / nThreadCount);
+                std::shared_ptr<comphelper::ThreadTaskTag> aTag = comphelper::ThreadPool::createThreadTaskTag();
+
+                for(sal_Int32 a(0); a < nThreadCount; a++)
+                {
+                    std::unique_ptr<processor3d::ZBufferProcessor3D> pNewZBufferProcessor3D(new processor3d::ZBufferProcessor3D(
+                        aViewInformation3D,
+                        getSdrSceneAttribute(),
+                        getSdrLightingAttribute(),
+                        aUnitVisibleRange,
+                        nOversampleValue,
+                        fFullViewSizeX,
+                        fFullViewSizeY,
+                        aBZPixelRaster,
+                        nLinesPerThread * a,
+                        a + 1 == nThreadCount ? aBZPixelRaster.getHeight() : nLinesPerThread * (a + 1)));
+                    std::unique_ptr<Executor> pExecutor(new Executor(aTag, std::move(pNewZBufferProcessor3D), getChildren3D()));
+                    rThreadPool.pushTask(std::move(pExecutor));
+                }
+
+                rThreadPool.waitUntilDone(aTag);
+            }
+            else
+            {
+                // use default 3D primitive processor to create BitmapEx for aUnitVisiblePart and process
+                processor3d::ZBufferProcessor3D aZBufferProcessor3D(
+                    aViewInformation3D,
+                    getSdrSceneAttribute(),
+                    getSdrLightingAttribute(),
+                    aUnitVisibleRange,
+                    nOversampleValue,
+                    fFullViewSizeX,
+                    fFullViewSizeY,
+                    aBZPixelRaster,
+                    0,
+                    aBZPixelRaster.getHeight());
+
+                aZBufferProcessor3D.process(getChildren3D());
+                aZBufferProcessor3D.finish();
+            }
+
+            const_cast< ScenePrimitive2D* >(this)->maOldRenderedBitmap = BPixelRasterToBitmapEx(aBZPixelRaster, nOversampleValue);
+            const Size aBitmapSizePixel(maOldRenderedBitmap.GetSizePixel());
+
+            if(!(aBitmapSizePixel.getWidth() && aBitmapSizePixel.getHeight()))
+                return;
+
+            // create transform for the created bitmap in discrete coordinates first.
+            basegfx::B2DHomMatrix aNew2DTransform;
+
+            aNew2DTransform.set(0, 0, aVisibleDiscreteRange.getWidth());
+            aNew2DTransform.set(1, 1, aVisibleDiscreteRange.getHeight());
+            aNew2DTransform.set(0, 2, aVisibleDiscreteRange.getMinX());
+            aNew2DTransform.set(1, 2, aVisibleDiscreteRange.getMinY());
+
+            // transform back to world coordinates for usage in primitive creation
+            aNew2DTransform *= aInverseOToV;
+
+            // create bitmap primitive and add
+            rContainer.push_back(
+                new BitmapPrimitive2D(
+                    VCLUnoHelper::CreateVCLXBitmap(maOldRenderedBitmap),
+                    aNew2DTransform));
+
+            // test: Allow to add an outline in the debugger when tests are needed
+            static bool bAddOutlineToCreated3DSceneRepresentation(false); // loplugin:constvars:ignore
+
+            if(bAddOutlineToCreated3DSceneRepresentation)
+            {
+                basegfx::B2DPolygon aOutline(basegfx::utils::createUnitPolygon());
+                aOutline.transform(aNew2DTransform);
+                rContainer.push_back(new PolygonHairlinePrimitive2D(aOutline, basegfx::BColor(1.0, 0.0, 0.0)));
             }
         }
 
@@ -695,7 +692,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(ScenePrimitive2D, PRIMITIVE2D_ID_SCENEPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

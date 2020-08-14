@@ -20,10 +20,10 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_TOOLS_ASYNCHRONOUSTASK_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_TOOLS_ASYNCHRONOUSTASK_HXX
 
-namespace sd { namespace tools {
+namespace sd::tools {
 
 /** Interface for the asynchronous execution of a task.  This interface
-    allows an controller to run the task either timer based with a fixed
+    allows a controller to run the task either timer based with a fixed
     amount of time between the steps or thread based one step right after
     the other.
 */
@@ -45,7 +45,7 @@ protected:
     ~AsynchronousTask() {}
 };
 
-} } // end of namespace ::sd::tools
+} // end of namespace ::sd::tools
 
 #endif
 

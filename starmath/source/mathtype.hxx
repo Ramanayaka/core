@@ -20,14 +20,17 @@
 #ifndef INCLUDED_STARMATH_SOURCE_MATHTYPE_HXX
 #define INCLUDED_STARMATH_SOURCE_MATHTYPE_HXX
 
-#include "node.hxx"
-#include "eqnolefilehdr.hxx"
-
-#include <sot/storage.hxx>
+#include <rtl/ustring.hxx>
+#include <rtl/ustrbuf.hxx>
 
 #include <set>
+#include <vector>
 
 class SfxMedium;
+class SmMatrixNode;
+class SmNode;
+class SotStorage;
+class SvStream;
 
 class MathTypeFont
 {
@@ -53,7 +56,7 @@ typedef ::std::set< MathTypeFont, LessMathTypeFont > MathTypeFontSet;
 class MathType
 {
 public:
-    explicit MathType(OUString &rIn)
+    explicit MathType(OUStringBuffer &rIn)
         : nVersion(0)
         , pS(nullptr)
         , rRet(rIn)
@@ -74,7 +77,7 @@ public:
         Init();
     }
 
-    MathType(OUString &rIn,SmNode *pIn)
+    MathType(OUStringBuffer &rIn,SmNode *pIn)
         : nVersion(0)
         , pS(nullptr)
         , rRet(rIn)
@@ -95,14 +98,15 @@ public:
         Init();
     }
 
-    bool Parse( SotStorage* pStor );
+    bool Parse(SotStorage* pStor);
+    bool Parse(SvStream* pStream);
     bool ConvertFromStarMath( SfxMedium& rMedium );
 
 private:
 /*Ver 2 Header*/
     sal_uInt8 nVersion;
 
-    SotStorageStream *pS;
+    SvStream* pS;
 
     void Init();
 
@@ -146,7 +150,7 @@ private:
     void HandleAttributes(SmNode *pNode,int nLevel);
     void TypeFaceToString(OUString &rRet,sal_uInt8 nFace);
 
-    OUString &rRet;
+    OUStringBuffer &rRet;
     SmNode *pTree;
 
     sal_uInt8 nHAlign;
@@ -161,7 +165,7 @@ private:
     sal_Int16 nLastSize;
     sal_uInt8 nSpec;
     bool  bIsReInterpBrace;
-    OUString  sPost;
+    OUStringBuffer sPost;
     sal_Int32 nPostSup;
     sal_Int32 nPostlSup;
     sal_uInt8 nTypeFace;
@@ -173,10 +177,13 @@ private:
         tmANGLE,tmPAREN,tmBRACE,tmBRACK,tmBAR,tmDBAR,tmFLOOR,tmCEILING,
         tmLBLB,tmRBRB,tmRBLB,tmLBRP,tmLPRB,tmROOT,tmFRACT,tmSCRIPT,tmUBAR,
         tmOBAR,tmLARROW,tmRARROW,tmBARROW,tmSINT,tmDINT,tmTINT,tmSSINT,
-        tmDSINT,tmTSINT,tmUHBRACE,tmLHBRACE,tmSUM
+        tmDSINT,tmTSINT,tmUHBRACE,tmLHBRACE,tmSUM,tmISUM,tmPROD,tmIPROD,
+        tmCOPROD,tmICOPROD,tmUNION,tmIUNION,tmINTER,tmIINTER,tmLIM,tmLDIV,
+        tmSLFRACT,tmINTOP,tmSUMOP,tmLSCRIPT,tmDIRAC,tmUARROW,tmOARROW,
+        tmOARC
     };
 public:
-    static bool LookupChar(sal_Unicode nChar,OUString &rRet,
+    static bool LookupChar(sal_Unicode nChar,OUStringBuffer &rRet,
         sal_uInt8 nVersion,sal_uInt8 nTypeFace=0);
 };
 

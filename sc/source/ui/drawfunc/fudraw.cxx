@@ -22,31 +22,27 @@
 #include <svx/svdobj.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/svdouno.hxx>
-#include <svx/svdocapt.hxx>
-#include <svx/svdpage.hxx>
-#include <svx/svditer.hxx>
-#include <svx/svdundo.hxx>
+#include <svx/ImageMapInfo.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewfrm.hxx>
+#include <sfx2/lokhelper.hxx>
 
-#include "sc.hrc"
-#include "fudraw.hxx"
-#include "futext.hxx"
-#include "tabvwsh.hxx"
-#include "drwlayer.hxx"
-#include "scresid.hxx"
-#include "userdat.hxx"
-#include "docsh.hxx"
-#include "postit.hxx"
-#include "globstr.hrc"
-#include "drawview.hxx"
+#include <sc.hrc>
+#include <fudraw.hxx>
+#include <futext.hxx>
+#include <tabvwsh.hxx>
+#include <drwlayer.hxx>
+#include <userdat.hxx>
+#include <docsh.hxx>
+#include <drawview.hxx>
+#include <comphelper/lok.hxx>
 
 // base class for draw module specific functions
-FuDraw::FuDraw(ScTabViewShell* pViewSh, vcl::Window* pWin, ScDrawView* pViewP,
-               SdrModel* pDoc, SfxRequest& rReq) :
-    FuPoor      (pViewSh, pWin, pViewP, pDoc, rReq),
-    aNewPointer ( PointerStyle::Arrow ),
-    aOldPointer ( PointerStyle::Arrow )
+FuDraw::FuDraw(ScTabViewShell& rViewSh, vcl::Window* pWin, ScDrawView* pViewP,
+               SdrModel* pDoc, const SfxRequest& rReq)
+    : FuPoor(rViewSh, pWin, pViewP, pDoc, rReq)
+    , aNewPointer(PointerStyle::Arrow)
+    , aOldPointer(PointerStyle::Arrow)
 {
 }
 
@@ -90,7 +86,7 @@ void FuDraw::ResetModifiers()
     if (!pView)
         return;
 
-    ScViewData& rViewData = pViewShell->GetViewData();
+    ScViewData& rViewData = rViewShell.GetViewData();
     const ScViewOptions& rOpt = rViewData.GetOptions();
     const ScGridOptions& rGrid = rOpt.GetGridOptions();
     bool bGridOpt = rGrid.GetUseGridSnap();
@@ -140,10 +136,10 @@ bool FuDraw::MouseButtonUp(const MouseEvent& rMEvt)
 }
 
 // Process Keyboard events. Return true if an event is being handled
-static bool lcl_KeyEditMode( SdrObject* pObj, ScTabViewShell* pViewShell, const KeyEvent* pInitialKey )
+static bool lcl_KeyEditMode( SdrObject* pObj, ScTabViewShell& rViewShell, const KeyEvent* pInitialKey )
 {
     bool bReturn = false;
-    if ( pObj && dynamic_cast<const SdrTextObj*>( pObj) != nullptr && dynamic_cast<const SdrUnoObj*>( pObj) ==  nullptr )
+    if ( dynamic_cast<const SdrTextObj*>( pObj) != nullptr && dynamic_cast<const SdrUnoObj*>( pObj) ==  nullptr )
     {
         // start text edit - like FuSelection::MouseButtonUp,
         // but with bCursorToEnd instead of mouse position
@@ -153,15 +149,15 @@ static bool lcl_KeyEditMode( SdrObject* pObj, ScTabViewShell* pViewShell, const 
         sal_uInt16 nTextSlotId = bVertical ? SID_DRAW_TEXT_VERTICAL : SID_DRAW_TEXT;
 
         // don't switch shells if text shell is already active
-        FuPoor* pPoor = pViewShell->GetViewData().GetView()->GetDrawFuncPtr();
+        FuPoor* pPoor = rViewShell.GetViewData().GetView()->GetDrawFuncPtr();
         if ( !pPoor || pPoor->GetSlotID() != nTextSlotId )
         {
-            pViewShell->GetViewData().GetDispatcher().
+            rViewShell.GetViewData().GetDispatcher().
                 Execute(nTextSlotId, SfxCallMode::SYNCHRON | SfxCallMode::RECORD);
         }
 
         // get the resulting FuText and set in edit mode
-        pPoor = pViewShell->GetViewData().GetView()->GetDrawFuncPtr();
+        pPoor = rViewShell.GetViewData().GetView()->GetDrawFuncPtr();
         if ( pPoor && pPoor->GetSlotID() == nTextSlotId )    // no RTTI
         {
             FuText* pText = static_cast<FuText*>(pPoor);
@@ -176,18 +172,18 @@ static bool lcl_KeyEditMode( SdrObject* pObj, ScTabViewShell* pViewShell, const 
 bool FuDraw::KeyInput(const KeyEvent& rKEvt)
 {
     bool bReturn = false;
-    ScViewData& rViewData = pViewShell->GetViewData();
+    ScViewData& rViewData = rViewShell.GetViewData();
 
     switch ( rKEvt.GetKeyCode().GetCode() )
     {
         case KEY_ESCAPE:
-            if ( pViewShell->IsDrawTextShell() || aSfxRequest.GetSlot() == SID_DRAW_NOTEEDIT )
+            if ( rViewShell.IsDrawTextShell() || aSfxRequest.GetSlot() == SID_DRAW_NOTEEDIT )
             {
                 // if object selected -> normal draw-shell, else turn off drawing
                 rViewData.GetDispatcher().Execute(aSfxRequest.GetSlot(), SfxCallMode::SLOT | SfxCallMode::RECORD);
                 bReturn = true;
             }
-            else if ( pViewShell->IsDrawSelMode() )
+            else if ( rViewShell.IsDrawSelMode() )
             {
                 pView->UnmarkAll();
                 rViewData.GetDispatcher().Execute(SID_OBJECT_SELECT, SfxCallMode::SLOT | SfxCallMode::RECORD);
@@ -204,7 +200,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
 
                 //  while bezier editing, object is selected
                 if (!pView->AreObjectsMarked())
-                    pViewShell->SetDrawShell( false );
+                    rViewShell.SetDrawShell( false );
 
                 bReturn = true;
             }
@@ -224,16 +220,16 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
                 const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
                 if( !pView->IsTextEdit() && 1 == rMarkList.GetMarkCount() )
                 {
-                    bool bOle = pViewShell->GetViewFrame()->GetFrame().IsInPlace();
+                    bool bOle = rViewShell.GetViewFrame()->GetFrame().IsInPlace();
                     SdrObject* pObj = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
-                    if( pObj && dynamic_cast<const SdrOle2Obj*>( pObj) !=  nullptr && !bOle )
+                    if( dynamic_cast<const SdrOle2Obj*>( pObj) && !bOle )
                     {
-                        pViewShell->ActivateObject( static_cast< SdrOle2Obj* >( pObj ), 0 );
+                        rViewShell.ActivateObject( static_cast< SdrOle2Obj* >( pObj ), 0 );
 
                         // consumed
                         bReturn = true;
                     }
-                    else if ( lcl_KeyEditMode( pObj, pViewShell, nullptr ) )       // start text edit for suitable object
+                    else if ( lcl_KeyEditMode( pObj, rViewShell, nullptr ) )       // start text edit for suitable object
                         bReturn = true;
                 }
             }
@@ -250,7 +246,16 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
                 if( !pView->IsTextEdit() && 1 == rMarkList.GetMarkCount() )
                 {
                     SdrObject* pObj = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
-                    if ( lcl_KeyEditMode( pObj, pViewShell, nullptr ) )            // start text edit for suitable object
+                    bool isMobilePhone = comphelper::LibreOfficeKit::isActive() && rViewShell.isLOKMobilePhone();
+                    // Double tapping on charts on phone may result in activating the edit mode which is not wanted.
+                    // It happens due to the delay of selection message of the object from kit to javascript
+                    // in that case F2 is sent instead of double click
+                    if (isMobilePhone && ScDocument::IsChart(pObj))
+                    {
+                        rViewShell.ActivateObject( static_cast< SdrOle2Obj* >( pObj ), 0 );
+                        break;
+                    }
+                    if ( lcl_KeyEditMode( pObj, rViewShell, nullptr ) )            // start text edit for suitable object
                         bReturn = true;
                 }
             }
@@ -260,7 +265,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
         case KEY_TAB:
         {
             // in calc do NOT start draw object selection using TAB/SHIFT-TAB when
-            // there is not yet a object selected
+            // there is not yet an object selected
             if(pView->AreObjectsMarked())
             {
                 vcl::KeyCode aCode = rKEvt.GetKeyCode();
@@ -271,7 +276,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
                     if(!pView->MarkNextObj( !aCode.IsShift() ))
                     {
                         //If there is only one object, don't do the UnmarkAllObj() & MarkNextObj().
-                        if ( pView->GetMarkableObjCount() > 1 && pView->HasMarkableObj() )
+                        if ( pView->HasMultipleMarkableObjects() && pView->HasMarkableObj() )
                         {
                             // No next object: go over open end and
                             // get first from the other side
@@ -316,7 +321,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
         case KEY_END:
         {
             // in calc do NOT select the last draw object when
-            // there is not yet a object selected
+            // there is not yet an object selected
             if(pView->AreObjectsMarked())
             {
                 vcl::KeyCode aCode = rKEvt.GetKeyCode();
@@ -340,7 +345,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
         case KEY_HOME:
         {
             // in calc do NOT select the first draw object when
-            // there is not yet a object selected
+            // there is not yet an object selected
             if(pView->AreObjectsMarked())
             {
                 vcl::KeyCode aCode = rKEvt.GetKeyCode();
@@ -367,7 +372,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
         case KEY_RIGHT:
         {
             // in calc do cursor travelling of draw objects only when
-            // there is a object selected yet
+            // there is an object selected yet
             if(pView->AreObjectsMarked())
             {
 
@@ -417,7 +422,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
                     if(rKEvt.GetKeyCode().IsMod2())
                     {
                         // move in 1 pixel distance
-                        Size aLogicSizeOnePixel = (pWindow) ? pWindow->PixelToLogic(Size(1,1)) : Size(100, 100);
+                        Size aLogicSizeOnePixel = pWindow ? pWindow->PixelToLogic(Size(1,1)) : Size(100, 100);
                         nX *= aLogicSizeOnePixel.Width();
                         nY *= aLogicSizeOnePixel.Height();
                     }
@@ -489,7 +494,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
                         else
                         {
                             // move handle with index nHandleIndex
-                            if(pHdl && (nX || nY))
+                            if (nX || nY)
                             {
                                 // now move the Handle (nX, nY)
                                 Point aStartPoint(pHdl->GetPos());
@@ -613,7 +618,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
             SdrObject* pObj = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
 
             // start text edit for suitable object, pass key event to OutlinerView
-            if ( lcl_KeyEditMode( pObj, pViewShell, &rKEvt ) )
+            if ( lcl_KeyEditMode( pObj, rViewShell, &rKEvt ) )
                 bReturn = true;
         }
     }
@@ -622,7 +627,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
 }
 
 // toggle mouse-pointer
-static bool lcl_UrlHit( SdrView* pView, const Point& rPosPixel, vcl::Window* pWindow )
+static bool lcl_UrlHit( const SdrView* pView, const Point& rPosPixel, const vcl::Window* pWindow )
 {
     SdrViewEvent aVEvt;
     MouseEvent aMEvt( rPosPixel, 1, MouseEventModifiers::NONE, MOUSE_LEFT );
@@ -630,8 +635,8 @@ static bool lcl_UrlHit( SdrView* pView, const Point& rPosPixel, vcl::Window* pWi
 
     if ( eHit != SdrHitKind::NONE && aVEvt.pObj != nullptr )
     {
-        if ( ScDrawLayer::GetIMapInfo( aVEvt.pObj ) && ScDrawLayer::GetHitIMapObject(
-                                aVEvt.pObj, pWindow->PixelToLogic(rPosPixel), *pWindow ) )
+        if ( SvxIMapInfo::GetIMapInfo( aVEvt.pObj ) && SvxIMapInfo::GetHitIMapObject(
+                                aVEvt.pObj, pWindow->PixelToLogic(rPosPixel), pWindow ) )
             return true;
 
         if ( aVEvt.eEvent == SdrEventKind::ExecuteUrl )
@@ -643,59 +648,59 @@ static bool lcl_UrlHit( SdrView* pView, const Point& rPosPixel, vcl::Window* pWi
 
 void FuDraw::ForcePointer(const MouseEvent* pMEvt)
 {
-    if ( !pView->IsAction() )
+    if ( pView->IsAction() )
+        return;
+
+    Point aPosPixel = pWindow->GetPointerPosPixel();
+    bool bAlt       = pMEvt && pMEvt->IsMod2();
+    Point aPnt      = pWindow->PixelToLogic( aPosPixel );
+    SdrHdl* pHdl    = pView->PickHandle(aPnt);
+    SdrPageView* pPV;
+
+    ScMacroInfo* pInfo = nullptr;
+    SdrObject* pObj = pView->PickObj(aPnt, pView->getHitTolLog(), pPV, SdrSearchOptions::ALSOONMASTER);
+    if (pObj)
     {
-        Point aPosPixel = pWindow->GetPointerPosPixel();
-        bool bAlt       = pMEvt && pMEvt->IsMod2();
-        Point aPnt      = pWindow->PixelToLogic( aPosPixel );
-        SdrHdl* pHdl    = pView->PickHandle(aPnt);
-        SdrPageView* pPV;
-
-        ScMacroInfo* pInfo = nullptr;
-        SdrObject* pObj = pView->PickObj(aPnt, pView->getHitTolLog(), pPV, SdrSearchOptions::ALSOONMASTER);
-        if (pObj)
+        if ( pObj->IsGroupObject() )
         {
-            if ( pObj->IsGroupObject() )
-            {
-                SdrObject* pHit = pView->PickObj(aMDPos, pView->getHitTolLog(), pPV, SdrSearchOptions::DEEP);
-                if (pHit)
-                    pObj = pHit;
-            }
-            pInfo = ScDrawLayer::GetMacroInfo( pObj );
+            SdrObject* pHit = pView->PickObj(aMDPos, pView->getHitTolLog(), pPV, SdrSearchOptions::DEEP);
+            if (pHit)
+                pObj = pHit;
         }
-
-        if ( pView->IsTextEdit() )
-        {
-            pViewShell->SetActivePointer(Pointer(PointerStyle::Text));        // can't be ?
-        }
-        else if ( pHdl )
-        {
-            pViewShell->SetActivePointer(
-                pView->GetPreferredPointer( aPnt, pWindow ) );
-        }
-        else if ( pView->IsMarkedHit(aPnt) )
-        {
-            pViewShell->SetActivePointer( Pointer(PointerStyle::Move) );
-        }
-        else if ( !bAlt && ( !pMEvt || !pMEvt->GetButtons() )
-                        && lcl_UrlHit( pView, aPosPixel, pWindow ) )
-        {
-            //  could be suppressed with ALT
-            pWindow->SetPointer( Pointer( PointerStyle::RefHand ) );          // Text-URL / ImageMap
-        }
-        else if ( !bAlt && (pObj = pView->PickObj(aPnt, pView->getHitTolLog(), pPV, SdrSearchOptions::PICKMACRO)) )
-        {
-            //  could be suppressed with ALT
-            SdrObjMacroHitRec aHitRec;  //! something missing ????
-            pViewShell->SetActivePointer( pObj->GetMacroPointer(aHitRec) );
-        }
-        else if ( !bAlt && pInfo && (!pInfo->GetMacro().isEmpty() || !pInfo->GetHlink().isEmpty()) )
-            pWindow->SetPointer( Pointer( PointerStyle::RefHand ) );
-        else if ( IsDetectiveHit( aPnt ) )
-            pViewShell->SetActivePointer( Pointer( PointerStyle::Detective ) );
-        else
-            pViewShell->SetActivePointer( aNewPointer );            //! in Gridwin?
+        pInfo = ScDrawLayer::GetMacroInfo( pObj );
     }
+
+    if ( pView->IsTextEdit() )
+    {
+        rViewShell.SetActivePointer(PointerStyle::Text);        // can't be ?
+    }
+    else if ( pHdl )
+    {
+        rViewShell.SetActivePointer(
+            pView->GetPreferredPointer( aPnt, pWindow ) );
+    }
+    else if ( pView->IsMarkedHit(aPnt) )
+    {
+        rViewShell.SetActivePointer( PointerStyle::Move );
+    }
+    else if ( !bAlt && ( !pMEvt || !pMEvt->GetButtons() )
+                    && lcl_UrlHit( pView, aPosPixel, pWindow ) )
+    {
+        //  could be suppressed with ALT
+        pWindow->SetPointer( PointerStyle::RefHand );          // Text-URL / ImageMap
+    }
+    else if ( !bAlt && (pObj = pView->PickObj(aPnt, pView->getHitTolLog(), pPV, SdrSearchOptions::PICKMACRO)) )
+    {
+        //  could be suppressed with ALT
+        SdrObjMacroHitRec aHitRec;  //! something missing ????
+        rViewShell.SetActivePointer( pObj->GetMacroPointer(aHitRec) );
+    }
+    else if ( !bAlt && pInfo && (!pInfo->GetMacro().isEmpty() || !pInfo->GetHlink().isEmpty()) )
+        pWindow->SetPointer( PointerStyle::RefHand );
+    else if ( IsDetectiveHit( aPnt ) )
+        rViewShell.SetActivePointer( PointerStyle::Detective );
+    else
+        rViewShell.SetActivePointer( aNewPointer );            //! in Gridwin?
 }
 
 bool FuDraw::IsEditingANote() const

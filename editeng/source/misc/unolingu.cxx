@@ -20,7 +20,6 @@
 
 #include <memory>
 #include <editeng/unolingu.hxx>
-#include <unotools/pathoptions.hxx>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
@@ -28,27 +27,21 @@
 #include <com/sun/star/linguistic2/DictionaryList.hpp>
 #include <com/sun/star/linguistic2/LinguServiceManager.hpp>
 #include <com/sun/star/linguistic2/LinguProperties.hpp>
-#include <com/sun/star/ucb/XAnyCompareFactory.hpp>
-#include <com/sun/star/ucb/XContentAccess.hpp>
-#include <com/sun/star/ucb/XSortedDynamicResultSetFactory.hpp>
-#include <com/sun/star/ucb/NumberedSortingInfo.hpp>
-#include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/util/DateTime.hpp>
+#include <com/sun/star/linguistic2/XSpellChecker1.hpp>
 
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <unotools/lingucfg.hxx>
-#include <unotools/ucbhelper.hxx>
-#include <unotools/localfilehelper.hxx>
-#include <ucbhelper/commandenvironment.hxx>
-#include <ucbhelper/content.hxx>
-#include <vcl/msgbox.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <linguistic/misc.hxx>
 #include <editeng/eerdll.hxx>
 #include <editeng/editrids.hrc>
+#include <svtools/strings.hrc>
+#include <unotools/resmgr.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 using namespace ::comphelper;
 using namespace ::linguistic;
@@ -66,6 +59,8 @@ static uno::Reference< XLinguServiceManager2 > GetLngSvcMgr_Impl()
     uno::Reference< XLinguServiceManager2 > xRes = LinguServiceManager::create(xContext);
     return xRes;
 }
+
+namespace {
 
 //! Dummy implementation in order to avoid loading of lingu DLL
 //! when only the XSupportedLocales interface is used.
@@ -95,24 +90,25 @@ public:
             css::uno::Reference< css::linguistic2::XMeaning > > SAL_CALL
         queryMeanings( const OUString& rTerm,
                 const css::lang::Locale& rLocale,
-                const css::beans::PropertyValues& rProperties ) override;
+                const css::uno::Sequence< css::beans::PropertyValue >& rProperties ) override;
 };
 
+}
 
 void ThesDummy_Impl::GetCfgLocales()
 {
-    if (!pLocaleSeq)
+    if (pLocaleSeq)
+        return;
+
+    SvtLinguConfig aCfg;
+    Sequence < OUString > aNodeNames( aCfg.GetNodeNames( "ServiceManager/ThesaurusList" ) );
+    const OUString *pNodeNames = aNodeNames.getConstArray();
+    sal_Int32 nLen = aNodeNames.getLength();
+    pLocaleSeq.reset( new Sequence< lang::Locale >( nLen ) );
+    lang::Locale *pLocale = pLocaleSeq->getArray();
+    for (sal_Int32 i = 0;  i < nLen;  ++i)
     {
-        SvtLinguConfig aCfg;
-        Sequence < OUString > aNodeNames( aCfg.GetNodeNames( "ServiceManager/ThesaurusList" ) );
-        const OUString *pNodeNames = aNodeNames.getConstArray();
-        sal_Int32 nLen = aNodeNames.getLength();
-        pLocaleSeq.reset( new Sequence< lang::Locale >( nLen ) );
-        lang::Locale *pLocale = pLocaleSeq->getArray();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
-        {
-            pLocale[i] = LanguageTag::convertToLocaleWithFallback( pNodeNames[i] );
-        }
+        pLocale[i] = LanguageTag::convertToLocaleWithFallback( pNodeNames[i] );
     }
 }
 
@@ -171,7 +167,7 @@ uno::Sequence< uno::Reference< linguistic2::XMeaning > > SAL_CALL
         ThesDummy_Impl::queryMeanings(
                 const OUString& rTerm,
                 const lang::Locale& rLocale,
-                const beans::PropertyValues& rProperties )
+                const css::uno::Sequence< css::beans::PropertyValue >& rProperties )
 {
     GetThes_Impl();
     uno::Sequence< uno::Reference< linguistic2::XMeaning > > aRes;
@@ -181,6 +177,7 @@ uno::Sequence< uno::Reference< linguistic2::XMeaning > > SAL_CALL
     return aRes;
 }
 
+namespace {
 
 //! Dummy implementation in order to avoid loading of lingu DLL.
 //! The dummy accesses the real implementation (and thus loading the DLL)
@@ -203,12 +200,13 @@ public:
     // XSpellChecker1 (same as XSpellChecker but sal_Int16 for language)
     virtual sal_Bool SAL_CALL
         isValid( const OUString& rWord, sal_Int16 nLanguage,
-                const css::beans::PropertyValues& rProperties ) override;
+                const css::uno::Sequence< css::beans::PropertyValue >& rProperties ) override;
     virtual css::uno::Reference< css::linguistic2::XSpellAlternatives > SAL_CALL
         spell( const OUString& rWord, sal_Int16 nLanguage,
-                const css::beans::PropertyValues& rProperties ) override;
+                const css::uno::Sequence< css::beans::PropertyValue >& rProperties ) override;
 };
 
+}
 
 void SpellDummy_Impl::GetSpell_Impl()
 {
@@ -244,7 +242,7 @@ sal_Bool SAL_CALL
 
 sal_Bool SAL_CALL
     SpellDummy_Impl::isValid( const OUString& rWord, sal_Int16 nLanguage,
-            const beans::PropertyValues& rProperties )
+            const css::uno::Sequence< css::beans::PropertyValue >& rProperties )
 {
     GetSpell_Impl();
     bool bRes = true;
@@ -256,7 +254,7 @@ sal_Bool SAL_CALL
 
 uno::Reference< linguistic2::XSpellAlternatives > SAL_CALL
     SpellDummy_Impl::spell( const OUString& rWord, sal_Int16 nLanguage,
-            const beans::PropertyValues& rProperties )
+            const css::uno::Sequence< css::beans::PropertyValue >& rProperties )
 {
     GetSpell_Impl();
     uno::Reference< linguistic2::XSpellAlternatives > xRes;
@@ -265,6 +263,7 @@ uno::Reference< linguistic2::XSpellAlternatives > SAL_CALL
     return xRes;
 }
 
+namespace {
 
 //! Dummy implementation in order to avoid loading of lingu DLL.
 //! The dummy accesses the real implementation (and thus loading the DLL)
@@ -291,21 +290,22 @@ public:
         hyphenate( const OUString& rWord,
                 const css::lang::Locale& rLocale,
                 sal_Int16 nMaxLeading,
-                const css::beans::PropertyValues& rProperties ) override;
+                const css::uno::Sequence< css::beans::PropertyValue >& rProperties ) override;
     virtual css::uno::Reference<
             css::linguistic2::XHyphenatedWord > SAL_CALL
         queryAlternativeSpelling( const OUString& rWord,
                 const css::lang::Locale& rLocale,
                 sal_Int16 nIndex,
-                const css::beans::PropertyValues& rProperties ) override;
+                const css::uno::Sequence< css::beans::PropertyValue >& rProperties ) override;
     virtual css::uno::Reference<
             css::linguistic2::XPossibleHyphens > SAL_CALL
         createPossibleHyphens(
                 const OUString& rWord,
                 const css::lang::Locale& rLocale,
-                const css::beans::PropertyValues& rProperties ) override;
+                const css::uno::Sequence< css::beans::PropertyValue >& rProperties ) override;
 };
 
+}
 
 void HyphDummy_Impl::GetHyph_Impl()
 {
@@ -344,7 +344,7 @@ uno::Reference< linguistic2::XHyphenatedWord > SAL_CALL
             const OUString& rWord,
             const lang::Locale& rLocale,
             sal_Int16 nMaxLeading,
-            const beans::PropertyValues& rProperties )
+            const css::uno::Sequence< css::beans::PropertyValue >& rProperties )
 {
     GetHyph_Impl();
     uno::Reference< linguistic2::XHyphenatedWord > xRes;
@@ -359,7 +359,7 @@ uno::Reference< linguistic2::XHyphenatedWord > SAL_CALL
             const OUString& rWord,
             const lang::Locale& rLocale,
             sal_Int16 nIndex,
-            const PropertyValues& rProperties )
+            const css::uno::Sequence< css::beans::PropertyValue >& rProperties )
 {
     GetHyph_Impl();
     uno::Reference< linguistic2::XHyphenatedWord > xRes;
@@ -373,7 +373,7 @@ uno::Reference< linguistic2::XPossibleHyphens > SAL_CALL
     HyphDummy_Impl::createPossibleHyphens(
             const OUString& rWord,
             const lang::Locale& rLocale,
-            const beans::PropertyValues& rProperties )
+            const css::uno::Sequence< css::beans::PropertyValue >& rProperties )
 {
     GetHyph_Impl();
     uno::Reference< linguistic2::XPossibleHyphens > xRes;
@@ -449,14 +449,14 @@ void LinguMgrExitLstnr::AtExit()
 
 LinguMgrExitLstnr *             LinguMgr::pExitLstnr    = nullptr;
 bool                            LinguMgr::bExiting      = false;
-uno::Reference< XLinguServiceManager2 >  LinguMgr::xLngSvcMgr    = nullptr;
-uno::Reference< XSpellChecker1 >    LinguMgr::xSpell        = nullptr;
-uno::Reference< XHyphenator >       LinguMgr::xHyph         = nullptr;
-uno::Reference< XThesaurus >        LinguMgr::xThes         = nullptr;
-uno::Reference< XSearchableDictionaryList >   LinguMgr::xDicList      = nullptr;
-uno::Reference< XLinguProperties >  LinguMgr::xProp         = nullptr;
-uno::Reference< XDictionary >       LinguMgr::xIgnoreAll    = nullptr;
-uno::Reference< XDictionary >       LinguMgr::xChangeAll    = nullptr;
+uno::Reference< XLinguServiceManager2 >  LinguMgr::xLngSvcMgr;
+uno::Reference< XSpellChecker1 >    LinguMgr::xSpell;
+uno::Reference< XHyphenator >       LinguMgr::xHyph;
+uno::Reference< XThesaurus >        LinguMgr::xThes;
+uno::Reference< XSearchableDictionaryList >   LinguMgr::xDicList;
+uno::Reference< XLinguProperties >  LinguMgr::xProp;
+uno::Reference< XDictionary >       LinguMgr::xIgnoreAll;
+uno::Reference< XDictionary >       LinguMgr::xChangeAll;
 
 
 uno::Reference< XLinguServiceManager2 > LinguMgr::GetLngSvcMgr()
@@ -594,7 +594,9 @@ uno::Reference< XDictionary > LinguMgr::GetIgnoreAll()
     uno::Reference< XSearchableDictionaryList >  xTmpDicList( GetDictionaryList() );
     if (xTmpDicList.is())
     {
-        xIgnoreAll.set( xTmpDicList->getDictionaryByName( "IgnoreAllList" ), UNO_QUERY );
+        std::locale loc(Translate::Create("svt"));
+        xIgnoreAll = xTmpDicList->getDictionaryByName(
+                                    Translate::get(STR_DESCRIPTION_IGNOREALLLIST, loc) );
     }
     return xIgnoreAll;
 }
@@ -607,14 +609,13 @@ uno::Reference< XDictionary > LinguMgr::GetChangeAll()
     if (!pExitLstnr)
         pExitLstnr = new LinguMgrExitLstnr;
 
-    uno::Reference< XSearchableDictionaryList > _xDicList( GetDictionaryList() , UNO_QUERY );
+    uno::Reference< XSearchableDictionaryList > _xDicList = GetDictionaryList();
     if (_xDicList.is())
     {
-        xChangeAll.set( _xDicList->createDictionary(
+        xChangeAll = _xDicList->createDictionary(
                             "ChangeAllList",
                             LanguageTag::convertToLocale( LANGUAGE_NONE ),
-                            DictionaryType_NEGATIVE, OUString() ),
-                        UNO_QUERY );
+                            DictionaryType_NEGATIVE, OUString() );
     }
     return xChangeAll;
 }
@@ -632,8 +633,7 @@ uno::Reference< XDictionary > LinguMgr::GetStandard()
         return nullptr;
 
     const OUString aDicName( "standard.dic" );
-    uno::Reference< XDictionary >   xDic( xTmpDicList->getDictionaryByName( aDicName ),
-                                      UNO_QUERY );
+    uno::Reference< XDictionary > xDic = xTmpDicList->getDictionaryByName( aDicName );
     if (!xDic.is())
     {
         // try to create standard dictionary
@@ -655,7 +655,7 @@ uno::Reference< XDictionary > LinguMgr::GetStandard()
             xTmpDicList->addDictionary( xTmp );
             xTmp->setActive( true );
         }
-        xDic.set( xTmp, UNO_QUERY );
+        xDic = xTmp;
     }
 #if OSL_DEBUG_LEVEL > 1
     uno::Reference< XStorable >      xStor( xDic, UNO_QUERY );
@@ -680,8 +680,8 @@ SvxAlternativeSpelling SvxGetAltSpelling(
                  aAltWord( rHyphWord->getHyphenatedWord() );
         sal_Int16   nHyphenationPos     = rHyphWord->getHyphenationPos(),
                 nHyphenPos          = rHyphWord->getHyphenPos();
-        sal_Int16   nLen    = (sal_Int16)aWord.getLength();
-        sal_Int16   nAltLen = (sal_Int16)aAltWord.getLength();
+        sal_Int16   nLen    = static_cast<sal_Int16>(aWord.getLength());
+        sal_Int16   nAltLen = static_cast<sal_Int16>(aAltWord.getLength());
         const sal_Unicode *pWord    = aWord.getStr(),
                           *pAltWord = aAltWord.getStr();
 
@@ -704,13 +704,12 @@ SvxAlternativeSpelling SvxGetAltSpelling(
         aRes.nChangedPos        = nL;
         aRes.nChangedLength     = nLen - nL - nR;
         aRes.bIsAltSpelling     = true;
-        aRes.xHyphWord          = rHyphWord;
     }
     return aRes;
 }
 
 
-SvxDicListChgClamp::SvxDicListChgClamp( uno::Reference< XSearchableDictionaryList >  &rxDicList ) :
+SvxDicListChgClamp::SvxDicListChgClamp( uno::Reference< XSearchableDictionaryList > const &rxDicList ) :
     xDicList    ( rxDicList )
 {
     if (xDicList.is())
@@ -727,21 +726,25 @@ SvxDicListChgClamp::~SvxDicListChgClamp()
     }
 }
 
-short SvxDicError( vcl::Window *pParent, linguistic::DictionaryError nError )
+short SvxDicError(weld::Window *pParent, linguistic::DictionaryError nError)
 {
     short nRes = 0;
     if (linguistic::DictionaryError::NONE != nError)
     {
-        int nRid;
+        const char* pRid;
         switch (nError)
         {
-            case linguistic::DictionaryError::FULL     : nRid = RID_SVXSTR_DIC_ERR_FULL;  break;
-            case linguistic::DictionaryError::READONLY : nRid = RID_SVXSTR_DIC_ERR_READONLY;  break;
+            case linguistic::DictionaryError::FULL     : pRid = RID_SVXSTR_DIC_ERR_FULL;  break;
+            case linguistic::DictionaryError::READONLY : pRid = RID_SVXSTR_DIC_ERR_READONLY;  break;
             default:
-                nRid = RID_SVXSTR_DIC_ERR_UNKNOWN;
+                pRid = RID_SVXSTR_DIC_ERR_UNKNOWN;
                 SAL_WARN("editeng", "unexpected case");
         }
-        nRes = ScopedVclPtrInstance<InfoBox>(pParent, EditResId::GetString(nRid))->Execute();
+        std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(pParent,
+                                                      VclMessageType::Info, VclButtonsType::Ok,
+                                                      EditResId(pRid)));
+        nRes = xInfoBox->run();
+
     }
     return nRes;
 }

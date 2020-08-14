@@ -19,8 +19,6 @@
 #ifndef INCLUDED_STARMATH_INC_UNOMODEL_HXX
 #define INCLUDED_STARMATH_INC_UNOMODEL_HXX
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/view/XRenderable.hpp>
 
@@ -45,7 +43,7 @@ public:
 };
 
 
-class SmModel : public SfxBaseModel,
+class SmModel final : public SfxBaseModel,
                 public comphelper::PropertySetHelper,
                 public css::lang::XServiceInfo,
                 public css::view::XRenderable,
@@ -53,7 +51,7 @@ class SmModel : public SfxBaseModel,
                 public oox::FormulaImportBase
 {
     std::unique_ptr<SmPrintUIOptions> m_pPrintUIOptions;
-protected:
+
     virtual void _setPropertyValues( const comphelper::PropertyMapEntry** ppEntries, const css::uno::Any* pValues ) override;
     virtual void _getPropertyValues( const comphelper::PropertyMapEntry** ppEntries, css::uno::Any* pValue ) override;
 public:
@@ -88,7 +86,7 @@ public:
     // oox::FormulaExportBase
     virtual void writeFormulaOoxml(::sax_fastparser::FSHelperPtr pSerializer,
             oox::core::OoxmlVersion version,
-            oox::drawingml::DocumentType documentType) override;
+            oox::drawingml::DocumentType documentType, sal_Int8 nAlign) override;
     virtual void writeFormulaRtf(OStringBuffer& rBuffer, rtl_TextEncoding nEncoding) override;
     // oox::FormulaImportBase
     virtual void readFormulaOoxml( oox::formulaimport::XmlStream& stream ) override;

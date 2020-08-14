@@ -17,29 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/awt/WindowEvent.hpp>
-#include <comphelper/processfactory.hxx>
-
 #include <toolkit/helper/vclunohelper.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <toolkit/awt/vclxwindow.hxx>
 #include <toolkit/awt/vclxwindows.hxx>
 #include <toolkit/awt/vclxcontainer.hxx>
 #include <toolkit/awt/vclxtopwindow.hxx>
-#include <toolkit/awt/vclxgraphics.hxx>
+#include <awt/vclxgraphics.hxx>
 
-#include "toolkit/dllapi.h"
-#include <vcl/svapp.hxx>
-#include <vcl/syswin.hxx>
+#include <toolkit/dllapi.h>
 #include <vcl/menu.hxx>
 
 #include <tools/debug.hxx>
 
-#include "helper/unowrapper.hxx"
+#include <helper/unowrapper.hxx>
 
 using namespace ::com::sun::star;
 
-css::uno::Reference< css::awt::XWindowPeer > CreateXWindow( vcl::Window* pWindow )
+static css::uno::Reference< css::awt::XWindowPeer > CreateXWindow( vcl::Window const * pWindow )
 {
     switch ( pWindow->GetType() )
     {
@@ -60,7 +54,6 @@ css::uno::Reference< css::awt::XWindowPeer > CreateXWindow( vcl::Window* pWindow
         case WindowType::METRICBOX:
         case WindowType::COMBOBOX:       return new VCLXComboBox;
         case WindowType::SPINFIELD:
-        case WindowType::NUMERICFIELD:
         case WindowType::CURRENCYFIELD:  return new VCLXNumericField;
         case WindowType::DATEFIELD:      return new VCLXDateField;
         case WindowType::MULTILINEEDIT:
@@ -75,9 +68,7 @@ css::uno::Reference< css::awt::XWindowPeer > CreateXWindow( vcl::Window* pWindow
         case WindowType::FIXEDTEXT:      return new VCLXFixedText;
         case WindowType::MULTILISTBOX:
         case WindowType::LISTBOX:        return new VCLXListBox;
-        case WindowType::LONGCURRENCYFIELD:  return new VCLXCurrencyField;
         case WindowType::DIALOG:
-        case WindowType::MODALDIALOG:
         case WindowType::TABDIALOG:
         case WindowType::BUTTONDIALOG:
         case WindowType::MODELESSDIALOG: return new VCLXDialog;
@@ -96,6 +87,8 @@ css::uno::Reference< css::awt::XWindowPeer > CreateXWindow( vcl::Window* pWindow
 
         case WindowType::TOOLBOX:        return new VCLXToolBox;
         case WindowType::TABCONTROL:     return new VCLXMultiPage;
+
+        case WindowType::HEADERBAR:     return new VCLXHeaderBar;
 
         // case WindowType::FIXEDLINE:
         // case WindowType::FIXEDBITMAP:
@@ -117,7 +110,6 @@ css::uno::Reference< css::awt::XWindowPeer > CreateXWindow( vcl::Window* pWindow
 }
 
 
-//  class UnoWrapper
 
 
 extern "C" {
@@ -162,24 +154,29 @@ css::uno::Reference< css::awt::XWindowPeer> UnoWrapper::GetWindowInterface( vcl:
     return xPeer;
 }
 
+VclPtr<vcl::Window> UnoWrapper::GetWindow(const css::uno::Reference<css::awt::XWindow>& rWindow)
+{
+    return VCLUnoHelper::GetWindow(rWindow);
+}
+
 void UnoWrapper::SetWindowInterface( vcl::Window* pWindow, css::uno::Reference< css::awt::XWindowPeer> xIFace )
 {
-    VCLXWindow* pVCLXWindow = VCLXWindow::GetImplementation( xIFace );
+    VCLXWindow* pVCLXWindow = comphelper::getUnoTunnelImplementation<VCLXWindow>( xIFace );
 
     DBG_ASSERT( pVCLXWindow, "SetComponentInterface - unsupported type" );
-    if ( pVCLXWindow )
+    if ( !pVCLXWindow )
+        return;
+
+    css::uno::Reference< css::awt::XWindowPeer> xPeer = pWindow->GetWindowPeer();
+    if( xPeer.is() )
     {
-        css::uno::Reference< css::awt::XWindowPeer> xPeer = pWindow->GetWindowPeer();
-        if( xPeer.is() )
-        {
-            bool bSameInstance( pVCLXWindow == dynamic_cast< VCLXWindow* >( xPeer.get() ));
-            DBG_ASSERT( bSameInstance, "UnoWrapper::SetWindowInterface: there already *is* a WindowInterface for this window!" );
-            if ( bSameInstance )
-                return;
-        }
-        pVCLXWindow->SetWindow( pWindow );
-        pWindow->SetWindowPeer( xIFace, pVCLXWindow );
+        bool bSameInstance( pVCLXWindow == dynamic_cast< VCLXWindow* >( xPeer.get() ));
+        DBG_ASSERT( bSameInstance, "UnoWrapper::SetWindowInterface: there already *is* a WindowInterface for this window!" );
+        if ( bSameInstance )
+            return;
     }
+    pVCLXWindow->SetWindow( pWindow );
+    pWindow->SetWindowPeer( xIFace, pVCLXWindow );
 }
 
 css::uno::Reference< css::awt::XGraphics> UnoWrapper::CreateGraphics( OutputDevice* pOutDev )
@@ -204,7 +201,7 @@ void UnoWrapper::ReleaseAllGraphics( OutputDevice* pOutDev )
 
 }
 
-static bool lcl_ImplIsParent( vcl::Window* pParentWindow, vcl::Window* pPossibleChild )
+static bool lcl_ImplIsParent( vcl::Window const * pParentWindow, vcl::Window* pPossibleChild )
 {
     vcl::Window* pWindow = ( pPossibleChild != pParentWindow ) ? pPossibleChild : nullptr;
     while ( pWindow && ( pWindow != pParentWindow ) )
@@ -225,14 +222,14 @@ void UnoWrapper::WindowDestroyed( vcl::Window* pWindow )
         VclPtr< vcl::Window > pClient = pChild->GetWindow( GetWindowType::Client );
         if ( pClient && pClient->GetWindowPeer() )
         {
-            css::uno::Reference< css::lang::XComponent > xComp( pClient->GetComponentInterface( false ), css::uno::UNO_QUERY );
+            css::uno::Reference< css::lang::XComponent > xComp = pClient->GetComponentInterface( false );
             xComp->dispose();
         }
 
         pChild = pNextChild;
     }
 
-    // System-Windows suchen...
+    // find system windows...
     VclPtr< vcl::Window > pOverlap = pWindow->GetWindow( GetWindowType::Overlap );
     if ( pOverlap )
     {
@@ -244,7 +241,7 @@ void UnoWrapper::WindowDestroyed( vcl::Window* pWindow )
 
             if ( pClient && pClient->GetWindowPeer() && lcl_ImplIsParent( pWindow, pClient ) )
             {
-                css::uno::Reference< css::lang::XComponent > xComp( pClient->GetComponentInterface( false ), css::uno::UNO_QUERY );
+                css::uno::Reference< css::lang::XComponent > xComp = pClient->GetComponentInterface( false );
                 xComp->dispose();
             }
 
@@ -259,7 +256,7 @@ void UnoWrapper::WindowDestroyed( vcl::Window* pWindow )
     }
 
     VCLXWindow* pWindowPeer = pWindow->GetWindowPeer();
-    uno::Reference< lang::XComponent > xWindowPeerComp( pWindow->GetComponentInterface( false ), uno::UNO_QUERY );
+    uno::Reference< lang::XComponent > xWindowPeerComp = pWindow->GetComponentInterface( false );
     OSL_ENSURE( ( pWindowPeer != nullptr ) == xWindowPeerComp.is(),
         "UnoWrapper::WindowDestroyed: inconsistency in the window's peers!" );
     if ( pWindowPeer )
@@ -271,7 +268,7 @@ void UnoWrapper::WindowDestroyed( vcl::Window* pWindow )
         xWindowPeerComp->dispose();
 
     // #102132# Iterate over frames after setting Window peer to NULL,
-    // because while destroying other frames, we get get into the method again and try
+    // because while destroying other frames, we get into the method again and try
     // to destroy this window again...
     // #i42462#/#116855# no, don't loop: Instead, just ensure that all our top-window-children
     // are disposed, too (which should also be a valid fix for #102132#, but doesn't have the extreme
@@ -284,11 +281,7 @@ void UnoWrapper::WindowDestroyed( vcl::Window* pWindow )
 
         VclPtr< vcl::Window > pNextTopChild = pTopWindowChild->GetWindow( GetWindowType::NextTopWindowSibling );
 
-        //the window still could be on the stack, so we have to
-        // use lazy delete ( it will automatically
-        // disconnect from the currently destroyed parent window )
-        pTopWindowChild->doLazyDelete();
-
+        pTopWindowChild.disposeAndClear();
         pTopWindowChild = pNextTopChild;
     }
 }

@@ -17,23 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include "analysisdefs.hxx"
 #include "analysis.hxx"
-#include "analysis.hrc"
 #include "bessel.hxx"
 #include <cppuhelper/factory.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/random.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <o3tl/any.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/math.hxx>
+#include <rtl/ref.hxx>
 #include <sal/macros.h>
-#include <string.h>
-#include <tools/resary.hxx>
-#include <tools/resmgr.hxx>
-#include <tools/rcid.h>
+#include <unotools/resmgr.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <algorithm>
 #include <cmath>
+#include <float.h>
 
 #define ADDIN_SERVICE               "com.sun.star.sheet.AddIn"
 #define MY_SERVICE                  "com.sun.star.sheet.addin.Analysis"
@@ -43,78 +43,41 @@ using namespace                 ::com::sun::star;
 using namespace sca::analysis;
 using namespace std;
 
-extern "C" SAL_DLLPUBLIC_EXPORT void* SAL_CALL analysis_component_getFactory(
-    const sal_Char* pImplName, void* pServiceManager, void* /*pRegistryKey*/ )
+static osl::Mutex g_InstanceMutex;
+static rtl::Reference<AnalysisAddIn> g_Instance;
+static bool g_Disposed;
+
+OUString AnalysisAddIn::GetFuncDescrStr(const char** pResId, sal_uInt16 nStrIndex)
 {
-    void* pRet = nullptr;
-
-    if( pServiceManager && OUString::createFromAscii( pImplName ) == AnalysisAddIn::getImplementationName_Static() )
-    {
-        uno::Reference< lang::XSingleServiceFactory >  xFactory( cppu::createOneInstanceFactory(
-                static_cast< lang::XMultiServiceFactory* >( pServiceManager ),
-                AnalysisAddIn::getImplementationName_Static(),
-                AnalysisAddIn_CreateInstance,
-                AnalysisAddIn::getSupportedServiceNames_Static() ) );
-
-        if( xFactory.is() )
-        {
-            xFactory->acquire();
-            pRet = xFactory.get();
-        }
-    }
-
-    return pRet;
-}
-
-ResMgr& AnalysisAddIn::GetResMgr()
-{
-    if( !pResMgr )
-    {
-        InitData();     // try to get resource manager
-
-        if( !pResMgr )
-            throw uno::RuntimeException();
-    }
-
-    return *pResMgr;
-}
-
-OUString AnalysisAddIn::GetFuncDescrStr( sal_uInt16 nResId, sal_uInt16 nStrIndex )
-{
-    ResStringArray aArr(AnalysisResId(nResId, GetResMgr()));
-    return aArr.GetString(nStrIndex - 1);
+    return AnalysisResId(pResId[nStrIndex - 1]);
 }
 
 void AnalysisAddIn::InitData()
 {
-    delete pResMgr;
-    pResMgr = ResMgr::CreateResMgr("analysis", LanguageTag(aFuncLoc));
+    aResLocale = Translate::Create("sca", LanguageTag(aFuncLoc));
 
-    delete pFD;
-    pFD = new FuncDataList;
+    pFD.reset(new FuncDataList);
     InitFuncDataList(*pFD);
 
-    delete pDefLocales;
-    pDefLocales = nullptr;
+    pDefLocales.reset();
 }
 
 AnalysisAddIn::AnalysisAddIn( const uno::Reference< uno::XComponentContext >& xContext ) :
-    pDefLocales( nullptr ),
-    pFD( nullptr ),
-    pFactDoubles( nullptr ),
-    pCDL( nullptr ),
-    pResMgr( nullptr ),
+    AnalysisAddIn_Base(m_aMutex),
     aAnyConv( xContext )
 {
 }
 
 AnalysisAddIn::~AnalysisAddIn()
 {
-    delete pResMgr;
-    delete pCDL;
-    delete[] pFactDoubles;
-    delete pFD;
-    delete[] pDefLocales;
+}
+
+void AnalysisAddIn::dispose()
+{
+    AnalysisAddIn_Base::dispose();
+    osl::MutexGuard aGuard(g_InstanceMutex);
+    g_Instance.clear();
+    g_Disposed = true;
 }
 
 sal_Int32 AnalysisAddIn::getDateMode(
@@ -136,7 +99,7 @@ double AnalysisAddIn::FactDouble( sal_Int32 nNum )
 
     if( !pFactDoubles )
     {
-        pFactDoubles = new double[ MAXFACTDOUBLE + 1 ];
+        pFactDoubles.reset( new double[ MAXFACTDOUBLE + 1 ] );
 
         pFactDoubles[ 0 ] = 1.0;    // by default
 
@@ -169,37 +132,17 @@ double AnalysisAddIn::FactDouble( sal_Int32 nNum )
     return pFactDoubles[ nNum ];
 }
 
-OUString AnalysisAddIn::getImplementationName_Static()
-{
-    return OUString( MY_IMPLNAME );
-}
-
-uno::Sequence< OUString > AnalysisAddIn::getSupportedServiceNames_Static()
-{
-    uno::Sequence< OUString >   aRet(2);
-    OUString*         pArray = aRet.getArray();
-    pArray[0] = ADDIN_SERVICE;
-    pArray[1] = MY_SERVICE;
-    return aRet;
-}
-
-uno::Reference< uno::XInterface > SAL_CALL AnalysisAddIn_CreateInstance(
-        const uno::Reference< lang::XMultiServiceFactory >& xServiceFact )
-{
-    return static_cast<cppu::OWeakObject*>(new AnalysisAddIn( comphelper::getComponentContext(xServiceFact) ));
-}
-
 // XServiceName
 OUString SAL_CALL AnalysisAddIn::getServiceName()
 {
     // name of specific AddIn service
-    return OUString( MY_SERVICE );
+    return MY_SERVICE;
 }
 
 // XServiceInfo
 OUString SAL_CALL AnalysisAddIn::getImplementationName()
 {
-    return getImplementationName_Static();
+    return MY_IMPLNAME;
 }
 
 sal_Bool SAL_CALL AnalysisAddIn::supportsService( const OUString& aName )
@@ -209,7 +152,7 @@ sal_Bool SAL_CALL AnalysisAddIn::supportsService( const OUString& aName )
 
 uno::Sequence< OUString > SAL_CALL AnalysisAddIn::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
+    return { ADDIN_SERVICE, MY_SERVICE };
 }
 
 // XLocalizable
@@ -241,7 +184,7 @@ OUString SAL_CALL AnalysisAddIn::getDisplayFunctionName( const OUString& aProgra
     auto it = std::find_if(pFD->begin(), pFD->end(), FindFuncData( aProgrammaticName ) );
     if( it != pFD->end() )
     {
-        aRet = AnalysisResId(it->GetUINameID(), GetResMgr());
+        aRet = AnalysisResId(it->GetUINameID());
         if( it->IsDouble() )
         {
             const OUString& rSuffix = it->GetSuffix();
@@ -304,7 +247,7 @@ OUString SAL_CALL AnalysisAddIn::getArgumentDescription( const OUString& aName, 
     return aRet;
 }
 
-static const char pDefCatName[] = "Add-In";
+const char pDefCatName[] = "Add-In";
 
 OUString SAL_CALL AnalysisAddIn::getProgrammaticCategoryName( const OUString& aName )
 {
@@ -351,13 +294,13 @@ OUString SAL_CALL AnalysisAddIn::getDisplayCategoryName( const OUString& aProgra
     return aRet;
 }
 
-static const sal_Char*      pLang[] = { "de", "en" };
-static const sal_Char*      pCoun[] = { "DE", "US" };
-static const sal_uInt32     nNumOfLoc = SAL_N_ELEMENTS(pLang);
+static const char*          pLang[] = { "de", "en" };
+static const char*          pCoun[] = { "DE", "US" };
+const sal_uInt32     nNumOfLoc = SAL_N_ELEMENTS(pLang);
 
 void AnalysisAddIn::InitDefLocales()
 {
-    pDefLocales = new lang::Locale[ nNumOfLoc ];
+    pDefLocales.reset( new lang::Locale[ nNumOfLoc ] );
 
     for( sal_uInt32 n = 0 ; n < nNumOfLoc ; n++ )
     {
@@ -595,23 +538,15 @@ double SAL_CALL AnalysisAddIn::getSeriessum( double fX, double fN, double fM, co
 
     // #i32269# 0^0 is undefined, Excel returns #NUM! error
     if( fX == 0.0 && fN == 0 )
-        throw uno::RuntimeException();
+        throw uno::RuntimeException("undefined expression: 0^0");
 
     if( fX != 0.0 )
     {
-        sal_Int32       n1, n2;
-        sal_Int32       nE1 = aCoeffList.getLength();
-        sal_Int32       nE2;
-
-        for( n1 = 0 ; n1 < nE1 ; n1++ )
+        for( const uno::Sequence< double >& rList : aCoeffList )
         {
-            const uno::Sequence< double >&    rList = aCoeffList[ n1 ];
-            nE2 = rList.getLength();
-            const double*           pList = rList.getConstArray();
-
-            for( n2 = 0 ; n2 < nE2 ; n2++ )
+            for( const double fCoef : rList )
             {
-                fRet += pList[ n2 ] * pow( fX, fN );
+                fRet += fCoef * pow( fX, fN );
 
                 fN += fM;
             }
@@ -957,15 +892,15 @@ OUString SAL_CALL AnalysisAddIn::getImproduct( const uno::Reference< beans::XPro
 {
     ComplexList     z_list;
 
-    z_list.Append( aNum1, AH_IgnoreEmpty );
-    z_list.Append( aNL, AH_IgnoreEmpty );
+    z_list.Append( aNum1 );
+    z_list.Append( aNL );
 
     if( z_list.empty() )
         return Complex( 0 ).GetString();
 
-    Complex         z( *(z_list.Get(0)) );
+    Complex         z = z_list.Get(0);
     for( sal_uInt32 i = 1; i < z_list.Count(); ++i )
-        z.Mult( *(z_list.Get(i)) );
+        z.Mult( z_list.Get(i) );
 
     return z.GetString();
 }
@@ -998,15 +933,15 @@ OUString SAL_CALL AnalysisAddIn::getImsum( const uno::Reference< beans::XPropert
 {
     ComplexList     z_list;
 
-    z_list.Append( aNum1, AH_IgnoreEmpty );
-    z_list.Append( aFollowingPars, AH_IgnoreEmpty );
+    z_list.Append( aNum1 );
+    z_list.Append( aFollowingPars );
 
     if( z_list.empty() )
         return Complex( 0 ).GetString();
 
-    Complex         z( *(z_list.Get(0)) );
+    Complex         z( z_list.Get(0) );
     for( sal_uInt32 i = 1; i < z_list.Count(); ++i )
-        z.Add( *(z_list.Get(i)) );
+        z.Add( z_list.Get(i) );
 
     return z.GetString();
 }
@@ -1119,10 +1054,28 @@ OUString SAL_CALL AnalysisAddIn::getComplex( double fR, double fI, const uno::An
 double SAL_CALL AnalysisAddIn::getConvert( double f, const OUString& aFU, const OUString& aTU )
 {
     if( !pCDL )
-        pCDL = new ConvertDataList();
+        pCDL.reset(new ConvertDataList());
 
     double fRet = pCDL->Convert( f, aFU, aTU );
     RETURN_FINITE( fRet );
+}
+
+OUString AnalysisAddIn::AnalysisResId(const char* pResId)
+{
+    return Translate::get(pResId, aResLocale);
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+scaddins_AnalysisAddIn_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    osl::MutexGuard aGuard(g_InstanceMutex);
+    if (g_Disposed)
+        return nullptr;
+    if (!g_Instance)
+        g_Instance.set(new AnalysisAddIn(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -25,11 +25,9 @@
 #include <com/sun/star/sdbcx/XDataDefinitionSupplier.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <connectivity/CommonTools.hxx>
-#include "file/filedllapi.hxx"
+#include <file/filedllapi.hxx>
 
-namespace connectivity
-{
-    namespace file
+namespace connectivity::file
     {
         typedef ::cppu::WeakComponentImplHelper<   css::sdbc::XDriver,
                                                    css::lang::XServiceInfo,
@@ -49,11 +47,6 @@ namespace connectivity
 
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
-            // XInterface
-            /// @throws css::uno::DeploymentException
-            static OUString getImplementationName_Static(  );
-            /// @throws css::uno::DeploymentException
-            static css::uno::Sequence< OUString > getSupportedServiceNames_Static(  );
 
             // XServiceInfo
             virtual OUString SAL_CALL getImplementationName(  ) override;
@@ -73,7 +66,6 @@ namespace connectivity
 
             const css::uno::Reference< css::uno::XComponentContext >& getComponentContext() const { return m_xContext; }
         };
-    }
 
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FDRIVER_HXX

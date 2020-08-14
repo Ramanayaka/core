@@ -18,8 +18,11 @@
  */
 
 #include <algorithm>
+#include <cassert>
 
 #include <osl/diagnose.h>
+#include <osl/process.h>
+#include <sal/log.hxx>
 #include "SysShExec.hxx"
 #include <osl/file.hxx>
 #include <sal/macros.h>
@@ -28,39 +31,19 @@
 #include <com/sun/star/system/SystemShellExecuteFlags.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <cppuhelper/supportsservice.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
+#include <o3tl/runtimetooustring.hxx>
+#include <o3tl/safeCoInitUninit.hxx>
 
-#define WIN32_LEAN_AND_MEAN
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#endif
-#include <windows.h>
-#include <shellapi.h>
-#include <objbase.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
-
-using com::sun::star::uno::Reference;
-using com::sun::star::uno::RuntimeException;
-using com::sun::star::uno::Sequence;
-using com::sun::star::lang::XServiceInfo;
-using com::sun::star::lang::IllegalArgumentException;
-using com::sun::star::system::XSystemShellExecute;
-using com::sun::star::system::SystemShellExecuteException;
+#include <prewin.h>
+#include <Shlobj.h>
+#include <systools/win32/comtools.hxx>
+#include <postwin.h>
 
 using namespace ::com::sun::star::system::SystemShellExecuteFlags;
-using namespace cppu;
-
-#define SYSSHEXEC_IMPL_NAME  "com.sun.star.sys.shell.SystemShellExecute"
 
 namespace
 {
-    Sequence< OUString > SAL_CALL SysShExec_getSupportedServiceNames()
-    {
-        Sequence< OUString > aRet { "com.sun.star.system.SystemShellExecute" };
-        return aRet;
-    }
-
     /* This is the error table that defines the mapping between OS error
     codes and errno values */
 
@@ -142,7 +125,7 @@ namespace
         for ( i = 0; i < ERRTABLESIZE; ++i )
         {
             if ( dwError == errtable[i].oscode )
-                return (oslFileError)errtable[i].errnocode;
+                return static_cast<oslFileError>(errtable[i].errnocode);
         }
 
         /* The error code wasn't in the table.  We check for a range of */
@@ -160,78 +143,12 @@ namespace
     #define MapError( oserror ) _mapError( oserror )
 
     #define E_UNKNOWN_EXEC_ERROR -1
-
-
-    bool is_system_path(const OUString& path_or_uri)
-    {
-        OUString url;
-        osl::FileBase::RC rc = osl::FileBase::getFileURLFromSystemPath(path_or_uri, url);
-        return (rc == osl::FileBase::E_None);
-    }
-
-
-    // trying to identify a jump mark
-
-
-    const OUString    JUMP_MARK_HTM(".htm#");
-    const OUString    JUMP_MARK_HTML(".html#");
-    const sal_Unicode HASH_MARK      = '#';
-
-    bool has_jump_mark(const OUString& system_path, sal_Int32* jmp_mark_start = nullptr)
-    {
-        sal_Int32 jmp_mark = std::max<int>(
-            system_path.lastIndexOf(JUMP_MARK_HTM),
-            system_path.lastIndexOf(JUMP_MARK_HTML));
-
-        if (jmp_mark_start)
-            *jmp_mark_start = jmp_mark;
-
-        return (jmp_mark > -1);
-    }
-
-
-    bool is_existing_file(const OUString& file_name)
-    {
-        OSL_ASSERT(is_system_path(file_name));
-
-        bool exist = false;
-
-        OUString file_url;
-        osl::FileBase::RC rc = osl::FileBase::getFileURLFromSystemPath(file_name, file_url);
-
-        if (osl::FileBase::E_None == rc)
-        {
-            osl::DirectoryItem dir_item;
-            rc = osl::DirectoryItem::get(file_url, dir_item);
-            exist = (osl::FileBase::E_None == rc);
-        }
-        return exist;
-    }
-
-
-    // Jump marks in file urls are illegal.
-
-
-    void remove_jump_mark(OUString* p_command)
-    {
-        OSL_PRECOND(p_command, "invalid parameter");
-
-        sal_Int32 pos;
-        if (has_jump_mark(*p_command, &pos))
-        {
-            const sal_Unicode* p_jmp_mark = p_command->getStr() + pos;
-            while (*p_jmp_mark && (*p_jmp_mark != HASH_MARK))
-                p_jmp_mark++;
-
-            *p_command = OUString(p_command->getStr(), p_jmp_mark - p_command->getStr());
-        }
-    }
-
 }
 
-CSysShExec::CSysShExec( const Reference< css::uno::XComponentContext >& xContext ) :
-    WeakComponentImplHelper< XSystemShellExecute, XServiceInfo >( m_aMutex ),
-    m_xContext(xContext)
+CSysShExec::CSysShExec( const css::uno::Reference< css::uno::XComponentContext >& xContext ) :
+    WeakComponentImplHelper< css::system::XSystemShellExecute, css::lang::XServiceInfo >( m_aMutex ),
+    m_xContext(xContext),
+    mnNbCallCoInitializeExForReinit(0)
 {
     /*
      * As this service is declared thread-affine, it is ensured to be called from a
@@ -240,25 +157,69 @@ CSysShExec::CSysShExec( const Reference< css::uno::XComponentContext >& xContext
      * We need COM to be initialized for STA, but osl thread get initialized for MTA.
      * Once this changed, we can remove the uninitialize call.
      */
-    CoUninitialize();
-    CoInitialize( nullptr );
+    o3tl::safeCoInitializeEx(COINIT_APARTMENTTHREADED, mnNbCallCoInitializeExForReinit);
+}
+CSysShExec::~CSysShExec()
+{
+    o3tl::safeCoUninitializeReinit(COINIT_MULTITHREADED, mnNbCallCoInitializeExForReinit);
+}
+
+namespace
+{
+bool checkExtension(OUString const & extension, OUString const & denylist) {
+    assert(!extension.isEmpty());
+    for (sal_Int32 i = 0; i != -1;) {
+        OUString tok = denylist.getToken(0, ';', i);
+        tok.startsWith(".", &tok);
+        if (extension.equalsIgnoreAsciiCase(tok)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// This callback checks if the found window is the specified process's top-level window,
+// and activates the first found such window.
+BOOL CALLBACK FindAndActivateProcWnd(HWND hwnd, LPARAM lParam)
+{
+    if (!IsWindowVisible(hwnd))
+        return TRUE; // continue enumeration
+    if (GetWindow(hwnd, GW_OWNER)) // not a top-level window
+        return TRUE; // continue enumeration
+    const DWORD nParamProcId = static_cast<DWORD>(lParam);
+    assert(nParamProcId != 0);
+    DWORD nWndProcId = 0;
+    (void)GetWindowThreadProcessId(hwnd, &nWndProcId);
+    if (nWndProcId != nParamProcId)
+        return TRUE; // continue enumeration
+
+    // Found it! Bring it to front
+    if (IsIconic(hwnd))
+    {
+        ShowWindow(hwnd, SW_RESTORE);
+    }
+    SetForegroundWindow(hwnd);
+    SetActiveWindow(hwnd);
+    return FALSE; // stop enumeration
+}
 }
 
 void SAL_CALL CSysShExec::execute( const OUString& aCommand, const OUString& aParameter, sal_Int32 nFlags )
 {
     // parameter checking
     if (0 == aCommand.getLength())
-        throw IllegalArgumentException(
+        throw css::lang::IllegalArgumentException(
             "Empty command",
-            static_cast< XSystemShellExecute* >( this ),
+            static_cast< css::system::XSystemShellExecute* >( this ),
             1 );
 
     if ((nFlags & ~(NO_SYSTEM_ERROR_MESSAGE | URIS_ONLY)) != 0)
-        throw IllegalArgumentException(
+        throw css::lang::IllegalArgumentException(
             "Invalid Flags specified",
-            static_cast< XSystemShellExecute* >( this ),
+            static_cast< css::system::XSystemShellExecute* >( this ),
             3 );
 
+    OUString preprocessed_command(aCommand);
     if ((nFlags & URIS_ONLY) != 0)
     {
         css::uno::Reference< css::uri::XUriReference > uri(
@@ -271,38 +232,130 @@ void SAL_CALL CSysShExec::execute( const OUString& aCommand, const OUString& aPa
                  + aCommand,
                 static_cast< cppu::OWeakObject * >(this), 0);
         }
-    }
-
-    /*  #i4789#; jump mark detection on system paths
-        if the given command is a system path (not http or
-        other uri schemes) and seems to have a jump mark
-        and names no existing file (remember the jump mark
-        sign '#' is a valid file name character we remove
-        the jump mark, else ShellExecuteEx fails */
-    OUString preprocessed_command(aCommand);
-    if (is_system_path(preprocessed_command))
-    {
-        if (has_jump_mark(preprocessed_command) && !is_existing_file(preprocessed_command))
-            remove_jump_mark(&preprocessed_command);
-    }
-    /* Convert file uris to system paths */
-    else
-    {
-        OUString aSystemPath;
-        if (::osl::FileBase::E_None == ::osl::FileBase::getSystemPathFromFileURL(preprocessed_command, aSystemPath))
-            preprocessed_command = aSystemPath;
+        if (uri->getScheme().equalsIgnoreAsciiCase("file")) {
+            // ShellExecuteExW appears to ignore the fragment of a file URL anyway, so remove it:
+            uri->clearFragment();
+            OUString pathname;
+            auto const e1
+                = osl::FileBase::getSystemPathFromFileURL(uri->getUriReference(), pathname);
+            if (e1 != osl::FileBase::E_None) {
+                throw css::lang::IllegalArgumentException(
+                    ("XSystemShellExecute.execute, getSystemPathFromFileURL <" + aCommand
+                     + "> failed with " + OUString::number(e1)),
+                    {}, 0);
+            }
+            const int MAX_LONG_PATH = 32767; // max longpath on WinNT
+            if (pathname.getLength() >= MAX_LONG_PATH)
+            {
+                throw css::lang::IllegalArgumentException(
+                    "XSystemShellExecute.execute, path <" + pathname + "> too long", {}, 0);
+            }
+            preprocessed_command = pathname;
+            wchar_t path[MAX_LONG_PATH];
+            wcscpy_s(path, o3tl::toW(pathname.getStr()));
+            for (int i = 0;; ++i) {
+                // tdf#130216: normalize c:\path\to\something\..\else into c:\path\to\else
+                if (PathResolve(path, nullptr, PRF_VERIFYEXISTS | PRF_REQUIREABSOLUTE) == 0)
+                {
+                    throw css::lang::IllegalArgumentException(
+                        OUStringLiteral("XSystemShellExecute.execute, PathResolve(") + o3tl::toU(path)
+                            + ") failed",
+                        {}, 0);
+                }
+                SHFILEINFOW info;
+                if (SHGetFileInfoW(path, 0, &info, sizeof info, SHGFI_EXETYPE) != 0)
+                {
+                    throw css::lang::IllegalArgumentException(
+                        "XSystemShellExecute.execute, cannot process <" + aCommand + ">", {}, 0);
+                }
+                if (SHGetFileInfoW(path, 0, &info, sizeof info, SHGFI_ATTRIBUTES) == 0)
+                {
+                    throw css::lang::IllegalArgumentException(
+                        OUStringLiteral("XSystemShellExecute.execute, SHGetFileInfoW(") + o3tl::toU(path) + ") failed", {},
+                        0);
+                }
+                if ((info.dwAttributes & SFGAO_LINK) == 0) {
+                    break;
+                }
+                sal::systools::COMReference<IShellLinkW> link;
+                auto e2 = CoCreateInstance(
+                    CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW,
+                    reinterpret_cast<LPVOID *>(&link));
+                if (FAILED(e2)) {
+                    throw css::lang::IllegalArgumentException(
+                        ("XSystemShellExecute.execute, CoCreateInstance failed with "
+                         + OUString::number(e2)),
+                        {}, 0);
+                }
+                sal::systools::COMReference<IPersistFile> file;
+                try {
+                    file = link.QueryInterface<IPersistFile>(IID_IPersistFile);
+                } catch(sal::systools::ComError & e3) {
+                    throw css::lang::IllegalArgumentException(
+                        ("XSystemShellExecute.execute, QueryInterface failed with: "
+                         + o3tl::runtimeToOUString(e3.what())),
+                        {}, 0);
+                }
+                e2 = file->Load(path, STGM_READ);
+                if (FAILED(e2)) {
+                    throw css::lang::IllegalArgumentException(
+                        ("XSystemShellExecute.execute, IPersistFile.Load failed with "
+                         + OUString::number(e2)),
+                        {}, 0);
+                }
+                e2 = link->Resolve(nullptr, SLR_UPDATE | SLR_NO_UI);
+                if (FAILED(e2)) {
+                    throw css::lang::IllegalArgumentException(
+                        ("XSystemShellExecute.execute, IShellLink.Resolve failed with "
+                         + OUString::number(e2)),
+                        {}, 0);
+                }
+                WIN32_FIND_DATAW wfd;
+                e2 = link->GetPath(path, SAL_N_ELEMENTS(path), &wfd, SLGP_RAWPATH);
+                if (FAILED(e2)) {
+                    throw css::lang::IllegalArgumentException(
+                        ("XSystemShellExecute.execute, IShellLink.GetPath failed with "
+                         + OUString::number(e2)),
+                        {}, 0);
+                }
+                // Fail at some arbitrary nesting depth, to avoid an infinite loop:
+                if (i == 30) {
+                    throw css::lang::IllegalArgumentException(
+                        "XSystemShellExecute.execute, link depth exceeded for <" + aCommand + ">",
+                        {}, 0);
+                }
+            }
+            pathname = o3tl::toU(path);
+            auto const n = pathname.lastIndexOf('.');
+            if (n > pathname.lastIndexOf('\\')) {
+                auto const ext = pathname.copy(n + 1);
+                OUString env;
+                if (osl_getEnvironment(OUString("PATHEXT").pData, &env.pData) != osl_Process_E_None)
+                {
+                    SAL_INFO("shell", "osl_getEnvironment(PATHEXT) failed");
+                }
+                if (!(checkExtension(ext, env)
+                      && checkExtension(
+                          ext, ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY")))
+                {
+                    throw css::lang::IllegalArgumentException(
+                        "XSystemShellExecute.execute, cannot process <" + aCommand + ">", {}, 0);
+                }
+            }
+        }
     }
 
     SHELLEXECUTEINFOW sei;
     ZeroMemory(&sei, sizeof( sei));
 
     sei.cbSize       = sizeof(sei);
-    sei.lpFile       = reinterpret_cast<LPCWSTR>(preprocessed_command.getStr());
-    sei.lpParameters = reinterpret_cast<LPCWSTR>(aParameter.getStr());
+    sei.lpFile       = o3tl::toW(preprocessed_command.getStr());
+    sei.lpParameters = o3tl::toW(aParameter.getStr());
     sei.nShow        = SW_SHOWNORMAL;
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS; // we need sei.hProcess
 
     if (NO_SYSTEM_ERROR_MESSAGE & nFlags)
-        sei.fMask = SEE_MASK_FLAG_NO_UI;
+        sei.fMask |= SEE_MASK_FLAG_NO_UI;
 
     SetLastError( 0 );
 
@@ -318,28 +371,20 @@ void SAL_CALL CSysShExec::execute( const OUString& aCommand, const OUString& aPa
         else
             psxErr = MapError(psxErr);
 
-        throw SystemShellExecuteException(
+        throw css::system::SystemShellExecuteException(
             "Error executing command",
-            static_cast< XSystemShellExecute* >(this),
+            static_cast< css::system::XSystemShellExecute* >(this),
             psxErr);
     }
     else
     {
         // Get Permission make changes to the Window of the created Process
-        HWND procHandle = nullptr;
-        DWORD procId = GetProcessId(sei.hProcess);
-        AllowSetForegroundWindow(procId);
-
-        // Get the handle of the created Window
-        DWORD check = 0;
-        GetWindowThreadProcessId(procHandle, &check);
-        SAL_WARN_IF(check != procId, "shell", "Could not get handle of process called by shell.");
-
-        // Move created Window into the foreground
-        if(procHandle != nullptr)
+        const DWORD procId = GetProcessId(sei.hProcess);
+        if (procId != 0)
         {
-            SetForegroundWindow(procHandle);
-            SetActiveWindow(procHandle);
+            AllowSetForegroundWindow(procId);
+            WaitForInputIdle(sei.hProcess, 1000); // so that main window is created; imperfect
+            EnumWindows(FindAndActivateProcWnd, static_cast<LPARAM>(procId));
         }
     }
 
@@ -351,7 +396,7 @@ void SAL_CALL CSysShExec::execute( const OUString& aCommand, const OUString& aPa
 
 OUString SAL_CALL CSysShExec::getImplementationName(  )
 {
-    return OUString(SYSSHEXEC_IMPL_NAME );
+    return "com.sun.star.sys.shell.SystemShellExecute";
 }
 
 sal_Bool SAL_CALL CSysShExec::supportsService( const OUString& ServiceName )
@@ -359,9 +404,15 @@ sal_Bool SAL_CALL CSysShExec::supportsService( const OUString& ServiceName )
     return cppu::supportsService(this, ServiceName);
 }
 
-Sequence< OUString > SAL_CALL CSysShExec::getSupportedServiceNames(  )
+css::uno::Sequence< OUString > SAL_CALL CSysShExec::getSupportedServiceNames(  )
 {
-    return SysShExec_getSupportedServiceNames();
+    return { "com.sun.star.system.SystemShellExecute" };
 }
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+shell_CSysShExec_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new CSysShExec(context));
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

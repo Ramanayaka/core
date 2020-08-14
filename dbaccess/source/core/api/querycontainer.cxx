@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "querycontainer.hxx"
-#include "dbastrings.hrc"
+#include <querycontainer.hxx>
 #include "query.hxx"
-#include "objectnameapproval.hxx"
-#include "veto.hxx"
+#include <objectnameapproval.hxx>
+#include <veto.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XContainer.hpp>
@@ -31,14 +30,10 @@
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdb/QueryDefinition.hpp>
 
-#include <connectivity/dbexception.hxx>
-
 #include <osl/diagnose.h>
-#include <comphelper/enumhelper.hxx>
 #include <comphelper/uno3.hxx>
 #include <comphelper/property.hxx>
-#include <comphelper/sequence.hxx>
-#include <comphelper/extract.hxx>
+#include <comphelper/types.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 
 using namespace dbtools;
@@ -65,11 +60,11 @@ OQueryContainer::OQueryContainer(
                 , const Reference< XConnection >& _rxConn
                 , const Reference< XComponentContext >& _rxORB,
                 ::dbtools::WarningsContainer* _pWarnings)
-    :ODefinitionContainer(_rxORB,nullptr,TContentPtr(new ODefinitionContainer_Impl))
+    :ODefinitionContainer(_rxORB,nullptr,std::make_shared<ODefinitionContainer_Impl>())
     ,m_pWarnings( _pWarnings )
     ,m_xCommandDefinitions(_rxCommandDefinitions)
     ,m_xConnection(_rxConn)
-    ,m_eDoingCurrently(NONE)
+    ,m_eDoingCurrently(AggregateAction::NONE)
 {
 }
 
@@ -89,10 +84,10 @@ void OQueryContainer::init()
     for ( ; pDefinitionName != pEnd; ++pDefinitionName )
     {
         rDefinitions.insert( *pDefinitionName, TContentPtr() );
-        m_aDocuments.push_back(m_aDocumentMap.insert(Documents::value_type(*pDefinitionName,Documents::mapped_type())).first);
+        m_aDocuments.push_back(m_aDocumentMap.emplace( *pDefinitionName,Documents::mapped_type()).first);
     }
 
-    setElementApproval( PContainerApprove( new ObjectNameApproval( m_xConnection, ObjectNameApproval::TypeQuery ) ) );
+    setElementApproval( std::make_shared<ObjectNameApproval>( m_xConnection, ObjectNameApproval::TypeQuery ) );
 }
 
 rtl::Reference<OQueryContainer> OQueryContainer::create(
@@ -101,7 +96,7 @@ rtl::Reference<OQueryContainer> OQueryContainer::create(
                 , const Reference< XComponentContext >& _rxORB,
                 ::dbtools::WarningsContainer* _pWarnings)
 {
-    rtl::Reference<OQueryContainer> c(
+    rtl::Reference c(
         new OQueryContainer(
             _rxCommandDefinitions, _rxConn, _rxORB, _pWarnings));
     c->init();
@@ -182,7 +177,7 @@ void SAL_CALL OQueryContainer::appendByDescriptor( const Reference< XPropertySet
 
     // insert the basic object into the definition container
     {
-        m_eDoingCurrently = INSERTING;
+        m_eDoingCurrently = AggregateAction::Inserting;
         OAutoActionReset aAutoReset(*this);
         m_xCommandDefinitions->insertByName(sNewObjectName, makeAny(xCommandDefinitionPart));
     }
@@ -223,7 +218,7 @@ void SAL_CALL OQueryContainer::dropByIndex( sal_Int32 _nIndex )
         throw DisposedException( OUString(), *this );
 
     OUString sName;
-    Reference<XPropertySet> xProp(Reference<XIndexAccess>(m_xCommandDefinitions,UNO_QUERY)->getByIndex(_nIndex),UNO_QUERY);
+    Reference<XPropertySet> xProp(Reference<XIndexAccess>(m_xCommandDefinitions,UNO_QUERY_THROW)->getByIndex(_nIndex),UNO_QUERY);
     if ( xProp.is() )
         xProp->getPropertyValue(PROPERTY_NAME) >>= sName;
 
@@ -237,12 +232,12 @@ void SAL_CALL OQueryContainer::elementInserted( const css::container::ContainerE
     _rEvent.Accessor >>= sElementName;
     {
         MutexGuard aGuard(m_aMutex);
-        if (INSERTING == m_eDoingCurrently)
+        if (AggregateAction::Inserting == m_eDoingCurrently)
             // nothing to do, we're inserting via an "appendByDescriptor"
             return;
 
         OSL_ENSURE(!sElementName.isEmpty(), "OQueryContainer::elementInserted : invalid name !");
-        OSL_ENSURE(m_aDocumentMap.find(sElementName) == m_aDocumentMap.end(), "OQueryContainer::elementInserted         : oops .... we're inconsistent with our master container !");
+        OSL_ENSURE(m_aDocumentMap.find(sElementName) == m_aDocumentMap.end(), "OQueryContainer::elementInserted         : oops... we're inconsistent with our master container !");
         if (sElementName.isEmpty() || hasByName(sElementName))
             return;
 
@@ -258,7 +253,7 @@ void SAL_CALL OQueryContainer::elementRemoved( const css::container::ContainerEv
     _rEvent.Accessor >>= sAccessor;
     {
         OSL_ENSURE(!sAccessor.isEmpty(), "OQueryContainer::elementRemoved : invalid name !");
-        OSL_ENSURE(m_aDocumentMap.find(sAccessor) != m_aDocumentMap.end(), "OQueryContainer::elementRemoved : oops .... we're inconsistent with our master container !");
+        OSL_ENSURE(m_aDocumentMap.find(sAccessor) != m_aDocumentMap.end(), "OQueryContainer::elementRemoved : oops... we're inconsistent with our master container !");
         if ( sAccessor.isEmpty() || !hasByName(sAccessor) )
             return;
     }
@@ -274,7 +269,7 @@ void SAL_CALL OQueryContainer::elementReplaced( const css::container::ContainerE
     {
         MutexGuard aGuard(m_aMutex);
         OSL_ENSURE(!sAccessor.isEmpty(), "OQueryContainer::elementReplaced : invalid name !");
-        OSL_ENSURE(m_aDocumentMap.find(sAccessor) != m_aDocumentMap.end(), "OQueryContainer::elementReplaced         : oops .... we're inconsistent with our master container !");
+        OSL_ENSURE(m_aDocumentMap.find(sAccessor) != m_aDocumentMap.end(), "OQueryContainer::elementReplaced         : oops... we're inconsistent with our master container !");
         if (sAccessor.isEmpty() || !hasByName(sAccessor))
             return;
 
@@ -293,7 +288,7 @@ Reference< XVeto > SAL_CALL OQueryContainer::approveInsertElement( const Contain
     Reference< XVeto > xReturn;
     try
     {
-        getElementApproval()->approveElement( sName, xElement.get() );
+        getElementApproval()->approveElement( sName );
     }
     catch( const Exception& )
     {
@@ -322,14 +317,12 @@ void SAL_CALL OQueryContainer::disposing( const css::lang::EventObject& _rSource
     else
     {
         Reference< XContent > xSource(_rSource.Source, UNO_QUERY);
-        // it's one of our documents ....
-        Documents::const_iterator aIter = m_aDocumentMap.begin();
-        Documents::const_iterator aEnd = m_aDocumentMap.end();
-        for (;aIter != aEnd;++aIter )
+        // it's one of our documents...
+        for (auto const& document : m_aDocumentMap)
         {
-            if ( xSource == aIter->second.get() )
+            if ( xSource == document.second.get() )
             {
-                m_xCommandDefinitions->removeByName(aIter->first);
+                m_xCommandDefinitions->removeByName(document.first);
                 break;
             }
         }
@@ -339,7 +332,7 @@ void SAL_CALL OQueryContainer::disposing( const css::lang::EventObject& _rSource
 
 OUString OQueryContainer::determineContentType() const
 {
-    return OUString( "application/vnd.org.openoffice.DatabaseQueryContainer" );
+    return "application/vnd.org.openoffice.DatabaseQueryContainer";
 }
 
 Reference< XContent > OQueryContainer::implCreateWrapper(const OUString& _rName)
@@ -405,7 +398,7 @@ sal_Bool SAL_CALL OQueryContainer::hasElements( )
 sal_Int32 SAL_CALL OQueryContainer::getCount(  )
 {
     MutexGuard aGuard(m_aMutex);
-    return Reference<XIndexAccess>(m_xCommandDefinitions,UNO_QUERY)->getCount();
+    return Reference<XIndexAccess>(m_xCommandDefinitions,UNO_QUERY_THROW)->getCount();
 }
 
 Sequence< OUString > SAL_CALL OQueryContainer::getElementNames(  )

@@ -19,26 +19,17 @@
 
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
 #include <com/sun/star/embed/EmbedStates.hpp>
-#include <com/sun/star/embed/EmbedVerbs.hpp>
-#include <com/sun/star/embed/EmbedUpdateModes.hpp>
 #include <com/sun/star/embed/UnreachableStateException.hpp>
 #include <com/sun/star/embed/WrongStateException.hpp>
-#include <com/sun/star/embed/XEmbeddedClient.hpp>
-#include <com/sun/star/embed/XInplaceClient.hpp>
-#include <com/sun/star/embed/XWindowSupplier.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
-#include <com/sun/star/awt/XWindowPeer.hpp>
-#include <com/sun/star/util/XCloseBroadcaster.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
-#include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/embed/EmbedMapUnits.hpp>
 
 #include <cppuhelper/queryinterface.hxx>
-#include <cppuhelper/typeprovider.hxx>
+#include <osl/diagnose.h>
 
-#include "specialobject.hxx"
-#include "intercept.hxx"
+#include <specialobject.hxx>
 
 using namespace ::com::sun::star;
 
@@ -53,9 +44,7 @@ OSpecialEmbeddedObject::OSpecialEmbeddedObject( const uno::Reference< uno::XComp
 
 uno::Any SAL_CALL OSpecialEmbeddedObject::queryInterface( const uno::Type& rType )
 {
-    uno::Any aReturn;
-
-    aReturn = ::cppu::queryInterface( rType,
+    uno::Any aReturn = ::cppu::queryInterface( rType,
                                         static_cast< embed::XEmbeddedObject* >( this ),
                                         static_cast< embed::XInplaceObject* >( this ),
                                         static_cast< embed::XVisualObject* >( this ),
@@ -163,10 +152,9 @@ void SAL_CALL OSpecialEmbeddedObject::doVerb( sal_Int32 nVerbID )
     {
 
         uno::Reference < ui::dialogs::XExecutableDialog > xDlg( m_xDocHolder->GetComponent(), uno::UNO_QUERY );
-        if ( xDlg.is() )
-            xDlg->execute();
-        else
+        if ( !xDlg.is() )
             throw embed::UnreachableStateException();
+        xDlg->execute();
     }
     else
         OCommonEmbeddedObject::doVerb( nVerbID );

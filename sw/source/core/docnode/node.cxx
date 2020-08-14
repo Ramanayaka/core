@@ -18,10 +18,10 @@
  */
 
 #include <hintids.hxx>
-#include <editeng/frmdiritem.hxx>
 #include <editeng/protitem.hxx>
 #include <tools/gen.hxx>
 #include <com/sun/star/i18n/CharacterIteratorMode.hpp>
+#include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <fmtcntnt.hxx>
 #include <fmtanchr.hxx>
 #include <frmfmt.hxx>
@@ -64,10 +64,11 @@
 #include <IDocumentRedlineAccess.hxx>
 #include <IDocumentLayoutAccess.hxx>
 #include <calbck.hxx>
-#include "ndole.hxx"
+#include <ndole.hxx>
 #include <memory>
 #include <swcrsr.hxx>
-#include <svl/itemiter.hxx>
+#include <hints.hxx>
+#include <frameformats.hxx>
 
 using namespace ::com::sun::star::i18n;
 
@@ -82,9 +83,9 @@ using namespace ::com::sun::star::i18n;
 namespace AttrSetHandleHelper
 {
 
-void GetNewAutoStyle( std::shared_ptr<const SfxItemSet>& rpAttrSet,
+static void GetNewAutoStyle( std::shared_ptr<const SfxItemSet>& rpAttrSet,
                       const SwContentNode& rNode,
-                      SwAttrSet& rNewAttrSet )
+                      SwAttrSet const & rNewAttrSet )
 {
     const SwAttrSet* pAttrSet = static_cast<const SwAttrSet*>(rpAttrSet.get());
     if( rNode.GetModifyAtAttr() )
@@ -97,7 +98,7 @@ void GetNewAutoStyle( std::shared_ptr<const SfxItemSet>& rpAttrSet,
     rNode.SetModifyAtAttr( bSetModifyAtAttr );
 }
 
-void SetParent( std::shared_ptr<const SfxItemSet>& rpAttrSet,
+static void SetParent( std::shared_ptr<const SfxItemSet>& rpAttrSet,
                 const SwContentNode& rNode,
                 const SwFormat* pParentFormat,
                 const SwFormat* pConditionalFormat )
@@ -108,32 +109,32 @@ void SetParent( std::shared_ptr<const SfxItemSet>& rpAttrSet,
 
     const SwAttrSet* pParentSet = pParentFormat ? &pParentFormat->GetAttrSet() : nullptr;
 
-    if ( pParentSet != pAttrSet->GetParent() )
+    if ( pParentSet == pAttrSet->GetParent() )
+        return;
+
+    SwAttrSet aNewSet( *pAttrSet );
+    aNewSet.SetParent( pParentSet );
+    aNewSet.ClearItem( RES_FRMATR_STYLE_NAME );
+    aNewSet.ClearItem( RES_FRMATR_CONDITIONAL_STYLE_NAME );
+    OUString sVal;
+
+    if ( pParentFormat )
     {
-        SwAttrSet aNewSet( *pAttrSet );
-        aNewSet.SetParent( pParentSet );
-        aNewSet.ClearItem( RES_FRMATR_STYLE_NAME );
-        aNewSet.ClearItem( RES_FRMATR_CONDITIONAL_STYLE_NAME );
-        OUString sVal;
+        SwStyleNameMapper::FillProgName( pParentFormat->GetName(), sVal, SwGetPoolIdFromName::TxtColl );
+        const SfxStringItem aAnyFormatColl( RES_FRMATR_STYLE_NAME, sVal );
+        aNewSet.Put( aAnyFormatColl );
 
-        if ( pParentFormat )
-        {
-            SwStyleNameMapper::FillProgName( pParentFormat->GetName(), sVal, SwGetPoolIdFromName::TxtColl, true );
-            const SfxStringItem aAnyFormatColl( RES_FRMATR_STYLE_NAME, sVal );
-            aNewSet.Put( aAnyFormatColl );
+        if ( pConditionalFormat != pParentFormat )
+            SwStyleNameMapper::FillProgName( pConditionalFormat->GetName(), sVal, SwGetPoolIdFromName::TxtColl );
 
-            if ( pConditionalFormat != pParentFormat )
-                SwStyleNameMapper::FillProgName( pConditionalFormat->GetName(), sVal, SwGetPoolIdFromName::TxtColl, true );
-
-            const SfxStringItem aFormatColl( RES_FRMATR_CONDITIONAL_STYLE_NAME, sVal );
-            aNewSet.Put( aFormatColl );
-        }
-
-        GetNewAutoStyle( rpAttrSet, rNode, aNewSet );
+        const SfxStringItem aFormatColl( RES_FRMATR_CONDITIONAL_STYLE_NAME, sVal );
+        aNewSet.Put( aFormatColl );
     }
+
+    GetNewAutoStyle( rpAttrSet, rNode, aNewSet );
 }
 
-const SfxPoolItem* Put( std::shared_ptr<const SfxItemSet>& rpAttrSet,
+static const SfxPoolItem* Put( std::shared_ptr<const SfxItemSet>& rpAttrSet,
                         const SwContentNode& rNode,
                         const SfxPoolItem& rAttr )
 {
@@ -144,7 +145,7 @@ const SfxPoolItem* Put( std::shared_ptr<const SfxItemSet>& rpAttrSet,
     return pRet;
 }
 
-bool Put( std::shared_ptr<const SfxItemSet>& rpAttrSet, const SwContentNode& rNode,
+static bool Put( std::shared_ptr<const SfxItemSet>& rpAttrSet, const SwContentNode& rNode,
          const SfxItemSet& rSet )
 {
     SwAttrSet aNewSet( static_cast<const SwAttrSet&>(*rpAttrSet) );
@@ -171,7 +172,7 @@ bool Put( std::shared_ptr<const SfxItemSet>& rpAttrSet, const SwContentNode& rNo
     return bRet;
 }
 
-bool Put_BC( std::shared_ptr<const SfxItemSet>& rpAttrSet,
+static bool Put_BC( std::shared_ptr<const SfxItemSet>& rpAttrSet,
             const SwContentNode& rNode, const SfxPoolItem& rAttr,
             SwAttrSet* pOld, SwAttrSet* pNew )
 {
@@ -190,7 +191,7 @@ bool Put_BC( std::shared_ptr<const SfxItemSet>& rpAttrSet,
     return bRet;
 }
 
-bool Put_BC( std::shared_ptr<const SfxItemSet>& rpAttrSet,
+static bool Put_BC( std::shared_ptr<const SfxItemSet>& rpAttrSet,
             const SwContentNode& rNode, const SfxItemSet& rSet,
             SwAttrSet* pOld, SwAttrSet* pNew )
 {
@@ -223,7 +224,7 @@ bool Put_BC( std::shared_ptr<const SfxItemSet>& rpAttrSet,
     return bRet;
 }
 
-sal_uInt16 ClearItem_BC( std::shared_ptr<const SfxItemSet>& rpAttrSet,
+static sal_uInt16 ClearItem_BC( std::shared_ptr<const SfxItemSet>& rpAttrSet,
                      const SwContentNode& rNode, sal_uInt16 nWhich,
                      SwAttrSet* pOld, SwAttrSet* pNew )
 {
@@ -236,7 +237,7 @@ sal_uInt16 ClearItem_BC( std::shared_ptr<const SfxItemSet>& rpAttrSet,
     return nRet;
 }
 
-sal_uInt16 ClearItem_BC( std::shared_ptr<const SfxItemSet>& rpAttrSet,
+static sal_uInt16 ClearItem_BC( std::shared_ptr<const SfxItemSet>& rpAttrSet,
                      const SwContentNode& rNode,
                      sal_uInt16 nWhich1, sal_uInt16 nWhich2,
                      SwAttrSet* pOld, SwAttrSet* pNew )
@@ -284,24 +285,26 @@ SwNode::SwNode( const SwNodeIndex &rWhere, const SwNodeType nNdType )
     : m_nNodeType( nNdType )
     , m_nAFormatNumLvl( 0 )
     , m_bIgnoreDontExpand( false)
+    , m_eMerge(Merge::None)
 #ifdef DBG_UTIL
     , m_nSerial( s_nSerial++)
 #endif
     , m_pStartOfSection( nullptr )
 {
-    if( rWhere.GetIndex() )
+    if( !rWhere.GetIndex() )
+        return;
+
+    SwNodes& rNodes = const_cast<SwNodes&> (rWhere.GetNodes());
+    SwNode* pNd = rNodes[ rWhere.GetIndex() -1 ];
+    rNodes.InsertNode( this, rWhere );
+    m_pStartOfSection = pNd->GetStartNode();
+    if( nullptr == m_pStartOfSection )
     {
-        SwNodes& rNodes = const_cast<SwNodes&> (rWhere.GetNodes());
-        SwNode* pNd = rNodes[ rWhere.GetIndex() -1 ];
-        rNodes.InsertNode( this, rWhere );
-        if( nullptr == ( m_pStartOfSection = pNd->GetStartNode()) )
+        m_pStartOfSection = pNd->m_pStartOfSection;
+        if( pNd->GetEndNode() )     // Skip EndNode ? Section
         {
+            pNd = m_pStartOfSection;
             m_pStartOfSection = pNd->m_pStartOfSection;
-            if( pNd->GetEndNode() )     // Skip EndNode ? Section
-            {
-                pNd = m_pStartOfSection;
-                m_pStartOfSection = pNd->m_pStartOfSection;
-            }
         }
     }
 }
@@ -316,23 +319,25 @@ SwNode::SwNode( SwNodes& rNodes, sal_uLong nPos, const SwNodeType nNdType )
     : m_nNodeType( nNdType )
     , m_nAFormatNumLvl( 0 )
     , m_bIgnoreDontExpand( false)
+    , m_eMerge(Merge::None)
 #ifdef DBG_UTIL
     , m_nSerial( s_nSerial++)
 #endif
     , m_pStartOfSection( nullptr )
 {
-    if( nPos )
+    if( !nPos )
+        return;
+
+    SwNode* pNd = rNodes[ nPos - 1 ];
+    rNodes.InsertNode( this, nPos );
+    m_pStartOfSection = pNd->GetStartNode();
+    if( nullptr == m_pStartOfSection )
     {
-        SwNode* pNd = rNodes[ nPos - 1 ];
-        rNodes.InsertNode( this, nPos );
-        if( nullptr == ( m_pStartOfSection = pNd->GetStartNode()) )
+        m_pStartOfSection = pNd->m_pStartOfSection;
+        if( pNd->GetEndNode() )     // Skip EndNode ? Section!
         {
+            pNd = m_pStartOfSection;
             m_pStartOfSection = pNd->m_pStartOfSection;
-            if( pNd->GetEndNode() )     // Skip EndNode ? Section!
-            {
-                pNd = m_pStartOfSection;
-                m_pStartOfSection = pNd->m_pStartOfSection;
-            }
         }
     }
 }
@@ -380,18 +385,22 @@ bool SwNode::IsInVisibleArea( SwViewShell const * pSh ) const
     if( pSh )
     {
         const SwFrame* pFrame;
-        if( pNd && nullptr != ( pFrame = pNd->getLayoutFrame( pSh->GetLayout(), nullptr, nullptr, false ) ) )
+        if (pNd && nullptr != (pFrame = pNd->getLayoutFrame(pSh->GetLayout(), nullptr, nullptr)))
         {
 
             if ( pFrame->IsInTab() )
                 pFrame = pFrame->FindTabFrame();
 
-            if( !pFrame->IsValid() )
+            if( !pFrame->isFrameAreaDefinitionValid() )
+            {
                 do
-                {   pFrame = pFrame->FindPrev();
-                } while ( pFrame && !pFrame->IsValid() );
+                {
+                    pFrame = pFrame->FindPrev();
+                }
+                while ( pFrame && !pFrame->isFrameAreaDefinitionValid() );
+            }
 
-            if( !pFrame || pSh->VisArea().IsOver( pFrame->Frame() ) )
+            if( !pFrame || pSh->VisArea().IsOver( pFrame->getFrameArea() ) )
                 bRet = true;
         }
     }
@@ -416,7 +425,8 @@ bool SwNode::IsProtect() const
     if( pSttNd && static_cast<const SwSectionNode*>(pSttNd)->GetSection().IsProtectFlag() )
         return true;
 
-    if( nullptr != ( pSttNd = FindTableBoxStartNode() ) )
+    pSttNd = FindTableBoxStartNode();
+    if( nullptr != pSttNd )
     {
         SwContentFrame* pCFrame;
         if( IsContentNode() && nullptr != (pCFrame = static_cast<const SwContentNode*>(this)->getLayoutFrame( GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout() ) ))
@@ -442,7 +452,8 @@ bool SwNode::IsProtect() const
         return &rAnchorNd != this && rAnchorNd.IsProtect();
     }
 
-    if( nullptr != ( pSttNd = FindFootnoteStartNode() ) )
+    pSttNd = FindFootnoteStartNode();
+    if( nullptr != pSttNd )
     {
         const SwTextFootnote* pTFootnote = GetDoc()->GetFootnoteIdxs().SeekEntry(
                                 SwNodeIndex( *pSttNd ) );
@@ -487,7 +498,7 @@ const SwPageDesc* SwNode::FindPageDesc( size_t* pPgDescNdIdx ) const
     {
         const SwFrame* pFrame;
         const SwPageFrame* pPage;
-        if( pNode && nullptr != ( pFrame = pNode->getLayoutFrame( pNode->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, nullptr, false/*bCalcLay*/ ) ) &&
+        if (pNode && nullptr != (pFrame = pNode->getLayoutFrame(pNode->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, nullptr)) &&
             nullptr != ( pPage = pFrame->FindPageFrame() ) )
         {
             pPgDesc = pPage->GetPageDesc();
@@ -662,22 +673,21 @@ const SwPageDesc* SwNode::FindPageDesc( size_t* pPgDescNdIdx ) const
         {
             SwFindNearestNode aInfo( *pNd );
             // Over all Nodes of all PageDescs
-            sal_uInt32 i, nMaxItems = pDoc->GetAttrPool().GetItemCount2( RES_PAGEDESC );
-            for( i = 0; i < nMaxItems; ++i )
+            for (const SfxPoolItem* pItem : pDoc->GetAttrPool().GetItemSurrogates(RES_PAGEDESC))
             {
-                const SfxPoolItem* pItem;
-                if( nullptr != (pItem = pDoc->GetAttrPool().GetItem2( RES_PAGEDESC, i ) ) &&
-                    static_cast<const SwFormatPageDesc*>(pItem)->GetDefinedIn() )
+                auto pPageDescItem = dynamic_cast<const SwFormatPageDesc*>(pItem);
+                if( pPageDescItem && pPageDescItem->GetDefinedIn() )
                 {
-                    const SwModify* pMod = static_cast<const SwFormatPageDesc*>(pItem)->GetDefinedIn();
-                    if( dynamic_cast<const SwContentNode*>( pMod) !=  nullptr )
-                        aInfo.CheckNode( *static_cast<const SwContentNode*>(pMod) );
-                    else if( dynamic_cast<const SwFormat*>( pMod) !=  nullptr)
-                        static_cast<const SwFormat*>(pMod)->GetInfo( aInfo );
+                    const SwModify* pMod = pPageDescItem->GetDefinedIn();
+                    if( auto pContentNode = dynamic_cast<const SwContentNode*>( pMod) )
+                        aInfo.CheckNode( *pContentNode );
+                    else if( auto pFormat = dynamic_cast<const SwFormat*>( pMod) )
+                        pFormat->GetInfo( aInfo );
                 }
             }
 
-            if( nullptr != ( pNd = aInfo.GetFoundNode() ))
+            pNd = aInfo.GetFoundNode();
+            if( nullptr != pNd )
             {
                 if( pNd->IsContentNode() )
                     pPgDesc = static_cast<const SwFormatPageDesc&>(pNd->GetContentNode()->
@@ -709,7 +719,7 @@ SwFrameFormat* SwNode::GetFlyFormat() const
     {
         if( IsContentNode() )
         {
-            SwContentFrame* pFrame = SwIterator<SwContentFrame,SwContentNode>( *static_cast<const SwContentNode*>(this) ).First();
+            SwContentFrame* pFrame = SwIterator<SwContentFrame, SwContentNode, sw::IteratorMode::UnwrapMulti>(*static_cast<const SwContentNode*>(this)).First();
             if( pFrame )
                 pRet = pFrame->FindFlyFrame()->GetFormat();
         }
@@ -755,7 +765,8 @@ SwStartNode* SwNode::FindSttNodeByType( SwStartNodeType eTyp )
     return eTyp == pTmp->GetStartNodeType() ? pTmp : nullptr;
 }
 
-const SwTextNode* SwNode::FindOutlineNodeOfLevel( sal_uInt8 nLvl ) const
+const SwTextNode* SwNode::FindOutlineNodeOfLevel(sal_uInt8 const nLvl,
+        SwRootFrame const*const pLayout) const
 {
     const SwTextNode* pRet = nullptr;
     const SwOutlineNodes& rONds = GetNodes().GetOutLineNds();
@@ -766,26 +777,41 @@ const SwTextNode* SwNode::FindOutlineNodeOfLevel( sal_uInt8 nLvl ) const
         bool bCheckFirst = false;
         if( !rONds.Seek_Entry( pNd, &nPos ))
         {
-            if( nPos )
-                nPos = nPos-1;
-            else
+            if (nPos == 0)
                 bCheckFirst = true;
+        }
+        else
+        {
+            ++nPos;
         }
 
         if( bCheckFirst )
         {
-            // The first OutlineNode comes after the one asking. Test if it points to the same node.
+            // The first OutlineNode comes after the one asking.
+            // Test if both are on the same page.
             // If not it's invalid.
-            pRet = rONds[0]->GetTextNode();
+            for (nPos = 0; nPos < rONds.size(); ++nPos)
+            {
+                pRet = rONds[nPos]->GetTextNode();
+                if (!pLayout || sw::IsParaPropsNode(*pLayout, *pRet))
+                {
+                    break;
+                }
+            }
+            if (nPos == rONds.size())
+            {
+                return nullptr;
+            }
 
             const SwContentNode* pCNd = GetContentNode();
 
             Point aPt( 0, 0 );
-            const SwFrame* pFrame = pRet->getLayoutFrame( pRet->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), &aPt, nullptr, false ),
-                       * pMyFrame = pCNd ? pCNd->getLayoutFrame( pCNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), &aPt, nullptr, false ) : nullptr;
+            std::pair<Point, bool> const tmp(aPt, false);
+            const SwFrame* pFrame = pRet->getLayoutFrame(pRet->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, &tmp),
+                       * pMyFrame = pCNd ? pCNd->getLayoutFrame(pCNd->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, &tmp) : nullptr;
             const SwPageFrame* pPgFrame = pFrame ? pFrame->FindPageFrame() : nullptr;
             if( pPgFrame && pMyFrame &&
-                pPgFrame->Frame().Top() > pMyFrame->Frame().Top() )
+                pPgFrame->getFrameArea().Top() > pMyFrame->getFrameArea().Top() )
             {
                 // The one asking precedes the Page, thus its invalid
                 pRet = nullptr;
@@ -793,20 +819,22 @@ const SwTextNode* SwNode::FindOutlineNodeOfLevel( sal_uInt8 nLvl ) const
         }
         else
         {
-            // Or at the Field and get it from there!
-            while( nPos &&
-                   nLvl < ( pRet = rONds[nPos]->GetTextNode() )
-                    ->GetAttrOutlineLevel() - 1 )
-                --nPos;
-
-            if( !nPos )     // Get separately when 0
-                pRet = rONds[0]->GetTextNode();
+            for ( ; 0 < nPos; --nPos)
+            {
+                SwTextNode const*const pNode = rONds[nPos - 1]->GetTextNode();
+                if ((nPos == 1 /*as before*/ || pNode->GetAttrOutlineLevel() - 1 <= nLvl)
+                    && (!pLayout || sw::IsParaPropsNode(*pLayout, *pNode)))
+                {
+                    pRet = pNode;
+                    break;
+                }
+            }
         }
     }
     return pRet;
 }
 
-inline bool IsValidNextPrevNd( const SwNode& rNd )
+static bool IsValidNextPrevNd( const SwNode& rNd )
 {
     return SwNodeType::Table == rNd.GetNodeType() ||
            ( SwNodeType::ContentMask & rNd.GetNodeType() ) ||
@@ -855,6 +883,7 @@ void SwNode::dumpAsXml(xmlTextWriterPtr pWriter) const
         break;
     case SwNodeType::Start:
     case SwNodeType::Text:
+    case SwNodeType::Ole:
         abort(); // overridden
     case SwNodeType::Table:
         pName = "table";
@@ -862,16 +891,50 @@ void SwNode::dumpAsXml(xmlTextWriterPtr pWriter) const
     case SwNodeType::Grf:
         pName = "grf";
         break;
-    case SwNodeType::Ole:
-        pName = "ole";
-        break;
     default: break;
     }
     xmlTextWriterStartElement(pWriter, BAD_CAST(pName));
 
     xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
-    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("type"), BAD_CAST(OString::number((sal_uInt8)GetNodeType()).getStr()));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("type"), BAD_CAST(OString::number(static_cast<sal_uInt8>(GetNodeType())).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("index"), BAD_CAST(OString::number(GetIndex()).getStr()));
+
+    switch (GetNodeType())
+    {
+        case SwNodeType::Grf:
+        {
+            auto pNoTextNode = static_cast<const SwNoTextNode*>(this);
+            const tools::PolyPolygon* pContour = pNoTextNode->HasContour();
+            if (pContour)
+            {
+                xmlTextWriterStartElement(pWriter, BAD_CAST("pContour"));
+                for (sal_uInt16 i = 0; i < pContour->Count(); ++i)
+                {
+                    xmlTextWriterStartElement(pWriter, BAD_CAST("polygon"));
+                    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("index"),
+                                                BAD_CAST(OString::number(i).getStr()));
+                    const tools::Polygon& rPolygon = pContour->GetObject(i);
+                    for (sal_uInt16 j = 0; j < rPolygon.GetSize(); ++j)
+                    {
+                        xmlTextWriterStartElement(pWriter, BAD_CAST("point"));
+                        xmlTextWriterWriteAttribute(pWriter, BAD_CAST("index"),
+                                                    BAD_CAST(OString::number(j).getStr()));
+                        const Point& rPoint = rPolygon.GetPoint(j);
+                        xmlTextWriterWriteAttribute(pWriter, BAD_CAST("x"),
+                                                    BAD_CAST(OString::number(rPoint.X()).getStr()));
+                        xmlTextWriterWriteAttribute(pWriter, BAD_CAST("y"),
+                                                    BAD_CAST(OString::number(rPoint.Y()).getStr()));
+                        xmlTextWriterEndElement(pWriter);
+                    }
+                    xmlTextWriterEndElement(pWriter);
+                }
+                xmlTextWriterEndElement(pWriter);
+            }
+        }
+        break;
+        default:
+            break;
+    }
 
     xmlTextWriterEndElement(pWriter);
     if (GetNodeType() == SwNodeType::End)
@@ -954,13 +1017,20 @@ void SwStartNode::dumpAsXml(xmlTextWriterPtr pWriter) const
 
     xmlTextWriterStartElement(pWriter, BAD_CAST(pName));
     xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
-    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("type"), BAD_CAST(OString::number((sal_uInt8)GetNodeType()).getStr()));
+    xmlTextWriterWriteAttribute(pWriter, BAD_CAST("type"), BAD_CAST(OString::number(static_cast<sal_uInt8>(GetNodeType())).getStr()));
     xmlTextWriterWriteAttribute(pWriter, BAD_CAST("index"), BAD_CAST(OString::number(GetIndex()).getStr()));
 
     if (IsTableNode())
     {
         xmlTextWriterStartElement(pWriter, BAD_CAST("attrset"));
         GetTableNode()->GetTable().GetFrameFormat()->GetAttrSet().dumpAsXml(pWriter);
+        xmlTextWriterEndElement(pWriter);
+    }
+    else if (GetStartNodeType() == SwTableBoxStartNode)
+    {
+        xmlTextWriterStartElement(pWriter, BAD_CAST("attrset"));
+        if (SwTableBox* pBox = GetTableBox())
+            pBox->GetFrameFormat()->GetAttrSet().dumpAsXml(pWriter);
         xmlTextWriterEndElement(pWriter);
     }
 
@@ -994,104 +1064,112 @@ SwEndNode::SwEndNode( SwNodes& rNds, sal_uLong nPos, SwStartNode& rSttNd )
 
 SwContentNode::SwContentNode( const SwNodeIndex &rWhere, const SwNodeType nNdType,
                             SwFormatColl *pColl )
-    : SwModify( pColl ),     // CursorsShell, FrameFormat,
-    SwNode( rWhere, nNdType ),
-    m_pCondColl( nullptr ),
-    mbSetModifyAtAttr( false )
+    : SwNode( rWhere, nNdType )
+    , m_aCondCollListener( *this )
+    , m_pCondColl( nullptr )
+    , mbSetModifyAtAttr( false )
 {
+    if(pColl)
+        pColl->Add(this);
 }
 
 SwContentNode::~SwContentNode()
 {
     // The base class SwClient of SwFrame excludes itself from the dependency list!
     // Thus, we need to delete all Frames in the dependency list.
-    DelFrames(false);
+    if (!IsTextNode()) // see ~SwTextNode
+    {
+        DelFrames(nullptr);
+    }
 
-    delete m_pCondColl;
+    m_aCondCollListener.EndListeningAll();
+    m_pCondColl = nullptr;
 
-    if ( mpAttrSet.get() && mbSetModifyAtAttr )
+    if ( mpAttrSet && mbSetModifyAtAttr )
         const_cast<SwAttrSet*>(static_cast<const SwAttrSet*>(mpAttrSet.get()))->SetModifyAtAttr( nullptr );
 }
 
-void SwContentNode::Modify( const SfxPoolItem* pOldValue, const SfxPoolItem* pNewValue )
+void SwContentNode::SwClientNotify( const SwModify&, const SfxHint& rHint)
 {
-    sal_uInt16 nWhich = pOldValue ? pOldValue->Which() :
-                    pNewValue ? pNewValue->Which() : 0 ;
-
-    switch( nWhich )
+    if (auto pLegacyHint = dynamic_cast<const sw::LegacyModifyHint*>(&rHint))
     {
-    case RES_OBJECTDYING :
-        if (pNewValue)
-        {
-            SwFormat * pFormat = static_cast<SwFormat *>( static_cast<const SwPtrMsgPoolItem *>(pNewValue)->pObject );
+        const sal_uInt16 nWhich = pLegacyHint->m_pOld
+                ? pLegacyHint->m_pOld->Which()
+                : pLegacyHint->m_pNew
+                ? pLegacyHint->m_pNew->Which()
+                : 0 ;
 
-            // Do not mangle pointers if it is the upper-most format!
-            if( GetRegisteredIn() == pFormat )
-            {
-                if( pFormat->GetRegisteredIn() )
+        bool bSetParent = false;
+        bool bCalcHidden = false;
+        SwFormatColl* pFormatColl = nullptr;
+        switch(nWhich)
+        {
+            case RES_OBJECTDYING:
                 {
-                    // If Parent, register anew in the new Parent
-                    pFormat->GetRegisteredIn()->Add( this );
-                    if ( GetpSwAttrSet() )
-                        AttrSetHandleHelper::SetParent( mpAttrSet, *this, GetFormatColl(), GetFormatColl() );
+                    SwFormat* pFormat = pLegacyHint->m_pNew
+                            ? static_cast<SwFormat*>(static_cast<const SwPtrMsgPoolItem*>(pLegacyHint->m_pNew)->pObject)
+                            : nullptr;
+                    // Do not mangle pointers if it is the upper-most format!
+                    if(pFormat && GetRegisteredIn() == pFormat)
+                    {
+                        if(pFormat->GetRegisteredIn())
+                        {
+                            // If Parent, register anew in the new Parent
+                            pFormat->GetRegisteredIn()->Add(this);
+                            pFormatColl = GetFormatColl();
+                        }
+                        else
+                            EndListeningAll();
+                        bSetParent = true;
+                    }
                 }
-                else
+                break;
+
+            case RES_FMT_CHG:
+                // If the Format parent was switched, register the Attrset at the new one
+                // Skip own Modify!
+                if(GetpSwAttrSet()
+                        && pLegacyHint->m_pNew
+                        && static_cast<const SwFormatChg*>(pLegacyHint->m_pNew)->pChangedFormat == GetRegisteredIn())
                 {
-                    // Else register anyways when dying
-                    GetRegisteredIn()->Remove( this );
-                    if ( GetpSwAttrSet() )
-                        AttrSetHandleHelper::SetParent( mpAttrSet, *this, nullptr, nullptr );
+                    pFormatColl = GetFormatColl();
+                    bSetParent = true;
                 }
-            }
-        }
-        break;
+                break;
 
-    case RES_FMT_CHG:
-        // If the Format parent was switched, register the Attrset at the new one
-        // Skip own Modify!
-        if( GetpSwAttrSet() && pNewValue &&
-            static_cast<const SwFormatChg*>(pNewValue)->pChangedFormat == GetRegisteredIn() )
-        {
-            // Attach Set to the new parent
-            AttrSetHandleHelper::SetParent( mpAttrSet, *this, GetFormatColl(), GetFormatColl() );
-        }
-        break;
+            case RES_CONDCOLL_CONDCHG:
+                if(pLegacyHint->m_pNew
+                        && static_cast<const SwCondCollCondChg*>(pLegacyHint->m_pNew)->pChangedFormat == GetRegisteredIn()
+                        && &GetNodes() == &GetDoc()->GetNodes() )
+                    ChkCondColl();
+                return;    // Do not pass through to the base class/Frames
 
-//FEATURE::CONDCOLL
-    case RES_CONDCOLL_CONDCHG:
-        if( pNewValue && static_cast<const SwCondCollCondChg*>(pNewValue)->pChangedFormat == GetRegisteredIn() &&
-            &GetNodes() == &GetDoc()->GetNodes() )
-        {
-            ChkCondColl();
-        }
-        return ;    // Do not pass through to the base class/Frames
-//FEATURE::CONDCOLL
+            case RES_ATTRSET_CHG:
+                if (GetNodes().IsDocNodes()
+                        && IsTextNode()
+                        && pLegacyHint->m_pOld
+                        && SfxItemState::SET == static_cast<const SwAttrSetChg*>(pLegacyHint->m_pOld)->GetChgSet()->GetItemState(RES_CHRATR_HIDDEN, false))
+                    bCalcHidden = true;
+                break;
 
-    case RES_ATTRSET_CHG:
-        if (GetNodes().IsDocNodes() && IsTextNode() && pOldValue)
-        {
-            if( SfxItemState::SET == static_cast<const SwAttrSetChg*>(pOldValue)->GetChgSet()->GetItemState(
-                RES_CHRATR_HIDDEN, false ) )
-            {
-                static_cast<SwTextNode*>(this)->SetCalcHiddenCharFlags();
-            }
+            case RES_UPDATE_ATTR:
+                if (GetNodes().IsDocNodes()
+                        && IsTextNode()
+                        && pLegacyHint->m_pNew
+                        && RES_ATTRSET_CHG == static_cast<const SwUpdateAttr*>(pLegacyHint->m_pNew)->getWhichAttr())
+                    bCalcHidden = true;
+                break;
         }
-        break;
-
-    case RES_UPDATE_ATTR:
-        if (GetNodes().IsDocNodes() && IsTextNode() && pNewValue)
-        {
-            const sal_uInt16 nTmp = static_cast<const SwUpdateAttr*>(pNewValue)->getWhichAttr();
-            if ( RES_ATTRSET_CHG == nTmp )
-            {
-                // TODO: anybody wants to do some optimization here?
-                static_cast<SwTextNode*>(this)->SetCalcHiddenCharFlags();
-            }
-        }
-        break;
+        if(bSetParent && GetpSwAttrSet())
+            AttrSetHandleHelper::SetParent(mpAttrSet, *this, pFormatColl, pFormatColl);
+        if(bCalcHidden)
+            static_cast<SwTextNode*>(this)->SetCalcHiddenCharFlags();
+        NotifyClients(pLegacyHint->m_pOld, pLegacyHint->m_pNew);
     }
-
-    NotifyClients( pOldValue, pNewValue );
+    else if (auto pModifyChangedHint = dynamic_cast<const sw::ModifyChangedHint*>(&rHint))
+    {
+        m_pCondColl = const_cast<SwFormatColl*>(static_cast<const SwFormatColl*>(pModifyChangedHint->m_pNew));
+    }
 }
 
 bool SwContentNode::InvalidateNumRule()
@@ -1110,19 +1188,26 @@ bool SwContentNode::InvalidateNumRule()
 }
 
 SwContentFrame *SwContentNode::getLayoutFrame( const SwRootFrame* _pRoot,
-    const Point* pPoint, const SwPosition *pPos, const bool bCalcFrame ) const
+    const SwPosition *const pPos,
+    std::pair<Point, bool> const*const pViewPosAndCalcFrame) const
 {
     return static_cast<SwContentFrame*>( ::GetFrameOfModify( _pRoot, *this, FRM_CNTNT,
-                                            pPoint, pPos, bCalcFrame ));
+                                            pPos, pViewPosAndCalcFrame));
 }
 
 SwRect SwContentNode::FindLayoutRect( const bool bPrtArea, const Point* pPoint ) const
 {
     SwRect aRet;
+    std::pair<Point, bool> tmp;
+    if (pPoint)
+    {
+        tmp.first = *pPoint;
+        tmp.second = false;
+    }
     SwContentFrame* pFrame = static_cast<SwContentFrame*>( ::GetFrameOfModify( nullptr, *this,
-                                            FRM_CNTNT, pPoint ) );
+                                FRM_CNTNT, nullptr, pPoint ? &tmp : nullptr) );
     if( pFrame )
-        aRet = bPrtArea ? pFrame->Prt() : pFrame->Frame();
+        aRet = bPrtArea ? pFrame->getFramePrintArea() : pFrame->getFrameArea();
     return aRet;
 }
 
@@ -1131,7 +1216,7 @@ SwRect SwContentNode::FindPageFrameRect() const
     SwRect aRet;
     SwFrame* pFrame = ::GetFrameOfModify( nullptr, *this, FRM_CNTNT );
     if( pFrame && nullptr != ( pFrame = pFrame->FindPageFrame() ))
-        aRet = pFrame->Frame();
+        aRet = pFrame->getFrameArea();
     return aRet;
 }
 
@@ -1150,19 +1235,13 @@ SwFormatColl *SwContentNode::ChgFormatColl( SwFormatColl *pNewColl )
         if( GetpSwAttrSet() )
             AttrSetHandleHelper::SetParent( mpAttrSet, *this, pNewColl, pNewColl );
 
-//FEATURE::CONDCOLL
-        // TODO: HACK: We need to recheck this condition according to the new template!
-        if( true /*pNewColl */ )
-        {
-            SetCondFormatColl( nullptr );
-        }
-//FEATURE::CONDCOLL
+        SetCondFormatColl( nullptr );
 
         if( !IsModifyLocked() )
         {
             SwFormatChg aTmp1( pOldColl );
             SwFormatChg aTmp2( pNewColl );
-            SwContentNode::Modify( &aTmp1, &aTmp2 );
+            SwClientNotify( *this, sw::LegacyModifyHint(&aTmp1, &aTmp2) );
         }
     }
     if ( IsInCache() )
@@ -1259,7 +1338,7 @@ bool SwContentNode::GoPrevious(SwIndex * pIdx, sal_uInt16 nMode ) const
  * Creates all Views for the Doc for this Node.
  * The created ContentFrames are attached to the corresponding Layout.
  */
-void SwContentNode::MakeFrames( SwContentNode& rNode )
+void SwContentNode::MakeFramesForAdjacentContentNode(SwContentNode& rNode)
 {
     OSL_ENSURE( &rNode != this,
             "No ContentNode or CopyNode and new Node identical." );
@@ -1276,6 +1355,11 @@ void SwContentNode::MakeFrames( SwContentNode& rNode )
 
     while( nullptr != (pUpper = aNode2Layout.UpperFrame( pFrame, rNode )) )
     {
+        if (pUpper->getRootFrame()->IsHideRedlines()
+            && !rNode.IsCreateFrameWhenHidingRedlines())
+        {
+            continue;
+        }
         SwFrame *pNew = rNode.MakeFrame( pUpper );
         pNew->Paste( pUpper, pFrame );
         // #i27138#
@@ -1300,24 +1384,84 @@ void SwContentNode::MakeFrames( SwContentNode& rNode )
 /**
  * Deletes all Views from the Doc for this Node.
  * The ContentFrames are removed from the corresponding Layout.
- *
- * An input param to identify if the acc table should be disposed.
  */
-void SwContentNode::DelFrames( bool bIsDisposeAccTable )
+void SwContentNode::DelFrames(SwRootFrame const*const pLayout)
 {
     if( !HasWriterListeners() )
         return;
 
-    SwIterator<SwContentFrame,SwContentNode> aIter( *this );
+    SwIterator<SwContentFrame, SwContentNode, sw::IteratorMode::UnwrapMulti> aIter(*this);
     for( SwContentFrame* pFrame = aIter.First(); pFrame; pFrame = aIter.Next() )
     {
+        if (pLayout && pLayout != pFrame->getRootFrame())
+        {
+            continue; // skip it
+        }
+        if (pFrame->IsTextFrame())
+        {
+            if (sw::MergedPara * pMerged =
+                    static_cast<SwTextFrame *>(pFrame)->GetMergedPara())
+            {
+                if (this != pMerged->pFirstNode)
+                {
+                    // SwNodes::RemoveNode iterates *backwards* - so
+                    // ensure there are no more extents pointing to this
+                    // node as SwFrame::InvalidatePage() will access them.
+                    // Note: cannot send via SwClientNotify from dtor
+                    // because that would access deleted wrong-lists
+                    sw::UpdateMergedParaForDelete(*pMerged, true,
+                            *static_cast<SwTextNode*>(this), 0, Len());
+                    if (this == pMerged->pParaPropsNode)
+                    {
+                        // otherwise pointer should have been updated to a different node
+                        assert(this == pMerged->pLastNode);
+                        assert(pMerged->extents.empty());
+                        for (sal_uLong i = pMerged->pLastNode->GetIndex() - 1;;
+                                --i)
+                        {
+                            assert(pMerged->pFirstNode->GetIndex() <= i);
+                            SwNode *const pNode(GetNodes()[i]);
+                            if (pNode->IsTextNode()
+                                && pNode->GetRedlineMergeFlag() != Merge::Hidden)
+                            {
+                                pMerged->pParaPropsNode = pNode->GetTextNode();
+                                break;
+                            }
+                        }
+                        assert(pMerged->listener.IsListeningTo(pMerged->pParaPropsNode));
+                    }
+                    assert(GetIndex() <= pMerged->pLastNode->GetIndex());
+                    if (this == pMerged->pLastNode)
+                    {
+                        // tdf#130680 find the previous node that is a
+                        // listener of pMerged; see CheckParaRedlineMerge()
+                        for (sal_uLong i = GetIndex() - 1;
+                             this == pMerged->pLastNode; --i)
+                        {
+                            SwNode *const pNode = GetNodes()[i];
+                            if (pNode->IsTextNode())
+                            {
+                                pMerged->pLastNode = pNode->GetTextNode();
+                            }
+                            else if (SwEndNode const*const pEnd = pNode->GetEndNode())
+                            {
+                                SwStartNode const*const pStart(pEnd->StartOfSectionNode());
+                                i = pStart->GetIndex(); // skip table or section
+                            }
+                        }
+                        assert(pMerged->pFirstNode->GetIndex() <= pMerged->pLastNode->GetIndex());
+                        assert(pMerged->listener.IsListeningTo(pMerged->pLastNode));
+                    }
+                    // avoid re-parenting mess (ModifyChangedHint)
+                    pMerged->listener.EndListening(this);
+                    continue; // don't delete
+                }
+            }
         // #i27138#
         // notify accessibility paragraphs objects about changed
         // CONTENT_FLOWS_FROM/_TO relation.
         // Relation CONTENT_FLOWS_FROM for current next paragraph will change
         // and relation CONTENT_FLOWS_TO for current previous paragraph will change.
-        if ( pFrame->IsTextFrame() )
-        {
             SwViewShell* pViewShell( pFrame->getRootFrame()->GetCurrShell() );
             if ( pViewShell && pViewShell->GetLayout() &&
                  pViewShell->GetLayout()->IsAnyShellAccessible() )
@@ -1351,26 +1495,17 @@ void SwContentNode::DelFrames( bool bIsDisposeAccTable )
                 nullptr != ( pCFrame = pFootnote->GetRefFromAttr()) && pCFrame->IsFollow() )
             {
                 OSL_ENSURE( pCFrame->IsTextFrame(), "NoTextFrame has Footnote?" );
-                pCFrame->FindMaster()->Prepare( PREP_FTN_GONE );
+                pCFrame->FindMaster()->Prepare( PrepareHint::FootnoteInvalidationGone );
             }
         }
         pFrame->Cut();
         SwFrame::DestroyFrame(pFrame);
-    }
-
-    if( bIsDisposeAccTable && IsTextNode() )
-    {
-        GetTextNode()->DelFrames_TextNodePart();
     }
 }
 
 SwContentNode *SwContentNode::JoinNext()
 {
     return this;
-}
-
-void SwContentNode::JoinPrev()
-{
 }
 
 /// Get info from Modify
@@ -1393,7 +1528,7 @@ bool SwContentNode::GetInfo( SfxPoolItem& rInfo ) const
     case RES_CONTENT_VISIBLE:
         {
             static_cast<SwPtrMsgPoolItem&>(rInfo).pObject =
-                SwIterator<SwFrame,SwContentNode>(*this).First();
+                SwIterator<SwFrame, SwContentNode, sw::IteratorMode::UnwrapMulti>(*this).First();
         }
         return false;
     }
@@ -1538,7 +1673,7 @@ bool SwContentNode::ResetAttr( sal_uInt16 nWhich1, sal_uInt16 nWhich2 )
         else
             nDel = AttrSetHandleHelper::ClearItem_BC( mpAttrSet, *this, nWhich1, nWhich2, nullptr, nullptr );
 
-        if( !GetpSwAttrSet()->Count() ) // Empt? Delete
+        if( !GetpSwAttrSet()->Count() ) // Empty? Delete
             mpAttrSet.reset();
         return 0 != nDel;
     }
@@ -1585,9 +1720,8 @@ bool SwContentNode::ResetAttr( const std::vector<sal_uInt16>& rWhichArr )
         SwAttrSet aOld( *GetpSwAttrSet()->GetPool(), GetpSwAttrSet()->GetRanges() ),
                   aNew( *GetpSwAttrSet()->GetPool(), GetpSwAttrSet()->GetRanges() );
 
-        std::vector<sal_uInt16>::const_iterator it;
-        for ( it = rWhichArr.begin(); it != rWhichArr.end(); ++it )
-            if( AttrSetHandleHelper::ClearItem_BC( mpAttrSet, *this, *it, &aOld, &aNew ))
+        for ( const auto& rWhich : rWhichArr )
+            if( AttrSetHandleHelper::ClearItem_BC( mpAttrSet, *this, rWhich, &aOld, &aNew ))
                 ++nDel;
 
         if( nDel )
@@ -1652,16 +1786,14 @@ bool SwContentNode::GetAttr( SfxItemSet& rSet ) const
 sal_uInt16 SwContentNode::ClearItemsFromAttrSet( const std::vector<sal_uInt16>& rWhichIds )
 {
     sal_uInt16 nRet = 0;
-    if ( 0 == rWhichIds.size() )
+    if ( rWhichIds.empty() )
         return nRet;
 
     OSL_ENSURE( GetpSwAttrSet(), "no item set" );
     SwAttrSet aNewAttrSet( *GetpSwAttrSet() );
-    for ( std::vector<sal_uInt16>::const_iterator aIter = rWhichIds.begin();
-          aIter != rWhichIds.end();
-          ++aIter )
+    for ( const auto& rWhichId : rWhichIds )
     {
-        nRet = nRet + aNewAttrSet.ClearItem( *aIter );
+        nRet = nRet + aNewAttrSet.ClearItem( rWhichId );
     }
     if ( nRet )
         AttrSetHandleHelper::GetNewAutoStyle( mpAttrSet, *this, aNewAttrSet );
@@ -1754,35 +1886,30 @@ bool SwContentNode::CanJoinPrev( SwNodeIndex* pIdx ) const
     return true;
 }
 
-//FEATURE::CONDCOLL
-void SwContentNode::SetCondFormatColl( SwFormatColl* pColl )
+void SwContentNode::SetCondFormatColl(SwFormatColl* pColl)
 {
-    if( (!pColl && m_pCondColl) || ( pColl && !m_pCondColl ) ||
-        ( pColl && pColl != m_pCondColl->GetRegisteredIn() ) )
+    if( !((!pColl && m_pCondColl) || ( pColl && !m_pCondColl ) ||
+        ( pColl && pColl != m_pCondColl->GetRegisteredIn() )) )
+        return;
+
+    SwFormatColl* pOldColl = GetCondFormatColl();
+    m_aCondCollListener.EndListeningAll();
+    if(pColl)
+        m_aCondCollListener.StartListening(pColl);
+    m_pCondColl = pColl;
+    if(GetpSwAttrSet())
+        AttrSetHandleHelper::SetParent(mpAttrSet, *this, &GetAnyFormatColl(), GetFormatColl());
+
+    if(!IsModifyLocked())
     {
-        SwFormatColl* pOldColl = GetCondFormatColl();
-        delete m_pCondColl;
-        if( pColl )
-            m_pCondColl = new SwDepend( this, pColl );
-        else
-            m_pCondColl = nullptr;
-
-        if( GetpSwAttrSet() )
-        {
-            AttrSetHandleHelper::SetParent( mpAttrSet, *this, &GetAnyFormatColl(), GetFormatColl() );
-        }
-
-        if( !IsModifyLocked() )
-        {
-            SwFormatChg aTmp1( pOldColl ? pOldColl : GetFormatColl() );
-            SwFormatChg aTmp2( pColl ? pColl : GetFormatColl() );
-            NotifyClients( &aTmp1, &aTmp2 );
-        }
-        if( IsInCache() )
-        {
-            SwFrame::GetCache().Delete( this );
-            SetInCache( false );
-        }
+        SwFormatChg aTmp1(pOldColl ? pOldColl : GetFormatColl());
+        SwFormatChg aTmp2(pColl ? pColl : GetFormatColl());
+        NotifyClients(&aTmp1, &aTmp2);
+    }
+    if(IsInCache())
+    {
+        SwFrame::GetCache().Delete(this);
+        SetInCache(false);
     }
 }
 
@@ -1808,7 +1935,7 @@ bool SwContentNode::IsAnyCondition( SwCollCondition& rTmp ) const
                         const SwTableNode* pTableNd = pSttNd->FindTableNode();
                         const SwTableBox* pBox;
                         if( pTableNd && nullptr != ( pBox = pTableNd->GetTable().
-                            GetTableBox( pSttNd->GetIndex() ) ) && pBox &&
+                            GetTableBox(pSttNd->GetIndex()) ) &&
                             pBox->IsInHeadline( &pTableNd->GetTable() ) )
                             nCond = Master_CollCondition::PARA_IN_TABLEHEAD;
                     }
@@ -1875,44 +2002,44 @@ bool SwContentNode::IsAnyCondition( SwCollCondition& rTmp ) const
 void SwContentNode::ChkCondColl()
 {
     // Check, just to be sure
-    if( RES_CONDTXTFMTCOLL == GetFormatColl()->Which() )
+    if( RES_CONDTXTFMTCOLL != GetFormatColl()->Which() )
+        return;
+
+    SwCollCondition aTmp( nullptr, Master_CollCondition::NONE, 0 );
+    const SwCollCondition* pCColl;
+
+    bool bDone = false;
+
+    if( IsAnyCondition( aTmp ))
     {
-        SwCollCondition aTmp( nullptr, Master_CollCondition::NONE, 0 );
-        const SwCollCondition* pCColl;
+        pCColl = static_cast<SwConditionTextFormatColl*>(GetFormatColl())
+            ->HasCondition( aTmp );
 
-        bool bDone = false;
-
-        if( IsAnyCondition( aTmp ))
+        if (pCColl)
         {
-            pCColl = static_cast<SwConditionTextFormatColl*>(GetFormatColl())
-                ->HasCondition( aTmp );
-
-            if (pCColl)
-            {
-                SetCondFormatColl( pCColl->GetTextFormatColl() );
-                bDone = true;
-            }
-        }
-
-        if (!bDone)
-        {
-            if( IsTextNode() && static_cast<SwTextNode*>(this)->GetNumRule())
-            {
-                // Is at which Level in a list?
-                aTmp.SetCondition( Master_CollCondition::PARA_IN_LIST,
-                                static_cast<SwTextNode*>(this)->GetActualListLevel() );
-                pCColl = static_cast<SwConditionTextFormatColl*>(GetFormatColl())->
-                                HasCondition( aTmp );
-            }
-            else
-                pCColl = nullptr;
-
-            if( pCColl )
-                SetCondFormatColl( pCColl->GetTextFormatColl() );
-            else if( m_pCondColl )
-                SetCondFormatColl( nullptr );
+            SetCondFormatColl( pCColl->GetTextFormatColl() );
+            bDone = true;
         }
     }
+
+    if (bDone)
+        return;
+
+    if( IsTextNode() && static_cast<SwTextNode*>(this)->GetNumRule())
+    {
+        // Is at which Level in a list?
+        aTmp.SetCondition( Master_CollCondition::PARA_IN_LIST,
+                        static_cast<SwTextNode*>(this)->GetActualListLevel() );
+        pCColl = static_cast<SwConditionTextFormatColl*>(GetFormatColl())->
+                        HasCondition( aTmp );
+    }
+    else
+        pCColl = nullptr;
+
+    if( pCColl )
+        SetCondFormatColl( pCColl->GetTextFormatColl() );
+    else if( m_pCondColl )
+        SetCondFormatColl( nullptr );
 }
 
 // #i42921#
@@ -1926,13 +2053,16 @@ SvxFrameDirection SwContentNode::GetTextDirection( const SwPosition& rPos,
         aPt = *pPt;
 
     // #i72024# - No format of the frame, because this can cause recursive layout actions
-    SwFrame* pFrame = getLayoutFrame( GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), &aPt, &rPos, false );
+    std::pair<Point, bool> const tmp(aPt, false);
+    SwFrame* pFrame = getLayoutFrame( GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), &rPos, &tmp);
 
     if ( pFrame )
     {
         if ( pFrame->IsVertical() )
         {
-            if ( pFrame->IsRightToLeft() )
+            if (pFrame->IsVertLRBT())
+                nRet = SvxFrameDirection::Vertical_LR_BT;
+            else if (pFrame->IsRightToLeft())
                 nRet = SvxFrameDirection::Vertical_LR_TB;
             else
                 nRet = SvxFrameDirection::Vertical_RL_TB;
@@ -1949,9 +2079,9 @@ SvxFrameDirection SwContentNode::GetTextDirection( const SwPosition& rPos,
     return nRet;
 }
 
-SwOLENodes* SwContentNode::CreateOLENodesArray( const SwFormatColl& rColl, bool bOnlyWithInvalidSize )
+std::unique_ptr<SwOLENodes> SwContentNode::CreateOLENodesArray( const SwFormatColl& rColl, bool bOnlyWithInvalidSize )
 {
-    SwOLENodes *pNodes = nullptr;
+    std::unique_ptr<SwOLENodes> pNodes;
     SwIterator<SwContentNode,SwFormatColl> aIter( rColl );
     for( SwContentNode* pNd = aIter.First(); pNd; pNd = aIter.Next() )
     {
@@ -1959,7 +2089,7 @@ SwOLENodes* SwContentNode::CreateOLENodesArray( const SwFormatColl& rColl, bool 
         if ( pONd && (!bOnlyWithInvalidSize || pONd->IsOLESizeInvalid()) )
         {
             if ( !pNodes  )
-                pNodes = new SwOLENodes;
+                pNodes.reset(new SwOLENodes);
             pNodes->push_back( pONd );
         }
     }

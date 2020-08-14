@@ -23,18 +23,15 @@
 
 #include <sal/types.h>
 
-#ifdef _MSC_VER
-#pragma warning(disable : 4917 4555)
-#endif
-
-#include "stdafx.h"
+#include <stdafx.h>
 #include <stddef.h>
-#include "syswinwrapper.hxx"
+#include <syswinwrapper.hxx>
 
 
 static HCURSOR afxCursors[10] = { nullptr, };
 static HBRUSH afxHalftoneBrush = nullptr;
 
+namespace {
 
 // the struct below is used to determine the qualities of a particular handle
 struct AFX_HANDLEINFO
@@ -48,6 +45,8 @@ struct AFX_HANDLEINFO
     int nInvertX;       // handle converts to this when X inverted
     int nInvertY;       // handle converts to this when Y inverted
 };
+
+}
 
 // this array describes all 8 handles (clock-wise)
 const AFX_HANDLEINFO afxHandleInfo[] =
@@ -65,6 +64,8 @@ const AFX_HANDLEINFO afxHandleInfo[] =
     { offsetof(RECT, left), offsetof(RECT, top),        0, 1,  0,  0, 5, 7 }
 };
 
+namespace {
+
 // the struct below gives us information on the layout of a RECT struct and
 //  the relationship between its members
 struct AFX_RECTINFO
@@ -72,6 +73,8 @@ struct AFX_RECTINFO
     size_t nOffsetAcross;   // offset of opposite point (ie. left->right)
     int nSignAcross;        // sign relative to that point (ie. add/subtract)
 };
+
+}
 
 // this array is indexed by the offset of the RECT member / sizeof(int)
 const AFX_RECTINFO afxRectInfo[] =
@@ -83,13 +86,13 @@ const AFX_RECTINFO afxRectInfo[] =
 };
 
 
-HBRUSH HalftoneBrush()
+static HBRUSH HalftoneBrush()
 {
     if (afxHalftoneBrush == nullptr)
     {
         WORD grayPattern[8];
         for (int i = 0; i < 8; i++)
-            grayPattern[i] = (WORD)(0x5555 << (i & 1));
+            grayPattern[i] = static_cast<WORD>(0x5555 << (i & 1));
         HBITMAP grayBitmap = CreateBitmap(8, 8, 1, 1, &grayPattern);
         if (grayBitmap != nullptr)
         {
@@ -101,7 +104,7 @@ HBRUSH HalftoneBrush()
 }
 
 
-void DrawDragRect(
+static void DrawDragRect(
     HDC hDC,LPRECT lpRect,SIZE size,
     LPRECT lpRectLast,SIZE sizeLast,
     HBRUSH hBrush = nullptr,HBRUSH hBrushLast = nullptr)
@@ -189,7 +192,7 @@ void winwrap::TransformRect(LPRECT rect,HWND pWnd,HWND pWndClipTo)
 }
 
 
-void NormalizeRect(LPRECT rp)
+static void NormalizeRect(LPRECT rp)
 {
     if(rp->left > rp->right) {
         UINT tmp = rp->left;
@@ -227,7 +230,7 @@ static int afxHandleSize = 0;
 
 void Tracker::Construct()
 {
-    static BOOL bInitialized = false;
+    static bool bInitialized = false;
     if (!bInitialized)
     {
         if (afxHatchBrush == nullptr)
@@ -255,11 +258,10 @@ void Tracker::Construct()
         }
 
         // get default handle size from Windows profile setting
-        static const TCHAR szWindows[] = TEXT("windows");
-        static const TCHAR szInplaceBorderWidth[] =
-            TEXT("oleinplaceborderwidth");
-        afxHandleSize = GetProfileInt(szWindows, szInplaceBorderWidth, 4);
-        bInitialized = TRUE;
+        static const WCHAR szWindows[] = L"windows";
+        static const WCHAR szInplaceBorderWidth[] = L"oleinplaceborderwidth";
+        afxHandleSize = GetProfileIntW(szWindows, szInplaceBorderWidth, 4);
+        bInitialized = true;
 
         afxCursors[0] = afxCursors[2] = LoadCursor(nullptr,IDC_SIZENWSE);
         afxCursors[4] = afxCursors[6] = LoadCursor(nullptr,IDC_SIZENS);
@@ -293,7 +295,7 @@ int Tracker::HitTest(POINT point) const
     if (PtInRect(&rectTrue,point))
     {
         if ((m_nStyle & (resizeInside|resizeOutside)) != 0)
-            hitResult = (TrackerHit)HitTestHandles(point);
+            hitResult = static_cast<TrackerHit>(HitTestHandles(point));
         else
             hitResult = hitMiddle;
     }
@@ -326,7 +328,7 @@ BOOL Tracker::SetCursor(HWND pWnd, UINT nHitTest) const
     {
         // only for trackers with hatchedBorder (ie. in-place resizing)
         if (m_nStyle & hatchedBorder)
-            nHandle = (TrackerHit)9;
+            nHandle = TrackerHit(9);
     }
 
     ::SetCursor(afxCursors[nHandle]);
@@ -390,13 +392,13 @@ BOOL Tracker::TrackHandle(int nHandle,HWND hWnd,POINT point,HWND hWndClipTo)
     }
 
     RECT rectOld;
-    BOOL bMoved = FALSE;
+    bool bMoved = false;
 
     // get messages until capture lost or cancelled/accepted
     for (;;)
     {
         MSG msg;
-        GetMessage(&msg, nullptr, 0, 0);
+        GetMessageW(&msg, nullptr, 0, 0);
 
         if (GetCapture() != hWnd)
             break;
@@ -409,9 +411,9 @@ BOOL Tracker::TrackHandle(int nHandle,HWND hWnd,POINT point,HWND hWndClipTo)
             rectOld = m_rect;
             // handle resize cases (and part of move)
             if (px != nullptr)
-                *px = (int)(short)LOWORD(msg.lParam) - xDiff;
+                *px = static_cast<int>(static_cast<short>(LOWORD(msg.lParam))) - xDiff;
             if (py != nullptr)
-                *py = (int)(short)HIWORD(msg.lParam) - yDiff;
+                *py = static_cast<int>(static_cast<short>(HIWORD(msg.lParam))) - yDiff;
 
             // handle move case
             if (nHandle == hitMiddle)
@@ -433,7 +435,7 @@ BOOL Tracker::TrackHandle(int nHandle,HWND hWnd,POINT point,HWND hWndClipTo)
                 }
                 OnChangedRect(rectOld);
                 if (msg.message != WM_LBUTTONUP)
-                    bMoved = TRUE;
+                    bMoved = true;
             }
             if (m_bFinalErase)
                 goto ExitLoop;
@@ -449,7 +451,7 @@ BOOL Tracker::TrackHandle(int nHandle,HWND hWnd,POINT point,HWND hWndClipTo)
         case WM_KEYDOWN:
             if (msg.wParam != VK_ESCAPE)
                 break;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case WM_RBUTTONDOWN:
             if (bMoved)
             {
@@ -461,7 +463,7 @@ BOOL Tracker::TrackHandle(int nHandle,HWND hWnd,POINT point,HWND hWndClipTo)
 
             // just dispatch rest of the messages
         default:
-            DispatchMessage(&msg);
+            DispatchMessageW(&msg);
             break;
         }
     }
@@ -640,7 +642,7 @@ void Tracker::Draw(HDC hDC) const
         {
             if (mask & (1<<i))
             {
-                GetHandleRect((TrackerHit)i, &rect);
+                GetHandleRect(static_cast<TrackerHit>(i), &rect);
                 // FillSolidRect(hDC,rect, RGB(0, 0, 0));
                 FillRect(hDC,&rect,hbrush);
             }
@@ -742,11 +744,11 @@ int Tracker::NormalizeHit(int nHandle) const
     const AFX_HANDLEINFO* pHandleInfo = &afxHandleInfo[nHandle];
     if (m_rect.right - m_rect.left < 0)
     {
-        nHandle = (TrackerHit)pHandleInfo->nInvertX;
+        nHandle = static_cast<TrackerHit>(pHandleInfo->nInvertX);
         pHandleInfo = &afxHandleInfo[nHandle];
     }
     if (m_rect.bottom - m_rect.top < 0)
-        nHandle = (TrackerHit)pHandleInfo->nInvertY;
+        nHandle = static_cast<TrackerHit>(pHandleInfo->nInvertY);
     return nHandle;
 }
 
@@ -766,9 +768,9 @@ int Tracker::HitTestHandles(POINT point) const
     {
         if (mask & (1<<i))
         {
-            GetHandleRect((TrackerHit)i, &rect);
+            GetHandleRect(static_cast<TrackerHit>(i), &rect);
             if (PtInRect(&rect,point))
-                return (TrackerHit)i;
+                return static_cast<TrackerHit>(i);
         }
     }
 

@@ -36,7 +36,7 @@ namespace anim
     // only a function pointer, and a thin templated wrapper around
     // that which converts member functions into that.
 
-    /** pushes the given node to the given vector and recursivly calls itself for each child node.
+    /** pushes the given node to the given vector and recursively calls itself for each child node.
     */
     inline void create_deep_vector( const css::uno::Reference< css::animations::XAnimationNode >& xNode,
                                 std::vector< css::uno::Reference< css::animations::XAnimationNode > >& rVector )
@@ -52,8 +52,7 @@ namespace anim
             if( xEnumerationAccess.is() )
             {
                 css::uno::Reference< css::container::XEnumeration >
-                      xEnumeration( xEnumerationAccess->createEnumeration(),
-                                    css::uno::UNO_QUERY );
+                      xEnumeration = xEnumerationAccess->createEnumeration();
 
                 if( xEnumeration.is() )
                 {

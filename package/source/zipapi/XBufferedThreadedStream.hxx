@@ -11,7 +11,7 @@
 #define INCLUDED_PACKAGE_SOURCE_ZIPAPI_XBUFFEREDTHREADEDSTREAM_HXX
 
 #include <salhelper/thread.hxx>
-#include <XUnbufferedStream.hxx>
+#include "XUnbufferedStream.hxx"
 #include <queue>
 #include <vector>
 #include <mutex>
@@ -23,8 +23,8 @@ class XBufferedThreadedStream : public cppu::WeakImplHelper< css::io::XInputStre
 {
 private:
     const css::uno::Reference<XInputStream> mxSrcStream;
-    size_t mnPos;                                           /// position in stream
-    size_t mnStreamSize;                                    /// available size of stream
+    sal_Int64 mnPos;                                           /// position in stream
+    sal_Int64 mnStreamSize;                                    /// available size of stream
 
     Buffer maInUseBuffer;                                   /// Buffer block in use
     int mnOffset;                                           /// position in maInUseBuffer
@@ -37,14 +37,14 @@ private:
     std::condition_variable maBufferProduceResume;
     bool mbTerminateThread;                                 /// indicates the failure of one of the threads
 
-    css::uno::Exception *maSavedException;                  /// exception caught during unzipping is saved to be thrown during reading
+    std::exception_ptr maSavedException;                    /// exception caught during unzipping is saved to be thrown during reading
 
     static const size_t nBufferLowWater = 2;
     static const size_t nBufferHighWater = 4;
     static const size_t nBufferSize = 32 * 1024;
 
     const Buffer& getNextBlock();
-    size_t remainingSize() const { return mnStreamSize - mnPos; }
+    sal_Int64 remainingSize() const { return mnStreamSize - mnPos; }
     bool hasBytes() const { return mnPos < mnStreamSize; }
 
     bool canProduce() const
@@ -59,13 +59,14 @@ private:
 
 public:
     XBufferedThreadedStream(
-                  const css::uno::Reference<XInputStream>& xSrcStream );
+                  const css::uno::Reference<XInputStream>& xSrcStream,
+                  sal_Int64 nStreamSize /* cf. sal_Int32 available(); */ );
 
     virtual ~XBufferedThreadedStream() override;
 
     void produce();
     void setTerminateThread();
-    void saveException( css::uno::Exception *e ) { maSavedException = e; }
+    void saveException(const std::exception_ptr& exception) { maSavedException = exception; }
 
     // XInputStream
     virtual sal_Int32 SAL_CALL readBytes( css::uno::Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead ) override;

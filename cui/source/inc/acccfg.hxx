@@ -17,166 +17,139 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CUI_SOURCE_INC_ACCCFG_HXX
-#define INCLUDED_CUI_SOURCE_INC_ACCCFG_HXX
+#pragma once
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/ui/XUIConfigurationManager.hpp>
 #include <com/sun/star/ui/XAcceleratorConfiguration.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 
-#include <algorithm>
-
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/group.hxx>
-#include <svtools/svtabbx.hxx>
-#include <svtools/treelistbox.hxx>
 #include <sfx2/tabdlg.hxx>
-#include <sfx2/basedlgs.hxx>
+#include <vcl/idle.hxx>
+#include <vcl/keycod.hxx>
 #include <i18nutil/searchopt.hxx>
 #include "cfgutil.hxx"
 
 class SfxMacroInfoItem;
-class SfxConfigGroupListBox;
-class SfxConfigFunctionListBox;
+class CuiConfigFunctionListBox;
 class SfxAcceleratorConfigPage;
 class SfxStringItem;
-
-class SfxAccCfgTabListBox_Impl : public SvTabListBox
-{
-    VclPtr<SfxAcceleratorConfigPage>   m_pAccelConfigPage;
-
-    void                        KeyInput( const KeyEvent &rKEvt ) override;
-
-public:
-    SfxAccCfgTabListBox_Impl(vcl::Window *pParent, WinBits nStyle)
-        : SvTabListBox(pParent, nStyle)
-        , m_pAccelConfigPage(nullptr)
-    {
-    }
-    virtual ~SfxAccCfgTabListBox_Impl() override;
-    virtual void dispose() override;
-
-    void SetAccelConfigPage(SfxAcceleratorConfigPage* pAccelConfigPage)
-    {
-        m_pAccelConfigPage = pAccelConfigPage;
-    }
-};
 
 // class SfxAcceleratorConfigPage ----------------------------------------
 
 struct TAccInfo
 {
-    public:
-        TAccInfo(      sal_Int32 nKeyPos ,
-                       sal_Int32 nListPos,
-                 const vcl::KeyCode& aKey )
-            : m_nKeyPos        (nKeyPos  )
-            , m_nListPos       (nListPos )
-            , m_bIsConfigurable(true ) /**< its important to set sal_True as default -
-                                                because only fix entries will be disabled later ... */
-            , m_sCommand       (         )
-            , m_aKey           (aKey     )
-        {}
+public:
+    TAccInfo(sal_Int32 nKeyPos, sal_Int32 nListPos, const vcl::KeyCode& aKey)
+        : m_nKeyPos(nKeyPos)
+        , m_nListPos(nListPos)
+        , m_bIsConfigurable(true) /**< it's important to set true as default -
+                                                because only fix entries will be disabled later... */
+        , m_sCommand()
+        , m_aKey(aKey)
+    {
+    }
 
-        bool isConfigured() const
-        {
-            return (m_nKeyPos>-1 && m_nListPos>-1 && !m_sCommand.isEmpty());
-        }
+    bool isConfigured() const
+    {
+        return (m_nKeyPos > -1 && m_nListPos > -1 && !m_sCommand.isEmpty());
+    }
 
-        sal_Int32 m_nKeyPos;
-        sal_Int32 m_nListPos;
-        bool m_bIsConfigurable;
-        OUString m_sCommand;
-        vcl::KeyCode m_aKey;
+    sal_Int32 m_nKeyPos;
+    sal_Int32 m_nListPos;
+    bool m_bIsConfigurable;
+    OUString m_sCommand;
+    vcl::KeyCode m_aKey;
 };
 
 namespace sfx2
 {
-    class FileDialogHelper;
+class FileDialogHelper;
 }
+
+enum class StartFileDialogType
+{
+    Open,
+    SaveAs
+};
 
 class SfxAcceleratorConfigPage : public SfxTabPage
 {
-    friend class SfxAccCfgTabListBox_Impl;
 private:
-    const SfxMacroInfoItem*         m_pMacroInfoItem;
-    sfx2::FileDialogHelper*         m_pFileDlg;
+    const SfxMacroInfoItem* m_pMacroInfoItem;
+    std::unique_ptr<sfx2::FileDialogHelper> m_pFileDlg;
 
-    VclPtr<SfxAccCfgTabListBox_Impl>    m_pEntriesBox;
-    VclPtr<RadioButton>                 m_pOfficeButton;
-    VclPtr<RadioButton>                 m_pModuleButton;
-    VclPtr<PushButton>                  m_pChangeButton;
-    VclPtr<PushButton>                  m_pRemoveButton;
-    VclPtr<SfxConfigGroupListBox>       m_pGroupLBox;
-    VclPtr<SfxConfigFunctionListBox>    m_pFunctionBox;
-    VclPtr<SvTreeListBox>               m_pKeyBox;
-    VclPtr<Edit>                        m_pSearchEdit;
-    VclPtr<PushButton>                  m_pLoadButton;
-    VclPtr<PushButton>                  m_pSaveButton;
-    VclPtr<PushButton>                  m_pResetButton;
-    OUString                            aLoadAccelConfigStr;
-    OUString                            aSaveAccelConfigStr;
-    OUString                            aFilterAllStr;
-    OUString                            aFilterCfgStr;
-    SfxStylesInfo_Impl                  m_aStylesInfo;
-    bool                                m_bStylesInfoInitialized;
+    OUString aLoadAccelConfigStr;
+    OUString aSaveAccelConfigStr;
+    OUString aFilterAllStr;
+    OUString aFilterCfgStr;
+    SfxStylesInfo_Impl m_aStylesInfo;
+    bool m_bStylesInfoInitialized;
 
-    css::uno::Reference< css::uno::XComponentContext >          m_xContext;
-    css::uno::Reference< css::ui::XAcceleratorConfiguration >   m_xGlobal;
-    css::uno::Reference< css::ui::XAcceleratorConfiguration >   m_xModule;
-    css::uno::Reference< css::ui::XAcceleratorConfiguration >   m_xAct;
-    css::uno::Reference< css::container::XNameAccess >          m_xUICmdDescription;
-    css::uno::Reference< css::frame::XFrame >                   m_xFrame;
+    css::uno::Reference<css::uno::XComponentContext> m_xContext;
+    css::uno::Reference<css::ui::XAcceleratorConfiguration> m_xGlobal;
+    css::uno::Reference<css::ui::XAcceleratorConfiguration> m_xModule;
+    css::uno::Reference<css::ui::XAcceleratorConfiguration> m_xAct;
+    css::uno::Reference<css::container::XNameAccess> m_xUICmdDescription;
+    css::uno::Reference<css::frame::XFrame> m_xFrame;
 
     OUString m_sModuleLongName;
-    OUString m_sModuleShortName;
     OUString m_sModuleUIName;
 
     // For search
+    Timer m_aUpdateDataTimer;
     i18nutil::SearchOptions2 m_options;
 
-    DECL_LINK(ChangeHdl,            Button *,       void);
-    DECL_LINK(RemoveHdl,            Button *,       void);
-    DECL_LINK(SelectHdl,            SvTreeListBox*, void);
-    DECL_LINK(SearchUpdateHdl,      Edit&,          void);
-    DECL_LINK(Save,                 Button *,       void);
-    DECL_LINK(Load,                 Button *,       void);
-    DECL_LINK(Default,              Button *,       void);
-    DECL_LINK(RadioHdl,             Button *,       void);
+    Idle m_aFillGroupIdle;
 
-    DECL_LINK(LoadHdl, sfx2::FileDialogHelper *, void);
-    DECL_LINK(SaveHdl, sfx2::FileDialogHelper *, void);
+    std::unique_ptr<weld::TreeView> m_xEntriesBox;
+    std::unique_ptr<weld::RadioButton> m_xOfficeButton;
+    std::unique_ptr<weld::RadioButton> m_xModuleButton;
+    std::unique_ptr<weld::Button> m_xChangeButton;
+    std::unique_ptr<weld::Button> m_xRemoveButton;
+    std::unique_ptr<CuiConfigGroupListBox> m_xGroupLBox;
+    std::unique_ptr<CuiConfigFunctionListBox> m_xFunctionBox;
+    std::unique_ptr<weld::TreeView> m_xKeyBox;
+    std::unique_ptr<weld::Entry> m_xSearchEdit;
+    std::unique_ptr<weld::Button> m_xLoadButton;
+    std::unique_ptr<weld::Button> m_xSaveButton;
+    std::unique_ptr<weld::Button> m_xResetButton;
 
-    OUString                    GetLabel4Command(const OUString& rCommand);
-    SvTreeListEntry*            applySearchFilter(OUString& rSearchTerm, SvTreeListBox* rListBox);
-    void                        InitAccCfg();
-    sal_uLong                   MapKeyCodeToPos( const vcl::KeyCode &rCode ) const;
-    void                        StartFileDialog( WinBits nBits, const OUString& rTitle );
+    DECL_LINK(ChangeHdl, weld::Button&, void);
+    DECL_LINK(RemoveHdl, weld::Button&, void);
+    DECL_LINK(SelectHdl, weld::TreeView&, void);
+    DECL_LINK(SearchUpdateHdl, weld::Entry&, void);
+    DECL_LINK(Save, weld::Button&, void);
+    DECL_LINK(Load, weld::Button&, void);
+    DECL_LINK(Default, weld::Button&, void);
+    DECL_LINK(RadioHdl, weld::Button&, void);
+    DECL_LINK(ImplUpdateDataHdl, Timer*, void);
+    DECL_LINK(FocusOut_Impl, weld::Widget&, void);
+    DECL_LINK(TimeOut_Impl, Timer*, void);
 
-    void                        Init(const css::uno::Reference< css::ui::XAcceleratorConfiguration >& pAccMgr);
-    void                        ResetConfig();
+    DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
 
-    static void                 CreateCustomItems( SvTreeListEntry* pEntry, const OUString& aCol1, const OUString& aCol2 );
+    DECL_LINK(LoadHdl, sfx2::FileDialogHelper*, void);
+    DECL_LINK(SaveHdl, sfx2::FileDialogHelper*, void);
+
+    OUString GetLabel4Command(const OUString& rCommand);
+    int applySearchFilter(OUString const& rSearchTerm);
+    void InitAccCfg();
+    sal_Int32 MapKeyCodeToPos(const vcl::KeyCode& rCode) const;
+    void StartFileDialog(StartFileDialogType nType, const OUString& rTitle);
+
+    void Init(const css::uno::Reference<css::ui::XAcceleratorConfiguration>& pAccMgr);
+    void ResetConfig();
 
 public:
-                                SfxAcceleratorConfigPage( vcl::Window *pParent, const SfxItemSet& rItemSet );
-    virtual                     ~SfxAcceleratorConfigPage() override;
-    virtual void                dispose() override;
+    SfxAcceleratorConfigPage(weld::Container* pPage, weld::DialogController* pController,
+                             const SfxItemSet& rItemSet);
+    virtual ~SfxAcceleratorConfigPage() override;
 
-    virtual bool                FillItemSet( SfxItemSet* ) override;
-    virtual void                Reset( const SfxItemSet* ) override;
+    virtual bool FillItemSet(SfxItemSet*) override;
+    virtual void Reset(const SfxItemSet*) override;
 
-    void                        Apply(const css::uno::Reference< css::ui::XAcceleratorConfiguration >& pAccMgr);
+    void Apply(const css::uno::Reference<css::ui::XAcceleratorConfiguration>& pAccMgr);
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

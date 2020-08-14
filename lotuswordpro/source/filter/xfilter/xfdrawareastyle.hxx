@@ -61,8 +61,8 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_XFILTER_XFDRAWAREASTYLE_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_XFILTER_XFDRAWAREASTYLE_HXX
 
-#include "xfstyle.hxx"
-#include "xfcolor.hxx"
+#include <xfilter/xfstyle.hxx>
+#include <xfilter/xfcolor.hxx>
 
 class XFDrawAreaStyle : public XFStyle
 {
@@ -74,17 +74,17 @@ public:
 
     void    SetLineStyle(enumXFAreaLineStyle style);
 
-    void    SetBackColor(XFColor& color);
+    void    SetBackColor(XFColor const & color);
 
-    void    SetLineColor(XFColor& color);
+    void    SetLineColor(XFColor const & color);
 
     void    SetLineAngle(sal_Int32 angle);
 
     void    SetLineSpace(double space);
 
-    enumXFAreaStyle GetAreaStyle();
+    enumXFAreaStyle GetAreaStyle() const;
 
-    const XFColor& GetBackColor();
+    const XFColor& GetBackColor() const;
 
     virtual enumXFStyle GetStyleFamily() override;
 
@@ -109,12 +109,12 @@ inline void XFDrawAreaStyle::SetLineStyle(enumXFAreaLineStyle style)
     m_eLineStyle = style;
 }
 
-inline void XFDrawAreaStyle::SetBackColor(XFColor& color)
+inline void XFDrawAreaStyle::SetBackColor(XFColor const & color)
 {
     m_aBackColor = color;
 }
 
-inline void XFDrawAreaStyle::SetLineColor(XFColor& color)
+inline void XFDrawAreaStyle::SetLineColor(XFColor const & color)
 {
     m_aLineColor = color;
 }
@@ -129,12 +129,12 @@ inline void XFDrawAreaStyle::SetLineSpace(double space)
     m_fSpace = space;
 }
 
-inline enumXFAreaStyle  XFDrawAreaStyle::GetAreaStyle()
+inline enumXFAreaStyle  XFDrawAreaStyle::GetAreaStyle() const
 {
     return m_eAreaStyle;
 }
 
-inline const XFColor& XFDrawAreaStyle::GetBackColor()
+inline const XFColor& XFDrawAreaStyle::GetBackColor() const
 {
     return m_aBackColor;
 }

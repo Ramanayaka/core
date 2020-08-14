@@ -24,12 +24,10 @@
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/xml/sax/XFastDocumentHandler.hpp>
 #include <dmapper/resourcemodel.hxx>
-#include <ooxml/OOXMLDocument.hxx>
+#include <ooxml/OOXMLDocumentImpl.hxx>
 #include <rtl/ref.hxx>
-#include "OOXMLParserState.hxx"
 
-namespace writerfilter {
-namespace ooxml
+namespace writerfilter::ooxml
 {
 
 class OOXMLFastContextHandler;
@@ -77,8 +75,8 @@ public:
     void setIsSubstream( bool bSubstream );
 
 private:
-    OOXMLFastDocumentHandler(OOXMLFastDocumentHandler &) = delete;
-    void operator =(OOXMLFastDocumentHandler &) = delete;
+    OOXMLFastDocumentHandler(OOXMLFastDocumentHandler const &) = delete;
+    void operator =(OOXMLFastDocumentHandler const &) = delete;
 
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
 
@@ -88,7 +86,7 @@ private:
     mutable rtl::Reference<OOXMLFastContextHandler> mxContextHandler;
     rtl::Reference<OOXMLFastContextHandler> const & getContextHandler() const;
 };
-}}
+}
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_OOXML_OOXMLFASTDOCUMENTHANDLER_HXX
 

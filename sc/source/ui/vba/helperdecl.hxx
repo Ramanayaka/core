@@ -21,10 +21,8 @@
 #define INCLUDED_SC_SOURCE_UI_VBA_HELPERDECL_HXX
 
 #include <comphelper/servicedecl.hxx>
-#include <ooo/vba/XHelperInterface.hpp>
 
-namespace comphelper {
-namespace service_decl {
+namespace comphelper::service_decl {
 template <typename ImplT_, typename WithArgsT = with_args<false> >
 struct vba_service_class_ : public serviceimpl_base< detail::OwnServiceImpl<ImplT_>, WithArgsT >
 {

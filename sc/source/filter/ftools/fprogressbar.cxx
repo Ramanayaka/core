@@ -17,11 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fprogressbar.hxx"
-#include "global.hxx"
-#include "progress.hxx"
+#include <fprogressbar.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <progress.hxx>
 #include <osl/diagnose.h>
-#include <o3tl/make_unique.hxx>
+#include <tools/stream.hxx>
 
 #include <climits>
 
@@ -41,8 +42,8 @@ ScfProgressBar::ScfProgressBar( SfxObjectShell* pDocShell, const OUString& rText
     Init( pDocShell );
 }
 
-ScfProgressBar::ScfProgressBar( SfxObjectShell* pDocShell, sal_uInt16 nResId ) :
-    maText( ScGlobal::GetRscString( nResId ) )
+ScfProgressBar::ScfProgressBar(SfxObjectShell* pDocShell, const char* pResId)
+    : maText(ScResId(pResId))
 {
     Init( pDocShell );
 }
@@ -77,33 +78,33 @@ ScfProgressBar::ScfProgressSegment* ScfProgressBar::GetSegment( sal_Int32 nSegme
 
 void ScfProgressBar::SetCurrSegment( ScfProgressSegment* pSegment )
 {
-    if( mpCurrSegment != pSegment )
+    if( mpCurrSegment == pSegment )
+        return;
+
+    mpCurrSegment = pSegment;
+
+    if( mpParentProgress && mpParentSegment )
     {
-        mpCurrSegment = pSegment;
+        mpParentProgress->SetCurrSegment( mpParentSegment );
+    }
+    else if( !mxSysProgress && (mnTotalSize > 0) )
+    {
+        // System progress has an internal limit of ULONG_MAX/100.
+        mnSysProgressScale = 1;
+        sal_uLong nSysTotalSize = static_cast< sal_uLong >( mnTotalSize );
+        while( nSysTotalSize >= ULONG_MAX / 100 )
+        {
+            nSysTotalSize /= 2;
+            mnSysProgressScale *= 2;
+        }
+        mxSysProgress.reset( new ScProgress( mpDocShell, maText, nSysTotalSize, true ) );
+    }
 
-        if( mpParentProgress && mpParentSegment )
-        {
-            mpParentProgress->SetCurrSegment( mpParentSegment );
-        }
-        else if( !mxSysProgress.get() && (mnTotalSize > 0) )
-        {
-            // System progress has an internal limit of ULONG_MAX/100.
-            mnSysProgressScale = 1;
-            sal_uLong nSysTotalSize = static_cast< sal_uLong >( mnTotalSize );
-            while( nSysTotalSize >= ULONG_MAX / 100 )
-            {
-                nSysTotalSize /= 2;
-                mnSysProgressScale *= 2;
-            }
-            mxSysProgress.reset( new ScProgress( mpDocShell, maText, nSysTotalSize, true ) );
-        }
-
-        if( !mbInProgress && mpCurrSegment && (mnTotalSize > 0) )
-        {
-            mnUnitSize = mnTotalSize / 256 + 1;   // at most 256 calls of system progress
-            mnNextUnitPos = 0;
-            mbInProgress = true;
-        }
+    if( !mbInProgress && mpCurrSegment && (mnTotalSize > 0) )
+    {
+        mnUnitSize = mnTotalSize / 256 + 1;   // at most 256 calls of system progress
+        mnNextUnitPos = 0;
+        mbInProgress = true;
     }
 }
 
@@ -120,7 +121,7 @@ void ScfProgressBar::IncreaseProgressBar( std::size_t nDelta )
         mpParentProgress->ProgressAbs( nParentPos );
     }
     // modify system progress bar
-    else if( mxSysProgress.get() )
+    else if( mxSysProgress )
     {
         if( nNewPos >= mnNextUnitPos )
         {
@@ -142,7 +143,7 @@ sal_Int32 ScfProgressBar::AddSegment( std::size_t nSize )
     if( nSize == 0 )
         return SCF_INV_SEGMENT;
 
-    maSegments.push_back( o3tl::make_unique<ScfProgressSegment>( nSize ) );
+    maSegments.push_back( std::make_unique<ScfProgressSegment>( nSize ) );
     mnTotalSize += nSize;
     return static_cast< sal_Int32 >( maSegments.size() - 1 );
 }
@@ -153,7 +154,7 @@ ScfProgressBar& ScfProgressBar::GetSegmentProgressBar( sal_Int32 nSegment )
     OSL_ENSURE( !pSegment || (pSegment->mnPos == 0), "ScfProgressBar::GetSegmentProgressBar - segment already started" );
     if( pSegment && (pSegment->mnPos == 0) )
     {
-        if( !pSegment->mxProgress.get() )
+        if( !pSegment->mxProgress )
             pSegment->mxProgress.reset( new ScfProgressBar( *this, pSegment ) );
         return *pSegment->mxProgress;
     }
@@ -199,8 +200,8 @@ ScfSimpleProgressBar::ScfSimpleProgressBar( std::size_t nSize, SfxObjectShell* p
     Init( nSize );
 }
 
-ScfSimpleProgressBar::ScfSimpleProgressBar( std::size_t nSize, SfxObjectShell* pDocShell, sal_uInt16 nResId ) :
-    maProgress( pDocShell, nResId )
+ScfSimpleProgressBar::ScfSimpleProgressBar(std::size_t nSize, SfxObjectShell* pDocShell, const char* pResId)
+    : maProgress(pDocShell, pResId)
 {
     Init( nSize );
 }
@@ -215,7 +216,7 @@ void ScfSimpleProgressBar::Init( std::size_t nSize )
 ScfStreamProgressBar::ScfStreamProgressBar( SvStream& rStrm, SfxObjectShell* pDocShell ) :
     mrStrm( rStrm )
 {
-    Init( pDocShell, ScGlobal::GetRscString( STR_LOAD_DOC ) );
+    Init( pDocShell, ScResId( STR_LOAD_DOC ) );
 }
 
 void ScfStreamProgressBar::Progress()
@@ -225,11 +226,7 @@ void ScfStreamProgressBar::Progress()
 
 void ScfStreamProgressBar::Init( SfxObjectShell* pDocShell, const OUString& rText )
 {
-    sal_uInt64 const nPos = mrStrm.Tell();
-    mrStrm.Seek( STREAM_SEEK_TO_END );
-    sal_uInt64 const nSize = mrStrm.Tell();
-    mrStrm.Seek( nPos );
-
+    sal_uInt64 const nSize = mrStrm.TellEnd();
     mxProgress.reset( new ScfSimpleProgressBar( nSize, pDocShell, rText ) );
     Progress();
 }

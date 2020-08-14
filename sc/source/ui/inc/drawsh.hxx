@@ -21,9 +21,7 @@
 #define INCLUDED_SC_SOURCE_UI_INC_DRAWSH_HXX
 
 #include <sfx2/shell.hxx>
-#include "shellids.hxx"
-#include <sfx2/module.hxx>
-#include <svx/svdmark.hxx>
+#include <shellids.hxx>
 #include <svx/svdtypes.hxx>
 #include <tools/link.hxx>
 #include <rtl/ref.hxx>
@@ -31,9 +29,13 @@
 class AbstractSvxObjectNameDialog;
 class ScViewData;
 class ScDrawView;
-namespace svx { namespace sidebar {
-class SelectionChangeHandler;
-} }
+class SdrMarkList;
+class SfxModule;
+class SdrObject;
+
+namespace weld { class Window; }
+
+namespace svx::sidebar { class SelectionChangeHandler; }
 
 class ScDrawShell : public SfxShell
 {
@@ -69,26 +71,27 @@ public:
     void    GetDrawFuncState(SfxItemSet &rSet);
     void    GetState(SfxItemSet &rSet);
 
-    void    ExecFormText(SfxRequest& rReq);     // StarFontWork
+    void    ExecFormText(const SfxRequest& rReq);     // StarFontWork
     void    GetFormTextState(SfxItemSet& rSet);
 
-    void    ExecuteHLink(SfxRequest& rReq);     // Hyperlink
+    void    ExecuteHLink(const SfxRequest& rReq);     // Hyperlink
     void    GetHLinkState(SfxItemSet& rSet);
 
-    void    ExecFormatPaintbrush(SfxRequest& rReq);
+    void    ExecFormatPaintbrush(const SfxRequest& rReq);
     void    StateFormatPaintbrush(SfxItemSet& rSet);
 
-    void    ExecuteMacroAssign( SdrObject* pObj, vcl::Window* pWin );
-    void    ExecuteLineDlg( SfxRequest& rReq );
-    void    ExecuteAreaDlg( SfxRequest& rReq );
+    void    ExecuteMacroAssign(SdrObject* pObj, weld::Window* pWin);
+    void    ExecuteLineDlg( const SfxRequest& rReq );
+    void    ExecuteAreaDlg( const SfxRequest& rReq );
     void    ExecuteTextAttrDlg( SfxRequest& rReq );
+    void    ExecuteMeasureDlg( SfxRequest& rReq );
 
     ScDrawView* GetDrawView();
 
     static bool AreAllObjectsOnLayer(SdrLayerID nLayerNo,const SdrMarkList& rMark);
 
     void GetDrawAttrStateForIFBX( SfxItemSet& rSet );
-    ::rtl::OUString GetSidebarContextName();
+    OUString const & GetSidebarContextName();
 };
 
 #endif

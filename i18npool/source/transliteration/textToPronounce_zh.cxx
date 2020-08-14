@@ -20,21 +20,23 @@
 #include <sal/config.h>
 
 #include <com/sun/star/i18n/MultipleCharsOutputException.hpp>
+#include <com/sun/star/i18n/TransliterationType.hpp>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
 
 #include <textToPronounce_zh.hxx>
 
+using namespace com::sun::star::i18n;
 using namespace com::sun::star::uno;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 sal_Int16 SAL_CALL TextToPronounce_zh::getType()
 {
     return TransliterationType::ONE_TO_ONE| TransliterationType::IGNORE;
 }
 
-const sal_Unicode* SAL_CALL
+const sal_Unicode*
 TextToPronounce_zh::getPronounce(const sal_Unicode ch)
 {
     static const sal_Unicode emptyString[]={0};
@@ -47,9 +49,9 @@ TextToPronounce_zh::getPronounce(const sal_Unicode ch)
     return emptyString;
 }
 
-OUString SAL_CALL
-TextToPronounce_zh::folding(const OUString & inStr, sal_Int32 startPos,
-        sal_Int32 nCount, Sequence< sal_Int32 > & offset)
+OUString
+TextToPronounce_zh::foldingImpl(const OUString & inStr, sal_Int32 startPos,
+        sal_Int32 nCount, Sequence< sal_Int32 > & offset, bool useOffset)
 {
     OUStringBuffer sb;
     const sal_Unicode * chArr = inStr.getStr() + startPos;
@@ -102,7 +104,7 @@ TextToPronounce_zh::equals( const OUString & str1, sal_Int32 pos1, sal_Int32 nCo
     if (nCount2 + pos2 > str2.getLength())
         nCount2 = str2.getLength() - pos2;
 
-    realCount = ((nCount1 > nCount2) ? nCount2 : nCount1);
+    realCount = std::min(nCount1, nCount2);
 
     s1 = str1.getStr() + pos1;
     s2 = str2.getStr() + pos2;
@@ -153,9 +155,9 @@ TextToChuyin_zh_TW::TextToChuyin_zh_TW() :
 
 #ifndef DISABLE_DYNLOADING
 
-extern "C" { static void SAL_CALL thisModule() {} }
+extern "C" { static void thisModule() {} }
 
-TextToPronounce_zh::TextToPronounce_zh(const sal_Char* func_name)
+TextToPronounce_zh::TextToPronounce_zh(const char* func_name)
 {
 #ifdef SAL_DLLPREFIX
     OUString lib(SAL_DLLPREFIX"index_data" SAL_DLLEXTENSION);
@@ -187,6 +189,6 @@ TextToPronounce_zh::~TextToPronounce_zh()
     if (hModule) osl_unloadModule(hModule);
 #endif
 }
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

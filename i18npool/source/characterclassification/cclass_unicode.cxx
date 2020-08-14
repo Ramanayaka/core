@@ -18,41 +18,40 @@
  */
 
 #include <cclass_unicode.hxx>
-#include <com/sun/star/i18n/UnicodeScript.hpp>
-#include <com/sun/star/i18n/UnicodeType.hpp>
 #include <com/sun/star/i18n/KCharacterType.hpp>
+#include <com/sun/star/i18n/WordType.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <unicode/uchar.h>
-#include <comphelper/string.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <breakiteratorImpl.hxx>
+#include <transliteration_body.hxx>
 #include <rtl/ref.hxx>
 
+using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
+using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 //  class cclass_Unicode
 //  ----------------------------------------------------;
 
-cclass_Unicode::cclass_Unicode( const uno::Reference < XComponentContext >& rxContext ) : m_xContext( rxContext ),
-        pTable( nullptr ),
-        pStart( nullptr ),
-        pCont( nullptr ),
+cclass_Unicode::cclass_Unicode( const uno::Reference < XComponentContext >& rxContext ) :
+        trans( new Transliteration_casemapping() ),
+        m_xContext( rxContext ),
         nStartTypes( 0 ),
         nContTypes( 0 ),
         eState( ssGetChar ),
         cGroupSep( ',' ),
-        cDecimalSep( '.' )
+        cDecimalSep( '.' ),
+        cDecimalSepAlt( 0 )
 {
-    trans = new Transliteration_casemapping();
 }
 
 cclass_Unicode::~cclass_Unicode() {
     destroyParserTable();
-    delete trans;
 }
 
 
@@ -122,13 +121,13 @@ cclass_Unicode::toTitle( const OUString& Text, sal_Int32 nPos, sal_Int32 nCount,
 sal_Int16 SAL_CALL
 cclass_Unicode::getType( const OUString& Text, sal_Int32 nPos ) {
     if ( nPos < 0 || Text.getLength() <= nPos ) return 0;
-    return (sal_Int16) u_charType(Text.iterateCodePoints(&nPos, 0));
+    return static_cast<sal_Int16>(u_charType(Text.iterateCodePoints(&nPos, 0)));
 }
 
 sal_Int16 SAL_CALL
 cclass_Unicode::getCharacterDirection( const OUString& Text, sal_Int32 nPos ) {
     if ( nPos < 0 || Text.getLength() <= nPos ) return 0;
-    return (sal_Int16) u_charDirection(Text.iterateCodePoints(&nPos, 0));
+    return static_cast<sal_Int16>(u_charDirection(Text.iterateCodePoints(&nPos, 0)));
 }
 
 
@@ -138,11 +137,11 @@ cclass_Unicode::getScript( const OUString& Text, sal_Int32 nPos ) {
     // ICU Unicode script type UBlockCode starts from 1 for Basic Latin,
     // while OO.o enum UnicideScript starts from 0.
     // To map ICU UBlockCode to OO.o UnicodeScript, it needs to shift 1.
-    return (sal_Int16) ublock_getCode(Text.iterateCodePoints(&nPos, 0))-1;
+    return static_cast<sal_Int16>(ublock_getCode(Text.iterateCodePoints(&nPos, 0)))-1;
 }
 
 
-sal_Int32 SAL_CALL
+sal_Int32
 cclass_Unicode::getCharType( const OUString& Text, sal_Int32* nPos, sal_Int32 increment) {
     using namespace ::com::sun::star::i18n::KCharacterType;
 
@@ -277,7 +276,7 @@ ParseResult SAL_CALL cclass_Unicode::parsePredefinedToken(
 
 OUString SAL_CALL cclass_Unicode::getImplementationName()
 {
-    return OUString("com.sun.star.i18n.CharacterClassification_Unicode");
+    return "com.sun.star.i18n.CharacterClassification_Unicode";
 }
 
 sal_Bool SAL_CALL cclass_Unicode::supportsService(const OUString& rServiceName)
@@ -287,18 +286,17 @@ sal_Bool SAL_CALL cclass_Unicode::supportsService(const OUString& rServiceName)
 
 Sequence< OUString > SAL_CALL cclass_Unicode::getSupportedServiceNames()
 {
-    Sequence< OUString > aRet { "com.sun.star.i18n.CharacterClassification_Unicode" };
-    return aRet;
+    return { "com.sun.star.i18n.CharacterClassification_Unicode" };
 }
 
-} } } }
+}
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_i18n_CharacterClassification_Unicode_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new css::i18n::cclass_Unicode(context));
+    return cppu::acquire(new i18npool::cclass_Unicode(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

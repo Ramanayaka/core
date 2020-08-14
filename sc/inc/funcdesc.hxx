@@ -22,26 +22,23 @@
 
 /* Function descriptions for function wizard / autopilot */
 
-#include "scfuncs.hrc"
+#include "scfuncs.hxx"
 
 #include <formula/IFunctionDescription.hxx>
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
+#include <optional>
 #include <map>
+#include <memory>
 
 #define MAX_FUNCCAT 12  /* maximum number of categories for functions */
 #define LRU_MAX 10 /* maximal number of last recently used functions */
-
-class ScFuncDesc;
-class ScFunctionList;
-class ScFunctionCategory;
-class ScFunctionMgr;
 
 /**
   Stores and generates human readable descriptions for spreadsheet-functions,
   e.g.\ functions used in formulas in calc
 */
-class ScFuncDesc : public formula::IFunctionDescription
+class ScFuncDesc final : public formula::IFunctionDescription
 {
 public:
     ScFuncDesc();
@@ -122,6 +119,13 @@ public:
       @return   start of variable arguments
     */
     virtual sal_uInt32 getVarArgsStart() const override ;
+
+    /**
+      Returns maximum number of (variable) arguments
+
+      @return   maximum number of arguments, or 0 if there is no specific limit other than the general limit
+    */
+    virtual sal_uInt32 getVarArgsLimit() const override ;
 
     /**
       Returns description of parameter at given position
@@ -210,8 +214,8 @@ public:
         ParameterFlags() : bOptional(false) {}
     };
 
-    OUString      *pFuncName;              /**< Function name */
-    OUString      *pFuncDesc;              /**< Description of function */
+    std::optional<OUString> mxFuncName;         /**< Function name */
+    std::optional<OUString> mxFuncDesc;         /**< Description of function */
     std::vector<OUString> maDefArgNames;          /**< Parameter name(s) */
     std::vector<OUString> maDefArgDescs;          /**< Description(s) of parameter(s) */
     ParameterFlags       *pDefArgFlags;           /**< Flags for each parameter */
@@ -219,9 +223,9 @@ public:
     sal_uInt16            nCategory;              /**< Function category */
     sal_uInt16            nArgCount;              /**< All parameter count, suppressed and unsuppressed */
     sal_uInt16            nVarArgsStart;          /**< Start of variable arguments, for numbering */
+    sal_uInt16            nVarArgsLimit;          /**< Limit maximum of (variable) arguments, for numbering */
     OString               sHelpId;                /**< HelpId of function */
     bool                  bIncomplete         :1; /**< Incomplete argument info (set for add-in info from configuration) */
-    bool                  bHasSuppressedArgs  :1; /**< Whether there is any suppressed parameter. */
     bool                  mbHidden            :1; /**< Whether function is hidden */
 };
 
@@ -253,7 +257,6 @@ public:
 private:
     ::std::vector<const ScFuncDesc*> aFunctionList; /**< List of functions */
     ::std::vector<const ScFuncDesc*>::iterator aFunctionListIter; /**< position in function list */
-    sal_Int32  nMaxFuncNameLen; /**< Length of longest function name */
 };
 
 /**
@@ -262,7 +265,7 @@ private:
   Contains the name, index and function manager of a category,
   as well as a list of functions in the category
 */
-class ScFunctionCategory : public formula::IFunctionCategory
+class ScFunctionCategory final : public formula::IFunctionCategory
 {
 public:
     ScFunctionCategory(::std::vector<const ScFuncDesc*>* _pCategory,sal_uInt32 _nCategory)
@@ -300,7 +303,7 @@ private:
 /**
   Stores spreadsheet functions in categories, including a cumulative ('All') category and makes them accessible.
 */
-class ScFunctionMgr : public formula::IFunctionManager
+class ScFunctionMgr final : public formula::IFunctionManager
 {
 public:
     /**
@@ -382,7 +385,7 @@ public:
     /**
       Maps Etoken to character
 
-      Used for retrieving characters for parantheses and separators.
+      Used for retrieving characters for parentheses and separators.
 
       @param _eToken
       token for which, the corresponding character is retrieved
@@ -392,8 +395,7 @@ public:
     virtual sal_Unicode getSingleToken(const formula::IFunctionManager::EToken _eToken) const override;
 
 private:
-    ScFunctionList* pFuncList; /**< list of all calc functions */
-    std::vector<const ScFuncDesc*>* aCatLists[MAX_FUNCCAT]; /**< array of all categories, 0 is the cumulative ('All') category */
+    std::unique_ptr<std::vector<const ScFuncDesc*>> aCatLists[MAX_FUNCCAT]; /**< array of all categories, 0 is the cumulative ('All') category */
     mutable std::map< sal_uInt32, std::shared_ptr<ScFunctionCategory> > m_aCategories; /**< map of category pos to IFunctionCategory */
     mutable std::vector<const ScFuncDesc*>::iterator pCurCatListIter; /**< position in current category */
     mutable std::vector<const ScFuncDesc*>::iterator pCurCatListEnd; /**< end of current category */

@@ -17,14 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <comphelper/base64.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/servicehelper.hxx>
-#include <sax/tools/converter.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include "MutableAttrList.hxx"
 #include "DeepTContext.hxx"
@@ -40,14 +40,16 @@
 #include "PropertyActionsOOo.hxx"
 #include "TransformerActions.hxx"
 #include "OOo2Oasis.hxx"
-#include "XMLFilterRegistration.hxx"
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/typeprovider.hxx>
 
 using namespace ::xmloff::token;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::beans;
+
+namespace {
 
 enum XMLUserDefinedTransformerAction
 {
@@ -66,6 +68,8 @@ enum XMLUserDefinedTransformerAction
     XML_ETACTION_DOCUMENT_RENAME,
     XML_ETACTION_TABLE
 };
+
+}
 
 #define ENTRY3( n, l, a, p1, p2, p3 ) \
     { XML_NAMESPACE_##n, XML_##l, a, p1, p2, p3 }
@@ -88,10 +92,12 @@ enum XMLUserDefinedTransformerAction
 
 // BM: a macro to put two tokens into one sal_Int32 for the action
 // XML_ATACTION_RENAME_ATTRIBUTE
-#define RENAME_ENTRY( f, s ) \
-    (static_cast< sal_Int32 >(f) | (static_cast< sal_Int32 >(s) << 16))
+static constexpr sal_Int32 RENAME_ENTRY( XMLTokenEnum f, XMLTokenEnum s )
+{
+    return static_cast< sal_Int32 >(f) | (static_cast< sal_Int32 >(s) << 16);
+}
 
-static XMLTransformerActionInit aActionTable[] =
+XMLTransformerActionInit const aActionTable[] =
 {
     // remove office:class from <office:document> and <office:document-content>
     ENTRY0( OFFICE, DOCUMENT, XML_ETACTION_DOCUMENT ),
@@ -568,7 +574,7 @@ static XMLTransformerActionInit aActionTable[] =
 };
 
 // XML_ETACTION_STYLE
-static XMLTransformerActionInit aStyleActionTable[] =
+XMLTransformerActionInit const aStyleActionTable[] =
 {
     ENTRY0( STYLE, FAMILY, XML_ATACTION_STYLE_FAMILY ),
     ENTRY0( STYLE, NAME, XML_ATACTION_ENCODE_STYLE_NAME ),
@@ -590,7 +596,7 @@ static XMLTransformerActionInit aStyleActionTable[] =
 };
 
 // OOO_FRAME_ELEM_ACTIONS
-static XMLTransformerActionInit aFrameElemActionTable[] =
+XMLTransformerActionInit const aFrameElemActionTable[] =
 {
     ENTRY1Q( OFFICE, EVENTS, XML_ETACTION_RENAME_ELEM,
                       XML_NAMESPACE_OFFICE, XML_EVENT_LISTENERS ),
@@ -603,7 +609,7 @@ static XMLTransformerActionInit aFrameElemActionTable[] =
 };
 
 // OOO_FRAME_ATTR_ACTIONS
-static XMLTransformerActionInit aFrameAttrActionTable[] =
+XMLTransformerActionInit const aFrameAttrActionTable[] =
 {
     ENTRY0( DRAW, ZINDEX, XML_ATACTION_MOVE_TO_ELEM ), /* generated entry */
     ENTRY0( DRAW, ID, XML_ATACTION_MOVE_TO_ELEM ), /* generated entry */
@@ -632,7 +638,7 @@ static XMLTransformerActionInit aFrameAttrActionTable[] =
 };
 
 // OOO_EVENT_ELEM_ACTIONS
-static XMLTransformerActionInit aEventActionTable[] =
+XMLTransformerActionInit const aEventActionTable[] =
 {
     ENTRY0( XLINK, HREF, XML_ATACTION_HREF ),
     ENTRY1( SCRIPT, LANGUAGE, XML_ATACTION_ADD_NAMESPACE_PREFIX,
@@ -645,7 +651,7 @@ static XMLTransformerActionInit aEventActionTable[] =
 };
 
 // action table for OOO_MASTER_PAGE_ACTIONS
-static XMLTransformerActionInit aMasterPageActionTable[] =
+XMLTransformerActionInit const aMasterPageActionTable[] =
 {
     ENTRY0( STYLE, NAME, XML_ATACTION_ENCODE_STYLE_NAME ),
     ENTRY0( STYLE, NEXT_STYLE_NAME, XML_ATACTION_ENCODE_STYLE_NAME_REF ),
@@ -655,7 +661,7 @@ static XMLTransformerActionInit aMasterPageActionTable[] =
     ENTRY0( OFFICE, TOKEN_INVALID, XML_ATACTION_EOT )
 };
 
-static XMLTransformerActionInit aFontDeclActionTable[] =
+XMLTransformerActionInit const aFontDeclActionTable[] =
 {
     ENTRY1Q( FO, FONT_FAMILY, XML_ATACTION_RENAME,
                         XML_NAMESPACE_SVG, XML_FONT_FAMILY ),
@@ -665,7 +671,7 @@ static XMLTransformerActionInit aFontDeclActionTable[] =
 };
 
 // action table for OOO_PARA_ACTIONS
-static XMLTransformerActionInit aParaActionTable[] =
+XMLTransformerActionInit const aParaActionTable[] =
 {
     ENTRY0( TEXT, STYLE_NAME, XML_ATACTION_ENCODE_STYLE_NAME_REF ),
     ENTRY0( TEXT, COND_STYLE_NAME, XML_ATACTION_ENCODE_STYLE_NAME_REF ),
@@ -676,7 +682,7 @@ static XMLTransformerActionInit aParaActionTable[] =
 };
 
 // action table for OOO_STYLE_REF_ACTIONS
-static XMLTransformerActionInit aStyleRefActionTable[] =
+XMLTransformerActionInit const aStyleRefActionTable[] =
 {
     ENTRY0( TEXT, STYLE_NAME, XML_ATACTION_ENCODE_STYLE_NAME_REF ),
     ENTRY0( TEXT, VISITED_STYLE_NAME, XML_ATACTION_ENCODE_STYLE_NAME_REF ),
@@ -706,7 +712,7 @@ static XMLTransformerActionInit aStyleRefActionTable[] =
 // OOO_SHAPE_ACTIONS
 // !!ATTENTION!! If you change something here, please also change
 // aConnectorActionTable if appropriate
-static XMLTransformerActionInit aShapeActionTable[] =
+XMLTransformerActionInit const aShapeActionTable[] =
 {
     ENTRY0( SVG, X, XML_ATACTION_INCH2IN ),
     ENTRY0( SVG, Y, XML_ATACTION_INCH2IN ),
@@ -751,7 +757,7 @@ static XMLTransformerActionInit aShapeActionTable[] =
     ENTRY0( OFFICE, TOKEN_INVALID, XML_ATACTION_EOT )
 };
 
-static XMLTransformerActionInit aConnectorActionTable[] =
+XMLTransformerActionInit const aConnectorActionTable[] =
 {
     ENTRY0( SVG, X1, XML_ATACTION_TWIPS2IN ),
     ENTRY0( SVG, Y1, XML_ATACTION_TWIPS2IN ),
@@ -776,7 +782,7 @@ static XMLTransformerActionInit aConnectorActionTable[] =
 };
 
 // OOO_INDEX_ENTRY_TAB_STOP_ACTIONS
-static XMLTransformerActionInit aIndexEntryTabStopActionTable[] =
+XMLTransformerActionInit const aIndexEntryTabStopActionTable[] =
 {
     ENTRY0( STYLE, POSITION, XML_ATACTION_INCH2IN ),
     ENTRY0( TEXT, STYLE_NAME, XML_ATACTION_ENCODE_STYLE_NAME_REF ),
@@ -784,7 +790,7 @@ static XMLTransformerActionInit aIndexEntryTabStopActionTable[] =
 };
 
 // OOO_TAB_STOP_ACTIONS
-static XMLTransformerActionInit aTabStopActionTable[] =
+XMLTransformerActionInit const aTabStopActionTable[] =
 {
     ENTRY0( STYLE, POSITION, XML_ATACTION_INCH2IN ),
     ENTRY1Q( STYLE, LEADER_CHAR, XML_ATACTION_RENAME,
@@ -793,7 +799,7 @@ static XMLTransformerActionInit aTabStopActionTable[] =
 };
 
 // OOO_LINENUMBERING_ACTIONS
-static XMLTransformerActionInit aLineNumberingActionTable[] =
+XMLTransformerActionInit const aLineNumberingActionTable[] =
 {
     ENTRY0( TEXT, OFFSET, XML_ATACTION_INCH2IN ),
     ENTRY0( TEXT, STYLE_NAME, XML_ATACTION_ENCODE_STYLE_NAME_REF ),
@@ -802,7 +808,7 @@ static XMLTransformerActionInit aLineNumberingActionTable[] =
     ENTRY0( OFFICE, TOKEN_INVALID, XML_ATACTION_EOT )
 };
 
-static XMLTransformerActionInit aFootnoteSepActionTable[] =
+XMLTransformerActionInit const aFootnoteSepActionTable[] =
 {
     ENTRY0( STYLE, WIDTH, XML_ATACTION_INCH2IN ),
     ENTRY0( STYLE, DISTANCE_BEFORE_SEP, XML_ATACTION_INCH2IN ),
@@ -811,14 +817,14 @@ static XMLTransformerActionInit aFootnoteSepActionTable[] =
 };
 
 // OOO_DROP_CAP_ACTIONS
-static XMLTransformerActionInit aDropCapActionTable[] =
+XMLTransformerActionInit const aDropCapActionTable[] =
 {
     ENTRY0( STYLE, DISTANCE, XML_ATACTION_INCH2IN ),
     ENTRY0( STYLE, STYLE_NAME, XML_ATACTION_ENCODE_STYLE_NAME_REF ),
     ENTRY0( OFFICE, TOKEN_INVALID, XML_ATACTION_EOT )
 };
 
-static XMLTransformerActionInit aColumnsActionTable[] =
+XMLTransformerActionInit const aColumnsActionTable[] =
 {
     ENTRY0( STYLE, COLUMN_GAP, XML_ATACTION_INCH2IN ),
 //  ENTRY0( STYLE, SPACE_BEFORE, XML_ATACTION_INCH2IN ),
@@ -832,7 +838,7 @@ static XMLTransformerActionInit aColumnsActionTable[] =
 };
 
 // OOO_TEXT_VALUE_TYPE_ACTIONS
-static XMLTransformerActionInit aTextValueTypeActionTable[] =
+XMLTransformerActionInit const aTextValueTypeActionTable[] =
 {
     ENTRY1Q( TEXT, VALUE_TYPE, XML_ATACTION_RENAME,
            XML_NAMESPACE_OFFICE, XML_VALUE_TYPE ),
@@ -855,7 +861,7 @@ static XMLTransformerActionInit aTextValueTypeActionTable[] =
 };
 
 // OOO_TABLE_VALUE_TYPE_ACTIONS
-static XMLTransformerActionInit aTableValueTypeActionTable[] =
+XMLTransformerActionInit const aTableValueTypeActionTable[] =
 {
     ENTRY1Q( TABLE, VALUE_TYPE, XML_ATACTION_RENAME,
            XML_NAMESPACE_OFFICE, XML_VALUE_TYPE ),
@@ -880,7 +886,7 @@ static XMLTransformerActionInit aTableValueTypeActionTable[] =
 };
 
 // action table for OOO_ANNOTATION_ACTIONS
-static XMLTransformerActionInit aAnnotationActionTable[] =
+XMLTransformerActionInit const aAnnotationActionTable[] =
 {
     ENTRY1Q( OFFICE, AUTHOR, XML_ATACTION_MOVE_TO_ELEM,
                 XML_NAMESPACE_DC, XML_CREATOR ),
@@ -892,7 +898,7 @@ static XMLTransformerActionInit aAnnotationActionTable[] =
 };
 
 // action table for OOO_CHANGE_INFO_ACTIONS
-static XMLTransformerActionInit aChangeInfoActionTable[] =
+XMLTransformerActionInit const aChangeInfoActionTable[] =
 {
     ENTRY1Q( OFFICE, CHG_AUTHOR, XML_ATACTION_MOVE_TO_ELEM,
                 XML_NAMESPACE_DC, XML_CREATOR ),
@@ -902,7 +908,7 @@ static XMLTransformerActionInit aChangeInfoActionTable[] =
 };
 
 // OOO_BACKGROUND_IMAGE_ACTIONS
-static XMLTransformerActionInit aBackgroundImageActionTable[] =
+XMLTransformerActionInit const aBackgroundImageActionTable[] =
 {
     ENTRY1Q( DRAW, TRANSPARENCY, XML_ATACTION_RENAME_NEG_PERCENT,
                      XML_NAMESPACE_DRAW, XML_OPACITY ),
@@ -914,7 +920,7 @@ static XMLTransformerActionInit aBackgroundImageActionTable[] =
    OpenOffice.org text documents, written by OpenOffice.org, contain
    wrong value for the transparency of the background graphic (#i50322#)
 */
-static XMLTransformerActionInit aWriterBackgroundImageActionTable[] =
+XMLTransformerActionInit const aWriterBackgroundImageActionTable[] =
 {
     ENTRY1Q( DRAW, TRANSPARENCY, XML_ATACTION_WRITER_BACK_GRAPHIC_TRANSPARENCY, XML_NAMESPACE_DRAW, XML_OPACITY ),
     ENTRY1( XLINK, HREF, XML_ATACTION_URI_OOO, sal_uInt32(true) ),
@@ -922,7 +928,7 @@ static XMLTransformerActionInit aWriterBackgroundImageActionTable[] =
 };
 
 // OOO_DDE_CONNECTION_DECL
-static XMLTransformerActionInit aDDEConnectionDeclActionTable[] =
+XMLTransformerActionInit const aDDEConnectionDeclActionTable[] =
 {
     ENTRY1Q( TEXT, NAME, XML_ATACTION_RENAME,
                      XML_NAMESPACE_OFFICE, XML_NAME ),
@@ -930,7 +936,7 @@ static XMLTransformerActionInit aDDEConnectionDeclActionTable[] =
 };
 
 // OOO_FORM_CONTROL_ACTIONS
-static XMLTransformerActionInit aFormControlActionTable[] =
+XMLTransformerActionInit const aFormControlActionTable[] =
 {
     ENTRY2QN( FORM, SERVICE_NAME,
                     XML_ATACTION_RENAME_ADD_NAMESPACE_PREFIX,
@@ -941,7 +947,7 @@ static XMLTransformerActionInit aFormControlActionTable[] =
 };
 
 // OOO_FORM_COLUMN_ACTIONS
-static XMLTransformerActionInit aFormColumnActionTable[] =
+XMLTransformerActionInit const aFormColumnActionTable[] =
 {
     ENTRY1Q( FORM, COLUMN_STYLE_NAME, XML_ATACTION_RENAME_ENCODE_STYLE_NAME_REF,
                         XML_NAMESPACE_FORM, XML_TEXT_STYLE_NAME ),
@@ -953,7 +959,7 @@ static XMLTransformerActionInit aFormColumnActionTable[] =
 };
 
 // OOO_FORM_PROP_ACTIONS
-static XMLTransformerActionInit aFormPropActionTable[] =
+XMLTransformerActionInit const aFormPropActionTable[] =
 {
     ENTRY1Q( FORM, PROPERTY_TYPE, XML_ATACTION_RENAME,
                           XML_NAMESPACE_OFFICE, XML_VALUE_TYPE ),
@@ -962,14 +968,14 @@ static XMLTransformerActionInit aFormPropActionTable[] =
 };
 
 // OOO_XLINK_ACTIONS
-static XMLTransformerActionInit aXLinkActionTable[] =
+XMLTransformerActionInit const aXLinkActionTable[] =
 {
     ENTRY1( XLINK, HREF, XML_ATACTION_URI_OOO, sal_uInt32(false) ),
     ENTRY0( OFFICE, TOKEN_INVALID, XML_ATACTION_EOT )
 };
 
 // OOO_CONFIG_ITEM_SET_ACTIONS
-static XMLTransformerActionInit aConfigItemSetActionTable[] =
+XMLTransformerActionInit const aConfigItemSetActionTable[] =
 {
     ENTRY1( CONFIG, NAME, XML_ATACTION_ADD_NAMESPACE_PREFIX,
                     XML_NAMESPACE_OOO ),
@@ -977,7 +983,7 @@ static XMLTransformerActionInit aConfigItemSetActionTable[] =
 };
 
 // OASIS_FORMULA_ACTIONS
-static XMLTransformerActionInit aFormulaActionTable[] =
+XMLTransformerActionInit const aFormulaActionTable[] =
 {
     ENTRY1( TEXT, CONDITION, XML_ATACTION_ADD_NAMESPACE_PREFIX,
                      XML_NAMESPACE_OOOW ),
@@ -991,14 +997,14 @@ static XMLTransformerActionInit aFormulaActionTable[] =
 };
 
 // OOO_ERROR_MACRO_ACTIONS
-static XMLTransformerActionInit aErrorMacroActionTable[] =
+XMLTransformerActionInit const aErrorMacroActionTable[] =
 {
     ENTRY0( TABLE, NAME, XML_ATACTION_REMOVE ),
     ENTRY0( OFFICE, TOKEN_INVALID, XML_ATACTION_EOT )
 };
 
 // OOO_DDE_CONV_MODE_ACTIONS
-static XMLTransformerActionInit aDDEConvModeActionTable[] =
+XMLTransformerActionInit const aDDEConvModeActionTable[] =
 {
     ENTRY1Q( TABLE, LET_TEXT, XML_ATACTION_RENAME,
                         XML_NAMESPACE_TABLE, XML_KEEP_TEXT ),
@@ -1006,7 +1012,7 @@ static XMLTransformerActionInit aDDEConvModeActionTable[] =
 };
 
 // OOO_DATAPILOT_MEMBER_ACTIONS
-static XMLTransformerActionInit aDataPilotMemberActionTable[] =
+XMLTransformerActionInit const aDataPilotMemberActionTable[] =
 {
     ENTRY1Q( TABLE, DISPLAY_DETAILS, XML_ATACTION_RENAME,
                         XML_NAMESPACE_TABLE, XML_SHOW_DETAILS ),
@@ -1014,7 +1020,7 @@ static XMLTransformerActionInit aDataPilotMemberActionTable[] =
 };
 
 // OOO_DATAPILOT_LEVEL_ACTIONS
-static XMLTransformerActionInit aDataPilotLevelActionTable[] =
+XMLTransformerActionInit const aDataPilotLevelActionTable[] =
 {
     ENTRY1Q( TABLE, DISPLAY_EMPTY, XML_ATACTION_RENAME,
                         XML_NAMESPACE_TABLE, XML_SHOW_EMPTY ),
@@ -1022,7 +1028,7 @@ static XMLTransformerActionInit aDataPilotLevelActionTable[] =
 };
 
 // OOO_SOURCE_SERVICE_ACTIONS
-static XMLTransformerActionInit aSourceServiceActionTable[] =
+XMLTransformerActionInit const aSourceServiceActionTable[] =
 {
     ENTRY1Q( TABLE, USERNAME, XML_ATACTION_RENAME,
                         XML_NAMESPACE_TABLE, XML_USER_NAME ),
@@ -1030,7 +1036,7 @@ static XMLTransformerActionInit aSourceServiceActionTable[] =
 };
 
 // OOO_ANIMATION_ACTIONS
-static XMLTransformerActionInit aAnimationsActionTable[] =
+XMLTransformerActionInit const aAnimationsActionTable[] =
 {
     ENTRY0( DRAW, SHAPE_ID, XML_ATACTION_SHAPEID ),
     ENTRY0( PRESENTATION, PATH_ID, XML_ATACTION_SHAPEID ),
@@ -1038,7 +1044,7 @@ static XMLTransformerActionInit aAnimationsActionTable[] =
 };
 
 // OOO_DRAW_AREA_POLYGON_ACTIONS (to be added to OOO_SHAPE_ACTIONS)
-static XMLTransformerActionInit aDrawAreaPolygonActionTable[] =
+XMLTransformerActionInit const aDrawAreaPolygonActionTable[] =
 {
     ENTRY1Q( SVG, POINTS, XML_ATACTION_RENAME,
              XML_NAMESPACE_DRAW, XML_POINTS ),
@@ -1046,7 +1052,7 @@ static XMLTransformerActionInit aDrawAreaPolygonActionTable[] =
 };
 
 // OOO_CHART_ACTIONS
-static XMLTransformerActionInit aChartActionTable[] =
+XMLTransformerActionInit const aChartActionTable[] =
 {
     ENTRY1( CHART, CLASS, XML_ATACTION_ADD_NAMESPACE_PREFIX,
                      XML_NAMESPACE_CHART ),
@@ -1058,7 +1064,7 @@ static XMLTransformerActionInit aChartActionTable[] =
 };
 
 // OOO_ALPHABETICAL_INDEX_MARK_ACTIONS
-static XMLTransformerActionInit aAlphabeticalIndexMarkActionTable[] =
+XMLTransformerActionInit const aAlphabeticalIndexMarkActionTable[] =
 {
     ENTRY1Q( TEXT, MAIN_ETRY, XML_ATACTION_RENAME,
              XML_NAMESPACE_TEXT, XML_MAIN_ENTRY ),
@@ -1066,7 +1072,7 @@ static XMLTransformerActionInit aAlphabeticalIndexMarkActionTable[] =
 };
 
 // OOO_SCRIPT_ACTIONS
-static XMLTransformerActionInit aScriptActionTable[] =
+XMLTransformerActionInit const aScriptActionTable[] =
 {
     ENTRY1( SCRIPT, LANGUAGE, XML_ATACTION_ADD_NAMESPACE_PREFIX, XML_NAMESPACE_OOO ),
     ENTRY1Q( SCRIPT, NAME, XML_ATACTION_RENAME, XML_NAMESPACE_OOO, XML_NAME ),
@@ -1074,7 +1080,7 @@ static XMLTransformerActionInit aScriptActionTable[] =
     ENTRY0( OFFICE, TOKEN_INVALID, XML_ATACTION_EOT )
 };
 
-static XMLTokenEnum aTokenMap[] =
+XMLTokenEnum const aTokenMap[] =
 {
     XML_NONE, XML_SINGLE, XML_DOUBLE, XML_BOLD, XML_BOLD_DOTTED,
     XML_BOLD_DASH, XML_BOLD_LONG_DASH, XML_BOLD_DOT_DASH,
@@ -1083,9 +1089,11 @@ static XMLTokenEnum aTokenMap[] =
     XML_TOKEN_END
 };
 
+namespace {
+
 class XMLDocumentTransformerContext_Impl : public XMLTransformerContext
 {
-    OUString m_aElemQName;
+    OUString const m_aElemQName;
     OUString m_aOldClass;
 
 public:
@@ -1099,6 +1107,8 @@ public:
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
     virtual void EndElement() override;
 };
+
+}
 
 XMLDocumentTransformerContext_Impl::XMLDocumentTransformerContext_Impl(
         XMLTransformerBase& rImp,
@@ -1144,8 +1154,7 @@ void XMLDocumentTransformerContext_Impl::StartElement(
 
             pMutableAttrList = new XMLMutableAttributeList( xAttrList );
             xAttrList = pMutableAttrList;
-            OUString sMime("application/vnd.oasis.opendocument.");
-            sMime += rValue;
+            OUString sMime = "application/vnd.oasis.opendocument." + rValue;
             pMutableAttrList->SetValueByIndex( i, sMime );
             OUString aNewAttrQName( GetTransformer().GetNamespaceMap().GetQNameByKey( XML_NAMESPACE_OFFICE, ::xmloff::token::GetXMLToken( XML_MIMETYPE ) ) );
             pMutableAttrList->RenameAttributeByIndex(i, aNewAttrQName );
@@ -1223,6 +1232,8 @@ void XMLDocumentTransformerContext_Impl::EndElement()
     GetTransformer().SetClass( m_aOldClass );
 }
 
+namespace {
+
 class XMLBodyTransformerContext_Impl : public XMLTransformerContext
 {
     OUString m_aClassQName;
@@ -1234,6 +1245,8 @@ public:
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
     virtual void EndElement() override;
 };
+
+}
 
 XMLBodyTransformerContext_Impl::XMLBodyTransformerContext_Impl(
         XMLTransformerBase& rImp,
@@ -1277,6 +1290,8 @@ void XMLBodyTransformerContext_Impl::EndElement()
     XMLTransformerContext::EndElement();
 }
 
+namespace {
+
 class XMLTabStopOOoTContext_Impl : public XMLPersElemContentTContext
 {
 public:
@@ -1285,6 +1300,8 @@ public:
 
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
 };
+
+}
 
 XMLTabStopOOoTContext_Impl::XMLTabStopOOoTContext_Impl(
         XMLTransformerBase& rImp,
@@ -1313,7 +1330,7 @@ void XMLTabStopOOoTContext_Impl::StartElement(
         XMLTransformerActions::key_type aKey( nPrefix, aLocalName );
         XMLTransformerActions::const_iterator aIter =
             pActions->find( aKey );
-        if( !(aIter == pActions->end() ) )
+        if( aIter != pActions->end() )
         {
             if( !pMutableAttrList )
             {
@@ -1364,10 +1381,12 @@ void XMLTabStopOOoTContext_Impl::StartElement(
     XMLPersElemContentTContext::StartElement( xAttrList );
 }
 
+namespace {
+
 class XMLTrackedChangesOOoTContext_Impl : public XMLTransformerContext
 {
-    sal_uInt16 m_nPrefix;
-    XMLTokenEnum m_eToken;
+    sal_uInt16 const m_nPrefix;
+    XMLTokenEnum const m_eToken;
 
 public:
     XMLTrackedChangesOOoTContext_Impl( XMLTransformerBase& rTransformer,
@@ -1377,6 +1396,8 @@ public:
 
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
 };
+
+}
 
 XMLTrackedChangesOOoTContext_Impl::XMLTrackedChangesOOoTContext_Impl(
         XMLTransformerBase& rImp,
@@ -1414,7 +1435,7 @@ void XMLTrackedChangesOOoTContext_Impl::StartElement(
                     xPropSetInfo->hasPropertyByName( aPropName ) )
                 {
                     Sequence < sal_Int8 > aKey;
-                    ::sax::Converter::decodeBase64( aKey,
+                    ::comphelper::Base64::decode( aKey,
                                         rAttrList->getValueByIndex( i ) );
                     rPropSet->setPropertyValue( aPropName, makeAny( aKey ) );
                 }
@@ -1429,9 +1450,11 @@ void XMLTrackedChangesOOoTContext_Impl::StartElement(
     XMLTransformerContext::StartElement( rAttrList );
 }
 
+namespace {
+
 class XMLTableOOoTransformerContext_Impl : public XMLTransformerContext
 {
-    OUString m_aElemQName;
+    OUString const m_aElemQName;
 
 public:
     XMLTableOOoTransformerContext_Impl( XMLTransformerBase& rTransformer,
@@ -1440,6 +1463,8 @@ public:
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
     virtual void EndElement() override;
 };
+
+}
 
 XMLTableOOoTransformerContext_Impl::XMLTableOOoTransformerContext_Impl(
         XMLTransformerBase& rImp,
@@ -1554,171 +1579,171 @@ XMLTransformerActions *OOo2OasisTransformer::GetUserDefinedActions(
         {
             if( n<MAX_OOO_PROP_ACTIONS )
             {
-                m_aActions[n] =
-                    XMLStyleOOoTContext::CreateTransformerActions( n );
+                m_aActions[n].reset(
+                    XMLStyleOOoTContext::CreateTransformerActions( n ) );
             }
             else switch( n )
             {
                 case OOO_STYLE_ACTIONS:
-                    m_aActions[OOO_STYLE_ACTIONS] =
-                        new XMLTransformerActions( aStyleActionTable );
+                    m_aActions[OOO_STYLE_ACTIONS].reset(
+                        new XMLTransformerActions( aStyleActionTable ) );
                     break;
                 case OOO_FONT_DECL_ACTIONS:
-                    m_aActions[OOO_FONT_DECL_ACTIONS] =
-                        new XMLTransformerActions( aFontDeclActionTable );
+                    m_aActions[OOO_FONT_DECL_ACTIONS].reset(
+                        new XMLTransformerActions( aFontDeclActionTable ) );
                     break;
                 case OOO_SHAPE_ACTIONS:
-                    m_aActions[OOO_SHAPE_ACTIONS] =
-                        new XMLTransformerActions( aShapeActionTable );
+                    m_aActions[OOO_SHAPE_ACTIONS].reset(
+                        new XMLTransformerActions( aShapeActionTable ) );
                     break;
                 case OOO_CONNECTOR_ACTIONS:
-                    m_aActions[OOO_CONNECTOR_ACTIONS] =
-                        new XMLTransformerActions( aConnectorActionTable );
+                    m_aActions[OOO_CONNECTOR_ACTIONS].reset(
+                        new XMLTransformerActions( aConnectorActionTable ) );
                     break;
                 case OOO_TAB_STOP_ACTIONS:
-                    m_aActions[OOO_TAB_STOP_ACTIONS] =
-                        new XMLTransformerActions( aTabStopActionTable );
+                    m_aActions[OOO_TAB_STOP_ACTIONS].reset(
+                        new XMLTransformerActions( aTabStopActionTable ) );
                     break;
                 case OOO_INDEX_ENTRY_TAB_STOP_ACTIONS:
-                    m_aActions[OOO_INDEX_ENTRY_TAB_STOP_ACTIONS] =
-                        new XMLTransformerActions( aIndexEntryTabStopActionTable );
+                    m_aActions[OOO_INDEX_ENTRY_TAB_STOP_ACTIONS].reset(
+                        new XMLTransformerActions( aIndexEntryTabStopActionTable ) );
                     break;
                 case OOO_LINENUMBERING_ACTIONS:
-                    m_aActions[OOO_LINENUMBERING_ACTIONS] =
-                        new XMLTransformerActions( aLineNumberingActionTable );
+                    m_aActions[OOO_LINENUMBERING_ACTIONS].reset(
+                        new XMLTransformerActions( aLineNumberingActionTable ) );
                     break;
                 case OOO_FOOTNOTE_SEP_ACTIONS:
-                    m_aActions[OOO_FOOTNOTE_SEP_ACTIONS] =
-                        new XMLTransformerActions( aFootnoteSepActionTable );
+                    m_aActions[OOO_FOOTNOTE_SEP_ACTIONS].reset(
+                        new XMLTransformerActions( aFootnoteSepActionTable ) );
                     break;
                 case OOO_DROP_CAP_ACTIONS:
-                    m_aActions[OOO_DROP_CAP_ACTIONS] =
-                        new XMLTransformerActions( aDropCapActionTable );
+                    m_aActions[OOO_DROP_CAP_ACTIONS].reset(
+                        new XMLTransformerActions( aDropCapActionTable ) );
                     break;
                 case OOO_COLUMNS_ACTIONS:
-                    m_aActions[OOO_COLUMNS_ACTIONS] =
-                        new XMLTransformerActions( aColumnsActionTable );
+                    m_aActions[OOO_COLUMNS_ACTIONS].reset(
+                        new XMLTransformerActions( aColumnsActionTable ) );
                     break;
                 case OOO_TEXT_VALUE_TYPE_ACTIONS:
-                    m_aActions[OOO_TEXT_VALUE_TYPE_ACTIONS] =
-                        new XMLTransformerActions( aTextValueTypeActionTable );
+                    m_aActions[OOO_TEXT_VALUE_TYPE_ACTIONS].reset(
+                        new XMLTransformerActions( aTextValueTypeActionTable ) );
                     break;
                 case OOO_TABLE_VALUE_TYPE_ACTIONS:
-                    m_aActions[OOO_TABLE_VALUE_TYPE_ACTIONS] =
-                        new XMLTransformerActions( aTableValueTypeActionTable );
+                    m_aActions[OOO_TABLE_VALUE_TYPE_ACTIONS].reset(
+                        new XMLTransformerActions( aTableValueTypeActionTable ) );
                     break;
                 case OOO_PARA_ACTIONS:
-                    m_aActions[OOO_PARA_ACTIONS] =
-                        new XMLTransformerActions( aParaActionTable );
+                    m_aActions[OOO_PARA_ACTIONS].reset(
+                        new XMLTransformerActions( aParaActionTable ) );
                     break;
                 case OOO_STYLE_REF_ACTIONS:
-                    m_aActions[OOO_STYLE_REF_ACTIONS] =
-                        new XMLTransformerActions( aStyleRefActionTable );
+                    m_aActions[OOO_STYLE_REF_ACTIONS].reset(
+                        new XMLTransformerActions( aStyleRefActionTable ) );
                     break;
                 case OOO_MASTER_PAGE_ACTIONS:
-                    m_aActions[OOO_MASTER_PAGE_ACTIONS] =
-                        new XMLTransformerActions( aMasterPageActionTable );
+                    m_aActions[OOO_MASTER_PAGE_ACTIONS].reset(
+                        new XMLTransformerActions( aMasterPageActionTable ) );
                     break;
                 case OOO_ANNOTATION_ACTIONS:
-                    m_aActions[OOO_ANNOTATION_ACTIONS] =
-                        new XMLTransformerActions( aAnnotationActionTable );
+                    m_aActions[OOO_ANNOTATION_ACTIONS].reset(
+                        new XMLTransformerActions( aAnnotationActionTable ) );
                     break;
                 case OOO_CHANGE_INFO_ACTIONS:
-                    m_aActions[OOO_CHANGE_INFO_ACTIONS] =
-                        new XMLTransformerActions( aChangeInfoActionTable );
+                    m_aActions[OOO_CHANGE_INFO_ACTIONS].reset(
+                        new XMLTransformerActions( aChangeInfoActionTable ) );
                     break;
                 case OOO_FRAME_ELEM_ACTIONS:
-                    m_aActions[OOO_FRAME_ELEM_ACTIONS] =
-                        new XMLTransformerActions( aFrameElemActionTable );
+                    m_aActions[OOO_FRAME_ELEM_ACTIONS].reset(
+                        new XMLTransformerActions( aFrameElemActionTable ) );
                     break;
                 case OOO_FRAME_ATTR_ACTIONS:
-                    m_aActions[OOO_FRAME_ATTR_ACTIONS] =
-                        new XMLTransformerActions( aFrameAttrActionTable );
+                    m_aActions[OOO_FRAME_ATTR_ACTIONS].reset(
+                        new XMLTransformerActions( aFrameAttrActionTable ) );
                     break;
                 case OOO_BACKGROUND_IMAGE_ACTIONS:
                     // Use special actions for Writer documents. (#i50322#)
-                    m_aActions[OOO_BACKGROUND_IMAGE_ACTIONS] =
+                    m_aActions[OOO_BACKGROUND_IMAGE_ACTIONS].reset(
                         isWriter()
                         ? new XMLTransformerActions( aWriterBackgroundImageActionTable )
-                        : new XMLTransformerActions( aBackgroundImageActionTable );
+                        : new XMLTransformerActions( aBackgroundImageActionTable ) );
                     break;
                 case OOO_DDE_CONNECTION_DECL_ACTIONS:
-                    m_aActions[OOO_DDE_CONNECTION_DECL_ACTIONS] =
-                        new XMLTransformerActions( aDDEConnectionDeclActionTable );
+                    m_aActions[OOO_DDE_CONNECTION_DECL_ACTIONS].reset(
+                        new XMLTransformerActions( aDDEConnectionDeclActionTable ) );
                     break;
                 case OOO_EVENT_ACTIONS:
-                    m_aActions[OOO_EVENT_ACTIONS] =
-                        new XMLTransformerActions( aEventActionTable );
+                    m_aActions[OOO_EVENT_ACTIONS].reset(
+                        new XMLTransformerActions( aEventActionTable ) );
                     break;
                 case OOO_FORM_CONTROL_ACTIONS:
-                    m_aActions[OOO_FORM_CONTROL_ACTIONS] =
-                        new XMLTransformerActions( aFormControlActionTable );
+                    m_aActions[OOO_FORM_CONTROL_ACTIONS].reset(
+                        new XMLTransformerActions( aFormControlActionTable ) );
                     break;
                 case OOO_FORM_COLUMN_ACTIONS:
-                    m_aActions[OOO_FORM_COLUMN_ACTIONS] =
-                        new XMLTransformerActions( aFormColumnActionTable );
+                    m_aActions[OOO_FORM_COLUMN_ACTIONS].reset(
+                        new XMLTransformerActions( aFormColumnActionTable ) );
                     break;
                 case OOO_FORM_PROP_ACTIONS:
-                    m_aActions[OOO_FORM_PROP_ACTIONS] =
-                        new XMLTransformerActions( aFormPropActionTable );
+                    m_aActions[OOO_FORM_PROP_ACTIONS].reset(
+                        new XMLTransformerActions( aFormPropActionTable ) );
                     break;
                 case OOO_XLINK_ACTIONS:
-                    m_aActions[OOO_XLINK_ACTIONS] =
-                        new XMLTransformerActions( aXLinkActionTable );
+                    m_aActions[OOO_XLINK_ACTIONS].reset(
+                        new XMLTransformerActions( aXLinkActionTable ) );
                     break;
                 case OOO_CONFIG_ITEM_SET_ACTIONS:
-                    m_aActions[OOO_CONFIG_ITEM_SET_ACTIONS] =
-                        new XMLTransformerActions( aConfigItemSetActionTable );
+                    m_aActions[OOO_CONFIG_ITEM_SET_ACTIONS].reset(
+                        new XMLTransformerActions( aConfigItemSetActionTable ) );
                     break;
                 case OOO_FORMULA_ACTIONS:
-                    m_aActions[OOO_FORMULA_ACTIONS] =
-                        new XMLTransformerActions( aFormulaActionTable );
+                    m_aActions[OOO_FORMULA_ACTIONS].reset(
+                        new XMLTransformerActions( aFormulaActionTable ) );
                     break;
                 case OOO_CHART_ACTIONS:
-                    m_aActions[OOO_CHART_ACTIONS] =
-                        new XMLTransformerActions( aChartActionTable );
+                    m_aActions[OOO_CHART_ACTIONS].reset(
+                        new XMLTransformerActions( aChartActionTable ) );
                     break;
                 case OOO_ERROR_MACRO_ACTIONS:
-                    m_aActions[OOO_ERROR_MACRO_ACTIONS] =
-                        new XMLTransformerActions( aErrorMacroActionTable );
+                    m_aActions[OOO_ERROR_MACRO_ACTIONS].reset(
+                        new XMLTransformerActions( aErrorMacroActionTable ) );
                     break;
                 case OOO_DDE_CONV_MODE_ACTIONS:
-                    m_aActions[OOO_DDE_CONV_MODE_ACTIONS] =
-                        new XMLTransformerActions( aDDEConvModeActionTable );
+                    m_aActions[OOO_DDE_CONV_MODE_ACTIONS].reset(
+                        new XMLTransformerActions( aDDEConvModeActionTable ) );
                     break;
                 case OOO_ALPHABETICAL_INDEX_MARK_ACTIONS:
-                    m_aActions[OOO_ALPHABETICAL_INDEX_MARK_ACTIONS] =
-                        new XMLTransformerActions( aAlphabeticalIndexMarkActionTable );
+                    m_aActions[OOO_ALPHABETICAL_INDEX_MARK_ACTIONS].reset(
+                        new XMLTransformerActions( aAlphabeticalIndexMarkActionTable ) );
                     break;
                 case OOO_DATAPILOT_MEMBER_ACTIONS:
-                    m_aActions[OOO_DATAPILOT_MEMBER_ACTIONS] =
-                        new XMLTransformerActions( aDataPilotMemberActionTable );
+                    m_aActions[OOO_DATAPILOT_MEMBER_ACTIONS].reset(
+                        new XMLTransformerActions( aDataPilotMemberActionTable ) );
                     break;
                 case OOO_DATAPILOT_LEVEL_ACTIONS:
-                    m_aActions[OOO_DATAPILOT_LEVEL_ACTIONS] =
-                        new XMLTransformerActions( aDataPilotLevelActionTable );
+                    m_aActions[OOO_DATAPILOT_LEVEL_ACTIONS].reset(
+                        new XMLTransformerActions( aDataPilotLevelActionTable ) );
                     break;
                 case OOO_SOURCE_SERVICE_ACTIONS:
-                    m_aActions[OOO_SOURCE_SERVICE_ACTIONS] =
-                        new XMLTransformerActions( aSourceServiceActionTable );
+                    m_aActions[OOO_SOURCE_SERVICE_ACTIONS].reset(
+                        new XMLTransformerActions( aSourceServiceActionTable ) );
                     break;
                 case OOO_DRAW_AREA_POLYGON_ACTIONS:
-                    m_aActions[OOO_DRAW_AREA_POLYGON_ACTIONS] =
-                        new XMLTransformerActions( aShapeActionTable );
+                    m_aActions[OOO_DRAW_AREA_POLYGON_ACTIONS].reset(
+                        new XMLTransformerActions( aShapeActionTable ) );
                     m_aActions[OOO_DRAW_AREA_POLYGON_ACTIONS]
                         ->Add( aDrawAreaPolygonActionTable );
                     break;
                 case OOO_SCRIPT_ACTIONS:
-                    m_aActions[OOO_SCRIPT_ACTIONS] =
-                        new XMLTransformerActions( aScriptActionTable );
+                    m_aActions[OOO_SCRIPT_ACTIONS].reset(
+                        new XMLTransformerActions( aScriptActionTable ) );
                     break;
                 case OOO_ANIMATION_ACTIONS:
-                    m_aActions[OOO_ANIMATION_ACTIONS] =
-                        new XMLTransformerActions( aAnimationsActionTable );
+                    m_aActions[OOO_ANIMATION_ACTIONS].reset(
+                        new XMLTransformerActions( aAnimationsActionTable ) );
                     break;
             }
         }
-        pActions = m_aActions[n];
+        pActions = m_aActions[n].get();
     }
 
     return pActions;
@@ -1740,19 +1765,14 @@ OUString OOo2OasisTransformer::GetEventName( const OUString& rName, bool )
     return aNewName;
 }
 
-OOo2OasisTransformer::OOo2OasisTransformer( const sal_Char *pImplName,
-                                            const sal_Char *pSubServiceName )
+OOo2OasisTransformer::OOo2OasisTransformer( OUString const & rImplName,
+                                            OUString const & rSubServiceName )
         throw() :
     XMLTransformerBase( aActionTable, aTokenMap ),
+    m_aImplName(rImplName),
+    m_aSubServiceName(rSubServiceName),
     m_pEventMap( nullptr )
 {
-    if( pImplName )
-        m_aImplName = OUString::createFromAscii( pImplName );
-    else
-        m_aImplName = OOo2OasisTransformer_getImplementationName();
-    if( pSubServiceName )
-        m_aSubServiceName = OUString::createFromAscii( pSubServiceName );
-
     GetNamespaceMap().Add( GetXMLToken(XML_NP_OFFICE), GetXMLToken(XML_N_OFFICE_OOO), XML_NAMESPACE_OFFICE );
     GetReplaceNamespaceMap().Add( GetXMLToken(XML_NP_OFFICE), GetXMLToken(XML_N_OFFICE), XML_NAMESPACE_OFFICE );
 
@@ -1798,14 +1818,14 @@ OOo2OasisTransformer::OOo2OasisTransformer( const sal_Char *pImplName,
     GetNamespaceMap().Add( GetXMLToken(XML_NP_SVG), GetXMLToken(XML_N_SVG),  XML_NAMESPACE_SVG );
     GetReplaceNamespaceMap().Add( GetXMLToken(XML_NP_SVG), GetXMLToken(XML_N_SVG_COMPAT), XML_NAMESPACE_SVG );
 
-    for(XMLTransformerActions*& rp : m_aActions)
-        rp = nullptr;
+    for(auto & rp : m_aActions)
+        rp.reset();
 }
 
 OOo2OasisTransformer::~OOo2OasisTransformer() throw()
 {
-    for(XMLTransformerActions* p : m_aActions)
-        delete p;
+    for(auto & rp : m_aActions)
+        rp.reset();
     XMLEventOOoTransformerContext::FlushEventMap( m_pEventMap );
 }
 
@@ -1815,7 +1835,7 @@ Any OOo2OasisTransformer::queryInterface( const Type& rType )
     if ( rType == cppu::UnoType<XImporter>::get())
     {
         Reference<XImporter> xThis( this );
-           aRet <<= xThis;
+        aRet <<= xThis;
     }
     else if ( rType == cppu::UnoType<XFilter>::get())
     {
@@ -1890,7 +1910,7 @@ void SAL_CALL OOo2OasisTransformer::startDocument()
     XMLTransformerBase::startDocument();
 }
 
-void SAL_CALL OOo2OasisTransformer::Initialize(
+void OOo2OasisTransformer::Initialize(
                 const Sequence< Any >& rArguments )
 {
     OSL_ENSURE( !GetDocHandler().is(), "duplication initialization" );
@@ -1917,8 +1937,7 @@ void SAL_CALL OOo2OasisTransformer::Initialize(
     {
         Sequence<Any> aArgs( 1 + rArguments.getLength() );
         aArgs[0] <<= xDocHandler;
-        for(sal_Int32 i = 0; i < rArguments.getLength(); i++)
-            aArgs[i+1] = rArguments[i];
+        std::copy(rArguments.begin(), rArguments.end(), std::next(aArgs.begin()));
         XMLTransformerBase::initialize( aArgs );
 
         OSL_ENSURE( GetDocHandler() == xDocHandler,
@@ -1935,19 +1954,20 @@ namespace
     class theOOo2OasisTransformerUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theOOo2OasisTransformerUnoTunnelId> {};
 }
 
+const css::uno::Sequence<sal_Int8>& OOo2OasisTransformer::getUnoTunnelId() throw()
+{
+    return theOOo2OasisTransformerUnoTunnelId::get().getSeq();
+}
+
 // XUnoTunnel
 sal_Int64 SAL_CALL OOo2OasisTransformer::getSomething( const Sequence< sal_Int8 >& rId )
 {
-    if( rId.getLength() == 16
-        && 0 == memcmp( theOOo2OasisTransformerUnoTunnelId::get().getSeq().getConstArray(),
-                        rId.getConstArray(), 16 ) )
+    if( isUnoTunnelId<OOo2OasisTransformer>(rId) )
     {
         return reinterpret_cast< sal_Int64 >( this );
     }
-    else
-    {
-        return (sal_Int64)0;
-    }
+
+    return sal_Int64(0);
 }
 
 // XServiceInfo
@@ -1963,64 +1983,36 @@ sal_Bool SAL_CALL OOo2OasisTransformer::supportsService( const OUString& Service
 
 Sequence< OUString > SAL_CALL OOo2OasisTransformer::getSupportedServiceNames(  )
 {
-    Sequence<OUString> aSeq(0);
-    return aSeq;
+    return { };
 }
 
 // XTypeProvider
-Sequence< css::uno::Type > SAL_CALL
-    OOo2OasisTransformer::getTypes()
+Sequence< css::uno::Type > SAL_CALL OOo2OasisTransformer::getTypes()
 {
-    Sequence< css::uno::Type > aTypes( XMLTransformerBase::getTypes() );
-
-    sal_Int32 nIndex = aTypes.getLength();
-    aTypes.realloc( nIndex + 2 );
-
-    css::uno::Type* pTypes = aTypes.getArray();
-    pTypes[nIndex++] = cppu::UnoType<XImporter>::get();
-    pTypes[nIndex++] = cppu::UnoType<XFilter>::get();
-
-    return aTypes;
+    return cppu::OTypeCollection(
+            cppu::UnoType<XImporter>::get(),
+            cppu::UnoType<XFilter>::get(),
+            XMLTransformerBase::getTypes()
+        ).getTypes();
 }
 
 // Service registration
 
-OUString SAL_CALL OOo2OasisTransformer_getImplementationName() throw()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+xmloff_OOo2OasisTransformer_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    return OUString( "com.sun.star.comp.OOo2OasisTransformer" );
-}
-
-Sequence< OUString > SAL_CALL OOo2OasisTransformer_getSupportedServiceNames() throw()
-{
-    const OUString aServiceName( OOo2OasisTransformer_getImplementationName() );
-    const Sequence< OUString > aSeq( &aServiceName, 1 );
-    return aSeq;
-}
-
-Reference< XInterface > SAL_CALL OOo2OasisTransformer_createInstance(
-        const Reference< XMultiServiceFactory > & )
-{
-    return static_cast<cppu::OWeakObject*>(new OOo2OasisTransformer());
+    return cppu::acquire(new OOo2OasisTransformer("com.sun.star.comp.OOo2OasisTransformer", OUString()));
 }
 
 #define OOO_IMPORTER( className, implName, subServiceName )             \
-OUString SAL_CALL className##_getImplementationName() throw()           \
-{                                                                       \
-    return OUString( implName );         \
-}                                                                       \
-                                                                        \
-Sequence< OUString > SAL_CALL className##_getSupportedServiceNames() throw()\
-{                                                                       \
-    const OUString aServiceName( className##_getImplementationName() ); \
-    const Sequence< OUString > aSeq( &aServiceName, 1 );                \
-    return aSeq;                                                        \
-}                                                                       \
-                                                                        \
-Reference< XInterface > SAL_CALL className##_createInstance(            \
-        const Reference< XMultiServiceFactory > & )                     \
-{                                                                       \
-    return static_cast<cppu::OWeakObject*>(new OOo2OasisTransformer( implName,      \
-                                         subServiceName ));              \
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* \
+xmloff_##className##_get_implementation( \
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&) \
+{ \
+    return cppu::acquire(new OOo2OasisTransformer( \
+              implName, \
+              subServiceName )); \
 }
 
 OOO_IMPORTER( XMLWriterImportOOO,

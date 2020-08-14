@@ -10,28 +10,22 @@
 #ifndef INCLUDED_SC_INC_PIVOTTABLEDATASEQUENCE_HXX
 #define INCLUDED_SC_INC_PIVOTTABLEDATASEQUENCE_HXX
 
-#include <com/sun/star/chart2/data/XDataProvider.hpp>
 #include <com/sun/star/chart2/data/XDataSequence.hpp>
 #include <com/sun/star/chart2/data/XTextualDataSequence.hpp>
 #include <com/sun/star/chart2/data/XNumericalDataSequence.hpp>
-#include <com/sun/star/chart2/data/XLabeledDataSequence.hpp>
 #include <com/sun/star/chart2/data/DataSequenceRole.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 
-#include <com/sun/star/sheet/XDataPilotResults.hpp>
 
 #include <svl/lstner.hxx>
 #include <svl/itemprop.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/math.hxx>
 
-#include "unonames.hxx"
-#include "document.hxx"
-
-#include "dpsave.hxx"
+class ScDocument;
 
 namespace sc
 {
@@ -85,10 +79,10 @@ typedef cppu::WeakImplHelper<css::chart2::data::XDataSequence,
                              css::lang::XServiceInfo>
         PivotTableDataSequence_Base;
 
-class PivotTableDataSequence : public PivotTableDataSequence_Base, public SfxListener
+class PivotTableDataSequence final : public PivotTableDataSequence_Base, public SfxListener
 {
 public:
-    explicit PivotTableDataSequence(ScDocument* pDocument, OUString const & sPivotTableName,
+    explicit PivotTableDataSequence(ScDocument* pDocument,
                                     OUString const & sID, std::vector<ValueAndFormat> const & rData);
 
     virtual ~PivotTableDataSequence() override;
@@ -162,7 +156,6 @@ public:
 
 private:
     ScDocument* m_pDocument;
-    OUString m_sPivotTableName;
     OUString m_aID;
     std::vector<ValueAndFormat> m_aData;
     SfxItemPropertySet m_aPropSet;

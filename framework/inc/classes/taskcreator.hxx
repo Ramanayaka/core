@@ -20,13 +20,12 @@
 #ifndef INCLUDED_FRAMEWORK_INC_CLASSES_TASKCREATOR_HXX
 #define INCLUDED_FRAMEWORK_INC_CLASSES_TASKCREATOR_HXX
 
-#include <general.h>
-
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <rtl/ustring.hxx>
+#include <unotools/mediadescriptor.hxx>
 
 namespace framework{
 
@@ -53,7 +52,7 @@ class TaskCreator final
                  TaskCreator( const css::uno::Reference< css::uno::XComponentContext >& xContext );
                  ~TaskCreator(                                                                     );
 
-        css::uno::Reference< css::frame::XFrame > createTask( const OUString& sName );
+        css::uno::Reference< css::frame::XFrame > createTask( const OUString& sName, const utl::MediaDescriptor& rDescriptor );
 
 }; // class TaskCreator
 

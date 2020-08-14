@@ -17,24 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "formulaparser.hxx"
+#include <formulaparser.hxx>
 
 #include <com/sun/star/sheet/ComplexReference.hpp>
 #include <com/sun/star/sheet/ExternalReference.hpp>
 #include <com/sun/star/sheet/ReferenceFlags.hpp>
 #include <com/sun/star/sheet/SingleReference.hpp>
+#include <com/sun/star/table/CellAddress.hpp>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <oox/core/filterbase.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/helper/binaryinputstream.hxx>
-#include "addressconverter.hxx"
-#include "defnamesbuffer.hxx"
-#include "externallinkbuffer.hxx"
-#include "tablebuffer.hxx"
-#include "worksheethelper.hxx"
+#include <addressconverter.hxx>
+#include <biffhelper.hxx>
+#include <defnamesbuffer.hxx>
+#include <externallinkbuffer.hxx>
+#include <tablebuffer.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::sheet;
 using namespace ::com::sun::star::sheet::ReferenceFlags;
@@ -360,7 +361,7 @@ void FormulaFinalizer::appendEmptyParameter( const FunctionInfo& rFuncInfo, size
         default:;
     }
 
-    // if no token has been added, append a OPCODE_MISSING token
+    // if no token has been added, append an OPCODE_MISSING token
     if( nTokenArraySize == maTokens.size() )
         maTokens.append( OPCODE_MISSING );
 }
@@ -462,7 +463,6 @@ protected:
     ApiToken&           getOperandToken( size_t nOpIndex, size_t nTokenIndex );
 
     bool                pushOperandToken( sal_Int32 nOpCode, const WhiteSpaceVec* pSpaces = nullptr );
-    bool                pushAnyOperandToken( const Any& rAny, sal_Int32 nOpCode, const WhiteSpaceVec* pSpaces = nullptr );
     template< typename Type >
     bool                pushValueOperandToken( const Type& rValue, sal_Int32 nOpCode, const WhiteSpaceVec* pSpaces = nullptr );
     template< typename Type >
@@ -477,7 +477,6 @@ protected:
     bool                pushFunctionOperatorToken( const FunctionInfo& rFuncInfo, size_t nParamCount, const WhiteSpaceVec* pLeadingSpaces = nullptr, const WhiteSpaceVec* pClosingSpaces = nullptr );
 
     bool                pushOperand( sal_Int32 nOpCode );
-    bool                pushAnyOperand( const Any& rAny, sal_Int32 nOpCode );
     template< typename Type >
     bool                pushValueOperand( const Type& rValue, sal_Int32 nOpCode );
     template< typename Type >
@@ -537,11 +536,9 @@ protected:
     bool                mbSpecialTokens;            /// True = special handling for tExp and tTbl tokens, false = exit with error.
 
 private:
-    typedef ::std::vector< size_t > SizeTypeVector;
-
     ApiTokenVector      maTokenStorage;             /// Raw unordered token storage.
-    SizeTypeVector      maTokenIndexes;             /// Indexes into maTokenStorage.
-    SizeTypeVector      maOperandSizeStack;         /// Stack with token sizes per operand.
+    std::vector<size_t> maTokenIndexes;             /// Indexes into maTokenStorage.
+    std::vector<size_t> maOperandSizeStack;         /// Stack with token sizes per operand.
     WhiteSpaceVec       maLeadingSpaces;            /// List of whitespaces before next token.
     WhiteSpaceVec       maOpeningSpaces;            /// List of whitespaces before opening parenthesis.
     WhiteSpaceVec       maClosingSpaces;            /// List of whitespaces before closing parenthesis.
@@ -621,8 +618,11 @@ ApiTokenSequence FormulaParserImpl::finalizeImport()
     if( aTokens.hasElements() )
     {
         ApiToken* pToken = aTokens.getArray();
-        for( SizeTypeVector::const_iterator aIt = maTokenIndexes.begin(), aEnd = maTokenIndexes.end(); aIt != aEnd; ++aIt, ++pToken )
-            *pToken = maTokenStorage[ *aIt ];
+        for( const auto& tokenIndex : maTokenIndexes )
+        {
+            *pToken = maTokenStorage[ tokenIndex ];
+            ++pToken;
+        }
     }
     return finalizeTokenArray( aTokens );
 }
@@ -641,7 +641,7 @@ void FormulaParserImpl::appendSpaces( WhiteSpaceVec& orSpaces, sal_Int32 nCount,
 {
     OSL_ENSURE( nCount >= 0, "FormulaParserImpl::appendSpaces - negative count" );
     if( nCount > 0 )
-        orSpaces.push_back( WhiteSpace( nCount, bLineFeed ) );
+        orSpaces.emplace_back( nCount, bLineFeed );
 }
 
 void FormulaParserImpl::appendLeadingSpaces( sal_Int32 nCount, bool bLineFeed )
@@ -678,23 +678,23 @@ Any& FormulaParserImpl::insertRawToken( sal_Int32 nOpCode, size_t nIndexFromEnd 
 
 size_t FormulaParserImpl::appendWhiteSpaceTokens( const WhiteSpaceVec* pSpaces )
 {
-    if( pSpaces && !pSpaces->empty() )
-        for( WhiteSpaceVec::const_iterator aIt = pSpaces->begin(), aEnd = pSpaces->end(); aIt != aEnd; ++aIt )
-            appendRawToken( OPCODE_SPACES ) <<= aIt->first;
+    if( pSpaces )
+        for( const auto& rSpace : *pSpaces )
+            appendRawToken( OPCODE_SPACES ) <<= rSpace.first;
     return pSpaces ? pSpaces->size() : 0;
 }
 
 size_t FormulaParserImpl::insertWhiteSpaceTokens( const WhiteSpaceVec* pSpaces, size_t nIndexFromEnd )
 {
-    if( pSpaces && !pSpaces->empty() )
-        for( WhiteSpaceVec::const_iterator aIt = pSpaces->begin(), aEnd = pSpaces->end(); aIt != aEnd; ++aIt )
-            insertRawToken( OPCODE_SPACES, nIndexFromEnd ) <<= aIt->first;
+    if( pSpaces )
+        for( const auto& rSpace : *pSpaces )
+            insertRawToken( OPCODE_SPACES, nIndexFromEnd ) <<= rSpace.first;
     return pSpaces ? pSpaces->size() : 0;
 }
 
 size_t FormulaParserImpl::getOperandSize( size_t nOpIndex ) const
 {
-    OSL_ENSURE( (nOpIndex < 1) && (1 <= maOperandSizeStack.size()),
+    OSL_ENSURE( (nOpIndex < 1) && (!maOperandSizeStack.empty()),
         "FormulaParserImpl::getOperandSize - invalid parameters" );
     return maOperandSizeStack[ maOperandSizeStack.size() - 1 + nOpIndex ];
 }
@@ -716,8 +716,8 @@ ApiToken& FormulaParserImpl::getOperandToken( size_t nOpIndex, size_t nTokenInde
 {
     SAL_WARN_IF( getOperandSize( nOpIndex ) <= nTokenIndex, "sc.filter",
         "FormulaParserImpl::getOperandToken - invalid parameters" );
-    SizeTypeVector::const_iterator aIndexIt = maTokenIndexes.end();
-    for( SizeTypeVector::const_iterator aEnd = maOperandSizeStack.end(), aIt = aEnd - 1 + nOpIndex; aIt != aEnd; ++aIt )
+    auto aIndexIt = maTokenIndexes.cend();
+    for( auto aEnd = maOperandSizeStack.cend(), aIt = aEnd - 1 + nOpIndex; aIt != aEnd; ++aIt )
         aIndexIt -= *aIt;
     return maTokenStorage[ *(aIndexIt + nTokenIndex) ];
 }
@@ -726,14 +726,6 @@ bool FormulaParserImpl::pushOperandToken( sal_Int32 nOpCode, const WhiteSpaceVec
 {
     size_t nSpacesSize = appendWhiteSpaceTokens( pSpaces );
     appendRawToken( nOpCode );
-    pushOperandSize( nSpacesSize + 1 );
-    return true;
-}
-
-bool FormulaParserImpl::pushAnyOperandToken( const Any& rAny, sal_Int32 nOpCode, const WhiteSpaceVec* pSpaces )
-{
-    size_t nSpacesSize = appendWhiteSpaceTokens( pSpaces );
-    appendRawToken( nOpCode ) = rAny;
     pushOperandSize( nSpacesSize + 1 );
     return true;
 }
@@ -759,7 +751,7 @@ bool FormulaParserImpl::pushParenthesesOperandToken( const WhiteSpaceVec* pClosi
 
 bool FormulaParserImpl::pushUnaryPreOperatorToken( sal_Int32 nOpCode, const WhiteSpaceVec* pSpaces )
 {
-    bool bOk = maOperandSizeStack.size() >= 1;
+    bool bOk = !maOperandSizeStack.empty();
     if( bOk )
     {
         size_t nOpSize = popOperandSize();
@@ -772,7 +764,7 @@ bool FormulaParserImpl::pushUnaryPreOperatorToken( sal_Int32 nOpCode, const Whit
 
 bool FormulaParserImpl::pushUnaryPostOperatorToken( sal_Int32 nOpCode, const WhiteSpaceVec* pSpaces )
 {
-    bool bOk = maOperandSizeStack.size() >= 1;
+    bool bOk = !maOperandSizeStack.empty();
     if( bOk )
     {
         size_t nOpSize = popOperandSize();
@@ -799,7 +791,7 @@ bool FormulaParserImpl::pushBinaryOperatorToken( sal_Int32 nOpCode, const WhiteS
 
 bool FormulaParserImpl::pushParenthesesOperatorToken( const WhiteSpaceVec* pOpeningSpaces, const WhiteSpaceVec* pClosingSpaces )
 {
-    bool bOk = maOperandSizeStack.size() >= 1;
+    bool bOk = !maOperandSizeStack.empty();
     if( bOk )
     {
         size_t nOpSize = popOperandSize();
@@ -847,11 +839,6 @@ bool FormulaParserImpl::pushFunctionOperatorToken( const FunctionInfo& rFuncInfo
 bool FormulaParserImpl::pushOperand( sal_Int32 nOpCode )
 {
     return pushOperandToken( nOpCode, &maLeadingSpaces ) && resetSpaces();
-}
-
-bool FormulaParserImpl::pushAnyOperand( const Any& rAny, sal_Int32 nOpCode )
-{
-    return pushAnyOperandToken( rAny, nOpCode, &maLeadingSpaces ) && resetSpaces();
 }
 
 template< typename Type >
@@ -942,9 +929,6 @@ bool FormulaParserImpl::pushReferenceOperand( const LinkSheetRange& rSheetRange,
 
 bool FormulaParserImpl::pushEmbeddedRefOperand( const DefinedNameBase& rName, bool bPushBadToken )
 {
-    Any aRefAny = rName.getReference( maBaseAddr );
-    if( aRefAny.hasValue() )
-        return pushAnyOperand( aRefAny, OPCODE_PUSH );
     if( bPushBadToken && !rName.getModelName().isEmpty() && (rName.getModelName()[ 0 ] >= ' ') )
         return pushValueOperand( rName.getModelName(), OPCODE_BAD );
     return pushBiffErrorOperand( BIFF_ERR_NAME );
@@ -980,7 +964,7 @@ bool FormulaParserImpl::pushDdeLinkOperand( const OUString& rDdeServer, const OU
 
 bool FormulaParserImpl::pushExternalNameOperand( const ExternalNameRef& rxExtName, const ExternalLink& rExtLink )
 {
-    if( rxExtName.get() ) switch( rExtLink.getLinkType() )
+    if( rxExtName ) switch( rExtLink.getLinkType() )
     {
         case ExternalLinkType::External:
             return pushEmbeddedRefOperand( *rxExtName, false );
@@ -1183,6 +1167,8 @@ OUString FormulaParserImpl::resolveDefinedName( sal_Int32 nTokenIndex ) const
 
 // OOXML/BIFF12 parser implementation =========================================
 
+namespace {
+
 class OoxFormulaParserImpl : public FormulaParserImpl
 {
 public:
@@ -1233,6 +1219,8 @@ private:
     sal_Int64           mnAddDataPos;       /// Current stream position for additional data (tExp, tArray, tMemArea).
     bool                mbNeedExtRefs;      /// True = parser needs initialization of external reference info.
 };
+
+}
 
 OoxFormulaParserImpl::OoxFormulaParserImpl( const FormulaParser& rParent ) :
     FormulaParserImpl( rParent ),
@@ -1431,7 +1419,7 @@ bool OoxFormulaParserImpl::importTableToken( SequenceInputStream& rStrm )
     nCol1 = rStrm.readuInt16();
     nCol2 = rStrm.readuInt16();
     TableRef xTable = getTables().getTable( nTableId );
-    sal_Int32 nTokenIndex = xTable.get() ? xTable->getTokenIndex() : -1;
+    sal_Int32 nTokenIndex = xTable ? xTable->getTokenIndex() : -1;
     if( nTokenIndex >= 0 )
     {
         sal_Int32 nWidth = xTable->getWidth();
@@ -1581,7 +1569,7 @@ bool OoxFormulaParserImpl::importArrayToken( SequenceInputStream& rStrm )
                     appendRawToken( OPCODE_PUSH ) <<= BiffHelper::readString( rStrm, false );
                 break;
                 case BIFF_TOK_ARRAY_BOOL:
-                    appendRawToken( OPCODE_PUSH ) <<= (static_cast< double >( (rStrm.readuInt8() == BIFF_TOK_BOOL_FALSE) ? 0.0 : 1.0 ));
+                    appendRawToken( OPCODE_PUSH ) <<= static_cast< double >( (rStrm.readuInt8() == BIFF_TOK_BOOL_FALSE) ? 0.0 : 1.0 );
                 break;
                 case BIFF_TOK_ARRAY_ERROR:
                     appendRawToken( OPCODE_PUSH ) <<= BiffHelper::calcDoubleFromError( rStrm.readuInt8() );
@@ -1861,7 +1849,6 @@ OUString FormulaParser::importMacroName( const OUString& rFormulaString )
     return OUString();
 }
 
-} // namespace xls
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

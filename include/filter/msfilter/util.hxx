@@ -17,15 +17,15 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <tools/datetime.hxx>
-#include <tools/color.hxx>
 
-namespace com { namespace sun { namespace star {
+class Color;
+
+namespace com::sun::star {
     namespace awt { struct Size; }
     namespace lang { struct Locale; }
-} } }
+}
 
-namespace msfilter {
-namespace util {
+namespace msfilter::util {
 
 /// Returns the best-fit default 8bit encoding for a given locale
 /// i.e. useful when dealing with legacy formats which use legacy text encodings without recording
@@ -36,9 +36,6 @@ MSFILTER_DLLPUBLIC rtl_TextEncoding getBestTextEncodingFromLocale(const css::lan
 MSFILTER_DLLPUBLIC sal_uInt32 BGRToRGB(sal_uInt32 nColour);
 
 /** Convert from DTTM to Writer's DateTime
-
-  @author
-  <a href="mailto:mmaher@openoffice.org">Martin Maher</a
   */
 MSFILTER_DLLPUBLIC DateTime DTTM2DateTime( long lDTTM );
 
@@ -58,15 +55,12 @@ MSFILTER_DLLPUBLIC sal_Unicode bestFitOpenSymbolToMSFont(sal_Unicode cBullet,
     rtl_TextEncoding& r_ioChrSet, OUString& r_ioFontName);
 
 
-#define OOXML_COLOR_AUTO 0x0a
-
 /**
  * Converts tools Color to HTML color (without leading hashmark).
  *
  * @param rColor color to convert
- * @param bAutoColor if OOXML_COLOR_AUTO should be recognized as an auto color
  */
-MSFILTER_DLLPUBLIC OString ConvertColor( const Color &rColor, bool bAutoColor = false );
+MSFILTER_DLLPUBLIC OString ConvertColor( const Color &rColor );
 
 
 /** Paper size in 1/100 millimeters. */
@@ -88,7 +82,7 @@ public:
  *
  * Example: SEQ "Figure" \someoption -> "Figure"
  */
-MSFILTER_DLLPUBLIC OUString findQuotedText( const OUString& rCommand, const sal_Char* cStartQuote, const sal_Unicode uEndQuote );
+MSFILTER_DLLPUBLIC OUString findQuotedText( const OUString& rCommand, const char* cStartQuote, const sal_Unicode uEndQuote );
 
 class MSFILTER_DLLPUBLIC WW8ReadFieldParams
 {
@@ -99,7 +93,6 @@ private:
     sal_Int32 nSavPtr;
 public:
     WW8ReadFieldParams( const OUString& rData );
-    ~WW8ReadFieldParams();
 
     bool GoToTokenParam();
     sal_Int32 SkipToNextToken();
@@ -143,7 +136,7 @@ MSFILTER_DLLPUBLIC sal_uInt8 TransColToIco( const Color& rCol );
 
 }
 
-}
+
 
 #endif
 

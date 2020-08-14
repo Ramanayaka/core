@@ -19,16 +19,17 @@
 
 #include <svl/zforlist.hxx>
 #include <rtl/math.hxx>
+#include <o3tl/float_int_conversion.hxx>
 #include <osl/diagnose.h>
 
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <comphelper/string.hxx>
-#include "rangeseq.hxx"
-#include "document.hxx"
-#include "dociter.hxx"
-#include "scmatrix.hxx"
-#include "formulacell.hxx"
+#include <rangeseq.hxx>
+#include <document.hxx>
+#include <dociter.hxx>
+#include <scmatrix.hxx>
+#include <formulacell.hxx>
 
 using namespace com::sun::star;
 
@@ -52,8 +53,8 @@ static long lcl_DoubleToLong( double fVal )
 {
     double fInt = (fVal >= 0.0) ? ::rtl::math::approxFloor( fVal ) :
                                   ::rtl::math::approxCeil( fVal );
-    if ( fInt >= LONG_MIN && fInt <= LONG_MAX )
-        return (long)fInt;
+    if ( o3tl::convertsToAtLeast(fInt, LONG_MIN) && o3tl::convertsToAtMost(fInt, LONG_MAX) )
+        return static_cast<long>(fInt);
     else
         return 0;       // out of range
 }
@@ -74,7 +75,7 @@ bool ScRangeToSequence::FillLongArray( uno::Any& rAny, ScDocument* pDoc, const S
         sal_Int32* pColAry = aColSeq.getArray();
         for (long nCol = 0; nCol < nColCount; nCol++)
             pColAry[nCol] = lcl_DoubleToLong( pDoc->GetValue(
-                ScAddress( (SCCOL)(nStartCol+nCol), (SCROW)(nStartRow+nRow), nTab ) ) );
+                ScAddress( static_cast<SCCOL>(nStartCol+nCol), static_cast<SCROW>(nStartRow+nRow), nTab ) ) );
 
         pRowAry[nRow] = aColSeq;
     }
@@ -99,7 +100,7 @@ bool ScRangeToSequence::FillLongArray( uno::Any& rAny, const ScMatrix* pMatrix )
         uno::Sequence<sal_Int32> aColSeq( static_cast<sal_Int32>(nColCount) );
         sal_Int32* pColAry = aColSeq.getArray();
         for (SCSIZE nCol = 0; nCol < nColCount; nCol++)
-            if ( pMatrix->IsString( nCol, nRow ) )
+            if ( pMatrix->IsStringOrEmpty( nCol, nRow ) )
                 pColAry[nCol] = 0;
             else
                 pColAry[nCol] = lcl_DoubleToLong( pMatrix->GetDouble( nCol, nRow ) );
@@ -127,7 +128,7 @@ bool ScRangeToSequence::FillDoubleArray( uno::Any& rAny, ScDocument* pDoc, const
         double* pColAry = aColSeq.getArray();
         for (long nCol = 0; nCol < nColCount; nCol++)
             pColAry[nCol] = pDoc->GetValue(
-                ScAddress( (SCCOL)(nStartCol+nCol), (SCROW)(nStartRow+nRow), nTab ) );
+                ScAddress( static_cast<SCCOL>(nStartCol+nCol), static_cast<SCROW>(nStartRow+nRow), nTab ) );
 
         pRowAry[nRow] = aColSeq;
     }
@@ -152,7 +153,7 @@ bool ScRangeToSequence::FillDoubleArray( uno::Any& rAny, const ScMatrix* pMatrix
         uno::Sequence<double> aColSeq( static_cast<sal_Int32>(nColCount) );
         double* pColAry = aColSeq.getArray();
         for (SCSIZE nCol = 0; nCol < nColCount; nCol++)
-            if ( pMatrix->IsString( nCol, nRow ) )
+            if ( pMatrix->IsStringOrEmpty( nCol, nRow ) )
                 pColAry[nCol] = 0.0;
             else
                 pColAry[nCol] = pMatrix->GetDouble( nCol, nRow );
@@ -183,7 +184,7 @@ bool ScRangeToSequence::FillStringArray( uno::Any& rAny, ScDocument* pDoc, const
         for (long nCol = 0; nCol < nColCount; nCol++)
         {
             FormulaError nErrCode = pDoc->GetStringForFormula(
-                        ScAddress((SCCOL)(nStartCol+nCol), (SCROW)(nStartRow+nRow), nTab),
+                        ScAddress(static_cast<SCCOL>(nStartCol+nCol), static_cast<SCROW>(nStartRow+nRow), nTab),
                         pColAry[nCol] );
             if ( nErrCode != FormulaError::NONE )
                 bHasErrors = true;
@@ -214,7 +215,7 @@ bool ScRangeToSequence::FillStringArray( uno::Any& rAny, const ScMatrix* pMatrix
         for (SCSIZE nCol = 0; nCol < nColCount; nCol++)
         {
             OUString aStr;
-            if ( pMatrix->IsString( nCol, nRow ) )
+            if ( pMatrix->IsStringOrEmpty( nCol, nRow ) )
             {
                 if ( !pMatrix->IsEmpty( nCol, nRow ) )
                     aStr = pMatrix->GetString(nCol, nRow).getString();
@@ -256,7 +257,7 @@ bool ScRangeToSequence::FillMixedArray( uno::Any& rAny, ScDocument* pDoc, const 
         {
             uno::Any& rElement = pColAry[nCol];
 
-            ScAddress aPos( (SCCOL)(nStartCol+nCol), (SCROW)(nStartRow+nRow), nTab );
+            ScAddress aPos( static_cast<SCCOL>(nStartCol+nCol), static_cast<SCROW>(nStartRow+nRow), nTab );
             ScRefCellValue aCell(*pDoc, aPos);
 
             if (aCell.isEmpty())
@@ -299,7 +300,7 @@ bool ScRangeToSequence::FillMixedArray( uno::Any& rAny, const ScMatrix* pMatrix,
         uno::Any* pColAry = aColSeq.getArray();
         for (SCSIZE nCol = 0; nCol < nColCount; nCol++)
         {
-            if ( pMatrix->IsString( nCol, nRow ) )
+            if ( pMatrix->IsStringOrEmpty( nCol, nRow ) )
             {
                 OUString aStr;
                 if ( !pMatrix->IsEmpty( nCol, nRow ) )
@@ -360,19 +361,19 @@ ScMatrixRef ScSequenceToMatrix::CreateMixedMatrix( const css::uno::Any & rAny )
     if ( rAny >>= aSequence )
     {
         sal_Int32 nRowCount = aSequence.getLength();
-        const uno::Sequence<uno::Any>* pRowArr = aSequence.getConstArray();
         sal_Int32 nMaxColCount = 0;
-        sal_Int32 nCol, nRow;
-        for (nRow=0; nRow<nRowCount; nRow++)
+        if (nRowCount)
         {
-            sal_Int32 nTmp = pRowArr[nRow].getLength();
-            if ( nTmp > nMaxColCount )
-                nMaxColCount = nTmp;
+            auto pRow = std::max_element(aSequence.begin(), aSequence.end(),
+                [](const uno::Sequence<uno::Any>& a, const uno::Sequence<uno::Any>& b) {
+                    return a.getLength() < b.getLength(); });
+            nMaxColCount = pRow->getLength();
         }
         if ( nMaxColCount && nRowCount )
         {
+            const uno::Sequence<uno::Any>* pRowArr = aSequence.getConstArray();
             OUString aUStr;
-            xMatrix = new ScFullMatrix(
+            xMatrix = new ScMatrix(
                     static_cast<SCSIZE>(nMaxColCount),
                     static_cast<SCSIZE>(nRowCount), 0.0);
             SCSIZE nCols, nRows;
@@ -382,11 +383,11 @@ ScMatrixRef ScSequenceToMatrix::CreateMixedMatrix( const css::uno::Any & rAny )
                 OSL_FAIL( "ScSequenceToMatrix::CreateMixedMatrix: matrix exceeded max size, returning NULL matrix");
                 return nullptr;
             }
-            for (nRow=0; nRow<nRowCount; nRow++)
+            for (sal_Int32 nRow=0; nRow<nRowCount; nRow++)
             {
                 sal_Int32 nColCount = pRowArr[nRow].getLength();
                 const uno::Any* pColArr = pRowArr[nRow].getConstArray();
-                for (nCol=0; nCol<nColCount; nCol++)
+                for (sal_Int32 nCol=0; nCol<nColCount; nCol++)
                 {
                     double fVal;
                     uno::TypeClass eClass;
@@ -416,7 +417,7 @@ ScMatrixRef ScSequenceToMatrix::CreateMixedMatrix( const css::uno::Any & rAny )
                                     static_cast<SCSIZE>(nRow) );
                     }
                 }
-                for (nCol=nColCount; nCol<nMaxColCount; nCol++)
+                for (sal_Int32 nCol=nColCount; nCol<nMaxColCount; nCol++)
                 {
                     xMatrix->PutEmpty(
                             static_cast<SCSIZE>(nCol),

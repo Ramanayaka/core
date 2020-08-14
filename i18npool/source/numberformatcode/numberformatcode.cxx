@@ -20,13 +20,14 @@
 #include <numberformatcode.hxx>
 #include <com/sun/star/i18n/KNumberFormatUsage.hpp>
 #include <com/sun/star/i18n/KNumberFormatType.hpp>
-#include <com/sun/star/i18n/LocaleData.hpp>
+#include <com/sun/star/i18n/LocaleData2.hpp>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 NumberFormatCodeMapper::NumberFormatCodeMapper(
             const css::uno::Reference < css::uno::XComponentContext >& rxContext )
 {
-        m_xLocaleData.set( css::i18n::LocaleData::create( rxContext ) );
+        m_xLocaleData.set( css::i18n::LocaleData2::create( rxContext ) );
 }
 
 
@@ -45,19 +46,19 @@ NumberFormatCodeMapper::getDefault( sal_Int16 formatType, sal_Int16 formatUsage,
     osl::MutexGuard g(maMutex);
     const css::uno::Sequence< css::i18n::FormatElement > &aFormatSeq = getFormats( rLocale );
 
-    for (sal_Int32 i = 0; i < aFormatSeq.getLength(); i++) {
-        if (aFormatSeq[i].isDefault && aFormatSeq[i].formatType == elementType &&
-            aFormatSeq[i].formatUsage == elementUsage) {
-            css::i18n::NumberFormatCode anumberFormatCode(formatType,
-                                                                    formatUsage,
-                                                                    aFormatSeq[i].formatCode,
-                                                                    aFormatSeq[i].formatName,
-                                                                    aFormatSeq[i].formatKey,
-                                                                    aFormatSeq[i].formatIndex,
-                                                                    true);
-            return anumberFormatCode;
-        }
-    }
+    auto pFormat = std::find_if(aFormatSeq.begin(), aFormatSeq.end(),
+        [&elementType, &elementUsage](const css::i18n::FormatElement& rFormat) {
+            return rFormat.isDefault
+                && rFormat.formatType == elementType
+                && rFormat.formatUsage == elementUsage; });
+    if (pFormat != aFormatSeq.end())
+        return css::i18n::NumberFormatCode(formatType,
+                                           formatUsage,
+                                           pFormat->formatCode,
+                                           pFormat->formatName,
+                                           pFormat->formatKey,
+                                           pFormat->formatIndex,
+                                           true);
     css::i18n::NumberFormatCode defaultNumberFormatCode;
     return defaultNumberFormatCode;
 }
@@ -69,18 +70,16 @@ NumberFormatCodeMapper::getFormatCode( sal_Int16 formatIndex, const css::lang::L
     osl::MutexGuard g(maMutex);
     const css::uno::Sequence< css::i18n::FormatElement > &aFormatSeq = getFormats( rLocale );
 
-    for (sal_Int32 i = 0; i < aFormatSeq.getLength(); i++) {
-        if (aFormatSeq[i].formatIndex == formatIndex) {
-            css::i18n::NumberFormatCode anumberFormatCode(mapElementTypeStringToShort(aFormatSeq[i].formatType),
-                                                                    mapElementUsageStringToShort(aFormatSeq[i].formatUsage),
-                                                                    aFormatSeq[i].formatCode,
-                                                                    aFormatSeq[i].formatName,
-                                                                    aFormatSeq[i].formatKey,
-                                                                    aFormatSeq[i].formatIndex,
-                                                                    aFormatSeq[i].isDefault);
-            return anumberFormatCode;
-        }
-    }
+    auto pFormat = std::find_if(aFormatSeq.begin(), aFormatSeq.end(),
+        [formatIndex](const css::i18n::FormatElement& rFormat) { return rFormat.formatIndex == formatIndex; });
+    if (pFormat != aFormatSeq.end())
+        return css::i18n::NumberFormatCode(mapElementTypeStringToShort(pFormat->formatType),
+                                           mapElementUsageStringToShort(pFormat->formatUsage),
+                                           pFormat->formatCode,
+                                           pFormat->formatName,
+                                           pFormat->formatKey,
+                                           pFormat->formatIndex,
+                                           pFormat->isDefault);
     css::i18n::NumberFormatCode defaultNumberFormatCode;
     return defaultNumberFormatCode;
 }
@@ -92,30 +91,22 @@ NumberFormatCodeMapper::getAllFormatCode( sal_Int16 formatUsage, const css::lang
     osl::MutexGuard g(maMutex);
     const css::uno::Sequence< css::i18n::FormatElement > &aFormatSeq = getFormats( rLocale );
 
-    sal_Int32 i, count;
-    count = 0;
-    for (i = 0; i < aFormatSeq.getLength(); i++) {
-        sal_Int16 elementUsage = mapElementUsageStringToShort(aFormatSeq[i].formatUsage);
-        if ( elementUsage == formatUsage )
-            count++;
-    }
+    std::vector<css::i18n::NumberFormatCode> aVec;
+    aVec.reserve(aFormatSeq.getLength());
 
-    css::uno::Sequence<css::i18n::NumberFormatCode> seq(count);
-    sal_Int32 j = 0;
-    for (i = 0; i < aFormatSeq.getLength(); i++) {
-        sal_Int16 elementUsage = mapElementUsageStringToShort(aFormatSeq[i].formatUsage);
+    for (const auto& rFormat : aFormatSeq) {
+        sal_Int16 elementUsage = mapElementUsageStringToShort(rFormat.formatUsage);
         if ( elementUsage == formatUsage ) {
-            seq[j] = css::i18n::NumberFormatCode(mapElementTypeStringToShort(aFormatSeq[i].formatType),
-                                                            formatUsage,
-                                                            aFormatSeq[i].formatCode,
-                                                            aFormatSeq[i].formatName,
-                                                            aFormatSeq[i].formatKey,
-                                                            aFormatSeq[i].formatIndex,
-                                                            aFormatSeq[i].isDefault);
-            j++;
+            aVec.emplace_back(mapElementTypeStringToShort(rFormat.formatType),
+                              formatUsage,
+                              rFormat.formatCode,
+                              rFormat.formatName,
+                              rFormat.formatKey,
+                              rFormat.formatIndex,
+                              rFormat.isDefault);
         }
     }
-    return seq;
+    return comphelper::containerToSequence(aVec);
 }
 
 
@@ -125,18 +116,20 @@ NumberFormatCodeMapper::getAllFormatCodes( const css::lang::Locale& rLocale )
     osl::MutexGuard g(maMutex);
     const css::uno::Sequence< css::i18n::FormatElement > &aFormatSeq = getFormats( rLocale );
 
-    css::uno::Sequence<css::i18n::NumberFormatCode> seq(aFormatSeq.getLength());
-    for (sal_Int32 i = 0; i < aFormatSeq.getLength(); i++)
-    {
-        seq[i] = css::i18n::NumberFormatCode(mapElementTypeStringToShort(aFormatSeq[i].formatType),
-                                                        mapElementUsageStringToShort(aFormatSeq[i].formatUsage),
-                                                        aFormatSeq[i].formatCode,
-                                                        aFormatSeq[i].formatName,
-                                                        aFormatSeq[i].formatKey,
-                                                        aFormatSeq[i].formatIndex,
-                                                        aFormatSeq[i].isDefault);
-    }
-    return seq;
+    std::vector<css::i18n::NumberFormatCode> aVec;
+    aVec.reserve(aFormatSeq.getLength());
+
+    std::transform(aFormatSeq.begin(), aFormatSeq.end(), std::back_inserter(aVec),
+        [](const css::i18n::FormatElement& rFormat) -> css::i18n::NumberFormatCode {
+            return { mapElementTypeStringToShort(rFormat.formatType),
+                     mapElementUsageStringToShort(rFormat.formatUsage),
+                     rFormat.formatCode,
+                     rFormat.formatName,
+                     rFormat.formatKey,
+                     rFormat.formatIndex,
+                     rFormat.isDefault };
+        });
+    return comphelper::containerToSequence(aVec);
 }
 
 
@@ -172,11 +165,11 @@ NumberFormatCodeMapper::mapElementTypeShortToString(sal_Int16 formatType)
     switch ( formatType )
     {
         case css::i18n::KNumberFormatType::SHORT :
-            return OUString(  "short"  );
+            return "short";
         case css::i18n::KNumberFormatType::MEDIUM :
-            return OUString(  "medium"  );
+            return "medium";
         case css::i18n::KNumberFormatType::LONG :
-            return OUString(  "long"  );
+            return "long";
     }
     return OUString();
 }
@@ -200,21 +193,21 @@ NumberFormatCodeMapper::mapElementUsageShortToString(sal_Int16 formatUsage)
     switch ( formatUsage )
     {
         case css::i18n::KNumberFormatUsage::DATE :
-            return OUString(  "DATE"  );
+            return "DATE";
         case css::i18n::KNumberFormatUsage::TIME :
-            return OUString(  "TIME"  );
+            return "TIME";
         case css::i18n::KNumberFormatUsage::DATE_TIME :
-            return OUString(  "DATE_TIME"  );
+            return "DATE_TIME";
         case css::i18n::KNumberFormatUsage::FIXED_NUMBER :
-            return OUString(  "FIXED_NUMBER"  );
+            return "FIXED_NUMBER";
         case css::i18n::KNumberFormatUsage::FRACTION_NUMBER :
-            return OUString(  "FRACTION_NUMBER"  );
+            return "FRACTION_NUMBER";
         case css::i18n::KNumberFormatUsage::PERCENT_NUMBER :
-            return OUString(  "PERCENT_NUMBER"  );
+            return "PERCENT_NUMBER";
         case css::i18n::KNumberFormatUsage::CURRENCY :
-            return OUString(  "CURRENCY"  );
+            return "CURRENCY";
         case css::i18n::KNumberFormatUsage::SCIENTIFIC_NUMBER :
-            return OUString(  "SCIENTIFIC_NUMBER"  );
+            return "SCIENTIFIC_NUMBER";
     }
     return OUString();
 }
@@ -247,7 +240,7 @@ NumberFormatCodeMapper::mapElementUsageStringToShort(const OUString& formatUsage
 OUString SAL_CALL
 NumberFormatCodeMapper::getImplementationName()
 {
-    return OUString("com.sun.star.i18n.NumberFormatCodeMapper");
+    return "com.sun.star.i18n.NumberFormatCodeMapper";
 }
 
 sal_Bool SAL_CALL NumberFormatCodeMapper::supportsService(const OUString& rServiceName)
@@ -258,11 +251,10 @@ sal_Bool SAL_CALL NumberFormatCodeMapper::supportsService(const OUString& rServi
 css::uno::Sequence< OUString > SAL_CALL
 NumberFormatCodeMapper::getSupportedServiceNames()
 {
-    css::uno::Sequence< OUString > aRet { "com.sun.star.i18n.NumberFormatMapper" };
-    return aRet;
+    return { "com.sun.star.i18n.NumberFormatMapper" };
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_i18n_NumberFormatCodeMapper_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

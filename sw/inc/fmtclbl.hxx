@@ -20,8 +20,8 @@
 #define INCLUDED_SW_INC_FMTCLBL_HXX
 
 #include <svl/eitem.hxx>
-#include <hintids.hxx>
-#include <format.hxx>
+#include "hintids.hxx"
+#include "format.hxx"
 #include "swdllapi.h"
 
 /// If text in multi-column sections should be evenly distributed.
@@ -32,12 +32,12 @@ public:
         : SfxBoolItem( RES_COLUMNBALANCE, bFlag ) {}
 
     /// "pure virtual methods" of SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    virtual SwFormatNoBalancedColumns* Clone( SfxItemPool *pPool = nullptr ) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 inline const SwFormatNoBalancedColumns &SwAttrSet::GetBalancedColumns(bool bInP) const
-    { return static_cast<const SwFormatNoBalancedColumns&>(Get( RES_COLUMNBALANCE, bInP )); }
+    { return Get( RES_COLUMNBALANCE, bInP ); }
 
 inline const SwFormatNoBalancedColumns &SwFormat::GetBalancedColumns(bool bInP) const
     { return m_aSet.GetBalancedColumns( bInP ); }

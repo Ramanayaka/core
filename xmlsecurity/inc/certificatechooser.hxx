@@ -20,27 +20,17 @@
 #ifndef INCLUDED_XMLSECURITY_INC_CERTIFICATECHOOSER_HXX
 #define INCLUDED_XMLSECURITY_INC_CERTIFICATECHOOSER_HXX
 
-#include <svtools/simptabl.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <com/sun/star/xml/crypto/XSecurityEnvironment.hpp>
-#include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <sigstruct.hxx>
+#include <vcl/weld.hxx>
 
+namespace com::sun::star {
+    namespace security { class XCertificate; }
+    namespace xml::crypto {
+        class XSecurityEnvironment;
+    }
+}
 
-namespace com {
-namespace sun {
-namespace star {
-namespace security {
-    class XCertificate; }
-namespace xml { namespace crypto {
-    class XSecurityEnvironment; }}
-}}}
-
-class HeaderBar;
+namespace com::sun::star::xml::crypto { class XXMLSecurityContext; }
 
 struct UserData
 {
@@ -49,44 +39,58 @@ struct UserData
     css::uno::Reference<css::xml::crypto::XSecurityEnvironment> xSecurityEnvironment;
 };
 
-class CertificateChooser : public ModalDialog
+enum class UserAction
+{
+    Sign,
+    SelectSign, // Select signing certificate
+    Encrypt
+};
+
+class CertificateChooser final : public weld::GenericDialogController
 {
 private:
-    css::uno::Reference< css::uno::XComponentContext > mxCtx;
     std::vector< css::uno::Reference< css::xml::crypto::XXMLSecurityContext > > mxSecurityContexts;
     std::vector<std::shared_ptr<UserData>> mvUserData;
 
-    VclPtr<SvSimpleTable>   m_pCertLB;
-    VclPtr<PushButton>      m_pViewBtn;
-    VclPtr<OKButton>        m_pOKBtn;
-    VclPtr<Edit> m_pDescriptionED;
-
     bool                    mbInitialized;
+    UserAction const        meAction;
+    OUString                msPreferredKey;
+    css::uno::Reference<css::security::XCertificate> mxEncryptToSelf;
 
-    DECL_LINK(ViewButtonHdl, Button*, void);
-    DECL_LINK(CertificateHighlightHdl, SvTreeListBox*, void );
-    DECL_LINK(CertificateSelectHdl, SvTreeListBox*, bool );
+    std::unique_ptr<weld::Label>    m_xFTSign;
+    std::unique_ptr<weld::Label>    m_xFTEncrypt;
+    std::unique_ptr<weld::TreeView> m_xCertLB;
+    std::unique_ptr<weld::Button>   m_xViewBtn;
+    std::unique_ptr<weld::Button>   m_xOKBtn;
+    std::unique_ptr<weld::Label>    m_xFTDescription;
+    std::unique_ptr<weld::Entry>    m_xDescriptionED;
+
+    DECL_LINK(ViewButtonHdl, weld::Button&, void);
+    DECL_LINK(CertificateHighlightHdl, weld::TreeView&, void);
+    DECL_LINK(CertificateSelectHdl, weld::TreeView&, bool);
 
     void ImplShowCertificateDetails();
     void ImplInitialize();
 
-    void HandleOneUsageBit(OUString& string, int& bits, int bit, const char *name);
+    static void HandleOneUsageBit(OUString& string, int& bits, int bit, const char *name);
 
 public:
-    CertificateChooser(vcl::Window* pParent,
-                       css::uno::Reference< css::uno::XComponentContext>& rxCtx,
-                       std::vector< css::uno::Reference< css::xml::crypto::XXMLSecurityContext > >& rxSecurityContexts);
+    CertificateChooser(weld::Window* pParent,
+                       std::vector< css::uno::Reference< css::xml::crypto::XXMLSecurityContext > > const & rxSecurityContexts,
+                       UserAction eAction);
     virtual ~CertificateChooser() override;
-    virtual void dispose() override;
 
-    short Execute() override;
+    short run() override;
 
-    css::uno::Reference< css::security::XCertificate > GetSelectedCertificate();
-    css::uno::Reference< css::xml::crypto::XXMLSecurityContext > GetSelectedSecurityContext();
+    css::uno::Sequence<css::uno::Reference< css::security::XCertificate > > GetSelectedCertificates();
+    css::uno::Reference< css::xml::crypto::XXMLSecurityContext > GetSelectedSecurityContext() const;
     /// Gets the description string provided when selecting the certificate.
-    OUString GetDescription();
+    OUString GetDescription() const;
 
-    OUString UsageInClearText(int bits);
+    /// Returns the usage string of the selected certificate, if any.
+    OUString GetUsageText();
+
+    static OUString UsageInClearText(int bits);
 };
 
 #endif // INCLUDED_XMLSECURITY_INC_CERTIFICATECHOOSER_HXX

@@ -23,13 +23,10 @@
 #include <memory>
 #include <stack>
 #include <filter/msfilter/escherex.hxx>
-#include "xlescher.hxx"
 #include "xeroot.hxx"
-#include <vector>
+#include <unotools/tempfile.hxx>
 
-namespace utl { class TempFile; }
-
-class SvStream;
+namespace com::sun::star::awt { class XControlModel; }
 
 class XclEscherExGlobal : public EscherExGlobal, protected XclExpRoot
 {
@@ -53,13 +50,12 @@ class XclEscherClientTextbox;
 class XclExpOcxControlObj;
 class XclExpTbxControlObj;
 class XclExpShapeObj;
-class EscherExHostAppData;
 class ShapeInteractionHelper
 {
 public:
    static XclExpShapeObj* CreateShapeObj( XclExpObjectManager& rObjMgr, const css::uno::Reference<
                             css::drawing::XShape >& xShape, ScDocument* pDoc );
-   static void PopulateShapeInteractionInfo( XclExpObjectManager& rObjMgr, const css::uno::Reference< css::drawing::XShape >& xShape, EscherExHostAppData& rHostAppData );
+   static void PopulateShapeInteractionInfo( const XclExpObjectManager& rObjMgr, const css::uno::Reference< css::drawing::XShape >& xShape, EscherExHostAppData& rHostAppData );
 };
 
 class XclEscherEx : public EscherEx, protected XclExpRoot
@@ -122,10 +118,10 @@ private:
 
 private:
     XclExpObjectManager&    mrObjMgr;
-    std::stack< std::pair< XclObj*, XclEscherHostAppData* > > aStack;
+    std::stack< std::pair< XclObj*, std::unique_ptr<XclEscherHostAppData> > > aStack;
     XclObj*                 pCurrXclObj;
-    XclEscherHostAppData*   pCurrAppData;
-    XclEscherClientData*    pTheClientData; // always the same
+    std::unique_ptr<XclEscherHostAppData> pCurrAppData;
+    std::unique_ptr<XclEscherClientData>  pTheClientData; // always the same
     XclEscherClientTextbox* pAdditionalText;
     sal_uInt16              nAdditionalText;
     sal_uInt32              mnNextKey;

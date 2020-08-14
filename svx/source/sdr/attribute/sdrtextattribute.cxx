@@ -18,20 +18,16 @@
  */
 
 
-#include <svx/sdr/attribute/sdrtextattribute.hxx>
-#include <svx/sdr/attribute/sdrformtextattribute.hxx>
+#include <sdr/attribute/sdrtextattribute.hxx>
+#include <sdr/attribute/sdrformtextattribute.hxx>
 #include <svx/svdotext.hxx>
 #include <editeng/outlobj.hxx>
-#include <editeng/editobj.hxx>
-#include <editeng/flditem.hxx>
 #include <svx/sdr/properties/properties.hxx>
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpSdrTextAttribute
         {
         public:
@@ -91,7 +87,7 @@ namespace drawinglayer
                 bool bWrongSpell,
                 bool bChainable)
             :   mpSdrText(pSdrText),
-                mxOutlinerParaObject(new OutlinerParaObject(rOutlinerParaObject)),
+                mxOutlinerParaObject(std::make_shared<OutlinerParaObject>(rOutlinerParaObject)),
                 maSdrFormTextAttribute(),
                 maTextLeftDistance(aTextLeftDistance),
                 maTextUpperDistance(aTextUpperDistance),
@@ -111,20 +107,20 @@ namespace drawinglayer
                 mbWrongSpell(bWrongSpell),
                 mbChainable(bChainable)
             {
-                if(pSdrText)
-                {
-                    if(XFormTextStyle::NONE != eFormTextStyle)
-                    {
-                        // text on path. Create FormText attribute
-                        const SfxItemSet& rSet = pSdrText->GetItemSet();
-                        maSdrFormTextAttribute = SdrFormTextAttribute(rSet);
-                    }
+                if(!pSdrText)
+                    return;
 
-                    // #i101556# init with version number to detect changes of single text
-                    // attribute and/or style sheets in primitive data without having to
-                    // copy that data locally (which would be better from principle)
-                    maPropertiesVersion = pSdrText->GetObject().GetProperties().getVersion();
+                if(XFormTextStyle::NONE != eFormTextStyle)
+                {
+                    // text on path. Create FormText attribute
+                    const SfxItemSet& rSet = pSdrText->GetItemSet();
+                    maSdrFormTextAttribute = SdrFormTextAttribute(rSet);
                 }
+
+                // #i101556# init with version number to detect changes of single text
+                // attribute and/or style sheets in primitive data without having to
+                // copy that data locally (which would be better from principle)
+                maPropertiesVersion = pSdrText->GetObject().GetProperties().getVersion();
             }
 
             ImpSdrTextAttribute()
@@ -279,7 +275,7 @@ namespace drawinglayer
         {
         }
 
-        SdrTextAttribute::SdrTextAttribute(SdrTextAttribute&& rCandidate)
+        SdrTextAttribute::SdrTextAttribute(SdrTextAttribute&& rCandidate) noexcept
         :   mpSdrTextAttribute(std::move(rCandidate.mpSdrTextAttribute))
         {
         }
@@ -299,7 +295,7 @@ namespace drawinglayer
             return *this;
         }
 
-        SdrTextAttribute& SdrTextAttribute::operator=(SdrTextAttribute&& rCandidate)
+        SdrTextAttribute& SdrTextAttribute::operator=(SdrTextAttribute&& rCandidate) noexcept
         {
             mpSdrTextAttribute = std::move(rCandidate.mpSdrTextAttribute);
             return *this;
@@ -420,7 +416,7 @@ namespace drawinglayer
                 getSdrText().GetObject().impGetScrollTextTiming(rAnimList, fFrameLength, fTextLength);
             }
         }
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

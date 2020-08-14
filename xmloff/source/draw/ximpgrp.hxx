@@ -21,8 +21,6 @@
 #define INCLUDED_XMLOFF_SOURCE_DRAW_XIMPGRP_HXX
 
 #include <xmloff/xmlictxt.hxx>
-#include "sdxmlimp_impl.hxx"
-#include <xmloff/nmspmap.hxx>
 #include <com/sun/star/drawing/XShapes.hpp>
 #include "ximpshap.hxx"
 
@@ -37,11 +35,11 @@ public:
 
     SdXMLGroupShapeContext( SvXMLImport& rImport, sal_uInt16 nPrfx, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes,
+        css::uno::Reference< css::drawing::XShapes > const & rShapes,
         bool bTemporaryShape);
     virtual ~SdXMLGroupShapeContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
     virtual void StartElement(const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList) override;

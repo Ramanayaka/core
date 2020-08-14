@@ -24,16 +24,11 @@
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XDataSource.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/XComponentLoader.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
 #include <com/sun/star/sdb/application/XDatabaseDocumentUI.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <comphelper/namedvaluecollection.hxx>
-
-#include <memory>
 
 namespace dbaui
 {
@@ -144,12 +139,10 @@ namespace dbaui
     };
 
     // QueryDesigner
-    class QueryDesigner : public DatabaseObjectView
+    class QueryDesigner final : public DatabaseObjectView
     {
-    protected:
         sal_Int32                           m_nCommandType;
 
-    protected:
         virtual void fillDispatchArgs(
                   ::comphelper::NamedValueCollection& i_rDispatchArgs,
             const css::uno::Any& _aDataSource,

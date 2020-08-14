@@ -20,12 +20,12 @@
 #ifndef INCLUDED_RTL_URI_H
 #define INCLUDED_RTL_URI_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
-#include <rtl/textenc.h>
-#include <rtl/ustring.h>
-#include <sal/saldllapi.h>
-#include <sal/types.h>
+#include "rtl/textenc.h"
+#include "rtl/ustring.h"
+#include "sal/saldllapi.h"
+#include "sal/types.h"
 
 #if defined __cplusplus
 extern "C" {
@@ -309,7 +309,7 @@ SAL_DLLPUBLIC void SAL_CALL rtl_uriDecode(
     signaled.
 
     @param pRelUriRef
-    An URI reference that may be either absolute or relative.  If it is
+    A URI reference that may be either absolute or relative.  If it is
     absolute, it will be returned unmodified.
 
     @param pResult

@@ -17,17 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/core/recordparser.hxx"
+#include <oox/core/recordparser.hxx>
 
 #include <vector>
+#include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/XLocator.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <osl/diagnose.h>
-#include "oox/core/fragmenthandler.hxx"
+#include <oox/core/fragmenthandler.hxx>
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
@@ -80,7 +81,7 @@ sal_Int32 SAL_CALL Locator::getLineNumber()
 OUString SAL_CALL Locator::getPublicId()
 {
     checkDispose();
-    return mpParser->getInputSource().maPublicId;
+    return OUString();
 }
 
 OUString SAL_CALL Locator::getSystemId()
@@ -137,7 +138,7 @@ void ContextStack::pushContext( const RecordInfo& rRecInfo, const ContextHandler
 {
     OSL_ENSURE( (rRecInfo.mnEndRecId >= 0) || maStack.empty() || hasCurrentEndRecId(),
         "ContextStack::pushContext - nested incomplete context record identifiers" );
-    maStack.push_back( ContextInfo( rRecInfo, rxContext ) );
+    maStack.emplace_back( rRecInfo, rxContext );
 }
 
 void ContextStack::popContext()
@@ -152,12 +153,12 @@ void ContextStack::popContext()
     }
 }
 
-} // namespace prv
+} // namespace oox::core::prv
 
 namespace {
 
 /** Reads a byte from the passed stream, returns true on success. */
-inline bool lclReadByte( sal_uInt8& ornByte, BinaryInputStream& rStrm )
+bool lclReadByte( sal_uInt8& ornByte, BinaryInputStream& rStrm )
 {
     return rStrm.readMemory( &ornByte, 1 ) == 1;
 }
@@ -321,7 +322,6 @@ const RecordInfo* RecordParser::getEndRecordInfo( sal_Int32 nRecId ) const
     return (aIt == maEndMap.end()) ? nullptr : &aIt->second;
 }
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

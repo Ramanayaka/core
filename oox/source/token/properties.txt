@@ -21,7 +21,7 @@ Autocomplete
 BackColor
 BackColorTransparency
 BackGraphicLocation
-BackGraphicURL
+BackGraphic
 Background
 BackgroundColor
 BasicLibraries
@@ -50,6 +50,7 @@ CellStyle
 CenterHorizontally
 CenterVertically
 Change
+CharBackColor
 CharCaseMap
 CharColor
 CharContoured
@@ -81,6 +82,7 @@ CharPostureComplex
 CharShadowed
 CharStrikeout
 CharStyleName
+CharTransparence
 CharUnderline
 CharUnderlineColor
 CharUnderlineHasColor
@@ -111,6 +113,7 @@ CursorPositionX
 CursorPositionY
 CurveName
 CurveStyle
+CustomLabelPosition
 CustomShapeGeometry
 D3DSceneAmbientColor
 D3DSceneLightColor2
@@ -130,6 +133,7 @@ DefaultSpinValue
 DefaultState
 DefaultText
 DefaultValue
+DeletedLegendEntries
 DiagonalBLTR
 DiagonalTLBR
 DialogLibraries
@@ -158,6 +162,7 @@ ExternalLinks
 ExtrapolateBackward
 ExtrapolateForward
 FileFormat
+FillBackground
 FillBitmapMode
 FillBitmapName
 FillBitmapPositionOffsetX
@@ -165,11 +170,12 @@ FillBitmapPositionOffsetY
 FillBitmapRectanglePoint
 FillBitmapSizeX
 FillBitmapSizeY
-FillBitmapURL
+FillBitmap
 FillColor
 FillGradient
 FillGradientName
 FillHatch
+FillHatchName
 FillStyle
 FillTransparence
 FillTransparenceGradient
@@ -196,18 +202,23 @@ FooterIsShared
 ForceIntercept
 FormulaConvention
 FrameIsAutomaticHeight
+FromWordArt
 Function
 GapwidthSequence
 GenerateVbaEvents
 Geometry3D
+GlowEffect
+GlowEffectRadius
 GradientName
+HatchName
 Graphic
+GraphicBitmap
 GraphicColorMode
 GraphicCrop
 GraphicSize
-GraphicURL
 GridColor
 GroupInfo
+GroupName
 HScroll
 Handles
 HasAutoShowInfo
@@ -243,7 +254,6 @@ IgnoreBlankCells
 IgnoreCase
 IgnoreLeadingSpaces
 ImagePosition
-ImageURL
 IncludeHiddenCells
 InputMessage
 InputTitle
@@ -262,7 +272,6 @@ IsLoaded
 IsNumbering
 IsOutlineSymbolsSet
 IsPlaceholderDependent
-IsPostRotateAngle
 IsSharedFormula
 IsStartOfNewPage
 IsTextWrapped
@@ -278,6 +287,11 @@ LabelBorderWidth
 LabelPlacement
 LabelPosition
 LabelSeparator
+LabelFillBackground
+LabelFillHatchName
+LabelFillStyle
+LabelFillColor
+CustomLabelFields
 LayoutInfo
 LeftBorder
 LeftBorderDistance
@@ -285,6 +299,7 @@ LeftMargin
 LeftPageFooterContent
 LeftPageHeaderContent
 LegacyFragment
+LineCap
 LineColor
 LineCount
 LineDash
@@ -336,6 +351,7 @@ Opaque
 Orientation
 OutputPosition
 OverlapSequence
+Overlay
 PageScale
 PageStyle
 PageToggle
@@ -387,6 +403,7 @@ RangeXMaximum
 RangeXMinimum
 RangeYMaximum
 RangeYMinimum
+ReadOnly
 RefAngle
 RefR
 RefX
@@ -436,7 +453,10 @@ SelectedPage
 Shadow
 ShadowColor
 ShadowFormat
+ShadowSizeX
+ShadowSizeY
 ShadowTransparence
+ShadowBlur
 ShadowXDistance
 ShadowYDistance
 Show
@@ -454,6 +474,8 @@ ShowFormulas
 ShowGrid
 ShowHighLow
 ShowInputMessage
+ShowLeaderLines
+ShowLegendEntry
 ShowList
 ShowNegativeError
 ShowObjects
@@ -503,6 +525,7 @@ Text
 TextAutoGrowHeight
 TextBox
 TextBreak
+TextCameraZRotateAngle
 TextColor
 TextFitToSize
 TextFrames
@@ -527,6 +550,7 @@ TopMargin
 TotalsRow
 Transformation
 TransitionDirection
+TransitionDuration
 TransitionFadeColor
 TransitionSubtype
 TransitionType

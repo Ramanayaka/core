@@ -30,27 +30,26 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XNameContainer; }
     namespace frame { class XModel; }
     namespace script { class XLibraryContainer; }
-    namespace script { namespace vba { class XVBAMacroResolver; } }
+    namespace script::vba { class XVBAMacroResolver; }
     namespace uno { class XComponentContext; }
     namespace uno { class XInterface; }
     namespace io { class XInputStream; }
-} } }
+}
 
 namespace oox {
     class GraphicHelper;
     class StorageBase;
 }
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 class VbaModule;
 
-class OOX_DLLPUBLIC VbaFilterConfig
+class VbaFilterConfig
 {
 public:
     explicit            VbaFilterConfig(
@@ -146,7 +145,7 @@ public:
     /** Attaches VBA macros to objects registered via registerMacroAttacher(). */
     void                attachMacros();
 
-    void                setOleOverridesSink( css::uno::Reference< css::container::XNameContainer >&  rxOleOverridesSink ){ mxOleOverridesSink = rxOleOverridesSink; }
+    void                setOleOverridesSink( css::uno::Reference< css::container::XNameContainer > const & rxOleOverridesSink ){ mxOleOverridesSink = rxOleOverridesSink; }
 
 protected:
     /** Registers a dummy module that will be created when the VBA project is
@@ -198,14 +197,13 @@ private:
     OUString            maPrjName;          ///< Name of the VBA project.
     css::uno::Reference< css::container::XNameContainer >
                         mxOleOverridesSink;
-    typedef RefMap< rtl::OUString, VbaModule > VbaModuleMap;
+    typedef RefMap< OUString, VbaModule > VbaModuleMap;
     VbaModuleMap        maModules;
     VbaModuleMap        maModulesByStrm;
 };
 
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 #endif
 

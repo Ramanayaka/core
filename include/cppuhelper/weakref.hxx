@@ -19,13 +19,13 @@
 #ifndef INCLUDED_CPPUHELPER_WEAKREF_HXX
 #define INCLUDED_CPPUHELPER_WEAKREF_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cstddef>
 
-#include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/XInterface.hpp>
-#include <cppuhelper/cppuhelperdllapi.h>
+#include "com/sun/star/uno/Reference.hxx"
+#include "com/sun/star/uno/XInterface.hpp"
+#include "cppuhelper/cppuhelperdllapi.h"
 
 
 namespace com
@@ -64,7 +64,7 @@ public:
     WeakReferenceHelper( const WeakReferenceHelper & rWeakRef );
 
 #if defined LIBO_INTERNAL_ONLY
-    WeakReferenceHelper(WeakReferenceHelper && other): m_pImpl(other.m_pImpl)
+    WeakReferenceHelper(WeakReferenceHelper && other) noexcept : m_pImpl(other.m_pImpl)
     { other.m_pImpl = nullptr; }
 #endif
 
@@ -171,6 +171,12 @@ public:
     WeakReference & SAL_CALL operator = (
             const css::uno::Reference< interface_type > & xInt )
         { WeakReferenceHelper::operator=(xInt); return *this; }
+
+#if defined LIBO_INTERNAL_ONLY
+    WeakReference & SAL_CALL operator = (
+            css::uno::Reference< interface_type > && xInt )
+        { WeakReferenceHelper::operator=(std::move(xInt)); return *this; }
+#endif
 
     /**  Gets a hard reference to the object.
 

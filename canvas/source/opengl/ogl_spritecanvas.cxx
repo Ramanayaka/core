@@ -8,14 +8,9 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <com/sun/star/lang/NoSupportException.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <comphelper/servicedecl.hxx>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <osl/mutex.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
@@ -23,13 +18,7 @@
 #include "ogl_canvascustomsprite.hxx"
 #include "ogl_spritecanvas.hxx"
 
-#define SPRITECANVAS_SERVICE_NAME        "com.sun.star.rendering.SpriteCanvas.OGL"
-#define SPRITECANVAS_IMPLEMENTATION_NAME "com.sun.star.comp.rendering.SpriteCanvas.OGL"
-
-
 using namespace ::com::sun::star;
-
-namespace sdecl = comphelper::service_decl;
 
 namespace oglcanvas
 {
@@ -42,32 +31,31 @@ namespace oglcanvas
     void SpriteCanvas::initialize()
     {
         // Only call initialize when not in probe mode
-        if( maArguments.getLength() == 0 )
+        if( !maArguments.hasElements() )
             return;
 
         SAL_INFO("canvas.ogl", "SpriteCanvas::initialize called" );
 
         /* aArguments:
            0: ptr to creating instance (Window or VirtualDevice)
-           1: SystemEnvData as a streamed Any (or empty for VirtualDevice)
-           2: current bounds of creating instance
-           3: bool, denoting always on top state for Window (always false for VirtualDevice)
-           4: XWindow for creating Window (or empty for VirtualDevice)
-           5: SystemGraphicsData as a streamed Any
+           1: current bounds of creating instance
+           2: bool, denoting always on top state for Window (always false for VirtualDevice)
+           3: XWindow for creating Window (or empty for VirtualDevice)
+           4: SystemGraphicsData as a streamed Any
          */
-        ENSURE_ARG_OR_THROW( maArguments.getLength() >= 5 &&
-                             maArguments[4].getValueTypeClass() == uno::TypeClass_INTERFACE,
+        ENSURE_ARG_OR_THROW( maArguments.getLength() >= 4 &&
+                             maArguments[3].getValueTypeClass() == uno::TypeClass_INTERFACE,
                              "OpenGL SpriteCanvas::initialize: wrong number of arguments, or wrong types" );
 
         uno::Reference< awt::XWindow > xParentWindow;
-        maArguments[4] >>= xParentWindow;
+        maArguments[3] >>= xParentWindow;
         VclPtr<vcl::Window> pParentWindow = VCLUnoHelper::GetWindow(xParentWindow);
         if( !pParentWindow )
             throw lang::NoSupportException(
                 "Parent window not VCL window, or canvas out-of-process!", nullptr);
 
         awt::Rectangle aRect;
-        maArguments[2] >>= aRect;
+        maArguments[1] >>= aRect;
 
         // setup helper
         maDeviceHelper.init( *pParentWindow,
@@ -137,9 +125,9 @@ namespace oglcanvas
         return maDeviceHelper.showBuffer(mbIsVisible, bUpdateAll);
     }
 
-    ::rtl::OUString SAL_CALL SpriteCanvas::getServiceName(  )
+    OUString SAL_CALL SpriteCanvas::getServiceName(  )
     {
-        return ::rtl::OUString( SPRITECANVAS_SERVICE_NAME );
+        return "com.sun.star.rendering.SpriteCanvas.OGL";
     }
 
     void SpriteCanvas::show( const ::rtl::Reference< CanvasCustomSprite >& xSprite )
@@ -154,31 +142,22 @@ namespace oglcanvas
         maDeviceHelper.hide(xSprite);
     }
 
-    bool SpriteCanvas::renderRecordedActions() const
+    void SpriteCanvas::renderRecordedActions() const
     {
-        return maCanvasHelper.renderRecordedActions();
+        maCanvasHelper.renderRecordedActions();
     }
 
-    static uno::Reference<uno::XInterface> initCanvas( SpriteCanvas* pCanvas )
-    {
-        uno::Reference<uno::XInterface> xRet(static_cast<cppu::OWeakObject*>(pCanvas));
-        pCanvas->initialize();
-        return xRet;
-    }
-
-    sdecl::class_<SpriteCanvas, sdecl::with_args<true> > const serviceImpl(&initCanvas);
-    const sdecl::ServiceDecl oglSpriteCanvasDecl(
-        serviceImpl,
-        SPRITECANVAS_IMPLEMENTATION_NAME,
-        SPRITECANVAS_SERVICE_NAME );
 }
 
-// The C shared lib entry points
-extern "C"
-SAL_DLLPUBLIC_EXPORT void* SAL_CALL oglcanvas_component_getFactory( sal_Char const* pImplName,
-                                         void*, void* )
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_rendering_SpriteCanvas_OGL_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
 {
-    return sdecl::component_getFactoryHelper( pImplName, {&oglcanvas::oglSpriteCanvasDecl} );
+    auto p = new oglcanvas::SpriteCanvas(args, context);
+    cppu::acquire(p);
+    p->initialize();
+    return static_cast<cppu::OWeakObject*>(p);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

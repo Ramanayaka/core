@@ -56,7 +56,7 @@ BEGIN
 
 sub usage
 {
-    print <<Ende;
+    print <<End;
 ----------------------------------------------------------------------
 This program installs a Windows Installer installation set
 without using msiexec.exe. The installation is comparable
@@ -66,7 +66,7 @@ Required parameter:
 -d Path to installation set or msi database
 -t Target directory
 ---------------------------------------------------------------------
-Ende
+End
     exit(-1);
 }
 
@@ -219,7 +219,7 @@ sub check_system_path
 
     foreach $onefile ( @needed_files_in_path )
     {
-        print("...... searching $onefile ...");
+        print("... searching $onefile ...");
 
         my $fileref = get_sourcepath_from_filename_and_includepath(\$onefile, $patharrayref);
 
@@ -240,7 +240,7 @@ sub check_system_path
 
     foreach $onefile ( @optional_files_in_path )
     {
-        print("...... searching $onefile ...");
+        print("... searching $onefile ...");
 
         my $fileref = get_sourcepath_from_filename_and_includepath(\$onefile, $patharrayref);
 

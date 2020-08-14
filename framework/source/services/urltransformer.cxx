@@ -17,12 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <services.h>
-
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <tools/urlobj.hxx>
-#include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
 
 #include <com/sun/star/util/XURLTransformer.hpp>
@@ -39,7 +36,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.URLTransformer");
+        return "com.sun.star.comp.framework.URLTransformer";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -61,56 +58,53 @@ public:
     virtual OUString SAL_CALL getPresentation( const css::util::URL& aURL, sal_Bool bWithPassword ) override;
 };
 
-namespace
+void lcl_ParserHelper(INetURLObject& _rParser, css::util::URL& _rURL,bool _bUseIntern)
 {
-    void lcl_ParserHelper(INetURLObject& _rParser, css::util::URL& _rURL,bool _bUseIntern)
+    // Get all information about this URL.
+    _rURL.Protocol  = INetURLObject::GetScheme( _rParser.GetProtocol() );
+    _rURL.User      = _rParser.GetUser  ( INetURLObject::DecodeMechanism::WithCharset );
+    _rURL.Password  = _rParser.GetPass  ( INetURLObject::DecodeMechanism::WithCharset );
+    _rURL.Server        = _rParser.GetHost  ( INetURLObject::DecodeMechanism::WithCharset );
+    _rURL.Port      = static_cast<sal_Int16>(_rParser.GetPort());
+
+    sal_Int32 nCount = _rParser.getSegmentCount( false );
+    if ( nCount > 0 )
     {
-        // Get all information about this URL.
-        _rURL.Protocol  = INetURLObject::GetScheme( _rParser.GetProtocol() );
-        _rURL.User      = _rParser.GetUser  ( INetURLObject::DecodeMechanism::WithCharset );
-        _rURL.Password  = _rParser.GetPass  ( INetURLObject::DecodeMechanism::WithCharset );
-        _rURL.Server        = _rParser.GetHost  ( INetURLObject::DecodeMechanism::WithCharset );
-        _rURL.Port      = (sal_Int16)_rParser.GetPort();
+        // Don't add last segment as it is the name!
+        --nCount;
 
-        sal_Int32 nCount = _rParser.getSegmentCount( false );
+        OUStringBuffer aPath(128);
+        for ( sal_Int32 nIndex = 0; nIndex < nCount; nIndex++ )
+        {
+            aPath.append( '/');
+            aPath.append( _rParser.getName( nIndex, false, INetURLObject::DecodeMechanism::NONE ));
+        }
+
         if ( nCount > 0 )
-        {
-            // Don't add last segment as it is the name!
-            --nCount;
+            aPath.append( '/' ); // final slash!
 
-            OUStringBuffer aPath;
-            for ( sal_Int32 nIndex = 0; nIndex < nCount; nIndex++ )
-            {
-                aPath.append( '/');
-                aPath.append( _rParser.getName( nIndex, false, INetURLObject::DecodeMechanism::NONE ));
-            }
-
-            if ( nCount > 0 )
-                aPath.append( '/' ); // final slash!
-
-            _rURL.Path = aPath.makeStringAndClear();
-            _rURL.Name = _rParser.getName( INetURLObject::LAST_SEGMENT, false, INetURLObject::DecodeMechanism::NONE );
-        }
-        else
-        {
-            _rURL.Path       = _rParser.GetURLPath( INetURLObject::DecodeMechanism::NONE           );
-            _rURL.Name      = _rParser.GetName  (                                    );
-        }
-
-        _rURL.Arguments  = _rParser.GetParam();
-        _rURL.Mark      = _rParser.GetMark( INetURLObject::DecodeMechanism::WithCharset );
-
-        // INetURLObject supports only an intelligent method of parsing URL's. So write
-        // back Complete to have a valid encoded URL in all cases!
-        _rURL.Complete  = _rParser.GetMainURL( INetURLObject::DecodeMechanism::NONE           );
-        if ( _bUseIntern )
-            _rURL.Complete   = _rURL.Complete.intern();
-
-        _rParser.SetMark    ( OUString() );
-        _rParser.SetParam( OUString() );
-
-        _rURL.Main       = _rParser.GetMainURL( INetURLObject::DecodeMechanism::NONE           );
+        _rURL.Path = aPath.makeStringAndClear();
+        _rURL.Name = _rParser.getName( INetURLObject::LAST_SEGMENT, false, INetURLObject::DecodeMechanism::NONE );
     }
+    else
+    {
+        _rURL.Path       = _rParser.GetURLPath( INetURLObject::DecodeMechanism::NONE           );
+        _rURL.Name = _rParser.GetLastName();
+    }
+
+    _rURL.Arguments  = _rParser.GetParam();
+    _rURL.Mark      = _rParser.GetMark( INetURLObject::DecodeMechanism::WithCharset );
+
+    // INetURLObject supports only an intelligent method of parsing URL's. So write
+    // back Complete to have a valid encoded URL in all cases!
+    _rURL.Complete  = _rParser.GetMainURL( INetURLObject::DecodeMechanism::NONE           );
+    if ( _bUseIntern )
+        _rURL.Complete   = _rURL.Complete.intern();
+
+    _rParser.SetMark    ( OUString() );
+    _rParser.SetParam( OUString() );
+
+    _rURL.Main       = _rParser.GetMainURL( INetURLObject::DecodeMechanism::NONE           );
 }
 
 //  XURLTransformer
@@ -264,9 +258,7 @@ sal_Bool SAL_CALL URLTransformer::assemble( css::util::URL& aURL )
     else if ( !aURL.Protocol.isEmpty() )
     {
         // Minimal support for unknown protocols
-        OUStringBuffer aBuffer( aURL.Protocol );
-        aBuffer.append( aURL.Path );
-        aURL.Complete   = aBuffer.makeStringAndClear();
+        aURL.Complete   = aURL.Protocol + aURL.Path;
         aURL.Main       = aURL.Complete;
         return true;
     }
@@ -309,7 +301,7 @@ OUString SAL_CALL URLTransformer::getPresentation( const css::util::URL& aURL,
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_URLTransformer_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

@@ -21,25 +21,15 @@
 #define INCLUDED_SVX_SDR_ANIMATION_ANIMATIONSTATE_HXX
 
 #include <sal/types.h>
-#include <vector>
 #include <svx/sdr/animation/scheduler.hxx>
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
+#include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 
-namespace sdr
-{
-    namespace contact
-    {
-        class ViewObjectContact;
-    } // end of namespace contact
-}
+namespace sdr::contact { class ViewObjectContact; }
 
-namespace sdr
-{
-    namespace animation
+namespace sdr::animation
     {
-        class PrimitiveAnimation : public Event
+        class PrimitiveAnimation final : public Event
         {
-        protected:
             // the animated VOC
             sdr::contact::ViewObjectContact&                    mrVOContact;
 
@@ -60,8 +50,8 @@ namespace sdr
             // execute event, from base class Event
             virtual void Trigger(sal_uInt32 nTime) override;
         };
-    } // end of namespace animation
-} // end of namespace sdr
+
+} // end of namespace sdr::animation
 
 #endif // INCLUDED_SVX_SDR_ANIMATION_ANIMATIONSTATE_HXX
 

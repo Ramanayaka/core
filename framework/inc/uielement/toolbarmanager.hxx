@@ -20,12 +20,9 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_TOOLBARMANAGER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_TOOLBARMANAGER_HXX
 
-#include <stdtypes.h>
 #include <uielement/commandinfo.hxx>
 
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
 #include <com/sun/star/frame/XUIControllerFactory.hpp>
@@ -34,8 +31,6 @@
 #include <com/sun/star/frame/XToolbarController.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/ui/XImageManager.hpp>
-#include <com/sun/star/ui/ItemStyle.hpp>
-#include <com/sun/star/ui/XAcceleratorConfiguration.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
 
@@ -51,6 +46,7 @@
 
 class PopupMenu;
 class ToolBox;
+class Menu;
 
 namespace framework
 {
@@ -91,13 +87,14 @@ class ToolBarManager : public ToolbarManager_Base
         void CheckAndUpdateImages();
         virtual void RefreshImages();
         void FillToolbar( const css::uno::Reference< css::container::XIndexAccess >& rToolBarData );
-        void FillOverflowToolbar( ToolBox* pParent );
+        void FillOverflowToolbar( ToolBox const * pParent );
         void notifyRegisteredControllers( const OUString& aUIElementName, const OUString& aCommand );
         void Destroy();
 
         enum ExecuteCommand
         {
             EXEC_CMD_CLOSETOOLBAR,
+            EXEC_CMD_UNDOCKTOOLBAR,
             EXEC_CMD_DOCKTOOLBAR,
             EXEC_CMD_DOCKALLTOOLBARS
         };
@@ -128,12 +125,12 @@ class ToolBarManager : public ToolbarManager_Base
 
         virtual bool MenuItemAllowed( sal_uInt16 ) const;
 
-        void AddCustomizeMenuItems(ToolBox* pToolBar);
+        void AddCustomizeMenuItems(ToolBox const * pToolBar);
         void InitImageManager();
         void RemoveControllers();
         void CreateControllers();
         void UpdateControllers();
-        //for update controller via Support Visiable
+        //for update controller via Support Visible
         void UpdateController( const css::uno::Reference< css::frame::XToolbarController >& xController);
         //end
         void AddFrameActionListener();
@@ -148,7 +145,7 @@ class ToolBarManager : public ToolbarManager_Base
     protected:
         typedef std::unordered_map< sal_uInt16, css::uno::Reference< css::frame::XStatusListener > >  ToolBarControllerMap;
         typedef ::std::vector< css::uno::Reference< css::frame::XSubToolbarController > >             SubToolBarControllerVector;
-        typedef std::unordered_map<OUString, SubToolBarControllerVector, OUStringHash>                                                SubToolBarToSubToolBarControllerMap;
+        typedef std::unordered_map<OUString, SubToolBarControllerVector>                                                SubToolBarToSubToolBarControllerMap;
 
         bool m_bDisposed : 1,
              m_bAddedToTaskPaneList : 1,

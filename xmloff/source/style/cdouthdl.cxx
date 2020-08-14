@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cdouthdl.hxx>
+#include "cdouthdl.hxx"
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
+#include <xmloff/xmlement.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
 
@@ -72,7 +73,6 @@ SvXMLEnumMapEntry<sal_uInt16> const pXML_CrossedoutWidth_Enum[] =
     { XML_TOKEN_INVALID,        0 }
 };
 
-// class XMLCrossedOutTypePropHdl
 
 XMLCrossedOutTypePropHdl::~XMLCrossedOutTypePropHdl()
 {
@@ -119,11 +119,11 @@ bool XMLCrossedOutTypePropHdl::importXML( const OUString& rStrImpValue, uno::Any
                 break;
             }
             if( eNewStrikeout != eStrikeout )
-                rValue <<= (sal_Int16)eNewStrikeout;
+                rValue <<= static_cast<sal_Int16>(eNewStrikeout);
         }
         else
         {
-            rValue <<= (sal_Int16)eNewStrikeout;
+            rValue <<= static_cast<sal_Int16>(eNewStrikeout);
         }
     }
 
@@ -147,7 +147,6 @@ bool XMLCrossedOutTypePropHdl::exportXML( OUString& rStrExpValue, const uno::Any
     return bRet;
 }
 
-// class XMLCrossedOutStylePropHdl
 
 XMLCrossedOutStylePropHdl::~XMLCrossedOutStylePropHdl()
 {
@@ -171,7 +170,7 @@ bool XMLCrossedOutStylePropHdl::importXML( const OUString& rStrImpValue, uno::An
         }
         else
         {
-            rValue <<= (sal_Int16)eNewStrikeout;
+            rValue <<= static_cast<sal_Int16>(eNewStrikeout);
         }
     }
 
@@ -195,7 +194,6 @@ bool XMLCrossedOutStylePropHdl::exportXML( OUString& rStrExpValue, const uno::An
     return bRet;
 }
 
-// class XMLCrossedOutWidthPropHdl
 
 XMLCrossedOutWidthPropHdl::~XMLCrossedOutWidthPropHdl()
 {
@@ -237,11 +235,11 @@ bool XMLCrossedOutWidthPropHdl::importXML( const OUString& rStrImpValue, uno::An
                 break;
             }
             if( eNewStrikeout != eStrikeout )
-                rValue <<= (sal_Int16)eNewStrikeout;
+                rValue <<= static_cast<sal_Int16>(eNewStrikeout);
         }
         else
         {
-            rValue <<= (sal_Int16)eNewStrikeout;
+            rValue <<= static_cast<sal_Int16>(eNewStrikeout);
         }
     }
 
@@ -265,7 +263,6 @@ bool XMLCrossedOutWidthPropHdl::exportXML( OUString& rStrExpValue, const uno::An
     return bRet;
 }
 
-// class XMLCrossedOutTextPropHdl
 
 XMLCrossedOutTextPropHdl::~XMLCrossedOutTextPropHdl()
 {

@@ -20,23 +20,25 @@
 #ifndef INCLUDED_XMLOFF_ANIMEXP_HXX
 #define INCLUDED_XMLOFF_ANIMEXP_HXX
 
-#include <com/sun/star/drawing/XShape.hpp>
 #include <salhelper/simplereferenceobject.hxx>
 #include <memory>
+
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 class AnimExpImpl;
 class SvXMLExport;
 class XMLShapeExport;
 
-class XMLAnimationsExporter : public salhelper::SimpleReferenceObject
+class XMLAnimationsExporter final : public salhelper::SimpleReferenceObject
 {
     std::unique_ptr<AnimExpImpl> mpImpl;
 
 public:
-    XMLAnimationsExporter( XMLShapeExport* pShapeExp );
+    XMLAnimationsExporter();
     virtual ~XMLAnimationsExporter() override;
 
-    void prepare( const css::uno::Reference< css::drawing::XShape >& xShape );
+    static void prepare( const css::uno::Reference< css::drawing::XShape >& xShape );
     void collect( const css::uno::Reference< css::drawing::XShape >& xShape, SvXMLExport& rExport );
     void exportAnimations( SvXMLExport& rExport );
 };

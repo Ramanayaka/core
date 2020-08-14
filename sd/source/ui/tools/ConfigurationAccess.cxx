@@ -17,19 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "tools/ConfigurationAccess.hxx"
+#include <tools/ConfigurationAccess.hxx>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
+#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/util/XChangesBatch.hpp>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace tools {
+namespace sd::tools {
 
 ConfigurationAccess::ConfigurationAccess (
     const Reference<XComponentContext>& rxContext,
@@ -59,22 +61,12 @@ void ConfigurationAccess::Initialize (
 {
     try
     {
-        Sequence<Any> aCreationArguments(3);
-        aCreationArguments[0] <<= beans::PropertyValue(
-            "nodepath",
-            0,
-            makeAny(rsRootName),
-            beans::PropertyState_DIRECT_VALUE);
-        aCreationArguments[1] <<= beans::PropertyValue(
-            "depth",
-            0,
-            makeAny((sal_Int32)-1),
-            beans::PropertyState_DIRECT_VALUE);
-        aCreationArguments[2] <<= beans::PropertyValue(
-            "lazywrite",
-            0,
-            makeAny(true),
-            beans::PropertyState_DIRECT_VALUE);
+        Sequence<Any> aCreationArguments(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", makeAny(rsRootName)},
+            {"depth", makeAny(sal_Int32(-1))}
+        }));
+
         OUString sAccessService;
         if (eMode == READ_ONLY)
             sAccessService = "com.sun.star.configuration.ConfigurationAccess";
@@ -87,7 +79,7 @@ void ConfigurationAccess::Initialize (
     }
     catch (Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sd.tools");
     }
 }
 
@@ -113,9 +105,9 @@ Any ConfigurationAccess::GetConfigurationNode (
             return rxNode->getByHierarchicalName(sPathToNode);
         }
     }
-    catch (const Exception& rException)
+    catch (const Exception&)
     {
-        SAL_WARN("sd", "caught exception while getting configuration node" << sPathToNode << ": " << rException.Message);
+        TOOLS_WARN_EXCEPTION("sd", "caught exception while getting configuration node" << sPathToNode);
     }
 
     return Any();
@@ -133,23 +125,22 @@ void ConfigurationAccess::ForAll (
     const ::std::vector<OUString>& rArguments,
     const Functor& rFunctor)
 {
-    if (rxContainer.is())
+    if (!rxContainer.is())
+        return;
+
+    ::std::vector<Any> aValues(rArguments.size());
+    const Sequence<OUString> aKeys (rxContainer->getElementNames());
+    for (const OUString& rsKey : aKeys)
     {
-        ::std::vector<Any> aValues(rArguments.size());
-        Sequence<OUString> aKeys (rxContainer->getElementNames());
-        for (sal_Int32 nItemIndex=0; nItemIndex < aKeys.getLength(); ++nItemIndex)
+        Reference<container::XNameAccess> xSetItem (rxContainer->getByName(rsKey), UNO_QUERY);
+        if (xSetItem.is())
         {
-            const OUString& rsKey (aKeys[nItemIndex]);
-            Reference<container::XNameAccess> xSetItem (rxContainer->getByName(rsKey), UNO_QUERY);
-            if (xSetItem.is())
-            {
-                // Get from the current item of the container the children
-                // that match the names in the rArguments list.
-                for (size_t nValueIndex=0; nValueIndex<aValues.size(); ++nValueIndex)
-                    aValues[nValueIndex] = xSetItem->getByName(rArguments[nValueIndex]);
-            }
-            rFunctor(rsKey, aValues);
+            // Get from the current item of the container the children
+            // that match the names in the rArguments list.
+            for (size_t nValueIndex=0; nValueIndex<aValues.size(); ++nValueIndex)
+                aValues[nValueIndex] = xSetItem->getByName(rArguments[nValueIndex]);
         }
+        rFunctor(rsKey, aValues);
     }
 }
 
@@ -179,6 +170,6 @@ void ConfigurationAccess::FillList(
     {}
 }
 
-} } // end of namespace sd::tools
+} // end of namespace sd::tools
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

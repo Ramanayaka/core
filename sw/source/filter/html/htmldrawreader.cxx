@@ -17,57 +17,56 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hintids.hxx"
+#include <hintids.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
-#include <svx/svdmodel.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdotext.hxx>
+#include <svx/sdtagitm.hxx>
+#include <svx/sdtacitm.hxx>
+#include <svx/sdtayitm.hxx>
+#include <svx/sdtaaitm.hxx>
+#include <svx/sdtaiitm.hxx>
+#include <svx/sdtmfitm.hxx>
 #include <editeng/eeitem.hxx>
-#include <editeng/outliner.hxx>
-#include <svx/xfillit.hxx>
+#include <svx/xfillit0.hxx>
+#include <svx/xflclit.hxx>
 #include <editeng/colritem.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <svl/itemiter.hxx>
-#include <svl/whiter.hxx>
-#include <svtools/htmlout.hxx>
 #include <svtools/htmltokn.h>
 #include <svtools/htmlkywd.hxx>
-#include <svx/svdpool.hxx>
 
-#include "charatr.hxx"
-#include "drawdoc.hxx"
-#include <frmfmt.hxx>
+#include <charatr.hxx>
+#include <drawdoc.hxx>
 #include <fmtanchr.hxx>
+#include <fmtornt.hxx>
 #include <fmtsrnd.hxx>
-#include "ndtxt.hxx"
-#include "doc.hxx"
+#include <ndtxt.hxx>
+#include <doc.hxx>
 #include <IDocumentDrawModelAccess.hxx>
-#include "dcontact.hxx"
-#include "poolfmt.hxx"
+#include <poolfmt.hxx>
 #include "swcss1.hxx"
 #include "swhtml.hxx"
 #include <shellio.hxx>
-#include <rtl/strbuf.hxx>
 
 using namespace css;
 
-static HTMLOptionEnum<SdrTextAniKind> aHTMLMarqBehaviorTable[] =
+HTMLOptionEnum<SdrTextAniKind> const aHTMLMarqBehaviorTable[] =
 {
     { OOO_STRING_SVTOOLS_HTML_BEHAV_scroll,    SdrTextAniKind::Scroll       },
     { OOO_STRING_SVTOOLS_HTML_BEHAV_alternate, SdrTextAniKind::Alternate    },
     { OOO_STRING_SVTOOLS_HTML_BEHAV_slide,     SdrTextAniKind::Slide        },
-    { nullptr,                                 (SdrTextAniKind)0       }
+    { nullptr,                                 SdrTextAniKind(0)       }
 };
 
-static HTMLOptionEnum<SdrTextAniDirection> aHTMLMarqDirectionTable[] =
+HTMLOptionEnum<SdrTextAniDirection> const aHTMLMarqDirectionTable[] =
 {
     { OOO_STRING_SVTOOLS_HTML_AL_left,  SdrTextAniDirection::Left   },
     { OOO_STRING_SVTOOLS_HTML_AL_right, SdrTextAniDirection::Right  },
-    { nullptr,                          (SdrTextAniDirection)0      }
+    { nullptr,                          SdrTextAniDirection(0)      }
 };
 
 void SwHTMLParser::InsertDrawObject( SdrObject* pNewDrawObj,
@@ -94,8 +93,8 @@ void SwHTMLParser::InsertDrawObject( SdrObject* pNewDrawObj,
         aTwipSpc =
             Application::GetDefaultDevice()->PixelToLogic( aTwipSpc,
                                                 MapMode(MapUnit::MapTwip) );
-        nLeftSpace = nRightSpace = (sal_uInt16)aTwipSpc.Width();
-        nUpperSpace = nLowerSpace = (sal_uInt16)aTwipSpc.Height();
+        nLeftSpace = nRightSpace = static_cast<sal_uInt16>(aTwipSpc.Width());
+        nUpperSpace = nLowerSpace = static_cast<sal_uInt16>(aTwipSpc.Height());
     }
 
     // set left/right border
@@ -105,7 +104,7 @@ void SwHTMLParser::InsertDrawObject( SdrObject* pNewDrawObj,
         // maybe flatten the first line indentation
         const SvxLRSpaceItem *pLRItem = static_cast<const SvxLRSpaceItem *>(pItem);
         SvxLRSpaceItem aLRItem( *pLRItem );
-        aLRItem.SetTextFirstLineOfst( 0 );
+        aLRItem.SetTextFirstLineOffset( 0 );
         if( rCSS1PropInfo.m_bLeftMargin )
         {
             nLeftSpace = static_cast< sal_uInt16 >(aLRItem.GetLeft());
@@ -231,19 +230,14 @@ static void PutEEPoolItem( SfxItemSet &rEEItemSet,
         {
             const SvxBrushItem& rBrushItem = static_cast<const SvxBrushItem&>(rSwItem);
             rEEItemSet.Put( XFillStyleItem(drawing::FillStyle_SOLID) );
-            rEEItemSet.Put( XFillColorItem(aEmptyOUStr,
+            rEEItemSet.Put(XFillColorItem(OUString(),
                             rBrushItem.GetColor()) );
         }
         break;
     }
 
     if( nEEWhich )
-    {
-        SfxPoolItem *pEEItem = rSwItem.Clone();
-        pEEItem->SetWhich( nEEWhich );
-        rEEItemSet.Put( *pEEItem );
-        delete pEEItem;
-    }
+        rEEItemSet.Put( rSwItem.CloneSetWhich(nEEWhich) );
 }
 
 void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
@@ -255,7 +249,7 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
     OUString aId, aStyle, aClass;
 
     long nWidth=0, nHeight=0;
-    bool bPrcWidth = false, bDirection = false, bBGColor = false;
+    bool bPercentWidth = false, bDirection = false, bBGColor = false;
     Size aSpace( 0, 0 );
     sal_Int16 eVertOri = text::VertOrientation::TOP;
     sal_Int16 eHoriOri = text::HoriOrientation::NONE;
@@ -303,23 +297,23 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
                 else
                 {
                     const sal_Int32 nLoop = rOption.GetSNumber();
-                    nCount = static_cast<sal_uInt16>(nLoop>0 ? nLoop : 0);
+                    nCount = std::max<sal_Int32>(nLoop, 0);
                 }
                 break;
 
             case HtmlOptionId::SCROLLAMOUNT:
-                nAmount = -((sal_Int16)rOption.GetNumber());
+                nAmount = - static_cast<sal_Int16>(rOption.GetNumber());
                 break;
 
             case HtmlOptionId::SCROLLDELAY:
-                nDelay = (sal_uInt16)rOption.GetNumber();
+                nDelay = static_cast<sal_uInt16>(rOption.GetNumber());
                 break;
 
             case HtmlOptionId::WIDTH:
                 // first only save as pixel value!
                 nWidth = rOption.GetNumber();
-                bPrcWidth = rOption.GetString().indexOf('%') != -1;
-                if( bPrcWidth && nWidth>100 )
+                bPercentWidth = rOption.GetString().indexOf('%') != -1;
+                if( bPercentWidth && nWidth>100 )
                     nWidth = 100;
                 break;
 
@@ -332,12 +326,12 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
 
             case HtmlOptionId::HSPACE:
                 // first only save as pixel value!
-                aSpace.Height() = rOption.GetNumber();
+                aSpace.setHeight( rOption.GetNumber() );
                 break;
 
             case HtmlOptionId::VSPACE:
                 // first only save as pixel value!
-                aSpace.Width() = rOption.GetNumber();
+                aSpace.setWidth( rOption.GetNumber() );
                 break;
 
             case HtmlOptionId::ALIGN:
@@ -355,8 +349,11 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
     // #i52858# - method name changed
     SwDrawModel* pModel = m_xDoc->getIDocumentDrawModelAccess().GetOrCreateDrawModel();
     SdrPage* pPg = pModel->GetPage( 0 );
-    m_pMarquee = SdrObjFactory::MakeNewObject( SdrInventor::Default,
-                                             OBJ_TEXT, pPg, pModel );
+    m_pMarquee = SdrObjFactory::MakeNewObject(
+        *pModel,
+        SdrInventor::Default,
+        OBJ_TEXT);
+
     if( !m_pMarquee )
         return;
 
@@ -370,10 +367,10 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
         eAniDir = SdrTextAniDirection::Right;
 
     // re set the attributes needed for scrolling
-    sal_uInt16 aWhichMap[7] =   { XATTR_FILL_FIRST,   XATTR_FILL_LAST,
-                              SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST,
-                              EE_CHAR_START,      EE_CHAR_END,
-                              0 };
+    sal_uInt16 const aWhichMap[] { XATTR_FILL_FIRST,   XATTR_FILL_LAST,
+                                   SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST,
+                                   EE_CHAR_START,      EE_CHAR_END,
+                                   0 };
     SfxItemSet aItemSet( pModel->GetItemPool(), aWhichMap );
     aItemSet.Put( makeSdrTextAutoGrowWidthItem( false ) );
     aItemSet.Put( makeSdrTextAutoGrowHeightItem( true ) );
@@ -425,7 +422,7 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
     }
 
     // set attribute of environment at the Draw object
-    HTMLAttr** pHTMLAttributes = reinterpret_cast<HTMLAttr**>(&m_aAttrTab);
+    HTMLAttr** pHTMLAttributes = reinterpret_cast<HTMLAttr**>(m_xAttrTab.get());
     for (auto nCnt = sizeof(HTMLAttrTable) / sizeof(HTMLAttr*); nCnt--; ++pHTMLAttributes)
     {
         HTMLAttr *pAttr = *pHTMLAttributes;
@@ -436,7 +433,7 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
     if( bBGColor )
     {
         aItemSet.Put( XFillStyleItem(drawing::FillStyle_SOLID) );
-        aItemSet.Put( XFillColorItem(aEmptyOUStr, aBGColor) );
+        aItemSet.Put(XFillColorItem(OUString(), aBGColor));
     }
 
     // parse styles (is here only possible for attributes, which also
@@ -449,16 +446,14 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
     {
         SfxItemIter aIter( aStyleItemSet );
 
-        const SfxPoolItem *pItem = aIter.FirstItem();
-        while( pItem )
+        for (const SfxPoolItem* pItem = aIter.GetCurItem(); pItem; pItem = aIter.NextItem())
         {
             PutEEPoolItem( aItemSet, *pItem );
-            pItem = aIter.NextItem();
         }
     }
 
     // now set the size
-    Size aTwipSz( bPrcWidth ? 0 : nWidth, nHeight );
+    Size aTwipSz( bPercentWidth ? 0 : nWidth, nHeight );
     if( (aTwipSz.Width() || aTwipSz.Height()) && Application::GetDefaultDevice() )
     {
         aTwipSz = Application::GetDefaultDevice()
@@ -467,17 +462,17 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
 
     if( SVX_CSS1_LTYPE_TWIP== aPropInfo.m_eWidthType )
     {
-        aTwipSz.Width() = aPropInfo.m_nWidth;
+        aTwipSz.setWidth( aPropInfo.m_nWidth );
         nWidth = 1; // != 0;
-        bPrcWidth = false;
+        bPercentWidth = false;
     }
     if( SVX_CSS1_LTYPE_TWIP== aPropInfo.m_eHeightType )
-        aTwipSz.Height() = aPropInfo.m_nHeight;
+        aTwipSz.setHeight( aPropInfo.m_nHeight );
 
     m_bFixMarqueeWidth = false;
-    if( !nWidth || bPrcWidth )
+    if( !nWidth || bPercentWidth )
     {
-        if( m_pTable )
+        if( m_xTable )
         {
             if( !pCurTable )
             {
@@ -492,27 +487,27 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
                 // adjust the width. No width specification is treated as
                 // 100 percent.
                 nWidth = 100;
-                bPrcWidth = true;
+                bPercentWidth = true;
             }
-            aTwipSz.Width() = MINLAY;
+            aTwipSz.setWidth( MINLAY );
         }
         else
         {
             long nBrowseWidth = GetCurrentBrowseWidth();
-            aTwipSz.Width() = !nWidth ? nBrowseWidth
-                                      : (nWidth*nBrowseWidth) / 100;
+            aTwipSz.setWidth( !nWidth ? nBrowseWidth
+                                      : (nWidth*nBrowseWidth) / 100 );
         }
     }
 
     // The height is only minimum height
     if( aTwipSz.Height() < MINFLY )
-        aTwipSz.Height() = MINFLY;
+        aTwipSz.setHeight( MINFLY );
     aItemSet.Put( makeSdrTextMinFrameHeightItem( aTwipSz.Height() ) );
 
     m_pMarquee->SetMergedItemSetAndBroadcast(aItemSet);
 
     if( aTwipSz.Width() < MINFLY )
-        aTwipSz.Width() = MINFLY;
+        aTwipSz.setWidth( MINFLY );
     m_pMarquee->SetLogicRect( tools::Rectangle( 0, 0, aTwipSz.Width(), aTwipSz.Height() ) );
 
     // and insert the object into the document
@@ -524,8 +519,8 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
     // otherwise the table would have to be public and that also isn't pretty.
     // The global pTable also can't be used, because the marquee can also be
     // in a sub-table.
-    if( pCurTable && bPrcWidth)
-        RegisterDrawObjectToTable( pCurTable, m_pMarquee, (sal_uInt8)nWidth );
+    if( pCurTable && bPercentWidth)
+        RegisterDrawObjectToTable( pCurTable, m_pMarquee, static_cast<sal_uInt8>(nWidth) );
 }
 
 void SwHTMLParser::EndMarquee()

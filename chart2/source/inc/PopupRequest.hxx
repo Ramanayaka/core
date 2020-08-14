@@ -11,8 +11,9 @@
 #define INCLUDED_CHART2_SOURCE_INC_POPUPREQUEST_HXX
 
 #include "MutexContainer.hxx"
+#include "charttoolsdllapi.hxx"
+
 #include <cppuhelper/compbase.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/awt/XRequestCallback.hpp>
 
 namespace chart
@@ -31,7 +32,7 @@ public:
     explicit PopupRequest();
     virtual ~PopupRequest() override;
 
-    css::uno::Reference<css::awt::XCallback> getCallback()
+    css::uno::Reference<css::awt::XCallback> const & getCallback() const
     {
         return m_xCallback;
     }

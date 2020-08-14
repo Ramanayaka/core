@@ -20,6 +20,7 @@
 #include <config_features.h>
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #if HAVE_FEATURE_MACOSX_SANDBOX
 #include <sys/stat.h>
@@ -35,12 +36,16 @@
 #include <com/sun/star/lang/IllegalAccessException.hpp>
 #include <com/sun/star/task/InteractionClassification.hpp>
 #include <com/sun/star/ucb/ContentInfoAttribute.hpp>
+#include <com/sun/star/ucb/DuplicateCommandIdentifierException.hpp>
 #include <com/sun/star/ucb/IOErrorCode.hpp>
 #include <com/sun/star/ucb/InsertCommandArgument.hpp>
 #include <com/sun/star/ucb/InteractiveAugmentedIOException.hpp>
 #include <com/sun/star/ucb/NameClash.hpp>
 #include <com/sun/star/ucb/OpenCommandArgument.hpp>
 #include <com/sun/star/ucb/Store.hpp>
+#include <com/sun/star/ucb/TransferInfo.hpp>
+#include <comphelper/propertysequence.hxx>
+#include <rtl/ref.hxx>
 #include <rtl/uri.hxx>
 
 #include "filtask.hxx"
@@ -70,46 +75,13 @@ using namespace com::sun::star::ucb;
 #define THROW_WHERE ""
 #endif
 
-TaskManager::UnqPathData::UnqPathData()
-    : properties( nullptr ),
-      notifier( nullptr ),
-      xS( nullptr ),
-      xC( nullptr ),
-      xA( nullptr )
-{
-    // empty
-}
+TaskManager::UnqPathData::UnqPathData() = default;
 
+TaskManager::UnqPathData::UnqPathData(TaskManager::UnqPathData&&) = default;
 
-TaskManager::UnqPathData::UnqPathData( const UnqPathData& a )
-    : properties( a.properties ),
-      notifier( a.notifier ),
-      xS( a.xS ),
-      xC( a.xC ),
-      xA( a.xA )
-{
-}
-
-
-TaskManager::UnqPathData& TaskManager::UnqPathData::operator=( UnqPathData& a )
-{
-    properties = a.properties;
-    notifier = a.notifier;
-    xS = a.xS;
-    xC = a.xC;
-    xA = a.xA;
-    a.properties = nullptr;
-    a.notifier = nullptr;
-    a.xS = nullptr;
-    a.xC = nullptr;
-    a.xA = nullptr;
-    return *this;
-}
 
 TaskManager::UnqPathData::~UnqPathData()
 {
-    delete properties;
-    delete notifier;
 }
 
 TaskManager::MyProperty::MyProperty( const OUString&                         thePropertyName )
@@ -140,36 +112,33 @@ TaskManager::MyProperty::MyProperty( bool                               theisNat
     // empty
 }
 
-TaskManager::MyProperty::~MyProperty()
-{
-    // empty for now
-}
-
 #include "filinl.hxx"
+
+        // Default properties
+
+const OUStringLiteral Title( "Title" );
+const OUStringLiteral CasePreservingURL( "CasePreservingURL" );
+const OUStringLiteral IsDocument( "IsDocument" );
+const OUStringLiteral IsFolder( "IsFolder" );
+const OUStringLiteral DateModified( "DateModified" );
+const OUStringLiteral Size( "Size" );
+const OUStringLiteral IsVolume( "IsVolume" );
+const OUStringLiteral IsRemoveable( "IsRemoveable" );
+const OUStringLiteral IsRemote( "IsRemote" );
+const OUStringLiteral IsCompactDisc( "IsCompactDisc" );
+const OUStringLiteral IsFloppy( "IsFloppy" );
+const OUStringLiteral IsHidden( "IsHidden" );
+const OUStringLiteral ContentType( "ContentType" );
+const OUStringLiteral IsReadOnly( "IsReadOnly" );
+const OUStringLiteral CreatableContentsInfo( "CreatableContentsInfo" );
+const OUStringLiteral TaskManager::FolderContentType( "application/vnd.sun.staroffice.fsys-folder" );
+const OUStringLiteral TaskManager::FileContentType( "application/vnd.sun.staroffice.fsys-file" );
 
 TaskManager::TaskManager( const uno::Reference< uno::XComponentContext >& rxContext,
               FileProvider* pProvider, bool bWithConfig )
     : m_nCommandId( 0 ),
-      m_bWithConfig( bWithConfig ),
       m_pProvider( pProvider ),
       m_xContext( rxContext ),
-      Title( "Title" ),
-      CasePreservingURL( "CasePreservingURL" ),
-      IsDocument( "IsDocument" ),
-      IsFolder( "IsFolder" ),
-      DateModified( "DateModified" ),
-      Size( "Size" ),
-      IsVolume( "IsVolume" ),
-      IsRemoveable( "IsRemoveable" ),
-      IsRemote( "IsRemote" ),
-      IsCompactDisc( "IsCompactDisc" ),
-      IsFloppy( "IsFloppy" ),
-      IsHidden( "IsHidden" ),
-      ContentType( "ContentType" ),
-      IsReadOnly( "IsReadOnly" ),
-      CreatableContentsInfo( "CreatableContentsInfo" ),
-      FolderContentType( "application/vnd.sun.staroffice.fsys-folder" ),
-      FileContentType( "application/vnd.sun.staroffice.fsys-file" ),
       m_sCommandInfo( 9 )
 {
     // Title
@@ -379,11 +348,11 @@ TaskManager::TaskManager( const uno::Reference< uno::XComponentContext >& rxCont
     m_sCommandInfo[7].Handle = -1;
     m_sCommandInfo[7].ArgType = cppu::UnoType<InsertCommandArgument>::get();
 
-    m_sCommandInfo[7].Name = "createNewContent";
-    m_sCommandInfo[7].Handle = -1;
-    m_sCommandInfo[7].ArgType = cppu::UnoType<ucb::ContentInfo>::get();
+    m_sCommandInfo[8].Name = "createNewContent";
+    m_sCommandInfo[8].Handle = -1;
+    m_sCommandInfo[8].ArgType = cppu::UnoType<ucb::ContentInfo>::get();
 
-    if(m_bWithConfig)
+    if(bWithConfig)
     {
         uno::Reference< XPropertySetRegistryFactory > xRegFac = ucb::Store::create( m_xContext );
         // Open/create a registry
@@ -397,7 +366,7 @@ TaskManager::~TaskManager()
 }
 
 
-void SAL_CALL
+void
 TaskManager::startTask(
     sal_Int32 CommandId,
     const uno::Reference< XCommandEnvironment >& xCommandEnv )
@@ -408,16 +377,16 @@ TaskManager::startTask(
     {
         throw DuplicateCommandIdentifierException( OSL_LOG_PREFIX );
     }
-    m_aTaskMap[ CommandId ] = TaskHandling( xCommandEnv );
+    m_aTaskMap.emplace( CommandId, TaskHandling( xCommandEnv ));
 }
 
 
-void SAL_CALL
+void
 TaskManager::endTask( sal_Int32 CommandId,
                       const OUString& aUncPath,
                       BaseContent* pContent)
 {
-    osl::MutexGuard aGuard( m_aMutex );
+    osl::ClearableMutexGuard aGuard( m_aMutex );
     TaskMap::iterator it = m_aTaskMap.find( CommandId );
     if( it == m_aTaskMap.end() )
         return;
@@ -431,6 +400,8 @@ TaskManager::endTask( sal_Int32 CommandId,
 
     m_aTaskMap.erase( it );
 
+    aGuard.clear();
+
     if( ErrorCode != TASKHANDLER_NO_ERROR )
         throw_handler(
             ErrorCode,
@@ -442,22 +413,7 @@ TaskManager::endTask( sal_Int32 CommandId,
 }
 
 
-void SAL_CALL
-TaskManager::abort( sal_Int32 CommandId )
-{
-    if( CommandId )
-    {
-        osl::MutexGuard aGuard( m_aMutex );
-        TaskMap::iterator it = m_aTaskMap.find( CommandId );
-        if( it == m_aTaskMap.end() )
-            return;
-        else
-            it->second.abort();
-    }
-}
-
-
-void SAL_CALL TaskManager::clearError( sal_Int32 CommandId )
+void TaskManager::clearError( sal_Int32 CommandId )
 {
     osl::MutexGuard aGuard( m_aMutex );
     TaskMap::iterator it = m_aTaskMap.find( CommandId );
@@ -466,7 +422,7 @@ void SAL_CALL TaskManager::clearError( sal_Int32 CommandId )
 }
 
 
-void SAL_CALL TaskManager::retrieveError( sal_Int32 CommandId,
+void TaskManager::retrieveError( sal_Int32 CommandId,
                                           sal_Int32 &ErrorCode,
                                           sal_Int32 &minorCode)
 {
@@ -480,7 +436,7 @@ void SAL_CALL TaskManager::retrieveError( sal_Int32 CommandId,
 }
 
 
-void SAL_CALL TaskManager::installError( sal_Int32 CommandId,
+void TaskManager::installError( sal_Int32 CommandId,
                                          sal_Int32 ErrorCode,
                                          sal_Int32 MinorCode )
 {
@@ -491,7 +447,7 @@ void SAL_CALL TaskManager::installError( sal_Int32 CommandId,
 }
 
 
-sal_Int32 SAL_CALL
+sal_Int32
 TaskManager::getCommandId()
 {
     osl::MutexGuard aGuard( m_aMutex );
@@ -499,7 +455,7 @@ TaskManager::getCommandId()
 }
 
 
-void SAL_CALL TaskManager::handleTask(
+void TaskManager::handleTask(
     sal_Int32 CommandId,
     const uno::Reference< task::XInteractionRequest >& request )
 {
@@ -526,30 +482,26 @@ void SAL_CALL TaskManager::handleTask(
 //  to URL aUnqPath
 
 
-void SAL_CALL
+void
 TaskManager::registerNotifier( const OUString& aUnqPath, Notifier* pNotifier )
 {
     osl::MutexGuard aGuard( m_aMutex );
 
     ContentMap::iterator it =
-        m_aContent.insert( ContentMap::value_type( aUnqPath,UnqPathData() ) ).first;
+        m_aContent.emplace( aUnqPath, UnqPathData() ).first;
 
-    if( ! it->second.notifier )
-        it->second.notifier = new NotifierList;
+    std::vector< Notifier* >& nlist = it->second.notifier;
 
-    std::list< Notifier* >& nlist = *( it->second.notifier );
-
-    std::list<Notifier*>::iterator it1 = nlist.begin();
-    while( it1 != nlist.end() )               // Every "Notifier" only once
+    std::vector<Notifier*>::iterator it1 = std::find(nlist.begin(), nlist.end(), pNotifier);
+    if( it1 != nlist.end() )               // Every "Notifier" only once
     {
-        if( *it1 == pNotifier ) return;
-        ++it1;
+        return;
     }
     nlist.push_back( pNotifier );
 }
 
 
-void SAL_CALL
+void
 TaskManager::deregisterNotifier( const OUString& aUnqPath,Notifier* pNotifier )
 {
     osl::MutexGuard aGuard( m_aMutex );
@@ -558,9 +510,9 @@ TaskManager::deregisterNotifier( const OUString& aUnqPath,Notifier* pNotifier )
     if( it == m_aContent.end() )
         return;
 
-    it->second.notifier->remove( pNotifier );
+    it->second.notifier.erase(std::remove(it->second.notifier.begin(), it->second.notifier.end(), pNotifier), it->second.notifier.end());
 
-    if( it->second.notifier->empty() )
+    if( it->second.notifier.empty() )
         m_aContent.erase( it );
 }
 
@@ -576,7 +528,7 @@ TaskManager::deregisterNotifier( const OUString& aUnqPath,Notifier* pNotifier )
 //  The default value and the attributes are input
 
 
-void SAL_CALL
+void
 TaskManager::associate( const OUString& aUnqPath,
                   const OUString& PropertyName,
                   const uno::Any& DefaultValue,
@@ -597,12 +549,12 @@ TaskManager::associate( const OUString& aUnqPath,
     {
         osl::MutexGuard aGuard( m_aMutex );
 
-        ContentMap::iterator it = m_aContent.insert( ContentMap::value_type( aUnqPath,UnqPathData() ) ).first;
+        ContentMap::iterator it = m_aContent.emplace( aUnqPath,UnqPathData() ).first;
 
         // Load the XPersistentPropertySetInfo and create it, if it does not exist
         load( it,true );
 
-        PropertySet& properties = *(it->second.properties);
+        PropertySet& properties = it->second.properties;
         it1 = properties.find( newProperty );
         if( it1 != properties.end() )
             throw beans::PropertyExistException(THROW_WHERE );
@@ -615,7 +567,7 @@ TaskManager::associate( const OUString& aUnqPath,
 }
 
 
-void SAL_CALL
+void
 TaskManager::deassociate( const OUString& aUnqPath,
             const OUString& PropertyName )
 {
@@ -627,15 +579,15 @@ TaskManager::deassociate( const OUString& aUnqPath,
 
     osl::MutexGuard aGuard( m_aMutex );
 
-    ContentMap::iterator it = m_aContent.insert( ContentMap::value_type( aUnqPath,UnqPathData() ) ).first;
+    ContentMap::iterator it = m_aContent.emplace( aUnqPath,UnqPathData() ).first;
 
     load( it,false );
 
-    PropertySet& properties = *(it->second.properties);
+    PropertySet& properties = it->second.properties;
 
     it1 = properties.find( oldProperty );
     if( it1 == properties.end() )
-        throw beans::UnknownPropertyException( THROW_WHERE );
+        throw beans::UnknownPropertyException( PropertyName );
 
     properties.erase( it1 );
 
@@ -669,7 +621,7 @@ TaskManager::deassociate( const OUString& aUnqPath,
 //  URL aUnqPath into the XOutputStream
 
 
-void SAL_CALL TaskManager::page( sal_Int32 CommandId,
+void TaskManager::page( sal_Int32 CommandId,
                            const OUString& aUnqPath,
                            const uno::Reference< io::XOutputStream >& xOutputStream )
 {
@@ -694,7 +646,8 @@ void SAL_CALL TaskManager::page( sal_Int32 CommandId,
         err = aFile.read( static_cast<void*>(BFF),bfz,nrc );
         if(  err == osl::FileBase::E_None )
         {
-            uno::Sequence< sal_Int8 > seq( BFF, (sal_uInt32)nrc );
+            // coverity[overrun-buffer-arg : FALSE] - coverity has difficulty with css::uno::Sequence
+            uno::Sequence< sal_Int8 > seq( BFF, static_cast<sal_uInt32>(nrc) );
             try
             {
                 xOutputStream->writeBytes( seq );
@@ -756,12 +709,12 @@ void SAL_CALL TaskManager::page( sal_Int32 CommandId,
 //  Given a file URL aUnqPath, this methods returns a XInputStream which reads from the open file.
 
 
-uno::Reference< io::XInputStream > SAL_CALL
+uno::Reference< io::XInputStream >
 TaskManager::open( sal_Int32 CommandId,
              const OUString& aUnqPath,
              bool bLock )
 {
-    XInputStream_impl* pInputStream = new XInputStream_impl( aUnqPath, bLock ); // from filinpstr.hxx
+    rtl::Reference<XInputStream_impl> pInputStream(new XInputStream_impl( aUnqPath, bLock )); // from filinpstr.hxx
 
     sal_Int32 ErrorCode = pInputStream->CtorSuccess();
 
@@ -771,11 +724,10 @@ TaskManager::open( sal_Int32 CommandId,
                       ErrorCode,
                       pInputStream->getMinorError() );
 
-        delete pInputStream;
-        pInputStream = nullptr;
+        pInputStream.clear();
     }
 
-    return uno::Reference< io::XInputStream >( pInputStream );
+    return uno::Reference< io::XInputStream >( pInputStream.get() );
 }
 
 
@@ -789,12 +741,12 @@ TaskManager::open( sal_Int32 CommandId,
 //  to read and write from/to the file.
 
 
-uno::Reference< io::XStream > SAL_CALL
+uno::Reference< io::XStream >
 TaskManager::open_rw( sal_Int32 CommandId,
                 const OUString& aUnqPath,
                 bool bLock )
 {
-    XStream_impl* pStream = new XStream_impl( aUnqPath, bLock );  // from filstr.hxx
+    rtl::Reference<XStream_impl> pStream(new XStream_impl( aUnqPath, bLock ));  // from filstr.hxx
 
     sal_Int32 ErrorCode = pStream->CtorSuccess();
 
@@ -804,10 +756,9 @@ TaskManager::open_rw( sal_Int32 CommandId,
                       ErrorCode,
                       pStream->getMinorError() );
 
-        delete pStream;
-        pStream = nullptr;
+        pStream.clear();
     }
-    return uno::Reference< io::XStream >( pStream );
+    return uno::Reference< io::XStream >( pStream.get() );
 }
 
 
@@ -821,14 +772,14 @@ TaskManager::open_rw( sal_Int32 CommandId,
 //  to file URL aUnqPath
 
 
-uno::Reference< XDynamicResultSet > SAL_CALL
+uno::Reference< XDynamicResultSet >
 TaskManager::ls( sal_Int32 CommandId,
            const OUString& aUnqPath,
            const sal_Int32 OpenMode,
            const uno::Sequence< beans::Property >& seq,
            const uno::Sequence< NumberedSortingInfo >& seqSort )
 {
-    XResultSet_impl* p = new XResultSet_impl( this,aUnqPath,OpenMode,seq,seqSort );
+    rtl::Reference<XResultSet_impl> p(new XResultSet_impl( this,aUnqPath,OpenMode,seq,seqSort ));
 
     sal_Int32 ErrorCode = p->CtorSuccess();
 
@@ -838,11 +789,10 @@ TaskManager::ls( sal_Int32 CommandId,
                       ErrorCode,
                       p->getMinorError() );
 
-        delete p;
-        p = nullptr;
+        p.clear();
     }
 
-    return uno::Reference< XDynamicResultSet > ( p );
+    return uno::Reference< XDynamicResultSet > ( p.get() );
 }
 
 
@@ -853,7 +803,7 @@ TaskManager::ls( sal_Int32 CommandId,
 /*********************************************************************************/
 // Info for commands
 
-uno::Reference< XCommandInfo > SAL_CALL
+uno::Reference< XCommandInfo >
 TaskManager::info_c()
 {
     XCommandInfo_impl* p = new XCommandInfo_impl( this );
@@ -868,7 +818,7 @@ TaskManager::info_c()
 /*********************************************************************************/
 // Info for the properties
 
-uno::Reference< beans::XPropertySetInfo > SAL_CALL
+uno::Reference< beans::XPropertySetInfo >
 TaskManager::info_p( const OUString& aUnqPath )
 {
     osl::MutexGuard aGuard( m_aMutex );
@@ -886,7 +836,7 @@ TaskManager::info_p( const OUString& aUnqPath )
 //  Sets the values of the properties belonging to fileURL aUnqPath
 
 
-uno::Sequence< uno::Any > SAL_CALL
+uno::Sequence< uno::Any >
 TaskManager::setv( const OUString& aUnqPath,
              const uno::Sequence< beans::PropertyValue >& values )
 {
@@ -897,7 +847,7 @@ TaskManager::setv( const OUString& aUnqPath,
     uno::Sequence< beans::PropertyChangeEvent > seqChanged( values.getLength() );
 
     TaskManager::ContentMap::iterator it = m_aContent.find( aUnqPath );
-    PropertySet& properties = *( it->second.properties );
+    PropertySet& properties = it->second.properties;
     TaskManager::PropertySet::iterator it1;
     uno::Any aAny;
 
@@ -973,11 +923,10 @@ TaskManager::setv( const OUString& aUnqPath,
                     if( err )
                     {
                         --propChanged; // unsuccessful setting
-                        uno::Sequence< uno::Any > names( 1 );
-                        ret[0] <<= beans::PropertyValue(
-                            "Uri", -1,
-                            uno::makeAny(aUnqPath),
-                            beans::PropertyState_DIRECT_VALUE);
+                        uno::Sequence<uno::Any> names(comphelper::InitAnyPropertySequence(
+                        {
+                            {"Uri", uno::Any(aUnqPath)}
+                        }));
                         ret[i] <<= InteractiveAugmentedIOException(
                             OUString(),
                             nullptr,
@@ -1036,11 +985,10 @@ TaskManager::setv( const OUString& aUnqPath,
                     if( err != osl::FileBase::E_None )
                     {
                         --propChanged; // unsuccessful setting
-                        uno::Sequence< uno::Any > names( 1 );
-                        names[0] <<= beans::PropertyValue(
-                            "Uri", -1,
-                            uno::makeAny(aUnqPath),
-                            beans::PropertyState_DIRECT_VALUE);
+                        uno::Sequence<uno::Any> names(comphelper::InitAnyPropertySequence(
+                        {
+                            {"Uri", uno::Any(aUnqPath)}
+                        }));
                         IOErrorCode ioError;
                         switch( err )
                         {
@@ -1119,7 +1067,7 @@ TaskManager::setv( const OUString& aUnqPath,
 //  Returns an XRow object containing the values in the requested order.
 
 
-uno::Reference< sdbc::XRow > SAL_CALL
+uno::Reference< sdbc::XRow >
 TaskManager::getv( sal_Int32 CommandId,
              const OUString& aUnqPath,
              const uno::Sequence< beans::Property >& properties )
@@ -1150,18 +1098,16 @@ TaskManager::getv( sal_Int32 CommandId,
         TaskManager::ContentMap::iterator it = m_aContent.find( aUnqPath );
         commit( it,aFileStatus );
 
-        TaskManager::PropertySet::iterator it1;
-        PropertySet& propset = *(it->second.properties);
+        PropertySet& propset = it->second.properties;
 
-        for( sal_Int32 i = 0; i < seq.getLength(); ++i )
-        {
-            MyProperty readProp( properties[i].Name );
-            it1 = propset.find( readProp );
-            if( it1 == propset.end() )
-                seq[i] = uno::Any();
-            else
-                seq[i] = it1->getValue();
-        }
+        std::transform(properties.begin(), properties.end(), seq.begin(),
+            [&propset](const beans::Property& rProp) -> uno::Any {
+                MyProperty readProp( rProp.Name );
+                auto it1 = propset.find( readProp );
+                if( it1 == propset.end() )
+                    return uno::Any();
+                return it1->getValue();
+            });
     }
 
     XRow_impl* p = new XRow_impl( this,seq );
@@ -1185,7 +1131,7 @@ TaskManager::getv( sal_Int32 CommandId,
 //  Moves the content belonging to fileURL srcUnqPath to fileURL dstUnqPath.
 
 
-void SAL_CALL
+void
 TaskManager::move( sal_Int32 CommandId,
              const OUString& srcUnqPath,
              const OUString& dstUnqPathIn,
@@ -1220,8 +1166,8 @@ TaskManager::move( sal_Int32 CommandId,
 
             osl::FileStatus aStatus(osl_FileStatus_Mask_Type|osl_FileStatus_Mask_LinkTargetURL);
             osl::DirectoryItem aItem;
-            osl::DirectoryItem::get(dstUnqPath,aItem);
-            aItem.getFileStatus(aStatus);
+            (void)osl::DirectoryItem::get(dstUnqPath,aItem);
+            (void)aItem.getFileStatus(aStatus);
 
             if( aStatus.isValid(osl_FileStatus_Mask_Type)          &&
                 aStatus.isValid(osl_FileStatus_Mask_LinkTargetURL) &&
@@ -1393,7 +1339,7 @@ bool getType(
 
 }
 
-void SAL_CALL
+void
 TaskManager::copy(
     sal_Int32 CommandId,
     const OUString& srcUnqPath,
@@ -1466,7 +1412,7 @@ TaskManager::copy(
         }
         case NameClash::RENAME:
         {
-            OUString newDstUnqPath;
+            OUString newDstUnqPath = dstUnqPath;
             nError = copy_recursive( rslvdSrcUnqPath,dstUnqPath,IsWhat,true );
 
             if( nError == osl::FileBase::E_EXIST )
@@ -1565,7 +1511,7 @@ TaskManager::copy(
 //  Return: success of operation
 
 
-bool SAL_CALL
+bool
 TaskManager::remove( sal_Int32 CommandId,
                const OUString& aUnqPath,
                FileUrlType IsWhat,
@@ -1727,7 +1673,7 @@ TaskManager::remove( sal_Int32 CommandId,
 //  Return:: success of operation
 
 
-bool SAL_CALL
+bool
 TaskManager::mkdir( sal_Int32 CommandId,
               const OUString& rUnqPath,
               bool OverWrite )
@@ -1787,7 +1733,7 @@ TaskManager::mkdir( sal_Int32 CommandId,
 //  Return:: success of operation
 
 
-bool SAL_CALL
+bool
 TaskManager::mkfil( sal_Int32 CommandId,
               const OUString& aUnqPath,
               bool Overwrite,
@@ -1818,7 +1764,7 @@ TaskManager::mkfil( sal_Int32 CommandId,
 //  Return:: success of operation
 
 
-bool SAL_CALL
+bool
 TaskManager::write( sal_Int32 CommandId,
               const OUString& aUnqPath,
               bool OverWrite,
@@ -1936,7 +1882,7 @@ TaskManager::write( sal_Int32 CommandId,
         {
             const sal_Int8* p = seq.getConstArray();
 
-            err = aFile.write( (static_cast<void const *>(p)),
+            err = aFile.write( static_cast<void const *>(p),
                                sal_uInt64( nReadBytes ),
                                nWrittenBytes );
 
@@ -1978,30 +1924,24 @@ TaskManager::write( sal_Int32 CommandId,
 /*********************************************************************************/
 
 
-void SAL_CALL TaskManager::insertDefaultProperties( const OUString& aUnqPath )
+void TaskManager::insertDefaultProperties( const OUString& aUnqPath )
 {
     osl::MutexGuard aGuard( m_aMutex );
 
     ContentMap::iterator it =
-        m_aContent.insert( ContentMap::value_type( aUnqPath,UnqPathData() ) ).first;
+        m_aContent.emplace( aUnqPath,UnqPathData() ).first;
 
     load( it,false );
 
     MyProperty ContentTProperty( ContentType );
 
-    PropertySet& properties = *(it->second.properties);
+    PropertySet& properties = it->second.properties;
     bool ContentNotDefau = properties.find( ContentTProperty ) != properties.end();
 
-    TaskManager::PropertySet::iterator it1 = m_aDefaultProperties.begin();
-    while( it1 != m_aDefaultProperties.end() )
+    for (auto const& defaultprop : m_aDefaultProperties)
     {
-        if( ContentNotDefau && it1->getPropertyName() == ContentType )
-        {
-            // No insertion
-        }
-        else
-            properties.insert( *it1 );
-        ++it1;
+        if( !ContentNotDefau || defaultprop.getPropertyName() != ContentType )
+            properties.insert( defaultprop );
     }
 }
 
@@ -2014,7 +1954,7 @@ void SAL_CALL TaskManager::insertDefaultProperties( const OUString& aUnqPath )
 /******************************************************************************/
 
 
-bool SAL_CALL TaskManager::getUnqFromUrl( const OUString& Url, OUString& Unq )
+bool TaskManager::getUnqFromUrl( const OUString& Url, OUString& Unq )
 {
     if ( Url == "file:///" || Url == "file://localhost/" || Url == "file://127.0.0.1/" )
     {
@@ -2035,7 +1975,7 @@ bool SAL_CALL TaskManager::getUnqFromUrl( const OUString& Url, OUString& Unq )
 }
 
 
-bool SAL_CALL TaskManager::getUrlFromUnq( const OUString& Unq,OUString& Url )
+bool TaskManager::getUrlFromUnq( const OUString& Unq,OUString& Url )
 {
     bool err = osl::FileBase::E_None != osl::FileBase::getSystemPathFromFileURL( Unq,Url );
 
@@ -2047,7 +1987,7 @@ bool SAL_CALL TaskManager::getUrlFromUnq( const OUString& Unq,OUString& Url )
 
 // Helper function for public copy
 
-osl::FileBase::RC SAL_CALL
+osl::FileBase::RC
 TaskManager::copy_recursive( const OUString& srcUnqPath,
                        const OUString& dstUnqPath,
                        FileUrlType TypeToCopy,
@@ -2072,8 +2012,11 @@ TaskManager::copy_recursive( const OUString& srcUnqPath,
 
             osl::DirectoryItem aDirItem;
 
-            while( err == osl::FileBase::E_None && ( next = aDir.getNextItem( aDirItem ) ) == osl::FileBase::E_None )
+            while( err == osl::FileBase::E_None )
             {
+                next = aDir.getNextItem( aDirItem );
+                if (next != osl::FileBase::E_None )
+                    break;
                 bool IsDoc = false;
                 osl::FileStatus aFileStatus( n_Mask );
                 aDirItem.getFileStatus( aFileStatus );
@@ -2119,7 +2062,7 @@ TaskManager::copy_recursive( const OUString& srcUnqPath,
 // returns success of the operation
 
 
-bool SAL_CALL TaskManager::ensuredir( sal_Int32 CommandId,
+bool TaskManager::ensuredir( sal_Int32 CommandId,
                                     const OUString& rUnqPath,
                                     sal_Int32 errorCode )
 {
@@ -2141,7 +2084,7 @@ bool SAL_CALL TaskManager::ensuredir( sal_Int32 CommandId,
     // arbitrary (?) directory does not seem to cause any sandbox
     // violation, while opendir() does. (Sorry I could not be bothered
     // to use some complex cross-platform abstraction over stat() here
-    // in this OS X specific code block.)
+    // in this macOS specific code block.)
 
     OUString aDirName;
     struct stat s;
@@ -2201,38 +2144,38 @@ bool SAL_CALL TaskManager::ensuredir( sal_Int32 CommandId,
 
 
 //  Given a sequence of properties seq, this method determines the mask
-//  used to instantiate a osl::FileStatus, so that a call to
+//  used to instantiate an osl::FileStatus, so that a call to
 //  osl::DirectoryItem::getFileStatus fills the required fields.
 
 
-void SAL_CALL
+void
 TaskManager::getMaskFromProperties(
     sal_Int32& n_Mask,
     const uno::Sequence< beans::Property >& seq )
 {
     n_Mask = 0;
-    for(sal_Int32 j = 0; j < seq.getLength(); ++j) {
-        if(seq[j].Name == Title)
+    for(const auto& rProp : seq) {
+        if(rProp.Name == Title)
             n_Mask |= osl_FileStatus_Mask_FileName;
-        else if(seq[j].Name == CasePreservingURL)
+        else if(rProp.Name == CasePreservingURL)
             n_Mask |= osl_FileStatus_Mask_FileURL;
-        else if(seq[j].Name == IsDocument ||
-                seq[j].Name == IsFolder ||
-                seq[j].Name == IsVolume ||
-                seq[j].Name == IsRemoveable ||
-                seq[j].Name == IsRemote ||
-                seq[j].Name == IsCompactDisc ||
-                seq[j].Name == IsFloppy ||
-                seq[j].Name == ContentType)
+        else if(rProp.Name == IsDocument ||
+                rProp.Name == IsFolder ||
+                rProp.Name == IsVolume ||
+                rProp.Name == IsRemoveable ||
+                rProp.Name == IsRemote ||
+                rProp.Name == IsCompactDisc ||
+                rProp.Name == IsFloppy ||
+                rProp.Name == ContentType)
             n_Mask |= (osl_FileStatus_Mask_Type | osl_FileStatus_Mask_LinkTargetURL);
-        else if(seq[j].Name == Size)
+        else if(rProp.Name == Size)
             n_Mask |= (osl_FileStatus_Mask_FileSize |
                       osl_FileStatus_Mask_Type |
                       osl_FileStatus_Mask_LinkTargetURL);
-        else if(seq[j].Name == IsHidden ||
-                seq[j].Name == IsReadOnly)
+        else if(rProp.Name == IsHidden ||
+                rProp.Name == IsReadOnly)
             n_Mask |= osl_FileStatus_Mask_Attributes;
-        else if(seq[j].Name == DateModified)
+        else if(rProp.Name == DateModified)
             n_Mask |= osl_FileStatus_Mask_ModifyTime;
     }
 }
@@ -2248,50 +2191,44 @@ TaskManager::getMaskFromProperties(
 //  The Properties are stored under the url belonging to it->first.
 
 
-void SAL_CALL
+void
 TaskManager::load( const ContentMap::iterator& it, bool create )
 {
-    if( ! it->second.properties )
-        it->second.properties = new PropertySet;
+    if(  ( it->second.xS.is() && it->second.xC.is() && it->second.xA.is() )
+        || !m_xFileRegistry.is() )
+        return;
 
-    if( ( ! it->second.xS.is() ||
-          ! it->second.xC.is() ||
-          ! it->second.xA.is() )
-        && m_xFileRegistry.is() )
+
+    uno::Reference< ucb::XPersistentPropertySet > xS = m_xFileRegistry->openPropertySet( it->first,create );
+    if( xS.is() )
     {
+        uno::Reference< beans::XPropertyContainer > xC( xS,uno::UNO_QUERY );
+        uno::Reference< beans::XPropertyAccess >    xA( xS,uno::UNO_QUERY );
 
-        uno::Reference< ucb::XPersistentPropertySet > xS = m_xFileRegistry->openPropertySet( it->first,create );
-        if( xS.is() )
+        it->second.xS = xS;
+        it->second.xC = xC;
+        it->second.xA = xA;
+
+        // Now put in all values in the storage in the local hash;
+
+        PropertySet& properties = it->second.properties;
+        const uno::Sequence< beans::Property > seq = xS->getPropertySetInfo()->getProperties();
+
+        for( const auto& rProp : seq )
         {
-            uno::Reference< beans::XPropertyContainer > xC( xS,uno::UNO_QUERY );
-            uno::Reference< beans::XPropertyAccess >    xA( xS,uno::UNO_QUERY );
-
-            it->second.xS = xS;
-            it->second.xC = xC;
-            it->second.xA = xA;
-
-            // Now put in all values in the storage in the local hash;
-
-            PropertySet& properties = *(it->second.properties);
-            uno::Sequence< beans::Property > seq = xS->getPropertySetInfo()->getProperties();
-
-            for( sal_Int32 i = 0; i < seq.getLength(); ++i )
-            {
-                MyProperty readProp( false,
-                                     seq[i].Name,
-                                     seq[i].Handle,
-                                     seq[i].Type,
-                                     xS->getPropertyValue( seq[i].Name ),
-                                     beans::PropertyState_DIRECT_VALUE,
-                                     seq[i].Attributes );
-                if( properties.find( readProp ) == properties.end() )
-                    properties.insert( readProp );
-            }
+            MyProperty readProp( false,
+                                 rProp.Name,
+                                 rProp.Handle,
+                                 rProp.Type,
+                                 xS->getPropertyValue( rProp.Name ),
+                                 beans::PropertyState_DIRECT_VALUE,
+                                 rProp.Attributes );
+            properties.insert( readProp );
         }
-        else if( create )
-        {
-            // Catastrophic error
-        }
+    }
+    else if( create )
+    {
+        // Catastrophic error
     }
 }
 
@@ -2306,19 +2243,19 @@ TaskManager::load( const ContentMap::iterator& it, bool create )
 // setting of file properties which properties have changed without filestat
 
 
-void SAL_CALL
+void
 TaskManager::commit( const TaskManager::ContentMap::iterator& it,
                const osl::FileStatus& aFileStatus )
 {
     TaskManager::PropertySet::iterator it1;
 
-    if( it->second.properties == nullptr )
+    if( it->second.properties.empty() )
     {
         OUString aPath = it->first;
         insertDefaultProperties( aPath );
     }
 
-    PropertySet& properties = *( it->second.properties );
+    PropertySet& properties = it->second.properties;
 
     it1 = properties.find( MyProperty( Title ) );
     if( it1 != properties.end() )
@@ -2526,9 +2463,8 @@ TaskManager::commit( const TaskManager::ContentMap::iterator& it,
 // directoryitem, which is returned by osl::DirectoryItem::getNextItem()
 
 
-bool SAL_CALL
+bool
 TaskManager::getv(
-    Notifier* pNotifier,
     const uno::Sequence< beans::Property >& properties,
     osl::DirectoryItem& aDirItem,
     OUString& aUnqPath,
@@ -2563,15 +2499,13 @@ TaskManager::getv(
     {
         // Assume failure
         aIsRegular = false;
-        osl::FileBase::RC result = osl::FileBase::E_INVAL;
         osl::DirectoryItem aTargetItem;
-        osl::DirectoryItem::get( aFileStatus.getLinkTargetURL(), aTargetItem );
+        (void)osl::DirectoryItem::get( aFileStatus.getLinkTargetURL(), aTargetItem );
         if ( aTargetItem.is() )
         {
             osl::FileStatus aTargetStatus( osl_FileStatus_Mask_Type );
 
-            if ( osl::FileBase::E_None ==
-                 ( result = aTargetItem.getFileStatus( aTargetStatus ) ) )
+            if ( osl::FileBase::E_None == aTargetItem.getFileStatus( aTargetStatus ) )
                 aIsRegular =
                     aTargetStatus.getFileType() == osl::FileStatus::Regular;
         }
@@ -2579,7 +2513,6 @@ TaskManager::getv(
     else
         aIsRegular = aFileStatus.getFileType() == osl::FileStatus::Regular;
 
-    registerNotifier( aUnqPath,pNotifier );
     insertDefaultProperties( aUnqPath );
     {
         osl::MutexGuard aGuard( m_aMutex );
@@ -2587,20 +2520,17 @@ TaskManager::getv(
         TaskManager::ContentMap::iterator it = m_aContent.find( aUnqPath );
         commit( it,aFileStatus );
 
-        TaskManager::PropertySet::iterator it1;
-        PropertySet& propset = *(it->second.properties);
+        PropertySet& propset = it->second.properties;
 
-        for( sal_Int32 i = 0; i < seq.getLength(); ++i )
-        {
-            MyProperty readProp( properties[i].Name );
-            it1 = propset.find( readProp );
-            if( it1 == propset.end() )
-                seq[i] = uno::Any();
-            else
-                seq[i] = it1->getValue();
-        }
+        std::transform(properties.begin(), properties.end(), seq.begin(),
+            [&propset](const beans::Property& rProp) -> uno::Any {
+                MyProperty readProp( rProp.Name );
+                auto it1 = propset.find( readProp );
+                if( it1 == propset.end() )
+                    return uno::Any();
+                return it1->getValue();
+            });
     }
-    deregisterNotifier( aUnqPath,pNotifier );
 
     XRow_impl* p = new XRow_impl( this,seq );
     row = uno::Reference< sdbc::XRow >( p );
@@ -2611,166 +2541,125 @@ TaskManager::getv(
 // EventListener
 
 
-std::list< ContentEventNotifier* >* SAL_CALL
+std::vector< std::unique_ptr< ContentEventNotifier > >
 TaskManager::getContentEventListeners( const OUString& aName )
 {
-    std::list< ContentEventNotifier* >* p = new std::list< ContentEventNotifier* >;
-    std::list< ContentEventNotifier* >& listeners = *p;
+    std::vector< std::unique_ptr<ContentEventNotifier> > listeners;
     {
         osl::MutexGuard aGuard( m_aMutex );
         TaskManager::ContentMap::iterator it = m_aContent.find( aName );
-        if( it != m_aContent.end() && it->second.notifier )
+        if( it != m_aContent.end() && !it->second.notifier.empty() )
         {
-            std::list<Notifier*>& listOfNotifiers = *( it->second.notifier );
-            std::list<Notifier*>::iterator it1 = listOfNotifiers.begin();
-            while( it1 != listOfNotifiers.end() )
+            std::vector<Notifier*>& listOfNotifiers = it->second.notifier;
+            for (auto const& pointer : listOfNotifiers)
             {
-                Notifier* pointer = *it1;
-                ContentEventNotifier* notifier = pointer->cCEL();
+                std::unique_ptr<ContentEventNotifier> notifier = pointer->cCEL();
                 if( notifier )
-                    listeners.push_back( notifier );
-                ++it1;
+                    listeners.push_back( std::move(notifier) );
             }
         }
     }
-    return p;
+    return listeners;
 }
 
 
-std::list< ContentEventNotifier* >* SAL_CALL
+std::vector< std::unique_ptr<ContentEventNotifier> >
 TaskManager::getContentDeletedEventListeners( const OUString& aName )
 {
-    std::list< ContentEventNotifier* >* p = new std::list< ContentEventNotifier* >;
-    std::list< ContentEventNotifier* >& listeners = *p;
+    std::vector< std::unique_ptr< ContentEventNotifier > > listeners;
     {
         osl::MutexGuard aGuard( m_aMutex );
         TaskManager::ContentMap::iterator it = m_aContent.find( aName );
-        if( it != m_aContent.end() && it->second.notifier )
+        if( it != m_aContent.end() && !it->second.notifier.empty() )
         {
-            std::list<Notifier*>& listOfNotifiers = *( it->second.notifier );
-            std::list<Notifier*>::iterator it1 = listOfNotifiers.begin();
-            while( it1 != listOfNotifiers.end() )
+            std::vector<Notifier*>& listOfNotifiers = it->second.notifier;
+            for (auto const& pointer : listOfNotifiers)
             {
-                Notifier* pointer = *it1;
-                ContentEventNotifier* notifier = pointer->cDEL();
+                std::unique_ptr<ContentEventNotifier> notifier = pointer->cDEL();
                 if( notifier )
-                    listeners.push_back( notifier );
-                ++it1;
+                    listeners.push_back( std::move(notifier) );
             }
         }
     }
-    return p;
+    return listeners;
 }
 
-
-void SAL_CALL
-TaskManager::notifyInsert( std::list< ContentEventNotifier* >* listeners,const OUString& aChildName )
+void TaskManager::notifyInsert(const std::vector<std::unique_ptr<ContentEventNotifier>>& listeners,
+                               const OUString& aChildName)
 {
-    std::list< ContentEventNotifier* >::iterator it = listeners->begin();
-    while( it != listeners->end() )
+    for (const auto & l : listeners )
     {
-        (*it)->notifyChildInserted( aChildName );
-        delete (*it);
-        ++it;
+        l->notifyChildInserted( aChildName );
     }
-    delete listeners;
 }
 
-
-void SAL_CALL
-TaskManager::notifyContentDeleted( std::list< ContentEventNotifier* >* listeners )
+void TaskManager::notifyContentDeleted(
+    const std::vector<std::unique_ptr<ContentEventNotifier>>& listeners)
 {
-    std::list< ContentEventNotifier* >::iterator it = listeners->begin();
-    while( it != listeners->end() )
+    for( auto const & l : listeners )
     {
-        (*it)->notifyDeleted();
-        delete (*it);
-        ++it;
+        l->notifyDeleted();
     }
-    delete listeners;
 }
 
-
-void SAL_CALL
-TaskManager::notifyContentRemoved( std::list< ContentEventNotifier* >* listeners,
-                             const OUString& aChildName )
+void TaskManager::notifyContentRemoved(
+    const std::vector<std::unique_ptr<ContentEventNotifier>>& listeners, const OUString& aChildName)
 {
-    std::list< ContentEventNotifier* >::iterator it = listeners->begin();
-    while( it != listeners->end() )
+    for( auto const & l : listeners )
     {
-        (*it)->notifyRemoved( aChildName );
-        delete (*it);
-        ++it;
+        l->notifyRemoved( aChildName );
     }
-    delete listeners;
 }
 
 
-std::list< PropertySetInfoChangeNotifier* >* SAL_CALL
+std::vector< std::unique_ptr< PropertySetInfoChangeNotifier > >
 TaskManager::getPropertySetListeners( const OUString& aName )
 {
-    std::list< PropertySetInfoChangeNotifier* >* p = new std::list< PropertySetInfoChangeNotifier* >;
-    std::list< PropertySetInfoChangeNotifier* >& listeners = *p;
+    std::vector< std::unique_ptr< PropertySetInfoChangeNotifier > > listeners;
     {
         osl::MutexGuard aGuard( m_aMutex );
         TaskManager::ContentMap::iterator it = m_aContent.find( aName );
-        if( it != m_aContent.end() && it->second.notifier )
+        if( it != m_aContent.end() && !it->second.notifier.empty() )
         {
-            std::list<Notifier*>& listOfNotifiers = *( it->second.notifier );
-            std::list<Notifier*>::iterator it1 = listOfNotifiers.begin();
-            while( it1 != listOfNotifiers.end() )
+            std::vector<Notifier*>& listOfNotifiers = it->second.notifier;
+            for (auto const& pointer : listOfNotifiers)
             {
-                Notifier* pointer = *it1;
-                PropertySetInfoChangeNotifier* notifier = pointer->cPSL();
+                std::unique_ptr<PropertySetInfoChangeNotifier> notifier = pointer->cPSL();
                 if( notifier )
-                    listeners.push_back( notifier );
-                ++it1;
+                    listeners.push_back( std::move(notifier) );
             }
         }
     }
-    return p;
+    return listeners;
 }
 
-
-void SAL_CALL
-TaskManager::notifyPropertyAdded( std::list< PropertySetInfoChangeNotifier* >* listeners,
-                            const OUString& aPropertyName )
+void TaskManager::notifyPropertyAdded(
+    const std::vector<std::unique_ptr<PropertySetInfoChangeNotifier>>& listeners,
+    const OUString& aPropertyName)
 {
-    std::list< PropertySetInfoChangeNotifier* >::iterator it = listeners->begin();
-    while( it != listeners->end() )
+    for( auto const & l : listeners )
     {
-        (*it)->notifyPropertyAdded( aPropertyName );
-        delete (*it);
-        ++it;
+        l->notifyPropertyAdded( aPropertyName );
     }
-    delete listeners;
 }
 
-
-void SAL_CALL
-TaskManager::notifyPropertyRemoved( std::list< PropertySetInfoChangeNotifier* >* listeners,
-                              const OUString& aPropertyName )
+void TaskManager::notifyPropertyRemoved(
+    const std::vector<std::unique_ptr<PropertySetInfoChangeNotifier>>& listeners,
+    const OUString& aPropertyName)
 {
-    std::list< PropertySetInfoChangeNotifier* >::iterator it = listeners->begin();
-    while( it != listeners->end() )
+    for( auto const & l : listeners )
     {
-        (*it)->notifyPropertyRemoved( aPropertyName );
-        delete (*it);
-        ++it;
+        l->notifyPropertyRemoved( aPropertyName );
     }
-    delete listeners;
 }
 
 
-std::vector< std::list< ContentEventNotifier* >* >* SAL_CALL
+std::vector< std::unique_ptr< ContentEventNotifier > >
 TaskManager::getContentExchangedEventListeners( const OUString& aOldPrefix,
                                           const OUString& aNewPrefix,
                                           bool withChildren )
 {
-
-    std::vector< std::list< ContentEventNotifier* >* >* aVectorOnHeap =
-        new std::vector< std::list< ContentEventNotifier* >* >;
-    std::vector< std::list< ContentEventNotifier* >* >&  aVector = *aVectorOnHeap;
+    std::vector< std::unique_ptr< ContentEventNotifier > > aVector;
 
     sal_Int32 count;
     OUString aOldName;
@@ -2788,14 +2677,12 @@ TaskManager::getContentExchangedEventListeners( const OUString& aOldPrefix,
         }
         else
         {
-            ContentMap::iterator itnames = m_aContent.begin();
-            while( itnames != m_aContent.end() )
+            for (auto const& content : m_aContent)
             {
-                if( isChild( aOldPrefix,itnames->first ) )
+                if( isChild( aOldPrefix,content.first ) )
                 {
-                    oldChildList.push_back( itnames->first );
+                    oldChildList.push_back( content.first );
                 }
-                ++itnames;
             }
             count = oldChildList.size();
         }
@@ -2803,9 +2690,6 @@ TaskManager::getContentExchangedEventListeners( const OUString& aOldPrefix,
 
         for( sal_Int32 j = 0; j < count; ++j )
         {
-            std::list< ContentEventNotifier* >* p = new std::list< ContentEventNotifier* >;
-            std::list< ContentEventNotifier* >& listeners = *p;
-
             if( withChildren )
             {
                 aOldName = oldChildList[j];
@@ -2815,111 +2699,83 @@ TaskManager::getContentExchangedEventListeners( const OUString& aOldPrefix,
             TaskManager::ContentMap::iterator itold = m_aContent.find( aOldName );
             if( itold != m_aContent.end() )
             {
-                TaskManager::ContentMap::iterator itnew = m_aContent.insert(
-                    ContentMap::value_type( aNewName,UnqPathData() ) ).first;
+                TaskManager::ContentMap::iterator itnew = m_aContent.emplace(
+                    aNewName,UnqPathData() ).first;
 
                 // copy Ownership also
-                delete itnew->second.properties;
-                itnew->second.properties = itold->second.properties;
-                itold->second.properties = nullptr;
+                itnew->second.properties = std::move(itold->second.properties);
 
                 // copy existing list
-                std::list< Notifier* >* copyList = itnew->second.notifier;
-                itnew->second.notifier = itold->second.notifier;
-                itold->second.notifier = nullptr;
+                std::vector< Notifier* > copyList;
+                std::swap(copyList, itnew->second.notifier);
+                itnew->second.notifier = std::move(itold->second.notifier);
 
                 m_aContent.erase( itold );
 
-                if( itnew != m_aContent.end() && itnew->second.notifier )
+                if (itnew != m_aContent.end())
                 {
-                    std::list<Notifier*>& listOfNotifiers = *( itnew->second.notifier );
-                    std::list<Notifier*>::iterator it1 = listOfNotifiers.begin();
-                    while( it1 != listOfNotifiers.end() )
+                    if (!itnew->second.notifier.empty())
                     {
-                        Notifier* pointer = *it1;
-                        ContentEventNotifier* notifier = pointer->cEXC( aNewName );
-                        if( notifier )
-                            listeners.push_back( notifier );
-                        ++it1;
+                        std::vector<Notifier*>& listOfNotifiers = itnew->second.notifier;
+                        for (auto const& pointer : listOfNotifiers)
+                        {
+                            std::unique_ptr<ContentEventNotifier> notifier = pointer->cEXC( aNewName );
+                            if( notifier )
+                                aVector.push_back( std::move(notifier) );
+                        }
                     }
-                }
 
-                // Merge with preexisting notifiers
-                // However, these may be in status BaseContent::Deleted
-                if( copyList != nullptr )
-                {
-                    std::list< Notifier* >::iterator copyIt = copyList->begin();
-                    while( copyIt != copyList->end() )
-                    {
-                        itnew->second.notifier->push_back( *copyIt );
-                        ++copyIt;
-                    }
+                    // Merge with preexisting notifiers
+                    // However, these may be in status BaseContent::Deleted
+                    for( const auto& rCopyPtr : copyList )
+                        itnew->second.notifier.push_back( rCopyPtr );
                 }
-                delete copyList;
             }
-            aVector.push_back( p );
         }
     }
 
-    return aVectorOnHeap;
+    return aVector;
 }
 
-
-void SAL_CALL
-TaskManager::notifyContentExchanged( std::vector< std::list< ContentEventNotifier* >* >* listeners_vec )
+void TaskManager::notifyContentExchanged(
+    const std::vector<std::unique_ptr<ContentEventNotifier>>& listeners_vec)
 {
-    for( std::list< ContentEventNotifier* >* listeners : *listeners_vec)
+    for( auto & l : listeners_vec)
     {
-        std::list< ContentEventNotifier* >::iterator it = listeners->begin();
-        while( it != listeners->end() )
-        {
-            (*it)->notifyExchanged();
-            delete (*it);
-            ++it;
-        }
-        delete listeners;
+        l->notifyExchanged();
     }
-    delete listeners_vec;
 }
 
 
-std::list< PropertyChangeNotifier* >* SAL_CALL
+std::vector< std::unique_ptr<PropertyChangeNotifier> >
 TaskManager::getPropertyChangeNotifier( const OUString& aName )
 {
-    std::list< PropertyChangeNotifier* >* p = new std::list< PropertyChangeNotifier* >;
-    std::list< PropertyChangeNotifier* >& listeners = *p;
+    std::vector< std::unique_ptr<PropertyChangeNotifier> > listeners;
     {
         osl::MutexGuard aGuard( m_aMutex );
         TaskManager::ContentMap::iterator it = m_aContent.find( aName );
-        if( it != m_aContent.end() && it->second.notifier )
+        if( it != m_aContent.end() && !it->second.notifier.empty() )
         {
-            std::list<Notifier*>& listOfNotifiers = *( it->second.notifier );
-            std::list<Notifier*>::iterator it1 = listOfNotifiers.begin();
-            while( it1 != listOfNotifiers.end() )
+            std::vector<Notifier*>& listOfNotifiers = it->second.notifier;
+            for (auto const& pointer : listOfNotifiers)
             {
-                Notifier* pointer = *it1;
-                PropertyChangeNotifier* notifier = pointer->cPCL();
+                std::unique_ptr<PropertyChangeNotifier> notifier = pointer->cPCL();
                 if( notifier )
-                    listeners.push_back( notifier );
-                ++it1;
+                    listeners.push_back( std::move(notifier) );
             }
         }
     }
-    return p;
+    return listeners;
 }
 
-
-void SAL_CALL TaskManager::notifyPropertyChanges( std::list< PropertyChangeNotifier* >* listeners,
-                                            const uno::Sequence< beans::PropertyChangeEvent >& seqChanged )
+void TaskManager::notifyPropertyChanges(
+    const std::vector<std::unique_ptr<PropertyChangeNotifier>>& listeners,
+    const uno::Sequence<beans::PropertyChangeEvent>& seqChanged)
 {
-    std::list< PropertyChangeNotifier* >::iterator it = listeners->begin();
-    while( it != listeners->end() )
+    for( auto const & l : listeners )
     {
-        (*it)->notifyPropertyChanged( seqChanged );
-        delete (*it);
-        ++it;
+        l->notifyPropertyChanged( seqChanged );
     }
-    delete listeners;
 }
 
 
@@ -2927,7 +2783,27 @@ void SAL_CALL TaskManager::notifyPropertyChanges( std::list< PropertyChangeNotif
 /*                       remove persistent propertyset                          */
 /********************************************************************************/
 
-void SAL_CALL
+void
+TaskManager::erasePersistentSetWithoutChildren( const OUString& aUnqPath )
+{
+    {
+        // Release possible references
+        osl::MutexGuard aGuard( m_aMutex );
+        ContentMap::iterator it = m_aContent.find( aUnqPath );
+        if( it != m_aContent.end() )
+        {
+            it->second.xS = nullptr;
+            it->second.xC = nullptr;
+            it->second.xA = nullptr;
+
+            it->second.properties.clear();
+        }
+    }
+
+    m_xFileRegistry->removePropertySet( aUnqPath );
+}
+
+void
 TaskManager::erasePersistentSet( const OUString& aUnqPath,
                            bool withChildren )
 {
@@ -2937,46 +2813,25 @@ TaskManager::erasePersistentSet( const OUString& aUnqPath,
         return;
     }
 
-    uno::Sequence< OUString > seqNames;
-
-    if( withChildren )
+    if( ! withChildren )
     {
-        uno::Reference< container::XNameAccess > xName( m_xFileRegistry,uno::UNO_QUERY );
-        seqNames = xName->getElementNames();
+        erasePersistentSetWithoutChildren(aUnqPath);
+        return;
     }
 
-    sal_Int32 count = withChildren ? seqNames.getLength() : 1;
+    uno::Reference< container::XNameAccess > xName( m_xFileRegistry,uno::UNO_QUERY );
+    const uno::Sequence< OUString > seqNames = xName->getElementNames();
 
-    OUString
-        old_Name = aUnqPath;
+    OUString old_Name = aUnqPath;
 
-    for( sal_Int32 j = 0; j < count; ++j )
+    for( const auto& rName : seqNames )
     {
-        if( withChildren  && ! ( isChild( old_Name,seqNames[j] ) ) )
+        if( ! ( isChild( old_Name,rName ) ) )
             continue;
 
-        if( withChildren )
-        {
-            old_Name = seqNames[j];
-        }
+        old_Name = rName;
 
-        {
-            // Release possible references
-            osl::MutexGuard aGuard( m_aMutex );
-            ContentMap::iterator it = m_aContent.find( old_Name );
-            if( it != m_aContent.end() )
-            {
-                it->second.xS = nullptr;
-                it->second.xC = nullptr;
-                it->second.xA = nullptr;
-
-                delete it->second.properties;
-                it->second.properties = nullptr;
-            }
-        }
-
-        if( m_xFileRegistry.is() )
-            m_xFileRegistry->removePropertySet( old_Name );
+        erasePersistentSetWithoutChildren(old_Name);
     }
 }
 
@@ -2986,8 +2841,37 @@ TaskManager::erasePersistentSet( const OUString& aUnqPath,
 /*                       from srcUnqPath to dstUnqPath                          */
 /********************************************************************************/
 
+void
+TaskManager::copyPersistentSetWithoutChildren( const OUString& srcUnqPath,
+                          const OUString& dstUnqPath )
+{
+    uno::Reference< XPersistentPropertySet > x_src =
+            m_xFileRegistry->openPropertySet( srcUnqPath,false );
+    m_xFileRegistry->removePropertySet( dstUnqPath );
 
-void SAL_CALL
+    if( ! x_src.is() )
+        return;
+
+    const uno::Sequence< beans::Property > seqProperty =
+        x_src->getPropertySetInfo()->getProperties();
+
+    if( ! seqProperty.hasElements() )
+        return;
+
+    uno::Reference< XPersistentPropertySet >
+        x_dstS = m_xFileRegistry->openPropertySet( dstUnqPath,true );
+    uno::Reference< beans::XPropertyContainer >
+        x_dstC( x_dstS,uno::UNO_QUERY );
+
+    for( const auto& rProperty : seqProperty )
+    {
+        x_dstC->addProperty( rProperty.Name,
+                             rProperty.Attributes,
+                             x_src->getPropertyValue( rProperty.Name ) );
+    }
+}
+
+void
 TaskManager::copyPersistentSet( const OUString& srcUnqPath,
                           const OUString& dstUnqPath,
                           bool withChildren )
@@ -2998,60 +2882,26 @@ TaskManager::copyPersistentSet( const OUString& srcUnqPath,
         return;
     }
 
-    uno::Sequence< OUString > seqNames;
-
-    if( withChildren )
+    if( ! withChildren )
     {
-        uno::Reference< container::XNameAccess > xName( m_xFileRegistry,uno::UNO_QUERY );
-        seqNames = xName->getElementNames();
+        copyPersistentSetWithoutChildren(srcUnqPath, dstUnqPath);
+        return;
     }
 
-    sal_Int32 count = withChildren ? seqNames.getLength() : 1;
+    uno::Reference< container::XNameAccess > xName( m_xFileRegistry,uno::UNO_QUERY );
+    const uno::Sequence< OUString > seqNames = xName->getElementNames();
 
-    OUString
-        old_Name = srcUnqPath,
-        new_Name = dstUnqPath;
+    OUString new_Name;
 
-    for( sal_Int32 j = 0; j < count; ++j )
+    for( const auto& rName : seqNames )
     {
-        if( withChildren  && ! ( isChild( srcUnqPath,seqNames[j] ) ) )
+        if( ! ( isChild( srcUnqPath,rName ) ) )
             continue;
 
-        if( withChildren )
-        {
-            old_Name = seqNames[j];
-            new_Name = newName( dstUnqPath,srcUnqPath,old_Name );
-        }
+        new_Name = newName( dstUnqPath,srcUnqPath,rName );
 
-        uno::Reference< XPersistentPropertySet > x_src;
-
-        if( m_xFileRegistry.is() )
-        {
-            x_src = m_xFileRegistry->openPropertySet( old_Name,false );
-            m_xFileRegistry->removePropertySet( new_Name );
-        }
-
-        if( x_src.is() )
-        {
-            uno::Sequence< beans::Property > seqProperty =
-                x_src->getPropertySetInfo()->getProperties();
-
-            if( seqProperty.getLength() )
-            {
-                uno::Reference< XPersistentPropertySet >
-                    x_dstS = m_xFileRegistry->openPropertySet( new_Name,true );
-                uno::Reference< beans::XPropertyContainer >
-                    x_dstC( x_dstS,uno::UNO_QUERY );
-
-                for( sal_Int32 i = 0; i < seqProperty.getLength(); ++i )
-                {
-                    x_dstC->addProperty( seqProperty[i].Name,
-                                         seqProperty[i].Attributes,
-                                         x_src->getPropertyValue( seqProperty[i].Name ) );
-                }
-            }
-        }
-    }         // end for( sal_Int...
+        copyPersistentSetWithoutChildren(rName, new_Name);
+    }
 }
 
 uno::Sequence< ucb::ContentInfo > TaskManager::queryCreatableContentsInfo()
@@ -3085,25 +2935,10 @@ uno::Sequence< ucb::ContentInfo > TaskManager::queryCreatableContentsInfo()
 /*                                                                             */
 /*******************************************************************************/
 
-void SAL_CALL
+void
 TaskManager::getScheme( OUString& Scheme )
 {
   Scheme = "file";
-}
-
-OUString SAL_CALL
-TaskManager::getImplementationName_static()
-{
-  return OUString("com.sun.star.comp.ucb.FileProvider");
-}
-
-
-uno::Sequence< OUString > SAL_CALL
-TaskManager::getSupportedServiceNames_static()
-{
-  OUString Supported("com.sun.star.ucb.FileContentProvider");
-  css::uno::Sequence< OUString > Seq( &Supported,1 );
-  return Seq;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

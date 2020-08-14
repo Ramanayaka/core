@@ -16,28 +16,16 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "FormatCondition.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include "corestrings.hrc"
+#include <FormatCondition.hxx>
+#include <strings.hxx>
 #include <tools/color.hxx>
-#include <connectivity/dbtools.hxx>
-#include <comphelper/property.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "Tools.hxx"
-#include <com/sun/star/text/ParagraphVertAlign.hpp>
-#include "ReportHelperImpl.hxx"
+#include <ReportHelperImpl.hxx>
 
 namespace reportdesign
 {
 
     using namespace com::sun::star;
-    using namespace comphelper;
-
-uno::Reference< uno::XInterface > OFormatCondition::create(uno::Reference< uno::XComponentContext > const & xContext)
-{
-    return *(new OFormatCondition(xContext));
-}
-
 
 OFormatCondition::OFormatCondition(uno::Reference< uno::XComponentContext > const & _xContext)
 :FormatConditionBase(m_aMutex)
@@ -58,27 +46,14 @@ void SAL_CALL OFormatCondition::dispose()
     cppu::WeakComponentImplHelperBase::dispose();
 }
 
-OUString OFormatCondition::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.report.OFormatCondition");
-}
-
-
 OUString SAL_CALL OFormatCondition::getImplementationName(  )
 {
-    return getImplementationName_Static();
-}
-
-uno::Sequence< OUString > OFormatCondition::getSupportedServiceNames_Static(  )
-{
-    uno::Sequence< OUString > aServices { SERVICE_FORMATCONDITION };
-
-    return aServices;
+    return "com.sun.star.comp.report.OFormatCondition";
 }
 
 uno::Sequence< OUString > SAL_CALL OFormatCondition::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
+    return { SERVICE_FORMATCONDITION };
 }
 
 sal_Bool SAL_CALL OFormatCondition::supportsService(const OUString& ServiceName)
@@ -149,5 +124,11 @@ REPORTCONTROLFORMAT_IMPL(OFormatCondition,m_aFormatProperties)
 
 } // namespace reportdesign
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_OFormatCondition_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new reportdesign::OFormatCondition(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

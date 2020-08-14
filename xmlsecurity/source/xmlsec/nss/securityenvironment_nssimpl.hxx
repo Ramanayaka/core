@@ -22,47 +22,42 @@
 
 #include <sal/config.h>
 #include <rtl/ustring.hxx>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/uno/Exception.hpp>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/xml/crypto/XSecurityEnvironment.hpp>
-#include <com/sun/star/security/XCertificate.hpp>
-#include <com/sun/star/security/CertificateCharacters.hpp>
-#include <com/sun/star/security/CertificateValidity.hpp>
+#include <com/sun/star/xml/crypto/XCertificateCreator.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 
 #include <osl/mutex.hxx>
 
-#include "pk11func.h"
-#include "keyhi.h"
-#include "certdb.h"
-#include "list"
+#include <keythi.h>
+#include <certt.h>
+#include <vector>
 
-#include "xmlsec-wrapper.h"
+#include <xmlsec-wrapper.h>
+
+namespace com::sun::star::security { class XCertificate; }
+class X509Certificate_NssImpl;
 
 class SecurityEnvironment_NssImpl : public ::cppu::WeakImplHelper<
-    css::xml::crypto::XSecurityEnvironment ,
+    css::xml::crypto::XSecurityEnvironment,
+    css::xml::crypto::XCertificateCreator,
     css::lang::XServiceInfo,
     css::lang::XUnoTunnel >
 {
 private:
 
-    std::list< PK11SlotInfo* > m_Slots;
-    typedef std::list< PK11SlotInfo* >::const_iterator CIT_SLOTS;
+    std::vector< PK11SlotInfo* > m_Slots;
     /// The last used certificate which has the private key for signing.
     css::uno::Reference<css::security::XCertificate> m_xSigningCertificate;
 
     osl::Mutex m_mutex;
 
         CERTCertDBHandle*                   m_pHandler ;
-        std::list< PK11SymKey* >            m_tSymKeyList ;
-        std::list< SECKEYPublicKey* >       m_tPubKeyList ;
-        std::list< SECKEYPrivateKey* >      m_tPriKeyList ;
+        std::vector< PK11SymKey* >          m_tSymKeyList ;
 
     public:
         SecurityEnvironment_NssImpl();
@@ -78,18 +73,6 @@ private:
         ) override ;
 
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override ;
-
-        //Helper for XServiceInfo
-        static css::uno::Sequence< OUString > impl_getSupportedServiceNames() ;
-
-        /// @throws css::uno::RuntimeException
-        static OUString impl_getImplementationName() ;
-
-        //Helper for registry
-        /// @throws css::uno::RuntimeException
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL impl_createInstance( const css::uno::Reference< css::lang::XMultiServiceFactory >& aServiceManager ) ;
-
-        static css::uno::Reference< css::lang::XSingleServiceFactory > impl_createFactory( const css::uno::Reference< css::lang::XMultiServiceFactory >& aServiceManager ) ;
 
         virtual ::sal_Int32 SAL_CALL verifyCertificate(
             const css::uno::Reference<
@@ -114,19 +97,10 @@ private:
         /// @throws css::uno::Exception
         /// @throws css::uno::RuntimeException
         void adoptSymKey( PK11SymKey* aSymKey ) ;
-        /// @throws css::uno::Exception
-        /// @throws css::uno::RuntimeException
-        PK11SymKey* getSymKey( unsigned int position ) ;
-
-        /// @throws css::uno::Exception
-        /// @throws css::uno::RuntimeException
-        SECKEYPublicKey* getPubKey( unsigned int position ) ;
-
-        /// @throws css::uno::Exception
-        /// @throws css::uno::RuntimeException
-        SECKEYPrivateKey* getPriKey( unsigned int position ) ;
 
         virtual css::uno::Sequence< css::uno::Reference< css::security::XCertificate > > SAL_CALL getPersonalCertificates() override ;
+        virtual css::uno::Sequence< css::uno::Reference< css::security::XCertificate > > SAL_CALL getAllCertificates() override
+        { return css::uno::Sequence< css::uno::Reference< css::security::XCertificate > >(); }
 
         virtual css::uno::Reference< css::security::XCertificate > SAL_CALL getCertificate( const OUString& issuerName, const css::uno::Sequence< sal_Int8 >& serialNumber ) override ;
 
@@ -135,6 +109,14 @@ private:
         virtual css::uno::Reference< css::security::XCertificate > SAL_CALL createCertificateFromRaw( const css::uno::Sequence< sal_Int8 >& rawCertificate ) override ;
         virtual css::uno::Reference< css::security::XCertificate > SAL_CALL createCertificateFromAscii( const OUString& asciiCertificate ) override ;
 
+        // Methods of XCertificateCreator
+        css::uno::Reference<css::security::XCertificate> SAL_CALL addDERCertificateToTheDatabase(
+                css::uno::Sequence<sal_Int8> const & raDERCertificate,
+                OUString const & raTrustString) override;
+
+        css::uno::Reference<css::security::XCertificate> SAL_CALL createDERCertificateWithPrivateKey(
+                css::uno::Sequence<sal_Int8> const & raDERCertificate,
+                css::uno::Sequence<sal_Int8> const & raPrivateKey) override;
 
         //Native methods
         /// @throws css::uno::RuntimeException
@@ -144,7 +126,15 @@ private:
         static void destroyKeysManager(xmlSecKeysMngrPtr pKeysMngr) ;
 
 private:
+
         void updateSlots();
+
+        static X509Certificate_NssImpl* createAndAddCertificateFromPackage(
+                                    const css::uno::Sequence<sal_Int8>& raDerCertificate,
+                                    OUString const & raString);
+        static SECKEYPrivateKey* insertPrivateKey(css::uno::Sequence<sal_Int8> const & raPrivateKey);
+
+        static X509Certificate_NssImpl* createX509CertificateFromDER(const css::uno::Sequence<sal_Int8>& raDerCertificate);
 
           /// @throws css::uno::Exception
           /// @throws css::uno::RuntimeException

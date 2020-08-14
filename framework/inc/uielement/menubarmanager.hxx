@@ -23,34 +23,26 @@
 /** Attention: stl headers must(!) be included at first. Otherwise it can make trouble
                with solaris headers ...
 */
+#include <unordered_map>
 #include <vector>
-
-#include <stdtypes.h>
 
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/frame/FeatureStateEvent.hpp>
 #include <com/sun/star/frame/XFrameActionListener.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/frame/XPopupMenuController.hpp>
 #include <com/sun/star/awt/XSystemDependentMenuPeer.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/frame/XUIControllerFactory.hpp>
 #include <com/sun/star/ui/XUIConfigurationListener.hpp>
 #include <com/sun/star/ui/XImageManager.hpp>
 #include <com/sun/star/ui/XAcceleratorConfiguration.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 #include <rtl/ustring.hxx>
 #include <vcl/menu.hxx>
-#include <vcl/accel.hxx>
 #include <vcl/timer.hxx>
-#include <toolkit/awt/vclxmenu.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <framework/addonsoptions.hxx>
@@ -63,9 +55,9 @@ struct PopupControllerEntry
     css::uno::WeakReference< css::frame::XDispatchProvider > m_xDispatchProvider;
 };
 
-typedef std::unordered_map< OUString, PopupControllerEntry, OUStringHash > PopupControllerCache;
+typedef std::unordered_map< OUString, PopupControllerEntry > PopupControllerCache;
 
-class MenuBarManager:
+class MenuBarManager final :
     protected cppu::BaseMutex,
     public cppu::WeakComponentImplHelper<
         css::frame::XStatusListener,
@@ -73,7 +65,6 @@ class MenuBarManager:
         css::ui::XUIConfigurationListener,
         css::awt::XSystemDependentMenuPeer>
 {
-    protected:
         MenuBarManager(
             const css::uno::Reference< css::uno::XComponentContext >& xContext,
             const css::uno::Reference< css::frame::XFrame >& rFrame,
@@ -134,7 +125,7 @@ class MenuBarManager:
         void SetItemContainer( const css::uno::Reference< css::container::XIndexAccess >& rItemContainer );
         void GetPopupController( PopupControllerCache& rPopupController );
 
-    protected:
+    private:
         DECL_LINK( Activate, Menu *, bool );
         DECL_LINK( Deactivate, Menu *, bool );
         DECL_LINK( AsyncSettingsHdl, Timer *, void );
@@ -146,20 +137,20 @@ class MenuBarManager:
         static bool MustBeHidden( PopupMenu* pPopupMenu, const css::uno::Reference< css::util::XURLTransformer >& rTransformer );
         OUString RetrieveLabelFromCommand(const OUString& rCmdURL);
 
-    private:
-
         void Destroy();
 
         struct MenuItemHandler
         {
             MenuItemHandler( sal_uInt16             aItemId,
-                             css::uno::Reference< css::frame::XStatusListener >& xManager,
-                             css::uno::Reference< css::frame::XDispatch >& rDispatch ) :
+                             css::uno::Reference< css::frame::XStatusListener > const & xManager,
+                             css::uno::Reference< css::frame::XDispatch > const & rDispatch ) :
                              nItemId( aItemId ),
+                             bMadeInvisible ( false ),
                              xSubMenuManager( xManager ),
                              xMenuItemDispatch( rDispatch ) {}
 
             sal_uInt16                                                        nItemId;
+            bool                                                              bMadeInvisible;
             OUString                                                          aTargetFrame;
             OUString                                                          aMenuItemURL;
             OUString                                                          aParsedItemURL;
@@ -170,13 +161,12 @@ class MenuBarManager:
             vcl::KeyCode                                                      aKeyCode;
         };
 
-        void             RetrieveShortcuts( std::vector< MenuItemHandler* >& aMenuShortCuts );
-        void             CheckAndAddMenuExtension( Menu* pMenu );
+        void             RetrieveShortcuts( std::vector< std::unique_ptr<MenuItemHandler> >& aMenuShortCuts );
         static void      UpdateSpecialWindowMenu( Menu* pMenu, const css::uno::Reference< css::uno::XComponentContext >& xContext );
-        static void      FillMenuImages( css::uno::Reference< css::frame::XFrame >& xFrame, Menu* _pMenu, bool bShowMenuImages );
+        static void      FillMenuImages( css::uno::Reference< css::frame::XFrame > const & xFrame, Menu* _pMenu, bool bShowMenuImages );
         static void      impl_RetrieveShortcutsFromConfiguration( const css::uno::Reference< css::ui::XAcceleratorConfiguration >& rAccelCfg,
                                                                   const css::uno::Sequence< OUString >& rCommands,
-                                                                  std::vector< MenuItemHandler* >& aMenuShortCuts );
+                                                                  std::vector< std::unique_ptr<MenuItemHandler> >& aMenuShortCuts );
         static void      MergeAddonMenus( Menu* pMenuBar, const MergeMenuInstructionContainer&, const OUString& aModuleIdentifier );
 
         MenuItemHandler* GetMenuItemHandler( sal_uInt16 nItemId );
@@ -199,7 +189,7 @@ class MenuBarManager:
         VclPtr<Menu>                                                 m_pVCLMenu;
         css::uno::Reference< css::frame::XFrame >                    m_xFrame;
         css::uno::Reference< css::frame::XUIControllerFactory >      m_xPopupMenuControllerFactory;
-        ::std::vector< MenuItemHandler* >                            m_aMenuItemHandlerVector;
+        ::std::vector< std::unique_ptr<MenuItemHandler> >            m_aMenuItemHandlerVector;
         css::uno::Reference< css::frame::XDispatchProvider >         m_xDispatchProvider;
         css::uno::Reference< css::ui::XImageManager >                m_xDocImageManager;
         css::uno::Reference< css::ui::XImageManager >                m_xModuleImageManager;

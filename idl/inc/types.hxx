@@ -21,8 +21,9 @@
 #define INCLUDED_IDL_INC_TYPES_HXX
 
 #include <rtl/strbuf.hxx>
+#include <tools/solar.h>
 #include <tools/ref.hxx>
-#include <basobj.hxx>
+#include "basobj.hxx"
 
 class SvMetaType;
 class SvMetaSlot;
@@ -41,9 +42,9 @@ public:
     const SvIdentifier& GetSlotId() const;
     SvMetaType *        GetType() const;
 
-    virtual bool        Test( SvTokenStream & rInStm ) override;
+    virtual bool        Test( SvTokenStream & rInStm );
     virtual bool        ReadSvIdl( SvIdlDataBase &, SvTokenStream & rInStm ) override;
-    sal_uLong           MakeSfx( OStringBuffer& rAtrrArray );
+    sal_uLong           MakeSfx( OStringBuffer& rAtrrArray ) const;
     virtual void        Insert( SvSlotElementList& );
 };
 
@@ -55,7 +56,7 @@ class SvMetaType : public SvMetaReference
     MetaTypeType                        nType;
     bool                                bIsItem;
 
-    void                WriteSfxItem( const OString& rItemName, SvIdlDataBase & rBase,
+    void                WriteSfxItem( const OString& rItemName, SvIdlDataBase const & rBase,
                                       SvStream & rOutStm );
 protected:
     bool                ReadHeaderSvIdl( SvTokenStream & rInStm );
@@ -86,19 +87,19 @@ public:
                                         SvTokenStream & rInStm );
 };
 
-class SvMetaTypeString : public SvMetaType
+class SvMetaTypeString final : public SvMetaType
 {
 public:
             SvMetaTypeString();
 };
 
-class SvMetaEnumValue : public SvMetaObject
+class SvMetaEnumValue final : public SvMetaObject
 {
 public:
     SvMetaEnumValue();
 };
 
-class SvMetaTypeEnum : public SvMetaType
+class SvMetaTypeEnum final : public SvMetaType
 {
 public:
     SvRefMemberList<SvMetaEnumValue *> aEnumValueList;
@@ -106,7 +107,7 @@ public:
             SvMetaTypeEnum();
 };
 
-class SvMetaTypevoid : public SvMetaType
+class SvMetaTypevoid final : public SvMetaType
 {
 public:
             SvMetaTypevoid();

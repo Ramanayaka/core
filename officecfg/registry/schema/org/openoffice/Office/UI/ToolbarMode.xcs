@@ -64,15 +64,32 @@
           <desc>List of visible toolbars activated by user.</desc>
         </info>
       </prop>
+      <prop oor:name="UIItemProperties" oor:type="oor:string-list" oor:nillable="false">
+        <info>
+          <desc>
+          List of context descriptors.  Each context descriptor is a string that contains three comma
+          separated values (note that values are case sensitive):
+          1. UIItemID - contains the ID of uiitem(GtkToolButton/GtkMenuItem) of notebookbar
+          2. propertyName - contains the value of attribute(name) of property node.
+          3. propertyValue - contains the value of property node.
+          </desc>
+        </info>
+      </prop>
       <prop oor:name="Sidebar" oor:type="xs:string" oor:nillable="false">
         <info>
           <desc>
             Describes sidebar mode.
-            Arrow - sidebar coollapsed, showing the 'open' arrow button
+            Arrow - sidebar collapsed, showing the 'open' arrow button
             Tabs - sidebar is showing only tab bars
             Opened - sidebar fully opened
           </desc>
         </info>
+      </prop>
+      <prop oor:name="HasMenubar" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Determines if menubar is visible.</desc>
+        </info>
+        <value>false</value>
       </prop>
     </group>
     <group oor:name="Application">
@@ -92,6 +109,26 @@
     </group>
   </templates>
   <component>
+    <prop oor:name="ActiveWriter" oor:type="xs:string" oor:nillable="false">
+      <info>
+        <desc>Contains name of currently used implementation in the Writer module.</desc>
+      </info>
+    </prop>
+    <prop oor:name="ActiveCalc" oor:type="xs:string" oor:nillable="false">
+      <info>
+        <desc>Contains name of currently used implementation in the Calc module.</desc>
+      </info>
+    </prop>
+    <prop oor:name="ActiveImpress" oor:type="xs:string" oor:nillable="false">
+      <info>
+        <desc>Contains name of currently used implementation in the Impress module.</desc>
+      </info>
+    </prop>
+    <prop oor:name="ActiveDraw" oor:type="xs:string" oor:nillable="false">
+      <info>
+        <desc>Contains name of currently used implementation in the Draw module.</desc>
+      </info>
+    </prop>
     <set oor:name="Applications" oor:node-type="Application">
       <info>
         <desc>Contains list of toolbar mode settings for each application.</desc>

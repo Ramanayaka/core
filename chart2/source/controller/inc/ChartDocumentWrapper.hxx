@@ -19,25 +19,21 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_CHARTDOCUMENTWRAPPER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_CHARTDOCUMENTWRAPPER_HXX
 
-#include "WrappedPropertySet.hxx"
-#include <com/sun/star/chart2/XChartDocument.hpp>
+#include <WrappedPropertySet.hxx>
 #include <com/sun/star/chart/XChartDocument.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XAggregation.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/util/XRefreshable.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <unotools/eventlisteneradapter.hxx>
-#include <comphelper/uno3.hxx>
 
 #include <memory>
 
-namespace chart
-{
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::util { class XRefreshable; }
 
-namespace wrapper
+namespace chart::wrapper
 {
 
 class Chart2ModelContact;
@@ -139,7 +135,7 @@ protected:
 
     // ____ WrappedPropertySet ____
     virtual const css::uno::Sequence< css::beans::Property >& getPropertySequence() override;
-    virtual const std::vector< WrappedProperty* > createWrappedProperties() override;
+    virtual std::vector< std::unique_ptr<WrappedProperty> > createWrappedProperties() override;
     virtual css::uno::Reference< css::beans::XPropertySet > getInnerPropertySet() override;
 
 private: //methods
@@ -168,8 +164,7 @@ private: //member
     bool                                          m_bIsDisposed;
 };
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 // CHART_CHARTDOCUMENT_HXX
 #endif

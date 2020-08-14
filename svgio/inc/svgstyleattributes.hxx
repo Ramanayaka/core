@@ -20,26 +20,25 @@
 #ifndef INCLUDED_SVGIO_INC_SVGSTYLEATTRIBUTES_HXX
 #define INCLUDED_SVGIO_INC_SVGSTYLEATTRIBUTES_HXX
 
-#include <svgpaint.hxx>
-#include <svgnode.hxx>
-#include <vcl/vclenum.hxx>
+#include "svgpaint.hxx"
+#include "svgnode.hxx"
+#include <tools/fontenum.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
+#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 
 
 // predefines
 
-namespace svgio { namespace svgreader {
+namespace svgio::svgreader {
     class SvgGradientNode;
     class SvgPatternNode;
     class SvgMarkerNode;
     class SvgClipPathNode;
     class SvgMaskNode;
-}}
+}
 
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
         enum StrokeLinecap
         {
@@ -97,13 +96,6 @@ namespace svgio
             FontStyle_normal,
             FontStyle_italic,
             FontStyle_oblique
-        };
-
-        enum FontVariant
-        {
-            FontVariant_notset,
-            FontVariant_normal,
-            FontVariant_small_caps
         };
 
         enum FontWeight
@@ -188,10 +180,6 @@ namespace svgio
             SvgPaint                    maStopColor;
             SvgNumber                   maStrokeWidth;
             SvgNumber                   maStopOpacity;
-            const SvgGradientNode*      mpSvgGradientNodeFill;
-            const SvgGradientNode*      mpSvgGradientNodeStroke;
-            const SvgPatternNode*       mpSvgPatternNodeFill;
-            const SvgPatternNode*       mpSvgPatternNodeStroke;
             SvgNumber                   maFillOpacity;
             SvgNumberVector             maStrokeDasharray;
             SvgNumber                   maStrokeDashOffset;
@@ -238,6 +226,7 @@ namespace svgio
             BaselineShift               maBaselineShift;
             SvgNumber                   maBaselineShiftNumber;
 
+            mutable std::vector<sal_uInt16> maResolvingParent;
 
             // defines if this attributes are part of a ClipPath. If yes,
             // rough geometry will be created on decomposition by patching
@@ -246,6 +235,10 @@ namespace svgio
 
             // #121221# Defines if evtl. an empty array *is* set
             bool                        mbStrokeDasharraySet : 1;
+
+            // tdf#94765 Check id references in gradient/pattern getters
+            OUString                    maNodeFillURL;
+            OUString                    maNodeStrokeURL;
 
             /// internal helpers
             void add_fillGradient(
@@ -279,7 +272,8 @@ namespace svgio
             void add_markers(
                 const basegfx::B2DPolyPolygon& rPath,
                 drawinglayer::primitive2d::Primitive2DContainer& rTarget,
-                const basegfx::tools::PointIndexSet* pHelpPointIndices) const;
+                const basegfx::utils::PointIndexSet* pHelpPointIndices) const;
+
 
         public:
             /// local attribute scanner
@@ -289,11 +283,11 @@ namespace svgio
             /// helper which does the necessary with a given path
             void add_text(
                 drawinglayer::primitive2d::Primitive2DContainer& rTarget,
-                drawinglayer::primitive2d::Primitive2DContainer& rSource) const;
+                drawinglayer::primitive2d::Primitive2DContainer const & rSource) const;
             void add_path(
                 const basegfx::B2DPolyPolygon& rPath,
                 drawinglayer::primitive2d::Primitive2DContainer& rTarget,
-                const basegfx::tools::PointIndexSet* pHelpPointIndices) const;
+                const basegfx::utils::PointIndexSet* pHelpPointIndices) const;
             void add_postProcess(
                 drawinglayer::primitive2d::Primitive2DContainer& rTarget,
                 const drawinglayer::primitive2d::Primitive2DContainer& rSource,
@@ -418,7 +412,7 @@ namespace svgio
             const OUString& getDesc() const { return maDesc; }
 
             // ClipPathXLink content
-            OUString getClipPathXLink() const;
+            OUString const & getClipPathXLink() const;
             const SvgClipPathNode* accessClipPathXLink() const;
 
             // MaskXLink content
@@ -442,8 +436,8 @@ namespace svgio
             BaselineShift getBaselineShift() const { return maBaselineShift; }
             SvgNumber getBaselineShiftNumber() const;
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGSTYLEATTRIBUTES_HXX
 

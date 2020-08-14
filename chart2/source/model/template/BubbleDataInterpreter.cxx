@@ -18,13 +18,12 @@
  */
 
 #include "BubbleDataInterpreter.hxx"
-#include "DataSeries.hxx"
-#include "macros.hxx"
-#include "DataSeriesHelper.hxx"
-#include "CommonConverters.hxx"
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <DataSeries.hxx>
+#include <DataSeriesHelper.hxx>
+#include <CommonConverters.hxx>
 #include <com/sun/star/chart2/data/XDataSink.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -110,9 +109,9 @@ chart2::InterpretedData SAL_CALL BubbleDataInterpreter::interpretDataSource(
                 bNextIsYValues = (nDataSeqCount-(nDataIdx+1)) >= 2;//two or more left
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -135,8 +134,7 @@ chart2::InterpretedData SAL_CALL BubbleDataInterpreter::interpretDataSource(
         }
         if( aYValuesVector.size() > nN )
             aNewData.push_back( aYValuesVector[nN] );
-        if( aSizeValuesVector.size() > nN )
-            aNewData.push_back( aSizeValuesVector[nN] );
+        aNewData.push_back(aSizeValuesVector[nN]);
 
         Reference< XDataSeries > xSeries;
         if( nSeriesIndex < aSeriesToReUse.getLength())
@@ -184,7 +182,7 @@ chart2::InterpretedData SAL_CALL BubbleDataInterpreter::reinterpretDataSeries(
             {
                 vector< Reference< data::XLabeledDataSequence > > aValueSeqVec(
                     DataSeriesHelper::getAllDataSequencesByRole(
-                        xSeriesSource->getDataSequences(), "values", true ));
+                        xSeriesSource->getDataSequences(), "values" ));
                 if( xValuesX.is())
                     aValueSeqVec.erase( find( aValueSeqVec.begin(), aValueSeqVec.end(), xValuesX ));
                 if( xValuesY.is())
@@ -243,23 +241,22 @@ chart2::InterpretedData SAL_CALL BubbleDataInterpreter::reinterpretDataSeries(
                 }
             }
 
-            Sequence< Reference< data::XLabeledDataSequence > > aSeqs( xSeriesSource->getDataSequences());
+            const Sequence< Reference< data::XLabeledDataSequence > > aSeqs( xSeriesSource->getDataSequences());
             if( aSeqs.getLength() != aNewSequences.getLength() )
             {
-#if OSL_DEBUG_LEVEL > 0
-                sal_Int32 j=0;
-                for( ; j<aSeqs.getLength(); ++j )
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
+                for( auto const & j : aSeqs )
                 {
-                    assert( (aSeqs[j] == xValuesY || aSeqs[j] == xValuesX || aSeqs[j] == xValuesSize) && "All sequences should be used" );
+                    assert( (j == xValuesY || j == xValuesX || j == xValuesSize) && "All sequences should be used" );
                 }
 #endif
                 Reference< data::XDataSink > xSink( xSeriesSource, uno::UNO_QUERY_THROW );
                 xSink->setData( aNewSequences );
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -269,19 +266,19 @@ chart2::InterpretedData SAL_CALL BubbleDataInterpreter::reinterpretDataSeries(
 sal_Bool SAL_CALL BubbleDataInterpreter::isDataCompatible(
     const chart2::InterpretedData& aInterpretedData )
 {
-    Sequence< Reference< XDataSeries > > aSeries( FlattenSequence( aInterpretedData.Series ));
-    for( sal_Int32 i=0; i<aSeries.getLength(); ++i )
+    const Sequence< Reference< XDataSeries > > aSeries( FlattenSequence( aInterpretedData.Series ));
+    for( Reference< XDataSeries >  const & dataSeries : aSeries )
     {
         try
         {
-            Reference< data::XDataSource > xSrc( aSeries[i], uno::UNO_QUERY_THROW );
+            Reference< data::XDataSource > xSrc( dataSeries, uno::UNO_QUERY_THROW );
             Sequence< Reference< data::XLabeledDataSequence > > aSeq( xSrc->getDataSequences());
             if( aSeq.getLength() != 3 )
                 return false;
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 

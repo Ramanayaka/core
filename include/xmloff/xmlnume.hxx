@@ -21,29 +21,24 @@
 #define INCLUDED_XMLOFF_XMLNUME_HXX
 
 #include <rtl/ustring.hxx>
-#include <tools/mapunit.hxx>
-#include <xmloff/attrlist.hxx>
+#include <xmloff/dllapi.h>
 
-namespace com { namespace sun { namespace star {
-    namespace frame { class XModel; }
+namespace com::sun::star {
     namespace style { class XStyle; }
     namespace container { class XIndexReplace; }
     namespace beans { struct PropertyValue; }
-} } }
+}
 
-class SvXMLNamespaceMap;
-class SvXMLUnitConverter;
-class SvXMLExportItemMapper;
+namespace com::sun::star::uno { template <class E> class Sequence; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
+
 class SvXMLExport;
 class XMLTextListAutoStylePool;
 
 class XMLOFF_DLLPUBLIC SvxXMLNumRuleExport final
 {
     SvXMLExport& rExport;
-    const OUString sNumberingRules;
-    const OUString sIsPhysical;
-    const OUString sIsContinuousNumbering;
-    // Boolean indicating, if properties for position-and-space-mode LABEL_ALIGNEMNT
+    // Boolean indicating, if properties for position-and-space-mode LABEL_ALIGNMENT
     // are exported or not. (#i89178#)
     // These properties have been introduced in ODF 1.2. Thus, its export have
     // to be suppressed on writing ODF 1.0 respectively ODF 1.1

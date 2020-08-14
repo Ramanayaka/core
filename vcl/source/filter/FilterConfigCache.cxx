@@ -19,12 +19,16 @@
 
 #include "FilterConfigCache.hxx"
 
+#include <o3tl/safeint.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <unotools/configmgr.hxx>
+#include <tools/svlibrary.h>
 #include <com/sun/star/uno/Any.h>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/sequence.hxx>
 #include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
@@ -43,7 +47,7 @@ const char* FilterConfigCache::FilterConfigCacheEntry::InternalPixelFilterNameLi
 
 const char* FilterConfigCache::FilterConfigCacheEntry::InternalVectorFilterNameList[] =
 {
-    IMP_SVMETAFILE, IMP_WMF, IMP_EMF, IMP_SVSGF, IMP_SVSGV, IMP_SVG, IMP_PDF,
+    IMP_SVMETAFILE, IMP_WMF, IMP_EMF, IMP_SVG, IMP_PDF,
     EXP_SVMETAFILE, EXP_WMF, EXP_EMF, EXP_SVG, EXP_PDF, nullptr
 };
 
@@ -52,16 +56,6 @@ const char* FilterConfigCache::FilterConfigCacheEntry::ExternalPixelFilterNameLi
     "egi", "icd", "ipd", "ipx", "ipb", "epb", "epg",
     "epp", "ira", "era", "itg", "iti", "eti", "exp", nullptr
 };
-
-bool FilterConfigCache::bInitialized = false;
-sal_Int32 FilterConfigCache::nIndType = -1;
-sal_Int32 FilterConfigCache::nIndUIName = -1;
-sal_Int32 FilterConfigCache::nIndDocumentService = -1;
-sal_Int32 FilterConfigCache::nIndFilterService = -1;
-sal_Int32 FilterConfigCache::nIndFlags = -1;
-sal_Int32 FilterConfigCache::nIndUserData = -1;
-sal_Int32 FilterConfigCache::nIndFileFormatVersion = -1;
-sal_Int32 FilterConfigCache::nIndTemplateName = -1;
 
 void FilterConfigCache::FilterConfigCacheEntry::CreateFilterName( const OUString& rUserDataEntry )
 {
@@ -96,7 +90,7 @@ void FilterConfigCache::FilterConfigCacheEntry::CreateFilterName( const OUString
 OUString FilterConfigCache::FilterConfigCacheEntry::GetShortName()
 {
     OUString aShortName;
-    if ( lExtensionList.getLength() )
+    if ( !lExtensionList.empty() )
     {
         aShortName = lExtensionList[ 0 ];
         if ( aShortName.startsWith( "*." ) )
@@ -117,7 +111,7 @@ OUString FilterConfigCache::FilterConfigCacheEntry::GetShortName()
 
     @throws It let pass RuntimeExceptions only.
  */
-Reference< XInterface > openConfig(const char* sPackage)
+static Reference< XInterface > openConfig(const char* sPackage)
 {
     Reference< XComponentContext > xContext(
         comphelper::getProcessComponentContext() );
@@ -163,61 +157,61 @@ void FilterConfigCache::ImplInit()
     Reference< XNameAccess > xTypeAccess  ( openConfig("types"  ), UNO_QUERY );
     Reference< XNameAccess > xFilterAccess( openConfig("filters"), UNO_QUERY );
 
-    if ( xTypeAccess.is() && xFilterAccess.is() )
+    if ( !(xTypeAccess.is() && xFilterAccess.is()) )
+        return;
+
+    const Sequence< OUString > lAllFilter = xFilterAccess->getElementNames();
+
+    for ( const OUString& sInternalFilterName : lAllFilter )
     {
-        Sequence< OUString > lAllFilter = xFilterAccess->getElementNames();
-        sal_Int32 nAllFilterCount = lAllFilter.getLength();
+        Reference< XPropertySet > xFilterSet;
+        xFilterAccess->getByName( sInternalFilterName ) >>= xFilterSet;
+        if (!xFilterSet.is())
+            continue;
 
-        for ( sal_Int32 i = 0; i < nAllFilterCount; i++ )
-        {
-            OUString sInternalFilterName = lAllFilter[ i ];
-            Reference< XPropertySet > xFilterSet;
-            xFilterAccess->getByName( sInternalFilterName ) >>= xFilterSet;
-            if (!xFilterSet.is())
-                continue;
+        FilterConfigCacheEntry aEntry;
 
-            FilterConfigCacheEntry aEntry;
+        aEntry.sInternalFilterName = sInternalFilterName;
+        xFilterSet->getPropertyValue(STYPE) >>= aEntry.sType;
+        xFilterSet->getPropertyValue(SUINAME) >>= aEntry.sUIName;
+        xFilterSet->getPropertyValue(SREALFILTERNAME) >>= aEntry.sFilterType;
+        Sequence< OUString > lFlags;
+        xFilterSet->getPropertyValue(SFLAGS) >>= lFlags;
+        if (lFlags.getLength()!=1 || lFlags[0].isEmpty())
+            continue;
+        if (lFlags[0].equalsIgnoreAsciiCase("import"))
+            aEntry.nFlags = 1;
+        else if (lFlags[0].equalsIgnoreAsciiCase("export"))
+            aEntry.nFlags = 2;
 
-            aEntry.sInternalFilterName = sInternalFilterName;
-            xFilterSet->getPropertyValue(STYPE) >>= aEntry.sType;
-            xFilterSet->getPropertyValue(SUINAME) >>= aEntry.sUIName;
-            xFilterSet->getPropertyValue(SREALFILTERNAME) >>= aEntry.sFilterType;
-            Sequence< OUString > lFlags;
-            xFilterSet->getPropertyValue(SFLAGS) >>= lFlags;
-            if (lFlags.getLength()!=1 || lFlags[0].isEmpty())
-                continue;
-            if (lFlags[0].equalsIgnoreAsciiCase("import"))
-                aEntry.nFlags = 1;
-            else if (lFlags[0].equalsIgnoreAsciiCase("export"))
-                aEntry.nFlags = 2;
+        OUString sFormatName;
+        xFilterSet->getPropertyValue(SFORMATNAME) >>= sFormatName;
+        aEntry.CreateFilterName( sFormatName );
 
-            OUString sFormatName;
-            xFilterSet->getPropertyValue(SFORMATNAME) >>= sFormatName;
-            aEntry.CreateFilterName( sFormatName );
+        Reference< XPropertySet > xTypeSet;
+        xTypeAccess->getByName( aEntry.sType ) >>= xTypeSet;
+        if (!xTypeSet.is())
+            continue;
 
-            Reference< XPropertySet > xTypeSet;
-            xTypeAccess->getByName( aEntry.sType ) >>= xTypeSet;
-            if (!xTypeSet.is())
-                continue;
+        xTypeSet->getPropertyValue(SMEDIATYPE) >>= aEntry.sMediaType;
+        css::uno::Sequence<OUString> tmp;
+        if (xTypeSet->getPropertyValue(SEXTENSIONS) >>= tmp)
+            aEntry.lExtensionList = comphelper::sequenceToContainer<std::vector<OUString>>(tmp);
 
-            xTypeSet->getPropertyValue(SMEDIATYPE) >>= aEntry.sMediaType;
-            xTypeSet->getPropertyValue(SEXTENSIONS) >>= aEntry.lExtensionList;
+        // The first extension will be used
+        // to generate our internal FilterType ( BMP, WMF ... )
+        OUString aExtension( aEntry.GetShortName() );
+        if (aExtension.getLength() != 3)
+            continue;
 
-            // The first extension will be used
-            // to generate our internal FilterType ( BMP, WMF ... )
-            OUString aExtension( aEntry.GetShortName() );
-            if (aExtension.getLength() != 3)
-                continue;
+        if ( aEntry.nFlags & 1 )
+            aImport.push_back( aEntry );
+        if ( aEntry.nFlags & 2 )
+            aExport.push_back( aEntry );
 
-            if ( aEntry.nFlags & 1 )
-                aImport.push_back( aEntry );
-            if ( aEntry.nFlags & 2 )
-                aExport.push_back( aEntry );
-
-            // bFilterEntryCreated!?
-            if (!( aEntry.nFlags & 3 ))
-                continue; //? Entry was already inserted ... but following code will be suppressed?!
-        }
+        // bFilterEntryCreated!?
+        if (!( aEntry.nFlags & 3 ))
+            continue; //? Entry was already inserted ... but following code will be suppressed?!
     }
 };
 
@@ -234,8 +228,6 @@ const char* FilterConfigCache::InternalFilterListForSvxLight[] =
     "jpg","2","SVEJPEG",
     "mov","1","SVMOV",
     "mov","2","SVMOV",
-    "sgv","1","SVSGV",
-    "sgf","1","SVSGF",
     "met","1","ime",
     "png","1","SVIPNG",
     "png","2","SVEPNG",
@@ -275,8 +267,7 @@ void FilterConfigCache::ImplInitSmart()
 
         OUString    sExtension( OUString::createFromAscii( *pPtr++ ) );
 
-        aEntry.lExtensionList.realloc( 1 );
-        aEntry.lExtensionList[ 0 ] = sExtension;
+        aEntry.lExtensionList.push_back(sExtension);
 
         aEntry.sType = sExtension;
         aEntry.sUIName = sExtension;
@@ -294,12 +285,11 @@ void FilterConfigCache::ImplInitSmart()
     }
 }
 
-FilterConfigCache::FilterConfigCache( bool bConfig ) :
-    bUseConfig ( bConfig )
+FilterConfigCache::FilterConfigCache( bool bConfig )
 {
-    if (bUseConfig)
-        bUseConfig = !utl::ConfigManager::IsAvoidConfig();
-    if (bUseConfig)
+    if (bConfig)
+        bConfig = !utl::ConfigManager::IsFuzzing();
+    if (bConfig)
         ImplInit();
     else
         ImplInitSmart();
@@ -318,11 +308,12 @@ OUString FilterConfigCache::GetImportFilterName( sal_uInt16 nFormat )
 
 sal_uInt16 FilterConfigCache::GetImportFormatNumber( const OUString& rFormatName )
 {
-    std::vector< FilterConfigCacheEntry >::const_iterator aIter, aEnd;
-    for (aIter = aImport.begin(), aEnd = aImport.end(); aIter != aEnd; ++aIter)
+    sal_uInt16 nPos = 0;
+    for (auto const& elem : aImport)
     {
-        if ( aIter->sUIName.equalsIgnoreAsciiCase( rFormatName ) )
-            return sal::static_int_cast< sal_uInt16 >(aIter - aImport.begin());
+        if ( elem.sUIName.equalsIgnoreAsciiCase( rFormatName ) )
+            return nPos;
+        ++nPos;
     }
     return GRFILTER_FORMAT_NOTFOUND;
 }
@@ -330,37 +321,39 @@ sal_uInt16 FilterConfigCache::GetImportFormatNumber( const OUString& rFormatName
 /// get the index of the filter that matches this extension
 sal_uInt16 FilterConfigCache::GetImportFormatNumberForExtension( const OUString& rExt )
 {
-    std::vector< FilterConfigCacheEntry >::const_iterator aIter, aEnd;
-    for (aIter = aImport.begin(), aEnd = aImport.end(); aIter != aEnd; ++aIter)
+    sal_uInt16 nPos = 0;
+    for (auto const& elem : aImport)
     {
-        for ( sal_Int32 i = 0; i < aIter->lExtensionList.getLength(); i++ )
+        for ( OUString const & s : elem.lExtensionList )
         {
-            if ( aIter->lExtensionList[i].equalsIgnoreAsciiCase( rExt ) )
-                return sal::static_int_cast< sal_uInt16 >( aIter - aImport.begin() );
+            if ( s.equalsIgnoreAsciiCase( rExt ) )
+                return nPos;
         }
+        ++nPos;
     }
     return GRFILTER_FORMAT_NOTFOUND;
 }
 
 sal_uInt16 FilterConfigCache::GetImportFormatNumberForShortName( const OUString& rShortName )
 {
-    std::vector< FilterConfigCacheEntry >::const_iterator aEnd;
-    std::vector< FilterConfigCacheEntry >::iterator aIter;
-    for (aIter = aImport.begin(), aEnd = aImport.end(); aIter != aEnd; ++aIter)
+    sal_uInt16 nPos = 0;
+    for (auto & elem : aImport)
     {
-        if ( aIter->GetShortName().equalsIgnoreAsciiCase( rShortName ) )
-            return sal::static_int_cast< sal_uInt16 >(aIter - aImport.begin());
+        if ( elem.GetShortName().equalsIgnoreAsciiCase( rShortName ) )
+            return nPos;
+        ++nPos;
     }
     return GRFILTER_FORMAT_NOTFOUND;
 }
 
 sal_uInt16 FilterConfigCache::GetImportFormatNumberForTypeName( const OUString& rType )
 {
-    std::vector< FilterConfigCacheEntry >::const_iterator aIter, aEnd;
-    for (aIter = aImport.begin(), aEnd = aImport.end(); aIter != aEnd; ++aIter)
+    sal_uInt16 nPos = 0;
+    for (auto const& elem : aImport)
     {
-        if ( aIter->sType.equalsIgnoreAsciiCase( rType ) )
-            return sal::static_int_cast< sal_uInt16 >(aIter - aImport.begin());
+        if ( elem.sType.equalsIgnoreAsciiCase( rType ) )
+            return nPos;
+        ++nPos;
     }
     return GRFILTER_FORMAT_NOTFOUND;
 }
@@ -388,7 +381,7 @@ OUString FilterConfigCache::GetImportFormatShortName( sal_uInt16 nFormat )
 
 OUString FilterConfigCache::GetImportFormatExtension( sal_uInt16 nFormat, sal_Int32 nEntry )
 {
-    if ( (nFormat < aImport.size()) && (nEntry < aImport[ nFormat ].lExtensionList.getLength()) )
+    if ( (nFormat < aImport.size()) && (o3tl::make_unsigned(nEntry) < aImport[ nFormat ].lExtensionList.size()) )
         return aImport[ nFormat ].lExtensionList[ nEntry ];
     return OUString();
 }
@@ -444,45 +437,48 @@ OUString FilterConfigCache::GetExportFilterName( sal_uInt16 nFormat )
 
 sal_uInt16 FilterConfigCache::GetExportFormatNumber(const OUString& rFormatName)
 {
-    std::vector< FilterConfigCacheEntry >::const_iterator aIter, aEnd;
-    for (aIter = aExport.begin(), aEnd = aExport.end(); aIter != aEnd; ++aIter)
+    sal_uInt16 nPos = 0;
+    for (auto const& elem : aExport)
     {
-        if ( aIter->sUIName.equalsIgnoreAsciiCase( rFormatName ) )
-            return sal::static_int_cast< sal_uInt16 >(aIter - aExport.begin());
+        if ( elem.sUIName.equalsIgnoreAsciiCase( rFormatName ) )
+            return nPos;
+        ++nPos;
     }
     return GRFILTER_FORMAT_NOTFOUND;
 }
 
 sal_uInt16 FilterConfigCache::GetExportFormatNumberForMediaType( const OUString& rMediaType )
 {
-    std::vector< FilterConfigCacheEntry >::const_iterator aIter, aEnd;
-    for (aIter = aExport.begin(), aEnd = aExport.end(); aIter != aEnd; ++aIter)
+    sal_uInt16 nPos = 0;
+    for (auto const& elem : aExport)
     {
-        if ( aIter->sMediaType.equalsIgnoreAsciiCase( rMediaType ) )
-            return sal::static_int_cast< sal_uInt16 >(aIter - aExport.begin());
+        if ( elem.sMediaType.equalsIgnoreAsciiCase( rMediaType ) )
+            return nPos;
+        ++nPos;
     }
     return GRFILTER_FORMAT_NOTFOUND;
 }
 
 sal_uInt16 FilterConfigCache::GetExportFormatNumberForShortName( const OUString& rShortName )
 {
-    std::vector< FilterConfigCacheEntry >::const_iterator aEnd;
-    std::vector< FilterConfigCacheEntry >::iterator aIter;
-    for (aIter = aExport.begin(), aEnd = aExport.end(); aIter != aEnd; ++aIter)
+    sal_uInt16 nPos = 0;
+    for (auto & elem : aExport)
     {
-        if ( aIter->GetShortName().equalsIgnoreAsciiCase( rShortName ) )
-            return sal::static_int_cast< sal_uInt16 >(aIter - aExport.begin());
+        if ( elem.GetShortName().equalsIgnoreAsciiCase( rShortName ) )
+            return nPos;
+        ++nPos;
     }
     return GRFILTER_FORMAT_NOTFOUND;
 }
 
 sal_uInt16 FilterConfigCache::GetExportFormatNumberForTypeName( const OUString& rType )
 {
-    std::vector< FilterConfigCacheEntry >::const_iterator aIter, aEnd;
-    for (aIter = aExport.begin(), aEnd = aExport.end(); aIter != aEnd; ++aIter)
+    sal_uInt16 nPos = 0;
+    for (auto const& elem : aExport)
     {
-        if ( aIter->sType.equalsIgnoreAsciiCase( rType ) )
-            return sal::static_int_cast< sal_uInt16 >(aIter - aExport.begin());
+        if ( elem.sType.equalsIgnoreAsciiCase( rType ) )
+            return nPos;
+        ++nPos;
     }
     return GRFILTER_FORMAT_NOTFOUND;
 }
@@ -510,7 +506,7 @@ OUString FilterConfigCache::GetExportFormatShortName( sal_uInt16 nFormat )
 
 OUString FilterConfigCache::GetExportFormatExtension( sal_uInt16 nFormat, sal_Int32 nEntry )
 {
-    if ( (nFormat < aExport.size()) && (nEntry < aExport[ nFormat ].lExtensionList.getLength()) )
+    if ( (nFormat < aExport.size()) && (o3tl::make_unsigned(nEntry) < aExport[ nFormat ].lExtensionList.size()) )
         return aExport[ nFormat ].lExtensionList[ nEntry ];
     return OUString();
 }

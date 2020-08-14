@@ -18,17 +18,16 @@
  */
 
 
-#include "table/defaultinputhandler.hxx"
-#include "table/tablecontrolinterface.hxx"
+#include <table/defaultinputhandler.hxx>
+#include <table/tablecontrolinterface.hxx>
 
-#include "tabledatawindow.hxx"
 #include "mousefunction.hxx"
 
 #include <vcl/event.hxx>
-#include <vcl/cursor.hxx>
+#include <osl/diagnose.h>
 
 
-namespace svt { namespace table
+namespace svt::table
 {
 
 
@@ -87,19 +86,18 @@ namespace svt { namespace table
 
             // ask all other handlers
             bool handled = false;
-            for (   MouseFunctions::iterator handler = i_impl.aMouseFunctions.begin();
-                    ( handler != i_impl.aMouseFunctions.end() ) && !handled;
-                    ++handler
-                )
+            for (auto const& mouseFunction : i_impl.aMouseFunctions)
             {
-                if ( *handler == i_impl.pActiveFunction )
+                if (handled)
+                    break;
+                if (mouseFunction == i_impl.pActiveFunction)
                     // we already invoked this function
                     continue;
 
-                switch ( (handler->get()->*i_handlerMethod)( i_control, i_event ) )
+                switch ( (mouseFunction.get()->*i_handlerMethod)( i_control, i_event ) )
                 {
                 case ActivateFunction:
-                    i_impl.pActiveFunction = *handler;
+                    i_impl.pActiveFunction = mouseFunction;
                     handled = true;
                     break;
                 case ContinueFunction:
@@ -197,7 +195,7 @@ namespace svt { namespace table
     }
 
 
-} } // namespace svt::table
+} // namespace svt::table
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

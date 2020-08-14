@@ -17,15 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/vml/vmlshapecontainer.hxx"
+#include <oox/vml/vmlshapecontainer.hxx>
 
-#include "oox/vml/vmldrawing.hxx"
-#include "oox/vml/vmlshape.hxx"
+#include <oox/vml/vmldrawing.hxx>
+#include <oox/vml/vmlshape.hxx>
 
 #include <osl/diagnose.h>
 
-namespace oox {
-namespace vml {
+namespace oox::vml {
 
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::drawing;
@@ -36,14 +35,14 @@ namespace {
 template< typename ShapeType >
 void lclMapShapesById( RefMap< OUString, ShapeType >& orMap, const RefVector< ShapeType >& rVector )
 {
-    for( typename RefVector< ShapeType >::const_iterator aIt = rVector.begin(), aEnd = rVector.end(); aIt != aEnd; ++aIt )
+    for (auto const& elem : rVector)
     {
-        const OUString& rShapeId = (*aIt)->getShapeId();
+        const OUString& rShapeId = elem->getShapeId();
         OSL_ENSURE( !rShapeId.isEmpty(), "lclMapShapesById - missing shape identifier" );
         if( !rShapeId.isEmpty() )
         {
             OSL_ENSURE( orMap.find( rShapeId ) == orMap.end(), "lclMapShapesById - shape identifier already used " );
-            orMap[ rShapeId ] = *aIt;
+            orMap[ rShapeId ] = elem;
         }
     }
 }
@@ -59,11 +58,11 @@ ShapeContainer::~ShapeContainer()
 {
 }
 
-ShapeType& ShapeContainer::createShapeType()
+std::shared_ptr<ShapeType> ShapeContainer::createShapeType()
 {
-    std::shared_ptr< ShapeType > xShape( new ShapeType( mrDrawing ) );
+    auto xShape = std::make_shared<ShapeType>( mrDrawing );
     maTypes.push_back( xShape );
-    return *xShape;
+    return xShape;
 }
 
 void ShapeContainer::finalizeFragmentImport()
@@ -79,14 +78,19 @@ void ShapeContainer::finalizeFragmentImport()
 
 const ShapeType* ShapeContainer::getShapeTypeById( const OUString& rShapeId ) const
 {
+    if (maTypesById.empty() && !maTypes.empty())
+    {
+        lclMapShapesById(const_cast<ShapeTypeMap&>(maTypesById), maTypes);
+    }
+
     // search in own shape template list
     if( const ShapeType* pType = maTypesById.get( rShapeId ).get() )
         return pType;
     // search deep in child shapes
-    for( ShapeVector::const_iterator aVIt = maShapes.begin(), aVEnd = maShapes.end(); aVIt != aVEnd; ++aVIt )
-        if( const ShapeType* pType = (*aVIt)->getChildTypeById( rShapeId ) )
+    for (auto const& shape : maShapes)
+        if( const ShapeType* pType = shape->getChildTypeById( rShapeId ) )
             return pType;
-   return nullptr;
+    return nullptr;
 }
 
 const ShapeBase* ShapeContainer::getShapeById( const OUString& rShapeId ) const
@@ -95,10 +99,10 @@ const ShapeBase* ShapeContainer::getShapeById( const OUString& rShapeId ) const
     if( const ShapeBase* pShape = maShapesById.get( rShapeId ).get() )
         return pShape;
     // search deep in child shapes
-    for( ShapeVector::const_iterator aVIt = maShapes.begin(), aVEnd = maShapes.end(); aVIt != aVEnd; ++aVIt )
-        if( const ShapeBase* pShape = (*aVIt)->getChildById( rShapeId ) )
+    for (auto const& shape : maShapes)
+        if( const ShapeBase* pShape = shape->getChildById( rShapeId ) )
             return pShape;
-   return nullptr;
+    return nullptr;
 }
 
 std::shared_ptr< ShapeBase > ShapeContainer::takeLastShape()
@@ -125,11 +129,10 @@ void ShapeContainer::popMark()
 
 void ShapeContainer::convertAndInsert( const Reference< XShapes >& rxShapes, const ShapeParentAnchor* pParentAnchor ) const
 {
-    for( ShapeVector::const_iterator aIt = maShapes.begin(), aEnd = maShapes.end(); aIt != aEnd; ++aIt )
-        (*aIt)->convertAndInsert( rxShapes, pParentAnchor );
+    for (auto const& shape : maShapes)
+        shape->convertAndInsert( rxShapes, pParentAnchor );
 }
 
-} // namespace vml
-} // namespace oox
+} // namespace oox::vml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

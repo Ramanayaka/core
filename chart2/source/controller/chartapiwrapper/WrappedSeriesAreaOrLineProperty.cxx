@@ -19,11 +19,8 @@
 
 #include "WrappedSeriesAreaOrLineProperty.hxx"
 #include "DataSeriesPointWrapper.hxx"
-#include "macros.hxx"
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 WrappedSeriesAreaOrLineProperty::WrappedSeriesAreaOrLineProperty(
@@ -49,7 +46,6 @@ OUString WrappedSeriesAreaOrLineProperty::getInnerName() const
     return m_aInnerAreaTypeName;
 }
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

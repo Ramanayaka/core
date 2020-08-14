@@ -11,12 +11,15 @@ $(eval $(call gb_UnpackedTarball_UnpackedTarball,postgresql))
 
 $(eval $(call gb_UnpackedTarball_set_tarball,postgresql,$(POSTGRESQL_TARBALL),,postgresql))
 
+$(eval $(call gb_UnpackedTarball_update_autoconf_configs,postgresql,config))
+
 $(eval $(call gb_UnpackedTarball_set_patchlevel,postgresql,3))
 
 $(eval $(call gb_UnpackedTarball_add_patches,postgresql, \
 	external/postgresql/postgresql-libs-leak.patch \
-	external/postgresql/postgresql-9.2.1-autoreconf.patch \
 	external/postgresql/postgresql-9.2.1-libreoffice.patch \
+	external/postgresql/windows.patch.0 \
+	external/postgresql/postgresql.exit.patch.0 \
 ))
 
 ifeq ($(SYSTEM_ZLIB),)

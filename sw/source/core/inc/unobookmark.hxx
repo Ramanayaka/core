@@ -29,6 +29,7 @@
 
 #include <cppuhelper/implbase.hxx>
 
+#include <svl/listener.hxx>
 #include <sfx2/Metadatable.hxx>
 
 #include <unobaseclass.hxx>
@@ -65,7 +66,9 @@ protected:
     virtual void attachToRange(
             const css::uno::Reference< css::text::XTextRange > & xTextRange);
 
-    const ::sw::mark::IMark* GetBookmark() const;
+    ::sw::mark::IMark* GetBookmark() const;
+
+    IDocumentMarkAccess* GetIDocumentMarkAccess();
 
     void registerInMark( SwXBookmark& rXMark, ::sw::mark::IMark* const pMarkBase );
 
@@ -144,12 +147,17 @@ public:
 
 class SwXFieldmarkParameters
     : public ::cppu::WeakImplHelper< css::container::XNameContainer>
-    , private SwClient
+    , public SvtListener
 {
+    private:
+        ::sw::mark::IFieldmark* m_pFieldmark;
+        /// @throws css::uno::RuntimeException
+        ::sw::mark::IFieldmark::parameter_map_t* getCoreParameters();
     public:
         SwXFieldmarkParameters(::sw::mark::IFieldmark* const pFieldmark)
+            : m_pFieldmark(pFieldmark)
         {
-            pFieldmark->Add(this);
+            StartListening(pFieldmark->GetNotifier());
         }
 
         // XNameContainer
@@ -164,31 +172,22 @@ class SwXFieldmarkParameters
         // XElementAccess
         virtual css::uno::Type SAL_CALL getElementType(  ) override;
         virtual sal_Bool SAL_CALL hasElements(  ) override;
-    protected:
-        //SwClient
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew ) override;
-    private:
-        /// @throws css::uno::RuntimeException
-        ::sw::mark::IFieldmark::parameter_map_t* getCoreParameters();
+
+        virtual void Notify( const SfxHint& rHint ) override;
 };
 
 typedef cppu::ImplInheritanceHelper< SwXBookmark,
     css::text::XFormField > SwXFieldmark_Base;
 
-class SwXFieldmark
+class SwXFieldmark final
     : public SwXFieldmark_Base
 {
-
-private:
     ::sw::mark::ICheckboxFieldmark* getCheckboxFieldmark();
-    bool isReplacementObject;
+    bool m_bReplacementObject;
 
-protected:
-
-    SwXFieldmark(bool isReplacementObject, SwDoc* pDoc = nullptr);
+    SwXFieldmark(bool isReplacementObject, SwDoc* pDoc);
 
 public:
-
     static css::uno::Reference<css::text::XTextContent>
         CreateXFieldmark(SwDoc & rDoc, ::sw::mark::IMark * pMark,
                 bool isReplacementObject = false);

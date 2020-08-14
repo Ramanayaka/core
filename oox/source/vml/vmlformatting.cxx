@@ -16,29 +16,36 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "oox/vml/vmlformatting.hxx"
+
+#include <sal/config.h>
+
+#include <cstdlib>
+
+#include <oox/vml/vmlformatting.hxx>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeTextPathMode.hpp>
 #include <com/sun/star/table/ShadowFormat.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
 #include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 #include <osl/diagnose.h>
-#include "oox/drawingml/color.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
-#include "drawingml/fillproperties.hxx"
-#include "drawingml/lineproperties.hxx"
-#include "oox/drawingml/shapepropertymap.hxx"
-#include "oox/helper/attributelist.hxx"
-#include "oox/helper/graphichelper.hxx"
+#include <oox/drawingml/color.hxx>
+#include <oox/drawingml/drawingmltypes.hxx>
+#include <drawingml/fillproperties.hxx>
+#include <drawingml/lineproperties.hxx>
+#include <oox/drawingml/shapepropertymap.hxx>
+#include <oox/helper/attributelist.hxx>
+#include <oox/helper/graphichelper.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
 #include <svx/svdtrans.hxx>
 #include <comphelper/propertysequence.hxx>
+#include <vcl/virdev.hxx>
 
-namespace oox {
-namespace vml {
+namespace oox::vml {
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::geometry;
@@ -132,7 +139,7 @@ sal_Int32 ConversionHelper::decodeRotation( const OUString& rValue )
         return 0;
     }
 
-    return NormAngle360(fRotation * -100);
+    return NormAngle36000(fRotation * -100);
 }
 
 sal_Int64 ConversionHelper::decodeMeasureToEmu( const GraphicHelper& rGraphicHelper,
@@ -203,7 +210,7 @@ sal_Int32 ConversionHelper::decodeMeasureToHmm( const GraphicHelper& rGraphicHel
 
 Color ConversionHelper::decodeColor( const GraphicHelper& rGraphicHelper,
         const OptValue< OUString >& roVmlColor, const OptValue< double >& roVmlOpacity,
-        sal_Int32 nDefaultRgb, sal_Int32 nPrimaryRgb )
+        ::Color nDefaultRgb, ::Color nPrimaryRgb )
 {
     Color aDmlColor;
 
@@ -245,7 +252,7 @@ Color ConversionHelper::decodeColor( const GraphicHelper& rGraphicHelper,
     /*  Predefined color names or system color names (resolve to RGB to detect
         valid color name). */
     sal_Int32 nColorToken = AttributeConversion::decodeToken( aColorName );
-    sal_Int32 nRgbValue = Color::getVmlPresetColor( nColorToken, API_RGB_TRANSPARENT );
+    ::Color nRgbValue = Color::getVmlPresetColor( nColorToken, API_RGB_TRANSPARENT );
     if( nRgbValue == API_RGB_TRANSPARENT )
         nRgbValue = rGraphicHelper.getSystemColor( nColorToken );
     if( nRgbValue != API_RGB_TRANSPARENT )
@@ -305,8 +312,8 @@ void ConversionHelper::decodeVmlPath( ::std::vector< ::std::vector< Point > >& r
                      LINE_REL, LINE_ABS, CLOSE, END, UNSUPPORTED };
     VML_State state = START;
 
-    rPointLists.push_back( ::std::vector< Point>() );
-    rFlagLists.push_back( ::std::vector< PolygonFlags >() );
+    rPointLists.emplace_back( );
+    rFlagLists.emplace_back( );
 
     for ( sal_Int32 i = 0; i < rPath.getLength(); i++ )
     {
@@ -337,36 +344,39 @@ void ConversionHelper::decodeVmlPath( ::std::vector< ::std::vector< Point > >& r
             {
                 switch ( state )
                 {
-                case MOVE_REL: // 2* params -> param count reset
-                    if ( rPointLists.size() > 0 && rPointLists.back().size() > 0 )
+                case MOVE_REL:
+                    aCoordList.resize(2, 0); // 2* params -> param count reset
+                    if ( !rPointLists.empty() && !rPointLists.back().empty() )
                     {
-                        rPointLists.push_back( ::std::vector< Point >() );
-                        rFlagLists.push_back( ::std::vector< PolygonFlags >() );
+                        rPointLists.emplace_back( );
+                        rFlagLists.emplace_back( );
                     }
-                    rPointLists.back().push_back( Point( aCoordList[ 0 ], aCoordList[ 1 ] ) );
+                    rPointLists.back().emplace_back( aCoordList[ 0 ], aCoordList[ 1 ] );
                     rFlagLists.back().push_back( PolygonFlags_NORMAL );
                     aCurrentPoint = rPointLists.back().back();
                     nParamCount = 2;
                     break;
 
-                case MOVE_ABS: // 2 params -> no param count reset
-                    if ( rPointLists.size() > 0 && rPointLists.back().size() > 0 )
+                case MOVE_ABS:
+                    aCoordList.resize(2, 0); // 2 params -> no param count reset
+                    if ( !rPointLists.empty() && !rPointLists.back().empty() )
                     {
-                        rPointLists.push_back( ::std::vector< Point >() );
-                        rFlagLists.push_back( ::std::vector< PolygonFlags >() );
+                        rPointLists.emplace_back( );
+                        rFlagLists.emplace_back( );
                     }
-                    rPointLists.back().push_back( Point( (aCoordList[ 0 ]), (aCoordList.size() > 1 ? aCoordList[ 1 ] : 0) ) );
+                    rPointLists.back().emplace_back( (aCoordList[ 0 ]), aCoordList[ 1 ] );
                     rFlagLists.back().push_back( PolygonFlags_NORMAL );
                     aCurrentPoint = rPointLists.back().back();
                     break;
 
-                case BEZIER_REL: // 6* params -> param count reset
-                    rPointLists.back().push_back( Point( aCurrentPoint.X + aCoordList[ 0 ],
-                                            aCurrentPoint.Y + aCoordList[ 1 ] ) );
-                    rPointLists.back().push_back( Point( aCurrentPoint.X + aCoordList[ 2 ],
-                                            aCurrentPoint.Y + aCoordList[ 3 ] ) );
-                    rPointLists.back().push_back( Point( aCurrentPoint.X + aCoordList[ 4 ],
-                                            aCurrentPoint.Y + aCoordList[ 5 ] ) );
+                case BEZIER_REL:
+                    aCoordList.resize(6, 0); // 6* params -> param count reset
+                    rPointLists.back().emplace_back( aCurrentPoint.X + aCoordList[ 0 ],
+                                            aCurrentPoint.Y + aCoordList[ 1 ] );
+                    rPointLists.back().emplace_back( aCurrentPoint.X + aCoordList[ 2 ],
+                                            aCurrentPoint.Y + aCoordList[ 3 ] );
+                    rPointLists.back().emplace_back( aCurrentPoint.X + aCoordList[ 4 ],
+                                            aCurrentPoint.Y + aCoordList[ 5 ] );
                     rFlagLists.back().push_back( PolygonFlags_CONTROL );
                     rFlagLists.back().push_back( PolygonFlags_CONTROL );
                     rFlagLists.back().push_back( PolygonFlags_NORMAL );
@@ -374,10 +384,11 @@ void ConversionHelper::decodeVmlPath( ::std::vector< ::std::vector< Point > >& r
                     nParamCount = 6;
                     break;
 
-                case BEZIER_ABS: // 6* params -> param count reset
-                    rPointLists.back().push_back( Point( aCoordList[ 0 ], aCoordList[ 1 ] ) );
-                    rPointLists.back().push_back( Point( aCoordList[ 2 ], aCoordList[ 3 ] ) );
-                    rPointLists.back().push_back( Point( aCoordList[ 4 ], aCoordList[ 5 ] ) );
+                case BEZIER_ABS:
+                    aCoordList.resize(6, 0); // 6* params -> param count reset
+                    rPointLists.back().emplace_back( aCoordList[ 0 ], aCoordList[ 1 ] );
+                    rPointLists.back().emplace_back( aCoordList[ 2 ], aCoordList[ 3 ] );
+                    rPointLists.back().emplace_back( aCoordList[ 4 ], aCoordList[ 5 ] );
                     rFlagLists.back().push_back( PolygonFlags_CONTROL );
                     rFlagLists.back().push_back( PolygonFlags_CONTROL );
                     rFlagLists.back().push_back( PolygonFlags_NORMAL );
@@ -385,16 +396,18 @@ void ConversionHelper::decodeVmlPath( ::std::vector< ::std::vector< Point > >& r
                     nParamCount = 6;
                     break;
 
-                case LINE_REL: // 2* params -> param count reset
-                    rPointLists.back().push_back( Point( aCurrentPoint.X + aCoordList[ 0 ],
-                                            aCurrentPoint.Y + aCoordList[ 1 ] ) );
+                case LINE_REL:
+                    aCoordList.resize(2, 0); // 2* params -> param count reset
+                    rPointLists.back().emplace_back( aCurrentPoint.X + aCoordList[ 0 ],
+                                            aCurrentPoint.Y + aCoordList[ 1 ] );
                     rFlagLists.back().push_back( PolygonFlags_NORMAL );
                     aCurrentPoint = rPointLists.back().back();
                     nParamCount = 2;
                     break;
 
-                case LINE_ABS: // 2* params -> param count reset
-                    rPointLists.back().push_back( Point( aCoordList[ 0 ], (aCoordList.size() > 1 ? aCoordList[ 1 ] : 0) ) );
+                case LINE_ABS:
+                    aCoordList.resize(2, 0); // 2* params -> param count reset
+                    rPointLists.back().emplace_back( aCoordList[ 0 ], (aCoordList.size() > 1 ? aCoordList[ 1 ] : 0) );
                     rFlagLists.back().push_back( PolygonFlags_NORMAL );
                     aCurrentPoint = rPointLists.back().back();
                     nParamCount = 2;
@@ -411,8 +424,8 @@ void ConversionHelper::decodeVmlPath( ::std::vector< ::std::vector< Point > >& r
                     break;
 
                 case END: // 0 param
-                    rPointLists.push_back( ::std::vector< Point >() );
-                    rFlagLists.push_back( ::std::vector< PolygonFlags >() );
+                    rPointLists.emplace_back( );
+                    rFlagLists.emplace_back( );
                     break;
 
                 case START:
@@ -533,34 +546,34 @@ sal_Int64 lclGetEmu( const GraphicHelper& rGraphicHelper, const OptValue< OUStri
 
 void lclGetDmlLineDash( OptValue< sal_Int32 >& oroPresetDash, LineProperties::DashStopVector& orCustomDash, const OptValue< OUString >& roDashStyle )
 {
-    if( roDashStyle.has() )
-    {
-        const OUString& rDashStyle = roDashStyle.get();
-        switch( AttributeConversion::decodeToken( rDashStyle ) )
-        {
-            case XML_solid:             oroPresetDash = XML_solid;          return;
-            case XML_shortdot:          oroPresetDash = XML_sysDot;         return;
-            case XML_shortdash:         oroPresetDash = XML_sysDash;        return;
-            case XML_shortdashdot:      oroPresetDash = XML_sysDashDot;     return;
-            case XML_shortdashdotdot:   oroPresetDash = XML_sysDashDotDot;  return;
-            case XML_dot:               oroPresetDash = XML_dot;            return;
-            case XML_dash:              oroPresetDash = XML_dash;           return;
-            case XML_dashdot:           oroPresetDash = XML_dashDot;        return;
-            case XML_longdash:          oroPresetDash = XML_lgDash;         return;
-            case XML_longdashdot:       oroPresetDash = XML_lgDashDot;      return;
-            case XML_longdashdotdot:    oroPresetDash = XML_lgDashDotDot;   return;
+    if( !roDashStyle.has() )
+        return;
 
-            // try to convert user-defined dash style
-            default:
-            {
-                ::std::vector< sal_Int32 > aValues;
-                sal_Int32 nIndex = 0;
-                while( nIndex >= 0 )
-                    aValues.push_back( rDashStyle.getToken( 0, ' ', nIndex ).toInt32() );
-                size_t nPairs = aValues.size() / 2; // ignore last value if size is odd
-                for( size_t nPairIdx = 0; nPairIdx < nPairs; ++nPairIdx )
-                    orCustomDash.push_back( LineProperties::DashStop( aValues[ 2 * nPairIdx ], aValues[ 2 * nPairIdx + 1 ] ) );
-            }
+    const OUString& rDashStyle = roDashStyle.get();
+    switch( AttributeConversion::decodeToken( rDashStyle ) )
+    {
+        case XML_solid:             oroPresetDash = XML_solid;          return;
+        case XML_shortdot:          oroPresetDash = XML_sysDot;         return;
+        case XML_shortdash:         oroPresetDash = XML_sysDash;        return;
+        case XML_shortdashdot:      oroPresetDash = XML_sysDashDot;     return;
+        case XML_shortdashdotdot:   oroPresetDash = XML_sysDashDotDot;  return;
+        case XML_dot:               oroPresetDash = XML_dot;            return;
+        case XML_dash:              oroPresetDash = XML_dash;           return;
+        case XML_dashdot:           oroPresetDash = XML_dashDot;        return;
+        case XML_longdash:          oroPresetDash = XML_lgDash;         return;
+        case XML_longdashdot:       oroPresetDash = XML_lgDashDot;      return;
+        case XML_longdashdotdot:    oroPresetDash = XML_lgDashDotDot;   return;
+
+        // try to convert user-defined dash style
+        default:
+        {
+            ::std::vector< sal_Int32 > aValues;
+            sal_Int32 nIndex = 0;
+            while( nIndex >= 0 )
+                aValues.push_back( rDashStyle.getToken( 0, ' ', nIndex ).toInt32() );
+            size_t nPairs = aValues.size() / 2; // ignore last value if size is odd
+            for( size_t nPairIdx = 0; nPairIdx < nPairs; ++nPairIdx )
+                orCustomDash.emplace_back( aValues[ 2 * nPairIdx ], aValues[ 2 * nPairIdx + 1 ] );
         }
     }
 }
@@ -708,6 +721,15 @@ void FillModel::assignUsed( const FillModel& rSource )
     moRotate.assignIfUsed( rSource.moRotate );
 }
 
+static void lcl_setGradientStop( std::multimap< double, Color >& rMap, const double fKey, const Color& rValue ) {
+    auto aElement = rMap.find( fKey );
+
+    if (aElement != rMap.end())
+        aElement->second = rValue;
+    else
+        rMap.emplace( fKey, rValue );
+}
+
 void FillModel::pushToPropMap( ShapePropertyMap& rPropMap, const GraphicHelper& rGraphicHelper ) const
 {
     /*  Convert VML fill formatting to DrawingML fill formatting and let the
@@ -749,8 +771,10 @@ void FillModel::pushToPropMap( ShapePropertyMap& rPropMap, const GraphicHelper& 
                         // simulate axial gradient by 3-step DrawingML gradient
                         const Color& rOuterColor = bOuterToInner ? aColor1 : aColor2;
                         const Color& rInnerColor = bOuterToInner ? aColor2 : aColor1;
-                        aFillProps.maGradientProps.maGradientStops[ 0.0 ] = aFillProps.maGradientProps.maGradientStops[ 1.0 ] = rOuterColor;
-                        aFillProps.maGradientProps.maGradientStops[ 0.5 ] = rInnerColor;
+
+                        lcl_setGradientStop( aFillProps.maGradientProps.maGradientStops, 0.0, rOuterColor);
+                        lcl_setGradientStop( aFillProps.maGradientProps.maGradientStops, 1.0, rOuterColor);
+                        lcl_setGradientStop( aFillProps.maGradientProps.maGradientStops, 0.5, rInnerColor );
                     }
                     else    // focus of -100%, 0%, and 100% is linear gradient
                     {
@@ -760,10 +784,10 @@ void FillModel::pushToPropMap( ShapePropertyMap& rPropMap, const GraphicHelper& 
                             behaviour is reversed. This means that in this case
                             a focus of 0% swaps the gradient. */
                         if( fFocus < -0.5 || fFocus > 0.5 )
-                            (nVmlAngle += 180) %= 360;
+                            nVmlAngle = (nVmlAngle + 180) % 360;
                         // set the start and stop colors
-                        aFillProps.maGradientProps.maGradientStops[ 0.0 ] = aColor1;
-                        aFillProps.maGradientProps.maGradientStops[ 1.0 ] = aColor2;
+                        lcl_setGradientStop( aFillProps.maGradientProps.maGradientStops, 0.0, aColor1 );
+                        lcl_setGradientStop( aFillProps.maGradientProps.maGradientStops, 1.0, aColor2 );
                     }
 
                     // VML counts counterclockwise from bottom, DrawingML clockwise from left
@@ -788,8 +812,8 @@ void FillModel::pushToPropMap( ShapePropertyMap& rPropMap, const GraphicHelper& 
 
                     // set the start and stop colors (focus of 0% means outer-to-inner)
                     bool bOuterToInner = (-0.5 <= fFocus) && (fFocus <= 0.5);
-                    aFillProps.maGradientProps.maGradientStops[ 0.0 ] = bOuterToInner ? aColor2 : aColor1;
-                    aFillProps.maGradientProps.maGradientStops[ 1.0 ] = bOuterToInner ? aColor1 : aColor2;
+                    lcl_setGradientStop( aFillProps.maGradientProps.maGradientStops, 0.0, bOuterToInner ? aColor2 : aColor1 );
+                    lcl_setGradientStop( aFillProps.maGradientProps.maGradientStops, 1.0, bOuterToInner ? aColor1 : aColor2 );
                 }
             }
             break;
@@ -800,8 +824,8 @@ void FillModel::pushToPropMap( ShapePropertyMap& rPropMap, const GraphicHelper& 
             {
                 if( moBitmapPath.has() && !moBitmapPath.get().isEmpty() )
                 {
-                    aFillProps.maBlipProps.mxGraphic = rGraphicHelper.importEmbeddedGraphic( moBitmapPath.get() );
-                    if( aFillProps.maBlipProps.mxGraphic.is() )
+                    aFillProps.maBlipProps.mxFillGraphic = rGraphicHelper.importEmbeddedGraphic(moBitmapPath.get());
+                    if (aFillProps.maBlipProps.mxFillGraphic.is())
                     {
                         aFillProps.moFillType = XML_blipFill;
                         aFillProps.maBlipProps.moBitmapMode = (nFillType == XML_frame) ? XML_stretch : XML_tile;
@@ -809,7 +833,7 @@ void FillModel::pushToPropMap( ShapePropertyMap& rPropMap, const GraphicHelper& 
                     }
                 }
             }
-            SAL_FALLTHROUGH; // to XML_solid in case of missing bitmap path intended!
+            [[fallthrough]]; // to XML_solid in case of missing bitmap path intended!
 
             case XML_solid:
             default:
@@ -852,10 +876,12 @@ void ShadowModel::pushToPropMap(ShapePropertyMap& rPropMap, const GraphicHelper&
     }
 
     table::ShadowFormat aFormat;
-    aFormat.Color = aColor.getColor(rGraphicHelper);
-    aFormat.Location = table::ShadowLocation_BOTTOM_RIGHT;
+    aFormat.Color = sal_Int32(aColor.getColor(rGraphicHelper));
+    aFormat.Location = nOffsetX < 0
+        ? nOffsetY < 0 ? table::ShadowLocation_TOP_LEFT : table::ShadowLocation_BOTTOM_LEFT
+        : nOffsetY < 0 ? table::ShadowLocation_TOP_RIGHT : table::ShadowLocation_BOTTOM_RIGHT;
     // The width of the shadow is the average of the x and y values, see SwWW8ImplReader::MatchSdrItemsIntoFlySet().
-    aFormat.ShadowWidth = ((nOffsetX + nOffsetY) / 2);
+    aFormat.ShadowWidth = ((std::abs(nOffsetX) + std::abs(nOffsetY)) / 2);
     rPropMap.setProperty(PROP_ShadowFormat, aFormat);
 }
 
@@ -863,7 +889,7 @@ TextpathModel::TextpathModel()
 {
 }
 
-beans::PropertyValue lcl_createTextpathProps()
+static beans::PropertyValue lcl_createTextpathProps()
 {
     uno::Sequence<beans::PropertyValue> aTextpathPropSeq( comphelper::InitPropertySequence({
             { "TextPath", uno::Any(true) },
@@ -880,6 +906,8 @@ beans::PropertyValue lcl_createTextpathProps()
 
 void TextpathModel::pushToPropMap(ShapePropertyMap& rPropMap, const uno::Reference<drawing::XShape>& xShape, const GraphicHelper& rGraphicHelper) const
 {
+    OUString sFont = "";
+
     if (moString.has())
     {
         uno::Reference<text::XTextRange> xTextRange(xShape, uno::UNO_QUERY);
@@ -888,9 +916,8 @@ void TextpathModel::pushToPropMap(ShapePropertyMap& rPropMap, const uno::Referen
         uno::Reference<beans::XPropertySet> xPropertySet(xShape, uno::UNO_QUERY);
         uno::Sequence<beans::PropertyValue> aGeomPropSeq = xPropertySet->getPropertyValue("CustomShapeGeometry").get< uno::Sequence<beans::PropertyValue> >();
         bool bFound = false;
-        for (int i = 0; i < aGeomPropSeq.getLength(); ++i)
+        for (beans::PropertyValue& rProp : aGeomPropSeq)
         {
-            beans::PropertyValue& rProp = aGeomPropSeq[i];
             if (rProp.Name == "TextPath")
             {
                 bFound = true;
@@ -923,6 +950,7 @@ void TextpathModel::pushToPropMap(ShapePropertyMap& rPropMap, const uno::Referen
 
                     uno::Reference<beans::XPropertySet> xPropertySet(xShape, uno::UNO_QUERY);
                     xPropertySet->setPropertyValue("CharFontName", uno::makeAny(aValue));
+                    sFont = aValue;
                 }
                 else if (aName == "font-size")
                 {
@@ -935,9 +963,24 @@ void TextpathModel::pushToPropMap(ShapePropertyMap& rPropMap, const uno::Referen
             }
         }
     }
+    if (moTrim.has() && moTrim.get())
+        return;
+
+    OUString sText = moString.get();
+    ScopedVclPtrInstance<VirtualDevice> pDevice;
+    vcl::Font aFont = pDevice->GetFont();
+    aFont.SetFamilyName(sFont);
+    aFont.SetFontSize(Size(0, 96));
+    pDevice->SetFont(aFont);
+
+    auto nTextWidth = pDevice->GetTextWidth(sText);
+    if (nTextWidth)
+    {
+        sal_Int32 nNewHeight = (static_cast<double>(pDevice->GetTextHeight()) / nTextWidth) * xShape->getSize().Width;
+        xShape->setSize(awt::Size(xShape->getSize().Width, nNewHeight));
+    }
 }
 
-} // namespace vml
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

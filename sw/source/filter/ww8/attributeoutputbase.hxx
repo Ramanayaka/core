@@ -27,15 +27,13 @@
 #include <rtl/textenc.h>
 #include <editeng/svxenum.hxx>
 #include <tools/solar.h>
-#include <boost/optional.hpp>
+#include <optional>
 
 #include <com/sun/star/drawing/TextVerticalAdjust.hpp>
 #include <swtypes.hxx>
-#include <wrtswtbl.hxx>
 #include <fldbas.hxx>
 #include <IDocumentRedlineAccess.hxx>
-
-#include <vector>
+#include <unotools/saveopt.hxx>
 
 class Point;
 class SvxCaseMapItem;
@@ -146,6 +144,12 @@ enum StyleType
 
 class AttributeOutputBase
 {
+private:
+    SvtSaveOptions m_aSaveOpt;
+    OUString m_sBaseURL; // To be used in ConvertURL
+
+    OUString ConvertURL( const OUString& rUrl, bool bAbsoluteOut );
+
 public:
     /// Export the state of RTL/CJK.
     virtual void RTLAndCJKState( bool bIsRTL, sal_uInt16 nScript ) = 0;
@@ -169,10 +173,10 @@ public:
     virtual void EmptyParagraph() = 0;
 
     /// Start of the text run.
-    virtual void StartRun( const SwRedlineData* pRedlineData, bool bSingleEmptyRun = false ) = 0;
+    virtual void StartRun( const SwRedlineData* pRedlineData, sal_Int32 nPos, bool bSingleEmptyRun = false ) = 0;
 
     /// End of the text run.
-    virtual void EndRun() = 0;
+    virtual void EndRun( const SwTextNode* pNode, sal_Int32 nPos, bool bLastRun = false ) = 0;
 
     /// Called before we start outputting the attributes.
     virtual void StartRunProperties() = 0;
@@ -181,9 +185,9 @@ public:
     virtual void EndRunProperties( const SwRedlineData* pRedlineData ) = 0;
 
     /// docx requires footnoteRef/endnoteRef tag at the beginning of each of them
-    virtual void FootnoteEndnoteRefTag() {};
+    virtual bool FootnoteEndnoteRefTag() { return false; };
 
-    /// for docx footnotePr/endnotePr inside sectPr
+    /// for footnote/endnote section properties
     virtual void SectFootnoteEndnotePr() {};
 
     /// for docx w:commentReference
@@ -199,7 +203,7 @@ public:
     virtual void StartRuby( const SwTextNode& rNode, sal_Int32 nPos, const SwFormatRuby& rRuby ) = 0;
 
     /// Output ruby end.
-    virtual void EndRuby() = 0;
+    virtual void EndRuby( const SwTextNode& rNode, sal_Int32 nPos ) = 0;
 
     /// Output URL start.
     virtual bool StartURL( const OUString& rUrl, const OUString& rTarget ) = 0;
@@ -208,6 +212,9 @@ public:
     virtual bool EndURL(bool isAtEndOfParagraph) = 0;
 
     virtual void FieldVanish( const OUString& rText, ww::eField eType ) = 0;
+
+    /// MSO uses bookmarks to reference sequence fields, so we need to generate these additional bookmarks during export
+    void GenerateBookmarksForSequenceField(const SwTextNode& rNode, SwWW8AttrIter& rAttrIter);
 
     void StartTOX( const SwSection& rSect );
 
@@ -292,7 +299,8 @@ public:
 
     /// Write a section break
     /// msword::ColumnBreak or msword::PageBreak
-    virtual void SectionBreak( sal_uInt8 nC, const WW8_SepInfo* pSectionInfo = nullptr ) = 0;
+    /// bBreakAfter: the break must be scheduled for insertion in the end of current paragraph
+    virtual void SectionBreak( sal_uInt8 nC, bool bBreakAfter, const WW8_SepInfo* pSectionInfo = nullptr ) = 0;
 
     // preserve page vertical alignment
     virtual void TextVerticalAdjustment( const css::drawing::TextVerticalAdjust) {};
@@ -331,13 +339,18 @@ public:
 
     /// The style of the page numbers.
     ///
-    virtual void SectionPageNumbering( sal_uInt16 nNumType, const ::boost::optional<sal_uInt16>& oPageRestartNumber ) = 0;
+    virtual void SectionPageNumbering( sal_uInt16 nNumType, const ::std::optional<sal_uInt16>& oPageRestartNumber ) = 0;
 
     /// The type of breaking.
     virtual void SectionType( sal_uInt8 nBreakCode ) = 0;
 
     /// Definition of a numbering instance.
     virtual void NumberingDefinition( sal_uInt16 nId, const SwNumRule &rRule ) = 0;
+
+    /// Numbering definition that overrides abstract numbering definition
+    virtual void OverrideNumberingDefinition(SwNumRule const&, sal_uInt16 /*nNum*/, sal_uInt16 /*nAbstractNum*/,
+        const std::map< size_t, size_t > & /*rLevelOverrides*/)
+    { assert(false); } // TODO implement for WW8/RTF
 
     /// Start of the abstract numbering definition instance.
     virtual void StartAbstractNumbering( sal_uInt16 /*nId*/ ) {}
@@ -623,11 +636,17 @@ protected:
 
     virtual bool AnalyzeURL( const OUString& rUrl, const OUString& rTarget, OUString* pLinkURL, OUString* pMark );
 
+    /// Insert a bookmark inside the currently processed paragraph.
+    virtual void WriteBookmarkInActParagraph( const OUString& rName, sal_Int32 nFirstRunPos, sal_Int32 nLastRunPos ) = 0;
+
     ww8::GridColsPtr GetGridCols( ww8::WW8TableNodeInfoInner::Pointer_t const & pTableTextNodeInfoInner );
     ww8::WidthsPtr   GetColumnWidths( ww8::WW8TableNodeInfoInner::Pointer_t const & pTableTextNodeInfoInner );
 
 public:
-    AttributeOutputBase() {}
+    AttributeOutputBase(const OUString& sBaseURL)
+        : m_sBaseURL(sBaseURL)
+    {
+    }
     virtual ~AttributeOutputBase() {}
 
     /// Return the right export class.
@@ -646,16 +665,32 @@ public:
     void OutputFlyFrame( const ww8::Frame& rFormat );
 
     void GetTablePageSize
-    ( ww8::WW8TableNodeInfoInner * pTableTextNodeInfoInner,
+    ( ww8::WW8TableNodeInfoInner const * pTableTextNodeInfoInner,
       long& rPageSize, bool& rRelBoxSize );
 
     /// Exports the definition (image, size) of a single numbering picture bullet.
     virtual void BulletDefinition(int /*nId*/, const Graphic& /*rGraphic*/, Size /*aSize*/) {}
 
     // Returns whether or not the 'SwTextNode' has a paragraph marker inserted \ deleted (using 'track changes')
-    const SwRedlineData* GetParagraphMarkerRedline( const SwTextNode& rNode, RedlineType_t aRedlineType );
+    const SwRedlineData* GetParagraphMarkerRedline( const SwTextNode& rNode, RedlineType aRedlineType );
 };
 
+class WW8Ruby
+{
+    sal_Int32 m_nJC;
+    char m_cDirective;
+    sal_uInt32 m_nRubyHeight;
+    sal_uInt32 m_nBaseHeight;
+    OUString m_sFontFamily;
+
+public:
+    WW8Ruby(const SwTextNode& rNode, const SwFormatRuby& rRuby, const MSWordExportBase& rExport );
+    sal_Int32   GetJC() const { return m_nJC; }
+    char    GetDirective() const { return m_cDirective; }
+    sal_uInt32   GetRubyHeight() const { return m_nRubyHeight; }
+    sal_uInt32   GetBaseHeight() const { return m_nBaseHeight; }
+    OUString const & GetFontFamily() const { return m_sFontFamily; }
+};
 #endif // INCLUDED_SW_SOURCE_FILTER_WW8_ATTRIBUTEOUTPUTBASE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

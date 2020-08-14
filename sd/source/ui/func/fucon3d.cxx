@@ -17,32 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fucon3d.hxx"
-#include <vcl/waitobj.hxx>
+#include <fucon3d.hxx>
 
 #include <svx/svxids.hrc>
-#include <svl/aeitem.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <tools/poly.hxx>
 
-#include <math.h>
-#include <svx/globl3d.hxx>
+#include <svx/xlineit0.hxx>
 #include <svx/scene3d.hxx>
 #include <svx/sphere3d.hxx>
 #include <svx/cube3d.hxx>
 #include <svx/lathe3d.hxx>
 #include <svx/camera3d.hxx>
+#include <svx/def3d.hxx>
 
-#include "app.hrc"
-#include "res_bmp.hrc"
-#include "View.hxx"
-#include "Window.hxx"
-#include "ViewShell.hxx"
-#include "drawdoc.hxx"
-#include "ViewShellBase.hxx"
-#include "ToolBarManager.hxx"
+#include <vcl/weld.hxx>
+
+#include <app.hrc>
+
+#include <View.hxx>
+#include <Window.hxx>
+#include <ViewShell.hxx>
+#include <drawdoc.hxx>
+#include <ViewShellBase.hxx>
+#include <ToolBarManager.hxx>
 #include <svx/svx3ditems.hxx>
 
 #include <basegfx/polygon/b2dpolygontools.hxx>
@@ -89,6 +88,7 @@ E3dCompoundObject* FuConstruct3dObject::ImpCreateBasic3DShape()
         case SID_3D_CUBE:
         {
             p3DObj = new E3dCubeObj(
+                mpView->getSdrModelFromSdrView(),
                 mpView->Get3DDefaultAttributes(),
                 ::basegfx::B3DPoint(-2500, -2500, -2500),
                 ::basegfx::B3DVector(5000, 5000, 5000));
@@ -98,6 +98,7 @@ E3dCompoundObject* FuConstruct3dObject::ImpCreateBasic3DShape()
         case SID_3D_SPHERE:
         {
             p3DObj = new E3dSphereObj(
+                mpView->getSdrModelFromSdrView(),
                 mpView->Get3DDefaultAttributes(),
                 ::basegfx::B3DPoint(0, 0, 0),
                 ::basegfx::B3DVector(5000, 5000, 5000));
@@ -112,9 +113,12 @@ E3dCompoundObject* FuConstruct3dObject::ImpCreateBasic3DShape()
             ::basegfx::B2DPolygon aB2DPolygon(aXPoly.getB2DPolygon());
             if(aB2DPolygon.areControlPointsUsed())
             {
-                aB2DPolygon = ::basegfx::tools::adaptiveSubdivideByAngle(aB2DPolygon);
+                aB2DPolygon = ::basegfx::utils::adaptiveSubdivideByAngle(aB2DPolygon);
             }
-            p3DObj = new E3dLatheObj(mpView->Get3DDefaultAttributes(), ::basegfx::B2DPolyPolygon(aB2DPolygon));
+            p3DObj = new E3dLatheObj(
+                mpView->getSdrModelFromSdrView(),
+                mpView->Get3DDefaultAttributes(),
+                ::basegfx::B2DPolyPolygon(aB2DPolygon));
 
             /* this is an open object, therefore it has to be handled double-
                sided by default */
@@ -134,25 +138,31 @@ E3dCompoundObject* FuConstruct3dObject::ImpCreateBasic3DShape()
             aXPoly.Insert(0, Point (500*5, 1250*5), PolyFlags::Normal);
             aXPoly.Insert(0, Point (250*5, 1250*5), PolyFlags::Normal);
             aXPoly.Insert(0, Point (50*5, 1250*5), PolyFlags::Normal);
-            aXPoly.Insert(0, Point (0*5, 1250*5), PolyFlags::Normal);
+            aXPoly.Insert(0, Point (0,    1250*5), PolyFlags::Normal);
 
             ::basegfx::B2DPolygon aB2DPolygon(aXPoly.getB2DPolygon());
             if(aB2DPolygon.areControlPointsUsed())
             {
-                aB2DPolygon = ::basegfx::tools::adaptiveSubdivideByAngle(aB2DPolygon);
+                aB2DPolygon = ::basegfx::utils::adaptiveSubdivideByAngle(aB2DPolygon);
             }
-            p3DObj = new E3dLatheObj(mpView->Get3DDefaultAttributes(), ::basegfx::B2DPolyPolygon(aB2DPolygon));
+            p3DObj = new E3dLatheObj(
+                mpView->getSdrModelFromSdrView(),
+                mpView->Get3DDefaultAttributes(),
+                ::basegfx::B2DPolyPolygon(aB2DPolygon));
             break;
         }
 
         case SID_3D_TORUS:
         {
-            ::basegfx::B2DPolygon aB2DPolygon(::basegfx::tools::createPolygonFromCircle(::basegfx::B2DPoint(1000.0, 0.0), 500.0));
+            ::basegfx::B2DPolygon aB2DPolygon(::basegfx::utils::createPolygonFromCircle(::basegfx::B2DPoint(1000.0, 0.0), 500.0));
             if(aB2DPolygon.areControlPointsUsed())
             {
-                aB2DPolygon = ::basegfx::tools::adaptiveSubdivideByAngle(aB2DPolygon);
+                aB2DPolygon = ::basegfx::utils::adaptiveSubdivideByAngle(aB2DPolygon);
             }
-            p3DObj = new E3dLatheObj(mpView->Get3DDefaultAttributes(), ::basegfx::B2DPolyPolygon(aB2DPolygon));
+            p3DObj = new E3dLatheObj(
+                mpView->getSdrModelFromSdrView(),
+                mpView->Get3DDefaultAttributes(),
+                ::basegfx::B2DPolyPolygon(aB2DPolygon));
             break;
         }
 
@@ -175,10 +185,13 @@ E3dCompoundObject* FuConstruct3dObject::ImpCreateBasic3DShape()
             aInnerPoly.append(::basegfx::B2DPoint(200*5, -1000*5));
             aInnerPoly.append(::basegfx::B2DPoint(100*5, -1000*5));
             aInnerPoly.append(::basegfx::B2DPoint(50*5, -1000*5));
-            aInnerPoly.append(::basegfx::B2DPoint(0*5, -1000*5));
+            aInnerPoly.append(::basegfx::B2DPoint(0,    -1000*5));
             aInnerPoly.setClosed(true);
 
-            p3DObj = new E3dLatheObj(mpView->Get3DDefaultAttributes(), ::basegfx::B2DPolyPolygon(aInnerPoly));
+            p3DObj = new E3dLatheObj(
+                mpView->getSdrModelFromSdrView(),
+                mpView->Get3DDefaultAttributes(),
+                ::basegfx::B2DPolyPolygon(aInnerPoly));
             break;
         }
 
@@ -199,10 +212,13 @@ E3dCompoundObject* FuConstruct3dObject::ImpCreateBasic3DShape()
             aInnerPoly.append(::basegfx::B2DPoint(200*5, 1000*5));
             aInnerPoly.append(::basegfx::B2DPoint(100*5, 1000*5));
             aInnerPoly.append(::basegfx::B2DPoint(50*5, 1000*5));
-            aInnerPoly.append(::basegfx::B2DPoint(0*5, 1000*5));
+            aInnerPoly.append(::basegfx::B2DPoint(0,    1000*5));
             aInnerPoly.setClosed(true);
 
-            p3DObj = new E3dLatheObj(mpView->Get3DDefaultAttributes(), ::basegfx::B2DPolyPolygon(aInnerPoly));
+            p3DObj = new E3dLatheObj(
+                mpView->getSdrModelFromSdrView(),
+                mpView->Get3DDefaultAttributes(),
+                ::basegfx::B2DPolyPolygon(aInnerPoly));
             break;
         }
 
@@ -226,7 +242,10 @@ E3dCompoundObject* FuConstruct3dObject::ImpCreateBasic3DShape()
             aInnerPoly.append(::basegfx::B2DPoint(0, 1000*5));
             aInnerPoly.setClosed(true);
 
-            p3DObj = new E3dLatheObj(mpView->Get3DDefaultAttributes(), ::basegfx::B2DPolyPolygon(aInnerPoly));
+            p3DObj = new E3dLatheObj(
+                mpView->getSdrModelFromSdrView(),
+                mpView->Get3DDefaultAttributes(),
+                ::basegfx::B2DPolyPolygon(aInnerPoly));
             p3DObj->SetMergedItem(makeSvx3DHorizontalSegmentsItem(4));
             break;
         }
@@ -235,7 +254,7 @@ E3dCompoundObject* FuConstruct3dObject::ImpCreateBasic3DShape()
     return p3DObj;
 }
 
-void FuConstruct3dObject::ImpPrepareBasic3DShape(E3dCompoundObject* p3DObj, E3dScene *pScene)
+void FuConstruct3dObject::ImpPrepareBasic3DShape(E3dCompoundObject const * p3DObj, E3dScene *pScene)
 {
     Camera3D aCamera  = pScene->GetCamera ();
 
@@ -308,11 +327,9 @@ bool FuConstruct3dObject::MouseButtonDown(const MouseEvent& rMEvt)
         mpWindow->CaptureMouse();
         sal_uInt16 nDrgLog = sal_uInt16 ( mpWindow->PixelToLogic(Size(DRGPIX,0)).Width() );
 
-        E3dCompoundObject* p3DObj = nullptr;
+        weld::WaitObject aWait(mpViewShell->GetFrameWeld());
 
-        WaitObject aWait( static_cast<vcl::Window*>(mpViewShell->GetActiveWindow()) );
-
-        p3DObj = ImpCreateBasic3DShape();
+        E3dCompoundObject* p3DObj = ImpCreateBasic3DShape();
         E3dScene* pScene = mpView->SetCurrent3DObj(p3DObj);
 
         ImpPrepareBasic3DShape(p3DObj, pScene);
@@ -360,7 +377,7 @@ void FuConstruct3dObject::Activate()
     FuConstruct::Activate();
 }
 
-SdrObject* FuConstruct3dObject::CreateDefaultObject(const sal_uInt16 nID, const ::tools::Rectangle& rRectangle)
+SdrObjectUniquePtr FuConstruct3dObject::CreateDefaultObject(const sal_uInt16 nID, const ::tools::Rectangle& rRectangle)
 {
 
     E3dCompoundObject* p3DObj = ImpCreateBasic3DShape();
@@ -372,8 +389,8 @@ SdrObject* FuConstruct3dObject::CreateDefaultObject(const sal_uInt16 nID, const 
     basegfx::B3DRange aVolume(aObjVol);
     double fW(aVolume.getWidth());
     double fH(aVolume.getHeight());
-    ::tools::Rectangle a3DRect(0, 0, (long)fW, (long)fH);
-    E3dScene* pScene = new E3dScene;
+    ::tools::Rectangle a3DRect(0, 0, static_cast<long>(fW), static_cast<long>(fH));
+    std::unique_ptr< E3dScene, SdrObjectFreeOp > pScene(new E3dScene(*mpDoc));
 
     // copied code from E3dView::InitScene
     double fCamZ(aVolume.getMaxZ() + ((fW + fH) / 4.0));
@@ -385,15 +402,10 @@ SdrObject* FuConstruct3dObject::CreateDefaultObject(const sal_uInt16 nID, const 
     ::basegfx::B3DPoint aCamPos(0.0, 0.0, fCamZ < fDefaultCamPosZ ? fDefaultCamPosZ : fCamZ);
     aCam.SetPosAndLookAt(aCamPos, aLookAt);
     aCam.SetFocalLength(mpView->GetDefaultCamFocal());
-    aCam.SetDefaults(::basegfx::B3DPoint(0.0, 0.0, fDefaultCamPosZ), aLookAt);
     pScene->SetCamera(aCam);
-
-    pScene->Insert3DObj(p3DObj);
+    pScene->InsertObject(p3DObj);
     pScene->NbcSetSnapRect(a3DRect);
-    pScene->SetModel(mpDoc);
-
-    ImpPrepareBasic3DShape(p3DObj, pScene);
-
+    ImpPrepareBasic3DShape(p3DObj, pScene.get());
     SfxItemSet aAttr(mpDoc->GetPool());
     SetStyleSheet(aAttr, p3DObj);
     aAttr.Put(XLineStyleItem (drawing::LineStyle_NONE));
@@ -435,7 +447,7 @@ SdrObject* FuConstruct3dObject::CreateDefaultObject(const sal_uInt16 nID, const 
     // use changed rectangle, not original one
     pScene->SetLogicRect(aRect);
 
-    return pScene;
+    return SdrObjectUniquePtr(pScene.release());
 }
 
 } // end of namespace sd

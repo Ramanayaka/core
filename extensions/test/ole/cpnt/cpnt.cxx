@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <atlbase.h>
 #include <stdio.h>
@@ -357,7 +360,7 @@ extern "C" sal_Bool SAL_CALL component_writeInfo(   void * /*pServiceManager*/, 
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * /*pRegistryKey*/ )
+    const char * pImplName, void * pServiceManager, void * /*pRegistryKey*/ )
 {
     static void * pRet= NULL;
     if( ! pRet)
@@ -1716,7 +1719,7 @@ void SAL_CALL OComponent::testInterface(  const Reference< XCallback >& xCallbac
 
     // ############################################################################
     // Call a COM object that has not been passed as parameter to a UNO component and
-    // hence no type information are available in the COM wrapper
+    // hence no type information is available in the COM wrapper
     // ############################################################################
     case 300:
         {

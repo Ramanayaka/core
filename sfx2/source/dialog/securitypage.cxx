@@ -17,37 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-
-#include <sfx2/securitypage.hxx>
+#include <sfx2/htmlmode.hxx>
 
 #include <sfx2/sfxresid.hxx>
 
-#include <sfx2/sfx.hrc>
 #include <sfx2/sfxsids.hrc>
 #include <sfx2/objsh.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/passwd.hxx>
 
-#include <vcl/button.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <svl/eitem.hxx>
 #include <svl/poolitem.hxx>
 #include <svl/intitem.hxx>
 #include <svl/PasswordHelper.hxx>
 
-#include "app.hrc"
+#include <sfx2/strings.hrc>
 
+#include "securitypage.hxx"
 
 using namespace ::com::sun::star;
-
 
 namespace
 {
     enum RedliningMode  { RL_NONE, RL_WRITER, RL_CALC };
-    enum RedlineFunc    { RF_ON, RF_PROTECT };
 
     bool QueryState( sal_uInt16 _nSlot, bool& _rValue )
     {
@@ -60,7 +55,7 @@ namespace
             SfxItemState nState = pDisp->QueryState( _nSlot, pItem );
             bRet = SfxItemState::DEFAULT <= nState;
             if (bRet)
-                _rValue = ( static_cast< const SfxBoolItem* >( pItem ) )->GetValue();
+                _rValue = static_cast< const SfxBoolItem* >( pItem )->GetValue();
         }
         return bRet;
     }
@@ -92,18 +87,18 @@ namespace
 
 
 static bool lcl_GetPassword(
-    vcl::Window *pParent,
+    weld::Window *pParent,
     bool bProtect,
     /*out*/OUString &rPassword )
 {
     bool bRes = false;
-    ScopedVclPtrInstance< SfxPasswordDialog > aPasswdDlg(pParent);
-    aPasswdDlg->SetMinLen( 1 );
+    SfxPasswordDialog aPasswdDlg(pParent);
+    aPasswdDlg.SetMinLen(1);
     if (bProtect)
-        aPasswdDlg->ShowExtras( SfxShowExtras::CONFIRM );
-    if (RET_OK == aPasswdDlg->Execute() && !aPasswdDlg->GetPassword().isEmpty())
+        aPasswdDlg.ShowExtras( SfxShowExtras::CONFIRM );
+    if (RET_OK == aPasswdDlg.run() && !aPasswdDlg.GetPassword().isEmpty())
     {
-        rPassword = aPasswdDlg->GetPassword();
+        rPassword = aPasswdDlg.GetPassword();
         bRes = true;
     }
     return bRes;
@@ -124,20 +119,20 @@ static bool lcl_IsPasswordCorrect( const OUString &rPassword )
     if (SvPasswordHelper::CompareHashPassword( aPasswordHash, rPassword ))
         bRes = true;    // password was correct
     else
-        ScopedVclPtrInstance<InfoBox>(nullptr, SfxResId(RID_SVXSTR_INCORRECT_PASSWORD))->Execute();
+    {
+        std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(nullptr,
+                                                      VclMessageType::Info, VclButtonsType::Ok,
+                                                      SfxResId(RID_SVXSTR_INCORRECT_PASSWORD)));
+        xInfoBox->run();
+    }
 
     return bRes;
 }
-
 
 struct SfxSecurityPage_Impl
 {
     SfxSecurityPage &   m_rMyTabPage;
 
-    VclPtr<CheckBox>    m_pOpenReadonlyCB;
-    VclPtr<CheckBox>    m_pRecordChangesCB;         // for record changes
-    VclPtr<PushButton>  m_pProtectPB;               // for record changes
-    VclPtr<PushButton>  m_pUnProtectPB;             // for record changes
     RedliningMode       m_eRedlingMode;             // for record changes
 
     bool                m_bOrigPasswordIsConfirmed;
@@ -147,8 +142,13 @@ struct SfxSecurityPage_Impl
     OUString            m_aEndRedliningWarning;
     bool                m_bEndRedliningWarningDone;
 
-    DECL_LINK( RecordChangesCBToggleHdl, CheckBox&, void );
-    DECL_LINK( ChangeProtectionPBHdl, Button*, void );
+    std::unique_ptr<weld::CheckButton> m_xOpenReadonlyCB;
+    std::unique_ptr<weld::CheckButton> m_xRecordChangesCB;         // for record changes
+    std::unique_ptr<weld::Button> m_xProtectPB;               // for record changes
+    std::unique_ptr<weld::Button> m_xUnProtectPB;             // for record changes
+
+    DECL_LINK(RecordChangesCBToggleHdl, weld::ToggleButton&, void);
+    DECL_LINK(ChangeProtectionPBHdl, weld::Button&, void);
 
     SfxSecurityPage_Impl( SfxSecurityPage &rDlg );
 
@@ -156,29 +156,25 @@ struct SfxSecurityPage_Impl
     void    Reset_Impl();
 };
 
-
-SfxSecurityPage_Impl::SfxSecurityPage_Impl( SfxSecurityPage &rTabPage ) :
-    m_rMyTabPage                    (rTabPage),
-    m_eRedlingMode                  ( RL_NONE ),
-    m_bOrigPasswordIsConfirmed      ( false ),
-    m_bNewPasswordIsValid           ( false ),
-    m_aEndRedliningWarning          ( SfxResId(RID_SVXSTR_END_REDLINING_WARNING) ),
-    m_bEndRedliningWarningDone      ( false )
+SfxSecurityPage_Impl::SfxSecurityPage_Impl(SfxSecurityPage &rTabPage)
+    : m_rMyTabPage(rTabPage)
+    , m_eRedlingMode(RL_NONE)
+    , m_bOrigPasswordIsConfirmed(false)
+    , m_bNewPasswordIsValid(false)
+    , m_aEndRedliningWarning(SfxResId(RID_SVXSTR_END_REDLINING_WARNING))
+    , m_bEndRedliningWarningDone(false)
+    , m_xOpenReadonlyCB(rTabPage.GetBuilder().weld_check_button("readonly"))
+    , m_xRecordChangesCB(rTabPage.GetBuilder().weld_check_button("recordchanges"))
+    , m_xProtectPB(rTabPage.GetBuilder().weld_button("protect"))
+    , m_xUnProtectPB(rTabPage.GetBuilder().weld_button("unprotect"))
 {
-    rTabPage.get(m_pOpenReadonlyCB, "readonly");
-    rTabPage.get(m_pRecordChangesCB, "recordchanges");
-    rTabPage.get(m_pProtectPB, "protect");
-    rTabPage.get(m_pUnProtectPB, "unprotect");
-    m_pProtectPB->Show();
-    m_pUnProtectPB->Hide();
+    m_xProtectPB->show();
+    m_xUnProtectPB->hide();
 
-    // force toggle hdl called before visual change of checkbox
-    m_pRecordChangesCB->SetStyle( m_pRecordChangesCB->GetStyle() | WB_EARLYTOGGLE );
-    m_pRecordChangesCB->SetToggleHdl( LINK( this, SfxSecurityPage_Impl, RecordChangesCBToggleHdl ) );
-    m_pProtectPB->SetClickHdl( LINK( this, SfxSecurityPage_Impl, ChangeProtectionPBHdl ) );
-    m_pUnProtectPB->SetClickHdl( LINK( this, SfxSecurityPage_Impl, ChangeProtectionPBHdl ) );
+    m_xRecordChangesCB->connect_toggled(LINK(this, SfxSecurityPage_Impl, RecordChangesCBToggleHdl));
+    m_xProtectPB->connect_clicked(LINK(this, SfxSecurityPage_Impl, ChangeProtectionPBHdl));
+    m_xUnProtectPB->connect_clicked(LINK(this, SfxSecurityPage_Impl, ChangeProtectionPBHdl));
 }
-
 
 bool SfxSecurityPage_Impl::FillItemSet_Impl()
 {
@@ -189,8 +185,8 @@ bool SfxSecurityPage_Impl::FillItemSet_Impl()
     {
         if (m_eRedlingMode != RL_NONE )
         {
-            const bool bDoRecordChanges     = m_pRecordChangesCB->IsChecked();
-            const bool bDoChangeProtection  = m_pUnProtectPB->IsVisible();
+            const bool bDoRecordChanges = m_xRecordChangesCB->get_active();
+            const bool bDoChangeProtection  = m_xUnProtectPB->get_visible();
 
             // sanity checks
             DBG_ASSERT( bDoRecordChanges || !bDoChangeProtection, "no change recording should imply no change protection" );
@@ -217,7 +213,7 @@ bool SfxSecurityPage_Impl::FillItemSet_Impl()
         }
 
         // open read-only?
-        const bool bDoOpenReadonly = m_pOpenReadonlyCB->IsChecked();
+        const bool bDoOpenReadonly = m_xOpenReadonlyCB->get_active();
         if (bDoOpenReadonly != pCurDocShell->IsSecurityOptOpenReadOnly())
         {
             pCurDocShell->SetSecurityOptOpenReadOnly( bDoOpenReadonly );
@@ -236,12 +232,12 @@ void SfxSecurityPage_Impl::Reset_Impl()
     if (!pCurDocShell)
     {
         // no doc -> hide document settings
-        m_pOpenReadonlyCB->Disable();
-        m_pRecordChangesCB->Disable();
-        m_pProtectPB->Show();
-        m_pProtectPB->Disable();
-        m_pUnProtectPB->Hide();
-        m_pUnProtectPB->Disable();
+        m_xOpenReadonlyCB->set_sensitive(false);
+        m_xRecordChangesCB->set_sensitive(false);
+        m_xProtectPB->show();
+        m_xProtectPB->set_sensitive(false);
+        m_xUnProtectPB->hide();
+        m_xUnProtectPB->set_sensitive(false);
     }
     else
     {
@@ -262,11 +258,11 @@ void SfxSecurityPage_Impl::Reset_Impl()
         bool bIsReadonly = pCurDocShell->IsReadOnly();
         if (!bIsHTMLDoc)
         {
-            m_pOpenReadonlyCB->Check( pCurDocShell->IsSecurityOptOpenReadOnly() );
-            m_pOpenReadonlyCB->Enable( !bIsReadonly );
+            m_xOpenReadonlyCB->set_active(pCurDocShell->IsSecurityOptOpenReadOnly());
+            m_xOpenReadonlyCB->set_sensitive(!bIsReadonly);
         }
         else
-            m_pOpenReadonlyCB->Disable();
+            m_xOpenReadonlyCB->set_sensitive(false);
 
         bool bRecordChanges;
         if (QueryRecordChangesState( RL_WRITER, bRecordChanges ) && !bIsHTMLDoc)
@@ -281,8 +277,8 @@ void SfxSecurityPage_Impl::Reset_Impl()
             bool bProtection(false);
             QueryRecordChangesProtectionState( m_eRedlingMode, bProtection );
 
-            m_pProtectPB->Enable( !bIsReadonly );
-            m_pUnProtectPB->Enable( !bIsReadonly );
+            m_xProtectPB->set_sensitive(!bIsReadonly);
+            m_xUnProtectPB->set_sensitive(!bIsReadonly);
             // set the right text
             if (bProtection)
             {
@@ -290,14 +286,14 @@ void SfxSecurityPage_Impl::Reset_Impl()
                 bUnProtect = true;
             }
 
-            m_pRecordChangesCB->Check( bRecordChanges );
-            m_pRecordChangesCB->Enable( /*!bProtection && */!bIsReadonly );
+            m_xRecordChangesCB->set_active(bRecordChanges);
+            m_xRecordChangesCB->set_sensitive(/*!bProtection && */!bIsReadonly);
 
             m_bOrigPasswordIsConfirmed = true;   // default case if no password is set
             uno::Sequence< sal_Int8 > aPasswordHash;
             // check if password is available
             if (pCurDocShell->GetProtectionHash( aPasswordHash ) &&
-                aPasswordHash.getLength() > 0)
+                aPasswordHash.hasElements())
                 m_bOrigPasswordIsConfirmed = false;  // password found, needs to be confirmed later on
         }
         else
@@ -305,75 +301,73 @@ void SfxSecurityPage_Impl::Reset_Impl()
             // A Calc document that is shared will have 'm_eRedlingMode == RL_NONE'
             // In shared documents change recording and protection must be disabled,
             // similar to documents that do not support change recording at all.
-            m_pRecordChangesCB->Check( false );
-            m_pRecordChangesCB->Disable();
-            m_pProtectPB->Check( false );
-            m_pUnProtectPB->Check( false );
-            m_pProtectPB->Disable();
-            m_pUnProtectPB->Disable();
+            m_xRecordChangesCB->set_active(false);
+            m_xRecordChangesCB->set_sensitive(false);
+            m_xProtectPB->set_sensitive(false);
+            m_xUnProtectPB->set_sensitive(false);
         }
 
-        m_pProtectPB->Show(bProtect);
-        m_pUnProtectPB->Show(bUnProtect);
+        m_xProtectPB->set_visible(bProtect);
+        m_xUnProtectPB->set_visible(bUnProtect);
     }
 }
 
-
-IMPL_LINK_NOARG(SfxSecurityPage_Impl, RecordChangesCBToggleHdl, CheckBox&, void)
+IMPL_LINK_NOARG(SfxSecurityPage_Impl, RecordChangesCBToggleHdl, weld::ToggleButton&, void)
 {
     // when change recording gets disabled protection must be disabled as well
-    if (!m_pRecordChangesCB->IsChecked())    // the new check state is already present, thus the '!'
+    if (m_xRecordChangesCB->get_active())    // the new check state is already present, thus the '!'
+        return;
+
+    bool bAlreadyDone = false;
+    if (!m_bEndRedliningWarningDone)
     {
-        bool bAlreadyDone = false;
-        if (!m_bEndRedliningWarningDone)
-        {
-            ScopedVclPtrInstance<WarningBox> aBox(m_rMyTabPage.GetParent(), WinBits(WB_YES_NO | WB_DEF_NO),
-                    m_aEndRedliningWarning );
-            if (aBox->Execute() != RET_YES)
-                bAlreadyDone = true;
-            else
-                m_bEndRedliningWarningDone = true;
-        }
-
-        const bool bNeedPasssword = !m_bOrigPasswordIsConfirmed
-                && m_pProtectPB->IsVisible();
-        if (!bAlreadyDone && bNeedPasssword)
-        {
-            OUString aPasswordText;
-
-            // dialog canceled or no password provided
-            if (!lcl_GetPassword( m_rMyTabPage.GetParent(), false, aPasswordText ))
-                bAlreadyDone = true;
-
-            // ask for password and if dialog is canceled or no password provided return
-            if (lcl_IsPasswordCorrect( aPasswordText ))
-                m_bOrigPasswordIsConfirmed = true;
-            else
-                bAlreadyDone = true;
-        }
-
-        if (bAlreadyDone)
-            m_pRecordChangesCB->Check();     // restore original state
+        std::unique_ptr<weld::MessageDialog> xWarn(Application::CreateMessageDialog(m_rMyTabPage.GetFrameWeld(),
+                                                   VclMessageType::Warning, VclButtonsType::YesNo,
+                                                   m_aEndRedliningWarning));
+        xWarn->set_default_response(RET_NO);
+        if (xWarn->run() != RET_YES)
+            bAlreadyDone = true;
         else
-        {
-            // remember required values to change protection and change recording in
-            // FillItemSet_Impl later on if password was correct.
-            m_bNewPasswordIsValid = true;
-            m_aNewPassword.clear();
-            m_pProtectPB->Show();
-            m_pUnProtectPB->Hide();
-        }
+            m_bEndRedliningWarningDone = true;
+    }
+
+    const bool bNeedPasssword = !m_bOrigPasswordIsConfirmed
+            && m_xUnProtectPB->get_visible(); // tdf#128230 Require password if the Unprotect button is visible
+    if (!bAlreadyDone && bNeedPasssword)
+    {
+        OUString aPasswordText;
+
+        // dialog canceled or no password provided
+        if (!lcl_GetPassword( m_rMyTabPage.GetFrameWeld(), false, aPasswordText ))
+            bAlreadyDone = true;
+
+        // ask for password and if dialog is canceled or no password provided return
+        if (lcl_IsPasswordCorrect( aPasswordText ))
+            m_bOrigPasswordIsConfirmed = true;
+        else
+            bAlreadyDone = true;
+    }
+
+    if (bAlreadyDone)
+        m_xRecordChangesCB->set_active(true);     // restore original state
+    else
+    {
+        // remember required values to change protection and change recording in
+        // FillItemSet_Impl later on if password was correct.
+        m_bNewPasswordIsValid = true;
+        m_aNewPassword.clear();
+        m_xProtectPB->show();
+        m_xUnProtectPB->hide();
     }
 }
 
-
-IMPL_LINK_NOARG(SfxSecurityPage_Impl, ChangeProtectionPBHdl, Button*, void)
+IMPL_LINK_NOARG(SfxSecurityPage_Impl, ChangeProtectionPBHdl, weld::Button&, void)
 {
     if (m_eRedlingMode == RL_NONE)
         return;
 
     // the push button text is always the opposite of the current state. Thus:
-    const bool bCurrentProtection = m_pUnProtectPB->IsVisible();
+    const bool bCurrentProtection = m_xUnProtectPB->get_visible();
 
     // ask user for password (if still necessary)
     OUString aPasswordText;
@@ -382,7 +376,7 @@ IMPL_LINK_NOARG(SfxSecurityPage_Impl, ChangeProtectionPBHdl, Button*, void)
     if (bNeedPassword)
     {
         // ask for password and if dialog is canceled or no password provided return
-        if (!lcl_GetPassword( m_rMyTabPage.GetParent(), bNewProtection, aPasswordText ))
+        if (!lcl_GetPassword(m_rMyTabPage.GetFrameWeld(), bNewProtection, aPasswordText))
             return;
 
         // provided password still needs to be checked?
@@ -401,42 +395,37 @@ IMPL_LINK_NOARG(SfxSecurityPage_Impl, ChangeProtectionPBHdl, Button*, void)
     m_bNewPasswordIsValid = true;
     m_aNewPassword = bNewProtection? aPasswordText : OUString();
 
-    m_pRecordChangesCB->Check( bNewProtection );
+    m_xRecordChangesCB->set_active(bNewProtection);
 
-    m_pUnProtectPB->Show(bNewProtection);
-    m_pProtectPB->Show(!bNewProtection);
+    m_xUnProtectPB->set_visible(bNewProtection);
+    m_xProtectPB->set_visible(!bNewProtection);
 }
 
-
-VclPtr<SfxTabPage> SfxSecurityPage::Create( vcl::Window * pParent, const SfxItemSet * rItemSet )
+std::unique_ptr<SfxTabPage> SfxSecurityPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet * rItemSet)
 {
-    return VclPtr<SfxSecurityPage>::Create( pParent, *rItemSet );
+    return std::make_unique<SfxSecurityPage>(pPage, pController, *rItemSet);
 }
 
-
-SfxSecurityPage::SfxSecurityPage( vcl::Window* pParent, const SfxItemSet& rItemSet )
-    : SfxTabPage(pParent, "SecurityInfoPage", "sfx/ui/securityinfopage.ui", &rItemSet)
+SfxSecurityPage::SfxSecurityPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rItemSet)
+    : SfxTabPage(pPage, pController, "sfx/ui/securityinfopage.ui", "SecurityInfoPage", &rItemSet)
 {
     m_pImpl.reset(new SfxSecurityPage_Impl( *this ));
 }
 
-
 bool SfxSecurityPage::FillItemSet( SfxItemSet * /*rItemSet*/ )
 {
     bool bModified = false;
-    DBG_ASSERT( m_pImpl.get(), "implementation pointer is 0. Still in c-tor?" );
-    if (m_pImpl.get() != nullptr)
+    DBG_ASSERT(m_pImpl, "implementation pointer is 0. Still in c-tor?");
+    if (m_pImpl != nullptr)
         bModified = m_pImpl->FillItemSet_Impl();
     return bModified;
 }
 
-
 void SfxSecurityPage::Reset( const SfxItemSet * /*rItemSet*/ )
 {
-    DBG_ASSERT( m_pImpl.get(), "implementation pointer is 0. Still in c-tor?" );
-    if (m_pImpl.get() != nullptr)
+    DBG_ASSERT(m_pImpl, "implementation pointer is 0. Still in c-tor?");
+    if (m_pImpl != nullptr)
         m_pImpl->Reset_Impl();
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,20 +21,18 @@
 #define INCLUDED_SD_SOURCE_UI_INC_UNOSRCH_HXX
 
 #include <memory>
-#include <com/sun/star/drawing/XShape.hpp>
-#include <com/sun/star/drawing/XDrawPage.hpp>
-#include <com/sun/star/text/XTextRange.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/util/XReplaceable.hpp>
-#include <com/sun/star/util/XSearchable.hpp>
-#include <com/sun/star/util/XSearchDescriptor.hpp>
 #include <com/sun/star/util/XReplaceDescriptor.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 
 #include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <editeng/editdata.hxx>
-#include <editeng/unoipset.hxx>
+
+namespace com::sun::star::drawing { class XDrawPage; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::text { class XTextRange; }
+namespace com::sun::star::util { class XSearchDescriptor; }
 
 class SvxItemPropertySet;
 class SdUnoSearchReplaceDescriptor;
@@ -43,10 +41,9 @@ class SdUnoSearchReplaceDescriptor;
 class SdUnoSearchReplaceShape : public css::util::XReplaceable
 {
 protected:
-    css::drawing::XShape* mpShape;
     css::drawing::XDrawPage* mpPage;
 
-    css::uno::Reference< css::text::XTextRange >  Search( const css::uno::Reference< css::text::XTextRange >&  xText, SdUnoSearchReplaceDescriptor* pDescr ) throw();
+    css::uno::Reference< css::text::XTextRange >  Search( const css::uno::Reference< css::text::XTextRange >&  xText, SdUnoSearchReplaceDescriptor* pDescr );
     bool Search( const OUString& rText, sal_Int32& nStartPos, sal_Int32& nEndPos, SdUnoSearchReplaceDescriptor* pDescr ) throw();
     static ESelection GetSelection( const css::uno::Reference< css::text::XTextRange >&  xTextRange ) throw();
     static css::uno::Reference< css::drawing::XShape >  GetShape( const css::uno::Reference< css::text::XTextRange >&  xTextRange ) throw();
@@ -119,13 +116,12 @@ public:
 
 /** this class holds a sequence that is a result from a find all and
     lets people access it through the XIndexAccess Interface. */
-class SdUnoFindAllAccess : public ::cppu::WeakImplHelper< css::container::XIndexAccess > // public css::container::XElementAccess
+class SdUnoFindAllAccess final : public ::cppu::WeakImplHelper< css::container::XIndexAccess > // public css::container::XElementAccess
 {
-protected:
     css::uno::Sequence< css::uno::Reference< css::uno::XInterface >  > maSequence;
 
 public:
-    SdUnoFindAllAccess( css::uno::Sequence< css::uno::Reference< css::uno::XInterface >  >& rSequence ) throw();
+    SdUnoFindAllAccess( css::uno::Sequence< css::uno::Reference< css::uno::XInterface >  > const & rSequence ) throw();
     virtual ~SdUnoFindAllAccess() throw() override;
 
     // XIndexAccess

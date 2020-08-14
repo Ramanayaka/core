@@ -17,22 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SW_SOURCE_CORE_ACCESS_ACCCONTEXT_HXX
-#define INCLUDED_SW_SOURCE_CORE_ACCESS_ACCCONTEXT_HXX
+#pragma once
 
-#include <accframe.hxx>
+#include "accframe.hxx"
 #include <accmap.hxx>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
+#include <com/sun/star/accessibility/XAccessibleContext3.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 
 #include <memory>
 
 namespace vcl { class Window; }
-class SwAccessibleMap;
 class SwCursorShell;
 class SdrObject;
 class SwPaM;
@@ -43,12 +40,13 @@ namespace accessibility {
     class AccessibleShape;
 }
 
-const sal_Char sAccessibleServiceName[] = "com.sun.star.accessibility.Accessible";
+const char sAccessibleServiceName[] = "com.sun.star.accessibility.Accessible";
 
 class SwAccessibleContext :
     public ::cppu::WeakImplHelper<
                 css::accessibility::XAccessible,
                 css::accessibility::XAccessibleContext,
+                css::accessibility::XAccessibleContext3,
                 css::accessibility::XAccessibleComponent,
                 css::accessibility::XAccessibleEventBroadcaster,
                 css::lang::XServiceInfo
@@ -186,7 +184,7 @@ protected:
      bool IsEditableState();
 
     /// @throws css::uno::RuntimeException
-    css::awt::Rectangle SAL_CALL
+    css::awt::Rectangle
         getBoundsImpl(bool bRelative);
 
     // #i85634#
@@ -201,7 +199,7 @@ protected:
     virtual ~SwAccessibleContext() override;
 
     // Return a reference to the parent.
-    css::uno::Reference< css::accessibility::XAccessible> SAL_CALL
+    css::uno::Reference< css::accessibility::XAccessible>
         getAccessibleParentImpl();
 
 public:
@@ -222,6 +220,9 @@ public:
     // Return the specified child or NULL if index is invalid.
     virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL
         getAccessibleChild (sal_Int32 nIndex) override;
+
+    virtual css::uno::Sequence<css::uno::Reference< css::accessibility::XAccessible>> SAL_CALL
+        getAccessibleChildren() override;
 
     // Return a reference to the parent.
     virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL
@@ -293,10 +294,10 @@ public:
 
     // thread safe C++ interface
 
-    // The object is not visible an longer and should be destroyed
+    // The object is not visible any longer and should be destroyed
     virtual void Dispose(bool bRecursive, bool bCanSkipInvisible = true);
 
-    // The child object is not visible an longer and should be destroyed
+    // The child object is not visible any longer and should be destroyed
     virtual void DisposeChild(const sw::access::SwAccessibleChild& rFrameOrObj, bool bRecursive, bool bCanSkipInvisible);
 
     // The object has been moved by the layout
@@ -347,15 +348,13 @@ public:
         return Select( nullptr, pObj, bAdd );
     }
 
-    //This method is used to updated the selected state and fire the selected state changed event.
+    //This method is used to update the selected state and fire the selected state changed event.
     virtual bool SetSelectedState(bool bSeleted);
-    bool  IsSeletedInDoc() { return m_isSelectedInDoc; }
+    bool  IsSeletedInDoc() const { return m_isSelectedInDoc; }
 
-    static OUString GetResource( sal_uInt16 nResId,
-                                        const OUString *pArg1 = nullptr,
-                                        const OUString *pArg2 = nullptr );
+    static OUString GetResource(const char* pResId,
+                                const OUString *pArg1 = nullptr,
+                                const OUString *pArg2 = nullptr);
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

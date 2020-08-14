@@ -21,15 +21,18 @@
 #define INCLUDED_VCL_OUTDEVSTATE_HXX
 
 #include <vcl/mapmod.hxx>
-#include <vcl/region.hxx>
-#include <vcl/font.hxx>
 #include <vcl/vclenum.hxx>
 
-#include <tools/solar.h>
-#include <tools/gen.hxx>
 #include <tools/color.hxx>
+#include <tools/gen.hxx>
 #include <tools/fontenum.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <memory>
+#include <optional>
+#include <i18nlangtag/lang.h>
+
+namespace vcl { class Font; }
+namespace vcl { class Region; }
 
 // Flags for OutputDevice::Push() and OutDevState
 enum class PushFlags {
@@ -72,23 +75,23 @@ namespace o3tl {
     template<> struct typed_flags<ComplexTextLayoutFlags> : is_typed_flags<ComplexTextLayoutFlags, 0x000f> {};
 }
 
-class OutDevState
+struct OutDevState
 {
-public:
     OutDevState();
+    OutDevState(OutDevState&&);
     ~OutDevState();
 
-    MapMode*        mpMapMode;
+    std::optional<MapMode>        mpMapMode;
     bool            mbMapActive;
-    vcl::Region*    mpClipRegion;
-    Color*          mpLineColor;
-    Color*          mpFillColor;
-    vcl::Font*      mpFont;
-    Color*          mpTextColor;
-    Color*          mpTextFillColor;
-    Color*          mpTextLineColor;
-    Color*          mpOverlineColor;
-    Point*          mpRefPoint;
+    std::unique_ptr<vcl::Region>    mpClipRegion;
+    std::optional<Color>          mpLineColor;
+    std::optional<Color>          mpFillColor;
+    std::unique_ptr<vcl::Font>      mpFont;
+    std::optional<Color>          mpTextColor;
+    std::optional<Color>          mpTextFillColor;
+    std::optional<Color>          mpTextLineColor;
+    std::optional<Color>          mpOverlineColor;
+    std::optional<Point>          mpRefPoint;
     TextAlign       meTextAlign;
     RasterOp        meRasterOp;
     ComplexTextLayoutFlags  mnTextLayoutMode;

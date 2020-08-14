@@ -17,27 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
-
-#include <svx/charthelper.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
 #include <svx/sdr/contact/viewcontact.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
 #include <svx/sdr/contact/displayinfo.hxx>
-#include <vcl/region.hxx>
-#include <svx/sdr/animation/objectanimator.hxx>
 #include <svx/sdr/animation/animationstate.hxx>
 #include <svx/sdr/contact/viewobjectcontactredirector.hxx>
-#include <basegfx/numeric/ftools.hxx>
 #include <basegfx/color/bcolor.hxx>
 #include <drawinglayer/primitive2d/modifiedcolorprimitive2d.hxx>
-#include <basegfx/tools/canvastools.hxx>
 #include <drawinglayer/primitive2d/animatedprimitive2d.hxx>
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
-#include <svx/svdoole2.hxx>
-
-#include <sdr/contact/viewcontactofsdrole2obj.hxx>
+#include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 
 using namespace com::sun::star;
 
@@ -76,8 +67,6 @@ public:
 
     // data access
     const drawinglayer::primitive2d::Primitive2DContainer& getPrimitive2DSequence() const { return maPrimitive2DSequence; }
-    bool isTextAnimationAllowed() const { return mbTextAnimationAllowed; }
-    bool isGraphicAnimationAllowed() const { return mbGraphicAnimationAllowed; }
 };
 
 AnimatedExtractingProcessor2D::AnimatedExtractingProcessor2D(
@@ -103,8 +92,8 @@ void AnimatedExtractingProcessor2D::processBasePrimitive2D(const drawinglayer::p
         {
             const drawinglayer::primitive2d::AnimatedSwitchPrimitive2D& rSwitchPrimitive = static_cast< const drawinglayer::primitive2d::AnimatedSwitchPrimitive2D& >(rCandidate);
 
-            if((rSwitchPrimitive.isTextAnimation() && isTextAnimationAllowed())
-                || (rSwitchPrimitive.isGraphicAnimation() && isGraphicAnimationAllowed()))
+            if((rSwitchPrimitive.isTextAnimation() && mbTextAnimationAllowed)
+                || (rSwitchPrimitive.isGraphicAnimation() && mbGraphicAnimationAllowed))
             {
                 const drawinglayer::primitive2d::Primitive2DReference xReference(const_cast< drawinglayer::primitive2d::BasePrimitive2D* >(&rCandidate));
                 maPrimitive2DSequence.push_back(xReference);
@@ -152,14 +141,14 @@ void AnimatedExtractingProcessor2D::processBasePrimitive2D(const drawinglayer::p
 
 } // end of anonymous namespace
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 ViewObjectContact::ViewObjectContact(ObjectContact& rObjectContact, ViewContact& rViewContact)
 :   mrObjectContact(rObjectContact),
     mrViewContact(rViewContact),
     maObjectRange(),
     mxPrimitive2DSequence(),
-    mpPrimitiveAnimation(nullptr),
+    maGridOffset(0.0, 0.0),
     mbLazyInvalidate(false)
 {
     // make the ViewContact remember me
@@ -178,11 +167,7 @@ ViewObjectContact::~ViewObjectContact()
     }
 
     // delete PrimitiveAnimation
-    if(mpPrimitiveAnimation)
-    {
-        delete mpPrimitiveAnimation;
-        mpPrimitiveAnimation = nullptr;
-    }
+    mpPrimitiveAnimation.reset();
 
     // take care of remembered ObjectContact. Remove from
     // OC first. The VC removal (below) CAN trigger a StopGettingViewed()
@@ -225,51 +210,43 @@ const basegfx::B2DRange& ViewObjectContact::getObjectRange() const
 
 void ViewObjectContact::ActionChanged()
 {
-    if(!mbLazyInvalidate)
+    if(mbLazyInvalidate)
+        return;
+
+    // set local flag
+    mbLazyInvalidate = true;
+
+    // force ObjectRange
+    getObjectRange();
+
+    if(!maObjectRange.isEmpty())
     {
-        // set local flag
-        mbLazyInvalidate = true;
+        // invalidate current valid range
+        GetObjectContact().InvalidatePartOfView(maObjectRange);
 
-        // force ObjectRange
-        getObjectRange();
-
-        if(!maObjectRange.isEmpty())
-        {
-            // invalidate current valid range
-            GetObjectContact().InvalidatePartOfView(maObjectRange);
-
-            // reset ObjectRange, it needs to be recalculated
-            maObjectRange.reset();
-        }
-
-        // register at OC for lazy invalidate
-        GetObjectContact().setLazyInvalidate(*this);
+        // reset ObjectRange, it needs to be recalculated
+        maObjectRange.reset();
     }
+
+    // register at OC for lazy invalidate
+    GetObjectContact().setLazyInvalidate(*this);
 }
 
 void ViewObjectContact::triggerLazyInvalidate()
 {
-    if(mbLazyInvalidate)
+    if(!mbLazyInvalidate)
+        return;
+
+    // reset flag
+    mbLazyInvalidate = false;
+
+    // force ObjectRange
+    getObjectRange();
+
+    if(!maObjectRange.isEmpty())
     {
-        // reset flag
-        mbLazyInvalidate = false;
-
-#if HAVE_FEATURE_DESKTOP
-        // 3D charts need to be notified separately, they are not to be
-        // drawn by the drawinglayer
-        ViewContactOfSdrOle2Obj* pViewContact = dynamic_cast<ViewContactOfSdrOle2Obj*>(&GetViewContact());
-        if (pViewContact && pViewContact->GetOle2Obj().IsReal3DChart())
-            ChartHelper::updateChart(pViewContact->GetOle2Obj().getXModel(), false);
-#endif
-
-        // force ObjectRange
-        getObjectRange();
-
-        if(!maObjectRange.isEmpty())
-        {
-            // invalidate current valid range
-            GetObjectContact().InvalidatePartOfView(maObjectRange);
-        }
+        // invalidate current valid range
+        GetObjectContact().InvalidatePartOfView(maObjectRange);
     }
 }
 
@@ -288,29 +265,25 @@ void ViewObjectContact::ActionChildInserted(ViewContact& rChild)
 void ViewObjectContact::checkForPrimitive2DAnimations()
 {
     // remove old one
-    if(mpPrimitiveAnimation)
-    {
-        delete mpPrimitiveAnimation;
-        mpPrimitiveAnimation = nullptr;
-    }
+    mpPrimitiveAnimation.reset();
 
     // check for animated primitives
-    if(!mxPrimitive2DSequence.empty())
+    if(mxPrimitive2DSequence.empty())
+        return;
+
+    const bool bTextAnimationAllowed(GetObjectContact().IsTextAnimationAllowed());
+    const bool bGraphicAnimationAllowed(GetObjectContact().IsGraphicAnimationAllowed());
+
+    if(bTextAnimationAllowed || bGraphicAnimationAllowed)
     {
-        const bool bTextAnimationAllowed(GetObjectContact().IsTextAnimationAllowed());
-        const bool bGraphicAnimationAllowed(GetObjectContact().IsGraphicAnimationAllowed());
+        AnimatedExtractingProcessor2D aAnimatedExtractor(GetObjectContact().getViewInformation2D(),
+            bTextAnimationAllowed, bGraphicAnimationAllowed);
+        aAnimatedExtractor.process(mxPrimitive2DSequence);
 
-        if(bTextAnimationAllowed || bGraphicAnimationAllowed)
+        if(!aAnimatedExtractor.getPrimitive2DSequence().empty())
         {
-            AnimatedExtractingProcessor2D aAnimatedExtractor(GetObjectContact().getViewInformation2D(),
-                bTextAnimationAllowed, bGraphicAnimationAllowed);
-            aAnimatedExtractor.process(mxPrimitive2DSequence);
-
-            if(!aAnimatedExtractor.getPrimitive2DSequence().empty())
-            {
-                // derived primitiveList is animated, setup new PrimitiveAnimation
-                mpPrimitiveAnimation =  new sdr::animation::PrimitiveAnimation(*this, aAnimatedExtractor.getPrimitive2DSequence());
-            }
+            // derived primitiveList is animated, setup new PrimitiveAnimation
+            mpPrimitiveAnimation.reset( new sdr::animation::PrimitiveAnimation(*this, aAnimatedExtractor.getPrimitive2DSequence()) );
         }
     }
 }
@@ -337,10 +310,10 @@ drawinglayer::primitive2d::Primitive2DContainer ViewObjectContact::createPrimiti
         if(isPrimitiveGhosted(rDisplayInfo))
         {
             const basegfx::BColor aRGBWhite(1.0, 1.0, 1.0);
-            const basegfx::BColorModifierSharedPtr aBColorModifier(
-                new basegfx::BColorModifier_interpolate(
+            const basegfx::BColorModifierSharedPtr aBColorModifier =
+                std::make_shared<basegfx::BColorModifier_interpolate>(
                     aRGBWhite,
-                    0.5));
+                    0.5);
             const drawinglayer::primitive2d::Primitive2DReference xReference(
                 new drawinglayer::primitive2d::ModifiedColorPrimitive2D(
                     xRetval,
@@ -380,8 +353,36 @@ drawinglayer::primitive2d::Primitive2DContainer const & ViewObjectContact::getPr
 
         // always update object range when PrimitiveSequence changes
         const drawinglayer::geometry::ViewInformation2D& rViewInformation2D(GetObjectContact().getViewInformation2D());
-        const_cast< ViewObjectContact* >(this)->maObjectRange =
-            mxPrimitive2DSequence.getB2DRange(rViewInformation2D);
+        const_cast< ViewObjectContact* >(this)->maObjectRange = mxPrimitive2DSequence.getB2DRange(rViewInformation2D);
+
+        // check and eventually embed to GridOffset transform primitive
+        if(GetObjectContact().supportsGridOffsets())
+        {
+            const basegfx::B2DVector& rGridOffset(getGridOffset());
+
+            if(0.0 != rGridOffset.getX() || 0.0 != rGridOffset.getY())
+            {
+                const basegfx::B2DHomMatrix aTranslateGridOffset(
+                    basegfx::utils::createTranslateB2DHomMatrix(
+                        rGridOffset));
+                const drawinglayer::primitive2d::Primitive2DReference aEmbed(
+                    new drawinglayer::primitive2d::TransformPrimitive2D(
+                        aTranslateGridOffset,
+                        mxPrimitive2DSequence));
+
+                // Set values at local data. So for now, the mechanism is to reset some of the
+                // defining things (mxPrimitive2DSequence, maGridOffset) and re-create the
+                // buffered data (including maObjectRange). It *could* be changed to keep
+                // the unmodified PrimitiveSequence and only update the GridOffset, but this
+                // would require a 2nd instance of maObjectRange and mxPrimitive2DSequence. I
+                // started doing so, but it just makes the code more complicated. For now,
+                // just allow re-creation of the PrimitiveSequence (and removing buffered
+                // decomposed content of it). May be optimized, though. OTOH it only happens
+                // in calc which traditionally does not have a huge amount of DrawObjects anyways.
+                const_cast< ViewObjectContact* >(this)->mxPrimitive2DSequence = drawinglayer::primitive2d::Primitive2DContainer { aEmbed };
+                const_cast< ViewObjectContact* >(this)->maObjectRange.transform(aTranslateGridOffset);
+            }
+        }
     }
 
     // return current Primitive2DContainer
@@ -444,6 +445,31 @@ drawinglayer::primitive2d::Primitive2DContainer ViewObjectContact::getPrimitive2
     return xSeqRetval;
 }
 
-}}
+// Support getting a GridOffset per object and view for non-linear ViewToDevice
+// transformation (calc). On-demand created by delegating to the ObjectContact
+// (->View) that has then all needed information
+const basegfx::B2DVector& ViewObjectContact::getGridOffset() const
+{
+    if(0.0 == maGridOffset.getX() && 0.0 == maGridOffset.getY() && GetObjectContact().supportsGridOffsets())
+    {
+        // create on-demand
+        GetObjectContact().calculateGridOffsetForViewOjectContact(const_cast<ViewObjectContact*>(this)->maGridOffset, *this);
+    }
+
+    return maGridOffset;
+}
+
+void ViewObjectContact::resetGridOffset()
+{
+    // reset buffered GridOffset itself
+    maGridOffset.setX(0.0);
+    maGridOffset.setY(0.0);
+
+    // also reset sequence to get a re-calculation when GridOffset changes
+    mxPrimitive2DSequence.clear();
+    maObjectRange.reset();
+}
+
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

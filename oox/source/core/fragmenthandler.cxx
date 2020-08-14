@@ -17,12 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/core/fragmenthandler.hxx"
+#include <oox/core/fragmenthandler.hxx>
 
-#include "oox/core/xmlfilterbase.hxx"
+#include <oox/core/xmlfilterbase.hxx>
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::uno;
@@ -115,7 +114,6 @@ const RecordInfo* FragmentHandler::getRecordInfos() const
     return nullptr;
 }
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

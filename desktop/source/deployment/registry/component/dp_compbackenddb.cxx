@@ -18,14 +18,9 @@
  */
 
 
-#include <rtl/string.h>
-#include <rtl/bootstrap.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <com/sun/star/deployment/DeploymentException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/xml/dom/XDocumentBuilder.hpp>
-#include <com/sun/star/xml/xpath/XXPathAPI.hpp>
-#include "dp_misc.h"
 
 #include "dp_compbackenddb.hxx"
 
@@ -37,9 +32,7 @@ using namespace ::com::sun::star::uno;
 #define ROOT_ELEMENT_NAME "component-backend-db"
 #define KEY_ELEMENT_NAME "component"
 
-namespace dp_registry {
-namespace backend {
-namespace component {
+namespace dp_registry::backend::component {
 
 ComponentBackendDb::ComponentBackendDb(
     Reference<XComponentContext> const &  xContext,
@@ -50,22 +43,22 @@ ComponentBackendDb::ComponentBackendDb(
 
 OUString ComponentBackendDb::getDbNSName()
 {
-    return OUString(EXTENSION_REG_NS);
+    return EXTENSION_REG_NS;
 }
 
 OUString ComponentBackendDb::getNSPrefix()
 {
-    return OUString(NS_PREFIX);
+    return NS_PREFIX;
 }
 
 OUString ComponentBackendDb::getRootElementName()
 {
-    return OUString(ROOT_ELEMENT_NAME);
+    return ROOT_ELEMENT_NAME;
 }
 
 OUString ComponentBackendDb::getKeyElementName()
 {
-    return OUString(KEY_ELEMENT_NAME);
+    return KEY_ELEMENT_NAME;
 }
 
 void ComponentBackendDb::addEntry(OUString const & url, Data const & data)
@@ -133,8 +126,6 @@ ComponentBackendDb::Data ComponentBackendDb::getEntry(OUString const & url)
 }
 
 
-} // namespace bundle
-} // namespace backend
-} // namespace dp_registry
+} // namespace dp_registry::backend::component
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

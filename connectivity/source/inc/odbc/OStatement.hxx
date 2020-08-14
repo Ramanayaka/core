@@ -31,17 +31,14 @@
 #include <comphelper/proparrhlp.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <comphelper/uno3.hxx>
 #include <connectivity/CommonTools.hxx>
-#include "odbc/OFunctions.hxx"
-#include "odbc/OConnection.hxx"
-#include "odbc/odbcbasedllapi.hxx"
-#include <list>
+#include <odbc/OFunctions.hxx>
+#include <odbc/OConnection.hxx>
+#include <odbc/odbcbasedllapi.hxx>
+#include <vector>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-namespace connectivity
-{
-    namespace odbc
+namespace connectivity::odbc
     {
 
         typedef ::cppu::WeakComponentImplHelper<   css::sdbc::XStatement,
@@ -68,7 +65,7 @@ namespace connectivity
             css::uno::Reference< css::sdbc::XStatement>       m_xGeneratedStatement;
             //  for this Statement
 
-            std::list< OUString>   m_aBatchList;
+            std::vector< OUString>   m_aBatchVector;
             OUString                 m_sSqlStatement;
 
             rtl::Reference<OConnection>     m_pConnection;// The owning Connection object
@@ -211,19 +208,14 @@ namespace connectivity
             using OPropertySetHelper::getFastPropertyValue;
         };
 
-        class OOO_DLLPUBLIC_ODBCBASE OStatement_BASE2 :
-                                 public OStatement_Base
-                                ,public ::connectivity::OSubComponent<OStatement_BASE2, OStatement_BASE>
-
+        class OOO_DLLPUBLIC_ODBCBASE OStatement_BASE2 : public OStatement_Base
         {
-            friend class OSubComponent<OStatement_BASE2, OStatement_BASE>;
         public:
-            OStatement_BASE2(OConnection* _pConnection ) :  OStatement_Base(_pConnection ),
-                                    ::connectivity::OSubComponent<OStatement_BASE2, OStatement_BASE>(static_cast<cppu::OWeakObject*>(_pConnection), this){}
+            OStatement_BASE2(OConnection* _pConnection ) :
+                OStatement_Base(_pConnection )
+            {}
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
-            // XInterface
-            virtual void SAL_CALL release() throw() override;
         };
 
         class OOO_DLLPUBLIC_ODBCBASE OStatement :
@@ -246,7 +238,7 @@ namespace connectivity
             virtual void SAL_CALL clearBatch(  ) override;
             virtual css::uno::Sequence< sal_Int32 > SAL_CALL executeBatch(  ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ODBC_OSTATEMENT_HXX
 

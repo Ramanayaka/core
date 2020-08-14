@@ -17,20 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fuzoom.hxx"
+#include <fuzoom.hxx>
 
 #include <svx/svxids.hrc>
 #include <sfx2/bindings.hxx>
 #include <sfx2/viewfrm.hxx>
-#include "app.hrc"
+#include <app.hrc>
 #include <svx/svdpagv.hxx>
+#include <vcl/ptrstyle.hxx>
 
-#include "FrameView.hxx"
-#include "ViewShell.hxx"
-#include "View.hxx"
-#include "Window.hxx"
-#include "drawdoc.hxx"
-#include "zoomlist.hxx"
+#include <ViewShell.hxx>
+#include <View.hxx>
+#include <Window.hxx>
+#include <zoomlist.hxx>
 
 namespace sd {
 
@@ -49,7 +48,8 @@ FuZoom::FuZoom(
     SfxRequest& rReq)
     : FuPoor(pViewSh, pWin, pView, pDoc, rReq),
       bVisible(false),
-      bStartDrag(false)
+      bStartDrag(false),
+      aPtr(PointerStyle::Arrow)
 {
 }
 
@@ -90,9 +90,9 @@ bool FuZoom::MouseButtonDown(const MouseEvent& rMEvt)
 bool FuZoom::MouseMove(const MouseEvent& rMEvt)
 {
     if (rMEvt.IsShift())
-        mpWindow->SetPointer(Pointer(PointerStyle::Hand));
+        mpWindow->SetPointer(PointerStyle::Hand);
     else if (nSlotId != SID_ZOOM_PANNING)
-        mpWindow->SetPointer(Pointer(PointerStyle::Magnify));
+        mpWindow->SetPointer(PointerStyle::Magnify);
 
     if (bStartDrag)
     {
@@ -117,8 +117,8 @@ bool FuZoom::MouseMove(const MouseEvent& rMEvt)
             {
                 Size aWorkSize = mpView->GetWorkArea().GetSize();
                 Size aPageSize = mpView->GetSdrPageView()->GetPage()->GetSize();
-                aScroll.X() /= aWorkSize.Width()  / aPageSize.Width();
-                aScroll.Y() /= aWorkSize.Height() / aPageSize.Height();
+                aScroll.setX( aScroll.X() / ( aWorkSize.Width()  / aPageSize.Width()) );
+                aScroll.setY( aScroll.Y() / ( aWorkSize.Height() / aPageSize.Height()) );
                 mpViewShell->Scroll(aScroll.X(), aScroll.Y());
                 aBeginPosPix = aPosPix;
             }
@@ -156,23 +156,23 @@ bool FuZoom::MouseButtonUp(const MouseEvent& rMEvt)
         Size aZoomSizePixel = mpWindow->LogicToPixel(aZoomRect).GetSize();
         sal_uLong nTol = DRGPIX + DRGPIX;
 
-        if ( ( aZoomSizePixel.Width() < (long) nTol && aZoomSizePixel.Height() < (long) nTol ) || rMEvt.IsMod1() )
+        if ( ( aZoomSizePixel.Width() < static_cast<long>(nTol) && aZoomSizePixel.Height() < static_cast<long>(nTol) ) || rMEvt.IsMod1() )
         {
             // click at place: double zoom factor
             Point aPos = mpWindow->PixelToLogic(aPosPix);
             Size aSize = mpWindow->PixelToLogic(mpWindow->GetOutputSizePixel());
             if ( rMEvt.IsMod1() )
             {
-                aSize.Width() *= 2;
-                aSize.Height() *= 2;
+                aSize.setWidth( aSize.Width() * 2 );
+                aSize.setHeight( aSize.Height() * 2 );
             }
             else
             {
-                aSize.Width() /= 2;
-                aSize.Height() /= 2;
+                aSize.setWidth( aSize.Width() / 2 );
+                aSize.setHeight( aSize.Height() / 2 );
             }
-            aPos.X() -= aSize.Width() / 2;
-            aPos.Y() -= aSize.Height() / 2;
+            aPos.AdjustX( -(aSize.Width() / 2) );
+            aPos.AdjustY( -(aSize.Height() / 2) );
             aZoomRect.SetPos(aPos);
             aZoomRect.SetSize(aSize);
         }
@@ -197,11 +197,11 @@ void FuZoom::Activate()
 
     if (nSlotId == SID_ZOOM_PANNING)
     {
-        mpWindow->SetPointer(Pointer(PointerStyle::Hand));
+        mpWindow->SetPointer(PointerStyle::Hand);
     }
     else
     {
-        mpWindow->SetPointer(Pointer(PointerStyle::Magnify));
+        mpWindow->SetPointer(PointerStyle::Magnify);
     }
 }
 

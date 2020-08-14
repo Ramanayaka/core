@@ -26,9 +26,11 @@
 #include <com/sun/star/document/XCompatWriterDocProperties.hpp>
 #include <com/sun/star/uno/Exception.hpp>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 #include <tools/debug.hxx>
 #include <comphelper/string.hxx>
 #include <sot/storage.hxx>
+#include <vcl/bitmapex.hxx>
 #include <vcl/gdimtf.hxx>
 #include <vcl/dibtools.hxx>
 #include "oleprops.hxx"
@@ -57,7 +59,7 @@ ErrCode LoadOlePropertySet(
 
     // global section
     SfxOleSectionRef xGlobSect = aGlobSet.GetSection( SECTION_GLOBAL );
-    if( xGlobSect.get() )
+    if( xGlobSect )
     {
         // set supported properties
         OUString aStrValue;
@@ -142,17 +144,16 @@ ErrCode LoadOlePropertySet(
 
     // custom properties
     SfxOleSectionRef xCustomSect = aDocSet.GetSection( SECTION_CUSTOM );
-    if( xCustomSect.get() )
+    if( xCustomSect )
     {
         uno::Reference < beans::XPropertyContainer > xUserDefined(
-            i_xDocProps->getUserDefinedProperties(), uno::UNO_QUERY_THROW);
+            i_xDocProps->getUserDefinedProperties(), uno::UNO_SET_THROW);
         ::std::vector< sal_Int32 > aPropIds;
         xCustomSect->GetPropertyIds( aPropIds );
-        for( ::std::vector< sal_Int32 >::const_iterator aIt = aPropIds.begin(),
-             aEnd = aPropIds.end(); aIt != aEnd; ++aIt )
+        for( const auto& rPropId : aPropIds )
         {
-            const OUString aPropName = xCustomSect->GetPropertyName( *aIt );
-            uno::Any aPropValue = xCustomSect->GetAnyValue( *aIt );
+            const OUString aPropName = xCustomSect->GetPropertyName( rPropId );
+            uno::Any aPropValue = xCustomSect->GetAnyValue( rPropId );
             if( !aPropName.isEmpty() && aPropValue.hasValue() )
             {
                 try
@@ -172,7 +173,7 @@ ErrCode LoadOlePropertySet(
     if ( xWriterProps.is() )
     {
         SfxOleSectionRef xBuiltin = aDocSet.GetSection( SECTION_BUILTIN );
-        if ( xBuiltin.get() )
+        if ( xBuiltin )
         {
             try
             {
@@ -235,7 +236,7 @@ bool SaveOlePropertySet(
 
     rGlobSect.SetStringValue( PROPID_REVNUMBER,
                 OUString::number( i_xDocProps->getEditingCycles() ) );
-    if ( i_pThumb && i_pThumb->getLength() )
+    if ( i_pThumb && i_pThumb->hasElements() )
         rGlobSect.SetThumbnailValue( PROPID_THUMBNAIL, *i_pThumb );
 
     // save the property set
@@ -270,19 +271,18 @@ bool SaveOlePropertySet(
 
     uno::Reference<beans::XPropertySet> xUserDefinedProps(
         i_xDocProps->getUserDefinedProperties(), uno::UNO_QUERY_THROW);
-    DBG_ASSERT(xUserDefinedProps.is(), "UserDefinedProperties is null");
     uno::Reference<beans::XPropertySetInfo> xPropInfo =
         xUserDefinedProps->getPropertySetInfo();
     DBG_ASSERT(xPropInfo.is(), "UserDefinedProperties Info is null");
-    uno::Sequence<beans::Property> props = xPropInfo->getProperties();
-    for (sal_Int32 i = 0; i < props.getLength(); ++i)
+    const uno::Sequence<beans::Property> props = xPropInfo->getProperties();
+    for (const auto& rProp : props)
     {
         try
         {
             // skip transient properties
-            if (~props[i].Attributes & beans::PropertyAttribute::TRANSIENT)
+            if (~rProp.Attributes & beans::PropertyAttribute::TRANSIENT)
             {
-                const OUString name = props[i].Name;
+                const OUString name = rProp.Name;
                 const sal_Int32 nPropId = rCustomSect.GetFreePropertyId();
                 if (rCustomSect.SetAnyValue( nPropId,
                             xUserDefinedProps->getPropertyValue(name))) {
@@ -305,7 +305,7 @@ bool SaveOlePropertySet(
     return (nGlobError == ERRCODE_NONE) && (nDocError == ERRCODE_NONE);
 }
 
-uno::Sequence<sal_Int8> convertMetaFile(GDIMetaFile* i_pThumb)
+uno::Sequence<sal_Int8> convertMetaFile(GDIMetaFile const * i_pThumb)
 {
     if (i_pThumb) {
         BitmapEx aBitmap;
@@ -313,14 +313,7 @@ uno::Sequence<sal_Int8> convertMetaFile(GDIMetaFile* i_pThumb)
         if (i_pThumb->CreateThumbnail(aBitmap))
         {
             WriteDIB(aBitmap.GetBitmap(), aStream, false, false);
-            aStream.Seek(STREAM_SEEK_TO_END);
-            uno::Sequence<sal_Int8> aSeq(aStream.Tell());
-            const sal_Int8* pBlob(
-                static_cast<const sal_Int8*>(aStream.GetData()));
-            for (sal_Int32 j = 0; j < aSeq.getLength(); ++j) {
-                aSeq[j] = pBlob[j];
-            }
-            return aSeq;
+            return uno::Sequence<sal_Int8>(static_cast< const sal_Int8* >( aStream.GetData() ), aStream.TellEnd());
         }
     }
     return uno::Sequence<sal_Int8>();

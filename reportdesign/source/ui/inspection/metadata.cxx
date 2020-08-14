@@ -16,14 +16,13 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "metadata.hxx"
+#include <metadata.hxx>
 #include <com/sun/star/inspection/XPropertyHandler.hpp>
-#include <comphelper/extract.hxx>
-#include "helpids.hrc"
-#include "RptResId.hrc"
-#include "uistrings.hrc"
+#include <core_resource.hxx>
+#include <helpids.h>
+#include <strings.hrc>
+#include <strings.hxx>
 
-#include <functional>
 #include <algorithm>
 
 
@@ -64,9 +63,10 @@ namespace rptui
     {
     }
 
+    namespace {
 
     // compare PropertyInfo
-    struct PropertyInfoLessByName : public ::std::binary_function< OPropertyInfoImpl, OPropertyInfoImpl, bool >
+    struct PropertyInfoLessByName
     {
         bool operator()( const OPropertyInfoImpl& _lhs, const OPropertyInfoImpl& _rhs )
         {
@@ -74,12 +74,13 @@ namespace rptui
         }
     };
 
+    }
 
     //= OPropertyInfoService
 
 #define DEF_INFO( ident, uinameres, helpid, flags )   \
     OPropertyInfoImpl( PROPERTY_##ident, PROPERTY_ID_##ident, \
-            OUString( ModuleRes( RID_STR_##uinameres ) ), HID_RPT_PROP_##helpid, flags )
+                       RptResId( RID_STR_##uinameres ), HID_RPT_PROP_##helpid, flags )
 
 #define DEF_INFO_1( ident, uinameres, helpid, flag1 ) \
     DEF_INFO( ident, uinameres, helpid, PropUIFlags::flag1 )
@@ -94,9 +95,6 @@ namespace rptui
     {
         if ( s_pPropertyInfos )
             return s_pPropertyInfos;
-
-        OModuleClient aResourceAccess;
-        // this ensures that we have our resource file loaded
 
         static OPropertyInfoImpl aPropertyInfos[] =
         {
@@ -122,6 +120,7 @@ namespace rptui
             ,DEF_INFO_1( POSITIONY,                     POSITIONY,                  RPT_POSITIONY,              Composeable )
             ,DEF_INFO_1( WIDTH,                         WIDTH,                      RPT_WIDTH,                  Composeable )
             ,DEF_INFO_1( HEIGHT,                        HEIGHT,                     RPT_HEIGHT,                 Composeable )
+            ,DEF_INFO_1( AUTOGROW,                      AUTOGROW,                   RPT_AUTOGROW,               Composeable )
             ,DEF_INFO_1( FONT,                          FONT,                       RPT_FONT,                   Composeable )
             ,DEF_INFO_1( PREEVALUATED,                  PREEVALUATED,               PREEVALUATED,               Composeable )
             ,DEF_INFO_1( DEEPTRAVERSING,                DEEPTRAVERSING,             DEEPTRAVERSING,             Composeable )
@@ -165,21 +164,21 @@ namespace rptui
     OUString OPropertyInfoService::getPropertyTranslation(sal_Int32 _nId)
     {
         const OPropertyInfoImpl* pInfo = getPropertyInfo(_nId);
-        return (pInfo) ? pInfo->sTranslation : OUString();
+        return pInfo ? pInfo->sTranslation : OUString();
     }
 
 
     OString OPropertyInfoService::getPropertyHelpId(sal_Int32 _nId)
     {
         const OPropertyInfoImpl* pInfo = getPropertyInfo(_nId);
-        return (pInfo) ? pInfo->sHelpId : OString();
+        return pInfo ? pInfo->sHelpId : OString();
     }
 
 
     PropUIFlags OPropertyInfoService::getPropertyUIFlags(sal_Int32 _nId)
     {
         const OPropertyInfoImpl* pInfo = getPropertyInfo(_nId);
-        return (pInfo) ? pInfo->nUIFlags : PropUIFlags::NONE;
+        return pInfo ? pInfo->nUIFlags : PropUIFlags::NONE;
     }
 
 
@@ -188,7 +187,7 @@ namespace rptui
         // initialization
         if(!s_pPropertyInfos)
             getPropertyInfo();
-        OPropertyInfoImpl  aSearch(_rName, 0L, OUString(), "", PropUIFlags::NONE);
+        OPropertyInfoImpl  aSearch(_rName, 0, OUString(), "", PropUIFlags::NONE);
 
         const OPropertyInfoImpl* pPropInfo = ::std::lower_bound(
             s_pPropertyInfos, s_pPropertyInfos + s_nCount, aSearch, PropertyInfoLessByName() );
@@ -230,7 +229,7 @@ namespace rptui
 
     void OPropertyInfoService::getExcludeProperties(::std::vector< beans::Property >& _rExcludeProperties,const css::uno::Reference< css::inspection::XPropertyHandler >& _xFormComponentHandler)
     {
-        uno::Sequence< beans::Property > aProps = _xFormComponentHandler->getSupportedProperties();
+        const uno::Sequence< beans::Property > aProps = _xFormComponentHandler->getSupportedProperties();
         static const OUStringLiteral pExcludeProperties[] =
         {
                 "Enabled",
@@ -272,6 +271,7 @@ namespace rptui
                 ,PROPERTY_POSITIONY
                 ,PROPERTY_WIDTH
                 ,PROPERTY_HEIGHT
+                ,PROPERTY_AUTOGROW
                 ,PROPERTY_FONT
                 ,PROPERTY_LABEL
                 ,PROPERTY_LINECOLOR
@@ -288,15 +288,13 @@ namespace rptui
                 ,PROPERTY_VERTICALALIGN
         };
 
-        beans::Property* pPropsIter = aProps.getArray();
-        beans::Property* pPropsEnd = pPropsIter + aProps.getLength();
-        for (; pPropsIter != pPropsEnd; ++pPropsIter)
+        for (beans::Property const & prop : aProps)
         {
             size_t nPos = 0;
-            for (; nPos < SAL_N_ELEMENTS(pExcludeProperties) && pExcludeProperties[nPos] != pPropsIter->Name; ++nPos )
+            for (; nPos < SAL_N_ELEMENTS(pExcludeProperties) && pExcludeProperties[nPos] != prop.Name; ++nPos )
                 ;
             if ( nPos == SAL_N_ELEMENTS(pExcludeProperties) )
-                _rExcludeProperties.push_back(*pPropsIter);
+                _rExcludeProperties.push_back(prop);
         }
     }
 

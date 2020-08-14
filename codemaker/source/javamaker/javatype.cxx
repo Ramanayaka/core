@@ -17,33 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
-#include <list>
 #include <map>
 #include <memory>
 #include <set>
 #include <utility>
 #include <vector>
 
-#include "codemaker/codemaker.hxx"
-#include "codemaker/exceptiontree.hxx"
-#include "codemaker/generatedtypeset.hxx"
-#include "codemaker/global.hxx"
-#include "codemaker/options.hxx"
-#include "codemaker/typemanager.hxx"
-#include "codemaker/unotype.hxx"
-#include "codemaker/commonjava.hxx"
-#include "rtl/ref.hxx"
-#include "rtl/strbuf.hxx"
-#include "rtl/string.hxx"
-#include "rtl/ustrbuf.hxx"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
-#include "unoidl/unoidl.hxx"
+#include <codemaker/codemaker.hxx>
+#include <codemaker/exceptiontree.hxx>
+#include <codemaker/generatedtypeset.hxx>
+#include <codemaker/global.hxx>
+#include <codemaker/options.hxx>
+#include <codemaker/typemanager.hxx>
+#include <codemaker/unotype.hxx>
+#include <codemaker/commonjava.hxx>
+#include <rtl/ref.hxx>
+#include <rtl/strbuf.hxx>
+#include <rtl/string.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
+#include <unoidl/unoidl.hxx>
 
 #include "classfile.hxx"
 #include "javaoptions.hxx"
@@ -65,22 +64,23 @@ void appendUnoName(
         buffer->append("[]");
     }
     buffer->append(nucleus);
-    if (!arguments.empty()) {
-        buffer->append('<');
-        for (std::vector< OUString >::const_iterator i(arguments.begin());
-             i != arguments.end(); ++i)
-        {
-            if (i != arguments.begin()) {
-                buffer->append(',');
-            }
-            OUString n;
-            sal_Int32 k;
-            std::vector< OUString > args;
-            manager->decompose(*i, false, &n, &k, &args, nullptr);
-            appendUnoName(manager, n, k, args, buffer);
+    if (arguments.empty())
+        return;
+
+    buffer->append('<');
+    for (std::vector< OUString >::const_iterator i(arguments.begin());
+         i != arguments.end(); ++i)
+    {
+        if (i != arguments.begin()) {
+            buffer->append(',');
         }
-        buffer->append('>');
+        OUString n;
+        sal_Int32 k;
+        std::vector< OUString > args;
+        manager->decompose(*i, false, &n, &k, &args, nullptr);
+        appendUnoName(manager, n, k, args, buffer);
     }
+    buffer->append('>');
 }
 
 // Translate the name of a UNOIDL entity (enum type, plain struct type,
@@ -90,12 +90,10 @@ OUString createUnoName(
     rtl::Reference< TypeManager > const & manager, OUString const & nucleus,
     sal_Int32 rank, std::vector< OUString > const & arguments)
 {
-    OUStringBuffer buf;
+    OUStringBuffer buf(256);
     appendUnoName(manager, nucleus, rank, arguments, &buf);
     return buf.makeStringAndClear();
 }
-
-typedef std::set< OUString > Dependencies;
 
 enum SpecialType {
     SPECIAL_TYPE_NONE,
@@ -129,7 +127,7 @@ struct PolymorphicUnoType {
 
 SpecialType translateUnoTypeToDescriptor(
     rtl::Reference< TypeManager > const & manager, OUString const & type,
-    bool array, bool classType, Dependencies * dependencies,
+    bool array, bool classType, std::set<OUString> * dependencies,
     OStringBuffer * descriptor, OStringBuffer * signature,
     bool * needsSignature, PolymorphicUnoType * polymorphicUnoType);
 
@@ -137,7 +135,7 @@ SpecialType translateUnoTypeToDescriptor(
     rtl::Reference< TypeManager > const & manager,
     codemaker::UnoType::Sort sort, OUString const & nucleus, sal_Int32 rank,
     std::vector< OUString > const & arguments, bool array, bool classType,
-    Dependencies * dependencies, OStringBuffer * descriptor,
+    std::set<OUString> * dependencies, OStringBuffer * descriptor,
     OStringBuffer * signature, bool * needsSignature,
     PolymorphicUnoType * polymorphicUnoType)
 {
@@ -236,7 +234,7 @@ SpecialType translateUnoTypeToDescriptor(
             }
             return SPECIAL_TYPE_INTERFACE;
         }
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case codemaker::UnoType::Sort::Sequence:
     case codemaker::UnoType::Sort::Enum:
     case codemaker::UnoType::Sort::PlainStruct:
@@ -275,7 +273,7 @@ SpecialType translateUnoTypeToDescriptor(
 
 SpecialType translateUnoTypeToDescriptor(
     rtl::Reference< TypeManager > const & manager, OUString const & type,
-    bool array, bool classType, Dependencies * dependencies,
+    bool array, bool classType, std::set<OUString> * dependencies,
     OStringBuffer * descriptor, OStringBuffer * signature,
     bool * needsSignature, PolymorphicUnoType * polymorphicUnoType)
 {
@@ -291,13 +289,13 @@ SpecialType translateUnoTypeToDescriptor(
 }
 
 SpecialType getFieldDescriptor(
-    rtl::Reference< TypeManager > const & manager, Dependencies * dependencies,
+    rtl::Reference< TypeManager > const & manager, std::set<OUString> * dependencies,
     OUString const & type, OString * descriptor, OString * signature,
     PolymorphicUnoType * polymorphicUnoType)
 {
     assert(descriptor != nullptr);
-    OStringBuffer desc;
-    OStringBuffer sig;
+    OStringBuffer desc(64);
+    OStringBuffer sig(64);
     bool needsSig = false;
     SpecialType specialType = translateUnoTypeToDescriptor(
         manager, type, false, false, dependencies, &desc, &sig, &needsSig,
@@ -317,7 +315,7 @@ class MethodDescriptor {
 public:
     MethodDescriptor(
         rtl::Reference< TypeManager > const & manager,
-        Dependencies * dependencies, OUString const & returnType,
+        std::set<OUString> * dependencies, OUString const & returnType,
         SpecialType * specialReturnType,
         PolymorphicUnoType * polymorphicUnoType);
 
@@ -333,16 +331,16 @@ public:
 
 private:
     rtl::Reference< TypeManager > m_manager;
-    Dependencies * m_dependencies;
-    OStringBuffer m_descriptorStart;
+    std::set<OUString> * m_dependencies;
+    OStringBuffer m_descriptorStart{16*1024};
     OString m_descriptorEnd;
-    OStringBuffer m_signatureStart;
+    OStringBuffer m_signatureStart{16*1024};
     OString m_signatureEnd;
     bool m_needsSignature;
 };
 
 MethodDescriptor::MethodDescriptor(
-    rtl::Reference< TypeManager > const & manager, Dependencies * dependencies,
+    rtl::Reference< TypeManager > const & manager, std::set<OUString> * dependencies,
     OUString const & returnType, SpecialType * specialReturnType,
     PolymorphicUnoType * polymorphicUnoType):
     m_manager(manager), m_dependencies(dependencies), m_needsSignature(false)
@@ -350,9 +348,9 @@ MethodDescriptor::MethodDescriptor(
     assert(dependencies != nullptr);
     m_descriptorStart.append('(');
     m_signatureStart.append('(');
-    OStringBuffer descEnd;
+    OStringBuffer descEnd(128);
     descEnd.append(')');
-    OStringBuffer sigEnd;
+    OStringBuffer sigEnd(128);
     sigEnd.append(')');
     SpecialType special = translateUnoTypeToDescriptor(
         m_manager, returnType, false, false, m_dependencies, &descEnd, &sigEnd,
@@ -381,9 +379,7 @@ void MethodDescriptor::addTypeParameter(OUString const & name) {
 }
 
 OString MethodDescriptor::getDescriptor() const {
-    OStringBuffer buf(m_descriptorStart);
-    buf.append(m_descriptorEnd);
-    return buf.makeStringAndClear();
+    return rtl::OStringView(m_descriptorStart) + m_descriptorEnd;
 }
 
 
@@ -413,11 +409,11 @@ public:
         bool inParameter, bool outParameter, OString const & methodName,
         sal_Int32 index, PolymorphicUnoType const & polymorphicUnoType);
 
-    sal_uInt16 generateCode(ClassFile::Code & code, Dependencies * dependencies)
+    sal_uInt16 generateCode(ClassFile::Code & code, std::set<OUString> * dependencies)
         const;
 
     void generatePolymorphicUnoTypeCode(
-        ClassFile::Code & code, Dependencies * dependencies) const;
+        ClassFile::Code & code, std::set<OUString> * dependencies) const;
 
 private:
     Kind m_kind;
@@ -481,7 +477,7 @@ TypeInfo::TypeInfo(
 {}
 
 sal_uInt16 TypeInfo::generateCode(
-    ClassFile::Code & code, Dependencies * dependencies) const
+    ClassFile::Code & code, std::set<OUString> * dependencies) const
 {
     switch (m_kind) {
     case KIND_MEMBER:
@@ -573,7 +569,7 @@ sal_uInt16 TypeInfo::generateCode(
 }
 
 void TypeInfo::generatePolymorphicUnoTypeCode(
-    ClassFile::Code & code, Dependencies * dependencies) const
+    ClassFile::Code & code, std::set<OUString> * dependencies) const
 {
     assert(dependencies != nullptr);
     assert(m_polymorphicUnoType.kind != PolymorphicUnoType::KIND_NONE);
@@ -640,7 +636,7 @@ void writeClassFile(
 
 void addTypeInfo(
     OString const & className, std::vector< TypeInfo > const & typeInfo,
-    Dependencies * dependencies, ClassFile * classFile)
+    std::set<OUString> * dependencies, ClassFile * classFile)
 {
     assert(classFile != nullptr);
     std::vector< TypeInfo >::size_type typeInfos = typeInfo.size();
@@ -648,39 +644,40 @@ void addTypeInfo(
         throw CannotDumpException(
             "UNOTYPEINFO array too big for Java class file format");
     }
-    if (typeInfos != 0) {
-        classFile->addField(
-            static_cast< ClassFile::AccessFlags >(
-                ClassFile::ACC_PUBLIC | ClassFile::ACC_STATIC
-                | ClassFile::ACC_FINAL),
-            "UNOTYPEINFO", "[Lcom/sun/star/lib/uno/typeinfo/TypeInfo;",
-            0, "");
-        std::unique_ptr< ClassFile::Code > code(classFile->newCode());
-        code->loadIntegerConstant(static_cast< sal_Int32 >(typeInfos));
-        code->instrAnewarray("com/sun/star/lib/uno/typeinfo/TypeInfo");
-        sal_Int32 index = 0;
-        sal_uInt16 stack = 0;
-        for (const TypeInfo& ti : typeInfo)
-        {
-            code->instrDup();
-            code->loadIntegerConstant(index++);
-            stack = std::max(stack, ti.generateCode(*code, dependencies));
-            code->instrAastore();
-        }
-        code->instrPutstatic(
-            className, "UNOTYPEINFO",
-            "[Lcom/sun/star/lib/uno/typeinfo/TypeInfo;");
-        code->instrReturn();
-        if (stack > SAL_MAX_UINT16 - 4) {
-            throw CannotDumpException(
-                "Stack too big for Java class file format");
-        }
-        code->setMaxStackAndLocals(static_cast< sal_uInt16 >(stack + 4), 0);
-        classFile->addMethod(
-            static_cast< ClassFile::AccessFlags >(
-                ClassFile::ACC_PRIVATE | ClassFile::ACC_STATIC),
-            "<clinit>", "()V", code.get(), std::vector< OString >(), "");
+    if (typeInfos == 0)
+        return;
+
+    classFile->addField(
+        static_cast< ClassFile::AccessFlags >(
+            ClassFile::ACC_PUBLIC | ClassFile::ACC_STATIC
+            | ClassFile::ACC_FINAL),
+        "UNOTYPEINFO", "[Lcom/sun/star/lib/uno/typeinfo/TypeInfo;",
+        0, "");
+    std::unique_ptr< ClassFile::Code > code(classFile->newCode());
+    code->loadIntegerConstant(static_cast< sal_Int32 >(typeInfos));
+    code->instrAnewarray("com/sun/star/lib/uno/typeinfo/TypeInfo");
+    sal_Int32 index = 0;
+    sal_uInt16 stack = 0;
+    for (const TypeInfo& ti : typeInfo)
+    {
+        code->instrDup();
+        code->loadIntegerConstant(index++);
+        stack = std::max(stack, ti.generateCode(*code, dependencies));
+        code->instrAastore();
     }
+    code->instrPutstatic(
+        className, "UNOTYPEINFO",
+        "[Lcom/sun/star/lib/uno/typeinfo/TypeInfo;");
+    code->instrReturn();
+    if (stack > SAL_MAX_UINT16 - 4) {
+        throw CannotDumpException(
+            "Stack too big for Java class file format");
+    }
+    code->setMaxStackAndLocals(static_cast< sal_uInt16 >(stack + 4), 0);
+    classFile->addMethod(
+        static_cast< ClassFile::AccessFlags >(
+            ClassFile::ACC_PRIVATE | ClassFile::ACC_STATIC),
+        "<clinit>", "()V", code.get(), std::vector< OString >(), "");
 }
 
 void handleEnumType(
@@ -721,7 +718,7 @@ void handleEnumType(
         ClassFile::ACC_PRIVATE,
         "<init>", "(I)V", code.get(),
         std::vector< OString >(), "");
-    code.reset(cf->newCode());
+    code = cf->newCode();
     code->instrGetstatic(
         className,
         codemaker::convertString(entity->getMembers()[0].name),
@@ -733,7 +730,7 @@ void handleEnumType(
             ClassFile::ACC_PUBLIC | ClassFile::ACC_STATIC),
         "getDefault", "()" + classDescriptor,
         code.get(), std::vector< OString >(), "");
-    code.reset(cf->newCode());
+    code = cf->newCode();
     code->loadLocalInteger(0);
     std::map< sal_Int32, OString > map;
     sal_Int32 min = SAL_MAX_INT32;
@@ -742,9 +739,7 @@ void handleEnumType(
     {
         min = std::min(min, member.value);
         max = std::max(max, member.value);
-        map.insert(
-            std::map< sal_Int32, OString >::value_type(
-                member.value, codemaker::convertString(member.name)));
+        map.emplace(member.value, codemaker::convertString(member.name));
     }
     sal_uInt64 size = static_cast< sal_uInt64 >(map.size());
     if ((static_cast< sal_uInt64 >(max) - static_cast< sal_uInt64 >(min)
@@ -754,7 +749,7 @@ void handleEnumType(
         std::unique_ptr< ClassFile::Code > defCode(cf->newCode());
         defCode->instrAconstNull();
         defCode->instrAreturn();
-        std::list< ClassFile::Code * > blocks;
+        std::vector< std::unique_ptr<ClassFile::Code> > blocks;
             //FIXME: pointers contained in blocks may leak
         sal_Int32 last = SAL_MAX_INT32;
         for (const auto& pair : map)
@@ -769,26 +764,21 @@ void handleEnumType(
             std::unique_ptr< ClassFile::Code > blockCode(cf->newCode());
             blockCode->instrGetstatic(className, pair.second, classDescriptor);
             blockCode->instrAreturn();
-            blocks.push_back(blockCode.get());
-            blockCode.release();
+            blocks.push_back(std::move(blockCode));
         }
         code->instrTableswitch(defCode.get(), min, blocks);
-        for (ClassFile::Code *p : blocks)
-        {
-            delete p;
-        }
     } else{
         std::unique_ptr< ClassFile::Code > defCode(cf->newCode());
         defCode->instrAconstNull();
         defCode->instrAreturn();
-        std::list< std::pair< sal_Int32, ClassFile::Code * > > blocks;
+        std::vector< std::pair< sal_Int32, ClassFile::Code * > > blocks;
             //FIXME: pointers contained in blocks may leak
         for (const auto& pair : map )
         {
             std::unique_ptr< ClassFile::Code > blockCode(cf->newCode());
             blockCode->instrGetstatic(className, pair.second, classDescriptor);
             blockCode->instrAreturn();
-            blocks.push_back(std::make_pair(pair.first, blockCode.get()));
+            blocks.emplace_back(pair.first, blockCode.get());
             blockCode.release();
         }
         code->instrLookupswitch(defCode.get(), blocks);
@@ -803,7 +793,7 @@ void handleEnumType(
             ClassFile::ACC_PUBLIC | ClassFile::ACC_STATIC),
         "fromInt", "(I)" + classDescriptor, code.get(),
         std::vector< OString >(), "");
-    code.reset(cf->newCode());
+    code = cf->newCode();
     for (const unoidl::EnumTypeEntity::Member& member : entity->getMembers())
     {
         code->instrNew(className);
@@ -819,11 +809,11 @@ void handleEnumType(
         static_cast< ClassFile::AccessFlags >(
             ClassFile::ACC_PRIVATE | ClassFile::ACC_STATIC),
         "<clinit>", "()V", code.get(), std::vector< OString >(), "");
-    writeClassFile(options, className, *cf.get());
+    writeClassFile(options, className, *cf);
 }
 
 void addField(
-    rtl::Reference< TypeManager > const & manager, Dependencies * dependencies,
+    rtl::Reference< TypeManager > const & manager, std::set<OUString> * dependencies,
     ClassFile * classFile, std::vector< TypeInfo > * typeInfo,
     sal_Int32 typeParameterIndex, OUString const & type, OUString const & name,
     sal_Int32 index)
@@ -856,7 +846,7 @@ void addField(
 sal_uInt16 addFieldInit(
     rtl::Reference< TypeManager > const & manager, OString const & className,
     OUString const & fieldName, bool typeParameter, OUString const & fieldType,
-    Dependencies * dependencies, ClassFile::Code * code)
+    std::set<OUString> * dependencies, ClassFile::Code * code)
 {
     assert(manager.is());
     assert(code != nullptr);
@@ -866,7 +856,7 @@ sal_uInt16 addFieldInit(
     OString name(codemaker::convertString(fieldName));
     OUString nucleus;
     sal_Int32 rank;
-    std::vector< rtl::OUString > args;
+    std::vector< OUString > args;
     rtl::Reference< unoidl::Entity > ent;
     codemaker::UnoType::Sort sort = manager->decompose(
         fieldType, true, &nucleus, &rank, &args, &ent);
@@ -908,7 +898,7 @@ sal_uInt16 addFieldInit(
                     dynamic_cast< unoidl::EnumTypeEntity * >(ent.get()));
                 assert(ent2.is());
                 code->loadLocalReference(0);
-                OStringBuffer descBuf;
+                OStringBuffer descBuf(128);
                 translateUnoTypeToDescriptor(
                     manager, sort, nucleus, 0, std::vector< OUString >(), false,
                     false, dependencies, &descBuf, nullptr, nullptr, nullptr);
@@ -929,7 +919,7 @@ sal_uInt16 addFieldInit(
                 code->instrInvokespecial(
                     codemaker::convertString(nucleus).replace('.', '/'),
                     "<init>", "()V");
-                OStringBuffer desc;
+                OStringBuffer desc(128);
                 translateUnoTypeToDescriptor(
                     manager, sort, nucleus, 0, args, false, false, dependencies,
                     &desc, nullptr, nullptr, nullptr);
@@ -959,13 +949,13 @@ sal_uInt16 addFieldInit(
                     false));
         }
     } else {
-        OStringBuffer desc;
+        OStringBuffer desc(128);
         translateUnoTypeToDescriptor(
             manager, sort, nucleus, rank - 1, std::vector< OUString >(), false,
             false, dependencies, &desc, nullptr, nullptr, nullptr);
         code->instrAnewarray(desc.makeStringAndClear());
     }
-    OStringBuffer desc;
+    OStringBuffer desc(128);
     translateUnoTypeToDescriptor(
         manager, sort, nucleus, rank, std::vector< OUString >(), false, false,
         dependencies, &desc, nullptr, nullptr, nullptr);
@@ -976,7 +966,7 @@ sal_uInt16 addFieldInit(
 sal_uInt16 addLoadLocal(
     rtl::Reference< TypeManager > const & manager, ClassFile::Code * code,
     sal_uInt16 * index, bool typeParameter, OUString const & type, bool any,
-    Dependencies * dependencies)
+    std::set<OUString> * dependencies)
 {
     assert(manager.is());
     assert(code != nullptr);
@@ -1317,7 +1307,7 @@ sal_uInt16 addLoadLocal(
 }
 
 sal_uInt16 addDirectArgument(
-    rtl::Reference< TypeManager > const & manager, Dependencies * dependencies,
+    rtl::Reference< TypeManager > const & manager, std::set<OUString> * dependencies,
     MethodDescriptor * methodDescriptor, ClassFile::Code * code,
     sal_uInt16 * index, OString const & className, OString const & fieldName,
     bool typeParameter, OUString const & fieldType)
@@ -1340,7 +1330,7 @@ sal_uInt16 addDirectArgument(
 }
 
 void addPlainStructBaseArguments(
-    rtl::Reference< TypeManager > const & manager, Dependencies * dependencies,
+    rtl::Reference< TypeManager > const & manager, std::set<OUString> * dependencies,
     MethodDescriptor * methodDescriptor, ClassFile::Code * code,
     OUString const & base, sal_uInt16 * index)
 {
@@ -1354,8 +1344,7 @@ void addPlainStructBaseArguments(
             "unexpected entity \"" + base
             + "\" in call to addPlainStructBaseArguments");
     }
-    unoidl::PlainStructTypeEntity& ent2(
-        dynamic_cast<unoidl::PlainStructTypeEntity&>(*ent.get()));
+    unoidl::PlainStructTypeEntity& ent2(dynamic_cast<unoidl::PlainStructTypeEntity&>(*ent));
     if (!ent2.getDirectBase().isEmpty()) {
         addPlainStructBaseArguments(
             manager, dependencies, methodDescriptor, code,
@@ -1372,7 +1361,7 @@ void handlePlainStructType(
     const OUString& name,
     rtl::Reference< unoidl::PlainStructTypeEntity > const & entity,
     rtl::Reference< TypeManager > const & manager, JavaOptions const & options,
-    Dependencies * dependencies)
+    std::set<OUString> * dependencies)
 {
     assert(entity.is());
     assert(dependencies != nullptr);
@@ -1416,7 +1405,7 @@ void handlePlainStructType(
         ClassFile::ACC_PUBLIC, "<init>", "()V", code.get(),
         std::vector< OString >(), "");
     MethodDescriptor desc(manager, dependencies, "void", nullptr, nullptr);
-    code.reset(cf->newCode());
+    code = cf->newCode();
     code->loadLocalReference(0);
     sal_uInt16 index2 = 1;
     if (!entity->getDirectBase().isEmpty()) {
@@ -1440,7 +1429,7 @@ void handlePlainStructType(
         ClassFile::ACC_PUBLIC, "<init>", desc.getDescriptor(), code.get(),
         std::vector< OString >(), desc.getSignature());
     addTypeInfo(className, typeInfo, dependencies, cf.get());
-    writeClassFile(options, className, *cf.get());
+    writeClassFile(options, className, *cf);
 }
 
 void handlePolyStructType(
@@ -1448,18 +1437,18 @@ void handlePolyStructType(
     rtl::Reference< unoidl::PolymorphicStructTypeTemplateEntity > const &
         entity,
     rtl::Reference< TypeManager > const & manager, JavaOptions const & options,
-    Dependencies * dependencies)
+    std::set<OUString> * dependencies)
 {
     assert(entity.is());
     OString className(codemaker::convertString(name).replace('.', '/'));
     std::map< OUString, sal_Int32 > typeParameters;
-    OStringBuffer sig("<");
+    OStringBuffer sig(128);
+    sig.append("<");
     sal_Int32 index = 0;
     for (const OUString& param : entity->getTypeParameters())
     {
         sig.append(codemaker::convertString(param) + ":Ljava/lang/Object;");
-        if (!typeParameters.insert(
-                std::map< OUString, sal_Int32 >::value_type(param, index++)).second)
+        if (!typeParameters.emplace(param, index++).second)
         {
             throw CannotDumpException("Bad type information"); //TODO
         }
@@ -1507,7 +1496,7 @@ void handlePolyStructType(
         ClassFile::ACC_PUBLIC, "<init>", "()V", code.get(),
         std::vector< OString >(), "");
     MethodDescriptor desc(manager, dependencies, "void", nullptr, nullptr);
-    code.reset(cf->newCode());
+    code = cf->newCode();
     code->loadLocalReference(0);
     sal_uInt16 index2 = 1;
     code->instrInvokespecial(
@@ -1527,11 +1516,11 @@ void handlePolyStructType(
         ClassFile::ACC_PUBLIC, "<init>", desc.getDescriptor(), code.get(),
         std::vector< OString >(), desc.getSignature());
     addTypeInfo(className, typeInfo, dependencies, cf.get());
-    writeClassFile(options, className, *cf.get());
+    writeClassFile(options, className, *cf);
 }
 
 void addExceptionBaseArguments(
-    rtl::Reference< TypeManager > const & manager, Dependencies * dependencies,
+    rtl::Reference< TypeManager > const & manager, std::set<OUString> * dependencies,
     MethodDescriptor * methodDescriptor, ClassFile::Code * code,
     OUString const & base, sal_uInt16 * index)
 {
@@ -1544,8 +1533,7 @@ void addExceptionBaseArguments(
             "unexpected entity \"" + base
             + "\" in call to addExceptionBaseArguments");
     }
-    unoidl::ExceptionTypeEntity& ent2(
-        dynamic_cast<unoidl::ExceptionTypeEntity&>(*ent.get()));
+    unoidl::ExceptionTypeEntity& ent2(dynamic_cast<unoidl::ExceptionTypeEntity&>(*ent));
     bool baseException = base == "com.sun.star.uno.Exception";
     if (!baseException) {
         addExceptionBaseArguments(
@@ -1567,7 +1555,7 @@ void addExceptionBaseArguments(
 void handleExceptionType(
     const OUString& name, rtl::Reference< unoidl::ExceptionTypeEntity > const & entity,
     rtl::Reference< TypeManager > const & manager, JavaOptions const & options,
-    Dependencies * dependencies)
+    std::set<OUString> * dependencies)
 {
     assert(entity.is());
     assert(dependencies != nullptr);
@@ -1645,7 +1633,7 @@ void handleExceptionType(
 
 
     // create (Throwable Cause) constructor
-    code.reset(cf->newCode());
+    code = cf->newCode();
     code->loadLocalReference(0);
     code->loadLocalReference(1);
     code->instrInvokespecial(superClass, "<init>", "(Ljava/lang/Throwable;)V");
@@ -1676,7 +1664,7 @@ void handleExceptionType(
         std::vector< OString >(), "");
 
     // create (Throwable Cause, String Message) constructor
-    code.reset(cf->newCode());
+    code = cf->newCode();
     code->loadLocalReference(0);
     if (baseException || baseRuntimeException) {
         code->loadLocalReference(2);
@@ -1714,7 +1702,7 @@ void handleExceptionType(
         std::vector< OString >(), "");
 
     // create (String Message) constructor
-    code.reset(cf->newCode());
+    code = cf->newCode();
     code->loadLocalReference(0);
     code->loadLocalReference(1);
     code->instrInvokespecial(superClass, "<init>", "(Ljava/lang/String;)V");
@@ -1747,7 +1735,7 @@ void handleExceptionType(
 
     // create (String Message, Object Context, T1 m1, ..., Tn mn) constructor
     MethodDescriptor desc1(manager, dependencies, "void", nullptr, nullptr);
-    code.reset(cf->newCode());
+    code = cf->newCode();
     code->loadLocalReference(0);
     sal_uInt16 index2 = 1;
     code->loadLocalReference(index2++);
@@ -1787,7 +1775,7 @@ void handleExceptionType(
 
     // create (Throwable Cause, String Message, Object Context, T1 m1, ..., Tn mn) constructor
     MethodDescriptor desc2(manager, dependencies, "void", nullptr, nullptr);
-    code.reset(cf->newCode());
+    code = cf->newCode();
     code->loadLocalReference(0);
     sal_uInt16 index3 = 3;
     // Note that we hack in the java.lang.Throwable parameter further down,
@@ -1833,13 +1821,13 @@ void handleExceptionType(
         std::vector< OString >(), desc2.getSignature());
 
     addTypeInfo(className, typeInfo, dependencies, cf.get());
-    writeClassFile(options, className, *cf.get());
+    writeClassFile(options, className, *cf);
 }
 
 void createExceptionsAttribute(
     rtl::Reference< TypeManager > const & manager,
     std::vector< OUString > const & exceptionTypes,
-    Dependencies * dependencies, std::vector< OString > * exceptions,
+    std::set<OUString> * dependencies, std::vector< OString > * exceptions,
     codemaker::ExceptionTree * tree)
 {
     assert(dependencies != nullptr);
@@ -1858,7 +1846,7 @@ void createExceptionsAttribute(
 void handleInterfaceType(
     const OUString& name, rtl::Reference< unoidl::InterfaceTypeEntity > const & entity,
     rtl::Reference< TypeManager > const & manager, JavaOptions const & options,
-    Dependencies * dependencies)
+    std::set<OUString> * dependencies)
 {
     assert(entity.is());
     assert(dependencies != nullptr);
@@ -1911,13 +1899,12 @@ void handleInterfaceType(
                     "set" + attrName, sdesc.getDescriptor(), nullptr, exc2,
                     sdesc.getSignature());
             }
-            typeInfo.push_back(
-                TypeInfo(
+            typeInfo.emplace_back(
                     TypeInfo::KIND_ATTRIBUTE, attrName, specialType,
                     static_cast< TypeInfo::Flags >(
                         (attr.readOnly ? TypeInfo::FLAG_READONLY : 0)
                         | (attr.bound ? TypeInfo::FLAG_BOUND : 0)),
-                    index, polymorphicUnoType));
+                    index, polymorphicUnoType);
             index += (attr.readOnly ? 1 : 2);
         }
         for (const unoidl::InterfaceTypeEntity::Method& method : entity->getDirectMethods())
@@ -1928,30 +1915,26 @@ void handleInterfaceType(
             MethodDescriptor desc(
                 manager, dependencies, method.returnType, &specialReturnType,
                 &polymorphicUnoReturnType);
-            typeInfo.push_back(
-                TypeInfo(
+            typeInfo.emplace_back(
                     TypeInfo::KIND_METHOD, methodName, specialReturnType,
                     static_cast< TypeInfo::Flags >(0), index++,
-                    polymorphicUnoReturnType));
+                    polymorphicUnoReturnType);
             sal_Int32 paramIndex = 0;
             for (const unoidl::InterfaceTypeEntity::Method::Parameter& param : method.parameters)
             {
                 bool in = param.direction
-                    != (unoidl::InterfaceTypeEntity::Method::Parameter::
-                        DIRECTION_OUT);
+                    != unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_OUT;
                 bool out = param.direction
-                    != (unoidl::InterfaceTypeEntity::Method::Parameter::
-                        DIRECTION_IN);
+                    != unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN;
                 PolymorphicUnoType polymorphicUnoType;
                 SpecialType specialType = desc.addParameter(
                     param.type, out, true, &polymorphicUnoType);
                 if (out || isSpecialType(specialType)
                     || polymorphicUnoType.kind != PolymorphicUnoType::KIND_NONE)
                 {
-                    typeInfo.push_back(
-                        TypeInfo(
+                    typeInfo.emplace_back(
                             codemaker::convertString(param.name), specialType, in,
-                            out, methodName, paramIndex, polymorphicUnoType));
+                            out, methodName, paramIndex, polymorphicUnoType);
                 }
                 ++paramIndex;
             }
@@ -1965,12 +1948,12 @@ void handleInterfaceType(
         }
     }
     addTypeInfo(className, typeInfo, dependencies, cf.get());
-    writeClassFile(options, className, *cf.get());
+    writeClassFile(options, className, *cf);
 }
 
 void handleTypedef(
     rtl::Reference< unoidl::TypedefEntity > const & entity,
-    rtl::Reference< TypeManager > const & manager, Dependencies * dependencies)
+    rtl::Reference< TypeManager > const & manager, std::set<OUString> * dependencies)
 {
     assert(entity.is());
     assert(manager.is());
@@ -2007,7 +1990,7 @@ void handleTypedef(
 void handleConstantGroup(
     const OUString& name, rtl::Reference< unoidl::ConstantGroupEntity > const & entity,
     rtl::Reference< TypeManager > const & manager, JavaOptions const & options,
-    Dependencies * dependencies)
+    std::set<OUString> * dependencies)
 {
     assert(entity.is());
     OString className(codemaker::convertString(name).replace('.', '/'));
@@ -2074,7 +2057,7 @@ void handleConstantGroup(
                 | ClassFile::ACC_FINAL),
             codemaker::convertString(member.name), desc, valueIndex, sig);
     }
-    writeClassFile(options, className, *cf.get());
+    writeClassFile(options, className, *cf);
 }
 
 void addExceptionHandlers(
@@ -2099,7 +2082,7 @@ void addConstructor(
     OString const & realJavaBaseName, OString const & unoName,
     OString const & className,
     unoidl::SingleInterfaceBasedServiceEntity::Constructor const & constructor,
-    OUString const & returnType, Dependencies * dependencies,
+    OUString const & returnType, std::set<OUString> * dependencies,
     ClassFile * classFile)
 {
     assert(dependencies != nullptr);
@@ -2249,7 +2232,7 @@ void handleService(
     const OUString& name,
     rtl::Reference< unoidl::SingleInterfaceBasedServiceEntity > const & entity,
     rtl::Reference< TypeManager > const & manager, JavaOptions const & options,
-    Dependencies * dependencies)
+    std::set<OUString> * dependencies)
 {
     assert(entity.is());
     assert(dependencies != nullptr);
@@ -2335,14 +2318,14 @@ void handleService(
                 code.get(), std::vector< OString >(), "");
         }
     }
-    writeClassFile(options, className, *cf.get());
+    writeClassFile(options, className, *cf);
 }
 
 void handleSingleton(
     const OUString& name,
     rtl::Reference< unoidl::InterfaceBasedSingletonEntity > const & entity,
     rtl::Reference< TypeManager > const & manager, JavaOptions const & options,
-    Dependencies * dependencies)
+    std::set<OUString> * dependencies)
 {
     assert(entity.is());
     assert(dependencies != nullptr);
@@ -2451,7 +2434,7 @@ void handleSingleton(
             ClassFile::ACC_PUBLIC | ClassFile::ACC_STATIC),
         "get", desc.getDescriptor(), code.get(), std::vector< OString >(),
         desc.getSignature());
-    writeClassFile(options, className, *cf.get());
+    writeClassFile(options, className, *cf);
 }
 
 }
@@ -2467,7 +2450,7 @@ void produce(
     if (!manager->foundAtPrimaryProvider(name)) {
         return;
     }
-    Dependencies deps;
+    std::set<OUString> deps;
     rtl::Reference< unoidl::Entity > ent;
     rtl::Reference< unoidl::MapCursor > cur;
     switch (manager->getSort(name, &ent, &cur)) {

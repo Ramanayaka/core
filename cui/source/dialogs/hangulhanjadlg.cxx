@@ -17,17 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hangulhanjadlg.hxx"
+#include <hangulhanjadlg.hxx>
 #include <dialmgr.hxx>
 
-#include <cuires.hrc>
-#include "helpid.hrc"
+#include <helpids.h>
+#include <strings.hrc>
 
 #include <algorithm>
-#include <vcl/controllayout.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/builderfactory.hxx>
-#include <vcl/decoview.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+#include <tools/debug.hxx>
+#include <i18nlangtag/languagetag.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/virdev.hxx>
 #include <unotools/lingucfg.hxx>
 #include <unotools/linguprops.hxx>
 #include <com/sun/star/lang/NoSupportException.hpp>
@@ -39,8 +41,6 @@
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/string.hxx>
-#include <svtools/svlbitm.hxx>
-#include "svtools/treelistentry.hxx"
 
 #define HHC editeng::HangulHanjaConversion
 #define LINE_CNT        static_cast< sal_uInt16 >(2)
@@ -71,12 +71,11 @@ namespace svx
                 m_rDev.Push( PushFlags::FONT );
                 m_rDev.SetFont( _rTemporaryFont );
             }
-            ~FontSwitch( )
+            ~FontSwitch() COVERITY_NOEXCEPT_FALSE
             {
-                m_rDev.Pop( );
+                m_rDev.Pop();
             }
         };
-    }
 
     /** a class which allows to draw two texts in a pseudo-ruby way (which basically
         means one text above or below the other, and a little bit smaller)
@@ -101,9 +100,11 @@ namespace svx
         const OUString& getSecondaryText() const { return m_sSecondaryText; }
 
     public:
-        void Paint( OutputDevice& _rDevice, const ::tools::Rectangle& _rRect, DrawTextFlags _nTextStyle,
+        void Paint( vcl::RenderContext& _rDevice, const ::tools::Rectangle& _rRect,
             ::tools::Rectangle* _pPrimaryLocation, ::tools::Rectangle* _pSecondaryLocation );
     };
+
+    }
 
     PseudoRubyText::PseudoRubyText()
         : m_ePosition(eAbove)
@@ -118,22 +119,27 @@ namespace svx
     }
 
 
-    void PseudoRubyText::Paint(vcl::RenderContext& rRenderContext, const ::tools::Rectangle& _rRect, DrawTextFlags _nTextStyle,
+    void PseudoRubyText::Paint(vcl::RenderContext& rRenderContext, const ::tools::Rectangle& _rRect,
                                ::tools::Rectangle* _pPrimaryLocation, ::tools::Rectangle* _pSecondaryLocation )
     {
+        // calculate the text flags for the painting
+        constexpr DrawTextFlags nTextStyle = DrawTextFlags::Mnemonic |
+                                   DrawTextFlags::Left |
+                                   DrawTextFlags::VCenter;
+
         Size aPlaygroundSize(_rRect.GetSize());
 
         // the font for the secondary text:
         vcl::Font aSmallerFont(rRenderContext.GetFont());
         // heuristic: 80% of the original size
-        aSmallerFont.SetFontHeight( (long)( 0.8 * aSmallerFont.GetFontHeight() ) );
+        aSmallerFont.SetFontHeight( static_cast<long>( 0.8 * aSmallerFont.GetFontHeight() ) );
 
         // let's calculate the size of our two texts
-        ::tools::Rectangle aPrimaryRect = rRenderContext.GetTextRect( _rRect, m_sPrimaryText, _nTextStyle );
+        ::tools::Rectangle aPrimaryRect = rRenderContext.GetTextRect( _rRect, m_sPrimaryText, nTextStyle );
         ::tools::Rectangle aSecondaryRect;
         {
             FontSwitch aFontRestore(rRenderContext, aSmallerFont);
-            aSecondaryRect = rRenderContext.GetTextRect(_rRect, m_sSecondaryText, _nTextStyle);
+            aSecondaryRect = rRenderContext.GetTextRect(_rRect, m_sSecondaryText, nTextStyle);
         }
 
         // position these rectangles properly
@@ -141,38 +147,19 @@ namespace svx
         sal_Int32 nCombinedWidth = std::max( aSecondaryRect.GetWidth(), aPrimaryRect.GetWidth() );
             // the rectangle where both texts will reside is as high as possible, and as wide as the
             // widest of both text rects
-        aPrimaryRect.Left() = aSecondaryRect.Left() = _rRect.Left();
-        aPrimaryRect.Right() = aSecondaryRect.Right() = _rRect.Left() + nCombinedWidth;
-        if (DrawTextFlags::Right & _nTextStyle)
-        {
-            // move the rectangles to the right
-            aPrimaryRect.Move( aPlaygroundSize.Width() - nCombinedWidth, 0 );
-            aSecondaryRect.Move( aPlaygroundSize.Width() - nCombinedWidth, 0 );
-        }
-        else if (DrawTextFlags::Center & _nTextStyle)
-        {
-            // center the rectangles
-            aPrimaryRect.Move( ( aPlaygroundSize.Width() - nCombinedWidth ) / 2, 0 );
-            aSecondaryRect.Move( ( aPlaygroundSize.Width() - nCombinedWidth ) / 2, 0 );
-        }
+        aPrimaryRect.SetLeft( _rRect.Left() );
+        aSecondaryRect.SetLeft( aPrimaryRect.Left() );
+        aPrimaryRect.SetRight( _rRect.Left() + nCombinedWidth );
+        aSecondaryRect.SetRight( aPrimaryRect.Right() );
 
         // y-axis:
         sal_Int32 nCombinedHeight = aPrimaryRect.GetHeight() + aSecondaryRect.GetHeight();
         // align to the top, for the moment
         aPrimaryRect.Move( 0, _rRect.Top() - aPrimaryRect.Top() );
         aSecondaryRect.Move( 0, aPrimaryRect.Top() + aPrimaryRect.GetHeight() - aSecondaryRect.Top() );
-        if (DrawTextFlags::Bottom & _nTextStyle)
-        {
-            // move the rects to the bottom
-            aPrimaryRect.Move( 0, aPlaygroundSize.Height() - nCombinedHeight );
-            aSecondaryRect.Move( 0, aPlaygroundSize.Height() - nCombinedHeight );
-        }
-        else if (DrawTextFlags::VCenter & _nTextStyle)
-        {
-            // move the rects to the bottom
-            aPrimaryRect.Move( 0, ( aPlaygroundSize.Height() - nCombinedHeight ) / 2 );
-            aSecondaryRect.Move( 0, ( aPlaygroundSize.Height() - nCombinedHeight ) / 2 );
-        }
+        // move the rects to the bottom
+        aPrimaryRect.Move( 0, ( aPlaygroundSize.Height() - nCombinedHeight ) / 2 );
+        aSecondaryRect.Move( 0, ( aPlaygroundSize.Height() - nCombinedHeight ) / 2 );
 
         // 'til here, everything we did assumes that the secondary text is painted _below_ the primary
         // text. If this isn't the case, we need to correct the rectangles
@@ -186,7 +173,7 @@ namespace svx
         // now draw the texts
         // as we already calculated the precise rectangles for the texts, we don't want to
         // use the alignment flags given - within it's rect, every text is centered
-        DrawTextFlags nDrawTextStyle( _nTextStyle );
+        DrawTextFlags nDrawTextStyle( nTextStyle );
         nDrawTextStyle &= ~DrawTextFlags( DrawTextFlags::Right | DrawTextFlags::Left | DrawTextFlags::Bottom | DrawTextFlags::Top );
         nDrawTextStyle |= DrawTextFlags::Center | DrawTextFlags::VCenter;
 
@@ -203,141 +190,85 @@ namespace svx
             *_pSecondaryLocation = aSecondaryRect;
     }
 
-    class RubyRadioButton : public RadioButton
+    class RubyRadioButton
     {
-
     public:
-        RubyRadioButton( vcl::Window* _pParent, WinBits nBits );
-        void init( const OUString& rPrimaryText, const OUString& rSecondaryText, const PseudoRubyText::RubyPosition& rPosition );
-        virtual Size    GetOptimalSize() const override;
+        RubyRadioButton(std::unique_ptr<weld::RadioButton> xControl);
+        void init(const OUString& rPrimaryText, const OUString& rSecondaryText, const PseudoRubyText::RubyPosition& rPosition);
 
-    protected:
-        virtual void    Paint( vcl::RenderContext& /*rRenderContext*/, const ::tools::Rectangle& _rRect ) override;
+        void set_sensitive(bool sensitive) { m_xControl->set_sensitive(sensitive); }
+        void set_active(bool active) { m_xControl->set_active(active); }
+        bool get_active() const { return m_xControl->get_active(); }
+
+        void connect_clicked(const Link<weld::Button&, void>& rLink) { m_xControl->connect_clicked(rLink); }
 
     private:
+        Size GetOptimalSize() const;
+        void Paint(vcl::RenderContext& rRenderContext);
+
+        ScopedVclPtr<VirtualDevice> m_xVirDev;
+        std::unique_ptr<weld::RadioButton> m_xControl;
         PseudoRubyText m_aRubyText;
     };
 
-    RubyRadioButton::RubyRadioButton( vcl::Window* _pParent, WinBits nBits )
-        :RadioButton( _pParent, nBits )
+    RubyRadioButton::RubyRadioButton(std::unique_ptr<weld::RadioButton> xControl)
+        : m_xVirDev(xControl->create_virtual_device())
+        , m_xControl(std::move(xControl))
     {
+        // expand the point size of the desired font to the equivalent pixel size
+        if (vcl::Window* pDefaultDevice = dynamic_cast<vcl::Window*>(Application::GetDefaultDevice()))
+            pDefaultDevice->SetPointFont(*m_xVirDev, m_xControl->get_font());
     }
 
     void RubyRadioButton::init( const OUString& rPrimaryText, const OUString& rSecondaryText, const PseudoRubyText::RubyPosition& rPosition )
     {
-        m_aRubyText.init( rPrimaryText, rSecondaryText, rPosition );
+        m_aRubyText.init(rPrimaryText, rSecondaryText, rPosition);
+
+        m_xVirDev->SetOutputSizePixel(GetOptimalSize());
+
+        Paint(*m_xVirDev);
+
+        m_xControl->set_image(m_xVirDev.get());
     }
 
-
-    void RubyRadioButton::Paint(vcl::RenderContext& rRenderContext, const ::tools::Rectangle&)
+    void RubyRadioButton::Paint(vcl::RenderContext& rRenderContext)
     {
-        HideFocus();
-
-        // calculate the size of the radio image - we're to paint our text _after_ this image
-        DBG_ASSERT( !GetModeRadioImage(), "RubyRadioButton::Paint: images not supported!" );
-        Size aImageSize = GetRadioImage(rRenderContext.GetSettings(), DrawButtonFlags::NONE).GetSizePixel();
-        aImageSize.Width() = CalcZoom( aImageSize.Width() ) + 2;   // + 2 because otherwise the radiobuttons
-        aImageSize.Height() = CalcZoom( aImageSize.Height() ) + 2; // appear a bit cut from right and top.
-
-        ::tools::Rectangle aOverallRect( Point( 0, 0 ), GetOutputSizePixel() );
-        aOverallRect.Left() += aImageSize.Width() + 4;  // 4 is the separator between the image and the text
+        ::tools::Rectangle aOverallRect(Point(0, 0), rRenderContext.GetOutputSizePixel());
         // inflate the rect a little bit (because the VCL radio button does the same)
         ::tools::Rectangle aTextRect( aOverallRect );
-        ++aTextRect.Left(); --aTextRect.Right();
-        ++aTextRect.Top(); --aTextRect.Bottom();
-
-        // calculate the text flags for the painting
-        DrawTextFlags nTextStyle = DrawTextFlags::Mnemonic;
-        WinBits nStyle = GetStyle( );
-
-        // the horizontal alignment
-        if ( nStyle & WB_RIGHT )
-            nTextStyle |= DrawTextFlags::Right;
-        else if ( nStyle & WB_CENTER )
-            nTextStyle |= DrawTextFlags::Center;
-        else
-            nTextStyle |= DrawTextFlags::Left;
-        // the vertical alignment
-        if ( nStyle & WB_BOTTOM )
-            nTextStyle |= DrawTextFlags::Bottom;
-        else if ( nStyle & WB_VCENTER )
-            nTextStyle |= DrawTextFlags::VCenter;
-        else
-            nTextStyle |= DrawTextFlags::Top;
-        // mnemonics
-        if ( 0 == ( nStyle & WB_NOLABEL ) )
-            nTextStyle |= DrawTextFlags::Mnemonic;
+        aTextRect.AdjustLeft( 1 ); aTextRect.AdjustRight( -1 );
+        aTextRect.AdjustTop( 1 ); aTextRect.AdjustBottom( -1 );
 
         // paint the ruby text
         ::tools::Rectangle aPrimaryTextLocation;
         ::tools::Rectangle aSecondaryTextLocation;
 
-        m_aRubyText.Paint(rRenderContext, aTextRect, nTextStyle, &aPrimaryTextLocation, &aSecondaryTextLocation);
-
-        // the focus rectangle is to be painted around both texts
-        ::tools::Rectangle aCombinedRect(aPrimaryTextLocation);
-        aCombinedRect.Union(aSecondaryTextLocation);
-        SetFocusRect(aCombinedRect);
-
-        // let the base class paint the radio button
-        // for this, give it the proper location to paint the image (vertically centered, relative to our text)
-        ::tools::Rectangle aImageLocation( Point( 0, 0 ), aImageSize );
-        sal_Int32 nTextHeight = aSecondaryTextLocation.Bottom() - aPrimaryTextLocation.Top();
-        aImageLocation.Top() = aPrimaryTextLocation.Top() + ( nTextHeight - aImageSize.Height() ) / 2;
-        aImageLocation.Bottom() = aImageLocation.Top() + aImageSize.Height();
-        SetStateRect( aImageLocation );
-        DrawRadioButtonState(rRenderContext);
-
-        // mouse clicks should be recognized in a rect which is one pixel larger in each direction, plus
-        // includes the image
-        aCombinedRect.Left() = aImageLocation.Left();
-        ++aCombinedRect.Right();
-        --aCombinedRect.Top();
-        ++aCombinedRect.Bottom();
-
-        SetMouseRect(aCombinedRect);
-
-        // paint the focus rect, if necessary
-        if (HasFocus())
-            ShowFocus(aTextRect);
+        m_aRubyText.Paint(rRenderContext, aTextRect, &aPrimaryTextLocation, &aSecondaryTextLocation);
     }
 
     Size RubyRadioButton::GetOptimalSize() const
     {
-        vcl::Font aSmallerFont( GetFont() );
+        vcl::Font aSmallerFont(m_xVirDev->GetFont());
         aSmallerFont.SetFontHeight( static_cast<long>( 0.8 * aSmallerFont.GetFontHeight() ) );
         ::tools::Rectangle rect( Point(), Size( SAL_MAX_INT32, SAL_MAX_INT32 ) );
 
-        Size aPrimarySize = GetTextRect( rect, m_aRubyText.getPrimaryText() ).GetSize();
+        Size aPrimarySize = m_xVirDev->GetTextRect( rect, m_aRubyText.getPrimaryText() ).GetSize();
         Size aSecondarySize;
         {
-            FontSwitch aFontRestore( const_cast<RubyRadioButton&>(*this), aSmallerFont );
-            aSecondarySize = GetTextRect( rect, m_aRubyText.getSecondaryText() ).GetSize();
+            FontSwitch aFontRestore(*m_xVirDev, aSmallerFont);
+            aSecondarySize = m_xVirDev->GetTextRect( rect, m_aRubyText.getSecondaryText() ).GetSize();
         }
 
-        Size minimumSize =  CalcMinimumSize();
-        minimumSize.Height() = aPrimarySize.Height() + aSecondarySize.Height() + 5;
-        minimumSize.Width() = aPrimarySize.Width() + aSecondarySize.Width() + 5;
+        Size minimumSize;
+        minimumSize.setHeight( aPrimarySize.Height() + aSecondarySize.Height() + 5 );
+        minimumSize.setWidth( aPrimarySize.Width() + aSecondarySize.Width() + 5 );
         return minimumSize;
     }
 
-    VCL_BUILDER_FACTORY_ARGS(RubyRadioButton, WB_LEFT|WB_VCENTER)
-
-    SuggestionSet::SuggestionSet( vcl::Window* pParent )
-                    : ValueSet( pParent, pParent->GetStyle() | WB_BORDER )
+    SuggestionSet::SuggestionSet(std::unique_ptr<weld::ScrolledWindow> xScrolledWindow)
+        : ValueSet(std::move(xScrolledWindow))
 
     {
-    }
-
-    SuggestionSet::~SuggestionSet()
-    {
-        disposeOnce();
-    }
-
-    void SuggestionSet::dispose()
-    {
-        ClearSet();
-        ValueSet::dispose();
     }
 
     void SuggestionSet::UserDraw( const UserDrawEvent& rUDEvt )
@@ -350,154 +281,89 @@ namespace svx
         pDev->DrawText( aRect, sText, DrawTextFlags::Center | DrawTextFlags::VCenter );
     }
 
-    void SuggestionSet::ClearSet()
-    {
-        sal_uInt16 i, nCount = GetItemCount();
-        for ( i = 0; i < nCount; ++i )
-            delete static_cast< OUString* >( GetItemData(i) );
-        Clear();
-    }
-
-    SuggestionDisplay::SuggestionDisplay( vcl::Window* pParent, WinBits nBits )
-        : Control( pParent, nBits )
-        , m_bDisplayListBox( true )
-        , m_aValueSet( VclPtr<SuggestionSet>::Create(this) )
-        , m_aListBox( VclPtr<ListBox>::Create(this,GetStyle() | WB_BORDER) )
+    SuggestionDisplay::SuggestionDisplay(weld::Builder& rBuilder)
+        : m_bDisplayListBox( true )
         , m_bInSelectionUpdate( false )
+        , m_xValueSet(new SuggestionSet(rBuilder.weld_scrolled_window("scrollwin")))
+        , m_xValueSetWin(new weld::CustomWeld(rBuilder, "valueset", *m_xValueSet))
+        , m_xListBox(rBuilder.weld_tree_view("listbox"))
     {
-        m_aValueSet->SetSelectHdl( LINK( this, SuggestionDisplay, SelectSuggestionValueSetHdl ) );
-        m_aListBox->SetSelectHdl( LINK( this, SuggestionDisplay, SelectSuggestionListBoxHdl ) );
+        m_xValueSet->SetSelectHdl( LINK( this, SuggestionDisplay, SelectSuggestionValueSetHdl ) );
+        m_xListBox->connect_changed( LINK( this, SuggestionDisplay, SelectSuggestionListBoxHdl ) );
 
-        m_aValueSet->SetLineCount( LINE_CNT );
-        m_aValueSet->SetStyle( m_aValueSet->GetStyle() | WB_ITEMBORDER | WB_FLATVALUESET | WB_VSCROLL );
-        m_aValueSet->SetBorderStyle( WindowBorderStyle::MONO );
-        OUString const aOneCharacter("AU");
-        long nItemWidth = 2*GetTextWidth( aOneCharacter );
-        m_aValueSet->SetItemWidth( nItemWidth );
+        m_xValueSet->SetLineCount( LINE_CNT );
+        m_xValueSet->SetStyle( m_xValueSet->GetStyle() | WB_ITEMBORDER | WB_VSCROLL );
 
-        Size aSize( approximate_char_width() * 48, GetTextHeight() * 5 );
-        m_aValueSet->SetSizePixel( aSize );
-        m_aListBox->SetSizePixel( aSize );
+        auto nItemWidth = 2 * m_xListBox->get_pixel_size("AU").Width();
+        m_xValueSet->SetItemWidth( nItemWidth );
+
+        Size aSize(m_xListBox->get_approximate_digit_width() * 42, m_xListBox->get_text_height() * 5);
+        m_xValueSet->set_size_request(aSize.Width(), aSize.Height());
+        m_xListBox->set_size_request(aSize.Width(), aSize.Height());
 
         implUpdateDisplay();
     }
 
-    SuggestionDisplay::~SuggestionDisplay()
-    {
-        disposeOnce();
-    }
-
-    void SuggestionDisplay::dispose()
-    {
-        m_aValueSet.disposeAndClear();
-        m_aListBox.disposeAndClear();
-        Control::dispose();
-    }
-
     void SuggestionDisplay::implUpdateDisplay()
     {
-        bool bShowBox = IsVisible() && m_bDisplayListBox;
-        bool bShowSet = IsVisible() && !m_bDisplayListBox;
-
-        m_aListBox->Show( bShowBox );
-        m_aValueSet->Show( bShowSet );
-    }
-
-    void SuggestionDisplay::StateChanged( StateChangedType nStateChange )
-    {
-        if( StateChangedType::Visible == nStateChange )
-            implUpdateDisplay();
-    }
-
-    bool SuggestionDisplay::hasCurrentControl()
-    {
-        return m_bDisplayListBox || m_aValueSet;
-    }
-
-    Control& SuggestionDisplay::implGetCurrentControl()
-    {
-        if( m_bDisplayListBox )
-            return *m_aListBox.get();
-        return *m_aValueSet.get();
-    }
-
-    void SuggestionDisplay::KeyInput( const KeyEvent& rKEvt )
-    {
-        implGetCurrentControl().KeyInput( rKEvt );
-    }
-    void SuggestionDisplay::KeyUp( const KeyEvent& rKEvt )
-    {
-        implGetCurrentControl().KeyUp( rKEvt );
-    }
-    void SuggestionDisplay::Activate()
-    {
-        implGetCurrentControl().Activate();
-    }
-    void SuggestionDisplay::Deactivate()
-    {
-        implGetCurrentControl().Deactivate();
-    }
-    void SuggestionDisplay::GetFocus()
-    {
-        if (hasCurrentControl())
-            implGetCurrentControl().GetFocus();
+        m_xListBox->set_visible(m_bDisplayListBox);
+        if (!m_bDisplayListBox)
+            m_xValueSetWin->show();
         else
-            Control::LoseFocus();
+            m_xValueSetWin->hide();
     }
-    void SuggestionDisplay::LoseFocus()
+
+    weld::Widget& SuggestionDisplay::implGetCurrentControl()
     {
-        if (hasCurrentControl())
-            implGetCurrentControl().LoseFocus();
-        else
-            Control::LoseFocus();
-    }
-    void SuggestionDisplay::Command( const CommandEvent& rCEvt )
-    {
-        implGetCurrentControl().Command( rCEvt );
+        if (m_bDisplayListBox)
+            return *m_xListBox;
+        return *m_xValueSet->GetDrawingArea();
     }
 
     void SuggestionDisplay::DisplayListBox( bool bDisplayListBox )
     {
-        if( m_bDisplayListBox != bDisplayListBox )
+        if( m_bDisplayListBox == bDisplayListBox )
+            return;
+
+        weld::Widget& rOldControl = implGetCurrentControl();
+        bool bHasFocus = rOldControl.has_focus();
+
+        m_bDisplayListBox = bDisplayListBox;
+
+        if( bHasFocus )
         {
-            Control& rOldControl = implGetCurrentControl();
-            bool bHasFocus = rOldControl.HasFocus();
-
-            m_bDisplayListBox = bDisplayListBox;
-
-            if( bHasFocus )
-            {
-                Control& rNewControl = implGetCurrentControl();
-                rNewControl.GrabFocus();
-            }
-
-            implUpdateDisplay();
+            weld::Widget& rNewControl = implGetCurrentControl();
+            rNewControl.grab_focus();
         }
+
+        implUpdateDisplay();
     }
 
-    IMPL_LINK( SuggestionDisplay, SelectSuggestionValueSetHdl, ValueSet*, pControl, void )
+    IMPL_LINK_NOARG(SuggestionDisplay, SelectSuggestionValueSetHdl, ValueSet*, void)
     {
-        SelectSuggestionHdl(pControl);
+        SelectSuggestionHdl(false);
     }
-    IMPL_LINK( SuggestionDisplay, SelectSuggestionListBoxHdl, ListBox&, rControl, void )
+
+    IMPL_LINK_NOARG(SuggestionDisplay, SelectSuggestionListBoxHdl, weld::TreeView&, void)
     {
-        SelectSuggestionHdl(&rControl);
+        SelectSuggestionHdl(true);
     }
-    void SuggestionDisplay::SelectSuggestionHdl( Control* pControl )
+
+    void SuggestionDisplay::SelectSuggestionHdl(bool bListBox)
     {
         if( m_bInSelectionUpdate )
             return;
 
         m_bInSelectionUpdate = true;
-        if( pControl == m_aListBox.get() )
+        if (bListBox)
         {
-            sal_uInt16 nPos = m_aListBox->GetSelectEntryPos();
-            m_aValueSet->SelectItem( nPos+1 ); //itemid == pos+1 (id 0 has special meaning)
+            sal_uInt16 nPos = m_xListBox->get_selected_index();
+            m_xValueSet->SelectItem( nPos+1 ); //itemid == pos+1 (id 0 has special meaning)
         }
         else
         {
-            sal_uInt16 nPos = m_aValueSet->GetSelectItemId()-1; //itemid == pos+1 (id 0 has special meaning)
-            m_aListBox->SelectEntryPos( nPos );
+            sal_uInt16 nPos = m_xValueSet->GetSelectedItemId()-1; //itemid == pos+1 (id 0 has special meaning)
+            m_xListBox->select(nPos);
         }
         m_bInSelectionUpdate = false;
         m_aSelectLink.Call( *this );
@@ -507,425 +373,340 @@ namespace svx
     {
         m_aSelectLink = rLink;
     }
+
     void SuggestionDisplay::Clear()
     {
-        m_aListBox->Clear();
-        m_aValueSet->Clear();
+        m_xListBox->clear();
+        m_xValueSet->Clear();
     }
+
     void SuggestionDisplay::InsertEntry( const OUString& rStr )
     {
-        sal_uInt16 nItemId = m_aListBox->InsertEntry( rStr ) + 1; //itemid == pos+1 (id 0 has special meaning)
-        m_aValueSet->InsertItem( nItemId );
+        m_xListBox->append_text(rStr);
+        sal_uInt16 nItemId = m_xListBox->n_children(); //itemid == pos+1 (id 0 has special meaning)
+        m_xValueSet->InsertItem( nItemId );
         OUString* pItemData = new OUString( rStr );
-        m_aValueSet->SetItemData( nItemId, pItemData );
+        m_xValueSet->SetItemData( nItemId, pItemData );
     }
+
     void SuggestionDisplay::SelectEntryPos( sal_uInt16 nPos )
     {
-        m_aListBox->SelectEntryPos( nPos );
-        m_aValueSet->SelectItem( nPos+1 ); //itemid == pos+1 (id 0 has special meaning)
+        m_xListBox->select(nPos);
+        m_xValueSet->SelectItem( nPos+1 ); //itemid == pos+1 (id 0 has special meaning)
     }
+
     sal_uInt16 SuggestionDisplay::GetEntryCount() const
     {
-        return m_aListBox->GetEntryCount();
+        return m_xListBox->n_children();
     }
+
     OUString SuggestionDisplay::GetEntry( sal_uInt16 nPos ) const
     {
-        return m_aListBox->GetEntry( nPos );
+        return m_xListBox->get_text( nPos );
     }
-    OUString SuggestionDisplay::GetSelectEntry() const
+
+    OUString SuggestionDisplay::GetSelectedEntry() const
     {
-        return m_aListBox->GetSelectEntry();
+        return m_xListBox->get_selected_text();
     }
+
     void SuggestionDisplay::SetHelpIds()
     {
-        this->SetHelpId( HID_HANGULDLG_SUGGESTIONS );
-        m_aValueSet->SetHelpId( HID_HANGULDLG_SUGGESTIONS_GRID );
-        m_aListBox->SetHelpId( HID_HANGULDLG_SUGGESTIONS_LIST );
+        m_xValueSet->SetHelpId(HID_HANGULDLG_SUGGESTIONS_GRID);
+        m_xListBox->set_help_id(HID_HANGULDLG_SUGGESTIONS_LIST);
     }
 
-    VCL_BUILDER_FACTORY_ARGS( SuggestionDisplay, WB_ITEMBORDER | WB_FLATVALUESET | WB_VSCROLL );
-
-    HangulHanjaConversionDialog::HangulHanjaConversionDialog( vcl::Window* _pParent, HHC::ConversionDirection _ePrimaryDirection )
-        :ModalDialog( _pParent, "HangulHanjaConversionDialog", "cui/ui/hangulhanjaconversiondialog.ui" )
-        ,m_pIgnoreNonPrimary( nullptr )
-        ,m_bDocumentMode( true )
+    HangulHanjaConversionDialog::HangulHanjaConversionDialog(weld::Window* pParent)
+        : GenericDialogController(pParent, "cui/ui/hangulhanjaconversiondialog.ui", "HangulHanjaConversionDialog")
+        , m_bDocumentMode( true )
+        , m_xFind(m_xBuilder->weld_button("find"))
+        , m_xIgnore(m_xBuilder->weld_button("ignore"))
+        , m_xIgnoreAll(m_xBuilder->weld_button("ignoreall"))
+        , m_xReplace(m_xBuilder->weld_button("replace"))
+        , m_xReplaceAll(m_xBuilder->weld_button("replaceall"))
+        , m_xOptions(m_xBuilder->weld_button("options"))
+        , m_xSuggestions(new SuggestionDisplay(*m_xBuilder))
+        , m_xSimpleConversion(m_xBuilder->weld_radio_button("simpleconversion"))
+        , m_xHangulBracketed(m_xBuilder->weld_radio_button("hangulbracket"))
+        , m_xHanjaBracketed(m_xBuilder->weld_radio_button("hanjabracket"))
+        , m_xWordInput(m_xBuilder->weld_entry("wordinput"))
+        , m_xOriginalWord(m_xBuilder->weld_label("originalword"))
+        , m_xHanjaAbove(new RubyRadioButton(m_xBuilder->weld_radio_button("hanja_above")))
+        , m_xHanjaBelow(new RubyRadioButton(m_xBuilder->weld_radio_button("hanja_below")))
+        , m_xHangulAbove(new RubyRadioButton(m_xBuilder->weld_radio_button("hangul_above")))
+        , m_xHangulBelow(new RubyRadioButton(m_xBuilder->weld_radio_button("hangul_below")))
+        , m_xHangulOnly(m_xBuilder->weld_check_button("hangulonly"))
+        , m_xHanjaOnly(m_xBuilder->weld_check_button("hanjaonly"))
+        , m_xReplaceByChar(m_xBuilder->weld_check_button("replacebychar"))
     {
-        get( m_pFind, "find" );
-        get( m_pIgnore, "ignore" );
-        get( m_pSuggestions, "suggestions" );
-        get( m_pSimpleConversion, "simpleconversion" );
-        get( m_pHangulBracketed, "hangulbracket" );
-        get( m_pHanjaBracketed, "hanjabracket" );
-        get( m_pHangulOnly, "hangulonly" );
-        get( m_pHanjaOnly, "hanjaonly" );
-        get( m_pReplaceByChar, "replacebychar" );
-        get( m_pOptions, "options" );
-        get( m_pIgnore, "ignore" );
-        get( m_pIgnoreAll, "ignoreall" );
-        get( m_pReplace, "replace" );
-        get( m_pReplaceAll, "replaceall" );
-        get( m_pWordInput, "wordinput" );
-        get( m_pOriginalWord, "originalword" );
-        get( m_pHanjaAbove, "hanja_above" );
-        get( m_pHanjaBelow, "hanja_below" );
-        get( m_pHangulAbove, "hangul_above" );
-        get( m_pHangulBelow, "hangul_below" );
-
-        m_pSuggestions->set_height_request( m_pSuggestions->GetTextHeight() * 5 );
-        m_pSuggestions->set_width_request( m_pSuggestions->approximate_char_width() * 48 );
+        m_xSuggestions->set_size_request(m_xOriginalWord->get_approximate_digit_width() * 42,
+                                         m_xOriginalWord->get_text_height() * 5);
 
         const OUString sHangul(CuiResId(RID_SVXSTR_HANGUL));
         const OUString sHanja(CuiResId(RID_SVXSTR_HANJA));
-        m_pHanjaAbove->init( sHangul, sHanja, PseudoRubyText::eAbove );
-        m_pHanjaBelow->init( sHangul, sHanja, PseudoRubyText::eBelow );
-        m_pHangulAbove->init( sHanja, sHangul, PseudoRubyText::eAbove );
-        m_pHangulBelow->init( sHanja, sHangul, PseudoRubyText::eBelow );
+        m_xHanjaAbove->init( sHangul, sHanja, PseudoRubyText::eAbove );
+        m_xHanjaBelow->init( sHangul, sHanja, PseudoRubyText::eBelow );
+        m_xHangulAbove->init( sHanja, sHangul, PseudoRubyText::eAbove );
+        m_xHangulBelow->init( sHanja, sHangul, PseudoRubyText::eBelow );
 
-        m_pWordInput->SetModifyHdl( LINK( this,  HangulHanjaConversionDialog, OnSuggestionModified ) );
-        m_pSuggestions->SetSelectHdl( LINK( this,  HangulHanjaConversionDialog, OnSuggestionSelected ) );
-        m_pReplaceByChar->SetClickHdl( LINK( this, HangulHanjaConversionDialog, ClickByCharacterHdl ) );
-        m_pHangulOnly->SetClickHdl( LINK( this,  HangulHanjaConversionDialog, OnConversionDirectionClicked ) );
-        m_pHanjaOnly->SetClickHdl(  LINK( this,  HangulHanjaConversionDialog, OnConversionDirectionClicked ) );
-        m_pOptions->SetClickHdl( LINK( this, HangulHanjaConversionDialog, OnOption ) );
-
-        if ( editeng::HangulHanjaConversion::eHangulToHanja == _ePrimaryDirection )
-        {
-            m_pIgnoreNonPrimary = m_pHangulOnly;
-        }
-        else
-        {
-            m_pIgnoreNonPrimary = m_pHanjaOnly;
-        }
+        m_xWordInput->connect_changed( LINK( this,  HangulHanjaConversionDialog, OnSuggestionModified ) );
+        m_xSuggestions->SetSelectHdl( LINK( this,  HangulHanjaConversionDialog, OnSuggestionSelected ) );
+        m_xReplaceByChar->connect_toggled( LINK( this, HangulHanjaConversionDialog, ClickByCharacterHdl ) );
+        m_xHangulOnly->connect_toggled( LINK( this,  HangulHanjaConversionDialog, OnConversionDirectionClicked ) );
+        m_xHanjaOnly->connect_toggled(  LINK( this,  HangulHanjaConversionDialog, OnConversionDirectionClicked ) );
+        m_xOptions->connect_clicked(LINK(this, HangulHanjaConversionDialog, OnOption));
 
         // initial focus
         FocusSuggestion( );
 
         // initial control values
-        m_pSimpleConversion->Check();
+        m_xSimpleConversion->set_active(true);
 
-        m_pSuggestions->SetHelpIds();
+        m_xSuggestions->SetHelpIds();
     }
 
     HangulHanjaConversionDialog::~HangulHanjaConversionDialog()
     {
-        disposeOnce();
-    }
-
-    void HangulHanjaConversionDialog::dispose()
-    {
-        m_pFind.clear();
-        m_pIgnore.clear();
-        m_pIgnoreAll.clear();
-        m_pReplace.clear();
-        m_pReplaceAll.clear();
-        m_pOptions.clear();
-        m_pSuggestions.clear();
-        m_pSimpleConversion.clear();
-        m_pHangulBracketed.clear();
-        m_pHanjaBracketed.clear();
-        m_pWordInput.clear();
-        m_pOriginalWord.clear();
-        m_pHanjaAbove.clear();
-        m_pHanjaBelow.clear();
-        m_pHangulAbove.clear();
-        m_pHangulBelow.clear();
-        m_pHangulOnly.clear();
-        m_pHanjaOnly.clear();
-        m_pReplaceByChar.clear();
-        m_pIgnoreNonPrimary.clear();
-        ModalDialog::dispose();
     }
 
     void HangulHanjaConversionDialog::FillSuggestions( const css::uno::Sequence< OUString >& _rSuggestions )
     {
-        m_pSuggestions->Clear();
-        const OUString* pSuggestions = _rSuggestions.getConstArray();
-        const OUString* pSuggestionsEnd = _rSuggestions.getConstArray() + _rSuggestions.getLength();
-        while ( pSuggestions != pSuggestionsEnd )
-            m_pSuggestions->InsertEntry( *pSuggestions++ );
+        m_xSuggestions->Clear();
+        for ( auto const & suggestion : _rSuggestions )
+            m_xSuggestions->InsertEntry( suggestion );
 
         // select the first suggestion, and fill in the suggestion edit field
         OUString sFirstSuggestion;
-        if ( m_pSuggestions->GetEntryCount() )
+        if ( m_xSuggestions->GetEntryCount() )
         {
-            sFirstSuggestion = m_pSuggestions->GetEntry( 0 );
-            m_pSuggestions->SelectEntryPos( 0 );
+            sFirstSuggestion = m_xSuggestions->GetEntry( 0 );
+            m_xSuggestions->SelectEntryPos( 0 );
         }
-        m_pWordInput->SetText( sFirstSuggestion );
-        m_pWordInput->SaveValue();
-        OnSuggestionModified( *m_pWordInput );
+        m_xWordInput->set_text( sFirstSuggestion );
+        m_xWordInput->save_value();
+        OnSuggestionModified( *m_xWordInput );
     }
 
-
-    void HangulHanjaConversionDialog::SetOptionsChangedHdl( const Link<LinkParamNone*,void>& _rHdl )
+    void HangulHanjaConversionDialog::SetOptionsChangedHdl(const Link<LinkParamNone*,void>& rHdl)
     {
-        m_aOptionsChangedLink = _rHdl;
+        m_aOptionsChangedLink = rHdl;
     }
 
-
-    void HangulHanjaConversionDialog::SetIgnoreHdl( const Link<Button*,void>& _rHdl )
+    void HangulHanjaConversionDialog::SetIgnoreHdl(const Link<weld::Button&,void>& rHdl)
     {
-        m_pIgnore->SetClickHdl( _rHdl );
+        m_xIgnore->connect_clicked(rHdl);
     }
 
-
-    void HangulHanjaConversionDialog::SetIgnoreAllHdl( const Link<Button*,void>& _rHdl )
+    void HangulHanjaConversionDialog::SetIgnoreAllHdl(const Link<weld::Button&,void>& rHdl)
     {
-        m_pIgnoreAll->SetClickHdl( _rHdl );
+        m_xIgnoreAll->connect_clicked(rHdl);
     }
 
-
-    void HangulHanjaConversionDialog::SetChangeHdl( const Link<Button*,void>& _rHdl )
+    void HangulHanjaConversionDialog::SetChangeHdl(const Link<weld::Button&,void>& rHdl )
     {
-        m_pReplace->SetClickHdl( _rHdl );
+        m_xReplace->connect_clicked(rHdl);
     }
 
-
-    void HangulHanjaConversionDialog::SetChangeAllHdl( const Link<Button*,void>& _rHdl )
+    void HangulHanjaConversionDialog::SetChangeAllHdl(const Link<weld::Button&,void>& rHdl)
     {
-        m_pReplaceAll->SetClickHdl( _rHdl );
+        m_xReplaceAll->connect_clicked(rHdl);
     }
 
-
-    void HangulHanjaConversionDialog::SetFindHdl( const Link<Button*,void>& _rHdl )
+    void HangulHanjaConversionDialog::SetFindHdl(const Link<weld::Button&,void>& rHdl)
     {
-        m_pFind->SetClickHdl( _rHdl );
+        m_xFind->connect_clicked(rHdl);
     }
 
-
-    void HangulHanjaConversionDialog::SetConversionFormatChangedHdl( const Link<Button*,void>& _rHdl )
+    void HangulHanjaConversionDialog::SetConversionFormatChangedHdl( const Link<weld::Button&,void>& rHdl )
     {
-        m_pSimpleConversion->SetClickHdl( _rHdl );
-        m_pHangulBracketed->SetClickHdl( _rHdl );
-        m_pHanjaBracketed->SetClickHdl( _rHdl );
-        m_pHanjaAbove->SetClickHdl( _rHdl );
-        m_pHanjaBelow->SetClickHdl( _rHdl );
-        m_pHangulAbove->SetClickHdl( _rHdl );
-        m_pHangulBelow->SetClickHdl( _rHdl );
+        m_xSimpleConversion->connect_clicked( rHdl );
+        m_xHangulBracketed->connect_clicked( rHdl );
+        m_xHanjaBracketed->connect_clicked( rHdl );
+        m_xHanjaAbove->connect_clicked( rHdl );
+        m_xHanjaBelow->connect_clicked( rHdl );
+        m_xHangulAbove->connect_clicked( rHdl );
+        m_xHangulBelow->connect_clicked( rHdl );
     }
 
-
-    void HangulHanjaConversionDialog::SetClickByCharacterHdl( const Link<CheckBox*,void>& _rHdl )
+    void HangulHanjaConversionDialog::SetClickByCharacterHdl( const Link<weld::ToggleButton&,void>& _rHdl )
     {
         m_aClickByCharacterLink = _rHdl;
     }
 
-
     IMPL_LINK_NOARG( HangulHanjaConversionDialog, OnSuggestionSelected, SuggestionDisplay&, void )
     {
-        m_pWordInput->SetText( m_pSuggestions->GetSelectEntry() );
-        OnSuggestionModified( *m_pWordInput );
+        m_xWordInput->set_text(m_xSuggestions->GetSelectedEntry());
+        OnSuggestionModified( *m_xWordInput );
     }
 
-
-    IMPL_LINK_NOARG( HangulHanjaConversionDialog, OnSuggestionModified, Edit&, void )
+    IMPL_LINK_NOARG( HangulHanjaConversionDialog, OnSuggestionModified, weld::Entry&, void )
     {
-        m_pFind->Enable( m_pWordInput->IsValueChangedFromSaved() );
+        m_xFind->set_sensitive(m_xWordInput->get_value_changed_from_saved());
 
-        bool bSameLen = m_pWordInput->GetText().getLength() == m_pOriginalWord->GetText().getLength();
-        m_pReplace->Enable( m_bDocumentMode && bSameLen );
-        m_pReplaceAll->Enable( m_bDocumentMode && bSameLen );
+        bool bSameLen = m_xWordInput->get_text().getLength() == m_xOriginalWord->get_label().getLength();
+        m_xReplace->set_sensitive( m_bDocumentMode && bSameLen );
+        m_xReplaceAll->set_sensitive( m_bDocumentMode && bSameLen );
     }
 
-
-    IMPL_LINK( HangulHanjaConversionDialog, ClickByCharacterHdl, Button*, pBox, void )
+    IMPL_LINK(HangulHanjaConversionDialog, ClickByCharacterHdl, weld::ToggleButton&, rBox, void)
     {
-        m_aClickByCharacterLink.Call( static_cast<CheckBox*>(pBox) );
-
-        bool bByCharacter = static_cast<CheckBox*>(pBox)->IsChecked();
-        m_pSuggestions->DisplayListBox( !bByCharacter );
+        m_aClickByCharacterLink.Call(rBox);
+        bool bByCharacter = rBox.get_active();
+        m_xSuggestions->DisplayListBox( !bByCharacter );
     }
 
-
-    IMPL_LINK( HangulHanjaConversionDialog, OnConversionDirectionClicked, Button *, pBox, void )
+    IMPL_LINK(HangulHanjaConversionDialog, OnConversionDirectionClicked, weld::ToggleButton&, rBox, void)
     {
-        CheckBox *pOtherBox = nullptr;
-        if ( pBox == m_pHangulOnly )
-            pOtherBox = m_pHanjaOnly;
-        else if ( pBox == m_pHanjaOnly )
-            pOtherBox = m_pHangulOnly;
-        if ( pBox && pOtherBox )
-        {
-            bool bBoxChecked = static_cast<CheckBox*>(pBox)->IsChecked();
-            if ( bBoxChecked )
-                pOtherBox->Check( false );
-            pOtherBox->Enable( !bBoxChecked );
-        }
+        weld::CheckButton* pOtherBox = nullptr;
+        if (&rBox == m_xHangulOnly.get())
+            pOtherBox = m_xHanjaOnly.get();
+        else
+            pOtherBox = m_xHangulOnly.get();
+        bool bBoxChecked = rBox.get_active();
+        if (bBoxChecked)
+            pOtherBox->set_active(false);
+        pOtherBox->set_sensitive(!bBoxChecked);
     }
 
-    IMPL_LINK_NOARG( HangulHanjaConversionDialog, OnOption, Button*, void )
+    IMPL_LINK_NOARG(HangulHanjaConversionDialog, OnOption, weld::Button&, void)
     {
-        ScopedVclPtrInstance< HangulHanjaOptionsDialog > aOptDlg(this);
-        aOptDlg->Execute();
+        HangulHanjaOptionsDialog aOptDlg(m_xDialog.get());
+        aOptDlg.run();
         m_aOptionsChangedLink.Call( nullptr );
     }
 
-
     OUString HangulHanjaConversionDialog::GetCurrentString( ) const
     {
-        return m_pOriginalWord->GetText( );
+        return m_xOriginalWord->get_label();
     }
-
 
     void HangulHanjaConversionDialog::FocusSuggestion( )
     {
-        m_pWordInput->GrabFocus();
+        m_xWordInput->grab_focus();
     }
-
-
-    namespace
-    {
-        void lcl_modifyWindowStyle( vcl::Window* _pWin, WinBits _nSet, WinBits _nReset )
-        {
-            DBG_ASSERT( 0 == ( _nSet & _nReset ), "lcl_modifyWindowStyle: set _and_ reset the same bit?" );
-            if ( _pWin )
-                _pWin->SetStyle( ( _pWin->GetStyle() | _nSet ) & ~_nReset );
-        }
-    }
-
 
     void HangulHanjaConversionDialog::SetCurrentString( const OUString& _rNewString,
         const Sequence< OUString >& _rSuggestions, bool _bOriginatesFromDocument )
     {
-        m_pOriginalWord->SetText( _rNewString );
+        m_xOriginalWord->set_label(_rNewString);
 
         bool bOldDocumentMode = m_bDocumentMode;
         m_bDocumentMode = _bOriginatesFromDocument; // before FillSuggestions!
         FillSuggestions( _rSuggestions );
 
-        m_pIgnoreAll->Enable( m_bDocumentMode );
+        m_xIgnoreAll->set_sensitive( m_bDocumentMode );
 
         // switch the def button depending if we're working for document text
-        if ( bOldDocumentMode != m_bDocumentMode )
+        if (bOldDocumentMode == m_bDocumentMode)
+            return;
+
+        weld::Widget* pOldDefButton = nullptr;
+        weld::Widget* pNewDefButton = nullptr;
+        if (m_bDocumentMode)
         {
-            vcl::Window* pOldDefButton = nullptr;
-            vcl::Window* pNewDefButton = nullptr;
-            if ( m_bDocumentMode )
-            {
-                pOldDefButton = m_pFind;
-                pNewDefButton = m_pReplace;
-            }
-            else
-            {
-                pOldDefButton = m_pReplace;
-                pNewDefButton = m_pFind;
-            }
-
-            DBG_ASSERT( WB_DEFBUTTON == ( pOldDefButton->GetStyle( ) & WB_DEFBUTTON ),
-                "HangulHanjaConversionDialog::SetCurrentString: wrong previous default button (1)!" );
-            DBG_ASSERT( 0 == ( pNewDefButton->GetStyle( ) & WB_DEFBUTTON ),
-                "HangulHanjaConversionDialog::SetCurrentString: wrong previous default button (2)!" );
-
-            lcl_modifyWindowStyle( pOldDefButton, 0, WB_DEFBUTTON );
-            lcl_modifyWindowStyle( pNewDefButton, WB_DEFBUTTON, 0 );
-
-            // give the focus to the new def button temporarily - VCL is somewhat peculiar
-            // in recognizing a new default button
-            VclPtr<vcl::Window> xSaveFocusId = Window::SaveFocus();
-            pNewDefButton->GrabFocus();
-            Window::EndSaveFocus( xSaveFocusId );
+            pOldDefButton = m_xFind.get();
+            pNewDefButton = m_xReplace.get();
         }
-    }
+        else
+        {
+            pOldDefButton = m_xReplace.get();
+            pNewDefButton = m_xFind.get();
+        }
 
+        pOldDefButton->set_has_default(false);
+        pNewDefButton->set_has_default(true);
+    }
 
     OUString HangulHanjaConversionDialog::GetCurrentSuggestion( ) const
     {
-        return m_pWordInput->GetText();
+        return m_xWordInput->get_text();
     }
-
 
     void HangulHanjaConversionDialog::SetByCharacter( bool _bByCharacter )
     {
-        m_pReplaceByChar->Check( _bByCharacter );
-        m_pSuggestions->DisplayListBox( !_bByCharacter );
+        m_xReplaceByChar->set_active( _bByCharacter );
+        m_xSuggestions->DisplayListBox( !_bByCharacter );
     }
-
 
     void HangulHanjaConversionDialog::SetConversionDirectionState(
             bool _bTryBothDirections,
-            HHC::ConversionDirection _ePrimaryConversionDirection )
+            HHC::ConversionDirection ePrimaryConversionDirection )
     {
         // default state: try both direction
-        m_pHangulOnly->Check( false );
-        m_pHangulOnly->Enable();
-        m_pHanjaOnly->Check( false );
-        m_pHanjaOnly->Enable();
+        m_xHangulOnly->set_active( false );
+        m_xHangulOnly->set_sensitive(true);
+        m_xHanjaOnly->set_active( false );
+        m_xHanjaOnly->set_sensitive(true);
 
         if (!_bTryBothDirections)
         {
-            CheckBox *pBox = _ePrimaryConversionDirection == HHC::eHangulToHanja ?
-                                    m_pHangulOnly.get() : m_pHanjaOnly.get();
-            pBox->Check();
-            OnConversionDirectionClicked( pBox );
+            weld::CheckButton* pBox = ePrimaryConversionDirection == HHC::eHangulToHanja ?
+                                    m_xHangulOnly.get() : m_xHanjaOnly.get();
+            pBox->set_active(true);
+            OnConversionDirectionClicked(*pBox);
         }
     }
 
-
     bool HangulHanjaConversionDialog::GetUseBothDirections( ) const
     {
-        return !m_pHangulOnly->IsChecked() && !m_pHanjaOnly->IsChecked();
+        return !m_xHangulOnly->get_active() && !m_xHanjaOnly->get_active();
     }
-
 
     HHC::ConversionDirection HangulHanjaConversionDialog::GetDirection(
             HHC::ConversionDirection eDefaultDirection ) const
     {
         HHC::ConversionDirection eDirection = eDefaultDirection;
-        if ( m_pHangulOnly->IsChecked() && !m_pHanjaOnly->IsChecked() )
+        if (m_xHangulOnly->get_active() && !m_xHanjaOnly->get_active())
             eDirection = HHC::eHangulToHanja;
-        else if ( !m_pHangulOnly->IsChecked() && m_pHanjaOnly->IsChecked() )
+        else if (!m_xHangulOnly->get_active() && m_xHanjaOnly->get_active())
             eDirection = HHC::eHanjaToHangul;
         return eDirection;
     }
-
 
     void HangulHanjaConversionDialog::SetConversionFormat( HHC::ConversionFormat _eType )
     {
         switch ( _eType )
         {
-            case HHC::eSimpleConversion: m_pSimpleConversion->Check(); break;
-            case HHC::eHangulBracketed: m_pHangulBracketed->Check(); break;
-            case HHC::eHanjaBracketed:  m_pHanjaBracketed->Check(); break;
-            case HHC::eRubyHanjaAbove:  m_pHanjaAbove->Check(); break;
-            case HHC::eRubyHanjaBelow:  m_pHanjaBelow->Check(); break;
-            case HHC::eRubyHangulAbove: m_pHangulAbove->Check(); break;
-            case HHC::eRubyHangulBelow: m_pHangulBelow->Check(); break;
+            case HHC::eSimpleConversion: m_xSimpleConversion->set_active(true); break;
+            case HHC::eHangulBracketed: m_xHangulBracketed->set_active(true); break;
+            case HHC::eHanjaBracketed:  m_xHanjaBracketed->set_active(true); break;
+            case HHC::eRubyHanjaAbove:  m_xHanjaAbove->set_active(true); break;
+            case HHC::eRubyHanjaBelow:  m_xHanjaBelow->set_active(true); break;
+            case HHC::eRubyHangulAbove: m_xHangulAbove->set_active(true); break;
+            case HHC::eRubyHangulBelow: m_xHangulBelow->set_active(true); break;
         default:
             OSL_FAIL( "HangulHanjaConversionDialog::SetConversionFormat: unknown type!" );
         }
     }
 
-
     HHC::ConversionFormat HangulHanjaConversionDialog::GetConversionFormat( ) const
     {
-        if ( m_pSimpleConversion->IsChecked() )
+        if ( m_xSimpleConversion->get_active() )
             return HHC::eSimpleConversion;
-        if ( m_pHangulBracketed->IsChecked() )
+        if ( m_xHangulBracketed->get_active() )
             return HHC::eHangulBracketed;
-        if ( m_pHanjaBracketed->IsChecked() )
+        if ( m_xHanjaBracketed->get_active() )
             return HHC::eHanjaBracketed;
-        if ( m_pHanjaAbove->IsChecked() )
+        if ( m_xHanjaAbove->get_active() )
             return HHC::eRubyHanjaAbove;
-        if ( m_pHanjaBelow->IsChecked() )
+        if ( m_xHanjaBelow->get_active() )
             return HHC::eRubyHanjaBelow;
-        if ( m_pHangulAbove->IsChecked() )
+        if ( m_xHangulAbove->get_active() )
             return HHC::eRubyHangulAbove;
-        if ( m_pHangulBelow->IsChecked() )
+        if ( m_xHangulBelow->get_active() )
             return HHC::eRubyHangulBelow;
 
         OSL_FAIL( "HangulHanjaConversionDialog::GetConversionFormat: no radio checked?" );
         return HHC::eSimpleConversion;
     }
 
-
     void HangulHanjaConversionDialog::EnableRubySupport( bool bVal )
     {
-        m_pHanjaAbove->Enable( bVal );
-        m_pHanjaBelow->Enable( bVal );
-        m_pHangulAbove->Enable( bVal );
-        m_pHangulBelow->Enable( bVal );
+        m_xHanjaAbove->set_sensitive( bVal );
+        m_xHanjaBelow->set_sensitive( bVal );
+        m_xHangulAbove->set_sensitive( bVal );
+        m_xHangulBelow->set_sensitive( bVal );
     }
-
 
     void HangulHanjaOptionsDialog::Init()
     {
@@ -935,7 +716,7 @@ namespace svx
         }
 
         m_aDictList.clear();
-        m_pDictsLB->Clear();
+        m_xDictsLB->clear();
 
         Reference< XNameContainer > xNameCont = m_xConversionDictionaryList->getDictionaryContainer();
         if( xNameCont.is() )
@@ -960,9 +741,11 @@ namespace svx
                 }
             }
         }
+        if (m_xDictsLB->n_children())
+            m_xDictsLB->select(0);
     }
 
-    IMPL_LINK_NOARG(HangulHanjaOptionsDialog, OkHdl, Button*, void)
+    IMPL_LINK_NOARG(HangulHanjaOptionsDialog, OkHdl, weld::Button&, void)
     {
         sal_uInt32              nCnt = m_aDictList.size();
         sal_uInt32              n = 0;
@@ -975,12 +758,10 @@ namespace svx
         while( nCnt )
         {
             Reference< XConversionDictionary >  xDict = m_aDictList[ n ];
-            SvTreeListEntry*                        pEntry = m_pDictsLB->SvTreeListBox::GetEntry( n );
 
             DBG_ASSERT( xDict.is(), "-HangulHanjaOptionsDialog::OkHdl(): someone is evaporated..." );
-            DBG_ASSERT( pEntry, "-HangulHanjaOptionsDialog::OkHdl(): no one there in list?" );
 
-            bool    bActive = m_pDictsLB->GetCheckButtonState( pEntry ) == SvButtonState::Checked;
+            bool bActive = m_xDictsLB->get_toggle(n) == TRISTATE_TRUE;
             xDict->setActive( bActive );
             Reference< util::XFlushable > xFlush( xDict, uno::UNO_QUERY );
             if( xFlush.is() )
@@ -1003,224 +784,188 @@ namespace svx
         aTmp <<= aActiveDics;
         aLngCfg.SetProperty( UPH_ACTIVE_CONVERSION_DICTIONARIES, aTmp );
 
-        aTmp <<= m_pIgnorepostCB->IsChecked();
+        aTmp <<= m_xIgnorepostCB->get_active();
         aLngCfg.SetProperty( UPH_IS_IGNORE_POST_POSITIONAL_WORD, aTmp );
 
-        aTmp <<= m_pShowrecentlyfirstCB->IsChecked();
+        aTmp <<= m_xShowrecentlyfirstCB->get_active();
         aLngCfg.SetProperty( UPH_IS_SHOW_ENTRIES_RECENTLY_USED_FIRST, aTmp );
 
-        aTmp <<= m_pAutoreplaceuniqueCB->IsChecked();
+        aTmp <<= m_xAutoreplaceuniqueCB->get_active();
         aLngCfg.SetProperty( UPH_IS_AUTO_REPLACE_UNIQUE_ENTRIES, aTmp );
 
-        EndDialog( RET_OK );
+        m_xDialog->response(RET_OK);
     }
 
-    IMPL_LINK_NOARG(HangulHanjaOptionsDialog, DictsLB_SelectHdl, SvTreeListBox*, void)
+    IMPL_LINK_NOARG(HangulHanjaOptionsDialog, DictsLB_SelectHdl, weld::TreeView&, void)
     {
-        bool bSel = m_pDictsLB->FirstSelected() != nullptr;
+        bool bSel = m_xDictsLB->get_selected_index() != -1;
 
-        m_pEditPB->Enable(bSel);
-        m_pDeletePB->Enable(bSel);
+        m_xEditPB->set_sensitive(bSel);
+        m_xDeletePB->set_sensitive(bSel);
     }
 
-    IMPL_LINK_NOARG(HangulHanjaOptionsDialog, NewDictHdl, Button*, void)
+    IMPL_LINK_NOARG(HangulHanjaOptionsDialog, NewDictHdl, weld::Button&, void)
     {
         OUString                    aName;
-        ScopedVclPtrInstance< HangulHanjaNewDictDialog > aNewDlg(this);
-        aNewDlg->Execute();
-        if( aNewDlg->GetName( aName ) )
-        {
-            if( m_xConversionDictionaryList.is() )
-            {
-                try
-                {
-                    Reference< XConversionDictionary >  xDic =
-                        m_xConversionDictionaryList->addNewDictionary( aName, LanguageTag::convertToLocale( LANGUAGE_KOREAN ), ConversionDictionaryType::HANGUL_HANJA );
+        HangulHanjaNewDictDialog aNewDlg(m_xDialog.get());
+        aNewDlg.run();
+        if (!aNewDlg.GetName(aName))
+            return;
 
-                    if( xDic.is() )
-                    {
-                        //adapt local caches:
-                        m_aDictList.push_back( xDic );
-                        AddDict( xDic->getName(), xDic->isActive() );
-                    }
-                }
-                catch( const ElementExistException& )
-                {
-                }
-                catch( const NoSupportException& )
-                {
-                }
+        if( !m_xConversionDictionaryList.is() )
+            return;
+
+        try
+        {
+            Reference< XConversionDictionary >  xDic =
+                m_xConversionDictionaryList->addNewDictionary( aName, LanguageTag::convertToLocale( LANGUAGE_KOREAN ), ConversionDictionaryType::HANGUL_HANJA );
+
+            if( xDic.is() )
+            {
+                //adapt local caches:
+                m_aDictList.push_back( xDic );
+                AddDict( xDic->getName(), xDic->isActive() );
             }
         }
-    }
-
-    IMPL_LINK_NOARG(HangulHanjaOptionsDialog, EditDictHdl, Button*, void)
-    {
-        SvTreeListEntry*    pEntry = m_pDictsLB->FirstSelected();
-        DBG_ASSERT( pEntry, "+HangulHanjaEditDictDialog::EditDictHdl(): call of edit should not be possible with no selection!" );
-        if( pEntry )
+        catch( const ElementExistException& )
         {
-            ScopedVclPtrInstance< HangulHanjaEditDictDialog > aEdDlg(this, m_aDictList, m_pDictsLB->GetSelectEntryPos());
-            aEdDlg->Execute();
+        }
+        catch( const NoSupportException& )
+        {
         }
     }
 
-    IMPL_LINK_NOARG(HangulHanjaOptionsDialog, DeleteDictHdl, Button*, void)
+    IMPL_LINK_NOARG(HangulHanjaOptionsDialog, EditDictHdl, weld::Button&, void)
     {
-        sal_uLong nSelPos = m_pDictsLB->GetSelectEntryPos();
-        if( nSelPos != TREELIST_ENTRY_NOTFOUND )
+        int nEntry = m_xDictsLB->get_selected_index();
+        DBG_ASSERT(nEntry != -1, "+HangulHanjaEditDictDialog::EditDictHdl(): call of edit should not be possible with no selection!");
+        if (nEntry != -1)
         {
-            Reference< XConversionDictionary >  xDic( m_aDictList[ nSelPos ] );
-            if( m_xConversionDictionaryList.is() && xDic.is() )
-            {
-                Reference< XNameContainer >     xNameCont = m_xConversionDictionaryList->getDictionaryContainer();
-                if( xNameCont.is() )
-                {
-                    try
-                    {
-                        xNameCont->removeByName( xDic->getName() );
-
-                        //adapt local caches:
-                        m_aDictList.erase(m_aDictList.begin()+nSelPos );
-                        m_pDictsLB->RemoveEntry(nSelPos);
-                    }
-                    catch( const ElementExistException& )
-                    {
-                    }
-                    catch( const NoSupportException& )
-                    {
-                    }
-                }
-            }
+            HangulHanjaEditDictDialog aEdDlg(m_xDialog.get(), m_aDictList, nEntry);
+            aEdDlg.run();
         }
     }
 
-    HangulHanjaOptionsDialog::HangulHanjaOptionsDialog(vcl::Window* _pParent)
-        : ModalDialog( _pParent, "HangulHanjaOptDialog",
-            "cui/ui/hangulhanjaoptdialog.ui" )
-        , m_xConversionDictionaryList(nullptr)
+    IMPL_LINK_NOARG(HangulHanjaOptionsDialog, DeleteDictHdl, weld::Button&, void)
     {
-        get(m_pDictsLB, "dicts");
-        get(m_pIgnorepostCB, "ignorepost");
-        get(m_pShowrecentlyfirstCB, "showrecentfirst");
-        get(m_pAutoreplaceuniqueCB, "autoreplaceunique");
-        get(m_pNewPB, "new");
-        get(m_pEditPB, "edit");
-        get(m_pDeletePB, "delete");
-        get(m_pOkPB, "ok");
+        int nSelPos = m_xDictsLB->get_selected_index();
+        if (nSelPos == -1)
+            return;
 
-        m_pDictsLB->set_height_request(m_pDictsLB->GetTextHeight() * 5);
-        m_pDictsLB->set_width_request(m_pDictsLB->approximate_char_width() * 32);
-        m_pDictsLB->SetStyle( m_pDictsLB->GetStyle() | WB_CLIPCHILDREN | WB_HSCROLL | WB_FORCE_MAKEVISIBLE );
-        m_pDictsLB->SetSelectionMode( SelectionMode::Single );
-        m_pDictsLB->SetHighlightRange();
-        m_pDictsLB->SetSelectHdl( LINK( this, HangulHanjaOptionsDialog, DictsLB_SelectHdl ) );
-        m_pDictsLB->SetDeselectHdl( LINK( this, HangulHanjaOptionsDialog, DictsLB_SelectHdl ) );
+        Reference< XConversionDictionary >  xDic( m_aDictList[ nSelPos ] );
+        if( !(m_xConversionDictionaryList.is() && xDic.is()) )
+            return;
 
-        m_pOkPB->SetClickHdl( LINK( this, HangulHanjaOptionsDialog, OkHdl ) );
-        m_pNewPB->SetClickHdl( LINK( this, HangulHanjaOptionsDialog, NewDictHdl ) );
-        m_pEditPB->SetClickHdl( LINK( this, HangulHanjaOptionsDialog, EditDictHdl ) );
-        m_pDeletePB->SetClickHdl( LINK( this, HangulHanjaOptionsDialog, DeleteDictHdl ) );
+        Reference< XNameContainer >     xNameCont = m_xConversionDictionaryList->getDictionaryContainer();
+        if( !xNameCont.is() )
+            return;
+
+        try
+        {
+            xNameCont->removeByName( xDic->getName() );
+
+            //adapt local caches:
+            m_aDictList.erase(m_aDictList.begin()+nSelPos );
+            m_xDictsLB->remove(nSelPos);
+        }
+        catch( const ElementExistException& )
+        {
+        }
+        catch( const NoSupportException& )
+        {
+        }
+    }
+
+    HangulHanjaOptionsDialog::HangulHanjaOptionsDialog(weld::Window* pParent)
+        : GenericDialogController(pParent, "cui/ui/hangulhanjaoptdialog.ui", "HangulHanjaOptDialog")
+        , m_xDictsLB(m_xBuilder->weld_tree_view("dicts"))
+        , m_xIgnorepostCB(m_xBuilder->weld_check_button("ignorepost"))
+        , m_xShowrecentlyfirstCB(m_xBuilder->weld_check_button("showrecentfirst"))
+        , m_xAutoreplaceuniqueCB(m_xBuilder->weld_check_button("autoreplaceunique"))
+        , m_xNewPB(m_xBuilder->weld_button("new"))
+        , m_xEditPB(m_xBuilder->weld_button("edit"))
+        , m_xDeletePB(m_xBuilder->weld_button("delete"))
+        , m_xOkPB(m_xBuilder->weld_button("ok"))
+    {
+        m_xDictsLB->set_size_request(m_xDictsLB->get_approximate_digit_width() * 32,
+                                     m_xDictsLB->get_height_rows(5));
+
+        m_xDictsLB->enable_toggle_buttons(weld::ColumnToggleType::Check);
+
+        m_xDictsLB->connect_changed( LINK( this, HangulHanjaOptionsDialog, DictsLB_SelectHdl ) );
+
+        m_xOkPB->connect_clicked( LINK( this, HangulHanjaOptionsDialog, OkHdl ) );
+        m_xNewPB->connect_clicked( LINK( this, HangulHanjaOptionsDialog, NewDictHdl ) );
+        m_xEditPB->connect_clicked( LINK( this, HangulHanjaOptionsDialog, EditDictHdl ) );
+        m_xDeletePB->connect_clicked( LINK( this, HangulHanjaOptionsDialog, DeleteDictHdl ) );
 
         SvtLinguConfig  aLngCfg;
         Any             aTmp;
         bool            bVal = bool();
         aTmp = aLngCfg.GetProperty( UPH_IS_IGNORE_POST_POSITIONAL_WORD );
         if( aTmp >>= bVal )
-            m_pIgnorepostCB->Check( bVal );
+            m_xIgnorepostCB->set_active( bVal );
 
         aTmp = aLngCfg.GetProperty( UPH_IS_SHOW_ENTRIES_RECENTLY_USED_FIRST );
         if( aTmp >>= bVal )
-            m_pShowrecentlyfirstCB->Check( bVal );
+            m_xShowrecentlyfirstCB->set_active( bVal );
 
         aTmp = aLngCfg.GetProperty( UPH_IS_AUTO_REPLACE_UNIQUE_ENTRIES );
         if( aTmp >>= bVal )
-            m_pAutoreplaceuniqueCB->Check( bVal );
+            m_xAutoreplaceuniqueCB->set_active( bVal );
 
         Init();
     }
 
     HangulHanjaOptionsDialog::~HangulHanjaOptionsDialog()
     {
-        disposeOnce();
     }
 
-    void HangulHanjaOptionsDialog::dispose()
+    void HangulHanjaOptionsDialog::AddDict(const OUString& rName, bool bChecked)
     {
-        if (m_pDictsLB)
-        {
-            SvTreeListEntry* pEntry = m_pDictsLB->First();
-            while( pEntry )
-            {
-                delete static_cast<OUString const *>(pEntry->GetUserData());
-                pEntry->SetUserData( nullptr );
-                pEntry = m_pDictsLB->Next( pEntry );
-            }
-        }
-
-        m_pDictsLB.clear();
-        m_pIgnorepostCB.clear();
-        m_pShowrecentlyfirstCB.clear();
-        m_pAutoreplaceuniqueCB.clear();
-        m_pNewPB.clear();
-        m_pEditPB.clear();
-        m_pDeletePB.clear();
-        m_pOkPB.clear();
-        ModalDialog::dispose();
+        m_xDictsLB->append();
+        int nRow = m_xDictsLB->n_children() - 1;
+        m_xDictsLB->set_toggle(nRow, bChecked ? TRISTATE_TRUE : TRISTATE_FALSE);
+        m_xDictsLB->set_text(nRow, rName, 0);
+        m_xDictsLB->set_id(nRow, rName);
     }
 
-    void HangulHanjaOptionsDialog::AddDict( const OUString& _rName, bool _bChecked )
+    IMPL_LINK_NOARG(HangulHanjaNewDictDialog, OKHdl, weld::Button&, void)
     {
-        SvTreeListEntry*    pEntry = m_pDictsLB->SvTreeListBox::InsertEntry( _rName );
-        m_pDictsLB->SetCheckButtonState( pEntry, _bChecked? SvButtonState::Checked : SvButtonState::Unchecked );
-        pEntry->SetUserData( new OUString( _rName ) );
-    }
-
-    IMPL_LINK_NOARG(HangulHanjaNewDictDialog, OKHdl, Button*, void)
-    {
-        OUString  aName(comphelper::string::stripEnd(m_pDictNameED->GetText(), ' '));
+        OUString  aName(comphelper::string::stripEnd(m_xDictNameED->get_text(), ' '));
 
         m_bEntered = !aName.isEmpty();
-        if( m_bEntered )
-            m_pDictNameED->SetText( aName );     // do this in case of trailing chars have been deleted
+        if (m_bEntered)
+            m_xDictNameED->set_text(aName);     // do this in case of trailing chars have been deleted
 
-        EndDialog( RET_OK );
+        m_xDialog->response(RET_OK);
     }
 
-    IMPL_LINK_NOARG(HangulHanjaNewDictDialog, ModifyHdl, Edit&, void)
+    IMPL_LINK_NOARG(HangulHanjaNewDictDialog, ModifyHdl, weld::Entry&, void)
     {
-        OUString aName(comphelper::string::stripEnd(m_pDictNameED->GetText(), ' '));
+        OUString aName(comphelper::string::stripEnd(m_xDictNameED->get_text(), ' '));
 
-        m_pOkBtn->Enable( !aName.isEmpty() );
+        m_xOkBtn->set_sensitive(!aName.isEmpty());
     }
 
-    HangulHanjaNewDictDialog::HangulHanjaNewDictDialog(vcl::Window* pParent)
-        : ModalDialog(pParent, "HangulHanjaAddDialog", "cui/ui/hangulhanjaadddialog.ui")
+    HangulHanjaNewDictDialog::HangulHanjaNewDictDialog(weld::Window* pParent)
+        : GenericDialogController(pParent, "cui/ui/hangulhanjaadddialog.ui", "HangulHanjaAddDialog")
         , m_bEntered(false)
+        , m_xOkBtn(m_xBuilder->weld_button("ok"))
+        , m_xDictNameED(m_xBuilder->weld_entry("entry"))
     {
-        get(m_pOkBtn, "ok");
-        get(m_pDictNameED, "entry");
-
-        m_pOkBtn->SetClickHdl( LINK( this, HangulHanjaNewDictDialog, OKHdl ) );
-        m_pDictNameED->SetModifyHdl( LINK( this, HangulHanjaNewDictDialog, ModifyHdl ) );
+        m_xOkBtn->connect_clicked( LINK( this, HangulHanjaNewDictDialog, OKHdl ) );
+        m_xDictNameED->connect_changed( LINK( this, HangulHanjaNewDictDialog, ModifyHdl ) );
     }
 
     HangulHanjaNewDictDialog::~HangulHanjaNewDictDialog()
     {
-        disposeOnce();
-    }
-
-    void HangulHanjaNewDictDialog::dispose()
-    {
-        m_pDictNameED.clear();
-        m_pOkBtn.clear();
-        ModalDialog::dispose();
     }
 
     bool HangulHanjaNewDictDialog::GetName( OUString& _rRetName ) const
     {
         if( m_bEntered )
-            _rRetName = comphelper::string::stripEnd(m_pDictNameED->GetText(), ' ');
+            _rRetName = comphelper::string::stripEnd(m_xDictNameED->get_text(), ' ');
 
         return m_bEntered;
     }
@@ -1229,7 +974,7 @@ namespace svx
     {
     private:
     protected:
-        std::vector<OUString*> m_vElements;
+        std::vector<OUString> m_vElements;
         sal_uInt16          m_nNumOfEntries;
         // index of the internal iterator, used for First() and Next() methods
         sal_uInt16          m_nAct;
@@ -1240,8 +985,8 @@ namespace svx
                             ~SuggestionList();
 
         void                Set( const OUString& _rElement, sal_uInt16 _nNumOfElement );
-        bool                Reset( sal_uInt16 _nNumOfElement );
-        const OUString*     Get( sal_uInt16 _nNumOfElement ) const;
+        void                Reset( sal_uInt16 _nNumOfElement );
+        const OUString &    Get( sal_uInt16 _nNumOfElement ) const;
         void                Clear();
 
         const OUString*     First();
@@ -1251,7 +996,7 @@ namespace svx
     };
 
     SuggestionList::SuggestionList() :
-        m_vElements(MAXNUM_SUGGESTIONS, static_cast<OUString*>(nullptr))
+        m_vElements(MAXNUM_SUGGESTIONS)
     {
         m_nAct = m_nNumOfEntries = 0;
     }
@@ -1263,68 +1008,42 @@ namespace svx
 
     void SuggestionList::Set( const OUString& _rElement, sal_uInt16 _nNumOfElement )
     {
-        bool    bRet = _nNumOfElement < m_vElements.size();
-        if( bRet )
-        {
-            if( m_vElements[_nNumOfElement] != nullptr )
-                *(m_vElements[_nNumOfElement]) = _rElement;
-            else
-            {
-                m_vElements[_nNumOfElement] = new OUString( _rElement );
-                ++m_nNumOfEntries;
-            }
-        }
+        m_vElements[_nNumOfElement] = _rElement;
+        ++m_nNumOfEntries;
     }
 
-    bool SuggestionList::Reset( sal_uInt16 _nNumOfElement )
+    void SuggestionList::Reset( sal_uInt16 _nNumOfElement )
     {
-        bool    bRet = _nNumOfElement < m_vElements.size();
-        if( bRet )
-        {
-            if( m_vElements[_nNumOfElement] != nullptr )
-            {
-                delete m_vElements[_nNumOfElement];
-                m_vElements[_nNumOfElement] = nullptr;
-                --m_nNumOfEntries;
-            }
-        }
-
-        return bRet;
+        m_vElements[_nNumOfElement].clear();
+        --m_nNumOfEntries;
     }
 
-    const OUString* SuggestionList::Get( sal_uInt16 _nNumOfElement ) const
+    const OUString& SuggestionList::Get( sal_uInt16 _nNumOfElement ) const
     {
-        if( _nNumOfElement < m_vElements.size())
-            return m_vElements[_nNumOfElement];
-        return nullptr;
+        return m_vElements[_nNumOfElement];
     }
 
     void SuggestionList::Clear()
     {
         if( m_nNumOfEntries )
         {
-            for( std::vector<OUString*>::iterator it = m_vElements.begin(); it != m_vElements.end(); ++it )
-                if( *it != nullptr )
-                {
-                    delete *it;
-                    *it = nullptr;
-                 }
-
+            for (auto & vElement : m_vElements)
+                vElement.clear();
             m_nNumOfEntries = m_nAct = 0;
         }
     }
 
     const OUString* SuggestionList::Next_()
     {
-        const OUString*   pRet = nullptr;
-        while( m_nAct < m_vElements.size() && !pRet )
+        while( m_nAct < m_vElements.size() )
         {
-            pRet = m_vElements[ m_nAct ];
-            if( !pRet )
-                ++m_nAct;
+            auto & s = m_vElements[ m_nAct ];
+            if (!s.isEmpty())
+                return &s;
+            ++m_nAct;
         }
 
-        return pRet;
+        return nullptr;
     }
 
     const OUString* SuggestionList::First()
@@ -1356,12 +1075,12 @@ namespace svx
         if( _bUp )
         {
             if( !m_pPrev )
-                bRet = m_pScrollBar->GetThumbPos() > m_pScrollBar->GetRangeMin();
+                bRet = m_pScrollBar->vadjustment_get_value() > m_pScrollBar->vadjustment_get_lower();
         }
         else
         {
             if( !m_pNext )
-                bRet = m_pScrollBar->GetThumbPos() < ( m_pScrollBar->GetRangeMax() - 4 );
+                bRet = m_pScrollBar->vadjustment_get_value() < ( m_pScrollBar->vadjustment_get_upper() - 4 );
         }
 
         return bRet;
@@ -1369,91 +1088,70 @@ namespace svx
 
     void SuggestionEdit::DoJump( bool _bUp )
     {
-        const Link<Control&,void>& rLoseFocusHdl = GetLoseFocusHdl();
-        rLoseFocusHdl.Call( *this );
-        m_pScrollBar->SetThumbPos( m_pScrollBar->GetThumbPos() + ( _bUp? -1 : 1 ) );
-
-        ( static_cast< HangulHanjaEditDictDialog* >( GetParentDialog() ) )->UpdateScrollbar();
+        m_pScrollBar->vadjustment_set_value( m_pScrollBar->vadjustment_get_value() + ( _bUp? -1 : 1 ) );
+        m_pParent->UpdateScrollbar();
     }
 
-    SuggestionEdit::SuggestionEdit( vcl::Window* pParent, WinBits nBits )
-        : Edit(pParent, nBits)
+    SuggestionEdit::SuggestionEdit(std::unique_ptr<weld::Entry> xEntry, HangulHanjaEditDictDialog* pParent)
+        : m_pParent(pParent)
         , m_pPrev(nullptr)
         , m_pNext(nullptr)
         , m_pScrollBar(nullptr)
+        , m_xEntry(std::move(xEntry))
     {
+        m_xEntry->connect_key_press(LINK(this, SuggestionEdit, KeyInputHdl));
     }
 
-    SuggestionEdit::~SuggestionEdit()
-    {
-        disposeOnce();
-    }
-
-    void SuggestionEdit::dispose()
-    {
-        m_pPrev.clear();
-        m_pNext.clear();
-        m_pScrollBar.clear();
-        Edit::dispose();
-    }
-
-    bool SuggestionEdit::PreNotify( NotifyEvent& rNEvt )
+    IMPL_LINK(SuggestionEdit, KeyInputHdl, const KeyEvent&, rKEvt, bool)
     {
         bool bHandled = false;
-        if( rNEvt.GetType() == MouseNotifyEvent::KEYINPUT )
+
+        const vcl::KeyCode& rKeyCode = rKEvt.GetKeyCode();
+        sal_uInt16          nMod = rKeyCode.GetModifier();
+        sal_uInt16          nCode = rKeyCode.GetCode();
+        if( nCode == KEY_TAB && ( !nMod || KEY_SHIFT == nMod ) )
         {
-            const KeyEvent*     pKEvt = rNEvt.GetKeyEvent();
-            const vcl::KeyCode& rKeyCode = pKEvt->GetKeyCode();
-            sal_uInt16          nMod = rKeyCode.GetModifier();
-            sal_uInt16          nCode = rKeyCode.GetCode();
-            if( nCode == KEY_TAB && ( !nMod || KEY_SHIFT == nMod ) )
+            bool        bUp = KEY_SHIFT == nMod;
+            if( ShouldScroll( bUp ) )
             {
-                bool        bUp = KEY_SHIFT == nMod;
-                if( ShouldScroll( bUp ) )
+                DoJump( bUp );
+                m_xEntry->select_region(0, -1);
+                    // Tab-travel doesn't really happen, so emulate it by setting a selection manually
+                bHandled = true;
+            }
+        }
+        else if( KEY_UP == nCode || KEY_DOWN == nCode )
+        {
+            bool        bUp = KEY_UP == nCode;
+            if( ShouldScroll( bUp ) )
+            {
+                DoJump( bUp );
+                bHandled = true;
+            }
+            else if( bUp )
+            {
+                if( m_pPrev )
                 {
-                    DoJump( bUp );
-                    SetSelection( Selection( 0, SELECTION_MAX ) );
-                        // Tab-travel doesn't really happen, so emulate it by setting a selection manually
+                    m_pPrev->grab_focus();
                     bHandled = true;
                 }
             }
-            else if( KEY_UP == nCode || KEY_DOWN == nCode )
+            else if( m_pNext )
             {
-                bool        bUp = KEY_UP == nCode;
-                if( ShouldScroll( bUp ) )
-                {
-                    DoJump( bUp );
-                    bHandled = true;
-                }
-                else if( bUp )
-                {
-                    if( m_pPrev )
-                    {
-                        m_pPrev->GrabFocus();
-                        bHandled = true;
-                    }
-                }
-                else if( m_pNext )
-                {
-                    m_pNext->GrabFocus();
-                    bHandled = true;
-                }
+                m_pNext->grab_focus();
+                bHandled = true;
             }
         }
 
-        if( !bHandled )
-            bHandled = Edit::PreNotify( rNEvt );
         return bHandled;
     }
 
-    void SuggestionEdit::init( ScrollBar* pScrollBar, SuggestionEdit* pPrev, SuggestionEdit* pNext)
+    void SuggestionEdit::init(weld::ScrolledWindow* pScrollBar, SuggestionEdit* pPrev, SuggestionEdit* pNext)
     {
         m_pScrollBar = pScrollBar;
         m_pPrev = pPrev;
         m_pNext = pNext;
     }
-
-    VCL_BUILDER_FACTORY_ARGS(SuggestionEdit, WB_LEFT|WB_VCENTER|WB_BORDER)
 
     namespace
     {
@@ -1471,7 +1169,7 @@ namespace svx
                                                         _rOrg.getLength(),
                                                         ConversionDirection_FROM_LEFT,
                                                         css::i18n::TextConversionOption::NONE );
-                    bRet = _rEntries.getLength() > 0;
+                    bRet = _rEntries.hasElements();
                 }
                 catch( const IllegalArgumentException& )
                 {
@@ -1482,57 +1180,56 @@ namespace svx
         }
     }
 
-
-    IMPL_LINK_NOARG( HangulHanjaEditDictDialog, ScrollHdl, ScrollBar*, void )
+    IMPL_LINK_NOARG( HangulHanjaEditDictDialog, ScrollHdl, weld::ScrolledWindow&, void )
     {
         UpdateScrollbar();
     }
 
-    IMPL_LINK_NOARG( HangulHanjaEditDictDialog, OriginalModifyHdl, Edit&, void )
+    IMPL_LINK_NOARG( HangulHanjaEditDictDialog, OriginalModifyHdl, weld::ComboBox&, void )
     {
         m_bModifiedOriginal = true;
-        m_aOriginal = comphelper::string::stripEnd( m_aOriginalLB->GetText(), ' ' );
+        m_aOriginal = comphelper::string::stripEnd( m_xOriginalLB->get_active_text(), ' ' );
 
         UpdateSuggestions();
         UpdateButtonStates();
     }
 
-    IMPL_LINK( HangulHanjaEditDictDialog, EditModifyHdl1, Edit&, rEdit, void )
+    IMPL_LINK( HangulHanjaEditDictDialog, EditModifyHdl1, weld::Entry&, rEdit, void )
     {
         EditModify( &rEdit, 0 );
     }
 
-    IMPL_LINK( HangulHanjaEditDictDialog, EditModifyHdl2, Edit&, rEdit, void )
+    IMPL_LINK( HangulHanjaEditDictDialog, EditModifyHdl2, weld::Entry&, rEdit, void )
     {
         EditModify( &rEdit, 1 );
     }
 
-    IMPL_LINK( HangulHanjaEditDictDialog, EditModifyHdl3, Edit&, rEdit, void )
+    IMPL_LINK( HangulHanjaEditDictDialog, EditModifyHdl3, weld::Entry&, rEdit, void )
     {
         EditModify( &rEdit, 2 );
     }
 
-    IMPL_LINK( HangulHanjaEditDictDialog, EditModifyHdl4, Edit&, rEdit, void )
+    IMPL_LINK( HangulHanjaEditDictDialog, EditModifyHdl4, weld::Entry&, rEdit, void )
     {
         EditModify( &rEdit, 3 );
     }
 
-    IMPL_LINK_NOARG( HangulHanjaEditDictDialog, BookLBSelectHdl, ListBox&, void )
+    IMPL_LINK_NOARG( HangulHanjaEditDictDialog, BookLBSelectHdl, weld::ComboBox&, void )
     {
-        InitEditDictDialog( m_aBookLB->GetSelectEntryPos() );
+        InitEditDictDialog( m_xBookLB->get_active() );
     }
 
-    IMPL_LINK_NOARG( HangulHanjaEditDictDialog, NewPBPushHdl, Button*, void )
+    IMPL_LINK_NOARG( HangulHanjaEditDictDialog, NewPBPushHdl, weld::Button&, void )
     {
-        DBG_ASSERT( m_pSuggestions, "-HangulHanjaEditDictDialog::NewPBPushHdl(): no suggestions... search in hell..." );
+        DBG_ASSERT( m_xSuggestions, "-HangulHanjaEditDictDialog::NewPBPushHdl(): no suggestions... search in hell..." );
         Reference< XConversionDictionary >  xDict = m_rDictList[ m_nCurrentDict ];
-        if( xDict.is() && m_pSuggestions )
+        if( xDict.is() && m_xSuggestions )
         {
             //delete old entry
             bool bRemovedSomething = DeleteEntryFromDictionary( xDict );
 
             OUString                aLeft( m_aOriginal );
-            const OUString*           pRight = m_pSuggestions->First();
+            const OUString*           pRight = m_xSuggestions->First();
             bool bAddedSomething = false;
             while( pRight )
             {
@@ -1549,7 +1246,7 @@ namespace svx
                 {
                 }
 
-                pRight = m_pSuggestions->Next();
+                pRight = m_xSuggestions->Next();
             }
 
             if( bAddedSomething || bRemovedSomething )
@@ -1590,7 +1287,7 @@ namespace svx
         return bRemovedSomething;
     }
 
-    IMPL_LINK_NOARG( HangulHanjaEditDictDialog, DeletePBPushHdl, Button*, void )
+    IMPL_LINK_NOARG( HangulHanjaEditDictDialog, DeletePBPushHdl, weld::Button&, void )
     {
         if( DeleteEntryFromDictionary( m_rDictList[ m_nCurrentDict ] ) )
         {
@@ -1600,22 +1297,23 @@ namespace svx
         }
     }
 
-    void HangulHanjaEditDictDialog::InitEditDictDialog( sal_uInt32 _nSelDict )
+    void HangulHanjaEditDictDialog::InitEditDictDialog( sal_uInt32 nSelDict )
     {
-        if( m_pSuggestions )
-            m_pSuggestions->Clear();
+        if( m_xSuggestions )
+            m_xSuggestions->Clear();
 
-        if( m_nCurrentDict != _nSelDict )
+        if( m_nCurrentDict != nSelDict )
         {
-            m_nCurrentDict = _nSelDict;
+            m_nCurrentDict = nSelDict;
             m_aOriginal.clear();
             m_bModifiedOriginal = true;
         }
 
         UpdateOriginalLB();
 
-        m_aOriginalLB->SetText( !m_aOriginal.isEmpty() ? m_aOriginal : m_aEditHintText, Selection( 0, SELECTION_MAX ) );
-        m_aOriginalLB->GrabFocus();
+        m_xOriginalLB->set_entry_text( !m_aOriginal.isEmpty() ? m_aOriginal : m_aEditHintText);
+        m_xOriginalLB->select_entry_region(0, -1);
+        m_xOriginalLB->grab_focus();
 
         UpdateSuggestions();
         UpdateButtonStates();
@@ -1623,7 +1321,7 @@ namespace svx
 
     void HangulHanjaEditDictDialog::UpdateOriginalLB()
     {
-        m_aOriginalLB->Clear();
+        m_xOriginalLB->clear();
         Reference< XConversionDictionary >  xDict = m_rDictList[ m_nCurrentDict ];
         if( xDict.is() )
         {
@@ -1632,7 +1330,7 @@ namespace svx
             OUString*               pEntry = aEntries.getArray();
             while( n )
             {
-                m_aOriginalLB->InsertEntry( *pEntry );
+                m_xOriginalLB->append_text( *pEntry );
 
                 ++pEntry;
                 --n;
@@ -1647,11 +1345,11 @@ namespace svx
     void HangulHanjaEditDictDialog::UpdateButtonStates()
     {
         bool bHaveValidOriginalString = !m_aOriginal.isEmpty() && m_aOriginal != m_aEditHintText;
-        bool bNew = bHaveValidOriginalString && m_pSuggestions && m_pSuggestions->GetCount() > 0;
+        bool bNew = bHaveValidOriginalString && m_xSuggestions && m_xSuggestions->GetCount() > 0;
         bNew = bNew && ( m_bModifiedSuggestions || m_bModifiedOriginal );
 
-        m_aNewPB->Enable( bNew );
-        m_aDeletePB->Enable(!m_bModifiedOriginal && bHaveValidOriginalString);
+        m_xNewPB->set_sensitive( bNew );
+        m_xDeletePB->set_sensitive(!m_bModifiedOriginal && bHaveValidOriginalString);
     }
 
     void HangulHanjaEditDictDialog::UpdateSuggestions()
@@ -1662,21 +1360,21 @@ namespace svx
         {
             m_bModifiedOriginal = false;
 
-            if( m_pSuggestions )
-                m_pSuggestions->Clear();
+            if( m_xSuggestions )
+                m_xSuggestions->Clear();
 
             //fill found entries into boxes
             sal_uInt32 nCnt = aEntries.getLength();
             if( nCnt )
             {
-                if( !m_pSuggestions )
-                    m_pSuggestions = new SuggestionList;
+                if( !m_xSuggestions )
+                    m_xSuggestions.reset(new SuggestionList);
 
                 const OUString* pSugg = aEntries.getConstArray();
                 sal_uInt32 n = 0;
                 while( nCnt )
                 {
-                    m_pSuggestions->Set( pSugg[ n ], sal_uInt16( n ) );
+                    m_xSuggestions->Set( pSugg[ n ], sal_uInt16( n ) );
                     ++n;
                     --nCnt;
                 }
@@ -1684,97 +1382,93 @@ namespace svx
             m_bModifiedSuggestions = false;
         }
 
-        m_aScrollSB->SetThumbPos( 0 );
+        m_xScrollSB->vadjustment_set_value( 0 );
         UpdateScrollbar();              // will force edits to be filled new
     }
 
-    void HangulHanjaEditDictDialog::SetEditText( Edit& _rEdit, sal_uInt16 _nEntryNum )
+    void HangulHanjaEditDictDialog::SetEditText(SuggestionEdit& rEdit, sal_uInt16 nEntryNum)
     {
         OUString  aStr;
-        if( m_pSuggestions )
+        if( m_xSuggestions )
         {
-            const OUString*   p = m_pSuggestions->Get( _nEntryNum );
-            if( p )
-                aStr = *p;
+            aStr = m_xSuggestions->Get(nEntryNum);
         }
 
-        _rEdit.SetText( aStr );
+        rEdit.set_text(aStr);
     }
 
-    void HangulHanjaEditDictDialog::EditModify( Edit* _pEdit, sal_uInt8 _nEntryOffset )
+    void HangulHanjaEditDictDialog::EditModify(const weld::Entry* pEdit, sal_uInt8 _nEntryOffset)
     {
         m_bModifiedSuggestions = true;
 
-        OUString  aTxt( _pEdit->GetText() );
+        OUString  aTxt( pEdit->get_text() );
         sal_uInt16 nEntryNum = m_nTopPos + _nEntryOffset;
         if( aTxt.isEmpty() )
         {
             //reset suggestion
-            if( m_pSuggestions )
-                m_pSuggestions->Reset( nEntryNum );
+            if( m_xSuggestions )
+                m_xSuggestions->Reset( nEntryNum );
         }
         else
         {
             //set suggestion
-            if( !m_pSuggestions )
-                m_pSuggestions = new SuggestionList;
-            m_pSuggestions->Set( aTxt, nEntryNum );
+            if( !m_xSuggestions )
+                m_xSuggestions.reset(new SuggestionList);
+            m_xSuggestions->Set( aTxt, nEntryNum );
         }
 
         UpdateButtonStates();
     }
 
-    HangulHanjaEditDictDialog::HangulHanjaEditDictDialog( vcl::Window* _pParent, HHDictList& _rDictList, sal_uInt32 _nSelDict )
-        :ModalDialog            ( _pParent, "HangulHanjaEditDictDialog", "cui/ui/hangulhanjaeditdictdialog.ui" )
-        ,m_aEditHintText        ( CuiResId(RID_SVXSTR_EDITHINT) )
-        ,m_rDictList            ( _rDictList )
-        ,m_nCurrentDict         ( 0xFFFFFFFF )
-        ,m_pSuggestions         ( nullptr )
-        ,m_nTopPos              ( 0 )
-        ,m_bModifiedSuggestions ( false )
-        ,m_bModifiedOriginal    ( false )
+    HangulHanjaEditDictDialog::HangulHanjaEditDictDialog(weld::Window* pParent, HHDictList& _rDictList, sal_uInt32 nSelDict)
+        : GenericDialogController(pParent, "cui/ui/hangulhanjaeditdictdialog.ui", "HangulHanjaEditDictDialog")
+        , m_aEditHintText        ( CuiResId(RID_SVXSTR_EDITHINT) )
+        , m_rDictList            ( _rDictList )
+        , m_nCurrentDict         ( 0xFFFFFFFF )
+        , m_nTopPos              ( 0 )
+        , m_bModifiedSuggestions ( false )
+        , m_bModifiedOriginal    ( false )
+        , m_xBookLB(m_xBuilder->weld_combo_box("book"))
+        , m_xOriginalLB(m_xBuilder->weld_combo_box("original"))
+        , m_xEdit1(new SuggestionEdit(m_xBuilder->weld_entry("edit1"), this))
+        , m_xEdit2(new SuggestionEdit(m_xBuilder->weld_entry("edit2"), this))
+        , m_xEdit3(new SuggestionEdit(m_xBuilder->weld_entry("edit3"), this))
+        , m_xEdit4(new SuggestionEdit(m_xBuilder->weld_entry("edit4"), this))
+        , m_xContents(m_xBuilder->weld_widget("box"))
+        , m_xScrollSB(m_xBuilder->weld_scrolled_window("scrollbar"))
+        , m_xNewPB(m_xBuilder->weld_button("new"))
+        , m_xDeletePB(m_xBuilder->weld_button("delete"))
     {
-        get( m_aBookLB, "book" );
-        get( m_aOriginalLB, "original" );
-        get( m_aNewPB, "new" );
-        get( m_aDeletePB, "delete" );
-        get( m_aScrollSB, "scrollbar" );
-        get( m_aEdit1, "edit1" );
-        get( m_aEdit2, "edit2" );
-        get( m_aEdit3, "edit3" );
-        get( m_aEdit4, "edit4" );
+        m_xScrollSB->set_user_managed_scrolling();
 
-        m_aEdit1->init( m_aScrollSB, nullptr, m_aEdit2 );
-        m_aEdit2->init( m_aScrollSB, m_aEdit1, m_aEdit3 );
-        m_aEdit3->init( m_aScrollSB, m_aEdit2, m_aEdit4 );
-        m_aEdit4->init( m_aScrollSB, m_aEdit3, nullptr );
+        Size aSize(m_xContents->get_preferred_size());
+        m_xScrollSB->set_size_request(-1, aSize.Height());
 
-        m_aOriginalLB->SetModifyHdl( LINK( this, HangulHanjaEditDictDialog, OriginalModifyHdl ) );
+        m_xEdit1->init( m_xScrollSB.get(), nullptr, m_xEdit2.get() );
+        m_xEdit2->init( m_xScrollSB.get(), m_xEdit1.get(), m_xEdit3.get() );
+        m_xEdit3->init( m_xScrollSB.get(), m_xEdit2.get(), m_xEdit4.get() );
+        m_xEdit4->init( m_xScrollSB.get(), m_xEdit3.get(), nullptr );
 
-        m_aNewPB->SetClickHdl( LINK( this, HangulHanjaEditDictDialog, NewPBPushHdl ) );
-        m_aNewPB->Enable( false );
+        m_xOriginalLB->connect_changed( LINK( this, HangulHanjaEditDictDialog, OriginalModifyHdl ) );
 
-        m_aDeletePB->SetClickHdl( LINK( this, HangulHanjaEditDictDialog, DeletePBPushHdl ) );
-        m_aDeletePB->Enable( false );
+        m_xNewPB->connect_clicked( LINK( this, HangulHanjaEditDictDialog, NewPBPushHdl ) );
+        m_xNewPB->set_sensitive( false );
 
-    #if( MAXNUM_SUGGESTIONS <= 4 )
-        #error number of suggestions should not under-run the value of 5
-    #endif
+        m_xDeletePB->connect_clicked( LINK( this, HangulHanjaEditDictDialog, DeletePBPushHdl ) );
+        m_xDeletePB->set_sensitive( false );
 
-        Link<ScrollBar*,void>  aScrLk( LINK( this, HangulHanjaEditDictDialog, ScrollHdl ) );
-        m_aScrollSB->SetScrollHdl( aScrLk );
-        m_aScrollSB->SetEndScrollHdl( aScrLk );
-        m_aScrollSB->SetRangeMin( 0 );
-        m_aScrollSB->SetRangeMax( MAXNUM_SUGGESTIONS );
-        m_aScrollSB->SetPageSize( 4 );       // because we have 4 edits / page
-        m_aScrollSB->SetVisibleSize( 4 );
+        static_assert(MAXNUM_SUGGESTIONS >= 5, "number of suggestions should not under-run the value of 5");
 
-        m_aEdit1->SetModifyHdl( LINK( this, HangulHanjaEditDictDialog, EditModifyHdl1 ) );
-        m_aEdit2->SetModifyHdl( LINK( this, HangulHanjaEditDictDialog, EditModifyHdl2 ) );
-        m_aEdit3->SetModifyHdl( LINK( this, HangulHanjaEditDictDialog, EditModifyHdl3 ) );
-        m_aEdit4->SetModifyHdl( LINK( this, HangulHanjaEditDictDialog, EditModifyHdl4 ) );
+        // 4 here, because we have 4 edits / page
+        m_xScrollSB->vadjustment_configure(0, 0, MAXNUM_SUGGESTIONS, 1, 4, 4);
+        m_xScrollSB->connect_vadjustment_changed(LINK(this, HangulHanjaEditDictDialog, ScrollHdl));
 
-        m_aBookLB->SetSelectHdl( LINK( this, HangulHanjaEditDictDialog, BookLBSelectHdl ) );
+        m_xEdit1->connect_changed( LINK( this, HangulHanjaEditDictDialog, EditModifyHdl1 ) );
+        m_xEdit2->connect_changed( LINK( this, HangulHanjaEditDictDialog, EditModifyHdl2 ) );
+        m_xEdit3->connect_changed( LINK( this, HangulHanjaEditDictDialog, EditModifyHdl3 ) );
+        m_xEdit4->connect_changed( LINK( this, HangulHanjaEditDictDialog, EditModifyHdl4 ) );
+
+        m_xBookLB->connect_changed( LINK( this, HangulHanjaEditDictDialog, BookLBSelectHdl ) );
         sal_uInt32  nDictCnt = m_rDictList.size();
         for( sal_uInt32 n = 0 ; n < nDictCnt ; ++n )
         {
@@ -1782,47 +1476,27 @@ namespace svx
             OUString aName;
             if( xDic.is() )
                 aName = xDic->getName();
-            m_aBookLB->InsertEntry( aName );
+            m_xBookLB->append_text( aName );
         }
-        m_aBookLB->SelectEntryPos( sal_uInt16( _nSelDict ) );
+        m_xBookLB->set_active(nSelDict);
 
-        InitEditDictDialog( _nSelDict );
+        InitEditDictDialog(nSelDict);
     }
 
     HangulHanjaEditDictDialog::~HangulHanjaEditDictDialog()
     {
-        disposeOnce();
-    }
-
-    void HangulHanjaEditDictDialog::dispose()
-    {
-        delete m_pSuggestions;
-        m_pSuggestions = nullptr;
-        m_aBookLB.clear();
-        m_aOriginalLB.clear();
-        m_aEdit1.clear();
-        m_aEdit2.clear();
-        m_aEdit3.clear();
-        m_aEdit4.clear();
-        m_aScrollSB.clear();
-        m_aNewPB.clear();
-        m_aDeletePB.clear();
-        ModalDialog::dispose();
     }
 
     void HangulHanjaEditDictDialog::UpdateScrollbar()
     {
-        sal_uInt16  nPos = sal_uInt16( m_aScrollSB->GetThumbPos() );
+        sal_uInt16  nPos = m_xScrollSB->vadjustment_get_value();
         m_nTopPos = nPos;
 
-        SetEditText( *m_aEdit1, nPos++ );
-        SetEditText( *m_aEdit2, nPos++ );
-        SetEditText( *m_aEdit3, nPos++ );
-        SetEditText( *m_aEdit4, nPos );
+        SetEditText( *m_xEdit1, nPos++ );
+        SetEditText( *m_xEdit2, nPos++ );
+        SetEditText( *m_xEdit3, nPos++ );
+        SetEditText( *m_xEdit4, nPos );
     }
-
-
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

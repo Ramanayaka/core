@@ -17,23 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cassert>
-#include <list>
 #include <vector>
 
-#include "com/sun/star/bridge/XInstanceProvider.hpp"
-#include "com/sun/star/container/NoSuchElementException.hpp"
-#include "cppuhelper/exc_hlp.hxx"
-#include "o3tl/runtimetooustring.hxx"
-#include "rtl/byteseq.hxx"
-#include "rtl/ref.hxx"
-#include "rtl/ustring.hxx"
-#include "sal/log.hxx"
-#include "sal/types.h"
-#include "typelib/typedescription.hxx"
-#include "uno/dispatcher.hxx"
+#include <com/sun/star/bridge/XInstanceProvider.hpp>
+#include <com/sun/star/container/NoSuchElementException.hpp>
+#include <cppuhelper/exc_hlp.hxx>
+#include <o3tl/runtimetooustring.hxx>
+#include <rtl/byteseq.hxx>
+#include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/log.hxx>
+#include <sal/types.h>
+#include <typelib/typedescription.hxx>
+#include <uno/dispatcher.hxx>
 
 #include "binaryany.hxx"
 #include "bridge.hxx"
@@ -102,7 +101,7 @@ void IncomingRequest::execute() const {
                 tid_, member_, setter_, isExc, ret, outArgs, false);
             return;
         } catch (const css::uno::RuntimeException & e) {
-            SAL_INFO("binaryurp", "caught UNO runtime exception " << e.Message);
+            SAL_INFO("binaryurp", "caught " << e);
         } catch (const std::exception & e) {
             SAL_INFO("binaryurp", "caught C++ exception " << e.what());
         }
@@ -146,10 +145,7 @@ bool IncomingRequest::execute_throw(
                 try {
                     ifc = prov->getInstance(oid_);
                 } catch (const css::container::NoSuchElementException & e) {
-                    SAL_INFO(
-                        "binaryurp",
-                        "initial element " << oid_
-                            << ": NoSuchElementException " << e.Message);
+                    SAL_INFO("binaryurp", "initial element " << oid_ << ": " << e);
                 }
             }
             if (ifc.is()) {
@@ -172,12 +168,12 @@ bool IncomingRequest::execute_throw(
             }
             break;
         }
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     default:
         {
             assert(object_.is());
             css::uno::TypeDescription retType;
-            std::list< std::vector< char > > outBufs;
+            std::vector< std::vector< char > > outBufs;
             std::vector< void * > args;
             switch (member_.get()->eTypeClass) {
             case typelib_TypeClass_INTERFACE_ATTRIBUTE:
@@ -212,12 +208,11 @@ bool IncomingRequest::execute_throw(
                                 css::uno::TypeDescription(
                                     mtd->pParams[j].pTypeRef));
                         } else {
-                            outBufs.push_back(
-                                std::vector< char >(size_t_round(
+                            outBufs.emplace_back(size_t_round(
                                     css::uno::TypeDescription(
                                         mtd->pParams[j].pTypeRef).
-                                    get()->nSize)));
-                            p = &outBufs.back()[0];
+                                    get()->nSize));
+                            p = outBufs.back().data();
                         }
                         args.push_back(p);
                         if (mtd->pParams[j].bOut) {
@@ -238,8 +233,8 @@ bool IncomingRequest::execute_throw(
             uno_Any exc;
             uno_Any * pexc = &exc;
             (*object_.get()->pDispatcher)(
-                object_.get(), member_.get(), retBuf.empty() ? nullptr : &retBuf[0],
-                args.empty() ? nullptr : &args[0], &pexc);
+                object_.get(), member_.get(), retBuf.empty() ? nullptr : retBuf.data(),
+                args.empty() ? nullptr : args.data(), &pexc);
             isExc = pexc != nullptr;
             if (isExc) {
                 *returnValue = BinaryAny(
@@ -249,8 +244,8 @@ bool IncomingRequest::execute_throw(
                 uno_any_destruct(&exc, nullptr);
             } else {
                 if (!retBuf.empty()) {
-                    *returnValue = BinaryAny(retType, &retBuf[0]);
-                    uno_destructData(&retBuf[0], retType.get(), nullptr);
+                    *returnValue = BinaryAny(retType, retBuf.data());
+                    uno_destructData(retBuf.data(), retType.get(), nullptr);
                 }
                 if (!outArguments->empty()) {
                     assert(
@@ -261,7 +256,7 @@ bool IncomingRequest::execute_throw(
                             typelib_InterfaceMethodTypeDescription * >(
                                 member_.get());
                     std::vector< BinaryAny >::iterator i(outArguments->begin());
-                    std::list< std::vector< char > >::iterator j(
+                    std::vector< std::vector< char > >::iterator j(
                         outBufs.begin());
                     for (sal_Int32 k = 0; k != mtd->nParams; ++k) {
                         if (mtd->pParams[k].bOut) {
@@ -272,7 +267,7 @@ bool IncomingRequest::execute_throw(
                         }
                         if (!mtd->pParams[k].bIn) {
                             uno_type_destructData(
-                                &(*j++)[0], mtd->pParams[k].pTypeRef, nullptr);
+                                (j++)->data(), mtd->pParams[k].pTypeRef, nullptr);
                         }
                     }
                     assert(i == outArguments->end());

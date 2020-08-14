@@ -20,21 +20,19 @@
 #ifndef INCLUDED_FORMS_SOURCE_COMPONENT_FILTER_HXX
 #define INCLUDED_FORMS_SOURCE_COMPONENT_FILTER_HXX
 
-#include <config_features.h>
-
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/form/XBoundComponent.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XNumberFormatter.hpp>
 #include <com/sun/star/awt/XTextComponent.hpp>
 #include <com/sun/star/sdb/SQLContext.hpp>
+#include <com/sun/star/sdbc/XConnection.hpp>
 #include <toolkit/controls/unocontrol.hxx>
 
 #include <toolkit/helper/listenermultiplexer.hxx>
 #include <cppuhelper/implbase5.hxx>
 #include <comphelper/uno3.hxx>
-#include <connectivity/sqlparse.hxx>
 #include <svx/ParseContext.hxx>
 
 #include <unordered_map>
@@ -53,7 +51,7 @@ namespace frm
                                 ,   css::lang::XInitialization
                                 >   OFilterControl_BASE;
 
-    class OFilterControl    :public UnoControl
+    class OFilterControl final :public UnoControl
                             ,public OFilterControl_BASE
                             ,public ::svxform::OParseContextClient
     {
@@ -65,7 +63,7 @@ namespace frm
         css::uno::Reference< css::sdbc::XConnection >                 m_xConnection;
         css::uno::Reference< css::awt::XWindow >                      m_xMessageParent;
 
-        typedef std::unordered_map< OUString, OUString, OUStringHash > MapString2String;
+        typedef std::unordered_map< OUString, OUString > MapString2String;
         MapString2String                m_aDisplayItemToValueItem;
 
         OUString                        m_aText;
@@ -74,9 +72,8 @@ namespace frm
         bool                            m_bMultiLine : 1;
         bool                            m_bFilterListFilled : 1;
 
-    private:
         void implInitFilterList();
-        void initControlModel(css::uno::Reference< css::beans::XPropertySet >& xControlModel);
+        void initControlModel(css::uno::Reference< css::beans::XPropertySet > const & xControlModel);
 
     public:
         explicit OFilterControl( const css::uno::Reference< css::uno::XComponentContext >& _rxORB );
@@ -127,7 +124,7 @@ namespace frm
         virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
-    protected:
+    private:
         virtual void PrepareWindowDescriptor( css::awt::WindowDescriptor& rDesc ) override;
         virtual void ImplSetPeerProperty( const OUString& rPropName, const css::uno::Any& rVal ) override;
 

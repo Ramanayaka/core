@@ -17,16 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "java/sql/DriverPropertyInfo.hxx"
-#include "java/lang/Boolean.hxx"
-#include "java/tools.hxx"
-#include "java/lang/String.hxx"
+#include <java/sql/DriverPropertyInfo.hxx>
 
 using namespace connectivity;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 
 

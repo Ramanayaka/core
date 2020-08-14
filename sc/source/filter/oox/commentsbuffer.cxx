@@ -20,9 +20,10 @@
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
 
-#include "commentsbuffer.hxx"
+#include <commentsbuffer.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/sheet/XSheetAnnotationAnchor.hpp>
 #include <com/sun/star/sheet/XSheetAnnotationShapeSupplier.hpp>
 #include <com/sun/star/sheet/XSheetAnnotations.hpp>
@@ -31,13 +32,21 @@
 #include <osl/diagnose.h>
 #include <oox/helper/attributelist.hxx>
 #include <oox/vml/vmlshape.hxx>
-#include "addressconverter.hxx"
-#include "drawingfragment.hxx"
+#include <addressconverter.hxx>
+#include <drawingfragment.hxx>
 #include <svx/sdtaitm.hxx>
-#include "unitconverter.hxx"
+#include <svx/svdocapt.hxx>
+#include <svx/unoshape.hxx>
+#include <tools/diagnose_ex.h>
+#include <document.hxx>
+#include <drwlayer.hxx>
+#include <cellsuno.hxx>
+#include <docfunc.hxx>
+#include <docuno.hxx>
+#include <docsh.hxx>
+#include <postit.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::sheet;
@@ -65,13 +74,31 @@ static sal_Int32 lcl_ToVertAlign( sal_Int32 nAlign )
     switch( nAlign )
     {
         case XML_top:
+        case XML_Top:
             return SDRTEXTVERTADJUST_TOP;
         case XML_center:
+        case XML_Center:
             return SDRTEXTVERTADJUST_CENTER;
         case XML_bottom:
+        case XML_Bottom:
             return SDRTEXTVERTADJUST_BOTTOM;
         default:
             return SDRTEXTVERTADJUST_BLOCK;
+    }
+}
+
+static sal_Int16 lcl_ToParaAlign(sal_Int32 nAlign)
+{
+    switch ( nAlign )
+    {
+        case XML_Left:
+            return sal_Int16(css::style::ParagraphAdjust_LEFT);
+        case XML_Right:
+            return sal_Int16(css::style::ParagraphAdjust_RIGHT);
+        case XML_Center:
+            return sal_Int16(css::style::ParagraphAdjust_CENTER);
+        default:
+            return sal_Int16(css::style::ParagraphAdjust_BLOCK);
     }
 }
 
@@ -121,7 +148,7 @@ void Comment::importComment( SequenceInputStream& rStrm )
 
 RichStringRef const & Comment::createText()
 {
-    maModel.mxText.reset( new RichString( *this ) );
+    maModel.mxText = std::make_shared<RichString>( *this );
     return maModel.mxText;
 }
 
@@ -130,28 +157,27 @@ void Comment::finalizeImport()
     // BIFF12 stores cell range instead of cell address, use first cell of this range
     OSL_ENSURE( maModel.maRange.aStart == maModel.maRange.aEnd,
         "Comment::finalizeImport - comment anchor should be a single cell" );
-    if( getAddressConverter().checkCellAddress( maModel.maRange.aStart, true ) && maModel.mxText.get() ) try
+    if( !getAddressConverter().checkCellAddress( maModel.maRange.aStart, true ) || !maModel.mxText )
+        return;
+
+    try
     {
-        CellAddress aNotePos( maModel.maRange.aStart.Tab(), maModel.maRange.aStart.Col(), maModel.maRange.aStart.Row() );
-        Reference< XSheetAnnotationsSupplier > xAnnosSupp( getSheet(), UNO_QUERY_THROW );
-        Reference< XSheetAnnotations > xAnnos( xAnnosSupp->getAnnotations(), UNO_SET_THROW );
+        ScTableSheetObj* pAnnosSupp = static_cast<ScTableSheetObj*>(getSheet().get());
+        rtl::Reference<ScAnnotationsObj> xAnnos = static_cast<ScAnnotationsObj*>(pAnnosSupp->getAnnotations().get());
+        ScDocShell* pDocShell = xAnnos->GetDocShell();
         // non-empty string required by note implementation (real text will be added below)
-        xAnnos->insertNew( aNotePos, OUString( ' ' ) );
+        ScPostIt* pPostIt = pDocShell->GetDocFunc().ImportNote( maModel.maRange.aStart, OUString( ' ' ) );
+        SdrCaptionObj* pCaption = pPostIt->GetOrCreateCaption( maModel.maRange.aStart );
 
-        // receive created note from cell (insertNew does not return the note)
-        Reference< XSheetAnnotationAnchor > xAnnoAnchor( getCell( maModel.maRange.aStart ), UNO_QUERY_THROW );
-        Reference< XSheetAnnotation > xAnno( xAnnoAnchor->getAnnotation(), UNO_SET_THROW );
-        Reference< XSheetAnnotationShapeSupplier > xAnnoShapeSupp( xAnno, UNO_QUERY_THROW );
-        Reference< XShape > xAnnoShape( xAnnoShapeSupp->getAnnotationShape(), UNO_SET_THROW );
+        Reference< XShape > xAnnoShape( pCaption->getUnoShape(), UNO_QUERY_THROW ); // SvxShapeText
+        // setting a property triggers expensive process, so set them all at once
+        Reference< css::beans::XMultiPropertySet > xAnnoShapeMultiPropSet(xAnnoShape, UNO_QUERY_THROW);
 
-        // convert shape formatting and visibility
-        bool bVisible = true;
         // Add shape formatting properties (autoFill, colHidden and rowHidden are dropped)
-        PropertySet aCommentPr( xAnnoShape );
-        aCommentPr.setProperty( PROP_TextFitToSize, maModel.mbAutoScale );
-        aCommentPr.setProperty( PROP_MoveProtect, maModel.mbLocked );
-        aCommentPr.setProperty( PROP_TextHorizontalAdjust, lcl_ToHorizAlign( maModel.mnTHA ) );
-        aCommentPr.setProperty( PROP_TextVerticalAdjust, lcl_ToVertAlign( maModel.mnTVA ) );
+        xAnnoShapeMultiPropSet->setPropertyValues(
+            Sequence<OUString> { "TextFitToSize", "MoveProtect", "TextHorizontalAdjust", "TextVerticalAdjust" },
+            Sequence<Any> { Any(maModel.mbAutoScale), Any(maModel.mbLocked),
+                Any(lcl_ToHorizAlign( maModel.mnTHA )), Any(lcl_ToVertAlign( maModel.mnTVA )) });
         if( maModel.maAnchor.Width > 0 && maModel.maAnchor.Height > 0 )
         {
             xAnnoShape->setPosition( css::awt::Point( maModel.maAnchor.X, maModel.maAnchor.Y ) );
@@ -159,14 +185,22 @@ void Comment::finalizeImport()
         }
 
         // convert shape formatting and visibility
-        if( const ::oox::vml::ShapeBase* pNoteShape = getVmlDrawing().getNoteShape( maModel.maRange.aStart ) )
+        bool bVisible = true;
+        if( const ::oox::vml::ShapeBase* pVmlNoteShape = getVmlDrawing().getNoteShape( maModel.maRange.aStart ) )
         {
             // position and formatting
-            pNoteShape->convertFormatting( xAnnoShape );
+            pVmlNoteShape->convertFormatting( xAnnoShape );
             // visibility
-            bVisible = pNoteShape->getTypeModel().mbVisible;
+            bVisible = pVmlNoteShape->getTypeModel().mbVisible;
+
+            // Setting comment text alignment
+            const ::oox::vml::ClientData* xClientData = pVmlNoteShape->getClientData();
+            xAnnoShapeMultiPropSet->setPropertyValues(
+                Sequence<OUString> { "TextVerticalAdjust", "ParaAdjust" },
+                Sequence<Any> { Any(lcl_ToVertAlign( xClientData->mnTextVAlign )), Any(lcl_ToParaAlign( xClientData->mnTextHAlign )) });
         }
-        xAnno->setIsVisible( bVisible );
+        if (bVisible)
+            pDocShell->GetDocFunc().ShowNote( maModel.maRange.aStart, bVisible );
 
         // insert text and convert text formatting
         maModel.mxText->finalizeImport();
@@ -175,6 +209,7 @@ void Comment::finalizeImport()
     }
     catch( Exception& )
     {
+        DBG_UNHANDLED_EXCEPTION("sc");
     }
 }
 
@@ -192,17 +227,21 @@ void CommentsBuffer::appendAuthor( const OUString& rAuthor )
 
 CommentRef CommentsBuffer::createComment()
 {
-    CommentRef xComment( new Comment( *this ) );
+    CommentRef xComment = std::make_shared<Comment>( *this );
     maComments.push_back( xComment );
     return xComment;
 }
 
 void CommentsBuffer::finalizeImport()
 {
+    // keep the model locked to avoid repeated reformatting in the model
+    auto pModel = getScDocument().GetDrawLayer();
+    bool bWasLocked = pModel->isLocked();
+    pModel->setLock(true);
     maComments.forEachMem( &Comment::finalizeImport );
+    pModel->setLock(bWasLocked);
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

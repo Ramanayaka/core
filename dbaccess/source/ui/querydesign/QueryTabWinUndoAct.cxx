@@ -20,15 +20,13 @@
 #include "QueryTabWinUndoAct.hxx"
 #include <osl/diagnose.h>
 #include "QTableWindow.hxx"
-#include "QTableWindowData.hxx"
-#include "TableConnection.hxx"
-#include "TableConnectionData.hxx"
+#include <TableConnection.hxx>
 #include "QueryDesignFieldUndoAct.hxx"
-#include "QueryTableView.hxx"
+#include <QueryTableView.hxx>
 
 using namespace dbaui;
-OQueryDesignFieldUndoAct::OQueryDesignFieldUndoAct(OSelectionBrowseBox* pSelBrwBox, sal_uInt16 nCommentID)
-    : OCommentUndoAction(nCommentID)
+OQueryDesignFieldUndoAct::OQueryDesignFieldUndoAct(OSelectionBrowseBox* pSelBrwBox, const char* pCommentID)
+    : OCommentUndoAction(pCommentID)
     , pOwner(pSelBrwBox)
     , m_nColumnPosition(BROWSER_INVALIDID)
 {
@@ -39,8 +37,8 @@ OQueryDesignFieldUndoAct::~OQueryDesignFieldUndoAct()
     pOwner = nullptr;
 }
 
-OQueryTabWinUndoAct::OQueryTabWinUndoAct(OQueryTableView* pOwner, sal_uInt16 nCommentID)
-    : OQueryDesignUndoAction(pOwner, nCommentID)
+OQueryTabWinUndoAct::OQueryTabWinUndoAct(OQueryTableView* pOwner, const char* pCommentID)
+    : OQueryDesignUndoAction(pOwner, pCommentID)
     , m_pTabWin(nullptr)
     , m_bOwnerOfObjects(false)
 {
@@ -48,26 +46,24 @@ OQueryTabWinUndoAct::OQueryTabWinUndoAct(OQueryTableView* pOwner, sal_uInt16 nCo
 
 OQueryTabWinUndoAct::~OQueryTabWinUndoAct()
 {
-    if (m_bOwnerOfObjects)
+    if (!m_bOwnerOfObjects)
+        return;
+
+    // I should take care to delete the window if I am the only owner
+    OSL_ENSURE(m_pTabWin != nullptr, "OQueryTabWinUndoAct::~OQueryTabWinUndoAct() : m_pTabWin must not be NULL");
+    OSL_ENSURE(!m_pTabWin->IsVisible(), "OQueryTabWinUndoAct::~OQueryTabWinUndoAct() : *m_pTabWin must not be visible");
+
+    if ( m_pTabWin )
+        m_pTabWin->clearListBox();
+    m_pTabWin.disposeAndClear();
+
+    // and of course the corresponding connections
+    for (auto & connection : m_vTableConnection)
     {
-        // I should take care to delete the window if I am the only owner
-        OSL_ENSURE(m_pTabWin != nullptr, "OQueryTabWinUndoAct::~OQueryTabWinUndoAct() : m_pTabWin must not be NULL");
-        OSL_ENSURE(!m_pTabWin->IsVisible(), "OQueryTabWinUndoAct::~OQueryTabWinUndoAct() : *m_pTabWin must not be visible");
-
-        if ( m_pTabWin )
-            m_pTabWin->clearListBox();
-        m_pTabWin.disposeAndClear();
-
-        // and of course the corresponding connections
-        auto aIter = m_vTableConnection.begin();
-        auto aEnd = m_vTableConnection.end();
-        for(;aIter != aEnd;++aIter)
-        {
-            m_pOwner->DeselectConn(*aIter);
-            aIter->disposeAndClear();
-        }
-        m_vTableConnection.clear();
+        m_pOwner->DeselectConn(connection);
+        connection.disposeAndClear();
     }
+    m_vTableConnection.clear();
 }
 
 void OTabFieldCellModifiedUndoAct::Undo()

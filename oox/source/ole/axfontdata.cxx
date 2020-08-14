@@ -17,13 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ole/axfontdata.hxx"
-#include "oox/ole/olehelper.hxx"
-#include "oox/ole/axbinaryreader.hxx"
-#include "oox/ole/axbinarywriter.hxx"
+#include <oox/ole/axfontdata.hxx>
+#include <oox/ole/olehelper.hxx>
+#include <oox/ole/axbinaryreader.hxx>
+#include <oox/ole/axbinarywriter.hxx>
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 AxFontData::AxFontData() :
     mnFontEffects( AxFontFlags::NONE ),
@@ -58,7 +57,7 @@ bool AxFontData::importBinaryModel( BinaryInputStream& rInStrm )
     aReader.skipIntProperty< sal_Int32 >(); // font offset
     aReader.readIntProperty< sal_uInt8 >( mnFontCharSet );
     aReader.skipIntProperty< sal_uInt8 >(); // font pitch/family
-    sal_uInt8 nTmp = 0;
+    sal_uInt8 nTmp = static_cast<sal_uInt8>(AxHorizontalAlign::Left);
     aReader.readIntProperty< sal_uInt8 >( nTmp );
     mnHorAlign = static_cast<AxHorizontalAlign>(nTmp);
     aReader.skipIntProperty< sal_uInt16 >(); // font weight
@@ -113,7 +112,6 @@ bool AxFontData::importGuidAndFont( BinaryInputStream& rInStrm )
     return false;
 }
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

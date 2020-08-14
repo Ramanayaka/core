@@ -26,15 +26,15 @@
 
 #include "jni_base.h"
 
-#include "osl/mutex.hxx"
-#include "rtl/ref.hxx"
-#include "rtl/ustring.hxx"
-#include "rtl/strbuf.hxx"
+#include <osl/mutex.hxx>
+#include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
+#include <rtl/strbuf.hxx>
 
-#include "uno/environment.h"
-#include "typelib/typedescription.hxx"
+#include <uno/environment.h>
+#include <typelib/typedescription.hxx>
 
-#include "com/sun/star/uno/Type.hxx"
+#include <com/sun/star/uno/Type.hxx>
 
 namespace jvmaccess { class UnoVirtualMachine; }
 
@@ -51,7 +51,7 @@ inline bool type_equals(
           OUString::unacquired( &type1->pTypeName );
     OUString const & name2 =
           OUString::unacquired( &type2->pTypeName );
-    return ((type1->eTypeClass == type2->eTypeClass) && name1.equals( name2 ));
+    return ((type1->eTypeClass == type2->eTypeClass) && name1 == name2);
 }
 
 inline bool is_XInterface( typelib_TypeDescriptionReference * type )
@@ -82,7 +82,7 @@ struct JNI_interface_type_info : public JNI_type_info
     jobject                                     m_proxy_ctor; // proxy ctor
     jobject                                     m_type;
     // sorted via typelib function index
-    jmethodID *                                 m_methods;
+    std::unique_ptr<jmethodID[]>                m_methods;
 
     virtual void destroy( JNIEnv * jni_env ) override;
     explicit JNI_interface_type_info(
@@ -98,7 +98,7 @@ struct JNI_compound_type_info : public JNI_type_info
     // ctor( msg ) for exceptions
     jmethodID                                   m_exc_ctor;
     // sorted via typelib member index
-    jfieldID *                                  m_fields;
+    std::unique_ptr<jfieldID[]>                 m_fields;
 
     virtual void destroy( JNIEnv * jni_env ) override;
     explicit JNI_compound_type_info(
@@ -119,7 +119,7 @@ struct JNI_type_info_holder
 };
 
 typedef std::unordered_map<
-    OUString, JNI_type_info_holder, OUStringHash > t_str2type;
+    OUString, JNI_type_info_holder > t_str2type;
 
 class JNI_info
 {

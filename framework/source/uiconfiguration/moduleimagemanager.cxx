@@ -18,36 +18,15 @@
  */
 
 #include <uiconfiguration/moduleimagemanager.hxx>
-#include <xml/imagesconfiguration.hxx>
-#include <uiconfiguration/graphicnameaccess.hxx>
-#include <services.h>
 #include "imagemanagerimpl.hxx"
 
-#include "properties.h"
-
-#include <com/sun/star/ui/UIElementType.hpp>
-#include <com/sun/star/ui/ConfigurationEvent.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/embed/ElementModes.hpp>
-#include <com/sun/star/io/XStream.hpp>
-#include <com/sun/star/ui/ImageType.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
-#include <vcl/svapp.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <osl/file.hxx>
-#include <comphelper/sequence.hxx>
-#include <unotools/ucbstreamhelper.hxx>
-#include <vcl/pngread.hxx>
-#include <vcl/pngwrite.hxx>
+#include <sal/log.hxx>
 
 //  namespaces
 
 using ::com::sun::star::uno::Sequence;
-using ::com::sun::star::uno::Exception;
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::graphic::XGraphic;
 using namespace ::com::sun::star;

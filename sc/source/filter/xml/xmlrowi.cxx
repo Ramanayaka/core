@@ -20,23 +20,23 @@
 #include "xmlrowi.hxx"
 #include "xmlimprt.hxx"
 #include "xmlcelli.hxx"
-#include "global.hxx"
 #include "xmlstyli.hxx"
-#include "document.hxx"
-#include "docuno.hxx"
-#include "olinetab.hxx"
-#include "sheetdata.hxx"
-#include "documentimport.hxx"
+#include <document.hxx>
+#include <docuno.hxx>
+#include <olinetab.hxx>
+#include <sheetdata.hxx>
+#include <documentimport.hxx>
+#include <unonames.hxx>
 
-#include <xmloff/xmltkmap.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/families.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <sax/fastattribs.hxx>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/table/XColumnRowRange.hpp>
 #include <com/sun/star/sheet/XPrintAreas.hpp>
+#include <comphelper/servicehelper.hxx>
+#include <osl/diagnose.h>
 
 #define SC_ISFILTERED "IsFiltered"
 
@@ -44,21 +44,18 @@ using namespace com::sun::star;
 using namespace xmloff::token;
 
 ScXMLTableRowContext::ScXMLTableRowContext( ScXMLImport& rImport,
-                                      const css::uno::Reference<css::xml::sax::XFastAttributeList>& xAttrList ) :
+                                      const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList ) :
     ScXMLImportContext( rImport ),
     sVisibility(GetXMLToken(XML_VISIBLE)),
     nRepeatedRows(1),
     bHasCell(false)
 {
     OUString sCellStyleName;
-    if ( xAttrList.is() )
+    if ( rAttrList.is() )
     {
-        sax_fastparser::FastAttributeList *pAttribList =
-            static_cast< sax_fastparser::FastAttributeList *>( xAttrList.get() );
-
-        for( auto &it : *pAttribList )
+        for (auto &it : *rAttrList)
         {
-            switch( it.getToken() )
+            switch (it.getToken())
             {
                 case XML_ELEMENT( TABLE, XML_STYLE_NAME ):
                 {
@@ -72,7 +69,7 @@ ScXMLTableRowContext::ScXMLTableRowContext( ScXMLImport& rImport,
                 break;
                 case XML_ELEMENT( TABLE, XML_NUMBER_ROWS_REPEATED ):
                 {
-                    nRepeatedRows = std::max( it.toInt32(), (sal_Int32) 1 );
+                    nRepeatedRows = std::max( it.toInt32(), sal_Int32(1) );
                     nRepeatedRows = std::min( nRepeatedRows, MAXROWCOUNT );
                 }
                 break;
@@ -103,6 +100,8 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
         const uno::Reference< xml::sax::XFastAttributeList > & xAttrList )
 {
     SvXMLImportContext *pContext(nullptr);
+    sax_fastparser::FastAttributeList *pAttribList =
+        &sax_fastparser::castToFastAttributeList( xAttrList );
 
     switch( nElement )
     {
@@ -111,7 +110,7 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
         {
             bHasCell = true;
             pContext = new ScXMLTableRowCellContext( GetScImport(),
-                                                       xAttrList, false, static_cast<SCROW>(nRepeatedRows)
+                                                       pAttribList, false, static_cast<SCROW>(nRepeatedRows)
                                                       //this
                                                       );
         }
@@ -121,15 +120,12 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
         {
             bHasCell = true;
             pContext = new ScXMLTableRowCellContext( GetScImport(),
-                                                      xAttrList, true, static_cast<SCROW>(nRepeatedRows)
+                                                      pAttribList, true, static_cast<SCROW>(nRepeatedRows)
                                                       //this
                                                       );
         }
         break;
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport() );
 
     return pContext;
 }
@@ -137,6 +133,7 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
 void SAL_CALL ScXMLTableRowContext::endFastElement(sal_Int32 /*nElement*/)
 {
     ScXMLImport& rXMLImport(GetScImport());
+    ScDocument* pDoc(rXMLImport.GetDocument());
     if (!bHasCell && nRepeatedRows > 1)
     {
         for (sal_Int32 i = 0; i < nRepeatedRows - 1; ++i) //one row is always added
@@ -146,67 +143,82 @@ void SAL_CALL ScXMLTableRowContext::endFastElement(sal_Int32 /*nElement*/)
     SCTAB nSheet = rXMLImport.GetTables().GetCurrentSheet();
     sal_Int32 nCurrentRow(rXMLImport.GetTables().GetCurrentRow());
     uno::Reference<sheet::XSpreadsheet> xSheet(rXMLImport.GetTables().GetCurrentXSheet());
-    if(xSheet.is())
-    {
-        sal_Int32 nFirstRow(nCurrentRow - nRepeatedRows + 1);
-        if (nFirstRow > MAXROW)
-            nFirstRow = MAXROW;
-        if (nCurrentRow > MAXROW)
-            nCurrentRow = MAXROW;
-        uno::Reference <table::XCellRange> xCellRange(xSheet->getCellRangeByPosition(0, nFirstRow, 0, nCurrentRow));
-        if (xCellRange.is())
-        {
-            uno::Reference<table::XColumnRowRange> xColumnRowRange (xCellRange, uno::UNO_QUERY);
-            if (xColumnRowRange.is())
-            {
-                uno::Reference <beans::XPropertySet> xRowProperties(xColumnRowRange->getRows(), uno::UNO_QUERY);
-                if (xRowProperties.is())
-                {
-                    if (!sStyleName.isEmpty())
-                    {
-                        XMLTableStylesContext *pStyles(static_cast<XMLTableStylesContext *>(rXMLImport.GetAutoStyles()));
-                        if ( pStyles )
-                        {
-                            XMLTableStyleContext* pStyle(const_cast<XMLTableStyleContext*>(static_cast<const XMLTableStyleContext *>(pStyles->FindStyleChildContext(
-                                XML_STYLE_FAMILY_TABLE_ROW, sStyleName, true))));
-                            if (pStyle)
-                            {
-                                pStyle->FillPropertySet(xRowProperties);
+    if(!xSheet.is())
+        return;
 
-                                if ( nSheet != pStyle->GetLastSheet() )
-                                {
-                                    ScSheetSaveData* pSheetData = ScModelObj::getImplementation(rXMLImport.GetModel())->GetSheetSaveData();
-                                    pSheetData->AddRowStyle( sStyleName, ScAddress( 0, (SCROW)nFirstRow, nSheet ) );
-                                    pStyle->SetLastSheet(nSheet);
-                                }
-                            }
-                        }
-                    }
-                    bool bVisible (true);
-                    bool bFiltered (false);
-                    if (IsXMLToken(sVisibility, XML_COLLAPSE))
-                    {
-                        bVisible = false;
-                    }
-                    else if (IsXMLToken(sVisibility, XML_FILTER))
-                    {
-                        bVisible = false;
-                        bFiltered = true;
-                    }
-                    if (!bVisible)
-                    {
-                        rXMLImport.GetDoc().setRowsVisible(nSheet, nFirstRow, nCurrentRow, false);
-                    }
-                    if (bFiltered)
-                        xRowProperties->setPropertyValue(SC_ISFILTERED, uno::makeAny(bFiltered));
+    sal_Int32 nFirstRow(nCurrentRow - nRepeatedRows + 1);
+    if (nFirstRow > pDoc->MaxRow())
+        nFirstRow = pDoc->MaxRow();
+    if (nCurrentRow > pDoc->MaxRow())
+        nCurrentRow = pDoc->MaxRow();
+    uno::Reference <table::XCellRange> xCellRange(xSheet->getCellRangeByPosition(0, nFirstRow, 0, nCurrentRow));
+    if (!xCellRange.is())
+        return;
+
+    uno::Reference<table::XColumnRowRange> xColumnRowRange (xCellRange, uno::UNO_QUERY);
+    if (!xColumnRowRange.is())
+        return;
+
+    uno::Reference <beans::XPropertySet> xRowProperties(xColumnRowRange->getRows(), uno::UNO_QUERY);
+    if (!xRowProperties.is())
+        return;
+
+    if (!sStyleName.isEmpty())
+    {
+        XMLTableStylesContext *pStyles(static_cast<XMLTableStylesContext *>(rXMLImport.GetAutoStyles()));
+        if ( pStyles )
+        {
+            XMLTableStyleContext* pStyle(const_cast<XMLTableStyleContext*>(static_cast<const XMLTableStyleContext *>(pStyles->FindStyleChildContext(
+                XmlStyleFamily::TABLE_ROW, sStyleName, true))));
+            if (pStyle)
+            {
+                pStyle->FillPropertySet(xRowProperties);
+
+                if ( nSheet != pStyle->GetLastSheet() )
+                {
+                    ScSheetSaveData* pSheetData = comphelper::getUnoTunnelImplementation<ScModelObj>(rXMLImport.GetModel())->GetSheetSaveData();
+                    pSheetData->AddRowStyle( sStyleName, ScAddress( 0, static_cast<SCROW>(nFirstRow), nSheet ) );
+                    pStyle->SetLastSheet(nSheet);
                 }
             }
         }
     }
+    bool bVisible (true);
+    bool bFiltered (false);
+    if (IsXMLToken(sVisibility, XML_COLLAPSE))
+    {
+        bVisible = false;
+    }
+    else if (IsXMLToken(sVisibility, XML_FILTER))
+    {
+        bVisible = false;
+        bFiltered = true;
+    }
+    if (!bVisible)
+    {
+        rXMLImport.GetDoc().setRowsVisible(nSheet, nFirstRow, nCurrentRow, false);
+    }
+    if (bFiltered)
+        xRowProperties->setPropertyValue(SC_ISFILTERED, uno::makeAny(bFiltered));
+
+    uno::Any any = xRowProperties->getPropertyValue(SC_UNONAME_OHEIGHT);
+    bool bOptionalHeight = false;
+    any >>= bOptionalHeight;
+    if (bOptionalHeight)
+    {
+        // Save this row for later height update
+        std::vector<ScDocRowHeightUpdater::TabRanges>& rRecalcRanges = rXMLImport.GetRecalcRowRanges();
+        while (static_cast<SCTAB>(rRecalcRanges.size()) <= nSheet)
+        {
+            rRecalcRanges.emplace_back(0, pDoc->MaxRow());
+        }
+        rRecalcRanges.at(nSheet).mnTab = nSheet;
+        rRecalcRanges.at(nSheet).maRanges.setTrue(nFirstRow, nCurrentRow);
+    }
 }
 
 ScXMLTableRowsContext::ScXMLTableRowsContext( ScXMLImport& rImport,
-                                      const css::uno::Reference<css::xml::sax::XFastAttributeList>& xAttrList,
+                                      const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                                       const bool bTempHeader,
                                       const bool bTempGroup ) :
     ScXMLImportContext( rImport ),
@@ -227,13 +239,11 @@ ScXMLTableRowsContext::ScXMLTableRowsContext( ScXMLImport& rImport,
     {
         nGroupStartRow = rImport.GetTables().GetCurrentRow();
         ++nGroupStartRow;
-        if ( xAttrList.is() )
+        if ( rAttrList.is() )
         {
-            sax_fastparser::FastAttributeList *pAttribList =
-                static_cast< sax_fastparser::FastAttributeList *>( xAttrList.get() );
-            auto &aIter( pAttribList->find( XML_ELEMENT( TABLE, XML_DISPLAY ) ) );
-            if( aIter != pAttribList->end() )
-                bGroupDisplay = IsXMLToken( aIter.toCString(), XML_TRUE );
+            auto aIter( rAttrList->find( XML_ELEMENT( TABLE, XML_DISPLAY ) ) );
+            if (aIter != rAttrList->end())
+                bGroupDisplay = IsXMLToken( aIter, XML_TRUE );
         }
     }
 }
@@ -247,28 +257,27 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
         const uno::Reference< xml::sax::XFastAttributeList > & xAttrList )
 {
     SvXMLImportContext *pContext(nullptr);
+    sax_fastparser::FastAttributeList *pAttribList =
+        &sax_fastparser::castToFastAttributeList( xAttrList );
 
     switch( nElement )
     {
     case XML_ELEMENT( TABLE, XML_TABLE_ROW_GROUP ):
-        pContext = new ScXMLTableRowsContext( GetScImport(), xAttrList,
+        pContext = new ScXMLTableRowsContext( GetScImport(), pAttribList,
                                                    false, true );
         break;
     case XML_ELEMENT( TABLE, XML_TABLE_HEADER_ROWS ):
-        pContext = new ScXMLTableRowsContext( GetScImport(), xAttrList,
+        pContext = new ScXMLTableRowsContext( GetScImport(), pAttribList,
                                                    true, false );
         break;
     case XML_ELEMENT( TABLE, XML_TABLE_ROWS ):
-        pContext = new ScXMLTableRowsContext( GetScImport(), xAttrList,
+        pContext = new ScXMLTableRowsContext( GetScImport(), pAttribList,
                                                    false, false );
         break;
     case XML_ELEMENT( TABLE, XML_TABLE_ROW ):
-        pContext = new ScXMLTableRowContext( GetScImport(), xAttrList );
+        pContext = new ScXMLTableRowContext( GetScImport(), pAttribList );
         break;
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport() );
 
     return pContext;
 }

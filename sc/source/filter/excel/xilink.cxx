@@ -17,20 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xilink.hxx"
-#include "document.hxx"
-#include "formulacell.hxx"
-#include "scextopt.hxx"
-#include "tablink.hxx"
-#include "xistream.hxx"
-#include "xihelper.hxx"
-#include "xiname.hxx"
-#include "excform.hxx"
-#include "tokenarray.hxx"
-#include "externalrefmgr.hxx"
-#include "scmatrix.hxx"
+#include <xilink.hxx>
+#include <document.hxx>
+#include <scextopt.hxx>
+#include <xistream.hxx>
+#include <xihelper.hxx>
+#include <xiname.hxx>
+#include <xltools.hxx>
+#include <excform.hxx>
+#include <tokenarray.hxx>
+#include <externalrefmgr.hxx>
+#include <scmatrix.hxx>
 #include <svl/sharedstringpool.hxx>
-#include <o3tl/make_unique.hxx>
+#include <sal/log.hxx>
 
 #include <vector>
 #include <memory>
@@ -38,6 +37,8 @@
 // *** Helper classes ***
 
 // Cached external cells ======================================================
+
+namespace {
 
 /**
  * Contains the address and value of an external referenced cell.
@@ -75,11 +76,12 @@ public:
 
 private:
     typedef std::shared_ptr< XclImpCrn > XclImpCrnRef;
-    typedef std::vector< XclImpCrnRef > XclImpCrnList;
 
-    XclImpCrnList       maCrnList;      /// List of CRN records (cached cell values).
-    OUString            maTabName;      /// Name of the external sheet.
+    std::vector< XclImpCrnRef > maCrnList;      /// List of CRN records (cached cell values).
+    OUString                    maTabName;      /// Name of the external sheet.
 };
+
+}
 
 // External document (SUPBOOK) ================================================
 
@@ -123,17 +125,19 @@ public:
     svl::SharedStringPool& GetSharedStringPool();
 
 private:
-    typedef std::vector< std::unique_ptr<XclImpSupbookTab> >  XclImpSupbookTabList;
-    typedef std::vector< std::unique_ptr<XclImpExtName> >     XclImpExtNameList;
 
-    XclImpSupbookTabList maSupbTabList;     /// All sheet names of the document.
-    XclImpExtNameList   maExtNameList;      /// All external names of the document.
+    std::vector< std::unique_ptr<XclImpSupbookTab> >
+                        maSupbTabList;     /// All sheet names of the document.
+    std::vector< std::unique_ptr<XclImpExtName> >
+                        maExtNameList;      /// All external names of the document.
     OUString            maXclUrl;           /// URL of the external document (Excel mode).
     XclSupbookType      meType;             /// Type of the supbook record.
     sal_uInt16          mnSBTab;            /// Current Excel sheet index from SUPBOOK for XCT/CRN records.
 };
 
 // Import link manager ========================================================
+
+namespace {
 
 /** Contains the SUPBOOK index and sheet indexes of an external link.
     @descr  It is possible to enter a formula like =SUM(Sheet1:Sheet3!A1),
@@ -146,12 +150,14 @@ struct XclImpXti
     explicit     XclImpXti() : mnSupbook( SAL_MAX_UINT16 ), mnSBTabFirst( SAL_MAX_UINT16 ), mnSBTabLast( SAL_MAX_UINT16 ) {}
 };
 
-inline XclImpStream& operator>>( XclImpStream& rStrm, XclImpXti& rXti )
+XclImpStream& operator>>( XclImpStream& rStrm, XclImpXti& rXti )
 {
     rXti.mnSupbook = rStrm.ReaduInt16();
     rXti.mnSBTabFirst = rStrm.ReaduInt16();
     rXti.mnSBTabLast = rStrm.ReaduInt16();
     return rStrm;
+}
+
 }
 
 /** Implementation of the link manager. */
@@ -205,10 +211,10 @@ private:
 
 private:
     typedef std::vector< XclImpXti >  XclImpXtiVector;
-    typedef std::vector< std::unique_ptr<XclImpSupbook> > XclImpSupbookList;
 
     XclImpXtiVector     maXtiList;          /// List of all XTI structures.
-    XclImpSupbookList   maSupbookList;      /// List of external documents.
+    std::vector< std::unique_ptr<XclImpSupbook> >
+                        maSupbookList;      /// List of external documents.
 };
 
 // *** Implementation ***
@@ -224,9 +230,9 @@ void XclImpTabInfo::AppendXclTabName( const OUString& rXclTabName, SCTAB nScTab 
 
 void XclImpTabInfo::InsertScTab( SCTAB nScTab )
 {
-    for( XclTabNameMap::iterator aIt = maTabNames.begin(), aEnd = maTabNames.end(); aIt != aEnd; ++aIt )
-        if( aIt->second >= nScTab )
-            ++aIt->second;
+    for( auto& rEntry : maTabNames )
+        if( rEntry.second >= nScTab )
+            ++rEntry.second;
 }
 
 SCTAB XclImpTabInfo::GetScTabFromXclName( const OUString& rXclTabName ) const
@@ -256,9 +262,8 @@ void XclImpTabInfo::ReadTabid( XclImpStream& rStrm )
 sal_uInt16 XclImpTabInfo::GetCurrentIndex( sal_uInt16 nCreatedId, sal_uInt16 nMaxTabId ) const
 {
     sal_uInt16 nReturn = 0;
-    for( ScfUInt16Vec::const_iterator aIt = maTabIdVec.begin(), aEnd = maTabIdVec.end(); aIt != aEnd; ++aIt )
+    for( sal_uInt16 nValue : maTabIdVec )
     {
-        sal_uInt16 nValue = *aIt;
         if( nValue == nCreatedId )
             return nReturn;
         if( nValue <= nMaxTabId )
@@ -270,12 +275,12 @@ sal_uInt16 XclImpTabInfo::GetCurrentIndex( sal_uInt16 nCreatedId, sal_uInt16 nMa
 // External names =============================================================
 
 XclImpExtName::MOper::MOper(svl::SharedStringPool& rPool, XclImpStream& rStrm) :
-    mxCached(new ScFullMatrix(0,0))
+    mxCached(new ScMatrix(0,0))
 {
     SCSIZE nLastCol = rStrm.ReaduInt8();
     SCSIZE nLastRow = rStrm.ReaduInt16();
 
-    //assuming worse case scenario of nOp + one byte unistring len
+    //assuming worst case scenario of nOp + one byte unistring len
     const size_t nMinRecordSize = 2;
     const size_t nMaxRows = rStrm.GetRecLeft() / (nMinRecordSize * (nLastCol+1));
     if (nLastRow >= nMaxRows)
@@ -337,8 +342,7 @@ const ScMatrix& XclImpExtName::MOper::GetCache() const
 }
 
 XclImpExtName::XclImpExtName( XclImpSupbook& rSupbook, XclImpStream& rStrm, XclSupbookType eSubType, ExcelToSc* pFormulaConv )
-    : mpMOper(nullptr)
-    , mnStorageId(0)
+    : mnStorageId(0)
 {
     sal_uInt16 nFlags(0);
     sal_uInt8 nLen(0);
@@ -377,23 +381,20 @@ XclImpExtName::XclImpExtName( XclImpSupbook& rSupbook, XclImpStream& rStrm, XclS
         case xlExtName:
             // TODO: For now, only global external names are supported.  In future
             // we should extend this to supporting per-sheet external names.
-            if (mnStorageId == 0)
+            if (mnStorageId == 0 && pFormulaConv)
             {
-                if (pFormulaConv)
-                {
-                    const ScTokenArray* pArray = nullptr;
-                    sal_uInt16 nFmlaLen;
-                    nFmlaLen = rStrm.ReaduInt16();
-                    std::vector<OUString> aTabNames;
-                    sal_uInt16 nCount = rSupbook.GetTabCount();
-                    aTabNames.reserve(nCount);
-                    for (sal_uInt16 i = 0; i < nCount; ++i)
-                        aTabNames.push_back(rSupbook.GetTabName(i));
+                std::unique_ptr<ScTokenArray> pArray;
+                sal_uInt16 nFmlaLen;
+                nFmlaLen = rStrm.ReaduInt16();
+                std::vector<OUString> aTabNames;
+                sal_uInt16 nCount = rSupbook.GetTabCount();
+                aTabNames.reserve(nCount);
+                for (sal_uInt16 i = 0; i < nCount; ++i)
+                    aTabNames.push_back(rSupbook.GetTabName(i));
 
-                    pFormulaConv->ConvertExternName(pArray, rStrm, nFmlaLen, rSupbook.GetXclUrl(), aTabNames);
-                    if (pArray)
-                        mxArray.reset(pArray->Clone());
-                }
+                pFormulaConv->ConvertExternName(pArray, rStrm, nFmlaLen, rSupbook.GetXclUrl(), aTabNames);
+                if (pArray)
+                    mxArray = std::move( pArray );
             }
         break;
         case xlExtOLE:
@@ -411,14 +412,14 @@ XclImpExtName::~XclImpExtName()
 void XclImpExtName::CreateDdeData( ScDocument& rDoc, const OUString& rApplic, const OUString& rTopic ) const
 {
     ScMatrixRef xResults;
-    if( mxDdeMatrix.get() )
+    if( mxDdeMatrix )
         xResults = mxDdeMatrix->CreateScMatrix(rDoc.GetSharedStringPool());
     rDoc.CreateDdeLink( rApplic, rTopic, maName, SC_DDE_DEFAULT, xResults );
 }
 
-void XclImpExtName::CreateExtNameData( ScDocument& rDoc, sal_uInt16 nFileId ) const
+void XclImpExtName::CreateExtNameData( const ScDocument& rDoc, sal_uInt16 nFileId ) const
 {
-    if (!mxArray.get())
+    if (!mxArray)
         return;
 
     ScExternalRefManager* pRefMgr = rDoc.GetExternalRefManager();
@@ -526,8 +527,7 @@ bool XclImpExtName::CreateOleData(ScDocument& rDoc, const OUString& rUrl,
                 break;
                 case ScMatValType::String:
                 {
-                    const svl::SharedString aStr( aVal.GetString());
-                    ScExternalRefCache::TokenRef pToken(new formula::FormulaStringToken(aStr));
+                    ScExternalRefCache::TokenRef pToken(new formula::FormulaStringToken(aVal.GetString()));
                     xTab->setCell(nCol, nRow, pToken, 0, false);
                 }
                 break;
@@ -545,7 +545,7 @@ bool XclImpExtName::CreateOleData(ScDocument& rDoc, const OUString& rUrl,
 
 bool XclImpExtName::HasFormulaTokens() const
 {
-    return (mxArray.get() != nullptr);
+    return bool(mxArray);
 }
 
 // Cached external cells ======================================================
@@ -565,7 +565,7 @@ XclImpSupbookTab::XclImpSupbookTab( const OUString& rTabName ) :
 
 void XclImpSupbookTab::ReadCrn( XclImpStream& rStrm, const XclAddress& rXclPos )
 {
-    XclImpCrnRef crnRef( new XclImpCrn(rStrm, rXclPos) );
+    XclImpCrnRef crnRef = std::make_shared<XclImpCrn>(rStrm, rXclPos);
     maCrnList.push_back( crnRef );
 }
 
@@ -575,9 +575,9 @@ void XclImpSupbookTab::LoadCachedValues( const ScExternalRefCache::TableTypeRef&
     if (maCrnList.empty())
         return;
 
-    for (XclImpCrnList::iterator itCrnRef = maCrnList.begin(); itCrnRef != maCrnList.end(); ++itCrnRef)
+    for (const auto& rxCrn : maCrnList)
     {
-        const XclImpCrn* const pCrn = itCrnRef->get();
+        const XclImpCrn* const pCrn = rxCrn.get();
         const XclAddress& rAddr = pCrn->GetAddress();
         switch (pCrn->GetType())
         {
@@ -643,7 +643,7 @@ XclImpSupbook::XclImpSupbook( XclImpStream& rStrm ) :
     if( maXclUrl.equalsIgnoreAsciiCase( "\010EUROTOOL.XLA" ) )
     {
         meType = XclSupbookType::Eurotool;
-        maSupbTabList.push_back( o3tl::make_unique<XclImpSupbookTab>( maXclUrl ) );
+        maSupbTabList.push_back( std::make_unique<XclImpSupbookTab>( maXclUrl ) );
     }
     else if( nSBTabCnt )
     {
@@ -662,14 +662,14 @@ XclImpSupbook::XclImpSupbook( XclImpStream& rStrm ) :
         for( sal_uInt16 nSBTab = 0; nSBTab < nSBTabCnt; ++nSBTab )
         {
             OUString aTabName( rStrm.ReadUniString() );
-            maSupbTabList.push_back( o3tl::make_unique<XclImpSupbookTab>( aTabName ) );
+            maSupbTabList.push_back( std::make_unique<XclImpSupbookTab>( aTabName ) );
         }
     }
     else
     {
         meType = XclSupbookType::Special;
         // create dummy list entry
-        maSupbTabList.push_back( o3tl::make_unique<XclImpSupbookTab>( maXclUrl ) );
+        maSupbTabList.push_back( std::make_unique<XclImpSupbookTab>( maXclUrl ) );
     }
 }
 
@@ -683,7 +683,7 @@ void XclImpSupbook::ReadCrn( XclImpStream& rStrm )
 {
     if (mnSBTab >= maSupbTabList.size())
         return;
-    XclImpSupbookTab& rSbTab = *maSupbTabList[mnSBTab].get();
+    XclImpSupbookTab& rSbTab = *maSupbTabList[mnSBTab];
     sal_uInt8 nXclColLast, nXclColFirst;
     sal_uInt16 nXclRow;
     nXclColLast = rStrm.ReaduInt8();
@@ -696,7 +696,7 @@ void XclImpSupbook::ReadCrn( XclImpStream& rStrm )
 
 void XclImpSupbook::ReadExternname( XclImpStream& rStrm, ExcelToSc* pFormulaConv )
 {
-    maExtNameList.push_back( o3tl::make_unique<XclImpExtName>( *this, rStrm, meType, pFormulaConv ) );
+    maExtNameList.push_back( std::make_unique<XclImpExtName>( *this, rStrm, meType, pFormulaConv ) );
 }
 
 const XclImpExtName* XclImpSupbook::GetExternName( sal_uInt16 nXclIndex ) const
@@ -745,11 +745,11 @@ void XclImpSupbook::LoadCachedValues()
     ScExternalRefManager* pRefMgr = GetRoot().GetDoc().GetExternalRefManager();
     sal_uInt16 nFileId = pRefMgr->getExternalFileId(aAbsUrl);
 
-    for (XclImpSupbookTabList::iterator itTab = maSupbTabList.begin(); itTab != maSupbTabList.end(); ++itTab)
+    for (auto& rxTab : maSupbTabList)
     {
-        const OUString& rTabName = (*itTab)->GetTabName();
+        const OUString& rTabName = rxTab->GetTabName();
         ScExternalRefCache::TableTypeRef pCacheTable = pRefMgr->getCacheTable(nFileId, rTabName, true);
-        (*itTab)->LoadCachedValues( pCacheTable, GetSharedStringPool());
+        rxTab->LoadCachedValues( pCacheTable, GetSharedStringPool());
         pCacheTable->setWholeTableCached();
     }
 }
@@ -778,8 +778,12 @@ void XclImpLinkManagerImpl::ReadExternsheet( XclImpStream& rStrm )
         insert the entries of the second record before the entries of the first
         record. */
     XclImpXtiVector aNewEntries( nXtiCount );
-    for( XclImpXtiVector::iterator aIt = aNewEntries.begin(), aEnd = aNewEntries.end(); rStrm.IsValid() && (aIt != aEnd); ++aIt )
-        rStrm >> *aIt;
+    for( auto& rNewEntry : aNewEntries )
+    {
+        if (!rStrm.IsValid())
+            break;
+        rStrm >> rNewEntry;
+    }
     maXtiList.insert( maXtiList.begin(), aNewEntries.begin(), aNewEntries.end() );
 
     LoadCachedValues();
@@ -787,7 +791,7 @@ void XclImpLinkManagerImpl::ReadExternsheet( XclImpStream& rStrm )
 
 void XclImpLinkManagerImpl::ReadSupbook( XclImpStream& rStrm )
 {
-    maSupbookList.push_back( o3tl::make_unique<XclImpSupbook>( rStrm ) );
+    maSupbookList.push_back( std::make_unique<XclImpSupbook>( rStrm ) );
 }
 
 void XclImpLinkManagerImpl::ReadXct( XclImpStream& rStrm )
@@ -880,8 +884,8 @@ void XclImpLinkManagerImpl::LoadCachedValues()
 {
     // Read all CRN records which can be accessed via XclImpSupbook, and store
     // the cached values to the external reference manager.
-    for (XclImpSupbookList::iterator itSupbook = maSupbookList.begin(); itSupbook != maSupbookList.end(); ++itSupbook)
-        (*itSupbook)->LoadCachedValues();
+    for (auto& rxSupbook : maSupbookList)
+        rxSupbook->LoadCachedValues();
 }
 
 XclImpLinkManager::XclImpLinkManager( const XclImpRoot& rRoot ) :

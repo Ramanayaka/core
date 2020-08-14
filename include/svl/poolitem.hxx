@@ -22,18 +22,16 @@
 
 #include <sal/config.h>
 
-#include <climits>
 #include <memory>
 
 #include <com/sun/star/uno/Any.hxx>
 #include <svl/hint.hxx>
 #include <svl/svldllapi.h>
-#include <tools/debug.hxx>
+#include <svl/typedwhich.hxx>
 #include <tools/mapunit.hxx>
-#include <tools/solar.h>
+#include <boost/property_tree/ptree_fwd.hpp>
 
 class IntlWrapper;
-class SvStream;
 
 enum class SfxItemKind : sal_Int8
 {
@@ -106,14 +104,14 @@ enum class SfxItemState {
      * For example, you may want to get the font color and it might either
      * be the default one or one that has been explicitly set.
     */
-    SET      = 0x0030
+    SET      = 0x0040
 };
 
 #define INVALID_POOL_ITEM reinterpret_cast<SfxPoolItem*>(-1)
 
-class SvXMLUnitConverter;
 class SfxItemPool;
 class SfxItemSet;
+typedef struct _xmlTextWriter* xmlTextWriterPtr;
 
 class SVL_DLLPUBLIC SfxPoolItem
 {
@@ -137,7 +135,8 @@ private:
 
 protected:
                              explicit SfxPoolItem( sal_uInt16 nWhich = 0 );
-                             SfxPoolItem( const SfxPoolItem& );
+                             SfxPoolItem( const SfxPoolItem& rCopy)
+                                 : SfxPoolItem(rCopy.m_nWhich) {}
 
 public:
     virtual                  ~SfxPoolItem();
@@ -153,29 +152,36 @@ public:
     bool                     operator!=( const SfxPoolItem& rItem ) const
                              { return !(*this == rItem); }
 
+    // Sorting is only used for faster searching in a pool which contains large quantities
+    // of a single kind of pool item.
+    virtual bool             operator<( const SfxPoolItem& ) const { assert(false); return false; }
+    virtual bool             IsSortable() const { return false; }
+
     /**  @return true if it has a valid string representation */
     virtual bool             GetPresentation( SfxItemPresentation ePresentation,
                                     MapUnit eCoreMetric,
                                     MapUnit ePresentationMetric,
                                     OUString &rText,
-                                    const IntlWrapper * pIntlWrapper = nullptr ) const;
+                                    const IntlWrapper& rIntlWrapper ) const;
 
-    virtual sal_uInt16       GetVersion( sal_uInt16 nFileFormatVersion ) const;
     virtual void             ScaleMetrics( long lMult, long lDiv );
     virtual bool             HasMetrics() const;
 
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId );
 
-    virtual SfxPoolItem*     Create( SvStream &, sal_uInt16 nItemVersion ) const;
-    virtual SvStream&        Store( SvStream &, sal_uInt16 nItemVersion ) const;
     virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const = 0;
     // clone and call SetWhich
-    SfxPoolItem*             CloneSetWhich( sal_uInt16 nNewWhich ) const;
+    std::unique_ptr<SfxPoolItem> CloneSetWhich( sal_uInt16 nNewWhich ) const;
+    template<class T> std::unique_ptr<T> CloneSetWhich( TypedWhichId<T> nId ) const
+    {
+        return std::unique_ptr<T>(static_cast<T*>(CloneSetWhich(sal_uInt16(nId)).release()));
+    }
 
     sal_uInt32               GetRefCount() const { return m_nRefCount; }
     SfxItemKind       GetKind() const { return m_nKind; }
-    virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
+    virtual boost::property_tree::ptree dumpAsJSON() const;
 
     /** Only SfxVoidItem shall and must return true for this.
 
@@ -242,12 +248,15 @@ inline bool IsInvalidItem(const SfxPoolItem *pItem)
 
 class SVL_DLLPUBLIC SfxVoidItem final: public SfxPoolItem
 {
-    SfxVoidItem & operator=( const SfxVoidItem& ) = delete;
 public:
                             static SfxPoolItem* CreateDefault();
                             explicit SfxVoidItem( sal_uInt16 nWhich );
-                            SfxVoidItem( const SfxVoidItem& );
                             virtual ~SfxVoidItem() override;
+
+    SfxVoidItem(SfxVoidItem const &) = default;
+    SfxVoidItem(SfxVoidItem &&) = default;
+    SfxVoidItem & operator =(SfxVoidItem const &) = delete; // due to SfxPoolItem
+    SfxVoidItem & operator =(SfxVoidItem &&) = delete; // due to SfxPoolItem
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
 
@@ -255,11 +264,11 @@ public:
                                     MapUnit eCoreMetric,
                                     MapUnit ePresMetric,
                                     OUString &rText,
-                                    const IntlWrapper * = nullptr ) const override;
-    virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+                                    const IntlWrapper& ) const override;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
     // create a copy of itself
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SfxVoidItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
 
     /** Always returns true as this is an SfxVoidItem. */
     virtual bool            IsVoidItem() const override;
@@ -283,12 +292,10 @@ public:
                                     MapUnit eCoreMetric,
                                     MapUnit ePresMetric,
                                     OUString &rText,
-                                    const IntlWrapper * = nullptr ) const override;
+                                    const IntlWrapper& ) const override;
 
     // create a copy of itself
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override = 0;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16 nVersion) const override = 0;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nVer) const override;
+    virtual SfxSetItem*     Clone( SfxItemPool *pPool = nullptr ) const override = 0;
 
     const SfxItemSet&       GetItemSet() const
                             { return *pSet; }
@@ -296,7 +303,7 @@ public:
                             { return *pSet; }
 };
 
-class SVL_DLLPUBLIC SfxPoolItemHint: public SfxHint
+class SVL_DLLPUBLIC SfxPoolItemHint final : public SfxHint
 {
     SfxPoolItem* pObj;
 public:

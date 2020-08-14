@@ -15,10 +15,12 @@
 #include <cppuhelper/bootstrap.hxx>
 #include <osl/file.hxx>
 #include <vcl/builder.hxx>
-#include <vcl/dialog.hxx>
+#include <vcl/toolkit/dialog.hxx>
 #include <vcl/help.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/vclmain.hxx>
+
+namespace {
 
 class UIPreviewApp : public Application
 {
@@ -26,6 +28,8 @@ public:
     virtual void Init() override;
     virtual int Main() override;
 };
+
+}
 
 using namespace com::sun::star;
 
@@ -35,8 +39,7 @@ void UIPreviewApp::Init()
         cppu::defaultBootstrap_InitialComponentContext();
     uno::Reference<lang::XMultiComponentFactory> xFactory =
         xContext->getServiceManager();
-    uno::Reference<lang::XMultiServiceFactory> xSFactory =
-        uno::Reference<lang::XMultiServiceFactory> (xFactory, uno::UNO_QUERY_THROW);
+    uno::Reference<lang::XMultiServiceFactory> xSFactory(xFactory, uno::UNO_QUERY_THROW);
     comphelper::setProcessServiceFactory(xSFactory);
 
     // Create UCB (for backwards compatibility, in case some code still uses

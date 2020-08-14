@@ -20,12 +20,11 @@
 #ifndef INCLUDED_SW_INC_TXTANNOTATIONFLD_HXX
 #define INCLUDED_SW_INC_TXTANNOTATIONFLD_HXX
 
-#include <txtfld.hxx>
-#include <IMark.hxx>
+#include "txtfld.hxx"
 
-class SwDoc;
+namespace sw::mark { class IMark; }
 
-class SwTextAnnotationField : public SwTextField
+class SwTextAnnotationField final : public SwTextField
 {
 public:
     SwTextAnnotationField(

@@ -22,34 +22,31 @@
 
 #include <sal/log.hxx>
 
-#include <tools/stream.hxx>
-
 #include <sfx2/module.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/msg.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/msgpool.hxx>
-#include <sfx2/sfxresid.hxx>
-#include <sfx2/objsh.hxx>
-#include <rtl/strbuf.hxx>
 
 extern "C" {
 
-static int SAL_CALL
+static int
 SfxCompareSlots_qsort( const void* pSmaller, const void* pBigger )
 {
-    return ( (int) static_cast<SfxSlot const *>(pSmaller)->GetSlotId() ) -
-           ( (int) static_cast<SfxSlot const *>(pBigger)->GetSlotId() );
+    return static_cast<int>(static_cast<SfxSlot const *>(pSmaller)->GetSlotId()) -
+           static_cast<int>(static_cast<SfxSlot const *>(pBigger)->GetSlotId());
 }
 
-static int SAL_CALL
+static int
 SfxCompareSlots_bsearch( const void* pSmaller, const void* pBigger )
 {
-    return ( (int) *static_cast<sal_uInt16 const *>(pSmaller) ) -
-           ( (int) static_cast<SfxSlot const *>(pBigger)->GetSlotId() );
+    return static_cast<int>(*static_cast<sal_uInt16 const *>(pSmaller)) -
+           static_cast<int>(static_cast<SfxSlot const *>(pBigger)->GetSlotId());
 }
 
 }
+
+namespace {
 
 struct SfxObjectUI_Impl
 {
@@ -69,37 +66,30 @@ struct SfxObjectUI_Impl
     }
 };
 
-typedef std::vector<SfxObjectUI_Impl*> SfxObjectUIArr_Impl;
+}
 
 struct SfxInterface_Impl
 {
-    SfxObjectUIArr_Impl     aObjectBars;    // registered ObjectBars
-    SfxObjectUIArr_Impl     aChildWindows;  // registered ChildWindows
+    std::vector<std::unique_ptr<SfxObjectUI_Impl>>
+                            aObjectBars;    // registered ObjectBars
+    std::vector<std::unique_ptr<SfxObjectUI_Impl>>
+                            aChildWindows;  // registered ChildWindows
     OUString                aPopupName;     // registered PopupMenu
-    sal_uInt32              nStatBarResId;  // registered StatusBar
+    StatusBarId             eStatBarResId;  // registered StatusBar
     SfxModule*              pModule;
     bool                    bRegistered;
 
     SfxInterface_Impl()
-        : nStatBarResId(0)
+        : eStatBarResId(StatusBarId::None)
         , pModule(nullptr)
         , bRegistered(false)
     {
-    }
-
-    ~SfxInterface_Impl()
-    {
-        for (SfxObjectUIArr_Impl::const_iterator it = aObjectBars.begin(); it != aObjectBars.end(); ++it)
-            delete *it;
-
-        for (SfxObjectUIArr_Impl::const_iterator it = aChildWindows.begin(); it != aChildWindows.end(); ++it)
-            delete *it;
     }
 };
 
 static SfxObjectUI_Impl* CreateObjectBarUI_Impl(sal_uInt16 nPos, SfxVisibilityFlags nFlags, ToolbarId eId, SfxShellFeature nFeature);
 
-// constuctor, registeres a new unit
+// constructor, registers a new unit
 SfxInterface::SfxInterface( const char *pClassName,
                             bool bUsableSuperClass,
                             SfxInterfaceId nId,
@@ -152,7 +142,7 @@ void SfxInterface::SetSlotMap( SfxSlot& rSlotMap, sal_uInt16 nSlotCount )
                 SfxSlot *pLastSlot = pIter;
                 for ( sal_uInt16 n = nIter; n < Count(); ++n )
                 {
-                    SfxSlot *pCurSlot = (pSlots+n);
+                    SfxSlot *pCurSlot = pSlots+n;
                     if ( pCurSlot->GetStateFnc() == pIter->GetStateFnc() )
                     {
                         pLastSlot->pNextSlot = pCurSlot;
@@ -195,16 +185,6 @@ void SfxInterface::SetSlotMap( SfxSlot& rSlotMap, sal_uInt16 nSlotCount )
 
 SfxInterface::~SfxInterface()
 {
-    SfxModule *pMod = pImplData->pModule;
-    bool bRegistered = pImplData->bRegistered;
-    assert( bRegistered );
-    if ( bRegistered )
-    {
-        if ( pMod )
-            pMod->GetSlotPool()->ReleaseInterface(*this);
-        else
-            SfxGetpApp()->GetAppSlotPool_Impl().ReleaseInterface(*this);
-    }
 }
 
 
@@ -222,7 +202,7 @@ const SfxSlot* SfxInterface::GetSlot( sal_uInt16 nFuncId ) const
     if ( !p && pGenoType )
         return pGenoType->GetSlot( nFuncId );
 
-    return p ? static_cast<const SfxSlot*>(p) : nullptr;
+    return static_cast<const SfxSlot*>(p);
 }
 
 const SfxSlot* SfxInterface::GetSlot( const OUString& rCommand ) const
@@ -262,24 +242,6 @@ const SfxSlot* SfxInterface::GetRealSlot( const SfxSlot *pSlot ) const
 }
 
 
-const SfxSlot* SfxInterface::GetRealSlot( sal_uInt16 nSlotId ) const
-{
-
-    assert( pSlots );
-    assert( nCount );
-
-    const SfxSlot *pSlot = GetSlot(nSlotId);
-    if ( !pSlot )
-    {
-        if(pGenoType)
-            return pGenoType->GetRealSlot(nSlotId);
-        SAL_WARN( "sfx.control", "unknown Slot" );
-        return nullptr;
-    }
-
-    return nullptr;
-}
-
 void SfxInterface::RegisterPopupMenu( const OUString& rResourceName )
 {
     pImplData->aPopupName = rResourceName;
@@ -294,7 +256,7 @@ void SfxInterface::RegisterObjectBar(sal_uInt16 nPos, SfxVisibilityFlags nFlags,
 {
     SfxObjectUI_Impl* pUI = CreateObjectBarUI_Impl(nPos, nFlags, eId, nFeature);
     if ( pUI )
-        pImplData->aObjectBars.push_back(pUI);
+        pImplData->aObjectBars.emplace_back(pUI);
 }
 
 SfxObjectUI_Impl* CreateObjectBarUI_Impl(sal_uInt16 nPos, SfxVisibilityFlags nFlags, ToolbarId eId, SfxShellFeature nFeature)
@@ -302,7 +264,7 @@ SfxObjectUI_Impl* CreateObjectBarUI_Impl(sal_uInt16 nPos, SfxVisibilityFlags nFl
     if (nFlags == SfxVisibilityFlags::Invisible)
         nFlags |= SfxVisibilityFlags::Standard;
 
-    return new SfxObjectUI_Impl(nPos, nFlags, (sal_uInt32)eId, nFeature);
+    return new SfxObjectUI_Impl(nPos, nFlags, static_cast<sal_uInt32>(eId), nFeature);
 }
 
 ToolbarId SfxInterface::GetObjectBarId(sal_uInt16 nNo) const
@@ -321,7 +283,7 @@ ToolbarId SfxInterface::GetObjectBarId(sal_uInt16 nNo) const
 
     assert( nNo<pImplData->aObjectBars.size() );
 
-    return (ToolbarId)pImplData->aObjectBars[nNo]->nObjId;
+    return static_cast<ToolbarId>(pImplData->aObjectBars[nNo]->nObjId);
 }
 
 sal_uInt16 SfxInterface::GetObjectBarPos( sal_uInt16 nNo ) const
@@ -379,12 +341,12 @@ void SfxInterface::RegisterChildWindow(sal_uInt16 nId, bool bContext, SfxShellFe
 {
     SfxObjectUI_Impl* pUI = new SfxObjectUI_Impl(0, SfxVisibilityFlags::Invisible, nId, nFeature);
     pUI->bContext = bContext;
-    pImplData->aChildWindows.push_back(pUI);
+    pImplData->aChildWindows.emplace_back(pUI);
 }
 
-void SfxInterface::RegisterStatusBar(sal_uInt32 nResId)
+void SfxInterface::RegisterStatusBar(StatusBarId eId)
 {
-    pImplData->nStatBarResId = nResId;
+    pImplData->eStatBarResId = eId;
 }
 
 sal_uInt32 SfxInterface::GetChildWindowId (sal_uInt16 nNo) const
@@ -440,12 +402,12 @@ const OUString& SfxInterface::GetPopupMenuName() const
     return pImplData->aPopupName;
 }
 
-sal_uInt32 SfxInterface::GetStatusBarId() const
+StatusBarId SfxInterface::GetStatusBarId() const
 {
-    if (pImplData->nStatBarResId == 0 && pGenoType)
+    if (pImplData->eStatBarResId == StatusBarId::None && pGenoType)
         return pGenoType->GetStatusBarId();
     else
-        return pImplData->nStatBarResId;
+        return pImplData->eStatBarResId;
 }
 
 SfxShellFeature SfxInterface::GetObjectBarFeature ( sal_uInt16 nNo ) const

@@ -18,15 +18,14 @@
  */
 
 #include <com/sun/star/embed/NoVisualAreaSizeException.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <wrtsh.hxx>
 #include <doc.hxx>
 #include <IDocumentSettingAccess.hxx>
-#include <swtypes.hxx>
 #include <view.hxx>
 #include <edtwin.hxx>
 #include <swcli.hxx>
-#include <cmdid.h>
-#include <cfgitems.hxx>
+#include <svtools/embedhlp.hxx>
 
 #include <toolkit/helper/vclunohelper.hxx>
 
@@ -68,8 +67,8 @@ void SwOleClient::RequestNewObjectArea( tools::Rectangle& aLogRect )
         MapMode aObjectMap( VCLUnoHelper::UnoEmbed2VCLMapUnit( GetObject()->getMapUnit( GetAspect() ) ) );
         MapMode aClientMap( GetEditWin()->GetMapMode().GetMapUnit() );
 
-        Size aNewObjSize( Fraction( aLogRect.GetWidth() ) / GetScaleWidth(),
-                          Fraction( aLogRect.GetHeight() ) / GetScaleHeight() );
+        Size aNewObjSize( long( aLogRect.GetWidth() / GetScaleWidth() ),
+                          long( aLogRect.GetHeight() / GetScaleHeight() ) );
 
         // convert to logical coordinates of the embedded object
         Size aNewSize = GetEditWin()->LogicToLogic( aNewObjSize, &aClientMap, &aObjectMap );
@@ -142,8 +141,8 @@ void SwOleClient::ViewChanged()
     const MapMode aObjMap( VCLUnoHelper::UnoEmbed2VCLMapUnit( GetObject()->getMapUnit( GetAspect() ) ) );
     aVisSize = OutputDevice::LogicToLogic( aVisSize, aObjMap, aMyMap );
 
-    aVisSize.Width() = Fraction( aVisSize.Width()  ) * GetScaleWidth();
-    aVisSize.Height()= Fraction( aVisSize.Height() ) * GetScaleHeight();
+    aVisSize.setWidth( long(aVisSize.Width() * GetScaleWidth()) );
+    aVisSize.setHeight( long(aVisSize.Height() * GetScaleHeight()) );
 
     SwRect aRect( Point( LONG_MIN, LONG_MIN ), aVisSize );
     rSh.LockView( true );   // Prevent scrolling in the EndAction

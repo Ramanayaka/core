@@ -24,9 +24,9 @@
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Reference.h>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
-} } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
+}
 
 
 enum LineNumberingToken
@@ -48,20 +48,8 @@ enum LineNumberingToken
 
 
 /** import <text:linenumbering-configuration> elements */
-class XMLLineNumberingImportContext : public SvXMLStyleContext
+class XMLLineNumberingImportContext final : public SvXMLStyleContext
 {
-    const OUString sCharStyleName;
-    const OUString sCountEmptyLines;
-    const OUString sCountLinesInFrames;
-    const OUString sDistance;
-    const OUString sInterval;
-    const OUString sSeparatorText;
-    const OUString sNumberPosition;
-    const OUString sNumberingType;
-    const OUString sIsOn;
-    const OUString sRestartAtEachPage;
-    const OUString sSeparatorInterval;
-
     OUString sStyleName;
     OUString sNumFormat;
     OUString sNumLetterSync;
@@ -90,18 +78,15 @@ public:
     void SetSeparatorText(const OUString& sText);
     void SetSeparatorIncrement(sal_Int16 nIncr);
 
-protected:
+private:
 
-    virtual void StartElement(
-        const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList) override;
-
-    void ProcessAttribute(
-        enum LineNumberingToken eToken,
-        const OUString& sValue);
+    virtual void SetAttribute( sal_uInt16 nPrefixKey,
+                               const OUString& rLocalName,
+                               const OUString& rValue ) override;
 
     virtual void CreateAndInsert(bool bOverwrite) override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList ) override;

@@ -22,15 +22,16 @@
 #include <com/sun/star/i18n/XCharacterClassification.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <vector>
-#include <com/sun/star/i18n/KCharacterType.hpp>
+#include <memory>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace com::sun::star::uno { class XComponentContext; }
 
-class CharacterClassificationImpl : public cppu::WeakImplHelper
+namespace i18npool {
+
+class CharacterClassificationImpl final : public cppu::WeakImplHelper
 <
-    XCharacterClassification,
+    css::i18n::XCharacterClassification,
     css::lang::XServiceInfo
 >
 {
@@ -52,11 +53,11 @@ public:
         const css::lang::Locale& rLocale ) override;
     virtual sal_Int32 SAL_CALL getStringType( const OUString& text, sal_Int32 nPos,
         sal_Int32 nCount, const css::lang::Locale& rLocale ) override;
-    virtual ParseResult SAL_CALL parseAnyToken( const OUString& Text, sal_Int32 nPos,
+    virtual css::i18n::ParseResult SAL_CALL parseAnyToken( const OUString& Text, sal_Int32 nPos,
         const css::lang::Locale& rLocale, sal_Int32 nStartCharFlags,
         const OUString& userDefinedCharactersStart, sal_Int32 nContCharFlags,
         const OUString& userDefinedCharactersCont ) override;
-    virtual ParseResult SAL_CALL parsePredefinedToken( sal_Int32 nTokenType,
+    virtual css::i18n::ParseResult SAL_CALL parsePredefinedToken( sal_Int32 nTokenType,
         const OUString& Text, sal_Int32 nPos, const css::lang::Locale& rLocale,
         sal_Int32 nStartCharFlags, const OUString& userDefinedCharactersStart,
         sal_Int32 nContCharFlags, const OUString& userDefinedCharactersCont ) override;
@@ -69,30 +70,30 @@ public:
 private:
     struct lookupTableItem {
         lookupTableItem(const css::lang::Locale& rLocale, const OUString& rName,
-        css::uno::Reference < XCharacterClassification >& rxCI) :
-        aLocale(rLocale), aName(rName), xCI(rxCI) {};
+                        css::uno::Reference < XCharacterClassification > const & rxCI) :
+            aLocale(rLocale), aName(rName), xCI(rxCI) {};
         css::lang::Locale aLocale;
         OUString aName;
         css::uno::Reference < XCharacterClassification > xCI;
-        bool SAL_CALL equals(const css::lang::Locale& rLocale) {
+        bool equals(const css::lang::Locale& rLocale) {
         return aLocale.Language == rLocale.Language &&
             aLocale.Country == rLocale.Country &&
             aLocale.Variant == rLocale.Variant;
         };
     };
-    std::vector<lookupTableItem*> lookupTable;
+    std::vector<std::unique_ptr<lookupTableItem>> lookupTable;
     lookupTableItem *cachedItem;
 
     css::uno::Reference < css::uno::XComponentContext > m_xContext;
     css::uno::Reference < XCharacterClassification > xUCI;
 
     /// @throws css::uno::RuntimeException
-    css::uno::Reference < XCharacterClassification > const & SAL_CALL getLocaleSpecificCharacterClassification(const css::lang::Locale& rLocale);
-    bool SAL_CALL createLocaleSpecificCharacterClassification(const OUString& serviceName, const css::lang::Locale& rLocale);
+    css::uno::Reference < XCharacterClassification > const & getLocaleSpecificCharacterClassification(const css::lang::Locale& rLocale);
+    bool createLocaleSpecificCharacterClassification(const OUString& serviceName, const css::lang::Locale& rLocale);
 
 };
 
-} } } }
+}
 
 #endif
 

@@ -17,17 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#define UNICODE
-
-#ifdef _MSC_VER
-#pragma warning(push,1) // disable warnings within system headers
-#endif
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <msiquery.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
+#include <cassert>
 #include <string.h>
 #include <malloc.h>
 #include <stdio.h>
@@ -36,22 +30,23 @@
 #include "seterror.hxx"
 
 
-BOOL GetMsiPropW( MSIHANDLE hMSI, const wchar_t* pPropName, wchar_t** ppValue )
+static bool GetMsiPropW( MSIHANDLE hMSI, const wchar_t* pPropName, wchar_t** ppValue )
 {
     DWORD sz = 0;
-       if ( MsiGetPropertyW( hMSI, pPropName, const_cast<wchar_t *>(L""), &sz ) == ERROR_MORE_DATA )
-       {
-           sz++;
-           DWORD nbytes = sz * sizeof( wchar_t );
-           wchar_t* buff = static_cast<wchar_t*>( malloc( nbytes ) );
-           ZeroMemory( buff, nbytes );
-           MsiGetPropertyW( hMSI, pPropName, buff, &sz );
-           *ppValue = buff;
+    if ( MsiGetPropertyW( hMSI, pPropName, const_cast<wchar_t *>(L""), &sz ) == ERROR_MORE_DATA )
+    {
+        sz++;
+        DWORD nbytes = sz * sizeof( wchar_t );
+        wchar_t* buff = static_cast<wchar_t*>( malloc( nbytes ) );
+        assert(buff); // Don't handle OOM conditions
+        ZeroMemory( buff, nbytes );
+        MsiGetPropertyW( hMSI, pPropName, buff, &sz );
+        *ppValue = buff;
 
-        return TRUE;
+        return true;
     }
 
-    return FALSE;
+    return false;
 }
 
 
@@ -67,13 +62,13 @@ inline void OutputDebugStringFormatW( PCWSTR pFormat, ... )
     va_end(args);
 }
 #else
-static inline void OutputDebugStringFormatW( PCWSTR, ... )
+static void OutputDebugStringFormatW( PCWSTR, ... )
 {
 }
 #endif
 
 
-extern "C" UINT __stdcall CheckVersions( MSIHANDLE hMSI )
+extern "C" __declspec(dllexport) UINT __stdcall CheckVersions( MSIHANDLE hMSI )
 {
     // MessageBoxW(NULL, L"CheckVersions", L"Information", MB_OK | MB_ICONINFORMATION);
 

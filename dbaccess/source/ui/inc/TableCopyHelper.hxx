@@ -23,11 +23,11 @@
 #include "commontypes.hxx"
 #include <svx/dataaccessdescriptor.hxx>
 #include <sot/storage.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
+#include <vcl/weld.hxx>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 
-class SvTreeListEntry;
 namespace dbaui
 {
     class OGenericUnoController;
@@ -75,14 +75,13 @@ namespace dbaui
             OUString                        aUrl;
             tools::SvRef<SotStorageStream>             aHtmlRtfStorage;
             ElementType                     nType;
-            SvTreeListEntry*                    pDroppedAt;
+            std::unique_ptr<weld::TreeIter> xDroppedAt;
             sal_Int8                        nAction;
             bool                        bHtml;
             bool                        bError;
 
             DropDescriptor()
                 : nType(E_TABLE)
-                , pDroppedAt(nullptr)
                 , nAction(DND_ACTION_NONE)
                 , bHtml(false)
                 , bError(false)
@@ -122,7 +121,7 @@ namespace dbaui
             @param  _xConnection
                 The connection
         */
-        bool copyTagTable(  DropDescriptor& _rDesc,
+        bool copyTagTable(  DropDescriptor const & _rDesc,
                             bool _bCheck,
                             const SharedConnection& _xConnection);
 

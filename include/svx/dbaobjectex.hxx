@@ -20,12 +20,11 @@
 #ifndef INCLUDED_SVX_DBAOBJECTEX_HXX
 #define INCLUDED_SVX_DBAOBJECTEX_HXX
 
-#include <svtools/transfer.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/ucb/XContent.hpp>
+#include <vcl/transfer.hxx>
 #include <svx/dataaccessdescriptor.hxx>
 #include <svx/svxdllapi.h>
+
+namespace com::sun::star::ucb { class XContent; }
 
 
 namespace svx
@@ -34,11 +33,8 @@ namespace svx
 
     //= OComponentTransferable
 
-    class SAL_WARN_UNUSED SVX_DLLPUBLIC OComponentTransferable : public TransferableHelper
+    class SAL_WARN_UNUSED SVX_DLLPUBLIC OComponentTransferable final : public TransferableHelper
     {
-    protected:
-        ODataAccessDescriptor   m_aDescriptor;
-
     public:
         /** construct the transferable
         */
@@ -58,12 +54,14 @@ namespace svx
         static ODataAccessDescriptor
                         extractComponentDescriptor(const TransferableDataHelper& _rData);
 
-    protected:
+    private:
         // TransferableHelper overridables
         virtual void        AddSupportedFormats() override;
         virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
 
         static SotClipboardFormatId getDescriptorFormatId(bool _bExtractForm);
+
+        ODataAccessDescriptor   m_aDescriptor;
     };
 
 

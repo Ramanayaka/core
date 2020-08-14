@@ -17,15 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "WindowUpdater.hxx"
-#include "ViewShell.hxx"
-#include "Window.hxx"
-#include "drawdoc.hxx"
-#include "View.hxx"
+#include <WindowUpdater.hxx>
+#include <drawdoc.hxx>
 
-#include <vcl/split.hxx>
-#include <sfx2/childwin.hxx>
-#include <sfx2/viewfrm.hxx>
+#include <vcl/outdev.hxx>
+#include <vcl/vclptr.hxx>
+#include <vcl/window.hxx>
 
 #include <algorithm>
 
@@ -53,7 +50,7 @@ void WindowUpdater::RegisterWindow (vcl::Window* pWindow)
         {
             // Update the device once right now and add it to the list.
             Update (pWindow);
-            maWindowList.push_back (pWindow);
+            maWindowList.emplace_back(pWindow);
         }
     }
 }
@@ -85,50 +82,48 @@ void WindowUpdater::Update (
 
 void WindowUpdater::UpdateWindow (OutputDevice* pDevice) const
 {
-    if (pDevice != nullptr)
+    if (pDevice == nullptr)
+        return;
+
+    SvtCTLOptions::TextNumerals aNumeralMode (maCTLOptions.GetCTLTextNumerals());
+
+    LanguageType aLanguage;
+    // Now this is a bit confusing.  The numerals in arabic languages
+    // are Hindi numerals and what the western world generally uses are
+    // arabic numerals.  The digits used in the Hindi language are not
+    // used at all.
+    switch (aNumeralMode)
     {
-        SvtCTLOptions::TextNumerals aNumeralMode (maCTLOptions.GetCTLTextNumerals());
+        case SvtCTLOptions::NUMERALS_HINDI:
+            aLanguage = LANGUAGE_ARABIC_SAUDI_ARABIA;
+            break;
 
-        LanguageType aLanguage;
-        // Now this is a bit confusing.  The numerals in arabic languages
-        // are Hindi numerals and what the western world generally uses are
-        // arabic numerals.  The digits used in the Hindi language are not
-        // used at all.
-        switch (aNumeralMode)
-        {
-            case SvtCTLOptions::NUMERALS_HINDI:
-                aLanguage = LANGUAGE_ARABIC_SAUDI_ARABIA;
-                break;
+        case SvtCTLOptions::NUMERALS_SYSTEM:
+            aLanguage = LANGUAGE_SYSTEM;
+            break;
 
-            case SvtCTLOptions::NUMERALS_SYSTEM:
-                aLanguage = LANGUAGE_SYSTEM;
-                break;
-
-            case SvtCTLOptions::NUMERALS_ARABIC:
-            default:
-                aLanguage = LANGUAGE_ENGLISH;
-                break;
-        }
-
-        pDevice->SetDigitLanguage (aLanguage);
+        case SvtCTLOptions::NUMERALS_ARABIC:
+        default:
+            aLanguage = LANGUAGE_ENGLISH;
+            break;
     }
+
+    pDevice->SetDigitLanguage (aLanguage);
 }
 
 void WindowUpdater::ConfigurationChanged( utl::ConfigurationBroadcaster*, ConfigurationHints )
 {
     // Set the current state at all registered output devices.
-    tWindowList::iterator aWindowIterator (maWindowList.begin());
-    while (aWindowIterator != maWindowList.end())
-        Update (*aWindowIterator++);
+    for (auto& rxWindow : maWindowList)
+        Update (rxWindow);
 
     // Reformat the document for the modified state to take effect.
     if (mpDocument != nullptr)
         mpDocument->ReformatAllTextObjects();
 
     // Invalidate the windows to make the modified state visible.
-    aWindowIterator = maWindowList.begin();
-    while (aWindowIterator != maWindowList.end())
-        (*aWindowIterator++)->Invalidate();
+    for (auto& rxWindow : maWindowList)
+        rxWindow->Invalidate();
 }
 
 } // end of namespace sd

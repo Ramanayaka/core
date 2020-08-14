@@ -19,23 +19,21 @@
 
 #include "XMLTableSourceContext.hxx"
 #include "xmlimprt.hxx"
-#include "document.hxx"
+#include <document.hxx>
 #include "xmlsubti.hxx"
-#include "tablink.hxx"
+#include <tablink.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <sax/tools/converter.hxx>
 #include <com/sun/star/sheet/XSheetLinkable.hpp>
+#include <com/sun/star/sheet/XSpreadsheet.hpp>
 
 using namespace com::sun::star;
 using namespace xmloff::token;
 
 ScXMLTableSourceContext::ScXMLTableSourceContext( ScXMLImport& rImport,
-                                      sal_uInt16 nPrfx,
-                                      const OUString& rLName,
-                                      const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList) :
-    ScXMLImportContext( rImport, nPrfx, rLName ),
+                                      const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList ) :
+    ScXMLImportContext( rImport ),
     sLink(),
     sTableName(),
     sFilterName(),
@@ -43,38 +41,34 @@ ScXMLTableSourceContext::ScXMLTableSourceContext( ScXMLImport& rImport,
     nRefresh(0),
     nMode(sheet::SheetLinkMode_NORMAL)
 {
-    sal_Int16 nAttrCount(xAttrList.is() ? xAttrList->getLength() : 0);
-    for( sal_Int16 i=0; i < nAttrCount; ++i )
+    if ( !rAttrList.is() )
+        return;
+
+    for (auto &aIter : *rAttrList)
     {
-        const OUString& sAttrName(xAttrList->getNameByIndex( i ));
-        OUString aLocalName;
-        sal_uInt16 nPrefix(GetScImport().GetNamespaceMap().GetKeyByAttrName(
-                                            sAttrName, &aLocalName ));
-        const OUString& sValue(xAttrList->getValueByIndex( i ));
-        if(nPrefix == XML_NAMESPACE_XLINK)
+        switch (aIter.getToken())
         {
-            if (IsXMLToken(aLocalName, XML_HREF))
-                sLink = GetScImport().GetAbsoluteReference(sValue);
-        }
-        else if (nPrefix == XML_NAMESPACE_TABLE)
-        {
-            if (IsXMLToken(aLocalName, XML_TABLE_NAME))
-                sTableName = sValue;
-            else if (IsXMLToken(aLocalName, XML_FILTER_NAME))
-                sFilterName = sValue;
-            else if (IsXMLToken(aLocalName, XML_FILTER_OPTIONS))
-                sFilterOptions = sValue;
-            else if (IsXMLToken(aLocalName, XML_MODE))
-            {
-                if (IsXMLToken(sValue, XML_COPY_RESULTS_ONLY))
-                    nMode = sheet::SheetLinkMode_VALUE;
-            }
-            else if (IsXMLToken(aLocalName, XML_REFRESH_DELAY))
-            {
-                double fTime;
-                if (::sax::Converter::convertDuration( fTime, sValue ))
-                    nRefresh = std::max( (sal_Int32)(fTime * 86400.0), (sal_Int32)0 );
-            }
+        case XML_ELEMENT( XLINK, XML_HREF ):
+            sLink = GetScImport().GetAbsoluteReference(aIter.toString());
+            break;
+        case XML_ELEMENT( TABLE, XML_TABLE_NAME ):
+            sTableName = aIter.toString();
+            break;
+        case XML_ELEMENT( TABLE, XML_FILTER_NAME):
+            sFilterName = aIter.toString();
+            break;
+        case XML_ELEMENT( TABLE, XML_FILTER_OPTIONS ):
+            sFilterOptions = aIter.toString();
+            break;
+        case XML_ELEMENT( TABLE, XML_MODE ):
+            if (IsXMLToken(aIter, XML_COPY_RESULTS_ONLY))
+                nMode = sheet::SheetLinkMode_VALUE;
+            break;
+        case XML_ELEMENT( TABLE, XML_REFRESH_DELAY ):
+            double fTime;
+            if (::sax::Converter::convertDuration( fTime, aIter.toString() ))
+                nRefresh = std::max( static_cast<sal_Int32>(fTime * 86400.0), sal_Int32(0) );
+            break;
         }
     }
 }
@@ -83,41 +77,40 @@ ScXMLTableSourceContext::~ScXMLTableSourceContext()
 {
 }
 
-SvXMLImportContext *ScXMLTableSourceContext::CreateChildContext( sal_uInt16 nPrefix,
-                                            const OUString& rLName,
-                                            const css::uno::Reference<css::xml::sax::XAttributeList>& /* xAttrList */ )
+uno::Reference< xml::sax::XFastContextHandler > SAL_CALL ScXMLTableSourceContext::createFastChildContext(
+    sal_Int32 /*nElement*/, const uno::Reference< xml::sax::XFastAttributeList >& /*xAttrList*/ )
 {
-    return new SvXMLImportContext( GetImport(), nPrefix, rLName );
+    return nullptr;
 }
 
-void ScXMLTableSourceContext::EndElement()
+void SAL_CALL ScXMLTableSourceContext::endFastElement( sal_Int32 /*nElement*/ )
 {
-    if (!sLink.isEmpty())
-    {
-        uno::Reference <sheet::XSheetLinkable> xLinkable (GetScImport().GetTables().GetCurrentXSheet(), uno::UNO_QUERY);
-        ScDocument* pDoc(GetScImport().GetDocument());
-        if (xLinkable.is() && pDoc)
-        {
-            ScXMLImport::MutexGuard aGuard(GetScImport());
-            if (pDoc->RenameTab( GetScImport().GetTables().GetCurrentSheet(),
-                GetScImport().GetTables().GetCurrentSheetName(), true/*bExternalDocument*/))
-            {
-                sLink = ScGlobal::GetAbsDocName( sLink, pDoc->GetDocumentShell() );
-                if (sFilterName.isEmpty())
-                    ScDocumentLoader::GetFilterName( sLink, sFilterName, sFilterOptions, false, false );
+    if (sLink.isEmpty())
+        return;
 
-                ScLinkMode nLinkMode = ScLinkMode::NONE;
-                if ( nMode == sheet::SheetLinkMode_NORMAL )
-                    nLinkMode = ScLinkMode::NORMAL;
-                else if ( nMode == sheet::SheetLinkMode_VALUE )
-                    nLinkMode = ScLinkMode::VALUE;
+    uno::Reference <sheet::XSheetLinkable> xLinkable (GetScImport().GetTables().GetCurrentXSheet(), uno::UNO_QUERY);
+    ScDocument* pDoc(GetScImport().GetDocument());
+    if (!(xLinkable.is() && pDoc))
+        return;
 
-                pDoc->SetLink( GetScImport().GetTables().GetCurrentSheet(),
-                    nLinkMode, sLink, sFilterName, sFilterOptions,
-                    sTableName, nRefresh );
-            }
-        }
-    }
+    ScXMLImport::MutexGuard aGuard(GetScImport());
+    if (!pDoc->RenameTab( GetScImport().GetTables().GetCurrentSheet(),
+        GetScImport().GetTables().GetCurrentSheetName(), true/*bExternalDocument*/))
+        return;
+
+    sLink = ScGlobal::GetAbsDocName( sLink, pDoc->GetDocumentShell() );
+    if (sFilterName.isEmpty())
+        ScDocumentLoader::GetFilterName( sLink, sFilterName, sFilterOptions, false, false );
+
+    ScLinkMode nLinkMode = ScLinkMode::NONE;
+    if ( nMode == sheet::SheetLinkMode_NORMAL )
+        nLinkMode = ScLinkMode::NORMAL;
+    else if ( nMode == sheet::SheetLinkMode_VALUE )
+        nLinkMode = ScLinkMode::VALUE;
+
+    pDoc->SetLink( GetScImport().GetTables().GetCurrentSheet(),
+        nLinkMode, sLink, sFilterName, sFilterOptions,
+        sTableName, nRefresh );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

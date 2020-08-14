@@ -21,25 +21,22 @@
 
 // include ---------------------------------------------------------------
 
-#include <svx/optgenrl.hxx>
 #include <sfx2/tabdlg.hxx>
-#include <vcl/fixed.hxx>
+#include <vcl/weld.hxx>
 
 #include <vector>
-
-// forward ---------------------------------------------------------------
-
-class Edit;
-
 
 // class SvxGeneralTabPage -----------------------------------------------
 
 class SvxGeneralTabPage : public SfxTabPage
 {
-    using TabPage::DeactivatePage;
 private:
     // the "Use data for document properties" checkbox
-    VclPtr<CheckBox> m_pUseDataCB;
+    std::unique_ptr<weld::CheckButton> m_xUseDataCB;
+    std::unique_ptr<weld::Widget> m_xCryptoFrame;
+    std::unique_ptr<weld::ComboBox> m_xSigningKeyLB;
+    std::unique_ptr<weld::ComboBox> m_xEncryptionKeyLB;
+    std::unique_ptr<weld::CheckButton> m_xEncryptToSelfCB;
     // rows
     struct Row;
     std::vector<std::shared_ptr<Row> > vRows;
@@ -50,23 +47,23 @@ private:
     unsigned nNameRow;
     unsigned nShortNameField;
 
-    DECL_LINK( ModifyHdl_Impl, Edit&, void );
+    DECL_LINK( ModifyHdl_Impl, weld::Entry&, void );
 
     bool                GetData_Impl();
     void                SetData_Impl();
 
     void InitControls ();
+    void InitCryptography();
     void SetLinks ();
 
 protected:
     virtual DeactivateRC DeactivatePage( SfxItemSet* pSet ) override;
 
 public:
-    SvxGeneralTabPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    SvxGeneralTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SvxGeneralTabPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rAttrSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;

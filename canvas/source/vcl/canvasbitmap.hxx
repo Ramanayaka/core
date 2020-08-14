@@ -27,18 +27,15 @@
 #include <com/sun/star/rendering/XIntegerBitmap.hpp>
 #include <com/sun/star/beans/XFastPropertySet.hpp>
 
-#include <vcl/virdev.hxx>
 #include <vcl/bitmapex.hxx>
 
-#include <canvas/vclwrapper.hxx>
-
-#include <canvas/base/basemutexhelper.hxx>
-#include <canvas/base/integerbitmapbase.hxx>
-#include <canvasbitmaphelper.hxx>
+#include <base/bitmapcanvasbase.hxx>
+#include <base/basemutexhelper.hxx>
+#include <base/integerbitmapbase.hxx>
+#include "canvasbitmaphelper.hxx"
 
 #include "impltools.hxx"
 #include "repainttarget.hxx"
-#include "spritecanvas.hxx"
 
 
 /* Definition of CanvasBitmap class */

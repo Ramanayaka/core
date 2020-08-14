@@ -21,13 +21,13 @@
 #ifndef INCLUDED_OSL_DIAGNOSE_H
 #define INCLUDED_OSL_DIAGNOSE_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
-#include <sal/detail/log.h>
-#include <sal/saldllapi.h>
-#include <sal/types.h>
+#include "sal/detail/log.h"
+#include "sal/types.h"
 
-/** @file Provides simple diagnostic support.
+/** @file
+    Provides simple diagnostic support.
 
     @deprecated
     The facilities provided by this header are deprecated.  True assertions

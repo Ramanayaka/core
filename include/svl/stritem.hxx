@@ -34,15 +34,9 @@ public:
     SfxStringItem(sal_uInt16 which, const OUString & rValue):
         CntUnencodedStringItem(which, rValue) {}
 
-    SfxStringItem(sal_uInt16 nWhich, SvStream & rStream);
+    virtual SfxStringItem* Clone(SfxItemPool * = nullptr) const override;
 
-    virtual SfxPoolItem * Create(SvStream & rStream, sal_uInt16) const override;
-
-    virtual SvStream & Store(SvStream & rStream, sal_uInt16) const override;
-
-    virtual SfxPoolItem * Clone(SfxItemPool * = nullptr) const override;
-
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
 };
 

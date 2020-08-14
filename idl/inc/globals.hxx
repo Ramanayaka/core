@@ -20,7 +20,8 @@
 #ifndef INCLUDED_IDL_INC_GLOBALS_HXX
 #define INCLUDED_IDL_INC_GLOBALS_HXX
 
-#include <hash.hxx>
+#include "hash.hxx"
+#include <memory>
 
 struct SvGlobalHashNames
 {
@@ -68,8 +69,8 @@ struct SvGlobalHashNames
 class IdlDll
 {
 public:
-    SvStringHashTable * pHashTable;
-    SvGlobalHashNames * pGlobalNames;
+    std::unique_ptr<SvStringHashTable> pHashTable;
+    std::unique_ptr<SvGlobalHashNames> pGlobalNames;
 
                 IdlDll();
                 ~IdlDll();
@@ -81,7 +82,7 @@ IdlDll & GetIdlApp();
 inline SvStringHashEntry * SvHash_##Name()                   \
 {                                                            \
     if( !GetIdlApp().pGlobalNames )                          \
-        GetIdlApp().pGlobalNames = new SvGlobalHashNames();  \
+        GetIdlApp().pGlobalNames.reset( new SvGlobalHashNames() );  \
     return GetIdlApp().pGlobalNames->MM_##Name;      \
 }
 

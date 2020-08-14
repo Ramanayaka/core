@@ -20,7 +20,8 @@
 #ifndef INCLUDED_SVX_XFTOUIT_HXX
 #define INCLUDED_SVX_XFTOUIT_HXX
 
-#include <svl/intitem.hxx>
+#include <svl/eitem.hxx>
+#include <svl/poolitem.hxx>
 #include <svx/svxdllapi.h>
 
 /*************************************************************************
@@ -29,15 +30,13 @@
 |*
 \************************************************************************/
 
-class SVX_DLLPUBLIC XFormTextOutlineItem : public SfxBoolItem
+class SVXCORE_DLLPUBLIC XFormTextOutlineItem final : public SfxBoolItem
 {
 public:
                             static SfxPoolItem* CreateDefault();
 
                             XFormTextOutlineItem(bool bOutline = false);
-                            XFormTextOutlineItem(SvStream& rIn);
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XFormTextOutlineItem*    Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
 #endif

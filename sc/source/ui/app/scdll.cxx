@@ -17,53 +17,44 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <editeng/eeitem.hxx>
+#include <config_features.h>
 
 #include <svx/fmobjfac.hxx>
 #include <svx/objfac3d.hxx>
-#include <svx/tbxcolor.hxx>
 
-#include <comphelper/classids.hxx>
+#include <comphelper/lok.hxx>
 #include <sfx2/sidebar/SidebarChildWindow.hxx>
-#include <sfx2/docfilt.hxx>
-#include <sfx2/fcontnr.hxx>
-#include <sfx2/docfile.hxx>
 #include <sfx2/app.hxx>
-#include <avmedia/mediaplayer.hxx>
 #include <avmedia/mediatoolbox.hxx>
-#include <comphelper/types.hxx>
 #include <svx/ParaLineSpacingPopup.hxx>
 #include <svx/TextCharacterSpacingPopup.hxx>
 #include <svx/TextUnderlinePopup.hxx>
 #include <NumberFormatControl.hxx>
 
-#include <svtools/parhtml.hxx>
-#include <sot/formats.hxx>
+#include <unotools/resmgr.hxx>
 
-#include "scitems.hxx"
-#include "scmod.hxx"
-#include "scresid.hxx"
-#include "sc.hrc"
-#include "cfgids.hxx"
+#include <scmod.hxx>
+#include <scresid.hxx>
+#include <sc.hrc>
 
-#include "docsh.hxx"
-#include "tabvwsh.hxx"
-#include "prevwsh.hxx"
-#include "drawsh.hxx"
-#include "drformsh.hxx"
-#include "drtxtob.hxx"
-#include "editsh.hxx"
-#include "pivotsh.hxx"
-#include "auditsh.hxx"
-#include "cellsh.hxx"
-#include "oleobjsh.hxx"
-#include "chartsh.hxx"
-#include "graphsh.hxx"
-#include "mediash.hxx"
-#include "pgbrksh.hxx"
+#include <docsh.hxx>
+#include <tabvwsh.hxx>
+#include <prevwsh.hxx>
+#include <drawsh.hxx>
+#include <drformsh.hxx>
+#include <drtxtob.hxx>
+#include <editsh.hxx>
+#include <pivotsh.hxx>
+#include <auditsh.hxx>
+#include <cellsh.hxx>
+#include <oleobjsh.hxx>
+#include <chartsh.hxx>
+#include <graphsh.hxx>
+#include <mediash.hxx>
+#include <pgbrksh.hxx>
+#include <scdll.hxx>
 
-#include "docpool.hxx"
-#include "appoptio.hxx"
+#include <appoptio.hxx>
 #include <searchresults.hxx>
 
 // Controls
@@ -75,7 +66,6 @@
 #include <svx/selctrl.hxx>
 #include <svx/insctrl.hxx>
 #include <svx/zoomctrl.hxx>
-#include <editeng/flditem.hxx>
 #include <svx/modctrl.hxx>
 #include <svx/pszctrl.hxx>
 #include <svx/grafctrl.hxx>
@@ -83,32 +73,33 @@
 #include <svx/lboxctrl.hxx>
 #include <svx/verttexttbxctrl.hxx>
 #include <svx/formatpaintbrushctrl.hxx>
-#include "tbzoomsliderctrl.hxx"
+#include <tbzoomsliderctrl.hxx>
 #include <svx/zoomsliderctrl.hxx>
 #include <sfx2/emojipopup.hxx>
+#include <sfx2/charmappopup.hxx>
 
 #include <svx/xmlsecctrl.hxx>
 // Child windows
-#include "reffact.hxx"
-#include "navipi.hxx"
-#include "inputwin.hxx"
-#include "spelldialog.hxx"
+#include <reffact.hxx>
+#include <navipi.hxx>
+#include <inputwin.hxx>
+#include <spelldialog.hxx>
 #include <svx/fontwork.hxx>
 #include <svx/srchdlg.hxx>
 #include <svx/hyperdlg.hxx>
 #include <svx/imapdlg.hxx>
 
-#include "editutil.hxx"
-#include <svx/svdfield.hxx>
+#include <filter.hxx>
+#include <scabstdlg.hxx>
 
-#include "dwfunctr.hxx"
-#include "acredlin.hxx"
-#include <o3tl/make_unique.hxx>
-#include "scabstdlg.hxx"
-
-OUString ScResId(sal_uInt16 nId)
+OUString ScResId(const char* pId)
 {
-    return ResId(nId, *SC_MOD()->GetResMgr());
+    return Translate::get(pId, SC_MOD()->GetResLocale());
+}
+
+OUString ScResId(const char* pId, int nCardinality)
+{
+    return Translate::nget(pId, nCardinality, SC_MOD()->GetResLocale());
 }
 
 void ScDLL::Init()
@@ -116,9 +107,7 @@ void ScDLL::Init()
     if ( SfxApplication::GetModule(SfxToolsModule::Calc) )    // Module already active
         return;
 
-    ScDocumentPool::InitVersionMaps(); // Is needed in the ScModule ctor
-
-    auto pUniqueModule = o3tl::make_unique<ScModule>(&ScDocShell::Factory());
+    auto pUniqueModule = std::make_unique<ScModule>(&ScDocShell::Factory());
     ScModule* pMod = pUniqueModule.get();
     SfxApplication::SetModule(SfxToolsModule::Calc, std::move(pUniqueModule));
 
@@ -153,26 +142,13 @@ void ScDLL::Init()
 
     // Own Controller
     ScZoomSliderControl             ::RegisterControl(SID_PREVIEW_SCALINGFACTOR, pMod);
-    SvxCurrencyToolBoxControl       ::RegisterControl(SID_NUMBER_CURRENCY, pMod);
 
     // SvxToolboxController
     SvxTbxCtlDraw                   ::RegisterControl(SID_INSERT_DRAW,          pMod);
     SvxFillToolBoxControl           ::RegisterControl(0, pMod);
-    SvxLineStyleToolBoxControl      ::RegisterControl(0, pMod);
     SvxLineWidthToolBoxControl      ::RegisterControl(0, pMod);
-    SvxColorToolBoxControl          ::RegisterControl(SID_ATTR_LINE_COLOR,      pMod);
-    SvxColorToolBoxControl          ::RegisterControl(SID_ATTR_FILL_COLOR,      pMod);
-    SvxStyleToolBoxControl          ::RegisterControl(SID_STYLE_APPLY,          pMod);
-    SvxColorToolBoxControl          ::RegisterControl(SID_ATTR_CHAR_COLOR,      pMod);
-    SvxColorToolBoxControl          ::RegisterControl(SID_BACKGROUND_COLOR,     pMod);
-    SvxColorToolBoxControl          ::RegisterControl(SID_ATTR_CHAR_BACK_COLOR, pMod);
-    SvxColorToolBoxControl          ::RegisterControl(SID_FRAME_LINECOLOR,      pMod);
     SvxClipBoardControl             ::RegisterControl(SID_PASTE,                pMod );
-    SvxUndoRedoControl              ::RegisterControl(SID_UNDO,                 pMod );
-    SvxUndoRedoControl              ::RegisterControl(SID_REDO,                 pMod );
-    svx::ParaLineSpacingPopup       ::RegisterControl(SID_ATTR_PARA_LINESPACE,  pMod );
-    svx::TextCharacterSpacingPopup  ::RegisterControl(SID_ATTR_CHAR_KERNING,    pMod );
-    svx::TextUnderlinePopup         ::RegisterControl(SID_ATTR_CHAR_UNDERLINE,  pMod );
+    SvxClipBoardControl             ::RegisterControl(SID_PASTE_UNFORMATTED,    pMod );
     svx::FormatPaintBrushToolBoxControl::RegisterControl(SID_FORMATPAINTBRUSH,  pMod );
     sc::ScNumberFormatControl       ::RegisterControl(SID_NUMBER_TYPE_FORMAT,   pMod );
 
@@ -185,17 +161,10 @@ void ScDLL::Init()
     SvxGrafGammaToolBoxControl      ::RegisterControl(SID_ATTR_GRAF_GAMMA,      pMod);
     SvxGrafTransparenceToolBoxControl::RegisterControl(SID_ATTR_GRAF_TRANSPARENCE, pMod);
 
-    SvxVertTextTbxCtrl::RegisterControl(SID_DRAW_CAPTION_VERTICAL,          pMod);
-    SvxVertTextTbxCtrl::RegisterControl(SID_DRAW_TEXT_VERTICAL,             pMod);
-    SvxVertTextTbxCtrl::RegisterControl(SID_TEXTDIRECTION_LEFT_TO_RIGHT,    pMod);
-    SvxVertTextTbxCtrl::RegisterControl(SID_TEXTDIRECTION_TOP_TO_BOTTOM,    pMod);
-    SvxCTLTextTbxCtrl::RegisterControl(SID_ATTR_PARA_LEFT_TO_RIGHT, pMod);
-    SvxCTLTextTbxCtrl::RegisterControl(SID_ATTR_PARA_RIGHT_TO_LEFT, pMod);
-
-    EmojiPopup::RegisterControl(SID_EMOJI_CONTROL, pMod );
-
     // Media Controller
+#if HAVE_FEATURE_AVMEDIA
     ::avmedia::MediaToolBoxControl::RegisterControl( SID_AVMEDIA_TOOLBOX, pMod );
+#endif
 
     // Common SFX Controller
     ::sfx2::sidebar::SidebarChildWindow::RegisterChildWindow(false, pMod);
@@ -209,9 +178,6 @@ void ScDLL::Init()
     XmlSecStatusBarControl          ::RegisterControl( SID_SIGNATURE,       pMod );
 
     SvxPosSizeStatusBarControl      ::RegisterControl(SID_ATTR_SIZE,        pMod);
-
-    // CustomShape extrusion controller
-    SvxColorToolBoxControl::RegisterControl( SID_EXTRUSION_3D_COLOR, pMod );
 
     // Child Windows
 
@@ -245,6 +211,7 @@ void ScDLL::Init()
     ScFTestDialogWrapper                ::RegisterChildWindow(false, pMod);
     ScZTestDialogWrapper                ::RegisterChildWindow(false, pMod);
     ScChiSquareTestDialogWrapper        ::RegisterChildWindow(false, pMod);
+    ScFourierAnalysisDialogWrapper      ::RegisterChildWindow(false, pMod);
 
     // Redlining Window
     ScAcceptChgDlgWrapper       ::RegisterChildWindow(false, pMod);
@@ -255,19 +222,13 @@ void ScDLL::Init()
     SvxHlinkDlgWrapper          ::RegisterChildWindow(false, pMod);
     SvxFontWorkChildWindow      ::RegisterChildWindow(false, pMod);
     SvxIMapDlgChildWindow       ::RegisterChildWindow(false, pMod);
-    ScSpellDialogChildWindow    ::RegisterChildWindow(false, pMod);
+    ScSpellDialogChildWindow::RegisterChildWindow(
+        false, pMod, comphelper::LibreOfficeKit::isActive() ? SfxChildWindowFlags::NEVERCLONE
+                                                            : SfxChildWindowFlags::NONE);
 
     ScValidityRefChildWin::RegisterChildWindow(false, pMod);
     sc::SearchResultsDlgWrapper::RegisterChildWindow(false, pMod);
     ScCondFormatDlgWrapper::RegisterChildWindow(false, pMod);
-
-    // EditEngine Field; insofar not already defined in OfficeApplication::Init
-    SvClassManager& rClassManager = SvxFieldItem::GetClassManager();
-    rClassManager.Register(SvxPagesField::StaticClassId(), SvxPagesField::CreateInstance);
-    rClassManager.Register(SvxFileField::StaticClassId(),  SvxFileField::CreateInstance);
-    rClassManager.Register(SvxTableField::StaticClassId(), SvxTableField::CreateInstance);
-
-    SdrRegisterFieldClasses(); // Register SvDraw fields
 
     // Add 3DObject Factory
     E3dObjFactory();
@@ -279,5 +240,18 @@ void ScDLL::Init()
 
     //  StarOne Services are now handled in the registry
 }
+
+#ifndef DISABLE_DYNLOADING
+
+extern "C" SAL_DLLPUBLIC_EXPORT
+void lok_preload_hook()
+{
+    // scfilt
+    ScFormatFilter::Get();
+    // scui
+    ScAbstractDialogFactory::Create();
+}
+
+#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

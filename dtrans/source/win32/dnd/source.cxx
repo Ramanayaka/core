@@ -46,7 +46,7 @@ using namespace com::sun::star::awt::MouseButton;
 using namespace com::sun::star::awt;
 using namespace com::sun::star::lang;
 
-unsigned __stdcall DndOleSTAFunc(LPVOID pParams);
+static unsigned __stdcall DndOleSTAFunc(LPVOID pParams);
 
 DragSource::DragSource( const Reference<XComponentContext>& rxContext):
     WeakComponentImplHelper< XDragSource, XInitialization, XServiceInfo >(m_mutex),
@@ -96,8 +96,7 @@ void DragSource::StartDragImpl(
     // to the IDropSource interface implemented in this class (but only
     // while this function executes). The source context is also used
     // in DragSource::QueryContinueDrag.
-    m_currentContext= static_cast<XDragSourceContext*>( new SourceContext(
-                      this, listener ) );
+    m_currentContext = new SourceContext(this, listener);
 
     // Convert the XTransferable data object into an IDataObject object;
 
@@ -112,7 +111,7 @@ void DragSource::StartDragImpl(
     DWORD processId;
     m_threadIdWindow= GetWindowThreadProcessId( m_hAppWindow, &processId);
 
-    // hold the instance for the DnD thread, it's to late
+    // hold the instance for the DnD thread, it's too late
     // to acquire at the start of the thread procedure
     // the thread procedure is responsible for the release
     acquire();
@@ -211,7 +210,7 @@ HRESULT STDMETHODCALLTYPE DragSource::QueryInterface( REFIID riid, void  **ppvOb
 ULONG STDMETHODCALLTYPE DragSource::AddRef()
 {
     acquire();
-    return (ULONG) m_refCount;
+    return static_cast<ULONG>(m_refCount);
 }
 
 ULONG STDMETHODCALLTYPE DragSource::Release()
@@ -279,7 +278,7 @@ dwEffect
 // XServiceInfo
 OUString SAL_CALL DragSource::getImplementationName(  )
 {
-    return OUString(DNDSOURCE_IMPL_NAME);
+    return "com.sun.star.comp.datatransfer.dnd.OleDragSource_V1";
 }
 // XServiceInfo
 sal_Bool SAL_CALL DragSource::supportsService( const OUString& ServiceName )
@@ -289,9 +288,14 @@ sal_Bool SAL_CALL DragSource::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL DragSource::getSupportedServiceNames(  )
 {
-    OUString names[1]= {OUString(DNDSOURCE_SERVICE_NAME)};
+    return { "com.sun.star.datatransfer.dnd.OleDragSource" };
+}
 
-    return Sequence<OUString>(names, 1);
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+dtrans_DragSource_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(static_cast<cppu::OWeakObject*>(new DragSource(context)));
 }
 
 /** This function is called as extra thread from
@@ -314,7 +318,7 @@ unsigned __stdcall DndOleSTAFunc(LPVOID pParams)
         // We force the creation of a thread message queue. This is necessary
         // for a later call to AttachThreadInput
         MSG msgtemp;
-        PeekMessage( &msgtemp, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
+        PeekMessageW( &msgtemp, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
 
         DWORD threadId= GetCurrentThreadId();
 

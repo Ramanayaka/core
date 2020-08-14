@@ -18,29 +18,27 @@
  */
 
 
-#include "svx/svdviter.hxx"
+#include <svx/svdviter.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/svdview.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdsob.hxx>
-#include <svx/sdrpaintwindow.hxx>
 
 
 void SdrViewIter::ImpInitVars()
 {
-    mnListenerNum = 0L;
-    mpAktView = nullptr;
+    mnListenerNum = 0;
+    mpCurrentView = nullptr;
 }
 
 
 SdrViewIter::SdrViewIter(const SdrPage* pPage)
 {
     mpPage = pPage;
-    mpModel = (pPage) ? pPage->GetModel() : nullptr;
+    mpModel = pPage ? &pPage->getSdrModelFromSdrPage() : nullptr;
     mpObject = nullptr;
-    mbNoMasterPage = false;
     ImpInitVars();
 }
 
@@ -48,9 +46,8 @@ SdrViewIter::SdrViewIter(const SdrPage* pPage)
 SdrViewIter::SdrViewIter(const SdrObject* pObject)
 {
     mpObject = pObject;
-    mpModel = (pObject) ? pObject->GetModel() : nullptr;
-    mpPage = (pObject) ? pObject->GetPage() : nullptr;
-    mbNoMasterPage = false;
+    mpModel = pObject ? &pObject->getSdrModelFromSdrObject() : nullptr;
+    mpPage = pObject ? pObject->getSdrPageFromSdrObject() : nullptr;
 
     if(!mpModel || !mpPage)
     {
@@ -62,7 +59,7 @@ SdrViewIter::SdrViewIter(const SdrObject* pObject)
 }
 
 
-bool SdrViewIter::ImpCheckPageView(SdrPageView* pPV) const
+bool SdrViewIter::ImpCheckPageView(SdrPageView const * pPV) const
 {
     if(!mpPage)
         return true;
@@ -86,7 +83,7 @@ bool SdrViewIter::ImpCheckPageView(SdrPageView* pPV) const
             return true;
         }
     }
-    else if(!mbNoMasterPage && bMaster && (!mpObject || !mpObject->IsNotVisibleAsMaster()))
+    else if(bMaster && (!mpObject || !mpObject->IsNotVisibleAsMaster()))
     {
         if(pPg->TRG_HasMasterPage())
         {
@@ -125,30 +122,27 @@ SdrView* SdrViewIter::ImpFindView()
 {
     if(mpModel)
     {
-        const size_t nLsAnz(mpModel->GetSizeOfVector());
+        const size_t nLsCnt(mpModel->GetSizeOfVector());
 
-        while(mnListenerNum < nLsAnz)
+        while(mnListenerNum < nLsCnt)
         {
             SfxListener* pLs = mpModel->GetListener(mnListenerNum);
-            mpAktView = dynamic_cast<SdrView*>( pLs );
+            mpCurrentView = dynamic_cast<SdrView*>( pLs );
 
-            if(mpAktView)
+            if(mpCurrentView)
             {
                 if(mpPage)
                 {
-                    SdrPageView* pPV = mpAktView->GetSdrPageView();
+                    SdrPageView* pPV = mpCurrentView->GetSdrPageView();
 
-                    if(pPV)
+                    if(pPV && ImpCheckPageView(pPV))
                     {
-                        if(ImpCheckPageView(pPV))
-                        {
-                            return mpAktView;
-                        }
+                        return mpCurrentView;
                     }
                 }
                 else
                 {
-                    return mpAktView;
+                    return mpCurrentView;
                 }
             }
 
@@ -156,8 +150,8 @@ SdrView* SdrViewIter::ImpFindView()
         }
     }
 
-    mpAktView = nullptr;
-    return mpAktView;
+    mpCurrentView = nullptr;
+    return mpCurrentView;
 }
 
 

@@ -148,9 +148,9 @@ char SvTokenStream::GetNextChar()
     return nChar;
 }
 
-sal_uLong SvTokenStream::GetNumber()
+sal_uInt64 SvTokenStream::GetNumber()
 {
-    sal_uLong   l = 0;
+    sal_uInt64   l = 0;
     short   nLog = 10;
 
     if( '0' == c )
@@ -204,8 +204,8 @@ bool SvTokenStream::MakeToken( SvToken & rToken )
     }
     while( 0 == c && !IsEof() && ( ERRCODE_NONE == pInStream->GetError() ) );
 
-    sal_uLong nLastLine     = nLine;
-    sal_uLong nLastColumn   = nColumn;
+    sal_uInt64 nLastLine     = nLine;
+    sal_uInt64 nLastColumn   = nColumn;
     // comment
     if( '/' == c )
     {
@@ -254,7 +254,7 @@ bool SvTokenStream::MakeToken( SvToken & rToken )
     }
     else if( c == '"' )
     {
-        OStringBuffer aStr;
+        OStringBuffer aStr(128);
         bool bDone = false;
         while( !bDone && !IsEof() && c )
         {
@@ -288,9 +288,9 @@ bool SvTokenStream::MakeToken( SvToken & rToken )
     }
     else if( rtl::isAsciiAlpha (static_cast<unsigned char>(c)) || (c == '_') )
     {
-        OStringBuffer aBuf;
+        OStringBuffer aBuf(64);
         while( rtl::isAsciiAlphanumeric( static_cast<unsigned char>(c) )
-               || c == '_' )
+               || c == '_' || c == ':')
         {
             aBuf.append(c);
             c = GetFastNextChar();

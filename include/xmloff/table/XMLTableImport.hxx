@@ -38,7 +38,7 @@ class SvXMLStyleContext;
 typedef std::map< OUString, OUString > XMLTableTemplate;
 typedef std::map < OUString, std::shared_ptr< XMLTableTemplate > > XMLTableTemplateMap;
 
-class XMLOFF_DLLPUBLIC XMLTableImport : public salhelper::SimpleReferenceObject
+class XMLOFF_DLLPUBLIC XMLTableImport final : public salhelper::SimpleReferenceObject
 {
     friend class XMLTableImportContext;
 
@@ -47,7 +47,7 @@ public:
     virtual ~XMLTableImport() override;
 
     SvXMLImportContext* CreateTableContext( sal_uInt16 nPrfx, const OUString& rLName,
-                                            css::uno::Reference< css::table::XColumnRowRange >& xColumnRowRange );
+                                            css::uno::Reference< css::table::XColumnRowRange > const & xColumnRowRange );
 
     SvXMLStyleContext* CreateTableTemplateContext( sal_uInt16 nPrfx, const OUString& rLName, const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList );
 

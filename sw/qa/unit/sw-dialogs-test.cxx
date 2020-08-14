@@ -10,12 +10,11 @@
 #include <sal/config.h>
 #include <test/screenshot_test.hxx>
 #include <rtl/bootstrap.hxx>
-#include <rtl/strbuf.hxx>
-#include <osl/file.hxx>
-#include <sfx2/app.hxx>
+#include <osl/module.hxx>
+#include <tools/svlibrary.h>
 #include <vcl/abstdlg.hxx>
 
-#include <swabstdlg.hxx>
+class SwAbstractDialogFactory;
 
 using namespace ::com::sun::star;
 

@@ -19,14 +19,15 @@
 
 #include "VCartesianGrid.hxx"
 #include "Tickmarks.hxx"
-#include "PlottingPositionHelper.hxx"
-#include "ShapeFactory.hxx"
-#include "ObjectIdentifier.hxx"
-#include "macros.hxx"
-#include "CommonConverters.hxx"
-#include "AxisHelper.hxx"
+#include <PlottingPositionHelper.hxx>
+#include <ShapeFactory.hxx>
+#include <ObjectIdentifier.hxx>
+#include <CommonConverters.hxx>
+#include <AxisHelper.hxx>
+#include <VLineProperties.hxx>
 #include <com/sun/star/drawing/PointSequenceSequence.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
+#include <com/sun/star/chart2/XTransformation.hpp>
 
 #include <memory>
 #include <vector>
@@ -37,6 +38,8 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
+
+namespace {
 
 struct GridLinePoints
 {
@@ -52,6 +55,8 @@ struct GridLinePoints
 
     sal_Int32 m_nDimensionIndex;
 };
+
+}
 
 GridLinePoints::GridLinePoints( const PlottingPositionHelper* pPosHelper, sal_Int32 nDimensionIndex
                 , CuboidPlanePosition eLeftWallPos
@@ -133,7 +138,7 @@ void GridLinePoints::update( double fScaledTickValue )
     P0[m_nDimensionIndex] = P1[m_nDimensionIndex] = P2[m_nDimensionIndex] = fScaledTickValue;
 }
 
-void addLine2D( drawing::PointSequenceSequence& rPoints, sal_Int32 nIndex
+static void addLine2D( drawing::PointSequenceSequence& rPoints, sal_Int32 nIndex
              , const GridLinePoints& rScaledLogicPoints
              , const Reference< XTransformation > & xTransformation
               )
@@ -148,7 +153,7 @@ void addLine2D( drawing::PointSequenceSequence& rPoints, sal_Int32 nIndex
     rPoints[nIndex][1].Y = static_cast<sal_Int32>(aPB.PositionY);
 }
 
-void addLine3D( drawing::PolyPolygonShape3D& rPoints, sal_Int32 nIndex
+static void addLine3D( drawing::PolyPolygonShape3D& rPoints, sal_Int32 nIndex
             , const GridLinePoints& rBasePoints
             , const Reference< XTransformation > & xTransformation )
 {
@@ -178,29 +183,29 @@ void VCartesianGrid::fillLinePropertiesFromGridModel( std::vector<VLinePropertie
                                      , const Sequence< Reference< beans::XPropertySet > > & rGridPropertiesList )
 {
     rLinePropertiesList.clear();
-    if( !rGridPropertiesList.getLength() )
+    if( !rGridPropertiesList.hasElements() )
         return;
 
     VLineProperties aLineProperties;
-    for( sal_Int32 nN=0; nN < rGridPropertiesList.getLength(); nN++ )
+    for( const auto & rxPropSet : rGridPropertiesList )
     {
-        if(!AxisHelper::isGridVisible( rGridPropertiesList[nN] ))
+        if(!AxisHelper::isGridVisible( rxPropSet ))
             aLineProperties.LineStyle <<= drawing::LineStyle_NONE;
         else
-            aLineProperties.initFromPropertySet( rGridPropertiesList[nN] );
+            aLineProperties.initFromPropertySet( rxPropSet );
         rLinePropertiesList.push_back(aLineProperties);
     }
 };
 
 void VCartesianGrid::createShapes()
 {
-    if(!m_aGridPropertiesList.getLength())
+    if(!m_aGridPropertiesList.hasElements())
         return;
     //somehow equal to axis tickmarks
 
     //create named group shape
     Reference< drawing::XShapes > xGroupShape_Shapes(
-        this->createGroupShape( m_xLogicTarget, m_aCID ) );
+        createGroupShape( m_xLogicTarget, m_aCID ) );
 
     if(!xGroupShape_Shapes.is())
         return;
@@ -209,17 +214,18 @@ void VCartesianGrid::createShapes()
     fillLinePropertiesFromGridModel( aLinePropertiesList, m_aGridPropertiesList );
 
     //create all scaled tickmark values
-    std::unique_ptr< TickFactory > apTickFactory( this->createTickFactory() );
-    TickFactory& aTickFactory = *apTickFactory.get();
+    std::unique_ptr< TickFactory > apTickFactory( createTickFactory() );
+    TickFactory& aTickFactory = *apTickFactory;
     TickInfoArraysType aAllTickInfos;
     aTickFactory.getAllTicks( aAllTickInfos );
 
     //create tick mark line shapes
+
+    if(aAllTickInfos.empty())//no tickmarks at all
+        return;
+
     TickInfoArraysType::iterator aDepthIter             = aAllTickInfos.begin();
     const TickInfoArraysType::const_iterator aDepthEnd  = aAllTickInfos.end();
-
-    if(aDepthIter == aDepthEnd)//no tickmarks at all
-        return;
 
     sal_Int32 nLinePropertiesCount = aLinePropertiesList.size();
     for( sal_Int32 nDepth=0
@@ -232,7 +238,7 @@ void VCartesianGrid::createShapes()
         Reference< drawing::XShapes > xTarget( xGroupShape_Shapes );
         if( nDepth > 0 )
         {
-            xTarget.set( this->createGroupShape( m_xLogicTarget
+            xTarget.set( createGroupShape( m_xLogicTarget
                 , ObjectIdentifier::addChildParticle( m_aCID, ObjectIdentifier::createChildParticleWithIndex( OBJECTTYPE_SUBGRID, nDepth-1 ) )
                 ) );
             if(!xTarget.is())
@@ -247,14 +253,12 @@ void VCartesianGrid::createShapes()
             sal_Int32 nPointCount = (*aDepthIter).size();
             drawing::PointSequenceSequence aPoints(nPointCount);
 
-            TickInfoArrayType::const_iterator       aTickIter = (*aDepthIter).begin();
-            const TickInfoArrayType::const_iterator aTickEnd  = (*aDepthIter).end();
             sal_Int32 nRealPointCount = 0;
-            for( ; aTickIter != aTickEnd; ++aTickIter )
+            for (auto const& tick : *aDepthIter)
             {
-                if( !(*aTickIter).bPaintIt )
+                if( !tick.bPaintIt )
                     continue;
-                aGridLinePoints.update( (*aTickIter).fScaledTickValue );
+                aGridLinePoints.update( tick.fScaledTickValue );
                 addLine2D( aPoints, nRealPointCount, aGridLinePoints, m_pPosHelper->getTransformationScaledLogicToScene() );
                 nRealPointCount++;
             }
@@ -273,7 +277,7 @@ void VCartesianGrid::createShapes()
             aHandleLineProperties.LineStyle    <<= drawing::LineStyle_NONE;
             Reference< drawing::XShape > xHandleShape =
                 m_pShapeFactory->createLine2D( xTarget, aHandlesPoints, &aHandleLineProperties );
-            ::chart::AbstractShapeFactory::setShapeName( xHandleShape, "HandlesOnly" );
+            ::chart::ShapeFactory::setShapeName( xHandleShape, "HandlesOnly" );
         }
         else //if(2!=m_nDimension)
         {
@@ -285,18 +289,20 @@ void VCartesianGrid::createShapes()
             aPoints.SequenceY.realloc(nPointCount);
             aPoints.SequenceZ.realloc(nPointCount);
 
-            TickInfoArrayType::const_iterator       aTickIter = (*aDepthIter).begin();
-            const TickInfoArrayType::const_iterator aTickEnd  = (*aDepthIter).end();
             sal_Int32 nRealPointCount = 0;
             sal_Int32 nPolyIndex = 0;
-            for( ; aTickIter != aTickEnd; ++aTickIter, ++nPolyIndex )
+            for (auto const& tick : *aDepthIter)
             {
-                if( !(*aTickIter).bPaintIt )
+                if( !tick.bPaintIt )
+                {
+                    ++nPolyIndex;
                     continue;
+                }
 
-                aGridLinePoints.update( (*aTickIter).fScaledTickValue );
+                aGridLinePoints.update( tick.fScaledTickValue );
                 addLine3D( aPoints, nPolyIndex, aGridLinePoints, m_pPosHelper->getTransformationScaledLogicToScene() );
                 nRealPointCount+=3;
+                ++nPolyIndex;
             }
             aPoints.SequenceX.realloc(nRealPointCount);
             aPoints.SequenceY.realloc(nRealPointCount);

@@ -24,23 +24,21 @@
 #include <com/sun/star/presentation/FadeEffect.hpp>
 #include <com/sun/star/office/XAnnotation.hpp>
 
-#include <functional>
-#include <list>
 #include <memory>
 #include <vector>
+#include <editeng/flditem.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/fmpage.hxx>
 #include <xmloff/autolayout.hxx>
-#include "fadedef.h"
 #include "diadef.h"
 #include "pres.hxx"
 #include "shapelist.hxx"
 #include "misc/scopelock.hxx"
 #include "sddllapi.h"
 
-namespace com { namespace sun { namespace star { namespace animations {
+namespace com::sun::star::animations {
     class XAnimationNode;
-} } } }
+}
 
 class SfxStyleSheet;
 class SdDrawDocument;
@@ -71,7 +69,8 @@ namespace sd {
         bool mbDateTimeVisible;
         bool mbDateTimeIsFixed;
         OUString maDateTimeText;
-        int meDateTimeFormat;
+        SvxDateFormat meDateFormat;
+        SvxTimeFormat meTimeFormat;
 
         HeaderFooterSettings();
 
@@ -88,9 +87,10 @@ namespace sd {
     class UndoAttrObject;
 }
 
-class SD_DLLPUBLIC SdPage : public FmFormPage, public SdrObjUserCall
+class SD_DLLPUBLIC SdPage final : public FmFormPage, public SdrObjUserCall
 {
     SdPage& operator=(const SdPage&) = delete;
+    SdPage(const SdPage&) = delete;
 
 friend class SdGenericDrawPage;
 friend class SdDrawPage;
@@ -100,7 +100,6 @@ friend class ModifyPageUndoAction;
 friend class sd::UndoGeoObject;
 friend class sd::UndoAttrObject;
 
-protected:
     PageKind    mePageKind;               ///< page type
     AutoLayout  meAutoLayout;             ///< AutoLayout
     sd::ShapeList maPresentationShapeList;///< presentation objects
@@ -111,7 +110,7 @@ protected:
     bool    mbSoundOn;                ///< with / without sound.
     bool    mbExcluded;               ///< will (not) be displayed during show.
     OUString    maLayoutName;             ///< Name of the layout
-    OUString    maSoundFile;              ///< Path to sound file (MSDOS notation).
+    OUString    maSoundFile;              ///< Path to sound file (MS-DOS notation).
     bool        mbLoopSound;
     bool        mbStopSound;
     OUString    maCreatedPageName;        ///< generated page name by GetPageName.
@@ -121,7 +120,6 @@ protected:
     bool    mbBackgroundFullSize;     ///< Background object to represent the whole page.
     rtl_TextEncoding meCharSet;           ///< Text encoding
     sal_uInt16  mnPaperBin;               ///< PaperBin
-    Orientation meOrientation;            ///< Print orientation.
     SdPageLink* mpPageLink;               ///< Page link (at left sides only)
 
     sd::AnnotationVector    maAnnotations;
@@ -147,23 +145,21 @@ protected:
     sal_Int32 mnTransitionFadeColor;
     double mfTransitionDuration;
 
-    SdPage(const SdPage& rSrcPage);
     void lateInit(const SdPage& rSrcPage);
 
 public:
 
     SdPage(SdDrawDocument& rNewDoc, bool bMasterPage);
     virtual ~SdPage() override;
-    virtual SdrPage* Clone() const override;
-    virtual SdrPage* Clone(SdrModel* pNewModel) const override;
+
+    virtual SdrPage* CloneSdrPage(SdrModel& rTargetModel) const override;
 
     virtual void    SetSize(const Size& aSize) override;
     virtual void    SetBorder(sal_Int32 nLft, sal_Int32 nUpp, sal_Int32 nRgt, sal_Int32 Lwr) override;
-    virtual void    SetLftBorder(sal_Int32 nBorder) override;
-    virtual void    SetRgtBorder(sal_Int32 nBorder) override;
-    virtual void    SetUppBorder(sal_Int32 nBorder) override;
-    virtual void    SetLwrBorder(sal_Int32 nBorder) override;
-    virtual void    SetModel(SdrModel* pNewModel) override;
+    virtual void    SetLeftBorder(sal_Int32 nBorder) override;
+    virtual void    SetRightBorder(sal_Int32 nBorder) override;
+    virtual void    SetUpperBorder(sal_Int32 nBorder) override;
+    virtual void    SetLowerBorder(sal_Int32 nBorder) override;
     virtual bool    IsReadOnly() const override;
 
     sd::ShapeList&  GetPresentationShapeList() { return maPresentationShapeList; }
@@ -200,7 +196,6 @@ public:
 
     /** Also override ReplaceObject methods to realize when
     objects are removed with this mechanism instead of RemoveObject*/
-    virtual SdrObject* NbcReplaceObject(SdrObject* pNewObj, size_t nObjNum) override;
     virtual SdrObject* ReplaceObject(SdrObject* pNewObj, size_t nObjNum) override;
 
     void        SetObjText(SdrTextObj* pObj, SdrOutliner* pOutliner, PresObjKind eObjKind, const OUString& rStr );
@@ -270,7 +265,7 @@ public:
                          bool bScaleAllObj);
 
     const OUString& GetName() const;
-    OUString        GetRealName() const { return FmFormPage::GetName(); };
+    OUString const & GetRealName() const { return FmFormPage::GetName(); };
 
     void            SetPresentationLayout(const OUString& rLayoutName,
                                   bool bReplaceStyleSheets = true,
@@ -301,7 +296,7 @@ public:
 
         @throws css::uno::RuntimeException
     */
-    void setAnimationNode( css::uno::Reference< css::animations::XAnimationNode >& xNode );
+    void setAnimationNode( css::uno::Reference< css::animations::XAnimationNode > const & xNode );
 
     /// @return a helper class to manipulate effects inside the main sequence
     std::shared_ptr< sd::MainSequence > const & getMainSequence();
@@ -317,6 +312,9 @@ public:
 
     /** removes all custom animations for the given shape */
     void removeAnimations( const SdrObject* pObj );
+
+    /** Notify that the object has been renamed and the animation effects has to update. */
+    void notifyObjectRenamed(const SdrObject* pObj);
 
     /** Set the name of the page and broadcast a model change.
     */
@@ -338,10 +336,10 @@ public:
         bool bEdit ) override;
 
     /** callback from the sd::View when a new paragraph for one object on this page is created */
-    void onParagraphInserted( ::Outliner* pOutliner, Paragraph* pPara, SdrObject* pObj );
+    void onParagraphInserted( ::Outliner* pOutliner, Paragraph const * pPara, SdrObject* pObj );
 
     /** callback from the sd::View when a paragraph from one object on this page is removed */
-    void onParagraphRemoving( ::Outliner* pOutliner, Paragraph* pPara, SdrObject* pObj );
+    void onParagraphRemoving( ::Outliner* pOutliner, Paragraph const * pPara, SdrObject* pObj );
 
     /** callback from the sd::View when an object just left text edit mode */
     void onEndTextEdit( SdrObject* pObj );
@@ -375,9 +373,9 @@ public:
     void addAnnotation( const css::uno::Reference< css::office::XAnnotation >& xAnnotation, int nIndex );
     void removeAnnotation( const css::uno::Reference< css::office::XAnnotation >& xAnnotation );
     const sd::AnnotationVector& getAnnotations() const { return maAnnotations; }
-    OString stringify() const;
-    virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
-    sal_uInt16 getPageId() { return mnPageId; }
+    bool Equals(const SdPage&) const;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+    sal_uInt16 getPageId() const { return mnPageId; }
 
     static sal_uInt16 mnLastPageId;
 
@@ -388,6 +386,8 @@ private:
     sal_uInt16 mnPageId;
 
     /** clone the animations from this and set them to rTargetPage
+     *  TTTT: Order is strange, should be the other way around by
+     *  convention/convenience and makes usage a little dangerous...
     */
     void cloneAnimations( SdPage& rTargetPage ) const;
 

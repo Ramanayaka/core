@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/shapestylecontext.hxx"
+#include <drawingml/shapestylecontext.hxx>
 
-#include "oox/helper/attributelist.hxx"
-#include "drawingml/colorchoicecontext.hxx"
+#include <oox/helper/attributelist.hxx>
+#include <drawingml/colorchoicecontext.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
@@ -28,11 +28,11 @@ using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 // CT_ShapeStyle
 
-ShapeStyleContext::ShapeStyleContext( ContextHandler2Helper& rParent, Shape& rShape )
+ShapeStyleContext::ShapeStyleContext( ContextHandler2Helper const & rParent, Shape& rShape )
 : ContextHandler2( rParent )
 , mrShape( rShape )
 {
@@ -65,6 +65,6 @@ ContextHandlerRef ShapeStyleContext::onCreateContext( sal_Int32 aElementToken, c
     return nullptr;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

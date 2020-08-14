@@ -18,15 +18,17 @@
  */
 
 
-#include <math.h>
-#include <stdio.h>
+#include <calendar_jewish.hxx>
+#include <nativenumbersupplier.hxx>
 
-#include "calendar_jewish.hxx"
+#include <com/sun/star/i18n/CalendarDisplayCode.hpp>
+#include <com/sun/star/i18n/NativeNumberMode.hpp>
 
 using namespace ::com::sun::star::uno;
+using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 // not used
 //static UErrorCode status; // status is shared in all calls to Calendar, it has to be reset for each call.
@@ -50,18 +52,18 @@ Calendar_jewish::Calendar_jewish()
 const int HebrewEpoch = -1373429; // Absolute date of start of Hebrew calendar
 
 // True if year is an Hebrew leap year
-bool HebrewLeapYear(sal_Int32 year) {
+static bool HebrewLeapYear(sal_Int32 year) {
     return ((((7 * year) + 1) % 19) < 7);
 }
 
 // Last month of Hebrew year.
-sal_Int32 LastMonthOfHebrewYear(sal_Int32 year) {
+static sal_Int32 LastMonthOfHebrewYear(sal_Int32 year) {
     return  (HebrewLeapYear(year)) ? 13 : 12;
 }
 
 // Number of days elapsed from the Sunday prior to the start of the
 // Hebrew calendar to the mean conjunction of Tishri of Hebrew year.
-sal_Int32 HebrewCalendarElapsedDays(sal_Int32 year) {
+static sal_Int32 HebrewCalendarElapsedDays(sal_Int32 year) {
     sal_Int32 MonthsElapsed =
         (235 * ((year - 1) / 19))           // Months in complete cycles so far.
         + (12 * ((year - 1) % 19))          // Regular months in this cycle.
@@ -96,23 +98,23 @@ sal_Int32 HebrewCalendarElapsedDays(sal_Int32 year) {
 }
 
 // Number of days in Hebrew year.
-sal_Int32 DaysInHebrewYear(sal_Int32 year) {
+static sal_Int32 DaysInHebrewYear(sal_Int32 year) {
     return ((HebrewCalendarElapsedDays(year + 1)) -
           (HebrewCalendarElapsedDays(year)));
 }
 
 // True if Heshvan is long in Hebrew year.
-bool LongHeshvan(sal_Int32 year) {
+static bool LongHeshvan(sal_Int32 year) {
     return ((DaysInHebrewYear(year) % 10) == 5);
 }
 
 // True if Kislev is short in Hebrew year.
-bool ShortKislev(sal_Int32 year) {
+static bool ShortKislev(sal_Int32 year) {
     return ((DaysInHebrewYear(year) % 10) == 3);
 }
 
 // Last day of month in Hebrew year.
-sal_Int32 LastDayOfHebrewMonth(sal_Int32 month, sal_Int32 year) {
+static sal_Int32 LastDayOfHebrewMonth(sal_Int32 month, sal_Int32 year) {
     if ((month == 2)
         || (month == 4)
         || (month == 6)
@@ -126,6 +128,7 @@ sal_Int32 LastDayOfHebrewMonth(sal_Int32 month, sal_Int32 year) {
         return 30;
 }
 
+namespace {
 
 class HebrewDate {
 private:
@@ -134,7 +137,7 @@ private:
     sal_Int32 day;    // 1..LastDayOfHebrewMonth(month, year)
 
 public:
-    HebrewDate(sal_Int32 m, sal_Int32 d, sal_Int32 y) { month = m; day = d; year = y; }
+    HebrewDate(sal_Int32 m, sal_Int32 d, sal_Int32 y) : year(y), month(m), day(d) { }
 
     explicit HebrewDate(sal_Int32 d) { // Computes the Hebrew date from the absolute date.
     year = (d + HebrewEpoch) / 366; // Approximation from below.
@@ -185,9 +188,11 @@ public:
 
 };
 
+}
+
 //  Gregorian dates
 
-int LastDayOfGregorianMonth(int month, int year) {
+static int LastDayOfGregorianMonth(int month, int year) {
 // Compute the last date of the month for the Gregorian calendar.
 
     switch (month) {
@@ -204,6 +209,8 @@ int LastDayOfGregorianMonth(int month, int year) {
     default: return 31;
     }
 }
+
+namespace {
 
 class GregorianDate {
 private:
@@ -244,6 +251,8 @@ public:
 
 };
 
+}
+
 // map field value from gregorian calendar to other calendar, it can be overwritten by derived class.
 void Calendar_jewish::mapFromGregorian()
 {
@@ -255,34 +264,35 @@ void Calendar_jewish::mapFromGregorian()
 
     fieldValue[CalendarFieldIndex::ERA] = hd.GetYear() <= 0 ? 0 : 1;
     fieldValue[CalendarFieldIndex::MONTH] = sal::static_int_cast<sal_Int16>( hd.GetMonth() - 1 );
-    fieldValue[CalendarFieldIndex::DAY_OF_MONTH] = (sal_Int16)hd.GetDay();
-    fieldValue[CalendarFieldIndex::YEAR] = (sal_Int16)(hd.GetYear() <= 0 ? 1 - hd.GetYear() : hd.GetYear());
+    fieldValue[CalendarFieldIndex::DAY_OF_MONTH] = static_cast<sal_Int16>(hd.GetDay());
+    fieldValue[CalendarFieldIndex::YEAR] = static_cast<sal_Int16>(hd.GetYear() <= 0 ? 1 - hd.GetYear() : hd.GetYear());
 }
 
 #define FIELDS  ((1 << CalendarFieldIndex::ERA) | (1 << CalendarFieldIndex::YEAR) | (1 << CalendarFieldIndex::MONTH) | (1 << CalendarFieldIndex::DAY_OF_MONTH))
 // map field value from other calendar to gregorian calendar, it should be implemented.
 void Calendar_jewish::mapToGregorian()
 {
-    if (fieldSet & FIELDS) {
-        sal_Int16 y = fieldSetValue[CalendarFieldIndex::YEAR];
-        if (fieldSetValue[CalendarFieldIndex::ERA] == 0)
-            y = 1 - y;
-        HebrewDate Temp(fieldSetValue[CalendarFieldIndex::MONTH] + 1, fieldSetValue[CalendarFieldIndex::DAY_OF_MONTH], y);
-        GregorianDate gd(Temp.GetAbsoluteDate());
+    if (!(fieldSet & FIELDS))
+        return;
 
-        fieldSetValue[CalendarFieldIndex::ERA] = gd.GetYear() <= 0 ? 0 : 1;
-        fieldSetValue[CalendarFieldIndex::MONTH] = sal::static_int_cast<sal_Int16>( gd.GetMonth() - 1 );
-        fieldSetValue[CalendarFieldIndex::DAY_OF_MONTH] = (sal_Int16)gd.GetDay();
-        fieldSetValue[CalendarFieldIndex::YEAR] = (sal_Int16)(gd.GetYear() <= 0 ? 1 - gd.GetYear() : gd.GetYear());
-        fieldSet |= FIELDS;
-    }
+    sal_Int16 y = fieldSetValue[CalendarFieldIndex::YEAR];
+    if (fieldSetValue[CalendarFieldIndex::ERA] == 0)
+        y = 1 - y;
+    HebrewDate Temp(fieldSetValue[CalendarFieldIndex::MONTH] + 1, fieldSetValue[CalendarFieldIndex::DAY_OF_MONTH], y);
+    GregorianDate gd(Temp.GetAbsoluteDate());
+
+    fieldSetValue[CalendarFieldIndex::ERA] = gd.GetYear() <= 0 ? 0 : 1;
+    fieldSetValue[CalendarFieldIndex::MONTH] = sal::static_int_cast<sal_Int16>( gd.GetMonth() - 1 );
+    fieldSetValue[CalendarFieldIndex::DAY_OF_MONTH] = static_cast<sal_Int16>(gd.GetDay());
+    fieldSetValue[CalendarFieldIndex::YEAR] = static_cast<sal_Int16>(gd.GetYear() <= 0 ? 1 - gd.GetYear() : gd.GetYear());
+    fieldSet |= FIELDS;
 }
 
 // Methods in XExtendedCalendar
 OUString SAL_CALL
-Calendar_jewish::getDisplayString( sal_Int32 nCalendarDisplayCode, sal_Int16 nNativeNumberMode )
+Calendar_jewish::getDisplayString( sal_Int32 nCalendarDisplayCode, sal_Int16 /*nNativeNumberMode*/ )
 {
-    nNativeNumberMode = NativeNumberMode::NATNUM2;  // make Hebrew number for Jewish calendar
+    const sal_Int16 nNativeNumberMode = NativeNumberMode::NATNUM2;  // make Hebrew number for Jewish calendar
 
     if (nCalendarDisplayCode == CalendarDisplayCode::SHORT_YEAR) {
         sal_Int32 value = getValue(CalendarFieldIndex::YEAR) % 1000; // take last 3 digits
@@ -292,6 +302,6 @@ Calendar_jewish::getDisplayString( sal_Int32 nCalendarDisplayCode, sal_Int16 nNa
         return Calendar_gregorian::getDisplayString(nCalendarDisplayCode, nNativeNumberMode );
 }
 
-}}}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

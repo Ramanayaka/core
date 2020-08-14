@@ -18,17 +18,19 @@
  */
 
 #include <defaultnumberingprovider.hxx>
+#include <transliterationImpl.hxx>
+#include <com/sun/star/i18n/NativeNumberMode.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/style/NumberingType.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
-#include <com/sun/star/text/HoriOrientation.hpp>
+#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <osl/diagnose.h>
 #include <rtl/ref.hxx>
 #include <localedata.hxx>
 #include <nativenumbersupplier.hxx>
-#include <stdio.h>
 #include <string.h>
+#include <comphelper/propertysequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 // Cyrillic upper case
@@ -50,37 +52,54 @@
 #define S_HE_YOD "\xD7\x99"
 #define S_HE_QOF "\xD7\xA7"
 
-#include <math.h>
+//Arabic-Indic
+#define S_AR_ONE "\xd9\xa1"
+#define S_AR_TWO "\xd9\xa2"
+#define S_AR_THREE "\xd9\xa3"
+
+// East Arabic-Indic
+#define S_FA_ONE "\xDB\xB1"
+#define S_FA_TWO "\xDB\xB2"
+#define S_FA_THREE "\xDB\xB3"
+
+// Indic Devanagari
+#define S_HI_ONE "\xDB\xB1"
+#define S_HI_TWO "\xDB\xB2"
+#define S_HI_THREE "\xDB\xB3"
+
+// Chicago footnote symbols
+#define S_DAGGER "\xE2\x80\xA0"
+#define S_DBL_DAGGER "\xE2\x80\xA1"
+#define S_SECTION "\xC2\xA7"
+
 #include <sal/macros.h>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <com/sun/star/i18n/XTransliteration.hpp>
-#include <com/sun/star/i18n/TransliterationType.hpp>
-#include <com/sun/star/i18n/XLocaleData.hpp>
 
 #include <bullet.h>
 
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
+using namespace ::com::sun::star::i18n;
 using namespace com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
-static const sal_Unicode table_Alphabet_ar[] = {
+const sal_Unicode table_Alphabet_ar[] = {
     0x0623, 0x0628, 0x062A, 0x062B, 0x062C, 0x062D, 0x062E,
     0x062F, 0x0630, 0x0631, 0x0632, 0x0633, 0x0634, 0x0635,
     0x0636, 0x0637, 0x0638, 0x0639, 0x063A, 0x0641, 0x0642,
     0x0643, 0x0644, 0x0645, 0x0646, 0x0647, 0x0648, 0x0649
 };
 
-static const sal_Unicode table_Alphabet_ar_abjad[] = {
+const sal_Unicode table_Alphabet_ar_abjad[] = {
     0x0627, 0x0628, 0x062c, 0x062f, 0x0647, 0x0648, 0x0632, 0x062d,
     0x0637, 0x064a, 0x0643, 0x0644, 0x0645, 0x0646, 0x0633, 0x0639,
     0x0641, 0x0635, 0x0642, 0x0631, 0x0634, 0x062a, 0x062b, 0x062e,
     0x0630, 0x0636, 0x0638, 0x063a
 };
 
-static const sal_Unicode table_Alphabet_th[] = {
+const sal_Unicode table_Alphabet_th[] = {
     0x0E01, 0x0E02, 0x0E04, 0x0E07,
     0x0E08, 0x0E09, 0x0E0A, 0x0E0B, 0x0E0C, 0x0E0D, 0x0E0E, 0x0E0F,
     0x0E10, 0x0E11, 0x0E12, 0x0E13, 0x0E14, 0x0E15, 0x0E16, 0x0E17,
@@ -89,13 +108,13 @@ static const sal_Unicode table_Alphabet_th[] = {
     0x0E28, 0x0E29, 0x0E2A, 0x0E2B, 0x0E2C, 0x0E2D, 0x0E2E
 };
 
-static const sal_Unicode table_Alphabet_he[] = {
+const sal_Unicode table_Alphabet_he[] = {
     0x05D0, 0x05D1, 0x05D2, 0x05D3, 0x05D4, 0x05D5, 0x05D6, 0x05D7,
     0x05D8, 0x05D9, 0x05DB, 0x05DC, 0x05DE, 0x05E0, 0x05E1, 0x05E2,
     0x05E4, 0x05E6, 0x05E7, 0x05E8, 0x05E9, 0x05EA
 };
 
-static const sal_Unicode table_Alphabet_ne[] = {
+const sal_Unicode table_Alphabet_ne[] = {
     0x0915, 0x0916, 0x0917, 0x0918, 0x0919, 0x091A, 0x091B, 0x091C,
     0x091D, 0x091E, 0x091F, 0x0920, 0x0921, 0x0922, 0x0923, 0x0924,
     0x0925, 0x0926, 0x0927, 0x0928, 0x092A, 0x092B, 0x092C, 0x092D,
@@ -103,7 +122,7 @@ static const sal_Unicode table_Alphabet_ne[] = {
     0x0939
 };
 
-static const sal_Unicode table_Alphabet_km[] = {
+const sal_Unicode table_Alphabet_km[] = {
     0x1780, 0x1781, 0x1782, 0x1783, 0x1784, 0x1785, 0x1786, 0x1787,
     0x1788, 0x1789, 0x178A, 0x178B, 0x178C, 0x178D, 0x178E, 0x178F,
     0x1790, 0x1791, 0x1792, 0x1793, 0x1794, 0x1795, 0x1796, 0x1797,
@@ -111,21 +130,21 @@ static const sal_Unicode table_Alphabet_km[] = {
     0x17A0, 0x17A1, 0x17A2
 };
 
-static const sal_Unicode table_Alphabet_lo[] = {
+const sal_Unicode table_Alphabet_lo[] = {
     0x0E81, 0x0E82, 0x0E84, 0x0E87, 0x0E88, 0x0E8A, 0x0E8D, 0x0E94,
     0x0E95, 0x0E96, 0x0E97, 0x0E99, 0x0E9A, 0x0E9B, 0x0E9C,
     0x0E9D, 0x0E9E, 0x0E9F, 0x0EA1, 0x0EA2, 0x0EA3, 0x0EA5, 0x0EA7,
     0x0EAA, 0x0EAB, 0x0EAD, 0x0EAE, 0x0EAF, 0x0EAE, 0x0EDC, 0x0EDD
 };
 
-static const sal_Unicode table_Alphabet_dz[] = {
+const sal_Unicode table_Alphabet_dz[] = {
     0x0F40, 0x0F41, 0x0F42, 0x0F44, 0x0F45, 0x0F46, 0x0F47, 0x0F49,
     0x0F4F, 0x0F50, 0x0F51, 0x0F53, 0x0F54, 0x0F55, 0x0F56, 0x0F58,
     0x0F59, 0x0F5A, 0x0F5B, 0x0F5D, 0x0F5E, 0x0F5F, 0x0F60, 0x0F61,
     0x0F62, 0x0F63, 0x0F64, 0x0F66, 0x0F67, 0x0F68
 };
 
-static const sal_Unicode table_Alphabet_my[] = {
+const sal_Unicode table_Alphabet_my[] = {
     0x1000, 0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006, 0x1007,
     0x1008,/*0x1009,*/0x100A, 0x100B, 0x100C, 0x100D, 0x100E, 0x100F,
     0x1010, 0x1011, 0x1012, 0x1013, 0x1014, 0x1015, 0x1016, 0x1017,
@@ -134,7 +153,7 @@ static const sal_Unicode table_Alphabet_my[] = {
 };
 
 // Bulgarian Cyrillic upper case letters
-static const sal_Unicode table_CyrillicUpperLetter_bg[] = {
+const sal_Unicode table_CyrillicUpperLetter_bg[] = {
     0x0410, 0x0411, 0x0412, 0x0413, 0x0414, 0x0415, 0x0416, 0x0417, 0x0418,
     0x041A, 0x041B, 0x041C, 0x041D, 0x041E, 0x041F, 0x0420, 0x0421, 0x0422,
     0x0423, 0x0424, 0x0425, 0x0426, 0x0427, 0x0428, 0x0429, 0x042A, 0x042E,
@@ -142,7 +161,7 @@ static const sal_Unicode table_CyrillicUpperLetter_bg[] = {
 };
 
 // Bulgarian cyrillic lower case letters
-static const sal_Unicode table_CyrillicLowerLetter_bg[] = {
+const sal_Unicode table_CyrillicLowerLetter_bg[] = {
     0x0430, 0x0431, 0x0432, 0x0433, 0x0434, 0x0435, 0x0436, 0x0437, 0x0438,
     0x043A, 0x043B, 0x043C, 0x043D, 0x043E, 0x043F, 0x0440, 0x0441, 0x0442,
     0x0443, 0x0444, 0x0445, 0x0446, 0x0447, 0x0448, 0x0449, 0x044A, 0x044E,
@@ -150,7 +169,7 @@ static const sal_Unicode table_CyrillicLowerLetter_bg[] = {
 };
 
 // Russian Cyrillic upper letters
-static const sal_Unicode table_CyrillicUpperLetter_ru[] = {
+const sal_Unicode table_CyrillicUpperLetter_ru[] = {
     0x0410, 0x0411, 0x0412, 0x0413, 0x0414, 0x0415, 0x0416, 0x0417,
     0x0418, 0x041A, 0x041B, 0x041C, 0x041D, 0x041E, 0x041F, 0x0420,
     0x0421, 0x0422, 0x0423, 0x0424, 0x0425, 0x0426, 0x0427, 0x0428,
@@ -158,7 +177,7 @@ static const sal_Unicode table_CyrillicUpperLetter_ru[] = {
 };
 
 // Russian cyrillic lower letters
-static const sal_Unicode table_CyrillicLowerLetter_ru[] = {
+const sal_Unicode table_CyrillicLowerLetter_ru[] = {
     0x0430, 0x0431, 0x0432, 0x0433, 0x0434, 0x0435, 0x0436, 0x0437,
     0x0438, 0x043A, 0x043B, 0x043C, 0x043D, 0x043E, 0x043F, 0x0440,
     0x0441, 0x0442, 0x0443, 0x0444, 0x0445, 0x0446, 0x0447, 0x0448,
@@ -166,7 +185,7 @@ static const sal_Unicode table_CyrillicLowerLetter_ru[] = {
 };
 
 // Serbian Cyrillic upper letters
-static const sal_Unicode table_CyrillicUpperLetter_sr[] = {
+const sal_Unicode table_CyrillicUpperLetter_sr[] = {
     0x0410, 0x0411, 0x0412, 0x0413, 0x0414, 0x0402, 0x0415, 0x0416,
     0x0417, 0x0418, 0x0408, 0x041A, 0x041B, 0x0409, 0x041C, 0x041D,
     0x040A, 0x041E, 0x041F, 0x0420, 0x0421, 0x0422, 0x040B, 0x0423,
@@ -174,46 +193,50 @@ static const sal_Unicode table_CyrillicUpperLetter_sr[] = {
 };
 
 // Serbian cyrillic lower letters
-static const sal_Unicode table_CyrillicLowerLetter_sr[] = {
+const sal_Unicode table_CyrillicLowerLetter_sr[] = {
     0x0430, 0x0431, 0x0432, 0x0433, 0x0434, 0x0452, 0x0435, 0x0436,
     0x0437, 0x0438, 0x0458, 0x043A, 0x043B, 0x0459, 0x043C, 0x043D,
     0x045A, 0x043E, 0x043F, 0x0440, 0x0441, 0x0442, 0x045B, 0x0443,
     0x0444, 0x0445, 0x0446, 0x0447, 0x045F, 0x0448
 };
 
-static const sal_Unicode table_GreekUpperLetter[] = {
+const sal_Unicode table_GreekUpperLetter[] = {
     0x0391, 0x0392, 0x0393, 0x0394, 0x0395, 0x03DB, 0x0396, 0x0397, 0x0398,
     0x0399, 0x039A, 0x039B, 0x039C, 0x039D, 0x039E, 0x039F, 0x03A0, 0x03DF,
     0x03A1, 0x03A3, 0x03A4, 0x03A5, 0x03A6, 0x03A7, 0x03A8, 0x03A9, 0x03E0
 };
 
-static const sal_Unicode table_GreekLowerLetter[] = {
+const sal_Unicode table_GreekLowerLetter[] = {
     0x03B1, 0x03B2, 0x03B3, 0x03B4, 0x03B5, 0x03DB, 0x03B6, 0x03B7, 0x03B8,
     0x03B9, 0x03BA, 0x03BB, 0x03BC, 0x03BD, 0x03BE, 0x03BF, 0x03C0, 0x03DF,
     0x03C1, 0x03C3, 0x03C4, 0x03C5, 0x03C6, 0x03C7, 0x03C8, 0x03C9, 0x03E1
 };
 
-static const sal_Unicode table_Alphabet_fa[] = {
+const sal_Unicode table_Alphabet_fa[] = {
     0x0622, 0x0628, 0x067E, 0x062A, 0x062B, 0x062C, 0x0686, 0x062D,
     0x062E, 0x062F, 0x0630, 0x0631, 0x0632, 0x0698, 0x0633, 0x0634,
     0x0635, 0x0636, 0x0637, 0x0638, 0x0639, 0x0640, 0x0641, 0x0642,
     0x06A9, 0x06AF, 0x0644, 0x0645, 0x0646, 0x0648, 0x0647, 0x06CC
 };
 
-static const sal_Unicode upperLetter[] = {
+const sal_Unicode upperLetter[] = {
     0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49,
     0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52,
     0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A
 };
 
-static const sal_Unicode lowerLetter[] = {
+const sal_Unicode lowerLetter[] = {
     0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69,
     0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F, 0x70, 0x71, 0x72,
     0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A
 };
 
+const sal_Unicode table_Chicago[] = {
+    0x002a, 0x2020, 0x2021, 0x00a7
+};
+
 // Tables used for numbering in persian words
-static const sal_Unicode table_PersianWord_decade1[][7]={
+const sal_Unicode table_PersianWord_decade1[][7]={
     {0},                                                 // 0
     {0x06cc, 0x06a9, 0},                                 // 1
     {0x062f, 0x0648, 0},                                 // 2
@@ -236,7 +259,7 @@ static const sal_Unicode table_PersianWord_decade1[][7]={
     {0x0646, 0x0648, 0x0632, 0x062f, 0x0647, 0}          // 19
 };
 
-static const sal_Unicode table_PersianWord_decade2[][6]={
+const sal_Unicode table_PersianWord_decade2[][6]={
     {0x0628, 0x06cc, 0x0633, 0x062a, 0},                 // 20
     {0x0633, 0x06cc, 0},                                 // 30
     {0x0686, 0x0647, 0x0644, 0},                         // 40
@@ -247,7 +270,7 @@ static const sal_Unicode table_PersianWord_decade2[][6]={
     {0x0646, 0x0648, 0x062f, 0}                          // 90
 };
 
-static const sal_Unicode table_PersianWord_decade3[][7]={
+const sal_Unicode table_PersianWord_decade3[][7]={
     {0x0635, 0x062f, 0},                                 // 100
     {0x062f, 0x0648, 0x06cc, 0x0633, 0x062a, 0},         // 200
     {0x0633, 0x06cc, 0x0635, 0x062f, 0},                 // 300
@@ -259,14 +282,14 @@ static const sal_Unicode table_PersianWord_decade3[][7]={
     {0x0646, 0x0647, 0x0635, 0x062f, 0}                  // 900
 };
 
-static const sal_Unicode table_PersianWord_decadeX[][8]={
+const sal_Unicode table_PersianWord_decadeX[][8]={
     {0x0647, 0x0632, 0x0627, 0x0631, 0},                        // 1000
     {0x0645, 0x06cc, 0x0644, 0x06cc, 0x0648, 0x0646, 0},        // 1000000
     {0x0645, 0x06cc, 0x0644, 0x06cc, 0x0627, 0x0631, 0x062f, 0} // 1000000000
 };
 
 
-DefaultNumberingProvider::DefaultNumberingProvider( const Reference < XComponentContext >& rxContext ) : m_xContext(rxContext),translit(nullptr)
+DefaultNumberingProvider::DefaultNumberingProvider( const Reference < XComponentContext >& rxContext ) : m_xContext(rxContext)
 {
 
 }
@@ -287,13 +310,13 @@ DefaultNumberingProvider::getDefaultContinuousNumberingLevels( const Locale& rLo
      return LocaleDataImpl::get()->getContinuousNumberingLevels( rLocale );
 }
 
-OUString toRoman( sal_Int32 n )
+static OUString toRoman( sal_Int32 n )
 {
 
 //              i, ii, iii, iv, v, vi, vii, vii, viii, ix
 //                                                      (Dummy),1000,500,100,50,10,5,1
-    static const sal_Char coRomanArr[] = "MDCLXVI--";       // +2 Dummy entries !!
-    const sal_Char* cRomanStr = coRomanArr;
+    static const char coRomanArr[] = "MDCLXVI--";       // +2 Dummy entries !!
+    const char* cRomanStr = coRomanArr;
     sal_uInt16 nMask = 1000;
     sal_uInt32 nOver1000 = n / nMask;
     n -= ( nOver1000 * nMask );
@@ -317,8 +340,8 @@ OUString toRoman( sal_Int32 n )
         }
         switch( nNumber )
         {
-            case 3: sTmp.append(*cRomanStr);           SAL_FALLTHROUGH;
-            case 2: sTmp.append(*cRomanStr);           SAL_FALLTHROUGH;
+            case 3: sTmp.append(*cRomanStr);           [[fallthrough]];
+            case 2: sTmp.append(*cRomanStr);           [[fallthrough]];
             case 1: sTmp.append(*cRomanStr);           break;
             case 4: sTmp.append(*cRomanStr).append(*(cRomanStr-nDiff)); break;
             case 5: sTmp.append(*(cRomanStr-nDiff));   break;
@@ -341,7 +364,7 @@ void lcl_formatChars( const sal_Unicode table[], int tableSize, int n, OUString&
 
      if( n>=tableSize ) lcl_formatChars( table, tableSize, (n-tableSize)/tableSize, s );
 
-     s += OUStringLiteral1( table[ n % tableSize ] );
+     s += OUStringChar( table[ n % tableSize ] );
 }
 
 static
@@ -354,7 +377,7 @@ void lcl_formatChars1( const sal_Unicode table[], int tableSize, int n, OUString
      int repeat_count = n / tableSize + 1;
 
      for( int i=0; i<repeat_count; i++ )
-         s += OUStringLiteral1( table[ n%tableSize ] );
+         s += OUStringChar( table[ n%tableSize ] );
 }
 
 static
@@ -366,9 +389,9 @@ void lcl_formatChars2( const sal_Unicode table_capital[], const sal_Unicode tabl
      if( n>=tableSize )
      {
           lcl_formatChars2( table_capital, table_small, tableSize, (n-tableSize)/tableSize, s );
-          s += OUStringLiteral1( table_small[ n % tableSize ] );
+          s += OUStringChar( table_small[ n % tableSize ] );
      } else
-          s += OUStringLiteral1( table_capital[ n % tableSize ] );
+          s += OUStringChar( table_capital[ n % tableSize ] );
 }
 
 static
@@ -378,10 +401,10 @@ void lcl_formatChars3( const sal_Unicode table_capital[], const sal_Unicode tabl
      // if A=='A' then 0=>A, 1=>B, ..., 25=>Z, 26=>Aa, 27=>Bb, ...
 
      int repeat_count = n / tableSize + 1;
-     s += OUStringLiteral1( table_capital[ n%tableSize ] );
+     s += OUStringChar( table_capital[ n%tableSize ] );
 
      for( int i=1; i<repeat_count; i++ )
-         s += OUStringLiteral1( table_small[ n%tableSize ] );
+         s += OUStringChar( table_small[ n%tableSize ] );
 }
 
 
@@ -442,7 +465,7 @@ void lcl_formatPersianWord( sal_Int32 nNumber, OUString& rsResult )
         nNumber /= 1000;
         nSection++;
     }
-    rsResult += aTemp.makeStringAndClear();
+    rsResult += aTemp;
 }
 
 
@@ -519,7 +542,7 @@ void lcl_formatCharsGR(const sal_Unicode table[], int n, OUString& s )
     }
     sb.append(gr_smallNum(table,n));
 
-    s += sb.makeStringAndClear();
+    s += sb;
 }
 
 static
@@ -529,16 +552,39 @@ bool should_ignore( const OUString& s )
         return s == " " || (!s.isEmpty() && s[0]==0);
 }
 
+/**
+ * Turn nNumber into a string and pad the result to nLimit by inserting zero characters at the
+ * start.
+ */
+static OUString lcl_formatArabicZero(sal_Int32 nNumber, sal_Int32 nLimit)
+{
+    OUString aRet = OUString::number(nNumber);
+    sal_Int32 nDiff = nLimit - aRet.getLength();
+
+    if (nDiff <= 0)
+    {
+        return aRet;
+    }
+
+    OUStringBuffer aBuffer;
+    aBuffer.setLength(nDiff);
+    for (sal_Int32 i = 0; i < nDiff; ++i)
+    {
+        aBuffer[i] = '0';
+    }
+    aBuffer.append(aRet);
+    return aBuffer.makeStringAndClear();
+}
+
 static
 Any getPropertyByName( const Sequence<beans::PropertyValue>& aProperties,
-                                                const char* name, bool bRequired )
+                                                const char* name )
 {
-        for( int i=0; i<aProperties.getLength(); i++ )
-                if( aProperties[i].Name.equalsAscii(name) )
-                        return aProperties[i].Value;
-        if(bRequired)
-            throw IllegalArgumentException();
-        return Any();
+        auto pProp = std::find_if(aProperties.begin(), aProperties.end(),
+            [&name](const beans::PropertyValue& rProp) { return rProp.Name.equalsAscii(name); });
+        if (pProp != aProperties.end())
+            return pProp->Value;
+        throw IllegalArgumentException();
 }
 
 //XNumberingFormatter
@@ -567,35 +613,27 @@ DefaultNumberingProvider::makeNumberingString( const Sequence<beans::PropertyVal
      sal_Int16 tableSize = 0;
      const sal_Unicode *table = nullptr;     // initialize to avoid compiler warning
      bool bRecycleSymbol = false;
+     OUString sNatNumParams;
      Locale locale;
 
      OUString  prefix;
      sal_Int16        numType = -1; // type of formatting from style::NumberingType (roman, arabic, etc)
      OUString  suffix;
-     sal_Int32        number = -12345; // the number that needs to be formatted.
+     sal_Int32        number = -1; // the number that needs to be formatted.
 
 //     int nProperties = aProperties.getLength();
 //     int last        = nProperties-1;
 
-     try {
-        getPropertyByName(aProperties, "Prefix", false)      >>=prefix;
-     } catch (Exception&) {
-        //prefix _must_ be empty here!
-     }
-     try {
-        getPropertyByName(aProperties, "Suffix", false)      >>=suffix;
-     } catch (Exception&) {
-        //suffix _must_ be empty here!
-     }
-     try {
-        getPropertyByName(aProperties, "NumberingType", true)   >>=numType;
-     } catch (Exception& ) {
-        numType = -1;
-     }
-     try {
-        getPropertyByName(aProperties, "Value", true)       >>=number;
-     } catch (Exception& ) {
-        number = -1;
+     for (auto const & prop : aProperties)
+     {
+         if (prop.Name == "Prefix")
+             prop.Value >>= prefix;
+         else if (prop.Name == "Suffix")
+             prop.Value >>= suffix;
+         else if (prop.Name == "NumberingType")
+             prop.Value >>= numType;
+         else if (prop.Name == "Value")
+             prop.Value >>= number;
      }
 
      if( number <= 0 )
@@ -604,18 +642,33 @@ DefaultNumberingProvider::makeNumberingString( const Sequence<beans::PropertyVal
      // start empty
      OUString result;
 
-      // append prefix
-      if( !should_ignore(prefix) ) result += prefix;
+     // append prefix
+     if( !should_ignore(prefix) ) result += prefix;
 
-      // append formatted number
-      using namespace style::NumberingType;
-      switch( numType )
-      {
+     // append formatted number
+     using namespace style::NumberingType;
+     switch( numType )
+     {
           case CHARS_UPPER_LETTER:
                lcl_formatChars( upperLetter, 26, number-1, result ); // 1=>A, 2=>B, ..., 26=>Z, 27=>AA, 28=>AB, ...
                break;
           case CHARS_LOWER_LETTER:
                lcl_formatChars( lowerLetter, 26, number-1, result );
+               break;
+          case TEXT_NUMBER: // ordinal indicators (1st, 2nd, 3rd, ...)
+               natNum = NativeNumberMode::NATNUM12;
+               sNatNumParams = "capitalize ordinal-number";
+               locale = aLocale;
+               break;
+          case TEXT_CARDINAL: // cardinal number names (One, Two, Three, ...)
+               natNum = NativeNumberMode::NATNUM12;
+               sNatNumParams = "capitalize";
+               locale = aLocale;
+               break;
+          case TEXT_ORDINAL: // ordinal number names (First, Second, Third, ...)
+               natNum = NativeNumberMode::NATNUM12;
+               sNatNumParams = "capitalize ordinal";
+               locale = aLocale;
                break;
           case ROMAN_UPPER:
                result += toRoman( number );
@@ -645,7 +698,7 @@ DefaultNumberingProvider::makeNumberingString( const Sequence<beans::PropertyVal
                try {
                     const OUString &tmp = OUString::number( number );
                     OUString transliteration;
-                    getPropertyByName(aProperties, "Transliteration", true) >>= transliteration;
+                    getPropertyByName(aProperties, "Transliteration") >>= transliteration;
                     if ( !translit )
                         translit = new TransliterationImpl(m_xContext);
                     translit->loadModuleByImplName(transliteration, aLocale);
@@ -748,6 +801,18 @@ DefaultNumberingProvider::makeNumberingString( const Sequence<beans::PropertyVal
               break;
           case CHARS_ARABIC_ABJAD:
               lcl_formatChars(table_Alphabet_ar_abjad, SAL_N_ELEMENTS(table_Alphabet_ar_abjad), number - 1, result);
+              break;
+          case NUMBER_ARABIC_INDIC:
+              natNum = NativeNumberMode::NATNUM1;
+              locale.Language = "ar";
+              break;
+          case NUMBER_EAST_ARABIC_INDIC:
+              natNum = NativeNumberMode::NATNUM1;
+              locale.Language = "fa";
+              break;
+          case NUMBER_INDIC_DEVANAGARI:
+              natNum = NativeNumberMode::NATNUM1;
+              locale.Language = "hi";
               break;
           case CHARS_THAI:
               lcl_formatChars(table_Alphabet_th, SAL_N_ELEMENTS(table_Alphabet_th), number - 1, result);
@@ -857,25 +922,52 @@ DefaultNumberingProvider::makeNumberingString( const Sequence<beans::PropertyVal
               lcl_formatPersianWord(number, result);
               break;
 
+          case SYMBOL_CHICAGO:
+             lcl_formatChars1( table_Chicago, 4, number-1, result );  // *, +, |, S, **, ++, ...
+             break;
+
+          case ARABIC_ZERO:
+               result += lcl_formatArabicZero(number, 2);
+               break;
+
+          case ARABIC_ZERO3:
+               result += lcl_formatArabicZero(number, 3);
+               break;
+
+          case ARABIC_ZERO4:
+               result += lcl_formatArabicZero(number, 4);
+               break;
+
+          case ARABIC_ZERO5:
+               result += lcl_formatArabicZero(number, 5);
+               break;
+
+          case SZEKELY_ROVAS: // Old Hungarian
+               natNum = NativeNumberMode::NATNUM12;
+               locale.Language = "hu-Hung";
+               break;
+
           default:
                OSL_ASSERT(false);
                throw IllegalArgumentException();
-      }
+     }
 
-        if (natNum) {
-            rtl::Reference<NativeNumberSupplierService> xNatNum(new NativeNumberSupplierService);
-            result += xNatNum->getNativeNumberString(OUString::number( number ), locale, natNum);
-        } else if (tableSize) {
+     if (natNum) {
+            if (!mxNatNum)
+                mxNatNum.set(new NativeNumberSupplierService);
+            result += mxNatNum->getNativeNumberStringParams(OUString::number(number), locale,
+                                                                 natNum, sNatNumParams);
+     } else if (tableSize) {
             if ( number > tableSize && !bRecycleSymbol)
                 result += OUString::number( number);
             else
                 result += OUString(&table[--number % tableSize], 1);
-        }
+     }
 
-        // append suffix
-        if( !should_ignore(suffix) ) result += suffix;
+     // append suffix
+     if( !should_ignore(suffix) ) result += suffix;
 
-        return result;
+     return result;
 }
 
 #define LANG_ALL        (1 << 0)
@@ -884,11 +976,11 @@ DefaultNumberingProvider::makeNumberingString( const Sequence<beans::PropertyVal
 
 struct Supported_NumberingType
 {
-        sal_Int16               nType;
-        const sal_Char* cSymbol;
-        sal_Int16               langOption;
+        sal_Int16    nType;
+        const char*  cSymbol;
+        sal_Int16    langOption;
 };
-static const Supported_NumberingType aSupportedTypes[] =
+const Supported_NumberingType aSupportedTypes[] =
 {
         {style::NumberingType::CHARS_UPPER_LETTER,      "A", LANG_ALL},
         {style::NumberingType::CHARS_LOWER_LETTER,      "a", LANG_ALL},
@@ -899,6 +991,10 @@ static const Supported_NumberingType aSupportedTypes[] =
         {style::NumberingType::CHAR_SPECIAL,                    "Bullet", LANG_ALL},
         {style::NumberingType::PAGE_DESCRIPTOR,                 "Page", LANG_ALL},
         {style::NumberingType::BITMAP,                          "Bitmap", LANG_ALL},
+        {style::NumberingType::SYMBOL_CHICAGO,          "*, " S_DAGGER ", " S_DBL_DAGGER ", " S_SECTION ", **, " S_DAGGER S_DAGGER ", ...", LANG_ALL},
+        {style::NumberingType::TEXT_NUMBER,             "1st", LANG_ALL},
+        {style::NumberingType::TEXT_CARDINAL,           "One", LANG_ALL},
+        {style::NumberingType::TEXT_ORDINAL,            "First", LANG_ALL},
         {style::NumberingType::CHARS_UPPER_LETTER_N,    "AAA", LANG_ALL},
         {style::NumberingType::CHARS_LOWER_LETTER_N,    "aaa", LANG_ALL},
         {style::NumberingType::NATIVE_NUMBERING,        "Native Numbering", LANG_CJK|LANG_CTL},
@@ -922,6 +1018,9 @@ static const Supported_NumberingType aSupportedTypes[] =
         {style::NumberingType::HANGUL_CIRCLED_SYLLABLE_KO,      nullptr, LANG_CJK},
         {style::NumberingType::CHARS_ARABIC,    nullptr, LANG_CTL},
         {style::NumberingType::CHARS_ARABIC_ABJAD,   nullptr, LANG_CTL},
+        {style::NumberingType::NUMBER_ARABIC_INDIC,    S_AR_ONE ", " S_AR_TWO ", " S_AR_THREE ", ...", LANG_CTL},
+        {style::NumberingType::NUMBER_EAST_ARABIC_INDIC,    S_FA_ONE ", " S_FA_TWO ", " S_FA_THREE ", ...", LANG_CTL},
+        {style::NumberingType::NUMBER_INDIC_DEVANAGARI,    S_HI_ONE ", " S_HI_TWO ", " S_HI_THREE ", ...", LANG_CTL},
         {style::NumberingType::CHARS_THAI,      nullptr, LANG_CTL},
         {style::NumberingType::CHARS_HEBREW,    nullptr, LANG_CTL},
         {style::NumberingType::NUMBER_HEBREW,    S_HE_ALEPH ", " S_HE_YOD ", " S_HE_QOF ", ...", LANG_CTL},
@@ -942,12 +1041,17 @@ static const Supported_NumberingType aSupportedTypes[] =
         {style::NumberingType::CHARS_CYRILLIC_LOWER_LETTER_SR,   S_CYR_A ", " S_CYR_B ", .., " S_CYR_A S_CYR_A ", " S_CYR_A S_CYR_B ", ... (sr)", LANG_ALL},
         {style::NumberingType::CHARS_CYRILLIC_UPPER_LETTER_N_SR, C_CYR_A ", " C_CYR_B ", .., " C_CYR_A S_CYR_A ", " C_CYR_B S_CYR_B ", ... (sr)", LANG_ALL},
         {style::NumberingType::CHARS_CYRILLIC_LOWER_LETTER_N_SR, S_CYR_A ", " S_CYR_B ", .., " S_CYR_A S_CYR_A ", " S_CYR_B S_CYR_B ", ... (sr)", LANG_ALL},
-        {style::NumberingType::CHARS_PERSIAN,   nullptr, LANG_CTL},
+        {style::NumberingType::CHARS_PERSIAN,        nullptr, LANG_CTL},
         {style::NumberingType::CHARS_PERSIAN_WORD,   nullptr, LANG_CTL},
+        {style::NumberingType::SZEKELY_ROVAS,        nullptr, LANG_CTL},
         {style::NumberingType::CHARS_GREEK_UPPER_LETTER,   C_GR_A ", " C_GR_B ", ... (gr)", LANG_ALL},
         {style::NumberingType::CHARS_GREEK_LOWER_LETTER,   S_GR_A ", " S_GR_B ", ... (gr)", LANG_ALL},
+        {style::NumberingType::ARABIC_ZERO, "01, 02, 03, ...", LANG_ALL},
+        {style::NumberingType::ARABIC_ZERO3, "001, 002, 003, ...", LANG_ALL},
+        {style::NumberingType::ARABIC_ZERO4, "0001, 0002, 0003, ...", LANG_ALL},
+        {style::NumberingType::ARABIC_ZERO5, "00001, 00002, 00003, ...", LANG_ALL},
 };
-static const sal_Int32 nSupported_NumberingTypes = SAL_N_ELEMENTS(aSupportedTypes);
+const sal_Int32 nSupported_NumberingTypes = SAL_N_ELEMENTS(aSupportedTypes);
 
 OUString DefaultNumberingProvider::makeNumberingIdentifier(sal_Int16 index)
 {
@@ -957,7 +1061,7 @@ OUString DefaultNumberingProvider::makeNumberingIdentifier(sal_Int16 index)
     if (aSupportedTypes[index].cSymbol)
         return OUString(aSupportedTypes[index].cSymbol, strlen(aSupportedTypes[index].cSymbol), RTL_TEXTENCODING_UTF8);
     else {
-        OUString result;
+        OUStringBuffer result;
         Locale aLocale("en", OUString(), OUString());
         Sequence<beans::PropertyValue> aProperties(2);
         aProperties[0].Name = "NumberingType";
@@ -965,15 +1069,15 @@ OUString DefaultNumberingProvider::makeNumberingIdentifier(sal_Int16 index)
         aProperties[1].Name = "Value";
         for (sal_Int32 j = 1; j <= 3; j++) {
             aProperties[1].Value <<= j;
-            result += makeNumberingString( aProperties, aLocale );
-            result += ", ";
+            result.append( makeNumberingString( aProperties, aLocale ) );
+            result.append(", ");
         }
-        result += "...";
-        return result;
+        result.append("...");
+        return result.makeStringAndClear();
     }
 }
 
-bool SAL_CALL
+bool
 DefaultNumberingProvider::isScriptFlagEnabled(const OUString& aName)
 {
     if (! xHierarchicalNameAccess.is()) {
@@ -983,11 +1087,10 @@ DefaultNumberingProvider::isScriptFlagEnabled(const OUString& aName)
         if (! xConfigProvider.is())
             throw RuntimeException();
 
-        Sequence< Any > aArgs(1);
-        beans::PropertyValue aPath;
-        aPath.Name = "nodepath";
-        aPath.Value <<= OUString("/org.openoffice.Office.Common/I18N");
-        aArgs[0] <<= aPath;
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", uno::Any(OUString("/org.openoffice.Office.Common/I18N"))}
+        }));
 
         Reference<XInterface> xInterface = xConfigProvider->createInstanceWithArguments(
             "com.sun.star.configuration.ConfigurationAccess", aArgs);
@@ -1023,17 +1126,29 @@ Sequence< sal_Int16 > DefaultNumberingProvider::getSupportedNumberingTypes(  )
 
 sal_Int16 DefaultNumberingProvider::getNumberingType( const OUString& rNumberingIdentifier )
 {
+    auto it = maSupportedTypesCache.find(rNumberingIdentifier);
+    if (it != maSupportedTypesCache.end())
+        return it->second->nType;
     for(sal_Int16 i = 0; i < nSupported_NumberingTypes; i++)
-        if(rNumberingIdentifier.equals(makeNumberingIdentifier(i)))
+        if(rNumberingIdentifier == makeNumberingIdentifier(i))
+        {
+            maSupportedTypesCache.emplace(rNumberingIdentifier, &aSupportedTypes[i]);
             return aSupportedTypes[i].nType;
+        }
     throw RuntimeException();
 }
 
 sal_Bool DefaultNumberingProvider::hasNumberingType( const OUString& rNumberingIdentifier )
 {
+    auto it = maSupportedTypesCache.find(rNumberingIdentifier);
+    if (it != maSupportedTypesCache.end())
+        return true;
     for(sal_Int16 i = 0; i < nSupported_NumberingTypes; i++)
-        if(rNumberingIdentifier.equals(makeNumberingIdentifier(i)))
+        if(rNumberingIdentifier == makeNumberingIdentifier(i))
+        {
+            maSupportedTypesCache.emplace(rNumberingIdentifier, &aSupportedTypes[i]);
             return true;
+        }
     return false;
 }
 
@@ -1047,7 +1162,7 @@ OUString DefaultNumberingProvider::getNumberingIdentifier( sal_Int16 nNumberingT
 
 OUString DefaultNumberingProvider::getImplementationName()
 {
-    return OUString("com.sun.star.text.DefaultNumberingProvider");
+    return "com.sun.star.text.DefaultNumberingProvider";
 }
 
 sal_Bool DefaultNumberingProvider::supportsService(const OUString& rServiceName)
@@ -1061,14 +1176,14 @@ Sequence< OUString > DefaultNumberingProvider::getSupportedServiceNames()
     return aRet;
 }
 
-} } } }
+}
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_text_DefaultNumberingProvider_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new css::i18n::DefaultNumberingProvider(context));
+    return cppu::acquire(new i18npool::DefaultNumberingProvider(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

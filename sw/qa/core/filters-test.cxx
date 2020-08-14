@@ -10,24 +10,19 @@
 #include <unotest/filters-test.hxx>
 #include <test/bootstrapfixture.hxx>
 
-#include <comphelper/processfactory.hxx>
+#include <comphelper/fileformat.h>
 
 #include <sfx2/app.hxx>
 #include <sfx2/docfilt.hxx>
 #include <sfx2/docfile.hxx>
-#include <sfx2/sfxmodelfactory.hxx>
 #include <sfx2/sfxsids.hrc>
+#include <sfx2/fcontnr.hxx>
 
 #include <svl/stritem.hxx>
 #include <unotools/tempfile.hxx>
 
-#include "init.hxx"
-#include "iodetect.hxx"
-#include "swtypes.hxx"
-#include "doc.hxx"
-#include "docsh.hxx"
-#include "shellres.hxx"
-#include "docufld.hxx"
+#include <iodetect.hxx>
+#include <docsh.hxx>
 
 typedef tools::SvRef<SwDocShell> SwDocShellRef;
 
@@ -80,11 +75,11 @@ bool SwFiltersTest::filter(const OUString &rFilter, const OUString &rURL,
     const OUString &rUserData, SfxFilterFlags nFilterFlags,
         SotClipboardFormatId nClipboardID, unsigned int nFilterVersion, bool bExport)
 {
-    std::shared_ptr<const SfxFilter> pFilter(new SfxFilter(
+    auto pFilter = std::make_shared<SfxFilter>(
         rFilter, OUString(), nFilterFlags,
         nClipboardID, OUString(), OUString(),
-        rUserData, OUString()));
-    const_cast<SfxFilter*>(pFilter.get())->SetVersion(nFilterVersion);
+        rUserData, OUString());
+    pFilter->SetVersion(nFilterVersion);
 
     SwDocShellRef xDocShRef = new SwDocShell;
     SfxMedium* pSrcMed = new SfxMedium(rURL, StreamMode::STD_READ);
@@ -104,7 +99,7 @@ bool SwFiltersTest::filter(const OUString &rFilter, const OUString &rURL,
     if (rUserData == FILTER_TEXT_DLG)
     {
         pSrcMed->GetItemSet()->Put(
-            SfxStringItem(SID_FILE_FILTEROPTIONS, OUString("UTF8,LF,Liberation Mono,en-US")));
+            SfxStringItem(SID_FILE_FILTEROPTIONS, "UTF8,LF,Liberation Mono,en-US"));
     }
 
     bool bLoaded = xDocShRef->DoLoad(pSrcMed);
@@ -148,10 +143,6 @@ void SwFiltersTest::testCVEs()
     testDir("MS Word 97",
             m_directories.getURLFromSrc("/sw/qa/core/data/ww8/"),
             FILTER_WW8);
-
-    testDir("MS WinWord 6.0",
-            m_directories.getURLFromSrc("/sw/qa/core/data/ww6/"),
-            sWW6);
 
     testDir("MS WinWord 5",
             m_directories.getURLFromSrc("/sw/qa/core/data/ww5/"),

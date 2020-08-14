@@ -20,15 +20,15 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_NAVIGATR_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_NAVIGATR_HXX
 
-#include <vcl/window.hxx>
-#include <vcl/lstbox.hxx>
 #include <vcl/toolbox.hxx>
 #include <sfx2/ctrlitem.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 #include "sdtreelb.hxx"
-#include "pres.hxx"
+#include <pres.hxx>
 
 // forward
+namespace vcl { class Window; }
+
 namespace sd {
 class DrawDocShell;
 class NavigatorChildWindow;
@@ -63,8 +63,8 @@ public:
     {
     }
 
-    bool    HasName() { return bName; }
-    bool    IsActive() { return bActive; }
+    bool    HasName() const { return bName; }
+    bool    IsActive() const { return bActive; }
 
     void    SetName( bool bOn ) { bName = bOn; }
     void    SetActive( bool bOn ) { bActive = bOn; }
@@ -76,7 +76,7 @@ private:
     ::sd::DrawDocShell* mpDocShell;
 };
 
-class SdNavigatorWin : public PanelLayout
+class SD_DLLPUBLIC SdNavigatorWin : public PanelLayout
 {
 public:
     typedef ::std::function<void ()> UpdateRequestFunctor;
@@ -101,6 +101,7 @@ public:
     bool                        InsertFile(const OUString& rFileName);
 
     NavigatorDragType           GetNavigatorDragType();
+    SdPageObjsTLV&              GetObjects();
 
 protected:
     virtual bool                EventNotify(NotifyEvent& rNEvt) override;
@@ -110,41 +111,40 @@ private:
     friend class SdNavigatorControllerItem;
     friend class SdPageNameControllerItem;
 
-    VclPtr<ToolBox>             maToolbox;
-    VclPtr<SdPageObjsTLB>       maTlbObjects;
-    VclPtr<ListBox>             maLbDocs;
+    std::unique_ptr<weld::Toolbar> mxToolbox;
+    std::unique_ptr<SdPageObjsTLV> mxTlbObjects;
+    std::unique_ptr<weld::ComboBox> mxLbDocs;
+    std::unique_ptr<weld::Menu> mxDragModeMenu;
+    std::unique_ptr<weld::Menu> mxShapeMenu;
 
     bool                        mbDocImported;
     OUString                    maDropFileName;
     NavigatorDragType           meDragType;
     std::vector<NavDocInfo>     maDocList;
     SfxBindings*                mpBindings;
-    SdNavigatorControllerItem*  mpNavigatorCtrlItem;
-    SdPageNameControllerItem*   mpPageNameCtrlItem;
+    std::unique_ptr<SdNavigatorControllerItem>  mpNavigatorCtrlItem;
+    std::unique_ptr<SdPageNameControllerItem>   mpPageNameCtrlItem;
 
     /** This flag controls whether all shapes or only the named shapes are
         shown.
     */
     //    bool                        mbShowAllShapes;
 
-    static sal_uInt16           GetDragTypeSdStrId(NavigatorDragType eDT);
     static OUString             GetDragTypeSdBmpId(NavigatorDragType eDT);
     NavDocInfo*                 GetDocInfo();
 
-                                DECL_LINK( SelectToolboxHdl, ToolBox *, void );
-                                DECL_LINK( DropdownClickToolBoxHdl, ToolBox *, void );
-                                DECL_LINK( ClickObjectHdl, SvTreeListBox*, bool );
-                                DECL_LINK( SelectDocumentHdl, ListBox&, void );
-                                DECL_LINK( MenuSelectHdl, Menu *, bool );
-                                DECL_LINK( ShapeFilterCallback, Menu *, bool );
+                                DECL_LINK( SelectToolboxHdl, const OString&, void );
+                                DECL_LINK( DropdownClickToolBoxHdl, const OString&, void );
+                                DECL_LINK( ClickObjectHdl, weld::TreeView&, bool );
+                                DECL_LINK( SelectDocumentHdl, weld::ComboBox&, void );
+                                DECL_LINK( MenuSelectHdl, const OString&, void );
+                                DECL_LINK( ShapeFilterCallback, const OString&, void );
 
     void                        SetDragImage();
 
 public:
     //when object is marked , fresh the corresponding entry tree .
-    static sd::DrawDocShell*    GetDrawDocShell(const SdDrawDocument*);
     void                        FreshTree ( const  SdDrawDocument* pDoc );
-    void                        FreshEntry( );
 };
 
 /**

@@ -19,9 +19,9 @@
 
 
 #include "NTable.hxx"
-#include "NTables.hxx"
 #include "NColumns.hxx"
-#include "NCatalog.hxx"
+
+#include <com/sun/star/sdbc/XRow.hpp>
 
 using namespace connectivity;
 using namespace ::comphelper;
@@ -53,7 +53,7 @@ OEvoabTable::OEvoabTable( sdbcx::OCollection* _pTables,
 
 void OEvoabTable::refreshColumns()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
 
     if (!isNew())
     {
@@ -67,10 +67,10 @@ void OEvoabTable::refreshColumns()
                 aVector.push_back(xRow->getString(4));
         }
     }
-    if (m_pColumns)
-        m_pColumns->reFill(aVector);
+    if (m_xColumns)
+        m_xColumns->reFill(aVector);
     else
-        m_pColumns  = new OEvoabColumns(this,m_aMutex,aVector);
+        m_xColumns = new OEvoabColumns(this,m_aMutex,aVector);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

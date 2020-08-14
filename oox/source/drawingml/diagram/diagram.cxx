@@ -17,345 +17,151 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <functional>
-
+#include <oox/drawingml/diagram/diagram.hxx>
+#include "diagram.hxx"
 #include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/xml/sax/XFastSAXSerializable.hpp>
-#include <rtl/ustrbuf.hxx>
-#include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <editeng/unoprnms.hxx>
-#include "drawingml/textbody.hxx"
-#include "drawingml/textparagraph.hxx"
-#include "drawingml/textrun.hxx"
-#include "drawingml/diagram/diagram.hxx"
-#include "drawingml/fillproperties.hxx"
-#include "oox/ppt/pptshapegroupcontext.hxx"
-#include "oox/ppt/pptshape.hxx"
+#include <drawingml/fillproperties.hxx>
+#include <drawingml/customshapeproperties.hxx>
+#include <oox/token/namespaces.hxx>
+#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <svx/svdpage.hxx>
 
 #include "diagramlayoutatoms.hxx"
 #include "layoutatomvisitors.hxx"
 #include "diagramfragmenthandler.hxx"
 
-#include <iostream>
-#include <fstream>
-
 using namespace ::com::sun::star;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-namespace dgm {
-
-void Connection::dump()
+static void sortChildrenByZOrder(const ShapePtr& pShape)
 {
-    SAL_INFO(
-        "oox.drawingml",
-        "cnx modelId " << msModelId << ", srcId " << msSourceId << ", dstId "
-            << msDestId << ", parTransId " << msParTransId << ", presId "
-            << msPresId << ", sibTransId " << msSibTransId << ", srcOrd "
-            << mnSourceOrder << ", dstOrd " << mnDestOrder);
-}
+    std::vector<ShapePtr>& rChildren = pShape->getChildren();
 
-void Point::dump()
-{
-    SAL_INFO(
-        "oox.drawingml",
-        "pt text " << mpShape.get() << ", cnxId " << msCnxId << ", modelId "
-            << msModelId << ", type " << mnType);
-}
+    // Offset the children from their default z-order stacking, if necessary.
+    for (size_t i = 0; i < rChildren.size(); ++i)
+        rChildren[i]->setZOrder(i);
 
-} // dgm namespace
-
-DiagramData::DiagramData()
-    : mpFillProperties( new FillProperties )
-{
-}
-
-void DiagramData::dump()
-{
-    SAL_INFO("oox.drawingml", "Dgm: DiagramData # of cnx: " << maConnections.size() );
-    for (auto& rConnection : maConnections)
-        rConnection.dump();
-
-    SAL_INFO("oox.drawingml", "Dgm: DiagramData # of pt: " << maPoints.size() );
-    for (auto& rPoint : maPoints)
-        rPoint.dump();
-}
-
-void Diagram::setData( const DiagramDataPtr & pData)
-{
-    mpData = pData;
-}
-
-void Diagram::setLayout( const DiagramLayoutPtr & pLayout)
-{
-    mpLayout = pLayout;
-}
-
-#ifdef DEBUG_OOX_DIAGRAM
-OString normalizeDotName( const OUString& rStr )
-{
-    OUStringBuffer aBuf;
-    aBuf.append('N');
-
-    const sal_Int32 nLen(rStr.getLength());
-    sal_Int32 nCurrIndex(0);
-    while( nCurrIndex < nLen )
+    for (size_t i = 0; i < rChildren.size(); ++i)
     {
-        const sal_Int32 aChar=rStr.iterateCodePoints(&nCurrIndex);
-        if( aChar != '-' && aChar != '{' && aChar != '}' )
-            aBuf.append((sal_Unicode)aChar);
+        const ShapePtr& pChild = rChildren[i];
+        sal_Int32 nZOrderOff = pChild->getZOrderOff();
+        if (nZOrderOff <= 0)
+            continue;
+
+        // Increase my ZOrder by nZOrderOff.
+        pChild->setZOrder(pChild->getZOrder() + nZOrderOff);
+        pChild->setZOrderOff(0);
+
+        for (sal_Int32 j = 0; j < nZOrderOff; ++j)
+        {
+            size_t nIndex = i + j + 1;
+            if (nIndex >= rChildren.size())
+                break;
+
+            // Decrease the ZOrder of the next nZOrderOff elements by one.
+            const ShapePtr& pNext = rChildren[nIndex];
+            pNext->setZOrder(pNext->getZOrder() - 1);
+        }
     }
 
-    return OUStringToOString(aBuf.makeStringAndClear(),
-                                  RTL_TEXTENCODING_UTF8);
-}
-#endif
+    // Now that the ZOrders are adjusted, sort the children.
+    std::sort(rChildren.begin(), rChildren.end(),
+              [](const ShapePtr& a, const ShapePtr& b) { return a->getZOrder() < b->getZOrder(); });
 
-static sal_Int32 calcDepth( const OUString& rNodeName,
-                            const dgm::Connections& rCnx )
-{
-    // find length of longest path in 'isChild' graph, ending with rNodeName
-    dgm::Connections::const_iterator aCurrCxn( rCnx.begin() );
-    const dgm::Connections::const_iterator aEndCxn( rCnx.end() );
-    while( aCurrCxn != aEndCxn )
-    {
-        if( !aCurrCxn->msParTransId.isEmpty() &&
-            !aCurrCxn->msSibTransId.isEmpty() &&
-            !aCurrCxn->msSourceId.isEmpty() &&
-            !aCurrCxn->msDestId.isEmpty() &&
-            aCurrCxn->mnType != XML_presOf &&
-            aCurrCxn->mnType != XML_presParOf &&
-            rNodeName == aCurrCxn->msDestId )
-        {
-            return calcDepth(aCurrCxn->msSourceId,
-                             rCnx) + 1;
-        }
-        ++aCurrCxn;
-    }
-
-    return 0;
+    // Apply also for children.
+    for (const auto& rChild : rChildren)
+        sortChildrenByZOrder(rChild);
 }
 
-void Diagram::build(  )
+/// Removes empty group shapes, now that their spacing influenced the layout.
+static void removeUnneededGroupShapes(const ShapePtr& pShape)
 {
-    // build name-object maps
-#ifdef DEBUG_OOX_DIAGRAM
-    std::ofstream output("/tmp/tree.dot");
+    std::vector<ShapePtr>& rChildren = pShape->getChildren();
 
-    output << "digraph datatree {" << std::endl;
-#endif
-    dgm::Points& rPoints = getData()->getPoints();
-    dgm::Points::iterator aCurrPoint(rPoints.begin());
-    dgm::Points::iterator aEndPoint(rPoints.end());
-    while( aCurrPoint != aEndPoint )
+    rChildren.erase(std::remove_if(rChildren.begin(), rChildren.end(),
+                                   [](const ShapePtr& aChild) {
+                                       return aChild->getServiceName()
+                                                  == "com.sun.star.drawing.GroupShape"
+                                              && aChild->getChildren().empty();
+                                   }),
+                    rChildren.end());
+
+    for (const auto& pChild : rChildren)
     {
-#ifdef DEBUG_OOX_DIAGRAM
-        output << "\t"
-               << normalizeDotName(aCurrPoint->msModelId).getStr()
-               << "[";
-
-        if( !aCurrPoint->msPresentationLayoutName.isEmpty() )
-            output << "label=\""
-                   << OUStringToOString(
-                       aCurrPoint->msPresentationLayoutName,
-                       RTL_TEXTENCODING_UTF8).getStr() << "\", ";
-        else
-            output << "label=\""
-                   << OUStringToOString(
-                       aCurrPoint->msModelId,
-                       RTL_TEXTENCODING_UTF8).getStr() << "\", ";
-
-        switch( aCurrPoint->mnType )
-        {
-            case XML_doc: output << "style=filled, color=red"; break;
-            case XML_asst: output << "style=filled, color=green"; break;
-            default:
-            case XML_node: output << "style=filled, color=blue"; break;
-            case XML_pres: output << "style=filled, color=yellow"; break;
-            case XML_parTrans: output << "color=grey"; break;
-            case XML_sibTrans: output << " "; break;
-        }
-
-        output << "];" << std::endl;
-#endif
-
-        // does currpoint have any text set?
-        if( aCurrPoint->mpShape &&
-            aCurrPoint->mpShape->getTextBody() &&
-            !aCurrPoint->mpShape->getTextBody()->getParagraphs().empty() &&
-            !aCurrPoint->mpShape->getTextBody()->getParagraphs().front()->getRuns().empty() )
-        {
-#ifdef DEBUG_OOX_DIAGRAM
-            static sal_Int32 nCount=0;
-            output << "\t"
-                   << "textNode" << nCount
-                   << " ["
-                   << "label=\""
-                   << OUStringToOString(
-                       aCurrPoint->mpShape->getTextBody()->getParagraphs().front()->getRuns().front()->getText(),
-                       RTL_TEXTENCODING_UTF8).getStr()
-                   << "\"" << "];" << std::endl;
-            output << "\t"
-                   << normalizeDotName(aCurrPoint->msModelId).getStr()
-                   << " -> "
-                   << "textNode" << nCount++
-                   << ";" << std::endl;
-#endif
-        }
-
-        const bool bInserted1=getData()->getPointNameMap().insert(
-            std::make_pair(aCurrPoint->msModelId,&(*aCurrPoint))).second;
-
-        OSL_ENSURE(bInserted1,"Diagram::build(): non-unique point model id");
-
-        if( !aCurrPoint->msPresentationLayoutName.isEmpty() )
-        {
-            DiagramData::PointsNameMap::value_type::second_type& rVec=
-                getData()->getPointsPresNameMap()[aCurrPoint->msPresentationLayoutName];
-            rVec.push_back(&(*aCurrPoint));
-        }
-        ++aCurrPoint;
+        removeUnneededGroupShapes(pChild);
     }
-
-    const dgm::Connections& rConnections = getData()->getConnections();
-    dgm::Connections::const_iterator aCurrCxn(rConnections.begin());
-    const dgm::Connections::const_iterator aEndCxn(rConnections.end());
-    while( aCurrCxn != aEndCxn )
-    {
-#ifdef DEBUG_OOX_DIAGRAM
-        if( !aCurrCxn->msParTransId.isEmpty() ||
-            !aCurrCxn->msSibTransId.isEmpty() )
-        {
-            if( !aCurrCxn->msSourceId.isEmpty() ||
-                !aCurrCxn->msDestId.isEmpty() )
-            {
-                output << "\t"
-                       << normalizeDotName(aCurrCxn->msSourceId).getStr()
-                       << " -> "
-                       << normalizeDotName(aCurrCxn->msParTransId).getStr()
-                       << " -> "
-                       << normalizeDotName(aCurrCxn->msSibTransId).getStr()
-                       << " -> "
-                       << normalizeDotName(aCurrCxn->msDestId).getStr()
-                       << " [style=dotted,"
-                       << ((aCurrCxn->mnType == XML_presOf) ? " color=red, " : ((aCurrCxn->mnType == XML_presParOf) ? " color=green, " : " "))
-                       << "label=\""
-                       << OUStringToOString(aCurrCxn->msModelId,
-                                                 RTL_TEXTENCODING_UTF8 ).getStr()
-                       << "\"];" << std::endl;
-            }
-            else
-            {
-                output << "\t"
-                       << normalizeDotName(aCurrCxn->msParTransId).getStr()
-                       << " -> "
-                       << normalizeDotName(aCurrCxn->msSibTransId).getStr()
-                       << " ["
-                       << ((aCurrCxn->mnType == XML_presOf) ? " color=red, " : ((aCurrCxn->mnType == XML_presParOf) ? " color=green, " : " "))
-                       << "label=\""
-                       << OUStringToOString(aCurrCxn->msModelId,
-                                                 RTL_TEXTENCODING_UTF8 ).getStr()
-                       << "\"];" << std::endl;
-            }
-        }
-        else if( !aCurrCxn->msSourceId.isEmpty() ||
-                 !aCurrCxn->msDestId.isEmpty() )
-            output << "\t"
-                   << normalizeDotName(aCurrCxn->msSourceId).getStr()
-                   << " -> "
-                   << normalizeDotName(aCurrCxn->msDestId).getStr()
-                   << " [label=\""
-                   << OUStringToOString(aCurrCxn->msModelId,
-                                             RTL_TEXTENCODING_UTF8 ).getStr()
-                   << ((aCurrCxn->mnType == XML_presOf) ? "\", color=red]" : ((aCurrCxn->mnType == XML_presParOf) ? "\", color=green]" : "\"]"))
-                   << ";" << std::endl;
-#endif
-
-        const bool bInserted1=getData()->getConnectionNameMap().insert(
-            std::make_pair(aCurrCxn->msModelId,&(*aCurrCxn))).second;
-
-        OSL_ENSURE(bInserted1,"Diagram::build(): non-unique connection model id");
-
-        if( aCurrCxn->mnType == XML_presOf )
-        {
-            DiagramData::StringMap::value_type::second_type& rVec=getData()->getPresOfNameMap()[aCurrCxn->msDestId];
-            rVec.push_back(
-                std::make_pair(
-                    aCurrCxn->msSourceId,sal_Int32(0)));
-        }
-
-        ++aCurrCxn;
-    }
-
-    // assign outline levels
-    DiagramData::StringMap& rStringMap = getData()->getPresOfNameMap();
-    DiagramData::StringMap::iterator aPresOfIter=rStringMap.begin();
-    const DiagramData::StringMap::iterator aPresOfEnd=rStringMap.end();
-    while( aPresOfIter != aPresOfEnd )
-    {
-        DiagramData::StringMap::value_type::second_type::iterator aPresOfNodeIterCalcLevel=aPresOfIter->second.begin();
-        const DiagramData::StringMap::value_type::second_type::iterator aPresOfNodeEnd=aPresOfIter->second.end();
-        while(aPresOfNodeIterCalcLevel != aPresOfNodeEnd)
-        {
-            const sal_Int32 nDepth=calcDepth(aPresOfNodeIterCalcLevel->first,
-                                             getData()->getConnections());
-            aPresOfNodeIterCalcLevel->second = nDepth != 0 ? nDepth : -1;
-            ++aPresOfNodeIterCalcLevel;
-        }
-
-        ++aPresOfIter;
-    }
-#ifdef DEBUG_OOX_DIAGRAM
-    output << "}" << std::endl;
-#endif
 }
 
 void Diagram::addTo( const ShapePtr & pParentShape )
 {
-    // collect data, init maps
-    build( );
+    if (pParentShape->getSize().Width == 0 || pParentShape->getSize().Height == 0)
+        SAL_WARN("oox.drawingml", "Diagram cannot be correctly laid out. Size: "
+            << pParentShape->getSize().Width << "x" << pParentShape->getSize().Height);
 
     pParentShape->setChildSize(pParentShape->getSize());
 
-    // create Shape hierarchy
-    ShapeCreationVisitor aCreationVisitor(pParentShape, *this);
-    if( mpLayout->getNode() )
-        mpLayout->getNode()->accept( aCreationVisitor );
+    const dgm::Point* pRootPoint = mpData->getRootPoint();
+    if (mpLayout->getNode() && pRootPoint)
+    {
+        // create Shape hierarchy
+        ShapeCreationVisitor aCreationVisitor(*this, pRootPoint, pParentShape);
+        mpLayout->getNode()->setExistingShape(pParentShape);
+        mpLayout->getNode()->accept(aCreationVisitor);
 
-    pParentShape->setDiagramDoms( getDomsAsPropertyValues() );
+        // layout shapes - now all shapes are created
+        ShapeLayoutingVisitor aLayoutingVisitor(*this, pRootPoint);
+        mpLayout->getNode()->accept(aLayoutingVisitor);
+
+        sortChildrenByZOrder(pParentShape);
+        removeUnneededGroupShapes(pParentShape);
+    }
+
+    ShapePtr pBackground = std::make_shared<Shape>("com.sun.star.drawing.CustomShape");
+    pBackground->setSubType(XML_rect);
+    pBackground->getCustomShapeProperties()->setShapePresetType(XML_rect);
+    pBackground->setSize(pParentShape->getSize());
+    pBackground->getFillProperties() = *mpData->getFillProperties();
+    pBackground->setLocked(true);
+    auto& aChildren = pParentShape->getChildren();
+    aChildren.insert(aChildren.begin(), pBackground);
 }
 
 uno::Sequence<beans::PropertyValue> Diagram::getDomsAsPropertyValues() const
 {
     sal_Int32 length = maMainDomMap.size();
 
-    if ( 0 < maDataRelsMap.getLength() )
+    if (maDataRelsMap.hasElements())
         ++length;
 
     uno::Sequence<beans::PropertyValue> aValue(length);
     beans::PropertyValue* pValue = aValue.getArray();
-    for (DiagramDomMap::const_iterator i = maMainDomMap.begin();
-         i != maMainDomMap.end();
-         ++i)
+    for (auto const& mainDom : maMainDomMap)
     {
-        pValue[0].Name = i->first;
-        pValue[0].Value <<= i->second;
+        pValue->Name = mainDom.first;
+        pValue->Value <<= mainDom.second;
         ++pValue;
     }
 
-    if ( 0 < maDataRelsMap.getLength() )
+    if (maDataRelsMap.hasElements())
     {
-        pValue[0].Name = "OOXDiagramDataRels";
-        pValue[0].Value <<= maDataRelsMap;
+        pValue->Name = "OOXDiagramDataRels";
+        pValue->Value <<= maDataRelsMap;
         ++pValue;
     }
 
     return aValue;
 }
 
-uno::Reference<xml::dom::XDocument> loadFragment(
+static uno::Reference<xml::dom::XDocument> loadFragment(
     core::XmlFilterBase& rFilter,
     const OUString& rFragmentPath )
 {
@@ -364,21 +170,21 @@ uno::Reference<xml::dom::XDocument> loadFragment(
     return rFilter.importFragment( rFragmentPath );
 }
 
-uno::Reference<xml::dom::XDocument> loadFragment(
+static uno::Reference<xml::dom::XDocument> loadFragment(
     core::XmlFilterBase& rFilter,
     const rtl::Reference< core::FragmentHandler >& rxHandler )
 {
     return loadFragment( rFilter, rxHandler->getFragmentPath() );
 }
 
-void importFragment( core::XmlFilterBase& rFilter,
+static void importFragment( core::XmlFilterBase& rFilter,
                      const uno::Reference<xml::dom::XDocument>& rXDom,
-                     const char* pDocName,
+                     const OUString& rDocName,
                      const DiagramPtr& pDiagram,
                      const rtl::Reference< core::FragmentHandler >& rxHandler )
 {
     DiagramDomMap& rMainDomMap = pDiagram->getDomMap();
-    rMainDomMap[OUString::createFromAscii(pDocName)] = rXDom;
+    rMainDomMap[rDocName] = rXDom;
 
     uno::Reference<xml::sax::XFastSAXSerializable> xSerializer(
         rXDom, uno::UNO_QUERY_THROW);
@@ -387,19 +193,64 @@ void importFragment( core::XmlFilterBase& rFilter,
     rFilter.importFragment( rxHandler, xSerializer );
 }
 
-void loadDiagram( ShapePtr& pShape,
+namespace
+{
+/**
+ * A fragment handler that just counts the number of <dsp:sp> elements in a
+ * fragment.
+ */
+class DiagramShapeCounter : public oox::core::FragmentHandler2
+{
+public:
+    DiagramShapeCounter(oox::core::XmlFilterBase& rFilter, const OUString& rFragmentPath,
+                        sal_Int32& nCounter);
+    oox::core::ContextHandlerRef onCreateContext(sal_Int32 nElement,
+                                                 const AttributeList& rAttribs) override;
+
+private:
+    sal_Int32& m_nCounter;
+};
+
+DiagramShapeCounter::DiagramShapeCounter(oox::core::XmlFilterBase& rFilter,
+                                         const OUString& rFragmentPath, sal_Int32& nCounter)
+    : FragmentHandler2(rFilter, rFragmentPath)
+    , m_nCounter(nCounter)
+{
+}
+
+oox::core::ContextHandlerRef DiagramShapeCounter::onCreateContext(sal_Int32 nElement,
+                                                                  const AttributeList& /*rAttribs*/)
+{
+    switch (nElement)
+    {
+        case DSP_TOKEN(drawing):
+        case DSP_TOKEN(spTree):
+            return this;
+        case DSP_TOKEN(sp):
+            ++m_nCounter;
+            break;
+        default:
+            break;
+    }
+
+    return nullptr;
+}
+}
+
+void loadDiagram( ShapePtr const & pShape,
                   core::XmlFilterBase& rFilter,
                   const OUString& rDataModelPath,
                   const OUString& rLayoutPath,
                   const OUString& rQStylePath,
-                  const OUString& rColorStylePath )
+                  const OUString& rColorStylePath,
+                  const oox::core::Relations& rRelations )
 {
-    DiagramPtr pDiagram( new Diagram );
+    DiagramPtr pDiagram = std::make_shared<Diagram>();
 
-    DiagramDataPtr pData( new DiagramData() );
+    DiagramDataPtr pData = std::make_shared<DiagramData>();
     pDiagram->setData( pData );
 
-    DiagramLayoutPtr pLayout( new DiagramLayout );
+    DiagramLayoutPtr pLayout = std::make_shared<DiagramLayout>(*pDiagram);
     pDiagram->setLayout( pLayout );
 
     // data
@@ -418,13 +269,27 @@ void loadDiagram( ShapePtr& pShape,
                 xRefDataModel->getFragmentPath(), "image" );
 
         // Pass the info to pShape
-        for( ::std::vector<OUString>::const_iterator aIt = pData->getExtDrawings().begin(), aEnd = pData->getExtDrawings().end();
-                aIt != aEnd; ++aIt )
-                pShape->addExtDrawingRelId( *aIt );
+        for (auto const& extDrawing : pData->getExtDrawings())
+        {
+            OUString aFragmentPath = rRelations.getFragmentPathFromRelId(extDrawing);
+            // Ignore RelIds which don't resolve to a fragment path.
+            if (aFragmentPath.isEmpty())
+                continue;
+
+            sal_Int32 nCounter = 0;
+            rtl::Reference<core::FragmentHandler> xCounter(
+                new DiagramShapeCounter(rFilter, aFragmentPath, nCounter));
+            rFilter.importFragment(xCounter);
+            // Ignore ext drawings which don't actually have any shapes.
+            if (nCounter == 0)
+                continue;
+
+            pShape->addExtDrawingRelId(extDrawing);
+        }
     }
 
     // extLst is present, lets bet on that and ignore the rest of the data from here
-    if( pData->getExtDrawings().empty() )
+    if( pShape->getExtDrawings().empty() )
     {
         // layout
         if( !rLayoutPath.isEmpty() )
@@ -451,7 +316,9 @@ void loadDiagram( ShapePtr& pShape,
                     pDiagram,
                     xRefQStyle);
         }
-    } else {
+    }
+    else
+    {
         // We still want to add the XDocuments to the DiagramDomMap
         DiagramDomMap& rMainDomMap = pDiagram->getDomMap();
         rMainDomMap[OUString("OOXLayout")] = loadFragment(rFilter,rLayoutPath);
@@ -474,67 +341,123 @@ void loadDiagram( ShapePtr& pShape,
     if( !pData->getExtDrawings().empty() )
     {
         const DiagramColorMap::const_iterator aColor = pDiagram->getColors().find("node0");
-        if( aColor != pDiagram->getColors().end() )
+        if( aColor != pDiagram->getColors().end() && !aColor->second.maTextFillColors.empty())
         {
-            pShape->setFontRefColorForNodes(aColor->second.maTextFillColor);
+            // TODO(F1): well, actually, there might be *several* color
+            // definitions in it, after all it's called list.
+            pShape->setFontRefColorForNodes(DiagramColor::getColorByIndex(aColor->second.maTextFillColors, -1));
         }
+    }
+
+    // collect data, init maps
+    pData->build();
+
+    // diagram loaded. now lump together & attach to shape
+    pDiagram->addTo(pShape);
+    pShape->setDiagramData(pData);
+    pShape->setDiagramDoms(pDiagram->getDomsAsPropertyValues());
+}
+
+void loadDiagram(ShapePtr const& pShape,
+                 DiagramDataPtr pDiagramData,
+                 const uno::Reference<xml::dom::XDocument>& layoutDom,
+                 const uno::Reference<xml::dom::XDocument>& styleDom,
+                 const uno::Reference<xml::dom::XDocument>& colorDom,
+                 core::XmlFilterBase& rFilter)
+{
+    DiagramPtr pDiagram = std::make_shared<Diagram>();
+
+    pDiagram->setData(pDiagramData);
+
+    DiagramLayoutPtr pLayout = std::make_shared<DiagramLayout>(*pDiagram);
+    pDiagram->setLayout(pLayout);
+
+    // layout
+    if (layoutDom.is())
+    {
+        rtl::Reference<core::FragmentHandler> xRefLayout(
+            new DiagramLayoutFragmentHandler(rFilter, OUString(), pLayout));
+
+        importFragment(rFilter, layoutDom, "OOXLayout", pDiagram, xRefLayout);
+    }
+
+    // style
+    if (styleDom.is())
+    {
+        rtl::Reference<core::FragmentHandler> xRefQStyle(
+            new DiagramQStylesFragmentHandler(rFilter, OUString(), pDiagram->getStyles()));
+
+        importFragment(rFilter, styleDom, "OOXStyle", pDiagram, xRefQStyle);
+    }
+
+    // colors
+    if (colorDom.is())
+    {
+        rtl::Reference<core::FragmentHandler> xRefColorStyle(
+            new ColorFragmentHandler(rFilter, OUString(), pDiagram->getColors()));
+
+        importFragment(rFilter, colorDom, "OOXColor", pDiagram, xRefColorStyle);
     }
 
     // diagram loaded. now lump together & attach to shape
     pDiagram->addTo(pShape);
 }
 
-void loadDiagram( const ShapePtr& pShape,
-                  core::XmlFilterBase& rFilter,
-                  const uno::Reference<xml::dom::XDocument>& rXDataModelDom,
-                  const uno::Reference<xml::dom::XDocument>& rXLayoutDom,
-                  const uno::Reference<xml::dom::XDocument>& rXQStyleDom,
-                  const uno::Reference<xml::dom::XDocument>& rXColorStyleDom )
+void reloadDiagram(SdrObject* pObj, core::XmlFilterBase& rFilter)
 {
-    DiagramPtr pDiagram( new Diagram );
+    DiagramDataPtr pDiagramData = std::dynamic_pointer_cast<DiagramData>(pObj->GetDiagramData());
+    if (!pDiagramData)
+        return;
 
-    DiagramDataPtr pData( new DiagramData() );
-    pDiagram->setData( pData );
+    pObj->getChildrenOfSdrObject()->ClearSdrObjList();
 
-    DiagramLayoutPtr pLayout( new DiagramLayout );
-    pDiagram->setLayout( pLayout );
+    uno::Reference<css::drawing::XShape> xShape(pObj->getUnoShape(), uno::UNO_QUERY_THROW);
+    uno::Reference<beans::XPropertySet> xPropSet(xShape, uno::UNO_QUERY_THROW);
 
-    // data
-    if( rXDataModelDom.is() )
-        importFragment(rFilter,
-                       rXDataModelDom,
-                       "OOXData",
-                       pDiagram,
-                       new DiagramDataFragmentHandler( rFilter, "", pData ));
+    uno::Reference<xml::dom::XDocument> layoutDom;
+    uno::Reference<xml::dom::XDocument> styleDom;
+    uno::Reference<xml::dom::XDocument> colorDom;
 
-    // layout
-    if( rXLayoutDom.is() )
-        importFragment(rFilter,
-                       rXLayoutDom,
-                       "OOXLayout",
-                       pDiagram,
-                       new DiagramLayoutFragmentHandler( rFilter, "", pLayout ));
+    // retrieve the doms from the GrabBag
+    uno::Sequence<beans::PropertyValue> propList;
+    xPropSet->getPropertyValue(UNO_NAME_MISC_OBJ_INTEROPGRABBAG) >>= propList;
+    for (const auto& rProp : std::as_const(propList))
+    {
+        OUString propName = rProp.Name;
+        if (propName == "OOXLayout")
+            rProp.Value >>= layoutDom;
+        else if (propName == "OOXStyle")
+            rProp.Value >>= styleDom;
+        else if (propName == "OOXColor")
+            rProp.Value >>= colorDom;
+    }
 
-    // style
-    if( rXQStyleDom.is() )
-        importFragment(rFilter,
-                       rXQStyleDom,
-                       "OOXStyle",
-                       pDiagram,
-                       new DiagramQStylesFragmentHandler( rFilter, "", pDiagram->getStyles() ));
+    ShapePtr pShape = std::make_shared<Shape>();
+    pShape->setDiagramType();
+    pShape->setSize(awt::Size(xShape->getSize().Width * EMU_PER_HMM,
+                              xShape->getSize().Height * EMU_PER_HMM));
 
-    // colors
-    if( rXColorStyleDom.is() )
-        importFragment(rFilter,
-                       rXColorStyleDom,
-                       "OOXColor",
-                       pDiagram,
-                       new ColorFragmentHandler( rFilter, "", pDiagram->getColors() ));
+    loadDiagram(pShape, pDiagramData, layoutDom, styleDom, colorDom, rFilter);
 
-    // diagram loaded. now lump together & attach to shape
-    pDiagram->addTo(pShape);
+    uno::Reference<drawing::XShapes> xShapes(xShape, uno::UNO_QUERY_THROW);
+    basegfx::B2DHomMatrix aTransformation;
+    aTransformation.translate(xShape->getPosition().X * EMU_PER_HMM,
+                              xShape->getPosition().Y * EMU_PER_HMM);
+    for (auto const& child : pShape->getChildren())
+        child->addShape(rFilter, rFilter.getCurrentTheme(), xShapes, aTransformation, pShape->getFillProperties());
 }
 
-} }
+const oox::drawingml::Color&
+DiagramColor::getColorByIndex(const std::vector<oox::drawingml::Color>& rColors, sal_Int32 nIndex)
+{
+    assert(!rColors.empty());
+    if (nIndex == -1)
+    {
+        return rColors[rColors.size() - 1];
+    }
+
+    return rColors[nIndex % rColors.size()];
+}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

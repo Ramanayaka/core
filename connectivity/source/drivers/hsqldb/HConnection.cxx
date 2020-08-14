@@ -18,9 +18,9 @@
  */
 
 
-#include "hsqldb/HConnection.hxx"
-#include "hsqldb/HTools.hxx"
-#include "bitmaps.hlst"
+#include <hsqldb/HConnection.hxx>
+#include <hsqldb/HTools.hxx>
+#include <bitmaps.hlst>
 
 #include <connectivity/dbtools.hxx>
 
@@ -29,19 +29,16 @@
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/graphic/GraphicProvider.hpp>
 #include <com/sun/star/graphic/XGraphicProvider.hpp>
-#include <com/sun/star/graphic/GraphicColorMode.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/sdbc/XDatabaseMetaData2.hpp>
 
-#include <comphelper/listenernotification.hxx>
-#include <comphelper/processfactory.hxx>
-#include <comphelper/sequence.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <tools/diagnose_ex.h>
 
-#include "resource/sharedresources.hxx"
-#include "resource/hsqldb_res.hrc"
+#include <resource/sharedresources.hxx>
+#include <strings.hrc>
 
 using ::com::sun::star::util::XFlushListener;
 using ::com::sun::star::lang::EventObject;
@@ -64,7 +61,6 @@ using ::com::sun::star::graphic::GraphicProvider;
 using ::com::sun::star::graphic::XGraphicProvider;
 using ::com::sun::star::uno::XInterface;
 using ::com::sun::star::lang::IllegalArgumentException;
-using ::com::sun::star::ui::dialogs::XExecutableDialog;
 using ::com::sun::star::sdbc::XResultSet;
 using ::com::sun::star::sdbc::XDatabaseMetaData;
 using ::com::sun::star::sdbc::XDatabaseMetaData2;
@@ -73,7 +69,7 @@ using ::com::sun::star::sdb::application::XDatabaseDocumentUI;
 using ::com::sun::star::beans::PropertyValue;
 
 
-namespace connectivity { namespace hsqldb
+namespace connectivity::hsqldb
 {
     void SAL_CALL OHsqlConnection::disposing()
     {
@@ -146,13 +142,13 @@ namespace connectivity { namespace hsqldb
                 {
                     if ( !m_bReadOnly )
                     {
-                        Reference< XStatement > xStmt( m_xConnection->createStatement(), UNO_QUERY_THROW );
+                        Reference< XStatement > xStmt( m_xConnection->createStatement(), css::uno::UNO_SET_THROW );
                         xStmt->execute( "CHECKPOINT DEFRAG" );
                     }
                 }
                 catch(const Exception& )
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("connectivity.hsqldb");
                 }
             }
 
@@ -161,7 +157,7 @@ namespace connectivity { namespace hsqldb
         }
         catch(const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.hsqldb");
         }
    }
 
@@ -226,15 +222,16 @@ namespace connectivity { namespace hsqldb
         {
             Reference< XConnection > xMe( *this, UNO_QUERY );
             Reference< XDataDefinitionSupplier > xDefinitionsSupp( m_xDriver, UNO_QUERY_THROW );
-            Reference< XTablesSupplier > xTablesSupp( xDefinitionsSupp->getDataDefinitionByConnection( xMe ), UNO_QUERY_THROW );
-            xTables.set( xTablesSupp->getTables(), UNO_QUERY_THROW );
+            Reference< XTablesSupplier > xTablesSupp( xDefinitionsSupp->getDataDefinitionByConnection( xMe ), css::uno::UNO_SET_THROW );
+            xTables.set( xTablesSupp->getTables(), css::uno::UNO_SET_THROW );
         }
         catch( const RuntimeException& ) { throw; }
         catch( const Exception& )
         {
+            css::uno::Any anyEx = cppu::getCaughtException();
             ::connectivity::SharedResources aResources;
             const OUString sError( aResources.getResourceString(STR_NO_TABLE_CONTAINER));
-            throw WrappedTargetException( sError ,*this, ::cppu::getCaughtException() );
+            throw WrappedTargetException( sError ,*this, anyEx );
         }
 
         SAL_WARN_IF( !xTables.is(), "connectivity.hsqldb", "OHsqlConnection::impl_getTableContainer_throw: post condition not met!" );
@@ -248,15 +245,14 @@ namespace connectivity { namespace hsqldb
         bool bDoesExist = false;
         try
         {
-            Reference< XNameAccess > xTables( impl_getTableContainer_throw(), UNO_QUERY_THROW );
-            if ( xTables.is() )
-                bDoesExist = xTables->hasByName( _rTableName );
+            Reference< XNameAccess > xTables( impl_getTableContainer_throw(), css::uno::UNO_SET_THROW );
+            bDoesExist = xTables->hasByName( _rTableName );
         }
         catch( const Exception& )
         {
             // that's a serious error in impl_getTableContainer_throw, or hasByName, however, we're only
             // allowed to throw an IllegalArgumentException ourself
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.hsqldb");
         }
 
         if ( !bDoesExist )
@@ -279,7 +275,7 @@ namespace connectivity { namespace hsqldb
             Reference< XConnection > xMe( *this, UNO_QUERY_THROW );
 
             // split the fully qualified name
-            Reference< XDatabaseMetaData > xMetaData( xMe->getMetaData(), UNO_QUERY_THROW );
+            Reference< XDatabaseMetaData > xMetaData( xMe->getMetaData(), css::uno::UNO_SET_THROW );
             OUString sCatalog, sSchema, sName;
             ::dbtools::qualifiedNameComponents( xMetaData, _rTableName, sCatalog, sSchema, sName, ::dbtools::EComposeRule::Complete );
 
@@ -289,8 +285,8 @@ namespace connectivity { namespace hsqldb
             HTools::appendTableFilterCrit( sSQL, sCatalog, sSchema, sName, true );
             sSQL.append( " AND TABLE_TYPE = 'TABLE'" );
 
-            Reference< XStatement > xStatement( xMe->createStatement(), UNO_QUERY_THROW );
-            Reference< XResultSet > xTableHsqlType( xStatement->executeQuery( sSQL.makeStringAndClear() ), UNO_QUERY_THROW );
+            Reference< XStatement > xStatement( xMe->createStatement(), css::uno::UNO_SET_THROW );
+            Reference< XResultSet > xTableHsqlType( xStatement->executeQuery( sSQL.makeStringAndClear() ), css::uno::UNO_SET_THROW );
 
             if ( xTableHsqlType->next() )   // might not succeed in case of VIEWs
             {
@@ -301,7 +297,7 @@ namespace connectivity { namespace hsqldb
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.hsqldb");
         }
 
         return bIsTextTable;
@@ -318,29 +314,24 @@ namespace connectivity { namespace hsqldb
             if ( m_xContext.is() )
                 xProvider.set( GraphicProvider::create(m_xContext) );
 
-            // assemble the image URL
-            OUStringBuffer aImageURL;
-            // load the graphic from the global graphic repository
-            aImageURL.append( "private:graphicrepository/" );
-            // the relative path within the images.zip
-            aImageURL.append( LINKED_TEXT_TABLE_IMAGE_RESOURCE );
-            // the name of the graphic to use
-            OUString sImageURL( aImageURL.makeStringAndClear() );
-
             // ask the provider to obtain a graphic
             Sequence< PropertyValue > aMediaProperties( 1 );
             aMediaProperties[0].Name = "URL";
-            aMediaProperties[0].Value <<= sImageURL;
+            aMediaProperties[0].Value <<= OUString(
+            // load the graphic from the global graphic repository
+                "private:graphicrepository/"
+            // the relative path within the images.zip
+                LINKED_TEXT_TABLE_IMAGE_RESOURCE);
             xGraphic = xProvider->queryGraphic( aMediaProperties );
             OSL_ENSURE( xGraphic.is(), "OHsqlConnection::impl_getTextTableIcon_nothrow: the provider did not give us a graphic object!" );
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("connectivity.hsqldb");
         }
         return xGraphic;
     }
 
-} } // namespace connectivity::hsqldb
+} // namespace connectivity::hsqldb
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

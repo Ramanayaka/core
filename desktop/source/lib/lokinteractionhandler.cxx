@@ -21,7 +21,6 @@
 
 #include <boost/property_tree/json_parser.hpp>
 
-#include <rtl/ref.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <com/sun/star/task/XInteractionAbort.hpp>
@@ -38,17 +37,16 @@
 #include <com/sun/star/task/DocumentPasswordRequest2.hpp>
 #include <com/sun/star/task/DocumentMSPasswordRequest2.hpp>
 
-#include <../../inc/lib/init.hxx>
+#include "../../inc/lib/init.hxx"
 
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <sfx2/lokhelper.hxx>
 #include <sfx2/viewsh.hxx>
-#include <comphelper/lok.hxx>
+#include <vcl/svapp.hxx>
 
 using namespace com::sun::star;
 
 LOKInteractionHandler::LOKInteractionHandler(
-        uno::Reference<uno::XComponentContext> const & /*rxContext*/,
         const OString& rCommand,
         desktop::LibLibreOffice_Impl *const pLOKit,
         desktop::LibLODocument_Impl *const pLOKDocument)
@@ -66,7 +64,7 @@ LOKInteractionHandler::~LOKInteractionHandler()
 
 OUString SAL_CALL LOKInteractionHandler::getImplementationName()
 {
-    return OUString("com.sun.star.comp.uui.LOKInteractionHandler");
+    return "com.sun.star.comp.uui.LOKInteractionHandler";
 }
 
 sal_Bool SAL_CALL LOKInteractionHandler::supportsService(OUString const & rServiceName)
@@ -76,13 +74,11 @@ sal_Bool SAL_CALL LOKInteractionHandler::supportsService(OUString const & rServi
 
 uno::Sequence< OUString > SAL_CALL LOKInteractionHandler::getSupportedServiceNames()
 {
-    uno::Sequence< OUString > aNames(3);
-    aNames[0] = "com.sun.star.task.InteractionHandler";
-    // added to indicate support for configuration.backend.MergeRecoveryRequest
-    aNames[1] = "com.sun.star.configuration.backend.InteractionHandler";
-    aNames[2] = "com.sun.star.uui.InteractionHandler";
-    // for backwards compatibility
-    return aNames;
+    return { "com.sun.star.task.InteractionHandler",
+             // added to indicate support for configuration.backend.MergeRecoveryRequest
+             "com.sun.star.configuration.backend.InteractionHandler",
+              // for backwards compatibility
+             "com.sun.star.uui.InteractionHandler" };
 }
 
 void SAL_CALL LOKInteractionHandler::initialize(uno::Sequence<uno::Any> const & /*rArguments*/)
@@ -120,7 +116,7 @@ void LOKInteractionHandler::postError(css::task::InteractionClassification class
     boost::property_tree::write_json(aStream, aTree);
 
     std::size_t nView = SfxViewShell::Current() ? SfxLokHelper::getView() : 0;
-    if (m_pLOKDocument && m_pLOKDocument->mpCallbackFlushHandlers.size() > nView && m_pLOKDocument->mpCallbackFlushHandlers[nView])
+    if (m_pLOKDocument && m_pLOKDocument->mpCallbackFlushHandlers.count(nView))
         m_pLOKDocument->mpCallbackFlushHandlers[nView]->queue(LOK_CALLBACK_ERROR, aStream.str().c_str());
     else if (m_pLOKit->mpCallback)
         m_pLOKit->mpCallback(LOK_CALLBACK_ERROR, aStream.str().c_str(), m_pLOKit->mpCallbackData);
@@ -131,9 +127,9 @@ namespace {
 /// Just approve the interaction.
 void selectApproved(uno::Sequence<uno::Reference<task::XInteractionContinuation>> const &rContinuations)
 {
-    for (sal_Int32 i = 0; i < rContinuations.getLength(); ++i)
+    for (auto const & c : rContinuations)
     {
-        uno::Reference<task::XInteractionApprove> xApprove(rContinuations[i], uno::UNO_QUERY);
+        uno::Reference<task::XInteractionApprove> xApprove(c, uno::UNO_QUERY);
         if (xApprove.is())
             xApprove->select();
     }
@@ -147,7 +143,7 @@ bool LOKInteractionHandler::handleIOException(const css::uno::Sequence<css::uno:
     if (!(rRequest >>= aIoException))
         return false;
 
-    static ErrCode const aErrorCode[(int)ucb::IOErrorCode_WRONG_VERSION + 1] =
+    static ErrCode const aErrorCode[int(ucb::IOErrorCode_WRONG_VERSION) + 1] =
     {
         ERRCODE_IO_ABORT,
         ERRCODE_IO_ACCESSDENIED,
@@ -187,7 +183,7 @@ bool LOKInteractionHandler::handleIOException(const css::uno::Sequence<css::uno:
         ERRCODE_IO_WRONGVERSION,
     };
 
-    postError(aIoException.Classification, "io", aErrorCode[(int)aIoException.Code], "");
+    postError(aIoException.Classification, "io", aErrorCode[static_cast<int>(aIoException.Code)], "");
     selectApproved(rContinuations);
 
     return true;
@@ -249,11 +245,19 @@ bool LOKInteractionHandler::handlePasswordRequest(const uno::Sequence<uno::Refer
 
     OString sUrl;
 
-    task::DocumentPasswordRequest2 passwordRequest;
+    task::DocumentPasswordRequest passwordRequest;
     if (rRequest >>= passwordRequest)
     {
-        bIsRequestPasswordToModify = passwordRequest.IsRequestPasswordToModify;
+        bIsRequestPasswordToModify = false;
         sUrl = passwordRequest.Name.toUtf8();
+        bPasswordRequestFound = true;
+    }
+
+    task::DocumentPasswordRequest2 passwordRequest2;
+    if (rRequest >>= passwordRequest2)
+    {
+        bIsRequestPasswordToModify = passwordRequest2.IsRequestPasswordToModify;
+        sUrl = passwordRequest2.Name.toUtf8();
         bPasswordRequestFound = true;
     }
 
@@ -272,6 +276,9 @@ bool LOKInteractionHandler::handlePasswordRequest(const uno::Sequence<uno::Refer
         m_pLOKit->hasOptionalFeature(bIsRequestPasswordToModify ? LOK_FEATURE_DOCUMENT_PASSWORD_TO_MODIFY
                                                                 : LOK_FEATURE_DOCUMENT_PASSWORD))
     {
+        // release SolarMutex, so the callback handler, which may run in another thread,
+        // can acquire it in 'lo_setDocumentPassword'
+        SolarMutexReleaser aReleaser;
         m_pLOKit->mpCallback(bIsRequestPasswordToModify ? LOK_CALLBACK_DOCUMENT_PASSWORD_TO_MODIFY
                                                         : LOK_CALLBACK_DOCUMENT_PASSWORD,
                 sUrl.getStr(),
@@ -282,19 +289,19 @@ bool LOKInteractionHandler::handlePasswordRequest(const uno::Sequence<uno::Refer
         m_havePassword.reset();
     }
 
-    for (sal_Int32 i = 0; i < rContinuations.getLength(); ++i)
+    for (auto const & cont : rContinuations)
     {
         if (m_usePassword)
         {
             if (bIsRequestPasswordToModify)
             {
-                uno::Reference<task::XInteractionPassword2> const xIPW2(rContinuations[i], uno::UNO_QUERY);
+                uno::Reference<task::XInteractionPassword2> const xIPW2(cont, uno::UNO_QUERY);
                 xIPW2->setPasswordToModify(m_Password);
                 xIPW2->select();
             }
             else
             {
-                uno::Reference<task::XInteractionPassword> const xIPW(rContinuations[i], uno::UNO_QUERY);
+                uno::Reference<task::XInteractionPassword> const xIPW(cont, uno::UNO_QUERY);
                 if (xIPW.is())
                 {
                     xIPW->setPassword(m_Password);
@@ -306,13 +313,13 @@ bool LOKInteractionHandler::handlePasswordRequest(const uno::Sequence<uno::Refer
         {
             if (bIsRequestPasswordToModify)
             {
-                uno::Reference<task::XInteractionPassword2> const xIPW2(rContinuations[i], uno::UNO_QUERY);
+                uno::Reference<task::XInteractionPassword2> const xIPW2(cont, uno::UNO_QUERY);
                 xIPW2->setRecommendReadOnly(true);
                 xIPW2->select();
             }
             else
             {
-                uno::Reference<task::XInteractionAbort> const xAbort(rContinuations[i], uno::UNO_QUERY);
+                uno::Reference<task::XInteractionAbort> const xAbort(cont, uno::UNO_QUERY);
                 if (xAbort.is())
                 {
                     xAbort->select();

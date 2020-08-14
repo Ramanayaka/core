@@ -29,17 +29,12 @@
 #include <cppuhelper/compbase.hxx>
 #include <unotools/tempfile.hxx>
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
         // The SQL dialect in use
         // Has to be used in various isc_* calls.
         // 3: Is IB6 -- minimum required for delimited identifiers.
-        static const int FIREBIRD_SQL_DIALECT = 3;
-
-        /// @throws css::uno::Exception
-        css::uno::Reference< css::uno::XInterface > SAL_CALL FirebirdDriver_CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory);
+        const int FIREBIRD_SQL_DIALECT = 3;
 
         typedef ::cppu::WeakComponentImplHelper<   css::sdbc::XDriver,
                                                    css::sdbcx::XDataDefinitionSupplier,
@@ -66,21 +61,16 @@ namespace connectivity
 
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
-            // XInterface
-            /// @throws css::uno::RuntimeException
-            static ::rtl::OUString getImplementationName_Static(  );
-            /// @throws css::uno::RuntimeException
-            static css::uno::Sequence< ::rtl::OUString > getSupportedServiceNames_Static(  );
 
             // XServiceInfo
-            virtual ::rtl::OUString SAL_CALL getImplementationName(  ) override;
-            virtual sal_Bool SAL_CALL supportsService( const ::rtl::OUString& ServiceName ) override;
-            virtual css::uno::Sequence< ::rtl::OUString > SAL_CALL getSupportedServiceNames(  ) override;
+            virtual OUString SAL_CALL getImplementationName(  ) override;
+            virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+            virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
             // XDriver
-            virtual css::uno::Reference< css::sdbc::XConnection > SAL_CALL connect( const ::rtl::OUString& url, const css::uno::Sequence< css::beans::PropertyValue >& info ) override;
-            virtual sal_Bool SAL_CALL acceptsURL( const ::rtl::OUString& url ) override;
-            virtual css::uno::Sequence< css::sdbc::DriverPropertyInfo > SAL_CALL getPropertyInfo( const ::rtl::OUString& url, const css::uno::Sequence< css::beans::PropertyValue >& info ) override;
+            virtual css::uno::Reference< css::sdbc::XConnection > SAL_CALL connect( const OUString& url, const css::uno::Sequence< css::beans::PropertyValue >& info ) override;
+            virtual sal_Bool SAL_CALL acceptsURL( const OUString& url ) override;
+            virtual css::uno::Sequence< css::sdbc::DriverPropertyInfo > SAL_CALL getPropertyInfo( const OUString& url, const css::uno::Sequence< css::beans::PropertyValue >& info ) override;
             virtual sal_Int32 SAL_CALL getMajorVersion(  ) override;
             virtual sal_Int32 SAL_CALL getMinorVersion(  ) override;
 
@@ -93,7 +83,6 @@ namespace connectivity
                     const OUString& rsURL,
                     const css::uno::Sequence< css::beans::PropertyValue >& rInfo) override;
         };
-    }
 
 }
 

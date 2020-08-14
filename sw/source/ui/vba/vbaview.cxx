@@ -19,19 +19,15 @@
 #include "vbaview.hxx"
 #include <vbahelper/vbahelper.hxx>
 #include <basic/sberrors.hxx>
-#include <tools/diagnose_ex.h>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/view/XViewSettingsSupplier.hpp>
 #include <com/sun/star/text/XTextViewCursorSupplier.hpp>
 #include <com/sun/star/text/XText.hpp>
-#include <com/sun/star/text/XTextTable.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/text/XTextDocument.hpp>
 #include <com/sun/star/text/XFootnotesSupplier.hpp>
 #include <com/sun/star/text/XEndnotesSupplier.hpp>
+#include <com/sun/star/text/XPageCursor.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <ooo/vba/word/WdSpecialPane.hpp>
@@ -45,7 +41,7 @@
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
-static const sal_Int32 DEFAULT_BODY_DISTANCE = 500;
+const sal_Int32 DEFAULT_BODY_DISTANCE = 500;
 
 SwVbaView::SwVbaView( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext,
     const uno::Reference< frame::XModel >& rModel ) :
@@ -57,7 +53,7 @@ SwVbaView::SwVbaView( const uno::Reference< ooo::vba::XHelperInterface >& rParen
     mxViewCursor = xTextViewCursorSupp->getViewCursor();
 
     uno::Reference< view::XViewSettingsSupplier > xViewSettingSupp( xController, uno::UNO_QUERY_THROW );
-    mxViewSettings.set( xViewSettingSupp->getViewSettings(), uno::UNO_QUERY_THROW );
+    mxViewSettings.set( xViewSettingSupp->getViewSettings(), uno::UNO_SET_THROW );
 }
 
 SwVbaView::~SwVbaView()
@@ -141,7 +137,7 @@ SwVbaView::setSeekView( ::sal_Int32 _seekview )
         case word::WdSeekView::wdSeekFootnotes:
         {
             uno::Reference< text::XFootnotesSupplier > xFootnotesSupp( mxModel, uno::UNO_QUERY_THROW );
-            uno::Reference< container::XIndexAccess > xFootnotes( xFootnotesSupp->getFootnotes(), uno::UNO_QUERY_THROW );
+            uno::Reference< container::XIndexAccess > xFootnotes( xFootnotesSupp->getFootnotes(), uno::UNO_SET_THROW );
             if( xFootnotes->getCount() > 0 )
             {
                 uno::Reference< text::XText > xText( xFootnotes->getByIndex(0), uno::UNO_QUERY_THROW );
@@ -156,7 +152,7 @@ SwVbaView::setSeekView( ::sal_Int32 _seekview )
         case word::WdSeekView::wdSeekEndnotes:
         {
             uno::Reference< text::XEndnotesSupplier > xEndnotesSupp( mxModel, uno::UNO_QUERY_THROW );
-            uno::Reference< container::XIndexAccess > xEndnotes( xEndnotesSupp->getEndnotes(), uno::UNO_QUERY_THROW );
+            uno::Reference< container::XIndexAccess > xEndnotes( xEndnotesSupp->getEndnotes(), uno::UNO_SET_THROW );
             if( xEndnotes->getCount() > 0 )
             {
                 uno::Reference< text::XText > xText( xEndnotes->getByIndex(0), uno::UNO_QUERY_THROW );
@@ -374,18 +370,16 @@ uno::Reference< text::XTextRange > SwVbaView::getHFTextRange( sal_Int32 nType )
 OUString
 SwVbaView::getServiceImplName()
 {
-    return OUString("SwVbaView");
+    return "SwVbaView";
 }
 
 uno::Sequence< OUString >
 SwVbaView::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.View";
-    }
+        "ooo.vba.word.View"
+    };
     return aServiceNames;
 }
 

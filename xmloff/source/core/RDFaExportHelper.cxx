@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RDFaExportHelper.hxx"
+#include <RDFaExportHelper.hxx>
 
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmltoken.hxx>
@@ -27,18 +27,17 @@
 #include <comphelper/stl_types.hxx>
 #include <comphelper/processfactory.hxx>
 
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/uri/XUriReference.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <com/sun/star/rdf/Statement.hpp>
-#include <com/sun/star/rdf/URIs.hpp>
-#include <com/sun/star/rdf/URI.hpp>
 #include <com/sun/star/rdf/XLiteral.hpp>
 #include <com/sun/star/rdf/XRepositorySupplier.hpp>
 #include <com/sun/star/rdf/XDocumentRepository.hpp>
 
 #include <rtl/ustrbuf.hxx>
+#include <osl/diagnose.h>
 
-#include <functional>
 #include <algorithm>
 
 using namespace ::com::sun::star;
@@ -87,7 +86,7 @@ getRelativeReference(SvXMLExport const& rExport, OUString const& rURI)
 }
 
 RDFaExportHelper::RDFaExportHelper(SvXMLExport & i_rExport)
-    : m_rExport(i_rExport), m_xRepository(nullptr), m_Counter(0)
+    : m_rExport(i_rExport), m_Counter(0)
 {
     const uno::Reference<rdf::XRepositorySupplier> xRS( m_rExport.GetModel(),
             uno::UNO_QUERY_THROW);
@@ -120,7 +119,7 @@ RDFaExportHelper::AddRDFa(
 
         uno::Sequence<rdf::Statement> const & rStatements( RDFaResult.First );
 
-        if (0 == rStatements.getLength())
+        if (!rStatements.hasElements())
         {
             return; // no RDFa
         }
@@ -155,7 +154,7 @@ RDFaExportHelper::AddRDFa(
                 xContent->getValue());
         }
 
-        ::std::vector<::rtl::OUString> curies;
+        ::std::vector<OUString> curies;
         for (rdf::Statement const& rStatement : rStatements)
         {
             curies.push_back(makeCURIE(&m_rExport, rStatement.Predicate));

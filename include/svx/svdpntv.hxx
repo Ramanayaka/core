@@ -27,21 +27,22 @@
 #include <svx/svdlayer.hxx>
 #include <vcl/window.hxx>
 #include <svtools/colorcfg.hxx>
-#include <com/sun/star/awt/XControlContainer.hpp>
 #include <svl/itemset.hxx>
 #include <vcl/timer.hxx>
 #include <svx/svxdllapi.h>
 #include <svtools/optionsdrawinglayer.hxx>
 #include <unotools/options.hxx>
 #include <vcl/idle.hxx>
+#include <memory>
 
 
 // Pre defines
 class SdrPageWindow;
 
-namespace com { namespace sun { namespace star { namespace awt {
+namespace com::sun::star::awt {
     class XControlContainer;
-}}}}
+}
+namespace sdr::overlay { class OverlayManager; }
 
 class SdrPage;
 class SdrView;
@@ -52,13 +53,9 @@ class SdrModel;
 class SdrObject;
 enum class GraphicManagerDrawFlags;
 
-#ifdef DBG_UTIL
-class SdrItemBrowser;
-#endif
-
-namespace sdr { namespace contact {
+namespace sdr::contact {
     class ViewObjectContactRedirector;
-}}
+}
 
 
 // Defines for AnimationMode
@@ -69,57 +66,64 @@ enum class SdrAnimationMode
 };
 
 
-// Typedefs and defines
-typedef unsigned char SDR_TRISTATE;
-#define FUZZY                   (2)
-#define SDR_ANYFORMAT           (0xFFFFFFFF)
-#define SDR_ANYITEM             (0xFFFF)
-#define SDRVIEWWIN_NOTFOUND     (0xFFFF)
-
-
 class SdrPaintView;
-
-namespace sdr
-{
-    namespace contact
-    {
-        class ViewObjectContactRedirector;
-    }
-}
+namespace sdr::contact { class ViewObjectContactRedirector; }
 
 
-class SVX_DLLPUBLIC SvxViewChangedHint : public SfxHint
+
+class SvxViewChangedHint final : public SfxHint
 {
 public:
     explicit SvxViewChangedHint();
 };
 
-/// Typedefs for a list of SdrPaintWindows
 class SdrPaintWindow;
-typedef ::std::vector< SdrPaintWindow* > SdrPaintWindowVector;
-
 
 /**
  * Helper to convert any GDIMetaFile to a good quality BitmapEx,
  * using default parameters and graphic::XPrimitive2DRenderer
  */
-BitmapEx SVX_DLLPUBLIC convertMetafileToBitmapEx(
+BitmapEx convertMetafileToBitmapEx(
     const GDIMetaFile& rMtf,
     const basegfx::B2DRange& rTargetRange,
     const sal_uInt32 nMaximumQuadraticPixels);
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//  SdrPaintView
+//      SdrSnapView
+//          SdrMarkView
+//              SdrEditView
+//                  SdrPolyEditView
+//                      SdrGlueEditView
+//                          SdrObjEditView
+//                              SdrExchangeView
+//                                  SdrDragView
+//                                      SdrCreateView
+//                                          SdrView
+//                                              DlgEdView
+//                                              GraphCtrlView
+//                                              E3dView
+//                                                  DrawViewWrapper
+//                                                  FmFormView
+//                                                      ScDrawView
+//                                                      sd::View (may have more?)
+//                                                          sd::DrawView
+//                                                      SwDrawView
+//                                              OSectionView
 
-class SVX_DLLPUBLIC SdrPaintView : public SfxListener, public SfxRepeatTarget, public SfxBroadcaster, public ::utl::ConfigurationListener
+class SVXCORE_DLLPUBLIC SdrPaintView : public SfxListener, public SfxRepeatTarget, public SfxBroadcaster, public ::utl::ConfigurationListener
 {
+private:
     friend class                SdrPageView;
     friend class                SdrGrafObj;
 
-    SdrPageView*                mpPageView;
+    // the SdrModel this view was created with, unchanged during lifetime
+    SdrModel&                   mrSdrModelFromSdrView;
+
+    std::unique_ptr<SdrPageView> mpPageView;
 protected:
     SdrModel*                   mpModel;
-#ifdef DBG_UTIL
-    VclPtr<SdrItemBrowser>      mpItemBrowser;
-#endif
     VclPtr<OutputDevice>        mpActualOutDev; // Only for comparison
     VclPtr<OutputDevice>        mpDragWin;
     SfxStyleSheet*              mpDefaultStyleSheet;
@@ -130,7 +134,7 @@ protected:
 //  Container                   aPagV;         // List of SdrPageViews
 
     // All windows this view is displayed on
-    SdrPaintWindowVector        maPaintWindows;
+    std::vector< std::unique_ptr<SdrPaintWindow> >  maPaintWindows;
 
     Size                        maGridBig;   // FIXME: We need to get rid of this eventually
     Size                        maGridFin;   // FIXME: We need to get rid of this eventually
@@ -203,13 +207,16 @@ public:
     bool IsPagePaintingAllowed() const { return mbPagePaintingAllowed;}
     void SetPagePaintingAllowed(bool bNew);
 
+    virtual rtl::Reference<sdr::overlay::OverlayManager> CreateOverlayManager(OutputDevice& rDevice) const;
+
 protected:
     svtools::ColorConfig            maColorConfig;
     Color                           maGridColor;
 
     // Interface to SdrPaintWindow
-    void RemovePaintWindow(SdrPaintWindow& rOld);
+    void DeletePaintWindow(SdrPaintWindow& rOld);
     void ConfigurationChanged( ::utl::ConfigurationBroadcaster*, ConfigurationHints ) override;
+    void InitOverlayManager(rtl::Reference<sdr::overlay::OverlayManager> xOverlayManager) const;
 
 public:
     sal_uInt32 PaintWindowCount() const { return maPaintWindows.size(); }
@@ -246,10 +253,13 @@ protected:
     virtual void ModelHasChanged();
 
     // #i71538# make constructors of SdrView sub-components protected to avoid incomplete incarnations which may get casted to SdrView
-    SdrPaintView(SdrModel* pModel1, OutputDevice* pOut);
+    // A SdrView always needs a SdrModel for lifetime (Pool, ...)
+    SdrPaintView(SdrModel& rSdrModel, OutputDevice* pOut);
     virtual ~SdrPaintView() override;
 
 public:
+    // SdrModel access on SdrView level
+    SdrModel& getSdrModelFromSdrView() const { return mrSdrModelFromSdrView; }
 
     virtual void ClearPageView();
     SdrModel* GetModel() const { return mpModel; }
@@ -264,9 +274,6 @@ public:
     // Info about TextEdit. Default is sal_False.
     virtual bool IsTextEdit() const;
 
-    // Info about TextEditPageView. Default is 0L.
-    virtual SdrPageView* GetTextEditPageView() const;
-
     // Must be called for every Window change as well as MapMode (Scaling) change:
     // If the SdrView is shown in multiple windows at the same time (e.g.
     // using the split pane), so that I can convert my pixel values to logical
@@ -274,7 +281,7 @@ public:
     void SetActualWin(const OutputDevice* pWin);
     void SetMinMoveDistancePixel(sal_uInt16 nVal) { mnMinMovPix=nVal; TheresNewMapMode(); }
     void SetHitTolerancePixel(sal_uInt16 nVal) { mnHitTolPix=nVal; TheresNewMapMode(); }
-    sal_uInt16 GetHitTolerancePixel() const { return (sal_uInt16)mnHitTolPix; }
+    sal_uInt16 GetHitTolerancePixel() const { return mnHitTolPix; }
 
     // Data read access on logic HitTolerance and MinMoveTolerance
     sal_uInt16 getHitTolLog() const { return mnHitTolLog; }
@@ -294,7 +301,7 @@ public:
     virtual void HideSdrPage();
 
     // Iterate over all registered PageViews
-    SdrPageView* GetSdrPageView() const { return mpPageView; }
+    SdrPageView* GetSdrPageView() const { return mpPageView.get(); }
 
     // A SdrView can be displayed on multiple Windows at the same time
     virtual void AddWindowToPaintView(OutputDevice* pNewWin, vcl::Window* pWindow);
@@ -399,7 +406,7 @@ public:
     void SetGridCoarse(const Size& rSiz) { maGridBig=rSiz; }
     void SetGridFine(const Size& rSiz) {
         maGridFin=rSiz;
-        if (maGridFin.Height()==0) maGridFin.Height()=maGridFin.Width();
+        if (maGridFin.Height()==0) maGridFin.setHeight(maGridFin.Width());
         if (mbGridVisible) InvalidateAllWin();
     }
     const Size& GetGridCoarse() const { return maGridBig; }
@@ -410,16 +417,16 @@ public:
 
     /// If the View should not call Invalidate() on the windows, override
     /// the following 2 methods and do something else.
-    virtual void InvalidateOneWin(vcl::Window& rWin);
-    virtual void InvalidateOneWin(vcl::Window& rWin, const tools::Rectangle& rRect);
+    virtual void InvalidateOneWin(OutputDevice& rWin);
+    virtual void InvalidateOneWin(OutputDevice& rWin, const tools::Rectangle& rRect);
 
     void SetActiveLayer(const OUString& rName) { maActualLayer=rName; }
     const OUString&  GetActiveLayer() const { return maActualLayer; }
 
-    /// Leave an object group of all visible Pages (like `chdir ..` in MSDOS)
+    /// Leave an object group of all visible Pages (like `chdir ..` in MS-DOS)
     void LeaveOneGroup();
 
-    /// Leave all entered object groups of all visible Pages (like `chdir \` in MSDOS)
+    /// Leave all entered object groups of all visible Pages (like `chdir \` in MS-DOS)
     void LeaveAllGroup();
 
     /// Determine, whether Leave is useful or not
@@ -443,16 +450,17 @@ public:
     void SetSwapAsynchron(bool bJa=true) { mbSwapAsynchron=bJa; }
     virtual bool KeyInput(const KeyEvent& rKEvt, vcl::Window* pWin);
 
-    virtual bool MouseButtonDown(const MouseEvent& /*rMEvt*/, vcl::Window* /*pWin*/) { return false; }
-    virtual bool MouseButtonUp(const MouseEvent& /*rMEvt*/, vcl::Window* /*pWin*/) { return false; }
-    virtual bool MouseMove(const MouseEvent& /*rMEvt*/, vcl::Window* /*pWin*/) { return false; }
+    virtual bool MouseButtonDown(const MouseEvent& /*rMEvt*/, OutputDevice* /*pWin*/) { return false; }
+    virtual bool MouseButtonUp(const MouseEvent& /*rMEvt*/, OutputDevice* /*pWin*/) { return false; }
+    virtual bool MouseMove(const MouseEvent& /*rMEvt*/, OutputDevice* /*pWin*/) { return false; }
+    virtual bool RequestHelp(const HelpEvent& /*rHEvt*/) { return false; }
     virtual bool Command(const CommandEvent& /*rCEvt*/, vcl::Window* /*pWin*/) { return false; }
 
-    bool GetAttributes(SfxItemSet& rTargetSet, bool bOnlyHardAttr) const;
+    void GetAttributes(SfxItemSet& rTargetSet, bool bOnlyHardAttr) const;
 
-    bool SetAttributes(const SfxItemSet& rSet, bool bReplaceAll);
+    void SetAttributes(const SfxItemSet& rSet, bool bReplaceAll);
     SfxStyleSheet* GetStyleSheet() const; // SfxStyleSheet* GetStyleSheet(bool& rOk) const;
-    bool SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr);
+    void SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr);
 
     virtual void MakeVisible(const tools::Rectangle& rRect, vcl::Window& rWin);
 
@@ -475,15 +483,8 @@ public:
     /// 3. SdrAnimationMode::Disable: don't start and don't show any replacement
     void SetAnimationMode( const SdrAnimationMode eMode );
 
-    /// The Browser is destroyed for bShow=false
-#ifdef DBG_UTIL
-    void ShowItemBrowser(bool bShow);
-    bool IsItemBrowserVisible() const { return mpItemBrowser!=nullptr && GetItemBrowser()->IsVisible(); }
-    vcl::Window* GetItemBrowser() const;
-#endif
-
     /// Must be called by the App when scrolling etc. in order for
-    /// an active FormularControl to be moved too
+    /// an active FormControl to be moved too
     void VisAreaChanged(const OutputDevice* pOut);
     void VisAreaChanged();
 

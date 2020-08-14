@@ -19,32 +19,27 @@
 
 #include <config_folders.h>
 
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/sequence.hxx>
 #include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/deployment/UpdateInformationEntry.hpp>
-#include <com/sun/star/deployment/UpdateInformationProvider.hpp>
+#include <com/sun/star/deployment/XUpdateInformationProvider.hpp>
 #include <com/sun/star/io/XActiveDataSink.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/ucb/CommandAbortedException.hpp>
 #include <com/sun/star/ucb/UniversalContentBroker.hpp>
 #include <com/sun/star/ucb/XWebDAVCommandEnvironment.hpp>
 #include <com/sun/star/ucb/XCommandProcessor2.hpp>
-#include <com/sun/star/ucb/XContentIdentifierFactory.hpp>
-#include <com/sun/star/ucb/XContentProvider.hpp>
-#include "com/sun/star/ucb/XInteractionSupplyAuthentication.hpp"
 #include <com/sun/star/ucb/OpenCommandArgument3.hpp>
 #include <com/sun/star/ucb/OpenMode.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/task/PasswordContainerInteractionHandler.hpp>
 #include <com/sun/star/xml/dom/DocumentBuilder.hpp>
 #include <com/sun/star/xml/xpath/XPathAPI.hpp>
@@ -54,7 +49,6 @@
 #include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <osl/diagnose.h>
-#include <osl/process.h>
 #include <osl/conditn.hxx>
 #include <vcl/svapp.hxx>
 
@@ -83,25 +77,20 @@ public:
         m_xStream(rxStream) {};
 
     virtual sal_Int32 SAL_CALL readBytes(uno::Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead)
-        throw (io::NotConnectedException, io::BufferSizeExceededException, io::IOException, uno::RuntimeException)
         {
             sal_Int32 n = m_xStream->readBytes(aData, nBytesToRead);
             return n;
         };
     virtual sal_Int32 SAL_CALL readSomeBytes(uno::Sequence< sal_Int8 >& aData, sal_Int32 nMaxBytesToRead)
-        throw (io::NotConnectedException, io::BufferSizeExceededException, io::IOException, uno::RuntimeException)
         {
             sal_Int32 n = m_xStream->readSomeBytes(aData, nMaxBytesToRead);
             return n;
         };
     virtual void SAL_CALL skipBytes( sal_Int32 nBytesToSkip )
-        throw (io::NotConnectedException, io::BufferSizeExceededException, io::IOException, uno::RuntimeException)
         { m_xStream->skipBytes(nBytesToSkip); };
     virtual sal_Int32 SAL_CALL available()
-        throw (io::NotConnectedException, io::IOException, uno::RuntimeException)
         { return m_xStream->available(); };
     virtual void SAL_CALL closeInput( )
-        throw (io::NotConnectedException, io::IOException, uno::RuntimeException)
         {};
 };
 
@@ -129,13 +118,8 @@ class UpdateInformationProvider :
                                     lang::XServiceInfo >
 {
     OUString getUserAgent(bool bExtended);
-    bool isUserAgentExtended();
+    bool isUserAgentExtended() const;
 public:
-    static uno::Reference< uno::XInterface > createInstance(const uno::Reference<uno::XComponentContext>& xContext);
-
-    static uno::Sequence< OUString > getServiceNames();
-    static OUString getImplName();
-
     uno::Reference< xml::dom::XElement > getDocumentRoot(const uno::Reference< xml::dom::XNode >& rxNode);
     uno::Reference< xml::dom::XNode > getChildNode(const uno::Reference< xml::dom::XNode >& rxNode, const OUString& rName);
 
@@ -172,6 +156,11 @@ public:
     virtual sal_Bool SAL_CALL supportsService(OUString const & serviceName) override;
     virtual uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
+    UpdateInformationProvider(const uno::Reference<uno::XComponentContext>& xContext,
+                              const uno::Reference< ucb::XUniversalContentBroker >& xUniversalContentBroker,
+                              const uno::Reference< xml::dom::XDocumentBuilder >& xDocumentBuilder,
+                              const uno::Reference< xml::xpath::XXPathAPI >& xXPathAPI);
+
 protected:
 
     virtual ~UpdateInformationProvider() override;
@@ -183,11 +172,6 @@ private:
 
     void storeCommandInfo( sal_Int32 nCommandId,
         uno::Reference< ucb::XCommandProcessor > const & rxCommandProcessor);
-
-    UpdateInformationProvider(const uno::Reference<uno::XComponentContext>& xContext,
-                              const uno::Reference< ucb::XUniversalContentBroker >& xUniversalContentBroker,
-                              const uno::Reference< xml::dom::XDocumentBuilder >& xDocumentBuilder,
-                              const uno::Reference< xml::xpath::XXPathAPI >& xXPathAPI);
 
     const uno::Reference< uno::XComponentContext> m_xContext;
 
@@ -227,7 +211,7 @@ public:
         OSL_ASSERT( m_xNodeList.is() );
         OSL_ASSERT( m_xUpdateInformationProvider.is() );
 
-        if( !(m_nCount < m_nNodes ) )
+        if( m_nCount >= m_nNodes )
             throw container::NoSuchElementException(OUString::number(m_nCount), *this);
 
         try
@@ -251,17 +235,23 @@ public:
 
             return uno::makeAny(aEntry);
         }
-
-        // action has been aborted
-        catch( ucb::CommandAbortedException const & e)
-            { throw lang::WrappedTargetException( "Command aborted", *this, uno::makeAny(e) ); }
-
-        // let runtime exception pass
-        catch( uno::RuntimeException const & ) { throw; }
-
-        // document not accessible
-        catch( uno::Exception const & e)
-            { throw lang::WrappedTargetException( "Document not accessible", *this, uno::makeAny(e) ); }
+        catch( ucb::CommandAbortedException const &)
+        {
+            // action has been aborted
+            css::uno::Any anyEx = cppu::getCaughtException();
+            throw lang::WrappedTargetException( "Command aborted", *this, anyEx );
+        }
+        catch( uno::RuntimeException const & )
+        {
+            // let runtime exception pass
+            throw;
+        }
+        catch( uno::Exception const &)
+        {
+            // document not accessible
+            css::uno::Any anyEx = cppu::getCaughtException();
+            throw lang::WrappedTargetException( "Document not accessible", *this, anyEx );
+        }
     }
 
 private:
@@ -314,7 +304,7 @@ UpdateInformationProvider::UpdateInformationProvider(
 }
 
 bool
-UpdateInformationProvider::isUserAgentExtended()
+UpdateInformationProvider::isUserAgentExtended() const
 {
     bool bExtendedUserAgent = false;
     try {
@@ -398,22 +388,6 @@ uno::Sequence< beans::StringPair > SAL_CALL UpdateInformationProvider::getUserRe
 
     return aPair;
 };
-
-uno::Reference< uno::XInterface >
-UpdateInformationProvider::createInstance(const uno::Reference<uno::XComponentContext>& xContext)
-{
-    uno::Reference< ucb::XUniversalContentBroker > xUniversalContentBroker =
-        ucb::UniversalContentBroker::create(xContext);
-
-    uno::Reference< xml::dom::XDocumentBuilder > xDocumentBuilder(
-        xml::dom::DocumentBuilder::create(xContext));
-
-    uno::Reference< xml::xpath::XXPathAPI > xXPath = xml::xpath::XPathAPI::create( xContext );
-
-    xXPath->registerNS( "atom", "http://www.w3.org/2005/Atom" );
-
-    return *new UpdateInformationProvider(xContext, xUniversalContentBroker, xDocumentBuilder, xXPath);
-}
 
 UpdateInformationProvider::~UpdateInformationProvider()
 {
@@ -734,32 +708,18 @@ UpdateInformationProvider::getInteractionHandler()
 }
 
 
-uno::Sequence< OUString >
-UpdateInformationProvider::getServiceNames()
-{
-    uno::Sequence< OUString > aServiceList { "com.sun.star.deployment.UpdateInformationProvider" };
-    return aServiceList;
-};
-
-
-OUString
-UpdateInformationProvider::getImplName()
-{
-    return OUString("vnd.sun.UpdateInformationProvider");
-}
-
 
 OUString SAL_CALL
 UpdateInformationProvider::getImplementationName()
 {
-    return getImplName();
+    return "vnd.sun.UpdateInformationProvider";
 }
 
 
 uno::Sequence< OUString > SAL_CALL
 UpdateInformationProvider::getSupportedServiceNames()
 {
-    return getServiceNames();
+    return { "com.sun.star.deployment.UpdateInformationProvider" };
 }
 
 sal_Bool SAL_CALL
@@ -770,35 +730,23 @@ UpdateInformationProvider::supportsService( OUString const & serviceName )
 
 } // anonymous namespace
 
-
-static uno::Reference<uno::XInterface> SAL_CALL
-createInstance(uno::Reference<uno::XComponentContext> const & xContext)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_update_UpdateInformationProvider_get_implementation(
+    css::uno::XComponentContext* xContext , css::uno::Sequence<css::uno::Any> const&)
 {
-    return UpdateInformationProvider::createInstance(xContext);
+    uno::Reference< ucb::XUniversalContentBroker > xUniversalContentBroker =
+        ucb::UniversalContentBroker::create(xContext);
+
+    uno::Reference< xml::dom::XDocumentBuilder > xDocumentBuilder(
+        xml::dom::DocumentBuilder::create(xContext));
+
+    uno::Reference< xml::xpath::XXPathAPI > xXPath = xml::xpath::XPathAPI::create( xContext );
+
+    xXPath->registerNS( "atom", "http://www.w3.org/2005/Atom" );
+
+    return cppu::acquire(
+        new UpdateInformationProvider(xContext, xUniversalContentBroker, xDocumentBuilder, xXPath));
 }
 
-
-static const cppu::ImplementationEntry kImplementations_entries[] =
-{
-    {
-        createInstance,
-        UpdateInformationProvider::getImplName,
-        UpdateInformationProvider::getServiceNames,
-        cppu::createSingleComponentFactory,
-        nullptr,
-        0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-} ;
-
-
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL updatefeed_component_getFactory(const sal_Char *pszImplementationName, void *pServiceManager, void *pRegistryKey)
-{
-    return cppu::component_getFactoryHelper(
-        pszImplementationName,
-        pServiceManager,
-        pRegistryKey,
-        kImplementations_entries) ;
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

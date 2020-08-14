@@ -22,52 +22,49 @@
 
 #include <sfx2/basedlgs.hxx>
 #include "IItemSetHelper.hxx"
-#include <comphelper/uno3.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
 
 #include <memory>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans {
         class XPropertySet;
     }
     namespace uno {
         class XComponentContext;
     }
-}}}
+}
 
 namespace dbaui
 {
 class ODbDataSourceAdministrationHelper;
     // OTableSubscriptionDialog
-    class OTableSubscriptionDialog : public SfxSingleTabDialog, public IItemSetHelper
+    class OTableSubscriptionDialog : public SfxSingleTabDialogController, public IItemSetHelper
     {
         std::unique_ptr<ODbDataSourceAdministrationHelper>  m_pImpl;
         bool m_bStopExecution; // set when the dialog should not be executed
 
-        SfxItemSet*             m_pOutSet;
+        std::unique_ptr<SfxItemSet> m_pOutSet;
     public:
 
-        OTableSubscriptionDialog(vcl::Window* pParent
-            ,SfxItemSet* _pItems
+        OTableSubscriptionDialog(weld::Window* pParent
+            ,const SfxItemSet* _pItems
             ,const css::uno::Reference< css::uno::XComponentContext >& _rxORB
             ,const css::uno::Any& _aDataSourceName
         );
         virtual ~OTableSubscriptionDialog() override;
-        virtual void dispose() override;
 
         // forwards from ODbDataSourceAdministrationHelper
         void        successfullyConnected();
         bool        getCurrentSettings(css::uno::Sequence< css::beans::PropertyValue >& _rDriverParams);
         void        clearPassword();
-        OUString    getConnectionURL() const;
-        css::uno::Reference< css::beans::XPropertySet >   getCurrentDataSource();
+        css::uno::Reference< css::beans::XPropertySet > const & getCurrentDataSource();
         void endExecution() { m_bStopExecution = true; }
 
         virtual const SfxItemSet* getOutputSet() const override;
         virtual SfxItemSet* getWriteOutputSet() override;
 
-        virtual short   Execute() override;
+        virtual short run() override;
     };
 
 }   // namespace dbaui

@@ -32,8 +32,10 @@
 #include <toolkit/awt/vclxfont.hxx>
 #include <toolkit/helper/convert.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
+#include <tools/diagnose_ex.h>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 namespace basctl
 {
@@ -46,7 +48,6 @@ using namespace ::com::sun::star::accessibility;
 using namespace ::comphelper;
 
 
-// class AccessibleDialogControlShape
 
 
 AccessibleDialogControlShape::AccessibleDialogControlShape (DialogWindow* pDialogWindow, DlgEdObj* pDlgEdObj)
@@ -72,7 +73,7 @@ AccessibleDialogControlShape::~AccessibleDialogControlShape()
 }
 
 
-bool AccessibleDialogControlShape::IsFocused()
+bool AccessibleDialogControlShape::IsFocused() const
 {
     bool bFocused = false;
     if ( m_pDialogWindow )
@@ -86,7 +87,7 @@ bool AccessibleDialogControlShape::IsFocused()
 }
 
 
-bool AccessibleDialogControlShape::IsSelected()
+bool AccessibleDialogControlShape::IsSelected() const
 {
     if ( m_pDialogWindow )
         return m_pDialogWindow->GetView().IsObjMarked(m_pDlgEdObj);
@@ -124,7 +125,7 @@ void AccessibleDialogControlShape::SetSelected( bool bSelected )
 }
 
 
-awt::Rectangle AccessibleDialogControlShape::GetBounds()
+awt::Rectangle AccessibleDialogControlShape::GetBounds() const
 {
     awt::Rectangle aBounds( 0, 0, 0, 0 );
     if ( m_pDlgEdObj )
@@ -168,7 +169,7 @@ vcl::Window* AccessibleDialogControlShape::GetWindow() const
     vcl::Window* pWindow = nullptr;
     if ( m_pDlgEdObj )
     {
-        Reference< awt::XControl > xControl( m_pDlgEdObj->GetControl(), UNO_QUERY );
+        Reference< awt::XControl > xControl = m_pDlgEdObj->GetControl();
         if ( xControl.is() )
             pWindow = VCLUnoHelper::GetWindow( xControl->getPeer() ).get();
     }
@@ -192,7 +193,7 @@ OUString AccessibleDialogControlShape::GetModelStringProperty( OUString const & 
     }
     catch ( const Exception& )
     {
-        OSL_FAIL( "AccessibleDialogControlShape::GetModelStringProperty: caught an exception!" );
+        TOOLS_WARN_EXCEPTION( "basctl", "AccessibleDialogControlShape::GetModelStringProperty" );
     }
 
     return sReturn;
@@ -284,7 +285,7 @@ void AccessibleDialogControlShape::propertyChange( const beans::PropertyChangeEv
 // XServiceInfo
 OUString AccessibleDialogControlShape::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.basctl.AccessibleShape" );
+    return "com.sun.star.comp.basctl.AccessibleShape";
 }
 
 sal_Bool AccessibleDialogControlShape::supportsService( const OUString& rServiceName )
@@ -447,12 +448,12 @@ sal_Int32 AccessibleDialogControlShape::getForeground(  )
 {
     OExternalLockGuard aGuard( this );
 
-    sal_Int32 nColor = 0;
+    Color nColor;
     vcl::Window* pWindow = GetWindow();
     if ( pWindow )
     {
         if ( pWindow->IsControlForeground() )
-            nColor = pWindow->GetControlForeground().GetColor();
+            nColor = pWindow->GetControlForeground();
         else
         {
             vcl::Font aFont;
@@ -460,11 +461,11 @@ sal_Int32 AccessibleDialogControlShape::getForeground(  )
                 aFont = pWindow->GetControlFont();
             else
                 aFont = pWindow->GetFont();
-            nColor = aFont.GetColor().GetColor();
+            nColor = aFont.GetColor();
         }
     }
 
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 
@@ -472,17 +473,17 @@ sal_Int32 AccessibleDialogControlShape::getBackground(  )
 {
     OExternalLockGuard aGuard( this );
 
-    sal_Int32 nColor = 0;
+    Color nColor;
     vcl::Window* pWindow = GetWindow();
     if ( pWindow )
     {
         if ( pWindow->IsControlBackground() )
-            nColor = pWindow->GetControlBackground().GetColor();
+            nColor = pWindow->GetControlBackground();
         else
-            nColor = pWindow->GetBackground().GetColor().GetColor();
+            nColor = pWindow->GetBackground().GetColor();
     }
 
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 
@@ -506,7 +507,7 @@ Reference< awt::XFont > AccessibleDialogControlShape::getFont(  )
             else
                 aFont = pWindow->GetFont();
             VCLXFont* pVCLXFont = new VCLXFont;
-            pVCLXFont->Init( *xDev.get(), aFont );
+            pVCLXFont->Init( *xDev, aFont );
             xFont = pVCLXFont;
         }
     }

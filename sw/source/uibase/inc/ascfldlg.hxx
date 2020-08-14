@@ -18,42 +18,44 @@
  */
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_ASCFLDLG_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_ASCFLDLG_HXX
-#include <vcl/fixed.hxx>
 
-#include <vcl/button.hxx>
-#include <vcl/lstbox.hxx>
 #include <sfx2/basedlgs.hxx>
 #include <svx/txencbox.hxx>
 #include <svx/langbox.hxx>
+#include <tools/lineend.hxx>
 
 class SwAsciiOptions;
 class SvStream;
 class SwDocShell;
 
-class SwAsciiFilterDlg : public SfxModalDialog
+class SwAsciiFilterDlg : public SfxDialogController
 {
-    VclPtr<SvxTextEncodingBox> m_pCharSetLB;
-    VclPtr<FixedText>          m_pFontFT;
-    VclPtr<ListBox>            m_pFontLB;
-    VclPtr<FixedText>          m_pLanguageFT;
-    VclPtr<SvxLanguageBox>     m_pLanguageLB;
-    VclPtr<RadioButton>        m_pCRLF_RB;
-    VclPtr<RadioButton>        m_pCR_RB;
-    VclPtr<RadioButton>        m_pLF_RB;
-    bool                m_bSaveLineStatus;
+    bool m_bSaveLineStatus;
+    OUString m_sExtraData;
 
-    DECL_LINK( CharSetSelHdl, ListBox&, void );
-    DECL_LINK( LineEndHdl, RadioButton&, void );
+    std::unique_ptr<SvxTextEncodingBox> m_xCharSetLB;
+    std::unique_ptr<weld::Label> m_xFontFT;
+    std::unique_ptr<weld::ComboBox> m_xFontLB;
+    std::unique_ptr<weld::Label> m_xLanguageFT;
+    std::unique_ptr<SvxLanguageBox>     m_xLanguageLB;
+    std::unique_ptr<weld::RadioButton> m_xCRLF_RB;
+    std::unique_ptr<weld::RadioButton> m_xCR_RB;
+    std::unique_ptr<weld::RadioButton> m_xLF_RB;
+    std::unique_ptr<weld::CheckButton> m_xIncludeBOM_CB;
+
+    DECL_LINK(CharSetSelHdl, weld::ComboBox&, void);
+    DECL_LINK(LineEndHdl, weld::ToggleButton&, void);
     void SetCRLF( LineEnd eEnd );
     LineEnd GetCRLF() const;
+    void SetIncludeBOM( bool bIncludeBOM );
+    bool GetIncludeBOM() const;
+    void UpdateIncludeBOMSensitiveState();
 
 public:
     // CTOR:    for import - pStream is the inputstream
     //          for export - pStream must be 0
-    SwAsciiFilterDlg( vcl::Window* pParent, SwDocShell& rDocSh,
-                        SvStream* pStream );
+    SwAsciiFilterDlg(weld::Window* pParent, SwDocShell& rDocSh, SvStream* pStream);
     virtual ~SwAsciiFilterDlg() override;
-    virtual void dispose() override;
 
     void FillOptions( SwAsciiOptions& rOptions );
 };

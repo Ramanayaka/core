@@ -17,16 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "overlayobject.hxx"
-#include <vcl/outdev.hxx>
-#include <vcl/lineinfo.hxx>
-#include <tools/fract.hxx>
+#include <overlayobject.hxx>
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonMarkerPrimitive2D.hxx>
 #include <officecfg/Office/Common.hxx>
 
 using sdr::overlay::OverlayObject;
@@ -53,7 +50,7 @@ void ScOverlayDashedBorder::Trigger(sal_uInt32 nTime)
     {
         SetTime(nTime + DASH_UPDATE_INTERVAL);
         mbToggle = !mbToggle;
-        pMgr->InsertEvent(this);
+        pMgr->InsertEvent(*this);
         objectChange();
     }
 }
@@ -77,7 +74,7 @@ drawinglayer::primitive2d::Primitive2DContainer ScOverlayDashedBorder::createOve
     if (!mbToggle)
         ::std::swap(aColorA, aColorB);
 
-    const basegfx::B2DPolygon aPoly = basegfx::tools::createPolygonFromRect(maRange);
+    const basegfx::B2DPolygon aPoly = basegfx::utils::createPolygonFromRect(maRange);
     B2DPolyPolygon aPolygon(aPoly);
     const drawinglayer::primitive2d::Primitive2DReference aReference(
         new drawinglayer::primitive2d::PolyPolygonMarkerPrimitive2D(

@@ -20,17 +20,18 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_FACTORIES_BASICVIEWFACTORY_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_FACTORIES_BASICVIEWFACTORY_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 
 #include <com/sun/star/drawing/framework/XResourceFactory.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 
 #include <cppuhelper/compbase.hxx>
 
 #include <vcl/vclptr.hxx>
 #include <memory>
+
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
+namespace com::sun::star::drawing::framework { class XPane; }
 
 namespace sd {
 class ViewShell;
@@ -40,7 +41,7 @@ class FrameView;
 class SfxViewFrame;
 namespace vcl { class Window; }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XResourceFactory,
@@ -127,7 +128,7 @@ private:
         const css::uno::Reference<css::drawing::framework::XPane>& rxPane);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

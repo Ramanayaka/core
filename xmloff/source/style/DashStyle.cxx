@@ -23,20 +23,23 @@
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/DashStyle.hxx>
-#include <xmloff/attrlist.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmlimp.hxx>
+#include <xmloff/xmlement.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 #include <xmloff/xmltkmap.hxx>
 
 using namespace ::com::sun::star;
 
 using namespace ::xmloff::token;
+
+namespace {
 
 enum SvXMLTokenMapAttrs
 {
@@ -50,7 +53,9 @@ enum SvXMLTokenMapAttrs
     XML_TOK_DASH_DISTANCE,
 };
 
-static SvXMLTokenMapEntry aDashStyleAttrTokenMap[] =
+}
+
+const SvXMLTokenMapEntry aDashStyleAttrTokenMap[] =
 {
     { XML_NAMESPACE_DRAW, XML_NAME,             XML_TOK_DASH_NAME },
     { XML_NAMESPACE_DRAW, XML_DISPLAY_NAME,     XML_TOK_DASH_DISPLAY_NAME },
@@ -69,7 +74,7 @@ SvXMLEnumMapEntry<drawing::DashStyle> const pXML_DashStyle_Enum[] =
     { XML_ROUND,        drawing::DashStyle_ROUND },
     { XML_RECT,         drawing::DashStyle_RECTRELATIVE },
     { XML_ROUND,        drawing::DashStyle_ROUNDRELATIVE },
-    { XML_TOKEN_INVALID, (drawing::DashStyle)0 }
+    { XML_TOKEN_INVALID, drawing::DashStyle(0) }
 };
 
 // Import
@@ -102,7 +107,7 @@ void XMLDashStyleImport::importXML(
     SvXMLNamespaceMap& rNamespaceMap = rImport.GetNamespaceMap();
     SvXMLUnitConverter& rUnitConverter = rImport.GetMM100UnitConverter();
 
-    SvXMLTokenMap aTokenMap( aDashStyleAttrTokenMap );
+    static const SvXMLTokenMap aTokenMap( aDashStyleAttrTokenMap );
 
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
     for( sal_Int16 i=0; i < nAttrCount; i++ )
@@ -130,7 +135,7 @@ void XMLDashStyleImport::importXML(
             }
             break;
         case XML_TOK_DASH_DOTS1:
-            aLineDash.Dots = (sal_Int16)rStrValue.toInt32();
+            aLineDash.Dots = static_cast<sal_Int16>(rStrValue.toInt32());
             break;
 
         case XML_TOK_DASH_DOTS1LEN:
@@ -149,7 +154,7 @@ void XMLDashStyleImport::importXML(
             break;
 
         case XML_TOK_DASH_DOTS2:
-            aLineDash.Dashes = (sal_Int16)rStrValue.toInt32();
+            aLineDash.Dashes = static_cast<sal_Int16>(rStrValue.toInt32());
             break;
 
         case XML_TOK_DASH_DOTS2LEN:
@@ -193,7 +198,7 @@ void XMLDashStyleImport::importXML(
 
     if( !aDisplayName.isEmpty() )
     {
-        rImport.AddStyleDisplayName( XML_STYLE_FAMILY_SD_STROKE_DASH_ID,
+        rImport.AddStyleDisplayName( XmlStyleFamily::SD_STROKE_DASH_ID,
                                      rStrName, aDisplayName );
         rStrName = aDisplayName;
     }
@@ -210,7 +215,7 @@ XMLDashStyleExport::~XMLDashStyleExport()
 {
 }
 
-bool XMLDashStyleExport::exportXML(
+void XMLDashStyleExport::exportXML(
     const OUString& rStrName,
     const uno::Any& rValue )
 {
@@ -218,93 +223,92 @@ bool XMLDashStyleExport::exportXML(
 
     drawing::LineDash aLineDash;
 
-    if( !rStrName.isEmpty() )
+    if( rStrName.isEmpty() )
+        return;
+
+    if( !(rValue >>= aLineDash) )
+        return;
+
+    bool bIsRel = aLineDash.Style == drawing::DashStyle_RECTRELATIVE || aLineDash.Style == drawing::DashStyle_ROUNDRELATIVE;
+
+    OUString aStrValue;
+    OUStringBuffer aOut;
+
+    // Name
+    bool bEncoded = false;
+    rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_NAME,
+                          rExport.EncodeStyleName( rStrName,
+                                                   &bEncoded ) );
+    if( bEncoded )
+        rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DISPLAY_NAME,
+                              rStrName );
+
+    // Style
+    SvXMLUnitConverter::convertEnum( aOut, aLineDash.Style, pXML_DashStyle_Enum );
+    aStrValue = aOut.makeStringAndClear();
+    rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_STYLE, aStrValue );
+
+    // dots
+    if( aLineDash.Dots )
     {
-        if( rValue >>= aLineDash )
+        rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DOTS1, OUString::number( aLineDash.Dots ) );
+
+        if( aLineDash.DotLen )
         {
-            bool bIsRel = aLineDash.Style == drawing::DashStyle_RECTRELATIVE || aLineDash.Style == drawing::DashStyle_ROUNDRELATIVE;
-
-            OUString aStrValue;
-            OUStringBuffer aOut;
-
-            // Name
-            bool bEncoded = false;
-            rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_NAME,
-                                  rExport.EncodeStyleName( rStrName,
-                                                           &bEncoded ) );
-            if( bEncoded )
-                rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DISPLAY_NAME,
-                                      rStrName );
-
-            // Style
-            SvXMLUnitConverter::convertEnum( aOut, aLineDash.Style, pXML_DashStyle_Enum );
-            aStrValue = aOut.makeStringAndClear();
-            rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_STYLE, aStrValue );
-
-            // dots
-            if( aLineDash.Dots )
-            {
-                rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DOTS1, OUString::number( aLineDash.Dots ) );
-
-                if( aLineDash.DotLen )
-                {
-                    // dashes length
-                    if( bIsRel )
-                    {
-                        ::sax::Converter::convertPercent(aOut, aLineDash.DotLen);
-                    }
-                    else
-                    {
-                        rUnitConverter.convertMeasureToXML( aOut,
-                                aLineDash.DotLen );
-                    }
-                    aStrValue = aOut.makeStringAndClear();
-                    rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DOTS1_LENGTH, aStrValue );
-                }
-            }
-
-            // dashes
-            if( aLineDash.Dashes )
-            {
-                rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DOTS2, OUString::number( aLineDash.Dashes ) );
-
-                if( aLineDash.DashLen )
-                {
-                    // dashes length
-                    if( bIsRel )
-                    {
-                        ::sax::Converter::convertPercent(aOut, aLineDash.DashLen);
-                    }
-                    else
-                    {
-                        rUnitConverter.convertMeasureToXML( aOut,
-                                aLineDash.DashLen );
-                    }
-                    aStrValue = aOut.makeStringAndClear();
-                    rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DOTS2_LENGTH, aStrValue );
-                }
-            }
-
-            // distance
+            // dashes length
             if( bIsRel )
             {
-                ::sax::Converter::convertPercent( aOut, aLineDash.Distance );
+                ::sax::Converter::convertPercent(aOut, aLineDash.DotLen);
             }
             else
             {
                 rUnitConverter.convertMeasureToXML( aOut,
-                        aLineDash.Distance );
+                        aLineDash.DotLen );
             }
             aStrValue = aOut.makeStringAndClear();
-            rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DISTANCE, aStrValue );
-
-            // do Write
-            SvXMLElementExport rElem( rExport,
-                                      XML_NAMESPACE_DRAW, XML_STROKE_DASH,
-                                      true, false );
+            rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DOTS1_LENGTH, aStrValue );
         }
     }
-    return false;
+
+    // dashes
+    if( aLineDash.Dashes )
+    {
+        rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DOTS2, OUString::number( aLineDash.Dashes ) );
+
+        if( aLineDash.DashLen )
+        {
+            // dashes length
+            if( bIsRel )
+            {
+                ::sax::Converter::convertPercent(aOut, aLineDash.DashLen);
+            }
+            else
+            {
+                rUnitConverter.convertMeasureToXML( aOut,
+                        aLineDash.DashLen );
+            }
+            aStrValue = aOut.makeStringAndClear();
+            rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DOTS2_LENGTH, aStrValue );
+        }
+    }
+
+    // distance
+    if( bIsRel )
+    {
+        ::sax::Converter::convertPercent( aOut, aLineDash.Distance );
+    }
+    else
+    {
+        rUnitConverter.convertMeasureToXML( aOut,
+                aLineDash.Distance );
+    }
+    aStrValue = aOut.makeStringAndClear();
+    rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DISTANCE, aStrValue );
+
+    // do Write
+    SvXMLElementExport rElem( rExport,
+                              XML_NAMESPACE_DRAW, XML_STROKE_DASH,
+                              true, false );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

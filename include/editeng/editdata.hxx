@@ -24,20 +24,19 @@
 #include <rtl/ustring.hxx>
 #include <editeng/editengdllapi.h>
 #include <memory>
+#include <ostream>
 
-class SfxItemSet;
 class SfxPoolItem;
 template<typename T> class SvParser;
 class SvxFieldItem;
-class SvxRTFItemStackType;
 enum class HtmlTokenId : sal_Int16;
 
-enum EETextFormat       { EE_FORMAT_TEXT = 0x20, EE_FORMAT_RTF, EE_FORMAT_BIN = 0x31, EE_FORMAT_HTML, EE_FORMAT_XML };
-enum EEHorizontalTextDirection { EE_HTEXTDIR_DEFAULT, EE_HTEXTDIR_L2R, EE_HTEXTDIR_R2L };
-enum class EESelectionMode  { Std, TxtOnly, Hidden };
-    // EE_SELMODE_HIDDEN can be used to completely hide the selection. This is useful e.g. when you want show the selection
+enum class EETextFormat { Text = 0x20, Rtf, Html = 0x32, Xml };
+enum class EEHorizontalTextDirection { Default, L2R, R2L };
+enum class EESelectionMode  { Std, Hidden };
+    // EESelectionMode::Hidden can be used to completely hide the selection. This is useful e.g. when you want show the selection
     // only as long as your window (which the edit view works on) has the focus
-enum class EESpellState  { Ok, LanguageNotInstalled, NoSpeller, ErrorFound };
+enum class EESpellState  { Ok, NoSpeller, ErrorFound };
 enum class EEAnchorMode {
             TopLeft,     TopHCenter,     TopRight,
             VCenterLeft, VCenterHCenter, VCenterRight,
@@ -55,7 +54,7 @@ enum class EEAnchorMode {
 EDITENG_DLLPUBLIC extern const size_t EE_APPEND;
 
 // Error messages for Read / Write Method
-#define EE_READWRITE_WRONGFORMAT     ErrCode(ERRCODE_AREA_SVX+1)
+#define EE_READWRITE_WRONGFORMAT     ErrCode(ErrCodeArea::Svx, 1)
 
 #define EDITUNDO_REMOVECHARS        100
 #define EDITUNDO_CONNECTPARAS       101
@@ -83,13 +82,6 @@ EDITENG_DLLPUBLIC extern const size_t EE_APPEND;
 
 #define EDITUNDO_USER               200
 
-class EditView;
-class EditEngine;
-class ImpEditView;
-class ImpEditEngine;
-class EditTextObject;
-class SfxStyleSheet;
-
 struct EPosition
 {
     sal_Int32   nPara;
@@ -105,6 +97,13 @@ struct EPosition
         , nIndex( nPos_ )
         { }
 };
+
+template<typename charT, typename traits>
+inline std::basic_ostream<charT, traits> & operator <<(
+    std::basic_ostream<charT, traits> & stream, EPosition const& pos)
+{
+    return stream << "EPosition(" << pos.nPara << ',' << pos.nIndex << ")";
+}
 
 struct ESelection
 {
@@ -131,12 +130,20 @@ struct ESelection
         { }
 
     void    Adjust();
-    bool    IsEqual( const ESelection& rS ) const;
-    bool    IsLess( const ESelection& rS ) const;
-    bool    IsGreater( const ESelection& rS ) const;
+    bool    operator==( const ESelection& rS ) const;
+    bool    operator!=( const ESelection& rS ) const { return !operator==(rS); }
+    bool    operator<( const ESelection& rS ) const;
+    bool    operator>( const ESelection& rS ) const;
     bool    IsZero() const;
     bool    HasRange() const;
 };
+
+template<typename charT, typename traits>
+inline std::basic_ostream<charT, traits> & operator <<(
+    std::basic_ostream<charT, traits> & stream, ESelection const& sel)
+{
+    return stream << "ESelection(" << sel.nStartPara << ',' << sel.nStartPos << "," << sel.nEndPara << "," << sel.nEndPos << ")";
+}
 
 inline bool ESelection::HasRange() const
 {
@@ -149,26 +156,26 @@ inline bool ESelection::IsZero() const
              ( nEndPara == 0 ) && ( nEndPos == 0 ) );
 }
 
-inline bool ESelection::IsEqual( const ESelection& rS ) const
+inline bool ESelection::operator==( const ESelection& rS ) const
 {
     return ( ( nStartPara == rS.nStartPara ) && ( nStartPos == rS.nStartPos ) &&
              ( nEndPara == rS.nEndPara ) && ( nEndPos == rS.nEndPos ) );
 }
 
-inline bool ESelection::IsLess( const ESelection& rS ) const
+inline bool ESelection::operator<( const ESelection& rS ) const
 {
     // The selection must be adjusted.
     // => Only check if end of 'this' < Start of rS
     return ( nEndPara < rS.nStartPara ) ||
-        ( ( nEndPara == rS.nStartPara ) && ( nEndPos < rS.nStartPos ) && !IsEqual( rS ) );
+        ( ( nEndPara == rS.nStartPara ) && ( nEndPos < rS.nStartPos ) && !operator==( rS ) );
 }
 
-inline bool ESelection::IsGreater( const ESelection& rS ) const
+inline bool ESelection::operator>( const ESelection& rS ) const
 {
     // The selection must be adjusted.
     // => Only check if end of 'this' < Start of rS
     return ( nStartPara > rS.nEndPara ) ||
-        ( ( nStartPara == rS.nEndPara ) && ( nStartPos > rS.nEndPos ) && !IsEqual( rS ) );
+        ( ( nStartPara == rS.nEndPara ) && ( nStartPos > rS.nEndPos ) && !operator==( rS ) );
 }
 
 inline void ESelection::Adjust()
@@ -223,7 +230,6 @@ struct HtmlImportInfo
     HtmlImportState         eState;
 
     HtmlTokenId             nToken;
-    short                   nTokenValue;
 
     OUString                aText;
 
@@ -240,8 +246,6 @@ struct RtfImportInfo
     int                     nToken;
     short                   nTokenValue;
 
-    OUString                aText;
-
     RtfImportInfo( RtfImportState eState, SvParser<int>* pPrsrs, const ESelection& rSel );
     ~RtfImportInfo();
 };
@@ -249,21 +253,12 @@ struct RtfImportInfo
 struct ParagraphInfos
 {
     ParagraphInfos()
-        : nParaHeight( 0 )
-        , nLines( 0 )
-        , nFirstLineStartX( 0 )
-        , nFirstLineOffset( 0 )
-        , nFirstLineHeight( 0 )
+        : nFirstLineHeight( 0 )
         , nFirstLineTextHeight ( 0 )
         , nFirstLineMaxAscent( 0 )
         , bValid( false )
         {}
-    sal_uInt16  nParaHeight;
-    sal_uInt16  nLines;
 
-    sal_uInt16  nFirstLineStartX;
-
-    sal_uInt16  nFirstLineOffset;
     sal_uInt16  nFirstLineHeight;
     sal_uInt16  nFirstLineTextHeight;
     sal_uInt16  nFirstLineMaxAscent;
@@ -275,7 +270,6 @@ struct EECharAttrib
 {
     const SfxPoolItem*  pAttr;
 
-    sal_Int32           nPara;
     sal_Int32           nStart;
     sal_Int32           nEnd;
 };
@@ -321,31 +315,15 @@ enum EENotifyType
     /// The selection and/or the cursor position has changed
     EE_NOTIFY_TEXTVIEWSELECTIONCHANGED,
 
-    /** Denotes the beginning of a collected amount of EditEngine
-        notification events. This event itself is not queued, but sent
-        immediately
-     */
-    EE_NOTIFY_BLOCKNOTIFICATION_START,
+    /// The EditEngine is in a valid state again. Process pending notifications.
+    EE_NOTIFY_PROCESSNOTIFICATIONS,
 
-    /** Denotes the end of a collected amount of EditEngine
-        notification events. After this event, the queue is empty, and
-        a high-level operation such as "insert paragraph" is finished
-     */
-    EE_NOTIFY_BLOCKNOTIFICATION_END,
-
-    /// Denotes the beginning of a high-level action triggered by a key press
-    EE_NOTIFY_INPUT_START,
-
-    /// Denotes the end of a high-level action triggered by a key press
-    EE_NOTIFY_INPUT_END,
     EE_NOTIFY_TEXTVIEWSELECTIONCHANGED_ENDD_PARA
 };
 
 struct EENotify
 {
     EENotifyType    eNotificationType;
-    EditEngine*     pEditEngine;
-    EditView*       pEditView;
 
     sal_Int32       nParagraph; // only valid in PARAGRAPHINSERTED/EE_NOTIFY_PARAGRAPHREMOVED
 
@@ -353,7 +331,7 @@ struct EENotify
     sal_Int32       nParam2;
 
     EENotify( EENotifyType eType )
-        { eNotificationType = eType; pEditEngine = nullptr; pEditView = nullptr; nParagraph = EE_PARA_NOT_FOUND; nParam1 = 0; nParam2 = 0; }
+        { eNotificationType = eType; nParagraph = EE_PARA_NOT_FOUND; nParam1 = 0; nParam2 = 0; }
 };
 
 #endif // INCLUDED_EDITENG_EDITDATA_HXX

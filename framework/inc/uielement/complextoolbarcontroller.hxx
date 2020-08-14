@@ -75,7 +75,6 @@ class ComplexToolbarController : public svt::ToolboxController
         };
 
     protected:
-        static sal_Int32 getFontSizePixel( const vcl::Window* pWindow );
         css::uno::Reference< css::frame::XDispatch > getDispatchFromCommand( const OUString& aCommand ) const;
         void addNotifyInfo( const OUString&                                                        aEventName,
                             const css::uno::Reference< css::frame::XDispatch >& xDispatch,
@@ -88,7 +87,7 @@ class ComplexToolbarController : public svt::ToolboxController
         void notifyFocusLost();
         void notifyTextChanged( const OUString& aText );
 
-        VclPtr<ToolBox>                                      m_pToolbar;
+        VclPtr<ToolBox>                                      m_xToolbar;
         sal_uInt16                                           m_nID;
         bool                                                 m_bMadeInvisible;
         mutable css::util::URL                               m_aURL;

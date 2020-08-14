@@ -24,11 +24,11 @@
 #include <svl/itemprop.hxx>
 #include <vcl/svapp.hxx>
 
-#include "docsh.hxx"
-#include "unonames.hxx"
-#include "miscuno.hxx"
-#include "convuno.hxx"
-#include "addruno.hxx"
+#include <docsh.hxx>
+#include <unonames.hxx>
+#include <miscuno.hxx>
+#include <convuno.hxx>
+#include <addruno.hxx>
 
 using namespace com::sun::star;
 
@@ -100,13 +100,13 @@ uno::Reference<beans::XPropertySetInfo> SAL_CALL ScAddressConversionObj::getProp
     {
         static const SfxItemPropertyMapEntry aPropertyMap[] =
         {
-            { OUString(SC_UNONAME_ADDRESS),  0,  cppu::UnoType<table::CellRangeAddress>::get(), 0, 0 },
-            { OUString(SC_UNONAME_PERSREPR), 0,  cppu::UnoType<OUString>::get(),    0, 0 },
-            { OUString(SC_UNONAME_XLA1REPR), 0,  cppu::UnoType<OUString>::get(),    0, 0 },
-            { OUString(SC_UNONAME_REFSHEET), 0,  cppu::UnoType<sal_Int32>::get(),        0, 0 },
-            { OUString(SC_UNONAME_UIREPR),   0,  cppu::UnoType<OUString>::get(),    0, 0 },
-            { OUString(SC_UNONAME_XLA1REPR), 0,  cppu::UnoType<OUString>::get(),    0, 0 },
-            { OUString(), 0, css::uno::Type(), 0, 0 }
+            { SC_UNONAME_ADDRESS,  0,  cppu::UnoType<table::CellRangeAddress>::get(), 0, 0 },
+            { SC_UNONAME_PERSREPR, 0,  cppu::UnoType<OUString>::get(),    0, 0 },
+            { SC_UNONAME_XLA1REPR, 0,  cppu::UnoType<OUString>::get(),    0, 0 },
+            { SC_UNONAME_REFSHEET, 0,  cppu::UnoType<sal_Int32>::get(),        0, 0 },
+            { SC_UNONAME_UIREPR,   0,  cppu::UnoType<OUString>::get(),    0, 0 },
+            { SC_UNONAME_XLA1REPR, 0,  cppu::UnoType<OUString>::get(),    0, 0 },
+            { "", 0, css::uno::Type(), 0, 0 }
         };
         static uno::Reference<beans::XPropertySetInfo> aRef(new SfxItemPropertySetInfo( aPropertyMap ));
         return aRef;
@@ -115,13 +115,13 @@ uno::Reference<beans::XPropertySetInfo> SAL_CALL ScAddressConversionObj::getProp
     {
         static const SfxItemPropertyMapEntry aPropertyMap[] =
         {
-            { OUString(SC_UNONAME_ADDRESS),  0,  cppu::UnoType<table::CellAddress>::get(), 0, 0 },
-            { OUString(SC_UNONAME_PERSREPR), 0,  cppu::UnoType<OUString>::get(),    0, 0 },
-            { OUString(SC_UNONAME_XLA1REPR), 0,  cppu::UnoType<OUString>::get(),    0, 0 },
-            { OUString(SC_UNONAME_REFSHEET), 0,  cppu::UnoType<sal_Int32>::get(),        0, 0 },
-            { OUString(SC_UNONAME_UIREPR),   0,  cppu::UnoType<OUString>::get(),    0, 0 },
-            { OUString(SC_UNONAME_XLA1REPR), 0,  cppu::UnoType<OUString>::get(),    0, 0 },
-            { OUString(), 0, css::uno::Type(), 0, 0 }
+            { SC_UNONAME_ADDRESS,  0,  cppu::UnoType<table::CellAddress>::get(), 0, 0 },
+            { SC_UNONAME_PERSREPR, 0,  cppu::UnoType<OUString>::get(),    0, 0 },
+            { SC_UNONAME_XLA1REPR, 0,  cppu::UnoType<OUString>::get(),    0, 0 },
+            { SC_UNONAME_REFSHEET, 0,  cppu::UnoType<sal_Int32>::get(),        0, 0 },
+            { SC_UNONAME_UIREPR,   0,  cppu::UnoType<OUString>::get(),    0, 0 },
+            { SC_UNONAME_XLA1REPR, 0,  cppu::UnoType<OUString>::get(),    0, 0 },
+            { "", 0, css::uno::Type(), 0, 0 }
         };
         static uno::Reference<beans::XPropertySetInfo> aRef(new SfxItemPropertySetInfo( aPropertyMap ));
         return aRef;
@@ -204,7 +204,7 @@ void SAL_CALL ScAddressConversionObj::setPropertyValue( const OUString& aPropert
         }
     }
     else
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     if ( !bSuccess )
         throw lang::IllegalArgumentException();
@@ -245,7 +245,7 @@ uno::Any SAL_CALL ScAddressConversionObj::getPropertyValue( const OUString& aPro
         if ( aRange.aStart.Tab() != nRefSheet )
             nFlags |= ScRefFlags::TAB_3D;
         if ( bIsRange )
-            aFormatStr = aRange.Format(nFlags, &rDoc);
+            aFormatStr = aRange.Format(rDoc, nFlags);
         else
             aFormatStr = aRange.aStart.Format(nFlags, &rDoc);
         aRet <<= aFormatStr;
@@ -270,7 +270,7 @@ uno::Any SAL_CALL ScAddressConversionObj::getPropertyValue( const OUString& aPro
         aRet <<= aFormatStr;
     }
     else
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     return aRet;
 }
@@ -281,7 +281,7 @@ SC_IMPL_DUMMY_PROPERTY_LISTENER( ScAddressConversionObj )
 
 OUString SAL_CALL ScAddressConversionObj::getImplementationName()
 {
-    return OUString("ScAddressConversionObj" );
+    return "ScAddressConversionObj";
 }
 
 sal_Bool SAL_CALL ScAddressConversionObj::supportsService( const OUString& rServiceName )

@@ -18,22 +18,17 @@
  */
 
 #include <sfx2/childwin.hxx>
-#include <sfx2/request.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
 
-#include "tabvwsh.hxx"
-#include "global.hxx"
-#include "scmod.hxx"
-#include "docsh.hxx"
-#include "sc.hrc"
+#include <tabvwsh.hxx>
+#include <scmod.hxx>
+#include <docsh.hxx>
 #include <gridwin.hxx>
 
 //!         parent window for dialogs
 //!         Problem: OLE Server!
 
-vcl::Window* ScTabViewShell::GetDialogParent()
+weld::Window* ScTabViewShell::GetDialogParent()
 {
     //  if a ref-input dialog is open, use it as parent
     //  (necessary when a slot is executed from the dialog's OK handler)
@@ -45,9 +40,10 @@ vcl::Window* ScTabViewShell::GetDialogParent()
             SfxChildWindow* pChild = pViewFrm->GetChildWindow(nCurRefDlgId);
             if (pChild)
             {
-                vcl::Window* pWin = pChild->GetWindow();
-                if (pWin && pWin->IsVisible())
-                    return pWin;
+                auto xController = pChild->GetController();
+                weld::Window* pRet = xController ? xController->getDialog() : nullptr;
+                if (pRet && pRet->get_visible())
+                    return pRet;
             }
         }
     }
@@ -57,13 +53,15 @@ vcl::Window* ScTabViewShell::GetDialogParent()
     {
         // TODO/LATER: how to GetEditWindow in embedded document?!
         // It should be OK to return the ViewShell Window!
-        return GetWindow();
+        vcl::Window* pWin = GetWindow();
+        return pWin ? pWin->GetFrameWeld() : nullptr;
         // SvInPlaceEnvironment* pEnv = pDocSh->GetIPEnv();
         // if (pEnv)
         //    return pEnv->GetEditWin();
     }
 
-    return GetActiveWin();      // for normal views, too
+    vcl::Window* pWin = GetActiveWin();      // for normal views, too
+    return pWin ? pWin->GetFrameWeld() : nullptr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

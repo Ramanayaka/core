@@ -16,33 +16,24 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <svx/dialogs.hrc>
+
 #include <svx/dialmgr.hxx>
 #include <svx/samecontentlistbox.hxx>
-#include <tools/resary.hxx>
-#include <vcl/builderfactory.hxx>
+#include <samecontent.hrc>
 
-SameContentListBox::SameContentListBox(vcl::Window* pParent)
-    : ListBox( pParent, WB_BORDER | WB_DROPDOWN)
+namespace SameContentListBox
 {
-    ResStringArray aSameContentAry( ResId(RID_SVXSTRARY_SAMECONTENT, DIALOG_MGR()) );
-    sal_uInt32 nCnt = aSameContentAry.Count();
-
-    for ( sal_uInt32 i = 0; i < nCnt; ++i )
+    void Fill(weld::ComboBox& rComboBox)
     {
-        OUString aStr = aSameContentAry.GetString(i);
-        sal_uInt16 nData = aSameContentAry.GetValue(i);
-        sal_Int32 nPos = InsertEntry( aStr );
-        SetEntryData( nPos, reinterpret_cast<void*>((sal_uLong)nData) );
+        rComboBox.clear();
+        for (size_t i = 0; i < SAL_N_ELEMENTS(RID_SVXSTRARY_SAMECONTENT); ++i)
+        {
+            OUString aStr = SvxResId(RID_SVXSTRARY_SAMECONTENT[i].first);
+            sal_uInt32 nData = RID_SVXSTRARY_SAMECONTENT[i].second;
+            rComboBox.append(OUString::number(nData), aStr);
+        }
+        rComboBox.set_active(0);
+        rComboBox.set_size_request(150, -1);
     }
-    SetDropDownLineCount(8);
-    SelectEntryPos(0);
-}
-
-VCL_BUILDER_FACTORY(SameContentListBox);
-
-Size SameContentListBox::GetOptimalSize() const
-{
-    return Size(150, ListBox::GetOptimalSize().Height());
 }
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

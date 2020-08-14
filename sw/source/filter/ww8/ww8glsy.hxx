@@ -22,6 +22,8 @@
 
 #include <memory>
 #include <sot/storage.hxx>
+
+#include <doc.hxx>
 #include "ww8scan.hxx"
 
 class SwTextBlocks;
@@ -38,7 +40,7 @@ public:
     WW8GlossaryFib( SvStream& rStrm, sal_uInt8 nWantedVersion, const WW8Fib &rFib)
         : WW8Fib(rStrm, nWantedVersion, FindGlossaryFibOffset(rFib)) {}
     // fGlsy will indicate whether this has AutoText or not
-    bool IsGlossaryFib() {
+    bool IsGlossaryFib() const {
         return m_fGlsy;
     }
 private:
@@ -60,15 +62,17 @@ class WW8Glossary
 public:
     WW8Glossary( tools::SvRef<SotStorageStream> &refStrm, sal_uInt8 nVersion, SotStorage *pStg);
     bool Load( SwTextBlocks &rBlocks, bool bSaveRelFile );
-    WW8GlossaryFib *GetFib()        {
-        return pGlossary.get();
+    std::shared_ptr<WW8GlossaryFib>& GetFib()
+    {
+        return xGlossary;
     }
-    sal_uInt16 GetNoStrings() const     {
+    sal_uInt16 GetNoStrings() const
+    {
         return nStrings;
     }
 
 private:
-    std::unique_ptr<WW8GlossaryFib> pGlossary;
+    std::shared_ptr<WW8GlossaryFib> xGlossary;
     tools::SvRef<SotStorageStream> xTableStream;
     tools::SvRef<SotStorageStream> &rStrm;
     tools::SvRef<SotStorage> xStg;
@@ -77,7 +81,7 @@ private:
     static bool MakeEntries(SwDoc *pD, SwTextBlocks &rBlocks, bool bSaveRelFile,
                             const std::vector<OUString>& rStrings,
                             const std::vector<ww::bytes>& rExtra);
-    static bool HasBareGraphicEnd(SwDoc *pD,SwNodeIndex &rIdx);
+    static bool HasBareGraphicEnd(SwDoc *pD,SwNodeIndex const &rIdx);
 
     WW8Glossary(const WW8Glossary&) = delete;
     WW8Glossary& operator=(const WW8Glossary&) = delete;

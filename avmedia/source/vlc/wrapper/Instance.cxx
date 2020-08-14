@@ -7,7 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "Instance.hxx"
+#include <wrapper/Instance.hxx>
 #include "SymbolLoader.hxx"
 
 namespace
@@ -17,15 +17,11 @@ namespace
     void ( *libvlc_retain ) ( libvlc_instance_t *p_instance );
 }
 
-namespace avmedia
-{
-namespace vlc
-{
-namespace wrapper
+namespace avmedia::vlc::wrapper
 {
     bool Instance::LoadSymbols()
     {
-        ApiMap VLC_INSTANCE_API[] =
+        static ApiMap const VLC_INSTANCE_API[] =
         {
             SYM_MAP( libvlc_new ),
             SYM_MAP( libvlc_release ),
@@ -61,8 +57,6 @@ namespace wrapper
     {
         libvlc_release( mInstance );
     }
-}
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

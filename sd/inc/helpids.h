@@ -16,19 +16,15 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <svx/svxcommands.h>
-#include "sdcommands.h"
+
+#ifndef INCLUDED_SD_INC_HELPIDS_H
+#define INCLUDED_SD_INC_HELPIDS_H
 
 #define HID_SDDRAWVIEWSHELL                                     "SD_HID_SDDRAWVIEWSHELL"
 #define HID_SDGRAPHICVIEWSHELL                                  "SD_HID_SDGRAPHICVIEWSHELL"
 #define HID_SDOUTLINEVIEWSHELL                                  "SD_HID_SDOUTLINEVIEWSHELL"
 
-#define HID_SD_NAVIGATOR_MENU1                                  "SD_HID_SD_NAVIGATOR_MENU1"
-#define HID_SD_NAVIGATOR_MENU2                                  "SD_HID_SD_NAVIGATOR_MENU2"
-#define HID_SD_NAVIGATOR_MENU3                                  "SD_HID_SD_NAVIGATOR_MENU3"
-
 #define HID_SD_WIN_PRESENTATION                                 "SD_HID_SD_WIN_PRESENTATION"
-
 
 #define HID_SD_HTMLEXPORT_PAGE1                                 "SD_HID_SD_HTMLEXPORT_PAGE1"
 #define HID_SD_HTMLEXPORT_PAGE2                                 "SD_HID_SD_HTMLEXPORT_PAGE2"
@@ -37,18 +33,12 @@
 #define HID_SD_HTMLEXPORT_PAGE5                                 "SD_HID_SD_HTMLEXPORT_PAGE5"
 #define HID_SD_HTMLEXPORT_PAGE6                                 "SD_HID_SD_HTMLEXPORT_PAGE6"
 
-
-
 #define HID_SD_TABBAR_PAGES                                     "SD_HID_SD_TABBAR_PAGES"
 #define HID_SD_TABBAR_LAYERS                                    "SD_HID_SD_TABBAR_LAYERS"
-
 
 #define HID_SD_NAMEDIALOG_OBJECT                                "SD_HID_SD_NAMEDIALOG_OBJECT"
 #define HID_SD_NAMEDIALOG_PAGE                                  "SD_HID_SD_NAMEDIALOG_PAGE"
 #define HID_SD_NAMEDIALOG_LINEEND                               "SD_HID_SD_NAMEDIALOG_LINEEND"
-
-
-
 
 #define HID_SD_TASK_PANE_PREVIEW_CURRENT                        "SD_HID_SD_TASK_PANE_PREVIEW_CURRENT"
 #define HID_SD_TASK_PANE_PREVIEW_RECENT                         "SD_HID_SD_TASK_PANE_PREVIEW_RECENT"
@@ -68,12 +58,6 @@
 #define HID_SD_RULER_HORIZONTAL                                 "SD_HID_SD_RULER_HORIZONTAL"
 #define HID_SD_RULER_VERTICAL                                   "SD_HID_SD_RULER_VERTICAL"
 
-
-#define HID_MN_SUB_GRAPHIC                                      "SD_HID_MN_SUB_GRAPHIC"
-#define HID_MN_SUB_FIELD                                        "SD_HID_MN_SUB_FIELD"
-#define HID_MN_SUB_TEMPLATES                                    "SD_HID_MN_SUB_TEMPLATES"
-#define HID_MN_SUB_SPELLING                                     "SD_HID_MN_SUB_SPELLING"
-#define HID_MN_SUB_CONVERT                                      "SD_HID_MN_SUB_CONVERT"
-#define HID_MN_SUB_MIRROR                                       "SD_HID_MN_SUB_MIRROR"
+#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

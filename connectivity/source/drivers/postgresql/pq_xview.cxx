@@ -39,7 +39,6 @@
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
 
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 
 #include "pq_xview.hxx"
@@ -48,14 +47,12 @@
 #include "pq_tools.hxx"
 
 using osl::MutexGuard;
-using osl::Mutex;
 
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Any;
 using com::sun::star::uno::makeAny;
 using com::sun::star::uno::Type;
-using com::sun::star::uno::RuntimeException;
 
 using com::sun::star::beans::XPropertySet;
 
@@ -112,7 +109,7 @@ void View::rename( const OUString& newName )
     }
     OUString fullNewName = concatQualified( newSchemaName, newTableName );
 
-    if( ! schema.equals( newSchemaName ) )
+    if( schema != newSchemaName )
     {
         try
         {
@@ -135,7 +132,7 @@ void View::rename( const OUString& newName )
         }
 
     }
-    if( ! oldName.equals( newTableName ) )
+    if( oldName != newTableName )
     {
         OUStringBuffer buf(128);
         buf.append( "ALTER TABLE" );
@@ -156,19 +153,11 @@ void View::rename( const OUString& newName )
 
 Sequence<Type > View::getTypes()
 {
-    static cppu::OTypeCollection *pCollection;
-    if( ! pCollection )
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( !pCollection )
-        {
-            static cppu::OTypeCollection collection(
-                cppu::UnoType<css::sdbcx::XRename>::get(),
-                ReflectionBase::getTypes());
-            pCollection = &collection;
-        }
-    }
-    return pCollection->getTypes();
+    static cppu::OTypeCollection collection(
+        cppu::UnoType<css::sdbcx::XRename>::get(),
+        ReflectionBase::getTypes());
+
+    return collection.getTypes();
 }
 
 Sequence< sal_Int8> View::getImplementationId()
@@ -178,9 +167,7 @@ Sequence< sal_Int8> View::getImplementationId()
 
 Any View::queryInterface( const Type & reqType )
 {
-    Any ret;
-
-    ret = ReflectionBase::queryInterface( reqType );
+    Any ret = ReflectionBase::queryInterface( reqType );
     if( ! ret.hasValue() )
         ret = ::cppu::queryInterface(
             reqType,

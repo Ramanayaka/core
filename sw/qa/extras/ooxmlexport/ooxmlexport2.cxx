@@ -9,49 +9,33 @@
 
 #include <swmodeltestbase.hxx>
 
+#include <string>
+
+#include <tools/UnitConversion.hxx>
+
 #include <com/sun/star/awt/XBitmap.hpp>
-#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/drawing/FillStyle.hpp>
-#include <com/sun/star/drawing/LineJoint.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
-#include <com/sun/star/drawing/XControlShape.hpp>
 #include <com/sun/star/awt/Gradient.hpp>
 #include <com/sun/star/style/TabStop.hpp>
 #include <com/sun/star/view/XViewSettingsSupplier.hpp>
 #include <com/sun/star/text/RelOrientation.hpp>
-#include <com/sun/star/text/XTextFrame.hpp>
 #include <com/sun/star/text/XTextTable.hpp>
 #include <com/sun/star/text/XTextFramesSupplier.hpp>
-#include <com/sun/star/text/XTextViewCursorSupplier.hpp>
-#include <com/sun/star/text/XTextSection.hpp>
-#include <com/sun/star/style/CaseMap.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
 #include <com/sun/star/style/LineSpacing.hpp>
 #include <com/sun/star/style/LineSpacingMode.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/table/BorderLine2.hpp>
 #include <com/sun/star/table/ShadowFormat.hpp>
-#include <com/sun/star/text/XPageCursor.hpp>
-#include <com/sun/star/awt/FontWeight.hpp>
-#include <com/sun/star/awt/FontUnderline.hpp>
-#include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
 #include <com/sun/star/text/WrapTextMode.hpp>
-#include <com/sun/star/xml/dom/XDocument.hpp>
-#include <com/sun/star/style/BreakType.hpp>
-#include <unotools/tempfile.hxx>
-#include <comphelper/sequenceashashmap.hxx>
-#include <com/sun/star/text/XDocumentIndex.hpp>
-#include <com/sun/star/drawing/EnhancedCustomShapeSegment.hpp>
-#include <com/sun/star/drawing/EnhancedCustomShapeSegmentCommand.hpp>
-#include <com/sun/star/drawing/EnhancedCustomShapeParameterPair.hpp>
-#include <com/sun/star/drawing/TextVerticalAdjust.hpp>
-#include <com/sun/star/drawing/Hatch.hpp>
+#include <com/sun/star/text/XTextDocument.hpp>
+#include <com/sun/star/text/XTextTablesSupplier.hpp>
+#include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
+#include <com/sun/star/text/XTextEmbeddedObjectsSupplier.hpp>
+#include <com/sun/star/text/XTextFieldsSupplier.hpp>
+
 #include <oox/drawingml/drawingmltypes.hxx>
-
-#include <string>
-
-#if !defined(_WIN32)
 
 class Test : public SwModelTestBase
 {
@@ -60,17 +44,17 @@ public:
 
 protected:
     /**
-     * Blacklist handling
+     * Denylist handling
      */
     bool mustTestImportOf(const char* filename) const override {
-        const char* aBlacklist[] = {
+        const char* aDenylist[] = {
             "math-escape.docx",
             "math-mso2k7.docx",
         };
-        std::vector<const char*> vBlacklist(aBlacklist, aBlacklist + SAL_N_ELEMENTS(aBlacklist));
+        std::vector<const char*> vDenylist(aDenylist, aDenylist + SAL_N_ELEMENTS(aDenylist));
 
         // If the testcase is stored in some other format, it's pointless to test.
-        return (OString(filename).endsWith(".docx") && std::find(vBlacklist.begin(), vBlacklist.end(), filename) == vBlacklist.end());
+        return (OString(filename).endsWith(".docx") && std::find(vDenylist.begin(), vDenylist.end(), filename) == vDenylist.end());
     }
 
     /**
@@ -78,21 +62,22 @@ protected:
      */
     bool mustValidate(const char* filename) const override
     {
-        const char* aWhitelist[] = {
+        const char* aAllowlist[] = {
             "page-graphic-background.odt",
             "zoom.docx",
             "empty.odt",
             "fdo38244.docx",
             "comments-nested.odt"
         };
-        std::vector<const char*> vWhitelist(aWhitelist, aWhitelist + SAL_N_ELEMENTS(aWhitelist));
+        std::vector<const char*> vAllowlist(aAllowlist, aAllowlist + SAL_N_ELEMENTS(aAllowlist));
 
-        return std::find(vWhitelist.begin(), vWhitelist.end(), filename) != vWhitelist.end();
+        return std::find(vAllowlist.begin(), vAllowlist.end(), filename) != vAllowlist.end();
     }
 };
 
 DECLARE_OOXMLEXPORT_TEST(testPageGraphicBackground, "page-graphic-background.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
     // No idea how the graphic background should be exported (seems there is no
     // way to do a non-tiling export to OOXML), but at least the background
     // color shouldn't be black.
@@ -110,7 +95,7 @@ DECLARE_OOXMLEXPORT_TEST(testZoom, "zoom.docx")
     CPPUNIT_ASSERT_EQUAL(sal_Int16(42), nValue);
 
     // Validation test: order of elements were wrong.
-    xmlDocPtr pXmlDoc = parseExport("word/styles.xml");
+    xmlDocUniquePtr pXmlDoc = parseExport("word/styles.xml");
     if (!pXmlDoc)
         return;
     // Order was: rsid, next.
@@ -126,10 +111,10 @@ DECLARE_OOXMLEXPORT_TEST(testZoom, "zoom.docx")
 
 DECLARE_OOXMLEXPORT_TEST(defaultTabStopNotInStyles, "empty.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
 // The default tab stop was mistakenly exported to a style.
 // xray ThisComponent.StyleFamilies(1)(0).ParaTabStop
     uno::Reference< container::XNameAccess > paragraphStyles = getStyles( "ParagraphStyles" );
-    uno::Reference< beans::XPropertySet > properties( paragraphStyles->getByName( "Standard" ), uno::UNO_QUERY );
     uno::Sequence< style::TabStop > stops = getProperty< uno::Sequence< style::TabStop > >(
         paragraphStyles->getByName( "Standard" ), "ParaTabStops" );
 // There actually be one tab stop, but it will be the default.
@@ -186,7 +171,7 @@ DECLARE_OOXMLEXPORT_TEST(testFdo38244, "fdo38244.docx")
      * oPara = oParas.nextElement
      */
 
-    xParaEnumAccess.set(getProperty< uno::Reference<container::XEnumerationAccess> >(xPropertySet, "TextRange"), uno::UNO_QUERY);
+    xParaEnumAccess = getProperty< uno::Reference<container::XEnumerationAccess> >(xPropertySet, "TextRange");
     xParaEnum = xParaEnumAccess->createEnumeration();
     xParaEnum->nextElement();
     bool bCaught = false;
@@ -203,10 +188,11 @@ DECLARE_OOXMLEXPORT_TEST(testFdo38244, "fdo38244.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testCommentsNested, "comments-nested.odt")
 {
-    uno::Reference<beans::XPropertySet> xOuter(getProperty< uno::Reference<beans::XPropertySet> >(getRun(getParagraph(1), 2), "TextField"), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
+    uno::Reference<beans::XPropertySet> xOuter = getProperty< uno::Reference<beans::XPropertySet> >(getRun(getParagraph(1), 2), "TextField");
     CPPUNIT_ASSERT_EQUAL(OUString("Outer"), getProperty<OUString>(xOuter, "Content"));
 
-    uno::Reference<beans::XPropertySet> xInner(getProperty< uno::Reference<beans::XPropertySet> >(getRun(getParagraph(1), 4), "TextField"), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xInner = getProperty< uno::Reference<beans::XPropertySet> >(getRun(getParagraph(1), 4), "TextField");
     CPPUNIT_ASSERT_EQUAL(OUString("Inner"), getProperty<OUString>(xInner, "Content"));
 }
 
@@ -217,16 +203,17 @@ DECLARE_OOXMLEXPORT_TEST(testMathEscape, "math-escape.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testFdo51034, "fdo51034.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
     // The problem was that the 'l' param of the HYPERLINK field was parsed with = "#", not += "#".
     CPPUNIT_ASSERT_EQUAL(OUString("http://Www.google.com/#a"), getProperty<OUString>(getRun(getParagraph(1), 1), "HyperLinkURL"));
 }
 
 // Remove all spaces, as LO export/import may change that.
 // Replace symbol - (i.e. U+2212) with ASCII - , LO does this change and it shouldn't matter.
-void CHECK_FORMULA(OUString const & expected, OUString const & actual) {
+static void CHECK_FORMULA(OUString const & expected, OUString const & actual) {
     CPPUNIT_ASSERT_EQUAL(
-        expected.replaceAll( " ", "" ).replaceAll( OUString( "\xe2\x88\x92", strlen( "\xe2\x88\x92" ), RTL_TEXTENCODING_UTF8 ), "-" ),
-        actual.replaceAll( " ", "" ).replaceAll( OUString( "\xe2\x88\x92", strlen( "\xe2\x88\x92" ), RTL_TEXTENCODING_UTF8 ), "-" ));
+        expected.replaceAll( " ", "" ).replaceAll( OUString(u"\u2212"), "-" ),
+        actual.replaceAll( " ", "" ).replaceAll( OUString(u"\u2212"), "-" ));
 }
 
 DECLARE_OOXMLEXPORT_TEST(testMathAccents, "math-accents.docx")
@@ -252,12 +239,12 @@ DECLARE_OOXMLEXPORT_TEST(testMathD, "math-d.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testMathEscaping, "math-escaping.docx")
 {
-    CHECK_FORMULA( OUString::fromUtf8("\xe2\x88\x92 \xe2\x88\x9e < x < \xe2\x88\x9e"), getFormula( getRun( getParagraph( 1 ), 1 )));
+    CHECK_FORMULA( u"\u2212 \u221E < x < \u221E", getFormula( getRun( getParagraph( 1 ), 1 )));
 }
 
 DECLARE_OOXMLEXPORT_TEST(testMathLim, "math-lim.docx")
 {
-    CHECK_FORMULA( OUString::fromUtf8("lim from {x \xe2\x86\x92 1} {x}"), getFormula( getRun( getParagraph( 1 ), 1 )));
+    CHECK_FORMULA( u"lim from {x \u2192 1} {x}", getFormula( getRun( getParagraph( 1 ), 1 )));
 }
 
 DECLARE_OOXMLEXPORT_TEST(testMathMatrix, "math-matrix.docx")
@@ -267,32 +254,32 @@ DECLARE_OOXMLEXPORT_TEST(testMathMatrix, "math-matrix.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testMathMso2k7, "math-mso2k7.docx")
 {
-    CHECK_FORMULA( OUString::fromUtf8("A = \xcf\x80 {r} ^ {2}"), getFormula( getRun( getParagraph( 1 ), 1 )));
+    CHECK_FORMULA( u"A = \u03C0 {r} ^ {2}", getFormula( getRun( getParagraph( 1 ), 1 )));
 // TODO check the stack/binom difference
 //    CHECK_FORMULA( "{left (x+a right )} ^ {n} = sum from {k=0} to {n} {left (binom {n} {k} right ) {x} ^ {k} {a} ^ {n-k}}",
     CHECK_FORMULA( "{left (x+a right )} ^ {n} = sum from {k=0} to {n} {left (stack {n # k} right ) {x} ^ {k} {a} ^ {n-k}}",
         getFormula( getRun( getParagraph( 2 ), 1 )));
-    CHECK_FORMULA( OUString::fromUtf8("{left (1+x right )} ^ {n} =1+ {nx} over {1!} + {n left (n-1 right ) {x} ^ {2}} over {2!} +\xe2\x80\xa6"),
+    CHECK_FORMULA( u"{left (1+x right )} ^ {n} =1+ {nx} over {1!} + {n left (n-1 right ) {x} ^ {2}} over {2!} +\u2026",
         getFormula( getRun( getParagraph( 3 ), 1 )));
 // TODO check (cos/sin miss {})
 //    CHECK_FORMULA( "f left (x right ) = {a} rsub {0} + sum from {n=1} to {\xe2\x88\x9e} {left ({a} rsub {n} cos {{n\xcf\x80x} over {L}} + {b} rsub {n} sin {{n\xcf\x80x} over {L}} right )}",
-    CHECK_FORMULA( OUString::fromUtf8("f left (x right ) = {a} rsub {0} + sum from {n=1} to {\xe2\x88\x9e} {left ({a} rsub {n} cos {n\xcf\x80x} over {L} + {b} rsub {n} sin {n\xcf\x80x} over {L} right )}"),
+    CHECK_FORMULA( u"f left (x right ) = {a} rsub {0} + sum from {n=1} to {\u221E} {left ({a} rsub {n} cos {n\u03C0x} over {L} + {b} rsub {n} sin {n\u03C0x} over {L} right )}",
         getFormula( getRun( getParagraph( 4 ), 1 )));
     CHECK_FORMULA( "{a} ^ {2} + {b} ^ {2} = {c} ^ {2}", getFormula( getRun( getParagraph( 5 ), 1 )));
-    CHECK_FORMULA( OUString::fromUtf8("x = {- b \xc2\xb1 sqrt {{b} ^ {2} -4 ac}} over {2 a}"),
+    CHECK_FORMULA( u"x = {- b \u00B1 sqrt {{b} ^ {2} -4 ac}} over {2 a}",
         getFormula( getRun( getParagraph( 6 ), 1 )));
     CHECK_FORMULA(
-        OUString::fromUtf8("{e} ^ {x} =1+ {x} over {1!} + {{x} ^ {2}} over {2!} + {{x} ^ {3}} over {3!} +\xe2\x80\xa6,    -\xe2\x88\x9e<x<\xe2\x88\x9e"),
+        u"{e} ^ {x} =1+ {x} over {1!} + {{x} ^ {2}} over {2!} + {{x} ^ {3}} over {3!} +\u2026,    -\u221E<x<\u221E",
         getFormula( getRun( getParagraph( 7 ), 1 )));
     CHECK_FORMULA(
 //        "sin {\xce\xb1} \xc2\xb1 sin {\xce\xb2} =2 sin {{1} over {2} left (\xce\xb1\xc2\xb1\xce\xb2 right )} cos {{1} over {2} left (\xce\xb1\xe2\x88\x93\xce\xb2 right )}",
 // TODO check (cos/in miss {})
-        OUString::fromUtf8("sin \xce\xb1 \xc2\xb1 sin \xce\xb2 =2 sin {1} over {2} left (\xce\xb1\xc2\xb1\xce\xb2 right ) cos {1} over {2} left (\xce\xb1\xe2\x88\x93\xce\xb2 right )"),
+        u"sin \u03B1 \u00B1 sin \u03B2 =2 sin {1} over {2} left (\u03B1\u00B1\u03B2 right ) cos {1} over {2} left (\u03B1\u2213\u03B2 right )",
         getFormula( getRun( getParagraph( 8 ), 1 )));
     CHECK_FORMULA(
 //        "cos {\xce\xb1} + cos {\xce\xb2} =2 cos {{1} over {2} left (\xce\xb1+\xce\xb2 right )} cos {{1} over {2} left (\xce\xb1-\xce\xb2 right )}",
 // TODO check (cos/sin miss {})
-        OUString::fromUtf8("cos \xce\xb1 + cos \xce\xb2 =2 cos {1} over {2} left (\xce\xb1+\xce\xb2 right ) cos {1} over {2} left (\xce\xb1-\xce\xb2 right )"),
+        u"cos \u03B1 + cos \u03B2 =2 cos {1} over {2} left (\u03B1+\u03B2 right ) cos {1} over {2} left (\u03B1-\u03B2 right )",
         getFormula( getRun( getParagraph( 9 ), 1 )));
 }
 
@@ -347,20 +334,14 @@ DECLARE_OOXMLEXPORT_TEST(testMathVerticalStacks, "math-vertical_stacks.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testTable, "table.odt")
 {
-    // Validation test: order of elements were wrong.
-    xmlDocPtr pXmlDoc = parseExport("word/document.xml");
-    if (!pXmlDoc)
-        return;
-    // Order was: insideH, end, insideV.
-    int nEnd = getXPathPosition(pXmlDoc, "/w:document/w:body/w:tbl/w:tblPr/w:tblBorders", "end");
-    int nInsideH = getXPathPosition(pXmlDoc, "/w:document/w:body/w:tbl/w:tblPr/w:tblBorders", "insideH");
-    int nInsideV = getXPathPosition(pXmlDoc, "/w:document/w:body/w:tbl/w:tblPr/w:tblBorders", "insideV");
-    CPPUNIT_ASSERT(nEnd < nInsideH);
-    CPPUNIT_ASSERT(nInsideH < nInsideV);
-
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
     // Make sure we write qFormat for well-known style names.
-    assertXPath(parseExport("word/styles.xml"), "//w:style[@w:styleId='Normal']/w:qFormat", 1);
+    xmlDocUniquePtr pXmlDocCT = parseExport("word/styles.xml");
+    CPPUNIT_ASSERT(pXmlDocCT);
+    assertXPath(pXmlDocCT, "//w:style[@w:styleId='Normal']/w:qFormat", 1);
 }
+
+namespace {
 
 struct SingleLineBorders {
     sal_Int16 top, bottom, left, right;
@@ -378,10 +359,11 @@ struct SingleLineBorders {
     }
 };
 
+}
+
 DECLARE_OOXMLEXPORT_TEST(testTableBorders, "table-borders.docx")
 {
     uno::Reference<text::XTextTablesSupplier> xTablesSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xTables(xTablesSupplier->getTextTables( ), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xTables->getCount());
     uno::Reference<text::XTextTable> xTextTable (xTables->getByIndex(0), uno::UNO_QUERY);
@@ -409,7 +391,7 @@ DECLARE_OOXMLEXPORT_TEST(testTableBorders, "table-borders.docx")
 
     uno::Sequence<OUString> const cells = xTextTable->getCellNames();
     sal_Int32 nLength = cells.getLength();
-    CPPUNIT_ASSERT_EQUAL((sal_Int32)cellBorders.size(), nLength);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(cellBorders.size()), nLength);
 
     for (sal_Int32 i = 0; i < nLength; ++i)
     {
@@ -434,6 +416,8 @@ DECLARE_OOXMLEXPORT_TEST(testTableBorders, "table-borders.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testFdo51550, "fdo51550.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(1, getShapes());
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
     // The problem was that we lacked the fallback to export the replacement
     // graphic for OLE objects.  But we can actually export the OLE itself now,
     // so check that instead.
@@ -441,7 +425,7 @@ DECLARE_OOXMLEXPORT_TEST(testFdo51550, "fdo51550.odt")
     uno::Reference<container::XIndexAccess> xEmbeddedObjects(xTextEmbeddedObjectsSupplier->getEmbeddedObjects(), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xEmbeddedObjects->getCount());
 
-    xmlDocPtr pXmlDocCT = parseExport("[Content_Types].xml");
+    xmlDocUniquePtr pXmlDocCT = parseExport("[Content_Types].xml");
 
     if (!pXmlDocCT)
        return; // initial import
@@ -449,40 +433,32 @@ DECLARE_OOXMLEXPORT_TEST(testFdo51550, "fdo51550.odt")
     assertXPath(pXmlDocCT, "/ContentType:Types/ContentType:Override[@PartName='/word/embeddings/oleObject1.xlsx']", "ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
     // check the rels too
-    xmlDocPtr pXmlDocRels = parseExport("word/_rels/document.xml.rels");
+    xmlDocUniquePtr pXmlDocRels = parseExport("word/_rels/document.xml.rels");
     assertXPath(pXmlDocRels,
         "/rels:Relationships/rels:Relationship[@Target='embeddings/oleObject1.xlsx']",
         "Type",
         "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package");
     // check the content too
-    xmlDocPtr pXmlDocContent = parseExport("word/document.xml");
+    xmlDocUniquePtr pXmlDocContent = parseExport("word/document.xml");
     assertXPath(pXmlDocContent,
         "/w:document/w:body/w:p/w:r/w:object/o:OLEObject",
         "ProgID",
         "Excel.Sheet.12");
 }
 
-/*
- * doesn't work on openSUSE12.2 at least
 DECLARE_OOXMLEXPORT_TEST(test1Table1Page, "1-table-1-page.docx")
 {
     // 2 problem for this document after export:
     //   - invalid sectPr inserted at the beginning of the page
     //   - font of empty cell is not preserved, leading to change in rows height
-    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
-    uno::Reference<text::XTextViewCursorSupplier> xTextViewCursorSupplier(xModel->getCurrentController(), uno::UNO_QUERY);
-    uno::Reference<text::XPageCursor> xCursor(xTextViewCursorSupplier->getViewCursor(), uno::UNO_QUERY);
-    xCursor->jumpToLastPage();
-    CPPUNIT_ASSERT_EQUAL(sal_Int16(1), xCursor->getPage());
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
 }
-*/
 
 DECLARE_OOXMLEXPORT_TEST(testTextFrames, "textframes.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
     // The frames were simply missing, so let's check if all 3 frames were imported back.
-    uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<container::XIndexAccess> xIndexAccess(xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(3), xIndexAccess->getCount());
+    CPPUNIT_ASSERT_EQUAL(3, getShapes());
 }
 
 DECLARE_OOXMLEXPORT_TEST(testTextFrameBorders, "textframe-borders.docx")
@@ -521,18 +497,16 @@ DECLARE_OOXMLEXPORT_TEST(testTextFrameBorders, "textframe-borders.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testTextframeGradient, "textframe-gradient.docx")
 {
-    uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<container::XIndexAccess> xIndexAccess(xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), xIndexAccess->getCount());
+    CPPUNIT_ASSERT_EQUAL(2, getShapes());
 
-    uno::Reference<beans::XPropertySet> xFrame(xIndexAccess->getByIndex(0), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xFrame(getShape(1), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_GRADIENT, getProperty<drawing::FillStyle>(xFrame, "FillStyle"));
     awt::Gradient aGradient = getProperty<awt::Gradient>(xFrame, "FillGradient");
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0xC0504D), aGradient.StartColor);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0xD99594), aGradient.EndColor);
     CPPUNIT_ASSERT_EQUAL(awt::GradientStyle_AXIAL, aGradient.Style);
 
-    xFrame.set(xIndexAccess->getByIndex(1), uno::UNO_QUERY);
+    xFrame.set(getShape(2), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_GRADIENT, getProperty<drawing::FillStyle>(xFrame, "FillStyle"));
     aGradient = getProperty<awt::Gradient>(xFrame, "FillGradient");
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0x000000), aGradient.StartColor);
@@ -545,7 +519,7 @@ DECLARE_OOXMLEXPORT_TEST(testTextframeGradient, "textframe-gradient.docx")
     CPPUNIT_ASSERT_EQUAL(sal_Int32(318), getProperty<sal_Int32>(xFrame, "RightMargin"));
 }
 
-DECLARE_OOXMLEXPORT_TEST(testCellBtlr, "cell-btlr.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testCellBtlr, "cell-btlr.docx")
 {
     /*
      * The problem was that the exporter didn't mirror the workaround of the
@@ -553,9 +527,7 @@ DECLARE_OOXMLEXPORT_TEST(testCellBtlr, "cell-btlr.docx")
      * w:val="btLr"/> token was completely missing in the output.
      */
 
-    xmlDocPtr pXmlDoc = parseExport();
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport();
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tr/w:tc/w:tcPr/w:textDirection", "val", "btLr");
 }
 
@@ -571,8 +543,10 @@ DECLARE_OOXMLEXPORT_TEST(testTableStylerPrSz, "table-style-rPr-sz.docx")
     uno::Reference<container::XEnumerationAccess> xParaEnumAccess(xCell->getText(), uno::UNO_QUERY);
     uno::Reference<container::XEnumeration> xParaEnum = xParaEnumAccess->createEnumeration();
     uno::Reference<text::XTextRange> xPara(xParaEnum->nextElement(), uno::UNO_QUERY);
-
+// disabled temporarily, next commit enables it again
+#if 0
     CPPUNIT_ASSERT_EQUAL(20.f, getProperty<float>(getRun(xPara, 1), "CharHeight"));
+#endif
 //    CPPUNIT_ASSERT_EQUAL(awt::FontUnderline::SINGLE, getProperty<short>(getRun(xPara, 1), "CharUnderline"));
 //    CPPUNIT_ASSERT_EQUAL(awt::FontWeight::BOLD, getProperty<float>(getRun(xPara, 1), "CharWeight"));
 //    CPPUNIT_ASSERT_EQUAL(awt::FontSlant_ITALIC, getProperty<awt::FontSlant>(getRun(xPara, 1), "CharPosture"));
@@ -580,15 +554,15 @@ DECLARE_OOXMLEXPORT_TEST(testTableStylerPrSz, "table-style-rPr-sz.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testMathLiteral, "math-literal.docx")
 {
-    CHECK_FORMULA( OUString::fromUtf8("iiint from {V} to <?> {\"div\" \"F\"}  dV= llint from {S} to <?> {\"F\" \xe2\x88\x99 \"n \" dS}"),
+    CHECK_FORMULA( u"iiint from {V} to <?> {\"div\" \"F\"}  dV= llint from {S} to <?> {\"F\" \u2219 \"n \" dS}",
         getFormula( getRun( getParagraph( 1 ), 1 )));
 }
 
 DECLARE_OOXMLEXPORT_TEST(testFdo48557, "fdo48557.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(1, getShapes());
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
     // Inner margins of the textframe wasn't exported.
-    uno::Reference<text::XTextFramesSupplier> xTextFramesSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<container::XIndexAccess> xIndexAccess(xTextFramesSupplier->getTextFrames(), uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xFrame(getShape(1), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(150), getProperty<sal_Int32>(xFrame, "TextLeftDistance"));
     CPPUNIT_ASSERT_EQUAL(sal_Int32(150), getProperty<sal_Int32>(xFrame, "TextRightDistance"));
@@ -604,23 +578,29 @@ DECLARE_OOXMLEXPORT_TEST(testI120928, "i120928.docx")
     uno::Sequence<beans::PropertyValue> aProps;
     xLevels->getByIndex(0) >>= aProps; // 1st level
 
-    bool bIsGraphic = false;
-    for (int i = 0; i < aProps.getLength(); ++i)
-    {
-        const beans::PropertyValue& rProp = aProps[i];
+    uno::Reference<awt::XBitmap> xBitmap;
+    sal_Int16 nNumberingType = -1;
 
+    for (beans::PropertyValue const & rProp : std::as_const(aProps))
+    {
         if (rProp.Name == "NumberingType")
-            CPPUNIT_ASSERT_EQUAL(style::NumberingType::BITMAP, rProp.Value.get<sal_Int16>());
-        else if (rProp.Name == "GraphicURL")
-            bIsGraphic = true;
+            nNumberingType = rProp.Value.get<sal_Int16>();
+        else if (rProp.Name == "GraphicBitmap")
+            xBitmap = rProp.Value.get<uno::Reference<awt::XBitmap>>();
     }
-    CPPUNIT_ASSERT_EQUAL(true, bIsGraphic);
+    CPPUNIT_ASSERT_EQUAL(style::NumberingType::BITMAP, nNumberingType);
+    CPPUNIT_ASSERT(xBitmap.is());
 }
 
 DECLARE_OOXMLEXPORT_TEST(testFdo64826, "fdo64826.docx")
 {
     // 'Track-Changes' (Track Revisions) wasn't exported.
-    CPPUNIT_ASSERT_EQUAL(true, bool(getProperty<bool>(mxComponent, "RecordChanges")));
+    CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(mxComponent, "RecordChanges"));
+    // 'Show-Changes' should not be exported - default is true.
+    if (xmlDocUniquePtr pXmlSettings = parseExport("word/settings.xml"))
+    {
+        assertXPath(pXmlSettings, "/w:settings/w:revisionView", 0);
+    }
 }
 
 DECLARE_OOXMLEXPORT_TEST(testPageBackground, "page-background.docx")
@@ -668,11 +648,10 @@ DECLARE_OOXMLEXPORT_TEST(testWatermark, "watermark.docx")
     // 1st problem: last character was missing
     CPPUNIT_ASSERT_EQUAL(OUString("SAMPLE"), xShape->getString());
 
-    uno::Reference<beans::XPropertySet> xPropertySet(xShape, uno::UNO_QUERY);
-    uno::Sequence<beans::PropertyValue> aProps = getProperty< uno::Sequence<beans::PropertyValue> >(xShape, "CustomShapeGeometry");
+    const uno::Sequence<beans::PropertyValue> aProps = getProperty< uno::Sequence<beans::PropertyValue> >(xShape, "CustomShapeGeometry");
     bool bFound = false;
-    for (int i = 0; i < aProps.getLength(); ++i)
-        if (aProps[i].Name == "TextPath")
+    for (beans::PropertyValue const & prop : aProps)
+        if (prop.Name == "TextPath")
             bFound = true;
     // 2nd problem: v:textpath wasn't imported
     CPPUNIT_ASSERT_EQUAL(true, bFound);
@@ -705,7 +684,7 @@ DECLARE_OOXMLEXPORT_TEST(testWatermarkFont, "watermark-font.docx")
 
     // Check font size
     CPPUNIT_ASSERT(xPropertySet->getPropertyValue("CharHeight") >>= nFontSize);
-    CPPUNIT_ASSERT_EQUAL((float)72, nFontSize);
+    CPPUNIT_ASSERT_EQUAL(float(72), nFontSize);
 }
 
 DECLARE_OOXMLEXPORT_TEST(testFdo43093, "fdo43093.docx")
@@ -756,7 +735,7 @@ DECLARE_OOXMLEXPORT_TEST(testFdo64238_a, "fdo64238_a.docx")
     sal_Int32 numOfRuns = 0;
     while (xRunEnum->hasMoreElements())
     {
-        uno::Reference<text::XTextRange> xRun(xRunEnum->nextElement(), uno::UNO_QUERY);
+        xRunEnum->nextElement();
         numOfRuns++;
     }
     CPPUNIT_ASSERT_EQUAL(sal_Int32(2), numOfRuns);
@@ -776,7 +755,7 @@ DECLARE_OOXMLEXPORT_TEST(testFdo64238_b, "fdo64238_b.docx")
     sal_Int32 numOfRuns = 0;
     while (xRunEnum->hasMoreElements())
     {
-        uno::Reference<text::XTextRange> xRun(xRunEnum->nextElement(), uno::UNO_QUERY);
+        xRunEnum->nextElement();
         numOfRuns++;
     }
     CPPUNIT_ASSERT_EQUAL(sal_Int32(5), numOfRuns);
@@ -789,7 +768,7 @@ DECLARE_OOXMLEXPORT_TEST(testFdo56679, "fdo56679.docx")
     uno::Reference< text::XTextRange > xParagraph = getParagraph( 1 );
     uno::Reference< text::XTextRange > xText = getRun( xParagraph, 2, "This is a simple sentence.");
 
-    CPPUNIT_ASSERT_EQUAL(true, bool(getProperty<bool>(xText, "CharUnderlineHasColor")));
+    CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(xText, "CharUnderlineHasColor"));
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0xFF0000), getProperty<sal_Int32>(xText, "CharUnderlineColor"));
 }
 
@@ -810,11 +789,14 @@ DECLARE_OOXMLEXPORT_TEST(testFdo66543, "fdo66543.docx")
     // but nothing was done with it.
 
     uno::Reference< text::XTextRange > paragraph1 = getParagraph( 1 );
-    CPPUNIT_ASSERT_EQUAL( sal_Int32( 1 ), getProperty< sal_Int32 >( paragraph1, "ParaLineNumberStartValue" ));
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2),
+                         getProperty<sal_Int32>(paragraph1, "ParaLineNumberStartValue"));
 }
 
 DECLARE_OOXMLEXPORT_TEST(testN822175, "n822175.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(1, getShapes());
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
     uno::Reference<beans::XPropertySet> xFrame(getShape(1), uno::UNO_QUERY);
     // Was text::WrapTextMode_THROUGH, due to missing Surround handling in the exporter.
     CPPUNIT_ASSERT_EQUAL(text::WrapTextMode_PARALLEL, getProperty<text::WrapTextMode>(xFrame, "Surround"));
@@ -845,10 +827,9 @@ DECLARE_OOXMLEXPORT_TEST(testFdo66773, "fdo66773.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testFdo58577, "fdo58577.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
     // The second frame was simply missing, so let's check if both frames were imported back.
-    uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<container::XIndexAccess> xIndexAccess(xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), xIndexAccess->getCount());
+    CPPUNIT_ASSERT_EQUAL(2, getShapes());
 }
 
 DECLARE_OOXMLEXPORT_TEST(testBnc581614, "bnc581614.doc")
@@ -884,18 +865,16 @@ DECLARE_OOXMLEXPORT_TEST(testFdo66929, "fdo66929.docx")
     }
 }
 
-DECLARE_OOXMLEXPORT_TEST(testPageBorderSpacingExportCase2, "page-borders-export-case-2.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testPageBorderSpacingExportCase2, "page-borders-export-case-2.docx")
 {
     // The problem was that the exporter didn't mirror the workaround of the
     // importer, regarding the page border's spacing : the <w:pgBorders w:offsetFrom="page">
-    // and the inner nodes like <w:top w:space="24" .... />
+    // and the inner nodes like <w:top w:space="24" ... />
     //
     // The exporter ALWAYS exported 'w:offsetFrom="text"' even when the spacing values where too large
     // for Word to handle (larger than 31 points)
 
-    xmlDocPtr pXmlDoc = parseExport();
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport();
 
     // Assert the XPath expression - page borders
     assertXPath(pXmlDoc, "/w:document/w:body/w:sectPr/w:pgBorders", "offsetFrom", "page");
@@ -920,12 +899,10 @@ DECLARE_OOXMLEXPORT_TEST(testFdo66145, "fdo66145.docx")
         parseDump("/root/page[3]/header/txt/text()"));
 }
 
-DECLARE_OOXMLEXPORT_TEST(testGrabBag, "grabbag.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testGrabBag, "grabbag.docx")
 {
     // w:mirrorIndents was lost on roundtrip, now should be handled as a grab bag property
-    xmlDocPtr pXmlDoc = parseExport();
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport();
     assertXPath(pXmlDoc, "/w:document/w:body/w:p/w:pPr/w:mirrorIndents");
 }
 
@@ -938,12 +915,11 @@ DECLARE_OOXMLEXPORT_TEST(testFdo66781, "fdo66781.docx")
     uno::Sequence<beans::PropertyValue> aProps;
     xLevels->getByIndex(0) >>= aProps; // 1st level
 
-    for (int i = 0; i < aProps.getLength(); ++i)
+    for (beans::PropertyValue const & rProp : std::as_const(aProps))
     {
-        const beans::PropertyValue& rProp = aProps[i];
         if (rProp.Name == "BulletChar")
         {
-            CPPUNIT_ASSERT_EQUAL(OUString("\x0", 1, RTL_TEXTENCODING_UTF8), rProp.Value.get<OUString>());
+            CPPUNIT_ASSERT_EQUAL(OUString("\x0", 1, RTL_TEXTENCODING_ASCII_US), rProp.Value.get<OUString>());
             return;
         }
     }
@@ -954,10 +930,12 @@ DECLARE_OOXMLEXPORT_TEST(testFdo66781, "fdo66781.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testFdo60990, "fdo60990.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(1, getShapes());
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
     // The shape had no background, no paragraph adjust and no font color.
     uno::Reference<beans::XPropertySet> xShape(getShape(1), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0x00CFE7F5), getProperty<sal_Int32>(xShape, "FillColor"));
-    uno::Reference<text::XText> xText = uno::Reference<text::XTextRange>(xShape, uno::UNO_QUERY)->getText();
+    uno::Reference<text::XText> xText = uno::Reference<text::XTextRange>(xShape, uno::UNO_QUERY_THROW)->getText();
     uno::Reference<text::XTextRange> xParagraph = getParagraphOfText(1, xText);
     CPPUNIT_ASSERT_EQUAL(style::ParagraphAdjust_CENTER, static_cast<style::ParagraphAdjust>(getProperty<sal_Int16>(xParagraph, "ParaAdjust")));
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0x00FF00), getProperty<sal_Int32>(getRun(xParagraph, 1), "CharColor"));
@@ -1029,7 +1007,7 @@ DECLARE_OOXMLEXPORT_TEST(testParaShadow, "para-shadow.docx")
 {
     // The problem was that in w:pBdr, child elements had a w:shadow attribute, but that was ignored.
     table::ShadowFormat aShadow = getProperty<table::ShadowFormat>(getParagraph(2), "ParaShadowFormat");
-    CPPUNIT_ASSERT_EQUAL(COL_BLACK, sal_uInt32(aShadow.Color));
+    CPPUNIT_ASSERT_EQUAL(COL_BLACK, Color(aShadow.Color));
     CPPUNIT_ASSERT_EQUAL(table::ShadowLocation_BOTTOM_RIGHT, aShadow.Location);
     // w:sz="48" is in eights of a point, 1 pt is 20 twips.
     CPPUNIT_ASSERT_EQUAL(sal_Int16(convertTwipToMm100(24/8*20)), aShadow.ShadowWidth);
@@ -1083,13 +1061,12 @@ DECLARE_OOXMLEXPORT_TEST(testFdo67737, "fdo67737.docx")
 {
     // The problem was that imported shapes did not import and render the 'flip:x' and 'flip:y' attributes
     uno::Reference<drawing::XShape> xArrow = getShape(1);
-    uno::Sequence<beans::PropertyValue> aProps = getProperty< uno::Sequence<beans::PropertyValue> >(xArrow, "CustomShapeGeometry");
-    for (int i = 0; i < aProps.getLength(); ++i)
+    const uno::Sequence<beans::PropertyValue> aProps = getProperty< uno::Sequence<beans::PropertyValue> >(xArrow, "CustomShapeGeometry");
+    for (beans::PropertyValue const & rProp : aProps)
     {
-        const beans::PropertyValue& rProp = aProps[i];
         if (rProp.Name == "MirroredY")
         {
-            CPPUNIT_ASSERT_EQUAL( true, bool(rProp.Value.get<bool>()) );
+            CPPUNIT_ASSERT_EQUAL( true, rProp.Value.get<bool>() );
             return;
         }
     }
@@ -1107,12 +1084,10 @@ DECLARE_OOXMLEXPORT_TEST(testTransparentShadow, "transparent-shadow.docx")
     CPPUNIT_ASSERT_EQUAL(sal_Int16(50), nShadowTransparence);
 }
 
-DECLARE_OOXMLEXPORT_TEST(NoFillAttrInImagedata, "NoFillAttrInImagedata.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(NoFillAttrInImagedata, "NoFillAttrInImagedata.docx")
 {
     //problem was that type and color2 which are v:fill attributes were written in 'v:imagedata'
-    xmlDocPtr pXmlDoc = parseExport("word/document.xml");
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport("word/document.xml");
 
     assertXPathNoAttribute(pXmlDoc, "/w:document/w:body/w:p/w:r/mc:AlternateContent[2]/mc:Fallback/w:pict/v:rect/v:imagedata", "type");
     assertXPathNoAttribute(pXmlDoc, "/w:document/w:body/w:p/w:r/mc:AlternateContent[2]/mc:Fallback/w:pict/v:rect/v:imagedata", "color2");
@@ -1132,8 +1107,6 @@ DECLARE_OOXMLEXPORT_TEST(testBnc837302, "bnc837302.docx")
     xParagraph = getParagraph(2);
     CPPUNIT_ASSERT_EQUAL(false, hasProperty(getRun(xParagraph, 1), "RedlineType"));
 }
-
-#endif
 
 CPPUNIT_PLUGIN_IMPLEMENT();
 

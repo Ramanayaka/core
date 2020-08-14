@@ -16,35 +16,42 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "DefaultShapesPanel.hxx"
+#include <DefaultShapesPanel.hxx>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <comphelper/dispatchcommand.hxx>
-#include <vcl/outdev.hxx>
 #include <vcl/commandinfoprovider.hxx>
+#include <vcl/settings.hxx>
 
-using ::rtl::OUString;
-
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 DefaultShapesPanel::DefaultShapesPanel (
     vcl::Window* pParent,
     const css::uno::Reference<css::frame::XFrame>& rxFrame)
-    : PanelLayout(pParent, "DefaultShapesPanel", "svx/ui/defaultshapespanel.ui", rxFrame),
-    SvxShapeCommandsMap(),
-    mxFrame(rxFrame)
+    : PanelLayout(pParent, "DefaultShapesPanel", "svx/ui/defaultshapespanel.ui", rxFrame)
+    , SvxShapeCommandsMap()
+    , mxLineArrowSet(new ValueSet(nullptr))
+    , mxLineArrowSetWin(new weld::CustomWeld(*m_xBuilder, "LinesArrows", *mxLineArrowSet))
+    , mxCurveSet(new ValueSet(nullptr))
+    , mxCurveSetWin(new weld::CustomWeld(*m_xBuilder, "Curves", *mxCurveSet))
+    , mxConnectorSet(new ValueSet(nullptr))
+    , mxConnectorSetWin(new weld::CustomWeld(*m_xBuilder, "Connectors", *mxConnectorSet))
+    , mxBasicShapeSet(new ValueSet(nullptr))
+    , mxBasicShapeSetWin(new weld::CustomWeld(*m_xBuilder, "BasicShapes", *mxBasicShapeSet))
+    , mxSymbolShapeSet(new ValueSet(nullptr))
+    , mxSymbolShapeSetWin(new weld::CustomWeld(*m_xBuilder, "SymbolShapes", *mxSymbolShapeSet))
+    , mxBlockArrowSet(new ValueSet(nullptr))
+    , mxBlockArrowSetWin(new weld::CustomWeld(*m_xBuilder, "BlockArrows", *mxBlockArrowSet))
+    , mxFlowchartSet(new ValueSet(nullptr))
+    , mxFlowchartSetWin(new weld::CustomWeld(*m_xBuilder, "Flowcharts", *mxFlowchartSet))
+    , mxCalloutSet(new ValueSet(nullptr))
+    , mxCalloutSetWin(new weld::CustomWeld(*m_xBuilder, "Callouts", *mxCalloutSet))
+    , mxStarSet(new ValueSet(nullptr))
+    , mxStarSetWin(new weld::CustomWeld(*m_xBuilder, "Stars", *mxStarSet))
+    , mx3DObjectSet(new ValueSet(nullptr))
+    , mx3DObjectSetWin(new weld::CustomWeld(*m_xBuilder, "3DObjects", *mx3DObjectSet))
+    , mxFrame(rxFrame)
 {
-    get(mpScrollWindow, "scrolledwindow1");
-    get(mpLineArrowSet, "LinesArrows");
-    get(mpCurveSet, "Curves");
-    get(mpConnectorSet, "Connectors");
-    get(mpBasicShapeSet, "BasicShapes");
-    get(mpSymbolShapeSet, "SymbolShapes");
-    get(mpBlockArrowSet, "BlockArrows");
-    get(mpFlowchartSet, "Flowcharts");
-    get(mpCalloutSet, "Callouts");
-    get(mpStarSet, "Stars");
-    get(mp3DObjectSet, "3DObjects");
     Initialize();
 }
 
@@ -70,16 +77,16 @@ DefaultShapesPanel::~DefaultShapesPanel()
 void DefaultShapesPanel::Initialize()
 {
     mpShapesSetMap = decltype(mpShapesSetMap){
-        { mpLineArrowSet,   mpLineShapes },
-        { mpCurveSet,       mpCurveShapes },
-        { mpConnectorSet,   mpConnectorShapes },
-        { mpBasicShapeSet,  mpBasicShapes },
-        { mpSymbolShapeSet, mpSymbolShapes },
-        { mpBlockArrowSet,  mpBlockArrowShapes },
-        { mpFlowchartSet,   mpFlowchartShapes },
-        { mpCalloutSet,     mpCalloutShapes },
-        { mpStarSet,        mpStarShapes },
-        { mp3DObjectSet,    mp3DShapes }
+        { mxLineArrowSet.get(),   mpLineShapes },
+        { mxCurveSet.get(),       mpCurveShapes },
+        { mxConnectorSet.get(),   mpConnectorShapes },
+        { mxBasicShapeSet.get(),  mpBasicShapes },
+        { mxSymbolShapeSet.get(), mpSymbolShapes },
+        { mxBlockArrowSet.get(),  mpBlockArrowShapes },
+        { mxFlowchartSet.get(),   mpFlowchartShapes },
+        { mxCalloutSet.get(),     mpCalloutShapes },
+        { mxStarSet.get(),        mpStarShapes },
+        { mx3DObjectSet.get(),    mp3DShapes }
     };
     populateShapes();
     for(auto& aSetMap: mpShapesSetMap)
@@ -92,17 +99,26 @@ void DefaultShapesPanel::Initialize()
 void DefaultShapesPanel::dispose()
 {
     mpShapesSetMap.clear();
-    mpScrollWindow.clear();
-    mpLineArrowSet.clear();
-    mpCurveSet.clear();
-    mpConnectorSet.clear();
-    mpBasicShapeSet.clear();
-    mpSymbolShapeSet.clear();
-    mpBlockArrowSet.clear();
-    mpFlowchartSet.clear();
-    mpCalloutSet.clear();
-    mpStarSet.clear();
-    mp3DObjectSet.clear();
+    mxLineArrowSetWin.reset();
+    mxLineArrowSet.reset();
+    mxCurveSetWin.reset();
+    mxCurveSet.reset();
+    mxConnectorSetWin.reset();
+    mxConnectorSet.reset();
+    mxBasicShapeSetWin.reset();
+    mxBasicShapeSet.reset();
+    mxSymbolShapeSetWin.reset();
+    mxSymbolShapeSet.reset();
+    mxBlockArrowSetWin.reset();
+    mxBlockArrowSet.reset();
+    mxFlowchartSetWin.reset();
+    mxFlowchartSet.reset();
+    mxCalloutSetWin.reset();
+    mxCalloutSet.reset();
+    mxStarSetWin.reset();
+    mxStarSet.reset();
+    mx3DObjectSetWin.reset();
+    mx3DObjectSet.reset();
     PanelLayout::dispose();
 }
 
@@ -112,7 +128,7 @@ IMPL_LINK(DefaultShapesPanel, ShapeSelectHdl, ValueSet*, rValueSet, void)
     {
         if(rValueSet == aSetMap.first)
         {
-            int aSelection = aSetMap.first->GetSelectItemId();
+            int aSelection = aSetMap.first->GetSelectedItemId();
             comphelper::dispatchCommand(aSetMap.second[aSelection], {});
         }
         else
@@ -127,16 +143,18 @@ void DefaultShapesPanel::populateShapes()
     for(auto& aSet : mpShapesSetMap)
     {
         aSet.first->SetColCount(6);
-        for(std::map<sal_uInt16, rtl::OUString>::size_type i = 0; i < aSet.second.size(); i++)
+        for(std::map<sal_uInt16, OUString>::size_type i = 0; i < aSet.second.size(); i++)
         {
             sSlotStr = aSet.second[i];
             aSlotImage = vcl::CommandInfoProvider::GetImageForCommand(sSlotStr, mxFrame);
-            sLabel = vcl::CommandInfoProvider::GetTooltipForCommand(sSlotStr, mxFrame);
+            auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(sSlotStr,
+                vcl::CommandInfoProvider::GetModuleIdentifier(mxFrame));
+            sLabel = vcl::CommandInfoProvider::GetTooltipForCommand(sSlotStr, aProperties, mxFrame);
             aSet.first->InsertItem(i, aSlotImage, sLabel);
         }
     }
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace svx::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

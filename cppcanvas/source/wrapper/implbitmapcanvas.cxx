@@ -19,24 +19,19 @@
 
 
 #include <com/sun/star/rendering/XCanvas.hpp>
-#include <com/sun/star/rendering/XBitmapCanvas.hpp>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
+#include <osl/diagnose.h>
 
 #include "implbitmapcanvas.hxx"
 
 
 using namespace ::com::sun::star;
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         ImplBitmapCanvas::ImplBitmapCanvas( const uno::Reference< rendering::XBitmapCanvas >& rCanvas ) :
-            ImplCanvas( uno::Reference< rendering::XCanvas >(rCanvas,
-                                                             uno::UNO_QUERY) ),
+            ImplCanvas( rCanvas ),
             mxBitmapCanvas( rCanvas ),
             mxBitmap( rCanvas,
                       uno::UNO_QUERY )
@@ -57,9 +52,8 @@ namespace cppcanvas
 
         CanvasSharedPtr ImplBitmapCanvas::clone() const
         {
-            return BitmapCanvasSharedPtr( new ImplBitmapCanvas( *this ) );
+            return std::make_shared<ImplBitmapCanvas>( *this );
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

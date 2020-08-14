@@ -17,36 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "SeriesOptionsItemConverter.hxx"
+#include <SeriesOptionsItemConverter.hxx>
 #include "SchWhichPairs.hxx"
 
-#include "macros.hxx"
-#include "ItemPropertyMap.hxx"
-#include "GraphicPropertyItemConverter.hxx"
-#include "MultipleItemConverter.hxx"
-#include "ChartModelHelper.hxx"
-#include "AxisHelper.hxx"
-#include "DiagramHelper.hxx"
-#include "ChartTypeHelper.hxx"
-#include "DataSeriesHelper.hxx"
+#include <ChartModelHelper.hxx>
+#include <AxisHelper.hxx>
+#include <DiagramHelper.hxx>
+#include <ChartTypeHelper.hxx>
+#include <DataSeriesHelper.hxx>
+#include <ChartModel.hxx>
 
-#include <com/sun/star/chart/MissingValueTreatment.hpp>
 #include <com/sun/star/chart2/XDataSeries.hpp>
 
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
 #include <svl/ilstitem.hxx>
-#include <rtl/math.hxx>
-
-#include <functional>
-#include <algorithm>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 SeriesOptionsItemConverter::SeriesOptionsItemConverter(
@@ -65,7 +56,6 @@ SeriesOptionsItemConverter::SeriesOptionsItemConverter(
         , m_bConnectBars(false)
         , m_bSupportingAxisSideBySide(false)
         , m_bGroupBarsPerAxis(true)
-        , m_nAllSeriesAxisIndex(-1)
         , m_bSupportingStartingAngle(false)
         , m_nStartingAngle(90)
         , m_bClockwise(false)
@@ -73,6 +63,7 @@ SeriesOptionsItemConverter::SeriesOptionsItemConverter(
         , m_nMissingValueTreatment(0)
         , m_bSupportingPlottingOfHiddenCells(false)
         , m_bIncludeHiddenCells(true)
+        , m_bHideLegendEntry(false)
 {
     try
     {
@@ -155,10 +146,12 @@ SeriesOptionsItemConverter::SeriesOptionsItemConverter(
             {
             }
         }
+
+        m_bHideLegendEntry = !xPropertySet->getPropertyValue("ShowLegendEntry").get<bool>();
     }
-    catch( const uno::Exception &ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -222,12 +215,12 @@ bool SeriesOptionsItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const Sf
                     {
                         if( xChartTypeProps->getPropertyValue( aPropName ) >>= aBarPositionSequence )
                         {
-                            bool bGroupBarsPerAxis =  static_cast< const SfxBoolItem & >(rItemSet.Get( SCHATTR_GROUP_BARS_PER_AXIS )).GetValue();
+                            bool bGroupBarsPerAxis =  rItemSet.Get( SCHATTR_GROUP_BARS_PER_AXIS ).GetValue();
                             if(!bGroupBarsPerAxis)
                             {
                                 //set the same value for all axes
-                                for( sal_Int32 nN = 0; nN < aBarPositionSequence.getLength(); nN++ )
-                                    aBarPositionSequence[nN] = rBarPosition;
+                                for( auto & pos : aBarPositionSequence )
+                                    pos = rBarPosition;
                             }
                             else if( nAxisIndex >= 0 && nAxisIndex < aBarPositionSequence.getLength() )
                                 aBarPositionSequence[nAxisIndex] = rBarPosition;
@@ -296,8 +289,8 @@ bool SeriesOptionsItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const Sf
 
         case SCHATTR_CLOCKWISE:
         {
-            bool bClockwise = (static_cast< const SfxBoolItem & >(
-                     rItemSet.Get( nWhichId )).GetValue() );
+            bool bClockwise = static_cast< const SfxBoolItem & >(
+                     rItemSet.Get( nWhichId )).GetValue();
             if( m_xCooSys.is() )
             {
                 uno::Reference< chart2::XAxis > xAxis( AxisHelper::getAxis( 1, 0, m_xCooSys ) );
@@ -314,7 +307,7 @@ bool SeriesOptionsItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const Sf
 
         case SCHATTR_MISSING_VALUE_TREATMENT:
         {
-            if( m_aSupportedMissingValueTreatments.getLength() )
+            if( m_aSupportedMissingValueTreatments.hasElements() )
             {
                 sal_Int32 nNew = static_cast< const SfxInt32Item & >( rItemSet.Get( nWhichId )).GetValue();
                 if( m_nMissingValueTreatment != nNew )
@@ -328,9 +321,9 @@ bool SeriesOptionsItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const Sf
                             bChanged = true;
                         }
                     }
-                    catch( const uno::Exception& e )
+                    catch( const uno::Exception& )
                     {
-                        ASSERT_EXCEPTION( e );
+                        TOOLS_WARN_EXCEPTION("chart2", "" );
                     }
                 }
             }
@@ -347,6 +340,15 @@ bool SeriesOptionsItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const Sf
                     if (pModel)
                         bChanged = ChartModelHelper::setIncludeHiddenCells( bIncludeHiddenCells, *pModel );
                 }
+            }
+        }
+        break;
+        case SCHATTR_HIDE_LEGEND_ENTRY:
+        {
+            bool bHideLegendEntry = static_cast<const SfxBoolItem &>(rItemSet.Get(nWhichId)).GetValue();
+            if (bHideLegendEntry != m_bHideLegendEntry)
+            {
+                GetPropertySet()->setPropertyValue("ShowLegendEntry", css::uno::makeAny(!bHideLegendEntry));
             }
         }
         break;
@@ -391,8 +393,6 @@ void SeriesOptionsItemConverter::FillSpecialItem(
         }
         case SCHATTR_AXIS_FOR_ALL_SERIES:
         {
-            if( m_nAllSeriesAxisIndex != - 1)
-                rOutItemSet.Put( SfxInt32Item(nWhichId, m_nAllSeriesAxisIndex));
             break;
         }
         case SCHATTR_STARTING_ANGLE:
@@ -408,7 +408,7 @@ void SeriesOptionsItemConverter::FillSpecialItem(
         }
         case SCHATTR_MISSING_VALUE_TREATMENT:
         {
-            if( m_aSupportedMissingValueTreatments.getLength() )
+            if( m_aSupportedMissingValueTreatments.hasElements() )
                 rOutItemSet.Put( SfxInt32Item( nWhichId, m_nMissingValueTreatment ));
             break;
         }
@@ -423,12 +423,16 @@ void SeriesOptionsItemConverter::FillSpecialItem(
                 rOutItemSet.Put( SfxBoolItem(nWhichId, m_bIncludeHiddenCells) );
             break;
         }
+        case SCHATTR_HIDE_LEGEND_ENTRY:
+        {
+            rOutItemSet.Put(SfxBoolItem(nWhichId, m_bHideLegendEntry));
+            break;
+        }
         default:
             break;
    }
 }
 
-} //  namespace wrapper
 } //  namespace chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

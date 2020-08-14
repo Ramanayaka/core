@@ -20,19 +20,17 @@
 #ifndef INCLUDED_CANVAS_CANVASTOOLS_HXX
 #define INCLUDED_CANVAS_CANVASTOOLS_HXX
 
-#include <rtl/math.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <osl/diagnose.h>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
+#include <math.h>
 #include <string.h>
 #include <vector>
 #include <limits>
-#include <algorithm>
 
 #include <canvas/canvastoolsdllapi.h>
 
@@ -45,15 +43,15 @@ namespace basegfx
     class B2DPolyPolygon;
 }
 
-namespace com { namespace sun { namespace star { namespace geometry
+namespace com::sun::star::geometry
 {
     struct RealSize2D;
     struct IntegerSize2D;
     struct AffineMatrix2D;
     struct Matrix2D;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
     struct RenderState;
     struct ViewState;
@@ -61,14 +59,17 @@ namespace com { namespace sun { namespace star { namespace rendering
     class  XCanvas;
     struct Texture;
     class  XIntegerBitmapColorSpace;
-    class  XPolyPolygon2D;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace awt
+namespace com::sun::star::awt
 {
     struct Rectangle;
     class  XWindow2;
-} } } }
+}
+
+namespace com::sun::star::beans {
+    struct PropertyValue;
+}
 
 class Color;
 class OutputDevice;
@@ -98,7 +99,7 @@ namespace canvas
 
         /**
          *
-         * Count the number of 1-bits of an n-bit value
+         * Count the number of 1-bits of a n-bit value
          *
          */
 
@@ -329,7 +330,7 @@ namespace canvas
             Use this method for dead-simple bitmap implementations,
             that map all their formats to 8888 RGBA color.
          */
-        CANVASTOOLS_DLLPUBLIC css::uno::Reference< css::rendering::XIntegerBitmapColorSpace> getStdColorSpace();
+        CANVASTOOLS_DLLPUBLIC css::uno::Reference< css::rendering::XIntegerBitmapColorSpace> const & getStdColorSpace();
 
         /** Return a color space for a default RGB integer format
 
@@ -337,7 +338,7 @@ namespace canvas
             that map all their formats to 8888 RGB color (the last byte
             is unused).
          */
-        CANVASTOOLS_DLLPUBLIC css::uno::Reference< css::rendering::XIntegerBitmapColorSpace> getStdColorSpaceWithoutAlpha();
+        CANVASTOOLS_DLLPUBLIC css::uno::Reference< css::rendering::XIntegerBitmapColorSpace> const & getStdColorSpaceWithoutAlpha();
 
         /** Return a memory layout for a default RGBA integer format
 
@@ -346,9 +347,6 @@ namespace canvas
          */
         CANVASTOOLS_DLLPUBLIC css::rendering::IntegerBitmapLayout getStdMemoryLayout(
             const css::geometry::IntegerSize2D& rBitmapSize );
-
-        /// Convert standard 8888 RGBA color to vcl color
-        CANVASTOOLS_DLLPUBLIC ::Color stdIntSequenceToColor( const css::uno::Sequence<sal_Int8>& rColor );
 
         /// Convert standard 8888 RGBA color to vcl color
         CANVASTOOLS_DLLPUBLIC css::uno::Sequence<sal_Int8> colorToStdIntSequence( const ::Color& rColor );
@@ -513,12 +511,12 @@ namespace canvas
                         ValueType()
                     };
 
-                const MapEntry* pRes;
                 const MapEntry* pEnd = mpMap+mnEntries;
-                if( (pRes=::std::lower_bound( mpMap,
+                const MapEntry* pRes = ::std::lower_bound( mpMap,
                                               pEnd,
                                               aSearchKey,
-                                              &mapComparator )) != pEnd )
+                                              &mapComparator );
+                if( pRes != pEnd )
                 {
                     // place to _insert before_ found - is it equal to
                     // the search key?
@@ -551,6 +549,9 @@ namespace canvas
                         const css::rendering::RenderState& renderState,
                         OutputDevice& rOutDev,
                         OutputDevice* p2ndOutDev=nullptr);
+
+        CANVASTOOLS_DLLPUBLIC void extractExtraFontProperties(const css::uno::Sequence<css::beans::PropertyValue>& rExtraFontProperties,
+                        sal_uInt32& rEmphasisMark);
     }
 }
 

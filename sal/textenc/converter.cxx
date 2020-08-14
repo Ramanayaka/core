@@ -17,10 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "rtl/textcvt.h"
-#include "sal/types.h"
+#include <o3tl/safeint.hxx>
+#include <rtl/textcvt.h>
+#include <sal/types.h>
 
 #include "converter.hxx"
 #include "tenchelp.hxx"
@@ -58,7 +59,7 @@ sal::detail::textenc::handleBadInputTextToUnicodeConversion(
         if (*pDestBufPtr != pDestBufEnd)
         {
             *(*pDestBufPtr)++ = RTL_TEXTCVT_BYTE_PRIVATE_START
-                | ((unsigned char) cByte);
+                | static_cast<unsigned char>(cByte);
             return BAD_INPUT_CONTINUE;
         }
         else
@@ -141,7 +142,7 @@ sal::detail::textenc::handleBadInputUnicodeToTextConversion(
         cReplace = '_';
         break;
     }
-    if ((sal_Size) (pDestBufEnd - *pDestBufPtr) > nPrefixLen)
+    if (o3tl::make_unsigned(pDestBufEnd - *pDestBufPtr) > nPrefixLen)
     {
         while (nPrefixLen-- > 0)
             *(*pDestBufPtr)++ = *pPrefix++;

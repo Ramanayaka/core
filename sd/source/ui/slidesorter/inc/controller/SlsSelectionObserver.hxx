@@ -24,14 +24,12 @@
 #include <memory>
 #include <vector>
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter { class SlideSorter; }
 
-class SdDrawDocument;
 class SdrPage;
+class SdPage;
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 /** Observe insertions and deletions of pages between calls to
     StartObservation() and EndObservation().  When the later is called
@@ -56,8 +54,8 @@ public:
     class Context
     {
     public:
-        Context (SlideSorter& rSlideSorter);
-        ~Context();
+        Context (SlideSorter const & rSlideSorter);
+        ~Context() COVERITY_NOEXCEPT_FALSE;
         void Abort();
     private:
         std::shared_ptr<SelectionObserver> mpSelectionObserver;
@@ -65,12 +63,13 @@ public:
 
 private:
     SlideSorter& mrSlideSorter;
-    bool mbIsOvservationActive;
+    bool mbIsObservationActive;
+    bool mbPageEventOccurred;
 
     ::std::vector<const SdPage*> maInsertedPages;
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

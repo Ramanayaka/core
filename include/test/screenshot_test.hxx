@@ -15,7 +15,8 @@
 #include <unotest/macros_test.hxx>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <osl/file.hxx>
-#include <vcl/dialog.hxx>
+#include <vcl/vclptr.hxx>
+#include <vcl/weld.hxx>
 #include <map>
 
 class VclAbstractDialog;
@@ -24,20 +25,24 @@ typedef std::map< OString, sal_uInt32 > mapType;
 class OOO_DLLPUBLIC_TEST ScreenshotTest : public test::BootstrapFixture, public unotest::MacrosTest
 {
 private:
-    /// the target directory for screenshots
-    OUString    m_aScreenshotDirectory;
-
     /// The current UI language
     OUString    maCurrentLanguage;
 
     /// the set of known dialogs and their ID for usage in createDialogByID
     mapType     maKnownDialogs;
 
+    /// parent for non-dialog buildables
+    weld::GenericDialogController maParent;
+    std::unique_ptr<weld::Container> mxParentWidget;
+
 private:
     /// helpers
-    void implSaveScreenshot(const Bitmap& rScreenshot, const OString& rScreenshotId);
-    void saveScreenshot(VclAbstractDialog& rDialog);
-    void saveScreenshot(Dialog& rDialog);
+    void implSaveScreenshot(const BitmapEx& rScreenshot, const OString& rScreenshotId);
+    void saveScreenshot(VclAbstractDialog const & rDialog);
+    void saveScreenshot(weld::Window& rDialog);
+
+    /// helper method to create and dump a dialog based on Builder contents.
+    void dumpDialogToPath(weld::Builder& rDialog);
 
     /// helper method to populate maKnownDialogs, called in setUp(). Needs to be
     /// written and has to add entries to maKnownDialogs
@@ -61,9 +66,6 @@ public:
     /// version for AbstractDialogs, the ones created in AbstractDialogFactories
     void dumpDialogToPath(VclAbstractDialog& rDialog);
 
-    /// version for pure vcl-based dialogs
-    void dumpDialogToPath(Dialog& rDialog);
-
     /// fallback version for dialogs for which only the UXMLDescription is known.
     /// This should be used with care - no active layouting will be done, only the
     /// VclBuilder will be activated for layouting. Result can thus vary drastically
@@ -78,7 +80,7 @@ public:
     /// as known dialog first. If not successful, it will then use the
     /// fallback version to dump the dialog.
     /// The syntax of the input file is as follows:
-    /// - emty lines are allowed
+    /// - empty lines are allowed
     /// - lines starting with '#' are treated as comment
     /// - all other lines should contain a *.ui filename in the same
     ///   notation as in the dialog constructors(see code)

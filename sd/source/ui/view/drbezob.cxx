@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "BezierObjectBar.hxx"
-#include <sfx2/app.hxx>
+#include <BezierObjectBar.hxx>
 #include <sfx2/msg.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/objface.hxx>
@@ -27,27 +26,23 @@
 #include <svl/eitem.hxx>
 #include <sfx2/request.hxx>
 #include <svx/svdopath.hxx>
-#include <svl/aeitem.hxx>
 #include <svx/svdundo.hxx>
 #include <sfx2/dispatch.hxx>
 
-#include "sdresid.hxx"
+#include <sdresid.hxx>
 
-#include "res_bmp.hrc"
-#include "glob.hrc"
-#include "strings.hrc"
 
-#include "DrawDocShell.hxx"
-#include "ViewShell.hxx"
-#include "Window.hxx"
-#include "drawview.hxx"
-#include "drawdoc.hxx"
-#include "fusel.hxx"
-#include "fuconbez.hxx"
+#include <strings.hrc>
+
+#include <DrawDocShell.hxx>
+#include <ViewShell.hxx>
+#include <drawdoc.hxx>
+#include <fusel.hxx>
+#include <fuconbez.hxx>
 
 using namespace sd;
-#define BezierObjectBar
-#include "sdslots.hxx"
+#define ShellClass_BezierObjectBar
+#include <sdslots.hxx>
 
 namespace sd {
 

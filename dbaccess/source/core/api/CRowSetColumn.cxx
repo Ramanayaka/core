@@ -18,15 +18,9 @@
  */
 
 
-#include "dbastrings.hrc"
-#include "apitools.hxx"
+#include <stringconstants.hxx>
+#include <apitools.hxx>
 #include "CRowSetColumn.hxx"
-
-#include <com/sun/star/sdb/XColumn.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-
-#include <comphelper/types.hxx>
-#include <cppuhelper/typeprovider.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdbc;

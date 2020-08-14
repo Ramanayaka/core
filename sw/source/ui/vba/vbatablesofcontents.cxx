@@ -19,12 +19,15 @@
 #include "vbatablesofcontents.hxx"
 #include "vbatableofcontents.hxx"
 #include "vbarange.hxx"
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/text/XDocumentIndexesSupplier.hpp>
 #include <cppuhelper/implbase.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
+
+namespace {
 
 class TablesOfContentsEnumWrapper : public EnumerationHelper_BASE
 {
@@ -85,7 +88,7 @@ public:
         if ( Index < 0 || Index >= getCount() )
             throw lang::IndexOutOfBoundsException();
 
-        uno::Reference< text::XDocumentIndex > xToc( maToc[Index], uno::UNO_QUERY_THROW );
+        uno::Reference< text::XDocumentIndex > xToc( maToc[Index], uno::UNO_SET_THROW );
         return uno::makeAny( uno::Reference< word::XTableOfContents >( new SwVbaTableOfContents( mxParent, mxContext, mxTextDocument, xToc ) ) );
     }
     virtual uno::Type SAL_CALL getElementType(  ) override
@@ -102,6 +105,8 @@ public:
         return new TablesOfContentsEnumWrapper( this );
     }
 };
+
+}
 
 SwVbaTablesOfContents::SwVbaTablesOfContents( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< text::XTextDocument >& xDoc ) : SwVbaTablesOfContents_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >( new TableOfContentsCollectionHelper( xParent, xContext, xDoc ) ) ),  mxTextDocument( xDoc )
 {
@@ -164,18 +169,16 @@ SwVbaTablesOfContents::createCollectionObject( const uno::Any& aSource )
 OUString
 SwVbaTablesOfContents::getServiceImplName()
 {
-    return OUString("SwVbaTablesOfContents");
+    return "SwVbaTablesOfContents";
 }
 
 uno::Sequence<OUString>
 SwVbaTablesOfContents::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.TablesOfContents";
-    }
+        "ooo.vba.word.TablesOfContents"
+    };
     return sNames;
 }
 

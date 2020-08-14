@@ -18,38 +18,30 @@
  */
 
 #include <sfx2/objface.hxx>
-#include <vcl/timer.hxx>
-#include <vcl/field.hxx>
-#include <vcl/fixed.hxx>
 #include <vcl/help.hxx>
 #include <vcl/commandevent.hxx>
-#include <vcl/button.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/syswin.hxx>
+#include <vcl/weld.hxx>
 
+#include <rtl/ustrbuf.hxx>
 #include <svl/whiter.hxx>
 #include <svl/stritem.hxx>
 #include <svl/eitem.hxx>
 #include <sfx2/printer.hxx>
-#include <sfx2/progress.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/dispatch.hxx>
-#include <vcl/msgbox.hxx>
-#include <svx/stddlg.hxx>
 #include <editeng/paperinf.hxx>
-#include <svl/srchitem.hxx>
 #include <svx/svdview.hxx>
-#include <svx/dlgutil.hxx>
 #include <svx/zoomslideritem.hxx>
-#include <svx/svxids.hrc>
+#include <tools/svborder.hxx>
 
-#include <swwait.hxx>
 #include <globdoc.hxx>
 #include <wdocsh.hxx>
 #include <pvprtdat.hxx>
 #include <swmodule.hxx>
-#include <modcfg.hxx>
 #include <wrtsh.hxx>
 #include <docsh.hxx>
 #include <viewopt.hxx>
@@ -57,27 +49,25 @@
 #include <IDocumentDeviceAccess.hxx>
 #include <pview.hxx>
 #include <view.hxx>
-#include <textsh.hxx>
 #include <scroll.hxx>
 #include <prtopt.hxx>
-#include <docstat.hxx>
 #include <usrpref.hxx>
-#include <viewfunc.hxx>
+#include "viewfunc.hxx"
 
-#include <helpid.h>
+#include <helpids.h>
 #include <cmdid.h>
-#include <globals.hrc>
-#include <view.hrc>
+#include <strings.hrc>
 
-#define SwPagePreview
+#define ShellClass_SwPagePreview
 #include <sfx2/msg.hxx>
 #include <swslots.hxx>
 #include <pagepreviewlayout.hxx>
 
 #include <svx/svxdlg.hxx>
-#include <svx/dialogs.hrc>
 
 #include <memory>
+#include <vcl/EnumContext.hxx>
+#include <vcl/notebookbar.hxx>
 
 using namespace ::com::sun::star;
 SFX_IMPL_NAMED_VIEWFACTORY(SwPagePreview, "PrintPreview")
@@ -139,47 +129,35 @@ static void lcl_InvalidateZoomSlots(SfxBindings& rBindings)
     rBindings.Invalidate( aInval );
 }
 
-// At first the zoom dialog
-class SwPreviewZoomDlg : public SvxStandardDialog
-{
-    VclPtr<NumericField> m_pRowEdit;
-    VclPtr<NumericField> m_pColEdit;
+namespace {
 
-    virtual void  Apply() override;
+// At first the zoom dialog
+class SwPreviewZoomDlg : public weld::GenericDialogController
+{
+    SwPagePreviewWin& m_rParent;
+    std::unique_ptr<weld::SpinButton> m_xRowEdit;
+    std::unique_ptr<weld::SpinButton> m_xColEdit;
 
 public:
-    explicit SwPreviewZoomDlg( SwPagePreviewWin& rParent );
-    virtual ~SwPreviewZoomDlg() override;
-    virtual void dispose() override;
+    SwPreviewZoomDlg(SwPagePreviewWin& rParent)
+        : GenericDialogController(rParent.GetFrameWeld(), "modules/swriter/ui/previewzoomdialog.ui", "PreviewZoomDialog")
+        , m_rParent(rParent)
+        , m_xRowEdit(m_xBuilder->weld_spin_button("rows"))
+        , m_xColEdit(m_xBuilder->weld_spin_button("cols"))
+    {
+        m_xRowEdit->set_value(rParent.GetRow());
+        m_xColEdit->set_value(rParent.GetCol());
+    }
+
+    void execute()
+    {
+        if (run() == RET_OK)
+        {
+            m_rParent.CalcWish(sal_uInt8(m_xRowEdit->get_value()), sal_uInt8(m_xColEdit->get_value()));
+        }
+    }
 };
 
-SwPreviewZoomDlg::SwPreviewZoomDlg( SwPagePreviewWin& rParent )
-    : SvxStandardDialog(&rParent, "PreviewZoomDialog", "modules/swriter/ui/previewzoomdialog.ui")
-{
-    get(m_pRowEdit, "rows");
-    get(m_pColEdit, "cols");
-
-    m_pRowEdit->SetValue( rParent.GetRow() );
-    m_pColEdit->SetValue( rParent.GetCol() );
-}
-
-SwPreviewZoomDlg::~SwPreviewZoomDlg()
-{
-    disposeOnce();
-}
-
-void SwPreviewZoomDlg::dispose()
-{
-    m_pRowEdit.clear();
-    m_pColEdit.clear();
-    SvxStandardDialog::dispose();
-}
-
-void  SwPreviewZoomDlg::Apply()
-{
-    static_cast<SwPagePreviewWin*>(GetParent())->CalcWish(
-                sal_uInt8(m_pRowEdit->GetValue()),
-                sal_uInt8(m_pColEdit->GetValue()) );
 }
 
 // all for SwPagePreviewWin
@@ -423,9 +401,9 @@ OUString SwPagePreviewWin::GetStatusStr( sal_uInt16 nPageCnt ) const
     const sal_uInt16 nVirtPageNum = mpPgPreviewLayout->GetVirtPageNumByPageNum( nPageNum );
     if( nVirtPageNum && nVirtPageNum != nPageNum )
     {
-        aStatusStr.append( OUString::number(nVirtPageNum) + " " );
+        aStatusStr.append( OUString::number(nVirtPageNum) ).append( " " );
     }
-    aStatusStr.append( OUString::number(nPageNum) + " / " + OUString::number(nPageCnt) );
+    aStatusStr.append( OUString::number(nPageNum) ).append( " / " ).append( OUString::number(nPageCnt) );
     return aStatusStr.makeStringAndClear();
 }
 
@@ -473,7 +451,7 @@ void SwPagePreviewWin::Command( const CommandEvent& rCEvt )
                 const CommandWheelData aDataNew(pData->GetDelta(),pData->GetNotchDelta(),COMMAND_WHEEL_PAGESCROLL,
                     pData->GetMode(),pData->GetModifier(),pData->IsHorz(), pData->IsDeltaPixel());
                 const CommandEvent aEvent( rCEvt.GetMousePosPixel(),rCEvt.GetCommand(),rCEvt.IsMouseEvent(),&aDataNew);
-                    bCallBase = !mrView.HandleWheelCommands( aEvent );
+                bCallBase = !mrView.HandleWheelCommands( aEvent );
             }
             else
                 bCallBase = !mrView.HandleWheelCommands( rCEvt );
@@ -490,45 +468,45 @@ void SwPagePreviewWin::Command( const CommandEvent& rCEvt )
 void SwPagePreviewWin::MouseButtonDown( const MouseEvent& rMEvt )
 {
     // consider single-click to set selected page
-    if( MOUSE_LEFT == ( rMEvt.GetModifier() + rMEvt.GetButtons() ) )
-    {
-        Point aPreviewPos( PixelToLogic( rMEvt.GetPosPixel() ) );
-        Point aDocPos;
-        bool bPosInEmptyPage;
-        sal_uInt16 nNewSelectedPage;
-        bool bIsDocPos =
-            mpPgPreviewLayout->IsPreviewPosInDocPreviewPage( aPreviewPos,
-                                    aDocPos, bPosInEmptyPage, nNewSelectedPage );
-        if ( bIsDocPos && rMEvt.GetClicks() == 2 )
-        {
-            // close page preview, set new cursor position and switch to
-            // normal view.
-            OUString sNewCursorPos = OUString::number( aDocPos.X() ) + ";" +
-                                   OUString::number( aDocPos.Y() ) + ";";
-            mrView.SetNewCursorPos( sNewCursorPos );
+    if( MOUSE_LEFT != ( rMEvt.GetModifier() + rMEvt.GetButtons() ) )
+        return;
 
-            SfxViewFrame *pTmpFrame = mrView.GetViewFrame();
-            pTmpFrame->GetBindings().Execute( SID_VIEWSHELL0, nullptr,
-                                                    SfxCallMode::ASYNCHRON );
-        }
-        else if ( bIsDocPos || bPosInEmptyPage )
+    Point aPreviewPos( PixelToLogic( rMEvt.GetPosPixel() ) );
+    Point aDocPos;
+    bool bPosInEmptyPage;
+    sal_uInt16 nNewSelectedPage;
+    bool bIsDocPos =
+        mpPgPreviewLayout->IsPreviewPosInDocPreviewPage( aPreviewPos,
+                                aDocPos, bPosInEmptyPage, nNewSelectedPage );
+    if ( bIsDocPos && rMEvt.GetClicks() == 2 )
+    {
+        // close page preview, set new cursor position and switch to
+        // normal view.
+        OUString sNewCursorPos = OUString::number( aDocPos.X() ) + ";" +
+                               OUString::number( aDocPos.Y() ) + ";";
+        mrView.SetNewCursorPos( sNewCursorPos );
+
+        SfxViewFrame *pTmpFrame = mrView.GetViewFrame();
+        pTmpFrame->GetBindings().Execute( SID_VIEWSHELL0, nullptr,
+                                                SfxCallMode::ASYNCHRON );
+    }
+    else if ( bIsDocPos || bPosInEmptyPage )
+    {
+        // show clicked page as the selected one
+        mpPgPreviewLayout->MarkNewSelectedPage( nNewSelectedPage );
+        GetViewShell()->ShowPreviewSelection( nNewSelectedPage );
+        // adjust position at vertical scrollbar.
+        if ( mpPgPreviewLayout->DoesPreviewLayoutRowsFitIntoWindow() )
         {
-            // show clicked page as the selected one
-            mpPgPreviewLayout->MarkNewSelectedPage( nNewSelectedPage );
-            GetViewShell()->ShowPreviewSelection( nNewSelectedPage );
-            // adjust position at vertical scrollbar.
-            if ( mpPgPreviewLayout->DoesPreviewLayoutRowsFitIntoWindow() )
-            {
-                mrView.SetVScrollbarThumbPos( nNewSelectedPage );
-            }
-            // invalidate page status.
-            static sal_uInt16 aInval[] =
-            {
-                FN_STAT_PAGE, 0
-            };
-            SfxBindings& rBindings = mrView.GetViewFrame()->GetBindings();
-            rBindings.Invalidate( aInval );
+            mrView.SetVScrollbarThumbPos( nNewSelectedPage );
         }
+        // invalidate page status.
+        static sal_uInt16 aInval[] =
+        {
+            FN_STAT_PAGE, 0
+        };
+        SfxBindings& rBindings = mrView.GetViewFrame()->GetBindings();
+        rBindings.Invalidate( aInval );
     }
 }
 
@@ -549,28 +527,19 @@ void SwPagePreviewWin::SetPagePreview( sal_uInt8 nRow, sal_uInt8 nCol )
     }
 }
 
-/** get selected page in document preview
-
-    @author OD
-*/
+/** get selected page in document preview */
 sal_uInt16 SwPagePreviewWin::SelectedPage() const
 {
     return mpPgPreviewLayout->SelectedPage();
 }
 
-/** set selected page number in document preview
-
-    @author OD
-*/
+/** set selected page number in document preview */
 void SwPagePreviewWin::SetSelectedPage( sal_uInt16 _nSelectedPageNum )
 {
     mpPgPreviewLayout->SetSelectedPage( _nSelectedPageNum );
 }
 
-/** method to enable/disable book preview
-
-    @author OD
-*/
+/** method to enable/disable book preview */
 bool SwPagePreviewWin::SetBookPreviewMode( const bool _bBookPreview )
 {
     return mpPgPreviewLayout->SetBookPreviewMode( _bBookPreview,
@@ -608,10 +577,7 @@ void SwPagePreviewWin::DataChanged( const DataChangedEvent& rDCEvt )
     }
 }
 
-/** help method to execute SfxRequest FN_PAGEUP and FN_PAGEDOWN
-
-    @author OD
-*/
+/** help method to execute SfxRequest FN_PAGEUP and FN_PAGEDOWN */
 void SwPagePreview::ExecPgUpAndPgDown( const bool  _bPgUp,
                                         SfxRequest* _pReq )
 {
@@ -687,9 +653,8 @@ void SwPagePreview::ExecPgUpAndPgDown( const bool  _bPgUp,
 // Then all for the SwPagePreview
 void  SwPagePreview::Execute( SfxRequest &rReq )
 {
-    int eMvMode;
+    int eMvMode = SwPagePreviewWin::MV_DOC_END;
     sal_uInt8 nRow = 1;
-    bool bRetVal = false;
     bool bRefresh = true;
 
     switch(rReq.GetSlot())
@@ -704,16 +669,16 @@ void  SwPagePreview::Execute( SfxRequest &rReq )
             const SfxItemSet *pArgs = rReq.GetArgs();
             if( pArgs && pArgs->Count() >= 2 )
             {
-                sal_uInt8 nCols = (sal_uInt8)static_cast<const SfxUInt16Item &>(pArgs->Get(
-                                        SID_ATTR_TABLE_COLUMN)).GetValue();
-                sal_uInt8 nRows = (sal_uInt8)static_cast<const SfxUInt16Item &>(pArgs->Get(
-                                        SID_ATTR_TABLE_ROW)).GetValue();
+                sal_uInt8 nCols = static_cast<sal_uInt8>(pArgs->Get(SID_ATTR_TABLE_COLUMN).GetValue());
+                sal_uInt8 nRows = static_cast<sal_uInt8>(pArgs->Get(SID_ATTR_TABLE_ROW).GetValue());
                 m_pViewWin->CalcWish( nRows, nCols );
 
             }
             else
-                ScopedVclPtrInstance<SwPreviewZoomDlg>( *m_pViewWin )->Execute();
-
+            {
+                SwPreviewZoomDlg aDlg(*m_pViewWin);
+                aDlg.execute();
+            }
         }
         break;
         case FN_SHOW_BOOKVIEW:
@@ -773,12 +738,7 @@ void  SwPagePreview::Execute( SfxRequest &rReq )
                 aCoreSet.Put( aZoom );
 
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                if(pFact)
-                {
-                    pDlg.disposeAndReset(pFact->CreateSvxZoomDialog(&GetViewFrame()->GetWindow(), aCoreSet));
-                    OSL_ENSURE(pDlg, "Dialog creation failed!");
-                }
-
+                pDlg.disposeAndReset(pFact->CreateSvxZoomDialog(GetViewFrame()->GetWindow().GetFrameWeld(), aCoreSet));
                 pDlg->SetLimits( MINZOOM, MAXZOOM );
 
                 if( pDlg->Execute() != RET_CANCEL )
@@ -897,18 +857,15 @@ void  SwPagePreview::Execute( SfxRequest &rReq )
         break;
         case FN_START_OF_LINE:
         case FN_START_OF_DOCUMENT:
-            m_pViewWin->SetSelectedPage( 1 );
-            eMvMode = SwPagePreviewWin::MV_DOC_STT; bRetVal = true; goto MOVEPAGE;
+            eMvMode = SwPagePreviewWin::MV_DOC_STT;
+            [[fallthrough]];
         case FN_END_OF_LINE:
         case FN_END_OF_DOCUMENT:
-            m_pViewWin->SetSelectedPage( mnPageCount );
-            eMvMode = SwPagePreviewWin::MV_DOC_END; bRetVal = true; goto MOVEPAGE;
-MOVEPAGE:
+            m_pViewWin->SetSelectedPage(eMvMode == SwPagePreviewWin::MV_DOC_STT ? 1 : mnPageCount);
             {
                 bool bRet = ChgPage( eMvMode );
-                // return value fuer Basic
-                if(bRetVal)
-                    rReq.SetReturnValue(SfxBoolItem(rReq.GetSlot(), !bRet));
+                // return value for Basic
+                rReq.SetReturnValue(SfxBoolItem(rReq.GetSlot(), !bRet));
 
                 bRefresh = bRet;
                 rReq.Done();
@@ -1147,6 +1104,7 @@ void SwPagePreview::Init()
     aOpt.SetSoftHyph( false );
     aOpt.SetFieldName( false );
     aOpt.SetPostIts( false );
+    aOpt.SetShowBookmarks( false );
     aOpt.SetShowHiddenChar( false );
     aOpt.SetShowHiddenField( false );
     aOpt.SetShowHiddenPara( false );
@@ -1160,7 +1118,7 @@ void SwPagePreview::Init()
     aOpt.SetHideWhitespaceMode( false );
 
     GetViewShell()->ApplyViewOptions( aOpt );
-    GetViewShell()->ApplyAccessiblityOptions(SW_MOD()->GetAccessibilityOptions());
+    GetViewShell()->ApplyAccessibilityOptions(SW_MOD()->GetAccessibilityOptions());
 
     // adjust view shell option to the same as for print
     SwPrintData const aPrintOptions = *SW_MOD()->GetPrtOptions(false);
@@ -1175,7 +1133,7 @@ void SwPagePreview::Init()
 
 SwPagePreview::SwPagePreview(SfxViewFrame *pViewFrame, SfxViewShell* pOldSh):
     SfxViewShell( pViewFrame, SWVIEWFLAGS ),
-    m_pViewWin( VclPtr<SwPagePreviewWin>::Create(&(GetViewFrame())->GetWindow(), *this ) ),
+    m_pViewWin( VclPtr<SwPagePreviewWin>::Create(&GetViewFrame()->GetWindow(), *this ) ),
     m_nNewPage(USHRT_MAX),
     m_sPageStr(SwResId(STR_PAGE)),
     m_pHScrollbar(nullptr),
@@ -1189,6 +1147,15 @@ SwPagePreview::SwPagePreview(SfxViewFrame *pViewFrame, SfxViewShell* pOldSh):
     SetWindow( m_pViewWin );
     CreateScrollbar( true );
     CreateScrollbar( false );
+
+    //notify notebookbar change in context
+    SfxShell::SetContextBroadcasterEnabled(true);
+    SfxShell::SetContextName(vcl::EnumContext::GetContextName(vcl::EnumContext::Context::Printpreview));
+    SfxShell::BroadcastContextForActivation(true);
+    //removelisteners for notebookbar
+    if (SfxViewFrame* pCurrent = SfxViewFrame::Current())
+        if (auto& pBar = pCurrent->GetWindow().GetSystemWindow()->GetNotebookBar())
+            pBar->ControlListenerForCurrentController(false);
 
     SfxObjectShell* pObjShell = pViewFrame->GetObjectShell();
     if ( !pOldSh )
@@ -1254,7 +1221,9 @@ SwPagePreview::~SwPagePreview()
     delete pVShell;
 
     m_pViewWin.disposeAndClear();
-
+    if (SfxViewFrame* pCurrent = SfxViewFrame::Current())
+        if (auto& pBar = pCurrent->GetWindow().GetSystemWindow()->GetNotebookBar())
+            pBar->ControlListenerForCurrentController(true); // start listening now
     m_pScrollFill.disposeAndClear();
     m_pHScrollbar.disposeAndClear();
     m_pVScrollbar.disposeAndClear();
@@ -1270,7 +1239,7 @@ void SwPagePreview::CreateScrollbar( bool bHori )
     vcl::Window *pMDI = &GetViewFrame()->GetWindow();
     VclPtr<SwScrollbar>& ppScrollbar = bHori ? m_pHScrollbar : m_pVScrollbar;
 
-    assert(!ppScrollbar.get()); //check beforehand!
+    assert(!ppScrollbar); //check beforehand!
 
     ppScrollbar = VclPtr<SwScrollbar>::Create( pMDI, bHori );
 
@@ -1354,7 +1323,7 @@ void SwPagePreview::OuterResizePixel( const Point &rOfst, const Size &rSize )
     // Call of the DocSzChgd-Method of the scrollbars is necessary,
     // because from the maximum scroll range half the height of the
     // VisArea is always deducted.
-    if ( m_pVScrollbar && aTmpSize.Width() > 0 && aTmpSize.Height() > 0 )
+    if ( m_pVScrollbar && !aTmpSize.IsEmpty() )
     {
         ScrollDocSzChg();
     }
@@ -1377,17 +1346,17 @@ void SwPagePreview::SetVisArea( const tools::Rectangle &rRect )
 
     if(aLR.Top() < 0)
     {
-        aLR.Bottom() += std::abs(aLR.Top());
-        aLR.Top() = 0;
+        aLR.AdjustBottom(std::abs(aLR.Top()) );
+        aLR.SetTop( 0 );
     }
 
     if(aLR.Left() < 0)
     {
-        aLR.Right() += std::abs(aLR.Left());
-        aLR.Left() = 0;
+        aLR.AdjustRight(std::abs(aLR.Left()) );
+        aLR.SetLeft( 0 );
     }
-    if(aLR.Right() < 0) aLR.Right() = 0;
-    if(aLR.Bottom() < 0) aLR.Bottom() = 0;
+    if(aLR.Right() < 0) aLR.SetRight( 0 );
+    if(aLR.Bottom() < 0) aLR.SetBottom( 0 );
     if(aLR == m_aVisArea ||
         // Ignore empty rectangle
         ( 0 == aLR.Bottom() - aLR.Top() && 0 == aLR.Right() - aLR.Left() ) )
@@ -1403,7 +1372,7 @@ void SwPagePreview::SetVisArea( const tools::Rectangle &rRect )
     // because then we do not really paint but the rectangles are just
     // bookmarked (in document coordinates).
     if( GetViewShell()->ActionPend() )
-        m_pViewWin->Update();
+        m_pViewWin->PaintImmediately();
 
     // Set at View-Win the current size
     m_aVisArea = aLR;
@@ -1431,12 +1400,12 @@ IMPL_LINK( SwPagePreview, ScrollHdl, ScrollBar *, p, void )
         sStateStr += OUString::number( nThmbPos );
         Point aPos = pScrollbar->GetParent()->OutputToScreenPixel(
                                         pScrollbar->GetPosPixel());
-        aPos.Y() = pScrollbar->OutputToScreenPixel(pScrollbar->GetPointerPosPixel()).Y();
+        aPos.setY( pScrollbar->OutputToScreenPixel(pScrollbar->GetPointerPosPixel()).Y() );
         tools::Rectangle aRect;
-        aRect.Left()    = aPos.X() -8;
-        aRect.Right()   = aRect.Left();
-        aRect.Top()     = aPos.Y();
-        aRect.Bottom()  = aRect.Top();
+        aRect.SetLeft( aPos.X() -8 );
+        aRect.SetRight( aRect.Left() );
+        aRect.SetTop( aPos.Y() );
+        aRect.SetBottom( aRect.Top() );
 
         Help::ShowQuickHelp(pScrollbar, aRect, sStateStr,
                 QuickHelpFlags::Right|QuickHelpFlags::VCenter);
@@ -1462,7 +1431,7 @@ IMPL_LINK( SwPagePreview, EndScrollHdl, ScrollBar *, p, void )
         if ( GetViewShell()->PagePreviewLayout()->DoesPreviewLayoutRowsFitIntoWindow() )
         {
             // Scroll how many pages ??
-            const sal_uInt16 nThmbPos = (sal_uInt16)pScrollbar->GetThumbPos();
+            const sal_uInt16 nThmbPos = static_cast<sal_uInt16>(pScrollbar->GetThumbPos());
             // adjust to new preview functionality
             if( nThmbPos != m_pViewWin->SelectedPage() )
             {
@@ -1703,12 +1672,12 @@ sal_uInt16  SwPagePreview::SetPrinter( SfxPrinter *pNew, SfxPrinterChangeFlags n
             SID_RULER_BORDERS, SID_RULER_PAGE_POS, 0
         };
 #if OSL_DEBUG_LEVEL > 0
-    {
-        const sal_uInt16* pPtr = aInval + 1;
-        do {
-            OSL_ENSURE( *(pPtr - 1) < *pPtr, "wrong sorting!" );
-        } while( *++pPtr );
-    }
+        {
+            const sal_uInt16* pPtr = aInval + 1;
+            do {
+                OSL_ENSURE( *(pPtr - 1) < *pPtr, "wrong sorting!" );
+            } while( *++pPtr );
+        }
 #endif
 
         GetViewFrame()->GetBindings().Invalidate(aInval);
@@ -1722,10 +1691,10 @@ bool SwPagePreview::HasPrintOptionsPage() const
     return true;
 }
 
-VclPtr<SfxTabPage> SwPagePreview::CreatePrintOptionsPage( vcl::Window *pParent,
-                                                          const SfxItemSet &rOptions )
+std::unique_ptr<SfxTabPage> SwPagePreview::CreatePrintOptionsPage(weld::Container* pPage, weld::DialogController* pController,
+                                                         const SfxItemSet &rOptions)
 {
-    return ::CreatePrintOptionsPage( pParent, rOptions, !m_bNormalPrint );
+    return ::CreatePrintOptionsPage(pPage, pController, rOptions, !m_bNormalPrint);
 }
 
 void SwPagePreviewWin::SetViewShell( SwViewShell* pShell )
@@ -1854,9 +1823,9 @@ uno::Reference< css::accessibility::XAccessible >
     return GetAccessible( false );
 }
 
-void SwPagePreview::ApplyAccessiblityOptions(SvtAccessibilityOptions& rAccessibilityOptions)
+void SwPagePreview::ApplyAccessibilityOptions(SvtAccessibilityOptions const & rAccessibilityOptions)
 {
-    GetViewShell()->ApplyAccessiblityOptions(rAccessibilityOptions);
+    GetViewShell()->ApplyAccessibilityOptions(rAccessibilityOptions);
 }
 
 void SwPagePreview::ShowHScrollbar(bool bShow)
@@ -1907,10 +1876,7 @@ void SwPagePreview::SetZoom(SvxZoomType eType, sal_uInt16 nFactor)
     }
 }
 
-/** adjust position of vertical scrollbar
-
-    @author OD
-*/
+/** adjust position of vertical scrollbar */
 void SwPagePreview::SetVScrollbarThumbPos( const sal_uInt16 _nNewThumbPos )
 {
     if ( m_pVScrollbar )

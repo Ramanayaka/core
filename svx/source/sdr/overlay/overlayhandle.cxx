@@ -19,16 +19,8 @@
 
 #include <sdr/overlay/overlayhandle.hxx>
 #include <sdr/overlay/overlaytools.hxx>
-#include <tools/poly.hxx>
-#include <vcl/outdev.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <svx/sdr/overlay/overlaymanager.hxx>
-#include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
 
-namespace sdr { namespace overlay {
+namespace sdr::overlay {
 
 using namespace drawinglayer;
 using namespace basegfx;
@@ -46,8 +38,8 @@ primitive2d::Primitive2DContainer OverlayHandle::createOverlayObjectPrimitive2DS
 
 OverlayHandle::OverlayHandle(const B2DPoint& rBasePos,
                              const B2DSize& rSize,
-                             Color& rStrokeColor,
-                             Color& rFillColor)
+                             Color const & rStrokeColor,
+                             Color const & rFillColor)
     : OverlayObjectWithBasePosition(rBasePos, rFillColor)
     , maSize(rSize)
     , maStrokeColor(rStrokeColor)
@@ -58,6 +50,6 @@ OverlayHandle::~OverlayHandle()
 {
 }
 
-}} // end of namespace sdr::overlay
+} // end of namespace sdr::overlay
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

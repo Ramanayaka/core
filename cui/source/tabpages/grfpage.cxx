@@ -20,9 +20,6 @@
 #include <memory>
 #include <svl/eitem.hxx>
 #include <svl/stritem.hxx>
-#include <sfx2/app.hxx>
-#include <sfx2/module.hxx>
-#include <sfx2/sfxsids.hrc>
 #include <dialmgr.hxx>
 #include <svx/dlgutil.hxx>
 #include <editeng/sizeitem.hxx>
@@ -30,131 +27,91 @@
 #include <grfpage.hxx>
 #include <svx/grfcrop.hxx>
 #include <rtl/ustring.hxx>
-#include <cuires.hrc>
+#include <tools/debug.hxx>
 #include <tools/fract.hxx>
-#include <svx/dialogs.hrc>
-#include <vcl/builderfactory.hxx>
+#include <svx/svxids.hrc>
+#include <strings.hrc>
+#include <vcl/fieldvalues.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
+#include <svtools/unitconv.hxx>
+#include <svtools/optionsdrawinglayer.hxx>
+#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <basegfx/polygon/b2dpolygontools.hxx>
 
 #define CM_1_TO_TWIP        567
 #define TWIP_TO_INCH        1440
 
 
-static inline long lcl_GetValue( MetricField& rMetric, FieldUnit eUnit )
+static int lcl_GetValue(const weld::MetricSpinButton& rMetric, FieldUnit eUnit)
 {
-    return static_cast<long>(rMetric.Denormalize( rMetric.GetValue( eUnit )));
+    return rMetric.denormalize(rMetric.get_value(eUnit));
 }
 
 /*--------------------------------------------------------------------
     description: crop graphic
  --------------------------------------------------------------------*/
 
-SvxGrfCropPage::SvxGrfCropPage ( vcl::Window *pParent, const SfxItemSet &rSet )
-    : SfxTabPage(pParent, "CropPage", "cui/ui/croppage.ui", &rSet)
-    , pLastCropField(nullptr)
+SvxGrfCropPage::SvxGrfCropPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet)
+    : SfxTabPage(pPage, pController, "cui/ui/croppage.ui", "CropPage", &rSet)
     , nOldWidth(0)
     , nOldHeight(0)
-    , bReset(false)
     , bSetOrigSize(false)
+    , m_xCropFrame(m_xBuilder->weld_widget("cropframe"))
+    , m_xZoomConstRB(m_xBuilder->weld_radio_button("keepscale"))
+    , m_xSizeConstRB(m_xBuilder->weld_radio_button("keepsize"))
+    , m_xLeftMF(m_xBuilder->weld_metric_spin_button("left", FieldUnit::CM))
+    , m_xRightMF(m_xBuilder->weld_metric_spin_button("right", FieldUnit::CM))
+    , m_xTopMF(m_xBuilder->weld_metric_spin_button("top", FieldUnit::CM))
+    , m_xBottomMF(m_xBuilder->weld_metric_spin_button("bottom", FieldUnit::CM))
+    , m_xScaleFrame(m_xBuilder->weld_widget("scaleframe"))
+    , m_xWidthZoomMF(m_xBuilder->weld_metric_spin_button("widthzoom", FieldUnit::PERCENT))
+    , m_xHeightZoomMF(m_xBuilder->weld_metric_spin_button("heightzoom", FieldUnit::PERCENT))
+    , m_xSizeFrame(m_xBuilder->weld_widget("sizeframe"))
+    , m_xWidthMF(m_xBuilder->weld_metric_spin_button("width", FieldUnit::CM))
+    , m_xHeightMF(m_xBuilder->weld_metric_spin_button("height", FieldUnit::CM))
+    , m_xOrigSizeGrid(m_xBuilder->weld_widget("origsizegrid"))
+    , m_xOrigSizeFT(m_xBuilder->weld_label("origsizeft"))
+    , m_xOrigSizePB(m_xBuilder->weld_button("origsize"))
+    , m_xExampleWN(new weld::CustomWeld(*m_xBuilder, "preview", m_aExampleWN))
 {
-    get(m_pCropFrame, "cropframe");
-    get(m_pScaleFrame, "scaleframe");
-    get(m_pSizeFrame, "sizeframe");
-    get(m_pOrigSizeGrid, "origsizegrid");
-    get(m_pZoomConstRB, "keepscale");
-    get(m_pSizeConstRB, "keepsize");
-    get(m_pOrigSizeFT, "origsizeft");
-    get(m_pOrigSizePB, "origsize");
-    get(m_pLeftMF, "left");
-    get(m_pRightMF, "right");
-    get(m_pTopMF, "top");
-    get(m_pBottomMF, "bottom");
-    get(m_pWidthZoomMF, "widthzoom");
-    get(m_pHeightZoomMF, "heightzoom");
-    get(m_pWidthMF, "width");
-    get(m_pHeightMF, "height");
-    get(m_pExampleWN, "preview");
-
     SetExchangeSupport();
 
     // set the correct metric
     const FieldUnit eMetric = GetModuleFieldUnit( rSet );
 
-    SetFieldUnit( *m_pWidthMF, eMetric );
-    SetFieldUnit( *m_pHeightMF, eMetric );
-    SetFieldUnit( *m_pLeftMF, eMetric );
-    SetFieldUnit( *m_pRightMF, eMetric );
-    SetFieldUnit( *m_pTopMF , eMetric );
-    SetFieldUnit( *m_pBottomMF, eMetric );
+    SetFieldUnit( *m_xWidthMF, eMetric );
+    SetFieldUnit( *m_xHeightMF, eMetric );
+    SetFieldUnit( *m_xLeftMF, eMetric );
+    SetFieldUnit( *m_xRightMF, eMetric );
+    SetFieldUnit( *m_xTopMF , eMetric );
+    SetFieldUnit( *m_xBottomMF, eMetric );
 
-    Link<Edit&,void> aLk = LINK(this, SvxGrfCropPage, SizeHdl);
-    m_pWidthMF->SetModifyHdl( aLk );
-    m_pHeightMF->SetModifyHdl( aLk );
+    Link<weld::MetricSpinButton&,void> aLk = LINK(this, SvxGrfCropPage, SizeHdl);
+    m_xWidthMF->connect_value_changed( aLk );
+    m_xHeightMF->connect_value_changed( aLk );
 
     aLk = LINK(this, SvxGrfCropPage, ZoomHdl);
-    m_pWidthZoomMF->SetModifyHdl( aLk );
-    m_pHeightZoomMF->SetModifyHdl( aLk );
-
-    Link<SpinField&,void> aLk3 = LINK(this, SvxGrfCropPage, CropHdl);
-    m_pLeftMF->SetDownHdl( aLk3 );
-    m_pRightMF->SetDownHdl( aLk3 );
-    m_pTopMF->SetDownHdl( aLk3 );
-    m_pBottomMF->SetDownHdl( aLk3 );
-    m_pLeftMF->SetUpHdl( aLk3 );
-    m_pRightMF->SetUpHdl( aLk3 );
-    m_pTopMF->SetUpHdl( aLk3 );
-    m_pBottomMF->SetUpHdl( aLk3 );
+    m_xWidthZoomMF->connect_value_changed( aLk );
+    m_xHeightZoomMF->connect_value_changed( aLk );
 
     aLk = LINK(this, SvxGrfCropPage, CropModifyHdl);
-    m_pLeftMF->SetModifyHdl( aLk );
-    m_pRightMF->SetModifyHdl( aLk );
-    m_pTopMF->SetModifyHdl( aLk );
-    m_pBottomMF->SetModifyHdl( aLk );
+    m_xLeftMF->connect_value_changed( aLk );
+    m_xRightMF->connect_value_changed( aLk );
+    m_xTopMF->connect_value_changed( aLk );
+    m_xBottomMF->connect_value_changed( aLk );
 
-    Link<Control&,void> aLk2 = LINK(this, SvxGrfCropPage, CropLoseFocusHdl);
-    m_pLeftMF->SetLoseFocusHdl( aLk2 );
-    m_pRightMF->SetLoseFocusHdl( aLk2 );
-    m_pTopMF->SetLoseFocusHdl( aLk2 );
-    m_pBottomMF->SetLoseFocusHdl( aLk2 );
-
-    m_pOrigSizePB->SetClickHdl( LINK(this, SvxGrfCropPage, OrigSizeHdl) );
-
-    aTimer.SetInvokeHandler(LINK(this, SvxGrfCropPage, Timeout));
-    aTimer.SetTimeout( 1500 );
+    m_xOrigSizePB->connect_clicked(LINK(this, SvxGrfCropPage, OrigSizeHdl));
 }
 
 SvxGrfCropPage::~SvxGrfCropPage()
 {
-    disposeOnce();
+    m_xExampleWN.reset();
 }
 
-void SvxGrfCropPage::dispose()
+std::unique_ptr<SfxTabPage> SvxGrfCropPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *rSet)
 {
-    aTimer.Stop();
-    m_pCropFrame.clear();
-    m_pZoomConstRB.clear();
-    m_pSizeConstRB.clear();
-    m_pLeftMF.clear();
-    m_pRightMF.clear();
-    m_pTopMF.clear();
-    m_pBottomMF.clear();
-    m_pScaleFrame.clear();
-    m_pWidthZoomMF.clear();
-    m_pHeightZoomMF.clear();
-    m_pSizeFrame.clear();
-    m_pWidthMF.clear();
-    m_pHeightMF.clear();
-    m_pOrigSizeGrid.clear();
-    m_pOrigSizeFT.clear();
-    m_pOrigSizePB.clear();
-    m_pExampleWN.clear();
-    pLastCropField.clear();
-    SfxTabPage::dispose();
-}
-
-VclPtr<SfxTabPage> SvxGrfCropPage::Create(vcl::Window *pParent, const SfxItemSet *rSet)
-{
-    return VclPtr<SvxGrfCropPage>::Create( pParent, *rSet );
+    return std::make_unique<SvxGrfCropPage>(pPage, pController, *rSet);
 }
 
 void SvxGrfCropPage::Reset( const SfxItemSet *rSet )
@@ -166,10 +123,10 @@ void SvxGrfCropPage::Reset( const SfxItemSet *rSet )
                                     SID_ATTR_GRAF_KEEP_ZOOM ), true, &pItem ))
     {
         if( static_cast<const SfxBoolItem*>(pItem)->GetValue() )
-            m_pZoomConstRB->Check();
+            m_xZoomConstRB->set_active(true);
         else
-            m_pSizeConstRB->Check();
-        m_pZoomConstRB->SaveValue();
+            m_xSizeConstRB->set_active(true);
+        m_xZoomConstRB->save_state();
     }
 
     sal_uInt16 nW = rPool.GetWhich( SID_ATTR_GRAF_CROP );
@@ -179,23 +136,28 @@ void SvxGrfCropPage::Reset( const SfxItemSet *rSet )
 
         const SvxGrfCrop* pCrop = static_cast<const SvxGrfCrop*>(pItem);
 
-        m_pExampleWN->SetLeft(     pCrop->GetLeft());
-        m_pExampleWN->SetRight(    pCrop->GetRight());
-        m_pExampleWN->SetTop(      pCrop->GetTop());
-        m_pExampleWN->SetBottom(   pCrop->GetBottom());
+        m_aExampleWN.SetLeft(pCrop->GetLeft());
+        m_aExampleWN.SetRight(pCrop->GetRight());
+        m_aExampleWN.SetTop(pCrop->GetTop());
+        m_aExampleWN.SetBottom(pCrop->GetBottom());
 
-        m_pLeftMF->SetValue( m_pLeftMF->Normalize( pCrop->GetLeft()), eUnit );
-        m_pRightMF->SetValue( m_pRightMF->Normalize( pCrop->GetRight()), eUnit );
-        m_pTopMF->SetValue( m_pTopMF->Normalize( pCrop->GetTop()), eUnit );
-        m_pBottomMF->SetValue( m_pBottomMF->Normalize( pCrop->GetBottom()), eUnit );
+        m_xLeftMF->set_value( m_xLeftMF->normalize( pCrop->GetLeft()), eUnit );
+        m_xRightMF->set_value( m_xRightMF->normalize( pCrop->GetRight()), eUnit );
+        m_xTopMF->set_value( m_xTopMF->normalize( pCrop->GetTop()), eUnit );
+        m_xBottomMF->set_value( m_xBottomMF->normalize( pCrop->GetBottom()), eUnit );
     }
     else
     {
-        m_pLeftMF->SetValue( 0 );
-        m_pRightMF->SetValue( 0 );
-        m_pTopMF->SetValue( 0 );
-        m_pBottomMF->SetValue( 0 );
+        m_xLeftMF->set_value(0, FieldUnit::NONE);
+        m_xRightMF->set_value(0, FieldUnit::NONE);
+        m_xTopMF->set_value(0, FieldUnit::NONE);
+        m_xBottomMF->set_value(0, FieldUnit::NONE);
     }
+
+    m_xLeftMF->save_value();
+    m_xRightMF->save_value();
+    m_xTopMF->save_value();
+    m_xBottomMF->save_value();
 
     nW = rPool.GetWhich( SID_ATTR_PAGE_SIZE );
     if ( SfxItemState::SET == rSet->GetItemState( nW, false, &pItem ) )
@@ -205,13 +167,11 @@ void SvxGrfCropPage::Reset( const SfxItemSet *rSet )
 
         aPageSize = static_cast<const SvxSizeItem*>(pItem)->GetSize();
 
-        sal_Int64 nTmp = m_pHeightMF->Normalize(aPageSize.Height());
-        m_pHeightMF->SetMax( nTmp, eUnit );
-        nTmp = m_pWidthMF->Normalize(aPageSize.Width());
-        m_pWidthMF->SetMax( nTmp, eUnit );
-        nTmp = m_pWidthMF->Normalize( 23 );
-        m_pHeightMF->SetMin( nTmp, eUnit );
-        m_pWidthMF->SetMin( nTmp, eUnit );
+        auto nMin = m_xWidthMF->normalize( 23 );
+        auto nMax = m_xHeightMF->normalize(aPageSize.Height());
+        m_xHeightMF->set_range(nMin, nMax, eUnit);
+        nMax = m_xWidthMF->normalize(aPageSize.Width());
+        m_xWidthMF->set_range(nMin, nMax, eUnit);
     }
     else
     {
@@ -236,15 +196,14 @@ void SvxGrfCropPage::Reset( const SfxItemSet *rSet )
             aOrigSize = GetGrfOrigSize( *pGrf );
             if (pGrf->GetType() == GraphicType::Bitmap && aOrigSize.Width() && aOrigSize.Height())
             {
-                Bitmap aBitmap = pGrf->GetBitmap();
-                aOrigPixelSize = aBitmap.GetSizePixel();
+                aOrigPixelSize = pGrf->GetSizePixel();
             }
 
             if( aOrigSize.Width() && aOrigSize.Height() )
             {
                 CalcMinMaxBorder();
-                m_pExampleWN->SetGraphic( *pGrf );
-                m_pExampleWN->SetFrameSize( aOrigSize );
+                m_aExampleWN.SetGraphic( *pGrf );
+                m_aExampleWN.SetFrameSize( aOrigSize );
 
                 bFound = true;
                 if( !static_cast<const SvxBrushItem*>(pItem)->GetGraphicLink().isEmpty() )
@@ -254,42 +213,43 @@ void SvxGrfCropPage::Reset( const SfxItemSet *rSet )
     }
 
     GraphicHasChanged( bFound );
-    bReset = true;
     ActivatePage( *rSet );
-    bReset = false;
 }
 
 bool SvxGrfCropPage::FillItemSet(SfxItemSet *rSet)
 {
     const SfxItemPool& rPool = *rSet->GetPool();
     bool bModified = false;
-    if( m_pWidthMF->IsValueChangedFromSaved() ||
-        m_pHeightMF->IsValueChangedFromSaved() )
+    if( m_xWidthMF->get_value_changed_from_saved() ||
+        m_xHeightMF->get_value_changed_from_saved() )
     {
         sal_uInt16 nW = rPool.GetWhich( SID_ATTR_GRAF_FRMSIZE );
         FieldUnit eUnit = MapToFieldUnit( rSet->GetPool()->GetMetric( nW ));
 
-        SvxSizeItem aSz( nW );
+        std::shared_ptr<SvxSizeItem> aSz(std::make_shared<SvxSizeItem>(nW));
 
         // size could already have been set from another page
-        const SfxItemSet* pExSet = GetTabDialog() ? GetTabDialog()->GetExampleSet() : nullptr;
+        const SfxItemSet* pExSet = GetDialogExampleSet();
         const SfxPoolItem* pItem = nullptr;
-        if( pExSet && SfxItemState::SET ==
-                pExSet->GetItemState( nW, false, &pItem ) )
-            aSz = *static_cast<const SvxSizeItem*>(pItem);
+        if( pExSet && SfxItemState::SET ==pExSet->GetItemState( nW, false, &pItem ) )
+        {
+            aSz.reset(static_cast< SvxSizeItem*>(pItem->Clone()));
+        }
         else
-            aSz = static_cast<const SvxSizeItem&>(GetItemSet().Get( nW ));
+        {
+            aSz.reset(static_cast< SvxSizeItem*>(GetItemSet().Get(nW).Clone()));
+        }
 
-        Size aTmpSz( aSz.GetSize() );
-        if( m_pWidthMF->IsValueChangedFromSaved() )
-            aTmpSz.Width() = lcl_GetValue( *m_pWidthMF, eUnit );
-        if( m_pHeightMF->IsValueChangedFromSaved() )
-            aTmpSz.Height() = lcl_GetValue( *m_pHeightMF, eUnit );
-        aSz.SetSize( aTmpSz );
-        m_pWidthMF->SaveValue();
-        m_pHeightMF->SaveValue();
+        Size aTmpSz( aSz->GetSize() );
+        if( m_xWidthMF->get_value_changed_from_saved() )
+            aTmpSz.setWidth( lcl_GetValue( *m_xWidthMF, eUnit ) );
+        if( m_xHeightMF->get_value_changed_from_saved() )
+            aTmpSz.setHeight( lcl_GetValue( *m_xHeightMF, eUnit ) );
+        aSz->SetSize( aTmpSz );
+        m_xWidthMF->save_value();
+        m_xHeightMF->save_value();
 
-        bModified |= nullptr != rSet->Put( aSz );
+        bModified |= nullptr != rSet->Put( *aSz );
 
         if( bSetOrigSize )
         {
@@ -297,24 +257,24 @@ bool SvxGrfCropPage::FillItemSet(SfxItemSet *rSet)
                         SID_ATTR_GRAF_FRMSIZE_PERCENT ), Size( 0, 0 )) );
         }
     }
-    if( m_pLeftMF->IsModified() || m_pRightMF->IsModified() ||
-        m_pTopMF->IsModified()  || m_pBottomMF->IsModified() )
+    if( m_xLeftMF->get_value_changed_from_saved() || m_xRightMF->get_value_changed_from_saved() ||
+        m_xTopMF->get_value_changed_from_saved()  || m_xBottomMF->get_value_changed_from_saved() )
     {
         sal_uInt16 nW = rPool.GetWhich( SID_ATTR_GRAF_CROP );
         FieldUnit eUnit = MapToFieldUnit( rSet->GetPool()->GetMetric( nW ));
         std::unique_ptr<SvxGrfCrop> pNew(static_cast<SvxGrfCrop*>(rSet->Get( nW ).Clone()));
 
-        pNew->SetLeft( lcl_GetValue( *m_pLeftMF, eUnit ) );
-        pNew->SetRight( lcl_GetValue( *m_pRightMF, eUnit ) );
-        pNew->SetTop( lcl_GetValue( *m_pTopMF, eUnit ) );
-        pNew->SetBottom( lcl_GetValue( *m_pBottomMF, eUnit ) );
+        pNew->SetLeft( lcl_GetValue( *m_xLeftMF, eUnit ) );
+        pNew->SetRight( lcl_GetValue( *m_xRightMF, eUnit ) );
+        pNew->SetTop( lcl_GetValue( *m_xTopMF, eUnit ) );
+        pNew->SetBottom( lcl_GetValue( *m_xBottomMF, eUnit ) );
         bModified |= nullptr != rSet->Put( *pNew );
     }
 
-    if( m_pZoomConstRB->IsValueChangedFromSaved() )
+    if( m_xZoomConstRB->get_state_changed_from_saved() )
     {
         bModified |= nullptr != rSet->Put( SfxBoolItem( rPool.GetWhich(
-                    SID_ATTR_GRAF_KEEP_ZOOM), m_pZoomConstRB->IsChecked() ) );
+                    SID_ATTR_GRAF_KEEP_ZOOM), m_xZoomConstRB->get_active() ) );
     }
 
     return bModified;
@@ -338,34 +298,16 @@ void SvxGrfCropPage::ActivatePage(const SfxItemSet& rSet)
     nOldWidth = aSize.Width();
     nOldHeight = aSize.Height();
 
-    sal_Int64 nWidth = m_pWidthMF->Normalize(nOldWidth);
-    sal_Int64 nHeight = m_pHeightMF->Normalize(nOldHeight);
+    auto nWidth = m_xWidthMF->normalize(nOldWidth);
+    auto nHeight = m_xHeightMF->normalize(nOldHeight);
 
-    if (nWidth != m_pWidthMF->GetValue(FUNIT_TWIP))
-    {
-        if(!bReset)
-        {
-            // value was changed by wrap-tabpage and has to
-            // be set with modify-flag
-            m_pWidthMF->SetUserValue(nWidth, FUNIT_TWIP);
-        }
-        else
-            m_pWidthMF->SetValue(nWidth, FUNIT_TWIP);
-    }
-    m_pWidthMF->SaveValue();
+    if (nWidth != m_xWidthMF->get_value(FieldUnit::TWIP))
+        m_xWidthMF->set_value(nWidth, FieldUnit::TWIP);
+    m_xWidthMF->save_value();
 
-    if (nHeight != m_pHeightMF->GetValue(FUNIT_TWIP))
-    {
-        if (!bReset)
-        {
-            // value was changed by wrap-tabpage and has to
-            // be set with modify-flag
-            m_pHeightMF->SetUserValue(nHeight, FUNIT_TWIP);
-        }
-        else
-            m_pHeightMF->SetValue(nHeight, FUNIT_TWIP);
-    }
-    m_pHeightMF->SaveValue();
+    if (nHeight != m_xHeightMF->get_value(FieldUnit::TWIP))
+        m_xHeightMF->set_value(nHeight, FieldUnit::TWIP);
+    m_xHeightMF->save_value();
 
     if( SfxItemState::SET == rSet.GetItemState( SID_ATTR_GRAF_GRAPHIC, false, &pItem ) )
     {
@@ -383,13 +325,12 @@ void SvxGrfCropPage::ActivatePage(const SfxItemSet& rSet)
         const Graphic* pGrf = rBrush.GetGraphic(referer);
         if( pGrf )
         {
-            m_pExampleWN->SetGraphic( *pGrf );
+            m_aExampleWN.SetGraphic( *pGrf );
             aOrigSize = GetGrfOrigSize( *pGrf );
             if (pGrf->GetType() == GraphicType::Bitmap && aOrigSize.Width() > 1 && aOrigSize.Height() > 1) {
-                Bitmap aBitmap = pGrf->GetBitmap();
-                aOrigPixelSize = aBitmap.GetSizePixel();
+                aOrigPixelSize = pGrf->GetSizePixel();
             }
-            m_pExampleWN->SetFrameSize(aOrigSize);
+            m_aExampleWN.SetFrameSize(aOrigSize);
             GraphicHasChanged( aOrigSize.Width() && aOrigSize.Height() );
             CalcMinMaxBorder();
         }
@@ -411,27 +352,27 @@ DeactivateRC SvxGrfCropPage::DeactivatePage(SfxItemSet *_pSet)
     description: scale changed, adjust size
  --------------------------------------------------------------------*/
 
-IMPL_LINK( SvxGrfCropPage, ZoomHdl, Edit&, rField, void )
+IMPL_LINK( SvxGrfCropPage, ZoomHdl, weld::MetricSpinButton&, rField, void )
 {
     SfxItemPool* pPool = GetItemSet().GetPool();
     DBG_ASSERT( pPool, "Where is the pool?" );
     FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
                                                     SID_ATTR_GRAF_CROP ) ) );
 
-    if( &rField == m_pWidthZoomMF )
+    if (&rField == m_xWidthZoomMF.get())
     {
-        long nLRBorders = lcl_GetValue(*m_pLeftMF, eUnit)
-                         +lcl_GetValue(*m_pRightMF, eUnit);
-        m_pWidthMF->SetValue( m_pWidthMF->Normalize(
-            ((aOrigSize.Width() - nLRBorders) * static_cast<MetricField&>(rField).GetValue())/100L),
+        long nLRBorders = lcl_GetValue(*m_xLeftMF, eUnit)
+                         +lcl_GetValue(*m_xRightMF, eUnit);
+        m_xWidthMF->set_value( m_xWidthMF->normalize(
+            ((aOrigSize.Width() - nLRBorders) * rField.get_value(FieldUnit::NONE))/100),
             eUnit);
     }
     else
     {
-        long nULBorders = lcl_GetValue(*m_pTopMF, eUnit)
-                         +lcl_GetValue(*m_pBottomMF, eUnit);
-        m_pHeightMF->SetValue( m_pHeightMF->Normalize(
-            ((aOrigSize.Height() - nULBorders ) * static_cast<MetricField&>(rField).GetValue())/100L) ,
+        long nULBorders = lcl_GetValue(*m_xTopMF, eUnit)
+                         +lcl_GetValue(*m_xBottomMF, eUnit);
+        m_xHeightMF->set_value( m_xHeightMF->normalize(
+            ((aOrigSize.Height() - nULBorders ) * rField.get_value(FieldUnit::NONE))/100) ,
             eUnit );
     }
 }
@@ -440,35 +381,35 @@ IMPL_LINK( SvxGrfCropPage, ZoomHdl, Edit&, rField, void )
     description: change size, adjust scale
  --------------------------------------------------------------------*/
 
-IMPL_LINK( SvxGrfCropPage, SizeHdl, Edit&, rField, void )
+IMPL_LINK( SvxGrfCropPage, SizeHdl, weld::MetricSpinButton&, rField, void )
 {
     SfxItemPool* pPool = GetItemSet().GetPool();
     DBG_ASSERT( pPool, "Where is the pool?" );
     FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
                                                     SID_ATTR_GRAF_CROP ) ) );
 
-    Size aSize( lcl_GetValue(*m_pWidthMF, eUnit),
-                lcl_GetValue(*m_pHeightMF, eUnit) );
+    Size aSize( lcl_GetValue(*m_xWidthMF, eUnit),
+                lcl_GetValue(*m_xHeightMF, eUnit) );
 
-    if(&rField == m_pWidthMF)
+    if(&rField == m_xWidthMF.get())
     {
         long nWidth = aOrigSize.Width() -
-                ( lcl_GetValue(*m_pLeftMF, eUnit) +
-                  lcl_GetValue(*m_pRightMF, eUnit) );
+                ( lcl_GetValue(*m_xLeftMF, eUnit) +
+                  lcl_GetValue(*m_xRightMF, eUnit) );
         if(!nWidth)
             nWidth++;
-        sal_uInt16 nZoom = (sal_uInt16)( aSize.Width() * 100L / nWidth);
-        m_pWidthZoomMF->SetValue(nZoom);
+        sal_uInt16 nZoom = static_cast<sal_uInt16>( aSize.Width() * 100 / nWidth);
+        m_xWidthZoomMF->set_value(nZoom, FieldUnit::NONE);
     }
     else
     {
         long nHeight = aOrigSize.Height() -
-                ( lcl_GetValue(*m_pTopMF, eUnit) +
-                  lcl_GetValue(*m_pBottomMF, eUnit));
+                ( lcl_GetValue(*m_xTopMF, eUnit) +
+                  lcl_GetValue(*m_xBottomMF, eUnit));
         if(!nHeight)
             nHeight++;
-        sal_uInt16 nZoom = (sal_uInt16)( aSize.Height() * 100L/ nHeight);
-        m_pHeightZoomMF->SetValue(nZoom);
+        sal_uInt16 nZoom = static_cast<sal_uInt16>( aSize.Height() * 100 / nHeight);
+        m_xHeightZoomMF->set_value(nZoom, FieldUnit::NONE);
     }
 }
 
@@ -476,81 +417,82 @@ IMPL_LINK( SvxGrfCropPage, SizeHdl, Edit&, rField, void )
     description: evaluate border
  --------------------------------------------------------------------*/
 
-IMPL_LINK( SvxGrfCropPage, CropHdl, SpinField&, rField, void )
+IMPL_LINK( SvxGrfCropPage, CropModifyHdl, weld::MetricSpinButton&, rField, void )
 {
     SfxItemPool* pPool = GetItemSet().GetPool();
     DBG_ASSERT( pPool, "Where is the pool?" );
     FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
                                                     SID_ATTR_GRAF_CROP ) ) );
 
-    bool bZoom = m_pZoomConstRB->IsChecked();
-    if( &rField == m_pLeftMF || &rField == m_pRightMF )
+    bool bZoom = m_xZoomConstRB->get_active();
+    if (&rField == m_xLeftMF.get() || &rField == m_xRightMF.get())
     {
-        long nLeft = lcl_GetValue( *m_pLeftMF, eUnit );
-        long nRight = lcl_GetValue( *m_pRightMF, eUnit );
-        long nWidthZoom = static_cast<long>(m_pWidthZoomMF->GetValue());
-        if(bZoom && ( ( ( aOrigSize.Width() - (nLeft + nRight )) * nWidthZoom )
+        long nLeft = lcl_GetValue( *m_xLeftMF, eUnit );
+        long nRight = lcl_GetValue( *m_xRightMF, eUnit );
+        long nWidthZoom = static_cast<long>(m_xWidthZoomMF->get_value(FieldUnit::NONE));
+        if (bZoom && nWidthZoom != 0 && ( ( ( aOrigSize.Width() - (nLeft + nRight )) * nWidthZoom )
                             / 100 >= aPageSize.Width() ) )
         {
-            if(&rField == m_pLeftMF)
+            if (&rField == m_xLeftMF.get())
             {
                 nLeft = aOrigSize.Width() -
                             ( aPageSize.Width() * 100 / nWidthZoom + nRight );
-                m_pLeftMF->SetValue( m_pLeftMF->Normalize( nLeft ), eUnit );
+                m_xLeftMF->set_value( m_xLeftMF->normalize( nLeft ), eUnit );
             }
             else
             {
                 nRight = aOrigSize.Width() -
                             ( aPageSize.Width() * 100 / nWidthZoom + nLeft );
-                m_pRightMF->SetValue( m_pRightMF->Normalize( nRight ), eUnit );
+                m_xRightMF->set_value( m_xRightMF->normalize( nRight ), eUnit );
             }
         }
         if (AllSettings::GetLayoutRTL())
         {
-            m_pExampleWN->SetLeft(nRight);
-            m_pExampleWN->SetRight(nLeft);
+            m_aExampleWN.SetLeft(nRight);
+            m_aExampleWN.SetRight(nLeft);
         }
         else
         {
-            m_pExampleWN->SetLeft(nLeft);
-            m_pExampleWN->SetRight(nRight);
+            m_aExampleWN.SetLeft(nLeft);
+            m_aExampleWN.SetRight(nRight);
         }
         if(bZoom)
         {
             // scale stays, recompute width
-            ZoomHdl(*m_pWidthZoomMF);
+            ZoomHdl(*m_xWidthZoomMF);
         }
     }
     else
     {
-        long nTop = lcl_GetValue( *m_pTopMF, eUnit );
-        long nBottom = lcl_GetValue( *m_pBottomMF, eUnit );
-        long nHeightZoom = static_cast<long>(m_pHeightZoomMF->GetValue());
+        long nTop = lcl_GetValue( *m_xTopMF, eUnit );
+        long nBottom = lcl_GetValue( *m_xBottomMF, eUnit );
+        long nHeightZoom = static_cast<long>(m_xHeightZoomMF->get_value(FieldUnit::NONE));
         if(bZoom && ( ( ( aOrigSize.Height() - (nTop + nBottom )) * nHeightZoom)
                                             / 100 >= aPageSize.Height()))
         {
-            if(&rField == m_pTopMF)
+            assert(nHeightZoom && "div-by-zero");
+            if(&rField == m_xTopMF.get())
             {
                 nTop = aOrigSize.Height() -
                             ( aPageSize.Height() * 100 / nHeightZoom + nBottom);
-                m_pTopMF->SetValue( m_pWidthMF->Normalize( nTop ), eUnit );
+                m_xTopMF->set_value( m_xWidthMF->normalize( nTop ), eUnit );
             }
             else
             {
                 nBottom = aOrigSize.Height() -
                             ( aPageSize.Height() * 100 / nHeightZoom + nTop);
-                m_pBottomMF->SetValue( m_pWidthMF->Normalize( nBottom ), eUnit );
+                m_xBottomMF->set_value( m_xWidthMF->normalize( nBottom ), eUnit );
             }
         }
-        m_pExampleWN->SetTop( nTop );
-        m_pExampleWN->SetBottom( nBottom );
+        m_aExampleWN.SetTop( nTop );
+        m_aExampleWN.SetBottom( nBottom );
         if(bZoom)
         {
             // scale stays, recompute height
-            ZoomHdl(*m_pHeightZoomMF);
+            ZoomHdl(*m_xHeightZoomMF);
         }
     }
-    m_pExampleWN->Invalidate();
+    m_aExampleWN.Invalidate();
     // size and border changed -> recompute scale
     if(!bZoom)
         CalcZoom();
@@ -560,7 +502,7 @@ IMPL_LINK( SvxGrfCropPage, CropHdl, SpinField&, rField, void )
     description: set original size
  --------------------------------------------------------------------*/
 
-IMPL_LINK_NOARG(SvxGrfCropPage, OrigSizeHdl, Button*, void)
+IMPL_LINK_NOARG(SvxGrfCropPage, OrigSizeHdl, weld::Button&, void)
 {
     SfxItemPool* pPool = GetItemSet().GetPool();
     DBG_ASSERT( pPool, "Where is the pool?" );
@@ -568,15 +510,15 @@ IMPL_LINK_NOARG(SvxGrfCropPage, OrigSizeHdl, Button*, void)
                                                     SID_ATTR_GRAF_CROP ) ) );
 
     long nWidth = aOrigSize.Width() -
-        lcl_GetValue( *m_pLeftMF, eUnit ) -
-        lcl_GetValue( *m_pRightMF, eUnit );
-    m_pWidthMF->SetValue( m_pWidthMF->Normalize( nWidth ), eUnit );
+        lcl_GetValue( *m_xLeftMF, eUnit ) -
+        lcl_GetValue( *m_xRightMF, eUnit );
+    m_xWidthMF->set_value( m_xWidthMF->normalize( nWidth ), eUnit );
     long nHeight = aOrigSize.Height() -
-        lcl_GetValue( *m_pTopMF, eUnit ) -
-        lcl_GetValue( *m_pBottomMF, eUnit );
-    m_pHeightMF->SetValue( m_pHeightMF->Normalize( nHeight ), eUnit );
-    m_pWidthZoomMF->SetValue(100);
-    m_pHeightZoomMF->SetValue(100);
+        lcl_GetValue( *m_xTopMF, eUnit ) -
+        lcl_GetValue( *m_xBottomMF, eUnit );
+    m_xHeightMF->set_value( m_xHeightMF->normalize( nHeight ), eUnit );
+    m_xWidthZoomMF->set_value(100, FieldUnit::NONE);
+    m_xHeightZoomMF->set_value(100, FieldUnit::NONE);
     bSetOrigSize = true;
 }
 /*--------------------------------------------------------------------
@@ -590,22 +532,22 @@ void SvxGrfCropPage::CalcZoom()
     FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
                                                     SID_ATTR_GRAF_CROP ) ) );
 
-    long nWidth = lcl_GetValue( *m_pWidthMF, eUnit );
-    long nHeight = lcl_GetValue( *m_pHeightMF, eUnit );
-    long nLRBorders = lcl_GetValue( *m_pLeftMF, eUnit ) +
-                      lcl_GetValue( *m_pRightMF, eUnit );
-    long nULBorders = lcl_GetValue( *m_pTopMF, eUnit ) +
-                      lcl_GetValue( *m_pBottomMF, eUnit );
+    long nWidth = lcl_GetValue( *m_xWidthMF, eUnit );
+    long nHeight = lcl_GetValue( *m_xHeightMF, eUnit );
+    long nLRBorders = lcl_GetValue( *m_xLeftMF, eUnit ) +
+                      lcl_GetValue( *m_xRightMF, eUnit );
+    long nULBorders = lcl_GetValue( *m_xTopMF, eUnit ) +
+                      lcl_GetValue( *m_xBottomMF, eUnit );
     sal_uInt16 nZoom = 0;
     long nDen;
     if( (nDen = aOrigSize.Width() - nLRBorders) > 0)
-        nZoom = (sal_uInt16)((( nWidth  * 1000L / nDen )+5)/10);
-    m_pWidthZoomMF->SetValue(nZoom);
+        nZoom = static_cast<sal_uInt16>((( nWidth  * 1000 / nDen )+5)/10);
+    m_xWidthZoomMF->set_value(nZoom, FieldUnit::NONE);
     if( (nDen = aOrigSize.Height() - nULBorders) > 0)
-        nZoom = (sal_uInt16)((( nHeight * 1000L / nDen )+5)/10);
+        nZoom = static_cast<sal_uInt16>((( nHeight * 1000 / nDen )+5)/10);
     else
         nZoom = 0;
-    m_pHeightZoomMF->SetValue(nZoom);
+    m_xHeightZoomMF->set_value(nZoom, FieldUnit::NONE);
 }
 
 /*--------------------------------------------------------------------
@@ -618,23 +560,23 @@ void SvxGrfCropPage::CalcMinMaxBorder()
     DBG_ASSERT( pPool, "Where is the pool?" );
     FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
                                                     SID_ATTR_GRAF_CROP ) ) );
-    long nR = lcl_GetValue(*m_pRightMF, eUnit );
+    long nR = lcl_GetValue(*m_xRightMF, eUnit );
     long nMinWidth = (aOrigSize.Width() * 10) /11;
     long nMin = nMinWidth - (nR >= 0 ? nR : 0);
-    m_pLeftMF->SetMax( m_pLeftMF->Normalize(nMin), eUnit );
+    m_xLeftMF->set_max( m_xLeftMF->normalize(nMin), eUnit );
 
-    long nL = lcl_GetValue(*m_pLeftMF, eUnit );
+    long nL = lcl_GetValue(*m_xLeftMF, eUnit );
     nMin = nMinWidth - (nL >= 0 ? nL : 0);
-    m_pRightMF->SetMax( m_pRightMF->Normalize(nMin), eUnit );
+    m_xRightMF->set_max( m_xRightMF->normalize(nMin), eUnit );
 
-    long nUp  = lcl_GetValue( *m_pTopMF, eUnit );
+    long nUp  = lcl_GetValue( *m_xTopMF, eUnit );
     long nMinHeight = (aOrigSize.Height() * 10) /11;
     nMin = nMinHeight - (nUp >= 0 ? nUp : 0);
-    m_pBottomMF->SetMax( m_pBottomMF->Normalize(nMin), eUnit );
+    m_xBottomMF->set_max( m_xBottomMF->normalize(nMin), eUnit );
 
-    long nLow = lcl_GetValue(*m_pBottomMF, eUnit );
+    long nLow = lcl_GetValue(*m_xBottomMF, eUnit );
     nMin = nMinHeight - (nLow >= 0 ? nLow : 0);
-    m_pTopMF->SetMax( m_pTopMF->Normalize(nMin), eUnit );
+    m_xTopMF->set_max( m_xTopMF->normalize(nMin), eUnit );
 }
 /*--------------------------------------------------------------------
     description:   set spinsize to 1/20 of the original size,
@@ -650,106 +592,86 @@ void SvxGrfCropPage::GraphicHasChanged( bool bFound )
         FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
                                                     SID_ATTR_GRAF_CROP ) ));
 
-        sal_Int64 nSpin = m_pLeftMF->Normalize(aOrigSize.Width()) / 20;
-        nSpin = MetricField::ConvertValue( nSpin, aOrigSize.Width(), 0,
-                                               eUnit, m_pLeftMF->GetUnit());
+        sal_Int64 nSpin = m_xLeftMF->normalize(aOrigSize.Width()) / 20;
+        nSpin = vcl::ConvertValue( nSpin, aOrigSize.Width(), 0,
+                                               eUnit, m_xLeftMF->get_unit());
 
         // if the margin is too big, it is set to 1/3 on both pages
-        long nR = lcl_GetValue( *m_pRightMF, eUnit );
-        long nL = lcl_GetValue( *m_pLeftMF, eUnit );
+        long nR = lcl_GetValue( *m_xRightMF, eUnit );
+        long nL = lcl_GetValue( *m_xLeftMF, eUnit );
         if((nL + nR) < - aOrigSize.Width())
         {
             long nVal = aOrigSize.Width() / -3;
-            m_pRightMF->SetValue( m_pRightMF->Normalize( nVal ), eUnit );
-            m_pLeftMF->SetValue( m_pLeftMF->Normalize( nVal ), eUnit );
-            m_pExampleWN->SetLeft(nVal);
-            m_pExampleWN->SetRight(nVal);
+            m_xRightMF->set_value( m_xRightMF->normalize( nVal ), eUnit );
+            m_xLeftMF->set_value( m_xLeftMF->normalize( nVal ), eUnit );
+            m_aExampleWN.SetLeft(nVal);
+            m_aExampleWN.SetRight(nVal);
         }
-        long nUp  = lcl_GetValue(*m_pTopMF, eUnit );
-        long nLow = lcl_GetValue(*m_pBottomMF, eUnit );
+        long nUp  = lcl_GetValue(*m_xTopMF, eUnit );
+        long nLow = lcl_GetValue(*m_xBottomMF, eUnit );
         if((nUp + nLow) < - aOrigSize.Height())
         {
             long nVal = aOrigSize.Height() / -3;
-            m_pTopMF->SetValue( m_pTopMF->Normalize( nVal ), eUnit );
-            m_pBottomMF->SetValue( m_pBottomMF->Normalize( nVal ), eUnit );
-            m_pExampleWN->SetTop(nVal);
-            m_pExampleWN->SetBottom(nVal);
+            m_xTopMF->set_value( m_xTopMF->normalize( nVal ), eUnit );
+            m_xBottomMF->set_value( m_xBottomMF->normalize( nVal ), eUnit );
+            m_aExampleWN.SetTop(nVal);
+            m_aExampleWN.SetBottom(nVal);
         }
 
-        m_pLeftMF->SetSpinSize(nSpin);
-        m_pRightMF->SetSpinSize(nSpin);
-        nSpin = m_pTopMF->Normalize(aOrigSize.Height()) / 20;
-        nSpin = MetricField::ConvertValue( nSpin, aOrigSize.Width(), 0,
-                                               eUnit, m_pLeftMF->GetUnit() );
-        m_pTopMF->SetSpinSize(nSpin);
-        m_pBottomMF->SetSpinSize(nSpin);
+        m_xLeftMF->set_increments(nSpin, nSpin * 10, FieldUnit::NONE);
+        m_xRightMF->set_increments(nSpin, nSpin * 10, FieldUnit::NONE);
+        nSpin = m_xTopMF->normalize(aOrigSize.Height()) / 20;
+        nSpin = vcl::ConvertValue( nSpin, aOrigSize.Width(), 0,
+                                               eUnit, m_xLeftMF->get_unit() );
+        m_xTopMF->set_increments(nSpin, nSpin * 10, FieldUnit::NONE);
+        m_xBottomMF->set_increments(nSpin, nSpin * 10, FieldUnit::NONE);
 
         // display original size
         const FieldUnit eMetric = GetModuleFieldUnit( GetItemSet() );
 
-        ScopedVclPtrInstance< MetricField > aFld(this, WB_HIDE);
-        SetFieldUnit( *aFld.get(), eMetric );
-        aFld->SetDecimalDigits( m_pWidthMF->GetDecimalDigits() );
-        aFld->SetMax( LONG_MAX - 1 );
+        OUString sTemp;
+        {
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "cui/ui/spinbox.ui"));
+            std::unique_ptr<weld::MetricSpinButton> xFld(xBuilder->weld_metric_spin_button("spin", FieldUnit::CM));
+            SetFieldUnit( *xFld, eMetric );
+            xFld->set_digits(m_xWidthMF->get_digits());
+            xFld->set_max(INT_MAX - 1, FieldUnit::NONE);
 
-        aFld->SetValue( aFld->Normalize( aOrigSize.Width() ), eUnit );
-        OUString sTemp = aFld->GetText();
-        aFld->SetValue( aFld->Normalize( aOrigSize.Height() ), eUnit );
-        // multiplication sign (U+00D7)
-        sTemp += OUStringLiteral1(0x00D7) + aFld->GetText();
+            xFld->set_value(xFld->normalize(aOrigSize.Width()), eUnit);
+            sTemp = xFld->get_text();
+            xFld->set_value(xFld->normalize(aOrigSize.Height()), eUnit);
+            // multiplication sign (U+00D7)
+            sTemp += u"\u00D7" + xFld->get_text();
+        }
 
         if ( aOrigPixelSize.Width() && aOrigPixelSize.Height() ) {
-             sal_Int32 ax = sal_Int32(floor((float)aOrigPixelSize.Width() /
-                        ((float)aOrigSize.Width()/TWIP_TO_INCH)+0.5));
-             sal_Int32 ay = sal_Int32(floor((float)aOrigPixelSize.Height() /
-                        ((float)aOrigSize.Height()/TWIP_TO_INCH)+0.5));
-             sTemp += " ";
-             sTemp += CuiResId( RID_SVXSTR_PPI );
+             sal_Int32 ax = sal_Int32(floor(static_cast<float>(aOrigPixelSize.Width()) /
+                        (static_cast<float>(aOrigSize.Width())/TWIP_TO_INCH)+0.5));
+             sal_Int32 ay = sal_Int32(floor(static_cast<float>(aOrigPixelSize.Height()) /
+                        (static_cast<float>(aOrigSize.Height())/TWIP_TO_INCH)+0.5));
+             sTemp += " " + CuiResId( RID_SVXSTR_PPI );
              OUString sPPI = OUString::number(ax);
              if (abs(ax - ay) > 1) {
-                sPPI += OUStringLiteral1(0x00D7) + OUString::number(ay);
+                sPPI += u"\u00D7" + OUString::number(ay);
              }
              sTemp = sTemp.replaceAll("%1", sPPI);
         }
-        m_pOrigSizeFT->SetText( sTemp );
+        m_xOrigSizeFT->set_label(sTemp);
     }
 
-    m_pCropFrame->Enable(bFound);
-    m_pScaleFrame->Enable(bFound);
-    m_pSizeFrame->Enable(bFound);
-    m_pOrigSizeGrid->Enable(bFound);
-    m_pZoomConstRB->Enable(bFound);
+    m_xCropFrame->set_sensitive(bFound);
+    m_xScaleFrame->set_sensitive(bFound);
+    m_xSizeFrame->set_sensitive(bFound);
+    m_xOrigSizeGrid->set_sensitive(bFound);
+    m_xZoomConstRB->set_sensitive(bFound);
 }
 
-IMPL_LINK_NOARG(SvxGrfCropPage, Timeout, Timer *, void)
-{
-    DBG_ASSERT(pLastCropField,"Timeout without field?");
-    CropHdl(*pLastCropField);
-    pLastCropField = nullptr;
-}
-
-
-IMPL_LINK( SvxGrfCropPage, CropLoseFocusHdl, Control&, rControl, void )
-{
-    MetricField* pField = static_cast<MetricField*>(&rControl);
-    aTimer.Stop();
-    CropHdl(*pField);
-    pLastCropField = nullptr;
-}
-
-
-IMPL_LINK( SvxGrfCropPage, CropModifyHdl, Edit&, rField, void )
-{
-    aTimer.Start();
-    pLastCropField = static_cast<MetricField*>(&rField);
-}
-
-Size SvxGrfCropPage::GetGrfOrigSize( const Graphic& rGrf ) const
+Size SvxGrfCropPage::GetGrfOrigSize(const Graphic& rGrf)
 {
     const MapMode aMapTwip( MapUnit::MapTwip );
     Size aSize( rGrf.GetPrefSize() );
     if( MapUnit::MapPixel == rGrf.GetPrefMapMode().GetMapUnit() )
-        aSize = PixelToLogic( aSize, aMapTwip );
+        aSize = Application::GetDefaultDevice()->PixelToLogic(aSize, aMapTwip);
     else
         aSize = OutputDevice::LogicToLogic( aSize,
                                         rGrf.GetPrefMapMode(), aMapTwip );
@@ -758,74 +680,105 @@ Size SvxGrfCropPage::GetGrfOrigSize( const Graphic& rGrf ) const
 
 /*****************************************************************/
 
-SvxCropExample::SvxCropExample( vcl::Window* pPar, WinBits nStyle )
-    : Window( pPar, nStyle)
-    , aFrameSize( OutputDevice::LogicToLogic(
-                            Size( CM_1_TO_TWIP / 2, CM_1_TO_TWIP / 2 ),
-                            MapMode( MapUnit::MapTwip ), GetMapMode() ))
-    , aTopLeft(0,0)
-    , aBottomRight(0,0)
+SvxCropExample::SvxCropExample()
+    : m_aTopLeft(0, 0)
+    , m_aBottomRight(0, 0)
 {
-    SetBorderStyle( WindowBorderStyle::MONO );
 }
 
-Size SvxCropExample::GetOptimalSize() const
+void SvxCropExample::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 {
-    return LogicToPixel(Size(78, 78), MapUnit::MapAppFont);
-}
+    CustomWidgetController::SetDrawingArea(pDrawingArea);
+    OutputDevice& rDevice = pDrawingArea->get_ref_device();
+    Size aSize(rDevice.LogicToPixel(Size(78, 78), MapMode(MapUnit::MapAppFont)));
+    pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
 
-VCL_BUILDER_FACTORY_CONSTRUCTOR(SvxCropExample, 0)
+    m_aMapMode = rDevice.GetMapMode();
+    m_aFrameSize = OutputDevice::LogicToLogic(
+                            Size(CM_1_TO_TWIP / 2, CM_1_TO_TWIP / 2),
+                            MapMode(MapUnit::MapTwip), m_aMapMode);
+}
 
 void SvxCropExample::Paint(vcl::RenderContext& rRenderContext, const ::tools::Rectangle&)
 {
-    Size aWinSize(rRenderContext.PixelToLogic(GetOutputSizePixel()));
+    rRenderContext.Push(PushFlags::MAPMODE);
+    rRenderContext.SetMapMode(m_aMapMode);
+
+    // Win BG
+    const Size aWinSize(rRenderContext.PixelToLogic(GetOutputSizePixel()));
     rRenderContext.SetLineColor();
     rRenderContext.SetFillColor(rRenderContext.GetSettings().GetStyleSettings().GetWindowColor());
-    rRenderContext.SetRasterOp(RasterOp::OverPaint);
     rRenderContext.DrawRect(::tools::Rectangle(Point(), aWinSize));
 
-    rRenderContext.SetLineColor(Color(COL_WHITE));
-    ::tools::Rectangle aRect(Point((aWinSize.Width() - aFrameSize.Width())/2,
-                          (aWinSize.Height() - aFrameSize.Height())/2),
-                          aFrameSize);
-    aGrf.Draw(&rRenderContext, aRect.TopLeft(), aRect.GetSize());
+    // use AA, the Graphic may be a metafile/svg and would then look ugly
+    rRenderContext.SetAntialiasing(AntialiasingFlags::EnableB2dDraw);
 
-    Size aSz(2, 0);
-    aSz = rRenderContext.PixelToLogic(aSz);
-    rRenderContext.SetFillColor(Color(COL_TRANSPARENT));
-    rRenderContext.SetRasterOp(RasterOp::Invert);
-    aRect.Left()    += aTopLeft.Y();
-    aRect.Top()     += aTopLeft.X();
-    aRect.Right()   -= aBottomRight.Y();
-    aRect.Bottom()  -= aBottomRight.X();
-    rRenderContext.DrawRect(aRect);
+    // draw Graphic
+    ::tools::Rectangle aRect(
+        Point((aWinSize.Width() - m_aFrameSize.Width())/2, (aWinSize.Height() - m_aFrameSize.Height())/2),
+        m_aFrameSize);
+    m_aGrf.Draw(&rRenderContext, aRect.TopLeft(), aRect.GetSize());
+
+    // Remove one more case that uses XOR paint (RasterOp::Invert).
+    // Get colors and logic DashLength from settings, use equal to
+    // PolygonMarkerPrimitive2D, may be changed to that primitive later.
+    // Use this to guarantee good visibility - that was the purpose of
+    // the former used XOR paint.
+    const SvtOptionsDrawinglayer aSvtOptionsDrawinglayer;
+    const Color aColA(aSvtOptionsDrawinglayer.GetStripeColorA().getBColor());
+    const Color aColB(aSvtOptionsDrawinglayer.GetStripeColorB().getBColor());
+    const double fStripeLength(aSvtOptionsDrawinglayer.GetStripeLength());
+    const basegfx::B2DVector aDashVector(rRenderContext.GetInverseViewTransformation() * basegfx::B2DVector(fStripeLength, 0.0));
+    const double fLogicDashLength(aDashVector.getX());
+
+    // apply current crop settings
+    aRect.AdjustLeft(m_aTopLeft.Y());
+    aRect.AdjustTop(m_aTopLeft.X());
+    aRect.AdjustRight(-m_aBottomRight.Y());
+    aRect.AdjustBottom(-m_aBottomRight.X());
+
+    // apply dash with direct paint callbacks
+    basegfx::utils::applyLineDashing(
+        basegfx::utils::createPolygonFromRect(
+            basegfx::B2DRange(aRect.Left(), aRect.Top(), aRect.Right(), aRect.Bottom())),
+        std::vector< double >(2, fLogicDashLength),
+        [&aColA,&rRenderContext](const basegfx::B2DPolygon& rSnippet)
+        {
+            rRenderContext.SetLineColor(aColA);
+            rRenderContext.DrawPolyLine(rSnippet);
+        },
+        [&aColB,&rRenderContext](const basegfx::B2DPolygon& rSnippet)
+        {
+            rRenderContext.SetLineColor(aColB);
+            rRenderContext.DrawPolyLine(rSnippet);
+        },
+        2.0 * fLogicDashLength);
+
+    rRenderContext.Pop();
 }
 
 void SvxCropExample::Resize()
 {
-    SetFrameSize(aFrameSize);
+    SetFrameSize(m_aFrameSize);
 }
 
 void SvxCropExample::SetFrameSize( const Size& rSz )
 {
-    aFrameSize = rSz;
-    if(!aFrameSize.Width())
-        aFrameSize.Width() = 1;
-    if(!aFrameSize.Height())
-        aFrameSize.Height() = 1;
+    m_aFrameSize = rSz;
+    if (!m_aFrameSize.Width())
+        m_aFrameSize.setWidth( 1 );
+    if (!m_aFrameSize.Height())
+        m_aFrameSize.setHeight( 1 );
     Size aWinSize( GetOutputSizePixel() );
-    Fraction aXScale( aWinSize.Width() * 4, aFrameSize.Width() * 5 );
-    Fraction aYScale( aWinSize.Height() * 4, aFrameSize.Height() * 5 );
+    Fraction aXScale( aWinSize.Width() * 4, m_aFrameSize.Width() * 5 );
+    Fraction aYScale( aWinSize.Height() * 4, m_aFrameSize.Height() * 5 );
 
     if( aYScale < aXScale )
         aXScale = aYScale;
 
-    MapMode aMapMode( GetMapMode() );
+    m_aMapMode.SetScaleX(aXScale);
+    m_aMapMode.SetScaleY(aXScale);
 
-    aMapMode.SetScaleX( aXScale );
-    aMapMode.SetScaleY( aXScale );
-
-    SetMapMode( aMapMode );
     Invalidate();
 }
 

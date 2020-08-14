@@ -19,28 +19,28 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_TOKENWRITER_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_TOKENWRITER_HXX
 
-#include "DExport.hxx"
-#include "moduledbu.hxx"
 #include "commontypes.hxx"
 
 #include <com/sun/star/awt/FontDescriptor.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
+#include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include <com/sun/star/sdbc/XResultSetUpdate.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/sdb/CommandType.hpp>
+#include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/sdbcx/XRowLocate.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/util/XNumberFormatter.hpp>
 
 #include <cppuhelper/implbase.hxx>
 #include <svx/dataaccessdescriptor.hxx>
+#include <vcl/weld.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sdbc{
         class XRowUpdate;
     }
-}}}
+}
 
 class SvStream;
 
@@ -48,11 +48,9 @@ namespace dbaui
 {
     // ODatabaseImportExport base class for import/export
     class ODatabaseExport;
-    typedef ::cppu::WeakImplHelper< css::lang::XEventListener> ODatabaseImportExport_BASE;
-    class ODatabaseImportExport : public ODatabaseImportExport_BASE
+    class ODatabaseImportExport : public ::cppu::WeakImplHelper< css::lang::XEventListener>
     {
     protected:
-        css::lang::Locale                                     m_aLocale;
         css::uno::Sequence< css::uno::Any>                    m_aSelection;
         bool                                                  m_bBookmarkSelection;
         SvStream*                                             m_pStream;
@@ -76,8 +74,6 @@ namespace dbaui
         sal_Int32           m_nCommandType;
         bool                m_bNeedToReInitialize;
 
-        ODatabaseExport*    m_pReader;
-        sal_Int32*          m_pRowMarker; // if set, then copy only these rows
         rtl_TextEncoding    m_eDestEnc;
         bool                m_bInInitialize;
         bool                m_bCheckOnly;
@@ -119,7 +115,7 @@ namespace dbaui
 
     class ORTFImportExport : public ODatabaseImportExport
     {
-        void appendRow(OString* pHorzChar,sal_Int32 _nColumnCount,sal_Int32& k,sal_Int32& kk);
+        void appendRow(OString const * pHorzChar,sal_Int32 _nColumnCount,sal_Int32& k,sal_Int32& kk);
     public:
         // export data
         ORTFImportExport(   const svx::ODataAccessDescriptor& _aDataDescriptor,
@@ -159,7 +155,7 @@ namespace dbaui
         void WriteTables();
         void WriteCell( sal_Int32 nFormat,sal_Int32 nWidthPixel,sal_Int32 nHeightPixel,const char* pChar,const OUString& rValue,const char* pHtmlTag);
         void IncIndent( sal_Int16 nVal );
-        const char*         GetIndentStr() { return sIndent; }
+        const char* GetIndentStr() const { return sIndent; }
         void FontOn();
         inline void FontOff();
 
@@ -184,14 +180,13 @@ namespace dbaui
 
     class ORowSetImportExport : public ODatabaseImportExport
     {
-        OModuleClient               m_aModuleClient;
         std::vector<sal_Int32>    m_aColumnMapping;
         std::vector<sal_Int32>    m_aColumnTypes;
         css::uno::Reference< css::sdbc::XResultSetUpdate >    m_xTargetResultSetUpdate;
         css::uno::Reference< css::sdbc::XRowUpdate >          m_xTargetRowUpdate;
         css::uno::Reference< css::sdbc::XResultSetMetaData >  m_xTargetResultSetMetaData;
-        VclPtr<vcl::Window>         m_pParent;
-        bool                        m_bAlreadyAsked;
+        weld::Window*             m_pParent;
+        bool                      m_bAlreadyAsked;
 
         bool insertNewRow();
     protected:
@@ -199,10 +194,10 @@ namespace dbaui
 
     public:
         // export data
-        ORowSetImportExport(vcl::Window* _pParent,
-                            const css::uno::Reference< css::sdbc::XResultSetUpdate >& _xResultSetUpdate,
-                            const svx::ODataAccessDescriptor& _aDataDescriptor,
-                            const css::uno::Reference< css::uno::XComponentContext >& _rM);
+        ORowSetImportExport(weld::Window* pParent,
+                            const css::uno::Reference< css::sdbc::XResultSetUpdate >& xResultSetUpdate,
+                            const svx::ODataAccessDescriptor& aDataDescriptor,
+                            const css::uno::Reference< css::uno::XComponentContext >& rM);
 
         virtual bool Write() override;
         virtual bool Read() override;

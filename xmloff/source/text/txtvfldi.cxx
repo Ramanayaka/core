@@ -22,46 +22,48 @@
  *
  *  export of all variable related text fields (and database display field)
  */
-#include "txtvfldi.hxx"
+#include <txtvfldi.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/xmlnumi.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/i18nmap.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlement.hxx>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/text/SetVariableType.hpp>
-#include <com/sun/star/text/XTextField.hpp>
 #include <com/sun/star/text/XDependentTextField.hpp>
 #include <com/sun/star/text/XTextFieldsSupplier.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
+#include <com/sun/star/style/NumberingType.hpp>
+#include <com/sun/star/container/XIndexReplace.hpp>
 
 #include <sax/tools/converter.hxx>
 
 #include <rtl/ustring.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 #include <tools/debug.hxx>
 
 
 // service names
-static const sal_Char sAPI_fieldmaster_prefix[] = "com.sun.star.text.FieldMaster.";
-static const sal_Char sAPI_get_expression[]     = "GetExpression";
-static const sal_Char sAPI_set_expression[]     = "SetExpression";
-static const sal_Char sAPI_user[]               = "User";
-static const sal_Char sAPI_database[]           = "com.sun.star.text.TextField.Database";
+const char sAPI_fieldmaster_prefix[] = "com.sun.star.text.FieldMaster.";
+const char sAPI_get_expression[]     = "GetExpression";
+const char sAPI_set_expression[]     = "SetExpression";
+const char sAPI_user[]               = "User";
+const char sAPI_database[]           = "com.sun.star.text.TextField.Database";
 
 // property names
-static const sal_Char sAPI_content[]            = "Content";
-static const sal_Char sAPI_sub_type[]           = "SubType";
-static const sal_Char sAPI_number_format[]      = "NumberFormat";
-static const sal_Char sAPI_is_visible[]         = "IsVisible";
-static const sal_Char sAPI_current_presentation[]   = "CurrentPresentation";
+const char sAPI_content[]            = "Content";
+const char sAPI_sub_type[]           = "SubType";
+const char sAPI_number_format[]      = "NumberFormat";
+const char sAPI_is_visible[]         = "IsVisible";
+const char sAPI_current_presentation[]   = "CurrentPresentation";
 
 
 using namespace ::com::sun::star;
@@ -77,7 +79,7 @@ using namespace ::xmloff::token;
 
 XMLVarFieldImportContext::XMLVarFieldImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp,
-    const sal_Char* pServiceName, sal_uInt16 nPrfx,
+    const char* pServiceName, sal_uInt16 nPrfx,
     const OUString& rLocalName,
     bool bFormula, bool bFormulaDefault,
     bool bDescription, bool bHelp, bool bHint, bool bVisible,
@@ -130,7 +132,7 @@ void XMLVarFieldImportContext::ProcessAttribute(
             {
                 OUString sTmp;
                 sal_uInt16 nPrefix = GetImport().GetNamespaceMap().
-                        GetKeyByAttrName_( sAttrValue, &sTmp );
+                        GetKeyByAttrValueQName(sAttrValue, &sTmp);
                 if( XML_NAMESPACE_OOOW == nPrefix )
                 {
                     sFormula = sTmp;
@@ -205,7 +207,7 @@ void XMLVarFieldImportContext::PrepareField(
 
     if (bSetVisible && bDisplayOK)
     {
-        bool bTmp = ! (bDisplayNone && bDisplayOK);
+        bool bTmp = !bDisplayNone;
         xPropertySet->setPropertyValue(sAPI_is_visible, Any(bTmp));
     }
 
@@ -244,7 +246,7 @@ void XMLVarFieldImportContext::PrepareField(
 
 XMLSetVarFieldImportContext::XMLSetVarFieldImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp,
-    const sal_Char* pServiceName, sal_uInt16 nPrfx,
+    const char* pServiceName, sal_uInt16 nPrfx,
     const OUString& rLocalName, VarType eVarType,
     bool bFormula, bool bFormulaDefault,
     bool bDescription, bool bHelp, bool bHint, bool bVisible, bool bIsDisplayFormula,
@@ -380,8 +382,7 @@ void XMLSequenceFieldImportContext::PrepareField(
     // handle reference name
     if (bRefNameOK)
     {
-        Any aAny;
-        aAny = xPropertySet->getPropertyValue("SequenceValue");
+        Any aAny = xPropertySet->getPropertyValue("SequenceValue");
         sal_Int16 nValue = 0;
         aAny >>= nValue;
         GetImportHelper().InsertSequenceID(sRefName, GetName(), nValue);
@@ -644,7 +645,7 @@ void XMLTableFormulaImportContext::PrepareField(
 // Should be adapted to XMLVarField-/XMLSetVarFieldImportContext scheme!
 
 
-// declaration containter import (<variable/user-field/sequence-decls>)
+// declaration container import (<variable/user-field/sequence-decls>)
 
 
 XMLVariableDeclsImportContext::XMLVariableDeclsImportContext(
@@ -656,12 +657,12 @@ XMLVariableDeclsImportContext::XMLVariableDeclsImportContext(
 {
 }
 
-SvXMLImportContext* XMLVariableDeclsImportContext::CreateChildContext(
+SvXMLImportContextRef XMLVariableDeclsImportContext::CreateChildContext(
     sal_uInt16 nPrefix, const OUString& rLocalName,
     const Reference<xml::sax::XAttributeList> & xAttrList )
 {
     enum XMLTokenEnum eElementName;
-    SvXMLImportContext* pImportContext = nullptr;
+    SvXMLImportContextRef xImportContext;
 
     if( XML_NAMESPACE_TEXT == nPrefix )
     {
@@ -684,20 +685,14 @@ SvXMLImportContext* XMLVariableDeclsImportContext::CreateChildContext(
 
         if( IsXMLToken( rLocalName, eElementName ) )
         {
-            pImportContext = new XMLVariableDeclImportContext(
+            xImportContext = new XMLVariableDeclImportContext(
                 GetImport(), rImportHelper, nPrefix, rLocalName, xAttrList,
                 eVarDeclsContextType);
         }
     }
 
     // if no context was created, use default context
-    if (nullptr == pImportContext) {
-        pImportContext = SvXMLImportContext::CreateChildContext(nPrefix,
-                                                                rLocalName,
-                                                                xAttrList);
-    }
-
-    return pImportContext;
+    return xImportContext;
 }
 
 
@@ -709,101 +704,106 @@ XMLVariableDeclImportContext::XMLVariableDeclImportContext(
     sal_uInt16 nPrfx, const OUString& rLocalName,
     const Reference<xml::sax::XAttributeList> & xAttrList,
     enum VarType eVarType) :
-        SvXMLImportContext(rImport, nPrfx, rLocalName),
-        // bug?? which properties for userfield/userfieldmaster
-        aValueHelper(rImport, rHlp, true, false, true, false),
-        nNumLevel(-1), cSeparationChar('.')
+        SvXMLImportContext(rImport, nPrfx, rLocalName)
 {
-    if ( (XML_NAMESPACE_TEXT == nPrfx) &&
-         ( ( IsXMLToken( rLocalName, XML_SEQUENCE_DECL )) ||
-           ( IsXMLToken( rLocalName, XML_VARIABLE_DECL)) ||
-           ( IsXMLToken( rLocalName, XML_USER_FIELD_DECL))    )) {
+    // bug?? which properties for userfield/userfieldmaster
+    XMLValueImportHelper aValueHelper(rImport, rHlp, true, false, true, false);
+    sal_Unicode cSeparationChar('.');
 
-        // TODO: check validity (need name!)
+    sal_Int8 nNumLevel(-1);
+    OUString sName;
 
-        // parse attributes
-        sal_Int16 nLength = xAttrList->getLength();
-        for(sal_Int16 i=0; i<nLength; i++) {
+    if ( (XML_NAMESPACE_TEXT != nPrfx) ||
+         !( ( IsXMLToken( rLocalName, XML_SEQUENCE_DECL )) ||
+            ( IsXMLToken( rLocalName, XML_VARIABLE_DECL)) ||
+            ( IsXMLToken( rLocalName, XML_USER_FIELD_DECL)) ) )
+        return;
 
-            OUString sLocalName;
-            sal_uInt16 nPrefix = GetImport().GetNamespaceMap().
-                GetKeyByAttrName( xAttrList->getNameByIndex(i), &sLocalName );
 
-            sal_uInt16 nToken = rHlp.
-                GetTextFieldAttrTokenMap().Get(nPrefix, sLocalName);
+    // TODO: check validity (need name!)
 
-            switch (nToken)
-            {
-                case XML_TOK_TEXTFIELD_NAME:
-                    sName = xAttrList->getValueByIndex(i);
-                    break;
-                case XML_TOK_TEXTFIELD_NUMBERING_LEVEL:
-                {
-                    sal_Int32 nLevel;
-                    bool const bRet = ::sax::Converter::convertNumber(
-                        nLevel, xAttrList->getValueByIndex(i), 0,
-                        GetImport().GetTextImport()->GetChapterNumbering()->
-                                                                   getCount());
-                    if (bRet)
-                    {
-                        nNumLevel = static_cast< sal_Int8 >( nLevel-1 ); // API numbers -1..9
-                    }
-                    break;
-                }
-                case XML_TOK_TEXTFIELD_NUMBERING_SEPARATOR:
-                    cSeparationChar =
-                        (sal_Char)xAttrList->getValueByIndex(i).toChar();
-                    break;
+    // parse attributes
+    sal_Int16 nLength = xAttrList->getLength();
+    for(sal_Int16 i=0; i<nLength; i++) {
 
-                default:
-                    // delegate to value helper
-                    aValueHelper.ProcessAttribute(nToken,
-                                                  xAttrList->getValueByIndex(i));
-                    break;
-            }
-        }
+        OUString sLocalName;
+        sal_uInt16 nPrefix = GetImport().GetNamespaceMap().
+            GetKeyByAttrName( xAttrList->getNameByIndex(i), &sLocalName );
 
-        Reference<XPropertySet> xFieldMaster;
-        if (FindFieldMaster(xFieldMaster, GetImport(), rHlp,
-                            sName, eVarType))
+        sal_uInt16 nToken = rHlp.
+            GetTextFieldAttrTokenMap().Get(nPrefix, sLocalName);
+
+        switch (nToken)
         {
-            // now we have a field master: process attributes!
-            Any aAny;
-
-            switch (eVarType)
-            {
-            case VarTypeSequence:
-                xFieldMaster->setPropertyValue("ChapterNumberingLevel", Any(nNumLevel));
-
-                if (nNumLevel >= 0)
-                {
-                    OUString sStr(&cSeparationChar, 1);
-                    xFieldMaster->setPropertyValue(
-                        "NumberingSeparator", Any(sStr));
-                }
+            case XML_TOK_TEXTFIELD_NAME:
+                sName = xAttrList->getValueByIndex(i);
                 break;
-            case VarTypeSimple:
-                {
-                    // set string or non-string SubType (#93192#)
-                    // The SubType was already set in the FindFieldMaster
-                    // method, but it needs to be adjusted if it's a string.
-                    aAny <<= aValueHelper.IsStringValue()
-                        ? SetVariableType::STRING : SetVariableType::VAR;
-                    xFieldMaster->setPropertyValue(sAPI_sub_type, aAny);
-                }
-                break;
-            case VarTypeUserField:
+            case XML_TOK_TEXTFIELD_NUMBERING_LEVEL:
             {
-                bool bTmp = !aValueHelper.IsStringValue();
-                xFieldMaster->setPropertyValue("IsExpression", Any(bTmp));
-                aValueHelper.PrepareField(xFieldMaster);
+                sal_Int32 nLevel;
+                bool const bRet = ::sax::Converter::convertNumber(
+                    nLevel, xAttrList->getValueByIndex(i), 0,
+                    GetImport().GetTextImport()->GetChapterNumbering()->
+                                                               getCount());
+                if (bRet)
+                {
+                    nNumLevel = static_cast< sal_Int8 >( nLevel-1 ); // API numbers -1..9
+                }
                 break;
             }
+            case XML_TOK_TEXTFIELD_NUMBERING_SEPARATOR:
+                cSeparationChar =
+                    static_cast<char>(xAttrList->getValueByIndex(i).toChar());
+                break;
+
             default:
-                OSL_FAIL("unknown varfield type");
-            } // switch
-        } // else: no field master found/constructed
-    } // else: no sequence-decl
+                // delegate to value helper
+                aValueHelper.ProcessAttribute(nToken,
+                                              xAttrList->getValueByIndex(i));
+                break;
+        }
+    }
+
+    Reference<XPropertySet> xFieldMaster;
+    if (!FindFieldMaster(xFieldMaster, GetImport(), rHlp,
+                        sName, eVarType))
+        return;
+
+    // now we have a field master: process attributes!
+    Any aAny;
+
+    switch (eVarType)
+    {
+    case VarTypeSequence:
+        xFieldMaster->setPropertyValue("ChapterNumberingLevel", Any(nNumLevel));
+
+        if (nNumLevel >= 0)
+        {
+            OUString sStr(&cSeparationChar, 1);
+            xFieldMaster->setPropertyValue(
+                "NumberingSeparator", Any(sStr));
+        }
+        break;
+    case VarTypeSimple:
+        {
+            // set string or non-string SubType (#93192#)
+            // The SubType was already set in the FindFieldMaster
+            // method, but it needs to be adjusted if it's a string.
+            aAny <<= aValueHelper.IsStringValue()
+                ? SetVariableType::STRING : SetVariableType::VAR;
+            xFieldMaster->setPropertyValue(sAPI_sub_type, aAny);
+        }
+        break;
+    case VarTypeUserField:
+    {
+        bool bTmp = !aValueHelper.IsStringValue();
+        xFieldMaster->setPropertyValue("IsExpression", Any(bTmp));
+        aValueHelper.PrepareField(xFieldMaster);
+        break;
+    }
+    default:
+        OSL_FAIL("unknown varfield type");
+    } // switch
 }
 
 
@@ -822,21 +822,20 @@ bool XMLVariableDeclImportContext::FindFieldMaster(
     // get text fields supplier and field masters
     Reference<XTextFieldsSupplier> xTextFieldsSupp(rImport.GetModel(),
                                                    UNO_QUERY);
-    Reference<container::XNameAccess> xFieldMasterNameAccess(
-        xTextFieldsSupp->getTextFieldMasters(), UNO_QUERY);
+    Reference<container::XNameAccess> xFieldMasterNameAccess =
+        xTextFieldsSupp->getTextFieldMasters();
 
-    OUStringBuffer sBuffer;
-    sBuffer.append(sAPI_fieldmaster_prefix);
-    sBuffer.append(sAPI_set_expression);
-    sBuffer.append(".");
-    sBuffer.append(sName);
-    OUString sVarServiceName = sBuffer.makeStringAndClear();
+    OUString sVarServiceName =
+        OUStringLiteral(sAPI_fieldmaster_prefix) +
+        sAPI_set_expression +
+        "." +
+        sName;
 
-    sBuffer.append(sAPI_fieldmaster_prefix);
-    sBuffer.append(sAPI_user);
-    sBuffer.append(".");
-    sBuffer.append(sName);
-    OUString sUserServiceName = sBuffer.makeStringAndClear();
+    OUString sUserServiceName =
+        OUStringLiteral(sAPI_fieldmaster_prefix) +
+        sAPI_user +
+        "." +
+        sName;
 
     if (xFieldMasterNameAccess->hasByName(sVarServiceName)) {
         // variable field master already in document
@@ -854,16 +853,10 @@ bool XMLVariableDeclImportContext::FindFieldMaster(
 
         if (eFMVarType != eVarType)
         {
-            OUString sNew;
+            ++nCollisionCount;
+            OUString sNew(sName + "_renamed_" + OUString::number(nCollisionCount));
 
             // FIXME! can't find if name is taken already!!!!
-
-            nCollisionCount++;
-            OUStringBuffer aBuf;
-            aBuf.append(sName);
-            aBuf.append("_renamed_");
-            aBuf.append(nCollisionCount);
-            sNew = aBuf.makeStringAndClear();
 
             rImportHelper.GetRenameMap().Add(
                 sal::static_int_cast< sal_uInt16 >(eVarType), sName, sNew);
@@ -878,17 +871,11 @@ bool XMLVariableDeclImportContext::FindFieldMaster(
         aAny >>= xMaster;
 
         if (VarTypeUserField != eVarType) {
+            ++nCollisionCount;
             // find new name that is not taken
-            OUString sNew;
+            OUString sNew(sName + "_renamed_" + OUString::number(nCollisionCount));
 
             // FIXME! can't find if name is taken already!!!!
-
-            nCollisionCount++;
-            OUStringBuffer aBuf;
-            aBuf.append(sName);
-            aBuf.append("_renamed_");
-            aBuf.append(nCollisionCount);
-            sNew = aBuf.makeStringAndClear();
 
             rImportHelper.GetRenameMap().Add(
                 sal::static_int_cast< sal_uInt16 >(eVarType), sName, sNew);
@@ -1028,27 +1015,34 @@ void XMLDatabaseDisplayImportContext::EndElement()
                     if (xTextContent.is())
                     {
                         // insert, set field properties and exit!
-                        GetImportHelper().InsertTextContent(xTextContent);
-
-                        // prepare field: format from database?
-                        bool bTmp = !aValueHelper.IsFormatOK();
-                        xField->setPropertyValue("DataBaseFormat", Any(bTmp));
-
-                        // value, value-type and format done by value helper
-                        aValueHelper.PrepareField(xField);
-
-                        // visibility
-                        if( bDisplayOK )
+                        try
                         {
-                            xField->setPropertyValue(sAPI_is_visible, Any(bDisplay));
+                            GetImportHelper().InsertTextContent(xTextContent);
+
+                            // prepare field: format from database?
+                            bool bTmp = !aValueHelper.IsFormatOK();
+                            xField->setPropertyValue("DataBaseFormat", Any(bTmp));
+
+                            // value, value-type and format done by value helper
+                            aValueHelper.PrepareField(xField);
+
+                            // visibility
+                            if( bDisplayOK )
+                            {
+                                xField->setPropertyValue(sAPI_is_visible, Any(bDisplay));
+                            }
+
+                            // set presentation
+                            aAny <<= GetContent();
+                            xField->setPropertyValue(sAPI_current_presentation, aAny);
+
+                            // success!
+                            return;
                         }
-
-                        // set presentation
-                        aAny <<= GetContent();
-                        xField->setPropertyValue(sAPI_current_presentation, aAny);
-
-                        // success!
-                        return;
+                        catch (const lang::IllegalArgumentException& rException)
+                        {
+                            SAL_WARN("xmloff.text", "Failed to insert text content: " << rException.Message);
+                        }
                     }
                 }
             }
@@ -1063,6 +1057,7 @@ void XMLDatabaseDisplayImportContext::EndElement()
 
 // value import helper
 
+namespace {
 
 enum ValueType
 {
@@ -1075,7 +1070,9 @@ enum ValueType
     XML_VALUE_TYPE_BOOLEAN
 };
 
-static SvXMLEnumMapEntry<ValueType> const aValueTypeMap[] =
+}
+
+SvXMLEnumMapEntry<ValueType> const aValueTypeMap[] =
 {
     { XML_FLOAT,        XML_VALUE_TYPE_FLOAT },
     { XML_CURRENCY,     XML_VALUE_TYPE_CURRENCY },
@@ -1084,7 +1081,7 @@ static SvXMLEnumMapEntry<ValueType> const aValueTypeMap[] =
     { XML_TIME,         XML_VALUE_TYPE_TIME },
     { XML_BOOLEAN,      XML_VALUE_TYPE_BOOLEAN },
     { XML_STRING,       XML_VALUE_TYPE_STRING },
-    { XML_TOKEN_INVALID, (ValueType)0 }
+    { XML_TOKEN_INVALID, ValueType(0) }
 };
 
 XMLValueImportHelper::XMLValueImportHelper(
@@ -1204,7 +1201,7 @@ void XMLValueImportHelper::ProcessAttribute(
             {
                 OUString sTmp;
                 sal_uInt16 nPrefix = rImport.GetNamespaceMap().
-                        GetKeyByAttrName_( sAttrValue, &sTmp );
+                        GetKeyByAttrValueQName(sAttrValue, &sTmp);
                 if( XML_NAMESPACE_OOOW == nPrefix )
                 {
                     sFormula = sTmp;

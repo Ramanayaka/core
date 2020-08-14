@@ -26,12 +26,12 @@
 
 #include <com/sun/star/uno/Any.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { class XPropertySet; }
     namespace frame { class XModel; }
     namespace uno { template<class A> class Reference; }
     namespace xforms { class XDataTypeRepository; class XModel2; }
-} } }
+}
 class SvXMLNamespaceMap;
 
 css::uno::Reference<css::xforms::XModel2> xforms_createXFormsModel();
@@ -45,7 +45,7 @@ css::uno::Reference<css::beans::XPropertySet> xforms_findXFormsBinding( css::uno
 css::uno::Reference<css::beans::XPropertySet> xforms_findXFormsSubmission( css::uno::Reference<css::frame::XModel> const &, const OUString& );
 
 void xforms_setValue(
-    css::uno::Reference<css::beans::XPropertySet>& xPropSet,
+    css::uno::Reference<css::beans::XPropertySet> const & xPropSet,
     const OUString& rName,
     const css::uno::Any& rAny );
 

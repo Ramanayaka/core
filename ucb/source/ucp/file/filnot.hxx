@@ -23,7 +23,7 @@
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/beans/PropertyChangeEvent.hpp>
 #include <com/sun/star/ucb/XContentIdentifier.hpp>
-#include "filglob.hxx"
+#include <com/sun/star/ucb/XContent.hpp>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -72,14 +72,13 @@ namespace fileaccess {
             const css::uno::Reference< css::ucb::XContent >& xCreatorContent,
             const std::vector< css::uno::Reference< css::uno::XInterface > >& sListeners );
 
-        void SAL_CALL notifyPropertyAdded( const OUString & aPropertyName );
-        void SAL_CALL notifyPropertyRemoved( const OUString & aPropertyName );
+        void notifyPropertyAdded( const OUString & aPropertyName );
+        void notifyPropertyRemoved( const OUString & aPropertyName );
     };
 
 
     typedef std::unordered_map< OUString,
-                           css::uno::Sequence< css::uno::Reference< css::uno::XInterface > >,
-                           OUStringHash >      ListenerMap;
+                           css::uno::Sequence< css::uno::Reference< css::uno::XInterface > > >  ListenerMap;
 
     class PropertyChangeNotifier
     {
@@ -89,7 +88,7 @@ namespace fileaccess {
     public:
         PropertyChangeNotifier(
             const css::uno::Reference< css::ucb::XContent >& xCreatorContent,
-            ListenerMap* pListeners );
+            std::unique_ptr<ListenerMap> pListeners );
 
         ~PropertyChangeNotifier();
 
@@ -102,12 +101,12 @@ namespace fileaccess {
     {
     public:
         // Side effect of this function is the change of the name
-        virtual ContentEventNotifier*          cEXC( const OUString& aNewName ) = 0;
+        virtual std::unique_ptr<ContentEventNotifier> cEXC( const OUString& aNewName ) = 0;
         // Side effect is the change of the state of the object to "deleted".
-        virtual ContentEventNotifier*          cDEL() = 0;
-        virtual ContentEventNotifier*          cCEL() = 0;
-        virtual PropertySetInfoChangeNotifier* cPSL() = 0;
-        virtual PropertyChangeNotifier*        cPCL() = 0;
+        virtual std::unique_ptr<ContentEventNotifier> cDEL() = 0;
+        virtual std::unique_ptr<ContentEventNotifier> cCEL() = 0;
+        virtual std::unique_ptr<PropertySetInfoChangeNotifier> cPSL() = 0;
+        virtual std::unique_ptr<PropertyChangeNotifier> cPCL() = 0;
 
     protected:
         ~Notifier() {}

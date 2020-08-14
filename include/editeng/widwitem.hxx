@@ -22,8 +22,6 @@
 #include <svl/intitem.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxWidowsItem ---------------------------------------------------
 
 /*  [Description]
@@ -31,7 +29,7 @@ class SvXMLUnitConverter;
     This item describes the number of lines for the widows control.
 */
 
-class EDITENG_DLLPUBLIC SvxWidowsItem: public SfxByteItem
+class EDITENG_DLLPUBLIC SvxWidowsItem final : public SfxByteItem
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -39,20 +37,12 @@ public:
     SvxWidowsItem( const sal_uInt8 nL /*= 0*/, const sal_uInt16 nId  );
 
     // "pure virtual Methods" from SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream &, sal_uInt16 ) const override;
-    virtual SvStream&       Store( SvStream & , sal_uInt16 nItemVersion ) const override;
+    virtual SvxWidowsItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
-
-    SvxWidowsItem& operator=( const SvxWidowsItem& rWidows )
-    {
-        SetValue( rWidows.GetValue() );
-        return *this;
-    }
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

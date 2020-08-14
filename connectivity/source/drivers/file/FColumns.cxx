@@ -17,14 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "file/FColumns.hxx"
+#include <file/FColumns.hxx>
 #include <connectivity/sdbcx/VColumn.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
-#include "file/FTable.hxx"
-#include <comphelper/property.hxx>
+#include <file/FTable.hxx>
 
 using namespace connectivity::file;
 using namespace connectivity;
@@ -43,7 +40,7 @@ sdbcx::ObjectType OColumns::createObject(const OUString& _rName)
     Reference< XResultSet > xResult = m_pTable->getConnection()->getMetaData()->getColumns(Any(),
     sSchemaName, sTableName, _rName);
 
-    sdbcx::ObjectType xRet = nullptr;
+    sdbcx::ObjectType xRet;
     if(xResult.is())
     {
         Reference< XRow > xRow(xResult,UNO_QUERY);

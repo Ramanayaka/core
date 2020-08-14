@@ -13,10 +13,8 @@
 #include <map>
 #include <svl/poolitem.hxx>
 #include <unotools/configitem.hxx>
-#include <unotools/localedatawrapper.hxx>
 #include <formula/grammar.hxx>
 #include "scdllapi.h"
-#include "global.hxx"
 #include "calcconfig.hxx"
 
 class SC_DLLPUBLIC ScFormulaOptions
@@ -36,8 +34,6 @@ private:
 
 public:
     ScFormulaOptions();
-    ScFormulaOptions( const ScFormulaOptions& rCpy );
-    ~ScFormulaOptions();
 
     void SetDefaults();
 
@@ -73,22 +69,25 @@ public:
 
     static void GetDefaultFormulaSeparators(OUString& rSepArg, OUString& rSepArrayCol, OUString& rSepArrayRow);
 
-    ScFormulaOptions&  operator=  ( const ScFormulaOptions& rCpy );
     bool               operator== ( const ScFormulaOptions& rOpt ) const;
     bool               operator!= ( const ScFormulaOptions& rOpt ) const;
 };
 
 // item for the dialog / options page
 
-class SC_DLLPUBLIC ScTpFormulaItem : public SfxPoolItem
+class SC_DLLPUBLIC ScTpFormulaItem final : public SfxPoolItem
 {
 public:
     ScTpFormulaItem( const ScFormulaOptions& rOpt );
-    ScTpFormulaItem( const ScTpFormulaItem& rItem );
     virtual ~ScTpFormulaItem() override;
 
+    ScTpFormulaItem(ScTpFormulaItem const &) = default;
+    ScTpFormulaItem(ScTpFormulaItem &&) = default;
+    ScTpFormulaItem & operator =(ScTpFormulaItem const &) = delete; // due to SfxPoolItem
+    ScTpFormulaItem & operator =(ScTpFormulaItem &&) = delete; // due to SfxPoolItem
+
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScTpFormulaItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const ScFormulaOptions& GetFormulaOptions() const { return theOptions; }
 
@@ -98,7 +97,7 @@ private:
 
 // config item
 
-class ScFormulaCfg : public ScFormulaOptions, public utl::ConfigItem
+class ScFormulaCfg final : public ScFormulaOptions, public utl::ConfigItem
 {
     typedef std::map<OUString,sal_uInt16> PropsToIds;
     static css::uno::Sequence<OUString> GetPropertyNames();

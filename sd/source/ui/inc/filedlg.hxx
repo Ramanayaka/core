@@ -21,10 +21,11 @@
 #define INCLUDED_SD_SOURCE_UI_INC_FILEDLG_HXX
 
 #include <vcl/errcode.hxx>
+#include <vcl/weld.hxx>
 
 #include <memory>
 
-#include "sddllapi.h"
+#include <sddllapi.h>
 
 class SdFileDialog_Imp;
 
@@ -44,14 +45,14 @@ class SD_DLLPUBLIC SdOpenSoundFileDialog
     SdOpenSoundFileDialog & operator= (const SdOpenSoundFileDialog &) = delete;
 
 public:
-    SdOpenSoundFileDialog();
+    SdOpenSoundFileDialog(weld::Window* pParent);
     ~SdOpenSoundFileDialog();
 
     ErrCode Execute();
     OUString GetPath() const;
     void SetPath( const OUString& rPath );
     // WIP, please don't remove, dear Clang plugins
-    bool IsInsertAsLinkSelected();
+    bool IsInsertAsLinkSelected() const;
 };
 
 #endif // INCLUDED_SD_SOURCE_UI_INC_FILEDLG_HXX

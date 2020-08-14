@@ -24,9 +24,9 @@
 #include <osl/process.h>
 #include <tools/urlobj.hxx>
 #include <tools/stream.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <vcl/pngread.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/svgdata.hxx>
 
 namespace {
     bool loadPng( const OUString & rPath, BitmapEx &rBitmap)

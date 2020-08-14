@@ -18,8 +18,6 @@
  */
 
 
-#include <com/sun/star/beans/PropertyState.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/awt/XDevice.hpp>
 #include <com/sun/star/graphic/XGraphic.hpp>
@@ -32,11 +30,10 @@
 #include <comphelper/propertysethelper.hxx>
 #include <comphelper/propertysetinfo.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/weakagg.hxx>
 #include <rtl/ref.hxx>
-#include <svl/itemprop.hxx>
-#include <svtools/grfmgr.hxx>
-#include <comphelper/servicehelper.hxx>
-#include "graphic.hxx"
+#include <vcl/GraphicObject.hxx>
+#include <vcl/outdev.hxx>
 
 #define UNOGRAPHIC_DEVICE           1
 #define UNOGRAPHIC_DESTINATIONRECT  2
@@ -140,7 +137,7 @@ void SAL_CALL GraphicRendererVCL::release()
 
 OUString SAL_CALL GraphicRendererVCL::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.graphic.GraphicRendererVCL" );
+    return "com.sun.star.comp.graphic.GraphicRendererVCL";
 }
 
 sal_Bool SAL_CALL GraphicRendererVCL::supportsService( const OUString& ServiceName )
@@ -151,24 +148,20 @@ sal_Bool SAL_CALL GraphicRendererVCL::supportsService( const OUString& ServiceNa
 
 uno::Sequence< OUString > SAL_CALL GraphicRendererVCL::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> aSeq { "com.sun.star.graphic.GraphicRendererVCL" };
-    return aSeq;
+    return { "com.sun.star.graphic.GraphicRendererVCL" };
 }
 
 
 uno::Sequence< uno::Type > SAL_CALL GraphicRendererVCL::getTypes()
 {
-    uno::Sequence< uno::Type >  aTypes( 7 );
-    uno::Type*                  pTypes = aTypes.getArray();
-
-    *pTypes++ = cppu::UnoType<uno::XAggregation>::get();
-    *pTypes++ = cppu::UnoType<lang::XServiceInfo>::get();
-    *pTypes++ = cppu::UnoType<lang::XTypeProvider>::get();
-    *pTypes++ = cppu::UnoType<beans::XPropertySet>::get();
-    *pTypes++ = cppu::UnoType<beans::XPropertyState>::get();
-    *pTypes++ = cppu::UnoType<beans::XMultiPropertySet>::get();
-    *pTypes++ = cppu::UnoType<graphic::XGraphicRenderer>::get();
-
+    static const uno::Sequence< uno::Type >  aTypes {
+        cppu::UnoType<uno::XAggregation>::get(),
+        cppu::UnoType<lang::XServiceInfo>::get(),
+        cppu::UnoType<lang::XTypeProvider>::get(),
+        cppu::UnoType<beans::XPropertySet>::get(),
+        cppu::UnoType<beans::XPropertyState>::get(),
+        cppu::UnoType<beans::XMultiPropertySet>::get(),
+        cppu::UnoType<graphic::XGraphicRenderer>::get() };
     return aTypes;
 }
 
@@ -283,12 +276,10 @@ void SAL_CALL GraphicRendererVCL::render( const uno::Reference< graphic::XGraphi
 {
     if( mpOutDev && mxDevice.is() && rxGraphic.is() )
     {
-        const uno::Reference< XInterface >  xIFace( rxGraphic, uno::UNO_QUERY );
-        const ::Graphic*                    pGraphic = ::unographic::Graphic::getImplementation( xIFace );
-
-        if( pGraphic )
+        Graphic aGraphic(rxGraphic);
+        if (!aGraphic.IsNone())
         {
-            GraphicObject aGraphicObject( *pGraphic );
+            GraphicObject aGraphicObject(aGraphic);
             aGraphicObject.Draw( mpOutDev, maDestRect.TopLeft(), maDestRect.GetSize() );
         }
     }
@@ -296,7 +287,7 @@ void SAL_CALL GraphicRendererVCL::render( const uno::Reference< graphic::XGraphi
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_graphic_GraphicRendererVCL_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

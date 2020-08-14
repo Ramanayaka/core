@@ -20,32 +20,21 @@
 
 #include <algorithm>
 
-#include <config_vclplug.h>
-
-#include "app.hxx"
+#include <app.hxx>
+#include <dp_shared.hxx>
 #include "cmdlineargs.hxx"
-#include "desktopresid.hxx"
-#include "desktop.hrc"
+#include <strings.hrc>
 #include <com/sun/star/registry/XSimpleRegistry.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/Exception.hpp>
-#include <com/sun/star/uno/XCurrentContext.hpp>
-#include <com/sun/star/packages/zip/ZipIOException.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/ucb/UniversalContentBroker.hpp>
-#include <com/sun/star/ucb/XUniversalContentBroker.hpp>
-#include <uno/current_context.hxx>
 #include <cppuhelper/bootstrap.hxx>
 #include <officecfg/Setup.hxx>
 #include <osl/file.hxx>
-#include <osl/module.h>
-#include <rtl/uri.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/bootstrap.hxx>
 #include <sal/log.hxx>
-
-#include <tools/rcid.h>
+#include <tools/diagnose_ex.h>
 
 #include <rtl/instance.hxx>
 #include <comphelper/processfactory.hxx>
@@ -53,7 +42,6 @@
 #include <unotools/tempfile.hxx>
 #include <vcl/svapp.hxx>
 #include <unotools/pathoptions.hxx>
-#include <sfx2/safemode.hxx>
 #include <map>
 
 using namespace desktop;
@@ -82,6 +70,13 @@ void Desktop::InitApplicationServiceManager()
     sm.set(
         cppu::defaultBootstrap_InitialComponentContext( aUnoRc )->getServiceManager(),
         UNO_QUERY_THROW);
+#elif defined(IOS)
+    OUString uri( "$APP_DATA_DIR" );
+    rtl_bootstrap_expandMacros( &uri.pData );
+    OUString aUnoRc("file://" + uri  + "/unorc");
+    sm.set(
+           cppu::defaultBootstrap_InitialComponentContext( aUnoRc )->getServiceManager(),
+           UNO_QUERY_THROW);
 #else
     sm.set(
         cppu::defaultBootstrap_InitialComponentContext()->getServiceManager(),
@@ -92,36 +87,35 @@ void Desktop::InitApplicationServiceManager()
 
 void Desktop::RegisterServices(Reference< XComponentContext > const & context)
 {
-    if( !m_bServicesRegistered )
-    {
-        // interpret command line arguments
-        CommandLineArgs& rCmdLine = GetCommandLineArgs();
+    if( m_bServicesRegistered )
+        return;
 
-        // Headless mode for FAT Office, auto cancels any dialogs that popup
-        if (rCmdLine.IsEventTesting())
-            Application::EnableEventTestingMode();
-        else if (rCmdLine.IsHeadless())
-            Application::EnableHeadlessMode(false);
+    // interpret command line arguments
+    CommandLineArgs& rCmdLine = GetCommandLineArgs();
 
-        // read accept string from configuration
-        OUString conDcpCfg(
-            officecfg::Setup::Office::ooSetupConnectionURL::get(context));
-        if (!conDcpCfg.isEmpty()) {
-            createAcceptor(conDcpCfg);
-        }
+    // Headless mode for FAT Office, auto cancels any dialogs that popup
+    if (rCmdLine.IsEventTesting())
+        Application::EnableEventTestingMode();
+    else if (rCmdLine.IsHeadless())
+        Application::EnableHeadlessMode(false);
 
-        std::vector< OUString > const & conDcp = rCmdLine.GetAccept();
-        for (std::vector< OUString >::const_iterator i(conDcp.begin());
-             i != conDcp.end(); ++i)
-        {
-            createAcceptor(*i);
-        }
-
-        configureUcb();
-
-        CreateTemporaryDirectory();
-        m_bServicesRegistered = true;
+    // read accept string from configuration
+    OUString conDcpCfg(
+        officecfg::Setup::Office::ooSetupConnectionURL::get(context));
+    if (!conDcpCfg.isEmpty()) {
+        createAcceptor(conDcpCfg);
     }
+
+    std::vector< OUString > const & conDcp = rCmdLine.GetAccept();
+    for (auto const& elem : conDcp)
+    {
+        createAcceptor(elem);
+    }
+
+    configureUcb();
+
+    CreateTemporaryDirectory();
+    m_bServicesRegistered = true;
 }
 
 typedef std::map< OUString, css::uno::Reference<css::lang::XInitialization> > AcceptorMap;
@@ -139,36 +133,38 @@ void Desktop::createAcceptor(const OUString& aAcceptString)
     // check whether the requested acceptor already exists
     AcceptorMap &rMap = acceptorMap::get();
     AcceptorMap::const_iterator pIter = rMap.find(aAcceptString);
-    if (pIter == rMap.end() )
+    if (pIter != rMap.end() )
+        return;
+
+    Sequence< Any > aSeq( 2 );
+    aSeq[0] <<= aAcceptString;
+    aSeq[1] <<= bAccept;
+    Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    Reference<XInitialization> rAcceptor(
+        xContext->getServiceManager()->createInstanceWithContext("com.sun.star.office.Acceptor", xContext),
+        UNO_QUERY );
+    if ( rAcceptor.is() )
     {
-        Sequence< Any > aSeq( 2 );
-        aSeq[0] <<= aAcceptString;
-        aSeq[1] <<= bAccept;
-        Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
-        Reference<XInitialization> rAcceptor(
-            xContext->getServiceManager()->createInstanceWithContext("com.sun.star.office.Acceptor", xContext),
-            UNO_QUERY );
-        if ( rAcceptor.is() )
+        try
         {
-            try
-            {
-                rAcceptor->initialize( aSeq );
-                rMap.insert(AcceptorMap::value_type(aAcceptString, rAcceptor));
-            }
-            catch (const css::uno::Exception& e)
-            {
-                // no error handling needed...
-                // acceptor just won't come up
-                SAL_WARN( "desktop.app", "Acceptor could not be created: " << e.Message);
-            }
+            rAcceptor->initialize( aSeq );
+            rMap.emplace(aAcceptString, rAcceptor);
         }
-        else
+        catch (const css::uno::Exception&)
         {
-            // there is already an acceptor with this description
-            SAL_WARN( "desktop.app", "Acceptor already exists.");
+            // no error handling needed...
+            // acceptor just won't come up
+            TOOLS_WARN_EXCEPTION( "desktop.app", "Acceptor could not be created");
         }
     }
+    else
+    {
+        // there is already an acceptor with this description
+        SAL_WARN( "desktop.app", "Acceptor already exists.");
+    }
 }
+
+namespace {
 
 class enable
 {
@@ -184,6 +180,8 @@ class enable
         }
     }
 };
+
+}
 
 // enable acceptors
 IMPL_STATIC_LINK_NOARG(Desktop, EnableAcceptors_Impl, void*, void)
@@ -238,41 +236,21 @@ void Desktop::CreateTemporaryDirectory()
     {
         // Catch runtime exception here: We have to add language dependent info
         // to the exception message. Fallback solution uses hard coded string.
-        OUString aMsg;
-        DesktopResId aResId( STR_BOOTSTRAP_ERR_NO_PATHSET_SERVICE );
-        aResId.SetRT( RSC_STRING );
-        if ( aResId.GetResMgr()->IsAvailable( aResId ))
-            aMsg = aResId;
-        else
-            aMsg = "The path manager is not available.\n";
+        OUString aMsg = DpResId(STR_BOOTSTRAP_ERR_NO_PATHSET_SERVICE);
         e.Message = aMsg + e.Message;
         throw;
     }
 
-    // set temp base directory
-    if ( aTempBaseURL.endsWith( "/" ) )
-        aTempBaseURL = aTempBaseURL.copy( 0, aTempBaseURL.getLength() - 1 );
-
-    OUString aRet;
-    OUString aTempPath( aTempBaseURL );
-
     // create new current temporary directory
-    osl::FileBase::getSystemPathFromFileURL( aTempBaseURL, aRet );
-    ::osl::FileBase::getFileURLFromSystemPath( aRet, aTempPath );
-    aTempPath = ::utl::TempFile::SetTempNameBaseDirectory( aTempPath );
-    if ( aTempPath.isEmpty() )
+    OUString aTempPath = ::utl::TempFile::SetTempNameBaseDirectory( aTempBaseURL );
+    if ( aTempPath.isEmpty()
+         && ::osl::File::getTempDirURL( aTempBaseURL ) == osl::FileBase::E_None )
     {
-        ::osl::File::getTempDirURL( aTempBaseURL );
-
-        if ( aTempBaseURL.endsWith( "/" ) )
-            aTempBaseURL = aTempBaseURL.copy( 0, aTempBaseURL.getLength() - 1 );
-
-        aTempPath = aTempBaseURL;
-        ::osl::FileBase::getFileURLFromSystemPath( aRet, aTempPath );
-        aTempPath = ::utl::TempFile::SetTempNameBaseDirectory( aTempPath );
+        aTempPath = ::utl::TempFile::SetTempNameBaseDirectory( aTempBaseURL );
     }
 
     // set new current temporary directory
+    OUString aRet;
     if (osl::FileBase::getFileURLFromSystemPath( aTempPath, aRet )
         != osl::FileBase::E_None)
     {

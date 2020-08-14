@@ -40,9 +40,9 @@ void *SimpleReferenceObject::operator new(std::size_t nSize,
 #if defined(_WIN32)
     return ::operator new(nSize);
         // WNT lacks a global nothrow operator new...
-#else // WNT
+#else // _WIN32
     return ::operator new(nSize, std::nothrow);
-#endif // WNT
+#endif // _WIN32
 }
 
 void SimpleReferenceObject::operator delete(void * pPtr)
@@ -54,24 +54,9 @@ void SimpleReferenceObject::operator delete(void * pPtr, std::nothrow_t const &)
 {
 #if defined(_WIN32)
     ::operator delete(pPtr); // WNT lacks a global nothrow operator delete...
-#else // WNT
+#else // _WIN32
     ::operator delete(pPtr, std::nothrow);
-#endif // WNT
+#endif // _WIN32
 }
-
-#ifdef _MSC_VER
-
-/* This operator is supposed to be unimplemented, but that now leads
- * to compilation and/or linking errors with MSVC2008. Problem still
- * there with MSVC2013. As it can be left unimplemented just fine with
- * other compilers, presumably it is never called. So do implement it
- * then to avoid the compilation and/or linking errors, but make it
- * crash intentionally if called.
- */
-void SimpleReferenceObject::operator delete[](void * /* pPtr */)
-{
-    abort();
-}
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

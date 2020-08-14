@@ -20,11 +20,7 @@
 #define INCLUDED_SW_SOURCE_UI_DBUI_CREATEADDRESSLISTDIALOG_HXX
 
 #include <sfx2/basedlgs.hxx>
-
-#include <vcl/button.hxx>
-#include <vcl/field.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
+#include <vcl/weld.hxx>
 #include <vector>
 
 class SwAddressControl_Impl;
@@ -38,73 +34,73 @@ struct SwCSVData
 };
 
 class SwFindEntryDialog;
-class SwCreateAddressListDialog : public SfxModalDialog
+class SwCreateAddressListDialog : public SfxDialogController
 {
-    VclPtr<SwAddressControl_Impl>   m_pAddressControl;
-
-    VclPtr<PushButton>              m_pNewPB;
-    VclPtr<PushButton>              m_pDeletePB;
-    VclPtr<PushButton>              m_pFindPB;
-    VclPtr<PushButton>              m_pCustomizePB;
-
-    VclPtr<PushButton>              m_pStartPB;
-    VclPtr<PushButton>              m_pPrevPB;
-    VclPtr<NumericField>            m_pSetNoNF;
-    VclPtr<PushButton>              m_pNextPB;
-    VclPtr<PushButton>              m_pEndPB;
-
-
-    VclPtr<OKButton>                m_pOK;
-
     OUString                m_sAddressListFilterName;
     OUString                m_sURL;
 
-    SwCSVData*              m_pCSVData;
-    VclPtr<SwFindEntryDialog>      m_pFindDlg;
+    std::unique_ptr<SwCSVData>     m_pCSVData;
+    std::unique_ptr<SwFindEntryDialog> m_xFindDlg;
 
-    DECL_LINK(NewHdl_Impl, Button*, void);
-    DECL_LINK(DeleteHdl_Impl, Button*, void);
-    DECL_LINK(FindHdl_Impl, Button*, void);
-    DECL_LINK(CustomizeHdl_Impl, Button*, void);
-    DECL_LINK(OkHdl_Impl, Button*, void);
-    DECL_LINK(DBCursorHdl_Impl, Button*, void);
-    DECL_LINK(DBNumCursorHdl_Impl, Edit&, void);
+    std::unique_ptr<SwAddressControl_Impl> m_xAddressControl;
+    std::unique_ptr<weld::Button> m_xNewPB;
+    std::unique_ptr<weld::Button> m_xDeletePB;
+    std::unique_ptr<weld::Button> m_xFindPB;
+    std::unique_ptr<weld::Button> m_xCustomizePB;
+    std::unique_ptr<weld::Button> m_xStartPB;
+    std::unique_ptr<weld::Button> m_xPrevPB;
+    std::unique_ptr<weld::Entry> m_xSetNoED;
+    std::unique_ptr<weld::SpinButton> m_xSetNoNF;
+    std::unique_ptr<weld::Button> m_xNextPB;
+    std::unique_ptr<weld::Button> m_xEndPB;
+    std::unique_ptr<weld::Button> m_xOK;
+
+    DECL_LINK(NewHdl_Impl, weld::Button&, void);
+    DECL_LINK(DeleteHdl_Impl, weld::Button&, void);
+    DECL_LINK(FindHdl_Impl, weld::Button&, void);
+    DECL_LINK(CustomizeHdl_Impl, weld::Button&, void);
+    DECL_LINK(OkHdl_Impl, weld::Button&, void);
+    DECL_LINK(DBCursorHdl_Impl, weld::Button&, void);
+    DECL_LINK(DBNumCursorHdl_Impl, weld::Entry&, void);
+    DECL_LINK(RefreshNum_Impl, weld::Widget&, void);
+    void DBNumCursor();
 
     void UpdateButtons();
 
 public:
-    SwCreateAddressListDialog(
-            vcl::Window* pParent, const OUString& rURL, SwMailMergeConfigItem& rConfig);
+    SwCreateAddressListDialog(weld::Window* pParent, const OUString& rURL, SwMailMergeConfigItem const & rConfig);
     virtual ~SwCreateAddressListDialog() override;
-    virtual void dispose() override;
 
-    const OUString&         GetURL() const {    return m_sURL;    }
+    const OUString&         GetURL() const { return m_sURL; }
     void                    Find( const OUString& rSearch, sal_Int32 nColumn);
 };
 
-class SwFindEntryDialog : public ModelessDialog
+class SwFindEntryDialog : public weld::GenericDialogController
 {
-    VclPtr<Edit>         m_pFindED;
-    VclPtr<CheckBox>     m_pFindOnlyCB;
-    VclPtr<ListBox>      m_pFindOnlyLB;
+    SwCreateAddressListDialog* m_pParent;
 
-    VclPtr<PushButton>   m_pFindPB;
-    VclPtr<CancelButton> m_pCancel;
+    std::unique_ptr<weld::Entry> m_xFindED;
+    std::unique_ptr<weld::CheckButton> m_xFindOnlyCB;
+    std::unique_ptr<weld::ComboBox> m_xFindOnlyLB;
+    std::unique_ptr<weld::Button> m_xFindPB;
+    std::unique_ptr<weld::Button> m_xCancel;
 
-    VclPtr<SwCreateAddressListDialog>  m_pParent;
-
-    DECL_LINK(FindHdl_Impl, Button*, void);
-    DECL_LINK(FindEnableHdl_Impl, Edit&, void);
-    DECL_LINK(CloseHdl_Impl, Button*, void);
+    DECL_LINK(FindHdl_Impl, weld::Button&, void);
+    DECL_LINK(FindEnableHdl_Impl, weld::Entry&, void);
+    DECL_LINK(CloseHdl_Impl, weld::Button&, void);
 
 public:
     SwFindEntryDialog(SwCreateAddressListDialog* pParent);
     virtual ~SwFindEntryDialog() override;
-    virtual void dispose() override;
 
-    ListBox& GetFieldsListBox()
+    void show() { m_xDialog->show(); }
+    void set_visible(bool bVisible) { m_xDialog->set_visible(bVisible); }
+    void hide() { m_xDialog->hide(); }
+    bool get_visible() const { return m_xDialog->get_visible(); }
+
+    weld::ComboBox& GetFieldsListBox()
     {
-        return *m_pFindOnlyLB;
+        return *m_xFindOnlyLB;
     }
 };
 

@@ -10,23 +10,23 @@
 #ifndef INCLUDED_UNOIDL_SOURCE_SOURCEPROVIDER_SCANNER_HXX
 #define INCLUDED_UNOIDL_SOURCE_SOURCEPROVIDER_SCANNER_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cassert>
 #include <map>
 #include <set>
 #include <vector>
 
-#include "rtl/ref.hxx"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
-#include "salhelper/simplereferenceobject.hxx"
-#include "unoidl/unoidl.hxx"
+#include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
+#include <salhelper/simplereferenceobject.hxx>
+#include <unoidl/unoidl.hxx>
 
 #include "sourceprovider-parser-requires.hxx"
-#include "sourceprovider-parser.hxx"
+#include <sourceprovider-parser.hxx>
 
-namespace unoidl { namespace detail {
+namespace unoidl::detail {
 
 struct SourceProviderScannerData;
 
@@ -197,12 +197,12 @@ public:
     struct Constructor {
         struct Parameter {
             Parameter(
-                rtl::OUString const & theName,
+                OUString const & theName,
                 SourceProviderType const & theType, bool theRest):
                 name(theName), type(theType), rest(theRest)
             {}
 
-            rtl::OUString name;
+            OUString name;
 
             SourceProviderType type;
 
@@ -210,18 +210,18 @@ public:
         };
 
         Constructor(
-            rtl::OUString const & theName,
-            std::vector< rtl::OUString > const & theAnnotations):
+            OUString const & theName,
+            std::vector< OUString > const & theAnnotations):
             name(theName), annotations(theAnnotations)
         {}
 
-        rtl::OUString name;
+        OUString name;
 
         std::vector< Parameter > parameters;
 
-        std::vector< rtl::OUString > exceptions;
+        std::vector< OUString > exceptions;
 
-        std::vector< rtl::OUString > annotations;
+        std::vector< OUString > annotations;
     };
 
     explicit SourceProviderSingleInterfaceBasedServiceEntityPad(
@@ -313,7 +313,7 @@ struct SourceProviderScannerData {
 
 bool parse(OUString const & uri, SourceProviderScannerData * data);
 
-} }
+}
 
 int yylex_init_extra(
     unoidl::detail::SourceProviderScannerData * user_defined,

@@ -9,25 +9,50 @@
 
 #include <swmodeltestbase.hxx>
 
+#include <config_features.h>
+
+#include <com/sun/star/awt/XTextComponent.hpp>
+#include <com/sun/star/awt/XControl.hpp>
+#include <com/sun/star/awt/XControlModel.hpp>
+#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/awt/FontWeight.hpp>
 #include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/drawing/BitmapMode.hpp>
+#include <com/sun/star/form/XForm.hpp>
+#include <com/sun/star/form/XFormsSupplier.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/style/PageStyleLayout.hpp>
-#include <com/sun/star/table/XCell.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
+#include <com/sun/star/style/FootnoteLineStyle.hpp>
 #include <com/sun/star/table/BorderLine.hpp>
-#include <com/sun/star/table/BorderLine2.hpp>
+#include <com/sun/star/text/XTextField.hpp>
 #include <com/sun/star/text/XTextSection.hpp>
 #include <com/sun/star/text/XTextTable.hpp>
 #include <com/sun/star/text/PageNumberType.hpp>
+#include <com/sun/star/text/VertOrientation.hpp>
+#include <com/sun/star/view/XControlAccess.hpp>
+#include <com/sun/star/util/XNumberFormatTypes.hpp>
+#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
+#include <com/sun/star/lang/Locale.hpp>
+#include <com/sun/star/text/XTextFieldsSupplier.hpp>
+#include <com/sun/star/util/XRefreshable.hpp>
+#include <com/sun/star/text/XTextDocument.hpp>
+#include <com/sun/star/drawing/XDrawPageSupplier.hpp>
+#include <com/sun/star/container/XIndexContainer.hpp>
+#include <com/sun/star/drawing/XDrawPage.hpp>
+#include <com/sun/star/text/XTextFramesSupplier.hpp>
 
+#include <comphelper/propertysequence.hxx>
+
+#include <IDocumentSettingAccess.hxx>
 #include <wrtsh.hxx>
 #include <ndtxt.hxx>
 #include <swdtflvr.hxx>
 #include <view.hxx>
 #include <edtwin.hxx>
 #include <olmenu.hxx>
-#include <cmdid.h>
+#include <hintids.hxx>
+#include <docsh.hxx>
+#include <unotxdoc.hxx>
 
 typedef std::map<OUString, css::uno::Sequence< css::table::BorderLine> > AllBordersMap;
 typedef std::pair<OUString, css::uno::Sequence< css::table::BorderLine> > StringSequencePair;
@@ -52,7 +77,7 @@ DECLARE_ODFIMPORT_TEST(testHideAllSections, "fdo53210.odt")
     uno::Reference<beans::XPropertySet> xMaster(xMasters->getByName("com.sun.star.text.fieldmaster.User._CS_Allgemein"), uno::UNO_QUERY);
     xMaster->setPropertyValue("Content", uno::makeAny(OUString("0")));
     // This used to crash
-    uno::Reference<util::XRefreshable>(xTextFieldsSupplier->getTextFields(), uno::UNO_QUERY)->refresh();
+    uno::Reference<util::XRefreshable>(xTextFieldsSupplier->getTextFields(), uno::UNO_QUERY_THROW)->refresh();
 }
 
 DECLARE_ODFIMPORT_TEST(testOdtBorders, "borders_ooo33.odt")
@@ -161,8 +186,7 @@ DECLARE_ODFIMPORT_TEST(testOdtBorders, "borders_ooo33.odt")
                 uno::Sequence<OUString> const cells = xTextTable->getCellNames();
                 sal_Int32 nLength = cells.getLength();
 
-                AllBordersMap::iterator it;
-                it = map.begin();
+                AllBordersMap::iterator it = map.begin();
 
                 for (sal_Int32 i = 0; i < nLength; ++i)
                 {
@@ -250,9 +274,93 @@ DECLARE_ODFIMPORT_TEST(testTdf41542_borderlessPadding, "tdf41542_borderlessPaddi
 
 DECLARE_ODFIMPORT_TEST(testPageStyleLayoutDefault, "hello.odt")
 {
-    uno::Reference<beans::XPropertySet> xPropertySet(getStyles("PageStyles")->getByName("Default Style"), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xPropertySet(getStyles("PageStyles")->getByName("Default Page Style"), uno::UNO_QUERY);
     // This was style::PageStyleLayout_MIRRORED.
     CPPUNIT_ASSERT_EQUAL(style::PageStyleLayout_ALL, getProperty<style::PageStyleLayout>(xPropertySet, "PageStyleLayout"));
+}
+
+DECLARE_ODFIMPORT_TEST(testTimeFormFormats, "timeFormFormats.odt")
+{
+    //FIXME: make it an ODFEXPORT_TEST. Validator fails with
+    //attribute "form:current-value" has a bad value: "PT12H12M" does not satisfy the "time" type
+    //See tdf#131127
+
+    uno::Reference<frame::XModel> const xModel(mxComponent, uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xModel.is());
+    uno::Reference<drawing::XDrawPageSupplier> const xDPS(xModel, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> const xDP = xDPS->getDrawPage();
+    CPPUNIT_ASSERT(xDP.is());
+    uno::Reference<form::XFormsSupplier> const xFS(xDP, uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xFS.is());
+    uno::Reference<container::XIndexContainer> const xForms(xFS->getForms(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xForms.is());
+    uno::Reference<form::XForm> xForm(xForms->getByIndex(0), uno::UNO_QUERY_THROW);
+    CPPUNIT_ASSERT(xForm.is());
+    uno::Reference<container::XNameContainer> xFormNC(xForm, uno::UNO_QUERY);
+
+    uno::Any aAny;
+    uno::Reference<awt::XControlModel> xControlModel;
+    uno::Reference<view::XControlAccess> xController;
+    uno::Reference<awt::XControl> xControl;
+    uno::Reference<awt::XWindowPeer> xWindowPeer;
+    uno::Reference<awt::XTextComponent> xTextComponent;
+    OUString aName = "Time Field ";
+
+    static const char* const aExpectedResults[] = { "12:12", "12:12:00", "12:12PM", "06:00:00AM"};
+
+    for (size_t i = 1; i <= 4; ++i)
+    {
+        aAny = xFormNC->getByName(aName + OUString::number(i));
+        xControlModel.set(aAny, uno::UNO_QUERY);
+        xController.set(xModel->getCurrentController(), uno::UNO_QUERY_THROW);
+        xControl = xController->getControl(xControlModel);
+        xWindowPeer = xControl->getPeer();
+        xTextComponent.set(xWindowPeer, uno::UNO_QUERY);
+        CPPUNIT_ASSERT_EQUAL(OUString::fromUtf8(aExpectedResults[i - 1]), xTextComponent->getText());
+    }
+}
+
+DECLARE_ODFIMPORT_TEST(testDateFormFormats, "dateFormFormats.odt")
+{
+    //FIXME: make it an ODFEXPORT_TEST. Validator fails with
+    //unexpected attribute "form:input-required"
+    //See tdf#131148
+
+    uno::Reference<frame::XModel> const xModel(mxComponent, uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xModel.is());
+    uno::Reference<drawing::XDrawPageSupplier> const xDPS(xModel, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> const xDP = xDPS->getDrawPage();
+    CPPUNIT_ASSERT(xDP.is());
+    uno::Reference<form::XFormsSupplier> const xFS(xDP, uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xFS.is());
+    uno::Reference<container::XIndexContainer> const xForms(xFS->getForms(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xForms.is());
+    uno::Reference<form::XForm> xForm(xForms->getByIndex(0), uno::UNO_QUERY_THROW);
+    CPPUNIT_ASSERT(xForm.is());
+    uno::Reference<container::XNameContainer> xFormNC(xForm, uno::UNO_QUERY);
+
+    uno::Any aAny;
+    uno::Reference<awt::XControlModel> xControlModel;
+    uno::Reference<view::XControlAccess> xController;
+    uno::Reference<awt::XControl> xControl;
+    uno::Reference<awt::XWindowPeer> xWindowPeer;
+    uno::Reference<awt::XTextComponent> xTextComponent;
+    OUString aName = "Date Field ";
+
+    static const char* const aExpectedResults[] = { "03/04/20", "03/04/20", "03/04/2020",
+        "Wednesday, March 4, 2020", "04/03/20", "03/04/20", "20/03/04", "04/03/2020", "03/04/2020",
+        "2020/03/04", "20-03-04", "2020-03-04"};
+
+    for (size_t i = 1; i <= 12; ++i)
+    {
+        aAny = xFormNC->getByName(aName + OUString::number(i));
+        xControlModel.set(aAny, uno::UNO_QUERY);
+        xController.set(xModel->getCurrentController(), uno::UNO_QUERY_THROW);
+        xControl = xController->getControl(xControlModel);
+        xWindowPeer = xControl->getPeer();
+        xTextComponent.set(xWindowPeer, uno::UNO_QUERY);
+        CPPUNIT_ASSERT_EQUAL(OUString::fromUtf8(aExpectedResults[i - 1]), xTextComponent->getText());
+    }
 }
 
 DECLARE_ODFIMPORT_TEST(testTdf64038, "space.odt")
@@ -360,7 +468,7 @@ DECLARE_ODFIMPORT_TEST(testTdf74524, "tdf74524.odt")
 
 DECLARE_ODFIMPORT_TEST(testPageStyleLayoutRight, "hello.odt")
 {
-    uno::Reference<beans::XPropertySet> xPropertySet(getStyles("PageStyles")->getByName("Default Style"), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xPropertySet(getStyles("PageStyles")->getByName("Default Page Style"), uno::UNO_QUERY);
     // This caused a crash.
     xPropertySet->setPropertyValue("PageStyleLayout", uno::makeAny(style::PageStyleLayout_RIGHT));
 }
@@ -386,42 +494,34 @@ DECLARE_ODFIMPORT_TEST(testFdo60842, "fdo60842.odt")
 
 DECLARE_ODFIMPORT_TEST(testFdo79269, "fdo79269.odt")
 {
-    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
-    uno::Reference<text::XTextViewCursorSupplier> xTextViewCursorSupplier(xModel->getCurrentController(), uno::UNO_QUERY);
-    uno::Reference<text::XPageCursor> xCursor(xTextViewCursorSupplier->getViewCursor(), uno::UNO_QUERY);
-    xCursor->jumpToLastPage();
-    CPPUNIT_ASSERT_EQUAL(sal_Int16(2), xCursor->getPage());
+    CPPUNIT_ASSERT_EQUAL(2, getPages());
 
     // The problem was that the first-footer was shared.
     uno::Reference<beans::XPropertySet> xPropSet(getStyles("PageStyles")->getByName("Standard"), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(false, getProperty<bool>(xPropSet, "FirstIsShared"));
 
     uno::Reference<text::XTextRange> xFooter1 = getProperty< uno::Reference<text::XTextRange> >(xPropSet, "FooterTextFirst");
-    CPPUNIT_ASSERT_EQUAL(OUString("forst"), xFooter1->getString());
+    CPPUNIT_ASSERT_EQUAL(OUString("first"), xFooter1->getString());
     uno::Reference<text::XTextRange> xFooter = getProperty< uno::Reference<text::XTextRange> >(xPropSet, "FooterText");
     CPPUNIT_ASSERT_EQUAL(OUString("second"), xFooter->getString());
 }
 
 DECLARE_ODFIMPORT_TEST(testFdo79269_header, "fdo79269_header.odt")
 {
-    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
-    uno::Reference<text::XTextViewCursorSupplier> xTextViewCursorSupplier(xModel->getCurrentController(), uno::UNO_QUERY);
-    uno::Reference<text::XPageCursor> xCursor(xTextViewCursorSupplier->getViewCursor(), uno::UNO_QUERY);
-    xCursor->jumpToLastPage();
-    CPPUNIT_ASSERT_EQUAL(sal_Int16(2), xCursor->getPage());
+    CPPUNIT_ASSERT_EQUAL(2, getPages());
 
     uno::Reference<beans::XPropertySet> xPropSet(getStyles("PageStyles")->getByName("Standard"), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(false, getProperty<bool>(xPropSet, "FirstIsShared"));
 
     uno::Reference<text::XTextRange> xFooter1 = getProperty< uno::Reference<text::XTextRange> >(xPropSet, "HeaderTextFirst");
-    CPPUNIT_ASSERT_EQUAL(OUString("forst"), xFooter1->getString());
+    CPPUNIT_ASSERT_EQUAL(OUString("first"), xFooter1->getString());
     uno::Reference<text::XTextRange> xFooter = getProperty< uno::Reference<text::XTextRange> >(xPropSet, "HeaderText");
     CPPUNIT_ASSERT_EQUAL(OUString("second"), xFooter->getString());
 }
 
 DECLARE_ODFIMPORT_TEST(testPageBackground, "PageBackground.odt")
 {
-    uno::Reference<beans::XPropertySet> xPropertySet(getStyles("PageStyles")->getByName("Default Style"), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xPropertySet(getStyles("PageStyles")->getByName("Default Page Style"), uno::UNO_QUERY);
     // The background image was lost
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_BITMAP, getProperty<drawing::FillStyle>(xPropertySet, "FillStyle"));
     CPPUNIT_ASSERT_EQUAL(OUString("Sky"), getProperty<OUString>(xPropertySet, "FillBitmapName"));
@@ -432,6 +532,22 @@ DECLARE_ODFIMPORT_TEST(testPageBackground, "PageBackground.odt")
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_BITMAP, getProperty<drawing::FillStyle>(xPropertySetOld, "FillStyle"));
     CPPUNIT_ASSERT_EQUAL(OUString("Sky"), getProperty<OUString>(xPropertySetOld, "FillBitmapName"));
     CPPUNIT_ASSERT_EQUAL(drawing::BitmapMode_REPEAT, getProperty<drawing::BitmapMode>(xPropertySetOld, "FillBitmapMode"));
+}
+
+DECLARE_ODFIMPORT_TEST(testBibliographyEntryField, "BibliographyEntryField.odt")
+{
+    uno::Reference<text::XTextFieldsSupplier> xTextFieldsSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XEnumerationAccess> xFieldsAccess(xTextFieldsSupplier->getTextFields());
+    uno::Reference<container::XEnumeration> xFields(xFieldsAccess->createEnumeration());
+
+    if( !xFields->hasMoreElements() ) {
+        CPPUNIT_ASSERT(false);
+        return;
+    }
+
+    uno::Reference<text::XTextField> xEnumerationAccess(xFields->nextElement(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("Bibliography entry"), xEnumerationAccess->getPresentation(true).trim());
+    CPPUNIT_ASSERT_EQUAL(OUString("[ABC]"), xEnumerationAccess->getPresentation(false).trim());
 }
 
 DECLARE_ODFIMPORT_TEST(testFdo56272, "fdo56272.odt")
@@ -457,7 +573,7 @@ DECLARE_ODFIMPORT_TEST(testFdo75872_ooo33, "fdo75872_ooo33.odt")
     uno::Reference<drawing::XShape> xShape = getShape(1);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(COL_BLACK),
            getProperty<sal_Int32>(xShape, "LineColor"));
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(RGB_COLORDATA(153, 204, 255)),
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(Color(153, 204, 255)),
            getProperty<sal_Int32>(xShape, "FillColor"));
 }
 
@@ -465,9 +581,9 @@ DECLARE_ODFIMPORT_TEST(testFdo75872_aoo40, "fdo75872_aoo40.odt")
 {
     // graphics default style: line color and fill color changed
     uno::Reference<drawing::XShape> xShape = getShape(1);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(RGB_COLORDATA(128, 128, 128)),
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(Color(128, 128, 128)),
            getProperty<sal_Int32>(xShape, "LineColor"));
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(RGB_COLORDATA(0xCF, 0xE7, 0xF5)),
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(Color(0xCF, 0xE7, 0xF5)),
            getProperty<sal_Int32>(xShape, "FillColor"));
 }
 
@@ -478,14 +594,14 @@ DECLARE_ODFIMPORT_TEST(testFdo55814, "fdo55814.odt")
     uno::Reference<container::XEnumeration> xFields(xFieldsAccess->createEnumeration());
     uno::Reference<beans::XPropertySet> xField(xFields->nextElement(), uno::UNO_QUERY);
     xField->setPropertyValue("Content", uno::makeAny(OUString("Yes")));
-    uno::Reference<util::XRefreshable>(xTextFieldsSupplier->getTextFields(), uno::UNO_QUERY)->refresh();
+    uno::Reference<util::XRefreshable>(xTextFieldsSupplier->getTextFields(), uno::UNO_QUERY_THROW)->refresh();
     uno::Reference<text::XTextSectionsSupplier> xTextSectionsSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xSections(xTextSectionsSupplier->getTextSections(), uno::UNO_QUERY);
     // This was "0".
     CPPUNIT_ASSERT_EQUAL(OUString("Hide==\"Yes\""), getProperty<OUString>(xSections->getByIndex(0), "Condition"));
 }
 
-void lcl_CheckShape(
+static void lcl_CheckShape(
     uno::Reference<drawing::XShape> const& xShape, OUString const& rExpected)
 {
     uno::Reference<container::XNamed> const xNamed(xShape, uno::UNO_QUERY);
@@ -583,7 +699,8 @@ DECLARE_ODFIMPORT_TEST(testFdo37606, "fdo37606.odt")
         CPPUNIT_ASSERT(!pContentNode->FindTableNode());
     }
 }
-#if !defined(_WIN32)
+
+#if HAVE_FEATURE_UI
 DECLARE_ODFIMPORT_TEST(testFdo37606Copy, "fdo37606.odt")
 {
     SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument *>(mxComponent.get());
@@ -595,9 +712,8 @@ DECLARE_ODFIMPORT_TEST(testFdo37606Copy, "fdo37606.odt")
     pWrtShell->SelAll(); // Selects the whole document.
 
     // Ctrl-C
-    SwTransferable* pTransferable = new SwTransferable(*pWrtShell);
-    uno::Reference<datatransfer::XTransferable> xTransferable(pTransferable);
-    pTransferable->Copy();
+    rtl::Reference<SwTransferable> xTransferable(new SwTransferable(*pWrtShell));
+    xTransferable->Copy();
 
     pWrtShell->SttEndDoc(false); // Go to the end of the doc.
 
@@ -608,11 +724,10 @@ DECLARE_ODFIMPORT_TEST(testFdo37606Copy, "fdo37606.odt")
     // Previously copy&paste failed to copy the table in case it was the document-starting one.
     uno::Reference<text::XTextTablesSupplier> xTablesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xTables(xTablesSupplier->getTextTables(), uno::UNO_QUERY);
-#if !defined(MACOSX) && !defined(LIBO_HEADLESS) // FIXME
     CPPUNIT_ASSERT_EQUAL(sal_Int32(2), xTables->getCount());
-#endif
 }
-#endif //WNT
+#endif
+
 DECLARE_ODFIMPORT_TEST(testFdo69862, "fdo69862.odt")
 {
     // The test doc is special in that it starts with a table and it also has a footnote.
@@ -656,15 +771,20 @@ DECLARE_ODFIMPORT_TEST(testSpellmenuRedline, "spellmenu-redline.odt")
     SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument *>(mxComponent.get());
     CPPUNIT_ASSERT(pTextDoc);
     SwWrtShell* pWrtShell = pTextDoc->GetDocShell()->GetWrtShell();
-    OUString aParaText;
     uno::Reference<linguistic2::XSpellAlternatives> xAlt;
-    SwSpellPopup aPopup(pWrtShell, xAlt, aParaText);
+    SwSpellPopup aPopup(pWrtShell, xAlt, OUString());
     Menu& rMenu = aPopup.GetMenu();
     // Make sure that if we show the spellcheck popup menu (for the current
     // document, which contains redlines), then the last two entries will be
     // always 'go to next/previous change'.
     CPPUNIT_ASSERT_EQUAL(OString("next"), rMenu.GetItemIdent(rMenu.GetItemId(rMenu.GetItemCount() - 2)));
     CPPUNIT_ASSERT_EQUAL(OString("prev"), rMenu.GetItemIdent(rMenu.GetItemId(rMenu.GetItemCount() - 1)));
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf107776, "tdf107776.fodt")
+{
+    // Shape with a Graphics parent style name was imported as textbox.
+    CPPUNIT_ASSERT(!getProperty<bool>(getShape(1), "TextBox"));
 }
 
 DECLARE_ODFIMPORT_TEST(testAnnotationFormatting, "annotation-formatting.odt")
@@ -735,11 +855,7 @@ DECLARE_ODFIMPORT_TEST(testTdf76322_columnBreakInHeader, "tdf76322_columnBreakIn
 DECLARE_ODFIMPORT_TEST(testTdf76349_1columnBreak, "tdf76349_1columnBreak.odt")
 {
     //single-column breaks should only be treated as page breaks for MS formats - should be only one page here.
-    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
-    uno::Reference<text::XTextViewCursorSupplier> xTextViewCursorSupplier(xModel->getCurrentController(), uno::UNO_QUERY);
-    uno::Reference<text::XPageCursor> xCursor(xTextViewCursorSupplier->getViewCursor(), uno::UNO_QUERY);
-    xCursor->jumpToLastPage();
-    CPPUNIT_ASSERT_EQUAL(sal_Int16(1), xCursor->getPage());
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
 }
 
 DECLARE_ODFIMPORT_TEST(testTdf96113, "tdf96113.odt")
@@ -792,12 +908,207 @@ DECLARE_ODFIMPORT_TEST(testTdf100033_1, "tdf100033_1.odt")
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xIndexAccess->getCount());
 }
 
+DECLARE_ODFIMPORT_TEST(testWordAsCharShape, "Word2010AsCharShape.odt")
+{
+    // As-char shape had VertOrient "from-top"/NONE default from GetVOrient()
+    uno::Reference<drawing::XShape> const xShape(getShape(1));
+    CPPUNIT_ASSERT_EQUAL(text::TextContentAnchorType_AS_CHARACTER, getProperty<text::TextContentAnchorType>(xShape, "AnchorType"));
+    CPPUNIT_ASSERT_EQUAL(text::VertOrientation::TOP, getProperty<sal_Int16>(xShape, "VertOrient"));
+    // also, the paragraph default fo:bottom-margin was wrongly applied to
+    // the shape
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), getProperty<sal_Int32>(xShape, "BottomMargin"));
+}
+
 DECLARE_ODFIMPORT_TEST(testTdf100033_2, "tdf100033_2.odt")
 {
     // Test document have three different frames anchored to different paragraphs -> import all frames
     uno::Reference<text::XTextFramesSupplier> xTextFramesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xIndexAccess(xTextFramesSupplier->getTextFrames(), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(3), xIndexAccess->getCount());
+}
+
+DECLARE_ODFIMPORT_TEST(testI61225, "i61225.sxw")
+{
+    // Part of ooo61225-1.sxw from crashtesting.
+
+    // This never returned.
+    calcLayout();
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf109080_loext_ns, "tdf109080_loext_ns.odt")
+{
+    // Test we can import <loext:header-first> and <loext:footer-first>
+
+    CPPUNIT_ASSERT_EQUAL(OUString("This is the first page header"),
+        parseDump("/root/page[1]/header/txt/text()"));
+    CPPUNIT_ASSERT_EQUAL(OUString("This is the non-first-page header"),
+        parseDump("/root/page[2]/header/txt/text()"));
+
+    CPPUNIT_ASSERT_EQUAL(OUString("This is the first page footer"),
+        parseDump("/root/page[1]/footer/txt/text()"));
+    CPPUNIT_ASSERT_EQUAL(OUString("This is the non-first-page footer"),
+        parseDump("/root/page[2]/footer/txt/text()"));
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf109080_style_ns, "tdf109080_style_ns.odt")
+{
+    // Test we can import <style:header-first> and <style:footer-first>
+    // (produced by LibreOffice 4.0 - 5.x)
+
+    CPPUNIT_ASSERT_EQUAL(OUString("This is the first page header"),
+        parseDump("/root/page[1]/header/txt/text()"));
+    CPPUNIT_ASSERT_EQUAL(OUString("This is the non-first-page header"),
+        parseDump("/root/page[2]/header/txt/text()"));
+
+    CPPUNIT_ASSERT_EQUAL(OUString("This is the first page footer"),
+        parseDump("/root/page[1]/footer/txt/text()"));
+    CPPUNIT_ASSERT_EQUAL(OUString("This is the non-first-page footer"),
+        parseDump("/root/page[2]/footer/txt/text()"));
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf109228, "tdf109228.odt")
+{
+    //  Embedded object with no frame name was imported incorrectly, it was anchored 'to character' instead of 'as character'
+    CPPUNIT_ASSERT_EQUAL(text::TextContentAnchorType_AS_CHARACTER, getProperty<text::TextContentAnchorType>(getShape(1), "AnchorType"));
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf94882, "tdf94882.odt")
+{
+    // Get the header of the page containing our content
+    // (done this way to skip past any blank page inserted before it
+    //  due to the page number being even)
+    OUString headertext = parseDump(
+        "/root/page[starts-with(body/txt/text(),'The paragraph style on this')]"
+        "/header/txt/text()"
+    );
+    // This header should be the first page header
+    CPPUNIT_ASSERT_EQUAL(OUString("This is the first page header"), headertext);
+}
+
+DECLARE_ODFIMPORT_TEST(testBlankBeforeFirstPage, "tdf94882.odt")
+{
+    // This document starts on page 50, which is even, but it should not have a
+    // blank page inserted before it to make it a left page
+
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("There should be 1 pages output",
+        OUString("1"), parseDump("count(/root/page)")
+    );
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf115079, "tdf115079.odt")
+{
+    // This document caused segfault when layouting
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf108482, "tdf108482.odt")
+{
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("The table on second page must have two rows",
+        OUString("2"), parseDump("count(/root/page[2]/body/tab/row)")
+    );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("The second page table's first row must be the repeated headline",
+        OUString("Header"), parseDump("/root/page[2]/body/tab/row[1]/cell/txt")
+    );
+    // The first (repeated headline) row with vertical text orientation must have non-zero height
+    // (in my tests, it was 1135)
+    CPPUNIT_ASSERT_GREATER(
+        sal_Int32(1000), parseDump("/root/page[2]/body/tab/row[1]/infos/bounds", "height").toInt32()
+    );
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf116195, "tdf116195.odt")
+{
+    // The image was set to zero height due to a regression
+    CPPUNIT_ASSERT_EQUAL(
+        sal_Int32(12960), parseDump("/root/page/anchored/fly/notxt/infos/bounds", "height").toInt32()
+    );
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf120677, "tdf120677.fodt")
+{
+    // The document used to hang the layout, consuming memory until OOM
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf123829, "tdf123829.odt")
+{
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
+    CPPUNIT_ASSERT_EQUAL_MESSAGE(
+        "Compatibility: collapse cell paras should not be set", false,
+        pDoc->getIDocumentSettingAccess().get(DocumentSettingId::COLLAPSE_EMPTY_CELL_PARA));
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf113289, "tdf113289.odt")
+{
+    uno::Any aPageStyle = getStyles("PageStyles")->getByName("Standard");
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int8>(style::FootnoteLineStyle::SOLID),
+                         getProperty<sal_Int8>(aPageStyle, "FootnoteLineStyle"));
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf123968, "tdf123968.odt")
+{
+    // The test doc is special in that it starts with a table and it also has a header.
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+    SwWrtShell* pWrtShell = pTextDoc->GetDocShell()->GetWrtShell();
+    SwShellCursor* pShellCursor = pWrtShell->getShellCursor(false);
+
+    pWrtShell->SelAll();
+    SwTextNode& rStart = dynamic_cast<SwTextNode&>(pShellCursor->Start()->nNode.GetNode());
+
+    // The field is now editable like any text, thus the field content "New value" shows up for the cursor.
+    CPPUNIT_ASSERT_EQUAL(OUString("inputfield: " + OUStringChar(CH_TXT_ATR_INPUTFIELDSTART)
+                                  + "New value" + OUStringChar(CH_TXT_ATR_INPUTFIELDEND)),
+                         rStart.GetText());
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf133459, "tdf133459.odt")
+{
+    // Test that the number format was correctly imported, and used by both fields.
+    uno::Reference<text::XTextFieldsSupplier> xTextFieldsSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XEnumeration> xFields(xTextFieldsSupplier->getTextFields()->createEnumeration());
+
+    // First Field
+    uno::Reference<text::XTextField> xField(xFields->nextElement(), uno::UNO_QUERY);
+    const OUString sPresentation(xField->getPresentation(false));
+    const sal_Int32 nFormat(getProperty<sal_Int32>(xField, "NumberFormat"));
+    CPPUNIT_ASSERT_EQUAL(sal_True, getProperty<sal_Bool>(xField, "IsFixedLanguage"));
+
+    // Second field
+    xField.set(xFields->nextElement(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(sPresentation, xField->getPresentation(false));
+    CPPUNIT_ASSERT_EQUAL(nFormat, getProperty<sal_Int32>(xField, "NumberFormat"));
+    CPPUNIT_ASSERT_EQUAL(sal_True, getProperty<sal_Bool>(xField, "IsFixedLanguage"));
+
+    // Test the number format itself
+    uno::Reference<util::XNumberFormatsSupplier> xNumberFormatsSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xFormat(xNumberFormatsSupplier->getNumberFormats()->getByKey(nFormat));
+    lang::Locale aLocale(getProperty<lang::Locale>(xFormat, "Locale"));
+    CPPUNIT_ASSERT_EQUAL(OUString("ru"), aLocale.Language);
+    CPPUNIT_ASSERT_EQUAL(OUString("RU"), aLocale.Country);
+    CPPUNIT_ASSERT_EQUAL(OUString("QQ YYYY"), getProperty<OUString>(xFormat, "FormatString"));
+}
+
+DECLARE_ODFIMPORT_TEST(testTdf134971, "tdf134971a.odt")
+{
+    // now insert 2nd file somewhere - insertDocumentFromURL should
+    // _not_ touch pool defaults
+    uno::Sequence<beans::PropertyValue> aPropertyValues = comphelper::InitPropertySequence(
+    {
+        {"Name", uno::makeAny(
+                m_directories.getURLFromSrc(mpTestDocumentPath) + "tdf134971b.odt")},
+        {"Filter", uno::makeAny(OUString("writer8"))},
+    });
+    dispatchCommand(mxComponent, ".uno:InsertDoc", aPropertyValues);
+
+    // tdf134971b re-defines default font as "Liberation Sans" - make sure this stays
+    // Arial in final doc:
+    OUString sString;
+    uno::Reference<container::XNameAccess> xParaStyles(getStyles("ParagraphStyles"));
+    uno::Reference<beans::XPropertySet> xStyle1(xParaStyles->getByName(
+            "Standard"), uno::UNO_QUERY);
+    xStyle1->getPropertyValue("CharFontName") >>= sString;
+    CPPUNIT_ASSERT_EQUAL(OUString("Arial"), sString);
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

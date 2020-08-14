@@ -24,18 +24,17 @@
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
 #include <vcl/help.hxx>
-#include <memory>
 
-class SfxFrame;
-
-class SFX2_DLLPUBLIC SfxHelp : public Help
+class SFX2_DLLPUBLIC SfxHelp final : public Help
 {
     bool            bIsDebug;
 
 private:
     SAL_DLLPRIVATE static bool Start_Impl( const OUString& rURL, const vcl::Window* pWindow, const OUString& rKeyword );
-    SAL_DLLPRIVATE virtual bool SearchKeyword( const OUString& rKeyWord ) override;
+    SAL_DLLPRIVATE static bool Start_Impl(const OUString& rURL, weld::Widget* pWidget, const OUString& rKeyword);
+    SAL_DLLPRIVATE virtual void SearchKeyword( const OUString& rKeyWord ) override;
     SAL_DLLPRIVATE virtual bool Start( const OUString& rURL, const vcl::Window* pWindow ) override;
+    SAL_DLLPRIVATE virtual bool Start(const OUString& rURL, weld::Widget* pWidget) override;
     SAL_DLLPRIVATE static OUString GetHelpModuleName_Impl(const OUString &rHelpId);
     SAL_DLLPRIVATE static OUString CreateHelpURL_Impl( const OUString& aCommandURL, const OUString& rModuleName );
 
@@ -43,11 +42,16 @@ public:
     SfxHelp();
     virtual ~SfxHelp() override;
 
-    virtual OUString        GetHelpText( const OUString&, const vcl::Window* pWindow ) override;
+    virtual OUString        GetHelpText(const OUString&, const vcl::Window* pWindow) override;
+    virtual OUString        GetHelpText(const OUString&, const weld::Widget* pWindow) override;
 
     static OUString         CreateHelpURL( const OUString& aCommandURL, const OUString& rModuleName );
     static OUString         GetDefaultHelpModule();
     static OUString         GetCurrentModuleIdentifier();
+    // Check for built-in help
+    static bool             IsHelpInstalled();
+
+    static OUString GetURLHelpText(const OUString&);
 };
 
 #endif // INCLUDED_SFX2_SFXHELP_HXX

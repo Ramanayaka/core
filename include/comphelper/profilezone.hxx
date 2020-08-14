@@ -10,11 +10,13 @@
 #ifndef INCLUDED_COMPHELPER_PROFILEZONE_HXX
 #define INCLUDED_COMPHELPER_PROFILEZONE_HXX
 
-#include <com/sun/star/uno/Sequence.hxx>
+#include <sal/config.h>
+
+#include <atomic>
+
+#include <com/sun/star/uno/Sequence.h>
 #include <comphelper/comphelperdllapi.h>
 #include <rtl/ustring.hxx>
-
-#include <vector>
 
 // implementation of XToolkitExperimental profiling API
 
@@ -24,7 +26,7 @@ namespace comphelper
 namespace ProfileRecording
 {
 
-COMPHELPER_DLLPUBLIC void startRecording(bool bRecording = true);
+COMPHELPER_DLLPUBLIC void startRecording(bool bRecording);
 
 COMPHELPER_DLLPUBLIC long long addRecording(const char * aProfileId, long long aCreateTime);
 
@@ -37,9 +39,46 @@ class COMPHELPER_DLLPUBLIC ProfileZone
 private:
     const char * m_sProfileId;
     long long m_aCreateTime;
+    bool m_bConsole;
+    void startConsole();
+    void stopConsole();
 public:
-    ProfileZone(const char * sProfileId);
-    ~ProfileZone();
+    static std::atomic<bool> g_bRecording; // true during recording
+
+    /**
+     * Starts measuring the cost of a C++ scope.
+     *
+     * Note that the char pointer is stored as such in the ProfileZone object and used in the
+     * destructor, so be sure to pass a pointer that stays valid for the duration of the object's
+     * lifetime.
+     *
+     * The second parameter can be used for ad-hoc local measuring by adding a single line of code
+     * at a C++ scope start. Example:
+     *
+     * comphelper::ProfileZone aZone("RtfFilter::filter", true);
+     *
+     * Similar to the DEBUG macro in sal/log.hxx, don't forget to remove these lines before
+     * committing.
+     */
+    ProfileZone(const char *sProfileId, bool bConsole = false)
+        : m_sProfileId(sProfileId),
+          m_aCreateTime(g_bRecording ? ProfileRecording::addRecording(sProfileId, 0) : 0),
+          m_bConsole(bConsole)
+    {
+        if (m_bConsole)
+        {
+            startConsole();
+        }
+    }
+    ~ProfileZone()
+    {
+        if (g_bRecording)
+            ProfileRecording::addRecording(m_sProfileId, m_aCreateTime);
+        if (m_bConsole)
+        {
+            stopConsole();
+        }
+    }
 };
 
 } // namespace comphelper

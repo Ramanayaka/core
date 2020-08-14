@@ -21,16 +21,13 @@
 
 #include <com/sun/star/lang/NoSupportException.hpp>
 
-#include "eventqueue.hxx"
+#include <eventqueue.hxx>
 #include "animationaudionode.hxx"
-#include "delayevent.hxx"
-#include "tools.hxx"
-#include "nodetools.hxx"
+#include <delayevent.hxx>
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 AnimationAudioNode::AnimationAudioNode(
     const uno::Reference< animations::XAnimationNode >& xNode,
@@ -76,12 +73,14 @@ void AnimationAudioNode::activate_st()
         }
         else
         {
-            // no node duration. Take inherent media time, then
+            // no node duration. Take inherent media time. We have to recheck
+            // if the player is playing in case the duration isn't accurate
+            // or the progress fall behind.
             auto self(getSelf());
             scheduleDeactivationEvent(
-                makeDelay( [self] () { self->deactivate(); },
+                makeDelay( [this] () { this->checkPlayingStatus(); },
                            mpPlayer->getDuration(),
-                           "AnimationAudioNode::deactivate with delay") );
+                           "AnimationAudioNode::check if still playing with delay") );
         }
     }
     else
@@ -96,6 +95,8 @@ void AnimationAudioNode::activate_st()
 
 // TODO(F2): generate deactivation event, when sound
 // is over
+
+namespace {
 
 // libc++ and MSVC std::bind doesn't cut it here, and it's not possible to use
 // a lambda because the preprocessor thinks that comma in capture list
@@ -113,6 +114,8 @@ struct NotifyAudioStopped
         m_rEventMultiplexer.notifyAudioStopped(m_pSelf);
     }
 };
+
+}
 
 void AnimationAudioNode::deactivate_st( NodeState /*eDestState*/ )
 {
@@ -152,7 +155,8 @@ void AnimationAudioNode::createPlayer() const
     {
         mpPlayer = SoundPlayer::create( getContext().mrEventMultiplexer,
                                         maSoundURL,
-                                        getContext().mxComponentContext );
+                                        getContext().mxComponentContext,
+                                        getContext().mrMediaFileManager);
     }
     catch( lang::NoSupportException& )
     {
@@ -181,7 +185,19 @@ bool AnimationAudioNode::handleAnimationEvent(
     return true;
 }
 
-} // namespace internal
-} // namespace presentation
+void AnimationAudioNode::checkPlayingStatus()
+{
+    auto self(getSelf());
+    double nDuration = mpPlayer->getDuration();
+    if (!mpPlayer->isPlaying() || nDuration < 0.0)
+        nDuration = 0.0;
+
+    scheduleDeactivationEvent(
+        makeDelay( [self] () { self->deactivate(); },
+            nDuration,
+            "AnimationAudioNode::deactivate with delay") );
+}
+
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -23,6 +23,8 @@
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
+namespace {
+
 class ListLevelsEnumWrapper : public EnumerationHelper_BASE
 {
     SwVbaListLevels* pListLevels;
@@ -41,6 +43,8 @@ public:
         throw container::NoSuchElementException();
     }
 };
+
+}
 
 SwVbaListLevels::SwVbaListLevels( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, SwVbaListHelperRef const & pHelper ) : SwVbaListLevels_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >() ), pListHelper( pHelper )
 {
@@ -90,18 +94,16 @@ SwVbaListLevels::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaListLevels::getServiceImplName()
 {
-    return OUString("SwVbaListLevels");
+    return "SwVbaListLevels";
 }
 
 css::uno::Sequence<OUString>
 SwVbaListLevels::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.ListLevels";
-    }
+        "ooo.vba.word.ListLevels"
+    };
     return sNames;
 }
 

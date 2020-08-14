@@ -18,14 +18,10 @@
  */
 
 #include "FilledNetChartType.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include "PolarCoordinateSystem.hxx"
-#include "Scaling.hxx"
-#include "servicenames_charttypes.hxx"
-#include "AxisIndexDefines.hxx"
-#include <com/sun/star/chart2/AxisType.hpp>
+#include <servicenames_charttypes.hxx>
 #include <cppuhelper/supportsservice.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -35,9 +31,7 @@ using ::com::sun::star::uno::Sequence;
 namespace chart
 {
 
-FilledNetChartType::FilledNetChartType(
-    const uno::Reference< uno::XComponentContext > & xContext ) :
-        NetChartType_Base( xContext )
+FilledNetChartType::FilledNetChartType()
 {}
 
 FilledNetChartType::FilledNetChartType( const FilledNetChartType & rOther ) :
@@ -57,12 +51,12 @@ uno::Reference< util::XCloneable > SAL_CALL FilledNetChartType::createClone()
 // ____ XChartType ____
 OUString SAL_CALL FilledNetChartType::getChartType()
 {
-    return OUString(CHART2_SERVICE_NAME_CHARTTYPE_FILLED_NET);
+    return CHART2_SERVICE_NAME_CHARTTYPE_FILLED_NET;
 }
 
 OUString SAL_CALL FilledNetChartType::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.FilledNetChartType");
+    return "com.sun.star.comp.chart.FilledNetChartType";
 }
 
 sal_Bool SAL_CALL FilledNetChartType::supportsService( const OUString& rServiceName )
@@ -80,11 +74,11 @@ css::uno::Sequence< OUString > SAL_CALL FilledNetChartType::getSupportedServiceN
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart_FilledNetChartType_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart_FilledNetChartType_get_implementation(css::uno::XComponentContext * /*context*/,
                                                          css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::FilledNetChartType(context));
+    return cppu::acquire(new ::chart::FilledNetChartType);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

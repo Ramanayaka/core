@@ -19,11 +19,17 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_WRAPPEDPROPERTY_HXX
 #define INCLUDED_CHART2_SOURCE_INC_WRAPPEDPROPERTY_HXX
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
+#include <com/sun/star/beans/PropertyState.hpp>
+#include <com/sun/star/uno/Any.hxx>
+#include <rtl/ustring.hxx>
 #include "charttoolsdllapi.hxx"
 
 #include <map>
+#include <memory>
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::beans { class XPropertyState; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
 
 namespace chart
 {
@@ -74,7 +80,7 @@ protected:
     OUString             m_aInnerName;
 };
 
-typedef std::map< sal_Int32, const WrappedProperty* > tWrappedPropertyMap;
+typedef std::map< sal_Int32, std::unique_ptr<const WrappedProperty> > tWrappedPropertyMap;
 
 } //namespace chart
 

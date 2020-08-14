@@ -45,7 +45,7 @@
 #include <com/sun/star/util/XCancellable.hpp>
 #include <cppuhelper/compbase5.hxx>
 #include "SConnection.hxx"
-#include <list>
+#include <vector>
 #include "OSubComponent.hxx"
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
@@ -72,7 +72,7 @@ namespace connectivity
             ::com::sun::star::uno::WeakReference< ::com::sun::star::sdbc::XResultSet>    m_xResultSet;   // The last ResultSet created
             //  for this Statement
 
-            ::std::list< ::rtl::OUString>               m_aBatchList;
+            ::std::vector< ::rtl::OUString>               m_aBatchVector;
 
             OConnection*                                m_pConnection;  // The owning Connection object
         protected:
@@ -87,11 +87,10 @@ namespace connectivity
                                                                 ::com::sun::star::uno::Any & rConvertedValue,
                                                                 ::com::sun::star::uno::Any & rOldValue,
                                                                 sal_Int32 nHandle,
-                                                                const ::com::sun::star::uno::Any& rValue )
-                                                            throw (::com::sun::star::lang::IllegalArgumentException);
+                                                                const ::com::sun::star::uno::Any& rValue );
             virtual void SAL_CALL setFastPropertyValue_NoBroadcast(
                                                                 sal_Int32 nHandle,
-                                                                const ::com::sun::star::uno::Any& rValue)   throw (::com::sun::star::uno::Exception);
+                                                                const ::com::sun::star::uno::Any& rValue);
             virtual void SAL_CALL getFastPropertyValue(
                                                                 ::com::sun::star::uno::Any& rValue,
                                                                 sal_Int32 nHandle) const;
@@ -108,28 +107,28 @@ namespace connectivity
             virtual void SAL_CALL release() throw();
             virtual void SAL_CALL acquire() throw();
             // XInterface
-            virtual ::com::sun::star::uno::Any SAL_CALL queryInterface( const ::com::sun::star::uno::Type & rType ) throw(::com::sun::star::uno::RuntimeException);
+            virtual ::com::sun::star::uno::Any SAL_CALL queryInterface( const ::com::sun::star::uno::Type & rType );
             //XTypeProvider
-            virtual ::com::sun::star::uno::Sequence< ::com::sun::star::uno::Type > SAL_CALL getTypes(  ) throw(::com::sun::star::uno::RuntimeException);
+            virtual ::com::sun::star::uno::Sequence< ::com::sun::star::uno::Type > SAL_CALL getTypes(  );
 
             // XPropertySet
-            virtual ::com::sun::star::uno::Reference< ::com::sun::star::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  ) throw(::com::sun::star::uno::RuntimeException);
+            virtual ::com::sun::star::uno::Reference< ::com::sun::star::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  );
             // XStatement
-            virtual ::com::sun::star::uno::Reference< ::com::sun::star::sdbc::XResultSet > SAL_CALL executeQuery( const ::rtl::OUString& sql ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException) ;
-            virtual sal_Int32 SAL_CALL executeUpdate( const ::rtl::OUString& sql ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException) ;
-            virtual sal_Bool SAL_CALL execute( const ::rtl::OUString& sql ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException) ;
-            virtual ::com::sun::star::uno::Reference< ::com::sun::star::sdbc::XConnection > SAL_CALL getConnection(  ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException) ;
+            virtual ::com::sun::star::uno::Reference< ::com::sun::star::sdbc::XResultSet > SAL_CALL executeQuery( const ::rtl::OUString& sql ) ;
+            virtual sal_Int32 SAL_CALL executeUpdate( const ::rtl::OUString& sql ) ;
+            virtual sal_Bool SAL_CALL execute( const ::rtl::OUString& sql ) ;
+            virtual ::com::sun::star::uno::Reference< ::com::sun::star::sdbc::XConnection > SAL_CALL getConnection(  ) ;
             // XWarningsSupplier
-            virtual ::com::sun::star::uno::Any SAL_CALL getWarnings(  ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException);
-            virtual void SAL_CALL clearWarnings(  ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException);
+            virtual ::com::sun::star::uno::Any SAL_CALL getWarnings(  );
+            virtual void SAL_CALL clearWarnings(  );
             // XCancellable
-            virtual void SAL_CALL cancel(  ) throw(::com::sun::star::uno::RuntimeException);
+            virtual void SAL_CALL cancel(  );
             // XCloseable
-            virtual void SAL_CALL close(  ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException);
+            virtual void SAL_CALL close(  );
             // XMultipleResults
-            virtual ::com::sun::star::uno::Reference< ::com::sun::star::sdbc::XResultSet > SAL_CALL getResultSet(  ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException);
-            virtual sal_Int32 SAL_CALL getUpdateCount(  ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException);
-            virtual sal_Bool SAL_CALL getMoreResults(  ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException);
+            virtual ::com::sun::star::uno::Reference< ::com::sun::star::sdbc::XResultSet > SAL_CALL getResultSet(  );
+            virtual sal_Int32 SAL_CALL getUpdateCount(  );
+            virtual sal_Bool SAL_CALL getMoreResults(  );
 
             // other methods
             OConnection* getOwnConnection() const { return m_pConnection;}
@@ -160,13 +159,13 @@ namespace connectivity
             OStatement( OConnection* _pConnection) : OStatement_BASE2( _pConnection){}
             DECLARE_SERVICE_INFO();
 
-            virtual ::com::sun::star::uno::Any SAL_CALL queryInterface( const ::com::sun::star::uno::Type & rType ) throw(::com::sun::star::uno::RuntimeException);
+            virtual ::com::sun::star::uno::Any SAL_CALL queryInterface( const ::com::sun::star::uno::Type & rType );
             virtual void SAL_CALL acquire() throw();
             virtual void SAL_CALL release() throw();
             // XBatchExecution
-            virtual void SAL_CALL addBatch( const ::rtl::OUString& sql ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException);
-            virtual void SAL_CALL clearBatch(  ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException);
-            virtual ::com::sun::star::uno::Sequence< sal_Int32 > SAL_CALL executeBatch(  ) throw(::com::sun::star::sdbc::SQLException, ::com::sun::star::uno::RuntimeException);
+            virtual void SAL_CALL addBatch( const ::rtl::OUString& sql );
+            virtual void SAL_CALL clearBatch(  );
+            virtual ::com::sun::star::uno::Sequence< sal_Int32 > SAL_CALL executeBatch(  );
         };
     }
 }

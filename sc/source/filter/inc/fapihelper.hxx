@@ -23,18 +23,17 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <osl/diagnose.h>
 #include <tools/color.hxx>
-#include <comphelper/types.hxx>
 #include "ftools.hxx"
-#include "scdllapi.h"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace lang { class XMultiServiceFactory; }
-} } }
+}
+
+namespace com::sun::star::beans { struct NamedValue; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::beans { class XMultiPropertySet; }
 
 namespace comphelper { class IDocPasswordVerifier; }
 
@@ -47,13 +46,6 @@ class SfxObjectShell;
 class ScfApiHelper
 {
 public:
-    /** Converts a tools color to a UNO color value. */
-    static sal_Int32 ConvertToApiColor( const Color& rColor )
-                            { return static_cast< sal_Int32 >( rColor.GetColor() ); }
-    /** Converts a UNO color value to a tools color. */
-    static Color ConvertFromApiColor( sal_Int32 nApiColor )
-                            { return Color( static_cast< ColorData >( nApiColor ) ); }
-
     /** Converts a non-empty vector into a UNO sequence containing elements of the same type. */
     template< typename Type >
     static css::uno::Sequence< Type >
@@ -63,7 +55,7 @@ public:
     static OUString GetServiceName( const css::uno::Reference< css::uno::XInterface >& xInt );
 
     /** Returns the multi service factory from a document shell. */
-    static css::uno::Reference< css::lang::XMultiServiceFactory > GetServiceFactory( SfxObjectShell* pShell );
+    static css::uno::Reference< css::lang::XMultiServiceFactory > GetServiceFactory( const SfxObjectShell* pShell );
 
     /** Creates an instance from the passed service name, using the passed service factory. */
     static css::uno::Reference< css::uno::XInterface > CreateInstance(
@@ -72,7 +64,7 @@ public:
 
     /** Creates an instance from the passed service name, using the service factory of the passed object. */
     static css::uno::Reference< css::uno::XInterface > CreateInstance(
-                            SfxObjectShell* pShell,
+                            const SfxObjectShell* pShell,
                             const OUString& rServiceName );
 
     /** Creates an instance from the passed service name, using the process service factory. */
@@ -120,6 +112,11 @@ public:
     explicit     ScfPropertySet( const css::uno::Reference< InterfaceType >& xInterface ) { Set( xInterface ); }
 
                         ~ScfPropertySet();
+    //TODO:
+    ScfPropertySet(ScfPropertySet const &) = default;
+    ScfPropertySet(ScfPropertySet &&) = default;
+    ScfPropertySet & operator =(ScfPropertySet const &) = default;
+    ScfPropertySet & operator =(ScfPropertySet &&) = default;
 
     /** Sets the passed UNO property set and releases the old UNO property set. */
     void                Set( css::uno::Reference< css::beans::XPropertySet > const & xPropSet );
@@ -188,7 +185,7 @@ public:
 
     /** Puts the passed color into the property set. */
     void         SetColorProperty( const OUString& rPropName, const Color& rColor )
-                            { SetProperty( rPropName, ScfApiHelper::ConvertToApiColor( rColor ) ); }
+                            { SetProperty( rPropName, sal_Int32( rColor ) ); }
 
     /** Puts the passed properties into the property set. Tries to use the XMultiPropertySet interface.
         @param rPropNames  The property names. MUST be ordered alphabetically.
@@ -218,7 +215,7 @@ class ScfPropSetHelper
 {
 public:
     /** @param ppPropNames  A null-terminated array of ASCII property names. */
-    explicit            ScfPropSetHelper( const sal_Char* const* ppcPropNames );
+    explicit            ScfPropSetHelper( const char* const* ppcPropNames );
 
     // read properties --------------------------------------------------------
 
@@ -227,9 +224,9 @@ public:
 
     /** Reads the next value from the value sequence. */
     template< typename Type >
-    bool                ReadValue( Type& rValue );
+    void                ReadValue( Type& rValue );
     /** Reads an Any from the value sequence. */
-    bool                ReadValue( css::uno::Any& rAny );
+    void                ReadValue( css::uno::Any& rAny );
     /** Reads a color value from the value sequence. */
     void                ReadValue( Color& rColor );
     /** Reads a C++ boolean value from the value sequence. */
@@ -247,7 +244,7 @@ public:
     void                WriteValue( const css::uno::Any& rAny );
     /** Writes a color value to the value sequence. */
     void         WriteValue( const Color& rColor )
-                            { WriteValue( ScfApiHelper::ConvertToApiColor( rColor ) ); }
+                            { WriteValue( sal_Int32( rColor ) ); }
     /** Writes a C++ boolean value to the value sequence. */
     void                WriteValue( bool rbValue );
 
@@ -266,10 +263,11 @@ private:
 };
 
 template< typename Type >
-bool ScfPropSetHelper::ReadValue( Type& rValue )
+void ScfPropSetHelper::ReadValue( Type& rValue )
 {
     css::uno::Any* pAny = GetNextAny();
-    return pAny && (*pAny >>= rValue);
+    if (pAny)
+        *pAny >>= rValue;
 }
 
 template< typename Type >

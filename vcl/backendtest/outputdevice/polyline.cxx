@@ -8,15 +8,14 @@
  *
  */
 
-#include "test/outputdevice.hxx"
+#include <test/outputdevice.hxx>
 
-namespace vcl {
-namespace test {
+namespace vcl::test {
 
 namespace
 {
 
-void drawPolyLineOffset(OutputDevice& rDevice, tools::Rectangle& rRect, int nOffset)
+void drawPolyLineOffset(OutputDevice& rDevice, tools::Rectangle const & rRect, int nOffset)
 {
     tools::Polygon aPolygon(4);
     aPolygon.SetPoint(Point(rRect.Left()  + nOffset, rRect.Top()    + nOffset), 0);
@@ -30,9 +29,9 @@ void drawPolyLineOffset(OutputDevice& rDevice, tools::Rectangle& rRect, int nOff
 
 } // end anonymous namespace
 
-Bitmap OutputDeviceTestPolyLine::setupRectangle()
+Bitmap OutputDeviceTestPolyLine::setupRectangle(bool bEnableAA)
 {
-    initialSetup(13, 13, constBackgroundColor);
+    initialSetup(13, 13, constBackgroundColor, bEnableAA);
 
     mpVirtualDevice->SetLineColor(constLineColor);
     mpVirtualDevice->SetFillColor();
@@ -135,6 +134,6 @@ Bitmap OutputDeviceTestPolyLine::setupAALines()
     return mpVirtualDevice->GetBitmap(maVDRectangle.TopLeft(), maVDRectangle.GetSize());
 }
 
-}} // end namespace vcl::test
+} // end namespace vcl::test
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

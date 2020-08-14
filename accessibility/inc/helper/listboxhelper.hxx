@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_HELPER_LISTBOXHELPER_HXX
-#define INCLUDED_ACCESSIBILITY_INC_HELPER_LISTBOXHELPER_HXX
+#pragma once
 
 #include <helper/IComboListBoxHelper.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/combobox.hxx>
 #include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
+#include <tools/gen.hxx>
 
 
 // globals
@@ -32,10 +30,9 @@
 const sal_Int32 DEFAULT_INDEX_IN_PARENT = -1;
 
 
-// class VCLListBoxHelper
 
 
-template< class T > class VCLListBoxHelper : public ::accessibility::IComboListBoxHelper
+template< class T > class VCLListBoxHelper final : public ::accessibility::IComboListBoxHelper
 {
 private:
     T&  m_aComboListBox;
@@ -65,9 +62,11 @@ public:
         {
             tools::Rectangle aTemp = m_aComboListBox.GetDropDownPosSizePixel();
             Size aSize = aTemp.GetSize();
-            aSize.Height() /= m_aComboListBox.GetDisplayLineCount();
+            sal_uInt16 nLineCount = m_aComboListBox.GetDisplayLineCount();
+            assert(nLineCount && "div-by-zero");
+            aSize.setHeight( aSize.Height() / nLineCount );
             Point aTopLeft = aTemp.TopLeft();
-            aTopLeft.Y() += aSize.Height() * ( nItem - m_aComboListBox.GetTopEntry() );
+            aTopLeft.AdjustY( aSize.Height() * ( nItem - m_aComboListBox.GetTopEntry() ) );
             aRect = tools::Rectangle( aTopLeft, aSize );
         }
         else
@@ -137,9 +136,9 @@ public:
         m_aComboListBox.SelectEntryPos(nPos,bSelect);
     }
 
-    virtual sal_Int32       GetSelectEntryCount() const override
+    virtual sal_Int32       GetSelectedEntryCount() const override
     {
-        return m_aComboListBox.GetSelectEntryCount();
+        return m_aComboListBox.GetSelectedEntryCount();
     }
 
     virtual void    SetNoSelection() override
@@ -147,9 +146,9 @@ public:
         m_aComboListBox.SetNoSelection();
     }
 
-    virtual sal_Int32       GetSelectEntryPos( sal_Int32  nSelIndex = 0 ) const override
+    virtual sal_Int32       GetSelectedEntryPos( sal_Int32  nSelIndex = 0 ) const override
     {
-        return m_aComboListBox.GetSelectEntryPos(nSelIndex);
+        return m_aComboListBox.GetSelectedEntryPos(nSelIndex);
     }
 
     virtual bool            IsInDropDown() const override
@@ -183,6 +182,5 @@ public:
 
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_HELPER_LISTBOXHELPER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

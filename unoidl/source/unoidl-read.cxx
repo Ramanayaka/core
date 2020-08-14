@@ -7,10 +7,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cassert>
-#include <cstddef>
 #include <cstdlib>
 #include <iostream>
 #include <map>
@@ -18,15 +17,14 @@
 #include <utility>
 #include <vector>
 
-#include "osl/file.h"
-#include "osl/file.hxx"
-#include "osl/process.h"
-#include "rtl/process.h"
-#include "rtl/ref.hxx"
-#include "rtl/ustring.hxx"
-#include "sal/main.h"
-#include "sal/types.h"
-#include "unoidl/unoidl.hxx"
+#include <osl/file.hxx>
+#include <osl/process.h>
+#include <rtl/process.h>
+#include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/main.h>
+#include <sal/types.h>
+#include <unoidl/unoidl.hxx>
 
 namespace {
 
@@ -206,7 +204,7 @@ void insertTypeDependency(
     OUString nucl(decomposeType(type, &rank, &args, &entity));
     if (entity) {
         insertEntityDependency(manager, iterator, nucl, true);
-        for (auto & i: args) {
+        for (const auto & i: args) {
             insertTypeDependency(manager, iterator, i);
         }
     }
@@ -1043,7 +1041,7 @@ SAL_IMPLEMENT_MAIN() {
         scanMap(mgr, prov->createRootCursor(), published, "", ents);
         std::vector<OUString> sorted(sort(ents));
         std::vector<OUString> mods;
-        for (auto & i: sorted) {
+        for (const auto & i: sorted) {
             writeEntity(ents, mods, i);
         }
         closeModules(mods, mods.size());

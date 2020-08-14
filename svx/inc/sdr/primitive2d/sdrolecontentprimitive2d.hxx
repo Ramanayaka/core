@@ -22,7 +22,7 @@
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <svx/svdobj.hxx>
+#include <tools/weakbase.h>
 
 
 // predefinitions
@@ -30,14 +30,12 @@
 class SdrOle2Obj;
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class SdrOleContentPrimitive2D : public BufferedDecompositionPrimitive2D
+        class SdrOleContentPrimitive2D final : public BufferedDecompositionPrimitive2D
         {
         private:
-            SdrObjectWeakRef                            mpSdrOle2Obj;
+            tools::WeakReference<SdrOle2Obj>            mpSdrOle2Obj;
             basegfx::B2DHomMatrix                       maObjectTransform;
 
             // #i104867# The GraphicVersion number to identify in operator== if
@@ -45,7 +43,6 @@ namespace drawinglayer
             // be expensive, e.g. triggering chart creation)
             sal_uInt32                                  mnGraphicVersion;
 
-        protected:
             // local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
 
@@ -66,10 +63,9 @@ namespace drawinglayer
             const basegfx::B2DHomMatrix& getObjectTransform() const { return maObjectTransform; }
 
             // provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 #endif // INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDROLECONTENTPRIMITIVE2D_HXX

@@ -20,13 +20,22 @@
 #ifndef INCLUDED_FILTER_SOURCE_PDF_PDFDIALOG_HXX
 #define INCLUDED_FILTER_SOURCE_PDF_PDFDIALOG_HXX
 
-#include "pdffilter.hxx"
 #include <svtools/genericunodialog.hxx>
 
+#include <comphelper/proparrhlp.hxx>
 #include <cppuhelper/implbase.hxx>
 
+#include <com/sun/star/beans/XPropertyAccess.hpp>
+#include <com/sun/star/document/XExporter.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 namespace vcl { class Window; }
+
+using namespace ::com::sun::star::beans;
+using namespace ::com::sun::star::document;
+using namespace ::com::sun::star::lang;
+using namespace ::com::sun::star::uno;
 
 typedef ::cppu::ImplInheritanceHelper < ::svt::OGenericUnoDialog, XPropertyAccess, XExporter >  PDFDialog_Base;
 
@@ -43,7 +52,7 @@ private:
     virtual Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
     virtual OUString SAL_CALL getImplementationName() override;
     virtual Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-    virtual VclPtr<Dialog> createDialog( vcl::Window* pParent ) override;
+    virtual std::unique_ptr<weld::DialogController> createDialog(const css::uno::Reference<css::awt::XWindow>& rParent) override;
     virtual void executedDialog( sal_Int16 nExecutionResult ) override;
     virtual Reference< XPropertySetInfo>  SAL_CALL getPropertySetInfo() override;
     virtual ::cppu::IPropertyArrayHelper& SAL_CALL getInfoHelper() override;
@@ -63,13 +72,6 @@ public:
     explicit    PDFDialog( const Reference< XComponentContext >& rxContext );
     virtual     ~PDFDialog() override;
 };
-
-/// @throws RuntimeException
-OUString PDFDialog_getImplementationName ();
-/// @throws RuntimeException
-Sequence< OUString > SAL_CALL PDFDialog_getSupportedServiceNames();
-/// @throws Exception
-Reference< XInterface > SAL_CALL PDFDialog_createInstance( const Reference< XMultiServiceFactory > & rSMgr);
 
 #endif // INCLUDED_FILTER_SOURCE_PDF_PDFDIALOG_HXX
 

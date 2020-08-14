@@ -17,16 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AViews.hxx"
-#include "ado/AView.hxx"
-#include "ado/ATables.hxx"
-#include "ado/ACatalog.hxx"
-#include "ado/AConnection.hxx"
-#include "ado/Awrapado.hxx"
-#include "TConnection.hxx"
+#include <ado/AViews.hxx>
+#include <ado/AView.hxx>
+#include <ado/ATables.hxx>
+#include <ado/ACatalog.hxx>
+#include <ado/AConnection.hxx>
+#include <ado/Awrapado.hxx>
+#include <TConnection.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/dbexception.hxx>
-#include "resource/ado_res.hrc"
+#include <strings.hrc>
 
 using namespace ::comphelper;
 
@@ -59,8 +60,8 @@ Reference< XPropertySet > OViews::createDescriptor()
 // XAppend
 sdbcx::ObjectType OViews::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
-    OAdoView* pView = nullptr;
-    if ( !getImplementation( pView, descriptor ) || pView == nullptr )
+    OAdoView* pView = getUnoTunnelImplementation<OAdoView>( descriptor );
+    if ( pView == nullptr )
         m_pCatalog->getConnection()->throwGenericSQLException( STR_INVALID_VIEW_DESCRIPTOR_ERROR,static_cast<XTypeProvider*>(this) );
 
     WpADOCommand aCommand;
@@ -71,7 +72,7 @@ sdbcx::ObjectType OViews::appendObject( const OUString& _rForName, const Referen
     OUString sName( _rForName );
     aCommand.put_Name(sName);
     aCommand.put_CommandText(getString(descriptor->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_COMMAND))));
-    ADOViews* pViews = static_cast<ADOViews*>(m_aCollection);
+    ADOViews* pViews = m_aCollection;
     if(FAILED(pViews->Append(OLEString(sName).asBSTR(),aCommand)))
         ADOS::ThrowException(*m_pCatalog->getConnection()->getConnection(),static_cast<XTypeProvider*>(this));
 

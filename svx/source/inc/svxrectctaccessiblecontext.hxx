@@ -22,191 +22,59 @@
 #define INCLUDED_SVX_SOURCE_INC_SVXRECTCTACCESSIBLECONTEXT_HXX
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/accessibility/IllegalAccessibleComponentStateException.hpp>
-#include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <com/sun/star/accessibility/XAccessibleAction.hpp>
 #include <com/sun/star/accessibility/XAccessibleValue.hpp>
-#include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <cppuhelper/weak.hxx>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <osl/mutex.hxx>
-#include <cppuhelper/interfacecontainer.h>
-#include <cppuhelper/compbase6.hxx>
-#include <cppuhelper/compbase7.hxx>
-#include <cppuhelper/basemutex.hxx>
-#include <comphelper/servicehelper.hxx>
+#include <cppuhelper/implbase3.hxx>
+#include <comphelper/accessibleselectionhelper.hxx>
+#include <rtl/ref.hxx>
 #include <svx/rectenum.hxx>
-#include <vcl/vclptr.hxx>
 #include <tools/gen.hxx>
+#include <vector>
 
-namespace com { namespace sun { namespace star { namespace awt {
+namespace com::sun::star::awt {
     struct Point;
     struct Rectangle;
     struct Size;
     class XFocusListener;
-} } } }
-
+}
 namespace tools { class Rectangle; }
 class SvxRectCtl;
 class SvxRectCtlChildAccessibleContext;
 namespace vcl { class Window; }
 
+typedef ::cppu::ImplHelper1<css::accessibility::XAccessible> OAccessibleHelper_Base;
 
-typedef ::cppu::WeakAggComponentImplHelper6<
-            css::accessibility::XAccessible,
-            css::accessibility::XAccessibleComponent,
-            css::accessibility::XAccessibleContext,
-            css::accessibility::XAccessibleEventBroadcaster,
-            css::accessibility::XAccessibleSelection,
-            css::lang::XServiceInfo >
-            SvxRectCtlAccessibleContext_Base;
-
-class SvxRectCtlAccessibleContext : public ::cppu::BaseMutex, public SvxRectCtlAccessibleContext_Base
+class SvxRectCtlAccessibleContext final : public ::comphelper::OAccessibleSelectionHelper,
+                                       public OAccessibleHelper_Base
 {
 public:
     // internal
-    SvxRectCtlAccessibleContext(
-        const css::uno::Reference< css::accessibility::XAccessible>& rxParent,
-        SvxRectCtl&      rRepresentation );
-protected:
-    virtual ~SvxRectCtlAccessibleContext() override;
-public:
-    // XAccessible
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext> SAL_CALL
-        getAccessibleContext() override;
+    SvxRectCtlAccessibleContext(SvxRectCtl* pRepresentation);
+
+    DECLARE_XINTERFACE( )
+    DECLARE_XTYPEPROVIDER( )
 
     // XAccessibleComponent
-    virtual sal_Bool SAL_CALL
-        containsPoint( const css::awt::Point& rPoint ) override;
+    virtual void SAL_CALL grabFocus() override;
+    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint(const css::awt::Point& rPoint) override;
 
-    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL
-        getAccessibleAtPoint( const css::awt::Point& rPoint ) override;
-
-    virtual css::awt::Rectangle SAL_CALL
-        getBounds() override;
-
-    virtual css::awt::Point SAL_CALL
-        getLocation() override;
-
-    virtual css::awt::Point SAL_CALL
-        getLocationOnScreen() override;
-
-    virtual css::awt::Size SAL_CALL
-        getSize() override;
-
-    /// @throws css::uno::RuntimeException
-    bool SAL_CALL
-        isVisible();
-
-    virtual void SAL_CALL
-        grabFocus() override;
-
-    virtual sal_Int32 SAL_CALL
-        getForeground(  ) override;
-    virtual sal_Int32 SAL_CALL
-        getBackground(  ) override;
-
+    // XAccessible
     // XAccessibleContext
-    virtual sal_Int32 SAL_CALL
-        getAccessibleChildCount() override;
+    virtual sal_Int32 SAL_CALL getAccessibleChildCount() override;
+    virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL getAccessibleChild(sal_Int32 nIndex) override;
+    virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL getAccessibleParent() override;
+    virtual sal_Int16 SAL_CALL getAccessibleRole() override;
+    virtual OUString SAL_CALL getAccessibleDescription() override;
+    virtual OUString SAL_CALL getAccessibleName() override;
+    virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL getAccessibleRelationSet() override;
+    virtual css::uno::Reference< css::accessibility::XAccessibleStateSet > SAL_CALL getAccessibleStateSet() override;
 
-    virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL
-        getAccessibleChild( sal_Int32 nIndex ) override;
+    virtual css::uno::Reference< css::accessibility::XAccessibleContext> SAL_CALL getAccessibleContext() override { return this; }
+    virtual sal_Int32 SAL_CALL getForeground() override;
+    virtual sal_Int32 SAL_CALL getBackground() override;
 
-    virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL
-        getAccessibleParent() override;
-
-    virtual sal_Int32 SAL_CALL
-        getAccessibleIndexInParent() override;
-
-    virtual sal_Int16 SAL_CALL
-        getAccessibleRole() override;
-
-    virtual OUString SAL_CALL
-        getAccessibleDescription() override;
-
-    virtual OUString SAL_CALL
-        getAccessibleName() override;
-
-    virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL
-        getAccessibleRelationSet() override;
-
-    virtual css::uno::Reference< css::accessibility::XAccessibleStateSet > SAL_CALL
-        getAccessibleStateSet() override;
-
-    virtual css::lang::Locale SAL_CALL
-        getLocale() override;
-
-    // XAccessibleEventBroadcaster
-    virtual void SAL_CALL
-        addAccessibleEventListener(
-            const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-
-    virtual void SAL_CALL
-        removeAccessibleEventListener(
-            const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-
-    // XServiceInfo
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    virtual sal_Bool SAL_CALL
-        supportsService( const OUString& sServiceName ) override;
-
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
-
-    // XTypeProvider
-    virtual css::uno::Sequence<sal_Int8> SAL_CALL
-        getImplementationId() override;
-
-    // XAccessibleSelection
-    virtual void SAL_CALL
-        selectAccessibleChild( sal_Int32 nChildIndex ) override;
-
-    virtual sal_Bool SAL_CALL
-        isAccessibleChildSelected( sal_Int32 nChildIndex ) override;
-
-    virtual void SAL_CALL
-        clearAccessibleSelection() override;
-
-    virtual void SAL_CALL
-        selectAllAccessibleChildren() override;
-
-    virtual sal_Int32 SAL_CALL
-        getSelectedAccessibleChildCount() override;
-
-    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL
-        getSelectedAccessibleChild( sal_Int32 nSelectedChildIndex ) override;
-
-    virtual void SAL_CALL
-        deselectAccessibleChild( sal_Int32 nSelectedChildIndex ) override;
-
-
-protected:
-    // internals
-    /// @throws css::lang::IndexOutOfBoundsException
-    void checkChildIndex( long nIndexOfChild );
-
-    /** Selects a new child by index.
-
-        <p>If the child was not selected before, the state of the child will
-        be updated. If the index is invalid, the index will internally set to NOCHILDSELECTED</p>
-
-        @param nIndexOfChild
-            Index of the new child which should be selected.
-    */
-    void selectChild( long nIndexOfChild );
-
-public:
     /** Selects a new child by point.
 
         <p>If the child was not selected before, the state of the child will
@@ -218,27 +86,33 @@ public:
     void selectChild( RectPoint ePoint );
     void FireChildFocus( RectPoint eButton );
 
-protected:
+private:
+    virtual ~SvxRectCtlAccessibleContext() override;
 
-    /// @Return the object's current bounding box relative to the desktop.
-    ///
-    /// @throws css::uno::RuntimeException
-    tools::Rectangle GetBoundingBoxOnScreen();
+    // OCommonAccessibleSelection
+    // return if the specified child is visible => watch for special ChildIndexes (ACCESSIBLE_SELECTION_CHILD_xxx)
+    virtual bool implIsSelected(sal_Int32 nAccessibleChildIndex) override;
 
-    /// @Return the object's current bounding box relative to the parent object.
-    ///
-    /// @throws css::uno::RuntimeException
-    tools::Rectangle GetBoundingBox();
+    // select the specified child => watch for special ChildIndexes (ACCESSIBLE_SELECTION_CHILD_xxx)
+    virtual void implSelect(sal_Int32 nAccessibleChildIndex, bool bSelect) override;
+
+    // OCommonAccessibleComponent
+    virtual css::awt::Rectangle implGetBounds() override;
 
     virtual void SAL_CALL disposing() override;
 
-    /// @returns true if it's disposed or in disposing
-    inline bool IsAlive() const;
+    void checkChildIndex(long nIndex);
 
-    /// @throws css::lang::DisposedException if it's not alive
-    void ThrowExceptionIfNotAlive();
+    /** Selects a new child by index.
 
-private:
+        <p>If the child was not selected before, the state of the child will
+        be updated. If the index is invalid, the index will internally set to NOCHILDSELECTED</p>
+
+        @param nIndexOfChild
+            Index of the new child which should be selected.
+    */
+    void selectChild( long nIndexOfChild );
+
     /** Description of this object.  This is not a constant because it can
         be set from the outside.
     */
@@ -248,120 +122,52 @@ private:
     */
     OUString                     msName;
 
-    /// Reference to the parent object.
-    css::uno::Reference< css::accessibility::XAccessible >
-                                        mxParent;
-
     /// pointer to internal representation
-    VclPtr<SvxRectCtl>                  mpRepr;
+    SvxRectCtl*                  mpRepr;
 
     /// array for all possible children
-    SvxRectCtlChildAccessibleContext**  mpChildren;
-
-    /// client id in the AccessibleEventNotifier queue
-    sal_uInt32 mnClientId;
+    std::vector<rtl::Reference<SvxRectCtlChildAccessibleContext>>  mvChildren;
 
     /// actual selected child
     long                                mnSelectedChild;
 };
 
-inline bool SvxRectCtlAccessibleContext::IsAlive() const
-{
-    return !rBHelper.bDisposed && !rBHelper.bInDispose;
-}
+typedef ::cppu::ImplHelper3 <   css::accessibility::XAccessible,
+                                css::accessibility::XAccessibleValue,
+                                css::accessibility::XAccessibleAction
+                            >   OAccessibleHelper_Base_3;
 
-typedef ::cppu::WeakAggComponentImplHelper7<
-            css::accessibility::XAccessible,
-            css::accessibility::XAccessibleComponent,
-            css::accessibility::XAccessibleContext,
-            css::accessibility::XAccessibleEventBroadcaster,
-            css::accessibility::XAccessibleValue,
-            css::accessibility::XAccessibleAction,
-            css::lang::XServiceInfo >
-            SvxRectCtlChildAccessibleContext_Base;
-
-class SvxRectCtlChildAccessibleContext : public SvxRectCtlChildAccessibleContext_Base
+class SvxRectCtlChildAccessibleContext final : public ::comphelper::OAccessibleComponentHelper,
+                                            public OAccessibleHelper_Base_3
 {
 public:
     SvxRectCtlChildAccessibleContext(
         const css::uno::Reference< css::accessibility::XAccessible>& rxParent,
-        const vcl::Window& rParentWindow,
         const OUString& rName, const OUString& rDescription,
         const tools::Rectangle& rBoundingBox,
         long nIndexInParent );
-protected:
-    virtual ~SvxRectCtlChildAccessibleContext() override;
-public:
-    // XAccessible
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext> SAL_CALL
-        getAccessibleContext() override;
+
+    DECLARE_XINTERFACE( )
+    DECLARE_XTYPEPROVIDER( )
 
     // XAccessibleComponent
-    virtual sal_Bool SAL_CALL
-        containsPoint( const css::awt::Point& rPoint ) override;
-
-    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL
-        getAccessibleAtPoint( const css::awt::Point& rPoint ) override;
-
-    virtual css::awt::Rectangle SAL_CALL
-        getBounds() override;
-
-    virtual css::awt::Point SAL_CALL
-        getLocation() override;
-
-    virtual css::awt::Point SAL_CALL
-        getLocationOnScreen() override;
-
-    virtual css::awt::Size SAL_CALL
-        getSize() override;
-
-    virtual void SAL_CALL
-        grabFocus() override;
-
-    virtual sal_Int32 SAL_CALL
-        getForeground(  ) override;
-    virtual sal_Int32 SAL_CALL
-        getBackground(  ) override;
+    virtual void SAL_CALL grabFocus() override;
+    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint( const css::awt::Point& rPoint ) override;
 
     // XAccessibleContext
-    virtual sal_Int32 SAL_CALL
-        getAccessibleChildCount() override;
+    virtual sal_Int32 SAL_CALL getAccessibleChildCount() override;
+    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleChild( sal_Int32 nIndex ) override;
+    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleParent() override;
+    virtual sal_Int16 SAL_CALL getAccessibleRole() override;
+    virtual OUString SAL_CALL getAccessibleDescription() override;
+    virtual OUString SAL_CALL getAccessibleName() override;
+    virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL getAccessibleRelationSet() override;
+    virtual css::uno::Reference< css::accessibility::XAccessibleStateSet > SAL_CALL getAccessibleStateSet() override;
 
-    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL
-        getAccessibleChild( sal_Int32 nIndex ) override;
+    virtual css::uno::Reference< css::accessibility::XAccessibleContext> SAL_CALL getAccessibleContext() override { return this; }
 
-    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL
-        getAccessibleParent() override;
-
-    virtual sal_Int32 SAL_CALL
-        getAccessibleIndexInParent() override;
-
-    virtual sal_Int16 SAL_CALL
-        getAccessibleRole() override;
-
-    virtual OUString SAL_CALL
-        getAccessibleDescription() override;
-
-    virtual OUString SAL_CALL
-        getAccessibleName() override;
-
-    virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL
-        getAccessibleRelationSet() override;
-
-    virtual css::uno::Reference< css::accessibility::XAccessibleStateSet > SAL_CALL
-        getAccessibleStateSet() override;
-
-    virtual css::lang::Locale SAL_CALL
-        getLocale() override;
-
-    // XAccessibleEventBroadcaster
-    virtual void SAL_CALL
-        addAccessibleEventListener(
-            const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-
-    virtual void SAL_CALL
-        removeAccessibleEventListener(
-            const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
+    virtual sal_Int32 SAL_CALL getForeground() override;
+    virtual sal_Int32 SAL_CALL getBackground() override;
 
     // XAccessibleValue
     virtual css::uno::Any SAL_CALL
@@ -379,48 +185,22 @@ public:
     // XAccessibleAction
     virtual sal_Int32 SAL_CALL getAccessibleActionCount( ) override;
     virtual sal_Bool SAL_CALL doAccessibleAction ( sal_Int32 nIndex ) override;
-    virtual ::rtl::OUString SAL_CALL getAccessibleActionDescription ( sal_Int32 nIndex ) override;
+    virtual OUString SAL_CALL getAccessibleActionDescription ( sal_Int32 nIndex ) override;
     virtual css::uno::Reference< css::accessibility::XAccessibleKeyBinding > SAL_CALL getAccessibleActionKeyBinding( sal_Int32 nIndex ) override;
-    // XServiceInfo
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    virtual sal_Bool SAL_CALL
-        supportsService( const OUString& sServiceName ) override;
-
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
-
-    // XTypeProvider
-    virtual css::uno::Sequence<sal_Int8> SAL_CALL
-        getImplementationId() override;
 
     // internal
     /// Sets the checked status
     void setStateChecked(bool bChecked);
     void FireFocusEvent();
 
-protected:
-    /// @throws css::uno::RuntimeException
-    tools::Rectangle GetBoundingBoxOnScreen();
-
-    /// @throws css::uno::RuntimeException
-    tools::Rectangle const & GetBoundingBox();
-
-    void CommitChange( const css::accessibility::AccessibleEventObject& rEvent );
+private:
+    virtual ~SvxRectCtlChildAccessibleContext() override;
 
     virtual void SAL_CALL disposing() override;
 
-    /// @returns true if it's disposed or in disposing
-    inline bool IsAlive() const;
-
-    /// @throws css::lang::DisposedException if it's not alive
-    void ThrowExceptionIfNotAlive();
-
-    /// Mutex guarding this object.
-    ::osl::Mutex                        maMutex;
-
-private:
+    // OCommonAccessibleComponent
+    /// implements the calculation of the bounding rectangle
+    virtual css::awt::Rectangle implGetBounds(  ) override;
 
     /** Description of this object.  This is not a constant because it can
         be set from the outside.  Furthermore, it changes according to the
@@ -435,28 +215,17 @@ private:
 
     /// Reference to the parent object.
     css::uno::Reference< css::accessibility::XAccessible >
-                                        mxParent;
+                                 mxParent;
 
     /// Bounding box
-    tools::Rectangle                         maBoundingBox;
-
-    /// window of parent
-    const vcl::Window&                       mrParentWindow;
-
-    /// client id in the AccessibleEventNotifier queue
-    sal_uInt32                          mnClientId;
+    tools::Rectangle             maBoundingBox;
 
     /// index of child in parent
-    long                                mnIndexInParent;
+    long                         mnIndexInParent;
 
     /// Indicates, if object is checked
-    bool                            mbIsChecked;
+    bool                         mbIsChecked;
 };
-
-inline bool SvxRectCtlChildAccessibleContext::IsAlive() const
-{
-    return !rBHelper.bDisposed && !rBHelper.bInDispose;
-}
 
 
 #endif

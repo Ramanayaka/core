@@ -13,7 +13,7 @@ $(eval $(call gb_Library_add_sdi_headers,sm,starmath/sdi/smslots))
 
 $(eval $(call gb_Library_set_componentfile,sm,starmath/util/sm))
 
-$(eval $(call gb_Library_set_precompiled_header,sm,$(SRCDIR)/starmath/inc/pch/precompiled_sm))
+$(eval $(call gb_Library_set_precompiled_header,sm,starmath/inc/pch/precompiled_sm))
 
 $(eval $(call gb_Library_set_include,sm,\
         -I$(SRCDIR)/starmath/inc \
@@ -62,6 +62,8 @@ $(eval $(call gb_Library_use_libraries,sm,\
 ))
 
 $(eval $(call gb_Library_add_exception_objects,sm,\
+        starmath/source/AccessibleSmElement \
+        starmath/source/AccessibleSmElementsControl \
         starmath/source/ElementsDockingWindow \
         starmath/source/accessibility \
         starmath/source/action \
@@ -82,7 +84,6 @@ $(eval $(call gb_Library_add_exception_objects,sm,\
         starmath/source/rtfexport \
         starmath/source/parse \
         starmath/source/rect \
-        starmath/source/register \
         starmath/source/smdll \
         starmath/source/smmod \
         starmath/source/symbol \
@@ -108,8 +109,5 @@ $(eval $(call gb_SdiTarget_set_include,starmath/sdi/smslots,\
         -I$(SRCDIR)/sfx2/sdi \
         $$(INCLUDE) \
 ))
-
-# Runtime dependency for unit-tests
-$(eval $(call gb_Library_use_restarget,sm,sm))
 
 # vim: set noet sw=4 ts=4:

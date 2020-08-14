@@ -18,21 +18,16 @@
  */
 
 #include <sal/config.h>
-
-#include <utility>
-
-#include <com/sun/star/util/DateTime.hpp>
-#include <com/sun/star/text/XTextTable.hpp>
-
+#include <sal/log.hxx>
+#include <com/sun/star/text/XTextSection.hpp>
+#include <cppuhelper/typeprovider.hxx>
 #include <vcl/svapp.hxx>
-#include <comphelper/servicehelper.hxx>
 
 #include <pagedesc.hxx>
-#include "poolfmt.hxx"
+#include <poolfmt.hxx>
 #include <redline.hxx>
 #include <section.hxx>
 #include <unoprnms.hxx>
-#include <unomid.h>
 #include <unotextrange.hxx>
 #include <unotextcursor.hxx>
 #include <unoparagraph.hxx>
@@ -82,15 +77,10 @@ uno::Any SwXRedlineText::queryInterface( const uno::Type& rType )
 
 uno::Sequence<uno::Type> SwXRedlineText::getTypes()
 {
-    // SwXText::getTypes()
-    uno::Sequence<uno::Type> aTypes = SwXText::getTypes();
-
-    // add container::XEnumerationAccess
-    sal_Int32 nLength = aTypes.getLength();
-    aTypes.realloc(nLength + 1);
-    aTypes[nLength] = cppu::UnoType<container::XEnumerationAccess>::get();
-
-    return aTypes;
+    return cppu::OTypeCollection(
+            cppu::UnoType<container::XEnumerationAccess>::get(),
+            SwXText::getTypes()
+        ).getTypes();
 }
 
 uno::Sequence<sal_Int8> SwXRedlineText::getImplementationId()
@@ -172,7 +162,7 @@ SwXRedlinePortion::SwXRedlinePortion(SwRangeRedline const& rRedline,
         SwUnoCursor const*const pPortionCursor,
         uno::Reference< text::XText > const& xParent, bool const bStart)
     : SwXTextPortion(pPortionCursor, xParent,
-            (bStart) ? PORTION_REDLINE_START : PORTION_REDLINE_END)
+            bStart ? PORTION_REDLINE_START : PORTION_REDLINE_END)
     , m_rRedline(rRedline)
 {
     SetCollapsed(!m_rRedline.HasMark());
@@ -199,7 +189,7 @@ static uno::Sequence<beans::PropertyValue> lcl_GetSuccessorProperties(const SwRa
         pValues[2].Name = UNO_NAME_REDLINE_COMMENT;
         pValues[2].Value <<= pNext->GetComment();
         pValues[3].Name = UNO_NAME_REDLINE_TYPE;
-        pValues[3].Value <<= nsRedlineType_t::SwRedlineTypeToOUString(pNext->GetType());
+        pValues[3].Value <<= SwRedlineTypeToOUString(pNext->GetType());
     }
     return aValues;
 }
@@ -268,7 +258,7 @@ uno::Any  SwXRedlinePortion::GetPropertyValue( const OUString& rPropertyName, co
         aRet <<= const_cast<SwRangeRedline&>(rRedline).GetDescr();
     else if(rPropertyName == UNO_NAME_REDLINE_TYPE)
     {
-        aRet <<= nsRedlineType_t::SwRedlineTypeToOUString(rRedline.GetType());
+        aRet <<= SwRedlineTypeToOUString(rRedline.GetType());
     }
     else if(rPropertyName == UNO_NAME_REDLINE_SUCCESSOR_DATA)
     {
@@ -308,7 +298,7 @@ uno::Sequence< beans::PropertyValue > SwXRedlinePortion::CreateRedlineProperties
     pRet[nPropIdx].Name = UNO_NAME_REDLINE_DESCRIPTION;
     pRet[nPropIdx++].Value <<= const_cast<SwRangeRedline&>(rRedline).GetDescr();
     pRet[nPropIdx].Name = UNO_NAME_REDLINE_TYPE;
-    pRet[nPropIdx++].Value <<= nsRedlineType_t::SwRedlineTypeToOUString(rRedline.GetType());
+    pRet[nPropIdx++].Value <<= SwRedlineTypeToOUString(rRedline.GetType());
     pRet[nPropIdx].Name = UNO_NAME_REDLINE_IDENTIFIER;
     pRet[nPropIdx++].Value <<= OUString::number(
         sal::static_int_cast< sal_Int64 >( reinterpret_cast< sal_IntPtr >(&rRedline) ) );
@@ -348,7 +338,7 @@ SwXRedline::SwXRedline(SwRangeRedline& rRedline, SwDoc& rDoc) :
     pDoc(&rDoc),
     pRedline(&rRedline)
 {
-    pDoc->getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->Add(this);
+    StartListening(pDoc->getIDocumentStylePoolAccess().GetPageDescFromPool(RES_POOLPAGE_STANDARD)->GetNotifier());
 }
 
 SwXRedline::~SwXRedline()
@@ -491,13 +481,15 @@ void SwXRedline::removeVetoableChangeListener(
 {
 }
 
-void SwXRedline::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew)
+void SwXRedline::Notify( const SfxHint& rHint )
 {
-    ClientModify(this, pOld, pNew);
-    if(!GetRegisteredIn())
-      {
+    if(rHint.GetId() == SfxHintId::Dying)
+    {
         pDoc = nullptr;
         pRedline = nullptr;
+    } else if(auto pHint = dynamic_cast<const sw::FindRedlineHint*>(&rHint)) {
+        if(!*pHint->m_ppXRedline && &pHint->m_rRedline == GetRedline())
+            *pHint->m_ppXRedline = this;
     }
 }
 
@@ -536,31 +528,30 @@ uno::Reference< text::XTextCursor >  SwXRedline::createTextCursor()
 
     uno::Reference< text::XTextCursor >     xRet;
     SwNodeIndex* pNodeIndex = pRedline->GetContentIdx();
-    if(pNodeIndex)
-    {
-        SwPosition aPos(*pNodeIndex);
-        SwXTextCursor *const pXCursor =
-            new SwXTextCursor(*pDoc, this, CursorType::Redline, aPos);
-        auto& rUnoCursor(pXCursor->GetCursor());
-        rUnoCursor.Move(fnMoveForward, GoInNode);
-
-        // is here a table?
-        SwTableNode* pTableNode = rUnoCursor.GetNode().FindTableNode();
-        SwContentNode* pCont = nullptr;
-        while( pTableNode )
-        {
-            rUnoCursor.GetPoint()->nNode = *pTableNode->EndOfSectionNode();
-            pCont = GetDoc()->GetNodes().GoNext(&rUnoCursor.GetPoint()->nNode);
-            pTableNode = pCont->FindTableNode();
-        }
-        if(pCont)
-            rUnoCursor.GetPoint()->nContent.Assign(pCont, 0);
-        xRet = static_cast<text::XWordCursor*>(pXCursor);
-    }
-    else
+    if(!pNodeIndex)
     {
         throw uno::RuntimeException();
     }
+
+    SwPosition aPos(*pNodeIndex);
+    SwXTextCursor *const pXCursor =
+        new SwXTextCursor(*pDoc, this, CursorType::Redline, aPos);
+    auto& rUnoCursor(pXCursor->GetCursor());
+    rUnoCursor.Move(fnMoveForward, GoInNode);
+
+    // is here a table?
+    SwTableNode* pTableNode = rUnoCursor.GetNode().FindTableNode();
+    SwContentNode* pCont = nullptr;
+    while( pTableNode )
+    {
+        rUnoCursor.GetPoint()->nNode = *pTableNode->EndOfSectionNode();
+        pCont = GetDoc()->GetNodes().GoNext(&rUnoCursor.GetPoint()->nNode);
+        pTableNode = pCont->FindTableNode();
+    }
+    if(pCont)
+        rUnoCursor.GetPoint()->nContent.Assign(pCont, 0);
+    xRet = static_cast<text::XWordCursor*>(pXCursor);
+
     return xRet;
 }
 
@@ -582,15 +573,10 @@ uno::Any SwXRedline::queryInterface( const uno::Type& rType )
 
 uno::Sequence<uno::Type> SwXRedline::getTypes()
 {
-    uno::Sequence<uno::Type> aTypes = SwXText::getTypes();
-    uno::Sequence<uno::Type> aBaseTypes = SwXRedlineBaseClass::getTypes();
-    const uno::Type* pBaseTypes = aBaseTypes.getConstArray();
-    sal_Int32 nCurType = aTypes.getLength();
-    aTypes.realloc(aTypes.getLength() + aBaseTypes.getLength());
-    uno::Type* pTypes = aTypes.getArray();
-    for(sal_Int32 nType = 0; nType < aBaseTypes.getLength(); nType++)
-        pTypes[nCurType++] = pBaseTypes[nType];
-    return aTypes;
+    return comphelper::concatSequences(
+            SwXText::getTypes(),
+            SwXRedlineBaseClass::getTypes()
+        );
 }
 
 uno::Sequence<sal_Int8> SwXRedline::getImplementationId()

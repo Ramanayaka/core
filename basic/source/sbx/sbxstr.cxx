@@ -19,11 +19,10 @@
 
 #include <config_features.h>
 
-#include <vcl/errcode.hxx>
 #include <basic/sbx.hxx>
 #include "sbxconv.hxx"
 #include "sbxres.hxx"
-#include "runtime.hxx"
+#include <runtime.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <memory>
 
@@ -39,8 +38,8 @@ OUString ImpGetString( const SbxValues* p )
     switch( +p->eType )
     {
         case SbxNULL:
-            SbxBase::SetError( ERRCODE_SBX_CONVERSION );
-            SAL_FALLTHROUGH;
+            SbxBase::SetError( ERRCODE_BASIC_CONVERSION );
+            [[fallthrough]];
         case SbxEMPTY:
             break;
         case SbxCHAR:
@@ -97,7 +96,7 @@ OUString ImpGetString( const SbxValues* p )
             }
             else
             {
-                SbxBase::SetError( ERRCODE_SBX_NO_OBJECT );
+                SbxBase::SetError( ERRCODE_BASIC_NO_OBJECT );
             }
             break;
         }
@@ -134,7 +133,7 @@ OUString ImpGetString( const SbxValues* p )
         case SbxBYREF | SbxSALUINT64:
             ImpPutUInt64( &aTmp, *p->puInt64 ); break;
         default:
-            SbxBase::SetError( ERRCODE_SBX_CONVERSION );
+            SbxBase::SetError( ERRCODE_BASIC_CONVERSION );
     }
     return aRes;
 }
@@ -226,7 +225,7 @@ void ImpPutString( SbxValues* p, const OUString* n )
             if( pVal )
                 pVal->PutString( *n );
             else
-                SbxBase::SetError( ERRCODE_SBX_NO_OBJECT );
+                SbxBase::SetError( ERRCODE_BASIC_NO_OBJECT );
             break;
         }
         case SbxBYREF | SbxCHAR:
@@ -258,7 +257,7 @@ void ImpPutString( SbxValues* p, const OUString* n )
         case SbxBYREF | SbxSALUINT64:
             *p->puInt64 = ImpGetUInt64( p ); break;
         default:
-            SbxBase::SetError( ERRCODE_SBX_CONVERSION );
+            SbxBase::SetError( ERRCODE_BASIC_CONVERSION );
     }
 }
 
@@ -283,7 +282,7 @@ SbxArray* StringToByteArray(const OUString& rStr)
     }
     else
     {
-        pArray->unoAddDim( 0, -1 );
+        pArray->unoAddDim32( 0, -1 );
     }
 
     for( sal_Int32 i=0; i< nArraySize; i++)
@@ -292,7 +291,7 @@ SbxArray* StringToByteArray(const OUString& rStr)
         sal_uInt8 aByte = static_cast< sal_uInt8 >( (i%2) ? ((*pSrc) >> 8) & 0xff : (*pSrc) & 0xff );
         pNew->PutByte( aByte );
         pNew->SetFlag( SbxFlagBits::Write );
-        pArray->Put( pNew, i );
+        pArray->Put32( pNew, i );
         if( i%2 )
             pSrc++;
     }
@@ -302,12 +301,12 @@ SbxArray* StringToByteArray(const OUString& rStr)
 // Convert an array of bytes to string (2bytes per character)
 OUString ByteArrayToString(SbxArray* pArr)
 {
-    sal_uInt16 nCount = pArr->Count();
+    sal_uInt32 nCount = pArr->Count32();
     OUStringBuffer aStrBuf;
     sal_Unicode aChar = 0;
-    for( sal_uInt16 i = 0 ; i < nCount ; i++ )
+    for( sal_uInt32 i = 0 ; i < nCount ; i++ )
     {
-        sal_Unicode aTempChar = pArr->Get(i)->GetByte();
+        sal_Unicode aTempChar = pArr->Get32(i)->GetByte();
         if( i%2 )
         {
             aChar = (aTempChar << 8 ) | aChar;

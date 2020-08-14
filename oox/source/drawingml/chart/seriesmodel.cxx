@@ -17,12 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/seriesmodel.hxx"
+#include <drawingml/chart/seriesmodel.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 DataLabelModelBase::DataLabelModelBase(bool bMSO2007Doc) :
     mbDeleted( !bMSO2007Doc )
@@ -126,8 +124,6 @@ SeriesModel::~SeriesModel()
 {
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,33 +19,30 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <iostream>
 
 #ifdef LINUX
 #  ifndef __USE_XOPEN
 #    define __USE_XOPEN
 #  endif
 #endif
-#include <poll.h>
 
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <X11/Xlocale.h>
-#include <unx/XIM.h>
 
-#include "unx/salunx.h"
-#include "unx/saldisp.hxx"
-#include "unx/i18n_im.hxx"
-#include "unx/i18n_status.hxx"
+#include <unx/i18n_im.hxx>
 
 #include <osl/thread.h>
 #include <osl/process.h>
+#include <sal/log.hxx>
 
-#include "unx/i18n_cb.hxx"
+#include <unx/i18n_cb.hxx>
 
 using namespace vcl;
 
 // kinput2 IME needs special key handling since key release events are filtered in
 // preeditmode and XmbResetIC does not work
+
+namespace {
 
 class XKeyEventOp : public XKeyEvent
 {
@@ -59,6 +56,8 @@ class XKeyEventOp : public XKeyEvent
         void            erase ();
         bool            match (const XKeyEvent &rEvent) const;
 };
+
+}
 
 void
 XKeyEventOp::init()
@@ -127,13 +126,11 @@ XKeyEventOp::match (const XKeyEvent &rEvent) const
 static char*
 SetSystemLocale( const char* p_inlocale )
 {
-    char *p_outlocale;
+    char *p_outlocale = setlocale(LC_ALL, p_inlocale);
 
-    if ( (p_outlocale = setlocale(LC_ALL, p_inlocale)) == nullptr )
-    {
-        fprintf( stderr, "I18N: Operating system doesn't support locale \"%s\"\n",
-            p_inlocale );
-    }
+    SAL_WARN_IF(p_outlocale == nullptr, "vcl.app",
+            "I18N: Operating system doesn't support locale \""
+            << p_inlocale << "\".");
 
     return p_outlocale;
 }
@@ -173,8 +170,9 @@ IsXWindowCompatibleLocale( const char* p_locale )
 
     if ( !XSupportsLocale() )
     {
-        fprintf (stderr, "I18N: X Window System doesn't support locale \"%s\"\n",
-                p_locale );
+        SAL_WARN("vcl.app",
+                "I18N: X Window System doesn't support locale \""
+                << p_locale << "\".");
         return False;
     }
     return True;
@@ -194,34 +192,35 @@ SalI18N_InputMethod::SetLocale()
 {
     // check whether we want an Input Method engine, if we don't we
     // do not need to set the locale
-    if ( mbUseable )
+    if ( !mbUseable )
+        return;
+
+    char *locale = SetSystemLocale( "" );
+    if ( (!IsXWindowCompatibleLocale(locale)) || IsPosixLocale(locale) )
     {
-        char *locale = SetSystemLocale( "" );
-        if ( (!IsXWindowCompatibleLocale(locale)) || IsPosixLocale(locale) )
-        {
-            osl_setThreadTextEncoding (RTL_TEXTENCODING_ISO_8859_1);
-            locale = SetSystemLocale( "en_US" );
+        osl_setThreadTextEncoding (RTL_TEXTENCODING_ISO_8859_1);
+        locale = SetSystemLocale( "en_US" );
 #ifdef __sun
-            SetSystemEnvironment( "en_US" );
+        SetSystemEnvironment( "en_US" );
+#endif
+        if (! IsXWindowCompatibleLocale(locale))
+        {
+            locale = SetSystemLocale( "C" );
+#ifdef __sun
+            SetSystemEnvironment( "C" );
 #endif
             if (! IsXWindowCompatibleLocale(locale))
-            {
-                locale = SetSystemLocale( "C" );
-#ifdef __sun
-                SetSystemEnvironment( "C" );
-#endif
-                if (! IsXWindowCompatibleLocale(locale))
-                    mbUseable = False;
-            }
+                mbUseable = False;
         }
+    }
 
-        // must not fail if mbUseable since XSupportsLocale() asserts success
-        if ( mbUseable && XSetLocaleModifiers("") == nullptr )
-        {
-            fprintf (stderr, "I18N: Can't set X modifiers for locale \"%s\"\n",
-                locale);
-            mbUseable = False;
-        }
+    // must not fail if mbUseable since XSupportsLocale() asserts success
+    if ( mbUseable && XSetLocaleModifiers("") == nullptr )
+    {
+        SAL_WARN("vcl.app",
+                "I18N: Can't set X modifiers for locale \""
+                << locale << "\".");
+        mbUseable = False;
     }
 }
 
@@ -249,7 +248,6 @@ SalI18N_InputMethod::SalI18N_InputMethod( )
 
 SalI18N_InputMethod::~SalI18N_InputMethod()
 {
-    vcl::I18NStatus::free();
     if ( mpStyles != nullptr )
         XFree( mpStyles );
     if ( maMethod != nullptr )
@@ -309,12 +307,14 @@ PrintInputStyle( XIMStyles *pStyle )
     int  nBuf = sizeof( pBuf );
 
     if ( pStyle == NULL )
-        fprintf( stderr, "no input method styles\n");
+        SAL_INFO("vcl.app", "no input method styles.");
     else
     for ( int nStyle = 0; nStyle < pStyle->count_styles; nStyle++ )
     {
-        fprintf( stderr, "style #%i = %s\n", nStyle,
-              GetMethodName(pStyle->supported_styles[nStyle], pBuf, nBuf) );
+        SAL_INFO("vcl.app", "style #"
+                << nStyle
+                << " = "
+                << GetMethodName(pStyle->supported_styles[nStyle], pBuf, nBuf));
     }
 }
 
@@ -343,10 +343,10 @@ SalI18N_InputMethod::CreateMethod ( Display *pDisplay )
             if (   XGetIMValues(maMethod, XNQueryInputStyle, &mpStyles, nullptr)
                 != nullptr)
                 mbUseable = False;
-            #if OSL_DEBUG_LEVEL > 1
-            fprintf(stderr, "Creating Mono-Lingual InputMethod\n" );
+#if OSL_DEBUG_LEVEL > 1
+            SAL_INFO("vcl.app", "Creating Mono-Lingual InputMethod.");
             PrintInputStyle( mpStyles );
-            #endif
+#endif
         }
         else
         {
@@ -354,12 +354,11 @@ SalI18N_InputMethod::CreateMethod ( Display *pDisplay )
         }
     }
 
-    #if OSL_DEBUG_LEVEL > 1
-    if ( !mbUseable )
-        fprintf(stderr, "input method creation failed\n");
-    #endif
+#if OSL_DEBUG_LEVEL > 1
+    SAL_WARN_IF(!mbUseable, "vcl.app", "input method creation failed.");
+#endif
 
-    maDestroyCallback.callback    = static_cast<XIMProc>(IM_IMDestroyCallback);
+    maDestroyCallback.callback    = IM_IMDestroyCallback;
     maDestroyCallback.client_data = reinterpret_cast<XPointer>(this);
     if (mbUseable && maMethod != nullptr)
         XSetIMValues(maMethod, XNDestroyCallback, &maDestroyCallback, nullptr);

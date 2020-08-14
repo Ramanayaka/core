@@ -26,176 +26,30 @@
 
 #include <rtl/ustring.hxx>
 
-#include "oox/drawingml/shape.hxx"
-#include "drawingml/fillproperties.hxx"
-#include <oox/token/tokens.hxx>
+#include "datamodel.hxx"
+#include <oox/drawingml/shape.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace dom { class XDocument; } }
-} } }
-
-namespace oox { namespace drawingml {
-
-namespace dgm {
-
-/** A Connection
- */
-struct Connection
-{
-    Connection() :
-        mnType( 0 ),
-        mnSourceOrder( 0 ),
-        mnDestOrder( 0 )
-    {}
-
-    void dump();
-
-    sal_Int32 mnType;
-    OUString msModelId;
-    OUString msSourceId;
-    OUString msDestId;
-    OUString msParTransId;
-    OUString msPresId;
-    OUString msSibTransId;
-    sal_Int32 mnSourceOrder;
-    sal_Int32 mnDestOrder;
-
-};
-
-typedef std::vector< Connection > Connections;
-
-/** A point
- */
-struct Point
-{
-    Point() :
-        mnType(0),
-        mnMaxChildren(-1),
-        mnPreferredChildren(-1),
-        mnDirection(XML_norm),
-        mnHierarchyBranch(XML_std),
-        mnResizeHandles(XML_rel),
-        mnCustomAngle(-1),
-        mnPercentageNeighbourWidth(-1),
-        mnPercentageNeighbourHeight(-1),
-        mnPercentageOwnWidth(-1),
-        mnPercentageOwnHeight(-1),
-        mnIncludeAngleScale(-1),
-        mnRadiusScale(-1),
-        mnWidthScale(-1),
-        mnHeightScale(-1),
-        mnWidthOverride(-1),
-        mnHeightOverride(-1),
-        mnLayoutStyleCount(-1),
-        mnLayoutStyleIndex(-1),
-
-        mbOrgChartEnabled(false),
-        mbBulletEnabled(false),
-        mbCoherent3DOffset(false),
-        mbCustomHorizontalFlip(false),
-        mbCustomVerticalFlip(false),
-        mbCustomText(false),
-        mbIsPlaceholder(false)
-    {}
-    void dump();
-
-    ShapePtr      mpShape;
-
-    OUString msCnxId;
-    OUString msModelId;
-    OUString msColorTransformCategoryId;
-    OUString msColorTransformTypeId;
-    OUString msLayoutCategoryId;
-    OUString msLayoutTypeId;
-    OUString msPlaceholderText;
-    OUString msPresentationAssociationId;
-    OUString msPresentationLayoutName;
-    OUString msPresentationLayoutStyleLabel;
-    OUString msQuickStyleCategoryId;
-    OUString msQuickStyleTypeId;
-
-    sal_Int32     mnType;
-    sal_Int32     mnMaxChildren;
-    sal_Int32     mnPreferredChildren;
-    sal_Int32     mnDirection;
-    sal_Int32     mnHierarchyBranch;
-    sal_Int32     mnResizeHandles;
-    sal_Int32     mnCustomAngle;
-    sal_Int32     mnPercentageNeighbourWidth;
-    sal_Int32     mnPercentageNeighbourHeight;
-    sal_Int32     mnPercentageOwnWidth;
-    sal_Int32     mnPercentageOwnHeight;
-    sal_Int32     mnIncludeAngleScale;
-    sal_Int32     mnRadiusScale;
-    sal_Int32     mnWidthScale;
-    sal_Int32     mnHeightScale;
-    sal_Int32     mnWidthOverride;
-    sal_Int32     mnHeightOverride;
-    sal_Int32     mnLayoutStyleCount;
-    sal_Int32     mnLayoutStyleIndex;
-
-    bool          mbOrgChartEnabled;
-    bool          mbBulletEnabled;
-    bool          mbCoherent3DOffset;
-    bool          mbCustomHorizontalFlip;
-    bool          mbCustomVerticalFlip;
-    bool          mbCustomText;
-    bool          mbIsPlaceholder;
-};
-
-typedef std::vector< Point >        Points;
-
+namespace com::sun::star {
+    namespace xml::dom { class XDocument; }
 }
 
+namespace oox::drawingml {
+
+class Diagram;
 class LayoutNode;
 typedef std::shared_ptr< LayoutNode > LayoutNodePtr;
+class LayoutAtom;
+typedef std::shared_ptr<LayoutAtom> LayoutAtomPtr;
 
 typedef std::map< OUString, css::uno::Reference<css::xml::dom::XDocument> > DiagramDomMap;
 
-class DiagramData
-{
-public:
-    ::std::vector<OUString>  maExtDrawings;
-    typedef std::map< OUString, dgm::Point* > PointNameMap;
-    typedef std::map< OUString,
-                      std::vector<dgm::Point*> >   PointsNameMap;
-    typedef std::map< OUString, const dgm::Connection* > ConnectionNameMap;
-    typedef std::map< OUString,
-                      std::vector<std::pair<OUString,sal_Int32> > > StringMap;
-
-    DiagramData();
-    FillPropertiesPtr & getFillProperties()
-        { return mpFillProperties; }
-    dgm::Connections & getConnections()
-        { return maConnections; }
-    dgm::Points & getPoints()
-        { return maPoints; }
-    ConnectionNameMap & getConnectionNameMap()
-        { return maConnectionNameMap; }
-    StringMap & getPresOfNameMap()
-        { return maPresOfNameMap; }
-    PointNameMap & getPointNameMap()
-        { return maPointNameMap; }
-    PointsNameMap & getPointsPresNameMap()
-        { return maPointsPresNameMap; }
-    ::std::vector<OUString> &getExtDrawings()
-        { return maExtDrawings; }
-    void dump();
-private:
-    FillPropertiesPtr mpFillProperties;
-    dgm::Connections  maConnections;
-    dgm::Points       maPoints;
-    PointNameMap      maPointNameMap;
-    PointsNameMap     maPointsPresNameMap;
-    ConnectionNameMap maConnectionNameMap;
-    StringMap         maPresOfNameMap;
-};
-
-typedef std::shared_ptr< DiagramData > DiagramDataPtr;
+typedef std::map<OUString, LayoutAtomPtr> LayoutAtomMap;
+typedef std::map<const dgm::Point*, ShapePtr> PresPointShapeMap;
 
 class DiagramLayout
 {
 public:
+    DiagramLayout(const Diagram& rDgm) : mrDgm(rDgm) {}
     void setDefStyle( const OUString & sDefStyle )
         { msDefStyle = sDefStyle; }
     void setMinVer( const OUString & sMinVer )
@@ -206,6 +60,8 @@ public:
         { msTitle = sTitle; }
     void setDesc( const OUString & sDesc )
         { msDesc = sDesc; }
+    const Diagram& getDiagram() const
+        { return mrDgm; }
     LayoutNodePtr & getNode()
         { return mpNode; }
     const LayoutNodePtr & getNode() const
@@ -218,8 +74,13 @@ public:
         { return mpStyleData; }
     const DiagramDataPtr & getStyleData() const
         { return mpStyleData; }
+    LayoutAtomMap & getLayoutAtomMap()
+        { return maLayoutAtomMap; }
+    PresPointShapeMap & getPresPointShapeMap()
+        { return maPresPointShapeMap; }
 
 private:
+    const Diagram& mrDgm;
     OUString msDefStyle;
     OUString msMinVer;
     OUString msUniqueId;
@@ -232,6 +93,9 @@ private:
     // TODO
     // catLst
     // clrData
+
+    LayoutAtomMap maLayoutAtomMap;
+    PresPointShapeMap maPresPointShapeMap;
 };
 
 typedef std::shared_ptr< DiagramLayout > DiagramLayoutPtr;
@@ -248,12 +112,15 @@ typedef std::map<OUString,DiagramStyle> DiagramQStyleMap;
 
 struct DiagramColor
 {
-    oox::drawingml::Color maFillColor;
-    oox::drawingml::Color maLineColor;
-    oox::drawingml::Color maEffectColor;
-    oox::drawingml::Color maTextFillColor;
-    oox::drawingml::Color maTextLineColor;
-    oox::drawingml::Color maTextEffectColor;
+    std::vector<oox::drawingml::Color> maFillColors;
+    std::vector<oox::drawingml::Color> maLineColors;
+    std::vector<oox::drawingml::Color> maEffectColors;
+    std::vector<oox::drawingml::Color> maTextFillColors;
+    std::vector<oox::drawingml::Color> maTextLineColors;
+    std::vector<oox::drawingml::Color> maTextEffectColors;
+
+    static const oox::drawingml::Color&
+    getColorByIndex(const std::vector<oox::drawingml::Color>& rColors, sal_Int32 nIndex);
 };
 
 typedef std::map<OUString,DiagramColor> DiagramColorMap;
@@ -261,12 +128,14 @@ typedef std::map<OUString,DiagramColor> DiagramColorMap;
 class Diagram
 {
 public:
-    void setData( const DiagramDataPtr & );
+    void setData( const DiagramDataPtr & pData )
+        { mpData = pData; }
     const DiagramDataPtr& getData() const
-        {
-            return mpData;
-        }
-    void setLayout( const DiagramLayoutPtr & );
+        { return mpData; }
+    void setLayout( const DiagramLayoutPtr & pLayout )
+        { mpLayout = pLayout; }
+    const DiagramLayoutPtr& getLayout() const
+        { return mpLayout; }
 
     DiagramQStyleMap& getStyles() { return maStyles; }
     const DiagramQStyleMap& getStyles() const { return maStyles; }
@@ -278,7 +147,6 @@ public:
 
     css::uno::Sequence<css::beans::PropertyValue> getDomsAsPropertyValues() const;
 private:
-    void build( );
     DiagramDataPtr                 mpData;
     DiagramLayoutPtr               mpLayout;
     DiagramQStyleMap               maStyles;
@@ -289,7 +157,7 @@ private:
 
 typedef std::shared_ptr< Diagram > DiagramPtr;
 
-} }
+}
 
 #endif
 

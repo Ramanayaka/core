@@ -21,24 +21,22 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_DLG_GENERALPAGE_HXX
 
 #include "adminpages.hxx"
-#include "opendoccontrols.hxx"
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/edit.hxx>
-#include <svtools/dialogcontrolling.hxx>
+#include <opendoccontrols.hxx>
 
 namespace dbaui
 {
+    class ODbTypeWizDialogSetup;
+
     // OGeneralPage
     class OGeneralPage : public OGenericAdministrationPage
     {
     protected:
-        OGeneralPage( vcl::Window* pParent, const OUString& _rUIXMLDescription, const SfxItemSet& _rItems );
+        OGeneralPage(weld::Container* pPage, weld::DialogController* pController, const OUString& _rUIXMLDescription, const SfxItemSet& _rItems);
 
         OUString            m_eCurrentSelection;    /// currently selected type
 
     private:
-        VclPtr<FixedText>          m_pSpecialMessage;
+        std::unique_ptr<weld::Label> m_xSpecialMessage;
 
         enum SPECIAL_MESSAGE
         {
@@ -53,7 +51,7 @@ namespace dbaui
         void                insertDatasourceTypeEntryData( const OUString& _sType, const OUString& sDisplayName );
 
     protected:
-        VclPtr<ListBox>            m_pDatasourceType;
+        std::unique_ptr<weld::ComboBox> m_xDatasourceType;
 
         ::dbaccess::ODsnTypeCollection*
                             m_pCollection;  /// the DSN type collection instance
@@ -63,7 +61,6 @@ namespace dbaui
 
     public:
         virtual ~OGeneralPage() override;
-        virtual void dispose() override;
 
         /// set a handler which gets called every time the user selects a new type
         void            SetTypeSelectHandler( const Link<OGeneralPage&,void>& _rHandler ) { m_aTypeSelectHandler = _rHandler; }
@@ -80,11 +77,16 @@ namespace dbaui
         virtual bool approveDatasourceType( ::dbaccess::DATASOURCE_TYPE eType, OUString& _inout_rDisplayName );
 
         // <method>OGenericAdministrationPage::fillControls</method>
-        virtual void fillControls(std::vector< ISaveValueWrapper* >& _rControlList) override;
+        virtual void fillControls(std::vector< std::unique_ptr<ISaveValueWrapper> >& _rControlList) override;
         // <method>OGenericAdministrationPage::fillWindows</method>
-        virtual void fillWindows(std::vector< ISaveValueWrapper* >& _rControlList) override;
+        virtual void fillWindows(std::vector< std::unique_ptr<ISaveValueWrapper> >& _rControlList) override;
 
         void onTypeSelected(const OUString& _sURLPrefix);
+
+        /**
+         * Initializes the listbox, which contains entries each representing a
+         * connection to an existing database.
+         */
         void initializeTypeList();
 
         void implSetCurrentType( const OUString& _eType );
@@ -94,14 +96,14 @@ namespace dbaui
         /// sets the title of the parent dialog
         virtual void setParentTitle( const OUString& _sURLPrefix );
 
-        DECL_LINK(OnDatasourceTypeSelected, ListBox&, void);
+        DECL_LINK(OnDatasourceTypeSelected, weld::ComboBox&, void);
     };
 
     // OGeneralPageDialog
     class OGeneralPageDialog : public OGeneralPage
     {
     public:
-        OGeneralPageDialog( vcl::Window* pParent, const SfxItemSet& _rItems );
+        OGeneralPageDialog(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& _rItems);
 
     protected:
         virtual bool FillItemSet( SfxItemSet* _rCoreAttrs ) override;
@@ -111,13 +113,12 @@ namespace dbaui
     };
 
     // OGeneralPageWizard
-    class OGeneralPageWizard : public OGeneralPage
+    class OGeneralPageWizard final : public OGeneralPage
     {
     public:
-        OGeneralPageWizard( vcl::Window* pParent, const SfxItemSet& _rItems );
+        OGeneralPageWizard( weld::Container* pPage, ODbTypeWizDialogSetup* pController, const SfxItemSet& _rItems );
         virtual ~OGeneralPageWizard() override;
-        virtual void dispose() override;
-    public:
+
         enum CreationMode
         {
             eCreateNew,
@@ -125,38 +126,32 @@ namespace dbaui
             eOpenExisting
         };
 
-        struct DocumentDescriptor
-        {
-            OUString  sURL;
-            OUString  sFilter;
-        };
-
     private:
         // dialog controls
-        VclPtr<RadioButton>            m_pRB_CreateDatabase;
-        VclPtr<RadioButton>            m_pRB_OpenExistingDatabase;
-        VclPtr<RadioButton>            m_pRB_ConnectDatabase;
+        std::unique_ptr<weld::RadioButton> m_xRB_CreateDatabase;
+        std::unique_ptr<weld::RadioButton> m_xRB_OpenExistingDatabase;
+        std::unique_ptr<weld::RadioButton> m_xRB_ConnectDatabase;
 
-        VclPtr<FixedText>              m_pFT_EmbeddedDBLabel;
-        VclPtr<ListBox>                m_pEmbeddedDBType;
+        std::unique_ptr<weld::Label> m_xFT_EmbeddedDBLabel;
+        std::unique_ptr<weld::ComboBox> m_xEmbeddedDBType;
 
-        VclPtr<FixedText>              m_pFT_DocListLabel;
-        VclPtr<OpenDocumentListBox>    m_pLB_DocumentList;
-        VclPtr<OpenDocumentButton>     m_pPB_OpenDatabase;
+        std::unique_ptr<weld::Label> m_xFT_DocListLabel;
+        std::unique_ptr<weld::Label> m_xFT_HelpText;
+        std::unique_ptr<OpenDocumentListBox> m_xLB_DocumentList;
+        std::unique_ptr<OpenDocumentButton> m_xPB_OpenDatabase;
 
         // state
-        DocumentDescriptor             m_aBrowsedDocument;
+        OUString                       m_aBrowsedDocumentURL;
         CreationMode                   m_eOriginalCreationMode;
 
         Link<OGeneralPageWizard&,void> m_aCreationModeHandler; /// to be called if a new type is selected
         Link<OGeneralPageWizard&,void> m_aDocumentSelectionHandler;    /// to be called when a document in the RecentDoc list is selected
         Link<OGeneralPageWizard&,void> m_aChooseDocumentHandler;       /// to be called when a recent document has been definitely chosen
 
-        ::svt::ControlDependencyManager
-                                m_aControlDependencies;
-
         bool                    m_bInitEmbeddedDBList : 1;
         void                    insertEmbeddedDBTypeEntryData( const OUString& _sType, const OUString& sDisplayName );
+
+        void                    EnableControls();
 
     public:
         void                    SetCreationModeHandler( const Link<OGeneralPageWizard&,void>& _rHandler ) { m_aCreationModeHandler = _rHandler; }
@@ -164,12 +159,10 @@ namespace dbaui
 
         void                    SetDocumentSelectionHandler( const Link<OGeneralPageWizard&,void>& _rHandler) { m_aDocumentSelectionHandler = _rHandler; }
         void                    SetChooseDocumentHandler( const Link<OGeneralPageWizard&,void>& _rHandler) { m_aChooseDocumentHandler = _rHandler; }
-        DocumentDescriptor      GetSelectedDocument() const;
+        OUString                GetSelectedDocumentURL() const;
 
-    protected:
+    private:
         virtual bool FillItemSet( SfxItemSet* _rCoreAttrs ) override;
-
-        virtual void GetFocus() override;
 
         virtual void implInitControls( const SfxItemSet& _rSet, bool _bSaveValue ) override;
         virtual OUString getDatasourceName( const SfxItemSet& _rSet ) override;
@@ -181,12 +174,12 @@ namespace dbaui
         OUString getEmbeddedDBName( const SfxItemSet& _rSet );
         void initializeEmbeddedDBList();
 
-    protected:
-        DECL_LINK( OnEmbeddedDBTypeSelected, ListBox&, void );
-        DECL_LINK( OnCreateDatabaseModeSelected, Button*, void );
-        DECL_LINK( OnSetupModeSelected, Button*, void );
-        DECL_LINK( OnDocumentSelected, ListBox&, void );
-        DECL_LINK( OnOpenDocument, Button*, void );
+        void SetupModeSelected();
+
+        DECL_LINK( OnEmbeddedDBTypeSelected, weld::ComboBox&, void );
+        DECL_LINK( OnSetupModeSelected, weld::Button&, void );
+        DECL_LINK( OnDocumentSelected, weld::ComboBox&, void );
+        DECL_LINK( OnOpenDocument, weld::Button&, void );
     };
 
 }   // namespace dbaui

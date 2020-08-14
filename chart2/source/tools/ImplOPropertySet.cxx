@@ -18,11 +18,12 @@
  */
 
 #include "ImplOPropertySet.hxx"
-#include "CloneHelper.hxx"
+#include <CloneHelper.hxx>
 
 #include <algorithm>
 #include <iterator>
-#include <com/sun/star/beans/XFastPropertySet.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/style/XStyle.hpp>
 
 using namespace ::com::sun::star;
 
@@ -83,9 +84,7 @@ struct lcl_replaceInterfacePropertiesByClones
 
 } //  anonymous namespace
 
-namespace property
-{
-namespace impl
+namespace property::impl
 {
 
 ImplOPropertySet::ImplOPropertySet()
@@ -93,8 +92,7 @@ ImplOPropertySet::ImplOPropertySet()
 
 ImplOPropertySet::ImplOPropertySet( const ImplOPropertySet & rOther )
 {
-    std::copy( rOther.m_aProperties.begin(), rOther.m_aProperties.end(),
-                 std::inserter( m_aProperties, m_aProperties.begin() ));
+    m_aProperties = rOther.m_aProperties;
 
     // clone interface properties
     std::for_each( m_aProperties.begin(), m_aProperties.end(),
@@ -174,7 +172,6 @@ bool ImplOPropertySet::SetStyle( const Reference< style::XStyle > & xStyle )
     return true;
 }
 
-} //  namespace impl
-} //  namespace chart
+} //  namespace property::impl
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

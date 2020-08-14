@@ -24,31 +24,34 @@
 // ***************************************************************************************************
 
 #include <memory>
+#include <rtl/ref.hxx>
 #include <sfx2/shell.hxx>
-#include <sfx2/module.hxx>
-#include <vcl/event.hxx>
+#include <vcl/outdev.hxx>
 
-#include <svx/svxids.hrc>
-#include <svx/fmview.hxx>
 #include <svx/svxdllapi.h>
-
 #include <svx/ifaceids.hxx>
+#include <svl/hint.hxx>
 
+#include <com/sun/star/uno/Reference.hxx>
 
 class FmFormModel;
 class FmFormPage;
 class FmXFormShell;
 class FmFormView;
 class SdrView;
-class SdrPage;
 class SdrUnoObj;
+class LinkParamNone;
 
-namespace com { namespace sun { namespace star { namespace form {
+namespace com::sun::star::form {
     class XForm;
     namespace runtime {
         class XFormController;
     }
-} } } }
+}
+
+namespace com::sun::star::awt { class XControl; }
+namespace com::sun::star::awt { class XControlModel; }
+template <typename Arg, typename Ret> class Link;
 
 namespace svx
 {
@@ -56,7 +59,7 @@ namespace svx
 }
 
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC FmDesignModeChangedHint : public SfxHint
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC FmDesignModeChangedHint final : public SfxHint
 {
     bool m_bDesignMode;
 
@@ -67,7 +70,7 @@ public:
     bool GetDesignMode() const { return m_bDesignMode; }
 };
 
-class SVX_DLLPUBLIC FmFormShell : public SfxShell
+class SVXCORE_DLLPUBLIC FmFormShell final : public SfxShell
 {
     friend class FmFormView;
     friend class FmXFormShell;
@@ -155,7 +158,7 @@ public:
     virtual bool IsDesignMode() const override { return m_bDesignMode; }
     void         SetDesignMode( bool _bDesignMode );
 
-protected:
+private:
     void GetFormState(SfxItemSet &rSet, sal_uInt16 nWhich);
 
     // is there a form on the current page?

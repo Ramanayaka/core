@@ -20,28 +20,23 @@
 #include <dbaccess/dbaundomanager.hxx>
 
 #include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/lang/NoSupportException.hpp>
 
 #include <svl/undo.hxx>
 #include <vcl/svapp.hxx>
 #include <framework/undomanagerhelper.hxx>
+#include <framework/imutex.hxx>
 
 namespace dbaui
 {
 
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::XInterface;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::document::XUndoManager;
     using ::com::sun::star::lang::DisposedException;
-    using ::com::sun::star::document::UndoContextNotClosedException;
-    using ::com::sun::star::document::UndoFailedException;
-    using ::com::sun::star::document::EmptyUndoStackException;
-    using ::com::sun::star::util::InvalidStateException;
     using ::com::sun::star::document::XUndoAction;
-    using ::com::sun::star::lang::IllegalArgumentException;
     using ::com::sun::star::document::XUndoManagerListener;
-    using ::com::sun::star::util::NotLockedException;
     using ::com::sun::star::lang::NoSupportException;
 
     // UndoManager_Impl
@@ -69,11 +64,11 @@ namespace dbaui
         ::framework::UndoManagerHelper  aUndoHelper;
 
         // IUndoManagerImplementation
-        virtual ::svl::IUndoManager&        getImplUndoManager() override;
+        virtual SfxUndoManager&             getImplUndoManager() override;
         virtual Reference< XUndoManager >   getThis() override;
     };
 
-    ::svl::IUndoManager& UndoManager_Impl::getImplUndoManager()
+    SfxUndoManager& UndoManager_Impl::getImplUndoManager()
     {
         return aUndoManager;
     }
@@ -82,6 +77,8 @@ namespace dbaui
     {
         return static_cast< XUndoManager* >( &rAntiImpl );
     }
+
+    namespace {
 
     // OslMutexFacade
     class OslMutexFacade : public ::framework::IMutex
@@ -101,6 +98,8 @@ namespace dbaui
         ::osl::Mutex&   m_rMutex;
     };
 
+    }
+
     void OslMutexFacade::acquire()
     {
         m_rMutex.acquire();
@@ -110,6 +109,8 @@ namespace dbaui
     {
         m_rMutex.release();
     }
+
+    namespace {
 
     // UndoManagerMethodGuard
     /** guard for public UNO methods of the UndoManager
@@ -134,9 +135,11 @@ namespace dbaui
         virtual ::framework::IMutex& getGuardedMutex() override;
 
     private:
-        ::osl::ResettableMutexGuard m_aGuard;
+        osl::ClearableMutexGuard m_aGuard;
         OslMutexFacade              m_aMutexFacade;
     };
+
+    }
 
     ::framework::IMutex& UndoManagerMethodGuard::getGuardedMutex()
     {
@@ -309,7 +312,7 @@ namespace dbaui
     Reference< XInterface > SAL_CALL UndoManager::getParent(  )
     {
         UndoManagerMethodGuard aGuard( *m_xImpl );
-        return *&m_xImpl->rParent;
+        return m_xImpl->rParent;
     }
 
     void SAL_CALL UndoManager::setParent( const Reference< XInterface >& )

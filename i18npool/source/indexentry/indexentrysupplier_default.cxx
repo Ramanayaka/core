@@ -18,14 +18,17 @@
  */
 
 #include <indexentrysupplier_default.hxx>
+#include <collatorImpl.hxx>
 #include <localedata.hxx>
 #include <i18nutil/unicode.hxx>
 #include <com/sun/star/i18n/CollatorOptions.hpp>
 
+using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
+using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 IndexEntrySupplier_Unicode::IndexEntrySupplier_Unicode(
     const css::uno::Reference < css::uno::XComponentContext >& rxContext ) :
@@ -87,7 +90,7 @@ IndexTable::~IndexTable()
     if (table) free(table);
 }
 
-void IndexTable::init(sal_Unicode start_, sal_Unicode end_, IndexKey *keys, sal_Int16 key_count, Index *index)
+void IndexTable::init(sal_Unicode start_, sal_Unicode end_, IndexKey const *keys, sal_Int16 key_count, Index *index)
 {
     start=start_;
     end=end_;
@@ -136,7 +139,7 @@ sal_Int16 Index::getIndexWeight(const OUString& rIndexEntry)
                 return mkeys[i];
         }
     }
-    sal_Unicode code = rIndexEntry[startPos];
+    sal_Unicode code = startPos < rIndexEntry.getLength() ? rIndexEntry[startPos] : 0;
     for (sal_Int16 i = 0; i < table_count; i++) {
         if (tables[i].start <= code && code <= tables[i].end)
             return tables[i].table[code-tables[i].start];
@@ -187,33 +190,35 @@ void Index::makeIndexKeys(const lang::Locale &rLocale, const OUString &algorithm
             continue;
 
         switch(curr) {
-            case u'-':
-                if (key_count > 0 && i + 1 < len ) {
+            case u'-': {
+                    if (key_count <= 0 || i + 1 >= len)
+                        throw RuntimeException();
                     for (curr = keyStr[++i]; key_count < MAX_KEYS && keys[key_count-1].key < curr; key_count++) {
                         keys[key_count].key = keys[key_count-1].key+1;
                         keys[key_count].desc.clear();
                     }
-                } else
-                    throw RuntimeException();
-                break;
+                    break;
+                }
             case u'[':
                 for (i++; i < len && keyStr[i] != ']'; i++) {
                     if (unicode::isWhiteSpace(keyStr[i])) {
                         continue;
                     } else if (keyStr[i] == '_') {
                         for (curr=keyStr[i-1]+1;  curr <= keyStr[i+1]; curr++)
-                            skipping_chars+=OUStringLiteral1(curr);
+                            skipping_chars+=OUStringChar(curr);
                         i+=2;
                     } else {
-                        skipping_chars+=OUStringLiteral1(keyStr[i]);
+                        skipping_chars+=OUStringChar(keyStr[i]);
                     }
                 }
                 break;
             case u'{':
                 close = '}';
-                SAL_FALLTHROUGH;
-            case u'(':
-                if (key_count > 0) {
+                [[fallthrough]];
+            case u'(': {
+                    if (key_count <= 0)
+                        throw RuntimeException();
+
                     sal_Int16 end = i+1;
                     for (; end < len && keyStr[end] != close; end++) ;
 
@@ -228,9 +233,8 @@ void Index::makeIndexKeys(const lang::Locale &rLocale, const OUString &algorithm
                         keys[key_count++].desc.clear();
                     }
                     i=end+1;
-                } else
-                    throw RuntimeException();
-                break;
+                    break;
+                }
             default:
                 keys[key_count].key = curr;
                 keys[key_count++].desc.clear();
@@ -254,9 +258,9 @@ void Index::init(const lang::Locale &rLocale, const OUString& algorithm)
 
     Sequence< UnicodeScript > scriptList = LocaleDataImpl::get()->getUnicodeScripts( rLocale );
 
-    if (scriptList.getLength() == 0) {
+    if (!scriptList.hasElements()) {
         scriptList = LocaleDataImpl::get()->getUnicodeScripts(LOCALE_EN);
-        if (scriptList.getLength() == 0)
+        if (!scriptList.hasElements())
             throw RuntimeException();
     }
 
@@ -266,9 +270,9 @@ void Index::init(const lang::Locale &rLocale, const OUString& algorithm)
 
     collator->loadCollatorAlgorithm(algorithm, rLocale, CollatorOptions::CollatorOptions_IGNORE_CASE_ACCENT);
     sal_Int16 j=0;
-    sal_Unicode start = unicode::getUnicodeScriptStart((UnicodeScript)0);
-    sal_Unicode end = unicode::getUnicodeScriptEnd((UnicodeScript)0);
-    for (sal_Int32 i= (scriptList[0] == (UnicodeScript)0) ? 1 : 0; i< scriptList.getLength(); i++) {
+    sal_Unicode start = unicode::getUnicodeScriptStart(UnicodeScript(0));
+    sal_Unicode end = unicode::getUnicodeScriptEnd(UnicodeScript(0));
+    for (sal_Int32 i= (scriptList[0] == UnicodeScript(0)) ? 1 : 0; i< scriptList.getLength(); i++) {
         if (unicode::getUnicodeScriptStart(scriptList[i]) != end+1) {
             tables[j++].init(start, end, keys, key_count, this);
             start = unicode::getUnicodeScriptStart(scriptList[i]);
@@ -279,6 +283,6 @@ void Index::init(const lang::Locale &rLocale, const OUString& algorithm)
     table_count = j;
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

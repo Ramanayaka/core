@@ -18,7 +18,6 @@
  */
 #include "vbaaddin.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
 #include <osl/file.hxx>
 
@@ -77,18 +76,16 @@ void SAL_CALL SwVbaAddin::setInstalled( sal_Bool _installed )
 OUString
 SwVbaAddin::getServiceImplName()
 {
-    return OUString("SwVbaAddin");
+    return "SwVbaAddin";
 }
 
 uno::Sequence< OUString >
 SwVbaAddin::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Addin";
-    }
+        "ooo.vba.word.Addin"
+    };
     return aServiceNames;
 }
 

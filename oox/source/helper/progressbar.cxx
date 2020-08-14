@@ -17,10 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/helper/progressbar.hxx"
+#include <oox/helper/progressbar.hxx>
 
 #include <com/sun/star/task/XStatusIndicator.hpp>
-#include "oox/helper/helper.hxx"
+#include <oox/helper/helper.hxx>
+
+#include <sal/log.hxx>
 
 namespace oox {
 
@@ -70,6 +72,8 @@ void ProgressBar::setPosition( double fPosition )
 
 namespace prv {
 
+namespace {
+
 class SubSegment : public ISegmentProgressBar
 {
 public:
@@ -88,6 +92,8 @@ private:
     double              mfPosition;
     double              mfFreeStart;
 };
+
+}
 
 SubSegment::SubSegment( IProgressBar& rParentProgress, double fStartPos, double fLength ) :
     mrParentProgress( rParentProgress ),
@@ -119,12 +125,12 @@ ISegmentProgressBarRef SubSegment::createSegment( double fLength )
 {
     SAL_WARN_IF( (0.0 >= fLength) || (fLength > getFreeLength()), "oox", "SubSegment::createSegment - invalid length" );
     fLength = getLimitedValue< double >( fLength, 0.0, getFreeLength() );
-    ISegmentProgressBarRef xSegment( new prv::SubSegment( *this, mfFreeStart, fLength ) );
+    ISegmentProgressBarRef xSegment = std::make_shared<prv::SubSegment>( *this, mfFreeStart, fLength );
     mfFreeStart += fLength;
     return xSegment;
 }
 
-} // namespace prv
+} // namespace oox::prv
 
 SegmentProgressBar::SegmentProgressBar( const Reference< XStatusIndicator >& rxIndicator, const OUString& rText ) :
     maProgress( rxIndicator, rText ),
@@ -151,7 +157,7 @@ ISegmentProgressBarRef SegmentProgressBar::createSegment( double fLength )
 {
     SAL_WARN_IF( (0.0 >= fLength) || (fLength > getFreeLength()), "oox", "SegmentProgressBar::createSegment - invalid length" );
     fLength = getLimitedValue< double >( fLength, 0.0, getFreeLength() );
-    ISegmentProgressBarRef xSegment( new prv::SubSegment( maProgress, mfFreeStart, fLength ) );
+    ISegmentProgressBarRef xSegment = std::make_shared<prv::SubSegment>( maProgress, mfFreeStart, fLength );
     mfFreeStart += fLength;
     return xSegment;
 }

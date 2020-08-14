@@ -18,14 +18,14 @@
  */
 
 
-#include "ado/AGroup.hxx"
-#include "ado/AUsers.hxx"
+#include <ado/AGroup.hxx>
+#include <ado/AUsers.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
-#include "ado/AConnection.hxx"
-#include "TConnection.hxx"
+#include <ado/AConnection.hxx>
+#include <TConnection.hxx>
 
 using namespace connectivity::ado;
 using namespace com::sun::star::uno;
@@ -71,7 +71,7 @@ OAdoGroup::OAdoGroup(OCatalog* _pParent,bool _bCase, const OUString& Name) : OGr
 
 void OAdoGroup::refreshUsers()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
 
     WpADOUsers aUsers = m_aGroup.get_Users();
     aUsers.fillElementNames(aVector);
@@ -79,10 +79,10 @@ void OAdoGroup::refreshUsers()
     if(m_pUsers)
         m_pUsers->reFill(aVector);
     else
-        m_pUsers = new OUsers(m_pCatalog,m_aMutex,aVector,aUsers,isCaseSensitive());
+        m_pUsers.reset(new OUsers(m_pCatalog, m_aMutex, aVector, aUsers, isCaseSensitive()));
 }
 
-Sequence< sal_Int8 > OAdoGroup::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OAdoGroup::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -93,7 +93,7 @@ Sequence< sal_Int8 > OAdoGroup::getUnoTunnelImplementationId()
 
 sal_Int64 OAdoGroup::getSomething( const Sequence< sal_Int8 > & rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return isUnoTunnelId<OAdoGroup>(rId)
                 ? reinterpret_cast< sal_Int64 >( this )
                 : OGroup_ADO::getSomething(rId);
 }

@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "formel.hxx"
+#include <formel.hxx>
 
-#include <o3tl/make_unique.hxx>
+#include <osl/diagnose.h>
 
 ScRangeListTabs::ScRangeListTabs()
 {
@@ -55,7 +55,7 @@ void ScRangeListTabs::Append( const ScAddress& aSRD, SCTAB nTab )
     {
         // No entry for this table yet.  Insert a new one.
         std::pair<TabRangeType::iterator, bool> r =
-            m_TabRanges.insert(std::make_pair(nTab, o3tl::make_unique<RangeListType>()));
+            m_TabRanges.insert(std::make_pair(nTab, std::make_unique<RangeListType>()));
 
         if (!r.second)
             // Insertion failed.
@@ -113,7 +113,7 @@ void ScRangeListTabs::Append( const ScRange& aCRD, SCTAB nTab )
     {
         // No entry for this table yet.  Insert a new one.
         std::pair<TabRangeType::iterator, bool> r =
-            m_TabRanges.insert(std::make_pair(nTab, o3tl::make_unique<RangeListType>()));
+            m_TabRanges.insert(std::make_pair(nTab, std::make_unique<RangeListType>()));
 
         if (!r.second)
             // Insertion failed.
@@ -148,13 +148,10 @@ const ScRange* ScRangeListTabs::Next ()
     return &(*maItrCur);
 }
 
-ConverterBase::ConverterBase( svl::SharedStringPool& rSPool, sal_uInt16 nNewBuffer ) :
+ConverterBase::ConverterBase( svl::SharedStringPool& rSPool ) :
     aPool(rSPool),
-    aEingPos( 0, 0, 0 ),
-    eStatus( ConvErr::OK )
+    aEingPos( 0, 0, 0 )
 {
-    OSL_ENSURE( nNewBuffer > 0, "ConverterBase::ConverterBase - nNewBuffer == 0!" );
-    pBuffer.reset( new sal_Char[ nNewBuffer ] );
 }
 
 ConverterBase::~ConverterBase()
@@ -163,13 +160,12 @@ ConverterBase::~ConverterBase()
 
 void ConverterBase::Reset()
 {
-    eStatus = ConvErr::OK;
     aPool.Reset();
     aStack.Reset();
 }
 
 ExcelConverterBase::ExcelConverterBase( svl::SharedStringPool& rSPool ) :
-    ConverterBase(rSPool, 512)
+    ConverterBase(rSPool)
 {
 }
 
@@ -190,7 +186,7 @@ void ExcelConverterBase::Reset()
 }
 
 LotusConverterBase::LotusConverterBase( SvStream &rStr, svl::SharedStringPool& rSPool  ) :
-    ConverterBase(rSPool, 128),
+    ConverterBase(rSPool),
     aIn( rStr ),
     nBytesLeft( 0 )
 {

@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/DrawHelper.hxx>
-#include <sfx2/sidebar/Paint.hxx>
+#include <sidebar/DrawHelper.hxx>
+#include <sidebar/Paint.hxx>
 
-#include <vcl/lineinfo.hxx>
+#include <tools/svborder.hxx>
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 void DrawHelper::DrawBorder(vcl::RenderContext& rRenderContext, const tools::Rectangle& rBox, const SvBorder& rBorderSize,
                             const Paint& rHorizontalPaint, const Paint& rVerticalPaint)
@@ -122,6 +122,6 @@ void DrawHelper::DrawRoundedRectangle(vcl::RenderContext& rRenderContext, const 
     }
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

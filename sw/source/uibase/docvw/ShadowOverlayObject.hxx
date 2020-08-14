@@ -24,7 +24,7 @@
 
 class SwView;
 
-namespace sw { namespace sidebarwindows {
+namespace sw::sidebarwindows {
 
 enum ShadowState
 {
@@ -46,20 +46,20 @@ private:
         ShadowOverlayObject( const basegfx::B2DPoint& rBasePos,
                              const basegfx::B2DPoint& rSecondPosition,
                              Color aBaseColor );
-        virtual ~ShadowOverlayObject() override;
 
 public:
+        virtual ~ShadowOverlayObject() override;
+
         void SetShadowState(ShadowState aState);
-        ShadowState GetShadowState() {return mShadowState;}
+        ShadowState GetShadowState() const {return mShadowState;}
 
         void SetPosition( const basegfx::B2DPoint& rPoint1,
                           const basegfx::B2DPoint& rPoint2 );
 
-        static ShadowOverlayObject* CreateShadowOverlayObject( SwView& rDocView );
-        static void DestroyShadowOverlayObject( ShadowOverlayObject* pShadow );
+        static std::unique_ptr<ShadowOverlayObject> CreateShadowOverlayObject( SwView const & rDocView );
 };
 
-} } // end of namespace sw::sidebarwindows
+} // end of namespace sw::sidebarwindows
 
 #endif
 

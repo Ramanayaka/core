@@ -27,33 +27,24 @@
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/accessibility/IllegalAccessibleComponentStateException.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-#include <com/sun/star/beans/XPropertyChangeListener.hpp>
-#include <cppuhelper/weak.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <svl/lstner.hxx>
 
-#include <set>
 #include <map>
 
-#include <comphelper/servicehelper.hxx>
-#include <svx/rectenum.hxx>
 #include <svx/AccessibleShapeTreeInfo.hxx>
 #include <svx/IAccessibleViewForwarder.hxx>
 #include <svx/AccessibleShape.hxx>
 
-namespace com { namespace sun { namespace star { namespace awt {
+namespace com::sun::star::awt {
     struct Point;
     struct Rectangle;
     struct Size;
     class XFocusListener;
-} } } }
-
+}
 namespace tools { class Rectangle; }
 class GraphCtrl;
 class SdrObject;
@@ -76,23 +67,18 @@ typedef ::cppu::WeakAggComponentImplHelper7<
                 css::lang::XServiceName >
                 SvxGraphCtrlAccessibleContext_Base;
 
-class SvxGraphCtrlAccessibleContext:
+class SvxGraphCtrlAccessibleContext final :
     private cppu::BaseMutex, public SvxGraphCtrlAccessibleContext_Base,
-    public SfxListener, public accessibility::IAccessibleViewForwarder
+    public SfxListener, public ::accessibility::IAccessibleViewForwarder
 {
 public:
     friend class GraphCtrl;
 
     // internal
-    SvxGraphCtrlAccessibleContext(
-        const css::uno::Reference< css::accessibility::XAccessible>& rxParent,
-        GraphCtrl&              rRepresentation );
+    SvxGraphCtrlAccessibleContext(GraphCtrl& rRepresentation);
 
     void Notify( SfxBroadcaster& aBC, const SfxHint& aHint ) override;
 
-protected:
-    virtual ~SvxGraphCtrlAccessibleContext() override;
-public:
     // XAccessible
     /// Return the XAccessibleContext.
     virtual css::uno::Reference< css::accessibility::XAccessibleContext> SAL_CALL
@@ -122,8 +108,6 @@ public:
     virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet> SAL_CALL getAccessibleRelationSet() override;
     virtual css::uno::Reference< css::accessibility::XAccessibleStateSet> SAL_CALL getAccessibleStateSet() override;
     virtual css::lang::Locale SAL_CALL getLocale() override;
-//  virtual void SAL_CALL addPropertyChangeListener( const css::uno::Reference< css::beans::XPropertyChangeListener >& xListener ) throw (css::uno::RuntimeException) {}
-//  virtual void SAL_CALL removePropertyChangeListener( const css::uno::Reference< css::beans::XPropertyChangeListener >& xListener ) throw (css::uno::RuntimeException) {}
 
     // XAccessibleEventBroadcaster
     virtual void SAL_CALL addAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener>& xListener) override;
@@ -154,50 +138,27 @@ public:
     virtual Point LogicToPixel (const Point& rPoint) const override;
     virtual Size LogicToPixel (const Size& rSize) const override;
 
-protected:
-    /// @throws css::lang::IndexOutOfBoundsException
-    void checkChildIndexOnSelection( long nIndexOfChild );
-
-public:
-
     /** This method is used by the graph control to tell the
         accessibility object about a new model and view.
     */
     void setModelAndView (SdrModel* pModel, SdrView* pView);
 
-protected:
-
-    /** Return the object's current bounding box relative to the desktop,
-        i.e in absolute pixel coordinates.
-        @return
-            The returned rectangle is a bounding box of the object given in
-            absolute screen coordinates.
-        @throws DisposedException
-            When the object is already disposed then a
-            <type>DisposedException</type> is thrown.
-    */
-     tools::Rectangle GetBoundingBoxOnScreen();
-
-    /// Return the object's current bounding box relative to the parent object.
-    ///
-    /// @throws css::uno::RuntimeException
-    tools::Rectangle GetBoundingBox();
+private:
+    virtual ~SvxGraphCtrlAccessibleContext() override;
+    /// @throws css::lang::IndexOutOfBoundsException
+    void checkChildIndexOnSelection( long nIndexOfChild );
 
     virtual void SAL_CALL disposing() final override;
 
-private:
     /// @throws css::uno::RuntimeException
     /// @throws css::lang::IndexOutOfBoundsException
     SdrObject* getSdrObject( sal_Int32 nIndex );
 
     void CommitChange (sal_Int16 aEventId, const css::uno::Any& rNewValue, const css::uno::Any& rOldValue);
 
-    css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessible( const SdrObject* pObj );
+    css::uno::Reference< css::accessibility::XAccessible > getAccessible( const SdrObject* pObj );
 
-    accessibility::AccessibleShapeTreeInfo maTreeInfo;
-
-    /// Reference to the parent object.
-    css::uno::Reference<css::accessibility::XAccessible> mxParent;
+    ::accessibility::AccessibleShapeTreeInfo maTreeInfo;
 
     /** Description of this object.  This is not a constant because it can
         be set from the outside.
@@ -209,10 +170,10 @@ private:
     OUString msName;
 
     /// map of accessible shapes
-    typedef ::std::map< const SdrObject*, rtl::Reference<accessibility::AccessibleShape> > ShapesMapType;
+    typedef ::std::map< const SdrObject*, rtl::Reference<::accessibility::AccessibleShape> > ShapesMapType;
     ShapesMapType mxShapes;
 
-    VclPtr<GraphCtrl>  mpControl;
+    GraphCtrl*  mpControl;
 
     SdrModel* mpModel;
     SdrPage* mpPage;

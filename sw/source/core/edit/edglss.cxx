@@ -17,24 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <comphelper/string.hxx>
+#include <sal/config.h>
+
+#include <o3tl/safeint.hxx>
 #include <osl/endian.h>
-#include <hintids.hxx>
-#include <svl/urihelper.hxx>
+#include <tools/urlobj.hxx>
 #include <doc.hxx>
 #include <IDocumentRedlineAccess.hxx>
 #include <IDocumentFieldsAccess.hxx>
 #include <pam.hxx>
 #include <docary.hxx>
 #include <editsh.hxx>
-#include <edimp.hxx>
 #include <frmfmt.hxx>
-#include <swundo.hxx>
+#include <rootfrm.hxx>
 #include <ndtxt.hxx>
 #include <swtable.hxx>
 #include <shellio.hxx>
-#include <acorrect.hxx>
-#include <swerror.h>
+#include <iodetect.hxx>
+#include <frameformats.hxx>
 
 void SwEditShell::InsertGlossary( SwTextBlocks& rGlossary, const OUString& rStr )
 {
@@ -116,7 +116,8 @@ sal_uInt16 SwEditShell::SaveGlossaryDoc( SwTextBlocks& rBlock,
             pCursor->GetPoint()->nContent.Assign( pContentNd, pContentNd->Len() );
 
         OUString sBuf;
-        if( GetSelectedText( sBuf, GETSELTXT_PARABRK_TO_ONLYCR ) && !sBuf.isEmpty() )
+        GetSelectedText( sBuf, ParaBreakType::ToOnlyCR );
+        if( !sBuf.isEmpty() )
             nRet = rBlock.PutText( rShortName, rName, sBuf );
     }
     else
@@ -135,12 +136,12 @@ sal_uInt16 SwEditShell::SaveGlossaryDoc( SwTextBlocks& rBlock,
             aCpyPam.GetPoint()->nNode = pMyDoc->GetNodes().GetEndOfContent().GetIndex()-1;
             pContentNd = aCpyPam.GetContentNode();
             aCpyPam.GetPoint()->nContent.Assign(
-                   pContentNd, (pContentNd) ? pContentNd->Len() : 0);
+                   pContentNd, pContentNd ? pContentNd->Len() : 0);
 
             aStt = pGDoc->GetNodes().GetEndOfExtras();
             pContentNd = pGDoc->GetNodes().GoNext( &aStt );
             SwPosition aInsPos( aStt, SwIndex( pContentNd ));
-            pMyDoc->getIDocumentContentOperations().CopyRange( aCpyPam, aInsPos, /*bCopyAll=*/false, /*bCheckPos=*/true );
+            pMyDoc->getIDocumentContentOperations().CopyRange(aCpyPam, aInsPos, SwCopyFlags::CheckPosInFly);
 
             nRet = rBlock.PutDoc();
         }
@@ -159,10 +160,10 @@ bool SwEditShell::CopySelToDoc( SwDoc* pInsDoc )
     SwNodeIndex aIdx( rNds.GetEndOfContent(), -1 );
     SwContentNode *const pContentNode = aIdx.GetNode().GetContentNode();
     SwPosition aPos( aIdx,
-        SwIndex(pContentNode, (pContentNode) ? pContentNode->Len() : 0));
+        SwIndex(pContentNode, pContentNode ? pContentNode->Len() : 0));
 
     bool bRet = false;
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
     pInsDoc->getIDocumentFieldsAccess().LockExpFields();
 
@@ -213,7 +214,7 @@ bool SwEditShell::CopySelToDoc( SwDoc* pInsDoc )
                     {
                         rPaM.SetMark();
                         rPaM.Move( fnMoveForward, GoInContent );
-                        bRet = GetDoc()->getIDocumentContentOperations().CopyRange( rPaM, aPos, /*bCopyAll=*/false, /*bCheckPos=*/true )
+                        bRet = GetDoc()->getIDocumentContentOperations().CopyRange(rPaM, aPos, SwCopyFlags::CheckPosInFly)
                             || bRet;
                         rPaM.Exchange();
                         rPaM.DeleteMark();
@@ -230,10 +231,21 @@ bool SwEditShell::CopySelToDoc( SwDoc* pInsDoc )
                         // Selection starts at the first para of the first cell,
                         // but we want to copy the table and the start node before
                         // the first cell as well.
-                        aPaM.Start()->nNode = aPaM.Start()->nNode.GetNode().FindTableNode()->GetIndex();
+                        // tdf#133982 tables can be nested
+                        while (SwTableNode const* pTableNode =
+                            aPaM.Start()->nNode.GetNode().StartOfSectionNode()->FindTableNode())
+                        {
+                            aPaM.Start()->nNode = *pTableNode;
+                        }
+                        while (SwSectionNode const* pSectionNode =
+                            aPaM.Start()->nNode.GetNode().StartOfSectionNode()->FindSectionNode())
+                        {
+                            aPaM.Start()->nNode = *pSectionNode;
+                        }
                         aPaM.Start()->nContent.Assign(nullptr, 0);
                     }
-                    bRet = GetDoc()->getIDocumentContentOperations().CopyRange( aPaM, aPos, /*bCopyAll=*/false, /*bCheckPos=*/true ) || bRet;
+                    bRet = GetDoc()->getIDocumentContentOperations().CopyRange( aPaM, aPos, SwCopyFlags::CheckPosInFly)
+                        || bRet;
                 }
             }
         }
@@ -247,21 +259,19 @@ bool SwEditShell::CopySelToDoc( SwDoc* pInsDoc )
 }
 
 /** Get text in a Selection
- *
- * @return false if the selected area is too big for being copied into the string buffer
  */
-bool SwEditShell::GetSelectedText( OUString &rBuf, int nHndlParaBrk )
+void SwEditShell::GetSelectedText( OUString &rBuf, ParaBreakType nHndlParaBrk )
 {
     GetCursor();  // creates all cursors if needed
     if( IsSelOnePara() )
     {
         rBuf = GetSelText();
-        if( GETSELTXT_PARABRK_TO_BLANK == nHndlParaBrk )
+        if( ParaBreakType::ToBlank == nHndlParaBrk )
         {
             rBuf = rBuf.replaceAll("\x0a", " ");
         }
         else if( IsSelFullPara() &&
-            GETSELTXT_PARABRK_TO_ONLYCR != nHndlParaBrk )
+            ParaBreakType::ToOnlyCR != nHndlParaBrk )
         {
 #ifdef _WIN32
                 rBuf += "\015\012";
@@ -282,20 +292,20 @@ bool SwEditShell::GetSelectedText( OUString &rBuf, int nHndlParaBrk )
         SwReaderWriter::GetWriter( FILTER_TEXT, OUString(), xWrt );
         if( xWrt.is() )
         {
-            // write selected areas into a ASCII document
+            // write selected areas into an ASCII document
             SwWriter aWriter( aStream, *this);
             xWrt->SetShowProgress(false);
 
             switch( nHndlParaBrk )
             {
-            case GETSELTXT_PARABRK_TO_BLANK:
-                xWrt->bASCII_ParaAsBlanc = true;
-                xWrt->bASCII_NoLastLineEnd = true;
+            case ParaBreakType::ToBlank:
+                xWrt->m_bASCII_ParaAsBlank = true;
+                xWrt->m_bASCII_NoLastLineEnd = true;
                 break;
 
-            case GETSELTXT_PARABRK_TO_ONLYCR:
-                xWrt->bASCII_ParaAsCR = true;
-                xWrt->bASCII_NoLastLineEnd = true;
+            case ParaBreakType::ToOnlyCR:
+                xWrt->m_bASCII_ParaAsCR = true;
+                xWrt->m_bASCII_NoLastLineEnd = true;
                 break;
             }
 
@@ -303,19 +313,20 @@ bool SwEditShell::GetSelectedText( OUString &rBuf, int nHndlParaBrk )
             SwAsciiOptions aAsciiOpt( xWrt->GetAsciiOptions() );
             aAsciiOpt.SetCharSet( RTL_TEXTENCODING_UCS2 );
             xWrt->SetAsciiOptions( aAsciiOpt );
-            xWrt->bUCS2_WithStartChar = false;
+            xWrt->m_bUCS2_WithStartChar = false;
+            xWrt->m_bHideDeleteRedlines = GetLayout()->IsHideRedlines();
 
             if ( ! aWriter.Write(xWrt).IsError() )
             {
                 aStream.WriteUInt16( '\0' );
 
-                const sal_Unicode *p = static_cast<sal_Unicode const *>(aStream.GetBuffer());
+                const sal_Unicode *p = static_cast<sal_Unicode const *>(aStream.GetData());
                 if (p)
                     rBuf = OUString(p);
                 else
                 {
                     const sal_uInt64 nLen = aStream.GetSize();
-                    OSL_ENSURE( nLen/sizeof( sal_Unicode )<static_cast<sal_uInt64>(SAL_MAX_INT32), "Stream can't fit in OUString" );
+                    OSL_ENSURE( nLen/sizeof( sal_Unicode )<o3tl::make_unsigned(SAL_MAX_INT32), "Stream can't fit in OUString" );
                     rtl_uString *pStr = rtl_uString_alloc(static_cast<sal_Int32>(nLen / sizeof( sal_Unicode )));
                     aStream.Seek( 0 );
                     aStream.ResetError();
@@ -326,8 +337,6 @@ bool SwEditShell::GetSelectedText( OUString &rBuf, int nHndlParaBrk )
             }
         }
     }
-
-    return true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

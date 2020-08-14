@@ -24,13 +24,11 @@
 
 #include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/WrappedTargetException.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
 
 using com::sun::star::container::NoSuchElementException;
 using com::sun::star::container::XIndexAccess;
-using com::sun::star::lang::WrappedTargetException;
 using com::sun::star::uno::Any;
 using com::sun::star::uno::RuntimeException;
 

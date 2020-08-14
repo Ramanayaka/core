@@ -17,18 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "SchXMLImport.hxx"
 #include "SchXMLTextListContext.hxx"
 #include "SchXMLParagraphContext.hxx"
 
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/nmspmap.hxx>
 
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Reference;
 using namespace com::sun::star;
 using namespace ::xmloff::token;
+
+namespace {
 
 class SchXMLListItemContext : public SvXMLImportContext
 {
@@ -38,7 +38,7 @@ public:
     virtual void StartElement( const Reference< xml::sax::XAttributeList >& xAttrList ) override;
     virtual void EndElement() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
@@ -46,6 +46,8 @@ public:
 private:
     OUString& m_rText;
 };
+
+}
 
 SchXMLListItemContext::SchXMLListItemContext(
         SvXMLImport& rImport
@@ -64,7 +66,7 @@ void SchXMLListItemContext::EndElement()
 {
 }
 
-SvXMLImportContext* SchXMLListItemContext::CreateChildContext(
+SvXMLImportContextRef SchXMLListItemContext::CreateChildContext(
     sal_uInt16 nPrefix, const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList >& )
 {
@@ -72,8 +74,6 @@ SvXMLImportContext* SchXMLListItemContext::CreateChildContext(
     if( (nPrefix == XML_NAMESPACE_TEXT ||
                 nPrefix == XML_NAMESPACE_LO_EXT) && IsXMLToken( rLocalName, XML_P ) )
         pContext = new SchXMLParagraphContext( GetImport(), rLocalName, m_rText );
-    else
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
     return pContext;
 }
 
@@ -103,18 +103,16 @@ void SchXMLTextListContext::EndElement()
         m_rTextList[nN]=m_aTextVector[nN];
 }
 
-SvXMLImportContext* SchXMLTextListContext::CreateChildContext(
+SvXMLImportContextRef SchXMLTextListContext::CreateChildContext(
     sal_uInt16 nPrefix, const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList >& )
 {
     SvXMLImportContext* pContext = nullptr;
     if( nPrefix == XML_NAMESPACE_TEXT && IsXMLToken( rLocalName, XML_LIST_ITEM ) )
     {
-        m_aTextVector.push_back( OUString() );
+        m_aTextVector.emplace_back( );
         pContext = new SchXMLListItemContext( GetImport(), rLocalName, m_aTextVector.back() );
     }
-    else
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
     return pContext;
 }
 

@@ -20,7 +20,7 @@
 #include <sal/config.h>
 
 #include <cstddef>
-#include <string.h>
+#include <string_view>
 #include <vector>
 #include <algorithm>
 
@@ -40,7 +40,7 @@
 #include <com/sun/star/i18n/Collator.hpp>
 
 
-namespace comphelper { namespace string {
+namespace comphelper::string {
 
 namespace
 {
@@ -63,9 +63,9 @@ namespace
     }
 }
 
-OString stripStart(const OString &rIn, sal_Char c)
+OString stripStart(const OString &rIn, char c)
 {
-    return tmpl_stripStart<OString, sal_Char>(rIn, c);
+    return tmpl_stripStart<OString, char>(rIn, c);
 }
 
 OUString stripStart(const OUString &rIn, sal_Unicode c)
@@ -94,9 +94,9 @@ namespace
     }
 }
 
-OString stripEnd(const OString &rIn, sal_Char c)
+OString stripEnd(const OString &rIn, char c)
 {
-    return tmpl_stripEnd<OString, sal_Char>(rIn, c);
+    return tmpl_stripEnd<OString, char>(rIn, c);
 }
 
 OUString stripEnd(const OUString &rIn, sal_Unicode c)
@@ -104,7 +104,7 @@ OUString stripEnd(const OUString &rIn, sal_Unicode c)
     return tmpl_stripEnd<OUString, sal_Unicode>(rIn, c);
 }
 
-OString strip(const OString &rIn, sal_Char c)
+OString strip(const OString &rIn, char c)
 {
     return stripEnd(stripStart(rIn, c), c);
 }
@@ -133,9 +133,9 @@ namespace
     }
 }
 
-sal_Int32 getTokenCount(const OString &rIn, sal_Char cTok)
+sal_Int32 getTokenCount(const OString &rIn, char cTok)
 {
-    return tmpl_getTokenCount<OString, sal_Char>(rIn, cTok);
+    return tmpl_getTokenCount<OString, char>(rIn, cTok);
 }
 
 sal_Int32 getTokenCount(const OUString &rIn, sal_Unicode cTok)
@@ -143,11 +143,11 @@ sal_Int32 getTokenCount(const OUString &rIn, sal_Unicode cTok)
     return tmpl_getTokenCount<OUString, sal_Unicode>(rIn, cTok);
 }
 
-sal_uInt32 decimalStringToNumber(
-    OUString const & str )
+static sal_uInt32 decimalStringToNumber(
+    OUString const & str, sal_Int32 nStart, sal_Int32 nLength )
 {
     sal_uInt32 result = 0;
-    for( sal_Int32 i = 0 ; i < str.getLength() ; )
+    for( sal_Int32 i = nStart; i < nStart + nLength; )
     {
         sal_uInt32 c = str.iterateCodePoints(&i);
         sal_uInt32 value = 0;
@@ -238,6 +238,12 @@ sal_uInt32 decimalStringToNumber(
         result = result * 10 + value;
     }
     return result;
+}
+
+sal_uInt32 decimalStringToNumber(
+    OUString const & str )
+{
+    return decimalStringToNumber(str, 0, str.getLength());
 }
 
 using namespace ::com::sun::star;
@@ -342,8 +348,8 @@ sal_Int32 compareNatural( const OUString & rLHS, const OUString & rRHS,
         //numbers outside of the normal 0-9 range, e.g. see GetLocalizedChar in
         //vcl
 
-        sal_uInt32 nLHS = comphelper::string::decimalStringToNumber(rLHS.copy(nLHSFirstDigitPos, nLHSChunkLen));
-        sal_uInt32 nRHS = comphelper::string::decimalStringToNumber(rRHS.copy(nRHSFirstDigitPos, nRHSChunkLen));
+        sal_uInt32 nLHS = comphelper::string::decimalStringToNumber(rLHS, nLHSFirstDigitPos, nLHSChunkLen);
+        sal_uInt32 nRHS = comphelper::string::decimalStringToNumber(rRHS, nRHSFirstDigitPos, nRHSChunkLen);
 
         if (nLHS != nRHS)
         {
@@ -443,7 +449,7 @@ OUString removeAny(OUString const& rIn,
             {
                 if (i > 0)
                 {
-                    buf.append(rIn.copy(0, i));
+                    buf.append(std::u16string_view(rIn).substr(0, i));
                 }
                 isFound = true;
             }
@@ -453,13 +459,12 @@ OUString removeAny(OUString const& rIn,
             buf.append(c);
         }
     }
-    return (isFound) ? buf.makeStringAndClear() : rIn;
+    return isFound ? buf.makeStringAndClear() : rIn;
 }
 
 OUString setToken(const OUString& rIn, sal_Int32 nToken, sal_Unicode cTok,
     const OUString& rNewToken)
 {
-    const sal_Unicode* pStr = rIn.getStr();
     sal_Int32 nLen = rIn.getLength();
     sal_Int32 nTok = 0;
     sal_Int32 nFirstChar = 0;
@@ -469,7 +474,7 @@ OUString setToken(const OUString& rIn, sal_Int32 nToken, sal_Unicode cTok,
     while ( i < nLen )
     {
         // Increase token count if match
-        if (*pStr == cTok)
+        if (rIn[i] == cTok)
         {
             ++nTok;
 
@@ -479,7 +484,6 @@ OUString setToken(const OUString& rIn, sal_Int32 nToken, sal_Unicode cTok,
                 break;
         }
 
-        ++pStr;
         ++i;
     }
 
@@ -488,6 +492,6 @@ OUString setToken(const OUString& rIn, sal_Int32 nToken, sal_Unicode cTok,
     return rIn;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

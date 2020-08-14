@@ -22,12 +22,10 @@
 
 #include "basecontainer.hxx"
 #include <com/sun/star/frame/XLoaderFactory.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <cppuhelper/implbase.hxx>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config {
 
 
 /** @short      implements the service <type scope="com.sun.star.document">ContentHandlerFactory</type>.
@@ -74,54 +72,14 @@ class ContentHandlerFactory : public ::cppu::ImplInheritanceHelper< BaseContaine
         virtual css::uno::Sequence< OUString > SAL_CALL getAvailableServiceNames() override;
 
 
-    // static uno helper!
-
     public:
 
-
-        /** @short  return the uno implementation name of this class.
-
-            @descr  Because this information is used at several places
-                    (and mostly an object instance of this class is not possible)
-                    its implemented as a static function!
-
-            @return The fix uno implementation name of this class.
-         */
-        static OUString impl_getImplementationName();
-
-
-        /** @short  return the list of supported uno services of this class.
-
-            @descr  Because this information is used at several places
-                    (and mostly an object instance of this class is not possible)
-                    its implemented as a static function!
-
-            @return The fix list of uno services supported by this class.
-         */
-        static css::uno::Sequence< OUString > impl_getSupportedServiceNames();
-
-
-        /** @short  return a new intsnace of this class.
-
-            @descr  This method is used by the uno service manager, to create
-                    a new instance of this service if needed.
-
-            @param  xSMGR
-                    reference to the uno service manager, which require
-                    this new instance. It should be passed to the new object
-                    so it can be used internally to create own needed uno resources.
-
-            @return The new instance of this service as an uno reference.
-         */
-        static css::uno::Reference< css::uno::XInterface > impl_createInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& xSMGR);
-
-
       // Overrides to resolve ambiguity
-      virtual css::uno::Any SAL_CALL getByName( const ::rtl::OUString& aName ) override
+      virtual css::uno::Any SAL_CALL getByName( const OUString& aName ) override
         { return BaseContainer::getByName(aName); }
-      virtual css::uno::Sequence< ::rtl::OUString > SAL_CALL getElementNames() override
+      virtual css::uno::Sequence< OUString > SAL_CALL getElementNames() override
         { return BaseContainer::getElementNames(); }
-      virtual sal_Bool SAL_CALL hasByName( const ::rtl::OUString& aName ) override
+      virtual sal_Bool SAL_CALL hasByName( const OUString& aName ) override
         { return BaseContainer::hasByName(aName); }
 
       virtual css::uno::Type SAL_CALL getElementType() override
@@ -129,7 +87,7 @@ class ContentHandlerFactory : public ::cppu::ImplInheritanceHelper< BaseContaine
       virtual sal_Bool SAL_CALL hasElements() override
         { return BaseContainer::hasElements(); }
 
-      virtual css::uno::Reference< css::container::XEnumeration > SAL_CALL createSubSetEnumerationByQuery( const ::rtl::OUString& Query ) override
+      virtual css::uno::Reference< css::container::XEnumeration > SAL_CALL createSubSetEnumerationByQuery( const OUString& Query ) override
         { return BaseContainer::createSubSetEnumerationByQuery(Query); }
       virtual css::uno::Reference< css::container::XEnumeration > SAL_CALL createSubSetEnumerationByProperties( const css::uno::Sequence< css::beans::NamedValue >& Properties ) override
         { return BaseContainer::createSubSetEnumerationByProperties(Properties); }
@@ -137,8 +95,7 @@ class ContentHandlerFactory : public ::cppu::ImplInheritanceHelper< BaseContaine
 
 };
 
-    } // namespace config
-} // namespace filter
+} // namespace filter::config
 
 #endif // INCLUDED_FILTER_SOURCE_CONFIG_CACHE_CONTENTHANDLERFACTORY_HXX
 

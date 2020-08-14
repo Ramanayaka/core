@@ -21,6 +21,8 @@
 #define INCLUDED_SW_SOURCE_FILTER_WW8_ESCHER_HXX
 
 #include <filter/msfilter/escherex.hxx>
+#include <svx/svdtrans.hxx>
+#include "wrtww8.hxx"
 
 const sal_uInt32 nInlineHack = 0x00010001;
 class SwFrameFormat;
@@ -101,7 +103,7 @@ protected:
     void WriteBrushAttr(const SvxBrushItem &rBrush,
         EscherPropertyContainer& rPropOpt);
     void WriteOLEPicture(EscherPropertyContainer &rPropOpt,
-        sal_uInt32 nShapeFlags, const Graphic &rGraphic, const SdrObject &rObj,
+        ShapeFlag nShapeFlags, const Graphic &rGraphic, const SdrObject &rObj,
         sal_uInt32 nShapeId, const css::awt::Rectangle* pVisArea );
     static void WriteGrfAttr(const SwNoTextNode& rNd, const SwFrameFormat& rFormat, EscherPropertyContainer& rPropOpt);
 
@@ -124,8 +126,8 @@ public:
     virtual void WritePictures();
     virtual ~SwBasicEscherEx() override;
     //i120927,this function is added to export hyperlink info,such as graphic/frame/OLE
-    bool IsRelUrl();
-    OUString GetBasePath();
+    bool IsRelUrl() const;
+    OUString GetBasePath() const;
     OUString BuildFileName(sal_uInt16& rnLevel, bool& rbRel, const OUString& rUrl);
     void WriteHyperlinkWithinFly( SvMemoryStream& rStrm, const SwFormatURL* pINetFormatArg);
     void PreWriteHyperlinkWithinFly(const SwFrameFormat& rFormat,EscherPropertyContainer& rPropOpt);

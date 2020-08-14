@@ -21,19 +21,19 @@
 #define INCLUDED_EXTENSIONS_SOURCE_UPDATE_CHECK_UPDATEHDL_HXX
 
 #include <osl/mutex.hxx>
-#include "com/sun/star/uno/Any.h"
-#include "com/sun/star/uno/Reference.h"
-#include "com/sun/star/uno/XComponentContext.hpp"
-#include "com/sun/star/awt/Rectangle.hpp"
-#include "com/sun/star/awt/XActionListener.hpp"
-#include "com/sun/star/awt/XControlModel.hpp"
-#include "com/sun/star/awt/XDialog.hpp"
-#include "com/sun/star/awt/XTopWindowListener.hpp"
-#include "com/sun/star/beans/NamedValue.hpp"
-#include "com/sun/star/frame/XTerminateListener.hpp"
-#include <com/sun/star/resource/XResourceBundle.hpp>
+#include <com/sun/star/uno/Any.h>
+#include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/awt/Rectangle.hpp>
+#include <com/sun/star/awt/XActionListener.hpp>
+#include <com/sun/star/awt/XControlModel.hpp>
+#include <com/sun/star/awt/XDialog.hpp>
+#include <com/sun/star/awt/XTopWindowListener.hpp>
+#include <com/sun/star/beans/NamedValue.hpp>
+#include <com/sun/star/frame/XTerminateListener.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
 #include <cppuhelper/implbase.hxx>
+#include <rtl/ref.hxx>
 
 #include "actionlistener.hxx"
 
@@ -106,11 +106,8 @@ private:
     OUString           msDownloadNotAvail; // RID_UPDATE_STR_DOWNLOAD_UNAVAIL
     OUString           msDownloading;      // RID_UPDATE_STR_DOWNLOADING
     OUString           msReady2Install;    // RID_UPDATE_STR_READY_INSTALL
-    OUString           msCancelTitle;      // RID_UPDATE_STR_CANCEL_TITLE
     OUString           msCancelMessage;    // RID_UPDATE_STR_CANCEL_DOWNLOAD
     OUString           msInstallMessage;   // RID_UPDATE_STR_BEGIN_INSTALL
-    OUString           msInstallNow;       // RID_UPDATE_STR_INSTALL_NOW
-    OUString           msInstallLater;     // RID_UPDATE_STR_INSTALL_LATER
     OUString           msInstallError;     // RID_UPDATE_STR_INSTALL_ERROR
     OUString           msOverwriteWarning; // RID_UPDATE_STR_OVERWRITE_WARNING
     OUString           msPercent;          // RID_UPDATE_STR_PERCENT
@@ -141,8 +138,8 @@ private:
     void                    enableControls( short nCtrlState );
     void                    setDownloadBtnLabel( bool bAppendDots );
     void                    loadStrings();
-    static OUString         loadString( const css::uno::Reference< css::resource::XResourceBundle >& xBundle,
-                                        sal_Int32 nResourceId );
+    static OUString         loadString(const std::locale& rLocale,
+                                       const char* pResourceId);
     OUString                substVariables( const OUString &rSource ) const;
     static void             insertControlModel( css::uno::Reference< css::awt::XControlModel > const & rxDialogModel,
                                                 OUString const & rServiceName,
@@ -179,7 +176,7 @@ public:
     bool                    showOverwriteWarning() const;
 
     // Allows runtime exceptions to be thrown by const methods
-    SAL_CALL operator css::uno::Reference< css::uno::XInterface > () const
+    operator css::uno::Reference< css::uno::XInterface > () const
         { return const_cast< cppu::OWeakObject * > (static_cast< cppu::OWeakObject const * > (this)); };
 
     // XActionListener

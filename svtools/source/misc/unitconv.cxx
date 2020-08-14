@@ -18,111 +18,84 @@
  */
 
 #include <svtools/unitconv.hxx>
+#include <tools/debug.hxx>
+#include <vcl/outdev.hxx>
+#include <vcl/weld.hxx>
 
-
-void SetFieldUnit( MetricField& rField, FieldUnit eUnit, bool bAll )
+void SetFieldUnit(weld::MetricSpinButton& rField, FieldUnit eUnit, bool bAll)
 {
-    sal_Int64 nFirst    = rField.Denormalize( rField.GetFirst( FUNIT_TWIP ) );
-    sal_Int64 nLast = rField.Denormalize( rField.GetLast( FUNIT_TWIP ) );
-    sal_Int64 nMin = rField.Denormalize( rField.GetMin( FUNIT_TWIP ) );
-    sal_Int64 nMax = rField.Denormalize( rField.GetMax( FUNIT_TWIP ) );
+    int nMin, nMax;
+    rField.get_range(nMin, nMax, FieldUnit::TWIP);
+    int nValue = rField.get_value(FieldUnit::TWIP);
+    nMin = rField.denormalize(nMin);
+    nMax = rField.denormalize(nMax);
+    nValue = rField.denormalize(nValue);
 
-    if ( !bAll )
+    if (!bAll)
     {
-        switch ( eUnit )
+        switch (eUnit)
         {
-            case FUNIT_M:
-            case FUNIT_KM:
-                eUnit = FUNIT_CM;
+            case FieldUnit::M:
+            case FieldUnit::KM:
+                eUnit = FieldUnit::CM;
                 break;
-
-            case FUNIT_FOOT:
-            case FUNIT_MILE:
-                eUnit = FUNIT_INCH;
+            case FieldUnit::FOOT:
+            case FieldUnit::MILE:
+                eUnit = FieldUnit::INCH;
                 break;
-            default: ;//prevent warning
+            default: //prevent warning
+                break;
         }
     }
-    rField.SetUnit( eUnit );
-    switch( eUnit )
+
+    rField.set_unit(eUnit);
+
+    if (FieldUnit::POINT == eUnit)
     {
-        // _CHAR and _LINE sets the step of "char" and "line" unit, they are same as FUNIT_MM
-        case FUNIT_CHAR:
-        case FUNIT_LINE:
-        case FUNIT_MM:
-            rField.SetSpinSize( 50 );
-            break;
+        if (rField.get_digits() > 1)
+            rField.set_digits(1);
+    }
+    else
+        rField.set_digits(2);
 
-        case FUNIT_INCH:
-            rField.SetSpinSize( 2 );
+    switch (eUnit)
+    {
+        // _CHAR and _LINE sets the step of "char" and "line" unit, they are same as FieldUnit::MM
+        case FieldUnit::CHAR:
+        case FieldUnit::LINE:
+        case FieldUnit::MM:
+            rField.set_increments(50, 500, eUnit);
             break;
-
+        case FieldUnit::INCH:
+            rField.set_increments(2, 20, eUnit);
+            break;
         default:
-            rField.SetSpinSize( 10 );
-    }
-
-    if ( FUNIT_POINT == eUnit )
-    {
-        if( rField.GetDecimalDigits() > 1 )
-            rField.SetDecimalDigits( 1 );
-    }
-    else
-        rField.SetDecimalDigits( 2 );
-
-    if ( !bAll )
-    {
-        rField.SetFirst( rField.Normalize( nFirst ), FUNIT_TWIP );
-        rField.SetLast( rField.Normalize( nLast ), FUNIT_TWIP );
-        rField.SetMin( rField.Normalize( nMin ), FUNIT_TWIP );
-        rField.SetMax( rField.Normalize( nMax ), FUNIT_TWIP );
-    }
-}
-
-
-void SetFieldUnit( MetricBox& rBox, FieldUnit eUnit )
-{
-    sal_Int64 nMin = rBox.Denormalize( rBox.GetMin( FUNIT_TWIP ) );
-    sal_Int64 nMax = rBox.Denormalize( rBox.GetMax( FUNIT_TWIP ) );
-
-    switch ( eUnit )
-    {
-        case FUNIT_M:
-        case FUNIT_KM:
-            eUnit = FUNIT_CM;
+            rField.set_increments(10, 100, eUnit);
             break;
-
-        case FUNIT_FOOT:
-        case FUNIT_MILE:
-            eUnit = FUNIT_INCH;
-            break;
-        default: ;//prevent warning
     }
-    rBox.SetUnit( eUnit );
 
-    if ( FUNIT_POINT == eUnit && rBox.GetDecimalDigits() > 1 )
-        rBox.SetDecimalDigits( 1 );
-    else
-        rBox.SetDecimalDigits( 2 );
+    if (!bAll)
+    {
+        nMin = rField.normalize(nMin);
+        nMax = rField.normalize(nMax);
+        rField.set_range(nMin, nMax, FieldUnit::TWIP);
+    }
 
-    rBox.SetMin( rBox.Normalize( nMin ), FUNIT_TWIP );
-    rBox.SetMax( rBox.Normalize( nMax ), FUNIT_TWIP );
+    rField.set_value(rField.normalize(nValue), FieldUnit::TWIP);
 }
 
-
-void SetMetricValue( MetricField& rField, long nCoreValue, MapUnit eUnit )
+void SetMetricValue(weld::MetricSpinButton& rField, int nCoreValue, MapUnit eUnit)
 {
-    sal_Int64 nVal = OutputDevice::LogicToLogic( nCoreValue, eUnit, MapUnit::Map100thMM );
-    nVal = rField.Normalize( nVal );
-    rField.SetValue( nVal, FUNIT_100TH_MM );
-
+    auto nVal = OutputDevice::LogicToLogic(nCoreValue, eUnit, MapUnit::Map100thMM);
+    nVal = rField.normalize(nVal);
+    rField.set_value(nVal, FieldUnit::MM_100TH);
 }
 
-
-long GetCoreValue( const MetricField& rField, MapUnit eUnit )
+int GetCoreValue(const weld::MetricSpinButton& rField, MapUnit eUnit)
 {
-    sal_Int64 nVal = rField.GetValue( FUNIT_100TH_MM );
+    int nVal = rField.get_value(FieldUnit::MM_100TH);
     // avoid rounding issues
-    const sal_Int64 nSizeMask = 0xffffffffff000000LL;
+    const int nSizeMask = 0xff000000;
     bool bRoundBefore = true;
     if( nVal >= 0 )
     {
@@ -135,13 +108,12 @@ long GetCoreValue( const MetricField& rField, MapUnit eUnit )
             bRoundBefore = false;
     }
     if( bRoundBefore )
-        nVal = rField.Denormalize( nVal );
-    sal_Int64 nUnitVal = OutputDevice::LogicToLogic( static_cast<long>(nVal), MapUnit::Map100thMM, eUnit );
-    if( ! bRoundBefore )
-        nUnitVal = rField.Denormalize( nUnitVal );
-    return static_cast<long>(nUnitVal);
+        nVal = rField.denormalize( nVal );
+    auto nUnitVal = OutputDevice::LogicToLogic(nVal, MapUnit::Map100thMM, eUnit);
+    if (!bRoundBefore)
+        nUnitVal = rField.denormalize(nUnitVal);
+    return nUnitVal;
 }
-
 
 long CalcToUnit( float nIn, MapUnit eUnit )
 {
@@ -168,7 +140,7 @@ long CalcToUnit( float nIn, MapUnit eUnit )
     }
 
     nTmp *= 20;
-    long nRet = (long)nTmp;
+    long nRet = static_cast<long>(nTmp);
     return nRet;
 //! return (long)(nTmp * 20);
 }
@@ -188,13 +160,13 @@ long ItemToControl( long nIn, MapUnit eItem, FieldUnit eCtrl )
                 nIn /= 10;
             else if ( eItem == MapUnit::Map100thMM )
                 nIn /= 100;
-            nOut = TransformMetric( nIn, FUNIT_MM, eCtrl );
+            nOut = TransformMetric( nIn, FieldUnit::MM, eCtrl );
         }
         break;
 
         case MapUnit::MapCM:
         {
-            nOut = TransformMetric( nIn, FUNIT_CM, eCtrl );
+            nOut = TransformMetric( nIn, FieldUnit::CM, eCtrl );
         }
         break;
 
@@ -209,19 +181,19 @@ long ItemToControl( long nIn, MapUnit eItem, FieldUnit eCtrl )
                 nIn /= 100;
             else if ( eItem == MapUnit::Map1000thInch )
                 nIn /= 1000;
-            nOut = TransformMetric( nIn, FUNIT_INCH, eCtrl );
+            nOut = TransformMetric( nIn, FieldUnit::INCH, eCtrl );
         }
         break;
 
         case MapUnit::MapPoint:
         {
-            nOut = TransformMetric( nIn, FUNIT_POINT, eCtrl );
+            nOut = TransformMetric( nIn, FieldUnit::POINT, eCtrl );
         }
         break;
 
         case MapUnit::MapTwip:
         {
-            nOut = TransformMetric( nIn, FUNIT_TWIP, eCtrl );
+            nOut = TransformMetric( nIn, FieldUnit::TWIP, eCtrl );
         }
         break;
         default: ;//prevent warning
@@ -243,25 +215,25 @@ FieldUnit MapToFieldUnit( const MapUnit eUnit )
         case MapUnit::Map100thMM:
         case MapUnit::Map10thMM:
         case MapUnit::MapMM:
-            return FUNIT_MM;
+            return FieldUnit::MM;
 
         case MapUnit::MapCM:
-            return FUNIT_CM;
+            return FieldUnit::CM;
 
         case MapUnit::Map1000thInch:
         case MapUnit::Map100thInch:
         case MapUnit::Map10thInch:
         case MapUnit::MapInch:
-            return FUNIT_INCH;
+            return FieldUnit::INCH;
 
         case MapUnit::MapPoint:
-            return FUNIT_POINT;
+            return FieldUnit::POINT;
 
         case MapUnit::MapTwip:
-            return FUNIT_TWIP;
+            return FieldUnit::TWIP;
         default: ;//prevent warning
     }
-    return FUNIT_NONE;
+    return FieldUnit::NONE;
 }
 
 
@@ -289,7 +261,7 @@ long CalcToPoint( long nIn, MapUnit eUnit, sal_uInt16 nFactor )
         default: ;//prevent warning
     }
 
-    // ggf. aufrunden
+    // round up if necessary
     if ( MapUnit::MapTwip != eUnit )
     {
         long nTmp = nRet % 10;
@@ -302,7 +274,7 @@ long CalcToPoint( long nIn, MapUnit eUnit, sal_uInt16 nFactor )
 }
 
 
-long CMToTwips( long nIn )
+static long CMToTwips( long nIn )
 {
     long nRet = 0;
 
@@ -312,7 +284,7 @@ long CMToTwips( long nIn )
 }
 
 
-long MMToTwips( long nIn )
+static long MMToTwips( long nIn )
 {
     long nRet = 0;
 
@@ -322,7 +294,7 @@ long MMToTwips( long nIn )
 }
 
 
-long InchToTwips( long nIn )
+static long InchToTwips( long nIn )
 {
     long nRet = 0;
 
@@ -342,7 +314,7 @@ long PointToTwips( long nIn )
 }
 
 
-long PicaToTwips( long nIn )
+static long PicaToTwips( long nIn )
 {
     long nRet = 0;
 
@@ -352,14 +324,14 @@ long PicaToTwips( long nIn )
 }
 
 
-long TwipsToCM( long nIn )
+static long TwipsToCM( long nIn )
 {
     long nRet = nIn / 567;
     return nRet;
 }
 
 
-long InchToCM( long nIn )
+static long InchToCM( long nIn )
 {
     long nRet = 0;
 
@@ -369,14 +341,14 @@ long InchToCM( long nIn )
 }
 
 
-long MMToCM( long nIn )
+static long MMToCM( long nIn )
 {
     long nRet = nIn / 10;
     return nRet;
 }
 
 
-long PointToCM( long nIn )
+static long PointToCM( long nIn )
 {
     long nRet = 0;
 
@@ -386,7 +358,7 @@ long PointToCM( long nIn )
 }
 
 
-long PicaToCM( long nIn)
+static long PicaToCM( long nIn)
 {
     long nRet = 0;
 
@@ -396,7 +368,7 @@ long PicaToCM( long nIn)
 }
 
 
-long TwipsToMM( long nIn )
+static long TwipsToMM( long nIn )
 {
     long nRet = 0;
 
@@ -406,7 +378,7 @@ long TwipsToMM( long nIn )
 }
 
 
-long CMToMM( long nIn )
+static long CMToMM( long nIn )
 {
     long nRet = 0;
 
@@ -416,7 +388,7 @@ long CMToMM( long nIn )
 }
 
 
-long InchToMM( long nIn )
+static long InchToMM( long nIn )
 {
     long nRet = 0;
 
@@ -426,7 +398,7 @@ long InchToMM( long nIn )
 }
 
 
-long PointToMM( long nIn )
+static long PointToMM( long nIn )
 {
     long nRet = 0;
 
@@ -436,7 +408,7 @@ long PointToMM( long nIn )
 }
 
 
-long PicaToMM( long nIn )
+static long PicaToMM( long nIn )
 {
     long nRet = 0;
 
@@ -446,14 +418,14 @@ long PicaToMM( long nIn )
 }
 
 
-long TwipsToInch( long nIn )
+static long TwipsToInch( long nIn )
 {
     long nRet = nIn / 1440;
     return nRet;
 }
 
 
-long CMToInch( long nIn )
+static long CMToInch( long nIn )
 {
     long nRet = 0;
 
@@ -463,7 +435,7 @@ long CMToInch( long nIn )
 }
 
 
-long MMToInch( long nIn )
+static long MMToInch( long nIn )
 {
     long nRet = 0;
 
@@ -473,28 +445,28 @@ long MMToInch( long nIn )
 }
 
 
-long PointToInch( long nIn )
+static long PointToInch( long nIn )
 {
     long nRet = nIn / 72;
     return nRet;
 }
 
 
-long PicaToInch( long nIn )
+static long PicaToInch( long nIn )
 {
     long nRet = nIn / 6;
     return nRet;
 }
 
 
-long TwipsToPoint( long nIn )
+static long TwipsToPoint( long nIn )
 {
     long nRet = nIn / 20;
     return nRet;
 }
 
 
-long InchToPoint( long nIn )
+static long InchToPoint( long nIn )
 {
     long nRet = 0;
 
@@ -504,7 +476,7 @@ long InchToPoint( long nIn )
 }
 
 
-long CMToPoint( long nIn )
+static long CMToPoint( long nIn )
 {
     long nRet = 0;
 
@@ -514,7 +486,7 @@ long CMToPoint( long nIn )
 }
 
 
-long MMToPoint( long nIn )
+static long MMToPoint( long nIn )
 {
     long nRet = 0;
 
@@ -524,21 +496,21 @@ long MMToPoint( long nIn )
 }
 
 
-long PicaToPoint( long nIn )
+static long PicaToPoint( long nIn )
 {
     long nRet = nIn / 12;
     return nRet;
 }
 
 
-long TwipsToPica( long nIn )
+static long TwipsToPica( long nIn )
 {
     long nRet = nIn / 240;
     return nRet;
 }
 
 
-long InchToPica( long nIn )
+static long InchToPica( long nIn )
 {
     long nRet = 0;
 
@@ -548,7 +520,7 @@ long InchToPica( long nIn )
 }
 
 
-long PointToPica( long nIn )
+static long PointToPica( long nIn )
 {
     long nRet = 0;
 
@@ -558,7 +530,7 @@ long PointToPica( long nIn )
 }
 
 
-long CMToPica( long nIn )
+static long CMToPica( long nIn )
 {
     long nRet = 0;
 
@@ -568,7 +540,7 @@ long CMToPica( long nIn )
 }
 
 
-long MMToPica( long nIn )
+static long MMToPica( long nIn )
 {
     long nRet = 0;
 
@@ -578,7 +550,7 @@ long MMToPica( long nIn )
 }
 
 
-long Nothing( long nIn )
+static long Nothing( long nIn )
 {
     long nRet = nIn;
     return nRet;
@@ -598,8 +570,8 @@ FUNC_CONVERT const ConvertTable[6][6] =
 
 long TransformMetric( long nVal, FieldUnit aOld, FieldUnit aNew )
 {
-    if ( aOld == FUNIT_NONE   || aNew == FUNIT_NONE ||
-         aOld == FUNIT_CUSTOM || aNew == FUNIT_CUSTOM )
+    if ( aOld == FieldUnit::NONE   || aNew == FieldUnit::NONE ||
+         aOld == FieldUnit::CUSTOM || aNew == FieldUnit::CUSTOM )
     {
         return nVal;
     }
@@ -609,34 +581,34 @@ long TransformMetric( long nVal, FieldUnit aOld, FieldUnit aNew )
 
     switch ( aOld )
     {
-        case FUNIT_CM:
+        case FieldUnit::CM:
             nOld = 0; break;
-        case FUNIT_MM:
+        case FieldUnit::MM:
             nOld = 1; break;
-        case FUNIT_INCH:
+        case FieldUnit::INCH:
             nOld = 2; break;
-        case FUNIT_POINT:
+        case FieldUnit::POINT:
             nOld = 3; break;
-        case FUNIT_PICA:
+        case FieldUnit::PICA:
             nOld = 4; break;
-        case FUNIT_TWIP:
+        case FieldUnit::TWIP:
             nOld = 5; break;
         default: ;//prevent warning
     }
 
     switch ( aNew )
     {
-        case FUNIT_CM:
+        case FieldUnit::CM:
             nNew = 0; break;
-        case FUNIT_MM:
+        case FieldUnit::MM:
             nNew = 1; break;
-        case FUNIT_INCH:
+        case FieldUnit::INCH:
             nNew = 2; break;
-        case FUNIT_POINT:
+        case FieldUnit::POINT:
             nNew = 3; break;
-        case FUNIT_PICA:
+        case FieldUnit::PICA:
             nNew = 4; break;
-        case FUNIT_TWIP:
+        case FieldUnit::TWIP:
             nNew = 5; break;
         default: ;//prevent warning
     }

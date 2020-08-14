@@ -17,10 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
 
-#include <main.hxx>
-#include <chart.hxx>
-#include <outact.hxx>
+#include <o3tl/safeint.hxx>
+
+#include "cgm.hxx"
+#include "chart.hxx"
+#include "outact.hxx"
 
 
 void CGM::ImplDoClass7()
@@ -30,9 +33,13 @@ void CGM::ImplDoClass7()
         case 0x01 : /*Message */break;
         case 0x02 :
         {
-            sal_uInt8*  pAppData = mpSource + 12;
+            if (mpEndValidSource - mpSource < 12)
+                throw css::uno::Exception("attempt to read past end of input", nullptr);
+
             sal_uInt16* pTemp = reinterpret_cast<sal_uInt16*>(mpSource);
             sal_uInt16 nOpcode = pTemp[ 4 ];
+
+            sal_uInt8* pAppData = mpSource + 12;
 
             if ( mpChart || ( nOpcode == 0 ) )
             {
@@ -40,8 +47,11 @@ void CGM::ImplDoClass7()
                 {
                     case 0x000 : /*AppData - Beginning of File Opcodes*/
                     {
+                        if (mpEndValidSource - pAppData < 4)
+                            throw css::uno::Exception("attempt to read past end of input", nullptr);
+
                         if ( mpChart == nullptr )
-                            mpChart = new CGMChart;
+                            mpChart.reset( new CGMChart );
                         mpChart->mnCurrentFileType = pAppData[ 3 ];
                     }
                     break;
@@ -68,14 +78,20 @@ void CGM::ImplDoClass7()
                     case 0x262 : /*AppData - ENDGROUP */break;
                     case 0x264 : /*AppData - DATANODE*/
                     {
+                        if (o3tl::make_unsigned(mpEndValidSource - pAppData) < sizeof(DataNode))
+                            throw css::uno::Exception("attempt to read past end of input", nullptr);
+
                         mpChart->mDataNode[ 0 ] = *reinterpret_cast<DataNode*>( pAppData );
                         sal_Int8 nZoneEnum = mpChart->mDataNode[ 0 ].nZoneEnum;
-                        if ( nZoneEnum && ( nZoneEnum <= 6 ) )
+                        if (nZoneEnum > 0 && nZoneEnum <= 6)
                             mpChart->mDataNode[ nZoneEnum ] = *reinterpret_cast<DataNode*>( pAppData );
                     }
                     break;
                     case 0x2BE : /*AppData - SHWSLIDEREC*/
                     {
+                        if (mpEndValidSource - pAppData < 16)
+                            throw css::uno::Exception("attempt to read past end of input", nullptr);
+
                         if ( pAppData[ 16 ] == 0 )      // a blank template ?
                         {
                             if ( pAppData[ 2 ] == 46 )
@@ -101,22 +117,27 @@ void CGM::ImplDoClass7()
                     case 0x2CA : /*AppData - SHWAPP */break;
                     case 0x320 : /*AppData - TEXT*/
                     {
-                        TextEntry* pTextEntry = new TextEntry;
-                        pTextEntry->nTypeOfText = *(reinterpret_cast<sal_uInt16*>( pAppData ) );
-                        pTextEntry->nRowOrLineNum = *(reinterpret_cast<sal_uInt16*>( pAppData + 2 ) );
-                        pTextEntry->nColumnNum = *(reinterpret_cast<sal_uInt16*>( pAppData + 4 ) );
-                        sal_uInt16 nAttributes = *( reinterpret_cast<sal_uInt16*>( pAppData + 6 ) );
+                        if (mpEndValidSource - pAppData < 9)
+                            throw css::uno::Exception("attempt to read past end of input", nullptr);
+
+                        std::unique_ptr<TextEntry> pTextEntry(new TextEntry);
+                        pTextEntry->nTypeOfText = *reinterpret_cast<sal_uInt16*>( pAppData );
+                        pTextEntry->nRowOrLineNum = *reinterpret_cast<sal_uInt16*>( pAppData + 2 );
+                        pTextEntry->nColumnNum = *reinterpret_cast<sal_uInt16*>( pAppData + 4 );
+                        sal_uInt16 nAttributes = *reinterpret_cast<sal_uInt16*>( pAppData + 6 );
                         pTextEntry->nZoneSize = nAttributes & 0xff;
                         pTextEntry->nLineType = ( nAttributes >> 8 ) & 0xf;
                         nAttributes >>= 12;
                         pTextEntry->nAttributes = nAttributes;
                         pAppData += 8;
-                        sal_uInt32 nLen = strlen( reinterpret_cast<char*>( pAppData ) ) + 1;
-                        pTextEntry->pText = new char[ nLen ];
+                        auto nMaxLen = mpEndValidSource - pAppData;
+                        sal_uInt32 nLen = strnlen(reinterpret_cast<char*>(pAppData), nMaxLen);
+                        pTextEntry->pText = new char[nLen + 1];
                         memcpy( pTextEntry->pText, pAppData, nLen );
+                        pTextEntry->pText[nLen] = 0;
                         pAppData += nLen;
 
-                        mpChart->InsertTextEntry( pTextEntry );
+                        mpChart->InsertTextEntry( std::move(pTextEntry) );
                     }
                     break;
                     case 0x321 : /*AppData - IOC_TABS */break;

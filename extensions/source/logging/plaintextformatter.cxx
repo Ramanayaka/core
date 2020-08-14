@@ -35,9 +35,10 @@ namespace logging
 {
     using ::com::sun::star::uno::XComponentContext;
     using ::com::sun::star::uno::Sequence;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::logging::LogRecord;
     using ::com::sun::star::uno::XInterface;
+
+    namespace {
 
     class PlainTextFormatter : public cppu::WeakImplHelper<css::logging::XLogFormatter, css::lang::XServiceInfo>
     {
@@ -56,32 +57,34 @@ namespace logging
         virtual Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
     };
 
+    }
+
     PlainTextFormatter::PlainTextFormatter()
     {
     }
 
     OUString SAL_CALL PlainTextFormatter::getHead(  )
     {
-        OUStringBuffer aHeader;
-        aHeader.append( "  event no" );                 // column 1: the event number
-        aHeader.append( " " );
-        aHeader.append( "thread  " );                   // column 2: the thread ID
-        aHeader.append( " " );
-        aHeader.append( "date      " );                 // column 3: date
-        aHeader.append( " " );
-        aHeader.append( "time       " );         // column 4: time
-        aHeader.append( " " );
-        aHeader.append( "(class/method:) message" );    // column 5: class/method/message
-        aHeader.append( "\n" );
-        return aHeader.makeStringAndClear();
+        return
+            "  event no"                 // column 1: the event number
+            " "
+            "thread  "                   // column 2: the thread ID
+            " "
+            "date      "                 // column 3: date
+            " "
+            "time       "                // column 4: time
+            " "
+            "(class/method:) message"    // column 5: class/method/message
+            "\n";
     }
 
 
     OUString SAL_CALL PlainTextFormatter::format( const LogRecord& _rRecord )
     {
-        char buffer[ 30 ];
+        char buffer[ sizeof("-32768-65535-65535 65535:65535:65535.4294967295") ];
+            // reserve enough space for hypothetical max length
         const int buffer_size = sizeof( buffer );
-        int used = snprintf( buffer, buffer_size, "%10i", (int)_rRecord.SequenceNumber );
+        int used = snprintf( buffer, buffer_size, "%10i", static_cast<int>(_rRecord.SequenceNumber) );
         if ( used >= buffer_size || used < 0 )
             buffer[ buffer_size - 1 ] = 0;
 
@@ -94,9 +97,9 @@ namespace logging
         aLogEntry.appendAscii( buffer );
         aLogEntry.append( " " );
 
-        snprintf( buffer, buffer_size, "%04i-%02i-%02i %02i:%02i:%02i.%09i",
-            (int)_rRecord.LogTime.Year, (int)_rRecord.LogTime.Month, (int)_rRecord.LogTime.Day,
-            (int)_rRecord.LogTime.Hours, (int)_rRecord.LogTime.Minutes, (int)_rRecord.LogTime.Seconds, (int)_rRecord.LogTime.NanoSeconds );
+        snprintf( buffer, buffer_size, "%04" SAL_PRIdINT32 "-%02" SAL_PRIuUINT32 "-%02" SAL_PRIuUINT32 " %02" SAL_PRIuUINT32 ":%02" SAL_PRIuUINT32 ":%02" SAL_PRIuUINT32 ".%09" SAL_PRIuUINT32,
+            static_cast<sal_Int32>(_rRecord.LogTime.Year), static_cast<sal_uInt32>(_rRecord.LogTime.Month), static_cast<sal_uInt32>(_rRecord.LogTime.Day),
+            static_cast<sal_uInt32>(_rRecord.LogTime.Hours), static_cast<sal_uInt32>(_rRecord.LogTime.Minutes), static_cast<sal_uInt32>(_rRecord.LogTime.Seconds), _rRecord.LogTime.NanoSeconds );
         aLogEntry.appendAscii( buffer );
         aLogEntry.append( " " );
 
@@ -129,7 +132,7 @@ namespace logging
 
     OUString SAL_CALL PlainTextFormatter::getImplementationName()
     {
-        return OUString("com.sun.star.comp.extensions.PlainTextFormatter");
+        return "com.sun.star.comp.extensions.PlainTextFormatter";
     }
 
     Sequence< OUString > SAL_CALL PlainTextFormatter::getSupportedServiceNames()
@@ -139,7 +142,7 @@ namespace logging
 
 } // namespace logging
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_extensions_PlainTextFormatter(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

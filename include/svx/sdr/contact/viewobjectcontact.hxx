@@ -20,26 +20,24 @@
 #ifndef INCLUDED_SVX_SDR_CONTACT_VIEWOBJECTCONTACT_HXX
 #define INCLUDED_SVX_SDR_CONTACT_VIEWOBJECTCONTACT_HXX
 
-#include <sal/types.h>
-
-#include <vector>
+#include <memory>
 #include <svx/svxdllapi.h>
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
+#include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 
 namespace vcl { class Region; }
 
-namespace sdr { namespace animation {
+namespace sdr::animation {
     class PrimitiveAnimation;
-}}
+}
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 class DisplayInfo;
 class ObjectContact;
 class ViewContact;
 class ViewObjectContactRedirector;
 
-class SVX_DLLPUBLIC ViewObjectContact
+class SVXCORE_DLLPUBLIC ViewObjectContact
 {
 private:
     // must-exist and constant contacts
@@ -55,7 +53,10 @@ private:
     drawinglayer::primitive2d::Primitive2DContainer  mxPrimitive2DSequence;
 
     // the PrimitiveAnimation if Primitive2DContainer contains animations
-    sdr::animation::PrimitiveAnimation*             mpPrimitiveAnimation;
+    std::unique_ptr<sdr::animation::PrimitiveAnimation> mpPrimitiveAnimation;
+
+    // possible on-demand calculated GridOffset for non-linear ViewToDevice transformation (calc)
+    basegfx::B2DVector                              maGridOffset;
 
     // This bool gets set when the object gets invalidated by ActionChanged() and
     // can be used from the OC to late-invalidates
@@ -123,9 +124,13 @@ public:
 
     // just process the sub-hierarchy, used as tooling from getPrimitive2DSequenceHierarchy
     drawinglayer::primitive2d::Primitive2DContainer getPrimitive2DSequenceSubHierarchy(DisplayInfo& rDisplayInfo) const;
+
+    // interface to support GridOffset for non-linear ViewToDevice transformation (calc)
+    const basegfx::B2DVector& getGridOffset() const;
+    void resetGridOffset();
 };
 
-}}
+}
 
 
 #endif // INCLUDED_SVX_SDR_CONTACT_VIEWOBJECTCONTACT_HXX

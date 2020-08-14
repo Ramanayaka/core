@@ -22,11 +22,9 @@
  **************************************************************************
 
  *************************************************************************/
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/beans/XPropertyAccess.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/ucb/OpenCommandArgument2.hpp>
-#include <com/sun/star/ucb/OpenMode.hpp>
 #include <com/sun/star/ucb/UnsupportedCommandException.hpp>
 #include <com/sun/star/ucb/XCommandInfo.hpp>
 #include <com/sun/star/io/XActiveDataSink.hpp>
@@ -34,11 +32,9 @@
 #include <com/sun/star/lang/IllegalAccessException.hpp>
 #include <com/sun/star/ucb/UnsupportedDataSinkException.hpp>
 #include <com/sun/star/io/XActiveDataStreamer.hpp>
-#include <com/sun/star/ucb/XPersistentPropertySet.hpp>
-#include <comphelper/processfactory.hxx>
-#include <ucbhelper/contentidentifier.hxx>
 #include <ucbhelper/propertyvalueset.hxx>
 #include <ucbhelper/cancelcommandexecution.hxx>
+#include <ucbhelper/macros.hxx>
 #include "content.hxx"
 #include "provider.hxx"
 #include "resultset.hxx"
@@ -73,7 +69,7 @@ Content::~Content()
 uno::Any SAL_CALL Content::queryInterface( const uno::Type & rType )
 {
     uno::Any aRet;
-     return aRet.hasValue() ? aRet : ContentImplHelper::queryInterface( rType );
+    return aRet.hasValue() ? aRet : ContentImplHelper::queryInterface( rType );
 }
 
 // XTypeProvider methods.
@@ -103,7 +99,7 @@ uno::Sequence< uno::Type > SAL_CALL Content::getTypes()
 // virtual
 OUString SAL_CALL Content::getImplementationName()
 {
-    return OUString( "CHelpContent" );
+    return "CHelpContent";
 }
 
 // virtual
@@ -119,7 +115,7 @@ uno::Sequence< OUString > SAL_CALL Content::getSupportedServiceNames()
 // virtual
 OUString SAL_CALL Content::getContentType()
 {
-    return OUString( MYUCP_CONTENT_TYPE );
+    return MYUCP_CONTENT_TYPE;
 }
 
 // XCommandProcessor methods.
@@ -128,6 +124,8 @@ OUString SAL_CALL Content::getContentType()
 void SAL_CALL Content::abort( sal_Int32 /*CommandId*/ )
 {
 }
+
+namespace {
 
 class ResultSetForRootFactory
     : public ResultSetFactory
@@ -203,6 +201,8 @@ public:
     }
 };
 
+}
+
 // virtual
 uno::Any SAL_CALL Content::execute(
         const ucb::Command& aCommand,
@@ -234,14 +234,13 @@ uno::Any SAL_CALL Content::execute(
         uno::Sequence< uno::Any > ret(propertyValues.getLength());
         uno::Sequence< beans::Property > props(getProperties(Environment));
         // No properties can be set
-        for(sal_Int32 i = 0; i < ret.getLength(); ++i) {
-            ret[i] <<= beans::UnknownPropertyException();
-            for(sal_Int32 j = 0; j < props.getLength(); ++j)
-                if(props[j].Name == propertyValues[i].Name) {
-                    ret[i] <<= lang::IllegalAccessException();
-                    break;
-                }
-        }
+        std::transform(propertyValues.begin(), propertyValues.end(), ret.begin(),
+            [&props](const beans::PropertyValue& rPropVal) {
+                if (std::any_of(props.begin(), props.end(),
+                                [&rPropVal](const beans::Property& rProp) { return rProp.Name == rPropVal.Name; }))
+                    return css::uno::toAny(lang::IllegalAccessException());
+                return css::uno::toAny(beans::UnknownPropertyException());
+            });
 
         aRet <<= ret;
     }
@@ -290,7 +289,7 @@ uno::Any SAL_CALL Content::execute(
                 = new DynamicResultSet(
                     m_xContext,
                     aOpenCommand,
-                    new ResultSetForRootFactory(
+                    std::make_unique<ResultSetForRootFactory>(
                         m_xContext,
                         m_xProvider.get(),
                         aOpenCommand.Properties,
@@ -304,7 +303,7 @@ uno::Any SAL_CALL Content::execute(
                 = new DynamicResultSet(
                     m_xContext,
                     aOpenCommand,
-                    new ResultSetForQueryFactory(
+                    std::make_unique<ResultSetForQueryFactory>(
                         m_xContext,
                         m_xProvider.get(),
                         aOpenCommand.Properties,
@@ -331,10 +330,8 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
     rtl::Reference< ::ucbhelper::PropertyValueSet > xRow =
         new ::ucbhelper::PropertyValueSet( m_xContext );
 
-    for ( sal_Int32 n = 0; n < rProperties.getLength(); ++n )
+    for ( const beans::Property& rProp : rProperties )
     {
-        const beans::Property& rProp = rProperties[n];
-
         if ( rProp.Name == "ContentType" )
             xRow->appendString(
                 rProp,

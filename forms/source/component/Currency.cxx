@@ -18,11 +18,12 @@
  */
 
 #include "Currency.hxx"
-#include "services.hxx"
+#include <property.hxx>
+#include <services.hxx>
 #include <unotools/localedatawrapper.hxx>
-#include <vcl/svapp.hxx>
 #include <unotools/syslocale.hxx>
-#include <comphelper/processfactory.hxx>
+#include <comphelper/types.hxx>
+#include <com/sun/star/form/FormComponentType.hpp>
 
 
 namespace frm
@@ -31,7 +32,6 @@ namespace frm
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -61,45 +61,45 @@ css::uno::Sequence<OUString> SAL_CALL OCurrencyControl::getSupportedServiceNames
 
 void OCurrencyModel::implConstruct()
 {
-    if (m_xAggregateSet.is())
-    {
-        try
-        {
-            // get the system international information
-            const SvtSysLocale aSysLocale;
-            const LocaleDataWrapper& aLocaleInfo = aSysLocale.GetLocaleData();
+    if (!m_xAggregateSet.is())
+        return;
 
-            OUString sCurrencySymbol;
-            bool bPrependCurrencySymbol = false;
-            switch ( aLocaleInfo.getCurrPositiveFormat() )
-            {
-                case 0: // $1
-                    sCurrencySymbol = aLocaleInfo.getCurrSymbol();
-                    bPrependCurrencySymbol = true;
-                    break;
-                case 1: // 1$
-                    sCurrencySymbol = aLocaleInfo.getCurrSymbol();
-                    bPrependCurrencySymbol = false;
-                    break;
-                case 2: // $ 1
-                    sCurrencySymbol = aLocaleInfo.getCurrSymbol() + " ";
-                    bPrependCurrencySymbol = true;
-                    break;
-                case 3: // 1 $
-                    sCurrencySymbol = " " + aLocaleInfo.getCurrSymbol();
-                    bPrependCurrencySymbol = false;
-                    break;
-            }
-            if (!sCurrencySymbol.isEmpty())
-            {
-                m_xAggregateSet->setPropertyValue(PROPERTY_CURRENCYSYMBOL, makeAny(sCurrencySymbol));
-                m_xAggregateSet->setPropertyValue(PROPERTY_CURRSYM_POSITION, makeAny(bPrependCurrencySymbol));
-            }
-        }
-        catch(const Exception&)
+    try
+    {
+        // get the system international information
+        const SvtSysLocale aSysLocale;
+        const LocaleDataWrapper& aLocaleInfo = aSysLocale.GetLocaleData();
+
+        OUString sCurrencySymbol;
+        bool bPrependCurrencySymbol = false;
+        switch ( aLocaleInfo.getCurrPositiveFormat() )
         {
-            OSL_FAIL( "OCurrencyModel::implConstruct: caught an exception while initializing the aggregate!" );
+            case 0: // $1
+                sCurrencySymbol = aLocaleInfo.getCurrSymbol();
+                bPrependCurrencySymbol = true;
+                break;
+            case 1: // 1$
+                sCurrencySymbol = aLocaleInfo.getCurrSymbol();
+                bPrependCurrencySymbol = false;
+                break;
+            case 2: // $ 1
+                sCurrencySymbol = aLocaleInfo.getCurrSymbol() + " ";
+                bPrependCurrencySymbol = true;
+                break;
+            case 3: // 1 $
+                sCurrencySymbol = " " + aLocaleInfo.getCurrSymbol();
+                bPrependCurrencySymbol = false;
+                break;
         }
+        if (!sCurrencySymbol.isEmpty())
+        {
+            m_xAggregateSet->setPropertyValue(PROPERTY_CURRENCYSYMBOL, makeAny(sCurrencySymbol));
+            m_xAggregateSet->setPropertyValue(PROPERTY_CURRSYM_POSITION, makeAny(bPrependCurrencySymbol));
+        }
+    }
+    catch(const Exception&)
+    {
+        OSL_FAIL( "OCurrencyModel::implConstruct: caught an exception while initializing the aggregate!" );
     }
 }
 
@@ -167,7 +167,7 @@ void OCurrencyModel::describeFixedProperties( Sequence< Property >& _rProps ) co
 
 OUString SAL_CALL OCurrencyModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_CURRENCYFIELD); // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_CURRENCYFIELD; // old (non-sun) name for compatibility !
 }
 
 
@@ -224,14 +224,14 @@ void OCurrencyModel::resetNoBroadcast()
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OCurrencyModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::OCurrencyModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OCurrencyControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

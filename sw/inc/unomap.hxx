@@ -19,9 +19,10 @@
 #ifndef INCLUDED_SW_INC_UNOMAP_HXX
 #define INCLUDED_SW_INC_UNOMAP_HXX
 
-#include <svl/itemprop.hxx>
+#include <sal/types.h>
 
-#define PROPERTY_NONE 0
+class SfxItemPropertySet;
+struct SfxItemPropertyMapEntry;
 
 #define PROPERTY_MAP_TEXT_CURSOR            0
 #define PROPERTY_MAP_CHAR_STYLE             1
@@ -244,6 +245,7 @@
 #define WID_DOC_LOCK_UPDATES                    1016
 #define WID_DOC_HAS_VALID_SIGNATURES            1017
 #define WID_DOC_INTEROP_GRAB_BAG                1018
+#define WID_DOC_WRITERFILTER                    1019
 #define WID_DOC_BUILDID                         1024
 #define WID_DOC_ISTEMPLATEID                    1025
 #define WID_DOC_DEFAULT_PAGE_MODE               1069

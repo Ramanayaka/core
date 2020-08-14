@@ -170,7 +170,7 @@ public class MultiPropertyTest extends MultiMethodTest
                 catch (java.lang.IllegalArgumentException e)
                 {
                     // skipping test since new value is not available
-                    Status.failed("Cannot create new value for '" + propName + " : " + e.getMessage());
+                    log.println("Cannot create new value for '" + propName + " : " + e.getMessage());
                     return;
                 }
 
@@ -231,7 +231,7 @@ public class MultiPropertyTest extends MultiMethodTest
          *                 XPropertySet.setPropertyValue, else indicates
          *                 normal method completion.
          *
-         * <p>If the property is READ_ONLY, than either PropertyVetoException
+         * <p>If the property is READ_ONLY, then either PropertyVetoException
          * should be thrown or the value of property should not have changed
          * (resValue is compared with oldValue with compare method).
          *
@@ -434,7 +434,7 @@ public class MultiPropertyTest extends MultiMethodTest
 
         /**
          * Overridden method of <code>PropertyTester</code> which
-         * retruns new value from two values specified.
+         * returns new value from two values specified.
          *
          * @return The second value if old value is equal to the first
          * one, the first value otherwise.

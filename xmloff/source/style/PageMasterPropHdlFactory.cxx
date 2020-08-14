@@ -17,31 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PageMasterPropHdlFactory.hxx"
-#include "enummaps.hxx"
+#include <PageMasterPropHdlFactory.hxx>
+#include <enummaps.hxx>
+#include <xmloff/xmlement.hxx>
 #include <xmloff/xmltypes.hxx>
 #include <xmloff/xmltoken.hxx>
 #include "xmlbahdl.hxx"
 #include <xmloff/NamedBoolPropertyHdl.hxx>
-#include "XMLTextColumnsPropertyHandler.hxx"
+#include <XMLTextColumnsPropertyHandler.hxx>
 #include <xmloff/XMLConstantsPropertyHandler.hxx>
 #include "PageMasterPropHdl.hxx"
-#include <xmloff/PageMasterStyleMap.hxx>
+#include <PageMasterStyleMap.hxx>
 #include <com/sun/star/text/TextGridMode.hpp>
 #include <xmloff/EnumPropertyHdl.hxx>
 #include <osl/diagnose.h>
-#include <com/sun/star/drawing/FillStyle.hpp>
-#include "XMLFillBitmapSizePropertyHandler.hxx"
-#include "XMLBitmapLogicalSizePropertyHandler.hxx"
-#include <com/sun/star/drawing/RectanglePoint.hpp>
+#include <XMLFillBitmapSizePropertyHandler.hxx>
+#include <XMLBitmapLogicalSizePropertyHandler.hxx>
 #include <com/sun/star/drawing/BitmapMode.hpp>
-#include "XMLBitmapRepeatOffsetPropertyHandler.hxx"
+#include <XMLBitmapRepeatOffsetPropertyHandler.hxx>
 
 using namespace ::xmloff::token;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::drawing;
 
-static SvXMLEnumMapEntry<sal_uInt16> const aXML_TextGridMode_ConstantMap[] =
+SvXMLEnumMapEntry<sal_uInt16> const aXML_TextGridMode_ConstantMap[] =
 {
     { XML_NONE,         text::TextGridMode::NONE },
     { XML_LINE,         text::TextGridMode::LINES },
@@ -131,6 +130,9 @@ const XMLPropertyHandler* XMLPageMasterPropHdlFactory::GetPropertyHandler( sal_I
 
             case XML_SW_TYPE_FILLSTYLE:
                 pHdl = new XMLEnumPropertyHdl( aXML_FillStyle_EnumMap );
+                break;
+            case XML_SW_TYPE_PRESPAGE_BACKSIZE:
+                pHdl = new XMLNamedBoolPropertyHdl(GetXMLToken(XML_FULL), GetXMLToken(XML_BORDER));
                 break;
             case XML_SW_TYPE_FILLBITMAPSIZE:
                 pHdl = new XMLFillBitmapSizePropertyHandler();

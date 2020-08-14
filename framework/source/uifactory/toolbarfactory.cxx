@@ -19,7 +19,6 @@
 
 #include <cppuhelper/supportsservice.hxx>
 #include <vcl/svapp.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <uielement/toolbarwrapper.hxx>
 #include <uifactory/menubarfactory.hxx>
 
@@ -39,7 +38,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.ToolBarFactory");
+        return "com.sun.star.comp.framework.ToolBarFactory";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -69,13 +68,13 @@ Reference< XUIElement > SAL_CALL ToolBarFactory::createUIElement(
 {
     Reference< css::ui::XUIElement > xToolBar(
            static_cast<OWeakObject *>(new ToolBarWrapper(m_xContext)), UNO_QUERY);
-    CreateUIElement(ResourceURL, Args, "PopupMode", "private:resource/toolbar/", xToolBar, m_xContext);
+    CreateUIElement(ResourceURL, Args, "private:resource/toolbar/", xToolBar, m_xContext);
     return xToolBar;
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_ToolBarFactory_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

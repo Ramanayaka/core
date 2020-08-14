@@ -31,7 +31,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::io;
 
 
-#include "xml2utf.hxx"
+#include <xml2utf.hxx>
 #include <memory>
 
 namespace sax_expatwrap {
@@ -59,7 +59,7 @@ sal_Int32 XMLFile2UTFConverter::readAndConvert( Sequence<sal_Int8> &seq , sal_In
             if( ! m_bStarted && nRead )
             {
                 // ensure that enough data is available to parse encoding
-                if( seqStart.getLength() )
+                if( seqStart.hasElements() )
                 {
                   // prefix with what we had so far.
                   sal_Int32 nLength = seq.getLength();
@@ -114,55 +114,45 @@ sal_Int32 XMLFile2UTFConverter::readAndConvert( Sequence<sal_Int8> &seq , sal_In
     return nRead;
 }
 
-
-XMLFile2UTFConverter::~XMLFile2UTFConverter()
-{
-    delete m_pText2Unicode;
-    delete m_pUnicode2Text;
-}
-
-
 void XMLFile2UTFConverter::removeEncoding( Sequence<sal_Int8> &seq )
 {
     const sal_Int8 *pSource = seq.getArray();
-    if( ! strncmp( reinterpret_cast<const char *>(pSource), "<?xml", 4) )
+    if (seq.getLength() < 5 || strncmp(reinterpret_cast<const char *>(pSource), "<?xml", 5))
+        return;
+
+    // scan for encoding
+    OString str( reinterpret_cast<char const *>(pSource), seq.getLength() );
+
+    // cut sequence to first line break
+    // find first line break;
+    int nMax = str.indexOf( 10 );
+    if( nMax >= 0 )
     {
+        str = str.copy( 0 , nMax );
+    }
 
-        // scan for encoding
-        OString str( reinterpret_cast<char const *>(pSource), seq.getLength() );
+    int nFound = str.indexOf( " encoding" );
+    if( nFound < 0 )        return;
 
-        // cut sequence to first line break
-        // find first line break;
-        int nMax = str.indexOf( 10 );
-        if( nMax >= 0 )
-        {
-            str = str.copy( 0 , nMax );
-        }
+    int nStop;
+    int nStart = str.indexOf( "\"" , nFound );
+    if( nStart < 0 || str.indexOf( "'" , nFound ) < nStart )
+    {
+        nStart = str.indexOf( "'" , nFound );
+        nStop  = str.indexOf( "'" , nStart +1 );
+    }
+    else
+    {
+        nStop  = str.indexOf( "\"" , nStart +1);
+    }
 
-        int nFound = str.indexOf( " encoding" );
-        if( nFound >= 0 ) {
-            int nStop;
-            int nStart = str.indexOf( "\"" , nFound );
-            if( nStart < 0 || str.indexOf( "'" , nFound ) < nStart )
-            {
-                nStart = str.indexOf( "'" , nFound );
-                nStop  = str.indexOf( "'" , nStart +1 );
-            }
-            else
-            {
-                nStop  = str.indexOf( "\"" , nStart +1);
-            }
-
-            if( nStart >= 0 && nStop >= 0 && nStart+1 < nStop )
-            {
-                // remove encoding tag from file
-                memmove(        &( seq.getArray()[nFound] ) ,
-                                &( seq.getArray()[nStop+1]) ,
-                                seq.getLength() - nStop -1);
-                seq.realloc( seq.getLength() - ( nStop+1 - nFound ) );
-//              str = String( (char * ) seq.getArray() , seq.getLen() );
-            }
-        }
+    if( nStart >= 0 && nStop >= 0 && nStart+1 < nStop )
+    {
+        // remove encoding tag from file
+        memmove(        &( seq.getArray()[nFound] ) ,
+                        &( seq.getArray()[nStop+1]) ,
+                        seq.getLength() - nStop -1);
+        seq.realloc( seq.getLength() - ( nStop+1 - nFound ) );
     }
 }
 
@@ -177,12 +167,12 @@ bool XMLFile2UTFConverter::isEncodingRecognizable( const Sequence< sal_Int8 > &s
         return false;
     }
 
-    if( ! strncmp( reinterpret_cast<const char *>(pSource), "<?xml", 4 ) ) {
+    if( ! strncmp( reinterpret_cast<const char *>(pSource), "<?xml", 5 ) ) {
         // scan if the <?xml tag finishes within this buffer
         bCheckIfFirstClosingBracketExsists = true;
     }
     else if( ('<' == pSource[0] || '<' == pSource[2] ) &&
-             ( ('?' == pSource[4] || '?' == pSource[6] ) ) )
+             ('?' == pSource[4] || '?' == pSource[6] ) )
     {
         // check for utf-16
         bCheckIfFirstClosingBracketExsists = true;
@@ -196,15 +186,8 @@ bool XMLFile2UTFConverter::isEncodingRecognizable( const Sequence< sal_Int8 > &s
 
     if( bCheckIfFirstClosingBracketExsists )
     {
-        for( sal_Int32 i = 0; i < seq.getLength() ; i ++ )
-        {
-            // whole <?xml tag is valid
-            if( '>' == pSource[ i ] )
-            {
-                return true;
-            }
-        }
-        return false;
+        // whole <?xml tag is valid
+        return std::find(seq.begin(), seq.end(), '>') != seq.end();
     }
 
     // No <? tag in front, no need for a bigger buffer
@@ -222,8 +205,7 @@ bool XMLFile2UTFConverter::scanForEncoding( Sequence< sal_Int8 > &seq )
     }
 
     // first level : detect possible file formats
-    if( ! strncmp( reinterpret_cast<const char *>(pSource), "<?xml", 4 ) ) {
-
+    if (seq.getLength() >= 5 && !strncmp(reinterpret_cast<const char *>(pSource), "<?xml", 5)) {
         // scan for encoding
         OString str( reinterpret_cast<const char *>(pSource), seq.getLength() );
 
@@ -333,8 +315,8 @@ void XMLFile2UTFConverter::initializeDecoding()
         rtl_TextEncoding encoding = rtl_getTextEncodingFromMimeCharset( m_sEncoding.getStr() );
         if( encoding != RTL_TEXTENCODING_UTF8 )
         {
-            m_pText2Unicode = new Text2UnicodeConverter( m_sEncoding );
-            m_pUnicode2Text = new Unicode2TextConverter( RTL_TEXTENCODING_UTF8 );
+            m_pText2Unicode = std::make_unique<Text2UnicodeConverter>( m_sEncoding );
+            m_pUnicode2Text = std::make_unique<Unicode2TextConverter>( RTL_TEXTENCODING_UTF8 );
         }
     }
 }
@@ -392,7 +374,7 @@ Sequence<sal_Unicode> Text2UnicodeConverter::convert( const Sequence<sal_Int8> &
     const sal_Int8 *pbSource = seqText.getConstArray();
     std::unique_ptr<sal_Int8[]> pbTempMem;
 
-    if( m_seqSource.getLength() ) {
+    if( m_seqSource.hasElements() ) {
         // put old rest and new byte sequence into one array
         pbTempMem.reset(new sal_Int8[ nSourceSize ]);
         memcpy( pbTempMem.get() , m_seqSource.getConstArray() , m_seqSource.getLength() );
@@ -420,14 +402,14 @@ Sequence<sal_Unicode> Text2UnicodeConverter::convert( const Sequence<sal_Int8> &
                                     &nSrcCvtBytes );
         nSourceCount += nSrcCvtBytes;
 
-        if( uiInfo & RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL ) {
+        if( uiInfo & RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL ) {
             // save necessary bytes for next conversion
             seqUnicode.realloc( seqUnicode.getLength() * 2 );
             continue;
         }
         break;
     }
-    if( uiInfo & RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL ) {
+    if( uiInfo & RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL ) {
         m_seqSource.realloc( nSourceSize - nSourceCount );
         memcpy( m_seqSource.getArray() , &(pbSource[nSourceCount]) , nSourceSize-nSourceCount );
     }
@@ -460,7 +442,7 @@ Sequence<sal_Int8> Unicode2TextConverter::convert(const sal_Unicode *puSource , 
 {
     std::unique_ptr<sal_Unicode[]> puTempMem;
 
-    if( m_seqSource.getLength() ) {
+    if( m_seqSource.hasElements() ) {
         // For surrogates !
         // put old rest and new byte sequence into one array
         // In general when surrogates are used, they should be rarely
@@ -493,7 +475,7 @@ Sequence<sal_Int8> Unicode2TextConverter::convert(const sal_Unicode *puSource , 
     sal_Int32 nSeqSize =  nSourceSize * 3;
 
     Sequence<sal_Int8>  seqText( nSeqSize );
-    sal_Char *pTarget = reinterpret_cast<char *>(seqText.getArray());
+    char *pTarget = reinterpret_cast<char *>(seqText.getArray());
     while( true ) {
 
         nTargetCount += rtl_convertUnicodeToText(

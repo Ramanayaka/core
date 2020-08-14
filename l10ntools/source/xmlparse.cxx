@@ -16,16 +16,16 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <iterator> /* std::iterator*/
 
 #include <cassert>
 #include <stdio.h>
 
-#include "helper.hxx"
-#include "common.hxx"
-#include "xmlparse.hxx"
+#include <helper.hxx>
+#include <common.hxx>
+#include <xmlparse.hxx>
 #include <fstream>
 #include <iostream>
 #include <osl/thread.hxx>
@@ -33,7 +33,6 @@
 #include <rtl/strbuf.hxx>
 #include <unicode/regex.h>
 
-using namespace U_ICU_NAMESPACE;
 using namespace std;
 using namespace osl;
 
@@ -41,7 +40,6 @@ using namespace osl;
 #define ID          "id"
 
 
-// class XMLChildNode
 
 
 XMLChildNode::XMLChildNode( XMLParentNode *pPar )
@@ -68,7 +66,6 @@ XMLChildNode& XMLChildNode::operator=(const XMLChildNode& rObj)
 }
 
 
-// class XMLParentNode
 
 
 XMLParentNode::~XMLParentNode()
@@ -82,26 +79,26 @@ XMLParentNode::~XMLParentNode()
 XMLParentNode::XMLParentNode( const XMLParentNode& rObj)
 : XMLChildNode( rObj )
 {
-    if( rObj.m_pChildList )
+    if( !rObj.m_pChildList )
+        return;
+
+    m_pChildList.reset( new XMLChildNodeList );
+    for ( size_t i = 0; i < rObj.m_pChildList->size(); i++ )
     {
-        m_pChildList.reset( new XMLChildNodeList );
-        for ( size_t i = 0; i < rObj.m_pChildList->size(); i++ )
+        XMLChildNode* pNode = (*rObj.m_pChildList)[ i ];
+        if( pNode != nullptr)
         {
-            XMLChildNode* pNode = (*rObj.m_pChildList)[ i ];
-            if( pNode != nullptr)
+            switch(pNode->GetNodeType())
             {
-                switch(pNode->GetNodeType())
-                {
-                    case XMLNodeType::ELEMENT:
-                        AddChild( new XMLElement( *static_cast<XMLElement* >(pNode) ) ); break;
-                    case XMLNodeType::DATA:
-                        AddChild( new XMLData   ( *static_cast<XMLData* >   (pNode) ) ); break;
-                    case XMLNodeType::COMMENT:
-                        AddChild( new XMLComment( *static_cast<XMLComment* >(pNode) ) ); break;
-                    case XMLNodeType::DEFAULT:
-                        AddChild( new XMLDefault( *static_cast<XMLDefault* >(pNode) ) ); break;
-                    default:    fprintf(stdout,"XMLParentNode::XMLParentNode( const XMLParentNode& rObj) strange obj");
-                }
+                case XMLNodeType::ELEMENT:
+                    AddChild( new XMLElement( *static_cast<XMLElement* >(pNode) ) ); break;
+                case XMLNodeType::DATA:
+                    AddChild( new XMLData   ( *static_cast<XMLData* >   (pNode) ) ); break;
+                case XMLNodeType::COMMENT:
+                    AddChild( new XMLComment( *static_cast<XMLComment* >(pNode) ) ); break;
+                case XMLNodeType::DEFAULT:
+                    AddChild( new XMLDefault( *static_cast<XMLDefault* >(pNode) ) ); break;
+                default:    fprintf(stdout,"XMLParentNode::XMLParentNode( const XMLParentNode& rObj) strange obj");
             }
         }
     }
@@ -146,7 +143,6 @@ void XMLParentNode::RemoveAndDeleteAllChildren()
 }
 
 
-// class XMLFile
 
 
 void XMLFile::Write( OString const &aFilename )
@@ -164,7 +160,7 @@ void XMLFile::Write( OString const &aFilename )
     s.close();
 }
 
-bool XMLFile::Write( ofstream &rStream , XMLNode *pCur )
+void XMLFile::Write( ofstream &rStream , XMLNode *pCur )
 {
     if ( !pCur )
         Write( rStream, this );
@@ -229,7 +225,6 @@ bool XMLFile::Write( ofstream &rStream , XMLNode *pCur )
             break;
         }
     }
-    return true;
 }
 
 void XMLFile::Print( XMLNode *pCur, sal_uInt16 nLevel )
@@ -301,10 +296,9 @@ XMLFile::~XMLFile()
 {
     if( m_pXMLStrings )
     {
-        XMLHashMap::iterator pos = m_pXMLStrings->begin();
-        for( ; pos != m_pXMLStrings->end() ; ++pos )
+        for (auto const& pos : *m_pXMLStrings)
         {
-            delete pos->second;             // Check and delete content also ?
+            delete pos.second;             // Check and delete content also ?
         }
     }
 }
@@ -313,13 +307,22 @@ XMLFile::XMLFile( const OString &rFileName ) // the file name, empty if created 
     : XMLParentNode( nullptr )
     , m_sFileName( rFileName )
 {
-    m_aNodes_localize.insert( TagMap::value_type(OString("bookmark") , true) );
-    m_aNodes_localize.insert( TagMap::value_type(OString("variable") , true) );
-    m_aNodes_localize.insert( TagMap::value_type(OString("paragraph") , true) );
-    m_aNodes_localize.insert( TagMap::value_type(OString("alt") , true) );
-    m_aNodes_localize.insert( TagMap::value_type(OString("caption") , true) );
-    m_aNodes_localize.insert( TagMap::value_type(OString("title") , true) );
-    m_aNodes_localize.insert( TagMap::value_type(OString("link") , true) );
+    m_aNodes_localize.emplace( OString("bookmark") , true );
+    m_aNodes_localize.emplace( OString("variable") , true );
+    m_aNodes_localize.emplace( OString("paragraph") , true );
+    m_aNodes_localize.emplace( OString("h1") , true );
+    m_aNodes_localize.emplace( OString("h2") , true );
+    m_aNodes_localize.emplace( OString("h3") , true );
+    m_aNodes_localize.emplace( OString("h4") , true );
+    m_aNodes_localize.emplace( OString("h5") , true );
+    m_aNodes_localize.emplace( OString("h6") , true );
+    m_aNodes_localize.emplace( OString("note") , true );
+    m_aNodes_localize.emplace( OString("tip") , true );
+    m_aNodes_localize.emplace( OString("warning") , true );
+    m_aNodes_localize.emplace( OString("alt") , true );
+    m_aNodes_localize.emplace( OString("caption") , true );
+    m_aNodes_localize.emplace( OString("title") , true );
+    m_aNodes_localize.emplace( OString("link") , true );
 }
 
 void XMLFile::Extract()
@@ -330,7 +333,7 @@ void XMLFile::Extract()
 
 void XMLFile::InsertL10NElement( XMLElement* pElement )
 {
-    OString sId, sLanguage("");
+    OString sId, sLanguage("en-US");
     LangHashMap* pElem;
 
     if( pElement->GetAttributeList() != nullptr )
@@ -364,13 +367,13 @@ void XMLFile::InsertL10NElement( XMLElement* pElement )
     {
         pElem = new LangHashMap;
         (*pElem)[ sLanguage ]=pElement;
-        m_pXMLStrings->insert( XMLHashMap::value_type( sId , pElem ) );
+        m_pXMLStrings->emplace( sId , pElem );
         m_vOrder.push_back( sId );
     }
     else        // Already there
     {
         pElem=pos->second;
-        if ( (*pElem)[ sLanguage ] )
+        if ( pElem->count(sLanguage) )
         {
             fprintf(stdout,"Error: Duplicated entry. ID = %s  LANG = %s in File %s\n", sId.getStr(), sLanguage.getStr(), m_sFileName.getStr() );
             exit( -1 );
@@ -404,22 +407,22 @@ XMLFile& XMLFile::operator=(const XMLFile& rObj)
         if( rObj.m_pXMLStrings )
         {
             m_pXMLStrings.reset( new XMLHashMap );
-            for( XMLHashMap::iterator pos = rObj.m_pXMLStrings->begin() ; pos != rObj.m_pXMLStrings->end() ; ++pos )
+            for (auto const& pos : *rObj.m_pXMLStrings)
             {
-                LangHashMap* pElem=pos->second;
+                LangHashMap* pElem=pos.second;
                 LangHashMap* pNewelem = new LangHashMap;
-                for(LangHashMap::iterator pos2=pElem->begin(); pos2!=pElem->end();++pos2)
+                for (auto const& pos2 : *pElem)
                 {
-                    (*pNewelem)[ pos2->first ] = new XMLElement( *pos2->second );
+                    (*pNewelem)[ pos2.first ] = new XMLElement( *pos2.second );
                 }
-                (*m_pXMLStrings)[ pos->first ] = pNewelem;
+                (*m_pXMLStrings)[ pos.first ] = pNewelem;
             }
         }
     }
     return *this;
 }
 
-void XMLFile::SearchL10NElements( XMLChildNode *pCur, int nPos )
+void XMLFile::SearchL10NElements( XMLChildNode *pCur )
 {
     if ( !pCur )
         SearchL10NElements( this  );
@@ -435,7 +438,7 @@ void XMLFile::SearchL10NElements( XMLChildNode *pCur, int nPos )
                     {
                         XMLChildNode* pElement = (*GetChildList())[ i ];
                         if( pElement->GetNodeType() ==  XMLNodeType::ELEMENT )
-                            SearchL10NElements( pElement , i);
+                            SearchL10NElements( pElement );
                     }
                 }
             }
@@ -445,7 +448,8 @@ void XMLFile::SearchL10NElements( XMLChildNode *pCur, int nPos )
                 bool bInsert = true;
                 XMLElement *pElement = static_cast<XMLElement*>(pCur);
                 const OString sName(pElement->GetName().toAsciiLowerCase());
-                OString sLanguage, sTmpStrVal;
+                OString sLanguage("en-US");
+                OString sTmpStrVal;
                 if ( pElement->GetAttributeList())
                 {
                     for ( size_t j = 0 , cnt = pElement->GetAttributeList()->size(); j < cnt && bInsert; ++j )
@@ -464,9 +468,6 @@ void XMLFile::SearchL10NElements( XMLChildNode *pCur, int nPos )
                             sLanguage=(*pElement->GetAttributeList())[ j ]->GetValue();
                         }
                     }
-                    pElement->SetLanguageId( sLanguage );
-                    pElement->SetId( sTmpStrVal );
-                    pElement->SetPos( nPos );
                 }
 
                 if ( bInsert && ( m_aNodes_localize.find( sName ) != m_aNodes_localize.end() ) )
@@ -474,7 +475,7 @@ void XMLFile::SearchL10NElements( XMLChildNode *pCur, int nPos )
                 else if ( bInsert && pElement->GetChildList() )
                 {
                     for ( size_t k = 0; k < pElement->GetChildList()->size(); k++ )
-                        SearchL10NElements( (*pElement->GetChildList())[ k ], k);
+                        SearchL10NElements( (*pElement->GetChildList())[ k ] );
                 }
             }
             break;
@@ -548,18 +549,12 @@ XMLElement::XMLElement(
 )
     : XMLParentNode( pParent )
     , m_sElementName( rName )
-    , m_sId(OString())
-    , m_sLanguageId(OString())
-    , m_nPos(0)
 {
 }
 
 XMLElement::XMLElement(const XMLElement& rObj)
     : XMLParentNode( rObj )
     , m_sElementName( rObj.m_sElementName )
-    , m_sId( rObj.m_sId )
-    , m_sLanguageId( rObj.m_sLanguageId )
-    , m_nPos( rObj.m_nPos )
 {
     if ( rObj.m_pAttributes )
     {
@@ -575,9 +570,6 @@ XMLElement& XMLElement::operator=(const XMLElement& rObj)
     {
         XMLParentNode::operator=(rObj);
         m_sElementName = rObj.m_sElementName;
-        m_sId = rObj.m_sId;
-        m_sLanguageId = rObj.m_sLanguageId;
-        m_nPos = rObj.m_nPos;
 
         if ( m_pAttributes )
         {
@@ -604,33 +596,38 @@ void XMLElement::AddAttribute( const OString &rAttribute, const OString &rValue 
 
 void XMLElement::ChangeLanguageTag( const OString &rValue )
 {
-    SetLanguageId(rValue);
     if ( m_pAttributes )
     {
+        bool bWasSet = false;
         for (size_t i = 0; i < m_pAttributes->size(); ++i)
         {
-            if ( (*m_pAttributes)[ i ]->GetName() == "xml-lang" )
+            if ((*m_pAttributes)[ i ]->GetName() == XML_LANG)
+            {
                 (*m_pAttributes)[ i ]->setValue(rValue);
+                bWasSet = true;
+            }
         }
+
+        if (!bWasSet)
+            AddAttribute(XML_LANG, rValue);
     }
     XMLChildNodeList* pCList = GetChildList();
 
-    if( pCList )
+    if( !pCList )
+        return;
+
+    for ( size_t i = 0; i < pCList->size(); i++ )
     {
-        for ( size_t i = 0; i < pCList->size(); i++ )
+        XMLChildNode* pNode = (*pCList)[ i ];
+        if( pNode && pNode->GetNodeType() == XMLNodeType::ELEMENT )
         {
-            XMLChildNode* pNode = (*pCList)[ i ];
-            if( pNode && pNode->GetNodeType() == XMLNodeType::ELEMENT )
-            {
-                XMLElement* pElem = static_cast< XMLElement* >(pNode);
-                pElem->ChangeLanguageTag( rValue );
-                pElem->SetLanguageId(rValue);
-                pElem  = nullptr;
-                pNode  = nullptr;
-            }
+            XMLElement* pElem = static_cast< XMLElement* >(pNode);
+            pElem->ChangeLanguageTag( rValue );
+            pElem  = nullptr;
+            pNode  = nullptr;
         }
-        pCList = nullptr;
     }
+    pCList = nullptr;
 }
 
 XMLElement::~XMLElement()
@@ -685,7 +682,7 @@ void XMLElement::Print(XMLNode *pCur, OStringBuffer& rBuffer, bool bRootelement 
                             for ( size_t j = 0; j < pElement->GetAttributeList()->size(); j++ )
                             {
                                 const OString aAttrName( (*pElement->GetAttributeList())[ j ]->GetName() );
-                                if( !aAttrName.equalsIgnoreAsciiCase( "xml-lang" ) )
+                                if (!aAttrName.equalsIgnoreAsciiCase(XML_LANG))
                                 {
                                     rBuffer.append(
                                         " " + aAttrName + "=\"" +
@@ -739,7 +736,6 @@ void XMLElement::Print(XMLNode *pCur, OStringBuffer& rBuffer, bool bRootelement 
 }
 
 
-// class SimpleXMLParser
 
 
 namespace
@@ -867,7 +863,7 @@ void SimpleXMLParser::Default( const XML_Char *s, int len )
     new XMLDefault(OString( s, len ), m_pCurNode );
 }
 
-XMLFile *SimpleXMLParser::Execute( const OString &rFileName, XMLFile* pXMLFileIn )
+bool SimpleXMLParser::Execute( const OString &rFileName, XMLFile* pXMLFile )
 {
     m_aErrorInformation.m_eCode = XML_ERROR_NONE;
     m_aErrorInformation.m_nLine = 0;
@@ -881,7 +877,7 @@ XMLFile *SimpleXMLParser::Execute( const OString &rFileName, XMLFile* pXMLFileIn
     if (osl_openFile(aFileURL.pData, &h, osl_File_OpenFlag_Read)
         != osl_File_E_None)
     {
-        return nullptr;
+        return false;
     }
 
     sal_uInt64 s;
@@ -894,10 +890,9 @@ XMLFile *SimpleXMLParser::Execute( const OString &rFileName, XMLFile* pXMLFileIn
     if (e != osl_File_E_None)
     {
         osl_closeFile(h);
-        return nullptr;
+        return false;
     }
 
-    XMLFile* pXMLFile = pXMLFileIn;
     pXMLFile->SetName( rFileName );
 
     m_pCurNode = pXMLFile;
@@ -913,7 +908,8 @@ XMLFile *SimpleXMLParser::Execute( const OString &rFileName, XMLFile* pXMLFileIn
     else
         m_aErrorInformation.m_sMessage = "XML-File parsed successfully";
 
-    if (!XML_Parse(m_aParser, static_cast< char * >(p), s, true))
+    bool result = XML_Parse(m_aParser, static_cast< char * >(p), s, true);
+    if (!result)
     {
         m_aErrorInformation.m_eCode = XML_GetErrorCode( m_aParser );
         m_aErrorInformation.m_nLine = XML_GetErrorLineNumber( m_aParser );
@@ -1002,14 +998,12 @@ XMLFile *SimpleXMLParser::Execute( const OString &rFileName, XMLFile* pXMLFileIn
         default:
             break;
         }
-        delete pXMLFile;
-        pXMLFile = nullptr;
     }
 
     osl_unmapMappedFile(h, p, s);
     osl_closeFile(h);
 
-    return pXMLFile;
+    return result;
 }
 
 namespace
@@ -1055,11 +1049,14 @@ icu::UnicodeString lcl_QuotRange(
 
 bool lcl_isTag( const icu::UnicodeString& rString )
 {
-    static const int nSize = 14;
+    static const int nSize = 20;
     static const icu::UnicodeString vTags[nSize] = {
         "ahelp", "link", "item", "emph", "defaultinline",
         "switchinline", "caseinline", "variable",
-        "bookmark_value", "image", "embedvar", "alt", "sup", "sub" };
+        "bookmark_value", "image", "object",
+        "embedvar", "alt", "sup", "sub",
+        "menuitem", "keycode", "input", "literal", "widget"
+    };
 
     for( int nIndex = 0; nIndex < nSize; ++nIndex )
     {
@@ -1080,14 +1077,14 @@ OString XMLUtil::QuotHTML( const OString &rString )
     UErrorCode nIcuErr = U_ZERO_ERROR;
     static const sal_uInt32 nSearchFlags =
         UREGEX_DOTALL | UREGEX_CASE_INSENSITIVE;
-    static const UnicodeString sSearchPat( "<[/]\?\?[a-z_-]+?(?:| +[a-z]+?=\".*?\") *[/]\?\?>" );
+    static const icu::UnicodeString sSearchPat( "<[/]\?\?[a-z_-]+?(?:| +[a-z]+?=\".*?\") *[/]\?\?>" );
 
     const OUString sOUSource = OStringToOUString(rString, RTL_TEXTENCODING_UTF8);
     icu::UnicodeString sSource(
         reinterpret_cast<const UChar*>(
             sOUSource.getStr()), sOUSource.getLength() );
 
-    RegexMatcher aRegexMatcher( sSearchPat, nSearchFlags, nIcuErr );
+    icu::RegexMatcher aRegexMatcher( sSearchPat, nSearchFlags, nIcuErr );
     aRegexMatcher.reset( sSource );
 
     icu::UnicodeString sReturn;

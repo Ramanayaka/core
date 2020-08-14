@@ -18,7 +18,7 @@ $(eval $(call gb_Library_set_include,deployment,\
 
 $(eval $(call gb_Library_use_external,deployment,boost_headers))
 
-$(eval $(call gb_Library_set_precompiled_header,deployment,$(SRCDIR)/desktop/inc/pch/precompiled_deployment))
+$(eval $(call gb_Library_set_precompiled_header,deployment,desktop/inc/pch/precompiled_deployment))
 
 $(eval $(call gb_Library_use_sdk_api,deployment))
 
@@ -32,6 +32,7 @@ $(eval $(call gb_Library_use_libraries,deployment,\
     tl \
     ucbhelper \
     utl \
+    vcl \
     xmlscript \
     i18nlangtag \
 ))
@@ -41,7 +42,6 @@ $(eval $(call gb_Library_set_componentfile,deployment,desktop/source/deployment/
 $(eval $(call gb_Library_add_exception_objects,deployment,\
     desktop/source/deployment/dp_log \
     desktop/source/deployment/dp_persmap \
-    desktop/source/deployment/dp_services \
     desktop/source/deployment/dp_xml \
     desktop/source/deployment/manager/dp_activepackages \
     desktop/source/deployment/manager/dp_commandenvironments \

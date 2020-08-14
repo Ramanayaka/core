@@ -18,8 +18,7 @@
  */
 
 #include "ChartDropTargetHelper.hxx"
-#include "DiagramHelper.hxx"
-#include "DataSourceHelper.hxx"
+#include <DataSourceHelper.hxx>
 
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart2/data/XDataProvider.hpp>
@@ -41,13 +40,13 @@ std::vector< OUString > lcl_getStringsFromByteSequence(
 {
     std::vector< OUString > aResult;
     const sal_Int32 nLength = aByteSequence.getLength();
-    const sal_Char * pBytes( reinterpret_cast< const sal_Char* >( aByteSequence.getConstArray()));
+    const char * pBytes( reinterpret_cast< const char* >( aByteSequence.getConstArray()));
     sal_Int32 nStartPos = 0;
     for( sal_Int32 nPos=0; nPos<nLength; ++nPos )
     {
         if( pBytes[nPos] == '\0' )
         {
-            aResult.push_back( OUString( pBytes + nStartPos, (nPos - nStartPos), RTL_TEXTENCODING_ASCII_US ));
+            aResult.emplace_back( pBytes + nStartPos, (nPos - nStartPos), RTL_TEXTENCODING_ASCII_US );
             nStartPos = nPos + 1;
         }
     }
@@ -104,7 +103,7 @@ sal_Int8 ChartDropTargetHelper::ExecuteDrop( const ExecuteDropEvent& rEvt )
         if( aDataHelper.HasFormat( SotClipboardFormatId::LINK ))
         {
             Sequence<sal_Int8> aBytes = aDataHelper.GetSequence(SotClipboardFormatId::LINK, OUString());
-            if (aBytes.getLength())
+            if (aBytes.hasElements())
             {
                 std::vector< OUString > aStrings( lcl_getStringsFromByteSequence( aBytes ));
                 if( aStrings.size() >= 3 && aStrings[0] == "soffice" )
@@ -148,7 +147,7 @@ sal_Int8 ChartDropTargetHelper::ExecuteDrop( const ExecuteDropEvent& rEvt )
                                     {
                                         // @todo: using implicit knowledge that ranges can be
                                         // merged with ";". This should be done more general
-                                        pCellRange->Value <<= (aOldRange + ";" + aRangeString );
+                                        pCellRange->Value <<= aOldRange + ";" + aRangeString;
                                     }
                                     // move means replace range
                                     else

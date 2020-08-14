@@ -21,20 +21,17 @@
 #define INCLUDED_COMPHELPER_SELECTIONMULTIPLEX_HXX
 
 #include <com/sun/star/view/XSelectionChangeListener.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
+#include <com/sun/star/lang/EventObject.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/comphelperdllapi.h>
-#include <rtl/ref.hxx>
 
+namespace com::sun::star::view { class XSelectionSupplier; }
 
 //= selection helper classes
 
 
 namespace comphelper
 {
-
-
-    class OSelectionChangeMultiplexer;
 
 
     //= OSelectionChangeListener
@@ -44,22 +41,14 @@ namespace comphelper
     {
         friend class OSelectionChangeMultiplexer;
 
-        rtl::Reference<OSelectionChangeMultiplexer>  m_xAdapter;
-        ::osl::Mutex&                                m_rMutex;
-
     public:
-        OSelectionChangeListener(::osl::Mutex& _rMutex)
-            : m_rMutex(_rMutex) { }
+        OSelectionChangeListener() {}
         virtual ~OSelectionChangeListener();
 
         /// @throws css::uno::RuntimeException
         virtual void _selectionChanged( const css::lang::EventObject& aEvent ) = 0;
         /// @throws css::uno::RuntimeException
         virtual void _disposing(const css::lang::EventObject& _rSource);
-
-    protected:
-        // pseudo-private. Making it private now could break compatibility
-        void    setAdapter( OSelectionChangeMultiplexer* _pAdapter );
     };
 
 

@@ -59,18 +59,17 @@
  ************************************************************************/
 
 #include "lwpbulletstylemgr.hxx"
-#include "lwpdoc.hxx"
-#include "lwpstory.hxx"
-#include "lwpdivinfo.hxx"
+#include "lwpfribheader.hxx"
 #include "lwppara.hxx"
 #include "lwpsilverbullet.hxx"
-#include "lwptools.hxx"
+#include <lwptools.hxx>
 #include "lwpparaproperty.hxx"
-#include "xfilter/xfliststyle.hxx"
-#include "xfilter/xfstylemanager.hxx"
-#include "xfilter/xflist.hxx"
-#include "lwpglobalmgr.hxx"
-#include "xfilter/xflistitem.hxx"
+#include <xfilter/xfliststyle.hxx>
+#include <xfilter/xfstylemanager.hxx>
+#include <xfilter/xflist.hxx>
+#include <lwpglobalmgr.hxx>
+#include <xfilter/xflistitem.hxx>
+#include <sal/log.hxx>
 
 LwpBulletStyleMgr::LwpBulletStyleMgr()
     : m_pFoundry(nullptr)
@@ -92,8 +91,8 @@ LwpBulletStyleMgr::~LwpBulletStyleMgr()
  * @param   pBullOver pointer to the bulletoverride of current paragraph.
  * @param   pIndent pointer to the indentoverride of current paragraph.
  */
-OUString LwpBulletStyleMgr::RegisterBulletStyle(LwpPara* pPara, LwpBulletOverride* pBullOver,
-    LwpIndentOverride* pIndent)
+OUString LwpBulletStyleMgr::RegisterBulletStyle(LwpPara* pPara, const LwpBulletOverride* pBullOver,
+    LwpIndentOverride const * pIndent)
 {
     if(!pPara || !pIndent || !pBullOver)
     {
@@ -110,7 +109,7 @@ OUString LwpBulletStyleMgr::RegisterBulletStyle(LwpPara* pPara, LwpBulletOverrid
     LwpPara* pBulletPara = pSilverBullet->GetBulletPara();
     if (!pBulletPara)
     {
-        assert(false);
+        SAL_WARN("lwp", "missing bullet para");
         return OUString();
     }
 
@@ -124,14 +123,13 @@ OUString LwpBulletStyleMgr::RegisterBulletStyle(LwpPara* pPara, LwpBulletOverrid
     }
 
     LwpObjectID aBulletID = pBullOver->GetSilverBullet();
-    std::shared_ptr<LwpBulletOverride> pBulletOver(pBullOver->clone());
+    std::unique_ptr<LwpBulletOverride> pBulletOver(pBullOver->clone());
 
     sal_uInt16 nNameIndex = 0;
-    std::vector <OverridePair>::iterator iter;
-    for(iter = m_vIDsPairList.begin(); iter != m_vIDsPairList.end(); ++iter)
+    for (auto const& vIDsPair : m_vIDsPairList)
     {
-        if (iter->first->GetSilverBullet() == aBulletID && iter->second == aIndentID
-            && iter->first->IsRightAligned() == pBullOver->IsRightAligned())
+        if (vIDsPair.first->GetSilverBullet() == aBulletID && vIDsPair.second == aIndentID
+            && vIDsPair.first->IsRightAligned() == pBullOver->IsRightAligned())
         {
             return m_vStyleNameList[nNameIndex];
         }
@@ -141,7 +139,7 @@ OUString LwpBulletStyleMgr::RegisterBulletStyle(LwpPara* pPara, LwpBulletOverrid
         }
     }
 
-    m_vIDsPairList.push_back(std::make_pair(pBulletOver, aIndentID));
+    m_vIDsPairList.emplace_back(std::move(pBulletOver), aIndentID);
     OUString aStyleName;
 
     LwpFribPtr& rBulletParaFribs = pBulletPara->GetFribs();
@@ -153,7 +151,7 @@ OUString LwpBulletStyleMgr::RegisterBulletStyle(LwpPara* pPara, LwpBulletOverrid
         eAlign = enumXFAlignEnd;
     }
 
-    XFListStyle* pListStyle = new XFListStyle();
+    std::unique_ptr<XFListStyle> pListStyle(new XFListStyle());
     XFStyleManager* pXFStyleMgr = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
 
     if (!bIsNumbering)
@@ -175,7 +173,7 @@ OUString LwpBulletStyleMgr::RegisterBulletStyle(LwpPara* pPara, LwpBulletOverrid
             }
         }
 
-        aStyleName = (pXFStyleMgr->AddStyle(pListStyle)).m_pStyle->GetStyleName();
+        aStyleName = pXFStyleMgr->AddStyle(std::move(pListStyle)).m_pStyle->GetStyleName();
     }
     else
     {
@@ -231,11 +229,8 @@ OUString LwpBulletStyleMgr::RegisterBulletStyle(LwpPara* pPara, LwpBulletOverrid
 
                 pListStyle->SetListPosition(nPos, 0.0, 0.635, 0.0);
             }
-            aStyleName = (pXFStyleMgr->AddStyle(pListStyle)).m_pStyle->GetStyleName();
+            aStyleName = pXFStyleMgr->AddStyle(std::move(pListStyle)).m_pStyle->GetStyleName();
         }
-        else
-            delete pListStyle;
-
     }
 
     m_vStyleNameList.push_back(aStyleName);
@@ -245,7 +240,7 @@ OUString LwpBulletStyleMgr::RegisterBulletStyle(LwpPara* pPara, LwpBulletOverrid
 
 //Create nested XFList and XFItems and then add it to XFContentContainer(pCont)
 //Return the inner XFItem created.
-XFContentContainer* LwpBulletStyleMgr::AddBulletList(
+rtl::Reference<XFContentContainer> LwpBulletStyleMgr::AddBulletList(
         XFContentContainer* pCont, bool bIsOrdered,
         const OUString& rStyleName, sal_Int16 nLevel, bool bIsBulletSkiped)
 {
@@ -256,13 +251,12 @@ XFContentContainer* LwpBulletStyleMgr::AddBulletList(
     //todo: need judge here.
     bool bContinue = m_bContinue;
 
-    XFList* theList;
-    XFList* prevList = nullptr;
+    rtl::Reference<XFList> prevList;
     XFListItem* theItem;
     XFListItem* InnerItem = nullptr;
     for (sal_Int8 nC = nLevel-1; nC >= 0; nC--)
     {
-        theList = new XFList();
+        rtl::Reference<XFList> theList(new XFList);
         theItem = new XFListItem();
         theList->Add(theItem);
 
@@ -284,7 +278,7 @@ XFContentContainer* LwpBulletStyleMgr::AddBulletList(
         if (nC == 0 && pCont)
         {
             theList->SetStyleName(rStyleName);
-            pCont->Add(theList);
+            pCont->Add(theList.get());
         }
 
         if ((nC == nLevel-1) && bIsBulletSkiped)
@@ -301,7 +295,7 @@ XFContentContainer* LwpBulletStyleMgr::AddBulletList(
 
         if(prevList)
         {
-            theItem->Add(prevList);
+            theItem->Add(prevList.get());
         }
         prevList = theList;
     }

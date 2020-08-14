@@ -22,7 +22,6 @@
 
 #include <svl/itemprop.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sheet/XRecentFunctions.hpp>
 #include <com/sun/star/sheet/XFunctionDescriptions.hpp>
@@ -33,7 +32,9 @@
 #include <rtl/ustring.hxx>
 #include <sfx2/sfxmodelfactory.hxx>
 
-css::uno::Reference<css::uno::XInterface> SAL_CALL
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+
+css::uno::Reference<css::uno::XInterface>
     ScSpreadsheetSettings_CreateInstance(
         const css::uno::Reference< css::lang::XMultiServiceFactory>& rSMgr );
 css::uno::Reference<css::uno::XInterface> SAL_CALL
@@ -43,41 +44,8 @@ css::uno::Reference<css::uno::XInterface> SAL_CALL
     ScFunctionListObj_CreateInstance(
         const css::uno::Reference< css::lang::XMultiServiceFactory>& rSMgr );
 
-// Calc document
-css::uno::Sequence< OUString > SAL_CALL ScDocument_getSupportedServiceNames() throw();
-OUString SAL_CALL ScDocument_getImplementationName() throw();
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface > SAL_CALL ScDocument_createInstance(
-            const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr, SfxModelFlags _nCreationFlags );
 
-// Calc XML import
-css::uno::Sequence< OUString > SAL_CALL ScXMLImport_getSupportedServiceNames() throw();
-OUString SAL_CALL ScXMLImport_getImplementationName() throw();
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface > SAL_CALL ScXMLImport_createInstance(
-            const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr );
-css::uno::Sequence< OUString > SAL_CALL ScXMLImport_Meta_getSupportedServiceNames() throw();
-OUString SAL_CALL ScXMLImport_Meta_getImplementationName() throw();
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface > SAL_CALL ScXMLImport_Meta_createInstance(
-            const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr );
-css::uno::Sequence< OUString > SAL_CALL ScXMLImport_Styles_getSupportedServiceNames() throw();
-OUString SAL_CALL ScXMLImport_Styles_getImplementationName() throw();
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface > SAL_CALL ScXMLImport_Styles_createInstance(
-            const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr );
-css::uno::Sequence< OUString > SAL_CALL ScXMLImport_Content_getSupportedServiceNames() throw();
-OUString SAL_CALL ScXMLImport_Content_getImplementationName() throw();
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface > SAL_CALL ScXMLImport_Content_createInstance(
-            const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr );
-css::uno::Sequence< OUString > SAL_CALL ScXMLImport_Settings_getSupportedServiceNames() throw();
-OUString SAL_CALL ScXMLImport_Settings_getImplementationName() throw();
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface > SAL_CALL ScXMLImport_Settings_createInstance(
-            const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr );
-
-class ScSpreadsheetSettings : public cppu::WeakImplHelper<
+class ScSpreadsheetSettings final : public cppu::WeakImplHelper<
                                         css::sheet::XGlobalSheetSettings,
                                         css::beans::XPropertySet,
                                         css::lang::XServiceInfo>
@@ -99,14 +67,11 @@ public:
                             ScSpreadsheetSettings();
     virtual                 ~ScSpreadsheetSettings() override;
 
-    static OUString  getImplementationName_Static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-
     // XGlobalSheetSettings
     virtual sal_Bool SAL_CALL getMoveSelection() override
         { return getPropertyBool("MoveSelection"); }
     virtual void SAL_CALL setMoveSelection(sal_Bool p1) override
-        { setProperty("MoveSelection", (bool)p1); }
+        { setProperty("MoveSelection", static_cast<bool>(p1)); }
     virtual sal_Int16 SAL_CALL getMoveDirection() override
         { return getPropertyInt16("MoveDirection"); }
     virtual void SAL_CALL setMoveDirection(sal_Int16 p1) override
@@ -114,27 +79,27 @@ public:
     virtual sal_Bool SAL_CALL getEnterEdit() override
         { return getPropertyBool("EnterEdit"); }
     virtual void SAL_CALL setEnterEdit(sal_Bool p1) override
-        { setProperty("EnterEdit", (bool)p1); }
+        { setProperty("EnterEdit", static_cast<bool>(p1)); }
     virtual sal_Bool SAL_CALL getExtendFormat() override
         { return getPropertyBool("ExtendFormat"); }
     virtual void SAL_CALL setExtendFormat(sal_Bool p1) override
-        { setProperty("ExtendFormat", (bool)p1); }
+        { setProperty("ExtendFormat", static_cast<bool>(p1)); }
     virtual sal_Bool SAL_CALL getRangeFinder() override
         { return getPropertyBool("RangeFinder"); }
     virtual void SAL_CALL setRangeFinder(sal_Bool p1) override
-        { setProperty("RangeFinder", (bool)p1); }
+        { setProperty("RangeFinder", static_cast<bool>(p1)); }
     virtual sal_Bool SAL_CALL getExpandReferences() override
         { return getPropertyBool("ExpandReferences"); }
     virtual void SAL_CALL setExpandReferences(sal_Bool p1) override
-        { setProperty("ExpandReferences", (bool)p1); }
+        { setProperty("ExpandReferences", static_cast<bool>(p1)); }
     virtual sal_Bool SAL_CALL getMarkHeader() override
         { return getPropertyBool("MarkHeader"); }
     virtual void SAL_CALL setMarkHeader(sal_Bool p1) override
-        { setProperty("MarkHeader", (bool)p1); }
+        { setProperty("MarkHeader", static_cast<bool>(p1)); }
     virtual sal_Bool SAL_CALL getUseTabCol() override
         { return getPropertyBool("UseTabCol"); }
     virtual void SAL_CALL setUseTabCol(sal_Bool p1) override
-        { setProperty("UseTabCol", (bool)p1); }
+        { setProperty("UseTabCol", static_cast<bool>(p1)); }
     virtual sal_Int16 SAL_CALL getMetric() override
         { return getPropertyInt16("Metric"); }
     virtual void SAL_CALL setMetric(sal_Int16 p1) override
@@ -146,7 +111,7 @@ public:
     virtual sal_Bool SAL_CALL getDoAutoComplete() override
         { return getPropertyBool("DoAutoComplete"); }
     virtual void SAL_CALL setDoAutoComplete(sal_Bool p1) override
-        { setProperty("DoAutoComplete", (bool)p1); }
+        { setProperty("DoAutoComplete", static_cast<bool>(p1)); }
     virtual sal_Int16 SAL_CALL getStatusBarFunction() override
         { return getPropertyInt16("StatusBarFunction"); }
     virtual void SAL_CALL setStatusBarFunction(sal_Int16 p1) override
@@ -167,19 +132,19 @@ public:
     virtual sal_Bool SAL_CALL getPrintAllSheets() override
         { return getPropertyBool("PrintAllSheets"); }
     virtual void SAL_CALL setPrintAllSheets(sal_Bool p1) override
-        { setProperty("PrintAllSheets", (bool)p1); }
+        { setProperty("PrintAllSheets", static_cast<bool>(p1)); }
     virtual sal_Bool SAL_CALL getPrintEmptyPages() override
         { return getPropertyBool("PrintEmptyPages"); }
     virtual void SAL_CALL setPrintEmptyPages(sal_Bool p1) override
-        { setProperty("PrintEmptyPages", (bool)p1); }
+        { setProperty("PrintEmptyPages", static_cast<bool>(p1)); }
     virtual sal_Bool SAL_CALL getUsePrinterMetrics() override
         { return getPropertyBool("UsePrinterMetrics"); }
     virtual void SAL_CALL setUsePrinterMetrics(sal_Bool p1) override
-        { setProperty("UsePrinterMetrics", (bool)p1); }
+        { setProperty("UsePrinterMetrics", static_cast<bool>(p1)); }
     virtual sal_Bool SAL_CALL getReplaceCellsWarning() override
         { return getPropertyBool("ReplaceCellsWarning"); }
     virtual void SAL_CALL setReplaceCellsWarning(sal_Bool p1) override
-        { setProperty("ReplaceCellsWarning", (bool)p1); }
+        { setProperty("ReplaceCellsWarning", static_cast<bool>(p1)); }
 
     // XPropertySet
     virtual css::uno::Reference< css::beans::XPropertySetInfo >
@@ -203,7 +168,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScRecentFunctionsObj : public cppu::WeakImplHelper<
+class ScRecentFunctionsObj final : public cppu::WeakImplHelper<
                                         css::sheet::XRecentFunctions,
                                         css::lang::XServiceInfo>
 {
@@ -222,7 +187,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScFunctionListObj : public cppu::WeakImplHelper<
+class ScFunctionListObj final : public cppu::WeakImplHelper<
                                         css::sheet::XFunctionDescriptions,
                                         css::container::XEnumerationAccess,
                                         css::container::XNameAccess,

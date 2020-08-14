@@ -26,6 +26,7 @@
 
 
 #include <commonembobj.hxx>
+#include <sal/log.hxx>
 
 
 using namespace ::com::sun::star;
@@ -63,7 +64,7 @@ void SAL_CALL OCommonEmbeddedObject::setVisualAreaSize( sal_Int64 nAspect, const
         changeState( embed::EmbedStates::LOADED );
 
     if ( !bSuccess )
-        throw uno::Exception(); // TODO:
+        throw uno::Exception("SetExtent failed", nullptr); // TODO:
 }
 
 awt::Size SAL_CALL OCommonEmbeddedObject::getVisualAreaSize( sal_Int64 nAspect )
@@ -97,7 +98,7 @@ awt::Size SAL_CALL OCommonEmbeddedObject::getVisualAreaSize( sal_Int64 nAspect )
         changeState( embed::EmbedStates::LOADED );
 
     if ( !bSuccess )
-        throw uno::Exception(); // TODO:
+        throw uno::Exception("GetExtent failed", nullptr); // TODO:
 
     return aResult;
 }
@@ -136,7 +137,7 @@ sal_Int32 SAL_CALL OCommonEmbeddedObject::getMapUnit( sal_Int64 nAspect )
         changeState( embed::EmbedStates::LOADED );
 
     if ( nResult < 0  )
-        throw uno::Exception(); // TODO:
+        throw uno::Exception("result " + OUString::number(nResult), nullptr); // TODO:
 
     return nResult;
 }
@@ -166,7 +167,7 @@ embed::VisualRepresentation SAL_CALL OCommonEmbeddedObject::getPreferredVisualRe
         awt::Size aOrigSize = getVisualAreaSize(nAspect);
         changeState(embed::EmbedStates::RUNNING);
         const bool bIsChart = GetDocumentServiceName() == "com.sun.star.chart2.ChartDocument";
-        // tdf#108643 unless its a chart, cause those are weird (#i103460#)
+        // tdf#108643 unless it's a chart, cause those are weird (#i103460#)
         if (!bIsChart && aOrigSize != getVisualAreaSize(nAspect))
             setVisualAreaSize(nAspect, aOrigSize);
 
@@ -193,13 +194,10 @@ embed::VisualRepresentation SAL_CALL OCommonEmbeddedObject::getPreferredVisualRe
                 "GDIMetaFile",
                 cppu::UnoType<uno::Sequence< sal_Int8 >>::get() );
 
-        if( xTransferable->isDataFlavorSupported( aDataFlavor ))
-        {
-            aVisualRepresentation.Data = xTransferable->getTransferData( aDataFlavor );
-            aVisualRepresentation.Flavor = aDataFlavor;
-        }
-        else
+        if( !xTransferable->isDataFlavorSupported( aDataFlavor ))
             throw uno::RuntimeException();
+        aVisualRepresentation.Data = xTransferable->getTransferData( aDataFlavor );
+        aVisualRepresentation.Flavor = aDataFlavor;
     }
 
     if ( bBackToLoaded )

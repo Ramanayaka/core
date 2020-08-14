@@ -21,12 +21,12 @@
 
 #include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <vcl/ctrl.hxx>
-#include "navigatr.hxx"
 
+class SdNavigatorWin;
 class SfxBindings;
 namespace sd { class ViewShellBase; }
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 /** Present the navigator as control that can be displayed inside the
     sidebar.
@@ -61,7 +61,7 @@ private:
     void UpdateNavigator();
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

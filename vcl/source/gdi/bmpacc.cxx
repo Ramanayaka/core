@@ -17,80 +17,62 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/salbtype.hxx>
 #include <vcl/bitmap.hxx>
 #include <vcl/bitmapaccess.hxx>
 
-#include <impbmp.hxx>
-
+#include <bitmapwriteaccess.hxx>
+#include <salbmp.hxx>
+#include <svdata.hxx>
+#include <salinst.hxx>
 
 #include <string.h>
+#include <sal/log.hxx>
+#include <tools/debug.hxx>
 
 BitmapInfoAccess::BitmapInfoAccess( Bitmap& rBitmap, BitmapAccessMode nMode ) :
             mpBuffer        ( nullptr ),
             mnAccessMode    ( nMode )
 {
-    ImplCreate( rBitmap );
-}
+    std::shared_ptr<SalBitmap> xImpBmp = rBitmap.ImplGetSalBitmap();
 
-BitmapInfoAccess::BitmapInfoAccess( Bitmap& rBitmap ) :
-            mpBuffer        ( nullptr ),
-            mnAccessMode    ( BitmapAccessMode::Info )
-{
-    ImplCreate( rBitmap );
+    if( !xImpBmp )
+        return;
+
+    if (mnAccessMode == BitmapAccessMode::Write)
+    {
+        xImpBmp->DropScaledCache();
+
+        if (xImpBmp.use_count() > 2)
+        {
+            xImpBmp.reset();
+            rBitmap.ImplMakeUnique();
+            xImpBmp = rBitmap.ImplGetSalBitmap();
+        }
+    }
+
+    mpBuffer = xImpBmp->AcquireBuffer( mnAccessMode );
+
+    if( !mpBuffer )
+    {
+        std::shared_ptr<SalBitmap> xNewImpBmp(ImplGetSVData()->mpDefInst->CreateSalBitmap());
+        if (xNewImpBmp->Create(*xImpBmp, rBitmap.GetBitCount()))
+        {
+            xImpBmp = xNewImpBmp;
+            rBitmap.ImplSetSalBitmap( xImpBmp );
+            mpBuffer = xImpBmp->AcquireBuffer( mnAccessMode );
+        }
+    }
+
+    maBitmap = rBitmap;
 }
 
 BitmapInfoAccess::~BitmapInfoAccess()
 {
-    ImplDestroy();
-}
-
-void BitmapInfoAccess::ImplCreate( Bitmap& rBitmap )
-{
-    std::shared_ptr<ImpBitmap> xImpBmp = rBitmap.ImplGetImpBitmap();
-
-    SAL_WARN_IF( !xImpBmp, "vcl", "Forbidden Access to empty bitmap!" );
-
-    if( xImpBmp )
-    {
-        if( mnAccessMode == BitmapAccessMode::Write && !maBitmap.ImplGetImpBitmap() )
-        {
-            xImpBmp.reset();
-            rBitmap.ImplMakeUnique();
-            xImpBmp = rBitmap.ImplGetImpBitmap();
-        }
-        else
-        {
-            DBG_ASSERT( mnAccessMode != BitmapAccessMode::Write ||
-                        xImpBmp.use_count() == 2,
-                        "Unpredictable results: bitmap is referenced more than once!" );
-        }
-
-        mpBuffer = xImpBmp->ImplAcquireBuffer( mnAccessMode );
-
-        if( !mpBuffer )
-        {
-            std::shared_ptr<ImpBitmap> xNewImpBmp(new ImpBitmap);
-            if (xNewImpBmp->ImplCreate(*xImpBmp, rBitmap.GetBitCount()))
-            {
-                xImpBmp = xNewImpBmp;
-                rBitmap.ImplSetImpBitmap( xImpBmp );
-                mpBuffer = xImpBmp->ImplAcquireBuffer( mnAccessMode );
-            }
-        }
-
-        maBitmap = rBitmap;
-    }
-}
-
-void BitmapInfoAccess::ImplDestroy()
-{
-    std::shared_ptr<ImpBitmap> xImpBmp = maBitmap.ImplGetImpBitmap();
+    std::shared_ptr<SalBitmap> xImpBmp = maBitmap.ImplGetSalBitmap();
 
     if (mpBuffer && xImpBmp)
     {
-        xImpBmp->ImplReleaseBuffer( mpBuffer, mnAccessMode );
-        mpBuffer = nullptr;
+        xImpBmp->ReleaseBuffer( mpBuffer, mnAccessMode );
     }
 }
 
@@ -104,144 +86,133 @@ BitmapReadAccess::BitmapReadAccess( Bitmap& rBitmap, BitmapAccessMode nMode ) :
             mFncGetPixel    ( nullptr ),
             mFncSetPixel    ( nullptr )
 {
-    ImplInitScanBuffer( rBitmap );
-}
+    if (!mpBuffer)
+        return;
 
-BitmapReadAccess::BitmapReadAccess( Bitmap& rBitmap ) :
-            BitmapInfoAccess( rBitmap, BitmapAccessMode::Read ),
-            mFncGetPixel    ( nullptr ),
-            mFncSetPixel    ( nullptr )
-{
-    ImplInitScanBuffer( rBitmap );
+    const std::shared_ptr<SalBitmap>& xImpBmp = rBitmap.ImplGetSalBitmap();
+    if (!xImpBmp)
+        return;
+
+    maColorMask = mpBuffer->maColorMask;
+
+    mFncGetPixel = GetPixelFunction(mpBuffer->mnFormat);
+    mFncSetPixel = SetPixelFunction(mpBuffer->mnFormat);
+
+    if (!mFncGetPixel || !mFncSetPixel)
+    {
+        xImpBmp->ReleaseBuffer( mpBuffer, mnAccessMode );
+        mpBuffer = nullptr;
+    }
 }
 
 BitmapReadAccess::~BitmapReadAccess()
 {
 }
 
-void BitmapReadAccess::ImplInitScanBuffer( Bitmap& rBitmap )
+namespace
 {
-    if (!mpBuffer)
-        return;
-
-    std::shared_ptr<ImpBitmap> xImpBmp = rBitmap.ImplGetImpBitmap();
-    if (!xImpBmp)
-        return;
-
-    maColorMask = mpBuffer->maColorMask;
-
-    bool bOk = ImplSetAccessPointers(RemoveScanline(mpBuffer->mnFormat));
-
-    if (!bOk)
+    bool Bitmap32IsPreMultipled()
     {
-        xImpBmp->ImplReleaseBuffer( mpBuffer, mnAccessMode );
-        mpBuffer = nullptr;
+        auto pBackendCapabilities = ImplGetSVData()->mpDefInst->GetBackendCapabilities();
+        return pBackendCapabilities->mbSupportsBitmap32;
     }
 }
 
-bool BitmapReadAccess::ImplSetAccessPointers( ScanlineFormat nFormat )
+FncGetPixel BitmapReadAccess::GetPixelFunction( ScanlineFormat nFormat )
 {
-    bool bRet = true;
-
-    switch( nFormat )
+    switch( RemoveScanline( nFormat ))
     {
         case ScanlineFormat::N1BitMsbPal:
-        {
-            mFncGetPixel = GetPixelForN1BitMsbPal;
-            mFncSetPixel = SetPixelForN1BitMsbPal;
-        }
-        break;
+            return GetPixelForN1BitMsbPal;
         case ScanlineFormat::N1BitLsbPal:
-        {
-            mFncGetPixel = GetPixelForN1BitLsbPal;
-            mFncSetPixel = SetPixelForN1BitLsbPal;
-        }
-        break;
+            return GetPixelForN1BitLsbPal;
         case ScanlineFormat::N4BitMsnPal:
-        {
-            mFncGetPixel = GetPixelForN4BitMsnPal;
-            mFncSetPixel = SetPixelForN4BitMsnPal;
-        }
-        break;
+            return GetPixelForN4BitMsnPal;
         case ScanlineFormat::N4BitLsnPal:
-        {
-            mFncGetPixel = GetPixelForN4BitLsnPal;
-            mFncSetPixel = SetPixelForN4BitLsnPal;
-        }
-        break;
+            return GetPixelForN4BitLsnPal;
         case ScanlineFormat::N8BitPal:
-        {
-            mFncGetPixel = GetPixelForN8BitPal;
-            mFncSetPixel = SetPixelForN8BitPal;
-        }
-        break;
+            return GetPixelForN8BitPal;
         case ScanlineFormat::N8BitTcMask:
-        {
-            mFncGetPixel = GetPixelForN8BitTcMask;
-            mFncSetPixel = SetPixelForN8BitTcMask;
-        }
-        break;
-        case ScanlineFormat::N16BitTcMsbMask:
-        {
-            mFncGetPixel = GetPixelForN16BitTcMsbMask;
-            mFncSetPixel = SetPixelForN16BitTcMsbMask;
-        }
-        break;
-        case ScanlineFormat::N16BitTcLsbMask:
-        {
-            mFncGetPixel = GetPixelForN16BitTcLsbMask;
-            mFncSetPixel = SetPixelForN16BitTcLsbMask;
-        }
-        break;
+            return GetPixelForN8BitTcMask;
         case ScanlineFormat::N24BitTcBgr:
-        {
-            mFncGetPixel = GetPixelForN24BitTcBgr;
-            mFncSetPixel = SetPixelForN24BitTcBgr;
-        }
-        break;
+            return GetPixelForN24BitTcBgr;
         case ScanlineFormat::N24BitTcRgb:
-        {
-            mFncGetPixel = GetPixelForN24BitTcRgb;
-            mFncSetPixel = SetPixelForN24BitTcRgb;
-        }
-        break;
+            return GetPixelForN24BitTcRgb;
         case ScanlineFormat::N32BitTcAbgr:
-        {
-            mFncGetPixel = GetPixelForN32BitTcAbgr;
-            mFncSetPixel = SetPixelForN32BitTcAbgr;
-        }
-        break;
+            if (Bitmap32IsPreMultipled())
+                return GetPixelForN32BitTcAbgr;
+            else
+                return GetPixelForN32BitTcXbgr;
         case ScanlineFormat::N32BitTcArgb:
-        {
-            mFncGetPixel = GetPixelForN32BitTcArgb;
-            mFncSetPixel = SetPixelForN32BitTcArgb;
-        }
-        break;
+            if (Bitmap32IsPreMultipled())
+                return GetPixelForN32BitTcArgb;
+            else
+                return GetPixelForN32BitTcXrgb;
         case ScanlineFormat::N32BitTcBgra:
-        {
-            mFncGetPixel = GetPixelForN32BitTcBgra;
-            mFncSetPixel = SetPixelForN32BitTcBgra;
-        }
-        break;
+            if (Bitmap32IsPreMultipled())
+                return GetPixelForN32BitTcBgra;
+            else
+                return GetPixelForN32BitTcBgrx;
         case ScanlineFormat::N32BitTcRgba:
-        {
-            mFncGetPixel = GetPixelForN32BitTcRgba;
-            mFncSetPixel = SetPixelForN32BitTcRgba;
-        }
-        break;
+            if (Bitmap32IsPreMultipled())
+                return GetPixelForN32BitTcRgba;
+            else
+                return GetPixelForN32BitTcRgbx;
         case ScanlineFormat::N32BitTcMask:
-        {
-            mFncGetPixel = GetPixelForN32BitTcMask;
-            mFncSetPixel = SetPixelForN32BitTcMask;
-        }
+            return GetPixelForN32BitTcMask;
+
+        default:
+            return nullptr;
+    }
+}
+
+FncSetPixel BitmapReadAccess::SetPixelFunction( ScanlineFormat nFormat )
+{
+    switch( RemoveScanline( nFormat ))
+    {
+        case ScanlineFormat::N1BitMsbPal:
+            return SetPixelForN1BitMsbPal;
+        case ScanlineFormat::N1BitLsbPal:
+            return SetPixelForN1BitLsbPal;
+        case ScanlineFormat::N4BitMsnPal:
+            return SetPixelForN4BitMsnPal;
+        case ScanlineFormat::N4BitLsnPal:
+            return SetPixelForN4BitLsnPal;
+        case ScanlineFormat::N8BitPal:
+            return SetPixelForN8BitPal;
+        case ScanlineFormat::N8BitTcMask:
+            return SetPixelForN8BitTcMask;
+        case ScanlineFormat::N24BitTcBgr:
+            return SetPixelForN24BitTcBgr;
+        case ScanlineFormat::N24BitTcRgb:
+            return SetPixelForN24BitTcRgb;
+        case ScanlineFormat::N32BitTcAbgr:
+            if (Bitmap32IsPreMultipled())
+                return SetPixelForN32BitTcAbgr;
+            else
+                return SetPixelForN32BitTcXbgr;
+        case ScanlineFormat::N32BitTcArgb:
+            if (Bitmap32IsPreMultipled())
+                return SetPixelForN32BitTcArgb;
+            else
+                return SetPixelForN32BitTcXrgb;
+        case ScanlineFormat::N32BitTcBgra:
+            if (Bitmap32IsPreMultipled())
+                return SetPixelForN32BitTcBgra;
+            else
+                return SetPixelForN32BitTcBgrx;
+        case ScanlineFormat::N32BitTcRgba:
+            if (Bitmap32IsPreMultipled())
+                return SetPixelForN32BitTcRgba;
+            else
+                return SetPixelForN32BitTcRgbx;
+        case ScanlineFormat::N32BitTcMask:
+            return SetPixelForN32BitTcMask;
         break;
 
         default:
-            bRet = false;
-        break;
+            return nullptr;
     }
-
-    return bRet;
 }
 
 BitmapColor BitmapReadAccess::GetInterpolatedColorWithFallback( double fY, double fX, const BitmapColor& rFallback ) const
@@ -250,8 +221,8 @@ BitmapColor BitmapReadAccess::GetInterpolatedColorWithFallback( double fY, doubl
     // double values, e.g. static_cast< sal_Int32 >(-0.25) is 0, not -1, but *has* to be outside (!)
     if(mpBuffer && fX >= 0.0 && fY >= 0.0)
     {
-        const sal_Int32 nX(static_cast< sal_Int32 >(fX));
-        const sal_Int32 nY(static_cast< sal_Int32 >(fY));
+        const sal_Int64 nX(static_cast<sal_Int64>(fX));
+        const sal_Int64 nY(static_cast<sal_Int64>(fY));
 
         if(nX < mpBuffer->mnWidth && nY < mpBuffer->mnHeight)
         {
@@ -353,8 +324,6 @@ BitmapColor BitmapReadAccess::GetColorWithFallback( double fY, double fX, const 
 
 BitmapWriteAccess::BitmapWriteAccess(Bitmap& rBitmap)
     : BitmapReadAccess(rBitmap, BitmapAccessMode::Write)
-    , mpLineColor()
-    , mpFillColor()
 {
 }
 
@@ -374,13 +343,17 @@ void BitmapWriteAccess::CopyScanline( long nY, const BitmapReadAccess& rReadAcc 
         memcpy(GetScanline(nY), rReadAcc.GetScanline(nY), rReadAcc.GetScanlineSize());
     }
     else
+    {
         // TODO: use fastbmp infrastructure
+        Scanline pScanline = GetScanline( nY );
+        Scanline pScanlineRead = rReadAcc.GetScanline(nY);
         for( long nX = 0, nWidth = std::min( mpBuffer->mnWidth, rReadAcc.Width() ); nX < nWidth; nX++ )
-            SetPixel( nY, nX, rReadAcc.GetPixel( nY, nX ) );
+            SetPixelOnData( pScanline, nX, rReadAcc.GetPixelFromData( pScanlineRead, nX ) );
+    }
 }
 
 void BitmapWriteAccess::CopyScanline( long nY, ConstScanline aSrcScanline,
-                                      ScanlineFormat nSrcScanlineFormat, sal_uLong nSrcScanlineSize )
+                                      ScanlineFormat nSrcScanlineFormat, sal_uInt32 nSrcScanlineSize )
 {
     const ScanlineFormat nFormat = RemoveScanline( nSrcScanlineFormat );
 
@@ -391,69 +364,72 @@ void BitmapWriteAccess::CopyScanline( long nY, ConstScanline aSrcScanline,
 
     const sal_uLong nCount = std::min( GetScanlineSize(), nSrcScanlineSize );
 
-    if( nCount )
+    if( !nCount )
+        return;
+
+    if( GetScanlineFormat() == RemoveScanline( nSrcScanlineFormat ) )
+        memcpy(GetScanline(nY), aSrcScanline, nCount);
+    else
     {
-        if( GetScanlineFormat() == RemoveScanline( nSrcScanlineFormat ) )
-            memcpy(GetScanline(nY), aSrcScanline, nCount);
-        else
+        DBG_ASSERT( nFormat != ScanlineFormat::N8BitTcMask &&
+                    nFormat != ScanlineFormat::N32BitTcMask,
+                    "No support for pixel formats with color masks yet!" );
+
+        // TODO: use fastbmp infrastructure
+        FncGetPixel pFncGetPixel;
+
+        switch( nFormat )
         {
-            DBG_ASSERT( nFormat != ScanlineFormat::N8BitTcMask &&
-                        nFormat != ScanlineFormat::N16BitTcMsbMask && nFormat != ScanlineFormat::N16BitTcLsbMask &&
-                        nFormat != ScanlineFormat::N32BitTcMask,
-                        "No support for pixel formats with color masks yet!" );
-
-            // TODO: use fastbmp infrastructure
-            FncGetPixel pFncGetPixel;
-
-            switch( nFormat )
-            {
-                case ScanlineFormat::N1BitMsbPal:    pFncGetPixel = GetPixelForN1BitMsbPal; break;
-                case ScanlineFormat::N1BitLsbPal:    pFncGetPixel = GetPixelForN1BitLsbPal; break;
-                case ScanlineFormat::N4BitMsnPal:    pFncGetPixel = GetPixelForN4BitMsnPal; break;
-                case ScanlineFormat::N4BitLsnPal:    pFncGetPixel = GetPixelForN4BitLsnPal; break;
-                case ScanlineFormat::N8BitPal:        pFncGetPixel = GetPixelForN8BitPal; break;
-                case ScanlineFormat::N8BitTcMask:    pFncGetPixel = GetPixelForN8BitTcMask; break;
-                case ScanlineFormat::N16BitTcMsbMask:   pFncGetPixel = GetPixelForN16BitTcMsbMask; break;
-                case ScanlineFormat::N16BitTcLsbMask:   pFncGetPixel = GetPixelForN16BitTcLsbMask; break;
-                case ScanlineFormat::N24BitTcBgr:    pFncGetPixel = GetPixelForN24BitTcBgr; break;
-                case ScanlineFormat::N24BitTcRgb:    pFncGetPixel = GetPixelForN24BitTcRgb; break;
-                case ScanlineFormat::N32BitTcAbgr:   pFncGetPixel = GetPixelForN32BitTcAbgr; break;
-                case ScanlineFormat::N32BitTcArgb:   pFncGetPixel = GetPixelForN32BitTcArgb; break;
-                case ScanlineFormat::N32BitTcBgra:   pFncGetPixel = GetPixelForN32BitTcBgra; break;
-                case ScanlineFormat::N32BitTcRgba:   pFncGetPixel = GetPixelForN32BitTcRgba; break;
-                case ScanlineFormat::N32BitTcMask:   pFncGetPixel = GetPixelForN32BitTcMask; break;
-
-                default:
-                    pFncGetPixel = nullptr;
+            case ScanlineFormat::N1BitMsbPal:    pFncGetPixel = GetPixelForN1BitMsbPal; break;
+            case ScanlineFormat::N1BitLsbPal:    pFncGetPixel = GetPixelForN1BitLsbPal; break;
+            case ScanlineFormat::N4BitMsnPal:    pFncGetPixel = GetPixelForN4BitMsnPal; break;
+            case ScanlineFormat::N4BitLsnPal:    pFncGetPixel = GetPixelForN4BitLsnPal; break;
+            case ScanlineFormat::N8BitPal:        pFncGetPixel = GetPixelForN8BitPal; break;
+            case ScanlineFormat::N8BitTcMask:    pFncGetPixel = GetPixelForN8BitTcMask; break;
+            case ScanlineFormat::N24BitTcBgr:    pFncGetPixel = GetPixelForN24BitTcBgr; break;
+            case ScanlineFormat::N24BitTcRgb:    pFncGetPixel = GetPixelForN24BitTcRgb; break;
+            case ScanlineFormat::N32BitTcAbgr:
+                if (Bitmap32IsPreMultipled())
+                    pFncGetPixel = GetPixelForN32BitTcAbgr;
+                else
+                    pFncGetPixel = GetPixelForN32BitTcXbgr;
                 break;
-            }
+            case ScanlineFormat::N32BitTcArgb:
+                if (Bitmap32IsPreMultipled())
+                    pFncGetPixel = GetPixelForN32BitTcArgb;
+                else
+                    pFncGetPixel = GetPixelForN32BitTcXrgb;
+                break;
+            case ScanlineFormat::N32BitTcBgra:
+                if (Bitmap32IsPreMultipled())
+                    pFncGetPixel = GetPixelForN32BitTcBgra;
+                else
+                    pFncGetPixel = GetPixelForN32BitTcBgrx;
+                break;
+            case ScanlineFormat::N32BitTcRgba:
+                if (Bitmap32IsPreMultipled())
+                    pFncGetPixel = GetPixelForN32BitTcRgba;
+                else
+                    pFncGetPixel = GetPixelForN32BitTcRgbx;
+                break;
+            case ScanlineFormat::N32BitTcMask:
+                pFncGetPixel = GetPixelForN32BitTcMask;
+                break;
 
-            if( pFncGetPixel )
-            {
-                const ColorMask aDummyMask;
+            default:
+                assert(false);
+                pFncGetPixel = nullptr;
+            break;
+        }
 
-                for( long nX = 0, nWidth = mpBuffer->mnWidth; nX < nWidth; nX++ )
-                    SetPixel( nY, nX, pFncGetPixel( aSrcScanline, nX, aDummyMask ) );
-            }
+        if( pFncGetPixel )
+        {
+            const ColorMask aDummyMask;
+            Scanline pScanline = GetScanline(nY);
+            for (long nX = 0, nWidth = mpBuffer->mnWidth; nX < nWidth; ++nX)
+                SetPixelOnData(pScanline, nX, pFncGetPixel(aSrcScanline, nX, aDummyMask));
         }
     }
-}
-
-void BitmapWriteAccess::CopyBuffer( const BitmapReadAccess& rReadAcc )
-{
-    SAL_WARN_IF( ( !HasPalette() || !rReadAcc.HasPalette() ) && ( HasPalette() || rReadAcc.HasPalette() ), "vcl", "No copying possible between palette bitmap and TC bitmap!" );
-
-    if( ( GetScanlineFormat() == rReadAcc.GetScanlineFormat() ) &&
-        ( GetScanlineSize() == rReadAcc.GetScanlineSize() ) )
-    {
-        const long  nHeight = std::min( mpBuffer->mnHeight, rReadAcc.Height() );
-        const sal_uLong nCount = nHeight * mpBuffer->mnScanlineSize;
-
-        memcpy( mpBuffer->mpBits, rReadAcc.GetBuffer(), nCount );
-    }
-    else
-        for( long nY = 0, nHeight = std::min( mpBuffer->mnHeight, rReadAcc.Height() ); nY < nHeight; nY++ )
-            CopyScanline( nY, rReadAcc );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

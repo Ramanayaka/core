@@ -17,19 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ppt/slidetransitioncontext.hxx"
-
-#include "comphelper/anytostring.hxx"
-#include "cppuhelper/exc_hlp.hxx"
-
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/container/XNamed.hpp>
+#include <oox/ppt/slidetransitioncontext.hxx>
 
 #include <oox/ppt/backgroundproperties.hxx>
-#include "oox/ppt/slidefragmenthandler.hxx"
-#include "oox/ppt/soundactioncontext.hxx"
-#include "oox/drawingml/shapegroupcontext.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <oox/ppt/soundactioncontext.hxx>
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
@@ -38,17 +30,28 @@ using namespace ::oox::core;
 using namespace ::oox::drawingml;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
-using namespace ::com::sun::star::container;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-SlideTransitionContext::SlideTransitionContext( FragmentHandler2& rParent, const AttributeList& rAttribs, PropertyMap & aProperties ) throw()
+SlideTransitionContext::SlideTransitionContext( FragmentHandler2 const & rParent, const AttributeList& rAttribs, PropertyMap & aProperties ) throw()
 : FragmentHandler2( rParent )
 , maSlideProperties( aProperties )
 , mbHasTransition( false )
+, mbHasTransitionDuration( false )
 {
     // ST_TransitionSpeed
     maTransition.setOoxTransitionSpeed( rAttribs.getToken( XML_spd, XML_fast ) );
+
+    // p14:dur
+    sal_Int32 nDurationInMs = rAttribs.getInteger( P14_TOKEN( dur ), -1 );
+    if( nDurationInMs > -1 )
+    {
+        // In MSO 0 is visible as 0.01s
+        if( nDurationInMs == 0.0 )
+            nDurationInMs = 10;
+        maTransition.setOoxTransitionSpeed( nDurationInMs / 1000.0 );
+        mbHasTransitionDuration = true;
+    }
 
     // TODO
     rAttribs.getBool( XML_advClick, true );
@@ -135,6 +138,7 @@ SlideTransitionContext::~SlideTransitionContext() throw()
     case P14_TOKEN( ripple ):
     case P14_TOKEN( glitter ):
     case P14_TOKEN( honeycomb ):
+    case P14_TOKEN( flash ):
         // CT_Empty
         if (!mbHasTransition)
         {
@@ -163,6 +167,13 @@ SlideTransitionContext::~SlideTransitionContext() throw()
             maTransition.setPresetTransition(rAttribs.getString(XML_prst, ""));
         }
         return this;
+    case PPT_TOKEN( strips ):
+        if (!mbHasTransition)
+        {
+            mbHasTransition = true;
+            maTransition.setOoxTransitionType( aElementToken, rAttribs.getToken( XML_dir, XML_ld ), 0 );
+        }
+        return this;
 
 
     default:
@@ -176,7 +187,7 @@ void SlideTransitionContext::onEndElement()
 {
     if( isCurrentElement(PPT_TOKEN( transition )) )
     {
-        if( mbHasTransition )
+        if( mbHasTransition || mbHasTransitionDuration )
         {
             maTransition.setSlideProperties( maSlideProperties );
             mbHasTransition = false;
@@ -184,6 +195,6 @@ void SlideTransitionContext::onEndElement()
     }
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

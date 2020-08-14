@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <tools/resid.hxx>
 #include <swcrsr.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -25,32 +24,42 @@
 #include <pamtyp.hxx>
 #include <swundo.hxx>
 #include <SwRewriter.hxx>
-#include <comcore.hrc>
+#include <strings.hrc>
+
+namespace {
 
 /// parameters for a search for FormatCollections
 struct SwFindParaFormatColl : public SwFindParas
 {
     const SwTextFormatColl *pFormatColl, *pReplColl;
-    SwFindParaFormatColl(const SwTextFormatColl& rFormatColl, const SwTextFormatColl* pRpColl)
-        : pFormatColl( &rFormatColl ), pReplColl( pRpColl )
+    SwRootFrame const* m_pLayout;
+    SwFindParaFormatColl(const SwTextFormatColl& rFormatColl,
+            const SwTextFormatColl *const pRpColl,
+            SwRootFrame const*const pLayout)
+        : pFormatColl( &rFormatColl )
+        , pReplColl( pRpColl )
+        , m_pLayout(pLayout)
     {}
     virtual ~SwFindParaFormatColl() {}
-    virtual int Find( SwPaM* , SwMoveFnCollection const & , const SwPaM*, bool bInReadOnly ) override;
+    virtual int DoFind(SwPaM &, SwMoveFnCollection const &, const SwPaM &, bool bInReadOnly) override;
     virtual bool IsReplaceMode() const override;
 };
 
-int SwFindParaFormatColl::Find( SwPaM* pCursor, SwMoveFnCollection const & fnMove, const SwPaM* pRegion,
-                             bool bInReadOnly )
+}
+
+int SwFindParaFormatColl::DoFind(SwPaM & rCursor, SwMoveFnCollection const & fnMove,
+        const SwPaM & rRegion, bool bInReadOnly)
 {
     int nRet = FIND_FOUND;
     if( bInReadOnly && pReplColl )
         bInReadOnly = false;
 
-    if( !pCursor->Find( *pFormatColl, fnMove, pRegion, bInReadOnly ) )
+    if (!sw::FindFormatImpl(rCursor, *pFormatColl, fnMove, rRegion, bInReadOnly, m_pLayout))
         nRet = FIND_NOT_FOUND;
     else if( pReplColl )
     {
-        pCursor->GetDoc()->SetTextFormatColl( *pCursor, const_cast<SwTextFormatColl*>(pReplColl) );
+        rCursor.GetDoc()->SetTextFormatColl(rCursor,
+            const_cast<SwTextFormatColl*>(pReplColl), true, false, m_pLayout);
         nRet = FIND_NO_RING;
     }
     return nRet;
@@ -62,9 +71,10 @@ bool SwFindParaFormatColl::IsReplaceMode() const
 }
 
 /// search for Format-Collections
-sal_uLong SwCursor::Find( const SwTextFormatColl& rFormatColl, SwDocPositions nStart,
+sal_uLong SwCursor::FindFormat( const SwTextFormatColl& rFormatColl, SwDocPositions nStart,
                           SwDocPositions nEnd, bool& bCancel,
-                          FindRanges eFndRngs, const SwTextFormatColl* pReplFormatColl )
+                          FindRanges eFndRngs, const SwTextFormatColl* pReplFormatColl,
+                          SwRootFrame const*const pLayout)
 {
     // switch off OLE-notifications
     SwDoc* pDoc = GetDoc();
@@ -84,7 +94,7 @@ sal_uLong SwCursor::Find( const SwTextFormatColl& rFormatColl, SwDocPositions nS
                 &aRewriter );
     }
 
-    SwFindParaFormatColl aSwFindParaFormatColl(rFormatColl, pReplFormatColl);
+    SwFindParaFormatColl aSwFindParaFormatColl(rFormatColl, pReplFormatColl, pLayout);
 
     sal_uLong nRet = FindAll( aSwFindParaFormatColl, nStart, nEnd, eFndRngs, bCancel );
     pDoc->SetOle2Link( aLnk );

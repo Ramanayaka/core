@@ -31,15 +31,13 @@
 
 // predefines
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpSdr3DObjectAttribute;
     class MaterialAttribute3D;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC Sdr3DObjectAttribute
         {
@@ -63,11 +61,11 @@ namespace drawinglayer
                 bool bShadow3D,
                 bool bTextureFilter,
                 bool bReducedLineGeometry);
-            Sdr3DObjectAttribute(const Sdr3DObjectAttribute& rCandidate);
+            Sdr3DObjectAttribute(const Sdr3DObjectAttribute&);
             ~Sdr3DObjectAttribute();
 
             // assignment operator
-            Sdr3DObjectAttribute& operator=(const Sdr3DObjectAttribute& rCandidate);
+            Sdr3DObjectAttribute& operator=(const Sdr3DObjectAttribute&);
 
             // compare operator
             bool operator==(const Sdr3DObjectAttribute& rCandidate) const;
@@ -85,8 +83,8 @@ namespace drawinglayer
             bool getTextureFilter() const;
             bool getReducedLineGeometry() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_SDROBJECTATTRIBUTE3D_HXX

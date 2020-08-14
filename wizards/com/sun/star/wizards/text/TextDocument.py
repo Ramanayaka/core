@@ -59,8 +59,8 @@ class TextDocument(object):
                 self.xDesktop = Desktop.getDesktop(xMSF);
                 self.xFrame = OfficeDocument.createNewFrame(xMSF, listener)
                 self.xTextDocument = OfficeDocument.load(
-                    xFrame, URL, "_self", xArgs);
-                self.xWindowPeer = xFrame.getComponentWindow()
+                    self.xFrame, URL, "_self", xArgs);
+                self.xWindowPeer = self.xFrame.getComponentWindow()
                 self.m_xDocProps = self.xTextDocument.DocumentProperties
                 CharLocale = self.xTextDocument.CharLocale
                 return
@@ -146,7 +146,7 @@ class TextDocument(object):
         myFieldHandler = TextFieldHandler(self.xMSF, self.xTextDocument)
         myFieldHandler.updateDocInfoFields()
         return self.xTextDocument
-            
+
     def getPageSize(self):
         try:
             xNameAccess = self.xTextDocument.StyleFamilies
@@ -169,7 +169,7 @@ class TextDocument(object):
 
     '''
     This method sets the Author of a Wizard-generated template correctly
-    and adds a explanatory sentence to the template description.
+    and adds an explanatory sentence to the template description.
     @param WizardName The name of the Wizard.
     @param TemplateDescription The old Description which is being
     appended with another sentence.
@@ -203,21 +203,6 @@ class TextDocument(object):
         except Exception:
             traceback.print_exc()
 
-    '''
-    Apparently there is no other way to get the
-    page count of a text document other than using a cursor and
-    making it jump to the last page...
-    @param model the document model.
-    @return the page count of the document.
-    '''
-
-    @classmethod
-    def getPageCount(self, model):
-        xController = model.getCurrentController()
-        xPC = xController.getViewCursor()
-        xPC.jumpToLastPage()
-        return xPC.getPage()
-
     @classmethod
     def getFrameByName(self, sFrameName, xTD):
         if xTD.TextFrames.hasByName(sFrameName):
@@ -227,20 +212,20 @@ class TextDocument(object):
 
     def searchFillInItems(self, typeSearch):
         sd = self.xTextDocument.createSearchDescriptor()
-        
+
         if typeSearch == 0:
             sd.setSearchString("<[^>]+>")
         elif typeSearch == 1:
             sd.setSearchString("#[^#]+#")
-            
+
         sd.setPropertyValue("SearchRegularExpression", True)
         sd.setPropertyValue("SearchWords", True)
-        
+
         auxList = []
         allItems = self.xTextDocument.findAll(sd)
         for i in list(range(allItems.Count)):
             auxList.append(allItems.getByIndex(i))
-            
+
         return auxList
 
     class DateUtils(object):

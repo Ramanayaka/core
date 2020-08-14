@@ -59,7 +59,7 @@ namespace basegfx
 
             // to have the correct curve segments in the crossover checks,
             // it is necessary to keep the original next vectors, too. Else,
-            // it may happen to use a already switched next vector which
+            // it may happen to use an already switched next vector which
             // would interpolate the wrong comparison point
             B2DVector               maOriginalNext;
         };
@@ -93,7 +93,6 @@ namespace basegfx
         typedef std::vector< VN > VNV;
         typedef std::vector< SN > SNV;
         typedef std::pair< basegfx::B2DPoint /*orig*/, basegfx::B2DPoint /*repl*/ > CorrectionPair;
-        typedef std::vector< CorrectionPair > CorrectionTable;
 
         class solver
         {
@@ -102,7 +101,8 @@ namespace basegfx
             PNV                     maPNV;
             VNV                     maVNV;
             SNV                     maSNV;
-            CorrectionTable         maCorrectionTable;
+            std::vector< CorrectionPair >
+                                    maCorrectionTable;
 
             bool                    mbIsCurve : 1;
             bool                    mbChanged : 1;
@@ -142,7 +142,7 @@ namespace basegfx
                 // with border.
                 if(rVecA.cross(rVecB) > 0.0)
                 {
-                    // b is left turn seen from a, test if Test is left of both and so inside (left is seeen as inside)
+                    // b is left turn seen from a, test if Test is left of both and so inside (left is seen as inside)
                     const bool bBoolA(fTools::moreOrEqual(rVecA.cross(rTest), 0.0));
                     const bool bBoolB(fTools::lessOrEqual(rVecB.cross(rTest), 0.0));
 
@@ -150,7 +150,7 @@ namespace basegfx
                 }
                 else
                 {
-                    // b is right turn seen from a, test if Test is right of both and so outside (left is seeen as inside)
+                    // b is right turn seen from a, test if Test is right of both and so outside (left is seen as inside)
                     const bool bBoolA(fTools::lessOrEqual(rVecA.cross(rTest), 0.0));
                     const bool bBoolB(fTools::moreOrEqual(rVecB.cross(rTest), 0.0));
 
@@ -449,13 +449,13 @@ namespace basegfx
 
                             if(pLast->getX() != aMiddle.getX() || pLast->getY() != aMiddle.getY())
                             {
-                                maCorrectionTable.push_back(CorrectionPair(*pLast, aMiddle));
+                                maCorrectionTable.emplace_back(*pLast, aMiddle);
                                 *pLast = aMiddle;
                             }
 
                             if(pCurrent->getX() != aMiddle.getX() || pCurrent->getY() != aMiddle.getY())
                             {
-                                maCorrectionTable.push_back(CorrectionPair(*pCurrent, aMiddle));
+                                maCorrectionTable.emplace_back(*pCurrent, aMiddle);
                                 *pCurrent = aMiddle;
                             }
                         }
@@ -484,32 +484,32 @@ namespace basegfx
             {
                 const sal_uInt32 nOriginalCount(rOriginal.count());
 
-                if(nOriginalCount)
-                {
-                    B2DPolygon aGeometry(tools::addPointsAtCutsAndTouches(rOriginal));
-                    aGeometry.removeDoublePoints();
-                    aGeometry = tools::simplifyCurveSegments(aGeometry);
-                    mbIsCurve = aGeometry.areControlPointsUsed();
+                if(!nOriginalCount)
+                    return;
 
-                    const sal_uInt32 nPointCount(aGeometry.count());
+                B2DPolygon aGeometry(utils::addPointsAtCutsAndTouches(rOriginal));
+                aGeometry.removeDoublePoints();
+                aGeometry = utils::simplifyCurveSegments(aGeometry);
+                mbIsCurve = aGeometry.areControlPointsUsed();
 
-                    // If it's not a bezier polygon, at least four points are needed to create
-                    // a self-intersection. If it's a bezier polygon, the minimum point number
-                    // is two, since with a single point You get a curve, but no self-intersection
-                    if(nPointCount > 3 || (nPointCount > 1 && mbIsCurve))
-                    {
-                        // reserve space in point, control and sort vector.
-                        maSNV.reserve(nPointCount);
-                        maPNV.reserve(nPointCount);
-                        maVNV.reserve(mbIsCurve ? nPointCount : 0);
+                const sal_uInt32 nPointCount(aGeometry.count());
 
-                        // fill data
-                        impAddPolygon(0, aGeometry);
+                // If it's not a bezier polygon, at least four points are needed to create
+                // a self-intersection. If it's a bezier polygon, the minimum point number
+                // is two, since with a single point You get a curve, but no self-intersection
+                if(!(nPointCount > 3 || (nPointCount > 1 && mbIsCurve)))
+                    return;
 
-                        // solve common nodes
-                        impSolve();
-                    }
-                }
+                // reserve space in point, control and sort vector.
+                maSNV.reserve(nPointCount);
+                maPNV.reserve(nPointCount);
+                maVNV.reserve(mbIsCurve ? nPointCount : 0);
+
+                // fill data
+                impAddPolygon(0, aGeometry);
+
+                // solve common nodes
+                impSolve();
             }
 
             explicit solver(const B2DPolyPolygon& rOriginal)
@@ -519,65 +519,65 @@ namespace basegfx
             {
                 sal_uInt32 nOriginalCount(maOriginal.count());
 
-                if(nOriginalCount)
+                if(!nOriginalCount)
+                    return;
+
+                B2DPolyPolygon aGeometry(utils::addPointsAtCutsAndTouches(maOriginal));
+                aGeometry.removeDoublePoints();
+                aGeometry = utils::simplifyCurveSegments(aGeometry);
+                mbIsCurve = aGeometry.areControlPointsUsed();
+                nOriginalCount = aGeometry.count();
+
+                if(!nOriginalCount)
+                    return;
+
+                sal_uInt32 nPointCount(0);
+                sal_uInt32 a(0);
+
+                // count points
+                for(a = 0; a < nOriginalCount; a++)
                 {
-                    B2DPolyPolygon aGeometry(tools::addPointsAtCutsAndTouches(maOriginal));
-                    aGeometry.removeDoublePoints();
-                    aGeometry = tools::simplifyCurveSegments(aGeometry);
-                    mbIsCurve = aGeometry.areControlPointsUsed();
-                    nOriginalCount = aGeometry.count();
+                    const B2DPolygon& aCandidate(aGeometry.getB2DPolygon(a));
+                    const sal_uInt32 nCandCount(aCandidate.count());
 
-                    if(nOriginalCount)
+                    // If it's not a bezier curve, at least three points would be needed to have a
+                    // topological relevant (not empty) polygon. Since it's not known here if trivial
+                    // edges (dead ends) will be kept or sorted out, add non-bezier polygons with
+                    // more than one point.
+                    // For bezier curves, the minimum for defining an area is also one.
+                    if(nCandCount)
                     {
-                        sal_uInt32 nPointCount(0);
-                        sal_uInt32 a(0);
-
-                        // count points
-                        for(a = 0; a < nOriginalCount; a++)
-                        {
-                            const B2DPolygon aCandidate(aGeometry.getB2DPolygon(a));
-                            const sal_uInt32 nCandCount(aCandidate.count());
-
-                            // If it's not a bezier curve, at least three points would be needed to have a
-                            // topological relevant (not empty) polygon. Since it's not known here if trivial
-                            // edges (dead ends) will be kept or sorted out, add non-bezier polygons with
-                            // more than one point.
-                            // For bezier curves, the minimum for defining an area is also one.
-                            if(nCandCount)
-                            {
-                                nPointCount += nCandCount;
-                            }
-                        }
-
-                        if(nPointCount)
-                        {
-                            // reserve space in point, control and sort vector.
-                            maSNV.reserve(nPointCount);
-                            maPNV.reserve(nPointCount);
-                            maVNV.reserve(mbIsCurve ? nPointCount : 0);
-
-                            // fill data
-                            sal_uInt32 nInsertIndex(0);
-
-                            for(a = 0; a < nOriginalCount; a++)
-                            {
-                                const B2DPolygon aCandidate(aGeometry.getB2DPolygon(a));
-                                const sal_uInt32 nCandCount(aCandidate.count());
-
-                                // use same condition as above, the data vector is
-                                // pre-allocated
-                                if(nCandCount)
-                                {
-                                    impAddPolygon(nInsertIndex, aCandidate);
-                                    nInsertIndex += nCandCount;
-                                }
-                            }
-
-                            // solve common nodes
-                            impSolve();
-                        }
+                        nPointCount += nCandCount;
                     }
                 }
+
+                if(!nPointCount)
+                    return;
+
+                // reserve space in point, control and sort vector.
+                maSNV.reserve(nPointCount);
+                maPNV.reserve(nPointCount);
+                maVNV.reserve(mbIsCurve ? nPointCount : 0);
+
+                // fill data
+                sal_uInt32 nInsertIndex(0);
+
+                for(a = 0; a < nOriginalCount; a++)
+                {
+                    const B2DPolygon& aCandidate(aGeometry.getB2DPolygon(a));
+                    const sal_uInt32 nCandCount(aCandidate.count());
+
+                    // use same condition as above, the data vector is
+                    // pre-allocated
+                    if(nCandCount)
+                    {
+                        impAddPolygon(nInsertIndex, aCandidate);
+                        nInsertIndex += nCandCount;
+                    }
+                }
+
+                // solve common nodes
+                impSolve();
             }
 
             B2DPolyPolygon getB2DPolyPolygon()
@@ -680,10 +680,8 @@ namespace basegfx
     } // end of anonymous namespace
 } // end of namespace basegfx
 
-namespace basegfx
+namespace basegfx::utils
 {
-    namespace tools
-    {
 
         B2DPolyPolygon solveCrossovers(const B2DPolyPolygon& rCandidate)
         {
@@ -710,9 +708,9 @@ namespace basegfx
 
             for(sal_uInt32 a(0); a < rCandidate.count(); a++)
             {
-                const B2DPolygon aCandidate(rCandidate.getB2DPolygon(a));
+                const B2DPolygon& aCandidate(rCandidate.getB2DPolygon(a));
 
-                if(tools::getOrientation(aCandidate) != B2VectorOrientation::Neutral)
+                if(utils::getOrientation(aCandidate) != B2VectorOrientation::Neutral)
                 {
                     aRetval.append(aCandidate);
                 }
@@ -728,15 +726,15 @@ namespace basegfx
             // remove all self-intersections and intersections
             if(rCandidate.count() == 1)
             {
-                aCandidate = basegfx::tools::solveCrossovers(rCandidate.getB2DPolygon(0));
+                aCandidate = basegfx::utils::solveCrossovers(rCandidate.getB2DPolygon(0));
             }
             else
             {
-                aCandidate = basegfx::tools::solveCrossovers(rCandidate);
+                aCandidate = basegfx::utils::solveCrossovers(rCandidate);
             }
 
             // cleanup evtl. neutral polygons
-            aCandidate = basegfx::tools::stripNeutralPolygons(aCandidate);
+            aCandidate = basegfx::utils::stripNeutralPolygons(aCandidate);
 
             // remove all polygons which have the same orientation as the polygon they are directly contained in
             const sal_uInt32 nCount(aCandidate.count());
@@ -749,10 +747,10 @@ namespace basegfx
 
                 for(a = 0; a < nCount; a++)
                 {
-                    const B2DPolygon aCand(aCandidate.getB2DPolygon(a));
+                    const B2DPolygon& aCand(aCandidate.getB2DPolygon(a));
                     StripHelper* pNewHelper = &(aHelpers[a]);
-                    pNewHelper->maRange = tools::getRange(aCand);
-                    pNewHelper->meOrinetation = tools::getOrientation(aCand);
+                    pNewHelper->maRange = utils::getRange(aCand);
+                    pNewHelper->meOrinetation = utils::getOrientation(aCand);
 
                     // initialize with own orientation
                     pNewHelper->mnDepth = (pNewHelper->meOrinetation == B2VectorOrientation::Negative ? -1 : 1);
@@ -760,14 +758,14 @@ namespace basegfx
 
                 for(a = 0; a < nCount - 1; a++)
                 {
-                    const B2DPolygon aCandA(aCandidate.getB2DPolygon(a));
+                    const B2DPolygon& aCandA(aCandidate.getB2DPolygon(a));
                     StripHelper& rHelperA = aHelpers[a];
 
                     for(b = a + 1; b < nCount; b++)
                     {
-                        const B2DPolygon aCandB(aCandidate.getB2DPolygon(b));
+                        const B2DPolygon& aCandB(aCandidate.getB2DPolygon(b));
                         StripHelper& rHelperB = aHelpers[b];
-                        const bool bAInB(rHelperB.maRange.isInside(rHelperA.maRange) && tools::isInside(aCandB, aCandA, true));
+                        const bool bAInB(rHelperB.maRange.isInside(rHelperA.maRange) && utils::isInside(aCandB, aCandA, true));
 
                         if(bAInB)
                         {
@@ -775,7 +773,7 @@ namespace basegfx
                             rHelperA.mnDepth += (rHelperB.meOrinetation == B2VectorOrientation::Negative ? -1 : 1);
                         }
 
-                        const bool bBInA(rHelperA.maRange.isInside(rHelperB.maRange) && tools::isInside(aCandA, aCandB, true));
+                        const bool bBInA(rHelperA.maRange.isInside(rHelperB.maRange) && utils::isInside(aCandA, aCandB, true));
 
                         if(bBInA)
                         {
@@ -816,7 +814,7 @@ namespace basegfx
             {
                 if(nCount == 1)
                 {
-                    if(!bKeepAboveZero && tools::getOrientation(rCandidate.getB2DPolygon(0)) == B2VectorOrientation::Positive)
+                    if(!bKeepAboveZero && utils::getOrientation(rCandidate.getB2DPolygon(0)) == B2VectorOrientation::Positive)
                     {
                         aRetval = rCandidate;
                     }
@@ -829,24 +827,24 @@ namespace basegfx
 
                     for(a = 0; a < nCount; a++)
                     {
-                        const B2DPolygon aCandidate(rCandidate.getB2DPolygon(a));
+                        const B2DPolygon& aCandidate(rCandidate.getB2DPolygon(a));
                         StripHelper* pNewHelper = &(aHelpers[a]);
-                        pNewHelper->maRange = tools::getRange(aCandidate);
-                        pNewHelper->meOrinetation = tools::getOrientation(aCandidate);
+                        pNewHelper->maRange = utils::getRange(aCandidate);
+                        pNewHelper->meOrinetation = utils::getOrientation(aCandidate);
                         pNewHelper->mnDepth = (pNewHelper->meOrinetation == B2VectorOrientation::Negative ? -1 : 0);
                     }
 
                     for(a = 0; a < nCount - 1; a++)
                     {
-                        const B2DPolygon aCandA(rCandidate.getB2DPolygon(a));
+                        const B2DPolygon& aCandA(rCandidate.getB2DPolygon(a));
                         StripHelper& rHelperA = aHelpers[a];
 
                         for(b = a + 1; b < nCount; b++)
                         {
-                            const B2DPolygon aCandB(rCandidate.getB2DPolygon(b));
+                            const B2DPolygon& aCandB(rCandidate.getB2DPolygon(b));
                             StripHelper& rHelperB = aHelpers[b];
-                            const bool bAInB(rHelperB.maRange.isInside(rHelperA.maRange) && tools::isInside(aCandB, aCandA, true));
-                            const bool bBInA(rHelperA.maRange.isInside(rHelperB.maRange) && tools::isInside(aCandA, aCandB, true));
+                            const bool bAInB(rHelperB.maRange.isInside(rHelperA.maRange) && utils::isInside(aCandB, aCandA, true));
+                            const bool bBInA(rHelperA.maRange.isInside(rHelperB.maRange) && utils::isInside(aCandA, aCandB, true));
 
                             if(bAInB && bBInA)
                             {
@@ -861,8 +859,8 @@ namespace basegfx
                                 else
                                 {
                                     // poly and hole. They neutralize, so get rid of both. Move securely below zero.
-                                    rHelperA.mnDepth = -((sal_Int32)nCount);
-                                    rHelperB.mnDepth = -((sal_Int32)nCount);
+                                    rHelperA.mnDepth = - static_cast<sal_Int32>(nCount);
+                                    rHelperB.mnDepth = - static_cast<sal_Int32>(nCount);
                                 }
                             }
                             else
@@ -986,6 +984,42 @@ namespace basegfx
             }
             else
             {
+                // tdf#130150 shortcut & precision: If both are simple ranges,
+                // solve based on ranges
+                if(basegfx::utils::isRectangle(rCandidateA) && basegfx::utils::isRectangle(rCandidateB))
+                {
+                    // *if* both are ranges, AND always can be solved
+                    const basegfx::B2DRange aRangeA(rCandidateA.getB2DRange());
+                    const basegfx::B2DRange aRangeB(rCandidateB.getB2DRange());
+
+                    if(aRangeA.isInside(aRangeB))
+                    {
+                        // 2nd completely inside 1st -> 2nd is result of AND
+                        return rCandidateB;
+                    }
+
+                    if(aRangeB.isInside(aRangeA))
+                    {
+                        // 2nd completely inside 1st -> 2nd is result of AND
+                        return rCandidateA;
+                    }
+
+                    // solve by intersection
+                    basegfx::B2DRange aIntersect(aRangeA);
+                    aIntersect.intersect(aRangeB);
+
+                    if(aIntersect.isEmpty())
+                    {
+                        // no overlap -> empty polygon as result of AND
+                        return B2DPolyPolygon();
+                    }
+
+                    // create polygon result
+                    return B2DPolyPolygon(
+                        basegfx::utils::createPolygonFromRect(
+                            aIntersect));
+                }
+
                 // concatenate polygons, solve crossovers and throw away all sub-polygons
                 // with a depth of < 1. This means to keep all polygons where at least two
                 // polygons do overlap.
@@ -1019,10 +1053,10 @@ namespace basegfx
 
                 // solve crossovers and throw away all sub-polygons which have a
                 // depth other than 0.
-                aRetval = basegfx::tools::solveCrossovers(aRetval);
-                aRetval = basegfx::tools::stripNeutralPolygons(aRetval);
+                aRetval = basegfx::utils::solveCrossovers(aRetval);
+                aRetval = basegfx::utils::stripNeutralPolygons(aRetval);
 
-                return basegfx::tools::stripDispensablePolygons(aRetval);
+                return basegfx::utils::stripDispensablePolygons(aRetval);
             }
         }
 
@@ -1037,7 +1071,7 @@ namespace basegfx
                 B2DPolyPolygonVector aResult;
                 aResult.reserve(aInput.size());
 
-                for(basegfx::B2DPolyPolygon & a : aInput)
+                for(const basegfx::B2DPolyPolygon & a : aInput)
                 {
                     const basegfx::B2DPolyPolygon aCandidate(prepareForPolygonOperation(a));
 
@@ -1106,7 +1140,6 @@ namespace basegfx
             return B2DPolyPolygon();
         }
 
-    } // end of namespace tools
-} // end of namespace basegfx
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

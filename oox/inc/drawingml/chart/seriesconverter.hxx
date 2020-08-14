@@ -23,14 +23,12 @@
 #include <drawingml/chart/converterbase.hxx>
 #include <drawingml/chart/seriesmodel.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace chart2 { class XDataSeries; }
-    namespace chart2 { namespace data { class XLabeledDataSequence; } }
-} } }
+    namespace chart2::data { class XLabeledDataSequence; }
+}
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 class TypeGroupConverter;
 
@@ -38,7 +36,7 @@ class TypeGroupConverter;
 #define OOX_CHART_SMOOTHED_PER_SERIES 0
 
 
-class DataLabelConverter : public ConverterBase< DataLabelModel >
+class DataLabelConverter final : public ConverterBase< DataLabelModel >
 {
 public:
     explicit            DataLabelConverter( const ConverterRoot& rParent, DataLabelModel& rModel );
@@ -51,7 +49,7 @@ public:
 };
 
 
-class DataLabelsConverter : public ConverterBase< DataLabelsModel >
+class DataLabelsConverter final : public ConverterBase< DataLabelsModel >
 {
 public:
     explicit            DataLabelsConverter( const ConverterRoot& rParent, DataLabelsModel& rModel );
@@ -64,7 +62,7 @@ public:
 };
 
 
-class ErrorBarConverter : public ConverterBase< ErrorBarModel >
+class ErrorBarConverter final : public ConverterBase< ErrorBarModel >
 {
 public:
     explicit            ErrorBarConverter( const ConverterRoot& rParent, ErrorBarModel& rModel );
@@ -80,7 +78,7 @@ private:
 };
 
 
-class TrendlineLabelConverter : public ConverterBase< TrendlineLabelModel >
+class TrendlineLabelConverter final : public ConverterBase< TrendlineLabelModel >
 {
 public:
     explicit            TrendlineLabelConverter( const ConverterRoot& rParent, TrendlineLabelModel& rModel );
@@ -91,7 +89,7 @@ public:
 };
 
 
-class TrendlineConverter : public ConverterBase< TrendlineModel >
+class TrendlineConverter final : public ConverterBase< TrendlineModel >
 {
 public:
     explicit            TrendlineConverter( const ConverterRoot& rParent, TrendlineModel& rModel );
@@ -103,7 +101,7 @@ public:
 };
 
 
-class DataPointConverter : public ConverterBase< DataPointModel >
+class DataPointConverter final : public ConverterBase< DataPointModel >
 {
 public:
     explicit            DataPointConverter( const ConverterRoot& rParent, DataPointModel& rModel );
@@ -117,7 +115,7 @@ public:
 };
 
 
-class SeriesConverter : public ConverterBase< SeriesModel >
+class SeriesConverter final : public ConverterBase< SeriesModel >
 {
 public:
     explicit            SeriesConverter( const ConverterRoot& rParent, SeriesModel& rModel );
@@ -142,9 +140,7 @@ private:
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

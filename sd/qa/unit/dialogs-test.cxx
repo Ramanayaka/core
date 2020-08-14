@@ -10,48 +10,30 @@
 #include <memory>
 #include <sal/config.h>
 #include <test/screenshot_test.hxx>
-#include <rtl/strbuf.hxx>
-#include <osl/file.hxx>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/presentation/AnimationEffect.hpp>
 #include <com/sun/star/presentation/ClickAction.hpp>
 
-#include <sfx2/app.hxx>
-#include <sfx2/docfilt.hxx>
-#include <sfx2/docfile.hxx>
-#include <sfx2/sfxmodelfactory.hxx>
+#include <sfx2/sfxdlg.hxx>
+#include <svl/intitem.hxx>
 #include <svl/stritem.hxx>
 #include <svl/aeitem.hxx>
 #include <editeng/colritem.hxx>
-#include <svx/svdtext.hxx>
-#include <svx/svdotext.hxx>
-#include <vcl/sound.hxx>
+#include <svx/xfillit0.hxx>
+#include <vcl/svapp.hxx>
 
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
 
-#include <osl/process.h>
-#include <osl/thread.h>
-
-#include "sdabstdlg.hxx"
-#include <vcl/pngwrite.hxx>
-#include "unomodel.hxx"
-#include "ViewShell.hxx"
-#include "Window.hxx"
-#include "drawview.hxx"
-#include "DrawViewShell.hxx"
-#include <app.hrc>
-#include "stlsheet.hxx"
-#include "sdattr.hrc"
-#include "strings.hrc"
-#include "sdresid.hxx"
-#include "sdattr.hxx"
-#include "prltempl.hrc"
-
-#include <comphelper/servicehelper.hxx>
-#include <comphelper/processfactory.hxx>
-#include <unotest/macros_test.hxx>
+#include <sdabstdlg.hxx>
+#include <sdpage.hxx>
+#include <unomodel.hxx>
+#include <ViewShell.hxx>
+#include <drawview.hxx>
+#include <sdattr.hrc>
+#include <strings.hrc>
+#include <sdresid.hxx>
+#include <sdattr.hxx>
 
 using namespace ::com::sun::star;
 
@@ -114,10 +96,7 @@ SdDialogsTest::SdDialogsTest()
     mpImpressDocument(nullptr),
     mpDocShell(nullptr),
     mpViewShell(nullptr),
-    mpDrawView(nullptr),
-    mpSfxItemSetFromSdrObject(nullptr),
-    mpEmptySfxItemSet(nullptr),
-    mpEmptyFillStyleSfxItemSet(nullptr)
+    mpDrawView(nullptr)
 {
 }
 
@@ -273,20 +252,22 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             // it is more a 'wizard' in that it has prev/next buttons and implicitly
             // multiple pages. To make use of that it is necessary that the implementation
             // supports the 'Screenshot interface'
+            auto const parent = Application::GetDefDialogParent();
             pRetval = getSdAbstractDialogFactory()->CreateSdPublishingDlg(
-                Application::GetDefDialogParent(),
+                parent == nullptr ? nullptr : parent->GetFrameWeld(),
                 DocumentType::Impress);
             break;
         }
         case 1:
         {
-            // CreateBreakDlg(vcl::Window* pWindow, ::sd::DrawView* pDrView, ::sd::DrawDocShell* pShell, sal_uLong nSumActionCount, sal_uLong nObjCount) override;
+            // CreateBreakDlg(weld::Window* pWindow, ::sd::DrawView* pDrView, ::sd::DrawDocShell* pShell, sal_uLong nSumActionCount, sal_uLong nObjCount) override;
             // this dialog requires pDrawView. It does not show much when
             // there is no object selected that can be broken up. For better
             // results it might be necessary to add/select an object that
             // delivers a good metafile (which is the base for breaking)
+            auto const parent = Application::GetDefDialogParent();
             pRetval = getSdAbstractDialogFactory()->CreateBreakDlg(
-                Application::GetDefDialogParent(),
+                parent == nullptr ? nullptr : parent->GetFrameWeld(),
                 getDrawView(),
                 getDocShell(),
                 0,
@@ -297,7 +278,7 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
         {
             // needs an SfxItemSet, use the one from the 1st object
             pRetval = getSdAbstractDialogFactory()->CreateCopyDlg(
-                getViewShell()->GetActiveWindow(),
+                getViewShell()->GetFrameWeld(),
                 getSfxItemSetFromSdrObject(),
                 getDrawView());
             break;
@@ -309,8 +290,7 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             CPPUNIT_ASSERT(pDrawDoc);
 
             pRetval = getSdAbstractDialogFactory()->CreateSdCustomShowDlg(
-                getViewShell()->GetActiveWindow(),
-                *pDrawDoc);
+                getViewShell()->GetFrameWeld(), *pDrawDoc);
             break;
         }
         case 4:
@@ -319,28 +299,28 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             // needs an SfxItemSet, use an empty constructed one
             // needs a 'SfxObjectShell* pDocShell', crashes without
             pRetval = getSdAbstractDialogFactory()->CreateSdTabCharDialog(
-                getViewShell()->GetActiveWindow(),
+                getViewShell()->GetFrameWeld(),
                 &getEmptySfxItemSet(),
                 getDocShell());
             break;
         }
         case 5:
         {
-            // CreateSdTabPageDialog(const SfxItemSet* pAttr, SfxObjectShell* pDocShell, bool bAreaPage = true) override;
+            // CreateSdTabPageDialog(const SfxItemSet* pAttr, SfxObjectShell* pDocShell, bool bAreaPage = true, bool bIsImpressDoc) override;
             // needs a special SfxItemSet with merged content from page and other stuff, crashes without that (2nd page)
             // needs a 'SfxObjectShell* pDocShell', crashes without. Also sufficient: FillStyleItemSet with XFILL_NONE set
             pRetval = getSdAbstractDialogFactory()->CreateSdTabPageDialog(
-                getViewShell()->GetActiveWindow(),
+                getViewShell()->GetFrameWeld(),
                 &getEmptyFillStyleSfxItemSet(),
                 getDocShell(),
-                true);
+                true, false);
             break;
         }
         case 6:
         {
-            // CreateSdModifyFieldDlg(vcl::Window* pWindow, const SvxFieldData* pInField, const SfxItemSet& rSet) override;
+            // CreateSdModifyFieldDlg(weld::Window* pWindow, const SvxFieldData* pInField, const SfxItemSet& rSet) override;
             pRetval = getSdAbstractDialogFactory()->CreateSdModifyFieldDlg(
-                Application::GetDefDialogParent(),
+                getViewShell()->GetFrameWeld(),
                 nullptr,
                 getEmptySfxItemSet());
             break;
@@ -354,7 +334,7 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             aNewAttr.Put(SfxInt32Item(ATTR_SNAPLINE_X, 0));
             aNewAttr.Put(SfxInt32Item(ATTR_SNAPLINE_Y, 0));
             pRetval = getSdAbstractDialogFactory()->CreateSdSnapLineDlg(
-                getViewShell()->GetActiveWindow(),
+                getViewShell()->GetFrameWeld(),
                 aNewAttr,
                 getDrawView());
             break;
@@ -374,7 +354,7 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             aNewAttr.Put(makeSdAttrLayerLocked());
             aNewAttr.Put(makeSdAttrLayerThisPage());
             pRetval = getSdAbstractDialogFactory()->CreateSdInsertLayerDlg(
-                getViewShell()->GetActiveWindow(),
+                getViewShell()->GetFrameWeld(),
                 aNewAttr,
                 true, // alternative: false
                 SdResId(STR_INSERTLAYER) /* alternative: STR_MODIFYLAYER */);
@@ -385,17 +365,16 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             // CreateSdInsertPagesObjsDlg(const SdDrawDocument* pDoc, SfxMedium* pSfxMedium, const OUString& rFileName) override;
             SdDrawDocument* pDrawDoc = getSdXImpressDocument()->GetDoc();
             CPPUNIT_ASSERT(pDrawDoc);
-            const OUString aFileName("foo");
             pRetval = getSdAbstractDialogFactory()->CreateSdInsertPagesObjsDlg(
-                getViewShell()->GetActiveWindow(),
+                getViewShell()->GetFrameWeld(),
                 pDrawDoc,
                 nullptr,
-                aFileName);
+                "foo");
             break;
         }
         case 10:
         {
-            // CreateMorphDlg(vcl::Window* pParent, const SdrObject* pObj1, const SdrObject* pObj2) override;
+            // CreateMorphDlg(weld::Window* pParent, const SdrObject* pObj1, const SdrObject* pObj2) override;
             SdDrawDocument* pDrawDoc = getSdXImpressDocument()->GetDoc();
             CPPUNIT_ASSERT(pDrawDoc);
             SdPage* pSdPage = pDrawDoc->GetSdPage(0, PageKind::Standard);
@@ -403,8 +382,9 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             SdrObject* pSdrObj = pSdPage->GetObj(0);
             // using one SdrObject is okay, none crashes
             CPPUNIT_ASSERT(pSdrObj);
+            auto const parent = Application::GetDefDialogParent();
             pRetval = getSdAbstractDialogFactory()->CreateMorphDlg(
-                Application::GetDefDialogParent(),
+                parent == nullptr ? nullptr : parent->GetFrameWeld(),
                 pSdrObj,
                 pSdrObj);
             break;
@@ -412,8 +392,9 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
         case 11:
         {
             // CreateSdOutlineBulletTabDlg(const SfxItemSet* pAttr, ::sd::View* pView = nullptr) override;
+            auto const parent = Application::GetDefDialogParent();
             pRetval = getSdAbstractDialogFactory()->CreateSdOutlineBulletTabDlg(
-                getViewShell()->GetActiveWindow(),
+                parent == nullptr ? nullptr : parent->GetFrameWeld(),
                 &getEmptySfxItemSet(),
                 getDrawView());
             break;
@@ -422,14 +403,13 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
         {
             // CreateSdParagraphTabDlg(const SfxItemSet* pAttr) override;
             pRetval = getSdAbstractDialogFactory()->CreateSdParagraphTabDlg(
-                getViewShell()->GetActiveWindow(),
+                getViewShell()->GetFrameWeld(),
                 &getEmptySfxItemSet());
             break;
         }
         case 13:
         {
-            // CreateSdStartPresentationDlg(vcl::Window* pWindow, const SfxItemSet& rInAttrs, const std::vector<OUString> &rPageNames, SdCustomShowList* pCSList) override;
-            const std::vector<OUString> aPageNames;
+            // CreateSdStartPresentationDlg(weld::Window* pWindow, const SfxItemSet& rInAttrs, const std::vector<OUString> &rPageNames, SdCustomShowList* pCSList) override;
             SdDrawDocument* pDrawDoc = getSdXImpressDocument()->GetDoc();
             CPPUNIT_ASSERT(pDrawDoc);
             SfxItemSet aDlgSet(pDrawDoc->GetItemPool(), svl::Items<ATTR_PRESENT_START, ATTR_PRESENT_END>{});
@@ -449,42 +429,47 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             aDlgSet.Put(SfxBoolItem(ATTR_PRESENT_SHOW_PAUSELOGO, rPresentationSettings.mbShowPauseLogo));
             //SdOptions* pOptions = SD_MOD()->GetSdOptions(DocumentType::Impress);
             aDlgSet.Put(SfxInt32Item(ATTR_PRESENT_DISPLAY, 0 /*pOptions->GetDisplay()*/));
+            vcl::Window* pWin = Application::GetDefDialogParent();
             pRetval = getSdAbstractDialogFactory()->CreateSdStartPresentationDlg(
-                Application::GetDefDialogParent(),
+                pWin ? pWin->GetFrameWeld() : nullptr,
                 aDlgSet,
-                aPageNames,
+                std::vector<OUString>(),
                 nullptr);
             break;
         }
         case 14:
         {
+            auto const parent = Application::GetDefDialogParent();
             // CreateRemoteDialog(vcl::Window* pWindow) override; // ad for RemoteDialog
             pRetval = getSdAbstractDialogFactory()->CreateRemoteDialog(
-                Application::GetDefDialogParent());
+                parent == nullptr ? nullptr : parent->GetFrameWeld());
             break;
         }
         case 15:
         {
-            // CreateSdPresLayoutTemplateDlg(SfxObjectShell* pDocSh, vcl::Window* pParent, const SdResId& DlgId, SfxStyleSheetBase& rStyleBase, PresentationObjects ePO, SfxStyleSheetBasePool* pSSPool) override;
+            // CreateSdPresLayoutTemplateDlg(SfxObjectShell* pDocSh, weld::Window* pParent, const SdResId& DlgId, SfxStyleSheetBase& rStyleBase, PresentationObjects ePO, SfxStyleSheetBasePool* pSSPool) override;
             // use STR_PSEUDOSHEET_TITLE configuration, see futempl.cxx for more possible configurations
-            // may be nicer on the long run to take a configuration whch represents a selected SdrObject
+            // may be nicer on the long run to take a configuration which represents a selected SdrObject
             SfxStyleSheetBasePool* pStyleSheetPool = getDocShell()->GetStyleSheetPool();
             CPPUNIT_ASSERT(pStyleSheetPool);
-            SfxStyleSheetBase* pStyleSheet = pStyleSheetPool->First();
+            SfxStyleSheetBase* pStyleSheet = pStyleSheetPool->First(SfxStyleFamily::Page);
             CPPUNIT_ASSERT(pStyleSheet);
+            vcl::Window* pWin = Application::GetDefDialogParent();
             pRetval = getSdAbstractDialogFactory()->CreateSdPresLayoutTemplateDlg(
                 getDocShell(),
-                Application::GetDefDialogParent(),
-                TAB_PRES_LAYOUT_TEMPLATE,
+                pWin ? pWin->GetFrameWeld() : nullptr,
+                false,
                 *pStyleSheet,
-                PO_TITLE,
+                PresentationObjects::Title,
                 pStyleSheetPool);
             break;
         }
         case 16:
         {
             // CreateSdPresLayoutDlg(::sd::DrawDocShell* pDocShell, vcl::Window* pWindow, const SfxItemSet& rInAttrs) override;
+            auto const parent = Application::GetDefDialogParent();
             pRetval = getSdAbstractDialogFactory()->CreateSdPresLayoutDlg(
+                parent == nullptr ? nullptr : parent->GetFrameWeld(),
                 getDocShell(),
                 getEmptySfxItemSet());
             break;
@@ -493,15 +478,15 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
         {
             // CreateSdTabTemplateDlg(const SfxObjectShell* pDocShell, SfxStyleSheetBase& rStyleBase, SdrModel* pModel, SdrView* pView) override;
             // pretty similar to CreateSdPresLayoutTemplateDlg, see above
-            // may be nicer on the long run to take a configuration whch represents a selected SdrObject
+            // may be nicer on the long run to take a configuration which represents a selected SdrObject
             SfxStyleSheetBasePool* pStyleSheetPool = getDocShell()->GetStyleSheetPool();
             CPPUNIT_ASSERT(pStyleSheetPool);
-            SfxStyleSheetBase* pStyleSheet = pStyleSheetPool->First();
+            SfxStyleSheetBase* pStyleSheet = pStyleSheetPool->First(SfxStyleFamily::Pseudo);
             CPPUNIT_ASSERT(pStyleSheet);
             SdDrawDocument* pDrawDoc = getSdXImpressDocument()->GetDoc();
             CPPUNIT_ASSERT(pDrawDoc);
             pRetval = getSdAbstractDialogFactory()->CreateSdTabTemplateDlg(
-                getViewShell()->GetActiveWindow(),
+                getViewShell()->GetFrameWeld(),
                 getDocShell(),
                 *pStyleSheet,
                 pDrawDoc,
@@ -515,64 +500,67 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             CPPUNIT_ASSERT(pDrawDoc);
             SfxItemSet aSet(pDrawDoc->GetItemPool(), svl::Items<ATTR_ANIMATION_START, ATTR_ACTION_END>{});
             aSet.Put(SfxBoolItem(ATTR_ANIMATION_ACTIVE, false));
-            aSet.Put(SfxAllEnumItem(ATTR_ANIMATION_EFFECT, sal_uInt16(presentation::AnimationEffect_NONE)));
-            aSet.Put(SfxAllEnumItem(ATTR_ANIMATION_TEXTEFFECT, sal_uInt16(presentation::AnimationEffect_NONE)));
+            aSet.Put(SfxUInt16Item(ATTR_ANIMATION_EFFECT, sal_uInt16(presentation::AnimationEffect_NONE)));
+            aSet.Put(SfxUInt16Item(ATTR_ANIMATION_TEXTEFFECT, sal_uInt16(presentation::AnimationEffect_NONE)));
             aSet.InvalidateItem(ATTR_ANIMATION_SPEED);
             aSet.Put(SfxBoolItem(ATTR_ANIMATION_FADEOUT, false));
-            aSet.Put(SvxColorItem(RGB_Color(COL_LIGHTGRAY), ATTR_ANIMATION_COLOR));
+            aSet.Put(SvxColorItem(COL_LIGHTGRAY, ATTR_ANIMATION_COLOR));
             aSet.Put(SfxBoolItem(ATTR_ANIMATION_INVISIBLE, false));
             aSet.Put(SfxBoolItem(ATTR_ANIMATION_SOUNDON, false));
             aSet.InvalidateItem(ATTR_ANIMATION_SOUNDFILE);
             aSet.Put(SfxBoolItem(ATTR_ANIMATION_PLAYFULL, false));
-            aSet.Put(SfxAllEnumItem(ATTR_ACTION, sal_uInt16(presentation::ClickAction_NONE)));
+            aSet.Put(SfxUInt16Item(ATTR_ACTION, sal_uInt16(presentation::ClickAction_NONE)));
             aSet.InvalidateItem(ATTR_ACTION_FILENAME);
-            aSet.Put(SfxAllEnumItem(ATTR_ACTION_EFFECT, sal_uInt16(presentation::AnimationEffect_NONE)));
+            aSet.Put(SfxUInt16Item(ATTR_ACTION_EFFECT, sal_uInt16(presentation::AnimationEffect_NONE)));
             aSet.InvalidateItem(ATTR_ACTION_EFFECTSPEED);
             aSet.Put(SfxBoolItem(ATTR_ACTION_SOUNDON, false));
             aSet.Put(SfxBoolItem(ATTR_ACTION_PLAYFULL, false));
             pRetval = getSdAbstractDialogFactory()->CreatSdActionDialog(
-                getViewShell()->GetActiveWindow(),
+                getViewShell()->GetFrameWeld(),
                 &aSet,
                 getDrawView());
             break;
         }
         case 19:
         {
-            // CreateSdVectorizeDlg(vcl::Window* pParent, const Bitmap& rBmp, ::sd::DrawDocShell* pDocShell) override;
+            // CreateSdVectorizeDlg(weld::Window* pParent, const Bitmap& rBmp, ::sd::DrawDocShell* pDocShell) override;
             // works well with empty Bitmap, but my be nicer with setting one
             Bitmap aEmptyBitmap;
+            auto const parent = Application::GetDefDialogParent();
             pRetval = getSdAbstractDialogFactory()->CreateSdVectorizeDlg(
-                Application::GetDefDialogParent(),
+                parent == nullptr ? nullptr : parent->GetFrameWeld(),
                 aEmptyBitmap,
                 getDocShell());
             break;
         }
         case 20:
         {
-            // CreateSdPhotoAlbumDialog(vcl::Window* pWindow, SdDrawDocument* pDoc) override;
+            // CreateSdPhotoAlbumDialog(weld::Window* pWindow, SdDrawDocument* pDoc) override;
             SdDrawDocument* pDrawDoc = getSdXImpressDocument()->GetDoc();
             CPPUNIT_ASSERT(pDrawDoc);
+            auto const parent = Application::GetDefDialogParent();
             pRetval = getSdAbstractDialogFactory()->CreateSdPhotoAlbumDialog(
-                Application::GetDefDialogParent(),
+                parent == nullptr ? nullptr : parent->GetFrameWeld(),
                 pDrawDoc);
             break;
         }
         case 21:
         {
-            // CreateMasterLayoutDialog(vcl::Window* pParent, SdDrawDocument* pDoc, SdPage*) override;
+            // CreateMasterLayoutDialog(weld::Window* pParent, SdDrawDocument* pDoc, SdPage*) override;
             SdDrawDocument* pDrawDoc = getSdXImpressDocument()->GetDoc();
             CPPUNIT_ASSERT(pDrawDoc);
             SdPage* pSdPage = pDrawDoc->GetSdPage(0, PageKind::Standard);
             CPPUNIT_ASSERT(pSdPage);
+            auto const parent = Application::GetDefDialogParent();
             pRetval = getSdAbstractDialogFactory()->CreateMasterLayoutDialog(
-                Application::GetDefDialogParent(),
+                parent == nullptr ? nullptr : parent->GetFrameWeld(),
                 pDrawDoc,
                 pSdPage);
             break;
         }
         case 22:
         {
-            // CreateHeaderFooterDialog(sd::ViewShell* pViewShell, vcl::Window* pParent, SdDrawDocument* pDoc, SdPage* pCurrentPage) override;
+            // CreateHeaderFooterDialog(sd::ViewShell* pViewShell, weld::Window* pParent, SdDrawDocument* pDoc, SdPage* pCurrentPage) override;
             // This is a hard case, for two reasons:
             // - It uses BaseClass TabPage which has a very sparse interface,
             //   need to add 'Screenshot interface' there and implement
@@ -583,9 +571,10 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             CPPUNIT_ASSERT(pDrawDoc);
             SdPage* pSdPage = pDrawDoc->GetSdPage(0, PageKind::Standard);
             CPPUNIT_ASSERT(pSdPage);
+            auto const parent = Application::GetDefDialogParent();
             pRetval = getSdAbstractDialogFactory()->CreateHeaderFooterDialog(
                 getViewShell(),
-                Application::GetDefDialogParent(),
+                parent == nullptr ? nullptr : parent->GetFrameWeld(),
                 pDrawDoc,
                 pSdPage);
             break;
@@ -608,13 +597,13 @@ void SdDialogsTest::openAnyDialog()
     }
 
     /// example how to dump all known dialogs
-    if (false)
+    if ((false))
     {
         processAllKnownDialogs();
     }
 
     /// example how to dump exactly one known dialog
-    if (false)
+    if ((false))
     {
         // example for SfxTabDialog: 5 -> "modules/sdraw/ui/drawpagedialog.ui"
         // example for TabDialog: 22 -> "modules/simpress/ui/headerfooterdialog.ui"
@@ -630,12 +619,12 @@ void SdDialogsTest::openAnyDialog()
         {
             // unknown dialog, should not happen in this basic loop.
             // You have probably forgotten to add a case and
-            // implementastion to createDialogByID, please do this
+            // implementation to createDialogByID, please do this
         }
     }
 
     /// example how to dump a dialog using fallback functionality
-    if (false)
+    if ((false))
     {
         // unknown dialog, try fallback to generic created
         // VclBuilder-generated instance. Keep in mind that Dialogs

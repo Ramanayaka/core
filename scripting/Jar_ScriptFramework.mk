@@ -10,10 +10,7 @@
 $(eval $(call gb_Jar_Jar,ScriptFramework))
 
 $(eval $(call gb_Jar_use_jars,ScriptFramework,\
-	juh \
-	jurt \
-	ridl \
-	unoil \
+	libreoffice \
 ))
 
 $(eval $(call gb_Jar_set_componentfile,ScriptFramework,scripting/java/ScriptFramework,OOO))
@@ -46,7 +43,6 @@ $(eval $(call gb_Jar_add_sourcefiles,ScriptFramework,\
 	scripting/java/com/sun/star/script/framework/log/LogUtils \
 	scripting/java/com/sun/star/script/framework/provider/ClassLoaderFactory \
 	scripting/java/com/sun/star/script/framework/provider/EditorScriptContext \
-	scripting/java/com/sun/star/script/framework/provider/NoSuitableClassLoaderException \
 	scripting/java/com/sun/star/script/framework/provider/PathUtils \
 	scripting/java/com/sun/star/script/framework/provider/ScriptContext \
 	scripting/java/com/sun/star/script/framework/provider/ScriptEditor \

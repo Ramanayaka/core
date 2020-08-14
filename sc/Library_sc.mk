@@ -13,7 +13,7 @@ $(eval $(call gb_Library_add_sdi_headers,sc,sc/sdi/scslots))
 
 $(eval $(call gb_Library_set_componentfile,sc,sc/util/sc))
 
-$(eval $(call gb_Library_set_precompiled_header,sc,$(SRCDIR)/sc/inc/pch/precompiled_sc))
+$(eval $(call gb_Library_set_precompiled_header,sc,sc/inc/pch/precompiled_sc))
 
 $(eval $(call gb_Library_set_include,sc,\
     -I$(SRCDIR)/sc/source/core/inc \
@@ -29,11 +29,22 @@ $(eval $(call gb_Library_add_defs,sc,\
     -DSC_INFO_OSVERSION=\"$(OS)\" \
 ))
 
+# there is an odd case of this about std::function in dataproviderdlg.cxx that resists more localised suppression
+ifeq ($(COM),MSC)
+$(eval $(call gb_Library_add_cxxflags,sc,\
+	-wd4121 \
+))
+endif
+
 $(eval $(call gb_Library_use_custom_headers,sc,\
     officecfg/registry \
 ))
 
-$(eval $(call gb_Library_use_sdk_api,sc))
+$(eval $(call gb_Library_use_api,sc,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_Library_use_externals,sc,\
     boost_headers \
@@ -85,6 +96,10 @@ $(eval $(call gb_Library_use_libraries,sc,\
         vbahelper) \
     vcl \
     xo \
+))
+
+$(eval $(call gb_Library_add_exception_objects,sc,\
+    sc/source/core/tool/arraysumSSE2, $(CXXFLAGS_INTRINSICS_SSE2) \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,sc,\
@@ -236,9 +251,11 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/core/tool/interpr6 \
     sc/source/core/tool/interpr7 \
     sc/source/core/tool/interpr8 \
+    sc/source/core/tool/interpretercontext \
     sc/source/core/tool/jumpmatrix \
     sc/source/core/tool/listenerquery \
     sc/source/core/tool/lookupcache \
+    sc/source/core/tool/math \
     sc/source/core/tool/matrixoperators \
     sc/source/core/tool/navicfg \
     sc/source/core/tool/numformat \
@@ -263,11 +280,9 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/core/tool/refreshtimer \
     sc/source/core/tool/reftokenhelper \
     sc/source/core/tool/refupdat \
-    sc/source/core/tool/reordermap \
     sc/source/core/tool/scmatrix \
     sc/source/core/tool/scopetools \
     sc/source/core/tool/sharedformula \
-    sc/source/core/tool/simplerangelist \
     sc/source/core/tool/stringutil \
     sc/source/core/tool/stylehelper \
     sc/source/core/tool/subtotal \
@@ -277,6 +292,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/core/tool/unitconv \
     sc/source/core/tool/userlist \
     sc/source/core/tool/viewopti \
+    sc/source/core/tool/webservicelink \
     sc/source/core/tool/zforauto \
     sc/source/filter/xml/datastreamimport \
     sc/source/filter/xml/XMLCalculationSettingsContext \
@@ -325,6 +341,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/filter/xml/xmlfonte \
     sc/source/filter/xml/xmlimprt \
     sc/source/filter/xml/xmllabri \
+    sc/source/filter/xml/xmlmappingi \
     sc/source/filter/xml/xmlnexpi \
     sc/source/filter/xml/xmlrowi \
     sc/source/filter/xml/xmlsceni \
@@ -333,8 +350,8 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/filter/xml/xmlstyli \
     sc/source/filter/xml/xmlsubti \
     sc/source/filter/xml/xmltabi \
+    sc/source/filter/xml/xmltransformationi \
     sc/source/filter/xml/xmlwrap \
-    sc/source/filter/chart/chart_imp \
     sc/source/filter/importfilterdata \
     sc/source/ui/Accessibility/AccessibilityHints \
     sc/source/ui/Accessibility/AccessibleCell \
@@ -345,10 +362,6 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/Accessibility/AccessibleDocumentBase \
     sc/source/ui/Accessibility/AccessibleDocumentPagePreview \
     sc/source/ui/Accessibility/AccessibleEditObject \
-    sc/source/ui/Accessibility/AccessibleFilterMenu \
-    sc/source/ui/Accessibility/AccessibleFilterMenuItem \
-    sc/source/ui/Accessibility/AccessibleFilterTopWindow \
-    sc/source/ui/Accessibility/AccessibleGlobal \
     sc/source/ui/Accessibility/AccessiblePageHeader \
     sc/source/ui/Accessibility/AccessiblePageHeaderArea \
     sc/source/ui/Accessibility/AccessiblePreviewCell \
@@ -382,6 +395,12 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/condformat/condformatdlgitem \
     sc/source/ui/condformat/condformathelper \
     sc/source/ui/condformat/colorformat \
+    sc/source/ui/dataprovider/csvdataprovider \
+    sc/source/ui/dataprovider/dataprovider \
+    sc/source/ui/dataprovider/datatransformation \
+    sc/source/ui/dataprovider/htmldataprovider \
+    sc/source/ui/dataprovider/xmldataprovider \
+    sc/source/ui/dataprovider/sqldataprovider \
     sc/source/ui/dbgui/asciiopt \
     sc/source/ui/dbgui/consdlg \
     sc/source/ui/dbgui/csvcontrol \
@@ -417,7 +436,6 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/docshell/docsh8 \
     sc/source/ui/docshell/documentlinkmgr \
     sc/source/ui/docshell/editable \
-    sc/source/ui/docshell/dataprovider \
     sc/source/ui/docshell/externalrefmgr \
     sc/source/ui/docshell/impex \
     sc/source/ui/docshell/macromgr \
@@ -463,6 +481,8 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/miscdlgs/conflictsdlg \
     sc/source/ui/miscdlgs/crnrdlg \
     sc/source/ui/miscdlgs/datastreamdlg \
+    sc/source/ui/miscdlgs/dataproviderdlg \
+    sc/source/ui/miscdlgs/datatableview \
     sc/source/ui/miscdlgs/highred \
     sc/source/ui/miscdlgs/mergecellsdialog \
     sc/source/ui/miscdlgs/optsolver \
@@ -488,7 +508,6 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/sidebar/AlignmentPropertyPanel \
     sc/source/ui/sidebar/CellLineStyleControl \
     sc/source/ui/sidebar/CellLineStyleValueSet \
-    sc/source/ui/sidebar/CellBorderUpdater \
     sc/source/ui/sidebar/CellAppearancePropertyPanel \
     sc/source/ui/sidebar/CellBorderStyleControl \
     sc/source/ui/sidebar/NumberFormatControl \
@@ -500,6 +519,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/StatisticsDialogs/ChiSquareTestDialog \
     sc/source/ui/StatisticsDialogs/DescriptiveStatisticsDialog \
     sc/source/ui/StatisticsDialogs/ExponentialSmoothingDialog \
+    sc/source/ui/StatisticsDialogs/FourierAnalysisDialog \
     sc/source/ui/StatisticsDialogs/FTestDialog \
     sc/source/ui/StatisticsDialogs/MatrixComparisonGenerator \
     sc/source/ui/StatisticsDialogs/MovingAverageDialog \
@@ -697,12 +717,6 @@ $(eval $(call gb_Library_add_libs,sc,\
 ))
 endif
 
-ifeq ($(OS), $(filter LINUX %BSD SOLARIS, $(OS)))
-$(eval $(call gb_Library_add_libs,sc,\
-    -lpthread \
-))
-endif
-
 $(eval $(call gb_SdiTarget_SdiTarget,sc/sdi/scslots,sc/sdi/scalc))
 
 $(eval $(call gb_SdiTarget_set_include,sc/sdi/scslots,\
@@ -712,8 +726,5 @@ $(eval $(call gb_SdiTarget_set_include,sc/sdi/scslots,\
     -I$(SRCDIR)/sfx2/sdi \
     $$(INCLUDE) \
 ))
-
-# Runtime dependency for unit-tests
-$(eval $(call gb_Library_use_restarget,sc,sc))
 
 # vim: set noet sw=4 ts=4:

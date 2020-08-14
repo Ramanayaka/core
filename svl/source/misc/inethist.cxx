@@ -22,10 +22,7 @@
 #include <algorithm>
 #include <string.h>
 
-#include <rtl/instance.hxx>
 #include <rtl/crc.h>
-#include <osl/getglobalmutex.hxx>
-#include <tools/solar.h>
 #include <tools/debug.hxx>
 #include <tools/urlobj.hxx>
 
@@ -114,7 +111,7 @@ class INetURLHistory_Impl
 
     static sal_uInt16 capacity()
     {
-        return (sal_uInt16)(INETHIST_SIZE_LIMIT);
+        return sal_uInt16(INETHIST_SIZE_LIMIT);
     }
 
     static sal_uInt32 crc32 (OUString const & rData)
@@ -155,7 +152,7 @@ public:
     /** putUrl/queryUrl.
     */
     void putUrl   (const OUString &rUrl);
-    bool queryUrl (const OUString &rUrl);
+    bool queryUrl (const OUString &rUrl) const;
 };
 
 INetURLHistory_Impl::INetURLHistory_Impl()
@@ -242,7 +239,7 @@ void INetURLHistory_Impl::putUrl (const OUString &rUrl)
         sal_uInt16 nLRU = m_pList[m_aHead.m_nNext].m_nPrev;
 
         sal_uInt16 nSI = find (m_pList[nLRU].m_nHash);
-        if (!(nLRU == m_pHash[nSI].m_nLru))
+        if (nLRU != m_pHash[nSI].m_nLru)
         {
             // Update LRU chain.
             nLRU = m_pHash[nSI].m_nLru;
@@ -255,16 +252,10 @@ void INetURLHistory_Impl::putUrl (const OUString &rUrl)
 
         // Check source and destination.
         sal_uInt16 nDI = std::min (k, sal_uInt16(capacity() - 1));
-        if (nSI < nDI)
-        {
-            if (!(m_pHash[nDI] < h))
-                nDI -= 1;
-        }
-        if (nDI < nSI)
-        {
-            if (m_pHash[nDI] < h)
-                nDI += 1;
-        }
+        if (nSI < nDI && !(m_pHash[nDI] < h))
+            nDI -= 1;
+        if (nDI < nSI && m_pHash[nDI] < h)
+            nDI += 1;
 
         // Assign data.
         m_pList[m_aHead.m_nNext].m_nHash = m_pHash[nSI].m_nHash = h;
@@ -272,29 +263,12 @@ void INetURLHistory_Impl::putUrl (const OUString &rUrl)
     }
 }
 
-bool INetURLHistory_Impl::queryUrl (const OUString &rUrl)
+bool INetURLHistory_Impl::queryUrl (const OUString &rUrl) const
 {
     sal_uInt32 h = crc32 (rUrl);
     sal_uInt16 k = find (h);
-    if ((k < capacity()) && (m_pHash[k] == h))
-    {
-        // Cache hit.
-        return true;
-    }
-    else
-    {
-        // Cache miss.
-        return false;
-    }
-}
-
-/*
- * INetURLHistory::StaticInstance implementation.
- */
-INetURLHistory * INetURLHistory::StaticInstance::operator ()()
-{
-    static INetURLHistory g_aInstance;
-    return &g_aInstance;
+    // true if cache hit
+    return (k < capacity()) && (m_pHash[k] == h);
 }
 
 INetURLHistory::INetURLHistory() : m_pImpl (new INetURLHistory_Impl())
@@ -310,10 +284,8 @@ INetURLHistory::~INetURLHistory()
  */
 INetURLHistory* INetURLHistory::GetOrCreate()
 {
-    return rtl_Instance<
-        INetURLHistory, StaticInstance,
-        osl::MutexGuard, osl::GetGlobalMutex >::create (
-            StaticInstance(), osl::GetGlobalMutex());
+    static INetURLHistory instance;
+    return &instance;
 }
 
 void INetURLHistory::NormalizeUrl_Impl (INetURLObject &rUrl)
@@ -355,22 +327,22 @@ void INetURLHistory::NormalizeUrl_Impl (INetURLObject &rUrl)
 void INetURLHistory::PutUrl_Impl (const INetURLObject &rUrl)
 {
     DBG_ASSERT (m_pImpl, "PutUrl_Impl(): no Implementation");
-    if (m_pImpl)
+    if (!m_pImpl)
+        return;
+
+    INetURLObject aHistUrl (rUrl);
+    NormalizeUrl_Impl (aHistUrl);
+
+    m_pImpl->putUrl (aHistUrl.GetMainURL(INetURLObject::DecodeMechanism::NONE));
+    Broadcast (INetURLHistoryHint (&rUrl));
+
+    if (aHistUrl.HasMark())
     {
-        INetURLObject aHistUrl (rUrl);
-        NormalizeUrl_Impl (aHistUrl);
+        aHistUrl.SetURL (aHistUrl.GetURLNoMark(INetURLObject::DecodeMechanism::NONE),
+                         INetURLObject::EncodeMechanism::NotCanonical);
 
         m_pImpl->putUrl (aHistUrl.GetMainURL(INetURLObject::DecodeMechanism::NONE));
-        Broadcast (INetURLHistoryHint (&rUrl));
-
-        if (aHistUrl.HasMark())
-        {
-            aHistUrl.SetURL (aHistUrl.GetURLNoMark(INetURLObject::DecodeMechanism::NONE),
-                             INetURLObject::EncodeMechanism::NotCanonical);
-
-            m_pImpl->putUrl (aHistUrl.GetMainURL(INetURLObject::DecodeMechanism::NONE));
-            Broadcast (INetURLHistoryHint (&aHistUrl));
-        }
+        Broadcast (INetURLHistoryHint (&aHistUrl));
     }
 }
 

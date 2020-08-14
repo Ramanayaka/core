@@ -19,28 +19,28 @@
 
 #include <node.hxx>
 
-#include <stdio.h>
 #include <string.h>
 
 #include <libxml/xmlstring.h>
 
 #include <algorithm>
 
-#include <rtl/uuid.h>
 #include <rtl/instance.hxx>
 #include <osl/mutex.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
+#include <com/sun/star/xml/dom/DOMException.hpp>
+#include <com/sun/star/xml/dom/events/XMutationEvent.hpp>
 #include <com/sun/star/xml/sax/FastToken.hpp>
 
 #include <comphelper/servicehelper.hxx>
 
-#include <document.hxx>
-#include <attr.hxx>
-#include <childlist.hxx>
+#include "document.hxx"
+#include "attr.hxx"
+#include "childlist.hxx"
 
-#include "../events/eventdispatcher.hxx"
-#include "../events/mutationevent.hxx"
+#include <eventdispatcher.hxx>
 
 using namespace css;
 using namespace css::uno;
@@ -75,10 +75,10 @@ namespace DOM
         for (xmlNsPtr pNs = pNode->nsDef; pNs != nullptr; pNs = pNs->next) {
             const xmlChar *pPrefix = pNs->prefix;
             // prefix can be NULL when xmlns attribute is empty (xmlns="")
-            OString prefix(reinterpret_cast<const sal_Char*>(pPrefix),
+            OString prefix(reinterpret_cast<const char*>(pPrefix),
                            pPrefix ? strlen(reinterpret_cast<const char*>(pPrefix)) : 0);
             const xmlChar *pHref = pNs->href;
-            OUString val(reinterpret_cast<const sal_Char*>(pHref),
+            OUString val(reinterpret_cast<const char*>(pHref),
                 strlen(reinterpret_cast<const char*>(pHref)),
                 RTL_TEXTENCODING_UTF8);
 
@@ -89,7 +89,6 @@ namespace DOM
                 Context::Namespace aNS;
                 aNS.maPrefix = prefix;
                 aNS.mnToken = aIter->second;
-                aNS.maNamespaceURL = val;
 
                 io_rContext.maNamespaces.back().push_back(aNS);
 
@@ -98,13 +97,13 @@ namespace DOM
         }
     }
 
-    sal_Int32 getToken( const Context& rContext, const sal_Char* pToken )
+    sal_Int32 getToken( const Context& rContext, const char* pToken )
     {
         const Sequence<sal_Int8> aSeq( reinterpret_cast<sal_Int8 const *>(pToken), strlen( pToken ) );
         return rContext.mxTokenHandler->getTokenFromUTF8( aSeq );
     }
 
-    sal_Int32 getTokenWithPrefix( const Context& rContext, const sal_Char* pPrefix, const sal_Char* pName )
+    sal_Int32 getTokenWithPrefix( const Context& rContext, const char* pPrefix, const char* pName )
     {
         sal_Int32 nNamespaceToken = FastToken::DONTKNOW;
         OString prefix(pPrefix,
@@ -168,15 +167,9 @@ namespace DOM
         }
     }
 
-    CNode *
-    CNode::GetImplementation(uno::Reference<uno::XInterface> const& xNode)
+    const css::uno::Sequence< sal_Int8 > & CNode::getUnoTunnelId() throw()
     {
-        uno::Reference<lang::XUnoTunnel> const xUnoTunnel(xNode, UNO_QUERY);
-        if (!xUnoTunnel.is()) { return nullptr; }
-        CNode *const pCNode( reinterpret_cast< CNode* >(
-                        ::sal::static_int_cast< sal_IntPtr >(
-                            xUnoTunnel->getSomething(theCNodeUnoTunnelId::get().getSeq()))));
-        return pCNode;
+        return theCNodeUnoTunnelId::get().getSeq();
     }
 
     CDocument & CNode::GetOwnerDocument()
@@ -290,7 +283,7 @@ namespace DOM
 
         if (nullptr == m_aNodePtr) { return nullptr; }
 
-        CNode *const pNewChild(CNode::GetImplementation(xNewChild));
+        CNode *const pNewChild(comphelper::getUnoTunnelImplementation<CNode>(xNewChild));
         if (!pNewChild) { throw RuntimeException(); }
         xmlNodePtr const cur = pNewChild->GetNodePtr();
         if (!cur) { throw RuntimeException(); }
@@ -368,7 +361,7 @@ namespace DOM
         Reference< XMutationEvent > event(docevent->createEvent(
             "DOMNodeInserted"), UNO_QUERY);
         event->initMutationEvent("DOMNodeInserted", true, false, this,
-            OUString(), OUString(), OUString(), (AttrChangeType)0 );
+            OUString(), OUString(), OUString(), AttrChangeType(0) );
 
         // the following dispatch functions use only UNO interfaces
         // and call event listeners, so release mutex to prevent deadlocks.
@@ -393,7 +386,7 @@ namespace DOM
             return nullptr;
         }
         ::rtl::Reference<CNode> const pNode = GetOwnerDocument().GetCNode(
-            xmlCopyNode(m_aNodePtr, (bDeep) ? 1 : 0));
+            xmlCopyNode(m_aNodePtr, bDeep ? 1 : 0));
         if (!pNode.is()) { return nullptr; }
         pNode->m_bUnlinked = true; // not linked yet
         return pNode.get();
@@ -519,8 +512,7 @@ namespace DOM
         Instruction                             the target
         Text             "#text"                content of the text node        null
         */
-        OUString aName;
-        return aName;
+        return OUString();
     }
 
     /**
@@ -538,8 +530,7 @@ namespace DOM
     */
     OUString SAL_CALL CNode::getNodeValue()
     {
-        OUString aValue;
-        return aValue;
+        return OUString();
     }
 
     /**
@@ -647,8 +638,8 @@ namespace DOM
 
         ::osl::ClearableMutexGuard guard(m_rMutex);
 
-        CNode *const pNewNode(CNode::GetImplementation(newChild));
-        CNode *const pRefNode(CNode::GetImplementation(refChild));
+        CNode *const pNewNode(comphelper::getUnoTunnelImplementation<CNode>(newChild));
+        CNode *const pRefNode(comphelper::getUnoTunnelImplementation<CNode>(refChild));
         if (!pNewNode || !pRefNode) { throw RuntimeException(); }
         xmlNodePtr const pNewChild(pNewNode->GetNodePtr());
         xmlNodePtr const pRefChild(pRefNode->GetNodePtr());
@@ -755,7 +746,7 @@ namespace DOM
 
         Reference<XNode> xReturn( xOldChild );
 
-        ::rtl::Reference<CNode> const pOld(CNode::GetImplementation(xOldChild));
+        ::rtl::Reference<CNode> const pOld(comphelper::getUnoTunnelImplementation<CNode>(xOldChild));
         if (!pOld.is()) { throw RuntimeException(); }
         xmlNodePtr const old = pOld->GetNodePtr();
         if (!old) { throw RuntimeException(); }
@@ -784,11 +775,11 @@ namespace DOM
         Reference< XDocumentEvent > docevent(getOwnerDocument(), UNO_QUERY);
         Reference< XMutationEvent > event(docevent->createEvent(
             "DOMNodeRemoved"), UNO_QUERY);
-            event->initMutationEvent("DOMNodeRemoved",
+        event->initMutationEvent("DOMNodeRemoved",
             true,
             false,
             this,
-            OUString(), OUString(), OUString(), (AttrChangeType)0 );
+            OUString(), OUString(), OUString(), AttrChangeType(0) );
 
         // the following dispatch functions use only UNO interfaces
         // and call event listeners, so release mutex to prevent deadlocks.
@@ -827,9 +818,9 @@ namespace DOM
         ::osl::ClearableMutexGuard guard(m_rMutex);
 
         ::rtl::Reference<CNode> const pOldNode(
-                CNode::GetImplementation(xOldChild));
+                comphelper::getUnoTunnelImplementation<CNode>(xOldChild));
         ::rtl::Reference<CNode> const pNewNode(
-                CNode::GetImplementation(xNewChild));
+                comphelper::getUnoTunnelImplementation<CNode>(xNewChild));
         if (!pOldNode.is() || !pNewNode.is()) { throw RuntimeException(); }
         xmlNodePtr const pOld = pOldNode->GetNodePtr();
         xmlNodePtr const pNew = pNewNode->GetNodePtr();
@@ -917,7 +908,7 @@ namespace DOM
         event->initMutationEvent(
             "DOMSubtreeModified", true,
             false, Reference< XNode >(),
-            OUString(), OUString(), OUString(), (AttrChangeType)0 );
+            OUString(), OUString(), OUString(), AttrChangeType(0) );
         dispatchEvent(event);
     }
 
@@ -1001,9 +992,7 @@ namespace DOM
     ::sal_Int64 SAL_CALL
     CNode::getSomething(Sequence< ::sal_Int8 > const& rId)
     {
-        if ((rId.getLength() == 16) &&
-            (0 == memcmp(theCNodeUnoTunnelId::get().getSeq().getConstArray(),
-                                    rId.getConstArray(), 16)))
+        if (isUnoTunnelId<CNode>(rId))
         {
             return ::sal::static_int_cast< sal_Int64 >(
                     reinterpret_cast< sal_IntPtr >(this) );

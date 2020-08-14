@@ -34,7 +34,6 @@
  *
  ************************************************************************/
 
-#include <rtl/ustrbuf.hxx>
 #include <com/sun/star/container/ElementExistException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <cppuhelper/implbase.hxx>
@@ -62,11 +61,11 @@ using com::sun::star::container::ContainerEvent;
 using com::sun::star::lang::IndexOutOfBoundsException;
 using com::sun::star::lang::XEventListener;
 
-using com::sun::star::lang::WrappedTargetException;
-
 
 namespace pq_sdbc_driver
 {
+
+namespace {
 
 class ReplacedBroadcaster : public EventBroadcastHelper
 {
@@ -133,6 +132,8 @@ public:
     }
 };
 
+}
+
 Container::Container(
     const ::rtl::Reference< comphelper::RefCountedMutex > & refMutex,
     const css::uno::Reference< css::sdbc::XConnection >  & origin,
@@ -155,20 +156,17 @@ Any Container::getByName( const OUString& aName )
             "Element " + aName + " unknown in " + m_type + "-Container",
             *this );
     }
-    OSL_ASSERT( ii->second >= 0 && ii->second < (int)m_values.size() );
+    OSL_ASSERT( ii->second >= 0 && ii->second < static_cast<int>(m_values.size()) );
     return m_values[ ii->second ];
 }
 
 Sequence< OUString > Container::getElementNames(  )
 {
     Sequence< OUString > ret( m_values.size() );
-    for( String2IntMap::const_iterator ii = m_name2index.begin();
-         ii != m_name2index.end() ;
-         ++ ii )
+    for( const auto& [rName, rIndex] : m_name2index )
     {
         // give element names in index order !
-        ret[ii->second] = ii->first;
-//         ret[i] = ii->first;
+        ret[rIndex] = rName;
     }
     return ret;
 }
@@ -190,7 +188,7 @@ sal_Bool Container::hasElements(  )
 
 Any Container::getByIndex( sal_Int32 Index )
 {
-    if( Index < 0 || Index >= (sal_Int32)m_values.size() )
+    if( Index < 0 || Index >= static_cast<sal_Int32>(m_values.size()) )
     {
         throw IndexOutOfBoundsException(
             "Index " + OUString::number( Index )
@@ -206,6 +204,7 @@ sal_Int32 Container::getCount()
     return m_values.size();
 }
 
+namespace {
 
 class ContainerEnumeration : public ::cppu::WeakImplHelper< XEnumeration >
 {
@@ -224,9 +223,11 @@ public:
 
 };
 
+}
+
 sal_Bool ContainerEnumeration::hasMoreElements()
 {
-    return (int)m_vec.size() > m_index +1;
+    return static_cast<int>(m_vec.size()) > m_index +1;
 }
 
 css::uno::Any ContainerEnumeration::nextElement()
@@ -297,7 +298,7 @@ void Container::dropByName( const OUString& elementName )
 void Container::dropByIndex( sal_Int32 index )
 {
     osl::MutexGuard guard( m_xMutex->GetMutex() );
-    if( index < 0 ||  index >=(sal_Int32)m_values.size() )
+    if( index < 0 ||  index >=static_cast<sal_Int32>(m_values.size()) )
     {
         throw css::lang::IndexOutOfBoundsException(
             "Index out of range (allowed 0 to "
@@ -308,32 +309,24 @@ void Container::dropByIndex( sal_Int32 index )
     }
 
     OUString name;
-    for( String2IntMap::iterator ii = m_name2index.begin() ;
-         ii != m_name2index.end() ;
-         ++ ii )
+    String2IntMap::iterator ii = std::find_if(m_name2index.begin(), m_name2index.end(),
+        [&index](const String2IntMap::value_type& rEntry) { return rEntry.second == index; });
+    if (ii != m_name2index.end())
     {
-        if( ii->second == index )
-        {
-            name = ii->first;
-            m_name2index.erase( ii );
-            break;
-        }
+        name = ii->first;
+        m_name2index.erase( ii );
     }
 
-    for( int i = index +1 ; i < (int)m_values.size() ; i ++ )
+    for( int i = index +1 ; i < static_cast<int>(m_values.size()) ; i ++ )
     {
         m_values[i-1] = m_values[i];
 
         // I know, this is expensive, but don't want to maintain another map ...
-        for( String2IntMap::iterator ii = m_name2index.begin() ;
-             ii != m_name2index.end() ;
-             ++ ii )
+        ii = std::find_if(m_name2index.begin(), m_name2index.end(),
+            [&i](const String2IntMap::value_type& rEntry) { return rEntry.second == i; });
+        if (ii != m_name2index.end())
         {
-            if( ii->second == i )
-            {
-                ii->second = i-1;
-                break;
-            }
+            ii->second = i-1;
         }
     }
     m_values.resize( m_values.size() - 1 );
@@ -385,26 +378,26 @@ void Container::removeContainerListener(
 void Container::fire( const EventBroadcastHelper &helper )
 {
     cppu::OInterfaceContainerHelper *container = rBHelper.getContainer( helper.getType() );
-    if( container )
+    if( !container )
+        return;
+
+    cppu::OInterfaceIteratorHelper iterator( * container );
+    while( iterator.hasMoreElements() )
     {
-        cppu::OInterfaceIteratorHelper iterator( * container );
-        while( iterator.hasMoreElements() )
+        try
         {
-            try
-            {
-                helper.fire( static_cast<XEventListener *>(iterator.next()) );
-            }
-            catch ( css::uno::RuntimeException & )
-            {
-                OSL_ENSURE( false, "exception caught" );
-                // loose coupling, a runtime exception shall not break anything
-                // TODO: log away as warning !
-            }
-            catch( css::uno::Exception & )
-            {
-                OSL_ENSURE( false, "exception from listener flying through" );
-                throw;
-            }
+            helper.fire( static_cast<XEventListener *>(iterator.next()) );
+        }
+        catch ( css::uno::RuntimeException & )
+        {
+            OSL_ENSURE( false, "exception caught" );
+            // loose coupling, a runtime exception shall not break anything
+            // TODO: log away as warning !
+        }
+        catch( css::uno::Exception & )
+        {
+            OSL_ENSURE( false, "exception from listener flying through" );
+            throw;
         }
     }
 

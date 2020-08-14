@@ -20,12 +20,9 @@
 #ifndef INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_DEVICEHELPER_HXX
 #define INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_DEVICEHELPER_HXX
 
-#include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/rendering/XGraphicDevice.hpp>
-#include <com/sun/star/rendering/XBufferController.hpp>
 
-#include <vcl/window.hxx>
-#include <vcl/bitmap.hxx>
+#include <vcl/outdev.hxx>
 
 #include "cairo_surfaceprovider.hxx"
 
@@ -83,7 +80,7 @@ namespace cairocanvas
         css::uno::Any getDeviceHandle() const;
         css::uno::Any getSurfaceHandle() const;
         css::uno::Reference<
-            css::rendering::XColorSpace > getColorSpace() const;
+            css::rendering::XColorSpace > const & getColorSpace() const;
 
         /** called when DumpScreenContent property is enabled on
             XGraphicDevice, and writes out bitmaps of current screen.
@@ -91,9 +88,9 @@ namespace cairocanvas
         void dumpScreenContent() const;
 
         OutputDevice* getOutputDevice() const { return mpRefDevice; }
-        const ::cairo::SurfaceSharedPtr& getSurface() { return mpSurface; }
+        const ::cairo::SurfaceSharedPtr& getSurface() const { return mpSurface; }
         ::cairo::SurfaceSharedPtr createSurface( const ::basegfx::B2ISize& rSize, int aContent );
-        ::cairo::SurfaceSharedPtr createSurface( BitmapSystemData& rData, const Size& rSize );
+        ::cairo::SurfaceSharedPtr createSurface( BitmapSystemData const & rData, const Size& rSize );
 
     protected:
         /** init helper

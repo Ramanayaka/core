@@ -19,100 +19,113 @@
 
 #include <memory>
 #include <vcl/svapp.hxx>
-#include <svl/solar.hrc>
 #include <tools/debug.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/settings.hxx>
+#include <vcl/weld.hxx>
 
 #include <basic/sbstar.hxx>
 #include <basic/basrdll.hxx>
-#include <basrid.hxx>
-#include <sb.hrc>
+#include <strings.hrc>
 #include <sbxbase.hxx>
+#include <config_features.h>
 
-struct BasicDLL::Impl
+namespace
+{
+struct BasicDLLImpl : public SvRefBase
 {
     bool        bDebugMode;
     bool        bBreakEnabled;
 
-    std::unique_ptr<ResMgr> xBasResMgr;
     std::unique_ptr<SbxAppData> xSbxAppData;
 
-    Impl()
+    BasicDLLImpl()
         : bDebugMode(false)
         , bBreakEnabled(true)
-        , xBasResMgr(ResMgr::CreateResMgr("sb", Application::GetSettings().GetUILanguageTag()))
         , xSbxAppData(new SbxAppData)
     { }
+
+    static BasicDLLImpl* BASIC_DLL;
+    static osl::Mutex& getMutex()
+    {
+        static osl::Mutex aMutex;
+        return aMutex;
+    }
 };
 
-namespace {
-
-BasicDLL * BASIC_DLL;
-
-}
-
-BasResId::BasResId( sal_uInt32 nId ) :
-    ResId( nId, *(BASIC_DLL->GetBasResMgr()) )
-{
+BasicDLLImpl* BasicDLLImpl::BASIC_DLL = nullptr;
 }
 
 BasicDLL::BasicDLL()
-    : m_xImpl(new Impl)
 {
-    BASIC_DLL = this;
+    osl::MutexGuard aGuard(BasicDLLImpl::getMutex());
+    if (!BasicDLLImpl::BASIC_DLL)
+        BasicDLLImpl::BASIC_DLL = new BasicDLLImpl;
+    m_xImpl = BasicDLLImpl::BASIC_DLL;
 }
 
 BasicDLL::~BasicDLL()
 {
+    osl::MutexGuard aGuard(BasicDLLImpl::getMutex());
+    const bool bLastRef = m_xImpl->GetRefCount() == 1;
+    if (bLastRef) {
+        BasicDLLImpl::BASIC_DLL->xSbxAppData->m_aGlobErr.clear();
+    }
+    m_xImpl.clear();
+    // only reset BASIC_DLL after the object had been destroyed
+    if (bLastRef)
+        BasicDLLImpl::BASIC_DLL = nullptr;
 }
-
-ResMgr* BasicDLL::GetBasResMgr() const { return m_xImpl->xBasResMgr.get(); }
 
 void BasicDLL::EnableBreak( bool bEnable )
 {
-    BasicDLL* pThis = BASIC_DLL;
-    DBG_ASSERT( pThis, "BasicDLL::EnableBreak: No instance yet!" );
-    if ( pThis )
+    DBG_ASSERT( BasicDLLImpl::BASIC_DLL, "BasicDLL::EnableBreak: No instance yet!" );
+    if (BasicDLLImpl::BASIC_DLL)
     {
-        pThis->m_xImpl->bBreakEnabled = bEnable;
+        BasicDLLImpl::BASIC_DLL->bBreakEnabled = bEnable;
     }
 }
 
 void BasicDLL::SetDebugMode( bool bDebugMode )
 {
-    BasicDLL* pThis = BASIC_DLL;
-    DBG_ASSERT( pThis, "BasicDLL::EnableBreak: No instance yet!" );
-    if ( pThis )
+    DBG_ASSERT( BasicDLLImpl::BASIC_DLL, "BasicDLL::EnableBreak: No instance yet!" );
+    if (BasicDLLImpl::BASIC_DLL)
     {
-        pThis->m_xImpl->bDebugMode = bDebugMode;
+        BasicDLLImpl::BASIC_DLL->bDebugMode = bDebugMode;
     }
 }
 
 
 void BasicDLL::BasicBreak()
 {
-    BasicDLL* pThis = BASIC_DLL;
-    DBG_ASSERT( pThis, "BasicDLL::EnableBreak: No instance yet!" );
-    if ( pThis )
+    DBG_ASSERT( BasicDLLImpl::BASIC_DLL, "BasicDLL::EnableBreak: No instance yet!" );
+#if HAVE_FEATURE_SCRIPTING
+    if (!BasicDLLImpl::BASIC_DLL)
+        return;
+
+    // bJustStopping: if there's someone pressing STOP like crazy umpteen times,
+    // but the Basic doesn't stop early enough, the box might appear more often...
+    static bool bJustStopping = false;
+    if (StarBASIC::IsRunning() && !bJustStopping
+        && (BasicDLLImpl::BASIC_DLL->bBreakEnabled || BasicDLLImpl::BASIC_DLL->bDebugMode))
     {
-        // bJustStopping: if there's someone pressing STOP like crazy umpteen times,
-        // but the Basic doesn't stop early enough, the box might appear more often...
-        static bool bJustStopping = false;
-        if (StarBASIC::IsRunning() && !bJustStopping
-            && (pThis->m_xImpl->bBreakEnabled || pThis->m_xImpl->bDebugMode))
-        {
-            bJustStopping = true;
-            StarBASIC::Stop();
-            ScopedVclPtrInstance<InfoBox>(nullptr, BasResId(IDS_SBERR_TERMINATED))->Execute();
-            bJustStopping = false;
-        }
+        bJustStopping = true;
+        StarBASIC::Stop();
+        std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(nullptr,
+                                                      VclMessageType::Info, VclButtonsType::Ok,
+                                                      BasResId(IDS_SBERR_TERMINATED)));
+        xInfoBox->run();
+        bJustStopping = false;
     }
+#endif
 }
 
 SbxAppData& GetSbxData_Impl()
 {
-    return *BASIC_DLL->m_xImpl->xSbxAppData;
+    return *BasicDLLImpl::BASIC_DLL->xSbxAppData;
+}
+
+bool IsSbxData_Impl()
+{
+    return BasicDLLImpl::BASIC_DLL && BasicDLLImpl::BASIC_DLL->xSbxAppData;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

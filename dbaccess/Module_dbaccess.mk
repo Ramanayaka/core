@@ -9,22 +9,22 @@
 
 $(eval $(call gb_Module_Module,dbaccess))
 
+$(eval $(call gb_Module_add_targets,dbaccess,\
+	Library_dba \
+	Library_dbahsql \
+))
+
+$(eval $(call gb_Module_add_l10n_targets,dbaccess,\
+	AllLangMoTarget_dba \
+))
+
 ifneq (,$(filter DBCONNECTIVITY,$(BUILD_TYPE)))
 
 $(eval $(call gb_Module_add_targets,dbaccess,\
 	$(if $(filter WNT,$(OS)),Executable_odbcconfig) \
-	Library_dba \
 	Library_dbaxml \
-	Library_dbmm \
 	Library_dbu \
 	Library_sdbt \
-))
-
-$(eval $(call gb_Module_add_l10n_targets,dbaccess,\
-    AllLangResTarget_dba \
-    AllLangResTarget_dbmm \
-    AllLangResTarget_dbu \
-    AllLangResTarget_sdbt \
 	UIConfig_dbaccess \
 	UIConfig_dbapp \
 	UIConfig_dbbrowser \
@@ -34,8 +34,20 @@ $(eval $(call gb_Module_add_l10n_targets,dbaccess,\
 	UIConfig_dbtdata \
 ))
 
-ifneq ($(OS),IOS)
+ifneq ($(OS),iOS)
 ifeq ($(ENABLE_FIREBIRD_SDBC),TRUE)
+$(eval $(call gb_Module_add_check_targets,dbaccess,\
+    $(if $(ENABLE_JAVA),CppunitTest_dbaccess_hsqlbinary_import) \
+    $(if $(ENABLE_JAVA),CppunitTest_dbaccess_tdf119625) \
+    $(if $(ENABLE_JAVA),CppunitTest_dbaccess_tdf126268) \
+))
+
+# remove if we have a be file for this
+ifeq ($(ENDIANNESS),little)
+$(eval $(call gb_Module_add_check_targets,dbaccess,\
+    CppunitTest_dbaccess_firebird_regression_test \
+))
+endif
 $(eval $(call gb_Module_add_check_targets,dbaccess,\
     CppunitTest_dbaccess_firebird_test \
 ))
@@ -46,14 +58,17 @@ $(eval $(call gb_Module_add_check_targets,dbaccess,\
 	CppunitTest_dbaccess_empty_stdlib_save \
 	CppunitTest_dbaccess_nolib_save \
 	CppunitTest_dbaccess_macros_test \
-	$(if $(ENABLE_JAVA), \
-		CppunitTest_dbaccess_RowSetClones) \
+	CppunitTest_dbaccess_hsqlschema_import \
 ))
 
+# this test fails 50% of the time on the mac jenkins buildbots
 ifeq ($(ENABLE_JAVA),TRUE)
+ifneq ($(OS),MACOSX)
 $(eval $(call gb_Module_add_check_targets,dbaccess,\
     CppunitTest_dbaccess_hsqldb_test \
+    CppunitTest_dbaccess_RowSetClones \
 ))
+endif
 endif
 
 # This runs a suite of performance tests on embedded firebird and HSQLDB.
@@ -71,12 +86,10 @@ $(eval $(call gb_Module_add_subsequentcheck_targets,dbaccess,\
     JunitTest_dbaccess_unoapi \
 ))
 
-ifneq ($(DISABLE_PYTHON),TRUE)
 ifneq ($(ENABLE_JAVA),)
 $(eval $(call gb_Module_add_subsequentcheck_targets,dbaccess,\
 	PythonTest_dbaccess_python \
 ))
-endif
 endif
 
 # screenshots

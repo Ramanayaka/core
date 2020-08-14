@@ -19,15 +19,12 @@
 
 
 #include <memory>
-#include <bibconfig.hxx>
+#include "bibconfig.hxx"
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sdb/DatabaseContext.hpp>
 #include <comphelper/processfactory.hxx>
 #include <o3tl/any.hxx>
-#include <o3tl/make_unique.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
@@ -40,27 +37,23 @@ const char cDataSourceHistory[] = "DataSourceHistory";
 
 Sequence<OUString> const & BibConfig::GetPropertyNames()
 {
-    static Sequence<OUString> aNames;
-    if(!aNames.getLength())
+    static Sequence<OUString> aNames =
     {
-        aNames.realloc(8);
-        OUString* pNames = aNames.getArray();
-        pNames[0] = "CurrentDataSource/DataSourceName";
-        pNames[1] = "CurrentDataSource/Command";
-        pNames[2] = "CurrentDataSource/CommandType";
-        pNames[3] = "BeamerHeight";
-        pNames[4] = "ViewHeight";
-        pNames[5] = "QueryText";
-        pNames[6] = "QueryField";
-        pNames[7] = "ShowColumnAssignmentWarning";
-    }
+        "CurrentDataSource/DataSourceName",
+        "CurrentDataSource/Command",
+        "CurrentDataSource/CommandType",
+        "BeamerHeight",
+        "ViewHeight",
+        "QueryText",
+        "QueryField",
+        "ShowColumnAssignmentWarning"
+    };
     return aNames;
 }
 
 BibConfig::BibConfig()
-    : ConfigItem("Office.DataAccess/Bibliography", ConfigItemMode::DelayedUpdate)
+    : ConfigItem("Office.DataAccess/Bibliography", ConfigItemMode::NONE)
     , nTblOrQuery(0)
-    , pMappingsArr(new MappingArray)
     , nBeamerSize(0)
     , nViewSize(0)
     , bShowColumnAssignmentWarning(false)
@@ -124,17 +117,13 @@ BibConfig::BibConfig()
             }
         }
     }
-    Sequence< OUString > aNodeNames = GetNodeNames(cDataSourceHistory);
-    const OUString* pNodeNames = aNodeNames.getConstArray();
-    for(sal_Int32 nNode = 0; nNode < aNodeNames.getLength(); nNode++)
+    const Sequence< OUString > aNodeNames = GetNodeNames(cDataSourceHistory);
+    for(OUString const & nodeName : aNodeNames)
     {
         Sequence<OUString> aHistoryNames(3);
         OUString* pHistoryNames = aHistoryNames.getArray();
 
-        OUString sPrefix(cDataSourceHistory);
-        sPrefix += "/";
-        sPrefix += pNodeNames[nNode];
-        sPrefix += "/";
+        OUString sPrefix = OUStringLiteral(cDataSourceHistory) + "/" + nodeName + "/";
         pHistoryNames[0] = sPrefix + "DataSourceName";
         pHistoryNames[1] = sPrefix + "Command";
         pHistoryNames[2] = sPrefix + "CommandType";
@@ -150,16 +139,13 @@ BibConfig::BibConfig()
             pHistoryValues[2] >>= pMapping->nCommandType;
             //field assignment is contained in another set
             sPrefix += "Fields";
-            Sequence< OUString > aAssignmentNodeNames = GetNodeNames(sPrefix);
-            const OUString* pAssignmentNodeNames = aAssignmentNodeNames.getConstArray();
+            const Sequence< OUString > aAssignmentNodeNames = GetNodeNames(sPrefix);
             Sequence<OUString> aAssignmentPropertyNames(aAssignmentNodeNames.getLength() * 2);
             OUString* pAssignmentPropertyNames = aAssignmentPropertyNames.getArray();
             sal_Int16 nFieldIdx = 0;
-            for(sal_Int32 nField = 0; nField < aAssignmentNodeNames.getLength(); nField++)
+            for(OUString const & assignName : aAssignmentNodeNames)
             {
-                OUString sSubPrefix(sPrefix);
-                sSubPrefix += "/";
-                sSubPrefix += pAssignmentNodeNames[nField];
+                OUString sSubPrefix = sPrefix + "/" + assignName;
                 pAssignmentPropertyNames[nFieldIdx] = sSubPrefix;
                 pAssignmentPropertyNames[nFieldIdx++] += "/ProgrammaticFieldName";
                 pAssignmentPropertyNames[nFieldIdx] = sSubPrefix;
@@ -171,7 +157,7 @@ BibConfig::BibConfig()
             OUString sTempReal;
             sal_Int16 nSetMapping = 0;
             nFieldIdx = 0;
-            for(sal_Int16 nFieldVal = 0; nFieldVal < aAssignmentValues.getLength() / 2; nFieldVal++)
+            for(sal_Int32 nFieldVal = 0; nFieldVal < aAssignmentValues.getLength() / 2; nFieldVal++)
             {
                 pAssignmentValues[nFieldIdx++] >>= sTempLogical;
                 pAssignmentValues[nFieldIdx++] >>= sTempReal;
@@ -181,7 +167,7 @@ BibConfig::BibConfig()
                     pMapping->aColumnPairs[nSetMapping++].sRealColumnName = sTempReal;
                 }
             }
-            pMappingsArr->push_back(std::unique_ptr<Mapping>(pMapping));
+            mvMappings.push_back(std::unique_ptr<Mapping>(pMapping));
         }
     }
 }
@@ -189,7 +175,6 @@ BibConfig::BibConfig()
 BibConfig::~BibConfig()
 {
     assert(!IsModified()); // should have been committed
-    delete pMappingsArr;
 }
 
 BibDBDescriptor BibConfig::GetBibliographyURL()
@@ -223,17 +208,14 @@ void    BibConfig::ImplCommit()
          css::uno::Any(sQueryField),
          css::uno::Any(bShowColumnAssignmentWarning)});
     ClearNodeSet(cDataSourceHistory);
-    Sequence< PropertyValue > aNodeValues(pMappingsArr->size() * 3);
+    Sequence< PropertyValue > aNodeValues(mvMappings.size() * 3);
     PropertyValue* pNodeValues = aNodeValues.getArray();
 
     sal_Int32 nIndex = 0;
-    for(sal_Int32 i = 0; i < (sal_Int32)pMappingsArr->size(); i++)
+    for(sal_Int32 i = 0; i < static_cast<sal_Int32>(mvMappings.size()); i++)
     {
-        const Mapping* pMapping = (*pMappingsArr)[i].get();
-        OUString sPrefix(cDataSourceHistory);
-        sPrefix += "/_";
-        sPrefix += OUString::number(i);
-        sPrefix += "/";
+        const Mapping* pMapping = mvMappings[i].get();
+        OUString sPrefix = OUStringLiteral(cDataSourceHistory) + "/_" + OUString::number(i) + "/";
         pNodeValues[nIndex].Name    = sPrefix + "DataSourceName";
         pNodeValues[nIndex++].Value <<= pMapping->sURL;
         pNodeValues[nIndex].Name    = sPrefix + "Command";
@@ -251,9 +233,7 @@ void    BibConfig::ImplCommit()
         while(nFieldAssignment < COLUMN_COUNT &&
             !pMapping->aColumnPairs[nFieldAssignment].sLogicalColumnName.isEmpty())
         {
-            OUString sSubPrefix(sPrefix);
-            sSubPrefix += "/_";
-            sSubPrefix += OUString::number(nFieldAssignment);
+            OUString sSubPrefix = sPrefix + "/_" + OUString::number(nFieldAssignment);
             Sequence< PropertyValue > aAssignmentValues(2);
             PropertyValue* pAssignmentValues = aAssignmentValues.getArray();
             pAssignmentValues[0].Name   = sSubPrefix;
@@ -270,10 +250,10 @@ void    BibConfig::ImplCommit()
 
 const Mapping*  BibConfig::GetMapping(const BibDBDescriptor& rDesc) const
 {
-    for(std::unique_ptr<Mapping> & i : *pMappingsArr)
+    for(std::unique_ptr<Mapping> const & i : mvMappings)
     {
-        Mapping& rMapping = *i.get();
-        bool bURLEqual = rDesc.sDataSource.equals(rMapping.sURL);
+        Mapping& rMapping = *i;
+        bool bURLEqual = rDesc.sDataSource == rMapping.sURL;
         if(rDesc.sTableOrQuery == rMapping.sTableName && bURLEqual)
             return &rMapping;
     }
@@ -282,17 +262,17 @@ const Mapping*  BibConfig::GetMapping(const BibDBDescriptor& rDesc) const
 
 void BibConfig::SetMapping(const BibDBDescriptor& rDesc, const Mapping* pSetMapping)
 {
-    for(size_t i = 0; i < pMappingsArr->size(); i++)
+    for(size_t i = 0; i < mvMappings.size(); i++)
     {
-        Mapping& rMapping = *(*pMappingsArr)[i].get();
-        bool bURLEqual = rDesc.sDataSource.equals(rMapping.sURL);
+        Mapping& rMapping = *mvMappings[i];
+        bool bURLEqual = rDesc.sDataSource == rMapping.sURL;
         if(rDesc.sTableOrQuery == rMapping.sTableName && bURLEqual)
         {
-            pMappingsArr->erase(pMappingsArr->begin()+i);
+            mvMappings.erase(mvMappings.begin()+i);
             break;
         }
     }
-    pMappingsArr->push_back(o3tl::make_unique<Mapping>(*pSetMapping));
+    mvMappings.push_back(std::make_unique<Mapping>(*pSetMapping));
     SetModified();
 }
 
@@ -306,7 +286,7 @@ DBChangeDialogConfig_Impl::~DBChangeDialogConfig_Impl()
 
 const Sequence<OUString>& DBChangeDialogConfig_Impl::GetDataSourceNames()
 {
-    if(!aSourceNames.getLength())
+    if(!aSourceNames.hasElements())
     {
         Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
         Reference<XDatabaseContext> xDBContext = DatabaseContext::create(xContext);

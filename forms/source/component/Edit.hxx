@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FORMS_SOURCE_COMPONENT_EDIT_HXX
-#define INCLUDED_FORMS_SOURCE_COMPONENT_EDIT_HXX
+#pragma once
 
 #include <memory>
 #include "EditBase.hxx"
@@ -26,13 +25,15 @@
 #include <tools/link.hxx>
 #include <cppuhelper/implbase3.hxx>
 
+#include <com/sun/star/form/XChangeBroadcaster.hpp>
+
 namespace dbtools { class FormattedColumnValue; }
 struct ImplSVEvent;
 
 namespace frm
 {
 
-class OEditModel : public OEditBaseModel
+class OEditModel final : public OEditBaseModel
 {
     ::std::unique_ptr< ::dbtools::FormattedColumnValue >
                                 m_pValueFormatter;
@@ -43,7 +44,7 @@ class OEditModel : public OEditBaseModel
 public:
     DECLARE_DEFAULT_LEAF_XTOR( OEditModel );
 
-protected:
+private:
     void enableFormattedWriteFake() { m_bWritingFormattedFake = true; }
     void disableFormattedWriteFake() { m_bWritingFormattedFake = false; }
     bool lastReadWasFormattedFake() const { return (getLastReadVersion() & PF_FAKE_FORMATTED_FIELD) != 0; }
@@ -70,7 +71,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OEditModel"); }
+    { return "com.sun.star.form.OEditModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -85,7 +86,7 @@ public:
     // XEventListener
     using OBoundControlModel::disposing;
 
-protected:
+private:
     // OControlModel overridables
     virtual void writeAggregate( const css::uno::Reference< css::io::XObjectOutputStream >& _rxOutStream ) const override;
     virtual void readAggregate( const css::uno::Reference< css::io::XObjectInputStream >& _rxInStream ) override;
@@ -101,12 +102,10 @@ protected:
 
     virtual bool            approveDbColumnType( sal_Int32 _nColumnType ) override;
 
-protected:
     virtual sal_uInt16 getPersistenceFlags() const override;
 
     virtual css::uno::Reference< css::util::XCloneable > SAL_CALL createClone(  ) override;
 
-private:
     bool    implActsAsRichText( ) const;
 };
 
@@ -143,7 +142,7 @@ public:
 
 // css::lang::XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OEditControl"); }
+    { return "com.sun.star.form.OEditControl"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -167,7 +166,5 @@ private:
 };
 
 }
-
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_EDIT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

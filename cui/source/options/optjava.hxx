@@ -16,24 +16,20 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_CUI_SOURCE_OPTIONS_OPTJAVA_HXX
-#define INCLUDED_CUI_SOURCE_OPTIONS_OPTJAVA_HXX
 
-#include <config_features.h>
+#pragma once
+
+#include <config_java.h>
 
 #include <memory>
 #include <vector>
-#include <ucbhelper/content.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
+#include <vcl/weld.hxx>
 #include <sfx2/tabdlg.hxx>
 #include <com/sun/star/ui/dialogs/XFolderPicker2.hpp>
 #include <svtools/dialogclosedlistener.hxx>
-#include <svtools/simptabl.hxx>
-#include "radiobtnbox.hxx"
+#include <svtools/restartdialog.hxx>
 
 // forward ---------------------------------------------------------------
 
@@ -46,69 +42,70 @@ typedef void* JavaInfo;
 class   SvxJavaParameterDlg;
 class   SvxJavaClassPathDlg;
 class   SvxJavaListBox;
+class   OfaTreeOptionsDialog;
 
 // class SvxJavaOptionsPage ----------------------------------------------
 
 class SvxJavaOptionsPage : public SfxTabPage
 {
 private:
-    VclPtr<CheckBox>                   m_pJavaEnableCB;
-    VclPtr<VclContainer>               m_pJavaBox;
-    VclPtr<SvxJavaListBox>             m_pJavaList;
-    VclPtr<FixedText>                  m_pJavaPathText;
-    VclPtr<PushButton>                 m_pAddBtn;
-    VclPtr<PushButton>                 m_pParameterBtn;
-    VclPtr<PushButton>                 m_pClassPathBtn;
-    VclPtr<PushButton>                 m_pExpertConfigBtn;
-
-    VclPtr<SvxJavaParameterDlg>        m_pParamDlg;
-    VclPtr<SvxJavaClassPathDlg>        m_pPathDlg;
-
 #if HAVE_FEATURE_JAVA
     std::vector<std::unique_ptr<JavaInfo>> m_parJavaInfo;
     std::vector<OUString>   m_parParameters;
     OUString                m_pClassPath;
 #endif
     OUString                m_sInstallText;
-    OUString                m_sAccessibilityText;
     OUString                m_sAddDialogText;
     Idle                    m_aResetIdle;
 
-    VclPtr<CheckBox>               m_pExperimentalCB;
-    VclPtr<CheckBox>               m_pMacroCB;
-
-    std::vector<std::unique_ptr<JavaInfo>>
-                            m_aAddedInfos;
+    std::vector<std::unique_ptr<JavaInfo>> m_aAddedInfos;
 
     rtl::Reference< ::svt::DialogClosedListener >           xDialogListener;
     css::uno::Reference< css::ui::dialogs::XFolderPicker2 > xFolderPicker;
 
-    DECL_LINK(        EnableHdl_Impl, Button*, void);
-    DECL_LINK(        CheckHdl_Impl, SvTreeListBox*, void );
-    DECL_LINK(        SelectHdl_Impl, SvTreeListBox*, void);
-    DECL_LINK(        AddHdl_Impl, Button*, void);
-    DECL_LINK(        ParameterHdl_Impl, Button*, void);
-    DECL_LINK(        ClassPathHdl_Impl, Button*, void);
-    DECL_LINK(        ResetHdl_Impl, Timer *, void);
+    std::unique_ptr<weld::CheckButton> m_xJavaEnableCB;
+    std::unique_ptr<weld::TreeView> m_xJavaList;
+    std::unique_ptr<weld::Label> m_xJavaPathText;
+    std::unique_ptr<weld::Button> m_xAddBtn;
+    std::unique_ptr<weld::Button> m_xParameterBtn;
+    std::unique_ptr<weld::Button> m_xClassPathBtn;
+    std::unique_ptr<weld::Button> m_xExpertConfigBtn;
 
-    DECL_LINK(        StartFolderPickerHdl, void *, void );
-    DECL_LINK(        DialogClosedHdl, css::ui::dialogs::DialogClosedEvent*, void );
+    std::unique_ptr<SvxJavaParameterDlg> m_xParamDlg;
+    std::unique_ptr<SvxJavaClassPathDlg> m_xPathDlg;
 
-    DECL_LINK(        ExpertConfigHdl_Impl, Button*, void);
+    std::unique_ptr<weld::CheckButton> m_xExperimentalCB;
+    std::unique_ptr<weld::CheckButton> m_xMacroCB;
+
+    std::unique_ptr<weld::Label> m_xAddDialogText;
+
+    std::unique_ptr<weld::Widget> m_xJavaFrame;
+
+    DECL_LINK(EnableHdl_Impl, weld::Button&, void);
+    DECL_LINK(CheckHdl_Impl, const weld::TreeView::iter_col&, void);
+    DECL_LINK(SelectHdl_Impl, weld::TreeView&, void);
+    DECL_LINK(AddHdl_Impl, weld::Button&, void);
+    DECL_LINK(ParameterHdl_Impl, weld::Button&, void);
+    DECL_LINK(ClassPathHdl_Impl, weld::Button&, void);
+    DECL_LINK(ResetHdl_Impl, Timer *, void);
+
+    DECL_LINK(StartFolderPickerHdl, void *, void);
+    DECL_LINK(DialogClosedHdl, css::ui::dialogs::DialogClosedEvent*, void);
+
+    DECL_LINK(ExpertConfigHdl_Impl, weld::Button&, void);
 
     void                    ClearJavaInfo();
-    void                    ClearJavaList();
     void                    LoadJREs();
     void                    AddJRE( JavaInfo const * _pInfo );
-    void                    HandleCheckEntry( SvTreeListEntry* _pEntry );
+    void                    HandleCheckEntry(int nCheckedRow);
     void                    AddFolder( const OUString& _rFolder );
+    void                    RequestRestart( svtools::RestartReason eReason );
 
 public:
-    SvxJavaOptionsPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    SvxJavaOptionsPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SvxJavaOptionsPage() override;
-    virtual void            dispose() override;
 
-    static VclPtr<SfxTabPage>      Create( vcl::Window* pParent, const SfxItemSet* rSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet );
 
     virtual bool            FillItemSet( SfxItemSet* rSet ) override;
     virtual void            Reset( const SfxItemSet* rSet ) override;
@@ -117,52 +114,52 @@ public:
 
 // class SvxJavaParameterDlg ---------------------------------------------
 
-class SvxJavaParameterDlg : public ModalDialog
+class SvxJavaParameterDlg : public weld::GenericDialogController
 {
 private:
-    VclPtr<Edit>                   m_pParameterEdit;
-    VclPtr<PushButton>             m_pAssignBtn;
+    std::unique_ptr<weld::Entry> m_xParameterEdit;
+    std::unique_ptr<weld::Button> m_xAssignBtn;
+    std::unique_ptr<weld::TreeView> m_xAssignedList;
+    std::unique_ptr<weld::Button> m_xRemoveBtn;
+    std::unique_ptr<weld::Button> m_xEditBtn;
 
-    VclPtr<ListBox>                m_pAssignedList;
-    VclPtr<PushButton>             m_pRemoveBtn;
+    DECL_LINK(ModifyHdl_Impl, weld::Entry&, void);
+    DECL_LINK(AssignHdl_Impl, weld::Button&, void);
+    DECL_LINK(SelectHdl_Impl, weld::TreeView&, void);
+    DECL_LINK(DblClickHdl_Impl, weld::TreeView&, bool);
+    DECL_LINK(RemoveHdl_Impl, weld::Button&, void);
+    DECL_LINK(EditHdl_Impl, weld::Button&, void);
 
-    VclPtr<PushButton>             m_pEditBtn;
+    void EnableRemoveButton()
+    {
+        m_xRemoveBtn->set_sensitive(m_xAssignedList->get_selected_index() != -1);
+    }
 
-    DECL_LINK(ModifyHdl_Impl, Edit&, void);
-    DECL_LINK(AssignHdl_Impl, Button*, void);
-    DECL_LINK(SelectHdl_Impl, ListBox&, void);
-    DECL_LINK(DblClickHdl_Impl, ListBox&, void);
-    DECL_LINK(RemoveHdl_Impl, Button*, void);
+    void EnableEditButton()
+    {
+        m_xEditBtn->set_sensitive(m_xAssignedList->get_selected_index() != -1);
+    }
 
-    DECL_LINK(EditHdl_Impl, Button*, void);
+    void DisableAssignButton()
+    {
+        m_xAssignBtn->set_sensitive(false);
+    }
 
-    void             EnableRemoveButton()
-                                { m_pRemoveBtn->Enable(
-                                    m_pAssignedList->GetSelectEntryPos()
-                                    != LISTBOX_ENTRY_NOTFOUND ); }
+    void DisableRemoveButton()
+    {
+        m_xRemoveBtn->set_sensitive(false);
+    }
 
-
-    void             EnableEditButton()
-                                { m_pEditBtn->Enable(
-                                    m_pAssignedList->GetSelectEntryPos()
-                                    != LISTBOX_ENTRY_NOTFOUND ); }
-
-    void             DisableAssignButton()
-                                { m_pAssignBtn->Disable(); }
-
-    void             DisableRemoveButton()
-                                { m_pRemoveBtn->Disable(); }
-
-    void             DisableEditButton()
-                                { m_pEditBtn->Disable(); }
-
+    void DisableEditButton()
+    {
+        m_xEditBtn->set_sensitive(false);
+    }
 
 public:
-    explicit SvxJavaParameterDlg( vcl::Window* pParent );
+    explicit SvxJavaParameterDlg(weld::Window* pParent);
     virtual ~SvxJavaParameterDlg() override;
-    virtual void dispose() override;
 
-    virtual short           Execute() override;
+    virtual short run() override;
 
     std::vector< OUString > GetParameters() const;
     void SetParameters( std::vector< OUString > const & rParams );
@@ -172,39 +169,36 @@ public:
 
 // class SvxJavaClassPathDlg ---------------------------------------------
 
-class SvxJavaClassPathDlg : public ModalDialog
+class SvxJavaClassPathDlg : public weld::GenericDialogController
 {
 private:
-    VclPtr<ListBox>                 m_pPathList;
-    VclPtr<PushButton>              m_pAddArchiveBtn;
-    VclPtr<PushButton>              m_pAddPathBtn;
-    VclPtr<PushButton>              m_pRemoveBtn;
+    std::unique_ptr<weld::TreeView> m_xPathList;
+    std::unique_ptr<weld::Button> m_xAddArchiveBtn;
+    std::unique_ptr<weld::Button> m_xAddPathBtn;
+    std::unique_ptr<weld::Button> m_xRemoveBtn;
 
     OUString                m_sOldPath;
 
-    DECL_LINK(AddArchiveHdl_Impl, Button*, void);
-    DECL_LINK(AddPathHdl_Impl, Button*, void);
-    DECL_LINK(RemoveHdl_Impl, Button*, void);
-    DECL_LINK(SelectHdl_Impl, ListBox&, void);
+    DECL_LINK(AddArchiveHdl_Impl, weld::Button&, void);
+    DECL_LINK(AddPathHdl_Impl, weld::Button&, void);
+    DECL_LINK(RemoveHdl_Impl, weld::Button&, void);
+    DECL_LINK(SelectHdl_Impl, weld::TreeView&, void);
 
-    bool                    IsPathDuplicate( const OUString& _rPath );
-    void             EnableRemoveButton()
-                                { m_pRemoveBtn->Enable(
-                                    m_pPathList->GetSelectEntryPos() != LISTBOX_ENTRY_NOTFOUND ); }
-
+    bool IsPathDuplicate(const OUString& _rPath);
+    void EnableRemoveButton()
+    {
+        m_xRemoveBtn->set_sensitive(m_xPathList->get_selected_index() != -1);
+    }
 
 public:
-    explicit SvxJavaClassPathDlg( vcl::Window* pParent );
+    explicit SvxJavaClassPathDlg(weld::Window* pParent);
     virtual ~SvxJavaClassPathDlg() override;
-    virtual void            dispose() override;
 
     const OUString&  GetOldPath() const { return m_sOldPath; }
-    void             SetFocus() { m_pPathList->GrabFocus(); }
+    void             SetFocus() { m_xPathList->grab_focus(); }
 
     OUString                GetClassPath() const;
     void                    SetClassPath( const OUString& _rPath );
 };
-
-#endif // INCLUDED_CUI_SOURCE_OPTIONS_OPTJAVA_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

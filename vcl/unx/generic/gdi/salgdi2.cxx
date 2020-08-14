@@ -17,93 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <poll.h>
-#include "salgdiimpl.hxx"
+#include <salgdiimpl.hxx>
 
-#include <vcl/salbtype.hxx>
 #include <vcl/sysdata.hxx>
 
-#include "unx/pixmap.hxx"
-#include "unx/salunx.h"
-#include "unx/saldisp.hxx"
-#include "unx/salbmp.h"
-#include "unx/salgdi.h"
-#include "unx/salvd.h"
-#include "unx/x11/x11gdiimpl.h"
-#include <unx/x11/xlimits.hxx>
-#include "xrender_peer.hxx"
-#include "salframe.hxx"
-
-#include "unx/printergfx.hxx"
-
-#include <vcl/bitmapaccess.hxx>
-#include <outdata.hxx>
-#include "ControlCacheKey.hxx"
-
-void X11SalGraphics::CopyScreenArea( Display* pDisplay,
-                                     Drawable aSrc, SalX11Screen nXScreenSrc, int nSrcDepth,
-                                     Drawable aDest, SalX11Screen nXScreenDest, int nDestDepth,
-                                     GC aDestGC,
-                                     int src_x, int src_y,
-                                     unsigned int w, unsigned int h,
-                                     int dest_x, int dest_y )
-{
-    if( nSrcDepth == nDestDepth )
-    {
-        if( nXScreenSrc == nXScreenDest )
-            XCopyArea( pDisplay, aSrc, aDest, aDestGC,
-                       src_x, src_y, w, h, dest_x, dest_y );
-        else
-        {
-            GetGenericData()->ErrorTrapPush();
-            XImage* pImage = XGetImage( pDisplay, aSrc, src_x, src_y, w, h,
-                                        AllPlanes, ZPixmap );
-            if( pImage )
-            {
-                if( pImage->data )
-                    XPutImage( pDisplay, aDest, aDestGC, pImage,
-                               0, 0, dest_x, dest_y, w, h );
-                XDestroyImage( pImage );
-            }
-            GetGenericData()->ErrorTrapPop();
-        }
-    }
-    else
-    {
-        X11SalBitmap aBM;
-        aBM.ImplCreateFromDrawable( aSrc, nXScreenSrc, nSrcDepth, src_x, src_y, w, h );
-        SalTwoRect aTwoRect(0, 0, w, h, dest_x, dest_y, w, h);
-        aBM.ImplDraw(aDest, nXScreenDest, nDestDepth, aTwoRect,aDestGC);
-    }
-}
-
-void X11SalGraphics::FillPixmapFromScreen( X11Pixmap* pPixmap, int nX, int nY )
-{
-    X11GraphicsImpl& rImpl = dynamic_cast<X11GraphicsImpl&>(*mxImpl.get());
-    rImpl.FillPixmapFromScreen( pPixmap, nX, nY );
-}
-
-bool X11SalGraphics::RenderPixmapToScreen( X11Pixmap* pPixmap, X11Pixmap* pMask, int nX, int nY )
-{
-    SAL_INFO( "vcl", "RenderPixmapToScreen" );
-    X11GraphicsImpl& rImpl = dynamic_cast<X11GraphicsImpl&>(*mxImpl.get());
-    return rImpl.RenderPixmapToScreen( pPixmap, pMask, nX, nY );
-}
-
-bool X11SalGraphics::TryRenderCachedNativeControl(ControlCacheKey& rControlCacheKey, int nX, int nY)
-{
-    SAL_INFO( "vcl", "TryRenderCachedNativeControl" );
-    X11GraphicsImpl& rImpl = dynamic_cast<X11GraphicsImpl&>(*mxImpl.get());
-    return rImpl.TryRenderCachedNativeControl(rControlCacheKey, nX, nY);
-}
-
-bool X11SalGraphics::RenderAndCacheNativeControl(X11Pixmap* pPixmap, X11Pixmap* pMask, int nX, int nY,
-                                                 ControlCacheKey& rControlCacheKey)
-{
-    SAL_INFO( "vcl", "RenderAndCachePixmap" );
-    X11GraphicsImpl& rImpl = dynamic_cast<X11GraphicsImpl&>(*mxImpl.get());
-    return rImpl.RenderAndCacheNativeControl(pPixmap, pMask, nX, nY, rControlCacheKey);
-}
+#include <unx/saldisp.hxx>
+#include <unx/salgdi.h>
+#include <unx/x11/xrender_peer.hxx>
+#include <salframe.hxx>
 
 extern "C"
 {
@@ -127,12 +48,14 @@ void X11SalGraphics::YieldGraphicsExpose()
     ::Window aWindow = GetDrawable();
     if( ! pFrame )
     {
-        const std::list< SalFrame* >& rFrames = vcl_sal::getSalDisplay(GetGenericData())->getFrames();
-        for( std::list< SalFrame* >::const_iterator it = rFrames.begin(); it != rFrames.end() && ! pFrame; ++it )
+        for (auto pSalFrame : vcl_sal::getSalDisplay(GetGenericUnixSalData())->getFrames() )
         {
-            const SystemEnvData* pEnvData = (*it)->GetSystemData();
+            const SystemEnvData* pEnvData = pSalFrame->GetSystemData();
             if( Drawable(pEnvData->aWindow) == aWindow )
-                pFrame = *it;
+            {
+                pFrame = pSalFrame;
+                break;
+            }
         }
         if( ! pFrame )
             return;
@@ -226,17 +149,17 @@ bool X11SalGraphics::drawAlphaRect( long nX, long nY, long nWidth,
 
 void X11SalGraphics::drawMask( const SalTwoRect& rPosAry,
                                const SalBitmap &rSalBitmap,
-                               SalColor nMaskColor )
+                               Color nMaskColor )
 {
     mxImpl->drawMask( rPosAry, rSalBitmap, nMaskColor );
 }
 
-SalBitmap *X11SalGraphics::getBitmap( long nX, long nY, long nDX, long nDY )
+std::shared_ptr<SalBitmap> X11SalGraphics::getBitmap( long nX, long nY, long nDX, long nDY )
 {
     return mxImpl->getBitmap( nX, nY, nDX, nDY );
 }
 
-SalColor X11SalGraphics::getPixel( long nX, long nY )
+Color X11SalGraphics::getPixel( long nX, long nY )
 {
     return mxImpl->getPixel( nX, nY );
 }
@@ -252,25 +175,7 @@ void X11SalGraphics::invert( long       nX,
 
 bool X11SalGraphics::supportsOperation( OutDevSupportType eType ) const
 {
-    bool bRet = false;
-    switch( eType )
-    {
-    case OutDevSupportType::TransparentRect:
-    case OutDevSupportType::B2DDraw:
-        {
-            XRenderPeer& rPeer = XRenderPeer::GetInstance();
-            const SalDisplay* pSalDisp = GetDisplay();
-            const SalVisual& rSalVis = pSalDisp->GetVisual( m_nXScreen );
-
-            Visual* pDstXVisual = rSalVis.GetVisual();
-            XRenderPictFormat* pDstVisFmt = rPeer.FindVisualFormat( pDstXVisual );
-            if( pDstVisFmt )
-                bRet = true;
-        }
-        break;
-    default: break;
-    }
-    return bRet;
+    return mxImpl->supportsOperation(eType);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -28,9 +28,6 @@
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/awt/KeyModifier.hpp>
 
-#include <vcl/svapp.hxx>
-#include <rtl/ustrbuf.hxx>
-
 #include <comphelper/attributelist.hxx>
 
 namespace framework{
@@ -73,20 +70,15 @@ void AcceleratorConfigurationWriter::flush()
 
     // TODO think about threadsafe using of cache
     AcceleratorCache::TKeyList                 lKeys = m_rContainer.getAllKeys();
-    AcceleratorCache::TKeyList::const_iterator pKey;
-    for (  pKey  = lKeys.begin();
-           pKey != lKeys.end();
-         ++pKey                 )
+    for (auto const& lKey : lKeys)
     {
-        const css::awt::KeyEvent& rKey     = *pKey;
-        const OUString&    rCommand = m_rContainer.getCommandByKey(rKey);
-        impl_ts_writeKeyCommandPair(rKey, rCommand, xExtendedCFG);
+        const OUString&    rCommand = m_rContainer.getCommandByKey(lKey);
+        impl_ts_writeKeyCommandPair(lKey, rCommand, xExtendedCFG);
     }
 
     /* TODO write key-command list
-    std::vector< SfxAcceleratorConfigItem>::const_iterator p;
-    for ( p = m_aWriteAcceleratorList.begin(); p != m_aWriteAcceleratorList.end(); p++ )
-        WriteAcceleratorItem( *p );
+    for (auto const& writeAccelerator : m_aWriteAcceleratorList)
+        WriteAcceleratorItem(writeAccelerator);
     */
 
     xExtendedCFG->ignorableWhitespace(OUString());

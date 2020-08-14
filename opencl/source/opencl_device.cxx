@@ -7,40 +7,29 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifdef _WIN32
-#include <prewin.h>
-#include <postwin.h>
-#elif defined __MACH__
-#include <mach/mach_time.h>
-#else
-#include <sys/time.h>
-#endif
-
-#include <time.h>
-#include <math.h>
 #include <float.h>
 #include <iostream>
-#include <sstream>
 #include <memory>
 #include <vector>
+#include <algorithm>
 
 #include <comphelper/random.hxx>
+#include <o3tl/safeint.hxx>
 #include <opencl/openclconfig.hxx>
-#include <opencl/openclwrapper.hxx>
 #include <opencl/platforminfo.hxx>
 #include <sal/log.hxx>
 #include <rtl/math.hxx>
+#include <tools/time.hxx>
 
 #include <opencl/OpenCLZone.hxx>
 
-#include "opencl_device.hxx"
+#include <opencl_device.hxx>
+#include <opencl_device_selection.h>
 
 #define INPUTSIZE  15360
 #define OUTPUTSIZE 15360
 
 #define STRINGIFY(...) #__VA_ARGS__"\n"
-
-namespace opencl {
 
 namespace {
 
@@ -63,15 +52,6 @@ struct LibreOfficeDeviceEvaluationIO
     std::vector<double> output;
     unsigned long inputSize;
     unsigned long outputSize;
-};
-
-struct timer
-{
-#ifdef _WIN32
-    LARGE_INTEGER start;
-#else
-    long long start;
-#endif
 };
 
 const char* source = STRINGIFY(
@@ -131,47 +111,6 @@ const char* source = STRINGIFY(
 
 size_t sourceSize[] = { strlen(source) };
 
-/*************************************************************************/
-/* INTERNAL FUNCTIONS                                                    */
-/*************************************************************************/
-/* Timer functions - start timer */
-void timerStart(timer* mytimer)
-{
-#ifdef _WIN32
-    QueryPerformanceCounter(&mytimer->start);
-#elif defined __MACH__
-    mytimer->start = mach_absolute_time();
-#else
-    struct timespec s;
-    clock_gettime(CLOCK_MONOTONIC, &s);
-    mytimer->start = (long long)s.tv_sec * (long long)1.0E6 + (long long)s.tv_nsec / (long long)1.0E3;
-#endif
-}
-
-/* Timer functions - get current value */
-double timerCurrent(timer* mytimer)
-{
-#ifdef _WIN32
-    LARGE_INTEGER stop, frequency;
-    QueryPerformanceCounter(&stop);
-    QueryPerformanceFrequency(&frequency);
-    double time = ((double)(stop.QuadPart - mytimer->start.QuadPart) / frequency.QuadPart);
-#elif defined __MACH__
-    static mach_timebase_info_data_t info = { 0, 0 };
-    if (info.numer == 0)
-        mach_timebase_info(&info);
-    long long stop = mach_absolute_time();
-    double time = ((stop - mytimer->start) * (double) info.numer / info.denom) / 1.0E9;
-#else
-    struct timespec s;
-    long long stop;
-    clock_gettime(CLOCK_MONOTONIC, &s);
-    stop = (long long)s.tv_sec * (long long)1.0E6 + (long long)s.tv_nsec / (long long)1.0E3;
-    double time = ((double)(stop - mytimer->start) / 1.0E6);
-#endif
-    return time;
-}
-
 /* Random number generator */
 double random(double min, double max)
 {
@@ -181,12 +120,12 @@ double random(double min, double max)
 }
 
 /* Populate input */
-void populateInput(std::unique_ptr<LibreOfficeDeviceEvaluationIO>& testData)
+void populateInput(std::unique_ptr<LibreOfficeDeviceEvaluationIO> const & testData)
 {
-    double* input0 = &testData->input0[0];
-    double* input1 = &testData->input1[0];
-    double* input2 = &testData->input2[0];
-    double* input3 = &testData->input3[0];
+    double* input0 = testData->input0.data();
+    double* input1 = testData->input1.data();
+    double* input2 = testData->input2.data();
+    double* input3 = testData->input3.data();
     for (unsigned long i = 0; i < testData->inputSize; i++)
     {
         input0[i] = random(0, i);
@@ -197,7 +136,7 @@ void populateInput(std::unique_ptr<LibreOfficeDeviceEvaluationIO>& testData)
 }
 
 /* Evaluate devices */
-ds_status evaluateScoreForDevice(ds_device& rDevice, std::unique_ptr<LibreOfficeDeviceEvaluationIO>& testData)
+ds_status evaluateScoreForDevice(ds_device& rDevice, std::unique_ptr<LibreOfficeDeviceEvaluationIO> const & testData)
 {
     if (rDevice.eType == DeviceType::OpenCLDevice)
     {
@@ -285,21 +224,20 @@ ds_status evaluateScoreForDevice(ds_device& rDevice, std::unique_ptr<LibreOffice
             else
             {
                 /* Build program succeeded */
-                timer kernelTime;
-                timerStart(&kernelTime);
+                sal_uInt64 kernelTime = tools::Time::GetMonotonicTicks();
 
                 /* Run kernel */
                 cl_kernel clKernel = clCreateKernel(clProgram, "DynamicKernel", &clStatus);
                 DS_CHECK_STATUS(clStatus, "evaluateScoreForDevice::clCreateKernel");
-                cl_mem clResult = clCreateBuffer(clContext, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, sizeof(cl_double) * testData->outputSize, &testData->output[0], &clStatus);
+                cl_mem clResult = clCreateBuffer(clContext, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, sizeof(cl_double) * testData->outputSize, testData->output.data(), &clStatus);
                 DS_CHECK_STATUS(clStatus, "evaluateScoreForDevice::clCreateBuffer::clResult");
-                cl_mem clInput0 = clCreateBuffer(clContext, CL_MEM_READ_ONLY  | CL_MEM_USE_HOST_PTR, sizeof(cl_double) * testData->inputSize,  &testData->input0[0], &clStatus);
+                cl_mem clInput0 = clCreateBuffer(clContext, CL_MEM_READ_ONLY  | CL_MEM_USE_HOST_PTR, sizeof(cl_double) * testData->inputSize,  testData->input0.data(), &clStatus);
                 DS_CHECK_STATUS(clStatus, "evaluateScoreForDevice::clCreateBuffer::clInput0");
-                cl_mem clInput1 = clCreateBuffer(clContext, CL_MEM_READ_ONLY  | CL_MEM_USE_HOST_PTR, sizeof(cl_double) * testData->inputSize,  &testData->input1[0], &clStatus);
+                cl_mem clInput1 = clCreateBuffer(clContext, CL_MEM_READ_ONLY  | CL_MEM_USE_HOST_PTR, sizeof(cl_double) * testData->inputSize,  testData->input1.data(), &clStatus);
                 DS_CHECK_STATUS(clStatus, "evaluateScoreForDevice::clCreateBuffer::clInput1");
-                cl_mem clInput2 = clCreateBuffer(clContext, CL_MEM_READ_ONLY  | CL_MEM_USE_HOST_PTR, sizeof(cl_double) * testData->inputSize,  &testData->input2[0], &clStatus);
+                cl_mem clInput2 = clCreateBuffer(clContext, CL_MEM_READ_ONLY  | CL_MEM_USE_HOST_PTR, sizeof(cl_double) * testData->inputSize,  testData->input2.data(), &clStatus);
                 DS_CHECK_STATUS(clStatus, "evaluateScoreForDevice::clCreateBuffer::clInput2");
-                cl_mem clInput3 = clCreateBuffer(clContext, CL_MEM_READ_ONLY  | CL_MEM_USE_HOST_PTR, sizeof(cl_double) * testData->inputSize,  &testData->input3[0], &clStatus);
+                cl_mem clInput3 = clCreateBuffer(clContext, CL_MEM_READ_ONLY  | CL_MEM_USE_HOST_PTR, sizeof(cl_double) * testData->inputSize,  testData->input3.data(), &clStatus);
                 DS_CHECK_STATUS(clStatus, "evaluateScoreForDevice::clCreateBuffer::clInput3");
                 clStatus = clSetKernelArg(clKernel, 0, sizeof(cl_mem), static_cast<void*>(&clResult));
                 DS_CHECK_STATUS(clStatus, "evaluateScoreForDevice::clSetKernelArg::clResult");
@@ -312,7 +250,7 @@ ds_status evaluateScoreForDevice(ds_device& rDevice, std::unique_ptr<LibreOffice
                 clStatus = clSetKernelArg(clKernel, 4, sizeof(cl_mem), static_cast<void*>(&clInput3));
                 DS_CHECK_STATUS(clStatus, "evaluateScoreForDevice::clSetKernelArg::clInput3");
                 size_t globalWS[1] = { testData->outputSize };
-                size_t localSize[1] = { 64 };
+                size_t const localSize[1] = { 64 };
                 clStatus = clEnqueueNDRangeKernel(clQueue, clKernel, 1, nullptr, globalWS, localSize, 0, nullptr, nullptr);
                 DS_CHECK_STATUS(clStatus, "evaluateScoreForDevice::clEnqueueNDRangeKernel");
                 clFinish(clQueue);
@@ -323,7 +261,7 @@ ds_status evaluateScoreForDevice(ds_device& rDevice, std::unique_ptr<LibreOffice
                 clReleaseMemObject(clResult);
                 clReleaseKernel(clKernel);
 
-                rDevice.fTime = timerCurrent(&kernelTime);
+                rDevice.fTime = tools::Time::GetMonotonicTicks() - kernelTime;
                 rDevice.bErrors = false;
             }
 
@@ -334,10 +272,9 @@ ds_status evaluateScoreForDevice(ds_device& rDevice, std::unique_ptr<LibreOffice
     }
     else
     {
-        /* Evaluating an Native CPU device */
+        /* Evaluating a Native CPU device */
         SAL_INFO("opencl.device", "Device: \"CPU\" (Native) evaluation...");
-        timer kernelTime;
-        timerStart(&kernelTime);
+        sal_uInt64 kernelTime = tools::Time::GetMonotonicTicks();
 
         unsigned long j;
         for (j = 0; j < testData->outputSize; j++)
@@ -348,7 +285,7 @@ ds_status evaluateScoreForDevice(ds_device& rDevice, std::unique_ptr<LibreOffice
             for (unsigned long i = 0; i < testData->inputSize; i++)
             {
                 fAverage += testData->input0[i];
-                fMin = ((fMin < testData->input1[i]) ? fMin : testData->input1[i]);
+                fMin = std::min(fMin, testData->input1[i]);
                 fSoP += testData->input2[i] * testData->input3[i];
             }
             fAverage /= testData->inputSize;
@@ -356,16 +293,16 @@ ds_status evaluateScoreForDevice(ds_device& rDevice, std::unique_ptr<LibreOffice
             // Don't run for much longer than one second
             if (j > 0 && j % 100 == 0)
             {
-                rDevice.fTime = timerCurrent(&kernelTime);
+                rDevice.fTime = tools::Time::GetMonotonicTicks() - kernelTime;
                 if (rDevice.fTime >= 1)
                     break;
             }
         }
 
-        rDevice.fTime = timerCurrent(&kernelTime);
+        rDevice.fTime = tools::Time::GetMonotonicTicks() - kernelTime;
 
         // Scale time to how long it would have taken to go all the way to outputSize
-        rDevice.fTime /= ((double) j / testData->outputSize);
+        rDevice.fTime /= (static_cast<double>(j) / testData->outputSize);
 
         // InterpretTail - the S/W fallback is nothing like as efficient
         // as any good openCL implementation: no SIMD, tons of branching
@@ -377,7 +314,7 @@ ds_status evaluateScoreForDevice(ds_device& rDevice, std::unique_ptr<LibreOffice
     return DS_SUCCESS;
 }
 
-ds_status profileDevices(std::unique_ptr<ds_profile>& pProfile, std::unique_ptr<LibreOfficeDeviceEvaluationIO>& pTestData)
+ds_status profileDevices(std::unique_ptr<ds_profile> const & pProfile, std::unique_ptr<LibreOfficeDeviceEvaluationIO> const & pTestData)
 {
     ds_status status = DS_SUCCESS;
 
@@ -397,18 +334,18 @@ ds_status profileDevices(std::unique_ptr<ds_profile>& pProfile, std::unique_ptr<
 }
 
 /* Pick best device */
-ds_status pickBestDevice(std::unique_ptr<ds_profile>& profile, int& rBestDeviceIndex)
+int pickBestDevice(std::unique_ptr<ds_profile> const & profile)
 {
     double bestScore = DBL_MAX;
 
-    rBestDeviceIndex = -1;
+    int nBestDeviceIndex = -1;
 
     for (std::vector<ds_device>::size_type d = 0; d < profile->devices.size();
          d++)
     {
         ds_device& device = profile->devices[d];
 
-        // Check blacklist and whitelist for actual devices
+        // Check denylist and allowlist for actual devices
         if (device.eType == DeviceType::OpenCLDevice)
         {
             // There is a silly impedance mismatch here. Why do we
@@ -423,10 +360,10 @@ ds_status pickBestDevice(std::unique_ptr<ds_profile>& profile, int& rBestDeviceI
             aDevice.maName = OStringToOUString(device.sDeviceName, RTL_TEXTENCODING_UTF8);
             aDevice.maDriver = OStringToOUString(device.sDriverVersion, RTL_TEXTENCODING_UTF8);
 
-            // If blacklisted or not whitelisted, ignore it
+            // If denylisted or not allowlisted, ignore it
             if (OpenCLConfig::get().checkImplementation(aPlatform, aDevice))
             {
-                SAL_INFO("opencl.device", "Device[" << d << "] " << device.sDeviceName << " is blacklisted or not whitelisted");
+                SAL_INFO("opencl.device", "Device[" << d << "] " << device.sDeviceName << " is denylisted or not allowlisted");
                 device.fTime = DBL_MAX;
                 device.bErrors = false;
             }
@@ -454,25 +391,25 @@ ds_status pickBestDevice(std::unique_ptr<ds_profile>& profile, int& rBestDeviceI
         if (fScore < bestScore)
         {
             bestScore = fScore;
-            rBestDeviceIndex = d;
+            nBestDeviceIndex = d;
         }
     }
-    if (rBestDeviceIndex != -1 && profile->devices[rBestDeviceIndex].eType == DeviceType::OpenCLDevice)
+    if (nBestDeviceIndex != -1 && profile->devices[nBestDeviceIndex].eType == DeviceType::OpenCLDevice)
     {
-        SAL_INFO("opencl.device", "Selected Device[" << rBestDeviceIndex << "]: " << profile->devices[rBestDeviceIndex].sDeviceName << "(OpenCL).");
+        SAL_INFO("opencl.device", "Selected Device[" << nBestDeviceIndex << "]: " << profile->devices[nBestDeviceIndex].sDeviceName << "(OpenCL).");
     }
     else
     {
-        SAL_INFO("opencl.device", "Selected Device[" << rBestDeviceIndex << "]: CPU (Native).");
+        SAL_INFO("opencl.device", "Selected Device[" << nBestDeviceIndex << "]: CPU (Native).");
     }
-    return DS_SUCCESS;
+    return nBestDeviceIndex;
 }
 
 /* Return device ID for matching device name */
-int matchDevice(std::unique_ptr<ds_profile>& profile, char* deviceName)
+int matchDevice(std::unique_ptr<ds_profile> const & profile, char* deviceName)
 {
     int deviceMatch = -1;
-    for (unsigned int d = 0; d < profile->devices.size() - 1; d++)
+    for (size_t d = 0; d < profile->devices.size() - 1; d++)
     {
         if (profile->devices[d].sDeviceName.indexOf(deviceName) != -1)
             deviceMatch = d;
@@ -517,14 +454,14 @@ public:
 };
 
 
-void writeDevicesLog(std::unique_ptr<ds_profile>& rProfile, OUString const & sProfilePath, int nSelectedIndex)
+void writeDevicesLog(std::unique_ptr<ds_profile> const & rProfile, OUString const & sProfilePath, int nSelectedIndex)
 {
     OUString aCacheFile(sProfilePath + "opencl_devices.log");
     LogWriter aWriter(aCacheFile);
 
     int nIndex = 0;
 
-    for (ds_device& rDevice : rProfile->devices)
+    for (const ds_device& rDevice : rProfile->devices)
     {
         if (rDevice.eType == DeviceType::OpenCLDevice)
         {
@@ -630,8 +567,7 @@ ds_device const & getDeviceSelection(
         }
 
         /* Pick best device */
-        int bestDeviceIdx;
-        pickBestDevice(aProfile, bestDeviceIdx);
+        int bestDeviceIdx = pickBestDevice(aProfile);
 
         /* Override if necessary */
         char* overrideDeviceStr = getenv("SC_OPENCL_DEVICE_OVERRIDE");
@@ -658,7 +594,7 @@ ds_device const & getDeviceSelection(
         }
 
         /* Final device selection */
-        if (bestDeviceIdx >=0 && static_cast< std::vector<ds_device>::size_type> ( bestDeviceIdx ) < aProfile->devices.size() )
+        if (bestDeviceIdx >=0 && o3tl::make_unsigned( bestDeviceIdx ) < aProfile->devices.size() )
         {
             selectedDevice = aProfile->devices[bestDeviceIdx];
             bIsDeviceSelected = true;
@@ -669,8 +605,6 @@ ds_device const & getDeviceSelection(
         }
     }
     return selectedDevice;
-}
-
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

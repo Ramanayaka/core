@@ -11,7 +11,10 @@
 # utl is the name of the library as it is found in Repository.mk
 $(eval $(call gb_Library_Library,utl))
 
-$(eval $(call gb_Library_use_external,utl,boost_headers))
+$(eval $(call gb_Library_use_externals,utl,\
+	boost_headers \
+	boost_locale \
+))
 
 $(eval $(call gb_Library_use_custom_headers,utl,\
  officecfg/registry \
@@ -31,7 +34,7 @@ $(eval $(call gb_Library_add_defs,utl,\
     -DUNOTOOLS_DLLIMPLEMENTATION \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,utl,$(SRCDIR)/unotools/inc/pch/precompiled_utl))
+$(eval $(call gb_Library_set_precompiled_header,utl,unotools/inc/pch/precompiled_utl))
 
 $(eval $(call gb_Library_use_sdk_api,utl))
 
@@ -65,19 +68,15 @@ $(eval $(call gb_Library_add_exception_objects,utl,\
     unotools/source/config/docinfohelper \
     unotools/source/config/dynamicmenuoptions \
     unotools/source/config/eventcfg \
-    unotools/source/config/extendedsecurityoptions \
     unotools/source/config/fltrcfg \
     unotools/source/config/fontcfg \
-    unotools/source/config/fontoptions \
     unotools/source/config/historyoptions \
     unotools/source/config/itemholder1 \
     unotools/source/config/lingucfg \
-    unotools/source/config/misccfg \
     unotools/source/config/moduleoptions \
     unotools/source/config/options \
     unotools/source/config/optionsdlg \
     unotools/source/config/pathoptions \
-    unotools/source/config/printwarningoptions \
     unotools/source/config/saveopt \
     unotools/source/config/searchopt \
     unotools/source/config/securityoptions \
@@ -95,8 +94,8 @@ $(eval $(call gb_Library_add_exception_objects,utl,\
     unotools/source/i18n/textsearch \
     unotools/source/i18n/transliterationwrapper \
     unotools/source/misc/closeveto \
-    unotools/source/misc/componentresmodule \
     unotools/source/misc/datetime \
+    unotools/source/misc/defaultencoding \
     unotools/source/misc/desktopterminationobserver \
     unotools/source/misc/eventlisteneradapter \
     unotools/source/misc/fontcvt \
@@ -104,7 +103,6 @@ $(eval $(call gb_Library_add_exception_objects,utl,\
     unotools/source/misc/mediadescriptor \
     unotools/source/misc/sharedunocomponent \
     unotools/source/misc/syslocale \
-    unotools/source/misc/unotoolsservices \
     unotools/source/misc/wincodepage \
     unotools/source/misc/ServiceDocumenter \
     unotools/source/misc/ZipPackageHelper \
@@ -117,6 +115,12 @@ $(eval $(call gb_Library_add_exception_objects,utl,\
     unotools/source/ucbhelper/ucblockbytes \
     unotools/source/ucbhelper/ucbstreamhelper \
     unotools/source/ucbhelper/xtempfile \
+))
+
+# see the source file
+$(eval $(call gb_Library_add_exception_objects,utl,\
+    unotools/source/i18n/resmgr, \
+    -D_LIBCPP_ENABLE_CXX17_REMOVED_AUTO_PTR= -D_HAS_AUTO_PTR_ETC=1 \
 ))
 
 # vim: set noet sw=4 ts=4:

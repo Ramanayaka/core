@@ -21,24 +21,23 @@
 #define INCLUDED_SVX_DATABASELOCATIONINPUT_HXX
 
 #include <svx/svxdllapi.h>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <rtl/ustring.hxx>
 
 #include <memory>
 
-class PushButton;
-namespace svt { class OFileURLControl; }
+class SvtURLBox;
+namespace weld { class Button; class Window; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 namespace svx
 {
-
-
     //= DatabaseLocationInputController
-
     class DatabaseLocationInputController_Impl;
     /** helper class to control controls needed to input a database location
 
         If you allow, in your dialog, to save a database document, then you usually
-        have a OFileURLControl for inputting the actual location, and a push button
+        have an URLBox for inputting the actual location, and a push button
         to browse for a location.
 
         This helper class controls such two UI elements.
@@ -48,8 +47,9 @@ namespace svx
     public:
         DatabaseLocationInputController(
             const css::uno::Reference<css::uno::XComponentContext>& _rContext,
-            ::svt::OFileURLControl&                 _rLocationInput,
-            PushButton&                             _rBrowseButton
+            SvtURLBox& _rLocationInput,
+            weld::Button& _rBrowseButton,
+            weld::Window& _rDialog
         );
         ~DatabaseLocationInputController();
 
@@ -57,7 +57,7 @@ namespace svx
         */
         void    setURL( const OUString& _rURL );
 
-        /** returns the current database location, in form of an URL (not a system path)
+        /** returns the current database location, in form of a URL (not a system path)
         */
         OUString  getURL() const;
 
@@ -75,10 +75,7 @@ namespace svx
         ::std::unique_ptr< DatabaseLocationInputController_Impl >
                 m_pImpl;
     };
-
-
 }
-
 
 #endif // INCLUDED_SVX_DATABASELOCATIONINPUT_HXX
 

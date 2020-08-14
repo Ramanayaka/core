@@ -20,10 +20,8 @@
 #ifndef INCLUDED_EDITENG_EDITOBJ_HXX
 #define INCLUDED_EDITENG_EDITOBJ_HXX
 
-#include <rsc/rscsfx.hxx>
+#include <svl/style.hxx>
 #include <svl/itempool.hxx>
-#include <editeng/eeitem.hxx>
-#include <editeng/editdata.hxx>
 #include <editeng/editengdllapi.h>
 #include <editeng/macros.hxx>
 #include <svl/languageoptions.hxx>
@@ -36,8 +34,8 @@
 class SfxItemSet;
 class SvxFieldItem;
 class SvxFieldData;
-class SvStream;
 enum class OutlinerMode;
+struct EECharAttrib;
 
 namespace editeng {
 
@@ -54,9 +52,11 @@ class SharedStringPool;
 
 }
 
+enum class TextRotation { NONE, TOPTOBOTTOM, BOTTOMTOTOP };
+
 class EditTextObjectImpl;
 
-class EDITENG_DLLPUBLIC EditTextObject : public SfxItemPoolUser
+class EDITENG_DLLPUBLIC EditTextObject final : public SfxItemPoolUser
 {
     friend class EditTextObjectImpl;
     friend class editeng::FieldUpdaterImpl;
@@ -85,16 +85,15 @@ public:
     void SetUserType( OutlinerMode n );
 
     bool IsVertical() const;
+    bool GetDirectVertical() const;
     bool IsTopToBottom() const;
-    void SetVertical( bool bVertical, bool bTopToBottom = true);
+    void SetVertical( bool bVertical );
+    void SetRotation( TextRotation nRotation );
+    TextRotation    GetRotation() const;
 
     SvtScriptType GetScriptType() const;
 
-    EditTextObject* Clone() const;
-
-    void Store( SvStream& rOStream ) const;
-
-    static EditTextObject* Create( SvStream& rIStream );
+    std::unique_ptr<EditTextObject> Clone() const;
 
     sal_Int32 GetParagraphCount() const;
 
@@ -129,9 +128,13 @@ public:
         const OUString& rOldName, SfxStyleFamily eOldFamily, const OUString& rNewName, SfxStyleFamily eNewFamily);
     void ChangeStyleSheetName(SfxStyleFamily eFamily, const OUString& rOldName, const OUString& rNewName);
 
-    editeng::FieldUpdater GetFieldUpdater();
+    editeng::FieldUpdater GetFieldUpdater() const;
 
     bool operator==( const EditTextObject& rCompare ) const;
+
+    /** Compare, ignoring SfxItemPool pointer.
+     */
+    bool Equals( const EditTextObject& rCompare ) const;
 
     // #i102062#
     bool isWrongListEqual(const EditTextObject& rCompare) const;
@@ -141,7 +144,7 @@ public:
 #if DEBUG_EDIT_ENGINE
     void Dump() const;
 #endif
-    void dumpAsXml(struct _xmlTextWriter * pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 #endif // INCLUDED_EDITENG_EDITOBJ_HXX

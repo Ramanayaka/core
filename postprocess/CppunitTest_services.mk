@@ -18,6 +18,7 @@ $(eval $(call gb_CppunitTest_use_externals,services, \
 ))
 
 $(eval $(call gb_CppunitTest_use_libraries,services, \
+	comphelper \
 	cppu \
 	cppuhelper \
 	sal \
@@ -37,13 +38,17 @@ ifneq ($(DISABLE_PYTHON),TRUE)
 $(eval $(call gb_CppunitTest_use_python_ure,services))
 
 $(eval $(call gb_CppunitTest_use_rdb,services,pyuno))
+
+$(eval $(call gb_CppunitTest_use_packages,services, \
+   pyuno_pythonloader_ini \
+))
+
+$(call gb_CppunitTest_get_target,services): $(call gb_Pyuno_get_target,commonwizards)
 endif
 
 $(eval $(call gb_CppunitTest_use_configuration,services))
 
 ifeq ($(ENABLE_JAVA),TRUE)
-$(eval $(call gb_CppunitTest_use_java_ure,services))
-
 $(eval $(call gb_CppunitTest_use_jars,services,\
 	ScriptProviderForJava \
 	smoketest \

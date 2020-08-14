@@ -19,12 +19,9 @@
 #ifndef INCLUDED_CONNECTIVITY_SDBCX_IREFRESHABLE_HXX
 #define INCLUDED_CONNECTIVITY_SDBCX_IREFRESHABLE_HXX
 
-#include <connectivity/CommonTools.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
 
-namespace connectivity
-{
-    namespace sdbcx
+namespace connectivity::sdbcx
     {
         class OOO_DLLPUBLIC_DBTOOLS SAL_NO_VTABLE IRefreshableGroups
         {
@@ -52,7 +49,7 @@ namespace connectivity
         protected:
             ~IRefreshableColumns() {}
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SDBCX_IREFRESHABLE_HXX
 

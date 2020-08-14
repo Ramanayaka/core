@@ -18,14 +18,14 @@
  */
 
 #include "formevents.hxx"
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlevent.hxx>
 
 namespace xmloff
 {
 
     //= event translation table
-    static const XMLEventNameTranslation aEventTranslations[] =
+    const XMLEventNameTranslation aEventTranslations[] =
     {
         { "XApproveActionListener::approveAction",      XML_NAMESPACE_FORM, "approveaction" }, // "on-approveaction"
         { "XActionListener::actionPerformed",           XML_NAMESPACE_FORM, "performaction" }, // "on-performaction"

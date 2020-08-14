@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_TEXTACTION_HXX
-#define INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_TEXTACTION_HXX
+#pragma once
 
 #include <action.hxx>
 #include <cppcanvas/canvas.hxx>
@@ -32,9 +31,7 @@ class Color;
 
 /* Definition of internal::TextActionFactory */
 
-namespace cppcanvas
-{
-    namespace internal
+namespace cppcanvas::internal
     {
         struct OutDevState;
 
@@ -61,11 +58,12 @@ namespace cppcanvas
                 subsettable (Action::render( Subset ) works on
                 characters)
              */
-            ActionSharedPtr createTextAction( const ::Point&                 rStartPoint,
+            std::shared_ptr<Action> createTextAction( const ::Point&                 rStartPoint,
                                                      const ::Size&                  rReliefOffset,
                                                      const ::Color&                 rReliefColor,
                                                      const ::Size&                  rShadowOffset,
                                                      const ::Color&                 rShadowColor,
+                                                     const ::Color&                 rTextFillColor,
                                                      const OUString&                rText,
                                                      sal_Int32                      nStartPos,
                                                      sal_Int32                      nLen,
@@ -76,9 +74,6 @@ namespace cppcanvas
                                                      const Renderer::Parameters&    rParms,
                                                      bool                           bSubsettable );
         }
-    }
 }
-
-#endif // INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_TEXTACTION_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,10 +20,8 @@
 #ifndef INCLUDED_SC_INC_DAPIUNO_HXX
 #define INCLUDED_SC_INC_DAPIUNO_HXX
 
-#include "global.hxx"
-#include "dpobject.hxx"
-#include "rangeutl.hxx"
 #include "cellsuno.hxx"
+#include "dpglobal.hxx"
 
 #include <svl/lstner.hxx>
 #include <svl/itemprop.hxx>
@@ -35,17 +33,12 @@
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 
-#include <com/sun/star/sheet/DataPilotFieldAutoShowInfo.hpp>
 #include <com/sun/star/sheet/DataPilotFieldGroupInfo.hpp>
-#include <com/sun/star/sheet/DataPilotFieldLayoutInfo.hpp>
 #include <com/sun/star/sheet/DataPilotFieldOrientation.hpp>
-#include <com/sun/star/sheet/DataPilotFieldReference.hpp>
-#include <com/sun/star/sheet/DataPilotFieldSortInfo.hpp>
 #include <com/sun/star/sheet/XDataPilotDataLayoutFieldSupplier.hpp>
 #include <com/sun/star/sheet/XDataPilotDescriptor.hpp>
 #include <com/sun/star/sheet/XDataPilotField.hpp>
 #include <com/sun/star/sheet/XDataPilotFieldGrouping.hpp>
-#include <com/sun/star/sheet/XDataPilotTable.hpp>
 #include <com/sun/star/sheet/XDataPilotTable2.hpp>
 #include <com/sun/star/sheet/XDataPilotTables.hpp>
 
@@ -54,10 +47,12 @@
 #include <memory>
 #include <vector>
 
-namespace com { namespace sun { namespace star { namespace sheet {
-    struct DataPilotFieldFilter;
-    struct DataPilotTablePositionData;
-}}}}
+namespace com::sun::star::sheet { struct DataPilotFieldAutoShowInfo; }
+namespace com::sun::star::sheet { class XMembersAccess; }
+namespace com::sun::star::sheet { struct DataPilotFieldLayoutInfo; }
+namespace com::sun::star::sheet { struct DataPilotFieldReference; }
+namespace com::sun::star::sheet { struct DataPilotFieldSortInfo; }
+
 
 class ScDocShell;
 class ScDPSaveDimension;
@@ -67,6 +62,7 @@ class ScDataPilotTableObj;
 class ScDataPilotFieldObj;
 class ScDataPilotItemObj;
 enum class ScGeneralFunction;
+class ScDPObject;
 
 class ScDataPilotConversion
 {
@@ -80,7 +76,7 @@ public:
 };
 
 /** DataPilotTables collection per sheet. */
-class ScDataPilotTablesObj : public cppu::WeakImplHelper<
+class ScDataPilotTablesObj final : public cppu::WeakImplHelper<
                                         css::sheet::XDataPilotTables,
                                         css::container::XEnumerationAccess,
                                         css::container::XIndexAccess,
@@ -132,13 +128,13 @@ public:
 };
 
 //  ScDataPilotDescriptorBase is never instantiated directly
-class ScDataPilotDescriptorBase : public css::sheet::XDataPilotDescriptor,
-                                  public css::beans::XPropertySet,
-                                  public css::sheet::XDataPilotDataLayoutFieldSupplier,
-                                  public css::lang::XServiceInfo,
-                                  public css::lang::XUnoTunnel,
-                                  public css::lang::XTypeProvider,
-                                  public cppu::OWeakObject,
+class SAL_DLLPUBLIC_RTTI ScDataPilotDescriptorBase :
+                                  public cppu::WeakImplHelper<
+                                    css::sheet::XDataPilotDescriptor,
+                                    css::beans::XPropertySet,
+                                    css::sheet::XDataPilotDataLayoutFieldSupplier,
+                                    css::lang::XServiceInfo,
+                                    css::lang::XUnoTunnel>,
                                   public SfxListener
 {
 private:
@@ -148,11 +144,6 @@ private:
 public:
                             ScDataPilotDescriptorBase(ScDocShell* pDocSh);
     virtual                 ~ScDataPilotDescriptorBase() override;
-
-    virtual css::uno::Any SAL_CALL queryInterface(
-                                const css::uno::Type & rType ) override;
-    virtual void SAL_CALL   acquire() throw() override;
-    virtual void SAL_CALL   release() throw() override;
 
     virtual void            Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
@@ -206,17 +197,12 @@ public:
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence<
                                     sal_Int8 >& aIdentifier ) override;
 
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    SC_DLLPUBLIC static ScDataPilotDescriptorBase* getImplementation(const css::uno::Reference<css::sheet::XDataPilotDescriptor>& rObj);
-
-                            // XTypeProvider (override in ScDataPilotTableObj)
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
+    SC_DLLPUBLIC static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
 
                             // XServiceInfo is in derived classes
 };
 
-class ScDataPilotDescriptor : public ScDataPilotDescriptorBase
+class ScDataPilotDescriptor final : public ScDataPilotDescriptorBase
 {
 private:
     std::unique_ptr<ScDPObject>  mpDPObject;
@@ -336,7 +322,7 @@ protected:
 
     ScDocShell* GetDocShell() const;
 protected:
-    ScDataPilotDescriptorBase& mrParent;
+    rtl::Reference<ScDataPilotDescriptorBase> mxParent;
     ScFieldIdentifier   maFieldId;
 
 private:
@@ -353,7 +339,7 @@ typedef ::cppu::WeakImplHelper
 ScDataPilotFieldsObjImpl;
 
 /** Collection of all DataPilot fields, or of all fields from a specific dimension. */
-class ScDataPilotFieldsObj : public ScDataPilotChildObjBase, public ScDataPilotFieldsObjImpl
+class ScDataPilotFieldsObj final : public ScDataPilotChildObjBase, public ScDataPilotFieldsObjImpl
 {
 public:
     explicit            ScDataPilotFieldsObj(
@@ -452,25 +438,24 @@ public:
     void setSubtotals(const std::vector< ScGeneralFunction >& rFunctions);
     void setCurrentPage(const OUString& sPage);
     void setUseCurrentPage(bool bUse);
-    const css::sheet::DataPilotFieldAutoShowInfo* getAutoShowInfo();
+    const css::sheet::DataPilotFieldAutoShowInfo* getAutoShowInfo() const;
     void setAutoShowInfo(const css::sheet::DataPilotFieldAutoShowInfo* pInfo);
-    const css::sheet::DataPilotFieldLayoutInfo* getLayoutInfo();
+    const css::sheet::DataPilotFieldLayoutInfo* getLayoutInfo() const;
     void setLayoutInfo(const css::sheet::DataPilotFieldLayoutInfo* pInfo);
-    const css::sheet::DataPilotFieldReference* getReference();
+    const css::sheet::DataPilotFieldReference* getReference() const;
     void setReference(const css::sheet::DataPilotFieldReference* pInfo);
-    const css::sheet::DataPilotFieldSortInfo* getSortInfo();
+    const css::sheet::DataPilotFieldSortInfo* getSortInfo() const;
     void setSortInfo(const css::sheet::DataPilotFieldSortInfo* pInfo);
     bool getShowEmpty() const;
     void setShowEmpty(bool bShow);
     bool getRepeatItemLabels() const;
     void setRepeatItemLabels(bool bShow);
 
-    bool hasGroupInfo();
+    bool hasGroupInfo() const;
     css::sheet::DataPilotFieldGroupInfo getGroupInfo();
     void setGroupInfo(const css::sheet::DataPilotFieldGroupInfo* pInfo);
 
                             // XDataPilotFieldGrouping
-    static bool HasString(const css::uno::Sequence< OUString >& aItems, const OUString& aString);
     virtual css::uno::Reference < css::sheet::XDataPilotField > SAL_CALL
         createNameGroup(const css::uno::Sequence< OUString >& aItems) override;
     virtual css::uno::Reference < css::sheet::XDataPilotField > SAL_CALL
@@ -513,7 +498,7 @@ ScDataPilotFieldGroupsObjImpl;
     field. Grouping info has to be written back with the GroupInfo property of
     the DataPilot field after modifying this object.
  */
-class ScDataPilotFieldGroupsObj : public ScDataPilotFieldGroupsObjImpl
+class ScDataPilotFieldGroupsObj final : public ScDataPilotFieldGroupsObjImpl
 {
 public:
     explicit            ScDataPilotFieldGroupsObj( const ScFieldGroups& rGroups );
@@ -573,7 +558,7 @@ typedef ::cppu::WeakImplHelper
 >
 ScDataPilotFieldGroupObjImpl;
 
-class ScDataPilotFieldGroupObj : public ScDataPilotFieldGroupObjImpl
+class ScDataPilotFieldGroupObj final : public ScDataPilotFieldGroupObjImpl
 {
 public:
     explicit            ScDataPilotFieldGroupObj( ScDataPilotFieldGroupsObj& rParent, const OUString& rGroupName );
@@ -615,7 +600,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
 private:
-    ScDataPilotFieldGroupsObj& mrParent;
+    rtl::Reference<ScDataPilotFieldGroupsObj> mxParent;
     OUString     maGroupName;
 };
 
@@ -626,7 +611,7 @@ typedef ::cppu::WeakImplHelper
 >
 ScDataPilotFieldGroupItemObjImpl;
 
-class ScDataPilotFieldGroupItemObj : public ScDataPilotFieldGroupItemObjImpl
+class ScDataPilotFieldGroupItemObj final : public ScDataPilotFieldGroupItemObjImpl
 {
 public:
     explicit            ScDataPilotFieldGroupItemObj( ScDataPilotFieldGroupObj& rParent, const OUString& rName );
@@ -642,7 +627,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
 private:
-    ScDataPilotFieldGroupObj& mrParent;
+    rtl::Reference<ScDataPilotFieldGroupObj> mxParent;
     OUString     maName;
 };
 
@@ -655,7 +640,7 @@ typedef ::cppu::WeakImplHelper
 >
 ScDataPilotItemsObjImpl;
 
-class ScDataPilotItemsObj : public ScDataPilotChildObjBase, public ScDataPilotItemsObjImpl
+class ScDataPilotItemsObj final : public ScDataPilotChildObjBase, public ScDataPilotItemsObjImpl
 {
 public:
     explicit            ScDataPilotItemsObj( ScDataPilotDescriptorBase& rParent, const ScFieldIdentifier& rFieldId );

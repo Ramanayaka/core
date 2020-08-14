@@ -21,11 +21,8 @@
 #include <cppuhelper/typeprovider.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/weakref.hxx>
-#include <editeng/unopracc.hxx>
+#include <unopracc.hxx>
 #include <editeng/unoedsrc.hxx>
 
 using namespace ::com::sun::star;
@@ -84,7 +81,7 @@ uno::Sequence< sal_Int8 > SAL_CALL SvxAccessibleTextPropertySet::getImplementati
 // XServiceInfo
 OUString SAL_CALL SAL_CALL SvxAccessibleTextPropertySet::getImplementationName()
 {
-    return OUString("SvxAccessibleTextPropertySet");
+    return "SvxAccessibleTextPropertySet";
 }
 
 sal_Bool SAL_CALL SvxAccessibleTextPropertySet::supportsService (const OUString& sServiceName)

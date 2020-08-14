@@ -20,8 +20,8 @@
 #define INCLUDED_SW_INC_FMTFOLLOWTEXTFLOW_HXX
 
 #include <svl/eitem.hxx>
-#include <hintids.hxx>
-#include <format.hxx>
+#include "hintids.hxx"
+#include "format.hxx"
 #include "swdllapi.h"
 
 class IntlWrapper;
@@ -29,23 +29,24 @@ class IntlWrapper;
 class SW_DLLPUBLIC SwFormatFollowTextFlow : public SfxBoolItem
 {
 public:
-    SwFormatFollowTextFlow( bool bFlag = false )
-        : SfxBoolItem( RES_FOLLOW_TEXT_FLOW, bFlag ) {}
 
+    SwFormatFollowTextFlow( bool bFlag = false )
+        : SfxBoolItem( RES_FOLLOW_TEXT_FLOW, bFlag )
+        {}
 
     /// "pure virtual methods" of SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwFormatFollowTextFlow* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 inline const SwFormatFollowTextFlow &SwAttrSet::GetFollowTextFlow(bool bInP) const
-    { return static_cast<const SwFormatFollowTextFlow&>(Get( RES_FOLLOW_TEXT_FLOW, bInP )); }
+    { return Get( RES_FOLLOW_TEXT_FLOW, bInP ); }
 
 inline const SwFormatFollowTextFlow &SwFormat::GetFollowTextFlow(bool bInP) const
     { return m_aSet.GetFollowTextFlow( bInP ); }

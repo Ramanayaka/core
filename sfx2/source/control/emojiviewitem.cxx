@@ -7,30 +7,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <sfx2/emojiviewitem.hxx>
+#include <emojiviewitem.hxx>
 
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <drawinglayer/attribute/fillgraphicattribute.hxx>
-#include <drawinglayer/primitive2d/fillgraphicprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/discretebitmapprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonSelectionPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/textlayoutdevice.hxx>
-#include <drawinglayer/primitive2d/textprimitive2d.hxx>
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
-#include <vcl/button.hxx>
-#include <vcl/graph.hxx>
-#include <sfx2/sfxresid.hxx>
-
-#include <templateview.hrc>
+#include <com/sun/star/lang/Locale.hpp>
+#include <rtl/ustrbuf.hxx>
+#include <tools/poly.hxx>
 
 using namespace basegfx;
-using namespace basegfx::tools;
+using namespace basegfx::utils;
 using namespace drawinglayer::attribute;
 using namespace drawinglayer::primitive2d;
 
-EmojiViewItem::EmojiViewItem (ThumbnailView &rView, sal_uInt16 nId)
+EmojiViewItem::EmojiViewItem (ThumbnailViewBase &rView, sal_uInt16 nId)
     : ThumbnailViewItem(rView, nId)
 {
 }
@@ -40,7 +32,7 @@ EmojiViewItem::~EmojiViewItem ()
 }
 
 
-void EmojiViewItem::calculateItemsPosition (const long /*nThumbnailHeight*/, const long,
+void EmojiViewItem::calculateItemsPosition (const long /*nThumbnailHeight*/,
                                                 const long /*nPadding*/, sal_uInt32 nMaxTextLength,
                                                 const ThumbnailItemAttributes *pAttrs)
 {
@@ -53,8 +45,8 @@ void EmojiViewItem::calculateItemsPosition (const long /*nThumbnailHeight*/, con
     Point aPos = maDrawArea.TopLeft();
 
     // Calculate text position
-    aPos.Y() = maDrawArea.getY() + (aRectSize.Height() - aTextDev.getTextHeight())/3;
-    aPos.X() = maDrawArea.Left() + (aRectSize.Width() - aTextDev.getTextWidth(maTitle,0,nMaxTextLength))/2;
+    aPos.setY( maDrawArea.getY() + (aRectSize.Height() - aTextDev.getTextHeight())/3 );
+    aPos.setX( maDrawArea.Left() + (aRectSize.Width() - aTextDev.getTextWidth(maTitle,0,nMaxTextLength))/2 );
     maTextPos = aPos;
 }
 

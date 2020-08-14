@@ -9,20 +9,16 @@
 
 #include <config_dbus.h>
 
-#include <time.h>
 #include <iostream>
 #include <limits>
 #include <new>
-#include <stdlib.h>
 #include <assert.h>
 
 #include <avahi-client/client.h>
 #include <avahi-client/publish.h>
 
 #include <avahi-common/alternative.h>
-#include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
-#include <avahi-common/timeval.h>
 #include <avahi-common/thread-watch.h>
 #include <comphelper/random.hxx>
 
@@ -180,26 +176,26 @@ void AvahiNetworkService::setup() {
     }
 #endif
 
-   int error = 0;
-   avahiService = this;
-   if (!(threaded_poll = avahi_threaded_poll_new())) {
+    int error = 0;
+    avahiService = this;
+    if (!(threaded_poll = avahi_threaded_poll_new())) {
        SAL_WARN("sdremote.wifi", "avahi_threaded_poll_new '" << avahiService->getName() << "' failed");
        return;
-   }
+    }
 
-   if (!(client = avahi_client_new(avahi_threaded_poll_get(threaded_poll), static_cast<AvahiClientFlags>(0), client_callback, nullptr, &error))) {
+    if (!(client = avahi_client_new(avahi_threaded_poll_get(threaded_poll), static_cast<AvahiClientFlags>(0), client_callback, nullptr, &error))) {
        SAL_WARN("sdremote.wifi", "avahi_client_new failed");
        return;
-   }
+    }
 
-   if(!create_services(client))
+    if(!create_services(client))
         return;
 
-   /* Finally, start the event loop thread */
-   if (avahi_threaded_poll_start(threaded_poll) < 0) {
+    /* Finally, start the event loop thread */
+    if (avahi_threaded_poll_start(threaded_poll) < 0) {
        SAL_WARN("sdremote.wifi", "avahi_threaded_poll_start failed");
        return;
-   }
+    }
 }
 
 void AvahiNetworkService::clear() {

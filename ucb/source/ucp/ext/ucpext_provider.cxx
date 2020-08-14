@@ -26,13 +26,12 @@
 #include <rtl/ustrbuf.hxx>
 
 
-namespace ucb { namespace ucp { namespace ext
+namespace ucb::ucp::ext
 {
 
 
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::XInterface;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::ucb::XContentIdentifier;
     using ::com::sun::star::ucb::IllegalIdentifierException;
@@ -54,48 +53,27 @@ namespace ucb { namespace ucp { namespace ext
     }
 
 
-    OUString SAL_CALL ContentProvider::getImplementationName_static()
-    {
-        return OUString(  "org.openoffice.comp.ucp.ext.ContentProvider"  );
-    }
-
-
     OUString SAL_CALL ContentProvider::getImplementationName()
     {
-        return getImplementationName_static();
-    }
-
-
-    Sequence< OUString > SAL_CALL ContentProvider::getSupportedServiceNames_static(  )
-    {
-        Sequence< OUString > aServiceNames(2);
-        aServiceNames[0] = "com.sun.star.ucb.ContentProvider";
-        aServiceNames[1] = "com.sun.star.ucb.ExtensionContentProvider";
-        return aServiceNames;
+        return "org.openoffice.comp.ucp.ext.ContentProvider";
     }
 
 
     Sequence< OUString > SAL_CALL ContentProvider::getSupportedServiceNames(  )
     {
-        return getSupportedServiceNames_static();
-    }
-
-
-    Reference< XInterface > ContentProvider::Create( const Reference< XComponentContext >& i_rContext )
-    {
-        return *( new ContentProvider( i_rContext ) );
+        return { "com.sun.star.ucb.ContentProvider", "com.sun.star.ucb.ExtensionContentProvider" };
     }
 
 
     OUString ContentProvider::getRootURL()
     {
-        return OUString(  "vnd.sun.star.extension://"  );
+        return "vnd.sun.star.extension://";
     }
 
 
     OUString ContentProvider::getArtificialNodeContentType()
     {
-        return OUString(  "application/vnd.sun.star.extension-content"  );
+        return "application/vnd.sun.star.extension-content";
     }
 
 
@@ -179,7 +157,16 @@ namespace ucb { namespace ucp { namespace ext
     }
 
 
-} } }   // namespace ucb::ucp::ext
+}   // namespace ucb::ucp::ext
 
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_ext_ContentProvider_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    static rtl::Reference<ucb::ucp::ext::ContentProvider> g_Instance(new ucb::ucp::ext::ContentProvider(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

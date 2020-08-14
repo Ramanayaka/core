@@ -20,11 +20,8 @@
 #include "xmlServerDatabase.hxx"
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
-#include "xmlEnums.hxx"
-#include "xmlstrings.hrc"
-#include <tools/debug.hxx>
+#include <strings.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <tools/diagnose_ex.h>
 
 namespace dbaxml
@@ -33,104 +30,99 @@ namespace dbaxml
     using namespace ::com::sun::star::xml::sax;
 
 OXMLServerDatabase::OXMLServerDatabase( ODBFilter& rImport,
-                sal_uInt16 nPrfx, const OUString& _sLocalName,
-                const Reference< XAttributeList > & _xAttrList) :
-    SvXMLImportContext( rImport, nPrfx, _sLocalName )
+                const Reference< XFastAttributeList > & _xAttrList) :
+    SvXMLImportContext( rImport )
 {
-
-    OSL_ENSURE(_xAttrList.is(),"Attribute list is NULL!");
-    const SvXMLNamespaceMap& rMap = rImport.GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = rImport.GetDataSourceElemTokenMap();
-
     Reference<XPropertySet> xDataSource = rImport.getDataSource();
 
     PropertyValue aProperty;
 
-    const sal_Int16 nLength = (xDataSource.is() && _xAttrList.is()) ? _xAttrList->getLength() : 0;
     OUString sType,sHostName,sPortNumber,sDatabaseName;
-    for(sal_Int16 i = 0; i < nLength; ++i)
+    if (xDataSource.is())
     {
-        OUString sLocalName;
-        const OUString sAttrName = _xAttrList->getNameByIndex( i );
-        const sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-        const OUString sValue = _xAttrList->getValueByIndex( i );
-
-        switch( rTokenMap.Get( nPrefix, sLocalName ) )
+        for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
         {
-            case XML_TOK_DB_TYPE:
-                sType = sValue;
-                break;
-            case XML_TOK_HOSTNAME:
-                sHostName = sValue;
-                break;
-            case XML_TOK_PORT:
-                sPortNumber = sValue;
-                break;
-            case XML_TOK_LOCAL_SOCKET:
-                aProperty.Name = "LocalSocket";
-                aProperty.Value <<= sValue;
-                rImport.addInfo(aProperty);
-                break;
-            case XML_TOK_DATABASE_NAME:
-                sDatabaseName = sValue;
-                break;
+            OUString sValue = aIter.toString();
+
+            switch( aIter.getToken() & TOKEN_MASK )
+            {
+                case XML_TYPE:
+                    sType = sValue;
+                    break;
+                case XML_HOSTNAME:
+                    sHostName = sValue;
+                    break;
+                case XML_PORT:
+                    sPortNumber = sValue;
+                    break;
+                case XML_LOCAL_SOCKET:
+                    aProperty.Name = "LocalSocket";
+                    aProperty.Value <<= sValue;
+                    rImport.addInfo(aProperty);
+                    break;
+                case XML_DATABASE_NAME:
+                    sDatabaseName = sValue;
+                    break;
+                default:
+                    SAL_WARN("dbaccess", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << "=" << aIter.toString());
+            }
         }
     }
-    if ( !sType.isEmpty() )
+    if ( sType.isEmpty() )
+        return;
+
+    OUStringBuffer sURL;
+    if  ( sType == "sdbc:mysql:jdbc" || sType == "sdbc:mysqlc" || sType == "sdbc:mysql:mysqlc" )
     {
-        OUStringBuffer sURL;
-        if  ( sType == "sdbc:mysql:jdbc" || sType == "sdbc:mysqlc" || sType == "sdbc:mysql:mysqlc" )
+        sURL.append( sType ).append( ":" ).append(sHostName);
+        if ( !sPortNumber.isEmpty() )
         {
-            sURL.append( sType + ":" + sHostName);
-            if ( !sPortNumber.isEmpty() )
-            {
-                sURL.append(":" + sPortNumber);
-            }
-            if ( !sDatabaseName.isEmpty() )
-            {
-                sURL.append("/" + sDatabaseName);
-            }
+            sURL.append(":").append(sPortNumber);
         }
-        else if ( sType == "jdbc:oracle:thin" )
+        if ( !sDatabaseName.isEmpty() )
         {
-            sURL.append("jdbc:oracle:thin:@" + sHostName);
-            if ( !sPortNumber.isEmpty() )
-            {
-                sURL.append(":" + sPortNumber);
-            }
-            if ( !sDatabaseName.isEmpty() )
-            {
-                sURL.append(":" + sDatabaseName);
-            }
+            sURL.append("/").append(sDatabaseName);
         }
-        else if ( sType == "sdbc:address:ldap" )
+    }
+    else if ( sType == "jdbc:oracle:thin" )
+    {
+        sURL.append("jdbc:oracle:thin:@").append(sHostName);
+        if ( !sPortNumber.isEmpty() )
         {
-            sURL.append("sdbc:address:ldap:" + sHostName);
-            if ( !sPortNumber.isEmpty() )
-            {
-                sURL.append(":" + sPortNumber);
-            }
+            sURL.append(":").append(sPortNumber);
         }
-        else
+        if ( !sDatabaseName.isEmpty() )
         {
-            sURL.append(sType + ":" + sHostName);
-            if ( !sPortNumber.isEmpty() )
-            {
-                sURL.append(":" + sPortNumber);
-            }
-            if ( !sDatabaseName.isEmpty() )
-            {
-                sURL.append(":" + sDatabaseName);
-            }
+            sURL.append(":").append(sDatabaseName);
         }
-        try
+    }
+    else if ( sType == "sdbc:address:ldap" )
+    {
+        sURL.append("sdbc:address:ldap:").append(sHostName);
+        if ( !sPortNumber.isEmpty() )
         {
-            xDataSource->setPropertyValue(PROPERTY_URL,makeAny(sURL.makeStringAndClear()));
+            sURL.append(":").append(sPortNumber);
         }
-        catch(const Exception&)
+    }
+    else
+    {
+        sURL.append(sType).append(":").append(sHostName);
+        if ( !sPortNumber.isEmpty() )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            sURL.append(":").append(sPortNumber);
         }
+        if ( !sDatabaseName.isEmpty() )
+        {
+            sURL.append(":").append(sDatabaseName);
+        }
+    }
+    try
+    {
+        xDataSource->setPropertyValue(PROPERTY_URL,makeAny(sURL.makeStringAndClear()));
+    }
+    catch(const Exception&)
+    {
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 

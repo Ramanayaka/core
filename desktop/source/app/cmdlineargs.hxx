@@ -25,7 +25,7 @@
 #include <vector>
 
 #include <rtl/ustring.hxx>
-#include <boost/optional.hpp>
+#include <optional>
 
 namespace desktop
 {
@@ -46,7 +46,7 @@ class CommandLineArgs
             };
 
             virtual ~Supplier();
-            virtual boost::optional< OUString > getCwdUrl() = 0;
+            virtual std::optional< OUString > getCwdUrl() = 0;
             virtual bool next(OUString * argument) = 0;
         };
 
@@ -56,7 +56,7 @@ class CommandLineArgs
         CommandLineArgs(const CommandLineArgs&) = delete;
         const CommandLineArgs& operator=(const CommandLineArgs&) = delete;
 
-        const boost::optional< OUString >& getCwdUrl() const { return m_cwdUrl; }
+        const std::optional< OUString >& getCwdUrl() const { return m_cwdUrl; }
 
         // Access to bool parameters
         bool                IsMinimized() const { return m_minimized;}
@@ -115,6 +115,7 @@ class CommandLineArgs
         std::vector< OUString > GetConversionList() const;
         const OUString&         GetConversionParams() const { return m_conversionparams;}
         OUString                GetConversionOut() const;
+        OUString const &        GetImageConversionType() const { return m_convertimages; }
         const OUString&         GetPidfileName() const { return m_pidfile;}
 
         // Special analyzed states (does not match directly to a command line parameter!)
@@ -126,7 +127,7 @@ class CommandLineArgs
         void                    ParseCommandLine_Impl( Supplier& supplier );
         void                    InitParamValues();
 
-        boost::optional< OUString > m_cwdUrl;
+        std::optional< OUString > m_cwdUrl;
 
         bool m_minimized;
         bool m_invisible;
@@ -178,6 +179,7 @@ class CommandLineArgs
         std::vector< OUString > m_conversionlist; // contains external URIs
         OUString m_conversionparams;
         OUString m_conversionout; // contains external URIs
+        OUString m_convertimages; // The format in which images should be converted
         std::vector< OUString > m_infilter;
         OUString m_language;
         OUString m_pidfile;

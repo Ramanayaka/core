@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "conditionalexpression.hxx"
+#include <conditionalexpression.hxx>
 
 #include <osl/diagnose.h>
 
@@ -28,7 +28,7 @@ namespace rptui
     // = ConditionalExpression
 
 
-    ConditionalExpression::ConditionalExpression( const sal_Char* _pAsciiPattern )
+    ConditionalExpression::ConditionalExpression( const char* _pAsciiPattern )
         :m_sPattern( OUString::createFromAscii( _pAsciiPattern ) )
     {
     }

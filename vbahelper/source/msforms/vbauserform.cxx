@@ -16,20 +16,17 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <vbahelper/helperdecl.hxx>
-#include "service.hxx"
 #include "vbauserform.hxx"
 #include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/awt/XControlContainer.hpp>
 #include <com/sun/star/awt/XWindow2.hpp>
 #include <com/sun/star/awt/PosSize.hpp>
-#include <com/sun/star/beans/PropertyConcept.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/util/MeasureUnit.hpp>
-#include <basic/sbx.hxx>
-#include <basic/sbstar.hxx>
-#include <basic/sbmeth.hxx>
+#include <com/sun/star/frame/XController.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/script/XDefaultProperty.hpp>
 #include "vbacontrols.hxx"
+#include <sal/log.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
@@ -44,12 +41,14 @@ using namespace ::com::sun::star;
 //     the models in ControlModels can be accessed by name
 // also the XDialog is a XControl ( to access the model above
 
-ScVbaUserForm::ScVbaUserForm( uno::Sequence< uno::Any > const& aArgs, uno::Reference< uno::XComponentContext >const& xContext ) :  ScVbaUserForm_BASE( getXSomethingFromArgs< XHelperInterface >( aArgs, 0 ), xContext, getXSomethingFromArgs< uno::XInterface >( aArgs, 1 ), getXSomethingFromArgs< frame::XModel >( aArgs, 2 ), static_cast< ooo::vba::AbstractGeometryAttributes* >(nullptr) ),  mbDispose( true )
+ScVbaUserForm::ScVbaUserForm( uno::Sequence< uno::Any > const& aArgs, uno::Reference< uno::XComponentContext >const& xContext )
+    :  ScVbaUserForm_BASE( getXSomethingFromArgs< XHelperInterface >( aArgs, 0 ), xContext, getXSomethingFromArgs< uno::XInterface >( aArgs, 1 ), getXSomethingFromArgs< frame::XModel >( aArgs, 2 ), nullptr ),
+       mbDispose( true )
 {
     m_xDialog.set( m_xControl, uno::UNO_QUERY_THROW );
     uno::Reference< awt::XControl > xControl( m_xDialog, uno::UNO_QUERY_THROW );
     m_xProps.set( xControl->getModel(), uno::UNO_QUERY_THROW );
-    setGeometryHelper( new UserFormGeometryHelper( xContext, xControl, 0.0, 0.0 ) );
+    setGeometryHelper( std::make_unique<UserFormGeometryHelper>( xControl, 0.0, 0.0 ) );
     if ( aArgs.getLength() >= 4 )
         aArgs[ 3 ] >>= m_sLibName;
 }
@@ -86,18 +85,18 @@ ScVbaUserForm::Show(  )
         aRet = m_xDialog->execute();
     }
     SAL_INFO("vbahelper", "ScVbaUserForm::Show() execute returned " << aRet);
-    if ( mbDispose )
+    if ( !mbDispose )
+        return;
+
+    try
     {
-        try
-        {
-            uno::Reference< lang::XComponent > xComp( m_xDialog, uno::UNO_QUERY_THROW );
-            m_xDialog = nullptr;
-            xComp->dispose();
-            mbDispose = false;
-        }
-        catch( uno::Exception& )
-        {
-        }
+        uno::Reference< lang::XComponent > xComp( m_xDialog, uno::UNO_QUERY_THROW );
+        m_xDialog = nullptr;
+        xComp->dispose();
+        mbDispose = false;
+    }
+    catch( uno::Exception& )
+    {
     }
 }
 
@@ -177,19 +176,13 @@ ScVbaUserForm::UnloadObject(  )
 OUString
 ScVbaUserForm::getServiceImplName()
 {
-    return OUString("ScVbaUserForm");
+    return "ScVbaUserForm";
 }
 
 uno::Sequence< OUString >
 ScVbaUserForm::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
-    {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.UserForm";
-    }
-    return aServiceNames;
+    return { "ooo.vba.excel.UserForm" };
 }
 
 uno::Reference< beans::XIntrospectionAccess > SAL_CALL
@@ -225,18 +218,16 @@ ScVbaUserForm::setValue( const OUString& aPropertyName, const uno::Any& aValue )
 }
 
 uno::Reference< awt::XControl >
-ScVbaUserForm::nestedSearch( const OUString& aPropertyName, uno::Reference< awt::XControlContainer >& xContainer )
+ScVbaUserForm::nestedSearch( const OUString& aPropertyName, uno::Reference< awt::XControlContainer > const & xContainer )
 {
     uno::Reference< awt::XControl > xControl = xContainer->getControl( aPropertyName );
     if ( !xControl.is() )
     {
-        uno::Sequence< uno::Reference< awt::XControl > > aControls = xContainer->getControls();
-        const uno::Reference< awt::XControl >* pCtrl = aControls.getConstArray();
-        const uno::Reference< awt::XControl >* pCtrlsEnd = pCtrl + aControls.getLength();
+        const uno::Sequence< uno::Reference< awt::XControl > > aControls = xContainer->getControls();
 
-        for ( ; pCtrl < pCtrlsEnd; ++pCtrl )
+        for ( const auto& rCtrl : aControls )
         {
-            uno::Reference< awt::XControlContainer > xC( *pCtrl, uno::UNO_QUERY );
+            uno::Reference< awt::XControlContainer > xC( rCtrl, uno::UNO_QUERY );
             if ( xC.is() )
             {
                 xControl.set( nestedSearch( aPropertyName, xC ) );
@@ -310,14 +301,11 @@ ScVbaUserForm::hasProperty( const OUString& aName )
     return false;
 }
 
-namespace userform
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ScVbaUserForm_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const& args)
 {
-namespace sdecl = comphelper::service_decl;
-sdecl::vba_service_class_<ScVbaUserForm, sdecl::with_args<true> > const serviceImpl;
-sdecl::ServiceDecl const serviceDecl(
-    serviceImpl,
-    "ScVbaUserForm",
-    "ooo.vba.msforms.UserForm" );
+    return cppu::acquire(new ScVbaUserForm(args, context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

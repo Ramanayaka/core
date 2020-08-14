@@ -9,58 +9,47 @@
  */
 
 #include <memory>
-#include <sfx2/dispatch.hxx>
-#include <svl/zforlist.hxx>
-#include <svl/undo.hxx>
 
-#include "formulacell.hxx"
-#include "rangelst.hxx"
-#include "scitems.hxx"
-#include "docsh.hxx"
-#include "document.hxx"
-#include "uiitems.hxx"
-#include "reffact.hxx"
-#include "docfunc.hxx"
-#include "TableFillingAndNavigationTools.hxx"
-
-#include "MovingAverageDialog.hxx"
+#include <reffact.hxx>
+#include <TableFillingAndNavigationTools.hxx>
+#include <MovingAverageDialog.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
 
 ScMovingAverageDialog::ScMovingAverageDialog(
                     SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
-                    vcl::Window* pParent, ScViewData* pViewData ) :
-    ScStatisticsInputOutputDialog(
+                    weld::Window* pParent, ScViewData* pViewData )
+    : ScStatisticsInputOutputDialog(
             pSfxBindings, pChildWindow, pParent, pViewData,
-            "MovingAverageDialog", "modules/scalc/ui/movingaveragedialog.ui" )
+            "modules/scalc/ui/movingaveragedialog.ui",
+            "MovingAverageDialog")
+    , mxTrimRangeCheck(m_xBuilder->weld_check_button("trimrange-check"))
+    , mxIntervalSpin(m_xBuilder->weld_spin_button("interval-spin"))
 {
-    get(mpIntervalSpin, "interval-spin");
 }
 
 ScMovingAverageDialog::~ScMovingAverageDialog()
 {
-    disposeOnce();
 }
 
-void ScMovingAverageDialog::dispose()
+void ScMovingAverageDialog::Close()
 {
-    mpIntervalSpin.clear();
-    ScStatisticsInputOutputDialog::dispose();
+    DoClose( ScMovingAverageDialogWrapper::GetChildWindowId() );
 }
 
-bool ScMovingAverageDialog::Close()
-{
-    return DoClose( ScMovingAverageDialogWrapper::GetChildWindowId() );
-}
-
-sal_Int16 ScMovingAverageDialog::GetUndoNameId()
+const char* ScMovingAverageDialog::GetUndoNameId()
 {
     return STR_MOVING_AVERAGE_UNDO_NAME;
 }
 
 ScRange ScMovingAverageDialog::ApplyOutput(ScDocShell* pDocShell)
 {
-    AddressWalkerWriter output(mOutputAddress, pDocShell, mDocument,
+    AddressWalkerWriter output(mOutputAddress, pDocShell, &mDocument,
             formula::FormulaGrammar::mergeToGrammar( formula::FormulaGrammar::GRAM_ENGLISH, mAddressDetails.eConv));
-    FormulaTemplate aTemplate(mDocument);
+    FormulaTemplate aTemplate(&mDocument);
+
+    if (mxTrimRangeCheck->get_active())
+        mDocument.GetDataAreaSubrange(mInputRange);
 
     std::unique_ptr<DataRangeIterator> pIterator;
     if (mGroupedBy == BY_COLUMN)
@@ -68,7 +57,7 @@ ScRange ScMovingAverageDialog::ApplyOutput(ScDocShell* pDocShell)
     else
         pIterator.reset(new DataRangeByRowIterator(mInputRange));
 
-    sal_Int32 aIntervalSize = mpIntervalSpin->GetValue();
+    sal_Int32 aIntervalSize = mxIntervalSpin->get_value();
     const bool aCentral = true; //to-do add support to change this to the dialog
 
     for( ; pIterator->hasNext(); pIterator->next() )
@@ -86,6 +75,7 @@ ScRange ScMovingAverageDialog::ApplyOutput(ScDocShell* pDocShell)
         output.nextRow();
 
         DataCellIterator aDataCellIterator = pIterator->iterateCells();
+        std::vector<OUString> aFormulas;
 
         for (; aDataCellIterator.hasNext(); aDataCellIterator.next())
         {
@@ -109,14 +99,15 @@ ScRange ScMovingAverageDialog::ApplyOutput(ScDocShell* pDocShell)
             {
                 aTemplate.setTemplate("=AVERAGE(%RANGE%)");
                 aTemplate.applyRange("%RANGE%", ScRange(aIntervalStart, aIntervalEnd));
-                output.writeFormula(aTemplate.getTemplate());
+                aFormulas.push_back(aTemplate.getTemplate());
             }
             else
             {
-                output.writeFormula("=#N/A");
+                aFormulas.push_back("=#N/A");
             }
-            output.nextRow();
         }
+
+        output.writeFormulas(aFormulas);
         output.nextColumn();
     }
     return ScRange(output.mMinimumAddress, output.mMaximumAddress);

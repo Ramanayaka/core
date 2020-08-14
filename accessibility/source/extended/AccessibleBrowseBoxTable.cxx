@@ -17,8 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "extended/AccessibleBrowseBoxTable.hxx"
-#include <svtools/accessibletableprovider.hxx>
+#include <extended/AccessibleBrowseBoxTable.hxx>
+#include <toolkit/helper/convert.hxx>
+#include <vcl/accessibletableprovider.hxx>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
 
 using ::com::sun::star::uno::Reference;
@@ -26,7 +28,6 @@ using ::com::sun::star::uno::Sequence;
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
-using namespace ::svt;
 
 
 namespace accessibility {
@@ -36,8 +37,8 @@ namespace accessibility {
 
 AccessibleBrowseBoxTable::AccessibleBrowseBoxTable(
         const Reference< XAccessible >& rxParent,
-        IAccessibleTableProvider&                      rBrowseBox ) :
-    AccessibleBrowseBoxTableBase( rxParent, rBrowseBox, BBTYPE_TABLE )
+        vcl::IAccessibleTableProvider& rBrowseBox ) :
+    AccessibleBrowseBoxTableBase( rxParent, rBrowseBox, vcl::BBTYPE_TABLE )
 {
 }
 
@@ -55,13 +56,14 @@ AccessibleBrowseBoxTable::getAccessibleChild( sal_Int32 nChildIndex )
 
     ensureIsValidIndex( nChildIndex );
     return mpBrowseBox->CreateAccessibleCell(
-        implGetRow( nChildIndex ), (sal_Int16)implGetColumn( nChildIndex ) );
+        implGetRow( nChildIndex ), static_cast<sal_Int16>(implGetColumn( nChildIndex )) );
 }
 
 sal_Int32 SAL_CALL AccessibleBrowseBoxTable::getAccessibleIndexInParent()
 {
+    osl::MutexGuard aGuard( getMutex() );
     ensureIsAlive();
-    return BBINDEX_TABLE;
+    return vcl::BBINDEX_TABLE;
 }
 
 // XAccessibleComponent -------------------------------------------------------
@@ -104,21 +106,21 @@ OUString SAL_CALL AccessibleBrowseBoxTable::getAccessibleColumnDescription( sal_
     ensureIsAlive();
 
     ensureIsValidColumn( nColumn );
-    return mpBrowseBox->GetColumnDescription( (sal_uInt16)nColumn );
+    return mpBrowseBox->GetColumnDescription( static_cast<sal_uInt16>(nColumn) );
 }
 
 Reference< XAccessibleTable > SAL_CALL AccessibleBrowseBoxTable::getAccessibleRowHeaders()
 {
     ::osl::MutexGuard aGuard( getMutex() );
     ensureIsAlive();
-    return implGetHeaderBar( BBINDEX_ROWHEADERBAR );
+    return implGetHeaderBar( vcl::BBINDEX_ROWHEADERBAR );
 }
 
 Reference< XAccessibleTable > SAL_CALL AccessibleBrowseBoxTable::getAccessibleColumnHeaders()
 {
     ::osl::MutexGuard aGuard( getMutex() );
     ensureIsAlive();
-    return implGetHeaderBar( BBINDEX_COLUMNHEADERBAR );
+    return implGetHeaderBar( vcl::BBINDEX_COLUMNHEADERBAR );
 }
 
 Sequence< sal_Int32 > SAL_CALL AccessibleBrowseBoxTable::getSelectedAccessibleRows()
@@ -166,7 +168,7 @@ Reference< XAccessible > SAL_CALL AccessibleBrowseBoxTable::getAccessibleCellAt(
     ensureIsAlive();
 
     ensureIsValidAddress( nRow, nColumn );
-    return mpBrowseBox->CreateAccessibleCell( nRow, (sal_Int16)nColumn );
+    return mpBrowseBox->CreateAccessibleCell( nRow, static_cast<sal_Int16>(nColumn) );
 }
 
 sal_Bool SAL_CALL AccessibleBrowseBoxTable::isAccessibleSelected(
@@ -183,7 +185,7 @@ sal_Bool SAL_CALL AccessibleBrowseBoxTable::isAccessibleSelected(
 
 OUString SAL_CALL AccessibleBrowseBoxTable::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.svtools.AccessibleBrowseBoxTable" );
+    return "com.sun.star.comp.svtools.AccessibleBrowseBoxTable";
 }
 
 // internal virtual methods ---------------------------------------------------

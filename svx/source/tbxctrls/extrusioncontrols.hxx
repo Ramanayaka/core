@@ -19,57 +19,67 @@
 #ifndef INCLUDED_SVX_SOURCE_TBXCTRLS_EXTRUSIONCONTROLS_HXX
 #define INCLUDED_SVX_SOURCE_TBXCTRLS_EXTRUSIONCONTROLS_HXX
 
-#include "svx/svxdllapi.h"
-
-#include <svtools/treelistbox.hxx>
-#include <vcl/button.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/field.hxx>
-#include <vcl/fixed.hxx>
-
 #include <svtools/toolbarmenu.hxx>
 #include <svtools/popupwindowcontroller.hxx>
-#include <svtools/popupmenucontrollerbase.hxx>
+#include <svtools/valueset.hxx>
+#include <vcl/customweld.hxx>
 
-class ValueSet;
+// enum to index light images
+#define FROM_TOP_LEFT       0
+#define FROM_TOP            1
+#define FROM_TOP_RIGHT      2
+#define FROM_LEFT           3
+#define FROM_FRONT          4
+#define FROM_RIGHT          5
+#define FROM_BOTTOM_LEFT    6
+#define FROM_BOTTOM         7
+#define FROM_BOTTOM_RIGHT   8
 
+#define DIRECTION_NW        0
+#define DIRECTION_N         1
+#define DIRECTION_NE        2
+#define DIRECTION_W         3
+#define DIRECTION_NONE      4
+#define DIRECTION_E         5
+#define DIRECTION_SW        6
+#define DIRECTION_S         7
+#define DIRECTION_SE        8
 
 namespace svx
 {
-class ExtrusionDirectionWindow : public svtools::ToolbarMenu
+class ExtrusionDirectionWindow final : public WeldToolbarPopup
 {
 public:
-    ExtrusionDirectionWindow( svt::ToolboxController& rController, vcl::Window* pParentWindow );
+    ExtrusionDirectionWindow(svt::PopupWindowController* pControl, weld::Widget* pParentWindow);
+    virtual void GrabFocus() override;
     virtual ~ExtrusionDirectionWindow() override;
-    virtual void dispose() override;
 
     virtual void statusChanged( const css::frame::FeatureStateEvent& Event ) override;
-    virtual void DataChanged( const DataChangedEvent& rDCEvt ) override;
 
 private:
-    svt::ToolboxController& mrController;
-    VclPtr<ValueSet>        mpDirectionSet;
+    rtl::Reference<svt::PopupWindowController> mxControl;
+    std::unique_ptr<ValueSet> mxDirectionSet;
+    std::unique_ptr<weld::CustomWeld> mxDirectionSetWin;
+    std::unique_ptr<weld::RadioButton> mxPerspective;
+    std::unique_ptr<weld::RadioButton> mxParallel;
 
     Image       maImgDirection[9];
-    Image       maImgPerspective;
-    Image       maImgParallel;
 
-    DECL_LINK( SelectToolbarMenuHdl, ToolbarMenu*, void );
+    DECL_LINK( SelectToolbarMenuHdl, weld::Button&, void );
     DECL_LINK( SelectValueSetHdl, ValueSet*, void );
-    void SelectHdl(void*);
 
     void implSetDirection( sal_Int32 nSkew, bool bEnabled );
     void implSetProjection( sal_Int32 nProjection, bool bEnabled );
 
 };
 
-
 class ExtrusionDirectionControl : public svt::PopupWindowController
 {
 public:
     explicit ExtrusionDirectionControl( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
 
-    virtual VclPtr<vcl::Window> createPopupWindow( vcl::Window* pParent ) override;
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -77,35 +87,33 @@ public:
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    using svt::PopupWindowController::createPopupWindow;
 };
 
-class ExtrusionDepthWindow : public svtools::ToolbarMenu
+class ExtrusionDepthWindow final : public WeldToolbarPopup
 {
 private:
-    svt::ToolboxController& mrController;
-
-    Image maImgDepth0;
-    Image maImgDepth1;
-    Image maImgDepth2;
-    Image maImgDepth3;
-    Image maImgDepth4;
-    Image maImgDepthInfinity;
+    rtl::Reference<svt::PopupWindowController> mxControl;
+    std::unique_ptr<weld::RadioButton> mxDepth0;
+    std::unique_ptr<weld::RadioButton> mxDepth1;
+    std::unique_ptr<weld::RadioButton> mxDepth2;
+    std::unique_ptr<weld::RadioButton> mxDepth3;
+    std::unique_ptr<weld::RadioButton> mxDepth4;
+    std::unique_ptr<weld::RadioButton> mxInfinity;
+    std::unique_ptr<weld::RadioButton> mxCustom;
 
     FieldUnit   meUnit;
     double      mfDepth;
+    bool        mbSettingValue;
 
-    const OUString msExtrusionDepth;
-    const OUString msMetricUnit;
-
-    DECL_LINK( SelectHdl, ToolbarMenu*, void );
+    DECL_LINK( SelectHdl, weld::ToggleButton&, void );
+    DECL_LINK( ClickHdl, weld::Button&, void );
 
     void    implFillStrings( FieldUnit eUnit );
     void    implSetDepth( double fDepth );
 
 public:
-    ExtrusionDepthWindow( svt::ToolboxController& rController, vcl::Window* pParentWindow );
+    ExtrusionDepthWindow(svt::PopupWindowController* pControl, weld::Widget* pParentWindow);
+    virtual void GrabFocus() override;
 
     virtual void statusChanged( const css::frame::FeatureStateEvent& Event ) override;
 };
@@ -115,7 +123,8 @@ class ExtrusionDepthController : public svt::PopupWindowController
 public:
     explicit ExtrusionDepthController( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
 
-    virtual VclPtr<vcl::Window> createPopupWindow( vcl::Window* pParent ) override;
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -123,50 +132,42 @@ public:
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    using svt::PopupWindowController::createPopupWindow;
 };
 
-
-class ExtrusionLightingWindow : public svtools::ToolbarMenu
+class ExtrusionLightingWindow final : public WeldToolbarPopup
 {
 private:
-    svt::ToolboxController& mrController;
-    VclPtr<ValueSet>        mpLightingSet;
+    rtl::Reference<svt::PopupWindowController> mxControl;
+    std::unique_ptr<ValueSet> mxLightingSet;
+    std::unique_ptr<weld::CustomWeld> mxLightingSetWin;
+    std::unique_ptr<weld::RadioButton> mxBright;
+    std::unique_ptr<weld::RadioButton> mxNormal;
+    std::unique_ptr<weld::RadioButton> mxDim;
 
     Image maImgLightingOff[9];
     Image maImgLightingOn[9];
     Image maImgLightingPreview[9];
 
-    Image maImgBright;
-    Image maImgNormal;
-    Image maImgDim;
-
-    int     mnDirection;
-    bool    mbDirectionEnabled;
-
     void    implSetIntensity( int nLevel, bool bEnabled );
     void    implSetDirection( int nDirection, bool bEnabled );
 
-    DECL_LINK( SelectToolbarMenuHdl, ToolbarMenu*, void );
+    DECL_LINK( SelectToolbarMenuHdl, weld::Button&, void );
     DECL_LINK( SelectValueSetHdl, ValueSet*, void );
-    void SelectHdl(void*);
 public:
-    ExtrusionLightingWindow( svt::ToolboxController& rController, vcl::Window* pParentWindow );
+    ExtrusionLightingWindow(svt::PopupWindowController* pControl, weld::Widget* pParentWindow);
+    virtual void GrabFocus() override;
     virtual ~ExtrusionLightingWindow() override;
-    virtual void dispose() override;
 
     virtual void statusChanged( const css::frame::FeatureStateEvent& Event ) override;
-    virtual void DataChanged( const DataChangedEvent& rDCEvt ) override;
 };
-
 
 class ExtrusionLightingControl : public svt::PopupWindowController
 {
 public:
     explicit ExtrusionLightingControl( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
 
-    virtual VclPtr<vcl::Window> createPopupWindow( vcl::Window* pParent ) override;
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -174,27 +175,24 @@ public:
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    using svt::PopupWindowController::createPopupWindow;
 };
 
-
-class ExtrusionSurfaceWindow : public svtools::ToolbarMenu
+class ExtrusionSurfaceWindow final : public WeldToolbarPopup
 {
 private:
-    svt::ToolboxController& mrController;
+    rtl::Reference<svt::PopupWindowController> mxControl;
+    std::unique_ptr<weld::RadioButton> mxWireFrame;
+    std::unique_ptr<weld::RadioButton> mxMatt;
+    std::unique_ptr<weld::RadioButton> mxPlastic;
+    std::unique_ptr<weld::RadioButton> mxMetal;
 
-    Image maImgSurface1;
-    Image maImgSurface2;
-    Image maImgSurface3;
-    Image maImgSurface4;
-
-    DECL_LINK( SelectHdl, ToolbarMenu*, void );
+    DECL_LINK( SelectHdl, weld::Button&, void );
 
     void    implSetSurface( int nSurface, bool bEnabled );
 
 public:
-    ExtrusionSurfaceWindow( svt::ToolboxController& rController, vcl::Window* pParentWindow );
+    ExtrusionSurfaceWindow(svt::PopupWindowController* pControl, weld::Widget* pParentWindow);
+    virtual void GrabFocus() override;
 
     virtual void statusChanged( const css::frame::FeatureStateEvent& Event ) override;
 };
@@ -205,7 +203,8 @@ class ExtrusionSurfaceControl : public svt::PopupWindowController
 public:
     explicit ExtrusionSurfaceControl( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
 
-    virtual VclPtr<vcl::Window> createPopupWindow( vcl::Window* pParent ) override;
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -213,10 +212,7 @@ public:
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    using svt::PopupWindowController::createPopupWindow;
 };
-
 
 }
 #endif

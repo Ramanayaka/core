@@ -19,11 +19,12 @@
 
 
 #include <connectivity/PColumn.hxx>
-#include <connectivity/dbtools.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
 #include <comphelper/types.hxx>
-#include <tools/diagnose_ex.h>
+
+#include <com/sun/star/sdbc/XResultSetMetaData.hpp>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 
 using namespace ::comphelper;
 using namespace connectivity;
@@ -103,13 +104,13 @@ OParseColumn::OParseColumn( const OUString& Name,
     const Reference< XDatabaseMetaData >& _rxDBMetaData,const Reference< XNameAccess>& i_xQueryColumns )
 {
     sal_Int32 nColumnCount = _rxResMetaData->getColumnCount();
-    ::rtl::Reference< OSQLColumns > aReturn( new OSQLColumns ); aReturn->get().reserve( nColumnCount );
+    ::rtl::Reference aReturn( new OSQLColumns ); aReturn->reserve( nColumnCount );
 
     StringMap aColumnMap;
     for ( sal_Int32 i = 1; i <= nColumnCount; ++i )
     {
         OParseColumn* pColumn = createColumnForResultSet( _rxResMetaData, _rxDBMetaData, i,aColumnMap );
-        aReturn->get().push_back( pColumn );
+        aReturn->push_back( pColumn );
         if ( i_xQueryColumns.is() && i_xQueryColumns->hasByName(pColumn->getRealName()) )
         {
             Reference<XPropertySet> xColumn(i_xQueryColumns->getByName(pColumn->getRealName()),UNO_QUERY_THROW);
@@ -136,11 +137,11 @@ OParseColumn* OParseColumn::createColumnForResultSet( const Reference< XResultSe
         sal_Int32 searchIndex=1;
         while(_rColumns.find(sAlias) != _rColumns.end())
         {
-            (sAlias = sLabel) += OUString::number(searchIndex++);
+            sAlias = sLabel + OUString::number(searchIndex++);
         }
         sLabel = sAlias;
     }
-    _rColumns.insert(StringMap::value_type(sLabel,0));
+    _rColumns.emplace(sLabel,0);
     OParseColumn* pColumn = new OParseColumn(
         sLabel,
         _rxResMetaData->getColumnTypeName( _nColumnPos ),
@@ -263,9 +264,7 @@ void OOrderColumn::construct()
 
 css::uno::Sequence< OUString > SAL_CALL OOrderColumn::getSupportedServiceNames(  )
 {
-    css::uno::Sequence< OUString > aSupported { "com.sun.star.sdb.OrderColumn" };
-
-    return aSupported;
+    return { "com.sun.star.sdb.OrderColumn" };
 }
 
 

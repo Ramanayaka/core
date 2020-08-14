@@ -26,19 +26,17 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <rtl/string.hxx>
 
 
 namespace uno = css::uno ;
 namespace lang = css::lang ;
 
-class LocaleBackend : public ::cppu::WeakImplHelper <
+class LocaleBackend final : public ::cppu::WeakImplHelper <
         css::beans::XPropertySet,
-        lang::XServiceInfo > {
+        lang::XServiceInfo >
+{
 
     public:
-
-        static LocaleBackend* createInstance();
 
         // XServiceInfo
         virtual OUString SAL_CALL
@@ -49,19 +47,6 @@ class LocaleBackend : public ::cppu::WeakImplHelper <
 
         virtual uno::Sequence<OUString> SAL_CALL
             getSupportedServiceNames(  ) override ;
-
-        /**
-          Provides the implementation name.
-
-          @return   implementation name
-          */
-        static OUString SAL_CALL getBackendName() ;
-        /**
-          Provides the supported services names
-
-          @return   service names
-          */
-        static uno::Sequence<OUString> SAL_CALL getBackendServiceNames() ;
 
         // XPropertySet
         virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL
@@ -94,7 +79,6 @@ class LocaleBackend : public ::cppu::WeakImplHelper <
             css::uno::Reference< css::beans::XVetoableChangeListener > const &) override
         {}
 
-    protected:
         /**
           Service constructor from a service factory.
 

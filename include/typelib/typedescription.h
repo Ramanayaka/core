@@ -19,10 +19,10 @@
 #ifndef INCLUDED_TYPELIB_TYPEDESCRIPTION_H
 #define INCLUDED_TYPELIB_TYPEDESCRIPTION_H
 
-#include <cppu/cppudllapi.h>
-#include <typelib/uik.h>
-#include <typelib/typeclass.h>
-#include <rtl/ustring.h>
+#include "cppu/cppudllapi.h"
+#include "typelib/uik.h"
+#include "typelib/typeclass.h"
+#include "rtl/ustring.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -31,7 +31,7 @@ extern "C"
 
 struct _typelib_TypeDescription;
 
-#if defined( SAL_W32)
+#if defined( _WIN32)
 #pragma pack(push, 8)
 #endif
 
@@ -404,7 +404,7 @@ typedef struct SAL_DLLPUBLIC_RTTI _typelib_InterfaceTypeDescription
     /** number of members plus number of read-write attributes
     */
     sal_Int32                                   nMapFunctionIndexToMemberIndex;
-    /** array mapping function index to member index; size of arry is nMapFunctionIndexToMemberIndex
+    /** array mapping function index to member index; size of array is nMapFunctionIndexToMemberIndex
     */
     sal_Int32 *                                 pMapFunctionIndexToMemberIndex;
     /** number of base types
@@ -477,7 +477,7 @@ typedef struct _typelib_Parameter_Init
     sal_Bool            bOut;
 } typelib_Parameter_Init;
 
-#if defined( SAL_W32)
+#if defined( _WIN32)
 #pragma pack(pop)
 #endif
 
@@ -987,6 +987,9 @@ CPPU_DLLPUBLIC sal_Bool SAL_CALL typelib_typedescription_complete(
     description is not initialized.
     @internal
 */
+#if defined LIBO_INTERNAL_ONLY && defined __cplusplus
+constexpr
+#endif
 inline bool TYPELIB_TYPEDESCRIPTIONREFERENCE_ISREALLYWEAK( _typelib_TypeClass eTypeClass )
 {
     return (eTypeClass == typelib_TypeClass_INTERFACE_METHOD) ||
@@ -1009,7 +1012,7 @@ inline void TYPELIB_DANGER_GET( typelib_TypeDescription** ppMacroTypeDescr,
     {
         typelib_typedescriptionreference_getDescription( ppMacroTypeDescr, pMacroTypeRef );
         if (*ppMacroTypeDescr)
-        typelib_typedescription_release( *ppMacroTypeDescr );
+            typelib_typedescription_release( *ppMacroTypeDescr );
     }
     else
     {
@@ -1017,7 +1020,7 @@ inline void TYPELIB_DANGER_GET( typelib_TypeDescription** ppMacroTypeDescr,
     }
 }
 
-/** Releases the description previouse fetched by TYPELIB_DANGER_GET.
+/** Releases the description previous fetched by TYPELIB_DANGER_GET.
     @internal
 */
 inline void TYPELIB_DANGER_RELEASE( typelib_TypeDescription* pDescription )

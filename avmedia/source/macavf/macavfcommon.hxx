@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_MACAVF_MACAVFCOMMON_HXX
-#define INCLUDED_AVMEDIA_SOURCE_MACAVF_MACAVFCOMMON_HXX
+#pragma once
 
 #include <premac.h>
 #import <Cocoa/Cocoa.h>
@@ -46,9 +45,6 @@
 #include <com/sun/star/media/XManager.hpp>
 
 
-#define AVMEDIA_MACAVF_MANAGER_IMPLEMENTATIONNAME "com.sun.star.comp.avmedia.Manager_MacAVF"
-#define AVMEDIA_MACAVF_MANAGER_SERVICENAME "com.sun.star.media.Manager_MacAVF"
-
 #define AVMEDIA_MACAVF_PLAYER_IMPLEMENTATIONNAME "com.sun.star.comp.avmedia.Player_MacAVF"
 #define AVMEDIA_MACAVF_PLAYER_SERVICENAME "com.sun.star.media.Player_MacAVF"
 
@@ -61,9 +57,7 @@
 
 // MacAVObserver handles the notifications used in the AVFoundation framework
 
-namespace avmedia { namespace macavf {
-class MacAVObserverHandler;
-} }
+namespace avmedia::macavf { class MacAVObserverHandler; }
 
 typedef std::unordered_map<NSObject*,avmedia::macavf::MacAVObserverHandler*> HandlersForObject;
 
@@ -75,7 +69,7 @@ typedef std::unordered_map<NSObject*,avmedia::macavf::MacAVObserverHandler*> Han
 - (void)onNotification:(NSNotification*)pNotification;
 @end
 
-namespace avmedia { namespace macavf {
+namespace avmedia::macavf {
 
 class MacAVObserverHandler
 {
@@ -87,8 +81,6 @@ public:
     virtual bool handleObservation( NSString* pKeyPath ) = 0;
 };
 
-}}
-
-#endif // INCLUDED_AVMEDIA_SOURCE_MACAVF_MACAVFCOMMON_HXX
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

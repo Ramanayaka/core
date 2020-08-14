@@ -17,27 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cstring>
 
 #include <stdio.h>
 
-#include "common.hxx"
-#include "export.hxx"
-#include "po.hxx"
-#include "xrmlex.hxx"
-#include "xrmmerge.hxx"
-#include "tokens.h"
-#include "helper.hxx"
+#include <common.hxx>
+#include <export.hxx>
+#include <po.hxx>
+#include <xrmlex.hxx>
+#include <xrmmerge.hxx>
+#include <tokens.h>
+#include <helper.hxx>
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <memory>
 
 using namespace std;
-
-void yyerror( const char * );
 
 // set of global variables
 static bool bMergeMode;
@@ -84,9 +82,8 @@ int InitXrmExport( const char* pFilename)
 
     if ( bMergeMode )
         pParser = new XRMResMerge( sMergeSrc, sOutputFile, sFilename );
-      else if (!sOutputFile.isEmpty()) {
+    else if (!sOutputFile.isEmpty())
         pParser = new XRMResExport( sOutputFile, sInputFileName );
-    }
 
     return 1;
 }
@@ -143,7 +140,6 @@ int GetError()
 }
 
 
-// class XRMResParser
 
 
 XRMResParser::XRMResParser()
@@ -264,21 +260,14 @@ void XRMResParser::Execute( int nToken, char * pToken )
 
 OString XRMResParser::GetAttribute( const OString &rToken, const OString &rAttribute )
 {
-    OString sTmp( rToken );
-    sTmp = sTmp.replace('\t', ' ');
-
-    OString sSearch( " " );
-    sSearch += rAttribute;
-    sSearch += "=";
+    const OString sSearch{ " " + rAttribute + "=" };
+    OString sTmp{ rToken.replace('\t', ' ') };
     sal_Int32 nPos = sTmp.indexOf( sSearch );
 
-    if ( nPos != -1 )
-    {
-        sTmp = sTmp.copy( nPos );
-        OString sId = sTmp.getToken(1, '"');
-        return sId;
-    }
-    return OString();
+    if ( nPos<0 )
+        return OString();
+
+    return sTmp.getToken(1, '"', nPos);
 }
 
 
@@ -288,7 +277,6 @@ void XRMResParser::Error( const OString &rError )
 }
 
 
-// class XMLResExport
 
 
 XRMResExport::XRMResExport(
@@ -299,9 +287,7 @@ XRMResExport::XRMResExport(
     pOutputStream.open( rOutputFile, PoOfstream::APP );
     if (!pOutputStream.isOpen())
     {
-        OString sError( "Unable to open output file: " );
-        sError += rOutputFile;
-        Error( sError );
+        Error( "Unable to open output file: " + rOutputFile );
     }
 }
 
@@ -316,9 +302,8 @@ void XRMResExport::WorkOnDesc(
     const OString &rOpenTag,
     OString &rText )
 {
-    OString sDescFileName(
-        sInputFileName.replaceAll("description.xml", OString()));
-    sDescFileName += GetAttribute( rOpenTag, "xlink:href" );
+    const OString sDescFileName{ sInputFileName.replaceAll("description.xml", OString())
+        + GetAttribute( rOpenTag, "xlink:href" ) };
     ifstream file (sDescFileName.getStr(), ios::in|ios::binary|ios::ate);
     if (file.is_open()) {
         int size = static_cast<int>(file.tellg());
@@ -363,20 +348,18 @@ void XRMResExport::EndOfText(
 }
 
 
-// class XRMResMerge
 
 
 XRMResMerge::XRMResMerge(
     const OString &rMergeSource, const OString &rOutputFile,
     const OString &rFilename )
                 : XRMResParser(),
-                pMergeDataFile( nullptr ),
                 sFilename( rFilename )
 {
     if (!rMergeSource.isEmpty() && sLanguage.equalsIgnoreAsciiCase("ALL"))
     {
-        pMergeDataFile = new MergeDataFile(
-            rMergeSource, sInputFileName, false);
+        pMergeDataFile.reset(new MergeDataFile(
+            rMergeSource, sInputFileName, false));
         aLanguages = pMergeDataFile->GetLanguages();
     }
     else
@@ -384,16 +367,13 @@ XRMResMerge::XRMResMerge(
     pOutputStream.open(
         rOutputFile.getStr(), std::ios_base::out | std::ios_base::trunc);
     if (!pOutputStream.is_open()) {
-        OString sError( "Unable to open output file: " );
-        sError += rOutputFile;
-        Error( sError );
+        Error( "Unable to open output file: " + rOutputFile );
     }
 }
 
 XRMResMerge::~XRMResMerge()
 {
     pOutputStream.close();
-    delete pMergeDataFile;
 }
 
 void XRMResMerge::WorkOnDesc(
@@ -408,17 +388,13 @@ void XRMResMerge::WorkOnDesc(
             OString sDescFilename = GetAttribute ( rOpenTag, "xlink:href" );
             for( size_t n = 0; n < aLanguages.size(); n++ ){
                 sCur = aLanguages[ n ];
-                OString sContent;
+                OString sText;
                 if ( !sCur.equalsIgnoreAsciiCase("en-US")  &&
-                    ( pEntrys->GetText(
-                        sContent, StringType::Text, sCur, true )) &&
-                    !sContent.isEmpty())
+                    ( pEntrys->GetText( sText, sCur, true )) &&
+                    !sText.isEmpty())
                 {
-                    OString sText( sContent );
-                    OString sAdditionalLine( "\n        " );
-                    sAdditionalLine += rOpenTag;
-                    OString sSearch = sLangAttribute;
-                    sSearch += "=\"";
+                    OString sAdditionalLine{ "\n        "  + rOpenTag };
+                    OString sSearch{ sLangAttribute + "=\"" };
                     OString sReplace( sSearch );
 
                     sSearch += GetAttribute( rOpenTag, sLangAttribute );
@@ -429,9 +405,7 @@ void XRMResMerge::WorkOnDesc(
                     sSearch = OString("xlink:href=\"");
                     sReplace = sSearch;
 
-                    OString sLocDescFilename = sDescFilename;
-                    sLocDescFilename = sLocDescFilename.replaceFirst(
-                        "en-US", sCur);
+                    const OString sLocDescFilename = sDescFilename.replaceFirst( "en-US", sCur);
 
                     sSearch += sDescFilename;
                     sReplace += sLocDescFilename;
@@ -470,11 +444,9 @@ void XRMResMerge::WorkOnText(
     const OString &,
     OString & )
 {
-    if ( pMergeDataFile ) {
-        if ( !pResData ) {
-            pResData.reset( new ResData( GetGID(), sFilename ) );
-            pResData->sResTyp = sResourceType;
-        }
+    if ( pMergeDataFile && !pResData ) {
+        pResData.reset( new ResData( GetGID(), sFilename ) );
+        pResData->sResTyp = sResourceType;
     }
 }
 
@@ -498,26 +470,20 @@ void XRMResMerge::EndOfText(
                 sCur = aLanguages[ n ];
                 OString sContent;
                 if (!sCur.equalsIgnoreAsciiCase("en-US") &&
-                    ( pEntrys->GetText(
-                        sContent, StringType::Text, sCur, true )) &&
+                    ( pEntrys->GetText( sContent, sCur, true )) &&
                     !sContent.isEmpty() &&
                     helper::isWellFormedXML( sContent ))
                 {
-                    OString sText( sContent );
-                    OString sAdditionalLine( "\n        " );
-                    sAdditionalLine += rOpenTag;
-                    OString sSearch = sLangAttribute;
-                    sSearch += "=\"";
+                    const OString& sText( sContent );
+                    OString sAdditionalLine{ "\n        " + rOpenTag };
+                    OString sSearch{ sLangAttribute + "=\"" };
                     OString sReplace( sSearch );
 
                     sSearch += GetAttribute( rOpenTag, sLangAttribute );
                     sReplace += sCur;
 
                     sAdditionalLine = sAdditionalLine.replaceFirst(
-                        sSearch, sReplace);
-
-                    sAdditionalLine += sText;
-                    sAdditionalLine += rCloseTag;
+                        sSearch, sReplace) + sText + rCloseTag;
 
                     Output( sAdditionalLine );
                 }

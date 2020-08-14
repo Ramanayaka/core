@@ -20,30 +20,26 @@
 #ifndef INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFGRAPHIC_HXX
 #define INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFGRAPHIC_HXX
 
-#include <sal/types.h>
-#include <svx/sdr/contact/viewcontactoftextobj.hxx>
+#include <sdr/contact/viewcontactoftextobj.hxx>
 #include <svx/svdograf.hxx>
 
-namespace drawinglayer { namespace attribute { class SdrLineFillShadowTextAttribute; }}
+namespace drawinglayer::attribute { class SdrLineFillEffectsTextAttribute; }
 class GraphicAttr;
 
-namespace sdr
-{
-    namespace contact
+namespace sdr::contact
     {
-        class ViewContactOfGraphic : public ViewContactOfTextObj
+        class ViewContactOfGraphic final : public ViewContactOfTextObj
         {
         private:
             // helpers for constructing various primitive visualisations in various states
             drawinglayer::primitive2d::Primitive2DContainer createVIP2DSForPresObj(
                 const basegfx::B2DHomMatrix& rObjectMatrix,
-                const drawinglayer::attribute::SdrLineFillShadowTextAttribute& rAttribute) const;
+                const drawinglayer::attribute::SdrLineFillEffectsTextAttribute& rAttribute) const;
             drawinglayer::primitive2d::Primitive2DContainer createVIP2DSForDraft(
                 const basegfx::B2DHomMatrix& rObjectMatrix,
-                const drawinglayer::attribute::SdrLineFillShadowTextAttribute& rAttribute) const;
+                const drawinglayer::attribute::SdrLineFillEffectsTextAttribute& rAttribute) const;
 
-        protected:
-            // Create a Object-Specific ViewObjectContact, set ViewContact and
+            // Create an Object-Specific ViewObjectContact, set ViewContact and
             // ObjectContact. Always needs to return something.
             virtual ViewObjectContact& CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact) override;
 
@@ -62,20 +58,16 @@ namespace sdr
             explicit ViewContactOfGraphic(SdrGrafObj& rGrafObj);
             virtual ~ViewContactOfGraphic() override;
 
-            // #i102380#
-            void flushGraphicObjects();
-
             // helpers for visualisation state
             bool visualisationUsesPresObj() const;
             bool visualisationUsesDraft() const;
 
-        protected:
+        private:
             // This method is responsible for creating the graphical visualisation data
             // ONLY based on model data
             virtual drawinglayer::primitive2d::Primitive2DContainer createViewIndependentPrimitive2DSequence() const override;
         };
-    } // end of namespace contact
-} // end of namespace sdr
+} // end of namespace sdr::contact
 
 #endif // INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFGRAPHIC_HXX
 

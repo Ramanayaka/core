@@ -21,15 +21,15 @@
 #define INCLUDED_XMLSECURITY_INC_FRAMEWORK_SIGNATURECREATORIMPL_HXX
 
 #include <com/sun/star/xml/crypto/sax/XBlockerMonitor.hpp>
-#include <com/sun/star/xml/crypto/sax/XSignatureCreationResultListener.hpp>
 #include <com/sun/star/xml/crypto/sax/XSignatureCreationResultBroadcaster.hpp>
-#include <com/sun/star/xml/crypto/XSecurityEnvironment.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <cppuhelper/implbase.hxx>
 
-#include "framework/signatureengine.hxx"
+#include <framework/signatureengine.hxx>
+
+namespace com::sun::star::xml::crypto { class XSecurityEnvironment; }
+namespace com::sun::star::xml::crypto::sax { class XSignatureCreationResultListener;}
 
 typedef cppu::ImplInheritanceHelper
 <
@@ -40,7 +40,7 @@ typedef cppu::ImplInheritanceHelper
     css::lang::XServiceInfo
 > SignatureCreatorImpl_Base;
 
-class XSECFW_DLLPUBLIC SignatureCreatorImpl : public SignatureCreatorImpl_Base
+class SignatureCreatorImpl final : public SignatureCreatorImpl_Base
 /****** SignatureCreatorImpl.hxx/CLASS SignatureCreatorImpl *******************
  *
  *   NAME
@@ -61,8 +61,7 @@ private:
 
     virtual void notifyResultListener() const override;
     virtual void clearUp( ) const override;
-    virtual bool checkReady() const override;
-    virtual void startEngine( const css::uno::Reference< css::xml::crypto::XXMLSignatureTemplate >& xSignatureTemplate) override;
+    virtual void startEngine( const rtl::Reference<XMLSignatureTemplateImpl>& xSignatureTemplate) override;
 
 public:
     explicit SignatureCreatorImpl();
@@ -92,12 +91,7 @@ public:
 OUString SignatureCreatorImpl_getImplementationName();
 
 /// @throws css::uno::RuntimeException
-css::uno::Sequence< OUString > SAL_CALL SignatureCreatorImpl_getSupportedServiceNames(  );
-
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface >
-SAL_CALL SignatureCreatorImpl_createInstance(
-    const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr);
+css::uno::Sequence< OUString > SignatureCreatorImpl_getSupportedServiceNames(  );
 
 #endif
 

@@ -18,26 +18,18 @@
  */
 
 #include "Wall.hxx"
-#include "macros.hxx"
-#include "LinePropertiesHelper.hxx"
-#include "FillProperties.hxx"
-#include "UserDefinedProperties.hxx"
-#include "PropertyHelper.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/drawing/FillStyle.hpp>
-#include <com/sun/star/awt/Gradient.hpp>
-#include <com/sun/star/drawing/Hatch.hpp>
+#include <LinePropertiesHelper.hxx>
+#include <FillProperties.hxx>
+#include <UserDefinedProperties.hxx>
+#include <PropertyHelper.hxx>
+#include <ModifyListenerHelper.hxx>
 #include <com/sun/star/drawing/LineStyle.hpp>
-#include <com/sun/star/drawing/LineDash.hpp>
-#include <com/sun/star/drawing/LineJoint.hpp>
-#include <rtl/uuid.h>
-#include <cppuhelper/queryinterface.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <vector>
 #include <algorithm>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::beans::PropertyAttribute;
 
 using ::com::sun::star::beans::Property;
 
@@ -120,8 +112,7 @@ Wall::Wall() :
 {}
 
 Wall::Wall( const Wall & rOther ) :
-        MutexContainer(),
-        impl::Wall_Base(),
+        impl::Wall_Base(rOther),
         ::property::OPropertySet( rOther, m_aMutex ),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
 {}
@@ -164,9 +155,9 @@ void SAL_CALL Wall::addModifyListener( const uno::Reference< util::XModifyListen
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -177,9 +168,9 @@ void SAL_CALL Wall::removeModifyListener( const uno::Reference< util::XModifyLis
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 

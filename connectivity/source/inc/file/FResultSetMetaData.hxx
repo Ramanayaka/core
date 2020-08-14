@@ -24,11 +24,8 @@
 #include <cppuhelper/implbase.hxx>
 #include <connectivity/CommonTools.hxx>
 #include <rtl/ref.hxx>
-#include "file/filedllapi.hxx"
 
-namespace connectivity
-{
-    namespace file
+namespace connectivity::file
     {
         class OFileTable;
 
@@ -36,7 +33,7 @@ namespace connectivity
 
         typedef ::cppu::WeakImplHelper< css::sdbc::XResultSetMetaData>   OResultSetMetaData_BASE;
 
-        class OOO_DLLPUBLIC_FILE OResultSetMetaData :
+        class OResultSetMetaData :
             public  OResultSetMetaData_BASE
         {
             OUString     m_aTableName;
@@ -74,7 +71,7 @@ namespace connectivity
             virtual sal_Bool SAL_CALL isDefinitelyWritable( sal_Int32 column ) override;
             virtual OUString SAL_CALL getColumnServiceName( sal_Int32 column ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FRESULTSETMETADATA_HXX
 

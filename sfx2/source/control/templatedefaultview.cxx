@@ -7,14 +7,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <sfx2/templatedefaultview.hxx>
+#include <templatedefaultview.hxx>
 #include <sfx2/thumbnailview.hxx>
-#include <sfx2/templateviewitem.hxx>
+#include <templateviewitem.hxx>
 #include <sfx2/sfxresid.hxx>
 #include <vcl/builderfactory.hxx>
-#include <sfx2/app.hxx>
+#include <vcl/event.hxx>
+#include <vcl/svapp.hxx>
 
-#include <doc.hrc>
+#include <sfx2/strings.hrc>
 
 #define MNI_OPEN               1
 #define MNI_EDIT               2
@@ -23,15 +24,15 @@
 
 VCL_BUILDER_FACTORY(TemplateDefaultView)
 
-static const int gnItemPadding(5); //TODO:: Change padding to 10. It looks really crowded and occupied.
+constexpr int gnItemPadding(5); //TODO:: Change padding to 10. It looks really crowded and occupied.
+constexpr long gnTextHeight = 30;
 
 TemplateDefaultView::TemplateDefaultView( Window* pParent)
-    : TemplateLocalView(pParent, WB_TABSTOP)
-    , mnTextHeight(30)
+    : TemplateLocalView(pParent)
 {
     tools::Rectangle aScreen = Application::GetScreenPosSizePixel(Application::GetDisplayBuiltInScreen());
     mnItemMaxSize = std::min(aScreen.GetWidth(),aScreen.GetHeight()) > 800 ? 256 : 192;
-    ThumbnailView::setItemDimensions( mnItemMaxSize, mnItemMaxSize, mnTextHeight, gnItemPadding );
+    ThumbnailView::setItemDimensions( mnItemMaxSize, mnItemMaxSize, gnTextHeight, gnItemPadding );
     updateThumbnailDimensions(mnItemMaxSize);
 
     // startcenter specific settings
@@ -46,16 +47,14 @@ void TemplateDefaultView::reload()
 {
     TemplateLocalView::reload();
     // Set preferred width
-    set_width_request(mnTextHeight + mnItemMaxSize + 2*gnItemPadding);
+    set_width_request(gnTextHeight + mnItemMaxSize + 2*gnItemPadding);
 }
 
 void TemplateDefaultView::showAllTemplates()
 {
     mnCurRegionId = 0;
-    maCurRegionName.clear();
 
     insertItems(maAllTemplates, false);
-    maOpenRegionHdl.Call(nullptr);
 }
 
 void TemplateDefaultView::KeyInput( const KeyEvent& rKEvt )
@@ -88,23 +87,6 @@ void TemplateDefaultView::createContextMenu()
     pItemMenu->SetSelectHdl(LINK(this, TemplateLocalView, ContextMenuSelectHdl));
     pItemMenu->Execute(this, tools::Rectangle(maPosition,Size(1,1)), PopupMenuFlags::ExecuteDown);
     Invalidate();
-}
-
-IMPL_LINK(TemplateDefaultView, ContextMenuSelectHdl, Menu*, pMenu, void)
-{
-    sal_uInt16 nMenuId = pMenu->GetCurItemId();
-
-    switch(nMenuId)
-    {
-    case MNI_OPEN:
-        maOpenTemplateHdl.Call(maSelectedItem);
-        break;
-    case MNI_EDIT:
-        maEditTemplateHdl.Call(maSelectedItem);
-        break;
-    default:
-        break;
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

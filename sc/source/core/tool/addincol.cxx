@@ -23,8 +23,12 @@
 #include <vcl/settings.hxx>
 #include <sfx2/objsh.hxx>
 #include <unotools/charclass.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 #include <com/sun/star/container/XContentEnumerationAccess.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/XSingleComponentFactory.hpp>
@@ -33,25 +37,29 @@
 #include <com/sun/star/beans/theIntrospection.hpp>
 #include <com/sun/star/beans/MethodConcept.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/sheet/XCompatibilityNames.hpp>
 #include <com/sun/star/sheet/NoConvergenceException.hpp>
+#include <com/sun/star/sheet/XAddIn.hpp>
+#include <com/sun/star/sheet/XVolatileResult.hpp>
 
-#include "addincol.hxx"
-#include "addinhelpid.hxx"
-#include "compiler.hxx"
-#include "scmatrix.hxx"
-#include "addinlis.hxx"
+#include <addincol.hxx>
+#include <addinhelpid.hxx>
+#include <compiler.hxx>
+#include <scmatrix.hxx>
+#include <addinlis.hxx>
 #include <formula/errorcodes.hxx>
-#include "scfuncs.hrc"
-#include "optutil.hxx"
-#include "addincfg.hxx"
-#include "scmod.hxx"
-#include "rangeseq.hxx"
-#include "funcdesc.hxx"
+#include <formula/funcvarargs.h>
+#include <sc.hrc>
+#include <optutil.hxx>
+#include <addincfg.hxx>
+#include <scmod.hxx>
+#include <rangeseq.hxx>
+#include <funcdesc.hxx>
 #include <svl/sharedstring.hxx>
-#include "formulaopt.hxx"
+#include <formulaopt.hxx>
 #include <memory>
 
 using namespace com::sun::star;
@@ -85,8 +93,8 @@ ScUnoAddInFuncData::ScUnoAddInFuncData( const OUString& rNam, const OUString& rL
             pArgDescs[i] = pAD[i];
     }
 
-    aUpperName = ScGlobal::pCharClass->uppercase(aUpperName);
-    aUpperLocal = ScGlobal::pCharClass->uppercase(aUpperLocal);
+    aUpperName = ScGlobal::getCharClassPtr()->uppercase(aUpperName);
+    aUpperLocal = ScGlobal::getCharClassPtr()->uppercase(aUpperLocal);
 }
 
 ScUnoAddInFuncData::~ScUnoAddInFuncData()
@@ -106,18 +114,13 @@ const ::std::vector<ScUnoAddInFuncData::LocalizedName>& ScUnoAddInFuncData::GetC
             if ( xComp.is() && xFunction.is() )
             {
                 OUString aMethodName = xFunction->getName();
-                uno::Sequence< sheet::LocalizedName> aCompNames( xComp->getCompatibilityNames( aMethodName ));
+                const uno::Sequence< sheet::LocalizedName> aCompNames( xComp->getCompatibilityNames( aMethodName ));
                 maCompNames.clear();
-                sal_Int32 nSeqLen = aCompNames.getLength();
-                if ( nSeqLen )
+                for (const sheet::LocalizedName& rCompName : aCompNames)
                 {
-                    const sheet::LocalizedName* pArray = aCompNames.getArray();
-                    for (sal_Int32 i=0; i<nSeqLen; i++)
-                    {
-                        maCompNames.push_back( LocalizedName(
-                                    LanguageTag::convertToBcp47( pArray[i].Locale, false),
-                                    pArray[i].Name));
-                    }
+                    maCompNames.emplace_back(
+                                LanguageTag::convertToBcp47( rCompName.Locale, false),
+                                rCompName.Name);
                 }
             }
         }
@@ -142,17 +145,15 @@ bool ScUnoAddInFuncData::GetExcelName( LanguageType eDestLang, OUString& rRetExc
     if ( !rCompNames.empty() )
     {
         LanguageTag aLanguageTag( eDestLang);
-        const OUString aSearch( aLanguageTag.getBcp47());
+        const OUString& aSearch( aLanguageTag.getBcp47());
 
         // First, check exact match without fallback overhead.
-        ::std::vector<LocalizedName>::const_iterator itNames( rCompNames.begin());
-        for ( ; itNames != rCompNames.end(); ++itNames)
+        ::std::vector<LocalizedName>::const_iterator itNames = std::find_if(rCompNames.begin(), rCompNames.end(),
+            [&aSearch](const LocalizedName& rName) { return rName.maLocale == aSearch; });
+        if (itNames != rCompNames.end())
         {
-            if ((*itNames).maLocale == aSearch)
-            {
-                rRetExcelName = (*itNames).maName;
-                return true;
-            }
+            rRetExcelName = (*itNames).maName;
+            return true;
         }
 
         // Second, try match of fallback search with fallback locales,
@@ -160,28 +161,22 @@ bool ScUnoAddInFuncData::GetExcelName( LanguageType eDestLang, OUString& rRetExc
         ::std::vector< OUString > aFallbackSearch( aLanguageTag.getFallbackStrings( true));
         if (aSearch != "en-US")
         {
-            aFallbackSearch.push_back( "en-US");
+            aFallbackSearch.emplace_back("en-US");
             if (aSearch != "en")
             {
-                aFallbackSearch.push_back( "en");
+                aFallbackSearch.emplace_back("en");
             }
         }
-        ::std::vector< OUString >::const_iterator itSearch( aFallbackSearch.begin());
-        for ( ; itSearch != aFallbackSearch.end(); ++itSearch)
+        for (const auto& rSearch : aFallbackSearch)
         {
-            itNames = rCompNames.begin();
-            for ( ; itNames != rCompNames.end(); ++itNames)
+            for (const auto& rCompName : rCompNames)
             {
                 // We checked already the full tag, start with second.
-                ::std::vector< OUString > aFallbackLocales( LanguageTag( (*itNames).maLocale).getFallbackStrings( false));
-                for (::std::vector< OUString >::const_iterator itLocales( aFallbackLocales.begin());
-                        itLocales != aFallbackLocales.end(); ++itLocales)
+                ::std::vector< OUString > aFallbackLocales( LanguageTag( rCompName.maLocale).getFallbackStrings( false));
+                if (std::find(aFallbackLocales.begin(), aFallbackLocales.end(), rSearch) != aFallbackLocales.end())
                 {
-                    if (*itLocales == *itSearch)
-                    {
-                        rRetExcelName = (*itNames).maName;
-                        return true;
-                    }
+                    rRetExcelName = rCompName.maName;
+                    return true;
                 }
             }
         }
@@ -219,31 +214,20 @@ void ScUnoAddInFuncData::SetCallerPos( long nNewPos )
 
 ScUnoAddInCollection::ScUnoAddInCollection() :
     nFuncCount( 0 ),
-    ppFuncData( nullptr ),
-    pExactHashMap( nullptr ),
-    pNameHashMap( nullptr ),
-    pLocalHashMap( nullptr ),
     bInitialized( false )
 {
 }
 
 ScUnoAddInCollection::~ScUnoAddInCollection()
 {
-    Clear();
 }
 
 void ScUnoAddInCollection::Clear()
 {
-    DELETEZ( pExactHashMap );
-    DELETEZ( pNameHashMap );
-    DELETEZ( pLocalHashMap );
-    if ( ppFuncData )
-    {
-        for ( long i=0; i<nFuncCount; i++ )
-            delete ppFuncData[i];
-        delete[] ppFuncData;
-    }
-    ppFuncData = nullptr;
+    pExactHashMap.reset();
+    pNameHashMap.reset();
+    pLocalHashMap.reset();
+    ppFuncData.reset();
     nFuncCount = 0;
 
     bInitialized = false;
@@ -314,13 +298,13 @@ void ScUnoAddInCollection::Initialize()
 
 static sal_uInt16 lcl_GetCategory( const OUString& rName )
 {
-    static const sal_Char* aFuncNames[SC_FUNCGROUP_COUNT] =
+    static const char* aFuncNames[SC_FUNCGROUP_COUNT] =
     {
         //  array index = ID - 1 (ID starts at 1)
         //  all upper case
         "Database",         // ID_FUNCTION_GRP_DATABASE
         "Date&Time",        // ID_FUNCTION_GRP_DATETIME
-        "Financial",        // ID_FUNCTION_GRP_FINANZ
+        "Financial",        // ID_FUNCTION_GRP_FINANCIAL
         "Information",      // ID_FUNCTION_GRP_INFO
         "Logical",          // ID_FUNCTION_GRP_LOGIC
         "Mathematical",     // ID_FUNCTION_GRP_MATH
@@ -365,12 +349,10 @@ void ScUnoAddInCollection::ReadConfiguration()
     const OUString sSlash('/');
 
     // get the list of add-ins (services)
-    uno::Sequence<OUString> aServiceNames = rAddInConfig.GetNodeNames( "" );
+    const uno::Sequence<OUString> aServiceNames = rAddInConfig.GetNodeNames( "" );
 
-    sal_Int32 nServiceCount = aServiceNames.getLength();
-    for ( sal_Int32 nService = 0; nService < nServiceCount; nService++ )
+    for ( const OUString& aServiceName : aServiceNames )
     {
-        OUString aServiceName = aServiceNames[nService];
         ScUnoAddInHelpIdGenerator aHelpIdGenerator( aServiceName );
 
         OUString aFunctionsPath(aServiceName + sSlash + CFGSTR_ADDINFUNCTIONS);
@@ -384,22 +366,21 @@ void ScUnoAddInCollection::ReadConfiguration()
         nFuncCount = nNewCount+nOld;
         if ( nOld )
         {
-            ScUnoAddInFuncData** ppNew = new ScUnoAddInFuncData*[nFuncCount];
+            std::unique_ptr<std::unique_ptr<ScUnoAddInFuncData>[]> ppNew(new std::unique_ptr<ScUnoAddInFuncData>[nFuncCount]);
             for (long i=0; i<nOld; i++)
-                ppNew[i] = ppFuncData[i];
-            delete[] ppFuncData;
-            ppFuncData = ppNew;
+                ppNew[i] = std::move(ppFuncData[i]);
+            ppFuncData = std::move(ppNew);
         }
         else
-            ppFuncData = new ScUnoAddInFuncData*[nFuncCount];
+            ppFuncData.reset( new std::unique_ptr<ScUnoAddInFuncData>[nFuncCount] );
 
         //TODO: adjust bucket count?
         if ( !pExactHashMap )
-            pExactHashMap = new ScAddInHashMap;
+            pExactHashMap.reset( new ScAddInHashMap );
         if ( !pNameHashMap )
-            pNameHashMap = new ScAddInHashMap;
+            pNameHashMap.reset( new ScAddInHashMap );
         if ( !pLocalHashMap )
-            pLocalHashMap = new ScAddInHashMap;
+            pLocalHashMap.reset( new ScAddInHashMap );
 
         //TODO: get the function information in a single call for all functions?
 
@@ -409,11 +390,7 @@ void ScUnoAddInCollection::ReadConfiguration()
             ppFuncData[nFuncPos+nOld] = nullptr;
 
             // stored function name: (service name).(function)
-            OUStringBuffer aFuncNameBuffer( aServiceName.getLength()+1+pFuncNameArray[nFuncPos].getLength());
-            aFuncNameBuffer.append(aServiceName);
-            aFuncNameBuffer.append('.');
-            aFuncNameBuffer.append(pFuncNameArray[nFuncPos]);
-            OUString aFuncName = aFuncNameBuffer.makeStringAndClear();
+            OUString aFuncName = aServiceName + "." + pFuncNameArray[nFuncPos];
 
             // skip the function if already known (read from old AddIn service)
 
@@ -425,10 +402,7 @@ void ScUnoAddInCollection::ReadConfiguration()
 
                 // get direct information on the function
 
-                OUString aFuncPropPath = aFunctionsPath;
-                aFuncPropPath += sSlash;
-                aFuncPropPath += pFuncNameArray[nFuncPos];
-                aFuncPropPath += sSlash;
+                OUString aFuncPropPath = aFunctionsPath + sSlash + pFuncNameArray[nFuncPos] + sSlash;
 
                 uno::Sequence<OUString> aFuncPropNames{
                     (aFuncPropPath + CFGSTR_DISPLAYNAME), // CFG_FUNCPROP_DISPLAYNAME
@@ -459,18 +433,15 @@ void ScUnoAddInCollection::ReadConfiguration()
                     uno::Sequence<beans::PropertyValue> aLocalEntries;
                     if ( aCompProperties[0] >>= aLocalEntries )
                     {
-                        sal_Int32 nLocaleCount = aLocalEntries.getLength();
-                        const beans::PropertyValue* pConfigArray = aLocalEntries.getConstArray();
-
-                        for ( sal_Int32 nLocale = 0; nLocale < nLocaleCount; nLocale++ )
+                        for ( const beans::PropertyValue& rConfig : std::as_const(aLocalEntries) )
                         {
                             // PropertyValue name is the locale ("convert" from
                             // string to canonicalize)
-                            OUString aLocale( LanguageTag( pConfigArray[nLocale].Name, true).getBcp47( false));
+                            OUString aLocale( LanguageTag( rConfig.Name, true).getBcp47( false));
                             // PropertyValue value is the localized value (string in this case)
                             OUString aName;
-                            pConfigArray[nLocale].Value >>= aName;
-                            aCompNames.push_back( ScUnoAddInFuncData::LocalizedName( aLocale, aName));
+                            rConfig.Value >>= aName;
+                            aCompNames.emplace_back( aLocale, aName);
                         }
                     }
                 }
@@ -482,7 +453,7 @@ void ScUnoAddInCollection::ReadConfiguration()
 
                 OUString aArgumentsPath(aFuncPropPath + CFGSTR_PARAMETERS);
 
-                uno::Sequence<OUString> aArgumentNames = rAddInConfig.GetNodeNames( aArgumentsPath );
+                const uno::Sequence<OUString> aArgumentNames = rAddInConfig.GetNodeNames( aArgumentsPath );
                 sal_Int32 nArgumentCount = aArgumentNames.getLength();
                 if ( nArgumentCount )
                 {
@@ -490,15 +461,10 @@ void ScUnoAddInCollection::ReadConfiguration()
                     uno::Sequence<OUString> aArgPropNames( nArgumentCount * 2 );
                     OUString* pPropNameArray = aArgPropNames.getArray();
 
-                    sal_Int32 nArgument;
                     sal_Int32 nIndex = 0;
-                    const OUString* pArgNameArray = aArgumentNames.getConstArray();
-                    for ( nArgument = 0; nArgument < nArgumentCount; nArgument++ )
+                    for ( const OUString& rArgName : aArgumentNames )
                     {
-                        OUString aOneArgPath = aArgumentsPath;
-                        aOneArgPath += sSlash;
-                        aOneArgPath += pArgNameArray[nArgument];
-                        aOneArgPath += sSlash;
+                        OUString aOneArgPath = aArgumentsPath + sSlash + rArgName + sSlash;
 
                         pPropNameArray[nIndex++] = aOneArgPath
                             + CFGSTR_DISPLAYNAME;
@@ -509,6 +475,7 @@ void ScUnoAddInCollection::ReadConfiguration()
                     uno::Sequence<uno::Any> aArgProperties = rAddInConfig.GetProperties( aArgPropNames );
                     if ( aArgProperties.getLength() == aArgPropNames.getLength() )
                     {
+                        const OUString* pArgNameArray = aArgumentNames.getConstArray();
                         const uno::Any* pPropArray = aArgProperties.getConstArray();
                         OUString sDisplayName;
                         OUString sDescription;
@@ -521,7 +488,7 @@ void ScUnoAddInCollection::ReadConfiguration()
                         pVisibleArgs.reset(new ScAddInArgDesc[nVisibleCount]);
 
                         nIndex = 0;
-                        for ( nArgument = 0; nArgument < nArgumentCount; nArgument++ )
+                        for ( sal_Int32 nArgument = 0; nArgument < nArgumentCount; nArgument++ )
                         {
                             pPropArray[nIndex++] >>= sDisplayName;
                             pPropArray[nIndex++] >>= sDescription;
@@ -550,20 +517,17 @@ void ScUnoAddInCollection::ReadConfiguration()
 
                 pData->SetCompNames( aCompNames );
 
-                ppFuncData[nFuncPos+nOld] = pData;
+                ppFuncData[nFuncPos+nOld].reset(pData);
 
-                pExactHashMap->insert(
-                        ScAddInHashMap::value_type(
+                pExactHashMap->emplace(
                             pData->GetOriginalName(),
-                            pData ) );
-                pNameHashMap->insert(
-                        ScAddInHashMap::value_type(
+                            pData );
+                pNameHashMap->emplace(
                             pData->GetUpperName(),
-                            pData ) );
-                pLocalHashMap->insert(
-                        ScAddInHashMap::value_type(
+                            pData );
+                pLocalHashMap->emplace(
                             pData->GetUpperLocal(),
-                            pData ) );
+                            pData );
             }
         }
     }
@@ -573,23 +537,23 @@ void ScUnoAddInCollection::LoadComponent( const ScUnoAddInFuncData& rFuncData )
 {
     const OUString& aFullName = rFuncData.GetOriginalName();
     sal_Int32 nPos = aFullName.lastIndexOf( '.' );
-    if ( nPos > 0 )
+    if ( nPos <= 0 )
+        return;
+
+    OUString aServiceName = aFullName.copy( 0, nPos );
+
+    try
     {
-        OUString aServiceName = aFullName.copy( 0, nPos );
+        uno::Reference<lang::XMultiServiceFactory> xServiceFactory = comphelper::getProcessServiceFactory();
+        uno::Reference<uno::XInterface> xInterface( xServiceFactory->createInstance( aServiceName ) );
 
-        try
-        {
-            uno::Reference<lang::XMultiServiceFactory> xServiceFactory = comphelper::getProcessServiceFactory();
-            uno::Reference<uno::XInterface> xInterface( xServiceFactory->createInstance( aServiceName ) );
-
-            if (xInterface.is())
-                UpdateFromAddIn( xInterface, aServiceName );
-        }
-        catch (const uno::Exception &)
-        {
-            SAL_WARN ("sc", "Failed to create addin component '"
-                      << aServiceName << "'");
-        }
+        if (xInterface.is())
+            UpdateFromAddIn( xInterface, aServiceName );
+    }
+    catch (const uno::Exception &)
+    {
+        SAL_WARN ("sc", "Failed to create addin component '"
+                  << aServiceName << "'");
     }
 }
 
@@ -607,35 +571,31 @@ bool ScUnoAddInCollection::GetCalcName( const OUString& rExcelName, OUString& rR
     if (!bInitialized)
         Initialize();
 
-    OUString aUpperCmp = ScGlobal::pCharClass->uppercase(rExcelName);
+    OUString aUpperCmp = ScGlobal::getCharClassPtr()->uppercase(rExcelName);
 
     for (long i=0; i<nFuncCount; i++)
     {
-        ScUnoAddInFuncData* pFuncData = ppFuncData[i];
+        ScUnoAddInFuncData* pFuncData = ppFuncData[i].get();
         if ( pFuncData )
         {
             const ::std::vector<ScUnoAddInFuncData::LocalizedName>& rNames = pFuncData->GetCompNames();
-            if ( !rNames.empty() )
+            auto bFound = std::any_of(rNames.begin(), rNames.end(),
+                [&aUpperCmp](const ScUnoAddInFuncData::LocalizedName& rName) {
+                    return ScGlobal::getCharClassPtr()->uppercase( rName.maName ) == aUpperCmp; });
+            if (bFound)
             {
-                ::std::vector<ScUnoAddInFuncData::LocalizedName>::const_iterator it( rNames.begin());
-                for ( ; it != rNames.end(); ++it)
-                {
-                    if ( ScGlobal::pCharClass->uppercase( (*it).maName ) == aUpperCmp )
-                    {
-                        //TODO: store upper case for comparing?
+                //TODO: store upper case for comparing?
 
-                        //  use the first function that has this name for any language
-                        rRetCalcName = pFuncData->GetOriginalName();
-                        return true;
-                    }
-                }
+                //  use the first function that has this name for any language
+                rRetCalcName = pFuncData->GetOriginalName();
+                return true;
             }
         }
     }
     return false;
 }
 
-inline bool IsTypeName( const OUString& rName, const uno::Type& rType )
+static bool IsTypeName( const OUString& rName, const uno::Type& rType )
 {
     return rName == rType.getTypeName();
 }
@@ -738,231 +698,223 @@ void ScUnoAddInCollection::ReadFromAddIn( const uno::Reference<uno::XInterface>&
 {
     uno::Reference<sheet::XAddIn> xAddIn( xInterface, uno::UNO_QUERY );
     uno::Reference<lang::XServiceName> xName( xInterface, uno::UNO_QUERY );
-    if ( xAddIn.is() && xName.is() )
+    if ( !(xAddIn.is() && xName.is()) )
+        return;
+
+    // fdo50118 when GetUseEnglishFunctionName() returns true, set the
+    // locale to en-US to get English function names
+    if ( SC_MOD()->GetFormulaOptions().GetUseEnglishFuncName() )
+        xAddIn->setLocale( lang::Locale( "en", "US", ""));
+    else
+        xAddIn->setLocale( Application::GetSettings().GetUILanguageTag().getLocale());
+
+    OUString aServiceName( xName->getServiceName() );
+    ScUnoAddInHelpIdGenerator aHelpIdGenerator( aServiceName );
+
+    //TODO: pass XIntrospection to ReadFromAddIn
+
+    uno::Reference<uno::XComponentContext> xContext = comphelper::getProcessComponentContext();
+
+    uno::Reference<beans::XIntrospection> xIntro = beans::theIntrospection::get( xContext );
+    uno::Any aObject;
+    aObject <<= xAddIn;
+    uno::Reference<beans::XIntrospectionAccess> xAcc = xIntro->inspect(aObject);
+    if (!xAcc.is())
+        return;
+
+    uno::Sequence< uno::Reference<reflection::XIdlMethod> > aMethods =
+            xAcc->getMethods( beans::MethodConcept::ALL );
+    long nNewCount = aMethods.getLength();
+    if ( !nNewCount )
+        return;
+
+    long nOld = nFuncCount;
+    nFuncCount = nNewCount+nOld;
+    if ( nOld )
     {
-        // fdo50118 when GetUseEnglishFunctionName() returns true, set the
-        // locale to en-US to get English function names
-        if ( SC_MOD()->GetFormulaOptions().GetUseEnglishFuncName() )
-            xAddIn->setLocale( lang::Locale( "en", "US", ""));
-        else
-            xAddIn->setLocale( Application::GetSettings().GetUILanguageTag().getLocale());
+        std::unique_ptr<std::unique_ptr<ScUnoAddInFuncData>[]> ppNew(new std::unique_ptr<ScUnoAddInFuncData>[nFuncCount]);
+        for (long i=0; i<nOld; i++)
+            ppNew[i] = std::move(ppFuncData[i]);
+        ppFuncData = std::move(ppNew);
+    }
+    else
+        ppFuncData.reset(new std::unique_ptr<ScUnoAddInFuncData>[nFuncCount]);
 
-        OUString aServiceName( xName->getServiceName() );
-        ScUnoAddInHelpIdGenerator aHelpIdGenerator( aServiceName );
+    //TODO: adjust bucket count?
+    if ( !pExactHashMap )
+        pExactHashMap.reset( new ScAddInHashMap );
+    if ( !pNameHashMap )
+        pNameHashMap.reset( new ScAddInHashMap );
+    if ( !pLocalHashMap )
+        pLocalHashMap.reset( new ScAddInHashMap );
 
-        //TODO: pass XIntrospection to ReadFromAddIn
+    const uno::Reference<reflection::XIdlMethod>* pArray = aMethods.getConstArray();
+    for (long nFuncPos=0; nFuncPos<nNewCount; nFuncPos++)
+    {
+        ppFuncData[nFuncPos+nOld] = nullptr;
 
-        uno::Reference<uno::XComponentContext> xContext = comphelper::getProcessComponentContext();
-
-        uno::Reference<beans::XIntrospection> xIntro = beans::theIntrospection::get( xContext );
-        uno::Any aObject;
-        aObject <<= xAddIn;
-        uno::Reference<beans::XIntrospectionAccess> xAcc = xIntro->inspect(aObject);
-        if (xAcc.is())
+        uno::Reference<reflection::XIdlMethod> xFunc = pArray[nFuncPos];
+        if (xFunc.is())
         {
-            uno::Sequence< uno::Reference<reflection::XIdlMethod> > aMethods =
-                    xAcc->getMethods( beans::MethodConcept::ALL );
-            long nNewCount = aMethods.getLength();
-            if ( nNewCount )
+            //  leave out internal functions
+            uno::Reference<reflection::XIdlClass> xClass =
+                            xFunc->getDeclaringClass();
+            bool bSkip = true;
+            if ( xClass.is() )
             {
-                long nOld = nFuncCount;
-                nFuncCount = nNewCount+nOld;
-                if ( nOld )
+                //TODO: XIdlClass needs getType() method!
+                OUString sName = xClass->getName();
+                bSkip = (
+                    IsTypeName( sName,
+                        cppu::UnoType<uno::XInterface>::get()) ||
+                    IsTypeName( sName,
+                        cppu::UnoType<lang::XServiceName>::get()) ||
+                    IsTypeName( sName,
+                        cppu::UnoType<lang::XServiceInfo>::get()) ||
+                    IsTypeName( sName,
+                        cppu::UnoType<sheet::XAddIn>::get()) );
+            }
+            if (!bSkip)
+            {
+                uno::Reference<reflection::XIdlClass> xReturn =
+                            xFunc->getReturnType();
+                if ( !lcl_ValidReturnType( xReturn ) )
+                    bSkip = true;
+            }
+            if (!bSkip)
+            {
+                OUString aFuncU = xFunc->getName();
+
+                // stored function name: (service name).(function)
+                OUString aFuncName = aServiceName + "." + aFuncU;
+
+                bool bValid = true;
+                long nVisibleCount = 0;
+                long nCallerPos = SC_CALLERPOS_NONE;
+
+                uno::Sequence<reflection::ParamInfo> aParams =
+                        xFunc->getParameterInfos();
+                long nParamCount = aParams.getLength();
+                const reflection::ParamInfo* pParArr = aParams.getConstArray();
+                long nParamPos;
+                for (nParamPos=0; nParamPos<nParamCount; nParamPos++)
                 {
-                    ScUnoAddInFuncData** ppNew = new ScUnoAddInFuncData*[nFuncCount];
-                    for (long i=0; i<nOld; i++)
-                        ppNew[i] = ppFuncData[i];
-                    delete[] ppFuncData;
-                    ppFuncData = ppNew;
+                    if ( pParArr[nParamPos].aMode != reflection::ParamMode_IN )
+                        bValid = false;
+                    uno::Reference<reflection::XIdlClass> xParClass =
+                                pParArr[nParamPos].aType;
+                    ScAddInArgumentType eArgType = lcl_GetArgType( xParClass );
+                    if ( eArgType == SC_ADDINARG_NONE )
+                        bValid = false;
+                    else if ( eArgType == SC_ADDINARG_CALLER )
+                        nCallerPos = nParamPos;
+                    else
+                        ++nVisibleCount;
                 }
-                else
-                    ppFuncData = new ScUnoAddInFuncData*[nFuncCount];
-
-                //TODO: adjust bucket count?
-                if ( !pExactHashMap )
-                    pExactHashMap = new ScAddInHashMap;
-                if ( !pNameHashMap )
-                    pNameHashMap = new ScAddInHashMap;
-                if ( !pLocalHashMap )
-                    pLocalHashMap = new ScAddInHashMap;
-
-                const uno::Reference<reflection::XIdlMethod>* pArray = aMethods.getConstArray();
-                for (long nFuncPos=0; nFuncPos<nNewCount; nFuncPos++)
+                if (bValid)
                 {
-                    ppFuncData[nFuncPos+nOld] = nullptr;
+                    sal_uInt16 nCategory = lcl_GetCategory(
+                            xAddIn->getProgrammaticCategoryName( aFuncU ) );
 
-                    uno::Reference<reflection::XIdlMethod> xFunc = pArray[nFuncPos];
-                    if (xFunc.is())
+                    OString sHelpId = aHelpIdGenerator.GetHelpId( aFuncU );
+
+                    OUString aLocalName;
+                    try
                     {
-                        //  leave out internal functions
-                        uno::Reference<reflection::XIdlClass> xClass =
-                                        xFunc->getDeclaringClass();
-                        bool bSkip = true;
-                        if ( xClass.is() )
-                        {
-                            //TODO: XIdlClass needs getType() method!
-                            OUString sName = xClass->getName();
-                            bSkip = (
-                                IsTypeName( sName,
-                                    cppu::UnoType<uno::XInterface>::get()) ||
-                                IsTypeName( sName,
-                                    cppu::UnoType<lang::XServiceName>::get()) ||
-                                IsTypeName( sName,
-                                    cppu::UnoType<lang::XServiceInfo>::get()) ||
-                                IsTypeName( sName,
-                                    cppu::UnoType<sheet::XAddIn>::get()) );
-                        }
-                        if (!bSkip)
-                        {
-                            uno::Reference<reflection::XIdlClass> xReturn =
-                                        xFunc->getReturnType();
-                            if ( !lcl_ValidReturnType( xReturn ) )
-                                bSkip = true;
-                        }
-                        if (!bSkip)
-                        {
-                            OUString aFuncU = xFunc->getName();
-
-                            // stored function name: (service name).(function)
-                            OUStringBuffer aFuncNameBuffer( aServiceName.getLength()+1+aFuncU.getLength());
-                            aFuncNameBuffer.append(aServiceName);
-                            aFuncNameBuffer.append('.');
-                            aFuncNameBuffer.append(aFuncU);
-                            OUString aFuncName = aFuncNameBuffer.makeStringAndClear();
-
-                            bool bValid = true;
-                            long nVisibleCount = 0;
-                            long nCallerPos = SC_CALLERPOS_NONE;
-
-                            uno::Sequence<reflection::ParamInfo> aParams =
-                                    xFunc->getParameterInfos();
-                            long nParamCount = aParams.getLength();
-                            const reflection::ParamInfo* pParArr = aParams.getConstArray();
-                            long nParamPos;
-                            for (nParamPos=0; nParamPos<nParamCount; nParamPos++)
-                            {
-                                if ( pParArr[nParamPos].aMode != reflection::ParamMode_IN )
-                                    bValid = false;
-                                uno::Reference<reflection::XIdlClass> xParClass =
-                                            pParArr[nParamPos].aType;
-                                ScAddInArgumentType eArgType = lcl_GetArgType( xParClass );
-                                if ( eArgType == SC_ADDINARG_NONE )
-                                    bValid = false;
-                                else if ( eArgType == SC_ADDINARG_CALLER )
-                                    nCallerPos = nParamPos;
-                                else
-                                    ++nVisibleCount;
-                            }
-                            if (bValid)
-                            {
-                                sal_uInt16 nCategory = lcl_GetCategory(
-                                        xAddIn->getProgrammaticCategoryName( aFuncU ) );
-
-                                OString sHelpId = aHelpIdGenerator.GetHelpId( aFuncU );
-
-                                OUString aLocalName;
-                                try
-                                {
-                                    aLocalName = xAddIn->
-                                        getDisplayFunctionName( aFuncU );
-                                }
-                                catch(uno::Exception&)
-                                {
-                                    aLocalName = "###";
-                                }
-
-                                OUString aDescription;
-                                try
-                                {
-                                    aDescription = xAddIn->
-                                        getFunctionDescription( aFuncU );
-                                }
-                                catch(uno::Exception&)
-                                {
-                                    aDescription = "###";
-                                }
-
-                                std::unique_ptr<ScAddInArgDesc[]> pVisibleArgs;
-                                if ( nVisibleCount > 0 )
-                                {
-                                    ScAddInArgDesc aDesc;
-                                    pVisibleArgs.reset(new ScAddInArgDesc[nVisibleCount]);
-                                    long nDestPos = 0;
-                                    for (nParamPos=0; nParamPos<nParamCount; nParamPos++)
-                                    {
-                                        uno::Reference<reflection::XIdlClass> xParClass =
-                                            pParArr[nParamPos].aType;
-                                        ScAddInArgumentType eArgType = lcl_GetArgType( xParClass );
-                                        if ( eArgType != SC_ADDINARG_CALLER )
-                                        {
-                                            OUString aArgName;
-                                            try
-                                            {
-                                                aArgName = xAddIn->
-                                                    getDisplayArgumentName( aFuncU, nParamPos );
-                                            }
-                                            catch(uno::Exception&)
-                                            {
-                                                aArgName = "###";
-                                            }
-                                            OUString aArgDesc;
-                                            try
-                                            {
-                                                aArgDesc = xAddIn->
-                                                    getArgumentDescription( aFuncU, nParamPos );
-                                            }
-                                            catch(uno::Exception&)
-                                            {
-                                                aArgDesc = "###";
-                                            }
-
-                                            bool bOptional =
-                                                ( eArgType == SC_ADDINARG_VALUE_OR_ARRAY ||
-                                                  eArgType == SC_ADDINARG_VARARGS );
-
-                                            aDesc.eType = eArgType;
-                                            aDesc.aName = aArgName;
-                                            aDesc.aDescription = aArgDesc;
-                                            aDesc.bOptional = bOptional;
-                                            //TODO: initialize aInternalName only from config?
-                                            aDesc.aInternalName = pParArr[nParamPos].aName;
-
-                                            pVisibleArgs[nDestPos++] = aDesc;
-                                        }
-                                    }
-                                    OSL_ENSURE( nDestPos==nVisibleCount, "wrong count" );
-                                }
-
-                                ppFuncData[nFuncPos+nOld] = new ScUnoAddInFuncData(
-                                    aFuncName, aLocalName, aDescription,
-                                    nCategory, sHelpId,
-                                    xFunc, aObject,
-                                    nVisibleCount, pVisibleArgs.get(), nCallerPos );
-
-                                const ScUnoAddInFuncData* pData =
-                                    ppFuncData[nFuncPos+nOld];
-                                pExactHashMap->insert(
-                                        ScAddInHashMap::value_type(
-                                            pData->GetOriginalName(),
-                                            pData ) );
-                                pNameHashMap->insert(
-                                        ScAddInHashMap::value_type(
-                                            pData->GetUpperName(),
-                                            pData ) );
-                                pLocalHashMap->insert(
-                                        ScAddInHashMap::value_type(
-                                            pData->GetUpperLocal(),
-                                            pData ) );
-                            }
-                        }
+                        aLocalName = xAddIn->
+                            getDisplayFunctionName( aFuncU );
                     }
+                    catch(uno::Exception&)
+                    {
+                        aLocalName = "###";
+                    }
+
+                    OUString aDescription;
+                    try
+                    {
+                        aDescription = xAddIn->
+                            getFunctionDescription( aFuncU );
+                    }
+                    catch(uno::Exception&)
+                    {
+                        aDescription = "###";
+                    }
+
+                    std::unique_ptr<ScAddInArgDesc[]> pVisibleArgs;
+                    if ( nVisibleCount > 0 )
+                    {
+                        ScAddInArgDesc aDesc;
+                        pVisibleArgs.reset(new ScAddInArgDesc[nVisibleCount]);
+                        long nDestPos = 0;
+                        for (nParamPos=0; nParamPos<nParamCount; nParamPos++)
+                        {
+                            uno::Reference<reflection::XIdlClass> xParClass =
+                                pParArr[nParamPos].aType;
+                            ScAddInArgumentType eArgType = lcl_GetArgType( xParClass );
+                            if ( eArgType != SC_ADDINARG_CALLER )
+                            {
+                                OUString aArgName;
+                                try
+                                {
+                                    aArgName = xAddIn->
+                                        getDisplayArgumentName( aFuncU, nParamPos );
+                                }
+                                catch(uno::Exception&)
+                                {
+                                    aArgName = "###";
+                                }
+                                OUString aArgDesc;
+                                try
+                                {
+                                    aArgDesc = xAddIn->
+                                        getArgumentDescription( aFuncU, nParamPos );
+                                }
+                                catch(uno::Exception&)
+                                {
+                                    aArgDesc = "###";
+                                }
+
+                                bool bOptional =
+                                    ( eArgType == SC_ADDINARG_VALUE_OR_ARRAY ||
+                                      eArgType == SC_ADDINARG_VARARGS );
+
+                                aDesc.eType = eArgType;
+                                aDesc.aName = aArgName;
+                                aDesc.aDescription = aArgDesc;
+                                aDesc.bOptional = bOptional;
+                                //TODO: initialize aInternalName only from config?
+                                aDesc.aInternalName = pParArr[nParamPos].aName;
+
+                                pVisibleArgs[nDestPos++] = aDesc;
+                            }
+                        }
+                        OSL_ENSURE( nDestPos==nVisibleCount, "wrong count" );
+                    }
+
+                    ppFuncData[nFuncPos+nOld].reset( new ScUnoAddInFuncData(
+                        aFuncName, aLocalName, aDescription,
+                        nCategory, sHelpId,
+                        xFunc, aObject,
+                        nVisibleCount, pVisibleArgs.get(), nCallerPos ) );
+
+                    const ScUnoAddInFuncData* pData =
+                        ppFuncData[nFuncPos+nOld].get();
+                    pExactHashMap->emplace(
+                                pData->GetOriginalName(),
+                                pData );
+                    pNameHashMap->emplace(
+                                pData->GetUpperName(),
+                                pData );
+                    pLocalHashMap->emplace(
+                                pData->GetUpperLocal(),
+                                pData );
                 }
             }
         }
     }
 }
 
-static void lcl_UpdateFunctionList( ScFunctionList& rFunctionList, const ScUnoAddInFuncData& rFuncData )
+static void lcl_UpdateFunctionList( const ScFunctionList& rFunctionList, const ScUnoAddInFuncData& rFuncData )
 {
     const OUString& aCompare = rFuncData.GetUpperLocal();    // as used in FillFunctionDescFromData
 
@@ -970,7 +922,7 @@ static void lcl_UpdateFunctionList( ScFunctionList& rFunctionList, const ScUnoAd
     for (sal_uLong nPos=0; nPos<nCount; nPos++)
     {
         const ScFuncDesc* pDesc = rFunctionList.GetFunction( nPos );
-        if ( pDesc && pDesc->pFuncName && *pDesc->pFuncName == aCompare )
+        if ( pDesc && pDesc->mxFuncName && *pDesc->mxFuncName == aCompare )
         {
             ScUnoAddInCollection::FillFunctionDescFromData( rFuncData, *const_cast<ScFuncDesc*>(pDesc) );
             break;
@@ -1018,112 +970,104 @@ void ScUnoAddInCollection::UpdateFromAddIn( const uno::Reference<uno::XInterface
     uno::Any aObject;
     aObject <<= xInterface;
     uno::Reference<beans::XIntrospectionAccess> xAcc = xIntro->inspect(aObject);
-    if (xAcc.is())
+    if (!xAcc.is())
+        return;
+
+    const uno::Sequence< uno::Reference<reflection::XIdlMethod> > aMethods =
+            xAcc->getMethods( beans::MethodConcept::ALL );
+    for (const uno::Reference<reflection::XIdlMethod>& xFunc : aMethods)
     {
-        uno::Sequence< uno::Reference<reflection::XIdlMethod> > aMethods =
-                xAcc->getMethods( beans::MethodConcept::ALL );
-        long nMethodCount = aMethods.getLength();
-        const uno::Reference<reflection::XIdlMethod>* pArray = aMethods.getConstArray();
-        for (long nFuncPos=0; nFuncPos<nMethodCount; nFuncPos++)
+        if (xFunc.is())
         {
-            uno::Reference<reflection::XIdlMethod> xFunc = pArray[nFuncPos];
-            if (xFunc.is())
+            OUString aFuncU = xFunc->getName();
+
+            // stored function name: (service name).(function)
+            OUString aFuncName = rServiceName + "." + aFuncU;
+
+            // internal names are skipped because no FuncData exists
+            ScUnoAddInFuncData* pOldData = const_cast<ScUnoAddInFuncData*>( GetFuncData( aFuncName ) );
+            if ( pOldData )
             {
-                OUString aFuncU = xFunc->getName();
+                // Create new (complete) argument info.
+                // As in ReadFromAddIn, the reflection information is authoritative.
+                // Local names and descriptions from pOldData are looked up using the
+                // internal argument name.
 
-                // stored function name: (service name).(function)
-                OUStringBuffer aFuncNameBuffer( rServiceName.getLength()+1+aFuncU.getLength());
-                aFuncNameBuffer.append(rServiceName);
-                aFuncNameBuffer.append('.');
-                aFuncNameBuffer.append(aFuncU);
-                OUString aFuncName = aFuncNameBuffer.makeStringAndClear();
+                bool bValid = true;
+                long nVisibleCount = 0;
+                long nCallerPos = SC_CALLERPOS_NONE;
 
-                // internal names are skipped because no FuncData exists
-                ScUnoAddInFuncData* pOldData = const_cast<ScUnoAddInFuncData*>( GetFuncData( aFuncName ) );
-                if ( pOldData )
+                const uno::Sequence<reflection::ParamInfo> aParams =
+                        xFunc->getParameterInfos();
+                long nParamCount = aParams.getLength();
+                const reflection::ParamInfo* pParArr = aParams.getConstArray();
+                for (long nParamPos=0; nParamPos<nParamCount; nParamPos++)
                 {
-                    // Create new (complete) argument info.
-                    // As in ReadFromAddIn, the reflection information is authoritative.
-                    // Local names and descriptions from pOldData are looked up using the
-                    // internal argument name.
-
-                    bool bValid = true;
-                    long nVisibleCount = 0;
-                    long nCallerPos = SC_CALLERPOS_NONE;
-
-                    uno::Sequence<reflection::ParamInfo> aParams =
-                            xFunc->getParameterInfos();
-                    long nParamCount = aParams.getLength();
-                    const reflection::ParamInfo* pParArr = aParams.getConstArray();
-                    long nParamPos;
-                    for (nParamPos=0; nParamPos<nParamCount; nParamPos++)
+                    if ( pParArr[nParamPos].aMode != reflection::ParamMode_IN )
+                        bValid = false;
+                    uno::Reference<reflection::XIdlClass> xParClass =
+                                pParArr[nParamPos].aType;
+                    ScAddInArgumentType eArgType = lcl_GetArgType( xParClass );
+                    if ( eArgType == SC_ADDINARG_NONE )
+                        bValid = false;
+                    else if ( eArgType == SC_ADDINARG_CALLER )
+                        nCallerPos = nParamPos;
+                    else
+                        ++nVisibleCount;
+                }
+                if (bValid)
+                {
+                    std::unique_ptr<ScAddInArgDesc[]> pVisibleArgs;
+                    if ( nVisibleCount > 0 )
                     {
-                        if ( pParArr[nParamPos].aMode != reflection::ParamMode_IN )
-                            bValid = false;
-                        uno::Reference<reflection::XIdlClass> xParClass =
-                                    pParArr[nParamPos].aType;
-                        ScAddInArgumentType eArgType = lcl_GetArgType( xParClass );
-                        if ( eArgType == SC_ADDINARG_NONE )
-                            bValid = false;
-                        else if ( eArgType == SC_ADDINARG_CALLER )
-                            nCallerPos = nParamPos;
-                        else
-                            ++nVisibleCount;
-                    }
-                    if (bValid)
-                    {
-                        std::unique_ptr<ScAddInArgDesc[]> pVisibleArgs;
-                        if ( nVisibleCount > 0 )
+                        ScAddInArgDesc aDesc;
+                        pVisibleArgs.reset(new ScAddInArgDesc[nVisibleCount]);
+                        long nDestPos = 0;
+                        for (const auto& rParam : aParams)
                         {
-                            ScAddInArgDesc aDesc;
-                            pVisibleArgs.reset(new ScAddInArgDesc[nVisibleCount]);
-                            long nDestPos = 0;
-                            for (nParamPos=0; nParamPos<nParamCount; nParamPos++)
+                            uno::Reference<reflection::XIdlClass> xParClass =
+                                rParam.aType;
+                            ScAddInArgumentType eArgType = lcl_GetArgType( xParClass );
+                            if ( eArgType != SC_ADDINARG_CALLER )
                             {
-                                uno::Reference<reflection::XIdlClass> xParClass =
-                                    pParArr[nParamPos].aType;
-                                ScAddInArgumentType eArgType = lcl_GetArgType( xParClass );
-                                if ( eArgType != SC_ADDINARG_CALLER )
+                                const ScAddInArgDesc* pOldArgDesc =
+                                    lcl_FindArgDesc( *pOldData, rParam.aName );
+                                if ( pOldArgDesc )
                                 {
-                                    const ScAddInArgDesc* pOldArgDesc =
-                                        lcl_FindArgDesc( *pOldData, pParArr[nParamPos].aName );
-                                    if ( pOldArgDesc )
-                                    {
-                                        aDesc.aName = pOldArgDesc->aName;
-                                        aDesc.aDescription = pOldArgDesc->aDescription;
-                                    }
-                                    else
-                                        aDesc.aName = aDesc.aDescription = "###";
-
-                                    bool bOptional =
-                                        ( eArgType == SC_ADDINARG_VALUE_OR_ARRAY ||
-                                          eArgType == SC_ADDINARG_VARARGS );
-
-                                    aDesc.eType = eArgType;
-                                    aDesc.bOptional = bOptional;
-                                    //TODO: initialize aInternalName only from config?
-                                    aDesc.aInternalName = pParArr[nParamPos].aName;
-
-                                    pVisibleArgs[nDestPos++] = aDesc;
+                                    aDesc.aName = pOldArgDesc->aName;
+                                    aDesc.aDescription = pOldArgDesc->aDescription;
                                 }
+                                else
+                                    aDesc.aName = aDesc.aDescription = "###";
+
+                                bool bOptional =
+                                    ( eArgType == SC_ADDINARG_VALUE_OR_ARRAY ||
+                                      eArgType == SC_ADDINARG_VARARGS );
+
+                                aDesc.eType = eArgType;
+                                aDesc.bOptional = bOptional;
+                                //TODO: initialize aInternalName only from config?
+                                aDesc.aInternalName = rParam.aName;
+
+                                pVisibleArgs[nDestPos++] = aDesc;
                             }
-                            OSL_ENSURE( nDestPos==nVisibleCount, "wrong count" );
                         }
-
-                        pOldData->SetFunction( xFunc, aObject );
-                        pOldData->SetArguments( nVisibleCount, pVisibleArgs.get() );
-                        pOldData->SetCallerPos( nCallerPos );
-
-                        if ( pFunctionList )
-                            lcl_UpdateFunctionList( *pFunctionList, *pOldData );
+                        OSL_ENSURE( nDestPos==nVisibleCount, "wrong count" );
                     }
+
+                    pOldData->SetFunction( xFunc, aObject );
+                    pOldData->SetArguments( nVisibleCount, pVisibleArgs.get() );
+                    pOldData->SetCallerPos( nCallerPos );
+
+                    if ( pFunctionList )
+                        lcl_UpdateFunctionList( *pFunctionList, *pOldData );
                 }
             }
         }
     }
 }
 
-OUString ScUnoAddInCollection::FindFunction( const OUString& rUpperName, bool bLocalFirst )
+const OUString & ScUnoAddInCollection::FindFunction( const OUString& rUpperName, bool bLocalFirst )
 {
     if (!bInitialized)
         Initialize();
@@ -1185,7 +1129,7 @@ const ScUnoAddInFuncData* ScUnoAddInCollection::GetFuncData( long nIndex )
         Initialize();
 
     if (nIndex < nFuncCount)
-        return ppFuncData[nIndex];
+        return ppFuncData[nIndex].get();
     return nullptr;
 }
 
@@ -1229,7 +1173,7 @@ bool ScUnoAddInCollection::FillFunctionDescFromData( const ScUnoAddInFuncData& r
     bool bIncomplete = !rFuncData.GetFunction().is();       //TODO: extra flag?
 
     long nArgCount = rFuncData.GetArgumentCount();
-    if ( nArgCount > USHRT_MAX )
+    if ( nArgCount > SAL_MAX_UINT16 )
         return false;
 
     if ( bIncomplete )
@@ -1237,18 +1181,18 @@ bool ScUnoAddInCollection::FillFunctionDescFromData( const ScUnoAddInFuncData& r
 
     // nFIndex is set from outside
 
-    rDesc.pFuncName = new OUString( rFuncData.GetUpperLocal() );     //TODO: upper?
+    rDesc.mxFuncName = rFuncData.GetUpperLocal();     //TODO: upper?
     rDesc.nCategory = rFuncData.GetCategory();
     rDesc.sHelpId = rFuncData.GetHelpId();
 
     OUString aDesc = rFuncData.GetDescription();
     if (aDesc.isEmpty())
         aDesc = rFuncData.GetLocalName();      // use name if no description is available
-    rDesc.pFuncDesc = new OUString( aDesc );
+    rDesc.mxFuncDesc = aDesc ;
 
     // AddInArgumentType_CALLER is already left out in FuncData
 
-    rDesc.nArgCount = (sal_uInt16)nArgCount;
+    rDesc.nArgCount = static_cast<sal_uInt16>(nArgCount);
     if ( nArgCount )
     {
         bool bMultiple = false;
@@ -1268,8 +1212,7 @@ bool ScUnoAddInCollection::FillFunctionDescFromData( const ScUnoAddInFuncData& r
             // no empty names...
             if ( rDesc.maDefArgNames[nArg].isEmpty() )
             {
-                OUString aDefName("arg");
-                aDefName += OUString::number( nArg+1 );
+                OUString aDefName = "arg" + OUString::number( nArg+1 );
                 rDesc.maDefArgNames[nArg] = aDefName;
             }
 
@@ -1297,32 +1240,32 @@ ScUnoAddInCall::ScUnoAddInCall( ScUnoAddInCollection& rColl, const OUString& rNa
 {
     pFuncData = rColl.GetFuncData( rName, true );           // need fully initialized data
     OSL_ENSURE( pFuncData, "Function Data missing" );
-    if ( pFuncData )
+    if ( !pFuncData )
+        return;
+
+    long nDescCount = pFuncData->GetArgumentCount();
+    const ScAddInArgDesc* pArgs = pFuncData->GetArguments();
+
+    //  is aVarArg sequence needed?
+    if ( nParamCount >= nDescCount && nDescCount > 0 &&
+         pArgs[nDescCount-1].eType == SC_ADDINARG_VARARGS )
     {
-        long nDescCount = pFuncData->GetArgumentCount();
-        const ScAddInArgDesc* pArgs = pFuncData->GetArguments();
-
-        //  is aVarArg sequence needed?
-        if ( nParamCount >= nDescCount && nDescCount > 0 &&
-             pArgs[nDescCount-1].eType == SC_ADDINARG_VARARGS )
-        {
-            long nVarCount = nParamCount - ( nDescCount - 1 );  // size of last argument
-            aVarArg.realloc( nVarCount );
-            bValidCount = true;
-        }
-        else if ( nParamCount <= nDescCount )
-        {
-            //  all args behind nParamCount must be optional
-            bValidCount = true;
-            for (long i=nParamCount; i<nDescCount; i++)
-                if ( !pArgs[i].bOptional )
-                    bValidCount = false;
-        }
-        // else invalid (too many arguments)
-
-        if ( bValidCount )
-            aArgs.realloc( nDescCount );    // sequence must always match function signature
+        long nVarCount = nParamCount - ( nDescCount - 1 );  // size of last argument
+        aVarArg.realloc( nVarCount );
+        bValidCount = true;
     }
+    else if ( nParamCount <= nDescCount )
+    {
+        //  all args behind nParamCount must be optional
+        bValidCount = true;
+        for (long i=nParamCount; i<nDescCount; i++)
+            if ( !pArgs[i].bOptional )
+                bValidCount = false;
+    }
+    // else invalid (too many arguments)
+
+    if ( bValidCount )
+        aArgs.realloc( nDescCount );    // sequence must always match function signature
 }
 
 ScUnoAddInCall::~ScUnoAddInCall()
@@ -1357,7 +1300,7 @@ void ScUnoAddInCall::SetCaller( const uno::Reference<uno::XInterface>& rInterfac
     xCaller = rInterface;
 }
 
-void ScUnoAddInCall::SetCallerFromObjectShell( SfxObjectShell* pObjSh )
+void ScUnoAddInCall::SetCallerFromObjectShell( const SfxObjectShell* pObjSh )
 {
     if (pObjSh)
     {
@@ -1368,26 +1311,26 @@ void ScUnoAddInCall::SetCallerFromObjectShell( SfxObjectShell* pObjSh )
 
 void ScUnoAddInCall::SetParam( long nPos, const uno::Any& rValue )
 {
-    if ( pFuncData )
+    if ( !pFuncData )
+        return;
+
+    long nCount = pFuncData->GetArgumentCount();
+    const ScAddInArgDesc* pArgs = pFuncData->GetArguments();
+    if ( nCount > 0 && nPos >= nCount-1 && pArgs[nCount-1].eType == SC_ADDINARG_VARARGS )
     {
-        long nCount = pFuncData->GetArgumentCount();
-        const ScAddInArgDesc* pArgs = pFuncData->GetArguments();
-        if ( nCount > 0 && nPos >= nCount-1 && pArgs[nCount-1].eType == SC_ADDINARG_VARARGS )
-        {
-            long nVarPos = nPos-(nCount-1);
-            if ( nVarPos < aVarArg.getLength() )
-                aVarArg.getArray()[nVarPos] = rValue;
-            else
-            {
-                OSL_FAIL("wrong argument number");
-            }
-        }
-        else if ( nPos < aArgs.getLength() )
-            aArgs.getArray()[nPos] = rValue;
+        long nVarPos = nPos-(nCount-1);
+        if ( nVarPos < aVarArg.getLength() )
+            aVarArg.getArray()[nVarPos] = rValue;
         else
         {
             OSL_FAIL("wrong argument number");
         }
+    }
+    else if ( nPos < aArgs.getLength() )
+        aArgs.getArray()[nPos] = rValue;
+    else
+    {
+        OSL_FAIL("wrong argument number");
     }
 }
 
@@ -1424,16 +1367,9 @@ void ScUnoAddInCall::ExecuteCall()
         uno::Sequence<uno::Any> aRealArgs( nDestLen );
         uno::Any* pDest = aRealArgs.getArray();
 
-        const uno::Any* pSource = aArgs.getConstArray();
-        long nSrcPos = 0;
-
-        for ( long nDestPos = 0; nDestPos < nDestLen; nDestPos++ )
-        {
-            if ( nDestPos == nCallPos )
-                pDest[nDestPos] = aCallerAny;
-            else
-                pDest[nDestPos] = pSource[nSrcPos++];
-        }
+        pDest = std::copy_n(aArgs.begin(), nCallPos, pDest);
+        *pDest = aCallerAny;
+        std::copy(std::next(aArgs.begin(), nCallPos), aArgs.end(), std::next(pDest));
 
         ExecuteCallWithArgs( aRealArgs );
     }
@@ -1453,38 +1389,50 @@ void ScUnoAddInCall::ExecuteCallWithArgs(uno::Sequence<uno::Any>& rCallArgs)
         aObject = pFuncData->GetObject();
     }
 
-    if ( xFunction.is() )
+    if ( !xFunction.is() )
+        return;
+
+    uno::Any aAny;
+    nErrCode = FormulaError::NONE;
+
+    try
     {
-        uno::Any aAny;
-        nErrCode = FormulaError::NONE;
-
-        try
-        {
-            aAny = xFunction->invoke( aObject, rCallArgs );
-        }
-        catch(lang::IllegalArgumentException&)
-        {
-            nErrCode = FormulaError::IllegalArgument;
-        }
-        catch(const reflection::InvocationTargetException& rWrapped)
-        {
-            if ( rWrapped.TargetException.getValueType().equals(
-                    cppu::UnoType<lang::IllegalArgumentException>::get()) )
-                nErrCode = FormulaError::IllegalArgument;
-            else if ( rWrapped.TargetException.getValueType().equals(
-                    cppu::UnoType<sheet::NoConvergenceException>::get()) )
-                nErrCode = FormulaError::NoConvergence;
-            else
-                nErrCode = FormulaError::NoValue;
-        }
-        catch(uno::Exception&)
-        {
-            nErrCode = FormulaError::NoValue;
-        }
-
-        if (nErrCode == FormulaError::NONE)
-            SetResult( aAny );      // convert result to Calc types
+        aAny = xFunction->invoke( aObject, rCallArgs );
     }
+    catch(lang::IllegalArgumentException&)
+    {
+        nErrCode = FormulaError::IllegalArgument;
+    }
+    catch(const reflection::InvocationTargetException& rWrapped)
+    {
+        if ( rWrapped.TargetException.getValueType().equals(
+                cppu::UnoType<lang::IllegalArgumentException>::get()) )
+            nErrCode = FormulaError::IllegalArgument;
+        else if ( rWrapped.TargetException.getValueType().equals(
+                cppu::UnoType<sheet::NoConvergenceException>::get()) )
+            nErrCode = FormulaError::NoConvergence;
+        else
+            nErrCode = FormulaError::NoValue;
+    }
+    catch(uno::Exception&)
+    {
+        nErrCode = FormulaError::NoValue;
+    }
+
+    if (nErrCode == FormulaError::NONE)
+        SetResult( aAny );      // convert result to Calc types
+}
+
+template <typename T>
+static long lcl_GetMaxColCount(const uno::Sequence< uno::Sequence<T> >* pRowSeq)
+{
+    if (!pRowSeq->hasElements())
+        return 0;
+
+    auto pRow = std::max_element(pRowSeq->begin(), pRowSeq->end(),
+        [](const uno::Sequence<T>& a, const uno::Sequence<T>& b) {
+            return a.getLength() < b.getLength(); });
+    return pRow->getLength();
 }
 
 void ScUnoAddInCall::SetResult( const uno::Any& rNewRes )
@@ -1552,17 +1500,11 @@ void ScUnoAddInCall::SetResult( const uno::Any& rNewRes )
                 if ( pRowSeq )
                 {
                     long nRowCount = pRowSeq->getLength();
-                    const uno::Sequence<sal_Int32>* pRowArr = pRowSeq->getConstArray();
-                    long nMaxColCount = 0;
-                    for (long nRow=0; nRow<nRowCount; nRow++)
-                    {
-                        long nTmp = pRowArr[nRow].getLength();
-                        if ( nTmp > nMaxColCount )
-                            nMaxColCount = nTmp;
-                    }
+                    long nMaxColCount = lcl_GetMaxColCount(pRowSeq);
                     if ( nMaxColCount && nRowCount )
                     {
-                        xMatrix = new ScFullMatrix(
+                        const uno::Sequence<sal_Int32>* pRowArr = pRowSeq->getConstArray();
+                        xMatrix = new ScMatrix(
                                 static_cast<SCSIZE>(nMaxColCount),
                                 static_cast<SCSIZE>(nRowCount), 0.0);
                         for (long nRow=0; nRow<nRowCount; nRow++)
@@ -1593,17 +1535,11 @@ void ScUnoAddInCall::SetResult( const uno::Any& rNewRes )
                 if ( pRowSeq )
                 {
                     long nRowCount = pRowSeq->getLength();
-                    const uno::Sequence<double>* pRowArr = pRowSeq->getConstArray();
-                    long nMaxColCount = 0;
-                    for (long nRow=0; nRow<nRowCount; nRow++)
-                    {
-                        long nTmp = pRowArr[nRow].getLength();
-                        if ( nTmp > nMaxColCount )
-                            nMaxColCount = nTmp;
-                    }
+                    long nMaxColCount = lcl_GetMaxColCount(pRowSeq);
                     if ( nMaxColCount && nRowCount )
                     {
-                        xMatrix = new ScFullMatrix(
+                        const uno::Sequence<double>* pRowArr = pRowSeq->getConstArray();
+                        xMatrix = new ScMatrix(
                                 static_cast<SCSIZE>(nMaxColCount),
                                 static_cast<SCSIZE>(nRowCount), 0.0);
                         for (long nRow=0; nRow<nRowCount; nRow++)
@@ -1634,17 +1570,11 @@ void ScUnoAddInCall::SetResult( const uno::Any& rNewRes )
                 if ( pRowSeq )
                 {
                     long nRowCount = pRowSeq->getLength();
-                    const uno::Sequence<OUString>* pRowArr = pRowSeq->getConstArray();
-                    long nMaxColCount = 0;
-                    for (long nRow=0; nRow<nRowCount; nRow++)
-                    {
-                        long nTmp = pRowArr[nRow].getLength();
-                        if ( nTmp > nMaxColCount )
-                            nMaxColCount = nTmp;
-                    }
+                    long nMaxColCount = lcl_GetMaxColCount(pRowSeq);
                     if ( nMaxColCount && nRowCount )
                     {
-                        xMatrix = new ScFullMatrix(
+                        const uno::Sequence<OUString>* pRowArr = pRowSeq->getConstArray();
+                        xMatrix = new ScMatrix(
                                 static_cast<SCSIZE>(nMaxColCount),
                                 static_cast<SCSIZE>(nRowCount), 0.0);
                         for (long nRow=0; nRow<nRowCount; nRow++)

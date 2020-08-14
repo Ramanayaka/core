@@ -18,12 +18,10 @@
  */
 
 
-#define UNICODE
 #include <string.h>
 #include <algorithm>
 #include "ddeimp.hxx"
 #include <svl/svdde.hxx>
-
 #include <osl/thread.h>
 #include <comphelper/solarmutex.hxx>
 
@@ -85,7 +83,7 @@ HDDEDATA CALLBACK DdeInternal::CliCallback( UINT nCode, UINT nCbType,
             switch( nCode )
             {
             case XTYP_XACT_COMPLETE:
-                if( (DWORD)(*iter)->nId == nInfo1 )
+                if( static_cast<DWORD>((*iter)->nId) == nInfo1 )
                 {
                     nCode = (*iter)->nType & (XCLASS_MASK | XTYP_MASK);
                     (*iter)->bBusy = false;
@@ -123,14 +121,9 @@ HDDEDATA CALLBACK DdeInternal::CliCallback( UINT nCode, UINT nCbType,
                     nRet = reinterpret_cast<HDDEDATA>(DDE_FACK);
                     break;
                 }
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
 
             case XTYP_REQUEST:
-                if( !hData && XTYP_REQUEST == nCode )
-                {
-
-                }
-
                 DdeData d;
                 d.xImp->hData = hData;
                 d.xImp->nFmt  = DdeData::GetInternalFormat( nCbType );
@@ -144,9 +137,9 @@ HDDEDATA CALLBACK DdeInternal::CliCallback( UINT nCode, UINT nCbType,
     return nRet;
 }
 
-DdeConnection::DdeConnection( const OUString& rService, const OUString& rTopic )
+DdeConnection::DdeConnection( const OUString& rService, const OUString& rTopic ):
+    pImp(std::make_unique<DdeImp>())
 {
-    pImp = new DdeImp;
     pImp->nStatus  = DMLERR_NO_ERROR;
     pImp->hConv    = nullptr;
 
@@ -157,12 +150,12 @@ DdeConnection::DdeConnection( const OUString& rService, const OUString& rTopic )
     pInst->nInstanceCli++;
     if ( !pInst->hDdeInstCli )
     {
-        pImp->nStatus = DdeInitialize( &pInst->hDdeInstCli,
-                                       DdeInternal::CliCallback,
-                                       APPCLASS_STANDARD | APPCMD_CLIENTONLY |
-                                       CBF_FAIL_ALLSVRXACTIONS |
-                                       CBF_SKIP_REGISTRATIONS  |
-                                       CBF_SKIP_UNREGISTRATIONS, 0L );
+        pImp->nStatus = DdeInitializeW( &pInst->hDdeInstCli,
+                                        DdeInternal::CliCallback,
+                                        APPCLASS_STANDARD | APPCMD_CLIENTONLY |
+                                        CBF_FAIL_ALLSVRXACTIONS |
+                                        CBF_SKIP_REGISTRATIONS  |
+                                        CBF_SKIP_UNREGISTRATIONS, 0L );
     }
 
     pService = new DdeString( pInst->hDdeInstCli, rService );
@@ -206,7 +199,6 @@ DdeConnection::~DdeConnection()
                 ImpDeinitInstData();
         }
     }
-    delete pImp;
 }
 
 bool DdeConnection::IsConnected()
@@ -224,12 +216,12 @@ bool DdeConnection::IsConnected()
     }
 }
 
-const OUString DdeConnection::GetServiceName()
+OUString DdeConnection::GetServiceName() const
 {
     return pService->toOUString();
 }
 
-const OUString DdeConnection::GetTopicName()
+ OUString DdeConnection::GetTopicName() const
 {
     return pTopic->toOUString();
 }
@@ -272,7 +264,7 @@ void DdeTransaction::Execute()
 {
     HSZ     hItem = pName->getHSZ();
     void const * pData = aDdeData.getData();
-    DWORD   nData = (DWORD)aDdeData.getSize();
+    DWORD   nData = static_cast<DWORD>(aDdeData.getSize());
     SotClipboardFormatId nIntFmt = aDdeData.xImp->nFmt;
     UINT    nExtFmt  = DdeData::GetExternalFormat( nIntFmt );
     DdeInstData* pInst = ImpGetInstData();
@@ -288,8 +280,8 @@ void DdeTransaction::Execute()
     {
         HDDEDATA hData = DdeClientTransaction( static_cast<LPBYTE>(const_cast<void *>(pData)),
                                                nData, rDde.pImp->hConv,
-                                               hItem, nExtFmt, (UINT)nType,
-                                               (DWORD)nTime, nullptr );
+                                               hItem, nExtFmt, static_cast<UINT>(nType),
+                                               static_cast<DWORD>(nTime), nullptr );
 
         rDde.pImp->nStatus = DdeGetLastError( pInst->hDdeInstCli );
         if( hData && nType == XTYP_REQUEST )
@@ -313,7 +305,7 @@ void DdeTransaction::Execute()
         DWORD result;
         HDDEDATA hRet = DdeClientTransaction( static_cast<LPBYTE>(const_cast<void *>(pData)), nData,
                                             rDde.pImp->hConv, hItem, nExtFmt,
-                                            (UINT)nType, TIMEOUT_ASYNC,
+                                            static_cast<UINT>(nType), TIMEOUT_ASYNC,
                                             &result );
         nId = result;
         rDde.pImp->nStatus = hRet ? DMLERR_NO_ERROR
@@ -321,7 +313,7 @@ void DdeTransaction::Execute()
     }
 }
 
-const OUString DdeTransaction::GetName() const
+OUString DdeTransaction::GetName() const
 {
     return pName->toOUString();
 }
@@ -351,7 +343,7 @@ DdeLink::DdeLink( DdeConnection& d, const OUString& aItemName, long n )
 
 DdeLink::~DdeLink()
 {
-    nType = (sal_uInt16)XTYP_ADVSTOP;
+    nType = sal_uInt16(XTYP_ADVSTOP);
     nTime = 0;
 }
 
@@ -387,7 +379,7 @@ DdeExecute::DdeExecute( DdeConnection& d, const OUString& rData, long n )
     nType = XTYP_EXECUTE;
 }
 
-long DdeConnection::GetError()
+long DdeConnection::GetError() const
 {
     return pImp->nStatus;
 }

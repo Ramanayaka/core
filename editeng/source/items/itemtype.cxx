@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <osl/diagnose.h>
 #include <vcl/outdev.hxx>
 #include <editeng/editrids.hrc>
 #include <unotools/intlwrapper.hxx>
@@ -29,6 +32,7 @@
 OUString GetMetricText( long nVal, MapUnit eSrcUnit, MapUnit eDestUnit, const IntlWrapper* pIntl )
 {
     bool bNeg = false;
+    bool bShowAtLeastOneDecimalDigit = true;
     sal_Int32 nRet = 0;
 
     if ( nVal < 0 )
@@ -74,6 +78,11 @@ OUString GetMetricText( long nVal, MapUnit eSrcUnit, MapUnit eDestUnit, const In
         }
 
         case MapUnit::MapPoint:
+            // fractions of a point are used, e.g., for font size
+            nRet = OutputDevice::LogicToLogic(nVal, eSrcUnit, MapUnit::MapTwip) * 50;
+            bShowAtLeastOneDecimalDigit = false;
+            break;
+
         case MapUnit::MapTwip:
         case MapUnit::MapPixel:
             return OUString::number( OutputDevice::LogicToLogic(
@@ -107,7 +116,7 @@ OUString GetMetricText( long nVal, MapUnit eSrcUnit, MapUnit eDestUnit, const In
         else
             sRet.append(nRet / nDiff);
         nRet %= nDiff;
-        if( 4 == nDigits )
+        if( 4 == nDigits && (bShowAtLeastOneDecimalDigit || nRet) )
         {
             if(pIntl)
                 sRet.append(pIntl->getLocaleData()->getNumDecimalSep());
@@ -125,90 +134,99 @@ OUString GetMetricText( long nVal, MapUnit eSrcUnit, MapUnit eDestUnit, const In
     return sRet.makeStringAndClear();
 }
 
-
-OUString GetSvxString( sal_uInt16 nId )
-{
-    return EditResId::GetString( nId );
-}
-
-
 OUString GetColorString( const Color& rCol )
 {
-    if (rCol.GetColor() == COL_AUTO)
-        return EditResId::GetString(RID_SVXSTR_AUTOMATIC);
+    if (rCol == COL_AUTO)
+        return EditResId(RID_SVXSTR_AUTOMATIC);
 
-    OUString sStr;
-
-    ColorData nColData =
-        RGB_COLORDATA( rCol.GetRed(), rCol.GetGreen(), rCol.GetBlue() );
-    sal_uInt16 nColor = 0;
-
-    static const ColorData aColAry[] = {
+    static const Color aColAry[] = {
         COL_BLACK, COL_BLUE, COL_GREEN, COL_CYAN,
         COL_RED, COL_MAGENTA, COL_BROWN, COL_GRAY,
         COL_LIGHTGRAY, COL_LIGHTBLUE, COL_LIGHTGREEN, COL_LIGHTCYAN,
         COL_LIGHTRED, COL_LIGHTMAGENTA, COL_YELLOW, COL_WHITE };
 
+    sal_uInt16 nColor = 0;
     while ( nColor < SAL_N_ELEMENTS(aColAry) &&
-            aColAry[nColor] != nColData )
+            aColAry[nColor] != rCol.GetRGBColor() )
     {
         nColor += 1;
     }
 
+    static const char* RID_SVXITEMS_COLORS[] =
+    {
+        RID_SVXITEMS_COLOR_BLACK,
+        RID_SVXITEMS_COLOR_BLUE,
+        RID_SVXITEMS_COLOR_GREEN,
+        RID_SVXITEMS_COLOR_CYAN,
+        RID_SVXITEMS_COLOR_RED,
+        RID_SVXITEMS_COLOR_MAGENTA,
+        RID_SVXITEMS_COLOR_BROWN,
+        RID_SVXITEMS_COLOR_GRAY,
+        RID_SVXITEMS_COLOR_LIGHTGRAY,
+        RID_SVXITEMS_COLOR_LIGHTBLUE,
+        RID_SVXITEMS_COLOR_LIGHTGREEN,
+        RID_SVXITEMS_COLOR_LIGHTCYAN,
+        RID_SVXITEMS_COLOR_LIGHTRED,
+        RID_SVXITEMS_COLOR_LIGHTMAGENTA,
+        RID_SVXITEMS_COLOR_YELLOW,
+        RID_SVXITEMS_COLOR_WHITE
+    };
+
+    static_assert(SAL_N_ELEMENTS(aColAry) == SAL_N_ELEMENTS(RID_SVXITEMS_COLORS), "must match");
+
+    OUString sStr;
     if ( nColor < SAL_N_ELEMENTS(aColAry) )
-        sStr = EditResId::GetString( RID_SVXITEMS_COLOR_BEGIN + nColor + 1 );
+        sStr = EditResId(RID_SVXITEMS_COLORS[nColor]);
 
     if ( sStr.isEmpty() )
     {
         sStr += "RGB(" +
-                OUString::number( rCol.GetRed() )   + OUString(cpDelim) +
-                OUString::number( rCol.GetGreen() ) + OUString(cpDelim) +
+                OUString::number( rCol.GetRed() )   + cpDelim +
+                OUString::number( rCol.GetGreen() ) + cpDelim +
                 OUString::number( rCol.GetBlue() )  + ")";
     }
     return sStr;
 }
 
-
-sal_uInt16 GetMetricId( MapUnit eUnit )
+const char* GetMetricId( MapUnit eUnit )
 {
-    sal_uInt16 nId = RID_SVXITEMS_METRIC_MM;
+    const char* pId = RID_SVXITEMS_METRIC_MM;
 
     switch ( eUnit )
     {
         case MapUnit::Map100thMM:
         case MapUnit::Map10thMM:
         case MapUnit::MapMM:
-            nId = RID_SVXITEMS_METRIC_MM;
+            pId = RID_SVXITEMS_METRIC_MM;
             break;
 
         case MapUnit::MapCM:
-            nId = RID_SVXITEMS_METRIC_CM;
+            pId = RID_SVXITEMS_METRIC_CM;
             break;
 
         case MapUnit::Map1000thInch:
         case MapUnit::Map100thInch:
         case MapUnit::Map10thInch:
         case MapUnit::MapInch:
-            nId = RID_SVXITEMS_METRIC_INCH;
+            pId = RID_SVXITEMS_METRIC_INCH;
             break;
 
         case MapUnit::MapPoint:
-            nId = RID_SVXITEMS_METRIC_POINT;
+            pId = RID_SVXITEMS_METRIC_POINT;
             break;
 
         case MapUnit::MapTwip:
-            nId = RID_SVXITEMS_METRIC_TWIP;
+            pId = RID_SVXITEMS_METRIC_TWIP;
             break;
 
         case MapUnit::MapPixel:
-            nId = RID_SVXITEMS_METRIC_PIXEL;
+            pId = RID_SVXITEMS_METRIC_PIXEL;
             break;
 
         default:
             OSL_FAIL( "not supported mapunit" );
     }
-    return nId;
+    return pId;
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

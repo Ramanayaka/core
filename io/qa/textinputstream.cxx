@@ -12,17 +12,13 @@
 #include <algorithm>
 #include <cassert>
 #include <cstring>
-#include <exception>
 
-#include "com/sun/star/io/BufferSizeExceededException.hpp"
-#include "com/sun/star/io/IOException.hpp"
-#include "com/sun/star/io/NotConnectedException.hpp"
+#include <com/sun/star/io/NotConnectedException.hpp>
 #include <com/sun/star/io/TextInputStream.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XTextInputStream2.hpp>
-#include "com/sun/star/uno/Sequence.hxx"
+#include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include "com/sun/star/uno/RuntimeException.hpp"
 #include <cppuhelper/implbase.hxx>
 #include <cppunit/TestAssert.h>
 #include <cppunit/extensions/HelperMacros.h>
@@ -43,7 +39,7 @@ private:
 
     sal_Int32 SAL_CALL readBytes(css::uno::Sequence<sal_Int8> &, sal_Int32)
         override
-    { CPPUNIT_FAIL("readLine is supposed to call readSomeBytes instead"); return 0;}
+    { CPPUNIT_FAIL("readLine is supposed to call readSomeBytes instead"); }
 
     sal_Int32 SAL_CALL readSomeBytes(
         css::uno::Sequence<sal_Int8 > & aData, sal_Int32 nMaxBytesToRead) override
@@ -117,8 +113,8 @@ void Test::testReadLine() {
     css::uno::Reference<css::io::XTextInputStream2> s(
         css::io::TextInputStream::create(getComponentContext()));
     s->setInputStream(new Input);
-    rtl::OUString l(s->readLine());
-    CPPUNIT_ASSERT_EQUAL(rtl::OUString("123456789"), l);
+    OUString l(s->readLine());
+    CPPUNIT_ASSERT_EQUAL(OUString("123456789"), l);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(Test);

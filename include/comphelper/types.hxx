@@ -20,18 +20,16 @@
 #ifndef INCLUDED_COMPHELPER_TYPES_HXX
 #define INCLUDED_COMPHELPER_TYPES_HXX
 
-#include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <comphelper/comphelperdllapi.h>
-#include <cppu/unotype.hxx>
 
-namespace com { namespace sun { namespace star { namespace awt {
+namespace com::sun::star::awt {
     struct FontDescriptor;
-} } } }
+}
+
+namespace com::sun::star::uno { class Any; }
+namespace com::sun::star::uno { class XInterface; }
 
 
 namespace comphelper
@@ -52,17 +50,6 @@ namespace comphelper
         }
     }
 
-    template <class TYPE>
-    bool getImplementation(TYPE*& _pObject, const css::uno::Reference< css::uno::XInterface >& _rxIFace)
-    {
-        _pObject = nullptr;
-        css::uno::Reference< css::lang::XUnoTunnel > xTunnel(_rxIFace, css::uno::UNO_QUERY);
-        if (xTunnel.is())
-            _pObject = reinterpret_cast< TYPE* >(xTunnel->getSomething(TYPE::getUnoTunnelImplementationId()));
-
-        return (_pObject != nullptr);
-    }
-
 
     /** get a css::awt::FontDescriptor that is fully initialized with
         the XXX_DONTKNOW enum values (which isn't the case if you instantiate it
@@ -77,10 +64,10 @@ namespace comphelper
 
 //= replacement of the former UsrAny.getXXX methods
 
-    // may be used if you need the return value just as temporary, else it's may be too inefficient ....
+    // may be used if you need the return value just as temporary, else it's may be too inefficient...
 
     // no, we don't use templates here. This would lead to a lot of implicit uses of the conversion methods,
-    // which would be difficult to trace ...
+    // which would be difficult to trace...
 
     COMPHELPER_DLLPUBLIC sal_Int64      getINT64(const css::uno::Any& _rAny);
     COMPHELPER_DLLPUBLIC sal_Int32      getINT32(const css::uno::Any& _rAny);

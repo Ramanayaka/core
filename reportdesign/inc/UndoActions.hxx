@@ -21,21 +21,11 @@
 
 #include "dllapi.h"
 
-#include "RptModel.hxx"
-
-#include <com/sun/star/util/XModifyListener.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyChangeEvent.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/container/ContainerEvent.hpp>
 #include <com/sun/star/report/XReportDefinition.hpp>
 #include <com/sun/star/report/XGroup.hpp>
-#include <com/sun/star/document/XUndoManager.hpp>
 
-#include <comphelper/uno3.hxx>
-#include <comphelper/sequence.hxx>
-#include <svl/lstner.hxx>
-#include <svx/svdouno.hxx>
 #include <svx/svdundo.hxx>
 
 #include <functional>
@@ -54,7 +44,7 @@ namespace rptui
 
     /** Helper class to allow std::mem_fun for SAL_CALL
     */
-    class REPORTDESIGN_DLLPUBLIC OGroupHelper
+    class OGroupHelper
     {
         css::uno::Reference< css::report::XGroup > m_xGroup;
         OGroupHelper(const OGroupHelper&) = delete;
@@ -66,18 +56,18 @@ namespace rptui
         }
         css::uno::Reference< css::report::XSection >   getHeader() { return m_xGroup->getHeader(); }
         css::uno::Reference< css::report::XSection >   getFooter() { return m_xGroup->getFooter(); }
-        const css::uno::Reference< css::report::XGroup >&     getGroup() { return m_xGroup; }
+        const css::uno::Reference< css::report::XGroup >&     getGroup() const { return m_xGroup; }
 
         bool getHeaderOn() { return m_xGroup->getHeaderOn(); }
         bool getFooterOn() { return m_xGroup->getFooterOn(); }
 
-        static ::std::mem_fun_t< css::uno::Reference< css::report::XSection> , OGroupHelper> getMemberFunction(const css::uno::Reference< css::report::XSection >& _xSection);
+        static ::std::function<css::uno::Reference< css::report::XSection>(OGroupHelper *)> getMemberFunction(const css::uno::Reference< css::report::XSection >& _xSection);
 
     };
 
     /** Helper class to allow std::mem_fun for SAL_CALL
     */
-    class REPORTDESIGN_DLLPUBLIC OReportHelper
+    class OReportHelper
     {
         css::uno::Reference< css::report::XReportDefinition > m_xReport;
     public:
@@ -96,7 +86,7 @@ namespace rptui
         bool getPageHeaderOn() { return m_xReport->getPageHeaderOn(); }
         bool getPageFooterOn() { return m_xReport->getPageFooterOn(); }
 
-        static ::std::mem_fun_t< css::uno::Reference< css::report::XSection> , OReportHelper> getMemberFunction(const css::uno::Reference< css::report::XSection >& _xSection);
+        static ::std::function<css::uno::Reference< css::report::XSection>(OReportHelper *)> getMemberFunction(const css::uno::Reference< css::report::XSection >& _xSection);
     };
 
 
@@ -151,8 +141,7 @@ namespace rptui
         ::dbaui::IController*   m_pController;
 
     public:
-        OCommentUndoAction( SdrModel& rMod
-                            ,sal_uInt16 nCommentID);
+        OCommentUndoAction(SdrModel& rMod, const char* pCommentID);
         virtual ~OCommentUndoAction() override;
 
         virtual OUString GetComment() const override { return m_strComment; }
@@ -162,10 +151,10 @@ namespace rptui
 
     // OUndoContainerAction
 
-    class REPORTDESIGN_DLLPUBLIC OUndoContainerAction: public OCommentUndoAction
+    class OUndoContainerAction: public OCommentUndoAction
     {
-        OUndoContainerAction(OUndoContainerAction&) = delete;
-        void operator =(OUndoContainerAction&) = delete;
+        OUndoContainerAction(OUndoContainerAction const &) = delete;
+        void operator =(OUndoContainerAction const &) = delete;
     protected:
         css::uno::Reference< css::uno::XInterface >
                         m_xElement;     // object not owned by the action
@@ -180,7 +169,7 @@ namespace rptui
                             ,Action _eAction
                             ,const css::uno::Reference< css::container::XIndexContainer >& rContainer
                             ,const css::uno::Reference< css::uno::XInterface>& xElem
-                            ,sal_uInt16 _nCommentId);
+                            ,const char* pCommentId);
         virtual ~OUndoContainerAction() override;
 
         virtual void Undo() override;
@@ -194,48 +183,44 @@ namespace rptui
 
     // OUndoReportSectionAction
 
-    class REPORTDESIGN_DLLPUBLIC OUndoReportSectionAction : public OUndoContainerAction
+    class OUndoReportSectionAction final : public OUndoContainerAction
     {
         OReportHelper                               m_aReportHelper;
-        ::std::mem_fun_t< css::uno::Reference< css::report::XSection >
-                                    ,OReportHelper> m_pMemberFunction;
+        ::std::function<css::uno::Reference< css::report::XSection >(OReportHelper *)> m_pMemberFunction;
     public:
         OUndoReportSectionAction(SdrModel& rMod
                             ,Action _eAction
-                            ,::std::mem_fun_t< css::uno::Reference< css::report::XSection >
-                                ,OReportHelper> _pMemberFunction
+                            ,::std::function<css::uno::Reference< css::report::XSection >(OReportHelper *)> _pMemberFunction
                             ,const css::uno::Reference< css::report::XReportDefinition >& _xReport
                             ,const css::uno::Reference< css::uno::XInterface>& xElem
-                            ,sal_uInt16 _nCommentId);
+                            ,const char* pCommentId);
 
-    protected:
+    private:
         virtual void    implReInsert( ) override;
         virtual void    implReRemove( ) override;
     };
 
 
     // OUndoGroupSectionAction
-    class REPORTDESIGN_DLLPUBLIC OUndoGroupSectionAction : public OUndoContainerAction
+    class OUndoGroupSectionAction final : public OUndoContainerAction
     {
         OGroupHelper                                m_aGroupHelper;
-        ::std::mem_fun_t< css::uno::Reference< css::report::XSection >
-                                    ,OGroupHelper> m_pMemberFunction;
+        ::std::function<css::uno::Reference< css::report::XSection >(OGroupHelper *)> m_pMemberFunction;
     public:
         OUndoGroupSectionAction(SdrModel& rMod
                             ,Action _eAction
-                            ,::std::mem_fun_t< css::uno::Reference< css::report::XSection >
-                                            ,OGroupHelper> _pMemberFunction
+                            ,::std::function<css::uno::Reference< css::report::XSection >(OGroupHelper *)> _pMemberFunction
                             ,const css::uno::Reference< css::report::XGroup >& _xGroup
                             ,const css::uno::Reference< css::uno::XInterface>& xElem
-                            ,sal_uInt16 _nCommentId);
+                            ,const char* pCommentId);
 
-    protected:
+    private:
         virtual void    implReInsert( ) override;
         virtual void    implReRemove( ) override;
     };
 
     // ORptUndoPropertyAction
-    class REPORTDESIGN_DLLPUBLIC ORptUndoPropertyAction: public OCommentUndoAction
+    class ORptUndoPropertyAction: public OCommentUndoAction
     {
         css::uno::Reference< css::beans::XPropertySet> m_xObj;
         OUString               m_aPropertyName;
@@ -262,18 +247,16 @@ namespace rptui
 
     // OUndoPropertyReportSectionAction
 
-    class REPORTDESIGN_DLLPUBLIC OUndoPropertyReportSectionAction : public ORptUndoPropertyAction
+    class OUndoPropertyReportSectionAction final : public ORptUndoPropertyAction
     {
         OReportHelper                               m_aReportHelper;
-        ::std::mem_fun_t< css::uno::Reference< css::report::XSection >
-                                    ,OReportHelper> m_pMemberFunction;
-    protected:
+        ::std::function<css::uno::Reference< css::report::XSection >(OReportHelper *)> m_pMemberFunction;
+
         virtual css::uno::Reference< css::beans::XPropertySet> getObject() override;
     public:
         OUndoPropertyReportSectionAction(SdrModel& rMod
                             ,const css::beans::PropertyChangeEvent& evt
-                            ,::std::mem_fun_t< css::uno::Reference< css::report::XSection >
-                                ,OReportHelper> _pMemberFunction
+                            ,::std::function<css::uno::Reference< css::report::XSection >(OReportHelper *)> _pMemberFunction
                             ,const css::uno::Reference< css::report::XReportDefinition >& _xReport
                             );
     };
@@ -281,18 +264,16 @@ namespace rptui
 
     // OUndoPropertyGroupSectionAction
 
-    class REPORTDESIGN_DLLPUBLIC OUndoPropertyGroupSectionAction : public ORptUndoPropertyAction
+    class OUndoPropertyGroupSectionAction final : public ORptUndoPropertyAction
     {
         OGroupHelper                                m_aGroupHelper;
-        ::std::mem_fun_t< css::uno::Reference< css::report::XSection >
-                                    ,OGroupHelper> m_pMemberFunction;
-    protected:
+        ::std::function<css::uno::Reference< css::report::XSection >(OGroupHelper *)> m_pMemberFunction;
+
         virtual css::uno::Reference< css::beans::XPropertySet> getObject() override;
     public:
         OUndoPropertyGroupSectionAction(SdrModel& rMod
                             ,const css::beans::PropertyChangeEvent& evt
-                            ,::std::mem_fun_t< css::uno::Reference< css::report::XSection >
-                                            ,OGroupHelper> _pMemberFunction
+                            ,::std::function<css::uno::Reference< css::report::XSection >(OGroupHelper *)> _pMemberFunction
                             ,const css::uno::Reference< css::report::XGroup >& _xGroup
                             );
     };

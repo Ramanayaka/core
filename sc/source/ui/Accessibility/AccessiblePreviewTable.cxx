@@ -17,30 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include "AccessiblePreviewTable.hxx"
-#include "AccessiblePreviewCell.hxx"
-#include "AccessiblePreviewHeaderCell.hxx"
-#include "AccessibilityHints.hxx"
-#include "prevwsh.hxx"
-#include "miscuno.hxx"
-#include "prevloc.hxx"
-#include "attrib.hxx"
-#include "document.hxx"
-#include "scresid.hxx"
-#include "scres.hrc"
-#include "strings.hxx"
+#include <scitems.hxx>
+#include <AccessiblePreviewTable.hxx>
+#include <AccessiblePreviewCell.hxx>
+#include <AccessiblePreviewHeaderCell.hxx>
+#include <prevwsh.hxx>
+#include <prevloc.hxx>
+#include <attrib.hxx>
+#include <document.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
+#include <strings.hxx>
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
 #include <vcl/window.hxx>
 #include <vcl/svapp.hxx>
 #include <svl/hint.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <comphelper/sequence.hxx>
-#include <comphelper/servicehelper.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
@@ -51,8 +49,7 @@ ScAccessiblePreviewTable::ScAccessiblePreviewTable( const css::uno::Reference<cs
                             ScPreviewShell* pViewShell, sal_Int32 nIndex ) :
     ScAccessibleContextBase( rxParent, AccessibleRole::TABLE ),
     mpViewShell( pViewShell ),
-    mnIndex( nIndex ),
-    mpTableInfo( nullptr )
+    mnIndex( nIndex )
 {
     if (mpViewShell)
         mpViewShell->AddAccessibilityObject(*this);
@@ -77,8 +74,7 @@ void SAL_CALL ScAccessiblePreviewTable::disposing()
         mpViewShell = nullptr;
     }
 
-    if (mpTableInfo)
-        DELETEZ (mpTableInfo);
+    mpTableInfo.reset();
 
     ScAccessibleContextBase::disposing();
 }
@@ -92,7 +88,7 @@ void ScAccessiblePreviewTable::Notify( SfxBroadcaster& rBC, const SfxHint& rHint
     {
         //  column / row layout may change with any document change,
         //  so it must be invalidated
-        DELETEZ( mpTableInfo );
+        mpTableInfo.reset();
     }
     else if (nId == SfxHintId::ScAccVisAreaChanged)
     {
@@ -181,27 +177,25 @@ sal_Int32 SAL_CALL ScAccessiblePreviewTable::getAccessibleRowExtentAt( sal_Int32
     FillTableInfo();
 
     sal_Int32 nRows = 1;
-    if ( mpViewShell && mpTableInfo && nColumn >= 0 && nRow >= 0 &&
-            nColumn < mpTableInfo->GetCols() && nRow < mpTableInfo->GetRows() )
-    {
-        const ScPreviewColRowInfo& rColInfo = mpTableInfo->GetColInfo()[nColumn];
-        const ScPreviewColRowInfo& rRowInfo = mpTableInfo->GetRowInfo()[nRow];
+    if ( !mpViewShell || !mpTableInfo || nColumn < 0 || nRow < 0 ||
+            nColumn >= mpTableInfo->GetCols() || nRow >= mpTableInfo->GetRows() )
+        throw lang::IndexOutOfBoundsException();
 
-        if ( rColInfo.bIsHeader || rRowInfo.bIsHeader )
-        {
-            //  header cells only span a single cell
-        }
-        else
-        {
-            ScDocument& rDoc = mpViewShell->GetDocument();
-            const ScMergeAttr* pItem = static_cast<const ScMergeAttr*>(rDoc.GetAttr(
-                static_cast<SCCOL>(rColInfo.nDocIndex), static_cast<SCROW>(rRowInfo.nDocIndex), mpTableInfo->GetTab(), ATTR_MERGE ));
-            if ( pItem && pItem->GetRowMerge() > 0 )
-                nRows = pItem->GetRowMerge();
-        }
+    const ScPreviewColRowInfo& rColInfo = mpTableInfo->GetColInfo()[nColumn];
+    const ScPreviewColRowInfo& rRowInfo = mpTableInfo->GetRowInfo()[nRow];
+
+    if ( rColInfo.bIsHeader || rRowInfo.bIsHeader )
+    {
+        //  header cells only span a single cell
     }
     else
-        throw lang::IndexOutOfBoundsException();
+    {
+        ScDocument& rDoc = mpViewShell->GetDocument();
+        const ScMergeAttr* pItem = rDoc.GetAttr(
+            static_cast<SCCOL>(rColInfo.nDocIndex), static_cast<SCROW>(rRowInfo.nDocIndex), mpTableInfo->GetTab(), ATTR_MERGE );
+        if ( pItem && pItem->GetRowMerge() > 0 )
+            nRows = pItem->GetRowMerge();
+    }
 
     return nRows;
 }
@@ -214,27 +208,25 @@ sal_Int32 SAL_CALL ScAccessiblePreviewTable::getAccessibleColumnExtentAt( sal_In
     FillTableInfo();
 
     sal_Int32 nColumns = 1;
-    if ( mpViewShell && mpTableInfo && nColumn >= 0 && nRow >= 0 &&
-            nColumn < mpTableInfo->GetCols() && nRow < mpTableInfo->GetRows() )
-    {
-        const ScPreviewColRowInfo& rColInfo = mpTableInfo->GetColInfo()[nColumn];
-        const ScPreviewColRowInfo& rRowInfo = mpTableInfo->GetRowInfo()[nRow];
+    if ( !mpViewShell || !mpTableInfo || nColumn < 0 || nRow < 0 ||
+            nColumn >= mpTableInfo->GetCols() || nRow >= mpTableInfo->GetRows() )
+        throw lang::IndexOutOfBoundsException();
 
-        if ( rColInfo.bIsHeader || rRowInfo.bIsHeader )
-        {
-            //  header cells only span a single cell
-        }
-        else
-        {
-            ScDocument& rDoc = mpViewShell->GetDocument();
-            const ScMergeAttr* pItem = static_cast<const ScMergeAttr*>(rDoc.GetAttr(
-                static_cast<SCCOL>(rColInfo.nDocIndex), static_cast<SCROW>(rRowInfo.nDocIndex), mpTableInfo->GetTab(), ATTR_MERGE ));
-            if ( pItem && pItem->GetColMerge() > 0 )
-                nColumns = pItem->GetColMerge();
-        }
+    const ScPreviewColRowInfo& rColInfo = mpTableInfo->GetColInfo()[nColumn];
+    const ScPreviewColRowInfo& rRowInfo = mpTableInfo->GetRowInfo()[nRow];
+
+    if ( rColInfo.bIsHeader || rRowInfo.bIsHeader )
+    {
+        //  header cells only span a single cell
     }
     else
-        throw lang::IndexOutOfBoundsException();
+    {
+        ScDocument& rDoc = mpViewShell->GetDocument();
+        const ScMergeAttr* pItem = rDoc.GetAttr(
+            static_cast<SCCOL>(rColInfo.nDocIndex), static_cast<SCROW>(rRowInfo.nDocIndex), mpTableInfo->GetTab(), ATTR_MERGE );
+        if ( pItem && pItem->GetColMerge() > 0 )
+            nColumns = pItem->GetColMerge();
+    }
 
     return nColumns;
 }
@@ -347,13 +339,10 @@ sal_Bool SAL_CALL ScAccessiblePreviewTable::isAccessibleSelected( sal_Int32 nRow
 
     FillTableInfo();
 
-    if ( mpTableInfo && nColumn >= 0 && nRow >= 0 && nColumn < mpTableInfo->GetCols() && nRow < mpTableInfo->GetRows() )
-    {
-        //  index iterates horizontally
-    }
-    else
+    if ( !mpTableInfo || nColumn < 0 || nRow < 0 || nColumn >= mpTableInfo->GetCols() || nRow >= mpTableInfo->GetRows() )
         throw lang::IndexOutOfBoundsException();
 
+    //  index iterates horizontally
     return false;
 }
 
@@ -364,15 +353,11 @@ sal_Int32 SAL_CALL ScAccessiblePreviewTable::getAccessibleIndex( sal_Int32 nRow,
 
     FillTableInfo();
 
-    sal_Int32 nRet = 0;
-    if ( mpTableInfo && nColumn >= 0 && nRow >= 0 && nColumn < mpTableInfo->GetCols() && nRow < mpTableInfo->GetRows() )
-    {
-        //  index iterates horizontally
-        nRet = nRow * mpTableInfo->GetCols() + nColumn;
-    }
-    else
+    if ( !mpTableInfo || nColumn < 0 || nRow < 0 || nColumn >= mpTableInfo->GetCols() || nRow >= mpTableInfo->GetRows() )
         throw lang::IndexOutOfBoundsException();
 
+    //  index iterates horizontally
+    sal_Int32 nRet = nRow * mpTableInfo->GetCols() + nColumn;
     return nRet;
 }
 
@@ -383,14 +368,10 @@ sal_Int32 SAL_CALL ScAccessiblePreviewTable::getAccessibleRow( sal_Int32 nChildI
 
     FillTableInfo();
 
-    sal_Int32 nRow = 0;
-    if ( mpTableInfo && nChildIndex >= 0 && nChildIndex < static_cast<sal_Int32>(mpTableInfo->GetRows()) * mpTableInfo->GetCols() )
-    {
-        nRow = nChildIndex / mpTableInfo->GetCols();
-    }
-    else
+    if ( !mpTableInfo || nChildIndex < 0 || nChildIndex >= static_cast<sal_Int32>(mpTableInfo->GetRows()) * mpTableInfo->GetCols() )
         throw lang::IndexOutOfBoundsException();
 
+    sal_Int32 nRow = nChildIndex / mpTableInfo->GetCols();
     return nRow;
 }
 
@@ -401,14 +382,10 @@ sal_Int32 SAL_CALL ScAccessiblePreviewTable::getAccessibleColumn( sal_Int32 nChi
 
     FillTableInfo();
 
-    sal_Int32 nCol = 0;
-    if ( mpTableInfo && nChildIndex >= 0 && nChildIndex < static_cast<sal_Int32>(mpTableInfo->GetRows()) * mpTableInfo->GetCols() )
-    {
-        nCol = nChildIndex % static_cast<sal_Int32>(mpTableInfo->GetCols());
-    }
-    else
+    if ( !mpTableInfo || nChildIndex < 0 || nChildIndex >= static_cast<sal_Int32>(mpTableInfo->GetRows()) * mpTableInfo->GetCols() )
         throw lang::IndexOutOfBoundsException();
 
+    sal_Int32 nCol = nChildIndex % static_cast<sal_Int32>(mpTableInfo->GetCols());
     return nCol;
 }
 
@@ -464,7 +441,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePreviewTable::getAccessibleAt
 
 void SAL_CALL ScAccessiblePreviewTable::grabFocus()
 {
-     SolarMutexGuard aGuard;
+    SolarMutexGuard aGuard;
     IsObjectValid();
     if (getAccessibleParent().is())
     {
@@ -550,7 +527,7 @@ uno::Reference< XAccessibleStateSet > SAL_CALL ScAccessiblePreviewTable::getAcce
 
 OUString SAL_CALL ScAccessiblePreviewTable::getImplementationName()
 {
-    return OUString("ScAccessiblePreviewTable");
+    return "ScAccessiblePreviewTable";
 }
 
 uno::Sequence<OUString> SAL_CALL ScAccessiblePreviewTable::getSupportedServiceNames()
@@ -578,12 +555,12 @@ uno::Sequence<sal_Int8> SAL_CALL ScAccessiblePreviewTable::getImplementationId()
 
 //====  internal  =========================================================
 
-OUString SAL_CALL ScAccessiblePreviewTable::createAccessibleDescription()
+OUString ScAccessiblePreviewTable::createAccessibleDescription()
 {
-    return OUString(STR_ACC_TABLE_DESCR);
+    return STR_ACC_TABLE_DESCR;
 }
 
-OUString SAL_CALL ScAccessiblePreviewTable::createAccessibleName()
+OUString ScAccessiblePreviewTable::createAccessibleName()
 {
     OUString sName(ScResId(STR_ACC_TABLE_NAME));
 
@@ -655,10 +632,9 @@ void ScAccessiblePreviewTable::FillTableInfo() const
         vcl::Window* pWindow = mpViewShell->GetWindow();
         if ( pWindow )
             aOutputSize = pWindow->GetOutputSizePixel();
-        Point aPoint;
-        tools::Rectangle aVisRect( aPoint, aOutputSize );
+        tools::Rectangle aVisRect( Point(), aOutputSize );
 
-        mpTableInfo = new ScPreviewTableInfo;
+        mpTableInfo.reset( new ScPreviewTableInfo );
         mpViewShell->GetLocationData().GetTableInfo( aVisRect, *mpTableInfo );
     }
 }

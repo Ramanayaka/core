@@ -19,7 +19,9 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_QUERYVIEWSWITCH_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_QUERYVIEWSWITCH_HXX
 
-#include "JoinDesignView.hxx"
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <tools/gen.hxx>
+#include <vcl/vclptr.hxx>
 
 namespace dbtools
 {
@@ -43,9 +45,9 @@ namespace dbaui
         OQueryViewSwitch(OQueryContainerWindow* pParent, OQueryController& _rController,const css::uno::Reference< css::uno::XComponentContext >& );
         ~OQueryViewSwitch();
 
-        bool isCutAllowed();
-        bool isPasteAllowed();
-        bool isCopyAllowed();
+        bool isCutAllowed() const;
+        bool isPasteAllowed() const;
+        bool isCopyAllowed() const;
         void copy();
         void cut();
         void paste();
@@ -72,7 +74,7 @@ namespace dbaui
         void     setSlotEnabled(sal_Int32 _nSlotId, bool _bEnable);
         void     setNoneVisbleRow(sal_Int32 _nRows);
         void     SaveUIConfig();
-        bool     reset();
+        void     reset();
         void     GrabFocus();
 
         // returns the add table dialog from the design view
@@ -82,7 +84,7 @@ namespace dbaui
         OQueryContainerWindow*  getContainer() const;
 
         void SetPosSizePixel( Point _rPt,Size _rSize);
-        css::uno::Reference< css::uno::XComponentContext > getORB() const;
+        css::uno::Reference< css::uno::XComponentContext > const & getORB() const;
 
     private:
         void    impl_forceSQLView();

@@ -24,8 +24,6 @@
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/beans/StringPair.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/xml/sax/SAXException.hpp>
@@ -41,34 +39,20 @@ using namespace ::com::sun::star;
 
 namespace comphelper {
 
+namespace {
+
 // this helper class is designed to allow to parse ContentType- and Relationship-related information from OfficeOpenXML format
 class OFOPXMLHelper_Impl
     : public cppu::WeakImplHelper< css::xml::sax::XDocumentHandler >
 {
-    sal_uInt16 m_nFormat; // which format to parse
-
-    // Relations info related strings
-    OUString m_aRelListElement;
-    OUString m_aRelElement;
-    OUString m_aIDAttr;
-    OUString m_aTypeAttr;
-    OUString m_aTargetModeAttr;
-    OUString m_aTargetAttr;
-
-    // ContentType related strings
-    OUString m_aTypesElement;
-    OUString m_aDefaultElement;
-    OUString m_aOverrideElement;
-    OUString m_aExtensionAttr;
-    OUString m_aPartNameAttr;
-    OUString m_aContentTypeAttr;
+    sal_uInt16 const m_nFormat; // which format to parse
 
     css::uno::Sequence< css::uno::Sequence< css::beans::StringPair > > m_aResultSeq;
     std::vector< OUString > m_aElementsSeq; // stack of elements being parsed
 
 
 public:
-    css::uno::Sequence< css::uno::Sequence< css::beans::StringPair > > const & GetParsingResult();
+    css::uno::Sequence< css::uno::Sequence< css::beans::StringPair > > const & GetParsingResult() const;
 
     explicit OFOPXMLHelper_Impl( sal_uInt16 nFormat ); // must not be created directly
 
@@ -83,6 +67,7 @@ public:
     virtual void SAL_CALL setDocumentLocator( const css::uno::Reference< css::xml::sax::XLocator >& xLocator ) override;
 };
 
+}
 
 namespace OFOPXMLHelper {
 
@@ -106,10 +91,41 @@ uno::Sequence< uno::Sequence< beans::StringPair > > ReadContentTypeSequence(
         const uno::Reference< io::XInputStream >& xInStream,
         const uno::Reference< uno::XComponentContext >& rContext )
 {
-    OUString aStringID = "[Content_Types].xml";
-    return ReadSequence_Impl( xInStream, aStringID, CONTENTTYPE_FORMAT, rContext );
+    return ReadSequence_Impl( xInStream, "[Content_Types].xml", CONTENTTYPE_FORMAT, rContext );
 }
 
+OUString GetContentTypeByName(
+                const css::uno::Sequence<css::uno::Sequence<css::beans::StringPair>>& rContentTypes,
+                const OUString& rFilename)
+{
+    if (rContentTypes.getLength() < 2)
+    {
+        return OUString();
+    }
+
+    const uno::Sequence<beans::StringPair>& rDefaults = rContentTypes[0];
+    const uno::Sequence<beans::StringPair>& rOverrides = rContentTypes[1];
+
+    // Find the extension and use it to get the type.
+    const sal_Int32 nDotOffset = rFilename.lastIndexOf('.');
+    const OUString aExt = (nDotOffset >= 0 ? rFilename.copy(nDotOffset + 1) : rFilename); // Skip the dot.
+
+    const std::vector<OUString> aNames = { aExt, "/" + rFilename };
+    for (const OUString& aName : aNames)
+    {
+        const auto it1 = std::find_if(rOverrides.begin(), rOverrides.end(), [&aName](const beans::StringPair& rPair)
+                                                                              { return rPair.First == aName; });
+        if (it1 != rOverrides.end())
+            return it1->Second;
+
+        const auto it2 = std::find_if(rDefaults.begin(), rDefaults.end(), [&aName](const beans::StringPair& rPair)
+                                                                            { return rPair.First == aName; });
+        if (it2 != rDefaults.end())
+            return it2->Second;
+    }
+
+    return OUString();
+}
 
 void WriteRelationsInfoSequence(
         const uno::Reference< io::XOutputStream >& xOutStream,
@@ -139,24 +155,21 @@ void WriteRelationsInfoSequence(
     xWriter->startDocument();
     xWriter->startElement( aRelListElement, xRootAttrList );
 
-    for ( sal_Int32 nInd = 0; nInd < aSequence.getLength(); nInd++ )
+    for ( const auto & i : aSequence )
     {
         AttributeList *pAttrList = new AttributeList;
         uno::Reference< css::xml::sax::XAttributeList > xAttrList( pAttrList );
-        for( sal_Int32 nSecInd = 0; nSecInd < aSequence[nInd].getLength(); nSecInd++ )
+        for( const beans::StringPair & pair : i )
         {
-            if ( aSequence[nInd][nSecInd].First == "Id"
-              || aSequence[nInd][nSecInd].First == "Type"
-              || aSequence[nInd][nSecInd].First == "TargetMode"
-              || aSequence[nInd][nSecInd].First == "Target" )
-            {
-                pAttrList->AddAttribute( aSequence[nInd][nSecInd].First, aCDATAString, aSequence[nInd][nSecInd].Second );
-            }
-            else
+            if ( !(pair.First == "Id"
+                  || pair.First == "Type"
+                  || pair.First == "TargetMode"
+                  || pair.First == "Target") )
             {
                 // TODO/LATER: should the extensions be allowed?
                 throw lang::IllegalArgumentException();
             }
+            pAttrList->AddAttribute( pair.First, aCDATAString, pair.Second );
         }
 
         xWriter->startElement( aRelElement, xAttrList );
@@ -183,12 +196,12 @@ void WriteContentSequence(
 
     xWriter->setOutputStream( xOutStream );
 
-    OUString aTypesElement( "Types" );
-    OUString aDefaultElement( "Default" );
-    OUString aOverrideElement( "Override" );
-    OUString aContentTypeAttr( "ContentType" );
-    OUString aCDATAString( "CDATA" );
-    OUString aWhiteSpace( " " );
+    static const OUStringLiteral aTypesElement("Types");
+    static const OUStringLiteral aDefaultElement("Default");
+    static const OUStringLiteral aOverrideElement("Override");
+    static const OUStringLiteral aContentTypeAttr("ContentType");
+    static const OUStringLiteral aCDATAString("CDATA");
+    static const OUStringLiteral aWhiteSpace(" ");
 
     // write the namespace
     AttributeList* pRootAttrList = new AttributeList;
@@ -201,24 +214,24 @@ void WriteContentSequence(
     xWriter->startDocument();
     xWriter->startElement( aTypesElement, xRootAttrList );
 
-    for ( sal_Int32 nInd = 0; nInd < aDefaultsSequence.getLength(); nInd++ )
+    for ( const beans::StringPair & pair : aDefaultsSequence )
     {
         AttributeList *pAttrList = new AttributeList;
         uno::Reference< css::xml::sax::XAttributeList > xAttrList( pAttrList );
-        pAttrList->AddAttribute( "Extension", aCDATAString, aDefaultsSequence[nInd].First );
-        pAttrList->AddAttribute( aContentTypeAttr, aCDATAString, aDefaultsSequence[nInd].Second );
+        pAttrList->AddAttribute( "Extension", aCDATAString, pair.First );
+        pAttrList->AddAttribute( aContentTypeAttr, aCDATAString, pair.Second );
 
         xWriter->startElement( aDefaultElement, xAttrList );
         xWriter->ignorableWhitespace( aWhiteSpace );
         xWriter->endElement( aDefaultElement );
     }
 
-    for ( sal_Int32 nInd = 0; nInd < aOverridesSequence.getLength(); nInd++ )
+    for ( const beans::StringPair & pair : aOverridesSequence )
     {
         AttributeList *pAttrList = new AttributeList;
         uno::Reference< css::xml::sax::XAttributeList > xAttrList( pAttrList );
-        pAttrList->AddAttribute( "PartName", aCDATAString, aOverridesSequence[nInd].First );
-        pAttrList->AddAttribute( aContentTypeAttr, aCDATAString, aOverridesSequence[nInd].Second );
+        pAttrList->AddAttribute( "PartName", aCDATAString, pair.First );
+        pAttrList->AddAttribute( aContentTypeAttr, aCDATAString, pair.Second );
 
         xWriter->startElement( aOverrideElement, xAttrList );
         xWriter->ignorableWhitespace( aWhiteSpace );
@@ -255,26 +268,30 @@ uno::Sequence< uno::Sequence< beans::StringPair > > ReadSequence_Impl(
 
 } // namespace OFOPXMLHelper
 
+// Relations info related strings
+OUStringLiteral const g_aRelListElement("Relationships");
+OUStringLiteral const g_aRelElement( "Relationship" );
+OUStringLiteral const g_aIDAttr( "Id" );
+OUStringLiteral const g_aTypeAttr( "Type" );
+OUStringLiteral const g_aTargetModeAttr( "TargetMode" );
+OUStringLiteral const g_aTargetAttr( "Target" );
+
+// ContentType related strings
+OUStringLiteral const g_aTypesElement( "Types" );
+OUStringLiteral const g_aDefaultElement( "Default" );
+OUStringLiteral const g_aOverrideElement( "Override" );
+OUStringLiteral const g_aExtensionAttr( "Extension" );
+OUStringLiteral const g_aPartNameAttr( "PartName" );
+OUStringLiteral const g_aContentTypeAttr( "ContentType" );
+
 OFOPXMLHelper_Impl::OFOPXMLHelper_Impl( sal_uInt16 nFormat )
 : m_nFormat( nFormat )
-, m_aRelListElement( "Relationships" )
-, m_aRelElement( "Relationship" )
-, m_aIDAttr( "Id" )
-, m_aTypeAttr( "Type" )
-, m_aTargetModeAttr( "TargetMode" )
-, m_aTargetAttr( "Target" )
-, m_aTypesElement( "Types" )
-, m_aDefaultElement( "Default" )
-, m_aOverrideElement( "Override" )
-, m_aExtensionAttr( "Extension" )
-, m_aPartNameAttr( "PartName" )
-, m_aContentTypeAttr( "ContentType" )
 {
 }
 
-uno::Sequence< uno::Sequence< beans::StringPair > > const & OFOPXMLHelper_Impl::GetParsingResult()
+uno::Sequence< uno::Sequence< beans::StringPair > > const & OFOPXMLHelper_Impl::GetParsingResult() const
 {
-    if ( m_aElementsSeq.size() )
+    if ( !m_aElementsSeq.empty() )
         throw uno::RuntimeException(); // the parsing has still not finished!
 
     return m_aResultSeq;
@@ -295,7 +312,7 @@ void SAL_CALL OFOPXMLHelper_Impl::startElement( const OUString& aName, const uno
 {
     if ( m_nFormat == RELATIONINFO_FORMAT )
     {
-        if ( aName == m_aRelListElement )
+        if ( aName == g_aRelListElement )
         {
             sal_Int32 nNewLength = m_aElementsSeq.size() + 1;
 
@@ -306,7 +323,7 @@ void SAL_CALL OFOPXMLHelper_Impl::startElement( const OUString& aName, const uno
 
             return; // nothing to do
         }
-        else if ( aName == m_aRelElement )
+        else if ( aName == g_aRelElement )
         {
             sal_Int32 nNewLength = m_aElementsSeq.size() + 1;
             if ( nNewLength != 2 )
@@ -319,32 +336,32 @@ void SAL_CALL OFOPXMLHelper_Impl::startElement( const OUString& aName, const uno
             sal_Int32 nAttrNum = 0;
             m_aResultSeq[nNewEntryNum-1].realloc( 4 ); // the maximal expected number of arguments is 4
 
-            OUString aIDValue = xAttribs->getValueByName( m_aIDAttr );
+            OUString aIDValue = xAttribs->getValueByName( g_aIDAttr );
             if ( aIDValue.isEmpty() )
                 throw css::xml::sax::SAXException(); // TODO: the ID value must present
 
-            OUString aTypeValue = xAttribs->getValueByName( m_aTypeAttr );
-            OUString aTargetValue = xAttribs->getValueByName( m_aTargetAttr );
-            OUString aTargetModeValue = xAttribs->getValueByName( m_aTargetModeAttr );
+            OUString aTypeValue = xAttribs->getValueByName( g_aTypeAttr );
+            OUString aTargetValue = xAttribs->getValueByName( g_aTargetAttr );
+            OUString aTargetModeValue = xAttribs->getValueByName( g_aTargetModeAttr );
 
-            m_aResultSeq[nNewEntryNum-1][++nAttrNum - 1].First = m_aIDAttr;
+            m_aResultSeq[nNewEntryNum-1][++nAttrNum - 1].First = g_aIDAttr;
             m_aResultSeq[nNewEntryNum-1][nAttrNum - 1].Second = aIDValue;
 
             if ( !aTypeValue.isEmpty() )
             {
-                m_aResultSeq[nNewEntryNum-1][++nAttrNum - 1].First = m_aTypeAttr;
+                m_aResultSeq[nNewEntryNum-1][++nAttrNum - 1].First = g_aTypeAttr;
                 m_aResultSeq[nNewEntryNum-1][nAttrNum - 1].Second = aTypeValue;
             }
 
             if ( !aTargetValue.isEmpty() )
             {
-                m_aResultSeq[nNewEntryNum-1][++nAttrNum - 1].First = m_aTargetAttr;
+                m_aResultSeq[nNewEntryNum-1][++nAttrNum - 1].First = g_aTargetAttr;
                 m_aResultSeq[nNewEntryNum-1][nAttrNum - 1].Second = aTargetValue;
             }
 
             if ( !aTargetModeValue.isEmpty() )
             {
-                m_aResultSeq[nNewEntryNum-1][++nAttrNum - 1].First = m_aTargetModeAttr;
+                m_aResultSeq[nNewEntryNum-1][++nAttrNum - 1].First = g_aTargetModeAttr;
                 m_aResultSeq[nNewEntryNum-1][nAttrNum - 1].Second = aTargetModeValue;
             }
 
@@ -355,7 +372,7 @@ void SAL_CALL OFOPXMLHelper_Impl::startElement( const OUString& aName, const uno
     }
     else if ( m_nFormat == CONTENTTYPE_FORMAT )
     {
-        if ( aName == m_aTypesElement )
+        if ( aName == g_aTypesElement )
         {
             sal_Int32 nNewLength = m_aElementsSeq.size() + 1;
 
@@ -364,12 +381,12 @@ void SAL_CALL OFOPXMLHelper_Impl::startElement( const OUString& aName, const uno
 
             m_aElementsSeq.push_back( aName );
 
-            if ( !m_aResultSeq.getLength() )
+            if ( !m_aResultSeq.hasElements() )
                 m_aResultSeq.realloc( 2 );
 
             return; // nothing to do
         }
-        else if ( aName == m_aDefaultElement )
+        else if ( aName == g_aDefaultElement )
         {
             sal_Int32 nNewLength = m_aElementsSeq.size() + 1;
             if ( nNewLength != 2 )
@@ -377,27 +394,27 @@ void SAL_CALL OFOPXMLHelper_Impl::startElement( const OUString& aName, const uno
 
             m_aElementsSeq.push_back( aName );
 
-            if ( !m_aResultSeq.getLength() )
+            if ( !m_aResultSeq.hasElements() )
                 m_aResultSeq.realloc( 2 );
 
             if ( m_aResultSeq.getLength() != 2 )
                 throw uno::RuntimeException();
 
-            OUString aExtensionValue = xAttribs->getValueByName( m_aExtensionAttr );
+            const OUString aExtensionValue = xAttribs->getValueByName( g_aExtensionAttr );
             if ( aExtensionValue.isEmpty() )
                 throw css::xml::sax::SAXException(); // TODO: the Extension value must present
 
-            OUString aContentTypeValue = xAttribs->getValueByName( m_aContentTypeAttr );
+            const OUString aContentTypeValue = xAttribs->getValueByName( g_aContentTypeAttr );
             if ( aContentTypeValue.isEmpty() )
                 throw css::xml::sax::SAXException(); // TODO: the ContentType value must present
 
-            sal_Int32 nNewResultLen = m_aResultSeq[0].getLength() + 1;
+            const sal_Int32 nNewResultLen = m_aResultSeq[0].getLength() + 1;
             m_aResultSeq[0].realloc( nNewResultLen );
 
             m_aResultSeq[0][nNewResultLen-1].First = aExtensionValue;
             m_aResultSeq[0][nNewResultLen-1].Second = aContentTypeValue;
         }
-        else if ( aName == m_aOverrideElement )
+        else if ( aName == g_aOverrideElement )
         {
             sal_Int32 nNewLength = m_aElementsSeq.size() + 1;
             if ( nNewLength != 2 )
@@ -405,17 +422,17 @@ void SAL_CALL OFOPXMLHelper_Impl::startElement( const OUString& aName, const uno
 
             m_aElementsSeq.push_back( aName );
 
-            if ( !m_aResultSeq.getLength() )
+            if ( !m_aResultSeq.hasElements() )
                 m_aResultSeq.realloc( 2 );
 
             if ( m_aResultSeq.getLength() != 2 )
                 throw uno::RuntimeException();
 
-            OUString aPartNameValue = xAttribs->getValueByName( m_aPartNameAttr );
+            OUString aPartNameValue = xAttribs->getValueByName( g_aPartNameAttr );
             if ( aPartNameValue.isEmpty() )
                 throw css::xml::sax::SAXException(); // TODO: the PartName value must present
 
-            OUString aContentTypeValue = xAttribs->getValueByName( m_aContentTypeAttr );
+            OUString aContentTypeValue = xAttribs->getValueByName( g_aContentTypeAttr );
             if ( aContentTypeValue.isEmpty() )
                 throw css::xml::sax::SAXException(); // TODO: the ContentType value must present
 
@@ -441,7 +458,7 @@ void SAL_CALL OFOPXMLHelper_Impl::endElement( const OUString& aName )
         if ( nLength <= 0 )
             throw css::xml::sax::SAXException(); // TODO: no other end elements expected!
 
-        if ( !m_aElementsSeq[nLength-1].equals( aName ) )
+        if ( m_aElementsSeq[nLength-1] != aName )
             throw css::xml::sax::SAXException(); // TODO: unexpected element ended
 
         m_aElementsSeq.resize( nLength - 1 );

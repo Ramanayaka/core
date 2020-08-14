@@ -28,18 +28,10 @@
 #include <cppuhelper/interfacecontainer.hxx>
 #include <osl/mutex.hxx>
 
-#if defined _MSC_VER
-#pragma warning(push,1)
-#endif
 #include <oleidl.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 #include "globals.hxx"
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class XComponentContext;
-} } } }
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
@@ -109,8 +101,8 @@ private:
 public:
     explicit DropTarget(const Reference<XComponentContext>& rxContext);
     virtual ~DropTarget() override;
-    DropTarget(DropTarget&) = delete;
-    DropTarget &operator= (DropTarget&) = delete;
+    DropTarget(DropTarget const &) = delete;
+    DropTarget &operator= (DropTarget const &) = delete;
 
     // Overrides WeakComponentImplHelper::disposing which is called by
     // WeakComponentImplHelper::dispose

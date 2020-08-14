@@ -17,20 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "StatisticsHelper.hxx"
-#include "DataSeriesHelper.hxx"
-#include "ErrorBar.hxx"
-#include "macros.hxx"
+#include <StatisticsHelper.hxx>
+#include <DataSeriesHelper.hxx>
+#include <ErrorBar.hxx>
 #include <unonames.hxx>
 
 #include <rtl/math.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <comphelper/processfactory.hxx>
-
+#include <com/sun/star/chart2/XDataSeries.hpp>
 #include <com/sun/star/chart2/data/LabeledDataSequence.hpp>
 #include <com/sun/star/chart2/data/XNumericalDataSequence.hpp>
+#include <com/sun/star/chart2/data/XDataProvider.hpp>
 #include <com/sun/star/chart2/data/XDataSink.hpp>
 #include <com/sun/star/chart/ErrorBarStyle.hpp>
+#include <tools/diagnose_ex.h>
 
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Reference;
@@ -39,8 +40,7 @@ using namespace ::com::sun::star;
 namespace
 {
 
-double lcl_getVariance( const Sequence< double > & rData, sal_Int32 & rOutValidCount,
-        bool bUnbiasedEstimator )
+double lcl_getVariance( const Sequence< double > & rData, sal_Int32 & rOutValidCount )
 {
     const sal_Int32 nCount = rData.getLength();
     rOutValidCount = nCount;
@@ -51,7 +51,7 @@ double lcl_getVariance( const Sequence< double > & rData, sal_Int32 & rOutValidC
     for( sal_Int32 i = 0; i < nCount; ++i )
     {
         const double fData = rData[i];
-        if( ::rtl::math::isNan( fData ))
+        if( std::isnan( fData ))
             --rOutValidCount;
         else
         {
@@ -66,10 +66,7 @@ double lcl_getVariance( const Sequence< double > & rData, sal_Int32 & rOutValidC
     else
     {
         const double fN = static_cast< double >( rOutValidCount );
-        if( bUnbiasedEstimator )
-            fResult = (fQuadSum - fSum*fSum/fN) / (fN - 1);
-        else
-            fResult = (fQuadSum - fSum*fSum/fN) / fN;
+        fResult = (fQuadSum - fSum*fSum/fN) / fN;
     }
 
     return fResult;
@@ -155,9 +152,9 @@ void lcl_setXMLRangePropertyAtDataSequence(
         if( xInfo.is() && xInfo->hasPropertyByName( aXMLRangePropName ))
             xProp->setPropertyValue( aXMLRangePropName, uno::Any( rXMLRange ));
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -170,13 +167,13 @@ double StatisticsHelper::getVariance(
     const Sequence< double > & rData )
 {
     sal_Int32 nValCount;
-    return lcl_getVariance( rData, nValCount, false/*bUnbiasedEstimator*/ );
+    return lcl_getVariance( rData, nValCount );
 }
 
 double StatisticsHelper::getStandardDeviation( const Sequence< double > & rData )
 {
     double fResult = getVariance( rData );
-    if( ! ::rtl::math::isNan( fResult ))
+    if( ! std::isnan( fResult ))
         fResult = sqrt( fResult );
 
     return fResult;
@@ -185,11 +182,11 @@ double StatisticsHelper::getStandardDeviation( const Sequence< double > & rData 
 double StatisticsHelper::getStandardError( const Sequence< double > & rData )
 {
     sal_Int32 nValCount;
-    double fVar = lcl_getVariance( rData, nValCount, false );
+    double fVar = lcl_getVariance( rData, nValCount );
     double fResult;
 
     if( nValCount == 0 ||
-        ::rtl::math::isNan( fVar ))
+        std::isnan( fVar ))
     {
         ::rtl::math::setNan( & fResult );
     }
@@ -270,7 +267,7 @@ void StatisticsHelper::setErrorDataSequence(
     const OUString & rNewRange,
     bool bPositiveValue,
     bool bYError /* = true */,
-    OUString * pXMLRange /* = 0 */ )
+    OUString const * pXMLRange /* = 0 */ )
 {
     Reference< chart2::data::XDataSink > xDataSink( xDataSource, uno::UNO_QUERY );
     if( ! ( xDataSink.is() && xDataProvider.is()))
@@ -306,7 +303,7 @@ Reference< beans::XPropertySet > StatisticsHelper::addErrorBars(
         return xErrorBar;
 
     const OUString aPropName(
-            (bYError) ? OUString(CHART_UNONAME_ERRORBAR_Y) : OUString(CHART_UNONAME_ERRORBAR_X));
+            bYError ? OUString(CHART_UNONAME_ERRORBAR_Y) : OUString(CHART_UNONAME_ERRORBAR_X));
     if( !( xSeriesProp->getPropertyValue( aPropName ) >>= xErrorBar ) ||
         !xErrorBar.is())
     {
@@ -331,7 +328,7 @@ Reference< beans::XPropertySet > StatisticsHelper::getErrorBars(
     Reference< beans::XPropertySet > xSeriesProp( xDataSeries, uno::UNO_QUERY );
     Reference< beans::XPropertySet > xErrorBar;
     const OUString aPropName(
-            (bYError) ? OUString(CHART_UNONAME_ERRORBAR_Y) : OUString(CHART_UNONAME_ERRORBAR_X));
+            bYError ? OUString(CHART_UNONAME_ERRORBAR_Y) : OUString(CHART_UNONAME_ERRORBAR_X));
 
     if ( xSeriesProp.is())
         xSeriesProp->getPropertyValue( aPropName ) >>= xErrorBar;

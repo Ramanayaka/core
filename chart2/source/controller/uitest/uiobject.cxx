@@ -8,12 +8,15 @@
  */
 
 #include <memory>
-#include "uiobject.hxx"
+#include <uiobject.hxx>
 
-#include "ChartWindow.hxx"
-#include "ChartController.hxx"
-#include "ObjectHierarchy.hxx"
-#include "chartview/ExplicitValueProvider.hxx"
+#include <ChartWindow.hxx>
+#include <ChartController.hxx>
+#include <ObjectHierarchy.hxx>
+#include <chartview/ExplicitValueProvider.hxx>
+#include <com/sun/star/chart2/XChartDocument.hpp>
+
+#include <comphelper/servicehelper.hxx>
 
 #include <vcl/svapp.hxx>
 
@@ -89,7 +92,7 @@ std::set<OUString> ChartUIObject::get_children() const
 
 OUString ChartUIObject::get_type() const
 {
-    return OUString("ChartUIObject for type: ");
+    return "ChartUIObject for type: ";
 }
 
 ChartWindowUIObject::ChartWindowUIObject(const VclPtr<chart::ChartWindow>& xChartWindow):
@@ -145,7 +148,7 @@ std::unique_ptr<UIObject> ChartWindowUIObject::get_child(const OUString& rID)
 
 namespace {
 
-void recursiveAdd(chart::ObjectIdentifier& rID, std::set<OUString>& rChildren, const chart::ObjectHierarchy& rHierarchy)
+void recursiveAdd(chart::ObjectIdentifier const & rID, std::set<OUString>& rChildren, const chart::ObjectHierarchy& rHierarchy)
 {
     std::vector<chart::ObjectIdentifier> aChildIndentifiers = rHierarchy.getChildren(rID);
     std::transform(aChildIndentifiers.begin(), aChildIndentifiers.end(), std::inserter(rChildren, rChildren.begin()),
@@ -155,7 +158,7 @@ void recursiveAdd(chart::ObjectIdentifier& rID, std::set<OUString>& rChildren, c
                 }
             );
 
-    for (chart::ObjectIdentifier& ID: aChildIndentifiers)
+    for (const chart::ObjectIdentifier& ID: aChildIndentifiers)
         recursiveAdd(ID, rChildren, rHierarchy);
 }
 
@@ -172,8 +175,8 @@ std::set<OUString> ChartWindowUIObject::get_children() const
     css::uno::Reference< css::chart2::XChartDocument > xChartDoc( pController->getModel(), css::uno::UNO_QUERY );
 
     css::uno::Reference<css::uno::XInterface> xChartView = pController->getChartView();
-    chart::ExplicitValueProvider* pValueProvider = chart::ExplicitValueProvider::getExplicitValueProvider( xChartView );
-    chart::ObjectHierarchy aHierarchy(xChartDoc, pValueProvider, true);
+    chart::ExplicitValueProvider* pValueProvider = comphelper::getUnoTunnelImplementation<chart::ExplicitValueProvider>( xChartView );
+    chart::ObjectHierarchy aHierarchy(xChartDoc, pValueProvider);
     chart::ObjectIdentifier aIdentifier = chart::ObjectHierarchy::getRootNodeOID();
     aChildren.insert(aIdentifier.getObjectCID());
 
@@ -192,7 +195,7 @@ std::unique_ptr<UIObject> ChartWindowUIObject::create(vcl::Window* pWindow)
 
 OUString ChartWindowUIObject::get_name() const
 {
-    return OUString("ChartWindowUIObject");
+    return "ChartWindowUIObject";
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

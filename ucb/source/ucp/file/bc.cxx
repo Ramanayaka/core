@@ -19,26 +19,19 @@
 
 #include <rtl/uri.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <osl/file.hxx>
 
-#include "osl/diagnose.h"
+#include <osl/diagnose.h>
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/ucb/IllegalIdentifierException.hpp>
 #include <com/sun/star/ucb/OpenMode.hpp>
 #include <com/sun/star/beans/IllegalTypeException.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/ucb/XProgressHandler.hpp>
-#include <com/sun/star/task/XInteractionHandler.hpp>
 #include <com/sun/star/io/XActiveDataStreamer.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/ucb/NumberedSortingInfo.hpp>
 #include <com/sun/star/io/XActiveDataSink.hpp>
-#include <com/sun/star/beans/PropertyChangeEvent.hpp>
-#include <com/sun/star/beans/PropertySetInfoChange.hpp>
-#include <com/sun/star/ucb/ContentAction.hpp>
 #include <com/sun/star/ucb/NameClash.hpp>
 #include <comphelper/fileurl.hxx>
+#include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include "filglob.hxx"
 #include "filid.hxx"
@@ -86,14 +79,9 @@ BaseContent::BaseContent( TaskManager* pMyShell,
                           const OUString& parentName,
                           bool bFolder )
     : m_pMyShell( pMyShell ),
-      m_xContentIdentifier( nullptr ),
       m_aUncPath( parentName ),
       m_bFolder( bFolder ),
-      m_nState( JustInserted ),
-      m_pDisposeEventListeners( nullptr ),
-      m_pContentEventListeners( nullptr ),
-      m_pPropertySetInfoChangeListeners( nullptr ),
-      m_pPropertyListener( nullptr )
+      m_nState( JustInserted )
 {
     m_pMyShell->m_pProvider->acquire();
     // No registering, since we have no name
@@ -109,11 +97,7 @@ BaseContent::BaseContent( TaskManager* pMyShell,
       m_xContentIdentifier( xContentIdentifier ),
       m_aUncPath( aUncPath ),
       m_bFolder( false ),
-      m_nState( FullFeatured ),
-      m_pDisposeEventListeners( nullptr ),
-      m_pContentEventListeners( nullptr ),
-      m_pPropertySetInfoChangeListeners( nullptr ),
-      m_pPropertyListener( nullptr )
+      m_nState( FullFeatured )
 {
     m_pMyShell->m_pProvider->acquire();
     m_pMyShell->registerNotifier( m_aUncPath,this );
@@ -128,48 +112,6 @@ BaseContent::~BaseContent( )
         m_pMyShell->deregisterNotifier( m_aUncPath,this );
     }
     m_pMyShell->m_pProvider->release();
-
-    delete m_pDisposeEventListeners;
-    delete m_pContentEventListeners;
-    delete m_pPropertyListener;
-    delete m_pPropertySetInfoChangeListeners;
-}
-
-
-// XInterface
-
-
-void SAL_CALL
-BaseContent::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-
-void SAL_CALL
-BaseContent::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-
-Any SAL_CALL
-BaseContent::queryInterface( const Type& rType )
-{
-    Any aRet = cppu::queryInterface( rType,
-                                     (static_cast< lang::XComponent* >(this)),
-                                     (static_cast< lang::XTypeProvider* >(this)),
-                                     (static_cast< lang::XServiceInfo* >(this)),
-                                     (static_cast< XCommandProcessor* >(this)),
-                                     (static_cast< container::XChild* >(this)),
-                                     (static_cast< beans::XPropertiesChangeNotifier* >(this)),
-                                     (static_cast< beans::XPropertyContainer* >(this)),
-                                     (static_cast< XContentCreator* >(this)),
-                                     (static_cast< beans::XPropertySetInfoChangeNotifier* >(this)),
-                                     (static_cast< XContent* >(this)) );
-    return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
 
 
@@ -182,8 +124,8 @@ BaseContent::addEventListener( const Reference< lang::XEventListener >& Listener
     osl::MutexGuard aGuard( m_aMutex );
 
     if ( ! m_pDisposeEventListeners )
-        m_pDisposeEventListeners =
-            new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex );
+        m_pDisposeEventListeners.reset(
+            new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex ) );
 
     m_pDisposeEventListeners->addInterface( Listener );
 }
@@ -203,27 +145,19 @@ void SAL_CALL
 BaseContent::dispose()
 {
     lang::EventObject aEvt;
-    comphelper::OInterfaceContainerHelper2* pDisposeEventListeners;
-    comphelper::OInterfaceContainerHelper2* pContentEventListeners;
-    comphelper::OInterfaceContainerHelper2* pPropertySetInfoChangeListeners;
-    PropertyListeners* pPropertyListener;
+    std::unique_ptr<comphelper::OInterfaceContainerHelper2> pDisposeEventListeners;
+    std::unique_ptr<comphelper::OInterfaceContainerHelper2> pContentEventListeners;
+    std::unique_ptr<comphelper::OInterfaceContainerHelper2> pPropertySetInfoChangeListeners;
+    std::unique_ptr<PropertyListeners> pPropertyListener;
 
     {
         osl::MutexGuard aGuard( m_aMutex );
         aEvt.Source = static_cast< XContent* >( this );
 
-
-        pDisposeEventListeners = m_pDisposeEventListeners;
-        m_pDisposeEventListeners = nullptr;
-
-        pContentEventListeners = m_pContentEventListeners;
-        m_pContentEventListeners = nullptr;
-
-        pPropertySetInfoChangeListeners = m_pPropertySetInfoChangeListeners;
-        m_pPropertySetInfoChangeListeners = nullptr;
-
-        pPropertyListener = m_pPropertyListener;
-        m_pPropertyListener = nullptr;
+        pDisposeEventListeners = std::move(m_pDisposeEventListeners);
+        pContentEventListeners = std::move(m_pContentEventListeners);
+        pPropertySetInfoChangeListeners = std::move(m_pPropertySetInfoChangeListeners);
+        pPropertyListener = std::move(m_pPropertyListener);
     }
 
     if ( pDisposeEventListeners && pDisposeEventListeners->getLength() )
@@ -237,18 +171,13 @@ BaseContent::dispose()
 
     if( pPropertySetInfoChangeListeners )
         pPropertySetInfoChangeListeners->disposeAndClear( aEvt );
-
-    delete pDisposeEventListeners;
-    delete pContentEventListeners;
-    delete pPropertyListener;
-    delete pPropertySetInfoChangeListeners;
 }
 
 //  XServiceInfo
 OUString SAL_CALL
 BaseContent::getImplementationName()
 {
-    return OUString("com.sun.star.comp.ucb.FileContent");
+    return "com.sun.star.comp.ucb.FileContent";
 }
 
 sal_Bool SAL_CALL
@@ -264,20 +193,6 @@ BaseContent::getSupportedServiceNames()
     return ret;
 }
 
-//  XTypeProvider
-XTYPEPROVIDER_IMPL_10( BaseContent,
-                       lang::XComponent,
-                       lang::XTypeProvider,
-                       lang::XServiceInfo,
-                       XCommandProcessor,
-                       XContentCreator,
-                       XContent,
-                       container::XChild,
-                       beans::XPropertiesChangeNotifier,
-                       beans::XPropertyContainer,
-                       beans::XPropertySetInfoChangeNotifier )
-
-
 //  XCommandProcessor
 
 
@@ -289,9 +204,8 @@ BaseContent::createCommandIdentifier()
 
 
 void SAL_CALL
-BaseContent::abort( sal_Int32 CommandId )
+BaseContent::abort( sal_Int32 /*CommandId*/ )
 {
-    m_pMyShell->abort( CommandId );
 }
 
 
@@ -353,7 +267,7 @@ BaseContent::execute( const Command& aCommand,
     }
     else if ( aCommand.Name == "delete" )
     {
-        if( ! aCommand.Argument.has< sal_Bool >() )
+        if( ! aCommand.Argument.has< bool >() )
             m_pMyShell->installError( CommandId,
                                       TASKHANDLING_WRONG_DELETE_ARGUMENT );
         else
@@ -422,17 +336,17 @@ BaseContent::addPropertiesChangeListener(
     osl::MutexGuard aGuard( m_aMutex );
 
     if( ! m_pPropertyListener )
-        m_pPropertyListener = new PropertyListeners( m_aEventListenerMutex );
+        m_pPropertyListener.reset( new PropertyListeners( m_aEventListenerMutex ) );
 
 
-    if( PropertyNames.getLength() == 0 )
+    if( !PropertyNames.hasElements() )
         m_pPropertyListener->addInterface( OUString(),Listener );
     else
     {
         Reference< beans::XPropertySetInfo > xProp = m_pMyShell->info_p( m_aUncPath );
-        for( sal_Int32 i = 0; i < PropertyNames.getLength(); ++i )
-            if( xProp->hasPropertyByName( PropertyNames[i] ) )
-                m_pPropertyListener->addInterface( PropertyNames[i],Listener );
+        for( const auto& rName : PropertyNames )
+            if( xProp->hasPropertyByName( rName ) )
+                m_pPropertyListener->addInterface( rName,Listener );
     }
 }
 
@@ -449,8 +363,8 @@ BaseContent::removePropertiesChangeListener( const Sequence< OUString >& Propert
     if( ! m_pPropertyListener )
         return;
 
-    for( sal_Int32 i = 0; i < PropertyNames.getLength(); ++i )
-        m_pPropertyListener->removeInterface( PropertyNames[i],Listener );
+    for( const auto& rName : PropertyNames )
+        m_pPropertyListener->removeInterface( rName,Listener );
 
     m_pPropertyListener->removeInterface( OUString(), Listener );
 }
@@ -474,9 +388,9 @@ BaseContent::getContentType()
         if( m_nState & JustInserted )
         {
             if ( m_bFolder )
-                return m_pMyShell->FolderContentType;
+                return TaskManager::FolderContentType;
             else
-                return m_pMyShell->FileContentType;
+                return TaskManager::FileContentType;
         }
         else
         {
@@ -494,9 +408,9 @@ BaseContent::getContentType()
                 if ( !xRow->wasNull() )
                 {
                     if ( IsDocument )
-                        return m_pMyShell->FileContentType;
+                        return TaskManager::FileContentType;
                     else
-                        return m_pMyShell->FolderContentType;
+                        return TaskManager::FolderContentType;
                 }
                 else
                 {
@@ -521,8 +435,8 @@ BaseContent::addContentEventListener(
     osl::MutexGuard aGuard( m_aMutex );
 
     if ( ! m_pContentEventListeners )
-        m_pContentEventListeners =
-            new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex );
+        m_pContentEventListeners.reset(
+            new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex ) );
 
 
     m_pContentEventListeners->addInterface( Listener );
@@ -563,7 +477,7 @@ BaseContent::removeProperty( const OUString& Name )
 {
 
     if( m_nState & Deleted )
-        throw beans::UnknownPropertyException( THROW_WHERE );
+        throw beans::UnknownPropertyException( Name );
 
     m_pMyShell->deassociate( m_aUncPath, Name );
 }
@@ -575,7 +489,7 @@ BaseContent::removeProperty( const OUString& Name )
 Sequence< ContentInfo > SAL_CALL
 BaseContent::queryCreatableContentsInfo()
 {
-    return m_pMyShell->queryCreatableContentsInfo();
+    return TaskManager::queryCreatableContentsInfo();
 }
 
 
@@ -586,10 +500,10 @@ BaseContent::createNewContent( const ContentInfo& Info )
     if ( Info.Type.isEmpty() )
         return Reference< XContent >();
 
-    bool bFolder = Info.Type == m_pMyShell->FolderContentType;
+    bool bFolder = Info.Type == TaskManager::FolderContentType;
     if ( !bFolder )
     {
-        if ( Info.Type != m_pMyShell->FileContentType )
+        if ( Info.Type != TaskManager::FileContentType )
         {
             // Neither folder nor file to create!
             return Reference< XContent >();
@@ -646,7 +560,7 @@ BaseContent::addPropertySetInfoChangeListener(
 {
     osl::MutexGuard aGuard( m_aMutex );
     if( ! m_pPropertySetInfoChangeListeners )
-        m_pPropertySetInfoChangeListeners = new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex );
+        m_pPropertySetInfoChangeListeners.reset( new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex ) );
 
     m_pPropertySetInfoChangeListeners->addInterface( Listener );
 }
@@ -702,7 +616,7 @@ BaseContent::setParent(
 // Private Methods
 
 
-Reference< XCommandInfo > SAL_CALL
+Reference< XCommandInfo >
 BaseContent::getCommandInfo()
 {
     if( m_nState & Deleted )
@@ -712,7 +626,7 @@ BaseContent::getCommandInfo()
 }
 
 
-Reference< beans::XPropertySetInfo > SAL_CALL
+Reference< beans::XPropertySetInfo >
 BaseContent::getPropertySetInfo()
 {
     if( m_nState & Deleted )
@@ -721,7 +635,7 @@ BaseContent::getPropertySetInfo()
     return m_pMyShell->info_p( m_aUncPath );
 }
 
-Reference< sdbc::XRow > SAL_CALL
+Reference< sdbc::XRow >
 BaseContent::getPropertyValues(
     sal_Int32 nMyCommandIdentifier,
     const Sequence< beans::Property >& PropertySet )
@@ -750,8 +664,8 @@ BaseContent::getPropertyValues(
 
             if ( rProp.Name == "ContentType" )
             {
-                rValue <<= m_bFolder ? m_pMyShell->FolderContentType
-                    : m_pMyShell->FileContentType;
+                rValue <<= OUString(m_bFolder ? TaskManager::FolderContentType
+                    : TaskManager::FileContentType);
             }
             else if ( rProp.Name == "IsFolder" )
             {
@@ -773,7 +687,7 @@ BaseContent::getPropertyValues(
 }
 
 
-Sequence< Any > SAL_CALL
+Sequence< Any >
 BaseContent::setPropertyValues(
     sal_Int32 nMyCommandIdentifier,
     const Sequence< beans::PropertyValue >& Values )
@@ -788,12 +702,12 @@ BaseContent::setPropertyValues(
     // Special handling for files which have to be inserted
     if( m_nState & JustInserted )
     {
-        for( sal_Int32 i = 0; i < Values.getLength(); ++i )
+        for( const auto& rValue : Values )
         {
-            if( Values[i].Name == Title )
+            if( rValue.Name == Title )
             {
                 OUString NewTitle;
-                if( Values[i].Value >>= NewTitle )
+                if( rValue.Value >>= NewTitle )
                 {
                     if ( m_nState & NameForInsertionSet )
                     {
@@ -908,14 +822,14 @@ BaseContent::setPropertyValues(
 }
 
 
-Reference< XDynamicResultSet > SAL_CALL
+Reference< XDynamicResultSet >
 BaseContent::open(
     sal_Int32 nMyCommandIdentifier,
     const OpenCommandArgument2& aCommandArgument )
 {
-    Reference< XDynamicResultSet > retValue( nullptr );
+    Reference< XDynamicResultSet > retValue;
 
-    if( ( m_nState & Deleted ) )
+    if( m_nState & Deleted )
     {
         m_pMyShell->installError( nMyCommandIdentifier,
                                   TASKHANDLING_DELETED_STATE_IN_OPEN_COMMAND );
@@ -984,7 +898,7 @@ BaseContent::open(
 }
 
 
-void SAL_CALL
+void
 BaseContent::deleteContent( sal_Int32 nMyCommandIdentifier )
 {
     if( m_nState & Deleted )
@@ -998,7 +912,7 @@ BaseContent::deleteContent( sal_Int32 nMyCommandIdentifier )
 }
 
 
-void SAL_CALL
+void
 BaseContent::transfer( sal_Int32 nMyCommandIdentifier,
                        const TransferInfo& aTransferInfo )
 {
@@ -1068,7 +982,7 @@ BaseContent::transfer( sal_Int32 nMyCommandIdentifier,
 }
 
 
-void SAL_CALL BaseContent::insert( sal_Int32 nMyCommandIdentifier,
+void BaseContent::insert( sal_Int32 nMyCommandIdentifier,
                                    const InsertCommandArgument& aInsertArgument )
 {
     if( m_nState & FullFeatured )
@@ -1152,7 +1066,7 @@ void SAL_CALL BaseContent::insert( sal_Int32 nMyCommandIdentifier,
                         RTL_TEXTENCODING_UTF8),
                     static_cast<cppu::OWeakObject*>(this),
                     m_pMyShell,nMyCommandIdentifier);
-            uno::Reference<task::XInteractionRequest> const xReq(aRequestImpl.getRequest());
+            uno::Reference<task::XInteractionRequest> const& xReq(aRequestImpl.getRequest());
 
             m_pMyShell->handleTask( nMyCommandIdentifier, xReq );
             if (aRequestImpl.aborted() || aRequestImpl.newName().isEmpty())
@@ -1185,36 +1099,34 @@ void SAL_CALL BaseContent::insert( sal_Int32 nMyCommandIdentifier,
 }
 
 
-void SAL_CALL BaseContent::endTask( sal_Int32 CommandId )
+void BaseContent::endTask( sal_Int32 CommandId )
 {
     // This is the only function allowed to throw an exception
     m_pMyShell->endTask( CommandId,m_aUncPath,this );
 }
 
 
-ContentEventNotifier*
+std::unique_ptr<ContentEventNotifier>
 BaseContent::cDEL()
 {
     osl::MutexGuard aGuard( m_aMutex );
 
     m_nState |= Deleted;
 
-    ContentEventNotifier* p;
+    std::unique_ptr<ContentEventNotifier> p;
     if( m_pContentEventListeners )
     {
-        p = new ContentEventNotifier( m_pMyShell,
+        p.reset( new ContentEventNotifier( m_pMyShell,
                                       this,
                                       m_xContentIdentifier,
-                                      m_pContentEventListeners->getElements() );
+                                      m_pContentEventListeners->getElements() ) );
     }
-    else
-        p = nullptr;
 
     return p;
 }
 
 
-ContentEventNotifier*
+std::unique_ptr<ContentEventNotifier>
 BaseContent::cEXC( const OUString& aNewName )
 {
     osl::MutexGuard aGuard( m_aMutex );
@@ -1224,46 +1136,46 @@ BaseContent::cEXC( const OUString& aNewName )
     FileContentIdentifier* pp = new FileContentIdentifier( aNewName );
     m_xContentIdentifier.set( pp );
 
-    ContentEventNotifier* p = nullptr;
+    std::unique_ptr<ContentEventNotifier> p;
     if( m_pContentEventListeners )
-        p = new ContentEventNotifier( m_pMyShell,
+        p.reset( new ContentEventNotifier( m_pMyShell,
                                       this,
                                       m_xContentIdentifier,
                                       xOldRef,
-                                      m_pContentEventListeners->getElements() );
+                                      m_pContentEventListeners->getElements() ) );
 
     return p;
 }
 
 
-ContentEventNotifier*
+std::unique_ptr<ContentEventNotifier>
 BaseContent::cCEL()
 {
     osl::MutexGuard aGuard( m_aMutex );
-    ContentEventNotifier* p = nullptr;
+    std::unique_ptr<ContentEventNotifier> p;
     if( m_pContentEventListeners )
-        p = new ContentEventNotifier( m_pMyShell,
+        p.reset( new ContentEventNotifier( m_pMyShell,
                                       this,
                                       m_xContentIdentifier,
-                                      m_pContentEventListeners->getElements() );
+                                      m_pContentEventListeners->getElements() ) );
 
     return p;
 }
 
-PropertySetInfoChangeNotifier*
+std::unique_ptr<PropertySetInfoChangeNotifier>
 BaseContent::cPSL()
 {
     osl::MutexGuard aGuard( m_aMutex );
-    PropertySetInfoChangeNotifier* p = nullptr;
+    std::unique_ptr<PropertySetInfoChangeNotifier> p;
     if( m_pPropertySetInfoChangeListeners  )
-        p = new PropertySetInfoChangeNotifier( this,
-                                               m_pPropertySetInfoChangeListeners->getElements() );
+        p.reset( new PropertySetInfoChangeNotifier( this,
+                                               m_pPropertySetInfoChangeListeners->getElements() ) );
 
     return p;
 }
 
 
-PropertyChangeNotifier*
+std::unique_ptr<PropertyChangeNotifier>
 BaseContent::cPCL()
 {
     osl::MutexGuard aGuard( m_aMutex );
@@ -1271,25 +1183,22 @@ BaseContent::cPCL()
     if (!m_pPropertyListener)
         return nullptr;
 
-    Sequence< OUString > seqNames = m_pPropertyListener->getContainedTypes();
+    const Sequence< OUString > seqNames = m_pPropertyListener->getContainedTypes();
 
-    PropertyChangeNotifier* p = nullptr;
+    std::unique_ptr<PropertyChangeNotifier> p;
 
-    sal_Int32 length = seqNames.getLength();
-
-    if( length )
+    if( seqNames.hasElements() )
     {
-        ListenerMap* listener = new ListenerMap;
-        for( sal_Int32 i = 0; i < length; ++i )
+        std::unique_ptr<ListenerMap> listener(new ListenerMap);
+        for( const auto& rName : seqNames )
         {
-            cppu::OInterfaceContainerHelper* pContainer = m_pPropertyListener->getContainer(seqNames[i]);
+            cppu::OInterfaceContainerHelper* pContainer = m_pPropertyListener->getContainer(rName);
             if (!pContainer)
                 continue;
-            (*listener)[seqNames[i]] = pContainer->getElements();
+            (*listener)[rName] = pContainer->getElements();
         }
 
-        p = new PropertyChangeNotifier( this,
-                                        listener );
+        p.reset( new PropertyChangeNotifier( this, std::move(listener) ) );
     }
 
     return p;

@@ -7,15 +7,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "refupdatecontext.hxx"
+#include <refupdatecontext.hxx>
 #include <algorithm>
+#include <mtvelements.hxx>
 
 namespace sc {
 
 void UpdatedRangeNames::setUpdatedName(SCTAB nTab, sal_uInt16 nIndex)
 {
     // Map anything <-1 to global names. Unless we really want to come up with
-    // some classification there..
+    // some classification there...
     if (nTab < -1)
         nTab = -1;
 
@@ -25,7 +26,7 @@ void UpdatedRangeNames::setUpdatedName(SCTAB nTab, sal_uInt16 nIndex)
         // Insert a new container for this sheet index.
         NameIndicesType aIndices;
         std::pair<UpdatedNamesType::iterator,bool> r =
-            maUpdatedNames.insert(UpdatedNamesType::value_type(nTab, aIndices));
+            maUpdatedNames.emplace( nTab, aIndices);
 
         if (!r.second)
             // Insertion failed for whatever reason.
@@ -64,7 +65,7 @@ bool UpdatedRangeNames::isEmpty(SCTAB nTab) const
 
 
 RefUpdateContext::RefUpdateContext(ScDocument& rDoc) :
-    mrDoc(rDoc), meMode(URM_INSDEL), mnColDelta(0), mnRowDelta(0), mnTabDelta(0) {}
+    mrDoc(rDoc), meMode(URM_INSDEL), mnColDelta(0), mnRowDelta(0), mnTabDelta(0), mpBlockPos( nullptr ) {}
 
 bool RefUpdateContext::isInserted() const
 {
@@ -76,11 +77,17 @@ bool RefUpdateContext::isDeleted() const
     return (meMode == URM_INSDEL) && (mnColDelta < 0 || mnRowDelta < 0 || mnTabDelta < 0);
 }
 
+void RefUpdateContext::setBlockPositionReference( ColumnBlockPositionSet* blockPos )
+{
+    mpBlockPos = blockPos;
+}
+
+ColumnBlockPosition* RefUpdateContext::getBlockPosition(SCTAB nTab, SCCOL nCol)
+{
+    return mpBlockPos ? mpBlockPos->getBlockPosition(nTab, nCol) : nullptr;
+}
+
 RefUpdateResult::RefUpdateResult() : mbValueChanged(false), mbReferenceModified(false), mbNameModified(false) {}
-RefUpdateResult::RefUpdateResult(const RefUpdateResult& r) :
-    mbValueChanged(r.mbValueChanged),
-    mbReferenceModified(r.mbReferenceModified),
-    mbNameModified(r.mbNameModified) {}
 
 RefUpdateInsertTabContext::RefUpdateInsertTabContext(ScDocument& rDoc, SCTAB nInsertPos, SCTAB nSheets) :
     mrDoc(rDoc), mnInsertPos(nInsertPos), mnSheets(nSheets) {}
@@ -93,7 +100,7 @@ RefUpdateMoveTabContext::RefUpdateMoveTabContext(ScDocument& rDoc, SCTAB nOldPos
 
 SCTAB RefUpdateMoveTabContext::getNewTab(SCTAB nOldTab) const
 {
-    // Sheets below the lower bound or above the uppper bound will not change.
+    // Sheets below the lower bound or above the upper bound will not change.
     SCTAB nLowerBound = std::min(mnOldPos, mnNewPos);
     SCTAB nUpperBound = std::max(mnOldPos, mnNewPos);
 

@@ -20,12 +20,10 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_EVOAB2_NCATALOG_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_EVOAB2_NCATALOG_HXX
 
-#include <connectivity/sdbcx/VCatalog.hxx>
+#include <sdbcx/VCatalog.hxx>
 
-namespace connectivity
+namespace connectivity::evoab
 {
-    namespace evoab
-    {
         class OEvoabConnection;
         class OEvoabCatalog : public connectivity::sdbcx::OCatalog
         {
@@ -41,8 +39,8 @@ namespace connectivity
             virtual css::uno::Reference< css::container::XNameAccess > SAL_CALL getTables(
                                         ) override;
         };
-    }
 }
+
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_EVOAB2_NCATALOG_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

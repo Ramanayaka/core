@@ -63,7 +63,7 @@ struct PDFEntry
     virtual PDFEntry* clone() const = 0;
 
 protected:
-    static EmitImplData* getEmitData( EmitContext& rContext );
+    static EmitImplData* getEmitData( EmitContext const & rContext );
     static void setEmitData( EmitContext& rContext, EmitImplData* pNewEmitData );
 };
 
@@ -157,17 +157,17 @@ struct PDFObject;
 struct PDFContainer : public PDFEntry
 {
     sal_Int32              m_nOffset;
-    std::vector<PDFEntry*> m_aSubElements;
+    std::vector<std::unique_ptr<PDFEntry>> m_aSubElements;
 
     // this is an abstract base class for identifying
     // entries that can contain sub elements besides comments
     PDFContainer() : PDFEntry(), m_nOffset( 0 ) {}
     virtual ~PDFContainer() override;
     bool emitSubElements( EmitContext& rWriteContext ) const;
-    void cloneSubElements( std::vector<PDFEntry*>& rNewSubElements ) const;
+    void cloneSubElements( std::vector<std::unique_ptr<PDFEntry>>& rNewSubElements ) const;
 
     PDFObject* findObject( unsigned int nNumber, unsigned int nGeneration ) const;
-    PDFObject* findObject( PDFObjectRef* pRef ) const
+    PDFObject* findObject( PDFObjectRef const * pRef ) const
     { return findObject( pRef->m_nNumber, pRef->m_nGeneration ); }
 };
 
@@ -181,7 +181,7 @@ struct PDFArray : public PDFContainer
 
 struct PDFDict : public PDFContainer
 {
-    typedef std::unordered_map<OString,PDFEntry*,OStringHash> Map;
+    typedef std::unordered_map<OString,PDFEntry*> Map;
     Map m_aMap;
 
     PDFDict() {}
@@ -191,7 +191,7 @@ struct PDFDict : public PDFContainer
 
     // inserting a value of NULL will remove rName and the previous value
     // from the dictionary
-    void insertValue( const OString& rName, PDFEntry* pValue );
+    void insertValue( const OString& rName, std::unique_ptr<PDFEntry> pValue );
     // removes a name/value pair from the dict
     void eraseValue( const OString& rName );
     // builds new map as of sub elements
@@ -273,9 +273,9 @@ struct PDFObject : public PDFContainer
 private:
     // returns true if stream is deflated
     // fills *ppStream and *pBytes with start of stream and count of bytes
-    // memory returned in *ppStream must be freed with rtl_freeMemory afterwards
+    // memory returned in *ppStream must be freed with std::free afterwards
     // fills in NULL and 0 in case of error
-    bool getDeflatedStream( char** ppStream, unsigned int* pBytes, const PDFContainer* pObjectContainer, EmitContext& rContext ) const;
+    bool getDeflatedStream( std::unique_ptr<char[]>& rpStream, unsigned int* pBytes, const PDFContainer* pObjectContainer, EmitContext& rContext ) const;
 };
 
 struct PDFPart : public PDFContainer
@@ -286,14 +286,13 @@ struct PDFPart : public PDFContainer
     virtual PDFEntry* clone() const override;
 };
 
-class PDFReader
+struct PDFReader
 {
-public:
-    PDFReader() {}
+    PDFReader() = delete;
 
-    static PDFEntry* read( const char* pFileName );
+    static std::unique_ptr<PDFEntry> read( const char* pFileName );
 #ifdef _WIN32
-    static PDFEntry* read( const char* pBuffer, unsigned int nLen );
+    static std::unique_ptr<PDFEntry> read( const char* pBuffer, unsigned int nLen );
 #endif
 };
 

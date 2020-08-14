@@ -23,13 +23,14 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <vcl/dllapi.h>
-#include <i18nlangtag/languagetag.hxx>
 #include <tools/color.hxx>
-#include <tools/gen.hxx>
-#include <vcl/vclenum.hxx>
+#include <tools/fontenum.hxx>
+#include <i18nlangtag/lang.h>
 #include <vcl/fntstyle.hxx>
 #include <o3tl/cow_wrapper.hxx>
 
+class Size;
+class LanguageTag;
 class SvStream;
 #define FontAlign TextAlign
 
@@ -42,12 +43,12 @@ VCL_DLLPUBLIC SvStream&  WriteFont( SvStream& rOStm, const vcl::Font& );
 
 namespace vcl {
 
-class VCL_DLLPUBLIC Font
+class SAL_WARN_UNUSED VCL_DLLPUBLIC Font
 {
 public:
     explicit            Font();
                         Font( const Font& ); // TODO make me explicit
-                        Font( Font&& );
+                        Font( Font&& ) noexcept;
     explicit            Font( const OUString& rFamilyName, const Size& );
     explicit            Font( const OUString& rFamilyName, const OUString& rStyleName, const Size& );
     explicit            Font( FontFamily eFamily, const Size& );
@@ -90,7 +91,6 @@ public:
     void                SetQuality(int);
     void                IncreaseQualityBy(int);
     void                DecreaseQualityBy(int);
-    void                SetMapNames(OUString const &);
 
     // setting the color on the font is obsolete, the only remaining
     // valid use is for keeping backward compatibility with old MetaFiles
@@ -150,7 +150,7 @@ public:
     void                GetFontAttributes( FontAttributes& rAttrs ) const;
 
     Font&               operator=( const Font& );
-    Font&               operator=( Font&& );
+    Font&               operator=( Font&& ) noexcept;
     bool                operator==( const Font& ) const;
     bool                operator!=( const Font& rFont ) const
                             { return !(Font::operator==( rFont )); }
@@ -163,9 +163,20 @@ public:
 
     typedef o3tl::cow_wrapper< ImplFont > ImplType;
 
+    inline bool IsUnderlineAbove() const;
+
 private:
     ImplType mpImplFont;
 };
+
+inline bool Font::IsUnderlineAbove() const
+{
+    if (!IsVertical())
+        return false;
+    // the underline is right for Japanese only
+    return (LANGUAGE_JAPANESE == GetLanguage()) ||
+           (LANGUAGE_JAPANESE == GetCJKContextLanguage());
+}
 
 }
 

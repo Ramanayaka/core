@@ -20,10 +20,10 @@
 #ifndef INCLUDED_OSL_SIGNAL_H
 #define INCLUDED_OSL_SIGNAL_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
-#include <sal/saldllapi.h>
-#include <sal/types.h>
+#include "sal/saldllapi.h"
+#include "sal/types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,7 +58,7 @@ typedef enum
     osl_Signal_Act_FORCE_EQUAL_SIZE = SAL_MAX_ENUM
 } oslSignalAction;
 
-#ifdef SAL_W32
+#ifdef _WIN32
 #   pragma pack(push, 8)
 #endif
 
@@ -69,7 +69,7 @@ typedef struct
     void*       UserData;
 } oslSignalInfo;
 
-#if defined( SAL_W32)
+#if defined( _WIN32)
 #   pragma pack(pop)
 #endif
 

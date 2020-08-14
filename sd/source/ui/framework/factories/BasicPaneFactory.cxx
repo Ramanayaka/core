@@ -20,20 +20,17 @@
 #include <memory>
 #include <sal/config.h>
 
-#include <utility>
-
 #include "BasicPaneFactory.hxx"
-#include "facreg.hxx"
 
 #include "ChildWindowPane.hxx"
 #include "FrameWindowPane.hxx"
 #include "FullScreenPane.hxx"
 
-#include "framework/FrameworkHelper.hxx"
-#include "ViewShellBase.hxx"
-#include "PaneChildWindows.hxx"
-#include "DrawController.hxx"
-#include "DrawDocShell.hxx"
+#include <framework/FrameworkHelper.hxx>
+#include <PaneShells.hxx>
+#include <ViewShellBase.hxx>
+#include <PaneChildWindows.hxx>
+#include <DrawController.hxx>
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
 
 using namespace ::com::sun::star;
@@ -51,11 +48,11 @@ namespace {
         LeftDrawPaneId
     };
 
-    static const sal_Int32 gnConfigurationUpdateStartEvent(0);
-    static const sal_Int32 gnConfigurationUpdateEndEvent(1);
+    const sal_Int32 gnConfigurationUpdateStartEvent(0);
+    const sal_Int32 gnConfigurationUpdateEndEvent(1);
 }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 /** Store URL, XPane reference and (local) PaneId for every pane factory
     that is registered at the PaneController.
@@ -71,9 +68,8 @@ public:
         flag is reset.
     */
     bool mbIsReleased;
-    bool mbIsChildWindow;
 
-    bool CompareURL(const OUString& rsPaneURL) const { return msPaneURL.equals(rsPaneURL); }
+    bool CompareURL(const OUString& rsPaneURL) const { return msPaneURL == rsPaneURL; }
     bool ComparePane(const Reference<XResource>& rxPane) const { return mxPane == rxPane; }
 };
 
@@ -110,13 +106,11 @@ void SAL_CALL BasicPaneFactory::disposing()
         mxConfigurationControllerWeak.clear();
     }
 
-    for (PaneContainer::const_iterator iDescriptor = mpPaneContainer->begin();
-         iDescriptor != mpPaneContainer->end();
-         ++iDescriptor)
+    for (const auto& rDescriptor : *mpPaneContainer)
     {
-        if (iDescriptor->mbIsReleased)
+        if (rDescriptor.mbIsReleased)
         {
-            Reference<XComponent> xComponent (iDescriptor->mxPane, UNO_QUERY);
+            Reference<XComponent> xComponent (rDescriptor.mxPane, UNO_QUERY);
             if (xComponent.is())
             {
                 xComponent->removeEventListener(this);
@@ -128,79 +122,76 @@ void SAL_CALL BasicPaneFactory::disposing()
 
 void SAL_CALL BasicPaneFactory::initialize (const Sequence<Any>& aArguments)
 {
-    if (aArguments.getLength() > 0)
+    if (!aArguments.hasElements())
+        return;
+
+    try
     {
+        // Get the XController from the first argument.
+        Reference<frame::XController> xController (aArguments[0], UNO_QUERY_THROW);
+
+        // Tunnel through the controller to obtain access to the ViewShellBase.
         try
         {
-            // Get the XController from the first argument.
-            Reference<frame::XController> xController (aArguments[0], UNO_QUERY_THROW);
-            mxControllerWeak = xController;
-
-            // Tunnel through the controller to obtain access to the ViewShellBase.
-            try
-            {
-                Reference<lang::XUnoTunnel> xTunnel (xController, UNO_QUERY_THROW);
-                DrawController* pController
-                    = reinterpret_cast<DrawController*>(
-                        (sal::static_int_cast<sal_uIntPtr>(
-                            xTunnel->getSomething(DrawController::getUnoTunnelId()))));
-                mpViewShellBase = pController->GetViewShellBase();
-            }
-            catch(RuntimeException&)
-            {}
-
-            Reference<XControllerManager> xCM (xController, UNO_QUERY_THROW);
-            Reference<XConfigurationController> xCC (xCM->getConfigurationController());
-            mxConfigurationControllerWeak = xCC;
-
-            // Add pane factories for the two left panes (one for Impress and one for
-            // Draw) and the center pane.
-            if (xController.is() && xCC.is())
-            {
-                PaneDescriptor aDescriptor;
-                aDescriptor.msPaneURL = FrameworkHelper::msCenterPaneURL;
-                aDescriptor.mePaneId = CenterPaneId;
-                aDescriptor.mbIsReleased = false;
-                aDescriptor.mbIsChildWindow = false;
-                mpPaneContainer->push_back(aDescriptor);
-                xCC->addResourceFactory(aDescriptor.msPaneURL, this);
-
-                aDescriptor.msPaneURL = FrameworkHelper::msFullScreenPaneURL;
-                aDescriptor.mePaneId = FullScreenPaneId;
-                mpPaneContainer->push_back(aDescriptor);
-                xCC->addResourceFactory(aDescriptor.msPaneURL, this);
-
-                aDescriptor.msPaneURL = FrameworkHelper::msLeftImpressPaneURL;
-                aDescriptor.mePaneId = LeftImpressPaneId;
-                aDescriptor.mbIsChildWindow = true;
-                mpPaneContainer->push_back(aDescriptor);
-                xCC->addResourceFactory(aDescriptor.msPaneURL, this);
-
-                aDescriptor.msPaneURL = FrameworkHelper::msLeftDrawPaneURL;
-                aDescriptor.mePaneId = LeftDrawPaneId;
-                mpPaneContainer->push_back(aDescriptor);
-                xCC->addResourceFactory(aDescriptor.msPaneURL, this);
-            }
-
-            // Register as configuration change listener.
-            if (xCC.is())
-            {
-                xCC->addConfigurationChangeListener(
-                    this,
-                    FrameworkHelper::msConfigurationUpdateStartEvent,
-                    makeAny(gnConfigurationUpdateStartEvent));
-                xCC->addConfigurationChangeListener(
-                    this,
-                    FrameworkHelper::msConfigurationUpdateEndEvent,
-                    makeAny(gnConfigurationUpdateEndEvent));
-            }
+            Reference<lang::XUnoTunnel> xTunnel (xController, UNO_QUERY_THROW);
+            DrawController* pController
+                = reinterpret_cast<DrawController*>(
+                    (sal::static_int_cast<sal_uIntPtr>(
+                        xTunnel->getSomething(DrawController::getUnoTunnelId()))));
+            mpViewShellBase = pController->GetViewShellBase();
         }
-        catch (RuntimeException&)
+        catch(RuntimeException&)
+        {}
+
+        Reference<XControllerManager> xCM (xController, UNO_QUERY_THROW);
+        Reference<XConfigurationController> xCC (xCM->getConfigurationController());
+        mxConfigurationControllerWeak = xCC;
+
+        // Add pane factories for the two left panes (one for Impress and one for
+        // Draw) and the center pane.
+        if (xController.is() && xCC.is())
         {
-            Reference<XConfigurationController> xCC (mxConfigurationControllerWeak);
-            if (xCC.is())
-                xCC->removeResourceFactoryForReference(this);
+            PaneDescriptor aDescriptor;
+            aDescriptor.msPaneURL = FrameworkHelper::msCenterPaneURL;
+            aDescriptor.mePaneId = CenterPaneId;
+            aDescriptor.mbIsReleased = false;
+            mpPaneContainer->push_back(aDescriptor);
+            xCC->addResourceFactory(aDescriptor.msPaneURL, this);
+
+            aDescriptor.msPaneURL = FrameworkHelper::msFullScreenPaneURL;
+            aDescriptor.mePaneId = FullScreenPaneId;
+            mpPaneContainer->push_back(aDescriptor);
+            xCC->addResourceFactory(aDescriptor.msPaneURL, this);
+
+            aDescriptor.msPaneURL = FrameworkHelper::msLeftImpressPaneURL;
+            aDescriptor.mePaneId = LeftImpressPaneId;
+            mpPaneContainer->push_back(aDescriptor);
+            xCC->addResourceFactory(aDescriptor.msPaneURL, this);
+
+            aDescriptor.msPaneURL = FrameworkHelper::msLeftDrawPaneURL;
+            aDescriptor.mePaneId = LeftDrawPaneId;
+            mpPaneContainer->push_back(aDescriptor);
+            xCC->addResourceFactory(aDescriptor.msPaneURL, this);
         }
+
+        // Register as configuration change listener.
+        if (xCC.is())
+        {
+            xCC->addConfigurationChangeListener(
+                this,
+                FrameworkHelper::msConfigurationUpdateStartEvent,
+                makeAny(gnConfigurationUpdateStartEvent));
+            xCC->addConfigurationChangeListener(
+                this,
+                FrameworkHelper::msConfigurationUpdateEndEvent,
+                makeAny(gnConfigurationUpdateEndEvent));
+        }
+    }
+    catch (RuntimeException&)
+    {
+        Reference<XConfigurationController> xCC (mxConfigurationControllerWeak);
+        if (xCC.is())
+            xCC->removeResourceFactoryForReference(this);
     }
 }
 
@@ -223,44 +214,7 @@ Reference<XResource> SAL_CALL BasicPaneFactory::createResource (
                 return rPane.CompareURL(rxPaneId->getResourceURL());
             } ));
 
-    if (iDescriptor != mpPaneContainer->end())
-    {
-        if (iDescriptor->mxPane.is())
-        {
-            // The pane has already been created and is still active (has
-            // not yet been released).  This should not happen.
-            xPane = iDescriptor->mxPane;
-        }
-        else
-        {
-            // Create a new pane.
-            switch (iDescriptor->mePaneId)
-            {
-                case CenterPaneId:
-                    xPane = CreateFrameWindowPane(rxPaneId);
-                    break;
-
-                case FullScreenPaneId:
-                    xPane = CreateFullScreenPane(mxComponentContext, rxPaneId);
-                    break;
-
-                case LeftImpressPaneId:
-                case LeftDrawPaneId:
-                    xPane = CreateChildWindowPane(
-                        rxPaneId,
-                        *iDescriptor);
-                    break;
-            }
-            iDescriptor->mxPane = xPane;
-
-            // Listen for the pane being disposed.
-            Reference<lang::XComponent> xComponent (xPane, UNO_QUERY);
-            if (xComponent.is())
-                xComponent->addEventListener(this);
-        }
-        iDescriptor->mbIsReleased = false;
-    }
-    else
+    if (iDescriptor == mpPaneContainer->end())
     {
         // The requested pane can not be created by any of the factories
         // managed by the called BasicPaneFactory object.
@@ -268,6 +222,42 @@ Reference<XResource> SAL_CALL BasicPaneFactory::createResource (
             nullptr,
             0);
     }
+
+    if (iDescriptor->mxPane.is())
+    {
+        // The pane has already been created and is still active (has
+        // not yet been released).  This should not happen.
+        xPane = iDescriptor->mxPane;
+    }
+    else
+    {
+        // Create a new pane.
+        switch (iDescriptor->mePaneId)
+        {
+            case CenterPaneId:
+                xPane = CreateFrameWindowPane(rxPaneId);
+                break;
+
+            case FullScreenPaneId:
+                xPane = CreateFullScreenPane(mxComponentContext, rxPaneId);
+                break;
+
+            case LeftImpressPaneId:
+            case LeftDrawPaneId:
+                xPane = CreateChildWindowPane(
+                    rxPaneId,
+                    *iDescriptor);
+                break;
+        }
+        iDescriptor->mxPane = xPane;
+
+        // Listen for the pane being disposed.
+        Reference<lang::XComponent> xComponent (xPane, UNO_QUERY);
+        if (xComponent.is())
+            xComponent->addEventListener(this);
+    }
+    iDescriptor->mbIsReleased = false;
+
 
     return xPane;
 }
@@ -285,33 +275,7 @@ void SAL_CALL BasicPaneFactory::releaseResource (
             mpPaneContainer->end(),
             [&] (PaneDescriptor const& rPane) { return rPane.ComparePane(rxPane); } ));
 
-    if (iDescriptor != mpPaneContainer->end())
-    {
-        // The given pane was created by one of the factories.  Child
-        // windows are just hidden and will be reused when requested later.
-        // Other windows are disposed and their reference is reset so that
-        // on the next createPane() call for the same pane type the pane is
-        // created anew.
-        ChildWindowPane* pChildWindowPane = dynamic_cast<ChildWindowPane*>(rxPane.get());
-        if (pChildWindowPane != nullptr)
-        {
-            iDescriptor->mbIsReleased = true;
-            pChildWindowPane->Hide();
-        }
-        else
-        {
-            iDescriptor->mxPane = nullptr;
-            Reference<XComponent> xComponent (rxPane, UNO_QUERY);
-            if (xComponent.is())
-            {
-                // We are disposing the pane and do not have to be informed of
-                // that.
-                xComponent->removeEventListener(this);
-                xComponent->dispose();
-            }
-        }
-    }
-    else
+    if (iDescriptor == mpPaneContainer->end())
     {
         // The given XPane reference is either empty or the pane was not
         // created by any of the factories managed by the called
@@ -320,6 +284,31 @@ void SAL_CALL BasicPaneFactory::releaseResource (
             nullptr,
             0);
     }
+
+    // The given pane was created by one of the factories.  Child
+    // windows are just hidden and will be reused when requested later.
+    // Other windows are disposed and their reference is reset so that
+    // on the next createPane() call for the same pane type the pane is
+    // created anew.
+    ChildWindowPane* pChildWindowPane = dynamic_cast<ChildWindowPane*>(rxPane.get());
+    if (pChildWindowPane != nullptr)
+    {
+        iDescriptor->mbIsReleased = true;
+        pChildWindowPane->Hide();
+    }
+    else
+    {
+        iDescriptor->mxPane = nullptr;
+        Reference<XComponent> xComponent (rxPane, UNO_QUERY);
+        if (xComponent.is())
+        {
+            // We are disposing the pane and do not have to be informed of
+            // that.
+            xComponent->removeEventListener(this);
+            xComponent->dispose();
+        }
+    }
+
 }
 
 //===== XConfigurationChangeListener ==========================================
@@ -335,7 +324,7 @@ void SAL_CALL BasicPaneFactory::notifyConfigurationChange (
 void SAL_CALL BasicPaneFactory::disposing (
     const lang::EventObject& rEventObject)
 {
-    if (mxConfigurationControllerWeak == rEventObject.Source)
+    if (mxConfigurationControllerWeak.get() == rEventObject.Source)
     {
         mxConfigurationControllerWeak.clear();
     }
@@ -411,7 +400,7 @@ Reference<XResource> BasicPaneFactory::CreateChildWindowPane (
 
         // With shell and child window id create the ChildWindowPane
         // wrapper.
-        if (pShell.get() != nullptr)
+        if (pShell != nullptr)
         {
             xPane = new ChildWindowPane(
                 rxPaneId,
@@ -433,10 +422,10 @@ void BasicPaneFactory::ThrowIfDisposed() const
     }
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_framework_BasicPaneFactory_get_implementation(css::uno::XComponentContext* context,
                                                                      css::uno::Sequence<css::uno::Any> const &)
 {

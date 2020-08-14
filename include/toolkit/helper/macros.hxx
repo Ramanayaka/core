@@ -20,35 +20,9 @@
 #ifndef INCLUDED_TOOLKIT_HELPER_MACROS_HXX
 #define INCLUDED_TOOLKIT_HELPER_MACROS_HXX
 
-#include <string.h>
-
-#include <comphelper/servicehelper.hxx>
-
-#define IMPL_XUNOTUNNEL_MINIMAL( ClassName ) \
-sal_Int64 ClassName::getSomething( const css::uno::Sequence< sal_Int8 >& rIdentifier ) \
-{ \
-    if( ( rIdentifier.getLength() == 16 ) && ( memcmp( ClassName::GetUnoTunnelId().getConstArray(), rIdentifier.getConstArray(), 16 ) == 0 ) ) \
-    { \
-        return sal::static_int_cast< sal_Int64 >(reinterpret_cast< sal_IntPtr >(this)); \
-    } \
-    return 0; \
-} \
-namespace \
-{ \
-    class the##ClassName##UnoTunnelId : public rtl::Static< UnoTunnelIdInit, the##ClassName##UnoTunnelId> {}; \
-} \
-const css::uno::Sequence< sal_Int8 >& ClassName::GetUnoTunnelId() throw() \
-{ \
-    return the##ClassName##UnoTunnelId::get().getSeq(); \
-}
-
-#define IMPL_XUNOTUNNEL( ClassName ) \
-IMPL_XUNOTUNNEL_MINIMAL( ClassName ) \
-ClassName* ClassName::GetImplementation( const css::uno::Reference< css::uno::XInterface >& rxIFace ) \
-{ \
-    css::uno::Reference< css::lang::XUnoTunnel > xUT( rxIFace, css::uno::UNO_QUERY ); \
-    return xUT.is() ? reinterpret_cast<ClassName*>(sal::static_int_cast<sal_IntPtr>(xUT->getSomething( ClassName::GetUnoTunnelId() ))) : nullptr; \
-}
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+#include <tools/diagnose_ex.h>
 
 #define IMPL_IMPLEMENTATION_ID( ClassName ) \
 css::uno::Sequence< sal_Int8 > ClassName::getImplementationId() \
@@ -56,21 +30,9 @@ css::uno::Sequence< sal_Int8 > ClassName::getImplementationId() \
     return css::uno::Sequence<sal_Int8>(); \
 }
 
-#define IMPL_XTYPEPROVIDER_START( ClassName )   \
-IMPL_IMPLEMENTATION_ID( ClassName ) \
-css::uno::Sequence< css::uno::Type > ClassName::getTypes() \
-{ \
-    static ::cppu::OTypeCollection collection( \
-            cppu::UnoType<css::lang::XTypeProvider>::get(),
-
-#define IMPL_XTYPEPROVIDER_END \
-            ); \
-    return collection.getTypes(); \
-}
-
 
 #define DECL_LISTENERMULTIPLEXER_START( ClassName, InterfaceName ) \
-class ClassName : public ListenerMultiplexerBase, public InterfaceName \
+class ClassName final : public ListenerMultiplexerBase, public InterfaceName \
 { \
 public: \
     ClassName( ::cppu::OWeakObject& rSource ); \
@@ -81,7 +43,7 @@ public: \
 
 
 #define DECL_LISTENERMULTIPLEXER_START_DLLPUB( ClassName, InterfaceName ) \
-class TOOLKIT_DLLPUBLIC ClassName : public ListenerMultiplexerBase, public InterfaceName \
+class TOOLKIT_DLLPUBLIC ClassName final : public ListenerMultiplexerBase, public InterfaceName \
 { \
 public: \
     ClassName( ::cppu::OWeakObject& rSource ); \
@@ -115,10 +77,11 @@ void ClassName::disposing( const css::lang::EventObject& ) \
 
 
 #if OSL_DEBUG_LEVEL > 0
-    #define DISPLAY_EXCEPTION( ClassName, MethodName, e )    \
-        SAL_WARN( "toolkit", #ClassName "::" #MethodName ": caught an exception! " << e.Message);
+    #define DISPLAY_EXCEPTION( ClassName, MethodName )    \
+        css::uno::Any ex( cppu::getCaughtException() ); \
+        SAL_WARN( "toolkit", #ClassName "::" #MethodName ": caught an exception! " << exceptionToString(ex));
 #else
-    #define DISPLAY_EXCEPTION( ClassName, MethodName, e ) (void)e;
+    #define DISPLAY_EXCEPTION( ClassName, MethodName )
 #endif
 
 #define IMPL_TABLISTENERMULTIPLEXER_LISTENERMETHOD_BODY_1PARAM( ClassName, InterfaceName, MethodName, ParamType1 ) \
@@ -139,9 +102,9 @@ void ClassName::disposing( const css::lang::EventObject& ) \
             if ( e.Context == xListener || !e.Context.is() ) \
                 aIt.remove(); \
         } \
-        catch(const css::uno::RuntimeException& e) \
+        catch(const css::uno::RuntimeException&) \
         { \
-            DISPLAY_EXCEPTION( ClassName, MethodName, e ) \
+            DISPLAY_EXCEPTION( ClassName, MethodName ) \
         } \
     } \
 }
@@ -165,9 +128,9 @@ void ClassName::disposing( const css::lang::EventObject& ) \
             if ( e.Context == xListener || !e.Context.is() ) \
                 aIt.remove(); \
         } \
-        catch(const css::uno::RuntimeException& e) \
+        catch(const css::uno::RuntimeException&) \
         { \
-            DISPLAY_EXCEPTION( ClassName, MethodName, e ) \
+            DISPLAY_EXCEPTION( ClassName, MethodName ) \
         } \
     } \
 }
@@ -181,7 +144,7 @@ void ClassName::MethodName( const EventType& evt ) \
 IMPL_LISTENERMULTIPLEXER_LISTENERMETHOD_BODY( ClassName, InterfaceName, MethodName, EventType )
 
 #define DECLIMPL_SERVICEINFO_DERIVED( ImplName, BaseClass, ServiceName ) \
-    OUString SAL_CALL getImplementationName(  ) override { return OUString("stardiv.Toolkit." #ImplName ); } \
+    OUString SAL_CALL getImplementationName(  ) override { return "stardiv.Toolkit." #ImplName; } \
     css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override   \
                             { \
                                 css::uno::Sequence< OUString > aNames = BaseClass::getSupportedServiceNames( ); \

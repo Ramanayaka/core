@@ -19,31 +19,29 @@
 #ifndef INCLUDED_VBAHELPER_SOURCE_VBAHELPER_VBACOMMANDBARHELPER_HXX
 #define INCLUDED_VBAHELPER_SOURCE_VBAHELPER_VBACOMMANDBARHELPER_HXX
 
-#include <vbahelper/vbahelperinterface.hxx>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/ui/XUIConfigurationManager.hpp>
-#include <com/sun/star/ui/XModuleUIConfigurationManagerSupplier.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/frame/XLayoutManager.hpp>
 #include <memory>
 
-static const char ITEM_DESCRIPTOR_COMMANDURL[]  = "CommandURL";
-static const char ITEM_DESCRIPTOR_HELPURL[]     = "HelpURL";
-static const char ITEM_DESCRIPTOR_CONTAINER[]   = "ItemDescriptorContainer";
-static const char ITEM_DESCRIPTOR_LABEL[]       = "Label";
-static const char ITEM_DESCRIPTOR_TYPE[]        = "Type";
-static const char ITEM_DESCRIPTOR_STYLE[]       = "Style";
-static const char ITEM_DESCRIPTOR_ISVISIBLE[]   = "IsVisible";
-static const char ITEM_DESCRIPTOR_UINAME[]      = "UIName";
-static const char ITEM_DESCRIPTOR_ENABLED[]     = "Enabled";
+const char ITEM_DESCRIPTOR_COMMANDURL[]  = "CommandURL";
+const char ITEM_DESCRIPTOR_HELPURL[]     = "HelpURL";
+const char ITEM_DESCRIPTOR_CONTAINER[]   = "ItemDescriptorContainer";
+const char ITEM_DESCRIPTOR_LABEL[]       = "Label";
+const char ITEM_DESCRIPTOR_TYPE[]        = "Type";
+const char ITEM_DESCRIPTOR_STYLE[]       = "Style";
+const char ITEM_DESCRIPTOR_ISVISIBLE[]   = "IsVisible";
+const char ITEM_DESCRIPTOR_UINAME[]      = "UIName";
+const char ITEM_DESCRIPTOR_ENABLED[]     = "Enabled";
 
-static const char ITEM_MENUBAR_URL[] = "private:resource/menubar/menubar";
-static const char ITEM_TOOLBAR_URL[] = "private:resource/toolbar/";
+const char ITEM_MENUBAR_URL[] = "private:resource/menubar/menubar";
+const char ITEM_TOOLBAR_URL[] = "private:resource/toolbar/";
 
-static const char CUSTOM_TOOLBAR_STR[] = "custom_toolbar_";
-static const char CUSTOM_MENU_STR[] = "vnd.openoffice.org:CustomMenu";
+const char CUSTOM_TOOLBAR_STR[] = "custom_toolbar_";
+const char CUSTOM_MENU_STR[] = "vnd.openoffice.org:CustomMenu";
 
 class VbaCommandBarHelper;
 typedef std::shared_ptr< VbaCommandBarHelper > VbaCommandBarHelperRef;
@@ -81,7 +79,7 @@ public:
     void ApplyTempChange( const OUString& sResourceUrl, const css::uno::Reference< css::container::XIndexAccess >& xSettings);
 
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::frame::XLayoutManager > getLayoutManager();
+    css::uno::Reference< css::frame::XLayoutManager > getLayoutManager() const;
 
     const OUString& getModuleId() const { return maModuleId; }
     /// @throws css::uno::RuntimeException

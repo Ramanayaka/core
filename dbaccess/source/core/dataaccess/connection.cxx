@@ -22,36 +22,27 @@
 #include <iterator>
 
 #include "connection.hxx"
-#include "dbastrings.hrc"
 #include "datasource.hxx"
-#include "core_resource.hrc"
-#include "core_resource.hxx"
-#include "statement.hxx"
-#include "preparedstatement.hxx"
-#include "callablestatement.hxx"
-#include "ContainerMediator.hxx"
-#include "SingleSelectQueryComposer.hxx"
-#include "querycomposer.hxx"
-#include "sdbcoretools.hxx"
+#include <strings.hrc>
+#include <core_resource.hxx>
+#include <statement.hxx>
+#include <preparedstatement.hxx>
+#include <callablestatement.hxx>
+#include <SingleSelectQueryComposer.hxx>
+#include <querycomposer.hxx>
 
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdb/tools/ConnectionTools.hpp>
-#include <com/sun/star/sdbc/XDriverAccess.hpp>
-#include <com/sun/star/sdbcx/XDataDefinitionSupplier.hpp>
 #include <com/sun/star/reflection/ProxyFactory.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/dbmetadata.hxx>
-#include <connectivity/dbexception.hxx>
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
-#include <comphelper/extract.hxx>
-#include <comphelper/uno3.hxx>
 #include <comphelper/sequence.hxx>
+#include <comphelper/types.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
@@ -79,7 +70,7 @@ namespace dbaccess
 // XServiceInfo
 OUString OConnection::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.dbaccess.Connection");
+    return "com.sun.star.comp.dbaccess.Connection";
 }
 
 sal_Bool OConnection::supportsService( const OUString& _rServiceName )
@@ -91,7 +82,7 @@ Sequence< OUString > OConnection::getSupportedServiceNames(  )
 {
     Sequence< OUString > aSupported = OConnectionWrapper::getSupportedServiceNames();
 
-    if ( 0 == findValue( aSupported, SERVICE_SDB_CONNECTION, true ).getLength() )
+    if ( comphelper::findValue( aSupported, SERVICE_SDB_CONNECTION ) == -1 )
     {
         sal_Int32 nLen = aSupported.getLength();
         aSupported.realloc( nLen + 1 );
@@ -125,7 +116,7 @@ Reference< XStatement >  OConnection::createStatement()
     if ( xMasterStatement.is() )
     {
         xStatement = new OStatement(this, xMasterStatement);
-        m_aStatements.push_back(WeakReferenceHelper(xStatement));
+        m_aStatements.emplace_back(xStatement);
     }
     return xStatement;
 }
@@ -141,7 +132,7 @@ Reference< XPreparedStatement >  OConnection::prepareStatement(const OUString& s
     if ( xMasterStatement.is() )
     {
         xStatement = new OPreparedStatement(this, xMasterStatement);
-        m_aStatements.push_back(WeakReferenceHelper(xStatement));
+        m_aStatements.emplace_back(xStatement);
     }
     return xStatement;
 }
@@ -156,7 +147,7 @@ Reference< XPreparedStatement >  OConnection::prepareCall(const OUString& sql)
     if ( xMasterStatement.is() )
     {
         xStatement = new OCallableStatement(this, xMasterStatement);
-        m_aStatements.push_back(WeakReferenceHelper(xStatement));
+        m_aStatements.emplace_back(xStatement);
     }
     return xStatement;
 }
@@ -262,7 +253,7 @@ void OConnection::setTypeMap(const Reference< XNameAccess > & typeMap)
 // OConnection
 
 OConnection::OConnection(ODatabaseSource& _rDB
-                         , Reference< XConnection >& _rxMaster
+                         , Reference< XConnection > const & _rxMaster
                          , const Reference< XComponentContext >& _rxORB)
             :OSubComponent(m_aMutex, static_cast< OWeakObject* >(&_rDB))
                 // as the queries reroute their refcounting to us, this m_aMutex is okey. If the queries
@@ -272,8 +263,6 @@ OConnection::OConnection(ODatabaseSource& _rDB
             ,m_aTableTypeFilter(_rDB.m_pImpl->m_aTableTypeFilter)
             ,m_aContext( _rxORB )
             ,m_xMasterConnection(_rxMaster)
-            ,m_pTables(nullptr)
-            ,m_pViews(nullptr)
             ,m_aWarnings( Reference< XWarningsSupplier >( _rxMaster, UNO_QUERY ) )
             ,m_nInAppend(0)
             ,m_bSupportsViews(false)
@@ -291,7 +280,7 @@ OConnection::OConnection(ODatabaseSource& _rDB
     }
     catch(const Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 
     m_xTableUIProvider.set(m_xMasterConnection, css::uno::UNO_QUERY);
@@ -311,9 +300,9 @@ OConnection::OConnection(ODatabaseSource& _rDB
         {
         }
         Reference< XNameContainer > xTableDefinitions(_rDB.getTables(),UNO_QUERY);
-        m_pTables = new OTableContainer( *this, m_aMutex, this, bCase, xTableDefinitions, this, m_nInAppend );
+        m_pTables.reset( new OTableContainer( *this, m_aMutex, this, bCase, xTableDefinitions, this, m_nInAppend ) );
 
-        // check if we supports types
+        // check if we support types
         if ( xMeta.is() )
         {
             Reference<XResultSet> xRes = xMeta->getTableTypes();
@@ -340,9 +329,9 @@ OConnection::OConnection(ODatabaseSource& _rDB
             }
             if(m_bSupportsViews)
             {
-                m_pViews = new OViewContainer(*this, m_aMutex, this, bCase, this, m_nInAppend);
-                m_pViews->addContainerListener(m_pTables);
-                m_pTables->addContainerListener(m_pViews);
+                m_pViews.reset( new OViewContainer(*this, m_aMutex, this, bCase, this, m_nInAppend) );
+                m_pViews->addContainerListener(m_pTables.get());
+                m_pTables->addContainerListener(m_pViews.get());
             }
             m_bSupportsUsers = Reference< XUsersSupplier> (getMasterTables(),UNO_QUERY).is();
             m_bSupportsGroups = Reference< XGroupsSupplier> (getMasterTables(),UNO_QUERY).is();
@@ -352,15 +341,13 @@ OConnection::OConnection(ODatabaseSource& _rDB
     }
     catch(const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     osl_atomic_decrement( &m_refCount );
 }
 
 OConnection::~OConnection()
 {
-    delete m_pTables;
-    delete m_pViews;
 }
 
 // XWarningsSupplier
@@ -380,7 +367,7 @@ void SAL_CALL OConnection::clearWarnings(  )
 
 namespace
 {
-    struct CompareTypeByName : public std::binary_function< Type, Type, bool >
+    struct CompareTypeByName
     {
         bool operator() ( const Type& _rLHS, const Type& _rRHS ) const
         {
@@ -459,10 +446,9 @@ void OConnection::disposing()
     OSubComponent::disposing();
     OConnectionWrapper::disposing();
 
-    connectivity::OWeakRefArray::const_iterator aEnd = m_aStatements.end();
-    for (connectivity::OWeakRefArray::const_iterator i = m_aStatements.begin(); aEnd != i; ++i)
+    for (auto const& statement : m_aStatements)
     {
-        Reference<XComponent> xComp(i->get(),UNO_QUERY);
+        Reference<XComponent> xComp(statement.get(),UNO_QUERY);
         ::comphelper::disposeComponent(xComp);
     }
     m_aStatements.clear();
@@ -475,10 +461,9 @@ void OConnection::disposing()
 
     ::comphelper::disposeComponent(m_xQueries);
 
-    connectivity::OWeakRefArray::const_iterator aComposerEnd = m_aComposers.end();
-    for (connectivity::OWeakRefArray::const_iterator j = m_aComposers.begin(); aComposerEnd != j; ++j)
+    for (auto const& composer : m_aComposers)
     {
-        Reference<XComponent> xComp(j->get(),UNO_QUERY);
+        Reference<XComponent> xComp(composer.get(),UNO_QUERY);
         ::comphelper::disposeComponent(xComp);
     }
 
@@ -516,7 +501,7 @@ Reference< XSQLQueryComposer >  OConnection::createQueryComposer()
 
     //  Reference< XNumberFormatsSupplier >  xSupplier = pParent->getNumberFormatsSupplier();
     Reference< XSQLQueryComposer >  xComposer( new OQueryComposer( this ) );
-    m_aComposers.push_back(WeakReferenceHelper(xComposer));
+    m_aComposers.emplace_back(xComposer);
     return xComposer;
 }
 
@@ -532,7 +517,7 @@ void OConnection::impl_fillTableFilter()
 
 void OConnection::refresh(const Reference< XNameAccess >& _rToBeRefreshed)
 {
-    if ( _rToBeRefreshed == Reference< XNameAccess >(m_pTables) )
+    if ( _rToBeRefreshed == Reference< XNameAccess >(m_pTables.get()) )
     {
         if (m_pTables && !m_pTables->isInitialized())
         {
@@ -550,7 +535,7 @@ void OConnection::refresh(const Reference< XNameAccess >& _rToBeRefreshed)
             }
         }
     }
-    else if ( _rToBeRefreshed == Reference< XNameAccess >(m_pViews) )
+    else if ( _rToBeRefreshed == Reference< XNameAccess >(m_pViews.get()) )
     {
         if (m_pViews && !m_pViews->isInitialized())
         {
@@ -572,9 +557,9 @@ Reference< XNameAccess >  OConnection::getTables()
     MutexGuard aGuard(m_aMutex);
     checkDisposed();
 
-    refresh(m_pTables);
+    refresh(m_pTables.get());
 
-    return m_pTables;
+    return m_pTables.get();
 }
 
 Reference< XNameAccess > SAL_CALL OConnection::getViews(  )
@@ -582,9 +567,9 @@ Reference< XNameAccess > SAL_CALL OConnection::getViews(  )
     MutexGuard aGuard(m_aMutex);
     checkDisposed();
 
-    refresh(m_pViews);
+    refresh(m_pViews.get());
 
-    return m_pViews;
+    return m_pViews.get();
 }
 
 // XQueriesSupplier
@@ -634,7 +619,7 @@ Reference< XInterface > SAL_CALL OConnection::createInstance( const OUString& _s
     if ( SERVICE_NAME_SINGLESELECTQUERYCOMPOSER == _sServiceSpecifier || _sServiceSpecifier == "com.sun.star.sdb.SingleSelectQueryAnalyzer" )
     {
         xRet = new OSingleSelectQueryComposer( getTables(),this, m_aContext );
-        m_aComposers.push_back(WeakReferenceHelper(xRet));
+        m_aComposers.emplace_back(xRet);
     }
     else
     {
@@ -646,11 +631,10 @@ Reference< XInterface > SAL_CALL OConnection::createInstance( const OUString& _s
                 Sequence<Any> aArgs(1);
                 Reference<XConnection> xMy(this);
                 aArgs[0] <<= NamedValue("ActiveConnection",makeAny(xMy));
-                aFind = m_aSupportServices.insert(
-                           TSupportServices::value_type(
+                aFind = m_aSupportServices.emplace(
                                _sServiceSpecifier,
                                m_aContext->getServiceManager()->createInstanceWithArgumentsAndContext(_sServiceSpecifier, aArgs, m_aContext)
-                           )).first;
+                           ).first;
             }
             return aFind->second;
         }
@@ -770,14 +754,11 @@ void OConnection::impl_checkTableQueryNames_nothrow()
         std::set< OUString > aSortedTableNames( aTableNames.begin(), aTableNames.end() );
 
         Reference< XNameAccess > xQueries( getQueries() );
-        Sequence< OUString > aQueryNames( xQueries->getElementNames() );
+        const Sequence< OUString > aQueryNames( xQueries->getElementNames() );
 
-        for (   const OUString* pQueryName = aQueryNames.getConstArray();
-                pQueryName != aQueryNames.getConstArray() + aQueryNames.getLength();
-                ++pQueryName
-            )
+        for ( auto const & queryName : aQueryNames )
         {
-            if ( aSortedTableNames.find( *pQueryName ) != aSortedTableNames.end() )
+            if ( aSortedTableNames.find( queryName ) != aSortedTableNames.end() )
             {
                 OUString sConflictWarning( DBA_RES( RID_STR_CONFLICTING_NAMES ) );
                 m_aWarnings.appendWarning( sConflictWarning, "01SB0", *this );
@@ -786,7 +767,7 @@ void OConnection::impl_checkTableQueryNames_nothrow()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -817,7 +798,7 @@ Reference< XInterface > SAL_CALL OConnection::getTableEditor( const Reference< X
     // ask ourself
     // well, we don't have own functionality here ...
     // In the future, we might decide to delegate the complete handling to this interface.
-    // In this case, we would need to instantiate an css.sdb.TableDesign here.
+    // In this case, we would need to instantiate a css.sdb.TableDesign here.
 
     return xReturn;
 }

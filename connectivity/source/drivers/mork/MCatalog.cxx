@@ -21,6 +21,8 @@
 #include "MConnection.hxx"
 #include "MTables.hxx"
 
+#include <com/sun/star/sdbc/XRow.hpp>
+
 
 using namespace connectivity::mork;
 using namespace ::com::sun::star::uno;
@@ -41,7 +43,7 @@ OCatalog::OCatalog(OConnection* _pCon) : connectivity::sdbcx::OCatalog(_pCon)
 
 void OCatalog::refreshTables()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
     Sequence< OUString > aTypes { "%" };
     Reference< XResultSet > xResult = m_xMetaData->getTables(Any(),
         "%", "%", aTypes);
@@ -59,7 +61,7 @@ void OCatalog::refreshTables()
     if(m_pTables)
         m_pTables->reFill(aVector);
     else
-        m_pTables = new OTables(m_xMetaData,*this,m_aMutex,aVector);
+        m_pTables.reset( new OTables(m_xMetaData,*this,m_aMutex,aVector) );
 }
 
 void OCatalog::refreshViews()
@@ -96,7 +98,7 @@ Reference< XNameAccess > SAL_CALL OCatalog::getTables(  )
         // allowed
     }
 
-    return m_pTables;
+    return m_pTables.get();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

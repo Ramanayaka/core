@@ -25,12 +25,10 @@ namespace dbaxml
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::xml::sax;
 
-OXMLTableFilterPattern::OXMLTableFilterPattern( SvXMLImport& rImport,
-                sal_uInt16 nPrfx
-                ,const OUString& _sLocalName
+OXMLTableFilterPattern::OXMLTableFilterPattern( SvXMLImport& rImport
                 ,bool _bNameFilter
                 ,OXMLTableFilterList& _rParent)
-    :SvXMLImportContext( rImport, nPrfx, _sLocalName )
+    :SvXMLImportContext( rImport )
     ,m_rParent(_rParent)
     ,m_bNameFilter(_bNameFilter)
 {
@@ -42,12 +40,18 @@ OXMLTableFilterPattern::~OXMLTableFilterPattern()
 
 }
 
-void OXMLTableFilterPattern::Characters( const OUString& rChars )
+void OXMLTableFilterPattern::characters( const OUString& rChars )
 {
+    maBuffer.append(rChars);
+}
+
+void OXMLTableFilterPattern::endFastElement( sal_Int32 )
+{
+    OUString sChars = maBuffer.makeStringAndClear();
     if ( m_bNameFilter )
-        m_rParent.pushTableFilterPattern(rChars);
+        m_rParent.pushTableFilterPattern(sChars);
     else
-        m_rParent.pushTableTypeFilter(rChars);
+        m_rParent.pushTableTypeFilter(sChars);
 }
 
 } // namespace dbaxml

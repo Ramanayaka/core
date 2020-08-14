@@ -21,15 +21,13 @@
 
 #include <sal/config.h>
 #include <svl/svldllapi.h>
-#include <com/sun/star/util/XSearchDescriptor.hpp>
 #include <com/sun/star/util/SearchAlgorithms2.hpp>
 #include <com/sun/star/util/SearchFlags.hpp>
 #include <i18nutil/transliteration.hxx>
 #include <i18nutil/searchopt.hxx>
 #include <unotools/configitem.hxx>
-#include <rsc/rscsfx.hxx>
+#include <svl/style.hxx>
 #include <svl/poolitem.hxx>
-#include <svl/srchdefs.hxx>
 
 // defines ---------------------------------------------------------------
 
@@ -59,7 +57,7 @@ enum class SvxSearchApp
 
 // class SvxSearchItem ---------------------------------------------------
 
-class SVL_DLLPUBLIC SvxSearchItem :
+class SVL_DLLPUBLIC SvxSearchItem final :
         public SfxPoolItem,
         public utl::ConfigItem
 {
@@ -101,11 +99,11 @@ public:
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
     virtual bool             operator == ( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxSearchItem*  Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     // ConfigItem
     virtual void            Notify( const css::uno::Sequence< OUString > &rPropertyNames ) override;
@@ -262,7 +260,7 @@ bool SvxSearchItem::IsLEVRelaxed() const
 
 sal_uInt16 SvxSearchItem::GetLEVOther() const
 {
-    return (sal_Int16) m_aSearchOpt.changedChars;
+    return static_cast<sal_Int16>(m_aSearchOpt.changedChars);
 }
 
 void SvxSearchItem::SetLEVOther( sal_uInt16 nVal )
@@ -272,7 +270,7 @@ void SvxSearchItem::SetLEVOther( sal_uInt16 nVal )
 
 sal_uInt16 SvxSearchItem::GetLEVShorter() const
 {
-    return (sal_Int16) m_aSearchOpt.insertedChars;
+    return static_cast<sal_Int16>(m_aSearchOpt.insertedChars);
 }
 
 void SvxSearchItem::SetLEVShorter( sal_uInt16 nVal )
@@ -282,7 +280,7 @@ void SvxSearchItem::SetLEVShorter( sal_uInt16 nVal )
 
 sal_uInt16 SvxSearchItem::GetLEVLonger() const
 {
-    return (sal_Int16) m_aSearchOpt.deletedChars;
+    return static_cast<sal_Int16>(m_aSearchOpt.deletedChars);
 }
 
 void SvxSearchItem::SetLEVLonger( sal_uInt16 nVal )

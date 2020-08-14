@@ -17,21 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <tools/stream.hxx>
-#include <com/sun/star/table/BorderLine.hpp>
 #include <com/sun/star/table/CellVertJustify2.hpp>
-#include <com/sun/star/table/ShadowLocation.hpp>
-#include <com/sun/star/table/TableBorder.hpp>
-#include <com/sun/star/table/ShadowFormat.hpp>
-#include <com/sun/star/table/CellRangeAddress.hpp>
-#include <com/sun/star/table/CellContentType.hpp>
-#include <com/sun/star/table/TableOrientation.hpp>
-#include <com/sun/star/util/SortField.hpp>
-#include <com/sun/star/util/SortFieldType.hpp>
-#include <com/sun/star/table/CellOrientation.hpp>
-#include <com/sun/star/table/CellAddress.hpp>
 
-#include "svx/rotmodit.hxx"
+#include <svx/dialmgr.hxx>
+#include <svx/rotmodit.hxx>
+#include <rotationstrings.hrc>
 
 using namespace ::com::sun::star;
 
@@ -56,28 +46,28 @@ SvxRotateModeItem::~SvxRotateModeItem()
 {
 }
 
-SfxPoolItem* SvxRotateModeItem::Create( SvStream& rStream, sal_uInt16 ) const
+OUString SvxRotateModeItem::GetValueText(SvxRotateMode nVal)
 {
-    sal_uInt16 nVal;
-    rStream.ReadUInt16( nVal );
-    return new SvxRotateModeItem( (SvxRotateMode) nVal,Which() );
+    assert(nVal <= SVX_ROTATE_MODE_BOTTOM && "enum overflow!");
+    return SvxResId(RID_SVXITEMS_ROTATE_MODE[static_cast<size_t>(nVal)]);
 }
 
 bool SvxRotateModeItem::GetPresentation(
                                 SfxItemPresentation ePres,
                                 MapUnit /*eCoreUnit*/, MapUnit /*ePresUnit*/,
-                                OUString& rText, const IntlWrapper * )  const
+                                OUString& rText, const IntlWrapper& )  const
 {
     rText.clear();
 
     switch ( ePres )
     {
         case SfxItemPresentation::Complete:
-            rText += "...: ";
-            SAL_FALLTHROUGH; // break; // FALL THROUGH!!!
+            rText += GetValueText(GetValue());
+            return true;
+            break;
 
         case SfxItemPresentation::Nameless:
-            rText += OUStringLiteral1( GetValue() );
+            rText += OUString::number( GetValue() );
             return true;
             break;
         default: ;//prevent warning
@@ -91,20 +81,15 @@ sal_uInt16 SvxRotateModeItem::GetValueCount() const
     return 4;       // STANDARD, TOP, CENTER, BOTTOM
 }
 
-SfxPoolItem* SvxRotateModeItem::Clone( SfxItemPool* ) const
+SvxRotateModeItem* SvxRotateModeItem::Clone( SfxItemPool* ) const
 {
     return new SvxRotateModeItem( *this );
-}
-
-sal_uInt16 SvxRotateModeItem::GetVersion( sal_uInt16 /*nFileVersion*/ ) const
-{
-    return 0;
 }
 
 bool SvxRotateModeItem::QueryValue( uno::Any& rVal, sal_uInt8 /*nMemberId*/ ) const
 {
     sal_Int32 nUno = table::CellVertJustify2::STANDARD;
-    switch ( (SvxRotateMode)GetValue() )
+    switch ( GetValue() )
     {
         case SVX_ROTATE_MODE_STANDARD: nUno = table::CellVertJustify2::STANDARD; break;
         case SVX_ROTATE_MODE_TOP:      nUno = table::CellVertJustify2::TOP;      break;

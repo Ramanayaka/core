@@ -17,31 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
 #include <tools/fract.hxx>
-#include <vcl/window.hxx>
-#include <vcl/oldprintadaptor.hxx>
-#include <sfx2/printer.hxx>
-#include <sfx2/progress.hxx>
-#include <pvprtdat.hxx>
 #include <viewsh.hxx>
 #include <pagefrm.hxx>
-#include <rootfrm.hxx>
 #include <viewimp.hxx>
-#include <viewopt.hxx>
 #include <printdata.hxx>
-#include <fldbas.hxx>
 #include <ptqueue.hxx>
-#include <swregion.hxx>
-#include <hints.hxx>
 #include <fntcache.hxx>
 
-#include <statstr.hrc>
-#include <comcore.hrc>
-
-#include <IDocumentFieldsAccess.hxx>
-#include <IDocumentDeviceAccess.hxx>
-#include <vprint.hxx>
+#include "vprint.hxx"
 
 using namespace ::com::sun::star;
 
@@ -94,7 +78,7 @@ void SwViewShell::PrintProspect(
     // create a new shell for the printer
     SwViewShell aShell( *this, nullptr, pPrinter );
 
-    SET_CURR_SHELL( &aShell );
+    CurrShell aCurr( &aShell );
 
     aShell.PrepareForPrint( rPrintData );
 
@@ -124,13 +108,13 @@ void SwViewShell::PrintProspect(
         if ( pStPage->IsEmptyPage() )
         {
             if ( pStPage->GetPhyPageNum() % 2 == 0 )
-                aSttPageSize = pStPage->GetPrev()->Frame().SSize();
+                aSttPageSize = pStPage->GetPrev()->getFrameArea().SSize();
             else
-                aSttPageSize = pStPage->GetNext()->Frame().SSize();
+                aSttPageSize = pStPage->GetNext()->getFrameArea().SSize();
         }
         else
         {
-            aSttPageSize = pStPage->Frame().SSize();
+            aSttPageSize = pStPage->getFrameArea().SSize();
         }
     }
     Size aNxtPageSize;
@@ -139,13 +123,13 @@ void SwViewShell::PrintProspect(
         if ( pNxtPage->IsEmptyPage() )
         {
             if ( pNxtPage->GetPhyPageNum() % 2 == 0 )
-                aNxtPageSize = pNxtPage->GetPrev()->Frame().SSize();
+                aNxtPageSize = pNxtPage->GetPrev()->getFrameArea().SSize();
             else
-                aNxtPageSize = pNxtPage->GetNext()->Frame().SSize();
+                aNxtPageSize = pNxtPage->GetNext()->getFrameArea().SSize();
         }
         else
         {
-            aNxtPageSize = pNxtPage->Frame().SSize();
+            aNxtPageSize = pNxtPage->getFrameArea().SSize();
         }
     }
 
@@ -176,7 +160,7 @@ void SwViewShell::PrintProspect(
         {
             // Round percentages for Drawings so that these can paint their objects properly
             aScY *= Fraction( 1000, 1 );
-            long nTmp = (long)aScY;
+            long nTmp = static_cast<long>(aScY);
             if( 1 < nTmp )
                 --nTmp;
             else
@@ -198,17 +182,17 @@ void SwViewShell::PrintProspect(
         if( pStPage )
         {
             aShell.Imp()->SetFirstVisPageInvalid();
-            aShell.maVisArea = pStPage->Frame();
+            aShell.maVisArea = pStPage->getFrameArea();
 
             Point aPos( aSttPt );
             aPos -= aShell.maVisArea.Pos();
             aMapMode.SetOrigin( aPos );
             pPrinter->SetMapMode( aMapMode );
-            pStPage->GetUpper()->Paint( *pOutDev, pStPage->Frame() );
+            pStPage->GetUpper()->PaintSwFrame( *pOutDev, pStPage->getFrameArea() );
         }
 
         pStPage = pNxtPage;
-        aSttPt.X() += aTmpPrtSize.Width() / 2;
+        aSttPt.AdjustX(aTmpPrtSize.Width() / 2 );
     }
 
     SwPaintQueue::Repaint();

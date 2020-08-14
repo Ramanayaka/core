@@ -22,7 +22,8 @@ certain functionality.
 
 @li @c sal.bootstrap - SAL bootstrap
 @li @c sal.debug - SAL debugging functionality
-@li @c sal.file
+@li @c sal.file - file system operations
+@li @c sal.fileio - file I/O
 @li @c sal.osl - SAL OSL library
 @li @c sal.osl.condition
 @li @c sal.osl.mutex
@@ -82,22 +83,30 @@ certain functionality.
 @li @c connectivity.jdbc
 @li @c connectivity.kab
 @li @c connectivity.macab
+@li @c connectivity.manager
 @li @c connectivity.mork
 @li @c connectivity.mozab
+@li @c connectivity.mysqlc
 @li @c connectivity.odbc
 @li @c connectivity.parse
 @li @c connectivity.postgresql
+@li @c connectivity.resource
+@li @c connectivity.writer
 
 @section comphelper
 
 @li @c comphelper
 @li @c comphelper.backupfilehelper
 @li @c comphelper.container - EmbeddedObjectContainer
+@li @c comphelper.crypto
+@li @c comphelper.lok
 
 @section cppu
 
 @li @c cppu
+@li @c cppu.affinebridge
 @li @c cppu.log
+@li @c cppu.purpenv
 @li @c cppu.threadpool
 @li @c cppu.typelib
 @li @c cppu.unsafebridge
@@ -115,10 +124,19 @@ certain functionality.
 @section cui
 
 @li @c cui.customize
+@li @c cui.customnotebookbar
 @li @c cui.dialogs
 @li @c cui.factory
 @li @c cui.options
 @li @c cui.tabpages
+
+@section drawinglayer
+
+@li @c drawinglayer
+
+@section emfio
+
+@li @c emfio - EMF and VMF image file formats import module
 
 @section Calc
 
@@ -128,6 +146,9 @@ certain functionality.
 @li @c sc.core.formulagroup
 @li @c sc.core.grouparealistener - sc::FormulaGroupAreaListener
 @li @c sc.filter - Calc filter
+@li @c sc.lok.docsize
+@li @c sc.lok.header
+@li @c sc.lok.poshelper
 @li @c sc.opencl - OpenCL-related stuff in general
 @li @c sc.opencl.source - Generated OpenCL source code
 @li @c sc.orcus
@@ -136,6 +157,8 @@ certain functionality.
 @li @c sc.orcus.style
 @li @c sc.orcus.table
 @li @c sc.qa
+@li @c sc.threaded
+@li @c sc.timing
 @li @c sc.ui - Calc UI
 @li @c sc.uitest - Calc UI Test part
 @li @c sc.viewdata
@@ -151,6 +174,7 @@ certain functionality.
 @li @c desktop.opengl
 @li @c desktop.splash
 @li @c desktop.test
+@li @c desktop.updater
 
 @section Draw
 
@@ -204,14 +228,15 @@ certain functionality.
 
 @li @c filter.config
 @li @c filter.eps
-@li @c filter.flash
 @li @c filter.icgm
 @li @c filter.ms - escher import/export
 @li @c filter.odfflatxml
 @li @c filter.os2met
 @li @c filter.pdf
 @li @c filter.pict
+@li @c filter.ras
 @li @c filter.svg
+@li @c filter.tga
 @li @c filter.tiff
 @li @c filter.xmlfa
 @li @c filter.xslt - xslt import/export
@@ -227,11 +252,13 @@ certain functionality.
 @li @c oox.ppt - pptx filter
 @li @c oox.shape
 @li @c oox.storage - ZipStorage class
+@li @c oox.vml - VML
 @li @c oox.xmlstream - XmlStream class
 
 @section forms
 
 @li @c forms.component
+@li @c forms.helper
 @li @c forms.misc
 @li @c forms.richtext
 @li @c forms.runtime
@@ -290,6 +317,7 @@ certain functionality.
 
 @li @c lok
 @li @c lok.tiledrendering
+@li @c lok.dialog
 
 @section l10ntools
 
@@ -306,6 +334,7 @@ certain functionality.
 
 @li @c package
 @li @c package.xstor
+@li @c package.threadeddeflate
 
 @section sdext
 
@@ -342,6 +371,7 @@ certain functionality.
 @section svl
 
 @li @c svl
+@li @c svl.crypto
 @li @c svl.items
 @li @c svl.numbers
 
@@ -376,6 +406,7 @@ certain functionality.
 
 @li @c toolkit
 @li @c toolkit.controls
+@li @c toolkit.helper
 
 @section tools
 
@@ -417,6 +448,7 @@ certain functionality.
 @section sax
 
 @li @c sax.cppunit
+@li @c sax.fastparser
 
 @section stoc
 
@@ -427,37 +459,46 @@ certain functionality.
 @li @c vcl
 @li @c vcl.a11y
 @li @c vcl.app
-@li @c vcl.cg - CoreGraphics calls on OS X and iOS
+@li @c vcl.builder
 @li @c vcl.control
-@li @c vcl.ct - CoreText-using code for OS X and iOS
+@li @c vcl.ct - CoreText-using code for macOS and iOS
 @li @c vcl.debugevent
+@li @c vcl.driver Graphics driver handling
 @li @c vcl.emf - EMF/EMF+ processing
 @li @c vcl.eventtesting
 @li @c vcl.filter
 @li @c vcl.fonts - font-specific code
+@li @c vcl.fonts.detail
 @li @c vcl.gdi - the GDI part of VCL, devices, bitmaps, etc.
+@li @c vcl.gdi.wndproc - Windows Procedure part of VCL
 @li @c vcl.gdi.fontmetric
 @li @c vcl.gtk - Gtk+ 2/3 plugin
 @li @c vcl.gtk3
+@li @c vcl.gtkkde5
 @li @c vcl.harfbuzz - HarfBuzz text layout
 @li @c vcl.headless - bitmap-based backend
 @li @c vcl.helper
 @li @c vcl.icontest
-@li @c vcl.kde - KDE
-@li @c vcl.kde4 - KDE4
+@li @c vcl.ios.clipboard
+@li @c vcl.kf5 - KF5
 @li @c vcl.layout - Widget layout
 @li @c vcl.lazydelete
 @li @c vcl.opengl
+@li @c vcl.opengl.qt5 - QT5 OpenGL
 @li @c vcl.osx
 @li @c vcl.osx.print
 @li @c vcl.pdfwriter
 @li @c vcl.plugadapt - the Unix/X11 backend plugin mechanism
+@li @c vcl.qt5 - QT5
 @li @c vcl.quartz
 @li @c vcl.schedule - scheduler / main-loop information
+@li @c vcl.schedule.deinit
 @li @c vcl.screensaverinhibitor
 @li @c vcl.scrollbar - Scroll Bars
 @li @c vcl.se - VCL Session Manager
 @li @c vcl.se.debug
+@li @c vcl.skia - VCL Skia-based code
+@li @c vcl.skia.trace - tracing drawing in VCL Skia-based code
 @li @c vcl.sm - Session Manager Client
 @li @c vcl.sm.debug
 @li @c vcl.uitest - The UI testing framework code
@@ -465,10 +506,11 @@ certain functionality.
 @li @c vcl.unx.dtrans
 @li @c vcl.unx.print
 @li @c vcl.virdev
+@li @c vcl.watchdog
 @li @c vcl.window
 @li @c vcl.wmf
 
-@section winaccessiblity
+@section winaccessibility
 
 @li @c iacc2 - IAccessible2 bridge debug
 
@@ -476,6 +518,7 @@ certain functionality.
 
 @li @c sw
 @li @c sw.a11y - accessibility
+@li @c sw.calc - formula calculation
 @li @c sw.core - Writer core
 @li @c sw.createcopy
 @li @c sw.doc
@@ -486,6 +529,7 @@ certain functionality.
 @li @c sw.html - Writer HTML import/export
 @li @c sw.idle
 @li @c sw.layout - Writer core view: document layout
+@li @c sw.layout.debug - Writer layout dbg_lay output
 @li @c sw.level2
 @li @c sw.mailmerge - Writer mail merge
 @li @c sw.pageframe - debug lifecycle of SwPageFrame
@@ -493,6 +537,7 @@ certain functionality.
 @li @c sw.tiled
 @li @c sw.ui
 @li @c sw.uno - Writer UNO interfaces
+@li @c sw.vba - Writer VBA
 @li @c sw.ww8 - .doc/.docx export filter, .doc import filter (not writerfilter)
 @li @c sw.ww8.level2 - further info for sw.ww8
 @li @c sw.xml - Writer .odt import/export
@@ -526,7 +571,9 @@ certain functionality.
 @li @c xmlsecurity.comp - xml security component
 @li @c xmlsecurity.dialogs - xml security dialogs
 @li @c xmlsecurity.helper
+@li @c xmlsecurity.ooxml - OOXML signature support
 @li @c xmlsecurity.pdfio - signing of existing PDF
+@li @c xmlsecurity.pdfio.test
 @li @c xmlsecurity.xmlsec - xmlsec wrapper
 @li @c xmlsecurity.xmlsec.gpg - gpg xmlsec component
 
@@ -563,7 +610,6 @@ certain functionality.
 @li @c configmgr.dconf
 @li @c cppcanvas
 @li @c cppcanvas.emf
-@li @c drawinglayer
 @li @c dtrans
 @li @c helpcompiler
 @li @c idl
@@ -572,7 +618,6 @@ certain functionality.
 @li @c lingucomponent
 @li @c linguistic
 @li @c lwp - lotuswordpro
-@li @c mysqlc
 @li @c opencl
 @li @c opencl.device
 @li @c opencl.file

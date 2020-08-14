@@ -9,46 +9,36 @@
 
 #include <memory>
 #include <cppunit/TestAssert.h>
-#include <cppunit/extensions/HelperMacros.h>
 #include <cppunit/plugin/TestPlugIn.h>
-
-#include <com/sun/star/table/BorderLineStyle.hpp>
 
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <drawinglayer/primitive2d/borderlineprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processorfromoutputdevice.hxx>
 #include <rtl/ref.hxx>
 #include <test/bootstrapfixture.hxx>
+#include <vcl/metaact.hxx>
 #include <vcl/vclptr.hxx>
 #include <vcl/virdev.hxx>
 #include <editeng/borderline.hxx>
+#include <svtools/borderhelper.hxx>
 
 using namespace com::sun::star;
 
 namespace
 {
-
 class DrawinglayerBorderTest : public test::BootstrapFixture
 {
-public:
-    void testDoubleDecompositionSolid();
-    void testDoublePixelProcessing();
-
-    CPPUNIT_TEST_SUITE(DrawinglayerBorderTest);
-    CPPUNIT_TEST(testDoubleDecompositionSolid);
-    CPPUNIT_TEST(testDoublePixelProcessing);
-    CPPUNIT_TEST_SUITE_END();
 };
 
-void DrawinglayerBorderTest::testDoubleDecompositionSolid()
+CPPUNIT_TEST_FIXTURE(DrawinglayerBorderTest, testDoubleDecompositionSolid)
 {
     // Create a border line primitive that's similar to the one from the bugdoc:
     // 1.47 pixels is 0.03cm at 130% zoom and 96 DPI.
     basegfx::B2DPoint aStart(0, 20);
     basegfx::B2DPoint aEnd(100, 20);
-    double fLeftWidth = 1.47;
+    double const fLeftWidth = 1.47;
     double const fDistance = 1.47;
     double const fRightWidth = 1.47;
     double const fExtendLeftStart = 0;
@@ -57,10 +47,23 @@ void DrawinglayerBorderTest::testDoubleDecompositionSolid()
     double const fExtendRightEnd = 0;
     basegfx::BColor aColorRight;
     basegfx::BColor aColorLeft;
-    basegfx::BColor aColorGap;
-    bool const bHasGapColor = false;
-    SvxBorderLineStyle const nStyle = SvxBorderLineStyle::DOUBLE;
-    rtl::Reference<drawinglayer::primitive2d::BorderLinePrimitive2D> aBorder(new drawinglayer::primitive2d::BorderLinePrimitive2D(aStart, aEnd, fLeftWidth, fDistance, fRightWidth, fExtendLeftStart, fExtendLeftEnd, fExtendRightStart, fExtendRightEnd, aColorRight, aColorLeft, aColorGap, bHasGapColor, nStyle));
+    const std::vector<double> aDashing(svtools::GetLineDashing(SvxBorderLineStyle::DOUBLE, 10.0));
+    const drawinglayer::attribute::StrokeAttribute aStrokeAttribute(aDashing);
+    std::vector<drawinglayer::primitive2d::BorderLine> aBorderlines;
+
+    aBorderlines.push_back(drawinglayer::primitive2d::BorderLine(
+        drawinglayer::attribute::LineAttribute(aColorLeft, fLeftWidth), fExtendLeftStart,
+        fExtendLeftStart, fExtendLeftEnd, fExtendLeftEnd));
+
+    aBorderlines.push_back(drawinglayer::primitive2d::BorderLine(fDistance));
+
+    aBorderlines.push_back(drawinglayer::primitive2d::BorderLine(
+        drawinglayer::attribute::LineAttribute(aColorRight, fRightWidth), fExtendRightStart,
+        fExtendRightStart, fExtendRightEnd, fExtendRightEnd));
+
+    rtl::Reference<drawinglayer::primitive2d::BorderLinePrimitive2D> aBorder(
+        new drawinglayer::primitive2d::BorderLinePrimitive2D(aStart, aEnd, aBorderlines,
+                                                             aStrokeAttribute));
 
     // Decompose it into polygons.
     drawinglayer::geometry::ViewInformation2D aView;
@@ -70,25 +73,26 @@ void DrawinglayerBorderTest::testDoubleDecompositionSolid()
     // Make sure it results in two borders as it's a double one.
     CPPUNIT_ASSERT_EQUAL(static_cast<std::size_t>(2), aContainer.size());
 
-    // Get the inside line.
-    auto pInside = dynamic_cast<const drawinglayer::primitive2d::PolyPolygonColorPrimitive2D*>(aContainer[0].get());
+    // Get the inside line, now a PolygonStrokePrimitive2D
+    auto pInside = dynamic_cast<const drawinglayer::primitive2d::PolygonStrokePrimitive2D*>(
+        aContainer[0].get());
     CPPUNIT_ASSERT(pInside);
 
     // Make sure the inside line's height is fLeftWidth.
-    const basegfx::B2DPolyPolygon& rPolyPolygon = pInside->getB2DPolyPolygon();
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt32>(1), rPolyPolygon.count());
-    const basegfx::B2DPolygon& rPolygon = rPolyPolygon.getB2DPolygon(0);
-    const basegfx::B2DRange& rRange = rPolygon.getB2DRange();
+    const double fLineWidthFromDecompose = pInside->getLineAttribute().getWidth();
+
     // This was 2.47, i.e. the width of the inner line was 1 unit (in the bugdoc's case: 1 pixel) wider than expected.
-    CPPUNIT_ASSERT_DOUBLES_EQUAL(fLeftWidth, rRange.getHeight(), basegfx::fTools::getSmallValue());
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(fLeftWidth, fLineWidthFromDecompose,
+                                 basegfx::fTools::getSmallValue());
 }
 
-void DrawinglayerBorderTest::testDoublePixelProcessing()
+CPPUNIT_TEST_FIXTURE(DrawinglayerBorderTest, testDoublePixelProcessing)
 {
     // Create a pixel processor.
     ScopedVclPtrInstance<VirtualDevice> pDev;
     drawinglayer::geometry::ViewInformation2D aView;
-    std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor(drawinglayer::processor2d::createBaseProcessor2DFromOutputDevice(*pDev, aView));
+    std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor(
+        drawinglayer::processor2d::createBaseProcessor2DFromOutputDevice(*pDev, aView));
     CPPUNIT_ASSERT(pProcessor);
     GDIMetaFile aMetaFile;
     // Start recording after the processor is created, so we can test the pixel processor.
@@ -100,52 +104,75 @@ void DrawinglayerBorderTest::testDoublePixelProcessing()
     basegfx::B2DPoint aEnd(100, 20);
     double const fLeftWidth = 1.47;
     double const fDistance = 1.47;
-    double fRightWidth = 1.47;
+    double const fRightWidth = 1.47;
     double const fExtendLeftStart = 0;
     double const fExtendLeftEnd = 0;
     double const fExtendRightStart = 0;
     double const fExtendRightEnd = 0;
     basegfx::BColor aColorRight;
     basegfx::BColor aColorLeft;
-    basegfx::BColor aColorGap;
-    bool const bHasGapColor = false;
-    SvxBorderLineStyle const nStyle = SvxBorderLineStyle::DOUBLE;
-    rtl::Reference<drawinglayer::primitive2d::BorderLinePrimitive2D> xBorder(new drawinglayer::primitive2d::BorderLinePrimitive2D(aStart, aEnd, fLeftWidth, fDistance, fRightWidth, fExtendLeftStart, fExtendLeftEnd, fExtendRightStart, fExtendRightEnd, aColorRight, aColorLeft, aColorGap, bHasGapColor, nStyle));
+    const std::vector<double> aDashing(svtools::GetLineDashing(SvxBorderLineStyle::DOUBLE, 10.0));
+    const drawinglayer::attribute::StrokeAttribute aStrokeAttribute(aDashing);
+    std::vector<drawinglayer::primitive2d::BorderLine> aBorderlines;
+
+    aBorderlines.push_back(drawinglayer::primitive2d::BorderLine(
+        drawinglayer::attribute::LineAttribute(aColorLeft, fLeftWidth), fExtendLeftStart,
+        fExtendLeftStart, fExtendLeftEnd, fExtendLeftEnd));
+
+    aBorderlines.push_back(drawinglayer::primitive2d::BorderLine(fDistance));
+
+    aBorderlines.push_back(drawinglayer::primitive2d::BorderLine(
+        drawinglayer::attribute::LineAttribute(aColorRight, fRightWidth), fExtendRightStart,
+        fExtendRightStart, fExtendRightEnd, fExtendRightEnd));
+
+    rtl::Reference<drawinglayer::primitive2d::BorderLinePrimitive2D> aBorder(
+        new drawinglayer::primitive2d::BorderLinePrimitive2D(aStart, aEnd, aBorderlines,
+                                                             aStrokeAttribute));
+
     drawinglayer::primitive2d::Primitive2DContainer aPrimitives;
-    aPrimitives.push_back(drawinglayer::primitive2d::Primitive2DReference(xBorder.get()));
+    aPrimitives.push_back(drawinglayer::primitive2d::Primitive2DReference(aBorder.get()));
 
     // Process the primitives.
     pProcessor->process(aPrimitives);
 
-    // Now assert the height of the outer (second) border polygon.
+    // Double line now gets decomposed in Metafile to painting four lines
+    // with width == 0 in a cross pattern due to real line width being between
+    // 1.0 and 2.0. Count created lines
     aMetaFile.Stop();
     aMetaFile.WindStart();
-    bool bFirst = true;
-    sal_Int32 nHeight = 0;
+    sal_uInt32 nPolyLineActionCount = 0;
+
     for (std::size_t nAction = 0; nAction < aMetaFile.GetActionSize(); ++nAction)
     {
         MetaAction* pAction = aMetaFile.GetAction(nAction);
-        if (pAction->GetType() == MetaActionType::POLYPOLYGON)
-        {
-            if (bFirst)
-            {
-                bFirst = false;
-                continue;
-            }
 
-            auto pMPPAction = static_cast<MetaPolyPolygonAction*>(pAction);
-            const tools::PolyPolygon& rPolyPolygon = pMPPAction->GetPolyPolygon();
-            nHeight = rPolyPolygon.GetBoundRect().getHeight();
+        if (MetaActionType::POLYLINE == pAction->GetType())
+        {
+            auto pMPLAction = static_cast<MetaPolyLineAction*>(pAction);
+
+            if (0 != pMPLAction->GetLineInfo().GetWidth()
+                && LineStyle::Solid == pMPLAction->GetLineInfo().GetStyle())
+            {
+                nPolyLineActionCount++;
+            }
         }
     }
-    sal_Int32 nExpectedHeight = std::round(fRightWidth);
-    // This was 2, and should be 1: if the logical requested width is 1.47,
-    // then that must be 1 px on the screen, not 2.
-    CPPUNIT_ASSERT_EQUAL(nExpectedHeight, nHeight);
+
+    // Check if all eight (2x four) simple lines with width == 0 and
+    // solid were created
+    //
+    // This has changed: Now, just the needed 'real' lines get created
+    // which have a width of 1. This are two lines. The former multiple
+    // lines were a combination of view-dependent force to a single-pixel
+    // line width (0 == lineWidth -> hairline) and vcl rendering this
+    // using a (insane) combination of single non-AAed lines. All the
+    // system-dependent part of the BorderLine stuff is now done in
+    // SdrFrameBorderPrimitive2D and svx.
+    // Adapted this test - still useful, breaking it may be a hint :-)
+    const sal_uInt32 nExpectedNumPolyLineActions = 2;
+
+    CPPUNIT_ASSERT_EQUAL(nExpectedNumPolyLineActions, nPolyLineActionCount);
 }
-
-CPPUNIT_TEST_SUITE_REGISTRATION(DrawinglayerBorderTest);
-
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

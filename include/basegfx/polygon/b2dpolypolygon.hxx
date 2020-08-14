@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_POLYGON_B2DPOLYPOLYGON_HXX
-#define INCLUDED_BASEGFX_POLYGON_B2DPOLYPOLYGON_HXX
+#pragma once
 
 #include <ostream>
 #include <vector>
@@ -67,7 +66,7 @@ namespace basegfx
         // polygon interface
         sal_uInt32 count() const;
 
-        B2DPolygon getB2DPolygon(sal_uInt32 nIndex) const;
+        B2DPolygon const & getB2DPolygon(sal_uInt32 nIndex) const;
         void setB2DPolygon(sal_uInt32 nIndex, const B2DPolygon& rPolygon);
 
         // test for curve
@@ -126,6 +125,32 @@ namespace basegfx
         const B2DPolygon* end() const;
         B2DPolygon* begin();
         B2DPolygon* end();
+
+        // exclusive management op's for SystemDependentData at B2DPolygon
+        template<class T>
+        std::shared_ptr<T> getSystemDependentData() const
+        {
+            return std::static_pointer_cast<T>(getSystemDependantDataInternal(typeid(T).hash_code()));
+        }
+
+        template<class T, class... Args>
+        std::shared_ptr<T> addOrReplaceSystemDependentData(SystemDependentDataManager& manager, Args&&... args) const
+        {
+            std::shared_ptr<T> r = std::make_shared<T>(manager, std::forward<Args>(args)...);
+
+            // tdf#129845 only add to buffer if a relevant buffer time is estimated
+            if(r->calculateCombinedHoldCyclesInSeconds() > 0)
+            {
+                basegfx::SystemDependentData_SharedPtr r2(r);
+                addOrReplaceSystemDependentDataInternal(r2);
+            }
+
+            return r;
+        }
+
+    private:
+        void addOrReplaceSystemDependentDataInternal(SystemDependentData_SharedPtr& rData) const;
+        SystemDependentData_SharedPtr getSystemDependantDataInternal(size_t hash_code) const;
     };
 
     // typedef for a vector of B2DPolyPolygons
@@ -148,7 +173,5 @@ namespace basegfx
     }
 
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_POLYGON_B2DPOLYPOLYGON_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

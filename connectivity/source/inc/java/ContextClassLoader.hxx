@@ -20,7 +20,7 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_CONTEXTCLASSLOADER_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_CONTEXTCLASSLOADER_HXX
 
-#include "java/GlobalRef.hxx"
+#include <java/GlobalRef.hxx>
 
 namespace comphelper
 {
@@ -28,7 +28,7 @@ namespace comphelper
 }
 
 
-namespace connectivity { namespace jdbc
+namespace connectivity::jdbc
 {
     class ContextClassLoaderScope
     {
@@ -64,8 +64,8 @@ namespace connectivity { namespace jdbc
         }
 
     private:
-        ContextClassLoaderScope(ContextClassLoaderScope &) = delete;
-        void operator =(ContextClassLoaderScope &) = delete;
+        ContextClassLoaderScope(ContextClassLoaderScope const &) = delete;
+        ContextClassLoaderScope& operator =(ContextClassLoaderScope const &) = delete;
 
         JNIEnv&                             m_environment;
         LocalRef< jobject >                 m_currentThread;
@@ -74,7 +74,7 @@ namespace connectivity { namespace jdbc
     };
 
 
-} } // namespace connectivity::jdbc
+} // namespace connectivity::jdbc
 
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_CONTEXTCLASSLOADER_HXX

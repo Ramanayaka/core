@@ -21,10 +21,9 @@
 
 #include <svl/poolitem.hxx>
 #include <svx/xtable.hxx>
-#include <com/sun/star/drawing/LineDash.hpp>
 #include <svx/svxdllapi.h>
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxColorListItem: public SfxPoolItem
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxColorListItem final : public SfxPoolItem
 {
     XColorListRef     pColorList;
 
@@ -39,17 +38,17 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxColorListItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     const XColorListRef&     GetColorList() const { return pColorList; }
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxGradientListItem : public SfxPoolItem
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxGradientListItem final : public SfxPoolItem
 {
     XGradientListRef  pGradientList;
 
@@ -64,17 +63,17 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxGradientListItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     const XGradientListRef& GetGradientList() const { return pGradientList; }
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxHatchListItem : public SfxPoolItem
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxHatchListItem final : public SfxPoolItem
 {
     XHatchListRef     pHatchList;
 
@@ -88,17 +87,17 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxHatchListItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     const XHatchListRef&    GetHatchList() const { return pHatchList; }
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxBitmapListItem : public SfxPoolItem
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxBitmapListItem final : public SfxPoolItem
 {
     XBitmapListRef    pBitmapList;
 
@@ -113,17 +112,17 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxBitmapListItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     const XBitmapListRef&   GetBitmapList() const { return pBitmapList; }
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxPatternListItem : public SfxPoolItem
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxPatternListItem final : public SfxPoolItem
 {
     XPatternListRef    pPatternList;
 
@@ -138,16 +137,16 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxPatternListItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     const XPatternListRef&  GetPatternList() const { return pPatternList; }
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxDashListItem : public SfxPoolItem
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxDashListItem final : public SfxPoolItem
 {
     XDashListRef      pDashList;
 
@@ -162,17 +161,17 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxDashListItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     const XDashListRef&     GetDashList() const { return pDashList; }
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxLineEndListItem : public SfxPoolItem
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxLineEndListItem final : public SfxPoolItem
 {
     XLineEndListRef   pLineEndList;
 
@@ -187,10 +186,10 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxLineEndListItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 

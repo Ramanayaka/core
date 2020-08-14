@@ -23,9 +23,14 @@
 #include <svx/SvxShapeTypes.hxx>
 #include <svx/svdoole2.hxx>
 
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/queryinterface.hxx>
 
-using namespace accessibility;
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
+#include <com/sun/star/drawing/XShapeDescriptor.hpp>
+
+using namespace ::accessibility;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::accessibility;
@@ -98,7 +103,7 @@ void SAL_CALL
 OUString SAL_CALL
     AccessibleOLEShape::getImplementationName()
 {
-    return OUString("AccessibleOLEShape");
+    return "AccessibleOLEShape";
 }
 
 
@@ -106,39 +111,23 @@ css::uno::Sequence< OUString> SAL_CALL
     AccessibleOLEShape::getSupportedServiceNames()
 {
     ThrowIfDisposed();
-    // Get list of supported service names from base class...
-    uno::Sequence< OUString > aServiceNames =
-        AccessibleShape::getSupportedServiceNames();
-    sal_Int32 nCount (aServiceNames.getLength());
-
-    // ...and add additional names.
-    aServiceNames.realloc (nCount + 1);
-    aServiceNames[nCount] = "com.sun.star.drawing.AccessibleOLEShape";
-
-    return aServiceNames;
+    const css::uno::Sequence<OUString> vals { "com.sun.star.drawing.AccessibleOLEShape" };
+    return comphelper::concatSequences(AccessibleShape::getSupportedServiceNames(), vals);
 }
 
 // XTypeProvider
-uno::Sequence<uno::Type> SAL_CALL
-    AccessibleOLEShape::getTypes()
+uno::Sequence<uno::Type> SAL_CALL AccessibleOLEShape::getTypes()
 {
     // Get list of types from the context base implementation...
-    uno::Sequence<uno::Type> aTypeList (AccessibleShape::getTypes());
-    // ...and add the additional type for the component.
-    long nTypeCount = aTypeList.getLength();
-    aTypeList.realloc (nTypeCount + 1);
-    const uno::Type aActionType =
-        cppu::UnoType<XAccessibleAction>::get();
-    aTypeList[nTypeCount] = aActionType;
-
-    return aTypeList;
+    return comphelper::concatSequences(AccessibleShape::getTypes(),
+            uno::Sequence { cppu::UnoType<XAccessibleAction>::get() } );
 }
 
 // XAccessibleExtendedAttributes
 uno::Any SAL_CALL AccessibleOLEShape::getExtendedAttributes()
 {
     uno::Any strRet;
-    ::rtl::OUString style;
+    OUString style;
     if( m_pShape )
     {
         style = "style:" + static_cast<SdrOle2Obj*>(m_pShape)->GetStyleString();
@@ -172,18 +161,12 @@ OUString
 
         default:
             sName = "UnknownAccessibleOLEShape";
-            uno::Reference<drawing::XShapeDescriptor> xDescriptor (mxShape, uno::UNO_QUERY);
+            uno::Reference<drawing::XShapeDescriptor> xDescriptor (mxShape);
             if (xDescriptor.is())
                 sName += ": " + xDescriptor->getShapeType();
     }
 
     return sName;
-}
-
-OUString
-    AccessibleOLEShape::CreateAccessibleDescription()
-{
-    return CreateAccessibleName ();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

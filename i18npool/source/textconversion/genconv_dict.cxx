@@ -24,14 +24,13 @@
 #include <errno.h>
 #include <sal/main.h>
 #include <sal/types.h>
-#include <rtl/strbuf.hxx>
 #include <rtl/ustring.hxx>
 
 #include <vector>
 
-void make_hhc_char(FILE *sfp, FILE *cfp);
-void make_stc_char(FILE *sfp, FILE *cfp);
-void make_stc_word(FILE *sfp, FILE *cfp);
+static void make_hhc_char(FILE *sfp, FILE *cfp);
+static void make_stc_char(FILE *sfp, FILE *cfp);
+static void make_stc_word(FILE *sfp, FILE *cfp);
 
 /* Main Procedure */
 
@@ -61,7 +60,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
     fprintf(cfp, " * Copyright(c) 1999 - 2000, Sun Microsystems, Inc.\n");
     fprintf(cfp, " * All Rights Reserved.\n");
     fprintf(cfp, " */\n\n");
-    fprintf(cfp, "/* !!!The file is generated automatically. DONOT edit the file manually!!! */\n\n");
+    fprintf(cfp, "/* !!!The file is generated automatically. DO NOT edit the file manually!!! */\n\n");
     fprintf(cfp, "#include <sal/types.h>\n");
     fprintf(cfp, "#include <textconversion.hxx>\n");
     fprintf(cfp, "\nextern \"C\" {\n");
@@ -94,31 +93,30 @@ void make_hhc_char(FILE *sfp, FILE *cfp)
     // generate main dict. data array
     fprintf(cfp, "\nstatic const sal_Unicode Hangul2HanjaData[] = {");
 
-    sal_Char Cstr[1024];
+    char Cstr[1024];
     count = 0;
     address = 0;
     while (fgets(Cstr, 1024, sfp)) {
         // input file is in UTF-8 encoding (Hangul:Hanja)
         // don't convert last new line character to Ostr.
         OUString Ostr(Cstr, strlen(Cstr) - 1, RTL_TEXTENCODING_UTF8);
-        const sal_Unicode *Ustr = Ostr.getStr();
         sal_Int32  len = Ostr.getLength();
 
-        Hangul2HanjaData[count][0] = Ustr[0];
+        Hangul2HanjaData[count][0] = Ostr[0];
         Hangul2HanjaData[count][1] = sal::static_int_cast<sal_uInt16>( address );
         Hangul2HanjaData[count][2] = sal::static_int_cast<sal_uInt16>( len - 2 );
         count++;
 
         for (i = 2; i < len; i++) {
-            Hanja2HangulData[Ustr[i]] = Ustr[0];
+            Hanja2HangulData[Ostr[i]] = Ostr[0];
             if (address++ % 16 == 0)
                 fprintf(cfp, "\n\t");
-            fprintf(cfp, "0x%04x, ", Ustr[i]);
+            fprintf(cfp, "0x%04x, ", Ostr[i]);
         }
     }
     fprintf(cfp, "\n};\n");
 
-    fprintf(cfp, "\nstatic const com::sun::star::i18n::Hangul_Index Hangul2HanjaIndex[] = {\n");
+    fprintf(cfp, "\nstatic const i18npool::Hangul_Index Hangul2HanjaIndex[] = {\n");
     for (i = 0; i < count; i++)
         fprintf(cfp, "\t{ 0x%04x, 0x%04x, 0x%02x },\n",
                         Hangul2HanjaData[i][0],
@@ -165,8 +163,8 @@ void make_hhc_char(FILE *sfp, FILE *cfp)
 
     // create function to return arrays
     fprintf (cfp, "\tconst sal_Unicode* getHangul2HanjaData() { return Hangul2HanjaData; }\n");
-    fprintf (cfp, "\tconst com::sun::star::i18n::Hangul_Index* getHangul2HanjaIndex() { return Hangul2HanjaIndex; }\n");
-    fprintf (cfp, "\tsal_Int16 getHangul2HanjaIndexCount() { return sizeof(Hangul2HanjaIndex) / sizeof(com::sun::star::i18n::Hangul_Index); }\n");
+    fprintf (cfp, "\tconst i18npool::Hangul_Index* getHangul2HanjaIndex() { return Hangul2HanjaIndex; }\n");
+    fprintf (cfp, "\tsal_Int16 getHangul2HanjaIndexCount() { return sizeof(Hangul2HanjaIndex) / sizeof(i18npool::Hangul_Index); }\n");
     fprintf (cfp, "\tconst sal_uInt16* getHanja2HangulIndex() { return Hanja2HangulIndex; }\n");
     fprintf (cfp, "\tconst sal_Unicode* getHanja2HangulData() { return Hanja2HangulData; }\n");
 }
@@ -184,22 +182,21 @@ void make_stc_char(FILE *sfp, FILE *cfp)
         TChinese2SChineseData[i] = 0;
     }
 
-    sal_Char Cstr[1024];
+    char Cstr[1024];
     while (fgets(Cstr, 1024, sfp)) {
         // input file is in UTF-8 encoding (SChinese:TChinese)
         // don't convert last new line character to Ostr.
         OUString Ostr(Cstr, strlen(Cstr) - 1, RTL_TEXTENCODING_UTF8);
-        const sal_Unicode *Ustr = Ostr.getStr();
         sal_Int32  len = Ostr.getLength();
-        if (Ustr[1] == 'v')
-            SChinese2VChineseData[Ustr[0]] = Ustr[2];
+        if (Ostr[1] == 'v')
+            SChinese2VChineseData[Ostr[0]] = Ostr[2];
         else {
-            SChinese2TChineseData[Ustr[0]] = Ustr[2];
-            if (SChinese2VChineseData[Ustr[0]] == 0)
-                SChinese2VChineseData[Ustr[0]] = Ustr[2];
+            SChinese2TChineseData[Ostr[0]] = Ostr[2];
+            if (SChinese2VChineseData[Ostr[0]] == 0)
+                SChinese2VChineseData[Ostr[0]] = Ostr[2];
         }
         for (i = 2; i < len; i++)
-            TChinese2SChineseData[Ustr[i]] = Ustr[0];
+            TChinese2SChineseData[Ostr[i]] = Ostr[0];
     }
 
     fprintf(cfp, "\nstatic const sal_uInt16 STC_CharIndex_S2T[] = {");
@@ -322,15 +319,18 @@ void make_stc_char(FILE *sfp, FILE *cfp)
     fprintf (cfp, "\tconst sal_Unicode* getSTC_CharData_T2S() { return STC_CharData_T2S; }\n");
 }
 
+namespace {
 
-typedef struct {
+struct Index {
     sal_uInt16 address;
     sal_Int32 len;
     sal_Unicode *data;
-} Index;
+};
+
+}
 
 extern "C" {
-int Index_comp(const void* s1, const void* s2)
+static int Index_comp(const void* s1, const void* s2)
 {
     Index const *p1 = static_cast<Index const *>(s1), *p2 = static_cast<Index const *>(s2);
     int result = p1->len - p2->len;
@@ -349,7 +349,7 @@ void make_stc_word(FILE *sfp, FILE *cfp)
     std::vector<Index> STC_WordEntry_T2S(0x10000);
     sal_Int32 count_S2T = 0, count_T2S = 0;
     sal_Int32 line = 0, char_total = 0;
-    sal_Char Cstr[1024];
+    char Cstr[1024];
 
     while (fgets(Cstr, 1024, sfp)) {
         // input file is in UTF-8 encoding (SChinese:TChinese)
@@ -404,7 +404,7 @@ void make_stc_word(FILE *sfp, FILE *cfp)
     sal_uInt16 STC_WordIndex[0x100];
 
     if (count_S2T > 0) {
-        qsort(&STC_WordEntry_S2T[0], count_S2T, sizeof(Index), Index_comp);
+        qsort(STC_WordEntry_S2T.data(), count_S2T, sizeof(Index), Index_comp);
 
         fprintf(cfp, "\nstatic const sal_uInt16 STC_WordEntry_S2T[] = {");
         count = 0;
@@ -437,7 +437,7 @@ void make_stc_word(FILE *sfp, FILE *cfp)
     }
 
     if (count_T2S > 0) {
-        qsort(&STC_WordEntry_T2S[0], count_T2S, sizeof(Index), Index_comp);
+        qsort(STC_WordEntry_T2S.data(), count_T2S, sizeof(Index), Index_comp);
 
         fprintf(cfp, "\nstatic const sal_uInt16 STC_WordEntry_T2S[] = {");
         count = 0;

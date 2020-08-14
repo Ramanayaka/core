@@ -20,18 +20,19 @@
 #define INCLUDED_I18NPOOL_INC_CALENDAR_GREGORIAN_HXX
 
 #include "calendarImpl.hxx"
-#include "nativenumbersupplier.hxx"
+
+#include <com/sun/star/i18n/CalendarFieldIndex.hpp>
 
 #include <unicode/calendar.h>
 #include <rtl/ref.hxx>
 
 #include <memory>
 
+namespace i18npool { class NativeNumberSupplierService; }
 
-//  class Calendar_gregorian
 
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 const sal_uInt8 kDisplayEraForcedLongYear = 0x01;
 
@@ -42,7 +43,7 @@ struct Era {
     sal_uInt8 flags;
 };
 
-const sal_Int16 FIELD_INDEX_COUNT = CalendarFieldIndex::FIELD_COUNT2;
+const sal_Int16 FIELD_INDEX_COUNT = css::i18n::CalendarFieldIndex::FIELD_COUNT2;
 
 class Calendar_gregorian : public CalendarImpl
 {
@@ -51,7 +52,8 @@ public:
     // Constructors
     Calendar_gregorian();
     Calendar_gregorian(const Era *_eraArray);
-    void SAL_CALL init(const Era *_eraArray);
+    void init(const Era *_eraArray);
+    bool setTimeZone( const OUString& rTimeZone );
 
     /**
     * Destructor
@@ -66,7 +68,7 @@ public:
     virtual sal_Int16 SAL_CALL getValue(sal_Int16 nFieldIndex) override;
     virtual void SAL_CALL addValue(sal_Int16 nFieldIndex, sal_Int32 nAmount) override;
     virtual sal_Bool SAL_CALL isValid() override;
-    virtual Calendar SAL_CALL getLoadedCalendar() override;
+    virtual css::i18n:: Calendar SAL_CALL getLoadedCalendar() override;
     virtual OUString SAL_CALL getUniqueID() override;
     virtual sal_Int16 SAL_CALL getFirstDayOfWeek() override;
     virtual void SAL_CALL setFirstDayOfWeek(sal_Int16 nDay) override;
@@ -74,19 +76,19 @@ public:
     virtual sal_Int16 SAL_CALL getMinimumNumberOfDaysForFirstWeek() override;
     virtual sal_Int16 SAL_CALL getNumberOfMonthsInYear() override;
     virtual sal_Int16 SAL_CALL getNumberOfDaysInWeek() override;
-    virtual css::uno::Sequence < CalendarItem > SAL_CALL getMonths() override;
-    virtual css::uno::Sequence < CalendarItem > SAL_CALL getDays() override;
+    virtual css::uno::Sequence < css::i18n::CalendarItem > SAL_CALL getMonths() override;
+    virtual css::uno::Sequence < css::i18n::CalendarItem > SAL_CALL getDays() override;
     virtual OUString SAL_CALL getDisplayName(sal_Int16 nCalendarDisplayIndex, sal_Int16 nIdx, sal_Int16 nNameType) override;
 
     // Methods in XExtendedCalendar
     virtual OUString SAL_CALL getDisplayString( sal_Int32 nCalendarDisplayCode, sal_Int16 nNativeNumberMode ) override;
 
     // XCalendar3
-    virtual Calendar2 SAL_CALL getLoadedCalendar2() override;
-    virtual css::uno::Sequence < CalendarItem2 > SAL_CALL getDays2() override;
-    virtual css::uno::Sequence < CalendarItem2 > SAL_CALL getMonths2() override;
-    virtual css::uno::Sequence < CalendarItem2 > SAL_CALL getGenitiveMonths2() override;
-    virtual css::uno::Sequence < CalendarItem2 > SAL_CALL getPartitiveMonths2() override;
+    virtual css::i18n::Calendar2 SAL_CALL getLoadedCalendar2() override;
+    virtual css::uno::Sequence < css::i18n::CalendarItem2 > SAL_CALL getDays2() override;
+    virtual css::uno::Sequence < css::i18n::CalendarItem2 > SAL_CALL getMonths2() override;
+    virtual css::uno::Sequence < css::i18n::CalendarItem2 > SAL_CALL getGenitiveMonths2() override;
+    virtual css::uno::Sequence < css::i18n::CalendarItem2 > SAL_CALL getPartitiveMonths2() override;
 
     // XCalendar4
     virtual void SAL_CALL setLocalDateTime(double TimeInDays) override;
@@ -101,7 +103,7 @@ protected:
     const Era *eraArray;
     std::unique_ptr<icu::Calendar> body;
     rtl::Reference<NativeNumberSupplierService> mxNatNum;
-    const sal_Char* cCalendar;
+    const char* cCalendar;
     css::lang::Locale aLocale;
     sal_uInt32 fieldSet;
     sal_Int16 fieldValue[FIELD_INDEX_COUNT];
@@ -118,7 +120,7 @@ protected:
     OUString getDisplayStringImpl( sal_Int32 nCalendarDisplayCode, sal_Int16 nNativeNumberMode, bool bEraMode );
 
 private:
-    Calendar2 aCalendar;
+    css::i18n::Calendar2 aCalendar;
 
     /** Submit fieldSetValue array according to fieldSet.
 
@@ -143,21 +145,25 @@ private:
 };
 
 
-//  class Calendar_hanja
 
-class Calendar_hanja : public Calendar_gregorian
+class Calendar_hanja final : public Calendar_gregorian
 {
 public:
     // Constructors
     Calendar_hanja();
-    virtual void SAL_CALL loadCalendar(const OUString& uniqueID, const css::lang::Locale& rLocale) override;
+    virtual OUString SAL_CALL getDisplayName(sal_Int16 nCalendarDisplayIndex, sal_Int16 nIdx, sal_Int16 nNameType) override;
+};
+
+class Calendar_hanja_yoil final : public Calendar_gregorian
+{
+public:
+    // Constructors
+    Calendar_hanja_yoil();
     virtual OUString SAL_CALL getDisplayName(sal_Int16 nCalendarDisplayIndex, sal_Int16 nIdx, sal_Int16 nNameType) override;
 };
 
 
-//  class Calendar_gengou
-
-class Calendar_gengou : public Calendar_gregorian
+class Calendar_gengou final : public Calendar_gregorian
 {
 public:
     // Constructors
@@ -165,9 +171,8 @@ public:
 };
 
 
-//  class Calendar_ROC
 
-class Calendar_ROC : public Calendar_gregorian
+class Calendar_ROC final : public Calendar_gregorian
 {
 public:
     // Constructors
@@ -175,9 +180,17 @@ public:
 };
 
 
-//  class Calendar_buddhist
 
-class Calendar_buddhist : public Calendar_gregorian
+class Calendar_dangi final : public Calendar_gregorian
+{
+public:
+    // Constructors
+    Calendar_dangi();
+};
+
+
+
+class Calendar_buddhist final : public Calendar_gregorian
 {
 public:
     // Constructors
@@ -187,7 +200,7 @@ public:
     virtual OUString SAL_CALL getDisplayString( sal_Int32 nCalendarDisplayCode, sal_Int16 nNativeNumberMode ) override;
 };
 
-} } } }
+}
 
 #endif
 

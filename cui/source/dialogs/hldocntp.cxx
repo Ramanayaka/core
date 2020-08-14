@@ -17,28 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hldocntp.hxx"
+#include <hldocntp.hxx>
 #include <osl/file.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <sfx2/docfac.hxx>
+#include <sfx2/docfilt.hxx>
+#include <svl/stritem.hxx>
+#include <com/sun/star/awt/XTopWindow.hpp>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/uno/Exception.hpp>
-#include <vcl/image.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/pathoptions.hxx>
 #include <unotools/dynamicmenuoptions.hxx>
-#include <sfx2/filedlghelper.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <unotools/ucbhelper.hxx>
 
 #include <comphelper/processfactory.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/ui/dialogs/FolderPicker.hpp>
 #include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
 
-#include "bitmaps.hlst"
+#include <cuihyperdlg.hxx>
+#include <dialmgr.hxx>
+#include <strings.hrc>
 
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::ui::dialogs;
@@ -52,6 +55,8 @@ using namespace ::com::sun::star;
 |*
 |************************************************************************/
 
+namespace {
+
 struct DocumentTypeData
 {
     OUString aStrURL;
@@ -59,6 +64,8 @@ struct DocumentTypeData
     DocumentTypeData (const OUString& aURL, const OUString& aExt) : aStrURL(aURL), aStrExt(aExt)
     {}
 };
+
+}
 
 bool SvxHyperlinkNewDocTp::ImplGetURLObject( const OUString& rPath, const OUString& rBase, INetURLObject& aURLObject ) const
 {
@@ -84,9 +91,9 @@ bool SvxHyperlinkNewDocTp::ImplGetURLObject( const OUString& rPath, const OUStri
         }
         if ( bIsValidURL )
         {
-            sal_Int32 nPos = m_pLbDocTypes->GetSelectEntryPos();
-            if ( nPos != LISTBOX_ENTRY_NOTFOUND )
-                aURLObject.SetExtension( static_cast<DocumentTypeData*>(m_pLbDocTypes->GetEntryData( nPos ))->aStrExt );
+            sal_Int32 nPos = m_xLbDocTypes->get_selected_index();
+            if (nPos != -1)
+                aURLObject.SetExtension(reinterpret_cast<DocumentTypeData*>(m_xLbDocTypes->get_id(nPos).toInt64())->aStrExt);
         }
 
     }
@@ -99,57 +106,40 @@ bool SvxHyperlinkNewDocTp::ImplGetURLObject( const OUString& rPath, const OUStri
 |*
 |************************************************************************/
 
-SvxHyperlinkNewDocTp::SvxHyperlinkNewDocTp ( vcl::Window *pParent, IconChoiceDialog* pDlg, const SfxItemSet* pItemSet)
-:   SvxHyperlinkTabPageBase ( pParent, pDlg, "HyperlinkNewDocPage", "cui/ui/hyperlinknewdocpage.ui", pItemSet )
+SvxHyperlinkNewDocTp::SvxHyperlinkNewDocTp(weld::Container* pParent, SvxHpLinkDlg* pDlg, const SfxItemSet* pItemSet)
+    : SvxHyperlinkTabPageBase(pParent, pDlg, "cui/ui/hyperlinknewdocpage.ui", "HyperlinkNewDocPage", pItemSet)
+    , m_xRbtEditNow(xBuilder->weld_radio_button("editnow"))
+    , m_xRbtEditLater(xBuilder->weld_radio_button("editlater"))
+    , m_xCbbPath(new SvxHyperURLBox(xBuilder->weld_combo_box("path")))
+    , m_xBtCreate(xBuilder->weld_button("create"))
+    , m_xLbDocTypes(xBuilder->weld_tree_view("types"))
 {
-    get(m_pRbtEditNow, "editnow");
-    get(m_pRbtEditLater, "editlater");
-    get(m_pCbbPath, "path");
-    m_pCbbPath->SetSmartProtocol(INetProtocol::File);
-    get(m_pBtCreate, "create");
-    BitmapEx aBitmap(RID_SVXBMP_NEWDOC);
-    aBitmap.Scale(GetDPIScaleFactor(),GetDPIScaleFactor(),BmpScaleFlag::BestQuality );
-    m_pBtCreate->SetModeImage(Image(aBitmap));
-    get(m_pLbDocTypes, "types");
-    m_pLbDocTypes->set_height_request(m_pLbDocTypes->GetTextHeight() * 5);
-
-    // Set HC bitmaps and disable display of bitmap names.
-    m_pBtCreate->EnableTextDisplay (false);
+    m_xCbbPath->SetSmartProtocol(INetProtocol::File);
+    m_xLbDocTypes->set_size_request(-1, m_xLbDocTypes->get_height_rows(5));
 
     InitStdControls();
 
     SetExchangeSupport ();
 
-    m_pCbbPath->Show();
-    m_pCbbPath->SetBaseURL(SvtPathOptions().GetWorkPath());
+    m_xCbbPath->show();
+    m_xCbbPath->SetBaseURL(SvtPathOptions().GetWorkPath());
 
     // set defaults
-    m_pRbtEditNow->Check();
+    m_xRbtEditNow->set_active(true);
 
-    m_pBtCreate->SetClickHdl        ( LINK ( this, SvxHyperlinkNewDocTp, ClickNewHdl_Impl ) );
+    m_xBtCreate->connect_clicked(LINK(this, SvxHyperlinkNewDocTp, ClickNewHdl_Impl));
 
     FillDocumentList ();
 }
 
 SvxHyperlinkNewDocTp::~SvxHyperlinkNewDocTp ()
 {
-    disposeOnce();
-}
-
-void SvxHyperlinkNewDocTp::dispose()
-{
-    if (m_pLbDocTypes)
+    if (m_xLbDocTypes)
     {
-        for ( sal_Int32 n=0; n<m_pLbDocTypes->GetEntryCount(); n++ )
-            delete static_cast<DocumentTypeData*>(m_pLbDocTypes->GetEntryData ( n ));
-        m_pLbDocTypes = nullptr;
+        for (sal_Int32 n = 0, nEntryCount = m_xLbDocTypes->n_children(); n < nEntryCount; ++n)
+            delete reinterpret_cast<DocumentTypeData*>(m_xLbDocTypes->get_id(n).toInt64());
+        m_xLbDocTypes = nullptr;
     }
-    m_pRbtEditNow.clear();
-    m_pRbtEditLater.clear();
-    m_pCbbPath.clear();
-    m_pBtCreate.clear();
-    m_pLbDocTypes.clear();
-    SvxHyperlinkTabPageBase::dispose();
 }
 
 /*************************************************************************
@@ -163,9 +153,9 @@ void SvxHyperlinkNewDocTp::FillDlgFields(const OUString& /*rStrURL*/)
 {
 }
 
-void SvxHyperlinkNewDocTp::FillDocumentList ()
+void SvxHyperlinkNewDocTp::FillDocumentList()
 {
-    EnterWait();
+    weld::WaitObject aWaitObj(mpDialog->getDialog());
 
     uno::Sequence< uno::Sequence< beans::PropertyValue > >
         aDynamicMenuEntries( SvtDynamicMenuOptions().GetMenu( EDynamicMenuType::NewMenu ) );
@@ -173,20 +163,16 @@ void SvxHyperlinkNewDocTp::FillDocumentList ()
     sal_uInt32 i, nCount = aDynamicMenuEntries.getLength();
     for ( i = 0; i < nCount; i++ )
     {
-        uno::Sequence< beans::PropertyValue >& rDynamicMenuEntry = aDynamicMenuEntries[ i ];
+        const uno::Sequence< beans::PropertyValue >& rDynamicMenuEntry = aDynamicMenuEntries[ i ];
 
-        OUString aDocumentUrl, aTitle, aImageId, aTargetName;
+        OUString aDocumentUrl, aTitle;
 
-           for ( int e = 0; e < rDynamicMenuEntry.getLength(); e++ )
+        for ( const beans::PropertyValue& e : rDynamicMenuEntry )
         {
-            if ( rDynamicMenuEntry[ e ].Name == DYNAMICMENU_PROPERTYNAME_URL )
-                rDynamicMenuEntry[ e ].Value >>= aDocumentUrl;
-            else if ( rDynamicMenuEntry[e].Name == DYNAMICMENU_PROPERTYNAME_TITLE )
-                rDynamicMenuEntry[e].Value >>= aTitle;
-            else if ( rDynamicMenuEntry[e].Name == DYNAMICMENU_PROPERTYNAME_IMAGEIDENTIFIER )
-                rDynamicMenuEntry[e].Value >>= aImageId;
-            else if ( rDynamicMenuEntry[e].Name == DYNAMICMENU_PROPERTYNAME_TARGETNAME )
-                rDynamicMenuEntry[e].Value >>= aTargetName;
+            if ( e.Name == DYNAMICMENU_PROPERTYNAME_URL )
+                e.Value >>= aDocumentUrl;
+            else if ( e.Name == DYNAMICMENU_PROPERTYNAME_TITLE )
+                e.Value >>= aTitle;
         }
         //#i96822# business cards, labels and database should not be inserted here
         if( aDocumentUrl == "private:factory/swriter?slot=21051" ||
@@ -205,19 +191,16 @@ void SvxHyperlinkNewDocTp::FillDocumentList ()
             if ( pFilter )
             {
                 // insert doc-name and image
-                OUString aTitleName( aTitle );
-                aTitleName = aTitleName.replaceFirst( "~", "" );
+                OUString aTitleName = aTitle.replaceFirst( "~", "" );
 
-                sal_Int16 nPos = m_pLbDocTypes->InsertEntry ( aTitleName );
-                OUString aStrDefExt( pFilter->GetDefaultExtension () );
-                DocumentTypeData *pTypeData = new DocumentTypeData ( aDocumentUrl, aStrDefExt.copy( 2 ) );
-                m_pLbDocTypes->SetEntryData ( nPos, pTypeData );
+                OUString aStrDefExt(pFilter->GetDefaultExtension());
+                DocumentTypeData *pTypeData = new DocumentTypeData(aDocumentUrl, aStrDefExt.copy(2));
+                OUString sId(OUString::number(reinterpret_cast<sal_Int64>(pTypeData)));
+                m_xLbDocTypes->append(sId, aTitleName);
             }
         }
     }
-    m_pLbDocTypes->SelectEntryPos ( 0 );
-
-    LeaveWait();
+    m_xLbDocTypes->select(0);
 }
 
 /*************************************************************************
@@ -231,9 +214,9 @@ void SvxHyperlinkNewDocTp::GetCurentItemData ( OUString& rStrURL, OUString& aStr
                                                SvxLinkInsertMode& eMode )
 {
     // get data from dialog-controls
-    rStrURL = m_pCbbPath->GetText();
+    rStrURL = m_xCbbPath->get_active_text();
     INetURLObject aURL;
-    if ( ImplGetURLObject( rStrURL, m_pCbbPath->GetBaseURL(), aURL ) )
+    if ( ImplGetURLObject( rStrURL, m_xCbbPath->GetBaseURL(), aURL ) )
     {
         rStrURL = aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
     }
@@ -247,9 +230,9 @@ void SvxHyperlinkNewDocTp::GetCurentItemData ( OUString& rStrURL, OUString& aStr
 |*
 |************************************************************************/
 
-VclPtr<IconChoicePage> SvxHyperlinkNewDocTp::Create( vcl::Window* pWindow, IconChoiceDialog* pDlg, const SfxItemSet* pItemSet )
+std::unique_ptr<IconChoicePage> SvxHyperlinkNewDocTp::Create(weld::Container* pWindow, SvxHpLinkDlg* pDlg, const SfxItemSet* pItemSet)
 {
-    return VclPtr<SvxHyperlinkNewDocTp>::Create( pWindow, pDlg, pItemSet );
+    return std::make_unique<SvxHyperlinkNewDocTp>(pWindow, pDlg, pItemSet);
 }
 
 /*************************************************************************
@@ -257,10 +240,9 @@ VclPtr<IconChoicePage> SvxHyperlinkNewDocTp::Create( vcl::Window* pWindow, IconC
 |* Set initial focus
 |*
 |************************************************************************/
-
 void SvxHyperlinkNewDocTp::SetInitFocus()
 {
-    m_pCbbPath->GrabFocus();
+    m_xCbbPath->grab_focus();
 }
 
 /*************************************************************************
@@ -268,17 +250,95 @@ void SvxHyperlinkNewDocTp::SetInitFocus()
 |* Ask page whether an insert is possible
 |*
 \************************************************************************/
-
 bool SvxHyperlinkNewDocTp::AskApply()
 {
     INetURLObject aINetURLObject;
-    bool bRet = ImplGetURLObject( m_pCbbPath->GetText(), m_pCbbPath->GetBaseURL(), aINetURLObject );
+    bool bRet = ImplGetURLObject(m_xCbbPath->get_active_text(), m_xCbbPath->GetBaseURL(), aINetURLObject);
     if ( !bRet )
     {
-        ScopedVclPtrInstance< WarningBox > aWarning( this, WB_OK, CuiResId(RID_SVXSTR_HYPDLG_NOVALIDFILENAME) );
-        aWarning->Execute();
+        std::unique_ptr<weld::MessageDialog> xWarn(Application::CreateMessageDialog(mpDialog->getDialog(),
+                                                   VclMessageType::Warning, VclButtonsType::Ok,
+                                                   CuiResId(RID_SVXSTR_HYPDLG_NOVALIDFILENAME)));
+        xWarn->run();
     }
     return bRet;
+}
+
+namespace
+{
+    struct ExecuteInfo
+    {
+        bool bRbtEditLater;
+        bool bRbtEditNow;
+        INetURLObject aURL;
+        OUString aStrDocName;
+        // current document
+        css::uno::Reference<css::frame::XFrame> xFrame;
+        SfxDispatcher* pDispatcher;
+    };
+}
+
+IMPL_STATIC_LINK(SvxHyperlinkNewDocTp, DispatchDocument, void*, p, void)
+{
+    std::unique_ptr<ExecuteInfo> xExecuteInfo(static_cast<ExecuteInfo*>(p));
+    if (!xExecuteInfo->xFrame.is())
+        return;
+    try
+    {
+        //if it throws dispatcher is invalid
+        css::uno::Reference<css::awt::XTopWindow>(xExecuteInfo->xFrame->getContainerWindow(), css::uno::UNO_QUERY_THROW);
+
+        SfxViewFrame *pViewFrame = nullptr;
+
+        // create items
+        SfxStringItem aName( SID_FILE_NAME, xExecuteInfo->aStrDocName );
+        SfxStringItem aReferer( SID_REFERER, "private:user" );
+        SfxStringItem aFrame( SID_TARGETNAME, "_blank");
+
+        OUString aStrFlags('S');
+        if (xExecuteInfo->bRbtEditLater)
+        {
+            aStrFlags += "H";
+        }
+        SfxStringItem aFlags (SID_OPTIONS, aStrFlags);
+
+        // open url
+        const SfxPoolItem* pReturn = xExecuteInfo->pDispatcher->ExecuteList(
+                SID_OPENDOC, SfxCallMode::SYNCHRON,
+                { &aName, &aFlags, &aFrame, &aReferer });
+
+        // save new doc
+        const SfxViewFrameItem *pItem = dynamic_cast<const SfxViewFrameItem*>( pReturn  );  // SJ: pReturn is NULL if the Hyperlink
+        if ( pItem )                                                            // creation is cancelled #106216#
+        {
+            pViewFrame = pItem->GetFrame();
+            if (pViewFrame)
+            {
+                SfxStringItem aNewName( SID_FILE_NAME, xExecuteInfo->aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
+                SfxUnoFrameItem aDocFrame( SID_FILLFRAME, pViewFrame->GetFrame().GetFrameInterface() );
+                fprintf(stderr, "is there a frame int %p\n", pViewFrame->GetFrame().GetFrameInterface().get() );
+                pViewFrame->GetDispatcher()->ExecuteList(
+                    SID_SAVEASDOC, SfxCallMode::SYNCHRON,
+                    { &aNewName }, { &aDocFrame });
+            }
+        }
+
+        if (xExecuteInfo->bRbtEditNow)
+        {
+            css::uno::Reference<css::awt::XTopWindow> xWindow(xExecuteInfo->xFrame->getContainerWindow(), css::uno::UNO_QUERY);
+            if (xWindow.is()) //will be false if the frame was exited while the document was loading (e.g. we waited for warning dialogs)
+                xWindow->toFront();
+        }
+
+        if (pViewFrame && xExecuteInfo->bRbtEditLater)
+        {
+            SfxObjectShell* pObjShell = pViewFrame->GetObjectShell();
+            pObjShell->DoClose();
+        }
+    }
+    catch (...)
+    {
+    }
 }
 
 /*************************************************************************
@@ -286,114 +346,64 @@ bool SvxHyperlinkNewDocTp::AskApply()
 |* Any action to do after apply-button is pressed
 |*
 \************************************************************************/
-
-void SvxHyperlinkNewDocTp::DoApply ()
+void SvxHyperlinkNewDocTp::DoApply()
 {
-    EnterWait();
+    weld::WaitObject aWait(mpDialog->getDialog());
 
     // get data from dialog-controls
-    OUString aStrNewName = m_pCbbPath->GetText();
+    OUString aStrNewName = m_xCbbPath->get_active_text();
 
     if ( aStrNewName.isEmpty() )
         aStrNewName = maStrInitURL;
 
-
     // create a real URL-String
-
     INetURLObject aURL;
-    if ( ImplGetURLObject( aStrNewName, m_pCbbPath->GetBaseURL(), aURL ) )
+    if ( !ImplGetURLObject( aStrNewName, m_xCbbPath->GetBaseURL(), aURL ) )
+        return;
+
+    // create Document
+    aStrNewName = aURL.GetURLPath( INetURLObject::DecodeMechanism::NONE );
+    bool bCreate = true;
+    try
     {
+        // check if file exists, warn before we overwrite it
+        std::unique_ptr<SvStream> pIStm = ::utl::UcbStreamHelper::CreateStream( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), StreamMode::READ );
 
+        bool bOk = pIStm && ( pIStm->GetError() == ERRCODE_NONE);
 
-        // create Document
+        pIStm.reset();
 
-        aStrNewName = aURL.GetURLPath( INetURLObject::DecodeMechanism::NONE );
-        SfxViewFrame *pViewFrame = nullptr;
-        try
+        if( bOk )
         {
-            bool bCreate = true;
-
-            // check if file exists, warn before we overwrite it
-            {
-                SvStream* pIStm = ::utl::UcbStreamHelper::CreateStream( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), StreamMode::READ );
-
-                bool bOk = pIStm && ( pIStm->GetError() == ERRCODE_NONE);
-
-                delete pIStm;
-
-                if( bOk )
-                {
-                    ScopedVclPtrInstance<WarningBox> aWarning( this, WB_YES_NO, CuiResId(RID_SVXSTR_HYPERDLG_QUERYOVERWRITE) );
-                    bCreate = aWarning->Execute() == RET_YES;
-                }
-            }
-
-            if( bCreate )
-            {
-                // current document
-                SfxViewFrame* pCurrentDocFrame = SfxViewFrame::Current();
-
-                if ( !aStrNewName.isEmpty() )
-                {
-                    // get private-url
-                    sal_Int32 nPos = m_pLbDocTypes->GetSelectEntryPos();
-                    if( nPos == LISTBOX_ENTRY_NOTFOUND )
-                        nPos=0;
-                    OUString aStrDocName ( static_cast<DocumentTypeData*>(
-                                         m_pLbDocTypes->GetEntryData( nPos ))->aStrURL );
-
-                    // create items
-                    SfxStringItem aName( SID_FILE_NAME, aStrDocName );
-                    SfxStringItem aReferer( SID_REFERER, OUString("private:user") );
-                    SfxStringItem aFrame( SID_TARGETNAME, OUString("_blank") );
-
-                    OUString aStrFlags('S');
-                    if ( m_pRbtEditLater->IsChecked() )
-                    {
-                        aStrFlags += "H";
-                    }
-                    SfxStringItem aFlags (SID_OPTIONS, aStrFlags);
-
-                    // open url
-                    const SfxPoolItem* pReturn = GetDispatcher()->ExecuteList(
-                            SID_OPENDOC, SfxCallMode::SYNCHRON,
-                            { &aName, &aFlags, &aFrame, &aReferer });
-
-                    // save new doc
-                    const SfxViewFrameItem *pItem = dynamic_cast<const SfxViewFrameItem*>( pReturn  );  // SJ: pReturn is NULL if the Hyperlink
-                    if ( pItem )                                                            // creation is cancelled #106216#
-                    {
-                        pViewFrame = pItem->GetFrame();
-                        if (pViewFrame)
-                        {
-                            SfxStringItem aNewName( SID_FILE_NAME, aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
-
-                            pViewFrame->GetDispatcher()->ExecuteList(
-                                SID_SAVEASDOC, SfxCallMode::SYNCHRON,
-                                { &aNewName });
-
-                        }
-                    }
-                }
-
-                if ( m_pRbtEditNow->IsChecked() && pCurrentDocFrame )
-                {
-                    pCurrentDocFrame->ToTop();
-                }
-            }
-        }
-        catch (const uno::Exception&)
-        {
-        }
-
-        if ( pViewFrame && m_pRbtEditLater->IsChecked() )
-        {
-            SfxObjectShell* pObjShell = pViewFrame->GetObjectShell();
-            pObjShell->DoClose();
+            std::unique_ptr<weld::MessageDialog> xWarn(Application::CreateMessageDialog(mpDialog->getDialog(),
+                                                       VclMessageType::Warning, VclButtonsType::YesNo,
+                                                       CuiResId(RID_SVXSTR_HYPERDLG_QUERYOVERWRITE)));
+            bCreate = xWarn->run() == RET_YES;
         }
     }
+    catch (const uno::Exception&)
+    {
+    }
 
-    LeaveWait();
+    if (!(bCreate && !aStrNewName.isEmpty()))
+        return;
+
+    ExecuteInfo* pExecuteInfo = new ExecuteInfo;
+
+    pExecuteInfo->bRbtEditLater = m_xRbtEditLater->get_active();
+    pExecuteInfo->bRbtEditNow = m_xRbtEditNow->get_active();
+    // get private-url
+    sal_Int32 nPos = m_xLbDocTypes->get_selected_index();
+    if (nPos == -1)
+        nPos = 0;
+    pExecuteInfo->aURL = aURL;
+    pExecuteInfo->aStrDocName = reinterpret_cast<DocumentTypeData*>(m_xLbDocTypes->get_id(nPos).toInt64())->aStrURL;
+
+    // current document
+    pExecuteInfo->xFrame = GetDispatcher()->GetFrame()->GetFrame().GetFrameInterface();
+    pExecuteInfo->pDispatcher = GetDispatcher();
+
+    Application::PostUserEvent(LINK(nullptr, SvxHyperlinkNewDocTp, DispatchDocument), pExecuteInfo);
 }
 
 /*************************************************************************
@@ -401,14 +411,14 @@ void SvxHyperlinkNewDocTp::DoApply ()
 |* Click on imagebutton : new
 |*
 |************************************************************************/
-
-IMPL_LINK_NOARG(SvxHyperlinkNewDocTp, ClickNewHdl_Impl, Button*, void)
+IMPL_LINK_NOARG(SvxHyperlinkNewDocTp, ClickNewHdl_Impl, weld::Button&, void)
 {
+    DisableClose( true );
     uno::Reference < XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
     uno::Reference < XFolderPicker2 >  xFolderPicker = FolderPicker::create(xContext);
 
     OUString            aStrURL;
-    OUString            aTempStrURL( m_pCbbPath->GetText() );
+    OUString            aTempStrURL( m_xCbbPath->get_active_text() );
     osl::FileBase::getFileURLFromSystemPath( aTempStrURL, aStrURL );
 
     OUString            aStrPath = aStrURL;
@@ -422,49 +432,48 @@ IMPL_LINK_NOARG(SvxHyperlinkNewDocTp, ClickNewHdl_Impl, Button*, void)
         bHandleFileName = true;
 
     xFolderPicker->setDisplayDirectory( aStrPath );
-    DisableClose( true );
     sal_Int16 nResult = xFolderPicker->execute();
     DisableClose( false );
-    if( ExecutableDialogResults::OK == nResult )
+    if( ExecutableDialogResults::OK != nResult )
+        return;
+
+    char const  sSlash[] = "/";
+
+    INetURLObject   aURL( aStrURL, INetProtocol::File );
+    OUString        aStrName;
+    if( bHandleFileName )
+        aStrName = bZeroPath? aTempStrURL : aURL.getName();
+
+    m_xCbbPath->SetBaseURL( xFolderPicker->getDirectory() );
+    OUString          aStrTmp( xFolderPicker->getDirectory() );
+
+    if( aStrTmp[ aStrTmp.getLength() - 1 ] != sSlash[0] )
+        aStrTmp += sSlash;
+
+    // append old file name
+    if( bHandleFileName )
+        aStrTmp += aStrName;
+
+    INetURLObject   aNewURL( aStrTmp );
+
+    if (!aStrName.isEmpty() && !aNewURL.getExtension().isEmpty() &&
+       m_xLbDocTypes->get_selected_index() != -1)
     {
-        sal_Char const  sSlash[] = "/";
-
-        INetURLObject   aURL( aStrURL, INetProtocol::File );
-        OUString        aStrName;
-        if( bHandleFileName )
-            aStrName = bZeroPath? aTempStrURL : aURL.getName();
-
-        m_pCbbPath->SetBaseURL( xFolderPicker->getDirectory() );
-        OUString          aStrTmp( xFolderPicker->getDirectory() );
-
-        if( aStrTmp[ aStrTmp.getLength() - 1 ] != sSlash[0] )
-            aStrTmp += sSlash;
-
-        // append old file name
-        if( bHandleFileName )
-            aStrTmp += aStrName;
-
-        INetURLObject   aNewURL( aStrTmp );
-
-        if( !aStrName.isEmpty() && !aNewURL.getExtension().isEmpty() &&
-            m_pLbDocTypes->GetSelectEntryPos() != LISTBOX_ENTRY_NOTFOUND )
-        {
-            // get private-url
-            const sal_Int32 nPos = m_pLbDocTypes->GetSelectEntryPos();
-            aNewURL.setExtension( static_cast<DocumentTypeData*>(m_pLbDocTypes->GetEntryData( nPos ))->aStrExt );
-        }
-
-        if( aNewURL.GetProtocol() == INetProtocol::File )
-        {
-            osl::FileBase::getSystemPathFromFileURL(aNewURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), aStrTmp);
-        }
-        else
-        {
-            aStrTmp = aNewURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous );
-        }
-
-        m_pCbbPath->SetText ( aStrTmp );
+        // get private-url
+        const sal_Int32 nPos = m_xLbDocTypes->get_selected_index();
+        aNewURL.setExtension(reinterpret_cast<DocumentTypeData*>(m_xLbDocTypes->get_id(nPos).toInt64())->aStrExt);
     }
+
+    if( aNewURL.GetProtocol() == INetProtocol::File )
+    {
+        osl::FileBase::getSystemPathFromFileURL(aNewURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), aStrTmp);
+    }
+    else
+    {
+        aStrTmp = aNewURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous );
+    }
+
+    m_xCbbPath->set_entry_text( aStrTmp );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

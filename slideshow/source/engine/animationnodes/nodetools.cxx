@@ -20,26 +20,21 @@
 
 #include <com/sun/star/animations/Timing.hpp>
 
-#include <tools.hxx>
-#include <nodetools.hxx>
+#include "nodetools.hxx"
 
 
 using namespace ::com::sun::star;
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
 #if defined(DBG_UTIL)
         static sal_Int32 lcl_nOffset = 0;
 
         OUString debugGetNodeName( const BaseNode *pNode )
         {
-            OUStringBuffer aBuf;
-            aBuf.append(lcl_nOffset);
-            aBuf.append(" - 0x");
-            aBuf.append(reinterpret_cast<sal_Int64>(pNode), 16);
-            return aBuf.makeStringAndClear();
+            return OUString::number(lcl_nOffset) +
+                " - 0x" +
+                OUString::number(reinterpret_cast<sal_Int64>(pNode), 16);
         }
 
         void debugNodesShowTree( const BaseNode* pNode )
@@ -84,7 +79,6 @@ namespace slideshow
             return (rAny >>= eTiming) && eTiming == animations::Timing_INDEFINITE;
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

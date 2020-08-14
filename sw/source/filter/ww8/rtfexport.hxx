@@ -58,43 +58,33 @@ public:
     /// Access to the Rtf Sdr exporter.
     RtfSdrExport& SdrExporter() const;
 
-    bool SupportsOneColumnBreak() const override
-    {
-        return false;
-    }
+    bool FieldsQuoted() const override { return true; }
 
-    bool FieldsQuoted() const override
-    {
-        return true;
-    }
+    bool AddSectionBreaksForTOX() const override { return false; }
 
-    bool AddSectionBreaksForTOX() const override
-    {
-        return false;
-    }
-
-    bool PreferPageBreakBefore() const override
-    {
-        return true;
-    }
+    bool PreferPageBreakBefore() const override { return true; }
 
     /// Guess the script (asian/western).
     bool CollapseScriptsforWordOk(sal_uInt16 nScript, sal_uInt16 nWhich) override;
 
-    void AppendBookmarks(const SwTextNode& rNode, sal_Int32 nAktPos, sal_Int32 nLen) override;
+    void AppendBookmarks(const SwTextNode& rNode, sal_Int32 nCurrentPos, sal_Int32 nLen) override;
 
     void AppendBookmark(const OUString& rName) override;
 
-    void AppendAnnotationMarks(const SwTextNode& rNode, sal_Int32 nAktPos, sal_Int32 nLen) override;
+    void AppendAnnotationMarks(const SwWW8AttrIter& rAttrs, sal_Int32 nCurrentPos,
+                               sal_Int32 nLen) override;
 
     //For i120928,add an interface to export graphic of bullet
     void ExportGrfBullet(const SwTextNode& rNd) override;
 
-    void WriteCR(ww8::WW8TableNodeInfoInner::Pointer_t /*pTableTextNodeInfoInner = ww8::WW8TableNodeInfoInner::Pointer_t()*/) override
+    void
+        WriteCR(ww8::WW8TableNodeInfoInner::
+                    Pointer_t /*pTableTextNodeInfoInner = ww8::WW8TableNodeInfoInner::Pointer_t()*/)
+            override
     {
         /* no-op for rtf, most probably should not even be in MSWordExportBase */
     }
-    void WriteChar(sal_Unicode) override;
+    void WriteChar(sal_Unicode c) override;
 
     /// Write the numbering table.
     void WriteNumbering() override;
@@ -103,36 +93,36 @@ public:
     void WriteRevTab();
 
     /// Output the actual headers and footers.
-    void WriteHeadersFooters(sal_uInt8 nHeadFootFlags,
-                             const SwFrameFormat& rFormat, const SwFrameFormat& rLeftFormat, const SwFrameFormat& rFirstPageFormat, sal_uInt8 nBreakCode) override;
+    void WriteHeadersFooters(sal_uInt8 nHeadFootFlags, const SwFrameFormat& rFormat,
+                             const SwFrameFormat& rLeftFormat,
+                             const SwFrameFormat& rFirstPageFormat, sal_uInt8 nBreakCode) override;
 
     /// Write the field
-    void OutputField(const SwField* pField, ww::eField eFieldType,
-                     const OUString& rFieldCmd, FieldFlags nMode = FieldFlags::All) override;
+    void OutputField(const SwField* pField, ww::eField eFieldType, const OUString& rFieldCmd,
+                     FieldFlags nMode = FieldFlags::All) override;
 
     /// Write the data of the form field
     void WriteFormData(const ::sw::mark::IFieldmark& rFieldmark) override;
     void WriteHyperlinkData(const ::sw::mark::IFieldmark& rFieldmark) override;
 
-    void DoComboBox(const OUString& rName,
-                    const OUString& rHelp,
-                    const OUString& ToolTip,
+    void DoComboBox(const OUString& rName, const OUString& rHelp, const OUString& ToolTip,
                     const OUString& rSelected,
-                    css::uno::Sequence<OUString>& rListItems) override;
+                    const css::uno::Sequence<OUString>& rListItems) override;
 
     void DoFormText(const SwInputField* pField) override;
 
     sal_uLong ReplaceCr(sal_uInt8 nChar) override;
 
+    ExportFormat GetExportFormat() const override { return ExportFormat::RTF; }
+
 protected:
     /// Format-dependent part of the actual export.
-    void ExportDocument_Impl() override;
+    ErrCode ExportDocument_Impl() override;
 
     void SectionBreaksAndFrames(const SwTextNode& /*rNode*/) override {}
 
     /// Get ready for a new section.
-    void PrepareNewPageDesc(const SfxItemSet* pSet,
-                            const SwNode& rNd,
+    void PrepareNewPageDesc(const SfxItemSet* pSet, const SwNode& rNd,
                             const SwFormatPageDesc* pNewPgDescFormat,
                             const SwPageDesc* pNewPgDesc) override;
 
@@ -140,26 +130,26 @@ protected:
     bool DisallowInheritingOutlineNumbering(const SwFormat& rFormat) override;
 
     /// Output SwTextNode is depending on outline export mode
-    void OutputTextNode(const SwTextNode&) override;
+    void OutputTextNode(SwTextNode& rNode) override;
 
     /// Output SwEndNode
-    void OutputEndNode(const SwEndNode&) override;
+    void OutputEndNode(const SwEndNode& rEndNode) override;
 
     /// Output SwGrfNode
-    void OutputGrfNode(const SwGrfNode&) override;
+    void OutputGrfNode(const SwGrfNode& rGrfNode) override;
 
     /// Output SwOLENode
-    void OutputOLENode(const SwOLENode&) override;
+    void OutputOLENode(const SwOLENode& rOLENode) override;
 
-    void OutputLinkedOLE(const OUString&) override;
+    void OutputLinkedOLE(const OUString& rLink) override;
 
-    void AppendSection(const SwPageDesc* pPageDesc, const SwSectionFormat* pFormat, sal_uLong nLnNum) override;
+    void AppendSection(const SwPageDesc* pPageDesc, const SwSectionFormat* pFormat,
+                       sal_uLong nLnNum) override;
 
 public:
     /// Pass the pDocument, pCurrentPam and pOriginalPam to the base class.
-    RtfExport(RtfExportFilter* pFilter, SwDoc* pDocument,
-              SwPaM* pCurrentPam, SwPaM* pOriginalPam, Writer* pWriter,
-              bool bOutOutlineOnly = false);
+    RtfExport(RtfExportFilter* pFilter, SwDoc* pDocument, std::shared_ptr<SwUnoCursor>& pCurrentPam,
+              SwPaM* pOriginalPam, Writer* pWriter, bool bOutOutlineOnly = false);
 
     RtfExport(const RtfExport&) = delete;
 
@@ -168,6 +158,7 @@ public:
     /// Destructor.
     ~RtfExport() override;
 
+private:
     rtl_TextEncoding m_eDefaultEncoding;
     rtl_TextEncoding m_eCurrentEncoding;
     /// This is used by OutputFlyFrame_Impl() to control the written syntax
@@ -175,6 +166,16 @@ public:
     /// Index of the current SwTextNode, if any.
     sal_uLong m_nCurrentNodeIndex;
 
+public:
+    rtl_TextEncoding GetDefaultEncoding() const { return m_eDefaultEncoding; }
+    void SetCurrentEncoding(rtl_TextEncoding eCurrentEncoding)
+    {
+        m_eCurrentEncoding = eCurrentEncoding;
+    }
+    rtl_TextEncoding GetCurrentEncoding() const { return m_eCurrentEncoding; }
+    void SetRTFFlySyntax(bool bRTFFlySyntax) { m_bRTFFlySyntax = bRTFFlySyntax; }
+    bool GetRTFFlySyntax() const { return m_bRTFFlySyntax; }
+    sal_uLong GetCurrentNodeIndex() const { return m_nCurrentNodeIndex; }
     SvStream& Strm();
     /// From now on, let Strm() return a memory stream, not a real one.
     void setStream();
@@ -184,8 +185,8 @@ public:
     void resetStream();
     SvStream& OutULong(sal_uLong nVal);
     SvStream& OutLong(long nVal);
-    void OutUnicode(const sal_Char* pToken, const OUString& rContent, bool bUpr = false);
-    void OutDateTime(const sal_Char* pStr, const css::util::DateTime& rDT);
+    void OutUnicode(const char* pToken, const OUString& rContent, bool bUpr = false);
+    void OutDateTime(const char* pStr, const css::util::DateTime& rDT);
     void OutPageDescription(const SwPageDesc& rPgDsc, bool bCheckForFirstPage);
 
     sal_uInt16 GetColor(const Color& rColor) const;
@@ -197,6 +198,8 @@ public:
 
     void InsStyle(sal_uInt16 nId, const OString& rStyle);
     OString* GetStyle(sal_uInt16 nId);
+
+    const SfxItemSet* GetFirstPageItemSet() const { return m_pFirstPageItemSet; }
 
 private:
     void WriteFonts();
@@ -215,13 +218,16 @@ private:
     /// This is necessary to have the numbering table ready before the main text is being processed.
     void BuildNumbering();
     void WriteHeaderFooter(const SfxPoolItem& rItem, bool bHeader);
-    void WriteHeaderFooter(const SwFrameFormat& rFormat, bool bHeader, const sal_Char* pStr, bool bTitlepg = false);
+    void WriteHeaderFooter(const SwFrameFormat& rFormat, bool bHeader, const char* pStr,
+                           bool bTitlepg = false);
 
     RtfColorTable m_aColTable;
-    std::map<sal_uInt16, OString>   m_aStyTable;
-    std::map<OUString, sal_uInt16>  m_aRedlineTable;
-    /// If set, then Strm() returns this tream, instead of m_pWriter's stream.
+    std::map<sal_uInt16, OString> m_aStyTable;
+    std::map<OUString, sal_uInt16> m_aRedlineTable;
+    /// If set, then Strm() returns this stream, instead of m_pWriter's stream.
     std::unique_ptr<SvMemoryStream> m_pStream;
+    /// Item set of the first page during export of a follow page format.
+    const SfxItemSet* m_pFirstPageItemSet = nullptr;
 };
 
 #endif // INCLUDED_SW_SOURCE_FILTER_WW8_RTFEXPORT_HXX

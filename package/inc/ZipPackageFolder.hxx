@@ -23,8 +23,8 @@
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/beans/StringPair.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <HashMaps.hxx>
-#include <ZipPackageEntry.hxx>
+#include "HashMaps.hxx"
+#include "ZipPackageEntry.hxx"
 #include <cppuhelper/implbase.hxx>
 #include <vector>
 
@@ -64,7 +64,7 @@ public:
 
     ZipContentInfo& doGetByName( const OUString& aName );
 
-    static css::uno::Sequence < sal_Int8 > static_getImplementationId();
+    static css::uno::Sequence < sal_Int8 > getUnoTunnelId();
 
     void setPackageFormat_Impl( sal_Int32 nFormat ) { m_nFormat = nFormat; }
     void setRemoveOnInsertMode_Impl( bool bRemove ) { mbAllowRemoveOnInsert = bRemove; }
@@ -73,6 +73,7 @@ public:
                             std::vector < css::uno::Sequence < css::beans::PropertyValue > > &rManList,
                             ZipOutputStream & rZipOut,
                             const css::uno::Sequence < sal_Int8 >& rEncryptionKey,
+                            sal_Int32 nPBKDF2IterationCount,
                             const rtlRandomPool &rRandomPool ) override;
 
     // Recursive functions
@@ -82,6 +83,7 @@ public:
             std::vector < css::uno::Sequence < css::beans::PropertyValue > > &rManList,
             ZipOutputStream & rZipOut,
             const css::uno::Sequence< sal_Int8 > &rEncryptionKey,
+            sal_Int32 nPBKDF2IterationCount,
             const rtlRandomPool & rRandomPool) const;
 
     // XNameContainer

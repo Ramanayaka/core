@@ -15,11 +15,11 @@
 
 #include <glm/glm.hpp>
 
-#include <vcl/opengl/OpenGLHelper.hxx>
 #include <vcl/salgtype.hxx>
 #include <basegfx/range/b2drange.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 
-#include "opengl/texture.hxx"
+#include <opengl/texture.hxx>
 
 #include <com/sun/star/drawing/LineCap.hpp>
 
@@ -56,17 +56,17 @@ struct RenderEntry
 
     std::unordered_map<GLuint, RenderTextureParameters> maTextureParametersMap;
 
-    bool hasTriangles()
+    bool hasTriangles() const
     {
         return !maTriangleParameters.maVertices.empty();
     }
 
-    bool hasLines()
+    bool hasLines() const
     {
         return !maLineParameters.maVertices.empty();
     }
 
-    bool hasTextures()
+    bool hasTextures() const
     {
         return !maTextureParametersMap.empty();
     }
@@ -95,7 +95,7 @@ private:
     {
         if (maRenderEntries.empty() || doesOverlap(rDrawRectangle))
         {
-            maRenderEntries.resize(maRenderEntries.size() + 1);
+            maRenderEntries.emplace_back();
             maRenderEntries.back().maOverlapTrackingRectangle = rDrawRectangle;
 
             maRectangles.clear();
@@ -120,7 +120,7 @@ private:
                 double area;
                 for (size_t i = 1; i < maRectangles.size(); ++i)
                 {
-                    aTempRectangle = basegfx::B2DRange(maRectangles[i]);
+                    aTempRectangle = maRectangles[i];
                     aTempRectangle.expand(rDrawRectangle);
                     area = aTempRectangle.getWidth() * aTempRectangle.getHeight();
                     if (area < minArea)
@@ -150,22 +150,22 @@ public:
         return maRenderEntries;
     }
 
-    bool addDrawTextureWithMaskColor(OpenGLTexture& rTexture, SalColor nColor, const SalTwoRect& r2Rect);
+    VCL_DLLPUBLIC void addDrawTextureWithMaskColor(OpenGLTexture const & rTexture, Color nColor, const SalTwoRect& r2Rect);
 
-    void addDrawPixel(long nX, long nY, SalColor nColor);
+    void addDrawPixel(long nX, long nY, Color nColor);
 
     void addDrawRectangle(long nX, long nY, long nWidth, long nHeight, double fTransparency,
-                          SalColor nLineColor, SalColor nFillColor);
+                          Color nLineColor, Color nFillColor);
 
-    void addDrawLine(long nX1, long nY1, long nX2, long nY2, SalColor nLineColor, bool bUseAA);
+    void addDrawLine(long nX1, long nY1, long nX2, long nY2, Color nLineColor, bool bUseAA);
 
     void addDrawPolyPolygon(const basegfx::B2DPolyPolygon& rPolyPolygon, double fTransparency,
-                            SalColor nLineColor, SalColor nFillColor, bool bUseAA);
+                            Color nLineColor, Color nFillColor, bool bUseAA);
 
     void addDrawPolyLine(const basegfx::B2DPolygon& rPolygon, double fTransparency,
-                         const basegfx::B2DVector& rLineWidth, basegfx::B2DLineJoin eLineJoin,
+                         double fLineWidth, basegfx::B2DLineJoin eLineJoin,
                          css::drawing::LineCap eLineCap, double fMiterMinimumAngle,
-                         SalColor nLineColor, bool bUseAA);
+                         Color nLineColor, bool bUseAA);
 };
 
 #endif // INCLUDED_VCL_INC_OPENGL_RENDERLIST_H

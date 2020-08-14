@@ -18,14 +18,12 @@
  */
 
 #include "Legend.hxx"
-#include "macros.hxx"
-#include "LinePropertiesHelper.hxx"
-#include "FillProperties.hxx"
-#include "CharacterProperties.hxx"
-#include "UserDefinedProperties.hxx"
-#include "LegendHelper.hxx"
-#include "CloneHelper.hxx"
-#include "PropertyHelper.hxx"
+#include <LinePropertiesHelper.hxx>
+#include <FillProperties.hxx>
+#include <CharacterProperties.hxx>
+#include <UserDefinedProperties.hxx>
+#include <ModifyListenerHelper.hxx>
+#include <PropertyHelper.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/chart2/LegendPosition.hpp>
@@ -33,8 +31,11 @@
 #include <com/sun/star/chart2/RelativePosition.hpp>
 #include <com/sun/star/chart2/RelativeSize.hpp>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans::PropertyAttribute;
@@ -52,6 +53,7 @@ enum
     PROP_LEGEND_ANCHOR_POSITION,
     PROP_LEGEND_EXPANSION,
     PROP_LEGEND_SHOW,
+    PROP_LEGEND_OVERLAY,
     PROP_LEGEND_REF_PAGE_SIZE,
     PROP_LEGEND_REL_POS,
     PROP_LEGEND_REL_SIZE
@@ -60,46 +62,47 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "AnchorPosition",
+    rOutProperties.emplace_back( "AnchorPosition",
                   PROP_LEGEND_ANCHOR_POSITION,
                   cppu::UnoType<chart2::LegendPosition>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "Expansion",
+    rOutProperties.emplace_back( "Expansion",
                   PROP_LEGEND_EXPANSION,
                   cppu::UnoType<css::chart::ChartLegendExpansion>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "Show",
+    rOutProperties.emplace_back( "Show",
                   PROP_LEGEND_SHOW,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
-    rOutProperties.push_back(
-        Property( "ReferencePageSize",
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+
+    rOutProperties.emplace_back( "Overlay",
+                  PROP_LEGEND_OVERLAY,
+                  cppu::UnoType<bool>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+
+    rOutProperties.emplace_back( "ReferencePageSize",
                   PROP_LEGEND_REF_PAGE_SIZE,
                   cppu::UnoType<awt::Size>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "RelativePosition",
+    rOutProperties.emplace_back( "RelativePosition",
                   PROP_LEGEND_REL_POS,
                   cppu::UnoType<chart2::RelativePosition>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "RelativeSize",
+    rOutProperties.emplace_back( "RelativeSize",
                   PROP_LEGEND_REL_SIZE,
                   cppu::UnoType<chart2::RelativeSize>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
 }
 
@@ -121,6 +124,7 @@ private:
         ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_LEGEND_ANCHOR_POSITION, chart2::LegendPosition_LINE_END );
         ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_LEGEND_EXPANSION, css::chart::ChartLegendExpansion_HIGH );
         ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_LEGEND_SHOW, true );
+        ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_LEGEND_OVERLAY, false );
 
         float fDefaultCharHeight = 10.0;
         ::chart::PropertyHelper::setPropertyValue( rOutMap, ::chart::CharacterProperties::PROP_CHAR_CHAR_HEIGHT, fDefaultCharHeight );
@@ -181,15 +185,14 @@ struct StaticLegendInfo : public rtl::StaticAggregate< uno::Reference< beans::XP
 namespace chart
 {
 
-Legend::Legend( Reference< uno::XComponentContext > const & /* xContext */ ) :
+Legend::Legend() :
         ::property::OPropertySet( m_aMutex ),
         m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
 {
 }
 
 Legend::Legend( const Legend & rOther ) :
-        MutexContainer(),
-        impl::Legend_Base(),
+        impl::Legend_Base(rOther),
         ::property::OPropertySet( rOther, m_aMutex ),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
 {
@@ -213,9 +216,9 @@ void SAL_CALL Legend::addModifyListener( const Reference< util::XModifyListener 
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -226,9 +229,9 @@ void SAL_CALL Legend::removeModifyListener( const Reference< util::XModifyListen
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -274,7 +277,7 @@ Reference< beans::XPropertySetInfo > SAL_CALL Legend::getPropertySetInfo()
 // implement XServiceInfo methods basing upon getSupportedServiceNames_Static
 OUString SAL_CALL Legend::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart2.Legend");
+    return "com.sun.star.comp.chart2.Legend";
 }
 
 sal_Bool SAL_CALL Legend::supportsService( const OUString& rServiceName )
@@ -302,11 +305,11 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( Legend, Legend_Base, ::property::OPropertySet 
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart2_Legend_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart2_Legend_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::Legend(context));
+    return cppu::acquire(new ::chart::Legend);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

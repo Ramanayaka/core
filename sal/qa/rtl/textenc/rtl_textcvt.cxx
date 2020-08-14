@@ -19,7 +19,7 @@
 
 #include <config_locales.h>
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cstddef>
 #include <cstring>
@@ -27,12 +27,13 @@
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
 
-#include "rtl/string.hxx"
-#include "rtl/ustring.hxx"
-#include "rtl/tencinfo.h"
-#include "rtl/textcvt.h"
-#include "rtl/textenc.h"
-#include "sal/types.h"
+#include <o3tl/cppunittraitshelper.hxx>
+#include <rtl/string.hxx>
+#include <rtl/ustring.hxx>
+#include <rtl/tencinfo.h>
+#include <rtl/textcvt.h>
+#include <rtl/textenc.h>
+#include <sal/types.h>
 #include <sal/macros.h>
 #include <osl/diagnose.h>
 
@@ -44,12 +45,12 @@ struct SingleByteCharSet {
 };
 
 void testSingleByteCharSet(SingleByteCharSet const & rSet) {
-    sal_Char aText[256];
+    char aText[256];
     sal_Unicode aUnicode[256];
     sal_Size nNumber = 0;
     for (int i = 0; i < 256; ++i) {
         if (rSet.m_aMap[i] != 0xFFFF) {
-            aText[nNumber++] = static_cast< sal_Char >(i);
+            aText[nNumber++] = static_cast< char >(i);
         }
     }
     {
@@ -71,7 +72,7 @@ void testSingleByteCharSet(SingleByteCharSet const & rSet) {
              | RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR),
             &nInfo, &nConverted);
         CPPUNIT_ASSERT_EQUAL(nNumber, nSize);
-        CPPUNIT_ASSERT_EQUAL((sal_uInt32)0, nInfo);
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0), nInfo);
         CPPUNIT_ASSERT_EQUAL(nNumber, nConverted);
         rtl_destroyTextToUnicodeContext(aConverter, aContext);
         rtl_destroyTextToUnicodeConverter(aConverter);
@@ -89,7 +90,7 @@ void testSingleByteCharSet(SingleByteCharSet const & rSet) {
                                                                   ", rSet.m_aMap[" + OUString::number(i) + "] == " +
                                                                   OUString::number(rSet.m_aMap[i], 16)),
                                                          RTL_TEXTENCODING_UTF8).getStr(),
-                                       static_cast<sal_Unicode>(rSet.m_aMap[i]), aUnicode[j]);
+                                       rSet.m_aMap[i], aUnicode[j]);
             }
             if (rSet.m_aMap[i] != 0xFFFF)
                 j++;
@@ -116,7 +117,7 @@ void testSingleByteCharSet(SingleByteCharSet const & rSet) {
              | RTL_UNICODETOTEXT_FLAGS_INVALID_ERROR),
             &nInfo, &nConverted);
         CPPUNIT_ASSERT_EQUAL(nNumber, nSize);
-        CPPUNIT_ASSERT_EQUAL((sal_uInt32)0, nInfo);
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0), nInfo);
         CPPUNIT_ASSERT_EQUAL(nNumber, nConverted);
         rtl_destroyUnicodeToTextContext(aConverter, aContext);
         rtl_destroyUnicodeToTextConverter(aConverter);
@@ -125,7 +126,7 @@ void testSingleByteCharSet(SingleByteCharSet const & rSet) {
         int j = 0;
         for (int i = 0; i < 256; ++i) {
             if (rSet.m_aMap[i] != 0xFFFF
-                && aText[j] != static_cast< sal_Char >(i))
+                && aText[j] != static_cast< char >(i))
             {
                 CPPUNIT_ASSERT_EQUAL_MESSAGE(OUStringToOString(OUString("rSet.m_aMap[" + OUString::number(i) + "] == " +
                                                                   OUString::number(rSet.m_aMap[i], 16)),
@@ -134,7 +135,7 @@ void testSingleByteCharSet(SingleByteCharSet const & rSet) {
                 CPPUNIT_ASSERT_EQUAL_MESSAGE(OUStringToOString(OUString("aText[" + OUString::number(j) + "] == " +
                                                                   OUString::number(i, 16)),
                                                          RTL_TEXTENCODING_UTF8).getStr(),
-                                       static_cast< sal_Char >(i), aText[j]);
+                                       static_cast< char >(i), aText[j]);
             }
             if (rSet.m_aMap[i] != 0xFFFF)
                 j++;
@@ -142,7 +143,7 @@ void testSingleByteCharSet(SingleByteCharSet const & rSet) {
     }
     for (int i = 0; i < 256; ++i) {
         if (rSet.m_aMap[i] == 0xFFFF) {
-            aText[0] = static_cast< sal_Char >(i);
+            aText[0] = static_cast< char >(i);
             rtl_TextToUnicodeConverter aConverter
                 = rtl_createTextToUnicodeConverter(rSet.m_nEncoding);
             CPPUNIT_ASSERT_MESSAGE(OUStringToOString(OUString("rtl_createTextToUnicodeConverter(" + OUString::createFromAscii(rtl_getMimeCharsetFromTextEncoding(rSet.m_nEncoding)) + ") failed"),
@@ -163,9 +164,9 @@ void testSingleByteCharSet(SingleByteCharSet const & rSet) {
 
             sal_uInt32 nExpectedInfo = (RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_UNDEFINED);
 
-            CPPUNIT_ASSERT_EQUAL((sal_Size) 0, nSize);
+            CPPUNIT_ASSERT_EQUAL(sal_Size(0), nSize);
             CPPUNIT_ASSERT_EQUAL(nExpectedInfo, nInfo);
-            CPPUNIT_ASSERT_EQUAL((sal_Size) 0, nConverted);
+            CPPUNIT_ASSERT_EQUAL(sal_Size(1), nConverted);
 
             rtl_destroyTextToUnicodeContext(aConverter, aContext);
             rtl_destroyTextToUnicodeConverter(aConverter);
@@ -204,7 +205,7 @@ void doComplexCharSetTest(ComplexCharSetTest const & rTest) {
         sal_Size nConverted;
         nSize = rtl_convertTextToUnicode(
             aConverter, aContext,
-            reinterpret_cast< sal_Char const * >(rTest.m_pText),
+            reinterpret_cast< char const * >(rTest.m_pText),
             rTest.m_nTextSize, aUnicode, TEST_STRING_SIZE,
             (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
              | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
@@ -214,7 +215,7 @@ void doComplexCharSetTest(ComplexCharSetTest const & rTest) {
                 RTL_TEXTTOUNICODE_FLAGS_GLOBAL_SIGNATURE : 0)),
             &nInfo, &nConverted);
         CPPUNIT_ASSERT_EQUAL(rTest.m_nUnicodeSize, nSize);
-        CPPUNIT_ASSERT_EQUAL((sal_uInt32) 0, nInfo);
+        CPPUNIT_ASSERT_EQUAL(sal_uInt32(0), nInfo);
         CPPUNIT_ASSERT_EQUAL(rTest.m_nTextSize, nConverted);
 
         rtl_destroyTextToUnicodeContext(aConverter, aContext);
@@ -259,13 +260,13 @@ void doComplexCharSetTest(ComplexCharSetTest const & rTest) {
                 sal_Size nConverted;
                 sal_Size nSize = rtl_convertTextToUnicode(
                     aConverter, aContext,
-                    reinterpret_cast< sal_Char const * >(rTest.m_pText + nInput),
+                    reinterpret_cast< char const * >(rTest.m_pText + nInput),
                     nSrcBytes, aUnicode + nOutput, TEST_STRING_SIZE - nOutput,
                     nFlags, &nInfo, &nConverted);
                 nOutput += nSize;
                 nInput += nConverted;
-                CPPUNIT_ASSERT_EQUAL((sal_uInt32) 0,
-                                     (nInfo & ~RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL));
+                CPPUNIT_ASSERT_EQUAL(sal_uInt32(0),
+                                     (nInfo & ~RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL));
             }
             CPPUNIT_ASSERT_EQUAL(rTest.m_nUnicodeSize, nOutput);
             CPPUNIT_ASSERT_EQUAL(rTest.m_nTextSize, nInput);
@@ -294,7 +295,7 @@ void doComplexCharSetTest(ComplexCharSetTest const & rTest) {
             if (i == rTest.m_nTextSize) {
                 goto done;
             }
-            sal_Char c1 = rTest.m_pText[i++];
+            char c1 = rTest.m_pText[i++];
             sal_Unicode aUC[2];
             sal_uInt32 nInfo = 0;
             sal_Size nCvtBytes;
@@ -306,11 +307,11 @@ void doComplexCharSetTest(ComplexCharSetTest const & rTest) {
                  | (rTest.m_bGlobalSignature ?
                     RTL_TEXTTOUNICODE_FLAGS_GLOBAL_SIGNATURE : 0)),
                 &nInfo, &nCvtBytes);
-            if ((nInfo & RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL) != 0) {
-                sal_Char sBuffer[10];
+            if ((nInfo & RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL) != 0) {
+                char sBuffer[10];
                 sBuffer[0] = c1;
                 sal_uInt16 nLen = 1;
-                while ((nInfo & RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL) != 0
+                while ((nInfo & RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL) != 0
                        && nLen < 10)
                 {
                     if (i == rTest.m_nTextSize) {
@@ -336,7 +337,7 @@ void doComplexCharSetTest(ComplexCharSetTest const & rTest) {
                     aUnicode[nSize++] = aUC[1];
                 } else {
                     OSL_ASSERT(
-                        (nInfo & RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL) == 0
+                        (nInfo & RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL) == 0
                         && nChars == 0 && nInfo != 0);
                     aUnicode[nSize++] = sBuffer[0];
                     i -= nLen - 1;
@@ -365,7 +366,7 @@ void doComplexCharSetTest(ComplexCharSetTest const & rTest) {
         }
     }
     if (rTest.m_bReverse) {
-        sal_Char aText[TEST_STRING_SIZE];
+        char aText[TEST_STRING_SIZE];
         rtl_UnicodeToTextConverter aConverter
             = rtl_createUnicodeToTextConverter(rTest.m_nEncoding);
         CPPUNIT_ASSERT_MESSAGE(OUStringToOString(OUString("rtl_createTextToUnicodeConverter(" + OUString::createFromAscii(rtl_getMimeCharsetFromTextEncoding(rTest.m_nEncoding)) + ") failed"),
@@ -418,7 +419,7 @@ void doComplexCharSetCutTest(ComplexCharSetTest const & rTest) {
         sal_uInt32 nInfo;
         sal_Size nConverted;
         nSize = rtl_convertTextToUnicode(
-            aConverter, nullptr, reinterpret_cast< sal_Char const * >(rTest.m_pText),
+            aConverter, nullptr, reinterpret_cast< char const * >(rTest.m_pText),
             rTest.m_nTextSize, aUnicode, TEST_STRING_SIZE,
             (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
              | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
@@ -426,9 +427,9 @@ void doComplexCharSetCutTest(ComplexCharSetTest const & rTest) {
             &nInfo, &nConverted);
 
         CPPUNIT_ASSERT_EQUAL(rTest.m_nUnicodeSize, nSize);
-        if (nInfo != RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL)
+        if (nInfo != RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL)
         {
-            CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL,
+            CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL,
                                  nInfo);
         }
         CPPUNIT_ASSERT_MESSAGE("nConverted should be less than rTest.m_nTextSize", nConverted < rTest.m_nTextSize);
@@ -453,6 +454,12 @@ public:
 
     void testComplexCut();
 
+    void testInvalidUtf7();
+
+    void testInvalidUtf8();
+
+    void testInvalidUnicode();
+
     void testSRCBUFFERTOSMALL();
 
     void testMime();
@@ -465,6 +472,9 @@ public:
     CPPUNIT_TEST(testSingleByte);
     CPPUNIT_TEST(testComplex);
     CPPUNIT_TEST(testComplexCut);
+    CPPUNIT_TEST(testInvalidUtf7);
+    CPPUNIT_TEST(testInvalidUtf8);
+    CPPUNIT_TEST(testInvalidUnicode);
     CPPUNIT_TEST(testSRCBUFFERTOSMALL);
     CPPUNIT_TEST(testMime);
     CPPUNIT_TEST(testWindows);
@@ -1756,6 +1766,15 @@ void Test::testComplex() {
               RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR },
 #if WITH_LOCALE_ALL || WITH_LOCALE_ja
             { RTL_TEXTENCODING_SHIFT_JIS,
+              RTL_CONSTASCII_STRINGPARAM("\x00\xFA\x6F\xFA\x71"),
+              {0x0000, 0x4F92, 0x4F9A},
+              3,
+              true,
+              true,
+              true,
+              false,
+              RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR },
+            { RTL_TEXTENCODING_SHIFT_JIS,
               RTL_CONSTASCII_STRINGPARAM(
                   "\x87\x40\x87\x41\x87\x42\x87\x43\x87\x44\x87\x45\x87\x46"
                   "\x87\x47\x87\x48\x87\x49\x87\x4A\x87\x4B\x87\x4C\x87\x4D"
@@ -2331,32 +2350,12 @@ void Test::testComplex() {
               false,
               RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR },
             { RTL_TEXTENCODING_UTF8,
-              RTL_CONSTASCII_STRINGPARAM(
-                  "\xC0\x80\xE0\x80\x81\xF0\x80\x80\x82\xF8\x80\x80\x80\x83"
-                  "\xFC\x80\x80\x80\x80\x84"),
-              { 0x0000,0x0001,0x0002,0x0003,0x0004 },
-              5,
+              RTL_CONSTASCII_STRINGPARAM("\xEF\xBF\xBF"),
+              {0xFFFF},
+              1,
               false,
               true,
-              false,
-              false,
-              RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR },
-            { RTL_TEXTENCODING_UTF8,
-              RTL_CONSTASCII_STRINGPARAM("\xED\xA1\x89\xED\xB4\x93"),
-              { 0xD849,0xDD13 },
-              2,
-              false,
               true,
-              false,
-              false,
-              RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR },
-            { RTL_TEXTENCODING_UTF8,
-              RTL_CONSTASCII_STRINGPARAM("\xED\xA1\x89\x41"),
-              { 0xD849,0x0041 },
-              2,
-              false,
-              true,
-              false,
               false,
               RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR },
 
@@ -2664,6 +2663,343 @@ void Test::testComplexCut() {
 #endif
 }
 
+void Test::testInvalidUtf7() {
+    auto const converter = rtl_createTextToUnicodeConverter(RTL_TEXTENCODING_UTF7);
+    CPPUNIT_ASSERT(converter != nullptr);
+    sal_Unicode buf[TEST_STRING_SIZE];
+    sal_uInt32 info;
+    sal_Size converted;
+    auto const size = rtl_convertTextToUnicode(
+        converter, nullptr, RTL_CONSTASCII_STRINGPARAM("\x80"), buf, TEST_STRING_SIZE,
+        (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+         | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+        &info, &converted);
+    CPPUNIT_ASSERT_EQUAL(sal_Size(1), size);
+    CPPUNIT_ASSERT_EQUAL(OUString(u"\uFFFD"), OUString(buf, sal_Int32(size)));
+    CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+    CPPUNIT_ASSERT_EQUAL(sal_Size(1), converted);
+    rtl_destroyTextToUnicodeConverter(converter);
+}
+
+void Test::testInvalidUtf8() {
+    // UTF-8, invalid bytes:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr, RTL_CONSTASCII_STRINGPARAM("\x80\xBF\xFE\xFF"),
+            buf, TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(4), size);
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(u"\uFFFD\uFFFD\uFFFD\uFFFD"),
+            OUString(buf, sal_Int32(size)));
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(4), converted);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // UTF-8, non-shortest two-byte sequence:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr, RTL_CONSTASCII_STRINGPARAM("\xC0\x80"),
+            buf, TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(1), size);
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(u"\uFFFD"), OUString(buf, sal_Int32(size)));
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(2), converted);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // UTF-8, cut two-byte sequence:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr, RTL_CONSTASCII_STRINGPARAM("\xC0"), buf,
+            TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(0), size);
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL, info);
+        CPPUNIT_ASSERT(converted <= 1);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // UTF-8, non-shortest three-byte sequence:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr, RTL_CONSTASCII_STRINGPARAM("\xE0\x9F\xBF"),
+            buf, TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(1), size);
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(u"\uFFFD"), OUString(buf, sal_Int32(size)));
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(3), converted);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // UTF-8, cut three-byte sequence:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr, RTL_CONSTASCII_STRINGPARAM("\xE0\x80"), buf,
+            TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(0), size);
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL, info);
+        CPPUNIT_ASSERT(converted <= 2);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // UTF-8, cut three-byte sequence followed by more:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr, RTL_CONSTASCII_STRINGPARAM("\xE0\x80."), buf,
+            TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(2), size);
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(u"\uFFFD."), OUString(buf, sal_Int32(size)));
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(3), converted);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // UTF-8, surrogates:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr,
+            RTL_CONSTASCII_STRINGPARAM("\xED\xA0\x80\xED\xB0\x80"), buf,
+            TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(2), size);
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(u"\uFFFD\uFFFD"), OUString(buf, sal_Int32(size)));
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(6), converted);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // UTF-8, non-shortest four-byte sequence:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr, RTL_CONSTASCII_STRINGPARAM("\xF0\x8F\xBF\xBF"),
+            buf, TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(1), size);
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(u"\uFFFD"), OUString(buf, sal_Int32(size)));
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(4), converted);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // UTF-8, too-large four-byte sequence:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr, RTL_CONSTASCII_STRINGPARAM("\xF4\x90\x80\x80"),
+            buf, TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(1), size);
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(u"\uFFFD"), OUString(buf, sal_Int32(size)));
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(4), converted);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // UTF-8, five-byte sequence:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr,
+            RTL_CONSTASCII_STRINGPARAM("\xFB\xBF\xBF\xBF\xBF"),
+            buf, TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(1), size);
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(u"\uFFFD"), OUString(buf, sal_Int32(size)));
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(5), converted);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // UTF-8, six-byte sequence:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr,
+            RTL_CONSTASCII_STRINGPARAM("\xFD\xBF\xBF\xBF\xBF\xBF"),
+            buf, TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(1), size);
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(u"\uFFFD"), OUString(buf, sal_Int32(size)));
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(6), converted);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // Java UTF-8, U+0000:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_JAVA_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr, RTL_CONSTASCII_STRINGPARAM("\0"), buf,
+            TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(1), size);
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(u"\uFFFD"), OUString(buf, sal_Int32(size)));
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(1), converted);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+    // Java UTF-8, U+10000:
+    {
+        auto const converter = rtl_createTextToUnicodeConverter(
+            RTL_TEXTENCODING_JAVA_UTF8);
+        CPPUNIT_ASSERT(converter != nullptr);
+        OStringLiteral const input(u8"\U00010000");
+        sal_Unicode buf[TEST_STRING_SIZE];
+        sal_uInt32 info;
+        sal_Size converted;
+        auto const size = rtl_convertTextToUnicode(
+            converter, nullptr, input.data, input.size, buf,
+            TEST_STRING_SIZE,
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH),
+            &info, &converted);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(1), size);
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(u"\uFFFD"), OUString(buf, sal_Int32(size)));
+        CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_INVALID, info);
+        CPPUNIT_ASSERT_EQUAL(sal_Size(4), converted);
+        rtl_destroyTextToUnicodeConverter(converter);
+    }
+}
+
+void Test::testInvalidUnicode() {
+    auto const converter = rtl_createUnicodeToTextConverter(RTL_TEXTENCODING_UTF8);
+    CPPUNIT_ASSERT(converter != nullptr);
+    sal_Unicode const input[] = {0xDC00}; // lone low surrogate
+    char buf[TEST_STRING_SIZE];
+    sal_uInt32 info;
+    sal_Size converted;
+    auto const size = rtl_convertUnicodeToText(
+        converter, nullptr, input, SAL_N_ELEMENTS(input), buf, TEST_STRING_SIZE,
+        (RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR | RTL_UNICODETOTEXT_FLAGS_INVALID_ERROR
+         | RTL_UNICODETOTEXT_FLAGS_FLUSH),
+        &info, &converted);
+    CPPUNIT_ASSERT_EQUAL(sal_Size(0), size);
+    CPPUNIT_ASSERT_EQUAL(RTL_UNICODETOTEXT_INFO_ERROR | RTL_UNICODETOTEXT_INFO_INVALID, info);
+    CPPUNIT_ASSERT_EQUAL(sal_Size(1), converted);
+    rtl_destroyTextToUnicodeConverter(converter);
+}
+
 void Test::testSRCBUFFERTOSMALL() {
     rtl_TextToUnicodeConverter cv = rtl_createTextToUnicodeConverter(
         RTL_TEXTENCODING_EUC_JP);
@@ -2683,7 +3019,7 @@ void Test::testSRCBUFFERTOSMALL() {
              RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR |
              RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR),
             &info, &cvt));
-    CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL, info);
+    CPPUNIT_ASSERT_EQUAL(RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL, info);
     CPPUNIT_ASSERT(cvt <= 1);
     rtl_destroyTextToUnicodeContext(cv, cx);
     rtl_destroyTextToUnicodeConverter(cv);
@@ -2814,6 +3150,7 @@ void Test::testWindows() {
         bool reverse;
     };
     static Data const data[] = {
+        { 42, RTL_TEXTENCODING_SYMBOL, true },
         { 437, RTL_TEXTENCODING_IBM_437, true },
         { 708, RTL_TEXTENCODING_ISO_8859_6, false },
         { 737, RTL_TEXTENCODING_IBM_737, true },

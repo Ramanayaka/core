@@ -22,23 +22,21 @@
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
 #include <sfx2/event.hxx>
-#include <sfx2/sfxsids.hrc>
-#include <svl/macitem.hxx>
+#include <svl/poolitem.hxx>
+#include <memory>
 #include <vector>
 
 class SfxObjectShell;
-class SvxMacroTableDtor;
+class SvxMacro;
 
 struct SFX2_DLLPUBLIC SfxEventName
 {
-    sal_uInt16  mnId;
-    OUString    maEventName;
-    OUString    maUIName;
+    SvMacroItemId mnId;
+    OUString      maEventName;
+    OUString      maUIName;
 
-            SfxEventName( sal_uInt16 nId,
+            SfxEventName( SvMacroItemId nId,
                              const OUString& rEventName,
                              const OUString& rUIName )
                 : mnId( nId )
@@ -49,24 +47,23 @@ struct SFX2_DLLPUBLIC SfxEventName
 class SFX2_DLLPUBLIC SfxEventNamesList
 {
 private:
-    ::std::vector< SfxEventName* > aEventNamesList;
-    void DelDtor();
+    ::std::vector< SfxEventName > aEventNamesList;
 
 public:
     SfxEventNamesList() {}
     SfxEventNamesList( const SfxEventNamesList &rCpy ) { *this = rCpy; }
-    ~SfxEventNamesList() { DelDtor(); }
+    ~SfxEventNamesList();
     SfxEventNamesList& operator=( const SfxEventNamesList &rCpy );
 
     size_t size() const { return aEventNamesList.size(); };
 
-    SfxEventName* at( size_t Index ) const
-        { return Index < aEventNamesList.size() ? aEventNamesList[ Index ] : nullptr; }
+    SfxEventName& at( size_t Index ) { return aEventNamesList[ Index ]; }
+    SfxEventName const & at( size_t Index ) const { return aEventNamesList[ Index ]; }
 
-    void push_back( SfxEventName* Item ) { aEventNamesList.push_back( Item ); }
+    void push_back( SfxEventName Item ) { aEventNamesList.push_back( std::move(Item) ); }
 };
 
-class SFX2_DLLPUBLIC SfxEventNamesItem : public SfxPoolItem
+class SFX2_DLLPUBLIC SfxEventNamesItem final : public SfxPoolItem
 {
     SfxEventNamesList aEventsList;
 
@@ -79,14 +76,11 @@ public:
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper * = nullptr ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion ) const override;
-    virtual sal_uInt16      GetVersion( sal_uInt16 nFileFormatVersion ) const override;
+                                  const IntlWrapper& ) const override;
+    virtual SfxEventNamesItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const SfxEventNamesList& GetEvents() const { return aEventsList;}
-    void                    AddEvent( const OUString&, const OUString&, sal_uInt16 );
+    void                    AddEvent( const OUString&, const OUString&, SvMacroItemId );
 };
 
 
@@ -99,8 +93,8 @@ public:
 class SFX2_DLLPUBLIC SfxEventConfiguration
 {
 public:
-    static void                         ConfigureEvent( const OUString& aName, const SvxMacro&, SfxObjectShell* pObjSh);
-    static SvxMacro*                    ConvertToMacro( const css::uno::Any& rElement, SfxObjectShell* pDoc, bool bBlowUp );
+    static void                         ConfigureEvent( const OUString& aName, const SvxMacro&, SfxObjectShell const * pObjSh);
+    static std::unique_ptr<SvxMacro>    ConvertToMacro( const css::uno::Any& rElement, SfxObjectShell* pDoc );
 };
 
 #endif

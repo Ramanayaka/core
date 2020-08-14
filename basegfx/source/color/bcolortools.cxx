@@ -20,8 +20,9 @@
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/color/bcolor.hxx>
 #include <basegfx/color/bcolortools.hxx>
+#include <rtl/math.hxx>
 
-namespace basegfx { namespace tools
+namespace basegfx::utils
 {
     BColor rgb2hsl(const BColor& rRGBColor)
     {
@@ -59,7 +60,7 @@ namespace basegfx { namespace tools
         return BColor(h,s,l);
     }
 
-    static inline double hsl2rgbHelper( double nValue1, double nValue2, double nHue )
+    static double hsl2rgbHelper( double nValue1, double nValue2, double nHue )
     {
         // clamp hue to [0,360]
         nHue = fmod( nHue, 360.0 );
@@ -189,6 +190,6 @@ namespace basegfx { namespace tools
         }
     }
 
-} } // end of namespace basegfx
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

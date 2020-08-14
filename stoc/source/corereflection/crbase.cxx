@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cppuhelper/queryinterface.hxx>
 #include <uno/any2.h>
 
 #include "base.hxx"
@@ -29,23 +28,15 @@ namespace stoc_corefl
 {
 
 #ifdef TEST_LIST_CLASSES
-ClassNameList g_aClassNames;
+ClassNameVector g_aClassNames;
 #endif
 
 
 ::osl::Mutex & getMutexAccess()
 {
-    static ::osl::Mutex * s_pMutex = nullptr;
-    if (! s_pMutex)
-    {
-        ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-        if (! s_pMutex)
-        {
-            static ::osl::Mutex s_aMutex;
-            s_pMutex = &s_aMutex;
-        }
-    }
-    return *s_pMutex;
+    static osl::Mutex s_aMutex;
+
+    return s_aMutex;
 }
 
 
@@ -54,7 +45,7 @@ IdlClassImpl::IdlClassImpl( IdlReflectionServiceImpl * pReflection,
                             typelib_TypeDescription * pTypeDescr )
     : m_xReflection( pReflection )
     , _aName( rName )
-    , _eTypeClass( (TypeClass)eTypeClass )
+    , _eTypeClass( static_cast<TypeClass>(eTypeClass) )
     , _pTypeDescr( pTypeDescr )
 {
     if (_pTypeDescr)
@@ -65,9 +56,9 @@ IdlClassImpl::IdlClassImpl( IdlReflectionServiceImpl * pReflection,
     }
 
 #ifdef TEST_LIST_CLASSES
-    ClassNameList::const_iterator iFind( std::find( g_aClassNames.begin(), g_aClassNames.end(), _aName ) );
+    ClassNameVector::const_iterator iFind( std::find( g_aClassNames.begin(), g_aClassNames.end(), _aName ) );
     OSL_ENSURE( iFind == g_aClassNames.end(), "### idl class already exists!" );
-    g_aClassNames.push_front( _aName );
+    g_aClassNames.insert(g_aClassNames.begin(), _aName);
 #endif
 }
 
@@ -78,7 +69,7 @@ IdlClassImpl::~IdlClassImpl()
     m_xReflection.clear();
 
 #ifdef TEST_LIST_CLASSES
-    ClassNameList::iterator iFind( std::find( g_aClassNames.begin(), g_aClassNames.end(), _aName ) );
+    ClassNameVector::iterator iFind( std::find( g_aClassNames.begin(), g_aClassNames.end(), _aName ) );
     OSL_ENSURE( iFind != g_aClassNames.end(), "### idl class does not exist!" );
     g_aClassNames.erase( iFind );
 #endif
@@ -102,7 +93,7 @@ sal_Bool IdlClassImpl::equals( const Reference< XIdlClass >& xType )
             (xType->getTypeClass() == _eTypeClass) && (xType->getName() == _aName));
 }
 
-static const bool s_aAssignableFromTab[11][11] =
+const bool s_aAssignableFromTab[11][11] =
 {
                          /* from  CH,    BO,    BY,    SH,    US,    LO,    UL,    HY,    UH,    FL,    DO */
 /* TypeClass_CHAR */            { true,  false, false, false, false, false, false, false, false, false, false },
@@ -131,7 +122,7 @@ sal_Bool IdlClassImpl::isAssignableFrom( const Reference< XIdlClass > & xType )
         if (eAssign > TypeClass_VOID && eAssign < TypeClass_STRING &&
             eFrom > TypeClass_VOID && eFrom < TypeClass_STRING)
         {
-            return s_aAssignableFromTab[(int)eAssign-1][(int)eFrom-1];
+            return s_aAssignableFromTab[static_cast<int>(eAssign)-1][static_cast<int>(eFrom)-1];
         }
     }
     return false;

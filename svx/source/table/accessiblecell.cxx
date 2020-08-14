@@ -18,26 +18,28 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <memory>
-#include <utility>
 
-#include <accessiblecell.hxx>
-
-#include "svx/DescriptionGenerator.hxx"
+#include "accessiblecell.hxx"
+#include <cell.hxx>
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/accessibility/AccessibleEventId.hpp>
 
+#include <editeng/unoedsrc.hxx>
 #include <vcl/svapp.hxx>
 
 #include <unotools/accessiblestatesethelper.hxx>
 #include <comphelper/string.hxx>
-#include <editeng/outlobj.hxx>
+#include <comphelper/sequence.hxx>
 #include <svx/IAccessibleViewForwarder.hxx>
 #include <svx/unoshtxt.hxx>
 #include <svx/svdotext.hxx>
-#include <o3tl/make_unique.hxx>
+#include <tools/debug.hxx>
+
 using namespace sdr::table;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -51,7 +53,6 @@ AccessibleCell::AccessibleCell( const css::uno::Reference< css::accessibility::X
 : AccessibleCellBase( rxParent, AccessibleRole::TABLE_CELL )
 , maShapeTreeInfo( rShapeTreeInfo )
 , mnIndexInParent( nIndex )
-, mpText( nullptr )
 , mxCell( rCell )
 {
     //Init the pAccTable var
@@ -69,28 +70,18 @@ void AccessibleCell::Init()
 {
     SdrView* pView = maShapeTreeInfo.GetSdrView();
     const vcl::Window* pWindow = maShapeTreeInfo.GetWindow ();
-    if( (pView != nullptr) && (pWindow != nullptr) && mxCell.is())
+    if( !((pView != nullptr) && (pWindow != nullptr) && mxCell.is()))
+        return;
+
+    // create AccessibleTextHelper to handle this shape's text
+    if( mxCell->CanCreateEditOutlinerParaObject() || mxCell->GetOutlinerParaObject() != nullptr )
     {
-        OutlinerParaObject* pOutlinerParaObject = mxCell->GetEditOutlinerParaObject(); // Get the OutlinerParaObject if text edit is active
+        // non-empty text -> use full-fledged edit source right away
 
-        bool bOwnParaObject = pOutlinerParaObject != nullptr;
-
-        if( !pOutlinerParaObject )
-            pOutlinerParaObject = mxCell->GetOutlinerParaObject();
-
-        // create AccessibleTextHelper to handle this shape's text
-        if( pOutlinerParaObject )
-        {
-            // non-empty text -> use full-fledged edit source right away
-
-            mpText = new AccessibleTextHelper( o3tl::make_unique<SvxTextEditSource>(mxCell->GetObject(), mxCell.get(), *pView, *pWindow) );
-            if( mxCell.is() && mxCell.get()->IsActiveCell() )
-                mpText->SetFocus();
-            mpText->SetEventSource(this);
-        }
-
-        if( bOwnParaObject)
-            delete pOutlinerParaObject;
+        mpText.reset( new AccessibleTextHelper( std::make_unique<SvxTextEditSource>(mxCell->GetObject(), mxCell.get(), *pView, *pWindow) ) );
+        if( mxCell.is() && mxCell->IsActiveCell() )
+            mpText->SetFocus();
+        mpText->SetEventSource(this);
     }
 }
 
@@ -228,18 +219,14 @@ Reference<XAccessibleStateSet> SAL_CALL AccessibleCell::getAccessibleStateSet()
                 {
                     css::uno::Reference<XAccessibleStateSet> rState =
                         xTempAccContext->getAccessibleStateSet();
-                    if( rState.is() )           {
+                    if( rState.is() )
+                    {
                         css::uno::Sequence<short> aStates = rState->getStates();
-                        int count = aStates.getLength();
-                        for( int iIndex = 0;iIndex < count;iIndex++ )
+                        if (std::find(aStates.begin(), aStates.end(), AccessibleStateType::EDITABLE) != aStates.end())
                         {
-                            if( aStates[iIndex] == AccessibleStateType::EDITABLE )
-                            {
-                                pStateSet->AddState (AccessibleStateType::EDITABLE);
-                                pStateSet->AddState (AccessibleStateType::RESIZABLE);
-                                pStateSet->AddState (AccessibleStateType::MOVEABLE);
-                                break;
-                            }
+                            pStateSet->AddState (AccessibleStateType::EDITABLE);
+                            pStateSet->AddState (AccessibleStateType::RESIZABLE);
+                            pStateSet->AddState (AccessibleStateType::MOVEABLE);
                         }
                     }
                 }
@@ -468,23 +455,15 @@ void SAL_CALL AccessibleCell::removeAccessibleEventListener( const Reference<XAc
 
 OUString SAL_CALL AccessibleCell::getImplementationName()
 {
-    return OUString("AccessibleCell");
+    return "AccessibleCell";
 }
 
 
 Sequence<OUString> SAL_CALL AccessibleCell::getSupportedServiceNames()
 {
     ThrowIfDisposed ();
-
-    // Get list of supported service names from base class...
-    uno::Sequence<OUString> aServiceNames = AccessibleContextBase::getSupportedServiceNames();
-    sal_Int32 nCount (aServiceNames.getLength());
-
-    // ...and add additional names.
-    aServiceNames.realloc (nCount + 1);
-    aServiceNames[nCount] = "com.sun.star.drawing.AccessibleCell";
-
-    return aServiceNames;
+    const css::uno::Sequence<OUString> vals { "com.sun.star.drawing.AccessibleCell" };
+    return comphelper::concatSequences(AccessibleContextBase::getSupportedServiceNames(), vals);
 }
 
 
@@ -520,8 +499,7 @@ void AccessibleCell::disposing()
     if (mpText != nullptr)
     {
         mpText->Dispose();
-        delete mpText;
-        mpText = nullptr;
+        mpText.reset();
     }
 
     // Cleanup.  Remove references to objects to allow them to be

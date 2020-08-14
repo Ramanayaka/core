@@ -17,10 +17,6 @@ $(eval $(call gb_CppunitTest_use_externals,dbaccess_RowSetClones,\
     boost_headers \
 ))
 
-$(eval $(call gb_CppunitTest_use_jars,dbaccess_RowSetClones, \
-    sdbc_hsqldb \
-))
-
 $(eval $(call gb_CppunitTest_use_libraries,dbaccess_RowSetClones, \
     basegfx \
     comphelper \
@@ -58,6 +54,10 @@ $(eval $(call gb_CppunitTest_use_libraries,dbaccess_RowSetClones, \
     xo \
 ))
 
+$(eval $(call gb_CppunitTest_use_jars,dbaccess_RowSetClones, \
+    sdbc_hsqldb \
+))
+
 $(eval $(call gb_CppunitTest_use_api,dbaccess_RowSetClones,\
     offapi \
     oovbaapi \
@@ -72,6 +72,7 @@ $(eval $(call gb_CppunitTest_use_components,dbaccess_RowSetClones,\
     comphelper/util/comphelp \
     configmgr/source/configmgr \
     connectivity/source/drivers/hsqldb/hsqldb \
+    $(if $(ENABLE_FIREBIRD_SDBC),connectivity/source/drivers/firebird/firebird_sdbc) \
     connectivity/source/drivers/jdbc/jdbc \
     connectivity/source/manager/sdbc2 \
     dbaccess/util/dba \
@@ -111,8 +112,5 @@ $(WORKDIR)/CppunitTest/RowSetClones.odb : $(SRCDIR)/dbaccess/qa/extras/testdocum
 	mkdir -p $(dir $@)
 	cp -P -f "$<" "$@"
 .PHONY: $(WORKDIR)/CppunitTest/RowSetClones.odb
-
-$(call gb_CppunitTest_get_target,dbaccess_RowSetClones): \
-    $(call gb_AllLangResTarget_get_target,ofa)
 
 # vim: set noet sw=4 ts=4:

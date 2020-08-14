@@ -21,8 +21,9 @@
 
 #include <memory>
 #include <svx/view3d.hxx>
-#include <com/sun/star/drawing/XShape.hpp>
-#include <com/sun/star/frame/XModel.hpp>
+
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::frame { class XModel; }
 
 class SdrModel;
 
@@ -46,7 +47,10 @@ protected:
 class DrawViewWrapper : public E3dView
 {
 public:
-    DrawViewWrapper(SdrModel* pModel, OutputDevice* pOut);
+    DrawViewWrapper(
+        SdrModel& rSdrModel,
+        OutputDevice* pOut);
+
     virtual ~DrawViewWrapper() override;
 
     //triggers the use of an updated first page
@@ -76,7 +80,7 @@ public:
     SfxItemSet   getPositionAndSizeItemSetFromMarkedObject() const;
 
     SdrObject* getNamedSdrObject( const OUString& rName ) const;
-    static bool IsObjectHit( SdrObject* pObj, const Point& rPnt );
+    static bool IsObjectHit( SdrObject const * pObj, const Point& rPnt );
 
     virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
 

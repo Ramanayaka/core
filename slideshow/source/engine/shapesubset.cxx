@@ -20,18 +20,13 @@
 
 #include <tools/diagnose_ex.h>
 
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
-
-#include "shapesubset.hxx"
+#include <shapesubset.hxx>
 
 
 using namespace ::com::sun::star;
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         ShapeSubset::ShapeSubset( const AttributableShapeSharedPtr&       rOriginalShape,
                                   const DocTreeNode&                      rTreeNode,
                                   const SubsettableShapeManagerSharedPtr& rShapeManager ) :
@@ -79,9 +74,9 @@ namespace slideshow
                 // if not done yet: revoke subset from original
                 disableSubsetShape();
             }
-            catch (const uno::Exception& e)
+            catch (const uno::Exception&)
             {
-                SAL_WARN("slideshow", "" << e.Message);
+                TOOLS_WARN_EXCEPTION("slideshow", "");
             }
         }
 
@@ -121,7 +116,6 @@ namespace slideshow
             return maTreeNode;
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

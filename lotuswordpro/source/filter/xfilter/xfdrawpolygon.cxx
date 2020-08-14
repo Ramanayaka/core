@@ -57,7 +57,9 @@
  * @file
  * Polygon object.
  */
-#include "xfdrawpolygon.hxx"
+#include <xfilter/xfdrawpolygon.hxx>
+#include <xfilter/ixfattrlist.hxx>
+#include <rtl/ustrbuf.hxx>
 
 XFDrawPolygon::XFDrawPolygon()
 {
@@ -66,27 +68,25 @@ XFDrawPolygon::XFDrawPolygon()
 void XFDrawPolygon::ToXml(IXFStream *pStrm)
 {
     IXFAttrList *pAttrList = pStrm->GetAttrList();
-    std::vector<XFPoint>::iterator it;
 
     pAttrList->Clear();
     //view-box:
     XFRect  rect = CalcViewBox();
-    OUString strViewBox = "0 0 ";
-    strViewBox += OUString::number(rect.GetWidth()*1000) + " ";
-    strViewBox += OUString::number(rect.GetHeight()*1000);
+    OUString strViewBox = "0 0 " +
+        OUString::number(rect.GetWidth()*1000) + " " +
+        OUString::number(rect.GetHeight()*1000);
     pAttrList->AddAttribute( "svg:viewBox", strViewBox);
 
     //points
-    OUString   strPoints;
-    for( it = m_aPoints.begin(); it != m_aPoints.end(); ++it )
+    OUStringBuffer strPoints;
+    for (auto const& point : m_aPoints)
     {
-        XFPoint pt = *it;
-        double  x = (pt.GetX()-rect.GetX())*1000;
-        double  y = (pt.GetY()-rect.GetY())*1000;
-        strPoints += OUString::number(x) + " " + OUString::number(y) + " ";
+        double  x = (point.GetX()-rect.GetX())*1000;
+        double  y = (point.GetY()-rect.GetY())*1000;
+        strPoints.append(OUString::number(x)).append(" ").append(OUString::number(y)).append(" ");
     }
-    strPoints = strPoints.trim();
-    pAttrList->AddAttribute( "draw:points", strPoints);
+    strPoints.stripEnd(' ');
+    pAttrList->AddAttribute( "draw:points", strPoints.makeStringAndClear());
 
     SetPosition(rect.GetX(),rect.GetY(),rect.GetWidth(),rect.GetHeight());
     XFDrawObject::ToXml(pStrm);

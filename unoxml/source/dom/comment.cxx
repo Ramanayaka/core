@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <comment.hxx>
+#include "comment.hxx"
 
 #include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
 
@@ -44,7 +44,7 @@ namespace DOM
 
     OUString SAL_CALL CComment::getNodeName()
     {
-        return OUString("#comment");
+        return "#comment";
     }
 
     OUString SAL_CALL CComment::getNodeValue()

@@ -8,7 +8,7 @@
  *
  */
 
-#include "oox/helper/grabbagstack.hxx"
+#include <oox/helper/grabbagstack.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <comphelper/sequence.hxx>
 
@@ -26,7 +26,7 @@ GrabBagStack::GrabBagStack(const OUString& aElementName)
 GrabBagStack::~GrabBagStack()
 {}
 
-bool GrabBagStack::isStackEmpty()
+bool GrabBagStack::isStackEmpty() const
 {
     return mStack.empty();
 }

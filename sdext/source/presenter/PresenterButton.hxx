@@ -22,27 +22,22 @@
 
 #include "PresenterBitmapContainer.hxx"
 #include "PresenterTheme.hxx"
-#include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/awt/XPaintListener.hpp>
 #include <com/sun/star/awt/XMouseListener.hpp>
-#include <com/sun/star/awt/XMouseMotionListener.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
 #include <com/sun/star/rendering/XBitmap.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <rtl/ref.hxx>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 class PresenterController;
 
 typedef ::cppu::WeakComponentImplHelper <
-    css::awt::XWindowListener,
     css::awt::XPaintListener,
-    css::awt::XMouseListener,
-    css::awt::XMouseMotionListener
+    css::awt::XMouseListener
 > PresenterButtonInterfaceBase;
 
 /** Button for the presenter screen.  It displays a text surrounded by a
@@ -72,16 +67,6 @@ public:
         const css::uno::Reference<css::awt::XWindow>& rxParentWindow);
     css::geometry::IntegerSize2D const & GetSize();
 
-    // XWindowListener
-
-    virtual void SAL_CALL windowResized (const css::awt::WindowEvent& rEvent) override;
-
-    virtual void SAL_CALL windowMoved (const css::awt::WindowEvent& rEvent) override;
-
-    virtual void SAL_CALL windowShown (const css::lang::EventObject& rEvent) override;
-
-    virtual void SAL_CALL windowHidden (const css::lang::EventObject& rEvent) override;
-
     // XPaintListener
 
     virtual void SAL_CALL windowPaint (const css::awt::PaintEvent& rEvent) override;
@@ -95,12 +80,6 @@ public:
     virtual void SAL_CALL mouseEntered (const css::awt::MouseEvent& rEvent) override;
 
     virtual void SAL_CALL mouseExited (const css::awt::MouseEvent& rEvent) override;
-
-    // XMouseMotionListener
-
-    virtual void SAL_CALL mouseMoved (const css::awt::MouseEvent& rEvent) override;
-
-    virtual void SAL_CALL mouseDragged (const css::awt::MouseEvent& rEvent) override;
 
     // lang::XEventListener
     virtual void SAL_CALL disposing (const css::lang::EventObject& rEvent) override;
@@ -152,7 +131,7 @@ private:
     void ThrowIfDisposed() const;
 };
 
-} }
+}
 
 #endif
 

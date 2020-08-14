@@ -51,7 +51,7 @@ CSerializationURLEncoded::CSerializationURLEncoded()
  mark        = "-" | "_" | "." | "!" | "~" | "*" | "'" | "(" | ")"
  unreserved = alphanum | mark
 */
-bool CSerializationURLEncoded::is_unreserved(sal_Char c)
+bool CSerializationURLEncoded::is_unreserved(char c)
 {
     if (rtl::isAsciiAlphanumeric(static_cast<unsigned char>(c)))
         return true;
@@ -73,14 +73,14 @@ void  CSerializationURLEncoded::encode_and_append(const OUString& aString, OStri
 {
     OString utf8String = OUStringToOString(aString, RTL_TEXTENCODING_UTF8);
     const sal_uInt8 *pString = reinterpret_cast< const sal_uInt8 * >( utf8String.getStr() );
-    sal_Char tmpChar[4]; tmpChar[3] = 0;
+    char tmpChar[4];
 
     while( *pString != 0)
     {
         if( *pString < 0x80 )
         {
             if ( is_unreserved(*pString) ) {
-                aBuffer.append(*pString);
+                aBuffer.append(char(*pString));
             } else if (*pString == 0x20) {
                 aBuffer.append('+');
             } else if (*pString == 0x0d && *(pString+1) == 0x0a) {
@@ -89,16 +89,16 @@ void  CSerializationURLEncoded::encode_and_append(const OUString& aString, OStri
             } else if (*pString == 0x0a) {
                 aBuffer.append("%0D%0A");
             } else {
-                snprintf(tmpChar, 3, "%%%X", *pString % 0x100);
+                snprintf(tmpChar, 4, "%%%X", *pString % 0x100);
                 aBuffer.append(tmpChar);
             }
         } else {
-            snprintf(tmpChar, 3, "%%%X", *pString % 0x100);
+            snprintf(tmpChar, 4, "%%%X", *pString % 0x100);
             aBuffer.append(tmpChar);
             while (*pString >= 0x80) {
                 // continuation...
                 pString++;
-                snprintf(tmpChar, 3, "%%%X", *pString % 0x100);
+                snprintf(tmpChar, 4, "%%%X", *pString % 0x100);
                 aBuffer.append(tmpChar);
             }
         }
@@ -173,7 +173,7 @@ void CSerializationURLEncoded::serialize()
 
 Reference< XInputStream > CSerializationURLEncoded::getInputStream()
 {
-    return Reference< XInputStream >(m_aPipe, UNO_QUERY);
+    return m_aPipe;
 }
 
 

@@ -17,19 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifdef _MSC_VER
-#pragma warning(push,1) /* disable warnings within system headers */
-#endif
-#include <windows.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
+#include <systools/win32/uwinapi.h>
+#include <tlhelp32.h>
+#include <rpc.h>
+#include <winsock.h>
 #ifdef _DEBUG
 #include <crtdbg.h>
 #endif
-#endif
-#include <tlhelp32.h>
-#include <systools/win32/uwinapi.h>
-#include <winsock.h>
 #include <osl/diagnose.h>
 #include <sal/types.h>
 #include <float.h>
@@ -39,9 +33,9 @@
 
 #include "file_url.hxx"
 #include "gmutex.hxx"
-#include "rtllifecycle.h"
+#include <rtllifecycle.h>
 
-#include <thread.hxx>
+#include "thread.hxx"
 
 /*
 This is needed because DllMain is called after static constructors. A DLL's
@@ -50,7 +44,7 @@ startup and shutdown sequence looks like this:
 _pRawDllMain()
 _CRT_INIT()
 DllMain()
-....
+...
 DllMain()
 _CRT_INIT()
 _pRawDllMain()
@@ -72,8 +66,8 @@ static BOOL WINAPI RawDllMain( HINSTANCE, DWORD fdwReason, LPVOID )
             {
 #ifdef _DEBUG
                 WCHAR buf[64];
-                DWORD const res = GetEnvironmentVariableW(L"SAL_NO_ASSERT_DIALOGS", buf, sizeof(buf));
-                if (res && res < sizeof(buf))
+                DWORD const res = GetEnvironmentVariableW(L"SAL_NO_ASSERT_DIALOGS", buf, SAL_N_ELEMENTS(buf));
+                if (res && res < SAL_N_ELEMENTS(buf))
                 {
                     // disable the dialog on abort()
                     _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
@@ -137,7 +131,6 @@ static BOOL WINAPI RawDllMain( HINSTANCE, DWORD fdwReason, LPVOID )
                 rtl_locale_fini();
 
                 /* finalize memory management */
-                rtl_memory_fini();
                 rtl_cache_fini();
                 rtl_arena_fini();
             }
@@ -160,7 +153,7 @@ static DWORD GetParentProcessId()
     if ( IsValidHandle( hSnapshot ) )
     {
         PROCESSENTRY32  pe;
-        BOOL            fSuccess;
+        bool            fSuccess;
 
         ZeroMemory( &pe, sizeof(pe) );
         pe.dwSize = sizeof(pe);
@@ -209,32 +202,36 @@ BOOL WINAPI DllMain( HINSTANCE, DWORD fdwReason, LPVOID )
     {
         case DLL_PROCESS_ATTACH:
         {
-            TCHAR   szBuffer[64];
+            WCHAR szBuffer[64];
 
             // This code will attach the process to its parent process
             // if the parent process had set the environment variable.
             // The corresponding code (setting the environment variable)
             // is desktop/win32/source/officeloader.cxx
 
-            DWORD   dwResult = GetEnvironmentVariable( "ATTACHED_PARENT_PROCESSID", szBuffer, sizeof(szBuffer) );
+            DWORD dwResult = GetEnvironmentVariableW( L"ATTACHED_PARENT_PROCESSID", szBuffer, SAL_N_ELEMENTS(szBuffer) );
 
-            if ( dwResult && dwResult < sizeof(szBuffer) )
+            if ( dwResult && dwResult < SAL_N_ELEMENTS(szBuffer) )
             {
                 DWORD   dwThreadId = 0;
 
-                DWORD_PTR   dwParentProcessId = (DWORD_PTR)atol( szBuffer );
+                DWORD_PTR dwParentProcessId = static_cast<DWORD_PTR>(_wtol( szBuffer ));
 
                 if ( dwParentProcessId && GetParentProcessId() == dwParentProcessId )
                 {
                     // No error check, it works or it does not
                     // Thread should only be started for headless mode, see desktop/win32/source/officeloader.cxx
-                    CreateThread( nullptr, 0, ParentMonitorThreadProc, reinterpret_cast<LPVOID>(dwParentProcessId), 0, &dwThreadId );
+                    HANDLE hThread
+                        = CreateThread(nullptr, 0, ParentMonitorThreadProc,
+                                       reinterpret_cast<LPVOID>(dwParentProcessId), 0, &dwThreadId);
                     // Note: calling CreateThread in DllMain is discouraged
                     // but this is only done in the headless mode and in
                     // that case no other threads should be running at startup
                     // when sal3.dll is loaded; also there is no
                     // synchronization with the spawned thread, so there
                     // does not appear to be a real risk of deadlock here
+                    if (hThread)
+                        CloseHandle(hThread);
                 }
             }
 

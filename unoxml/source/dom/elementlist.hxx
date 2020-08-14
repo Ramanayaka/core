@@ -30,7 +30,6 @@
 #include <rtl/ref.hxx>
 
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/xml/dom/XNode.hpp>
 #include <com/sun/star/xml/dom/XNodeList.hpp>
 #include <com/sun/star/xml/dom/events/XEvent.hpp>
@@ -41,8 +40,6 @@
 namespace DOM
 {
     class CElement;
-
-    typedef std::vector< xmlNodePtr > nodevector_t;
 
     class CElementListImpl
         : public cppu::WeakImplHelper< css::xml::dom::XNodeList,
@@ -59,7 +56,7 @@ namespace DOM
         ::std::unique_ptr<xmlChar[]> const m_pName;
         ::std::unique_ptr<xmlChar[]> const m_pURI;
         bool m_bRebuild;
-        nodevector_t m_nodevector;
+        std::vector< xmlNodePtr > m_nodevector;
 
         void buildlist(xmlNodePtr pNode, bool start=true);
 

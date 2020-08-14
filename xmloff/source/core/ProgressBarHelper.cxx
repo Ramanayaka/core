@@ -18,14 +18,13 @@
  */
 
 #include <xmloff/ProgressBarHelper.hxx>
-#include <xmloff/xmltoken.hxx>
 
 #include <osl/diagnose.h>
 
 using namespace ::com::sun::star;
 
-static const sal_Int32 nDefaultProgressBarRange = 1000000;
-static const float fProgressStep = 0.5;
+const sal_Int32 nDefaultProgressBarRange = 1000000;
+const float fProgressStep = 0.5;
 
 ProgressBarHelper::ProgressBarHelper(const css::uno::Reference < css::task::XStatusIndicator>& xTempStatusIndicator,
                                     const bool bTempStrict)
@@ -48,61 +47,61 @@ ProgressBarHelper::~ProgressBarHelper()
 
 void ProgressBarHelper::ChangeReference(sal_Int32 nNewReference)
 {
-    if((nNewReference > 0) && (nNewReference != nReference))
+    if((nNewReference <= 0) || (nNewReference == nReference))
+        return;
+
+    if (nReference)
     {
-        if (nReference)
-        {
-            double fPercent((double)nNewReference / nReference);
-            double fValue(nValue * fPercent);
-            nValue = static_cast<sal_Int32>(fValue);
-            nReference = nNewReference;
-        }
-        else
-        {
-            nReference = nNewReference;
-            nValue = 0;
-        }
+        double fPercent(static_cast<double>(nNewReference) / nReference);
+        double fValue(nValue * fPercent);
+        nValue = static_cast<sal_Int32>(fValue);
+        nReference = nNewReference;
+    }
+    else
+    {
+        nReference = nNewReference;
+        nValue = 0;
     }
 }
 
 void ProgressBarHelper::SetValue(sal_Int32 nTempValue)
 {
-    if (xStatusIndicator.is() && (nReference > 0))
+    if (!xStatusIndicator.is() || (nReference <= 0))
+        return;
+
+    if ((nTempValue >= nValue) && (!bStrict || (nTempValue <= nReference)))
     {
-        if ((nTempValue >= nValue) && (!bStrict || (nTempValue <= nReference)))
+        // #91317# no progress bar with values > 100%
+        if (nTempValue > nReference)
         {
-            // #91317# no progress bar with values > 100%
-            if (nTempValue > nReference)
-            {
-                if (!bRepeat)
-                    nValue = nReference;
-                else
-                {
-                    xStatusIndicator->reset();
-                    nValue = 0;
-                }
-            }
+            if (!bRepeat)
+                nValue = nReference;
             else
-                nValue = nTempValue;
-
-            double fValue(nValue);
-            double fNewValue ((fValue * nRange) / nReference);
-
-            double fPercent((fNewValue * 100) / nRange);
-            if (fPercent >= (fOldPercent + fProgressStep) || fPercent < fOldPercent)
             {
-                xStatusIndicator->setValue((sal_Int32)fNewValue);
-                fOldPercent = fPercent;
+                xStatusIndicator->reset();
+                nValue = 0;
             }
         }
-#ifdef DBG_UTIL
-        else if (!bFailure)
+        else
+            nValue = nTempValue;
+
+        double fValue(nValue);
+        double fNewValue ((fValue * nRange) / nReference);
+
+        double fPercent((fNewValue * 100) / nRange);
+        if (fPercent >= (fOldPercent + fProgressStep) || fPercent < fOldPercent)
         {
-            OSL_FAIL("tried to set a wrong value on the progressbar");
-            bFailure = true;
+            xStatusIndicator->setValue(static_cast<sal_Int32>(fNewValue));
+            fOldPercent = fPercent;
         }
-#endif
     }
+#ifdef DBG_UTIL
+    else if (!bFailure)
+    {
+        OSL_FAIL("tried to set a wrong value on the progressbar");
+        bFailure = true;
+    }
+#endif
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

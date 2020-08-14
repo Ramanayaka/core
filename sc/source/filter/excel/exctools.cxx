@@ -17,33 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
+#include <osl/diagnose.h>
+#include <document.hxx>
+#include <attrib.hxx>
+#include <scextopt.hxx>
+#include <olinetab.hxx>
 
-#include <editeng/editdata.hxx>
-#include <editeng/editeng.hxx>
-#include <editeng/editobj.hxx>
-#include <editeng/editstat.hxx>
-
-#include "document.hxx"
-#include "patattr.hxx"
-#include "attrib.hxx"
-#include "globstr.hrc"
-#include "scextopt.hxx"
-#include "progress.hxx"
-#include "rangenam.hxx"
-#include "editutil.hxx"
-
-#include "excrecds.hxx"
-#include "root.hxx"
-#include "imp_op.hxx"
-#include "excimp8.hxx"
-#include "namebuff.hxx"
-#include "otlnbuff.hxx"
-#include "xcl97rec.hxx"
-#include "formel.hxx"
-#include "xilink.hxx"
-#include "xecontent.hxx"
+#include <root.hxx>
+#include <excimp8.hxx>
+#include <namebuff.hxx>
+#include <otlnbuff.hxx>
+#include <formel.hxx>
+#include <xilink.hxx>
 
 #include <memory>
 #include <vector>
@@ -51,14 +36,10 @@
 RootData::RootData()
 {
     eDateiTyp = BiffX;
-    pExtSheetBuff = nullptr;
-    pShrfmlaBuff = nullptr;
-    pExtNameBuff = nullptr;
     pFmlaConverter = nullptr;
 
-    pAutoFilterBuffer = nullptr;
-    pPrintRanges = new ScRangeListTabs;
-    pPrintTitles = new ScRangeListTabs;
+    pPrintRanges.reset( new ScRangeListTabs );
+    pPrintTitles.reset( new ScRangeListTabs );
 
     pTabId = nullptr;
     pUserBViewList = nullptr;
@@ -70,12 +51,12 @@ RootData::RootData()
 
 RootData::~RootData()
 {
-    delete pExtSheetBuff;
-    delete pShrfmlaBuff;
-    delete pExtNameBuff;
-    delete pAutoFilterBuffer;
-    delete pPrintRanges;
-    delete pPrintTitles;
+    pExtSheetBuff.reset();
+    pShrfmlaBuff.reset();
+    pExtNameBuff.reset();
+    pAutoFilterBuffer.reset();
+    pPrintRanges.reset();
+    pPrintTitles.reset();
 }
 
 XclImpOutlineBuffer::XclImpOutlineBuffer( SCSIZE nNewSize ) :
@@ -112,17 +93,14 @@ void XclImpOutlineBuffer::MakeScOutline()
 
     ::std::vector<SCSIZE> aOutlineStack;
     aOutlineStack.reserve(mnMaxLevel);
-    OutlineLevels::const_iterator itr = maLevels.begin(), itrEnd = maLevels.end();
-    for (; itr != itrEnd; ++itr)
+    for (const auto& [nPos, nLevel] : maLevels)
     {
-        SCSIZE nPos = itr->first;
         if (nPos >= mnEndPos)
         {
             // Don't go beyond the max allowed position.
             OSL_ENSURE(aOutlineStack.empty(), "XclImpOutlineBuffer::MakeScOutline: outline stack not empty but expected to be.");
             break;
         }
-        sal_uInt8 nLevel = itr->second;
         sal_uInt8 nCurLevel = static_cast<sal_uInt8>(aOutlineStack.size());
         if (nLevel > nCurLevel)
         {
@@ -131,7 +109,7 @@ void XclImpOutlineBuffer::MakeScOutline()
         }
         else
         {
-            OSL_ENSURE(nLevel < nCurLevel, "XclImpOutlineBuffer::MakeScOutline: unexpected level!");
+            OSL_ENSURE(nLevel <= nCurLevel, "XclImpOutlineBuffer::MakeScOutline: unexpected level!");
             for (sal_uInt8 i = 0; i < nCurLevel - nLevel; ++i)
             {
                 if (aOutlineStack.empty())
@@ -197,7 +175,7 @@ ExcScenario::ExcScenario( XclImpStream& rIn, const RootData& rR )
         rIn.Ignore( 1 );
     }
 
-    aUserName = rIn.ReadUniString();
+    rIn.ReadUniString(); // username
 
     if( nComment )
         aComment = rIn.ReadUniString();
@@ -210,14 +188,13 @@ ExcScenario::ExcScenario( XclImpStream& rIn, const RootData& rR )
         nR = rIn.ReaduInt16();
         nC = rIn.ReaduInt16();
 
-        aEntries.push_back(ExcScenarioCell( nC, nR ));
+        aEntries.emplace_back( nC, nR );
 
         n--;
     }
 
-    std::vector<ExcScenarioCell>::iterator iter;
-    for (iter = aEntries.begin(); iter != aEntries.end(); ++iter)
-        iter->SetValue(rIn.ReadUniString());
+    for (auto& rEntry : aEntries)
+        rEntry.SetValue(rIn.ReadUniString());
 }
 
 void ExcScenario::Apply( const XclImpRoot& rRoot, const bool bLast )
@@ -236,12 +213,11 @@ void ExcScenario::Apply( const XclImpRoot& rRoot, const bool bLast )
                               /* | ScScenarioFlags::ShowFrame*/
     r.SetScenarioData( nNewTab, aComment, COL_LIGHTGRAY, nFlags);
 
-    std::vector<ExcScenarioCell>::const_iterator iter;
-    for (iter = aEntries.begin(); iter != aEntries.end(); ++iter)
+    for (const auto& rEntry : aEntries)
     {
-        sal_uInt16 nCol = iter->nCol;
-        sal_uInt16 nRow = iter->nRow;
-        OUString aVal = iter->GetValue();
+        sal_uInt16 nCol = rEntry.nCol;
+        sal_uInt16 nRow = rEntry.nRow;
+        OUString aVal = rEntry.GetValue();
 
         r.ApplyFlagsTab( nCol, nRow, nCol, nRow, nNewTab, ScMF::Scenario );
 

@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
-#include "sal/types.h"
+#include <sal/config.h>
+#include <sal/types.h>
 #include "unichars.hxx"
 
 bool ImplIsControlOrFormat(sal_uInt32 nUtf32)
@@ -83,7 +83,7 @@ bool ImplIsZeroWidth(sal_uInt32 nUtf32)
     return nUtf32 == 0x200B // ZERO WIDTH SPACE
            || nUtf32 == 0x200C // ZERO WIDTH NON-JOINER
            || nUtf32 == 0x200D // ZERO WIDTH JOINER
-           || nUtf32 == 0xFEFF; // ZEOR WIDTH NO-BREAK SPACE
+           || nUtf32 == 0xFEFF; // ZERO WIDTH NO-BREAK SPACE
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

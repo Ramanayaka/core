@@ -24,20 +24,18 @@
 #include <map>
 
 #include <cppuhelper/implbase.hxx>
+#include <cppuhelper/weakref.hxx>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/sdbc/XDriver.hpp>
 #include <com/sun/star/sdbc/XDriverManager2.hpp>
 #include <com/sun/star/sdbc/XConnectionPool.hpp>
-#include <com/sun/star/sdbc/XPooledConnection.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/frame/XDesktop2.hpp>
 #include <com/sun/star/frame/XTerminateListener.hpp>
 #include <com/sun/star/reflection/XProxyFactory.hpp>
-#include <comphelper/stl_types.hxx>
 #include <osl/mutex.hxx>
 #include <rtl/ref.hxx>
 
@@ -59,13 +57,11 @@ namespace connectivity
     {
 
 
-        typedef ::comphelper::OInterfaceCompare< css::sdbc::XDriver >  ODriverCompare;
         typedef std::map<OUString, rtl::Reference<OConnectionPool>> OConnectionPools;
 
         typedef std::map<
                 css::uno::Reference< css::sdbc::XDriver >,
-                css::uno::WeakReference< css::sdbc::XDriver >,
-                ODriverCompare>
+                css::uno::WeakReference< css::sdbc::XDriver >>
                 MapDriver2DriverRef;
 
         MapDriver2DriverRef                                       m_aDriverProxies;
@@ -77,13 +73,14 @@ namespace connectivity
         css::uno::Reference< css::uno::XInterface >               m_xConfigNode;      // config node for general connection pooling
         css::uno::Reference< css::frame::XDesktop2>               m_xDesktop;
 
-    private:
+    public:
         OPoolCollection(const OPoolCollection&) = delete;
         int operator= (const OPoolCollection&) = delete;
 
         explicit OPoolCollection(
             const css::uno::Reference< css::uno::XComponentContext >& _rxContext);
 
+    private:
         // some configuration helper methods
         css::uno::Reference< css::uno::XInterface > const & getConfigPoolRoot();
         static css::uno::Reference< css::uno::XInterface > createWithProvider(   const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxConfProvider,
@@ -122,13 +119,6 @@ namespace connectivity
         virtual OUString SAL_CALL getImplementationName(  ) override;
         virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
-
-    // XServiceInfo - static methods
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
-        /// @throws css::uno::RuntimeException
-        static OUString SAL_CALL getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_Static(  );
 
         // XEventListener
         virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;

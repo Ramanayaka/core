@@ -20,7 +20,7 @@
 #include <dispatch/interceptionhelper.hxx>
 
 #include <com/sun/star/frame/XInterceptorInfo.hpp>
-
+#include <osl/diagnose.h>
 #include <vcl/svapp.hxx>
 
 namespace framework{
@@ -40,41 +40,40 @@ css::uno::Reference< css::frame::XDispatch > SAL_CALL InterceptionHelper::queryD
                                                                                         const OUString& sTargetFrameName,
                                                                                               sal_Int32        nSearchFlags    )
 {
+    css::uno::Reference<css::frame::XDispatchProvider> xInterceptor;
     // SAFE {
-    SolarMutexClearableGuard aReadLock;
-
-    // a) first search an interceptor, which match to this URL by its URL pattern registration
-    //    Note: if it return NULL - it does not mean an empty interceptor list automatically!
-    css::uno::Reference< css::frame::XDispatchProvider > xInterceptor;
-    InterceptorList::const_iterator pIt = m_lInterceptionRegs.findByPattern(aURL.Complete);
-    if (pIt != m_lInterceptionRegs.end())
-        xInterceptor = pIt->xInterceptor;
-
-    // b) No match by registration - but a valid interceptor list.
-    //    Find first interceptor w/o pattern, so we need to query it
-    if (!xInterceptor.is() && m_lInterceptionRegs.size()>0)
     {
-        InterceptorList::const_iterator pIt2;
-        for (pIt2=m_lInterceptionRegs.begin(); pIt2!=m_lInterceptionRegs.end(); ++pIt2)
-        {
-            if (!pIt2->lURLPattern.getLength())
-            {
-                // no pattern -> need to ask this guy!
-                xInterceptor = pIt2->xInterceptor;
-                break;
-            }
-        }
-        // if we didn't find any non-pattern interceptor, there's no-one
-        // registered for this command url (we already searched for matching
-        // patterns above)
-    }
-    // c) No registered interceptor => use our direct slave.
-    //    This helper exist by design and must be valid everytimes ...
-    //    But to be more feature proof - we should check that .-)
-    if (!xInterceptor.is() && m_xSlave.is())
-        xInterceptor = m_xSlave;
+        SolarMutexGuard aReadLock;
 
-    aReadLock.clear();
+        // a) first search an interceptor, which match to this URL by its URL pattern registration
+        //    Note: if it return NULL - it does not mean an empty interceptor list automatically!
+        InterceptorList::const_iterator pIt = m_lInterceptionRegs.findByPattern(aURL.Complete);
+        if (pIt != m_lInterceptionRegs.end())
+            xInterceptor = pIt->xInterceptor;
+
+        // b) No match by registration - but a valid interceptor list.
+        //    Find first interceptor w/o pattern, so we need to query it
+        if (!xInterceptor.is())
+        {
+            for (auto const& lInterceptionReg : m_lInterceptionRegs)
+            {
+                if (!lInterceptionReg.lURLPattern.hasElements())
+                {
+                    // no pattern -> need to ask this guy!
+                    xInterceptor = lInterceptionReg.xInterceptor;
+                    break;
+                }
+            }
+            // if we didn't find any non-pattern interceptor, there's no-one
+            // registered for this command url (we already searched for matching
+            // patterns above)
+        }
+        // c) No registered interceptor => use our direct slave.
+        //    This helper exist by design and must be valid everytimes ...
+        //    But to be more feature proof - we should check that .-)
+        if (!xInterceptor.is() && m_xSlave.is())
+            xInterceptor = m_xSlave;
+    }
     // } SAFE
 
     css::uno::Reference< css::frame::XDispatch > xReturn;
@@ -85,10 +84,10 @@ css::uno::Reference< css::frame::XDispatch > SAL_CALL InterceptionHelper::queryD
 
 css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL InterceptionHelper::queryDispatches( const css::uno::Sequence< css::frame::DispatchDescriptor >& lDescriptor )
 {
-          sal_Int32                                                          c           = lDescriptor.getLength();
-          css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > lDispatches (c);
-          css::uno::Reference< css::frame::XDispatch >*                      pDispatches = lDispatches.getArray();
-    const css::frame::DispatchDescriptor*                                    pDescriptor = lDescriptor.getConstArray();
+    sal_Int32                                                          c           = lDescriptor.getLength();
+    css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > lDispatches (c);
+    css::uno::Reference< css::frame::XDispatch >*                      pDispatches = lDispatches.getArray();
+    const css::frame::DispatchDescriptor*                              pDescriptor = lDescriptor.getConstArray();
 
     for (sal_Int32 i=0; i<c; ++i)
         pDispatches[i] = queryDispatch(pDescriptor[i].FeatureURL, pDescriptor[i].FrameName, pDescriptor[i].SearchFlags);
@@ -108,7 +107,7 @@ void SAL_CALL InterceptionHelper::registerDispatchProviderInterceptor(const css:
     // If no list exist register these interceptor for all dispatch events with "*"!
     InterceptorInfo aInfo;
 
-    aInfo.xInterceptor.set(xInterceptor, css::uno::UNO_QUERY);
+    aInfo.xInterceptor = xInterceptor;
     css::uno::Reference< css::frame::XInterceptorInfo > xInfo(xInterceptor, css::uno::UNO_QUERY);
     if (xInfo.is())
         aInfo.lURLPattern = xInfo->getInterceptedURLs();
@@ -177,8 +176,8 @@ void SAL_CALL InterceptionHelper::releaseDispatchProviderInterceptor(const css::
     InterceptorList::iterator pIt = m_lInterceptionRegs.findByReference(xInterceptor);
     if (pIt != m_lInterceptionRegs.end())
     {
-        css::uno::Reference< css::frame::XDispatchProvider >            xSlaveD  (xInterceptor->getSlaveDispatchProvider() , css::uno::UNO_QUERY);
-        css::uno::Reference< css::frame::XDispatchProvider >            xMasterD (xInterceptor->getMasterDispatchProvider(), css::uno::UNO_QUERY);
+        css::uno::Reference< css::frame::XDispatchProvider >            xSlaveD  = xInterceptor->getSlaveDispatchProvider();
+        css::uno::Reference< css::frame::XDispatchProvider >            xMasterD = xInterceptor->getMasterDispatchProvider();
         css::uno::Reference< css::frame::XDispatchProviderInterceptor > xSlaveI  (xSlaveD                                  , css::uno::UNO_QUERY);
         css::uno::Reference< css::frame::XDispatchProviderInterceptor > xMasterI (xMasterD                                 , css::uno::UNO_QUERY);
 
@@ -229,17 +228,13 @@ void SAL_CALL InterceptionHelper::disposing(const css::lang::EventObject& aEvent
     aReadLock.clear();
     // <- SAFE
 
-    InterceptionHelper::InterceptorList::iterator pIt;
-    for (  pIt  = aCopy.begin();
-           pIt != aCopy.end();
-         ++pIt                 )
+    for (auto & elem : aCopy)
     {
-        InterceptionHelper::InterceptorInfo& rInfo = *pIt;
-        if (rInfo.xInterceptor.is())
+        if (elem.xInterceptor.is())
         {
-            css::uno::Reference< css::frame::XDispatchProviderInterceptor > xInterceptor(rInfo.xInterceptor, css::uno::UNO_QUERY_THROW);
+            css::uno::Reference< css::frame::XDispatchProviderInterceptor > xInterceptor(elem.xInterceptor, css::uno::UNO_QUERY_THROW);
             releaseDispatchProviderInterceptor(xInterceptor);
-            rInfo.xInterceptor.clear();
+            elem.xInterceptor.clear();
         }
     }
 

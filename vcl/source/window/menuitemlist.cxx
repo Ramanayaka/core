@@ -25,6 +25,7 @@
 #include <svdata.hxx>
 #include <vcl/i18nhelp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/vcllayout.hxx>
 #include <vcl/window.hxx>
 
 using namespace css;
@@ -34,15 +35,35 @@ MenuItemData::~MenuItemData()
 {
     if (aUserValueReleaseFunc)
         aUserValueReleaseFunc(nUserValue);
-    if( pSalMenuItem )
-        ImplGetSVData()->mpDefInst->DestroyMenuItem( pSalMenuItem );
+    pSalMenuItem.reset();
     pSubMenu.disposeAndClear();
+}
+
+SalLayoutGlyphs* MenuItemData::GetTextGlyphs(const OutputDevice* pOutputDevice)
+{
+    if (aTextGlyphs.IsValid())
+        // Use pre-calculated result.
+        return &aTextGlyphs;
+
+    OUString aNonMnemonicString = OutputDevice::GetNonMnemonicString(aText);
+    std::unique_ptr<SalLayout> pLayout
+        = pOutputDevice->ImplLayout(aNonMnemonicString, 0, aNonMnemonicString.getLength(),
+                                    Point(0, 0), 0, nullptr, SalLayoutFlags::GlyphItemsOnly);
+    if (!pLayout)
+        return nullptr;
+
+    const SalLayoutGlyphs* pGlyphs = pLayout->GetGlyphs();
+    if (!pGlyphs)
+        return nullptr;
+
+    // Remember the calculation result.
+    aTextGlyphs = *pGlyphs;
+
+    return &aTextGlyphs;
 }
 
 MenuItemList::~MenuItemList()
 {
-    for(MenuItemData* i : maItemList)
-        delete i;
 }
 
 MenuItemData* MenuItemList::Insert(
@@ -55,13 +76,13 @@ MenuItemData* MenuItemList::Insert(
     const OString &rIdent
 )
 {
-    MenuItemData* pData     = new MenuItemData( rStr, Image() );
+    MenuItemData* pData     = new MenuItemData( rStr );
     pData->nId              = nId;
     pData->sIdent           = rIdent;
     pData->eType            = eType;
     pData->nBits            = nBits;
     pData->pSubMenu         = nullptr;
-    pData->nUserValue       = 0;
+    pData->nUserValue       = nullptr;
     pData->bChecked         = false;
     pData->bEnabled         = true;
     pData->bVisible         = true;
@@ -75,12 +96,12 @@ MenuItemData* MenuItemList::Insert(
     aSalMIData.aText = rStr;
 
     // Native-support: returns NULL if not supported
-    pData->pSalMenuItem = ImplGetSVData()->mpDefInst->CreateMenuItem( &aSalMIData );
+    pData->pSalMenuItem = ImplGetSVData()->mpDefInst->CreateMenuItem( aSalMIData );
 
     if( nPos < maItemList.size() ) {
-        maItemList.insert( maItemList.begin() + nPos, pData );
+        maItemList.insert( maItemList.begin() + nPos, std::unique_ptr<MenuItemData>(pData) );
     } else {
-        maItemList.push_back( pData );
+        maItemList.emplace_back( pData );
     }
     return pData;
 }
@@ -93,7 +114,7 @@ void MenuItemList::InsertSeparator(const OString &rIdent, size_t nPos)
     pData->eType            = MenuItemType::SEPARATOR;
     pData->nBits            = MenuItemBits::NONE;
     pData->pSubMenu         = nullptr;
-    pData->nUserValue       = 0;
+    pData->nUserValue       = nullptr;
     pData->bChecked         = false;
     pData->bEnabled         = true;
     pData->bVisible         = true;
@@ -108,12 +129,12 @@ void MenuItemList::InsertSeparator(const OString &rIdent, size_t nPos)
     aSalMIData.aImage = Image();
 
     // Native-support: returns NULL if not supported
-    pData->pSalMenuItem = ImplGetSVData()->mpDefInst->CreateMenuItem( &aSalMIData );
+    pData->pSalMenuItem = ImplGetSVData()->mpDefInst->CreateMenuItem( aSalMIData );
 
     if( nPos < maItemList.size() ) {
-        maItemList.insert( maItemList.begin() + nPos, pData );
+        maItemList.insert( maItemList.begin() + nPos, std::unique_ptr<MenuItemData>(pData) );
     } else {
-        maItemList.push_back( pData );
+        maItemList.emplace_back( pData );
     }
 }
 
@@ -121,16 +142,13 @@ void MenuItemList::Remove( size_t nPos )
 {
     if( nPos < maItemList.size() )
     {
-        delete maItemList[ nPos ];
         maItemList.erase( maItemList.begin() + nPos );
     }
 }
 
 void MenuItemList::Clear()
 {
-    for (MenuItemData* i : maItemList)
-        delete i;
-    maItemList.resize(0);
+    maItemList.clear();
 }
 
 MenuItemData* MenuItemList::GetData( sal_uInt16 nSVId, size_t& rPos ) const
@@ -140,7 +158,7 @@ MenuItemData* MenuItemList::GetData( sal_uInt16 nSVId, size_t& rPos ) const
         if ( maItemList[ i ]->nId == nSVId )
         {
             rPos = i;
-            return maItemList[ i ];
+            return maItemList[ i ].get();
         }
     }
     return nullptr;
@@ -162,16 +180,28 @@ MenuItemData* MenuItemList::SearchItem(
     nDuplicates = GetItemCount( cSelectChar );  // return number of duplicates
     if( nDuplicates )
     {
+        MenuItemData* pFirstMatch = nullptr;
+        size_t nFirstPos(0);
         for ( rPos = 0; rPos < nListCount; rPos++)
         {
-            MenuItemData* pData = maItemList[ rPos ];
+            MenuItemData* pData = maItemList[ rPos ].get();
             if ( pData->bEnabled && rI18nHelper.MatchMnemonic( pData->aText, cSelectChar ) )
             {
-                if( nDuplicates > 1 && rPos == nCurrentPos )
-                    continue;   // select next entry with the same mnemonic
-                else
+                if (nDuplicates == 1)
                     return pData;
+                if (rPos > nCurrentPos)
+                    return pData;   // select next entry with the same mnemonic
+                if (!pFirstMatch)   // stash the first match for use if nothing follows nCurrentPos
+                {
+                    pFirstMatch = pData;
+                    nFirstPos = rPos;
+                }
             }
+        }
+        if (pFirstMatch)
+        {
+            rPos = nFirstPos;
+            return pFirstMatch;
         }
     }
 
@@ -184,9 +214,11 @@ MenuItemData* MenuItemList::SearchItem(
         if( aKeyCode.GetCode() >= KEY_A && aKeyCode.GetCode() <= KEY_Z )
             ascii = sal::static_int_cast<char>('A' + (aKeyCode.GetCode() - KEY_A));
 
+        MenuItemData* pFirstMatch = nullptr;
+        size_t nFirstPos(0);
         for ( rPos = 0; rPos < nListCount; rPos++)
         {
-            MenuItemData* pData = maItemList[ rPos ];
+            MenuItemData* pData = maItemList[ rPos ].get();
             if ( pData->bEnabled )
             {
                 sal_Int32 n = pData->aText.indexOf('~');
@@ -205,13 +237,23 @@ MenuItemData* MenuItemList::SearchItem(
                          )
                       )
                     {
-                        if( nDuplicates > 1 && rPos == nCurrentPos )
-                            continue;   // select next entry with the same mnemonic
-                        else
+                        if (nDuplicates == 1)
                             return pData;
+                        if (rPos > nCurrentPos)
+                            return pData;   // select next entry with the same mnemonic
+                        if (!pFirstMatch)   // stash the first match for use if nothing follows nCurrentPos
+                        {
+                            pFirstMatch = pData;
+                            nFirstPos = rPos;
+                        }
                     }
                 }
             }
+        }
+        if (pFirstMatch)
+        {
+            rPos = nFirstPos;
+            return pFirstMatch;
         }
     }
 
@@ -226,7 +268,7 @@ size_t MenuItemList::GetItemCount( sal_Unicode cSelectChar ) const
     size_t nItems = 0;
     for ( size_t nPos = maItemList.size(); nPos; )
     {
-        MenuItemData* pData = maItemList[ --nPos ];
+        MenuItemData* pData = maItemList[ --nPos ].get();
         if ( pData->bEnabled && rI18nHelper.MatchMnemonic( pData->aText, cSelectChar ) )
             nItems++;
     }
@@ -246,7 +288,7 @@ size_t MenuItemList::GetItemCount( KeyCode aKeyCode ) const
     size_t nItems = 0;
     for ( size_t nPos = maItemList.size(); nPos; )
     {
-        MenuItemData* pData = maItemList[ --nPos ];
+        MenuItemData* pData = maItemList[ --nPos ].get();
         if ( pData->bEnabled )
         {
             sal_Int32 n = pData->aText.indexOf('~');

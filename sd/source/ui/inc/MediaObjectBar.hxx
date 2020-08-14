@@ -20,36 +20,36 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_MEDIAOBJECTBAR_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_MEDIAOBJECTBAR_HXX
 
-#include <sfx2/module.hxx>
 #include <sfx2/shell.hxx>
-#include "glob.hxx"
+#include <glob.hxx>
+
+class SfxInterface;
+class SfxItemSet;
+class SfxModule;
+class SfxRequest;
 
 namespace sd {
 
 class View;
 class ViewShell;
 
-class MediaObjectBar
+class MediaObjectBar final
     : public SfxShell
 {
 public:
     SFX_DECL_INTERFACE( SD_IF_SDDRAWMEDIAOBJECTBAR )
 
-private:
-    /// SfxInterface initializer.
-    static void InitInterface_Impl();
-
-public:
-
     MediaObjectBar (ViewShell* pSdViewShell, ::sd::View* pSdView);
     virtual ~MediaObjectBar() override;
 
     void            GetState( SfxItemSet& rSet );
-    void            Execute( SfxRequest& rReq );
+    void            Execute( SfxRequest const & rReq );
 
-protected:
+private:
+    /// SfxInterface initializer.
+    static void InitInterface_Impl();
+
     ::sd::View* mpView;
-    ViewShell*  mpViewSh;
 };
 
 } // end of namespace sd

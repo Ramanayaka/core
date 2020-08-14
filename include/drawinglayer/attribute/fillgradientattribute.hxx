@@ -30,14 +30,12 @@ namespace basegfx {
     class BColor;
 }
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpFillGradientAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         enum class GradientStyle
         {
@@ -48,13 +46,11 @@ namespace drawinglayer
             Square,
             Rect
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC FillGradientAttribute
         {
@@ -76,10 +72,10 @@ namespace drawinglayer
                 const basegfx::BColor& rEndColor,
                 sal_uInt16 nSteps);
             FillGradientAttribute();
-            FillGradientAttribute(const FillGradientAttribute& rCandidate);
-            FillGradientAttribute(FillGradientAttribute&& rCandidate);
-            FillGradientAttribute& operator=(const FillGradientAttribute& rCandidate);
-            FillGradientAttribute& operator=(FillGradientAttribute&& rCandidate);
+            FillGradientAttribute(const FillGradientAttribute&);
+            FillGradientAttribute(FillGradientAttribute&&);
+            FillGradientAttribute& operator=(const FillGradientAttribute&);
+            FillGradientAttribute& operator=(FillGradientAttribute&&);
             ~FillGradientAttribute();
 
             // checks if the incarnation is default constructed
@@ -98,8 +94,8 @@ namespace drawinglayer
             const basegfx::BColor& getEndColor() const;
             sal_uInt16 getSteps() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_FILLGRADIENTATTRIBUTE_HXX

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ConfigColorScheme.hxx"
-#include "macros.hxx"
+#include <ConfigColorScheme.hxx>
 
 #include <unotools/configitem.hxx>
 #include <sal/macros.h>
@@ -35,7 +34,7 @@ using ::com::sun::star::uno::Sequence;
 namespace
 {
 
-static const char aSeriesPropName[] = "Series";
+const char aSeriesPropName[] = "Series";
 
 } // anonymous namespace
 
@@ -74,10 +73,10 @@ ChartConfigItem::ChartConfigItem( ConfigColorScheme & rListener ) :
 
 void ChartConfigItem::Notify( const Sequence< OUString > & aPropertyNames )
 {
-    for( sal_Int32 nIdx=0; nIdx<aPropertyNames.getLength(); ++nIdx )
+    for( OUString const & s : aPropertyNames )
     {
-        if( m_aPropertiesToNotify.find( aPropertyNames[nIdx] ) != m_aPropertiesToNotify.end())
-            m_rListener.notify( aPropertyNames[nIdx] );
+        if( m_aPropertiesToNotify.find( s ) != m_aPropertiesToNotify.end())
+            m_rListener.notify( s );
     }
 }
 
@@ -94,7 +93,7 @@ uno::Any ChartConfigItem::getProperty( const OUString & aPropertyName )
 {
     Sequence< uno::Any > aValues(
         GetProperties( Sequence< OUString >( &aPropertyName, 1 )));
-    if( ! aValues.getLength())
+    if( ! aValues.hasElements())
         return uno::Any();
     return aValues[0];
 }
@@ -119,14 +118,14 @@ void ConfigColorScheme::retrieveConfigColors()
         return;
 
     // create config item if necessary
-    if( ! m_apChartConfigItem.get())
+    if (!m_apChartConfigItem)
     {
         m_apChartConfigItem.reset(
             new impl::ChartConfigItem( *this ));
         m_apChartConfigItem->addPropertyNotification( aSeriesPropName );
     }
-    OSL_ASSERT( m_apChartConfigItem.get());
-    if( ! m_apChartConfigItem.get())
+    OSL_ASSERT(m_apChartConfigItem);
+    if (!m_apChartConfigItem)
         return;
 
     // retrieve colors
@@ -166,7 +165,7 @@ void ConfigColorScheme::notify( const OUString & rPropertyName )
 
 OUString SAL_CALL ConfigColorScheme::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart2.ConfigDefaultColorScheme") ;
+    return "com.sun.star.comp.chart2.ConfigDefaultColorScheme" ;
 }
 
 sal_Bool SAL_CALL ConfigColorScheme::supportsService( const OUString& rServiceName )
@@ -181,7 +180,7 @@ css::uno::Sequence< OUString > SAL_CALL ConfigColorScheme::getSupportedServiceNa
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_ConfigDefaultColorScheme_get_implementation(css::uno::XComponentContext *context,
         css::uno::Sequence<css::uno::Any> const &)
 {

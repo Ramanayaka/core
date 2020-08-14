@@ -17,11 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <osl/file.hxx>
-#include <osl/module.hxx>
-#include <com/sun/star/document/XViewDataSupplier.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/uno/Any.h>
@@ -34,18 +29,16 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <vcl/svapp.hxx>
 
-#include <facreg.hxx>
-
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::document;
 using namespace com::sun::star::beans;
-using namespace com::sun::star::container;
 using namespace com::sun::star::ui::dialogs;
 
-#include "pres.hxx"
-#include "sdabstdlg.hxx"
-#include <memory>
+#include <pres.hxx>
+#include <sdabstdlg.hxx>
+
+namespace {
 
 class SdHtmlOptionsDialog : public cppu::WeakImplHelper
 <
@@ -58,7 +51,6 @@ class SdHtmlOptionsDialog : public cppu::WeakImplHelper
 {
     Sequence< PropertyValue > maMediaDescriptor;
     Sequence< PropertyValue > maFilterDataSequence;
-    OUString aDialogTitle;
     DocumentType meDocType;
 
 public:
@@ -90,6 +82,8 @@ public:
 
 };
 
+}
+
 SdHtmlOptionsDialog::SdHtmlOptionsDialog() :
     meDocType   ( DocumentType::Draw )
 {
@@ -113,7 +107,7 @@ void SAL_CALL SdHtmlOptionsDialog::initialize( const Sequence< Any > & )
 // XServiceInfo
 OUString SAL_CALL SdHtmlOptionsDialog::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.draw.SdHtmlOptionsDialog" );
+    return "com.sun.star.comp.draw.SdHtmlOptionsDialog";
 }
 
 sal_Bool SAL_CALL SdHtmlOptionsDialog::supportsService( const OUString& rServiceName )
@@ -130,12 +124,10 @@ Sequence< OUString > SAL_CALL SdHtmlOptionsDialog::getSupportedServiceNames()
 // XPropertyAccess
 Sequence< PropertyValue > SdHtmlOptionsDialog::getPropertyValues()
 {
-    sal_Int32 i, nCount;
-    for ( i = 0, nCount = maMediaDescriptor.getLength(); i < nCount; i++ )
-    {
-        if ( maMediaDescriptor[ i ].Name == "FilterData" )
-            break;
-    }
+    auto pProp = std::find_if(maMediaDescriptor.begin(), maMediaDescriptor.end(),
+        [](const PropertyValue& rProp) { return rProp.Name == "FilterData"; });
+    auto i = static_cast<sal_Int32>(std::distance(maMediaDescriptor.begin(), pProp));
+    sal_Int32 nCount = maMediaDescriptor.getLength();
     if ( i == nCount )
         maMediaDescriptor.realloc( ++nCount );
 
@@ -149,21 +141,15 @@ void SdHtmlOptionsDialog::setPropertyValues( const Sequence< PropertyValue > & a
 {
     maMediaDescriptor = aProps;
 
-    sal_Int32 i, nCount;
-    for ( i = 0, nCount = maMediaDescriptor.getLength(); i < nCount; i++ )
-    {
-        if ( maMediaDescriptor[ i ].Name == "FilterData" )
-        {
-            maMediaDescriptor[ i ].Value >>= maFilterDataSequence;
-            break;
-        }
-    }
+    auto pProp = std::find_if(maMediaDescriptor.begin(), maMediaDescriptor.end(),
+        [](const PropertyValue& rProp) { return rProp.Name == "FilterData"; });
+    if (pProp != maMediaDescriptor.end())
+        pProp->Value >>= maFilterDataSequence;
 }
 
 // XExecutableDialog
-void SdHtmlOptionsDialog::setTitle( const OUString& aTitle )
+void SdHtmlOptionsDialog::setTitle( const OUString& )
 {
-    aDialogTitle = aTitle;
 }
 
 sal_Int16 SdHtmlOptionsDialog::execute()
@@ -171,21 +157,15 @@ sal_Int16 SdHtmlOptionsDialog::execute()
     sal_Int16 nRet = ExecutableDialogResults::CANCEL;
 
     SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
-    if( pFact )
+    ScopedVclPtr<AbstractSdPublishingDlg> pDlg(pFact->CreateSdPublishingDlg(nullptr /*TODO*/, meDocType));
+    if( pDlg->Execute() )
     {
-        ScopedVclPtr<AbstractSdPublishingDlg> pDlg(pFact->CreateSdPublishingDlg( Application::GetDefDialogParent(), meDocType ));
-        if( pDlg )
-        {
-            if( pDlg->Execute() )
-            {
-                pDlg->GetParameterSequence( maFilterDataSequence );
-                nRet = ExecutableDialogResults::OK;
-            }
-            else
-            {
-                nRet = ExecutableDialogResults::CANCEL;
-            }
-        }
+        pDlg->GetParameterSequence( maFilterDataSequence );
+        nRet = ExecutableDialogResults::OK;
+    }
+    else
+    {
+        nRet = ExecutableDialogResults::CANCEL;
     }
     return nRet;
 }
@@ -212,7 +192,7 @@ void SdHtmlOptionsDialog::setSourceDocument( const Reference< XComponent >& xDoc
 }
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_draw_SdHtmlOptionsDialog_get_implementation(css::uno::XComponentContext*,
                                                               css::uno::Sequence<css::uno::Any> const &)
 {

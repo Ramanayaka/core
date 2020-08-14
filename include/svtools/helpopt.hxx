@@ -21,14 +21,13 @@
 
 #include <svtools/svtdllapi.h>
 
-#include <list>
 #include <rtl/ustring.hxx>
 #include <unotools/options.hxx>
 #include <memory>
 
 class SvtHelpOptions_Impl;
 
-class SVT_DLLPUBLIC SvtHelpOptions: public utl::detail::Options
+class SVT_DLLPUBLIC SvtHelpOptions final : public utl::detail::Options
 {
     std::shared_ptr<SvtHelpOptions_Impl>    pImpl;
 
@@ -40,11 +39,13 @@ public:
     bool            IsExtendedHelp() const;
     void            SetHelpTips( bool b );
     bool            IsHelpTips() const;
+    void            SetOfflineHelpPopUp(bool b);
+    bool            IsOfflineHelpPopUp() const;
 
     const OUString& GetHelpStyleSheet()const;
     void            SetHelpStyleSheet(const OUString& rStyleSheet);
 
-    OUString        GetSystem() const;
+    OUString const & GetSystem() const;
 };
 
 #endif

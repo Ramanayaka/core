@@ -20,17 +20,23 @@
 #ifndef INCLUDED_VCL_OLDPRINTADAPTOR_HXX
 #define INCLUDED_VCL_OLDPRINTADAPTOR_HXX
 
+#include <config_options.h>
 #include <memory>
 #include <vcl/print.hxx>
+
+namespace weld
+{
+    class Window;
+}
 
 namespace vcl
 {
     struct ImplOldStyleAdaptorData;
-    class VCL_DLLPUBLIC OldStylePrintAdaptor : public PrinterController
+    class UNLESS_MERGELIBS(VCL_DLLPUBLIC) OldStylePrintAdaptor final : public PrinterController
     {
         std::unique_ptr<ImplOldStyleAdaptorData>  mpData;
     public:
-        OldStylePrintAdaptor( const VclPtr< Printer >& );
+        OldStylePrintAdaptor(const VclPtr<Printer>&, weld::Window*);
         virtual ~OldStylePrintAdaptor() override;
 
         void StartPage();

@@ -17,15 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/textbodypropertiescontext.hxx"
+#include <drawingml/textbodypropertiescontext.hxx>
 
 #include <com/sun/star/text/WritingMode.hpp>
 #include <com/sun/star/drawing/TextFitToSizeType.hpp>
 #include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
-#include "drawingml/textbodyproperties.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
-#include "oox/helper/attributelist.hxx"
-#include "oox/helper/propertymap.hxx"
+#include <drawingml/textbodyproperties.hxx>
+#include <drawingml/textbody.hxx>
+#include <drawingml/customshapegeometry.hxx>
+#include <drawingml/scene3dcontext.hxx>
+#include <oox/drawingml/drawingmltypes.hxx>
+#include <oox/helper/attributelist.hxx>
+#include <oox/helper/propertymap.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
@@ -37,10 +40,18 @@ using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 // CT_TextBodyProperties
-TextBodyPropertiesContext::TextBodyPropertiesContext( ContextHandler2Helper& rParent,
+TextBodyPropertiesContext::TextBodyPropertiesContext(ContextHandler2Helper const& rParent,
+                                                     const AttributeList& rAttribs,
+                                                     const ShapePtr& pShapePtr)
+    : TextBodyPropertiesContext(rParent, rAttribs, pShapePtr->getTextBody()->getTextProperties())
+{
+    mpShapePtr = pShapePtr;
+}
+
+TextBodyPropertiesContext::TextBodyPropertiesContext( ContextHandler2Helper const & rParent,
     const AttributeList& rAttribs, TextBodyProperties& rTextBodyProp )
 : ContextHandler2( rParent )
 , mrTextBodyProp( rTextBodyProp )
@@ -52,7 +63,7 @@ TextBodyPropertiesContext::TextBodyPropertiesContext( ContextHandler2Helper& rPa
     // ST_Coordinate
     OUString sValue;
     sal_Int32 aIns[] = { XML_lIns, XML_tIns, XML_rIns, XML_bIns };
-    for( sal_Int32 i = 0; i < ( sal_Int32 ) SAL_N_ELEMENTS( aIns ); i++)
+    for( sal_Int32 i = 0; i < sal_Int32(SAL_N_ELEMENTS( aIns )); i++)
     {
         sValue = rAttribs.getString( aIns[i] ).get();
         if( !sValue.isEmpty() )
@@ -65,7 +76,8 @@ TextBodyPropertiesContext::TextBodyPropertiesContext( ContextHandler2Helper& rPa
 
 //   bool bCompatLineSpacing = rAttribs.getBool( XML_compatLnSpc, false );
 //   bool bForceAA = rAttribs.getBool( XML_forceAA, false );
-//   bool bFromWordArt = rAttribs.getBool( XML_fromWordArt, false );
+    bool bFromWordArt = rAttribs.getBool(XML_fromWordArt, false);
+    mrTextBodyProp.maPropertyMap.setProperty(PROP_FromWordArt, bFromWordArt);
 
   // ST_TextHorzOverflowType
 //   sal_Int32 nHorzOverflow = rAttribs.getToken( XML_horzOverflow, XML_overflow );
@@ -73,7 +85,7 @@ TextBodyPropertiesContext::TextBodyPropertiesContext( ContextHandler2Helper& rPa
 //   sal_Int32 nVertOverflow =  rAttribs.getToken( XML_vertOverflow, XML_overflow );
 
     // ST_TextColumnCount
-//   sal_Int32 nNumCol = rAttribs.getInteger( XML_numCol, 1 );
+    mrTextBodyProp.mnNumCol = rAttribs.getInteger( XML_numCol, 1 );
 
     // ST_Angle
     mrTextBodyProp.moRotation = rAttribs.getInteger( XML_rot );
@@ -111,12 +123,25 @@ TextBodyPropertiesContext::TextBodyPropertiesContext( ContextHandler2Helper& rPa
     mrTextBodyProp.maPropertyMap.setProperty( PROP_TextFitToSize, drawing::TextFitToSizeType_NONE);
 }
 
-ContextHandlerRef TextBodyPropertiesContext::onCreateContext( sal_Int32 aElementToken, const AttributeList& /*rAttribs*/)
+ContextHandlerRef TextBodyPropertiesContext::onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs )
 {
     switch( aElementToken )
     {
             // Sequence
             case A_TOKEN( prstTxWarp ):     // CT_PresetTextShape
+                if( mpShapePtr )
+                {
+                    const OptValue<OUString> sPrst = rAttribs.getString( XML_prst );
+                    if( sPrst.has() )
+                    {
+                        mrTextBodyProp.msPrst = sPrst.get();
+                        if( mrTextBodyProp.msPrst != "textNoShape" )
+                            return new PresetTextShapeContext( *this, rAttribs,
+                                                           *( mpShapePtr->getCustomShapeProperties() ) );
+                    }
+                }
+                break;
+
             case A_TOKEN( prot ):           // CT_TextProtectionProperty
                 break;
 
@@ -125,9 +150,12 @@ ContextHandlerRef TextBodyPropertiesContext::onCreateContext( sal_Int32 aElement
                 mrTextBodyProp.maPropertyMap.setProperty( PROP_TextAutoGrowHeight, false);   // CT_TextNoAutofit
                 break;
             case A_TOKEN( normAutofit ):    // CT_TextNormalAutofit
+            {
                 mrTextBodyProp.maPropertyMap.setProperty( PROP_TextFitToSize, TextFitToSizeType_AUTOFIT);
                 mrTextBodyProp.maPropertyMap.setProperty( PROP_TextAutoGrowHeight, false);
+                mrTextBodyProp.mnFontScale = rAttribs.getInteger(XML_fontScale, 100000);
                 break;
+            }
             case A_TOKEN( spAutoFit ):
                 {
                     const sal_Int32 tVert = mrTextBodyProp.moVert.get( XML_horz );
@@ -137,6 +165,12 @@ ContextHandlerRef TextBodyPropertiesContext::onCreateContext( sal_Int32 aElement
                 break;
 
             case A_TOKEN( scene3d ):        // CT_Scene3D
+            {
+                if(mpShapePtr && mpShapePtr->getServiceName() == "com.sun.star.drawing.CustomShape")
+                    return new Scene3DPropertiesContext( *this, mpShapePtr->get3DProperties() );
+
+                break;
+            }
 
             // EG_Text3D
             case A_TOKEN( sp3d ):           // CT_Shape3D
@@ -148,6 +182,6 @@ ContextHandlerRef TextBodyPropertiesContext::onCreateContext( sal_Int32 aElement
     return nullptr;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

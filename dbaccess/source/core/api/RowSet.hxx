@@ -20,7 +20,12 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_API_ROWSET_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_API_ROWSET_HXX
 
-#include "apitools.hxx"
+#include <sal/config.h>
+
+#include <atomic>
+#include <cstddef>
+
+#include <apitools.hxx>
 #include "RowSetBase.hxx"
 
 #include <com/sun/star/sdbc/XPreparedStatement.hpp>
@@ -32,12 +37,9 @@
 #include <com/sun/star/sdbc/XResultSetUpdate.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/sdb/XRowSetApproveBroadcaster.hpp>
-#include <com/sun/star/sdbc/ResultSetType.hpp>
 #include <com/sun/star/util/XCancellable.hpp>
 #include <com/sun/star/sdbcx/XDeleteRows.hpp>
 #include <com/sun/star/sdb/XCompletedExecution.hpp>
-#include <com/sun/star/sdb/RowSetVetoException.hpp>
-#include <com/sun/star/sdb/XSingleSelectQueryAnalyzer.hpp>
 #include <com/sun/star/sdb/XParametersSupplier.hpp>
 #include <com/sun/star/sdb/XRowsChangeBroadcaster.hpp>
 
@@ -65,7 +67,7 @@ namespace dbaccess
                                                     >   ORowSet_BASE1;
 
     class OTableContainer;
-    class ORowSet : public cppu::BaseMutex
+    class ORowSet final : public cppu::BaseMutex
                     , public ORowSet_BASE1
                     , public ORowSetBase
                     , public ::comphelper::OPropertyArrayUsageHelper<ORowSet>
@@ -99,7 +101,7 @@ namespace dbaccess
 
         ::dbtools::WarningsContainer                m_aWarnings;
 
-        OTableContainer*                            m_pTables;
+        rtl::Reference<OTableContainer>        m_xTables;
 
         OUString                               m_aCommand;
         OUString                               m_aDataSourceName;
@@ -124,7 +126,7 @@ namespace dbaccess
         sal_Int32                   m_nTransactionIsolation;
         sal_Int32                   m_nPrivileges;
         sal_Int32                   m_nLastKnownRowCount;
-        oslInterlockedCount         m_nInAppend;
+        std::atomic<std::size_t>    m_nInAppend;
         bool                        m_bInsertingRow;
         bool                        m_bLastKnownRowCountFinal;
         bool                        m_bUseEscapeProcessing ;
@@ -139,7 +141,6 @@ namespace dbaccess
         bool                        m_bOwnConnection;
         bool                        m_bPropChangeNotifyEnabled;
 
-    private:
         /** builds m_aActiveCommand from our settings
 
             @return
@@ -163,7 +164,7 @@ namespace dbaccess
                 m_xActiveConnection points to a valid SDB-level connection
 
             @throws css::sdb::SQLException
-                if an database-related error occurred
+                if a database-related error occurred
 
             @throws css::uno::RuntimeException
                 if any of the components involved throws a css::uno::RuntimeException
@@ -221,7 +222,6 @@ namespace dbaccess
         // restore the old state of the data column read-only state
         void impl_restoreDataColumnsWriteable_throw();
 
-    protected:
         virtual void SAL_CALL setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,const css::uno::Any& rValue) override;
         virtual void SAL_CALL getFastPropertyValue(css::uno::Any& rValue,sal_Int32 nHandle) const override;
         virtual void getPropertyDefaultByHandle( sal_Int32 _nHandle, css::uno::Any& _rDefault ) const override;
@@ -231,7 +231,8 @@ namespace dbaccess
                 void notifyAllListenersRowChanged(::osl::ResettableMutexGuard& _rGuard,const css::sdb::RowsChangeEvent& rEvt);
         virtual bool notifyAllListenersCursorBeforeMove(::osl::ResettableMutexGuard& _rGuard) override;
         virtual void notifyAllListenersCursorMoved(::osl::ResettableMutexGuard& _rGuard) override;
-        virtual void notifyAllListeners(::osl::ResettableMutexGuard& _rGuard) override;
+        // notify all that rowset changed
+        void notifyAllListeners(::osl::ResettableMutexGuard& _rGuard);
 
         virtual void doCancelModification( ) override;
         virtual bool isModification( ) override;
@@ -255,7 +256,7 @@ namespace dbaccess
 
     // css::lang::XUnoTunnel
         virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-        static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+        static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
     // css::uno::XAggregation
         virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type& aType ) override;
@@ -389,7 +390,6 @@ namespace dbaccess
         virtual css::uno::Any SAL_CALL getWarnings(  ) override;
         virtual void SAL_CALL clearWarnings(  ) override;
 
-    protected:
         /** implement the <method>execute</method>, without calling the approve listeners and without building a new
             connection
             @param      _rClearForNotification      mutex to clear before doing the final notifications
@@ -403,7 +403,7 @@ namespace dbaccess
         void    approveExecution();
 
         /// set m_xActiveConnection, fire a PropertyChangeEvent if necessary, do the event listener handling etc
-        void setActiveConnection( css::uno::Reference< css::sdbc::XConnection >& _rxNewConn, bool _bFireEvent = true );
+        void setActiveConnection( css::uno::Reference< css::sdbc::XConnection > const & _rxNewConn, bool _bFireEvent = true );
 
         void implCancelRowUpdates( bool _bNotifyModified );
 
@@ -436,7 +436,6 @@ namespace dbaccess
         */
         void    impl_disposeParametersContainer_nothrow();
 
-    protected:
         using ORowSetBase::getFastPropertyValue;
         using ORowSetBase::firePropertyChange;
         using ORowSetBase::doCancelModification;
@@ -453,7 +452,6 @@ namespace dbaccess
                          ,public ORowSetBase
                          ,public ::comphelper::OPropertyArrayUsageHelper < ORowSetClone >
     {
-    protected:
         ORowSet*                    m_pParent;
         sal_Int32                   m_nFetchDirection;
         sal_Int32                   m_nFetchSize;
@@ -490,7 +488,7 @@ namespace dbaccess
 
     // css::lang::XUnoTunnel
         virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-        static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+        static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
     // OComponentHelper
         virtual void SAL_CALL disposing() override;

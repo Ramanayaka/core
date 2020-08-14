@@ -21,24 +21,22 @@
 
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/linguistic2/XLinguServiceEventBroadcaster.hpp>
-#include <com/sun/star/linguistic2/XSearchableDictionaryList.hpp>
 #include <com/sun/star/linguistic2/SpellFailure.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
-#include <cppuhelper/factory.hxx>
 #include <unotools/localedatawrapper.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <tools/debug.hxx>
 #include <svl/lngmisc.hxx>
 #include <osl/mutex.hxx>
+#include <sal/log.hxx>
 
 #include <vector>
 
 #include "spelldsp.hxx"
-#include "linguistic/spelldta.hxx"
+#include <linguistic/spelldta.hxx>
 #include "lngsvcmgr.hxx"
-#include "linguistic/lngprops.hxx"
 
 using namespace osl;
 using namespace com::sun::star;
@@ -48,6 +46,7 @@ using namespace com::sun::star::uno;
 using namespace com::sun::star::linguistic2;
 using namespace linguistic;
 
+namespace {
 
 // ProposalList: list of proposals for misspelled words
 // The order of strings in the array should be left unchanged because the
@@ -75,6 +74,7 @@ public:
     std::vector< OUString > GetVector() const;
 };
 
+}
 
 bool ProposalList::HasEntry( const OUString &rText ) const
 {
@@ -113,11 +113,8 @@ void ProposalList::Append( const std::vector< OUString > &rNew )
 
 void ProposalList::Append( const Sequence< OUString > &rNew )
 {
-    sal_Int32 nLen = rNew.getLength();
-    const OUString *pNew = rNew.getConstArray();
-    for (sal_Int32 i = 0;  i < nLen;  ++i)
+    for (const OUString& rText : rNew)
     {
-        const OUString &rText = pNew[i];
         if (!HasEntry( rText ))
             Append( rText );
     }
@@ -153,49 +150,25 @@ std::vector< OUString > ProposalList::GetVector() const
     return aRes;
 }
 
-bool SvcListHasLanguage(
+static bool SvcListHasLanguage(
         const LangSvcEntries_Spell &rEntry,
         LanguageType nLanguage )
 {
-    bool bHasLanguage = false;
-    Locale aTmpLocale;
+    Locale aTmpLocale = LanguageTag::convertToLocale( nLanguage );
 
-    const Reference< XSpellChecker >  *pRef  = rEntry.aSvcRefs .getConstArray();
-    sal_Int32 nLen = rEntry.aSvcRefs.getLength();
-    for (sal_Int32 k = 0;  k < nLen  &&  !bHasLanguage;  ++k)
-    {
-        if (pRef[k].is())
-        {
-            if (aTmpLocale.Language.isEmpty())
-                aTmpLocale = LanguageTag::convertToLocale( nLanguage );
-            bHasLanguage = pRef[k]->hasLocale( aTmpLocale );
-        }
-    }
-
-    return bHasLanguage;
+    return std::any_of(rEntry.aSvcRefs.begin(), rEntry.aSvcRefs.end(),
+        [&aTmpLocale](const Reference<XSpellChecker>& rRef) {
+            return rRef.is() && rRef->hasLocale( aTmpLocale ); });
 }
 
 SpellCheckerDispatcher::SpellCheckerDispatcher( LngSvcMgr &rLngSvcMgr ) :
     m_rMgr    (rLngSvcMgr)
 {
-    m_pCache = nullptr;
-    m_pCharClass = nullptr;
 }
 
 
 SpellCheckerDispatcher::~SpellCheckerDispatcher()
 {
-    ClearSvcList();
-    delete m_pCache;
-    delete m_pCharClass;
-}
-
-
-void SpellCheckerDispatcher::ClearSvcList()
-{
-    // release memory for each table entry
-    SpellSvcByLangMap_t aTmp;
-    m_aSvcMap.swap( aTmp );
 }
 
 
@@ -203,14 +176,13 @@ Sequence< Locale > SAL_CALL SpellCheckerDispatcher::getLocales()
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
-    Sequence< Locale > aLocales( static_cast< sal_Int32 >(m_aSvcMap.size()) );
-    Locale *pLocales = aLocales.getArray();
-    SpellSvcByLangMap_t::const_iterator aIt;
-    for (aIt = m_aSvcMap.begin();  aIt != m_aSvcMap.end();  ++aIt)
-    {
-        *pLocales++ = LanguageTag::convertToLocale( aIt->first );
-    }
-    return aLocales;
+    std::vector<Locale> aLocales;
+    aLocales.reserve(m_aSvcMap.size());
+
+    std::transform(m_aSvcMap.begin(), m_aSvcMap.end(), std::back_inserter(aLocales),
+        [](SpellSvcByLangMap_t::const_reference elem) { return LanguageTag::convertToLocale(elem.first); });
+
+    return comphelper::containerToSequence(aLocales);
 }
 
 
@@ -224,7 +196,7 @@ sal_Bool SAL_CALL SpellCheckerDispatcher::hasLocale( const Locale& rLocale )
 
 sal_Bool SAL_CALL
     SpellCheckerDispatcher::isValid( const OUString& rWord, const Locale& rLocale,
-            const PropertyValues& rProperties )
+            const css::uno::Sequence< ::css::beans::PropertyValue >& rProperties )
 {
     MutexGuard  aGuard( GetLinguMutex() );
     return isValid_Impl( rWord, LinguLocaleToLanguage( rLocale ), rProperties );
@@ -233,7 +205,7 @@ sal_Bool SAL_CALL
 
 Reference< XSpellAlternatives > SAL_CALL
     SpellCheckerDispatcher::spell( const OUString& rWord, const Locale& rLocale,
-            const PropertyValues& rProperties )
+            const css::uno::Sequence< ::css::beans::PropertyValue >& rProperties )
 {
     MutexGuard  aGuard( GetLinguMutex() );
     return spell_Impl( rWord, LinguLocaleToLanguage( rLocale ), rProperties );
@@ -297,7 +269,7 @@ bool SpellCheckerDispatcher::isValid_Impl(
 
         // replace typographical apostroph by ascii apostroph
         OUString aSingleQuote( GetLocaleDataWrapper( nLanguage ).getQuotationMarkEnd() );
-        DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpectend length of quotation mark" );
+        DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpected length of quotation mark" );
         if (!aSingleQuote.isEmpty())
             aChkWord = aChkWord.replace( aSingleQuote[0], '\'' );
 
@@ -333,7 +305,7 @@ bool SpellCheckerDispatcher::isValid_Impl(
                         // Add correct words to the cache.
                         // But not those that are correct only because of
                         // the temporary supplied settings.
-                        if (bTmpRes  &&  0 == rProperties.getLength())
+                        if (bTmpRes  &&  !rProperties.hasElements())
                             GetCache().AddWord( aChkWord, nLanguage );
                     }
                 }
@@ -392,7 +364,7 @@ bool SpellCheckerDispatcher::isValid_Impl(
                          // Add correct words to the cache.
                         // But not those that are correct only because of
                         // the temporary supplied settings.
-                        if (bTmpRes  &&  0 == rProperties.getLength())
+                        if (bTmpRes  &&  !rProperties.hasElements())
                             GetCache().AddWord( aChkWord, nLanguage );
                     }
                 }
@@ -401,7 +373,7 @@ bool SpellCheckerDispatcher::isValid_Impl(
                 if (bTmpResValid)
                     bRes = bTmpRes;
 
-                pEntry->nLastTriedSvcIndex = (sal_Int16) i;
+                pEntry->nLastTriedSvcIndex = static_cast<sal_Int16>(i);
                 ++i;
             }
 
@@ -422,9 +394,9 @@ bool SpellCheckerDispatcher::isValid_Impl(
                 bRes = !xTmp->isNegative();
             } else {
                 setCharClass(LanguageTag(nLanguage));
-                CapType ct = capitalType(aChkWord, m_pCharClass);
+                CapType ct = capitalType(aChkWord, m_pCharClass.get());
                 if (ct == CapType::INITCAP || ct == CapType::ALLCAP) {
-                    Reference< XDictionaryEntry > xTmp2( lcl_GetRulingDictionaryEntry( makeLowerCase(aChkWord, m_pCharClass), nLanguage ) );
+                    Reference< XDictionaryEntry > xTmp2( lcl_GetRulingDictionaryEntry( makeLowerCase(aChkWord, m_pCharClass.get()), nLanguage ) );
                     if (xTmp2.is()) {
                         bRes = !xTmp2->isNegative();
                     }
@@ -460,7 +432,7 @@ Reference< XSpellAlternatives > SpellCheckerDispatcher::spell_Impl(
 
         // replace typographical apostroph by ascii apostroph
         OUString aSingleQuote( GetLocaleDataWrapper( nLanguage ).getQuotationMarkEnd() );
-        DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpectend length of quotation mark" );
+        DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpected length of quotation mark" );
         if (!aSingleQuote.isEmpty())
             aChkWord = aChkWord.replace( aSingleQuote[0], '\'' );
 
@@ -498,7 +470,7 @@ Reference< XSpellAlternatives > SpellCheckerDispatcher::spell_Impl(
                         // Add correct words to the cache.
                         // But not those that are correct only because of
                         // the temporary supplied settings.
-                        if (!xTmpRes.is()  &&  0 == rProperties.getLength())
+                        if (!xTmpRes.is()  &&  !rProperties.hasElements())
                             GetCache().AddWord( aChkWord, nLanguage );
                     }
                 }
@@ -577,7 +549,7 @@ Reference< XSpellAlternatives > SpellCheckerDispatcher::spell_Impl(
                         // Add correct words to the cache.
                         // But not those that are correct only because of
                         // the temporary supplied settings.
-                        if (!xTmpRes.is()  &&  0 == rProperties.getLength())
+                        if (!xTmpRes.is()  &&  !rProperties.hasElements())
                             GetCache().AddWord( aChkWord, nLanguage );
                     }
                 }
@@ -603,7 +575,7 @@ Reference< XSpellAlternatives > SpellCheckerDispatcher::spell_Impl(
                     nNumSugestions = nTmpNumSugestions;
                 }
 
-                pEntry->nLastTriedSvcIndex = (sal_Int16) i;
+                pEntry->nLastTriedSvcIndex = static_cast<sal_Int16>(i);
                 ++i;
             }
 
@@ -663,10 +635,10 @@ Reference< XSpellAlternatives > SpellCheckerDispatcher::spell_Impl(
             else
             {
                 setCharClass(LanguageTag(nLanguage));
-                CapType ct = capitalType(aChkWord, m_pCharClass);
+                CapType ct = capitalType(aChkWord, m_pCharClass.get());
                 if (ct == CapType::INITCAP || ct == CapType::ALLCAP)
                 {
-                    Reference< XDictionaryEntry > xTmp2( lcl_GetRulingDictionaryEntry( makeLowerCase(aChkWord, m_pCharClass), nLanguage ) );
+                    Reference< XDictionaryEntry > xTmp2( lcl_GetRulingDictionaryEntry( makeLowerCase(aChkWord, m_pCharClass.get()), nLanguage ) );
                     if (xTmp2.is())
                     {
                         if (xTmp2->isNegative())    // negative entry found
@@ -807,7 +779,7 @@ void SpellCheckerDispatcher::SetServiceList( const Locale &rLocale,
         }
         else
         {
-            std::shared_ptr< LangSvcEntries_Spell > pTmpEntry( new LangSvcEntries_Spell( rSvcImplNames ) );
+            auto pTmpEntry = std::make_shared<LangSvcEntries_Spell>( rSvcImplNames );
             pTmpEntry->aSvcRefs = Sequence< Reference < XSpellChecker > >( nLen );
             m_aSvcMap[ nLanguage ] = pTmpEntry;
         }
@@ -842,12 +814,12 @@ void SpellCheckerDispatcher::FlushSpellCache()
 void SpellCheckerDispatcher::setCharClass(const LanguageTag& rLanguageTag)
 {
     if (!m_pCharClass)
-        m_pCharClass = new CharClass(rLanguageTag);
+        m_pCharClass.reset( new CharClass(rLanguageTag) );
     m_pCharClass->setLanguageTag(rLanguageTag);
 }
 
 
-OUString SAL_CALL SpellCheckerDispatcher::makeLowerCase(const OUString& aTerm, CharClass * pCC)
+OUString SpellCheckerDispatcher::makeLowerCase(const OUString& aTerm, CharClass const * pCC)
 {
     if (pCC)
         return pCC->lowercase(aTerm);

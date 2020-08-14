@@ -20,11 +20,16 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_VIEW_VIEWOVERLAYMANAGER_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_VIEW_VIEWOVERLAYMANAGER_HXX
 
-#include <vcl/image.hxx>
+#include <rtl/ref.hxx>
+#include <tools/link.hxx>
 #include <svl/lstner.hxx>
-#include "EventMultiplexer.hxx"
-#include "ViewShellBase.hxx"
-#include "res_bmp.hrc"
+
+#include <vector>
+
+namespace sd { class SmartTag; }
+namespace sd::tools { class EventMultiplexerEvent; }
+namespace sd { class ViewShellBase; }
+struct ImplSVEvent;
 
 namespace sd
 {

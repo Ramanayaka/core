@@ -20,12 +20,12 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_VIEWSETTINGS_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_VIEWSETTINGS_HXX
 
-#include "addressconverter.hxx"
+#include <rangelst.hxx>
 #include "stylesbuffer.hxx"
 #include "worksheethelper.hxx"
+#include "workbookhelper.hxx"
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 /** Contains all settings for a selection in a single pane of a sheet. */
 struct PaneSelectionModel
@@ -75,7 +75,7 @@ struct SheetViewModel
     /** Returns the zoom in pagebreak preview (returns default, if current value is 0). */
     sal_Int32           getPageBreakZoom() const;
     /** Returns the grid color as RGB value. */
-    sal_Int32           getGridColor( const ::oox::core::FilterBase& rFilter ) const;
+    ::Color             getGridColor( const ::oox::core::FilterBase& rFilter ) const;
 
     /** Returns the selection data of the active pane. */
     const PaneSelectionModel* getActiveSelection() const;
@@ -176,19 +176,16 @@ private:
 private:
     typedef RefVector< WorkbookViewModel >                                      WorkbookViewModelVec;
     typedef RefMap< sal_Int16, SheetViewModel >                                 SheetViewModelMap;
-    typedef ::std::map< sal_Int16, css::uno::Any >                 SheetPropertiesMap;
-    typedef ::std::map< sal_Int16, ScRange >                                    SheetUsedAreaMap;
 
     WorkbookViewModelVec maBookViews;       /// Workbook view models.
     SheetViewModelMap   maSheetViews;       /// Active view model for each sheet.
-    SheetPropertiesMap  maSheetProps;       /// Converted property sequences for each sheet.
-    SheetUsedAreaMap    maSheetUsedAreas;   /// Used area (cell range) of every sheet.
+    std::map< sal_Int16, css::uno::Any >  maSheetProps;       /// Converted property sequences for each sheet.
+    std::map< sal_Int16, ScRange >        maSheetUsedAreas;   /// Used area (cell range) of every sheet.
     ScRange             maOleSize;          /// Visible area if this is an embedded OLE object.
     bool                mbValidOleSize;     /// True = imported OLE size is a valid cell range.
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

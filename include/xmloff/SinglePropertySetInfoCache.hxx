@@ -24,7 +24,10 @@
 
 #include <map>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::beans { class XPropertySetInfo; }
 
 class SinglePropertySetInfoCache
 {

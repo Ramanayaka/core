@@ -17,25 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fapihelper.hxx"
+#include <fapihelper.hxx>
 
 #include <algorithm>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/beans/XPropertySetOption.hpp>
+#include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <comphelper/docpasswordhelper.hxx>
 #include <comphelper/processfactory.hxx>
-#include <tools/urlobj.hxx>
-#include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/docfile.hxx>
-#include <sfx2/request.hxx>
 #include <sfx2/frame.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <svl/stritem.hxx>
 #include <svl/itemset.hxx>
-#include "miscuno.hxx"
+#include <miscuno.hxx>
 
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::Reference;
@@ -62,7 +63,7 @@ OUString ScfApiHelper::GetServiceName( const Reference< XInterface >& xInt )
     return aService;
 }
 
-Reference< XMultiServiceFactory > ScfApiHelper::GetServiceFactory( SfxObjectShell* pShell )
+Reference< XMultiServiceFactory > ScfApiHelper::GetServiceFactory( const SfxObjectShell* pShell )
 {
     Reference< XMultiServiceFactory > xFactory;
     if( pShell )
@@ -88,7 +89,7 @@ Reference< XInterface > ScfApiHelper::CreateInstance(
     return xInt;
 }
 
-Reference< XInterface > ScfApiHelper::CreateInstance( SfxObjectShell* pShell, const OUString& rServiceName )
+Reference< XInterface > ScfApiHelper::CreateInstance( const SfxObjectShell* pShell, const OUString& rServiceName )
 {
     return CreateInstance( GetServiceFactory( pShell ), rServiceName );
 }
@@ -119,7 +120,7 @@ uno::Sequence< beans::NamedValue > ScfApiHelper::QueryEncryptionDataForMedium( S
     rMedium.GetItemSet()->ClearItem( SID_PASSWORD );
     rMedium.GetItemSet()->ClearItem( SID_ENCRYPTIONDATA );
 
-    if( !bIsDefaultPassword && (aEncryptionData.getLength() > 0) )
+    if( !bIsDefaultPassword && aEncryptionData.hasElements() )
         rMedium.GetItemSet()->Put( SfxUnoAnyItem( SID_ENCRYPTIONDATA, uno::makeAny( aEncryptionData ) ) );
 
     return aEncryptionData;
@@ -201,7 +202,7 @@ bool ScfPropertySet::GetColorProperty( Color& rColor, const OUString& rPropName 
 {
     sal_Int32 nApiColor = 0;
     bool bRet = GetProperty( nApiColor, rPropName );
-    rColor = ScfApiHelper::ConvertFromApiColor( nApiColor );
+    rColor = Color( nApiColor );
     return bRet;
 }
 
@@ -217,12 +218,9 @@ void ScfPropertySet::GetProperties( Sequence< Any >& rValues, const Sequence< OU
         else if( mxPropSet.is() )
         {
             sal_Int32 nLen = rPropNames.getLength();
-            const OUString* pPropName = rPropNames.getConstArray();
-            const OUString* pPropNameEnd = pPropName + nLen;
             rValues.realloc( nLen );
-            Any* pValue = rValues.getArray();
-            for( ; pPropName != pPropNameEnd; ++pPropName, ++pValue )
-                *pValue = mxPropSet->getPropertyValue( *pPropName );
+            std::transform(rPropNames.begin(), rPropNames.end(), rValues.begin(),
+                [this](const OUString& rPropName) -> Any { return mxPropSet->getPropertyValue(rPropName); });
         }
     }
     catch( Exception& )
@@ -270,19 +268,18 @@ void ScfPropertySet::SetProperties( const Sequence< OUString >& rPropNames, cons
     }
 }
 
-ScfPropSetHelper::ScfPropSetHelper( const sal_Char* const* ppcPropNames ) :
+ScfPropSetHelper::ScfPropSetHelper( const char* const* ppcPropNames ) :
     mnNextIdx( 0 )
 {
     OSL_ENSURE( ppcPropNames, "ScfPropSetHelper::ScfPropSetHelper - no strings found" );
 
     // create OUStrings from ASCII property names
     typedef ::std::pair< OUString, size_t >     IndexedOUString;
-    typedef ::std::vector< IndexedOUString >    IndexedOUStringVec;
-    IndexedOUStringVec aPropNameVec;
+    std::vector<IndexedOUString> aPropNameVec;
     for( size_t nVecIdx = 0; *ppcPropNames; ++ppcPropNames, ++nVecIdx )
     {
         OUString aPropName = OUString::createFromAscii( *ppcPropNames );
-        aPropNameVec.push_back( IndexedOUString( aPropName, nVecIdx ) );
+        aPropNameVec.emplace_back( aPropName, nVecIdx );
     }
 
     // sorts the pairs, which will be sorted by first component (the property name)
@@ -296,11 +293,11 @@ ScfPropSetHelper::ScfPropSetHelper( const sal_Char* const* ppcPropNames ) :
 
     // fill the property name sequence and store original sort order
     sal_Int32 nSeqIdx = 0;
-    for( IndexedOUStringVec::const_iterator aIt = aPropNameVec.begin(),
-            aEnd = aPropNameVec.end(); aIt != aEnd; ++aIt, ++nSeqIdx )
+    for( auto& aPropName : aPropNameVec )
     {
-        maNameSeq[ nSeqIdx ] = aIt->first;
-        maNameOrder[ aIt->second ] = nSeqIdx;
+        maNameSeq[ nSeqIdx ] = aPropName.first;
+        maNameOrder[ aPropName.second ] = nSeqIdx;
+        ++nSeqIdx;
     }
 }
 
@@ -312,19 +309,18 @@ void ScfPropSetHelper::ReadFromPropertySet( const ScfPropertySet& rPropSet )
     mnNextIdx = 0;
 }
 
-bool ScfPropSetHelper::ReadValue( Any& rAny )
+void ScfPropSetHelper::ReadValue( Any& rAny )
 {
     Any* pAny = GetNextAny();
     if( pAny )
         rAny = *pAny;
-    return pAny != nullptr;
 }
 
 void ScfPropSetHelper::ReadValue( Color& rColor )
 {
     sal_Int32 nApiColor(0);
     ReadValue( nApiColor );
-    rColor = ScfApiHelper::ConvertFromApiColor( nApiColor );
+    rColor = Color( nApiColor );
 }
 
 void ScfPropSetHelper::ReadValue( bool& rbValue )

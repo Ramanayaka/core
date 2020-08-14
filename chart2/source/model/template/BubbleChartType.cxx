@@ -18,15 +18,12 @@
  */
 
 #include "BubbleChartType.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include "servicenames_charttypes.hxx"
-#include "CartesianCoordinateSystem.hxx"
-#include "AxisHelper.hxx"
-#include "AxisIndexDefines.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <PropertyHelper.hxx>
+#include <servicenames_charttypes.hxx>
+#include <CartesianCoordinateSystem.hxx>
+#include <AxisHelper.hxx>
+#include <AxisIndexDefines.hxx>
 #include <com/sun/star/chart2/AxisType.hpp>
-#include <com/sun/star/chart2/CurveStyle.hpp>
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace ::com::sun::star;
@@ -94,9 +91,7 @@ struct StaticBubbleChartTypeInfo : public rtl::StaticAggregate< uno::Reference< 
 namespace chart
 {
 
-BubbleChartType::BubbleChartType(
-    const uno::Reference< uno::XComponentContext > & xContext )
-    : ChartType( xContext )
+BubbleChartType::BubbleChartType()
 {
 }
 
@@ -119,7 +114,7 @@ Reference< chart2::XCoordinateSystem > SAL_CALL
     BubbleChartType::createCoordinateSystem( ::sal_Int32 DimensionCount )
 {
     Reference< chart2::XCoordinateSystem > xResult(
-        new CartesianCoordinateSystem( GetComponentContext(), DimensionCount ));
+        new CartesianCoordinateSystem( DimensionCount ));
 
     for( sal_Int32 i=0; i<DimensionCount; ++i )
     {
@@ -147,7 +142,7 @@ Reference< chart2::XCoordinateSystem > SAL_CALL
 
 OUString SAL_CALL BubbleChartType::getChartType()
 {
-    return OUString(CHART2_SERVICE_NAME_CHARTTYPE_BUBBLE);
+    return CHART2_SERVICE_NAME_CHARTTYPE_BUBBLE;
 }
 
 uno::Sequence< OUString > SAL_CALL BubbleChartType::getSupportedMandatoryRoles()
@@ -170,7 +165,7 @@ uno::Sequence< OUString > SAL_CALL BubbleChartType::getSupportedPropertyRoles()
 
 OUString SAL_CALL BubbleChartType::getRoleOfSequenceForSeriesLabel()
 {
-    return OUString("values-size");
+    return "values-size";
 }
 
 // ____ OPropertySet ____
@@ -197,7 +192,7 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL BubbleChartType::getPropertyS
 
 OUString SAL_CALL BubbleChartType::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.BubbleChartType");
+    return "com.sun.star.comp.chart.BubbleChartType";
 }
 
 sal_Bool SAL_CALL BubbleChartType::supportsService( const OUString& rServiceName )
@@ -215,11 +210,11 @@ css::uno::Sequence< OUString > SAL_CALL BubbleChartType::getSupportedServiceName
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart_BubbleChartType_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart_BubbleChartType_get_implementation(css::uno::XComponentContext * /*context*/,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::BubbleChartType(context));
+    return cppu::acquire(new ::chart::BubbleChartType);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

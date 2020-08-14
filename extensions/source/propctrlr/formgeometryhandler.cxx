@@ -19,7 +19,6 @@
 
 #include <sal/config.h>
 
-#include "pcrservices.hxx"
 #include "propertyhandler.hxx"
 #include "formmetadata.hxx"
 #include "formstrings.hxx"
@@ -43,6 +42,7 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/interfacecontainer.hxx>
 #include <comphelper/componentbase.hxx>
+#include <rtl/ref.hxx>
 #include <tools/diagnose_ex.h>
 
 namespace pcr
@@ -60,7 +60,6 @@ namespace pcr
     using ::com::sun::star::uno::makeAny;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::XComponentContext;
-    using ::com::sun::star::beans::UnknownPropertyException;
     using ::com::sun::star::beans::Property;
     using ::com::sun::star::awt::XControlModel;
     using ::com::sun::star::drawing::XControlShape;
@@ -97,6 +96,8 @@ namespace pcr
 
     //= BroadcastHelperBase
 
+    namespace {
+
     class BroadcastHelperBase
     {
     protected:
@@ -112,6 +113,7 @@ namespace pcr
         ::cppu::OBroadcastHelper    maBHelper;
     };
 
+    }
 
     //= ShapeGeometryChangeNotifier - declaration
 
@@ -121,6 +123,8 @@ namespace pcr
     typedef ::comphelper::ComponentBase ShapeGeometryChangeNotifier_CBase;
     typedef ::cppu::WeakImplHelper <   css::beans::XPropertyChangeListener
                                     >   ShapeGeometryChangeNotifier_IBase;
+
+    namespace {
 
     class ShapeGeometryChangeNotifier   :public BroadcastHelperBase
                                         ,public ShapeGeometryChangeNotifier_CBase
@@ -196,29 +200,36 @@ namespace pcr
         Reference< XShape >                 m_xShape;
     };
 
+    }
 
     //= FormGeometryHandler - declaration
 
+    namespace {
+
     class FormGeometryHandler;
-    typedef HandlerComponentBase< FormGeometryHandler > FormGeometryHandler_Base;
+
+    }
+
     /** a property handler for any virtual string properties
     */
-    class FormGeometryHandler : public FormGeometryHandler_Base
+
+    namespace {
+
+    class FormGeometryHandler : public PropertyHandlerComponent
     {
     public:
         explicit FormGeometryHandler(
             const Reference< XComponentContext >& _rxContext
         );
 
-        /// @throws RuntimeException
-        static OUString SAL_CALL getImplementationName_static(  );
-        /// @throws RuntimeException
-        static Sequence< OUString > SAL_CALL getSupportedServiceNames_static(  );
-
     protected:
         virtual ~FormGeometryHandler() override;
 
     protected:
+        // XServiceInfo
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames () override;
+
         // XPropertyHandler overriables
         virtual Any                         SAL_CALL getPropertyValue( const OUString& _rPropertyName ) override;
         virtual void                        SAL_CALL setPropertyValue( const OUString& _rPropertyName, const Any& _rValue ) override;
@@ -232,7 +243,7 @@ namespace pcr
         virtual void SAL_CALL disposing() override;
 
         // PropertyHandler overridables
-        virtual Sequence< Property >        SAL_CALL doDescribeSupportedProperties() const override;
+        virtual Sequence< Property >        doDescribeSupportedProperties() const override;
 
     protected:
         virtual void onNewComponent() override;
@@ -248,12 +259,13 @@ namespace pcr
         ::rtl::Reference< ShapeGeometryChangeNotifier > m_xChangeNotifier;
     };
 
+    }
 
     //= FormGeometryHandler - implementation
 
 
     FormGeometryHandler::FormGeometryHandler( const Reference< XComponentContext >& _rxContext )
-        :FormGeometryHandler_Base( _rxContext )
+        :PropertyHandlerComponent( _rxContext )
     {
     }
 
@@ -279,14 +291,14 @@ namespace pcr
         m_xAssociatedShape.clear();
         m_xShapeProperties.clear();
 
-        FormGeometryHandler_Base::onNewComponent();
+        PropertyHandlerComponent::onNewComponent();
 
         try
         {
             Reference< XControlModel > xControlModel( m_xComponent, UNO_QUERY );
             if ( xControlModel.is() )
             {
-                // do not ask the map for shapes for grid control columns ....
+                // do not ask the map for shapes for grid control columns...
                 Reference< XChild > xCompChild( m_xComponent, UNO_QUERY_THROW );
                 Reference< XGridColumnFactory > xCheckGrid( xCompChild->getParent(), UNO_QUERY );
                 if ( !xCheckGrid.is() )
@@ -301,7 +313,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
 
         if ( m_xAssociatedShape.is() )
@@ -309,16 +321,15 @@ namespace pcr
     }
 
 
-    OUString SAL_CALL FormGeometryHandler::getImplementationName_static(  )
+    OUString FormGeometryHandler::getImplementationName(  )
     {
-        return OUString( "com.sun.star.comp.extensions.FormGeometryHandler" );
+        return "com.sun.star.comp.extensions.FormGeometryHandler";
     }
 
 
-    Sequence< OUString > SAL_CALL FormGeometryHandler::getSupportedServiceNames_static(  )
+    Sequence< OUString > FormGeometryHandler::getSupportedServiceNames(  )
     {
-        Sequence<OUString> aSupported { "com.sun.star.form.inspection.FormGeometryHandler" };
-        return aSupported;
+        return { "com.sun.star.form.inspection.FormGeometryHandler" };
     }
 
 
@@ -365,7 +376,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
         return aReturn;
     }
@@ -432,7 +443,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
     }
 
@@ -452,14 +463,14 @@ namespace pcr
             case PROPERTY_ID_WIDTH:
             case PROPERTY_ID_HEIGHT:
                 bIsSize = true;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case PROPERTY_ID_POSITIONX:
             case PROPERTY_ID_POSITIONY:
             {
                 Optional< double > aZero( true, 0 );
                 Optional< double > aValueNotPresent( false, 0 );
                 aLineDesc.Control = PropertyHandlerHelper::createNumericControl(
-                    _rxControlFactory, 2, bIsSize ? aZero : aValueNotPresent, aValueNotPresent, false );
+                    _rxControlFactory, 2, bIsSize ? aZero : aValueNotPresent, aValueNotPresent );
 
                 Reference< XNumericControl > xNumericControl( aLineDesc.Control, UNO_QUERY_THROW );
                 xNumericControl->setValueUnit( MeasureUnit::MM_100TH );
@@ -479,7 +490,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
         return aLineDesc;
     }
@@ -537,7 +548,7 @@ namespace pcr
     }
 
 
-    Sequence< Property > SAL_CALL FormGeometryHandler::doDescribeSupportedProperties() const
+    Sequence< Property > FormGeometryHandler::doDescribeSupportedProperties() const
     {
         if ( !m_xAssociatedShape.is() )
             return Sequence< Property >();
@@ -555,13 +566,13 @@ namespace pcr
         if ( impl_haveSheetAnchorType_nothrow() )
             addInt32PropertyDescription( aProperties, PROPERTY_SHEET_ANCHOR_TYPE );
 
-        return Sequence< Property >( &(*aProperties.begin()), aProperties.size() );
+        return comphelper::containerToSequence(aProperties);
     }
 
 
     void SAL_CALL FormGeometryHandler::disposing()
     {
-        FormGeometryHandler_Base::disposing();
+        PropertyHandlerComponent::disposing();
 
         if ( m_xChangeNotifier.is() )
         {
@@ -582,7 +593,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
         return false;
     }
@@ -602,7 +613,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
         return false;
     }
@@ -695,7 +706,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
     }
 
@@ -750,13 +761,10 @@ namespace pcr
         aTranslatedEvent.Source = m_rParent;
 
         aGuard.clear();
-        for ( std::vector< EventTranslation >::const_iterator t = aEventTranslations.begin();
-              t != aEventTranslations.end();
-              ++t
-            )
+        for (auto const& eventTranslation : aEventTranslations)
         {
-            aTranslatedEvent.PropertyName = t->sPropertyName;
-            aTranslatedEvent.NewValue = t->aNewPropertyValue;
+            aTranslatedEvent.PropertyName = eventTranslation.sPropertyName;
+            aTranslatedEvent.NewValue = eventTranslation.aNewPropertyValue;
             m_aPropertyChangeListeners.notifyEach( &XPropertyChangeListener::propertyChange, aTranslatedEvent );
         }
     }
@@ -779,7 +787,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
         osl_atomic_decrement( &m_refCount );
     }
@@ -794,7 +802,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
 
         getBroadcastHelper().bDisposed = true;
@@ -803,10 +811,11 @@ namespace pcr
 
 } // namespace pcr
 
-
-extern "C" void SAL_CALL createRegistryInfo_FormGeometryHandler()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_FormGeometryHandler_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
 {
-    ::pcr::FormGeometryHandler::registerImplementation();
+    return cppu::acquire(new pcr::FormGeometryHandler(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

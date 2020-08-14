@@ -13,8 +13,11 @@ $(eval $(call gb_UnpackedTarball_set_tarball,libwps,$(WPS_TARBALL)))
 
 $(eval $(call gb_UnpackedTarball_set_patchlevel,libwps,1))
 
+$(eval $(call gb_UnpackedTarball_update_autoconf_configs,libwps))
+
 $(eval $(call gb_UnpackedTarball_add_patches,libwps,\
 	$(if $(SYSTEM_REVENGE),,external/libwps/rpath.patch.0) \
+	external/libwps/libtool.patch.0 \
 ))
 
 ifneq ($(OS),MACOSX)
@@ -24,17 +27,5 @@ $(eval $(call gb_UnpackedTarball_add_patches,libwps,\
 ))
 endif
 endif
-
-ifeq ($(COM_IS_CLANG),TRUE)
-ifneq ($(filter -fsanitize=%,$(CC)),)
-$(eval $(call gb_UnpackedTarball_add_patches,libwps, \
-    external/libwps/ubsan-visibility.patch.0 \
-))
-endif
-endif
-
-$(eval $(call gb_UnpackedTarball_add_patches,libwps, \
-    external/libwps/iOS.patch.0 \
-))
 
 # vim: set noet sw=4 ts=4:

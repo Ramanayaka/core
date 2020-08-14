@@ -17,30 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/Frame.hpp>
 #include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/task/XStatusIndicator.hpp>
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/util/URL.hpp>
-#include <com/sun/star/util/XCloseable.hpp>
-#include <com/sun/star/util/CloseVetoException.hpp>
 #include <comphelper/processfactory.hxx>
+#include <osl/diagnose.h>
 
 #include <toolkit/helper/vclunohelper.hxx>
 
+#include <vcl/event.hxx>
 #include <sfx2/sfxsids.hrc>
-#include "partwnd.hxx"
+#include <partwnd.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/frame.hxx>
-#include <sfx2/sfxuno.hxx>
 
 
 // SfxPartChildWnd_Impl
@@ -113,8 +105,7 @@ SfxPartDockWnd_Impl::SfxPartDockWnd_Impl
     {
         css::uno::Reference< css::beans::XPropertySet > xLMPropSet( xFrame->getLayoutManager(), css::uno::UNO_QUERY_THROW );
 
-        const OUString aAutomaticToolbars( "AutomaticToolbars" );
-        xLMPropSet->setPropertyValue( aAutomaticToolbars, css::uno::Any( false ));
+        xLMPropSet->setPropertyValue( "AutomaticToolbars", css::uno::Any( false ));
     }
     catch( css::uno::RuntimeException& )
     {

@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -8,104 +8,127 @@
  */
 
 #include <test/calc_unoapi_test.hxx>
-#include <test/sheet/xdatapilotfieldgrouping.hxx>
+#include <test/beans/xpropertyset.hxx>
+#include <test/container/xnamed.hxx>
+#include <test/lang/xserviceinfo.hxx>
 #include <test/sheet/datapilotfield.hxx>
+#include <test/sheet/xdatapilotfield.hxx>
+#include <test/sheet/xdatapilotfieldgrouping.hxx>
 
+#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XDataPilotTablesSupplier.hpp>
 #include <com/sun/star/sheet/XDataPilotTables.hpp>
 #include <com/sun/star/sheet/XDataPilotDescriptor.hpp>
+#include <com/sun/star/uno/XInterface.hpp>
+
+#include <com/sun/star/uno/Reference.hxx>
 
 using namespace css;
-using namespace css::uno;
 
-namespace sc_apitest {
-
-#define NUMBER_OF_TESTS 6
-
-class ScDataPilotFieldObj : public CalcUnoApiTest, public apitest::XDataPilotFieldGrouping,
-                                public apitest::DataPilotField
+namespace sc_apitest
+{
+class ScDataPilotFieldObj : public CalcUnoApiTest,
+                            public apitest::DataPilotField,
+                            public apitest::XDataPilotField,
+                            public apitest::XDataPilotFieldGrouping,
+                            public apitest::XNamed,
+                            public apitest::XPropertySet,
+                            public apitest::XServiceInfo
 {
 public:
     virtual void setUp() override;
     virtual void tearDown() override;
-    virtual uno::Reference< uno::XInterface > init() override;
+    virtual uno::Reference<uno::XInterface> init() override;
 
     ScDataPilotFieldObj();
 
     CPPUNIT_TEST_SUITE(ScDataPilotFieldObj);
+
+    // DataPilotField
     CPPUNIT_TEST(testSortInfo);
     CPPUNIT_TEST(testLayoutInfo);
     CPPUNIT_TEST(testAutoShowInfo);
     CPPUNIT_TEST(testReference);
     CPPUNIT_TEST(testIsGroupField);
+
+    // XDataPilotField
+    CPPUNIT_TEST(testGetItems);
+
+    // XDataPilotFieldGrouping
     CPPUNIT_TEST(testCreateNameGroup);
     // see fdo#
     //CPPUNIT_TEST(testCreateDateGroup);
+
+    // XNamed
+    CPPUNIT_TEST(testGetName);
+    CPPUNIT_TEST(testSetName);
+
+    // XPropertySet
+    CPPUNIT_TEST(testGetPropertySetInfo);
+    CPPUNIT_TEST(testGetPropertyValue);
+    CPPUNIT_TEST(testSetPropertyValue);
+    CPPUNIT_TEST(testPropertyChangeListener);
+    CPPUNIT_TEST(testVetoableChangeListener);
+
+    // XServiceInfo
+    CPPUNIT_TEST(testGetImplementationName);
+    CPPUNIT_TEST(testGetSupportedServiceNames);
+    CPPUNIT_TEST(testSupportsService);
+
     CPPUNIT_TEST_SUITE_END();
+
 private:
-    static sal_Int32 nTest;
-    static uno::Reference< lang::XComponent > mxComponent;
+    uno::Reference<lang::XComponent> mxComponent;
 };
 
-sal_Int32 ScDataPilotFieldObj::nTest = 0;
-uno::Reference< lang::XComponent > ScDataPilotFieldObj::mxComponent;
-
 ScDataPilotFieldObj::ScDataPilotFieldObj()
-     : CalcUnoApiTest("/sc/qa/extras/testdocuments")
+    : CalcUnoApiTest("/sc/qa/extras/testdocuments")
+    , XNamed("Col1")
+    , XPropertySet({ "Function", "HasAutoShowInfo", "HasLayoutInfo", "HasSortInfo", "Subtotals",
+                     "Subtotals2" })
+    , XServiceInfo("ScDataPilotFieldObj", "com.sun.star.sheet.DataPilotField")
 {
 }
 
-uno::Reference< uno::XInterface > ScDataPilotFieldObj::init()
+uno::Reference<uno::XInterface> ScDataPilotFieldObj::init()
 {
-    OUString aFileURL;
-    createFileURL("scdatapilotfieldobj.ods", aFileURL);
-    if(!mxComponent.is())
-        mxComponent = loadFromDesktop(aFileURL, "com.sun.star.sheet.SpreadsheetDocument");
-    CPPUNIT_ASSERT(mxComponent.is());
+    uno::Reference<sheet::XSpreadsheetDocument> xDoc(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<container::XIndexAccess> xIndex(xDoc->getSheets(), uno::UNO_QUERY_THROW);
+    uno::Reference<sheet::XSpreadsheet> xSheet(xIndex->getByIndex(1), uno::UNO_QUERY_THROW);
 
-    uno::Reference< sheet::XSpreadsheetDocument > xDoc(mxComponent, UNO_QUERY_THROW);
-    uno::Reference< container::XIndexAccess > xIndex (xDoc->getSheets(), UNO_QUERY_THROW);
-    uno::Reference< sheet::XSpreadsheet > xSheet( xIndex->getByIndex(1), UNO_QUERY_THROW);
-
-    CPPUNIT_ASSERT_MESSAGE("Could not create interface of type XSpreadsheet", xSheet.is());
-    uno::Reference< sheet::XDataPilotTablesSupplier > xDPTS(xSheet, UNO_QUERY_THROW);
-    CPPUNIT_ASSERT(xDPTS.is());
-    uno::Reference< sheet::XDataPilotTables > xDPT = xDPTS->getDataPilotTables();
-    CPPUNIT_ASSERT(xDPT.is());
+    uno::Reference<sheet::XDataPilotTablesSupplier> xDPTS(xSheet, uno::UNO_QUERY_THROW);
+    uno::Reference<sheet::XDataPilotTables> xDPT(xDPTS->getDataPilotTables(), uno::UNO_SET_THROW);
     uno::Sequence<OUString> aElementNames = xDPT->getElementNames();
-    (void) aElementNames;
+    (void)aElementNames;
 
-    uno::Reference< sheet::XDataPilotDescriptor > xDPDsc(xDPT->getByName("DataPilot1"),UNO_QUERY_THROW);
-    CPPUNIT_ASSERT(xDPDsc.is());
-    uno::Reference< container::XIndexAccess > xIA( xDPDsc->getDataPilotFields(), UNO_QUERY_THROW);
-    uno::Reference< uno::XInterface > xReturnValue( xIA->getByIndex(0), UNO_QUERY_THROW);
-    CPPUNIT_ASSERT(xReturnValue.is());
+    uno::Reference<sheet::XDataPilotDescriptor> xDPDsc(xDPT->getByName("DataPilot1"),
+                                                       uno::UNO_QUERY_THROW);
+    uno::Reference<container::XIndexAccess> xIA(xDPDsc->getDataPilotFields(), uno::UNO_SET_THROW);
+    uno::Reference<uno::XInterface> xReturnValue(xIA->getByIndex(0), uno::UNO_QUERY_THROW);
     return xReturnValue;
 }
 
 void ScDataPilotFieldObj::setUp()
 {
-    nTest++;
     CalcUnoApiTest::setUp();
+
+    OUString aFileURL;
+    createFileURL("scdatapilotfieldobj.ods", aFileURL);
+    mxComponent = loadFromDesktop(aFileURL, "com.sun.star.sheet.SpreadsheetDocument");
 }
 
 void ScDataPilotFieldObj::tearDown()
 {
-    if (nTest == NUMBER_OF_TESTS)
-    {
-        closeDocument(mxComponent);
-        mxComponent.clear();
-    }
-
+    closeDocument(mxComponent);
     CalcUnoApiTest::tearDown();
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScDataPilotFieldObj);
 
-}
+} // namespace sc_apitest
 
 CPPUNIT_PLUGIN_IMPLEMENT();
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

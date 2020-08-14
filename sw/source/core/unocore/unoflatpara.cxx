@@ -17,19 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <editeng/unolingu.hxx>
-
 #include <unobaseclass.hxx>
 #include <unocrsrhelper.hxx>
 #include <unoflatpara.hxx>
 
+#include <o3tl/safeint.hxx>
 #include <vcl/svapp.hxx>
 #include <com/sun/star/text/TextMarkupType.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <unotextmarkup.hxx>
 #include <ndtxt.hxx>
 #include <doc.hxx>
-#include <docsh.hxx>
 #include <IDocumentLayoutAccess.hxx>
 #include <IDocumentStylePoolAccess.hxx>
 #include <viewsh.hxx>
@@ -39,6 +37,7 @@
 #include <unotextrange.hxx>
 #include <pagefrm.hxx>
 #include <cntfrm.hxx>
+#include <txtfrm.hxx>
 #include <rootfrm.hxx>
 #include <poolfmt.hxx>
 #include <pagedesc.hxx>
@@ -47,6 +46,7 @@
 #include <comphelper/servicehelper.hxx>
 #include <comphelper/propertysetinfo.hxx>
 #include <comphelper/sequence.hxx>
+#include <sal/log.hxx>
 
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
@@ -176,21 +176,21 @@ void SAL_CALL SwXFlatParagraph::setChecked( ::sal_Int32 nType, sal_Bool bVal )
 {
     SolarMutexGuard aGuard;
 
-    if (GetTextNode())
+    if (!GetTextNode())
+        return;
+
+    if ( text::TextMarkupType::SPELLCHECK == nType )
     {
-        if ( text::TextMarkupType::SPELLCHECK == nType )
-        {
-            GetTextNode()->SetWrongDirty(
-                (bVal) ? SwTextNode::WrongState::DONE : SwTextNode::WrongState::TODO);
-        }
-        else if ( text::TextMarkupType::SMARTTAG == nType )
-            GetTextNode()->SetSmartTagDirty( !bVal );
-        else if( text::TextMarkupType::PROOFREADING == nType )
-        {
-            GetTextNode()->SetGrammarCheckDirty( !bVal );
-            if( bVal )
-                ::finishGrammarCheck( *GetTextNode() );
-        }
+        GetTextNode()->SetWrongDirty(
+            bVal ? SwTextNode::WrongState::DONE : SwTextNode::WrongState::TODO);
+    }
+    else if ( text::TextMarkupType::SMARTTAG == nType )
+        GetTextNode()->SetSmartTagDirty( !bVal );
+    else if( text::TextMarkupType::PROOFREADING == nType )
+    {
+        GetTextNode()->SetGrammarCheckDirty( !bVal );
+        if( bVal )
+            ::finishGrammarCheck( *GetTextNode() );
     }
 }
 
@@ -251,6 +251,11 @@ void SAL_CALL SwXFlatParagraph::changeText(::sal_Int32 nPos, ::sal_Int32 nLen, c
 
     SwTextNode *const pOldTextNode = GetTextNode();
 
+    if (nPos < 0 || pOldTextNode->Len() < nPos || nLen < 0 || o3tl::make_unsigned(pOldTextNode->Len()) < static_cast<sal_uInt32>(nPos) + nLen)
+    {
+        throw lang::IllegalArgumentException();
+    }
+
     SwPaM aPaM( *GetTextNode(), nPos, *GetTextNode(), nPos+nLen );
 
     UnoActionContext aAction( GetTextNode()->GetDoc() );
@@ -261,8 +266,8 @@ void SAL_CALL SwXFlatParagraph::changeText(::sal_Int32 nPos, ::sal_Int32 nLen, c
     uno::Reference< beans::XPropertySet > xPropSet( xRange, uno::UNO_QUERY );
     if ( xPropSet.is() )
     {
-        for ( sal_Int32 i = 0; i < aAttributes.getLength(); ++i )
-            xPropSet->setPropertyValue( aAttributes[i].Name, aAttributes[i].Value );
+        for ( const auto& rAttribute : aAttributes )
+            xPropSet->setPropertyValue( rAttribute.Name, rAttribute.Value );
     }
 
     IDocumentContentOperations& rIDCO = pOldTextNode->getIDocumentContentOperations();
@@ -279,6 +284,11 @@ void SAL_CALL SwXFlatParagraph::changeAttributes(::sal_Int32 nPos, ::sal_Int32 n
     if (!GetTextNode())
         return;
 
+    if (nPos < 0 || GetTextNode()->Len() < nPos || nLen < 0 || o3tl::make_unsigned(GetTextNode()->Len()) < static_cast<sal_uInt32>(nPos) + nLen)
+    {
+        throw lang::IllegalArgumentException();
+    }
+
     SwPaM aPaM( *GetTextNode(), nPos, *GetTextNode(), nPos+nLen );
 
     UnoActionContext aAction( GetTextNode()->GetDoc() );
@@ -289,8 +299,8 @@ void SAL_CALL SwXFlatParagraph::changeAttributes(::sal_Int32 nPos, ::sal_Int32 n
     uno::Reference< beans::XPropertySet > xPropSet( xRange, uno::UNO_QUERY );
     if ( xPropSet.is() )
     {
-        for ( sal_Int32 i = 0; i < aAttributes.getLength(); ++i )
-            xPropSet->setPropertyValue( aAttributes[i].Name, aAttributes[i].Value );
+        for ( const auto& rAttribute : aAttributes )
+            xPropSet->setPropertyValue( rAttribute.Name, rAttribute.Value );
     }
 
     ClearTextNode(); // TODO: is this really needed?
@@ -330,21 +340,18 @@ SwXFlatParagraphIterator::SwXFlatParagraphIterator( SwDoc& rDoc, sal_Int32 nType
     //mnStartNode = mnCurrentNode = get node from current cursor TODO!
 
     // register as listener and get notified when document is closed
-    mpDoc->getIDocumentStylePoolAccess().GetPageDescFromPool( RES_POOLPAGE_STANDARD )->Add(this);
+    StartListening(mpDoc->getIDocumentStylePoolAccess().GetPageDescFromPool( RES_POOLPAGE_STANDARD )->GetNotifier());
 }
 
 SwXFlatParagraphIterator::~SwXFlatParagraphIterator()
 {
     SolarMutexGuard aGuard;
-    if(GetRegisteredIn())
-        GetRegisteredIn()->Remove(this);
+    EndListeningAll();
 }
 
-void SwXFlatParagraphIterator::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew )
+void SwXFlatParagraphIterator::Notify( const SfxHint& rHint )
 {
-    ClientModify( this, pOld, pNew );
-    // check if document gets closed...
-    if(!GetRegisteredIn())
+    if(rHint.GetId() == SfxHintId::Dying)
     {
         SolarMutexGuard aGuard;
         mpDoc = nullptr;
@@ -387,16 +394,46 @@ uno::Reference< text::XFlatParagraph > SwXFlatParagraphIterator::getNextPara()
 
                 while( pCnt && pCurrentPage->IsAnLower( pCnt ) )
                 {
-                    SwTextNode* pTextNode = dynamic_cast<SwTextNode*>( pCnt->GetNode()->GetTextNode() );
-
-                    if ( pTextNode &&
-                        ((mnType == text::TextMarkupType::SPELLCHECK &&
-                                pTextNode->IsWrongDirty()) ||
-                         (mnType == text::TextMarkupType::PROOFREADING &&
-                                pTextNode->IsGrammarCheckDirty())) )
+                    if (pCnt->IsTextFrame())
                     {
-                        pRet = pTextNode;
-                        break;
+                        SwTextFrame const*const pText(static_cast<SwTextFrame const*>(pCnt));
+                        if (sw::MergedPara const*const pMergedPara = pText->GetMergedPara()
+            )
+                        {
+                            SwTextNode * pTextNode(nullptr);
+                            for (auto const& e : pMergedPara->extents)
+                            {
+                                if (e.pNode != pTextNode)
+                                {
+                                    pTextNode = e.pNode;
+                                    if ((mnType == text::TextMarkupType::SPELLCHECK
+                                            && pTextNode->IsWrongDirty()) ||
+                                        (mnType == text::TextMarkupType::PROOFREADING
+                                             && pTextNode->IsGrammarCheckDirty()))
+                                    {
+                                        pRet = pTextNode;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            SwTextNode const*const pTextNode(pText->GetTextNodeFirst());
+                            if ((mnType == text::TextMarkupType::SPELLCHECK
+                                    && pTextNode->IsWrongDirty()) ||
+                                (mnType == text::TextMarkupType::PROOFREADING
+                                     && pTextNode->IsGrammarCheckDirty()))
+
+                            {
+                                pRet = const_cast<SwTextNode*>(pTextNode);
+                            }
+                        }
+
+                        if (pRet)
+                        {
+                            break;
+                        }
                     }
 
                     pCnt = pCnt->GetNextContentFrame();
@@ -446,7 +483,7 @@ uno::Reference< text::XFlatParagraph > SwXFlatParagraphIterator::getNextPara()
     if ( pRet )
     {
         // Expand the string:
-        const ModelToViewHelper aConversionMap(*pRet);
+        const ModelToViewHelper aConversionMap(*pRet, mpDoc->getIDocumentLayoutAccess().GetCurrentLayout());
         const OUString& aExpandText = aConversionMap.getViewText();
 
         xRet = new SwXFlatParagraph( *pRet, aExpandText, aConversionMap );
@@ -496,7 +533,7 @@ uno::Reference< text::XFlatParagraph > SwXFlatParagraphIterator::getParaAfter(co
     if ( pNextTextNode )
     {
         // Expand the string:
-        const ModelToViewHelper aConversionMap(*pNextTextNode);
+        const ModelToViewHelper aConversionMap(*pNextTextNode, mpDoc->getIDocumentLayoutAccess().GetCurrentLayout());
         const OUString& aExpandText = aConversionMap.getViewText();
 
         xRet = new SwXFlatParagraph( *pNextTextNode, aExpandText, aConversionMap );
@@ -542,7 +579,7 @@ uno::Reference< text::XFlatParagraph > SwXFlatParagraphIterator::getParaBefore(c
     if ( pPrevTextNode )
     {
         // Expand the string:
-        const ModelToViewHelper aConversionMap(*pPrevTextNode);
+        const ModelToViewHelper aConversionMap(*pPrevTextNode, mpDoc->getIDocumentLayoutAccess().GetCurrentLayout());
         const OUString& aExpandText = aConversionMap.getViewText();
 
         xRet = new SwXFlatParagraph( *pPrevTextNode, aExpandText, aConversionMap );

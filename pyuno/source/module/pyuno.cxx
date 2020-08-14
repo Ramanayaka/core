@@ -25,14 +25,11 @@
 #include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
 
-#include <osl/thread.h>
-
 #include <typelib/typedescription.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XEnumeration.hpp>
+#include <com/sun/star/beans/UnknownPropertyException.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
@@ -40,6 +37,11 @@
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/XNameReplace.hpp>
+#include <com/sun/star/script/CannotConvertException.hpp>
+#include <com/sun/star/script/XInvocation2.hpp>
+#include <com/sun/star/script/XTypeConverter.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <comphelper/servicehelper.hxx>
 
 #include "pyuno_impl.hxx"
 
@@ -71,9 +73,9 @@ using com::sun::star::container::XNameReplace;
 namespace pyuno
 {
 
-PyObject *PyUNO_str( PyObject * self );
+static PyObject *PyUNO_str( PyObject * self );
 
-void PyUNO_del (PyObject* self)
+static void PyUNO_del (PyObject* self)
 {
     PyUNO* me = reinterpret_cast< PyUNO* > (self);
     {
@@ -88,19 +90,17 @@ OUString val2str( const void * pVal, typelib_TypeDescriptionReference * pTypeRef
 {
     assert( pVal );
     if (pTypeRef->eTypeClass == typelib_TypeClass_VOID)
-        return OUString("void");
+        return "void";
 
     OUStringBuffer buf( 64 );
-    buf.append( '(' );
-    buf.append( pTypeRef->pTypeName );
-    buf.append( ')' );
+    buf.append( "(" + OUString::unacquired(&pTypeRef->pTypeName) + ")" );
 
     switch (pTypeRef->eTypeClass)
     {
     case typelib_TypeClass_INTERFACE:
     {
-        buf.append( "0x" );
-        buf.append( reinterpret_cast< sal_IntPtr >(*static_cast<void * const *>(pVal)), 16 );
+        buf.append( "0x" +
+            OUString::number( reinterpret_cast< sal_IntPtr >(*static_cast<void * const *>(pVal)), 16 ));
         if( VAL2STR_MODE_DEEP == mode )
         {
             buf.append( "{" );        Reference< XInterface > r = *static_cast<Reference< XInterface > const *>(pVal);
@@ -162,8 +162,7 @@ OUString val2str( const void * pVal, typelib_TypeDescriptionReference * pTypeRef
 
         for ( sal_Int32 nPos = 0; nPos < nDescr; ++nPos )
         {
-            buf.append( ppMemberNames[nPos] );
-            buf.append( " = " );
+            buf.append( OUString::unacquired(&ppMemberNames[nPos]) + " = " );
             typelib_TypeDescription * pMemberType = nullptr;
             TYPELIB_DANGER_GET( &pMemberType, ppTypeRefs[nPos] );
             buf.append( val2str( static_cast<char const *>(pVal) + pMemberOffsets[nPos], pMemberType->pWeakRef, mode ) );
@@ -220,9 +219,9 @@ OUString val2str( const void * pVal, typelib_TypeDescriptionReference * pTypeRef
         buf.append( (*static_cast<typelib_TypeDescriptionReference * const *>(pVal))->pTypeName );
         break;
     case typelib_TypeClass_STRING:
-        buf.append( '\"' );
-        buf.append( *static_cast<rtl_uString * const *>(pVal) );
-        buf.append( '\"' );
+        buf.append( "\"" +
+            OUString::unacquired(&*static_cast<rtl_uString * const *>(pVal)) +
+            "\"" );
         break;
     case typelib_TypeClass_ENUM:
     {
@@ -262,24 +261,24 @@ OUString val2str( const void * pVal, typelib_TypeDescriptionReference * pTypeRef
         buf.append( *static_cast<double const *>(pVal) );
         break;
     case typelib_TypeClass_BYTE:
-        buf.append( "0x" );
-        buf.append( (sal_Int32)*static_cast<sal_Int8 const *>(pVal), 16 );
+        buf.append( "0x" +
+            OUString::number( static_cast<sal_Int32>(*static_cast<sal_Int8 const *>(pVal)), 16 ));
         break;
     case typelib_TypeClass_SHORT:
-        buf.append( "0x" );
-        buf.append( (sal_Int32)*static_cast<sal_Int16 const *>(pVal), 16 );
+        buf.append( "0x" +
+            OUString::number( static_cast<sal_Int32>(*static_cast<sal_Int16 const *>(pVal)), 16 ));
         break;
     case typelib_TypeClass_UNSIGNED_SHORT:
-        buf.append( "0x" );
-        buf.append( (sal_Int32)*static_cast<sal_uInt16 const *>(pVal), 16 );
+        buf.append( "0x" +
+            OUString::number( static_cast<sal_Int32>(*static_cast<sal_uInt16 const *>(pVal)), 16 ));
         break;
     case typelib_TypeClass_LONG:
-        buf.append( "0x" );
-        buf.append( *static_cast<sal_Int32 const *>(pVal), 16 );
+        buf.append( "0x" +
+            OUString::number( *static_cast<sal_Int32 const *>(pVal), 16 ));
         break;
     case typelib_TypeClass_UNSIGNED_LONG:
-        buf.append( "0x" );
-        buf.append( (sal_Int64)*static_cast<sal_uInt32 const *>(pVal), 16 );
+        buf.append( "0x" +
+            OUString::number( static_cast<sal_Int64>(*static_cast<sal_uInt32 const *>(pVal)), 16 ));
         break;
     case typelib_TypeClass_HYPER:
     case typelib_TypeClass_UNSIGNED_HYPER:
@@ -309,7 +308,7 @@ OUString val2str( const void * pVal, typelib_TypeDescriptionReference * pTypeRef
     return buf.makeStringAndClear();
 }
 
-sal_Int32 lcl_PyNumber_AsSal_Int32( PyObject *pObj )
+static sal_Int32 lcl_PyNumber_AsSal_Int32( PyObject *pObj )
 {
     // Check object is an index
     PyRef rIndex( PyNumber_Index( pObj ), SAL_NO_ACQUIRE );
@@ -318,14 +317,9 @@ sal_Int32 lcl_PyNumber_AsSal_Int32( PyObject *pObj )
 
     // Convert Python number to platform long, then check actual value against
     // bounds of sal_Int32
-#if PY_VERSION_HEX >= 0x03020000
     int nOverflow;
     long nResult = PyLong_AsLongAndOverflow( pObj, &nOverflow );
     if ( nOverflow || nResult > SAL_MAX_INT32 || nResult < SAL_MIN_INT32) {
-#else
-    long nResult = PyLong_AsLong( pObj );
-    if ( nResult > SAL_MAX_INT32 || nResult < SAL_MIN_INT32) {
-#endif
         PyErr_SetString( PyExc_IndexError, "Python int too large to convert to UNO long" );
         return -1;
     }
@@ -333,16 +327,11 @@ sal_Int32 lcl_PyNumber_AsSal_Int32( PyObject *pObj )
     return nResult;
 }
 
-int lcl_PySlice_GetIndicesEx( PyObject *pObject, sal_Int32 nLen, sal_Int32 *nStart, sal_Int32 *nStop, sal_Int32 *nStep, sal_Int32 *nSliceLength )
+static int lcl_PySlice_GetIndicesEx( PyObject *pObject, sal_Int32 nLen, sal_Int32 *nStart, sal_Int32 *nStop, sal_Int32 *nStep, sal_Int32 *nSliceLength )
 {
     Py_ssize_t nStart_ssize, nStop_ssize, nStep_ssize, nSliceLength_ssize;
 
-    int nResult = PySlice_GetIndicesEx(
-#if PY_VERSION_HEX >= 0x030200f0
-        pObject,
-#else
-        reinterpret_cast<PySliceObject*>(pObject),
-#endif
+    int nResult = PySlice_GetIndicesEx(pObject,
         nLen, &nStart_ssize, &nStop_ssize, &nStep_ssize, &nSliceLength_ssize );
     if (nResult == -1)
         return -1;
@@ -356,14 +345,14 @@ int lcl_PySlice_GetIndicesEx( PyObject *pObject, sal_Int32 nLen, sal_Int32 *nSta
         return -1;
     }
 
-    *nStart = (sal_Int32)nStart_ssize;
-    *nStop = (sal_Int32)nStop_ssize;
-    *nStep = (sal_Int32)nStep_ssize;
-    *nSliceLength = (sal_Int32)nSliceLength_ssize;
+    *nStart = static_cast<sal_Int32>(nStart_ssize);
+    *nStop = static_cast<sal_Int32>(nStop_ssize);
+    *nStep = static_cast<sal_Int32>(nStep_ssize);
+    *nSliceLength = static_cast<sal_Int32>(nSliceLength_ssize);
     return 0;
 }
 
-bool lcl_hasInterfaceByName( Any const &object, OUString const & interfaceName )
+static bool lcl_hasInterfaceByName( Any const &object, OUString const & interfaceName )
 {
     Reference< XInterface > xInterface( object, UNO_QUERY );
     TypeDescription typeDesc( interfaceName );
@@ -372,12 +361,12 @@ bool lcl_hasInterfaceByName( Any const &object, OUString const & interfaceName )
     return aInterface.hasValue();
 }
 
-PyObject *PyUNO_repr( PyObject  * self )
+static PyObject *PyUNO_repr( PyObject  * self )
 {
     return PyUNO_str( self );
 }
 
-Py_hash_t PyUNO_hash( PyObject *self )
+static Py_hash_t PyUNO_hash( PyObject *self )
 {
 
     PyUNO *me = reinterpret_cast<PyUNO *>(self);
@@ -462,21 +451,20 @@ PyObject *PyUNO_str( PyObject * self )
 {
     PyUNO *me = reinterpret_cast<PyUNO *>(self);
 
-    OStringBuffer buf;
+    OString buf;
 
     {
         PyThreadDetach antiguard;
-        buf.append( "pyuno object " );
 
         OUString s = val2str( me->members->wrappedObject.getValue(),
                               me->members->wrappedObject.getValueType().getTypeLibType() );
-        buf.append( OUStringToOString(s,RTL_TEXTENCODING_ASCII_US) );
+        buf = "pyuno object " + OUStringToOString(s,RTL_TEXTENCODING_ASCII_US);
     }
 
-    return PyStr_FromString( buf.getStr() );
+    return PyUnicode_FromString( buf.getStr() );
 }
 
-PyObject* PyUNO_dir (PyObject* self)
+static PyObject* PyUNO_dir (PyObject* self)
 {
     PyUNO* me = reinterpret_cast<PyUNO*>(self);
 
@@ -501,7 +489,7 @@ PyObject* PyUNO_dir (PyObject* self)
     return member_list;
 }
 
-sal_Int32 lcl_detach_getLength( PyUNO *me )
+static sal_Int32 lcl_detach_getLength( PyUNO const *me )
 {
     PyThreadDetach antiguard;
 
@@ -527,7 +515,7 @@ sal_Int32 lcl_detach_getLength( PyUNO *me )
     return -1;
 }
 
-int PyUNO_bool( PyObject* self )
+static int PyUNO_bool( PyObject* self )
 {
     PyUNO* me = reinterpret_cast<PyUNO*>(self);
 
@@ -548,7 +536,7 @@ int PyUNO_bool( PyObject* self )
     return -1;
 }
 
-Py_ssize_t PyUNO_len( PyObject* self )
+static Py_ssize_t PyUNO_len( PyObject* self )
 {
     PyUNO* me = reinterpret_cast<PyUNO*>(self);
 
@@ -568,14 +556,12 @@ Py_ssize_t PyUNO_len( PyObject* self )
     return -1;
 }
 
-void lcl_getRowsColumns( PyUNO* me, sal_Int32& nRows, sal_Int32& nColumns )
+static void lcl_getRowsColumns( PyUNO const * me, sal_Int32& nRows, sal_Int32& nColumns )
 {
     Sequence<short> aOutParamIndex;
     Sequence<Any> aOutParam;
     Sequence<Any> aParams;
-    Any aRet;
-
-    aRet = me->members->xInvocation->invoke ( "getRows", aParams, aOutParamIndex, aOutParam );
+    Any aRet = me->members->xInvocation->invoke ( "getRows", aParams, aOutParamIndex, aOutParam );
     Reference< XIndexAccess > xIndexAccessRows( aRet, UNO_QUERY );
     nRows = xIndexAccessRows->getCount();
     aRet = me->members->xInvocation->invoke ( "getColumns", aParams, aOutParamIndex, aOutParam );
@@ -583,7 +569,7 @@ void lcl_getRowsColumns( PyUNO* me, sal_Int32& nRows, sal_Int32& nColumns )
     nColumns = xIndexAccessCols->getCount();
 }
 
-PyRef lcl_indexToSlice( const PyRef& rIndex )
+static PyRef lcl_indexToSlice( const PyRef& rIndex )
 {
     Py_ssize_t nIndex = PyNumber_AsSsize_t( rIndex.get(), PyExc_IndexError );
     if (nIndex == -1 && PyErr_Occurred())
@@ -596,7 +582,7 @@ PyRef lcl_indexToSlice( const PyRef& rIndex )
     return rSlice;
 }
 
-PyObject* lcl_getitem_XCellRange( PyUNO* me, PyObject* pKey )
+static PyObject* lcl_getitem_XCellRange( PyUNO const * me, PyObject* pKey )
 {
     Runtime runtime;
 
@@ -606,7 +592,7 @@ PyObject* lcl_getitem_XCellRange( PyUNO* me, PyObject* pKey )
     Any aRet;
 
     // Single string key is sugar for getCellRangeByName()
-    if ( PyStr_Check( pKey ) ) {
+    if ( PyUnicode_Check( pKey ) ) {
 
         aParams.realloc (1);
         aParams[0] <<= pyString2ustring( pKey );
@@ -717,7 +703,7 @@ PyObject* lcl_getitem_XCellRange( PyUNO* me, PyObject* pKey )
     return nullptr;
 }
 
-PyObject* lcl_getitem_index( PyUNO *me, PyObject *pKey, Runtime& runtime )
+static PyObject* lcl_getitem_index( PyUNO const *me, PyObject *pKey, Runtime const & runtime )
 {
     Any aRet;
     sal_Int32 nIndex;
@@ -746,7 +732,7 @@ PyObject* lcl_getitem_index( PyUNO *me, PyObject *pKey, Runtime& runtime )
     return nullptr;
 }
 
-PyObject* lcl_getitem_slice( PyUNO *me, PyObject *pKey )
+static PyObject* lcl_getitem_slice( PyUNO const *me, PyObject *pKey )
 {
     Runtime runtime;
 
@@ -789,7 +775,7 @@ PyObject* lcl_getitem_slice( PyUNO *me, PyObject *pKey )
     return nullptr;
 }
 
-PyObject* lcl_getitem_string( PyUNO *me, PyObject *pKey, Runtime& runtime )
+static PyObject* lcl_getitem_string( PyUNO const *me, PyObject *pKey, Runtime const & runtime )
 {
     OUString sKey = pyString2ustring( pKey );
     Any aRet;
@@ -812,7 +798,7 @@ PyObject* lcl_getitem_string( PyUNO *me, PyObject *pKey, Runtime& runtime )
     return nullptr;
 }
 
-PyObject* PyUNO_getitem( PyObject *self, PyObject *pKey )
+static PyObject* PyUNO_getitem( PyObject *self, PyObject *pKey )
 {
     PyUNO* me = reinterpret_cast<PyUNO*>(self);
     Runtime runtime;
@@ -836,7 +822,7 @@ PyObject* PyUNO_getitem( PyObject *self, PyObject *pKey )
         }
 
         // XNameAccess access by key
-        if ( PyStr_Check( pKey ) )
+        if ( PyUnicode_Check( pKey ) )
         {
             PyObject* pRet = lcl_getitem_string( me, pKey, runtime );
             if ( pRet != nullptr )
@@ -871,11 +857,11 @@ PyObject* PyUNO_getitem( PyObject *self, PyObject *pKey )
 
         PyErr_SetString( PyExc_TypeError, "object is not subscriptable" );
     }
-    catch( const css::lang::IndexOutOfBoundsException )
+    catch( const css::lang::IndexOutOfBoundsException & )
     {
         PyErr_SetString( PyExc_IndexError, "index out of range" );
     }
-    catch( const css::container::NoSuchElementException )
+    catch( const css::container::NoSuchElementException & )
     {
         PyErr_SetString( PyExc_KeyError, "key not found" );
     }
@@ -899,7 +885,7 @@ PyObject* PyUNO_getitem( PyObject *self, PyObject *pKey )
     return nullptr;
 }
 
-int lcl_setitem_index( PyUNO *me, PyObject *pKey, PyObject *pValue )
+static int lcl_setitem_index( PyUNO const *me, PyObject *pKey, PyObject *pValue )
 {
     Runtime runtime;
 
@@ -920,7 +906,7 @@ int lcl_setitem_index( PyUNO *me, PyObject *pKey, PyObject *pValue )
         {
             aValue = runtime.pyObject2Any( pValue );
         }
-        catch ( const css::uno::RuntimeException )
+        catch ( const css::uno::RuntimeException & )
         {
             // TODO pyObject2Any can't convert e.g. dicts but only throws
             // RuntimeException on failure. Fixing this will require an audit of
@@ -934,7 +920,7 @@ int lcl_setitem_index( PyUNO *me, PyObject *pKey, PyObject *pValue )
 
         xIndexContainer.set( me->members->xInvocation, UNO_QUERY );
         if ( xIndexContainer.is() )
-            xIndexReplace.set( xIndexContainer, UNO_QUERY );
+            xIndexReplace = xIndexContainer;
         else
             xIndexReplace.set( me->members->xInvocation, UNO_QUERY );
 
@@ -967,7 +953,7 @@ int lcl_setitem_index( PyUNO *me, PyObject *pKey, PyObject *pValue )
     return 1;
 }
 
-int lcl_setitem_slice( PyUNO *me, PyObject *pKey, PyObject *pValue )
+static int lcl_setitem_slice( PyUNO const *me, PyObject *pKey, PyObject *pValue )
 {
     // XIndexContainer insert/remove/replace by slice
     Runtime runtime;
@@ -981,7 +967,7 @@ int lcl_setitem_slice( PyUNO *me, PyObject *pKey, PyObject *pValue )
 
         xIndexContainer.set( me->members->xInvocation, UNO_QUERY );
         if ( xIndexContainer.is() )
-            xIndexReplace.set( xIndexContainer, UNO_QUERY );
+            xIndexReplace = xIndexContainer;
         else
             xIndexReplace.set( me->members->xInvocation, UNO_QUERY );
 
@@ -1013,7 +999,7 @@ int lcl_setitem_slice( PyUNO *me, PyObject *pKey, PyObject *pValue )
             PyErr_SetString( PyExc_ValueError, "tuple too large" );
             return 1;
         }
-        sal_Int32 nTupleLength = (sal_Int32)nTupleLength_ssize;
+        sal_Int32 nTupleLength = static_cast<sal_Int32>(nTupleLength_ssize);
 
         if ( (nTupleLength != nSliceLength) && (nStep != 1) )
         {
@@ -1041,7 +1027,7 @@ int lcl_setitem_slice( PyUNO *me, PyObject *pKey, PyObject *pValue )
                 {
                     aItem = runtime.pyObject2Any( rItem.get() );
                 }
-                catch ( const css::uno::RuntimeException )
+                catch ( const css::uno::RuntimeException & )
                 {
                     // TODO pyObject2Any can't convert e.g. dicts but only throws
                     // RuntimeException on failure. Fixing this will require an audit of
@@ -1085,7 +1071,7 @@ int lcl_setitem_slice( PyUNO *me, PyObject *pKey, PyObject *pValue )
     return 1;
 }
 
-int lcl_setitem_string( PyUNO *me, PyObject *pKey, PyObject *pValue )
+static int lcl_setitem_string( PyUNO const *me, PyObject *pKey, PyObject *pValue )
 {
     Runtime runtime;
 
@@ -1100,7 +1086,7 @@ int lcl_setitem_string( PyUNO *me, PyObject *pKey, PyObject *pValue )
         {
             aValue = runtime.pyObject2Any( pValue );
         }
-        catch( const css::uno::RuntimeException )
+        catch( const css::uno::RuntimeException & )
         {
             // TODO pyObject2Any can't convert e.g. dicts but only throws
             // RuntimeException on failure. Fixing this will require an audit of
@@ -1115,7 +1101,7 @@ int lcl_setitem_string( PyUNO *me, PyObject *pKey, PyObject *pValue )
         Reference< XNameContainer > xNameContainer( me->members->xInvocation, UNO_QUERY );
         Reference< XNameReplace > xNameReplace;
         if ( xNameContainer.is() )
-            xNameReplace.set( xNameContainer, UNO_QUERY );
+            xNameReplace = xNameContainer;
         else
             xNameReplace.set( me->members->xInvocation, UNO_QUERY );
 
@@ -1136,7 +1122,7 @@ int lcl_setitem_string( PyUNO *me, PyObject *pKey, PyObject *pValue )
                         xNameContainer->insertByName( sKey, aValue );
                         return 0;
                     }
-                    catch( css::container::ElementExistException )
+                    catch( const css::container::ElementExistException & )
                     {
                         // Fall through, try replace instead
                     }
@@ -1157,7 +1143,7 @@ int lcl_setitem_string( PyUNO *me, PyObject *pKey, PyObject *pValue )
     return 1;
 }
 
-int PyUNO_setitem( PyObject *self, PyObject *pKey, PyObject *pValue )
+static int PyUNO_setitem( PyObject *self, PyObject *pKey, PyObject *pValue )
 {
     PyUNO* me = reinterpret_cast<PyUNO*>(self);
 
@@ -1171,26 +1157,26 @@ int PyUNO_setitem( PyObject *self, PyObject *pKey, PyObject *pValue )
         {
             return lcl_setitem_slice( me, pKey, pValue );
         }
-        else if ( PyStr_Check( pKey ) )
+        else if ( PyUnicode_Check( pKey ) )
         {
             return lcl_setitem_string( me, pKey, pValue );
         }
 
         PyErr_SetString( PyExc_TypeError, "list index has invalid type" );
     }
-    catch( const css::lang::IndexOutOfBoundsException )
+    catch( const css::lang::IndexOutOfBoundsException & )
     {
         PyErr_SetString( PyExc_IndexError, "list index out of range" );
     }
-    catch( const css::container::NoSuchElementException )
+    catch( const css::container::NoSuchElementException & )
     {
         PyErr_SetString( PyExc_KeyError, "key not found" );
     }
-    catch( const css::lang::IllegalArgumentException )
+    catch( const css::lang::IllegalArgumentException & )
     {
         PyErr_SetString( PyExc_TypeError, "value has invalid type" );
     }
-    catch( css::script::CannotConvertException )
+    catch( const css::script::CannotConvertException & )
     {
         PyErr_SetString( PyExc_TypeError, "value has invalid type" );
     }
@@ -1210,7 +1196,7 @@ int PyUNO_setitem( PyObject *self, PyObject *pKey, PyObject *pValue )
     return 1;
 }
 
-PyObject* PyUNO_iter( PyObject *self )
+static PyObject* PyUNO_iter( PyObject *self )
 {
     PyUNO* me = reinterpret_cast<PyUNO*>(self);
 
@@ -1286,7 +1272,7 @@ PyObject* PyUNO_iter( PyObject *self )
     return nullptr;
 }
 
-int PyUNO_contains( PyObject *self, PyObject *pKey )
+static int PyUNO_contains( PyObject *self, PyObject *pKey )
 {
     PyUNO* me = reinterpret_cast<PyUNO*>(self);
 
@@ -1299,7 +1285,7 @@ int PyUNO_contains( PyObject *self, PyObject *pKey )
         {
             aValue = runtime.pyObject2Any( pKey );
         }
-        catch( const css::uno::RuntimeException )
+        catch( const css::uno::RuntimeException & )
         {
             // TODO pyObject2Any can't convert e.g. dicts but only throws
             // RuntimeException on failure. Fixing this will require an audit of
@@ -1311,7 +1297,7 @@ int PyUNO_contains( PyObject *self, PyObject *pKey )
         // useful for objects which implement both XIndexAccess and XNameAccess
 
         // For XNameAccess
-        if ( PyStr_Check( pKey ) )
+        if ( PyUnicode_Check( pKey ) )
         {
             OUString sKey;
             aValue >>= sKey;
@@ -1347,7 +1333,7 @@ int PyUNO_contains( PyObject *self, PyObject *pKey )
 
         PyErr_SetString( PyExc_TypeError, "argument is not iterable" );
     }
-    catch( const css::script::CannotConvertException )
+    catch( const css::script::CannotConvertException& )
     {
         PyErr_SetString( PyExc_TypeError, "invalid type passed as left argument to 'in'" );
     }
@@ -1375,7 +1361,7 @@ int PyUNO_contains( PyObject *self, PyObject *pKey )
     return -1;
 }
 
-PyObject* PyUNO_getattr (PyObject* self, char* name)
+static PyObject* PyUNO_getattr (PyObject* self, char* name)
 {
     PyUNO* me;
 
@@ -1455,7 +1441,7 @@ PyObject* PyUNO_getattr (PyObject* self, char* name)
     return nullptr;
 }
 
-int PyUNO_setattr (PyObject* self, char* name, PyObject* value)
+static int PyUNO_setattr (PyObject* self, char* name, PyObject* value)
 {
     PyUNO* me;
 
@@ -1557,9 +1543,6 @@ static PyNumberMethods PyUNONumberMethods[] =
     nullptr,                                         /* nb_add */
     nullptr,                                         /* nb_subtract */
     nullptr,                                         /* nb_multiply */
-#if PY_MAJOR_VERSION < 3
-    nullptr,                                         /* nb_divide */
-#endif
     nullptr,                                         /* nb_remainder */
     nullptr,                                         /* nb_divmod */
     nullptr,                                         /* nb_power */
@@ -1573,22 +1556,12 @@ static PyNumberMethods PyUNONumberMethods[] =
     nullptr,                                         /* nb_and */
     nullptr,                                         /* nb_xor */
     nullptr,                                         /* nb_or */
-#if PY_MAJOR_VERSION < 3
-    nullptr,                                         /* nb_coerce */
-#endif
     nullptr,                                         /* nb_int */
     nullptr,                                         /* nb_reserved */
     nullptr,                                         /* nb_float */
-#if PY_MAJOR_VERSION < 3
-    nullptr,                                         /* nb_oct */
-    nullptr,                                         /* nb_hex */
-#endif
     nullptr,                                         /* nb_inplace_add */
     nullptr,                                         /* nb_inplace_subtract */
     nullptr,                                         /* nb_inplace_multiply */
-#if PY_MAJOR_VERSION < 3
-    nullptr,                                         /* nb_inplace_divide */
-#endif
     nullptr,                                         /* nb_inplace_remainder */
     nullptr,                                         /* nb_inplace_power */
     nullptr,                                         /* nb_inplace_lshift */
@@ -1637,7 +1610,11 @@ static PyTypeObject PyUNOType =
     sizeof (PyUNO),
     0,
     PyUNO_del,
-    nullptr,
+#if PY_VERSION_HEX >= 0x03080000
+    0, // Py_ssize_t tp_vectorcall_offset
+#else
+    nullptr, // printfunc tp_print
+#endif
     PyUNO_getattr,
     PyUNO_setattr,
     /* this type does not exist in Python 3: (cmpfunc) */ nullptr,
@@ -1678,11 +1655,22 @@ static PyTypeObject PyUNOType =
     nullptr,
     nullptr,
     nullptr
-#if PY_VERSION_HEX >= 0x02060000
     , 0
-#endif
 #if PY_VERSION_HEX >= 0x03040000
     , nullptr
+#if PY_VERSION_HEX >= 0x03080000
+    , nullptr // vectorcallfunc tp_vectorcall
+#if PY_VERSION_HEX < 0x03090000
+#if defined __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    , nullptr // tp_print
+#if defined __clang__
+#pragma clang diagnostic pop
+#endif
+#endif
+#endif
 #endif
 };
 
@@ -1707,14 +1695,10 @@ PyRef PyUNO_new (
         xInvocation.set(
             ssf->createInstanceWithArguments( Sequence<Any>( &targetInterface, 1 ) ), css::uno::UNO_QUERY_THROW );
 
-        Reference<XUnoTunnel> xUnoTunnel (
-            xInvocation->getIntrospection()->queryAdapter(cppu::UnoType<XUnoTunnel>::get()), UNO_QUERY );
-        if( xUnoTunnel.is() )
-        {
-            sal_Int64 that = xUnoTunnel->getSomething( ::pyuno::Adapter::getUnoTunnelImplementationId() );
-            if( that )
-                return PyRef( reinterpret_cast<Adapter*>(that)->getWrappedObject() );
-        }
+        auto that = comphelper::getUnoTunnelImplementation<Adapter>(
+            xInvocation->getIntrospection()->queryAdapter(cppu::UnoType<XUnoTunnel>::get()));
+        if( that )
+            return that->getWrappedObject();
     }
     if( !Py_IsInitialized() )
         throw RuntimeException();

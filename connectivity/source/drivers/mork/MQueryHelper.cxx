@@ -23,16 +23,14 @@
 #include "MConnection.hxx"
 
 #include "MorkParser.hxx"
-#include <stdlib.h>
-#include <sstream>
 #include <string>
 #include <vector>
 #include <algorithm>
-#include <string.h>
 
-#include "resource/mork_res.hrc"
+#include <strings.hrc>
 
 #include <unotools/textsearch.hxx>
+#include <sal/log.hxx>
 
 using namespace connectivity::mork;
 using namespace connectivity;
@@ -40,8 +38,8 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
 
 
-extern
-std::vector<bool> entryMatchedByExpression(MQueryHelper* _aQuery, MQueryExpression* _aExpr, MQueryHelperResultEntry* entry);
+static
+std::vector<bool> entryMatchedByExpression(MQueryHelper* _aQuery, MQueryExpression const * _aExpr, MQueryHelperResultEntry* entry);
 
 MQueryHelperResultEntry::MQueryHelperResultEntry()
 {
@@ -82,26 +80,20 @@ MQueryHelper::~MQueryHelper()
 }
 
 
-void MQueryHelper::setAddressbook(OUString &ab)
+void MQueryHelper::setAddressbook(OUString const &ab)
 {
     ::osl::MutexGuard aGuard(m_aMutex);
     m_aAddressbook = ab;
 }
 
-void MQueryHelper::append(MQueryHelperResultEntry* resEnt)
+void MQueryHelper::append(std::unique_ptr<MQueryHelperResultEntry> resEnt)
 {
-    if ( resEnt != nullptr ) {
-        m_aResults.push_back( resEnt );
-    }
+   assert(resEnt);
+   m_aResults.push_back( std::move(resEnt) );
 }
 
 void MQueryHelper::clear_results()
 {
-    resultsArray::iterator iter = m_aResults.begin();
-    while ( iter != m_aResults.end() ) {
-        delete (*iter);
-        ++iter;
-    }
     m_aResults.clear();
 }
 
@@ -119,7 +111,7 @@ MQueryHelper::getByIndex(sal_uInt32 nRow)
     if ( nRow < 1 ) {
         return nullptr;
     }
-    return m_aResults[nRow -1];
+    return m_aResults[nRow -1].get();
 }
 
 sal_Int32 MQueryHelper::getResultCount() const
@@ -128,22 +120,6 @@ sal_Int32 MQueryHelper::getResultCount() const
 
     return result;
 }
-
-
-bool MQueryHelper::checkRowAvailable( sal_Int32 nDBRow )
-{
-/*
-    while (!queryComplete() && getResultCount() <= (sal_uInt32)nDBRow)
-    {
-        if ( !m_aQueryHelper->waitForRow( nDBRow ) ) {
-            m_aError = m_aQueryHelper->getError();
-            return sal_False;
-        }
-    }
-*/
-    return getResultCount() > nDBRow;
-}
-
 
 bool MQueryHelper::getRowValue( ORowSetValue& rValue, sal_Int32 nDBRow,const OUString& aDBColumnName, sal_Int32 nType )
 {
@@ -186,40 +162,40 @@ sal_Int32 MQueryHelper::executeQuery(OConnection* xConnection, MQueryExpression 
     else
     {
         // Let's try to retrieve the list in Collected Addresses book
-        pMork = xConnection->getMorkParser(OString("CollectedAddressBook"));
+        pMork = xConnection->getMorkParser("CollectedAddressBook");
         if (std::find(pMork->lists_.begin(), pMork->lists_.end(), m_aAddressbook) == pMork->lists_.end())
         {
             // so the list is in Address book
             // TODO : manage case where an address book has been created
-            pMork = xConnection->getMorkParser(OString("AddressBook"));
+            pMork = xConnection->getMorkParser("AddressBook");
         }
         handleListTable = true;
         // retrieve row ids for that list table
         std::string listTable = oStringTable.getStr();
         pMork->getRecordKeysForListTable(listTable, listRecords);
     }
-    MorkTableMap::Map::iterator tableIter;
+
     MorkTableMap *Tables = pMork->getTables( 0x80 );
     if (!Tables)
         return -1;
+
     MorkRowMap *Rows = nullptr;
-    MorkRowMap::Map::const_iterator rowIter;
 
     // Iterate all tables
-    for ( tableIter = Tables->map.begin(); tableIter != Tables->map.end(); ++tableIter )
+    for (auto & table : Tables->map)
     {
-        if (tableIter->first != 1) break;
-        Rows = MorkParser::getRows( 0x80, &tableIter->second );
+        if (table.first != 1) break;
+        Rows = MorkParser::getRows( 0x80, &table.second );
         if ( Rows )
         {
             // Iterate all rows
-            for ( rowIter = Rows->map.begin(); rowIter != Rows->map.end(); ++rowIter )
+            for (auto const& row : Rows->map)
             {
                 // list specific table
                 // only retrieve rowIds that belong to that list table.
                 if (handleListTable)
                 {
-                    int rowId = rowIter->first;
+                    int rowId = row.first;
                     // belongs this row id to the list table?
                     if (listRecords.end() == listRecords.find(rowId))
                     {
@@ -228,30 +204,24 @@ sal_Int32 MQueryHelper::executeQuery(OConnection* xConnection, MQueryExpression 
                     }
                 }
 
-                MQueryHelperResultEntry* entry = new MQueryHelperResultEntry();
-                for (MorkCells::const_iterator CellsIter = rowIter->second.begin();
-                     CellsIter != rowIter->second.end(); ++CellsIter )
+                std::unique_ptr<MQueryHelperResultEntry> entry(new MQueryHelperResultEntry());
+                for (auto const& cell : row.second)
                 {
-                    std::string column = pMork->getColumn(CellsIter->first);
-                    std::string value = pMork->getValue(CellsIter->second);
+                    std::string column = pMork->getColumn(cell.first);
+                    std::string value = pMork->getValue(cell.second);
                     OString key(column.c_str(), static_cast<sal_Int32>(column.size()));
                     OString valueOString(value.c_str(), static_cast<sal_Int32>(value.size()));
                     OUString valueOUString = OStringToOUString( valueOString, RTL_TEXTENCODING_UTF8 );
                     entry->setValue(key, valueOUString);
                 }
-                std::vector<bool> vector = entryMatchedByExpression(this, &expr, entry);
                 bool result = true;
-                for (std::vector<bool>::const_iterator iter = vector.begin(); iter != vector.end(); ++iter)
+                for (bool elem : entryMatchedByExpression(this, &expr, entry.get()))
                 {
-                    result = result && *iter;
+                    result = result && elem;
                 }
                 if (result)
                 {
-                    append(entry);
-                }
-                else
-                {
-                    delete entry;
+                    append(std::move(entry));
                 }
             }
         }
@@ -259,16 +229,13 @@ sal_Int32 MQueryHelper::executeQuery(OConnection* xConnection, MQueryExpression 
     return 0;
 }
 
-std::vector<bool> entryMatchedByExpression(MQueryHelper* _aQuery, MQueryExpression* _aExpr, MQueryHelperResultEntry* entry)
+std::vector<bool> entryMatchedByExpression(MQueryHelper* _aQuery, MQueryExpression const * _aExpr, MQueryHelperResultEntry* entry)
 {
     std::vector<bool> resultVector;
-    MQueryExpression::ExprVector::const_iterator evIter;
-    for( evIter = _aExpr->getExpressions().begin();
-         evIter != _aExpr->getExpressions().end();
-         ++evIter )
+    for (auto const& expr : _aExpr->getExpressions())
     {
-        if ( (*evIter)->isStringExpr() ) {
-            MQueryExpressionString* evStr = static_cast<MQueryExpressionString*> (*evIter);
+        if ( expr->isStringExpr() ) {
+            MQueryExpressionString* evStr = static_cast<MQueryExpressionString*> (expr.get());
             // Set the 'name' property of the boolString.
             OString attrName = _aQuery->getColumnAlias().getProgrammaticNameOrFallbackToUTF8Alias( evStr->getName() );
             SAL_INFO("connectivity.mork", "Name = " << attrName);
@@ -281,7 +248,7 @@ std::vector<bool> entryMatchedByExpression(MQueryHelper* _aQuery, MQueryExpressi
             if (bRequiresValue)
             {
                 SAL_INFO("connectivity.mork", "Value = " << evStr->getValue() );
-                OUString searchedValue = evStr->getValue();
+                const OUString& searchedValue = evStr->getValue();
                 if (evStr->getCond() == MQueryOp::Is) {
                     SAL_INFO("connectivity.mork", "MQueryOp::Is; done");
                     resultVector.push_back(currentValue == searchedValue);
@@ -318,26 +285,27 @@ std::vector<bool> entryMatchedByExpression(MQueryHelper* _aQuery, MQueryExpressi
                 resultVector.push_back(currentValue.isEmpty());
             }
         }
-        else if ( (*evIter)->isExpr() ) {
+        else if ( expr->isExpr() ) {
             SAL_INFO("connectivity.mork", "Appending Subquery Expression");
-            MQueryExpression* queryExpression = static_cast<MQueryExpression*> (*evIter);
+            MQueryExpression* queryExpression = static_cast<MQueryExpression*> (expr.get());
             // recursive call
             std::vector<bool> subquery_result = entryMatchedByExpression(_aQuery, queryExpression, entry);
             MQueryExpression::bool_cond condition = queryExpression->getExpressionCondition();
             if (condition == MQueryExpression::OR) {
                 bool result = false;
-                for (std::vector<bool>::const_iterator iter =  subquery_result.begin(); iter != subquery_result.end(); ++iter) {
-                    result = result || *iter;
-                }
-                resultVector.push_back(result);
-            } else if (condition == MQueryExpression::AND) {
-                bool result = true;
-                for (std::vector<bool>::const_iterator iter = subquery_result.begin(); iter != subquery_result.end(); ++iter) {
-                    result = result && *iter;
+                for (bool elem : subquery_result)
+                {
+                    result = result || elem;
                 }
                 resultVector.push_back(result);
             } else {
-                OSL_FAIL("Unknown Expression Type");
+                assert(condition == MQueryExpression::AND && "only OR or AND should exist");
+                bool result = true;
+                for (bool elem : subquery_result)
+                {
+                    result = result && elem;
+                }
+                resultVector.push_back(result);
             }
         }
         else {

@@ -18,21 +18,20 @@
  */
 
 #include <cppuhelper/supportsservice.hxx>
-#include "rtl/ustrbuf.hxx"
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 #include "wininetbackend.hxx"
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
 #include <wininet.h>
 #include <sal/alloca.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 
-#define WININET_DLL_NAME "wininet.dll"
+#define WININET_DLL_NAME L"wininet.dll"
 #define EQUAL_SIGN '='
 #define COLON      ':'
 #define SPACE      ' '
@@ -48,17 +47,12 @@ struct Library {
     ~Library() { if (module) FreeLibrary(module); }
 };
 
-}
-
-typedef struct
+struct ProxyEntry
 {
     OUString Server;
     OUString Port;
-} ProxyEntry;
+};
 
-
-namespace
-{
     ProxyEntry ReadProxyEntry(const OUString& aProxy, sal_Int32& i)
     {
         ProxyEntry aProxyEntry;
@@ -99,14 +93,14 @@ namespace
 
 WinInetBackend::WinInetBackend()
 {
-    Library hWinInetDll( LoadLibrary( WININET_DLL_NAME ) );
+    Library hWinInetDll( LoadLibraryW( WININET_DLL_NAME ) );
     if( hWinInetDll.module )
     {
         typedef BOOL ( WINAPI *InternetQueryOption_Proc_T )( HINTERNET, DWORD, LPVOID, LPDWORD );
 
         InternetQueryOption_Proc_T lpfnInternetQueryOption =
             reinterpret_cast< InternetQueryOption_Proc_T >(
-                GetProcAddress( hWinInetDll.module, "InternetQueryOptionA" ) );
+                GetProcAddress( hWinInetDll.module, "InternetQueryOptionW" ) );
         if (lpfnInternetQueryOption)
         {
             // Some Windows versions would fail the InternetQueryOption call
@@ -117,8 +111,8 @@ WinInetBackend::WinInetBackend()
             // reallocation:
             INTERNET_PROXY_INFO pi;
             LPINTERNET_PROXY_INFO lpi = &pi;
-            DWORD dwLength = sizeof (INTERNET_PROXY_INFO);
-            BOOL ok = lpfnInternetQueryOption(
+            DWORD dwLength = sizeof (pi);
+            bool ok = lpfnInternetQueryOption(
                 nullptr,
                 INTERNET_OPTION_PROXY,
                 lpi,
@@ -128,8 +122,8 @@ WinInetBackend::WinInetBackend()
                 DWORD err = GetLastError();
                 if (err == ERROR_INSUFFICIENT_BUFFER)
                 {
-                    // allocate sufficient space on the heap
-                    // insufficient space on the heap results
+                    // allocate sufficient space on the stack
+                    // insufficient space on the stack results
                     // in a stack overflow exception, we assume
                     // this never happens, because of the relatively
                     // small amount of memory we need
@@ -162,6 +156,12 @@ WinInetBackend::WinInetBackend()
             // an empty proxy list, so we don't have to check if
             // proxy is enabled or not
 
+            // We use InternetQueryOptionW (see https://msdn.microsoft.com/en-us/library/aa385101);
+            // it fills INTERNET_PROXY_INFO struct which is defined in WinInet.h to have LPCTSTR
+            // (i.e., the UNICODE-dependent generic string type expanding to const wchar_t* when
+            // UNICODE is defined, and InternetQueryOption macro expands to InternetQueryOptionW).
+            // Thus, it's natural to expect that W version would return wide strings. But it's not
+            // true. The W version still returns const char* in INTERNET_PROXY_INFO.
             OUString aProxyList       = OUString::createFromAscii( lpi->lpszProxy );
             OUString aProxyBypassList = OUString::createFromAscii( lpi->lpszProxyBypass );
 
@@ -290,11 +290,6 @@ WinInetBackend::~WinInetBackend()
 {
 }
 
-WinInetBackend* WinInetBackend::createInstance()
-{
-    return new WinInetBackend;
-}
-
 void WinInetBackend::setPropertyValue(
     OUString const &, css::uno::Any const &)
 {
@@ -336,20 +331,9 @@ css::uno::Any WinInetBackend::getPropertyValue(
     }
 }
 
-OUString SAL_CALL WinInetBackend::getBackendName() {
-    return OUString("com.sun.star.comp.configuration.backend.WinInetBackend") ;
-}
-
 OUString SAL_CALL WinInetBackend::getImplementationName()
 {
-    return getBackendName() ;
-}
-
-uno::Sequence<OUString> SAL_CALL WinInetBackend::getBackendServiceNames()
-{
-    uno::Sequence<OUString> aServiceNameList { "com.sun.star.configuration.backend.WinInetBackend" };
-
-    return aServiceNameList ;
+    return "com.sun.star.comp.configuration.backend.WinInetBackend" ;
 }
 
 sal_Bool SAL_CALL WinInetBackend::supportsService(const OUString& aServiceName)
@@ -359,7 +343,15 @@ sal_Bool SAL_CALL WinInetBackend::supportsService(const OUString& aServiceName)
 
 uno::Sequence<OUString> SAL_CALL WinInetBackend::getSupportedServiceNames()
 {
-    return getBackendServiceNames() ;
+    return { "com.sun.star.configuration.backend.WinInetBackend" };
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+shell_WinInetBackend_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new WinInetBackend);
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

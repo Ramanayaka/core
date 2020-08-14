@@ -24,8 +24,11 @@
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XOfficeInstallationDirectories.hpp>
+
+#include <optional>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace comphelper {
 
@@ -68,11 +71,9 @@ public:
 private:
     void initDirs();
 
-    OUString                                   m_aOfficeBrandDirMacro;
-    OUString                                   m_aUserDirMacro;
     css::uno::Reference< css::uno::XComponentContext >    m_xCtx;
-    OUString *                                 m_pOfficeBrandDir;
-    OUString *                                 m_pUserDir;
+    std::optional<OUString>                  m_xOfficeBrandDir;
+    std::optional<OUString>                  m_xUserDir;
 };
 
 } // namespace comphelper

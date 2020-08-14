@@ -24,21 +24,20 @@
 #include <osl/mutex.hxx>
 #include <osl/thread.hxx>
 
-#include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 #include <uno/current_context.h>
 #include <uno/lbnames.h>
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <com/sun/star/uno/XCurrentContext.hpp>
 #include <com/sun/star/uno/DeploymentException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/security/XAccessController.hpp>
@@ -63,7 +62,7 @@ using namespace stoc_sec;
 namespace {
 
 // static stuff initialized when loading lib
-static OUString s_envType = CPPU_CURRENT_LANGUAGE_BINDING_NAME;
+OUString s_envType = CPPU_CURRENT_LANGUAGE_BINDING_NAME;
 const char s_acRestriction[] = "access-control.restriction";
 
 
@@ -74,12 +73,12 @@ class acc_Intersection
 {
     Reference< security::XAccessControlContext > m_x1, m_x2;
 
-    inline acc_Intersection(
+    acc_Intersection(
         Reference< security::XAccessControlContext > const & x1,
         Reference< security::XAccessControlContext > const & x2 );
 
 public:
-    static inline Reference< security::XAccessControlContext > create(
+    static Reference< security::XAccessControlContext > create(
         Reference< security::XAccessControlContext > const & x1,
         Reference< security::XAccessControlContext > const & x2 );
 
@@ -88,14 +87,14 @@ public:
         Any const & perm ) override;
 };
 
-inline acc_Intersection::acc_Intersection(
+acc_Intersection::acc_Intersection(
     Reference< security::XAccessControlContext > const & x1,
     Reference< security::XAccessControlContext > const & x2 )
     : m_x1( x1 )
     , m_x2( x2 )
 {}
 
-inline Reference< security::XAccessControlContext > acc_Intersection::create(
+Reference< security::XAccessControlContext > acc_Intersection::create(
     Reference< security::XAccessControlContext > const & x1,
     Reference< security::XAccessControlContext > const & x2 )
 {
@@ -120,12 +119,12 @@ class acc_Union
 {
     Reference< security::XAccessControlContext > m_x1, m_x2;
 
-    inline acc_Union(
+    acc_Union(
         Reference< security::XAccessControlContext > const & x1,
         Reference< security::XAccessControlContext > const & x2 );
 
 public:
-    static inline Reference< security::XAccessControlContext > create(
+    static Reference< security::XAccessControlContext > create(
         Reference< security::XAccessControlContext > const & x1,
         Reference< security::XAccessControlContext > const & x2 );
 
@@ -134,14 +133,14 @@ public:
         Any const & perm ) override;
 };
 
-inline acc_Union::acc_Union(
+acc_Union::acc_Union(
     Reference< security::XAccessControlContext > const & x1,
     Reference< security::XAccessControlContext > const & x2 )
     : m_x1( x1 )
     , m_x2( x2 )
 {}
 
-inline Reference< security::XAccessControlContext > acc_Union::create(
+Reference< security::XAccessControlContext > acc_Union::create(
     Reference< security::XAccessControlContext > const & x1,
     Reference< security::XAccessControlContext > const & x2 )
 {
@@ -198,7 +197,7 @@ class acc_CurrentContext
     Any m_restriction;
 
 public:
-    inline acc_CurrentContext(
+    acc_CurrentContext(
         Reference< XCurrentContext > const & xDelegate,
         Reference< security::XAccessControlContext > const & xRestriction );
 
@@ -206,7 +205,7 @@ public:
     virtual Any SAL_CALL getValueByName( OUString const & name ) override;
 };
 
-inline acc_CurrentContext::acc_CurrentContext(
+acc_CurrentContext::acc_CurrentContext(
     Reference< XCurrentContext > const & xDelegate,
     Reference< security::XAccessControlContext > const & xRestriction )
     : m_xDelegate( xDelegate )
@@ -235,7 +234,7 @@ Any acc_CurrentContext::getValueByName( OUString const & name )
 }
 
 
-inline Reference< security::XAccessControlContext > getDynamicRestriction(
+Reference< security::XAccessControlContext > getDynamicRestriction(
     Reference< XCurrentContext > const & xContext )
 {
     if (xContext.is())
@@ -289,7 +288,8 @@ class AccessController
     Reference< security::XPolicy > const & getPolicy();
 
     // mode
-    enum Mode { OFF, ON, DYNAMIC_ONLY, SINGLE_USER, SINGLE_DEFAULT_USER } m_mode;
+    enum class Mode { Off, On, DynamicOnly, SingleUser, SingleDefaultUser };
+    Mode m_mode;
 
     PermissionCollection m_defaultPermissions;
     // for single-user mode
@@ -303,7 +303,7 @@ class AccessController
 
     ThreadData m_rec;
     typedef vector< pair< OUString, Any > > t_rec_vec;
-    inline void clearPostPoned();
+    void clearPostPoned();
     void checkAndClearPostPoned();
 
     PermissionCollection getEffectivePermissions(
@@ -340,7 +340,7 @@ public:
 AccessController::AccessController( Reference< XComponentContext > const & xComponentContext )
     : t_helper( m_mutex )
     , m_xComponentContext( xComponentContext )
-    , m_mode( ON ) // default
+    , m_mode( Mode::On ) // default
     , m_defaultPerm_init( false )
     , m_singleUser_init( false )
     , m_rec( nullptr )
@@ -354,15 +354,15 @@ AccessController::AccessController( Reference< XComponentContext > const & xComp
     {
         if ( mode == "off" )
         {
-            m_mode = OFF;
+            m_mode = Mode::Off;
         }
         else if ( mode == "on" )
         {
-            m_mode = ON;
+            m_mode = Mode::On;
         }
         else if ( mode == "dynamic-only" )
         {
-            m_mode = DYNAMIC_ONLY;
+            m_mode = Mode::DynamicOnly;
         }
         else if ( mode == "single-user" )
         {
@@ -375,33 +375,33 @@ AccessController::AccessController( Reference< XComponentContext > const & xComp
                     "\"/services/" SERVICE_NAME "/single-user-id\"!",
                     static_cast<OWeakObject *>(this) );
             }
-            m_mode = SINGLE_USER;
+            m_mode = Mode::SingleUser;
         }
         else if ( mode == "single-default-user" )
         {
-            m_mode = SINGLE_DEFAULT_USER;
+            m_mode = Mode::SingleDefaultUser;
         }
     }
 
-    // switch on caching for DYNAMIC_ONLY and ON (shareable multi-user process)
-    if (ON == m_mode || DYNAMIC_ONLY == m_mode)
+    // switch on caching for Mode::DynamicOnly and Mode::On (shareable multi-user process)
+    if (Mode::On != m_mode && Mode::DynamicOnly != m_mode)
+        return;
+
+    sal_Int32 cacheSize = 0; // multi-user cache size
+    if (! (m_xComponentContext->getValueByName(
+        "/services/" SERVICE_NAME "/user-cache-size" ) >>= cacheSize))
     {
-        sal_Int32 cacheSize = 0; // multi-user cache size
-        if (! (m_xComponentContext->getValueByName(
-            "/services/" SERVICE_NAME "/user-cache-size" ) >>= cacheSize))
-        {
-            cacheSize = 128; // reasonable default?
-        }
-#ifdef __CACHE_DIAGNOSE
-        cacheSize = 2;
-#endif
-        m_user2permissions.setSize( cacheSize );
+        cacheSize = 128; // reasonable default?
     }
+#ifdef __CACHE_DIAGNOSE
+    cacheSize = 2;
+#endif
+    m_user2permissions.setSize( cacheSize );
 }
 
 void AccessController::disposing()
 {
-    m_mode = OFF; // avoid checks from now on xxx todo review/ better DYNAMIC_ONLY?
+    m_mode = Mode::Off; // avoid checks from now on xxx todo review/ better Mode::DynamicOnly?
     m_xPolicy.clear();
     m_xComponentContext.clear();
 }
@@ -413,7 +413,7 @@ void AccessController::initialize(
 {
     // xxx todo: review for forking
     // portal forking hack: re-initialize for another user-id
-    if (SINGLE_USER != m_mode) // only if in single-user mode
+    if (Mode::SingleUser != m_mode) // only if in single-user mode
     {
         throw RuntimeException(
             "invalid call: ac must be in \"single-user\" mode!", static_cast<OWeakObject *>(this) );
@@ -439,18 +439,16 @@ Reference< security::XPolicy > const & AccessController::getPolicy()
         Reference< security::XPolicy > xPolicy;
         m_xComponentContext->getValueByName(
             "/singletons/com.sun.star.security.thePolicy" ) >>= xPolicy;
-        if (xPolicy.is())
-        {
-            MutexGuard guard( m_mutex );
-            if (! m_xPolicy.is())
-            {
-                m_xPolicy = xPolicy;
-            }
-        }
-        else
+        if (!xPolicy.is())
         {
             throw SecurityException(
                 "cannot get policy singleton!", static_cast<OWeakObject *>(this) );
+        }
+
+        MutexGuard guard( m_mutex );
+        if (! m_xPolicy.is())
+        {
+            m_xPolicy = xPolicy;
         }
     }
     return m_xPolicy;
@@ -483,7 +481,7 @@ static void dumpPermissions(
 #endif
 
 
-inline void AccessController::clearPostPoned()
+void AccessController::clearPostPoned()
 {
     delete static_cast< t_rec_vec * >( m_rec.getData() );
     m_rec.setData( nullptr );
@@ -494,54 +492,54 @@ void AccessController::checkAndClearPostPoned()
     // check postponed permissions
     std::unique_ptr< t_rec_vec > rec( static_cast< t_rec_vec * >( m_rec.getData() ) );
     m_rec.setData( nullptr ); // takeover ownership
-    OSL_ASSERT( rec.get() );
-    if (rec.get())
+    OSL_ASSERT(rec);
+    if (!rec)
+        return;
+
+    t_rec_vec const& vec = *rec;
+    switch (m_mode)
     {
-        t_rec_vec const & vec = *rec.get();
-        switch (m_mode)
+    case Mode::SingleUser:
+    {
+        OSL_ASSERT( m_singleUser_init );
+        for (const auto & p : vec)
         {
-        case SINGLE_USER:
+            OSL_ASSERT( m_singleUserId == p.first );
+            m_singleUserPermissions.checkPermission( p.second );
+        }
+        break;
+    }
+    case Mode::SingleDefaultUser:
+    {
+        OSL_ASSERT( m_defaultPerm_init );
+        for (const auto & p : vec)
         {
-            OSL_ASSERT( m_singleUser_init );
-            for (const auto & p : vec)
+            OSL_ASSERT( p.first.isEmpty() ); // default-user
+            m_defaultPermissions.checkPermission( p.second );
+        }
+        break;
+    }
+    case Mode::On:
+    {
+        for (const auto & p : vec)
+        {
+            PermissionCollection const * pPermissions;
+            // lookup policy for user
             {
-                OSL_ASSERT( m_singleUserId.equals( p.first ) );
-                m_singleUserPermissions.checkPermission( p.second );
+                MutexGuard guard( m_mutex );
+                pPermissions = m_user2permissions.lookup( p.first );
             }
-            break;
-        }
-        case SINGLE_DEFAULT_USER:
-        {
-            OSL_ASSERT( m_defaultPerm_init );
-            for (const auto & p : vec)
+            OSL_ASSERT( pPermissions );
+            if (pPermissions)
             {
-                OSL_ASSERT( p.first.isEmpty() ); // default-user
-                m_defaultPermissions.checkPermission( p.second );
+                pPermissions->checkPermission( p.second );
             }
-            break;
         }
-        case ON:
-        {
-            for (const auto & p : vec)
-            {
-                PermissionCollection const * pPermissions;
-                // lookup policy for user
-                {
-                    MutexGuard guard( m_mutex );
-                    pPermissions = m_user2permissions.lookup( p.first );
-                }
-                OSL_ASSERT( pPermissions );
-                if (pPermissions)
-                {
-                    pPermissions->checkPermission( p.second );
-                }
-            }
-            break;
-        }
-        default:
-            OSL_FAIL( "### this should never be called in this ac mode!" );
-            break;
-        }
+        break;
+    }
+    default:
+        OSL_FAIL( "### this should never be called in this ac mode!" );
+        break;
     }
 }
 
@@ -559,20 +557,20 @@ PermissionCollection AccessController::getEffectivePermissions(
 
     switch (m_mode)
     {
-    case SINGLE_USER:
+    case Mode::SingleUser:
     {
         if (m_singleUser_init)
             return m_singleUserPermissions;
         userId = m_singleUserId;
         break;
     }
-    case SINGLE_DEFAULT_USER:
+    case Mode::SingleDefaultUser:
     {
         if (m_defaultPerm_init)
             return m_defaultPermissions;
         break;
     }
-    case ON:
+    case Mode::On:
     {
         if (xContext.is())
         {
@@ -641,7 +639,7 @@ PermissionCollection AccessController::getEffectivePermissions(
         // init user permissions
         switch (m_mode)
         {
-        case SINGLE_USER:
+        case Mode::SingleUser:
         {
             ret = PermissionCollection(
                 getPolicy()->getPermissions( userId ), m_defaultPermissions );
@@ -663,12 +661,12 @@ PermissionCollection AccessController::getEffectivePermissions(
 #endif
             break;
         }
-        case SINGLE_DEFAULT_USER:
+        case Mode::SingleDefaultUser:
         {
             ret = m_defaultPermissions;
             break;
         }
-        case ON:
+        case Mode::On:
         {
             ret = PermissionCollection(
                 getPolicy()->getPermissions( userId ), m_defaultPermissions );
@@ -729,7 +727,7 @@ void AccessController::checkPermission(
             "checkPermission() call on disposed AccessController!", static_cast<OWeakObject *>(this) );
     }
 
-    if (OFF == m_mode)
+    if (Mode::Off == m_mode)
         return;
 
     // first dynamic check of ac contexts
@@ -741,7 +739,7 @@ void AccessController::checkPermission(
         xACC->checkPermission( perm );
     }
 
-    if (DYNAMIC_ONLY == m_mode)
+    if (Mode::DynamicOnly == m_mode)
         return;
 
     // then static check
@@ -758,7 +756,7 @@ Any AccessController::doRestricted(
             "doRestricted() call on disposed AccessController!", static_cast<OWeakObject *>(this) );
     }
 
-    if (OFF == m_mode) // optimize this way, because no dynamic check will be performed
+    if (Mode::Off == m_mode) // optimize this way, because no dynamic check will be performed
         return xAction->run();
 
     if (xRestriction.is())
@@ -790,7 +788,7 @@ Any AccessController::doPrivileged(
             "doPrivileged() call on disposed AccessController!", static_cast<OWeakObject *>(this) );
     }
 
-    if (OFF == m_mode) // no dynamic check will be performed
+    if (Mode::Off == m_mode) // no dynamic check will be performed
     {
         return xAction->run();
     }
@@ -824,7 +822,7 @@ Reference< security::XAccessControlContext > AccessController::getContext()
             "getContext() call on disposed AccessController!", static_cast<OWeakObject *>(this) );
     }
 
-    if (OFF == m_mode) // optimize this way, because no dynamic check will be performed
+    if (Mode::Off == m_mode) // optimize this way, because no dynamic check will be performed
     {
         return new acc_Policy( PermissionCollection( new AllPermission() ) );
     }
@@ -841,7 +839,7 @@ Reference< security::XAccessControlContext > AccessController::getContext()
 
 OUString AccessController::getImplementationName()
 {
-    return OUString("com.sun.star.security.comp.stoc.AccessController");
+    return "com.sun.star.security.comp.stoc.AccessController";
 }
 
 sal_Bool AccessController::supportsService( OUString const & serviceName )
@@ -857,7 +855,7 @@ Sequence< OUString > AccessController::getSupportedServiceNames()
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_security_comp_stoc_AccessController_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

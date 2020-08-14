@@ -24,11 +24,10 @@
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/interfacecontainer.h>
+#include <comphelper/interfacecontainer2.hxx>
 #include <rtl/ref.hxx>
 
-#include "linguistic/misc.hxx"
-#include "lngopt.hxx"
+#include <linguistic/misc.hxx>
 
 
 class ConvDicNameContainer;
@@ -82,21 +81,9 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
-
-    static inline OUString
-        getImplementationName_Static() throw();
-    static css::uno::Sequence< OUString >
-        getSupportedServiceNames_Static() throw();
-
     // non UNO-specific
     void                    FlushDics();
 };
-
-inline OUString ConvDicList::getImplementationName_Static() throw()
-{
-    return OUString( "com.sun.star.lingu2.ConvDicList" );
-}
-
 
 #endif
 

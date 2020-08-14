@@ -19,14 +19,13 @@
 
 
 #include <string.h>
-#include <cstdarg>
-#include "java/tools.hxx"
-#include "java/lang/String.hxx"
-#include "java/lang/Class.hxx"
-#include "java/util/Property.hxx"
+#include <java/tools.hxx>
+#include <java/util/Property.hxx>
 #include <com/sun/star/sdbc/DriverPropertyInfo.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <connectivity/dbexception.hxx>
+#include <osl/diagnose.h>
 
 using namespace connectivity;
 using namespace ::com::sun::star::uno;
@@ -81,7 +80,7 @@ java_util_Properties::java_util_Properties( ): java_lang_Object( nullptr, nullpt
     if( !t.pEnv )
         return;
     // Turn off Java-Call for the constructor
-    // Initialize temperary Variables
+    // Initialize temporary Variables
     static const char * const cSignature = "()V";
     jobject tempObj;
     static jmethodID mID(nullptr);
@@ -103,9 +102,9 @@ jstring connectivity::convertwchar_tToJavaString(JNIEnv *pEnv,const OUString& _r
 }
 
 
-java_util_Properties* connectivity::createStringPropertyArray(const Sequence< PropertyValue >& info )
+std::unique_ptr<java_util_Properties> connectivity::createStringPropertyArray(const Sequence< PropertyValue >& info )
 {
-    java_util_Properties* pProps = new java_util_Properties();
+    std::unique_ptr<java_util_Properties> pProps(new java_util_Properties());
     const PropertyValue* pBegin = info.getConstArray();
     const PropertyValue* pEnd   = pBegin + info.getLength();
 
@@ -119,6 +118,11 @@ java_util_Properties* connectivity::createStringPropertyArray(const Sequence< Pr
             &&  pBegin->Name != "SystemProperties"
             &&  pBegin->Name != "CharSet"
             &&  pBegin->Name != "AppendTableAliasName"
+            &&  pBegin->Name != "AppendTableAliasInSelect"
+            &&  pBegin->Name != "DisplayVersionColumns"
+            &&  pBegin->Name != "GeneratedValues"
+            &&  pBegin->Name != "UseIndexDirectionKeyword"
+            &&  pBegin->Name != "UseKeywordAsBeforeAlias"
             &&  pBegin->Name != "AddIndexAppendix"
             &&  pBegin->Name != "FormsCheckRequiredFields"
             &&  pBegin->Name != "GenerateASBeforeCorrelationName"
@@ -178,13 +182,13 @@ jobject connectivity::convertTypeMapToJavaMap(const Reference< css::container::X
     if ( _rMap.is() )
     {
         css::uno::Sequence< OUString > aNames = _rMap->getElementNames();
-        if ( aNames.getLength() > 0 )
+        if ( aNames.hasElements() )
             ::dbtools::throwFeatureNotImplementedSQLException( "Type maps", nullptr );
     }
     return nullptr;
 }
 
-bool connectivity::isExceptionOccurred(JNIEnv *pEnv,bool _bClear)
+bool connectivity::isExceptionOccurred(JNIEnv *pEnv)
 {
     if ( !pEnv )
         return false;
@@ -193,8 +197,7 @@ bool connectivity::isExceptionOccurred(JNIEnv *pEnv,bool _bClear)
     bool bRet = pThrowable != nullptr;
     if ( pThrowable )
     {
-        if ( _bClear )
-            pEnv->ExceptionClear();
+        pEnv->ExceptionClear();
         pEnv->DeleteLocalRef(pThrowable);
     }
 
@@ -207,7 +210,7 @@ jobject connectivity::createByteInputStream(const css::uno::Reference< css::io::
     if( !t.pEnv || !x.is() )
         return nullptr;
     // Turn off Java-Call for the constructor
-    // Initialize temperary variables
+    // Initialize temporary variables
     jclass clazz = java_lang_Object::findMyClass("java/io/ByteArrayInputStream");
     static jmethodID mID(nullptr);
     if  ( !mID )
@@ -234,7 +237,7 @@ jobject connectivity::createCharArrayReader(const css::uno::Reference< css::io::
     if( !t.pEnv || !x.is() )
         return nullptr;
     // Turn off Java-Call for the constructor
-    // Initialize temperary Variables
+    // Initialize temporary Variables
     jclass clazz = java_lang_Object::findMyClass("java/io/CharArrayReader");
     static jmethodID mID(nullptr);
     if  ( !mID )

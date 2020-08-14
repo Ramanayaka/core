@@ -17,19 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "SqlNameEdit.hxx"
-#include <vcl/builderfactory.hxx>
+#include <SqlNameEdit.hxx>
 
 namespace dbaui
 {
-    bool isCharOk(sal_Unicode _cChar,bool _bFirstChar,bool _bUpperCase,const OUString& _sAllowedChars)
+    static bool isCharOk(sal_Unicode _cChar,bool _bFirstChar, const OUString& _sAllowedChars)
     {
         return  (
                  (_cChar >= 'A' && _cChar <= 'Z') ||
                  _cChar == '_' ||
                  _sAllowedChars.indexOf(_cChar) != -1 ||
                  (!_bFirstChar && (_cChar >= '0' && _cChar <= '9')) ||
-                 (!_bUpperCase && (_cChar >= 'a' && _cChar <= 'z'))
+                 (_cChar >= 'a' && _cChar <= 'z')
                 );
     }
     bool OSQLNameChecker::checkString(const OUString& _sToCheck,
@@ -41,48 +40,46 @@ namespace dbaui
             sal_Int32 nMatch = 0;
             for (sal_Int32 i = nMatch; i < _sToCheck.getLength(); ++i)
             {
-                if ( !isCharOk( _sToCheck[i], i == 0, false/*bOnlyUpperCase*/, m_sAllowedChars ) )
+                if ( !isCharOk( _sToCheck[i], i == 0, m_sAllowedChars ) )
                 {
                     _rsCorrected += _sToCheck.copy(nMatch, i - nMatch);
                     bCorrected = true;
                     nMatch = i + 1;
                 }
             }
-            _rsCorrected += _sToCheck.copy( nMatch, _sToCheck.getLength() - nMatch );
+            _rsCorrected += _sToCheck.copy( nMatch );
         }
         return bCorrected;
     }
-    void OSQLNameEdit::Modify()
-    {
-        OUString sCorrected;
-        if ( checkString( GetText(),sCorrected ) )
-        {
-            Selection aSel = GetSelection();
-            aSel.setMax( aSel.getMin() );
-            SetText( sCorrected, aSel );
 
-            SaveValue();
+    namespace
+    {
+        void checkName(OSQLNameChecker& rChecker, weld::Entry& rEntry)
+        {
+            OUString sCorrected;
+            if (rChecker.checkString(rEntry.get_text(), sCorrected))
+            {
+                int nStartPos, nEndPos;
+                rEntry.get_selection_bounds(nStartPos, nEndPos);
+                int nMin = std::min(nStartPos, nEndPos);
+                rEntry.set_text(sCorrected);
+                rEntry.select_region(nMin, nMin);
+
+                rEntry.save_value();
+            }
         }
-        Edit::Modify();
     }
-    void OSQLNameComboBox::Modify()
-    {
-        OUString sCorrected;
-        if ( checkString( GetText(),sCorrected ) )
-        {
-            Selection aSel = GetSelection();
-            aSel.setMax( aSel.getMin() );
-            SetText( sCorrected );
 
-            SaveValue();
-        }
-        ComboBox::Modify();
+    IMPL_LINK(OSQLNameEditControl, ModifyHdl, weld::Entry&, rEntry, void)
+    {
+        checkName(*this, rEntry);
+        m_ChainChangedHdl.Call(rEntry);
+    }
+
+    IMPL_LINK(OSQLNameEntry, ModifyHdl, weld::Entry&, rEntry, void)
+    {
+        checkName(*this, rEntry);
     }
 }
-
-using namespace dbaui;
-
-VCL_BUILDER_FACTORY(OSQLNameEdit)
-VCL_BUILDER_FACTORY(OSQLNameComboBox)
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

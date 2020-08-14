@@ -18,6 +18,8 @@
  */
 
 #include <osl/diagnose.h>
+#include <o3tl/char16_t2wchar_t.hxx>
+#include <o3tl/safeint.hxx>
 
 #include "XTDataObject.hxx"
 #include <com/sun/star/datatransfer/DataFlavor.hpp>
@@ -26,21 +28,16 @@
 #include "TxtCnvtHlp.hxx"
 #include <com/sun/star/datatransfer/UnsupportedFlavorException.hpp>
 #include <com/sun/star/datatransfer/clipboard/XClipboardEx.hpp>
-#include "com/sun/star/awt/AsyncCallback.hpp"
-#include "com/sun/star/awt/XCallback.hpp"
+#include <com/sun/star/awt/AsyncCallback.hpp>
+#include <com/sun/star/awt/XCallback.hpp>
 #include "FmtFilter.hxx"
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/implbase.hxx>
 
-#if defined _MSC_VER
-#pragma warning(push,1)
-#pragma warning(disable:4917)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
 #include <shlobj.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 
 using namespace com::sun::star::datatransfer;
 using namespace com::sun::star::datatransfer::clipboard;
@@ -49,7 +46,7 @@ using namespace com::sun::star::lang;
 
 namespace {
 
-void SAL_CALL setupStgMedium( const FORMATETC& fetc,
+void setupStgMedium( const FORMATETC& fetc,
                                              CStgTransferHelper& stgTransHlp,
                                              STGMEDIUM& stgmedium )
 {
@@ -109,7 +106,6 @@ public:
     explicit CInvalidFormatEtcException( HRESULT hr ) : m_hr( hr ) {};
 };
 
-inline
 void validateFormatEtc( LPFORMATETC lpFormatEtc )
 {
     OSL_ASSERT( lpFormatEtc );
@@ -136,14 +132,12 @@ void validateFormatEtc( LPFORMATETC lpFormatEtc )
         throw CInvalidFormatEtcException( DV_E_TYMED );
 }
 
-inline
-void SAL_CALL invalidateStgMedium( STGMEDIUM& stgmedium )
+void invalidateStgMedium( STGMEDIUM& stgmedium )
 {
     stgmedium.tymed = TYMED_NULL;
 }
 
-inline
-HRESULT SAL_CALL translateStgExceptionCode( HRESULT hr )
+HRESULT translateStgExceptionCode( HRESULT hr )
 {
     HRESULT hrTransl;
 
@@ -162,7 +156,7 @@ HRESULT SAL_CALL translateStgExceptionCode( HRESULT hr )
 }
 
 // inline
-void SAL_CALL renderDataAndSetupStgMedium(
+void renderDataAndSetupStgMedium(
     const sal_Int8* lpStorage, const FORMATETC& fetc, sal_uInt32 nInitStgSize,
     sal_uInt32 nBytesToTransfer, STGMEDIUM& stgmedium )
 {
@@ -208,7 +202,7 @@ CXTDataObject::~CXTDataObject()
 
 // IUnknown->QueryInterface
 
-STDMETHODIMP CXTDataObject::QueryInterface( REFIID iid, LPVOID* ppvObject )
+STDMETHODIMP CXTDataObject::QueryInterface( REFIID iid, void** ppvObject )
 {
     if ( nullptr == ppvObject )
         return E_INVALIDARG;
@@ -247,7 +241,7 @@ STDMETHODIMP_(ULONG) CXTDataObject::Release( )
     return nRefCnt;
 }
 
-STDMETHODIMP CXTDataObject::GetData( LPFORMATETC pFormatetc, LPSTGMEDIUM pmedium )
+STDMETHODIMP CXTDataObject::GetData( FORMATETC * pFormatetc, STGMEDIUM * pmedium )
 {
     if ( !(pFormatetc && pmedium) )
         return E_INVALIDARG;
@@ -258,7 +252,7 @@ STDMETHODIMP CXTDataObject::GetData( LPFORMATETC pFormatetc, LPSTGMEDIUM pmedium
         invalidateStgMedium( *pmedium );
         validateFormatEtc( pFormatetc );
 
-        // handle locale request, because locale is a artificial format for us
+        // handle locale request, because locale is an artificial format for us
         if ( CF_LOCALE == pFormatetc->cfFormat )
             renderLocaleAndSetupStgMedium( *pFormatetc, *pmedium );
         else if ( CF_UNICODETEXT == pFormatetc->cfFormat )
@@ -293,32 +287,29 @@ STDMETHODIMP CXTDataObject::GetData( LPFORMATETC pFormatetc, LPSTGMEDIUM pmedium
 }
 
 //inline
-void SAL_CALL CXTDataObject::renderLocaleAndSetupStgMedium(
-    FORMATETC& fetc, STGMEDIUM& stgmedium )
+void CXTDataObject::renderLocaleAndSetupStgMedium(
+    FORMATETC const & fetc, STGMEDIUM& stgmedium )
 {
-    if ( m_FormatRegistrar.hasSynthesizedLocale( ) )
-    {
-        LCID lcid = CFormatRegistrar::getSynthesizedLocale( );
-        renderDataAndSetupStgMedium(
-            reinterpret_cast< sal_Int8* >( &lcid ),
-            fetc,
-            0,
-            sizeof( LCID ),
-            stgmedium );
-    }
-    else
+    if ( !m_FormatRegistrar.hasSynthesizedLocale( ) )
         throw CInvalidFormatEtcException( DV_E_FORMATETC );
+    LCID lcid = CFormatRegistrar::getSynthesizedLocale( );
+    renderDataAndSetupStgMedium(
+        reinterpret_cast< sal_Int8* >( &lcid ),
+        fetc,
+        0,
+        sizeof( LCID ),
+        stgmedium );
 }
 
-void SAL_CALL CXTDataObject::renderUnicodeAndSetupStgMedium(
-    FORMATETC& fetc, STGMEDIUM& stgmedium )
+void CXTDataObject::renderUnicodeAndSetupStgMedium(
+    FORMATETC const & fetc, STGMEDIUM& stgmedium )
 {
     DataFlavor aFlavor = formatEtcToDataFlavor( fetc );
 
     Any aAny = m_XTransferable->getTransferData( aFlavor );
 
     // unfortunately not all transferables fulfill the
-    // spec. an do throw an UnsupportedFlavorException
+    // spec. and do throw an UnsupportedFlavorException
     // so we must check the any
     if ( !aAny.hasValue( ) )
     {
@@ -342,7 +333,7 @@ void SAL_CALL CXTDataObject::renderUnicodeAndSetupStgMedium(
         stgmedium );
 }
 
-void SAL_CALL CXTDataObject::renderAnyDataAndSetupStgMedium(
+void CXTDataObject::renderAnyDataAndSetupStgMedium(
     FORMATETC& fetc, STGMEDIUM& stgmedium )
 {
     DataFlavor aFlavor = formatEtcToDataFlavor( fetc );
@@ -350,7 +341,7 @@ void SAL_CALL CXTDataObject::renderAnyDataAndSetupStgMedium(
     Any aAny = m_XTransferable->getTransferData( aFlavor );
 
     // unfortunately not all transferables fulfill the
-    // spec. an do throw an UnsupportedFlavorException
+    // spec. and do throw an UnsupportedFlavorException
     // so we must check the any
     if ( !aAny.hasValue( ) )
     {
@@ -359,7 +350,7 @@ void SAL_CALL CXTDataObject::renderAnyDataAndSetupStgMedium(
     }
 
     // unfortunately not all transferables fulfill the
-    // spec. an do throw an UnsupportedFlavorException
+    // spec. and do throw an UnsupportedFlavorException
     // so we must check the any
     if ( !aAny.hasValue( ) )
         throw UnsupportedFlavorException( );
@@ -378,11 +369,11 @@ void SAL_CALL CXTDataObject::renderAnyDataAndSetupStgMedium(
 #ifdef DBG_UTIL
         if(CF_DIBV5 == fetc.cfFormat)
         {
-            OSL_ENSURE(sal_uInt32(clipDataStream.getLength()) > (sizeof(BITMAPFILEHEADER) + sizeof(BITMAPV5HEADER)), "Wrong size on CF_DIBV5 data (!)");
+            OSL_ENSURE(o3tl::make_unsigned(clipDataStream.getLength()) > (sizeof(BITMAPFILEHEADER) + sizeof(BITMAPV5HEADER)), "Wrong size on CF_DIBV5 data (!)");
         }
         else // CF_DIB == fetc.cfFormat
         {
-            OSL_ENSURE(sal_uInt32(clipDataStream.getLength()) > (sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER)), "Wrong size on CF_DIB data (!)");
+            OSL_ENSURE(o3tl::make_unsigned(clipDataStream.getLength()) > (sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER)), "Wrong size on CF_DIB data (!)");
         }
 #endif
 
@@ -411,7 +402,7 @@ void SAL_CALL CXTDataObject::renderAnyDataAndSetupStgMedium(
             stgmedium );
 }
 
-HRESULT SAL_CALL CXTDataObject::renderSynthesizedFormatAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium )
+HRESULT CXTDataObject::renderSynthesizedFormatAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium )
 {
     HRESULT hr = S_OK;
 
@@ -449,14 +440,14 @@ HRESULT SAL_CALL CXTDataObject::renderSynthesizedFormatAndSetupStgMedium( FORMAT
 
 // the transferable must have only text, so we will synthesize unicode text
 
-void SAL_CALL CXTDataObject::renderSynthesizedUnicodeAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium )
+void CXTDataObject::renderSynthesizedUnicodeAndSetupStgMedium( FORMATETC const & fetc, STGMEDIUM& stgmedium )
 {
     OSL_ASSERT( CF_UNICODETEXT == fetc.cfFormat );
 
     Any aAny = m_XTransferable->getTransferData( m_FormatRegistrar.getRegisteredTextFlavor( ) );
 
     // unfortunately not all transferables fulfill the
-    // spec. an do throw an UnsupportedFlavorException
+    // spec. and do throw an UnsupportedFlavorException
     // so we must check the any
     if ( !aAny.hasValue( ) )
     {
@@ -480,7 +471,7 @@ void SAL_CALL CXTDataObject::renderSynthesizedUnicodeAndSetupStgMedium( FORMATET
 
 // the transferable must have only unicode text so we will synthesize text
 
-void SAL_CALL CXTDataObject::renderSynthesizedTextAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium )
+void CXTDataObject::renderSynthesizedTextAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium )
 {
     OSL_ASSERT( CDataFormatTranslator::isOemOrAnsiTextFormat( fetc.cfFormat ) );
 
@@ -490,7 +481,7 @@ void SAL_CALL CXTDataObject::renderSynthesizedTextAndSetupStgMedium( FORMATETC& 
     Any aAny = m_XTransferable->getTransferData( aFlavor );
 
     // unfortunately not all transferables fulfill the
-    // spec. an do throw an UnsupportedFlavorException
+    // spec. and do throw an UnsupportedFlavorException
     // so we must check the any
     if ( !aAny.hasValue( ) )
     {
@@ -505,14 +496,14 @@ void SAL_CALL CXTDataObject::renderSynthesizedTextAndSetupStgMedium( FORMATETC& 
 
     WideCharToMultiByteEx(
         GetACP( ),
-        reinterpret_cast<LPCWSTR>( aUnicodeText.getStr( ) ),
+        o3tl::toW( aUnicodeText.getStr( ) ),
         aUnicodeText.getLength( ),
         stgTransfHelper );
 
     setupStgMedium( fetc, stgTransfHelper, stgmedium );
 }
 
-void SAL_CALL CXTDataObject::renderSynthesizedHtmlAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium )
+void CXTDataObject::renderSynthesizedHtmlAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium )
 {
     OSL_ASSERT( CDataFormatTranslator::isHTMLFormat( fetc.cfFormat ) );
 
@@ -525,7 +516,7 @@ void SAL_CALL CXTDataObject::renderSynthesizedHtmlAndSetupStgMedium( FORMATETC& 
     Any aAny = m_XTransferable->getTransferData( aFlavor );
 
     // unfortunately not all transferables fulfill the
-    // spec. an do throw an UnsupportedFlavorException
+    // spec. and do throw an UnsupportedFlavorException
     // so we must check the any
     if ( !aAny.hasValue( ) )
     {
@@ -579,7 +570,7 @@ STDMETHODIMP CXTDataObject::EnumFormatEtc(
 
 // IDataObject->QueryGetData
 
-STDMETHODIMP CXTDataObject::QueryGetData( LPFORMATETC pFormatetc )
+STDMETHODIMP CXTDataObject::QueryGetData( FORMATETC * pFormatetc )
 {
     if ( (nullptr == pFormatetc) || IsBadReadPtr( pFormatetc, sizeof( FORMATETC ) ) )
         return E_INVALIDARG;
@@ -592,28 +583,28 @@ STDMETHODIMP CXTDataObject::QueryGetData( LPFORMATETC pFormatetc )
 
 // IDataObject->GetDataHere
 
-STDMETHODIMP CXTDataObject::GetDataHere( LPFORMATETC, LPSTGMEDIUM )
+STDMETHODIMP CXTDataObject::GetDataHere( FORMATETC *, STGMEDIUM * )
 {
     return E_NOTIMPL;
 }
 
 // IDataObject->GetCanonicalFormatEtc
 
-STDMETHODIMP CXTDataObject::GetCanonicalFormatEtc( LPFORMATETC, LPFORMATETC )
+STDMETHODIMP CXTDataObject::GetCanonicalFormatEtc( FORMATETC *, FORMATETC * )
 {
     return E_NOTIMPL;
 }
 
 // IDataObject->SetData
 
-STDMETHODIMP CXTDataObject::SetData( LPFORMATETC, LPSTGMEDIUM, BOOL )
+STDMETHODIMP CXTDataObject::SetData( FORMATETC *, STGMEDIUM *, BOOL )
 {
     return E_NOTIMPL;
 }
 
 // IDataObject->DAdvise
 
-STDMETHODIMP CXTDataObject::DAdvise( LPFORMATETC, DWORD, LPADVISESINK, DWORD * )
+STDMETHODIMP CXTDataObject::DAdvise( FORMATETC *, DWORD, IAdviseSink *, DWORD * )
 {
     return E_NOTIMPL;
 }
@@ -627,7 +618,7 @@ STDMETHODIMP CXTDataObject::DUnadvise( DWORD )
 
 // IDataObject->EnumDAdvise
 
-STDMETHODIMP CXTDataObject::EnumDAdvise( LPENUMSTATDATA * )
+STDMETHODIMP CXTDataObject::EnumDAdvise( IEnumSTATDATA ** )
 {
     return E_NOTIMPL;
 }
@@ -640,7 +631,7 @@ CXTDataObject::operator IDataObject*( )
 }
 
 inline
-DataFlavor SAL_CALL CXTDataObject::formatEtcToDataFlavor( const FORMATETC& aFormatEtc ) const
+DataFlavor CXTDataObject::formatEtcToDataFlavor( const FORMATETC& aFormatEtc ) const
 {
     DataFlavor aFlavor;
 
@@ -656,7 +647,7 @@ DataFlavor SAL_CALL CXTDataObject::formatEtcToDataFlavor( const FORMATETC& aForm
     return aFlavor;
 }
 
-inline void SAL_CALL CXTDataObject::InitializeFormatEtcContainer( )
+inline void CXTDataObject::InitializeFormatEtcContainer( )
 {
     if ( !m_bFormatEtcContainerInitialized )
     {
@@ -675,7 +666,7 @@ CEnumFormatEtc::CEnumFormatEtc( LPUNKNOWN lpUnkOuter, const CFormatEtcContainer&
 
 // IUnknown->QueryInterface
 
-STDMETHODIMP CEnumFormatEtc::QueryInterface( REFIID iid, LPVOID* ppvObject )
+STDMETHODIMP CEnumFormatEtc::QueryInterface( REFIID iid, void** ppvObject )
 {
     if ( nullptr == ppvObject )
         return E_INVALIDARG;
@@ -720,7 +711,7 @@ STDMETHODIMP_(ULONG) CEnumFormatEtc::Release( )
 
 // IEnumFORMATETC->Next
 
-STDMETHODIMP CEnumFormatEtc::Next( ULONG nRequested, LPFORMATETC lpDest, ULONG* lpFetched )
+STDMETHODIMP CEnumFormatEtc::Next( ULONG nRequested, FORMATETC * lpDest, ULONG* lpFetched )
 {
     if ( ( nRequested < 1 ) ||
          (( nRequested > 1 ) && ( nullptr == lpFetched )) ||

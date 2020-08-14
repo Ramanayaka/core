@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FORMS_SOURCE_COMPONENT_ERRORBROADCASTER_HXX
-#define INCLUDED_FORMS_SOURCE_COMPONENT_ERRORBROADCASTER_HXX
+#pragma once
 
 #include <cppuhelper/implbase1.hxx>
 #include <com/sun/star/sdb/XSQLErrorBroadcaster.hpp>
@@ -44,10 +43,10 @@ namespace frm
         explicit OErrorBroadcaster( ::cppu::OBroadcastHelper& _rBHelper );
         virtual ~OErrorBroadcaster( );
 
-        void SAL_CALL disposing();
+        void disposing();
 
-        void SAL_CALL onError( const css::sdbc::SQLException& _rException, const OUString& _rContextDescription );
-        void SAL_CALL onError( const css::sdb::SQLErrorEvent& _rException );
+        void onError( const css::sdbc::SQLException& _rException, const OUString& _rContextDescription );
+        void onError( const css::sdb::SQLErrorEvent& _rException );
 
     protected:
     // XSQLErrorBroadcaster
@@ -57,8 +56,5 @@ namespace frm
 
 
 }   // namespace frm
-
-
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_ERRORBROADCASTER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,7 +20,7 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_API_CINDEXES_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_API_CINDEXES_HXX
 
-#include "connectivity/TIndexes.hxx"
+#include <connectivity/TIndexes.hxx>
 
 namespace dbaccess
 {
@@ -41,7 +41,7 @@ namespace dbaccess
             ,m_xIndexes(_rxIndexes)
         {}
 
-        virtual void SAL_CALL disposing() override;
+        virtual void disposing() override;
     };
 }
 

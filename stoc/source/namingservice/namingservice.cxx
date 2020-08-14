@@ -19,12 +19,7 @@
 
 
 #include <osl/mutex.hxx>
-#include <uno/dispatcher.h>
-#include <uno/mapping.hxx>
-#include <cppuhelper/queryinterface.hxx>
-#include <cppuhelper/weak.hxx>
 #include <cppuhelper/factory.hxx>
-#include <cppuhelper/component.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -43,30 +38,12 @@ using namespace css::lang;
 using namespace css::registry;
 
 
-#define SERVICENAME "com.sun.star.uno.NamingService"
-#define IMPLNAME    "com.sun.star.comp.stoc.NamingService"
-
 namespace stoc_namingservice
 {
 
-static Sequence< OUString > ns_getSupportedServiceNames()
-{
-    Sequence< OUString > seqNames { SERVICENAME };
-    return seqNames;
-}
+typedef std::unordered_map< OUString, Reference<XInterface > > HashMap_OWString_Interface;
 
-static OUString ns_getImplementationName()
-{
-    return OUString(IMPLNAME);
-}
-
-typedef std::unordered_map
-<
-    OUString,
-    Reference<XInterface >,
-    OUStringHash
-> HashMap_OWString_Interface;
-
+namespace {
 
 class NamingService_Impl
     : public WeakImplHelper < XServiceInfo, XNamingService >
@@ -86,12 +63,8 @@ public:
     virtual void SAL_CALL revokeObject( const OUString& Name ) override;
 };
 
-
-static Reference<XInterface> SAL_CALL NamingService_Impl_create(
-    SAL_UNUSED_PARAMETER const Reference<XComponentContext> & )
-{
-    return *new NamingService_Impl();
 }
+
 
 
 NamingService_Impl::NamingService_Impl() {}
@@ -99,7 +72,7 @@ NamingService_Impl::NamingService_Impl() {}
 // XServiceInfo
 OUString NamingService_Impl::getImplementationName()
 {
-    return ns_getImplementationName();
+    return "com.sun.star.comp.stoc.NamingService";
 }
 
 // XServiceInfo
@@ -111,7 +84,7 @@ sal_Bool NamingService_Impl::supportsService( const OUString & rServiceName )
 // XServiceInfo
 Sequence< OUString > NamingService_Impl::getSupportedServiceNames()
 {
-    return ns_getSupportedServiceNames();
+    return { "com.sun.star.uno.NamingService" };
 }
 
 // XServiceInfo
@@ -141,21 +114,12 @@ void NamingService_Impl::revokeObject( const OUString& Name )
 
 }
 
-using namespace stoc_namingservice;
-static const struct ImplementationEntry g_entries[] =
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+stoc_NamingService_Impl_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    {
-        NamingService_Impl_create, ns_getImplementationName,
-        ns_getSupportedServiceNames, createSingleComponentFactory,
-        nullptr, 0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-};
-
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL namingservice_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
-{
-    return component_getFactoryHelper( pImplName, pServiceManager, pRegistryKey , g_entries );
+    return cppu::acquire(new stoc_namingservice::NamingService_Impl());
 }
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

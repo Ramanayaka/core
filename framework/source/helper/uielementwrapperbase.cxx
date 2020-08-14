@@ -18,12 +18,9 @@
  */
 
 #include <helper/uielementwrapperbase.hxx>
-#include <general.h>
-#include <properties.h>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <vcl/svapp.hxx>
 #include <comphelper/sequence.hxx>
@@ -31,7 +28,6 @@
 const int UIELEMENT_PROPHANDLE_RESOURCEURL  = 1;
 const int UIELEMENT_PROPHANDLE_TYPE         = 2;
 const int UIELEMENT_PROPHANDLE_FRAME        = 3;
-const int UIELEMENT_PROPCOUNT               = 3;
 const char UIELEMENT_PROPNAME_RESOURCEURL[] = "ResourceURL";
 const char UIELEMENT_PROPNAME_TYPE[] = "Type";
 const char UIELEMENT_PROPNAME_FRAME[] = "Frame";
@@ -45,7 +41,7 @@ namespace framework
 
 UIElementWrapperBase::UIElementWrapperBase( sal_Int16 nType )
     :   ::cppu::OBroadcastHelperVar< ::cppu::OMultiTypeInterfaceContainerHelper, ::cppu::OMultiTypeInterfaceContainerHelper::keyType >( m_aMutex )
-    ,   ::cppu::OPropertySetHelper  ( *(static_cast< ::cppu::OBroadcastHelper* >(this)) )
+    ,   ::cppu::OPropertySetHelper  ( *static_cast< ::cppu::OBroadcastHelper* >(this) )
     ,   m_aListenerContainer        ( m_aMutex )
     ,   m_nType                     ( nType                                             )
     ,   m_bInitialized              ( false                                         )
@@ -87,26 +83,26 @@ void SAL_CALL UIElementWrapperBase::initialize( const Sequence< Any >& aArgument
 {
     SolarMutexGuard g;
 
-    if ( !m_bInitialized )
+    if ( m_bInitialized )
+        return;
+
+    for ( const Any& rArg : aArguments )
     {
-        for ( sal_Int32 n = 0; n < aArguments.getLength(); n++ )
+        PropertyValue aPropValue;
+        if ( rArg >>= aPropValue )
         {
-            PropertyValue aPropValue;
-            if ( aArguments[n] >>= aPropValue )
+            if ( aPropValue.Name == "ResourceURL" )
+                aPropValue.Value >>= m_aResourceURL;
+            else if ( aPropValue.Name == "Frame" )
             {
-                if ( aPropValue.Name == "ResourceURL" )
-                    aPropValue.Value >>= m_aResourceURL;
-                else if ( aPropValue.Name == "Frame" )
-                {
-                    Reference< XFrame > xFrame;
-                    aPropValue.Value >>= xFrame;
-                    m_xWeakFrame = xFrame;
-                }
+                Reference< XFrame > xFrame;
+                aPropValue.Value >>= xFrame;
+                m_xWeakFrame = xFrame;
             }
         }
-
-        m_bInitialized = true;
     }
+
+    m_bInitialized = true;
 }
 
 // XUIElement
@@ -185,25 +181,21 @@ css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL UIElementWrapperBas
     return xInfo;
 }
 
-const css::uno::Sequence< css::beans::Property > UIElementWrapperBase::impl_getStaticPropertyDescriptor()
+css::uno::Sequence< css::beans::Property > UIElementWrapperBase::impl_getStaticPropertyDescriptor()
 {
     // Create a property array to initialize sequence!
-    // Table of all predefined properties of this class. Its used from OPropertySetHelper-class!
+    // Table of all predefined properties of this class. It's used from OPropertySetHelper-class!
     // Don't forget to change the defines (see begin of this file), if you add, change or delete a property in this list!!!
     // It's necessary for methods of OPropertySetHelper.
     // ATTENTION:
     //      YOU MUST SORT FOLLOW TABLE BY NAME ALPHABETICAL !!!
 
-    const css::beans::Property pProperties[] =
+    return
     {
         css::beans::Property( UIELEMENT_PROPNAME_FRAME, UIELEMENT_PROPHANDLE_FRAME          , cppu::UnoType<XFrame>::get(), css::beans::PropertyAttribute::TRANSIENT | css::beans::PropertyAttribute::READONLY ),
         css::beans::Property( UIELEMENT_PROPNAME_RESOURCEURL, UIELEMENT_PROPHANDLE_RESOURCEURL    , cppu::UnoType<sal_Int16>::get(), css::beans::PropertyAttribute::TRANSIENT | css::beans::PropertyAttribute::READONLY ),
         css::beans::Property( UIELEMENT_PROPNAME_TYPE, UIELEMENT_PROPHANDLE_TYPE           , cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::TRANSIENT | css::beans::PropertyAttribute::READONLY )
     };
-    // Use it to initialize sequence!
-    const css::uno::Sequence< css::beans::Property > lPropertyDescriptor( pProperties, UIELEMENT_PROPCOUNT );
-    // Return "PropertyDescriptor"
-    return lPropertyDescriptor;
 }
 
 }

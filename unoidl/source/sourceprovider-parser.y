@@ -14,7 +14,10 @@
 
 %{
 
-#include "sal/config.h"
+#include <sal/config.h>
+
+#include <rtl/ustrbuf.hxx>
+#include <unoidl/unoidl.hxx>
 
 #include <algorithm>
 #include <cassert>
@@ -26,7 +29,7 @@
 #include <utility>
 #include <vector>
 
-#include <sourceprovider-parser-requires.hxx>
+#include "sourceprovider-parser-requires.hxx"
 
 %}
 
@@ -52,16 +55,16 @@
 
 %{
 
-#include "osl/file.h"
-#include "osl/thread.h"
-#include "sal/log.hxx"
+#include <osl/file.h>
+#include <osl/thread.h>
+#include <sal/log.hxx>
 
 #include "sourceprovider-scanner.hxx"
 
 #define YYLLOC_DEFAULT(Current, Rhs, N) \
     do { (Current) = YYRHSLOC((Rhs), (N) ? 1 : 0); } while (0)
 
-void yyerror(YYLTYPE * locp, yyscan_t yyscanner, char const * msg) {
+static void yyerror(YYLTYPE * locp, yyscan_t yyscanner, char const * msg) {
     assert(locp != nullptr);
     unoidl::detail::SourceProviderScannerData * data = yyget_extra(yyscanner);
     data->errorLine = *locp;
@@ -79,27 +82,27 @@ void error(YYLTYPE location, yyscan_t yyscanner, OUString const & message) {
 OUString flagName(unoidl::detail::SourceProviderFlags flag) {
     switch (flag) {
     case unoidl::detail::FLAG_ATTRIBUTE:
-        return OUString("attribute");
+        return "attribute";
     case unoidl::detail::FLAG_BOUND:
-        return OUString("bound");
+        return "bound";
     case unoidl::detail::FLAG_CONSTRAINED:
-        return OUString("constrained");
+        return "constrained";
     case unoidl::detail::FLAG_MAYBEAMBIGUOUS:
-        return OUString("maybeambiguous");
+        return "maybeambiguous";
     case unoidl::detail::FLAG_MAYBEDEFAULT:
-        return OUString("maybedefault");
+        return "maybedefault";
     case unoidl::detail::FLAG_MAYBEVOID:
-        return OUString("maybevoid");
+        return "maybevoid";
     case unoidl::detail::FLAG_OPTIONAL:
-        return OUString("optional");
+        return "optional";
     case unoidl::detail::FLAG_PROPERTY:
-        return OUString("property");
+        return "property";
     case unoidl::detail::FLAG_READONLY:
-        return OUString("readonly");
+        return "readonly";
     case unoidl::detail::FLAG_REMOVABLE:
-        return OUString("removable");
+        return "removable";
     case unoidl::detail::FLAG_TRANSIENT:
-        return OUString("transient");
+        return "transient";
     default:
         assert(false && "this cannot happen"); for (;;) { std::abort(); }
     }
@@ -200,8 +203,11 @@ bool coerce(
             }
             break;
         case unoidl::detail::SourceProviderExpr::TYPE_FLOAT:
-            lhs->fval = lhs->ival;
-            ok = true;
+            {
+                auto tmp = lhs->ival;
+                lhs->fval = tmp;
+                ok = true;
+            }
             break;
         }
         break;
@@ -225,8 +231,11 @@ bool coerce(
             ok = true;
             break;
         case unoidl::detail::SourceProviderExpr::TYPE_FLOAT:
-            lhs->fval = lhs->uval;
-            ok = true;
+            {
+                auto nTmp = lhs->uval;
+                lhs->fval = nTmp;
+                ok = true;
+            }
             break;
         }
         break;
@@ -236,12 +245,18 @@ bool coerce(
             ok = false;
             break;
         case unoidl::detail::SourceProviderExpr::TYPE_INT:
-            rhs->fval = rhs->ival;
-            ok = true;
+            {
+                auto tmp = rhs->ival;
+                rhs->fval = tmp;
+                ok = true;
+            }
             break;
         case unoidl::detail::SourceProviderExpr::TYPE_UINT:
-            rhs->fval = rhs->uval;
-            ok = true;
+            {
+                auto tmp = rhs->uval;
+                rhs->fval = tmp;
+                ok = true;
+            }
             break;
         case unoidl::detail::SourceProviderExpr::TYPE_FLOAT:
             ok = true;
@@ -273,12 +288,11 @@ unoidl::detail::SourceProviderEntity * findEntity_(
             rtl::Reference<unoidl::Entity> ent(data->manager->findEntity(n));
             if (ent.is()) {
                 std::map<OUString, unoidl::detail::SourceProviderEntity>::iterator
-                    k(data->entities.insert(
-                          std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+                    k(data->entities.emplace(
                               n,
                               unoidl::detail::SourceProviderEntity(
                                   unoidl::detail::SourceProviderEntity::KIND_EXTERNAL,
-                                  ent))).
+                                  ent)).
                       first);
                 *name = n;
                 return &k->second;
@@ -295,12 +309,11 @@ unoidl::detail::SourceProviderEntity * findEntity_(
     rtl::Reference<unoidl::Entity> ent(data->manager->findEntity(n));
     if (ent.is()) {
         std::map<OUString, unoidl::detail::SourceProviderEntity>::iterator
-            j(data->entities.insert(
-                  std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+            j(data->entities.emplace(
                       n,
                       unoidl::detail::SourceProviderEntity(
                           unoidl::detail::SourceProviderEntity::KIND_EXTERNAL,
-                          ent))).
+                          ent)).
               first);
         *name = n;
         return &j->second;
@@ -334,7 +347,7 @@ Found findEntity(
                     break;
                 }
                 assert(e->entity.is());
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case unoidl::detail::SourceProviderEntity::KIND_EXTERNAL:
                 if (e->entity->getSort() == unoidl::Entity::SORT_TYPEDEF) {
                     if (typedefed != nullptr) {
@@ -449,7 +462,7 @@ Found findEntity(
                                                 return FOUND_ERROR;
                                             }
                                             assert(e->entity.is());
-                                            SAL_FALLTHROUGH;
+                                            [[fallthrough]];
                                         case unoidl::detail::SourceProviderEntity::KIND_EXTERNAL:
                                             switch (e->entity->getSort()) {
                                             case unoidl::Entity::SORT_ENUM_TYPE:
@@ -679,7 +692,7 @@ Found findEntity(
                             break;
                         }
                         assert(e->entity.is());
-                        SAL_FALLTHROUGH;
+                        [[fallthrough]];
                     case unoidl::detail::SourceProviderEntity::KIND_EXTERNAL:
                         switch (e->entity->getSort()) {
                         case unoidl::Entity::SORT_ENUM_TYPE:
@@ -745,7 +758,7 @@ Found findEntity(
                         return FOUND_ERROR;
                     }
                     assert(e->entity.is());
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
                 case unoidl::detail::SourceProviderEntity::KIND_EXTERNAL:
                     if (e->entity->getSort()
                         == unoidl::Entity::SORT_POLYMORPHIC_STRUCT_TYPE_TEMPLATE)
@@ -776,7 +789,7 @@ Found findEntity(
                         t = unoidl::detail::SourceProviderType(n, e, args);
                         break;
                     }
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
                 case unoidl::detail::SourceProviderEntity::KIND_INTERFACE_DECL:
                 case unoidl::detail::SourceProviderEntity::KIND_PUBLISHED_INTERFACE_DECL:
                     error(
@@ -959,11 +972,10 @@ moduleDecl:
       OUString name(convertToFullName(data, $2));
       data->modules.push_back(name);
       std::pair<std::map<OUString, unoidl::detail::SourceProviderEntity>::iterator, bool> p(
-          data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+          data->entities.emplace(
                   name,
                   unoidl::detail::SourceProviderEntity(
-                      unoidl::detail::SourceProviderEntity::KIND_MODULE))));
+                      unoidl::detail::SourceProviderEntity::KIND_MODULE)));
       if (!p.second
           && (p.first->second.kind
               != unoidl::detail::SourceProviderEntity::KIND_MODULE))
@@ -981,12 +993,11 @@ enumDefn:
       unoidl::detail::SourceProviderScannerData * data = yyget_extra(yyscanner);
       data->publishedContext = $2;
       convertToCurrentName(data, $4);
-      if (!data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+      if (!data->entities.emplace(
                   data->currentName,
                   unoidl::detail::SourceProviderEntity(
                       new unoidl::detail::SourceProviderEnumTypeEntityPad(
-                          $2)))).
+                          $2))).
           second)
       {
           error(@4, yyscanner, "multiple entities named " + data->currentName);
@@ -1113,12 +1124,11 @@ plainStructDefn:
               YYERROR;
           }
       }
-      if (!data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+      if (!data->entities.emplace(
                   data->currentName,
                   unoidl::detail::SourceProviderEntity(
                       new unoidl::detail::SourceProviderPlainStructTypeEntityPad(
-                          $2, baseName, baseEnt)))).
+                          $2, baseName, baseEnt))).
           second)
       {
           error(@4, yyscanner, "multiple entities named " + data->currentName);
@@ -1147,12 +1157,11 @@ polymorphicStructTemplateDefn:
       unoidl::detail::SourceProviderScannerData * data = yyget_extra(yyscanner);
       data->publishedContext = $2;
       convertToCurrentName(data, $4);
-      if (!data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+      if (!data->entities.emplace(
                   data->currentName,
                   unoidl::detail::SourceProviderEntity(
                       new unoidl::detail::SourceProviderPolymorphicStructTypeTemplateEntityPad(
-                          $2)))).
+                          $2))).
           second)
       {
           error(@4, yyscanner, "multiple entities named " + data->currentName);
@@ -1244,12 +1253,11 @@ exceptionDefn:
               YYERROR;
           }
       }
-      if (!data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+      if (!data->entities.emplace(
                   data->currentName,
                   unoidl::detail::SourceProviderEntity(
                       new unoidl::detail::SourceProviderExceptionTypeEntityPad(
-                          $2, baseName, baseEnt)))).
+                          $2, baseName, baseEnt))).
           second)
       {
           error(@4, yyscanner, "multiple entities named " + data->currentName);
@@ -1326,7 +1334,7 @@ structMember:
           dynamic_cast<unoidl::detail::SourceProviderPlainStructTypeEntityPad *>(
               ent->pad.get());
       if (p1 != nullptr) {
-          for (auto & i: p1->members) {
+          for (const auto & i: p1->members) {
               if (id == i.name) {
                   error(
                       @3, yyscanner,
@@ -1393,7 +1401,7 @@ structMember:
               p2 = dynamic_cast<unoidl::detail::SourceProviderPolymorphicStructTypeTemplateEntityPad *>(
                   ent->pad.get());
           if (p2 != nullptr) {
-              for (auto & i: p2->members) {
+              for (const auto & i: p2->members) {
                   if (id == i.name) {
                       error(
                           @3, yyscanner,
@@ -1412,7 +1420,7 @@ structMember:
                   = dynamic_cast<unoidl::detail::SourceProviderExceptionTypeEntityPad *>(
                       ent->pad.get());
               assert(p3 != nullptr);
-              for (auto & i: p3->members) {
+              for (const auto & i: p3->members) {
                   if (id == i.name) {
                       error(
                           @3, yyscanner,
@@ -1706,7 +1714,7 @@ interfaceAttribute:
           error(
               @2, yyscanner,
               ("interface attribute can only be flagged as [attribute,"
-               " optional]"));
+               " bound, readonly]"));
           YYERROR;
       }
       switch (t.type) {
@@ -1861,7 +1869,7 @@ methodParam:
       default:
           break;
       }
-      for (auto & i: pad->directMethods.back().parameters) {
+      for (const auto & i: pad->directMethods.back().parameters) {
           if (id == i.name) {
               error(
                   @5, yyscanner,
@@ -1916,7 +1924,7 @@ typedefDefn:
                   break;
               case unoidl::detail::SourceProviderEntity::KIND_MODULE:
                   assert(false && "this cannot happen");
-                  SAL_FALLTHROUGH;
+                  [[fallthrough]];
               default:
                   assert(t.entity->entity.is() || t.entity->pad.is());
                   unpub
@@ -1936,17 +1944,16 @@ typedefDefn:
           break;
       case unoidl::detail::SourceProviderType::TYPE_PARAMETER:
           assert(false && "this cannot happen");
-          SAL_FALLTHROUGH;
+          [[fallthrough]];
       default:
           break;
       }
-      if (!data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+      if (!data->entities.emplace(
                   name,
                   unoidl::detail::SourceProviderEntity(
                       unoidl::detail::SourceProviderEntity::KIND_LOCAL,
                       new unoidl::TypedefEntity(
-                          $2, t.getName(), annotations($1))))).
+                          $2, t.getName(), annotations($1)))).
           second)
       {
           error(@5, yyscanner, "multiple entities named " + name);
@@ -1962,12 +1969,11 @@ constantGroupDefn:
       unoidl::detail::SourceProviderScannerData * data = yyget_extra(yyscanner);
       data->publishedContext = $2;
       convertToCurrentName(data, $4);
-      if (!data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+      if (!data->entities.emplace(
                   data->currentName,
                   unoidl::detail::SourceProviderEntity(
                       new unoidl::detail::SourceProviderConstantGroupEntityPad(
-                          $2)))).
+                          $2))).
           second)
       {
           error(@4, yyscanner, "multiple entities named " + data->currentName);
@@ -2326,12 +2332,11 @@ singleInterfaceBasedServiceDefn:
                + " base " + base + " is unpublished"));
           YYERROR;
       }
-      if (!data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+      if (!data->entities.emplace(
                   data->currentName,
                   unoidl::detail::SourceProviderEntity(
                       new unoidl::detail::SourceProviderSingleInterfaceBasedServiceEntityPad(
-                          $2, base)))).
+                          $2, base))).
           second)
       {
           error(@4, yyscanner, "multiple entities named " + data->currentName);
@@ -2348,7 +2353,7 @@ singleInterfaceBasedServiceDefn:
       assert(pad != nullptr);
       std::vector<unoidl::SingleInterfaceBasedServiceEntity::Constructor> ctors;
       if ($7) {
-          for (auto & i: pad->constructors) {
+          for (const auto & i: pad->constructors) {
               std::vector<unoidl::SingleInterfaceBasedServiceEntity::Constructor::Parameter> parms;
               for (auto & j: i.parameters) {
                   parms.emplace_back(j.name, j.type.getName(), j.rest);
@@ -2387,7 +2392,7 @@ ctor:
       rtl::Reference<unoidl::detail::SourceProviderSingleInterfaceBasedServiceEntityPad>
           pad(getCurrentPad<unoidl::detail::SourceProviderSingleInterfaceBasedServiceEntityPad>(
                   data));
-      for (auto & i: pad->constructors) {
+      for (const auto & i: pad->constructors) {
           if (id == i.name) {
               error(
                   @2, yyscanner,
@@ -2513,7 +2518,7 @@ ctorParam:
                + " rest parameter must be last parameter"));
           YYERROR;
       }
-      for (auto & i: pad->constructors.back().parameters) {
+      for (const auto & i: pad->constructors.back().parameters) {
           if (id == i.name) {
               error(
                   @6, yyscanner,
@@ -2540,12 +2545,11 @@ accumulationBasedServiceDefn:
       unoidl::detail::SourceProviderScannerData * data = yyget_extra(yyscanner);
       data->publishedContext = $2;
       convertToCurrentName(data, $4);
-      if (!data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+      if (!data->entities.emplace(
                   data->currentName,
                   unoidl::detail::SourceProviderEntity(
                       new unoidl::detail::SourceProviderAccumulationBasedServiceEntityPad(
-                          $2)))).
+                          $2))).
           second)
       {
           error(@4, yyscanner, "multiple entities named " + data->currentName);
@@ -2626,7 +2630,7 @@ serviceBase:
       std::vector<unoidl::AnnotatedReference> & v(
           opt
           ? pad->directOptionalBaseServices : pad->directMandatoryBaseServices);
-      for (auto & i: v) {
+      for (const auto & i: v) {
           if (name == i.name) {
               error(
                   @4, yyscanner,
@@ -2703,7 +2707,7 @@ serviceInterfaceBase:
           opt
           ? pad->directOptionalBaseInterfaces
           : pad->directMandatoryBaseInterfaces);
-      for (auto & i: v) {
+      for (const auto & i: v) {
           if (name == i.name) {
               error(
                   @4, yyscanner,
@@ -2790,7 +2794,7 @@ serviceProperty:
       rtl::Reference<unoidl::detail::SourceProviderAccumulationBasedServiceEntityPad>
           pad(getCurrentPad<unoidl::detail::SourceProviderAccumulationBasedServiceEntityPad>(
                   data));
-      for (auto & i: pad->directProperties) {
+      for (const auto & i: pad->directProperties) {
           if (id == i.name) {
               error(
                   @4, yyscanner,
@@ -2857,13 +2861,12 @@ interfaceBasedSingletonDefn:
                + " is unpublished"));
           YYERROR;
       }
-      if (!data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+      if (!data->entities.emplace(
                   name,
                   unoidl::detail::SourceProviderEntity(
                       unoidl::detail::SourceProviderEntity::KIND_LOCAL,
                       new unoidl::InterfaceBasedSingletonEntity(
-                          $2, base, annotations($1))))).
+                          $2, base, annotations($1)))).
           second)
       {
           error(@4, yyscanner, "multiple entities named " + name);
@@ -2908,13 +2911,12 @@ serviceBasedSingletonDefn:
                + " is unpublished"));
           YYERROR;
       }
-      if (!data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+      if (!data->entities.emplace(
                   name,
                   unoidl::detail::SourceProviderEntity(
                       unoidl::detail::SourceProviderEntity::KIND_LOCAL,
                       new unoidl::ServiceBasedSingletonEntity(
-                          $2, base, annotations($1))))).
+                          $2, base, annotations($1)))).
           second)
       {
           error(@4, yyscanner, "multiple entities named " + name);
@@ -3020,13 +3022,12 @@ interfaceDecl:
       data->publishedContext = $2;
       OUString name(convertToFullName(data, $4));
       std::pair<std::map<OUString, unoidl::detail::SourceProviderEntity>::iterator, bool> p(
-          data->entities.insert(
-              std::map<OUString, unoidl::detail::SourceProviderEntity>::value_type(
+          data->entities.emplace(
                   name,
                   unoidl::detail::SourceProviderEntity(
                       $2
                       ? unoidl::detail::SourceProviderEntity::KIND_PUBLISHED_INTERFACE_DECL
-                      : unoidl::detail::SourceProviderEntity::KIND_INTERFACE_DECL))));
+                      : unoidl::detail::SourceProviderEntity::KIND_INTERFACE_DECL)));
       if (!p.second) {
           switch (p.first->second.kind) {
           case unoidl::detail::SourceProviderEntity::KIND_INTERFACE_DECL:
@@ -3476,7 +3477,7 @@ primaryExpr:
           unoidl::detail::SourceProviderEnumTypeEntityPad * p1 = dynamic_cast<
               unoidl::detail::SourceProviderEnumTypeEntityPad *>(pad.get());
           if (p1 != nullptr) {
-              for (auto & j: p1->members) {
+              for (const auto & j: p1->members) {
                   if (j.name == name) {
                       v = unoidl::ConstantValue(j.value);
                       found = true;
@@ -3489,7 +3490,7 @@ primaryExpr:
                       unoidl::detail::SourceProviderConstantGroupEntityPad *>(
                           pad.get());
               if (p2 != nullptr) {
-                  for (auto & j: p2->members) {
+                  for (const auto & j: p2->members) {
                       if (j.name == name) {
                           v = j.value;
                           found = true;
@@ -3537,7 +3538,7 @@ primaryExpr:
                           unoidl::detail::SourceProviderConstantGroupEntityPad *>(
                               ent->pad.get());
                   if (pad != nullptr) {
-                      for (auto & j: pad->members) {
+                      for (const auto & j: pad->members) {
                           if (j.name == id) {
                               v = j.value;
                               found = true;
@@ -3808,7 +3809,7 @@ type:
                       break;
                   }
                   assert(ent->entity.is());
-                  SAL_FALLTHROUGH;
+                  [[fallthrough]];
               case unoidl::detail::SourceProviderEntity::KIND_EXTERNAL:
                   if (data->publishedContext
                       && ent->entity->getSort() != unoidl::Entity::SORT_MODULE
@@ -3855,7 +3856,7 @@ type:
                       break;
                   case unoidl::Entity::SORT_TYPEDEF:
                       assert(false && "this cannot happen");
-                      SAL_FALLTHROUGH;
+                      [[fallthrough]];
                   default:
                       break;
                   }
@@ -3868,7 +3869,7 @@ type:
                            + " used in published context"));
                       YYERROR;
                   }
-                  SAL_FALLTHROUGH;
+                  [[fallthrough]];
               case unoidl::detail::SourceProviderEntity::KIND_PUBLISHED_INTERFACE_DECL:
                   $$ = new unoidl::detail::SourceProviderType(
                       unoidl::detail::SourceProviderType::TYPE_INTERFACE, name,
@@ -3920,7 +3921,7 @@ type:
               break;
           }
           assert(ent->entity.is());
-          SAL_FALLTHROUGH;
+          [[fallthrough]];
       case unoidl::detail::SourceProviderEntity::KIND_EXTERNAL:
           if (ent->entity->getSort()
               == unoidl::Entity::SORT_POLYMORPHIC_STRUCT_TYPE_TEMPLATE)
@@ -3979,7 +3980,7 @@ deprecated_opt:
 
 %%
 
-namespace unoidl { namespace detail {
+namespace unoidl::detail {
 
 OUString SourceProviderType::getName() const {
     if (!typedefName.isEmpty()) {
@@ -3987,35 +3988,35 @@ OUString SourceProviderType::getName() const {
     }
     switch (type) {
     case unoidl::detail::SourceProviderType::TYPE_VOID:
-        return OUString("void");
+        return "void";
     case unoidl::detail::SourceProviderType::TYPE_BOOLEAN:
-        return OUString("boolean");
+        return "boolean";
     case unoidl::detail::SourceProviderType::TYPE_BYTE:
-        return OUString("byte");
+        return "byte";
     case unoidl::detail::SourceProviderType::TYPE_SHORT:
-        return OUString("short");
+        return "short";
     case unoidl::detail::SourceProviderType::TYPE_UNSIGNED_SHORT:
-        return OUString("unsigned short");
+        return "unsigned short";
     case unoidl::detail::SourceProviderType::TYPE_LONG:
-        return OUString("long");
+        return "long";
     case unoidl::detail::SourceProviderType::TYPE_UNSIGNED_LONG:
-        return OUString("unsigned long");
+        return "unsigned long";
     case unoidl::detail::SourceProviderType::TYPE_HYPER:
-        return OUString("hyper");
+        return "hyper";
     case unoidl::detail::SourceProviderType::TYPE_UNSIGNED_HYPER:
-        return OUString("unsigned hyper");
+        return "unsigned hyper";
     case unoidl::detail::SourceProviderType::TYPE_FLOAT:
-        return OUString("float");
+        return "float";
     case unoidl::detail::SourceProviderType::TYPE_DOUBLE:
-        return OUString("double");
+        return "double";
     case unoidl::detail::SourceProviderType::TYPE_CHAR:
-        return OUString("char");
+        return "char";
     case unoidl::detail::SourceProviderType::TYPE_STRING:
-        return OUString("string");
+        return "string";
     case unoidl::detail::SourceProviderType::TYPE_TYPE:
-        return OUString("type");
+        return "type";
     case unoidl::detail::SourceProviderType::TYPE_ANY:
-        return OUString("any");
+        return "any";
     case unoidl::detail::SourceProviderType::TYPE_SEQUENCE:
         assert(subtypes.size() == 1);
         return "[]" + subtypes.front().getName();
@@ -4027,14 +4028,15 @@ OUString SourceProviderType::getName() const {
         return name;
     case unoidl::detail::SourceProviderType::TYPE_INSTANTIATED_POLYMORPHIC_STRUCT:
         {
-            OUString n(name + "<");
+            OUStringBuffer n(512);
+            n.append(name + "<");
             for (auto i(subtypes.begin()); i != subtypes.end(); ++i) {
                 if (i != subtypes.begin()) {
-                    n += ",";
+                    n.append(",");
                 }
-                n += i->getName();
+                n.append(i->getName());
             }
-            return n + ">";
+            return n.append(">").makeStringAndClear();
         }
     default:
         assert(false && "this cannot happen"); for (;;) { std::abort(); }
@@ -4087,9 +4089,7 @@ bool SourceProviderInterfaceTypeEntityPad::addDirectMember(
     if (!checkMemberClashes(location, yyscanner, data, "", name, true)) {
         return false;
     }
-    allMembers.insert(
-        std::map<OUString, Member>::value_type(
-            name, Member(data->currentName)));
+    allMembers.emplace(name, Member(data->currentName));
     return true;
 }
 
@@ -4270,8 +4270,7 @@ bool SourceProviderInterfaceTypeEntityPad::addBase(
         ? direct ? BASE_DIRECT_OPTIONAL : BASE_INDIRECT_OPTIONAL
         : direct ? BASE_DIRECT_MANDATORY : BASE_INDIRECT_MANDATORY;
     std::pair<std::map<OUString, BaseKind>::iterator, bool> p(
-        allBases.insert(
-            std::map<OUString, BaseKind>::value_type(name, kind)));
+        allBases.emplace(name, kind));
     bool seen = !p.second && p.first->second >= BASE_INDIRECT_MANDATORY;
     if (!p.second && kind > p.first->second) {
         p.first->second = kind;
@@ -4333,12 +4332,10 @@ bool SourceProviderInterfaceTypeEntityPad::addBase(
             }
         }
         for (auto & i: entity->getDirectAttributes()) {
-            allMembers.insert(
-                std::map<OUString, Member>::value_type(i.name, Member(name)));
+            allMembers.emplace(i.name, Member(name));
         }
         for (auto & i: entity->getDirectMethods()) {
-            allMembers.insert(
-                std::map<OUString, Member>::value_type(i.name, Member(name)));
+            allMembers.emplace(i.name, Member(name));
         }
     }
     return true;
@@ -4378,8 +4375,7 @@ bool SourceProviderInterfaceTypeEntityPad::addOptionalBaseMembers(
     }
     for (auto & i: entity->getDirectAttributes()) {
         Member & m(
-            allMembers.insert(
-                std::map<OUString, Member>::value_type(i.name, Member("")))
+            allMembers.emplace(i.name, Member(""))
             .first->second);
         if (m.mandatory.isEmpty()) {
             m.optional.insert(name);
@@ -4387,8 +4383,7 @@ bool SourceProviderInterfaceTypeEntityPad::addOptionalBaseMembers(
     }
     for (auto & i: entity->getDirectMethods()) {
         Member & m(
-            allMembers.insert(
-                std::map<OUString, Member>::value_type(i.name, Member("")))
+            allMembers.emplace(i.name, Member(""))
             .first->second);
         if (m.mandatory.isEmpty()) {
             m.optional.insert(name);
@@ -4447,7 +4442,7 @@ bool parse(OUString const & uri, SourceProviderScannerData * data) {
             break;
         default:
             assert(false);
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case 1:
             throw FileFormatException(
                 uri,
@@ -4478,6 +4473,6 @@ bool parse(OUString const & uri, SourceProviderScannerData * data) {
     return true;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

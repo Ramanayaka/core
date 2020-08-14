@@ -21,13 +21,8 @@
 #include <fcntl.h>
 
 #include <cstdio>
-#include <cstring>
 #include <cstdlib>
-#include <stdio.h>
-#include <limits.h>
 #include <errno.h>
-#include <pthread.h>
-#include <sys/resource.h>
 #ifdef SUN
 #include <sys/systeminfo.h>
 #endif
@@ -41,25 +36,23 @@
 
 #include <osl/process.h>
 
-#include "unx/saldisp.hxx"
-#include "unx/saldata.hxx"
-#include "unx/sm.hxx"
-#include "unx/i18n_im.hxx"
-#include "unx/i18n_xkb.hxx"
+#include <unx/saldisp.hxx>
+#include <unx/saldata.hxx>
+#include <unx/salunxtime.h>
+#include <unx/sm.hxx>
+#include <unx/i18n_im.hxx>
 
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
 #include <X11/Xproto.h>
 
-#include "salinst.hxx"
-#include "saltimer.hxx"
+#include <salinst.hxx>
+#include <saltimer.hxx>
 
+#include <osl/diagnose.h>
 #include <osl/signal.h>
 #include <osl/thread.h>
-#include <rtl/strbuf.hxx>
-#include <rtl/bootstrap.hxx>
+#include <sal/log.hxx>
 
-#include <tools/debug.hxx>
 #include <vcl/svapp.hxx>
 
 X11SalData* GetX11SalData()
@@ -81,7 +74,7 @@ static int XErrorHdl( Display *pDisplay, XErrorEvent *pEvent )
 
 static int XIOErrorHdl( Display * )
 {
-    if (::osl::Thread::getCurrentIdentifier() == Application::GetMainThreadIdentifier())
+    if ( Application::IsMainThread() )
     {
         /*  #106197# hack: until a real shutdown procedure exists
          *  _exit ASAP
@@ -108,8 +101,8 @@ static int XIOErrorHdl( Display * )
 
 }
 
-static const struct timeval noyield_ = { 0, 0 };
-static const struct timeval yield_   = { 0, 10000 };
+const struct timeval noyield_ = { 0, 0 };
+const struct timeval yield_   = { 0, 10000 };
 
 static const char* XRequest[] = {
     // see /usr/lib/X11/XErrorDB, /usr/openwin/lib/XErrorDB ...
@@ -243,8 +236,8 @@ static const char* XRequest[] = {
     "X_NoOperation"
 };
 
-X11SalData::X11SalData( SalGenericDataType t, SalInstance *pInstance )
-    : SalGenericData( t, pInstance )
+X11SalData::X11SalData( GenericUnixSalDataType t, SalInstance *pInstance )
+    : GenericUnixSalData( t, pInstance )
 {
     pXLib_          = nullptr;
 
@@ -261,7 +254,6 @@ X11SalData::~X11SalData()
 
 void X11SalData::Dispose()
 {
-    deInitNWF();
     delete GetDisplay();
     SetSalData( nullptr );
 }
@@ -270,22 +262,13 @@ void X11SalData::DeleteDisplay()
 {
     delete GetDisplay();
     SetDisplay( nullptr );
-    delete pXLib_;
-    pXLib_ = nullptr;
+    pXLib_.reset();
 }
 
 void X11SalData::Init()
 {
-    pXLib_ = new SalXLib();
+    pXLib_.reset(new SalXLib());
     pXLib_->Init();
-}
-
-void X11SalData::initNWF()
-{
-}
-
-void X11SalData::deInitNWF()
-{
 }
 
 void X11SalData::ErrorTrapPush()
@@ -305,7 +288,7 @@ bool X11SalData::ErrorTrapPop( bool bIgnoreError )
 
 void X11SalData::PushXErrorLevel( bool bIgnore )
 {
-    m_aXErrorHandlerStack.push_back( XErrorStackEntry() );
+    m_aXErrorHandlerStack.emplace_back( );
     XErrorStackEntry& rEnt = m_aXErrorHandlerStack.back();
     rEnt.m_bWas = false;
     rEnt.m_bIgnore = bIgnore;
@@ -314,7 +297,7 @@ void X11SalData::PushXErrorLevel( bool bIgnore )
 
 void X11SalData::PopXErrorLevel()
 {
-    if( m_aXErrorHandlerStack.size() )
+    if( !m_aXErrorHandlerStack.empty() )
     {
         XSetErrorHandler( m_aXErrorHandlerStack.back().m_aHandler );
         m_aXErrorHandlerStack.pop_back();
@@ -322,7 +305,6 @@ void X11SalData::PopXErrorLevel()
 }
 
 SalXLib::SalXLib()
-    : blockIdleTimeout( false )
 {
     m_aTimeout.tv_sec       = 0;
     m_aTimeout.tv_usec      = 0;
@@ -336,39 +318,39 @@ SalXLib::SalXLib()
     m_pDisplay              = nullptr;
 
     m_pTimeoutFDS[0] = m_pTimeoutFDS[1] = -1;
-    if (pipe (m_pTimeoutFDS) != -1)
+    if (pipe (m_pTimeoutFDS) == -1)
+        return;
+
+    // initialize 'wakeup' pipe.
+    int flags;
+
+    // set close-on-exec descriptor flag.
+    if ((flags = fcntl (m_pTimeoutFDS[0], F_GETFD)) != -1)
     {
-        // initialize 'wakeup' pipe.
-        int flags;
-
-        // set close-on-exec descriptor flag.
-        if ((flags = fcntl (m_pTimeoutFDS[0], F_GETFD)) != -1)
-        {
-            flags |= FD_CLOEXEC;
-            (void)fcntl(m_pTimeoutFDS[0], F_SETFD, flags);
-        }
-        if ((flags = fcntl (m_pTimeoutFDS[1], F_GETFD)) != -1)
-        {
-            flags |= FD_CLOEXEC;
-            (void)fcntl(m_pTimeoutFDS[1], F_SETFD, flags);
-        }
-
-        // set non-blocking I/O flag.
-        if ((flags = fcntl (m_pTimeoutFDS[0], F_GETFL)) != -1)
-        {
-            flags |= O_NONBLOCK;
-            (void)fcntl(m_pTimeoutFDS[0], F_SETFL, flags);
-        }
-        if ((flags = fcntl (m_pTimeoutFDS[1], F_GETFL)) != -1)
-        {
-            flags |= O_NONBLOCK;
-            (void)fcntl(m_pTimeoutFDS[1], F_SETFL, flags);
-        }
-
-        // insert [0] into read descriptor set.
-        FD_SET( m_pTimeoutFDS[0], &aReadFDS_ );
-        nFDs_ = m_pTimeoutFDS[0] + 1;
+        flags |= FD_CLOEXEC;
+        (void)fcntl(m_pTimeoutFDS[0], F_SETFD, flags);
     }
+    if ((flags = fcntl (m_pTimeoutFDS[1], F_GETFD)) != -1)
+    {
+        flags |= FD_CLOEXEC;
+        (void)fcntl(m_pTimeoutFDS[1], F_SETFD, flags);
+    }
+
+    // set non-blocking I/O flag.
+    if ((flags = fcntl (m_pTimeoutFDS[0], F_GETFL)) != -1)
+    {
+        flags |= O_NONBLOCK;
+        (void)fcntl(m_pTimeoutFDS[0], F_SETFL, flags);
+    }
+    if ((flags = fcntl (m_pTimeoutFDS[1], F_GETFL)) != -1)
+    {
+        flags |= O_NONBLOCK;
+        (void)fcntl(m_pTimeoutFDS[1], F_SETFL, flags);
+    }
+
+    // insert [0] into read descriptor set.
+    FD_SET( m_pTimeoutFDS[0], &aReadFDS_ );
+    nFDs_ = m_pTimeoutFDS[0] + 1;
 }
 
 SalXLib::~SalXLib()
@@ -377,7 +359,7 @@ SalXLib::~SalXLib()
     close (m_pTimeoutFDS[0]);
     close (m_pTimeoutFDS[1]);
 
-    delete m_pInputMethod;
+    m_pInputMethod.reset();
 }
 
 static Display *OpenX11Display(OString& rDisplay)
@@ -434,34 +416,35 @@ static Display *OpenX11Display(OString& rDisplay)
 
 void SalXLib::Init()
 {
-    m_pInputMethod = new SalI18N_InputMethod;
+    m_pInputMethod.reset( new SalI18N_InputMethod );
     m_pInputMethod->SetLocale();
     XrmInitialize();
 
     OString aDisplay;
     m_pDisplay = OpenX11Display(aDisplay);
 
-    if ( !m_pDisplay )
-    {
-        OUString aProgramFileURL;
-        osl_getExecutableFile( &aProgramFileURL.pData );
-        OUString aProgramSystemPath;
-        osl_getSystemPathFromFileURL (aProgramFileURL.pData, &aProgramSystemPath.pData);
-        OString  aProgramName = OUStringToOString(
-                                            aProgramSystemPath,
-                                            osl_getThreadTextEncoding() );
-        std::fprintf( stderr, "%s X11 error: Can't open display: %s\n",
-                aProgramName.getStr(), aDisplay.getStr());
-        std::fprintf( stderr, "   Set DISPLAY environment variable, use -display option\n");
-        std::fprintf( stderr, "   or check permissions of your X-Server\n");
-        std::fprintf( stderr, "   (See \"man X\" resp. \"man xhost\" for details)\n");
-        std::fflush( stderr );
-        exit(0);
-    }
+    if ( m_pDisplay )
+        return;
+
+    OUString aProgramFileURL;
+    osl_getExecutableFile( &aProgramFileURL.pData );
+    OUString aProgramSystemPath;
+    osl_getSystemPathFromFileURL (aProgramFileURL.pData, &aProgramSystemPath.pData);
+    OString  aProgramName = OUStringToOString(
+                                        aProgramSystemPath,
+                                        osl_getThreadTextEncoding() );
+    std::fprintf( stderr, "%s X11 error: Can't open display: %s\n",
+            aProgramName.getStr(), aDisplay.getStr());
+    std::fprintf( stderr, "   Set DISPLAY environment variable, use -display option\n");
+    std::fprintf( stderr, "   or check permissions of your X-Server\n");
+    std::fprintf( stderr, "   (See \"man X\" resp. \"man xhost\" for details)\n");
+    std::fflush( stderr );
+    exit(0);
+
 }
 
 extern "C" {
-void EmitFontpathWarning()
+static void EmitFontpathWarning()
 {
     static Bool bOnce = False;
     if ( !bOnce )
@@ -536,7 +519,7 @@ void X11SalData::XError( Display *pDisplay, XErrorEvent *pEvent )
             )
             return;
 
-        if( pDisplay != vcl_sal::getSalDisplay(GetGenericData())->GetDisplay() )
+        if( pDisplay != vcl_sal::getSalDisplay(GetGenericUnixSalData())->GetDisplay() )
             return;
 
         PrintXError( pDisplay, pEvent );
@@ -561,18 +544,20 @@ void X11SalData::XError( Display *pDisplay, XErrorEvent *pEvent )
     m_aXErrorHandlerStack.back().m_bWas = true;
 }
 
-void X11SalData::Timeout( bool idle )
+void X11SalData::Timeout()
 {
     ImplSVData* pSVData = ImplGetSVData();
-    if( pSVData->mpSalTimer )
-        pSVData->mpSalTimer->CallCallback( idle );
+    if( pSVData->maSchedCtx.mpSalTimer )
+        pSVData->maSchedCtx.mpSalTimer->CallCallback();
 }
+
+namespace {
 
 struct YieldEntry
 {
     int         fd;         // file descriptor for reading
     void*           data;       // data for predicate and callback
-    YieldFunc       pending;    // predicate (determins pending events)
+    YieldFunc       pending;    // predicate (determines pending events)
     YieldFunc       queued;     // read and queue up events
     YieldFunc       handle;     // handle pending events
 
@@ -580,6 +565,8 @@ struct YieldEntry
     int  IsEventQueued()     const { return queued( fd, data ); }
     void HandleNextEvent()   const { handle( fd, data ); }
 };
+
+}
 
 #define MAX_NUM_DESCRIPTORS 128
 
@@ -644,34 +631,22 @@ bool SalXLib::CheckTimeout( bool bExecuteTimers )
                 *  timers are being dispatched.
                 */
                 m_aTimeout += m_nTimeoutMS;
-                // Determine if the app is idle (for idle timers). If there's user input pending,
-                // if there's IO pending or if we're called inside a temporary yield (=blockIdleTimeout),
-                // then the app is not idle.
-                bool idle = true;
-                if( blockIdleTimeout || XPending( vcl_sal::getSalDisplay(GetGenericData())->GetDisplay()))
-                    idle = false;
-                for ( int nFD = 0; idle && nFD < nFDs_; nFD++ )
-                {
-                    YieldEntry* pEntry = &(yieldTable[nFD]);
-                    if ( pEntry->fd && pEntry->HasPendingEvent())
-                        idle = false;
-                }
                 // notify
-                X11SalData::Timeout( idle );
+                X11SalData::Timeout();
             }
         }
     }
     return bRet;
 }
 
-SalYieldResult
+bool
 SalXLib::Yield( bool bWait, bool bHandleAllCurrentEvents )
 {
-    blockIdleTimeout = !bWait;
     // check for timeouts here if you want to make screenshots
     static char* p_prioritize_timer = getenv ("SAL_HIGHPRIORITY_REPAINT");
+    bool bHandledEvent = false;
     if (p_prioritize_timer != nullptr)
-        CheckTimeout();
+        bHandledEvent = CheckTimeout();
 
     const int nMaxEvents = bHandleAllCurrentEvents ? 100 : 1;
 
@@ -687,8 +662,7 @@ SalXLib::Yield( bool bWait, bool bHandleAllCurrentEvents )
                 pEntry->HandleNextEvent();
                 if( ! bHandleAllCurrentEvents )
                 {
-                    blockIdleTimeout = false;
-                    return SalYieldResult::EVENT;
+                    return true;
                 }
             }
         }
@@ -703,7 +677,6 @@ SalXLib::Yield( bool bWait, bool bHandleAllCurrentEvents )
     timeval  Timeout      = noyield_;
     timeval *pTimeout     = &Timeout;
 
-    bool bHandledEvent = false;
 
     if (bWait)
     {
@@ -724,13 +697,13 @@ SalXLib::Yield( bool bWait, bool bHandleAllCurrentEvents )
 
     {
         // release YieldMutex (and re-acquire at block end)
-        SalYieldMutexReleaser aReleaser;
+        SolarMutexReleaser aReleaser;
         nFound = select( nFDs, &ReadFDS, nullptr, &ExceptionFDS, pTimeout );
     }
     if( nFound < 0 ) // error
     {
 #ifdef DBG_UTIL
-        std::fprintf( stderr, "SalXLib::Yield e=%d f=%d\n", errno, nFound );
+        SAL_INFO("vcl.app", "SalXLib::Yield e=" << errno << " f=" << nFound);
 #endif
         if( EINTR == errno )
         {
@@ -740,10 +713,10 @@ SalXLib::Yield( bool bWait, bool bHandleAllCurrentEvents )
 
     // usually handle timeouts here (as in 5.2)
     if (p_prioritize_timer == nullptr)
-        CheckTimeout();
+        bHandledEvent = CheckTimeout() || bHandledEvent;
 
     // handle wakeup events.
-    if ((nFound > 0) && (FD_ISSET(m_pTimeoutFDS[0], &ReadFDS)))
+    if ((nFound > 0) && FD_ISSET(m_pTimeoutFDS[0], &ReadFDS))
     {
         int buffer;
         while (read (m_pTimeoutFDS[0], &buffer, sizeof(buffer)) > 0)
@@ -764,8 +737,7 @@ SalXLib::Yield( bool bWait, bool bHandleAllCurrentEvents )
         // someone-else has done the job for us
         if (nFound == 0)
         {
-            blockIdleTimeout = false;
-            return SalYieldResult::TIMEOUT;
+            return false;
         }
 
         for ( int nFD = 0; nFD < nFDs_; nFD++ )
@@ -775,7 +747,7 @@ SalXLib::Yield( bool bWait, bool bHandleAllCurrentEvents )
             {
                 if ( FD_ISSET( nFD, &ExceptionFDS ) ) {
 #if OSL_DEBUG_LEVEL > 1
-                    std::fprintf( stderr, "SalXLib::Yield exception\n" );
+                    SAL_WARN("vcl.app", "SalXLib::Yield exception.");
 #endif
                     nFound--;
                 }
@@ -793,10 +765,8 @@ SalXLib::Yield( bool bWait, bool bHandleAllCurrentEvents )
             }
         }
     }
-    blockIdleTimeout = false;
 
-    return bHandledEvent ? SalYieldResult::EVENT
-                         : SalYieldResult::TIMEOUT;
+    return bHandledEvent;
 }
 
 void SalXLib::Wakeup()
@@ -804,7 +774,7 @@ void SalXLib::Wakeup()
     OSL_VERIFY(write (m_pTimeoutFDS[1], "", 1) == 1);
 }
 
-void SalXLib::PostUserEvent()
+void SalXLib::TriggerUserEventProcessing()
 {
     Wakeup();
 }

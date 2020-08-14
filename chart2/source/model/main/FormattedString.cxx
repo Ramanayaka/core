@@ -19,11 +19,13 @@
 
 #include "FormattedString.hxx"
 
-#include "CharacterProperties.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <CharacterProperties.hxx>
+#include <PropertyHelper.hxx>
+#include <ModifyListenerHelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
@@ -93,18 +95,20 @@ struct StaticFormattedStringInfo : public rtl::StaticAggregate< uno::Reference< 
 namespace chart
 {
 
-FormattedString::FormattedString(
-        uno::Reference< uno::XComponentContext > const & /* xContext */ ) :
+FormattedString::FormattedString() :
         ::property::OPropertySet( m_aMutex ),
     m_aString(),
+    m_aType(chart2::DataPointCustomLabelFieldType::DataPointCustomLabelFieldType_TEXT),
+    m_aGuid(),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
 {}
 
 FormattedString::FormattedString( const FormattedString & rOther ) :
-        MutexContainer(),
-        impl::FormattedString_Base(),
+        impl::FormattedString_Base(rOther),
         ::property::OPropertySet( rOther, m_aMutex ),
     m_aString( rOther.m_aString ),
+    m_aType(rOther.m_aType),
+    m_aGuid(rOther.m_aGuid),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
 {}
 
@@ -120,15 +124,50 @@ uno::Reference< util::XCloneable > SAL_CALL FormattedString::createClone()
 // ____ XFormattedString ____
 OUString SAL_CALL FormattedString::getString()
 {
-    MutexGuard aGuard( GetMutex());
+    MutexGuard aGuard( m_aMutex);
     return m_aString;
 }
 
 void SAL_CALL FormattedString::setString( const OUString& String )
 {
     {
-        MutexGuard aGuard( GetMutex());
+        MutexGuard aGuard( m_aMutex);
         m_aString = String;
+    }
+    //don't keep the mutex locked while calling out
+    fireModifyEvent();
+
+}
+
+// ____ XDataPointCustomLabelField ____
+css::chart2::DataPointCustomLabelFieldType SAL_CALL FormattedString::getFieldType()
+{
+    MutexGuard aGuard(m_aMutex);
+    return m_aType;
+}
+
+void SAL_CALL
+FormattedString::setFieldType(const css::chart2::DataPointCustomLabelFieldType Type)
+{
+    {
+        MutexGuard aGuard(m_aMutex);
+        m_aType = Type;
+    }
+    //don't keep the mutex locked while calling out
+    fireModifyEvent();
+}
+
+OUString SAL_CALL FormattedString::getGuid()
+{
+    MutexGuard aGuard( m_aMutex);
+    return m_aGuid;
+}
+
+void SAL_CALL FormattedString::setGuid( const OUString& guid )
+{
+    {
+        MutexGuard aGuard( m_aMutex);
+        m_aGuid= guid;
     }
     //don't keep the mutex locked while calling out
     fireModifyEvent();
@@ -143,9 +182,9 @@ void SAL_CALL FormattedString::addModifyListener( const uno::Reference< util::XM
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -156,9 +195,9 @@ void SAL_CALL FormattedString::removeModifyListener( const uno::Reference< util:
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -217,7 +256,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( FormattedString, FormattedString_Base, ::prope
 // implement XServiceInfo methods basing upon getSupportedServiceNames_Static
 OUString SAL_CALL FormattedString::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.FormattedString");
+    return "com.sun.star.comp.chart.FormattedString";
 }
 
 sal_Bool SAL_CALL FormattedString::supportsService( const OUString& rServiceName )
@@ -228,17 +267,18 @@ sal_Bool SAL_CALL FormattedString::supportsService( const OUString& rServiceName
 css::uno::Sequence< OUString > SAL_CALL FormattedString::getSupportedServiceNames()
 {
     return {
+        "com.sun.star.chart2.DataPointCustomLabelField",
         "com.sun.star.chart2.FormattedString",
         "com.sun.star.beans.PropertySet" };
 }
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart_FormattedString_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart_FormattedString_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::FormattedString(context));
+    return cppu::acquire(new ::chart::FormattedString);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,12 +22,10 @@
 
 #include <sal/config.h>
 #include "formel.hxx"
-#include "qpro.hxx"
 
-#include <compiler.hxx>
 typedef OpCode DefTokenId;
 
-enum FUNC_TYPE
+enum QPRO_FUNC_TYPE
 {
     FT_Return,
     FT_FuncFix0,
@@ -60,14 +58,14 @@ private:
 public:
     static const size_t nBufSize = 256;
     QProToSc( SvStream &aStr, svl::SharedStringPool& rSPool, const ScAddress& rRefPos );
-    ConvErr Convert( const ScTokenArray*& pArray );
-    void DoFunc( DefTokenId eOc, sal_uInt16 nArgs, const sal_Char* pExtString );
-    void ReadSRD( ScSingleRefData& rR, sal_Int8 nPage, sal_Int8 nCol, sal_uInt16 rRel );
+    ConvErr Convert( const ScDocument* pDoc, std::unique_ptr<ScTokenArray>& pArray );
+    void DoFunc( DefTokenId eOc, sal_uInt16 nArgs, const char* pExtString );
+    void ReadSRD( const ScDocument* pDoc, ScSingleRefData& rR, sal_Int8 nPage, sal_Int8 nCol, sal_uInt16 rRel );
     void IncToken( TokenId &aParam );
     static DefTokenId IndexToToken( sal_uInt16 nToken );
-    static FUNC_TYPE IndexToType( sal_uInt8 nToken );
+    static QPRO_FUNC_TYPE IndexToType( sal_uInt8 nToken );
     static DefTokenId IndexToDLLId( sal_uInt16 nIndex );
-    static const sal_Char* getString( sal_uInt8 nIndex );
+    static const char* getString( sal_uInt8 nIndex );
 };
 #endif
 

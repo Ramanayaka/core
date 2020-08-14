@@ -18,11 +18,12 @@
  */
 
 #include "ColumnChartType.hxx"
-#include "macros.hxx"
-#include "servicenames_charttypes.hxx"
-#include "PropertyHelper.hxx"
+#include <servicenames_charttypes.hxx>
+#include <PropertyHelper.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <cppuhelper/supportsservice.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Sequence;
@@ -40,19 +41,17 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "OverlapSequence",
+    rOutProperties.emplace_back( "OverlapSequence",
                   PROP_BARCHARTTYPE_OVERLAP_SEQUENCE,
                   cppu::UnoType<Sequence< sal_Int32 >>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "GapwidthSequence",
+    rOutProperties.emplace_back( "GapwidthSequence",
                   PROP_BARCHARTTYPE_GAPWIDTH_SEQUENCE,
                   cppu::UnoType<Sequence< sal_Int32 >>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
 struct StaticColumnChartTypeDefaults_Initializer
@@ -125,9 +124,7 @@ struct StaticColumnChartTypeInfo : public rtl::StaticAggregate< uno::Reference< 
 namespace chart
 {
 
-ColumnChartType::ColumnChartType(
-    const uno::Reference< uno::XComponentContext > & xContext ) :
-        ChartType( xContext )
+ColumnChartType::ColumnChartType()
 {}
 
 ColumnChartType::ColumnChartType( const ColumnChartType & rOther ) :
@@ -147,7 +144,7 @@ uno::Reference< util::XCloneable > SAL_CALL ColumnChartType::createClone()
 // ____ XChartType ____
 OUString SAL_CALL ColumnChartType::getChartType()
 {
-    return OUString(CHART2_SERVICE_NAME_CHARTTYPE_COLUMN);
+    return CHART2_SERVICE_NAME_CHARTTYPE_COLUMN;
 }
 
 uno::Sequence< OUString > ColumnChartType::getSupportedPropertyRoles()
@@ -182,7 +179,7 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL ColumnChartType::getPropertyS
 
 OUString SAL_CALL ColumnChartType::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.ColumnChartType");
+    return "com.sun.star.comp.chart.ColumnChartType";
 }
 
 sal_Bool SAL_CALL ColumnChartType::supportsService( const OUString& rServiceName )
@@ -199,11 +196,11 @@ css::uno::Sequence< OUString > SAL_CALL ColumnChartType::getSupportedServiceName
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart_ColumnChartType_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart_ColumnChartType_get_implementation(css::uno::XComponentContext * /*context*/,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::ColumnChartType(context));
+    return cppu::acquire(new ::chart::ColumnChartType());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

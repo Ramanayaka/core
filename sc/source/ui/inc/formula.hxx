@@ -22,13 +22,6 @@
 
 #include <memory>
 #include "anyrefdg.hxx"
-#include "global.hxx"
-#include <vcl/lstbox.hxx>
-#include <vcl/group.hxx>
-#include <svtools/svmedit.hxx>
-#include <vcl/tabpage.hxx>
-
-#include "compiler.hxx"
 
 #include <formula/formula.hxx>
 #include "IAnyRefDialog.hxx"
@@ -38,28 +31,30 @@ class ScDocument;
 class ScFuncDesc;
 class ScInputHandler;
 class ScDocShell;
-class ScFormulaCell;
 
-class ScFormulaDlg : public formula::FormulaDlg,
+class ScFormulaDlg final : public formula::FormulaDlg,
                      public IAnyRefDialog
 {
     ScFormulaReferenceHelper m_aHelper;
     css::uno::Reference< css::sheet::XFormulaParser>          m_xParser;
     css::uno::Reference< css::sheet::XFormulaOpCodeMapper>    m_xOpCodeMapper;
 
-    ScDocument*  m_pDoc;
-    ScAddress    m_CursorPos;
+            ScDocument*                 m_pDoc;
+            ScAddress                   m_CursorPos;
+            ScTabViewShell*             m_pViewShell;
+    mutable std::shared_ptr<ScCompiler> m_xCompiler;
 
 public:
-                    ScFormulaDlg( SfxBindings* pB, SfxChildWindow* pCW,
-                        vcl::Window* pParent, ScViewData* pViewData ,formula::IFunctionManager* _pFunctionMgr);
-                    virtual ~ScFormulaDlg() override;
-    virtual void dispose() override;
+    ScFormulaDlg( SfxBindings* pB, SfxChildWindow* pCW,
+        weld::Window* pParent, const ScViewData* pViewData, const formula::IFunctionManager* _pFunctionMgr);
+    virtual ~ScFormulaDlg() COVERITY_NOEXCEPT_FALSE override;
 
     // IFormulaEditorHelper
     virtual void notifyChange() override;
     virtual void fill() override;
     virtual bool calculateValue(const OUString& _sExpression, OUString& _rResult, bool bMatrixFormula) override;
+    virtual std::shared_ptr<formula::FormulaCompiler> getCompiler() const override;
+    virtual std::unique_ptr<formula::FormulaCompiler> createCompiler( formula::FormulaTokenArray& rArray ) const override;
     virtual void doClose(bool _bOk) override;
     virtual void insertEntryToLRUList(const formula::IFunctionDescription*  pDesc) override;
     virtual void showReference(const OUString& _sFormula) override;
@@ -80,12 +75,12 @@ public:
     virtual css::uno::Reference< css::sheet::XFormulaOpCodeMapper> getFormulaOpCodeMapper() const override;
     virtual css::table::CellAddress getReferencePosition() const override;
 
-    virtual bool    Close() override;
+    virtual void Close() override;
 
     // sc::IAnyRefDialog
     virtual void ShowReference(const OUString& _sRef) override;
     virtual void HideReference( bool bDoneRefMode = true ) override;
-    virtual void SetReference( const ScRange& rRef, ScDocument* pD ) override;
+    virtual void SetReference( const ScRange& rRef, ScDocument& rD ) override;
 
     virtual void ReleaseFocus( formula::RefEdit* pEdit ) override;
     virtual void ToggleCollapsed( formula::RefEdit* pEdit, formula::RefButton* pButton ) override;
@@ -97,13 +92,13 @@ public:
     virtual void AddRefEntry() override;
     virtual void SetActive() override;
     virtual void ViewShellChanged() override;
-protected:
 
+private:
     virtual void RefInputStart( formula::RefEdit* pEdit, formula::RefButton* pButton = nullptr ) override;
     static void  SaveLRUEntry(const ScFuncDesc* pFuncDesc);
 
-    static bool  IsInputHdl(ScInputHandler* pHdl);
-    static ScInputHandler* GetNextInputHandler(ScDocShell* pDocShell, ScTabViewShell** ppViewSh);
+    static bool  IsInputHdl(const ScInputHandler* pHdl);
+    static ScInputHandler* GetNextInputHandler(const ScDocShell* pDocShell, ScTabViewShell** ppViewSh);
 };
 
 #endif // INCLUDED_SC_SOURCE_UI_INC_FORMULA_HXX

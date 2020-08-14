@@ -20,11 +20,8 @@
 #ifndef INCLUDED_SVX_ACCESSIBLEGRAPHICSHAPE_HXX
 #define INCLUDED_SVX_ACCESSIBLEGRAPHICSHAPE_HXX
 
-#include <exception>
-
 #include <com/sun/star/accessibility/XAccessibleImage.hpp>
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Type.hxx>
 #include <rtl/ustring.hxx>
@@ -89,16 +86,11 @@ public:
 
     virtual css::uno::Sequence< css::uno::Type> SAL_CALL
         getTypes() override;
-/// Return this object's role.
-    virtual sal_Int16 SAL_CALL getAccessibleRole() override;
+
 protected:
     /// Create a name string that contains the accessible name.
     virtual OUString
         CreateAccessibleBaseName () override;
-
-    /// Create a description string that contains the accessible description.
-    virtual OUString
-        CreateAccessibleDescription () override;
 
 private:
     AccessibleGraphicShape (const AccessibleGraphicShape&) = delete;

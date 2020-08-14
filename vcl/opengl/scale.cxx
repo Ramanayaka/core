@@ -18,16 +18,19 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
+
+#include <cmath>
 
 #include <vcl/opengl/OpenGLHelper.hxx>
 
 #include <vcl/bitmap.hxx>
 
-#include "opengl/zone.hxx"
-#include "opengl/salbmp.hxx"
-#include "opengl/program.hxx"
-#include "opengl/texture.hxx"
-#include "opengl/RenderState.hxx"
+#include <opengl/zone.hxx>
+#include <opengl/salbmp.hxx>
+#include <opengl/program.hxx>
+#include <opengl/texture.hxx>
+#include <opengl/RenderState.hxx>
 
 #include <ResampleKernel.hxx>
 
@@ -80,7 +83,7 @@ void OpenGLSalBitmap::ImplCreateKernel(
 {
     const double fSamplingRadius(rKernel.GetWidth());
     const double fScaledRadius((fScale < 1.0) ? fSamplingRadius / fScale : fSamplingRadius);
-    const double fFilterFactor((fScale < 1.0) ? fScale : 1.0);
+    const double fFilterFactor(std::min(fScale, 1.0));
     int aNumberOfContributions;
     double aSum( 0 );
 
@@ -140,7 +143,7 @@ bool OpenGLSalBitmap::ImplScaleConvolution(
 
         for( sal_uInt32 i = 0; i < 16; i++ )
         {
-            aOffsets[i * 2] = i / (double) mnWidth;
+            aOffsets[i * 2] = i / static_cast<double>(mnWidth);
             aOffsets[i * 2 + 1] = 0;
         }
         ImplCreateKernel( rScaleX, aKernel, pWeights, nKernelSize );
@@ -164,7 +167,7 @@ bool OpenGLSalBitmap::ImplScaleConvolution(
         for( sal_uInt32 i = 0; i < 16; i++ )
         {
             aOffsets[i * 2] = 0;
-            aOffsets[i * 2 + 1] = i / (double) mnHeight;
+            aOffsets[i * 2 + 1] = i / static_cast<double>(mnHeight);
         }
         ImplCreateKernel( rScaleY, aKernel, pWeights, nKernelSize );
         pProgram->SetUniform1fv( "kernel", 16, pWeights );
@@ -203,7 +206,7 @@ bool OpenGLSalBitmap::ImplScaleArea( const rtl::Reference< OpenGLContext > &xCon
 
     double ixscale = 1 / rScaleX;
     double iyscale = 1 / rScaleY;
-    bool fast = ( ixscale == int( ixscale ) && iyscale == int( iyscale )
+    bool fast = ( ixscale == std::trunc( ixscale ) && iyscale == std::trunc( iyscale )
         && int( nNewWidth * ixscale ) == mnWidth && int( nNewHeight * iyscale ) == mnHeight );
 
     bool bTwoPasses = false;
@@ -251,8 +254,15 @@ bool OpenGLSalBitmap::ImplScaleArea( const rtl::Reference< OpenGLContext > &xCon
     {
         pProgram->SetUniform1i( "xscale", ixscale );
         pProgram->SetUniform1i( "yscale", iyscale );
-        pProgram->SetUniform1f( "xstep", 1.0 / mnWidth );
-        pProgram->SetUniform1f( "ystep", 1.0 / mnHeight );
+        // The shader operates on pixels in the surrounding area, so it's necessary
+        // to know the step in texture coordinates to get to the next pixel.
+        // With a texture atlas the "texture" is just a subtexture of a larger texture,
+        // so while with a normal texture we'd map between <0.0,1.0> and <0,mnWidth>,
+        // with a subtexture the texture coordinates range is smaller.
+        GLfloat srcCoords[ 8 ];
+        maTexture.GetWholeCoord( srcCoords );
+        pProgram->SetUniform1f( "xstep", ( srcCoords[ 4 ] - srcCoords[ 0 ] ) / mnWidth );
+        pProgram->SetUniform1f( "ystep", ( srcCoords[ 5 ] - srcCoords[ 1 ] ) / mnHeight );
         pProgram->SetUniform1f( "ratio", 1.0 / ( ixscale * iyscale ));
     }
     else
@@ -261,11 +271,21 @@ bool OpenGLSalBitmap::ImplScaleArea( const rtl::Reference< OpenGLContext > &xCon
         pProgram->SetUniform1f( "yscale", iyscale );
         pProgram->SetUniform1i( "swidth", mnWidth );
         pProgram->SetUniform1i( "sheight", mnHeight );
-        // For converting between <0,mnWidth-1> and <0.0,1.0> coordinate systems.
-        pProgram->SetUniform1f( "xsrcconvert", 1.0 / ( mnWidth - 1 ));
-        pProgram->SetUniform1f( "ysrcconvert", 1.0 / ( mnHeight - 1 ));
-        pProgram->SetUniform1f( "xdestconvert", 1.0 * ( nNewWidth - 1 ));
-        pProgram->SetUniform1f( "ydestconvert", 1.0 * ( nNewHeight - 1 ));
+        // The shader internally actually operates on pixel coordinates,
+        // so it needs to know how to convert to those from the texture coordinates.
+        // With a simple texture that would mean converting e.g. between
+        // <0,mnWidth-1> and <0.0,1.0> coordinates.
+        // However with a texture atlas the "texture" is just a subtexture
+        // of a larger texture, so the texture coordinates need offset and ratio
+        // conversion too.
+        GLfloat srcCoords[ 8 ];
+        maTexture.GetWholeCoord( srcCoords );
+        pProgram->SetUniform1f( "xoffset", srcCoords[ 0 ] );
+        pProgram->SetUniform1f( "yoffset", srcCoords[ 1 ] );
+        pProgram->SetUniform1f( "xtopixelratio", nNewWidth / ( srcCoords[ 4 ] - srcCoords[ 0 ] ));
+        pProgram->SetUniform1f( "ytopixelratio", nNewHeight / ( srcCoords[ 5 ] - srcCoords[ 1 ] ));
+        pProgram->SetUniform1f( "xfrompixelratio", ( srcCoords[ 4 ] - srcCoords[ 0 ] ) / mnWidth );
+        pProgram->SetUniform1f( "yfrompixelratio", ( srcCoords[ 5 ] - srcCoords[ 1 ] ) / mnHeight );
     }
 
     pProgram->SetTexture( "sampler", maTexture );
@@ -281,8 +301,8 @@ bool OpenGLSalBitmap::ImplScaleArea( const rtl::Reference< OpenGLContext > &xCon
         mnWidth = nNewWidth;
         mnHeight = nNewHeight;
 
-        nNewWidth = int(mnWidth * rScaleX);
-        nNewHeight = int (mnHeight * rScaleY);
+        nNewWidth = round(mnWidth * rScaleX);
+        nNewHeight = round(mnHeight * rScaleY);
 
         ixscale = 1 / rScaleX;
         iyscale = 1 / rScaleY;
@@ -299,11 +319,15 @@ bool OpenGLSalBitmap::ImplScaleArea( const rtl::Reference< OpenGLContext > &xCon
         pProgram->SetUniform1f("yscale", iyscale);
         pProgram->SetUniform1i("swidth", mnWidth);
         pProgram->SetUniform1i("sheight", mnHeight);
-        // For converting between <0,mnWidth-1> and <0.0,1.0> coordinate systems.
-        pProgram->SetUniform1f("xsrcconvert", 1.0 / (mnWidth - 1));
-        pProgram->SetUniform1f("ysrcconvert", 1.0 / (mnHeight - 1));
-        pProgram->SetUniform1f("xdestconvert", 1.0 * (nNewWidth - 1));
-        pProgram->SetUniform1f("ydestconvert", 1.0 * (nNewHeight - 1));
+
+        GLfloat srcCoords[ 8 ];
+        aScratchTex.GetWholeCoord( srcCoords );
+        pProgram->SetUniform1f( "xoffset", srcCoords[ 0 ] );
+        pProgram->SetUniform1f( "yoffset", srcCoords[ 1 ] );
+        pProgram->SetUniform1f( "xtopixelratio", nNewWidth / ( srcCoords[ 4 ] - srcCoords[ 0 ] ));
+        pProgram->SetUniform1f( "ytopixelratio", nNewHeight / ( srcCoords[ 5 ] - srcCoords[ 1 ] ));
+        pProgram->SetUniform1f( "xfrompixelratio", ( srcCoords[ 4 ] - srcCoords[ 0 ] ) / mnWidth );
+        pProgram->SetUniform1f( "yfrompixelratio", ( srcCoords[ 5 ] - srcCoords[ 1 ] ) / mnHeight );
 
         pProgram->SetTexture("sampler", aScratchTex);
         pProgram->DrawTexture(aScratchTex);
@@ -327,7 +351,7 @@ bool OpenGLSalBitmap::ImplScaleArea( const rtl::Reference< OpenGLContext > &xCon
     return true;
 }
 
-bool OpenGLSalBitmap::ImplScale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag )
+void OpenGLSalBitmap::ImplScale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag )
 {
     VCL_GL_INFO( "::ImplScale" );
 
@@ -344,31 +368,30 @@ bool OpenGLSalBitmap::ImplScale( const double& rScaleX, const double& rScaleY, B
 
     if( nScaleFlag == BmpScaleFlag::Fast )
     {
-        return ImplScaleFilter( xContext, rScaleX, rScaleY, GL_NEAREST );
+        ImplScaleFilter( xContext, rScaleX, rScaleY, GL_NEAREST );
     }
-    if( nScaleFlag == BmpScaleFlag::BiLinear )
+    else if( nScaleFlag == BmpScaleFlag::BiLinear )
     {
-        return ImplScaleFilter( xContext, rScaleX, rScaleY, GL_LINEAR );
+        ImplScaleFilter( xContext, rScaleX, rScaleY, GL_LINEAR );
     }
     else if( nScaleFlag == BmpScaleFlag::Default )
     {
         const Lanczos3Kernel aKernel;
 
-        return ImplScaleConvolution( xContext, rScaleX, rScaleY, aKernel );
+        ImplScaleConvolution( xContext, rScaleX, rScaleY, aKernel );
     }
     else if( nScaleFlag == BmpScaleFlag::BestQuality && rScaleX <= 1 && rScaleY <= 1 )
-    { // Use are scaling for best quality, but only if downscaling.
-        return ImplScaleArea( xContext, rScaleX, rScaleY );
+    { // Use area scaling for best quality, but only if downscaling.
+        ImplScaleArea( xContext, rScaleX, rScaleY );
     }
     else if( nScaleFlag == BmpScaleFlag::Lanczos || nScaleFlag == BmpScaleFlag::BestQuality  )
     {
         const Lanczos3Kernel aKernel;
 
-        return ImplScaleConvolution( xContext, rScaleX, rScaleY, aKernel );
+        ImplScaleConvolution( xContext, rScaleX, rScaleY, aKernel );
     }
-
-    SAL_WARN( "vcl.opengl", "Invalid flag for scaling operation" );
-    return false;
+    else
+        SAL_WARN( "vcl.opengl", "Invalid flag for scaling operation" );
 }
 
 bool OpenGLSalBitmap::ScalingSupported() const

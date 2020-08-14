@@ -19,31 +19,26 @@
 #ifndef INCLUDED_SFX2_TEMPLDLG_HXX
 #define INCLUDED_SFX2_TEMPLDLG_HXX
 
+#include <config_options.h>
 #include <memory>
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
-#include <vcl/ctrl.hxx>
-#include <rsc/rscsfx.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 
-#include <sfx2/dockwin.hxx>
-#include <sfx2/childwin.hxx>
-#include <sfx2/basedlgs.hxx>
-
+class SfxBindings;
 class SfxTemplateDialog_Impl;
 
-class SFX2_DLLPUBLIC SfxTemplatePanelControl : public vcl::Window
+class UNLESS_MERGELIBS(SFX2_DLLPUBLIC) SfxTemplatePanelControl final : public PanelLayout
 {
 public:
     SfxTemplatePanelControl(SfxBindings* pBindings, vcl::Window* pParentWindow);
     virtual ~SfxTemplatePanelControl() override;
     virtual void dispose() override;
 
-    virtual void Resize() override;
-    virtual void StateChanged( StateChangedType nStateChange ) override;
+    weld::Builder* get_builder() { return m_xBuilder.get(); }
 
 private:
     std::unique_ptr<SfxTemplateDialog_Impl> pImpl;
-    SfxBindings* mpBindings;
 };
 
 #endif

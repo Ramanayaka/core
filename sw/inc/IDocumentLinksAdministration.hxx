@@ -20,9 +20,9 @@
 #ifndef INCLUDED_SW_INC_IDOCUMENTLINKSADMINISTRATION_HXX
 #define INCLUDED_SW_INC_IDOCUMENTLINKSADMINISTRATION_HXX
 
-#include <tools/solar.h>
+#include <sal/types.h>
 
-namespace com { namespace sun { namespace star { namespace uno { class Any; } } } }
+namespace com::sun::star::uno { class Any; }
 namespace sfx2 { class SvLinkSource;  class LinkManager; }
 namespace rtl { class OUString; }
 using rtl::OUString;
@@ -48,11 +48,11 @@ using rtl::OUString;
     */
     virtual void UpdateLinks() = 0;
 
-    /** SS fuers Linken von Dokumentteilen  / ?? for linking of parts of documents.
+    /** for linking of parts of documents.
     */
     virtual bool GetData(const OUString& rItem, const OUString& rMimeType, css::uno::Any& rValue) const = 0;
 
-    virtual bool SetData(const OUString& rItem, const OUString& rMimeType, const css::uno::Any& rValue) = 0;
+    virtual void SetData(const OUString& rItem) = 0;
 
     virtual ::sfx2::SvLinkSource* CreateLinkSource(const OUString& rItem) = 0;
 

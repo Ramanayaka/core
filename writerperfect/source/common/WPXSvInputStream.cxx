@@ -10,11 +10,13 @@
 #include <WPXSvInputStream.hxx>
 
 #include <com/sun/star/packages/zip/XZipFileAccess2.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/seekableinput.hxx>
-
+#include <o3tl/safeint.hxx>
 #include <rtl/string.hxx>
+#include <sal/log.hxx>
 
 #include <sot/storage.hxx>
 
@@ -30,7 +32,6 @@
 
 namespace writerperfect
 {
-
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::io;
 
@@ -39,21 +40,20 @@ namespace packages = com::sun::star::packages;
 
 namespace
 {
-
 class PositionHolder
 {
 public:
-    explicit PositionHolder(const Reference<XSeekable> &rxSeekable);
+    explicit PositionHolder(const Reference<XSeekable>& rxSeekable);
     ~PositionHolder();
-    PositionHolder(const PositionHolder &) = delete;
-    PositionHolder &operator=(const PositionHolder &) = delete;
+    PositionHolder(const PositionHolder&) = delete;
+    PositionHolder& operator=(const PositionHolder&) = delete;
 
 private:
     const Reference<XSeekable> mxSeekable;
     const sal_uInt64 mnPosition;
 };
 
-PositionHolder::PositionHolder(const Reference<XSeekable> &rxSeekable)
+PositionHolder::PositionHolder(const Reference<XSeekable>& rxSeekable)
     : mxSeekable(rxSeekable)
     , mnPosition(rxSeekable->getPosition())
 {
@@ -65,39 +65,28 @@ PositionHolder::~PositionHolder()
     {
         mxSeekable->seek(mnPosition);
     }
-    catch (...) {}
+    catch (...)
+    {
+    }
 }
 
 } // anonymous namespace
 
-typedef struct
-{
-    tools::SvRef<SotStorage> ref;
-} SotStorageRefWrapper;
-
-typedef struct
-{
-    tools::SvRef<SotStorageStream> ref;
-} SotStorageStreamRefWrapper;
-
 namespace
 {
-
-rtl::OUString lcl_normalizeSubStreamPath(const rtl::OUString &rPath)
+OUString lcl_normalizeSubStreamPath(const OUString& rPath)
 {
     // accept paths which begin by '/'
-    // TODO: maybe this should to a full normalization
+    // TODO: maybe this should do a full normalization
     if (rPath.startsWith("/") && rPath.getLength() >= 2)
         return rPath.copy(1);
     return rPath;
 }
-
 }
 
 namespace
 {
-
-const rtl::OUString concatPath(const rtl::OUString &lhs, const rtl::OUString &rhs)
+OUString concatPath(const OUString& lhs, const OUString& rhs)
 {
     if (lhs.isEmpty())
         return rhs;
@@ -106,26 +95,26 @@ const rtl::OUString concatPath(const rtl::OUString &lhs, const rtl::OUString &rh
 
 struct OLEStreamData
 {
-    OLEStreamData(const rtl::OString &rName, const rtl::OString &rvngName);
+    OLEStreamData(const OString& rName, const OString& rvngName);
 
-    SotStorageStreamRefWrapper stream;
+    tools::SvRef<SotStorageStream> stream;
 
     /** Name of the stream.
       *
-      * This is not @c rtl::OUString, because we need to be able to
+      * This is not @c OUString, because we need to be able to
       * produce const char* from it.
       */
-    rtl::OString name;
+    OString name;
     /** librevenge name of the stream.
       *
-      * This is not @c rtl::OUString, because we need to be able to
+      * This is not @c OUString, because we need to be able to
       * produce const char* from it.
       */
-    rtl::OString RVNGname;
+    OString RVNGname;
 };
 
-typedef std::unordered_map<rtl::OUString, std::size_t, rtl::OUStringHash> NameMap_t;
-typedef std::unordered_map<rtl::OUString, SotStorageRefWrapper, rtl::OUStringHash> OLEStorageMap_t;
+typedef std::unordered_map<OUString, std::size_t> NameMap_t;
+typedef std::unordered_map<OUString, tools::SvRef<SotStorage>> OLEStorageMap_t;
 
 /** Representation of an OLE2 storage.
   *
@@ -147,25 +136,25 @@ struct OLEStorageImpl
 {
     OLEStorageImpl();
 
-    void initialize(SvStream *pStream);
+    void initialize(std::unique_ptr<SvStream> pStream);
 
-    tools::SvRef<SotStorageStream> getStream(const rtl::OUString &rPath);
-    tools::SvRef<SotStorageStream> const &getStream(std::size_t nId);
+    tools::SvRef<SotStorageStream> getStream(const OUString& rPath);
+    tools::SvRef<SotStorageStream> const& getStream(std::size_t nId);
 
 private:
-    void traverse(const tools::SvRef<SotStorage> &rStorage, const rtl::OUString &rPath);
+    void traverse(const tools::SvRef<SotStorage>& rStorage, const OUString& rPath);
 
-    tools::SvRef<SotStorageStream> createStream(const rtl::OUString &rPath);
+    tools::SvRef<SotStorageStream> createStream(const OUString& rPath);
 
 public:
-    SotStorageRefWrapper mxRootStorage; //< root storage of the OLE2
+    tools::SvRef<SotStorage> mxRootStorage; //< root storage of the OLE2
     OLEStorageMap_t maStorageMap; //< map of all sub storages by name
-    ::std::vector< OLEStreamData > maStreams; //< list of streams and their names
+    ::std::vector<OLEStreamData> maStreams; //< list of streams and their names
     NameMap_t maNameMap; //< map of stream names to indexes (into @c maStreams)
     bool mbInitialized;
 };
 
-OLEStreamData::OLEStreamData(const rtl::OString &rName, const rtl::OString &rvngName)
+OLEStreamData::OLEStreamData(const OString& rName, const OString& rvngName)
     : stream()
     , name(rName)
     , RVNGname(rvngName)
@@ -181,21 +170,21 @@ OLEStorageImpl::OLEStorageImpl()
 {
 }
 
-void OLEStorageImpl::initialize(SvStream *const pStream)
+void OLEStorageImpl::initialize(std::unique_ptr<SvStream> pStream)
 {
     if (!pStream)
         return;
 
-    mxRootStorage.ref = new SotStorage(pStream, true);
+    mxRootStorage = new SotStorage(pStream.release(), true);
 
-    traverse(mxRootStorage.ref, "");
+    traverse(mxRootStorage, "");
 
     mbInitialized = true;
 }
 
-tools::SvRef<SotStorageStream> OLEStorageImpl::getStream(const rtl::OUString &rPath)
+tools::SvRef<SotStorageStream> OLEStorageImpl::getStream(const OUString& rPath)
 {
-    const rtl::OUString aPath(lcl_normalizeSubStreamPath(rPath));
+    const OUString aPath(lcl_normalizeSubStreamPath(rPath));
     NameMap_t::iterator aIt = maNameMap.find(aPath);
 
     // For the while don't return stream in this situation.
@@ -204,90 +193,92 @@ tools::SvRef<SotStorageStream> OLEStorageImpl::getStream(const rtl::OUString &rP
     if (maNameMap.end() == aIt)
         return tools::SvRef<SotStorageStream>();
 
-    if (!maStreams[aIt->second].stream.ref.is())
-        maStreams[aIt->second].stream.ref = createStream(rtl::OStringToOUString(maStreams[aIt->second].name, RTL_TEXTENCODING_UTF8));
+    if (!maStreams[aIt->second].stream.is())
+        maStreams[aIt->second].stream
+            = createStream(OStringToOUString(maStreams[aIt->second].name, RTL_TEXTENCODING_UTF8));
 
-    return maStreams[aIt->second].stream.ref;
+    return maStreams[aIt->second].stream;
 }
 
-tools::SvRef<SotStorageStream> const &OLEStorageImpl::getStream(const std::size_t nId)
+tools::SvRef<SotStorageStream> const& OLEStorageImpl::getStream(const std::size_t nId)
 {
-    if (!maStreams[nId].stream.ref.is())
-        maStreams[nId].stream.ref = createStream(rtl::OStringToOUString(maStreams[nId].name, RTL_TEXTENCODING_UTF8));
+    if (!maStreams[nId].stream.is())
+        maStreams[nId].stream
+            = createStream(OStringToOUString(maStreams[nId].name, RTL_TEXTENCODING_UTF8));
 
-    return maStreams[nId].stream.ref;
+    return maStreams[nId].stream;
 }
 
-void OLEStorageImpl::traverse(const tools::SvRef<SotStorage> &rStorage, const rtl::OUString &rPath)
+void OLEStorageImpl::traverse(const tools::SvRef<SotStorage>& rStorage, const OUString& rPath)
 {
     SvStorageInfoList infos;
 
     rStorage->FillInfoList(&infos);
 
-    for (SvStorageInfoList::const_iterator aIt = infos.begin(); infos.end() != aIt; ++aIt)
+    for (const auto& info : infos)
     {
-        if (aIt->IsStream())
+        if (info.IsStream())
         {
-            rtl::OUString baseName=aIt->GetName(), rvngName=baseName;
+            OUString baseName = info.GetName(), rvngName = baseName;
             // librevenge::RVNGOLEStream ignores the first character when is a control code, so ...
-            if (!rvngName.isEmpty() && rvngName.toChar()<32)
-                rvngName=rvngName.copy(1);
-            maStreams.push_back(OLEStreamData(rtl::OUStringToOString(concatPath(rPath, baseName), RTL_TEXTENCODING_UTF8),
-                                              rtl::OUStringToOString(concatPath(rPath, rvngName), RTL_TEXTENCODING_UTF8)));
+            if (!rvngName.isEmpty() && rvngName.toChar() < 32)
+                rvngName = rvngName.copy(1);
+            maStreams.emplace_back(
+                OUStringToOString(concatPath(rPath, baseName), RTL_TEXTENCODING_UTF8),
+                OUStringToOString(concatPath(rPath, rvngName), RTL_TEXTENCODING_UTF8));
             maNameMap[concatPath(rPath, rvngName)] = maStreams.size() - 1;
         }
-        else if (aIt->IsStorage())
+        else if (info.IsStorage())
         {
-            const rtl::OUString aPath = concatPath(rPath, aIt->GetName());
-            SotStorageRefWrapper aStorage;
-            aStorage.ref = rStorage->OpenSotStorage(aIt->GetName(), StreamMode::STD_READ);
+            const OUString aPath = concatPath(rPath, info.GetName());
+            tools::SvRef<SotStorage> aStorage
+                = rStorage->OpenSotStorage(info.GetName(), StreamMode::STD_READ);
             maStorageMap[aPath] = aStorage;
 
             // deep-first traversal
-            traverse(aStorage.ref, aPath);
+            traverse(aStorage, aPath);
         }
         else
         {
-            SAL_WARN("writerperfect", "OLEStorageImpl::traverse: invalid storage entry, neither stream nor file");
+            SAL_WARN("writerperfect",
+                     "OLEStorageImpl::traverse: invalid storage entry, neither stream nor file");
         }
     }
 }
 
-tools::SvRef<SotStorageStream> OLEStorageImpl::createStream(const rtl::OUString &rPath)
+tools::SvRef<SotStorageStream> OLEStorageImpl::createStream(const OUString& rPath)
 {
     const sal_Int32 nDelim = rPath.lastIndexOf(u'/');
 
     if (-1 == nDelim)
-        return mxRootStorage.ref->OpenSotStream(rPath, StreamMode::STD_READ);
+        return mxRootStorage->OpenSotStream(rPath, StreamMode::STD_READ);
 
-    const rtl::OUString aDir = rPath.copy(0, nDelim);
-    const rtl::OUString aName = rPath.copy(nDelim + 1);
+    const OUString aDir = rPath.copy(0, nDelim);
+    const OUString aName = rPath.copy(nDelim + 1);
 
     const OLEStorageMap_t::const_iterator aIt = maStorageMap.find(aDir);
 
     if (maStorageMap.end() == aIt)
         return nullptr;
 
-    return aIt->second.ref->OpenSotStream(aName, StreamMode::STD_READ);
+    return aIt->second->OpenSotStream(aName, StreamMode::STD_READ);
 }
-
 }
 
 namespace
 {
-
 struct ZipStreamData
 {
-    explicit ZipStreamData(const rtl::OString &rName);
+    explicit ZipStreamData(const OString& rName);
 
     Reference<XInputStream> xStream;
 
     /** Name of the stream.
       *
-      * This is not @c rtl::OUString, because we need to be able to
+      * This is not @c OUString, because we need to be able to
       * produce const char* from it.
       */
-    rtl::OString aName;
+    OString aName;
 };
 
 /** Representation of a Zip storage.
@@ -297,7 +288,7 @@ struct ZipStreamData
   */
 struct ZipStorageImpl
 {
-    explicit ZipStorageImpl(const Reference<container::XNameAccess> &rxContainer);
+    explicit ZipStorageImpl(const Reference<container::XNameAccess>& rxContainer);
 
     /** Initialize for access.
       *
@@ -307,28 +298,28 @@ struct ZipStorageImpl
       */
     void initialize();
 
-    Reference<XInputStream> getStream(const rtl::OUString &rPath);
-    Reference<XInputStream> getStream(std::size_t nId);
+    Reference<XInputStream> getStream(const OUString& rPath);
+    Reference<XInputStream> const& getStream(std::size_t nId);
 
 private:
-    void traverse(const Reference<container::XNameAccess> &rxEnum);
+    void traverse(const Reference<container::XNameAccess>& rxEnum);
 
-    Reference<XInputStream> createStream(const rtl::OUString &rPath);
+    Reference<XInputStream> createStream(const OUString& rPath);
 
 public:
     Reference<container::XNameAccess> mxContainer; //< root of the Zip
-    ::std::vector< ZipStreamData > maStreams; //< list of streams and their names
+    ::std::vector<ZipStreamData> maStreams; //< list of streams and their names
     NameMap_t maNameMap; //< map of stream names to indexes (into @c maStreams)
     bool mbInitialized;
 };
 
-ZipStreamData::ZipStreamData(const rtl::OString &rName)
+ZipStreamData::ZipStreamData(const OString& rName)
     : xStream()
     , aName(rName)
 {
 }
 
-ZipStorageImpl::ZipStorageImpl(const Reference<container::XNameAccess> &rxContainer)
+ZipStorageImpl::ZipStorageImpl(const Reference<container::XNameAccess>& rxContainer)
     : mxContainer(rxContainer)
     , maStreams()
     , maNameMap()
@@ -344,9 +335,9 @@ void ZipStorageImpl::initialize()
     mbInitialized = true;
 }
 
-Reference<XInputStream> ZipStorageImpl::getStream(const rtl::OUString &rPath)
+Reference<XInputStream> ZipStorageImpl::getStream(const OUString& rPath)
 {
-    const rtl::OUString aPath(lcl_normalizeSubStreamPath(rPath));
+    const OUString aPath(lcl_normalizeSubStreamPath(rPath));
     NameMap_t::iterator aIt = maNameMap.find(aPath);
 
     // For the while don't return stream in this situation.
@@ -361,31 +352,32 @@ Reference<XInputStream> ZipStorageImpl::getStream(const rtl::OUString &rPath)
     return maStreams[aIt->second].xStream;
 }
 
-Reference<XInputStream> ZipStorageImpl::getStream(const std::size_t nId)
+Reference<XInputStream> const& ZipStorageImpl::getStream(const std::size_t nId)
 {
     if (!maStreams[nId].xStream.is())
-        maStreams[nId].xStream = createStream(rtl::OStringToOUString(maStreams[nId].aName, RTL_TEXTENCODING_UTF8));
+        maStreams[nId].xStream
+            = createStream(OStringToOUString(maStreams[nId].aName, RTL_TEXTENCODING_UTF8));
 
     return maStreams[nId].xStream;
 }
 
-void ZipStorageImpl::traverse(const Reference<container::XNameAccess> &rxContainer)
+void ZipStorageImpl::traverse(const Reference<container::XNameAccess>& rxContainer)
 {
-    const Sequence<rtl::OUString> lNames = rxContainer->getElementNames();
+    const Sequence<OUString> lNames = rxContainer->getElementNames();
 
     maStreams.reserve(lNames.getLength());
 
-    for (sal_Int32 n = 0; n < lNames.getLength(); ++n)
+    for (const auto& rName : lNames)
     {
-        if (!lNames[n].endsWith("/")) // skip dirs
+        if (!rName.endsWith("/")) // skip dirs
         {
-            maStreams.push_back(ZipStreamData(rtl::OUStringToOString(lNames[n], RTL_TEXTENCODING_UTF8)));
-            maNameMap[lNames[n]] = maStreams.size() - 1;
+            maStreams.emplace_back(OUStringToOString(rName, RTL_TEXTENCODING_UTF8));
+            maNameMap[rName] = maStreams.size() - 1;
         }
     }
 }
 
-Reference<XInputStream> ZipStorageImpl::createStream(const rtl::OUString &rPath)
+Reference<XInputStream> ZipStorageImpl::createStream(const OUString& rPath)
 {
     Reference<XInputStream> xStream;
 
@@ -397,32 +389,31 @@ Reference<XInputStream> ZipStorageImpl::createStream(const rtl::OUString &rPath)
         if (xSeekable.is())
             xStream = xInputStream;
         else
-            xStream.set(new comphelper::OSeekableInputWrapper(xInputStream, comphelper::getProcessComponentContext()));
+            xStream.set(new comphelper::OSeekableInputWrapper(
+                xInputStream, comphelper::getProcessComponentContext()));
     }
-    catch (const Exception &)
+    catch (const Exception&)
     {
         // nothing needed
     }
 
     return xStream;
 }
-
 }
 
 class WPXSvInputStreamImpl
 {
 public:
-    explicit WPXSvInputStreamImpl(css::uno::Reference<
-                                  css::io::XInputStream > const &xStream);
+    explicit WPXSvInputStreamImpl(css::uno::Reference<css::io::XInputStream> const& xStream);
 
     bool isStructured();
     unsigned subStreamCount();
-    const char *subStreamName(unsigned id);
-    bool existsSubStream(const char *name);
-    librevenge::RVNGInputStream *getSubStreamByName(const char *name);
-    librevenge::RVNGInputStream *getSubStreamById(unsigned id);
+    const char* subStreamName(unsigned id);
+    bool existsSubStream(const char* name);
+    librevenge::RVNGInputStream* getSubStreamByName(const char* name);
+    librevenge::RVNGInputStream* getSubStreamById(unsigned id);
 
-    const unsigned char *read(unsigned long numBytes, unsigned long &numBytesRead);
+    const unsigned char* read(unsigned long numBytes, unsigned long& numBytesRead);
     int seek(long offset);
     long tell();
     bool isEnd();
@@ -436,36 +427,36 @@ private:
     bool isZip();
     void ensureZipIsInitialized();
 
-    static librevenge::RVNGInputStream *createWPXStream(const tools::SvRef<SotStorageStream> &rxStorage);
-    static librevenge::RVNGInputStream *createWPXStream(const Reference<XInputStream> &rxStream);
+    static librevenge::RVNGInputStream*
+    createWPXStream(const tools::SvRef<SotStorageStream>& rxStorage);
+    static librevenge::RVNGInputStream* createWPXStream(const Reference<XInputStream>& rxStream);
 
 private:
-    css::uno::Reference< css::io::XInputStream > mxStream;
-    css::uno::Reference< css::io::XSeekable > mxSeekable;
-    css::uno::Sequence< sal_Int8 > maData;
-    std::unique_ptr< OLEStorageImpl > mpOLEStorage;
-    std::unique_ptr< ZipStorageImpl > mpZipStorage;
+    css::uno::Reference<css::io::XInputStream> mxStream;
+    css::uno::Reference<css::io::XSeekable> mxSeekable;
+    css::uno::Sequence<sal_Int8> maData;
+    std::unique_ptr<OLEStorageImpl> mpOLEStorage;
+    std::unique_ptr<ZipStorageImpl> mpZipStorage;
     bool mbCheckedOLE;
     bool mbCheckedZip;
+
 public:
     sal_Int64 mnLength;
-    const unsigned char *mpReadBuffer;
+    const unsigned char* mpReadBuffer;
     unsigned long mnReadBufferLength;
     unsigned long mnReadBufferPos;
 };
 
-WPXSvInputStreamImpl::WPXSvInputStreamImpl(Reference< XInputStream > const &xStream) :
-    mxStream(xStream),
-    mxSeekable(xStream, UNO_QUERY),
-    maData(0),
-    mpOLEStorage(nullptr),
-    mpZipStorage(nullptr),
-    mbCheckedOLE(false),
-    mbCheckedZip(false),
-    mnLength(0),
-    mpReadBuffer(nullptr),
-    mnReadBufferLength(0),
-    mnReadBufferPos(0)
+WPXSvInputStreamImpl::WPXSvInputStreamImpl(Reference<XInputStream> const& xStream)
+    : mxStream(xStream)
+    , mxSeekable(xStream, UNO_QUERY)
+    , maData(0)
+    , mbCheckedOLE(false)
+    , mbCheckedZip(false)
+    , mnLength(0)
+    , mpReadBuffer(nullptr)
+    , mnReadBufferLength(0)
+    , mnReadBufferPos(0)
 {
     if (!xStream.is() || !mxStream.is())
         mnLength = 0;
@@ -490,7 +481,7 @@ WPXSvInputStreamImpl::WPXSvInputStreamImpl(Reference< XInputStream > const &xStr
     }
 }
 
-const unsigned char *WPXSvInputStreamImpl::read(unsigned long numBytes, unsigned long &numBytesRead)
+const unsigned char* WPXSvInputStreamImpl::read(unsigned long numBytes, unsigned long& numBytesRead)
 {
     numBytesRead = 0;
 
@@ -501,19 +492,19 @@ const unsigned char *WPXSvInputStreamImpl::read(unsigned long numBytes, unsigned
     if (numBytesRead == 0)
         return nullptr;
 
-    return reinterpret_cast<const unsigned char *>(maData.getConstArray());
+    return reinterpret_cast<const unsigned char*>(maData.getConstArray());
 }
 
 long WPXSvInputStreamImpl::tell()
 {
     if ((mnLength == 0) || !mxStream.is() || !mxSeekable.is())
-        return -1L;
+        return -1;
     else
     {
-        sal_Int64 tmpPosition = mxSeekable->getPosition();
+        const sal_Int64 tmpPosition = mxSeekable->getPosition();
         if ((tmpPosition < 0) || (tmpPosition > LONG_MAX))
-            return -1L;
-        return (long)tmpPosition;
+            return -1;
+        return static_cast<long>(tmpPosition);
     }
 }
 
@@ -522,7 +513,7 @@ int WPXSvInputStreamImpl::seek(long offset)
     if ((mnLength == 0) || !mxStream.is() || !mxSeekable.is())
         return -1;
 
-    sal_Int64 tmpPosition = mxSeekable->getPosition();
+    const sal_Int64 tmpPosition = mxSeekable->getPosition();
     if ((tmpPosition < 0) || (tmpPosition > LONG_MAX))
         return -1;
 
@@ -588,7 +579,7 @@ unsigned WPXSvInputStreamImpl::subStreamCount()
     return 0;
 }
 
-const char *WPXSvInputStreamImpl::subStreamName(const unsigned id)
+const char* WPXSvInputStreamImpl::subStreamName(const unsigned id)
 {
     if ((mnLength == 0) || !mxStream.is() || !mxSeekable.is())
         return nullptr;
@@ -621,7 +612,7 @@ const char *WPXSvInputStreamImpl::subStreamName(const unsigned id)
     return nullptr;
 }
 
-bool WPXSvInputStreamImpl::existsSubStream(const char *const name)
+bool WPXSvInputStreamImpl::existsSubStream(const char* const name)
 {
     if (!name)
         return false;
@@ -632,7 +623,7 @@ bool WPXSvInputStreamImpl::existsSubStream(const char *const name)
     PositionHolder pos(mxSeekable);
     mxSeekable->seek(0);
 
-    const rtl::OUString aName(rtl::OStringToOUString(rtl::OString(name), RTL_TEXTENCODING_UTF8));
+    const OUString aName(OStringToOUString(OString(name), RTL_TEXTENCODING_UTF8));
 
     if (isOLE())
     {
@@ -651,7 +642,7 @@ bool WPXSvInputStreamImpl::existsSubStream(const char *const name)
     return false;
 }
 
-librevenge::RVNGInputStream *WPXSvInputStreamImpl::getSubStreamByName(const char *const name)
+librevenge::RVNGInputStream* WPXSvInputStreamImpl::getSubStreamByName(const char* const name)
 {
     if (!name)
         return nullptr;
@@ -662,7 +653,7 @@ librevenge::RVNGInputStream *WPXSvInputStreamImpl::getSubStreamByName(const char
     PositionHolder pos(mxSeekable);
     mxSeekable->seek(0);
 
-    const rtl::OUString aName(rtl::OStringToOUString(rtl::OString(name), RTL_TEXTENCODING_UTF8));
+    const OUString aName(OStringToOUString(OString(name), RTL_TEXTENCODING_UTF8));
 
     if (isOLE())
     {
@@ -680,7 +671,7 @@ librevenge::RVNGInputStream *WPXSvInputStreamImpl::getSubStreamByName(const char
         {
             return createWPXStream(mpZipStorage->getStream(aName));
         }
-        catch (const Exception &)
+        catch (const Exception&)
         {
             // nothing needed
         }
@@ -689,7 +680,7 @@ librevenge::RVNGInputStream *WPXSvInputStreamImpl::getSubStreamByName(const char
     return nullptr;
 }
 
-librevenge::RVNGInputStream *WPXSvInputStreamImpl::getSubStreamById(const unsigned id)
+librevenge::RVNGInputStream* WPXSvInputStreamImpl::getSubStreamById(const unsigned id)
 {
     if ((mnLength == 0) || !mxStream.is() || !mxSeekable.is())
         return nullptr;
@@ -720,7 +711,7 @@ librevenge::RVNGInputStream *WPXSvInputStreamImpl::getSubStreamById(const unsign
         {
             return createWPXStream(mpZipStorage->getStream(id));
         }
-        catch (const Exception &)
+        catch (const Exception&)
         {
             // nothing needed
         }
@@ -732,24 +723,26 @@ void WPXSvInputStreamImpl::invalidateReadBuffer()
 {
     if (mpReadBuffer)
     {
-        seek(tell() + (long)mnReadBufferPos - (long)mnReadBufferLength);
+        seek(tell() + static_cast<long>(mnReadBufferPos) - static_cast<long>(mnReadBufferLength));
         mpReadBuffer = nullptr;
         mnReadBufferPos = 0;
         mnReadBufferLength = 0;
     }
 }
 
-librevenge::RVNGInputStream *WPXSvInputStreamImpl::createWPXStream(const tools::SvRef<SotStorageStream> &rxStorage)
+librevenge::RVNGInputStream*
+WPXSvInputStreamImpl::createWPXStream(const tools::SvRef<SotStorageStream>& rxStorage)
 {
     if (rxStorage.is())
     {
-        Reference < XInputStream > xContents(new utl::OSeekableInputStreamWrapper(rxStorage.get()));
+        Reference<XInputStream> xContents(new utl::OSeekableInputStreamWrapper(rxStorage.get()));
         return new WPXSvInputStream(xContents);
     }
     return nullptr;
 }
 
-librevenge::RVNGInputStream *WPXSvInputStreamImpl::createWPXStream(const Reference<XInputStream> &rxStream)
+librevenge::RVNGInputStream*
+WPXSvInputStreamImpl::createWPXStream(const Reference<XInputStream>& rxStream)
 {
     if (rxStream.is())
         return new WPXSvInputStream(rxStream);
@@ -784,13 +777,15 @@ bool WPXSvInputStreamImpl::isZip()
             Sequence<Any> aArgs(1);
             aArgs[0] <<= mxStream;
 
-            const Reference<XComponentContext> xContext(comphelper::getProcessComponentContext(), UNO_QUERY_THROW);
+            const Reference<XComponentContext> xContext(comphelper::getProcessComponentContext(),
+                                                        UNO_SET_THROW);
             const Reference<packages::zip::XZipFileAccess2> xZip(
-                xContext->getServiceManager()->createInstanceWithArgumentsAndContext("com.sun.star.packages.zip.ZipFileAccess", aArgs, xContext),
+                xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
+                    "com.sun.star.packages.zip.ZipFileAccess", aArgs, xContext),
                 UNO_QUERY_THROW);
             mpZipStorage.reset(new ZipStorageImpl(xZip));
         }
-        catch (const Exception &)
+        catch (const Exception&)
         {
             // ignore
         }
@@ -817,29 +812,28 @@ void WPXSvInputStreamImpl::ensureZipIsInitialized()
         mpZipStorage->initialize();
 }
 
-WPXSvInputStream::WPXSvInputStream(Reference< XInputStream > const &xStream) :
-    mpImpl(new WPXSvInputStreamImpl(xStream))
+WPXSvInputStream::WPXSvInputStream(Reference<XInputStream> const& xStream)
+    : mpImpl(new WPXSvInputStreamImpl(xStream))
 {
 }
 
-WPXSvInputStream::~WPXSvInputStream()
-{
-}
+WPXSvInputStream::~WPXSvInputStream() {}
 
 #define BUFFER_MAX 65536
 
-const unsigned char *WPXSvInputStream::read(unsigned long numBytes, unsigned long &numBytesRead)
+const unsigned char* WPXSvInputStream::read(unsigned long numBytes, unsigned long& numBytesRead)
 {
     numBytesRead = 0;
 
-    if (numBytes == 0 || numBytes > (std::numeric_limits<unsigned long>::max)()/2)
+    if (numBytes == 0 || numBytes > std::numeric_limits<unsigned long>::max() / 2)
         return nullptr;
 
     if (mpImpl->mpReadBuffer)
     {
-        if ((mpImpl->mnReadBufferPos + numBytes > mpImpl->mnReadBufferPos) && (mpImpl->mnReadBufferPos + numBytes <= mpImpl->mnReadBufferLength))
+        if ((mpImpl->mnReadBufferPos + numBytes > mpImpl->mnReadBufferPos)
+            && (mpImpl->mnReadBufferPos + numBytes <= mpImpl->mnReadBufferLength))
         {
-            const unsigned char *pTmp = mpImpl->mpReadBuffer + mpImpl->mnReadBufferPos;
+            const unsigned char* pTmp = mpImpl->mpReadBuffer + mpImpl->mnReadBufferPos;
             mpImpl->mnReadBufferPos += numBytes;
             numBytesRead = numBytes;
             return pTmp;
@@ -848,12 +842,13 @@ const unsigned char *WPXSvInputStream::read(unsigned long numBytes, unsigned lon
         mpImpl->invalidateReadBuffer();
     }
 
-    unsigned long curpos = (unsigned long) mpImpl->tell();
-    if (curpos == (unsigned long)-1)  // returned ERROR
+    unsigned long curpos = static_cast<unsigned long>(mpImpl->tell());
+    if (curpos == static_cast<unsigned long>(-1)) // returned ERROR
         return nullptr;
 
-    if ((curpos + numBytes < curpos) /*overflow*/ ||
-            (curpos + numBytes >= (sal_uInt64)mpImpl->mnLength))  /*reading more than available*/
+    if ((curpos + numBytes < curpos) /*overflow*/
+        || (curpos + numBytes
+            >= o3tl::make_unsigned(mpImpl->mnLength))) /*reading more than available*/
     {
         numBytes = mpImpl->mnLength - curpos;
     }
@@ -877,7 +872,10 @@ const unsigned char *WPXSvInputStream::read(unsigned long numBytes, unsigned lon
     if (!mpImpl->mnReadBufferLength)
         return nullptr;
 
-    numBytesRead = numBytes;
+    if (numBytes <= mpImpl->mnReadBufferLength)
+        numBytesRead = numBytes;
+    else
+        numBytesRead = mpImpl->mnReadBufferLength;
 
     mpImpl->mnReadBufferPos += numBytesRead;
     return mpImpl->mpReadBuffer;
@@ -886,7 +884,8 @@ const unsigned char *WPXSvInputStream::read(unsigned long numBytes, unsigned lon
 long WPXSvInputStream::tell()
 {
     long retVal = mpImpl->tell();
-    return retVal - (long)mpImpl->mnReadBufferLength + (long)mpImpl->mnReadBufferPos;
+    return retVal - static_cast<long>(mpImpl->mnReadBufferLength)
+           + static_cast<long>(mpImpl->mnReadBufferPos);
 }
 
 int WPXSvInputStream::seek(long offset, librevenge::RVNG_SEEK_TYPE seekType)
@@ -909,9 +908,12 @@ int WPXSvInputStream::seek(long offset, librevenge::RVNG_SEEK_TYPE seekType)
         retVal = -1;
     }
 
-    if (tmpOffset < mpImpl->tell() && (unsigned long)tmpOffset >= (unsigned long)mpImpl->tell() - mpImpl->mnReadBufferLength)
+    if (tmpOffset < mpImpl->tell()
+        && o3tl::make_unsigned(tmpOffset)
+               >= static_cast<unsigned long>(mpImpl->tell()) - mpImpl->mnReadBufferLength)
     {
-        mpImpl->mnReadBufferPos = (unsigned long)(tmpOffset + (long) mpImpl->mnReadBufferLength - mpImpl->tell());
+        mpImpl->mnReadBufferPos = static_cast<unsigned long>(
+            tmpOffset + static_cast<long>(mpImpl->mnReadBufferLength) - mpImpl->tell());
         return retVal;
     }
 
@@ -939,30 +941,29 @@ unsigned WPXSvInputStream::subStreamCount()
     return mpImpl->subStreamCount();
 }
 
-const char *WPXSvInputStream::subStreamName(const unsigned id)
+const char* WPXSvInputStream::subStreamName(const unsigned id)
 {
     mpImpl->invalidateReadBuffer();
     return mpImpl->subStreamName(id);
 }
 
-bool WPXSvInputStream::existsSubStream(const char *const name)
+bool WPXSvInputStream::existsSubStream(const char* const name)
 {
     mpImpl->invalidateReadBuffer();
     return mpImpl->existsSubStream(name);
 }
 
-librevenge::RVNGInputStream *WPXSvInputStream::getSubStreamByName(const char *name)
+librevenge::RVNGInputStream* WPXSvInputStream::getSubStreamByName(const char* name)
 {
     mpImpl->invalidateReadBuffer();
     return mpImpl->getSubStreamByName(name);
 }
 
-librevenge::RVNGInputStream *WPXSvInputStream::getSubStreamById(const unsigned id)
+librevenge::RVNGInputStream* WPXSvInputStream::getSubStreamById(const unsigned id)
 {
     mpImpl->invalidateReadBuffer();
     return mpImpl->getSubStreamById(id);
 }
-
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

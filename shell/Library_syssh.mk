@@ -14,6 +14,7 @@ $(eval $(call gb_Library_use_sdk_api,syssh))
 $(eval $(call gb_Library_use_libraries,syssh,\
 	cppu \
 	cppuhelper \
+	comphelper \
 	sal \
 ))
 
@@ -28,7 +29,6 @@ $(eval $(call gb_Library_set_componentfile,syssh,shell/source/win32/syssh))
 
 $(eval $(call gb_Library_add_exception_objects,syssh,\
 	shell/source/win32/SysShExec \
-	shell/source/win32/SysShentry \
 ))
 
 else # OS != WNT
@@ -41,7 +41,6 @@ $(eval $(call gb_Library_set_componentfile,syssh,shell/source/unix/exec/syssh))
 
 $(eval $(call gb_Library_add_exception_objects,syssh,\
 	shell/source/unix/exec/shellexec \
-	shell/source/unix/exec/shellexecentry \
 ))
 
 endif # OS

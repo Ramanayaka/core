@@ -18,6 +18,7 @@
  */
 
 #include <unotools/progresshandlerwrap.hxx>
+#include <com/sun/star/task/XStatusIndicator.hpp>
 
 namespace utl
 {
@@ -31,18 +32,18 @@ ProgressHandlerWrap::ProgressHandlerWrap( css::uno::Reference< css::task::XStatu
 {
 }
 
-bool getStatusFromAny_Impl( const Any& aAny, OUString& aText, sal_Int32& nNum )
+static bool getStatusFromAny_Impl( const Any& aAny, OUString& aText, sal_Int32& nNum )
 {
     bool bNumIsSet = false;
 
     Sequence< Any > aSetList;
-    if( ( aAny >>= aSetList ) && aSetList.getLength() )
-        for( int ind = 0; ind < aSetList.getLength(); ind++ )
+    if( aAny >>= aSetList )
+        for( const auto& rSet : std::as_const(aSetList) )
         {
-            if( !bNumIsSet && ( aSetList[ind] >>= nNum ) )
+            if( !bNumIsSet && ( rSet >>= nNum ) )
                 bNumIsSet = true;
             else
-                aText.isEmpty() && ( aSetList[ind] >>= aText );
+                aText.isEmpty() && ( rSet >>= aText );
         }
 
     return bNumIsSet;

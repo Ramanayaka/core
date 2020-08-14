@@ -10,18 +10,18 @@
 #ifndef INCLUDED_SC_SOURCE_CORE_OPENCL_OPBASE_HXX
 #define INCLUDED_SC_SOURCE_CORE_OPENCL_OPBASE_HXX
 
-#include <sal/log.hxx>
-
 #include <clew/clew.h>
-
 #include <formula/token.hxx>
-#include <formula/vectortoken.hxx>
+#include <formula/types.hxx>
 #include <memory>
 #include <set>
+#include <vector>
 
-#include "calcconfig.hxx"
+namespace formula { class DoubleVectorRefToken; }
+namespace formula { class FormulaToken; }
+struct ScCalcConfig;
 
-namespace sc { namespace opencl {
+namespace sc::opencl {
 
 class FormulaTreeNode;
 
@@ -59,6 +59,25 @@ public:
     std::string mFile;
     int mLineNumber;
 };
+
+class InvalidParameterCount
+{
+public:
+    InvalidParameterCount( int parameterCount, const std::string& file, int ln );
+
+    int mParameterCount;
+    std::string mFile;
+    int const mLineNumber;
+};
+
+// Helper macro to be used in code emitting OpenCL code for Calc functions.
+// Requires the vSubArguments parameter.
+#define CHECK_PARAMETER_COUNT(min, max) \
+    do { \
+        const int count = vSubArguments.size(); \
+        if( count < ( min ) || count > ( max )) \
+            throw InvalidParameterCount( count, __FILE__, __LINE__ ); \
+    } while( false )
 
 typedef std::shared_ptr<FormulaTreeNode> FormulaTreeNodeRef;
 
@@ -112,13 +131,8 @@ public:
     /// When Mix, it will be called
     virtual std::string GenStringSlidingWindowDeclRef( bool = false ) const;
 
-    virtual bool IsMixedArgument() const;
-
     /// Generate use/references to the argument
     virtual void GenDeclRef( std::stringstream& ss ) const;
-    virtual void GenNumDeclRef( std::stringstream& ss ) const;
-
-    virtual void GenStringDeclRef( std::stringstream& ss ) const;
 
     virtual void GenSlidingWindowFunction( std::stringstream& );
     formula::FormulaToken* GetFormulaToken() const;
@@ -126,6 +140,8 @@ public:
     virtual void DumpInlineFun( std::set<std::string>&, std::set<std::string>& ) const;
     const std::string& GetName() const;
     virtual bool NeedParallelReduction() const;
+    /// If there's actually no argument, i.e. it expands to no code.
+    virtual bool IsEmpty() const { return false; }
 
 protected:
     const ScCalcConfig& mCalcConfig;
@@ -185,6 +201,8 @@ public:
         std::set<std::string>& ) { }
     virtual bool takeString() const = 0;
     virtual bool takeNumeric() const = 0;
+    // Whether DoubleRef containing more than one column is handled properly.
+    virtual bool canHandleMultiVector() const { return false; }
     //Continue process 'Zero' or Not(like OpMul, not continue process when meet
     // 'Zero'
     virtual bool ZeroReturnZero() { return false;}
@@ -211,7 +229,7 @@ public:
 class CheckVariables : public Normal
 {
 public:
-    static void GenTmpVariables( std::stringstream& ss, SubArguments& vSubArguments );
+    static void GenTmpVariables( std::stringstream& ss, const SubArguments& vSubArguments );
     static void CheckSubArgumentIsNan( std::stringstream& ss,
         SubArguments& vSubArguments, int argumentNum );
     static void CheckAllSubArgumentIsNan( std::stringstream& ss,
@@ -220,11 +238,11 @@ public:
     static void CheckSubArgumentIsNan2( std::stringstream& ss,
         SubArguments& vSubArguments, int argumentNum, const std::string& p );
     static void UnrollDoubleVector( std::stringstream& ss,
-        std::stringstream& unrollstr, const formula::DoubleVectorRefToken* pCurDVR,
+        const std::stringstream& unrollstr, const formula::DoubleVectorRefToken* pCurDVR,
         int nCurWindowSize );
 };
 
-}}
+}
 
 #endif
 

@@ -20,21 +20,16 @@
 #ifndef INCLUDED_FORMS_SOURCE_COMPONENT_GROUPMANAGER_HXX
 #define INCLUDED_FORMS_SOURCE_COMPONENT_GROUPMANAGER_HXX
 
-#include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/awt/XControlModel.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/container/XContainer.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/types.hxx>
 
-#include <algorithm>
 #include <map>
 #include <memory>
 #include <vector>
-
-using namespace comphelper;
 
 /*
  * The GroupManager listens at the StarForm for FormComponent insertion and removal as well as
@@ -109,8 +104,6 @@ public:
     sal_Int16   GetTabIndex() const { return m_nTabIndex; }
 };
 
-typedef std::vector<OGroupComp> OGroupCompArr;
-
 
 class OGroupComp;
 class OGroupCompAcc
@@ -131,7 +124,7 @@ public:
 
 class OGroup final
 {
-    OGroupCompArr              m_aCompArray;
+    std::vector<OGroupComp>    m_aCompArray;
     std::vector<OGroupCompAcc> m_aCompAccArray;
 
     OUString    m_aGroupName;
@@ -141,7 +134,6 @@ class OGroup final
 
 public:
     explicit OGroup(const OUString& rGroupName);
-    ~OGroup();
 
     const OUString& GetGroupName() const { return m_aGroupName; }
     css::uno::Sequence< css::uno::Reference< css::awt::XControlModel>  > GetControlModels() const;
@@ -188,10 +180,10 @@ public:
     virtual void SAL_CALL elementReplaced(const css::container::ContainerEvent& _rEvent) override;
 
 // Other functions
-    sal_Int32 getGroupCount();
+    sal_Int32 getGroupCount() const;
     void getGroup(sal_Int32 nGroup, css::uno::Sequence< css::uno::Reference< css::awt::XControlModel> >& _rGroup, OUString& Name);
     void getGroupByName(const OUString& Name, css::uno::Sequence< css::uno::Reference< css::awt::XControlModel> >& _rGroup);
-    css::uno::Sequence< css::uno::Reference< css::awt::XControlModel> > getControlModels();
+    css::uno::Sequence< css::uno::Reference< css::awt::XControlModel> > getControlModels() const;
 
     static OUString GetGroupName( const css::uno::Reference< css::beans::XPropertySet>& xComponent );
 };

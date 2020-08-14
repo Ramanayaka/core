@@ -10,7 +10,10 @@
 #ifndef INCLUDED_SC_INC_CLIPOPTIONS_HXX
 #define INCLUDED_SC_INC_CLIPOPTIONS_HXX
 
-#include <com/sun/star/document/XDocumentProperties.hpp>
+#include "scdllapi.h"
+#include <com/sun/star/uno/Reference.h>
+
+namespace com::sun::star::document { class XDocumentProperties; }
 
 /// Stores options which are only relevant for clipboard documents.
 class SC_DLLPUBLIC ScClipOptions

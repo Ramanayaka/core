@@ -27,7 +27,6 @@
 
 using namespace chelp;
 using namespace com::sun::star;
-using namespace com::sun::star::ucb;
 
 
 XInputStream_impl::XInputStream_impl( const OUString& aUncPath )
@@ -47,8 +46,8 @@ uno::Any SAL_CALL
 XInputStream_impl::queryInterface( const uno::Type& rType )
 {
     uno::Any aRet = cppu::queryInterface( rType,
-                                          (static_cast< io::XInputStream* >(this)),
-                                          (static_cast< io::XSeekable* >(this)) );
+                                          static_cast< io::XInputStream* >(this),
+                                          static_cast< io::XSeekable* >(this) );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
 
@@ -90,7 +89,7 @@ XInputStream_impl::readBytes(
     // if any code relies on this, so be conservative---SB):
     if (nBytesRead != sal::static_int_cast<sal_uInt64>(nBytesToRead) )
         aData.realloc(sal_Int32(nBytesRead));
-    return ( sal_Int32 ) nBytesRead;
+    return static_cast<sal_Int32>(nBytesRead);
 }
 
 sal_Int32 SAL_CALL
@@ -116,7 +115,13 @@ XInputStream_impl::skipBytes(
 sal_Int32 SAL_CALL
 XInputStream_impl::available()
 {
-    return 0;
+    sal_uInt64 uPos;
+    if( osl::FileBase::E_None != m_aFile.getPos( uPos ) )
+        throw io::IOException();
+    sal_uInt64 uSize;
+    if( osl::FileBase::E_None != m_aFile.getSize( uSize ) )
+        throw io::IOException();
+    return std::min<sal_uInt64>(SAL_MAX_INT32, uSize - uPos);
 }
 
 
@@ -173,8 +178,8 @@ XInputStream_impl::getLength()
     err = m_aFile.setPos( osl_Pos_Absolut, uCurrentPos );
     if( err != osl::FileBase::E_None )
         throw io::IOException();
-    else
-        return sal_Int64( uEndPos );
+
+    return sal_Int64( uEndPos );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,12 +21,9 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_DOCUMENTCHARTDATAPROVIDEMANAGER_HXX
 
 #include <IDocumentChartDataProviderAccess.hxx>
-
+#include <o3tl/deleter.hxx>
 #include <rtl/ref.hxx>
-
-namespace com { namespace sun { namespace star { namespace frame {
-    class XModel;
-}}}}
+#include <memory>
 
 class SwTable;
 class SwChartDataProvider;
@@ -59,7 +56,7 @@ private:
     SwDoc& m_rDoc;
 
     mutable rtl::Reference<SwChartDataProvider> maChartDataProviderImplRef;
-    SwChartLockController_Helper  *mpChartControllerHelper;
+    std::unique_ptr<SwChartLockController_Helper, o3tl::default_delete<SwChartLockController_Helper>> mpChartControllerHelper;
 };
 
 }

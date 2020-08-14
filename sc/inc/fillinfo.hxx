@@ -25,17 +25,16 @@
 #include <memory>
 
 #include <svx/framelinkarray.hxx>
-#include "global.hxx"
 #include "colorscale.hxx"
 #include "cellvalue.hxx"
 #include <o3tl/typed_flags_set.hxx>
+#include <optional>
 
 class SfxItemSet;
 class SvxBrushItem;
 class SvxBoxItem;
 class SvxLineItem;
 class SvxShadowItem;
-class Color;
 
 class ScPatternAttr;
 
@@ -114,7 +113,6 @@ struct CellInfo
         , nClipMark(ScClipMark::NONE)
         , nWidth(0)
         , nRotateDir(ScRotateDir::NONE)
-        , bMarked(false)
         , bEmptyCellText(false)
         , bMerged(false)
         , bHOverlapped(false)
@@ -136,7 +134,7 @@ struct CellInfo
 
     const ScPatternAttr*        pPatternAttr;
     const SfxItemSet*           pConditionSet;
-    std::unique_ptr<const Color> pColorScale;
+    std::optional<Color>      mxColorScale;
     std::unique_ptr<const ScDataBarInfo> pDataBar;
     std::unique_ptr<const ScIconSetInfo> pIconSet;
 
@@ -157,7 +155,6 @@ struct CellInfo
     sal_uInt16                  nWidth;
     ScRotateDir                 nRotateDir;
 
-    bool                        bMarked : 1;
     bool                        bEmptyCellText : 1;
     bool                        bMerged : 1;
     bool                        bHOverlapped : 1;
@@ -176,6 +173,7 @@ const SCCOL SC_ROTMAX_NONE = SCCOL_MAX;
 struct RowInfo
 {
     RowInfo() = default;
+    RowInfo(const RowInfo&) = delete;
     const RowInfo& operator=(const RowInfo&) = delete;
 
     CellInfo*           pCellInfo;
@@ -185,7 +183,6 @@ struct RowInfo
     SCCOL               nRotMaxCol;         // SC_ROTMAX_NONE, if nothing
 
     bool                bEmptyBack:1;
-    bool                bEmptyText:1;
     bool                bAutoFilter:1;
     bool                bPivotButton:1;
     bool                bChanged:1;           // TRUE, if not tested
@@ -194,7 +191,8 @@ struct RowInfo
 struct ScTableInfo
 {
     svx::frame::Array   maArray;
-    RowInfo*            mpRowInfo;
+    std::unique_ptr<RowInfo[]>
+                        mpRowInfo;
     SCSIZE              mnArrCount;
     SCSIZE              mnArrCapacity;
     bool                mbPageMode;

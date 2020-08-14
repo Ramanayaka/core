@@ -18,23 +18,12 @@
  */
 
 #include <uielement/addonstoolbarwrapper.hxx>
-#include <framework/actiontriggerhelper.hxx>
-#include <uielement/constitemcontainer.hxx>
-#include <uielement/rootitemcontainer.hxx>
 #include <uielement/addonstoolbarmanager.hxx>
 
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/awt/XSystemDependentMenuPeer.hpp>
-#include <com/sun/star/awt/XMenuBar.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/ui/UIElementType.hpp>
 
 #include <toolkit/helper/vclunohelper.hxx>
-#include <toolkit/awt/vclxwindow.hxx>
-#include <comphelper/processfactory.hxx>
 
 #include <svtools/miscopt.hxx>
 #include <vcl/svapp.hxx>
@@ -87,57 +76,58 @@ void SAL_CALL AddonsToolBarWrapper::initialize( const Sequence< Any >& aArgument
     if ( m_bDisposed )
         throw DisposedException();
 
-    if ( !m_bInitialized )
+    if ( m_bInitialized )
+        return;
+
+    UIElementWrapperBase::initialize( aArguments );
+
+    for ( const Any& rArg : aArguments )
     {
-        UIElementWrapperBase::initialize( aArguments );
-
-        for ( sal_Int32 n = 0; n < aArguments.getLength(); n++ )
+        PropertyValue aPropValue;
+        if ( rArg >>= aPropValue )
         {
-            PropertyValue aPropValue;
-            if ( aArguments[n] >>= aPropValue )
-            {
-                if ( aPropValue.Name == "ConfigurationData" )
-                    aPropValue.Value >>= m_aConfigData;
-            }
+            if ( aPropValue.Name == "ConfigurationData" )
+                aPropValue.Value >>= m_aConfigData;
         }
+    }
 
-        Reference< XFrame > xFrame( m_xWeakFrame );
-        if ( xFrame.is() && m_aConfigData.getLength() > 0 )
+    Reference< XFrame > xFrame( m_xWeakFrame );
+    if ( !(xFrame.is() && m_aConfigData.hasElements()) )
+        return;
+
+    // Create VCL based toolbar which will be filled with settings data
+    VclPtr<ToolBox> pToolBar;
+    AddonsToolBarManager* pToolBarManager = nullptr;
+    {
+        SolarMutexGuard aSolarMutexGuard;
+        VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xFrame->getContainerWindow() );
+        if ( pWindow )
         {
-            // Create VCL based toolbar which will be filled with settings data
-            VclPtr<ToolBox> pToolBar;
-            AddonsToolBarManager* pToolBarManager = nullptr;
-            {
-                SolarMutexGuard aSolarMutexGuard;
-                VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xFrame->getContainerWindow() );
-                if ( pWindow )
-                {
-                    sal_uLong nStyles = WB_LINESPACING | WB_BORDER | WB_SCROLL | WB_MOVEABLE | WB_3DLOOK | WB_DOCKABLE | WB_SIZEABLE | WB_CLOSEABLE;
+            sal_uLong nStyles = WB_BORDER | WB_SCROLL | WB_MOVEABLE | WB_3DLOOK | WB_DOCKABLE | WB_SIZEABLE | WB_CLOSEABLE;
 
-                    pToolBar = VclPtr<ToolBox>::Create( pWindow, nStyles );
-                    pToolBarManager = new AddonsToolBarManager( m_xContext, xFrame, m_aResourceURL, pToolBar );
-                    m_xToolBarManager.set( static_cast< OWeakObject *>( pToolBarManager ), UNO_QUERY );
-                }
-            }
-
-            try
-            {
-                if (( m_aConfigData.getLength() > 0 ) && pToolBar && pToolBarManager )
-                {
-                    // Fill toolbar with container contents
-                    pToolBarManager->FillToolbar( m_aConfigData );
-                    pToolBar->SetOutStyle( SvtMiscOptions().GetToolboxStyle() );
-                    pToolBar->EnableCustomize();
-                    ::Size aActSize( pToolBar->GetSizePixel() );
-                    ::Size aSize( pToolBar->CalcWindowSizePixel() );
-                    aSize.Width() = aActSize.Width();
-                    pToolBar->SetSizePixel( aSize );
-                }
-            }
-            catch ( const NoSuchElementException& )
-            {
-            }
+            pToolBar = VclPtr<ToolBox>::Create( pWindow, nStyles );
+            pToolBar->SetLineSpacing(true);
+            pToolBarManager = new AddonsToolBarManager( m_xContext, xFrame, m_aResourceURL, pToolBar );
+            m_xToolBarManager.set( static_cast< OWeakObject *>( pToolBarManager ), UNO_QUERY );
         }
+    }
+
+    try
+    {
+        if ( m_aConfigData.hasElements() && pToolBar && pToolBarManager )
+        {
+            // Fill toolbar with container contents
+            pToolBarManager->FillToolbar( m_aConfigData );
+            pToolBar->SetOutStyle( SvtMiscOptions().GetToolboxStyle() );
+            pToolBar->EnableCustomize();
+            ::Size aActSize( pToolBar->GetSizePixel() );
+            ::Size aSize( pToolBar->CalcWindowSizePixel() );
+            aSize.setWidth( aActSize.Width() );
+            pToolBar->SetSizePixel( aSize );
+        }
+    }
+    catch ( const NoSuchElementException& )
+    {
     }
 }
 
@@ -151,7 +141,7 @@ Reference< XInterface > SAL_CALL AddonsToolBarWrapper::getRealInterface()
         AddonsToolBarManager* pToolBarManager = static_cast< AddonsToolBarManager *>( m_xToolBarManager.get() );
         if ( pToolBarManager )
         {
-            vcl::Window* pWindow = static_cast<vcl::Window *>(pToolBarManager->GetToolBar());
+            vcl::Window* pWindow = pToolBarManager->GetToolBar();
             return Reference< XInterface >( VCLUnoHelper::GetInterface( pWindow ), UNO_QUERY );
         }
     }

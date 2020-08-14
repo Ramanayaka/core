@@ -21,8 +21,8 @@
 
 #include <svl/eitem.hxx>
 #include "swdllapi.h"
-#include <hintids.hxx>
-#include <format.hxx>
+#include "hintids.hxx"
+#include "format.hxx"
 
 class IntlWrapper;
 
@@ -32,16 +32,16 @@ public:
     SwFormatRowSplit( bool bSplit = true ) : SfxBoolItem( RES_ROW_SPLIT, bSplit ) {}
 
     // "pure virtual methods" of SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwFormatRowSplit* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 };
 
 inline const SwFormatRowSplit &SwAttrSet::GetRowSplit(bool bInP) const
-    { return static_cast<const SwFormatRowSplit&>(Get( RES_ROW_SPLIT,bInP)); }
+    { return Get( RES_ROW_SPLIT,bInP); }
 
 inline const SwFormatRowSplit &SwFormat::GetRowSplit(bool bInP) const
     { return m_aSet.GetRowSplit(bInP); }

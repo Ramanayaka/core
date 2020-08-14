@@ -19,129 +19,92 @@
 #ifndef INCLUDED_CUI_SOURCE_INC_OPTDICT_HXX
 #define INCLUDED_CUI_SOURCE_INC_OPTDICT_HXX
 
-#include <vcl/dialog.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
-#include <vcl/group.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/timer.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/decoview.hxx>
-#include <com/sun/star/util/Language.hpp>
+#include <vcl/weld.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-
-
-#include <svtools/simptabl.hxx>
 #include <svx/langbox.hxx>
 
-namespace com{namespace sun{namespace star{
-namespace linguistic2{
-    class XDictionary;
-    class XSpellChecker1;
-}}}}
+namespace com::sun::star{
+    namespace linguistic2{
+        class XDictionary;
+        class XSpellChecker1;
+    }
+}
 
 // forward ---------------------------------------------------------------
 
 
 // class SvxNewDictionaryDialog ------------------------------------------
 
-class SvxNewDictionaryDialog : public ModalDialog
+class SvxNewDictionaryDialog : public weld::GenericDialogController
 {
 private:
-    VclPtr<Edit>                pNameEdit;
-    VclPtr<SvxLanguageBox>      pLanguageLB;
-    VclPtr<CheckBox>            pExceptBtn;
-    VclPtr<OKButton>            pOKBtn;
-    css::uno::Reference<
-        css::linguistic2::XDictionary >    xNewDic;
+    std::unique_ptr<weld::Entry> m_xNameEdit;
+    std::unique_ptr<SvxLanguageBox> m_xLanguageLB;
+    std::unique_ptr<weld::CheckButton> m_xExceptBtn;
+    std::unique_ptr<weld::Button> m_xOKBtn;
+    css::uno::Reference<css::linguistic2::XDictionary> m_xNewDic;
 
-    DECL_LINK(OKHdl_Impl, Button*, void);
-    DECL_LINK(ModifyHdl_Impl, Edit&, void);
+    DECL_LINK(OKHdl_Impl, weld::Button&, void);
+    DECL_LINK(ModifyHdl_Impl, weld::Entry&, void);
 
 public:
-    SvxNewDictionaryDialog( vcl::Window* pParent );
-    virtual ~SvxNewDictionaryDialog() override;
-    virtual void dispose() override;
+    SvxNewDictionaryDialog(weld::Window* pParent);
 
-    const css::uno::Reference<
-        css::linguistic2::XDictionary >&
-                GetNewDictionary() { return xNewDic; }
-};
-
-// class SvxDictEdit ----------------------------------------------------
-
-class SvxDictEdit : public Edit
-{
-    Link<SvxDictEdit&,bool>  aActionLink;
-    bool                     bSpaces;
-
-    public:
-                    SvxDictEdit(vcl::Window* pParent, WinBits aWB) :
-                        Edit(pParent, aWB), bSpaces(false){}
-
-    void            SetActionHdl( const Link<SvxDictEdit&,bool>& rLink )
-                                { aActionLink = rLink;}
-
-    void            SetSpaces(bool bSet)
-                                {bSpaces = bSet;}
-
-    virtual void    KeyInput( const KeyEvent& rKEvent ) override;
+    const css::uno::Reference<css::linguistic2::XDictionary>& GetNewDictionary() const { return m_xNewDic; }
 };
 
 // class SvxEditDictionaryDialog -----------------------------------------
 
-class SvxEditDictionaryDialog : public ModalDialog
+class SvxEditDictionaryDialog : public weld::GenericDialogController
 {
 private:
-
-    VclPtr<ListBox>                 pAllDictsLB;
-    VclPtr<FixedText>               pLangFT;
-    VclPtr<SvxLanguageBox>          pLangLB;
-
-    VclPtr<SvxDictEdit>             pWordED;
-    VclPtr<FixedText>               pReplaceFT;
-    VclPtr<SvxDictEdit>             pReplaceED;
-    VclPtr<SvTabListBox>            pWordsLB;
-    VclPtr<PushButton>              pNewReplacePB;
-    VclPtr<PushButton>              pDeletePB;
-
     OUString                sModify;
     OUString                sNew;
+    OUString                sReplaceFT_Text;
 
     css::uno::Sequence<
         css::uno::Reference<
             css::linguistic2::XDictionary >  > aDics;  //! snapshot copy to work on
 
-    long                nWidth;
     bool            bFirstSelect;
     bool            bDoNothing;
-    bool                bDicIsReadonly;
+    bool            bDicIsReadonly;
 
-    DECL_LINK(SelectBookHdl_Impl, ListBox&, void);
-    DECL_LINK(SelectLangHdl_Impl, ListBox&, void);
-    DECL_LINK(SelectHdl, SvTreeListBox*, void);
-    DECL_LINK(NewDelButtonHdl, Button*, void);
-    DECL_LINK(NewDelActionHdl, SvxDictEdit&, bool);
-    DECL_LINK(ModifyHdl, Edit&, void);
-    bool NewDelHdl(void*);
+    weld::TreeView* m_pWordsLB;
+    std::unique_ptr<weld::ComboBox> m_xAllDictsLB;
+    std::unique_ptr<weld::Label> m_xLangFT;
+    std::unique_ptr<SvxLanguageBox> m_xLangLB;
+    std::unique_ptr<weld::Entry> m_xWordED;
+    std::unique_ptr<weld::Label> m_xReplaceFT;
+    std::unique_ptr<weld::Entry> m_xReplaceED;
+    std::unique_ptr<weld::TreeView> m_xSingleColumnLB;
+    std::unique_ptr<weld::TreeView> m_xDoubleColumnLB;
+    std::unique_ptr<weld::Button> m_xNewReplacePB;
+    std::unique_ptr<weld::Button> m_xDeletePB;
 
+    DECL_LINK(SelectBookHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(SelectLangHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(SelectHdl, weld::TreeView&, void);
+    DECL_LINK(NewDelButtonHdl, weld::Button&, void);
+    DECL_LINK(NewDelActionHdl, weld::Entry&, bool);
+    DECL_LINK(ModifyHdl, weld::Entry&, void);
+    DECL_LINK(EntrySizeAllocHdl, const Size&, void);
+    DECL_STATIC_LINK(SvxEditDictionaryDialog, InsertTextHdl, OUString&, bool);
+    bool NewDelHdl(const weld::Widget*);
 
     void            ShowWords_Impl( sal_uInt16 nId );
     void            SetLanguage_Impl( LanguageType nLanguage );
     bool            IsDicReadonly_Impl() const { return bDicIsReadonly; }
     void            SetDicReadonly_Impl( css::uno::Reference<
-                            css::linguistic2::XDictionary >  &xDic );
+                            css::linguistic2::XDictionary > const &xDic );
 
-    void            RemoveDictEntry(SvTreeListEntry* pEntry);
-    sal_uLong       GetLBInsertPos(const OUString &rDicWord);
+    void            RemoveDictEntry(int nEntry);
+    int             GetLBInsertPos(const OUString &rDicWord);
 
 public:
-    SvxEditDictionaryDialog( vcl::Window* pParent,
-            const OUString& rName );
+    SvxEditDictionaryDialog(weld::Window* pParent, const OUString& rName);
     virtual ~SvxEditDictionaryDialog() override;
-    virtual void dispose() override;
 };
 
 #endif

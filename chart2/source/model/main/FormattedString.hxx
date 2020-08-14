@@ -19,15 +19,15 @@
 #ifndef INCLUDED_CHART2_SOURCE_MODEL_MAIN_FORMATTEDSTRING_HXX
 #define INCLUDED_CHART2_SOURCE_MODEL_MAIN_FORMATTEDSTRING_HXX
 
-#include "MutexContainer.hxx"
-#include "OPropertySet.hxx"
+#include <MutexContainer.hxx>
+#include <OPropertySet.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/uno3.hxx>
-#include "ModifyListenerHelper.hxx"
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/chart2/XFormattedString2.hpp>
+#include <com/sun/star/chart2/XDataPointCustomLabelField.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/util/XModifyBroadcaster.hpp>
+#include <com/sun/star/util/XModifyListener.hpp>
 
 namespace chart
 {
@@ -35,7 +35,7 @@ namespace chart
 namespace impl
 {
 typedef ::cppu::WeakImplHelper<
-    css::chart2::XFormattedString2,
+    css::chart2::XDataPointCustomLabelField, // inherits from XFormattedString2
     css::lang::XServiceInfo,
     css::util::XCloneable,
     css::util::XModifyBroadcaster,
@@ -43,14 +43,13 @@ typedef ::cppu::WeakImplHelper<
     FormattedString_Base;
 }
 
-class FormattedString :
+class FormattedString final :
     public MutexContainer,
     public impl::FormattedString_Base,
     public ::property::OPropertySet
 {
 public:
-    explicit FormattedString( css::uno::Reference<
-           css::uno::XComponentContext > const & xContext );
+    explicit FormattedString();
     virtual ~FormattedString() override;
 
     /// declare XServiceInfo methods
@@ -76,12 +75,19 @@ public:
     virtual void SAL_CALL removeVetoableChangeListener(const OUString& p1, const css::uno::Reference<css::beans::XVetoableChangeListener>& p2) override
         { ::property::OPropertySet::removeVetoableChangeListener(p1, p2); }
 
-protected:
+private:
     explicit FormattedString( const FormattedString & rOther );
 
     // ____ XFormattedString ____
     virtual OUString SAL_CALL getString() override;
     virtual void SAL_CALL setString( const OUString& String ) override;
+
+    // ____ XDataPointCustomLabelField ____
+    virtual css::chart2::DataPointCustomLabelFieldType SAL_CALL getFieldType() override;
+    virtual void SAL_CALL
+        setFieldType( const css::chart2::DataPointCustomLabelFieldType FieldType ) override;
+    virtual OUString SAL_CALL getGuid() override;
+    void SAL_CALL setGuid( const OUString& guid ) override;
 
     // ____ OPropertySet ____
     virtual css::uno::Any GetDefaultValue( sal_Int32 nHandle ) const override;
@@ -116,8 +122,12 @@ protected:
 
     void fireModifyEvent();
 
-private:
+    // ____ XFormattedString ____
     OUString m_aString;
+
+    // ____ XDataPointCustomLabelField ____
+    css::chart2::DataPointCustomLabelFieldType m_aType;
+    OUString m_aGuid;
 
     css::uno::Reference< css::util::XModifyListener > m_xModifyEventForwarder;
 };

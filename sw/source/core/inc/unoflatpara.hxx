@@ -26,22 +26,17 @@
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/text/XFlatParagraph.hpp>
 #include <com/sun/star/text/XFlatParagraphIterator.hpp>
-#include <calbck.hxx>
-#include <modeltoviewhelper.hxx>
-#include <unotextmarkup.hxx>
+#include <svl/listener.hxx>
+#include <tools/solar.h>
+#include "unotextmarkup.hxx"
 
 #include <set>
 
-namespace com { namespace sun { namespace star { namespace container {
-    class XStringKeyMap;
-} } } }
-
-namespace com { namespace sun { namespace star { namespace text {
-    class XTextRange;
-} } } }
-
+namespace com::sun::star::container { class XStringKeyMap; }
+namespace com::sun::star::text { class XTextRange; }
 class SwTextNode;
 class SwDoc;
+class ModelToViewHelper;
 
 typedef ::cppu::ImplInheritanceHelper
 <   SwXTextMarkup
@@ -117,7 +112,7 @@ class SwXFlatParagraphIterator:
     <
         css::text::XFlatParagraphIterator
     >,
-    public SwClient     // to get notified when doc is closed...
+    public SvtListener
 {
 public:
     SwXFlatParagraphIterator( SwDoc& rDoc, sal_Int32 nType, bool bAutomatic );
@@ -130,9 +125,7 @@ public:
     virtual css::uno::Reference< css::text::XFlatParagraph > SAL_CALL getParaBefore(const css::uno::Reference< css::text::XFlatParagraph > & xPara) override;
     virtual css::uno::Reference< css::text::XFlatParagraph > SAL_CALL getParaAfter(const css::uno::Reference< css::text::XFlatParagraph > & xPara) override;
 
-protected:
-    // SwClient
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew ) override;
+    virtual void Notify( const SfxHint& ) override;
 
 private:
     SwXFlatParagraphIterator( const SwXFlatParagraphIterator & ) = delete;

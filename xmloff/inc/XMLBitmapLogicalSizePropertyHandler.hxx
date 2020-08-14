@@ -28,7 +28,7 @@ template<typename EnumT> struct SvXMLEnumMapEntry;
 /** Abstract base-class for different XML-types. Derivations of this class
     knows how to compare, im/export a special XML-type
 */
-class XMLBitmapLogicalSizePropertyHandler: public XMLPropertyHandler
+class XMLBitmapLogicalSizePropertyHandler final : public XMLPropertyHandler
 {
 public:
 
@@ -37,13 +37,13 @@ public:
     // Just needed for virtual destruction
     virtual ~XMLBitmapLogicalSizePropertyHandler() override;
 
-    /// Imports the given value in cas of the given XML-data-type
+    /// Imports the given value in case of the given XML-data-type
     virtual bool importXML(
             const OUString& rStrImpValue,
             css::uno::Any& rValue,
             const SvXMLUnitConverter& rUnitConverter ) const override;
 
-    /// Exports the given value in cas of the given XML-data-type
+    /// Exports the given value in case of the given XML-data-type
     virtual bool exportXML(
             OUString& rStrExpValue,
             const css::uno::Any& rValue,

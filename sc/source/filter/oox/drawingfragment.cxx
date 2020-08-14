@@ -17,21 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingfragment.hxx"
+#include <drawingfragment.hxx>
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/container/XNameReplace.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/drawing/XControlShape.hpp>
+#include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/script/ScriptEventDescriptor.hpp>
 #include <com/sun/star/script/XEventAttacherManager.hpp>
 #include <rtl/strbuf.hxx>
 #include <svx/svdobj.hxx>
-#include "drwlayer.hxx"
-#include "userdat.hxx"
+#include <drwlayer.hxx>
+#include <userdat.hxx>
 #include <oox/core/filterbase.hxx>
 #include <oox/drawingml/connectorshapecontext.hxx>
 #include <oox/drawingml/graphicshapecontext.hxx>
@@ -42,13 +44,12 @@
 #include <oox/token/tokens.hxx>
 #include <oox/vml/vmlshape.hxx>
 #include <oox/vml/vmlshapecontainer.hxx>
-#include "formulaparser.hxx"
-#include "stylesbuffer.hxx"
-#include "themebuffer.hxx"
-#include "unitconverter.hxx"
-#include "worksheetbuffer.hxx"
-namespace oox {
-namespace xls {
+#include <formulaparser.hxx>
+#include <stylesbuffer.hxx>
+#include <themebuffer.hxx>
+#include <unitconverter.hxx>
+#include <worksheetbuffer.hxx>
+namespace oox::xls {
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
@@ -90,7 +91,7 @@ void ShapeMacroAttacher::attachMacro( const OUString& rMacroUrl )
     }
 }
 
-Shape::Shape( const WorksheetHelper& rHelper, const AttributeList& rAttribs, const sal_Char* pcServiceName ) :
+Shape::Shape( const WorksheetHelper& rHelper, const AttributeList& rAttribs, const char* pcServiceName ) :
     ::oox::drawingml::Shape( pcServiceName ),
     WorksheetHelper( rHelper )
 {
@@ -106,7 +107,7 @@ void Shape::finalizeXShape( XmlFilterBase& rFilter, const Reference< XShapes >& 
     getWorksheets().convertSheetNameRef( sURL );
     if( !maMacroName.isEmpty() && mxShape.is() )
     {
-        VbaMacroAttacherRef xAttacher( new ShapeMacroAttacher( maMacroName, mxShape ) );
+        VbaMacroAttacherRef xAttacher = std::make_shared<ShapeMacroAttacher>( maMacroName, mxShape );
         getBaseFilter().getVbaProject().registerMacroAttacher( xAttacher );
     }
     ::oox::drawingml::Shape::finalizeXShape( rFilter, rxShapes );
@@ -121,14 +122,14 @@ void Shape::finalizeXShape( XmlFilterBase& rFilter, const Reference< XShapes >& 
     }
 }
 
-GroupShapeContext::GroupShapeContext( ContextHandler2Helper& rParent,
+GroupShapeContext::GroupShapeContext( const FragmentHandler2& rParent,
         const WorksheetHelper& rHelper, const ShapePtr& rxParentShape, const ShapePtr& rxShape ) :
     ShapeGroupContext( rParent, rxParentShape, rxShape ),
     WorksheetHelper( rHelper )
 {
 }
 
-/*static*/ ContextHandlerRef GroupShapeContext::createShapeContext( ContextHandler2Helper& rParent,
+/*static*/ ContextHandlerRef GroupShapeContext::createShapeContext( FragmentHandler2& rParent,
         const WorksheetHelper& rHelper, sal_Int32 nElement, const AttributeList& rAttribs,
         const ShapePtr& rxParentShape, ShapePtr* pxShape )
 {
@@ -136,31 +137,31 @@ GroupShapeContext::GroupShapeContext( ContextHandler2Helper& rParent,
     {
         case XDR_TOKEN( sp ):
         {
-            ShapePtr xShape( new Shape( rHelper, rAttribs, "com.sun.star.drawing.CustomShape" ) );
+            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, "com.sun.star.drawing.CustomShape" );
             if( pxShape ) *pxShape = xShape;
             return new ShapeContext( rParent, rxParentShape, xShape );
         }
         case XDR_TOKEN( cxnSp ):
         {
-            ShapePtr xShape( new Shape( rHelper, rAttribs, "com.sun.star.drawing.ConnectorShape" ) );
+            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, "com.sun.star.drawing.ConnectorShape" );
             if( pxShape ) *pxShape = xShape;
             return new ConnectorShapeContext( rParent, rxParentShape, xShape );
         }
         case XDR_TOKEN( pic ):
         {
-            ShapePtr xShape( new Shape( rHelper, rAttribs, "com.sun.star.drawing.GraphicObjectShape" ) );
+            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, "com.sun.star.drawing.GraphicObjectShape" );
             if( pxShape ) *pxShape = xShape;
             return new GraphicShapeContext( rParent, rxParentShape, xShape );
         }
         case XDR_TOKEN( graphicFrame ):
         {
-            ShapePtr xShape( new Shape( rHelper, rAttribs, "com.sun.star.drawing.GraphicObjectShape" ) );
+            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, "com.sun.star.drawing.GraphicObjectShape" );
             if( pxShape ) *pxShape = xShape;
             return new GraphicalObjectFrameContext( rParent, rxParentShape, xShape, rHelper.getSheetType() != WorksheetType::Chart );
         }
         case XDR_TOKEN( grpSp ):
         {
-            ShapePtr xShape( new Shape( rHelper, rAttribs, "com.sun.star.drawing.GroupShape" ) );
+            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, "com.sun.star.drawing.GroupShape" );
             if( pxShape ) *pxShape = xShape;
             return new GroupShapeContext( rParent, rHelper, rxParentShape, xShape );
         }
@@ -172,12 +173,12 @@ ContextHandlerRef GroupShapeContext::onCreateContext(
         sal_Int32 nElement, const AttributeList& rAttribs )
 {
     ContextHandlerRef xContext = createShapeContext( *this, *this, nElement, rAttribs, mpGroupShapePtr );
-    return xContext.get() ? xContext.get() : ShapeGroupContext::onCreateContext( nElement, rAttribs );
+    return xContext ? xContext : ShapeGroupContext::onCreateContext( nElement, rAttribs );
 }
 
 DrawingFragment::DrawingFragment( const WorksheetHelper& rHelper, const OUString& rFragmentPath ) :
     WorksheetFragmentBase( rHelper, rFragmentPath ),
-    mxDrawPage( rHelper.getDrawPage(), UNO_QUERY )
+    mxDrawPage( rHelper.getDrawPage() )
 {
     OSL_ENSURE( mxDrawPage.is(), "DrawingFragment::DrawingFragment - missing drawing page" );
 }
@@ -211,9 +212,9 @@ ContextHandlerRef DrawingFragment::onCreateContext( sal_Int32 nElement, const At
                 case XDR_TOKEN( from ):
                 case XDR_TOKEN( to ):           return this;
 
-                case XDR_TOKEN( pos ):          if( mxAnchor.get() ) mxAnchor->importPos( rAttribs );           break;
-                case XDR_TOKEN( ext ):          if( mxAnchor.get() ) mxAnchor->importExt( rAttribs );           break;
-                case XDR_TOKEN( clientData ):   if( mxAnchor.get() ) mxAnchor->importClientData( rAttribs );    break;
+                case XDR_TOKEN( pos ):          if( mxAnchor ) mxAnchor->importPos( rAttribs );           break;
+                case XDR_TOKEN( ext ):          if( mxAnchor ) mxAnchor->importExt( rAttribs );           break;
+                case XDR_TOKEN( clientData ):   if( mxAnchor ) mxAnchor->importClientData( rAttribs );    break;
 
                 default:                        return GroupShapeContext::createShapeContext( *this, *this, nElement, rAttribs, ShapePtr(), &mxShape );
             }
@@ -242,7 +243,7 @@ void DrawingFragment::onCharacters( const OUString& rChars )
         case XDR_TOKEN( row ):
         case XDR_TOKEN( colOff ):
         case XDR_TOKEN( rowOff ):
-            if( mxAnchor.get() ) mxAnchor->setCellPos( getCurrentElement(), getParentElement(), rChars );
+            if( mxAnchor ) mxAnchor->setCellPos( getCurrentElement(), getParentElement(), rChars );
         break;
     }
 }
@@ -254,16 +255,45 @@ void DrawingFragment::onEndElement()
         case XDR_TOKEN( absoluteAnchor ):
         case XDR_TOKEN( oneCellAnchor ):
         case XDR_TOKEN( twoCellAnchor ):
-            if( mxDrawPage.is() && mxShape.get() && mxAnchor.get() )
+            if( mxDrawPage.is() && mxShape && mxAnchor )
             {
-                // Rotation is decided by orientation of shape determined
-                // by the anchor position given by 'twoCellAnchor'
-                if ( getCurrentElement() == XDR_TOKEN( twoCellAnchor ) )
-                    mxShape->setRotation(0);
                 EmuRectangle aShapeRectEmu = mxAnchor->calcAnchorRectEmu( getDrawPageSize() );
                 const bool bIsShapeVisible = mxAnchor->isAnchorValid();
                 if( (aShapeRectEmu.X >= 0) && (aShapeRectEmu.Y >= 0) && (aShapeRectEmu.Width >= 0) && (aShapeRectEmu.Height >= 0) )
                 {
+                    const sal_Int32 aRotation = mxShape->getRotation();
+                    if ((aRotation >= 45  * PER_DEGREE && aRotation < 135 * PER_DEGREE)
+                     || (aRotation >= 225 * PER_DEGREE && aRotation < 315 * PER_DEGREE))
+                    {
+                        // When rotating any shape in MSO Excel within the range of degrees given above,
+                        // Excel changes the cells in which the shape is anchored. The new position of
+                        // the anchors are always calculated using a 90 degrees rotation anticlockwise.
+                        // There is an important result of this operation: the top left point of the shape changes,
+                        // it will be another vertex.
+                        // The anchor position is given in the xml file, it is in the xdr:from and xdr:to elements.
+                        // Let's see what happens in time order:
+                        // We create a shape in Excel, the anchor position is in a given cell, then the rotation happens
+                        // as mentioned above, and excel recalculates the cells in which the anchors are positioned.
+                        // This new cell is exported into the xml elements xdr:from and xdr:to, when Excel exports the document!
+                        // Thus, if we have a 90 degrees rotation and an already rotated point from which we base
+                        // our calculations here in LO, the result is an incorrect 180 degrees rotation.
+                        // Now, we need to create the bounding rectangle of the shape with this in mind.
+                        // (Important to mention that at this point we don't talk about rotations at all, this bounding
+                        // rectangle contains the original not-rotated shape. Rotation happens later in the code.)
+                        // We get the new (x, y) coords, then swap width with height.
+                        // To get the new coords we reflect the rectangle in the line y = x. (This will return the
+                        // correct vertex, which is the actual top left one.)
+                        // Another fact that appears to be true in Excel is that there are only 2 of possible anchor
+                        // positions for a shape that is only rotated (and not resized for example).
+                        // The first position happens in the set of degrees {[45, 135) U [225, 315)} and the second
+                        // set is all the other angles. The two sets partition the circle (of all rotations: 360 degrees).
+                        sal_Int64 nHalfWidth = aShapeRectEmu.Width / 2;
+                        sal_Int64 nHalfHeight = aShapeRectEmu.Height / 2;
+                        aShapeRectEmu.X = aShapeRectEmu.X + nHalfWidth - nHalfHeight;
+                        aShapeRectEmu.Y = aShapeRectEmu.Y + nHalfHeight - nHalfWidth;
+                        std::swap(aShapeRectEmu.Width, aShapeRectEmu.Height);
+                    }
+
                     // TODO: DrawingML implementation expects 32-bit coordinates for EMU rectangles (change that to EmuRectangle)
                     Rectangle aShapeRectEmu32(
                         getLimitedValue< sal_Int32, sal_Int64 >( aShapeRectEmu.X, 0, SAL_MAX_INT32 ),
@@ -293,7 +323,8 @@ void DrawingFragment::onEndElement()
                         SdrObject* pObj = SdrObject::getSdrObjectFromXShape( mxShape->getXShape() );
                         if ( pObj )
                         {
-                             ScDrawLayer::SetCellAnchoredFromPosition( *pObj, getScDocument(), getSheetIndex() );
+                            bool bResizeWithCell = mxAnchor->getEditAs() == ShapeAnchor::ANCHOR_TWOCELL;
+                            ScDrawLayer::SetCellAnchoredFromPosition( *pObj, getScDocument(), getSheetIndex(), bResizeWithCell );
                         }
                     }
                 }
@@ -424,19 +455,19 @@ OUString VmlDrawing::getShapeBaseName( const ::oox::vml::ShapeBase& rShape ) con
     {
         switch( pClientData->mnObjType )
         {
-            case XML_Button:    return OUString( "Button" );
-            case XML_Checkbox:  return OUString( "Check Box" );
-            case XML_Dialog:    return OUString( "Dialog Frame" );
-            case XML_Drop:      return OUString( "Drop Down" );
-            case XML_Edit:      return OUString( "Edit Box" );
-            case XML_GBox:      return OUString( "Group Box" );
-            case XML_Label:     return OUString( "Label" );
-            case XML_List:      return OUString( "List Box" );
-            case XML_Note:      return OUString( "Comment" );
+            case XML_Button:    return "Button";
+            case XML_Checkbox:  return "Check Box";
+            case XML_Dialog:    return "Dialog Frame";
+            case XML_Drop:      return "Drop Down";
+            case XML_Edit:      return "Edit Box";
+            case XML_GBox:      return "Group Box";
+            case XML_Label:     return "Label";
+            case XML_List:      return "List Box";
+            case XML_Note:      return "Comment";
             case XML_Pict:      return (pClientData->mbDde || getOleObjectInfo( rShape.getShapeId() )) ? OUString( "Object" ) : OUString( "Picture" );
-            case XML_Radio:     return OUString( "Option Button" );
-            case XML_Scroll:    return OUString( "Scroll Bar" );
-            case XML_Spin:      return OUString( "Spinner" );
+            case XML_Radio:     return "Option Button";
+            case XML_Scroll:    return "Scroll Bar";
+            case XML_Spin:      return "Spinner";
         }
     }
     return ::oox::vml::Drawing::getShapeBaseName( rShape );
@@ -511,7 +542,7 @@ Reference< XShape > VmlDrawing::createAndInsertClientXShape( const ::oox::vml::S
                     instead the top border of the caption text. */
                 if( const ::oox::vml::TextFontModel* pFontModel = pTextBox ? pTextBox->getFirstFont() : nullptr )
                 {
-                    sal_Int32 nFontHeightHmm = getUnitConverter().scaleToMm100( pFontModel->monSize.get( 160 ), UNIT_TWIP );
+                    sal_Int32 nFontHeightHmm = getUnitConverter().scaleToMm100( pFontModel->monSize.get( 160 ), Unit::Twip );
                     sal_Int32 nYDiff = ::std::min< sal_Int32 >( nFontHeightHmm / 2, aShapeRect.Y );
                     aShapeRect.Y -= nYDiff;
                     aShapeRect.Height += nYDiff;
@@ -535,6 +566,9 @@ Reference< XShape > VmlDrawing::createAndInsertClientXShape( const ::oox::vml::S
             case XML_Radio:
             {
                 AxOptionButtonModel& rAxModel = aControl.createModel< AxOptionButtonModel >();
+
+                // unique name to prevent autoGrouping with ActiveX controls and which a GroupBox may override - see vmldrawing.cxx.
+                rAxModel.maGroupName = "autoGroup_formControl";
                 convertControlText( rAxModel.maFontData, rAxModel.mnTextColor, rAxModel.maCaption, pTextBox, pClientData->mnTextHAlign );
                 convertControlBackground( rAxModel, rShape );
                 rAxModel.maValue = OUString::number( pClientData->mnChecked );
@@ -617,7 +651,7 @@ Reference< XShape > VmlDrawing::createAndInsertClientXShape( const ::oox::vml::S
                 if( !aMacroName.isEmpty() )
                 {
                     Reference< XIndexContainer > xFormIC = getControlForm().getXForm();
-                    VbaMacroAttacherRef xAttacher( new VmlControlMacroAttacher( aMacroName, xFormIC, nCtrlIndex, pClientData->mnObjType, pClientData->mnDropStyle ) );
+                    VbaMacroAttacherRef xAttacher = std::make_shared<VmlControlMacroAttacher>( aMacroName, xFormIC, nCtrlIndex, pClientData->mnObjType, pClientData->mnDropStyle );
                     getBaseFilter().getVbaProject().registerMacroAttacher( xAttacher );
                 }
             }
@@ -637,25 +671,26 @@ void VmlDrawing::notifyXShapeInserted( const Reference< XShape >& rxShape,
         extendShapeBoundingBox( rShapeRect );
 
     // convert settings from VML client data
-    if( const ::oox::vml::ClientData* pClientData = rShape.getClientData() )
+    const ::oox::vml::ClientData* pClientData = rShape.getClientData();
+    if(!pClientData)
+        return;
+
+    // specific settings for embedded form controls
+    try
     {
-        // specific settings for embedded form controls
-        try
-        {
-            Reference< XControlShape > xCtrlShape( rxShape, UNO_QUERY_THROW );
-            Reference< XControlModel > xCtrlModel( xCtrlShape->getControl(), UNO_SET_THROW );
-            PropertySet aPropSet( xCtrlModel );
+        Reference< XControlShape > xCtrlShape( rxShape, UNO_QUERY_THROW );
+        Reference< XControlModel > xCtrlModel( xCtrlShape->getControl(), UNO_SET_THROW );
+        PropertySet aPropSet( xCtrlModel );
 
-            // printable
-            aPropSet.setProperty( PROP_Printable, pClientData->mbPrintObject );
+        // printable
+        aPropSet.setProperty( PROP_Printable, pClientData->mbPrintObject );
 
-            // control source links
-            if( !pClientData->maFmlaLink.isEmpty() || !pClientData->maFmlaRange.isEmpty() )
-                maControlConv.bindToSources( xCtrlModel, pClientData->maFmlaLink, pClientData->maFmlaRange, getSheetIndex() );
-        }
-        catch( Exception& )
-        {
-        }
+        // control source links
+        if( !pClientData->maFmlaLink.isEmpty() || !pClientData->maFmlaRange.isEmpty() )
+            maControlConv.bindToSources( xCtrlModel, pClientData->maFmlaLink, pClientData->maFmlaRange, getSheetIndex() );
+    }
+    catch( Exception& )
+    {
     }
 }
 
@@ -692,7 +727,7 @@ sal_uInt32 VmlDrawing::convertControlTextColor( const OUString& rTextColor ) con
     /*  Predefined color names or system color names (resolve to RGB to detect
         valid color name). */
     sal_Int32 nColorToken = AttributeConversion::decodeToken( rTextColor );
-    sal_Int32 nRgbValue = Color::getVmlPresetColor( nColorToken, API_RGB_TRANSPARENT );
+    ::Color nRgbValue = Color::getVmlPresetColor( nColorToken, API_RGB_TRANSPARENT );
     if( nRgbValue == API_RGB_TRANSPARENT )
         nRgbValue = rGraphicHelper.getSystemColor( nColorToken );
     if( nRgbValue != API_RGB_TRANSPARENT )
@@ -750,9 +785,9 @@ void VmlDrawing::convertControlBackground( AxMorphDataModelBase& rAxModel, const
     if( bHasFill )
     {
         const GraphicHelper& rGraphicHelper = getBaseFilter().getGraphicHelper();
-        sal_Int32 nSysWindowColor = rGraphicHelper.getSystemColor( XML_window, API_RGB_WHITE );
+        ::Color nSysWindowColor = rGraphicHelper.getSystemColor( XML_window, API_RGB_WHITE );
         ::oox::drawingml::Color aColor = ::oox::vml::ConversionHelper::decodeColor( rGraphicHelper, rFillModel.moColor, rFillModel.moOpacity, nSysWindowColor );
-        sal_Int32 nRgbValue = aColor.getColor( rGraphicHelper );
+        ::Color nRgbValue = aColor.getColor( rGraphicHelper );
         rAxModel.mnBackColor = OleHelper::encodeOleColor( nRgbValue );
     }
 }
@@ -769,7 +804,6 @@ void VmlDrawingFragment::finalizeImport()
     getVmlDrawing().convertAndInsert();
 }
 
-} // namespace xls
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

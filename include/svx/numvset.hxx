@@ -21,13 +21,12 @@
 
 #include <vcl/idle.hxx>
 #include <svtools/valueset.hxx>
-#include <limits.h>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/lang/Locale.hpp>
 #include <svx/svxdllapi.h>
 
-namespace com{namespace sun{ namespace star{
+namespace com::sun::star {
     namespace container{
         class XIndexAccess;
     }
@@ -37,15 +36,7 @@ namespace com{namespace sun{ namespace star{
     namespace text{
         class XNumberingFormatter;
     }
-}}}
-
-class SvxBrushItem;
-class SvxNumRule;
-struct SvxBmpItemInfo
-{
-    SvxBrushItem*   pBrushItem;
-    sal_uInt16          nItemId;
-};
+}
 
 enum class NumberingPageType
 {
@@ -73,43 +64,42 @@ class SVX_DLLPUBLIC SvxNumValueSet : public ValueSet
             css::container::XIndexAccess> > aOutlineSettings;
 
 public:
-    SvxNumValueSet(vcl::Window* pParent, WinBits nWinBits);
+    SvxNumValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow);
     void init(NumberingPageType eType);
     virtual ~SvxNumValueSet() override;
-    virtual void dispose() override;
 
     virtual void    UserDraw( const UserDrawEvent& rUDEvt ) override;
 
     void            SetNumberingSettings(
         const css::uno::Sequence<
                   css::uno::Sequence<css::beans::PropertyValue> >& aNum,
-        css::uno::Reference<css::text::XNumberingFormatter>& xFormatter,
+        css::uno::Reference<css::text::XNumberingFormatter> const & xFormatter,
         const css::lang::Locale& rLocale );
 
     void            SetOutlineNumberingSettings(
             css::uno::Sequence<
-                css::uno::Reference<css::container::XIndexAccess> >& rOutline,
-            css::uno::Reference<css::text::XNumberingFormatter>& xFormatter,
+                css::uno::Reference<css::container::XIndexAccess> > const & rOutline,
+            css::uno::Reference<css::text::XNumberingFormatter> const & xFormatter,
             const css::lang::Locale& rLocale);
+
+    virtual FactoryFunction GetUITestFactory() const override;
+
 };
 
-class SVX_DLLPUBLIC SvxBmpNumValueSet : public SvxNumValueSet
+
+class SVX_DLLPUBLIC SvxBmpNumValueSet final : public SvxNumValueSet
 {
     Idle        aFormatIdle;
     bool        bGrfNotFound;
 
-    void init();
-
-protected:
-        DECL_LINK(FormatHdl_Impl, Timer *, void);
+    DECL_LINK(FormatHdl_Impl, Timer *, void);
 
 public:
-    SvxBmpNumValueSet(vcl::Window* pParent, WinBits nWinBits);
+    SvxBmpNumValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow);
+    void init();
     virtual ~SvxBmpNumValueSet() override;
-    virtual void dispose() override;
 
     virtual void    UserDraw( const UserDrawEvent& rUDEvt ) override;
-
 };
 
 #endif

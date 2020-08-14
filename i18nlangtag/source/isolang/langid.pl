@@ -29,7 +29,7 @@ sub Usage()
     print STDERR
         "\n",
         "langid - a hackish utility to lookup lang.h language defines and LangIDs,\n",
-        "isolang.cxx ISO639/ISO3166 mapping, locale data files, langtab.src language\n",
+        "isolang.cxx ISO639/ISO3166 mapping, locale data files, langtab.hrc language\n",
         "listbox entries, langlist.mk, file_ooo.scp registry name, languages.pm and\n",
         "msi-encodinglist.txt\n\n",
 
@@ -41,7 +41,7 @@ sub Usage()
         "If the language string expression matches more than one define,\n",
         "e.g. as in 'german', all matching defines will be processed.\n",
         "If the language string does not match a define or an identifier in\n",
-        "langtab.src, a generic string match of the listbox entries will be tried.\n\n",
+        "langtab.hrc, a generic string match of the listbox entries will be tried.\n\n",
 
         "Numeric values of LangID,primarylanguage,sublanguage can be given\n",
         "decimal, hexadecimal (leading 0x), octal (leading 0) or binary (leading 0b).\n",
@@ -85,6 +85,10 @@ sub makeLangID($$)
 }
 
 
+# Note that a regex needs a duplicated pair of backslashes to produce a literal
+# \\ like in \\\\* to search for zero or more \ backslashes.
+# @addregex can be an optional "block to grep" definition
+# (regex-to-start-block, regex-to-end-block, regex-to-find-in-block)
 sub grepFile($$$$$@)
 {
     my( $regex, $path, $module, $name, $printmsg, @addregex) = @_;
@@ -417,22 +421,23 @@ sub main()
             }
         }
 
-        #         case LANGUAGE_ARABIC_SAUDI_ARABIA & LANGUAGE_MASK_PRIMARY :
+        # Find any special treatment, may need inspection then.
+        # $grepdef already has \b word delimiters.
         grepFile(
-            $modifier . '^\s*case\s*.*' . $grepdef . '.*(\s*&\s*\w+)?\s*:',
+            $modifier . $grepdef,
             "$SRC_ROOT", "i18nlangtag", "source/isolang/mslangid.cxx", 1, ());
 
         my $module = "svtools";
-        my $name = "source/misc/langtab.src";
-        #         < "Afrikaans" ; LANGUAGE_AFRIKAANS ; > ;
+        my $name = "inc/langtab.hrc";
+        #    { NC_("STR_ARR_SVT_LANGUAGE_TABLE", "Afrikaans (South Africa)") , LANGUAGE_AFRIKAANS },
         # lookup define
         @resultlist = grepFile(
-            $modifier . '^\s*<\s*".*"\s*;\s*.*' . $grepdef . '.*\s*;\s*>\s*;',
+            $modifier . '^\s*\{\s*NC_\(\s*"[^"]*"\s*,\s*".*"\s*\)\s*,.*' . $grepdef . '.*\}',
             "$SRC_ROOT", $module, $name, 1, ());
         # lookup string
         if (!@resultlist) {
             grepFile(
-                $modifier . '^\s*<\s*".*' . $grepdef . '.*"\s*;\s*.*\s*;\s*>\s*;',
+                $modifier . '^\s*\{\s*NC_\(\s*"[^"]*"\s*,\s*".*' . $grepdef . '.*"\s*\)\s*,.*\}',
                 "$SRC_ROOT", $module, $name, 1, ()); }
 
         for my $langtag (@langtaggreplist)
@@ -446,13 +451,18 @@ sub main()
             grepFile(
                 '^\s*completelangiso\s*=\s*(\s*([a-z]{2,3})(-[A-Z][A-Z])?)*' . $langtag . '',
                 "$SRC_ROOT", "solenv", "inc/langlist.mk", 1,
-                # needs a duplicated pair of backslashes to produce a literal \\
+                # Also grep the list of tags, one per line, \ backslash continued.
                 ('^\s*completelangiso\s*=', '^\s*$', '^\s*' . $langtag . '\s*\\\\*$'));
 
             # af    1252  1078   # Afrikaans
             grepFile(
                 '^\s*' . $langtag . '',
                 "$SRC_ROOT", "l10ntools", "source/ulfconv/msi-encodinglist.txt", 1, ());
+
+            # 27:af:afrikaans
+            grepFile(
+                '^\d*:' . $langtag . '',
+                "$SRC_ROOT", "bin", "lo-xlate-lang", 1, ());
         }
     }
     return 0;

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_VECTOR_B3DVECTOR_HXX
-#define INCLUDED_BASEGFX_VECTOR_B3DVECTOR_HXX
+#pragma once
 
 #include <basegfx/tuple/b3dtuple.hxx>
 #include <basegfx/basegfxdllapi.h>
@@ -62,15 +61,6 @@ namespace basegfx
         */
         B3DVector(double fX, double fY, double fZ)
         :   B3DTuple(fX, fY, fZ)
-        {}
-
-        /** Create a copy of a 3D Vector
-
-            @param rVec
-            The 3D Vector which will be copied.
-        */
-        B3DVector(const B3DVector& rVec)
-        :   B3DTuple(rVec)
         {}
 
         /** constructor with tuple to allow copy-constructing
@@ -265,7 +255,5 @@ namespace basegfx
         return aVec;
     }
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_VECTOR_B3DVECTOR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

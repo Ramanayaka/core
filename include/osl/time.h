@@ -20,16 +20,16 @@
 #ifndef INCLUDED_OSL_TIME_H
 #define INCLUDED_OSL_TIME_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #if defined LIBO_INTERNAL_ONLY && defined __cplusplus
 #include <chrono>
 #endif
 
-#include <sal/saldllapi.h>
-#include <sal/types.h>
+#include "sal/saldllapi.h"
+#include "sal/types.h"
 
-#ifdef SAL_W32
+#ifdef _WIN32
 #   pragma pack(push, 8)
 #endif
 
@@ -74,7 +74,7 @@ typedef struct {
 
 #endif
 
-#if defined(SAL_W32)
+#if defined(_WIN32)
 #   pragma pack(pop)
 #endif
 
@@ -167,7 +167,7 @@ SAL_DLLPUBLIC sal_Bool SAL_CALL osl_getSystemTimeFromLocalTime(
 
 
 /** Get the value of the global timer
-    @return current timer value in milli seconds
+    @return current timer value in milliseconds
  */
 
 SAL_DLLPUBLIC sal_uInt32 SAL_CALL osl_getGlobalTimer(void);

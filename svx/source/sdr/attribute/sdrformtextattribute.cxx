@@ -17,22 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/sdr/attribute/sdrformtextattribute.hxx>
+#include <sdr/attribute/sdrformtextattribute.hxx>
 #include <basegfx/vector/b2enums.hxx>
 #include <svl/itemset.hxx>
+#include <svx/sdprcitm.hxx>
+#include <svx/svddef.hxx>
 #include <svx/xftdiit.hxx>
 #include <svx/xftstit.hxx>
 #include <svx/xftshxy.hxx>
-#include <svx/xftshtit.hxx>
+#include <xftshtit.hxx>
 #include <svx/xtextit0.hxx>
 #include <svx/xftadit.hxx>
 #include <svx/xftshit.hxx>
 #include <svx/xftshcit.hxx>
 #include <svx/xftmrit.hxx>
 #include <svx/xftouit.hxx>
-#include <svx/sdshtitm.hxx>
 #include <svx/xlntrit.hxx>
-#include <svx/sdshcitm.hxx>
 #include <svx/xlnclit.hxx>
 #include <svx/xlnwtit.hxx>
 #include <svx/xlinjoit.hxx>
@@ -82,11 +82,11 @@ namespace
 
         if(bShadow)
         {
-            nRetval = (sal_uInt8)(((static_cast<const SdrPercentItem&>(rSet.Get(SDRATTR_SHADOWTRANSPARENCE))).GetValue() * 255) / 100);
+            nRetval = static_cast<sal_uInt8>((rSet.Get(SDRATTR_SHADOWTRANSPARENCE).GetValue() * 255) / 100);
         }
         else
         {
-            nRetval = (sal_uInt8)(((static_cast<const XLineTransparenceItem&>(rSet.Get(XATTR_LINETRANSPARENCE))).GetValue() * 255) / 100);
+            nRetval = static_cast<sal_uInt8>((rSet.Get(XATTR_LINETRANSPARENCE).GetValue() * 255) / 100);
         }
 
         return nRetval;
@@ -98,40 +98,40 @@ namespace
 
         if(bShadow)
         {
-            const Color aShadowColor((static_cast<const XColorItem&>(rSet.Get(SDRATTR_SHADOWCOLOR))).GetColorValue());
+            const Color aShadowColor(rSet.Get(SDRATTR_SHADOWCOLOR).GetColorValue());
             aColorAttribute = aShadowColor.getBColor();
         }
         else
         {
-            const Color aLineColor((static_cast<const XLineColorItem&>(rSet.Get(XATTR_LINECOLOR))).GetColorValue());
+            const Color aLineColor(rSet.Get(XATTR_LINECOLOR).GetColorValue());
             aColorAttribute = aLineColor.getBColor();
         }
 
-        const sal_uInt32 nLineWidth = (static_cast<const XLineWidthItem&>(rSet.Get(XATTR_LINEWIDTH))).GetValue();
-        const css::drawing::LineJoint eLineJoint = (static_cast<const XLineJointItem&>(rSet.Get(XATTR_LINEJOINT))).GetValue();
-        const css::drawing::LineCap eLineCap = (static_cast<const XLineCapItem&>(rSet.Get(XATTR_LINECAP))).GetValue();
+        const sal_uInt32 nLineWidth = rSet.Get(XATTR_LINEWIDTH).GetValue();
+        const css::drawing::LineJoint eLineJoint = rSet.Get(XATTR_LINEJOINT).GetValue();
+        const css::drawing::LineCap eLineCap = rSet.Get(XATTR_LINECAP).GetValue();
 
         return drawinglayer::attribute::LineAttribute(
             aColorAttribute,
-            (double)nLineWidth,
+            static_cast<double>(nLineWidth),
             impGetB2DLineJoin(eLineJoint),
             eLineCap);
     }
 
     drawinglayer::attribute::StrokeAttribute impGetStrokeAttribute(const SfxItemSet& rSet)
     {
-        const css::drawing::LineStyle eLineStyle = (static_cast<const XLineStyleItem&>(rSet.Get(XATTR_LINESTYLE))).GetValue();
+        const css::drawing::LineStyle eLineStyle = rSet.Get(XATTR_LINESTYLE).GetValue();
         double fFullDotDashLen(0.0);
         ::std::vector< double > aDotDashArray;
 
         if(css::drawing::LineStyle_DASH == eLineStyle)
         {
-            const XDash& rDash = (static_cast<const XLineDashItem&>(rSet.Get(XATTR_LINEDASH))).GetDashValue();
+            const XDash& rDash = rSet.Get(XATTR_LINEDASH).GetDashValue();
 
             if(rDash.GetDots() || rDash.GetDashes())
             {
-                const sal_uInt32 nLineWidth = (static_cast<const XLineWidthItem&>(rSet.Get(XATTR_LINEWIDTH))).GetValue();
-                fFullDotDashLen = rDash.CreateDotDashArray(aDotDashArray, (double)nLineWidth);
+                const sal_uInt32 nLineWidth = rSet.Get(XATTR_LINEWIDTH).GetValue();
+                fFullDotDashLen = rDash.CreateDotDashArray(aDotDashArray, static_cast<double>(nLineWidth));
             }
         }
 
@@ -140,10 +140,8 @@ namespace
 } // end of anonymous namespace
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpSdrFormTextAttribute
         {
         public:
@@ -167,42 +165,42 @@ namespace drawinglayer
             bool                                    mbFormTextOutline : 1;  // show contour of objects
 
             explicit ImpSdrFormTextAttribute(const SfxItemSet& rSet)
-            :   mnFormTextDistance(static_cast<const XFormTextDistanceItem&>(rSet.Get(XATTR_FORMTXTDISTANCE)).GetValue()),
-                mnFormTextStart(static_cast<const XFormTextStartItem&>(rSet.Get(XATTR_FORMTXTSTART)).GetValue()),
-                mnFormTextShdwXVal(static_cast<const XFormTextShadowXValItem&>(rSet.Get(XATTR_FORMTXTSHDWXVAL)).GetValue()),
-                mnFormTextShdwYVal(static_cast<const XFormTextShadowYValItem&>(rSet.Get(XATTR_FORMTXTSHDWYVAL)).GetValue()),
-                mnFormTextShdwTransp(static_cast<const XFormTextShadowTranspItem&>(rSet.Get(XATTR_FORMTXTSHDWTRANSP)).GetValue()),
-                meFormTextStyle(static_cast<const XFormTextStyleItem&>(rSet.Get(XATTR_FORMTXTSTYLE)).GetValue()),
-                meFormTextAdjust(static_cast<const XFormTextAdjustItem&>(rSet.Get(XATTR_FORMTXTADJUST)).GetValue()),
-                meFormTextShadow(static_cast<const XFormTextShadowItem&>(rSet.Get(XATTR_FORMTXTSHADOW)).GetValue()),
-                maFormTextShdwColor(static_cast<const XFormTextShadowColorItem&>(rSet.Get(XATTR_FORMTXTSHDWCOLOR)).GetColorValue()),
+            :   mnFormTextDistance(rSet.Get(XATTR_FORMTXTDISTANCE).GetValue()),
+                mnFormTextStart(rSet.Get(XATTR_FORMTXTSTART).GetValue()),
+                mnFormTextShdwXVal(rSet.Get(XATTR_FORMTXTSHDWXVAL).GetValue()),
+                mnFormTextShdwYVal(rSet.Get(XATTR_FORMTXTSHDWYVAL).GetValue()),
+                mnFormTextShdwTransp(rSet.Get(XATTR_FORMTXTSHDWTRANSP).GetValue()),
+                meFormTextStyle(rSet.Get(XATTR_FORMTXTSTYLE).GetValue()),
+                meFormTextAdjust(rSet.Get(XATTR_FORMTXTADJUST).GetValue()),
+                meFormTextShadow(rSet.Get(XATTR_FORMTXTSHADOW).GetValue()),
+                maFormTextShdwColor(rSet.Get(XATTR_FORMTXTSHDWCOLOR).GetColorValue()),
                 maOutline(),
                 maShadowOutline(),
-                mbFormTextMirror(static_cast<const XFormTextMirrorItem&>(rSet.Get(XATTR_FORMTXTMIRROR)).GetValue()),
-                mbFormTextOutline(static_cast<const XFormTextOutlineItem&>(rSet.Get(XATTR_FORMTXTOUTLINE)).GetValue())
+                mbFormTextMirror(rSet.Get(XATTR_FORMTXTMIRROR).GetValue()),
+                mbFormTextOutline(rSet.Get(XATTR_FORMTXTOUTLINE).GetValue())
             {
-                if(getFormTextOutline())
+                if(!getFormTextOutline())
+                    return;
+
+                const StrokeAttribute aStrokeAttribute(impGetStrokeAttribute(rSet));
+
+                // also need to prepare attributes for outlines
                 {
-                    const StrokeAttribute aStrokeAttribute(impGetStrokeAttribute(rSet));
+                    const LineAttribute aLineAttribute(impGetLineAttribute(false, rSet));
+                    const sal_uInt8 nTransparence(impGetStrokeTransparence(false, rSet));
 
-                    // also need to prepare attributes for outlines
-                    {
-                        const LineAttribute aLineAttribute(impGetLineAttribute(false, rSet));
-                        const sal_uInt8 nTransparence(impGetStrokeTransparence(false, rSet));
+                    maOutline = SdrFormTextOutlineAttribute(
+                        aLineAttribute, aStrokeAttribute, nTransparence);
+                }
 
-                        maOutline = SdrFormTextOutlineAttribute(
-                            aLineAttribute, aStrokeAttribute, nTransparence);
-                    }
+                if(XFormTextShadow::NONE != getFormTextShadow())
+                {
+                    // also need to prepare attributes for shadow outlines
+                    const LineAttribute aLineAttribute(impGetLineAttribute(true, rSet));
+                    const sal_uInt8 nTransparence(impGetStrokeTransparence(true, rSet));
 
-                    if(XFormTextShadow::NONE != getFormTextShadow())
-                    {
-                        // also need to prepare attributes for shadow outlines
-                        const LineAttribute aLineAttribute(impGetLineAttribute(true, rSet));
-                        const sal_uInt8 nTransparence(impGetStrokeTransparence(true, rSet));
-
-                        maShadowOutline = SdrFormTextOutlineAttribute(
-                            aLineAttribute, aStrokeAttribute, nTransparence);
-                    }
+                    maShadowOutline = SdrFormTextOutlineAttribute(
+                        aLineAttribute, aStrokeAttribute, nTransparence);
                 }
             }
 
@@ -277,7 +275,7 @@ namespace drawinglayer
         {
         }
 
-        SdrFormTextAttribute::SdrFormTextAttribute(SdrFormTextAttribute&& rCandidate)
+        SdrFormTextAttribute::SdrFormTextAttribute(SdrFormTextAttribute&& rCandidate) noexcept
         :   mpSdrFormTextAttribute(std::move(rCandidate.mpSdrFormTextAttribute))
         {
         }
@@ -297,7 +295,7 @@ namespace drawinglayer
             return *this;
         }
 
-        SdrFormTextAttribute& SdrFormTextAttribute::operator=(SdrFormTextAttribute&& rCandidate)
+        SdrFormTextAttribute& SdrFormTextAttribute::operator=(SdrFormTextAttribute&& rCandidate) noexcept
         {
             mpSdrFormTextAttribute = std::move(rCandidate.mpSdrFormTextAttribute);
             return *this;
@@ -347,7 +345,7 @@ namespace drawinglayer
             return mpSdrFormTextAttribute->getFormTextShadow();
         }
 
-        Color SdrFormTextAttribute::getFormTextShdwColor() const
+        Color const & SdrFormTextAttribute::getFormTextShdwColor() const
         {
             return mpSdrFormTextAttribute->getFormTextShdwColor();
         }
@@ -371,7 +369,7 @@ namespace drawinglayer
         {
             return mpSdrFormTextAttribute->getFormTextOutline();
         }
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

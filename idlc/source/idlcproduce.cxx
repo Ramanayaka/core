@@ -23,7 +23,7 @@
 #include <osl/file.hxx>
 #include <osl/thread.h>
 
-#if defined(SAL_W32)
+#if defined(_WIN32)
 #include <io.h>
 #include <direct.h>
 #include <errno.h>
@@ -44,7 +44,7 @@ static std::list< OString >* pCreatedDirectories = nullptr;
 static bool checkOutputPath(const OString& completeName)
 {
     OString sysPathName = convertToAbsoluteSystemPath(completeName);
-    OStringBuffer buffer(sysPathName.getLength());
+    OStringBuffer buffer(sysPathName.getLength()+16);
 
     if ( sysPathName.indexOf( SEPARATOR ) == -1 )
         return true;
@@ -95,21 +95,18 @@ static bool cleanPath()
 {
     if ( pCreatedDirectories )
     {
-        std::list< OString >::iterator iter = pCreatedDirectories->begin();
-        std::list< OString >::iterator end = pCreatedDirectories->end();
-        while ( iter != end )
+        for (auto const& createdDirectory : *pCreatedDirectories)
         {
 //#ifdef SAL_UNX
-//          if (rmdir((char*)(*iter).getStr(), 0777) == -1)
+//          if (rmdir((char*)createdDirectory.getStr(), 0777) == -1)
 //#else
-            if (rmdir((*iter).getStr()) == -1)
+            if (rmdir(createdDirectory.getStr()) == -1)
 //#endif
             {
                 fprintf(stderr, "%s: cannot remove directory '%s'\n",
-                        idlc()->getOptions()->getProgramName().getStr(), (*iter).getStr());
+                        idlc()->getOptions()->getProgramName().getStr(), createdDirectory.getStr());
                 return false;
             }
-            ++iter;
         }
         delete pCreatedDirectories;
     }
@@ -121,7 +118,7 @@ void removeIfExists(const OString& pathname)
     osl::File::remove(OStringToOUString(pathname, RTL_TEXTENCODING_UTF8));
 }
 
-sal_Int32 SAL_CALL
+sal_Int32
 produceFile(const OString& regFileName, sPair_t const*const pDepFile)
 {
     Options* pOptions = idlc()->getOptions();

@@ -23,12 +23,9 @@
 #include "buffernode.hxx"
 #include <com/sun/star/xml/crypto/sax/ConstOfSecurityId.hpp>
 #include <osl/diagnose.h>
+#include <rtl/ustrbuf.hxx>
 
-namespace cssu = com::sun::star::uno;
-namespace cssxw = com::sun::star::xml::wrapper;
-namespace cssxc = com::sun::star::xml::crypto;
-
-BufferNode::BufferNode( const cssu::Reference< cssxw::XXMLElementWrapper >& xXMLElement )
+BufferNode::BufferNode( const css::uno::Reference< css::xml::wrapper::XXMLElementWrapper >& xXMLElement )
     :m_pParent(nullptr),
      m_pBlocker(nullptr),
      m_bAllReceived(false),
@@ -62,23 +59,12 @@ bool BufferNode::isECOfBeforeModifyIncluded(sal_Int32 nIgnoredSecurityId) const
  *  bExist - true if a match found, false otherwise
  ******************************************************************************/
 {
-    bool rc = false;
-    std::vector< const ElementCollector* >::const_iterator ii = m_vElementCollectors.begin();
-
-    for( ; ii != m_vElementCollectors.end() ; ++ii )
-    {
-        ElementCollector* pElementCollector = const_cast<ElementCollector*>(*ii);
-
-        if ((nIgnoredSecurityId == cssxc::sax::ConstOfSecurityId::UNDEFINEDSECURITYID ||
-             pElementCollector->getSecurityId() != nIgnoredSecurityId) &&
-            (pElementCollector->getPriority() == cssxc::sax::ElementMarkPriority_BEFOREMODIFY))
-        {
-            rc = true;
-            break;
-        }
-    }
-
-    return rc;
+    return std::any_of(m_vElementCollectors.cbegin(), m_vElementCollectors.cend(),
+        [nIgnoredSecurityId](const ElementCollector* pElementCollector) {
+            return (nIgnoredSecurityId == css::xml::crypto::sax::ConstOfSecurityId::UNDEFINEDSECURITYID ||
+                    pElementCollector->getSecurityId() != nIgnoredSecurityId) &&
+                   (pElementCollector->getPriority() == css::xml::crypto::sax::ElementMarkPriority_BEFOREMODIFY);
+        });
 }
 
 void BufferNode::setReceivedAll()
@@ -86,7 +72,7 @@ void BufferNode::setReceivedAll()
  *
  *   NAME
  *  setReceivedAll -- indicates that the element in this BufferNode has
- *  been completely bufferred.
+ *  been completely buffered.
  *
  *   SYNOPSIS
  *  setReceivedAll();
@@ -150,16 +136,11 @@ void BufferNode::removeElementCollector(const ElementCollector* pElementCollecto
  *  empty
  ******************************************************************************/
 {
-    std::vector< const ElementCollector* >::iterator ii = m_vElementCollectors.begin();
-
-    for( ; ii != m_vElementCollectors.end() ; ++ii )
+    auto ii = std::find(m_vElementCollectors.begin(), m_vElementCollectors.end(), pElementCollector);
+    if (ii != m_vElementCollectors.end())
     {
-        if( *ii == pElementCollector )
-        {
-            m_vElementCollectors.erase( ii );
-            const_cast<ElementCollector*>(pElementCollector)->setBufferNode(nullptr);
-            break;
-        }
+        m_vElementCollectors.erase( ii );
+        const_cast<ElementCollector*>(pElementCollector)->setBufferNode(nullptr);
     }
 }
 
@@ -215,37 +196,36 @@ OUString BufferNode::printChildren() const
  *  result - the information string
  ******************************************************************************/
 {
-    OUString rc;
-    std::vector< const ElementCollector* >::const_iterator ii = m_vElementCollectors.begin();
+    OUStringBuffer rc;
 
-    for( ; ii != m_vElementCollectors.end() ; ++ii )
+    for( const ElementCollector* ii : m_vElementCollectors )
     {
-        rc += "BufID=" + OUString::number((*ii)->getBufferId());
+        rc.append("BufID=").append(OUString::number(ii->getBufferId()));
 
-        if ((*ii)->getModify())
+        if (ii->getModify())
         {
-            rc += "[M]";
+            rc.append("[M]");
         }
 
-        rc += ",Pri=";
+        rc.append(",Pri=");
 
-        switch ((*ii)->getPriority())
+        switch (ii->getPriority())
         {
-            case cssxc::sax::ElementMarkPriority_BEFOREMODIFY:
-                rc += "BEFOREMODIFY";
+            case css::xml::crypto::sax::ElementMarkPriority_BEFOREMODIFY:
+                rc.append("BEFOREMODIFY");
                 break;
-            case cssxc::sax::ElementMarkPriority_AFTERMODIFY:
-                rc += "AFTERMODIFY";
+            case css::xml::crypto::sax::ElementMarkPriority_AFTERMODIFY:
+                rc.append("AFTERMODIFY");
                 break;
             default:
-                rc += "UNKNOWN";
+                rc.append("UNKNOWN");
                 break;
         }
 
-        rc += "(SecID=" + OUString::number((*ii)->getSecurityId()) + ") ";
+        rc.append("(SecID=").append(OUString::number(ii->getSecurityId())).append(") ");
     }
 
-    return rc;
+    return rc.makeStringAndClear();
 }
 
 bool BufferNode::hasAnything() const
@@ -294,9 +274,14 @@ bool BufferNode::hasChildren() const
     return (!m_vChildren.empty());
 }
 
-std::vector< const BufferNode* >* BufferNode::getChildren() const
+std::vector< std::unique_ptr<BufferNode> > const & BufferNode::getChildren() const
 {
-    return new std::vector< const BufferNode* >( m_vChildren );
+    return m_vChildren;
+}
+
+std::vector< std::unique_ptr<BufferNode> > BufferNode::releaseChildren()
+{
+    return std::move(m_vChildren);
 }
 
 const BufferNode* BufferNode::getFirstChild() const
@@ -323,13 +308,13 @@ const BufferNode* BufferNode::getFirstChild() const
 
     if (!m_vChildren.empty())
     {
-        rc = const_cast<BufferNode*>(m_vChildren.front());
+        rc = m_vChildren.front().get();
     }
 
     return rc;
 }
 
-void BufferNode::addChild(const BufferNode* pChild, sal_Int32 nPosition)
+void BufferNode::addChild(std::unique_ptr<BufferNode> pChild, sal_Int32 nPosition)
 /****** BufferNode/addChild(pChild,nPosition) ********************************
  *
  *   NAME
@@ -355,17 +340,15 @@ void BufferNode::addChild(const BufferNode* pChild, sal_Int32 nPosition)
 {
     if (nPosition == -1)
     {
-        m_vChildren.push_back( pChild );
+        m_vChildren.push_back( std::move(pChild) );
     }
     else
     {
-        std::vector< const BufferNode* >::iterator ii = m_vChildren.begin();
-        ii += nPosition;
-        m_vChildren.insert(ii, pChild);
+        m_vChildren.insert(m_vChildren.begin() + nPosition, std::move(pChild));
     }
 }
 
-void BufferNode::addChild(const BufferNode* pChild)
+void BufferNode::addChild(std::unique_ptr<BufferNode> pChild)
 /****** BufferNode/addChild() ************************************************
  *
  *   NAME
@@ -387,14 +370,14 @@ void BufferNode::addChild(const BufferNode* pChild)
  *  The new child BufferNode is appended at the end.
  ******************************************************************************/
 {
-    addChild(pChild, -1);
+    addChild(std::move(pChild), -1);
 }
 
 void BufferNode::removeChild(const BufferNode* pChild)
 /****** BufferNode/removeChild ***********************************************
  *
  *   NAME
- *  removeChild -- removes a child BufferNode from the children list.
+ *  removeChild -- removes and deletes a child BufferNode from the children list.
  *
  *   SYNOPSIS
  *  removeChild(pChild);
@@ -409,16 +392,11 @@ void BufferNode::removeChild(const BufferNode* pChild)
  *  empty
  ******************************************************************************/
 {
-    std::vector< const BufferNode* >::iterator ii = m_vChildren.begin();
-
-    for( ; ii != m_vChildren.end() ; ++ii )
-    {
-        if( *ii == pChild )
-        {
-            m_vChildren.erase( ii );
-            break;
-        }
-    }
+    auto ii = std::find_if(m_vChildren.begin(), m_vChildren.end(),
+                [pChild] (const std::unique_ptr<BufferNode>& i)
+                { return i.get() == pChild; });
+    if (ii != m_vChildren.end())
+        m_vChildren.erase( ii );
 }
 
 sal_Int32 BufferNode::indexOfChild(const BufferNode* pChild) const
@@ -441,27 +419,13 @@ sal_Int32 BufferNode::indexOfChild(const BufferNode* pChild) const
  *          is not found, -1 is returned.
  ******************************************************************************/
 {
-    sal_Int32 nIndex = 0;
-    bool bFound = false;
+    auto ii = std::find_if(m_vChildren.begin(), m_vChildren.end(),
+            [pChild] (const std::unique_ptr<BufferNode>& i)
+            { return i.get() == pChild; });
+    if (ii == m_vChildren.end())
+        return -1;
 
-    std::vector< const BufferNode * >::const_iterator ii = m_vChildren.begin();
-
-    for( ; ii != m_vChildren.end() ; ++ii )
-    {
-        if( *ii == pChild )
-        {
-            bFound = true;
-            break;
-        }
-        nIndex++;
-    }
-
-    if (!bFound )
-    {
-        nIndex = -1;
-    }
-
-    return nIndex;
+    return std::distance(m_vChildren.begin(), ii);
 }
 
 
@@ -524,24 +488,13 @@ const BufferNode* BufferNode::isAncestor(const BufferNode* pDescendant) const
 
     if (pDescendant != nullptr)
     {
-        std::vector< const BufferNode* >::const_iterator ii = m_vChildren.begin();
+        auto ii = std::find_if(m_vChildren.cbegin(), m_vChildren.cend(),
+            [&pDescendant](const std::unique_ptr<BufferNode>& pChild) {
+                return (pChild.get() == pDescendant) || (pChild->isAncestor(pDescendant) != nullptr);
+            });
 
-        for( ; ii != m_vChildren.end() ; ++ii )
-        {
-            BufferNode* pChild = const_cast<BufferNode*>(*ii);
-
-            if (pChild == pDescendant)
-            {
-                rc = pChild;
-                break;
-            }
-
-            if (pChild->isAncestor(pDescendant) != nullptr)
-            {
-                rc = pChild;
-                break;
-            }
-        }
+        if (ii != m_vChildren.end())
+            rc = ii->get();
     }
 
     return rc;
@@ -661,7 +614,7 @@ const BufferNode* BufferNode::getNextNodeByTreeOrder() const
 }
 
 
-void BufferNode::setXMLElement( const cssu::Reference< cssxw::XXMLElementWrapper >& xXMLElement )
+void BufferNode::setXMLElement( const css::uno::Reference< css::xml::wrapper::XXMLElementWrapper >& xXMLElement )
 {
     m_xXMLElement = xXMLElement;
 }
@@ -686,11 +639,8 @@ void BufferNode::notifyBranch()
  *  empty
  ******************************************************************************/
 {
-    std::vector< const BufferNode* >::const_iterator ii = m_vChildren.begin();
-
-    for( ; ii != m_vChildren.end() ; ++ii )
+    for( std::unique_ptr<BufferNode>& pBufferNode : m_vChildren )
     {
-        BufferNode* pBufferNode = const_cast<BufferNode*>(*ii);
         pBufferNode->elementCollectorNotify();
         pBufferNode->notifyBranch();
     }
@@ -716,63 +666,60 @@ void BufferNode::elementCollectorNotify()
  *          BufferNode.
  ******************************************************************************/
 {
-    if (!m_vElementCollectors.empty())
+    if (m_vElementCollectors.empty())
+        return;
+
+    css::xml::crypto::sax::ElementMarkPriority nMaxPriority = css::xml::crypto::sax::ElementMarkPriority_MINIMUM;
+    css::xml::crypto::sax::ElementMarkPriority nPriority;
+
+    /*
+     * get the max priority among ElementCollectors on this BufferNode
+     */
+    for( const ElementCollector* pElementCollector : m_vElementCollectors )
     {
-        cssxc::sax::ElementMarkPriority nMaxPriority = cssxc::sax::ElementMarkPriority_MINIMUM;
-        cssxc::sax::ElementMarkPriority nPriority;
+        nPriority = pElementCollector->getPriority();
+        if (nPriority > nMaxPriority)
+        {
+            nMaxPriority = nPriority;
+        }
+    }
+
+    std::vector< const ElementCollector* > vElementCollectors( m_vElementCollectors );
+
+    for( const ElementCollector* ii : vElementCollectors )
+    {
+        ElementCollector* pElementCollector = const_cast<ElementCollector*>(ii);
+        nPriority = pElementCollector->getPriority();
+        bool bToModify = pElementCollector->getModify();
 
         /*
-         * get the max priority among ElementCollectors on this BufferNode
+         * Only ElementCollector with the max priority can
+         * perform notify operation.
+         * Moreover, if any blocker exists in the subtree of
+         * this BufferNode, this ElementCollector can't do notify
+         * unless its priority is BEFOREMODIFY.
          */
-        std::vector< const ElementCollector* >::const_iterator ii = m_vElementCollectors.begin();
-        for( ; ii != m_vElementCollectors.end() ; ++ii )
+        if (nPriority == nMaxPriority &&
+            (nPriority == css::xml::crypto::sax::ElementMarkPriority_BEFOREMODIFY ||
+             !isBlockerInSubTreeIncluded(pElementCollector->getSecurityId())))
         {
-            ElementCollector* pElementCollector = const_cast<ElementCollector*>(*ii);
-            nPriority = pElementCollector->getPriority();
-            if (nPriority > nMaxPriority)
-            {
-                nMaxPriority = nPriority;
-            }
-        }
-
-        std::vector< const ElementCollector* > vElementCollectors( m_vElementCollectors );
-        ii = vElementCollectors.begin();
-
-        for( ; ii != vElementCollectors.end() ; ++ii )
-        {
-            ElementCollector* pElementCollector = const_cast<ElementCollector*>(*ii);
-            nPriority = pElementCollector->getPriority();
-            bool bToModify = pElementCollector->getModify();
-
             /*
-             * Only ElementCollector with the max priority can
-             * perform notify operation.
-             * Moreover, if any blocker exists in the subtree of
-             * this BufferNode, this ElementCollector can't do notify
-             * unless its priority is BEFOREMODIFY.
+             * If this ElementCollector will modify the buffered element, then
+             * special attention must be paid.
+             *
+             * If there is any ElementCollector in the subtree or any ancestor
+             * ElementCollector with PRI_BEFPREMODIFY priority, this
+             * ElementCollector can't perform notify operation, otherwise, it
+             * will destroy the buffered element, in turn, ElementCollectors
+             * mentioned above can't perform their mission.
              */
-            if (nPriority == nMaxPriority &&
-                (nPriority == cssxc::sax::ElementMarkPriority_BEFOREMODIFY ||
-                 !isBlockerInSubTreeIncluded(pElementCollector->getSecurityId())))
+            //if (!(nMaxPriority == css::xml::crypto::sax::ElementMarkPriority_PRI_MODIFY &&
+            if (!(bToModify &&
+                 (isECInSubTreeIncluded(pElementCollector->getSecurityId()) ||
+                  isECOfBeforeModifyInAncestorIncluded(pElementCollector->getSecurityId()))
+               ))
             {
-                /*
-                 * If this ElementCollector will modify the bufferred element, then
-                 * special attention must be paid.
-                 *
-                 * If there is any ElementCollector in the subtree or any ancestor
-                 * ElementCollector with PRI_BEFPREMODIFY priority, this
-                 * ElementCollector can't perform notify operation, otherwise, it
-                 * will destroy the bufferred element, in turn, ElementCollectors
-                 * mentioned above can't perform their mission.
-                 */
-                //if (!(nMaxPriority == cssxc::sax::ElementMarkPriority_PRI_MODIFY &&
-                if (!(bToModify &&
-                     (isECInSubTreeIncluded(pElementCollector->getSecurityId()) ||
-                      isECOfBeforeModifyInAncestorIncluded(pElementCollector->getSecurityId()))
-                   ))
-                {
-                    pElementCollector->notifyListener();
-                }
+                pElementCollector->notifyListener();
             }
         }
     }
@@ -802,35 +749,18 @@ bool BufferNode::isECInSubTreeIncluded(sal_Int32 nIgnoredSecurityId) const
  *  bExist - true if a match found, false otherwise.
  ******************************************************************************/
 {
-    bool rc = false;
-
-    std::vector< const ElementCollector* >::const_iterator jj = m_vElementCollectors.begin();
-
-    for( ; jj != m_vElementCollectors.end() ; ++jj )
-    {
-        ElementCollector* pElementCollector = const_cast<ElementCollector*>(*jj);
-        if (nIgnoredSecurityId == cssxc::sax::ConstOfSecurityId::UNDEFINEDSECURITYID ||
-             pElementCollector->getSecurityId() != nIgnoredSecurityId)
-        {
-            rc = true;
-            break;
-        }
-    }
+    bool rc = std::any_of(m_vElementCollectors.begin(), m_vElementCollectors.end(),
+        [nIgnoredSecurityId](const ElementCollector* pElementCollector) {
+            return nIgnoredSecurityId == css::xml::crypto::sax::ConstOfSecurityId::UNDEFINEDSECURITYID ||
+                pElementCollector->getSecurityId() != nIgnoredSecurityId;
+    });
 
     if ( !rc )
     {
-        std::vector< const BufferNode* >::const_iterator ii = m_vChildren.begin();
-
-        for( ; ii != m_vChildren.end() ; ++ii )
-        {
-            BufferNode* pBufferNode = const_cast<BufferNode*>(*ii);
-
-            if ( pBufferNode->isECInSubTreeIncluded(nIgnoredSecurityId))
-            {
-                rc = true;
-                break;
-            }
-        }
+        rc = std::any_of(m_vChildren.begin(), m_vChildren.end(),
+            [nIgnoredSecurityId](const std::unique_ptr<BufferNode>& pBufferNode) {
+                return pBufferNode->isECInSubTreeIncluded(nIgnoredSecurityId);
+        });
     }
 
     return rc;
@@ -903,31 +833,14 @@ bool BufferNode::isBlockerInSubTreeIncluded(sal_Int32 nIgnoredSecurityId) const
  *  bExist - true if a match found, false otherwise.
  ******************************************************************************/
 {
-    bool rc = false;
-
-    std::vector< const BufferNode* >::const_iterator ii = m_vChildren.begin();
-
-    for( ; ii != m_vChildren.end() ; ++ii )
-    {
-        BufferNode* pBufferNode = const_cast<BufferNode*>(*ii);
-        ElementMark* pBlocker = pBufferNode->getBlocker();
-
-        if (pBlocker != nullptr &&
-            (nIgnoredSecurityId == cssxc::sax::ConstOfSecurityId::UNDEFINEDSECURITYID ||
-            pBlocker->getSecurityId() != nIgnoredSecurityId ))
-        {
-            rc = true;
-            break;
-        }
-
-        if (rc || pBufferNode->isBlockerInSubTreeIncluded(nIgnoredSecurityId))
-        {
-            rc = true;
-            break;
-        }
-    }
-
-    return rc;
+    return std::any_of(m_vChildren.begin(), m_vChildren.end(),
+        [nIgnoredSecurityId](const std::unique_ptr<BufferNode>& pBufferNode) {
+            ElementMark* pBlocker = pBufferNode->getBlocker();
+            return (pBlocker != nullptr &&
+                (nIgnoredSecurityId == css::xml::crypto::sax::ConstOfSecurityId::UNDEFINEDSECURITYID ||
+                 pBlocker->getSecurityId() != nIgnoredSecurityId )) ||
+                pBufferNode->isBlockerInSubTreeIncluded(nIgnoredSecurityId);
+    });
 }
 
 const BufferNode* BufferNode::getNextChild(const BufferNode* pChild) const
@@ -953,53 +866,21 @@ const BufferNode* BufferNode::getNextChild(const BufferNode* pChild) const
     BufferNode* rc = nullptr;
     bool bChildFound = false;
 
-    std::vector< const BufferNode* >::const_iterator ii = m_vChildren.begin();
-    for( ; ii != m_vChildren.end() ; ++ii )
+    for( std::unique_ptr<BufferNode> const & i : m_vChildren )
     {
         if (bChildFound)
         {
-            rc = const_cast<BufferNode*>(*ii);
+            rc = i.get();
             break;
         }
 
-        if( *ii == pChild )
+        if( i.get() == pChild )
         {
             bChildFound = true;
         }
     }
 
     return rc;
-}
-
-
-void BufferNode::freeAllChildren()
-/****** BufferNode/freeAllChildren *******************************************
- *
- *   NAME
- *  freeAllChildren -- free all his child BufferNode.
- *
- *   SYNOPSIS
- *  freeAllChildren();
- *
- *   FUNCTION
- *  see NAME
- *
- *   INPUTS
- *  empty
- *
- *   RESULT
- *  empty
- ******************************************************************************/
-{
-    std::vector< const BufferNode* >::const_iterator ii = m_vChildren.begin();
-    for( ; ii != m_vChildren.end() ; ++ii )
-    {
-        BufferNode *pChild = const_cast<BufferNode *>(*ii);
-        pChild->freeAllChildren();
-        delete pChild;
-    }
-
-    m_vChildren.clear();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

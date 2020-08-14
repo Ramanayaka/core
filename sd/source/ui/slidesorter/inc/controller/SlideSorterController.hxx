@@ -20,33 +20,37 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLIDESORTERCONTROLLER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLIDESORTERCONTROLLER_HXX
 
-#include "model/SlsSharedPageDescriptor.hxx"
-#include "ViewShell.hxx"
+#include <model/SlsSharedPageDescriptor.hxx>
+#include <pres.hxx>
 
-#include <com/sun/star/drawing/XDrawPages.hpp>
-
-#include <sfx2/shell.hxx>
-#include <sfx2/viewfac.hxx>
 #include <tools/link.hxx>
 #include <tools/gen.hxx>
+#include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
 
-#include "sddllapi.h"
+#include <sddllapi.h>
 
 #include <memory>
+#include <vector>
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace com::sun::star::container { class XIndexAccess; }
+namespace com::sun::star::uno { template <typename > class Reference; }
+namespace sd { class FuPoor; }
+namespace sd { class Window; }
+namespace vcl { class Window; }
 
-namespace sd { namespace slidesorter { namespace view {
-class SlideSorterView;
-} } }
+namespace sd::slidesorter { class SlideSorter; }
+namespace sd::slidesorter::view { class SlideSorterView; }
+namespace sd::slidesorter::model { class SlideSorterModel; }
 
-namespace sd { namespace slidesorter { namespace model {
-class SlideSorterModel;
-} } }
+class CommandEvent;
+class SdPage;
+class SfxItemSet;
+class SfxRequest;
+class VclSimpleEvent;
+class VclWindowEvent;
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 class Animator;
 class Clipboard;
@@ -144,7 +148,7 @@ public:
     */
     class ModelChangeLock
     {public:
-        ModelChangeLock (SlideSorterController& rController);
+        ModelChangeLock(SlideSorterController& rController);
         ~ModelChangeLock() COVERITY_NOEXCEPT_FALSE;
         void Release();
     private:
@@ -176,7 +180,7 @@ public:
         selection function then return a reference to it.  Otherwise return
         an empty reference.
     */
-    ::rtl::Reference<SelectionFunction> GetCurrentSelectionFunction();
+    ::rtl::Reference<SelectionFunction> GetCurrentSelectionFunction() const;
 
     /** Prepare for a change of the edit mode.  Depending on the current
         edit mode we may save the selection so that it can be restored when
@@ -240,6 +244,7 @@ private:
 
     int mnModelChangeLockCount;
     bool mbIsForcedRearrangePending;
+    bool mbContextMenuOpen;
 
     bool mbPostModelChangePending;
 
@@ -294,7 +299,7 @@ private:
     void PostModelChange();
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

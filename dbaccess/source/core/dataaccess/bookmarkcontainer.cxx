@@ -17,25 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "bookmarkcontainer.hxx"
-#include "dbastrings.hrc"
-#include "apitools.hxx"
-#include "core_resource.hxx"
-#include "core_resource.hrc"
+#include <bookmarkcontainer.hxx>
 
 #include <osl/diagnose.h>
-#include <comphelper/sequence.hxx>
 #include <comphelper/enumhelper.hxx>
-#include <comphelper/extract.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <comphelper/types.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::osl;
 using namespace ::comphelper;
@@ -71,7 +62,7 @@ OBookmarkContainer::~OBookmarkContainer()
 // XServiceInfo
 OUString SAL_CALL OBookmarkContainer::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.dba.OBookmarkContainer");
+    return "com.sun.star.comp.dba.OBookmarkContainer";
 }
 
 sal_Bool SAL_CALL OBookmarkContainer::supportsService( const OUString& _rServiceName )
@@ -81,8 +72,7 @@ sal_Bool SAL_CALL OBookmarkContainer::supportsService( const OUString& _rService
 
 Sequence< OUString > SAL_CALL OBookmarkContainer::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aReturn { "com.sun.star.sdb.DefinitionContainer" };
-    return aReturn;
+    return { "com.sun.star.sdb.DefinitionContainer" };
 }
 
 // XNameContainer
@@ -223,7 +213,7 @@ Any SAL_CALL OBookmarkContainer::getByIndex( sal_Int32 _nIndex )
 {
     MutexGuard aGuard(m_rMutex);
 
-    if ((_nIndex < 0) || (_nIndex >= (sal_Int32)m_aBookmarksIndexed.size()))
+    if ((_nIndex < 0) || (_nIndex >= static_cast<sal_Int32>(m_aBookmarksIndexed.size())))
         throw IndexOutOfBoundsException();
 
     return makeAny(m_aBookmarksIndexed[_nIndex]->second);
@@ -245,13 +235,11 @@ Sequence< OUString > SAL_CALL OBookmarkContainer::getElementNames(  )
 
     Sequence< OUString > aNames(m_aBookmarks.size());
     OUString* pNames = aNames.getArray();
-    ;
-    for (   MapIteratorVector::const_iterator aNameIter = m_aBookmarksIndexed.begin();
-            aNameIter != m_aBookmarksIndexed.end();
-            ++pNames, ++aNameIter
-        )
+
+    for (auto const& bookmarkIndexed : m_aBookmarksIndexed)
     {
-        *pNames = (*aNameIter)->first;
+        *pNames = bookmarkIndexed->first;
+        ++pNames;
     }
 
     return aNames;
@@ -270,17 +258,12 @@ void OBookmarkContainer::implRemove(const OUString& _rName)
 
     // look for the name in the index access vector
     MapString2String::const_iterator aMapPos = m_aBookmarks.end();
-    for (   MapIteratorVector::iterator aSearch = m_aBookmarksIndexed.begin();
-            aSearch != m_aBookmarksIndexed.end();
-            ++aSearch
-        )
+    auto aSearch = std::find_if(m_aBookmarksIndexed.begin(), m_aBookmarksIndexed.end(),
+        [&_rName](const MapString2String::iterator& rIter) { return rIter->first == _rName; });
+    if (aSearch != m_aBookmarksIndexed.end())
     {
-        if ((*aSearch)->first == _rName)
-        {
-            aMapPos = *aSearch;
-            m_aBookmarksIndexed.erase(aSearch);
-            break;
-        }
+        aMapPos = *aSearch;
+        m_aBookmarksIndexed.erase(aSearch);
     }
 
     if (m_aBookmarks.end() == aMapPos)
@@ -298,7 +281,7 @@ void OBookmarkContainer::implAppend(const OUString& _rName, const OUString& _rDo
     MutexGuard aGuard(m_rMutex);
 
     OSL_ENSURE(m_aBookmarks.find(_rName) == m_aBookmarks.end(),"Bookmark already known!");
-    m_aBookmarksIndexed.push_back(m_aBookmarks.insert(  MapString2String::value_type(_rName,_rDocumentLocation)).first);
+    m_aBookmarksIndexed.push_back(m_aBookmarks.emplace( _rName,_rDocumentLocation).first);
 }
 
 void OBookmarkContainer::implReplace(const OUString& _rName, const OUString& _rNewLink)

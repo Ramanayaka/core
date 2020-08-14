@@ -20,32 +20,33 @@
 #ifndef INCLUDED_SC_INC_STYLEUNO_HXX
 #define INCLUDED_SC_INC_STYLEUNO_HXX
 
-#include <svl/itemprop.hxx>
 #include <svl/lstner.hxx>
-#include <rsc/rscsfx.hxx>
+#include <svl/style.hxx>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/style/XStyleLoader2.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/container/XIndexReplace.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/beans/XMultiPropertyStates.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/lang/XComponent.hpp>
 
+namespace com::sun::star::container { class XIndexReplace; }
+namespace com::sun::star::lang { class XComponent; }
 
-class SfxStyleSheetBase;
 class ScDocShell;
-class SfxObjectShell;
+class SfxItemPropertySet;
+class SfxItemSet;
 
 class ScStyleFamilyObj;
 class ScStyleObj;
+struct SfxItemPropertySimpleEntry;
 
-class ScStyleFamiliesObj : public ::cppu::WeakImplHelper<
+class ScStyleFamiliesObj final : public ::cppu::WeakImplHelper<
                             css::container::XIndexAccess,
                             css::container::XNameAccess,
                             css::style::XStyleLoader2,
@@ -264,11 +265,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
                             // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScStyleObj* getImplementation(const css::uno::Reference<css::uno::XInterface>& rObj);
-
+    UNO3_GETIMPLEMENTATION_DECL(ScStyleObj)
 };
 
 #endif

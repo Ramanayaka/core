@@ -11,8 +11,9 @@
 
 #include <com/sun/star/io/IOException.hpp>
 #include <sal/log.hxx>
+#include <cppuhelper/queryinterface.hxx>
 
-#include <std_outputstream.hxx>
+#include "std_outputstream.hxx"
 
 using namespace std;
 using namespace com::sun::star;
@@ -26,13 +27,13 @@ namespace cmis
 
     StdOutputStream::~StdOutputStream()
     {
-        if ( m_pStream.get( ) )
+        if (m_pStream)
             m_pStream->setstate( ios::eofbit );
     }
 
     uno::Any SAL_CALL StdOutputStream::queryInterface( const uno::Type& rType )
     {
-        uno::Any aRet = ::cppu::queryInterface( rType, ( static_cast< XOutputStream* >( this ) ) );
+        uno::Any aRet = ::cppu::queryInterface( rType, static_cast< XOutputStream* >( this ) );
 
         return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
     }
@@ -51,7 +52,7 @@ namespace cmis
     {
         osl::MutexGuard aGuard( m_aMutex );
 
-        if ( !m_pStream.get() )
+        if (!m_pStream)
             throw io::IOException( );
 
         try
@@ -69,7 +70,7 @@ namespace cmis
     {
         osl::MutexGuard aGuard( m_aMutex );
 
-        if ( !m_pStream.get() )
+        if (!m_pStream)
             throw io::IOException( );
 
         try
@@ -87,7 +88,7 @@ namespace cmis
     {
         osl::MutexGuard aGuard( m_aMutex );
 
-        if ( !m_pStream.get() )
+        if (!m_pStream)
             throw io::IOException( );
 
         m_pStream->setstate( ios_base::eofbit );

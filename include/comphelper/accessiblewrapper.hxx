@@ -20,6 +20,7 @@
 #ifndef INCLUDED_COMPHELPER_ACCESSIBLEWRAPPER_HXX
 #define INCLUDED_COMPHELPER_ACCESSIBLEWRAPPER_HXX
 
+#include <config_options.h>
 #include <sal/config.h>
 
 #include <map>
@@ -30,18 +31,16 @@
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventListener.hpp>
 #include <cppuhelper/compbase.hxx>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <comphelper/sequence.hxx>
 #include <comphelper/uno3.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
+#include <cppuhelper/interfacecontainer.h>
 #include <comphelper/accessibleeventnotifier.hxx>
-#include <comphelper/stl_types.hxx>
 #include <comphelper/comphelperdllapi.h>
 #include <rtl/ref.hxx>
 
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace comphelper
 {
@@ -137,7 +136,7 @@ namespace comphelper
 
         <p>AccessibleEvents fired by the inner context are multiplexed, especially, any references to
         children in such events are translated. This means that even in such events, no un-wrapped object
-        will ever leave this class - if the aggregated context notifies an child event, the child passed
+        will ever leave this class - if the aggregated context notifies a child event, the child passed
         to the event is wrapped</p>
 
         @seealso OAccessibleContextWrapper
@@ -318,7 +317,6 @@ namespace comphelper
 
     typedef ::std::map  <   css::uno::Reference< css::accessibility::XAccessible >
                         ,   css::uno::Reference< css::accessibility::XAccessible >
-                        ,   OInterfaceCompare< css::accessibility::XAccessible >
                         >   AccessibleMap;
                         // TODO: think about if we should hold these objects weak
 
@@ -326,7 +324,7 @@ namespace comphelper
                                   >   OWrappedAccessibleChildrenManager_Base;
     /** manages wrapping XAccessible's to XAccessible's
     */
-    class COMPHELPER_DLLPUBLIC OWrappedAccessibleChildrenManager : public OWrappedAccessibleChildrenManager_Base
+    class UNLESS_MERGELIBS(COMPHELPER_DLLPUBLIC) OWrappedAccessibleChildrenManager : public OWrappedAccessibleChildrenManager_Base
     {
     protected:
         css::uno::Reference< css::uno::XComponentContext >
@@ -364,7 +362,7 @@ namespace comphelper
         /// invalidates (i.e. empties) the map
         void    invalidateAll( );
 
-        /** disposes (i.e. cleares) the manager
+        /** disposes (i.e. clears) the manager
 
             <p>Note that the XAccessibleContext's of the mapped XAccessible objects are disposed, too.</p>
         */

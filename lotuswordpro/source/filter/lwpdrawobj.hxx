@@ -65,8 +65,11 @@
 #include <sal/config.h>
 
 #include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
 
 #include "lwpsdwdrawheader.hxx"
+
+#include <memory>
 
 class SvStream;
 class XFFrame;
@@ -187,7 +190,7 @@ class LwpDrawPolyLine : public LwpDrawObj
 {
 private:
     SdwPolyLineRecord m_aPolyLineRec;
-    SdwPoint* m_pVector;
+    std::unique_ptr<SdwPoint[]> m_pVector;
 
 public:
     LwpDrawPolyLine(SvStream * pStream, DrawingOffsetAndScale* pTransData);
@@ -208,7 +211,7 @@ class LwpDrawPolygon : public LwpDrawObj
 {
 private:
     sal_uInt16 m_nNumPoints;
-    SdwPoint* m_pVector;
+    std::unique_ptr<SdwPoint[]> m_pVector;
 
 public:
     LwpDrawPolygon(SvStream * pStream, DrawingOffsetAndScale* pTransData);
@@ -296,7 +299,7 @@ private:
 public:
     explicit LwpDrawTextBox(SvStream* pStream);
     virtual ~LwpDrawTextBox() override;
-    static void SetFontStyle(rtl::Reference<XFFont> const & pFont, SdwTextBoxRecord* pRec);
+    static void SetFontStyle(rtl::Reference<XFFont> const & pFont, SdwTextBoxRecord const * pRec);
 
 protected:
     virtual void Read() override;
@@ -357,7 +360,7 @@ class LwpDrawBitmap : public LwpDrawObj
 {
 private:
     SdwBmpRecord m_aBmpRec;
-    sal_uInt8* m_pImageData;
+    std::unique_ptr<sal_uInt8[]> m_pImageData;
 public:
     explicit LwpDrawBitmap(SvStream* pStream);
     virtual ~LwpDrawBitmap() override;

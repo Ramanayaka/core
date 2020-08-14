@@ -21,13 +21,12 @@
 namespace svx
 {
 
-class SVX_DLLPUBLIC ColorSet
+class ColorSet
 {
     OUString maColorSetName;
     std::vector<Color> maColors;
 public:
     ColorSet(OUString const & aName);
-    ~ColorSet();
 
     void add(sal_uInt32 nIndex, sal_uInt32 aColorData)
     {
@@ -44,7 +43,7 @@ public:
     }
 };
 
-class SVX_DLLPUBLIC ColorSets
+class SVXCORE_DLLPUBLIC ColorSets
 {
     std::vector<ColorSet> maColorSets;
 public:
@@ -52,7 +51,7 @@ public:
     ~ColorSets();
 
     void init();
-    const std::vector<ColorSet>& getColorSets()
+    const std::vector<ColorSet>& getColorSets() const
     {
         return maColorSets;
     }

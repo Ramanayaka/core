@@ -21,6 +21,8 @@
 #include "regimpl.hxx"
 
 #include <memory>
+#include <set>
+#include <vector>
 #include <string.h>
 #include <stdio.h>
 
@@ -28,20 +30,18 @@
 #include <unistd.h>
 #endif
 
-#include <reflread.hxx>
+#include "reflread.hxx"
 
-#include <reflwrit.hxx>
+#include "reflwrit.hxx"
 
-#include "registry/reader.hxx"
-#include "registry/refltype.hxx"
-#include "registry/types.hxx"
-#include "registry/version.h"
+#include <registry/reader.hxx>
+#include <registry/refltype.hxx>
+#include <registry/types.hxx>
 
 #include "reflcnst.hxx"
 #include "keyimpl.hxx"
 
 #include <osl/thread.h>
-#include <rtl/alloc.h>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <osl/file.hxx>
@@ -323,8 +323,7 @@ void dumpType(typereg::Reader const & reader, OString const & indent) {
             printf(
                 "%s    parameter count: %u\n", indent.getStr(),
                 static_cast< unsigned int >(reader.getMethodParameterCount(i)));
-            // coverity[tainted_data] cid#1215304 unhelpfully warns about an
-            // untrusted loop bound here:
+            // coverity[tainted_data] - cid#1215304 unhelpfully warns about untrusted loop bound
             for (sal_uInt16 j = 0; j < reader.getMethodParameterCount(i); ++j)
             {
                 printf(
@@ -365,8 +364,7 @@ void dumpType(typereg::Reader const & reader, OString const & indent) {
             printf(
                 "%s    exception count: %u\n", indent.getStr(),
                 static_cast< unsigned int >(reader.getMethodExceptionCount(i)));
-            // coverity[tainted_data] cid#1215304 unhelpfully warns about an
-            // untrusted loop bound here:
+            // coverity[tainted_data] - cid#1215304 unhelpfully warns about untrusted loop bound
             for (sal_uInt16 j = 0; j < reader.getMethodExceptionCount(i); ++j)
             {
                 printf(
@@ -425,7 +423,6 @@ ORegistry::ORegistry()
     : m_refCount(1)
     , m_readOnly(false)
     , m_isOpen(false)
-    , ROOT("/")
 {
 }
 
@@ -632,7 +629,7 @@ RegError ORegistry::createKey(RegKeyHandle hKey, const OUString& keyName,
     }
 
     OStoreDirectory rStoreDir;
-    OUStringBuffer  sFullPath(sFullKeyName.getLength());
+    OUStringBuffer  sFullPath(sFullKeyName.getLength()+16);
     OUString        token;
 
     sFullPath.append('/');
@@ -713,7 +710,7 @@ RegError ORegistry::closeKey(RegKeyHandle hKey)
     REG_GUARD(m_mutex);
 
     OUString const aKeyName (pKey->getName());
-    if (!(m_openKeyTable.count(aKeyName) > 0))
+    if (m_openKeyTable.count(aKeyName) <= 0)
         return RegError::KEY_NOT_OPEN;
 
     if (pKey->isModified())
@@ -799,8 +796,7 @@ RegError ORegistry::eraseKey(ORegKey* pKey, const OUString& keyName)
         return _ret;
     }
 
-    OUString tmpName(sRelativKey);
-    tmpName += ROOT;
+    OUString tmpName = sRelativKey + ROOT;
 
     OStoreFile sFile(pKey->getStoreFile());
     if (sFile.isValid() && sFile.remove(sFullPath, tmpName))
@@ -896,14 +892,13 @@ RegError ORegistry::loadKey(RegKeyHandle hKey, const OUString& regFileName,
 }
 
 RegError ORegistry::loadAndSaveValue(ORegKey* pTargetKey,
-                                     ORegKey* pSourceKey,
+                                     ORegKey const * pSourceKey,
                                      const OUString& valueName,
                                      sal_uInt32 nCut,
                                      bool bWarnings,
                                      bool bReport)
 {
     OStoreStream    rValue;
-    sal_uInt8*      pBuffer;
     RegValueType    valueType;
     sal_uInt32      valueSize;
     sal_uInt32      nSize;
@@ -937,37 +932,32 @@ RegError ORegistry::loadAndSaveValue(ORegKey* pTargetKey,
         return RegError::VALUE_NOT_EXISTS;
     }
 
-    pBuffer = static_cast<sal_uInt8*>(rtl_allocateMemory(VALUE_HEADERSIZE));
+    std::vector<sal_uInt8> aBuffer(VALUE_HEADERSIZE);
 
     sal_uInt32  rwBytes;
-    if (rValue.readAt(0, pBuffer, VALUE_HEADERSIZE, rwBytes))
+    if (rValue.readAt(0, aBuffer.data(), VALUE_HEADERSIZE, rwBytes))
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
     if (rwBytes != VALUE_HEADERSIZE)
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
 
     RegError _ret = RegError::NO_ERROR;
-    sal_uInt8   type = *pBuffer;
-    valueType = (RegValueType)type;
-    readUINT32(pBuffer+VALUE_TYPEOFFSET, valueSize);
-    rtl_freeMemory(pBuffer);
+    sal_uInt8   type = aBuffer[0];
+    valueType = static_cast<RegValueType>(type);
+    readUINT32(aBuffer.data() + VALUE_TYPEOFFSET, valueSize);
 
     nSize = VALUE_HEADERSIZE + valueSize;
-    pBuffer = static_cast<sal_uInt8*>(rtl_allocateMemory(nSize));
+    aBuffer.resize(nSize);
 
-    if (rValue.readAt(0, pBuffer, nSize, rwBytes))
+    if (rValue.readAt(0, aBuffer.data(), nSize, rwBytes))
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
     if (rwBytes != nSize)
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
 
@@ -978,19 +968,17 @@ RegError ORegistry::loadAndSaveValue(ORegKey* pTargetKey,
         if (valueType == RegValueType::BINARY)
         {
             _ret = checkBlop(
-                rValue, sTargetPath, valueSize, pBuffer+VALUE_HEADEROFFSET,
+                rValue, sTargetPath, valueSize, aBuffer.data() + VALUE_HEADEROFFSET,
                 bReport);
             if (_ret != RegError::NO_ERROR)
             {
                 if (_ret == RegError::MERGE_ERROR ||
                     (_ret == RegError::MERGE_CONFLICT && bWarnings))
                 {
-                    rtl_freeMemory(pBuffer);
                     return _ret;
                 }
             } else
             {
-                rtl_freeMemory(pBuffer);
                 return _ret;
             }
         }
@@ -998,30 +986,26 @@ RegError ORegistry::loadAndSaveValue(ORegKey* pTargetKey,
 
     if (rValue.create(rTargetFile, sTargetPath, valueName, storeAccessMode::Create))
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
-    if (rValue.writeAt(0, pBuffer, nSize, rwBytes))
+    if (rValue.writeAt(0, aBuffer.data(), nSize, rwBytes))
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
 
     if (rwBytes != nSize)
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
     pTargetKey->setModified();
 
-    rtl_freeMemory(pBuffer);
     return _ret;
 }
 
 RegError ORegistry::checkBlop(OStoreStream& rValue,
                               const OUString& sTargetPath,
                               sal_uInt32 srcValueSize,
-                              sal_uInt8* pSrcBuffer,
+                              sal_uInt8 const * pSrcBuffer,
                               bool bReport)
 {
     RegistryTypeReader reader(pSrcBuffer, srcValueSize);
@@ -1031,33 +1015,30 @@ RegError ORegistry::checkBlop(OStoreStream& rValue,
         return RegError::INVALID_VALUE;
     }
 
-    sal_uInt8*      pBuffer = static_cast<sal_uInt8*>(rtl_allocateMemory(VALUE_HEADERSIZE));
+    std::vector<sal_uInt8> aBuffer(VALUE_HEADERSIZE);
     RegValueType    valueType;
     sal_uInt32      valueSize;
     sal_uInt32      rwBytes;
     OString         targetPath(OUStringToOString(sTargetPath, RTL_TEXTENCODING_UTF8));
 
-    if (!rValue.readAt(0, pBuffer, VALUE_HEADERSIZE, rwBytes) &&
+    if (!rValue.readAt(0, aBuffer.data(), VALUE_HEADERSIZE, rwBytes) &&
         (rwBytes == VALUE_HEADERSIZE))
     {
-        sal_uInt8 type = *pBuffer;
-        valueType = (RegValueType)type;
-        readUINT32(pBuffer+VALUE_TYPEOFFSET, valueSize);
-        rtl_freeMemory(pBuffer);
+        sal_uInt8 type = aBuffer[0];
+        valueType = static_cast<RegValueType>(type);
+        readUINT32(aBuffer.data() + VALUE_TYPEOFFSET, valueSize);
 
         if (valueType == RegValueType::BINARY)
         {
-            pBuffer = static_cast<sal_uInt8*>(rtl_allocateMemory(valueSize));
-            if (!rValue.readAt(VALUE_HEADEROFFSET, pBuffer, valueSize, rwBytes) &&
+            aBuffer.resize(valueSize);
+            if (!rValue.readAt(VALUE_HEADEROFFSET, aBuffer.data(), valueSize, rwBytes) &&
                 (rwBytes == valueSize))
             {
-                RegistryTypeReader reader2(pBuffer, valueSize);
+                RegistryTypeReader reader2(aBuffer.data(), valueSize);
 
                 if ((reader.getTypeClass() != reader2.getTypeClass())
                     || reader2.getTypeClass() == RT_TYPE_INVALID)
                 {
-                    rtl_freeMemory(pBuffer);
-
                     if (bReport)
                     {
                         fprintf(stdout, "ERROR: values of blop from key \"%s\" has different types.\n",
@@ -1073,22 +1054,17 @@ RegError ORegistry::checkBlop(OStoreStream& rValue,
                     {
                         mergeModuleValue(rValue, reader, reader2);
 
-                        rtl_freeMemory(pBuffer);
                         return RegError::NO_ERROR;
                     } else
                     if (reader2.getFieldCount() > 0)
                     {
-                        rtl_freeMemory(pBuffer);
                         return RegError::NO_ERROR;
                     } else
                     {
-                        rtl_freeMemory(pBuffer);
                         return RegError::MERGE_CONFLICT;
                     }
                 } else
                 {
-                    rtl_freeMemory(pBuffer);
-
                     if (bReport)
                     {
                         fprintf(stderr, "WARNING: value of key \"%s\" already exists.\n",
@@ -1098,7 +1074,6 @@ RegError ORegistry::checkBlop(OStoreStream& rValue,
                 }
             } else
             {
-                rtl_freeMemory(pBuffer);
                 if (bReport)
                 {
                     fprintf(stderr, "ERROR: values of key \"%s\" contains bad data.\n",
@@ -1108,7 +1083,6 @@ RegError ORegistry::checkBlop(OStoreStream& rValue,
             }
         } else
         {
-            rtl_freeMemory(pBuffer);
             if (bReport)
             {
                 fprintf(stderr, "ERROR: values of key \"%s\" has different types.\n",
@@ -1118,13 +1092,12 @@ RegError ORegistry::checkBlop(OStoreStream& rValue,
         }
     } else
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
 }
 
-static sal_uInt32 checkTypeReaders(RegistryTypeReader& reader1,
-                                   RegistryTypeReader& reader2,
+static sal_uInt32 checkTypeReaders(RegistryTypeReader const & reader1,
+                                   RegistryTypeReader const & reader2,
                                    std::set< OUString >& nameSet)
 {
     sal_uInt32 count=0;
@@ -1135,18 +1108,15 @@ static sal_uInt32 checkTypeReaders(RegistryTypeReader& reader1,
     }
     for (sal_uInt32 i=0 ; i < reader2.getFieldCount(); i++)
     {
-        if (nameSet.find(reader2.getFieldName(i)) == nameSet.end())
-        {
-            nameSet.insert(reader2.getFieldName(i));
+        if (nameSet.insert(reader2.getFieldName(i)).second)
             count++;
-        }
     }
     return count;
 }
 
 RegError ORegistry::mergeModuleValue(OStoreStream& rTargetValue,
-                                     RegistryTypeReader& reader,
-                                     RegistryTypeReader& reader2)
+                                     RegistryTypeReader const & reader,
+                                     RegistryTypeReader const & reader2)
 {
     std::set< OUString > nameSet;
     sal_uInt32 count = checkTypeReaders(reader, reader2, nameSet);
@@ -1158,7 +1128,7 @@ RegError ORegistry::mergeModuleValue(OStoreStream& rTargetValue,
         RegistryTypeWriter writer(reader.getTypeClass(),
                                   reader.getTypeName(),
                                   reader.getSuperTypeName(),
-                                  (sal_uInt16)count);
+                                  static_cast<sal_uInt16>(count));
 
         for (sal_uInt32 i=0 ; i < reader.getFieldCount(); i++)
         {
@@ -1189,27 +1159,23 @@ RegError ORegistry::mergeModuleValue(OStoreStream& rTargetValue,
         const sal_uInt8*    pBlop = writer.getBlop();
         sal_uInt32          aBlopSize = writer.getBlopSize();
 
-        sal_uInt8   type = (sal_uInt8)RegValueType::BINARY;
-        sal_uInt8*  pBuffer = static_cast<sal_uInt8*>(rtl_allocateMemory(VALUE_HEADERSIZE + aBlopSize));
+        sal_uInt8   type = sal_uInt8(RegValueType::BINARY);
+        std::vector<sal_uInt8> aBuffer(VALUE_HEADERSIZE + aBlopSize);
 
-        memcpy(pBuffer, &type, 1);
-        writeUINT32(pBuffer+VALUE_TYPEOFFSET, aBlopSize);
-        memcpy(pBuffer+VALUE_HEADEROFFSET, pBlop, aBlopSize);
+        memcpy(aBuffer.data(), &type, 1);
+        writeUINT32(aBuffer.data() + VALUE_TYPEOFFSET, aBlopSize);
+        memcpy(aBuffer.data() + VALUE_HEADEROFFSET, pBlop, aBlopSize);
 
         sal_uInt32  rwBytes;
-        if (rTargetValue.writeAt(0, pBuffer, VALUE_HEADERSIZE+aBlopSize, rwBytes))
+        if (rTargetValue.writeAt(0, aBuffer.data(), VALUE_HEADERSIZE+aBlopSize, rwBytes))
         {
-            rtl_freeMemory(pBuffer);
             return RegError::INVALID_VALUE;
         }
 
         if (rwBytes != VALUE_HEADERSIZE+aBlopSize)
         {
-            rtl_freeMemory(pBuffer);
             return RegError::INVALID_VALUE;
         }
-
-        rtl_freeMemory(pBuffer);
     }
     return RegError::NO_ERROR;
 }
@@ -1231,8 +1197,7 @@ RegError ORegistry::loadAndSaveKeys(ORegKey* pTargetKey,
     if (sRelPath.getLength() > 1 || sFullPath.isEmpty())
         sFullPath += ROOT;
 
-    OUString sFullKeyName = sFullPath;
-    sFullKeyName += keyName;
+    OUString sFullKeyName = sFullPath + keyName;
 
     OStoreDirectory rStoreDir;
     if (rStoreDir.create(pTargetKey->getStoreFile(), sFullPath, keyName, storeAccessMode::Create))
@@ -1325,7 +1290,6 @@ RegError ORegistry::dumpRegistry(RegKeyHandle hKey) const
 RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_Int16 nSpc) const
 {
     OStoreStream    rValue;
-    sal_uInt8*      pBuffer;
     sal_uInt32      valueSize;
     RegValueType    valueType;
     OUString        sFullPath(sPath);
@@ -1348,37 +1312,33 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
         return RegError::VALUE_NOT_EXISTS;
     }
 
-    pBuffer = static_cast<sal_uInt8*>(rtl_allocateMemory(VALUE_HEADERSIZE));
+    std::vector<sal_uInt8> aBuffer(VALUE_HEADERSIZE);
 
     sal_uInt32  rwBytes;
-    if (rValue.readAt(0, pBuffer, VALUE_HEADERSIZE, rwBytes))
+    if (rValue.readAt(0, aBuffer.data(), VALUE_HEADERSIZE, rwBytes))
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
     if (rwBytes != (VALUE_HEADERSIZE))
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
 
-    sal_uInt8 type = *pBuffer;
-    valueType = (RegValueType)type;
-    readUINT32(pBuffer+VALUE_TYPEOFFSET, valueSize);
+    sal_uInt8 type = aBuffer[0];
+    valueType = static_cast<RegValueType>(type);
+    readUINT32(aBuffer.data() + VALUE_TYPEOFFSET, valueSize);
 
-    pBuffer = static_cast<sal_uInt8*>(rtl_allocateMemory(valueSize));
-    if (rValue.readAt(VALUE_HEADEROFFSET, pBuffer, valueSize, rwBytes))
+    aBuffer.resize(valueSize);
+    if (rValue.readAt(VALUE_HEADEROFFSET, aBuffer.data(), valueSize, rwBytes))
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
     if (rwBytes != valueSize)
     {
-        rtl_freeMemory(pBuffer);
         return RegError::INVALID_VALUE;
     }
 
-    const sal_Char* indent = sIndent.getStr();
+    const char* indent = sIndent.getStr();
     switch (valueType)
     {
         case RegValueType::NOT_DEFINED:
@@ -1393,20 +1353,20 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
                 fprintf(stdout, "%s       Data = ", indent);
 
                 sal_Int32 value;
-                readINT32(pBuffer, value);
+                readINT32(aBuffer.data(), value);
                 fprintf(stdout, "%ld\n", sal::static_int_cast< long >(value));
             }
             break;
         case RegValueType::STRING:
             {
-                sal_Char* value = static_cast<sal_Char*>(rtl_allocateMemory(valueSize));
-                readUtf8(pBuffer, value, valueSize);
+                char* value = static_cast<char*>(std::malloc(valueSize));
+                readUtf8(aBuffer.data(), value, valueSize);
                 fprintf(stdout, "%sValue: Type = RegValueType::STRING\n", indent);
                 fprintf(
                     stdout, "%s       Size = %lu\n", indent,
                     sal::static_int_cast< unsigned long >(valueSize));
                 fprintf(stdout, "%s       Data = \"%s\"\n", indent, value);
-                rtl_freeMemory(value);
+                std::free(value);
             }
             break;
         case RegValueType::UNICODE:
@@ -1419,7 +1379,7 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
                 fprintf(stdout, "%s       Data = ", indent);
 
                 std::unique_ptr<sal_Unicode[]> value(new sal_Unicode[size]);
-                readString(pBuffer, value.get(), size);
+                readString(aBuffer.data(), value.get(), size);
 
                 OString uStr = OUStringToOString(value.get(), RTL_TEXTENCODING_UTF8);
                 fprintf(stdout, "L\"%s\"\n", uStr.getStr());
@@ -1433,7 +1393,7 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
                     sal::static_int_cast< unsigned long >(valueSize));
                 fprintf(stdout, "%s       Data = ", indent);
                 dumpType(
-                    typereg::Reader(pBuffer, valueSize),
+                    typereg::Reader(aBuffer.data(), valueSize),
                     sIndent + "              ");
             }
             break;
@@ -1442,7 +1402,7 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
                 sal_uInt32 offset = 4; // initial 4 bytes for the size of the array
                 sal_uInt32 len = 0;
 
-                readUINT32(pBuffer, len);
+                readUINT32(aBuffer.data(), len);
 
                 fprintf(stdout, "%sValue: Type = RegValueType::LONGLIST\n", indent);
                 fprintf(
@@ -1456,7 +1416,7 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
                 sal_Int32 longValue;
                 for (sal_uInt32 i=0; i < len; i++)
                 {
-                    readINT32(pBuffer+offset, longValue);
+                    readINT32(aBuffer.data() + offset, longValue);
 
                     if (offset > 4)
                         fprintf(stdout, "%s              ", indent);
@@ -1475,7 +1435,7 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
                 sal_uInt32 sLen = 0;
                 sal_uInt32 len = 0;
 
-                readUINT32(pBuffer, len);
+                readUINT32(aBuffer.data(), len);
 
                 fprintf(stdout, "%sValue: Type = RegValueType::STRINGLIST\n", indent);
                 fprintf(
@@ -1488,12 +1448,12 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
 
                 for (sal_uInt32 i=0; i < len; i++)
                 {
-                    readUINT32(pBuffer+offset, sLen);
+                    readUINT32(aBuffer.data() + offset, sLen);
 
                     offset += 4; // 4 bytes (sal_uInt32) for the string size
 
-                    sal_Char *pValue = static_cast<sal_Char*>(rtl_allocateMemory(sLen));
-                    readUtf8(pBuffer+offset, pValue, sLen);
+                    char *pValue = static_cast<char*>(std::malloc(sLen));
+                    readUtf8(aBuffer.data() + offset, pValue, sLen);
 
                     if (offset > 8)
                         fprintf(stdout, "%s              ", indent);
@@ -1501,7 +1461,7 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
                     fprintf(
                         stdout, "%lu = \"%s\"\n",
                         sal::static_int_cast< unsigned long >(i), pValue);
-                    rtl_freeMemory(pValue);
+                    std::free(pValue);
                     offset += sLen;
                 }
             }
@@ -1512,7 +1472,7 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
                 sal_uInt32 sLen = 0;
                 sal_uInt32 len = 0;
 
-                readUINT32(pBuffer, len);
+                readUINT32(aBuffer.data(), len);
 
                 fprintf(stdout, "%sValue: Type = RegValueType::UNICODELIST\n", indent);
                 fprintf(
@@ -1526,12 +1486,12 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
                 OString uStr;
                 for (sal_uInt32 i=0; i < len; i++)
                 {
-                    readUINT32(pBuffer+offset, sLen);
+                    readUINT32(aBuffer.data() + offset, sLen);
 
                     offset += 4; // 4 bytes (sal_uInt32) for the string size
 
-                    sal_Unicode *pValue = static_cast<sal_Unicode*>(rtl_allocateMemory((sLen / 2) * sizeof(sal_Unicode)));
-                    readString(pBuffer+offset, pValue, sLen);
+                    sal_Unicode *pValue = static_cast<sal_Unicode*>(std::malloc((sLen / 2) * sizeof(sal_Unicode)));
+                    readString(aBuffer.data() + offset, pValue, sLen);
 
                     if (offset > 8)
                         fprintf(stdout, "%s              ", indent);
@@ -1544,7 +1504,7 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
 
                     offset += sLen;
 
-                    rtl_freeMemory(pValue);
+                    std::free(pValue);
                 }
             }
             break;
@@ -1552,7 +1512,6 @@ RegError ORegistry::dumpValue(const OUString& sPath, const OUString& sName, sal_
 
     fprintf(stdout, "\n");
 
-    rtl_freeMemory(pBuffer);
     return RegError::NO_ERROR;
 }
 

@@ -19,34 +19,36 @@
 
 #include "LayoutMenu.hxx"
 
-#include "app.hrc"
-#include "drawdoc.hxx"
-#include "framework/FrameworkHelper.hxx"
-#include "glob.hrc"
-#include "glob.hxx"
-#include "helpids.h"
-#include "pres.hxx"
-#include "res_bmp.hrc"
-#include "sdpage.hxx"
-#include "sdresid.hxx"
-#include "strings.hrc"
-#include "bitmaps.hlst"
-#include "tools/SlotStateListener.hxx"
-#include "DrawController.hxx"
-#include "DrawDocShell.hxx"
-#include "DrawViewShell.hxx"
-#include "EventMultiplexer.hxx"
-#include "SlideSorterViewShell.hxx"
-#include "ViewShellBase.hxx"
+#include <app.hrc>
+#include <drawdoc.hxx>
+#include <framework/FrameworkHelper.hxx>
+#include <strings.hrc>
+#include <helpids.h>
+#include <pres.hxx>
+#include <sdmod.hxx>
+
+#include <sdpage.hxx>
+#include <sdresid.hxx>
+#include <unokywds.hxx>
+#include <bitmaps.hlst>
+#include <tools/SlotStateListener.hxx>
+#include <DrawController.hxx>
+#include <DrawDocShell.hxx>
+#include <DrawViewShell.hxx>
+#include <EventMultiplexer.hxx>
+#include <SlideSorterViewShell.hxx>
+#include <ViewShellBase.hxx>
 #include <sfx2/sidebar/Theme.hxx>
+#include <sal/log.hxx>
 
 #include <comphelper/processfactory.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/dispatch.hxx>
-#include <sfx2/objface.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <svl/languageoptions.hxx>
+#include <svl/stritem.hxx>
+#include <svl/intitem.hxx>
+#include <vcl/commandevent.hxx>
 #include <vcl/image.hxx>
 #include <vcl/floatwin.hxx>
 #include <xmloff/autolayout.hxx>
@@ -64,24 +66,28 @@ using namespace ::com::sun::star::drawing::framework;
 using namespace ::sd::slidesorter;
 using ::sd::framework::FrameworkHelper;
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
+
+namespace {
 
 struct snewfoil_value_info
 {
     const char* msBmpResId;
-    sal_uInt16 mnStrResId;
+    const char* mpStrResId;
     WritingMode meWritingMode;
     AutoLayout maAutoLayout;
 };
 
-static const snewfoil_value_info notes[] =
+}
+
+const snewfoil_value_info notes[] =
 {
     {BMP_FOILN_01, STR_AUTOLAYOUT_NOTES, WritingMode_LR_TB,
      AUTOLAYOUT_NOTES},
-    {"", 0, WritingMode_LR_TB, AUTOLAYOUT_NONE},
+    {"", nullptr, WritingMode_LR_TB, AUTOLAYOUT_NONE},
 };
 
-static const snewfoil_value_info handout[] =
+const snewfoil_value_info handout[] =
 {
     {BMP_FOILH_01, STR_AUTOLAYOUT_HANDOUT1, WritingMode_LR_TB,
      AUTOLAYOUT_HANDOUT1},
@@ -95,10 +101,10 @@ static const snewfoil_value_info handout[] =
      AUTOLAYOUT_HANDOUT6},
     {BMP_FOILH_09, STR_AUTOLAYOUT_HANDOUT9, WritingMode_LR_TB,
      AUTOLAYOUT_HANDOUT9},
-    {"", 0, WritingMode_LR_TB, AUTOLAYOUT_NONE},
+    {"", nullptr, WritingMode_LR_TB, AUTOLAYOUT_NONE},
 };
 
-static const snewfoil_value_info standard[] =
+const snewfoil_value_info standard[] =
 {
     {BMP_LAYOUT_EMPTY, STR_AUTOLAYOUT_NONE, WritingMode_LR_TB,        AUTOLAYOUT_NONE},
     {BMP_LAYOUT_HEAD03, STR_AUTOLAYOUT_TITLE, WritingMode_LR_TB,       AUTOLAYOUT_TITLE},
@@ -118,31 +124,50 @@ static const snewfoil_value_info standard[] =
     {BMP_LAYOUT_VERTICAL01, STR_AL_VERT_TITLE_VERT_OUTLINE, WritingMode_TB_RL, AUTOLAYOUT_VTITLE_VCONTENT},
     {BMP_LAYOUT_HEAD02, STR_AL_TITLE_VERT_OUTLINE, WritingMode_TB_RL, AUTOLAYOUT_TITLE_VCONTENT},
     {BMP_LAYOUT_HEAD02A, STR_AL_TITLE_VERT_OUTLINE_CLIPART,   WritingMode_TB_RL, AUTOLAYOUT_TITLE_2VTEXT},
-    {"", 0, WritingMode_LR_TB, AUTOLAYOUT_NONE}
+    {"", nullptr, WritingMode_LR_TB, AUTOLAYOUT_NONE}
+};
+
+class LayoutValueSet : public ValueSet
+{
+private:
+    LayoutMenu& mrMenu;
+public:
+    LayoutValueSet(LayoutMenu& rMenu)
+        : ValueSet(nullptr)
+        , mrMenu(rMenu)
+    {
+    }
+
+    virtual bool Command(const CommandEvent& rEvent) override
+    {
+        if (rEvent.GetCommand() == CommandEventId::ContextMenu)
+        {
+            mrMenu.ShowContextMenu(rEvent.IsMouseEvent() ? &rEvent.GetMousePosPixel() : nullptr);
+            return true;
+        }
+        return false;
+    }
 };
 
 LayoutMenu::LayoutMenu (
     vcl::Window* pParent,
     ViewShellBase& rViewShellBase,
     const css::uno::Reference<css::ui::XSidebar>& rxSidebar)
-    : ValueSet (pParent, WB_ITEMBORDER),
-      DragSourceHelper(this),
-      DropTargetHelper(this),
+    : PanelLayout( pParent, "LayoutPanel", "modules/simpress/ui/layoutpanel.ui", nullptr ),
       mrBase(rViewShellBase),
-      mbUseOwnScrollBar(false),
-      mxListener(nullptr),
-      mbSelectionUpdatePending(true),
+      mxLayoutValueSet(new LayoutValueSet(*this)),
+      mxLayoutValueSetWin(new weld::CustomWeld(*m_xBuilder, "valueset", *mxLayoutValueSet)),
       mbIsMainViewChangePending(false),
       mxSidebar(rxSidebar),
       mbIsDisposed(false)
 {
+    set_id("sd::LayoutMenu");
     implConstruct( *mrBase.GetDocument()->GetDocSh() );
     SAL_INFO("sd.ui", "created LayoutMenu at " << this);
 
-    SetStyle(GetStyle() | WB_ITEMBORDER | WB_FLATVALUESET | WB_TABSTOP);
+    mxLayoutValueSet->SetStyle(mxLayoutValueSet->GetStyle() | WB_ITEMBORDER | WB_FLATVALUESET | WB_TABSTOP);
 
-    SetBackground(sfx2::sidebar::Theme::GetWallpaper(sfx2::sidebar::Theme::Paint_PanelBackground));
-    SetColor(sfx2::sidebar::Theme::GetColor(sfx2::sidebar::Theme::Paint_PanelBackground));
+    mxLayoutValueSet->SetColor(sfx2::sidebar::Theme::GetColor(sfx2::sidebar::Theme::Paint_PanelBackground));
 
 #ifdef DEBUG
     SetText(OUString("sd:LayoutMenu"));
@@ -156,16 +181,14 @@ void LayoutMenu::implConstruct( DrawDocShell& rDocumentShell )
     // if this fires, then my assumption that the rDocumentShell parameter to our first ctor is superfluous ...
     (void) rDocumentShell;
 
-    SetStyle (
-        ( GetStyle()  & ~(WB_ITEMBORDER) )
+    mxLayoutValueSet->SetStyle (
+        ( mxLayoutValueSet->GetStyle()  & ~(WB_ITEMBORDER) )
         | WB_TABSTOP
         | WB_MENUSTYLEVALUESET
         | WB_NO_DIRECTSELECT
         );
-    if (mbUseOwnScrollBar)
-        SetStyle (GetStyle() | WB_VSCROLL);
-    SetExtraSpacing(2);
-    SetSelectHdl (LINK(this, LayoutMenu, ClickHandler));
+    mxLayoutValueSet->SetExtraSpacing(2);
+    mxLayoutValueSet->SetSelectHdl (LINK(this, LayoutMenu, ClickHandler));
     InvalidateContent();
 
     Link<::sd::tools::EventMultiplexerEvent&,void> aEventListenerLink (LINK(this,LayoutMenu,EventMultiplexerListener));
@@ -194,9 +217,9 @@ void LayoutMenu::dispose()
 {
     SAL_INFO("sd.ui", "destroying LayoutMenu at " << this);
     Dispose();
-    DragSourceHelper::dispose();
-    DropTargetHelper::dispose();
-    ValueSet::dispose();
+    mxLayoutValueSetWin.reset();
+    mxLayoutValueSet.reset();
+    PanelLayout::dispose();
 }
 
 void LayoutMenu::Dispose()
@@ -220,13 +243,13 @@ void LayoutMenu::Dispose()
     GetParent()->RemoveEventListener(aWindowEventHandlerLink);
 }
 
-AutoLayout LayoutMenu::GetSelectedAutoLayout()
+AutoLayout LayoutMenu::GetSelectedAutoLayout() const
 {
     AutoLayout aResult = AUTOLAYOUT_NONE;
 
-    if ( ! IsNoSelection() && GetSelectItemId()!=0)
+    if (!mxLayoutValueSet->IsNoSelection() && mxLayoutValueSet->GetSelectedItemId()!=0)
     {
-        AutoLayout* pLayout = static_cast<AutoLayout*>(GetItemData(GetSelectItemId()));
+        AutoLayout* pLayout = static_cast<AutoLayout*>(mxLayoutValueSet->GetItemData(mxLayoutValueSet->GetSelectedItemId()));
         if (pLayout != nullptr)
             aResult = *pLayout;
     }
@@ -237,34 +260,24 @@ AutoLayout LayoutMenu::GetSelectedAutoLayout()
 ui::LayoutSize LayoutMenu::GetHeightForWidth (const sal_Int32 nWidth)
 {
     sal_Int32 nPreferredHeight = 200;
-    if ( ! mbUseOwnScrollBar && GetItemCount()>0)
+    if (mxLayoutValueSet->GetItemCount()>0)
     {
-        Image aImage = GetItemImage(GetItemId(0));
-        Size aItemSize = CalcItemSizePixel (aImage.GetSizePixel());
+        Image aImage = mxLayoutValueSet->GetItemImage(mxLayoutValueSet->GetItemId(0));
+        Size aItemSize = mxLayoutValueSet->CalcItemSizePixel(aImage.GetSizePixel());
         if (nWidth>0 && aItemSize.Width()>0)
         {
-            aItemSize.Width() += 8;
-            aItemSize.Height() += 8;
+            aItemSize.AdjustWidth(8 );
+            aItemSize.AdjustHeight(8 );
             int nColumnCount = nWidth / aItemSize.Width();
             if (nColumnCount <= 0)
                 nColumnCount = 1;
             else if (nColumnCount > 4)
                 nColumnCount = 4;
-            int nRowCount = (GetItemCount() + nColumnCount-1) / nColumnCount;
+            int nRowCount = (mxLayoutValueSet->GetItemCount() + nColumnCount-1) / nColumnCount;
             nPreferredHeight = nRowCount * aItemSize.Height();
         }
     }
     return ui::LayoutSize(nPreferredHeight,nPreferredHeight,nPreferredHeight);
-}
-
-void LayoutMenu::Paint (vcl::RenderContext& rRenderContext, const ::tools::Rectangle& rRect)
-{
-    if (mbSelectionUpdatePending)
-    {
-        mbSelectionUpdatePending = false;
-        UpdateSelection();
-    }
-    ValueSet::Paint(rRenderContext, rRect);
 }
 
 void LayoutMenu::Resize()
@@ -273,13 +286,13 @@ void LayoutMenu::Resize()
     if (IsVisible() && aWindowSize.Width() > 0)
     {
         // Calculate the number of rows and columns.
-        if (GetItemCount() > 0)
+        if (mxLayoutValueSet->GetItemCount() > 0)
         {
-            Image aImage = GetItemImage(GetItemId(0));
-            Size aItemSize = CalcItemSizePixel (
+            Image aImage = mxLayoutValueSet->GetItemImage(mxLayoutValueSet->GetItemId(0));
+            Size aItemSize = mxLayoutValueSet->CalcItemSizePixel (
                 aImage.GetSizePixel());
-            aItemSize.Width() += 8;
-            aItemSize.Height() += 8;
+            aItemSize.AdjustWidth(8 );
+            aItemSize.AdjustHeight(8 );
             int nColumnCount = aWindowSize.Width() / aItemSize.Width();
             if (nColumnCount < 1)
                 nColumnCount = 1;
@@ -288,12 +301,12 @@ void LayoutMenu::Resize()
 
             int nRowCount = CalculateRowCount (aItemSize, nColumnCount);
 
-            SetColCount ((sal_uInt16)nColumnCount);
-            SetLineCount ((sal_uInt16)nRowCount);
+            mxLayoutValueSet->SetColCount(nColumnCount);
+            mxLayoutValueSet->SetLineCount(nRowCount);
         }
     }
 
-    ValueSet::Resize ();
+    mxLayoutValueSet->Resize();
 }
 
 void LayoutMenu::MouseButtonDown (const MouseEvent& rEvent)
@@ -303,12 +316,12 @@ void LayoutMenu::MouseButtonDown (const MouseEvent& rEvent)
     if (rEvent.IsRight())
     {
         ReleaseMouse();
-        sal_uInt16 nIndex = GetItemId (rEvent.GetPosPixel());
+        sal_uInt16 nIndex = mxLayoutValueSet->GetItemId(rEvent.GetPosPixel());
         if (nIndex > 0)
-            SelectItem(nIndex);
+            mxLayoutValueSet->SelectItem(nIndex);
     }
 
-    ValueSet::MouseButtonDown (rEvent);
+    mxLayoutValueSet->MouseButtonDown(rEvent);
 }
 
 void LayoutMenu::InsertPageWithLayout (AutoLayout aLayout)
@@ -346,15 +359,18 @@ void LayoutMenu::InvalidateContent()
 
     if (mxSidebar.is())
         mxSidebar->requestLayout();
+
+    // set selection inside the control during Impress start up
+    UpdateSelection();
 }
 
 int LayoutMenu::CalculateRowCount (const Size&, int nColumnCount)
 {
     int nRowCount = 0;
 
-    if (GetItemCount() > 0 && nColumnCount > 0)
+    if (mxLayoutValueSet->GetItemCount() > 0 && nColumnCount > 0)
     {
-        nRowCount = (GetItemCount() + nColumnCount - 1) / nColumnCount;
+        nRowCount = (mxLayoutValueSet->GetItemCount() + nColumnCount - 1) / nColumnCount;
         //        nRowCount = GetOutputSizePixel().Height() / rItemSize.Height();
         if (nRowCount < 1)
             nRowCount = 1;
@@ -393,9 +409,8 @@ void LayoutMenu::AssignLayoutToSelectedSlides (AutoLayout aLayout)
             case ViewShell::ST_IMPRESS:
             {
                 DrawViewShell* pDrawViewShell = static_cast<DrawViewShell*>(pMainViewShell);
-                if (pDrawViewShell != nullptr)
-                    if (pDrawViewShell->GetEditMode() == EditMode::MasterPage)
-                        bMasterPageMode = true;
+                if (pDrawViewShell->GetEditMode() == EditMode::MasterPage)
+                    bMasterPageMode = true;
                 break;
             }
             default:
@@ -430,29 +445,28 @@ void LayoutMenu::AssignLayoutToSelectedSlides (AutoLayout aLayout)
             pPageSelection = pSlideSorter->GetPageSelection();
         }
 
-        if( (pSlideSorter == nullptr) || (pPageSelection.get() == nullptr) || pPageSelection->empty() )
+        if( (pSlideSorter == nullptr) || !pPageSelection || pPageSelection->empty() )
         {
             // No valid slide sorter available.  Ask the main view shell for
             // its current page.
-            pPageSelection.reset(new ::sd::slidesorter::SlideSorterViewShell::PageSelection);
+            pPageSelection = std::make_shared<::sd::slidesorter::SlideSorterViewShell::PageSelection>();
             pPageSelection->push_back(pMainViewShell->GetActualPage());
         }
 
         if (pPageSelection->empty())
             break;
 
-        ::std::vector<SdPage*>::iterator iPage;
-        for (iPage=pPageSelection->begin(); iPage!=pPageSelection->end(); ++iPage)
-            {
-                if ((*iPage) == nullptr)
-                    continue;
+        for (const auto& rpPage : *pPageSelection)
+        {
+            if (rpPage == nullptr)
+                continue;
 
-                // Call the SID_ASSIGN_LAYOUT slot with all the necessary parameters.
-                SfxRequest aRequest (mrBase.GetViewFrame(), SID_ASSIGN_LAYOUT);
-                aRequest.AppendItem(SfxUInt32Item (ID_VAL_WHATPAGE, ((*iPage)->GetPageNum()-1)/2));
-                aRequest.AppendItem(SfxUInt32Item (ID_VAL_WHATLAYOUT, aLayout));
-                pMainViewShell->ExecuteSlot (aRequest, false);
-            }
+            // Call the SID_ASSIGN_LAYOUT slot with all the necessary parameters.
+            SfxRequest aRequest (mrBase.GetViewFrame(), SID_ASSIGN_LAYOUT);
+            aRequest.AppendItem(SfxUInt32Item (ID_VAL_WHATPAGE, (rpPage->GetPageNum()-1)/2));
+            aRequest.AppendItem(SfxUInt32Item (ID_VAL_WHATLAYOUT, aLayout));
+            pMainViewShell->ExecuteSlot (aRequest, false);
+        }
     }
     while(false);
 }
@@ -466,10 +480,8 @@ SfxRequest LayoutMenu::CreateRequest (
     do
     {
         SdrLayerAdmin& rLayerAdmin (mrBase.GetDocument()->GetLayerAdmin());
-        SdrLayerID aBackground (rLayerAdmin.GetLayerID(
-            SdResId(STR_LAYER_BCKGRND)));
-        SdrLayerID aBackgroundObject (rLayerAdmin.GetLayerID(
-            SdResId(STR_LAYER_BCKGRNDOBJ)));
+        SdrLayerID aBackground (rLayerAdmin.GetLayerID(sUNO_LayerName_background));
+        SdrLayerID aBackgroundObject (rLayerAdmin.GetLayerID(sUNO_LayerName_background_objects));
         ViewShell* pViewShell = mrBase.GetMainViewShell().get();
         if (pViewShell == nullptr)
             break;
@@ -519,16 +531,16 @@ void LayoutMenu::Fill()
     {}
 
     const snewfoil_value_info* pInfo = nullptr;
-    if (sCenterPaneViewName.equals(framework::FrameworkHelper::msNotesViewURL))
+    if (sCenterPaneViewName == framework::FrameworkHelper::msNotesViewURL)
     {
         pInfo = notes;
     }
-    else if (sCenterPaneViewName.equals(framework::FrameworkHelper::msHandoutViewURL))
+    else if (sCenterPaneViewName == framework::FrameworkHelper::msHandoutViewURL)
     {
         pInfo = handout;
     }
-    else if (sCenterPaneViewName.equals(framework::FrameworkHelper::msImpressViewURL)
-        || sCenterPaneViewName.equals(framework::FrameworkHelper::msSlideSorterURL))
+    else if (sCenterPaneViewName == framework::FrameworkHelper::msImpressViewURL
+        || sCenterPaneViewName == framework::FrameworkHelper::msSlideSorterURL)
     {
         pInfo = standard;
     }
@@ -538,93 +550,74 @@ void LayoutMenu::Fill()
     }
 
     Clear();
-    for (sal_uInt16 i=1; pInfo!=nullptr && pInfo->mnStrResId !=0; i++, pInfo++)
+    for (sal_uInt16 i=1; pInfo!=nullptr && pInfo->mpStrResId != nullptr; i++, pInfo++)
     {
         if ((WritingMode_TB_RL != pInfo->meWritingMode) || bVertical)
         {
-            BitmapEx aBmp(OUString::createFromAscii(pInfo->msBmpResId));
+            Image aImg("private:graphicrepository/" + OUString::createFromAscii(pInfo->msBmpResId));
 
             if (bRightToLeft && (WritingMode_TB_RL != pInfo->meWritingMode))
-                aBmp.Mirror (BmpMirrorFlags::Horizontal);
+            { // FIXME: avoid interpolating RTL layouts.
+                BitmapEx aRTL = aImg.GetBitmapEx();
+                aRTL.Mirror(BmpMirrorFlags::Horizontal);
+                aImg = Image(aRTL);
+            }
 
-            InsertItem(i, Image(aBmp), SdResId (pInfo->mnStrResId));
-            SetItemData (i, new AutoLayout(pInfo->maAutoLayout));
+            mxLayoutValueSet->InsertItem(i, aImg, SdResId(pInfo->mpStrResId));
+            mxLayoutValueSet->SetItemData (i, new AutoLayout(pInfo->maAutoLayout));
         }
     }
-
-    mbSelectionUpdatePending = true;
 }
 
 void LayoutMenu::Clear()
 {
-    for (size_t nId=1; nId<=GetItemCount(); nId++)
-        delete static_cast<AutoLayout*>(GetItemData(nId));
-    ValueSet::Clear();
+    for (size_t nId=1; nId<=mxLayoutValueSet->GetItemCount(); nId++)
+        delete static_cast<AutoLayout*>(mxLayoutValueSet->GetItemData(nId));
+    mxLayoutValueSet->Clear();
 }
 
-void LayoutMenu::StartDrag (sal_Int8 , const Point& )
+void LayoutMenu::ShowContextMenu(const Point* pPos)
 {
-}
+    if (SD_MOD()->GetWaterCan())
+        return;
 
-sal_Int8 LayoutMenu::AcceptDrop (const AcceptDropEvent& )
-{
-    return 0;
-}
-
-sal_Int8 LayoutMenu::ExecuteDrop (const ExecuteDropEvent& )
-{
-    return 0;
-}
-
-void LayoutMenu::Command (const CommandEvent& rEvent)
-{
-    switch (rEvent.GetCommand())
+    // Determine the position where to show the menu.
+    Point aMenuPosition;
+    if (pPos)
     {
-        case CommandEventId::ContextMenu:
-            if ( ! SD_MOD()->GetWaterCan())
-            {
-                // Determine the position where to show the menu.
-                Point aMenuPosition;
-                if (rEvent.IsMouseEvent())
-                {
-                    if (GetItemId(rEvent.GetMousePosPixel()) <= 0)
-                        return;
-                    aMenuPosition = rEvent.GetMousePosPixel();
-                }
-                else
-                {
-                    if (GetSelectItemId() == (sal_uInt16)-1)
-                        return;
-                    ::tools::Rectangle aBBox (GetItemRect(GetSelectItemId()));
-                    aMenuPosition = aBBox.Center();
-                }
-
-                // Setup the menu.
-                VclBuilder aBuilder(nullptr, VclBuilderContainer::getUIRootDir(), "modules/simpress/ui/layoutmenu.ui", "");
-                VclPtr<PopupMenu> pMenu(aBuilder.get_menu("menu"));
-                FloatingWindow* pMenuWindow = dynamic_cast<FloatingWindow*>(pMenu->GetWindow());
-                if (pMenuWindow != nullptr)
-                    pMenuWindow->SetPopupModeFlags(
-                        pMenuWindow->GetPopupModeFlags() | FloatWinPopupFlags::NoMouseUpClose);
-                pMenu->SetSelectHdl(LINK(this, LayoutMenu, OnMenuItemSelected));
-
-                // Disable the SID_INSERTPAGE_LAYOUT_MENU item when
-                // the document is read-only.
-                const SfxPoolItem* pItem = nullptr;
-                const SfxItemState aState (
-                    mrBase.GetViewFrame()->GetDispatcher()->QueryState(SID_INSERTPAGE, pItem));
-                if (aState == SfxItemState::DISABLED)
-                    pMenu->EnableItem(SID_INSERTPAGE_LAYOUT_MENU, false);
-
-                // Show the menu.
-                pMenu->Execute(this, ::tools::Rectangle(aMenuPosition,Size(1,1)), PopupMenuFlags::ExecuteDown);
-            }
-            break;
-
-        default:
-            ValueSet::Command(rEvent);
-            break;
+        auto nItemId = mxLayoutValueSet->GetItemId(*pPos);
+        if (nItemId <= 0)
+            return;
+        mxLayoutValueSet->SelectItem(nItemId);
+        aMenuPosition = *pPos;
     }
+    else
+    {
+        if (mxLayoutValueSet->GetSelectedItemId() == sal_uInt16(-1))
+            return;
+        ::tools::Rectangle aBBox(mxLayoutValueSet->GetItemRect(mxLayoutValueSet->GetSelectedItemId()));
+        aMenuPosition = aBBox.Center();
+    }
+
+    // Setup the menu.
+    VclBuilder aBuilder(nullptr, AllSettings::GetUIRootDir(), "modules/simpress/ui/layoutmenu.ui", "");
+    VclPtr<PopupMenu> pMenu(aBuilder.get_menu("menu"));
+    FloatingWindow* pMenuWindow = dynamic_cast<FloatingWindow*>(pMenu->GetWindow());
+    if (pMenuWindow != nullptr)
+        pMenuWindow->SetPopupModeFlags(
+            pMenuWindow->GetPopupModeFlags() | FloatWinPopupFlags::NoMouseUpClose);
+    pMenu->SetSelectHdl(LINK(this, LayoutMenu, OnMenuItemSelected));
+
+    // Disable the SID_INSERTPAGE_LAYOUT_MENU item when
+    // the document is read-only.
+    const SfxPoolItem* pItem = nullptr;
+    const SfxItemState aState (
+        mrBase.GetViewFrame()->GetDispatcher()->QueryState(SID_INSERTPAGE, pItem));
+    if (aState == SfxItemState::DISABLED)
+        pMenu->EnableItem(SID_INSERTPAGE_LAYOUT_MENU, false);
+
+    // Show the menu.
+    pMenu->Execute(this, ::tools::Rectangle(aMenuPosition,Size(1,1)), PopupMenuFlags::ExecuteDown);
 }
 
 IMPL_LINK_NOARG(LayoutMenu, StateChangeHandler, const OUString&, void)
@@ -657,6 +650,11 @@ IMPL_LINK(LayoutMenu, OnMenuItemSelected, Menu*, pMenu, bool)
     return false;
 }
 
+// Selects an appropriate layout of the slide inside control.
+//
+// Method may be called several times with the same item-id to be selected -
+// only once the actually state of the control will be changed.
+//
 void LayoutMenu::UpdateSelection()
 {
     bool bItemSelected = false;
@@ -678,32 +676,45 @@ void LayoutMenu::UpdateSelection()
             break;
 
         // Find the entry of the menu for to the layout.
-        SetNoSelection();
-        sal_uInt16 nItemCount (GetItemCount());
+        const sal_uInt16 nItemCount = mxLayoutValueSet->GetItemCount();
         for (sal_uInt16 nId=1; nId<=nItemCount; nId++)
         {
-            if (*static_cast<AutoLayout*>(GetItemData(nId)) == aLayout)
+            if (*static_cast<AutoLayout*>(mxLayoutValueSet->GetItemData(nId)) == aLayout)
             {
-                SelectItem(nId);
-                bItemSelected = true;
+                // do not set selection twice to the same item
+                if (mxLayoutValueSet->GetSelectedItemId() != nId)
+                {
+                    mxLayoutValueSet->SetNoSelection();
+                    mxLayoutValueSet->SelectItem(nId);
+                }
+
+                bItemSelected = true; // no need to call SetNoSelection()
                 break;
             }
         }
     }
     while (false);
 
-    if ( ! bItemSelected)
-        SetNoSelection();
+    if (!bItemSelected)
+        mxLayoutValueSet->SetNoSelection();
 }
 
 IMPL_LINK(LayoutMenu, EventMultiplexerListener, ::sd::tools::EventMultiplexerEvent&, rEvent, void)
 {
     switch (rEvent.meEventId)
     {
+        // tdf#89890 During changes of the Layout of the slide when focus is not set inside main area
+        // we do not receive notification EventMultiplexerEventId::CurrentPageChanged, but we receive the following 3 notification types.
+        // => let's make UpdateSelection() also when some shape is changed (during Layout changes)
+        case EventMultiplexerEventId::ShapeChanged:
+        case EventMultiplexerEventId::ShapeInserted:
+        case EventMultiplexerEventId::ShapeRemoved:
+            UpdateSelection();
+            break;
+
         case EventMultiplexerEventId::CurrentPageChanged:
         case EventMultiplexerEventId::SlideSortedSelection:
-            if ( ! mbSelectionUpdatePending)
-                UpdateSelection();
+            UpdateSelection();
             break;
 
         case EventMultiplexerEventId::MainViewAdded:
@@ -740,14 +751,13 @@ IMPL_LINK(LayoutMenu, WindowEventHandler, VclWindowEvent&, rEvent, void)
     }
 }
 
-void LayoutMenu::DataChanged (const DataChangedEvent& rEvent)
+void LayoutMenu::DataChanged (const DataChangedEvent& /*rEvent*/)
 {
     Fill();
-    ValueSet::DataChanged(rEvent);
-    SetBackground(sfx2::sidebar::Theme::GetWallpaper(sfx2::sidebar::Theme::Paint_PanelBackground));
-    SetColor(sfx2::sidebar::Theme::GetColor(sfx2::sidebar::Theme::Paint_PanelBackground));
+    mxLayoutValueSet->StyleUpdated();
+    mxLayoutValueSet->SetColor(sfx2::sidebar::Theme::GetColor(sfx2::sidebar::Theme::Paint_PanelBackground));
 }
 
-} } // end of namespace ::sd::sidebar
+} // end of namespace ::sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,15 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AColumn.hxx"
-#include "ado/AConnection.hxx"
-#include "ado/Awrapado.hxx"
+#include <ado/AColumn.hxx>
+#include <ado/AConnection.hxx>
+#include <ado/Awrapado.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <comphelper/extract.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
-#include "ado/ACatalog.hxx"
+#include <ado/ACatalog.hxx>
 
 using namespace ::comphelper;
 
@@ -75,7 +75,7 @@ OAdoColumn::OAdoColumn(bool _bCase,OConnection* _pConnection)
 }
 
 
-Sequence< sal_Int8 > OAdoColumn::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OAdoColumn::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -86,7 +86,7 @@ Sequence< sal_Int8 > OAdoColumn::getUnoTunnelImplementationId()
 
 sal_Int64 OAdoColumn::getSomething( const Sequence< sal_Int8 > & rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return isUnoTunnelId<OAdoColumn>(rId)
                 ? reinterpret_cast< sal_Int64 >( this )
                 : OColumn_ADO::getSomething(rId);
 }
@@ -103,7 +103,7 @@ void OAdoColumn::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,const Any& r
 {
     if(m_aColumn.IsValid())
     {
-        const sal_Char* pAdoPropertyName = nullptr;
+        const char* pAdoPropertyName = nullptr;
 
         switch(nHandle)
         {
@@ -146,7 +146,7 @@ void OAdoColumn::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,const Any& r
                     sal_Int32 nVal=0;
                     rValue >>= nVal;
                     if ( !m_IsCurrency )
-                        m_aColumn.put_NumericScale((sal_Int8)nVal);
+                        m_aColumn.put_NumericScale(static_cast<sal_Int8>(nVal));
                 }
                 break;
             case PROPERTY_ID_ISNULLABLE:

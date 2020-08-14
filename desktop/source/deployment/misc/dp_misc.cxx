@@ -21,13 +21,13 @@
 #include <config_features.h>
 #include <chrono>
 
-#include "dp_misc.h"
-#include "dp_version.hxx"
-#include "dp_interact.h"
+#include <dp_misc.h>
+#include <dp_interact.h>
 #include <rtl/uri.hxx>
 #include <rtl/digest.h>
 #include <rtl/random.h>
 #include <rtl/bootstrap.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <unotools/bootstrap.hxx>
 #include <osl/file.hxx>
@@ -40,62 +40,47 @@
 #include <com/sun/star/bridge/UnoUrlResolver.hpp>
 #include <com/sun/star/bridge/XUnoUrlResolver.hpp>
 #include <com/sun/star/deployment/ExtensionManager.hpp>
+#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/task/OfficeRestartManager.hpp>
 #include <memory>
+#include <string_view>
 #include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
 #include <salhelper/linkhelper.hxx>
 
 #ifdef _WIN32
-#define UNICODE
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include <prewin.h>
+#include <postwin.h>
 #endif
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-
-#if defined(_WIN32)
-#define SOFFICE1 "soffice.exe"
-#define SBASE "sbase.exe"
-#define SCALC "scalc.exe"
-#define SDRAW "sdraw.exe"
-#define SIMPRESS "simpress.exe"
-#define SWRITER "swriter.exe"
-#endif
-
-#ifdef MACOSX
-#define SOFFICE2 "soffice"
-#else
-#define SOFFICE2 "soffice.bin"
-#endif
 
 namespace dp_misc {
 namespace {
 
 struct UnoRc : public rtl::StaticWithInit<
     std::shared_ptr<rtl::Bootstrap>, UnoRc> {
-    const std::shared_ptr<rtl::Bootstrap> operator () () {
+    std::shared_ptr<rtl::Bootstrap> operator () () {
         OUString unorc( "$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("louno") );
         ::rtl::Bootstrap::expandMacros( unorc );
-        std::shared_ptr< ::rtl::Bootstrap > ret(
-            new ::rtl::Bootstrap( unorc ) );
+        auto ret = std::make_shared<::rtl::Bootstrap>( unorc );
         OSL_ASSERT( ret->getHandle() != nullptr );
         return ret;
     }
 };
 
 struct OfficePipeId : public rtl::StaticWithInit<OUString, OfficePipeId> {
-    const OUString operator () ();
+    OUString operator () ();
 };
 
-const OUString OfficePipeId::operator () ()
+OUString OfficePipeId::operator () ()
 {
     OUString userPath;
     ::utl::Bootstrap::PathStatus aLocateResult =
     ::utl::Bootstrap::locateUserInstallation( userPath );
-    if (!(aLocateResult == ::utl::Bootstrap::PATH_EXISTS ||
-        aLocateResult == ::utl::Bootstrap::PATH_VALID))
+    if (aLocateResult != ::utl::Bootstrap::PATH_EXISTS &&
+        aLocateResult != ::utl::Bootstrap::PATH_VALID)
     {
         throw Exception("Extension Manager: Could not obtain path for UserInstallation.", nullptr);
     }
@@ -107,7 +92,7 @@ const OUString OfficePipeId::operator () ()
 
     sal_uInt8 const * data =
         reinterpret_cast<sal_uInt8 const *>(userPath.getStr());
-    std::size_t size = (userPath.getLength() * sizeof (sal_Unicode));
+    std::size_t size = userPath.getLength() * sizeof (sal_Unicode);
     sal_uInt32 md5_key_len = rtl_digest_queryLength( digest );
     std::unique_ptr<sal_uInt8[]> md5_buf( new sal_uInt8 [ md5_key_len ] );
 
@@ -240,10 +225,10 @@ bool needToSyncRepository(OUString const & name)
 
 
 namespace {
-inline OUString encodeForRcFile( OUString const & str )
+OUString encodeForRcFile( OUString const & str )
 {
     // escape $\{} (=> rtl bootstrap files)
-    OUStringBuffer buf;
+    OUStringBuffer buf(64);
     sal_Int32 pos = 0;
     const sal_Int32 len = str.getLength();
     for ( ; pos < len; ++pos ) {
@@ -265,9 +250,9 @@ inline OUString encodeForRcFile( OUString const & str )
 
 OUString makeURL( OUString const & baseURL, OUString const & relPath_ )
 {
-    OUStringBuffer buf;
+    OUStringBuffer buf(128);
     if (baseURL.getLength() > 1 && baseURL[ baseURL.getLength() - 1 ] == '/')
-        buf.append( baseURL.copy( 0, baseURL.getLength() - 1 ) );
+        buf.append( std::u16string_view(baseURL).substr(0, baseURL.getLength() - 1) );
     else
         buf.append( baseURL );
     OUString relPath(relPath_);
@@ -356,14 +341,19 @@ bool office_is_running()
     {
         sFile = sFile.copy(sFile.lastIndexOf('/') + 1);
         if (
-#if defined UNIX
-            sFile == SOFFICE2
-#elif defined WNT
+#if defined _WIN32
             //osl_getExecutableFile should deliver "soffice.bin" on windows
             //even if swriter.exe, scalc.exe etc. was started. This is a bug
             //in osl_getExecutableFile
-            sFile == SOFFICE1 || sFile == SOFFICE2 || sFile == SBASE || sFile == SCALC
-            || sFile == SDRAW || sFile == SIMPRESS || sFile == SWRITER
+            sFile == "soffice.bin" || sFile == "soffice.exe" || sFile == "soffice.com"
+            || sFile == "soffice" || sFile == "swriter.exe" || sFile == "swriter"
+            || sFile == "scalc.exe" || sFile == "scalc" || sFile == "simpress.exe"
+            || sFile == "simpress" || sFile == "sdraw.exe" || sFile == "sdraw"
+            || sFile == "sbase.exe" || sFile == "sbase"
+#elif defined MACOSX
+            sFile == "soffice"
+#elif defined UNIX
+            sFile == "soffice.bin"
 #else
 #error "Unsupported platform"
 #endif
@@ -376,7 +366,7 @@ bool office_is_running()
     else
     {
         OSL_FAIL("NOT osl_Process_E_None ");
-        //if osl_getExecutable file than we take the risk of creating a pipe
+        //if osl_getExecutable file then we take the risk of creating a pipe
         ret =  existsOfficePipe();
     }
     return ret;
@@ -441,12 +431,12 @@ OUString generateRandomPipeId()
 Reference<XInterface> resolveUnoURL(
     OUString const & connectString,
     Reference<XComponentContext> const & xLocalContext,
-    AbortChannel * abortChannel )
+    AbortChannel const * abortChannel )
 {
     Reference<bridge::XUnoUrlResolver> xUnoUrlResolver(
         bridge::UnoUrlResolver::create( xLocalContext ) );
 
-    for (int i = 0; i <= 20; ++i) // 10 seconds
+    for (int i = 0; i <= 40; ++i) // 20 seconds
     {
         if (abortChannel != nullptr && abortChannel->isAborted()) {
             throw ucb::CommandAbortedException( "abort!" );
@@ -455,7 +445,7 @@ Reference<XInterface> resolveUnoURL(
             return xUnoUrlResolver->resolve( connectString );
         }
         catch (const connection::NoConnectException &) {
-            if (i < 20)
+            if (i < 40)
             {
                 ::osl::Thread::wait( std::chrono::milliseconds(500) );
             }
@@ -465,53 +455,25 @@ Reference<XInterface> resolveUnoURL(
     return nullptr; // warning C4715
 }
 
-#ifdef _WIN32
-void writeConsoleWithStream(OUString const & sText, HANDLE stream)
-{
-    DWORD nWrittenChars = 0;
-    WriteFile(stream, sText.getStr(),
-        sText.getLength() * 2, &nWrittenChars, nullptr);
-}
-#else
-void writeConsoleWithStream(OUString const & sText, FILE * stream)
+static void writeConsoleWithStream(OUString const & sText, FILE * stream)
 {
     OString s = OUStringToOString(sText, osl_getThreadTextEncoding());
     fprintf(stream, "%s", s.getStr());
     fflush(stream);
 }
-#endif
 
 void writeConsole(OUString const & sText)
 {
-#ifdef _WIN32
-    writeConsoleWithStream(sText, GetStdHandle(STD_OUTPUT_HANDLE));
-#else
     writeConsoleWithStream(sText, stdout);
-#endif
 }
 
 void writeConsoleError(OUString const & sText)
 {
-#ifdef _WIN32
-    writeConsoleWithStream(sText, GetStdHandle(STD_ERROR_HANDLE));
-#else
     writeConsoleWithStream(sText, stderr);
-#endif
 }
 
 OUString readConsole()
 {
-#ifdef _WIN32
-    sal_Unicode aBuffer[1024];
-    DWORD   dwRead = 0;
-    //unopkg.com feeds unopkg.exe with wchar_t|s
-    if (ReadFile( GetStdHandle(STD_INPUT_HANDLE), &aBuffer, sizeof(aBuffer), &dwRead, nullptr ) )
-    {
-        OSL_ASSERT((dwRead % 2) == 0);
-        OUString value( aBuffer, dwRead / 2);
-        return value.trim();
-    }
-#else
     char buf[1024];
     memset(buf, 0, 1024);
     // read one char less so that the last char in buf is always zero
@@ -520,7 +482,6 @@ OUString readConsole()
         OUString value = OStringToOUString(OString(buf), osl_getThreadTextEncoding());
         return value.trim();
     }
-#endif
     throw css::uno::RuntimeException("reading from stdin failed");
 }
 
@@ -574,9 +535,9 @@ void disposeBridges(Reference<css::uno::XComponentContext> const & ctx)
     Reference<css::bridge::XBridgeFactory2> bridgeFac( css::bridge::BridgeFactory::create(ctx) );
 
     const Sequence< Reference<css::bridge::XBridge> >seqBridges = bridgeFac->getExistingBridges();
-    for (sal_Int32 i = 0; i < seqBridges.getLength(); i++)
+    for (const Reference<css::bridge::XBridge>& bridge : seqBridges)
     {
-        Reference<css::lang::XComponent> comp(seqBridges[i], UNO_QUERY);
+        Reference<css::lang::XComponent> comp(bridge, UNO_QUERY);
         if (comp.is())
         {
             try {

@@ -19,14 +19,15 @@
 #ifndef INCLUDED_EDITENG_HANGULHANJA_HXX
 #define INCLUDED_EDITENG_HANGULHANJA_HXX
 
-#include <vcl/window.hxx>
 #include <memory>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <editeng/editengdllapi.h>
 #include <i18nlangtag/mslangid.hxx>
+
+namespace com::sun::star::lang { struct Locale; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { template <class E> class Sequence; }
+namespace vcl { class Font; }
+namespace weld { class Window; }
 
 
 namespace editeng
@@ -107,7 +108,7 @@ namespace editeng
 
     public:
         HangulHanjaConversion(
-            vcl::Window* _pUIParent,
+            weld::Window* pUIParent,
             const css::uno::Reference< css::uno::XComponentContext >& rxContext,
             const css::lang::Locale& _rSourceLocale,
             const css::lang::Locale& _rTargetLocale,
@@ -162,7 +163,7 @@ namespace editeng
 
             <p>This will be called whenever it is necessary to interactively ask the user for
             a conversion. In such a case, a range within the current portion (see <member>GetNextPortion</member>)
-            is presented to the user for chosing a substitution. Additionally, this method is called,
+            is presented to the user for choosing a substitution. Additionally, this method is called,
             so that derived classes can e.g. highlight this text range in a document view.</p>
 
             <p>Note that the indexes are relative to the most recent replace action. See
@@ -194,7 +195,7 @@ namespace editeng
 
             <p>Note an important thing about the indices: They are always relative to the <em>previous
             call</em> of ReplaceUnit. This means when you get a call to ReplaceUnit, and replace some text
-            in your document, than you have to remember the document position immediately <em>behind</em>
+            in your document, then you have to remember the document position immediately <em>behind</em>
             the changed text. In a next call to ReplaceUnit, an index of <em>0</em> will denote exactly
             this position behind the previous replacement<br/>
             The reason is that this class here does not know anything about your document structure,

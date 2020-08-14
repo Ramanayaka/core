@@ -20,83 +20,54 @@
 #ifndef INCLUDED_FORMULA_SOURCE_UI_DLG_STRUCTPG_HXX
 #define INCLUDED_FORMULA_SOURCE_UI_DLG_STRUCTPG_HXX
 
-#include <vcl/lstbox.hxx>
-#include <vcl/group.hxx>
-#include <svtools/svmedit.hxx>
-#include <vcl/tabpage.hxx>
-#include <vcl/tabctrl.hxx>
-#include <svtools/treelistbox.hxx>
-#include "formula/IFunctionDescription.hxx"
-#include "formula/omoduleclient.hxx"
-
+#include <vcl/weld.hxx>
 
 namespace formula
 {
 
-class IFormulaToken;
-class StructListBox : public SvTreeListBox
+class FormulaToken;
+
+
+class StructPage final
 {
 private:
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Container> m_xContainer;
+    std::unique_ptr<weld::TreeView> m_xTlbStruct;
 
-    bool            bActiveFlag;
-
-protected:
-                    virtual void MouseButtonDown( const MouseEvent& rMEvt ) override;
-
-public:
-
-                    StructListBox(vcl::Window* pParent, WinBits nBits );
-
-    /** Inserts an entry with static image (no difference between collapsed/expanded). */
-    SvTreeListEntry*    InsertStaticEntry(
-                        const OUString& rText,
-                        const Image& rEntryImg,
-                        SvTreeListEntry* pParent,
-                        sal_uLong nPos,
-                        IFormulaToken* pToken );
-
-    void            SetActiveFlag(bool bFlag);
-    bool            GetActiveFlag() { return bActiveFlag;}
-    void            GetFocus() override;
-    void            LoseFocus() override;
-};
-
-
-class StructPage : public TabPage
-{
-private:
-    OModuleClient           m_aModuleClient;
     Link<StructPage&,void>  aSelLink;
 
-    VclPtr<StructListBox>   m_pTlbStruct;
-    Image           maImgEnd;
-    Image           maImgError;
+    OUString        maImgEnd;
+    OUString        maImgError;
 
-    IFormulaToken*  pSelectedToken;
+    const FormulaToken* pSelectedToken;
+    bool            bActiveFlag;
 
-    DECL_LINK( SelectHdl, SvTreeListBox*, void );
+    DECL_LINK(SelectHdl, weld::TreeView&, void);
 
-    using Window::GetParent;
+    const FormulaToken* GetFunctionEntry(const weld::TreeIter* pEntry);
 
-protected:
-
-    IFormulaToken*      GetFunctionEntry(SvTreeListEntry* pEntry);
+    void            SetActiveFlag(bool bFlag);
+    bool            GetActiveFlag() const { return bActiveFlag;}
 
 public:
 
-    explicit StructPage(vcl::Window* pParent);
-    virtual         ~StructPage() override;
-    virtual void    dispose() override;
+    explicit StructPage(weld::Container* pParent);
+    ~StructPage();
 
     void            ClearStruct();
-    SvTreeListEntry* InsertEntry(const OUString& rText, SvTreeListEntry* pParent,
-                                sal_uInt16 nFlag,sal_uLong nPos,IFormulaToken* pScToken);
+    bool InsertEntry(const OUString& rText, const weld::TreeIter* pParent,
+                     sal_uInt16 nFlag, int nPos,
+                     const FormulaToken* pIFormulaToken,
+                     weld::TreeIter& rRet);
 
-    OUString        GetEntryText(SvTreeListEntry* pEntry) const;
+    OUString        GetEntryText(const weld::TreeIter* pEntry) const;
 
     void            SetSelectionHdl( const Link<StructPage&,void>& rLink ) { aSelLink = rLink; }
 
-    StructListBox*  GetTlbStruct() const { return m_pTlbStruct; }
+    weld::TreeView&  GetTlbStruct() const { return *m_xTlbStruct; }
+
+    bool            IsVisible() const { return m_xContainer->get_visible(); }
 };
 
 } // formula

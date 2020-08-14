@@ -19,7 +19,7 @@
 #ifndef INCLUDED_CHART2_SOURCE_VIEW_CHARTTYPES_BUBBLECHART_HXX
 #define INCLUDED_CHART2_SOURCE_VIEW_CHARTTYPES_BUBBLECHART_HXX
 
-#include "VSeriesPlotter.hxx"
+#include <VSeriesPlotter.hxx>
 #include <com/sun/star/drawing/Direction3D.hpp>
 
 namespace chart
@@ -52,9 +52,6 @@ private: //methods
     css::drawing::Direction3D transformToScreenBubbleSize( double fLogicSize );
 
 private: //member
-
-    bool   m_bShowNegativeValues;//input parameter
-    double m_fBubbleSizeScaling;//input parameter
 
     double m_fMaxLogicBubbleSize;//calculated values
     double m_fBubbleSizeFactorToScreen;//calculated values

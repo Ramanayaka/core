@@ -20,16 +20,13 @@
 #ifndef INCLUDED_SVX_SOURCE_TABLE_TABLELAYOUTER_HXX
 #define INCLUDED_SVX_SOURCE_TABLE_TABLELAYOUTER_HXX
 
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/text/WritingMode.hpp>
-#include <com/sun/star/table/XTable.hpp>
 #include <sal/types.h>
 #include <basegfx/range/b2irectangle.hxx>
 #include <basegfx/tuple/b2ituple.hxx>
 #include <vector>
-#include <map>
 
-#include "svx/svdotable.hxx"
+#include <svx/svdotable.hxx>
+#include <celltypes.hxx>
 
 namespace tools { class Rectangle; }
 
@@ -38,7 +35,7 @@ namespace editeng {
     class SvxBorderLine;
 }
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 /** returns true if the cell(nMergedCol,nMergedRow) is merged with other cells.
     the returned cell( rOriginCol, rOriginRow ) is the origin( top left cell ) of the merge.
@@ -51,6 +48,20 @@ typedef std::vector< BorderLineVector > BorderLineMap;
 
 // TableModel
 
+struct EdgeInfo final
+{
+    sal_Int32 nIndex;
+    sal_Int32 nPosition;
+    sal_Int32 nMin;
+    sal_Int32 nMax;
+
+    EdgeInfo(sal_Int32 nInIndex, sal_Int32 nInPosition, sal_Int32 nInMin, sal_Int32 nInMax)
+        : nIndex(nInIndex)
+        , nPosition(nInPosition)
+        , nMin(nInMin)
+        , nMax(nInMax)
+    {}
+};
 
 class TableLayouter final
 {
@@ -59,7 +70,7 @@ public:
     ~TableLayouter();
 
     /** try to fit the table into the given rectangle.
-        If the rectangle is to small, it will be grown to fit the table.
+        If the rectangle is too small, it will be grown to fit the table.
 
         if bFitWidth or bFitHeight is set, the layouter tries to scale
         the rows and/or columns to the given area. The result my be bigger
@@ -78,6 +89,7 @@ public:
     sal_Int32 getRowHeight( sal_Int32 nRow ) const;
 
     sal_Int32 getColumnWidth( sal_Int32 nColumn ) const;
+    sal_Int32 calcPreferredColumnWidth( sal_Int32 nColumn, Size aSize ) const;
 
     sal_Int32 getMinimumColumnWidth( sal_Int32 nColumn );
 
@@ -89,14 +101,26 @@ public:
     /** returns the requested borderline in rpBorderLine or a null pointer if there is no border at this edge */
     editeng::SvxBorderLine* getBorderLine( sal_Int32 nEdgeX, sal_Int32 nEdgeY, bool bHorizontal )const;
 
-    void updateCells( ::tools::Rectangle& rRectangle );
+    void updateCells( ::tools::Rectangle const & rRectangle );
 
+    std::vector<EdgeInfo> getHorizontalEdges();
     sal_Int32 getHorizontalEdge( int nEdgeY, sal_Int32* pnMin, sal_Int32* pnMax );
+
+    std::vector<EdgeInfo> getVerticalEdges();
     sal_Int32 getVerticalEdge( int nEdgeX , sal_Int32* pnMin, sal_Int32* pnMax);
 
-    void DistributeColumns( ::tools::Rectangle& rArea, sal_Int32 nFirstCol, sal_Int32 nLastCol );
-    void DistributeRows( ::tools::Rectangle& rArea, sal_Int32 nFirstRow, sal_Int32 nLastRow );
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+
+    void DistributeColumns( ::tools::Rectangle& rArea,
+                            sal_Int32 nFirstCol,
+                            sal_Int32 nLastCol,
+                            const bool bOptimize,
+                            const bool bMinimize );
+    void DistributeRows( ::tools::Rectangle& rArea,
+                         sal_Int32 nFirstRow,
+                         sal_Int32 nLastRow,
+                         const bool bOptimize,
+                         const bool bMinimize );
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
 private:
     CellRef getCell( const CellPos& rPos ) const;
@@ -126,7 +150,7 @@ private:
 
         Layout() : mnPos( 0 ), mnSize( 0 ), mnMinSize( 0 ) {}
         void clear() { mnPos = 0; mnSize = 0; mnMinSize = 0; }
-        void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+        void dumpAsXml(xmlTextWriterPtr pWriter) const;
     };
     typedef std::vector< Layout > LayoutVector;
 
@@ -138,11 +162,9 @@ private:
 
     BorderLineMap maHorizontalBorders;
     BorderLineMap maVerticalBorders;
-
-    const OUString msSize;
 };
 
-} }
+}
 
 #endif
 

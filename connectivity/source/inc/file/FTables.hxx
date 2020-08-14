@@ -20,13 +20,11 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FTABLES_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FTABLES_HXX
 
-#include "file/filedllapi.hxx"
+#include <file/filedllapi.hxx>
 #include <connectivity/sdbcx/VCollection.hxx>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 
-namespace connectivity
-{
-    namespace file
+namespace connectivity::file
     {
         class OOO_DLLPUBLIC_FILE SAL_NO_VTABLE OTables :
             public sdbcx::OCollection
@@ -36,12 +34,12 @@ namespace connectivity
             virtual void impl_refresh() override;
         public:
             OTables(const css::uno::Reference< css::sdbc::XDatabaseMetaData >& _rMetaData,::cppu::OWeakObject& _rParent, ::osl::Mutex& _rMutex,
-                const TStringVector &_rVector) : sdbcx::OCollection(_rParent,_rMetaData->supportsMixedCaseQuotedIdentifiers(),_rMutex,_rVector)
+                const ::std::vector< OUString> &_rVector) : sdbcx::OCollection(_rParent,_rMetaData->supportsMixedCaseQuotedIdentifiers(),_rMutex,_rVector)
             {}
 
             virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FTABLES_HXX
 

@@ -20,10 +20,9 @@
 #ifndef INCLUDED_UNOTOOLS_ITEMHOLDERBASE_HXX
 #define INCLUDED_UNOTOOLS_ITEMHOLDERBASE_HXX
 
-#include <vector>
+#include <memory>
 #include <osl/mutex.hxx>
-
-namespace utl { namespace detail { class Options; } }
+#include <unotools/options.hxx>
 
 struct ItemHolderMutexBase
 {
@@ -44,9 +43,6 @@ enum class EItem
     DynamicMenuOptions            ,
 
     EventConfig                   ,
-    ExtendedSecurityOptions       ,
-
-    FontOptions                   ,
 
     HelpOptions                   ,   // 2
     HistoryOptions                ,
@@ -54,7 +50,6 @@ enum class EItem
     LinguConfig                   ,
 
     MenuOptions                   ,
-    MiscConfig                    ,   // 2
     MiscOptions                   ,
     ModuleOptions                 ,
 
@@ -63,9 +58,7 @@ enum class EItem
     PathOptions                   ,
     PrintOptions                  ,   // 2
     PrintFileOptions              ,   // 2
-    PrintWarningOptions           ,
 
-    SaveOptions                   ,
     SecurityOptions               ,
     SysLocaleOptions              ,   // 2
 
@@ -80,16 +73,19 @@ enum class EItem
 struct TItemInfo
 {
     TItemInfo()
-        : pItem(nullptr)
-        , eItem(EItem::UserOptions)
+        : eItem(EItem::UserOptions)
     {
     }
 
-    utl::detail::Options * pItem;
+    TItemInfo(TItemInfo&& other) noexcept
+        : pItem(std::move(other.pItem))
+        , eItem(other.eItem)
+    {
+    }
+
+    std::unique_ptr<utl::detail::Options> pItem;
     EItem eItem;
 };
-
-typedef ::std::vector< TItemInfo > TItems;
 
 #endif // INCLUDED_UNOTOOLS_ITEMHOLDERBASE_HXX
 

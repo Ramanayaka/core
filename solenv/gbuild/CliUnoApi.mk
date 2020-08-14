@@ -17,7 +17,6 @@ gb_CliUnoApi_DEPS := $(call gb_Executable_get_runtime_dependencies,climaker)
 gb_CliUnoApi_COMMAND := $(call gb_Executable_get_command,climaker)
 
 define gb_CliUnoApi__command
-$(call gb_Output_announce,$(2),$(true),CLI,4)
 $(call gb_Helper_abbreviate_dirs,\
 	$(gb_CliUnoApi_COMMAND) \
 		--out $(1) \
@@ -25,6 +24,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		--assembly-description "This assembly contains metadata for the LibreOffice API." \
 		--assembly-version $(CLI_UNOAPI_VERSION) \
 		--keyfile $(CLI_UNOAPI_KEYFILE) \
+		$(if $(verbose),--verbose) \
 		$(foreach api,$(CLI_UNOAPI_DEPS),-X $(api)) \
 		$(foreach assembly,$(CLI_UNOAPI_ASSEMBLIES),-r $(assembly)) \
 		$(CLI_UNOAPI_API) \
@@ -62,12 +62,15 @@ $(call gb_Helper_make_userfriendly_targets,$(1),CliUnoApi)
 
 
 $(call gb_CliUnoApi_get_target,$(1)) : $(gb_CliUnoApi_DEPS)
+	$$(call gb_Output_announce,$(1),$(true),CLI,4)
+	$$(call gb_Trace_StartRange,$(1),CLI)
 	$$(call gb_CliUnoApi__command,$$@,$(1))
+	$$(call gb_Trace_EndRange,$(1),CLI)
 
 endef
 
 define gb_CliUnoApi_set_configfile
-$(call gb_CliAssembly_set_configfile,$(1),$(2))
+$(call gb_CliAssembly_set_configfile,$(1),$(2),$(3))
 
 endef
 

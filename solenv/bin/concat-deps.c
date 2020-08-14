@@ -59,6 +59,19 @@
 #endif /* !(_BYTE_ORDER == _LITTLE_ENDIAN) */
 #endif /* Def *BSD */
 
+#if defined(__HAIKU__)
+#include <endian.h>
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#undef CORE_BIG_ENDIAN
+#define CORE_LITTLE_ENDIAN
+#else /* !(__BYTE_ORDER == __LITTLE_ENDIAN) */
+#if __BYTE_ORDER == __BIG_ENDIAN
+#define CORE_BIG_ENDIAN
+#undef CORE_LITTLE_ENDIAN
+#endif /* __BYTE_ORDER == __BIG_ENDIAN */
+#endif /* !(__BYTE_ORDER == __LITTLE_ENDIAN) */
+#endif /* Def __HAIKU__ */
+
 #ifdef __sun
 #ifdef __sparc
 #define CORE_BIG_ENDIAN
@@ -92,7 +105,6 @@
 #define FILE_O_RDONLY     _O_RDONLY
 #define FILE_O_BINARY     _O_BINARY
 #define PATHNCMP _strnicmp /* MSVC converts paths to lower-case sometimes? */
-#define inline __inline
 #define ssize_t long
 #define S_ISREG(mode) (((mode) & _S_IFMT) == (_S_IFREG)) /* MSVC does not have this macro */
 #else /* not windaube */
@@ -111,14 +123,14 @@
 static int internal_boost = 0;
 static char* base_dir;
 static char* work_dir;
-size_t work_dir_len;
+static size_t work_dir_len;
 
 #ifdef __GNUC__
 #define clz __builtin_clz
 #else
-static inline int clz(unsigned int value)
+static int clz(unsigned int value)
 {
-int result = 32;
+    int result = 32;
 
     while(value)
     {
@@ -129,9 +141,9 @@ int result = 32;
 }
 #endif
 
-static inline unsigned int get_unaligned_uint(const unsigned char* cursor)
+static unsigned int get_unaligned_uint(const unsigned char* cursor)
 {
-unsigned int   result;
+    unsigned int   result;
 
     memcpy(&result, cursor, sizeof(unsigned int));
     return result;
@@ -156,9 +168,9 @@ struct pool
 
 static void* pool_take_extent(struct pool* pool, int allocate)
 {
-unsigned int size = 0;
-void* extent;
-void* data = NULL;
+    unsigned int size = 0;
+    void* extent;
+    void* data = NULL;
 
     if(pool->extent)
     {
@@ -202,7 +214,7 @@ void* data = NULL;
  */
 static struct pool* pool_create(int size_elem, int primary, int secondary)
 {
-struct pool* pool;
+    struct pool* pool;
 
     assert(primary > 0);
     assert(secondary >= 0);
@@ -225,8 +237,8 @@ struct pool* pool;
 
 static void pool_destroy(struct pool* pool)
 {
-void* extent;
-void* next;
+    void* extent;
+    void* next;
 
     if(pool != NULL)
     {
@@ -241,9 +253,9 @@ void* next;
     }
 }
 
-static inline void* pool_alloc(struct pool* pool)
+static void* pool_alloc(struct pool* pool)
 {
-void* data;
+    void* data;
 
     data = pool->head_free;
     if(data == NULL)
@@ -274,7 +286,7 @@ void* data;
 /* ===============================================
  * Hash implementation customized to be just tracking
  * a unique list of string (i.e no data associated
- * with the key, no need for retrieval, etc..
+ * with the key, no need for retrieval, etc...
  *
  * This is tuned for the particular use-case we have here
  * measures in tail_build showed that
@@ -353,7 +365,7 @@ struct hash
   c ^= b; c -= rot(b,24); \
 }
 
-static unsigned int hash_compute( struct hash* hash, const char* key, int length)
+static unsigned int hash_compute( struct hash const * hash, const char* key, int length)
 {
     unsigned int a;
     unsigned int b;
@@ -430,10 +442,10 @@ static void hash_destroy(struct hash* hash)
 
 static struct hash* hash_create(unsigned int size)
 {
-struct hash* hash;
+    struct hash* hash;
 
     assert(size > 0);
-    hash = calloc(1, sizeof(struct hash));
+    hash = (struct hash*)(calloc(1, sizeof(struct hash)));
     if(hash)
     {
         size += (size >> 2) + 1; /* ~ 75% load factor */
@@ -469,12 +481,12 @@ struct hash* hash;
 
 static void hash_resize(struct hash* hash)
 {
-unsigned int old_size = hash->size;
-unsigned int hashed;
-struct hash_elem* hash_elem;
-struct hash_elem* next;
-struct hash_elem** array;
-unsigned int i;
+    unsigned int old_size = hash->size;
+    unsigned int hashed;
+    struct hash_elem* hash_elem;
+    struct hash_elem* next;
+    struct hash_elem** array;
+    unsigned int i;
 
     hash->size = (old_size << 1) + 1;
     /* we really should avoid to get there... so print a message to alert of the condition */
@@ -483,7 +495,7 @@ unsigned int i;
     {
         return;
     }
-    array = calloc(hash->size + 1, sizeof(struct hash_elem*));
+    array = (struct hash_elem**)calloc(hash->size + 1, sizeof(struct hash_elem*));
     if(array)
     {
         hash->load_limit = hash->size - (hash->size >> 2);
@@ -509,7 +521,7 @@ unsigned int i;
     }
 }
 
-static inline int compare_key(struct hash* hash, const char* a, const char* b, int len, int* cost)
+static int compare_key(struct hash const * hash, const char* a, const char* b, int len, int const * cost)
 {
 #ifdef HASH_STAT
     *cost += 1;
@@ -526,9 +538,9 @@ static inline int compare_key(struct hash* hash, const char* a, const char* b, i
  */
 static int hash_store(struct hash* hash, const char* key, int key_len)
 {
-unsigned int hashed;
-struct hash_elem* hash_elem;
-int cost = 0;
+    unsigned int hashed;
+    struct hash_elem* hash_elem;
+    int cost = 0;
 
     (void) cost;
     hashed = hash_compute(hash, key, key_len);
@@ -543,7 +555,7 @@ int cost = 0;
 
     if(!hash_elem)
     {
-        hash_elem = pool_alloc(hash->elems_pool);
+        hash_elem = (struct hash_elem*)pool_alloc(hash->elems_pool);
         if(hash_elem)
         {
             hash_elem->key = key;
@@ -571,9 +583,7 @@ int cost = 0;
 
 static int file_stat(const char* name, struct stat* buffer_stat, int* rc)
 {
-int rc_local = 0;
-
-    rc_local = stat(name, buffer_stat);
+    int rc_local = stat(name, buffer_stat);
     if (rc_local  < 0)
     {
         *rc = errno;
@@ -583,8 +593,8 @@ int rc_local = 0;
 
 static off_t file_get_size(const char* name, int* rc)
 {
-struct stat buffer_stat;
-off_t       size = -1;
+    struct stat buffer_stat;
+    off_t       size = -1;
 
     if (!file_stat(name, &buffer_stat, rc))
     {
@@ -607,10 +617,10 @@ static size_t file_load_buffer_count = 0;
 
 static char* file_load(const char* name, off_t* size, int* return_rc)
 {
-off_t local_size = 0;
-int rc = 0;
-char* buffer = NULL;
-int fd;
+    off_t local_size = 0;
+    int rc = 0;
+    char* buffer = NULL;
+    int fd;
 
     assert(name != NULL);
 
@@ -624,7 +634,7 @@ int fd;
         fd = open(name, FILE_O_RDONLY | FILE_O_BINARY);
         if (!(fd == -1))
         {
-            buffer = malloc((size_t)(*size + 1));
+            buffer = (char*)malloc((size_t)(*size + 1));
 #if !ENABLE_RUNTIME_OPTIMIZATIONS
             if (buffer != NULL)
             {
@@ -645,7 +655,7 @@ int fd;
             }
             else
             {
-            ssize_t i;
+                ssize_t i;
 
               REDO:
                 i = read(fd, buffer, (size_t)(*size));
@@ -702,7 +712,7 @@ static void cancel_relative(char const * base, char** ref_cursor, char** ref_cur
     *ref_cursor_out = cursor_out;
 }
 
-static inline void eat_space(char ** token)
+static void eat_space(char ** token)
 {
     while ((' ' == **token) || ('\t' == **token)) {
         ++(*token);
@@ -713,7 +723,7 @@ static inline void eat_space(char ** token)
  * Prune LibreOffice specific duplicate dependencies to improve
  * gnumake startup time, and shrink the disk-space footprint.
  */
-static inline int
+static int
 elide_dependency(const char* key, int key_len, const char **unpacked_end)
 {
 #if 0
@@ -775,7 +785,7 @@ static void emit_unpacked_target(const char* token, const char* end)
 }
 
 /* prefix paths to absolute */
-static inline void print_fullpaths(char* line)
+static void print_fullpaths(char* line)
 {
     char* token;
     char* end;
@@ -835,20 +845,17 @@ static inline void print_fullpaths(char* line)
         }
         token = end;
         eat_space(&token);
-        if (!target_seen)
+        if (!target_seen && ':' == *token)
         {
-            if (':' == *token)
-            {
-                target_seen = 1;
-                fputc(':', stdout);
-                ++token;
-                eat_space(&token);
-            }
+            target_seen = 1;
+            fputc(':', stdout);
+            ++token;
+            eat_space(&token);
         }
     }
 }
 
-static inline char * eat_space_at_end(char * end)
+static char * eat_space_at_end(char * end)
 {
     char * real_end;
     assert('\0' == *end);
@@ -862,11 +869,11 @@ static inline char * eat_space_at_end(char * end)
 }
 
 static char* phony_content_buffer;
-static inline char* generate_phony_line(char const * phony_target, char const * extension)
+static char* generate_phony_line(char const * phony_target, char const * extension)
 {
-char const * src;
-char* dest;
-char* last_dot = NULL;
+    char const * src;
+    char* dest;
+    char* last_dot = NULL;
     //fprintf(stderr, "generate_phony_line called with phony_target %s and extension %s\n", phony_target, extension);
     for(dest = phony_content_buffer+work_dir_len+1, src = phony_target; *src != 0; ++src, ++dest)
     {
@@ -887,9 +894,9 @@ char* last_dot = NULL;
     return phony_content_buffer;
 }
 
-static inline int generate_phony_file(char* fn, char const * content)
+static int generate_phony_file(char* fn, char const * content)
 {
-FILE* depfile;
+    FILE* depfile;
     depfile = fopen(fn, "w");
     if(!depfile)
     {
@@ -905,17 +912,17 @@ FILE* depfile;
 
 static int process(struct hash* dep_hash, char* fn)
 {
-int rc;
-char* buffer;
-char* end;
-char* cursor;
-char* cursor_out;
-char* base;
-char* created_line = NULL;
-char* src_relative;
-int continuation = 0;
-char last_ns = 0;
-off_t size;
+    int rc;
+    char* buffer;
+    char* end;
+    char* cursor;
+    char* cursor_out;
+    char* base;
+    char* created_line = NULL;
+    char* src_relative;
+    int continuation = 0;
+    char last_ns = 0;
+    off_t size;
 
     buffer = file_load(fn, &size, &rc);
     if(!rc)
@@ -1034,11 +1041,6 @@ off_t size;
                     created_line = generate_phony_line(src_relative, "o");
                     rc = generate_phony_file(fn, created_line);
                 }
-                else if(strncmp(fn+work_dir_len+5, "SrsPartTarget/", 14) == 0)
-                {
-                    created_line = generate_phony_line(src_relative, "");
-                    rc = generate_phony_file(fn, created_line);
-                }
                 else if(strncmp(src_relative, "GenCxxObject/", 13) == 0)
                 {
                     created_line = generate_phony_line(src_relative, "o");
@@ -1075,6 +1077,11 @@ off_t size;
                     rc = generate_phony_file(fn, created_line);
                 }
                 else if(strncmp(src_relative, "CxxClrObject/", 13) == 0)
+                {
+                    created_line = generate_phony_line(src_relative, "o");
+                    rc = generate_phony_file(fn, created_line);
+                }
+                else if(strncmp(src_relative, "GenCxxClrObject/", 16) == 0)
                 {
                     created_line = generate_phony_line(src_relative, "o");
                     rc = generate_phony_file(fn, created_line);
@@ -1120,13 +1127,13 @@ static int get_var(char **var, const char *name)
 
 int main(int argc, char** argv)
 {
-int rc = 0;
-off_t in_list_size = 0;
-char* in_list;
-char* in_list_cursor;
-char* in_list_base;
-struct hash* dep_hash = NULL;
-const char *env_str;
+    int rc = 0;
+    off_t in_list_size = 0;
+    char* in_list;
+    char* in_list_cursor;
+    char* in_list_base;
+    struct hash* dep_hash = NULL;
+    const char *env_str;
 
     if(argc < 2)
     {
@@ -1136,7 +1143,8 @@ const char *env_str;
     if(get_var(&base_dir, "SRCDIR") || get_var(&work_dir, "WORKDIR"))
         return 1;
     work_dir_len = strlen(work_dir);
-    phony_content_buffer = malloc(PHONY_TARGET_BUFFER);
+    phony_content_buffer = (char*)malloc(PHONY_TARGET_BUFFER);
+    assert(phony_content_buffer); // Don't handle OOM conditions
     strcpy(phony_content_buffer, work_dir);
     phony_content_buffer[work_dir_len] = '/';
 

@@ -19,30 +19,25 @@
 #ifndef INCLUDED_SD_SOURCE_UI_ANIMATIONS_SLIDETRANSITIONPANE_HXX
 #define INCLUDED_SD_SOURCE_UI_ANIMATIONS_SLIDETRANSITIONPANE_HXX
 
-#include "EventMultiplexer.hxx"
-
 #include "SlideSorterViewShell.hxx"
-#include "TransitionPreset.hxx"
 
-#include <vcl/ctrl.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <vcl/field.hxx>
 #include <svtools/valueset.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
-#include <sfx2/sidebar/ControlFactory.hxx>
-#include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/frame/XModel.hpp>
+#include <sfx2/sidebar/PanelLayout.hxx>
+#include <vcl/weld.hxx>
 
 #include <vector>
 #include <map>
 
 class SdDrawDocument;
 
+namespace com::sun::star::drawing { class XDrawView; }
+namespace com::sun::star::frame { class XModel; }
+namespace sd::tools { class EventMultiplexerEvent; }
+
 namespace sd
 {
 
+class TransitionPane;
 class ViewShellBase;
 
 namespace impl
@@ -58,12 +53,6 @@ public:
         ViewShellBase & rBase,
         SdDrawDocument* pDoc,
         const css::uno::Reference<css::frame::XFrame>& rxFrame );
-    explicit SlideTransitionPane(
-        Window * pParent,
-        ViewShellBase & rBase,
-        SdDrawDocument* pDoc,
-        const css::uno::Reference<css::frame::XFrame>& rxFrame,
-        bool bHorizontalLayout );
     virtual ~SlideTransitionPane() override;
     virtual void dispose() override;
 
@@ -95,38 +84,39 @@ private:
 
     void Initialize(SdDrawDocument* pDoc);
 
-    DECL_LINK( ApplyToAllButtonClicked, Button*, void );
-    DECL_LINK( PlayButtonClicked, Button*, void );
-    DECL_LINK( AutoPreviewClicked, Button*, void );
+    DECL_LINK( ApplyToAllButtonClicked, weld::Button&, void );
+    DECL_LINK( PlayButtonClicked, weld::Button&, void );
+    DECL_LINK( AutoPreviewClicked, weld::ToggleButton&, void );
 
-    DECL_LINK( TransitionSelected, ValueSet *, void );
-    DECL_LINK( AdvanceSlideRadioButtonToggled, RadioButton&, void );
-    DECL_LINK( AdvanceTimeModified, Edit&, void );
-    DECL_LINK( VariantListBoxSelected, ListBox&, void );
-    DECL_LINK( DurationModifiedHdl, Edit&, void );
-    DECL_LINK( DurationLoseFocusHdl, Control&, void );
-    DECL_LINK( SoundListBoxSelected, ListBox&, void );
-    DECL_LINK( LoopSoundBoxChecked, Button*, void );
+    DECL_LINK( TransitionSelected, ValueSet*, void );
+    DECL_LINK( AdvanceSlideRadioButtonToggled, weld::ToggleButton&, void );
+    DECL_LINK( AdvanceTimeModified, weld::MetricSpinButton&, void );
+    DECL_LINK( VariantListBoxSelected, weld::ComboBox&, void );
+    DECL_LINK( DurationModifiedHdl, weld::MetricSpinButton&, void );
+    DECL_LINK( DurationLoseFocusHdl, weld::Widget&, void );
+    DECL_LINK( SoundListBoxSelected, weld::ComboBox&, void );
+    DECL_LINK( LoopSoundBoxChecked, weld::ToggleButton&, void );
     DECL_LINK( EventMultiplexerListener, tools::EventMultiplexerEvent&, void );
     DECL_LINK(LateInitCallback, Timer *, void);
 
     ViewShellBase &   mrBase;
     SdDrawDocument *  mpDrawDoc;
 
-    VclPtr<ValueSet>     mpVS_TRANSITION_ICONS;
-    VclPtr<FixedText>    mpFT_VARIANT;
-    VclPtr<ListBox>      mpLB_VARIANT;
-    VclPtr<FixedText>    mpFT_duration;
-    VclPtr<MetricBox>    mpCBX_duration;
-    VclPtr<FixedText>    mpFT_SOUND;
-    VclPtr<ListBox>      mpLB_SOUND;
-    VclPtr<CheckBox>     mpCB_LOOP_SOUND;
-    VclPtr<RadioButton>  mpRB_ADVANCE_ON_MOUSE;
-    VclPtr<RadioButton>  mpRB_ADVANCE_AUTO;
-    VclPtr<MetricField>  mpMF_ADVANCE_AUTO_AFTER;
-    VclPtr<PushButton>   mpPB_APPLY_TO_ALL;
-    VclPtr<PushButton>   mpPB_PLAY;
-    VclPtr<CheckBox>     mpCB_AUTO_PREVIEW;
+    std::unique_ptr<TransitionPane> mxVS_TRANSITION_ICONS;
+    std::unique_ptr<weld::CustomWeld> mxVS_TRANSITION_ICONSWin;
+    std::unique_ptr<weld::Label> mxFT_VARIANT;
+    std::unique_ptr<weld::ComboBox> mxLB_VARIANT;
+    std::unique_ptr<weld::Label> mxFT_duration;
+    std::unique_ptr<weld::MetricSpinButton> mxCBX_duration;
+    std::unique_ptr<weld::Label> mxFT_SOUND;
+    std::unique_ptr<weld::ComboBox> mxLB_SOUND;
+    std::unique_ptr<weld::CheckButton> mxCB_LOOP_SOUND;
+    std::unique_ptr<weld::RadioButton> mxRB_ADVANCE_ON_MOUSE;
+    std::unique_ptr<weld::RadioButton> mxRB_ADVANCE_AUTO;
+    std::unique_ptr<weld::MetricSpinButton> mxMF_ADVANCE_AUTO_AFTER;
+    std::unique_ptr<weld::Button> mxPB_APPLY_TO_ALL;
+    std::unique_ptr<weld::Button> mxPB_PLAY;
+    std::unique_ptr<weld::CheckButton> mxCB_AUTO_PREVIEW;
 
     css::uno::Reference< css::drawing::XDrawView >             mxView;
     css::uno::Reference< css::frame::XModel >                  mxModel;
@@ -134,10 +124,8 @@ private:
     bool         mbHasSelection;
     bool         mbUpdatingControls;
     bool         mbIsMainViewChangePending;
-    bool         mbHorizontalLayout;
 
-    typedef ::std::vector< OUString > tSoundListType;
-    tSoundListType  maSoundList;
+    std::vector<OUString>  maSoundList;
     mutable OUString maCurrentSoundFile;
 
     // How many variants each transition set has

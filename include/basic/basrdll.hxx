@@ -21,21 +21,16 @@
 #define INCLUDED_BASIC_BASRDLL_HXX
 
 #include <basic/basicdllapi.h>
-#include <memory>
-
-class ResMgr;
+#include <tools/ref.hxx>
 
 class BASIC_DLLPUBLIC BasicDLL
 {
-public:
-    struct Impl;
-    std::unique_ptr<Impl> m_xImpl;
+private:
+    tools::SvRef<SvRefBase> m_xImpl;
 
 public:
-                BasicDLL();
-                ~BasicDLL();
-
-    ResMgr*     GetBasResMgr() const;
+    BasicDLL();
+    ~BasicDLL();
 
     static void BasicBreak();
 

@@ -28,22 +28,32 @@
  * Only for Type3 and Type4
  * Only relevant, if SdrCaptionFitLineLenItem = false
  */
-class SVX_DLLPUBLIC SdrCaptionLineLenItem: public SdrMetricItem {
+class SVXCORE_DLLPUBLIC SdrCaptionLineLenItem: public SdrMetricItem {
 public:
     SdrCaptionLineLenItem(long nLineLen=0): SdrMetricItem(SDRATTR_CAPTIONLINELEN,nLineLen) {}
     virtual ~SdrCaptionLineLenItem() override;
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool=nullptr) const override;
+    virtual SdrCaptionLineLenItem* Clone(SfxItemPool* pPool=nullptr) const override;
+
+    SdrCaptionLineLenItem(SdrCaptionLineLenItem const &) = default;
+    SdrCaptionLineLenItem(SdrCaptionLineLenItem &&) = default;
+    SdrCaptionLineLenItem & operator =(SdrCaptionLineLenItem const &) = delete; // due to SdrMetricItem
+    SdrCaptionLineLenItem & operator =(SdrCaptionLineLenItem &&) = delete; // due to SdrMetricItem
 };
 
 /**
  * The length of the first caption line is either automatically
  * calculated or the default setting is used (SdrCaptionLineLenItem)
  */
-class SVX_DLLPUBLIC SdrCaptionFitLineLenItem: public SdrYesNoItem {
+class SVXCORE_DLLPUBLIC SdrCaptionFitLineLenItem: public SdrYesNoItem {
 public:
     SdrCaptionFitLineLenItem(bool bBestFit=true): SdrYesNoItem(SDRATTR_CAPTIONFITLINELEN,bBestFit) {}
     virtual ~SdrCaptionFitLineLenItem() override;
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool=nullptr) const override;
+    virtual SdrCaptionFitLineLenItem* Clone(SfxItemPool* pPool=nullptr) const override;
+
+    SdrCaptionFitLineLenItem(SdrCaptionFitLineLenItem const &) = default;
+    SdrCaptionFitLineLenItem(SdrCaptionFitLineLenItem &&) = default;
+    SdrCaptionFitLineLenItem & operator =(SdrCaptionFitLineLenItem const &) = delete; // due to SdrYesNoItem
+    SdrCaptionFitLineLenItem & operator =(SdrCaptionFitLineLenItem &&) = delete; // due to SdrYesNoItem
 };
 
 #endif

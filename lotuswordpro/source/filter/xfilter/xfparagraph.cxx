@@ -57,10 +57,9 @@
  * @file
  * Paragraph object of OOo, it will output <text:p >...</text:p> element.
  ************************************************************************/
-#include "xfparagraph.hxx"
-#include "ixfstream.hxx"
-#include "ixfattrlist.hxx"
-#include "xftextcontent.hxx"
+#include <xfilter/xfparagraph.hxx>
+#include <xfilter/ixfstream.hxx>
+#include <xfilter/ixfattrlist.hxx>
 
 XFParagraph::XFParagraph()
 {
@@ -100,7 +99,7 @@ void    XFParagraph::ToXml(IXFStream *pStrm)
     pStrm->EndElement( "text:p" );
 }
 
-bool XFParagraph::HasContents()
+bool XFParagraph::HasContents() const
 {
     return GetCount()>0;
 }

@@ -22,6 +22,9 @@
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <map>
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <rtl/ref.hxx>
 #include "ResIDGenerator.hxx"
@@ -30,7 +33,7 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnon-virtual-dtor"
 #endif
-#include  "UAccCOM.h"
+#include  <UAccCOM.h>
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
@@ -90,7 +93,7 @@ private:
     static void DeleteAccListener( AccObject* pAccObj );
     static void InsertAccChildNode(AccObject* pCurObj,AccObject* pParentObj,HWND pWnd);
     static void DeleteAccChildNode(AccObject* pChild);
-    void       DeleteFromHwndXAcc(css::accessibility::XAccessible* pXAcc );
+    void       DeleteFromHwndXAcc(css::accessibility::XAccessible const * pXAcc );
     int  UpdateAccSelection(css::accessibility::XAccessible* pXAcc);
 
     ::rtl::Reference<AccEventListener> CreateAccEventListener(
@@ -104,7 +107,7 @@ public:
 
     bool NotifyAccEvent( css::accessibility::XAccessible* pXAcc,short state = 0 );
 
-    LPARAM Get_ToATInterface(HWND hWnd, long lParam, WPARAM wParam);
+    LRESULT Get_ToATInterface(HWND hWnd, long lParam, WPARAM wParam);
 
     void  DecreaseState( css::accessibility::XAccessible* pXAcc,unsigned short pState );
     void  IncreaseState( css::accessibility::XAccessible* pXAcc,unsigned short pState );

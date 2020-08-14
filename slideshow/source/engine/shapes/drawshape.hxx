@@ -23,21 +23,19 @@
 #include <osl/diagnose.hxx>
 #include <com/sun/star/drawing/XShape.hpp>
 
-#include "attributableshape.hxx"
-#include "doctreenodesupplier.hxx"
+#include <attributableshape.hxx>
+#include <doctreenodesupplier.hxx>
+#include "drawshapesubsetting.hxx"
 #include "gdimtftools.hxx"
 #include "viewshape.hxx"
-#include "hyperlinkarea.hxx"
+#include <hyperlinkarea.hxx>
 
-#include <boost/optional.hpp>
-#include <set>
+#include <optional>
 #include <vector>
 
 class Graphic;
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         class  Activity;
         struct SlideShowContext;
@@ -76,7 +74,7 @@ namespace slideshow
                 When true, the source of the shape metafile might be a
                 foreign application. The metafile is checked against
                 unsupported content, and, if necessary, returned as a
-                pre-rendererd bitmap.
+                pre-rendered bitmap.
              */
             static DrawShapeSharedPtr create(
                 const css::uno::Reference< css::drawing::XShape >&    xShape,
@@ -220,7 +218,7 @@ namespace slideshow
                 When true, the source of the shape metafile might be a
                 foreign application. The metafile is checked against
                 unsupported content, and, if necessary, returned as a
-                pre-rendererd bitmap.
+                pre-rendered bitmap.
              */
             DrawShape( const css::uno::Reference<
                             css::drawing::XShape >&    xShape,
@@ -292,7 +290,7 @@ namespace slideshow
             mutable int                                                             mnCurrMtfLoadFlags;
 
             /// Contains the current shape bounds, in unit rect space
-            mutable ::boost::optional<basegfx::B2DRectangle>                        maCurrentShapeUnitBounds;
+            mutable ::std::optional<basegfx::B2DRectangle>                        maCurrentShapeUnitBounds;
 
             // The attributes of this Shape
             const double                                                            mnPriority;
@@ -337,7 +335,7 @@ namespace slideshow
             int                                                                     mnIsAnimatedCount;
 
             /// Number of times the bitmap animation shall loop
-            ::std::size_t                                                           mnAnimationLoopCount;
+            sal_uInt32                                                              mnAnimationLoopCount;
 
             /// Whether shape is visible (without attribute layers)
             bool                                                                    mbIsVisible;
@@ -352,7 +350,7 @@ namespace slideshow
             bool                                                                    mbDrawingLayerAnim;
 
         };
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_DRAWSHAPE_HXX

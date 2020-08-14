@@ -63,14 +63,6 @@ int HBox::WSize()
 }
 
 
-hchar_string HBox::GetString()
-{
-    hchar_string ret;
-    ret.push_back(hh);
-    return ret;
-}
-
-
 // skip block
 SkipData::SkipData(hchar hch)
     : HBox(hch)
@@ -86,23 +78,11 @@ SkipData::~SkipData()
 FieldCode::FieldCode()
     : HBox(CH_FIELD)
     , location_info(0)
-    , str1(nullptr)
-    , str2(nullptr)
-    , str3(nullptr)
-    , m_pDate(nullptr)
 {
-    reserved1 = new char[4];
-    reserved2 = new char[22];
 }
 
 FieldCode::~FieldCode()
 {
-    delete[] str1;
-    delete[] str2;
-    delete[] str3;
-    delete[] reserved1;
-    delete[] reserved2;
-    delete m_pDate;
 }
 
 // book mark(6)
@@ -132,22 +112,22 @@ DateCode::DateCode()
 {
 }
 
-static const hchar kor_week[] =
+const hchar kor_week[] =
 {
     0xB7A9, 0xB6A9, 0xD1C1, 0xAE81, 0xA1A2, 0x8B71, 0xC9A1
 };
-static const hchar china_week[] =
+const hchar china_week[] =
 {
     0x4CC8, 0x4BE4, 0x525A, 0x48D8, 0x45AB, 0x4270, 0x50B4
 };
-static const char eng_week[] = { "SunMonTueWedThuFriSat" };
-static const char eng_mon[] = { "JanFebMarAprMayJunJulAugSepOctNovDec" };
-static const char * const en_mon[] =
+const char eng_week[] = { "SunMonTueWedThuFriSat" };
+const char eng_mon[] = { "JanFebMarAprMayJunJulAugSepOctNovDec" };
+const char * const en_mon[] =
 {
     "January", "February", "March", "April", "May", "June", "July",
     "August", "September", "October", "November", "December"
 };
-static const char * const en_week[] =
+const char * const en_week[] =
 {
     "Sunday", "Monday", "Tuesday", "Wednesday",
     "Thursday", "Friday", "Saturday"
@@ -166,9 +146,9 @@ hchar_string DateCode::GetString()
     format[DATE_SIZE - 1] = 0;
     fmt = format[0] ? format : defaultform;
 
-    for (; *fmt && ((int) ret.size() < DATE_SIZE); fmt++)
+    for (; *fmt && (static_cast<int>(ret.size()) < DATE_SIZE); fmt++)
     {
-        form = (add_zero) ? "%02d" : "%d";
+        form = add_zero ? "%02d" : "%d";
 
         add_zero = false;
         is_pm = (date[HOUR] >= 12);
@@ -242,13 +222,13 @@ hchar_string DateCode::GetString()
             break;
         case '7':
             ret.push_back(0xB5A1);
-            ret.push_back((is_pm) ? 0xD281 : 0xB8E5);
+            ret.push_back(is_pm ? 0xD281 : 0xB8E5);
             break;
         case '&':
-            strncat(cbuf, (is_pm) ? "p.m." : "a.m.", sizeof(cbuf) - strlen(cbuf) - 1);
+            strncat(cbuf, is_pm ? "p.m." : "a.m.", sizeof(cbuf) - strlen(cbuf) - 1);
             break;
         case '+':
-            strncat(cbuf, (is_pm) ? "P.M." : "A.M.", sizeof(cbuf) - strlen(cbuf) - 1);
+            strncat(cbuf, is_pm ? "P.M." : "A.M.", sizeof(cbuf) - strlen(cbuf) - 1);
             break;
         case '8':                             // 2.5 feature
         case '9':
@@ -351,7 +331,6 @@ TxtBox::TxtBox()
     , type(0)
     , nCell(0)
     , protect(0)
-    , cell(nullptr)
     , m_pTable(nullptr)
 {
     reserved[0] = reserved[1] = 0;
@@ -359,24 +338,6 @@ TxtBox::TxtBox()
 
 TxtBox::~TxtBox()
 {
-    delete[] cell;
-
-    for (auto& entry : plists)
-    {
-        std::list < HWPPara* >::iterator it = entry.begin();
-        for (; it != entry.end(); ++it)
-        {
-            HWPPara* pPara = *it;
-            delete pPara;
-        }
-    }
-
-    std::list < HWPPara* >::iterator it = caption.begin();
-    for (; it != caption.end(); ++it)
-    {
-        HWPPara* pPara = *it;
-        delete pPara;
-    }
 }
 
 // picture(11)
@@ -391,23 +352,14 @@ Picture::Picture()
     , cap_pos(0)
     , num(0)
     , pictype(0)
-    , follow(nullptr)
     , ishyper(false)
 {
 }
 
 Picture::~Picture()
 {
-    delete[]follow;
-    if( pictype == PICTYPE_DRAW && picinfo.picdraw.hdo )
-        delete static_cast<HWPDrawingObject *>(picinfo.picdraw.hdo);
-
-    std::list < HWPPara* >::iterator it = caption.begin();
-    for (; it != caption.end(); ++it)
-    {
-        HWPPara* pPara = *it;
-        delete pPara;
-    }
+    if (pictype == PICTYPE_DRAW)
+        delete picinfo.picdraw.hdo;
 }
 
 
@@ -415,36 +367,18 @@ Picture::~Picture()
 // hidden(15)
 Hidden::~Hidden()
 {
-    std::list < HWPPara* >::iterator it = plist.begin();
-    for (; it != plist.end(); ++it)
-    {
-        HWPPara* pPara = *it;
-        delete pPara;
-    }
 }
 
 
 // header/footer(16)
 HeaderFooter::~HeaderFooter()
 {
-    std::list < HWPPara* >::iterator it = plist.begin();
-    for (; it != plist.end(); ++it)
-    {
-        HWPPara* pPara = *it;
-        delete pPara;
-    }
 }
 
 
 // footnote(17)
 Footnote::~Footnote()
 {
-    std::list < HWPPara* >::iterator it = plist.begin();
-    for (; it != plist.end(); ++it)
-    {
-        HWPPara* pPara = *it;
-        delete pPara;
-    }
 }
 
 
@@ -605,7 +539,7 @@ enum
 hchar_string Outline::GetUnicode() const
 {
     const hchar *p;
-     hchar buffer[255];
+    hchar buffer[255];
 
     buffer[0] = 0;
     if (kind == OUTLINE_NUM)
@@ -648,12 +582,12 @@ hchar_string Outline::GetUnicode() const
                 p = GetOutlineStyleChars(shape);
                 buffer[0] = p[level];
                 buffer[1] = 0;
-                     return hstr2ucsstr(buffer);
+                return hstr2ucsstr(buffer);
                 }
             case OLSTY_USER:
             case OLSTY_BULUSER:
                 {
-                        char dest[80];
+                    char dest[80];
                     int l = 0;
                     int i = level;
                     if( deco[i][0] ){
@@ -725,7 +659,7 @@ hchar_string Outline::GetUnicode() const
                              }
                              str2hstr(buf, buffer + l);
                              l += strlen(buf);
-                            break;
+                             break;
                         }
                         default:
                             buffer[l++] = user_shape[i];

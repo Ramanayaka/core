@@ -17,56 +17,38 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cppuhelper/compbase.hxx>
-
 #include <com/sun/star/geometry/RealSize2D.hpp>
-#include <com/sun/star/geometry/RealPoint2D.hpp>
-#include <com/sun/star/geometry/RealRectangle2D.hpp>
 #include <com/sun/star/geometry/IntegerSize2D.hpp>
 #include <com/sun/star/geometry/IntegerPoint2D.hpp>
 #include <com/sun/star/geometry/IntegerRectangle2D.hpp>
-#include <com/sun/star/geometry/RealBezierSegment2D.hpp>
 
 #include <com/sun/star/rendering/ColorSpaceType.hpp>
 #include <com/sun/star/rendering/RenderingIntent.hpp>
 #include <com/sun/star/rendering/VolatileContentDestroyedException.hpp>
-#include <com/sun/star/rendering/XGraphicDevice.hpp>
 #include <com/sun/star/rendering/XBitmap.hpp>
-#include <com/sun/star/rendering/XPolyPolygon2D.hpp>
 #include <com/sun/star/rendering/IntegerBitmapLayout.hpp>
-#include <com/sun/star/rendering/XIntegerBitmap.hpp>
 #include <com/sun/star/rendering/ColorComponentTag.hpp>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/vector/b2dsize.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/vector/b2isize.hxx>
 #include <basegfx/point/b2ipoint.hxx>
 #include <basegfx/range/b2irectangle.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/polygon/b2dpolypolygon.hxx>
 
-#include <tools/poly.hxx>
+#include <sal/log.hxx>
+#include <tools/helpers.hxx>
 #include <tools/diagnose_ex.h>
-#include <rtl/uuid.h>
 
-#include <vcl/salbtype.hxx>
-#include <vcl/bitmapaccess.hxx>
 #include <vcl/bitmapex.hxx>
 
 #include <canvasbitmap.hxx>
 #include <vcl/canvastools.hxx>
+#include <bitmapwriteaccess.hxx>
 
 using namespace ::com::sun::star;
 
-namespace vcl
+namespace vcl::unotools
 {
-    namespace unotools
-    {
-        uno::Reference< rendering::XBitmap > xBitmapFromBitmapEx( const uno::Reference< rendering::XGraphicDevice >&    /*xGraphicDevice*/,
-                                                                  const ::BitmapEx&                                     inputBitmap )
+        uno::Reference< rendering::XBitmap > xBitmapFromBitmapEx(const ::BitmapEx& inputBitmap )
         {
             SAL_INFO( "vcl.helper", "vcl::unotools::xBitmapFromBitmapEx()" );
 
@@ -75,7 +57,7 @@ namespace vcl
 
         namespace
         {
-            inline bool equalsLayout( const rendering::IntegerBitmapLayout& rLHS,
+            bool equalsLayout( const rendering::IntegerBitmapLayout& rLHS,
                                     const rendering::IntegerBitmapLayout& rRHS )
             {
                 return
@@ -90,8 +72,8 @@ namespace vcl
                           sal_Int32                                                  nHeight,
                           const rendering::IntegerBitmapLayout&                      rLayout,
                           const uno::Reference< rendering::XIntegerReadOnlyBitmap >& xInputBitmap,
-                          Bitmap::ScopedWriteAccess&                                   rWriteAcc,
-                          Bitmap::ScopedWriteAccess&                                   rAlphaAcc )
+                          BitmapScopedWriteAccess&                                   rWriteAcc,
+                          BitmapScopedWriteAccess&                                   rAlphaAcc )
             {
                 rendering::IntegerBitmapLayout      aCurrLayout;
                 geometry::IntegerRectangle2D        aRect;
@@ -114,8 +96,10 @@ namespace vcl
                     if( !equalsLayout(aCurrLayout, rLayout) )
                         return false; // re-read bmp from the start
 
+                    Scanline pScanline = rWriteAcc->GetScanline( aRect.Y1 );
                     if( rAlphaAcc.get() )
                     {
+                        Scanline pScanlineAlpha = rAlphaAcc->GetScanline( aRect.Y1 );
                         // read ARGB color
                         aARGBColors = rLayout.ColorSpace->convertIntegerToARGB(aPixelData);
 
@@ -124,12 +108,12 @@ namespace vcl
                             for( sal_Int32 x=0; x<nWidth; ++x )
                             {
                                 const rendering::ARGBColor& rColor=aARGBColors[x];
-                                rWriteAcc->SetPixelIndex( aRect.Y1, x,
-                                                     (sal_uInt8) rWriteAcc->GetBestPaletteIndex(
+                                rWriteAcc->SetPixelOnData( pScanline, x,
+                                                     BitmapColor(static_cast<sal_uInt8>(rWriteAcc->GetBestPaletteIndex(
                                                          BitmapColor( toByteColor(rColor.Red),
                                                                       toByteColor(rColor.Green),
-                                                                      toByteColor(rColor.Blue))) );
-                                rAlphaAcc->SetPixel( aRect.Y1, x,
+                                                                      toByteColor(rColor.Blue))))) );
+                                rAlphaAcc->SetPixelOnData( pScanlineAlpha, x,
                                                      BitmapColor( 255 - toByteColor(rColor.Alpha) ));
                             }
                         }
@@ -138,11 +122,11 @@ namespace vcl
                             for( sal_Int32 x=0; x<nWidth; ++x )
                             {
                                 const rendering::ARGBColor& rColor=aARGBColors[x];
-                                rWriteAcc->SetPixel( aRect.Y1, x,
+                                rWriteAcc->SetPixelOnData( pScanline, x,
                                                      BitmapColor( toByteColor(rColor.Red),
                                                                   toByteColor(rColor.Green),
                                                                   toByteColor(rColor.Blue) ));
-                                rAlphaAcc->SetPixel( aRect.Y1, x,
+                                rAlphaAcc->SetPixelOnData( pScanlineAlpha, x,
                                                      BitmapColor( 255 - toByteColor(rColor.Alpha) ));
                             }
                         }
@@ -156,11 +140,11 @@ namespace vcl
                             for( sal_Int32 x=0; x<nWidth; ++x )
                             {
                                 const rendering::RGBColor& rColor=aRGBColors[x];
-                                rWriteAcc->SetPixelIndex( aRect.Y1, x,
-                                                     (sal_uInt8) rWriteAcc->GetBestPaletteIndex(
+                                rWriteAcc->SetPixelOnData( pScanline, x,
+                                                     BitmapColor(static_cast<sal_uInt8>(rWriteAcc->GetBestPaletteIndex(
                                                          BitmapColor( toByteColor(rColor.Red),
                                                                       toByteColor(rColor.Green),
-                                                                      toByteColor(rColor.Blue))) );
+                                                                      toByteColor(rColor.Blue))))) );
                             }
                         }
                         else
@@ -168,7 +152,7 @@ namespace vcl
                             for( sal_Int32 x=0; x<nWidth; ++x )
                             {
                                 const rendering::RGBColor& rColor=aRGBColors[x];
-                                rWriteAcc->SetPixel( aRect.Y1, x,
+                                rWriteAcc->SetPixelOnData( pScanline, x,
                                                      BitmapColor( toByteColor(rColor.Red),
                                                                   toByteColor(rColor.Green),
                                                                   toByteColor(rColor.Blue) ));
@@ -196,7 +180,7 @@ namespace vcl
             // retrieve data via UNO interface
 
             // volatile bitmaps are a bit more complicated to read
-            // from..
+            // from...
 
             // loop a few times, until successfully read (for XVolatileBitmap)
             for( int i=0; i<10; ++i )
@@ -294,11 +278,11 @@ namespace vcl
                     aAlpha = ::Bitmap( aPixelSize,
                                        sal::static_int_cast<sal_uInt16>(nAlphaDepth),
                                        &::Bitmap::GetGreyPalette(
-                                           sal::static_int_cast<sal_uInt16>(1L << nAlphaDepth)) );
+                                           sal::static_int_cast<sal_uInt16>(1 << nAlphaDepth)) );
 
                 { // limit scoped access
-                    Bitmap::ScopedWriteAccess pWriteAccess( aBitmap );
-                    Bitmap::ScopedWriteAccess pAlphaWriteAccess( nAlphaDepth ? aAlpha.AcquireWriteAccess() : nullptr,
+                    BitmapScopedWriteAccess pWriteAccess( aBitmap );
+                    BitmapScopedWriteAccess pAlphaWriteAccess( nAlphaDepth ? aAlpha.AcquireWriteAccess() : nullptr,
                                                                aAlpha );
 
                     ENSURE_OR_THROW(pWriteAccess.get() != nullptr,
@@ -372,8 +356,14 @@ namespace vcl
 
         basegfx::B2IRectangle b2IRectangleFromRectangle(tools::Rectangle const& rRect)
         {
-            return basegfx::B2IRectangle(rRect.Left(), rRect.Top(),
-                                         rRect.Right(), rRect.Bottom());
+            // although B2IRange internally has separate height/width emptiness, it doesn't
+            // expose any API to let us set them separately, so just do the best we can.
+            if (rRect.IsWidthEmpty() && rRect.IsHeightEmpty())
+                return basegfx::B2IRange( basegfx::B2ITuple( rRect.Left(), rRect.Top() ) );
+            return basegfx::B2IRange( rRect.Left(),
+                                  rRect.Top(),
+                                  rRect.IsWidthEmpty() ? rRect.Left() : rRect.Right(),
+                                  rRect.IsHeightEmpty() ? rRect.Top() : rRect.Bottom() );
         }
 
         basegfx::B2DVector b2DSizeFromSize( const ::Size& rSize )
@@ -390,10 +380,14 @@ namespace vcl
 
         basegfx::B2DRange b2DRectangleFromRectangle( const ::tools::Rectangle& rRect )
         {
-            return basegfx::B2DRange( rRect.Left(),
-                                        rRect.Top(),
-                                        rRect.Right(),
-                                        rRect.Bottom() );
+            // although B2DRange internally has separate height/width emptiness, it doesn't
+            // expose any API to let us set them separately, so just do the best we can.
+            if (rRect.IsWidthEmpty() && rRect.IsHeightEmpty())
+                return basegfx::B2DRange( basegfx::B2DTuple( rRect.Left(), rRect.Top() ) );
+            return basegfx::B2DRectangle( rRect.Left(),
+                                  rRect.Top(),
+                                  rRect.IsWidthEmpty() ? rRect.Left() : rRect.Right(),
+                                  rRect.IsHeightEmpty() ? rRect.Top() : rRect.Bottom() );
         }
 
         geometry::IntegerSize2D integerSize2DFromSize( const Size& rSize )
@@ -505,52 +499,46 @@ namespace vcl
                 }
                 virtual uno::Sequence< double > SAL_CALL convertFromRGB( const uno::Sequence< rendering::RGBColor >& rgbColor ) override
                 {
-                    const rendering::RGBColor* pIn( rgbColor.getConstArray() );
                     const std::size_t             nLen( rgbColor.getLength() );
 
                     uno::Sequence< double > aRes(nLen*4);
                     double* pColors=aRes.getArray();
-                    for( std::size_t i=0; i<nLen; ++i )
+                    for( const auto& rIn : rgbColor )
                     {
-                        *pColors++ = pIn->Red;
-                        *pColors++ = pIn->Green;
-                        *pColors++ = pIn->Blue;
+                        *pColors++ = rIn.Red;
+                        *pColors++ = rIn.Green;
+                        *pColors++ = rIn.Blue;
                         *pColors++ = 1.0;
-                        ++pIn;
                     }
                     return aRes;
                 }
                 virtual uno::Sequence< double > SAL_CALL convertFromARGB( const uno::Sequence< rendering::ARGBColor >& rgbColor ) override
                 {
-                    const rendering::ARGBColor* pIn( rgbColor.getConstArray() );
                     const std::size_t              nLen( rgbColor.getLength() );
 
                     uno::Sequence< double > aRes(nLen*4);
                     double* pColors=aRes.getArray();
-                    for( std::size_t i=0; i<nLen; ++i )
+                    for( const auto& rIn : rgbColor )
                     {
-                        *pColors++ = pIn->Red;
-                        *pColors++ = pIn->Green;
-                        *pColors++ = pIn->Blue;
-                        *pColors++ = pIn->Alpha;
-                        ++pIn;
+                        *pColors++ = rIn.Red;
+                        *pColors++ = rIn.Green;
+                        *pColors++ = rIn.Blue;
+                        *pColors++ = rIn.Alpha;
                     }
                     return aRes;
                 }
                 virtual uno::Sequence< double > SAL_CALL convertFromPARGB( const uno::Sequence< rendering::ARGBColor >& rgbColor ) override
                 {
-                    const rendering::ARGBColor* pIn( rgbColor.getConstArray() );
                     const std::size_t              nLen( rgbColor.getLength() );
 
                     uno::Sequence< double > aRes(nLen*4);
                     double* pColors=aRes.getArray();
-                    for( std::size_t i=0; i<nLen; ++i )
+                    for( const auto& rIn : rgbColor )
                     {
-                        *pColors++ = pIn->Red/pIn->Alpha;
-                        *pColors++ = pIn->Green/pIn->Alpha;
-                        *pColors++ = pIn->Blue/pIn->Alpha;
-                        *pColors++ = pIn->Alpha;
-                        ++pIn;
+                        *pColors++ = rIn.Red/rIn.Alpha;
+                        *pColors++ = rIn.Green/rIn.Alpha;
+                        *pColors++ = rIn.Blue/rIn.Alpha;
+                        *pColors++ = rIn.Alpha;
                     }
                     return aRes;
                 }
@@ -629,8 +617,6 @@ namespace vcl
                           toByteColor(aARGBColor.Green),
                           toByteColor(aARGBColor.Blue) );
         }
-
-    } // namespace vcltools
 
 } // namespace canvas
 

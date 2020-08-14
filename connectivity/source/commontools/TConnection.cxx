@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 #include <cppuhelper/typeprovider.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
-#include <comphelper/officeresourcebundle.hxx>
 #include <connectivity/dbexception.hxx>
 
 using namespace connectivity;
@@ -42,11 +41,11 @@ void OMetaConnection::disposing()
 {
     ::osl::MutexGuard aGuard(m_aMutex);
     m_xMetaData = WeakReference< XDatabaseMetaData>();
-    for (OWeakRefArray::iterator i = m_aStatements.begin(); m_aStatements.end() != i; ++i)
+    for (auto const& statement : m_aStatements)
     {
         try
         {
-            Reference< XInterface > xStatement( i->get() );
+            Reference< XInterface > xStatement( statement.get() );
             ::comphelper::disposeComponent( xStatement );
         }
         catch (const DisposedException&)
@@ -58,12 +57,12 @@ void OMetaConnection::disposing()
 //XUnoTunnel
 sal_Int64 SAL_CALL OMetaConnection::getSomething( const css::uno::Sequence< sal_Int8 >& rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return (isUnoTunnelId<OMetaConnection>(rId))
         ? reinterpret_cast< sal_Int64 >( this )
-        : (sal_Int64)0;
+        : sal_Int64(0);
 }
 
-Sequence< sal_Int8 > OMetaConnection::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OMetaConnection::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -76,11 +75,11 @@ Sequence< sal_Int8 > OMetaConnection::getUnoTunnelImplementationId()
     return s_aPropertyNameMap;
 }
 
-void OMetaConnection::throwGenericSQLException( sal_uInt16 _nErrorResourceId,const Reference< XInterface>& _xContext )
+void OMetaConnection::throwGenericSQLException(const char* pErrorResourceId, const Reference< XInterface>& _xContext )
 {
     OUString sErrorMessage;
-    if ( _nErrorResourceId )
-        sErrorMessage = m_aResources.getResourceString( _nErrorResourceId );
+    if (pErrorResourceId)
+        sErrorMessage = m_aResources.getResourceString(pErrorResourceId);
     Reference< XInterface> xContext = _xContext;
     if ( !xContext.is() )
         xContext = *this;

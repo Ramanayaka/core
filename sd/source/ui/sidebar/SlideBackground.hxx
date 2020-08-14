@@ -21,33 +21,30 @@
 #define INCLUDED_SD_SOURCE_UI_SIDEBAR_SLIDEBACKGROUND_HXX
 
 #include <memory>
-#include <vcl/ctrl.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <vcl/field.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
-#include <svx/pagectrl.hxx>
-#include "ViewShellBase.hxx"
+#include <svl/intitem.hxx>
+#include <svx/dlgutil.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 #include <svx/itemwin.hxx>
-#include <sfx2/sidebar/ControlFactory.hxx>
 #include <sfx2/sidebar/ControllerItem.hxx>
-#include <com/sun/star/drawing/XDrawView.hpp>
-#include "fupage.hxx"
 #include <svx/papersizelistbox.hxx>
-#include <svx/xflclit.hxx>
-#include <svx/xgrad.hxx>
-#include <svx/xflgrit.hxx>
-#include <svx/xbitmap.hxx>
-#include <svx/xflbckit.hxx>
-#include <svx/xbtmpit.hxx>
-#include <svx/xflhtit.hxx>
-#include "EventMultiplexer.hxx"
 #include <sfx2/sidebar/IContextChangeReceiver.hxx>
 
-class SvxColorListBox;
+namespace sd { class ViewShellBase; }
+namespace sd::tools { class EventMultiplexerEvent; }
 
-namespace sd { namespace sidebar {
+class ColorListBox;
+class SvxPageItem;
+class SvxLongLRSpaceItem;
+class SvxLongULSpaceItem;
+class XFillColorItem;
+class XGradient;
+class XFillGradientItem;
+class XFillBitmapItem;
+class XFillHatchItem;
+
+const long MINBODY = 284;
+
+namespace sd::sidebar {
 
 class SlideBackground :
     public PanelLayout,
@@ -68,30 +65,43 @@ public:
     virtual void NotifyItemUpdate(
         const sal_uInt16 nSID,
         const SfxItemState eState,
-        const SfxPoolItem* pState,
-        const bool bIsEnabled) override;
+        const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
+
     virtual void HandleContextChange(
         const vcl::EnumContext& rContext) override;
+    virtual void DumpAsPropertyTree(::tools::JsonWriter&) override;
 
 private:
 
     ViewShellBase& mrBase;
 
-    VclPtr<PaperSizeListBox> mpPaperSizeBox;
-    VclPtr<ListBox> mpPaperOrientation;
-    VclPtr<ListBox> mpMasterSlide;
-    VclPtr<SvxFillTypeBox> mpFillStyle;
-    VclPtr<SvxColorListBox> mpFillLB;
-    VclPtr<SvxFillAttrBox> mpFillAttr;
-    VclPtr<SvxColorListBox> mpFillGrad;
-    VclPtr<CheckBox> mpDspMasterBackground;
-    VclPtr<CheckBox> mpDspMasterObjects;
-    VclPtr<Button> mpCloseMaster;
-    VclPtr<Button> mpEditMaster;
-    VclPtr<FixedText> mpMasterLabel;
+    std::unique_ptr<SvxPaperSizeListBox> mxPaperSizeBox;
+    std::unique_ptr<weld::ComboBox> mxPaperOrientation;
+    std::unique_ptr<weld::ComboBox> mxMasterSlide;
+    std::unique_ptr<weld::Label> mxBackgroundLabel;
+    std::unique_ptr<weld::ComboBox> mxFillStyle;
+    std::unique_ptr<ColorListBox> mxFillLB;
+    std::unique_ptr<weld::ComboBox> mxFillAttr;
+    std::unique_ptr<ColorListBox> mxFillGrad1;
+    std::unique_ptr<ColorListBox> mxFillGrad2;
+    std::unique_ptr<weld::Button> mxInsertImage;
+    std::unique_ptr<weld::CheckButton> mxDspMasterBackground;
+    std::unique_ptr<weld::CheckButton> mxDspMasterObjects;
+    std::unique_ptr<weld::Button> mxCloseMaster;
+    std::unique_ptr<weld::Button> mxEditMaster;
+    std::unique_ptr<weld::Label> mxMasterLabel;
+    std::unique_ptr<weld::ComboBox> mxMarginSelectBox;
+    std::unique_ptr<weld::Label> mxCustomEntry;
+    std::unique_ptr<weld::Label> mxMarginLabel;
 
     ::sfx2::sidebar::ControllerItem maPaperSizeController;
     ::sfx2::sidebar::ControllerItem maPaperOrientationController;
+    ::sfx2::sidebar::ControllerItem maPaperMarginLRController;
+    ::sfx2::sidebar::ControllerItem maPaperMarginULController;
     ::sfx2::sidebar::ControllerItem maBckColorController;
     ::sfx2::sidebar::ControllerItem maBckGradientController;
     ::sfx2::sidebar::ControllerItem maBckHatchController;
@@ -109,7 +119,8 @@ private:
     std::unique_ptr< XFillHatchItem >       mpHatchItem;
     std::unique_ptr< XFillBitmapItem >      mpBitmapItem;
 
-    bool mbEditModeChangePending;
+    bool mbSwitchModeToNormal;
+    bool mbSwitchModeToMaster;
 
     css::uno::Reference<css::frame::XFrame> mxFrame;
     vcl::EnumContext maContext;
@@ -117,39 +128,59 @@ private:
     vcl::EnumContext maDrawMasterContext;
     vcl::EnumContext maImpressOtherContext;
     vcl::EnumContext maImpressMasterContext;
-    vcl::EnumContext::Application maApplication;
+    vcl::EnumContext maImpressHandoutContext;
+    vcl::EnumContext maImpressNotesContext;
     bool         mbTitle;
+    std::unique_ptr<SvxLongLRSpaceItem> mpPageLRMarginItem;
+    std::unique_ptr<SvxLongULSpaceItem> mpPageULMarginItem;
+    long m_nPageLeftMargin;
+    long m_nPageRightMargin;
+    long m_nPageTopMargin;
+    long m_nPageBottomMargin;
+    FieldUnit meFUnit;
+    OUString maCustomEntry;
+
     SfxBindings* mpBindings;
 
     MapUnit meUnit;
 
-    DECL_LINK(FillBackgroundHdl, ListBox&, void);
-    DECL_LINK(FillStyleModifyHdl, ListBox&, void);
-    DECL_LINK(PaperSizeModifyHdl, ListBox&, void);
-    DECL_LINK(FillColorHdl, SvxColorListBox&, void);
-    DECL_LINK(AssignMasterPage, ListBox&, void);
-    DECL_LINK(DspBackground, Button*, void);
-    DECL_LINK(DspObjects, Button*, void);
-    DECL_LINK(CloseMasterHdl, Button*, void);
+    DECL_LINK(FillBackgroundHdl, weld::ComboBox&, void);
+    DECL_LINK(FillStyleModifyHdl, weld::ComboBox&, void);
+    DECL_LINK(PaperSizeModifyHdl, weld::ComboBox&, void);
+    DECL_LINK(FillColorHdl, ColorListBox&, void);
+    DECL_LINK(AssignMasterPage, weld::ComboBox&, void);
+    DECL_LINK(DspBackground, weld::Button&, void);
+    DECL_LINK(DspObjects, weld::Button&, void);
+    DECL_LINK(CloseMasterHdl, weld::Button&, void);
+    DECL_LINK(EditMasterHdl, weld::Button&, void);
+    DECL_LINK(SelectBgHdl, weld::Button&, void);
     DECL_LINK(EventMultiplexerListener, tools::EventMultiplexerEvent&, void );
+    DECL_LINK( ModifyMarginHdl, weld::ComboBox&, void );
 
     void Initialize();
     void Update();
+    void UpdateMarginBox();
     void SetPanelTitle(const OUString& rTitle);
+    void SetMarginsFieldUnit();
 
-    Color GetColorSetOrDefault();
-    XGradient GetGradientSetOrDefault();
-    const OUString GetHatchingSetOrDefault();
-    const OUString GetBitmapSetOrDefault();
-    const OUString GetPatternSetOrDefault();
+    Color const & GetColorSetOrDefault();
+    XGradient const & GetGradientSetOrDefault();
+    OUString const & GetHatchingSetOrDefault();
+    OUString const & GetBitmapSetOrDefault();
+    OUString const & GetPatternSetOrDefault();
+    bool IsDraw();
     bool IsImpress();
     void addListener();
     void removeListener();
+    void ExecuteMarginLRChange(const long mnPageLeftMargin, const long mnPageRightMargin);
+    void ExecuteMarginULChange(const long mnPageTopMargin, const long mnPageBottomMargin);
     void populateMasterSlideDropdown();
     void updateMasterSlideSelection();
+
+    static FieldUnit GetCurrentUnit(SfxItemState eState, const SfxPoolItem* pState);
 };
 
-}}
+}
 
 #endif
 

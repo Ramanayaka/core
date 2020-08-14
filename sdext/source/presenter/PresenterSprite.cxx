@@ -28,15 +28,14 @@ using namespace ::com::sun::star;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::UNO_QUERY;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 PresenterSprite::PresenterSprite()
     : mxSpriteFactory(),
       mxSprite(),
       maSize(0,0),
       maLocation(0,0),
-      mbIsVisible(false),
-      mnAlpha(1.0)
+      mbIsVisible(false)
 {
 }
 
@@ -123,30 +122,30 @@ void PresenterSprite::Update()
 
 void PresenterSprite::ProvideSprite()
 {
-    if ( ! mxSprite.is()
+    if ( !(! mxSprite.is()
         && mxSpriteFactory.is()
         && maSize.Width>0
-        && maSize.Height>0)
-    {
-        mxSprite = mxSpriteFactory->createCustomSprite(maSize);
-        if (mxSprite.is())
-        {
-            mxSprite->move(maLocation,
-                rendering::ViewState(
-                geometry::AffineMatrix2D(1,0,0, 0,1,0),
-                nullptr),
-            rendering::RenderState(
-                geometry::AffineMatrix2D(1,0,0, 0,1,0),
-                nullptr,
-                uno::Sequence<double>(4),
-                rendering::CompositeOperation::SOURCE)
-                );
-            mxSprite->setAlpha(mnAlpha);
-            mxSprite->setPriority(0);
-            if (mbIsVisible)
-                mxSprite->show();
-        }
-    }
+        && maSize.Height>0))
+        return;
+
+    mxSprite = mxSpriteFactory->createCustomSprite(maSize);
+    if (!mxSprite.is())
+        return;
+
+    mxSprite->move(maLocation,
+        rendering::ViewState(
+        geometry::AffineMatrix2D(1,0,0, 0,1,0),
+        nullptr),
+    rendering::RenderState(
+        geometry::AffineMatrix2D(1,0,0, 0,1,0),
+        nullptr,
+        uno::Sequence<double>(4),
+        rendering::CompositeOperation::SOURCE)
+        );
+    mxSprite->setAlpha(1.0);
+    mxSprite->setPriority(0);
+    if (mbIsVisible)
+        mxSprite->show();
 }
 
 void PresenterSprite::DisposeSprite()
@@ -161,6 +160,6 @@ void PresenterSprite::DisposeSprite()
     }
 }
 
-} } //end of namespace sdext::presenter
+} //end of namespace sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

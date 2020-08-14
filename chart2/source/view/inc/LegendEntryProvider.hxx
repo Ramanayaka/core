@@ -19,33 +19,37 @@
 #ifndef INCLUDED_CHART2_SOURCE_VIEW_INC_LEGENDENTRYPROVIDER_HXX
 #define INCLUDED_CHART2_SOURCE_VIEW_INC_LEGENDENTRYPROVIDER_HXX
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/chart/ChartLegendExpansion.hpp>
-#include <com/sun/star/chart2/XFormattedString2.hpp>
-#include <com/sun/star/drawing/XShape.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-
+#include <com/sun/star/chart2/LegendPosition.hpp>
+#include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/uno/Sequence.h>
 #include <vector>
+
+namespace chart { class ChartModel; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::chart2 { class XFormattedString2; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::drawing { class XShapes; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace chart
 {
 
-enum LegendSymbolStyle
+enum class LegendSymbolStyle
 {
     /** A square box with border.
      */
-    LegendSymbolStyle_BOX,
+    Box,
 
     /** A line like with a symbol.
      */
-    LegendSymbolStyle_LINE,
+    Line,
 
     /** A bordered circle which has the same bounding-box as the
         <member>BOX</member>.
      */
-    LegendSymbolStyle_CIRCLE
+    Circle
 };
 
 struct ViewLegendEntry
@@ -68,11 +72,12 @@ public:
 
     virtual std::vector< ViewLegendEntry > createLegendEntries(
             const css::awt::Size& rEntryKeyAspectRatio,
-            css::chart::ChartLegendExpansion eLegendExpansion,
+            css::chart2::LegendPosition eLegendPosition,
             const css::uno::Reference< css::beans::XPropertySet >& xTextProperties,
             const css::uno::Reference< css::drawing::XShapes >& xTarget,
             const css::uno::Reference< css::lang::XMultiServiceFactory >& xShapeFactory,
-            const css::uno::Reference< css::uno::XComponentContext >& xContext
+            const css::uno::Reference< css::uno::XComponentContext >& xContext,
+            ChartModel& rModel
                 ) = 0;
 
 protected:

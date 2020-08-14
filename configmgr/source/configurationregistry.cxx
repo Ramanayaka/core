@@ -22,16 +22,14 @@
 #include <cassert>
 
 #include <com/sun/star/beans/NamedValue.hpp>
-#include <com/sun/star/beans/Property.hpp>
-#include <com/sun/star/beans/XProperty.hpp>
 #include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/registry/InvalidRegistryException.hpp>
 #include <com/sun/star/registry/InvalidValueException.hpp>
-#include <com/sun/star/registry/MergeConflictException.hpp>
 #include <com/sun/star/registry/RegistryKeyType.hpp>
 #include <com/sun/star/registry/RegistryValueType.hpp>
 #include <com/sun/star/registry/XRegistryKey.hpp>
@@ -48,21 +46,19 @@
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/util/XFlushable.hpp>
 #include <cppu/unotype.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/weak.hxx>
 #include <osl/mutex.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-#include "configurationregistry.hxx"
-
-namespace com { namespace sun { namespace star { namespace util {
+namespace com::sun::star::util {
     class XFlushListener;
-} } } }
+}
 
-namespace configmgr { namespace configuration_registry {
+namespace configmgr::configuration_registry {
 
 namespace {
 
@@ -81,14 +77,14 @@ private:
     virtual ~Service() override {}
 
     virtual OUString SAL_CALL getImplementationName() override
-    { return configuration_registry::getImplementationName(); }
+    { return "com.sun.star.comp.configuration.ConfigurationRegistry"; }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
 
     virtual css::uno::Sequence< OUString > SAL_CALL
     getSupportedServiceNames() override
-    { return configuration_registry::getSupportedServiceNames(); }
+    { return { "com.sun.star.configuration.ConfigurationRegistry" }; }
 
     virtual OUString SAL_CALL getURL() override;
 
@@ -262,10 +258,11 @@ void Service::open(OUString const & rURL, sal_Bool bReadOnly, sal_Bool)
     } catch (css::uno::RuntimeException &) {
         throw;
     } catch (css::uno::Exception & e) {
-        throw css::uno::RuntimeException(
-            ("com.sun.star.configuration.ConfigurationRegistry: open failed: " +
-             e.Message),
-            static_cast< cppu::OWeakObject * >(this));
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException(
+            "com.sun.star.configuration.ConfigurationRegistry: open failed: " +
+            e.Message,
+            static_cast< cppu::OWeakObject * >(this), anyEx );
     }
     url_ = rURL;
     readOnly_ = bReadOnly;
@@ -404,7 +401,7 @@ css::registry::RegistryValueType RegistryKey::getValueType()
         {
             return css::registry::RegistryValueType_STRINGLIST;
         }
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     default:
         return css::registry::RegistryValueType_NOT_DEFINED;
     }
@@ -631,20 +628,13 @@ OUString RegistryKey::getResolvedName(OUString const & aKeyName)
 
 }
 
-css::uno::Reference< css::uno::XInterface > create(
-    css::uno::Reference< css::uno::XComponentContext > const & context)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_configuration_ConfigurationRegistry_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return static_cast< cppu::OWeakObject * >(new Service(context));
+    return cppu::acquire(static_cast< cppu::OWeakObject * >(new Service(context)));
 }
 
-OUString getImplementationName() {
-    return OUString("com.sun.star.comp.configuration.ConfigurationRegistry");
 }
-
-css::uno::Sequence< OUString > getSupportedServiceNames() {
-    return css::uno::Sequence< OUString > { "com.sun.star.configuration.ConfigurationRegistry" };
-}
-
-} }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

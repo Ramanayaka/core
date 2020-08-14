@@ -17,17 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/textparagraphpropertiescontext.hxx"
+#include <drawingml/textparagraphpropertiescontext.hxx>
 
 #include <com/sun/star/text/WritingMode2.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
+#include <com/sun/star/xml/sax/SAXException.hpp>
 
 #include <svx/unopage.hxx>
+#include <sal/log.hxx>
 
-#include "drawingml/colorchoicecontext.hxx"
-#include "drawingml/textcharacterpropertiescontext.hxx"
-#include "drawingml/fillproperties.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <drawingml/colorchoicecontext.hxx>
+#include <drawingml/misccontexts.hxx>
+#include <drawingml/textcharacterpropertiescontext.hxx>
+#include <drawingml/fillproperties.hxx>
+#include <oox/helper/attributelist.hxx>
 #include "textspacingcontext.hxx"
 #include "texttabstoplistcontext.hxx"
 #include <oox/token/namespaces.hxx>
@@ -40,10 +43,10 @@ using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::style;
 using namespace ::com::sun::star::text;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 // CT_TextParagraphProperties
-TextParagraphPropertiesContext::TextParagraphPropertiesContext( ContextHandler2Helper& rParent,
+TextParagraphPropertiesContext::TextParagraphPropertiesContext( ContextHandler2Helper const & rParent,
                                                                 const AttributeList& rAttribs,
                                                                 TextParagraphProperties& rTextParagraphProperties )
 : ContextHandler2( rParent )
@@ -89,7 +92,7 @@ TextParagraphPropertiesContext::TextParagraphPropertiesContext( ContextHandler2H
     if ( rAttribs.hasAttribute( XML_indent ) )
     {
         sValue = rAttribs.getString( XML_indent ).get();
-        mrTextParagraphProperties.getFirstLineIndentation() = boost::optional< sal_Int32 >( sValue.isEmpty() ? 0 : GetCoordinate( sValue ) );
+        mrTextParagraphProperties.getFirstLineIndentation() = std::optional< sal_Int32 >( sValue.isEmpty() ? 0 : GetCoordinate( sValue ) );
     }
 
   // ST_TextIndentLevelType
@@ -112,7 +115,7 @@ TextParagraphPropertiesContext::TextParagraphPropertiesContext( ContextHandler2H
     if ( rAttribs.hasAttribute( XML_marL ) )
     {
         sValue = rAttribs.getString( XML_marL ).get();
-        mrTextParagraphProperties.getParaLeftMargin() = boost::optional< sal_Int32 >( sValue.isEmpty() ? 0 : GetCoordinate( sValue ) );
+        mrTextParagraphProperties.getParaLeftMargin() = std::optional< sal_Int32 >( sValue.isEmpty() ? 0 : GetCoordinate( sValue ) );
     }
 
     // ParaRightMargin
@@ -133,12 +136,12 @@ TextParagraphPropertiesContext::TextParagraphPropertiesContext( ContextHandler2H
 TextParagraphPropertiesContext::~TextParagraphPropertiesContext()
 {
     PropertyMap& rPropertyMap( mrTextParagraphProperties.getTextParagraphPropertyMap() );
-    if ( maLineSpacing.bHasValue )
-        rPropertyMap.setProperty( PROP_ParaLineSpacing, maLineSpacing.toLineSpacing());
+    if ( mrTextParagraphProperties.getLineSpacing().bHasValue )
+        rPropertyMap.setProperty( PROP_ParaLineSpacing, mrTextParagraphProperties.getLineSpacing().toLineSpacing());
     else
         rPropertyMap.setProperty( PROP_ParaLineSpacing, css::style::LineSpacing( css::style::LineSpacingMode::PROP, 100 ));
 
-    ::std::list< TabStop >::size_type nTabCount = maTabList.size();
+    ::std::vector< TabStop >::size_type nTabCount = maTabList.size();
     if( nTabCount != 0 )
     {
         Sequence< TabStop > aSeq( nTabCount );
@@ -148,8 +151,8 @@ TextParagraphPropertiesContext::~TextParagraphPropertiesContext()
         rPropertyMap.setProperty( PROP_ParaTabStops, aSeq);
     }
 
-    if ( mxBlipProps.get() && mxBlipProps->mxGraphic.is() )
-        mrBulletList.setGraphic( mxBlipProps->mxGraphic );
+    if (mxBlipProps && mxBlipProps->mxFillGraphic.is())
+        mrBulletList.setGraphic(mxBlipProps->mxFillGraphic);
 
     if( mrBulletList.is() )
         rPropertyMap.setProperty( PROP_IsNumbering, true);
@@ -158,7 +161,7 @@ TextParagraphPropertiesContext::~TextParagraphPropertiesContext()
     rPropertyMap.setProperty( PROP_NumberingIsNumber, true);
 
     if( mrTextParagraphProperties.getParaAdjust() )
-        rPropertyMap.setProperty( PROP_ParaAdjust, mrTextParagraphProperties.getParaAdjust().get());
+        rPropertyMap.setProperty( PROP_ParaAdjust, *mrTextParagraphProperties.getParaAdjust());
 }
 
 ContextHandlerRef TextParagraphPropertiesContext::onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs )
@@ -166,7 +169,7 @@ ContextHandlerRef TextParagraphPropertiesContext::onCreateContext( sal_Int32 aEl
     switch( aElementToken )
     {
         case A_TOKEN( lnSpc ):          // CT_TextSpacing
-            return new TextSpacingContext( *this, maLineSpacing );
+            return new TextSpacingContext( *this, mrTextParagraphProperties.getLineSpacing() );
         case A_TOKEN( spcBef ):         // CT_TextSpacing
             return new TextSpacingContext( *this, mrTextParagraphProperties.getParaTopMargin() );
         case A_TOKEN( spcAft ):         // CT_TextSpacing
@@ -182,7 +185,7 @@ ContextHandlerRef TextParagraphPropertiesContext::onCreateContext( sal_Int32 aEl
             mrBulletList.setBulletSize(100);
             break;
         case A_TOKEN( buSzPct ):        // CT_TextBulletSizePercent
-            mrBulletList.setBulletSize( static_cast<sal_Int16>( GetPercent( rAttribs.getString( XML_val ).get() ) / 1000 ) );
+            mrBulletList.setBulletSize( std::lround( GetPercent( rAttribs.getString( XML_val ).get() ) / 1000.f ) );
             break;
         case A_TOKEN( buSzPts ):        // CT_TextBulletSizePoint
             mrBulletList.setBulletSize(0);
@@ -236,7 +239,7 @@ ContextHandlerRef TextParagraphPropertiesContext::onCreateContext( sal_Int32 aEl
             break;
         case A_TOKEN( buBlip ):         // CT_TextBlipBullet
             {
-                mxBlipProps.reset( new BlipFillProperties );
+                mxBlipProps = std::make_shared<BlipFillProperties>();
                 return new BlipFillContext( *this, rAttribs, *mxBlipProps );
             }
         case A_TOKEN( tabLst ):         // CT_TextTabStopList
@@ -315,17 +318,18 @@ ContextHandlerRef TextParagraphPropertiesContext::onCreateContext( sal_Int32 aEl
                 OptValue<sal_Int32> oLineSpacing = rAttribs.getInteger(W_TOKEN(line));
                 if (oLineSpacing.has())
                 {
+                    TextSpacing& rLineSpacing = mrTextParagraphProperties.getLineSpacing();
                     if( !oLineRule.has() || oLineRule.get() == "auto" )
                     {
-                        maLineSpacing.nUnit = TextSpacing::Unit::Percent;
-                        maLineSpacing.nValue = oLineSpacing.get() * MAX_PERCENT / 240;
+                        rLineSpacing.nUnit = TextSpacing::Unit::Percent;
+                        rLineSpacing.nValue = oLineSpacing.get() * MAX_PERCENT / 240;
                     }
                     else
                     {
-                        maLineSpacing.nUnit = TextSpacing::Unit::Points;
-                        maLineSpacing.nValue = TWIPS_TO_MM(oLineSpacing.get());
+                        rLineSpacing.nUnit = TextSpacing::Unit::Points;
+                        rLineSpacing.nValue = TWIPS_TO_MM(oLineSpacing.get());
                     }
-                    maLineSpacing.bHasValue = true;
+                    rLineSpacing.bHasValue = true;
                 }
             }
             break;
@@ -335,6 +339,6 @@ ContextHandlerRef TextParagraphPropertiesContext::onCreateContext( sal_Int32 aEl
     return this;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

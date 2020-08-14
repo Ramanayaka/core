@@ -17,29 +17,34 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "address.hxx"
-#include "global.hxx"
-#include "compiler.hxx"
-#include "document.hxx"
-#include "externalrefmgr.hxx"
+#include <sal/config.h>
 
-#include "globstr.hrc"
+#include <string_view>
+
+#include <address.hxx>
+#include <global.hxx>
+#include <compiler.hxx>
+#include <document.hxx>
+#include <externalrefmgr.hxx>
+
 #include <osl/diagnose.h>
-
+#include <o3tl/underlyingenumvalue.hxx>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/sheet/ExternalLinkInfo.hpp>
 #include <com/sun/star/sheet/ExternalLinkType.hpp>
-#include <comphelper/string.hxx>
 #include <sfx2/objsh.hxx>
 #include <tools/urlobj.hxx>
+#include <sal/log.hxx>
+#include <rtl/character.hxx>
+#include <unotools/charclass.hxx>
 
 using namespace css;
 
 const ScAddress::Details ScAddress::detailsOOOa1( formula::FormulaGrammar::CONV_OOO, 0, 0 );
 
-ScAddress::Details::Details ( const ScDocument* pDoc,
-                              const ScAddress & rAddr ) :
-    eConv( pDoc->GetAddressConvention() ),
+ScAddress::Details::Details ( const ScDocument& rDoc,
+                              const ScAddress& rAddr ) :
+    eConv( rDoc.GetAddressConvention() ),
     nRow( rAddr.Row() ),
     nCol( rAddr.Col() )
 {}
@@ -214,7 +219,7 @@ static bool lcl_ScRange_External_TabSpan(
                             const OUString & rExternDocName,
                             const OUString & rStartTabName,
                             const OUString & rEndTabName,
-                            ScDocument* pDoc )
+                            const ScDocument* pDoc )
 {
     if (rExternDocName.isEmpty())
         return !pExtInfo || !pExtInfo->mbExternal;
@@ -492,7 +497,7 @@ const sal_Unicode* ScRange::Parse_XL_Header(
         if (*p == '\'')
         {
             p = parseQuotedName(p, rExternDocName);
-            if (!*p || *p != ']' || rExternDocName.isEmpty())
+            if (*p != ']' || rExternDocName.isEmpty())
             {
                 rExternDocName.clear();
                 return start;
@@ -524,7 +529,7 @@ const sal_Unicode* ScRange::Parse_XL_Header(
         // But, more sickness comes with MOOXML as there may be
         // '[1]Sheet 4'!$A$1  where [1] is the external doc's index.
         p = parseQuotedName(p, rExternDocName);
-        if (!*p || *p != '!')
+        if (*p != '!')
         {
             rExternDocName.clear();
             return start;
@@ -696,7 +701,7 @@ static const sal_Unicode* lcl_r1c1_get_col( const sal_Unicode* p,
     return pEnd;
 }
 
-static inline const sal_Unicode* lcl_r1c1_get_row(
+static const sal_Unicode* lcl_r1c1_get_row(
                                     const sal_Unicode* p,
                                     const ScAddress::Details& rDetails,
                                     ScAddress* pAddr, ScRefFlags* nFlags )
@@ -745,7 +750,7 @@ static inline const sal_Unicode* lcl_r1c1_get_row(
 
 static ScRefFlags lcl_ScRange_Parse_XL_R1C1( ScRange& r,
                                              const sal_Unicode* p,
-                                             ScDocument* pDoc,
+                                             const ScDocument* pDoc,
                                              const ScAddress::Details& rDetails,
                                              bool bOnlyAcceptSingle,
                                              ScAddress::ExternalInfo* pExtInfo,
@@ -792,14 +797,14 @@ static ScRefFlags lcl_ScRange_Parse_XL_R1C1( ScRange& r,
                 applyStartToEndFlags(nFlags);
                 r.aEnd.SetRow( r.aStart.Row() );
             }
-            else
+            else // pTmp != nullptr
             {
                 // Full row range successfully parsed.
                 applyStartToEndFlags(nFlags, nFlags2);
                 p = pTmp;
             }
 
-            if (p && p[0] != 0)
+            if (p[0] != 0)
             {
                 // any trailing invalid character must invalidate the whole address.
                 nFlags &= ~ScRefFlags(ScRefFlags::VALID | ScRefFlags::COL_VALID | ScRefFlags::ROW_VALID | ScRefFlags::TAB_VALID |
@@ -811,7 +816,7 @@ static ScRefFlags lcl_ScRange_Parse_XL_R1C1( ScRange& r,
                 ScRefFlags::COL_VALID | ScRefFlags::COL2_VALID |
                 ScRefFlags::COL_ABS | ScRefFlags::COL2_ABS;
             r.aStart.SetCol( 0 );
-            r.aEnd.SetCol( MAXCOL );
+            r.aEnd.SetCol( pDoc ? pDoc->MaxCol() : MAXCOL );
 
             return bOnlyAcceptSingle ? ScRefFlags::ZERO : nFlags;
         }
@@ -828,7 +833,7 @@ static ScRefFlags lcl_ScRange_Parse_XL_R1C1( ScRange& r,
         {
             // single cell reference
 
-            if (p && p[0] != 0)
+            if (p[0] != 0)
             {
                 // any trailing invalid character must invalidate the whole address.
                 nFlags &= ~ScRefFlags(ScRefFlags::VALID | ScRefFlags::COL_VALID | ScRefFlags::ROW_VALID | ScRefFlags::TAB_VALID);
@@ -837,11 +842,12 @@ static ScRefFlags lcl_ScRange_Parse_XL_R1C1( ScRange& r,
 
             return bOnlyAcceptSingle ? nFlags : ScRefFlags::ZERO;
         }
+        assert(pTmp);
         p = pTmp;
 
         // double reference
 
-        if (p && p[0] != 0)
+        if (p[0] != 0)
         {
             // any trailing invalid character must invalidate the whole range.
             nFlags &= ~ScRefFlags(ScRefFlags::VALID | ScRefFlags::COL_VALID | ScRefFlags::ROW_VALID | ScRefFlags::TAB_VALID |
@@ -863,13 +869,13 @@ static ScRefFlags lcl_ScRange_Parse_XL_R1C1( ScRange& r,
             applyStartToEndFlags(nFlags);
             r.aEnd.SetCol( r.aStart.Col() );
         }
-        else
+        else // pTmp != nullptr
         {
             applyStartToEndFlags(nFlags, nFlags2);
             p = pTmp;
         }
 
-        if (p && p[0] != 0)
+        if (p[0] != 0)
         {
             // any trailing invalid character must invalidate the whole address.
             nFlags &= ~ScRefFlags(ScRefFlags::VALID | ScRefFlags::COL_VALID | ScRefFlags::ROW_VALID | ScRefFlags::TAB_VALID |
@@ -881,7 +887,7 @@ static ScRefFlags lcl_ScRange_Parse_XL_R1C1( ScRange& r,
             ScRefFlags::ROW_VALID | ScRefFlags::ROW2_VALID |
             ScRefFlags::ROW_ABS | ScRefFlags::ROW2_ABS;
         r.aStart.SetRow( 0 );
-        r.aEnd.SetRow( MAXROW );
+        r.aEnd.SetRow( pDoc->MaxRow() );
 
         return bOnlyAcceptSingle ? ScRefFlags::ZERO : nFlags;
     }
@@ -889,7 +895,8 @@ static ScRefFlags lcl_ScRange_Parse_XL_R1C1( ScRange& r,
     return nBailOutFlags;
 }
 
-static inline const sal_Unicode* lcl_a1_get_col( const sal_Unicode* p,
+static const sal_Unicode* lcl_a1_get_col( const ScDocument* pDoc,
+                                                const sal_Unicode* p,
                                                  ScAddress* pAddr,
                                                  ScRefFlags* nFlags,
                                                  const OUString* pErrRef )
@@ -914,9 +921,10 @@ static inline const sal_Unicode* lcl_a1_get_col( const sal_Unicode* p,
         return nullptr;
 
     nCol = sal::static_int_cast<SCCOL>( rtl::toAsciiUpperCase( *p++ ) - 'A' );
-    while (nCol <= MAXCOL && rtl::isAsciiAlpha(*p))
+    const SCCOL nMaxCol = (pDoc ? pDoc->MaxCol() : MAXCOL);
+    while (nCol <= nMaxCol && rtl::isAsciiAlpha(*p))
         nCol = sal::static_int_cast<SCCOL>( ((nCol + 1) * 26) + rtl::toAsciiUpperCase( *p++ ) - 'A' );
-    if( nCol > MAXCOL || rtl::isAsciiAlpha( *p ) )
+    if( nCol > nMaxCol || rtl::isAsciiAlpha( *p ) )
         return nullptr;
 
     *nFlags |= ScRefFlags::COL_VALID;
@@ -925,7 +933,8 @@ static inline const sal_Unicode* lcl_a1_get_col( const sal_Unicode* p,
     return p;
 }
 
-static inline const sal_Unicode* lcl_a1_get_row( const sal_Unicode* p,
+static const sal_Unicode* lcl_a1_get_row( const ScDocument* pDoc,
+                                                 const sal_Unicode* p,
                                                  ScAddress* pAddr,
                                                  ScRefFlags* nFlags,
                                                  const OUString* pErrRef )
@@ -948,7 +957,7 @@ static inline const sal_Unicode* lcl_a1_get_row( const sal_Unicode* p,
     }
 
     n = sal_Unicode_strtol( p, &pEnd ) - 1;
-    if( nullptr == pEnd || p == pEnd || n < 0 || n > MAXROW )
+    if( nullptr == pEnd || p == pEnd || n < 0 || n > pDoc->MaxRow() )
         return nullptr;
 
     *nFlags |= ScRefFlags::ROW_VALID;
@@ -962,12 +971,12 @@ static bool isValidSingleton( ScRefFlags nFlags, ScRefFlags nFlags2 )
 {
     bool bCols = (nFlags & ScRefFlags::COL_VALID) && ((nFlags & ScRefFlags::COL2_VALID) || (nFlags2 & ScRefFlags::COL_VALID));
     bool bRows = (nFlags & ScRefFlags::ROW_VALID) && ((nFlags & ScRefFlags::ROW2_VALID) || (nFlags2 & ScRefFlags::ROW_VALID));
-    return (bCols && !bRows) || (!bCols && bRows);
+    return bCols != bRows;
 }
 
 static ScRefFlags lcl_ScRange_Parse_XL_A1( ScRange& r,
                                            const sal_Unicode* p,
-                                           ScDocument* pDoc,
+                                           const ScDocument* pDoc,
                                            bool bOnlyAcceptSingle,
                                            ScAddress::ExternalInfo* pExtInfo,
                                            const uno::Sequence<sheet::ExternalLinkInfo>* pExternalLinks,
@@ -998,24 +1007,24 @@ static ScRefFlags lcl_ScRange_Parse_XL_A1( ScRange& r,
     if( nullptr == p )
         return nBailOutFlags;
 
-    tmp1 = lcl_a1_get_col( p, &r.aStart, &nFlags, pErrRef);
+    tmp1 = lcl_a1_get_col( pDoc, p, &r.aStart, &nFlags, pErrRef);
     if( tmp1 == nullptr )          // Is it a row only reference 3:5
     {
         if( bOnlyAcceptSingle ) // by definition full row refs are ranges
             return nBailOutFlags;
 
-        tmp1 = lcl_a1_get_row( p, &r.aStart, &nFlags, pErrRef);
+        tmp1 = lcl_a1_get_row( pDoc, p, &r.aStart, &nFlags, pErrRef);
 
         tmp1 = lcl_eatWhiteSpace( tmp1 );
         if( !tmp1 || *tmp1++ != ':' ) // Even a singleton requires ':' (eg 2:2)
             return nBailOutFlags;
 
         tmp1 = lcl_eatWhiteSpace( tmp1 );
-        tmp2 = lcl_a1_get_row( tmp1, &r.aEnd, &nFlags2, pErrRef);
+        tmp2 = lcl_a1_get_row( pDoc, tmp1, &r.aEnd, &nFlags2, pErrRef);
         if( !tmp2 || *tmp2 != 0 )   // Must have fully parsed a singleton.
             return nBailOutFlags;
 
-        r.aStart.SetCol( 0 ); r.aEnd.SetCol( MAXCOL );
+        r.aStart.SetCol( 0 ); r.aEnd.SetCol( pDoc ? pDoc->MaxCol() : MAXCOL );
         nFlags |=
             ScRefFlags::COL_VALID | ScRefFlags::COL2_VALID |
             ScRefFlags::COL_ABS | ScRefFlags::COL2_ABS;
@@ -1023,7 +1032,7 @@ static ScRefFlags lcl_ScRange_Parse_XL_A1( ScRange& r,
         return nFlags;
     }
 
-    tmp2 = lcl_a1_get_row( tmp1, &r.aStart, &nFlags, pErrRef);
+    tmp2 = lcl_a1_get_row( pDoc, tmp1, &r.aStart, &nFlags, pErrRef);
     if( tmp2 == nullptr )          // check for col only reference F:H
     {
         if( bOnlyAcceptSingle ) // by definition full col refs are ranges
@@ -1034,11 +1043,11 @@ static ScRefFlags lcl_ScRange_Parse_XL_A1( ScRange& r,
             return nBailOutFlags;
 
         tmp1 = lcl_eatWhiteSpace( tmp1 );
-        tmp2 = lcl_a1_get_col( tmp1, &r.aEnd, &nFlags2, pErrRef);
+        tmp2 = lcl_a1_get_col( pDoc, tmp1, &r.aEnd, &nFlags2, pErrRef);
         if( !tmp2 || *tmp2 != 0 )   // Must have fully parsed a singleton.
             return nBailOutFlags;
 
-        r.aStart.SetRow( 0 ); r.aEnd.SetRow( MAXROW );
+        r.aStart.SetRow( 0 ); r.aEnd.SetRow( pDoc->MaxRow() );
         nFlags |=
             ScRefFlags::ROW_VALID | ScRefFlags::ROW2_VALID |
             ScRefFlags::ROW_ABS | ScRefFlags::ROW2_ABS;
@@ -1081,9 +1090,8 @@ static ScRefFlags lcl_ScRange_Parse_XL_A1( ScRange& r,
         return nFlags;
     }
 
-    p = tmp2;
-    p = lcl_eatWhiteSpace( p+1 );   // after ':'
-    tmp1 = lcl_a1_get_col( p, &r.aEnd, &nFlags2, pErrRef);
+    p = lcl_eatWhiteSpace( tmp2+1 );   // after ':'
+    tmp1 = lcl_a1_get_col( pDoc, p, &r.aEnd, &nFlags2, pErrRef);
     if( !tmp1 && aEndTabName.isEmpty() )     // Probably the aEndTabName was specified after the first range
     {
         p = lcl_XL_ParseSheetRef( p, aEndTabName, false, nullptr, pErrRef);
@@ -1097,13 +1105,13 @@ static ScRefFlags lcl_ScRange_Parse_XL_A1( ScRange& r,
             }
             if (*p == '!' || *p == ':')
                 p = lcl_eatWhiteSpace( p+1 );
-            tmp1 = lcl_a1_get_col( p, &r.aEnd, &nFlags2, pErrRef);
+            tmp1 = lcl_a1_get_col( pDoc, p, &r.aEnd, &nFlags2, pErrRef);
         }
     }
     if( !tmp1 ) // strange, but maybe valid singleton
         return isValidSingleton( nFlags, nFlags2) ? nFlags : (nFlags & ~ScRefFlags::VALID);
 
-    tmp2 = lcl_a1_get_row( tmp1, &r.aEnd, &nFlags2, pErrRef);
+    tmp2 = lcl_a1_get_row( pDoc, tmp1, &r.aEnd, &nFlags2, pErrRef);
     if( !tmp2 ) // strange, but maybe valid singleton
         return isValidSingleton( nFlags, nFlags2) ? nFlags : (nFlags & ~ScRefFlags::VALID);
 
@@ -1130,7 +1138,7 @@ static ScRefFlags lcl_ScRange_Parse_XL_A1( ScRange& r,
                     used in conjunction with pExtInfo to determine the tab span
                     of a 3D reference.
  */
-static ScRefFlags lcl_ScAddress_Parse_OOo( const sal_Unicode* p, ScDocument* pDoc, ScAddress& rAddr,
+static ScRefFlags lcl_ScAddress_Parse_OOo( const sal_Unicode* p, const ScDocument* pDoc, ScAddress& rAddr,
                                            ScRefFlags& rRawRes,
                                            ScAddress::ExternalInfo* pExtInfo,
                                            ScRange* pRange,
@@ -1270,16 +1278,17 @@ static ScRefFlags lcl_ScAddress_Parse_OOo( const sal_Unicode* p, ScDocument* pDo
         }
         else
         {
+            const SCCOL nMaxCol = (pDoc ? pDoc->MaxCol() : MAXCOL);
             if (rtl::isAsciiAlpha( *p ))
             {
                 nCol = sal::static_int_cast<SCCOL>( rtl::toAsciiUpperCase( *p++ ) - 'A' );
-                while (nCol < MAXCOL && rtl::isAsciiAlpha(*p))
+                while (nCol < nMaxCol && rtl::isAsciiAlpha(*p))
                     nCol = sal::static_int_cast<SCCOL>( ((nCol + 1) * 26) + rtl::toAsciiUpperCase( *p++ ) - 'A' );
             }
             else
                 nBits = ScRefFlags::ZERO;
 
-            if (nCol > MAXCOL || (*p && *p != '$' && !rtl::isAsciiDigit( *p ) &&
+            if (nCol > nMaxCol || (*p && *p != '$' && !rtl::isAsciiDigit( *p ) &&
                         (!pErrRef || !lcl_isString( p, *pErrRef))))
                 nBits = ScRefFlags::ZERO;
             if( nBits == ScRefFlags::ZERO )
@@ -1323,7 +1332,8 @@ static ScRefFlags lcl_ScAddress_Parse_OOo( const sal_Unicode* p, ScDocument* pDo
                 long n = rtl_ustr_toInt32( p, 10 ) - 1;
                 while (rtl::isAsciiDigit( *p ))
                     p++;
-                if( n < 0 || n > MAXROW )
+                const SCROW nMaxRow = (pDoc ? pDoc->MaxRow() : MAXROW);
+                if( n < 0 || n > nMaxRow )
                     nBits = ScRefFlags::ZERO;
                 nRow = static_cast<SCROW>(n);
             }
@@ -1387,7 +1397,7 @@ static ScRefFlags lcl_ScAddress_Parse_OOo( const sal_Unicode* p, ScDocument* pDo
 
                         if (pRefMgr->getSingleRefToken(nFileId, aTab,
                                     ScAddress(nCol, nRow, 0), nullptr,
-                                    &nTab).get())
+                                    &nTab))
                         {
                             rAddr.SetTab( nTab);
                             nRes |= ScRefFlags::TAB_VALID;
@@ -1443,7 +1453,7 @@ static ScRefFlags lcl_ScAddress_Parse_OOo( const sal_Unicode* p, ScDocument* pDo
     return nRes;
 }
 
-static ScRefFlags lcl_ScAddress_Parse ( const sal_Unicode* p, ScDocument* pDoc, ScAddress& rAddr,
+static ScRefFlags lcl_ScAddress_Parse ( const sal_Unicode* p, const ScDocument* pDoc, ScAddress& rAddr,
                                         const ScAddress::Details& rDetails,
                                         ScAddress::ExternalInfo* pExtInfo,
                                         const uno::Sequence<sheet::ExternalLinkInfo>* pExternalLinks,
@@ -1482,7 +1492,7 @@ static ScRefFlags lcl_ScAddress_Parse ( const sal_Unicode* p, ScDocument* pDoc, 
     }
 }
 
-bool ConvertSingleRef( ScDocument* pDoc, const OUString& rRefString,
+bool ConvertSingleRef( const ScDocument* pDoc, const OUString& rRefString,
                        SCTAB nDefTab, ScRefAddress& rRefAddress,
                        const ScAddress::Details& rDetails,
                        ScAddress::ExternalInfo* pExtInfo /* = NULL */ )
@@ -1504,7 +1514,7 @@ bool ConvertSingleRef( ScDocument* pDoc, const OUString& rRefString,
     return bRet;
 }
 
-bool ConvertDoubleRef( ScDocument* pDoc, const OUString& rRefString, SCTAB nDefTab,
+bool ConvertDoubleRef( const ScDocument* pDoc, const OUString& rRefString, SCTAB nDefTab,
                        ScRefAddress& rStartRefAddress, ScRefAddress& rEndRefAddress,
                        const ScAddress::Details& rDetails,
                        ScAddress::ExternalInfo* pExtInfo /* = NULL */ )
@@ -1530,7 +1540,7 @@ bool ConvertDoubleRef( ScDocument* pDoc, const OUString& rRefString, SCTAB nDefT
     return bRet;
 }
 
-ScRefFlags ScAddress::Parse( const OUString& r, ScDocument* pDoc,
+ScRefFlags ScAddress::Parse( const OUString& r, const ScDocument* pDoc,
                              const Details& rDetails,
                              ExternalInfo* pExtInfo,
                              const uno::Sequence<sheet::ExternalLinkInfo>* pExternalLinks,
@@ -1604,7 +1614,7 @@ void ScRange::ExtendTo( const ScRange& rRange )
 
 static ScRefFlags lcl_ScRange_Parse_OOo( ScRange& rRange,
                                          const OUString& r,
-                                         ScDocument* pDoc,
+                                         const ScDocument* pDoc,
                                          ScAddress::ExternalInfo* pExtInfo,
                                          const OUString* pErrRef )
 {
@@ -1641,14 +1651,14 @@ static ScRefFlags lcl_ScRange_Parse_OOo( ScRange& rRange,
                 if (nRawRes1 & ScRefFlags::COL_VALID)
                 {
                     rRange.aStart.SetRow(0);
-                    rRange.aEnd.SetRow(MAXROW);
+                    rRange.aEnd.SetRow(pDoc->MaxRow());
                     nRes1 |= ScRefFlags::ROW_VALID | ScRefFlags::ROW_ABS;
                     nRes2 |= ScRefFlags::ROW_VALID | ScRefFlags::ROW_ABS;
                 }
                 else
                 {
                     rRange.aStart.SetCol(0);
-                    rRange.aEnd.SetCol(MAXCOL);
+                    rRange.aEnd.SetCol( pDoc ? pDoc->MaxCol() : MAXCOL );
                     nRes1 |= ScRefFlags::COL_VALID | ScRefFlags::COL_ABS;
                     nRes2 |= ScRefFlags::COL_VALID | ScRefFlags::COL_ABS;
                 }
@@ -1659,14 +1669,14 @@ static ScRefFlags lcl_ScRange_Parse_OOo( ScRange& rRange,
                 // as such. If the sticky reference parts are not both
                 // absolute or relative, assume that the user thought about
                 // something we should not touch.
-                if (rRange.aStart.Row() == 0 && rRange.aEnd.Row() == MAXROW &&
+                if (rRange.aStart.Row() == 0 && rRange.aEnd.Row() == pDoc->MaxRow() &&
                         ((nRes1 & ScRefFlags::ROW_ABS) == ScRefFlags::ZERO) &&
                         ((nRes2 & ScRefFlags::ROW_ABS) == ScRefFlags::ZERO))
                 {
                     nRes1 |= ScRefFlags::ROW_ABS;
                     nRes2 |= ScRefFlags::ROW_ABS;
                 }
-                else if (rRange.aStart.Col() == 0 && rRange.aEnd.Col() == MAXCOL &&
+                else if (rRange.aStart.Col() == 0 && rRange.aEnd.Col() == (pDoc ? pDoc->MaxCol() : MAXCOL) &&
                         ((nRes1 & ScRefFlags::COL_ABS) == ScRefFlags::ZERO) && ((nRes2 & ScRefFlags::COL_ABS) == ScRefFlags::ZERO))
                 {
                     nRes1 |= ScRefFlags::COL_ABS;
@@ -1724,7 +1734,7 @@ static ScRefFlags lcl_ScRange_Parse_OOo( ScRange& rRange,
     return nRes1;
 }
 
-ScRefFlags ScRange::Parse( const OUString& rString, ScDocument* pDoc,
+ScRefFlags ScRange::Parse( const OUString& rString, const ScDocument* pDoc,
                            const ScAddress::Details& rDetails,
                            ScAddress::ExternalInfo* pExtInfo,
                            const uno::Sequence<sheet::ExternalLinkInfo>* pExternalLinks,
@@ -1757,7 +1767,7 @@ ScRefFlags ScRange::Parse( const OUString& rString, ScDocument* pDoc,
 }
 
 // Accept a full range, or an address
-ScRefFlags ScRange::ParseAny( const OUString& rString, ScDocument* pDoc,
+ScRefFlags ScRange::ParseAny( const OUString& rString, const ScDocument* pDoc,
                               const ScAddress::Details& rDetails )
 {
     ScRefFlags nRet = Parse( rString, pDoc, rDetails );
@@ -1774,7 +1784,8 @@ ScRefFlags ScRange::ParseAny( const OUString& rString, ScDocument* pDoc,
 }
 
 // Parse only full row references
-ScRefFlags ScRange::ParseCols( const OUString& rStr,
+ScRefFlags ScRange::ParseCols( const ScDocument* pDoc,
+                               const OUString& rStr,
                                const ScAddress::Details& rDetails )
 {
     if (rStr.isEmpty())
@@ -1790,11 +1801,11 @@ ScRefFlags ScRange::ParseCols( const OUString& rStr,
     case formula::FormulaGrammar::CONV_OOO: // No full col refs in OOO yet, assume XL notation
     case formula::FormulaGrammar::CONV_XL_A1:
     case formula::FormulaGrammar::CONV_XL_OOX:
-        if (nullptr != (p = lcl_a1_get_col( p, &aStart, &ignored, nullptr) ) )
+        if (nullptr != (p = lcl_a1_get_col( pDoc, p, &aStart, &ignored, nullptr) ) )
         {
             if( p[0] == ':')
             {
-                if( nullptr != (p = lcl_a1_get_col( p+1, &aEnd, &ignored, nullptr)))
+                if( nullptr != (p = lcl_a1_get_col( pDoc, p+1, &aEnd, &ignored, nullptr)))
                 {
                     nRes = ScRefFlags::COL_VALID;
                 }
@@ -1832,7 +1843,8 @@ ScRefFlags ScRange::ParseCols( const OUString& rStr,
 }
 
 // Parse only full row references
-void ScRange::ParseRows( const OUString& rStr,
+void ScRange::ParseRows( const ScDocument* pDoc,
+                               const OUString& rStr,
                                const ScAddress::Details& rDetails )
 {
     if (rStr.isEmpty())
@@ -1847,13 +1859,11 @@ void ScRange::ParseRows( const OUString& rStr,
     case formula::FormulaGrammar::CONV_OOO: // No full row refs in OOO yet, assume XL notation
     case formula::FormulaGrammar::CONV_XL_A1:
     case formula::FormulaGrammar::CONV_XL_OOX:
-        if (nullptr != (p = lcl_a1_get_row( p, &aStart, &ignored, nullptr) ) )
+        if (nullptr != (p = lcl_a1_get_row( pDoc, p, &aStart, &ignored, nullptr) ) )
         {
             if( p[0] == ':')
             {
-                if( nullptr != (p = lcl_a1_get_row( p+1, &aEnd, &ignored, nullptr)))
-                {
-                }
+                lcl_a1_get_row( pDoc, p+1, &aEnd, &ignored, nullptr);
             }
             else
             {
@@ -1868,9 +1878,9 @@ void ScRange::ParseRows( const OUString& rStr,
         {
             if( p[0] == ':')
             {
-                if( (p[1] == 'R' || p[1] == 'r') &&
-                    nullptr != (p = lcl_r1c1_get_row( p+1, rDetails, &aEnd, &ignored )))
+                if( p[1] == 'R' || p[1] == 'r' )
                 {
+                    lcl_r1c1_get_row( p+1, rDetails, &aEnd, &ignored );
                 }
             }
             else
@@ -1882,7 +1892,7 @@ void ScRange::ParseRows( const OUString& rStr,
     }
 }
 
-template<typename T > static inline void lcl_ScColToAlpha( T& rBuf, SCCOL nCol )
+template<typename T > static void lcl_ScColToAlpha( T& rBuf, SCCOL nCol )
 {
     if (nCol < 26*26)
     {
@@ -1913,21 +1923,21 @@ void ScColToAlpha( OUStringBuffer& rBuf, SCCOL nCol)
     lcl_ScColToAlpha(rBuf, nCol);
 }
 
-template <typename T > static inline void lcl_a1_append_c ( T &rString, int nCol, bool bIsAbs )
+template <typename T > static void lcl_a1_append_c ( T &rString, int nCol, bool bIsAbs )
 {
     if( bIsAbs )
         rString.append("$");
     lcl_ScColToAlpha( rString, sal::static_int_cast<SCCOL>(nCol) );
 }
 
-template <typename T > static inline void lcl_a1_append_r ( T &rString, sal_Int32 nRow, bool bIsAbs )
+template <typename T > static void lcl_a1_append_r ( T &rString, sal_Int32 nRow, bool bIsAbs )
 {
     if ( bIsAbs )
         rString.append("$");
     rString.append( nRow + 1 );
 }
 
-template <typename T > static inline void lcl_r1c1_append_c ( T &rString, sal_Int32 nCol, bool bIsAbs,
+template <typename T > static void lcl_r1c1_append_c ( T &rString, sal_Int32 nCol, bool bIsAbs,
                                        const ScAddress::Details& rDetails )
 {
     rString.append("C");
@@ -1944,7 +1954,7 @@ template <typename T > static inline void lcl_r1c1_append_c ( T &rString, sal_In
     }
 }
 
-template <typename T > static inline void lcl_r1c1_append_r ( T &rString, sal_Int32 nRow, bool bIsAbs,
+template <typename T > static void lcl_r1c1_append_r ( T &rString, sal_Int32 nRow, bool bIsAbs,
                                        const ScAddress::Details& rDetails )
 {
     rString.append("R");
@@ -1971,7 +1981,7 @@ static OUString getFileNameFromDoc( const ScDocument* pDoc )
     if( nullptr != pDoc &&
         nullptr != (pShell = pDoc->GetDocumentShell() ) )
     {
-        uno::Reference< frame::XModel > xModel( pShell->GetModel(), uno::UNO_QUERY );
+        uno::Reference< frame::XModel > xModel = pShell->GetModel();
         if( xModel.is() )
         {
             if( !xModel->getURL().isEmpty() )
@@ -1987,33 +1997,34 @@ static OUString getFileNameFromDoc( const ScDocument* pDoc )
 }
 
 
-static inline void lcl_string_append(OUStringBuffer &rString, const OUString &sString)
+static void lcl_string_append(OUStringBuffer &rString, const OUString &sString)
 {
     rString.append(sString);
 }
 
-static inline void lcl_string_append(OStringBuffer &rString, const OUString &sString)
+static void lcl_string_append(OStringBuffer &rString, const OUString &sString)
 {
     rString.append(OUStringToOString( sString, RTL_TEXTENCODING_UTF8  ));
 }
 
-template<typename T > inline void lcl_Format( T& r, SCTAB nTab, SCROW nRow, SCCOL nCol, ScRefFlags nFlags,
+template<typename T > static void lcl_Format( T& r, SCTAB nTab, SCROW nRow, SCCOL nCol, ScRefFlags nFlags,
                                   const ScDocument* pDoc,
                                   const ScAddress::Details& rDetails)
 {
     if( nFlags & ScRefFlags::VALID )
-        nFlags |= ( ScRefFlags::ROW_VALID | ScRefFlags::COL_VALID | ScRefFlags::TAB_VALID );
+        nFlags |= ScRefFlags::ROW_VALID | ScRefFlags::COL_VALID | ScRefFlags::TAB_VALID;
     if( pDoc && (nFlags & ScRefFlags::TAB_VALID ) )
     {
-        if ( nTab >= pDoc->GetTableCount() )
+        if ( nTab < 0 || nTab >= pDoc->GetTableCount() )
         {
-            lcl_string_append(r, ScGlobal::GetRscString( STR_NOREF_STR ));
+            lcl_string_append(r, ScCompiler::GetNativeSymbol(ocErrRef));
             return;
         }
         if( nFlags & ScRefFlags::TAB_3D )
         {
             OUString aTabName, aDocName;
             pDoc->GetName(nTab, aTabName);
+            assert( !aTabName.isEmpty() && "empty sheet name");
             // External Reference, same as in ScCompiler::MakeTabStr()
             if( aTabName[0] == '\'' )
             {   // "'Doc'#Tab"
@@ -2062,7 +2073,7 @@ template<typename T > inline void lcl_Format( T& r, SCTAB nTab, SCROW nRow, SCCO
                     r.append("!");
                     break;
                 }
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case formula::FormulaGrammar::CONV_XL_A1:
             case formula::FormulaGrammar::CONV_XL_R1C1:
                 if (!aDocName.isEmpty())
@@ -2112,12 +2123,12 @@ OUString ScAddress::Format(ScRefFlags nFlags, const ScDocument* pDoc,
     return r.makeStringAndClear();
 }
 
-static void lcl_Split_DocTab( const ScDocument* pDoc,  SCTAB nTab,
+static void lcl_Split_DocTab( const ScDocument& rDoc,  SCTAB nTab,
                               const ScAddress::Details& rDetails,
                               ScRefFlags nFlags,
                               OUString& rTabName, OUString& rDocName )
 {
-    pDoc->GetName(nTab, rTabName);
+    rDoc.GetName(nTab, rTabName);
     rDocName.clear();
     // External reference, same as in ScCompiler::MakeTabStr()
     if ( rTabName[0] == '\'' )
@@ -2136,69 +2147,69 @@ static void lcl_Split_DocTab( const ScDocument* pDoc,  SCTAB nTab,
         // needlessly complicated if it constructed an actual external
         // reference so we add this somewhat cheesy kludge to force the
         // addition of the document name even for non-external references
-        rDocName = getFileNameFromDoc( pDoc );
+        rDocName = getFileNameFromDoc(&rDoc);
     }
     ScCompiler::CheckTabQuotes( rTabName, rDetails.eConv);
 }
 
 static void lcl_ScRange_Format_XL_Header( OUStringBuffer& rString, const ScRange& rRange,
-                                          ScRefFlags nFlags, const ScDocument* pDoc,
+                                          ScRefFlags nFlags, const ScDocument& rDoc,
                                           const ScAddress::Details& rDetails )
 {
-    if( nFlags & ScRefFlags::TAB_3D )
+    if( !(nFlags & ScRefFlags::TAB_3D) )
+        return;
+
+    OUString aTabName, aDocName;
+    lcl_Split_DocTab( rDoc, rRange.aStart.Tab(), rDetails, nFlags, aTabName, aDocName );
+    switch (rDetails.eConv)
     {
-        OUString aTabName, aDocName;
-        lcl_Split_DocTab( pDoc, rRange.aStart.Tab(), rDetails, nFlags, aTabName, aDocName );
-        switch (rDetails.eConv)
-        {
-            case formula::FormulaGrammar::CONV_XL_OOX:
-                if (!aTabName.isEmpty() && aTabName[0] == '\'')
-                {
-                    if (!aDocName.isEmpty())
-                    {
-                        rString.append("'[").append(aDocName).append("]").append(aTabName.copy(1));
-                    }
-                    else
-                    {
-                        rString.append(aTabName);
-                    }
-                    break;
-                }
-                SAL_FALLTHROUGH;
-            default:
+        case formula::FormulaGrammar::CONV_XL_OOX:
+            if (!aTabName.isEmpty() && aTabName[0] == '\'')
+            {
                 if (!aDocName.isEmpty())
                 {
-                    rString.append("[").append(aDocName).append("]");
+                    rString.append("'[").append(aDocName).append("]").append(std::u16string_view(aTabName).substr(1));
                 }
-                rString.append(aTabName);
-            break;
-        }
-        if( nFlags & ScRefFlags::TAB2_3D )
-        {
-            lcl_Split_DocTab( pDoc, rRange.aEnd.Tab(), rDetails, nFlags, aTabName, aDocName );
-            rString.append(":");
+                else
+                {
+                    rString.append(aTabName);
+                }
+                break;
+            }
+            [[fallthrough]];
+        default:
+            if (!aDocName.isEmpty())
+            {
+                rString.append("[").append(aDocName).append("]");
+            }
             rString.append(aTabName);
-        }
-        rString.append("!");
+        break;
     }
+    if( nFlags & ScRefFlags::TAB2_3D )
+    {
+        lcl_Split_DocTab( rDoc, rRange.aEnd.Tab(), rDetails, nFlags, aTabName, aDocName );
+        rString.append(":");
+        rString.append(aTabName);
+    }
+    rString.append("!");
 }
 
 // helpers used in ScRange::Format
-static inline bool lcl_ColAbsFlagDiffer(const ScRefFlags nFlags)
+static bool lcl_ColAbsFlagDiffer(const ScRefFlags nFlags)
 {
-    return (bool)(nFlags & ScRefFlags::COL_ABS) != (bool)(nFlags & ScRefFlags::COL2_ABS);
+    return static_cast<bool>(nFlags & ScRefFlags::COL_ABS) != static_cast<bool>(nFlags & ScRefFlags::COL2_ABS);
 }
-static inline bool lcl_RowAbsFlagDiffer(const ScRefFlags nFlags)
+static bool lcl_RowAbsFlagDiffer(const ScRefFlags nFlags)
 {
-    return (bool)(nFlags & ScRefFlags::ROW_ABS) != (bool)(nFlags & ScRefFlags::ROW2_ABS);
+    return static_cast<bool>(nFlags & ScRefFlags::ROW_ABS) != static_cast<bool>(nFlags & ScRefFlags::ROW2_ABS);
 }
 
-OUString ScRange::Format( ScRefFlags nFlags, const ScDocument* pDoc,
+OUString ScRange::Format( const ScDocument& rDoc, ScRefFlags nFlags,
                           const ScAddress::Details& rDetails, bool bFullAddressNotation ) const
 {
     if( !( nFlags & ScRefFlags::VALID ) )
     {
-        return ScGlobal::GetRscString( STR_NOREF_STR );
+        return ScCompiler::GetNativeSymbol(ocErrRef);
     }
 
     OUStringBuffer r;
@@ -2208,13 +2219,14 @@ OUString ScRange::Format( ScRefFlags nFlags, const ScDocument* pDoc,
         bool bOneTab = (aStart.Tab() == aEnd.Tab());
         if ( !bOneTab )
             nFlags |= ScRefFlags::TAB_3D;
-        r = aStart.Format(nFlags, pDoc, rDetails);
+        r = aStart.Format(nFlags, &rDoc, rDetails);
         if( aStart != aEnd ||
             lcl_ColAbsFlagDiffer( nFlags ) ||
             lcl_RowAbsFlagDiffer( nFlags ))
         {
+            const ScDocument* pDoc = &rDoc;
             // move flags of end reference to start reference, mask with BITS to exclude FORCE_DOC flag
-            nFlags = ScRefFlags::VALID | (ScRefFlags((std::underlying_type<ScRefFlags>::type)nFlags >> 4) & ScRefFlags::BITS);
+            nFlags = ScRefFlags::VALID | (ScRefFlags(o3tl::underlyingEnumValue(nFlags) >> 4) & ScRefFlags::BITS);
             if ( bOneTab )
                 pDoc = nullptr;
             else
@@ -2223,20 +2235,23 @@ OUString ScRange::Format( ScRefFlags nFlags, const ScDocument* pDoc,
             r.append(":");
             r.append(aName);
         }
+        break;
     }
-    break;
 
     case formula::FormulaGrammar::CONV_XL_A1:
-    case formula::FormulaGrammar::CONV_XL_OOX:
-        lcl_ScRange_Format_XL_Header( r, *this, nFlags, pDoc, rDetails );
-        if( aStart.Col() == 0 && aEnd.Col() >= MAXCOL && !bFullAddressNotation )
+    case formula::FormulaGrammar::CONV_XL_OOX: {
+        SCCOL nMaxCol = rDoc.MaxCol();
+        SCROW nMaxRow = rDoc.MaxRow();
+
+        lcl_ScRange_Format_XL_Header( r, *this, nFlags, rDoc, rDetails );
+        if( aStart.Col() == 0 && aEnd.Col() >= nMaxCol && !bFullAddressNotation )
         {
             // Full col refs always require 2 rows (2:2)
             lcl_a1_append_r( r, aStart.Row(), (nFlags & ScRefFlags::ROW_ABS) != ScRefFlags::ZERO );
             r.append(":");
             lcl_a1_append_r( r, aEnd.Row(), (nFlags & ScRefFlags::ROW2_ABS) != ScRefFlags::ZERO );
         }
-        else if( aStart.Row() == 0 && aEnd.Row() >= MAXROW && !bFullAddressNotation )
+        else if( aStart.Row() == 0 && aEnd.Row() >= nMaxRow && !bFullAddressNotation )
         {
             // Full row refs always require 2 cols (A:A)
             lcl_a1_append_c( r, aStart.Col(), (nFlags & ScRefFlags::COL_ABS) != ScRefFlags::ZERO );
@@ -2256,11 +2271,15 @@ OUString ScRange::Format( ScRefFlags nFlags, const ScDocument* pDoc,
                 lcl_a1_append_r ( r, aEnd.Row(), (nFlags & ScRefFlags::ROW2_ABS) != ScRefFlags::ZERO );
             }
         }
-    break;
+        break;
+    }
 
-    case formula::FormulaGrammar::CONV_XL_R1C1:
-        lcl_ScRange_Format_XL_Header( r, *this, nFlags, pDoc, rDetails );
-        if( aStart.Col() == 0 && aEnd.Col() >= MAXCOL && !bFullAddressNotation )
+    case formula::FormulaGrammar::CONV_XL_R1C1: {
+        SCCOL nMaxCol = rDoc.MaxCol();
+        SCROW nMaxRow = rDoc.MaxRow();
+
+        lcl_ScRange_Format_XL_Header( r, *this, nFlags, rDoc, rDetails );
+        if( aStart.Col() == 0 && aEnd.Col() >= nMaxCol && !bFullAddressNotation )
         {
             lcl_r1c1_append_r( r, aStart.Row(), (nFlags & ScRefFlags::ROW_ABS) != ScRefFlags::ZERO, rDetails );
             if( aStart.Row() != aEnd.Row() ||
@@ -2269,7 +2288,7 @@ OUString ScRange::Format( ScRefFlags nFlags, const ScDocument* pDoc,
                 lcl_r1c1_append_r( r, aEnd.Row(), (nFlags & ScRefFlags::ROW2_ABS) != ScRefFlags::ZERO, rDetails );
             }
         }
-        else if( aStart.Row() == 0 && aEnd.Row() >= MAXROW && !bFullAddressNotation )
+        else if( aStart.Row() == 0 && aEnd.Row() >= nMaxRow && !bFullAddressNotation )
         {
             lcl_r1c1_append_c( r, aStart.Col(), (nFlags & ScRefFlags::COL_ABS) != ScRefFlags::ZERO, rDetails );
             if( aStart.Col() != aEnd.Col() ||
@@ -2291,13 +2310,17 @@ OUString ScRange::Format( ScRefFlags nFlags, const ScDocument* pDoc,
                 lcl_r1c1_append_c( r, aEnd.Col(), (nFlags & ScRefFlags::COL2_ABS) != ScRefFlags::ZERO, rDetails );
             }
         }
+        break;
+    }
     }
     return r.makeStringAndClear();
 }
 
-bool ScAddress::Move( SCCOL dx, SCROW dy, SCTAB dz, ScAddress& rErrorPos, ScDocument* pDoc )
+bool ScAddress::Move( SCCOL dx, SCROW dy, SCTAB dz, ScAddress& rErrorPos, const ScDocument* pDoc )
 {
     SCTAB nMaxTab = pDoc ? pDoc->GetTableCount() : MAXTAB;
+    SCCOL nMaxCol = pDoc ? pDoc->MaxCol() : MAXCOL;
+    SCROW nMaxRow = pDoc ? pDoc->MaxRow() : MAXROW;
     dx = Col() + dx;
     dy = Row() + dy;
     dz = Tab() + dz;
@@ -2308,9 +2331,9 @@ bool ScAddress::Move( SCCOL dx, SCROW dy, SCTAB dz, ScAddress& rErrorPos, ScDocu
         dx = 0;
         bValid = false;
     }
-    else if( dx > MAXCOL )
+    else if( dx > nMaxCol )
     {
-        dx = MAXCOL;
+        dx = nMaxCol;
         bValid =false;
     }
     rErrorPos.SetRow(dy);
@@ -2319,9 +2342,9 @@ bool ScAddress::Move( SCCOL dx, SCROW dy, SCTAB dz, ScAddress& rErrorPos, ScDocu
         dy = 0;
         bValid = false;
     }
-    else if( dy > MAXROW )
+    else if( dy > nMaxRow )
     {
-        dy = MAXROW;
+        dy = nMaxRow;
         bValid =false;
     }
     rErrorPos.SetTab(dz);
@@ -2341,47 +2364,91 @@ bool ScAddress::Move( SCCOL dx, SCROW dy, SCTAB dz, ScAddress& rErrorPos, ScDocu
     return bValid;
 }
 
-bool ScRange::Move( SCCOL dx, SCROW dy, SCTAB dz, ScRange& rErrorRange, ScDocument* pDoc )
+bool ScRange::Move( SCCOL dx, SCROW dy, SCTAB dz, ScRange& rErrorRange, const ScDocument* pDoc )
 {
-    if (dy && aStart.Row() == 0 && aEnd.Row() == MAXROW)
+    SCCOL nMaxCol = pDoc ? pDoc->MaxCol() : MAXCOL;
+    SCROW nMaxRow = pDoc ? pDoc->MaxRow() : MAXROW;
+    if (dy && aStart.Row() == 0 && aEnd.Row() == nMaxRow)
         dy = 0;     // Entire column not to be moved.
-    if (dx && aStart.Col() == 0 && aEnd.Col() == MAXCOL)
+    if (dx && aStart.Col() == 0 && aEnd.Col() == nMaxCol)
         dx = 0;     // Entire row not to be moved.
     bool b = aStart.Move( dx, dy, dz, rErrorRange.aStart, pDoc );
     b &= aEnd.Move( dx, dy, dz, rErrorRange.aEnd, pDoc );
     return b;
 }
 
-bool ScRange::MoveSticky( SCCOL dx, SCROW dy, SCTAB dz, ScRange& rErrorRange )
+bool ScRange::MoveSticky( const ScDocument& rDoc, SCCOL dx, SCROW dy, SCTAB dz, ScRange& rErrorRange )
 {
+    const SCCOL nMaxCol = rDoc.MaxCol();
+    const SCROW nMaxRow = rDoc.MaxRow();
     bool bColRange = (aStart.Col() < aEnd.Col());
     bool bRowRange = (aStart.Row() < aEnd.Row());
-    if (dy && aStart.Row() == 0 && aEnd.Row() == MAXROW)
+    if (dy && aStart.Row() == 0 && aEnd.Row() == nMaxRow)
         dy = 0;     // Entire column not to be moved.
-    if (dx && aStart.Col() == 0 && aEnd.Col() == MAXCOL)
+    if (dx && aStart.Col() == 0 && aEnd.Col() == nMaxCol)
         dx = 0;     // Entire row not to be moved.
     bool b1 = aStart.Move( dx, dy, dz, rErrorRange.aStart );
-    if (dx && bColRange && aEnd.Col() == MAXCOL)
+    if (dx && bColRange && aEnd.Col() == nMaxCol)
         dx = 0;     // End column sticky.
-    if (dy && bRowRange && aEnd.Row() == MAXROW)
+    if (dy && bRowRange && aEnd.Row() == nMaxRow)
         dy = 0;     // End row sticky.
     SCTAB nOldTab = aEnd.Tab();
     bool b2 = aEnd.Move( dx, dy, dz, rErrorRange.aEnd );
     if (!b2)
     {
         // End column or row of a range may have become sticky.
-        bColRange = (!dx || (bColRange && aEnd.Col() == MAXCOL));
+        bColRange = (!dx || (bColRange && aEnd.Col() == nMaxCol));
         if (dx && bColRange)
-            rErrorRange.aEnd.SetCol(MAXCOL);
-        bRowRange = (!dy || (bRowRange && aEnd.Row() == MAXROW));
+            rErrorRange.aEnd.SetCol(nMaxCol);
+        bRowRange = (!dy || (bRowRange && aEnd.Row() == nMaxRow));
         if (dy && bRowRange)
-            rErrorRange.aEnd.SetRow(MAXROW);
+            rErrorRange.aEnd.SetRow(nMaxRow);
         b2 = bColRange && bRowRange && (aEnd.Tab() - nOldTab == dz);
     }
     return b1 && b2;
 }
 
-void ScRange::IncEndColSticky( SCCOL nDelta )
+void ScRange::IncColIfNotLessThan(const ScDocument* pDoc, SCCOL nStartCol, SCCOL nOffset)
+{
+    if (aStart.Col() >= nStartCol)
+    {
+        aStart.IncCol(nOffset);
+        if (aStart.Col() < 0)
+            aStart.SetCol(0);
+        else if(aStart.Col() > (pDoc ? pDoc->MaxCol() : MAXCOL))
+            aStart.SetCol(pDoc ? pDoc->MaxCol() : MAXCOL);
+    }
+    if (aEnd.Col() >= nStartCol)
+    {
+        aEnd.IncCol(nOffset);
+        if (aEnd.Col() < 0)
+            aEnd.SetCol(0);
+        else if(aEnd.Col() > (pDoc ? pDoc->MaxCol() : MAXCOL))
+            aEnd.SetCol(pDoc ? pDoc->MaxCol() : MAXCOL);
+    }
+}
+
+void ScRange::IncRowIfNotLessThan(const ScDocument* pDoc, SCROW nStartRow, SCROW nOffset)
+{
+    if (aStart.Row() >= nStartRow)
+    {
+        aStart.IncRow(nOffset);
+        if (aStart.Row() < 0)
+            aStart.SetRow(0);
+        else if(aStart.Row() > pDoc->MaxRow())
+            aStart.SetRow(pDoc->MaxRow());
+    }
+    if (aEnd.Row() >= nStartRow)
+    {
+        aEnd.IncRow(nOffset);
+        if (aEnd.Row() < 0)
+            aEnd.SetRow(0);
+        else if(aEnd.Row() > pDoc->MaxRow())
+            aEnd.SetRow(pDoc->MaxRow());
+    }
+}
+
+void ScRange::IncEndColSticky( const ScDocument* pDoc, SCCOL nDelta )
 {
     SCCOL nCol = aEnd.Col();
     if (aStart.Col() >= nCol)
@@ -2391,17 +2458,18 @@ void ScRange::IncEndColSticky( SCCOL nDelta )
         return;
     }
 
-    if (nCol == MAXCOL)
+    const SCCOL nMaxCol = (pDoc ? pDoc->MaxCol() : MAXCOL);
+    if (nCol == nMaxCol)
         // already sticky
         return;
 
-    if (nCol < MAXCOL)
-        aEnd.SetCol( ::std::min( static_cast<SCCOL>(nCol + nDelta), MAXCOL));
+    if (nCol < nMaxCol)
+        aEnd.SetCol( ::std::min( static_cast<SCCOL>(nCol + nDelta), nMaxCol));
     else
-        aEnd.IncCol( nDelta);   // was greater than MAXCOL, caller should know..
+        aEnd.IncCol( nDelta);   // was greater than nMaxCol, caller should know...
 }
 
-void ScRange::IncEndRowSticky( SCROW nDelta )
+void ScRange::IncEndRowSticky( const ScDocument* pDoc, SCROW nDelta )
 {
     SCROW nRow = aEnd.Row();
     if (aStart.Row() >= nRow)
@@ -2411,14 +2479,14 @@ void ScRange::IncEndRowSticky( SCROW nDelta )
         return;
     }
 
-    if (nRow == MAXROW)
+    if (nRow == pDoc->MaxRow())
         // already sticky
         return;
 
-    if (nRow < MAXROW)
-        aEnd.SetRow( ::std::min( static_cast<SCROW>(nRow + nDelta), MAXROW));
+    if (nRow < pDoc->MaxRow())
+        aEnd.SetRow( ::std::min( static_cast<SCROW>(nRow + nDelta), pDoc->MaxRow()));
     else
-        aEnd.IncRow( nDelta);   // was greater than MAXROW, caller should know..
+        aEnd.IncRow( nDelta);   // was greater than pDoc->MaxRow(), caller should know...
 }
 
 OUString ScAddress::GetColRowString() const
@@ -2444,13 +2512,13 @@ OUString ScAddress::GetColRowString() const
     return aString.makeStringAndClear();
 }
 
-OUString ScRefAddress::GetRefString( ScDocument* pDoc, SCTAB nActTab,
+OUString ScRefAddress::GetRefString( const ScDocument* pDoc, SCTAB nActTab,
                                    const ScAddress::Details& rDetails ) const
 {
     if ( !pDoc )
         return EMPTY_OUSTRING;
     if ( Tab()+1 > pDoc->GetTableCount() )
-        return ScGlobal::GetRscString( STR_NOREF_STR );
+        return ScCompiler::GetNativeSymbol(ocErrRef);
 
     ScRefFlags nFlags = ScRefFlags::VALID;
     if ( nActTab != Tab() )
@@ -2467,13 +2535,14 @@ OUString ScRefAddress::GetRefString( ScDocument* pDoc, SCTAB nActTab,
     return aAdr.Format(nFlags, pDoc, rDetails);
 }
 
-bool AlphaToCol( SCCOL& rCol, const OUString& rStr)
+bool AlphaToCol(const ScDocument& rDoc, SCCOL& rCol, const OUString& rStr)
 {
     SCCOL nResult = 0;
     sal_Int32 nStop = rStr.getLength();
     sal_Int32 nPos = 0;
     sal_Unicode c;
-    while (nResult <= MAXCOL && nPos < nStop && (c = rStr[nPos]) != 0 &&
+    const SCCOL nMaxCol = rDoc.MaxCol();
+    while (nResult <= nMaxCol && nPos < nStop && (c = rStr[nPos]) != 0 &&
             rtl::isAsciiAlpha(c))
     {
         if (nPos > 0)
@@ -2481,7 +2550,7 @@ bool AlphaToCol( SCCOL& rCol, const OUString& rStr)
         nResult += ScGlobal::ToUpperAlpha(c) - 'A';
         ++nPos;
     }
-    bool bOk = (ValidCol(nResult) && nPos > 0);
+    bool bOk = (rDoc.ValidCol(nResult) && nPos > 0);
     if (bOk)
         rCol = nResult;
     return bOk;

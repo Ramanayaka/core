@@ -27,20 +27,21 @@
 #include <sal/types.h>
 
 namespace oox { class AttributeList; }
-namespace oox { namespace core { class XmlFilterBase; } }
+namespace oox::core { class XmlFilterBase; }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-class LayoutFragmentHandler : public SlideFragmentHandler
+class LayoutFragmentHandler final : public SlideFragmentHandler
 {
 public:
-    LayoutFragmentHandler( ::oox::core::XmlFilterBase& rFilter, const OUString& rFragmentPath, SlidePersistPtr pMasterPersistPtr ) throw();
-    virtual ~LayoutFragmentHandler() throw() override;
+    LayoutFragmentHandler(::oox::core::XmlFilterBase& rFilter, const OUString& rFragmentPath,
+                          const SlidePersistPtr& pMasterPersistPtr);
+    virtual ~LayoutFragmentHandler() override;
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs ) override;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_PPT_LAYOUTFRAGMENTHANDLER_HXX
 

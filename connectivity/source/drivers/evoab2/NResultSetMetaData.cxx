@@ -20,8 +20,7 @@
 #include "NResultSetMetaData.hxx"
 #include "NDatabaseMetaData.hxx"
 #include <connectivity/dbexception.hxx>
-#include <com/sun/star/sdbc/DataType.hpp>
-#include "resource/evoab2_res.hrc"
+#include <strings.hrc>
 
 using namespace connectivity::evoab;
 using namespace com::sun::star::uno;
@@ -41,16 +40,15 @@ OEvoabResultSetMetaData::~OEvoabResultSetMetaData()
 
 void OEvoabResultSetMetaData::setEvoabFields(const ::rtl::Reference<connectivity::OSQLColumns> &xColumns)
 {
-        OSQLColumns::Vector::const_iterator aIter;
         static const char aName[] = "Name";
 
-        for (aIter = xColumns->get().begin(); aIter != xColumns->get().end(); ++aIter)
+        for (const auto& rxColumn : *xColumns)
         {
                 OUString aFieldName;
 
-                (*aIter)->getPropertyValue(aName) >>= aFieldName;
+                rxColumn->getPropertyValue(aName) >>= aFieldName;
                 guint nFieldNumber = findEvoabField(aFieldName);
-                if (nFieldNumber == (guint)-1)
+                if (nFieldNumber == guint(-1))
                 {
                     connectivity::SharedResources aResource;
                     const OUString sError( aResource.getResourceStringWithSubstitution(
@@ -71,7 +69,7 @@ sal_Int32 SAL_CALL OEvoabResultSetMetaData::getColumnDisplaySize( sal_Int32 /*nC
 
 sal_Int32 SAL_CALL OEvoabResultSetMetaData::getColumnType( sal_Int32 nColumnNum )
 {
-        sal_uInt32 nField = m_aEvoabFields[nColumnNum - 1];
+    sal_uInt32 nField = m_aEvoabFields[nColumnNum - 1];
     return evoab::getFieldType (nField);
 }
 

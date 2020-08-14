@@ -18,20 +18,11 @@
  */
 
 
-#include <stdlib.h>
-#include <osl/file.h>
-#include <vector>
 #include <osl/diagnose.h>
-#include <osl/module.h>
-#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
-#include <uno/environment.h>
-#include <uno/mapping.hxx>
-#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/weak.hxx>
 #include <cppuhelper/shlib.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/bootstrap.hxx>
 
@@ -39,7 +30,9 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+
+namespace com::sun::star::registry { class XRegistryKey; }
 
 using namespace com::sun::star;
 using namespace css::uno;
@@ -83,7 +76,7 @@ DllComponentLoader::DllComponentLoader( const Reference<XComponentContext> & xCt
 
 OUString SAL_CALL DllComponentLoader::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.stoc.DLLComponentLoader");
+    return "com.sun.star.comp.stoc.DLLComponentLoader";
 }
 
 sal_Bool SAL_CALL DllComponentLoader::supportsService( const OUString& ServiceName )
@@ -93,8 +86,7 @@ sal_Bool SAL_CALL DllComponentLoader::supportsService( const OUString& ServiceNa
 
 Sequence<OUString> SAL_CALL DllComponentLoader::getSupportedServiceNames(  )
 {
-    Sequence< OUString > seqNames { "com.sun.star.loader.SharedLibrary" };
-    return seqNames;
+    return { "com.sun.star.loader.SharedLibrary" };
 }
 
 
@@ -149,7 +141,7 @@ sal_Bool SAL_CALL DllComponentLoader::writeRegistryInfo(
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_stoc_DLLComponentLoader_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

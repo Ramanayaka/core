@@ -17,31 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fuoltext.hxx"
+#include <fuoltext.hxx>
 
 #include <sfx2/viewfrm.hxx>
 #include <editeng/outliner.hxx>
-#include <editeng/eeitem.hxx>
 #include <editeng/flditem.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/dispatch.hxx>
+#include <tools/debug.hxx>
+#include <svl/stritem.hxx>
 
 #include <svx/svxids.hrc>
-#include "app.hrc"
-#include "OutlineView.hxx"
-#include "Window.hxx"
-#include "DrawDocShell.hxx"
-#include "ViewShell.hxx"
-#include "OutlineViewShell.hxx"
+#include <app.hrc>
+#include <OutlineView.hxx>
+#include <Window.hxx>
+#include <DrawDocShell.hxx>
+#include <ViewShell.hxx>
+#include <OutlineViewShell.hxx>
 
 #include <memory>
 
-#include <stdio.h>
-
 namespace sd {
 
-static const sal_uInt16 SidArray[] = {
+const sal_uInt16 SidArray[] = {
                 SID_STYLE_FAMILY2,
                 SID_STYLE_FAMILY3,
                 SID_STYLE_FAMILY5,
@@ -72,6 +71,8 @@ static const sal_uInt16 SidArray[] = {
                 SID_SET_SUPER_SCRIPT,
                 SID_SET_SUB_SCRIPT,
                 SID_HYPERLINK_GETLINK,
+                SID_DEC_INDENT,
+                SID_INC_INDENT,
                 SID_PARASPACE_INCREASE,
                 SID_PARASPACE_DECREASE,
                 SID_STATUS_PAGE,
@@ -164,11 +165,11 @@ bool FuOutlineText::MouseButtonUp(const MouseEvent& rMEvt)
         {
             const SvxFieldData* pField = pFieldItem->GetField();
 
-            if( pField && dynamic_cast< const SvxURLField *>( pField ) !=  nullptr )
+            if( auto pURLField = dynamic_cast< const SvxURLField *>( pField ) )
             {
                 bReturn = true;
                 mpWindow->ReleaseMouse();
-                SfxStringItem aStrItem( SID_FILE_NAME, static_cast<const SvxURLField*>(pField)->GetURL() );
+                SfxStringItem aStrItem( SID_FILE_NAME, pURLField->GetURL() );
                 SfxStringItem aReferer( SID_REFERER, mpDocSh->GetMedium()->GetName() );
                 SfxBoolItem aBrowseItem( SID_BROWSE, true );
                 SfxViewFrame* pFrame = mpViewShell->GetViewFrame();
@@ -211,7 +212,7 @@ bool FuOutlineText::KeyInput(const KeyEvent& rKEvt)
     {
         mpWindow->GrabFocus();
 
-        std::unique_ptr< OutlineViewModelChangeGuard > aGuard;
+        std::unique_ptr<OutlineViewModelChangeGuard, o3tl::default_delete<OutlineViewModelChangeGuard>> aGuard;
         if( (nKeyGroup != KEYGROUP_CURSOR) && (nKeyGroup != KEYGROUP_FKEYS) )
             aGuard.reset( new OutlineViewModelChangeGuard( *pOutlineView ) );
 

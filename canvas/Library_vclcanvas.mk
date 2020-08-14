@@ -19,9 +19,17 @@
 
 $(eval $(call gb_Library_Library,vclcanvas))
 
+$(eval $(call gb_Library_set_include,vclcanvas,\
+    $$(INCLUDE) \
+    -I$(SRCDIR)/canvas/inc \
+))
+
 $(eval $(call gb_Library_set_componentfile,vclcanvas,canvas/source/vcl/vclcanvas))
 
-$(eval $(call gb_Library_use_external,vclcanvas,boost_headers))
+$(eval $(call gb_Library_use_externals,vclcanvas,\
+	boost_headers \
+	epoxy \
+))
 
 $(eval $(call gb_Library_use_sdk_api,vclcanvas))
 
@@ -51,7 +59,6 @@ $(eval $(call gb_Library_add_exception_objects,vclcanvas,\
 	canvas/source/vcl/canvashelper \
 	canvas/source/vcl/devicehelper \
 	canvas/source/vcl/impltools \
-	canvas/source/vcl/services \
 	canvas/source/vcl/spritecanvas \
 	canvas/source/vcl/spritecanvashelper \
 	canvas/source/vcl/spritedevicehelper \

@@ -19,27 +19,21 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_MINMAXLINEWRAPPER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_MINMAXLINEWRAPPER_HXX
 
-#include "MutexContainer.hxx"
-#include "WrappedIgnoreProperty.hxx"
+#include <MutexContainer.hxx>
+#include <WrappedIgnoreProperty.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 
-#include <com/sun/star/chart2/XDiagram.hpp>
-
-#include <cppuhelper/propshlp.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/beans/XMultiPropertyStates.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <memory>
 
-namespace chart
-{
-
-namespace wrapper
+namespace chart::wrapper
 {
 
 class Chart2ModelContact;
@@ -106,8 +100,7 @@ private: //member
     WrappedIgnoreProperty               m_aWrappedLineJointProperty;
 };
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_MINMAXLINEWRAPPER_HXX
 #endif

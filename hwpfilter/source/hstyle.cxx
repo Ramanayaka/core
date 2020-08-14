@@ -30,12 +30,16 @@ enum
 
 #define DATA static_cast<StyleData *>(style)
 
+namespace {
+
 struct StyleData
 {
     char name[MAXSTYLENAME + 1];
     CharShape cshape;
     ParaShape pshape;
 };
+
+}
 
 static char buffer[MAXSTYLENAME + 1];
 
@@ -55,33 +59,44 @@ HWPStyle::~HWPStyle()
 
 char *HWPStyle::GetName(int n) const
 {
-    if (!(n >= 0 && n < nstyles))
+    if (n < 0 || n >= nstyles)
         return nullptr;
     return DATA[n].name;
 }
 
 
-void HWPStyle::SetName(int n, char *name)
+void HWPStyle::SetName(int n, char const *name)
 {
-    if (n >= 0 && n < nstyles)
+    if (n < 0 || n >= nstyles)
+        return;
+
+    if (name)
     {
-        if (name)
-            strncpy(DATA[n].name, name, MAXSTYLENAME);
-        else
-            DATA[n].name[0] = 0;
+#if defined __GNUC__ && (__GNUC__ >= 8 && __GNUC__ <= 10) && !defined __clang__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+#endif
+        auto const p = DATA[n].name;
+        strncpy(p, name, MAXSTYLENAME);
+        p[MAXSTYLENAME] = '\0'; // just in case, even though the array is zero-initialized
+#if defined __GNUC__ && (__GNUC__ >= 8 && __GNUC__ <= 10) && !defined __clang__
+#pragma GCC diagnostic pop
+#endif
     }
+    else
+        DATA[n].name[0] = 0;
 }
 
 
 CharShape *HWPStyle::GetCharShape(int n) const
 {
-    if (!(n >= 0 && n < nstyles))
+    if (n < 0 || n >= nstyles)
         return nullptr;
     return &DATA[n].cshape;
 }
 
 
-void HWPStyle::SetCharShape(int n, CharShape * cshapep)
+void HWPStyle::SetCharShape(int n, CharShape const * cshapep)
 {
     if (n >= 0 && n < nstyles)
     {
@@ -95,20 +110,20 @@ void HWPStyle::SetCharShape(int n, CharShape * cshapep)
 
 ParaShape *HWPStyle::GetParaShape(int n) const
 {
-    if (!(n >= 0 && n < nstyles))
+    if (n < 0 || n >= nstyles)
         return nullptr;
     return &DATA[n].pshape;
 }
 
 
-void HWPStyle::SetParaShape(int n, ParaShape * pshapep)
+void HWPStyle::SetParaShape(int n, ParaShape const * pshapep)
 {
     if (n >= 0 && n < nstyles)
     {
         if (pshapep)
             DATA[n].pshape = *pshapep;
         else
-            memset(&DATA[n].pshape, 0, sizeof(ParaShape));
+            DATA[n].pshape = ParaShape();
     }
 }
 

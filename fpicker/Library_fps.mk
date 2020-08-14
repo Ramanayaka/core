@@ -14,18 +14,16 @@ $(eval $(call gb_Library_use_custom_headers,fps,\
 	officecfg/registry \
 ))
 
-$(eval $(call gb_Library_add_nativeres,fps,fps/Fps))
-
 $(eval $(call gb_Library_set_componentfile,fps,fpicker/source/win32/fps))
+
+$(eval $(call gb_Library_set_include,fps,\
+    $$(INCLUDE) \
+    -I$(SRCDIR)/fpicker/inc \
+))
 
 $(eval $(call gb_Library_use_external,fps,boost_headers))
 
 $(eval $(call gb_Library_use_sdk_api,fps))
-
-$(eval $(call gb_Library_add_defs,fps,\
-	-D_UNICODE \
-	-DUNICODE \
-))
 
 $(eval $(call gb_Library_use_libraries,fps,\
 	comphelper \
@@ -56,17 +54,13 @@ $(eval $(call gb_Library_add_libs,fps,\
 endif
 
 $(eval $(call gb_Library_add_exception_objects,fps,\
-	fpicker/source/win32/filepicker/asyncrequests \
-	fpicker/source/win32/filepicker/FilterContainer \
-	fpicker/source/win32/filepicker/FPentry \
-	fpicker/source/win32/filepicker/VistaFilePicker \
-	fpicker/source/win32/filepicker/VistaFilePickerEventHandler \
-	fpicker/source/win32/filepicker/VistaFilePickerImpl \
-	fpicker/source/win32/folderpicker/FolderPicker \
-	fpicker/source/win32/folderpicker/MtaFop \
-	fpicker/source/win32/folderpicker/WinFOPImpl \
-	fpicker/source/win32/misc/resourceprovider \
-	fpicker/source/win32/misc/WinImplHelper \
+	fpicker/source/win32/asyncrequests \
+	fpicker/source/win32/FilterContainer \
+	fpicker/source/win32/VistaFilePicker \
+	fpicker/source/win32/VistaFilePickerEventHandler \
+	fpicker/source/win32/VistaFilePickerImpl \
+	fpicker/source/win32/resourceprovider \
+	fpicker/source/win32/WinImplHelper \
 ))
 
 # vim: set noet sw=4 ts=4:

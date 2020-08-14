@@ -27,15 +27,8 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
-#include <svtools/svlbitm.hxx>
-#include <svx/checklbx.hxx>
 #include <tools/link.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/button.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/fixedhyper.hxx>
-#include <vcl/throbber.hxx>
+#include <vcl/weld.hxx>
 
 #include "dp_gui_updatedata.hxx"
 
@@ -47,17 +40,17 @@ class MouseEvent;
 class ResId;
 namespace vcl { class Window; }
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace deployment { class XExtensionManager;
                            class XPackage; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 namespace dp_gui {
 /**
    The modal &ldquo;Check for Updates&rdquo; dialog.
 */
-class UpdateDialog: public ModalDialog {
+class UpdateDialog: public weld::GenericDialogController {
 public:
     /**
        Create an instance.
@@ -79,25 +72,22 @@ public:
     */
     UpdateDialog(
         css::uno::Reference< css::uno::XComponentContext > const & context,
-        vcl::Window * parent,
+        weld::Window * parent,
         const std::vector< css::uno::Reference<
         css::deployment::XPackage > > & vExtensionList,
         std::vector< dp_gui::UpdateData > * updateData);
 
     virtual ~UpdateDialog() override;
-    virtual void dispose() override;
 
-    virtual bool Close() override;
-
-    virtual short Execute() override;
+    virtual short run() override;
 
     void notifyMenubar( bool bPrepareOnly, bool bRecheckOnly );
     static void createNotifyJob( bool bPrepareOnly,
-        css::uno::Sequence< css::uno::Sequence< OUString > > &rItemList );
+        css::uno::Sequence< css::uno::Sequence< OUString > > const &rItemList );
 
 private:
-    UpdateDialog(UpdateDialog &) = delete;
-    void operator =(UpdateDialog &) = delete;
+    UpdateDialog(UpdateDialog const &) = delete;
+    UpdateDialog& operator =(UpdateDialog const &) = delete;
 
     struct DisabledUpdate;
     struct SpecificError;
@@ -107,47 +97,21 @@ private:
     class Thread;
     friend class Thread;
 
-    class CheckListBox: public SvxCheckListBox {
-    public:
-        CheckListBox(
-            vcl::Window* pParent, UpdateDialog & dialog);
-
-        sal_uInt16 getItemCount() const;
-
-    private:
-        explicit CheckListBox(UpdateDialog::CheckListBox &) = delete;
-        void operator =(UpdateDialog::CheckListBox &) = delete;
-
-        virtual void MouseButtonDown(MouseEvent const & event) override;
-        virtual void MouseButtonUp(MouseEvent const & event) override;
-        virtual void KeyInput(KeyEvent const & event) override;
-
-        void handlePopupMenu( const Point &rPos );
-
-        OUString m_ignoreUpdate;
-        OUString m_ignoreAllUpdates;
-        OUString m_enableUpdate;
-        UpdateDialog & m_dialog;
-    };
-
-
     friend class CheckListBox;
 
-    sal_uInt16 insertItem( UpdateDialog::Index *pIndex, SvLBoxButtonKind kind );
-    void addAdditional( UpdateDialog::Index *pIndex, SvLBoxButtonKind kind );
+    void insertItem(UpdateDialog::Index *pIndex, bool bEnableCheckBox);
+    void addAdditional(UpdateDialog::Index *pIndex, bool bEnableCheckBox);
     bool isIgnoredUpdate( UpdateDialog::Index *pIndex );
-    void setIgnoredUpdate( UpdateDialog::Index *pIndex, bool bIgnore, bool bIgnoreAll );
 
-    void addEnabledUpdate( OUString const & name, dp_gui::UpdateData & data );
-    void addDisabledUpdate( UpdateDialog::DisabledUpdate & data );
-    void addSpecificError( UpdateDialog::SpecificError & data );
+    void addEnabledUpdate( OUString const & name, dp_gui::UpdateData const & data );
+    void addDisabledUpdate( UpdateDialog::DisabledUpdate const & data );
+    void addSpecificError( UpdateDialog::SpecificError const & data );
 
     void checkingDone();
 
     void enableOk();
 
     void getIgnoredUpdates();
-    void storeIgnoredUpdates();
 
     void initDescription();
     void clearDescription();
@@ -159,27 +123,13 @@ private:
         css::xml::dom::XNode > const & aUpdateInfo);
     bool showDescription( const OUString& rDescription);
 
-    DECL_LINK(selectionHandler, SvTreeListBox*, void);
-    DECL_LINK(allHandler, CheckBox&, void);
-    DECL_LINK(okHandler, Button*, void);
-    DECL_LINK(closeHandler, Button*, void);
+    DECL_LINK(selectionHandler, weld::TreeView&, void);
+    DECL_LINK(allHandler, weld::ToggleButton&, void);
+    DECL_LINK(okHandler, weld::Button&, void);
+    DECL_LINK(closeHandler, weld::Button&, void);
+    DECL_LINK(entryToggled, const weld::TreeView::iter_col&, void);
 
     css::uno::Reference< css::uno::XComponentContext >  m_context;
-    VclPtr<FixedText> m_pchecking;
-    VclPtr<Throbber> m_pthrobber;
-    VclPtr<FixedText> m_pUpdate;
-    VclPtr<VclViewport> m_pContainer;
-    VclPtr<UpdateDialog::CheckListBox> m_pUpdates;
-    VclPtr<CheckBox> m_pAll;
-    VclPtr<FixedText> m_pDescription;
-    VclPtr<FixedText> m_pPublisherLabel;
-    VclPtr<FixedHyperlink> m_pPublisherLink;
-    VclPtr<FixedText> m_pReleaseNotesLabel;
-    VclPtr<FixedHyperlink> m_pReleaseNotesLink;
-    VclPtr<VclMultiLineEdit> m_pDescriptions;
-    VclPtr<HelpButton> m_pHelp;
-    VclPtr<PushButton> m_pOk;
-    VclPtr<PushButton> m_pClose;
     OUString m_none;
     OUString m_noInstallable;
     OUString m_failure;
@@ -194,14 +144,26 @@ private:
     std::vector< dp_gui::UpdateData > m_enabledUpdates;
     std::vector< UpdateDialog::DisabledUpdate > m_disabledUpdates;
     std::vector< UpdateDialog::SpecificError > m_specificErrors;
-    std::vector< UpdateDialog::IgnoredUpdate* > m_ignoredUpdates;
-    std::vector< Index* > m_ListboxEntries;
+    std::vector< std::unique_ptr<UpdateDialog::IgnoredUpdate> > m_ignoredUpdates;
+    std::vector< std::unique_ptr<Index> > m_ListboxEntries;
     std::vector< dp_gui::UpdateData > & m_updateData;
     rtl::Reference< UpdateDialog::Thread > m_thread;
     css::uno::Reference< css::deployment::XExtensionManager > m_xExtensionManager;
 
-    sal_uInt16  m_nLastID;
-    bool    m_bModified;
+    std::unique_ptr<weld::Label> m_xChecking;
+    std::unique_ptr<weld::Spinner> m_xThrobber;
+    std::unique_ptr<weld::Label> m_xUpdate;
+    std::unique_ptr<weld::TreeView> m_xUpdates;
+    std::unique_ptr<weld::CheckButton> m_xAll;
+    std::unique_ptr<weld::Label> m_xDescription;
+    std::unique_ptr<weld::Label> m_xPublisherLabel;
+    std::unique_ptr<weld::LinkButton> m_xPublisherLink;
+    std::unique_ptr<weld::Label> m_xReleaseNotesLabel;
+    std::unique_ptr<weld::LinkButton> m_xReleaseNotesLink;
+    std::unique_ptr<weld::TextView> m_xDescriptions;
+    std::unique_ptr<weld::Button> m_xOk;
+    std::unique_ptr<weld::Button> m_xClose;
+    std::unique_ptr<weld::Button> m_xHelp;
 };
 
 }

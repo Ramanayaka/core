@@ -21,39 +21,32 @@
 #define INCLUDED_SFX2_SOURCE_VIEW_VIEWIMP_HXX
 
 #include <memory>
-#include <basic/sbxobj.hxx>
 #include <sfx2/viewsh.hxx>
-#include <sfx2/viewfrm.hxx>
 #include <osl/mutex.hxx>
 #include <comphelper/interfacecontainer2.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <svtools/acceleratorexecute.hxx>
 #include <rtl/ref.hxx>
 #include <vcl/print.hxx>
-#include <queue>
+#include <vector>
 
 class SfxBaseController;
-
 typedef std::vector<SfxShell*> SfxShellArr_Impl;
-
 class SfxClipboardChangeListener;
-class SfxInPlaceClientList;
 
 struct SfxViewShell_Impl
 {
-    ::osl::Mutex                aMutex;
+    ::osl::Mutex aMutex;
     ::comphelper::OInterfaceContainerHelper2 aInterceptorContainer;
-    SfxShellArr_Impl            aArr;
-    Size                        aMargin;
-    bool                        m_bHasPrintOptions;
-    bool                        m_bIsShowView;
-    sal_uInt16                  m_nFamily;
+    SfxShellArr_Impl aArr;
+    Size aMargin;
+    bool m_bHasPrintOptions;
+    sal_uInt16 m_nFamily;
     ::rtl::Reference<SfxBaseController> m_pController;
     std::unique_ptr< ::svt::AcceleratorExecute > m_xAccExec;
     ::rtl::Reference< SfxClipboardChangeListener > xClipboardListener;
     std::shared_ptr< vcl::PrinterController > m_xPrinterController;
 
-    mutable SfxInPlaceClientList* mpIPClientList;
+    mutable std::unique_ptr<std::vector<SfxInPlaceClient*>> mpIPClients;
 
     LibreOfficeKitCallback m_pLibreOfficeKitViewCallback;
     void* m_pLibreOfficeKitViewData;
@@ -61,11 +54,12 @@ struct SfxViewShell_Impl
     bool m_bTiledSearching;
     static sal_uInt32 m_nLastViewShellId;
     const ViewShellId m_nViewShellId;
+    ViewShellDocId m_nDocId;
 
     explicit SfxViewShell_Impl(SfxViewShellFlags const nFlags);
     ~SfxViewShell_Impl();
 
-    SfxInPlaceClientList* GetIPClientList_Impl( bool bCreate = true ) const;
+    std::vector< SfxInPlaceClient* >* GetIPClients_Impl(bool bCreate = true) const;
 };
 
 #endif

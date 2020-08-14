@@ -21,37 +21,29 @@
 #include "NDatabaseMetaData.hxx"
 #include "NConnection.hxx"
 #include "NResultSet.hxx"
-#include "propertyids.hxx"
-#include "resource/evoab2_res.hrc"
-#include "TSortIndex.hxx"
-#include <algorithm>
+#include <propertyids.hxx>
+#include <strings.hrc>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/sdb/ErrorCondition.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/FetchDirection.hpp>
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
 
-#include <comphelper/extract.hxx>
-#include <comphelper/property.hxx>
 #include <comphelper/sequence.hxx>
-#include <comphelper/types.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <connectivity/dbexception.hxx>
 #include <connectivity/sqlerror.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <o3tl/make_unique.hxx>
 #include <rtl/string.hxx>
+#include <sal/log.hxx>
 #include <tools/diagnose_ex.h>
 #include <unotools/syslocale.hxx>
 #include <unotools/intlwrapper.hxx>
+#include <unotools/collatorwrapper.hxx>
 
 #include <cstring>
-#include <vector>
 
-namespace connectivity { namespace evoab {
+namespace connectivity::evoab {
 
 using namespace ::comphelper;
 using namespace com::sun::star;
@@ -67,13 +59,12 @@ namespace ErrorCondition = ::com::sun::star::sdb::ErrorCondition;
 
 OUString SAL_CALL OEvoabResultSet::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdbcx.evoab.ResultSet");
+    return "com.sun.star.sdbcx.evoab.ResultSet";
 }
 
  Sequence< OUString > SAL_CALL OEvoabResultSet::getSupportedServiceNames(  )
 {
-     Sequence< OUString > aSupported { "com.sun.star.sdbc.ResultSet" };
-    return aSupported;
+    return { "com.sun.star.sdbc.ResultSet" };
 }
 
 sal_Bool SAL_CALL OEvoabResultSet::supportsService( const OUString& _rServiceName )
@@ -86,9 +77,9 @@ struct ComparisonData
     const SortDescriptor&   rSortOrder;
     IntlWrapper             aIntlWrapper;
 
-    ComparisonData( const SortDescriptor& _rSortOrder, const Reference< XComponentContext >& _rxContext )
-        :rSortOrder( _rSortOrder )
-        ,aIntlWrapper( _rxContext, SvtSysLocale().GetLanguageTag() )
+    ComparisonData(const SortDescriptor& _rSortOrder)
+        : rSortOrder(_rSortOrder)
+        , aIntlWrapper(SvtSysLocale().GetUILanguageTag())
     {
     }
 };
@@ -157,7 +148,7 @@ static EContactAddress *
 getDefaultContactAddress( EContact *pContact,int *value )
 {
     EContactAddress *ec = static_cast<EContactAddress *>(e_contact_get(pContact,whichAddress(WORK_ADDR_LINE1)));
-    if ( ec && (strlen(ec->street)>0) )
+    if ( ec && (ec->street[0]!='\0') )
     {
         *value= *value +WORK_ADDR_LINE1 -1;
         return ec;
@@ -165,7 +156,7 @@ getDefaultContactAddress( EContact *pContact,int *value )
     else
         {
             ec = static_cast<EContactAddress *>(e_contact_get(pContact,whichAddress(HOME_ADDR_LINE1)));
-            if ( ec && (strlen(ec->street)>0) )
+            if ( ec && (ec->street[0]!='\0') )
             {
                 *value=*value+HOME_ADDR_LINE1-1;
                 return ec;
@@ -256,7 +247,7 @@ getValue( EContact* pContact, sal_Int32 nColumnNum, GType nType, GValue* pStackV
         return false;
 
     GParamSpec* pSpec = pSpecs->pField;
-    gboolean bIsSplittedColumn = pSpecs->bIsSplittedValue;
+    bool bIsSplittedColumn = pSpecs->bIsSplittedValue;
 
     _out_rWasNull = true;
     if ( !pSpec || !pContact)
@@ -264,8 +255,8 @@ getValue( EContact* pContact, sal_Int32 nColumnNum, GType nType, GValue* pStackV
 
     if ( G_PARAM_SPEC_VALUE_TYPE (pSpec) != nType )
     {
-        SAL_WARN("connectivity.evoab2", "Wrong type (0x" << std::hex << (int)G_PARAM_SPEC_VALUE_TYPE(pSpec) << ") (0x"
-                  << std::hex << (int) nType << ") " <<  (pSpec->name ? pSpec->name : "<noname>"));
+        SAL_WARN("connectivity.evoab2", "Wrong type (0x" << std::hex << static_cast<int>(G_PARAM_SPEC_VALUE_TYPE(pSpec)) << ") (0x"
+                  << std::hex << static_cast<int>(nType) << ") " <<  (pSpec->name ? pSpec->name : "<noname>"));
         return false;
     }
 
@@ -298,8 +289,9 @@ getValue( EContact* pContact, sal_Int32 nColumnNum, GType nType, GValue* pStackV
     return true;
 }
 
-extern "C"
-int CompareContacts( gconstpointer _lhs, gconstpointer _rhs, gpointer _userData )
+extern "C" {
+
+static int CompareContacts( gconstpointer _lhs, gconstpointer _rhs, gpointer _userData )
 {
     EContact* lhs = const_cast< gpointer >( _lhs );
     EContact* rhs = const_cast< gpointer >( _rhs );
@@ -313,12 +305,9 @@ int CompareContacts( gconstpointer _lhs, gconstpointer _rhs, gpointer _userData 
     bool bLhs(false), bRhs(false);
 
     const ComparisonData& rCompData = *static_cast< const ComparisonData* >( _userData );
-    for (   SortDescriptor::const_iterator sortCol = rCompData.rSortOrder.begin();
-            sortCol != rCompData.rSortOrder.end();
-            ++sortCol
-        )
+    for ( const auto& sortCol : rCompData.rSortOrder )
     {
-        sal_Int32 nField = sortCol->nField;
+        sal_Int32 nField = sortCol.nField;
         GType eFieldType = evoab::getGFieldType( nField );
 
         bool success =  getValue( lhs, nField, eFieldType, &aLhsValue, bLhsNull )
@@ -356,6 +345,8 @@ int CompareContacts( gconstpointer _lhs, gconstpointer _rhs, gpointer _userData 
     return 0;
 }
 
+}
+
 OString OEvoabVersionHelper::getUserName( EBook *pBook )
 {
     OString aName;
@@ -374,8 +365,6 @@ bool isBookBackend( EBookClient *pBook, const char *backendname)
         return false;
     ESource *pSource = e_client_get_source (reinterpret_cast<EClient *>(pBook));
     return isSourceBackend(pSource, backendname);
-}
-
 }
 
 class OEvoabVersion36Helper : public OEvoabVersionHelper
@@ -416,7 +405,7 @@ public:
 
         ESource *pSource = e_source_registry_ref_source(get_e_source_registry(), id);
         EBookClient *pBook = pSource ? createClient (pSource) : nullptr;
-        if (pBook && !e_client_open_sync (pBook, TRUE, nullptr, nullptr))
+        if (pBook && !e_client_open_sync (pBook, true, nullptr, nullptr))
         {
             g_object_unref (G_OBJECT (pBook));
             pBook = nullptr;
@@ -436,19 +425,18 @@ public:
         return isBookBackend(pBook, "local");
     }
 
-    virtual void freeContacts() override
+    virtual void freeContacts() override final
     {
         e_client_util_free_object_slist(m_pContacts);
         m_pContacts = nullptr;
     }
 
-    virtual bool executeQuery (EBook* pBook, EBookQuery* pQuery, OString &/*rPassword*/) override
+    virtual void executeQuery (EBook* pBook, EBookQuery* pQuery, OString &/*rPassword*/) override
     {
         freeContacts();
         char *sexp = e_book_query_to_string( pQuery );
-        bool bSuccess = e_book_client_get_contacts_sync( pBook, sexp, &m_pContacts, nullptr, nullptr );
+        e_book_client_get_contacts_sync( pBook, sexp, &m_pContacts, nullptr, nullptr );
         g_free (sexp);
-        return bSuccess;
     }
 
     virtual EContact *getContact(sal_Int32 nIndex) override
@@ -492,8 +480,6 @@ protected:
     }
 };
 
-namespace {
-
 ESource * findSource( const char *id )
 {
     ESourceList *pSourceList = nullptr;
@@ -521,8 +507,6 @@ bool isAuthRequired( EBook *pBook )
                                   "auth" ) != nullptr;
 }
 
-}
-
 class OEvoabVersion35Helper : public OEvoabVersionHelper
 {
 private:
@@ -543,7 +527,7 @@ public:
     {
         ESource *pSource = findSource (abname);
         EBook *pBook = pSource ? e_book_new (pSource, nullptr) : nullptr;
-        if (pBook && !e_book_open (pBook, TRUE, nullptr))
+        if (pBook && !e_book_open (pBook, true, nullptr))
         {
             g_object_unref (G_OBJECT (pBook));
             pBook = nullptr;
@@ -562,18 +546,17 @@ public:
                           !strncmp( "local:", e_book_get_uri( pBook ), 6 ) );
     }
 
-    virtual void freeContacts() override
+    virtual void freeContacts() override final
     {
         g_list_free(m_pContacts);
         m_pContacts = nullptr;
     }
 
-    virtual bool executeQuery (EBook* pBook, EBookQuery* pQuery, OString &rPassword) override
+    virtual void executeQuery (EBook* pBook, EBookQuery* pQuery, OString &rPassword) override
     {
         freeContacts();
 
         ESource *pSource = e_book_get_source( pBook );
-        bool bSuccess = false;
         bool bAuthSuccess = true;
 
         if( isAuthRequired( pBook ) )
@@ -584,9 +567,7 @@ public:
         }
 
         if (bAuthSuccess)
-            bSuccess = e_book_get_contacts( pBook, pQuery, &m_pContacts, nullptr );
-
-        return bSuccess;
+            e_book_get_contacts( pBook, pQuery, &m_pContacts, nullptr );
     }
 
     virtual EContact *getContact(sal_Int32 nIndex) override
@@ -615,6 +596,8 @@ public:
     }
 };
 
+}
+
 OEvoabResultSet::OEvoabResultSet( OCommonStatement* pStmt, OEvoabConnection *pConnection )
     :OResultSet_BASE(m_aMutex)
     ,::comphelper::OPropertyContainer( OResultSet_BASE::rBHelper )
@@ -629,11 +612,11 @@ OEvoabResultSet::OEvoabResultSet( OCommonStatement* pStmt, OEvoabConnection *pCo
     ,m_nLength(0)
 {
     if (eds_check_version( 3, 7, 6 ) == nullptr)
-        m_pVersionHelper  = o3tl::make_unique<OEvoabVersion38Helper>();
+        m_pVersionHelper  = std::make_unique<OEvoabVersion38Helper>();
     else if (eds_check_version( 3, 6, 0 ) == nullptr)
-        m_pVersionHelper  = o3tl::make_unique<OEvoabVersion36Helper>();
+        m_pVersionHelper  = std::make_unique<OEvoabVersion36Helper>();
     else
-        m_pVersionHelper  = o3tl::make_unique<OEvoabVersion35Helper>();
+        m_pVersionHelper  = std::make_unique<OEvoabVersion35Helper>();
 
     #define REGISTER_PROP( id, member ) \
         registerProperty( \
@@ -668,7 +651,7 @@ void OEvoabResultSet::construct( const QueryData& _rData )
         case eFilterNone:
             if ( !m_pVersionHelper->isLocal( pBook ) )
             {
-                SQLError aErrorFactory( comphelper::getComponentContext(m_pConnection->getDriver().getMSFactory()) );
+                SQLError aErrorFactory;
                 SQLException aAsException = aErrorFactory.getSQLException( ErrorCondition::DATA_CANNOT_SELECT_UNFILTERED, *this );
                 m_aWarnings.appendWarning( SQLWarning(
                     aAsException.Message,
@@ -695,8 +678,8 @@ void OEvoabResultSet::construct( const QueryData& _rData )
 
         if ( m_pVersionHelper->hasContacts() && !_rData.aSortOrder.empty() )
         {
-            ComparisonData aCompData( _rData.aSortOrder, comphelper::getComponentContext(getConnection()->getDriver().getMSFactory()) );
-            m_pVersionHelper->sortContacts( aCompData );
+            ComparisonData aCompData(_rData.aSortOrder);
+            m_pVersionHelper->sortContacts(aCompData);
         }
     }
     m_nLength = m_pVersionHelper->getNumContacts();
@@ -1025,7 +1008,7 @@ sal_Bool SAL_CALL OEvoabResultSet::previous(  )
         m_nIndex--;
         return true;
     }
-        else
+    else
         return false;
 }
 
@@ -1033,7 +1016,7 @@ Reference< XInterface > SAL_CALL OEvoabResultSet::getStatement(  )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OResultSet_BASE::rBHelper.bDisposed);
-css::uno::WeakReferenceHelper      aStatement(static_cast<OWeakObject*>(m_pStatement));
+    css::uno::WeakReferenceHelper      aStatement(static_cast<OWeakObject*>(m_pStatement));
     return aStatement.get();
 }
 
@@ -1153,6 +1136,6 @@ OEvoabResultSet::getPropertySetInfo(  )
 }
 
 
-} } // connectivity::evoab
+} // connectivity::evoab
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

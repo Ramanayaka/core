@@ -17,9 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dp_misc.h"
-#include "dp_persmap.h"
+#include <dp_misc.h>
+#include <dp_persmap.h>
+#include <rtl/byteseq.hxx>
 #include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 
 using namespace ::rtl;
 
@@ -33,7 +35,7 @@ using namespace ::rtl;
 namespace dp_misc
 {
 
-static const char PmapMagic[4] = {'P','m','p','1'};
+const char PmapMagic[4] = {'P','m','p','1'};
 
 PersistentMap::PersistentMap( OUString const & url_ )
 :    m_MapFile( expandUnoRcUrl(url_) )
@@ -64,13 +66,13 @@ PersistentMap::~PersistentMap()
 // replace "%" with "%%"
 static OString encodeString( const OString& rStr)
 {
-    const sal_Char* pChar = rStr.getStr();
+    const char* pChar = rStr.getStr();
     const sal_Int32 nLen = rStr.getLength();
     sal_Int32 i = nLen;
     // short circuit for the simple non-encoded case
     while( --i >= 0)
     {
-        const unsigned char c = (unsigned char) *(pChar++);
+        const unsigned char c = static_cast<unsigned char>(*(pChar++));
         if( c <= 0x0F )
             break;
         if( c == '%')
@@ -84,14 +86,14 @@ static OString encodeString( const OString& rStr)
     aEncStr.append( pChar - (nLen-i), nLen - i);
     while( --i >= 0)
     {
-        unsigned char c = (unsigned char) *(pChar++);
+        unsigned char c = static_cast<unsigned char>(*(pChar++));
         if( c <= 0x0F )
         {
             aEncStr.append( '%');
             c += (c <= 0x09) ? '0' : 'A'-10;
         } else if( c == '%')
             aEncStr.append( '%');
-        aEncStr.append( c);
+        aEncStr.append( char(c) );
     }
 
     return aEncStr.makeStringAndClear();
@@ -99,7 +101,7 @@ static OString encodeString( const OString& rStr)
 
 // replace "%0".."%F" with 0x00..0x0F
 // replace "%%" with "%"
-static OString decodeString( const sal_Char* pEncChars, int nLen)
+static OString decodeString( const char* pEncChars, int nLen)
 {
     const char* pChar = pEncChars;
     sal_Int32 i = nLen;
@@ -115,7 +117,7 @@ static OString decodeString( const sal_Char* pEncChars, int nLen)
     pChar = pEncChars;
     for( i = nLen; --i >= 0;)
     {
-        sal_Char c = *(pChar++);
+        char c = *(pChar++);
         // handle escaped character
         if( c == '%')
         {
@@ -173,7 +175,7 @@ void PersistentMap::readAll()
     if( nBytesRead != sizeof(aHeaderBytes))
         return;
     // check header magic
-    for( int i = 0; i < (int)sizeof(PmapMagic); ++i)
+    for( int i = 0; i < int(sizeof(PmapMagic)); ++i)
         if( aHeaderBytes[i] != PmapMagic[i])
             return;
 
@@ -231,19 +233,19 @@ void PersistentMap::flush()
     m_MapFile.write( PmapMagic, sizeof(PmapMagic), nBytesWritten);
 
     // write key value pairs
-    t_string2string_map::const_iterator it = m_entries.begin();
-    for(; it != m_entries.end(); ++it) {
+    for (auto const& entry : m_entries)
+    {
         // write line for key
-        const OString aKeyString = encodeString( (*it).first);
+        const OString aKeyString = encodeString( entry.first);
         const sal_Int32 nKeyLen = aKeyString.getLength();
         m_MapFile.write( aKeyString.getStr(), nKeyLen, nBytesWritten);
-        OSL_ASSERT( nKeyLen == (sal_Int32)nBytesWritten);
+        OSL_ASSERT( nKeyLen == static_cast<sal_Int32>(nBytesWritten));
         m_MapFile.write( "\n", 1, nBytesWritten);
         // write line for value
-        const OString& rValString = encodeString( (*it).second);
+        const OString& rValString = encodeString( entry.second);
         const sal_Int32 nValLen = rValString.getLength();
         m_MapFile.write( rValString.getStr(), nValLen, nBytesWritten);
-        OSL_ASSERT( nValLen == (sal_Int32)nBytesWritten);
+        OSL_ASSERT( nValLen == static_cast<sal_Int32>(nBytesWritten));
         m_MapFile.write( "\n", 1, nBytesWritten);
     }
 
@@ -276,8 +278,7 @@ bool PersistentMap::get( OString * value, OString const & key ) const
 
 void PersistentMap::add( OString const & key, OString const & value )
 {
-    typedef std::pair<t_string2string_map::iterator,bool> InsertRC;
-    InsertRC r = m_entries.insert( t_string2string_map::value_type(key,value));
+    auto r = m_entries.emplace(key,value);
     m_bIsDirty = r.second;
 }
 

@@ -17,28 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "screenshotannotationdlg.hxx"
+#include <screenshotannotationdlg.hxx>
 
-#include "cuires.hrc"
-#include "dialmgr.hxx"
+#include <strings.hrc>
+#include <dialmgr.hxx>
 
 #include <basegfx/range/b2irange.hxx>
-#include <cppuhelper/bootstrap.hxx>
-#include <com/sun/star/ui/dialogs/FilePicker.hpp>
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
 #include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
+#include <com/sun/star/ui/dialogs/XFilePicker3.hpp>
 
 #include <comphelper/random.hxx>
-#include <vcl/pngwrite.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
+#include <sfx2/filedlghelper.hxx>
+#include <tools/stream.hxx>
 #include <tools/urlobj.hxx>
-#include <vcl/fixed.hxx>
+#include <vcl/bitmapex.hxx>
+#include <vcl/customweld.hxx>
+#include <vcl/event.hxx>
+#include <vcl/pngwrite.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/salgtype.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/vclmedit.hxx>
-#include <vcl/button.hxx>
+#include <vcl/weld.hxx>
 #include <svtools/optionsdrawinglayer.hxx>
+#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <set>
 
 using namespace com::sun::star;
 
@@ -54,9 +58,9 @@ namespace
 
     OUString lcl_AltDescr()
     {
-        OUString aTempl = OUString("<alt xml-lang=\"en-US\" id=\"%1\">"
-                                   " " //FIXME real dialog title or something
-                                  "</alt>");
+        OUString aTempl("<alt id=\"%1\">"
+                        " " //FIXME real dialog title or something
+                        "</alt>");
         aTempl = aTempl.replaceFirst( "%1", lcl_genRandom("alt_id") );
 
         return aTempl;
@@ -64,10 +68,10 @@ namespace
 
     OUString lcl_Image( const OUString& rScreenshotId, const Size& rSize )
     {
-        OUString aTempl = OUString("<image id=\"%1\" src=\"media/screenshots/%2.png\""
-                                    " width=\"%3cm\"  height=\"%4cm\">"
-                                    "%5"
-                                   "</image>");
+        OUString aTempl("<image id=\"%1\" src=\"media/screenshots/%2.png\""
+                           " width=\"%3cm\"  height=\"%4cm\">"
+                           "%5"
+                        "</image>");
         aTempl = aTempl.replaceFirst( "%1", lcl_genRandom("img_id") );
         aTempl = aTempl.replaceFirst( "%2", rScreenshotId );
         aTempl = aTempl.replaceFirst( "%3", OUString::number( rSize.Width() ) );
@@ -79,8 +83,8 @@ namespace
 
     OUString lcl_ParagraphWithImage( const OUString& rScreenshotId, const Size& rSize )
     {
-        OUString aTempl = OUString( "<paragraph id=\"%1\" role=\"paragraph\" xml-lang=\"en-US\">%2"
-                                    "</paragraph>"  SAL_NEWLINE_STRING );
+        OUString aTempl( "<paragraph id=\"%1\" role=\"paragraph\">%2"
+                         "</paragraph>"  SAL_NEWLINE_STRING );
         aTempl = aTempl.replaceFirst( "%1", lcl_genRandom("par_id") );
         aTempl = aTempl.replaceFirst( "%2", lcl_Image(rScreenshotId, rSize) );
 
@@ -90,7 +94,7 @@ namespace
     OUString lcl_Bookmark( const OUString& rWidgetId )
     {
         OUString aTempl = "<!-- Bookmark for widget %1 -->" SAL_NEWLINE_STRING
-                          "<bookmark xml-lang=\"en-US\" branch=\"hid/%2\" id=\"%3\" localize=\"false\"/>" SAL_NEWLINE_STRING;
+                          "<bookmark branch=\"hid/%2\" id=\"%3\" localize=\"false\"/>" SAL_NEWLINE_STRING;
         aTempl = aTempl.replaceFirst( "%1", rWidgetId );
         aTempl = aTempl.replaceFirst( "%2", rWidgetId );
         aTempl = aTempl.replaceFirst( "%3", lcl_genRandom("bm_id") );
@@ -99,58 +103,51 @@ namespace
     }
 }
 
-class ControlDataEntry
+namespace
 {
-public:
-    ControlDataEntry(
-        const vcl::Window& rControl,
-        const basegfx::B2IRange& rB2IRange)
-        : mrControl(rControl),
-        maB2IRange(rB2IRange)
+    class Picture : public weld::CustomWidgetController
     {
-    }
+    private:
+        ScreenshotAnnotationDlg_Impl *m_pDialog;
+        bool m_bMouseOver;
+    private:
+        virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&) override;
+        virtual bool MouseMove(const MouseEvent& rMouseEvent) override;
+        virtual bool MouseButtonUp(const MouseEvent& rMouseEvent) override;
+    public:
+        Picture(ScreenshotAnnotationDlg_Impl* pDialog)
+            : m_pDialog(pDialog)
+            , m_bMouseOver(false)
+        {
+        }
 
-    const basegfx::B2IRange& getB2IRange() const
-    {
-        return maB2IRange;
-    }
+        bool IsMouseOver() const
+        {
+            return m_bMouseOver;
+        }
+    };
+}
 
-    const OString GetHelpId() const { return mrControl.GetHelpId(); }
-
-private:
-    const vcl::Window&  mrControl;
-    basegfx::B2IRange   maB2IRange;
-};
-
-typedef std::vector< ControlDataEntry > ControlDataCollection;
-typedef std::set< ControlDataEntry* > ControlDataSet;
-
-class ScreenshotAnnotationDlg_Impl // : public ModalDialog
+class ScreenshotAnnotationDlg_Impl
 {
 public:
     ScreenshotAnnotationDlg_Impl(
-        ScreenshotAnnotationDlg& rParent,
-        Dialog& rParentDialog);
+        weld::Window* pParent,
+        weld::Builder& rParent,
+        weld::Dialog& rParentDialog);
     ~ScreenshotAnnotationDlg_Impl();
 
 private:
     // Handler for click on save
-    DECL_LINK(saveButtonHandler, Button*, void);
-
-    // Handler for clicks on picture frame
-    DECL_LINK(pictureFrameListener, VclWindowEvent&, void);
+    DECL_LINK(saveButtonHandler, weld::Button&, void);
 
     // helper methods
-    void CollectChildren(
-        const vcl::Window& rCurrent,
-        const basegfx::B2IPoint& rTopLeft,
-        ControlDataCollection& rControlDataCollection);
-    ControlDataEntry* CheckHit(const basegfx::B2IPoint& rPosition);
-    void PaintControlDataEntry(
-        const ControlDataEntry& rEntry,
+    weld::ScreenShotEntry* CheckHit(const basegfx::B2IPoint& rPosition);
+    void PaintScreenShotEntry(
+        const weld::ScreenShotEntry& rEntry,
         const Color& rColor,
         double fLineWidth,
-        double fTransparency = 0.0);
+        double fTransparency);
     void RepaintToBuffer(
         bool bUseDimmed = false,
         bool bPaintHilight = false);
@@ -158,26 +155,28 @@ private:
     Point GetOffsetInPicture() const;
 
     // local variables
-    ScreenshotAnnotationDlg&    mrParent;
-    Dialog&                     mrParentDialog;
-    Bitmap                      maParentDialogBitmap;
-    Bitmap                      maDimmedDialogBitmap;
+    weld::Window*               mpParentWindow;
+    weld::Dialog&               mrParentDialog;
+    BitmapEx                    maParentDialogBitmap;
+    BitmapEx                    maDimmedDialogBitmap;
     Size                        maParentDialogSize;
 
-    // VirtualDevice for buffered interation paints
-    VclPtr<VirtualDevice>       mpVirtualBufferDevice;
+    // VirtualDevice for buffered interaction paints
+    VclPtr<VirtualDevice>       mxVirtualBufferDevice;
 
     // all detected children
-    ControlDataCollection       maAllChildren;
+    weld::ScreenShotCollection  maAllChildren;
 
-    // hilighted/selected children
-    ControlDataEntry*           mpHilighted;
-    ControlDataSet              maSelected;
+    // highlighted/selected children
+    weld::ScreenShotEntry*           mpHilighted;
+    std::set< weld::ScreenShotEntry* >
+                                maSelected;
 
     // list of detected controls
-    VclPtr<FixedImage>          mpPicture;
-    VclPtr<VclMultiLineEdit>    mpText;
-    VclPtr<PushButton>          mpSave;
+    Picture maPicture;
+    std::unique_ptr<weld::CustomWeld> mxPicture;
+    std::unique_ptr<weld::TextView> mxText;
+    std::unique_ptr<weld::Button> mxSave;
 
     // save as text
     OUString                    maSaveAsText;
@@ -185,160 +184,105 @@ private:
 
     // folder URL
     static OUString             maLastFolderURL;
+public:
+    void Paint(vcl::RenderContext& rRenderContext);
+    bool MouseMove(const MouseEvent& rMouseEvent);
+    bool MouseButtonUp();
 };
 
 OUString ScreenshotAnnotationDlg_Impl::maLastFolderURL = OUString();
 
 ScreenshotAnnotationDlg_Impl::ScreenshotAnnotationDlg_Impl(
-    ScreenshotAnnotationDlg& rParent,
-    Dialog& rParentDialog)
-:   mrParent(rParent),
+    weld::Window* pParent,
+    weld::Builder& rParentBuilder,
+    weld::Dialog& rParentDialog)
+:   mpParentWindow(pParent),
     mrParentDialog(rParentDialog),
-    maParentDialogBitmap(rParentDialog.createScreenshot()),
-    maDimmedDialogBitmap(maParentDialogBitmap),
-    maParentDialogSize(maParentDialogBitmap.GetSizePixel()),
-    mpVirtualBufferDevice(nullptr),
+    mxVirtualBufferDevice(nullptr),
     maAllChildren(),
     mpHilighted(nullptr),
     maSelected(),
-    mpPicture(nullptr),
-    mpText(nullptr),
-    mpSave(nullptr),
+    maPicture(this),
     maSaveAsText(CuiResId(RID_SVXSTR_SAVE_SCREENSHOT_AS))
 {
+    VclPtr<VirtualDevice> xParentDialogSurface(rParentDialog.screenshot());
+    maParentDialogSize = xParentDialogSurface->GetOutputSizePixel();
+    maParentDialogBitmap = xParentDialogSurface->GetBitmapEx(Point(), maParentDialogSize);
+    maDimmedDialogBitmap = maParentDialogBitmap;
+
     // image ain't empty
     assert(!maParentDialogBitmap.IsEmpty());
     assert(0 != maParentDialogBitmap.GetSizePixel().Width());
     assert(0 != maParentDialogBitmap.GetSizePixel().Height());
 
     // get needed widgets
-    mrParent.get(mpPicture, "picture");
-    assert(mpPicture.get());
-    mrParent.get(mpText, "text");
-    assert(mpText.get());
-    mrParent.get(mpSave, "save");
-    assert(mpSave.get());
+    mxPicture.reset(new weld::CustomWeld(rParentBuilder, "picture", maPicture));
+    assert(mxPicture);
+    mxText = rParentBuilder.weld_text_view("text");
+    assert(mxText);
+    mxSave = rParentBuilder.weld_button("save");
+    assert(mxSave);
 
-    // set screenshot image at FixedImage, resize, set event listener
-    if (mpPicture)
+    // set screenshot image at DrawingArea, resize, set event listener
+    if (mxPicture)
     {
-        // collect all children. Choose start pos to be negative
-        // of target dialog's position to get all positions relative to (0,0)
-        const Point aParentPos(mrParentDialog.GetPosPixel());
-        const basegfx::B2IPoint aTopLeft(-aParentPos.X(), -aParentPos.Y());
-
-        CollectChildren(
-            mrParentDialog,
-            aTopLeft,
-            maAllChildren);
+        maAllChildren = mrParentDialog.collect_screenshot_data();
 
         // to make clear that maParentDialogBitmap is a background image, adjust
         // luminance a bit for maDimmedDialogBitmap - other methods may be applied
-        maDimmedDialogBitmap.Adjust(-15);
+        maDimmedDialogBitmap.Adjust(-15, 0, 0, 0, 0);
 
         // init paint buffering VirtualDevice
-        mpVirtualBufferDevice = VclPtr<VirtualDevice>::Create(*Application::GetDefaultDevice(), DeviceFormat::DEFAULT, DeviceFormat::BITMASK);
-        mpVirtualBufferDevice->SetOutputSizePixel(maParentDialogSize);
-        mpVirtualBufferDevice->SetFillColor(COL_TRANSPARENT);
+        mxVirtualBufferDevice = VclPtr<VirtualDevice>::Create(*Application::GetDefaultDevice(), DeviceFormat::DEFAULT, DeviceFormat::BITMASK);
+        mxVirtualBufferDevice->SetOutputSizePixel(maParentDialogSize);
+        mxVirtualBufferDevice->SetFillColor(COL_TRANSPARENT);
 
         // initially set image for picture control
-        mpPicture->SetImage(Image(maDimmedDialogBitmap));
+        mxVirtualBufferDevice->DrawBitmapEx(Point(0, 0), maDimmedDialogBitmap);
 
         // set size for picture control, this will re-layout so that
         // the picture control shows the whole dialog
-        mpPicture->set_width_request(maParentDialogSize.Width());
-        mpPicture->set_height_request(maParentDialogSize.Height());
+        maPicture.SetOutputSizePixel(maParentDialogSize);
+        mxPicture->set_size_request(maParentDialogSize.Width(), maParentDialogSize.Height());
 
-        // add local event listener to allow interactions with mouse
-        mpPicture->AddEventListener(LINK(this, ScreenshotAnnotationDlg_Impl, pictureFrameListener));
-
-        // avoid image scaling, this is needed for images smaller than the
-        // minimal dialog size
-        const WinBits aWinBits(mpPicture->GetStyle());
-        mpPicture->SetStyle(aWinBits & ~WB_SCALE);
+        mxPicture->queue_draw();
     }
 
     // set some test text at VclMultiLineEdit and make read-only - only
     // copying content to clipboard is allowed
-    if (mpText)
+    if (mxText)
     {
-        mpText->set_width_request(400);
-        mpText->set_height_request( mpText->GetTextHeight() * 10 );
-        OUString aHelpId = OStringToOUString( mrParentDialog.GetHelpId(), RTL_TEXTENCODING_UTF8 );
-        Size aSizeCm = mrParentDialog.PixelToLogic( maParentDialogSize, MapUnit::MapCM );
+        mxText->set_size_request(400, mxText->get_height_rows(10));
+        OUString aHelpId = OStringToOUString( mrParentDialog.get_help_id(), RTL_TEXTENCODING_UTF8 );
+        Size aSizeCm = Application::GetDefaultDevice()->PixelToLogic(maParentDialogSize, MapMode(MapUnit::MapCM));
         maMainMarkupText = lcl_ParagraphWithImage( aHelpId, aSizeCm );
-        mpText->SetText( maMainMarkupText );
-        mpText->SetReadOnly();
+        mxText->set_text( maMainMarkupText );
+        mxText->set_editable(false);
     }
 
     // set click handler for save button
-    if (mpSave)
+    if (mxSave)
     {
-        mpSave->SetClickHdl(LINK(this, ScreenshotAnnotationDlg_Impl, saveButtonHandler));
-    }
-}
-
-void ScreenshotAnnotationDlg_Impl::CollectChildren(
-    const vcl::Window& rCurrent,
-    const basegfx::B2IPoint& rTopLeft,
-    ControlDataCollection& rControlDataCollection)
-{
-    if (rCurrent.IsVisible())
-    {
-        const Point aCurrentPos(rCurrent.GetPosPixel());
-        const Size aCurrentSize(rCurrent.GetSizePixel());
-        const basegfx::B2IPoint aCurrentTopLeft(rTopLeft.getX() + aCurrentPos.X(), rTopLeft.getY() + aCurrentPos.Y());
-        const basegfx::B2IRange aCurrentRange(aCurrentTopLeft, aCurrentTopLeft + basegfx::B2IPoint(aCurrentSize.Width(), aCurrentSize.Height()));
-
-        if (!aCurrentRange.isEmpty())
-        {
-            rControlDataCollection.push_back(ControlDataEntry(rCurrent, aCurrentRange));
-        }
-
-        for (sal_uInt16 a(0); a < rCurrent.GetChildCount(); a++)
-        {
-            vcl::Window* pChild = rCurrent.GetChild(a);
-
-            if (nullptr != pChild)
-            {
-                CollectChildren(*pChild, aCurrentTopLeft, rControlDataCollection);
-            }
-        }
+        mxSave->connect_clicked(LINK(this, ScreenshotAnnotationDlg_Impl, saveButtonHandler));
     }
 }
 
 ScreenshotAnnotationDlg_Impl::~ScreenshotAnnotationDlg_Impl()
 {
-    mpVirtualBufferDevice.disposeAndClear();
+    mxVirtualBufferDevice.disposeAndClear();
 }
 
-IMPL_LINK(ScreenshotAnnotationDlg_Impl, saveButtonHandler, Button*, pButton, void)
+IMPL_LINK_NOARG(ScreenshotAnnotationDlg_Impl, saveButtonHandler, weld::Button&, void)
 {
-    (void)pButton;
-
     // 'save screenshot...' pressed, offer to save maParentDialogBitmap
     // as PNG image, use *.id file name as screenshot file name offering
-    OString aDerivedFileName;
+    // get a suggestion for the filename from buildable name
+    OString aDerivedFileName = mrParentDialog.get_buildable_name();
 
-    // get a suggestion for the filename from ui file name
-    {
-        const OString& rUIFileName = mrParentDialog.getUIFile();
-        sal_Int32 nIndex(0);
+    auto xFileDlg = std::make_unique<sfx2::FileDialogHelper>(ui::dialogs::TemplateDescription::FILESAVE_AUTOEXTENSION,
+                                                             FileDialogFlags::NONE, mpParentWindow);
 
-        do
-        {
-            const OString aToken(rUIFileName.getToken(0, '/', nIndex));
-
-            if (!aToken.isEmpty())
-            {
-                aDerivedFileName = aToken;
-            }
-        } while (nIndex >= 0);
-    }
-
-    uno::Reference< uno::XComponentContext > xContext = cppu::defaultBootstrap_InitialComponentContext();
-    const uno::Reference< ui::dialogs::XFilePicker3 > xFilePicker =
-        ui::dialogs::FilePicker::createWithMode(xContext, ui::dialogs::TemplateDescription::FILESAVE_AUTOEXTENSION);
+    const uno::Reference< ui::dialogs::XFilePicker3 > xFilePicker = xFileDlg->GetFilePicker();
 
     xFilePicker->setTitle(maSaveAsText);
 
@@ -352,58 +296,58 @@ IMPL_LINK(ScreenshotAnnotationDlg_Impl, saveButtonHandler, Button*, pButton, voi
     xFilePicker->setDefaultName(OStringToOUString(aDerivedFileName, RTL_TEXTENCODING_UTF8));
     xFilePicker->setMultiSelectionMode(false);
 
-    if (xFilePicker->execute() == ui::dialogs::ExecutableDialogResults::OK)
+    if (xFilePicker->execute() != ui::dialogs::ExecutableDialogResults::OK)
+        return;
+
+    maLastFolderURL = xFilePicker->getDisplayDirectory();
+    const uno::Sequence< OUString > files(xFilePicker->getSelectedFiles());
+
+    if (!files.hasElements())
+        return;
+
+    OUString aConfirmedName = files[0];
+
+    if (aConfirmedName.isEmpty())
+        return;
+
+    INetURLObject aConfirmedURL(aConfirmedName);
+    OUString aCurrentExtension(aConfirmedURL.getExtension());
+
+    if (!aCurrentExtension.isEmpty() && aCurrentExtension != "png")
     {
-        maLastFolderURL = xFilePicker->getDisplayDirectory();
-        const uno::Sequence< OUString > files(xFilePicker->getSelectedFiles());
-
-        if (files.getLength())
-        {
-            OUString aConfirmedName = files[0];
-
-            if (!aConfirmedName.isEmpty())
-            {
-                INetURLObject aConfirmedURL(aConfirmedName);
-                OUString aCurrentExtension(aConfirmedURL.getExtension());
-
-                if (!aCurrentExtension.isEmpty() && 0 != aCurrentExtension.compareTo("png"))
-                {
-                    aConfirmedURL.removeExtension();
-                    aCurrentExtension.clear();
-                }
-
-                if (aCurrentExtension.isEmpty())
-                {
-                    aConfirmedURL.setExtension("png");
-                }
-
-                // open stream
-                SvFileStream aNew(aConfirmedURL.PathToFileName(), StreamMode::WRITE | StreamMode::TRUNC);
-
-                if (aNew.IsOpen())
-                {
-                    // prepare bitmap to save - do use the original screenshot here,
-                    // not the dimmed one
-                    RepaintToBuffer();
-
-                    // extract Bitmap
-                    const Bitmap aTargetBitmap(
-                        mpVirtualBufferDevice->GetBitmap(
-                        Point(0, 0),
-                        mpVirtualBufferDevice->GetOutputSizePixel()));
-
-                    // write as PNG
-                    vcl::PNGWriter aPNGWriter(aTargetBitmap);
-                    aPNGWriter.Write(aNew);
-                }
-            }
-        }
+        aConfirmedURL.removeExtension();
+        aCurrentExtension.clear();
     }
+
+    if (aCurrentExtension.isEmpty())
+    {
+        aConfirmedURL.setExtension("png");
+    }
+
+    // open stream
+    SvFileStream aNew(aConfirmedURL.PathToFileName(), StreamMode::WRITE | StreamMode::TRUNC);
+
+    if (!aNew.IsOpen())
+        return;
+
+    // prepare bitmap to save - do use the original screenshot here,
+    // not the dimmed one
+    RepaintToBuffer();
+
+    // extract Bitmap
+    const BitmapEx aTargetBitmap(
+        mxVirtualBufferDevice->GetBitmapEx(
+        Point(0, 0),
+        mxVirtualBufferDevice->GetOutputSizePixel()));
+
+    // write as PNG
+    vcl::PNGWriter aPNGWriter(aTargetBitmap);
+    aPNGWriter.Write(aNew);
 }
 
-ControlDataEntry* ScreenshotAnnotationDlg_Impl::CheckHit(const basegfx::B2IPoint& rPosition)
+weld::ScreenShotEntry* ScreenshotAnnotationDlg_Impl::CheckHit(const basegfx::B2IPoint& rPosition)
 {
-    ControlDataEntry* pRetval = nullptr;
+    weld::ScreenShotEntry* pRetval = nullptr;
 
     for (auto&& rCandidate : maAllChildren)
     {
@@ -427,57 +371,54 @@ ControlDataEntry* ScreenshotAnnotationDlg_Impl::CheckHit(const basegfx::B2IPoint
     return pRetval;
 }
 
-void ScreenshotAnnotationDlg_Impl::PaintControlDataEntry(
-    const ControlDataEntry& rEntry,
+void ScreenshotAnnotationDlg_Impl::PaintScreenShotEntry(
+    const weld::ScreenShotEntry& rEntry,
     const Color& rColor,
     double fLineWidth,
     double fTransparency)
 {
-    if (mpPicture && mpVirtualBufferDevice)
+    if (!(mxPicture && mxVirtualBufferDevice))
+        return;
+
+    basegfx::B2DRange aB2DRange(rEntry.getB2IRange());
+
+    // grow in pixels to be a little bit 'outside'. This also
+    // ensures that getWidth()/getHeight() ain't 0.0 (see division below)
+    static const double fGrowTopLeft(1.5);
+    static const double fGrowBottomRight(0.5);
+    aB2DRange.expand(aB2DRange.getMinimum() - basegfx::B2DPoint(fGrowTopLeft, fGrowTopLeft));
+    aB2DRange.expand(aB2DRange.getMaximum() + basegfx::B2DPoint(fGrowBottomRight, fGrowBottomRight));
+
+    // edge rounding in pixel. Need to convert, value for
+    // createPolygonFromRect is relative [0.0 .. 1.0]
+    static const double fEdgeRoundPixel(8.0);
+    const basegfx::B2DPolygon aPolygon(
+        basegfx::utils::createPolygonFromRect(
+        aB2DRange,
+        fEdgeRoundPixel / aB2DRange.getWidth(),
+        fEdgeRoundPixel / aB2DRange.getHeight()));
+
+    mxVirtualBufferDevice->SetLineColor(rColor);
+
+    // try to use transparency
+    if (!mxVirtualBufferDevice->DrawPolyLineDirect(
+        basegfx::B2DHomMatrix(),
+        aPolygon,
+        fLineWidth,
+        fTransparency,
+        nullptr, // MM01
+        basegfx::B2DLineJoin::Round))
     {
-        basegfx::B2DRange aB2DRange(rEntry.getB2IRange());
-
-        // grow in pixels to be a little bit 'outside'. This also
-        // ensures that getWidth()/getHeight() ain't 0.0 (see division below)
-        static double fGrowTopLeft(1.5);
-        static double fGrowBottomRight(0.5);
-        aB2DRange.expand(aB2DRange.getMinimum() - basegfx::B2DPoint(fGrowTopLeft, fGrowTopLeft));
-        aB2DRange.expand(aB2DRange.getMaximum() + basegfx::B2DPoint(fGrowBottomRight, fGrowBottomRight));
-
-        // edge rounding in pixel. Need to convert, value for
-        // createPolygonFromRect is relative [0.0 .. 1.0]
-        static double fEdgeRoundPixel(8.0);
-        const basegfx::B2DPolygon aPolygon(
-            basegfx::tools::createPolygonFromRect(
-            aB2DRange,
-            fEdgeRoundPixel / aB2DRange.getWidth(),
-            fEdgeRoundPixel / aB2DRange.getHeight()));
-
-        mpVirtualBufferDevice->SetLineColor(rColor);
-
-        // try to use transparency
-        if (!mpVirtualBufferDevice->DrawPolyLineDirect(
+        // no transparency, draw without
+        mxVirtualBufferDevice->DrawPolyLine(
             aPolygon,
-            fLineWidth,
-            fTransparency,
-            basegfx::B2DLineJoin::Round))
-        {
-            // no transparency, draw without
-            mpVirtualBufferDevice->DrawPolyLine(
-                aPolygon,
-                fLineWidth);
-        }
+            fLineWidth);
     }
 }
 
 Point ScreenshotAnnotationDlg_Impl::GetOffsetInPicture() const
 {
-    if (!mpPicture)
-    {
-        return Point(0, 0);
-    }
-
-    const Size aPixelSizeTarget(mpPicture->GetOutputSizePixel());
+    const Size aPixelSizeTarget(maPicture.GetOutputSizePixel());
 
     return Point(
         aPixelSizeTarget.Width() > maParentDialogSize.Width() ? (aPixelSizeTarget.Width() - maParentDialogSize.Width()) >> 1 : 0,
@@ -488,164 +429,154 @@ void ScreenshotAnnotationDlg_Impl::RepaintToBuffer(
     bool bUseDimmed,
     bool bPaintHilight)
 {
-    if (mpVirtualBufferDevice)
+    if (!mxVirtualBufferDevice)
+        return;
+
+    // reset with original screenshot bitmap
+    mxVirtualBufferDevice->DrawBitmapEx(
+        Point(0, 0),
+        bUseDimmed ? maDimmedDialogBitmap : maParentDialogBitmap);
+
+    // get various options
+    const SvtOptionsDrawinglayer aSvtOptionsDrawinglayer;
+    const Color aHilightColor(aSvtOptionsDrawinglayer.getHilightColor());
+    const double fTransparence(aSvtOptionsDrawinglayer.GetTransparentSelectionPercent() * 0.01);
+    const bool bIsAntiAliasing(aSvtOptionsDrawinglayer.IsAntiAliasing());
+    const AntialiasingFlags nOldAA(mxVirtualBufferDevice->GetAntialiasing());
+
+    if (bIsAntiAliasing)
     {
-        // reset with original screenshot bitmap
-        mpVirtualBufferDevice->DrawBitmap(
-            Point(0, 0),
-            bUseDimmed ? maDimmedDialogBitmap : maParentDialogBitmap);
+        mxVirtualBufferDevice->SetAntialiasing(AntialiasingFlags::EnableB2dDraw);
+    }
 
-        // get various options
-        const SvtOptionsDrawinglayer aSvtOptionsDrawinglayer;
-        const Color aHilightColor(aSvtOptionsDrawinglayer.getHilightColor());
-        const double fTransparence(aSvtOptionsDrawinglayer.GetTransparentSelectionPercent() * 0.01);
-        const bool bIsAntiAliasing(aSvtOptionsDrawinglayer.IsAntiAliasing());
-        const AntialiasingFlags nOldAA(mpVirtualBufferDevice->GetAntialiasing());
+    // paint selected entries
+    for (auto&& rCandidate : maSelected)
+    {
+        static const double fLineWidthEntries(5.0);
+        PaintScreenShotEntry(*rCandidate, COL_LIGHTRED, fLineWidthEntries, fTransparence * 0.2);
+    }
 
-        if (bIsAntiAliasing)
-        {
-            mpVirtualBufferDevice->SetAntialiasing(AntialiasingFlags::EnableB2dDraw);
-        }
+    // paint highlighted entry
+    if (mpHilighted && bPaintHilight)
+    {
+        static const double fLineWidthHilight(7.0);
+        PaintScreenShotEntry(*mpHilighted, aHilightColor, fLineWidthHilight, fTransparence);
+    }
 
-        // paint selected entries
-        for (auto&& rCandidate : maSelected)
-        {
-            static double fLineWidthEntries(5.0);
-            PaintControlDataEntry(*rCandidate, Color(COL_LIGHTRED), fLineWidthEntries, fTransparence * 0.2);
-        }
-
-        // paint hilighted entry
-        if (mpHilighted && bPaintHilight)
-        {
-            static double fLineWidthHilight(7.0);
-            PaintControlDataEntry(*mpHilighted, aHilightColor, fLineWidthHilight, fTransparence);
-        }
-
-        if (bIsAntiAliasing)
-        {
-            mpVirtualBufferDevice->SetAntialiasing(nOldAA);
-        }
+    if (bIsAntiAliasing)
+    {
+        mxVirtualBufferDevice->SetAntialiasing(nOldAA);
     }
 }
 
 void ScreenshotAnnotationDlg_Impl::RepaintPictureElement()
 {
-    if (mpPicture && mpVirtualBufferDevice)
+    if (mxPicture && mxVirtualBufferDevice)
     {
-        // reset image in buffer, use dimmed version and allow hilight
+        // reset image in buffer, use dimmed version and allow highlight
         RepaintToBuffer(true, true);
-
-        // copy new content to picture control (hard paint)
-        mpPicture->DrawOutDev(
-            GetOffsetInPicture(),
-            maParentDialogSize,
-            Point(0, 0),
-            maParentDialogSize,
-            *mpVirtualBufferDevice);
-
-        // also set image to get repaints right, but trigger no repaint
-        mpPicture->SetImage(
-            Image(
-            mpVirtualBufferDevice->GetBitmap(
-            Point(0, 0),
-            mpVirtualBufferDevice->GetOutputSizePixel())));
-        mpPicture->Validate();
+        mxPicture->queue_draw();
     }
 }
 
-IMPL_LINK(ScreenshotAnnotationDlg_Impl, pictureFrameListener, VclWindowEvent&, rEvent, void)
+void ScreenshotAnnotationDlg_Impl::Paint(vcl::RenderContext& rRenderContext)
 {
-    // event in picture frame
+    Point aPos(GetOffsetInPicture());
+    Size aSize(mxVirtualBufferDevice->GetOutputSizePixel());
+    rRenderContext.DrawOutDev(aPos, aSize, Point(), aSize, *mxVirtualBufferDevice);
+}
+
+void Picture::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&)
+{
+    m_pDialog->Paint(rRenderContext);
+}
+
+bool ScreenshotAnnotationDlg_Impl::MouseMove(const MouseEvent& rMouseEvent)
+{
     bool bRepaint(false);
 
-    switch (rEvent.GetId())
+    if (maPicture.IsMouseOver())
     {
-    case VclEventId::WindowMouseMove:
-    case VclEventId::WindowMouseButtonUp:
-    {
-        MouseEvent* pMouseEvent = static_cast< MouseEvent* >(rEvent.GetData());
+        const weld::ScreenShotEntry* pOldHit = mpHilighted;
+        const Point aOffset(GetOffsetInPicture());
+        const basegfx::B2IPoint aMousePos(
+            rMouseEvent.GetPosPixel().X() - aOffset.X(),
+            rMouseEvent.GetPosPixel().Y() - aOffset.Y());
+        const weld::ScreenShotEntry* pHit = CheckHit(aMousePos);
 
-        if (pMouseEvent)
+        if (pHit && pOldHit != pHit)
         {
-            switch (rEvent.GetId())
-            {
-            case VclEventId::WindowMouseMove:
-            {
-                if (mpPicture->IsMouseOver())
-                {
-                    const ControlDataEntry* pOldHit = mpHilighted;
-                    const Point aOffset(GetOffsetInPicture());
-                    const basegfx::B2IPoint aMousePos(
-                        pMouseEvent->GetPosPixel().X() - aOffset.X(),
-                        pMouseEvent->GetPosPixel().Y() - aOffset.Y());
-                    const ControlDataEntry* pHit = CheckHit(aMousePos);
-
-                    if (pHit && pOldHit != pHit)
-                    {
-                        mpHilighted = const_cast< ControlDataEntry* >(pHit);
-                        bRepaint = true;
-                    }
-                }
-                else if (mpHilighted)
-                {
-                    mpHilighted = nullptr;
-                    bRepaint = true;
-                }
-                break;
-            }
-            case VclEventId::WindowMouseButtonUp:
-            {
-                if (mpPicture->IsMouseOver() && mpHilighted)
-                {
-                    if (maSelected.erase(mpHilighted) == 0)
-                    {
-                        maSelected.insert(mpHilighted);
-                    }
-
-                    OUString aBookmarks;
-                    for (auto&& rCandidate : maSelected)
-                    {
-                        OUString aHelpId = OStringToOUString( rCandidate->GetHelpId(), RTL_TEXTENCODING_UTF8 );
-                        aBookmarks += lcl_Bookmark( aHelpId );
-                    }
-
-                    mpText->SetText( maMainMarkupText + aBookmarks );
-                    bRepaint = true;
-                }
-                break;
-            }
-            default:
-            {
-                break;
-            }
-            }
+            mpHilighted = const_cast<weld::ScreenShotEntry*>(pHit);
+            bRepaint = true;
         }
-        break;
     }
-    default:
+    else if (mpHilighted)
     {
-        break;
-    }
+        mpHilighted = nullptr;
+        bRepaint = true;
     }
 
     if (bRepaint)
     {
         RepaintPictureElement();
     }
+
+    return true;
 }
 
-ScreenshotAnnotationDlg::ScreenshotAnnotationDlg(
-    vcl::Window* pParent,
-    Dialog& rParentDialog)
-:   SfxModalDialog(pParent, "ScreenshotAnnotationDialog", "cui/ui/screenshotannotationdialog.ui")
+bool Picture::MouseMove(const MouseEvent& rMouseEvent)
 {
-    m_pImpl.reset(new ScreenshotAnnotationDlg_Impl(*this, rParentDialog));
+    if (rMouseEvent.IsEnterWindow())
+        m_bMouseOver = true;
+    if (rMouseEvent.IsLeaveWindow())
+        m_bMouseOver = false;
+    return m_pDialog->MouseMove(rMouseEvent);
 }
 
+bool ScreenshotAnnotationDlg_Impl::MouseButtonUp()
+{
+    // event in picture frame
+    bool bRepaint(false);
+
+    if (maPicture.IsMouseOver() && mpHilighted)
+    {
+        if (maSelected.erase(mpHilighted) == 0)
+        {
+            maSelected.insert(mpHilighted);
+        }
+
+        OUStringBuffer aBookmarks(maMainMarkupText);
+        for (auto&& rCandidate : maSelected)
+        {
+            OUString aHelpId = OStringToOUString( rCandidate->GetHelpId(), RTL_TEXTENCODING_UTF8 );
+            aBookmarks.append(lcl_Bookmark( aHelpId ));
+        }
+
+        mxText->set_text( aBookmarks.makeStringAndClear() );
+        bRepaint = true;
+    }
+
+    if (bRepaint)
+    {
+        RepaintPictureElement();
+    }
+
+    return true;
+}
+
+bool Picture::MouseButtonUp(const MouseEvent&)
+{
+    return m_pDialog->MouseButtonUp();
+}
+
+ScreenshotAnnotationDlg::ScreenshotAnnotationDlg(weld::Dialog& rParentDialog)
+    : GenericDialogController(&rParentDialog, "cui/ui/screenshotannotationdialog.ui", "ScreenshotAnnotationDialog")
+{
+    m_pImpl.reset(new ScreenshotAnnotationDlg_Impl(m_xDialog.get(), *m_xBuilder, rParentDialog));
+}
 
 ScreenshotAnnotationDlg::~ScreenshotAnnotationDlg()
 {
-    disposeOnce();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

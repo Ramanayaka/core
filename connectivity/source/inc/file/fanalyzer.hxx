@@ -20,15 +20,12 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FANALYZER_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FANALYZER_HXX
 
-#include "file/fcomp.hxx"
-#include "file/filedllapi.hxx"
+#include <file/fcomp.hxx>
 
-namespace connectivity
-{
-    namespace file
+namespace connectivity::file
     {
         class OConnection;
-        class OOO_DLLPUBLIC_FILE OSQLAnalyzer final
+        class OSQLAnalyzer final
         {
             typedef std::pair< ::rtl::Reference<OPredicateCompiler>,::rtl::Reference<OPredicateInterpreter> > TPredicates;
 
@@ -45,17 +42,9 @@ namespace connectivity
         public:
             OSQLAnalyzer(OConnection* _pConnection);
             ~OSQLAnalyzer();
-            static void * SAL_CALL operator new( size_t nSize )
-                { return ::rtl_allocateMemory( nSize ); }
-            static void * SAL_CALL operator new( size_t /*nSize*/,void* _pHint )
-                { return _pHint; }
-            static void SAL_CALL operator delete( void * pMem )
-                { ::rtl_freeMemory( pMem ); }
-            static void SAL_CALL operator delete( void * /*pMem*/,void* /*_pHint*/ )
-                {  }
 
             OConnection* getConnection() const { return m_pConnection; }
-            void bindEvaluationRow(OValueRefRow& _pRow); // Bind an evaluation row to the restriction
+            void bindEvaluationRow(OValueRefRow const & _pRow); // Bind an evaluation row to the restriction
             /** bind the select columns if they contain a function which needs a row value
                 @param  _pRow   the result row
             */
@@ -64,22 +53,19 @@ namespace connectivity
             /** binds the row to parameter for the restrictions
                 @param  _pRow   the parameter row
             */
-            void bindParameterRow(OValueRefRow& _pRow);
-
-            void setIndexes(const css::uno::Reference< css::container::XNameAccess>& _xIndexes);
+            void bindParameterRow(OValueRefRow const & _pRow);
 
             void dispose();
-            void start(OSQLParseNode* pSQLParseNode);
+            void start(OSQLParseNode const * pSQLParseNode);
             bool hasRestriction() const;
             bool hasFunctions() const;
             bool evaluateRestriction()   { return m_aInterpreter->start(); }
-            void setSelectionEvaluationResult(OValueRefRow& _pRow,const std::vector<sal_Int32>& _rColumnMapping);
+            void setSelectionEvaluationResult(OValueRefRow const & _pRow,const std::vector<sal_Int32>& _rColumnMapping);
             void setOrigColumns(const css::uno::Reference< css::container::XNameAccess>& rCols);
             static OOperandAttr* createOperandAttr(sal_Int32 _nPos,
-                                                    const css::uno::Reference< css::beans::XPropertySet>& _xCol,
-                                                    const css::uno::Reference< css::container::XNameAccess>& _xIndexes);
+                                                    const css::uno::Reference< css::beans::XPropertySet>& _xCol);
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FANALYZER_HXX
 

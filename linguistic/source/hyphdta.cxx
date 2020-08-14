@@ -18,15 +18,12 @@
  */
 
 
-#include "linguistic/hyphdta.hxx"
-#include "linguistic/lngprops.hxx"
-#include "linguistic/misc.hxx"
+#include <linguistic/hyphdta.hxx>
+#include <linguistic/misc.hxx>
 #include <osl/mutex.hxx>
 
 
-#include <rtl/ustrbuf.hxx>
 #include <tools/debug.hxx>
-#include <svl/lngmisc.hxx>
 #include <unotools/localedatawrapper.hxx>
 
 using namespace osl;
@@ -49,7 +46,7 @@ HyphenatedWord::HyphenatedWord(const OUString &rWord, LanguageType nLang, sal_In
     nLanguage       (nLang)
 {
     OUString aSingleQuote( GetLocaleDataWrapper( nLanguage ).getQuotationMarkEnd() );
-    DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpectend length of quotation mark" );
+    DBG_ASSERT( 1 == aSingleQuote.getLength(), "unexpected length of quotation mark" );
     if (!aSingleQuote.isEmpty())
     {
         // ignore typographical apostrophes (which got replaced in original

@@ -18,9 +18,9 @@
  */
 
 
-#include "drawingml/table/tablerowcontext.hxx"
-#include "drawingml/table/tablecellcontext.hxx"
-#include "drawingml/table/tablerow.hxx"
+#include <drawingml/table/tablerowcontext.hxx>
+#include <drawingml/table/tablecellcontext.hxx>
+#include <drawingml/table/tablerow.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
@@ -28,9 +28,9 @@
 using namespace ::oox::core;
 using namespace ::com::sun::star;
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
-TableRowContext::TableRowContext( ContextHandler2Helper& rParent, const AttributeList& rAttribs, TableRow& rTableRow )
+TableRowContext::TableRowContext( ContextHandler2Helper const & rParent, const AttributeList& rAttribs, TableRow& rTableRow )
 : ContextHandler2( rParent )
 , mrTableRow( rTableRow )
 {
@@ -49,7 +49,7 @@ TableRowContext::onCreateContext( ::sal_Int32 aElementToken, const AttributeList
     case A_TOKEN( tc ):         // CT_TableCell
         {
             std::vector< TableCell >& rvTableCells = mrTableRow.getTableCells();
-            rvTableCells.resize( rvTableCells.size() + 1 );
+            rvTableCells.emplace_back();
             return new TableCellContext( *this, rAttribs, rvTableCells.back() );
         }
     case A_TOKEN( extLst ):     // CT_OfficeArtExtensionList
@@ -60,6 +60,6 @@ TableRowContext::onCreateContext( ::sal_Int32 aElementToken, const AttributeList
     return this;
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

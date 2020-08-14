@@ -20,6 +20,7 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
@@ -30,7 +31,7 @@
 
 using namespace ::com::sun::star;
 
-OUString const sWW8_form( "WW-Standard" );
+OUStringLiteral const sWW8_form( "WW-Standard" );
 
 SvxMSConvertOCXControls::SvxMSConvertOCXControls( const uno::Reference< frame::XModel >& rxModel) : mxModel(rxModel)
 {
@@ -74,9 +75,7 @@ const uno::Reference< drawing::XShapes >& SvxMSConvertOCXControls::GetShapes()
         GetDrawPage();
         if( xDrawPage.is() )
         {
-
-            xShapes.set(xDrawPage, uno::UNO_QUERY);
-            OSL_ENSURE( xShapes.is(), "UNO_QUERY failed for XShapes from XDrawPage" );
+            xShapes = xDrawPage;
         }
     }
     return xShapes;
@@ -105,8 +104,7 @@ const uno::Reference< container::XIndexContainer >&
 
             while( xNameCont->hasByName( sName ) )
             {
-                sName = sWW8_form;
-                sName += OUString::number( ++n );
+                sName = sWW8_form + OUString::number( ++n );
             }
 
             const uno::Reference< lang::XMultiServiceFactory > &rServiceFactory

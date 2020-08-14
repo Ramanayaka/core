@@ -8,21 +8,9 @@
  */
 
 #include <svl/int64item.hxx>
-#include <tools/stream.hxx>
 
 SfxInt64Item::SfxInt64Item( sal_uInt16 nWhich, sal_Int64 nVal ) :
     SfxPoolItem(nWhich), mnValue(nVal)
-{
-}
-
-SfxInt64Item::SfxInt64Item( sal_uInt16 nWhich, SvStream& rStream ) :
-    SfxPoolItem(nWhich), mnValue(0)
-{
-    rStream.ReadInt64(mnValue);
-}
-
-SfxInt64Item::SfxInt64Item( const SfxInt64Item& rItem ) :
-    SfxPoolItem(rItem), mnValue(rItem.mnValue)
 {
 }
 
@@ -30,12 +18,12 @@ SfxInt64Item::~SfxInt64Item() {}
 
 bool SfxInt64Item::operator== ( const SfxPoolItem& rItem ) const
 {
-    return mnValue == static_cast<const SfxInt64Item&>(rItem).mnValue;
+    return SfxPoolItem::operator==(rItem) && mnValue == static_cast<const SfxInt64Item&>(rItem).mnValue;
 }
 
 bool SfxInt64Item::GetPresentation(
     SfxItemPresentation, MapUnit, MapUnit, OUString& rText,
-    const IntlWrapper* /*pIntlWrapper*/ ) const
+    const IntlWrapper& /*rIntlWrapper*/ ) const
 {
     rText = OUString::number(mnValue);
     return true;
@@ -62,20 +50,9 @@ bool SfxInt64Item::PutValue(
     return false;
 }
 
-SfxPoolItem* SfxInt64Item::Create( SvStream& rStream, sal_uInt16 /*nItemVersion*/ ) const
-{
-    return new SfxInt64Item(Which(), rStream);
-}
-
-SvStream& SfxInt64Item::Store( SvStream& rStream, sal_uInt16 /*nItemVersion*/ ) const
-{
-    return rStream.WriteInt64(mnValue);
-}
-
-SfxPoolItem* SfxInt64Item::Clone( SfxItemPool* /*pOther*/ ) const
+SfxInt64Item* SfxInt64Item::Clone( SfxItemPool* /*pOther*/ ) const
 {
     return new SfxInt64Item(*this);
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

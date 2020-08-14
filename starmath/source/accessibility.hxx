@@ -20,27 +20,26 @@
 #ifndef INCLUDED_STARMATH_SOURCE_ACCESSIBILITY_HXX
 #define INCLUDED_STARMATH_SOURCE_ACCESSIBILITY_HXX
 
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleText.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/Reference.h>
-#include <cppuhelper/interfacecontainer.h>
 #include <cppuhelper/implbase.hxx>
 #include <svl/SfxBroadcaster.hxx>
 
 #include <editeng/editeng.hxx>
 #include <editeng/unoedsrc.hxx>
-#include <svx/AccessibleTextHelper.hxx>
 #include <edit.hxx>
+#include <view.hxx>
 #include <memory>
 
-class SmGraphicWindow;
-class SmEditWindow;
 class SmDocShell;
+
+namespace accessibility { class AccessibleTextHelper; }
 
 // classes and helper-classes used for accessibility in the graphic-window
 
@@ -57,7 +56,7 @@ cppu::WeakImplHelper
     >
 SmGraphicAccessibleBaseClass;
 
-class SmGraphicAccessible :
+class SmGraphicAccessible final :
     public SmGraphicAccessibleBaseClass
 {
     OUString                            aAccName;
@@ -69,7 +68,6 @@ class SmGraphicAccessible :
     SmGraphicAccessible( const SmGraphicAccessible & ) = delete;
     SmGraphicAccessible & operator = ( const SmGraphicAccessible & ) = delete;
 
-protected:
     SmDocShell *    GetDoc_Impl();
     OUString        GetAccessibleText_Impl();
 
@@ -131,6 +129,7 @@ public:
     virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+    virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName(  ) override;
@@ -144,10 +143,8 @@ public:
 
 class SmEditAccessible;
 class SmEditSource;
-class EditEngine;
 class EditView;
 class SvxFieldItem;
-struct ESelection;
 
 
 class SmViewForwarder :
@@ -163,7 +160,6 @@ public:
     virtual             ~SmViewForwarder() override;
 
     virtual bool        IsValid() const override;
-    virtual tools::Rectangle   GetVisArea() const override;
     virtual Point       LogicToPixel( const Point& rPoint, const MapMode& rMapMode ) const override;
     virtual Point       PixelToLogic( const Point& rPoint, const MapMode& rMapMode ) const override;
 };
@@ -203,8 +199,8 @@ public:
 
     virtual SfxItemPool* GetPool() const override;
 
-    virtual OUString        CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rpTxtColor, Color*& rpFldColor ) override;
-    virtual void            FieldClicked(const SvxFieldItem&, sal_Int32, sal_Int32) override;
+    virtual OUString        CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor ) override;
+    virtual void            FieldClicked(const SvxFieldItem&) override;
     virtual bool            IsValid() const override;
 
     virtual LanguageType    GetLanguage( sal_Int32, sal_Int32 ) const override;
@@ -252,7 +248,6 @@ public:
 
     virtual bool        IsValid() const override;
 
-    virtual tools::Rectangle   GetVisArea() const override;
     virtual Point       LogicToPixel( const Point& rPoint, const MapMode& rMapMode ) const override;
     virtual Point       PixelToLogic( const Point& rPoint, const MapMode& rMapMode ) const override;
 
@@ -281,7 +276,7 @@ public:
             SmEditSource( SmEditAccessible &rAcc );
     virtual ~SmEditSource() override;
 
-    virtual SvxEditSource*      Clone() const override;
+    virtual std::unique_ptr<SvxEditSource> Clone() const override;
     virtual SvxTextForwarder*   GetTextForwarder() override;
     virtual SvxViewForwarder*  GetViewForwarder() override;
     virtual SvxEditViewForwarder*  GetEditViewForwarder( bool bCreate = false ) override;

@@ -25,9 +25,9 @@
 
 #include <vcl/svapp.hxx>
 
-#include "AccFrameEventListener.hxx"
-#include "AccObjectManagerAgent.hxx"
-#include "unomsaaevent.hxx"
+#include <AccFrameEventListener.hxx>
+#include <AccObjectManagerAgent.hxx>
+#include <unomsaaevent.hxx>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::accessibility;
@@ -85,8 +85,8 @@ void AccFrameEventListener::HandleChildChangedEvent(Any oldValue, Any newValue)
         {
             XAccessible* pAcc = xChild.get();
 
-            VCLXWindow* pvclwindow =
-                dynamic_cast<VCLXWindow*>(m_xAccessible.get());
+            VCLXWindow* pvclwindow = dynamic_cast<VCLXWindow*>(m_xAccessible.get());
+            assert(pvclwindow);
             const SystemEnvData* systemdata
                 = pvclwindow->GetWindow()->GetSystemData();
 
@@ -97,12 +97,10 @@ void AccFrameEventListener::HandleChildChangedEvent(Any oldValue, Any newValue)
             pAgent->InsertChildrenAccObj(pAcc);
             pAgent->NotifyAccEvent(UM_EVENT_CHILD_ADDED, pAcc);
         }
-        else
-        {}
     }
     else if (oldValue >>= xChild)
     {
-        //delete a existing child
+        //delete an existing child
         if(xChild.is())
         {
             XAccessible* pAcc = xChild.get();
@@ -112,8 +110,6 @@ void AccFrameEventListener::HandleChildChangedEvent(Any oldValue, Any newValue)
             //delete this child
             pAgent->DeleteAccObj( pAcc );
         }
-        else
-        {}
     }
 
 }

@@ -17,12 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXCELL_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXCELL_HXX
+#pragma once
 
-#include "extended/AccessibleBrowseBoxBase.hxx"
-#include <svtools/AccessibleBrowseBoxObjType.hxx>
-
+#include <extended/AccessibleBrowseBoxBase.hxx>
+#include <vcl/AccessibleBrowseBoxObjType.hxx>
 
 namespace accessibility
 {
@@ -54,11 +52,11 @@ namespace accessibility
     protected:
         AccessibleBrowseBoxCell(
             const css::uno::Reference< css::accessibility::XAccessible >& _rxParent,
-            ::svt::IAccessibleTableProvider& _rBrowseBox,
+            ::vcl::IAccessibleTableProvider& _rBrowseBox,
             const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
             sal_Int32 _nRowPos,
             sal_uInt16 _nColPos,
-            ::svt::AccessibleBrowseBoxObjType _eType = ::svt::BBTYPE_TABLECELL
+            ::vcl::AccessibleBrowseBoxObjType _eType = ::vcl::BBTYPE_TABLECELL
         );
 
         virtual ~AccessibleBrowseBoxCell() override;
@@ -72,6 +70,5 @@ namespace accessibility
 }   // namespace accessibility
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXCELL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

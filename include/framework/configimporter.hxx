@@ -20,18 +20,19 @@
 #ifndef INCLUDED_FRAMEWORK_CONFIGIMPORTER_HXX
 #define INCLUDED_FRAMEWORK_CONFIGIMPORTER_HXX
 
-#include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/ui/XUIConfigurationManager2.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-
-#include <rtl/ustring.hxx>
-#include <framework/fwedllapi.h>
+#include <config_options.h>
+#include <framework/fwkdllapi.h>
 #include <vector>
+
+namespace com::sun::star::container { class XIndexContainer; }
+namespace com::sun::star::embed { class XStorage; }
+namespace com::sun::star::ui { class XUIConfigurationManager2; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 namespace framework
 {
-    class FWE_DLLPUBLIC UIConfigurationImporterOOo1x
+    class UNLESS_MERGELIBS(FWK_DLLPUBLIC) UIConfigurationImporterOOo1x
     {
         public:
             static bool ImportCustomToolbars(

@@ -36,12 +36,8 @@ class AstDeclaration;
 typedef std::list< AstDeclaration* > DeclList;
 
 class AstScope;
-AstDeclaration* SAL_CALL scopeAsDecl(AstScope* pScope);
-AstScope* SAL_CALL declAsScope(AstDeclaration* pDecl);
-
-#ifdef _MSC_VER
-#pragma warning( disable : 4541 )
-#endif
+AstDeclaration* scopeAsDecl(AstScope* pScope);
+AstScope* declAsScope(AstDeclaration* pDecl);
 
 // flags used for attributes, properties and services
 #define AF_INVALID          0x0000
@@ -80,7 +76,7 @@ enum ParseState
     PS_ServiceBodySeen,     // Seen complete service body
     PS_ServiceMemberSeen,   // Seen a service member
     PS_ServiceIFHeadSeen,   // Seen an interface member header
-    PS_ServiceSHeadSeen,    // Seen an service member header
+    PS_ServiceSHeadSeen,    // Seen a service member header
 
     PS_SingletonSeen,       // Seen a SINGLETON keyword
     PS_SingletonIDSeen,     // Seen the singleton ID

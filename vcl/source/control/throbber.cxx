@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/throbber.hxx>
+#include <vcl/toolkit/throbber.hxx>
 #include <vcl/svapp.hxx>
 
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -28,7 +28,7 @@
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/processfactory.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 #include <tools/urlobj.hxx>
 
 #include <limits>
@@ -36,7 +36,6 @@
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::graphic::XGraphic;
 using ::com::sun::star::graphic::XGraphicProvider;
-using ::com::sun::star::uno::UNO_QUERY;
 using ::com::sun::star::uno::Exception;
 namespace ImageScaleMode = ::com::sun::star::awt::ImageScaleMode;
 
@@ -45,7 +44,6 @@ Throbber::Throbber( vcl::Window* i_parentWindow, WinBits i_style )
     ,mbRepeat( true )
     ,mnStepTime( 100 )
     ,mnCurStep( 0 )
-    ,meImageSet( ImageSet::Auto )
 {
     maWaitTimer.SetTimeout( mnStepTime );
     maWaitTimer.SetInvokeHandler( LINK( this, Throbber, TimeOutHdl ) );
@@ -78,15 +76,12 @@ namespace
         aImages.reserve( aImageURLs.size() );
 
         ::comphelper::NamedValueCollection aMediaProperties;
-        for (   ::std::vector< OUString >::const_iterator imageURL = aImageURLs.begin();
-                imageURL != aImageURLs.end();
-                ++imageURL
-            )
+        for ( const auto& rImageURL : aImageURLs )
         {
             Reference< XGraphic > xGraphic;
-            aMediaProperties.put( "URL", *imageURL );
-            xGraphic.set( xGraphicProvider->queryGraphic( aMediaProperties.getPropertyValues() ), UNO_QUERY );
-            aImages.push_back( Image( xGraphic ) );
+            aMediaProperties.put( "URL", rImageURL );
+            xGraphic = xGraphicProvider->queryGraphic( aMediaProperties.getPropertyValues() );
+            aImages.emplace_back( xGraphic );
         }
 
         return aImages;
@@ -96,9 +91,7 @@ namespace
 void Throbber::Resize()
 {
     ImageControl::Resize();
-
-    if ( meImageSet == ImageSet::Auto )
-        initImages();
+    initImages();
 }
 
 void Throbber::initImages()
@@ -106,16 +99,9 @@ void Throbber::initImages()
     try
     {
         ::std::vector< ::std::vector< Image > > aImageSets;
-        if ( meImageSet == ImageSet::Auto )
-        {
-            aImageSets.push_back( lcl_loadImageSet( ImageSet::N16px ) );
-            aImageSets.push_back( lcl_loadImageSet( ImageSet::N32px ) );
-            aImageSets.push_back( lcl_loadImageSet( ImageSet::N64px ) );
-        }
-        else
-        {
-            aImageSets.push_back( lcl_loadImageSet( meImageSet ) );
-        }
+        aImageSets.push_back( lcl_loadImageSet( ImageSet::N16px ) );
+        aImageSets.push_back( lcl_loadImageSet( ImageSet::N32px ) );
+        aImageSets.push_back( lcl_loadImageSet( ImageSet::N64px ) );
 
         // find the best matching image set (size-wise)
         const ::Size aWindowSizePixel = GetSizePixel();
@@ -182,7 +168,7 @@ void Throbber::setImageList( ::std::vector< Image > const& i_images )
 
     maImageList = i_images;
 
-    const Image aInitialImage( maImageList.size() ? maImageList[ 0 ] : Image() );
+    const Image aInitialImage( !maImageList.empty() ? maImageList[ 0 ] : Image() );
     SetImage( aInitialImage );
 }
 
@@ -190,7 +176,7 @@ void Throbber::setImageList( ::std::vector< Image > const& i_images )
 {
     ::std::vector< OUString > aImageURLs;
 
-    sal_Char const* const pResolutions[] = { "16", "32", "64" };
+    char const* const pResolutions[] = { "16", "32", "64" };
     size_t const nImageCounts[] = { 6, 12, 12 };
 
     size_t index = 0;
@@ -199,9 +185,6 @@ void Throbber::setImageList( ::std::vector< Image > const& i_images )
     case ImageSet::N16px:  index = 0;  break;
     case ImageSet::N32px:  index = 1;  break;
     case ImageSet::N64px:  index = 2;  break;
-    case ImageSet::Auto:
-        OSL_ENSURE( false, "Throbber::getDefaultImageURLs: illegal image set!" );
-        return aImageURLs;
     }
 
     aImageURLs.reserve( nImageCounts[index] );

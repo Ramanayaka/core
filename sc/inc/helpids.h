@@ -17,7 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svxcommands.h>
+#ifndef INCLUDED_SC_INC_HELPIDS_H
+#define INCLUDED_SC_INC_HELPIDS_H
 
 #define HID_INSWIN_POS                                          "SC_HID_INSWIN_POS"
 #define HID_INSWIN_CALC                                         "SC_HID_INSWIN_CALC"
@@ -45,8 +46,6 @@
 #define HID_SC_ADD_AUTOFMT                                      "SC_HID_SC_ADD_AUTOFMT"
 #define HID_SC_AUTOFMT_NAME                                     "SC_HID_SC_AUTOFMT_NAME"
 
-#define HID_FUNCTION_BOX                                        "SC_HID_FUNCTION_BOX"
-
 //  wrong group - HID_SC_DLG_START is full
 #define HID_SC_REN_AFMT_NAME                                    "SC_HID_SC_REN_AFMT_NAME"
 
@@ -63,10 +62,6 @@
 
 // Other help IDs (max.70) ---------------------------------------------------
 #define HID_SELECTTABLES                                        "SC_HID_SELECTTABLES"
-#define HID_SC_REPLCELLSWARN                                    "SC_HID_SC_REPLCELLSWARN"
-
-
-
 
 
 // Analysis Addin Functions (max.120) ----------------------------------------
@@ -180,10 +175,6 @@
 #define HID_DAI_FUNC_DIFFWEEKS                                  "SC_HID_DAI_FUNC_DIFFWEEKS"
 #define HID_DAI_FUNC_DIFFYEARS                                  "SC_HID_DAI_FUNC_DIFFYEARS"
 #define HID_DAI_FUNC_ROT13                                      "SC_HID_DAI_FUNC_ROT13"
-
-#define HID_MN_FORMAT_STYLE                                     "SC_HID_MN_FORMAT_STYLE"
-#define HID_MN_FORMAT_ALGN                                      "SC_HID_MN_FORMAT_ALGN"
-#define HID_MN_FORMAT_LINESPACE                                 "SC_HID_MN_FORMAT_LINESPACE"
 
 // End help IDs ------------------------------------------------------------
 
@@ -583,5 +574,14 @@
 #define HID_FUNC_MINIFS_MS                                      "SC_HID_FUNC_MINIFS_MS"
 #define HID_FUNC_MAXIFS_MS                                      "SC_HID_FUNC_MAXIFS_MS"
 #define HID_FUNC_ROUNDSIG                                       "SC_HID_FUNC_ROUNDSIG"
+#define HID_FUNC_REPLACEB                                       "SC_HID_FUNC_REPLACEB"
+#define HID_FUNC_FINDB                                          "SC_HID_FUNC_FINDB"
+#define HID_FUNC_SEARCHB                                        "SC_HID_FUNC_SEARCHB"
+#define HID_FUNC_REGEX                                          "SC_HID_FUNC_REGEX"
+#define HID_FUNC_FOURIER                                        "SC_HID_FUNC_FOURIER"
+#define HID_FUNC_RAND_NV                                        "SC_HID_FUNC_RAND_NV"
+#define HID_FUNC_RANDBETWEEN_NV                                 "SC_HID_FUNC_RANDBETWEEN_NV"
+
+#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

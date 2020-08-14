@@ -35,7 +35,7 @@
 #include <uno/mapping.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/factory.hxx>
-#include <osl/thread.h>
+#include <osl/thread.hxx>
 #include <list>
 
 
@@ -50,8 +50,7 @@ using namespace ::com::sun::star::test;
 
 static void mywait()
 {
-    TimeValue a = { 0, 10000 };
-    osl_waitThread( &a );
+    osl::Thread::wait(std::chrono::microseconds(10));
     osl_yieldThread();
     osl_yieldThread();
 }
@@ -316,17 +315,17 @@ void OPumpTest::testClose( const Reference< XInterface > &r )
     TestCase t( m_rSmgr, r );
 
     ERROR_ASSERT( ! t.m_pTestListener->m_bStarted , "started too early" );
-    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "terminiation unexpected" );
+    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "termination unexpected" );
     ERROR_ASSERT( ! t.m_pTestListener->m_bError, "unexpected error" );
-    ERROR_ASSERT( ! t.m_pTestListener->m_bClosed, "unexpected clase" );
+    ERROR_ASSERT( ! t.m_pTestListener->m_bClosed, "unexpected close" );
 
     t.m_rControl->start();
     mywait();
 
     ERROR_ASSERT( t.m_pTestListener->m_bStarted , "should have been started already" );
-    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "terminiation unexpected" );
+    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "termination unexpected" );
     ERROR_ASSERT( ! t.m_pTestListener->m_bError, "unexpected error" );
-    ERROR_ASSERT( ! t.m_pTestListener->m_bClosed, "unexpected clase" );
+    ERROR_ASSERT( ! t.m_pTestListener->m_bClosed, "unexpected close" );
 
     Reference< XStreamListener > rListener( new TestListener() );
     t.m_rControl->addListener( rListener );
@@ -335,7 +334,7 @@ void OPumpTest::testClose( const Reference< XInterface > &r )
     t.m_rOutSource->closeOutput();
     mywait();
     ERROR_ASSERT( t.m_pTestListener->m_bStarted , "should have been started already" );
-    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "should be terminiated already" );
+    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "should be terminated already" );
     ERROR_ASSERT( ! t.m_pTestListener->m_bError, "unexpected error" );
     ERROR_ASSERT( t.m_pTestListener->m_bClosed, "should be closed already" );
 }
@@ -345,23 +344,23 @@ void OPumpTest::testTerminate( const Reference< XInterface > &r )
     TestCase t( m_rSmgr, r );
 
     ERROR_ASSERT( ! t.m_pTestListener->m_bStarted , "started too early" );
-    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "terminiation unexpected" );
+    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "termination unexpected" );
     ERROR_ASSERT( ! t.m_pTestListener->m_bError, "unexpected error" );
-    ERROR_ASSERT( ! t.m_pTestListener->m_bClosed, "unexpected clase" );
+    ERROR_ASSERT( ! t.m_pTestListener->m_bClosed, "unexpected closed" );
 
     t.m_rControl->start();
     mywait();
 
     ERROR_ASSERT( t.m_pTestListener->m_bStarted , "should have been started already" );
-    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "terminiation unexpected" );
+    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "termination unexpected" );
     ERROR_ASSERT( ! t.m_pTestListener->m_bError, "unexpected error" );
-    ERROR_ASSERT( ! t.m_pTestListener->m_bClosed, "unexpected clase" );
+    ERROR_ASSERT( ! t.m_pTestListener->m_bClosed, "unexpected closed" );
 
     t.m_rControl->terminate();
 
     mywait();
     ERROR_ASSERT( t.m_pTestListener->m_bStarted , "should have been started already" );
-    ERROR_ASSERT( t.m_pTestListener->m_bTerminated , "should be terminiated already" );
+    ERROR_ASSERT( t.m_pTestListener->m_bTerminated , "should be terminated already" );
     // terminate leads to an error, that is no surprise, in fact
     // one can't tell whether the error occurs because of the terminate
     // call or for some other reason!
@@ -384,7 +383,7 @@ void OPumpTest::testFunction( const Reference< XInterface > &r )
     mywait();
 
     ERROR_ASSERT( t.m_pTestListener->m_bStarted , "should have been started already" );
-    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "should be terminiated already" );
+    ERROR_ASSERT( ! t.m_pTestListener->m_bTerminated , "should be terminated already" );
     ERROR_ASSERT( ! t.m_pTestListener->m_bError, "unexpected error" );
     ERROR_ASSERT( t.m_pTestListener->m_bClosed, "should be closed already" );
 }
@@ -415,9 +414,7 @@ Reference< XInterface > SAL_CALL OPumpTest_CreateInstance( const Reference< XMul
 
 Sequence<OUString> OPumpTest_getSupportedServiceNames() throw()
 {
-    OUString s = OPumpTest_getServiceName();
-    Sequence< OUString > seq( &s , 1 );
-    return seq;
+    return { OPumpTest_getServiceName() };
 
 }
 OUString     OPumpTest_getServiceName() throw()

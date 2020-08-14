@@ -16,16 +16,15 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "DefaultInspection.hxx"
+#include <DefaultInspection.hxx>
 #include <com/sun/star/ucb/AlreadyInitializedException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <RptResId.hrc>
-#include "ModuleHelper.hxx"
-#include "helpids.hrc"
+#include <strings.hrc>
+#include <core_resource.hxx>
+#include <helpids.h>
 #include <cppuhelper/supportsservice.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <tools/debug.hxx>
-#include "metadata.hxx"
+#include <metadata.hxx>
 #include <tools/urlobj.hxx>
 
 
@@ -33,12 +32,9 @@ namespace rptui
 {
     OUString HelpIdUrl::getHelpURL( const OString& sHelpId )
     {
-        OUStringBuffer aBuffer;
         OUString aTmp( OStringToOUString(sHelpId, RTL_TEXTENCODING_UTF8) );
         DBG_ASSERT( INetURLObject( aTmp ).GetProtocol() == INetProtocol::NotValid, "Wrong HelpId!" );
-        aBuffer.append( INET_HID_SCHEME );
-        aBuffer.append( aTmp.getStr() );
-        return aBuffer.makeStringAndClear();
+        return INET_HID_SCHEME + aTmp;
     }
 
     using namespace com::sun::star::uno;
@@ -65,7 +61,7 @@ namespace rptui
 
     OUString SAL_CALL DefaultComponentInspectorModel::getImplementationName(  )
     {
-        return getImplementationName_Static();
+        return "com.sun.star.comp.report.DefaultComponentInspectorModel";
     }
 
     sal_Bool SAL_CALL DefaultComponentInspectorModel::supportsService( const OUString& ServiceName )
@@ -75,55 +71,18 @@ namespace rptui
 
     Sequence< OUString > SAL_CALL DefaultComponentInspectorModel::getSupportedServiceNames(  )
     {
-        return getSupportedServiceNames_static();
+        return { "com.sun.star.report.inspection.DefaultComponentInspectorModel" };
     }
-
-    OUString DefaultComponentInspectorModel::getImplementationName_Static(  )
-    {
-        return OUString("com.sun.star.comp.report.DefaultComponentInspectorModel");
-    }
-
-    Sequence< OUString > DefaultComponentInspectorModel::getSupportedServiceNames_static(  )
-    {
-        Sequence< OUString > aSupported { "com.sun.star.report.inspection.DefaultComponentInspectorModel" };
-        return aSupported;
-    }
-
-    Reference< XInterface > SAL_CALL DefaultComponentInspectorModel::create( const Reference< XComponentContext >& _rxContext )
-    {
-        return *(new DefaultComponentInspectorModel( _rxContext ));
-    }
-
 
     Sequence< Any > SAL_CALL DefaultComponentInspectorModel::getHandlerFactories()
     {
-        ::osl::MutexGuard aGuard( m_aMutex );
-
-
         // service names for all our handlers
-        const struct
-        {
-            const sal_Char* serviceName;
-        } aFactories[] = {
-
-            { "com.sun.star.report.inspection.ReportComponentHandler"},
-            { "com.sun.star.form.inspection.EditPropertyHandler"},
-            { "com.sun.star.report.inspection.DataProviderHandler"},
-            { "com.sun.star.report.inspection.GeometryHandler"}
-
-            // generic virtual edit properties
-
+        return Sequence<Any> {
+            Any(OUString( "com.sun.star.report.inspection.ReportComponentHandler")),
+            Any(OUString( "com.sun.star.form.inspection.EditPropertyHandler")),
+            Any(OUString( "com.sun.star.report.inspection.DataProviderHandler")),
+            Any(OUString( "com.sun.star.report.inspection.GeometryHandler"))
         };
-
-        const size_t nFactories = SAL_N_ELEMENTS( aFactories );
-        Sequence< Any > aReturn( nFactories );
-        Any* pReturn = aReturn.getArray();
-        for (const auto& rFactory : aFactories)
-        {
-            *pReturn++ <<= OUString::createFromAscii( rFactory.serviceName );
-        }
-
-        return aReturn;
     }
 
     sal_Bool SAL_CALL DefaultComponentInspectorModel::getHasHelpSection()
@@ -200,8 +159,8 @@ namespace rptui
 
         const struct
         {
-            const sal_Char* programmaticName;
-            sal_uInt16          uiNameResId;
+            const char* programmaticName;
+            const char* uiNameResId;
             OString    helpId;
         } aCategories[] = {
             { "General",    RID_STR_PROPPAGE_DEFAULT,   HID_RPT_PROPDLG_TAB_GENERAL },
@@ -214,7 +173,7 @@ namespace rptui
         for ( size_t i=0; i<nCategories; ++i, ++pReturn )
         {
             pReturn->ProgrammaticName = OUString::createFromAscii( aCategories[i].programmaticName );
-            pReturn->UIName = ModuleRes( aCategories[i].uiNameResId );
+            pReturn->UIName = RptResId( aCategories[i].uiNameResId );
             pReturn->HelpURL = HelpIdUrl::getHelpURL( aCategories[i].helpId );
         }
 
@@ -245,5 +204,11 @@ namespace rptui
 
 } // namespace rptui
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_DefaultComponentInspectorModel_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new rptui::DefaultComponentInspectorModel(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -18,16 +18,13 @@
  */
 
 
-#include "framework/signatureengine.hxx"
-#include "xmlsignaturetemplateimpl.hxx"
-#include <com/sun/star/xml/wrapper/XXMLElementWrapper.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <framework/signatureengine.hxx>
+#include <framework/xmlsignaturetemplateimpl.hxx>
 #include <rtl/ref.hxx>
 
+namespace com::sun::star::xml::wrapper { class XXMLElementWrapper; }
+
 using namespace com::sun::star::uno;
-namespace cssu = com::sun::star::uno;
-namespace cssxc = com::sun::star::xml::crypto;
-namespace cssxw = com::sun::star::xml::wrapper;
 
 SignatureEngine::SignatureEngine()
     : m_nTotalReferenceNumber(-1)
@@ -49,7 +46,7 @@ bool SignatureEngine::checkReady() const
  *  2. the key material is known;
  *  3. the amount of reference is known;
  *  4. all of referenced elements, the key element and the signature
- *     template are bufferred.
+ *     template are buffered.
  *
  *   RESULT
  *  bReady - true if all conditions are satisfied, false otherwise
@@ -89,39 +86,37 @@ void SignatureEngine::tryToPerform( )
  *  5. sets the "accomplishment" flag.
  ******************************************************************************/
 {
-    if (checkReady())
+    if (!checkReady())
+        return;
+
+    rtl::Reference<XMLSignatureTemplateImpl> xSignatureTemplate = new XMLSignatureTemplateImpl();
+
+    css::uno::Reference< css::xml::wrapper::XXMLElementWrapper >
+        xXMLElement = m_xSAXEventKeeper->getElement( m_nIdOfTemplateEC );
+
+    xSignatureTemplate->setTemplate(xXMLElement);
+
+    for( const auto i : m_vReferenceIds )
     {
-        rtl::Reference<XMLSignatureTemplateImpl> xSignatureTemplate = new XMLSignatureTemplateImpl();
-
-        cssu::Reference< cssxw::XXMLElementWrapper >
-            xXMLElement = m_xSAXEventKeeper->getElement( m_nIdOfTemplateEC );
-
-        xSignatureTemplate->setTemplate(xXMLElement);
-
-        std::vector< sal_Int32 >::const_iterator ii = m_vReferenceIds.begin();
-
-        for( ; ii != m_vReferenceIds.end() ; ++ii )
-        {
-            xXMLElement = m_xSAXEventKeeper->getElement( *ii );
-            xSignatureTemplate->setTarget(xXMLElement);
-        }
-
-        /*
-         * set the Uri binding
-         */
-        xSignatureTemplate->setBinding( this );
-
-        startEngine(css::uno::Reference<css::xml::crypto::XXMLSignatureTemplate>(xSignatureTemplate.get()));
-
-        /*
-         * done
-         */
-        clearUp( );
-
-        notifyResultListener();
-
-        m_bMissionDone = true;
+        xXMLElement = m_xSAXEventKeeper->getElement( i );
+        xSignatureTemplate->setTarget(xXMLElement);
     }
+
+    /*
+     * set the Uri binding
+     */
+    xSignatureTemplate->setBinding( this );
+
+    startEngine(xSignatureTemplate);
+
+    /*
+     * done
+     */
+    clearUp( );
+
+    notifyResultListener();
+
+    m_bMissionDone = true;
 }
 
 void SignatureEngine::clearUp( ) const
@@ -137,22 +132,20 @@ void SignatureEngine::clearUp( ) const
  *  3. releases the ElementCollector for the key element, if there is one.
  ******************************************************************************/
 {
-    cssu::Reference < cssxc::sax::XReferenceResolvedBroadcaster >
-        xReferenceResolvedBroadcaster( m_xSAXEventKeeper, cssu::UNO_QUERY );
+    css::uno::Reference < css::xml::crypto::sax::XReferenceResolvedBroadcaster >
+        xReferenceResolvedBroadcaster( m_xSAXEventKeeper, css::uno::UNO_QUERY );
     xReferenceResolvedBroadcaster->removeReferenceResolvedListener(
         m_nIdOfTemplateEC,
-        static_cast<const cssu::Reference < cssxc::sax::XReferenceResolvedListener > >(static_cast<SecurityEngine *>(const_cast<SignatureEngine *>(this))));
+        static_cast<const css::uno::Reference < css::xml::crypto::sax::XReferenceResolvedListener > >(static_cast<SecurityEngine *>(const_cast<SignatureEngine *>(this))));
 
     m_xSAXEventKeeper->removeElementCollector(m_nIdOfTemplateEC);
 
-    std::vector< sal_Int32 >::const_iterator ii = m_vReferenceIds.begin();
-
-    for( ; ii != m_vReferenceIds.end() ; ++ii )
+    for( const auto& i : m_vReferenceIds )
     {
         xReferenceResolvedBroadcaster->removeReferenceResolvedListener(
-            *ii,
-            static_cast<const cssu::Reference < cssxc::sax::XReferenceResolvedListener > >(static_cast<SecurityEngine *>(const_cast<SignatureEngine *>(this))));
-        m_xSAXEventKeeper->removeElementCollector(*ii);
+            i,
+            static_cast<const css::uno::Reference < css::xml::crypto::sax::XReferenceResolvedListener > >(static_cast<SecurityEngine *>(const_cast<SignatureEngine *>(this))));
+        m_xSAXEventKeeper->removeElementCollector(i);
     }
 
     if (m_nIdOfKeyEC != 0 && m_nIdOfKeyEC != -1)
@@ -176,15 +169,15 @@ void SAL_CALL SignatureEngine::setReferenceId( sal_Int32 id )
 /* XUriBinding */
 void SAL_CALL SignatureEngine::setUriBinding(
     const OUString& uri,
-    const cssu::Reference< css::io::XInputStream >& aInputStream )
+    const css::uno::Reference< css::io::XInputStream >& aInputStream )
 {
     m_vUris.push_back(uri);
     m_vXInputStreams.push_back(aInputStream);
 }
 
-cssu::Reference< css::io::XInputStream > SAL_CALL SignatureEngine::getUriBinding( const OUString& uri )
+css::uno::Reference< css::io::XInputStream > SAL_CALL SignatureEngine::getUriBinding( const OUString& uri )
 {
-    cssu::Reference< css::io::XInputStream > xInputStream;
+    css::uno::Reference< css::io::XInputStream > xInputStream;
 
     int size = m_vUris.size();
 

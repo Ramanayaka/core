@@ -8,17 +8,14 @@
  */
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_HCOLUMN_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_HCOLUMN_HXX
-#include <connectivity/TColumnsHelper.hxx>
+
 #include <connectivity/sdbcx/VColumn.hxx>
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
         class Column;
-        typedef sdbcx::OColumn Column_BASE;
         typedef ::comphelper::OIdPropertyArrayUsageHelper<Column> Column_PROP;
-        class Column : public Column_BASE,
+        class Column : public sdbcx::OColumn,
                            public Column_PROP
         {
             OUString m_sAutoIncrement;
@@ -30,7 +27,7 @@ namespace connectivity
             virtual void construct() override;
             virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_HSQLDB_HCOLUMNS_HXX
 

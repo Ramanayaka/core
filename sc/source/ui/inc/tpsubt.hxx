@@ -21,10 +21,7 @@
 #define INCLUDED_SC_SOURCE_UI_INC_TPSUBT_HXX
 
 #include <sfx2/tabdlg.hxx>
-#include <svx/checklbx.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
-#include "global.hxx"
+#include <global.hxx>
 
 // +1 because one field is reserved for the "- none -" entry
 #define SC_MAXFIELDS    MAXCOLCOUNT+1
@@ -36,21 +33,16 @@ struct ScSubTotalParam;
 class ScTpSubTotalGroup : public SfxTabPage
 {
 protected:
-    ScTpSubTotalGroup( vcl::Window* pParent,
-                       const SfxItemSet& rArgSet );
+    ScTpSubTotalGroup(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rArgSet);
 
 public:
     virtual ~ScTpSubTotalGroup() override;
-    virtual void dispose() override;
 
     bool            DoReset         ( sal_uInt16            nGroupNo,
                                       const SfxItemSet& rArgSet  );
     bool            DoFillItemSet   ( sal_uInt16        nGroupNo,
                                       SfxItemSet&   rArgSet  );
 protected:
-    VclPtr<ListBox>        mpLbGroup;
-    VclPtr<SvxCheckListBox> mpLbColumns;
-    VclPtr<ListBox>         mpLbFunctions;
     const OUString    aStrNone;
     const OUString    aStrColumn;
 
@@ -60,7 +52,11 @@ protected:
     const sal_uInt16            nWhichSubTotals;
     const ScSubTotalParam&  rSubTotalData;
     SCCOL                   nFieldArr[SC_MAXFIELDS];
-    const sal_uInt16            nFieldCount;
+    sal_uInt16              nFieldCount;
+
+    std::unique_ptr<weld::ComboBox> mxLbGroup;
+    std::unique_ptr<weld::TreeView> mxLbColumns;
+    std::unique_ptr<weld::TreeView> mxLbFunctions;
 
 private:
     void            Init            ();
@@ -70,97 +66,83 @@ private:
     sal_uInt16          GetFieldSelPos  ( SCCOL nField );
 
     // Handler ------------------------
-    DECL_LINK( SelectListBoxHdl, ListBox&, void );
-    DECL_LINK( SelectTreeListBoxHdl, SvTreeListBox*, void );
-    DECL_LINK( CheckHdl, SvTreeListBox*, void );
-    void SelectHdl(void *);
+    DECL_LINK( SelectListBoxHdl, weld::ComboBox&, void );
+    DECL_LINK( SelectTreeListBoxHdl, weld::TreeView&, void );
+    DECL_LINK(CheckHdl, const weld::TreeView::iter_col&, void);
+    void SelectHdl(const weld::Widget*);
 };
 
-class ScTpSubTotalGroup1 : public ScTpSubTotalGroup
+class ScTpSubTotalGroup1 final : public ScTpSubTotalGroup
 {
-    friend class VclPtr<ScTpSubTotalGroup1>;
-protected:
-    ScTpSubTotalGroup1( vcl::Window*              pParent,
-                        const SfxItemSet&    rArgSet );
-
 public:
+    ScTpSubTotalGroup1( weld::Container* pPage, weld::DialogController* pController,
+                        const SfxItemSet&    rArgSet );
+    static std::unique_ptr<SfxTabPage> Create      ( weld::Container* pPage, weld::DialogController* pController,
+            const SfxItemSet*     rArgSet );
     virtual ~ScTpSubTotalGroup1() override;
 
-    static  VclPtr<SfxTabPage> Create      ( vcl::Window*               pParent,
-            const SfxItemSet*     rArgSet );
     virtual bool        FillItemSet ( SfxItemSet* rArgSet ) override;
     virtual void        Reset       ( const SfxItemSet* rArgSet ) override;
 };
 
-class ScTpSubTotalGroup2 : public ScTpSubTotalGroup
+class ScTpSubTotalGroup2 final : public ScTpSubTotalGroup
 {
-    friend class VclPtr<ScTpSubTotalGroup2>;
-protected:
-    ScTpSubTotalGroup2( vcl::Window*              pParent,
-                        const SfxItemSet&    rArgSet );
-
 public:
+    ScTpSubTotalGroup2( weld::Container* pPage, weld::DialogController* pController,
+                        const SfxItemSet&    rArgSet );
+    static std::unique_ptr<SfxTabPage> Create      ( weld::Container* pPage, weld::DialogController* pController,
+            const SfxItemSet*     rArgSet );
     virtual ~ScTpSubTotalGroup2() override;
 
-    static  VclPtr<SfxTabPage> Create      ( vcl::Window*               pParent,
-            const SfxItemSet*     rArgSet );
     virtual bool        FillItemSet ( SfxItemSet* rArgSet ) override;
     virtual void        Reset       ( const SfxItemSet* rArgSet ) override;
 };
 
-class ScTpSubTotalGroup3 : public ScTpSubTotalGroup
+class ScTpSubTotalGroup3 final : public ScTpSubTotalGroup
 {
-    friend class VclPtr<ScTpSubTotalGroup3>;
-protected:
-    ScTpSubTotalGroup3( vcl::Window*              pParent,
-                        const SfxItemSet&    rArgSet );
-
 public:
+    ScTpSubTotalGroup3( weld::Container* pPage, weld::DialogController* pController,
+                        const SfxItemSet&    rArgSet );
+    static  std::unique_ptr<SfxTabPage> Create      ( weld::Container* pPage, weld::DialogController* pController,
+            const SfxItemSet*     rArgSet );
     virtual ~ScTpSubTotalGroup3() override;
 
-    static  VclPtr<SfxTabPage> Create      ( vcl::Window*               pParent,
-            const SfxItemSet*     rArgSet );
     virtual bool        FillItemSet ( SfxItemSet* rArgSet ) override;
     virtual void        Reset       ( const SfxItemSet* rArgSet ) override;
 };
 
-class ScTpSubTotalOptions : public SfxTabPage
+class ScTpSubTotalOptions final : public SfxTabPage
 {
-    friend class VclPtr<ScTpSubTotalOptions>;
-protected:
-    ScTpSubTotalOptions( vcl::Window*             pParent,
-                         const SfxItemSet&  rArgSet );
-
 public:
-    virtual ~ScTpSubTotalOptions() override;
-    virtual void        dispose() override;
-    static VclPtr<SfxTabPage>  Create      ( vcl::Window*               pParent,
+    ScTpSubTotalOptions(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rArgSet);
+    static std::unique_ptr<SfxTabPage>  Create      ( weld::Container* pPage, weld::DialogController* pController,
             const SfxItemSet*     rArgSet );
+    virtual ~ScTpSubTotalOptions() override;
+
     virtual bool        FillItemSet ( SfxItemSet* rArgSet ) override;
     virtual void        Reset       ( const SfxItemSet* rArgSet ) override;
-
-private:
-    VclPtr<CheckBox>    pBtnPagebreak;
-    VclPtr<CheckBox>    pBtnCase;
-    VclPtr<CheckBox>    pBtnSort;
-    VclPtr<FixedText>   pFlSort;
-    VclPtr<RadioButton> pBtnAscending;
-    VclPtr<RadioButton> pBtnDescending;
-    VclPtr<CheckBox>    pBtnFormats;
-    VclPtr<CheckBox>    pBtnUserDef;
-    VclPtr<ListBox>     pLbUserDef;
-
-    ScViewData*             pViewData;
-    ScDocument*             pDoc;
-    const sal_uInt16            nWhichSubTotals;
-    const ScSubTotalParam&  rSubTotalData;
 
 private:
     void Init                   ();
     void FillUserSortListBox    ();
 
     // Handler ------------------------
-    DECL_LINK( CheckHdl, Button*, void );
+    DECL_LINK(CheckHdl, weld::Button&, void);
+
+    ScViewData*             pViewData;
+    ScDocument*             pDoc;
+    const sal_uInt16        nWhichSubTotals;
+    const ScSubTotalParam&  rSubTotalData;
+
+    std::unique_ptr<weld::CheckButton> m_xBtnPagebreak;
+    std::unique_ptr<weld::CheckButton> m_xBtnCase;
+    std::unique_ptr<weld::CheckButton> m_xBtnSort;
+    std::unique_ptr<weld::Label> m_xFlSort;
+    std::unique_ptr<weld::RadioButton> m_xBtnAscending;
+    std::unique_ptr<weld::RadioButton> m_xBtnDescending;
+    std::unique_ptr<weld::CheckButton> m_xBtnFormats;
+    std::unique_ptr<weld::CheckButton> m_xBtnUserDef;
+    std::unique_ptr<weld::ComboBox> m_xLbUserDef;
 };
 
 #endif // INCLUDED_SC_SOURCE_UI_INC_TPSUBT_HXX

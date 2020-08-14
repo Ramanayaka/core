@@ -23,31 +23,31 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/embed/XEmbedPersist.hpp>
 #include <com/sun/star/embed/NoVisualAreaSizeException.hpp>
 #include <com/sun/star/embed/EmbedStates.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
+#include <osl/diagnose.h>
 #include <comphelper/classids.hxx>
-#include <sfx2/objsh.hxx>
-#include <sfx2/docfac.hxx>
 #include <sfx2/docfilt.hxx>
-#include <sfx2/docfile.hxx>
 #include <sfx2/fcontnr.hxx>
 #include <sot/formats.hxx>
 #include <sot/storage.hxx>
+#include <comphelper/fileformat.h>
 #include <comphelper/processfactory.hxx>
 #include <unotools/streamwrap.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <svtools/embedhlp.hxx>
 #include <filter/msfilter/msdffimp.hxx>
 
-#include "filter/msfilter/msoleexp.hxx"
+#include <filter/msfilter/msoleexp.hxx>
 
 using namespace ::com::sun::star;
 
-SvGlobalName GetEmbeddedVersion( const SvGlobalName& aAppName )
+static SvGlobalName GetEmbeddedVersion( const SvGlobalName& aAppName )
 {
     if ( aAppName == SvGlobalName( SO3_SM_CLASSID_60 ) )
             return SvGlobalName( SO3_SM_OLE_EMBED_CLASSID_8 );
@@ -65,24 +65,24 @@ SvGlobalName GetEmbeddedVersion( const SvGlobalName& aAppName )
     return SvGlobalName();
 }
 
-OUString GetStorageType( const SvGlobalName& aEmbName )
+static OUString GetStorageType( const SvGlobalName& aEmbName )
 {
     if ( aEmbName == SvGlobalName( SO3_SM_OLE_EMBED_CLASSID_8 ) )
-        return OUString( "LibreOffice.MathDocument.1" );
+        return "LibreOffice.MathDocument.1";
     else if ( aEmbName == SvGlobalName( SO3_SW_OLE_EMBED_CLASSID_8 ) )
-        return OUString( "LibreOffice.WriterDocument.1" );
+        return "LibreOffice.WriterDocument.1";
     else if ( aEmbName == SvGlobalName( SO3_SC_OLE_EMBED_CLASSID_8 ) )
-        return OUString( "LibreOffice.CalcDocument.1" );
+        return "LibreOffice.CalcDocument.1";
     else if ( aEmbName == SvGlobalName( SO3_SDRAW_OLE_EMBED_CLASSID_8 ) )
-        return OUString( "LibreOffice.DrawDocument.1" );
+        return "LibreOffice.DrawDocument.1";
     else if ( aEmbName == SvGlobalName( SO3_SIMPRESS_OLE_EMBED_CLASSID_8 ) )
-        return OUString( "LibreOffice.ImpressDocument.1" );
+        return "LibreOffice.ImpressDocument.1";
     else if ( aEmbName == SvGlobalName( SO3_SCH_OLE_EMBED_CLASSID_8 ) )
-        return OUString("LibreOffice.ChartDocument.1");
+        return "LibreOffice.ChartDocument.1";
     return OUString();
 }
 
-bool UseOldMSExport()
+static bool UseOldMSExport()
 {
     uno::Reference< lang::XMultiServiceFactory > xProvider(
         configuration::theDefaultProvider::get(
@@ -118,7 +118,7 @@ void SvxMSExportOLEObjects::ExportOLEObject( const css::uno::Reference < css::em
     ExportOLEObject( aObj, rDestStg );
 }
 
-void SvxMSExportOLEObjects::ExportOLEObject( svt::EmbeddedObjectRef& rObj, SotStorage& rDestStg )
+void SvxMSExportOLEObjects::ExportOLEObject( svt::EmbeddedObjectRef const & rObj, SotStorage& rDestStg )
 {
     SvGlobalName aOwnGlobalName;
     SvGlobalName aObjName( rObj->getClassID() );
@@ -134,7 +134,7 @@ void SvxMSExportOLEObjects::ExportOLEObject( svt::EmbeddedObjectRef& rObj, SotSt
                 sal_uInt8 b8, b9, b10, b11, b12, b13, b14, b15;
             }
             aGlNmIds[4];
-        } aArr[] = {
+        } const aArr[] = {
             { OLE_STARMATH_2_MATHTYPE, "MathType 3.x",
                 {{SO3_SM_CLASSID_60}, {SO3_SM_CLASSID_50},
                  {SO3_SM_CLASSID_40}, {SO3_SM_CLASSID_30 }}},
@@ -152,7 +152,7 @@ void SvxMSExportOLEObjects::ExportOLEObject( svt::EmbeddedObjectRef& rObj, SotSt
                  {SO3_SCH_CLASSID_40}, {SO3_SCH_CLASSID_30 }}},
             { 0, "",
                 {{SO3_SDRAW_CLASSID_60}, {SO3_SDRAW_CLASSID_50},    // SJ: !!!! SO3_SDRAW_CLASSID is only available up from
-                 {SO3_SDRAW_CLASSID_60}, {SO3_SDRAW_CLASSID_50 }}}, // ver 5.0, it is purpose to have double entrys here.
+                 {SO3_SDRAW_CLASSID_60}, {SO3_SDRAW_CLASSID_50 }}}, // ver 5.0, it is purpose to have double entries here.
 
             { 0xffff,nullptr,
                 {{SO3_SDRAW_CLASSID_60}, {SO3_SDRAW_CLASSID_50},
@@ -197,11 +197,11 @@ void SvxMSExportOLEObjects::ExportOLEObject( svt::EmbeddedObjectRef& rObj, SotSt
             aSeq[1].Name = "FilterName";
             aSeq[1].Value <<= pExpFilter->GetName();
             uno::Reference < frame::XStorable > xStor( rObj->getComponent(), uno::UNO_QUERY );
-        try
-        {
-            xStor->storeToURL( "private:stream", aSeq );
-        }
-        catch( const uno::Exception& ) {} // #TODO really handle exceptions - interactionalhandler etc. ?
+            try
+            {
+                xStor->storeToURL( "private:stream", aSeq );
+            }
+            catch( const uno::Exception& ) {} // #TODO really handle exceptions - interactionalhandler etc. ?
 
             tools::SvRef<SotStorage> xOLEStor = new SotStorage( pStream, true );
             xOLEStor->CopyTo( &rDestStg );
@@ -267,7 +267,7 @@ void SvxMSExportOLEObjects::ExportOLEObject( svt::EmbeddedObjectRef& rObj, SotSt
                         sal_Int32 nVal = pRect[ind];
                         for ( int nByte = 0; nByte < 4; nByte++ )
                         {
-                            aWriteSet[ind*4+nByte] = (sal_Int8) nVal % 0x100;
+                            aWriteSet[ind*4+nByte] = static_cast<sal_Int8>(nVal) % 0x100;
                             nVal /= 0x100;
                         }
                     }

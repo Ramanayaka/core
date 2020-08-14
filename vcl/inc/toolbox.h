@@ -21,7 +21,7 @@
 #define INCLUDED_VCL_INC_TOOLBOX_H
 
 #include <vcl/toolbox.hxx>
-#include <vcl/controllayout.hxx>
+#include <vcl/toolkit/controllayout.hxx>
 
 #include <vector>
 
@@ -35,6 +35,7 @@ namespace vcl { class Window; }
 struct ImplToolItem
 {
     VclPtr<vcl::Window> mpWindow; //don't dispose mpWindow - we get copied around
+    bool                mbNonInteractiveWindow;
     void*               mpUserData;
     Image               maImage;
     long                mnImageAngle;
@@ -75,7 +76,7 @@ struct ImplToolItem
                                       const OUString& rTxt,
                                       ToolBoxItemBits nItemBits );
 
-    // returns the size of a item, taking toolbox orientation into account
+    // returns the size of an item, taking toolbox orientation into account
     // the default size is the precomputed size for standard items
     // ie those that are just ordinary buttons (no windows or text etc.)
     // bCheckMaxWidth indicates that item windows must not exceed maxWidth in which case they will be painted as buttons
@@ -111,13 +112,13 @@ struct ToolBoxLayoutData : public ControlLayoutData
 
 struct ImplToolBoxPrivateData
 {
-    vcl::ToolBoxLayoutData*         m_pLayoutData;
+    std::unique_ptr<vcl::ToolBoxLayoutData> m_pLayoutData;
     ToolBox::ImplToolItems          m_aItems;
 
     ImplToolBoxPrivateData();
     ~ImplToolBoxPrivateData();
 
-    void ImplClearLayoutData() { delete m_pLayoutData; m_pLayoutData = nullptr; }
+    void ImplClearLayoutData() { m_pLayoutData.reset(); }
 
     // called when dropdown items are clicked
     Link<ToolBox *, void> maDropdownClickHdl;
@@ -128,9 +129,7 @@ struct ImplToolBoxPrivateData
 
     // the optional custom menu
     VclPtr<PopupMenu>   mpMenu;
-    tools::Rectangle       maMenuRect;
     ToolBoxMenuType maMenuType;
-    ImplSVEvent *   mnEventId;
 
     // called when menu button is clicked and before the popup menu is executed
     Link<ToolBox *, void> maMenuButtonHdl;
@@ -148,7 +147,7 @@ struct ImplToolBoxPrivateData
             mbKeyInputDisabled:1,   // no KEY input if all items disabled, closing/docking will be allowed though
             mbIsPaintLocked:1,      // don't allow paints
             mbMenubuttonSelected:1, // menu button is highlighted
-            mbPageScroll:1,         // determines if we scroll a page at a time
+            mbMenubuttonWasLastSelected:1, // menu button was highlighted when focus was lost
             mbNativeButtons:1,      // system supports native toolbar buttons
             mbWillUsePopupMode:1,   // this toolbox will be opened in popup mode
             mbDropDownByKeyboard:1; // tells whether a dropdown was started by key input

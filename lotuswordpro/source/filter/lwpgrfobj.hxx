@@ -62,10 +62,9 @@
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPGRFOBJ_HXX
 
 #include <sal/types.h>
+#include <config_lgpl.h>
 
 #include "lwpoleobject.hxx"
-#include "lwpheader.hxx"
-#include "xfilter/xfrect.hxx"
 
 struct ImageProcessingData
 {
@@ -77,13 +76,13 @@ struct ImageProcessingData
     bool bInvertImage;
 
     ImageProcessingData()
+      : nBrightness(50),
+        nContrast(50),
+        nEdgeEnchancement(0),
+        nSmoothing(0),
+        bAutoContrast(false),
+        bInvertImage(false)
     {
-        nBrightness = 50;
-        nContrast = 50;
-        nEdgeEnchancement = 0;
-        nSmoothing = 0;
-        bAutoContrast = false;
-        bInvertImage= false;
     }
 };
 
@@ -91,11 +90,11 @@ class XFFrame;
 class LwpGraphicObject : public LwpGraphicOleObject
 {
 public:
-    LwpGraphicObject(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpGraphicObject(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpGraphicObject() override;
 private:
-    unsigned char m_sDataFormat[AFID_MAX_FILE_FORMAT_SIZE];
-    unsigned char m_sServerContextFormat[AFID_MAX_CONTEXT_FORMAT_SIZE];
+    unsigned char m_sDataFormat[AFID_MAX_FILE_FORMAT_SIZE] = {};
+    unsigned char m_sServerContextFormat[AFID_MAX_CONTEXT_FORMAT_SIZE] = {};
     sal_Int32 m_nCachedBaseLine;
     sal_Int16 m_bIsLinked;
     AFID_CACHE m_Cache;
@@ -107,7 +106,7 @@ private:
 
     void XFConvertEquation(XFContentContainer* pCont);
 
-    bool IsGrafFormatValid();
+    bool IsGrafFormatValid() const;
     std::vector< rtl::Reference<XFFrame> > m_vXFDrawObjects;
 
 public:
@@ -117,14 +116,14 @@ public:
 
     void CreateDrawObjects();
     void CreateGrafObject();
-    static void GetBentoNamebyID(LwpObjectID& rMyID, std::string& rName);
-    sal_uInt32 GetRawGrafData(sal_uInt8*& pGrafData);
-    sal_uInt32 GetGrafData(sal_uInt8*& pGrafData);
+    static void GetBentoNamebyID(LwpObjectID const & rMyID, std::string& rName);
+    std::vector<sal_uInt8> GetRawGrafData();
+    sal_uInt32 GetGrafData(std::unique_ptr<sal_uInt8[]>& pGrafData);
     void GetGrafOrgSize(long& rWidth, long& rHeight) { rWidth = m_Cache.Width; rHeight = m_Cache.Height; }
     void GetGrafOrgSize(double& rWidth, double& rHeight) override;
 
-    sal_Int16 IsLinked(){ return m_bIsLinked;}
-    const OUString& GetLinkedFilePath(){ return m_LinkedFilePath;}
+    sal_Int16 IsLinked() const { return m_bIsLinked;}
+    const OUString& GetLinkedFilePath() const { return m_LinkedFilePath;}
 };
 
 #endif

@@ -20,16 +20,14 @@
 #include <com/sun/star/awt/DeviceCapability.hpp>
 
 #include <com/sun/star/util/MeasureUnit.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 
 #include <toolkit/awt/vclxdevice.hxx>
 #include <toolkit/awt/vclxfont.hxx>
-#include <toolkit/awt/vclxbitmap.hxx>
+#include <awt/vclxbitmap.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <toolkit/helper/macros.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
-
-#include <rtl/uuid.h>
 
 #include <vcl/svapp.hxx>
 #include <vcl/outdev.hxx>
@@ -37,10 +35,8 @@
 #include <vcl/print.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/bitmapex.hxx>
-#include <vcl/font.hxx>
+#include <vcl/metric.hxx>
 
-
-//  class VCLXDevice
 
 VCLXDevice::VCLXDevice()
 {
@@ -53,26 +49,8 @@ VCLXDevice::~VCLXDevice()
     mpOutputDevice.reset();
 }
 
-// css::uno::XInterface
-css::uno::Any VCLXDevice::queryInterface( const css::uno::Type & rType )
-{
-    css::uno::Any aRet = ::cppu::queryInterface( rType,
-                                        (static_cast< css::awt::XDevice* >(this)),
-                                        (static_cast< css::lang::XUnoTunnel* >(this)),
-                                        (static_cast< css::lang::XTypeProvider* >(this)),
-                                        (static_cast< css::awt::XUnitConversion* >(this)) );
-    return (aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType ));
-}
-
 // css::lang::XUnoTunnel
-IMPL_XUNOTUNNEL( VCLXDevice )
-
-// css::lang::XTypeProvider
-IMPL_XTYPEPROVIDER_START( VCLXDevice )
-    cppu::UnoType<css::awt::XDevice>::get(),
-    cppu::UnoType<css::awt::XUnitConversion>::get()
-IMPL_XTYPEPROVIDER_END
-
+UNO3_GETIMPLEMENTATION_IMPL( VCLXDevice );
 
 // css::awt::XDevice,
 css::uno::Reference< css::awt::XGraphics > VCLXDevice::createGraphics(  )
@@ -194,10 +172,10 @@ css::uno::Reference< css::awt::XBitmap > VCLXDevice::createBitmap( sal_Int32 nX,
     css::uno::Reference< css::awt::XBitmap >  xBmp;
     if( mpOutputDevice )
     {
-        Bitmap aBmp = mpOutputDevice->GetBitmap( Point( nX, nY ), Size( nWidth, nHeight ) );
+        BitmapEx aBmp = mpOutputDevice->GetBitmapEx( Point( nX, nY ), Size( nWidth, nHeight ) );
 
         VCLXBitmap* pBmp = new VCLXBitmap;
-        pBmp->SetBitmap( BitmapEx( aBmp ) );
+        pBmp->SetBitmap( aBmp );
         xBmp = pBmp;
     }
     return xBmp;

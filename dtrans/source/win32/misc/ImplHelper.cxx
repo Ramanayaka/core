@@ -20,16 +20,14 @@
 #include <osl/diagnose.h>
 #include "ImplHelper.hxx"
 #include <rtl/tencinfo.h>
+#include <o3tl/char16_t2wchar_t.hxx>
 #include <string.h>
 #include <memory>
 
-#if defined _MSC_VER
-#pragma warning(push,1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 
 #include <vector>
 
@@ -40,7 +38,7 @@
 // returns a windows codepage appropriate to the
 // given mime charset parameter value
 
-sal_uInt32 SAL_CALL getWinCPFromMimeCharset( const OUString& charset )
+sal_uInt32 getWinCPFromMimeCharset( const OUString& charset )
 {
     sal_uInt32 winCP = GetACP( );
 
@@ -70,14 +68,14 @@ sal_uInt32 SAL_CALL getWinCPFromMimeCharset( const OUString& charset )
 // returns a windows codepage appropriate to the
 // given locale and locale type
 
-OUString SAL_CALL getWinCPFromLocaleId( LCID lcid, LCTYPE lctype )
+OUString getWinCPFromLocaleId( LCID lcid, LCTYPE lctype )
 {
     OSL_ASSERT( IsValidLocale( lcid, LCID_SUPPORTED ) );
 
-    // we set an default value
+    // we set a default value
     OUString winCP;
 
-    // set an default value
+    // set a default value
     if ( LOCALE_IDEFAULTCODEPAGE == lctype )
     {
         winCP = OUString::number( static_cast<sal_Int32>(GetOEMCP( )) );
@@ -89,27 +87,23 @@ OUString SAL_CALL getWinCPFromLocaleId( LCID lcid, LCTYPE lctype )
     else
         OSL_ASSERT( false );
 
-    // we use the GetLocaleInfoA because don't want to provide
-    // a unicode wrapper function for Win9x in sal/systools
-    char buff[6];
-    sal_Int32 nResult = GetLocaleInfoA(
-        lcid, lctype | LOCALE_USE_CP_ACP, buff, sizeof( buff ) );
+    // First, get required buffer size, in characters
+    int nResult = GetLocaleInfoW(
+        lcid, lctype, nullptr, 0 );
 
     OSL_ASSERT( nResult );
 
     if ( nResult )
     {
-        sal_Int32 len = MultiByteToWideChar(
-            CP_ACP, 0, buff, -1, nullptr, 0 );
+        std::unique_ptr<wchar_t[]> buff( new wchar_t[nResult] );
+        // Now get the actual data
+        nResult = GetLocaleInfoW( lcid, lctype, buff.get(), nResult );
 
-        OSL_ASSERT( len > 0 );
+        OSL_ASSERT(nResult);
 
-        std::vector< sal_Unicode > lpwchBuff(len);
+        if (nResult)
+            winCP = o3tl::toU( buff.get() );
 
-        len = MultiByteToWideChar(
-            CP_ACP, 0, buff, -1, reinterpret_cast<LPWSTR>(&lpwchBuff[0]), len );
-
-        winCP = OUString( &lpwchBuff[0], (len - 1) );
     }
 
     return winCP;
@@ -119,7 +113,7 @@ OUString SAL_CALL getWinCPFromLocaleId( LCID lcid, LCTYPE lctype )
 // to the given codepage, optional a prefix can be
 // given, e.g. "windows-" or "cp"
 
-OUString SAL_CALL getMimeCharsetFromWinCP( sal_uInt32 cp, const OUString& aPrefix )
+OUString getMimeCharsetFromWinCP( sal_uInt32 cp, const OUString& aPrefix )
 {
     return aPrefix + cptostr( cp );
 }
@@ -128,7 +122,7 @@ OUString SAL_CALL getMimeCharsetFromWinCP( sal_uInt32 cp, const OUString& aPrefi
 // to the given locale id and locale type, optional a
 // prefix can be given, e.g. "windows-" or "cp"
 
-OUString SAL_CALL getMimeCharsetFromLocaleId( LCID lcid, LCTYPE lctype, const OUString& aPrefix  )
+OUString getMimeCharsetFromLocaleId( LCID lcid, LCTYPE lctype, const OUString& aPrefix  )
 {
     OUString charset = getWinCPFromLocaleId( lcid, lctype );
     return aPrefix + charset;
@@ -136,7 +130,7 @@ OUString SAL_CALL getMimeCharsetFromLocaleId( LCID lcid, LCTYPE lctype, const OU
 
 // IsOEMCP
 
-bool SAL_CALL IsOEMCP( sal_uInt32 codepage )
+bool IsOEMCP( sal_uInt32 codepage )
 {
     OSL_ASSERT( IsValidCodePage( codepage ) );
 
@@ -154,7 +148,7 @@ bool SAL_CALL IsOEMCP( sal_uInt32 codepage )
 
 // converts a codepage into its string representation
 
-OUString SAL_CALL cptostr( sal_uInt32 codepage )
+OUString cptostr( sal_uInt32 codepage )
 {
     OSL_ASSERT( IsValidCodePage( codepage ) );
 
@@ -169,7 +163,7 @@ OUString SAL_CALL cptostr( sal_uInt32 codepage )
 //
 // Return Value:
 //    SCODE  -  S_OK if successful
-void SAL_CALL DeleteTargetDevice( DVTARGETDEVICE* ptd )
+void DeleteTargetDevice( DVTARGETDEVICE* ptd )
 {
     __try
     {
@@ -196,7 +190,7 @@ void SAL_CALL DeleteTargetDevice( DVTARGETDEVICE* ptd )
 //    pointer to allocated copy of ptdSrc
 //    if ptdSrc==NULL then returns NULL is returned.
 //    if ptdSrc!=NULL and memory allocation fails, then NULL is returned
-DVTARGETDEVICE* SAL_CALL CopyTargetDevice( DVTARGETDEVICE* ptdSrc )
+DVTARGETDEVICE* CopyTargetDevice( DVTARGETDEVICE* ptdSrc )
 {
     DVTARGETDEVICE* ptdDest = nullptr;
 
@@ -238,7 +232,7 @@ DVTARGETDEVICE* SAL_CALL CopyTargetDevice( DVTARGETDEVICE* ptdSrc )
 //  returns TRUE if copy was successful;
 //  returns FALSE if not successful, e.g. one or both of the pointers
 //  were invalid or the pointers were equal
-bool SAL_CALL CopyFormatEtc( LPFORMATETC petcDest, LPFORMATETC petcSrc )
+bool CopyFormatEtc( LPFORMATETC petcDest, LPFORMATETC petcSrc )
 {
     bool bRet = false;
 
@@ -274,7 +268,7 @@ bool SAL_CALL CopyFormatEtc( LPFORMATETC petcDest, LPFORMATETC petcSrc )
 // -1 for partial match (which is defined to mean the left is a subset
 //    of the right: fewer aspects, null target device, fewer medium).
 
-sal_Int32 SAL_CALL CompareFormatEtc( const FORMATETC* pFetcLhs, const FORMATETC* pFetcRhs )
+sal_Int32 CompareFormatEtc( const FORMATETC* pFetcLhs, const FORMATETC* pFetcRhs )
 {
     sal_Int32 nMatch = FORMATETC_EXACT_MATCH;
 
@@ -326,7 +320,7 @@ sal_Int32 SAL_CALL CompareFormatEtc( const FORMATETC* pFetcLhs, const FORMATETC*
     return nMatch;
 }
 
-bool SAL_CALL CompareTargetDevice( DVTARGETDEVICE* ptdLeft, DVTARGETDEVICE* ptdRight )
+bool CompareTargetDevice( DVTARGETDEVICE* ptdLeft, DVTARGETDEVICE const * ptdRight )
 {
     bool bRet = false;
 

@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_HTMLPARS_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_HTMLPARS_HXX
 
-#include <list>
 #include <memory>
 #include <map>
 #include <stack>
@@ -28,7 +27,7 @@
 #include <vector>
 #include <o3tl/sorted_vector.hxx>
 
-#include "rangelst.hxx"
+#include <rangelst.hxx>
 #include "eeparser.hxx"
 
 const sal_uInt32 SC_HTML_FONTSIZES = 7;        // like export, HTML options
@@ -47,7 +46,7 @@ class ScHTMLTable;
  */
 class ScHTMLStyles
 {
-    typedef std::unordered_map<OUString, OUString, OUStringHash> PropsType;
+    typedef std::unordered_map<OUString, OUString> PropsType;
     typedef ::std::map<OUString, std::unique_ptr<PropsType>> NamePropsType;
     typedef ::std::map<OUString, std::unique_ptr<NamePropsType>> ElemsType;
 
@@ -99,7 +98,7 @@ typedef o3tl::sorted_vector<sal_uLong> ScHTMLColOffset;
 struct ScHTMLTableStackEntry
 {
     ScRangeListRef      xLockedList;
-    ScEEParseEntry*     pCellEntry;
+    std::shared_ptr<ScEEParseEntry> xCellEntry;
     ScHTMLColOffset*    pLocalColOffset;
     sal_uLong           nFirstTableCell;
     SCROW               nRowCnt;
@@ -110,14 +109,14 @@ struct ScHTMLTableStackEntry
     sal_uInt16          nColOffset;
     sal_uInt16          nColOffsetStart;
     bool                bFirstRow;
-                        ScHTMLTableStackEntry( ScEEParseEntry* pE,
+                        ScHTMLTableStackEntry( const std::shared_ptr<ScEEParseEntry>& rE,
                                 const ScRangeListRef& rL, ScHTMLColOffset* pTO,
                                 sal_uLong nFTC,
                                 SCROW nRow,
                                 SCCOL nStart, SCCOL nMax, sal_uInt16 nTab,
                                 sal_uInt16 nTW, sal_uInt16 nCO, sal_uInt16 nCOS,
                                 bool bFR )
-                            : xLockedList( rL ), pCellEntry( pE ),
+                            : xLockedList( rL ), xCellEntry(rE),
                             pLocalColOffset( pTO ),
                             nFirstTableCell( nFTC ),
                             nRowCnt( nRow ),
@@ -153,11 +152,11 @@ class ScHTMLLayoutParser : public ScHTMLParser
 private:
     Size                aPageSize;
     OUString            aBaseURL;
-    ::std::stack< ScHTMLTableStackEntry* >
+    ::std::stack< std::unique_ptr<ScHTMLTableStackEntry> >
                         aTableStack;
     OUString            aString;
     ScRangeListRef      xLockedList;        // per table
-    OuterMap*           pTables;
+    std::unique_ptr<OuterMap> pTables;
     ScHTMLColOffset     maColOffset;
     ScHTMLColOffset*    pLocalColOffset;    // per table
     sal_uLong           nFirstTableCell;    // per table
@@ -170,19 +169,19 @@ private:
     sal_uInt16          nColOffset;         // current, pixel
     sal_uInt16          nColOffsetStart;    // start value per table, in pixel
     sal_uInt16          nOffsetTolerance;   // for use with SeekOffset and related
+    bool                bFirstRow;          // per table, whether in first row
     bool                bTabInTabCell:1;
-    bool                bFirstRow:1;        // per table, whether in first row
     bool                bInCell:1;
     bool                bInTitle:1;
 
     DECL_LINK( HTMLImportHdl, HtmlImportInfo&, void );
-    void                NewActEntry( ScEEParseEntry* );
+    void                NewActEntry( const ScEEParseEntry* );
     static void         EntryEnd( ScEEParseEntry*, const ESelection& );
     void                ProcToken( HtmlImportInfo* );
-    void                CloseEntry( HtmlImportInfo* );
-    void                NextRow(  HtmlImportInfo*  );
+    void                CloseEntry( const HtmlImportInfo* );
+    void                NextRow(  const HtmlImportInfo*  );
     void                SkipLocked( ScEEParseEntry*, bool bJoin = true );
-    static bool         SeekOffset( ScHTMLColOffset*, sal_uInt16 nOffset,
+    static bool         SeekOffset( const ScHTMLColOffset*, sal_uInt16 nOffset,
                                     SCCOL* pCol, sal_uInt16 nOffsetTol );
     static void         MakeCol( ScHTMLColOffset*, sal_uInt16& nOffset,
                                 sal_uInt16& nWidth, sal_uInt16 nOffsetTol,
@@ -193,20 +192,20 @@ private:
     static void         ModifyOffset( ScHTMLColOffset*, sal_uInt16& nOldOffset,
                                     sal_uInt16& nNewOffset, sal_uInt16 nOffsetTol );
     void                Colonize( ScEEParseEntry* );
-    sal_uInt16          GetWidth( ScEEParseEntry* );
+    sal_uInt16          GetWidth( const ScEEParseEntry* );
     void                SetWidths();
     void                Adjust();
 
     sal_uInt16          GetWidthPixel( const HTMLOption& );
-    bool                IsAtBeginningOfText( HtmlImportInfo* );
+    bool                IsAtBeginningOfText( const HtmlImportInfo* );
 
     void                TableOn( HtmlImportInfo* );
     void                ColOn( HtmlImportInfo* );
-    void                TableRowOn( HtmlImportInfo* );
-    void                TableRowOff( HtmlImportInfo* );
+    void                TableRowOn( const HtmlImportInfo* );
+    void                TableRowOff( const HtmlImportInfo* );
     void                TableDataOn( HtmlImportInfo* );
-    void                TableDataOff( HtmlImportInfo* );
-    void                TableOff( HtmlImportInfo* );
+    void                TableDataOff( const HtmlImportInfo* );
+    void                TableOff( const HtmlImportInfo* );
     void                Image( HtmlImportInfo* );
     void                AnchorOn( HtmlImportInfo* );
     void                FontOn( HtmlImportInfo* );
@@ -285,7 +284,7 @@ public:
     /** Returns true, if the entry represents a table. */
     ScHTMLTableId GetTableId() const { return nTab; }
 
-    /** Sets or cleares the import always state. */
+    /** Sets or clears the import always state. */
     void         SetImportAlways() { mbImportAlways = true; }
     /** Sets start point of the entry selection to the start of the import info object. */
     void                AdjustStart( const HtmlImportInfo& rInfo );
@@ -428,7 +427,7 @@ protected:
     explicit            ScHTMLTable(
                             SfxItemPool& rPool,
                             EditEngine& rEditEngine,
-                            ::std::vector< ScEEParseEntry* >& rEEParseList,
+                            std::vector<std::shared_ptr<ScEEParseEntry>>& rEEParseList,
                             ScHTMLTableId& rnUnusedId, ScHTMLParser* pParser );
 
     /** Fills all empty cells in this and nested tables with dummy parse entries. */
@@ -443,8 +442,7 @@ private:
     typedef ::std::unique_ptr< ScHTMLTableMap >         ScHTMLTableMapPtr;
     typedef ::std::unique_ptr< SfxItemSet >             SfxItemSetPtr;
     typedef ::std::vector< SCCOLROW >                   ScSizeVec;
-    typedef ::std::list< ScHTMLEntry* >                 ScHTMLEntryList;
-    typedef ::std::map< ScHTMLPos, ScHTMLEntryList >    ScHTMLEntryMap;
+    typedef ::std::vector< ScHTMLEntry* >               ScHTMLEntryVector;
     typedef ::std::unique_ptr< ScHTMLEntry >            ScHTMLEntryPtr;
 
     /** Returns true, if the current cell does not contain an entry yet. */
@@ -465,11 +463,11 @@ private:
     void                InsertLeadingEmptyLine();
 
     /** Pushes the passed entry into the list of the current cell. */
-    void                ImplPushEntryToList( ScHTMLEntryList& rEntryList, ScHTMLEntryPtr& rxEntry );
+    void                ImplPushEntryToVector( ScHTMLEntryVector& rEntryVector, ScHTMLEntryPtr& rxEntry );
     /** Tries to insert the entry into the current cell.
         @descr  If insertion is not possible (i.e., currently no cell open), the
         entry will be inserted into the parent table.
-        @return  true = Entry as been pushed into the current cell; false = Entry dropped. */
+        @return  true = Entry has been pushed into the current cell; false = Entry dropped. */
     bool                PushEntry( ScHTMLEntryPtr& rxEntry );
     /** Puts the current entry into the entry list, if it is not empty.
         @param rInfo  The import info struct containing the end position of the current entry.
@@ -527,9 +525,9 @@ private:
     ScRangeList         maVMergedCells;     /// List of all vertically merged cells.
     ScRangeList         maUsedCells;        /// List of all used cells.
     EditEngine&         mrEditEngine;       /// Edit engine (from ScEEParser).
-    ::std::vector< ScEEParseEntry* >& mrEEParseList;      /// List that owns the parse entries (from ScEEParser).
-    ScHTMLEntryMap      maEntryMap;         /// List of entries for each cell.
-    ScHTMLEntryList*    mpCurrEntryList;    /// Current entry list from map for faster access.
+    std::vector<std::shared_ptr<ScEEParseEntry>>& mrEEParseList;      /// List that owns the parse entries (from ScEEParser).
+    std::map< ScHTMLPos, ScHTMLEntryVector >      maEntryMap;         /// List of entries for each cell.
+    ScHTMLEntryVector*  mpCurrEntryVector;  /// Current entry vector from map for faster access.
     ScHTMLEntryPtr      mxCurrEntry;        /// Working entry, not yet inserted in a list.
     ScSizeVec           maCumSizes[ 2 ];    /// Cumulated cell counts for each HTML table column/row.
     ScHTMLSize          maSize;             /// Size of the table.
@@ -550,7 +548,7 @@ public:
     explicit            ScHTMLGlobalTable(
                             SfxItemPool& rPool,
                             EditEngine& rEditEngine,
-                            ::std::vector< ScEEParseEntry* >& rEEParseList,
+                            std::vector<std::shared_ptr<ScEEParseEntry>>& rEEParseList,
                             ScHTMLTableId& rnUnusedId, ScHTMLParser* pParser );
 
     virtual             ~ScHTMLGlobalTable() override;
@@ -586,7 +584,7 @@ private:
     /** Processes the <meta> tag. */
     void                MetaOn( const HtmlImportInfo& rInfo );
     /** Opens the title of the HTML document (<title> tag). */
-    void                TitleOn( const HtmlImportInfo& rInfo );
+    void                TitleOn();
     /** Closes the title of the HTML document (</title> tag). */
     void                TitleOff( const HtmlImportInfo& rInfo );
 
@@ -602,7 +600,7 @@ private:
     /** Closes the current table, regardless on opening tag. */
     void                CloseTable( const HtmlImportInfo& rInfo );
 
-    void                ParseStyle(const OUString& rStrm);
+    static void         ParseStyle(const OUString& rStrm);
 
     DECL_LINK( HTMLImportHdl, HtmlImportInfo&, void );
 

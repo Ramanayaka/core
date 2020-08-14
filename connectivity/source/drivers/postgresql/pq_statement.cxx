@@ -34,24 +34,19 @@
  *
  ************************************************************************/
 
+#include <sal/log.hxx>
 #include "pq_statement.hxx"
 #include "pq_fakedupdateableresultset.hxx"
 #include "pq_updateableresultset.hxx"
 #include "pq_tools.hxx"
 #include "pq_statics.hxx"
 
-#include <osl/thread.h>
 #include <osl/time.h>
 
 #include <rtl/ustrbuf.hxx>
 #include <rtl/strbuf.hxx>
 
-#include <cppuhelper/typeprovider.hxx>
-#include <cppuhelper/queryinterface.hxx>
-
 #include <comphelper/sequence.hxx>
-
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
@@ -67,15 +62,11 @@
 
 #include <string.h>
 
-using osl::Mutex;
 using osl::MutexGuard;
 
 
 using com::sun::star::uno::Any;
-using com::sun::star::uno::makeAny;
 using com::sun::star::uno::Type;
-using com::sun::star::uno::RuntimeException;
-using com::sun::star::uno::Exception;
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::XInterface;
@@ -108,48 +99,38 @@ namespace pq_sdbc_driver
 {
 static ::cppu::IPropertyArrayHelper & getStatementPropertyArrayHelper()
 {
-    static ::cppu::IPropertyArrayHelper *pArrayHelper;
-    if( ! pArrayHelper )
-    {
-        MutexGuard guard( Mutex::getGlobalMutex() );
-        if( ! pArrayHelper )
-        {
-            static Property aTable[] =
-                {
-                    Property(
-                        "CursorName", 0,
-                        ::cppu::UnoType<OUString>::get() , 0 ),
-                    Property(
-                        "EscapeProcessing", 1,
-                        cppu::UnoType<bool>::get() , 0 ),
-                    Property(
-                        "FetchDirection", 2,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "FetchSize", 3,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "MaxFieldSize", 4,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "MaxRows", 5,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "QueryTimeOut", 6,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "ResultSetConcurrency", 7,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "ResultSetType", 8,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 )
-                };
-            static_assert( SAL_N_ELEMENTS(aTable) == STATEMENT_SIZE, "wrong number of elements" );
-            static ::cppu::OPropertyArrayHelper arrayHelper( aTable, STATEMENT_SIZE, true );
-            pArrayHelper = &arrayHelper;
-        }
-    }
-    return *pArrayHelper;
+    static ::cppu::OPropertyArrayHelper arrayHelper(
+        Sequence<Property>{
+            Property(
+                "CursorName", 0,
+                ::cppu::UnoType<OUString>::get() , 0 ),
+            Property(
+                "EscapeProcessing", 1,
+                cppu::UnoType<bool>::get() , 0 ),
+            Property(
+                "FetchDirection", 2,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "FetchSize", 3,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "MaxFieldSize", 4,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "MaxRows", 5,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "QueryTimeOut", 6,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "ResultSetConcurrency", 7,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "ResultSetType", 8,
+                ::cppu::UnoType<sal_Int32>::get() , 0 )},
+        true );
+
+    return arrayHelper;
 }
 
 Statement::Statement( const ::rtl::Reference< comphelper::RefCountedMutex > & refMutex,
@@ -164,8 +145,8 @@ Statement::Statement( const ::rtl::Reference< comphelper::RefCountedMutex > & re
     , m_multipleResultUpdateCount(0)
     , m_lastOidInserted(InvalidOid)
 {
-    m_props[STATEMENT_QUERY_TIME_OUT] <<= (sal_Int32)0;
-    m_props[STATEMENT_MAX_ROWS] <<= (sal_Int32)0;
+    m_props[STATEMENT_QUERY_TIME_OUT] <<= sal_Int32(0);
+    m_props[STATEMENT_MAX_ROWS] <<= sal_Int32(0);
     m_props[STATEMENT_RESULT_SET_CONCURRENCY] <<=
         css::sdbc::ResultSetConcurrency::READ_ONLY;
     m_props[STATEMENT_RESULT_SET_TYPE] <<=
@@ -174,7 +155,6 @@ Statement::Statement( const ::rtl::Reference< comphelper::RefCountedMutex > & re
 
 Statement::~Statement()
 {
-    POSTGRE_TRACE( "dtor Statement" );
 }
 
 void Statement::checkClosed()
@@ -194,20 +174,12 @@ Any Statement::queryInterface( const Type & rType )
 
 Sequence< Type > Statement::getTypes()
 {
-    static Sequence< Type > *pCollection;
-    if( ! pCollection )
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( !pCollection )
-        {
-            static Sequence< Type > collection(
-                ::comphelper::concatSequences(
-                    OPropertySetHelper::getTypes(),
-                    Statement_BASE::getTypes()));
-            pCollection = &collection;
-        }
-    }
-    return *pCollection;
+    static Sequence< Type > collection(
+        ::comphelper::concatSequences(
+            OPropertySetHelper::getTypes(),
+            Statement_BASE::getTypes()));
+
+    return collection;
 }
 
 Sequence< sal_Int8> Statement::getImplementationId()
@@ -232,7 +204,6 @@ void Statement::close(  )
     if( resultSet.is() )
     {
         resultSet->close();
-        POSTGRE_TRACE( "statement closed" );
     }
 
 }
@@ -240,24 +211,15 @@ void Statement::close(  )
 void Statement::raiseSQLException(
     const OUString & sql, const char * errorMsg )
 {
-    OUStringBuffer buf(128);
-    buf.append( "pq_driver: ");
-    buf.append(
-        OUString( errorMsg, strlen(errorMsg), ConnectionSettings::encoding ) );
-    buf.append( " (caused by statement '" );
-    buf.append( sql );
-    buf.append( "')" );
-    OUString error = buf.makeStringAndClear();
-    log(m_pSettings, LogLevel::Error, error);
+    OUString error = "pq_driver: "
+        + OUString( errorMsg, strlen(errorMsg), ConnectionSettings::encoding )
+        + " (caused by statement '" + sql + "')";
+    SAL_WARN("connectivity.postgresql", error);
     throw SQLException( error, *this, OUString(), 1, Any() );
 }
 
 Reference< XResultSet > Statement::executeQuery(const OUString& sql )
 {
-    Reference< XCloseable > lastResultSetHolder = m_lastResultset;
-    if( lastResultSetHolder.is() )
-        lastResultSetHolder->close();
-
     if( ! execute( sql ) )
     {
         raiseSQLException( sql, "not a query" );
@@ -276,7 +238,6 @@ sal_Int32 Statement::executeUpdate( const OUString& sql )
 
 /// @throws SQLException
 static void raiseSQLException(
-    ConnectionSettings *pSettings,
     const Reference< XInterface> & owner,
     const OString & sql,
     const char * errorMsg,
@@ -296,7 +257,7 @@ static void raiseSQLException(
     buf.append( OStringToOUString( sql, ConnectionSettings::encoding ) );
     buf.append( "')" );
     OUString error = buf.makeStringAndClear();
-    log(pSettings, LogLevel::Error, error);
+    SAL_WARN("connectivity.postgresql", error);
     throw SQLException( error, owner, OUString(), 1, Any() );
 }
 
@@ -307,8 +268,7 @@ static std::vector< OUString > lookupKeys(
     const Reference< css::container::XNameAccess > &tables,
     const OUString & table,
     OUString *pSchema,
-    OUString *pTable,
-    ConnectionSettings *pSettings)
+    OUString *pTable)
 {
     std::vector< OUString  > ret;
     Reference< XKeysSupplier > keySupplier;
@@ -319,8 +279,7 @@ static std::vector< OUString > lookupKeys(
     else if( -1 == table.indexOf( '.' ) )
     {
         // it wasn't a fully qualified name. Now need to skip through all tables.
-        Reference< XEnumerationAccess > enumerationAccess =
-            Reference< XEnumerationAccess > ( tables, UNO_QUERY );
+        Reference< XEnumerationAccess > enumerationAccess( tables, UNO_QUERY );
 
         Reference< css::container::XEnumeration > enumeration =
             enumerationAccess->createEnumeration();
@@ -344,14 +303,7 @@ static std::vector< OUString > lookupKeys(
                         // is ambiguous, as I don't know postgresql searchpath,
                         // I can't continue here, as I may write to a different table
                         keySupplier.clear();
-                        if (isLog(pSettings, LogLevel::Info))
-                        {
-                            OStringBuffer buf( 128 );
-                            buf.append( "Can't offer updateable result set because table " );
-                            buf.append( OUStringToOString(name, ConnectionSettings::encoding) );
-                            buf.append( " is duplicated, add schema to resolve ambiguity" );
-                            log(pSettings, LogLevel::Info, buf.makeStringAndClear().getStr());
-                        }
+                        SAL_INFO("connectivity.postgresql", "Can't offer updateable result set because table " << name << " is duplicated, add schema to resolve ambiguity");
                         break;
                     }
                     keySupplier.set( set, UNO_QUERY );
@@ -361,21 +313,14 @@ static std::vector< OUString > lookupKeys(
     }
     else
     {
-        if (isLog(pSettings, LogLevel::Info))
-        {
-            OStringBuffer buf( 128 );
-            buf.append( "Can't offer updateable result set ( table " );
-            buf.append( OUStringToOString(table, ConnectionSettings::encoding) );
-            buf.append( " is unknown)" );
-            log(pSettings, LogLevel::Info, buf.makeStringAndClear().getStr());
-        }
+        SAL_INFO("connectivity.postgresql", "Can't offer updateable result set ( table " << table << " is unknown)");
     }
 
     if( keySupplier.is() )
     {
         Reference< XPropertySet > set( keySupplier, UNO_QUERY );
-        set->getPropertyValue( getStatics().NAME ) >>= (*pTable);
-        set->getPropertyValue( getStatics().SCHEMA_NAME ) >>= (*pSchema );
+        set->getPropertyValue( getStatics().NAME ) >>= *pTable;
+        set->getPropertyValue( getStatics().SCHEMA_NAME ) >>= *pSchema;
         set.clear();
 
         Reference< XEnumerationAccess > keys ( keySupplier->getKeys(), UNO_QUERY );
@@ -388,8 +333,7 @@ static std::vector< OUString > lookupKeys(
                 keyType == css::sdbcx::KeyType::PRIMARY )
             {
                 Reference< XColumnsSupplier > columns( set, UNO_QUERY );
-                Reference< XIndexAccess > indexAccess =
-                    Reference< XIndexAccess > ( columns->getColumns(), UNO_QUERY );
+                Reference< XIndexAccess > indexAccess( columns->getColumns(), UNO_QUERY );
 
                 int length = indexAccess->getCount();
                 ret.resize( length );
@@ -406,16 +350,9 @@ static std::vector< OUString > lookupKeys(
 //                 printf( "\n" );
             }
         }
-        if( ! ret.size() )
+        if( ret.empty() )
         {
-            if (isLog(pSettings, LogLevel::Info))
-            {
-                OStringBuffer buf( 128 );
-                buf.append( "Can't offer updateable result set ( table " );
-                buf.append( OUStringToOString(table, ConnectionSettings::encoding) );
-                buf.append( " does not have a primary key)" );
-                log(pSettings, LogLevel::Info, buf.makeStringAndClear().getStr());
-            }
+            SAL_INFO("connectivity.postgresql", "Can't offer updateable result set ( table " << table << " does not have a primary key)");
         }
     }
     return ret;
@@ -430,11 +367,11 @@ bool executePostgresCommand( const OString & cmd, struct CommandData *data )
     duration = osl_getGlobalTimer() - duration;
     if( ! result )
         raiseSQLException(
-            pSettings, data->owner, cmd, PQerrorMessage( pSettings->pConnection ) );
+            data->owner, cmd, PQerrorMessage( pSettings->pConnection ) );
 
     ExecStatusType state = PQresultStatus( result );
     *(data->pLastOidInserted) = 0;
-    (data->pLastTableInserted)->clear();
+    data->pLastTableInserted->clear();
     *(data->pLastQuery) = cmd;
 
     bool ret = false;
@@ -452,27 +389,17 @@ bool executePostgresCommand( const OString & cmd, struct CommandData *data )
         // otherwise the table name is empty
         *(data->pLastTableInserted) =
             extractTableFromInsert( OStringToOUString( cmd, ConnectionSettings::encoding ) );
-        if( isLog( pSettings, LogLevel::Sql ) )
+
+        OString strMain = "executed command '" + cmd + "' successfully ('" + OString::number(*( data->pMultipleResultUpdateCount ))
+            + "), duration=" + OString::number(duration) + "ms";
+
+        OString strOption;
+        if( *(data->pLastOidInserted) )
         {
-            OStringBuffer buf( 128 );
-            buf.append( "executed command '" );
-            buf.append( cmd.getStr() );
-            buf.append( "' successfully (" );
-            buf.append( *( data->pMultipleResultUpdateCount ) );
-            buf.append( ")" );
-            buf.append( ", duration=" );
-            buf.append( duration );
-            buf.append( "ms" );
-            if( *(data->pLastOidInserted) )
-            {
-                buf.append( ", usedOid=" );
-                buf.append( *(data->pLastOidInserted) );
-                buf.append( ", diagnosedTable=" );
-                buf.append(
-                    OUStringToOString( *data->pLastTableInserted, ConnectionSettings::encoding ) );
-            }
-            log(pSettings, LogLevel::Sql, buf.makeStringAndClear().getStr());
+            strOption += ", usedOid=" + OString::number( *(data->pLastOidInserted) ) +  ", diagnosedTable="
+                + OUStringToOString(*data->pLastTableInserted, ConnectionSettings::encoding);
         }
+        SAL_INFO("connectivity.postgresql", strMain + strOption);
         PQclear( result );
         break;
     }
@@ -482,8 +409,7 @@ bool executePostgresCommand( const OString & cmd, struct CommandData *data )
         // belonging to the primary key are in the result set, allow updateable result sets
         // otherwise, don't
         OUString table, schema;
-        std::vector< OUString > sourceTableKeys;
-        OStringVector vec;
+        std::vector< OString > vec;
         tokenizeSQL( cmd, vec );
         OUString sourceTable =
             OStringToOUString(
@@ -495,17 +421,16 @@ bool executePostgresCommand( const OString & cmd, struct CommandData *data )
             OString aReason;
             if( sourceTable.getLength() )
             {
-                sourceTableKeys = lookupKeys(
+                std::vector< OUString > sourceTableKeys = lookupKeys(
                     pSettings->tables.is() ?
                            pSettings->tables : data->tableSupplier->getTables() ,
                     sourceTable,
                     &schema,
-                    &table,
-                    pSettings);
+                    &table);
 
                 // check, whether the columns are in the result set (required !)
                 int i;
-                for( i = 0 ; i < (int)sourceTableKeys.size() ;  i ++ )
+                for( i = 0 ; i < static_cast<int>(sourceTableKeys.size()) ;  i ++ )
                 {
                     if( -1 == PQfnumber(
                             result,
@@ -516,7 +441,7 @@ bool executePostgresCommand( const OString & cmd, struct CommandData *data )
                     }
                 }
 
-                if( sourceTableKeys.size() && i == (int)sourceTableKeys.size() )
+                if( !sourceTableKeys.empty() && i == static_cast<int>(sourceTableKeys.size()) )
                 {
                     *(data->pLastResultset) =
                         UpdateableResultSet::createFromPGResultSet(
@@ -525,14 +450,10 @@ bool executePostgresCommand( const OString & cmd, struct CommandData *data )
                 }
                 else if( ! table.getLength() )
                 {
-                    OStringBuffer buf( 128 );
-                    buf.append( "can't support updateable resultset, because a single table in the "
-                                "WHERE part of the statement could not be identified (" );
-                    buf.append( cmd );
-                    buf.append( "." );
-                    aReason = buf.makeStringAndClear();
+                    aReason = "can't support updateable resultset, because a single table in the "
+                        "WHERE part of the statement could not be identified (" + cmd + ".";
                 }
-                else if( sourceTableKeys.size() )
+                else if( !sourceTableKeys.empty() )
                 {
                     OStringBuffer buf( 128 );
                     buf.append( "can't support updateable resultset for table " );
@@ -547,29 +468,19 @@ bool executePostgresCommand( const OString & cmd, struct CommandData *data )
                 else
                 {
 
-                    OStringBuffer buf( 128 );
-                    buf.append( "can't support updateable resultset for table " );
-                    buf.append( OUStringToOString( schema, ConnectionSettings::encoding ) );
-                    buf.append( "." );
-                    buf.append( OUStringToOString( table, ConnectionSettings::encoding ) );
-                    buf.append( ", because resultset table does not have a primary key " );
-                    aReason = buf.makeStringAndClear();
+                    aReason = "can't support updateable resultset for table "
+                        + OUStringToOString( schema, ConnectionSettings::encoding ) + "."
+                        + OUStringToOString( table, ConnectionSettings::encoding )
+                        + ", because resultset table does not have a primary key ";
                 }
             }
             else
             {
-                OStringBuffer buf( 128 );
-                buf.append( "can't support updateable result for selects with multiple tables (" );
-                buf.append( cmd );
-                buf.append( ")" );
-                log(pSettings, LogLevel::Sql, buf.makeStringAndClear().getStr() );
+                SAL_WARN("connectivity.postgresql", "can't support updateable result for selects with multiple tables (" << cmd << ")");
             }
             if( ! (*(data->pLastResultset)).is() )
             {
-                if (isLog( pSettings, LogLevel::Error))
-                {
-                    log(pSettings, LogLevel::Error,  aReason.getStr());
-                }
+                SAL_WARN("connectivity.postgresql", aReason);
 
                 // TODO: How to react here correctly ?
                 // remove this piece of code
@@ -595,19 +506,7 @@ bool executePostgresCommand( const OString & cmd, struct CommandData *data )
                         data->ppSettings,result, schema, table ) );
         *(data->pMultipleResultAvailable) = true;
         ret = true;
-        if (isLog(pSettings, LogLevel::Sql))
-        {
-            OStringBuffer buf( 128 );
-            buf.append( "executed query '" );
-            buf.append( cmd );
-            buf.append( "' successfully" );
-            buf.append( ", duration=" );
-            buf.append( duration );
-            buf.append( "ms, returnedRows=" );
-            buf.append( returnedRows );
-            buf.append( "." );
-            log(pSettings, LogLevel::Sql, buf.makeStringAndClear().getStr());
-        }
+        SAL_INFO("connectivity.postgresql", "executed query '" << cmd << "' successfully, duration=" << duration << "ms, returnedRows=" << returnedRows << ".");
         break;
     }
     case PGRES_EMPTY_QUERY:
@@ -618,7 +517,7 @@ bool executePostgresCommand( const OString & cmd, struct CommandData *data )
     case PGRES_FATAL_ERROR:
     default:
         raiseSQLException(
-            pSettings, data->owner, cmd, PQresultErrorMessage( result ) , PQresStatus( state ) );
+            data->owner, cmd, PQresultErrorMessage( result ) , PQresStatus( state ) );
     }
     return ret;
 
@@ -658,10 +557,12 @@ static void getAutoValues(
     String2StringMap & result,
     const Reference< XConnection > & connection,
     const OUString &schemaName,
-    const OUString & tableName )
+    const OUString & tableName,
+    ConnectionSettings *pConnectionSettings )
 {
+    OUString strDefaultValue = getColExprForDefaultSettingVal(pConnectionSettings);
     Reference< XPreparedStatement > stmt = connection->prepareStatement(
-                  "SELECT   pg_attribute.attname, pg_attrdef.adsrc "
+                  "SELECT   pg_attribute.attname, " + strDefaultValue +
                   "FROM pg_class, pg_namespace, pg_attribute "
                   "LEFT JOIN pg_attrdef ON pg_attribute.attrelid = pg_attrdef.adrelid AND "
                                         "pg_attribute.attnum = pg_attrdef.adnum "
@@ -671,7 +572,7 @@ static void getAutoValues(
                   // LEM TODO: this is weird; why "LIKE" and not "="?
                   // Most probably gives problems if tableName contains '%'
                         "pg_class.relname LIKE ? AND "
-                        "pg_attrdef.adsrc != ''"
+                        + strDefaultValue + " != ''"
             );
     DisposeGuard guard( stmt );
     Reference< XParameters > paras( stmt, UNO_QUERY );
@@ -736,8 +637,8 @@ Reference< XResultSet > getGeneratedValuesFromLastInsert(
         // TODO: make also unqualified tables names work here. Have a look at 2.8.3. The Schema Search Path
         //       in postgresql doc
 
-        Sequence< OUString > keyColumnNames = getPrimaryKeyColumnNames( connection, schemaName, tableName );
-        if( keyColumnNames.getLength() )
+        const Sequence< OUString > keyColumnNames = getPrimaryKeyColumnNames( connection, schemaName, tableName );
+        if( keyColumnNames.hasElements() )
         {
             OUStringBuffer buf( 128 );
             buf.append( "SELECT * FROM " );
@@ -745,50 +646,51 @@ Reference< XResultSet > getGeneratedValuesFromLastInsert(
             buf.append( " WHERE " );
             bool bAdditionalCondition = false;
             String2StringMap autoValues;
-            for( int i = 0 ; i < keyColumnNames.getLength() ; i ++ )
+            for( OUString const & columnNameUnicode : keyColumnNames )
             {
                 OUString value;
-                OString columnName = OUStringToOString( keyColumnNames[i], ConnectionSettings::encoding );
-                String2StringMap::const_iterator ii = namedValues.begin();
-                for( ; ii != namedValues.end() ; ++ii )
+                OString columnName = OUStringToOString( columnNameUnicode, ConnectionSettings::encoding );
+                bool bColumnMatchNamedValue = false;
+                for (auto const& namedValue : namedValues)
                 {
-                    if( columnName.equalsIgnoreAsciiCase( ii->first ) )
+                    if( columnName.equalsIgnoreAsciiCase( namedValue.first ) )
                     {
-                        value = OStringToOUString( ii->second , ConnectionSettings::encoding );
+                        value = OStringToOUString( namedValue.second , ConnectionSettings::encoding );
+                        bColumnMatchNamedValue = true;
                         break;
                     }
                 }
 
                 // check, if a column of the primary key was not inserted explicitly,
-                if( ii == namedValues.end() )
+                if( !bColumnMatchNamedValue )
                 {
-
-                    if( autoValues.begin() == autoValues.end() )
+                    if( autoValues.empty() )
                     {
-                        getAutoValues( autoValues, connection, schemaName, tableName );
+                        getAutoValues( autoValues, connection, schemaName, tableName, pConnectionSettings );
                     }
                     // this could mean, that the column is a default or auto value, check this ...
-                    String2StringMap::const_iterator j = autoValues.begin();
-                    for( ; j != autoValues.end() ; ++j )
+                    bool bColumnMatchAutoValue = false;
+                    for (auto const& autoValue : autoValues)
                     {
-                        if( columnName.equalsIgnoreAsciiCase( j->first ) )
+                        if( columnName.equalsIgnoreAsciiCase( autoValue.first ) )
                         {
                             // it is indeed an auto value.
-                            value = OStringToOUString(j->second, RTL_TEXTENCODING_ASCII_US );
+                            value = OStringToOUString(autoValue.second, RTL_TEXTENCODING_ASCII_US );
                             // check, whether it is a sequence
 
-                            if( j->second.startsWith("nextval(") )
+                            if( autoValue.second.startsWith("nextval(") )
                             {
                                 // retrieve current sequence value:
                                 OUStringBuffer myBuf(128 );
                                 myBuf.append( "SELECT currval(" );
-                                myBuf.appendAscii( &(j->second.getStr()[8]));
+                                myBuf.appendAscii( &(autoValue.second.getStr()[8]));
                                 value = querySingleValue( connection, myBuf.makeStringAndClear() );
                             }
+                            bColumnMatchAutoValue = true;
                             break;
                         }
                     }
-                    if( j == autoValues.end() )
+                    if( !bColumnMatchAutoValue )
                     {
                         // it even was no autovalue, no sense to continue as we can't query the
                         // inserted row
@@ -799,7 +701,7 @@ Reference< XResultSet > getGeneratedValuesFromLastInsert(
 
                 if( bAdditionalCondition )
                     buf.append( " AND " );
-                bufferQuoteIdentifier( buf, keyColumnNames[i], pConnectionSettings );
+                bufferQuoteIdentifier( buf, columnNameUnicode, pConnectionSettings );
                 buf.append( " = " );
                 buf.append( value );
                 bAdditionalCondition = true;
@@ -823,6 +725,10 @@ sal_Bool Statement::execute( const OUString& sql )
     osl::MutexGuard guard( m_xMutex->GetMutex() );
     checkClosed();
     OString cmd = OUStringToOString( sql, m_pSettings );
+
+    Reference< XCloseable > lastResultSetHolder = m_lastResultset;
+    if( lastResultSetHolder.is() )
+        lastResultSetHolder->close();
 
     m_lastResultset.clear();
     m_lastTableInserted.clear();
@@ -955,6 +861,15 @@ sal_Int32 Statement::getUpdateCount(  )
 
 sal_Bool Statement::getMoreResults(  )
 {
+    // The PostgreSQL C interface always returns a single result,
+    // so we will never have multiple ones.
+    // Implicitly close the open resultset (if any) as per spec,
+    // and setup to signal "no more result, neither as resultset,
+    // nor as update count".
+    Reference< XCloseable > lastResultSetHolder = m_lastResultset;
+    if( lastResultSetHolder.is() )
+        lastResultSetHolder->close();
+    m_multipleResultUpdateCount = -1;
     return false;
 }
 

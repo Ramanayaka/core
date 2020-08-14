@@ -29,70 +29,58 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-/*******************************************************************
- osl_systemPathEnsureSeparator
+/**
  Adds a trailing path separator to the given system path if not
  already there and if the path is not the root path or a logical
  drive alone
- ******************************************************************/
+*/
 
 void osl_systemPathEnsureSeparator(/*inout*/ rtl_uString** ppustrPath);
 
-/*******************************************************************
- osl_systemPathRemoveSeparator
+/**
  Removes the last separator from the given system path if any and
  if the path is not the root path '\'
- ******************************************************************/
+*/
 
-void SAL_CALL osl_systemPathRemoveSeparator(/*inout*/ rtl_uString** ppustrPath);
+void osl_systemPathRemoveSeparator(/*inout*/ rtl_uString** ppustrPath);
 
-/*******************************************************************
- osl_is_logical_drive_pattern
+/**
  Returns whether a given path is only a logical drive pattern or not.
  A logical drive pattern is something like "a:\", "c:\".
  No logical drive pattern is something like "c:\test"
- ******************************************************************/
+*/
 
 bool osl_systemPathIsLogicalDrivePattern(/*in*/ const rtl_uString* pustrPath);
 
 namespace osl
 {
 
-/*******************************************************************
- osl_systemPathEnsureSeparator
+/**
  Adds a trailing path separator to the given system path if not
  already there and if the path is not the root path or a logical
  drive alone
- ******************************************************************/
+*/
 
-inline void systemPathEnsureSeparator(/*inout*/ rtl::OUString& Path)
+inline void systemPathEnsureSeparator(/*inout*/ OUString& Path)
 {
     osl_systemPathEnsureSeparator(&Path.pData);
 }
 
-/*******************************************************************
- osl_systemPathRemoveSeparator
+/**
  Removes the last separator from the given system path if any and
  if the path is not the root path '\'
- ******************************************************************/
+*/
 
-inline void systemPathRemoveSeparator(/*inout*/ rtl::OUString& Path)
+inline void systemPathRemoveSeparator(/*inout*/ OUString& Path)
 {
     osl_systemPathRemoveSeparator(&Path.pData);
 }
 
-/*******************************************************************
- osl_systemPathIsLogicalDrivePattern
- ******************************************************************/
-
-inline bool systemPathIsLogicalDrivePattern(/*in*/ const rtl::OUString& path)
+inline bool systemPathIsLogicalDrivePattern(/*in*/ const OUString& path)
 {
     return osl_systemPathIsLogicalDrivePattern(path.pData);
 }
 
-/*******************************************************************
- LongPathBuffer
- ******************************************************************/
 template< class T >
 class LongPathBuffer
 {
@@ -105,7 +93,7 @@ class LongPathBuffer
 
 public:
     explicit LongPathBuffer( sal_uInt32 nCharNum )
-    : m_pBuffer( static_cast<T*>( rtl_allocateMemory( nCharNum * sizeof( T ) ) ) )
+    : m_pBuffer( static_cast<T*>( malloc( nCharNum * sizeof( T ) ) ) )
     , m_nCharNum( nCharNum )
     {
         OSL_ENSURE( m_pBuffer, "Can not allocate the buffer!" );
@@ -114,7 +102,7 @@ public:
     ~LongPathBuffer()
     {
         if ( m_pBuffer )
-            rtl_freeMemory( m_pBuffer );
+            free( m_pBuffer );
         m_pBuffer = nullptr;
     }
 
@@ -129,8 +117,6 @@ public:
     }
 
 };
-
-    template< class U, class T > U mingw_reinterpret_cast(LongPathBuffer<T>& a) { return reinterpret_cast<U>(static_cast<T*>(a)); }
 
 } // end namespace osl
 

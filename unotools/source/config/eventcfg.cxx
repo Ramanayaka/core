@@ -23,16 +23,15 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/frame/XFrame.hpp>
-#include <cppuhelper/weakref.hxx>
 #include <o3tl/enumarray.hxx>
 #include <o3tl/enumrange.hxx>
 #include <rtl/ref.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 #include "itemholder1.hxx"
 
 #include <algorithm>
+#include <unordered_map>
 
 using namespace ::std;
 using namespace ::utl;
@@ -76,15 +75,13 @@ static o3tl::enumarray<GlobalEventId, const char*> pEventAsciiNames =
 "OnStorageChanged"
 };
 
-typedef std::unordered_map< OUString, OUString, OUStringHash > EventBindingHash;
-typedef std::vector< css::uno::WeakReference< css::frame::XFrame > > FrameVector;
+typedef std::unordered_map< OUString, OUString > EventBindingHash;
 typedef o3tl::enumarray< GlobalEventId, OUString > SupportedEventsVector;
 
 class GlobalEventConfig_Impl : public utl::ConfigItem
 {
 private:
     EventBindingHash m_eventBindingHash;
-    FrameVector m_lFrames;
     SupportedEventsVector m_supportedEvents;
 
     void initBindingInfo();
@@ -101,25 +98,25 @@ public:
     /// @throws css::container::NoSuchElementException
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
-    void SAL_CALL replaceByName( const OUString& aName, const css::uno::Any& aElement );
+    void replaceByName( const OUString& aName, const css::uno::Any& aElement );
     /// @throws css::container::NoSuchElementException
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
-    css::uno::Any SAL_CALL getByName( const OUString& aName );
+    css::uno::Any getByName( const OUString& aName );
     /// @throws css::uno::RuntimeException
-    css::uno::Sequence< OUString > SAL_CALL getElementNames(  );
+    css::uno::Sequence< OUString > getElementNames(  );
     /// @throws css::uno::RuntimeException
-    bool SAL_CALL hasByName( const OUString& aName );
+    bool hasByName( const OUString& aName );
     /// @throws css::uno::RuntimeException
-    static css::uno::Type SAL_CALL getElementType(  );
+    static css::uno::Type const & getElementType(  );
     /// @throws css::uno::RuntimeException
-    bool SAL_CALL hasElements(  );
-    OUString GetEventName( GlobalEventId nID );
+    bool hasElements() const;
+    OUString const & GetEventName( GlobalEventId nID ) const;
 };
 
 
 GlobalEventConfig_Impl::GlobalEventConfig_Impl()
-    :   ConfigItem( "Office.Events/ApplicationEvents", ConfigItemMode::ImmediateUpdate )
+    :   ConfigItem( "Office.Events/ApplicationEvents", ConfigItemMode::NONE )
 {
     // the supported event names
     for (const GlobalEventId id : o3tl::enumrange<GlobalEventId>())
@@ -141,7 +138,7 @@ GlobalEventConfig_Impl::~GlobalEventConfig_Impl()
     assert(!IsModified()); // should have been committed
 }
 
-OUString GlobalEventConfig_Impl::GetEventName( GlobalEventId nIndex )
+OUString const & GlobalEventConfig_Impl::GetEventName( GlobalEventId nIndex ) const
 {
     return m_supportedEvents[nIndex];
 }
@@ -153,20 +150,6 @@ void GlobalEventConfig_Impl::Notify( const Sequence< OUString >& )
     MutexGuard aGuard( GlobalEventConfig::GetOwnStaticMutex() );
 
     initBindingInfo();
-
-    // don't forget to update all existing frames and her might cached dispatch objects!
-    // But look for already killed frames. We hold weak references instead of hard ones ...
-    for (FrameVector::iterator pIt  = m_lFrames.begin(); pIt != m_lFrames.end(); )
-    {
-        css::uno::Reference< css::frame::XFrame > xFrame(pIt->get(), css::uno::UNO_QUERY);
-        if (xFrame.is())
-        {
-            xFrame->contextChanged();
-            ++pIt;
-        }
-        else
-            pIt = m_lFrames.erase(pIt);
-    }
 }
 
 //  public method
@@ -175,24 +158,22 @@ void GlobalEventConfig_Impl::ImplCommit()
 {
     //DF need to check it this is correct??
     SAL_INFO("unotools", "In GlobalEventConfig_Impl::ImplCommit");
-    EventBindingHash::const_iterator it = m_eventBindingHash.begin();
-    EventBindingHash::const_iterator it_end = m_eventBindingHash.end();
     // clear the existing nodes
     ClearNodeSet( SETNODE_BINDINGS );
     Sequence< beans::PropertyValue > seqValues( 1 );
     OUString sNode;
     //step through the list of events
-    for(int i=0;it!=it_end;++it,++i)
+    for(const auto& rEntry : m_eventBindingHash)
     {
         //no point in writing out empty bindings!
-        if(it->second.isEmpty() )
+        if(rEntry.second.isEmpty() )
             continue;
         sNode = SETNODE_BINDINGS PATHDELIMITER "BindingType['" +
-                it->first +
+                rEntry.first +
                 "']" PATHDELIMITER PROPERTYNAME_BINDINGURL;
         SAL_INFO("unotools", "writing binding for: " << sNode);
         seqValues[ 0 ].Name = sNode;
-        seqValues[ 0 ].Value <<= it->second;
+        seqValues[ 0 ].Value <<= rEntry.second;
         //write the data to the registry
         SetSetProperties(SETNODE_BINDINGS,seqValues);
     }
@@ -203,42 +184,35 @@ void GlobalEventConfig_Impl::ImplCommit()
 void GlobalEventConfig_Impl::initBindingInfo()
 {
     // Get ALL names of current existing list items in configuration!
-    Sequence< OUString > lEventNames      = GetNodeNames( SETNODE_BINDINGS, utl::ConfigNameFormat::LocalPath );
+    const Sequence< OUString > lEventNames = GetNodeNames( SETNODE_BINDINGS, utl::ConfigNameFormat::LocalPath );
 
-    OUString aSetNode( SETNODE_BINDINGS );
-    aSetNode += PATHDELIMITER;
-
-    OUString aCommandKey( PATHDELIMITER );
-    aCommandKey += PROPERTYNAME_BINDINGURL;
+    OUString aSetNode = SETNODE_BINDINGS PATHDELIMITER;
+    OUString aCommandKey = PATHDELIMITER PROPERTYNAME_BINDINGURL;
 
     // Expand all keys
     Sequence< OUString > lMacros(1);
-    for (sal_Int32 i=0; i<lEventNames.getLength(); ++i )
+    for (const auto& rEventName : lEventNames )
     {
-        OUStringBuffer aBuffer( 32 );
-        aBuffer.append( aSetNode );
-        aBuffer.append( lEventNames[i] );
-        aBuffer.append( aCommandKey );
-        lMacros[0] = aBuffer.makeStringAndClear();
+        lMacros[0] = aSetNode + rEventName + aCommandKey;
         SAL_INFO("unotools", "reading binding for: " << lMacros[0]);
         Sequence< Any > lValues = GetProperties( lMacros );
         OUString sMacroURL;
-        if( lValues.getLength() > 0 )
+        if( lValues.hasElements() )
         {
             lValues[0] >>= sMacroURL;
-            sal_Int32 startIndex = lEventNames[i].indexOf('\'');
-            sal_Int32 endIndex =  lEventNames[i].lastIndexOf('\'');
+            sal_Int32 startIndex = rEventName.indexOf('\'');
+            sal_Int32 endIndex =  rEventName.lastIndexOf('\'');
             if( startIndex >=0 && endIndex > 0 )
             {
                 startIndex++;
-                OUString eventName = lEventNames[i].copy(startIndex,endIndex-startIndex);
+                OUString eventName = rEventName.copy(startIndex,endIndex-startIndex);
                 m_eventBindingHash[ eventName ] = sMacroURL;
             }
         }
     }
 }
 
-void SAL_CALL GlobalEventConfig_Impl::replaceByName( const OUString& aName, const Any& aElement )
+void GlobalEventConfig_Impl::replaceByName( const OUString& aName, const Any& aElement )
 {
     Sequence< beans::PropertyValue > props;
     //DF should we prepopulate the hash with a list of valid event Names?
@@ -248,17 +222,16 @@ void SAL_CALL GlobalEventConfig_Impl::replaceByName( const OUString& aName, cons
                 Reference< XInterface > (), 2);
     }
     OUString macroURL;
-    sal_Int32 nPropCount = props.getLength();
-    for( sal_Int32 index = 0; index < nPropCount; ++index )
+    for( const auto& rProp : std::as_const(props) )
     {
-        if ( props[ index ].Name == "Script" )
-            props[ index ].Value >>= macroURL;
+        if ( rProp.Name == "Script" )
+            rProp.Value >>= macroURL;
     }
     m_eventBindingHash[ aName ] = macroURL;
     SetModified();
 }
 
-Any SAL_CALL GlobalEventConfig_Impl::getByName( const OUString& aName )
+Any GlobalEventConfig_Impl::getByName( const OUString& aName )
 {
     Any aRet;
     Sequence< beans::PropertyValue > props(2);
@@ -284,12 +257,12 @@ Any SAL_CALL GlobalEventConfig_Impl::getByName( const OUString& aName )
     return aRet;
 }
 
-Sequence< OUString > SAL_CALL GlobalEventConfig_Impl::getElementNames(  )
+Sequence< OUString > GlobalEventConfig_Impl::getElementNames(  )
 {
     return uno::Sequence< OUString >(m_supportedEvents.data(), SupportedEventsVector::size());
 }
 
-bool SAL_CALL GlobalEventConfig_Impl::hasByName( const OUString& aName )
+bool GlobalEventConfig_Impl::hasByName( const OUString& aName )
 {
     if ( m_eventBindingHash.find( aName ) != m_eventBindingHash.end() )
         return true;
@@ -300,15 +273,15 @@ bool SAL_CALL GlobalEventConfig_Impl::hasByName( const OUString& aName )
     return pos != m_supportedEvents.end();
 }
 
-Type SAL_CALL GlobalEventConfig_Impl::getElementType(  )
+Type const & GlobalEventConfig_Impl::getElementType(  )
 {
     //DF definitely not sure about this??
     return cppu::UnoType<Sequence<beans::PropertyValue>>::get();
 }
 
-bool SAL_CALL GlobalEventConfig_Impl::hasElements(  )
+bool GlobalEventConfig_Impl::hasElements() const
 {
-    return ( m_eventBindingHash.empty() );
+    return !m_eventBindingHash.empty();
 }
 
 // and now the wrapper
@@ -396,7 +369,7 @@ Mutex& GlobalEventConfig::GetOwnStaticMutex()
 
 OUString GlobalEventConfig::GetEventName( GlobalEventId nIndex )
 {
-    if (utl::ConfigManager::IsAvoidConfig())
+    if (utl::ConfigManager::IsFuzzing())
         return OUString();
     rtl::Reference<GlobalEventConfig> createImpl(new GlobalEventConfig);
     return GlobalEventConfig::m_pImpl->GetEventName( nIndex );

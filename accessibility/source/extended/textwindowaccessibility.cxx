@@ -18,18 +18,31 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
+#include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/accessibility/AccessibleRelationType.hpp>
+#include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/awt/FontWeight.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
+#include <com/sun/star/i18n/Boundary.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 #include <extended/textwindowaccessibility.hxx>
 #include <comphelper/accessibleeventnotifier.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/txtattr.hxx>
 #include <vcl/window.hxx>
+#include <tools/diagnose_ex.h>
 #include <toolkit/helper/convert.hxx>
 #include <comphelper/sequence.hxx>
 
 #include <algorithm>
 #include <memory>
+#include <numeric>
 #include <vector>
 
 namespace accessibility
@@ -38,7 +51,7 @@ void SfxListenerGuard::startListening(::SfxBroadcaster & rNotifier)
 {
     assert(m_pNotifier == nullptr && "called more than once");
     m_pNotifier = &rNotifier;
-    m_rListener.StartListening(*m_pNotifier, true);
+    m_rListener.StartListening(*m_pNotifier, DuplicateHandling::Prevent);
 }
 
 void SfxListenerGuard::endListening()
@@ -262,22 +275,20 @@ void SAL_CALL Paragraph::grabFocus()
     {
         m_xDocument->changeParagraphSelection(this, 0, 0);
     }
-    catch (const css::lang::IndexOutOfBoundsException & rEx)
+    catch (const css::lang::IndexOutOfBoundsException &)
     {
-        SAL_INFO("accessibility",
-                 "textwindowaccessibility.cxx: Paragraph::grabFocus: caught unexpected "
-                 << rEx.Message);
+        TOOLS_INFO_EXCEPTION("accessibility", "Paragraph::grabFocus: caught unexpected");
     }
 }
 
 // virtual
-css::util::Color SAL_CALL Paragraph::getForeground()
+sal_Int32 SAL_CALL Paragraph::getForeground()
 {
     return 0; // TODO
 }
 
 // virtual
-css::util::Color SAL_CALL Paragraph::getBackground()
+sal_Int32 SAL_CALL Paragraph::getBackground()
 {
     return 0; // TODO
 }
@@ -301,7 +312,7 @@ sal_Bool SAL_CALL Paragraph::setCaretPosition(::sal_Int32 nIndex)
 ::sal_Unicode SAL_CALL Paragraph::getCharacter(::sal_Int32 nIndex)
 {
     checkDisposed();
-    return OCommonAccessibleText::getCharacter(nIndex);
+    return OCommonAccessibleText::implGetCharacter(implGetText(), nIndex);
 }
 
 // virtual
@@ -328,7 +339,7 @@ Paragraph::getCharacterBounds(::sal_Int32 nIndex)
 ::sal_Int32 SAL_CALL Paragraph::getCharacterCount()
 {
     checkDisposed();
-    return OCommonAccessibleText::getCharacterCount();
+    return implGetText().getLength();
 }
 
 // virtual
@@ -378,7 +389,7 @@ sal_Bool SAL_CALL Paragraph::setSelection(::sal_Int32 nStartIndex,
 OUString SAL_CALL Paragraph::getText()
 {
     checkDisposed();
-    return OCommonAccessibleText::getText();
+    return implGetText();
 }
 
 // virtual
@@ -386,7 +397,7 @@ OUString SAL_CALL Paragraph::getTextRange(::sal_Int32 nStartIndex,
                                                      ::sal_Int32 nEndIndex)
 {
     checkDisposed();
-    return OCommonAccessibleText::getTextRange(nStartIndex, nEndIndex);
+    return OCommonAccessibleText::implGetTextRange(implGetText(), nStartIndex, nEndIndex);
 }
 
 // virtual
@@ -417,6 +428,12 @@ sal_Bool SAL_CALL Paragraph::copyText(::sal_Int32 nStartIndex,
     checkDisposed();
     m_xDocument->copyParagraphText(this, nStartIndex, nEndIndex);
     return true;
+}
+
+// virtual
+sal_Bool SAL_CALL Paragraph::scrollSubstringTo( sal_Int32, sal_Int32, css::accessibility::AccessibleScrollType )
+{
+    return false;
 }
 
 // virtual
@@ -538,10 +555,11 @@ css::accessibility::TextSegment SAL_CALL Paragraph::getTextAtLineWithCaret(  )
             getTextAtLineNumber( nLineNo ) :
             css::accessibility::TextSegment();
     } catch (const css::lang::IndexOutOfBoundsException&) {
-        throw css::uno::RuntimeException(
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException(
             "textwindowaccessibility.cxx:"
             " Paragraph::getTextAtLineWithCaret",
-            static_cast< css::uno::XWeak * >( this ) );
+            static_cast< css::uno::XWeak * >( this ), anyEx );
     }
 }
 
@@ -558,21 +576,21 @@ void SAL_CALL Paragraph::addAccessibleEventListener(
     css::uno::Reference<
     css::accessibility::XAccessibleEventListener > const & rListener)
 {
-    if (rListener.is())
+    if (!rListener.is())
+        return;
+
+    ::osl::ClearableMutexGuard aGuard(rBHelper.rMutex);
+    if (rBHelper.bDisposed || rBHelper.bInDispose)
     {
-        ::osl::ClearableMutexGuard aGuard(rBHelper.rMutex);
-        if (rBHelper.bDisposed || rBHelper.bInDispose)
-        {
-            aGuard.clear();
-            rListener->disposing(css::lang::EventObject(
-                                    static_cast< ::cppu::OWeakObject * >(this)));
-        }
-        else
-        {
-            if (!m_nClientId)
-                m_nClientId = comphelper::AccessibleEventNotifier::registerClient( );
-            comphelper::AccessibleEventNotifier::addEventListener( m_nClientId, rListener );
-        }
+        aGuard.clear();
+        rListener->disposing(css::lang::EventObject(
+                                static_cast< ::cppu::OWeakObject * >(this)));
+    }
+    else
+    {
+        if (!m_nClientId)
+            m_nClientId = comphelper::AccessibleEventNotifier::registerClient( );
+        comphelper::AccessibleEventNotifier::addEventListener( m_nClientId, rListener );
     }
 }
 
@@ -583,7 +601,7 @@ void SAL_CALL Paragraph::removeAccessibleEventListener(
 {
     comphelper::AccessibleEventNotifier::TClientId nId = 0;
     {
-        ::osl::ClearableMutexGuard aGuard(rBHelper.rMutex);
+        osl::MutexGuard aGuard(rBHelper.rMutex);
         if (rListener.is() && m_nClientId != 0
             && comphelper::AccessibleEventNotifier::removeEventListener( m_nClientId, rListener ) == 0)
         {
@@ -606,7 +624,7 @@ void SAL_CALL Paragraph::disposing()
 {
     comphelper::AccessibleEventNotifier::TClientId nId = 0;
     {
-        ::osl::ClearableMutexGuard aGuard(rBHelper.rMutex);
+        osl::MutexGuard aGuard(rBHelper.rMutex);
         nId = m_nClientId;
         m_nClientId = 0;
     }
@@ -634,11 +652,11 @@ void Paragraph::implGetSelection(::sal_Int32 & rStartIndex,
 }
 
 // virtual
-void Paragraph::implGetParagraphBoundary( css::i18n::Boundary& rBoundary,
-                                              ::sal_Int32 nIndex )
+void Paragraph::implGetParagraphBoundary( const OUString& rText,
+                                          css::i18n::Boundary& rBoundary,
+                                          ::sal_Int32 nIndex )
 {
-    OUString sText( implGetText() );
-    ::sal_Int32 nLength = sText.getLength();
+    ::sal_Int32 nLength = rText.getLength();
 
     if ( implIsValidIndex( nIndex, nLength ) )
     {
@@ -653,11 +671,11 @@ void Paragraph::implGetParagraphBoundary( css::i18n::Boundary& rBoundary,
 }
 
 // virtual
-void Paragraph::implGetLineBoundary( css::i18n::Boundary& rBoundary,
-                                         ::sal_Int32 nIndex )
+void Paragraph::implGetLineBoundary( const OUString& rText,
+                                     css::i18n::Boundary& rBoundary,
+                                     ::sal_Int32 nIndex )
 {
-    OUString sText( implGetText() );
-    ::sal_Int32 nLength = sText.getLength();
+    ::sal_Int32 nLength = rText.getLength();
 
     if ( implIsValidIndex( nIndex, nLength ) || nIndex == nLength )
     {
@@ -770,20 +788,13 @@ Document::retrieveParagraphBounds(Paragraph const * pParagraph,
     // and start at m_aVisibleBegin:
     Paragraphs::iterator aPara(m_xParagraphs->begin()
                                + pParagraph->getNumber());
+    auto lAddHeight = [](const sal_Int32& rSum, const ParagraphInfo& rParagraph) {
+        return rSum + rParagraph.getHeight(); };
     ::sal_Int32 nPos;
-    Paragraphs::iterator aIt;
     if (aPara < m_aVisibleBegin)
-    {
-        nPos = 0;
-        aIt = m_xParagraphs->begin();
-    }
+        nPos = std::accumulate(m_xParagraphs->begin(), aPara, sal_Int32(0), lAddHeight);
     else
-    {
-        nPos = m_nViewOffset - m_nVisibleBeginOffset;
-        aIt = m_aVisibleBegin;
-    }
-    for (; aIt != aPara; ++aIt)
-        nPos += aIt->getHeight();
+        nPos = std::accumulate(m_aVisibleBegin, aPara, m_nViewOffset - m_nVisibleBeginOffset, lAddHeight);
 
     Point aOrig(0, 0);
     if (bAbsolute)
@@ -801,7 +812,7 @@ Document::retrieveParagraphText(Paragraph const * pParagraph)
 {
     SolarMutexGuard aGuard;
     ::osl::MutexGuard aInternalGuard(GetMutex());
-    return m_rEngine.GetText(static_cast< ::sal_uLong >(pParagraph->getNumber()));
+    return m_rEngine.GetText(static_cast< ::sal_uInt32 >(pParagraph->getNumber()));
         // numeric overflow cannot happen here
 }
 
@@ -823,7 +834,7 @@ void Document::retrieveParagraphSelection(Paragraph const * pParagraph,
         *pBegin = nNumber > aMinPaM.GetPara() ? 0 : aMinPaM.GetIndex();
             // XXX numeric overflow
         *pEnd = nNumber < aMaxPaM.GetPara()
-            ? m_rEngine.GetText(static_cast< ::sal_uLong >(nNumber)).getLength()
+            ? m_rEngine.GetText(static_cast< ::sal_uInt32 >(nNumber)).getLength()
             : aMaxPaM.GetIndex();
             // XXX  numeric overflow (3x)
 
@@ -854,7 +865,7 @@ Document::retrieveCharacterBounds(Paragraph const * pParagraph,
 {
     SolarMutexGuard aGuard;
     ::osl::MutexGuard aInternalGuard(GetMutex());
-    ::sal_uLong nNumber = static_cast< ::sal_uLong >(pParagraph->getNumber());
+    ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >(pParagraph->getNumber());
     sal_Int32 nLength = m_rEngine.GetText(nNumber).getLength();
         // XXX  numeric overflow
     if (nIndex < 0 || nIndex > nLength)
@@ -900,7 +911,7 @@ Document::retrieveCharacterBounds(Paragraph const * pParagraph,
 {
     SolarMutexGuard aGuard;
     ::osl::MutexGuard aInternalGuard(GetMutex());
-    ::sal_uLong nNumber = static_cast< ::sal_uLong >(pParagraph->getNumber());
+    ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >(pParagraph->getNumber());
         // XXX  numeric overflow
     ::TextPaM aPaM(m_rEngine.GetPaM(::Point(static_cast< long >(rPoint.X),
                                             static_cast< long >(rPoint.Y))));
@@ -908,19 +919,6 @@ Document::retrieveCharacterBounds(Paragraph const * pParagraph,
     return aPaM.GetPara() == nNumber ? aPaM.GetIndex() : -1;
         // XXX  numeric overflow
 }
-
-struct IndexCompare
-{
-    const css::beans::PropertyValue* pValues;
-    explicit IndexCompare(const css::beans::PropertyValue* pVals)
-        : pValues(pVals)
-    {
-    }
-    bool operator() ( sal_Int32 a, sal_Int32 b ) const
-    {
-        return pValues[a].Name < pValues[b].Name;
-    }
-};
 
 css::uno::Sequence< css::beans::PropertyValue >
 Document::retrieveCharacterAttributes(
@@ -931,84 +929,68 @@ Document::retrieveCharacterAttributes(
 
     vcl::Font aFont = m_rEngine.GetFont();
     const sal_Int32 AttributeCount = 9;
-    sal_Int32 i = 0;
-    css::uno::Sequence< css::beans::PropertyValue > aAttribs( AttributeCount );
+    std::vector< css::beans::PropertyValue > aAttribs;
+    aAttribs.reserve(AttributeCount);
+
+    css::beans::PropertyValue aAttrib;
+    aAttrib.Handle = -1;
+    aAttrib.State = css::beans::PropertyState_DIRECT_VALUE;
 
     //character background color
-    aAttribs[i].Name = "CharBackColor";
-    aAttribs[i].Handle = -1;
-    aAttribs[i].Value = mapFontColor( aFont.GetFillColor() );
-    aAttribs[i].State = css::beans::PropertyState_DIRECT_VALUE;
-    i++;
+    aAttrib.Name = "CharBackColor";
+    aAttrib.Value = mapFontColor( aFont.GetFillColor() );
+    aAttribs.push_back(aAttrib);
 
     //character color
-    aAttribs[i].Name = "CharColor";
-    aAttribs[i].Handle = -1;
-    //aAttribs[i].Value = mapFontColor( aFont.GetColor() );
-    aAttribs[i].Value = mapFontColor( m_rEngine.GetTextColor() );
-    aAttribs[i].State = css::beans::PropertyState_DIRECT_VALUE;
-    i++;
+    aAttrib.Name = "CharColor";
+    //aAttrib.Value = mapFontColor( aFont.GetColor() );
+    aAttrib.Value = mapFontColor( m_rEngine.GetTextColor() );
+    aAttribs.push_back(aAttrib);
 
     //character font name
-    aAttribs[i].Name = "CharFontName";
-    aAttribs[i].Handle = -1;
-    aAttribs[i].Value <<= aFont.GetFamilyName();
-    aAttribs[i].State = css::beans::PropertyState_DIRECT_VALUE;
-    i++;
+    aAttrib.Name = "CharFontName";
+    aAttrib.Value <<= aFont.GetFamilyName();
+    aAttribs.push_back(aAttrib);
 
     //character height
-    aAttribs[i].Name = "CharHeight";
-    aAttribs[i].Handle = -1;
-    aAttribs[i].Value <<= (sal_Int16)aFont.GetFontHeight();
-    aAttribs[i].State = css::beans::PropertyState_DIRECT_VALUE;
-    i++;
+    aAttrib.Name = "CharHeight";
+    aAttrib.Value <<= static_cast<sal_Int16>(aFont.GetFontHeight());
+    aAttribs.push_back(aAttrib);
 
     //character posture
-    aAttribs[i].Name = "CharPosture";
-    aAttribs[i].Handle = -1;
-    aAttribs[i].Value <<= (sal_Int16)aFont.GetItalic();
-    aAttribs[i].State = css::beans::PropertyState_DIRECT_VALUE;
-    i++;
+    aAttrib.Name = "CharPosture";
+    aAttrib.Value <<= static_cast<sal_Int16>(aFont.GetItalic());
+    aAttribs.push_back(aAttrib);
 
     //character relief
     /*
-    aAttribs[i].Name = "CharRelief";
-    aAttribs[i].Handle = -1;
-    aAttribs[i].Value = css::uno::Any( (sal_Int16)aFont.GetRelief() );
-    aAttribs[i].State = css::beans::PropertyState_DIRECT_VALUE;
-    i++;
+    aAttrib.Name = "CharRelief";
+    aAttrib.Value = css::uno::Any( (sal_Int16)aFont.GetRelief() );
+    aAttribs.push_back(aAttrib);
     */
 
     //character strikeout
-    aAttribs[i].Name = "CharStrikeout";
-    aAttribs[i].Handle = -1;
-    aAttribs[i].Value <<= (sal_Int16)aFont.GetStrikeout();
-    aAttribs[i].State = css::beans::PropertyState_DIRECT_VALUE;
-    i++;
+    aAttrib.Name = "CharStrikeout";
+    aAttrib.Value <<= static_cast<sal_Int16>(aFont.GetStrikeout());
+    aAttribs.push_back(aAttrib);
 
     //character underline
-    aAttribs[i].Name = "CharUnderline";
-    aAttribs[i].Handle = -1;
-    aAttribs[i].Value <<= (sal_Int16)aFont.GetUnderline();
-    aAttribs[i].State = css::beans::PropertyState_DIRECT_VALUE;
-    i++;
+    aAttrib.Name = "CharUnderline";
+    aAttrib.Value <<= static_cast<sal_Int16>(aFont.GetUnderline());
+    aAttribs.push_back(aAttrib);
 
     //character weight
-    aAttribs[i].Name = "CharWeight";
-    aAttribs[i].Handle = -1;
-    aAttribs[i].Value <<= (float)aFont.GetWeight();
-    aAttribs[i].State = css::beans::PropertyState_DIRECT_VALUE;
-    i++;
+    aAttrib.Name = "CharWeight";
+    aAttrib.Value <<= static_cast<float>(aFont.GetWeight());
+    aAttribs.push_back(aAttrib);
 
     //character alignment
-    aAttribs[i].Name = "ParaAdjust";
-    aAttribs[i].Handle = -1;
-    aAttribs[i].Value <<= (sal_Int16)m_rEngine.GetTextAlign();
-    aAttribs[i].State = css::beans::PropertyState_DIRECT_VALUE;
-    i++;
+    aAttrib.Name = "ParaAdjust";
+    aAttrib.Value <<= static_cast<sal_Int16>(m_rEngine.GetTextAlign());
+    aAttribs.push_back(aAttrib);
 
     ::osl::MutexGuard aInternalGuard(GetMutex());
-    ::sal_uLong nNumber = static_cast< ::sal_uLong >(pParagraph->getNumber());
+    ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >(pParagraph->getNumber());
         // XXX  numeric overflow
         // nIndex can be equal to getLength();
     if (nIndex < 0 || nIndex > m_rEngine.GetText(nNumber).getLength())
@@ -1022,30 +1004,27 @@ Document::retrieveCharacterAttributes(
     tPropValMap aCharAttrSeq;
     retrieveRunAttributesImpl( pParagraph, nIndex, aRequestedAttributes, aCharAttrSeq );
 
-    css::beans::PropertyValue* pValues = aAttribs.getArray();
-    for (i = 0; i < AttributeCount; i++,pValues++)
+    for (const css::beans::PropertyValue& rAttrib : aAttribs)
     {
-        aCharAttrSeq[ pValues->Name ] = *pValues;
+        aCharAttrSeq[ rAttrib.Name ] = rAttrib;
     }
 
-    css::uno::Sequence< css::beans::PropertyValue > aRes = comphelper::mapValuesToSequence( aCharAttrSeq );
+    const css::uno::Sequence< css::beans::PropertyValue > aRes = comphelper::mapValuesToSequence( aCharAttrSeq );
 
     // sort the attributes
-    sal_Int32 nLength = aRes.getLength();
-    const css::beans::PropertyValue* pPairs = aRes.getConstArray();
+    auto nLength = static_cast<size_t>(aRes.getLength());
     std::unique_ptr<sal_Int32[]> pIndices( new sal_Int32[nLength] );
-    for( i = 0; i < nLength; i++ )
-        pIndices[i] = i;
-    std::sort( &pIndices[0], &pIndices[nLength], IndexCompare(pPairs) );
-    // create sorted sequences according to index array
-    css::uno::Sequence< css::beans::PropertyValue > aNewValues( nLength );
-    css::beans::PropertyValue* pNewValues = aNewValues.getArray();
-    for( i = 0; i < nLength; i++ )
-    {
-        pNewValues[i] = pPairs[pIndices[i]];
-    }
+    std::iota(&pIndices[0], &pIndices[nLength], 0);
+    std::sort(&pIndices[0], &pIndices[nLength],
+        [&aRes](sal_Int32 a, sal_Int32 b) { return aRes[a].Name < aRes[b].Name; });
 
-    return aNewValues;
+    // create sorted sequences according to index array
+    std::vector<css::beans::PropertyValue> aNewValues;
+    aNewValues.reserve(nLength);
+    std::transform(&pIndices[0], &pIndices[nLength], std::back_inserter(aNewValues),
+        [&aRes](const sal_Int32 nIdx) { return aRes[nIdx]; });
+
+    return comphelper::containerToSequence(aNewValues);
 }
 
 void Document::retrieveRunAttributesImpl(
@@ -1053,10 +1032,9 @@ void Document::retrieveRunAttributesImpl(
     const css::uno::Sequence< OUString >& RequestedAttributes,
     tPropValMap& rRunAttrSeq)
 {
-    ::sal_uLong nNumber = static_cast< ::sal_uLong >( pParagraph->getNumber() );
+    ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >( pParagraph->getNumber() );
     ::TextPaM aPaM( nNumber, Index );
         // XXX  numeric overflow
-    // FIXME  TEXTATTR_HYPERLINK ignored:
     ::TextAttribFontColor const * pColor
           = static_cast< ::TextAttribFontColor const * >(
               m_rEngine.FindAttrib( aPaM, TEXTATTR_FONTCOLOR ) );
@@ -1082,17 +1060,15 @@ void Document::retrieveRunAttributesImpl(
         aPropVal.State = css::beans::PropertyState_DIRECT_VALUE;
         aRunAttrSeq[ aPropVal.Name ] = aPropVal;
     }
-    if ( RequestedAttributes.getLength() == 0 )
+    if ( !RequestedAttributes.hasElements() )
     {
         rRunAttrSeq = aRunAttrSeq;
     }
     else
     {
-        const OUString* pReqAttrs = RequestedAttributes.getConstArray();
-        const ::sal_Int32 nLength = RequestedAttributes.getLength();
-        for ( ::sal_Int32 i = 0; i < nLength; ++i )
+        for ( const OUString& rReqAttr : RequestedAttributes )
         {
-            tPropValMap::iterator aIter = aRunAttrSeq.find( pReqAttrs[i] );
+            tPropValMap::iterator aIter = aRunAttrSeq.find( rReqAttr );
             if ( aIter != aRunAttrSeq.end() )
             {
                 rRunAttrSeq[ (*aIter).first ] = (*aIter).second;
@@ -1108,7 +1084,7 @@ Document::retrieveRunAttributes(
 {
     SolarMutexGuard aGuard;
     ::osl::MutexGuard aInternalGuard( GetMutex() );
-    ::sal_uLong nNumber = static_cast< ::sal_uLong >( pParagraph->getNumber() );
+    ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >( pParagraph->getNumber() );
         // XXX  numeric overflow
     if ( Index < 0 || Index >= m_rEngine.GetText(nNumber).getLength() )
         throw css::lang::IndexOutOfBoundsException(
@@ -1121,20 +1097,20 @@ Document::retrieveRunAttributes(
     return comphelper::mapValuesToSequence( aRunAttrSeq );
 }
 
-void Document::changeParagraphText(Paragraph * pParagraph,
+void Document::changeParagraphText(Paragraph const * pParagraph,
                                    OUString const & rText)
 {
     SolarMutexGuard aGuard;
     {
         ::osl::MutexGuard aInternalGuard(GetMutex());
-        ::sal_uLong nNumber = static_cast< ::sal_uLong >(pParagraph->getNumber());
+        ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >(pParagraph->getNumber());
             // XXX  numeric overflow
         changeParagraphText(nNumber, 0, m_rEngine.GetTextLen(nNumber), false,
                             false, rText);
     }
 }
 
-void Document::changeParagraphText(Paragraph * pParagraph,
+void Document::changeParagraphText(Paragraph const * pParagraph,
                                    ::sal_Int32 nBegin, ::sal_Int32 nEnd,
                                    bool bCut, bool bPaste,
                                    OUString const & rText)
@@ -1142,7 +1118,7 @@ void Document::changeParagraphText(Paragraph * pParagraph,
     SolarMutexGuard aGuard;
     {
         ::osl::MutexGuard aInternalGuard(GetMutex());
-        ::sal_uLong nNumber = static_cast< ::sal_uLong >(pParagraph->getNumber());
+        ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >(pParagraph->getNumber());
             // XXX  numeric overflow
         if (nBegin < 0 || nBegin > nEnd
             || nEnd > m_rEngine.GetText(nNumber).getLength())
@@ -1162,7 +1138,7 @@ void Document::copyParagraphText(Paragraph const * pParagraph,
     SolarMutexGuard aGuard;
     {
         ::osl::MutexGuard aInternalGuard(GetMutex());
-        ::sal_uLong nNumber = static_cast< ::sal_uLong >(pParagraph->getNumber());
+        ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >(pParagraph->getNumber());
             // XXX  numeric overflow
         if (nBegin < 0 || nBegin > nEnd
             || nEnd > m_rEngine.GetText(nNumber).getLength())
@@ -1179,13 +1155,13 @@ void Document::copyParagraphText(Paragraph const * pParagraph,
 }
 
 void Document::changeParagraphAttributes(
-    Paragraph * pParagraph, ::sal_Int32 nBegin, ::sal_Int32 nEnd,
+    Paragraph const * pParagraph, ::sal_Int32 nBegin, ::sal_Int32 nEnd,
     css::uno::Sequence< css::beans::PropertyValue > const & rAttributeSet)
 {
     SolarMutexGuard aGuard;
     {
         ::osl::MutexGuard aInternalGuard(GetMutex());
-        ::sal_uLong nNumber = static_cast< ::sal_uLong >(pParagraph->getNumber());
+        ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >(pParagraph->getNumber());
         // XXX  numeric overflow
         if (nBegin < 0 || nBegin > nEnd
             || nEnd > m_rEngine.GetText(nNumber).getLength())
@@ -1197,27 +1173,27 @@ void Document::changeParagraphAttributes(
         // FIXME  The new attributes are added to any attributes already set,
         // they do not replace the old attributes as required by
         // XAccessibleEditableText.setAttributes:
-        for (::sal_Int32 i = 0; i < rAttributeSet.getLength(); ++i)
-            if ( rAttributeSet[i].Name == "CharColor" )
+        for (const auto& rAttr : rAttributeSet)
+            if ( rAttr.Name == "CharColor" )
                 m_rEngine.SetAttrib(::TextAttribFontColor(
-                                        mapFontColor(rAttributeSet[i].Value)),
+                                        mapFontColor(rAttr.Value)),
                                         nNumber, nBegin, nEnd);
                     // XXX  numeric overflow (2x)
-            else if ( rAttributeSet[i].Name == "CharWeight" )
+            else if ( rAttr.Name == "CharWeight" )
                 m_rEngine.SetAttrib(::TextAttribFontWeight(
-                                        mapFontWeight(rAttributeSet[i].Value)),
+                                        mapFontWeight(rAttr.Value)),
                                         nNumber, nBegin, nEnd);
                     // XXX  numeric overflow (2x)
     }
 }
 
-void Document::changeParagraphSelection(Paragraph * pParagraph,
+void Document::changeParagraphSelection(Paragraph const * pParagraph,
                                         ::sal_Int32 nBegin, ::sal_Int32 nEnd)
 {
     SolarMutexGuard aGuard;
     {
         ::osl::MutexGuard aInternalGuard(GetMutex());
-        ::sal_uLong nNumber = static_cast< ::sal_uLong >(pParagraph->getNumber());
+        ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >(pParagraph->getNumber());
             // XXX  numeric overflow
         if (nBegin < 0 || nBegin > nEnd
             || nEnd > m_rEngine.GetText(nNumber).getLength())
@@ -1243,7 +1219,7 @@ Document::retrieveParagraphLineBoundary( Paragraph const * pParagraph,
     SolarMutexGuard aGuard;
     {
         ::osl::MutexGuard aInternalGuard( GetMutex() );
-        ::sal_uLong nNumber = static_cast< ::sal_uLong >( pParagraph->getNumber() );
+        ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >( pParagraph->getNumber() );
         if ( nIndex < 0 || nIndex > m_rEngine.GetText( nNumber ).getLength() )
             throw css::lang::IndexOutOfBoundsException(
                 "textwindowaccessibility.cxx:"
@@ -1281,7 +1257,7 @@ Document::retrieveParagraphBoundaryOfLine( Paragraph const * pParagraph,
     SolarMutexGuard aGuard;
     {
         ::osl::MutexGuard aInternalGuard( GetMutex() );
-        ::sal_uLong nNumber = static_cast< ::sal_uLong >( pParagraph->getNumber() );
+        ::sal_uInt32 nNumber = static_cast< ::sal_uInt32 >( pParagraph->getNumber() );
         if ( nLineNo >= m_rEngine.GetLineCount( nNumber ) )
             throw css::lang::IndexOutOfBoundsException(
                 "textwindowaccessibility.cxx:"
@@ -1417,7 +1393,7 @@ void SAL_CALL Document::disposing()
 {
     m_aEngineListener.endListening();
     m_aViewListener.endListening();
-    if (m_xParagraphs.get() != nullptr)
+    if (m_xParagraphs != nullptr)
         disposeParagraphs();
     VCLXAccessibleComponent::disposing();
 }
@@ -1426,101 +1402,101 @@ void SAL_CALL Document::disposing()
 void Document::Notify(::SfxBroadcaster &, ::SfxHint const & rHint)
 {
     const TextHint* pTextHint = dynamic_cast<const TextHint*>(&rHint);
-    if (pTextHint)
+    if (!pTextHint)
+        return;
+
+    ::TextHint const & rTextHint = *pTextHint;
+    switch (rTextHint.GetId())
     {
-        ::TextHint const & rTextHint = *pTextHint;
-        switch (rTextHint.GetId())
+    case SfxHintId::TextParaInserted:
+    case SfxHintId::TextParaRemoved:
+        // SfxHintId::TextParaInserted and SfxHintId::TextParaRemoved are sent at
+        // "unsafe" times (when the text engine has not yet re-formatted its
+        // content), so that for example calling ::TextEngine::GetTextHeight
+        // from within the code that handles SfxHintId::TextParaInserted causes
+        // trouble within the text engine.  Therefore, these hints are just
+        // buffered until a following ::TextEngine::FormatDoc causes a
+        // SfxHintId::TextFormatted to come in:
+    case SfxHintId::TextFormatPara:
+        // ::TextEngine::FormatDoc sends a sequence of
+        // SfxHintId::TextFormatParas, followed by an optional
+        // SfxHintId::TextHeightChanged, followed in all cases by one
+        // SfxHintId::TextFormatted.  Only the SfxHintId::TextFormatParas contain
+        // the numbers of the affected paragraphs, but they are sent
+        // before the changes are applied.  Therefore, SfxHintId::TextFormatParas
+        // are just buffered until another hint comes in:
         {
-        case SfxHintId::TextParaInserted:
-        case SfxHintId::TextParaRemoved:
-            // SfxHintId::TextParaInserted and SfxHintId::TextParaRemoved are sent at
-            // "unsafe" times (when the text engine has not yet re-formatted its
-            // content), so that for example calling ::TextEngine::GetTextHeight
-            // from within the code that handles SfxHintId::TextParaInserted causes
-            // trouble within the text engine.  Therefore, these hints are just
-            // buffered until a following ::TextEngine::FormatDoc causes a
-            // SfxHintId::TextFormatted to come in:
-        case SfxHintId::TextFormatPara:
-            // ::TextEngine::FormatDoc sends a sequence of
-            // SfxHintId::TextFormatParas, followed by an optional
-            // SfxHintId::TextHeightChanged, followed in all cases by one
-            // SfxHintId::TextFormatted.  Only the SfxHintId::TextFormatParas contain
-            // the numbers of the affected paragraphs, but they are sent
-            // before the changes are applied.  Therefore, SfxHintId::TextFormatParas
-            // are just buffered until another hint comes in:
-            {
-                ::osl::MutexGuard aInternalGuard(GetMutex());
-                if (!isAlive())
-                    break;
-
-                m_aParagraphNotifications.push(rTextHint);
+            ::osl::MutexGuard aInternalGuard(GetMutex());
+            if (!isAlive())
                 break;
-            }
-        case SfxHintId::TextFormatted:
-        case SfxHintId::TextHeightChanged:
-        case SfxHintId::TextModified:
-            {
-                ::osl::MutexGuard aInternalGuard(GetMutex());
-                if (!isAlive())
-                    break;
-                handleParagraphNotifications();
-                break;
-            }
-        case SfxHintId::TextViewScrolled:
-            {
-                ::osl::MutexGuard aInternalGuard(GetMutex());
-                if (!isAlive())
-                    break;
-                handleParagraphNotifications();
 
-                ::sal_Int32 nOffset = static_cast< ::sal_Int32 >(
-                    m_rView.GetStartDocPos().Y());
-                    // XXX  numeric overflow
-                if (nOffset != m_nViewOffset)
-                {
-                    m_nViewOffset = nOffset;
-
-                    Paragraphs::iterator aOldVisibleBegin(
-                        m_aVisibleBegin);
-                    Paragraphs::iterator aOldVisibleEnd(m_aVisibleEnd);
-
-                    determineVisibleRange();
-
-                    notifyVisibleRangeChanges(aOldVisibleBegin,
-                                                aOldVisibleEnd,
-                                                m_xParagraphs->end());
-                }
-                break;
-            }
-        case SfxHintId::TextViewSelectionChanged:
-        case SfxHintId::TextViewCaretChanged:
-            {
-                ::osl::MutexGuard aInternalGuard(GetMutex());
-                if (!isAlive())
-                    break;
-
-                if (m_aParagraphNotifications.empty())
-                {
-                    handleSelectionChangeNotification();
-                }
-                else
-                {
-                    // SfxHintId::TextViewSelectionChanged is sometimes sent at
-                    // "unsafe" times (when the text engine has not yet re-
-                    // formatted its content), so that for example calling
-                    // ::TextEngine::GetTextHeight from within the code that
-                    // handles a previous SfxHintId::TextParaInserted causes
-                    // trouble within the text engine.  Therefore, these
-                    // hints are just buffered (along with
-                    // SfxHintId::TextParaInserted/REMOVED/FORMATPARA) until a
-                    // following ::TextEngine::FormatDoc causes a
-                    // SfxHintId::TextFormatted to come in:
-                    m_bSelectionChangedNotification = true;
-                }
-                break;
-            }
-        default: break;
+            m_aParagraphNotifications.push(rTextHint);
+            break;
         }
+    case SfxHintId::TextFormatted:
+    case SfxHintId::TextHeightChanged:
+    case SfxHintId::TextModified:
+        {
+            ::osl::MutexGuard aInternalGuard(GetMutex());
+            if (!isAlive())
+                break;
+            handleParagraphNotifications();
+            break;
+        }
+    case SfxHintId::TextViewScrolled:
+        {
+            ::osl::MutexGuard aInternalGuard(GetMutex());
+            if (!isAlive())
+                break;
+            handleParagraphNotifications();
+
+            ::sal_Int32 nOffset = static_cast< ::sal_Int32 >(
+                m_rView.GetStartDocPos().Y());
+                // XXX  numeric overflow
+            if (nOffset != m_nViewOffset)
+            {
+                m_nViewOffset = nOffset;
+
+                Paragraphs::iterator aOldVisibleBegin(
+                    m_aVisibleBegin);
+                Paragraphs::iterator aOldVisibleEnd(m_aVisibleEnd);
+
+                determineVisibleRange();
+
+                notifyVisibleRangeChanges(aOldVisibleBegin,
+                                            aOldVisibleEnd,
+                                            m_xParagraphs->end());
+            }
+            break;
+        }
+    case SfxHintId::TextViewSelectionChanged:
+    case SfxHintId::TextViewCaretChanged:
+        {
+            ::osl::MutexGuard aInternalGuard(GetMutex());
+            if (!isAlive())
+                break;
+
+            if (m_aParagraphNotifications.empty())
+            {
+                handleSelectionChangeNotification();
+            }
+            else
+            {
+                // SfxHintId::TextViewSelectionChanged is sometimes sent at
+                // "unsafe" times (when the text engine has not yet re-
+                // formatted its content), so that for example calling
+                // ::TextEngine::GetTextHeight from within the code that
+                // handles a previous SfxHintId::TextParaInserted causes
+                // trouble within the text engine.  Therefore, these
+                // hints are just buffered (along with
+                // SfxHintId::TextParaInserted/REMOVED/FORMATPARA) until a
+                // following ::TextEngine::FormatDoc causes a
+                // SfxHintId::TextFormatted to come in:
+                m_bSelectionChangedNotification = true;
+            }
+            break;
+        }
+    default: break;
     }
 }
 
@@ -1574,18 +1550,6 @@ IMPL_LINK(Document, WindowEventHandler, ::VclWindowEvent&, rEvent, void)
                             FOCUSED));
                 }
             }
-            /*
-                ::rtl::Reference< Paragraph > xParagraph(
-                    getParagraph(m_aFocused));
-                if (xParagraph.is())
-                    xParagraph->notifyEvent(
-                        css::accessibility::AccessibleEventId::
-                        STATE_CHANGED,
-                        css::uno::Any(),
-                        css::uno::Any(
-                            css::accessibility::AccessibleStateType::
-                            FOCUSED));
-            */
             break;
         }
     case VclEventId::WindowLoseFocus:
@@ -1609,22 +1573,6 @@ IMPL_LINK(Document, WindowEventHandler, ::VclWindowEvent&, rEvent, void)
                             FOCUSED),
                         css::uno::Any());
             }
-
-            /*
-            if (m_aFocused >= m_aVisibleBegin && m_aFocused < m_aVisibleEnd)
-            {
-                ::rtl::Reference< Paragraph > xParagraph(
-                    getParagraph(m_aFocused));
-                if (xParagraph.is())
-                    xParagraph->notifyEvent(
-                        css::accessibility::AccessibleEventId::
-                        STATE_CHANGED,
-                        css::uno::Any(
-                            css::accessibility::AccessibleStateType::
-                            FOCUSED),
-                        css::uno::Any());
-            }
-            */
             break;
         }
     default: break;
@@ -1633,31 +1581,31 @@ IMPL_LINK(Document, WindowEventHandler, ::VclWindowEvent&, rEvent, void)
 
 void Document::init()
 {
-    if (m_xParagraphs.get() == nullptr)
-    {
-        const sal_uInt32 nCount = m_rEngine.GetParagraphCount();
-        m_xParagraphs.reset(new Paragraphs);
-        m_xParagraphs->reserve(static_cast< Paragraphs::size_type >(nCount));
-            // numeric overflow is harmless here
-        for (sal_uInt32 i = 0; i < nCount; ++i)
-            m_xParagraphs->push_back(ParagraphInfo(static_cast< ::sal_Int32 >(
-                                           m_rEngine.GetTextHeight(i))));
-                // XXX  numeric overflow
-        m_nViewOffset = static_cast< ::sal_Int32 >(
-            m_rView.GetStartDocPos().Y()); // XXX  numeric overflow
-        m_nViewHeight = static_cast< ::sal_Int32 >(
-            m_rView.GetWindow()->GetOutputSizePixel().Height());
+    if (m_xParagraphs != nullptr)
+        return;
+
+    const ::sal_uInt32 nCount = m_rEngine.GetParagraphCount();
+    m_xParagraphs.reset(new Paragraphs);
+    m_xParagraphs->reserve(static_cast< Paragraphs::size_type >(nCount));
+        // numeric overflow is harmless here
+    for (::sal_uInt32 i = 0; i < nCount; ++i)
+        m_xParagraphs->push_back(ParagraphInfo(static_cast< ::sal_Int32 >(
+                                       m_rEngine.GetTextHeight(i))));
             // XXX  numeric overflow
-        determineVisibleRange();
-        m_nSelectionFirstPara = -1;
-        m_nSelectionFirstPos = -1;
-        m_nSelectionLastPara = -1;
-        m_nSelectionLastPos = -1;
-        m_aFocused = m_xParagraphs->end();
-        m_bSelectionChangedNotification = false;
-        m_aEngineListener.startListening(m_rEngine);
-        m_aViewListener.startListening(*m_rView.GetWindow());
-    }
+    m_nViewOffset = static_cast< ::sal_Int32 >(
+        m_rView.GetStartDocPos().Y()); // XXX  numeric overflow
+    m_nViewHeight = static_cast< ::sal_Int32 >(
+        m_rView.GetWindow()->GetOutputSizePixel().Height());
+        // XXX  numeric overflow
+    determineVisibleRange();
+    m_nSelectionFirstPara = -1;
+    m_nSelectionFirstPos = -1;
+    m_nSelectionLastPara = -1;
+    m_nSelectionLastPos = -1;
+    m_aFocused = m_xParagraphs->end();
+    m_bSelectionChangedNotification = false;
+    m_aEngineListener.startListening(m_rEngine);
+    m_aViewListener.startListening(*m_rView.GetWindow());
 }
 
 ::rtl::Reference< Paragraph >
@@ -1750,7 +1698,7 @@ void Document::notifyVisibleRangeChanges(
 }
 
 void
-Document::changeParagraphText(::sal_uLong nNumber, ::sal_uInt16 nBegin, ::sal_uInt16 nEnd,
+Document::changeParagraphText(::sal_uInt32 nNumber, ::sal_uInt16 nBegin, ::sal_uInt16 nEnd,
                               bool bCut, bool bPaste,
                               OUString const & rText)
 {
@@ -1776,7 +1724,7 @@ void Document::handleParagraphNotifications()
         {
         case SfxHintId::TextParaInserted:
             {
-                ::sal_uLong n = aHint.GetValue();
+                ::sal_uInt32 n = static_cast< ::sal_uInt32 >( aHint.GetValue() );
                 assert(n <= m_xParagraphs->size() && "bad SfxHintId::TextParaInserted event");
 
                 // Save the values of old iterators (the iterators themselves
@@ -1827,7 +1775,7 @@ void Document::handleParagraphNotifications()
             }
         case SfxHintId::TextParaRemoved:
             {
-                ::sal_uLong n = aHint.GetValue();
+                ::sal_uInt32 n = static_cast< ::sal_uInt32 >( aHint.GetValue() );
                 if (n == TEXT_PARA_ALL)
                 {
                     for (Paragraphs::iterator aIt(m_aVisibleBegin);
@@ -1941,7 +1889,7 @@ void Document::handleParagraphNotifications()
             }
         case SfxHintId::TextFormatPara:
             {
-                ::sal_uLong n = aHint.GetValue();
+                ::sal_uInt32 n = static_cast< ::sal_uInt32 >( aHint.GetValue() );
                 assert(n < m_xParagraphs->size() && "Bad SfxHintId::TextFormatPara event");
 
                 (*m_xParagraphs)[static_cast< Paragraphs::size_type >(n)].
@@ -1975,109 +1923,102 @@ void Document::handleParagraphNotifications()
     }
 }
 
-::sal_Int32 Document::getSelectionType(::sal_Int32 nNewFirstPara, ::sal_Int32 nNewFirstPos, ::sal_Int32 nNewLastPara, ::sal_Int32 nNewLastPos)
+namespace
 {
-    if (m_nSelectionFirstPara == -1)
-        return -1;
-    ::sal_Int32 Osp = m_nSelectionFirstPara, Osl = m_nSelectionFirstPos, Oep = m_nSelectionLastPara, Oel = m_nSelectionLastPos;
-    ::sal_Int32 Nsp = nNewFirstPara, Nsl = nNewFirstPos, Nep = nNewLastPara, Nel = nNewLastPos;
-    TextPaM Ns(Nsp, Nsl);
-    TextPaM Ne(Nep, Nel);
-    TextPaM Os(Osp, Osl);
-    TextPaM Oe(Oep, Oel);
 
-    if (Os == Oe && Ns == Ne)
+enum class SelChangeType
+{
+    None, // no change, or invalid
+    CaretMove, // neither old nor new have selection, and they are different
+    NoSelToSel, // old has no selection but new has selection
+    SelToNoSel, // old has selection but new has no selection
+    // both old and new have selections
+    NoParaChange, // only end index changed inside end para
+    EndParaNoMoreBehind, // end para was behind start, but now is same or ahead
+    AddedFollowingPara, // selection extended to following paragraph(s)
+    ExcludedPreviousPara, // selection shrunk excluding previous paragraph(s)
+    ExcludedFollowingPara, // selection shrunk excluding following paragraph(s)
+    AddedPreviousPara, // selection extended to previous paragraph(s)
+    EndParaBecameBehind // end para was ahead of start, but now is behind
+};
+
+SelChangeType getSelChangeType(const TextPaM& Os, const TextPaM& Oe,
+                               const TextPaM& Ns, const TextPaM& Ne)
+{
+    if (Os == Oe) // no old selection
     {
-        //only caret moves.
-        return 1;
+        if (Ns == Ne) // no new selection: only caret moves
+            return Os != Ns ? SelChangeType::CaretMove : SelChangeType::None;
+        else // old has no selection but new has selection
+            return SelChangeType::NoSelToSel;
     }
-    else if (Os == Oe && Ns != Ne)
+    else if (Ns == Ne) // old has selection; no new selection
     {
-        //old has no selection but new has selection
-        return 2;
+        return SelChangeType::SelToNoSel;
     }
-    else if (Os != Oe && Ns == Ne)
+    else if (Os == Ns) // both old and new have selections, and their starts are same
     {
-        //old has selection but new has no selection.
-        return 3;
-    }
-    else if (Os != Oe && Ns != Ne && Osp == Nsp && Osl == Nsl)
-    {
-        //both old and new have selections.
-        if (Oep == Nep )
+        const sal_Int32 Osp = Os.GetPara(), Oep = Oe.GetPara();
+        const sal_Int32 Nsp = Ns.GetPara(), Nep = Ne.GetPara();
+        if (Oep == Nep) // end of selection stays in the same paragraph
         {
             //Send text_selection_change event on Nep
-
-            return 4;
+            return Oe.GetIndex() != Ne.GetIndex() ? SelChangeType::NoParaChange
+                                                  : SelChangeType::None;
         }
-        else if (Oep < Nep)
+        else if (Oep < Nep) // end of selection moved to a following paragraph
         {
             //all the following examples like 1,2->1,3 means that old start select para is 1, old end select para is 2,
             // then press shift up, the new start select para is 1, new end select para is 3;
             //for example, 1, 2 -> 1, 3; 4,1 -> 4, 7; 4,1 -> 4, 2; 4,4->4,5
-            if (Nep >= Nsp)
+            if (Nep >= Nsp) // new end para not behind start
             {
                 // 1, 2 -> 1, 3; 4, 1 -> 4, 7; 4,4->4,5;
-                if (Oep < Osp)
+                if (Oep < Osp) // old end was behind start
                 {
-                    // 4,1 -> 4,7;
-                    return 5;
+                    // 4,1 -> 4,7; 4,1 -> 4,4
+                    return SelChangeType::EndParaNoMoreBehind;
                 }
-                else
+                else // old end para wasn't behind start
                 {
                     // 1, 2 -> 1, 3; 4,4->4,5;
-                    return 6;
+                    return SelChangeType::AddedFollowingPara;
                 }
             }
-            else
+            else // new end para is still behind start
             {
                 // 4,1 -> 4,2,
-                if (Oep < Osp)
-                {
-                    // 4,1 -> 4,2,
-                    return 7;
-                }
-                else
-                {
-                    // no such condition. Oep > Osp = Nsp > Nep
-                }
+                return SelChangeType::ExcludedPreviousPara;
             }
         }
-        else if (Oep > Nep)
+        else // Oep > Nep => end of selection moved to a previous paragraph
         {
             // 3,2 -> 3,1; 4,7 -> 4,1; 4, 7 -> 4,6; 4,4 -> 4,3
-            if (Nep >= Nsp)
+            if (Nep >= Nsp) // new end para is still not behind of start
             {
-                // 4,7 -> 4,6
-                if (Oep <= Osp)
-                {
-                    //no such condition, Oep<Osp=Nsp <= Nep
-                }
-                else
-                {
-                    // 4,7 ->4,6
-                    return 8;
-                }
+                // 4,7 ->4,6
+                return SelChangeType::ExcludedFollowingPara;
             }
-            else
+            else // new end para is behind start
             {
                 // 3,2 -> 3,1, 4,7 -> 4,1; 4,4->4,3
-                if (Oep <= Osp)
+                if (Oep <= Osp) // it was not ahead already
                 {
                     // 3,2 -> 3,1; 4,4->4,3
-                    return 9;
+                    return SelChangeType::AddedPreviousPara;
                 }
-                else
+                else // it was ahead previously
                 {
                     // 4,7 -> 4,1
-                    return 10;
+                    return SelChangeType::EndParaBecameBehind;
                 }
             }
         }
     }
-    return -1;
+    return SelChangeType::None;
 }
 
+} // namespace
 
 void Document::sendEvent(::sal_Int32 start, ::sal_Int32 end, ::sal_Int16 nEventId)
 {
@@ -2141,9 +2082,9 @@ void Document::handleSelectionChangeNotification()
         ::rtl::Reference< Paragraph > xParagraph(getParagraph(aIt));
         if (xParagraph.is())
         {
-        //disable the first event when user types in empty field.
-        ::sal_Int32 count = getAccessibleChildCount();
-        bool bEmpty = count > 1;
+            //disable the first event when user types in empty field.
+            ::sal_Int32 count = getAccessibleChildCount();
+            bool bEmpty = count > 1;
             //if (aIt != m_aFocused)
             if (aIt != m_aFocused && bEmpty)
                 xParagraph->notifyEvent(
@@ -2165,176 +2106,97 @@ void Document::handleSelectionChangeNotification()
     }
     m_aFocused = aIt;
 
-    ::sal_Int32 nMin;
-    ::sal_Int32 nMax;
-    ::sal_Int32 ret = getSelectionType(nNewFirstPara, nNewFirstPos, nNewLastPara, nNewLastPos);
-    switch (ret)
+    if (m_nSelectionFirstPara != -1)
     {
-        case -1:
-            {
+        sal_Int32 nMin;
+        sal_Int32 nMax;
+        SelChangeType ret = getSelChangeType(TextPaM(m_nSelectionFirstPara, m_nSelectionFirstPos),
+                                             TextPaM(m_nSelectionLastPara, m_nSelectionLastPos),
+                                             rSelection.GetStart(), rSelection.GetEnd());
+        switch (ret)
+        {
+            case SelChangeType::None:
                 //no event
-            }
-            break;
-        case 1:
-            {
+                break;
+            case SelChangeType::CaretMove:
                 //only caret moved, already handled in above
-            }
-            break;
-        case 2:
-            {
+                break;
+            case SelChangeType::NoSelToSel:
                 //old has no selection but new has selection
                 nMin = std::min(nNewFirstPara, nNewLastPara);
                 nMax = std::max(nNewFirstPara, nNewLastPara);
-                sendEvent(nMin, nMax,  css::accessibility::AccessibleEventId::SELECTION_CHANGED);
-                sendEvent(nMin, nMax,  css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
-            }
-            break;
-        case 3:
-            {
+                sendEvent(nMin, nMax, css::accessibility::AccessibleEventId::SELECTION_CHANGED);
+                sendEvent(nMin, nMax,
+                          css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
+                break;
+            case SelChangeType::SelToNoSel:
                 //old has selection but new has no selection.
                 nMin = std::min(m_nSelectionFirstPara, m_nSelectionLastPara);
                 nMax = std::max(m_nSelectionFirstPara, m_nSelectionLastPara);
-                sendEvent(nMin, nMax,  css::accessibility::AccessibleEventId::SELECTION_CHANGED);
-                sendEvent(nMin, nMax,  css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
-            }
-            break;
-        case 4:
-            {
+                sendEvent(nMin, nMax, css::accessibility::AccessibleEventId::SELECTION_CHANGED);
+                sendEvent(nMin, nMax,
+                          css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
+                break;
+            case SelChangeType::NoParaChange:
                 //Send text_selection_change event on Nep
-                sendEvent(nNewLastPara, nNewLastPara, css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
-            }
-            break;
-        case 5:
-            {
-                // 4, 1 -> 4, 7
-                sendEvent(m_nSelectionLastPara, m_nSelectionFirstPara-1, css::accessibility::AccessibleEventId::SELECTION_CHANGED);
-                sendEvent(nNewFirstPara+1, nNewLastPara, css::accessibility::AccessibleEventId::SELECTION_CHANGED);
+                sendEvent(nNewLastPara, nNewLastPara,
+                          css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
+                break;
+            case SelChangeType::EndParaNoMoreBehind:
+                // 4, 1 -> 4, 7; 4,1 -> 4,4
+                sendEvent(m_nSelectionLastPara, m_nSelectionFirstPara - 1,
+                          css::accessibility::AccessibleEventId::SELECTION_CHANGED);
+                sendEvent(nNewFirstPara + 1, nNewLastPara,
+                          css::accessibility::AccessibleEventId::SELECTION_CHANGED);
 
-                sendEvent(m_nSelectionLastPara, nNewLastPara, css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
-            }
-            break;
-        case 6:
-            {
+                sendEvent(m_nSelectionLastPara, nNewLastPara,
+                          css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
+                break;
+            case SelChangeType::AddedFollowingPara:
                 // 1, 2 -> 1, 4; 4,4->4,5;
-                sendEvent(m_nSelectionLastPara+1, nNewLastPara, css::accessibility::AccessibleEventId::SELECTION_CHANGED);
+                sendEvent(m_nSelectionLastPara + 1, nNewLastPara,
+                          css::accessibility::AccessibleEventId::SELECTION_CHANGED);
 
-                sendEvent(m_nSelectionLastPara, nNewLastPara, css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
-            }
-            break;
-        case 7:
-            {
+                sendEvent(m_nSelectionLastPara, nNewLastPara,
+                          css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
+                break;
+            case SelChangeType::ExcludedPreviousPara:
                 // 4,1 -> 4,3,
-                sendEvent(m_nSelectionLastPara +1, nNewLastPara , css::accessibility::AccessibleEventId::SELECTION_CHANGED);
+                sendEvent(m_nSelectionLastPara + 1, nNewLastPara,
+                          css::accessibility::AccessibleEventId::SELECTION_CHANGED);
 
-                sendEvent(m_nSelectionLastPara, nNewLastPara, css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
-            }
-            break;
-        case 8:
-            {
+                sendEvent(m_nSelectionLastPara, nNewLastPara,
+                          css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
+                break;
+            case SelChangeType::ExcludedFollowingPara:
                 // 4,7 ->4,5;
-                sendEvent(nNewLastPara + 1, m_nSelectionLastPara, css::accessibility::AccessibleEventId::SELECTION_CHANGED);
+                sendEvent(nNewLastPara + 1, m_nSelectionLastPara,
+                          css::accessibility::AccessibleEventId::SELECTION_CHANGED);
 
-                sendEvent(nNewLastPara, m_nSelectionLastPara, css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
-            }
-            break;
-        case 9:
-            {
+                sendEvent(nNewLastPara, m_nSelectionLastPara,
+                          css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
+                break;
+            case SelChangeType::AddedPreviousPara:
                 // 3,2 -> 3,1; 4,4->4,3
-                sendEvent(nNewLastPara, m_nSelectionLastPara - 1, css::accessibility::AccessibleEventId::SELECTION_CHANGED);
+                sendEvent(nNewLastPara, m_nSelectionLastPara - 1,
+                          css::accessibility::AccessibleEventId::SELECTION_CHANGED);
 
-                sendEvent(nNewLastPara, m_nSelectionLastPara, css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
-            }
-            break;
-        case 10:
-            {
+                sendEvent(nNewLastPara, m_nSelectionLastPara,
+                          css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
+                break;
+            case SelChangeType::EndParaBecameBehind:
                 // 4,7 -> 4,1
-                sendEvent(m_nSelectionFirstPara + 1, m_nSelectionLastPara, css::accessibility::AccessibleEventId::SELECTION_CHANGED);
-                sendEvent(nNewLastPara, nNewFirstPara - 1, css::accessibility::AccessibleEventId::SELECTION_CHANGED);
+                sendEvent(m_nSelectionFirstPara + 1, m_nSelectionLastPara,
+                          css::accessibility::AccessibleEventId::SELECTION_CHANGED);
+                sendEvent(nNewLastPara, nNewFirstPara - 1,
+                          css::accessibility::AccessibleEventId::SELECTION_CHANGED);
 
-                sendEvent(nNewLastPara, m_nSelectionLastPara, css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
-            }
-            break;
-        default:
-            break;
+                sendEvent(nNewLastPara, m_nSelectionLastPara,
+                          css::accessibility::AccessibleEventId::TEXT_SELECTION_CHANGED);
+                break;
+        }
     }
 
-    /*
-    // Update both old and new selection.  (Regardless of how the two selections
-    // look like, there will always be two ranges to the left and right of the
-    // overlap---the overlap and/or the range to the right of it possibly being
-    // empty.  Only for these two ranges notifications have to be sent.)
-
-    TextPaM aOldTextStart( static_cast< sal_uLong >( m_nSelectionFirstPara ), static_cast< sal_uInt16 >( m_nSelectionFirstPos ) );
-    TextPaM aOldTextEnd( static_cast< sal_uLong >( m_nSelectionLastPara ), static_cast< sal_uInt16 >( m_nSelectionLastPos ) );
-    TextPaM aNewTextStart( static_cast< sal_uLong >( nNewFirstPara ), static_cast< sal_uInt16 >( nNewFirstPos ) );
-    TextPaM aNewTextEnd( static_cast< sal_uLong >( nNewLastPara ), static_cast< sal_uInt16 >( nNewLastPos ) );
-
-    // justify selections
-    justifySelection( aOldTextStart, aOldTextEnd );
-    justifySelection( aNewTextStart, aNewTextEnd );
-
-    sal_Int32 nFirst1;
-    sal_Int32 nLast1;
-    sal_Int32 nFirst2;
-    sal_Int32 nLast2;
-
-    if ( m_nSelectionFirstPara == -1 )
-    {
-        // old selection not initialized yet => notify events only for new selection (if not empty)
-        nFirst1 = aNewTextStart.GetPara();
-        nLast1 = aNewTextEnd.GetPara() + ( aNewTextStart != aNewTextEnd ? 1 : 0 );
-        nFirst2 = 0;
-        nLast2 = 0;
-    }
-    else if ( aOldTextStart == aOldTextEnd && aNewTextStart == aNewTextEnd )
-    {
-        // old and new selection empty => no events
-        nFirst1 = 0;
-        nLast1 = 0;
-        nFirst2 = 0;
-        nLast2 = 0;
-    }
-    else if ( aOldTextStart != aOldTextEnd && aNewTextStart == aNewTextEnd )
-    {
-        // old selection not empty + new selection empty => notify events only for old selection
-        nFirst1 = aOldTextStart.GetPara();
-        nLast1 = aOldTextEnd.GetPara() + 1;
-        nFirst2 = 0;
-        nLast2 = 0;
-    }
-    else if ( aOldTextStart == aOldTextEnd && aNewTextStart != aNewTextEnd )
-    {
-        // old selection empty + new selection not empty => notify events only for new selection
-        nFirst1 = aNewTextStart.GetPara();
-        nLast1 = aNewTextEnd.GetPara() + 1;
-        nFirst2 = 0;
-        nLast2 = 0;
-    }
-    else
-    {
-        // old and new selection not empty => notify events for the two ranges left and right of the overlap
-        std::vector< TextPaM > aTextPaMs(4);
-        aTextPaMs[0] = aOldTextStart;
-        aTextPaMs[1] = aOldTextEnd;
-        aTextPaMs[2] = aNewTextStart;
-        aTextPaMs[3] = aNewTextEnd;
-        std::sort( aTextPaMs.begin(), aTextPaMs.end() );
-
-        nFirst1 = aTextPaMs[0].GetPara();
-        nLast1 = aTextPaMs[1].GetPara() + ( aTextPaMs[0] != aTextPaMs[1] ? 1 : 0 );
-
-        nFirst2 = aTextPaMs[2].GetPara();
-        nLast2 = aTextPaMs[3].GetPara() + ( aTextPaMs[2] != aTextPaMs[3] ? 1 : 0 );
-
-        // adjust overlapping ranges
-        if ( nLast1 > nFirst2 )
-            nLast1 = nFirst2;
-    }
-
-    // notify selection changes
-    notifySelectionChange( nFirst1, nLast1 );
-    notifySelectionChange( nFirst2, nLast2 );
-    */
     m_nSelectionFirstPara = nNewFirstPara;
     m_nSelectionFirstPos = nNewFirstPos;
     m_nSelectionLastPara = nNewLastPara;
@@ -2343,11 +2205,10 @@ void Document::handleSelectionChangeNotification()
 
 void Document::disposeParagraphs()
 {
-    for (Paragraphs::iterator aIt(m_xParagraphs->begin());
-         aIt != m_xParagraphs->end(); ++aIt)
+    for (auto const& paragraph : *m_xParagraphs)
     {
         css::uno::Reference< css::lang::XComponent > xComponent(
-            aIt->getParagraph().get(), css::uno::UNO_QUERY);
+            paragraph.getParagraph().get(), css::uno::UNO_QUERY);
         if (xComponent.is())
             xComponent->dispose();
     }
@@ -2356,17 +2217,16 @@ void Document::disposeParagraphs()
 // static
 css::uno::Any Document::mapFontColor(::Color const & rColor)
 {
-    return css::uno::Any(
-        static_cast< ::sal_Int32 >(COLORDATA_RGB(rColor.GetColor())));
+    return css::uno::makeAny(rColor.GetRGBColor());
         // FIXME  keep transparency?
 }
 
 // static
 ::Color Document::mapFontColor(css::uno::Any const & rColor)
 {
-    ::sal_Int32 nColor = 0;
+    ::Color nColor;
     rColor >>= nColor;
-    return ::Color(static_cast< ::ColorData >(nColor));
+    return nColor;
 }
 
 // static

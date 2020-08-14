@@ -17,20 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "SlideSorter.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsSelectionManager.hxx"
-#include "controller/SlsSelectionObserver.hxx"
-#include "controller/SlsPageSelector.hxx"
-#include "controller/SlsFocusManager.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include <svx/svdmodel.hxx>
-#include "drawdoc.hxx"
+#include <SlideSorter.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsSelectionManager.hxx>
+#include <controller/SlsSelectionObserver.hxx>
+#include <controller/SlsPageSelector.hxx>
+#include <controller/SlsFocusManager.hxx>
+#include <sdpage.hxx>
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
-SelectionObserver::Context::Context (SlideSorter& rSlideSorter)
+SelectionObserver::Context::Context (SlideSorter const & rSlideSorter)
     : mpSelectionObserver(
         rSlideSorter.GetController().GetSelectionManager()->GetSelectionObserver())
 {
@@ -38,7 +35,7 @@ SelectionObserver::Context::Context (SlideSorter& rSlideSorter)
         mpSelectionObserver->StartObservation();
 }
 
-SelectionObserver::Context::~Context()
+SelectionObserver::Context::~Context() COVERITY_NOEXCEPT_FALSE
 {
     if (mpSelectionObserver)
         mpSelectionObserver->EndObservation();
@@ -56,9 +53,10 @@ void SelectionObserver::Context::Abort()
 //===== SelectionObserver =====================================================
 
 SelectionObserver::SelectionObserver (SlideSorter& rSlideSorter)
-    : mrSlideSorter(rSlideSorter),
-      mbIsOvservationActive(false),
-      maInsertedPages()
+    : mrSlideSorter(rSlideSorter)
+    , mbIsObservationActive(false)
+    , mbPageEventOccurred(false)
+    , maInsertedPages()
 {
 }
 
@@ -68,8 +66,10 @@ SelectionObserver::~SelectionObserver()
 
 void SelectionObserver::NotifyPageEvent (const SdrPage* pSdrPage)
 {
-    if ( ! mbIsOvservationActive)
+    if (!mbIsObservationActive)
         return;
+
+    mbPageEventOccurred = true;
 
     const SdPage* pPage = dynamic_cast<const SdPage*>(pSdrPage);
     if (pPage == nullptr)
@@ -89,45 +89,47 @@ void SelectionObserver::NotifyPageEvent (const SdrPage* pSdrPage)
 
 void SelectionObserver::StartObservation()
 {
-    OSL_ASSERT(!mbIsOvservationActive);
+    OSL_ASSERT(!mbIsObservationActive);
     maInsertedPages.clear();
-    mbIsOvservationActive = true;
+    mbIsObservationActive = true;
 }
 
 void SelectionObserver::AbortObservation()
 {
-    OSL_ASSERT(mbIsOvservationActive);
-    mbIsOvservationActive = false;
+    OSL_ASSERT(mbIsObservationActive);
+    mbIsObservationActive = false;
     maInsertedPages.clear();
 }
 
 void SelectionObserver::EndObservation()
 {
-    OSL_ASSERT(mbIsOvservationActive);
-    mbIsOvservationActive = false;
+    OSL_ASSERT(mbIsObservationActive);
+    mbIsObservationActive = false;
+
+    if (!mbPageEventOccurred)
+        return;
 
     PageSelector& rSelector (mrSlideSorter.GetController().GetPageSelector());
     PageSelector::UpdateLock aUpdateLock (mrSlideSorter);
     rSelector.DeselectAllPages();
-    if ( ! maInsertedPages.empty())
+    if (!maInsertedPages.empty())
     {
         // Select the inserted pages.
-        for (::std::vector<const SdPage*>::const_iterator
-                 iPage(maInsertedPages.begin()),
-                 iEnd(maInsertedPages.end());
-             iPage!=iEnd;
-             ++iPage)
+        for (const auto& rpPage : maInsertedPages)
         {
-            rSelector.SelectPage(*iPage);
+            rSelector.SelectPage(rpPage);
         }
         maInsertedPages.clear();
     }
 
     aUpdateLock.Release();
-    mrSlideSorter.GetController().GetFocusManager().SetFocusedPageToCurrentPage();
-
+    bool bSuccess = mrSlideSorter.GetController().GetFocusManager().SetFocusedPageToCurrentPage();
+    // tdf#129346 nothing currently selected, select something, if possible
+    // but (tdf#129346) only if setting focus to current page failed
+    if (!bSuccess && rSelector.GetPageCount() && rSelector.GetSelectedPageCount() == 0)
+        rSelector.SelectPage(0);
 }
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

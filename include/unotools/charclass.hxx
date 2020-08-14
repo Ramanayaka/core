@@ -24,19 +24,13 @@
 #include <i18nlangtag/languagetag.hxx>
 #include <com/sun/star/i18n/DirectionProperty.hpp>
 #include <com/sun/star/i18n/KCharacterType.hpp>
-#include <com/sun/star/i18n/KParseTokens.hpp>
-#include <com/sun/star/i18n/KParseType.hpp>
 #include <com/sun/star/i18n/ParseResult.hpp>
-#include <com/sun/star/i18n/XCharacterClassification.hpp>
 #include <com/sun/star/i18n/UnicodeScript.hpp>
 #include <osl/mutex.hxx>
-#include <rtl/character.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace uno {
-        class XComponentContext;
-    }
-}}}
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::i18n { class XCharacterClassification; }
 
 const sal_Int32 nCharClassAlphaType =
     css::i18n::KCharacterType::UPPER |
@@ -101,7 +95,7 @@ public:
     static bool isNumericType( sal_Int32 nType )
     {
         return ((nType & nCharClassNumericType) != 0) &&
-            ((nType & ~(nCharClassNumericTypeMask)) == 0);
+            ((nType & ~nCharClassNumericTypeMask) == 0);
     }
 
     /// whether type is pure alphanumeric or not, e.g. return of getStringType
@@ -117,7 +111,7 @@ public:
     static bool isLetterType( sal_Int32 nType )
     {
         return ((nType & nCharClassLetterType) != 0) &&
-            ((nType & ~(nCharClassLetterTypeMask)) == 0);
+            ((nType & ~nCharClassLetterTypeMask) == 0);
     }
 
     /// whether type is pure letternumeric or not, e.g. return of getStringType

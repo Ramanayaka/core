@@ -17,26 +17,35 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-
+#include <comphelper/processfactory.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <tools/diagnose_ex.h>
 #include <com/sun/star/awt/MouseButton.hpp>
 #include <com/sun/star/awt/SystemPointer.hpp>
 #include <com/sun/star/presentation/XShapeEventListener.hpp>
+#include <com/sun/star/system/SystemShellExecute.hpp>
+#include <com/sun/star/system/SystemShellExecuteFlags.hpp>
+#include <com/sun/star/system/XSystemShellExecute.hpp>
+#include <svx/unoshape.hxx>
+#include <svx/ImageMapInfo.hxx>
 
 #include "shapemanagerimpl.hxx"
 
 #include <functional>
 
-using namespace com::sun::star;
+using namespace css;
+using namespace css::uno;
+using namespace css::drawing;
+using namespace css::system;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 ShapeManagerImpl::ShapeManagerImpl( EventMultiplexer&            rMultiplexer,
                                     LayerManagerSharedPtr const& rLayerManager,
                                     CursorManager&               rCursorManager,
                                     const ShapeEventListenerMap& rGlobalListenersMap,
-                                    const ShapeCursorMap&        rGlobalCursorMap ):
+                                    const ShapeCursorMap&        rGlobalCursorMap,
+                                    const Reference<XDrawPage>& xDrawPage ):
     mrMultiplexer(rMultiplexer),
     mpLayerManager(rLayerManager),
     mrCursorManager(rCursorManager),
@@ -45,52 +54,52 @@ ShapeManagerImpl::ShapeManagerImpl( EventMultiplexer&            rMultiplexer,
     maShapeListenerMap(),
     maShapeCursorMap(),
     maHyperlinkShapes(),
-    mbEnabled(false)
+    mbEnabled(false),
+    mxDrawPage(xDrawPage)
 {
 }
 
 void ShapeManagerImpl::activate()
 {
-    if( !mbEnabled )
-    {
-        mbEnabled = true;
+    if( mbEnabled )
+        return;
 
-        // register this handler on EventMultiplexer.
-        // Higher prio (overrides other engine handlers)
-        mrMultiplexer.addMouseMoveHandler( shared_from_this(), 2.0 );
-        mrMultiplexer.addClickHandler( shared_from_this(), 2.0 );
-        mrMultiplexer.addShapeListenerHandler( shared_from_this() );
+    mbEnabled = true;
 
-        // clone listener map
-        uno::Reference<presentation::XShapeEventListener> xDummyListener;
-        for( const auto& rListener : mrGlobalListenersMap )
-            this->listenerAdded( xDummyListener, rListener.first );
+    // register this handler on EventMultiplexer.
+    // Higher prio (overrides other engine handlers)
+    mrMultiplexer.addMouseMoveHandler( shared_from_this(), 2.0 );
+    mrMultiplexer.addClickHandler( shared_from_this(), 2.0 );
+    mrMultiplexer.addShapeListenerHandler( shared_from_this() );
 
-        // clone cursor map
-        for( const auto& rListener : mrGlobalCursorMap )
-            this->cursorChanged( rListener.first, rListener.second );
+    // clone listener map
+    for( const auto& rListener : mrGlobalListenersMap )
+        listenerAdded( rListener.first );
 
-        if( mpLayerManager )
-            mpLayerManager->activate();
-    }
+    // clone cursor map
+    for( const auto& rListener : mrGlobalCursorMap )
+        cursorChanged( rListener.first, rListener.second );
+
+    if( mpLayerManager )
+        mpLayerManager->activate();
 }
 
 void ShapeManagerImpl::deactivate()
 {
-    if( mbEnabled )
-    {
-        mbEnabled = false;
+    if( !mbEnabled )
+        return;
 
-        if( mpLayerManager )
-            mpLayerManager->deactivate();
+    mbEnabled = false;
 
-        maShapeListenerMap.clear();
-        maShapeCursorMap.clear();
+    if( mpLayerManager )
+        mpLayerManager->deactivate();
 
-        mrMultiplexer.removeShapeListenerHandler( shared_from_this() );
-        mrMultiplexer.removeMouseMoveHandler( shared_from_this() );
-        mrMultiplexer.removeClickHandler( shared_from_this() );
-    }
+    maShapeListenerMap.clear();
+    maShapeCursorMap.clear();
+
+    mrMultiplexer.removeShapeListenerHandler( shared_from_this() );
+    mrMultiplexer.removeMouseMoveHandler( shared_from_this() );
+    mrMultiplexer.removeClickHandler( shared_from_this() );
 }
 
 void ShapeManagerImpl::dispose()
@@ -126,37 +135,43 @@ bool ShapeManagerImpl::handleMouseReleased( awt::MouseEvent const& e )
         return true; // event consumed
     }
 
+    // tdf#74045 Handle ImageMaps
+    OUString const imageMapLink(checkForImageMap(e));
+    if (!imageMapLink.isEmpty())
+    {
+        Reference<XSystemShellExecute> exec(
+            SystemShellExecute::create(comphelper::getProcessComponentContext()));
+        exec->execute(imageMapLink, OUString(), SystemShellExecuteFlags::URIS_ONLY);
+
+        return true;
+    }
+
     // find matching shape (scan reversely, to coarsely match
     // paint order)
-    ShapeToListenersMap::reverse_iterator aCurrBroadcaster(
-        maShapeListenerMap.rbegin() );
-    ShapeToListenersMap::reverse_iterator const aEndBroadcasters(
-        maShapeListenerMap.rend() );
-    while( aCurrBroadcaster != aEndBroadcasters )
+    auto aCurrBroadcaster = std::find_if(maShapeListenerMap.rbegin(), maShapeListenerMap.rend(),
+        [&aPosition](const ShapeToListenersMap::value_type& rBroadcaster) {
+            // TODO(F2): Get proper geometry polygon from the
+            // shape, to avoid having areas outside the shape
+            // react on the mouse
+            return rBroadcaster.first->getBounds().isInside( aPosition )
+                && rBroadcaster.first->isVisible();
+        });
+    if (aCurrBroadcaster != maShapeListenerMap.rend())
     {
-        // TODO(F2): Get proper geometry polygon from the
-        // shape, to avoid having areas outside the shape
-        // react on the mouse
-        if( aCurrBroadcaster->first->getBounds().isInside( aPosition ) &&
-            aCurrBroadcaster->first->isVisible() )
-        {
-            // shape hit, and shape is visible. Raise
-            // event.
+        // shape hit, and shape is visible. Raise
+        // event.
 
-            std::shared_ptr<comphelper::OInterfaceContainerHelper2> const pCont(
-                aCurrBroadcaster->second );
-            uno::Reference<drawing::XShape> const xShape(
-                aCurrBroadcaster->first->getXShape() );
+        std::shared_ptr<comphelper::OInterfaceContainerHelper2> const pCont(
+            aCurrBroadcaster->second );
+        uno::Reference<drawing::XShape> const xShape(
+            aCurrBroadcaster->first->getXShape() );
 
-            // DON'T do anything with /this/ after this point!
-            pCont->forEach<presentation::XShapeEventListener>(
-                [&xShape, &e]( const uno::Reference< presentation::XShapeEventListener >& rListener )
-                { return rListener->click( xShape, e ); } );
+        // DON'T do anything with /this/ after this point!
+        pCont->forEach<presentation::XShapeEventListener>(
+            [&xShape, &e]( const uno::Reference< presentation::XShapeEventListener >& rListener )
+            { return rListener->click( xShape, e ); } );
 
-            return true; // handled this event
-        }
-
-        ++aCurrBroadcaster;
+        return true; // handled this event
     }
 
     return false; // did not handle this event
@@ -177,7 +192,7 @@ bool ShapeManagerImpl::handleMouseMoved( const awt::MouseEvent& e )
     const ::basegfx::B2DPoint aPosition( e.X, e.Y );
     sal_Int16                 nNewCursor(-1);
 
-    if( !checkForHyperlink(aPosition).isEmpty() )
+    if( !checkForHyperlink(aPosition).isEmpty() || !checkForImageMap(e).isEmpty() )
     {
         nNewCursor = awt::SystemPointer::REFHAND;
     }
@@ -185,25 +200,19 @@ bool ShapeManagerImpl::handleMouseMoved( const awt::MouseEvent& e )
     {
         // find matching shape (scan reversely, to coarsely match
         // paint order)
-        ShapeToCursorMap::reverse_iterator aCurrCursor(
-            maShapeCursorMap.rbegin() );
-        ShapeToCursorMap::reverse_iterator const aEndCursors(
-            maShapeCursorMap.rend() );
-        while( aCurrCursor != aEndCursors )
+        auto aCurrCursor = std::find_if(maShapeCursorMap.rbegin(), maShapeCursorMap.rend(),
+            [&aPosition](const ShapeToCursorMap::value_type& rCursor) {
+                // TODO(F2): Get proper geometry polygon from the
+                // shape, to avoid having areas outside the shape
+                // react on the mouse
+                return rCursor.first->getBounds().isInside( aPosition )
+                    && rCursor.first->isVisible();
+            });
+        if (aCurrCursor != maShapeCursorMap.rend())
         {
-            // TODO(F2): Get proper geometry polygon from the
-            // shape, to avoid having areas outside the shape
-            // react on the mouse
-            if( aCurrCursor->first->getBounds().isInside( aPosition ) &&
-                aCurrCursor->first->isVisible() )
-            {
-                // shape found, and it's visible. set
-                // requested cursor to shape's
-                nNewCursor = aCurrCursor->second;
-                break;
-            }
-
-            ++aCurrCursor;
+            // shape found, and it's visible. set
+            // requested cursor to shape's
+            nNewCursor = aCurrCursor->second;
         }
     }
 
@@ -258,6 +267,12 @@ ShapeSharedPtr ShapeManagerImpl::lookupShape( uno::Reference< drawing::XShape > 
     return ShapeSharedPtr();
 }
 
+const XShapeToShapeMap& ShapeManagerImpl::getXShapeToShapeMap() const
+{
+    assert( mpLayerManager );
+    return mpLayerManager->getXShapeToShapeMap();
+}
+
 void ShapeManagerImpl::addHyperlinkArea( const HyperlinkAreaSharedPtr& rArea )
 {
     maHyperlinkShapes.insert(rArea);
@@ -280,8 +295,7 @@ void ShapeManagerImpl::revokeSubset( const AttributableShapeSharedPtr& rOrigShap
 }
 
 bool ShapeManagerImpl::listenerAdded(
-    const uno::Reference<presentation::XShapeEventListener>& /*xListener*/,
-    const uno::Reference<drawing::XShape>&                   xShape )
+    const uno::Reference<drawing::XShape>& xShape )
 {
     ShapeEventListenerMap::const_iterator aIter;
     if( (aIter = mrGlobalListenersMap.find( xShape )) ==
@@ -296,18 +310,13 @@ bool ShapeManagerImpl::listenerAdded(
     ShapeSharedPtr pShape( lookupShape(xShape) );
     if( pShape )
     {
-        maShapeListenerMap.insert(
-            ShapeToListenersMap::value_type(
-                pShape,
-                aIter->second));
+        maShapeListenerMap.emplace(pShape, aIter->second);
     }
 
     return true;
 }
 
-bool ShapeManagerImpl::listenerRemoved(
-    const uno::Reference<presentation::XShapeEventListener>& /*xListener*/,
-    const uno::Reference<drawing::XShape>&                   xShape )
+bool ShapeManagerImpl::listenerRemoved( const uno::Reference<drawing::XShape>& xShape )
 {
     // shape really erased from map? maybe there are other listeners
     // for the same shape pending...
@@ -343,10 +352,7 @@ void ShapeManagerImpl::cursorChanged( const uno::Reference<drawing::XShape>&   x
         if( (aIter = maShapeCursorMap.find(pShape))
             == maShapeCursorMap.end() )
         {
-            maShapeCursorMap.insert(
-                ShapeToCursorMap::value_type(
-                    pShape,
-                    nCursor ));
+            maShapeCursorMap.emplace(pShape, nCursor);
         }
         else
         {
@@ -379,6 +385,24 @@ OUString ShapeManagerImpl::checkForHyperlink( basegfx::B2DPoint const& hitPos ) 
     return OUString();
 }
 
+OUString ShapeManagerImpl::checkForImageMap( awt::MouseEvent const& evt ) const
+{
+    for (sal_Int32 i = 0; i < mxDrawPage->getCount(); i++)
+    {
+        Reference<XShape> xShape(mxDrawPage->getByIndex(i), UNO_QUERY_THROW);
+        SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>(xShape);
+        SdrObject* pObj = pShape ? pShape->GetSdrObject() : nullptr;
+        if (!pObj)
+            continue;
+        const IMapObject* pIMapObj = SvxIMapInfo::GetHitIMapObject(pObj, Point(evt.X, evt.Y));
+        if (pIMapObj && !pIMapObj->GetURL().isEmpty())
+        {
+            return pIMapObj->GetURL();
+        }
+    }
+    return OUString();
+}
+
 void ShapeManagerImpl::addIntrinsicAnimationHandler( const IntrinsicAnimationEventHandlerSharedPtr& rHandler )
 {
     maIntrinsicAnimationEventHandlers.add( rHandler );
@@ -402,7 +426,6 @@ void ShapeManagerImpl::notifyIntrinsicAnimationsDisabled()
 }
 
 
-} // namespace internal
-} // namespace presentation
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

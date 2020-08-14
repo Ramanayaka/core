@@ -20,12 +20,16 @@
 #ifndef INCLUDED_VCL_INC_PHYSICALFONTFAMILY_HXX
 #define INCLUDED_VCL_INC_PHYSICALFONTFAMILY_HXX
 
+#include <vcl/dllapi.h>
+#include <vcl/outdev.hxx>
+
 #include <set>
 
 #include <unotools/fontcfg.hxx>
 
 #include "PhysicalFontFace.hxx"
 
+class ImplDeviceFontList;
 class PhysicalFontFace;
 class PhysicalFontCollection;
 
@@ -45,7 +49,7 @@ namespace o3tl {
     template<> struct typed_flags<FontTypeFaces> : is_typed_flags<FontTypeFaces, 0xff> {};
 };
 
-class PhysicalFontFamily
+class VCL_PLUGIN_PUBLIC PhysicalFontFamily
 {
 public:
                         PhysicalFontFamily( const OUString& rSearchName );
@@ -65,7 +69,7 @@ public:
     void                InitMatchData( const utl::FontSubstConfiguration&,
                                        const OUString& rSearchName );
 
-    bool                AddFontFace( PhysicalFontFace* );
+    void                AddFontFace( PhysicalFontFace* );
 
     PhysicalFontFace*   FindBestFontFace( const FontSelectPattern& rFSD ) const;
 
@@ -76,7 +80,7 @@ static void             CalcType( ImplFontAttrs& rType, FontWeight& rWeight, Fon
                                   FontFamily eFamily, const utl::FontNameAttr* pFontAttr );
 
 private:
-    std::vector< PhysicalFontFace* > maFontFaces;
+    std::vector< rtl::Reference<PhysicalFontFace> > maFontFaces;
 
     OUString            maFamilyName;       // original font family name
     OUString            maSearchName;       // normalized font family name

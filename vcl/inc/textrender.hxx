@@ -22,8 +22,6 @@
 
 #include "salgdi.hxx"
 
-#include <config_cairo_canvas.h>
-
 class ImplLayoutArgs;
 class ImplFontMetricData;
 class PhysicalFontCollection;
@@ -32,12 +30,14 @@ class PhysicalFontFace;
 class TextRenderImpl
 {
 public:
+    // can't call ReleaseFonts here, as the destructor just calls this classes SetFont (pure virtual)!
     virtual ~TextRenderImpl() {}
 
-    virtual void                    SetTextColor( SalColor nSalColor ) = 0;
-    virtual void                    SetFont( FontSelectPattern*, int nFallbackLevel ) = 0;
+    virtual void                    SetTextColor( Color nColor ) = 0;
+    virtual void                    SetFont(LogicalFontInstance*, int nFallbackLevel) = 0;
+    void ReleaseFonts() { SetFont(nullptr, 0); }
     virtual void                    GetFontMetric( ImplFontMetricDataRef&, int nFallbackLevel ) = 0;
-    virtual const FontCharMapRef    GetFontCharMap() const = 0;
+    virtual FontCharMapRef          GetFontCharMap() const = 0;
     virtual bool                    GetFontCapabilities(vcl::FontCapabilities &rFontCapabilities) const = 0;
     virtual void                    GetDevFontList( PhysicalFontCollection* ) = 0;
     virtual void                    ClearDevFontCache() = 0;
@@ -59,13 +59,9 @@ public:
                                         std::vector< sal_Int32 >& rWidths,
                                         Ucs2UIntMap& rUnicodeEnc ) = 0;
 
-    virtual bool                    GetGlyphBoundRect(const GlyphItem&, tools::Rectangle&) = 0;
-    virtual bool                    GetGlyphOutline(const GlyphItem&, basegfx::B2DPolyPolygon&) = 0;
-    virtual SalLayout*              GetTextLayout( ImplLayoutArgs&, int nFallbackLevel ) = 0;
-    virtual void                    DrawTextLayout(const CommonSalLayout&) = 0;
-#if ENABLE_CAIRO_CANVAS
-    virtual SystemFontData          GetSysFontData( int nFallbackLevel ) const = 0;
-#endif // ENABLE_CAIRO_CANVAS
+    virtual std::unique_ptr<GenericSalLayout>
+                                    GetTextLayout(int nFallbackLevel) = 0;
+    virtual void                    DrawTextLayout(const GenericSalLayout&, const SalGraphics&) = 0;
 };
 
 #endif

@@ -18,26 +18,25 @@
  */
 
 #include <com/sun/star/drawing/Hatch.hpp>
-#include <svl/itempool.hxx>
-#include <svl/itemset.hxx>
 #include "UnoNameItemTable.hxx"
 
-#include <svx/xhatch.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/xdef.hxx>
 #include <svx/xflhtit.hxx>
 #include <svx/unomid.hxx>
-#include "svx/unofill.hxx"
+#include <svx/unofill.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::cppu;
+
+namespace {
 
 class SvxUnoHatchTable : public SvxUnoNameItemTable
 {
 public:
     explicit SvxUnoHatchTable( SdrModel* pModel ) throw();
 
-    virtual NameOrIndex* createItem() const throw() override;
+    virtual NameOrIndex* createItem() const override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName(  ) override;
@@ -47,6 +46,8 @@ public:
     virtual uno::Type SAL_CALL getElementType(  ) override;
 };
 
+}
+
 SvxUnoHatchTable::SvxUnoHatchTable( SdrModel* pModel ) throw()
 : SvxUnoNameItemTable( pModel, XATTR_FILLHATCH, MID_FILLHATCH )
 {
@@ -54,16 +55,15 @@ SvxUnoHatchTable::SvxUnoHatchTable( SdrModel* pModel ) throw()
 
 OUString SAL_CALL SvxUnoHatchTable::getImplementationName()
 {
-    return OUString("SvxUnoHatchTable");
+    return "SvxUnoHatchTable";
 }
 
 uno::Sequence< OUString > SAL_CALL SvxUnoHatchTable::getSupportedServiceNames(  )
 {
-    uno::Sequence<OUString> aSNS { "com.sun.star.drawing.HatchTable" };
-    return aSNS;
+    return { "com.sun.star.drawing.HatchTable" };
 }
 
-NameOrIndex* SvxUnoHatchTable::createItem() const throw()
+NameOrIndex* SvxUnoHatchTable::createItem() const
 {
     return new XFillHatchItem();
 }
@@ -77,7 +77,7 @@ uno::Type SAL_CALL SvxUnoHatchTable::getElementType(  )
 /**
  * Create a hatchtable
  */
-uno::Reference< uno::XInterface > SAL_CALL SvxUnoHatchTable_createInstance( SdrModel* pModel )
+uno::Reference< uno::XInterface > SvxUnoHatchTable_createInstance( SdrModel* pModel )
 {
     return *new SvxUnoHatchTable(pModel);
 }

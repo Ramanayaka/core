@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/sdr/contact/viewcontactoftextobj.hxx>
+#include <sdr/contact/viewcontactoftextobj.hxx>
 #include <svx/svdotext.hxx>
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 ViewContactOfTextObj::ViewContactOfTextObj(SdrTextObj& rTextObj)
 :   ViewContactOfSdrObj(rTextObj)
@@ -31,6 +31,6 @@ ViewContactOfTextObj::~ViewContactOfTextObj()
 {
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

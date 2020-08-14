@@ -19,15 +19,16 @@
 
 
 #include <sal/macros.h>
-#include "formcontrolling.hxx"
-#include "fmurl.hxx"
-#include "svx/svxids.hrc"
-#include "fmprop.hrc"
-#include "svx/fmtools.hxx"
+#include <formcontrolling.hxx>
+#include <fmurl.hxx>
+#include <svx/svxids.hrc>
+#include <fmprop.hxx>
+#include <svx/fmtools.hxx>
 
 #include <com/sun/star/form/runtime/FormOperations.hpp>
 #include <com/sun/star/form/runtime/FormFeature.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 
 #include <tools/diagnose_ex.h>
 #include <comphelper/anytostring.hxx>
@@ -51,7 +52,6 @@ namespace svx
     using ::com::sun::star::uno::Any;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::beans::NamedValue;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::beans::XPropertySet;
     using ::com::sun::star::uno::UNO_QUERY_THROW;
     using ::com::sun::star::sdbc::SQLException;
@@ -76,38 +76,28 @@ namespace svx
 
         const FeatureDescriptions& getFeatureDescriptions()
         {
-            static FeatureDescriptions s_aFeatureDescriptions;
-            if ( s_aFeatureDescriptions.empty() )
-            {
-                ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-                if ( s_aFeatureDescriptions.empty() )
-                {
-                    FeatureDescription aDescriptions[] = {
-                        { OUString(FMURL_FORM_POSITION),        SID_FM_RECORD_ABSOLUTE,     FormFeature::MoveAbsolute },
-                        { OUString(FMURL_FORM_RECORDCOUNT),     SID_FM_RECORD_TOTAL,        FormFeature::TotalRecords },
-                        { OUString(FMURL_RECORD_MOVEFIRST),     SID_FM_RECORD_FIRST,        FormFeature::MoveToFirst },
-                        { OUString(FMURL_RECORD_MOVEPREV),      SID_FM_RECORD_PREV,         FormFeature::MoveToPrevious },
-                        { OUString(FMURL_RECORD_MOVENEXT),      SID_FM_RECORD_NEXT,         FormFeature::MoveToNext },
-                        { OUString(FMURL_RECORD_MOVELAST),      SID_FM_RECORD_LAST,         FormFeature::MoveToLast },
-                        { OUString(FMURL_RECORD_MOVETONEW),     SID_FM_RECORD_NEW,          FormFeature::MoveToInsertRow },
-                        { OUString(FMURL_RECORD_SAVE),          SID_FM_RECORD_SAVE,         FormFeature::SaveRecordChanges },
-                        { OUString(FMURL_RECORD_DELETE),        SID_FM_RECORD_DELETE,       FormFeature::DeleteRecord },
-                        { OUString(FMURL_FORM_REFRESH),         SID_FM_REFRESH,             FormFeature::ReloadForm },
-                        { OUString(FMURL_FORM_REFRESH_CURRENT_CONTROL),
-                                                      SID_FM_REFRESH_FORM_CONTROL,FormFeature::RefreshCurrentControl },
-                        { OUString(FMURL_RECORD_UNDO),          SID_FM_RECORD_UNDO,         FormFeature::UndoRecordChanges },
-                        { OUString(FMURL_FORM_SORT_UP),         SID_FM_SORTUP,              FormFeature::SortAscending },
-                        { OUString(FMURL_FORM_SORT_DOWN),       SID_FM_SORTDOWN,            FormFeature::SortDescending },
-                        { OUString(FMURL_FORM_SORT),            SID_FM_ORDERCRIT,           FormFeature::InteractiveSort },
-                        { OUString(FMURL_FORM_AUTO_FILTER),     SID_FM_AUTOFILTER,          FormFeature::AutoFilter },
-                        { OUString(FMURL_FORM_FILTER),          SID_FM_FILTERCRIT,          FormFeature::InteractiveFilter },
-                        { OUString(FMURL_FORM_APPLY_FILTER),    SID_FM_FORM_FILTERED,       FormFeature::ToggleApplyFilter },
-                        { OUString(FMURL_FORM_REMOVE_FILTER),   SID_FM_REMOVE_FILTER_SORT,  FormFeature::RemoveFilterAndSort }
-                    };
-                    for (FeatureDescription & rDescription : aDescriptions)
-                        s_aFeatureDescriptions.push_back( rDescription );
-                }
-            };
+            static const FeatureDescriptions s_aFeatureDescriptions({
+                    { OUString(FMURL_FORM_POSITION),        SID_FM_RECORD_ABSOLUTE,     FormFeature::MoveAbsolute },
+                    { OUString(FMURL_FORM_RECORDCOUNT),     SID_FM_RECORD_TOTAL,        FormFeature::TotalRecords },
+                    { OUString(FMURL_RECORD_MOVEFIRST),     SID_FM_RECORD_FIRST,        FormFeature::MoveToFirst },
+                    { OUString(FMURL_RECORD_MOVEPREV),      SID_FM_RECORD_PREV,         FormFeature::MoveToPrevious },
+                    { OUString(FMURL_RECORD_MOVENEXT),      SID_FM_RECORD_NEXT,         FormFeature::MoveToNext },
+                    { OUString(FMURL_RECORD_MOVELAST),      SID_FM_RECORD_LAST,         FormFeature::MoveToLast },
+                    { OUString(FMURL_RECORD_MOVETONEW),     SID_FM_RECORD_NEW,          FormFeature::MoveToInsertRow },
+                    { OUString(FMURL_RECORD_SAVE),          SID_FM_RECORD_SAVE,         FormFeature::SaveRecordChanges },
+                    { OUString(FMURL_RECORD_DELETE),        SID_FM_RECORD_DELETE,       FormFeature::DeleteRecord },
+                    { OUString(FMURL_FORM_REFRESH),         SID_FM_REFRESH,             FormFeature::ReloadForm },
+                    { OUString(FMURL_FORM_REFRESH_CURRENT_CONTROL),
+                                                            SID_FM_REFRESH_FORM_CONTROL,FormFeature::RefreshCurrentControl },
+                    { OUString(FMURL_RECORD_UNDO),          SID_FM_RECORD_UNDO,         FormFeature::UndoRecordChanges },
+                    { OUString(FMURL_FORM_SORT_UP),         SID_FM_SORTUP,              FormFeature::SortAscending },
+                    { OUString(FMURL_FORM_SORT_DOWN),       SID_FM_SORTDOWN,            FormFeature::SortDescending },
+                    { OUString(FMURL_FORM_SORT),            SID_FM_ORDERCRIT,           FormFeature::InteractiveSort },
+                    { OUString(FMURL_FORM_AUTO_FILTER),     SID_FM_AUTOFILTER,          FormFeature::AutoFilter },
+                    { OUString(FMURL_FORM_FILTER),          SID_FM_FILTERCRIT,          FormFeature::InteractiveFilter },
+                    { OUString(FMURL_FORM_APPLY_FILTER),    SID_FM_FORM_FILTERED,       FormFeature::ToggleApplyFilter },
+                    { OUString(FMURL_FORM_REMOVE_FILTER),   SID_FM_REMOVE_FILTER_SORT,  FormFeature::RemoveFilterAndSort }
+                });
             return s_aFeatureDescriptions;
         }
     }
@@ -234,7 +224,7 @@ namespace svx
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
         osl_atomic_decrement( &m_refCount );
     }
@@ -249,7 +239,7 @@ namespace svx
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
@@ -388,8 +378,8 @@ namespace svx
 
         ::std::vector< sal_Int32 > aFeatures( Features.getLength() );
         ::std::transform(
-            Features.getConstArray(),
-            Features.getConstArray() + Features.getLength(),
+            Features.begin(),
+            Features.end(),
             aFeatures.begin(),
             FormFeatureToSlotId()
         );
@@ -434,8 +424,7 @@ namespace svx
             SID_FM_VIEW_AS_GRID
         };
         sal_Int32 nFeatureCount = SAL_N_ELEMENTS( pSupportedFeatures );
-        aSupportedFeatures.resize( nFeatureCount );
-        ::std::copy( pSupportedFeatures, pSupportedFeatures + nFeatureCount, aSupportedFeatures.begin() );
+        aSupportedFeatures.insert( aSupportedFeatures.begin(), pSupportedFeatures, pSupportedFeatures + nFeatureCount );
 
         m_pInvalidationCallback->invalidateFeatures( aSupportedFeatures );
     }
@@ -494,7 +483,7 @@ namespace svx
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
         return bCanDo;
     }

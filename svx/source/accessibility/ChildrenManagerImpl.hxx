@@ -71,7 +71,7 @@ typedef ::std::vector<ChildDescriptor> ChildDescriptorListType;
 
     @see ChildrenManager
 */
-class ChildrenManagerImpl
+class ChildrenManagerImpl final
     :   public MutexOwner,
         public cppu::WeakComponentImplHelper<
             css::document::XEventListener,
@@ -91,9 +91,9 @@ public:
         @param rxShapeList
             List of UNO shapes to manage.
         @param rShapeTreeInfo
-            Bundel of information passed down the shape tree.
+            Bundle of information passed down the shape tree.
         @param rContext
-            An accessible context object that is called for fireing events
+            An accessible context object that is called for firing events
             for new and deleted children, i.e. that holds a list of
             listeners to be informed.
     */
@@ -152,22 +152,6 @@ public:
     css::uno::Reference<css::accessibility::XAccessible>
         GetChild (ChildDescriptor& aChildDescriptor,sal_Int32 _nIndex);
 
-    /** Return the requested accessible child given a shape.  This method
-        searches the list of descriptors for the one that holds the
-        association of the given shape to the requested accessible object
-        and returns that.  If no such descriptor is found that is
-        interpreted so that the specified shape is not visible at the moment.
-        @param xShape
-            The shape for which to return the associated accessible object.
-        @return
-            Returns a reference to the requested accessible child.  The
-            reference is empty if there is no shape descriptor that
-            associates the shape with an accessible object.
-        @throws css::uno::RuntimeException
-    */
-    css::uno::Reference<css::accessibility::XAccessible>
-        GetChild (const css::uno::Reference<css::drawing::XShape>& xShape);
-
     /** Update the child manager.  Take care of a modified set of children
         and modified visible area.  This method can optimize the update
         process with respect separate updates of a modified children list
@@ -182,7 +166,7 @@ public:
     void Update (bool bCreateNewObjectsOnDemand);
 
     /** Set the list of UNO shapes to the given list.  This removes the old
-        list and does not add to it.  The list of accessible shapes that is
+        list and does not add to it. The list of accessible shapes that is
         build up by calls to <member>AddAccessibleShape</member> is not
         modified.  Neither is the list of visible children.  Accessible
         objects are created on demand.
@@ -191,7 +175,7 @@ public:
     */
     void SetShapeList (const css::uno::Reference<css::drawing::XShapes>& xShapeList);
 
-    /** Add a accessible shape.  This does not modify the list of UNO shapes
+    /** Add an accessible shape.  This does not modify the list of UNO shapes
         or the list of visible shapes.  Accessible shapes are, at the
         moment, not tested against the visible area but are always appended
         to the list of visible children.
@@ -225,7 +209,7 @@ public:
             Returns <true/> when there is a shape that has the focus and
             <false/> when there is no such shape.
     */
-    bool HasFocus();
+    bool HasFocus() const;
 
     /** When there is a shape that currently has the focus,
         i.e. <member>HasFocus()</member> returns <true/> then remove the
@@ -281,7 +265,8 @@ public:
         (css::beans::XPropertySet* pSet) override;
     virtual css::uno::Reference<css::accessibility::XAccessible>
         GetAccessibleCaption (const css::uno::Reference<css::drawing::XShape>& xShape) override;
-protected:
+
+private:
     /** This list holds the descriptors of all currently visible shapes and
         associated accessible object.
 
@@ -319,7 +304,7 @@ protected:
     */
     css::uno::Reference<css::accessibility::XAccessible> mxParent;
 
-    /** Bundel of information passed down the shape tree.
+    /** Bundle of information passed down the shape tree.
     */
     AccessibleShapeTreeInfo maShapeTreeInfo;
 
@@ -334,8 +319,6 @@ protected:
     virtual void SAL_CALL disposing() override;
 
     void impl_dispose();
-
-private:
 
     ChildrenManagerImpl (const ChildrenManagerImpl&) = delete;
     ChildrenManagerImpl& operator= (const ChildrenManagerImpl&) = delete;
@@ -478,8 +461,6 @@ public:
         to the original shape.
     */
     explicit ChildDescriptor (const css::uno::Reference<css::accessibility::XAccessible>& rxAccessibleShape);
-
-    ~ChildDescriptor();
 
     /** Dispose the accessible object of this descriptor.  If that object
         does not exist then do nothing.

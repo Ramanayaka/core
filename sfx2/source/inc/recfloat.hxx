@@ -20,8 +20,9 @@
 #ifndef INCLUDED_SFX2_SOURCE_INC_RECFLOAT_HXX
 #define INCLUDED_SFX2_SOURCE_INC_RECFLOAT_HXX
 
-#include <sfx2/childwin.hxx>
 #include <sfx2/basedlgs.hxx>
+#include <sfx2/childwin.hxx>
+#include <sfx2/weldutils.hxx>
 
 class SfxRecordingFloatWrapper_Impl : public SfxChildWindow
 {
@@ -30,26 +31,25 @@ public:
                         SfxRecordingFloatWrapper_Impl( vcl::Window* pParent ,
                                                 sal_uInt16 nId ,
                                                 SfxBindings* pBindings ,
-                                                SfxChildWinInfo* pInfo );
+                                                SfxChildWinInfo const * pInfo );
                         virtual ~SfxRecordingFloatWrapper_Impl() override;
 
                         SFX_DECL_CHILDWINDOW(SfxRecordingFloatWrapper_Impl);
     virtual bool        QueryClose() override;
 };
 
-class SfxRecordingFloat_Impl : public SfxFloatingWindow
+class SfxRecordingFloat_Impl : public SfxModelessDialogController
 {
+    std::unique_ptr<weld::Toolbar> m_xToolbar;
+    std::unique_ptr<ToolbarUnoDispatcher> m_xDispatcher;
 public:
-                        SfxRecordingFloat_Impl( SfxBindings* pBindings ,
-                            SfxChildWindow* pChildWin ,
-                            vcl::Window* pParent );
-    virtual             ~SfxRecordingFloat_Impl() override;
-    virtual bool        Close() override;
-    virtual void        FillInfo( SfxChildWinInfo& rInfo ) const override;
-    virtual void        StateChanged( StateChangedType nStateChange ) override;
+    SfxRecordingFloat_Impl(SfxBindings* pBindings,
+                           SfxChildWindow* pChildWin,
+                           weld::Window* pParent);
+    virtual ~SfxRecordingFloat_Impl() override;
+    virtual void FillInfo(SfxChildWinInfo& rInfo) const override;
 };
 
 #endif
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

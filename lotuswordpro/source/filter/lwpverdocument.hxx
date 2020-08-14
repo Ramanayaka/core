@@ -63,16 +63,17 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPVERDOCUMENT_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPVERDOCUMENT_HXX
 
-#include "lwpobj.hxx"
+#include <lwpobj.hxx>
 
 /*VO_VERDOCUMENT*/
 
 class LwpVerDocument : public LwpObject
 {
 public:
-    LwpVerDocument(LwpObjectHeader& objHdr, LwpSvStream* pStrm);
+    LwpVerDocument(LwpObjectHeader const& objHdr, LwpSvStream* pStrm);
     void Read() override;
     virtual void RegisterStyle() override;
+
 private:
     virtual ~LwpVerDocument() override {}
 

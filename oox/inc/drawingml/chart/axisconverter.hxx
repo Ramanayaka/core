@@ -22,19 +22,17 @@
 
 #include <drawingml/chart/converterbase.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace chart2 { class XAxis; }
     namespace chart2 { class XCoordinateSystem; }
-} } }
+}
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 
 struct AxisDispUnitsModel;
 
-class AxisDispUnitsConverter : public ConverterBase< AxisDispUnitsModel >
+class AxisDispUnitsConverter final : public ConverterBase< AxisDispUnitsModel >
 {
 public:
     explicit            AxisDispUnitsConverter(
@@ -50,7 +48,7 @@ public:
 struct AxisModel;
 class TypeGroupConverter;
 
-class AxisConverter : public ConverterBase< AxisModel >
+class AxisConverter final : public ConverterBase< AxisModel >
 {
 public:
     explicit            AxisConverter(
@@ -66,9 +64,7 @@ public:
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

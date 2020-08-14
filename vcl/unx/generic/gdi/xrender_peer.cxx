@@ -17,14 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/ustring.hxx>
-#include <unx/salunx.h>
 #include <unx/saldisp.hxx>
 
-#include <xrender_peer.hxx>
+#include <unx/x11/xrender_peer.hxx>
 
 XRenderPeer::XRenderPeer()
-    : mpDisplay( vcl_sal::getSalDisplay(GetGenericData())->GetDisplay() )
+    : mpDisplay( vcl_sal::getSalDisplay(GetGenericUnixSalData())->GetDisplay() )
     , mpStandardFormatA8( nullptr )
 {
     InitRenderLib();

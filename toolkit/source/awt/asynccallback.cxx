@@ -20,13 +20,11 @@
 #include <sal/config.h>
 
 #include <vcl/svapp.hxx>
-#include "cppuhelper/factory.hxx"
-#include "cppuhelper/implementationentry.hxx"
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "com/sun/star/lang/XServiceInfo.hpp"
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include "com/sun/star/awt/XRequestCallback.hpp"
+#include <com/sun/star/awt/XRequestCallback.hpp>
 
 /// anonymous implementation namespace
 namespace {
@@ -68,7 +66,7 @@ private:
 // com.sun.star.uno.XServiceInfo:
 OUString SAL_CALL AsyncCallback::getImplementationName()
 {
-    return OUString("com.sun.star.awt.comp.AsyncCallback");
+    return "com.sun.star.awt.comp.AsyncCallback";
 }
 
 sal_Bool SAL_CALL AsyncCallback::supportsService(OUString const & serviceName)
@@ -78,8 +76,7 @@ sal_Bool SAL_CALL AsyncCallback::supportsService(OUString const & serviceName)
 
 css::uno::Sequence< OUString > SAL_CALL AsyncCallback::getSupportedServiceNames()
 {
-    css::uno::Sequence< OUString > s { "com.sun.star.awt.AsyncCallback" };
-    return s;
+    return css::uno::Sequence< OUString >{ "com.sun.star.awt.AsyncCallback" };
 }
 
 // css::awt::XRequestCallback:
@@ -113,7 +110,7 @@ IMPL_STATIC_LINK( AsyncCallback, Notify_Impl, void*, p, void )
 
 } // closing anonymous implementation namespace
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_awt_comp_AsyncCallback_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

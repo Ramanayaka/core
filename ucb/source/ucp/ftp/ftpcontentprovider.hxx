@@ -23,8 +23,9 @@
 #include <vector>
 #include <ucbhelper/proxydecider.hxx>
 #include <ucbhelper/providerhelper.hxx>
-#include <com/sun/star/ucb/XContentProviderManager.hpp>
-#include "ftpurl.hxx"
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include "curl.hxx"
 
 // UNO service name for the provider. This name will be used by the UCB to
 // create instances of the provider.
@@ -64,13 +65,6 @@ namespace ftp
         virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-        static OUString getImplementationName_Static();
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-
-        static css::uno::Reference< css::lang::XSingleServiceFactory >
-        createServiceFactory( const css::uno::Reference<
-                              css::lang::XMultiServiceFactory >& rxServiceMgr );
-
         // XContentProvider
         virtual css::uno::Reference< css::ucb::XContent > SAL_CALL
         queryContent( const css::uno::Reference< css::ucb::XContentIdentifier >& Identifier ) override;
@@ -80,7 +74,7 @@ namespace ftp
         /** host is in the form host:port.
          */
 
-        bool forHost(const OUString& host,
+        void forHost(const OUString& host,
                              const OUString& port,
                              const OUString& username,
                              OUString& password,
@@ -102,8 +96,8 @@ namespace ftp
         };
 
     private:
-        FTPLoaderThread *m_ftpLoaderThread;
-        ucbhelper::InternetProxyDecider *m_pProxyDecider;
+        std::unique_ptr<FTPLoaderThread> m_ftpLoaderThread;
+        std::unique_ptr<ucbhelper::InternetProxyDecider> m_pProxyDecider;
         std::vector<ServerInfo> m_ServerInfo;
 
         void init();

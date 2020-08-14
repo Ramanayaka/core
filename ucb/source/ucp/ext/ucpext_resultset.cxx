@@ -22,10 +22,9 @@
 #include "ucpext_datasupplier.hxx"
 
 #include <ucbhelper/resultset.hxx>
-#include <comphelper/processfactory.hxx>
 
 
-namespace ucb { namespace ucp { namespace ext
+namespace ucb::ucp::ext
 {
 
 
@@ -70,7 +69,7 @@ namespace ucb { namespace ucp { namespace ext
     }
 
 
-} } }   // namespace ucp::ext
+} // namespace ucb::ucp::ext
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

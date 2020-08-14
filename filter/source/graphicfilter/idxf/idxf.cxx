@@ -18,18 +18,15 @@
  */
 
 
-#include <string.h>
 #include <vcl/gdimtf.hxx>
 #include <vcl/graph.hxx>
-#include <vcl/virdev.hxx>
 #include "dxf2mtf.hxx"
-#include <math.h>
 
 class FilterConfigItem;
 
 //================== GraphicImport - the exported function ================
 
-extern "C" SAL_DLLPUBLIC_EXPORT bool SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT bool
 idxGraphicImport( SvStream & rStream, Graphic & rGraphic, FilterConfigItem* )
 {
     DXFRepresentation aDXF;

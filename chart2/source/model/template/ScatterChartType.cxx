@@ -18,12 +18,11 @@
  */
 
 #include "ScatterChartType.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include "servicenames_charttypes.hxx"
-#include "CartesianCoordinateSystem.hxx"
-#include "AxisHelper.hxx"
-#include "AxisIndexDefines.hxx"
+#include <PropertyHelper.hxx>
+#include <servicenames_charttypes.hxx>
+#include <CartesianCoordinateSystem.hxx>
+#include <AxisHelper.hxx>
+#include <AxisIndexDefines.hxx>
 #include <unonames.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
@@ -50,25 +49,22 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_CURVE_STYLE,
+    rOutProperties.emplace_back( CHART_UNONAME_CURVE_STYLE,
                   PROP_SCATTERCHARTTYPE_CURVE_STYLE,
                   cppu::UnoType<chart2::CurveStyle>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_CURVE_RESOLUTION,
+    rOutProperties.emplace_back( CHART_UNONAME_CURVE_RESOLUTION,
                   PROP_SCATTERCHARTTYPE_CURVE_RESOLUTION,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_SPLINE_ORDER,
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+    rOutProperties.emplace_back( CHART_UNONAME_SPLINE_ORDER,
                   PROP_SCATTERCHARTTYPE_SPLINE_ORDER,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
 struct StaticScatterChartTypeDefaults_Initializer
@@ -140,22 +136,8 @@ struct StaticScatterChartTypeInfo : public rtl::StaticAggregate< uno::Reference<
 namespace chart
 {
 
-ScatterChartType::ScatterChartType(
-    const uno::Reference< uno::XComponentContext > & xContext,
-    chart2::CurveStyle eCurveStyle /* chart2::CurveStyle_LINES */ ,
-    sal_Int32 nResolution /* = 20 */,
-    sal_Int32 nOrder /* = 3 */ ) :
-        ChartType( xContext )
+ScatterChartType::ScatterChartType()
 {
-    if( eCurveStyle != chart2::CurveStyle_LINES )
-        setFastPropertyValue_NoBroadcast( PROP_SCATTERCHARTTYPE_CURVE_STYLE,
-                                          uno::Any( eCurveStyle ));
-    if( nResolution != 20 )
-        setFastPropertyValue_NoBroadcast( PROP_SCATTERCHARTTYPE_CURVE_RESOLUTION,
-                                          uno::Any( nResolution ));
-    if( nOrder != 3 )
-        setFastPropertyValue_NoBroadcast( PROP_SCATTERCHARTTYPE_SPLINE_ORDER,
-                                          uno::Any( nOrder ));
 }
 
 ScatterChartType::ScatterChartType( const ScatterChartType & rOther ) :
@@ -177,7 +159,7 @@ Reference< chart2::XCoordinateSystem > SAL_CALL
     ScatterChartType::createCoordinateSystem( ::sal_Int32 DimensionCount )
 {
     Reference< chart2::XCoordinateSystem > xResult(
-        new CartesianCoordinateSystem( GetComponentContext(), DimensionCount ));
+        new CartesianCoordinateSystem( DimensionCount ));
 
     for( sal_Int32 i=0; i<DimensionCount; ++i )
     {
@@ -205,7 +187,7 @@ Reference< chart2::XCoordinateSystem > SAL_CALL
 
 OUString SAL_CALL ScatterChartType::getChartType()
 {
-    return OUString(CHART2_SERVICE_NAME_CHARTTYPE_SCATTER);
+    return CHART2_SERVICE_NAME_CHARTTYPE_SCATTER;
 }
 
 uno::Sequence< OUString > SAL_CALL ScatterChartType::getSupportedMandatoryRoles()
@@ -241,7 +223,7 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL ScatterChartType::getProperty
 
 OUString SAL_CALL ScatterChartType::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.ScatterChartType");
+    return "com.sun.star.comp.chart.ScatterChartType";
 }
 
 sal_Bool SAL_CALL ScatterChartType::supportsService( const OUString& rServiceName )
@@ -259,11 +241,11 @@ css::uno::Sequence< OUString > SAL_CALL ScatterChartType::getSupportedServiceNam
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart_ScatterChartType_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart_ScatterChartType_get_implementation(css::uno::XComponentContext * /*context*/,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::ScatterChartType(context));
+    return cppu::acquire(new ::chart::ScatterChartType);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

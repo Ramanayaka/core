@@ -29,6 +29,8 @@ import com.sun.star.beans.PropertyValue;
 import com.sun.star.lang.XTypeProvider;
 import com.sun.star.lang.XServiceInfo;
 import java.io.PrintWriter;
+import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
 
 /**
@@ -125,8 +127,8 @@ public class dbg {
      * @param name The name of the property.
      * @see com.sun.star.beans.XPropertySet
      */
-    public static void printPropertyInfo(XPropertySet PS, String name) {
-            printPropertyInfo(PS, name, new PrintWriter(System.out)) ;
+    public static void printPropertyInfo(XPropertySet PS, String name) throws UnsupportedEncodingException {
+            printPropertyInfo(PS, name, new PrintWriter(new OutputStreamWriter(System.out, "UTF-8")));
     }
 
     /**
@@ -184,15 +186,15 @@ public class dbg {
 
 
     /**
-     * Print the names and the values of a sequenze of <code>PropertyValue</code>
+     * Print the names and the values of a sequence of <code>PropertyValue</code>
      * to a print writer.
      * @param ps The property which should displayed
      * @param out The print writer which is used as output.
      * @see com.sun.star.beans.PropertyValue
      */
-    private static void printProperyValueSequenzePairs(PropertyValue[] ps, PrintWriter out){
+    private static void printPropertyValueSequencePairs(PropertyValue[] ps, PrintWriter out){
         for( int i = 0; i < ps.length; i++){
-            printProperyValuePairs(ps[i], out);
+            printPropertyValuePairs(ps[i], out);
         }
     }
 
@@ -204,7 +206,7 @@ public class dbg {
      * @param out The print writer which is used as output.
      * @see com.sun.star.beans.PropertyValue
      */
-    private static void printProperyValuePairs(PropertyValue ps, PrintWriter out){
+    private static void printPropertyValuePairs(PropertyValue ps, PrintWriter out){
 
         if (ps.Value instanceof String[] ){
             String[] values = (String[]) ps.Value;
@@ -225,13 +227,13 @@ public class dbg {
         } else if (ps.Value instanceof PropertyValue){
             out.println("--------");
             out.println("   Name: '" + ps.Name + "' contains PropertyValue:");
-            printProperyValuePairs((PropertyValue)ps.Value, out);
+            printPropertyValuePairs((PropertyValue)ps.Value, out);
             out.println("--------");
 
         } else if (ps.Value instanceof PropertyValue[]){
             out.println("--------");
             out.println("   Name: '" + ps.Name + "' contains PropertyValue[]:");
-            printProperyValueSequenzePairs((PropertyValue[])ps.Value, out);
+            printPropertyValueSequencePairs((PropertyValue[])ps.Value, out);
             out.println("--------");
 
         } else {

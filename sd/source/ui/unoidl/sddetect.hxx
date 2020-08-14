@@ -22,32 +22,12 @@
 
 #include <rtl/ustring.hxx>
 #include <com/sun/star/document/XExtendedFilterDetection.hpp>
-#include <com/sun/star/uno/Exception.hpp>
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <cppuhelper/factory.hxx>
-#include <sfx2/sfxuno.hxx>
 
 
-namespace com
-{
-    namespace sun
-    {
-        namespace star
-        {
-            namespace lang
-            {
-                class XMultiServiceFactory;
-            }
-            namespace beans
-            {
-                struct PropertyValue;
-            }
-        }
-    }
-}
+namespace com::sun::star::beans { struct PropertyValue; }
 
 class SdFilterDetect : public ::cppu::WeakImplHelper< css::document::XExtendedFilterDetection, css::lang::XServiceInfo >
 {

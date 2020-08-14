@@ -30,13 +30,12 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <rtl/ustring.hxx>
 #include <vcl/bitmapex.hxx>
-#include <vcl/dllapi.h>
 #include <i18nlangtag/languagetag.hxx>
 #include <vcl/ImageTree.hxx>
 
-namespace com { namespace sun { namespace star { namespace container {
+namespace com::sun::star::container {
     class XNameAccess;
-}}}}
+}
 
 struct ImageRequestParameters
 {
@@ -45,13 +44,18 @@ struct ImageRequestParameters
     BitmapEx& mrBitmap;
     bool mbLocalized;
     ImageLoadFlags meFlags;
+    bool mbWriteImageToCache;
+    sal_Int32 mnScalePercentage;
 
-    ImageRequestParameters(const OUString & rName, const OUString & rStyle, BitmapEx& rBitmap, bool bLocalized, ImageLoadFlags eFlags)
+    ImageRequestParameters(const OUString & rName, const OUString & rStyle, BitmapEx& rBitmap, bool bLocalized,
+                           ImageLoadFlags eFlags, sal_Int32 nScalePercentage)
         : msName(rName)
         , msStyle(rStyle)
         , mrBitmap(rBitmap)
         , mbLocalized(bLocalized)
         , meFlags(eFlags)
+        , mbWriteImageToCache(false)
+        , mnScalePercentage(nScalePercentage)
     {}
 
     bool convertToDarkTheme();
@@ -67,30 +71,35 @@ public:
     OUString getImageUrl(
         OUString const & name, OUString const & style, OUString const & lang);
 
+    std::shared_ptr<SvMemoryStream> getImageStream(
+        OUString const & rName, OUString const & rStyle, OUString const & rLang);
+
     bool loadImage(
         OUString const & name, OUString const & style,
         BitmapEx & bitmap, bool localized,
-        const ImageLoadFlags eFlags = ImageLoadFlags::NONE);
+        const ImageLoadFlags eFlags,
+        sal_Int32 nScalePercentage = -1);
 
     /** a crude form of life cycle control (called from DeInitVCL; otherwise,
      *  if the ImplImageTree singleton were destroyed during exit that would
      *  be too late for the destructors of the bitmaps in maIconCache)*/
     void shutdown();
 
-    css::uno::Reference< css::container::XNameAccess > getNameAccess();
+    css::uno::Reference< css::container::XNameAccess > const & getNameAccess();
 
 private:
     ImplImageTree(const ImplImageTree&) = delete;
     ImplImageTree& operator=(const ImplImageTree&) = delete;
 
-    typedef std::unordered_map<OUString, std::pair<bool, BitmapEx>, OUStringHash> IconCache;
-    typedef std::unordered_map<OUString, OUString, OUStringHash> IconLinkHash;
+    typedef std::unordered_map<OUString, std::pair<bool,BitmapEx>> IconCache;
+    typedef std::unordered_map<sal_Int32, std::unique_ptr<IconCache>> ScaledIconCache;
+    typedef std::unordered_map<OUString, OUString> IconLinkHash;
 
     struct IconSet
     {
         OUString maURL;
         css::uno::Reference<css::container::XNameAccess> maNameAccess;
-        IconCache maIconCache;
+        ScaledIconCache maScaledIconCaches;
         IconLinkHash maLinkHash;
 
         IconSet()
@@ -101,11 +110,9 @@ private:
         {}
     };
 
-    /// Map between the theme name(s) and the content.
-    typedef std::unordered_map<OUString, IconSet, OUStringHash> StyleIconSet;
-
     /// Remember all the (used) icon styles and individual icons in them.
-    StyleIconSet maIconSets;
+    /// Map between the theme name(s) and the content.
+    std::unordered_map<OUString, IconSet> maIconSets;
 
     /// Style used for the current operations; switches switch several times during fallback search.
     OUString maCurrentStyle;
@@ -117,13 +124,15 @@ private:
 
     bool doLoadImage(ImageRequestParameters& rParameters);
 
-    std::vector<OUString> getPaths(OUString const & name, LanguageTag& rLanguageTag);
+    std::vector<OUString> getPaths(OUString const & name, LanguageTag const & rLanguageTag);
 
     bool checkPathAccess();
 
     void setStyle(OUString const & rStyle);
 
     void createStyle();
+
+    IconCache &getIconCache(const ImageRequestParameters& rParameters);
 
     bool iconCacheLookup(ImageRequestParameters& rParameters);
 

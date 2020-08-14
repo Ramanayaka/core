@@ -19,6 +19,7 @@
 
 #include <sal/config.h>
 
+#include <memory>
 #include <tuple>
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
@@ -27,15 +28,15 @@
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/tools/keystoplerp.hxx>
-#include <basegfx/tools/lerp.hxx>
-#include <basegfx/tools/tools.hxx>
+#include <basegfx/utils/canvastools.hxx>
+#include <basegfx/utils/keystoplerp.hxx>
+#include <basegfx/utils/lerp.hxx>
+#include <basegfx/utils/tools.hxx>
 #include <com/sun/star/rendering/TexturingMode.hpp>
 #include <rtl/math.hxx>
 #include <tools/diagnose_ex.h>
 
-#include <canvas/parametricpolypolygon.hxx>
+#include <parametricpolypolygon.hxx>
 
 #include "dx_canvashelper.hxx"
 #include "dx_impltools.hxx"
@@ -50,7 +51,7 @@ namespace dxcanvas
     {
         typedef std::shared_ptr< Gdiplus::PathGradientBrush >   PathGradientBrushSharedPtr;
 
-        bool fillLinearGradient( GraphicsSharedPtr&                             rGraphics,
+        bool fillLinearGradient( GraphicsSharedPtr const & rGraphics,
                                  const ::canvas::ParametricPolyPolygon::Values& /*rValues*/,
                                  const std::vector< Gdiplus::Color >&           rColors,
                                  const std::vector< Gdiplus::REAL >&            rStops,
@@ -68,8 +69,8 @@ namespace dxcanvas
                 rColors[0],
                 rColors[1] );
 
-            aBrush.SetInterpolationColors(&rColors[0],
-                                          &rStops[0],
+            aBrush.SetInterpolationColors(rColors.data(),
+                                          rStops.data(),
                                           rColors.size());
 
             // render background color, as LinearGradientBrush does not
@@ -103,7 +104,7 @@ namespace dxcanvas
             // now, we potentially have to enlarge our gradient area
             // atop and below the transformed [0,1]x[0,1] unit rect,
             // for the gradient to fill the complete bound rect.
-            ::basegfx::tools::infiniteLineFromParallelogram( aLeftTop,
+            ::basegfx::utils::infiniteLineFromParallelogram( aLeftTop,
                                                              aLeftBottom,
                                                              aRightTop,
                                                              aRightBottom,
@@ -196,7 +197,7 @@ namespace dxcanvas
         bool fillPolygonalGradient( const ::canvas::ParametricPolyPolygon::Values& rValues,
                                     const std::vector< Gdiplus::Color >&           rColors,
                                     const std::vector< Gdiplus::REAL >&            rStops,
-                                    GraphicsSharedPtr&                             rGraphics,
+                                    GraphicsSharedPtr const & rGraphics,
                                     const GraphicsPathSharedPtr&                   rPath,
                                     const rendering::ViewState&                    viewState,
                                     const rendering::RenderState&                  renderState,
@@ -277,7 +278,7 @@ namespace dxcanvas
                 // subdivide polygon _before_ rendering, would otherwise have
                 // to be performed on every loop turn.
                 if( aOuterPoly.areControlPointsUsed() )
-                    aOuterPoly = ::basegfx::tools::adaptiveSubdivideByAngle(aOuterPoly);
+                    aOuterPoly = ::basegfx::utils::adaptiveSubdivideByAngle(aOuterPoly);
 
                 aInnerPoly = aOuterPoly;
                 aOuterPoly.transform(aTextureTransform);
@@ -319,7 +320,7 @@ namespace dxcanvas
                 Gdiplus::GraphicsPath aCurrPath;
                 Gdiplus::SolidBrush   aFillBrush( rColors[0] );
                 const sal_uInt32      nNumPoints( aOuterPoly.count() );
-                basegfx::tools::KeyStopLerp aLerper(rValues.maStops);
+                basegfx::utils::KeyStopLerp aLerper(rValues.maStops);
                 for( int i=1; i<nStepCount; ++i )
                 {
                     std::ptrdiff_t nIndex;
@@ -328,9 +329,9 @@ namespace dxcanvas
                     std::tie(nIndex,fAlpha)=aLerper.lerp(fT);
 
                     const Gdiplus::Color aFillColor(
-                        static_cast<BYTE>( basegfx::tools::lerp(rColors[nIndex].GetRed(),rColors[nIndex+1].GetRed(),fAlpha) ),
-                        static_cast<BYTE>( basegfx::tools::lerp(rColors[nIndex].GetGreen(),rColors[nIndex+1].GetGreen(),fAlpha) ),
-                        static_cast<BYTE>( basegfx::tools::lerp(rColors[nIndex].GetBlue(),rColors[nIndex+1].GetBlue(),fAlpha) ) );
+                        static_cast<BYTE>( basegfx::utils::lerp(rColors[nIndex].GetRed(),rColors[nIndex+1].GetRed(),fAlpha) ),
+                        static_cast<BYTE>( basegfx::utils::lerp(rColors[nIndex].GetGreen(),rColors[nIndex+1].GetGreen(),fAlpha) ),
+                        static_cast<BYTE>( basegfx::utils::lerp(rColors[nIndex].GetBlue(),rColors[nIndex+1].GetBlue(),fAlpha) ) );
 
                     aFillBrush.SetColor( aFillColor );
                     aCurrPath.Reset(); aCurrPath.StartFigure();
@@ -376,10 +377,10 @@ namespace dxcanvas
                     tools::graphicsPathFromB2DPolygon( rValues.maGradientPoly ));
                 pGradientPath->Transform( &aMatrix );
 
-                pGradientBrush.reset(
-                    new Gdiplus::PathGradientBrush( pGradientPath.get() ) );
-                pGradientBrush->SetInterpolationColors( &rColors[0],
-                                                        &rStops[0],
+                pGradientBrush
+                    = std::make_shared<Gdiplus::PathGradientBrush>( pGradientPath.get() );
+                pGradientBrush->SetInterpolationColors( rColors.data(),
+                                                        rStops.data(),
                                                         rStops.size() );
 
                 // explicitly setup center point. Since the center of GDI+
@@ -422,7 +423,7 @@ namespace dxcanvas
         bool fillGradient( const ::canvas::ParametricPolyPolygon::Values& rValues,
                            const std::vector< Gdiplus::Color >&           rColors,
                            const std::vector< Gdiplus::REAL >&            rStops,
-                           GraphicsSharedPtr&                             rGraphics,
+                           GraphicsSharedPtr const & rGraphics,
                            const GraphicsPathSharedPtr&                   rPath,
                            const rendering::ViewState&                    viewState,
                            const rendering::RenderState&                  renderState,
@@ -440,7 +441,6 @@ namespace dxcanvas
                     break;
 
                 case ::canvas::ParametricPolyPolygon::GradientType::Elliptical:
-                    // FALLTHROUGH intended
                 case ::canvas::ParametricPolyPolygon::GradientType::Rectangular:
                     fillPolygonalGradient( rValues,
                                            rColors,
@@ -461,7 +461,7 @@ namespace dxcanvas
         }
 
         void fillBitmap( const uno::Reference< rendering::XBitmap >& xBitmap,
-                         GraphicsSharedPtr&                          rGraphics,
+                         GraphicsSharedPtr const & rGraphics,
                          const GraphicsPathSharedPtr&                rPath,
                          const rendering::Texture&                   rTexture )
         {
@@ -490,10 +490,9 @@ namespace dxcanvas
             if( ::rtl::math::approxEqual( rTexture.Alpha,
                                           1.0 ) )
             {
-                pBrush.reset(
-                    new Gdiplus::TextureBrush(
+                pBrush = std::make_shared<Gdiplus::TextureBrush>(
                         pBitmap.get(),
-                        bClamp ? Gdiplus::WrapModeClamp : Gdiplus::WrapModeTile ) );
+                        bClamp ? Gdiplus::WrapModeClamp : Gdiplus::WrapModeTile );
             }
             else
             {
@@ -508,11 +507,10 @@ namespace dxcanvas
                 Gdiplus::Rect aRect(0,0,
                                     aBmpSize.Width,
                                     aBmpSize.Height);
-                pBrush.reset(
-                    new Gdiplus::TextureBrush(
+                pBrush = std::make_shared<Gdiplus::TextureBrush>(
                         pBitmap.get(),
                         aRect,
-                        &aImgAttr ) );
+                        &aImgAttr );
 
                 pBrush->SetWrapMode(
                     bClamp ? Gdiplus::WrapModeClamp : Gdiplus::WrapModeTile );

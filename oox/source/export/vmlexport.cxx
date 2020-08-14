@@ -18,18 +18,23 @@
  */
 
 #include <config_folders.h>
-#include "rtl/bootstrap.hxx"
+#include <rtl/bootstrap.hxx>
+#include <svl/itemset.hxx>
 #include <oox/export/drawingml.hxx>
 #include <oox/export/vmlexport.hxx>
+#include <sax/fastattribs.hxx>
 
 #include <oox/token/tokens.hxx>
 
 #include <rtl/strbuf.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 #include <tools/stream.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <svx/svdotext.hxx>
+#include <svx/svdograf.hxx>
+#include <svx/sdmetitm.hxx>
 #include <vcl/cvtgrf.hxx>
 #include <filter/msfilter/msdffimp.hxx>
 #include <filter/msfilter/util.hxx>
@@ -48,8 +53,8 @@ using namespace sax_fastparser;
 using namespace oox::vml;
 using namespace com::sun::star;
 
-static const sal_Int32 Tag_Container = 44444;
-static const sal_Int32 Tag_Commit = 44445;
+const sal_Int32 Tag_Container = 44444;
+const sal_Int32 Tag_Commit = 44445;
 
 VMLExport::VMLExport( ::sax_fastparser::FSHelperPtr const & pSerializer, VMLTextExport* pTextExport )
     : EscherEx( std::make_shared<EscherExGlobal>(), nullptr, /*bOOXML=*/true )
@@ -59,13 +64,17 @@ VMLExport::VMLExport( ::sax_fastparser::FSHelperPtr const & pSerializer, VMLText
     , m_eVOri( 0 )
     , m_eHRel( 0 )
     , m_eVRel( 0 )
-    , m_pNdTopLeft( nullptr )
+    , m_bInline( false )
     , m_pSdrObject( nullptr )
     , m_pShapeAttrList( nullptr )
     , m_nShapeType( ESCHER_ShpInst_Nil )
-    , m_nShapeFlags(0)
+    , m_nShapeFlags(ShapeFlag::NONE)
     , m_ShapeStyle( 200 )
     , m_aShapeTypeWritten( ESCHER_ShpInst_COUNT )
+    , m_bSkipwzName( false )
+    , m_bUseHashMarkForType( false )
+    , m_bOverrideShapeIdGeneration( false )
+    , m_nShapeIDCounter( 0 )
 {
     mnGroupLevel = 1;
 }
@@ -85,23 +94,20 @@ void VMLExport::OpenContainer( sal_uInt16 nEscherContainer, int nRecInstance )
 {
     EscherEx::OpenContainer( nEscherContainer, nRecInstance );
 
-    if ( nEscherContainer == ESCHER_SpContainer )
-    {
-        // opening a shape container
-#if OSL_DEBUG_LEVEL > 0
-        if ( m_nShapeType != ESCHER_ShpInst_Nil )
-            fprintf( stderr, "Warning!  VMLExport::OpenContainer(): opening shape inside a shape.\n" );
-#endif
-        m_nShapeType = ESCHER_ShpInst_Nil;
-        m_pShapeAttrList = FastSerializerHelper::createAttrList();
+    if ( nEscherContainer != ESCHER_SpContainer )
+        return;
 
-        m_ShapeStyle.setLength(0);
-        m_ShapeStyle.ensureCapacity(200);
+    // opening a shape container
+    SAL_WARN_IF(m_nShapeType != ESCHER_ShpInst_Nil, "oox.vml", "opening shape inside of a shape!");
+    m_nShapeType = ESCHER_ShpInst_Nil;
+    m_pShapeAttrList = FastSerializerHelper::createAttrList();
 
-        // postpone the output so that we are able to write even the elements
-        // that we learn inside Commit()
-        m_pSerializer->mark(Tag_Container);
-    }
+    m_ShapeStyle.setLength(0);
+    m_ShapeStyle.ensureCapacity(200);
+
+    // postpone the output so that we are able to write even the elements
+    // that we learn inside Commit()
+    m_pSerializer->mark(Tag_Container);
 }
 
 void VMLExport::CloseContainer()
@@ -177,23 +183,25 @@ void VMLExport::LeaveGroup()
     m_pSerializer->endElementNS( XML_v, XML_group );
 }
 
-void VMLExport::AddShape( sal_uInt32 nShapeType, sal_uInt32 nShapeFlags, sal_uInt32 nShapeId )
+void VMLExport::AddShape( sal_uInt32 nShapeType, ShapeFlag nShapeFlags, sal_uInt32 nShapeId )
 {
     m_nShapeType = nShapeType;
     m_nShapeFlags = nShapeFlags;
+
+    m_sShapeId = ShapeIdString( nShapeId );
     // If shape is a watermark object - should keep the original shape's name
     // because Microsoft detects if it is a watermark by the actual name
     if (!IsWaterMarkShape(m_pSdrObject->GetName()))
     {
         // Not a watermark object
-        m_pShapeAttrList->add( XML_id, ShapeIdString( nShapeId ) );
+        m_pShapeAttrList->add( XML_id, m_sShapeId );
     }
     else
     {
         // A watermark object - store the optional shape ID
         m_pShapeAttrList->add( XML_id, OUStringToOString(m_pSdrObject->GetName(), RTL_TEXTENCODING_UTF8) );
         // also ('o:spid')
-        m_pShapeAttrList->addNS( XML_o, XML_spid, ShapeIdString( nShapeId ) );
+        m_pShapeAttrList->addNS( XML_o, XML_spid, m_sShapeId );
     }
 }
 
@@ -202,6 +210,18 @@ bool VMLExport::IsWaterMarkShape(const OUString& rStr)
      if (rStr.isEmpty() )  return false;
 
      return rStr.match("PowerPlusWaterMarkObject") || rStr.match("WordPictureWatermark");
+}
+
+void VMLExport::OverrideShapeIDGen(bool bOverrideShapeIdGen, const OString& sShapeIDPrefix)
+{
+    m_bOverrideShapeIdGeneration = bOverrideShapeIdGen;
+    if(bOverrideShapeIdGen)
+    {
+        assert(!sShapeIDPrefix.isEmpty());
+        m_sShapeIDPrefix = sShapeIDPrefix;
+    }
+    else
+        m_sShapeIDPrefix.clear();
 }
 
 static void impl_AddArrowHead( sax_fastparser::FastAttributeList *pAttrList, sal_Int32 nElement, sal_uInt32 nValue )
@@ -317,14 +337,14 @@ static void impl_AddInt( sax_fastparser::FastAttributeList *pAttrList, sal_Int32
     pAttrList->add( nElement, OString::number( nValue ).getStr() );
 }
 
-inline sal_uInt16 impl_GetUInt16( const sal_uInt8* &pVal )
+static sal_uInt16 impl_GetUInt16( const sal_uInt8* &pVal )
 {
     sal_uInt16 nRet = *pVal++;
     nRet += ( *pVal++ ) << 8;
     return nRet;
 }
 
-inline sal_Int32 impl_GetPointComponent( const sal_uInt8* &pVal, sal_uInt16 nPointSize )
+static sal_Int32 impl_GetPointComponent( const sal_uInt8* &pVal, sal_uInt16 nPointSize )
 {
     sal_Int32 nRet = 0;
     if ( ( nPointSize == 0xfff0 ) || ( nPointSize == 4 ) )
@@ -364,15 +384,29 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
     if ( m_nShapeType == ESCHER_ShpInst_Line )
         AddLineDimensions( rRect );
     else
-        AddRectangleDimensions( m_ShapeStyle, rRect );
+    {
+        if ( IsWaterMarkShape( m_pSdrObject->GetName() ) )
+        {
+            // Watermark need some padding to be compatible with MSO
+            long nPaddingY = 0;
+            const SfxItemSet& rSet = m_pSdrObject->GetMergedItemSet();
+            if ( const SdrMetricItem* pItem = rSet.GetItem( SDRATTR_TEXT_UPPERDIST ) )
+                nPaddingY += pItem->GetValue();
+
+            tools::Rectangle aRect( rRect );
+            aRect.setHeight( aRect.getHeight() + nPaddingY );
+            AddRectangleDimensions( m_ShapeStyle, aRect );
+        }
+        else
+            AddRectangleDimensions( m_ShapeStyle, rRect );
+    }
 
     // properties
-    bool bAlreadyWritten[ 0xFFF ];
-    memset( bAlreadyWritten, 0, sizeof( bAlreadyWritten ) );
+    bool bAlreadyWritten[ 0xFFF ] = {};
     const EscherProperties &rOpts = rProps.GetOpts();
-    for ( EscherProperties::const_iterator it = rOpts.begin(); it != rOpts.end(); ++it )
+    for (auto const& opt : rOpts)
     {
-        sal_uInt16 nId = ( it->nPropId & 0x0FFF );
+        sal_uInt16 nId = ( opt.nPropId & 0x0FFF );
 
         if ( bAlreadyWritten[ nId ] )
             continue;
@@ -382,7 +416,7 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
             case ESCHER_Prop_WrapText: // 133
                 {
                     const char *pWrapType = nullptr;
-                    switch ( it->nPropValue )
+                    switch ( opt.nPropValue )
                     {
                         case ESCHER_WrapSquare:
                         case ESCHER_WrapByPoints:  pWrapType = "square"; break; // these two are equivalent according to the docu
@@ -391,11 +425,72 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
                         case ESCHER_WrapThrough:   pWrapType = "through"; break;
                     }
                     if ( pWrapType )
-                        m_pSerializer->singleElementNS( XML_w10, XML_wrap,
-                                XML_type, pWrapType,
-                                FSEND );
+                        m_pSerializer->singleElementNS(XML_w10, XML_wrap, XML_type, pWrapType);
                 }
                 bAlreadyWritten[ ESCHER_Prop_WrapText ] = true;
+                break;
+
+            case ESCHER_Prop_AnchorText: // 135
+                {
+                    char const* pValue(nullptr);
+                    switch (opt.nPropValue)
+                    {
+                        case ESCHER_AnchorTop:
+                            pValue = "top";
+                        break;
+                        case ESCHER_AnchorMiddle:
+                            pValue = "middle";
+                        break;
+                        case ESCHER_AnchorBottom:
+                            pValue = "bottom";
+                        break;
+                        case ESCHER_AnchorTopCentered:
+                            pValue = "top-center";
+                        break;
+                        case ESCHER_AnchorMiddleCentered:
+                            pValue = "middle-center";
+                        break;
+                        case ESCHER_AnchorBottomCentered:
+                            pValue = "bottom-center";
+                        break;
+                        case ESCHER_AnchorTopBaseline:
+                            pValue = "top-baseline";
+                        break;
+                        case ESCHER_AnchorBottomBaseline:
+                            pValue = "bottom-baseline";
+                        break;
+                        case ESCHER_AnchorTopCenteredBaseline:
+                            pValue = "top-center-baseline";
+                        break;
+                        case ESCHER_AnchorBottomCenteredBaseline:
+                            pValue = "bottom-center-baseline";
+                        break;
+                    }
+                    m_ShapeStyle.append(";v-text-anchor:");
+                    m_ShapeStyle.append(pValue);
+                }
+                break;
+
+            case ESCHER_Prop_txflTextFlow: // 136
+                {
+                    // at least "bottom-to-top" only has an effect when it's on the v:textbox element, not on v:shape
+                    assert(m_TextboxStyle.isEmpty());
+                    switch (opt.nPropValue)
+                    {
+                        case ESCHER_txflHorzN:
+                            m_TextboxStyle.append("layout-flow:horizontal");
+                        break;
+                        case ESCHER_txflTtoBA:
+                            m_TextboxStyle.append("layout-flow:vertical");
+                        break;
+                        case ESCHER_txflBtoT:
+                            m_TextboxStyle.append("mso-layout-flow-alt:bottom-to-top");
+                        break;
+                        default:
+                            assert(false); // unimplemented in escher export
+                        break;
+                    }
+                }
                 break;
 
             // coordorigin
@@ -406,12 +501,12 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
 
                     if ( nId == ESCHER_Prop_geoLeft )
                     {
-                        nLeft = it->nPropValue;
+                        nLeft = opt.nPropValue;
                         rProps.GetOpt( ESCHER_Prop_geoTop, nTop );
                     }
                     else
                     {
-                        nTop = it->nPropValue;
+                        nTop = opt.nPropValue;
                         rProps.GetOpt( ESCHER_Prop_geoLeft, nLeft );
                     }
                     if(nTop!=0 && nLeft!=0)
@@ -434,12 +529,12 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
 
                     if ( nId == ESCHER_Prop_geoRight )
                     {
-                        nRight = it->nPropValue;
+                        nRight = opt.nPropValue;
                         rProps.GetOpt( ESCHER_Prop_geoBottom, nBottom );
                     }
                     else
                     {
-                        nBottom = it->nPropValue;
+                        nBottom = opt.nPropValue;
                         rProps.GetOpt( ESCHER_Prop_geoRight, nRight );
                     }
 
@@ -462,11 +557,11 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
                     if ( rProps.GetOpt( ESCHER_Prop_pVertices, aVertices ) &&
                          rProps.GetOpt( ESCHER_Prop_pSegmentInfo, aSegments ) )
                     {
-                        const sal_uInt8 *pVerticesIt = aVertices.pBuf + 6;
-                        const sal_uInt8 *pSegmentIt = aSegments.pBuf;
+                        const sal_uInt8 *pVerticesIt = aVertices.nProp.data() + 6;
+                        const sal_uInt8 *pSegmentIt = aSegments.nProp.data();
                         OStringBuffer aPath( 512 );
 
-                        sal_uInt16 nPointSize = aVertices.pBuf[4] + ( aVertices.pBuf[5] << 8 );
+                        sal_uInt16 nPointSize = aVertices.nProp[4] + ( aVertices.nProp[5] << 8 );
 
                         // number of segments
                         sal_uInt16 nSegments = impl_GetUInt16( pSegmentIt );
@@ -555,10 +650,8 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
                         if ( !aPath.isEmpty() && pathString != "xe" )
                             m_pShapeAttrList->add( XML_path, pathString );
                     }
-#if OSL_DEBUG_LEVEL > 0
                     else
-                        fprintf( stderr, "TODO: unhandled shape path, missing either pVertices or pSegmentInfo.\n" );
-#endif
+                        SAL_WARN("oox.vml", "unhandled shape path, missing either pVertices or pSegmentInfo.");
                 }
                 bAlreadyWritten[ ESCHER_Prop_pVertices ] = true;
                 bAlreadyWritten[ ESCHER_Prop_pSegmentInfo ] = true;
@@ -572,15 +665,91 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
             case ESCHER_Prop_fillOpacity: // 386
                 {
                     sal_uInt32 nValue;
-                    sax_fastparser::FastAttributeList *pAttrList = FastSerializerHelper::createAttrList();
+                    sax_fastparser::FastAttributeList* pAttrList
+                        = FastSerializerHelper::createAttrList();
 
                     bool imageData = false;
                     EscherPropSortStruct aStruct;
-                    if ( rProps.GetOpt( ESCHER_Prop_fillBlip, aStruct ) && m_pTextExport)
+                    const SdrGrafObj* pSdrGrafObj = dynamic_cast<const SdrGrafObj*>(m_pSdrObject);
+
+                    if (pSdrGrafObj && pSdrGrafObj->isSignatureLine() && m_pTextExport)
+                    {
+                        sax_fastparser::FastAttributeList* pAttrListSignatureLine
+                            = FastSerializerHelper::createAttrList();
+                        pAttrListSignatureLine->add(XML_issignatureline, "t");
+                        if (!pSdrGrafObj->getSignatureLineId().isEmpty())
+                        {
+                            pAttrListSignatureLine->add(
+                                XML_id, OUStringToOString(pSdrGrafObj->getSignatureLineId(),
+                                                          RTL_TEXTENCODING_UTF8));
+                        }
+                        if (!pSdrGrafObj->getSignatureLineSuggestedSignerName().isEmpty())
+                        {
+                            pAttrListSignatureLine->add(
+                                FSNS(XML_o, XML_suggestedsigner),
+                                OUStringToOString(
+                                    pSdrGrafObj->getSignatureLineSuggestedSignerName(),
+                                    RTL_TEXTENCODING_UTF8));
+                        }
+                        if (!pSdrGrafObj->getSignatureLineSuggestedSignerTitle().isEmpty())
+                        {
+                            pAttrListSignatureLine->add(
+                                FSNS(XML_o, XML_suggestedsigner2),
+                                OUStringToOString(
+                                    pSdrGrafObj->getSignatureLineSuggestedSignerTitle(),
+                                    RTL_TEXTENCODING_UTF8));
+                        }
+                        if (!pSdrGrafObj->getSignatureLineSuggestedSignerEmail().isEmpty())
+                        {
+                            pAttrListSignatureLine->add(
+                                FSNS(XML_o, XML_suggestedsigneremail),
+                                OUStringToOString(
+                                    pSdrGrafObj->getSignatureLineSuggestedSignerEmail(),
+                                    RTL_TEXTENCODING_UTF8));
+                        }
+                        if (!pSdrGrafObj->getSignatureLineSigningInstructions().isEmpty())
+                        {
+                            pAttrListSignatureLine->add(XML_signinginstructionsset, "t");
+                            pAttrListSignatureLine->add(
+                                FSNS(XML_o, XML_signinginstructions),
+                                OUStringToOString(
+                                    pSdrGrafObj->getSignatureLineSigningInstructions(),
+                                    RTL_TEXTENCODING_UTF8));
+                        }
+                        pAttrListSignatureLine->add(
+                            XML_showsigndate,
+                            pSdrGrafObj->isSignatureLineShowSignDate() ? "t" : "f");
+                        pAttrListSignatureLine->add(
+                            XML_allowcomments,
+                            pSdrGrafObj->isSignatureLineCanAddComment() ? "t" : "f");
+
+                        m_pSerializer->singleElementNS(
+                            XML_o, XML_signatureline,
+                            XFastAttributeListRef(pAttrListSignatureLine));
+
+                        // Get signature line graphic
+                        const uno::Reference<graphic::XGraphic>& xGraphic
+                            = pSdrGrafObj->getSignatureLineUnsignedGraphic();
+                        Graphic aGraphic(xGraphic);
+
+                        BitmapChecksum nChecksum = aGraphic.GetChecksum();
+                        OUString aImageId = m_pTextExport->FindRelId(nChecksum);
+                        if (aImageId.isEmpty())
+                        {
+                            aImageId = m_pTextExport->GetDrawingML().WriteImage(aGraphic);
+                            m_pTextExport->CacheRelId(nChecksum, aImageId);
+                        }
+                        pAttrList->add(FSNS(XML_r, XML_id),
+                                       OUStringToOString(aImageId, RTL_TEXTENCODING_UTF8));
+                        imageData = true;
+                    }
+                    else if (rProps.GetOpt(ESCHER_Prop_fillBlip, aStruct) && m_pTextExport)
                     {
                         SvMemoryStream aStream;
-                        int nHeaderSize = 25; // The first bytes are WW8-specific, we're only interested in the PNG
-                        aStream.WriteBytes(aStruct.pBuf + nHeaderSize, aStruct.nPropSize - nHeaderSize);
+                        // The first bytes are WW8-specific, we're only interested in the PNG
+                        int nHeaderSize = 25;
+                        aStream.WriteBytes(aStruct.nProp.data() + nHeaderSize,
+                                           aStruct.nProp.size() - nHeaderSize);
                         aStream.Seek(0);
                         Graphic aGraphic;
                         GraphicConverter::Import(aStream, aGraphic);
@@ -589,15 +758,16 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
                         OUString aImageId = m_pTextExport->FindRelId(nChecksum);
                         if (aImageId.isEmpty())
                         {
-                            aImageId = m_pTextExport->GetDrawingML().WriteImage( aGraphic );
+                            aImageId = m_pTextExport->GetDrawingML().WriteImage(aGraphic);
                             m_pTextExport->CacheRelId(nChecksum, aImageId);
                         }
-                        pAttrList->add(FSNS(XML_r, XML_id), OUStringToOString(aImageId, RTL_TEXTENCODING_UTF8));
+                        pAttrList->add(FSNS(XML_r, XML_id),
+                                       OUStringToOString(aImageId, RTL_TEXTENCODING_UTF8));
                         imageData = true;
                     }
 
-                    if ( rProps.GetOpt( ESCHER_Prop_fNoFillHitTest, nValue ) )
-                        impl_AddBool( pAttrList, FSNS(XML_o, XML_detectmouseclick), nValue != 0 );
+                    if (rProps.GetOpt(ESCHER_Prop_fNoFillHitTest, nValue))
+                        impl_AddBool(pAttrList, FSNS(XML_o, XML_detectmouseclick), nValue != 0);
 
                     if (imageData)
                         m_pSerializer->singleElementNS( XML_v, XML_imagedata, XFastAttributeListRef( pAttrList ) );
@@ -619,9 +789,7 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
                                 // TODO case ESCHER_FillShadeTitle:  pFillType = ""; break;
                                 // TODO case ESCHER_FillBackground:  pFillType = ""; break;
                                 default:
-    #if OSL_DEBUG_LEVEL > 0
-                                    fprintf( stderr, "TODO: unhandled fill type\n" );
-    #endif
+                                    SAL_INFO("oox.vml", "Unhandled fill type: " << nValue);
                                     break;
                             }
                             if ( pFillType )
@@ -754,7 +922,7 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
                 break;
 
             case ESCHER_Prop_fHidden:
-                if ( !it->nPropValue )
+                if ( !opt.nPropValue )
                     m_ShapeStyle.append( ";visibility:hidden" );
                 break;
             case ESCHER_Prop_shadowColor:
@@ -790,14 +958,17 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
                     if (rProps.GetOpt(ESCHER_Prop_gtextUNICODE, aUnicode))
                     {
                         SvMemoryStream aStream;
-                        aStream.WriteBytes(it->pBuf, it->nPropSize);
+
+                        if(!opt.nProp.empty())
+                        {
+                            aStream.WriteBytes(opt.nProp.data(), opt.nProp.size());
+                        }
+
                         aStream.Seek(0);
-                        OUString aTextPathString = SvxMSDffManager::MSDFFReadZString(aStream, it->nPropSize, true);
+                        OUString aTextPathString = SvxMSDffManager::MSDFFReadZString(aStream, opt.nProp.size(), true);
                         aStream.Seek(0);
 
-                        m_pSerializer->singleElementNS( XML_v, XML_path,
-                                XML_textpathok, "t",
-                                FSEND );
+                        m_pSerializer->singleElementNS(XML_v, XML_path, XML_textpathok, "t");
 
                         sax_fastparser::FastAttributeList* pAttrList = FastSerializerHelper::createAttrList();
                         pAttrList->add(XML_on, "t");
@@ -807,18 +978,21 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
                         OUString aStyle;
                         if (rProps.GetOpt(ESCHER_Prop_gtextFont, aFont))
                         {
-                            aStream.WriteBytes(aFont.pBuf, aFont.nPropSize);
+                            aStream.WriteBytes(aFont.nProp.data(), aFont.nProp.size());
                             aStream.Seek(0);
-                            OUString aTextPathFont = SvxMSDffManager::MSDFFReadZString(aStream, aFont.nPropSize, true);
+                            OUString aTextPathFont = SvxMSDffManager::MSDFFReadZString(aStream, aFont.nProp.size(), true);
                             aStyle += "font-family:\"" + aTextPathFont + "\"";
                         }
                         sal_uInt32 nSize;
                         if (rProps.GetOpt(ESCHER_Prop_gtextSize, nSize))
                         {
-                            float nSizeF = (sal_Int32)nSize / 65536.0;
+                            float nSizeF = static_cast<sal_Int32>(nSize) / 65536.0;
                             OUString aSize = OUString::number(nSizeF);
                             aStyle += ";font-size:" + aSize + "pt";
                         }
+                        if (IsWaterMarkShape(m_pSdrObject->GetName()))
+                            pAttrList->add(XML_trim, "t");
+
                         if (!aStyle.isEmpty())
                             pAttrList->add(XML_style, OUStringToOString(aStyle, RTL_TEXTENCODING_UTF8));
                         m_pSerializer->singleElementNS(XML_v, XML_textpath, XFastAttributeListRef(pAttrList));
@@ -831,25 +1005,30 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
             case ESCHER_Prop_Rotation:
                 {
                     // The higher half of the variable contains the angle.
-                    m_ShapeStyle.append(";rotation:").append(double(it->nPropValue >> 16));
+                    m_ShapeStyle.append(";rotation:").append(double(opt.nPropValue >> 16));
                     bAlreadyWritten[ESCHER_Prop_Rotation] = true;
                 }
                 break;
             case ESCHER_Prop_fNoLineDrawDash:
                 {
                     // See DffPropertyReader::ApplyLineAttributes().
-                    impl_AddBool( m_pShapeAttrList, XML_stroked, (it->nPropValue & 8) != 0 );
+                    impl_AddBool( m_pShapeAttrList, XML_stroked, (opt.nPropValue & 8) != 0 );
                     bAlreadyWritten[ESCHER_Prop_fNoLineDrawDash] = true;
                 }
                 break;
             case ESCHER_Prop_wzName:
                 {
                     SvMemoryStream aStream;
-                    aStream.WriteBytes(it->pBuf, it->nPropSize);
+
+                    if(!opt.nProp.empty())
+                    {
+                        aStream.WriteBytes(opt.nProp.data(), opt.nProp.size());
+                    }
+
                     aStream.Seek(0);
-                    OUString idStr = SvxMSDffManager::MSDFFReadZString(aStream, it->nPropSize, true);
+                    OUString idStr = SvxMSDffManager::MSDFFReadZString(aStream, opt.nProp.size(), true);
                     aStream.Seek(0);
-                    if (!IsWaterMarkShape(m_pSdrObject->GetName()))
+                    if (!IsWaterMarkShape(m_pSdrObject->GetName()) && !m_bSkipwzName)
                          m_pShapeAttrList->add(XML_ID, OUStringToOString(idStr, RTL_TEXTENCODING_UTF8).getStr());
 
                     bAlreadyWritten[ESCHER_Prop_wzName] = true;
@@ -857,13 +1036,18 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
                 break;
             default:
 #if OSL_DEBUG_LEVEL > 0
-                fprintf( stderr, "TODO VMLExport::Commit(), unimplemented id: %d, value: %" SAL_PRIuUINT32 ", data: [%" SAL_PRIuUINT32 ", %p]\n",
-                        nId, it->nPropValue, it->nPropSize, it->pBuf );
-                if ( it->nPropSize )
+                const size_t opt_nProp_size(opt.nProp.size());
+                const sal_uInt8 opt_nProp_empty(0);
+                fprintf( stderr, "TODO VMLExport::Commit(), unimplemented id: %d, value: %" SAL_PRIuUINT32 ", data: [%zu, %p]\n",
+                        nId,
+                        opt.nPropValue,
+                        opt_nProp_size,
+                        0 == opt_nProp_size ? &opt_nProp_empty : opt.nProp.data());
+                if ( opt.nProp.size() )
                 {
-                    const sal_uInt8 *pIt = it->pBuf;
+                    const sal_uInt8 *pIt = opt.nProp.data();
                     fprintf( stderr, "    ( " );
-                    for ( int nCount = it->nPropSize; nCount; --nCount )
+                    for ( int nCount = opt.nProp.size(); nCount; --nCount )
                     {
                         fprintf( stderr, "%02x ", *pIt );
                         ++pIt;
@@ -880,17 +1064,23 @@ void VMLExport::Commit( EscherPropertyContainer& rProps, const tools::Rectangle&
 
 OString VMLExport::ShapeIdString( sal_uInt32 nId )
 {
-    return "shape_" + OString::number( nId );
+    if(m_bOverrideShapeIdGeneration)
+        return m_sShapeIDPrefix + OString::number( nId );
+    else
+        return "shape_" + OString::number( nId );
 }
 
 void VMLExport::AddFlipXY( )
 {
-    const sal_uInt32 nFlipHandV = SHAPEFLAG_FLIPH + SHAPEFLAG_FLIPV;
-    switch ( m_nShapeFlags & nFlipHandV )
+    if (m_nShapeFlags & (ShapeFlag::FlipH | ShapeFlag::FlipV))
     {
-        case SHAPEFLAG_FLIPH:   m_ShapeStyle.append( ";flip:x" );  break;
-        case SHAPEFLAG_FLIPV:   m_ShapeStyle.append( ";flip:y" );  break;
-        case nFlipHandV:        m_ShapeStyle.append( ";flip:xy" ); break;
+        m_ShapeStyle.append( ";flip:" );
+
+        if (m_nShapeFlags & ShapeFlag::FlipH)
+            m_ShapeStyle.append( "x" );
+
+        if (m_nShapeFlags & ShapeFlag::FlipV)
+            m_ShapeStyle.append( "y" );
     }
 }
 
@@ -939,12 +1129,18 @@ void VMLExport::AddRectangleDimensions( OStringBuffer& rBuffer, const tools::Rec
     if ( !rBuffer.isEmpty() )
         rBuffer.append( ";" );
 
-    if (rbAbsolutePos)
+    if (rbAbsolutePos && !m_bInline)
     {
         rBuffer.append( "position:absolute;" );
     }
 
-    if ( mnGroupLevel == 1 )
+    if(m_bInline)
+    {
+        rBuffer.append( "width:" ).append( double( rRectangle.Right() - rRectangle.Left() ) / 20 )
+            .append( "pt;height:" ).append( double( rRectangle.Bottom() - rRectangle.Top() ) / 20 )
+            .append( "pt" );
+    }
+    else if ( mnGroupLevel == 1 )
     {
         rBuffer.append( "margin-left:" ).append( double( rRectangle.Left() ) / 20 )
             .append( "pt;margin-top:" ).append( double( rRectangle.Top() ) / 20 )
@@ -968,7 +1164,7 @@ void VMLExport::AddShapeAttribute( sal_Int32 nAttribute, const OString& rValue )
     m_pShapeAttrList->add( nAttribute, rValue );
 }
 
-std::vector<OString> lcl_getShapeTypes()
+static std::vector<OString> lcl_getShapeTypes()
 {
     std::vector<OString> aRet;
 
@@ -989,7 +1185,7 @@ std::vector<OString> lcl_getShapeTypes()
     return aRet;
 }
 
-bool lcl_isTextBox(const SdrObject* pSdrObject)
+static bool lcl_isTextBox(const SdrObject* pSdrObject)
 {
     uno::Reference<beans::XPropertySet> xPropertySet(const_cast<SdrObject*>(pSdrObject)->getUnoShape(), uno::UNO_QUERY);
     if (xPropertySet.is())
@@ -1000,7 +1196,7 @@ bool lcl_isTextBox(const SdrObject* pSdrObject)
     return false;
 }
 
-OUString lcl_getAnchorIdFromGrabBag(const SdrObject* pSdrObject)
+static OUString lcl_getAnchorIdFromGrabBag(const SdrObject* pSdrObject)
 {
     OUString aResult;
 
@@ -1013,6 +1209,14 @@ OUString lcl_getAnchorIdFromGrabBag(const SdrObject* pSdrObject)
     }
 
     return aResult;
+}
+
+sal_uInt32 VMLExport::GenerateShapeId()
+{
+    if(!m_bOverrideShapeIdGeneration)
+        return EscherEx::GenerateShapeId();
+    else
+        return m_nShapeIDCounter++;
 }
 
 sal_Int32 VMLExport::StartShape()
@@ -1031,6 +1235,62 @@ sal_Int32 VMLExport::StartShape()
         case ESCHER_ShpInst_Ellipse:        nShapeElement = XML_oval;      break;
         case ESCHER_ShpInst_Arc:            nShapeElement = XML_arc;       break;
         case ESCHER_ShpInst_Line:           nShapeElement = XML_line;      break;
+        case ESCHER_ShpInst_HostControl:
+        {
+            // We don't have a shape definition for host control in presetShapeDefinitions.xml
+            // So use a definition copied from DOCX file created with MSO
+            bReferToShapeType = true;
+            nShapeElement = XML_shape;
+            if ( !m_aShapeTypeWritten[ m_nShapeType ] )
+            {
+                OString sShapeType =
+                    "<v:shapetype id=\"shapetype_" + OString::number(m_nShapeType) +
+                        "\" coordsize=\"21600,21600\" o:spt=\"" + OString::number(m_nShapeType) +
+                        "\" path=\"m,l,21600l21600,21600l21600,xe\">\n"
+                        "<v:stroke joinstyle=\"miter\"/>\n"
+                        "<v:path shadowok=\"f\" o:extrusionok=\"f\" strokeok=\"f\" fillok=\"f\" o:connecttype=\"rect\"/>\n"
+                        "<o:lock v:ext=\"edit\" shapetype=\"t\"/>\n"
+                    "</v:shapetype>";
+                m_pSerializer->write(sShapeType);
+                m_aShapeTypeWritten[ m_nShapeType ] = true;
+            }
+            break;
+        }
+        case ESCHER_ShpInst_PictureFrame:
+        {
+            // We don't have a shape definition for picture frame in presetShapeDefinitions.xml
+            // So use a definition copied from DOCX file created with MSO
+            bReferToShapeType = true;
+            nShapeElement = XML_shape;
+            if ( !m_aShapeTypeWritten[ m_nShapeType ] )
+            {
+                OString sShapeType =
+                    "<v:shapetype id=\"shapetype_" + OString::number(m_nShapeType) +
+                        "\" coordsize=\"21600,21600\" o:spt=\"" + OString::number(m_nShapeType) +
+                        "\" o:preferrelative=\"t\" path=\"m@4@5l@4@11@9@11@9@5xe\" filled=\"f\" stroked=\"f\">\n"
+                        "<v:stroke joinstyle=\"miter\"/>\n"
+                        "<v:formulas>\n"
+                            "<v:f eqn=\"if lineDrawn pixelLineWidth 0\"/>\n"
+                            "<v:f eqn=\"sum @0 1 0\"/>\n"
+                            "<v:f eqn=\"sum 0 0 @1\"/>\n"
+                            "<v:f eqn=\"prod @2 1 2\"/>\n"
+                            "<v:f eqn=\"prod @3 21600 pixelWidth\"/>\n"
+                            "<v:f eqn=\"prod @3 21600 pixelHeight\"/>\n"
+                            "<v:f eqn=\"sum @0 0 1\"/>\n"
+                            "<v:f eqn=\"prod @6 1 2\"/>\n"
+                            "<v:f eqn=\"prod @7 21600 pixelWidth\"/>\n"
+                            "<v:f eqn=\"sum @8 21600 0\"/>\n"
+                            "<v:f eqn=\"prod @7 21600 pixelHeight\"/>\n"
+                            "<v:f eqn=\"sum @10 21600 0\"/>\n"
+                        "</v:formulas>\n"
+                        "<v:path o:extrusionok=\"f\" gradientshapeok=\"t\" o:connecttype=\"rect\"/>\n"
+                        "<o:lock v:ext=\"edit\" aspectratio=\"t\"/>\n"
+                        "</v:shapetype>";
+                m_pSerializer->write(sShapeType);
+                m_aShapeTypeWritten[ m_nShapeType ] = true;
+            }
+            break;
+        }
         default:
             if ( m_nShapeType < ESCHER_ShpInst_COUNT )
             {
@@ -1137,13 +1397,18 @@ sal_Int32 VMLExport::StartShape()
 
     if ( nShapeElement >= 0 && !m_pShapeAttrList->hasAttribute( XML_type ) && bReferToShapeType )
     {
-        m_pShapeAttrList->add( XML_type, OStringBuffer( 20 )
+        OStringBuffer sTypeBuffer( 20 );
+        if (m_bUseHashMarkForType)
+            sTypeBuffer.append("#");
+        m_pShapeAttrList->add( XML_type, sTypeBuffer
                 .append( "shapetype_" ).append( sal_Int32( m_nShapeType ) )
                 .makeStringAndClear() );
     }
 
     // start of the shape
     m_pSerializer->startElementNS( XML_v, nShapeElement, XFastAttributeListRef( m_pShapeAttrList ) );
+
+    OString const textboxStyle(m_TextboxStyle.makeStringAndClear());
 
     // now check if we have some editeng text (not associated textbox) and we have a text exporter registered
     const SdrTextObj* pTxtObj = dynamic_cast<const SdrTextObj*>( m_pSdrObject );
@@ -1159,7 +1424,7 @@ sal_Int32 VMLExport::StartShape()
         */
         if (pTxtObj->IsTextEditActive())
         {
-            pParaObj = pTxtObj->GetEditOutlinerParaObject();
+            pParaObj = pTxtObj->CreateEditOutlinerParaObject().release();
             bOwnParaObj = true;
         }
         else
@@ -1169,8 +1434,15 @@ sal_Int32 VMLExport::StartShape()
 
         if( pParaObj )
         {
+            sax_fastparser::FastAttributeList* pTextboxAttrList = FastSerializerHelper::createAttrList();
+            sax_fastparser::XFastAttributeListRef xTextboxAttrList(pTextboxAttrList);
+            if (!textboxStyle.isEmpty())
+            {
+                pTextboxAttrList->add(XML_style, textboxStyle);
+            }
+
             // this is reached only in case some text is attached to the shape
-            m_pSerializer->startElementNS(XML_v, XML_textbox, FSEND);
+            m_pSerializer->startElementNS(XML_v, XML_textbox, xTextboxAttrList);
             m_pTextExport->WriteOutliner(*pParaObj);
             m_pSerializer->endElementNS(XML_v, XML_textbox);
             if( bOwnParaObj )
@@ -1183,42 +1455,55 @@ sal_Int32 VMLExport::StartShape()
 
 void VMLExport::EndShape( sal_Int32 nShapeElement )
 {
-    if ( nShapeElement >= 0 )
+    if ( nShapeElement < 0 )
+        return;
+
+    if (m_pTextExport && lcl_isTextBox(m_pSdrObject))
     {
-        if (m_pTextExport && lcl_isTextBox(m_pSdrObject))
+        uno::Reference<beans::XPropertySet> xPropertySet(const_cast<SdrObject*>(m_pSdrObject)->getUnoShape(), uno::UNO_QUERY);
+        comphelper::SequenceAsHashMap aCustomShapeProperties(xPropertySet->getPropertyValue("CustomShapeGeometry"));
+        sax_fastparser::FastAttributeList* pTextboxAttrList = FastSerializerHelper::createAttrList();
+        if (aCustomShapeProperties.find("TextPreRotateAngle") != aCustomShapeProperties.end())
         {
-            uno::Reference<beans::XPropertySet> xPropertySet(const_cast<SdrObject*>(m_pSdrObject)->getUnoShape(), uno::UNO_QUERY);
-            comphelper::SequenceAsHashMap aCustomShapeProperties(xPropertySet->getPropertyValue("CustomShapeGeometry"));
-            sax_fastparser::FastAttributeList* pTextboxAttrList = FastSerializerHelper::createAttrList();
-            if (aCustomShapeProperties.find("TextPreRotateAngle") != aCustomShapeProperties.end())
-            {
-                sal_Int32 nTextRotateAngle = aCustomShapeProperties["TextPreRotateAngle"].get<sal_Int32>();
-                if (nTextRotateAngle == -270)
-                    pTextboxAttrList->add(XML_style, "mso-layout-flow-alt:bottom-to-top");
-            }
-            sax_fastparser::XFastAttributeListRef xTextboxAttrList(pTextboxAttrList);
-            pTextboxAttrList = nullptr;
-            m_pSerializer->startElementNS(XML_v, XML_textbox, xTextboxAttrList);
-
-            m_pTextExport->WriteVMLTextBox(uno::Reference<drawing::XShape>(xPropertySet, uno::UNO_QUERY_THROW));
-
-            m_pSerializer->endElementNS(XML_v, XML_textbox);
+            sal_Int32 nTextRotateAngle = aCustomShapeProperties["TextPreRotateAngle"].get<sal_Int32>();
+            if (nTextRotateAngle == -270)
+                pTextboxAttrList->add(XML_style, "mso-layout-flow-alt:bottom-to-top");
         }
+        sax_fastparser::XFastAttributeListRef xTextboxAttrList(pTextboxAttrList);
+        pTextboxAttrList = nullptr;
+        m_pSerializer->startElementNS(XML_v, XML_textbox, xTextboxAttrList);
 
-        // end of the shape
-        m_pSerializer->endElementNS( XML_v, nShapeElement );
+        m_pTextExport->WriteVMLTextBox(uno::Reference<drawing::XShape>(xPropertySet, uno::UNO_QUERY_THROW));
+
+        m_pSerializer->endElementNS(XML_v, XML_textbox);
     }
+
+    // end of the shape
+    m_pSerializer->endElementNS( XML_v, nShapeElement );
 }
 
-void VMLExport::AddSdrObject( const SdrObject& rObj, sal_Int16 eHOri, sal_Int16 eVOri, sal_Int16 eHRel, sal_Int16 eVRel, const Point* pNdTopLeft, const bool bOOxmlExport )
+OString const & VMLExport::AddSdrObject( const SdrObject& rObj, sal_Int16 eHOri, sal_Int16 eVOri, sal_Int16 eHRel, sal_Int16 eVRel, const bool bOOxmlExport )
 {
     m_pSdrObject = &rObj;
     m_eHOri = eHOri;
     m_eVOri = eVOri;
     m_eHRel = eHRel;
     m_eVRel = eVRel;
-    m_pNdTopLeft = pNdTopLeft;
+    m_bInline = false;
     EscherEx::AddSdrObject(rObj, bOOxmlExport);
+    return m_sShapeId;
+}
+
+OString const & VMLExport::AddInlineSdrObject( const SdrObject& rObj, const bool bOOxmlExport )
+{
+    m_pSdrObject = &rObj;
+    m_eHOri = -1;
+    m_eVOri = -1;
+    m_eHRel = -1;
+    m_eVRel = -1;
+    m_bInline = true;
+    EscherEx::AddSdrObject(rObj, bOOxmlExport);
+    return m_sShapeId;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

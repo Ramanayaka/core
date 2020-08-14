@@ -18,33 +18,34 @@
  */
 
 
-#include "frm_resource.hrc"
-#include "frm_resource.hxx"
-#include "InterfaceContainer.hxx"
-#include "componenttools.hxx"
-#include "property.hrc"
-#include "services.hxx"
+#include <strings.hrc>
+#include <frm_resource.hxx>
+#include <frm_strings.hxx>
+#include <InterfaceContainer.hxx>
+#include <componenttools.hxx>
+#include <services.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/io/WrongFormatException.hpp>
 #include <com/sun/star/io/XMarkableStream.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/ServiceNotRegisteredException.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/form/XForm.hpp>
 
-#include <comphelper/container.hxx>
 #include <comphelper/enumhelper.hxx>
 #include <comphelper/eventattachermgr.hxx>
 #include <comphelper/property.hxx>
 #include <comphelper/sequence.hxx>
+#include <comphelper/types.hxx>
 #include <cppuhelper/exc_hlp.hxx>
-#include <cppuhelper/queryinterface.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 #include <algorithm>
 #include <memory>
@@ -53,7 +54,6 @@
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/document/XCodeNameQuery.hpp>
 #include <ooo/vba/XVBAToOOEventDescGen.hpp>
-#include <comphelper/processfactory.hxx>
 
 namespace frm
 {
@@ -79,36 +79,32 @@ namespace
     }
 }
 
-bool
+static bool
 lcl_hasVbaEvents( const Sequence< ScriptEventDescriptor >& sEvents  )
 {
-    const ScriptEventDescriptor* pDesc = sEvents.getConstArray();
-    const ScriptEventDescriptor* pEnd = ( pDesc + sEvents.getLength() );
-    for ( ; pDesc != pEnd; ++pDesc )
+    for ( auto const& rDesc : sEvents )
     {
-        if ( pDesc->ScriptType == "VBAInterop" )
+        if ( rDesc.ScriptType == "VBAInterop" )
             return true;
     }
     return false;
 }
 
-Sequence< ScriptEventDescriptor >
+static Sequence< ScriptEventDescriptor >
 lcl_stripVbaEvents( const Sequence< ScriptEventDescriptor >& sEvents )
 {
     Sequence< ScriptEventDescriptor > sStripped( sEvents.getLength() );
+    ScriptEventDescriptor* pStripped = sStripped.getArray();
 
-    const ScriptEventDescriptor* pDesc = sEvents.getConstArray();
-    const ScriptEventDescriptor* pEnd = ( pDesc + sEvents.getLength() );
     sal_Int32 nCopied = 0;
-    for ( ; pDesc != pEnd; ++pDesc )
+    for ( auto const& rDesc : sEvents )
     {
-        if ( pDesc->ScriptType != "VBAInterop" )
+        if ( rDesc.ScriptType != "VBAInterop" )
         {
-            sStripped[ nCopied++ ] = *pDesc;
+            pStripped[ nCopied++ ] = rDesc;
         }
     }
-    if ( nCopied )
-        sStripped.realloc( nCopied );
+    sStripped.realloc( nCopied );
     return sStripped;
 }
 
@@ -163,7 +159,7 @@ void OInterfaceContainer::impl_addVbEvents_nolck_nothrow(  const sal_Int32 i_nIn
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.misc");
     }
 
 }
@@ -172,10 +168,6 @@ ElementDescription::ElementDescription( )
 {
 }
 
-
-ElementDescription::~ElementDescription()
-{
-}
 
 OInterfaceContainer::OInterfaceContainer(
                 const Reference<XComponentContext>& _rxContext,
@@ -236,7 +228,7 @@ void OInterfaceContainer::impl_createEventAttacher_nothrow()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.misc");
     }
 }
 
@@ -301,12 +293,12 @@ namespace
         if ( !_rxManager.is() )
             return;
 
-        ::std::vector< Sequence< ScriptEventDescriptor > >::const_iterator aLoop = _rSave.begin();
-        ::std::vector< Sequence< ScriptEventDescriptor > >::const_iterator aEnd = _rSave.end();
-        for ( sal_Int32 i=0; aLoop != aEnd; ++aLoop, ++i )
+        sal_Int32 i=0;
+        for (auto const& elem : _rSave)
         {
             _rxManager->revokeScriptEvents( i );
-            _rxManager->registerScriptEvents( i, *aLoop );
+            _rxManager->registerScriptEvents(i, elem);
+            ++i;
         }
     }
 }
@@ -355,29 +347,32 @@ void SAL_CALL OInterfaceContainer::writeEvents(const Reference<XObjectOutputStre
         lcl_restoreEvents( aSave, m_xEventAttacher );
 }
 
+namespace {
 
 struct TransformEventTo52Format
 {
     void operator()( ScriptEventDescriptor& _rDescriptor )
     {
-        if ( _rDescriptor.ScriptType == "StarBasic" )
-        {   // it's a starbasic macro
-            sal_Int32 nPrefixLength = _rDescriptor.ScriptCode.indexOf( ':' );
-            if ( 0 <= nPrefixLength )
-            {   // the macro name does not already contain a :
+        if ( _rDescriptor.ScriptType != "StarBasic" )
+            return;
+
+        // it's a starbasic macro
+        sal_Int32 nPrefixLength = _rDescriptor.ScriptCode.indexOf( ':' );
+        if ( 0 <= nPrefixLength )
+        {   // the macro name does not already contain a :
 #ifdef DBG_UTIL
-                const OUString sPrefix = _rDescriptor.ScriptCode.copy( 0, nPrefixLength );
-                DBG_ASSERT( sPrefix == "document"
-                        ||  sPrefix == "application",
-                        "TransformEventTo52Format: invalid (unknown) prefix!" );
+            const OUString sPrefix = _rDescriptor.ScriptCode.copy( 0, nPrefixLength );
+            DBG_ASSERT( sPrefix == "document"
+                    ||  sPrefix == "application",
+                    "TransformEventTo52Format: invalid (unknown) prefix!" );
 #endif
-                // cut the prefix
-                _rDescriptor.ScriptCode = _rDescriptor.ScriptCode.copy( nPrefixLength + 1 );
-            }
+            // cut the prefix
+            _rDescriptor.ScriptCode = _rDescriptor.ScriptCode.copy( nPrefixLength + 1 );
         }
     }
 };
 
+}
 
 void OInterfaceContainer::transformEvents()
 {
@@ -396,14 +391,10 @@ void OInterfaceContainer::transformEvents()
             // get the script events for this object
             aChildEvents = m_xEventAttacher->getScriptEvents( i );
 
-            if ( aChildEvents.getLength() )
+            if ( aChildEvents.hasElements() )
             {
-                // the "iterators" for the events for this child
-                ScriptEventDescriptor* pChildEvents     =                       aChildEvents.getArray();
-                ScriptEventDescriptor* pChildEventsEnd  =   pChildEvents    +   aChildEvents.getLength();
-
                 // do the transformation
-                ::std::for_each( pChildEvents, pChildEventsEnd, TransformEventTo52Format() );
+                ::std::for_each( aChildEvents.begin(), aChildEvents.end(), TransformEventTo52Format() );
 
                 // revoke the script events
                 m_xEventAttacher->revokeScriptEvents( i );
@@ -414,7 +405,7 @@ void OInterfaceContainer::transformEvents()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.misc");
     }
 }
 
@@ -440,13 +431,12 @@ void SAL_CALL OInterfaceContainer::readEvents(const Reference<XObjectInputStream
     // Read Attachment
     if ( m_xEventAttacher.is() )
     {
-        OInterfaceArray::const_iterator aAttach = m_aItems.begin();
-        OInterfaceArray::const_iterator aAttachEnd = m_aItems.end();
-        for ( sal_Int32 i=0; aAttach != aAttachEnd; ++aAttach, ++i )
+        sal_Int32 i=0;
+        for (auto const& item : m_aItems)
         {
-            Reference< XInterface > xAsIFace( *aAttach, UNO_QUERY );    // important to normalize this ....
+            Reference< XInterface > xAsIFace( item, UNO_QUERY );    // important to normalize this...
             Reference< XPropertySet > xAsSet( xAsIFace, UNO_QUERY );
-            m_xEventAttacher->attach( i, xAsIFace, makeAny( xAsSet ) );
+            m_xEventAttacher->attach( i++, xAsIFace, makeAny( xAsSet ) );
         }
     }
 }
@@ -460,26 +450,26 @@ void SAL_CALL OInterfaceContainer::write( const Reference< XObjectOutputStream >
     // Write length
     _rxOutStream->writeLong(nLen);
 
-    if (nLen)
+    if (!nLen)
+        return;
+
+    // 1. Version
+    _rxOutStream->writeShort(0x0001);
+
+    // 2. Objects
+    for (sal_Int32 i = 0; i < nLen; i++)
     {
-        // 1. Version
-        _rxOutStream->writeShort(0x0001);
-
-        // 2. Objects
-        for (sal_Int32 i = 0; i < nLen; i++)
+        Reference<XPersistObject>  xObj(m_aItems[i], UNO_QUERY);
+        if (xObj.is())
+            _rxOutStream->writeObject(xObj);
+        else
         {
-            Reference<XPersistObject>  xObj(m_aItems[i], UNO_QUERY);
-            if (xObj.is())
-                _rxOutStream->writeObject(xObj);
-            else
-            {
-                // Error
-            }
+            // Error
         }
-
-        // 3. Scripts
-        writeEvents(_rxOutStream);
     }
+
+    // 3. Scripts
+    writeEvents(_rxOutStream);
 }
 
 
@@ -538,7 +528,7 @@ void SAL_CALL OInterfaceContainer::read( const Reference< XObjectInputStream >& 
             catch(const WrongFormatException&)
             {
                 // the object could not be read
-                // create a object (so the readEvents below will assign the events to the right controls)
+                // create an object (so the readEvents below will assign the events to the right controls)
                 xObj = lcl_createPlaceHolder( m_xContext );
                 if ( !xObj.is() )
                     // couldn't handle it
@@ -592,7 +582,7 @@ void SAL_CALL OInterfaceContainer::read( const Reference< XObjectInputStream >& 
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.misc");
         }
     }
 }
@@ -630,47 +620,47 @@ void SAL_CALL OInterfaceContainer::disposing(const css::lang::EventObject& _rSou
             break;
     }
 
-    if ( m_aItems.end() != j )
+    if ( m_aItems.end() == j )
+        return;
+
+    m_aItems.erase(j);
+
+    // look up in, and erase from, m_aMap, too
+    OInterfaceMap::iterator i = m_aMap.begin();
+    while ( i != m_aMap.end() )
     {
-        m_aItems.erase(j);
+        DBG_ASSERT( i->second.get() == Reference< XInterface >( i->second, UNO_QUERY ).get(),
+            "OInterfaceContainer::disposing: map element not normalized!" );
 
-        // look up in, and erase from, m_aMap, too
-        OInterfaceMap::iterator i = m_aMap.begin();
-        while ( i != m_aMap.end() )
+        if ( i->second.get() == xSource.get() )
         {
-            DBG_ASSERT( i->second.get() == Reference< XInterface >( i->second, UNO_QUERY ).get(),
-                "OInterfaceContainer::disposing: map element not normalized!" );
-
-            if ( i->second.get() == xSource.get() )
-            {
-                // found it
-                m_aMap.erase(i);
-                break;
-            }
-
-            ++i;
-
-            DBG_ASSERT( i != m_aMap.end(), "OInterfaceContainer::disposing: inconsistency: the element was in m_aItems, but not in m_aMap!" );
+            // found it
+            m_aMap.erase(i);
+            break;
         }
+
+        ++i;
+
+        DBG_ASSERT( i != m_aMap.end(), "OInterfaceContainer::disposing: inconsistency: the element was in m_aItems, but not in m_aMap!" );
     }
 }
 
 // XPropertyChangeListener
 
 void OInterfaceContainer::propertyChange(const PropertyChangeEvent& evt) {
-    if (evt.PropertyName == PROPERTY_NAME)
-    {
-        ::osl::MutexGuard aGuard( m_rMutex );
-        auto range = m_aMap.equal_range(::comphelper::getString(evt.OldValue));
-        for (auto it = range.first; it != range.second; ++it)
-            if (it->second == evt.Source)
-            {
-                css::uno::Reference<css::uno::XInterface>  xCorrectType(it->second);
-                m_aMap.erase(it);
-                m_aMap.insert(::std::pair<const OUString, css::uno::Reference<css::uno::XInterface> >(::comphelper::getString(evt.NewValue),xCorrectType));
-                break;
-            }
-    }
+    if (evt.PropertyName != PROPERTY_NAME)
+        return;
+
+    ::osl::MutexGuard aGuard( m_rMutex );
+    auto range = m_aMap.equal_range(::comphelper::getString(evt.OldValue));
+    for (auto it = range.first; it != range.second; ++it)
+        if (it->second == evt.Source)
+        {
+            css::uno::Reference<css::uno::XInterface>  xCorrectType(it->second);
+            m_aMap.erase(it);
+            m_aMap.insert(::std::pair<const OUString, css::uno::Reference<css::uno::XInterface> >(::comphelper::getString(evt.NewValue),xCorrectType));
+            break;
+        }
 }
 
 // XElementAccess
@@ -731,7 +721,7 @@ sal_Int32 OInterfaceContainer::getCount()
 
 Any OInterfaceContainer::getByIndex(sal_Int32 _nIndex)
 {
-    if (_nIndex < 0 || (_nIndex >= (sal_Int32)m_aItems.size()))
+    if (_nIndex < 0 || (_nIndex >= static_cast<sal_Int32>(m_aItems.size())))
         throw IndexOutOfBoundsException();
 
     return m_aItems[_nIndex]->queryInterface( m_aElementType );
@@ -804,7 +794,7 @@ void OInterfaceContainer::implInsert(sal_Int32 _nIndex, const Reference< XProper
     _rxElement->addPropertyChangeListener(PROPERTY_NAME, this);
 
     // insert the object into our internal structures
-    if (_nIndex > (sal_Int32)m_aItems.size()) // Calculate the actual index
+    if (_nIndex > static_cast<sal_Int32>(m_aItems.size())) // Calculate the actual index
     {
         _nIndex = m_aItems.size();
         m_aItems.push_back( pElementMetaData->xInterface );
@@ -868,7 +858,6 @@ void OInterfaceContainer::implInsert(sal_Int32 _nIndex, const Reference< XProper
         aEvt.Accessor <<= _nIndex;
         aEvt.Element  = pElementMetaData->aElementTypeInterface;
 
-        aGuard.clear();
         m_aContainerListeners.notifyEach( &XContainerListener::elementInserted, aEvt );
     }
 }
@@ -879,8 +868,8 @@ void OInterfaceContainer::removeElementsNoEvents()
     OInterfaceArray::iterator i = m_aItems.begin();
     css::uno::Reference<css::uno::XInterface>  xElement(*i);
 
-    OInterfaceMap::iterator j = m_aMap.begin();
-    while (j != m_aMap.end() && (*j).second != xElement) ++j;
+    OInterfaceMap::iterator j = std::find_if(m_aMap.begin(), m_aMap.end(),
+        [&xElement](const OInterfaceMap::value_type& rEntry) { return rEntry.second == xElement; });
 
     m_aItems.erase(i);
     m_aMap.erase(j);
@@ -925,11 +914,12 @@ void SAL_CALL OInterfaceContainer::insertByIndex( sal_Int32 _nIndex, const Any& 
 
 void OInterfaceContainer::implReplaceByIndex( const sal_Int32 _nIndex, const Any& _rNewElement, ::osl::ClearableMutexGuard& _rClearBeforeNotify )
 {
-    OSL_PRECOND( ( _nIndex >= 0 ) && ( _nIndex < (sal_Int32)m_aItems.size() ), "OInterfaceContainer::implReplaceByIndex: precondition not met (index)!" );
+    OSL_PRECOND( ( _nIndex >= 0 ) && ( _nIndex < static_cast<sal_Int32>(m_aItems.size()) ), "OInterfaceContainer::implReplaceByIndex: precondition not met (index)!" );
 
     // approve the new object
     std::unique_ptr< ElementDescription > aElementMetaData( createElementMetaData() );
-    DBG_ASSERT( aElementMetaData.get(), "OInterfaceContainer::implReplaceByIndex: createElementMetaData returned nonsense!" );
+    DBG_ASSERT(aElementMetaData,
+               "OInterfaceContainer::implReplaceByIndex: createElementMetaData returned nonsense!");
     {
         Reference< XPropertySet > xElementProps;
         _rNewElement >>= xElementProps;
@@ -942,9 +932,8 @@ void OInterfaceContainer::implReplaceByIndex( const sal_Int32 _nIndex, const Any
         "OInterfaceContainer::implReplaceByIndex: elements should be held normalized!" );
 
     // locate the old element in the map
-    OInterfaceMap::iterator j = m_aMap.begin();
-    while ( ( j != m_aMap.end() ) && ( j->second.get() != xOldElement.get() ) )
-        ++j;
+    OInterfaceMap::iterator j = std::find_if(m_aMap.begin(), m_aMap.end(),
+        [&xOldElement](const OInterfaceMap::value_type& rEntry) { return rEntry.second.get() == xOldElement.get(); });
 
     // remove event knittings
     if ( m_xEventAttacher.is() )
@@ -969,27 +958,30 @@ void OInterfaceContainer::implReplaceByIndex( const sal_Int32 _nIndex, const Any
 
     // examine the new element
     OUString sName;
-    DBG_ASSERT( aElementMetaData.get()->xPropertySet.is(), "OInterfaceContainer::implReplaceByIndex: what did approveNewElement do?" );
+    DBG_ASSERT(aElementMetaData->xPropertySet.is(),
+               "OInterfaceContainer::implReplaceByIndex: what did approveNewElement do?");
 
-    aElementMetaData.get()->xPropertySet->getPropertyValue(PROPERTY_NAME) >>= sName;
-    aElementMetaData.get()->xPropertySet->addPropertyChangeListener(PROPERTY_NAME, this);
+    aElementMetaData->xPropertySet->getPropertyValue(PROPERTY_NAME) >>= sName;
+    aElementMetaData->xPropertySet->addPropertyChangeListener(PROPERTY_NAME, this);
 
     // insert the new one
-    m_aMap.insert( ::std::pair<const OUString, css::uno::Reference<css::uno::XInterface>  >( sName, aElementMetaData.get()->xInterface ) );
-    m_aItems[ _nIndex ] = aElementMetaData.get()->xInterface;
+    m_aMap.insert(::std::pair<const OUString, css::uno::Reference<css::uno::XInterface>>(
+        sName, aElementMetaData->xInterface));
+    m_aItems[_nIndex] = aElementMetaData->xInterface;
 
-    aElementMetaData.get()->xChild->setParent(static_cast<XContainer*>(this));
+    aElementMetaData->xChild->setParent(static_cast<XContainer*>(this));
 
     if ( m_xEventAttacher.is() )
     {
         m_xEventAttacher->insertEntry( _nIndex );
-        m_xEventAttacher->attach( _nIndex, aElementMetaData.get()->xInterface, makeAny( aElementMetaData.get()->xPropertySet ) );
+        m_xEventAttacher->attach(_nIndex, aElementMetaData->xInterface,
+                                 makeAny(aElementMetaData->xPropertySet));
     }
 
     ContainerEvent aReplaceEvent;
     aReplaceEvent.Source   = static_cast< XContainer* >( this );
     aReplaceEvent.Accessor <<= _nIndex;
-    aReplaceEvent.Element  = aElementMetaData.get()->xInterface->queryInterface( m_aElementType );
+    aReplaceEvent.Element = aElementMetaData->xInterface->queryInterface(m_aElementType);
     aReplaceEvent.ReplacedElement = xOldElement->queryInterface( m_aElementType );
 
     impl_replacedElement( aReplaceEvent, _rClearBeforeNotify );
@@ -998,7 +990,7 @@ void OInterfaceContainer::implReplaceByIndex( const sal_Int32 _nIndex, const Any
 
 void OInterfaceContainer::implCheckIndex( const sal_Int32 _nIndex )
 {
-    if (_nIndex < 0 || _nIndex >= (sal_Int32)m_aItems.size())
+    if (_nIndex < 0 || _nIndex >= static_cast<sal_Int32>(m_aItems.size()))
         throw IndexOutOfBoundsException();
 }
 
@@ -1015,13 +1007,13 @@ void SAL_CALL OInterfaceContainer::replaceByIndex(sal_Int32 _nIndex, const Any& 
 
 void OInterfaceContainer::implRemoveByIndex( const sal_Int32 _nIndex, ::osl::ClearableMutexGuard& _rClearBeforeNotify )
 {
-    OSL_PRECOND( ( _nIndex >= 0 ) && ( _nIndex < (sal_Int32)m_aItems.size() ), "OInterfaceContainer::implRemoveByIndex: precondition not met (index)!" );
+    OSL_PRECOND( ( _nIndex >= 0 ) && ( _nIndex < static_cast<sal_Int32>(m_aItems.size()) ), "OInterfaceContainer::implRemoveByIndex: precondition not met (index)!" );
 
     OInterfaceArray::iterator i = m_aItems.begin() + _nIndex;
     css::uno::Reference<css::uno::XInterface>  xElement(*i);
 
-    OInterfaceMap::iterator j = m_aMap.begin();
-    while (j != m_aMap.end() && (*j).second != xElement) ++j;
+    OInterfaceMap::iterator j = std::find_if(m_aMap.begin(), m_aMap.end(),
+        [&xElement](const OInterfaceMap::value_type& rEntry) { return rEntry.second == xElement; });
 
     m_aItems.erase(i);
     m_aMap.erase(j);
@@ -1077,7 +1069,8 @@ void SAL_CALL OInterfaceContainer::insertByName(const OUString& _rName, const An
     Reference< XPropertySet > xElementProps;
 
     std::unique_ptr< ElementDescription > aElementMetaData( createElementMetaData() );
-    DBG_ASSERT( aElementMetaData.get(), "OInterfaceContainer::insertByName: createElementMetaData returned nonsense!" );
+    DBG_ASSERT(aElementMetaData,
+               "OInterfaceContainer::insertByName: createElementMetaData returned nonsense!");
 
     // ensure the correct name of the element
     try
@@ -1097,7 +1090,7 @@ void SAL_CALL OInterfaceContainer::insertByName(const OUString& _rName, const An
     }
     catch( const Exception& )
     {
-        SAL_WARN("forms.misc", "OInterfaceContainer::insertByName: caught an exception!" );
+        TOOLS_WARN_EXCEPTION("forms.misc", "OInterfaceContainer::insertByName" );
     }
     implInsert( m_aItems.size(), xElementProps, true, aElementMetaData.get(), true );
 }
@@ -1204,10 +1197,10 @@ Sequence< ScriptEventDescriptor > SAL_CALL OInterfaceContainer::getScriptEvents(
     if ( m_xEventAttacher.is() )
     {
         aReturn = m_xEventAttacher->getScriptEvents( nIndex );
-            if ( lcl_hasVbaEvents( aReturn ) )
-            {
-                aReturn = lcl_stripVbaEvents( aReturn );
-            }
+        if ( lcl_hasVbaEvents( aReturn ) )
+        {
+            aReturn = lcl_stripVbaEvents( aReturn );
+        }
     }
     return aReturn;
 }
@@ -1295,7 +1288,7 @@ OFormComponents::~OFormComponents()
 void OFormComponents::disposing()
 {
     OInterfaceContainer::disposing();
-     ::cppu::OComponentHelper::disposing();
+    ::cppu::OComponentHelper::disposing();
     m_xParent = nullptr;
 }
 

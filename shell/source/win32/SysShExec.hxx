@@ -28,7 +28,6 @@
 #include <com/sun/star/system/XSystemShellExecute.hpp>
 
 
-// class declaration
 
 
 class CSysShExecBase
@@ -44,9 +43,12 @@ class CSysShExec :
             css::lang::XServiceInfo >
 {
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
+    // to put back all the inits with COINIT_MULTITHREADED if needed
+    int mnNbCallCoInitializeExForReinit;
 
 public:
     explicit CSysShExec(const css::uno::Reference< css::uno::XComponentContext >& xContext);
+    ~CSysShExec();
 
 
     // XSystemShellExecute

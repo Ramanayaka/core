@@ -26,17 +26,10 @@
 #include <cppuhelper/compbase.hxx>
 #include <connectivity/CommonTools.hxx>
 
-namespace com { namespace sun { namespace star { namespace lang {
-    class XMultiServiceFactory;
-}}}}
+namespace com::sun::star::uno { class XComponentContext; }
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
-        /// @throws css::uno::Exception
-        css::uno::Reference< css::uno::XInterface >  SAL_CALL ODriver_CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory);
-
         typedef ::cppu::WeakComponentImplHelper< css::sdbc::XDriver,
                                                  css::sdbcx::XDataDefinitionSupplier,
                                                  css::lang::XServiceInfo
@@ -48,21 +41,19 @@ namespace connectivity
             connectivity::OWeakRefArray             m_xConnections; //  vector containing a list
                                                         //  of all the Connection objects
                                                         //  for this Driver
-            css::uno::Reference< css::lang::XMultiServiceFactory > m_xORB;
+            css::uno::Reference< css::uno::XComponentContext > m_xContext;
 
+            // to put back all the inits with COINIT_MULTITHREADED if needed
+            int mnNbCallCoInitializeExForReinit;
 
         public:
-            ODriver(const css::uno::Reference< css::lang::XMultiServiceFactory >& _xORB);
+            ODriver(const css::uno::Reference< css::uno::XComponentContext >& xContext);
             ~ODriver() override;
 
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
-            // XInterface
-            /// @throws css::uno::RuntimeException
-            static OUString getImplementationName_Static(  );
-            /// @throws css::uno::RuntimeException
-            static css::uno::Sequence< OUString > getSupportedServiceNames_Static(  );
-            css::uno::Reference< css::lang::XMultiServiceFactory > getORB() const { return m_xORB; }
+
+            css::uno::Reference< css::uno::XComponentContext > getContext() const { return m_xContext; }
 
         private:
             void impl_checkURL_throw(const OUString& _sUrl);
@@ -83,7 +74,6 @@ namespace connectivity
             virtual css::uno::Reference< css::sdbcx::XTablesSupplier > SAL_CALL getDataDefinitionByConnection( const css::uno::Reference< css::sdbc::XConnection >& connection ) override;
             virtual css::uno::Reference< css::sdbcx::XTablesSupplier > SAL_CALL getDataDefinitionByURL( const OUString& url, const css::uno::Sequence< css::beans::PropertyValue >& info ) override;
         };
-    }
 
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ADRIVER_HXX

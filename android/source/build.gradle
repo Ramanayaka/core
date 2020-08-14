@@ -1,37 +1,42 @@
-project.ext.set("archivesBaseName", "LibreOfficeViewer")
-//build-time dependencies - android plugin for gradle
-buildscript {
-    repositories {
-        jcenter()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:2.3.2'
-    }
-}
-
 apply plugin: 'com.android.application'
 // buildhost settings - paths and the like
 apply from: 'liboSettings.gradle'
 
+project.ext.set("archivesBaseName", "LibreOfficeViewer")
+allprojects {
+    repositories {
+        jcenter()
+        google()
+        flatDir {
+            dirs "${liboWorkdir}/UnpackedTarball/owncloud_android_lib/build/outputs/aar"
+        }
+    }
+}
+//build-time dependencies - android plugin for gradle
+buildscript {
+    repositories {
+        jcenter()
+        google()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:3.6.1'
+    }
+}
+
 // compile-time dependencies
 dependencies {
-    compile fileTree(dir: "${liboInstdir}/${liboUREJavaFolder}", include: [
+    implementation fileTree(dir: "${liboInstdir}/${liboUREJavaFolder}", include: [
             "java_uno.jar",
-            "juh.jar",
-            "jurt.jar",
-            "ridl.jar",
+            "libreoffice.jar",
             "unoloader.jar"
     ])
-    compile files("${liboInstdir}/${liboShareJavaFolder}/unoil.jar")
-    compile files("${liboWorkdir}/UnpackedTarball/owncloud_android_lib/bin/owncloud-android-library.jar")
-    compile 'com.android.support:appcompat-v7:25.3.1'
-    compile 'com.android.support:design:25.3.1'
-    compile 'com.android.support.constraint:constraint-layout:1.0.2'
+    implementation(name:'owncloud_android_lib', ext:'aar')
+    implementation 'com.android.support:design:27.1.1' // also pulls-in corresponding support libraries
+    implementation 'com.android.support.constraint:constraint-layout:1.1.2'
 }
 
 android {
-    compileSdkVersion 25
-    buildToolsVersion "25.0.3"
+    compileSdkVersion 28
     compileOptions {
         // silence some java-language features hints
         sourceCompatibility 6
@@ -40,31 +45,19 @@ android {
     // ToDo move to conventional layout, so stuff can be stripped down.
     sourceSets {
         main.manifest.srcFile 'AndroidManifest.xml'
-        // override the debuggable flag that needs to be in AndroidManifest.xml
-        // since ndk-gdb awks for the literal string in there :-/
-        release.manifest.srcFile 'ReleaseManifest.xml'
         main.assets.srcDirs = ['assets']
         main.res.srcDirs = ['res']
         main.java.srcDirs = ['../Bootstrap/src', 'src/java']
-        main.jniLibs.srcDirs = ['jniLibs']
+        main.jniLibs.srcDirs = ["${liboJniLibsdir}"]
         main.jni.srcDirs = [] // don't attempt to build native-lib via gradle
-        // gdbserver for debugvariant
-        debug.jniLibs.srcDirs "jniLibs_debug"
         // the configuration data that might be stripped or not
         fullUI.assets.srcDirs 'assets_fullUI'
         strippedUI.assets.srcDirs 'assets_strippedUI'
-    }
-    lintOptions {
-        // ndk-gdb looks for the literal value in the pre-processed manifest :-(
-        disable 'HardcodedDebugMode'
+        strippedUIEditing.assets.srcDirs 'assets_strippedUI'
     }
     defaultConfig {
-        minSdkVersion 14
-        // openssl on x86 makes the native-code.so contain text-relocations,
-        // 22 treats them as warnings, on 23 it is fatal error
-        // ToDo: fix openssl stuff to not block targeting 23 or later
-        targetSdkVersion 22
-        manifestPlaceholders = [installLocation: "preferExternal"]
+        minSdkVersion 16
+        targetSdkVersion 28
         vectorDrawables.useSupportLibrary = true
     }
     buildTypes {
@@ -72,12 +65,29 @@ android {
             // make android studio happy...
             jniDebuggable true
             // would work just fine with external, but setting emulator up is a little more work
-            manifestPlaceholders = [installLocation: "internalOnly"]
+            manifestPlaceholders = [installLocation: "auto"]
+        }
+        release {
+            manifestPlaceholders = [installLocation: "preferExternal"]
         }
     }
+
+    flavorDimensions "default"
     productFlavors {
-        strippedUI
-        fullUI
+        strippedUI {
+            dimension "default"
+            buildConfigField 'boolean', 'ALLOW_EDITING', 'false'
+        }
+        strippedUIEditing {
+            dimension "default"
+            buildConfigField 'boolean', 'ALLOW_EDITING', 'true'
+            versionNameSuffix "-editing"
+        }
+        fullUI.dimension "default"
+    }
+    lintOptions {
+        // don't error-out on missing translations
+        warning 'MissingTranslation'
     }
 }
 
@@ -138,7 +148,7 @@ task copyUnpackAssets(type: Copy) {
 task copyAssets(type: Copy) {
     description "copies assets that can be accessed within the installed apk"
     into 'assets'
-    from("${liboSrcRoot}/readlicense_oo/license/") {
+    from("${liboInstdir}") {
         includes = ["LICENSE", "NOTICE"]
         rename "LICENSE", "license.txt"
         rename "NOTICE", "notice.txt"
@@ -146,6 +156,15 @@ task copyAssets(type: Copy) {
     from("${liboExampleDocument}") {
         rename ".*", "example.odt"
     }
+
+    // include icons
+    into ('share') {
+        into ('config') {
+            from ("${liboInstdir}/share/config")
+            includes = ['images_**.zip']
+        }
+    }
+
     into('program') {
         from "${liboInstdir}/program"
         includes = ['services.rdb', 'services/services.rdb']
@@ -156,11 +175,25 @@ task copyAssets(type: Copy) {
         }
     }
     into('share') {
-        from "${liboInstdir}/share"
-        // Filter data is needed by e.g. the drawingML preset shape import.
-        includes = ['registry/**', 'filter/**']
-        // those two get processed by mobile-config.py
-        excludes = ['registry/main.xcd', 'registry/res/registry_en-US.xcd']
+        from("${liboInstdir}/share") {
+            // Filter data is needed by e.g. the drawingML preset shape import.
+            includes = ['registry/**', 'filter/**']
+            // those two get processed by mobile-config.py
+            excludes = ['registry/main.xcd', 'registry/res/registry_en-US.xcd']
+        }
+        // separate data files for Chinese and Japanese
+        from("${liboWorkdir}/CustomTarget/i18npool/breakiterator/") {
+            include '*.data'
+        }
+    }
+    // documents with manual page break trigger attempt to read the ui file 'pagebreakmenu.ui'
+    // would trigger a css::container::NoSuchElementException with osl_File_E_NOENT
+    // if not present and since it is not caught would crash the app;
+    // 'annotationmenu.ui' required to handle documents containing comments,
+    // 'headerfootermenu.ui' when clicking inside header/footer of document
+    into('config') {
+        from "${liboInstdir}/share/config"
+        include '**/pagebreakmenu.ui', '**/annotationmenu.ui', '**/headerfootermenu.ui'
     }
 }
 
@@ -202,27 +235,6 @@ task createStrippedConfigRegistry(type: Exec) {
     args = ["${liboInstdir}/share/registry/res/registry_en-US.xcd", "assets_strippedUI/share/registry/res/registry_en-US.xcd"]
     doFirst {
         file('assets_strippedUI/share/registry/res').mkdirs()
-    }
-}
-
-// ndk-gdb requires the gdb.setup to be in libs/<arch>/ folder - it's hardcoded in the script
-// it should in theory also be able to copy the gdbserver binary onto the device, but the matching
-// against prebuilt archs is too rudimentary and doesn't map armeabi-v7 to arm for example
-task copyNdkDebugServer(type: Copy) {
-    description "copies gdbserver into and creates gdb.setup and Application.mk for use with ndk-gdb"
-    inputs.file "liboSettings.gradle"
-    def gdbsetup = file("libs/${liboAndroidAppAbi}/gdb.setup") // only needed on buildhost
-    // hardcoded path from ndk-gdb - reads the host architecture from that file
-    def applicationmk = file("jni/Application.mk")
-    outputs.files gdbsetup, applicationmk
-    outputs.dir 'jniLibs_debug' // own the directory, so it is removed on this task's clean
-    outputs.dir 'libs' // own the directory, so it is removed on this task's clean
-    into "jniLibs_debug/${liboAndroidAppAbi}"
-    from "${liboNdkGdbserver}"
-    doLast {
-        file("libs/${liboAndroidAppAbi}").mkdirs()
-        gdbsetup.text = "set solib-search-path ./obj/local/${liboAndroidAppAbi}\n"
-        applicationmk.text = "APP_ABI := ${liboAndroidAppAbi}\n"
     }
 }
 
@@ -279,14 +291,12 @@ task createRCfiles {
     }
 }
 
-// creating the UI stuff is cheap, don't bother only applying it for the flavor..
+// creating the UI stuff is cheap, don't bother only applying it for the flavor...
 preBuild.dependsOn 'createRCfiles',
         'createStrippedConfigMain',
         'createStrippedConfigRegistry',
-        'createFullConfig',
-        'copyNdkDebugServer'
+        'createFullConfig'
 
 clean.dependsOn 'cleanCopyAssets',
         'cleanCreateStrippedConfig',
-        'cleanCreateFullConfig',
-        'cleanCopyNdkDebugServer'
+        'cleanCreateFullConfig'

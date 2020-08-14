@@ -24,24 +24,25 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 
 #include <com/sun/star/accessibility/AccessibleTextType.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/i18n/BreakIterator.hpp>
-#include <com/sun/star/i18n/CharType.hpp>
 #include <com/sun/star/i18n/CharacterIteratorMode.hpp>
-#include <com/sun/star/i18n/CTLScriptType.hpp>
 #include <com/sun/star/i18n/ScriptDirection.hpp>
 #include <com/sun/star/i18n/WordType.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
 #include <com/sun/star/rendering/TextDirection.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
+#include <o3tl/safeint.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::uno;
 
-const static sal_Int64 CaretBlinkInterval = 500 * 1000 * 1000;
+const sal_Int64 CaretBlinkInterval = 500 * 1000 * 1000;
 
 //#define SHOW_CHARACTER_BOXES
 
@@ -57,7 +58,7 @@ namespace {
     }
 }
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 //===== PresenterTextView =====================================================
 
@@ -72,7 +73,7 @@ PresenterTextView::PresenterTextView (
       maSize(0,0),
       mpFont(),
       maParagraphs(),
-      mpCaret(new PresenterTextCaret(
+      mpCaret(std::make_shared<PresenterTextCaret>(
           rxContext,
           [this] (sal_Int32 const nParagraphIndex, sal_Int32 const nCharacterIndex)
               { return this->GetCaretBounds(nParagraphIndex, nCharacterIndex); },
@@ -82,8 +83,8 @@ PresenterTextView::PresenterTextView (
       mbIsFormatPending(false),
       maTextChangeBroadcaster()
 {
-    Reference<lang::XMultiComponentFactory> xFactory (
-        rxContext->getServiceManager(), UNO_QUERY);
+    Reference<lang::XMultiComponentFactory> xFactory =
+        rxContext->getServiceManager();
     if ( ! xFactory.is())
         return;
 
@@ -107,8 +108,8 @@ void PresenterTextView::SetText (const Reference<text::XText>& rxText)
     if ( ! xParagraphAccess.is())
         return;
 
-    Reference<container::XEnumeration> xParagraphs (
-        xParagraphAccess->createEnumeration() , UNO_QUERY);
+    Reference<container::XEnumeration> xParagraphs =
+        xParagraphAccess->createEnumeration();
     if ( ! xParagraphs.is())
         return;
 
@@ -118,12 +119,12 @@ void PresenterTextView::SetText (const Reference<text::XText>& rxText)
     sal_Int32 nCharacterCount (0);
     while (xParagraphs->hasMoreElements())
     {
-        SharedPresenterTextParagraph pParagraph (new PresenterTextParagraph(
+        SharedPresenterTextParagraph pParagraph = std::make_shared<PresenterTextParagraph>(
             maParagraphs.size(),
             mxBreakIterator,
             mxScriptTypeDetector,
             Reference<text::XTextRange>(xParagraphs->nextElement(), UNO_QUERY),
-            mpCaret));
+            mpCaret);
         pParagraph->SetupCellArray(mpFont);
         pParagraph->SetCharacterOffset(nCharacterCount);
         nCharacterCount += pParagraph->GetCharacterCount();
@@ -146,13 +147,9 @@ void PresenterTextView::SetLocation (const css::geometry::RealPoint2D& rLocation
 {
     maLocation = rLocation;
 
-    for (::std::vector<SharedPresenterTextParagraph>::iterator
-             iParagraph(maParagraphs.begin()),
-             iEnd(maParagraphs.end());
-         iParagraph!=iEnd;
-         ++iParagraph)
+    for (auto& rxParagraph : maParagraphs)
     {
-        (*iParagraph)->SetOrigin(
+        rxParagraph->SetOrigin(
             maLocation.X - mnLeftOffset,
             maLocation.Y - mnTopOffset);
     }
@@ -166,8 +163,6 @@ void PresenterTextView::SetSize (const css::geometry::RealSize2D& rSize)
 
 double PresenterTextView::GetTotalTextHeight()
 {
-    double nTotalHeight (0);
-
     if (mbIsFormatPending)
     {
         if ( ! mpFont->PrepareFont(mxCanvas))
@@ -175,16 +170,10 @@ double PresenterTextView::GetTotalTextHeight()
         Format();
     }
 
-    for (::std::vector<SharedPresenterTextParagraph>::iterator
-             iParagraph(maParagraphs.begin()),
-             iEnd(maParagraphs.end());
-         iParagraph!=iEnd;
-         ++iParagraph)
-    {
-        nTotalHeight += (*iParagraph)->GetTotalTextHeight();
-    }
-
-    return nTotalHeight;
+    return std::accumulate(maParagraphs.begin(), maParagraphs.end(), double(0),
+        [](const double& nTotalHeight, const SharedPresenterTextParagraph& rxParagraph) {
+            return nTotalHeight + rxParagraph->GetTotalTextHeight();
+        });
 }
 
 void PresenterTextView::SetFont (const PresenterTheme::SharedFontDescriptor& rpFont)
@@ -248,7 +237,7 @@ void PresenterTextView::MoveCaret (
                             nCharacterIndex = 0;
                             nRemainingDistance = 0;
                         }
-                        else if (sal_uInt32(nParagraphIndex) >= maParagraphs.size())
+                        else if (o3tl::make_unsigned(nParagraphIndex) >= maParagraphs.size())
                         {
                             nParagraphIndex = maParagraphs.size()-1;
                             pParagraph = GetParagraph(nParagraphIndex);
@@ -335,13 +324,9 @@ void PresenterTextView::Paint (
         rendering::CompositeOperation::SOURCE);
     PresenterCanvasHelper::SetDeviceColor(aRenderState, mpFont->mnColor);
 
-    for (::std::vector<SharedPresenterTextParagraph>::const_iterator
-             iParagraph(maParagraphs.begin()),
-             iEnd(maParagraphs.end());
-         iParagraph!=iEnd;
-         ++iParagraph)
+    for (const auto& rxParagraph : maParagraphs)
     {
-        (*iParagraph)->Paint(
+        rxParagraph->Paint(
             mxCanvas,
             maSize,
             mpFont,
@@ -419,14 +404,10 @@ void PresenterTextView::Format()
     mbIsFormatPending = false;
 
     double nY (0);
-    for (::std::vector<SharedPresenterTextParagraph>::const_iterator
-             iParagraph(maParagraphs.begin()),
-             iEnd(maParagraphs.end());
-         iParagraph!=iEnd;
-         ++iParagraph)
+    for (const auto& rxParagraph : maParagraphs)
     {
-        (*iParagraph)->Format(nY, maSize.Width, mpFont);
-        nY += (*iParagraph)->GetTotalTextHeight();
+        rxParagraph->Format(nY, maSize.Width, mpFont);
+        nY += rxParagraph->GetTotalTextHeight();
     }
 
     if (maTextChangeBroadcaster)
@@ -474,29 +455,20 @@ PresenterTextParagraph::PresenterTextParagraph (
       mnCharacterOffset(0),
       maCells()
 {
-    if (rxTextRange.is())
-    {
-        Reference<beans::XPropertySet> xProperties (rxTextRange, UNO_QUERY);
-        lang::Locale aLocale;
-        try
-        {
-            xProperties->getPropertyValue("CharLocale") >>= aLocale;
-        }
-        catch(beans::UnknownPropertyException&)
-        {
-            // Ignore the exception.  Use the default value.
-        }
-        try
-        {
-            xProperties->getPropertyValue("WritingMode") >>= mnWritingMode;
-        }
-        catch(beans::UnknownPropertyException&)
-        {
-            // Ignore the exception.  Use the default value.
-        }
+    if (!rxTextRange.is())
+        return;
 
-        msParagraphText = rxTextRange->getString();
+    Reference<beans::XPropertySet> xProperties (rxTextRange, UNO_QUERY);
+    try
+    {
+        xProperties->getPropertyValue("WritingMode") >>= mnWritingMode;
     }
+    catch(beans::UnknownPropertyException&)
+    {
+        // Ignore the exception.  Use the default value.
+    }
+
+    msParagraphText = rxTextRange->getString();
 }
 
 void PresenterTextParagraph::Paint (
@@ -649,7 +621,7 @@ sal_Int32 PresenterTextParagraph::GetWordBoundary(
 
     if (nIndex < 0)
         return -1;
-    else if (sal_uInt32(nIndex)>=maWordBoundaries.size())
+    else if (o3tl::make_unsigned(nIndex)>=maWordBoundaries.size())
         return -1;
     else
         return maWordBoundaries[nIndex];
@@ -682,7 +654,7 @@ awt::Point PresenterTextParagraph::GetRelativeLocation() const
         sal_Int32(mnYOrigin + mnVerticalOffset));
 }
 
-awt::Size PresenterTextParagraph::GetSize()
+awt::Size PresenterTextParagraph::GetSize() const
 {
     return awt::Size(
         sal_Int32(mnWidth),
@@ -723,7 +695,7 @@ void PresenterTextParagraph::AddLine (
     Line aLine (rCurrentLine.startPos, rCurrentLine.endPos);
 
     // Find the start and end of the line with respect to cells.
-    if (maLines.size() > 0)
+    if (!maLines.empty())
     {
         aLine.mnLineStartCellIndex = maLines.back().mnLineEndCellIndex;
         aLine.mnBaseLine = maLines.back().mnBaseLine + mnLineHeight;
@@ -750,7 +722,7 @@ void PresenterTextParagraph::AddLine (
     rCurrentLine.startPos = rCurrentLine.endPos;
 }
 
-double PresenterTextParagraph::GetTotalTextHeight()
+double PresenterTextParagraph::GetTotalTextHeight() const
 {
     return maLines.size() * mnLineHeight;
 }
@@ -819,21 +791,16 @@ TextSegment PresenterTextParagraph::GetTextSegment (
 
         case AccessibleTextType::LINE:
         {
-            for (::std::vector<Line>::const_iterator
-                     iLine(maLines.begin()),
-                     iEnd(maLines.end());
-                 iLine!=iEnd;
-                 ++iLine)
+            auto iLine = std::find_if(maLines.begin(), maLines.end(),
+                [nIndex](const Line& rLine) { return nIndex < rLine.mnLineEndCharacterIndex; });
+            if (iLine != maLines.end())
             {
-                if (nIndex < iLine->mnLineEndCharacterIndex)
-                {
-                    return TextSegment(
-                        msParagraphText.copy(
-                            iLine->mnLineStartCharacterIndex,
-                            iLine->mnLineEndCharacterIndex - iLine->mnLineStartCharacterIndex),
+                return TextSegment(
+                    msParagraphText.copy(
                         iLine->mnLineStartCharacterIndex,
-                        iLine->mnLineEndCharacterIndex);
-                }
+                        iLine->mnLineEndCharacterIndex - iLine->mnLineStartCharacterIndex),
+                    iLine->mnLineStartCharacterIndex,
+                    iLine->mnLineEndCharacterIndex);
             }
         }
         break;
@@ -1057,10 +1024,10 @@ void PresenterTextParagraph::SetupCellArray (
             rpFont->mxFont->createTextLayout(aContext, nTextDirection, 0));
         css::geometry::RealRectangle2D aCharacterBox (xLayout->queryTextBounds());
 
-        maCells.push_back(Cell(
+        maCells.emplace_back(
             nPosition,
             nNewPosition-nPosition,
-            aCharacterBox.X2-aCharacterBox.X1));
+            aCharacterBox.X2-aCharacterBox.X1);
 
         nPosition = nNewPosition;
     }
@@ -1092,7 +1059,7 @@ PresenterTextCaret::~PresenterTextCaret()
     }
     catch (uno::Exception const&)
     {
-        SAL_WARN("sdext.presenter", "unexpected exception in ~PresenterTextCaret");
+        TOOLS_WARN_EXCEPTION("sdext.presenter", "unexpected exception in ~PresenterTextCaret");
     }
 }
 
@@ -1127,33 +1094,32 @@ void PresenterTextCaret::SetPosition (
     const sal_Int32 nParagraphIndex,
     const sal_Int32 nCharacterIndex)
 {
-    if (mnParagraphIndex != nParagraphIndex
-        || mnCharacterIndex != nCharacterIndex)
-    {
-        if (mnParagraphIndex >= 0)
-            maInvalidator(maCaretBounds);
+    if (mnParagraphIndex == nParagraphIndex
+        && mnCharacterIndex == nCharacterIndex)
+        return;
 
-        const sal_Int32 nOldParagraphIndex (mnParagraphIndex);
-        const sal_Int32 nOldCharacterIndex (mnCharacterIndex);
-        mnParagraphIndex = nParagraphIndex;
-        mnCharacterIndex = nCharacterIndex;
-        maCaretBounds = maCharacterBoundsAccess(mnParagraphIndex, mnCharacterIndex);
-        if (mnParagraphIndex >= 0)
-            ShowCaret();
-        else
-            HideCaret();
+    if (mnParagraphIndex >= 0)
+        maInvalidator(maCaretBounds);
 
-        if (mnParagraphIndex >= 0)
-            maInvalidator(maCaretBounds);
+    const sal_Int32 nOldParagraphIndex (mnParagraphIndex);
+    const sal_Int32 nOldCharacterIndex (mnCharacterIndex);
+    mnParagraphIndex = nParagraphIndex;
+    mnCharacterIndex = nCharacterIndex;
+    maCaretBounds = maCharacterBoundsAccess(mnParagraphIndex, mnCharacterIndex);
+    if (mnParagraphIndex >= 0)
+        ShowCaret();
+    else
+        HideCaret();
 
-        if (maBroadcaster)
-            maBroadcaster(
-                nOldParagraphIndex,
-                nOldCharacterIndex,
-                mnParagraphIndex,
-                mnCharacterIndex);
+    if (mnParagraphIndex >= 0)
+        maInvalidator(maCaretBounds);
 
-    }
+    if (maBroadcaster)
+        maBroadcaster(
+            nOldParagraphIndex,
+            nOldCharacterIndex,
+            mnParagraphIndex,
+            mnCharacterIndex);
 }
 
 
@@ -1203,7 +1169,7 @@ PresenterTextParagraph::Line::Line (
 
 void PresenterTextParagraph::Line::ProvideCellBoxes()
 {
-    if ( mnLineStartCharacterIndex < mnLineEndCharacterIndex && maCellBoxes.getLength()==0 )
+    if ( mnLineStartCharacterIndex < mnLineEndCharacterIndex && !maCellBoxes.hasElements() )
     {
         if (mxLayoutedLine.is())
             maCellBoxes = mxLayoutedLine->queryInkMeasures();
@@ -1233,6 +1199,6 @@ void PresenterTextParagraph::Line::ProvideLayoutedLine (
     }
 }
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

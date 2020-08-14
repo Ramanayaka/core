@@ -18,27 +18,24 @@
  */
 
 #include "PresenterSpritePane.hxx"
-#include "PresenterGeometryHelper.hxx"
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <com/sun/star/rendering/CompositeOperation.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 //===== PresenterSpritePane =========================================================
 
 PresenterSpritePane::PresenterSpritePane (const Reference<XComponentContext>& rxContext,
         const ::rtl::Reference<PresenterController>& rpPresenterController)
     : PresenterPaneBase(rxContext, rpPresenterController),
-      mxParentWindow(),
       mxParentCanvas(),
-      mpSprite(new PresenterSprite())
+      mpSprite(std::make_shared<PresenterSprite>())
 {
     Reference<lang::XMultiComponentFactory> xFactory (
-        mxComponentContext->getServiceManager(), UNO_QUERY_THROW);
+        mxComponentContext->getServiceManager(), UNO_SET_THROW);
     mxPresenterHelper.set(
         xFactory->createInstanceWithContext(
             "com.sun.star.comp.Draw.PresenterHelper",
@@ -53,7 +50,6 @@ PresenterSpritePane::~PresenterSpritePane()
 void PresenterSpritePane::disposing()
 {
     mpSprite->SetFactory(nullptr);
-    mxParentWindow = nullptr;
     mxParentCanvas = nullptr;
     PresenterPaneBase::disposing();
 }
@@ -134,19 +130,11 @@ void SAL_CALL PresenterSpritePane::windowPaint (const awt::PaintEvent&)
 }
 
 
-const std::shared_ptr<PresenterSprite>& PresenterSpritePane::GetSprite()
-{
-    return mpSprite;
-}
-
 void PresenterSpritePane::UpdateCanvases()
 {
     Reference<XComponent> xContentCanvasComponent (mxContentCanvas, UNO_QUERY);
     if (xContentCanvasComponent.is())
-    {
-        if (xContentCanvasComponent.is())
-            xContentCanvasComponent->dispose();
-    }
+        xContentCanvasComponent->dispose();
 
     // The border canvas is the content canvas of the sprite.
     mxBorderCanvas = mpSprite->GetCanvas();
@@ -165,12 +153,9 @@ void PresenterSpritePane::UpdateCanvases()
 }
 
 void PresenterSpritePane::CreateCanvases (
-    const css::uno::Reference<css::awt::XWindow>& rxParentWindow,
     const css::uno::Reference<css::rendering::XSpriteCanvas>& rxParentCanvas)
 {
-    OSL_ASSERT(!mxParentWindow.is() || mxParentWindow==rxParentWindow);
     OSL_ASSERT(!mxParentCanvas.is() || mxParentCanvas==rxParentCanvas);
-    mxParentWindow = rxParentWindow;
     mxParentCanvas = rxParentCanvas;
 
     mpSprite->SetFactory(mxParentCanvas);
@@ -183,6 +168,6 @@ void PresenterSpritePane::CreateCanvases (
     UpdateCanvases();
 }
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

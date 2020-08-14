@@ -20,19 +20,16 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_VIEWSHELLBASE_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_VIEWSHELLBASE_HXX
 
-#include "ViewShell.hxx"
-
-#include "glob.hxx"
+#include <glob.hxx>
 #include <sfx2/viewsh.hxx>
-#include <sfx2/viewfac.hxx>
 #include <memory>
 
 class SdDrawDocument;
 class SfxRequest;
 
-namespace sd { namespace tools {
+namespace sd::tools {
 class EventMultiplexer;
-} }
+}
 
 namespace sd {
 
@@ -81,7 +78,7 @@ public:
     */
     void LateInit (const OUString& rsDefaultView);
 
-    std::shared_ptr<ViewShellManager> GetViewShellManager() const;
+    std::shared_ptr<ViewShellManager> const & GetViewShellManager() const;
 
     /** Return the main view shell stacked on the called ViewShellBase
         object.  This is usually the view shell displayed in the center
@@ -95,7 +92,7 @@ public:
             When the SfxViewShell of the given frame is not a
             ViewShellBase object then NULL is returned.
     */
-    static ViewShellBase* GetViewShellBase (SfxViewFrame* pFrame);
+    static ViewShellBase* GetViewShellBase (SfxViewFrame const * pFrame);
 
     DrawDocShell* GetDocShell() const { return mpDocShell;}
     SdDrawDocument* GetDocument() const { return mpDocument;}
@@ -192,15 +189,15 @@ public:
         events from various sources.  This method must not be called before
         LateInit() has terminated.
     */
-    std::shared_ptr<tools::EventMultiplexer> GetEventMultiplexer();
+    std::shared_ptr<tools::EventMultiplexer> const & GetEventMultiplexer() const;
 
     /** returns the complete area of the current view relative to the frame
         window
     */
     const ::tools::Rectangle& getClientRectangle() const;
 
-    std::shared_ptr<ToolBarManager> GetToolBarManager() const;
-    std::shared_ptr<FormShellManager> GetFormShellManager() const;
+    std::shared_ptr<ToolBarManager> const & GetToolBarManager() const;
+    std::shared_ptr<FormShellManager> const & GetFormShellManager() const;
 
     DrawController& GetDrawController() const;
 
@@ -238,7 +235,7 @@ private:
         we check that the right type is active and change again if that is
         not the case because something went wrong.
     */
-    OUString GetInitialViewShellType();
+    OUString GetInitialViewShellType() const;
 };
 
 } // end of namespace sd

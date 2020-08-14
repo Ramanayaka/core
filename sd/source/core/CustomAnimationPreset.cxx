@@ -18,34 +18,36 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
-#include <com/sun/star/util/theMacroExpander.hpp>
 #include <com/sun/star/animations/XAnimationNodeSupplier.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/xml/sax/InputSource.hpp>
-#include <com/sun/star/xml/sax/Parser.hpp>
+#include <com/sun/star/xml/sax/FastParser.hpp>
 #include <com/sun/star/xml/sax/SAXParseException.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/presentation/EffectPresetClass.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
+#include <osl/diagnose.h>
 #include <unotools/streamwrap.hxx>
 #include <comphelper/getexpandeduri.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <comphelper/random.hxx>
-#include <unotools/pathoptions.hxx>
+#include <comphelper/lok.hxx>
+#include <unotools/syslocaleoptions.hxx>
 #include <tools/stream.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <tools/debug.hxx>
-#include <rtl/uri.hxx>
-#include <rtl/strbuf.hxx>
 #include <vcl/svapp.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <CustomAnimationPreset.hxx>
 
 #include <algorithm>
+#include <vector>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -55,7 +57,6 @@ using namespace ::com::sun::star::presentation;
 using ::com::sun::star::io::XInputStream;
 using ::com::sun::star::lang::XMultiServiceFactory;
 using ::com::sun::star::container::XNameAccess;
-using ::com::sun::star::beans::PropertyValue;
 using ::com::sun::star::util::XCloneable;
 using ::com::sun::star::beans::NamedValue;
 
@@ -67,11 +68,10 @@ static Reference< XNameAccess > getNodeAccess( const Reference< XMultiServiceFac
 
     try
     {
-        Sequence< Any > aArgs( 1 );
-        PropertyValue   aPropValue;
-        aPropValue.Name  = "nodepath";
-        aPropValue.Value <<= rNodePath;
-        aArgs[0] <<= aPropValue;
+        Sequence<Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", uno::Any(rNodePath)}
+        }));
 
         xConfigAccess.set(
             xConfigProvider->createInstanceWithArguments( "com.sun.star.configuration.ConfigurationAccess", aArgs ),
@@ -93,23 +93,19 @@ void implImportLabels( const Reference< XMultiServiceFactory >& xConfigProvider,
         if( xConfigAccess.is() )
         {
             Reference< XNameAccess > xNameAccess;
-            Sequence< OUString > aNames( xConfigAccess->getElementNames() );
-            const OUString* p = aNames.getConstArray();
-            sal_Int32 n = aNames.getLength();
-            while(n--)
+            const Sequence< OUString > aNames( xConfigAccess->getElementNames() );
+            for(const OUString& rName : aNames)
             {
-                xConfigAccess->getByName( *p ) >>= xNameAccess;
+                xConfigAccess->getByName( rName ) >>= xNameAccess;
                 if( xNameAccess.is() )
                 {
                     OUString aUIName;
                     xNameAccess->getByName( "Label" ) >>= aUIName;
                     if( !aUIName.isEmpty() )
                     {
-                        rStringMap[ *p ] = aUIName;
+                        rStringMap[ rName ] = aUIName;
                     }
                 }
-
-                p++;
             }
         }
     }
@@ -133,22 +129,10 @@ CustomAnimationPreset::CustomAnimationPreset( const CustomAnimationEffectPtr& pE
     mfDuration = pEffect->getDuration();
     maDefaultSubTyp = pEffect->getPresetSubType();
 
-    mbIsTextOnly = false;
-
     Sequence< NamedValue > aUserData( pEffect->getNode()->getUserData() );
-    sal_Int32 nLength = aUserData.getLength();
-    const NamedValue* p = aUserData.getConstArray();
 
-    while( nLength-- )
-    {
-        if ( p->Name == "text-only" )
-        {
-            mbIsTextOnly = true;
-            break;
-        }
-        p++;
-    }
-
+    mbIsTextOnly = std::any_of(aUserData.begin(), aUserData.end(),
+        [](const NamedValue& rProp) { return rProp.Name == "text-only"; });
 }
 
 void CustomAnimationPreset::add( const CustomAnimationEffectPtr& pEffect )
@@ -156,16 +140,14 @@ void CustomAnimationPreset::add( const CustomAnimationEffectPtr& pEffect )
     maSubTypes[ pEffect->getPresetSubType() ] = pEffect;
 }
 
-UStringList CustomAnimationPreset::getSubTypes()
+std::vector<OUString> CustomAnimationPreset::getSubTypes()
 {
-    UStringList aSubTypes;
+    std::vector<OUString> aSubTypes;
 
     if( maSubTypes.size() > 1 )
     {
-        EffectsSubTypeMap::iterator aIter( maSubTypes.begin() );
-        const EffectsSubTypeMap::iterator aEnd( maSubTypes.end() );
-        while( aIter != aEnd )
-            aSubTypes.push_back( (*aIter++).first );
+        std::transform(maSubTypes.begin(), maSubTypes.end(), std::back_inserter(aSubTypes),
+            [](EffectsSubTypeMap::value_type& rEntry) -> OUString { return rEntry.first; });
     }
 
     return aSubTypes;
@@ -180,7 +162,7 @@ Reference< XAnimationNode > CustomAnimationPreset::create( const OUString& rstrS
             strSubType = maDefaultSubTyp;
 
         CustomAnimationEffectPtr pEffect = maSubTypes[strSubType];
-        if( pEffect.get() )
+        if( pEffect )
         {
             Reference< XCloneable > xCloneable( pEffect->getNode(), UNO_QUERY_THROW );
             Reference< XAnimationNode > xNode( xCloneable->createClone(), UNO_QUERY_THROW );
@@ -196,9 +178,9 @@ Reference< XAnimationNode > CustomAnimationPreset::create( const OUString& rstrS
     return xNode;
 }
 
-UStringList CustomAnimationPreset::getProperties() const
+std::vector<OUString> CustomAnimationPreset::getProperties() const
 {
-    UStringList aPropertyList;
+    std::vector<OUString> aPropertyList;
     if (!maProperty.isEmpty())
     {
         sal_Int32 nPos = 0;
@@ -242,49 +224,25 @@ Reference< XAnimationNode > implImportEffects( const Reference< XMultiServiceFac
     try
     {
         // create stream
-        SvStream*   pIStm = ::utl::UcbStreamHelper::CreateStream( rPath, StreamMode::READ );
-        Reference<XInputStream> xInputStream( new utl::OInputStreamWrapper( pIStm, true ) );
+        std::unique_ptr<SvStream> pIStm = ::utl::UcbStreamHelper::CreateStream( rPath, StreamMode::READ );
+        Reference<XInputStream> xInputStream( new utl::OInputStreamWrapper( std::move(pIStm) ) );
 
         // prepare ParserInputSrouce
         xml::sax::InputSource aParserInput;
         aParserInput.sSystemId = rPath;
         aParserInput.aInputStream = xInputStream;
 
-        // get parser
-        Reference< xml::sax::XParser > xParser = xml::sax::Parser::create( comphelper::getComponentContext(xServiceFactory) );
-
         // get filter
-        Reference< xml::sax::XDocumentHandler > xFilter( xServiceFactory->createInstance("com.sun.star.comp.Xmloff.AnimationsImport" ), UNO_QUERY );
+        Reference< xml::sax::XFastParser > xFilter( xServiceFactory->createInstance("com.sun.star.comp.Xmloff.AnimationsImport" ), UNO_QUERY_THROW );
 
-        DBG_ASSERT( xFilter.is(), "Can't instantiate filter component." );
-        if( !xFilter.is() )
-            return xRootNode;
+        xFilter->parseStream( aParserInput );
 
-        // connect parser and filter
-        xParser->setDocumentHandler( xFilter );
-
-        // finally, parser the stream
-        xParser->parseStream( aParserInput );
-
-        Reference< XAnimationNodeSupplier > xAnimationNodeSupplier( xFilter, UNO_QUERY );
-        if( xAnimationNodeSupplier.is() )
-            xRootNode = xAnimationNodeSupplier->getAnimationNode();
-    }
-    catch (const xml::sax::SAXParseException&)
-    {
-        OSL_FAIL( "sd::implImportEffects(), SAXParseException caught!" );
-    }
-    catch (const xml::sax::SAXException&)
-    {
-        OSL_FAIL( "sd::implImportEffects(), SAXException caught!" );
-    }
-    catch (const io::IOException&)
-    {
-        OSL_FAIL( "sd::implImportEffects(), IOException caught!" );
+        Reference< XAnimationNodeSupplier > xAnimationNodeSupplier( xFilter, UNO_QUERY_THROW );
+        xRootNode = xAnimationNodeSupplier->getAnimationNode();
     }
     catch (const Exception&)
     {
-        OSL_FAIL( "sd::importEffects(), Exception caught!" );
+        TOOLS_WARN_EXCEPTION("sd", "");
     }
 
     return xRootNode;
@@ -303,22 +261,20 @@ void CustomAnimationPresets::importEffects()
             configuration::theDefaultProvider::get( xContext );
 
         // read path to transition effects files from config
-        Any propValue = uno::makeAny(
-            beans::PropertyValue(
-                "nodepath", -1,
-                uno::makeAny( OUString( "/org.openoffice.Office.Impress/Misc" )),
-                beans::PropertyState_DIRECT_VALUE ) );
-
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", uno::Any(OUString("/org.openoffice.Office.Impress/Misc"))}
+        }));
         Reference<container::XNameAccess> xNameAccess(
             xConfigProvider->createInstanceWithArguments(
                 "com.sun.star.configuration.ConfigurationAccess",
-                Sequence<Any>( &propValue, 1 ) ), UNO_QUERY_THROW );
+                aArgs ), UNO_QUERY_THROW );
         uno::Sequence< OUString > aFiles;
         xNameAccess->getByName( "EffectFiles" ) >>= aFiles;
 
-        for( sal_Int32 i=0; i<aFiles.getLength(); ++i )
+        for( const auto& rFile : std::as_const(aFiles) )
         {
-            OUString aURL = comphelper::getExpandedUri(xContext, aFiles[i]);
+            OUString aURL = comphelper::getExpandedUri(xContext, rFile);
 
             mxRootNode = implImportEffects( xServiceFactory, aURL );
 
@@ -332,17 +288,17 @@ void CustomAnimationPresets::importEffects()
 
                 while( aIter != aEnd )
                 {
-                    CustomAnimationEffectPtr pEffect = (*aIter);
+                    CustomAnimationEffectPtr pEffect = *aIter;
 
                     const OUString aPresetId( pEffect->getPresetId() );
                     CustomAnimationPresetPtr pDescriptor = getEffectDescriptor( aPresetId );
-                    if( pDescriptor.get() )
+                    if( pDescriptor )
                         pDescriptor->add( pEffect );
                     else
                     {
-                        pDescriptor.reset( new CustomAnimationPreset( pEffect ) );
+                        pDescriptor = std::make_shared<CustomAnimationPreset>( pEffect );
                         pDescriptor->maLabel = getUINameForPresetId( pEffect->getPresetId() );
-                        maEffectDiscriptorMap[aPresetId] = pDescriptor;
+                        maEffectDescriptorMap[aPresetId] = pDescriptor;
                     }
 
                     ++aIter;
@@ -378,28 +334,21 @@ void CustomAnimationPresets::importResources()
         Reference< XMultiServiceFactory > xConfigProvider =
              configuration::theDefaultProvider::get( xContext );
 
-        const OUString aPropertyPath("/org.openoffice.Office.UI.Effects/UserInterface/Properties" );
-        implImportLabels( xConfigProvider, aPropertyPath, maPropertyNameMap );
+        implImportLabels( xConfigProvider, "/org.openoffice.Office.UI.Effects/UserInterface/Properties", maPropertyNameMap );
 
-        const OUString aEffectsPath( "/org.openoffice.Office.UI.Effects/UserInterface/Effects" );
-        implImportLabels( xConfigProvider, aEffectsPath, maEffectNameMap );
+        implImportLabels( xConfigProvider, "/org.openoffice.Office.UI.Effects/UserInterface/Effects", maEffectNameMap );
 
         importEffects();
 
-        const OUString aEntrancePath( "/org.openoffice.Office.UI.Effects/Presets/Entrance" );
-        importPresets( xConfigProvider, aEntrancePath, maEntrancePresets );
+        importPresets( xConfigProvider, "/org.openoffice.Office.UI.Effects/Presets/Entrance", maEntrancePresets );
 
-        const OUString aEmphasisPath( "/org.openoffice.Office.UI.Effects/Presets/Emphasis" );
-        importPresets( xConfigProvider, aEmphasisPath, maEmphasisPresets );
+        importPresets( xConfigProvider, "/org.openoffice.Office.UI.Effects/Presets/Emphasis", maEmphasisPresets );
 
-        const OUString aExitPath( "/org.openoffice.Office.UI.Effects/Presets/Exit" );
-        importPresets( xConfigProvider, aExitPath, maExitPresets );
+        importPresets( xConfigProvider, "/org.openoffice.Office.UI.Effects/Presets/Exit", maExitPresets );
 
-        const OUString aMotionPathsPath( "/org.openoffice.Office.UI.Effects/Presets/MotionPaths" );
-        importPresets( xConfigProvider, aMotionPathsPath, maMotionPathsPresets );
+        importPresets( xConfigProvider, "/org.openoffice.Office.UI.Effects/Presets/MotionPaths", maMotionPathsPresets );
 
-        const OUString aMiscPath( "/org.openoffice.Office.UI.Effects/Presets/Misc" );
-        importPresets( xConfigProvider, aMiscPath, maMiscPresets );
+        importPresets( xConfigProvider, "/org.openoffice.Office.UI.Effects/Presets/Misc", maMiscPresets );
     }
     catch (const lang::WrappedTargetException&)
     {
@@ -424,12 +373,10 @@ void CustomAnimationPresets::importPresets( const Reference< XMultiServiceFactor
         {
             Reference< XNameAccess > xCategoryAccess;
 
-            Sequence< OUString > aNames( xTypeAccess->getElementNames() );
-            const OUString* p = aNames.getConstArray();
-            sal_Int32 n = aNames.getLength();
-            while(n--)
+            const Sequence< OUString > aNames( xTypeAccess->getElementNames() );
+            for(const OUString& rName : aNames)
             {
-                xTypeAccess->getByName( *p ) >>= xCategoryAccess;
+                xTypeAccess->getByName( rName ) >>= xCategoryAccess;
 
                 if( xCategoryAccess.is() && xCategoryAccess->hasByName( "Label" ) && xCategoryAccess->hasByName( "Effects" ) )
                 {
@@ -441,28 +388,23 @@ void CustomAnimationPresets::importPresets( const Reference< XMultiServiceFactor
 
                     EffectDescriptorList aEffectsList;
 
-                    const OUString* pEffectNames = aEffects.getConstArray();
-                    sal_Int32 nEffectCount = aEffects.getLength();
-                    while( nEffectCount-- )
+                    for( const OUString& rEffectName : std::as_const(aEffects) )
                     {
-                        CustomAnimationPresetPtr pEffect = getEffectDescriptor( *pEffectNames );
-                        if( pEffect.get() )
+                        CustomAnimationPresetPtr pEffect = getEffectDescriptor( rEffectName );
+                        if( pEffect )
                         {
                             aEffectsList.push_back( pEffect );
                         }
 #ifdef DEBUG
                         else
                         {
-                            aMissedPresetIds += OUString(*pEffectNames);
+                            aMissedPresetIds += OUString(rEffectName);
                             aMissedPresetIds += "\n";
                         }
 #endif
-                        pEffectNames++;
                     }
                     rPresetMap.push_back( std::make_shared<PresetCategory>( aLabel, aEffectsList ) );
                 }
-
-                p++;
             }
         }
     }
@@ -479,9 +421,9 @@ void CustomAnimationPresets::importPresets( const Reference< XMultiServiceFactor
 
 CustomAnimationPresetPtr CustomAnimationPresets::getEffectDescriptor( const OUString& rPresetId ) const
 {
-    EffectDescriptorMap::const_iterator aIter( maEffectDiscriptorMap.find( rPresetId ) );
+    EffectDescriptorMap::const_iterator aIter( maEffectDescriptorMap.find( rPresetId ) );
 
-    if( aIter != maEffectDiscriptorMap.end() )
+    if( aIter != maEffectDescriptorMap.end() )
     {
         return (*aIter).second;
     }
@@ -516,11 +458,11 @@ const OUString& CustomAnimationPresets::translateName( const OUString& rId, cons
 }
 void CustomAnimationPresets::changePresetSubType( const CustomAnimationEffectPtr& pEffect, const OUString& rPresetSubType ) const
 {
-    if( pEffect.get() && pEffect->getPresetSubType() != rPresetSubType )
+    if( pEffect && pEffect->getPresetSubType() != rPresetSubType )
     {
         CustomAnimationPresetPtr pDescriptor( getEffectDescriptor( pEffect->getPresetId() ) );
 
-        if( pDescriptor.get() )
+        if( pDescriptor )
         {
             Reference< XAnimationNode > xNewNode( pDescriptor->create( rPresetSubType ) );
             if( xNewNode.is() )
@@ -529,22 +471,24 @@ void CustomAnimationPresets::changePresetSubType( const CustomAnimationEffectPtr
     }
 }
 
-CustomAnimationPresets* CustomAnimationPresets::mpCustomAnimationPresets = nullptr;
+std::map<OUString, CustomAnimationPresets>  CustomAnimationPresets::mPresetsMap;
 
 const CustomAnimationPresets& CustomAnimationPresets::getCustomAnimationPresets()
 {
-    if( !mpCustomAnimationPresets )
-    {
-        SolarMutexGuard aGuard;
+    // Support localization per-view. Currently not useful for Desktop
+    // but very much critical for LOK. The cache now is per-language.
+    const OUString aLang = comphelper::LibreOfficeKit::isActive()
+                               ? comphelper::LibreOfficeKit::getLanguageTag().getBcp47()
+                               : SvtSysLocaleOptions().GetLanguageTag().getBcp47();
 
-        if( !mpCustomAnimationPresets )
-        {
-            mpCustomAnimationPresets = new sd::CustomAnimationPresets();
-            mpCustomAnimationPresets->importResources();
-        }
-    }
+    SolarMutexGuard aGuard;
+    const auto it = mPresetsMap.find(aLang);
+    if (it != mPresetsMap.end())
+        return it->second;
 
-    return *mpCustomAnimationPresets;
+    CustomAnimationPresets& rPresets = mPresetsMap[aLang];
+    rPresets.importResources();
+    return rPresets;
 }
 
 Reference< XAnimationNode > CustomAnimationPresets::getRandomPreset( sal_Int16 nPresetClass ) const
@@ -562,18 +506,18 @@ Reference< XAnimationNode > CustomAnimationPresets::getRandomPreset( sal_Int16 n
         pCategoryList = nullptr;
     }
 
-    if( pCategoryList && pCategoryList->size() )
+    if( pCategoryList && !pCategoryList->empty() )
     {
         sal_Int32 nCategory = comphelper::rng::uniform_size_distribution(0, pCategoryList->size()-1);
 
         PresetCategoryPtr pCategory = (*pCategoryList)[nCategory];
-        if( pCategory.get() && !pCategory->maEffects.empty() )
+        if( pCategory && !pCategory->maEffects.empty() )
         {
             sal_Int32 nDescriptor = comphelper::rng::uniform_size_distribution(0, pCategory->maEffects.size()-1);
             CustomAnimationPresetPtr pPreset = pCategory->maEffects[nDescriptor];
-            if( pPreset.get() )
+            if( pPreset )
             {
-                UStringList aSubTypes = pPreset->getSubTypes();
+                std::vector<OUString> aSubTypes = pPreset->getSubTypes();
 
                 OUString aSubType;
                 if( !aSubTypes.empty() )

@@ -18,11 +18,10 @@
  */
 
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <toolkit/awt/vclxpointer.hxx>
-#include <toolkit/helper/macros.hxx>
+#include <awt/vclxpointer.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
-VCLXPointer::VCLXPointer()
+VCLXPointer::VCLXPointer() : maPointer(PointerStyle::Arrow)
 {
 }
 
@@ -31,25 +30,25 @@ VCLXPointer::~VCLXPointer()
 }
 
 // css::lang::XUnoTunnel
-IMPL_XUNOTUNNEL( VCLXPointer )
+UNO3_GETIMPLEMENTATION_IMPL( VCLXPointer );
 
 void VCLXPointer::setType( sal_Int32 nType )
 {
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
 
-    maPointer = Pointer( (PointerStyle)nType );
+    maPointer = static_cast<PointerStyle>(nType);
 }
 
 sal_Int32 VCLXPointer::getType()
 {
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
 
-    return (sal_Int32)maPointer.GetStyle();
+    return static_cast<sal_Int32>(maPointer);
 }
 
 OUString VCLXPointer::getImplementationName()
 {
-    return OUString("stardiv.Toolkit.VCLXPointer");
+    return "stardiv.Toolkit.VCLXPointer";
 }
 
 sal_Bool VCLXPointer::supportsService(OUString const & ServiceName)
@@ -63,7 +62,7 @@ css::uno::Sequence<OUString> VCLXPointer::getSupportedServiceNames()
         "com.sun.star.awt.Pointer", "stardiv.vcl.Pointer"};
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_VCLXPointer_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

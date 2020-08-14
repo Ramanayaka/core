@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/types.h"
+#include <sal/types.h>
 
 #ifdef __sun
 
@@ -129,7 +129,6 @@ void backtrace_symbols_fd( void **buffer, int size, int fd )
             fprintf( fp, "[%p]\n", *pFramePtr );
         }
 
-        fflush( fp );
         fclose( fp );
     }
 }
@@ -209,7 +208,6 @@ void backtrace_symbols_fd( void **buffer, int size, int fd )
             }
             fprintf( fp, "[%p]\n", *pFramePtr );
         }
-        fflush( fp );
         fclose( fp );
     }
 }
@@ -277,7 +275,6 @@ void backtrace_symbols_fd( void **buffer, int size, int fd )
             fprintf( fp, "[%p]\n", *pFramePtr );
         }
 
-        fflush( fp );
         fclose( fp );
     }
 }

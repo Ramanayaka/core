@@ -18,13 +18,12 @@
  */
 
 
+#include <tools/stream.hxx>
 #include <vcl/graph.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/outdev.hxx>
 #include <vcl/bitmapaccess.hxx>
-#include <svl/solar.hrc>
-#include <vcl/fltcall.hxx>
 #include <vcl/FilterConfigItem.hxx>
+#include <com/sun/star/task/XStatusIndicator.hpp>
 
 #define NewSubfileType              254
 #define ImageWidth                  256
@@ -42,6 +41,7 @@
 #define ResolutionUnit              296
 #define ColorMap                    320
 
+namespace {
 
 struct TIFFLZWCTreeNode
 {
@@ -80,7 +80,7 @@ private:
     sal_uInt32              mnBitmapPos;
     sal_uInt32              mnStripByteCountPos;
 
-    TIFFLZWCTreeNode*       pTable;
+    std::unique_ptr<TIFFLZWCTreeNode[]> pTable;
     TIFFLZWCTreeNode*       pPrefix;
     sal_uInt16              nDataSize;
     sal_uInt16              nClearCode;
@@ -97,7 +97,7 @@ private:
     void                ImplWritePalette();
     void                ImplWriteBody();
     void                ImplWriteTag( sal_uInt16 TagID, sal_uInt16 DataType, sal_uInt32 NumberOfItems, sal_uInt32 Value);
-    void                ImplWriteResolution( sal_uLong nStreamPos, sal_uInt32 nResolutionUnit );
+    void                ImplWriteResolution( sal_uInt64 nStreamPos, sal_uInt32 nResolutionUnit );
     void                StartCompression();
     void                Compress( sal_uInt8 nSrc );
     void                EndCompression();
@@ -107,9 +107,10 @@ public:
 
     explicit            TIFFWriter(SvStream &rStream);
 
-    bool WriteTIFF( const Graphic& rGraphic, FilterConfigItem* pFilterConfigItem );
+    bool WriteTIFF( const Graphic& rGraphic, FilterConfigItem const * pFilterConfigItem );
 };
 
+}
 
 TIFFWriter::TIFFWriter(SvStream &rStream)
     : m_rOStm(rStream)
@@ -131,7 +132,6 @@ TIFFWriter::TIFFWriter(SvStream &rStream)
     , mnPalPos(0)
     , mnBitmapPos(0)
     , mnStripByteCountPos(0)
-    , pTable(nullptr)
     , pPrefix(nullptr)
     , nDataSize(0)
     , nClearCode(0)
@@ -144,15 +144,14 @@ TIFFWriter::TIFFWriter(SvStream &rStream)
 }
 
 
-bool TIFFWriter::WriteTIFF( const Graphic& rGraphic, FilterConfigItem* pFilterConfigItem)
+bool TIFFWriter::WriteTIFF( const Graphic& rGraphic, FilterConfigItem const * pFilterConfigItem)
 {
     if ( pFilterConfigItem )
     {
         xStatusIndicator = pFilterConfigItem->GetStatusIndicator();
         if ( xStatusIndicator.is() )
         {
-            OUString aMsg;
-            xStatusIndicator->start( aMsg, 100 );
+            xStatusIndicator->start( OUString(), 100 );
         }
     }
 
@@ -170,16 +169,16 @@ bool TIFFWriter::WriteTIFF( const Graphic& rGraphic, FilterConfigItem* pFilterCo
     {
         Animation aAnimation = rGraphic.IsAnimated() ? rGraphic.GetAnimation() : Animation();
         if (!rGraphic.IsAnimated())
-            aAnimation.Insert(AnimationBitmap(rGraphic.GetBitmap(), Point(), Size()));
+            aAnimation.Insert(AnimationBitmap(rGraphic.GetBitmapEx(), Point(), Size()));
 
         for (size_t i = 0; i < aAnimation.Count(); ++i)
-            mnSumOfAllPictHeight += aAnimation.Get(i).aBmpEx.GetSizePixel().Height();
+            mnSumOfAllPictHeight += aAnimation.Get(i).maBitmapEx.GetSizePixel().Height();
 
         for (size_t i = 0; mbStatus && i < aAnimation.Count(); ++i)
         {
             mnPalPos = 0;
             const AnimationBitmap& rAnimationBitmap = aAnimation.Get( i );
-            Bitmap aBmp = rAnimationBitmap.aBmpEx.GetBitmap();
+            Bitmap aBmp = rAnimationBitmap.maBitmapEx.GetBitmap();
             mpAcc = aBmp.AcquireReadAccess();
             if ( mpAcc )
             {
@@ -189,14 +188,14 @@ bool TIFFWriter::WriteTIFF( const Graphic& rGraphic, FilterConfigItem* pFilterCo
                 mnBitsPerPixel =
                     mnBitsPerPixel <= 1 ? 1 : mnBitsPerPixel <= 4 ? 4 : mnBitsPerPixel <= 8 ? 8 : 24;
 
-                if ( ImplWriteHeader( ( aAnimation.Count() > 0 ) ) )
+                if ( ImplWriteHeader( aAnimation.Count() > 0 ) )
                 {
                     Size aDestMapSize( 300, 300 );
-                    const MapMode aMapMode( aBmp.GetPrefMapMode() );
+                    const MapMode& aMapMode( aBmp.GetPrefMapMode() );
                     if ( aMapMode.GetMapUnit() != MapUnit::MapPixel )
                     {
                         const Size aPrefSize( rGraphic.GetPrefSize() );
-                        aDestMapSize = OutputDevice::LogicToLogic( aPrefSize, aMapMode, MapUnit::MapInch );
+                        aDestMapSize = OutputDevice::LogicToLogic(aPrefSize, aMapMode, MapMode(MapUnit::MapInch));
                     }
                     ImplWriteResolution( mnXResPos, aDestMapSize.Width() );
                     ImplWriteResolution( mnYResPos, aDestMapSize.Height() );
@@ -314,7 +313,7 @@ bool TIFFWriter::ImplWriteHeader( bool bMultiPage )
 
 void TIFFWriter::ImplWritePalette()
 {
-    sal_uLong nCurrentPos = m_rOStm.Tell();
+    sal_uInt64 nCurrentPos = m_rOStm.Tell();
     m_rOStm.Seek( mnPalPos + 8 );           // the palette tag entry needs the offset
     m_rOStm.WriteUInt32( nCurrentPos - mnStreamOfs );  // to the palette colors
     m_rOStm.Seek( nCurrentPos );
@@ -341,9 +340,9 @@ void TIFFWriter::ImplWriteBody()
 {
     sal_uInt8   nTemp = 0;
     sal_uInt8    nShift;
-    sal_uLong   j, x, y;
+    sal_uInt32   j, x, y;
 
-    sal_uLong nGfxBegin = m_rOStm.Tell();
+    sal_uInt64 nGfxBegin = m_rOStm.Tell();
     m_rOStm.Seek( mnBitmapPos + 8 );                // the strip offset tag entry needs the offset
     m_rOStm.WriteUInt32( nGfxBegin - mnStreamOfs ); // to the bitmap data
     m_rOStm.Seek( nGfxBegin );
@@ -357,9 +356,10 @@ void TIFFWriter::ImplWriteBody()
             for ( y = 0; y < mnHeight; y++, mnCurAllPictHeight++ )
             {
                 ImplCallback( 100 * mnCurAllPictHeight / mnSumOfAllPictHeight );
+                Scanline pScanline = mpAcc->GetScanline( y );
                 for ( x = 0; x < mnWidth; x++ )
                 {
-                    const BitmapColor& rColor = mpAcc->GetPixel( y, x );
+                    const BitmapColor& rColor = mpAcc->GetPixelFromData( pScanline, x );
                     Compress( rColor.GetRed() );
                     Compress( rColor.GetGreen() );
                     Compress( rColor.GetBlue() );
@@ -373,9 +373,10 @@ void TIFFWriter::ImplWriteBody()
             for ( y = 0; y < mnHeight; y++, mnCurAllPictHeight++ )
             {
                 ImplCallback( 100 * mnCurAllPictHeight / mnSumOfAllPictHeight );
+                Scanline pScanline = mpAcc->GetScanline( y );
                 for ( x = 0; x < mnWidth; x++ )
                 {
-                    Compress( mpAcc->GetPixelIndex( y, x ) );
+                    Compress( mpAcc->GetIndexFromData( pScanline, x ) );
                 }
             }
         }
@@ -386,12 +387,13 @@ void TIFFWriter::ImplWriteBody()
             for ( nShift = 0, y = 0; y < mnHeight; y++, mnCurAllPictHeight++ )
             {
                 ImplCallback( 100 * mnCurAllPictHeight / mnSumOfAllPictHeight );
+                Scanline pScanline = mpAcc->GetScanline( y );
                 for ( x = 0; x < mnWidth; x++, nShift++ )
                 {
                     if (!( nShift & 1 ))
-                        nTemp = ( mpAcc->GetPixelIndex( y, x ) << 4 );
+                        nTemp = ( mpAcc->GetIndexFromData( pScanline, x ) << 4 );
                     else
-                        Compress( (sal_uInt8)( nTemp | ( mpAcc->GetPixelIndex( y, x ) & 0xf ) ) );
+                        Compress( static_cast<sal_uInt8>( nTemp | ( mpAcc->GetIndexFromData( pScanline, x ) & 0xf ) ) );
                 }
                 if ( nShift & 1 )
                     Compress( nTemp );
@@ -405,19 +407,20 @@ void TIFFWriter::ImplWriteBody()
             for ( y = 0; y < mnHeight; y++, mnCurAllPictHeight++ )
             {
                 ImplCallback( 100 * mnCurAllPictHeight / mnSumOfAllPictHeight );
+                Scanline pScanline = mpAcc->GetScanline( y );
                 for ( x = 0; x < mnWidth; x++)
                 {
                     j <<= 1;
-                    j |= ( ( ~mpAcc->GetPixelIndex( y, x ) ) & 1 );
+                    j |= ( ( ~mpAcc->GetIndexFromData( pScanline, x ) ) & 1 );
                     if ( j & 0x100 )
                     {
-                        Compress( (sal_uInt8)j );
+                        Compress( static_cast<sal_uInt8>(j) );
                         j = 1;
                     }
                 }
                 if ( j != 1 )
                 {
-                    Compress( (sal_uInt8)(j << ( ( ( x & 7) ^ 7 ) + 1 ) ) );
+                    Compress( static_cast<sal_uInt8>(j << ( ( ( x & 7) ^ 7 ) + 1 ) ) );
                     j = 1;
                 }
             }
@@ -435,7 +438,7 @@ void TIFFWriter::ImplWriteBody()
 
     if ( mnStripByteCountPos && mbStatus )
     {
-        sal_uLong nGfxEnd = m_rOStm.Tell();
+        sal_uInt64 nGfxEnd = m_rOStm.Tell();
         m_rOStm.Seek( mnStripByteCountPos + 8 );
         m_rOStm.WriteUInt32( nGfxEnd - nGfxBegin );      // mnStripByteCountPos needs the size of the compression data
         m_rOStm.Seek( nGfxEnd );
@@ -443,9 +446,9 @@ void TIFFWriter::ImplWriteBody()
 }
 
 
-void TIFFWriter::ImplWriteResolution( sal_uLong nStreamPos, sal_uInt32 nResolutionUnit )
+void TIFFWriter::ImplWriteResolution( sal_uInt64 nStreamPos, sal_uInt32 nResolutionUnit )
 {
-    sal_uLong nCurrentPos = m_rOStm.Tell();
+    sal_uInt64 nCurrentPos = m_rOStm.Tell();
     m_rOStm.Seek( nStreamPos + 8 );
     m_rOStm.WriteUInt32( nCurrentPos - mnStreamOfs );
     m_rOStm.Seek( nCurrentPos );
@@ -497,12 +500,13 @@ void TIFFWriter::StartCompression()
     nOffset = 32;                       // number of free bits in dwShift
     dwShift = 0;
 
-    pTable = new TIFFLZWCTreeNode[ 4096 ];
+    pTable.reset(new TIFFLZWCTreeNode[ 4096 ]);
 
     for ( i = 0; i < 4096; i++)
     {
         pTable[ i ].pBrother = pTable[ i ].pFirstChild = nullptr;
-        pTable[ i ].nValue = (sal_uInt8)( pTable[ i ].nCode = i );
+        pTable[ i ].nCode = i;
+        pTable[ i ].nValue = static_cast<sal_uInt8>( i );
     }
 
     pPrefix = nullptr;
@@ -518,7 +522,7 @@ void TIFFWriter::Compress( sal_uInt8 nCompThis )
 
     if( !pPrefix )
     {
-        pPrefix = pTable + nCompThis;
+        pPrefix = &pTable[nCompThis];
     }
     else
     {
@@ -547,17 +551,17 @@ void TIFFWriter::Compress( sal_uInt8 nCompThis )
             }
             else
             {
-                if( nTableSize == (sal_uInt16)( ( 1 << nCodeSize ) - 1 ) )
+                if( nTableSize == static_cast<sal_uInt16>( ( 1 << nCodeSize ) - 1 ) )
                     nCodeSize++;
 
-                p = pTable + ( nTableSize++ );
+                p = &pTable[ nTableSize++ ];
                 p->pBrother = pPrefix->pFirstChild;
                 pPrefix->pFirstChild = p;
                 p->nValue = nV;
                 p->pFirstChild = nullptr;
             }
 
-            pPrefix = pTable + nV;
+            pPrefix = &pTable[nV];
         }
     }
 }
@@ -569,11 +573,11 @@ void TIFFWriter::EndCompression()
         WriteBits( pPrefix->nCode, nCodeSize );
 
     WriteBits( nEOICode, nCodeSize );
-    delete[] pTable;
+    pTable.reset();
 }
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT bool SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT bool
 etiGraphicExport( SvStream& rStream, Graphic& rGraphic, FilterConfigItem* pFilterConfigItem )
 {
     TIFFWriter aWriter(rStream);

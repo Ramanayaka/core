@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DateHelper.hxx"
-#include "DateScaling.hxx"
+#include <DateHelper.hxx>
 #include <rtl/math.hxx>
 #include <com/sun/star/chart/TimeUnit.hpp>
 
@@ -69,7 +68,10 @@ bool DateHelper::IsLessThanOneYearAway( const Date& rD1, const Date& rD2 )
 
 double DateHelper::RasterizeDateValue( double fValue, const Date& rNullDate, long TimeResolution )
 {
-    Date aDate(rNullDate); aDate += static_cast<long>(::rtl::math::approxFloor(fValue));
+    if (std::isnan(fValue))
+        return fValue;
+
+    Date aDate(rNullDate); aDate.AddDays(::rtl::math::approxFloor(fValue));
     switch(TimeResolution)
     {
         case css::chart::TimeUnit::DAY:

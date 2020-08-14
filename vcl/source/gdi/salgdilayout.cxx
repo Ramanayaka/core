@@ -19,21 +19,24 @@
 
 #include <memory>
 #include <config_features.h>
+#include <sal/log.hxx>
 #if HAVE_FEATURE_OPENGL
-#include "openglgdiimpl.hxx"
+#include <opengl/gdiimpl.hxx>
 #include <opengl/zone.hxx>
 #include <desktop/exithelper.h>
 #ifdef _WIN32
 #include <svsys.h>
 #endif
 #endif
-#include "salgdi.hxx"
-#include "salframe.hxx"
-#include <basegfx/numeric/ftools.hxx> //for F_PI180
+#include <salgdi.hxx>
+#include <salframe.hxx>
+#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <FileDefinitionWidgetDraw.hxx>
 
 // The only common SalFrame method
 
-SalFrameGeometry SalFrame::GetGeometry()
+SalFrameGeometry SalFrame::GetGeometry() const
 {
     // mirror frame coordinates at parent
     SalFrame *pParent = GetParent();
@@ -50,6 +53,8 @@ SalFrameGeometry SalFrame::GetGeometry()
 
 SalGraphics::SalGraphics()
 :   m_nLayout( SalLayoutFlags::NONE ),
+    m_aLastMirror(),
+    m_aLastMirrorW(0),
     m_bAntiAliasB2DDraw(false)
 {
     // read global RTL settings
@@ -57,8 +62,27 @@ SalGraphics::SalGraphics()
         m_nLayout = SalLayoutFlags::BiDiRtl;
 }
 
-SalGraphics::~SalGraphics()
+bool SalGraphics::initWidgetDrawBackends(bool bForce)
 {
+    bool bFileDefinitionsWidgetDraw = !!getenv("VCL_DRAW_WIDGETS_FROM_FILE");
+
+    if (bFileDefinitionsWidgetDraw || bForce)
+    {
+        m_pWidgetDraw.reset(new vcl::FileDefinitionWidgetDraw(*this));
+        auto pFileDefinitionWidgetDraw = static_cast<vcl::FileDefinitionWidgetDraw*>(m_pWidgetDraw.get());
+        if (!pFileDefinitionWidgetDraw->isActive())
+        {
+            m_pWidgetDraw.reset();
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+SalGraphics::~SalGraphics() COVERITY_NOEXCEPT_FALSE
+{
+    // can't call ReleaseFonts here, as the destructor just calls this classes SetFont (pure virtual)!
 }
 
 #if HAVE_FEATURE_OPENGL
@@ -93,6 +117,7 @@ rtl::Reference<OpenGLContext> SalGraphics::GetOpenGLContext() const
     }
     return nullptr;
 }
+
 #endif
 
 bool SalGraphics::drawTransformedBitmap(
@@ -106,81 +131,77 @@ bool SalGraphics::drawTransformedBitmap(
     return false;
 }
 
-void SalGraphics::mirror( long& x, const OutputDevice *pOutDev ) const
+long SalGraphics::mirror2( long x, const OutputDevice *pOutDev ) const
 {
-    long w;
-    if( pOutDev && pOutDev->GetOutDevType() == OUTDEV_VIRDEV )
-        w = pOutDev->GetOutputWidthPixel();
-    else
-        w = GetGraphicsWidth();
-
-    if( w )
-    {
-        if( pOutDev && pOutDev->ImplIsAntiparallel() )
-        {
-            OutputDevice *pOutDevRef = const_cast<OutputDevice*>(pOutDev);
-            // mirror this window back
-            if( (m_nLayout & SalLayoutFlags::BiDiRtl) )
-            {
-                long devX = w-pOutDevRef->GetOutputWidthPixel()-pOutDevRef->GetOutOffXPixel();   // re-mirrored mnOutOffX
-                x = devX + (x - pOutDevRef->GetOutOffXPixel());
-            }
-            else
-            {
-                long devX = pOutDevRef->GetOutOffXPixel();   // re-mirrored mnOutOffX
-                x = pOutDevRef->GetOutputWidthPixel() - (x - devX) + pOutDevRef->GetOutOffXPixel() - 1;
-            }
-        }
-        else if( (m_nLayout & SalLayoutFlags::BiDiRtl) )
-            x = w-1-x;
-    }
+    mirror(x, pOutDev);
+    return x;
 }
 
-void SalGraphics::mirror( long& x, long& nWidth, const OutputDevice *pOutDev, bool bBack ) const
+inline long SalGraphics::GetDeviceWidth(const OutputDevice* pOutDev) const
 {
-    long w;
-    if( pOutDev && pOutDev->GetOutDevType() == OUTDEV_VIRDEV )
-        w = pOutDev->GetOutputWidthPixel();
-    else
-        w = GetGraphicsWidth();
+    return (pOutDev && pOutDev->IsVirtual())
+        ? pOutDev->GetOutputWidthPixel() : GetGraphicsWidth();
+}
 
-    if( w )
+void SalGraphics::mirror( long& x, const OutputDevice *pOutDev ) const
+{
+    const long w = GetDeviceWidth(pOutDev);
+    if( !w )
+        return;
+
+    if( pOutDev && pOutDev->ImplIsAntiparallel() )
     {
-        if( pOutDev && pOutDev->ImplIsAntiparallel() )
+        OutputDevice *pOutDevRef = const_cast<OutputDevice*>(pOutDev);
+        // mirror this window back
+        if( m_nLayout & SalLayoutFlags::BiDiRtl )
         {
-            OutputDevice *pOutDevRef = const_cast<OutputDevice*>(pOutDev);
-            // mirror this window back
-            if( (m_nLayout & SalLayoutFlags::BiDiRtl) )
-            {
-                long devX = w-pOutDevRef->GetOutputWidthPixel()-pOutDevRef->GetOutOffXPixel();   // re-mirrored mnOutOffX
-                if( bBack )
-                    x = x - devX + pOutDevRef->GetOutOffXPixel();
-                else
-                    x = devX + (x - pOutDevRef->GetOutOffXPixel());
-            }
-            else
-            {
-                long devX = pOutDevRef->GetOutOffXPixel();   // re-mirrored mnOutOffX
-                if( bBack )
-                    x = devX + (pOutDevRef->GetOutputWidthPixel() + devX) - (x + nWidth);
-                else
-                    x = pOutDevRef->GetOutputWidthPixel() - (x - devX) + pOutDevRef->GetOutOffXPixel() - nWidth;
-            }
+            long devX = w-pOutDevRef->GetOutputWidthPixel()-pOutDevRef->GetOutOffXPixel();   // re-mirrored mnOutOffX
+            x = devX + (x - pOutDevRef->GetOutOffXPixel());
         }
-        else if( (m_nLayout & SalLayoutFlags::BiDiRtl) )
-            x = w-nWidth-x;
-
+        else
+        {
+            long devX = pOutDevRef->GetOutOffXPixel();   // re-mirrored mnOutOffX
+            x = pOutDevRef->GetOutputWidthPixel() - (x - devX) + pOutDevRef->GetOutOffXPixel() - 1;
+        }
     }
+    else if( m_nLayout & SalLayoutFlags::BiDiRtl )
+        x = w-1-x;
+}
+
+void SalGraphics::mirror( long& x, long nWidth, const OutputDevice *pOutDev, bool bBack ) const
+{
+    const long w = GetDeviceWidth(pOutDev);
+    if( !w )
+        return;
+
+    if( pOutDev && pOutDev->ImplIsAntiparallel() )
+    {
+        OutputDevice *pOutDevRef = const_cast<OutputDevice*>(pOutDev);
+        // mirror this window back
+        if( m_nLayout & SalLayoutFlags::BiDiRtl )
+        {
+            long devX = w-pOutDevRef->GetOutputWidthPixel()-pOutDevRef->GetOutOffXPixel();   // re-mirrored mnOutOffX
+            if( bBack )
+                x = x - devX + pOutDevRef->GetOutOffXPixel();
+            else
+                x = devX + (x - pOutDevRef->GetOutOffXPixel());
+        }
+        else
+        {
+            long devX = pOutDevRef->GetOutOffXPixel();   // re-mirrored mnOutOffX
+            if( bBack )
+                x = devX + (pOutDevRef->GetOutputWidthPixel() + devX) - (x + nWidth);
+            else
+                x = pOutDevRef->GetOutputWidthPixel() - (x - devX) + pOutDevRef->GetOutOffXPixel() - nWidth;
+        }
+    }
+    else if( m_nLayout & SalLayoutFlags::BiDiRtl )
+        x = w-nWidth-x;
 }
 
 bool SalGraphics::mirror( sal_uInt32 nPoints, const SalPoint *pPtAry, SalPoint *pPtAry2, const OutputDevice *pOutDev ) const
 {
-    long w;
-    if( pOutDev && pOutDev->GetOutDevType() == OUTDEV_VIRDEV )
-        w = pOutDev->GetOutputWidthPixel();
-    else
-        w = GetGraphicsWidth();
-
+    const long w = GetDeviceWidth(pOutDev);
     if( w )
     {
         sal_uInt32 i, j;
@@ -189,7 +210,7 @@ bool SalGraphics::mirror( sal_uInt32 nPoints, const SalPoint *pPtAry, SalPoint *
         {
             OutputDevice *pOutDevRef = const_cast<OutputDevice*>(pOutDev);
             // mirror this window back
-            if( (m_nLayout & SalLayoutFlags::BiDiRtl) )
+            if( m_nLayout & SalLayoutFlags::BiDiRtl )
             {
                 long devX = w-pOutDevRef->GetOutputWidthPixel()-pOutDevRef->GetOutOffXPixel();   // re-mirrored mnOutOffX
                 for( i=0, j=nPoints-1; i<nPoints; i++,j-- )
@@ -208,7 +229,7 @@ bool SalGraphics::mirror( sal_uInt32 nPoints, const SalPoint *pPtAry, SalPoint *
                 }
             }
         }
-        else if( (m_nLayout & SalLayoutFlags::BiDiRtl) )
+        else if( m_nLayout & SalLayoutFlags::BiDiRtl )
         {
             for( i=0, j=nPoints-1; i<nPoints; i++,j-- )
             {
@@ -236,10 +257,10 @@ void SalGraphics::mirror( vcl::Region& rRgn, const OutputDevice *pOutDev ) const
         rRgn.GetRegionRectangles(aRectangles);
         rRgn.SetEmpty();
 
-        for(RectangleVector::iterator aRectIter(aRectangles.begin()); aRectIter != aRectangles.end(); ++aRectIter)
+        for (auto & rectangle : aRectangles)
         {
-            mirror(*aRectIter, pOutDev);
-            rRgn.Union(*aRectIter);
+            mirror(rectangle, pOutDev);
+            rRgn.Union(rectangle);
         }
 
         //ImplRegionInfo        aInfo;
@@ -269,84 +290,69 @@ void SalGraphics::mirror( tools::Rectangle& rRect, const OutputDevice *pOutDev, 
     rRect.Move( x - x_org, 0 );
 }
 
-basegfx::B2DPoint SalGraphics::mirror( const basegfx::B2DPoint& i_rPoint, const OutputDevice *i_pOutDev ) const
+basegfx::B2DPolyPolygon SalGraphics::mirror( const basegfx::B2DPolyPolygon& i_rPoly, const OutputDevice* i_pOutDev ) const
 {
-    long w;
-    if( i_pOutDev && i_pOutDev->GetOutDevType() == OUTDEV_VIRDEV )
-        w = i_pOutDev->GetOutputWidthPixel();
-    else
-        w = GetGraphicsWidth();
+    const basegfx::B2DHomMatrix& rMirror(getMirror(i_pOutDev));
 
+    if(rMirror.isIdentity())
+    {
+        return i_rPoly;
+    }
+    else
+    {
+        basegfx::B2DPolyPolygon aRet(i_rPoly);
+        aRet.transform(rMirror);
+        aRet.flip();
+        return aRet;
+    }
+}
+
+const basegfx::B2DHomMatrix& SalGraphics::getMirror( const OutputDevice* i_pOutDev ) const
+{
+    // get mirroring transformation
+    const long w = GetDeviceWidth(i_pOutDev);
     SAL_WARN_IF( !w, "vcl", "missing graphics width" );
 
-    basegfx::B2DPoint aRet( i_rPoint );
-    if( w )
+    if(w != m_aLastMirrorW)
     {
-        if( i_pOutDev && !i_pOutDev->IsRTLEnabled() )
+        const_cast<SalGraphics*>(this)->m_aLastMirrorW = w;
+
+        if(w)
         {
-            OutputDevice *pOutDevRef = const_cast<OutputDevice*>(i_pOutDev);
-            // mirror this window back
-            double devX = w-pOutDevRef->GetOutputWidthPixel()-pOutDevRef->GetOutOffXPixel();   // re-mirrored mnOutOffX
-            aRet.setX( devX + (i_rPoint.getX() - pOutDevRef->GetOutOffXPixel()) );
+            if(nullptr != i_pOutDev && !i_pOutDev->IsRTLEnabled())
+            {
+                // Original code was (removed here already pOutDevRef->i_pOutDev):
+                //      // mirror this window back
+                //      double devX = w-i_pOutDev->GetOutputWidthPixel()-i_pOutDev->GetOutOffXPixel();   // re-mirrored mnOutOffX
+                //      aRet.setX( devX + (i_rPoint.getX() - i_pOutDev->GetOutOffXPixel()) );
+                // I do not really understand the comment 'mirror this window back', so cannot guarantee
+                // that this works as before, but I have reduced this (by re-placing and re-formatting) to
+                // a simple translation:
+                const_cast<SalGraphics*>(this)->m_aLastMirror = basegfx::utils::createTranslateB2DHomMatrix(
+                    w - i_pOutDev->GetOutputWidthPixel() - (2 * i_pOutDev->GetOutOffXPixel()),
+                    0.0);
+            }
+            else
+            {
+                // Original code was:
+                //      aRet.setX( w-1-i_rPoint.getX() );
+                // -mirror X -> scale(-1.0, 1.0)
+                // -translate X -> translate(w-1, 0)
+                // Checked this one, works as expected.
+                const_cast<SalGraphics*>(this)->m_aLastMirror = basegfx::utils::createScaleTranslateB2DHomMatrix(
+                    -1.0,
+                    1.0,
+                    w-1,
+                    0.0);
+            }
         }
         else
-            aRet.setX( w-1-i_rPoint.getX() );
-    }
-    return aRet;
-}
-
-basegfx::B2DPolygon SalGraphics::mirror( const basegfx::B2DPolygon& i_rPoly, const OutputDevice *i_pOutDev ) const
-{
-    long w;
-    if( i_pOutDev && i_pOutDev->GetOutDevType() == OUTDEV_VIRDEV )
-        w = i_pOutDev->GetOutputWidthPixel();
-    else
-        w = GetGraphicsWidth();
-
-    SAL_WARN_IF( !w, "vcl", "missing graphics width" );
-
-    basegfx::B2DPolygon aRet;
-    if( w )
-    {
-        sal_Int32 nPoints = i_rPoly.count();
-        for( sal_Int32 i = 0; i < nPoints; i++ )
         {
-            aRet.append( mirror( i_rPoly.getB2DPoint( i ), i_pOutDev ) );
-            if( i_rPoly.isPrevControlPointUsed( i ) )
-                aRet.setPrevControlPoint( i, mirror( i_rPoly.getPrevControlPoint( i ), i_pOutDev ) );
-            if( i_rPoly.isNextControlPointUsed( i ) )
-                aRet.setNextControlPoint( i, mirror( i_rPoly.getNextControlPoint( i ), i_pOutDev ) );
+            const_cast<SalGraphics*>(this)->m_aLastMirror.identity();
         }
-        aRet.setClosed( i_rPoly.isClosed() );
-        aRet.flip();
     }
-    else
-        aRet = i_rPoly;
-    return aRet;
-}
 
-basegfx::B2DPolyPolygon SalGraphics::mirror( const basegfx::B2DPolyPolygon& i_rPoly, const OutputDevice *i_pOutDev ) const
-{
-    long w;
-    if( i_pOutDev && i_pOutDev->GetOutDevType() == OUTDEV_VIRDEV )
-        w = i_pOutDev->GetOutputWidthPixel();
-    else
-        w = GetGraphicsWidth();
-
-    SAL_WARN_IF( !w, "vcl", "missing graphics width" );
-
-    basegfx::B2DPolyPolygon aRet;
-    if( w )
-    {
-        sal_Int32 nPoly = i_rPoly.count();
-        for( sal_Int32 i = 0; i < nPoly; i++ )
-            aRet.append( mirror( i_rPoly.getB2DPolygon( i ), i_pOutDev ) );
-        aRet.setClosed( i_rPoly.isClosed() );
-        aRet.flip();
-    }
-    else
-        aRet = i_rPoly;
-    return aRet;
+    return m_aLastMirror;
 }
 
 bool SalGraphics::SetClipRegion( const vcl::Region& i_rClip, const OutputDevice *pOutDev )
@@ -367,11 +373,11 @@ void SalGraphics::DrawPixel( long nX, long nY, const OutputDevice *pOutDev )
     drawPixel( nX, nY );
 }
 
-void SalGraphics::DrawPixel( long nX, long nY, SalColor nSalColor, const OutputDevice *pOutDev )
+void SalGraphics::DrawPixel( long nX, long nY, Color nColor, const OutputDevice *pOutDev )
 {
     if( (m_nLayout & SalLayoutFlags::BiDiRtl) || (pOutDev && pOutDev->IsRTLEnabled()) )
         mirror( nX, pOutDev );
-    drawPixel( nX, nY, nSalColor );
+    drawPixel( nX, nY, nColor );
 }
 
 void SalGraphics::DrawLine( long nX1, long nY1, long nX2, long nY2, const OutputDevice *pOutDev )
@@ -391,7 +397,7 @@ void SalGraphics::DrawRect( long nX, long nY, long nWidth, long nHeight, const O
     drawRect( nX, nY, nWidth, nHeight );
 }
 
-void SalGraphics::DrawPolyLine( sal_uInt32 nPoints, const SalPoint* pPtAry, const OutputDevice *pOutDev )
+void SalGraphics::DrawPolyLine( sal_uInt32 nPoints, SalPoint const * pPtAry, const OutputDevice *pOutDev )
 {
     if( (m_nLayout & SalLayoutFlags::BiDiRtl) || (pOutDev && pOutDev->IsRTLEnabled()) )
     {
@@ -438,17 +444,43 @@ void SalGraphics::DrawPolyPolygon( sal_uInt32 nPoly, const sal_uInt32* pPoints, 
         drawPolyPolygon( nPoly, pPoints, pPtAry );
 }
 
-bool SalGraphics::DrawPolyPolygon( const basegfx::B2DPolyPolygon& i_rPolyPolygon, double i_fTransparency, const OutputDevice* i_pOutDev )
+namespace
 {
-    bool bRet = false;
+    basegfx::B2DHomMatrix createTranslateToMirroredBounds(const basegfx::B2DRange &rBoundingBox, const basegfx::B2DHomMatrix& rMirror)
+    {
+        basegfx::B2DRange aRTLBoundingBox(rBoundingBox);
+        aRTLBoundingBox *= rMirror;
+        return basegfx::utils::createTranslateB2DHomMatrix(aRTLBoundingBox.getMinX() - rBoundingBox.getMinX(), 0);
+    }
+}
+
+bool SalGraphics::DrawPolyPolygon(
+    const basegfx::B2DHomMatrix& rObjectToDevice,
+    const basegfx::B2DPolyPolygon& i_rPolyPolygon,
+    double i_fTransparency,
+    const OutputDevice* i_pOutDev)
+{
     if( (m_nLayout & SalLayoutFlags::BiDiRtl) || (i_pOutDev && i_pOutDev->IsRTLEnabled()) )
     {
-        basegfx::B2DPolyPolygon aMirror( mirror( i_rPolyPolygon, i_pOutDev ) );
-        bRet = drawPolyPolygon( aMirror, i_fTransparency );
+        // mirroring set
+        const basegfx::B2DHomMatrix& rMirror(getMirror(i_pOutDev));
+        if(!rMirror.isIdentity())
+        {
+            basegfx::B2DRange aBoundingBox(i_rPolyPolygon.getB2DRange());
+            aBoundingBox *= rObjectToDevice;
+            auto aTranslateToMirroredBounds = createTranslateToMirroredBounds(aBoundingBox, rMirror);
+
+            return drawPolyPolygon(
+                aTranslateToMirroredBounds * rObjectToDevice,
+                i_rPolyPolygon,
+                i_fTransparency);
+        }
     }
-    else
-        bRet = drawPolyPolygon( i_rPolyPolygon, i_fTransparency );
-    return bRet;
+
+    return drawPolyPolygon(
+        rObjectToDevice,
+        i_rPolyPolygon,
+        i_fTransparency);
 }
 
 bool SalGraphics::DrawPolyLineBezier( sal_uInt32 nPoints, const SalPoint* pPtAry, const PolyFlags* pFlgAry, const OutputDevice* pOutDev )
@@ -505,28 +537,62 @@ bool SalGraphics::DrawPolyPolygonBezier( sal_uInt32 i_nPoly, const sal_uInt32* i
     return bRet;
 }
 
-bool SalGraphics::DrawPolyLine( const basegfx::B2DPolygon& i_rPolygon,
-                                double i_fTransparency,
-                                const basegfx::B2DVector& i_rLineWidth,
-                                basegfx::B2DLineJoin i_eLineJoin,
-                                css::drawing::LineCap i_eLineCap,
-                                double i_fMiterMinimumAngle,
-                                const OutputDevice* i_pOutDev )
+bool SalGraphics::DrawPolyLine(
+    const basegfx::B2DHomMatrix& rObjectToDevice,
+    const basegfx::B2DPolygon& i_rPolygon,
+    double i_fTransparency,
+    double i_rLineWidth,
+    const std::vector< double >* i_pStroke, // MM01
+    basegfx::B2DLineJoin i_eLineJoin,
+    css::drawing::LineCap i_eLineCap,
+    double i_fMiterMinimumAngle,
+    bool bPixelSnapHairline,
+    const OutputDevice* i_pOutDev)
 {
-    bool bRet = false;
     if( (m_nLayout & SalLayoutFlags::BiDiRtl) || (i_pOutDev && i_pOutDev->IsRTLEnabled()) )
     {
-        basegfx::B2DPolygon aMirror( mirror( i_rPolygon, i_pOutDev ) );
-        bRet = drawPolyLine( aMirror, i_fTransparency, i_rLineWidth, i_eLineJoin, i_eLineCap, i_fMiterMinimumAngle );
+        // mirroring set
+        const basegfx::B2DHomMatrix& rMirror(getMirror(i_pOutDev));
+        if(!rMirror.isIdentity())
+        {
+            basegfx::B2DRange aBoundingBox(i_rPolygon.getB2DRange());
+            aBoundingBox *= rObjectToDevice;
+            auto aTranslateToMirroredBounds = createTranslateToMirroredBounds(aBoundingBox, rMirror);
+
+            return drawPolyLine(
+                aTranslateToMirroredBounds * rObjectToDevice,
+                i_rPolygon,
+                i_fTransparency,
+                i_rLineWidth,
+                i_pStroke, // MM01
+                i_eLineJoin,
+                i_eLineCap,
+                i_fMiterMinimumAngle,
+                bPixelSnapHairline);
+        }
     }
-    else
-        bRet = drawPolyLine( i_rPolygon, i_fTransparency, i_rLineWidth, i_eLineJoin, i_eLineCap, i_fMiterMinimumAngle );
-    return bRet;
+
+    // no mirroring set (or identity), use standard call
+    return drawPolyLine(
+        rObjectToDevice,
+        i_rPolygon,
+        i_fTransparency,
+        i_rLineWidth,
+        i_pStroke, // MM01
+        i_eLineJoin,
+        i_eLineCap,
+        i_fMiterMinimumAngle,
+        bPixelSnapHairline);
 }
 
 bool SalGraphics::DrawGradient( const tools::PolyPolygon& rPolyPoly, const Gradient& rGradient )
 {
     return drawGradient( rPolyPoly, rGradient );
+}
+
+bool SalGraphics::DrawGradient(basegfx::B2DPolyPolygon const & rPolyPolygon, SalGradient const & rSalGradient)
+{
+    return implDrawGradient(rPolyPolygon, rSalGradient);
 }
 
 void SalGraphics::CopyArea( long nDestX, long nDestY,
@@ -588,7 +654,7 @@ void SalGraphics::DrawBitmap( const SalTwoRect& rPosAry,
 
 void SalGraphics::DrawMask( const SalTwoRect& rPosAry,
                             const SalBitmap& rSalBitmap,
-                            SalColor nMaskColor, const OutputDevice *pOutDev )
+                            Color nMaskColor, const OutputDevice *pOutDev )
 {
     if( (m_nLayout & SalLayoutFlags::BiDiRtl) || (pOutDev && pOutDev->IsRTLEnabled()) )
     {
@@ -600,14 +666,14 @@ void SalGraphics::DrawMask( const SalTwoRect& rPosAry,
         drawMask( rPosAry, rSalBitmap, nMaskColor );
 }
 
-SalBitmap* SalGraphics::GetBitmap( long nX, long nY, long nWidth, long nHeight, const OutputDevice *pOutDev )
+std::shared_ptr<SalBitmap> SalGraphics::GetBitmap( long nX, long nY, long nWidth, long nHeight, const OutputDevice *pOutDev )
 {
     if( (m_nLayout & SalLayoutFlags::BiDiRtl) || (pOutDev && pOutDev->IsRTLEnabled()) )
         mirror( nX, nWidth, pOutDev );
     return getBitmap( nX, nY, nWidth, nHeight );
 }
 
-SalColor SalGraphics::GetPixel( long nX, long nY, const OutputDevice *pOutDev )
+Color SalGraphics::GetPixel( long nX, long nY, const OutputDevice *pOutDev )
 {
     if( (m_nLayout & SalLayoutFlags::BiDiRtl) || (pOutDev && pOutDev->IsRTLEnabled()) )
         mirror( nX, pOutDev );
@@ -633,7 +699,7 @@ void SalGraphics::Invert( sal_uInt32 nPoints, const SalPoint* pPtAry, SalInvert 
         invert( nPoints, pPtAry, nFlags );
 }
 
-bool SalGraphics::DrawEPS( long nX, long nY, long nWidth, long nHeight, void* pPtr, sal_uLong nSize, const OutputDevice *pOutDev )
+bool SalGraphics::DrawEPS( long nX, long nY, long nWidth, long nHeight, void* pPtr, sal_uInt32 nSize, const OutputDevice *pOutDev )
 {
     if( (m_nLayout & SalLayoutFlags::BiDiRtl) || (pOutDev && pOutDev->IsRTLEnabled()) )
         mirror( nX, nWidth, pOutDev );
@@ -647,12 +713,12 @@ bool SalGraphics::HitTestNativeScrollbar( ControlPart nPart, const tools::Rectan
     {
         Point pt( aPos );
         tools::Rectangle rgn( rControlRegion );
-        mirror( pt.X(), pOutDev );
+        pt.setX( mirror2( pt.X(), pOutDev ) );
         mirror( rgn, pOutDev );
-        return hitTestNativeControl( ControlType::Scrollbar, nPart, rgn, pt, rIsInside );
+        return forWidget()->hitTestNativeControl( ControlType::Scrollbar, nPart, rgn, pt, rIsInside );
     }
     else
-        return hitTestNativeControl( ControlType::Scrollbar, nPart, rControlRegion, aPos, rIsInside );
+        return forWidget()->hitTestNativeControl( ControlType::Scrollbar, nPart, rControlRegion, aPos, rIsInside );
 }
 
 void SalGraphics::mirror( ImplControlValue& rVal, const OutputDevice* pOutDev ) const
@@ -693,21 +759,26 @@ void SalGraphics::mirror( ImplControlValue& rVal, const OutputDevice* pOutDev ) 
 
 bool SalGraphics::DrawNativeControl( ControlType nType, ControlPart nPart, const tools::Rectangle& rControlRegion,
                                                 ControlState nState, const ImplControlValue& aValue,
-                                                const OUString& aCaption, const OutputDevice *pOutDev )
+                                                const OUString& aCaption, const OutputDevice *pOutDev)
 {
+    bool bRet = false;
+    tools::Rectangle aControlRegion(rControlRegion);
+    if (aControlRegion.IsEmpty() || aControlRegion.GetWidth() <= 0 || aControlRegion.GetHeight() <= 0)
+        return bRet;
+
     if( (m_nLayout & SalLayoutFlags::BiDiRtl) || (pOutDev && pOutDev->IsRTLEnabled()) )
     {
-        tools::Rectangle rgn( rControlRegion );
-        tools::Rectangle aNull;
-        if (rgn != aNull)
-            mirror(rgn, pOutDev);
+        mirror(aControlRegion, pOutDev);
         std::unique_ptr< ImplControlValue > mirrorValue( aValue.clone());
         mirror( *mirrorValue, pOutDev );
-        bool bRet = drawNativeControl( nType, nPart, rgn, nState, *mirrorValue, aCaption );
-        return bRet;
+        bRet = forWidget()->drawNativeControl(nType, nPart, aControlRegion, nState, *mirrorValue, aCaption);
     }
     else
-        return drawNativeControl( nType, nPart, rControlRegion, nState, aValue, aCaption );
+        bRet = forWidget()->drawNativeControl(nType, nPart, aControlRegion, nState, aValue, aCaption);
+
+    if (bRet && m_pWidgetDraw)
+        handleDamage(aControlRegion);
+    return bRet;
 }
 
 bool SalGraphics::GetNativeControlRegion( ControlType nType, ControlPart nPart, const tools::Rectangle& rControlRegion, ControlState nState,
@@ -720,8 +791,7 @@ bool SalGraphics::GetNativeControlRegion( ControlType nType, ControlPart nPart, 
         mirror( rgn, pOutDev );
         std::unique_ptr< ImplControlValue > mirrorValue( aValue.clone());
         mirror( *mirrorValue, pOutDev );
-        if( getNativeControlRegion( nType, nPart, rgn, nState, *mirrorValue, OUString(),
-                                                rNativeBoundingRegion, rNativeContentRegion ) )
+        if (forWidget()->getNativeControlRegion(nType, nPart, rgn, nState, *mirrorValue, OUString(), rNativeBoundingRegion, rNativeContentRegion))
         {
             mirror( rNativeBoundingRegion, pOutDev, true );
             mirror( rNativeContentRegion, pOutDev, true );
@@ -730,8 +800,7 @@ bool SalGraphics::GetNativeControlRegion( ControlType nType, ControlPart nPart, 
         return false;
     }
     else
-        return getNativeControlRegion( nType, nPart, rControlRegion, nState, aValue, OUString(),
-                                                rNativeBoundingRegion, rNativeContentRegion );
+        return forWidget()->getNativeControlRegion(nType, nPart, rControlRegion, nState, aValue, OUString(), rNativeBoundingRegion, rNativeContentRegion);
 }
 
 bool SalGraphics::BlendBitmap( const SalTwoRect& rPosAry,
@@ -789,16 +858,23 @@ bool SalGraphics::DrawTransformedBitmap(
 {
     if( (m_nLayout & SalLayoutFlags::BiDiRtl) || (pOutDev && pOutDev->IsRTLEnabled()) )
     {
-        mirror(rNull, pOutDev);
-        mirror(rX, pOutDev);
-        mirror(rY, pOutDev);
+        // mirroring set
+        const basegfx::B2DHomMatrix& rMirror(getMirror(pOutDev));
+        if (!rMirror.isIdentity())
+        {
+            basegfx::B2DPolygon aPoints({rNull, rX, rY});
+            basegfx::B2DRange aBoundingBox(aPoints.getB2DRange());
+            auto aTranslateToMirroredBounds = createTranslateToMirroredBounds(aBoundingBox, rMirror);
 
-        return drawTransformedBitmap(rNull, rX, rY, rSourceBitmap, pAlphaBitmap);
+            basegfx::B2DPoint aNull = aTranslateToMirroredBounds * rNull;
+            basegfx::B2DPoint aX = aTranslateToMirroredBounds * rX;
+            basegfx::B2DPoint aY = aTranslateToMirroredBounds * rY;
+
+            return drawTransformedBitmap(aNull, aX, aY, rSourceBitmap, pAlphaBitmap);
+        }
     }
-    else
-    {
-        return drawTransformedBitmap(rNull, rX, rY, rSourceBitmap, pAlphaBitmap);
-    }
+
+    return drawTransformedBitmap(rNull, rX, rY, rSourceBitmap, pAlphaBitmap);
 }
 
 bool SalGraphics::DrawAlphaRect( long nX, long nY, long nWidth, long nHeight,
@@ -808,6 +884,13 @@ bool SalGraphics::DrawAlphaRect( long nX, long nY, long nWidth, long nHeight,
         mirror( nX, nWidth, pOutDev );
 
     return drawAlphaRect( nX, nY, nWidth, nHeight, nTransparency );
+}
+
+OUString SalGraphics::getRenderBackendName() const
+{
+    if (GetImpl())
+        return GetImpl()->getRenderBackendName();
+    return OUString();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

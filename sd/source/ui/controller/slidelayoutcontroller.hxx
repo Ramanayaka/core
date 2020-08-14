@@ -28,11 +28,11 @@ namespace sd
 class SlideLayoutController : public svt::PopupWindowController
 {
 public:
-    SlideLayoutController( const css::uno::Reference< css::uno::XComponentContext >& rxContext,
-                           const OUString& sCommandURL,
-                           bool bInsertPage );
+    SlideLayoutController(const css::uno::Reference<css::uno::XComponentContext>& rxContext,
+                          bool bInsertPage);
 
-    virtual VclPtr<vcl::Window> createPopupWindow( vcl::Window* pParent ) override;
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -41,7 +41,6 @@ public:
     virtual OUString SAL_CALL getImplementationName() override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    using svt::PopupWindowController::createPopupWindow;
 private:
     bool mbInsertPage;
 };

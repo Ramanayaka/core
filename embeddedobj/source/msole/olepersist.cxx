@@ -18,7 +18,7 @@
  */
 
 #include <oleembobj.hxx>
-#include <olepersist.hxx>
+#include "olepersist.hxx"
 #include <com/sun/star/embed/EmbedStates.hpp>
 #include <com/sun/star/embed/EmbedVerbs.hpp>
 #include <com/sun/star/embed/EntryInitModes.hpp>
@@ -39,6 +39,7 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/packages/WrongPasswordException.hpp>
 #include <com/sun/star/ucb/SimpleFileAccess.hpp>
+#include <com/sun/star/io/IOException.hpp>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/storagehelper.hxx>
@@ -46,20 +47,21 @@
 #include <comphelper/classids.hxx>
 #include <osl/diagnose.h>
 #include <osl/thread.hxx>
+#include <sal/log.hxx>
 
 #include <closepreventer.hxx>
 
 #if defined(_WIN32)
-#include <olecomponent.hxx>
+#include "olecomponent.hxx"
 #endif
 
 using namespace ::com::sun::star;
 using namespace ::comphelper;
 
 
-bool KillFile_Impl( const OUString& aURL, const uno::Reference< lang::XMultiServiceFactory >& xFactory )
+bool KillFile_Impl( const OUString& aURL, const uno::Reference< uno::XComponentContext >& xContext )
 {
-    if ( !xFactory.is() )
+    if ( !xContext.is() )
         return false;
 
     bool bRet = false;
@@ -67,7 +69,7 @@ bool KillFile_Impl( const OUString& aURL, const uno::Reference< lang::XMultiServ
     try
     {
         uno::Reference < ucb::XSimpleFileAccess3 > xAccess(
-                ucb::SimpleFileAccess::create( comphelper::getComponentContext(xFactory) ) );
+                ucb::SimpleFileAccess::create( xContext ) );
 
         xAccess->kill( aURL );
         bRet = true;
@@ -80,14 +82,14 @@ bool KillFile_Impl( const OUString& aURL, const uno::Reference< lang::XMultiServ
 }
 
 
-OUString GetNewTempFileURL_Impl( const uno::Reference< lang::XMultiServiceFactory >& xFactory )
+OUString GetNewTempFileURL_Impl( const uno::Reference< uno::XComponentContext >& xContext )
 {
-    SAL_WARN_IF( !xFactory.is(), "embeddedobj.ole", "No factory is provided!" );
+    SAL_WARN_IF( !xContext.is(), "embeddedobj.ole", "No factory is provided!" );
 
     OUString aResult;
 
     uno::Reference < beans::XPropertySet > xTempFile(
-            io::TempFile::create(comphelper::getComponentContext(xFactory)),
+            io::TempFile::create(xContext),
             uno::UNO_QUERY_THROW );
 
     try {
@@ -107,47 +109,44 @@ OUString GetNewTempFileURL_Impl( const uno::Reference< lang::XMultiServiceFactor
 
 
 OUString GetNewFilledTempFile_Impl( const uno::Reference< io::XInputStream >& xInStream,
-                                      const uno::Reference< lang::XMultiServiceFactory >& xFactory )
+                                      const uno::Reference< uno::XComponentContext >& xContext )
 {
-    OSL_ENSURE( xInStream.is() && xFactory.is(), "Wrong parameters are provided!" );
+    OSL_ENSURE( xInStream.is() && xContext.is(), "Wrong parameters are provided!" );
 
-    OUString aResult = GetNewTempFileURL_Impl( xFactory );
+    OUString aResult = GetNewTempFileURL_Impl( xContext );
 
     if ( !aResult.isEmpty() )
     {
         try {
             uno::Reference < ucb::XSimpleFileAccess3 > xTempAccess(
-                    ucb::SimpleFileAccess::create( comphelper::getComponentContext(xFactory) ) );
+                    ucb::SimpleFileAccess::create( xContext ) );
 
             uno::Reference< io::XOutputStream > xTempOutStream = xTempAccess->openFileWrite( aResult );
-            if ( xTempOutStream.is() )
-            {
-                // copy stream contents to the file
-                ::comphelper::OStorageHelper::CopyInputToOutput( xInStream, xTempOutStream );
-                xTempOutStream->closeOutput();
-                xTempOutStream.clear();
-            }
-            else
+            if ( !xTempOutStream.is() )
                 throw io::IOException(); // TODO:
+            // copy stream contents to the file
+            ::comphelper::OStorageHelper::CopyInputToOutput( xInStream, xTempOutStream );
+            xTempOutStream->closeOutput();
+            xTempOutStream.clear();
         }
         catch( const packages::WrongPasswordException& )
         {
-               KillFile_Impl( aResult, xFactory );
+            KillFile_Impl( aResult, xContext );
             throw io::IOException(); //TODO:
         }
         catch( const io::IOException& )
         {
-               KillFile_Impl( aResult, xFactory );
+            KillFile_Impl( aResult, xContext );
             throw;
         }
         catch( const uno::RuntimeException& )
         {
-               KillFile_Impl( aResult, xFactory );
+            KillFile_Impl( aResult, xContext );
             throw;
         }
         catch( const uno::Exception& )
         {
-               KillFile_Impl( aResult, xFactory );
+            KillFile_Impl( aResult, xContext );
             aResult.clear();
         }
     }
@@ -157,14 +156,14 @@ OUString GetNewFilledTempFile_Impl( const uno::Reference< io::XInputStream >& xI
 #ifdef _WIN32
 /// @throws io::IOException
 /// @throws uno::RuntimeException
-OUString GetNewFilledTempFile_Impl( const uno::Reference< embed::XOptimizedStorage >& xParentStorage, const OUString& aEntryName, const uno::Reference< lang::XMultiServiceFactory >& xFactory )
+static OUString GetNewFilledTempFile_Impl( const uno::Reference< embed::XOptimizedStorage >& xParentStorage, const OUString& aEntryName, const uno::Reference< uno::XComponentContext >& xContext )
 {
     OUString aResult;
 
     try
     {
         uno::Reference < beans::XPropertySet > xTempFile(
-                io::TempFile::create(comphelper::getComponentContext(xFactory)),
+                io::TempFile::create(xContext),
                 uno::UNO_QUERY );
         uno::Reference < io::XStream > xTempStream( xTempFile, uno::UNO_QUERY_THROW );
 
@@ -189,14 +188,14 @@ OUString GetNewFilledTempFile_Impl( const uno::Reference< embed::XOptimizedStora
 }
 
 
-void SetStreamMediaType_Impl( const uno::Reference< io::XStream >& xStream, const OUString& aMediaType )
+static void SetStreamMediaType_Impl( const uno::Reference< io::XStream >& xStream, const OUString& aMediaType )
 {
     uno::Reference< beans::XPropertySet > xPropSet( xStream, uno::UNO_QUERY_THROW );
     xPropSet->setPropertyValue("MediaType", uno::makeAny( aMediaType ) );
 }
 #endif
 
-void LetCommonStoragePassBeUsed_Impl( const uno::Reference< io::XStream >& xStream )
+static void LetCommonStoragePassBeUsed_Impl( const uno::Reference< io::XStream >& xStream )
 {
     uno::Reference< beans::XPropertySet > xPropSet( xStream, uno::UNO_QUERY_THROW );
     xPropSet->setPropertyValue("UseCommonStoragePasswordEncryption",
@@ -263,18 +262,14 @@ uno::Reference< io::XStream > OleEmbeddedObject::GetNewFilledTempStream_Impl( co
     SAL_WARN_IF( !xInStream.is(), "embeddedobj.ole", "Wrong parameter is provided!" );
 
     uno::Reference < io::XStream > xTempFile(
-            io::TempFile::create(comphelper::getComponentContext(m_xFactory)),
+            io::TempFile::create(m_xContext),
             uno::UNO_QUERY_THROW );
 
     uno::Reference< io::XOutputStream > xTempOutStream = xTempFile->getOutputStream();
-    if ( xTempOutStream.is() )
-    {
-        ::comphelper::OStorageHelper::CopyInputToOutput( xInStream, xTempOutStream );
-        xTempOutStream->flush();
-    }
-    else
+    if ( !xTempOutStream.is() )
         throw io::IOException(); // TODO:
-
+    ::comphelper::OStorageHelper::CopyInputToOutput( xInStream, xTempOutStream );
+    xTempOutStream->flush();
     return xTempFile;
 }
 
@@ -282,7 +277,7 @@ uno::Reference< io::XStream > OleEmbeddedObject::GetNewFilledTempStream_Impl( co
 uno::Reference< io::XStream > OleEmbeddedObject::TryToGetAcceptableFormat_Impl( const uno::Reference< io::XStream >& xStream )
 {
     // TODO/LATER: Actually this should be done by a centralized component ( may be a graphical filter )
-    if ( !m_xFactory.is() )
+    if ( !m_xContext.is() )
         throw uno::RuntimeException();
 
     uno::Reference< io::XInputStream > xInStream = xStream->getInputStream();
@@ -316,7 +311,7 @@ uno::Reference< io::XStream > OleEmbeddedObject::TryToGetAcceptableFormat_Impl( 
         nRead = xInStream->readBytes( aHeadData, 4 );
         sal_uInt32 nLen = 0;
         if ( nRead == 4 && aHeadData.getLength() == 4 )
-            nLen = ( ( ( (sal_uInt32)aHeadData[3] * 0x100 + (sal_uInt32)aHeadData[2] ) * 0x100 ) + (sal_uInt32)aHeadData[1] ) * 0x100 + (sal_uInt32)aHeadData[0];
+            nLen = ( ( ( static_cast<sal_uInt32>(aHeadData[3]) * 0x100 + static_cast<sal_uInt32>(aHeadData[2]) ) * 0x100 ) + static_cast<sal_uInt32>(aHeadData[1]) ) * 0x100 + static_cast<sal_uInt32>(aHeadData[0]);
         if ( nLen > 4 )
         {
             xInStream->skipBytes( nLen - 4 );
@@ -329,7 +324,7 @@ uno::Reference< io::XStream > OleEmbeddedObject::TryToGetAcceptableFormat_Impl( 
         // check whether the first bytes represent the size
         sal_uInt32 nSize = 0;
         for ( sal_Int32 nInd = 3; nInd >= 0; nInd-- )
-            nSize = ( nSize << 8 ) + (sal_uInt8)aData[nInd];
+            nSize = ( nSize << 8 ) + static_cast<sal_uInt8>(aData[nInd]);
 
         if ( nSize == xSeek->getLength() - 4 )
             nHeaderOffset = 4;
@@ -339,7 +334,7 @@ uno::Reference< io::XStream > OleEmbeddedObject::TryToGetAcceptableFormat_Impl( 
     {
         // this is either a bitmap or a metafile clipboard format, retrieve the pure stream
         uno::Reference < io::XStream > xResult(
-            io::TempFile::create(comphelper::getComponentContext(m_xFactory)),
+            io::TempFile::create(m_xContext),
             uno::UNO_QUERY_THROW );
         uno::Reference < io::XSeekable > xResultSeek( xResult, uno::UNO_QUERY_THROW );
         uno::Reference < io::XOutputStream > xResultOut = xResult->getOutputStream();
@@ -373,125 +368,122 @@ void OleEmbeddedObject::InsertVisualCache_Impl( const uno::Reference< io::XStrea
     aArgs[1] <<= true; // do not create copy
 
     uno::Reference< container::XNameContainer > xNameContainer(
-            m_xFactory->createInstanceWithArguments(
+            m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
                     "com.sun.star.embed.OLESimpleStorage",
-                    aArgs ),
+                    aArgs, m_xContext ),
             uno::UNO_QUERY_THROW );
 
     uno::Reference< io::XSeekable > xCachedSeek( xCachedVisualRepresentation, uno::UNO_QUERY_THROW );
-    if ( xCachedSeek.is() )
-        xCachedSeek->seek( 0 );
+    xCachedSeek->seek( 0 );
 
     uno::Reference < io::XStream > xTempFile(
-            io::TempFile::create(comphelper::getComponentContext(m_xFactory)),
+            io::TempFile::create(m_xContext),
             uno::UNO_QUERY_THROW );
 
     uno::Reference< io::XSeekable > xTempSeek( xTempFile, uno::UNO_QUERY_THROW );
     uno::Reference< io::XOutputStream > xTempOutStream = xTempFile->getOutputStream();
-    if ( xTempOutStream.is() )
+    if ( !xTempOutStream.is() )
+        throw io::IOException(); // TODO:
+
+    // the OlePres stream must have additional header
+    // TODO/LATER: might need to be extended in future (actually makes sense only for SO7 format)
+    uno::Reference< io::XInputStream > xInCacheStream = xCachedVisualRepresentation->getInputStream();
+    if ( !xInCacheStream.is() )
+        throw uno::RuntimeException();
+
+    // write 0xFFFFFFFF at the beginning
+    uno::Sequence< sal_Int8 > aData( 4 );
+    * reinterpret_cast<sal_uInt32*>(aData.getArray()) = 0xFFFFFFFF;
+
+    xTempOutStream->writeBytes( aData );
+
+    // write clipboard format
+    uno::Sequence< sal_Int8 > aSigData( 2 );
+    xInCacheStream->readBytes( aSigData, 2 );
+    if ( aSigData.getLength() < 2 )
+        throw io::IOException();
+
+    if ( aSigData[0] == 'B' && aSigData[1] == 'M' )
     {
-        // the OlePres stream must have additional header
-        // TODO/LATER: might need to be extended in future (actually makes sense only for SO7 format)
-        uno::Reference< io::XInputStream > xInCacheStream = xCachedVisualRepresentation->getInputStream();
-        if ( !xInCacheStream.is() )
-            throw uno::RuntimeException();
-
-        // write 0xFFFFFFFF at the beginning
-        uno::Sequence< sal_Int8 > aData( 4 );
-        *( reinterpret_cast<sal_uInt32*>(aData.getArray()) ) = 0xFFFFFFFF;
-
-        xTempOutStream->writeBytes( aData );
-
-        // write clipboard format
-        uno::Sequence< sal_Int8 > aSigData( 2 );
-        xInCacheStream->readBytes( aSigData, 2 );
-        if ( aSigData.getLength() < 2 )
-            throw io::IOException();
-
-        if ( aSigData[0] == 'B' && aSigData[1] == 'M' )
-        {
-            // it's a bitmap
-            aData[0] = 0x02; aData[1] = 0; aData[2] = 0; aData[3] = 0;
-        }
-        else
-        {
-            // treat it as a metafile
-            aData[0] = 0x03; aData[1] = 0; aData[2] = 0; aData[3] = 0;
-        }
-        xTempOutStream->writeBytes( aData );
-
-        // write job related information
-        aData[0] = 0x04; aData[1] = 0; aData[2] = 0; aData[3] = 0;
-        xTempOutStream->writeBytes( aData );
-
-        // write aspect
-        aData[0] = 0x01; aData[1] = 0; aData[2] = 0; aData[3] = 0;
-        xTempOutStream->writeBytes( aData );
-
-        // write l-index
-        *( reinterpret_cast<sal_uInt32*>(aData.getArray()) ) = 0xFFFFFFFF;
-        xTempOutStream->writeBytes( aData );
-
-        // write adv. flags
+        // it's a bitmap
         aData[0] = 0x02; aData[1] = 0; aData[2] = 0; aData[3] = 0;
-        xTempOutStream->writeBytes( aData );
-
-        // write compression
-        *( reinterpret_cast<sal_uInt32*>(aData.getArray()) ) = 0x0;
-        xTempOutStream->writeBytes( aData );
-
-        // get the size
-        awt::Size aSize = getVisualAreaSize( embed::Aspects::MSOLE_CONTENT );
-        sal_Int32 nIndex = 0;
-
-        // write width
-        for ( nIndex = 0; nIndex < 4; nIndex++ )
-        {
-            aData[nIndex] = (sal_Int8)( aSize.Width % 0x100 );
-            aSize.Width /= 0x100;
-        }
-        xTempOutStream->writeBytes( aData );
-
-        // write height
-        for ( nIndex = 0; nIndex < 4; nIndex++ )
-        {
-            aData[nIndex] = (sal_Int8)( aSize.Height % 0x100 );
-            aSize.Height /= 0x100;
-        }
-        xTempOutStream->writeBytes( aData );
-
-        // write garbage, it will be overwritten by the size
-        xTempOutStream->writeBytes( aData );
-
-        // write first bytes that was used to detect the type
-        xTempOutStream->writeBytes( aSigData );
-
-        // write the rest of the stream
-        ::comphelper::OStorageHelper::CopyInputToOutput( xInCacheStream, xTempOutStream );
-
-        // write the size of the stream
-        sal_Int64 nLength = xTempSeek->getLength() - 40;
-        if ( nLength < 0 || nLength >= 0xFFFFFFFF )
-        {
-            SAL_WARN( "embeddedobj.ole", "Length is not acceptable!" );
-            return;
-        }
-        for ( sal_Int32 nInd = 0; nInd < 4; nInd++ )
-        {
-            aData[nInd] = (sal_Int8)( ( (sal_uInt64) nLength ) % 0x100 );
-            nLength /= 0x100;
-        }
-        xTempSeek->seek( 36 );
-        xTempOutStream->writeBytes( aData );
-
-        xTempOutStream->flush();
-
-        xTempSeek->seek( 0 );
-        if ( xCachedSeek.is() )
-            xCachedSeek->seek( 0 );
     }
     else
-        throw io::IOException(); // TODO:
+    {
+        // treat it as a metafile
+        aData[0] = 0x03; aData[1] = 0; aData[2] = 0; aData[3] = 0;
+    }
+    xTempOutStream->writeBytes( aData );
+
+    // write job related information
+    aData[0] = 0x04; aData[1] = 0; aData[2] = 0; aData[3] = 0;
+    xTempOutStream->writeBytes( aData );
+
+    // write aspect
+    aData[0] = 0x01; aData[1] = 0; aData[2] = 0; aData[3] = 0;
+    xTempOutStream->writeBytes( aData );
+
+    // write l-index
+    * reinterpret_cast<sal_uInt32*>(aData.getArray()) = 0xFFFFFFFF;
+    xTempOutStream->writeBytes( aData );
+
+    // write adv. flags
+    aData[0] = 0x02; aData[1] = 0; aData[2] = 0; aData[3] = 0;
+    xTempOutStream->writeBytes( aData );
+
+    // write compression
+    * reinterpret_cast<sal_uInt32*>(aData.getArray()) = 0x0;
+    xTempOutStream->writeBytes( aData );
+
+    // get the size
+    awt::Size aSize = getVisualAreaSize( embed::Aspects::MSOLE_CONTENT );
+    sal_Int32 nIndex = 0;
+
+    // write width
+    for ( nIndex = 0; nIndex < 4; nIndex++ )
+    {
+        aData[nIndex] = static_cast<sal_Int8>( aSize.Width % 0x100 );
+        aSize.Width /= 0x100;
+    }
+    xTempOutStream->writeBytes( aData );
+
+    // write height
+    for ( nIndex = 0; nIndex < 4; nIndex++ )
+    {
+        aData[nIndex] = static_cast<sal_Int8>( aSize.Height % 0x100 );
+        aSize.Height /= 0x100;
+    }
+    xTempOutStream->writeBytes( aData );
+
+    // write garbage, it will be overwritten by the size
+    xTempOutStream->writeBytes( aData );
+
+    // write first bytes that was used to detect the type
+    xTempOutStream->writeBytes( aSigData );
+
+    // write the rest of the stream
+    ::comphelper::OStorageHelper::CopyInputToOutput( xInCacheStream, xTempOutStream );
+
+    // write the size of the stream
+    sal_Int64 nLength = xTempSeek->getLength() - 40;
+    if ( nLength < 0 || nLength >= 0xFFFFFFFF )
+    {
+        SAL_WARN( "embeddedobj.ole", "Length is not acceptable!" );
+        return;
+    }
+    for ( sal_Int32 nInd = 0; nInd < 4; nInd++ )
+    {
+        aData[nInd] = static_cast<sal_Int8>( static_cast<sal_uInt64>(nLength) % 0x100 );
+        nLength /= 0x100;
+    }
+    xTempSeek->seek( 36 );
+    xTempOutStream->writeBytes( aData );
+
+    xTempOutStream->flush();
+
+    xTempSeek->seek( 0 );
+    if ( xCachedSeek.is() )
+        xCachedSeek->seek( 0 );
 
     // insert the result file as replacement image
     OUString aCacheName = "\002OlePres000";
@@ -515,9 +507,9 @@ void OleEmbeddedObject::RemoveVisualCache_Impl( const uno::Reference< io::XStrea
     aArgs[0] <<= xTargetStream;
     aArgs[1] <<= true; // do not create copy
     uno::Reference< container::XNameContainer > xNameContainer(
-            m_xFactory->createInstanceWithArguments(
+            m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
                     "com.sun.star.embed.OLESimpleStorage",
-                    aArgs ),
+                    aArgs, m_xContext ),
             uno::UNO_QUERY_THROW );
 
     for ( sal_uInt8 nInd = 0; nInd < 10; nInd++ )
@@ -558,7 +550,7 @@ bool OleEmbeddedObject::HasVisReplInStream()
                 {
                     // open temporary file for reading
                     uno::Reference < ucb::XSimpleFileAccess3 > xTempAccess(
-                            ucb::SimpleFileAccess::create( comphelper::getComponentContext(m_xFactory) ) );
+                            ucb::SimpleFileAccess::create( m_xContext ) );
 
                     xStream = xTempAccess->openFileRead( m_aTempURL );
                 }
@@ -577,9 +569,9 @@ bool OleEmbeddedObject::HasVisReplInStream()
                 aArgs[0] <<= xStream;
                 aArgs[1] <<= true; // do not create copy
                 uno::Reference< container::XNameContainer > xNameContainer(
-                        m_xFactory->createInstanceWithArguments(
+                        m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
                                 "com.sun.star.embed.OLESimpleStorage",
-                                aArgs ),
+                                aArgs, m_xContext ),
                         uno::UNO_QUERY );
 
                 if ( xNameContainer.is() )
@@ -623,9 +615,9 @@ uno::Reference< io::XStream > OleEmbeddedObject::TryToRetrieveCachedVisualRepres
         try
         {
             xNameContainer.set(
-                m_xFactory->createInstanceWithArguments(
+                m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
                         "com.sun.star.embed.OLESimpleStorage",
-                        aArgs ),
+                        aArgs, m_xContext ),
                 uno::UNO_QUERY );
         }
         catch( const uno::Exception& )
@@ -705,7 +697,7 @@ uno::Reference< io::XStream > OleEmbeddedObject::TryToRetrieveCachedVisualRepres
                                     if ( !m_aTempURL.isEmpty() )
                                     {
                                         // this is the own stream, so the temporary URL must be cleaned if it exists
-                                        KillFile_Impl( m_aTempURL, m_xFactory );
+                                        KillFile_Impl( m_aTempURL, m_xContext );
                                         m_aTempURL.clear();
                                     }
 
@@ -716,7 +708,7 @@ uno::Reference< io::XStream > OleEmbeddedObject::TryToRetrieveCachedVisualRepres
                                     try
                                     {
                                         CreateOleComponentAndLoad_Impl();
-                                        m_aClassID = m_pOleComponent->GetCLSID(); // was not set during consruction
+                                        m_aClassID = m_pOleComponent->GetCLSID(); // was not set during construction
                                     }
                                     catch( const uno::Exception& )
                                     {
@@ -744,7 +736,7 @@ void OleEmbeddedObject::SwitchOwnPersistence( const uno::Reference< embed::XStor
                                               const uno::Reference< io::XStream >& xNewObjectStream,
                                               const OUString& aNewName )
 {
-    if ( xNewParentStorage == m_xParentStorage && aNewName.equals( m_aEntryName ) )
+    if ( xNewParentStorage == m_xParentStorage && aNewName == m_aEntryName )
     {
         SAL_WARN_IF( xNewObjectStream != m_xObjectStream, "embeddedobj.ole", "The streams must be the same!" );
         return;
@@ -769,7 +761,7 @@ void OleEmbeddedObject::SwitchOwnPersistence( const uno::Reference< embed::XStor
 void OleEmbeddedObject::SwitchOwnPersistence( const uno::Reference< embed::XStorage >& xNewParentStorage,
                                               const OUString& aNewName )
 {
-    if ( xNewParentStorage == m_xParentStorage && aNewName.equals( m_aEntryName ) )
+    if ( xNewParentStorage == m_xParentStorage && aNewName == m_aEntryName )
         return;
 
     sal_Int32 nStreamMode = m_bReadOnly ? embed::ElementModes::READ : embed::ElementModes::READWRITE;
@@ -804,7 +796,7 @@ bool OleEmbeddedObject::SaveObject_Impl()
 
 bool OleEmbeddedObject::OnShowWindow_Impl( bool bShow )
 {
-    ::osl::ResettableMutexGuard aGuard( m_aMutex );
+    osl::ClearableMutexGuard aGuard(m_aMutex);
 
     bool bResult = false;
 
@@ -901,7 +893,7 @@ void OleEmbeddedObject::OnClosed_Impl()
 OUString OleEmbeddedObject::CreateTempURLEmpty_Impl()
 {
     SAL_WARN_IF( !m_aTempURL.isEmpty(), "embeddedobj.ole", "The object has already the temporary file!" );
-    m_aTempURL = GetNewTempFileURL_Impl( m_xFactory );
+    m_aTempURL = GetNewTempFileURL_Impl( m_xContext );
 
     return m_aTempURL;
 }
@@ -917,7 +909,7 @@ OUString OleEmbeddedObject::GetTempURL_Impl()
         uno::Reference< embed::XOptimizedStorage > xOptParStorage( m_xParentStorage, uno::UNO_QUERY );
         if ( xOptParStorage.is() )
         {
-            m_aTempURL = GetNewFilledTempFile_Impl( xOptParStorage, m_aEntryName, m_xFactory );
+            m_aTempURL = GetNewFilledTempFile_Impl( xOptParStorage, m_aEntryName, m_xContext );
         }
         else if ( m_xObjectStream.is() )
         {
@@ -926,7 +918,7 @@ OUString OleEmbeddedObject::GetTempURL_Impl()
             if ( !xInStream.is() )
                 throw io::IOException(); // TODO: access denied
 
-            m_aTempURL = GetNewFilledTempFile_Impl( xInStream, m_xFactory );
+            m_aTempURL = GetNewFilledTempFile_Impl( xInStream, m_xContext );
         }
     }
 
@@ -938,7 +930,7 @@ void OleEmbeddedObject::CreateOleComponent_Impl( OleComponent* pOleComponent )
 {
     if ( !m_pOleComponent )
     {
-        m_pOleComponent = pOleComponent ? pOleComponent : new OleComponent( m_xFactory, this );
+        m_pOleComponent = pOleComponent ? pOleComponent : new OleComponent( m_xContext, this );
         m_pOleComponent->acquire(); // TODO: needs holder?
 
         if ( !m_xClosePreventer.is() )
@@ -1015,23 +1007,23 @@ void OleEmbeddedObject::StoreObjectToStream( uno::Reference< io::XOutputStream >
 
     // open temporary file for reading
     uno::Reference < ucb::XSimpleFileAccess3 > xTempAccess(
-            ucb::SimpleFileAccess::create( comphelper::getComponentContext(m_xFactory) ) );
+            ucb::SimpleFileAccess::create( m_xContext ) );
 
     uno::Reference< io::XInputStream > xTempInStream = xTempAccess->openFileRead( m_aTempURL );
     SAL_WARN_IF( !xTempInStream.is(), "embeddedobj.ole", "The object's temporary file can not be reopened for reading!" );
 
     // TODO: use bStoreVisReplace
 
-    if ( xTempInStream.is() )
+    if ( !xTempInStream.is() )
     {
-        // write all the contents to XOutStream
-        uno::Reference< io::XTruncate > xTrunc( xOutStream, uno::UNO_QUERY_THROW );
-        xTrunc->truncate();
-
-        ::comphelper::OStorageHelper::CopyInputToOutput( xTempInStream, xOutStream );
-    }
-    else
         throw io::IOException(); // TODO:
+    }
+
+    // write all the contents to XOutStream
+    uno::Reference< io::XTruncate > xTrunc( xOutStream, uno::UNO_QUERY_THROW );
+    xTrunc->truncate();
+
+    ::comphelper::OStorageHelper::CopyInputToOutput( xTempInStream, xOutStream );
 
     // TODO: should the view replacement be in the stream ???
     //       probably it must be specified on storing
@@ -1066,14 +1058,14 @@ void OleEmbeddedObject::StoreToLocation_Impl(
     bool bTryOptimization = false;
     bool bStoreVis = m_bStoreVisRepl;
     uno::Reference< io::XStream > xCachedVisualRepresentation;
-    for ( sal_Int32 nInd = 0; nInd < lObjArgs.getLength(); nInd++ )
+    for ( beans::PropertyValue const & prop : lObjArgs )
     {
-        if ( lObjArgs[nInd].Name == "StoreVisualReplacement" )
-            lObjArgs[nInd].Value >>= bStoreVis;
-        else if ( lObjArgs[nInd].Name == "VisualReplacement" )
-            lObjArgs[nInd].Value >>= xCachedVisualRepresentation;
-        else if ( lObjArgs[nInd].Name == "CanTryOptimization" )
-            lObjArgs[nInd].Value >>= bTryOptimization;
+        if ( prop.Name == "StoreVisualReplacement" )
+            prop.Value >>= bStoreVis;
+        else if ( prop.Name == "VisualReplacement" )
+            prop.Value >>= xCachedVisualRepresentation;
+        else if ( prop.Name == "CanTryOptimization" )
+            prop.Value >>= bTryOptimization;
     }
 
     // ignore visual representation provided from outside if it should not be stored
@@ -1164,7 +1156,7 @@ void OleEmbeddedObject::StoreToLocation_Impl(
         }
     }
 #endif
-    else
+    else if (true) // loplugin:flatten
     {
         throw io::IOException(); // TODO
     }
@@ -1210,7 +1202,8 @@ void OleEmbeddedObject::StoreToLocation_Impl(
             if ( !xCachedVisualRepresentation.is() )
                 xCachedVisualRepresentation = TryToRetrieveCachedVisualRepresentation_Impl( xTargetStream );
 
-            RemoveVisualCache_Impl( xTargetStream );
+            if (!m_bStreamReadOnly)
+                RemoveVisualCache_Impl(xTargetStream);
         }
     }
 
@@ -1304,12 +1297,11 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
 
     if ( m_bWaitSaveCompleted )
     {
-        if ( nEntryConnectionMode == embed::EntryInitModes::NO_INIT )
-            saveCompleted( ( m_xParentStorage != xStorage || !m_aEntryName.equals( sEntName ) ) );
-        else
+        if ( nEntryConnectionMode != embed::EntryInitModes::NO_INIT )
             throw embed::WrongStateException(
                         "The object waits for saveCompleted() call!",
                         static_cast< ::cppu::OWeakObject* >(this) );
+        saveCompleted( m_xParentStorage != xStorage || m_aEntryName != sEntName );
     }
 
     uno::Reference< container::XNameAccess > xNameAccess( xStorage, uno::UNO_QUERY_THROW );
@@ -1318,9 +1310,9 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
     bool bElExists = xNameAccess->hasByName( sEntName );
 
     m_bReadOnly = false;
-    for ( sal_Int32 nInd = 0; nInd < lArguments.getLength(); nInd++ )
-        if ( lArguments[nInd].Name == "ReadOnly" )
-            lArguments[nInd].Value >>= m_bReadOnly;
+    for ( beans::PropertyValue const & prop : lArguments )
+        if ( prop.Name == "ReadOnly" )
+            prop.Value >>= m_bReadOnly;
 
 #ifdef _WIN32
     sal_Int32 nStorageMode = m_bReadOnly ? embed::ElementModes::READ : embed::ElementModes::READWRITE;
@@ -1328,9 +1320,9 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
 
     SwitchOwnPersistence( xStorage, sEntName );
 
-    for ( sal_Int32 nInd = 0; nInd < lObjArgs.getLength(); nInd++ )
-        if ( lObjArgs[nInd].Name == "StoreVisualReplacement" )
-            lObjArgs[nInd].Value >>= m_bStoreVisRepl;
+    for ( beans::PropertyValue const & prop : lObjArgs )
+        if ( prop.Name == "StoreVisualReplacement" )
+            prop.Value >>= m_bStoreVisRepl;
 
 #ifdef _WIN32
     if ( nEntryConnectionMode == embed::EntryInitModes::DEFAULT_INIT )
@@ -1340,7 +1332,7 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
             // the object should be initialized from clipboard
             // impossibility to initialize the object means error here
             CreateOleComponentFromClipboard_Impl();
-            m_aClassID = m_pOleComponent->GetCLSID(); // was not set during consruction
+            m_aClassID = m_pOleComponent->GetCLSID(); // was not set during construction
             m_pOleComponent->RunObject();
             m_nObjectState = embed::EmbedStates::RUNNING;
         }
@@ -1352,7 +1344,7 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
             try
             {
                 CreateOleComponentAndLoad_Impl();
-                m_aClassID = m_pOleComponent->GetCLSID(); // was not set during consruction
+                m_aClassID = m_pOleComponent->GetCLSID(); // was not set during construction
             }
             catch( const uno::Exception& )
             {
@@ -1396,9 +1388,9 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
         {
             // use URL ( may be content or stream later ) from MediaDescriptor to initialize object
             OUString aURL;
-            for ( sal_Int32 nInd = 0; nInd < lArguments.getLength(); nInd++ )
-                if ( lArguments[nInd].Name == "URL" )
-                    lArguments[nInd].Value >>= aURL;
+            for ( beans::PropertyValue const & prop : lArguments )
+                if ( prop.Name == "URL" )
+                    prop.Value >>= aURL;
 
             if ( aURL.isEmpty() )
                 throw lang::IllegalArgumentException(
@@ -1415,7 +1407,7 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
                 m_pOleComponent->CreateLinkFromFile( aURL );
 
             m_pOleComponent->RunObject();
-            m_aClassID = m_pOleComponent->GetCLSID(); // was not set during consruction
+            m_aClassID = m_pOleComponent->GetCLSID(); // was not set during construction
 
             m_nObjectState = embed::EmbedStates::RUNNING;
         }
@@ -1429,7 +1421,7 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
                                         3 );
     }
 #else
-    // On unix the ole object can not do anything except storing itself somewere
+    // On Unix the OLE object can not do anything except storing itself somewhere
     if ( nEntryConnectionMode == embed::EntryInitModes::DEFAULT_INIT && bElExists )
     {
         // TODO/LATER: detect classID of the object
@@ -1516,7 +1508,7 @@ void SAL_CALL OleEmbeddedObject::saveCompleted( sal_Bool bUseNew )
     }
     // end wrapping related part ====================
 
-    ::osl::ResettableMutexGuard aGuard( m_aMutex );
+    osl::ClearableMutexGuard aGuard(m_aMutex);
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
@@ -1674,7 +1666,7 @@ void SAL_CALL OleEmbeddedObject::storeOwn()
     // ask container to store the object, the container has to make decision
     // to do so or not
 
-    ::osl::ResettableMutexGuard aGuard( m_aMutex );
+    osl::ClearableMutexGuard aGuard(m_aMutex);
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
@@ -1838,7 +1830,7 @@ void SAL_CALL OleEmbeddedObject::reload(
     // TODO:
     // throw away current document
     // load new document from current storage
-    // use meaningfull part of lArguments
+    // use meaningful part of lArguments
 }
 
 
@@ -1888,72 +1880,67 @@ void SAL_CALL OleEmbeddedObject::breakLink( const uno::Reference< embed::XStorag
 
 
 #ifdef _WIN32
-    if ( m_pOleComponent )
-    {
-        // TODO: create an object based on the link
+    // TODO: create an object based on the link
 
-        // disconnect the old temporary URL
-        OUString aOldTempURL = m_aTempURL;
-        m_aTempURL.clear();
+    // disconnect the old temporary URL
+    OUString aOldTempURL = m_aTempURL;
+    m_aTempURL.clear();
 
-        OleComponent* pNewOleComponent = new OleComponent( m_xFactory, this );
-        try {
-            pNewOleComponent->InitEmbeddedCopyOfLink( m_pOleComponent );
-        }
-        catch ( const uno::Exception& )
-        {
-            delete pNewOleComponent;
-            if ( !m_aTempURL.isEmpty() )
-                   KillFile_Impl( m_aTempURL, m_xFactory );
-            m_aTempURL = aOldTempURL;
-            throw;
-        }
-
-        try {
-            GetRidOfComponent();
-        }
-        catch( const uno::Exception& )
-        {
-            delete pNewOleComponent;
-            if ( !m_aTempURL.isEmpty() )
-                   KillFile_Impl( m_aTempURL, m_xFactory );
-            m_aTempURL = aOldTempURL;
-            throw;
-        }
-
-           KillFile_Impl( aOldTempURL, m_xFactory );
-
-        CreateOleComponent_Impl( pNewOleComponent );
-
-        if ( m_xParentStorage != xStorage || !m_aEntryName.equals( sEntName ) )
-            SwitchOwnPersistence( xStorage, sEntName );
-
-        if ( m_nObjectState != embed::EmbedStates::LOADED )
-        {
-            // TODO: should we activate the new object if the link was activated?
-
-            sal_Int32 nTargetState = m_nObjectState;
-            m_nObjectState = embed::EmbedStates::LOADED;
-
-            if ( m_nObjectState == embed::EmbedStates::RUNNING )
-                m_pOleComponent->RunObject(); // the object already was in running state, the server must be installed
-            else // m_nObjectState == embed::EmbedStates::ACTIVE
-            {
-                m_pOleComponent->RunObject(); // the object already was in running state, the server must be installed
-                m_pOleComponent->ExecuteVerb( embed::EmbedVerbs::MS_OLEVERB_OPEN );
-            }
-
-            m_nObjectState = nTargetState;
-        }
-
-        m_bIsLink = false;
-        m_aLinkURL.clear();
+    OleComponent* pNewOleComponent = new OleComponent(m_xContext, this);
+    try {
+        pNewOleComponent->InitEmbeddedCopyOfLink(m_pOleComponent);
     }
-    else
-#endif
+    catch (const uno::Exception&)
     {
-        throw io::IOException(); //TODO:
+        delete pNewOleComponent;
+        if (!m_aTempURL.isEmpty())
+            KillFile_Impl(m_aTempURL, m_xContext);
+        m_aTempURL = aOldTempURL;
+        throw;
     }
+
+    try {
+        GetRidOfComponent();
+    }
+    catch (const uno::Exception&)
+    {
+        delete pNewOleComponent;
+        if (!m_aTempURL.isEmpty())
+            KillFile_Impl(m_aTempURL, m_xContext);
+        m_aTempURL = aOldTempURL;
+        throw;
+    }
+
+    KillFile_Impl(aOldTempURL, m_xContext);
+
+    CreateOleComponent_Impl(pNewOleComponent);
+
+    if (m_xParentStorage != xStorage || !m_aEntryName.equals(sEntName))
+        SwitchOwnPersistence(xStorage, sEntName);
+
+    if (m_nObjectState != embed::EmbedStates::LOADED)
+    {
+        // TODO: should we activate the new object if the link was activated?
+
+        const sal_Int32 nTargetState = m_nObjectState;
+        m_nObjectState = embed::EmbedStates::LOADED;
+
+        if (nTargetState == embed::EmbedStates::RUNNING)
+            m_pOleComponent->RunObject(); // the object already was in running state, the server must be installed
+        else // nTargetState == embed::EmbedStates::ACTIVE
+        {
+            m_pOleComponent->RunObject(); // the object already was in running state, the server must be installed
+            m_pOleComponent->ExecuteVerb(embed::EmbedVerbs::MS_OLEVERB_OPEN);
+        }
+
+        m_nObjectState = nTargetState;
+    }
+
+    m_bIsLink = false;
+    m_aLinkURL.clear();
+#else // ! _WIN32
+    throw io::IOException(); //TODO:
+#endif // _WIN32
 }
 
 

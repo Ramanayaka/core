@@ -18,10 +18,11 @@
  */
 
 #include <vcl/svapp.hxx>
+#include <tools/debug.hxx>
 
-#include "displayconnectiondispatch.hxx"
-#include "svdata.hxx"
-#include "salinst.hxx"
+#include <displayconnectiondispatch.hxx>
+#include <svdata.hxx>
+#include <salinst.hxx>
 
 using namespace osl;
 using namespace vcl;
@@ -57,9 +58,9 @@ void DisplayConnectionDispatch::terminate()
 
     MutexGuard aGuard( m_aMutex );
     Any aEvent;
-    std::list< css::uno::Reference< XEventHandler > > aLocalList( m_aHandlers );
-    for( ::std::list< css::uno::Reference< XEventHandler > >::const_iterator it = aLocalList.begin(); it != aLocalList.end(); ++it )
-        (*it)->handleEvent( aEvent );
+    std::vector< css::uno::Reference< XEventHandler > > aLocalList( m_aHandlers );
+    for (auto const& elem : aLocalList)
+        elem->handleEvent( aEvent );
 }
 
 void SAL_CALL DisplayConnectionDispatch::addEventHandler( const Any& /*window*/, const css::uno::Reference< XEventHandler >& handler, sal_Int32 /*eventMask*/ )
@@ -73,21 +74,15 @@ void SAL_CALL DisplayConnectionDispatch::removeEventHandler( const Any& /*window
 {
     MutexGuard aGuard( m_aMutex );
 
-    m_aHandlers.remove( handler );
+    m_aHandlers.erase( std::remove(m_aHandlers.begin(), m_aHandlers.end(), handler), m_aHandlers.end() );
 }
 
-void SAL_CALL DisplayConnectionDispatch::addErrorHandler( const css::uno::Reference< XEventHandler >& handler )
+void SAL_CALL DisplayConnectionDispatch::addErrorHandler( const css::uno::Reference< XEventHandler >& )
 {
-    MutexGuard aGuard( m_aMutex );
-
-    m_aErrorHandlers.push_back( handler );
 }
 
-void SAL_CALL DisplayConnectionDispatch::removeErrorHandler( const css::uno::Reference< XEventHandler >& handler )
+void SAL_CALL DisplayConnectionDispatch::removeErrorHandler( const css::uno::Reference< XEventHandler >& )
 {
-    MutexGuard aGuard( m_aMutex );
-
-    m_aErrorHandlers.remove( handler );
 }
 
 Any SAL_CALL DisplayConnectionDispatch::getIdentifier()
@@ -95,20 +90,20 @@ Any SAL_CALL DisplayConnectionDispatch::getIdentifier()
     return Any(m_ConnectionIdentifier);
 }
 
-bool DisplayConnectionDispatch::dispatchEvent( void* pData, int nBytes )
+bool DisplayConnectionDispatch::dispatchEvent( void const * pData, int nBytes )
 {
     SolarMutexReleaser aRel;
 
-    Sequence< sal_Int8 > aSeq( static_cast<sal_Int8*>(pData), nBytes );
+    Sequence< sal_Int8 > aSeq( static_cast<const sal_Int8*>(pData), nBytes );
     Any aEvent;
     aEvent <<= aSeq;
-    ::std::list< css::uno::Reference< XEventHandler > > handlers;
+    ::std::vector< css::uno::Reference< XEventHandler > > handlers;
     {
         MutexGuard aGuard( m_aMutex );
         handlers = m_aHandlers;
     }
-    for( ::std::list< css::uno::Reference< XEventHandler > >::const_iterator it = handlers.begin(); it != handlers.end(); ++it )
-        if( (*it)->handleEvent( aEvent ) )
+    for (auto const& handle : handlers)
+        if( handle->handleEvent( aEvent ) )
             return true;
     return false;
 }

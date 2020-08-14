@@ -24,13 +24,7 @@ $(eval $(call gb_JunitTest_set_defs,framework_complex,\
     -Dorg.openoffice.test.arg.tdoc=$(SRCDIR)/framework/qa/complex/broken_document/test_documents \
 ))
 
-$(eval $(call gb_JunitTest_use_jars,framework_complex,\
-    OOoRunner \
-    ridl \
-    test \
-    unoil \
-    jurt \
-))
+$(eval $(call gb_JunitTest_use_unoapi_jars,framework_complex))
 
 $(eval $(call gb_JunitTest_add_sourcefiles,framework_complex,\
     framework/qa/complex/disposing/GetServiceWhileDisposingOffice \
@@ -40,7 +34,6 @@ $(eval $(call gb_JunitTest_add_sourcefiles,framework_complex,\
     framework/qa/complex/loadAllDocuments/StatusIndicator \
     framework/qa/complex/broken_document/TestDocument \
     framework/qa/complex/broken_document/LoadDocument \
-    framework/qa/complex/XUserInputInterception/EventTest \
     framework/qa/complex/framework/autosave/AutoSave \
     framework/qa/complex/framework/autosave/Protocol \
     framework/qa/complex/framework/autosave/ConfigHelper \
@@ -75,7 +68,6 @@ $(eval $(call gb_JunitTest_add_classes,framework_complex,\
 # these were disabled in the old build system too, please check
 # carefully before reenabling
 #	complex.ModuleManager.CheckXModuleManager \
-    complex.XUserInputInterception.EventTest \
     complex.accelerators.AcceleratorsConfigurationTest \
     complex.api_internal.CheckAPI \
     complex.broken_document.LoadDocument \

@@ -19,12 +19,12 @@
 
 #include "vbacheckbox.hxx"
 #include "vbanewfont.hxx"
-#include <vbahelper/helperdecl.hxx>
 
 using namespace com::sun::star;
 using namespace ooo::vba;
 
-ScVbaCheckbox::ScVbaCheckbox( const uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, ov::AbstractGeometryAttributes* pGeomHelper ) : CheckBoxImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+ScVbaCheckbox::ScVbaCheckbox( const uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<ov::AbstractGeometryAttributes> pGeomHelper )
+    : CheckBoxImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 {
 }
 
@@ -85,18 +85,16 @@ uno::Reference< msforms::XNewFont > SAL_CALL ScVbaCheckbox::getFont()
 OUString
 ScVbaCheckbox::getServiceImplName()
 {
-    return OUString("ScVbaCheckbox");
+    return "ScVbaCheckbox";
 }
 
 uno::Sequence< OUString >
 ScVbaCheckbox::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.CheckBox";
-    }
+        "ooo.vba.msforms.CheckBox"
+    };
     return aServiceNames;
 }
 

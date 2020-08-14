@@ -22,8 +22,7 @@
 #include <rtl/ustring.hxx>
 #include <unotools/configitem.hxx>
 #include <i18nlangtag/lang.h>
-#include <osl/diagnose.h>
-#include "swdllapi.h"
+#include <swdllapi.h>
 
 #define FONT_STANDARD       0
 #define FONT_OUTLINE        1

@@ -23,14 +23,16 @@
 
 #include <sal/log.hxx>
 #include <tools/gen.hxx>
+#include "swdllapi.h"
 
 class SvStream;
+typedef struct _xmlTextWriter* xmlTextWriterPtr;
 
 /// *Of course* Writer needs its own rectangles.
 /// This is half-open so m_Point.X() + m_Size.getWidth() is *not* included.
 /// Note the tools Rectangle is (usually? sometimes?) closed so there's a
 /// SVRect() to subtract 1 for the conversion.
-class SAL_WARN_UNUSED SwRect
+class SAL_WARN_UNUSED SW_DLLPUBLIC SwRect
 {
     Point m_Point;
     Size m_Size;
@@ -70,7 +72,6 @@ public:
 
     // In order to be able to access the members of Pos and SSize from the layout side.
     inline Point &Pos();
-    inline Size  &SSize();
 
     Point Center() const;
 
@@ -103,22 +104,24 @@ public:
 
     // Output operator for debugging.
     friend SvStream& WriteSwRect( SvStream &rStream, const SwRect &rRect );
-
+    void dumpAsXmlAttributes(xmlTextWriterPtr writer) const;
 
     void Top_(      const long nTop );
     void Bottom_(   const long nBottom );
     void Left_(     const long nLeft );
-    void Rigth_(    const long nRight );
+    void Right_(    const long nRight );
     void Width_(    const long nNew );
     void Height_(   const long nNew );
     long Top_()     const;
     long Bottom_()  const;
     long Left_()    const;
-    long Rigth_()   const;
+    long Right_()   const;
     long Width_()   const;
     long Height_()  const;
     void SubTop(    const long nSub );
+    void AddTop(    const long nAdd );
     void AddBottom( const long nAdd );
+    void AddLeft(   const long nAdd );
     void SubLeft(   const long nSub );
     void AddRight(  const long nAdd );
     void AddWidth(  const long nAdd );
@@ -132,12 +135,12 @@ public:
     void SetUpperLeftCorner(  const Point& rNew );
     void SetUpperRightCorner(  const Point& rNew );
     void SetLowerLeftCorner(  const Point& rNew );
-    const Size  Size_() const;
-    const Point TopLeft()  const;
-    const Point TopRight()  const;
-    const Point BottomLeft()  const;
-    const Point BottomRight()  const;
-    const Size  SwappedSize() const;
+    Size  Size_() const;
+    Point TopLeft()  const;
+    Point TopRight()  const;
+    Point BottomLeft()  const;
+    Point BottomRight()  const;
+    Size  SwappedSize() const;
     long GetLeftDistance( long ) const;
     long GetBottomDistance( long ) const;
     long GetRightDistance( long ) const;
@@ -150,8 +153,8 @@ public:
 
 typedef void (SwRect:: *SwRectSet)( const long nNew );
 typedef long (SwRect:: *SwRectGet)() const;
-typedef const Point (SwRect:: *SwRectPoint)() const;
-typedef const Size (SwRect:: *SwRectSize)() const;
+typedef Point (SwRect:: *SwRectPoint)() const;
+typedef Size (SwRect:: *SwRectSize)() const;
 typedef bool (SwRect:: *SwRectMax)( long ) const;
 typedef long (SwRect:: *SwRectDist)( long ) const;
 typedef void (SwRect:: *SwRectSetTwice)( long, long );
@@ -191,7 +194,7 @@ inline void SwRect::Height( long nNew )
 }
 inline void SwRect::Left( const long nLeft )
 {
-    m_Size.Width() += m_Point.getX() - nLeft;
+    m_Size.AdjustWidth( m_Point.getX() - nLeft );
     m_Point.setX(nLeft);
 }
 inline void SwRect::Right( const long nRight )
@@ -200,7 +203,7 @@ inline void SwRect::Right( const long nRight )
 }
 inline void SwRect::Top( const long nTop )
 {
-    m_Size.Height() += m_Point.getY() - nTop;
+    m_Size.AdjustHeight( m_Point.getY() - nTop );
     m_Point.setY(nTop);
 }
 inline void SwRect::Bottom( const long nBottom )
@@ -218,10 +221,6 @@ inline Point &SwRect::Pos()
     return m_Point;
 }
 inline const Size  &SwRect::SSize() const
-{
-    return m_Size;
-}
-inline Size  &SwRect::SSize()
 {
     return m_Size;
 }
@@ -334,10 +333,9 @@ inline std::basic_ostream<charT, traits> & operator <<(
     std::basic_ostream<charT, traits> & stream, const SwRect& rectangle )
 {
     if (rectangle.IsEmpty())
-        return stream << "EMPTY";
-    else
-        return stream << rectangle.SSize()
-                      << "@(" << rectangle.Pos() << ")";
+        stream << "EMPTY:";
+    return stream << rectangle.SSize()
+                  << "@(" << rectangle.Pos() << ")";
 }
 
 #endif // INCLUDED_SW_INC_SWRECT_HXX

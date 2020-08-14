@@ -24,16 +24,18 @@
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/numeric/ftools.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
+#include <com/sun/star/rendering/RenderState.hpp>
 #include <com/sun/star/rendering/TextDirection.hpp>
+#include <com/sun/star/rendering/ViewState.hpp>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <vcl/metric.hxx>
 #include <vcl/virdev.hxx>
 
 #include <canvas/canvastools.hxx>
 
-#include "impltools.hxx"
 #include "textlayout.hxx"
 
 #include <memory>
@@ -104,7 +106,7 @@ namespace vclcanvas
         ScopedVclPtrInstance< VirtualDevice > pVDev( rOutDev );
         pVDev->SetFont( mpFont->getVCLFont() );
 
-        setupLayoutMode( *pVDev.get(), mnTextDirection );
+        setupLayoutMode( *pVDev, mnTextDirection );
 
         const rendering::ViewState aViewState(
             geometry::AffineMatrix2D(1,0,0, 0,1,0),
@@ -132,15 +134,11 @@ namespace vclcanvas
         {
             aOutlineSequence.reserve(aOutlines.size());
             sal_Int32 nIndex (0);
-            for (::basegfx::B2DPolyPolygonVector::const_iterator
-                     iOutline(aOutlines.begin()),
-                     iEnd(aOutlines.end());
-                 iOutline!=iEnd;
-                 ++iOutline)
+            for (auto const& outline : aOutlines)
             {
                 aOutlineSequence[nIndex++] = ::basegfx::unotools::xPolyPolygonFromB2DPolyPolygon(
                     mxDevice,
-                    *iOutline);
+                    outline);
             }
         }
 
@@ -156,7 +154,7 @@ namespace vclcanvas
         ScopedVclPtrInstance< VirtualDevice > pVDev( rOutDev );
         pVDev->SetFont( mpFont->getVCLFont() );
 
-        setupLayoutMode( *pVDev.get(), mnTextDirection );
+        setupLayoutMode( *pVDev, mnTextDirection );
 
         const rendering::ViewState aViewState(
             geometry::AffineMatrix2D(1,0,0, 0,1,0),
@@ -182,17 +180,13 @@ namespace vclcanvas
         {
             aBoundingBoxes.realloc(aMetricVector.size());
             sal_Int32 nIndex (0);
-            for (MetricVector::const_iterator
-                     iMetric(aMetricVector.begin()),
-                     iEnd(aMetricVector.end());
-                 iMetric!=iEnd;
-                 ++iMetric)
+            for (auto const& metric : aMetricVector)
             {
                 aBoundingBoxes[nIndex++] = geometry::RealRectangle2D(
-                    iMetric->getX(),
-                    iMetric->getY(),
-                    iMetric->getX() + iMetric->getWidth(),
-                    iMetric->getY() + iMetric->getHeight());
+                    metric.getX(),
+                    metric.getY(),
+                    metric.getX() + metric.getWidth(),
+                    metric.getY() + metric.getHeight());
             }
         }
         return aBoundingBoxes;
@@ -237,12 +231,12 @@ namespace vclcanvas
         // relative to baseline
         const ::FontMetric& aMetric( pVDev->GetFontMetric() );
 
-        setupLayoutMode( *pVDev.get(), mnTextDirection );
+        setupLayoutMode( *pVDev, mnTextDirection );
 
-        const sal_Int32 nAboveBaseline( /*-aMetric.GetIntLeading()*/ - aMetric.GetAscent() );
+        const sal_Int32 nAboveBaseline( -aMetric.GetAscent() );
         const sal_Int32 nBelowBaseline( aMetric.GetDescent() );
 
-        if( maLogicalAdvancements.getLength() )
+        if( maLogicalAdvancements.hasElements() )
         {
             return geometry::RealRectangle2D( 0, nAboveBaseline,
                                               maLogicalAdvancements[ maLogicalAdvancements.getLength()-1 ],
@@ -329,7 +323,7 @@ namespace vclcanvas
         return maText;
     }
 
-    bool TextLayout::draw( OutputDevice&                 rOutDev,
+    void TextLayout::draw( OutputDevice&                 rOutDev,
                            const Point&                  rOutpos,
                            const rendering::ViewState&   viewState,
                            const rendering::RenderState& renderState ) const
@@ -338,7 +332,7 @@ namespace vclcanvas
 
         setupLayoutMode( rOutDev, mnTextDirection );
 
-        if( maLogicalAdvancements.getLength() )
+        if( maLogicalAdvancements.hasElements() )
         {
             // TODO(P2): cache that
             std::unique_ptr< long []> aOffsets(new long[maLogicalAdvancements.getLength()]);
@@ -360,8 +354,6 @@ namespace vclcanvas
                               ::canvas::tools::numeric_cast<sal_uInt16>(maText.StartPosition),
                               ::canvas::tools::numeric_cast<sal_uInt16>(maText.Length) );
         }
-
-        return true;
     }
 
     namespace
@@ -411,15 +403,15 @@ namespace vclcanvas
                                                      renderState);
 
         // fill integer offsets
-        std::transform( inputOffsets.getConstArray(),
-                          inputOffsets.getConstArray()+inputOffsets.getLength(),
+        std::transform( inputOffsets.begin(),
+                          inputOffsets.end(),
                           outputOffsets,
                           OffsetTransformer( aMatrix ) );
     }
 
     OUString SAL_CALL TextLayout::getImplementationName()
     {
-        return OUString( "VCLCanvas::TextLayout" );
+        return "VCLCanvas::TextLayout";
     }
 
     sal_Bool SAL_CALL TextLayout::supportsService( const OUString& ServiceName )

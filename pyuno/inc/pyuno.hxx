@@ -17,21 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_PYUNO_INC_PYUNO_HXX
-#define INCLUDED_PYUNO_INC_PYUNO_HXX
+#pragma once
 
 #ifndef Py_PYTHON_H
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#endif
 #include <Python.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 #endif // #ifdef Py_PYTHON_H
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/script/CannotConvertException.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
+
+#include <com/sun/star/uno/Any.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 /**
    External interface of the Python UNO bridge.
@@ -58,12 +53,7 @@
                    the global interpreter lock is held
 */
 
-extern "C" LO_DLLPUBLIC_PYUNO
-#if PY_MAJOR_VERSION >= 3
-    PyObject* SAL_CALL PyInit_pyuno();
-#else
-   void SAL_CALL initpyuno();
-#endif
+extern "C" LO_DLLPUBLIC_PYUNO PyObject* PyInit_pyuno();
 
 namespace pyuno
 {
@@ -102,11 +92,11 @@ public:
     }
 
     PyRef(const PyRef &r) : m(r.get()) { Py_XINCREF(m); }
-    PyRef(PyRef &&r) : m(r.get()) { r.scratch(); }
+    PyRef(PyRef &&r) noexcept : m(r.get()) { r.scratch(); }
 
     ~PyRef() { Py_XDECREF( m ); }
 
-    PyObject *get() const { return m; }
+    PyObject *get() const noexcept { return m; }
 
     PyObject * getAcquired() const
     {
@@ -138,7 +128,7 @@ public:
 
     /** clears the reference without decreasing the reference count
         only seldom needed ! */
-    void scratch()
+    void scratch() noexcept
     {
         m = nullptr;
     }
@@ -153,11 +143,11 @@ public:
 
     struct Hash
     {
-        sal_IntPtr operator () ( const PyRef &r) const { return sal_IntPtr( r.get() ); }
+        sal_IntPtr operator () ( const PyRef &r) const { return reinterpret_cast<sal_IntPtr>( r.get() ); }
     };
 };
 
-struct stRuntimeImpl;
+//struct stRuntimeImpl;
 typedef struct stRuntimeImpl RuntimeImpl;
 
 enum ConversionMode { ACCEPT_UNO_ANY, REJECT_UNO_ANY };
@@ -210,16 +200,16 @@ public:
         @throw RuntimeException in case the thread is not attached or the runtime
                                 has not been initialized.
     */
-    static void SAL_CALL initialize(
+    static void initialize(
         const css::uno::Reference< css::uno::XComponentContext > & ctx );
 
     /** Checks, whether the uno runtime is already initialized in the current python interpreter.
 
         @throws css::uno::RuntimeException
      */
-    static bool SAL_CALL isInitialized();
+    static bool isInitialized();
 
-    /** converts something contained in an UNO Any to a Python object
+    /** converts something contained in a UNO Any to a Python object
 
         preconditions: python has been initialized before,
         the global interpreter lock is held and pyuno::Runtime
@@ -281,6 +271,7 @@ public:
 class LO_DLLPUBLIC_PYUNO PyThreadAttach
 {
     PyThreadState *tstate;
+    bool m_isNewState;
     PyThreadAttach ( const PyThreadAttach & ) = delete;
     PyThreadAttach & operator = ( const PyThreadAttach & ) = delete;
 public:
@@ -305,7 +296,7 @@ public:
 
     @see PyThreadAttach
 */
-class LO_DLLPUBLIC_PYUNO PyThreadDetach
+class PyThreadDetach
 {
     PyThreadState *tstate;
     PyThreadDetach ( const PyThreadDetach & ) = delete;
@@ -326,6 +317,5 @@ public:
 };
 
 }
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

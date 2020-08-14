@@ -19,7 +19,7 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_API_RESULTSET_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_API_RESULTSET_HXX
 
-#include "column.hxx"
+#include <column.hxx>
 #include <connectivity/warningscontainer.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -58,12 +58,11 @@ namespace dbaccess
 
     //  OResultSet
 
-    class OResultSet :  public cppu::BaseMutex,
+    class OResultSet final : public cppu::BaseMutex,
                         public OResultSetBase,
                         public ::cppu::OPropertySetHelper,
                         public ::comphelper::OPropertyArrayUsageHelper < OResultSet >
     {
-    protected:
         css::uno::Reference< css::uno::XInterface>            m_aStatement;
 
         css::uno::Reference< css::sdbc::XResultSet >          m_xDelegatorResultSet;
@@ -72,8 +71,7 @@ namespace dbaccess
         css::uno::Reference< css::sdbc::XRowUpdate >          m_xDelegatorRowUpdate;
 
         ::dbtools::WarningsContainer    m_aWarnings;
-        OColumns*                       m_pColumns;
-        sal_Int32                       m_nResultSetType;
+        std::unique_ptr<OColumns>       m_pColumns;
         sal_Int32                       m_nResultSetConcurrency;
         bool                        m_bIsBookmarkable : 1;
 
@@ -213,11 +211,10 @@ namespace dbaccess
         virtual void SAL_CALL updateObject( sal_Int32 columnIndex, const css::uno::Any& x ) override;
         virtual void SAL_CALL updateNumericObject( sal_Int32 columnIndex, const css::uno::Any& x, sal_Int32 scale ) override;
 
-    protected:
+    private:
         void checkReadOnly() const;
         void checkBookmarkable() const;
 
-    private:
         using ::cppu::OPropertySetHelper::getFastPropertyValue;
     };
 }

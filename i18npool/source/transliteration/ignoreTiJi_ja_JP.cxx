@@ -22,9 +22,9 @@
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
-static const transliteration_Ignore::Mapping TiJi[] = {
+const transliteration_Ignore::Mapping TiJi[] = {
     // TU + I --> TI
     { 0x30C4, 0x30A3, 0x30C1, true },
     // TE + I --> TI
@@ -50,6 +50,6 @@ ignoreTiJi_ja_JP::ignoreTiJi_ja_JP()
     implementationName = "com.sun.star.i18n.Transliteration.ignoreTiJi_ja_JP";
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

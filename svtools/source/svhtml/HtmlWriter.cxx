@@ -11,12 +11,18 @@
 #include <svtools/HtmlWriter.hxx>
 #include <tools/stream.hxx>
 
-HtmlWriter::HtmlWriter(SvStream& rStream) :
+HtmlWriter::HtmlWriter(SvStream& rStream, const OString& rNamespace) :
     mrStream(rStream),
     mbElementOpen(false),
-    mbContentWritten(false),
+    mbCharactersWritten(false),
     mbPrettyPrint(true)
-{}
+{
+    if (!rNamespace.isEmpty())
+    {
+        // Convert namespace alias to a prefix.
+        maNamespace = rNamespace + ":";
+    }
+}
 
 HtmlWriter::~HtmlWriter()
 {}
@@ -31,9 +37,8 @@ void HtmlWriter::start(const OString& aElement)
     if (mbElementOpen)
     {
         mrStream.WriteChar('>');
-        if (!mbContentWritten && mbPrettyPrint)
+        if (mbPrettyPrint)
             mrStream.WriteChar('\n');
-        mbContentWritten = false;
     }
     maElementStack.push_back(aElement);
 
@@ -46,7 +51,7 @@ void HtmlWriter::start(const OString& aElement)
     }
 
     mrStream.WriteChar('<');
-    mrStream.WriteOString(aElement);
+    mrStream.WriteOString(maNamespace + aElement);
     mbElementOpen = true;
 }
 
@@ -77,7 +82,7 @@ void HtmlWriter::flushStack()
 
 void HtmlWriter::end()
 {
-    if (mbElementOpen)
+    if (mbElementOpen && !mbCharactersWritten)
     {
         mrStream.WriteCharPtr("/>");
         if (mbPrettyPrint)
@@ -85,7 +90,7 @@ void HtmlWriter::end()
     }
     else
     {
-        if (!mbContentWritten && mbPrettyPrint)
+        if (mbPrettyPrint)
         {
             for(size_t i = 0; i < maElementStack.size() - 1; i++)
             {
@@ -93,14 +98,14 @@ void HtmlWriter::end()
             }
         }
         mrStream.WriteCharPtr("</");
-        mrStream.WriteOString(maElementStack.back());
+        mrStream.WriteOString(maNamespace + maElementStack.back());
         mrStream.WriteCharPtr(">");
         if (mbPrettyPrint)
             mrStream.WriteCharPtr("\n");
     }
     maElementStack.pop_back();
     mbElementOpen = false;
-    mbContentWritten = false;
+    mbCharactersWritten = false;
 }
 
 void HtmlWriter::attribute(const OString &aAttribute, const OString& aValue)
@@ -140,5 +145,12 @@ void HtmlWriter::attribute(const OString& aAttribute)
     }
 }
 
+void HtmlWriter::characters(const OString& rChars)
+{
+    if (!mbCharactersWritten)
+        mrStream.WriteCharPtr(">");
+    mrStream.WriteOString(rChars);
+    mbCharactersWritten = true;
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

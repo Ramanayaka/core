@@ -17,17 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#pragma warning(disable: 4917)
-#endif
 #include <objbase.h>
 #include <strmif.h>
 #include <control.h>
 #include <dshow.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
+
 #include <com/sun/star/awt/SystemPointer.hpp>
 #include <cppuhelper/supportsservice.hxx>
 
@@ -39,11 +33,11 @@
 
 using namespace ::com::sun::star;
 
-namespace avmedia { namespace win {
+namespace avmedia::win {
 
-LRESULT CALLBACK MediaPlayerWndProc( HWND hWnd,UINT nMsg, WPARAM nPar1, LPARAM nPar2 )
+static LRESULT CALLBACK MediaPlayerWndProc( HWND hWnd,UINT nMsg, WPARAM nPar1, LPARAM nPar2 )
 {
-    Window* pWindow = reinterpret_cast<Window*>(::GetWindowLongPtr( hWnd, 0 ));
+    Window* pWindow = reinterpret_cast<Window*>(GetWindowLongPtrW( hWnd, 0 ));
     bool    bProcessed = true;
 
     if( pWindow )
@@ -65,60 +59,7 @@ LRESULT CALLBACK MediaPlayerWndProc( HWND hWnd,UINT nMsg, WPARAM nPar1, LPARAM n
             case WM_LBUTTONUP:
             case WM_MBUTTONUP:
             case WM_RBUTTONUP:
-            {
-                awt::MouseEvent aUNOEvt;
-                POINT           aWinPoint;
-
-                if( !::GetCursorPos( &aWinPoint ) || !::ScreenToClient( hWnd, &aWinPoint ) )
-                {
-                    aWinPoint.x = GET_X_LPARAM( nPar2 );
-                    aWinPoint.y = GET_Y_LPARAM( nPar2 );
-                }
-                aUNOEvt.Modifiers = 0;
-                aUNOEvt.Buttons = 0;
-                aUNOEvt.X = aWinPoint.x;
-                aUNOEvt.Y = aWinPoint.y;
-                aUNOEvt.PopupTrigger = false;
-
-                // Modifiers
-                if( nPar1 & MK_SHIFT )
-                    aUNOEvt.Modifiers |= awt::KeyModifier::SHIFT;
-
-                if( nPar1 & MK_CONTROL )
-                    aUNOEvt.Modifiers |= awt::KeyModifier::MOD1;
-
-                // Buttons
-                if( WM_LBUTTONDOWN == nMsg || WM_LBUTTONUP == nMsg )
-                    aUNOEvt.Buttons |= awt::MouseButton::LEFT;
-
-                if( WM_MBUTTONDOWN == nMsg || WM_MBUTTONUP == nMsg )
-                    aUNOEvt.Buttons |= awt::MouseButton::MIDDLE;
-
-                if( WM_RBUTTONDOWN == nMsg || WM_RBUTTONUP == nMsg )
-                    aUNOEvt.Buttons |= awt::MouseButton::RIGHT;
-
-                // event type
-                if( WM_LBUTTONDOWN == nMsg ||
-                    WM_MBUTTONDOWN == nMsg ||
-                    WM_RBUTTONDOWN == nMsg )
-                {
-                    aUNOEvt.ClickCount = 1;
-                    pWindow->fireMousePressedEvent( aUNOEvt );
-                }
-                else if( WM_LBUTTONUP == nMsg ||
-                         WM_MBUTTONUP == nMsg ||
-                         WM_RBUTTONUP == nMsg )
-                {
-                    aUNOEvt.ClickCount = 1;
-                    pWindow->fireMouseReleasedEvent( aUNOEvt );
-                }
-                else if( WM_MOUSEMOVE == nMsg )
-                {
-                    aUNOEvt.ClickCount = 0;
-                    pWindow->fireMouseMovedEvent( aUNOEvt );
-                    pWindow->updatePointer();
-                }
-            }
+                PostMessage(pWindow->getParentWnd(), nMsg, nPar1, nPar2);
             break;
 
             case WM_SETFOCUS:
@@ -136,28 +77,27 @@ LRESULT CALLBACK MediaPlayerWndProc( HWND hWnd,UINT nMsg, WPARAM nPar1, LPARAM n
     else
         bProcessed = false;
 
-    return( bProcessed ? 0 : DefWindowProc( hWnd, nMsg, nPar1, nPar2 ) );
+    return( bProcessed ? 0 : DefWindowProcW( hWnd, nMsg, nPar1, nPar2 ) );
 }
 
-WNDCLASS* lcl_getWndClass()
+static WNDCLASSW* lcl_getWndClass()
 {
-    WNDCLASS* s_pWndClass = new WNDCLASS;
+    WNDCLASSW* s_pWndClass = new WNDCLASSW;
 
     memset( s_pWndClass, 0, sizeof( *s_pWndClass ) );
-    s_pWndClass->hInstance = GetModuleHandle( nullptr );
-    s_pWndClass->cbWndExtra = sizeof( DWORD );
+    s_pWndClass->hInstance = GetModuleHandleW( nullptr );
+    s_pWndClass->cbWndExtra = sizeof( DWORD_PTR );
     s_pWndClass->lpfnWndProc = MediaPlayerWndProc;
-    s_pWndClass->lpszClassName = "com_sun_star_media_PlayerWnd";
+    s_pWndClass->lpszClassName = L"com_sun_star_media_PlayerWnd";
     s_pWndClass->hbrBackground = static_cast<HBRUSH>(::GetStockObject( BLACK_BRUSH ));
     s_pWndClass->hCursor = ::LoadCursor( nullptr, IDC_ARROW );
 
-    ::RegisterClass( s_pWndClass );
+    RegisterClassW( s_pWndClass );
 
     return s_pWndClass;
 }
 
-Window::Window( const uno::Reference< lang::XMultiServiceFactory >& rxMgr, Player& rPlayer ) :
-    mxMgr( rxMgr ),
+Window::Window( Player& rPlayer ) :
     maListeners( maMutex ),
     meZoomLevel( media::ZoomLevel_NOT_AVAILABLE ),
     mrPlayer( rPlayer ),
@@ -235,12 +175,12 @@ void Window::ImplLayoutVideoWindow()
         {
             if( aPrefSize.Width > 0 && aPrefSize.Height > 0 && nVideoW > 0 && nVideoH > 0 )
             {
-                double fPrefWH = (double) aPrefSize.Width / aPrefSize.Height;
+                double fPrefWH = static_cast<double>(aPrefSize.Width) / aPrefSize.Height;
 
-                if( fPrefWH < ( (double) nVideoW / nVideoH ) )
-                    nVideoW = (int)( nVideoH * fPrefWH );
+                if( fPrefWH < ( static_cast<double>(nVideoW) / nVideoH ) )
+                    nVideoW = static_cast<int>( nVideoH * fPrefWH );
                 else
-                    nVideoH = (int)( nVideoW / fPrefWH );
+                    nVideoH = static_cast<int>( nVideoW / fPrefWH );
 
                 nX = ( nW - nVideoW ) >> 1;
                 nY = ( nH - nVideoH ) >> 1;
@@ -261,7 +201,7 @@ void Window::ImplLayoutVideoWindow()
 bool Window::create( const uno::Sequence< uno::Any >& rArguments )
 {
     IVideoWindow* pVideoWindow = const_cast< IVideoWindow* >( mrPlayer.getVideoWindow() );
-    static WNDCLASS* mpWndClass = lcl_getWndClass();
+    static WNDCLASSW* mpWndClass = lcl_getWndClass();
 
     if( !mnFrameWnd && pVideoWindow && mpWndClass )
     {
@@ -273,23 +213,23 @@ bool Window::create( const uno::Sequence< uno::Any >& rArguments )
 
         mnParentWnd = reinterpret_cast<HWND>(nWnd);
 
-        mnFrameWnd = ::CreateWindow( mpWndClass->lpszClassName, nullptr,
-                                           WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
-                                           aRect.X, aRect.Y, aRect.Width, aRect.Height,
-                                           mnParentWnd, nullptr, mpWndClass->hInstance, nullptr );
+        mnFrameWnd = CreateWindowW( mpWndClass->lpszClassName, nullptr,
+                                    WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+                                    aRect.X, aRect.Y, aRect.Width, aRect.Height,
+                                    mnParentWnd, nullptr, mpWndClass->hInstance, nullptr );
 
         if( mnFrameWnd )
         {
-            ::SetWindowLongPtr( mnFrameWnd, 0, reinterpret_cast<LONG_PTR>(this) );
+            SetWindowLongPtrW( mnFrameWnd, 0, reinterpret_cast<LONG_PTR>(this) );
 
-                        pVideoWindow->put_Owner( reinterpret_cast<OAHWND>(mnFrameWnd) );
-                        pVideoWindow->put_MessageDrain( reinterpret_cast<OAHWND>(mnFrameWnd) );
-                        pVideoWindow->put_WindowStyle( WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN );
+            pVideoWindow->put_Owner( reinterpret_cast<OAHWND>(mnFrameWnd) );
+            pVideoWindow->put_MessageDrain( reinterpret_cast<OAHWND>(mnFrameWnd) );
+            pVideoWindow->put_WindowStyle( WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN );
 
-                        mrPlayer.setNotifyWnd( mnFrameWnd );
+            mrPlayer.setNotifyWnd( mnFrameWnd );
 
-                        meZoomLevel = media::ZoomLevel_FIT_TO_WINDOW;
-                        ImplLayoutVideoWindow();
+            meZoomLevel = media::ZoomLevel_FIT_TO_WINDOW;
+            ImplLayoutVideoWindow();
         }
     }
 
@@ -303,7 +243,7 @@ void Window::processGraphEvent()
 
 void Window::updatePointer()
 {
-    char* pCursorName;
+    LPCTSTR pCursorName;
 
     switch( mnPointerType )
     {
@@ -316,7 +256,7 @@ void Window::updatePointer()
         break;
     }
 
-    ::SetCursor( ::LoadCursor( nullptr, pCursorName ) );
+    SetCursor( LoadCursor( nullptr, pCursorName ) );
 }
 
 void SAL_CALL Window::update(  )
@@ -326,7 +266,7 @@ void SAL_CALL Window::update(  )
 
 sal_Bool SAL_CALL Window::setZoomLevel( media::ZoomLevel eZoomLevel )
 {
-        boolean bRet = false;
+        bool bRet = false;
 
         if( media::ZoomLevel_NOT_AVAILABLE != meZoomLevel &&
             media::ZoomLevel_NOT_AVAILABLE != eZoomLevel )
@@ -490,7 +430,7 @@ void Window::fireMousePressedEvent( const css::awt::MouseEvent& rEvt )
         ::cppu::OInterfaceIteratorHelper aIter( *pContainer );
 
         while( aIter.hasMoreElements() )
-            uno::Reference< awt::XMouseListener >( aIter.next(), uno::UNO_QUERY )->mousePressed( rEvt );
+            uno::Reference< awt::XMouseListener >( aIter.next(), uno::UNO_QUERY_THROW )->mousePressed( rEvt );
     }
 }
 
@@ -503,7 +443,7 @@ void Window::fireMouseReleasedEvent( const css::awt::MouseEvent& rEvt )
         ::cppu::OInterfaceIteratorHelper aIter( *pContainer );
 
         while( aIter.hasMoreElements() )
-            uno::Reference< awt::XMouseListener >( aIter.next(), uno::UNO_QUERY )->mouseReleased( rEvt );
+            uno::Reference< awt::XMouseListener >( aIter.next(), uno::UNO_QUERY_THROW )->mouseReleased( rEvt );
     }
 }
 
@@ -516,7 +456,7 @@ void Window::fireMouseMovedEvent( const css::awt::MouseEvent& rEvt )
         ::cppu::OInterfaceIteratorHelper aIter( *pContainer );
 
         while( aIter.hasMoreElements() )
-            uno::Reference< awt::XMouseMotionListener >( aIter.next(), uno::UNO_QUERY )->mouseMoved( rEvt );
+            uno::Reference< awt::XMouseMotionListener >( aIter.next(), uno::UNO_QUERY_THROW )->mouseMoved( rEvt );
     }
 }
 
@@ -529,13 +469,13 @@ void Window::fireSetFocusEvent( const css::awt::FocusEvent& rEvt )
         ::cppu::OInterfaceIteratorHelper aIter( *pContainer );
 
         while( aIter.hasMoreElements() )
-            uno::Reference< awt::XFocusListener >( aIter.next(), uno::UNO_QUERY )->focusGained( rEvt );
+            uno::Reference< awt::XFocusListener >( aIter.next(), uno::UNO_QUERY_THROW )->focusGained( rEvt );
     }
 }
 
 OUString SAL_CALL Window::getImplementationName(  )
 {
-    return OUString( AVMEDIA_WIN_WINDOW_IMPLEMENTATIONNAME );
+    return AVMEDIA_WIN_WINDOW_IMPLEMENTATIONNAME;
 }
 
 sal_Bool SAL_CALL Window::supportsService( const OUString& ServiceName )
@@ -548,7 +488,7 @@ uno::Sequence< OUString > SAL_CALL Window::getSupportedServiceNames(  )
     return { AVMEDIA_WIN_WINDOW_SERVICENAME };
 }
 
-} // namespace win
-} // namespace avmedia
+} // namespace avmedia::win
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

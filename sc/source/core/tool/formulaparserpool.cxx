@@ -17,15 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "formulaparserpool.hxx"
+#include <formulaparserpool.hxx>
 #include <com/sun/star/container/XContentEnumerationAccess.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XSingleComponentFactory.hpp>
 #include <com/sun/star/sheet/XFilterFormulaParser.hpp>
 #include <rtl/instance.hxx>
 #include <comphelper/processfactory.hxx>
 #include <sfx2/objsh.hxx>
-#include "document.hxx"
+#include <document.hxx>
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
@@ -46,8 +47,7 @@ public:
 
 private:
     typedef std::unordered_map<
-        OUString, Reference< XSingleComponentFactory >,
-        OUStringHash > FactoryMap;
+        OUString, Reference< XSingleComponentFactory > > FactoryMap;
 
     Reference< XComponentContext > mxContext;   /// Global component context.
     FactoryMap          maFactories;            /// All parser factories, mapped by formula namespace.
@@ -56,7 +56,10 @@ private:
 ScParserFactoryMap::ScParserFactoryMap() :
     mxContext( ::comphelper::getProcessComponentContext() )
 {
-    if( mxContext.is() ) try
+    if( !mxContext.is() )
+        return;
+
+    try
     {
         // enumerate all implementations of the FormulaParser service
         Reference< XContentEnumerationAccess > xFactoryEA( mxContext->getServiceManager(), UNO_QUERY_THROW );

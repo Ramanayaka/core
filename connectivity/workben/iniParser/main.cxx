@@ -18,11 +18,12 @@
  */
 
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/io/IOException.hpp>
 #include <osl/process.h>
 
 #include <map>
-#include <list>
+#include <vector>
 
 
 struct ini_NameValue
@@ -39,14 +40,14 @@ struct ini_NameValue
         {}
 };
 
-typedef std::list<
+typedef std::vector<
     ini_NameValue
-> NameValueList;
+> NameValueVector;
 
 struct ini_Section
 {
     OUString sName;
-    NameValueList lList;
+    NameValueVector vVector;
 };
 typedef std::map<OUString,
                 ini_Section
@@ -89,7 +90,7 @@ public:
                     break;
                 if (osl_File_E_None != osl_readLine(handle , (sal_Sequence **) &seq))
                     break;
-                OString line( (const sal_Char *) seq.getConstArray(), seq.getLength() );
+                OString line( (const char *) seq.getConstArray(), seq.getLength() );
                 sal_Int32 nIndex = line.indexOf('=');
                 if (nIndex >= 1)
                 {
@@ -100,7 +101,7 @@ public:
                     nameValue.sValue = OStringToOUString(
                         line.copy(nIndex+1).trim(), RTL_TEXTENCODING_UTF8 );
 
-                    aSection->lList.push_back(nameValue);
+                    aSection->vVector.push_back(nameValue);
 
                 }
                 else
@@ -132,18 +133,13 @@ public:
 #if OSL_DEBUG_LEVEL > 1
     void Dump()
     {
-        IniSectionMap::iterator iBegin = mAllSection.begin();
-        IniSectionMap::iterator iEnd = mAllSection.end();
-        for(;iBegin != iEnd;iBegin++)
+        for(auto& rEntry : mAllSection)
         {
-            ini_Section *aSection = &(*iBegin).second;
-            for(NameValueList::iterator itor=aSection->lList.begin();
-                itor != aSection->lList.end();
-                itor++)
+            ini_Section *aSection = &rEntry.second;
+            for(const auto& rValue : aSection->vVector)
             {
-                    struct ini_NameValue * aValue = &(*itor);
-                    SAL_WARN("connectivity",
-                        " section=" << aSection->sName << " name=" << aValue->sName << " value=" << aValue->sValue );
+                SAL_WARN("connectivity",
+                    " section=" << aSection->sName << " name=" << rValue.sName << " value=" << rValue.sValue );
 
             }
         }

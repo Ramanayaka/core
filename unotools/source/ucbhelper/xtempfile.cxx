@@ -18,23 +18,17 @@
  */
 
 #include "XTempFile.hxx"
-#include <unotoolsservices.hxx>
 #include <com/sun/star/io/BufferSizeExceededException.hpp>
 #include <com/sun/star/io/NotConnectedException.hpp>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/supportsservice.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <cppuhelper/typeprovider.hxx>
-#include <comphelper/servicedecl.hxx>
-#include <osl/file.hxx>
-#include <unotools/configmgr.hxx>
+#include <o3tl/safeint.hxx>
 #include <unotools/tempfile.hxx>
+#include <cppuhelper/propshlp.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
-OTempFileService::OTempFileService(css::uno::Reference< css::uno::XComponentContext > const & context)
-: ::cppu::PropertySetMixin< css::io::XTempFile >(
-    context
-    , static_cast< Implements >( IMPLEMENTS_PROPERTY_SET | IMPLEMENTS_FAST_PROPERTY_SET | IMPLEMENTS_PROPERTY_ACCESS )
-    , css::uno::Sequence< OUString >() )
-, mpStream( nullptr )
+OTempFileService::OTempFileService(css::uno::Reference< css::uno::XComponentContext > const &)
+: mpStream( nullptr )
 , mbRemoveFile( true )
 , mbInClosed( false )
 , mbOutClosed( false )
@@ -48,26 +42,6 @@ OTempFileService::OTempFileService(css::uno::Reference< css::uno::XComponentCont
 
 OTempFileService::~OTempFileService ()
 {
-}
-
-// XInterface
-
-css::uno::Any SAL_CALL OTempFileService::queryInterface( css::uno::Type const & aType )
-{
-    css::uno::Any aResult( OTempFileBase::queryInterface( aType ) );
-    if (!aResult.hasValue())
-        aResult = cppu::PropertySetMixin< css::io::XTempFile >::queryInterface( aType );
-    return aResult;
-};
-void SAL_CALL OTempFileService::acquire(  )
-throw ()
-{
-    OTempFileBase::acquire();
-}
-void SAL_CALL OTempFileService::release(  )
-throw ()
-{
-    OTempFileBase::release();
 }
 
 //  XTypeProvider
@@ -90,7 +64,7 @@ sal_Bool SAL_CALL OTempFileService::getRemoveFile()
     if ( !mpTempFile )
     {
         // the stream is already disconnected
-        throw css::uno::RuntimeException();
+        throw css::uno::RuntimeException("Not connected to a file.");
         }
 
     return mbRemoveFile;
@@ -102,7 +76,7 @@ void SAL_CALL OTempFileService::setRemoveFile( sal_Bool _removefile )
     if ( !mpTempFile )
     {
         // the stream is already disconnected
-        throw css::uno::RuntimeException();
+        throw css::uno::RuntimeException("Not connected to a file.");
     }
 
     mbRemoveFile = _removefile;
@@ -114,7 +88,7 @@ OUString SAL_CALL OTempFileService::getUri()
 
     if ( !mpTempFile )
     {
-        throw css::uno::RuntimeException();
+        throw css::uno::RuntimeException("Not connected to a file.");
     }
 
     return mpTempFile->GetURL();
@@ -126,7 +100,7 @@ OUString SAL_CALL OTempFileService::getResourceName()
 
     if ( !mpTempFile )
     {
-        throw css::uno::RuntimeException();
+        throw css::uno::RuntimeException("Not connected to a file.");
 }
 
     return mpTempFile->GetFileName();
@@ -150,7 +124,7 @@ sal_Int32 SAL_CALL OTempFileService::readBytes( css::uno::Sequence< sal_Int8 >& 
     sal_uInt32 nRead = mpStream->ReadBytes(static_cast<void*>(aData.getArray()), nBytesToRead);
     checkError();
 
-    if (nRead < (std::size_t)aData.getLength())
+    if (nRead < o3tl::make_unsigned(aData.getLength()))
         aData.realloc( nRead );
 
     if ( sal::static_int_cast<sal_uInt32>(nBytesToRead) > nRead )
@@ -179,7 +153,7 @@ sal_Int32 SAL_CALL OTempFileService::readSomeBytes( css::uno::Sequence< sal_Int8
     if (nMaxBytesToRead < 0)
         throw css::io::BufferSizeExceededException( OUString(), static_cast < css::uno::XWeak * >( this ) );
 
-    if (mpStream->IsEof())
+    if (mpStream->eof())
     {
         aData.realloc(0);
         return 0;
@@ -206,11 +180,10 @@ sal_Int32 SAL_CALL OTempFileService::available(  )
 
     checkConnected();
 
-    sal_uInt32 const nAvailable =
-        static_cast<sal_uInt32>(mpStream->remainingSize());
+    sal_Int64 nAvailable = mpStream->remainingSize();
     checkError();
 
-    return nAvailable;
+    return std::min<sal_Int64>(SAL_MAX_INT32, nAvailable);
 }
 void SAL_CALL OTempFileService::closeInput(  )
 {
@@ -224,9 +197,7 @@ void SAL_CALL OTempFileService::closeInput(  )
     {
         // stream will be deleted by TempFile implementation
         mpStream = nullptr;
-
-        if ( mpTempFile )
-            mpTempFile.reset(nullptr);
+        mpTempFile.reset();
     }
 }
 
@@ -241,7 +212,7 @@ void SAL_CALL OTempFileService::writeBytes( const css::uno::Sequence< sal_Int8 >
     checkConnected();
     sal_uInt32 nWritten = mpStream->WriteBytes(aData.getConstArray(), aData.getLength());
     checkError();
-    if  ( nWritten != (sal_uInt32)aData.getLength())
+    if  ( nWritten != static_cast<sal_uInt32>(aData.getLength()))
         throw css::io::BufferSizeExceededException( OUString(),static_cast < css::uno::XWeak * > ( this ) );
 }
 void SAL_CALL OTempFileService::flush(  )
@@ -277,9 +248,7 @@ void SAL_CALL OTempFileService::closeOutput(  )
     {
         // stream will be deleted by TempFile implementation
         mpStream = nullptr;
-
-        if ( mpTempFile )
-            mpTempFile.reset(nullptr);
+        mpTempFile.reset();
     }
 }
 
@@ -322,7 +291,7 @@ void SAL_CALL OTempFileService::seek( sal_Int64 nLocation )
     if ( nLocation < 0 || nLocation > getLength() )
         throw css::lang::IllegalArgumentException();
 
-    mpStream->Seek((sal_uInt32) nLocation );
+    mpStream->Seek(static_cast<sal_uInt32>(nLocation) );
     checkError();
 }
 sal_Int64 SAL_CALL OTempFileService::getPosition(  )
@@ -332,23 +301,18 @@ sal_Int64 SAL_CALL OTempFileService::getPosition(  )
 
     sal_uInt32 nPos = mpStream->Tell();
     checkError();
-    return (sal_Int64)nPos;
+    return static_cast<sal_Int64>(nPos);
 }
 sal_Int64 SAL_CALL OTempFileService::getLength(  )
 {
     ::osl::MutexGuard aGuard( maMutex );
     checkConnected();
 
-    sal_uInt32 nCurrentPos = mpStream->Tell();
     checkError();
 
-    mpStream->Seek(STREAM_SEEK_TO_END);
-    sal_uInt32 nEndPos = mpStream->Tell();
-    mpStream->Seek(nCurrentPos);
+    sal_Int64 nEndPos = mpStream->TellEnd();
 
-    checkError();
-
-    return (sal_Int64)nEndPos;
+    return nEndPos;
 }
 
 // XStream
@@ -375,11 +339,125 @@ void SAL_CALL OTempFileService::truncate()
     checkError();
 }
 
-namespace sdecl = ::comphelper::service_decl;
-sdecl::class_< OTempFileService> const OTempFileServiceImpl;
-const sdecl::ServiceDecl OTempFileServiceDecl(
-    OTempFileServiceImpl,
-    "com.sun.star.io.comp.TempFile",
-    "com.sun.star.io.TempFile");
+#define PROPERTY_HANDLE_URI 1
+#define PROPERTY_HANDLE_REMOVE_FILE 2
+#define PROPERTY_HANDLE_RESOURCE_NAME 3
+
+// XPropertySet
+::css::uno::Reference< ::css::beans::XPropertySetInfo > OTempFileService::getPropertySetInfo()
+{
+    // Create a table that map names to index values.
+    // attention: properties need to be sorted by name!
+    static cppu::OPropertyArrayHelper ourPropertyInfo(
+        {
+            css::beans::Property( "Uri", PROPERTY_HANDLE_URI, cppu::UnoType<OUString>::get(),
+                css::beans::PropertyAttribute::READONLY ),
+            css::beans::Property( "RemoveFile", PROPERTY_HANDLE_REMOVE_FILE, cppu::UnoType<bool>::get(),
+                0 ),
+            css::beans::Property( "ResourceName", PROPERTY_HANDLE_RESOURCE_NAME, cppu::UnoType<OUString>::get(),
+                css::beans::PropertyAttribute::READONLY )
+        },
+        true );
+    static css::uno::Reference< css::beans::XPropertySetInfo > xInfo( 
+        ::cppu::OPropertySetHelper::createPropertySetInfo( ourPropertyInfo ) );
+    return xInfo;
+}
+void OTempFileService::setPropertyValue( const ::rtl::OUString& aPropertyName, const ::css::uno::Any& aValue )
+{
+    if ( aPropertyName == "RemoveFile" )
+        setRemoveFile( aValue.get<bool>() );
+    else
+    {
+        assert(false);
+        throw css::beans::UnknownPropertyException(aPropertyName);
+    }
+}
+::css::uno::Any OTempFileService::getPropertyValue( const ::rtl::OUString& aPropertyName )
+{
+    if ( aPropertyName == "RemoveFile" )
+        return css::uno::Any(getRemoveFile());
+    else if ( aPropertyName == "ResourceName" )
+        return css::uno::Any(getResourceName());
+    else if ( aPropertyName == "Uri" )
+        return css::uno::Any(getUri());
+    else
+    {
+        assert(false);
+        throw css::beans::UnknownPropertyException(aPropertyName);
+    }
+}
+void OTempFileService::addPropertyChangeListener( const ::rtl::OUString& /*aPropertyName*/, const ::css::uno::Reference< ::css::beans::XPropertyChangeListener >& /*xListener*/ )
+{
+    assert(false);
+}
+void OTempFileService::removePropertyChangeListener( const ::rtl::OUString& /*aPropertyName*/, const ::css::uno::Reference< ::css::beans::XPropertyChangeListener >& /*xListener*/ )
+{
+    assert(false);
+}
+void OTempFileService::addVetoableChangeListener( const ::rtl::OUString& /*aPropertyName*/, const ::css::uno::Reference< ::css::beans::XVetoableChangeListener >& /*xListener*/ )
+{
+    assert(false);
+}
+void OTempFileService::removeVetoableChangeListener( const ::rtl::OUString& /*aPropertyName*/, const ::css::uno::Reference< ::css::beans::XVetoableChangeListener >& /*xListener*/ )
+{
+    assert(false);
+}
+// XFastPropertySet
+void OTempFileService::setFastPropertyValue( ::sal_Int32 nHandle, const ::css::uno::Any& aValue )
+{
+    switch (nHandle)
+    {
+        case PROPERTY_HANDLE_REMOVE_FILE: setRemoveFile( aValue.get<bool>() ); return;
+    }
+    assert(false);
+    throw css::beans::UnknownPropertyException(OUString::number(nHandle));
+}
+::css::uno::Any OTempFileService::getFastPropertyValue( ::sal_Int32 nHandle )
+{
+    switch (nHandle)
+    {
+        case PROPERTY_HANDLE_REMOVE_FILE: return css::uno::Any(getRemoveFile());
+        case PROPERTY_HANDLE_RESOURCE_NAME: return css::uno::Any(getResourceName());
+        case PROPERTY_HANDLE_URI: return css::uno::Any(getUri());
+    }
+    assert(false);
+    throw css::beans::UnknownPropertyException(OUString::number(nHandle));
+}
+// XPropertyAccess
+::css::uno::Sequence< ::css::beans::PropertyValue > OTempFileService::getPropertyValues()
+{
+    return {
+        css::beans::PropertyValue("Uri", PROPERTY_HANDLE_URI, css::uno::Any(getUri()), css::beans::PropertyState_DEFAULT_VALUE),
+        css::beans::PropertyValue("RemoveFile", PROPERTY_HANDLE_REMOVE_FILE, css::uno::Any(getRemoveFile()), css::beans::PropertyState_DEFAULT_VALUE),
+        css::beans::PropertyValue("ResourceName", PROPERTY_HANDLE_RESOURCE_NAME, css::uno::Any(getResourceName()), css::beans::PropertyState_DEFAULT_VALUE)
+    };
+}
+void OTempFileService::setPropertyValues( const ::css::uno::Sequence< ::css::beans::PropertyValue >& aProps )
+{
+    for ( auto const & rPropVal : aProps )
+        setPropertyValue( rPropVal.Name, rPropVal.Value );
+}
+
+//  XServiceInfo
+sal_Bool OTempFileService::supportsService(const OUString& sServiceName)
+{
+    return cppu::supportsService(this, sServiceName);
+}
+OUString OTempFileService::getImplementationName()
+{
+    return "com.sun.star.io.comp.TempFile";
+}
+css::uno::Sequence< OUString > OTempFileService::getSupportedServiceNames()
+{
+    return { "com.sun.star.io.TempFile" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+unotools_OTempFileService_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new OTempFileService(context));
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

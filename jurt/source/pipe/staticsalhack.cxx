@@ -8,7 +8,6 @@
  */
 
 #define DISABLE_DYNLOADING
-#define FORCE_SYSALLOC
 #define NO_CHILD_PROCESSES
 #undef SAL_LOG_INFO
 #undef SAL_LOG_WARN
@@ -37,6 +36,7 @@
 #include <sal/osl/unx/profile.cxx>
 #include <sal/osl/unx/readwrite_helper.cxx>
 #include <sal/osl/unx/security.cxx>
+#include <sal/osl/unx/socket.cxx>
 #include <sal/osl/unx/thread.cxx>
 #include <sal/osl/unx/uunxapi.cxx>
 #include <sal/rtl/alloc_arena.cxx>
@@ -74,6 +74,11 @@ extern "C" ImplTextEncodingData const * sal_getFullTextEncodingData(
     rtl_TextEncoding)
 {
     std::abort();
+}
+
+#pragma clang diagnostic ignored "-Weverything"
+extern "C" {
+#include <src/dtoa.c> // workdir/UnpackedTarball/dtoa/src/dtoa.c
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

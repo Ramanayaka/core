@@ -6,6 +6,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
+#ifndef LO_CLANG_SHARED_PLUGINS
 
 #include <algorithm>
 #include <functional>
@@ -43,13 +44,18 @@ bool isDtorOrDealloc(FunctionDecl const * decl) {
 }
 
 class DynExcSpec:
-    public RecursiveASTVisitor<DynExcSpec>, public loplugin::RewritePlugin
+    public loplugin::FilteringRewritePlugin<DynExcSpec>
 {
 public:
-    explicit DynExcSpec(InstantiationData const & data): RewritePlugin(data) {}
+    explicit DynExcSpec(loplugin::InstantiationData const & data):
+        FilteringRewritePlugin(data) {}
+
+    bool preRun() override {
+        return compiler.getLangOpts().CPlusPlus;
+    }
 
     void run() override {
-        if (compiler.getLangOpts().CPlusPlus) {
+        if (preRun()) {
             TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
         }
     }
@@ -89,10 +95,7 @@ public:
             }
         }
         bool dtorOrDealloc = isDtorOrDealloc(decl);
-        SourceRange source;
-#if CLANG_VERSION >= 40000
-        source = decl->getExceptionSpecSourceRange();
-#endif
+        auto const source = decl->getExceptionSpecSourceRange();
         if (rewriter != nullptr && source.isValid()) {
             if (dtorOrDealloc) {
                 if (replaceText(source, "noexcept(false)")) {
@@ -174,8 +177,10 @@ private:
     }
 };
 
-loplugin::Plugin::Registration<DynExcSpec> X("dynexcspec", true);
+loplugin::Plugin::Registration<DynExcSpec> dynexcspec("dynexcspec");
 
-}
+} // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

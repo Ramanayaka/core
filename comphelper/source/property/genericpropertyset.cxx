@@ -28,9 +28,9 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/propertysethelper.hxx>
 #include <osl/mutex.hxx>
+#include <rtl/ref.hxx>
 #include <comphelper/genericpropertyset.hxx>
 #include <comphelper/propertysetinfo.hxx>
-#include <comphelper/servicehelper.hxx>
 
 using namespace ::osl;
 using namespace ::cppu;
@@ -42,6 +42,8 @@ using namespace ::com::sun::star::lang;
 
 namespace comphelper
 {
+    namespace {
+
     struct IMPL_GenericPropertySet_MutexContainer
     {
         Mutex maMutex;
@@ -84,6 +86,7 @@ namespace comphelper
         virtual void SAL_CALL removePropertyChangeListener( const OUString& aPropertyName, const css::uno::Reference< css::beans::XPropertyChangeListener >& aListener ) override;
     };
 
+    }
 }
 
 
@@ -96,47 +99,47 @@ GenericPropertySet::GenericPropertySet( PropertySetInfo* pInfo ) throw()
 void SAL_CALL GenericPropertySet::addPropertyChangeListener( const OUString& aPropertyName, const Reference< XPropertyChangeListener >& xListener )
 {
     Reference < XPropertySetInfo > xInfo = getPropertySetInfo(  );
-    if ( xInfo.is() )
+    if ( !xInfo.is() )
+        return;
+
+    if ( aPropertyName.isEmpty() )
     {
-        if ( aPropertyName.isEmpty() )
+        Sequence< Property> aSeq = xInfo->getProperties();
+        const Property* pIter = aSeq.getConstArray();
+        const Property* pEnd  = pIter + aSeq.getLength();
+        for( ; pIter != pEnd ; ++pIter)
         {
-            Sequence< Property> aSeq = xInfo->getProperties();
-            const Property* pIter = aSeq.getConstArray();
-            const Property* pEnd  = pIter + aSeq.getLength();
-            for( ; pIter != pEnd ; ++pIter)
-            {
-                m_aListener.addInterface(pIter->Name,xListener);
-            }
+            m_aListener.addInterface(pIter->Name,xListener);
         }
-        else if ( xInfo->hasPropertyByName(aPropertyName) )
-            m_aListener.addInterface(aPropertyName,xListener);
-        else
-            throw UnknownPropertyException( aPropertyName, *this );
     }
+    else if ( xInfo->hasPropertyByName(aPropertyName) )
+        m_aListener.addInterface(aPropertyName,xListener);
+    else
+        throw UnknownPropertyException( aPropertyName, *this );
 }
 
 void SAL_CALL GenericPropertySet::removePropertyChangeListener( const OUString& aPropertyName, const Reference< XPropertyChangeListener >& xListener )
 {
-    ResettableMutexGuard aGuard( maMutex );
+    ClearableMutexGuard aGuard( maMutex );
     Reference < XPropertySetInfo > xInfo = getPropertySetInfo(  );
     aGuard.clear();
-    if ( xInfo.is() )
+    if ( !xInfo.is() )
+        return;
+
+    if ( aPropertyName.isEmpty() )
     {
-        if ( aPropertyName.isEmpty() )
+        Sequence< Property> aSeq = xInfo->getProperties();
+        const Property* pIter = aSeq.getConstArray();
+        const Property* pEnd  = pIter + aSeq.getLength();
+        for( ; pIter != pEnd ; ++pIter)
         {
-            Sequence< Property> aSeq = xInfo->getProperties();
-            const Property* pIter = aSeq.getConstArray();
-            const Property* pEnd  = pIter + aSeq.getLength();
-            for( ; pIter != pEnd ; ++pIter)
-            {
-                m_aListener.removeInterface(pIter->Name,xListener);
-            }
+            m_aListener.removeInterface(pIter->Name,xListener);
         }
-        else if ( xInfo->hasPropertyByName(aPropertyName) )
-            m_aListener.removeInterface(aPropertyName,xListener);
-        else
-            throw UnknownPropertyException( aPropertyName, *this );
     }
+    else if ( xInfo->hasPropertyByName(aPropertyName) )
+        m_aListener.removeInterface(aPropertyName,xListener);
+    else
+        throw UnknownPropertyException( aPropertyName, *this );
 }
 
 void GenericPropertySet::_setPropertyValues( const PropertyMapEntry** ppEntries, const Any* pValues )
@@ -214,16 +217,12 @@ void SAL_CALL GenericPropertySet::release() throw()
 
 uno::Sequence< uno::Type > SAL_CALL GenericPropertySet::getTypes()
 {
-    uno::Sequence< uno::Type > aTypes( 5 );
-    uno::Type* pTypes = aTypes.getArray();
-
-    *pTypes++ = cppu::UnoType<XAggregation>::get();
-    *pTypes++ = cppu::UnoType<XServiceInfo>::get();
-    *pTypes++ = cppu::UnoType<XTypeProvider>::get();
-    *pTypes++ = cppu::UnoType<XPropertySet>::get();
-    *pTypes++ = cppu::UnoType<XMultiPropertySet>::get();
-
-    return aTypes;
+    return uno::Sequence {
+        cppu::UnoType<XAggregation>::get(),
+        cppu::UnoType<XServiceInfo>::get(),
+        cppu::UnoType<XTypeProvider>::get(),
+        cppu::UnoType<XPropertySet>::get(),
+        cppu::UnoType<XMultiPropertySet>::get() };
 }
 
 uno::Sequence< sal_Int8 > SAL_CALL GenericPropertySet::getImplementationId()
@@ -239,13 +238,12 @@ sal_Bool SAL_CALL GenericPropertySet::supportsService( const  OUString& ServiceN
 
 OUString SAL_CALL GenericPropertySet::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.comphelper.GenericPropertySet" );
+    return "com.sun.star.comp.comphelper.GenericPropertySet";
 }
 
 Sequence< OUString > SAL_CALL GenericPropertySet::getSupportedServiceNames(  )
 {
-    Sequence<OUString> aSNS { "com.sun.star.beans.XPropertySet" };
-    return aSNS;
+    return { "com.sun.star.beans.XPropertySet" };
 }
 
 css::uno::Reference< css::beans::XPropertySet > comphelper::GenericPropertySet_CreateInstance( comphelper::PropertySetInfo* pInfo )

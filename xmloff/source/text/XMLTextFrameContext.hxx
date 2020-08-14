@@ -24,11 +24,11 @@
 
 #include <com/sun/star/text/TextContentAnchorType.hpp>
 #include <xmloff/xmlictxt.hxx>
-#include "xmlmultiimagehelper.hxx"
+#include <xmlmultiimagehelper.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace text { class XTextCursor; class XTextContent; }
-} } }
+}
 
 class XMLTextFrameContextHyperlink_Impl;
 
@@ -59,8 +59,9 @@ class XMLTextFrameContext : public SvXMLImportContext, public MultiImageImportHe
 
 protected:
     /// helper to get the created xShape instance, needs to be overridden
-    virtual OUString getGraphicURLFromImportContext(const SvXMLImportContext& rContext) const override;
-    virtual void removeGraphicFromImportContext(const SvXMLImportContext& rContext) override;
+    void removeGraphicFromImportContext(const SvXMLImportContext& rContext) override;
+    OUString getGraphicPackageURLFromImportContext(const SvXMLImportContext& rContext) const override;
+    css::uno::Reference<css::graphic::XGraphic> getGraphicFromImportContext(const SvXMLImportContext& rContext) const override;
 
 public:
 
@@ -74,7 +75,7 @@ public:
 
     virtual void EndElement() override;
 
-    SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                 const OUString& rLocalName,
                 const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 

@@ -27,12 +27,13 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnon-virtual-dtor"
 #endif
-#include  "UAccCOM.h"
+#include  <UAccCOM.h>
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
 
 #include <vcl/svapp.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include "MAccessible.h"
@@ -49,7 +50,7 @@ using namespace com::sun::star::uno;
   * @param    accessible the accessible object of the cell.
   */
 
-STDMETHODIMP CAccTable::get_accessibleAt(long row, long column, IUnknown * * accessible)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_accessibleAt(long row, long column, IUnknown * * accessible)
 {
     SolarMutexGuard g;
 
@@ -72,7 +73,7 @@ STDMETHODIMP CAccTable::get_accessibleAt(long row, long column, IUnknown * * acc
 
     IAccessible* pRet = nullptr;
 
-    BOOL isTRUE = CMAccessible::get_IAccessibleFromXAccessible(pRAcc.get(), &pRet);
+    bool isTRUE = CMAccessible::get_IAccessibleFromXAccessible(pRAcc.get(), &pRet);
     if(isTRUE)
     {
         *accessible = static_cast<IAccessible2 *>(pRet);
@@ -103,7 +104,7 @@ STDMETHODIMP CAccTable::get_accessibleAt(long row, long column, IUnknown * * acc
   *
   * @param    accessible    the accessible object of table caption.
   */
-STDMETHODIMP CAccTable::get_caption(IUnknown * *)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_caption(IUnknown * *)
 {
     return E_NOTIMPL;
 }
@@ -114,7 +115,7 @@ STDMETHODIMP CAccTable::get_caption(IUnknown * *)
   * @param    column        the column index.
   * @param    description   the description of the specified column.
   */
-STDMETHODIMP CAccTable::get_columnDescription(long column, BSTR * description)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_columnDescription(long column, BSTR * description)
 {
     SolarMutexGuard g;
 
@@ -128,12 +129,12 @@ STDMETHODIMP CAccTable::get_columnDescription(long column, BSTR * description)
     if(!pRXTable.is())
         return E_FAIL;
 
-    const ::rtl::OUString& ouStr = GetXInterface()->getAccessibleColumnDescription(column);
+    const OUString& ouStr = GetXInterface()->getAccessibleColumnDescription(column);
     // #CHECK#
 
-    SAFE_SYSFREESTRING(*description);//??
-    *description = SysAllocString(reinterpret_cast<wchar_t const *>(ouStr.getStr()));
-    if(description==nullptr)
+    SAFE_SYSFREESTRING(*description);
+    *description = SysAllocString(o3tl::toW(ouStr.getStr()));
+    if (*description==nullptr)
         return E_FAIL;
     return S_OK;
 
@@ -147,7 +148,7 @@ STDMETHODIMP CAccTable::get_columnDescription(long column, BSTR * description)
   * @param    column         the column of the specified cell.
   * @param    spanColumns    the column span of the specified cell.
   */
-STDMETHODIMP CAccTable::get_columnExtentAt(long row, long column, long * nColumnsSpanned)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_columnExtentAt(long row, long column, long * nColumnsSpanned)
 {
     SolarMutexGuard g;
 
@@ -180,7 +181,7 @@ STDMETHODIMP CAccTable::get_columnExtentAt(long row, long column, long * nColumn
   * @param    column        the column index.
   * @param    accessible    the accessible object of the specified column.
   */
-STDMETHODIMP CAccTable::get_columnHeader(IAccessibleTable __RPC_FAR *__RPC_FAR *accessibleTable, long *startingRowIndex)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_columnHeader(IAccessibleTable __RPC_FAR *__RPC_FAR *accessibleTable, long *startingRowIndex)
 {
     SolarMutexGuard g;
 
@@ -230,7 +231,7 @@ STDMETHODIMP CAccTable::get_columnHeader(IAccessibleTable __RPC_FAR *__RPC_FAR *
   *
   * @param    columnCount    the number of columns in table.
   */
-STDMETHODIMP CAccTable::get_nColumns(long * columnCount)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_nColumns(long * columnCount)
 {
     SolarMutexGuard g;
 
@@ -255,7 +256,7 @@ STDMETHODIMP CAccTable::get_nColumns(long * columnCount)
   *
   * @param    rowCount    the number of rows in table.
   */
-STDMETHODIMP CAccTable::get_nRows(long * rowCount)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_nRows(long * rowCount)
 {
     SolarMutexGuard g;
 
@@ -280,7 +281,7 @@ STDMETHODIMP CAccTable::get_nRows(long * rowCount)
   *
   * @param    columnCount    the number of selected columns.
   */
-STDMETHODIMP CAccTable::get_nSelectedColumns(long * columnCount)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_nSelectedColumns(long * columnCount)
 {
     SolarMutexGuard g;
 
@@ -306,7 +307,7 @@ STDMETHODIMP CAccTable::get_nSelectedColumns(long * columnCount)
   *
   * @param    rowCount    the number of selected rows.
   */
-STDMETHODIMP CAccTable::get_nSelectedRows(long * rowCount)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_nSelectedRows(long * rowCount)
 {
     SolarMutexGuard g;
 
@@ -333,7 +334,7 @@ STDMETHODIMP CAccTable::get_nSelectedRows(long * rowCount)
   * @param    row            the row index.
   * @param    description    the description of the specified row.
   */
-STDMETHODIMP CAccTable::get_rowDescription(long row, BSTR * description)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_rowDescription(long row, BSTR * description)
 {
     SolarMutexGuard g;
 
@@ -347,14 +348,13 @@ STDMETHODIMP CAccTable::get_rowDescription(long row, BSTR * description)
     if(!pRXTable.is())
         return E_FAIL;
 
-    const ::rtl::OUString& ouStr = GetXInterface()->getAccessibleRowDescription(row);
+    const OUString& ouStr = GetXInterface()->getAccessibleRowDescription(row);
     // #CHECK#
 
     SAFE_SYSFREESTRING(*description);
-    *description = SysAllocString(reinterpret_cast<wchar_t const *>(ouStr.getStr()));
-    if(description==nullptr)
+    *description = SysAllocString(o3tl::toW(ouStr.getStr()));
+    if (*description==nullptr)
         return E_FAIL;
-
     return S_OK;
 
     LEAVE_PROTECTED_BLOCK
@@ -367,7 +367,7 @@ STDMETHODIMP CAccTable::get_rowDescription(long row, BSTR * description)
   * @param    column         the column of the specified cell.
   * @param    spanRows       the row span of the specified cell.
   */
-STDMETHODIMP CAccTable::get_rowExtentAt(long row, long column, long * nRowsSpanned)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_rowExtentAt(long row, long column, long * nRowsSpanned)
 {
     SolarMutexGuard g;
 
@@ -401,7 +401,7 @@ STDMETHODIMP CAccTable::get_rowExtentAt(long row, long column, long * nRowsSpann
   * @param    row        the row index.
   * @param    accessible the accessible object of the row header.
   */
-STDMETHODIMP CAccTable::get_rowHeader(IAccessibleTable __RPC_FAR *__RPC_FAR *accessibleTable, long *startingColumnIndex)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_rowHeader(IAccessibleTable __RPC_FAR *__RPC_FAR *accessibleTable, long *startingColumnIndex)
 {
     SolarMutexGuard g;
 
@@ -453,7 +453,7 @@ STDMETHODIMP CAccTable::get_rowHeader(IAccessibleTable __RPC_FAR *__RPC_FAR *acc
   * @param    accessible     the accessible object array of the selected rows.
   * @param    nRows          the actual size of the accessible object array.
   */
-STDMETHODIMP CAccTable::get_selectedRows(long, long ** rows, long * nRows)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_selectedRows(long, long ** rows, long * nRows)
 {
     SolarMutexGuard g;
 
@@ -471,7 +471,7 @@ STDMETHODIMP CAccTable::get_selectedRows(long, long ** rows, long * nRows)
     long count = pSelected.getLength() ;
     *nRows = count;
 
-    *rows = static_cast<long*>(CoTaskMemAlloc((count) * sizeof(long)));
+    *rows = static_cast<long*>(CoTaskMemAlloc(count * sizeof(long)));
     // #CHECK Memory Allocation#
     if(*rows == nullptr)
     {
@@ -492,7 +492,7 @@ STDMETHODIMP CAccTable::get_selectedRows(long, long ** rows, long * nRows)
   * @param    accessible    the accessible object array of the selected columns.
   * @param    numColumns    the actual size of accessible object array.
   */
-STDMETHODIMP CAccTable::get_selectedColumns(long, long ** columns, long * numColumns)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_selectedColumns(long, long ** columns, long * numColumns)
 {
     SolarMutexGuard g;
 
@@ -510,7 +510,7 @@ STDMETHODIMP CAccTable::get_selectedColumns(long, long ** columns, long * numCol
     long count = pSelected.getLength() ;
     *numColumns = count;
 
-    *columns = static_cast<long*>(CoTaskMemAlloc((count) * sizeof(long)));
+    *columns = static_cast<long*>(CoTaskMemAlloc(count * sizeof(long)));
     // #CHECK Memory Allocation#
     if(*columns == nullptr)
     {
@@ -529,7 +529,7 @@ STDMETHODIMP CAccTable::get_selectedColumns(long, long ** columns, long * numCol
   *
   * @param    accessible   the accessible object of the summary.
   */
-STDMETHODIMP CAccTable::get_summary(IUnknown * * accessible)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_summary(IUnknown * * accessible)
 {
     SolarMutexGuard g;
 
@@ -567,7 +567,7 @@ STDMETHODIMP CAccTable::get_summary(IUnknown * * accessible)
   * @param    column        the column index.
   * @param    isSelected    the result.
   */
-STDMETHODIMP CAccTable::get_isColumnSelected(long column, unsigned char * isSelected)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_isColumnSelected(long column, boolean * isSelected)
 {
     SolarMutexGuard g;
 
@@ -593,7 +593,7 @@ STDMETHODIMP CAccTable::get_isColumnSelected(long column, unsigned char * isSele
   * @param    row           the row index.
   * @param    isSelected    the result.
   */
-STDMETHODIMP CAccTable::get_isRowSelected(long row, unsigned char * isSelected)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_isRowSelected(long row, boolean * isSelected)
 {
     SolarMutexGuard g;
 
@@ -621,7 +621,7 @@ STDMETHODIMP CAccTable::get_isRowSelected(long row, unsigned char * isSelected)
   * @param    column         the column index.
   * @param    isSelected     the result.
   */
-STDMETHODIMP CAccTable::get_isSelected(long row, long column, unsigned char * isSelected)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_isSelected(long row, long column, boolean * isSelected)
 {
     SolarMutexGuard g;
 
@@ -647,7 +647,7 @@ STDMETHODIMP CAccTable::get_isSelected(long row, long column, unsigned char * is
   * @param    row        the row index.
   * @param    success    the result.
   */
-STDMETHODIMP CAccTable::selectRow(long row)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::selectRow(long row)
 {
     SolarMutexGuard g;
 
@@ -660,7 +660,7 @@ STDMETHODIMP CAccTable::selectRow(long row)
     Reference<XAccessibleTableSelection>        pRTableExtent(pRXTable, UNO_QUERY);
     if(pRTableExtent.is())
     {
-        pRTableExtent.get()->selectRow(row);
+        pRTableExtent->selectRow(row);
         return S_OK;
     }
     else
@@ -676,7 +676,7 @@ STDMETHODIMP CAccTable::selectRow(long row)
         for(lCol = 0; lCol < lColumnCount; lCol ++)
         {
             long lChildIndex = GetXInterface()->getAccessibleIndex(row, lCol);
-            pRSelection.get()->selectAccessibleChild(lChildIndex);
+            pRSelection->selectAccessibleChild(lChildIndex);
         }
 
         return S_OK;
@@ -691,7 +691,7 @@ STDMETHODIMP CAccTable::selectRow(long row)
   * @param    column    the column index.
   * @param    success   the result.
   */
-STDMETHODIMP CAccTable::selectColumn(long column)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::selectColumn(long column)
 {
     SolarMutexGuard g;
 
@@ -704,7 +704,7 @@ STDMETHODIMP CAccTable::selectColumn(long column)
     Reference<XAccessibleTableSelection>        pRTableExtent(GetXInterface(), UNO_QUERY);
     if(pRTableExtent.is())
     {
-        pRTableExtent.get()->selectColumn(column);
+        pRTableExtent->selectColumn(column);
         return S_OK;
     }
     else
@@ -720,7 +720,7 @@ STDMETHODIMP CAccTable::selectColumn(long column)
         for(lRow = 0; lRow < lRowCount; lRow ++)
         {
             long lChildIndex = GetXInterface()->getAccessibleIndex(lRow, column);
-            pRSelection.get()->selectAccessibleChild(lChildIndex);
+            pRSelection->selectAccessibleChild(lChildIndex);
         }
 
         return S_OK;
@@ -736,7 +736,7 @@ STDMETHODIMP CAccTable::selectColumn(long column)
   * @param    row        the row index.
   * @param    success    the result.
   */
-STDMETHODIMP CAccTable::unselectRow(long row)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::unselectRow(long row)
 {
     SolarMutexGuard g;
 
@@ -749,7 +749,7 @@ STDMETHODIMP CAccTable::unselectRow(long row)
     Reference<XAccessibleTableSelection>        pRTableExtent(GetXInterface(), UNO_QUERY);
     if(pRTableExtent.is())
     {
-        if(pRTableExtent.get()->unselectRow(row))
+        if(pRTableExtent->unselectRow(row))
             return S_OK;
         else
             return E_FAIL;
@@ -767,7 +767,7 @@ STDMETHODIMP CAccTable::unselectRow(long row)
         for(lColumn = 0; lColumn < lColumnCount; lColumn ++)
         {
             long lChildIndex = GetXInterface()->getAccessibleIndex(row,lColumn);
-            pRSelection.get()->deselectAccessibleChild(lChildIndex);
+            pRSelection->deselectAccessibleChild(lChildIndex);
         }
 
         return S_OK;
@@ -783,7 +783,7 @@ STDMETHODIMP CAccTable::unselectRow(long row)
   * @param    column    the column index.
   * @param    success   the result.
   */
-STDMETHODIMP CAccTable::unselectColumn(long column)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::unselectColumn(long column)
 {
     SolarMutexGuard g;
 
@@ -796,7 +796,7 @@ STDMETHODIMP CAccTable::unselectColumn(long column)
     Reference<XAccessibleTableSelection>        pRTableExtent(GetXInterface(), UNO_QUERY);
     if(pRTableExtent.is())
     {
-        if(pRTableExtent.get()->unselectColumn(column))
+        if(pRTableExtent->unselectColumn(column))
             return S_OK;
         else
             return E_FAIL;
@@ -815,7 +815,7 @@ STDMETHODIMP CAccTable::unselectColumn(long column)
         for(lRow = 0; lRow < lRowCount; lRow ++)
         {
             long lChildIndex = GetXInterface()->getAccessibleIndex(lRow, column);
-            pRSelection.get()->deselectAccessibleChild(lChildIndex);
+            pRSelection->deselectAccessibleChild(lChildIndex);
         }
         return S_OK;
     }
@@ -828,7 +828,7 @@ STDMETHODIMP CAccTable::unselectColumn(long column)
  *
  * @param    pXInterface    the pointer of UNO interface.
  */
-STDMETHODIMP CAccTable::put_XInterface(hyper pXInterface)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::put_XInterface(hyper pXInterface)
 {
     // internal IUNOXWrapper - no mutex meeded
 
@@ -858,7 +858,7 @@ STDMETHODIMP CAccTable::put_XInterface(hyper pXInterface)
   *
   * @param    childIndex    childIndex
   */
-STDMETHODIMP CAccTable::get_columnIndex(long childIndex, long * columnIndex)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_columnIndex(long childIndex, long * columnIndex)
 {
     SolarMutexGuard g;
 
@@ -882,7 +882,7 @@ STDMETHODIMP CAccTable::get_columnIndex(long childIndex, long * columnIndex)
   *
   * @param    childIndex    childIndex
   */
-STDMETHODIMP CAccTable::get_rowIndex(long childIndex, long * rowIndex)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_rowIndex(long childIndex, long * rowIndex)
 {
     SolarMutexGuard g;
 
@@ -906,7 +906,7 @@ STDMETHODIMP CAccTable::get_rowIndex(long childIndex, long * rowIndex)
   *
   * @param    childIndex    childIndex
   */
-STDMETHODIMP CAccTable::get_childIndex(long RowIndex , long columnIndex, long * childIndex )
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_childIndex(long RowIndex , long columnIndex, long * childIndex )
 {
     SolarMutexGuard g;
 
@@ -926,7 +926,7 @@ STDMETHODIMP CAccTable::get_childIndex(long RowIndex , long columnIndex, long * 
     LEAVE_PROTECTED_BLOCK
 }
 
-STDMETHODIMP CAccTable::get_rowColumnExtentsAtIndex(long,
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_rowColumnExtentsAtIndex(long,
         long  *,
         long  *,
         long  *,
@@ -936,7 +936,7 @@ STDMETHODIMP CAccTable::get_rowColumnExtentsAtIndex(long,
     return E_NOTIMPL;
 }
 
-STDMETHODIMP CAccTable::get_modelChange(IA2TableModelChange  *)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_modelChange(IA2TableModelChange  *)
 {
     return E_NOTIMPL;
 }
@@ -944,7 +944,7 @@ STDMETHODIMP CAccTable::get_modelChange(IA2TableModelChange  *)
 // @brief Returns the total number of selected children
 //   @param [out] childCount
 //    Number of children currently selected
-STDMETHODIMP CAccTable::get_nSelectedChildren(long *childCount)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_nSelectedChildren(long *childCount)
 {
     SolarMutexGuard g;
 
@@ -975,7 +975,7 @@ STDMETHODIMP CAccTable::get_nSelectedChildren(long *childCount)
 //    array of indexes of selected children (each index is 0-based)
 //   @param [out] nChildren
 //    Length of array (not more than maxChildren)
-STDMETHODIMP CAccTable::get_selectedChildren(long, long **children, long *nChildren)
+COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_selectedChildren(long, long **children, long *nChildren)
 {
     SolarMutexGuard g;
 
@@ -997,7 +997,7 @@ STDMETHODIMP CAccTable::get_selectedChildren(long, long **children, long *nChild
 
     *nChildren = childCount;
 
-    *children = static_cast<long*>(CoTaskMemAlloc((childCount) * sizeof(long)));
+    *children = static_cast<long*>(CoTaskMemAlloc(childCount * sizeof(long)));
 
     for( long i = 0; i< childCount; i++)
     {

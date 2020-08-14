@@ -10,11 +10,10 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MDATABASEMETADATAHELPER_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MDATABASEMETADATAHELPER_HXX
 
-#include "FDatabaseMetaDataResultSet.hxx"
+#include <FDatabaseMetaDataResultSet.hxx>
+#include "MConnection.hxx"
 
-namespace connectivity
-{
-    namespace mork
+namespace connectivity::mork
     {
         class MDatabaseMetaDataHelper
         {
@@ -23,14 +22,14 @@ namespace connectivity
             ~MDatabaseMetaDataHelper();
 
 
-            static bool getTableStrings( OConnection*                        _pCon,
+            static void getTableStrings( OConnection*                        _pCon,
                                          std::vector< OUString >&   _rStrings);
 
-            static bool getTables( OConnection* _pCon,
+            static void getTables( OConnection* _pCon,
                                 const OUString& tableNamePattern,
                                 ODatabaseMetaDataResultSet::ORows& _rRows);
         };
-    }
+
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MDATABASEMETADATAHELPER_HXX

@@ -18,20 +18,17 @@
  */
 
 #include <sal/config.h>
-
 #include <sal/types.h>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #ifdef _WIN32
-#ifdef _MSC_VER
-#pragma warning(disable:4917)
-#endif
 
 #undef WB_LEFT
 #undef WB_RIGHT
 
 #include <shlobj.h>
 
-#include <syspathw32.hxx>
+#include "syspathw32.hxx"
 
 static bool SHGetSpecialFolderW32( int nFolderID, WCHAR* pszFolder, int nSize )
 {
@@ -61,7 +58,7 @@ static bool SHGetSpecialFolderW32( int nFolderID, WCHAR* pszFolder, int nSize )
 bool GetUserTemplateLocation(sal_Unicode* pFolder, int nSize)
 {
 #ifdef _WIN32
-    return SHGetSpecialFolderW32( CSIDL_TEMPLATES, reinterpret_cast<LPWSTR>(pFolder), nSize );
+    return SHGetSpecialFolderW32( CSIDL_TEMPLATES, o3tl::toW(pFolder), nSize );
 #else
     (void)pFolder;
     (void)nSize;

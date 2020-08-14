@@ -9,6 +9,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sc_functions_test_old))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sc_functions_test_old))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sc_functions_test_old, \
     sc/qa/unit/functions_test_old \
 ))
@@ -60,6 +62,7 @@ $(eval $(call gb_CppunitTest_set_include,sc_functions_test_old,\
 $(eval $(call gb_CppunitTest_use_api,sc_functions_test_old,\
     offapi \
     udkapi \
+    oovbaapi \
 ))
 
 $(eval $(call gb_CppunitTest_use_ure,sc_functions_test_old))
@@ -106,6 +109,7 @@ $(eval $(call gb_CppunitTest_use_components,sc_functions_test_old,\
     unoxml/source/rdf/unordf \
     unoxml/source/service/unoxml \
     uui/util/uui \
+    vcl/vcl.common \
     xmloff/util/xo \
 	xmlscript/util/xmlscript \
 ))

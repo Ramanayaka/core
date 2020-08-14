@@ -23,28 +23,27 @@
 #include <com/sun/star/animations/AnimationCalcMode.hpp>
 #include <comphelper/sequence.hxx>
 
-#include "activitiesfactory.hxx"
-#include "smilfunctionparser.hxx"
+#include <activitiesfactory.hxx>
+#include <slideshowexceptions.hxx>
+#include <smilfunctionparser.hxx>
 #include "accumulation.hxx"
 #include "activityparameters.hxx"
 #include "interpolation.hxx"
-#include "tools.hxx"
+#include <tools.hxx>
 #include "simplecontinuousactivitybase.hxx"
 #include "discreteactivitybase.hxx"
 #include "continuousactivitybase.hxx"
 #include "continuouskeytimeactivitybase.hxx"
 
-#include <boost/optional.hpp>
+#include <optional>
 
 #include <memory>
-#include <cmath>
 #include <vector>
 #include <algorithm>
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 namespace {
 
@@ -102,7 +101,7 @@ class FromToByActivity : public BaseType
 {
 public:
     typedef typename AnimationType::ValueType           ValueType;
-    typedef boost::optional<ValueType>                  OptionalValueType;
+    typedef std::optional<ValueType>                  OptionalValueType;
 
 private:
     // some compilers don't inline whose definition they haven't
@@ -208,6 +207,7 @@ public:
                 maStartValue = *maFrom;
                 maEndValue = maStartValue + *maBy;
             }
+            maStartInterpolationValue = maStartValue;
         }
         else
         {
@@ -389,7 +389,7 @@ AnimationActivitySharedPtr createFromToByActivity(
     const ::basegfx::B2DVector&                              rSlideBounds )
 {
     typedef typename AnimationType::ValueType           ValueType;
-    typedef boost::optional<ValueType>                  OptionalValueType;
+    typedef std::optional<ValueType>                  OptionalValueType;
 
     OptionalValueType aFrom;
     OptionalValueType aTo;
@@ -402,32 +402,31 @@ AnimationActivitySharedPtr createFromToByActivity(
         ENSURE_OR_THROW(
             extractValue( aTmpValue, rFromAny, rShape, rSlideBounds ),
             "createFromToByActivity(): Could not extract from value" );
-        aFrom.reset(aTmpValue);
+        aFrom = aTmpValue;
     }
     if( rToAny.hasValue() )
     {
         ENSURE_OR_THROW(
             extractValue( aTmpValue, rToAny, rShape, rSlideBounds ),
             "createFromToByActivity(): Could not extract to value" );
-        aTo.reset(aTmpValue);
+        aTo = aTmpValue;
     }
     if( rByAny.hasValue() )
     {
         ENSURE_OR_THROW(
             extractValue( aTmpValue, rByAny, rShape, rSlideBounds ),
             "createFromToByActivity(): Could not extract by value" );
-        aBy.reset(aTmpValue);
+        aBy = aTmpValue;
     }
 
-    return AnimationActivitySharedPtr(
-        new FromToByActivity<BaseType, AnimationType>(
+    return std::make_shared<FromToByActivity<BaseType, AnimationType>>(
             aFrom,
             aTo,
             aBy,
             rParms,
             rAnim,
             rInterpolator,
-            bCumulative ) );
+            bCumulative );
 }
 
 /* The following table shows which animator combines with
@@ -620,22 +619,21 @@ AnimationActivitySharedPtr createValueListActivity(
     ValueVectorType aValueVector;
     aValueVector.reserve( rValues.getLength() );
 
-    for( ::std::size_t i=0, nLen=rValues.getLength(); i<nLen; ++i )
+    for( const auto& rValue : rValues )
     {
         ValueType aValue;
         ENSURE_OR_THROW(
-            extractValue( aValue, rValues[i], rShape, rSlideBounds ),
+            extractValue( aValue, rValue, rShape, rSlideBounds ),
             "createValueListActivity(): Could not extract values" );
         aValueVector.push_back( aValue );
     }
 
-    return AnimationActivitySharedPtr(
-        new ValuesActivity<BaseType, AnimationType>(
+    return std::make_shared<ValuesActivity<BaseType, AnimationType>>(
             aValueVector,
             rParms,
             rAnim,
             rInterpolator,
-            bCumulative ) );
+            bCumulative );
 }
 
 /** Generate Activity for given XAnimate, corresponding to given Value vector
@@ -708,7 +706,7 @@ AnimationActivitySharedPtr createActivity(
         // yes, convert them from Sequence< double >
         aActivityParms.maDiscreteTimes.resize( aKeyTimes.getLength() );
         comphelper::sequenceToArray(
-            &aActivityParms.maDiscreteTimes[0],
+            aActivityParms.maDiscreteTimes.data(),
             aKeyTimes ); // saves us some temporary vectors
     }
 
@@ -740,10 +738,10 @@ AnimationActivitySharedPtr createActivity(
             {
                 // since DiscreteActivityBase suspends itself
                 // between the frames, create a WakeupEvent for it.
-                aActivityParms.mpWakeupEvent.reset(
-                    new WakeupEvent(
+                aActivityParms.mpWakeupEvent =
+                    std::make_shared<WakeupEvent>(
                         rParms.mrEventQueue.getTimer(),
-                        rParms.mrActivitiesQueue ) );
+                        rParms.mrActivitiesQueue );
 
                 AnimationActivitySharedPtr pActivity(
                     createValueListActivity< DiscreteActivityBase >(
@@ -764,7 +762,7 @@ AnimationActivitySharedPtr createActivity(
 
             default:
                 OSL_FAIL( "createActivity(): unexpected case" );
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case animations::AnimationCalcMode::PACED:
             case animations::AnimationCalcMode::SPLINE:
             case animations::AnimationCalcMode::LINEAR:
@@ -804,10 +802,10 @@ AnimationActivitySharedPtr createActivity(
 
                 // since DiscreteActivityBase suspends itself
                 // between the frames, create a WakeupEvent for it.
-                aActivityParms.mpWakeupEvent.reset(
-                    new WakeupEvent(
+                aActivityParms.mpWakeupEvent =
+                    std::make_shared<WakeupEvent>(
                         rParms.mrEventQueue.getTimer(),
-                        rParms.mrActivitiesQueue ) );
+                        rParms.mrActivitiesQueue );
 
                 AnimationActivitySharedPtr pActivity(
                     createFromToByActivity< DiscreteActivityBase >(
@@ -830,7 +828,7 @@ AnimationActivitySharedPtr createActivity(
 
             default:
                 OSL_FAIL( "createActivity(): unexpected case" );
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case animations::AnimationCalcMode::PACED:
             case animations::AnimationCalcMode::SPLINE:
             case animations::AnimationCalcMode::LINEAR:
@@ -1007,14 +1005,11 @@ AnimationActivitySharedPtr ActivitiesFactory::createSimpleActivity(
                                        rParms.mbAutoReverse );
 
     if( bDirectionForward )
-        return AnimationActivitySharedPtr(
-            new SimpleActivity<1>( aActivityParms, rAnim ) );
+        return std::make_shared<SimpleActivity<1>>( aActivityParms, rAnim );
     else
-        return AnimationActivitySharedPtr(
-            new SimpleActivity<0>( aActivityParms, rAnim ) );
+        return std::make_shared<SimpleActivity<0>>( aActivityParms, rAnim );
 }
 
-} // namespace internal
 } // namespace presentation
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

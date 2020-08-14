@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/log.hxx>
 #include <vcl/unohelp2.hxx>
 #include <sot/exchange.hxx>
 #include <sot/formats.hxx>
@@ -28,7 +29,7 @@
 
 using namespace ::com::sun::star;
 
-namespace vcl { namespace unohelper {
+namespace vcl::unohelper {
 
     TextDataObject::TextDataObject( const OUString& rText ) : maText( rText )
     {
@@ -64,25 +65,19 @@ namespace vcl { namespace unohelper {
     // css::uno::XInterface
     uno::Any TextDataObject::queryInterface( const uno::Type & rType )
     {
-        uno::Any aRet = ::cppu::queryInterface( rType, (static_cast< datatransfer::XTransferable* >(this)) );
+        uno::Any aRet = ::cppu::queryInterface( rType, static_cast< datatransfer::XTransferable* >(this) );
         return (aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType ));
     }
 
     // css::datatransfer::XTransferable
     uno::Any TextDataObject::getTransferData( const datatransfer::DataFlavor& rFlavor )
     {
-        uno::Any aAny;
-
         SotClipboardFormatId nT = SotExchange::GetFormat( rFlavor );
-        if ( nT == SotClipboardFormatId::STRING )
-        {
-            aAny <<= maText;
-        }
-        else
+        if ( nT != SotClipboardFormatId::STRING )
         {
             throw datatransfer::UnsupportedFlavorException();
         }
-        return aAny;
+        return uno::Any(maText);
     }
 
     uno::Sequence< datatransfer::DataFlavor > TextDataObject::getTransferDataFlavors(  )
@@ -98,6 +93,6 @@ namespace vcl { namespace unohelper {
         return ( nT == SotClipboardFormatId::STRING );
     }
 
-}}  // namespace vcl::unohelper
+}  // namespace vcl::unohelper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -29,17 +29,15 @@
 |*
 \************************************************************************/
 
-class SVX_DLLPUBLIC XLineTransparenceItem: public SfxUInt16Item
+class SVXCORE_DLLPUBLIC XLineTransparenceItem final : public SfxUInt16Item
 {
 public:
                             XLineTransparenceItem(sal_uInt16 nLineTransparence = 0);
-                            XLineTransparenceItem(SvStream& rIn);
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XLineTransparenceItem* Clone(SfxItemPool* pPool = nullptr) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

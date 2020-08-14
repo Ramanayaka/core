@@ -19,11 +19,9 @@
 #ifndef INCLUDED_EDITENG_CROSSEDOUTITEM_HXX
 #define INCLUDED_EDITENG_CROSSEDOUTITEM_HXX
 
-#include <vcl/vclenum.hxx>
+#include <tools/fontenum.hxx>
 #include <svl/eitem.hxx>
 #include <editeng/editengdllapi.h>
-
-class SvXMLUnitConverter;
 
 // class SvxCrossedOutItem -----------------------------------------------
 
@@ -31,7 +29,7 @@ class SvXMLUnitConverter;
     This item describes, whether and how it is striked out.
 */
 
-class EDITENG_DLLPUBLIC SvxCrossedOutItem : public SfxEnumItem<FontStrikeout>
+class EDITENG_DLLPUBLIC SvxCrossedOutItem final : public SfxEnumItem<FontStrikeout>
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -43,12 +41,10 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
-    virtual OUString        GetValueTextByPos( sal_uInt16 nPos ) const override;
+    virtual SvxCrossedOutItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    static OUString         GetValueTextByPos( sal_uInt16 nPos );
     virtual sal_uInt16      GetValueCount() const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -59,11 +55,7 @@ public:
     virtual bool            GetBoolValue() const override;
     virtual void            SetBoolValue( bool bVal ) override;
 
-    SvxCrossedOutItem& operator=(const SvxCrossedOutItem& rCross)
-        {
-            SetValue( rCross.GetValue() );
-            return *this;
-        }
+    SvxCrossedOutItem(SvxCrossedOutItem const &) = default; // SfxPoolItem copy function dichotomy
 
     // enum cast
     FontStrikeout           GetStrikeout() const

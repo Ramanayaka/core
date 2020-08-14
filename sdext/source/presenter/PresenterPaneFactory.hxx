@@ -23,8 +23,6 @@
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationController.hpp>
 #include <com/sun/star/drawing/framework/XPane.hpp>
 #include <com/sun/star/drawing/framework/XResourceFactory.hpp>
@@ -33,7 +31,7 @@
 #include <map>
 #include <memory>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 class PresenterController;
 
@@ -51,13 +49,13 @@ class PresenterPaneFactory
       public PresenterPaneFactoryInterfaceBase
 {
 public:
-    static const OUString msCurrentSlidePreviewPaneURL;
-    static const OUString msNextSlidePreviewPaneURL;
-    static const OUString msNotesPaneURL;
-    static const OUString msToolBarPaneURL;
-    static const OUString msSlideSorterPaneURL;
-    static const OUString msHelpPaneURL;
-    static const OUString msOverlayPaneURL;
+    static const OUStringLiteral msCurrentSlidePreviewPaneURL;
+    static const OUStringLiteral msNextSlidePreviewPaneURL;
+    static const OUStringLiteral msNotesPaneURL;
+    static const OUStringLiteral msToolBarPaneURL;
+    static const OUStringLiteral msSlideSorterPaneURL;
+    static const OUStringLiteral msHelpPaneURL;
+    static const OUStringLiteral msOverlayPaneURL;
 
     /** Create a new instance of this class and register it as resource
         factory in the drawing framework of the given controller.
@@ -111,7 +109,7 @@ private:
     void ThrowIfDisposed() const;
 };
 
-} }
+}
 
 #endif
 

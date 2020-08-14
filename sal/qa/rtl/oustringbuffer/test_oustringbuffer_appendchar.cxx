@@ -7,13 +7,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <sal/config.h>
+
+#include <o3tl/cppunittraitshelper.hxx>
 #include <sal/types.h>
 #include <cppunit/TestFixture.h>
 #include <cppunit/TestAssert.h>
 #include <cppunit/extensions/HelperMacros.h>
-#include "rtl/ustrbuf.hxx"
+#include <rtl/ustrbuf.hxx>
 
-namespace test { namespace oustringbuffer {
+namespace test::oustringbuffer {
 
 class AppendChar: public CppUnit::TestFixture {
 private:
@@ -27,13 +30,13 @@ private:
 void AppendChar::testAppendChar() {
     // Check that append('a') does not unexpectedly pick
     // append(sal_Int32 i, sal_Int16 radix = 10):
-    rtl::OUStringBuffer s;
+    OUStringBuffer s;
     s.append('a');
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1), s.getLength());
     CPPUNIT_ASSERT_EQUAL(u'a', s[0]);
 }
 
-} }
+}
 
 CPPUNIT_TEST_SUITE_REGISTRATION(test::oustringbuffer::AppendChar);
 

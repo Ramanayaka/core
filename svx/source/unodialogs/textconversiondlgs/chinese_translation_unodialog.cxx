@@ -21,10 +21,7 @@
 #include "chinese_translation_unodialog.hxx"
 #include "chinese_translationdialog.hxx"
 #include <vcl/svapp.hxx>
-#include <toolkit/awt/vclxwindow.hxx>
-#include <vcl/msgbox.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
 
@@ -33,9 +30,7 @@ namespace textconversiondlgs
 using namespace ::com::sun::star;
 
 ChineseTranslation_UnoDialog::ChineseTranslation_UnoDialog()
-                    : m_xParentWindow( nullptr )
-                    , m_pDialog( nullptr )
-                    , m_bDisposed(false)
+                    : m_bDisposed(false)
                     , m_bInDispose(false)
                     , m_aContainerMutex()
                     , m_aDisposeEventListeners(m_aContainerMutex)
@@ -50,23 +45,17 @@ ChineseTranslation_UnoDialog::~ChineseTranslation_UnoDialog()
 
 void ChineseTranslation_UnoDialog::impl_DeleteDialog()
 {
-    if( m_pDialog )
+    if (m_xDialog)
     {
-        if(m_pDialog->IsInExecute())
-            m_pDialog->EndDialog();
-        m_pDialog.disposeAndClear();
+        m_xDialog->response(RET_CANCEL);
+        m_xDialog.reset();
     }
 }
 
 // lang::XServiceInfo
 OUString SAL_CALL ChineseTranslation_UnoDialog::getImplementationName()
 {
-    return getImplementationName_Static();
-}
-
-OUString ChineseTranslation_UnoDialog::getImplementationName_Static()
-{
-    return OUString("com.sun.star.comp.linguistic2.ChineseTranslationDialog");
+    return "com.sun.star.comp.linguistic2.ChineseTranslationDialog";
 }
 
 sal_Bool SAL_CALL ChineseTranslation_UnoDialog::supportsService( const OUString& ServiceName )
@@ -76,13 +65,7 @@ sal_Bool SAL_CALL ChineseTranslation_UnoDialog::supportsService( const OUString&
 
 uno::Sequence< OUString > SAL_CALL ChineseTranslation_UnoDialog::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-uno::Sequence< OUString > ChineseTranslation_UnoDialog::getSupportedServiceNames_Static()
-{
-    uno::Sequence<OUString> aSNS { "com.sun.star.linguistic2.ChineseTranslationDialog" };
-    return aSNS;
+    return { "com.sun.star.linguistic2.ChineseTranslationDialog" };
 }
 
 // ui::dialogs::XExecutableDialog
@@ -98,11 +81,10 @@ void SAL_CALL ChineseTranslation_UnoDialog::initialize( const uno::Sequence< uno
     if( m_bDisposed || m_bInDispose )
         return;
 
-    const uno::Any* pArguments = aArguments.getConstArray();
-    for(sal_Int32 i=0; i<aArguments.getLength(); ++i, ++pArguments)
+    for(const uno::Any& rArgument : aArguments)
     {
         beans::PropertyValue aProperty;
-        if(*pArguments >>= aProperty)
+        if(rArgument >>= aProperty)
         {
             if( aProperty.Name == "ParentWindow" )
             {
@@ -112,39 +94,23 @@ void SAL_CALL ChineseTranslation_UnoDialog::initialize( const uno::Sequence< uno
     }
 }
 
-
 sal_Int16 SAL_CALL ChineseTranslation_UnoDialog::execute()
 {
     sal_Int16 nRet = ui::dialogs::ExecutableDialogResults::CANCEL;
     {
         SolarMutexGuard aSolarGuard;
-        if( m_bDisposed || m_bInDispose )
+        if (m_bDisposed || m_bInDispose)
             return nRet;
-
-        if( !m_pDialog )
-        {
-            vcl::Window* pParent = nullptr;
-            if( m_xParentWindow.is() )
-            {
-                VCLXWindow* pImplementation = VCLXWindow::GetImplementation(m_xParentWindow);
-                if (pImplementation)
-                    pParent = pImplementation->GetWindow().get();
-            }
-            uno::Reference< XComponent > xComp( this );
-            m_pDialog = VclPtr<ChineseTranslationDialog>::Create( pParent );
-        }
-        if( !m_pDialog )
-            return nRet;
-        nRet = m_pDialog->Execute();
-        if(nRet==RET_OK)
+        if (!m_xDialog)
+            m_xDialog.reset(new ChineseTranslationDialog(Application::GetFrameWeld(m_xParentWindow)));
+        nRet = m_xDialog->run();
+        if (nRet == RET_OK)
            nRet=ui::dialogs::ExecutableDialogResults::OK;
     }
     return nRet;
 }
 
-
 // lang::XComponent
-
 void SAL_CALL ChineseTranslation_UnoDialog::dispose()
 {
     lang::EventObject aEvt;
@@ -187,11 +153,13 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL ChineseTranslation_UnoDialog:
 {
     return nullptr;
 }
+
 void SAL_CALL ChineseTranslation_UnoDialog::setPropertyValue( const OUString&, const uno::Any& )
 {
     //only read only properties
     throw beans::PropertyVetoException();
 }
+
 uno::Any SAL_CALL ChineseTranslation_UnoDialog::getPropertyValue( const OUString& rPropertyName )
 {
     uno::Any aRet;
@@ -201,9 +169,9 @@ uno::Any SAL_CALL ChineseTranslation_UnoDialog::getPropertyValue( const OUString
 
     {
         SolarMutexGuard aSolarGuard;
-        if( m_bDisposed || m_bInDispose || !m_pDialog )
+        if (m_bDisposed || m_bInDispose || !m_xDialog)
             return aRet;
-        m_pDialog->getSettings( bDirectionToSimplified, bTranslateCommonTerms );
+        m_xDialog->getSettings(bDirectionToSimplified, bTranslateCommonTerms);
     }
 
     if( rPropertyName == "IsDirectionToSimplified" )
@@ -225,25 +193,35 @@ uno::Any SAL_CALL ChineseTranslation_UnoDialog::getPropertyValue( const OUString
     return aRet;
 
 }
+
 void SAL_CALL ChineseTranslation_UnoDialog::addPropertyChangeListener( const OUString& , const uno::Reference< beans::XPropertyChangeListener >&  )
 {
     //only not bound properties -> ignore listener
 }
+
 void SAL_CALL ChineseTranslation_UnoDialog::removePropertyChangeListener( const OUString& , const uno::Reference< beans::XPropertyChangeListener >&  )
 {
     //only not bound properties -> ignore listener
 }
+
 void SAL_CALL ChineseTranslation_UnoDialog::addVetoableChangeListener( const OUString& , const uno::Reference< beans::XVetoableChangeListener >&  )
 {
     //only not bound properties -> ignore listener
 }
+
 void SAL_CALL ChineseTranslation_UnoDialog::removeVetoableChangeListener( const OUString& , const uno::Reference< beans::XVetoableChangeListener >&  )
 {
     //only not bound properties -> ignore listener
 }
 
-
 } //end namespace
 
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+svx_ChineseTranslation_UnoDialog_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new textconversiondlgs::ChineseTranslation_UnoDialog());
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,16 +19,15 @@
 #ifndef INCLUDED_EDITENG_SOURCE_EDITENG_TEXTCONV_HXX
 #define INCLUDED_EDITENG_SOURCE_EDITENG_TEXTCONV_HXX
 
-#include <editeng/splwrap.hxx>
-#include <editeng/svxacorr.hxx>
+#include <editeng/editdata.hxx>
+#include <editeng/svxenum.hxx>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <editeng/hangulhanja.hxx>
-#include <vcl/vclptr.hxx>
 
 class EditView;
 
-class TextConvWrapper : public editeng::HangulHanjaConversion
+class TextConvWrapper final : public editeng::HangulHanjaConversion
 {
     OUString        m_aConvText;      // convertible text part found last time
     LanguageType    m_nConvTextLang;  // language of aConvText
@@ -40,7 +39,7 @@ class TextConvWrapper : public editeng::HangulHanjaConversion
                                       // starts from the cursor position
 
     EditView *      m_pEditView;
-    VclPtr<vcl::Window>  m_pWin;
+    weld::Window *  m_pWin;
 
     bool            m_bStartChk;
     bool            m_bStartDone;
@@ -71,7 +70,6 @@ class TextConvWrapper : public editeng::HangulHanjaConversion
     TextConvWrapper (const TextConvWrapper &) = delete;
     TextConvWrapper & operator= (const TextConvWrapper &) = delete;
 
-protected:
     virtual void    GetNextPortion( OUString& /* [out] */ rNextPortion,
                         LanguageType& /* [out] */ rLangOfPortion,
                         bool /* [in] */ _bAllowImplicitChangesForNotConvertibleText ) override;
@@ -93,7 +91,7 @@ protected:
 
 
 public:
-    TextConvWrapper( vcl::Window* pWindow,
+    TextConvWrapper(weld::Window* pWindow,
             const css::uno::Reference< css::uno::XComponentContext >& rxContext,
             const css::lang::Locale& rSourceLocale,
             const css::lang::Locale& rTargetLocale,

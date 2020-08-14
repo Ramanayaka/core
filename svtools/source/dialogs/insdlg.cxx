@@ -18,7 +18,7 @@
  */
 
 #include <svtools/insdlg.hxx>
-#include <svtools/sores.hxx>
+#include <svtools/strings.hrc>
 #include <svtools/svtresid.hxx>
 
 #include <unotools/configmgr.hxx>
@@ -27,9 +27,9 @@
 #include <sal/macros.h>
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <com/sun/star/container/XNameAccess.hpp>
 
 using namespace ::com::sun::star;
@@ -39,6 +39,7 @@ using namespace ::com::sun::star;
 // OBJECTDESCRIPTOR -> see oleidl.h
 // (MS platform sdk)
 
+namespace {
 
 struct OleObjectDescriptor
 {
@@ -51,6 +52,8 @@ struct OleObjectDescriptor
     sal_uInt32  dwFullUserTypeName;
     sal_uInt32  dwSrcOfCopy;
 };
+
+}
 
 /********************** SvObjectServerList ********************************
 **************************************************************************/
@@ -77,18 +80,9 @@ const SvObjectServer * SvObjectServerList::Get( const SvGlobalName & rName ) con
 
 void SvObjectServerList::Remove( const SvGlobalName & rName )
 {
-    for( size_t i = 0; i < aObjectServerList.size(); )
-    {
-        if( aObjectServerList[ i ].GetClassName() == rName )
-        {
-            SvObjectServerList_impl::iterator it = aObjectServerList.begin() + i;
-            aObjectServerList.erase( it );
-        }
-        else
-        {
-            ++i;
-        }
-    }
+    aObjectServerList.erase(std::remove_if(aObjectServerList.begin(), aObjectServerList.end(),
+        [rName](const SvObjectServer& rServer) { return rServer.GetClassName() == rName; }),
+        aObjectServerList.end());
 }
 
 
@@ -104,21 +98,17 @@ void SvObjectServerList::FillInsertObjects()
         uno::Reference< lang::XMultiServiceFactory > sProviderMSFactory =
             configuration::theDefaultProvider::get(xContext);
 
-        OUString sReaderService( "com.sun.star.configuration.ConfigurationAccess" );
-        uno::Sequence< uno::Any > aArguments( 1 );
-        beans::PropertyValue aPathProp;
-        aPathProp.Name = "nodepath";
-        aPathProp.Value <<= OUString( "/org.openoffice.Office.Embedding/ObjectNames" );
-        aArguments[0] <<= aPathProp;
-
+        uno::Sequence<uno::Any> aArguments(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", uno::Any(OUString( "/org.openoffice.Office.Embedding/ObjectNames" ))}
+        }));
         uno::Reference< container::XNameAccess > xNameAccess(
-            sProviderMSFactory->createInstanceWithArguments( sReaderService,aArguments ),
+            sProviderMSFactory->createInstanceWithArguments( "com.sun.star.configuration.ConfigurationAccess", aArguments ),
             uno::UNO_QUERY );
 
         if( xNameAccess.is())
         {
-            uno::Sequence< OUString > seqNames= xNameAccess->getElementNames();
-            sal_Int32 nInd;
+            const uno::Sequence< OUString > seqNames= xNameAccess->getElementNames();
 
             OUString aStringProductName( "%PRODUCTNAME" );
             sal_Int32 nStringProductNameLength = aStringProductName.getLength();
@@ -126,10 +116,10 @@ void SvObjectServerList::FillInsertObjects()
             OUString aStringProductVersion( "%PRODUCTVERSION" );
             sal_Int32 nStringProductVersionLength = aStringProductVersion.getLength();
 
-            for( nInd = 0; nInd < seqNames.getLength(); nInd++ )
+            for( const auto& rName : seqNames )
             {
                 uno::Reference< container::XNameAccess > xEntry ;
-                xNameAccess->getByName( seqNames[nInd] ) >>= xEntry;
+                xNameAccess->getByName( rName ) >>= xEntry;
                 if ( xEntry.is() )
                 {
                     OUString aUIName;
@@ -165,7 +155,7 @@ void SvObjectServerList::FillInsertObjects()
                     {
                         if( !Get( aClassName ) )
                             // not entered yet
-                            aObjectServerList.push_back( SvObjectServer( aClassName, aUIName ) );
+                            aObjectServerList.emplace_back( aClassName, aUIName );
                     }
                 }
             }
@@ -193,15 +183,15 @@ OUString SvPasteObjectHelper::GetSotFormatUIName( SotClipboardFormatId nId )
     struct SotResourcePair
     {
         SotClipboardFormatId   mnSotId;
-        sal_uInt16              mnResId;
+        const char* mpResId;
     };
 
     static const SotResourcePair aSotResourcePairs[] =
     {
-        { SotClipboardFormatId::STRING,                    STR_FORMAT_STRING },
-        { SotClipboardFormatId::BITMAP,                    STR_FORMAT_BITMAP },
-        { SotClipboardFormatId::GDIMETAFILE,               STR_FORMAT_GDIMETAFILE },
-        { SotClipboardFormatId::RTF,                       STR_FORMAT_RTF },
+        { SotClipboardFormatId::STRING,              STR_FORMAT_STRING },
+        { SotClipboardFormatId::BITMAP,              STR_FORMAT_BITMAP },
+        { SotClipboardFormatId::GDIMETAFILE,         STR_FORMAT_GDIMETAFILE },
+        { SotClipboardFormatId::RTF,                 STR_FORMAT_RTF },
         { SotClipboardFormatId::DRAWING,             STR_FORMAT_ID_DRAWING },
         { SotClipboardFormatId::SVXB,                STR_FORMAT_ID_SVXB },
         { SotClipboardFormatId::INTERNALLINK_STATE,  STR_FORMAT_ID_INTERNALLINK_STATE },
@@ -265,81 +255,84 @@ OUString SvPasteObjectHelper::GetSotFormatUIName( SotClipboardFormatId nId )
         { SotClipboardFormatId::FILEGRPDESCRIPTOR,   STR_FORMAT_ID_FILEGRPDESCRIPTOR },
         { SotClipboardFormatId::HTML_NO_COMMENT,     STR_FORMAT_ID_HTML_NO_COMMENT },
         { SotClipboardFormatId::RICHTEXT,            STR_FORMAT_ID_RICHTEXT },
+        { SotClipboardFormatId::STRING_TSVC,         STR_FORMAT_ID_STRING_TSVC },
+        { SotClipboardFormatId::PNG,                 STR_FORMAT_ID_PNG_BITMAP },
     };
 
-    sal_uInt16 nResId = 0;
+    const char* pResId = nullptr;
 
     sal_uInt32 const nCount = SAL_N_ELEMENTS( aSotResourcePairs );
-    for( sal_uInt32 i = 0; ( i < nCount ) && !nResId; i++ )
+    for (sal_uInt32 i = 0; ( i < nCount ) && !pResId; ++i)
     {
         if( aSotResourcePairs[ i ].mnSotId == nId )
-            nResId = aSotResourcePairs[ i ].mnResId;
+            pResId = aSotResourcePairs[ i ].mpResId;
     }
 
     OUString aUIName;
-    if( nResId )
-        aUIName = SvtResId( nResId );
+    if (pResId)
+        aUIName = SvtResId(pResId);
     else
         aUIName = SotExchange::GetFormatName( nId );
 
     return aUIName;
 }
 
-bool SvPasteObjectHelper::GetEmbeddedName(const TransferableDataHelper& rData, OUString& _rName, OUString& _rSource, SotClipboardFormatId& _nFormat)
+bool SvPasteObjectHelper::GetEmbeddedName(const TransferableDataHelper& rData, OUString& _rName, OUString& _rSource, SotClipboardFormatId const & _nFormat)
 {
-    bool bRet = false;
-    if( _nFormat == SotClipboardFormatId::EMBED_SOURCE_OLE || _nFormat == SotClipboardFormatId::EMBEDDED_OBJ_OLE )
+    if( _nFormat != SotClipboardFormatId::EMBED_SOURCE_OLE && _nFormat != SotClipboardFormatId::EMBEDDED_OBJ_OLE )
+        return false;
+
+    datatransfer::DataFlavor aFlavor;
+    SotExchange::GetFormatDataFlavor( SotClipboardFormatId::OBJECTDESCRIPTOR_OLE, aFlavor );
+
+    if( !rData.HasFormat( aFlavor ) )
+        return false;
+
+    uno::Any aAny = rData.GetAny(aFlavor, OUString());
+    if (!aAny.hasValue())
+        return false;
+
+    uno::Sequence< sal_Int8 > anySequence;
+    aAny >>= anySequence;
+
+    OleObjectDescriptor* pOleObjDescr =
+            reinterpret_cast< OleObjectDescriptor* >( anySequence.getArray( ) );
+
+    // determine the user friendly description of the embedded object
+    if ( pOleObjDescr->dwFullUserTypeName )
     {
-        datatransfer::DataFlavor aFlavor;
-        SotExchange::GetFormatDataFlavor( SotClipboardFormatId::OBJECTDESCRIPTOR_OLE, aFlavor );
+        // we set the pointer to the start of user friendly description
+        // string. it starts  at &OleObjectDescriptor + dwFullUserTypeName.
+        // dwFullUserTypeName is the offset in bytes.
+        // the user friendly description string is '\0' terminated.
+        const sal_Unicode* pUserTypeName =
+            reinterpret_cast< sal_Unicode* >(
+                reinterpret_cast< char* >( pOleObjDescr ) +
+                    pOleObjDescr->dwFullUserTypeName );
 
-        uno::Any aAny;
-        if( rData.HasFormat( aFlavor ) &&
-            ( aAny = rData.GetAny(aFlavor, OUString()) ).hasValue() )
-        {
-            uno::Sequence< sal_Int8 > anySequence;
-            aAny >>= anySequence;
-
-            OleObjectDescriptor* pOleObjDescr =
-                reinterpret_cast< OleObjectDescriptor* >( anySequence.getArray( ) );
-
-            // determine the user friendly description of the embedded object
-            if ( pOleObjDescr->dwFullUserTypeName )
-            {
-                // we set the pointer to the start of user friendly description
-                // string. it starts  at &OleObjectDescriptor + dwFullUserTypeName.
-                // dwFullUserTypeName is the offset in bytes.
-                // the user friendly description string is '\0' terminated.
-                const sal_Unicode* pUserTypeName =
-                    reinterpret_cast< sal_Unicode* >(
-                        reinterpret_cast< sal_Char* >( pOleObjDescr ) +
-                            pOleObjDescr->dwFullUserTypeName );
-
-                _rName += pUserTypeName;
-                // the following statement was here for historical reasons, it is commented out since it causes bug i49460
-                // _nFormat = SotClipboardFormatId::EMBED_SOURCE_OLE;
-            }
-
-            // determine the source of the embedded object
-            if ( pOleObjDescr->dwSrcOfCopy )
-            {
-                // we set the pointer to the start of source string
-                // it starts  at &OleObjectDescriptor + dwSrcOfCopy.
-                // dwSrcOfCopy is the offset in bytes.
-                // the source string is '\0' terminated.
-                const sal_Unicode* pSrcOfCopy =
-                    reinterpret_cast< sal_Unicode* >(
-                        reinterpret_cast< sal_Char* >( pOleObjDescr ) +
-                            pOleObjDescr->dwSrcOfCopy );
-
-                _rSource += pSrcOfCopy;
-            }
-            else
-                _rSource = SvtResId(STR_UNKNOWN_SOURCE);
-        }
-        bRet = true;
+        _rName += pUserTypeName;
+        // the following statement was here for historical reasons, it is commented out since it causes bug i49460
+        // _nFormat = SotClipboardFormatId::EMBED_SOURCE_OLE;
     }
-    return bRet;
+
+    // determine the source of the embedded object
+    if ( pOleObjDescr->dwSrcOfCopy )
+    {
+        // we set the pointer to the start of source string
+        // it starts  at &OleObjectDescriptor + dwSrcOfCopy.
+        // dwSrcOfCopy is the offset in bytes.
+        // the source string is '\0' terminated.
+        const sal_Unicode* pSrcOfCopy =
+            reinterpret_cast< sal_Unicode* >(
+                reinterpret_cast< char* >( pOleObjDescr ) +
+                    pOleObjDescr->dwSrcOfCopy );
+
+        _rSource += pSrcOfCopy;
+    }
+    else
+        _rSource = SvtResId(STR_UNKNOWN_SOURCE);
+
+    return true;
 }
 
 

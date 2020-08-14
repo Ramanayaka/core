@@ -17,12 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/strhelper.hxx>
-#include "sal/alloca.h"
+#include <strhelper.hxx>
 
 namespace  {
 
-inline bool isSpace( sal_Unicode cChar )
+bool isSpace( sal_Unicode cChar )
 {
     return
         cChar == ' '    || cChar == '\t'    ||
@@ -30,12 +29,12 @@ inline bool isSpace( sal_Unicode cChar )
         cChar == 0x0c   || cChar == 0x0b;
 }
 
-inline bool isProtect( sal_Unicode cChar )
+bool isProtect( sal_Unicode cChar )
 {
     return cChar == '`' || cChar == '\'' || cChar == '"';
 }
 
-inline void CopyUntil( char*& pTo, const char*& pFrom, char cUntil, bool bIncludeUntil = false )
+void CopyUntil( char*& pTo, const char*& pFrom, char cUntil, bool bIncludeUntil = false )
 {
     do
     {
@@ -66,7 +65,7 @@ inline void CopyUntil( char*& pTo, const char*& pFrom, char cUntil, bool bInclud
         pFrom++;
 }
 
-inline void CopyUntil( sal_Unicode*& pTo, const sal_Unicode*& pFrom, sal_Unicode cUntil, bool bIncludeUntil = false )
+void CopyUntil( sal_Unicode*& pTo, const sal_Unicode*& pFrom, sal_Unicode cUntil, bool bIncludeUntil = false )
 {
     do
     {
@@ -198,7 +197,7 @@ OString GetCommandLineToken(int nToken, const OString& rLine)
 
     *pLeap = 0;
 
-    return OString(pBuffer);
+    return pBuffer;
 }
 
 int GetCommandLineTokenCount(const OUString& rLine)
@@ -300,9 +299,12 @@ OUString WhitespaceToSpace( const OUString& rLine, bool bProtect )
     *pLeap = 0;
 
     // there might be a space at beginning or end
-    pLeap--;
-    if( *pLeap == ' ' )
-        *pLeap = 0;
+    if (pLeap > pBuffer)
+    {
+        pLeap--;
+        if( *pLeap == ' ' )
+            *pLeap = 0;
+    }
 
     return OUString(*pBuffer == ' ' ? pBuffer+1 : pBuffer);
 }
@@ -360,7 +362,7 @@ OString WhitespaceToSpace(const OString& rLine)
     if( *pLeap == ' ' )
         *pLeap = 0;
 
-    return OString(*pBuffer == ' ' ? pBuffer+1 : pBuffer);
+    return *pBuffer == ' ' ? pBuffer+1 : pBuffer;
 }
 
 } // namespace

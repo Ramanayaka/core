@@ -56,7 +56,7 @@ Table of Contents
 
 ---------------------------------------------------------------------
 
-The biggest difference is that the new exporter is an UNO component,
+The biggest difference is that the new exporter is a UNO component,
 and it?s based on the MSWord base classes, the vision here is that
 this way much less code can achieve the same set of features,
 reducing the amount of duplicated code.
@@ -93,26 +93,26 @@ the bug will pop up less frequently.
 
 ---------------------------------------------------------------------
 
-  * http://www.openoffice.org/issues/show_bug.cgi?id=51469 postit
+  * https://bz.apache.org/ooo/show_bug.cgi?id=51469 postit
     fields
-  * http://www.openoffice.org/issues/show_bug.cgi?id=66619 page
+  * https://bz.apache.org/ooo/show_bug.cgi?id=66619 page
     margins
-  * http://www.openoffice.org/issues/show_bug.cgi?id=69856 page
+  * https://bz.apache.org/ooo/show_bug.cgi?id=69856 page
     numbers
-  * http://www.openoffice.org/issues/show_bug.cgi?id=81569 { and } in
+  * https://bz.apache.org/ooo/show_bug.cgi?id=81569 { and } in
     document title
-  * http://www.openoffice.org/issues/show_bug.cgi?id=84703 redlines
-  * http://www.openoffice.org/issues/show_bug.cgi?id=91166 russian
+  * https://bz.apache.org/ooo/show_bug.cgi?id=84703 redlines
+  * https://bz.apache.org/ooo/show_bug.cgi?id=91166 russian
     chars
-  * http://www.openoffice.org/issues/show_bug.cgi?id=92673 bookmarks
+  * https://bz.apache.org/ooo/show_bug.cgi?id=92673 bookmarks
     across tables
-  * http://www.openoffice.org/issues/show_bug.cgi?id=100507 ole
+  * https://bz.apache.org/ooo/show_bug.cgi?id=100507 ole
     object export
-  * http://www.openoffice.org/issues/show_bug.cgi?id=103993 same as #
+  * https://bz.apache.org/ooo/show_bug.cgi?id=103993 same as #
     81569 just for doc comments
-  * http://www.openoffice.org/issues/show_bug.cgi?id=106677
+  * https://bz.apache.org/ooo/show_bug.cgi?id=106677
     listoverride index starts at zero
-  * http://www.openoffice.org/issues/show_bug.cgi?id=38344 enhanced
+  * https://bz.apache.org/ooo/show_bug.cgi?id=38344 enhanced
     character space
 
 
@@ -151,7 +151,7 @@ RtfExport writes:
   * column breaks (MSO OK, OOo OK)
   * special breaks (when the next page should be an odd or an even
     page; MSO OK, OOo KO)
-  * the write-protected property of sections is experted properly
+  * the write-protected property of sections is exported properly
     (MSO OK, OOo KO)
   * better page numbers (inherited type from page styles, restarts;
     MSO OK, OOo KO)

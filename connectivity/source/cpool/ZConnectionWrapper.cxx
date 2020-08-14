@@ -18,12 +18,6 @@
  */
 
 #include "ZConnectionWrapper.hxx"
-#include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <comphelper/extract.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
 
 using namespace connectivity;
 

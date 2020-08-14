@@ -23,20 +23,18 @@
 #include "SchXMLAutoStylePoolP.hxx"
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmlprmap.hxx>
-#include <xmloff/prhdlfac.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace task {
         class XStatusIndicator;
     }
-}}}
+}
 
 // export class for a complete chart document
 
 class SchXMLExport : public SvXMLExport
 {
 private:
-    css::uno::Reference< css::task::XStatusIndicator > mxStatusIndicator;
     rtl::Reference<SchXMLAutoStylePoolP> maAutoStylePool;
 
     rtl::Reference<SchXMLExportHelper> maExportHelper;
@@ -55,7 +53,8 @@ public:
         SvXMLExportFlags nExportFlags );
     virtual ~SchXMLExport() override;
 
-    rtl::Reference< XMLPropertySetMapper > GetPropertySetMapper() const;
+    void collectAutoStyles() override;
+    rtl::Reference< XMLPropertySetMapper > const & GetPropertySetMapper() const;
 };
 
 #endif // INCLUDED_XMLOFF_INC_SCHXMLEXPORT_HXX

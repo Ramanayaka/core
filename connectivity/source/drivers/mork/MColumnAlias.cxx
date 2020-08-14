@@ -19,13 +19,14 @@
 
 #include "MColumnAlias.hxx"
 
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
+#include <com/sun/star/container/XNameAccess.hpp>
 #include <officecfg/Office/DataAccess.hxx>
 
-#include <tools/diagnose_ex.h>
+#include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 #include <algorithm>
-#include <functional>
 
 using namespace ::connectivity::mork;
 using namespace ::com::sun::star::uno;
@@ -34,7 +35,7 @@ using namespace ::com::sun::star::container;
 
 OColumnAlias::OColumnAlias( const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxORB )
 {
-    static const sal_Char* s_pProgrammaticNames[] =
+    static const char* s_pProgrammaticNames[] =
     {
         "FirstName",
         "LastName",
@@ -89,33 +90,31 @@ void OColumnAlias::initialize( const css::uno::Reference< css::lang::XMultiServi
         com_sun_star_comp_sdbc_MozabDriver::ColumnAliases::get(
             comphelper::getComponentContext(_rxORB)),
         UNO_QUERY_THROW);
-    Sequence< OUString > aProgrammaticNames(xAliasesNode->getElementNames());
-    for (sal_Int32 i = 0; i != aProgrammaticNames.getLength(); ++i) {
+    const Sequence< OUString > aProgrammaticNames(xAliasesNode->getElementNames());
+    for (const auto& rProgrammaticName : aProgrammaticNames) {
         OString sAsciiProgrammaticName(
             OUStringToOString(
-                aProgrammaticNames[i], RTL_TEXTENCODING_ASCII_US));
-        bool bFound = false;
-        for (AliasMap::const_iterator j(m_aAliasMap.begin()); j != m_aAliasMap.end();
-             ++j)
-        {
-            if (j->second.programmaticAsciiName == sAsciiProgrammaticName) {
-                OUString sAssignedAlias;
-                xAliasesNode->getByName(aProgrammaticNames[i]) >>=
-                    sAssignedAlias;
-                if (sAssignedAlias.isEmpty()) {
-                    sAssignedAlias = aProgrammaticNames[i];
-                }
-                AliasEntry entry(j->second);
-                m_aAliasMap.erase(j);
-                m_aAliasMap[sAssignedAlias] = entry;
-                bFound = true;
-                break;
+                rProgrammaticName, RTL_TEXTENCODING_ASCII_US));
+        auto j = std::find_if(m_aAliasMap.begin(), m_aAliasMap.end(),
+            [&sAsciiProgrammaticName](const AliasMap::value_type& rEntry) {
+                return rEntry.second.programmaticAsciiName == sAsciiProgrammaticName; });
+        if (j != m_aAliasMap.end()) {
+            OUString sAssignedAlias;
+            xAliasesNode->getByName(rProgrammaticName) >>=
+                sAssignedAlias;
+            if (sAssignedAlias.isEmpty()) {
+                sAssignedAlias = rProgrammaticName;
             }
+            AliasEntry entry(j->second);
+            m_aAliasMap.erase(j);
+            m_aAliasMap[sAssignedAlias] = entry;
         }
-        SAL_WARN_IF(
-            !bFound, "connectivity.mork",
-            "unknown programmatic name " << aProgrammaticNames[i]
-                <<" from configuration");
+        else {
+            SAL_WARN(
+                "connectivity.mork",
+                "unknown programmatic name " << rProgrammaticName
+                    <<" from configuration");
+        }
     }
 }
 

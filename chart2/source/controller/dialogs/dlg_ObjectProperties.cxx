@@ -17,10 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svl/zforlist.hxx>
-#include "dlg_ObjectProperties.hxx"
-#include "ResourceIds.hrc"
-#include "Strings.hrc"
+#include <dlg_ObjectProperties.hxx>
+#include <strings.hrc>
 #include "tp_AxisLabel.hxx"
 #include "tp_DataLabel.hxx"
 #include "tp_LegendPosition.hxx"
@@ -32,24 +30,22 @@
 #include "tp_SeriesToAxis.hxx"
 #include "tp_TitleRotation.hxx"
 #include "tp_PolarOptions.hxx"
-#include "ResId.hxx"
-#include "ViewElementListProvider.hxx"
-#include "macros.hxx"
-#include "ChartModelHelper.hxx"
-#include "ChartTypeHelper.hxx"
-#include "ObjectNameProvider.hxx"
-#include "DiagramHelper.hxx"
-#include "NumberFormatterWrapper.hxx"
-#include "AxisIndexDefines.hxx"
-#include "AxisHelper.hxx"
-#include "ExplicitCategoriesProvider.hxx"
-#include "ChartModel.hxx"
-#include "CommonConverters.hxx"
-#include "RegressionCalculationHelper.hxx"
+#include "tp_DataPointOption.hxx"
+#include <ResId.hxx>
+#include <ViewElementListProvider.hxx>
+#include <ChartModelHelper.hxx>
+#include <ChartTypeHelper.hxx>
+#include <ObjectNameProvider.hxx>
+#include <DiagramHelper.hxx>
+#include <NumberFormatterWrapper.hxx>
+#include <AxisHelper.hxx>
+#include <ExplicitCategoriesProvider.hxx>
+#include <ChartModel.hxx>
+#include <CommonConverters.hxx>
+#include <RegressionCalculationHelper.hxx>
 
+#include <com/sun/star/chart2/AxisType.hpp>
 #include <com/sun/star/chart2/XAxis.hpp>
-#include <com/sun/star/chart2/XChartType.hpp>
-#include <com/sun/star/chart2/XDataSeries.hpp>
 #include <svl/intitem.hxx>
 #include <svl/languageoptions.hxx>
 
@@ -61,12 +57,15 @@
 
 #include <svx/dialogs.hrc>
 #include <editeng/flstitem.hxx>
-#include <svx/tabline.hxx>
 
 #include <svx/flagsdef.hxx>
 #include <svx/numinf.hxx>
 
 #include <svl/cjkoptions.hxx>
+#include <tools/diagnose_ex.h>
+
+namespace com::sun::star::chart2 { class XChartType; }
+namespace com::sun::star::chart2 { class XDataSeries; }
 
 namespace chart
 {
@@ -93,13 +92,14 @@ ObjectPropertiesDialogParameter::ObjectPropertiesDialogParameter( const OUString
         , m_bHasNumberProperties(false)
         , m_bProvidesStartingAngle(false)
         , m_bProvidesMissingValueTreatments(false)
+        , m_bIsPieChartDataPoint(false)
         , m_bHasScaleProperties(false)
         , m_bCanAxisLabelsBeStaggered(false)
         , m_bSupportingAxisPositioning(false)
         , m_bShowAxisOrigin(false)
         , m_bIsCrossingAxisIsCategoryAxis(false)
+        , m_bSupportingCategoryPositioning(false)
         , m_aCategories()
-        , m_xChartDocument( nullptr )
         , m_bComplexCategoriesAxis( false )
         , m_nNbPoints( 0 )
 {
@@ -126,6 +126,7 @@ void ObjectPropertiesDialogParameter::init( const uno::Reference< frame::XModel 
         m_bHasGeometryProperties = ChartTypeHelper::isSupportingGeometryProperties( xChartType, nDimensionCount );
         m_bHasAreaProperties     = ChartTypeHelper::isSupportingAreaProperties( xChartType, nDimensionCount );
         m_bHasSymbolProperties   = ChartTypeHelper::isSupportingSymbolProperties( xChartType, nDimensionCount );
+        m_bIsPieChartDataPoint   = bHasDataPointproperties && ChartTypeHelper::isSupportingStartingAngle( xChartType );
 
         if( bHasSeriesProperties )
         {
@@ -136,7 +137,7 @@ void ObjectPropertiesDialogParameter::init( const uno::Reference< frame::XModel 
             m_bProvidesStartingAngle = ChartTypeHelper::isSupportingStartingAngle( xChartType );
 
             m_bProvidesMissingValueTreatments = ChartTypeHelper::getSupportedMissingValueTreatments( xChartType )
-                                            .getLength();
+                                            .hasElements();
         }
     }
 
@@ -162,20 +163,6 @@ void ObjectPropertiesDialogParameter::init( const uno::Reference< frame::XModel 
                 if( aData.AxisType != chart2::AxisType::SERIES )
                     m_bHasNumberProperties = true;
 
-                sal_Int32 nCooSysIndex=0;
-                sal_Int32 nDimensionIndex=0;
-                sal_Int32 nAxisIndex=0;
-                if( AxisHelper::getIndicesForAxis( xAxis, xDiagram, nCooSysIndex, nDimensionIndex, nAxisIndex ) )
-                {
-                    xChartType = AxisHelper::getFirstChartTypeWithSeriesAttachedToAxisIndex( xDiagram, nAxisIndex );
-                    //show positioning controls only if they make sense
-                    m_bSupportingAxisPositioning = ChartTypeHelper::isSupportingAxisPositioning( xChartType, nDimensionCount, nDimensionIndex );
-
-                    //show axis origin only for secondary y axis
-                    if( nDimensionIndex==1 && nAxisIndex==1 && ChartTypeHelper::isSupportingBaseValue( xChartType ) )
-                        m_bShowAxisOrigin = true;
-                }
-
                 //is the crossing main axis a category axes?:
                 uno::Reference< XCoordinateSystem > xCooSys( AxisHelper::getCoordinateSystemOfAxis( xAxis, xDiagram ) );
                 uno::Reference< XAxis > xCrossingMainAxis( AxisHelper::getCrossingMainAxis( xAxis, xCooSys ) );
@@ -191,14 +178,30 @@ void ObjectPropertiesDialogParameter::init( const uno::Reference< frame::XModel 
                     }
                 }
 
-                m_bComplexCategoriesAxis = false;
-                if ( nDimensionIndex == 0 && aData.AxisType == chart2::AxisType::CATEGORY )
+                sal_Int32 nCooSysIndex=0;
+                sal_Int32 nDimensionIndex=0;
+                sal_Int32 nAxisIndex=0;
+                if( AxisHelper::getIndicesForAxis( xAxis, xDiagram, nCooSysIndex, nDimensionIndex, nAxisIndex ) )
                 {
-                    ChartModel* pModel = dynamic_cast<ChartModel*>(xChartModel.get());
-                    if (pModel)
+                    xChartType = AxisHelper::getFirstChartTypeWithSeriesAttachedToAxisIndex( xDiagram, nAxisIndex );
+                    //show positioning controls only if they make sense
+                    m_bSupportingAxisPositioning = ChartTypeHelper::isSupportingAxisPositioning( xChartType, nDimensionCount, nDimensionIndex );
+
+                    //show axis origin only for secondary y axis
+                    if( nDimensionIndex==1 && nAxisIndex==1 && ChartTypeHelper::isSupportingBaseValue( xChartType ) )
+                        m_bShowAxisOrigin = true;
+
+                    if ( nDimensionIndex == 0 && ( aData.AxisType == chart2::AxisType::CATEGORY || aData.AxisType == chart2::AxisType::DATE ) )
                     {
-                        ExplicitCategoriesProvider aExplicitCategoriesProvider( xCooSys, *pModel );
-                        m_bComplexCategoriesAxis = aExplicitCategoriesProvider.hasComplexCategories();
+                        ChartModel* pModel = dynamic_cast<ChartModel*>(xChartModel.get());
+                        if (pModel)
+                        {
+                            ExplicitCategoriesProvider aExplicitCategoriesProvider( xCooSys, *pModel );
+                            m_bComplexCategoriesAxis = aExplicitCategoriesProvider.hasComplexCategories();
+                        }
+
+                        if (!m_bComplexCategoriesAxis)
+                            m_bSupportingCategoryPositioning = ChartTypeHelper::isSupportingCategoryPositioning( xChartType, nDimensionCount );
                     }
                 }
             }
@@ -239,9 +242,9 @@ void ObjectPropertiesDialogParameter::init( const uno::Reference< frame::XModel 
                     }
                 }
             }
-            catch( const Exception & ex )
+            catch( const Exception & )
             {
-                ASSERT_EXCEPTION( ex );
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
         }
         if( !bXValuesFound && bYValuesFound )
@@ -255,8 +258,8 @@ void ObjectPropertiesDialogParameter::init( const uno::Reference< frame::XModel 
         }
 
         if( bXValuesFound && bYValuesFound &&
-            aXValues.getLength() > 0 &&
-            aYValues.getLength() > 0 )
+            aXValues.hasElements() &&
+            aYValues.hasElements() )
         {
             RegressionCalculationHelper::tDoubleVectorPair aValues(
                 RegressionCalculationHelper::cleanup( aXValues, aYValues, RegressionCalculationHelper::isValid()));
@@ -306,11 +309,11 @@ void ObjectPropertiesDialogParameter::init( const uno::Reference< frame::XModel 
 
 const sal_uInt16 nNoArrowNoShadowDlg    = 1101;
 
-void SchAttribTabDlg::setSymbolInformation( SfxItemSet* pSymbolShapeProperties,
-                Graphic* pAutoSymbolGraphic )
+void SchAttribTabDlg::setSymbolInformation( std::unique_ptr<SfxItemSet> pSymbolShapeProperties,
+                std::unique_ptr<Graphic> pAutoSymbolGraphic )
 {
-    m_pSymbolShapeProperties = pSymbolShapeProperties;
-    m_pAutoSymbolGraphic = pAutoSymbolGraphic;
+    m_pSymbolShapeProperties = std::move(pSymbolShapeProperties);
+    m_pAutoSymbolGraphic = std::move(pAutoSymbolGraphic);
 }
 
 void SchAttribTabDlg::SetAxisMinorStepWidthForErrorBarDecimals( double fMinorStepWidth )
@@ -318,109 +321,107 @@ void SchAttribTabDlg::SetAxisMinorStepWidthForErrorBarDecimals( double fMinorSte
     m_fAxisMinorStepWidthForErrorBarDecimals = fMinorStepWidth;
 }
 
-SchAttribTabDlg::SchAttribTabDlg(vcl::Window* pParent,
+SchAttribTabDlg::SchAttribTabDlg(weld::Window* pParent,
                                  const SfxItemSet* pAttr,
                                  const ObjectPropertiesDialogParameter* pDialogParameter,
                                  const ViewElementListProvider* pViewElementListProvider,
-                                 const uno::Reference< util::XNumberFormatsSupplier >& xNumberFormatsSupplier
-                                 )
-    : SfxTabDialog(pParent, "AttributeDialog", "modules/schart/ui/attributedialog.ui", pAttr)
-    , eObjectType(pDialogParameter->getObjectType())
-    , nDlgType(nNoArrowNoShadowDlg)
+                                 const uno::Reference< util::XNumberFormatsSupplier >& xNumberFormatsSupplier)
+    : SfxTabDialogController(pParent, "modules/schart/ui/attributedialog.ui", "AttributeDialog", pAttr)
     , m_pParameter( pDialogParameter )
     , m_pViewElementListProvider( pViewElementListProvider )
     , m_pNumberFormatter(nullptr)
-    , m_pSymbolShapeProperties(nullptr)
-    , m_pAutoSymbolGraphic(nullptr)
     , m_fAxisMinorStepWidthForErrorBarDecimals(0.1)
     , m_bOKPressed(false)
 {
     NumberFormatterWrapper aNumberFormatterWrapper( xNumberFormatsSupplier );
     m_pNumberFormatter = aNumberFormatterWrapper.getSvNumberFormatter();
 
-    this->SetText( pDialogParameter->getLocalizedName() );
+    m_xDialog->set_title(pDialogParameter->getLocalizedName());
 
     SvtCJKOptions aCJKOptions;
 
-    switch (eObjectType)
+    switch (pDialogParameter->getObjectType())
     {
         case OBJECTTYPE_TITLE:
-            AddTabPage(RID_SVXPAGE_LINE, SchResId(STR_PAGE_BORDER));
-            AddTabPage(RID_SVXPAGE_AREA, SchResId(STR_PAGE_AREA));
-            AddTabPage(RID_SVXPAGE_TRANSPARENCE, SchResId(STR_PAGE_TRANSPARENCY));
-            AddTabPage(RID_SVXPAGE_CHAR_NAME, SchResId(STR_PAGE_FONT));
-            AddTabPage(RID_SVXPAGE_CHAR_EFFECTS, SchResId(STR_PAGE_FONT_EFFECTS));
-            AddTabPage(TP_ALIGNMENT, SchResId(STR_PAGE_ALIGNMENT), SchAlignmentTabPage::Create, nullptr);
+            AddTabPage("border", SchResId(STR_PAGE_BORDER), RID_SVXPAGE_LINE);
+            AddTabPage("area", SchResId(STR_PAGE_AREA), RID_SVXPAGE_AREA);
+            AddTabPage("transparent", SchResId(STR_PAGE_TRANSPARENCY), RID_SVXPAGE_TRANSPARENCE);
+            AddTabPage("fontname", SchResId(STR_PAGE_FONT), RID_SVXPAGE_CHAR_NAME);
+            AddTabPage("effects", SchResId(STR_PAGE_FONT_EFFECTS), RID_SVXPAGE_CHAR_EFFECTS);
+            AddTabPage("alignment", SchResId(STR_PAGE_ALIGNMENT), SchAlignmentTabPage::Create);
             if( aCJKOptions.IsAsianTypographyEnabled() )
-                AddTabPage(RID_SVXPAGE_PARA_ASIAN, SchResId(STR_PAGE_ASIAN));
+                AddTabPage("asian", SchResId(STR_PAGE_ASIAN), RID_SVXPAGE_PARA_ASIAN);
             break;
 
         case OBJECTTYPE_LEGEND:
-            AddTabPage(RID_SVXPAGE_LINE, SchResId(STR_PAGE_BORDER));
-            AddTabPage(RID_SVXPAGE_AREA, SchResId(STR_PAGE_AREA));
-            AddTabPage(RID_SVXPAGE_TRANSPARENCE, SchResId(STR_PAGE_TRANSPARENCY));
-            AddTabPage(RID_SVXPAGE_CHAR_NAME, SchResId(STR_PAGE_FONT));
-            AddTabPage(RID_SVXPAGE_CHAR_EFFECTS, SchResId(STR_PAGE_FONT_EFFECTS));
-            AddTabPage(TP_LEGEND_POS, SchResId(STR_PAGE_POSITION), SchLegendPosTabPage::Create, nullptr);
-            if( aCJKOptions.IsAsianTypographyEnabled() )
-                AddTabPage(RID_SVXPAGE_PARA_ASIAN, SchResId(STR_PAGE_ASIAN));
+            AddTabPage("border", SchResId(STR_PAGE_BORDER), RID_SVXPAGE_LINE);
+            AddTabPage("area", SchResId(STR_PAGE_AREA), RID_SVXPAGE_AREA);
+            AddTabPage("transparent", SchResId(STR_PAGE_TRANSPARENCY), RID_SVXPAGE_TRANSPARENCE);
+            AddTabPage("fontname", SchResId(STR_PAGE_FONT), RID_SVXPAGE_CHAR_NAME);
+            AddTabPage("effects", SchResId(STR_PAGE_FONT_EFFECTS), RID_SVXPAGE_CHAR_EFFECTS);
+            AddTabPage("legendpos", SchResId(STR_PAGE_POSITION), SchLegendPosTabPage::Create);
+            if (aCJKOptions.IsAsianTypographyEnabled())
+                AddTabPage("asian", SchResId(STR_PAGE_ASIAN), RID_SVXPAGE_PARA_ASIAN);
             break;
 
         case OBJECTTYPE_DATA_SERIES:
         case OBJECTTYPE_DATA_POINT:
             if( m_pParameter->ProvidesSecondaryYAxis() || m_pParameter->ProvidesOverlapAndGapWidth() || m_pParameter->ProvidesMissingValueTreatments() )
-                AddTabPage(TP_OPTIONS, SchResId(STR_PAGE_OPTIONS),SchOptionTabPage::Create, nullptr);
+                AddTabPage("options", SchResId(STR_PAGE_OPTIONS),SchOptionTabPage::Create);
             if( m_pParameter->ProvidesStartingAngle())
-                AddTabPage(TP_POLAROPTIONS, SchResId(STR_PAGE_OPTIONS),PolarOptionsTabPage::Create, nullptr);
+                AddTabPage("polaroptions", SchResId(STR_PAGE_OPTIONS), PolarOptionsTabPage::Create);
+            if (m_pParameter->IsPieChartDataPoint())
+                AddTabPage("datapointoption", SchResId(STR_PAGE_OPTIONS), DataPointOptionTabPage::Create);
 
             if( m_pParameter->HasGeometryProperties() )
-                AddTabPage(TP_LAYOUT, SchResId(STR_PAGE_LAYOUT),SchLayoutTabPage::Create, nullptr);
+                AddTabPage("layout", SchResId(STR_PAGE_LAYOUT), SchLayoutTabPage::Create);
 
             if(m_pParameter->HasAreaProperties())
             {
-                AddTabPage(RID_SVXPAGE_AREA, SchResId(STR_PAGE_AREA));
-                AddTabPage(RID_SVXPAGE_TRANSPARENCE, SchResId(STR_PAGE_TRANSPARENCY));
+                AddTabPage("area", SchResId(STR_PAGE_AREA), RID_SVXPAGE_AREA);
+                AddTabPage("transparent", SchResId(STR_PAGE_TRANSPARENCY), RID_SVXPAGE_TRANSPARENCE);
             }
-            AddTabPage(RID_SVXPAGE_LINE, SchResId( m_pParameter->HasAreaProperties() ? STR_PAGE_BORDER : STR_PAGE_LINE ));
+            AddTabPage("border", SchResId( m_pParameter->HasAreaProperties() ? STR_PAGE_BORDER : STR_PAGE_LINE ), RID_SVXPAGE_LINE);
             break;
 
         case OBJECTTYPE_DATA_LABEL:
         case OBJECTTYPE_DATA_LABELS:
-            AddTabPage(RID_SVXPAGE_LINE, SchResId(STR_PAGE_BORDER));
-            AddTabPage(TP_DATA_DESCR, SchResId(STR_OBJECT_DATALABELS), DataLabelsTabPage::Create, nullptr);
-            AddTabPage(RID_SVXPAGE_CHAR_NAME, SchResId(STR_PAGE_FONT));
-            AddTabPage(RID_SVXPAGE_CHAR_EFFECTS, SchResId(STR_PAGE_FONT_EFFECTS));
+            AddTabPage("border", SchResId(STR_PAGE_BORDER), RID_SVXPAGE_LINE);
+            AddTabPage("datalabels", SchResId(STR_OBJECT_DATALABELS), DataLabelsTabPage::Create);
+            AddTabPage("fontname", SchResId(STR_PAGE_FONT), RID_SVXPAGE_CHAR_NAME);
+            AddTabPage("effects", SchResId(STR_PAGE_FONT_EFFECTS), RID_SVXPAGE_CHAR_EFFECTS);
             if( aCJKOptions.IsAsianTypographyEnabled() )
-                AddTabPage(RID_SVXPAGE_PARA_ASIAN, SchResId(STR_PAGE_ASIAN));
+                AddTabPage("asian", SchResId(STR_PAGE_ASIAN), RID_SVXPAGE_PARA_ASIAN);
 
             break;
 
         case OBJECTTYPE_AXIS:
         {
             if( m_pParameter->HasScaleProperties() )
-                AddTabPage(TP_SCALE, SchResId(STR_PAGE_SCALE), ScaleTabPage::Create, nullptr);
-
-            if( m_pParameter->HasScaleProperties() )//no positioning page for z axes so far as the tickmarks are not shown so far
-                AddTabPage(TP_AXIS_POSITIONS, SchResId(STR_PAGE_POSITIONING), AxisPositionsTabPage::Create, nullptr);
-            AddTabPage(RID_SVXPAGE_LINE, SchResId(STR_PAGE_LINE));
-            AddTabPage(TP_AXIS_LABEL, SchResId(STR_OBJECT_LABEL), SchAxisLabelTabPage::Create, nullptr);
+            {
+                AddTabPage("scale", SchResId(STR_PAGE_SCALE), ScaleTabPage::Create);
+                //no positioning page for z axes so far as the tickmarks are not shown so far
+                AddTabPage("axispos", SchResId(STR_PAGE_POSITIONING), AxisPositionsTabPage::Create);
+            }
+            AddTabPage("border", SchResId(STR_PAGE_LINE), RID_SVXPAGE_LINE);
+            AddTabPage("axislabel", SchResId(STR_OBJECT_LABEL), SchAxisLabelTabPage::Create);
             if( m_pParameter->HasNumberProperties() )
-                AddTabPage(RID_SVXPAGE_NUMBERFORMAT, SchResId(STR_PAGE_NUMBERS));
-            AddTabPage(RID_SVXPAGE_CHAR_NAME, SchResId(STR_PAGE_FONT));
-            AddTabPage(RID_SVXPAGE_CHAR_EFFECTS, SchResId(STR_PAGE_FONT_EFFECTS));
+                AddTabPage("numberformat", SchResId(STR_PAGE_NUMBERS), RID_SVXPAGE_NUMBERFORMAT);
+            AddTabPage("fontname", SchResId(STR_PAGE_FONT), RID_SVXPAGE_CHAR_NAME);
+            AddTabPage("effects", SchResId(STR_PAGE_FONT_EFFECTS), RID_SVXPAGE_CHAR_EFFECTS);
             if( aCJKOptions.IsAsianTypographyEnabled() )
-                AddTabPage(RID_SVXPAGE_PARA_ASIAN, SchResId(STR_PAGE_ASIAN));
+                AddTabPage("asian", SchResId(STR_PAGE_ASIAN), RID_SVXPAGE_PARA_ASIAN);
             break;
         }
 
         case OBJECTTYPE_DATA_ERRORS_X:
-            AddTabPage(TP_XERRORBAR, SchResId(STR_PAGE_XERROR_BARS), ErrorBarsTabPage::Create, nullptr);
-            AddTabPage(RID_SVXPAGE_LINE, SchResId(STR_PAGE_LINE));
+            AddTabPage("xerrorbar", SchResId(STR_PAGE_XERROR_BARS), ErrorBarsTabPage::Create);
+            AddTabPage("border", SchResId(STR_PAGE_LINE), RID_SVXPAGE_LINE);
             break;
 
         case OBJECTTYPE_DATA_ERRORS_Y:
-            AddTabPage(TP_YERRORBAR, SchResId(STR_PAGE_YERROR_BARS), ErrorBarsTabPage::Create, nullptr);
-            AddTabPage(RID_SVXPAGE_LINE, SchResId(STR_PAGE_LINE));
+            AddTabPage("yerrorbar", SchResId(STR_PAGE_YERROR_BARS), ErrorBarsTabPage::Create);
+            AddTabPage("border", SchResId(STR_PAGE_LINE), RID_SVXPAGE_LINE);
             break;
 
         case OBJECTTYPE_DATA_ERRORS_Z:
@@ -430,12 +431,12 @@ SchAttribTabDlg::SchAttribTabDlg(vcl::Window* pParent,
         case OBJECTTYPE_SUBGRID:
         case OBJECTTYPE_DATA_AVERAGE_LINE:
         case OBJECTTYPE_DATA_STOCK_RANGE:
-            AddTabPage(RID_SVXPAGE_LINE, SchResId(STR_PAGE_LINE));
+            AddTabPage("border", SchResId(STR_PAGE_LINE), RID_SVXPAGE_LINE);
             break;
 
         case OBJECTTYPE_DATA_CURVE:
-            AddTabPage(TP_TRENDLINE, SchResId(STR_PAGE_TRENDLINE_TYPE), TrendlineTabPage::Create, nullptr);
-            AddTabPage(RID_SVXPAGE_LINE, SchResId(STR_PAGE_LINE));
+            AddTabPage("trendline", SchResId(STR_PAGE_TRENDLINE_TYPE), TrendlineTabPage::Create);
+            AddTabPage("border", SchResId(STR_PAGE_LINE), RID_SVXPAGE_LINE);
             break;
 
         case OBJECTTYPE_DATA_STOCK_LOSS:
@@ -444,9 +445,9 @@ SchAttribTabDlg::SchAttribTabDlg(vcl::Window* pParent,
         case OBJECTTYPE_DIAGRAM_FLOOR:
         case OBJECTTYPE_DIAGRAM_WALL:
         case OBJECTTYPE_DIAGRAM:
-            AddTabPage(RID_SVXPAGE_LINE, SchResId(STR_PAGE_BORDER));
-            AddTabPage(RID_SVXPAGE_AREA, SchResId(STR_PAGE_AREA));
-            AddTabPage(RID_SVXPAGE_TRANSPARENCE, SchResId(STR_PAGE_TRANSPARENCY));
+            AddTabPage("border", SchResId(STR_PAGE_BORDER), RID_SVXPAGE_LINE);
+            AddTabPage("area", SchResId(STR_PAGE_AREA), RID_SVXPAGE_AREA);
+            AddTabPage("transparent", SchResId(STR_PAGE_TRANSPARENCY), RID_SVXPAGE_TRANSPARENCE);
             break;
 
         case OBJECTTYPE_LEGEND_ENTRY:
@@ -455,17 +456,19 @@ SchAttribTabDlg::SchAttribTabDlg(vcl::Window* pParent,
             // nothing
             break;
         case OBJECTTYPE_DATA_CURVE_EQUATION:
-            AddTabPage(RID_SVXPAGE_LINE, SchResId(STR_PAGE_BORDER));
-            AddTabPage(RID_SVXPAGE_AREA, SchResId(STR_PAGE_AREA));
-            AddTabPage(RID_SVXPAGE_TRANSPARENCE, SchResId(STR_PAGE_TRANSPARENCY));
-            AddTabPage(RID_SVXPAGE_CHAR_NAME, SchResId(STR_PAGE_FONT));
-            AddTabPage(RID_SVXPAGE_CHAR_EFFECTS, SchResId(STR_PAGE_FONT_EFFECTS));
-            AddTabPage(RID_SVXPAGE_NUMBERFORMAT, SchResId(STR_PAGE_NUMBERS));
-            if( SvtLanguageOptions().IsCTLFontEnabled() )
+            AddTabPage("border", SchResId(STR_PAGE_BORDER), RID_SVXPAGE_LINE);
+            AddTabPage("area", SchResId(STR_PAGE_AREA), RID_SVXPAGE_AREA);
+            AddTabPage("transparent", SchResId(STR_PAGE_TRANSPARENCY), RID_SVXPAGE_TRANSPARENCE);
+            AddTabPage("fontname", SchResId(STR_PAGE_FONT), RID_SVXPAGE_CHAR_NAME);
+            AddTabPage("effects", SchResId(STR_PAGE_FONT_EFFECTS), RID_SVXPAGE_CHAR_EFFECTS);
+            AddTabPage("numberformat", SchResId(STR_PAGE_NUMBERS), RID_SVXPAGE_NUMBERFORMAT);
+            if (SvtLanguageOptions().IsCTLFontEnabled())
+            {
                 /*  When rotation is supported for equation text boxes, use
                     SchAlignmentTabPage::Create here. The special
                     SchAlignmentTabPage::CreateWithoutRotation can be deleted. */
-                AddTabPage(TP_ALIGNMENT, SchResId(STR_PAGE_ALIGNMENT), SchAlignmentTabPage::CreateWithoutRotation, nullptr);
+                AddTabPage("alignment", SchResId(STR_PAGE_ALIGNMENT), SchAlignmentTabPage::CreateWithoutRotation);
+            }
             break;
         default:
             break;
@@ -474,176 +477,146 @@ SchAttribTabDlg::SchAttribTabDlg(vcl::Window* pParent,
     // used to find out if user left the dialog with OK. When OK is pressed but
     // no changes were done, Cancel is returned by the SfxTabDialog. See method
     // DialogWasClosedWithOK.
-    m_aOriginalOKClickHdl = GetOKButton().GetClickHdl();
-    GetOKButton().SetClickHdl( LINK( this, SchAttribTabDlg, OKPressed ));
+    GetOKButton().connect_clicked(LINK(this, SchAttribTabDlg, OKPressed));
 }
 
 SchAttribTabDlg::~SchAttribTabDlg()
 {
-    disposeOnce();
 }
 
-void SchAttribTabDlg::dispose()
-{
-    delete m_pSymbolShapeProperties;
-    m_pSymbolShapeProperties = nullptr;
-    delete m_pAutoSymbolGraphic;
-    m_pAutoSymbolGraphic = nullptr;
-    SfxTabDialog::dispose();
-}
-
-void SchAttribTabDlg::PageCreated(sal_uInt16 nId, SfxTabPage &rPage)
+void SchAttribTabDlg::PageCreated(const OString& rId, SfxTabPage &rPage)
 {
     SfxAllItemSet aSet(*(GetInputSetImpl()->GetPool()));
-    switch (nId)
+    if (rId == "border")
     {
-        case TP_LAYOUT:
-        break;
-        case RID_SVXPAGE_LINE:
-            aSet.Put (SvxColorListItem(m_pViewElementListProvider->GetColorTable(),SID_COLOR_TABLE));
-            aSet.Put (SvxDashListItem(m_pViewElementListProvider->GetDashList(),SID_DASH_LIST));
-            aSet.Put (SvxLineEndListItem(m_pViewElementListProvider->GetLineEndList(),SID_LINEEND_LIST));
-            aSet.Put (SfxUInt16Item(SID_PAGE_TYPE,0));
-            aSet.Put (SfxUInt16Item(SID_DLG_TYPE,nDlgType));
+        aSet.Put (SvxColorListItem(m_pViewElementListProvider->GetColorTable(),SID_COLOR_TABLE));
+        aSet.Put (SvxDashListItem(m_pViewElementListProvider->GetDashList(),SID_DASH_LIST));
+        aSet.Put (SvxLineEndListItem(m_pViewElementListProvider->GetLineEndList(),SID_LINEEND_LIST));
+        aSet.Put (SfxUInt16Item(SID_PAGE_TYPE,0));
+        aSet.Put (SfxUInt16Item(SID_DLG_TYPE,nNoArrowNoShadowDlg));
 
-            if( m_pParameter->HasSymbolProperties() )
-            {
-                aSet.Put(OfaPtrItem(SID_OBJECT_LIST,m_pViewElementListProvider->GetSymbolList()));
-                if( m_pSymbolShapeProperties )
-                    aSet.Put(SfxTabDialogItem(SID_ATTR_SET,*m_pSymbolShapeProperties));
-                if( m_pAutoSymbolGraphic )
-                    aSet.Put(SvxGraphicItem(*m_pAutoSymbolGraphic));
-            }
-            rPage.PageCreated(aSet);
-            break;
-
-        case RID_SVXPAGE_AREA:
-            aSet.Put(SvxColorListItem(m_pViewElementListProvider->GetColorTable(),SID_COLOR_TABLE));
-            aSet.Put(SvxGradientListItem(m_pViewElementListProvider->GetGradientList(),SID_GRADIENT_LIST));
-            aSet.Put(SvxHatchListItem(m_pViewElementListProvider->GetHatchList(),SID_HATCH_LIST));
-            aSet.Put(SvxBitmapListItem(m_pViewElementListProvider->GetBitmapList(),SID_BITMAP_LIST));
-            aSet.Put(SvxPatternListItem(m_pViewElementListProvider->GetPatternList(),SID_PATTERN_LIST));
-            aSet.Put(SfxUInt16Item(SID_PAGE_TYPE,0));
-            aSet.Put(SfxUInt16Item(SID_DLG_TYPE,nDlgType));
-            rPage.PageCreated(aSet);
-            break;
-
-        case RID_SVXPAGE_TRANSPARENCE:
-            aSet.Put (SfxUInt16Item(SID_PAGE_TYPE,0));
-            aSet.Put (SfxUInt16Item(SID_DLG_TYPE,nDlgType));
-            rPage.PageCreated(aSet);
-            break;
-
-        case RID_SVXPAGE_CHAR_NAME:
-
-            aSet.Put (SvxFontListItem(m_pViewElementListProvider->getFontList(), SID_ATTR_CHAR_FONTLIST));
-            rPage.PageCreated(aSet);
-            break;
-
-        case RID_SVXPAGE_CHAR_EFFECTS:
-            aSet.Put (SfxUInt16Item(SID_DISABLE_CTL,DISABLE_CASEMAP));
-            rPage.PageCreated(aSet);
-            break;
-
-        case TP_AXIS_LABEL:
+        if( m_pParameter->HasSymbolProperties() )
         {
-            bool bShowStaggeringControls = m_pParameter->CanAxisLabelsBeStaggered();
-            static_cast<SchAxisLabelTabPage&>(rPage).ShowStaggeringControls( bShowStaggeringControls );
-            ( dynamic_cast< SchAxisLabelTabPage& >( rPage ) ).SetComplexCategories( m_pParameter->IsComplexCategoriesAxis() );
-            break;
+            aSet.Put(OfaPtrItem(SID_OBJECT_LIST,m_pViewElementListProvider->GetSymbolList()));
+            if( m_pSymbolShapeProperties )
+                aSet.Put(SfxTabDialogItem(SID_ATTR_SET,*m_pSymbolShapeProperties));
+            if( m_pAutoSymbolGraphic )
+                aSet.Put(SvxGraphicItem(*m_pAutoSymbolGraphic));
         }
-
-        case TP_ALIGNMENT:
-            break;
-
-        case TP_AXIS_POSITIONS:
-            {
-                AxisPositionsTabPage* pPage = dynamic_cast< AxisPositionsTabPage* >( &rPage );
-                if(pPage)
-                {
-                    pPage->SetNumFormatter( m_pNumberFormatter );
-                    if( m_pParameter->IsCrossingAxisIsCategoryAxis() )
-                    {
-                        pPage->SetCrossingAxisIsCategoryAxis( m_pParameter->IsCrossingAxisIsCategoryAxis() );
-                        pPage->SetCategories( m_pParameter->GetCategories() );
-                    }
-                    pPage->SupportAxisPositioning( m_pParameter->IsSupportingAxisPositioning() );
-                }
-            }
-            break;
-
-        case TP_SCALE:
-            {
-                ScaleTabPage* pScaleTabPage = dynamic_cast< ScaleTabPage* >( &rPage );
-                if(pScaleTabPage)
-                {
-                    pScaleTabPage->SetNumFormatter( m_pNumberFormatter );
-                    pScaleTabPage->ShowAxisOrigin( m_pParameter->ShowAxisOrigin() );
-                }
-            }
-            break;
-
-        case TP_DATA_DESCR:
-            {
-                DataLabelsTabPage* pLabelPage = dynamic_cast< DataLabelsTabPage* >( &rPage );
-                if( pLabelPage )
-                    pLabelPage->SetNumberFormatter( m_pNumberFormatter );
-            }
-            break;
-
-        case RID_SVXPAGE_NUMBERFORMAT:
-               aSet.Put (SvxNumberInfoItem( m_pNumberFormatter, (sal_uInt16)SID_ATTR_NUMBERFORMAT_INFO));
-            rPage.PageCreated(aSet);
-            break;
-        case TP_XERRORBAR:
+        rPage.PageCreated(aSet);
+    }
+    else if (rId == "area")
+    {
+        aSet.Put(SvxColorListItem(m_pViewElementListProvider->GetColorTable(),SID_COLOR_TABLE));
+        aSet.Put(SvxGradientListItem(m_pViewElementListProvider->GetGradientList(),SID_GRADIENT_LIST));
+        aSet.Put(SvxHatchListItem(m_pViewElementListProvider->GetHatchList(),SID_HATCH_LIST));
+        aSet.Put(SvxBitmapListItem(m_pViewElementListProvider->GetBitmapList(),SID_BITMAP_LIST));
+        aSet.Put(SvxPatternListItem(m_pViewElementListProvider->GetPatternList(),SID_PATTERN_LIST));
+        aSet.Put(SfxUInt16Item(SID_PAGE_TYPE,0));
+        aSet.Put(SfxUInt16Item(SID_DLG_TYPE,nNoArrowNoShadowDlg));
+        rPage.PageCreated(aSet);
+    }
+    else if (rId == "transparent")
+    {
+        aSet.Put (SfxUInt16Item(SID_PAGE_TYPE,0));
+        aSet.Put (SfxUInt16Item(SID_DLG_TYPE,nNoArrowNoShadowDlg));
+        rPage.PageCreated(aSet);
+    }
+    else if (rId == "fontname")
+    {
+        aSet.Put (SvxFontListItem(m_pViewElementListProvider->getFontList(), SID_ATTR_CHAR_FONTLIST));
+        rPage.PageCreated(aSet);
+    }
+    else if (rId == "effects")
+    {
+        aSet.Put (SfxUInt16Item(SID_DISABLE_CTL,DISABLE_CASEMAP));
+        rPage.PageCreated(aSet);
+    }
+    else if (rId == "axislabel")
+    {
+        bool bShowStaggeringControls = m_pParameter->CanAxisLabelsBeStaggered();
+        static_cast<SchAxisLabelTabPage&>(rPage).ShowStaggeringControls( bShowStaggeringControls );
+        dynamic_cast< SchAxisLabelTabPage& >( rPage ).SetComplexCategories( m_pParameter->IsComplexCategoriesAxis() );
+    }
+    else if (rId == "axispos")
+    {
+        AxisPositionsTabPage* pPage = dynamic_cast< AxisPositionsTabPage* >( &rPage );
+        if(pPage)
         {
-            ErrorBarsTabPage * pTabPage = dynamic_cast< ErrorBarsTabPage * >( &rPage );
-            OSL_ASSERT( pTabPage );
-            if( pTabPage )
+            pPage->SetNumFormatter( m_pNumberFormatter );
+            if( m_pParameter->IsCrossingAxisIsCategoryAxis() )
             {
-                pTabPage->SetAxisMinorStepWidthForErrorBarDecimals( m_fAxisMinorStepWidthForErrorBarDecimals );
-                pTabPage->SetErrorBarType( ErrorBarResources::ERROR_BAR_X );
-                pTabPage->SetChartDocumentForRangeChoosing( m_pParameter->getDocument());
+                pPage->SetCrossingAxisIsCategoryAxis( m_pParameter->IsCrossingAxisIsCategoryAxis() );
+                pPage->SetCategories( m_pParameter->GetCategories() );
             }
-            break;
+            pPage->SupportAxisPositioning( m_pParameter->IsSupportingAxisPositioning() );
+            pPage->SupportCategoryPositioning( m_pParameter->IsSupportingCategoryPositioning() );
         }
-        case TP_YERRORBAR:
+    }
+    else if (rId == "scale")
+    {
+        ScaleTabPage* pScaleTabPage = dynamic_cast< ScaleTabPage* >( &rPage );
+        if(pScaleTabPage)
         {
-            ErrorBarsTabPage * pTabPage = dynamic_cast< ErrorBarsTabPage * >( &rPage );
-            OSL_ASSERT( pTabPage );
-            if( pTabPage )
-            {
-                pTabPage->SetAxisMinorStepWidthForErrorBarDecimals( m_fAxisMinorStepWidthForErrorBarDecimals );
-                pTabPage->SetErrorBarType( ErrorBarResources::ERROR_BAR_Y );
-                pTabPage->SetChartDocumentForRangeChoosing( m_pParameter->getDocument());
-            }
-            break;
+            pScaleTabPage->SetNumFormatter( m_pNumberFormatter );
+            pScaleTabPage->ShowAxisOrigin( m_pParameter->ShowAxisOrigin() );
         }
-        case TP_OPTIONS:
+    }
+    else if (rId == "datalabels")
+    {
+        DataLabelsTabPage* pLabelPage = dynamic_cast< DataLabelsTabPage* >( &rPage );
+        if( pLabelPage )
+            pLabelPage->SetNumberFormatter( m_pNumberFormatter );
+    }
+    else if (rId == "numberformat")
+    {
+        aSet.Put (SvxNumberInfoItem( m_pNumberFormatter, static_cast<sal_uInt16>(SID_ATTR_NUMBERFORMAT_INFO)));
+        rPage.PageCreated(aSet);
+    }
+    else if (rId == "xerrorbar")
+    {
+        ErrorBarsTabPage * pTabPage = dynamic_cast< ErrorBarsTabPage * >( &rPage );
+        OSL_ASSERT( pTabPage );
+        if( pTabPage )
         {
-            SchOptionTabPage* pTabPage = dynamic_cast< SchOptionTabPage* >( &rPage );
-            if( pTabPage && m_pParameter )
-                pTabPage->Init( m_pParameter->ProvidesSecondaryYAxis(), m_pParameter->ProvidesOverlapAndGapWidth(),
-                    m_pParameter->ProvidesBarConnectors() );
-            break;
+            pTabPage->SetAxisMinorStepWidthForErrorBarDecimals( m_fAxisMinorStepWidthForErrorBarDecimals );
+            pTabPage->SetErrorBarType( ErrorBarResources::ERROR_BAR_X );
+            pTabPage->SetChartDocumentForRangeChoosing( m_pParameter->getDocument());
         }
-        case TP_TRENDLINE:
+    }
+    else if (rId == "yerrorbar")
+    {
+        ErrorBarsTabPage * pTabPage = dynamic_cast< ErrorBarsTabPage * >( &rPage );
+        OSL_ASSERT( pTabPage );
+        if( pTabPage )
         {
-            TrendlineTabPage* pTrendlineTabPage = dynamic_cast< TrendlineTabPage* >( &rPage );
-            if(pTrendlineTabPage)
-            {
-                pTrendlineTabPage->SetNumFormatter( m_pNumberFormatter );
-                pTrendlineTabPage->SetNbPoints( m_pParameter->getNbPoints() );
-            }
-            break;
+            pTabPage->SetAxisMinorStepWidthForErrorBarDecimals( m_fAxisMinorStepWidthForErrorBarDecimals );
+            pTabPage->SetErrorBarType( ErrorBarResources::ERROR_BAR_Y );
+            pTabPage->SetChartDocumentForRangeChoosing( m_pParameter->getDocument());
+        }
+    }
+    else if (rId == "options")
+    {
+        SchOptionTabPage* pTabPage = dynamic_cast< SchOptionTabPage* >( &rPage );
+        if( pTabPage && m_pParameter )
+            pTabPage->Init( m_pParameter->ProvidesSecondaryYAxis(), m_pParameter->ProvidesOverlapAndGapWidth(),
+                m_pParameter->ProvidesBarConnectors() );
+    }
+    else if (rId == "trendline")
+    {
+        TrendlineTabPage* pTrendlineTabPage = dynamic_cast< TrendlineTabPage* >( &rPage );
+        if(pTrendlineTabPage)
+        {
+            pTrendlineTabPage->SetNumFormatter( m_pNumberFormatter );
+            pTrendlineTabPage->SetNbPoints( m_pParameter->getNbPoints() );
         }
     }
 }
 
-IMPL_LINK(SchAttribTabDlg, OKPressed, Button*, pButton, void)
+IMPL_LINK(SchAttribTabDlg, OKPressed, weld::Button&, rButton, void)
 {
     m_bOKPressed = true;
-    m_aOriginalOKClickHdl.Call( pButton );
+    OkHdl(rButton);
 }
 
 } //namespace chart

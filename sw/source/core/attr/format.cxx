@@ -25,21 +25,20 @@
 #include <format.hxx>
 #include <hintids.hxx>
 #include <hints.hxx>
-#include <paratr.hxx>
 #include <swcache.hxx>
-#include <swtblfmt.hxx>
+#include <frmatr.hxx>
 #include <svl/grabbagitem.hxx>
 #include <svx/sdr/attribute/sdrallfillattributeshelper.hxx>
 #include <svx/unobrushitemhelper.hxx>
 #include <svx/xdef.hxx>
+#include <sal/log.hxx>
 
 using namespace com::sun::star;
 
 
-SwFormat::SwFormat( SwAttrPool& rPool, const sal_Char* pFormatNm,
+SwFormat::SwFormat( SwAttrPool& rPool, const char* pFormatNm,
               const sal_uInt16* pWhichRanges, SwFormat *pDrvdFrame,
-              sal_uInt16 nFormatWhich )
-    : SwModify( pDrvdFrame ),
+              sal_uInt16 nFormatWhich ) :
     m_aFormatName( OUString::createFromAscii(pFormatNm) ),
     m_aSet( rPool, pWhichRanges ),
     m_nWhichId( nFormatWhich ),
@@ -52,13 +51,15 @@ SwFormat::SwFormat( SwAttrPool& rPool, const sal_Char* pFormatNm,
     m_bFormatInDTOR = m_bHidden = false;
 
     if( pDrvdFrame )
+    {
+        pDrvdFrame->Add(this);
         m_aSet.SetParent( &pDrvdFrame->m_aSet );
+    }
 }
 
 SwFormat::SwFormat( SwAttrPool& rPool, const OUString& rFormatNm,
               const sal_uInt16* pWhichRanges, SwFormat* pDrvdFrame,
-              sal_uInt16 nFormatWhich )
-    : SwModify( pDrvdFrame ),
+              sal_uInt16 nFormatWhich ) :
     m_aFormatName( rFormatNm ),
     m_aSet( rPool, pWhichRanges ),
     m_nWhichId( nFormatWhich ),
@@ -71,11 +72,13 @@ SwFormat::SwFormat( SwAttrPool& rPool, const OUString& rFormatNm,
     m_bFormatInDTOR = m_bHidden = false;
 
     if( pDrvdFrame )
+    {
+        pDrvdFrame->Add(this);
         m_aSet.SetParent( &pDrvdFrame->m_aSet );
+    }
 }
 
-SwFormat::SwFormat( const SwFormat& rFormat )
-    : SwModify( rFormat.DerivedFrom() ),
+SwFormat::SwFormat( const SwFormat& rFormat ) :
     m_aFormatName( rFormat.m_aFormatName ),
     m_aSet( rFormat.m_aSet ),
     m_nWhichId( rFormat.m_nWhichId ),
@@ -88,14 +91,20 @@ SwFormat::SwFormat( const SwFormat& rFormat )
     m_bHidden = rFormat.m_bHidden;
     m_bAutoUpdateFormat = rFormat.m_bAutoUpdateFormat;
 
-    if( rFormat.DerivedFrom() )
-        m_aSet.SetParent( &rFormat.DerivedFrom()->m_aSet );
+    if( auto pDerived = rFormat.DerivedFrom() )
+    {
+        pDerived->Add(this);
+        m_aSet.SetParent( &pDerived->m_aSet );
+    }
     // a few special treatments for attributes
     m_aSet.SetModifyAtAttr( this );
 }
 
 SwFormat &SwFormat::operator=(const SwFormat& rFormat)
 {
+    if(this == &rFormat)
+        return *this;
+
     m_nWhichId = rFormat.m_nWhichId;
     m_nPoolFormatId = rFormat.GetPoolFormatId();
     m_nPoolHelpId = rFormat.GetPoolHelpId();
@@ -125,20 +134,14 @@ SwFormat &SwFormat::operator=(const SwFormat& rFormat)
         ModifyNotification( &aChgOld, &aChgNew ); // send all modified ones
     }
 
-    if( GetRegisteredIn() != rFormat.GetRegisteredIn() )
+    if(GetRegisteredIn() != rFormat.GetRegisteredIn())
     {
-        if( GetRegisteredIn() )
-            GetRegisteredInNonConst()->Remove(this);
-        if( rFormat.GetRegisteredIn() )
-        {
-            const_cast<SwFormat&>(rFormat).GetRegisteredInNonConst()->Add(this);
-            m_aSet.SetParent( &rFormat.m_aSet );
-        }
-        else
-        {
-            m_aSet.SetParent( nullptr );
-        }
+        StartListeningToSameModifyAs(rFormat);
+        m_aSet.SetParent( GetRegisteredIn()
+            ? &rFormat.m_aSet
+            : nullptr);
     }
+
     m_bAutoFormat = rFormat.m_bAutoFormat;
     m_bHidden = rFormat.m_bHidden;
     m_bAutoUpdateFormat = rFormat.m_bAutoUpdateFormat;
@@ -210,32 +213,30 @@ void SwFormat::CopyAttrs( const SwFormat& rFormat )
 
 SwFormat::~SwFormat()
 {
-    // This happens at a ObjectDying message. Thus put all dependent
+    // This happens at an ObjectDying message. Thus put all dependent
     // ones on DerivedFrom.
-    if( HasWriterListeners() )
+    if( !HasWriterListeners() )
+        return;
+
+    m_bFormatInDTOR = true;
+
+    SwFormat* pParentFormat = DerivedFrom();
+    if( !pParentFormat )
     {
-        OSL_ENSURE( DerivedFrom(), "SwFormat::~SwFormat: Def dependents!" );
-
-        m_bFormatInDTOR = true;
-
-        SwFormat* pParentFormat = DerivedFrom();
-        if( !pParentFormat )
+        SAL_WARN(
+            "sw.core",
+            "~SwFormat: parent format missing from: " << GetName() );
+    }
+    else
+    {
+        SwFormatChg aOldFormat( this );
+        SwFormatChg aNewFormat( pParentFormat );
+        SwIterator<SwClient,SwFormat> aIter(*this);
+        for(SwClient* pClient = aIter.First(); pClient && pParentFormat; pClient = aIter.Next())
         {
-            SAL_WARN(
-                "sw.core",
-                "~SwFormat: parent format missing from: " << GetName() );
-        }
-        else
-        {
-            SwFormatChg aOldFormat( this );
-            SwFormatChg aNewFormat( pParentFormat );
-            SwIterator<SwClient,SwFormat> aIter(*this);
-            for(SwClient* pClient = aIter.First(); pClient && pParentFormat; pClient = aIter.Next())
-            {
-                SAL_INFO("sw.core", "reparenting " << typeid(*pClient).name() << " at " << pClient << " from " << typeid(*this).name() << " at " << this << " to "  << typeid(*pParentFormat).name() << " at " << pParentFormat);
-                pParentFormat->Add( pClient );
-                pClient->ModifyNotification( &aOldFormat, &aNewFormat );
-            }
+            SAL_INFO("sw.core", "reparenting " << typeid(*pClient).name() << " at " << pClient << " from " << typeid(*this).name() << " at " << this << " to "  << typeid(*pParentFormat).name() << " at " << pParentFormat);
+            pParentFormat->Add( pClient );
+            pClient->ModifyNotification( &aOldFormat, &aNewFormat );
         }
     }
 }
@@ -269,7 +270,7 @@ void SwFormat::Modify( const SfxPoolItem* pOldValue, const SfxPoolItem* pNewValu
                 else
                 {
                     // otherwise de-register at least from dying one
-                    GetRegisteredIn()->Remove( this );
+                    EndListeningAll();
                     m_aSet.SetParent( nullptr );
                 }
             }
@@ -301,17 +302,6 @@ void SwFormat::Modify( const SfxPoolItem* pOldValue, const SfxPoolItem* pNewValu
         {
             // attach Set to new parent
             m_aSet.SetParent( DerivedFrom() ? &DerivedFrom()->m_aSet : nullptr );
-        }
-        break;
-    case RES_RESET_FMTWRITTEN:
-        {
-            // mba: here we don't use the additional stuff from NotifyClients().
-            // should we?!
-            // mba: move the code that ignores this event to the clients
-
-            // pass Hint only to dependent formats (no Frames)
-            //ModifyBroadcast( pOldValue, pNewValue, TYPE(SwFormat) );
-            //bContinue = false;
         }
         break;
     default:
@@ -356,11 +346,11 @@ bool SwFormat::SetDerivedFrom(SwFormat *pDerFrom)
     if ( (pDerFrom == DerivedFrom()) || (pDerFrom == this) )
         return false;
 
-    OSL_ENSURE( Which()==pDerFrom->Which()
-            || ( Which()==RES_CONDTXTFMTCOLL && pDerFrom->Which()==RES_TXTFMTCOLL)
-            || ( Which()==RES_TXTFMTCOLL && pDerFrom->Which()==RES_CONDTXTFMTCOLL)
-            || ( Which()==RES_FLYFRMFMT && pDerFrom->Which()==RES_FRMFMT ),
-            "SetDerivedFrom: derive apples from oranges?");
+    assert(    Which()==pDerFrom->Which()
+            || (Which()==RES_CONDTXTFMTCOLL && pDerFrom->Which()==RES_TXTFMTCOLL)
+            || (Which()==RES_TXTFMTCOLL && pDerFrom->Which()==RES_CONDTXTFMTCOLL)
+            || (Which()==RES_FLYFRMFMT && pDerFrom->Which()==RES_FRMFMT)
+            );
 
     if ( IsInCache() )
     {
@@ -390,14 +380,14 @@ const SfxPoolItem& SwFormat::GetFormatAttr( sal_uInt16 nWhich, bool bInParents )
     {
         // FALLBACKBREAKHERE should not be used; instead use [XATTR_FILL_FIRST .. XATTR_FILL_LAST]
         SAL_INFO("sw.core", "Do no longer use SvxBrushItem, instead use [XATTR_FILL_FIRST .. XATTR_FILL_LAST] FillAttributes or makeBackgroundBrushItem (simple fallback is in place and used)");
-        static SvxBrushItem aSvxBrushItem(RES_BACKGROUND);
+        static std::unique_ptr<SvxBrushItem> aSvxBrushItem; //(std::make_shared<SvxBrushItem>(RES_BACKGROUND));
 
         // fill the local static SvxBrushItem from the current ItemSet so that
         // the fill attributes [XATTR_FILL_FIRST .. XATTR_FILL_LAST] are used
         // as good as possible to create a fallback representation and return that
         aSvxBrushItem = getSvxBrushItemFromSourceSet(m_aSet, RES_BACKGROUND, bInParents);
 
-        return aSvxBrushItem;
+        return *aSvxBrushItem;
     }
 
     return m_aSet.Get( nWhich, bInParents );
@@ -412,17 +402,16 @@ SfxItemState SwFormat::GetItemState( sal_uInt16 nWhich, bool bSrchInParent, cons
         const drawinglayer::attribute::SdrAllFillAttributesHelperPtr aFill = getSdrAllFillAttributesHelper();
 
         // check if the new fill attributes are used
-        if(aFill.get() && aFill->isUsed())
+        if(aFill && aFill->isUsed())
         {
             // if yes, fill the local SvxBrushItem using the new fill attributes
             // as good as possible to have an instance for the pointer to point
             // to and return as state that it is set
-
-            static SvxBrushItem aSvxBrushItem(RES_BACKGROUND);
+            static std::unique_ptr<SvxBrushItem> aSvxBrushItem; //(RES_BACKGROUND);
 
             aSvxBrushItem = getSvxBrushItemFromSourceSet(m_aSet, RES_BACKGROUND, bSrchInParent);
             if( ppItem )
-                *ppItem = &aSvxBrushItem;
+                *ppItem = aSvxBrushItem.get();
 
             return SfxItemState::SET;
         }
@@ -438,7 +427,7 @@ SfxItemState SwFormat::GetItemState( sal_uInt16 nWhich, bool bSrchInParent, cons
     return m_aSet.GetItemState( nWhich, bSrchInParent, ppItem );
 }
 
-SfxItemState SwFormat::GetBackgroundState(SvxBrushItem &rItem) const
+SfxItemState SwFormat::GetBackgroundState(std::unique_ptr<SvxBrushItem>& rItem) const
 {
     if (supportsFullDrawingLayerFillAttributeSet())
     {
@@ -446,7 +435,7 @@ SfxItemState SwFormat::GetBackgroundState(SvxBrushItem &rItem) const
         const drawinglayer::attribute::SdrAllFillAttributesHelperPtr aFill = getSdrAllFillAttributesHelper();
 
         // check if the new fill attributes are used
-        if(aFill.get() && aFill->isUsed())
+        if(aFill && aFill->isUsed())
         {
             // if yes, fill the local SvxBrushItem using the new fill attributes
             // as good as possible to have an instance for the pointer to point
@@ -462,7 +451,7 @@ SfxItemState SwFormat::GetBackgroundState(SvxBrushItem &rItem) const
     const SfxPoolItem* pItem = nullptr;
     SfxItemState eRet = m_aSet.GetItemState(RES_BACKGROUND, true, &pItem);
     if (pItem)
-        rItem = *static_cast<const SvxBrushItem*>(pItem);
+        rItem.reset(static_cast<SvxBrushItem*>(pItem->Clone()));
     return eRet;
 }
 
@@ -776,7 +765,7 @@ IDocumentChartDataProviderAccess& SwFormat::getIDocumentChartDataProviderAccess(
 
 void SwFormat::GetGrabBagItem(uno::Any& rVal) const
 {
-    if (m_pGrabBagItem.get())
+    if (m_pGrabBagItem)
         m_pGrabBagItem->QueryValue(rVal);
     else
         rVal <<= uno::Sequence<beans::PropertyValue>();
@@ -784,13 +773,13 @@ void SwFormat::GetGrabBagItem(uno::Any& rVal) const
 
 void SwFormat::SetGrabBagItem(const uno::Any& rVal)
 {
-    if (!m_pGrabBagItem.get())
-        m_pGrabBagItem.reset(new SfxGrabBagItem);
+    if (!m_pGrabBagItem)
+        m_pGrabBagItem = std::make_shared<SfxGrabBagItem>();
 
     m_pGrabBagItem->PutValue(rVal, 0);
 }
 
-SvxBrushItem SwFormat::makeBackgroundBrushItem(bool bInP) const
+std::unique_ptr<SvxBrushItem> SwFormat::makeBackgroundBrushItem(bool bInP) const
 {
     if (supportsFullDrawingLayerFillAttributeSet())
     {
@@ -803,7 +792,7 @@ SvxBrushItem SwFormat::makeBackgroundBrushItem(bool bInP) const
         return getSvxBrushItemFromSourceSet(m_aSet, RES_BACKGROUND, bInP);
     }
 
-    return m_aSet.GetBackground(bInP);
+    return std::unique_ptr<SvxBrushItem>(m_aSet.GetBackground(bInP).Clone());
 }
 
 drawinglayer::attribute::SdrAllFillAttributesHelperPtr SwFormat::getSdrAllFillAttributesHelper() const

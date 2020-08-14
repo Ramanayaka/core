@@ -10,13 +10,11 @@
 #include <sal/config.h>
 
 #include <cppunit/Protector.h>
-#include <cppunittester/protectorfactory.hxx>
 #include <sal/types.h>
-#include <test/setupvcl.hxx>
+#include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 #include <comphelper/threadpool.hxx>
-
-#include <isheadless.hxx>
+#include "setupvcl.hxx"
 
 namespace {
 
@@ -28,9 +26,18 @@ public:
 
 private:
     virtual ~Protector() override {
-        DeInitVCL();
-        // for the 6 tests that use it
-        comphelper::ThreadPool::getSharedOptimalPool().shutdown();
+#if defined(__COVERITY__)
+        try {
+#endif
+            DeInitVCL();
+            // for the 6 tests that use it
+            comphelper::ThreadPool::getSharedOptimalPool().shutdown();
+#if defined(__COVERITY__)
+        } catch (const std::exception& e) {
+            SAL_WARN("vcl.app", "Fatal exception: " << e.what());
+            std::terminate();
+        }
+#endif
     }
 
     virtual bool protect(
@@ -41,7 +48,7 @@ private:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT CppUnit::Protector * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT CppUnit::Protector *
 vclbootstrapprotector() {
     return new Protector;
 }

@@ -26,13 +26,13 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace animations { class XTransitionFilter; }
-} } }
+}
 
 namespace oox { class PropertyMap; }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
     class SlideTransition
     {
@@ -43,7 +43,10 @@ namespace oox { namespace ppt {
         void setSlideProperties( PropertyMap& props );
         void setTransitionFilterProperties( const css::uno::Reference< css::animations::XTransitionFilter > & xFilter );
 
+        /// Set one of standard values for slide transition duration
         void setOoxTransitionSpeed( sal_Int32 nToken );
+        /// Set slide transition time directly
+        void setOoxTransitionSpeed( double fDuration );
         void setMode( bool bMode )
             { mbMode = bMode; }
         void setOoxAdvanceTime( sal_Int32 nAdvanceTime )
@@ -66,12 +69,13 @@ namespace oox { namespace ppt {
         ::sal_Int16 mnTransitionSubType;
         bool  mbTransitionDirectionNormal;
         css::presentation::AnimationSpeed mnAnimationSpeed;
-        ::sal_Int32 mnFadeColor;
-        bool  mbMode; /**< http://api.libreoffice.org/docs/common/ref/com/sun/star/animations/XTransitionFilter.html Mode property */
+        double mfTransitionDurationInSeconds;
+        bool  mbMode; /**< https://api.libreoffice.org/docs/common/ref/com/sun/star/animations/XTransitionFilter.html Mode property */
         ::sal_Int32 mnAdvanceTime;
+        ::sal_Int32 mnTransitionFadeColor;
     };
 
-} }
+}
 
 #endif
 

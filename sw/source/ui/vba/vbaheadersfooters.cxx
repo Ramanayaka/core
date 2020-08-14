@@ -18,11 +18,12 @@
  */
 #include "vbaheadersfooters.hxx"
 #include "vbaheaderfooter.hxx"
-#include <ooo/vba/word/WdHeaderFooterIndex.hpp>
 #include <cppuhelper/implbase.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
+
+namespace {
 
 // I assume there is only one headersfooters in Writer
 class HeadersFootersIndexAccess : public ::cppu::WeakImplHelper<container::XIndexAccess >
@@ -78,6 +79,8 @@ public:
     }
 };
 
+}
+
 SwVbaHeadersFooters::SwVbaHeadersFooters( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< frame::XModel >& xModel, const uno::Reference< beans::XPropertySet >& xPageStyleProps, bool isHeader ): SwVbaHeadersFooters_BASE( xParent, xContext, new HeadersFootersIndexAccess( xParent, xContext, xModel, xPageStyleProps, isHeader ) ),  mxModel( xModel ), mxPageStyleProps( xPageStyleProps ), mbHeader( isHeader )
 {
 }
@@ -121,18 +124,16 @@ SwVbaHeadersFooters::createCollectionObject( const uno::Any& aSource )
 OUString
 SwVbaHeadersFooters::getServiceImplName()
 {
-    return OUString("SwVbaHeadersFooters");
+    return "SwVbaHeadersFooters";
 }
 
 uno::Sequence<OUString>
 SwVbaHeadersFooters::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.HeadersFooters";
-    }
+        "ooo.vba.word.HeadersFooters"
+    };
     return sNames;
 }
 

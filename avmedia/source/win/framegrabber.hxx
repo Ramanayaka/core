@@ -17,23 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_WIN_FRAMEGRABBER_HXX
-#define INCLUDED_AVMEDIA_SOURCE_WIN_FRAMEGRABBER_HXX
+#pragma once
 
 #include "wincommon.hxx"
 #include <cppuhelper/implbase.hxx>
-#include "com/sun/star/media/XFrameGrabber.hpp"
+#include <com/sun/star/media/XFrameGrabber.hpp>
 
 struct IMediaDet;
 
-namespace avmedia { namespace win {
+namespace avmedia::win {
 
 class FrameGrabber : public ::cppu::WeakImplHelper< css::media::XFrameGrabber,
                                                     css::lang::XServiceInfo >
 {
 public:
-
-    explicit FrameGrabber( const css::uno::Reference< css::lang::XMultiServiceFactory >& rxMgr );
+    explicit FrameGrabber();
     ~FrameGrabber() override;
 
     bool    create( const OUString& rURL );
@@ -47,14 +45,10 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
 private:
-
-    css::uno::Reference< css::lang::XMultiServiceFactory >    mxMgr;
     OUString                                                  maURL;
 };
 
-} // namespace win
-} // namespace avmedia
+} // namespace avmedia::win
 
-#endif // INCLUDED_AVMEDIA_SOURCE_WIN_FRAMEGRABBER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,7 +20,6 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_EVENTHANDLER_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_EVENTHANDLER_HXX
 
-#include "pcrcommontypes.hxx"
 #include "pcrcommon.hxx"
 
 #include <com/sun/star/script/ScriptEventDescriptor.hpp>
@@ -30,8 +29,8 @@
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/compbase.hxx>
-#include <comphelper/listenernotification.hxx>
 
+#include <unordered_map>
 
 namespace pcr
 {
@@ -57,15 +56,15 @@ namespace pcr
 
         EventDescription(
             EventId _nId,
-            const sal_Char* _pListenerNamespaceAscii,
-            const sal_Char* _pListenerClassAsciiName,
-            const sal_Char* _pListenerMethodAsciiName,
-            sal_uInt16 _nDisplayNameResId,
+            const char* _pListenerNamespaceAscii,
+            const char* _pListenerClassAsciiName,
+            const char* _pListenerMethodAsciiName,
+            const char* pDisplayNameResId,
             const OString& _sHelpId,
             const OString& _sUniqueBrowseId );
     };
 
-    typedef std::unordered_map< OUString, EventDescription, OUStringHash >   EventMap;
+    typedef std::unordered_map< OUString, EventDescription >   EventMap;
 
 
     //= EventHandler
@@ -73,7 +72,7 @@ namespace pcr
     typedef ::cppu::WeakComponentImplHelper    <   css::inspection::XPropertyHandler
                                                 ,   css::lang::XServiceInfo
                                                 >   EventHandler_Base;
-    class EventHandler : public EventHandler_Base
+    class EventHandler final : public EventHandler_Base
     {
     private:
         mutable ::osl::Mutex    m_aMutex;
@@ -95,21 +94,13 @@ namespace pcr
         sal_Int16                                           m_nGridColumnType;
 
     public:
-        // XServiceInfo - static versions
-        /// @throws css::uno::RuntimeException
-        static OUString SAL_CALL getImplementationName_static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_static(  );
-        static css::uno::Reference< css::uno::XInterface > Create( const css::uno::Reference< css::uno::XComponentContext >& _rxContext );
-
-    protected:
         explicit EventHandler(
             const css::uno::Reference< css::uno::XComponentContext >& _rxContext
        );
 
         virtual ~EventHandler() override;
 
-    protected:
+    private:
         // XPropertyHandler overridables
         virtual void                                         SAL_CALL inspect( const css::uno::Reference< css::uno::XInterface >& _rxIntrospectee ) override;
         virtual css::uno::Any                                SAL_CALL getPropertyValue( const OUString& _rPropertyName ) override;
@@ -137,7 +128,6 @@ namespace pcr
         virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
-    private:
         /** returns the script events associated with our introspectee
             @param  _out_rEvents
                 Takes, upon successful return, the events currently associated with the introspectee
@@ -240,7 +230,6 @@ namespace pcr
         */
         bool    impl_filterMethod_nothrow( const EventDescription& _rEvent ) const;
 
-    private:
         EventHandler( const EventHandler& ) = delete;
         EventHandler& operator=( const EventHandler& ) = delete;
     };

@@ -22,19 +22,16 @@
 
 #include "PropertyMap.hxx"
 
-#include <TableManager.hxx>
+#include "TableManager.hxx"
 #include <dmapper/resourcemodel.hxx>
-
-#include <memory>
 
 #include <vector>
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 class DomainMapper;
 
-class TablePropertiesHandler final
+class TablePropertiesHandler final : public virtual SvRefBase
 {
 private:
     PropertyMapPtr m_pCurrentProperties;
@@ -65,7 +62,7 @@ private:
         if ( m_pTableManager )
             m_pTableManager->cellProps( pProps );
         else
-            m_pCurrentProperties->InsertProps(pProps);
+            m_pCurrentProperties->InsertProps(pProps.get());
     };
 
     void insertRowProps( TablePropertyMapPtr pProps )
@@ -73,7 +70,18 @@ private:
         if ( m_pTableManager )
             m_pTableManager->insertRowProps( pProps );
         else
-            m_pCurrentProperties->InsertProps(pProps);
+            m_pCurrentProperties->InsertProps(pProps.get());
+    };
+
+    void tableExceptionProps( TablePropertyMapPtr pProps )
+    {
+        if ( m_pTableManager )
+        {
+            m_pTableManager->tableExceptionProps( pProps );
+            cellProps( pProps );
+        }
+        else
+            m_pCurrentProperties->InsertProps(pProps.get());
     };
 
     void insertTableProps( TablePropertyMapPtr pProps )
@@ -81,11 +89,11 @@ private:
         if ( m_pTableManager )
             m_pTableManager->insertTableProps( pProps );
         else
-            m_pCurrentProperties->InsertProps(pProps);
+            m_pCurrentProperties->InsertProps(pProps.get());
     };
 };
 
-} }
+}
 
 #endif
 

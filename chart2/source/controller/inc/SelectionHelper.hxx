@@ -20,29 +20,27 @@
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_SELECTIONHELPER_HXX
 
 #include "DrawViewWrapper.hxx"
-#include "ObjectIdentifier.hxx"
+#include <ObjectIdentifier.hxx>
 
 class SdrObject;
-#include <svx/svdtypes.hxx>
-#include <com/sun/star/drawing/XShape.hpp>
+
+namespace com::sun::star::drawing { class XShape; }
 
 namespace chart
 {
 
-class ObjectIdentifier;
-
 class Selection
 {
 public: //methods
-    bool hasSelection();
+    bool hasSelection() const;
 
-    OUString getSelectedCID();
-    css::uno::Reference< css::drawing::XShape > getSelectedAdditionalShape();
+    OUString const & getSelectedCID() const;
+    css::uno::Reference< css::drawing::XShape > const & getSelectedAdditionalShape() const;
     const ObjectIdentifier& getSelectedOID() const { return m_aSelectedOID;}
 
-    bool isResizeableObjectSelected();
-    bool isRotateableObjectSelected( const css::uno::Reference< css::frame::XModel >& xChartModel );
-    bool isDragableObjectSelected();
+    bool isResizeableObjectSelected() const;
+    bool isRotateableObjectSelected( const css::uno::Reference< css::frame::XModel >& xChartModel ) const;
+    bool isDragableObjectSelected() const;
 
     bool isAdditionalShapeSelected() const;
 
@@ -59,7 +57,7 @@ public: //methods
     void remindSelectionBeforeMouseDown();
     bool isSelectionDifferentFromBeforeMouseDown() const;
 
-    void adaptSelectionToNewPos( const Point& rMousePos, DrawViewWrapper* pDrawViewWrapper
+    void adaptSelectionToNewPos( const Point& rMousePos, DrawViewWrapper const * pDrawViewWrapper
                                        , bool bIsRightMouse, bool bWaitingForDoubleClick );
 
     void applySelection( DrawViewWrapper* pDrawViewWrapper );
@@ -92,7 +90,7 @@ public:
 
     static OUString getHitObjectCID(
         const Point& rMPos,
-        DrawViewWrapper& rDrawViewWrapper,
+        DrawViewWrapper const & rDrawViewWrapper,
         bool bGetDiagramInsteadOf_Wall=false );
 
     static bool isRotateableObject( const OUString& rCID

@@ -24,13 +24,10 @@
 #include <vcl/bitmapex.hxx>
 
 
-namespace sdr
-{
-    namespace overlay
+namespace sdr::overlay
     {
-        class SVX_DLLPUBLIC OverlayBitmapEx : public OverlayObjectWithBasePosition
+        class SVXCORE_DLLPUBLIC OverlayBitmapEx final : public OverlayObjectWithBasePosition
         {
-        protected:
             // the Bitmap itself
             BitmapEx                                maBitmapEx;
 
@@ -55,18 +52,8 @@ namespace sdr
                 double fShearX = 0.0,
                 double fRotation = 0.0);
             virtual ~OverlayBitmapEx() override;
-
-            const BitmapEx& getBitmapEx() const { return maBitmapEx; }
-
-            sal_uInt16 getCenterX() const { return mnCenterX; }
-            sal_uInt16 getCenterY() const { return mnCenterY; }
-
-            // get shearX and rotation
-            double getShearX() const { return mfShearX; }
-            double getRotation() const { return mfRotation; }
         };
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace sdr::overlay
 
 
 #endif // INCLUDED_SVX_SDR_OVERLAY_OVERLAYBITMAPEX_HXX

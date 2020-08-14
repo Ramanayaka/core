@@ -19,18 +19,13 @@
 #ifndef INCLUDED_SVX_POSTATTR_HXX
 #define INCLUDED_SVX_POSTATTR_HXX
 
-#include <svl/intitem.hxx>
 #include <svl/stritem.hxx>
 #include <svx/svxdllapi.h>
 
-// class SvxPostItAuthorItem ---------------------------------------------
+/** The author shorthand symbol of a note
+ */
 
-
-/*
-The author shorthand symbol of a note
-*/
-
-class SVX_DLLPUBLIC SvxPostItAuthorItem: public SfxStringItem
+class SVX_DLLPUBLIC SvxPostItAuthorItem final : public SfxStringItem
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -41,26 +36,16 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-
-    SvxPostItAuthorItem& operator=( const SvxPostItAuthorItem& rAuthor )
-    {
-        SetValue( rAuthor.GetValue() );
-        return *this;
-    }
+    virtual SvxPostItAuthorItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 };
 
 
-// class SvxPostItDateItem -----------------------------------------------
+/** The date of a note
+ */
 
-
-/*
-The date of a note
-*/
-
-class SVX_DLLPUBLIC SvxPostItDateItem: public SfxStringItem
+class SVX_DLLPUBLIC SvxPostItDateItem final : public SfxStringItem
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -71,26 +56,15 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-
-    SvxPostItDateItem& operator=( const SvxPostItDateItem& rDate )
-    {
-        SetValue( rDate.GetValue() );
-        return *this;
-    }
+    virtual SvxPostItDateItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 };
 
+/** The text of a note
+ */
 
-// class SvxPostItTextItem -----------------------------------------------
-
-
-/*
-The text of a note
-*/
-
-class SVX_DLLPUBLIC SvxPostItTextItem: public SfxStringItem
+class SVX_DLLPUBLIC SvxPostItTextItem final : public SfxStringItem
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -102,40 +76,24 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-
-    SvxPostItTextItem& operator=( const SvxPostItTextItem& rText )
-    {
-        SetValue( rText.GetValue() );
-        return *this;
-    }
+    virtual SvxPostItTextItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 };
 
-// class SvxPostItIdItem -----------------------------------------------
 
+/** The internal id of a note
+ */
 
-/*
-The internal id of a note
-*/
-
-class SVX_DLLPUBLIC SvxPostItIdItem: public SfxStringItem
+class SVX_DLLPUBLIC SvxPostItIdItem final : public SfxStringItem
 {
 public:
     static SfxPoolItem* CreateDefault();
 
     SvxPostItIdItem( sal_uInt16 nWhich );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-
-    SvxPostItIdItem& operator=( const SvxPostItIdItem& rId )
-    {
-        SetValue( rId.GetValue() );
-        return *this;
-    }
+    virtual SvxPostItIdItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 };
-
 
 #endif
 

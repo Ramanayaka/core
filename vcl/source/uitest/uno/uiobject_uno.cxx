@@ -10,13 +10,11 @@
 #include <memory>
 #include "uiobject_uno.hxx"
 #include <utility>
-#include <o3tl/make_unique.hxx>
+#include <cppuhelper/supportsservice.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/idle.hxx>
 
 #include <set>
-#include <chrono>
-#include <thread>
 
 UIObjectUnoObj::UIObjectUnoObj(std::unique_ptr<UIObject> pObj):
     UIObjectBase(m_aMutex),
@@ -28,7 +26,7 @@ UIObjectUnoObj::UIObjectUnoObj(std::unique_ptr<UIObject> pObj):
 UIObjectUnoObj::~UIObjectUnoObj()
 {
     {
-        std::lock_guard<std::mutex> lk3(mMutex);
+        std::scoped_lock<std::mutex> lk3(mMutex);
     }
     SolarMutexGuard aGuard;
     mpObj.reset();
@@ -46,7 +44,7 @@ css::uno::Reference<css::ui::test::XUIObject> SAL_CALL UIObjectUnoObj::getChild(
 
 IMPL_LINK_NOARG(UIObjectUnoObj, NotifyHdl, Timer*, void)
 {
-    std::lock_guard<std::mutex> lk(mMutex);
+    std::scoped_lock<std::mutex> lk(mMutex);
     mReady = true;
     cv.notify_all();
 }
@@ -57,8 +55,7 @@ class ExecuteWrapper
 {
     std::function<void()> mFunc;
     Link<Timer*, void> mHandler;
-    bool mbSignal;
-    std::mutex mMutex;
+    volatile bool mbSignal;
 
 public:
 
@@ -72,11 +69,6 @@ public:
     void setSignal()
     {
         mbSignal = true;
-    }
-
-    std::mutex& getMutex()
-    {
-        return mMutex;
     }
 
     DECL_LINK( ExecuteActionHdl, Timer*, void );
@@ -95,11 +87,8 @@ IMPL_LINK_NOARG(ExecuteWrapper, ExecuteActionHdl, Timer*, void)
             aIdle.Start();
         }
 
-        Scheduler::ProcessEventsToSignal(mbSignal);
-        std::unique_lock<std::mutex> lock(mMutex);
-        while (!mbSignal)
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        while (!mbSignal) {
+            Application::Reschedule();
         }
     }
     delete this;
@@ -116,27 +105,26 @@ void SAL_CALL UIObjectUnoObj::executeAction(const OUString& rAction, const css::
     mAction = rAction;
     mPropValues = rPropValues;
     mReady = false;
-    auto aIdle = o3tl::make_unique<Idle>();
+    auto aIdle = std::make_unique<Idle>();
     aIdle->SetDebugName("UI Test Idle Handler");
-    aIdle->SetPriority(TaskPriority::HIGH);
+    aIdle->SetPriority(TaskPriority::HIGHEST);
 
     std::function<void()> func = [this](){
 
         SolarMutexGuard aGuard;
         StringMap aMap;
-        for (sal_Int32 i = 0, n = mPropValues.getLength(); i < n; ++i)
+        for (const auto& rPropVal : std::as_const(mPropValues))
         {
             OUString aVal;
-            if (!(mPropValues[i].Value >>= aVal))
+            if (!(rPropVal.Value >>= aVal))
                 continue;
 
-            aMap[mPropValues[i].Name] = aVal;
+            aMap[rPropVal.Name] = aVal;
         }
         mpObj->execute(mAction, aMap);
     };
 
     ExecuteWrapper* pWrapper = new ExecuteWrapper(func, LINK(this, UIObjectUnoObj, NotifyHdl));
-    std::unique_lock<std::mutex>(pWrapper->getMutex());
     aIdle->SetInvokeHandler(LINK(pWrapper, ExecuteWrapper, ExecuteActionHdl));
     {
         SolarMutexGuard aGuard;
@@ -159,10 +147,11 @@ css::uno::Sequence<css::beans::PropertyValue> UIObjectUnoObj::getState()
     StringMap aMap = mpObj->get_state();
     css::uno::Sequence<css::beans::PropertyValue> aProps(aMap.size());
     sal_Int32 i = 0;
-    for (auto itr = aMap.begin(), itrEnd = aMap.end(); itr != itrEnd; ++itr, ++i)
+    for (auto const& elem : aMap)
     {
-        aProps[i].Name = itr->first;
-        aProps[i].Value <<= itr->second;
+        aProps[i].Name = elem.first;
+        aProps[i].Value <<= elem.second;
+        ++i;
     }
 
     return aProps;
@@ -177,9 +166,10 @@ css::uno::Sequence<OUString> UIObjectUnoObj::getChildren()
 
     css::uno::Sequence<OUString> aRet(aChildren.size());
     sal_Int32 i = 0;
-    for (auto itr = aChildren.begin(), itrEnd = aChildren.end(); itr != itrEnd; ++itr, ++i)
+    for (auto const& child : aChildren)
     {
-        aRet[i] = *itr;
+        aRet[i] = child;
+        ++i;
     }
 
     return aRet;
@@ -195,7 +185,7 @@ OUString SAL_CALL UIObjectUnoObj::getType()
 
 OUString SAL_CALL UIObjectUnoObj::getImplementationName()
 {
-    return OUString("org.libreoffice.uitest.UIObject");
+    return "org.libreoffice.uitest.UIObject";
 }
 
 sal_Bool UIObjectUnoObj::supportsService(OUString const & ServiceName)
@@ -205,9 +195,7 @@ sal_Bool UIObjectUnoObj::supportsService(OUString const & ServiceName)
 
 css::uno::Sequence<OUString> UIObjectUnoObj::getSupportedServiceNames()
 {
-    css::uno::Sequence<OUString> aServiceNames(1);
-    aServiceNames[0] = "com.sun.star.ui.test.UIObject";
-    return aServiceNames;
+    return { "com.sun.star.ui.test.UIObject" };
 }
 
 OUString SAL_CALL UIObjectUnoObj::getHierarchy()

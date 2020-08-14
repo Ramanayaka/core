@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_FRAMEWORK_SOUNDHANDLER_HXX
-#define INCLUDED_AVMEDIA_SOURCE_FRAMEWORK_SOUNDHANDLER_HXX
+#pragma once
 
 #include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/frame/XNotifyingDispatch.hpp>
@@ -29,23 +28,15 @@
 #include <com/sun/star/util/URL.hpp>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
 #include <cppuhelper/weak.hxx>
 
 #include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
 #include <tools/link.hxx>
-#include <avmedia/mediawindow.hxx>
-#include <osl/mutex.hxx>
+#include <toolkit/helper/mutexhelper.hxx>
 
 namespace avmedia{
-
-struct ThreadHelpBase
-{
-    public:
-        mutable ::osl::Mutex m_aLock;
-};
 
 /*-************************************************************************************************************
     @short          handler to detect and play sounds ("wav" and "au" only!)
@@ -65,7 +56,7 @@ class SoundHandler  :   // interfaces
                     ,   public  css::document::XExtendedFilterDetection
                         // baseclasses
                         // Order is necessary for right initialization!
-                    ,   private ThreadHelpBase
+                    ,   private MutexHelper
                     ,   public  ::cppu::OWeakObject
 {
     // public methods
@@ -125,7 +116,5 @@ class SoundHandler  :   // interfaces
 };      //  class SoundHandler
 
 }       //  namespace avmedia
-
-#endif // INCLUDED_AVMEDIA_SOURCE_FRAMEWORK_SOUNDHANDLER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -10,19 +10,12 @@
 #ifndef INCLUDED_SC_QA_UNIT_HELPER_CSV_HANDLER_HXX
 #define INCLUDED_SC_QA_UNIT_HELPER_CSV_HANDLER_HXX
 
-#include <iostream>
+#include "qahelper.hxx"
 
-#include "docsh.hxx"
-#include "postit.hxx"
-#include "patattr.hxx"
-#include "scitems.hxx"
-#include "document.hxx"
-#include "cellform.hxx"
-#include "cellvalue.hxx"
-
-#include <rtl/strbuf.hxx>
-
-#include <test/bootstrapfixture.hxx>
+#include <patattr.hxx>
+#include <document.hxx>
+#include <cellform.hxx>
+#include <cellvalue.hxx>
 
 #define DEBUG_CSV_HANDLER 0
 
@@ -44,35 +37,25 @@ inline OUString getConditionalFormatString(ScDocument* pDoc, SCCOL nCol, SCROW n
 
 inline OString createErrorMessage(SCCOL nCol, SCROW nRow, SCTAB nTab)
 {
-    OStringBuffer aString("Error in Table: ");
-    aString.append(static_cast<sal_Int32>(nTab));
-    aString.append(" Column: ");
-    aString.append(static_cast<sal_Int32>(nCol));
-    aString.append(" Row: ");
-    aString.append(nRow);
-    return aString.makeStringAndClear();
+    return "Error in Table: " +
+        OString::number(static_cast<sal_Int32>(nTab)) +
+        " Column: " +
+        OString::number(static_cast<sal_Int32>(nCol)) +
+        " Row: " +
+        OString::number(nRow);
 }
 
 inline OString createErrorMessage(SCCOL nCol, SCROW nRow, SCTAB nTab, const OUString& rExpectedString, const OUString& rString)
 {
-    OStringBuffer aString(createErrorMessage(nCol, nRow, nTab));
-    aString.append("; Expected: '");
-    aString.append(OUStringToOString(rExpectedString, RTL_TEXTENCODING_UTF8));
-    aString.append("' Found: '");
-    aString.append(OUStringToOString(rString, RTL_TEXTENCODING_UTF8));
-    aString.append("'");
-    return aString.makeStringAndClear();
+    return createErrorMessage(nCol, nRow, nTab) + "; Expected: '"
+        + OUStringToOString(rExpectedString, RTL_TEXTENCODING_UTF8) + "' Found: '"
+        + OUStringToOString(rString, RTL_TEXTENCODING_UTF8) + "'";
 }
 
 inline OString createErrorMessage(SCCOL nCol, SCROW nRow, SCTAB nTab, double aExpected, double aValue)
 {
-    OStringBuffer aString(createErrorMessage(nCol, nRow, nTab));
-    aString.append("; Expected: '");
-    aString.append(aExpected);
-    aString.append("' Found: '");
-    aString.append(aValue);
-    aString.append("'");
-    return aString.makeStringAndClear();
+    return createErrorMessage(nCol, nRow, nTab) + "; Expected: '" + OString::number(aExpected)
+        + "' Found: '" + OString::number(aValue) + "'";
 
 }
 
@@ -98,7 +81,7 @@ public:
         mnCol = 0;
     }
 
-    void cell(const char* p, size_t n)
+    void cell(const char* p, size_t n, bool /*transient*/)
     {
 #if DEBUG_CSV_HANDLER
         std::cout << "Col: " << mnCol << " Row: " << mnRow << std::endl;
@@ -194,7 +177,7 @@ public:
         mnCol = 0;
     }
 
-    void cell(const char* p, size_t n)
+    void cell(const char* p, size_t n, bool /*transient*/)
     {
 #if DEBUG_CSV_HANDLER
         std::cout << "Col: " << mnCol << " Row: " << mnRow << std::endl;

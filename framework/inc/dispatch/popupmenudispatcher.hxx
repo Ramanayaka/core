@@ -20,11 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_DISPATCH_POPUPMENUDISPATCHER_HXX
 #define INCLUDED_FRAMEWORK_INC_DISPATCH_POPUPMENUDISPATCHER_HXX
 
-#include <macros/xserviceinfo.hxx>
-#include <general.h>
-#include <stdtypes.h>
-
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/util/URL.hpp>
@@ -35,16 +30,14 @@
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/uri/XUriReferenceFactory.hpp>
-#include <com/sun/star/uri/XUriReference.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/weakref.hxx>
 #include <cppuhelper/interfacecontainer.h>
 
 namespace framework{
-
-typedef cppu::OMultiTypeInterfaceContainerHelperVar<OUString>
-    IMPL_ListenerHashContainer;
 
 /*-************************************************************************************************************
     @short          helper for desktop only(!) to create new tasks on demand for dispatches
@@ -60,7 +53,7 @@ typedef cppu::OMultiTypeInterfaceContainerHelperVar<OUString>
 
     @devstatus      ready to use
 *//*-*************************************************************************************************************/
-class PopupMenuDispatcher :     public  ::cppu::WeakImplHelper<
+class PopupMenuDispatcher final : public  ::cppu::WeakImplHelper<
                                            css::lang::XServiceInfo,
                                            css::frame::XDispatchProvider,
                                            css::frame::XDispatch,
@@ -75,12 +68,10 @@ class PopupMenuDispatcher :     public  ::cppu::WeakImplHelper<
         //  constructor / destructor
         PopupMenuDispatcher( const css::uno::Reference< css::uno::XComponentContext >& xContext );
 
-        // XInterface, XTypeProvider, XServiceInfo
-        DECLARE_XSERVICEINFO_NOFACTORY
-        /* Helper for registry */
-        /// @throws css::uno::Exception
-        static css::uno::Reference< css::uno::XInterface >             SAL_CALL impl_createInstance                ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
-        static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL impl_createFactory                 ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
+        /* interface XServiceInfo */
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
         // XInitialization
         virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& lArguments ) override;
@@ -109,21 +100,15 @@ class PopupMenuDispatcher :     public  ::cppu::WeakImplHelper<
         //   XEventListener
         void SAL_CALL disposing( const css::lang::EventObject& aEvent ) override;
 
-    //  protected methods
-    protected:
+    private:
         virtual ~PopupMenuDispatcher() override;
 
         void impl_RetrievePopupControllerQuery();
 
-
-    //  variables
-    private:
         css::uno::WeakReference< css::frame::XFrame >           m_xWeakFrame;   /// css::uno::WeakReference to frame (Don't use a hard css::uno::Reference. Owner can't delete us then!)
         css::uno::Reference< css::container::XNameAccess >      m_xPopupCtrlQuery;   /// reference to query for popup controller
         css::uno::Reference< css::uri::XUriReferenceFactory >   m_xUriRefFactory;   /// reference to the uri reference factory
         css::uno::Reference< css::uno::XComponentContext >      m_xContext;   /// factory shared with our owner to create new services!
-        osl::Mutex                                              m_mutex;
-        IMPL_ListenerHashContainer                              m_aListenerContainer;   /// hash table for listener at specified URLs
         bool                                                    m_bAlreadyDisposed;   /// Protection against multiple disposing calls.
         bool                                                    m_bActivateListener;   /// dispatcher is listener for frame activation
 

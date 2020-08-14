@@ -30,7 +30,7 @@
 #include <docsh.hxx>
 
 SwURLStateChanged::SwURLStateChanged( SwDoc* pD )
-    : pDoc( pD )
+    : m_pDoc( pD )
 {
     StartListening( *INetURLHistory::GetOrCreate() );
 }
@@ -42,58 +42,57 @@ SwURLStateChanged::~SwURLStateChanged()
 
 void SwURLStateChanged::Notify( SfxBroadcaster& , const SfxHint& rHint )
 {
-    if( dynamic_cast<const INetURLHistoryHint*>(&rHint) && pDoc->getIDocumentLayoutAccess().GetCurrentViewShell() )
+    if( !(dynamic_cast<const INetURLHistoryHint*>(&rHint) && m_pDoc->getIDocumentLayoutAccess().GetCurrentViewShell()) )
+        return;
+
+    // This URL has been changed:
+    const INetURLObject* pIURL = static_cast<const INetURLHistoryHint&>(rHint).GetObject();
+    OUString sURL( pIURL->GetMainURL( INetURLObject::DecodeMechanism::NONE ) ), sBkmk;
+
+    SwEditShell* pESh = m_pDoc->GetEditShell();
+
+    if( m_pDoc->GetDocShell() && m_pDoc->GetDocShell()->GetMedium() &&
+        // If this is our Doc, we can also have local jumps!
+        m_pDoc->GetDocShell()->GetMedium()->GetName() == sURL )
+        sBkmk = "#" + pIURL->GetMark();
+
+    bool bAction = false, bUnLockView = false;
+    for (const SfxPoolItem* pItem : m_pDoc->GetAttrPool().GetItemSurrogates(RES_TXTATR_INETFMT))
     {
-        // This URL has been changed:
-        const INetURLObject* pIURL = static_cast<const INetURLHistoryHint&>(rHint).GetObject();
-        OUString sURL( pIURL->GetMainURL( INetURLObject::DecodeMechanism::NONE ) ), sBkmk;
-
-        SwEditShell* pESh = pDoc->GetEditShell();
-
-        if( pDoc->GetDocShell() && pDoc->GetDocShell()->GetMedium() &&
-            // If this is our Doc, we can also have local jumps!
-            pDoc->GetDocShell()->GetMedium()->GetName().equals(sURL) )
-            sBkmk = "#" + pIURL->GetMark();
-
-        bool bAction = false, bUnLockView = false;
-        sal_uInt32 nMaxItems = pDoc->GetAttrPool().GetItemCount2( RES_TXTATR_INETFMT );
-        for( sal_uInt32 n = 0; n < nMaxItems; ++n )
+        const SwFormatINetFormat* pFormatItem = dynamic_cast<const SwFormatINetFormat*>(pItem);
+        if( pFormatItem != nullptr &&
+            ( pFormatItem->GetValue() == sURL || ( !sBkmk.isEmpty() && pFormatItem->GetValue() == sBkmk )))
         {
-            const SwFormatINetFormat* pItem = static_cast<const SwFormatINetFormat*>(pDoc->GetAttrPool().GetItem2(RES_TXTATR_INETFMT, n ));
-            if( pItem != nullptr &&
-                ( pItem->GetValue() == sURL || ( !sBkmk.isEmpty() && pItem->GetValue() == sBkmk )))
+            const SwTextINetFormat* pTextAttr = pFormatItem->GetTextINetFormat();
+            if (pTextAttr != nullptr)
             {
-                const SwTextINetFormat* pTextAttr = pItem->GetTextINetFormat();
-                if (pTextAttr != nullptr)
+                const SwTextNode* pTextNd = pTextAttr->GetpTextNode();
+                if (pTextNd != nullptr)
                 {
-                    const SwTextNode* pTextNd = pTextAttr->GetpTextNode();
-                    if (pTextNd != nullptr)
+                    if( !bAction && pESh )
                     {
-                        if( !bAction && pESh )
-                        {
-                            pESh->StartAllAction();
-                            bAction = true;
-                            bUnLockView = !pESh->IsViewLocked();
-                            pESh->LockView( true );
-                        }
-                        const_cast<SwTextINetFormat*>(pTextAttr)->SetVisitedValid(false);
-                        const SwTextAttr* pAttr = pTextAttr;
-                        SwUpdateAttr aUpdateAttr(
-                            pAttr->GetStart(),
-                            *pAttr->End(),
-                            RES_FMT_CHG);
-
-                        const_cast< SwTextNode* >(pTextNd)->ModifyNotification(&aUpdateAttr, &aUpdateAttr);
+                        pESh->StartAllAction();
+                        bAction = true;
+                        bUnLockView = !pESh->IsViewLocked();
+                        pESh->LockView( true );
                     }
+                    const_cast<SwTextINetFormat*>(pTextAttr)->SetVisitedValid(false);
+                    const SwTextAttr* pAttr = pTextAttr;
+                    SwUpdateAttr aUpdateAttr(
+                        pAttr->GetStart(),
+                        *pAttr->End(),
+                        RES_FMT_CHG);
+
+                    const_cast< SwTextNode* >(pTextNd)->ModifyNotification(&aUpdateAttr, &aUpdateAttr);
                 }
             }
         }
-
-        if( bAction )
-            pESh->EndAllAction();
-        if( bUnLockView )
-            pESh->LockView( false );
     }
+
+    if( bAction )
+        pESh->EndAllAction();
+    if( bUnLockView )
+        pESh->LockView( false );
 }
 
 // Check if the URL has been visited before. Via the Doc, if only one Bookmark is set
@@ -117,7 +116,7 @@ bool SwDoc::IsVisitedURL( const OUString& rURL )
         if( !mpURLStateChgd )
         {
             SwDoc* pD = this;
-            pD->mpURLStateChgd = new SwURLStateChanged( this );
+            pD->mpURLStateChgd.reset( new SwURLStateChanged( this ) );
         }
     }
     return bRet;

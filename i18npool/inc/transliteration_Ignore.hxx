@@ -19,19 +19,20 @@
 #ifndef INCLUDED_I18NPOOL_INC_TRANSLITERATION_IGNORE_HXX
 #define INCLUDED_I18NPOOL_INC_TRANSLITERATION_IGNORE_HXX
 
-#include <transliteration_commonclass.hxx>
-#include <i18nutil/oneToOneMapping.hxx>
+#include "transliteration_commonclass.hxx"
 #include <unicode/translit.h>
+
+namespace i18nutil { class oneToOneMapping; }
 
 typedef sal_Unicode (*TransFunc)(const sal_Unicode);
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 class transliteration_Ignore : public transliteration_commonclass
 {
 public:
-        virtual OUString SAL_CALL
-        folding( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset) override;
+        virtual OUString
+        foldingImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset, bool useOffset ) override;
 
         // This method is shared.
         sal_Bool SAL_CALL
@@ -46,14 +47,14 @@ public:
         // Methods which are shared.
         sal_Int16 SAL_CALL getType(  ) override;
 
-        OUString SAL_CALL
-        transliterate( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset  ) override;
+        OUString
+        transliterateImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset, bool useOffset ) override;
 
         virtual sal_Unicode SAL_CALL
         transliterateChar2Char( sal_Unicode inChar) override;
 
         /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL
+        static css::uno::Sequence< OUString >
         transliterateRange( const OUString& str1, const OUString& str2, XTransliteration& t1, XTransliteration& t2 );
 
         struct Mapping {
@@ -65,12 +66,12 @@ public:
 
 protected:
         TransFunc func;
-        oneToOneMapping *table;
+        i18nutil::oneToOneMapping *table;
         const Mapping *map;
 };
 
 #define TRANSLITERATION_IGNORE( name ) \
-class ignore##name : public transliteration_Ignore {\
+class ignore##name final : public transliteration_Ignore {\
 public:\
         ignore##name ();\
 };
@@ -88,15 +89,15 @@ TRANSLITERATION_IGNORE(TraditionalKanji_ja_JP)
 TRANSLITERATION_IGNORE(ZiZu_ja_JP)
 TRANSLITERATION_IGNORE(Kashida_CTL)
 
-class ignoreDiacritics_CTL : public transliteration_Ignore
+class ignoreDiacritics_CTL final : public transliteration_Ignore
 {
     icu::Transliterator* m_transliterator;
 
 public:
     ignoreDiacritics_CTL();
 
-    OUString SAL_CALL
-    folding(const OUString& rInStr, sal_Int32 nStartPos, sal_Int32 nCount, css::uno::Sequence<sal_Int32>& rOffset) override;
+    OUString
+    foldingImpl(const OUString& rInStr, sal_Int32 nStartPos, sal_Int32 nCount, css::uno::Sequence<sal_Int32>& rOffset, bool useOffset) override;
 
     sal_Unicode SAL_CALL
     transliterateChar2Char(sal_Unicode nInChar) override;
@@ -105,7 +106,7 @@ public:
 #undef TRANSLITERATION_IGNORE
 
 #define TRANSLITERATION_IGNORE( name ) \
-class ignore##name : public transliteration_Ignore {\
+class ignore##name final : public transliteration_Ignore {\
 public:\
         ignore##name () {\
             func = nullptr;\
@@ -114,8 +115,8 @@ public:\
             transliterationName = "ignore"#name;\
             implementationName = "com.sun.star.i18n.Transliteration.ignore"#name;\
         };\
-        OUString SAL_CALL folding( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, \
-                css::uno::Sequence< sal_Int32 >& offset) override; \
+        OUString foldingImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, \
+                css::uno::Sequence< sal_Int32 >& offset, bool useOffset) override; \
 };
 
 TRANSLITERATION_IGNORE(KiKuFollowedBySa_ja_JP)
@@ -126,7 +127,7 @@ TRANSLITERATION_IGNORE(ProlongedSoundMark_ja_JP)
 #undef TRANSLITERATION_IGNORE
 
 #define TRANSLITERATION_IGNORE( name ) \
-class ignore##name : public transliteration_Ignore {\
+class ignore##name final : public transliteration_Ignore {\
 public:\
         ignore##name () {\
             func = nullptr;\
@@ -135,8 +136,8 @@ public:\
             transliterationName = "ignore"#name;\
             implementationName = "com.sun.star.i18n.Transliteration.ignore"#name;\
         };\
-        OUString SAL_CALL folding( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, \
-                css::uno::Sequence< sal_Int32 >& offset) override; \
+        OUString foldingImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, \
+                css::uno::Sequence< sal_Int32 >& offset, bool useOffset) override; \
         using transliteration_Ignore::transliterateRange;\
         css::uno::Sequence< OUString > SAL_CALL transliterateRange( const OUString& str1, \
                 const OUString& str2 ) override; \
@@ -151,7 +152,7 @@ TRANSLITERATION_IGNORE(Size_ja_JP)
 
 #undef TRANSLITERATION_IGNORE
 
-} } } }
+}
 
 #endif // INCLUDED_I18NPOOL_INC_TRANSLITERATION_IGNORE_HXX
 

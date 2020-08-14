@@ -19,14 +19,13 @@
 #ifndef INCLUDED_CHART2_SOURCE_VIEW_AXES_VAXISORGRIDBASE_HXX
 #define INCLUDED_CHART2_SOURCE_VIEW_AXES_VAXISORGRIDBASE_HXX
 
-#include "PlotterBase.hxx"
-#include "ThreeDHelper.hxx"
-#include "chartview/ExplicitScaleValues.hxx"
+#include <PlotterBase.hxx>
+#include <ThreeDHelper.hxx>
+#include <chartview/ExplicitScaleValues.hxx>
 
-#include <com/sun/star/drawing/HomogenMatrix.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <basegfx/matrix/b3dhommatrix.hxx>
+
+namespace com::sun::star::drawing { struct HomogenMatrix; }
 
 namespace chart
 {

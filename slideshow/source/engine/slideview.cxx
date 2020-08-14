@@ -20,16 +20,14 @@
 #include <tools/diagnose_ex.h>
 #include <canvas/canvastools.hxx>
 
-#include "eventqueue.hxx"
-#include "eventmultiplexer.hxx"
-#include "slideview.hxx"
-#include "delayevent.hxx"
-#include "unoview.hxx"
+#include <eventqueue.hxx>
+#include <eventmultiplexer.hxx>
+#include <slideview.hxx>
+#include <delayevent.hxx>
+#include <unoview.hxx>
 
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
-#include <cppuhelper/interfacecontainer.h>
 #include <comphelper/make_shared_from_uno.hxx>
 
 #include <cppcanvas/spritecanvas.hxx>
@@ -45,22 +43,22 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <basegfx/polygon/b2dpolygonclipper.hxx>
 #include <basegfx/polygon/b2dpolypolygoncutter.hxx>
 
-#include <com/sun/star/presentation/XSlideShow.hpp>
+#include <com/sun/star/awt/XPaintListener.hpp>
+#include <com/sun/star/presentation/XSlideShowView.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
+#include <com/sun/star/util/XModifyListener.hpp>
 
 #include <memory>
 #include <vector>
-#include <iterator>
 #include <algorithm>
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 namespace {
 
@@ -117,11 +115,11 @@ basegfx::B2DPolyPolygon createClipPolygon( const basegfx::B2DPolyPolygon&    rCl
 
     if(rClip.count())
     {
-        return basegfx::tools::clipPolyPolygonOnRange(rClip, aClipRange, true, false);
+        return basegfx::utils::clipPolyPolygonOnRange(rClip, aClipRange, true, false);
     }
     else
     {
-        return basegfx::B2DPolyPolygon(basegfx::tools::createPolygonFromRect(aClipRange));
+        return basegfx::B2DPolyPolygon(basegfx::utils::createPolygonFromRect(aClipRange));
     }
 }
 
@@ -136,17 +134,12 @@ basegfx::B2DPolyPolygon prepareClip( const basegfx::B2DPolyPolygon& rClip )
 {
     basegfx::B2DPolyPolygon aClip( rClip );
 
-    // TODO(P2): unnecessary, once XCanvas is correctly handling this
-    // AW: Should be no longer necessary; tools are now bezier-safe
-    if( aClip.areControlPointsUsed() )
-        aClip = basegfx::tools::adaptiveSubdivideByAngle( aClip );
-
     // normalize polygon, preparation for clipping
     // in updateCanvas()
-    aClip = basegfx::tools::correctOrientations(aClip);
-    aClip = basegfx::tools::solveCrossovers(aClip);
-    aClip = basegfx::tools::stripNeutralPolygons(aClip);
-    aClip = basegfx::tools::stripDispensablePolygons(aClip);
+    aClip = basegfx::utils::correctOrientations(aClip);
+    aClip = basegfx::utils::solveCrossovers(aClip);
+    aClip = basegfx::utils::stripNeutralPolygons(aClip);
+    aClip = basegfx::utils::stripDispensablePolygons(aClip);
 
     return aClip;
 }
@@ -173,7 +166,7 @@ void clearRect( ::cppcanvas::CanvasSharedPtr const& pCanvas,
     // depending on the slide content a one pixel wide
     // line will show to the bottom and the right.
     const ::basegfx::B2DPolygon aPoly(
-        ::basegfx::tools::createPolygonFromRect(
+        ::basegfx::utils::createPolygonFromRect(
             basegfx::B2DRange(rArea)));
 
     ::cppcanvas::PolyPolygonSharedPtr pPolyPoly(
@@ -566,7 +559,7 @@ private:
                   basegfx::B2IRange(0,0,rSpriteSize.getX(),rSpriteSize.getY()));
     }
 
-    virtual bool isOnView(std::shared_ptr<View> const& rView) const override
+    virtual bool isOnView(ViewSharedPtr const& rView) const override
     {
         return rView.get() == mpParentView;
     }
@@ -686,7 +679,7 @@ private:
     virtual void setCursorShape( sal_Int16 nPointerShape ) override;
 
     // ViewLayer interface
-    virtual bool isOnView(std::shared_ptr<View> const& rView) const override;
+    virtual bool isOnView(ViewSharedPtr const& rView) const override;
     virtual void clear() const override;
     virtual void clearAll() const override;
     virtual cppcanvas::CanvasSharedPtr getCanvas() const override;
@@ -824,11 +817,11 @@ ViewLayerSharedPtr SlideView::createViewLayer( const basegfx::B2DRange& rLayerBo
     if( nNumLayers > LAYER_ULLAGE )
         pruneLayers();
 
-    std::shared_ptr<SlideViewLayer> xViewLayer( new SlideViewLayer(mpCanvas,
-                                                                     getTransformation(),
-                                                                     rLayerBounds,
-                                                                     maUserSize,
-                                                                     this) );
+    auto xViewLayer = std::make_shared<SlideViewLayer>(mpCanvas,
+                                                       getTransformation(),
+                                                       rLayerBounds,
+                                                       maUserSize,
+                                                       this);
     maViewLayers.push_back(xViewLayer);
 
     return xViewLayer;
@@ -838,7 +831,7 @@ bool SlideView::updateScreen() const
 {
     osl::MutexGuard aGuard( m_aMutex );
 
-    ENSURE_OR_RETURN_FALSE( mpCanvas.get(),
+    ENSURE_OR_RETURN_FALSE( mpCanvas,
                        "SlideView::updateScreen(): Disposed" );
 
     return mpCanvas->updateScreen( false );
@@ -848,7 +841,7 @@ bool SlideView::paintScreen() const
 {
     osl::MutexGuard aGuard( m_aMutex );
 
-    ENSURE_OR_RETURN_FALSE( mpCanvas.get(),
+    ENSURE_OR_RETURN_FALSE( mpCanvas,
                        "SlideView::paintScreen(): Disposed" );
 
     return mpCanvas->updateScreen( true );
@@ -906,7 +899,7 @@ void SlideView::setCursorShape( sal_Int16 nPointerShape )
         mxView->setMouseCursor( nPointerShape );
 }
 
-bool SlideView::isOnView(std::shared_ptr<View> const& rView) const
+bool SlideView::isOnView(ViewSharedPtr const& rView) const
 {
     return rView.get() == this;
 }
@@ -1195,7 +1188,6 @@ UnoViewSharedPtr createSlideView( uno::Reference< presentation::XSlideShowView> 
     return that;
 }
 
-} // namespace internal
 } // namespace slideshow
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
